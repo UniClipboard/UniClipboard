@@ -32,34 +32,34 @@ async fn setup_initialized_node(name: &str) -> (TestDaemon, TestCli) {
     (daemon, cli)
 }
 
-/// Without the `dev-tools` feature, `send --file <path>` should exit non-zero
-/// with an error mentioning "dev-tools".
-///
-/// The release (non-dev-tools) binary hits the `#[cfg(not(feature = "dev-tools"))]`
-/// branch in `send.rs` which prints the feature-gate error message.
+/// A regular file should reach the daemon without requiring the CLI's
+/// in-process `dev-tools` feature. With no paired targets the command reports
+/// a completed dispatch with zero recipients and returns a non-zero exit code.
 #[tokio::test]
 #[ignore]
-async fn file_send_requires_dev_tools_feature() {
-    let (_daemon, cli) = setup_initialized_node("file-devtools").await;
+async fn file_send_uses_daemon_without_dev_tools() {
+    use std::io::Write;
 
-    // Create a real temp file so the path itself is valid — we want the
-    // feature-gate error, not a "file not found" error.
-    let tmp = tempfile::NamedTempFile::new().expect("create temp file");
+    let (_daemon, cli) = setup_initialized_node("file-daemon").await;
+
+    let mut tmp = tempfile::NamedTempFile::new().expect("create temp file");
+    tmp.write_all(b"file-send-e2e")
+        .expect("write temp file contents");
     let path_str = tmp.path().to_str().expect("temp path to str");
 
     let output = cli.run_capture(&["send", "--file", path_str]);
-    assert!(
-        !output.success(),
-        "send --file should fail without dev-tools feature, got exit=0"
-    );
-
     let combined = format!("{}{}", output.stdout, output.stderr);
     assert!(
-        combined.contains("dev-tools"),
-        "error should mention 'dev-tools', got: stdout={}, stderr={}",
+        !output.success(),
+        "send --file with no recipients should return non-zero"
+    );
+    assert!(
+        combined.contains("File send finished") && combined.contains("0 accepted"),
+        "send --file should complete through the daemon, got: stdout={}, stderr={}",
         output.stdout,
         output.stderr
     );
+    assert!(!combined.contains("dev-tools"));
 }
 
 /// `send --file /nonexistent/path.txt` should fail because `path.canonicalize()`
@@ -90,12 +90,7 @@ async fn file_send_nonexistent_path() {
     );
 }
 
-/// `send --file /tmp` (a directory) should fail with an error about
-/// "not a regular file", validating the `metadata.is_file()` guard.
-///
-/// NOTE: This test only reaches the is_file() guard when built with dev-tools.
-/// Without dev-tools, the feature gate fires first with a "dev-tools" error.
-/// We accept either error as a valid rejection.
+/// `send --file /tmp` (a directory) should fail before contacting the daemon.
 #[tokio::test]
 #[ignore]
 async fn file_send_directory_path_rejected() {
@@ -108,11 +103,9 @@ async fn file_send_directory_path_rejected() {
     );
 
     let combined = format!("{}{}", output.stdout, output.stderr);
-    // With dev-tools: "Path is not a regular file."
-    // Without dev-tools: "dev-tools" feature gate message
     assert!(
-        combined.contains("not a regular file") || combined.contains("dev-tools"),
-        "error should mention 'not a regular file' or 'dev-tools', got: stdout={}, stderr={}",
+        combined.contains("Directory sending is not supported"),
+        "error should explain that directories are unsupported, got: stdout={}, stderr={}",
         output.stdout,
         output.stderr
     );

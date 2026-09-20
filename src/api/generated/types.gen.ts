@@ -858,6 +858,33 @@ export type DiagnosticStatusEnvelope = {
 };
 
 /**
+ * Initial file dispatch result. Delivery may still be pending while peers
+ * fetch the bytes; callers use `entry_id` to query the delivery view.
+ */
+export type DispatchFileOutcomeResponse = {
+    atMs: number;
+    entryId: string;
+    perTarget: Array<PerTargetOutcomeDto>;
+    snapshotHash: string;
+    totalAccepted: number;
+    totalDuplicate: number;
+    totalErrored: number;
+    totalOffline: number;
+    totalPending: number;
+};
+
+/**
+ * Request body for `POST /clipboard/dispatch-file`.
+ *
+ * The path is consumed only by the authenticated local daemon and must never
+ * be logged or persisted as clipboard metadata.
+ */
+export type DispatchFileRequest = {
+    peers?: Array<string> | null;
+    sourcePath: string;
+};
+
+/**
  * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
  *
  * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
@@ -3994,6 +4021,39 @@ export type DispatchClipboardTextResponses = {
 };
 
 export type DispatchClipboardTextResponse = DispatchClipboardTextResponses[keyof DispatchClipboardTextResponses];
+
+export type DispatchClipboardFileData = {
+    body: DispatchFileRequest;
+    path?: never;
+    query?: never;
+    url: '/clipboard/dispatch-file';
+};
+
+export type DispatchClipboardFileErrors = {
+    /**
+     * Invalid or unavailable file
+     */
+    400: ApiErrorResponse;
+    /**
+     * Internal server error
+     */
+    500: ApiErrorResponse;
+    /**
+     * Daemon is draining
+     */
+    503: ApiErrorResponse;
+};
+
+export type DispatchClipboardFileError = DispatchClipboardFileErrors[keyof DispatchClipboardFileErrors];
+
+export type DispatchClipboardFileResponses = {
+    /**
+     * Initial file dispatch outcome
+     */
+    200: DispatchFileOutcomeResponse;
+};
+
+export type DispatchClipboardFileResponse = DispatchClipboardFileResponses[keyof DispatchClipboardFileResponses];
 
 export type ListClipboardEntriesData = {
     body?: never;

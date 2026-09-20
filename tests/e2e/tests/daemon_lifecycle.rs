@@ -78,14 +78,14 @@ async fn test_daemon_killed_stops_process() {
     assert!(!daemon.is_running());
 }
 
-/// A temporarily unresponsive daemon is still the profile's incumbent. `recv`
+/// A temporarily unresponsive daemon is still the profile's incumbent. `get --wait`
 /// must wait for and reuse it instead of spawning a same-version contender,
 /// whose single-instance arbitration would terminate the original daemon.
 #[cfg(unix)]
 #[tokio::test]
 #[ignore]
-async fn recv_reuses_live_daemon_after_transient_health_timeout() {
-    let profile = TestProfile::new("recv-reuses-live-daemon");
+async fn get_wait_reuses_live_daemon_after_transient_health_timeout() {
+    let profile = TestProfile::new("get-wait-reuses-live-daemon");
     let mut daemon = TestDaemon::start(profile).await.expect("daemon start");
     let cli = TestCli::new(&daemon.profile);
     let init = cli.run_capture(&[
@@ -98,18 +98,15 @@ async fn recv_reuses_live_daemon_after_transient_health_timeout() {
     assert!(init.success(), "init failed: {}", init.stderr);
 
     daemon.suspend().expect("suspend incumbent daemon");
-    let out_dir = tempfile::tempdir().expect("receive output directory");
-    let mut recv = Command::new(cli.binary_path())
+    let mut waiter = Command::new(cli.binary_path())
         .env("UC_PROFILE", &cli.profile_name)
         .env("UNICLIPBOARD_ENV", "development")
-        .arg("recv")
-        .arg("--out")
-        .arg(out_dir.path())
+        .args(["get", "--wait"])
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
-        .expect("spawn recv");
+        .expect("spawn get --wait");
 
     // Cross the CLI's two-second health-probe timeout. Before the fix this
     // classified the live incumbent as absent and spawned a contender.
@@ -123,15 +120,15 @@ async fn recv_reuses_live_daemon_after_transient_health_timeout() {
 
     assert!(
         daemon.is_running(),
-        "recv must not terminate the incumbent daemon"
+        "get --wait must not terminate the incumbent daemon"
     );
     assert!(
-        recv.try_wait().expect("read recv state").is_none(),
-        "recv should connect to the resumed daemon and wait for an inbound file"
+        waiter.try_wait().expect("read wait state").is_none(),
+        "get --wait should connect to the resumed daemon and keep waiting"
     );
 
-    let _ = recv.kill();
-    let _ = recv.wait();
+    let _ = waiter.kill();
+    let _ = waiter.wait();
 }
 
 /// Foreground `start` is also a reuse-or-spawn entry. A live daemon that is

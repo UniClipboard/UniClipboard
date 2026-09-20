@@ -248,7 +248,7 @@ enum Commands {
     /// envelopes). Does NOT write the system clipboard — that's the
     /// daemon's job; the CLI watch is purely a diagnostic observer.
     Watch,
-    /// Receive a single inbound file from a paired peer and save it to
+    /// Deprecated compatibility command. Receive a single inbound file from a paired peer and save it to
     /// disk. Exits after the first file arrives (or on Ctrl-C).
     ///
     /// Daemon-client mode: connects to a running daemon (or spawns a
@@ -258,17 +258,17 @@ enum Commands {
     /// Does NOT write the system clipboard — recv is strictly a file sink.
     /// Progress is shown interactively; on success, stdout contains only the
     /// absolute path of the received file.
+    #[command(hide = true)]
     Recv {
         /// Output directory. Created if missing. Defaults to current
         /// working directory.
         #[arg(short = 'o', long = "out", value_name = "DIR")]
         out: Option<std::path::PathBuf>,
     },
-    /// Read an already-synced clipboard entry and return immediately.
+    /// Get the latest entry now, or wait for the next synced entry.
     ///
-    /// Unlike `recv` (which blocks waiting for the NEXT inbound file), `get`
-    /// reads what is already in the daemon's history — ideal for headless /
-    /// SSH boxes with no system clipboard, and for scripts / agents.
+    /// By default this reads what is already in daemon history and returns
+    /// immediately. `--wait` waits for one new remote entry and then exits.
     ///
     /// Selection (default: the newest usable entry):
     /// * `--type <image|file|text|link>` — newest entry of that kind.
@@ -304,6 +304,10 @@ enum Commands {
         /// Copy the result to the clipboard on the computer where this terminal is open.
         #[arg(short = 'c', long, conflicts_with = "list")]
         copy: bool,
+        /// Wait for the next remotely synced entry instead of reading the
+        /// current latest entry. Exits after handling one entry.
+        #[arg(short = 'w', long, conflicts_with_all = ["kind", "id", "list", "limit"])]
+        wait: bool,
     },
     /// Publish or fetch encrypted large payload blobs
     #[cfg(feature = "dev-tools")]
@@ -753,6 +757,7 @@ fn main() -> anyhow::Result<()> {
                 limit,
                 out,
                 copy,
+                wait,
             } => {
                 commands::get::run(
                     commands::get::GetArgs {
@@ -762,6 +767,7 @@ fn main() -> anyhow::Result<()> {
                         limit,
                         out,
                         copy,
+                        wait,
                     },
                     cli.json,
                     cli.verbose,
@@ -1715,6 +1721,41 @@ mod tests {
                 Some(Commands::Get { copy: true, .. })
             ));
         }
+    }
+
+    #[test]
+    fn get_accepts_wait_and_copy_as_independent_flags() {
+        for args in [
+            vec!["uniclip", "get", "-w"],
+            vec!["uniclip", "get", "--wait"],
+            vec!["uniclip", "get", "--copy", "--wait"],
+        ] {
+            let cli = Cli::try_parse_from(args).expect("get wait form must parse");
+            assert!(matches!(
+                cli.command,
+                Some(Commands::Get { wait: true, .. })
+            ));
+        }
+    }
+
+    #[test]
+    fn get_wait_rejects_existing_entry_selectors() {
+        for args in [
+            vec!["uniclip", "get", "--wait", "--type", "text"],
+            vec!["uniclip", "get", "--wait", "--id", "ent-1"],
+            vec!["uniclip", "get", "--wait", "--list"],
+            vec!["uniclip", "get", "--wait", "--limit", "10"],
+        ] {
+            assert!(Cli::try_parse_from(args).is_err());
+        }
+    }
+
+    #[test]
+    fn recv_is_hidden_but_still_parses() {
+        let help = Cli::command().render_help().to_string();
+        assert!(!help.contains("  recv"));
+        assert!(Cli::try_parse_from(["uniclip", "recv"]).is_ok());
+        assert!(Cli::try_parse_from(["uniclip", "recv", "--out", "."]).is_ok());
     }
 
     #[test]

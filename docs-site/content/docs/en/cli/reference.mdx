@@ -135,10 +135,9 @@ does **not** write the system clipboard — that's the daemon's job.
 # Sender: explicitly force file mode (kept for compatibility)
 uniclip send -f ./big-file.bin
 
-# Receiver: wait for the first inbound file, export it from the
-# daemon's cache, and write it to disk (defaults to cwd; pass --out
-# for a different directory). Ctrl-C to stop waiting.
-uniclip recv --out ./inbox
+# Receiver: wait for the next inbound entry. Files are exported from
+# the daemon's cache into the selected directory. Ctrl-C stops waiting.
+uniclip get --wait --out ./inbox
 ```
 
 An existing positional regular file is detected automatically. Use `--text` to
@@ -146,15 +145,14 @@ force a filename to be sent as text, or `-f` / `--file` to force file mode.
 Directories are not supported, and an explicit-looking missing path is reported
 as an error instead of being sent as text. File mode supports repeatable
 `--peer`; the command exits after every relevant target is delivered, failed,
-or offline. Ctrl-C cancels the wait. When `recv` succeeds, stdout contains only
-the received file's absolute path; progress remains interactive, and `--json`
-returns the full result object.
+or offline. Ctrl-C cancels the wait. A successful `get --wait` uses the normal
+`get` output contract described below.
 
 ### Reading already-synced entries
 
-`recv` waits for the _next_ inbound file. To read what is **already** in
-the daemon's history — the common case on a headless / SSH box with no
-system clipboard to paste from — use `get`, which returns immediately.
+By default, `get` reads what is **already** in daemon history and returns
+immediately. Add `--wait` to subscribe for one new synced entry, handle it with
+the same output rules, and exit.
 
 ```bash
 # Newest usable entry (text/link prints to stdout)
@@ -162,6 +160,12 @@ uniclip get
 
 # Also copy the result to the computer where this terminal is open
 uniclip get -c
+
+# Wait for one new synced entry
+uniclip get -w
+
+# Wait for one new entry and copy it
+uniclip get --copy --wait
 
 # Newest entry of a kind: image | file | text | link
 uniclip get --type image
@@ -180,11 +184,15 @@ interactive terminal, so piped or redirected output stays byte-exact;
 directory, defaulting to a per-user cache dir) and the absolute path is
 printed to stdout, or streamed to stdout with `--out -`. A successful fetch
 prints no additional status lines, so the result can be piped or captured
-directly. Unlike `recv`, `get` never blocks.
+directly. Waiting messages are written to stderr and do not corrupt stdout.
 
 With `-c` or `--copy`, text and links copy their content; images and files copy
 the absolute path written to disk. For images and files, `--copy` cannot be
 combined with `--out -`, because streaming the bytes does not produce a path.
+
+The old `uniclip recv [--out DIR]` command is hidden and deprecated. Existing
+scripts still work in this release and receive one warning on stderr, but new
+scripts should use `uniclip get --wait [--out DIR]`.
 
 ## Search
 

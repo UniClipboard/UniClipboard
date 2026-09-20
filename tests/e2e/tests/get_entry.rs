@@ -1,9 +1,8 @@
 //! E2E tests for `uniclip get` — the one-shot reader for already-synced
 //! clipboard entries (issue #1025).
 //!
-//! `get` is the non-blocking counterpart to `recv`: instead of subscribing and
-//! waiting for the *next* inbound file, it reads what is *already* in the
-//! daemon's history and returns immediately. These tests verify the contract
+//! Bare `get` reads what is already in history and returns immediately, while
+//! `get --wait` subscribes for the next remote entry. These tests verify the contract
 //! that scripts / agents depend on:
 //!
 //! - argument-level guards (invalid `--type`, mutually-exclusive selectors);
@@ -217,6 +216,107 @@ async fn get_is_non_blocking() {
         Some(EXIT_NO_MATCH),
         "non-blocking get on empty history should exit EXIT_NO_MATCH"
     );
+}
+
+/// Waiting is an explicit mode: unlike bare `get`, it must not consume the
+/// empty/current history and exit before a new remote entry arrives.
+#[tokio::test]
+#[ignore]
+async fn get_wait_blocks_until_ctrl_c() {
+    let (_daemon, cli) = setup_initialized_node("get-wait-blocks").await;
+    let mut child = std::process::Command::new(cli.binary_path())
+        .env("UC_PROFILE", &cli.profile_name)
+        .args(["get", "--wait"])
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("failed to spawn get --wait");
+
+    std::thread::sleep(Duration::from_secs(2));
+    assert!(
+        child.try_wait().expect("read wait state").is_none(),
+        "get --wait must not use an entry that existed before its subscription"
+    );
+    let _ = child.kill();
+    let _ = child.wait();
+}
+
+/// Two concurrent waiters attach to the same daemon and independently receive
+/// the next text entry. A later waiter materializes a synced file through the
+/// same command path.
+#[tokio::test]
+#[ignore]
+async fn get_wait_receives_text_and_file_without_replacing_daemon() {
+    let (mut alice_daemon, alice_cli, mut bob_daemon, bob_cli) =
+        uc_e2e_tests::pair_two_nodes("get-wait-content", "get-wait-content-pass").await;
+
+    let spawn_waiter = || {
+        std::process::Command::new(bob_cli.binary_path())
+            .env("UC_PROFILE", &bob_cli.profile_name)
+            .env("UNICLIPBOARD_ENV", "development")
+            .args(["get", "--wait"])
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .expect("spawn get --wait")
+    };
+
+    let first = spawn_waiter();
+    let second = spawn_waiter();
+    tokio::time::sleep(Duration::from_secs(2)).await;
+
+    let payload = format!("get-wait-text-{}", std::process::id());
+    let sent = alice_cli.run_capture(&["send", &payload]);
+    assert!(sent.success(), "text send failed: {}", sent.stderr);
+
+    for child in [first, second] {
+        let output = wait_for_output(child, Duration::from_secs(20));
+        assert!(output.status.success(), "waiter failed: {}", String::from_utf8_lossy(&output.stderr));
+        assert_eq!(String::from_utf8_lossy(&output.stdout), payload);
+    }
+    assert!(alice_daemon.is_running());
+    assert!(bob_daemon.is_running());
+
+    let output_dir = tempfile::tempdir().expect("get output directory");
+    let file_waiter = std::process::Command::new(bob_cli.binary_path())
+        .env("UC_PROFILE", &bob_cli.profile_name)
+        .env("UNICLIPBOARD_ENV", "development")
+        .args(["get", "--wait", "--out"])
+        .arg(output_dir.path())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("spawn file waiter");
+    tokio::time::sleep(Duration::from_secs(2)).await;
+
+    let source_dir = tempfile::tempdir().expect("source directory");
+    let source = source_dir.path().join("waited.txt");
+    std::fs::write(&source, b"waited-file-content").expect("write source file");
+    let sent = alice_cli.run_capture(&["send", "--file", source.to_str().expect("source path")]);
+    assert!(sent.success(), "file send failed: {}", sent.stderr);
+
+    let output = wait_for_output(file_waiter, Duration::from_secs(30));
+    assert!(output.status.success(), "file waiter failed: {}", String::from_utf8_lossy(&output.stderr));
+    let received = std::path::PathBuf::from(String::from_utf8_lossy(&output.stdout).trim());
+    assert_eq!(std::fs::read(received).expect("read received file"), b"waited-file-content");
+}
+
+fn wait_for_output(mut child: std::process::Child, timeout: Duration) -> std::process::Output {
+    let deadline = std::time::Instant::now() + timeout;
+    loop {
+        if child.try_wait().expect("read child state").is_some() {
+            return child.wait_with_output().expect("collect child output");
+        }
+        if std::time::Instant::now() >= deadline {
+            let _ = child.kill();
+            let output = child.wait_with_output().expect("collect timed-out child output");
+            panic!(
+                "command timed out; stderr={}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
 }
 
 // ── Argument-level contracts (clap; no daemon needed) ────────────────

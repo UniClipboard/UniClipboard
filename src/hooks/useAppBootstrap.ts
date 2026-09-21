@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useReducer, useRef, useState, useSyncExternalStore } from 'react'
 import { daemonClient } from '@/api/daemon/client'
+import { getProfileRecovery, type ProfileRecoveryResponse } from '@/api/daemon/encryption'
 import { getLifecycleStatus, signalLifecycleReady } from '@/api/daemon/lifecycle'
 import { useEncryptionState } from '@/hooks/useDaemonEvents'
 import { appBootstrapReducer, initialAppBootstrapState } from '@/lib/app-bootstrap-state'
@@ -21,12 +22,44 @@ export function useAppBootstrap(isSetupActive: boolean) {
   const [spaceReadiness, setSpaceReadiness] = useState<
     'checking' | 'recoveringMembership' | 'ready'
   >('checking')
+  const [profileRecovery, setProfileRecovery] = useState<ProfileRecoveryResponse | null>(null)
+  const [profileRecoveryLoading, setProfileRecoveryLoading] = useState(false)
+  const [profileRecoveryError, setProfileRecoveryError] = useState<string | null>(null)
   const subscribe = useCallback(
     (listener: () => void) => (state.daemonBootstrapReady ? () => {} : subscribeStartup(listener)),
     [state.daemonBootstrapReady]
   )
   const startupStatus = useSyncExternalStore(subscribe, getStartupSnapshot)
   const serviceReady = startupStatus?.service_ready ?? false
+
+  useEffect(() => {
+    if (!state.daemonBootstrapReady) {
+      setProfileRecovery(null)
+      setProfileRecoveryLoading(false)
+      setProfileRecoveryError(null)
+      return
+    }
+
+    let cancelled = false
+    setProfileRecoveryLoading(true)
+    setProfileRecoveryError(null)
+    getProfileRecovery()
+      .then(status => {
+        if (!cancelled) setProfileRecovery(status)
+      })
+      .catch(error => {
+        if (!cancelled) {
+          setProfileRecoveryError(error instanceof Error ? error.message : String(error))
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setProfileRecoveryLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [state.daemonBootstrapReady])
 
   useEffect(() => {
     if (bootstrapRetryingRef.current) return
@@ -55,7 +88,11 @@ export function useAppBootstrap(isSetupActive: boolean) {
     isLoading: encryptionLoading,
     error: encryptionQueryError,
   } = useGetEncryptionSessionStatusQuery(undefined, {
-    skip: isSetupActive || !state.daemonBootstrapReady,
+    skip:
+      isSetupActive ||
+      !state.daemonBootstrapReady ||
+      profileRecoveryLoading ||
+      !profileRecovery?.backgroundReady,
   })
   const [checkEncryption] = useLazyGetEncryptionSessionStatusQuery()
 
@@ -72,14 +109,18 @@ export function useAppBootstrap(isSetupActive: boolean) {
   const resolvedEncryptionStatus = state.encryptionOverride ?? encryptionData ?? null
   const encryptionInitialized = resolvedEncryptionStatus?.initialized === true
   const encryptionSessionReady = resolvedEncryptionStatus?.session_ready === true
-  const encryptionError = resolvedEncryptionStatus
+  const recoveryRequired = profileRecovery ? !profileRecovery.backgroundReady : false
+  const encryptionError = recoveryRequired
     ? null
-    : (state.bootEncryptionError ?? encryptionQueryErrorMessage)
+    : resolvedEncryptionStatus
+      ? null
+      : (state.bootEncryptionError ?? encryptionQueryErrorMessage)
 
   useEffect(() => {
     if (
       isSetupActive ||
       !state.daemonBootstrapReady ||
+      recoveryRequired ||
       !encryptionInitialized ||
       !encryptionSessionReady
     ) {
@@ -112,7 +153,13 @@ export function useAppBootstrap(isSetupActive: boolean) {
       cancelled = true
       if (timer !== null) clearTimeout(timer)
     }
-  }, [encryptionInitialized, encryptionSessionReady, isSetupActive, state.daemonBootstrapReady])
+  }, [
+    encryptionInitialized,
+    encryptionSessionReady,
+    isSetupActive,
+    recoveryRequired,
+    state.daemonBootstrapReady,
+  ])
 
   const retry = useCallback(() => {
     if (bootstrapRetryingRef.current) return
@@ -124,7 +171,12 @@ export function useAppBootstrap(isSetupActive: boolean) {
       .then(() => {
         return daemonClient.refreshSession()
       })
-      .then(() => checkEncryption(undefined, false).unwrap())
+      .then(() => getProfileRecovery())
+      .then(status => {
+        setProfileRecovery(status)
+        if (!status.backgroundReady) return null
+        return checkEncryption(undefined, false).unwrap()
+      })
       .then(() => {
         dispatch({ type: 'connectionReady' })
       })
@@ -181,6 +233,7 @@ export function useAppBootstrap(isSetupActive: boolean) {
   useEffect(() => {
     if (
       daemonLifecycleReadySignaledRef.current ||
+      recoveryRequired ||
       !shouldSignalDaemonLifecycleReady(
         isSetupActive,
         state.daemonBootstrapReady,
@@ -196,7 +249,13 @@ export function useAppBootstrap(isSetupActive: boolean) {
       daemonLifecycleReadySignaledRef.current = false
       console.error('Failed to signal daemon lifecycle ready:', error)
     })
-  }, [isSetupActive, resolvedEncryptionStatus, spaceReadiness, state.daemonBootstrapReady])
+  }, [
+    isSetupActive,
+    recoveryRequired,
+    resolvedEncryptionStatus,
+    spaceReadiness,
+    state.daemonBootstrapReady,
+  ])
 
   const setEncryptionStatus = useCallback(
     (status: { initialized: boolean; session_ready: boolean }) =>
@@ -207,6 +266,9 @@ export function useAppBootstrap(isSetupActive: boolean) {
   return {
     ...state,
     startupStatus,
+    profileRecovery,
+    profileRecoveryLoading,
+    profileRecoveryError,
     encryptionLoading,
     encryptionError,
     resolvedEncryptionStatus,

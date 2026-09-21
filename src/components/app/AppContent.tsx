@@ -7,6 +7,7 @@ import { useVisualEffectsSampling } from '@/hooks/useVisualEffectsSampling'
 import type { SetupGate } from '@/lib/app-state'
 import { startupFailed } from '@/lib/daemon-startup-progress'
 import { pendingStartupSnapshot, startupViewSnapshot } from '@/lib/startup-progress'
+import ProfileRecoveryPage from '@/pages/ProfileRecoveryPage'
 import SetupPage from '@/pages/SetupPage'
 import UnlockPage from '@/pages/UnlockPage'
 import { AppStatusScreen } from './AppStatusScreen'
@@ -36,17 +37,24 @@ export function AppContent({
   )
 
   const hasStartupTask = Boolean(bootstrap.startupStatus && !bootstrap.daemonBootstrapReady)
+  const recoveryRequired = Boolean(
+    bootstrap.profileRecovery && !bootstrap.profileRecovery.backgroundReady
+  )
   const showFailure =
     bootstrap.bootstrapFailure?.kind === 'versionTooOld' ||
     (!hasStartupTask &&
       !bootstrap.retrying &&
-      Boolean(bootstrap.bootstrapFailure || bootstrap.encryptionError))
+      Boolean(
+        bootstrap.bootstrapFailure || bootstrap.profileRecoveryError || bootstrap.encryptionError
+      ))
   const showStartup =
     hasStartupTask ||
     bootstrap.retrying ||
     !bootstrap.daemonBootstrapReady ||
+    bootstrap.profileRecoveryLoading ||
+    (bootstrap.daemonBootstrapReady && bootstrap.profileRecovery === null) ||
     setupGate === 'loading' ||
-    (setupGate === 'ready' && !bootstrap.resolvedEncryptionStatus) ||
+    (setupGate === 'ready' && !recoveryRequired && !bootstrap.resolvedEncryptionStatus) ||
     (setupGate === 'ready' &&
       bootstrap.resolvedEncryptionStatus?.session_ready === true &&
       bootstrap.spaceReadiness !== 'ready')
@@ -60,6 +68,7 @@ export function AppContent({
   )
   useMainWindowPresentation(
     showFailure ||
+      recoveryRequired ||
       !showStartup ||
       needsAttention ||
       bootstrap.spaceReadiness === 'recoveringMembership'
@@ -71,12 +80,22 @@ export function AppContent({
         <AppStatusScreen
           detail={
             bootstrap.encryptionError ??
+            bootstrap.profileRecoveryError ??
             bootstrap.bootEncryptionError ??
             bootstrap.bootstrapFailure?.detail
           }
           failure={bootstrap.bootstrapFailure}
           onRetry={bootstrap.retry}
         />
+      </div>
+    )
+  }
+
+  if (recoveryRequired && bootstrap.profileRecovery) {
+    return (
+      <div className="flex h-full w-full flex-col bg-background">
+        {fullTitleBar}
+        <ProfileRecoveryPage status={bootstrap.profileRecovery} />
       </div>
     )
   }

@@ -68,6 +68,54 @@ export interface EncryptionStateResponse {
   sessionReady: boolean
 }
 
+export type ProfileRecoveryState =
+  | 'not_required'
+  | 'awaiting_passphrase'
+  | 'recovering'
+  | 'recovered'
+  | 'partially_recoverable'
+  | 'failed'
+  | 'admission_recovery_required'
+
+export type AdmissionRecoveryCategory =
+  | 'credential_missing'
+  | 'authentication_mismatch'
+  | 'current_metadata_invalid'
+  | 'legacy_fallback_invalid'
+  | 'legacy_migration_failed'
+  | 'record_relation_incomplete'
+  | 'derived_summary_invalid'
+  | 'generation_mismatch'
+  | 'other_storage_error'
+
+export type AdmissionRecoveryStage =
+  | 'credential'
+  | 'repository_metadata'
+  | 'legacy_repository'
+  | 'repository_record'
+  | 'recovery_summary'
+  | 'storage'
+
+export type AdmissionRecoveryAction =
+  | 'restore_credential'
+  | 'choose_backup'
+  | 'rebuild_derived_state'
+  | 'export_diagnostics'
+
+export interface ProfileRecoveryResponse {
+  state: ProfileRecoveryState
+  canSubmitPassphrase: boolean
+  restartRequired: boolean
+  backgroundReady: boolean
+  cleanupPending: boolean
+  losses: Array<'local_history' | 'local_control_state' | 'device_identity'>
+  admission: {
+    category: AdmissionRecoveryCategory
+    stage: AdmissionRecoveryStage
+    action: AdmissionRecoveryAction
+  } | null
+}
+
 // ── Public API ─────────────────────────────────────────────────
 
 /**
@@ -85,6 +133,13 @@ export async function getEncryptionState(): Promise<EncryptionStateResponse> {
   // hand-written interface, bridged here to keep the public return type stable.
   const data = await daemonClient.callEnveloped(() => getEncryptionStateSdk({ throwOnError: true }))
   return data as unknown as EncryptionStateResponse
+}
+
+export async function getProfileRecovery(): Promise<ProfileRecoveryResponse> {
+  const response = await daemonClient.request<{ data: ProfileRecoveryResponse }>(
+    '/encryption/recovery'
+  )
+  return response.data
 }
 
 /**

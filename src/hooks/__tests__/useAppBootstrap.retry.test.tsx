@@ -15,6 +15,15 @@ const mocks = vi.hoisted(() => ({
     throw new Error('Cannot refetch a query that has not been started yet')
   }),
   lifecycle: vi.fn().mockResolvedValue({ state: 'Ready' }),
+  recovery: vi.fn().mockResolvedValue({
+    state: 'not_required',
+    canSubmitPassphrase: false,
+    restartRequired: false,
+    backgroundReady: true,
+    cleanupPending: false,
+    losses: [],
+    admission: null,
+  }),
   encryption: undefined as { initialized: boolean; session_ready: boolean } | undefined,
 }))
 vi.mock('@/lib/ipc', () => ({
@@ -25,6 +34,7 @@ vi.mock('@/lib/ipc', () => ({
   },
 }))
 vi.mock('@/api/daemon/client', () => ({ daemonClient: { refreshSession: mocks.refresh } }))
+vi.mock('@/api/daemon/encryption', () => ({ getProfileRecovery: mocks.recovery }))
 vi.mock('@/api/daemon/lifecycle', () => ({
   getLifecycleStatus: mocks.lifecycle,
   signalLifecycleReady: vi.fn().mockResolvedValue(undefined),
@@ -49,6 +59,7 @@ describe('startup retry', () => {
       .mockRejectedValueOnce(new Error('offline'))
       .mockResolvedValue(undefined)
     mocks.lifecycle.mockReset().mockResolvedValue({ state: 'Ready' })
+    mocks.recovery.mockClear()
     mocks.encryption = undefined
   })
 

@@ -23,6 +23,45 @@
     "updateFailed": "Could not complete the update check. Please try again later.",
     "contactOpened": "The support page is open in your browser."
   },
+  "profileAdmissionRecovery": {
+    "category": "Local data needs attention",
+    "title": "Your existing data could not be opened safely",
+    "description": "UniClipboard stopped before starting history, clipboard monitoring, or device sync because the saved membership data is inconsistent.",
+    "issue": "Issue",
+    "stage": "Found while reading",
+    "nextStep": "Recommended next step",
+    "preserved": "Your existing data has not been deleted or replaced.",
+    "help": "Keep this profile and any backups unchanged. Export diagnostics before trying another copy or asking for help.",
+    "export": "Export diagnostics",
+    "exporting": "Exporting diagnostics…",
+    "exported": "Diagnostics exported.",
+    "exportFailed": "Diagnostics could not be exported. Check the save location and available space, then try again.",
+    "categories": {
+      "credential_missing": "A required membership credential is missing",
+      "authentication_mismatch": "The saved credential does not match the membership data",
+      "current_metadata_invalid": "The current membership metadata is invalid",
+      "legacy_fallback_invalid": "The earlier membership metadata is also invalid",
+      "legacy_migration_failed": "Earlier membership data could not be upgraded safely",
+      "record_relation_incomplete": "Related membership records are incomplete",
+      "derived_summary_invalid": "The saved membership summary is invalid",
+      "generation_mismatch": "Membership records belong to different generations",
+      "other_storage_error": "The membership data could not be read"
+    },
+    "stages": {
+      "credential": "the saved credential",
+      "repository_metadata": "current membership metadata",
+      "legacy_repository": "earlier membership metadata",
+      "repository_record": "membership records",
+      "recovery_summary": "the membership summary",
+      "storage": "local storage"
+    },
+    "actions": {
+      "restore_credential": "Restore the credential from a trusted copy",
+      "choose_backup": "Use a known-good backup of this profile",
+      "rebuild_derived_state": "Rebuild the derived membership summary with a supported recovery tool",
+      "export_diagnostics": "Export diagnostics and ask for help before changing the profile"
+    }
+  },
   "appearanceLayout": {
     "effectsHelp": "Balance visual effects and performance.",
     "scaleHelp": "Adjust the size of text and interface elements.",

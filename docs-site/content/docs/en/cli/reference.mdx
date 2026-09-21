@@ -135,6 +135,9 @@ does **not** write the system clipboard — that's the daemon's job.
 # Sender: explicitly force file mode (kept for compatibility)
 uniclip send -f ./big-file.bin
 
+# Sender: read complete file paths from stdin, one per line
+printf '%s\n' ./one.bin './files/two words.bin' | uniclip send -f
+
 # Receiver: wait for the next inbound entry. Files are exported from
 # the daemon's cache into the selected directory. Ctrl-C stops waiting.
 uniclip get --wait --out ./inbox
@@ -142,11 +145,14 @@ uniclip get --wait --out ./inbox
 
 An existing positional regular file is detected automatically. Use `--text` to
 force a filename to be sent as text, or `-f` / `--file` to force file mode.
-Directories are not supported, and an explicit-looking missing path is reported
-as an error instead of being sent as text. File mode supports repeatable
-`--peer`; the command exits after every relevant target is delivered, failed,
-or offline. Ctrl-C cancels the wait. A successful `get --wait` uses the normal
-`get` output contract described below.
+Without a positional path, file mode reads one complete path per stdin line;
+stdin contains paths, not file contents. Blank lines are ignored, all paths are
+validated before sending, and duplicate paths are sent once. Directories are
+not supported, and an explicit-looking missing path is reported as an error
+instead of being sent as text. File mode supports repeatable `--peer`; the
+command exits after every relevant target is delivered, failed, or offline.
+Ctrl-C cancels the wait. A successful `get --wait` uses the normal `get` output
+contract described below.
 
 ### Reading already-synced entries
 

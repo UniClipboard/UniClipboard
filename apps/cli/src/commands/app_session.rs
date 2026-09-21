@@ -129,17 +129,32 @@ pub async fn connect_or_spawn_oneshot_daemon(verbose: bool) -> Result<Box<dyn Da
             Err(exit_codes::EXIT_DAEMON_UNREACHABLE)
         }
         Ok(ProbeOutcome::Absent) => match crate::local_daemon::spawn_oneshot_and_wait().await {
-            Ok(_session) => match crate::setup_check::is_setup_complete().await {
-                Ok(true) => build_daemon_client_service(true),
-                Ok(false) => {
-                    ui::error("No space on this profile; run `uniclip space init` or `uniclip space join` first.");
-                    Err(exit_codes::EXIT_ERROR)
+            Ok(_session) => {
+                let context = DaemonClientContext::from_env().map_err(|error| {
+                    ui::error(&format!("Failed to connect to daemon: {error}"));
+                    exit_codes::EXIT_ERROR
+                })?;
+                match context.query_client().get_profile_recovery().await {
+                    Ok(status) if !status.background_ready => {
+                        Ok(Box::new(HttpWsDaemonService::new(context)))
+                    }
+                    Ok(_) => match crate::setup_check::is_setup_complete().await {
+                        Ok(true) => Ok(Box::new(HttpWsDaemonService::new(context))),
+                        Ok(false) => {
+                            ui::error("No space on this profile; run `uniclip space init` or `uniclip space join` first.");
+                            Err(exit_codes::EXIT_ERROR)
+                        }
+                        Err(error) => {
+                            ui::error(&format!("Failed to read setup state: {error}"));
+                            Err(exit_codes::EXIT_ERROR)
+                        }
+                    },
+                    Err(error) => {
+                        ui::error(&format!("Failed to read profile recovery state: {error}"));
+                        Err(exit_codes::EXIT_ERROR)
+                    }
                 }
-                Err(error) => {
-                    ui::error(&format!("Failed to read setup state: {error}"));
-                    Err(exit_codes::EXIT_ERROR)
-                }
-            },
+            }
             Err(err) => {
                 ui::error(&err.to_string());
                 Err(exit_codes::EXIT_ERROR)

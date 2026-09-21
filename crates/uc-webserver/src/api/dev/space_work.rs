@@ -104,6 +104,11 @@ async fn space_work(
         return Err(StatusCode::FORBIDDEN);
     }
     let operation = match request.command.as_str() {
+        "arm_joiner_final_confirmation_pause" => DevOperation::ArmJoinerFinalConfirmationPause,
+        "wait_joiner_final_confirmation_pause" => DevOperation::WaitForJoinerFinalConfirmationPause,
+        "release_joiner_final_confirmation_pause" => {
+            DevOperation::ReleaseJoinerFinalConfirmationPause
+        }
         "arm_complete_ack_failure" => DevOperation::ArmFinalConfirmationConnectionFailure,
         "arm_membership_history_failures" => DevOperation::ArmMembershipHistoryFailures {
             failure: match request.failure.as_deref() {
@@ -131,6 +136,13 @@ async fn space_work(
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     let value = match result {
+        DevOperationResult::JoinerFinalConfirmationPauseArmed => json!({ "status": "armed" }),
+        DevOperationResult::JoinerFinalConfirmationPauseEntered => {
+            json!({ "status": "entered" })
+        }
+        DevOperationResult::JoinerFinalConfirmationPauseReleased => {
+            json!({ "status": "released" })
+        }
         DevOperationResult::FinalConfirmationConnectionFailureArmed { after_sequence } => {
             json!({ "after_sequence": after_sequence })
         }

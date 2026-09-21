@@ -122,7 +122,11 @@ export function useDevicesPage() {
     }),
     shallowEqual
   )
-  const { snapshot: deviceTrust, refresh: refreshDeviceTrust } = useDeviceTrust()
+  const {
+    snapshot: deviceTrust,
+    decisionError: deviceTrustError,
+    refresh: refreshDeviceTrust,
+  } = useDeviceTrust()
   const manualRefreshInProgress =
     connectionRefresh.status === 'checking' && connectionRefreshTrigger === 'manual'
 
@@ -315,6 +319,7 @@ export function useDevicesPage() {
     localDeviceStatus,
     refreshDeviceTrust,
     deviceTrust,
+    deviceTrustError,
     refreshConnectionsManually,
     trustListView,
     mobileDevices,

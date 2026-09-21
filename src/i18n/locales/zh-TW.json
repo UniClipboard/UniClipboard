@@ -1315,6 +1315,7 @@
   "devices": {
     "title": "裝置管理",
     "addNew": "邀請新裝置",
+    "deviceTrustUnavailable": "裝置狀態暫時無法使用。請稍後重試。",
     "thisDevice": {
       "title": "本裝置",
       "syncActive": "同步已開啓",
@@ -1334,6 +1335,16 @@
     },
     "pairedDevices": {
       "title": "已配對裝置"
+    },
+    "inboundPairings": {
+      "title": "未完成的配對",
+      "unnamed": "未完成的配對",
+      "status": {
+        "awaiting_confirmation": "正在等待最終確認",
+        "confirmation_missed": "未收到最終確認，正在安全完成收尾",
+        "needs_attention": "需要處理：無法確認配對結果。請保留現有資料並聯絡支援。",
+        "failed": "配對未完成"
+      }
     },
     "convergence": {
       "converging": "正在連接空間內的其他裝置",
@@ -2386,6 +2397,12 @@
           "base_history_changed": "對方空間已發生變化，請重新取得邀請碼。",
           "joiner_history_ahead": "本機歷史無法加入該空間。",
           "history_conflict": "兩邊的歷史無法合併。",
+          "completion_invalid": "最終確認無效，未完成的配對已停止。",
+          "membership_history_invalid": "成員歷史無效，未完成的配對已停止。",
+          "security_material_invalid": "安全資料無效，未完成的配對已停止。",
+          "relationship_conflict": "裝置關係存在衝突，未完成的配對已停止。",
+          "activation_state_invalid": "裝置啟用狀態無效，未完成的配對已停止。",
+          "outcome_cannot_be_proven": "無法安全確認本次配對結果。請保留現有資料並聯絡支援。",
           "peer_upgrade_required": "對方裝置需要更新 UniClipboard。",
           "cancelled": "本次加入已取消。",
           "expired": "本次加入已到期，未完成的配對已自動結束。",

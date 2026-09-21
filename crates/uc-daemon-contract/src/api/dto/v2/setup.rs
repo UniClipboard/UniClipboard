@@ -102,6 +102,14 @@ pub enum JoinSpaceResponse {
         #[schema(rename = "peerUpgradeRequired")]
         peer_upgrade_required: bool,
     },
+    NeedsAttention {
+        #[schema(rename = "joinId")]
+        join_id: String,
+        reason: JoinSpaceAttentionReason,
+        recovery: JoinSpaceAttentionRecovery,
+        #[schema(rename = "nextRetryAtMs")]
+        next_retry_at_ms: Option<i64>,
+    },
     Rejected {
         #[schema(rename = "joinId")]
         join_id: String,
@@ -135,9 +143,26 @@ pub enum JoinSpaceRejectionReason {
     BaseHistoryChanged,
     JoinerHistoryAhead,
     HistoryConflict,
+    CompletionInvalid,
+    MembershipHistoryInvalid,
+    SecurityMaterialInvalid,
+    RelationshipConflict,
+    ActivationStateInvalid,
     PeerUpgradeRequired,
     Cancelled,
     RemovedBeforeActivation,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum JoinSpaceAttentionReason {
+    OutcomeCannotBeProven,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum JoinSpaceAttentionRecovery {
+    PreserveDataAndContactSupport,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]

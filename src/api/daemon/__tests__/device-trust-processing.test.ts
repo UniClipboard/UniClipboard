@@ -29,3 +29,30 @@ it('preserves a processing join and its maintenance result from the public respo
   expect(snapshot.currentJoin).toEqual(currentJoin)
   expect(snapshot.maintenanceHealth).toEqual(maintenanceHealth)
 })
+
+it('preserves attention and unfinished pairing states from the public response', async () => {
+  const currentJoin = {
+    status: 'needs_attention',
+    joinId: 'join-2',
+    reason: 'outcome_cannot_be_proven',
+    recovery: 'preserve_data_and_contact_support',
+    nextRetryAtMs: null,
+  }
+  const inboundPairings = [
+    {
+      pairingId: 'pairing-1',
+      deviceId: null,
+      displayName: null,
+      status: 'needs_attention',
+    },
+  ]
+  vi.spyOn(daemonClient, 'callEnveloped').mockResolvedValue({
+    revision: 2,
+    deviceTrust: { currentJoin, inboundPairings },
+    issues: [],
+  } as never)
+
+  const snapshot = await getDeviceTrustSnapshot()
+  expect(snapshot.currentJoin).toEqual(currentJoin)
+  expect(snapshot.inboundPairings).toEqual(inboundPairings)
+})

@@ -1316,6 +1316,7 @@
   "devices": {
     "title": "デバイス管理",
     "addNew": "新しいデバイスの招待",
+    "deviceTrustUnavailable": "デバイスの状態を一時的に確認できません。しばらくしてからもう一度お試しください。",
     "thisDevice": {
       "title": "これデバイス",
       "syncActive": "同期がアクティブです",
@@ -1335,6 +1336,16 @@
     },
     "pairedDevices": {
       "title": "ペアリングされたデバイス"
+    },
+    "inboundPairings": {
+      "title": "未完了のペアリング",
+      "unnamed": "未完了のペアリング",
+      "status": {
+        "awaiting_confirmation": "最終確認を待っています",
+        "confirmation_missed": "最終確認を受信できなかったため、安全に終了処理を進めています",
+        "needs_attention": "対応が必要です：ペアリング結果を確認できません。現在のデータを保持したままサポートにお問い合わせください。",
+        "failed": "ペアリングは完了しませんでした"
+      }
     },
     "convergence": {
       "converging": "このスペース内の他のデバイスに接続しています",
@@ -2394,7 +2405,13 @@
           "cancelled": "この参加は取り消されました。",
           "expired": "参加期限が切れたため、未完了のペアリングは自動的に終了しました。",
           "superseded": "この参加は新しいペアリングに置き換えられました。",
-          "removed_before_activation": "確認前に相手がこのデバイスを削除しました。"
+          "removed_before_activation": "確認前に相手がこのデバイスを削除しました。",
+          "completion_invalid": "最終確認が無効だったため、未完了のペアリングを停止しました。",
+          "membership_history_invalid": "メンバー履歴が無効だったため、未完了のペアリングを停止しました。",
+          "security_material_invalid": "セキュリティ情報が無効だったため、未完了のペアリングを停止しました。",
+          "relationship_conflict": "デバイスの関係に競合があったため、未完了のペアリングを停止しました。",
+          "activation_state_invalid": "デバイスの有効化状態が無効だったため、未完了のペアリングを停止しました。",
+          "outcome_cannot_be_proven": "このペアリング結果を安全に確認できません。現在のデータを保持したままサポートにお問い合わせください。"
         }
       }
     },

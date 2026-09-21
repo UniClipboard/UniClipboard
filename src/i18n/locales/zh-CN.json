@@ -1335,6 +1335,16 @@
     "pairedDevices": {
       "title": "已配对设备"
     },
+    "inboundPairings": {
+      "title": "未完成的配对",
+      "unnamed": "未完成的配对",
+      "status": {
+        "awaiting_confirmation": "正在等待最终确认",
+        "confirmation_missed": "未收到最终确认，正在安全收尾",
+        "needs_attention": "需要处理：无法确认配对结果。请保留现有资料并联系支持。",
+        "failed": "配对未完成"
+      }
+    },
     "convergence": {
       "converging": "正在连接空间内的其他设备",
       "waitingForOfflineMember": "正在等待离线设备完成资料更新",
@@ -1975,7 +1985,8 @@
           "internal": "内部错误 —— 请查看 daemon 日志。"
         }
       }
-    }
+    },
+    "deviceTrustUnavailable": "设备状态暂时不可用。请稍后重试。"
   },
   "pairing": {
     "globalRequest": {
@@ -2373,10 +2384,16 @@
       }
     },
     "joinPending": {
-      "processing": { "title": "正在完成配对", "subtitle": "正在确认加入；连接中断后会自动重试。" },
+      "processing": {
+        "title": "正在完成配对",
+        "subtitle": "正在确认加入；连接中断后会自动重试。"
+      },
       "title": "等待对方确认",
       "subtitle": "正在等待加入结果。",
-      "actions": { "cancel": "取消加入", "back": "返回" },
+      "actions": {
+        "cancel": "取消加入",
+        "back": "返回"
+      },
       "ended": {
         "title": "未能加入空间",
         "reasons": {
@@ -2386,6 +2403,12 @@
           "base_history_changed": "对方空间已发生变化，请重新获取邀请码。",
           "joiner_history_ahead": "本机历史无法加入该空间。",
           "history_conflict": "两边的历史无法合并。",
+          "completion_invalid": "最终确认无效，未完成的配对已停止。",
+          "membership_history_invalid": "成员历史无效，未完成的配对已停止。",
+          "security_material_invalid": "安全资料无效，未完成的配对已停止。",
+          "relationship_conflict": "设备关系存在冲突，未完成的配对已停止。",
+          "activation_state_invalid": "设备启用状态无效，未完成的配对已停止。",
+          "outcome_cannot_be_proven": "无法安全确认本次配对结果。请保留现有资料并联系支持。",
           "peer_upgrade_required": "对方设备需要更新 UniClipboard。",
           "cancelled": "本次加入已取消。",
           "expired": "本次加入已到期，未完成的配对已自动结束。",

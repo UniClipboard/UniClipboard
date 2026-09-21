@@ -1336,6 +1336,16 @@
     "pairedDevices": {
       "title": "Paired devices"
     },
+    "inboundPairings": {
+      "title": "Unfinished pairings",
+      "unnamed": "Unfinished pairing",
+      "status": {
+        "awaiting_confirmation": "Waiting for final confirmation",
+        "confirmation_missed": "Final confirmation was not received; finishing safely",
+        "needs_attention": "Needs attention: the pairing result cannot be confirmed. Keep existing data and contact support.",
+        "failed": "Pairing did not finish"
+      }
+    },
     "convergence": {
       "converging": "Connecting to other devices in this space",
       "waitingForOfflineMember": "Waiting for offline devices to update their space data",
@@ -1977,7 +1987,8 @@
           "internal": "Internal error — see daemon logs."
         }
       }
-    }
+    },
+    "deviceTrustUnavailable": "Device status is temporarily unavailable. Try again shortly."
   },
   "pairing": {
     "globalRequest": {
@@ -2381,7 +2392,10 @@
       },
       "title": "Waiting for confirmation",
       "subtitle": "Waiting for the join result.",
-      "actions": { "cancel": "Cancel join", "back": "Back" },
+      "actions": {
+        "cancel": "Cancel join",
+        "back": "Back"
+      },
       "ended": {
         "title": "Could not join the space",
         "reasons": {
@@ -2391,6 +2405,12 @@
           "base_history_changed": "The host space changed. Get a new invitation and try again.",
           "joiner_history_ahead": "This device history cannot join the space.",
           "history_conflict": "The two histories cannot be merged.",
+          "completion_invalid": "The final confirmation was invalid, so the unfinished pairing stopped.",
+          "membership_history_invalid": "The membership history was invalid, so the unfinished pairing stopped.",
+          "security_material_invalid": "The security material was invalid, so the unfinished pairing stopped.",
+          "relationship_conflict": "The device relationship conflicted, so the unfinished pairing stopped.",
+          "activation_state_invalid": "The activation state was invalid, so the unfinished pairing stopped.",
+          "outcome_cannot_be_proven": "The pairing result cannot be confirmed safely. Keep existing data and contact support.",
           "peer_upgrade_required": "The other device must update UniClipboard.",
           "cancelled": "This join was cancelled.",
           "expired": "This join expired, so the unfinished pairing ended automatically.",

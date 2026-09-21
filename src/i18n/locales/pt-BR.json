@@ -1318,6 +1318,7 @@
   "devices": {
     "title": "Gerenciamento de dispositivos",
     "addNew": "Convidar novo dispositivo",
+    "deviceTrustUnavailable": "O status do dispositivo está temporariamente indisponível. Tente novamente em instantes.",
     "thisDevice": {
       "title": "Este dispositivo",
       "syncActive": "Sincronização ativa",
@@ -1338,6 +1339,16 @@
     },
     "pairedDevices": {
       "title": "Dispositivos pareados"
+    },
+    "inboundPairings": {
+      "title": "Pareamentos não concluídos",
+      "unnamed": "Pareamento não concluído",
+      "status": {
+        "awaiting_confirmation": "Aguardando a confirmação final",
+        "confirmation_missed": "A confirmação final não foi recebida; concluindo com segurança",
+        "needs_attention": "Requer atenção: não foi possível confirmar o resultado do pareamento. Mantenha os dados atuais e entre em contato com o suporte.",
+        "failed": "O pareamento não foi concluído"
+      }
     },
     "convergence": {
       "converging": "Conectando aos outros dispositivos deste Espaço",
@@ -2401,7 +2412,13 @@
           "cancelled": "Esta entrada foi cancelada.",
           "expired": "Esta entrada expirou, então o pareamento incompleto foi encerrado automaticamente.",
           "superseded": "Um pareamento mais recente substituiu esta entrada.",
-          "removed_before_activation": "O outro dispositivo removeu este dispositivo antes da confirmação."
+          "removed_before_activation": "O outro dispositivo removeu este dispositivo antes da confirmação.",
+          "completion_invalid": "O pareamento incompleto foi encerrado porque a confirmação final era inválida.",
+          "membership_history_invalid": "O pareamento incompleto foi encerrado porque o histórico de membros era inválido.",
+          "security_material_invalid": "O pareamento incompleto foi encerrado porque as informações de segurança eram inválidas.",
+          "relationship_conflict": "O pareamento incompleto foi encerrado porque havia um conflito entre os dispositivos.",
+          "activation_state_invalid": "O pareamento incompleto foi encerrado porque o estado de ativação do dispositivo era inválido.",
+          "outcome_cannot_be_proven": "Não foi possível confirmar com segurança o resultado deste pareamento. Mantenha os dados atuais e entre em contato com o suporte."
         }
       }
     },

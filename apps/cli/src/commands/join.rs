@@ -215,6 +215,16 @@ struct JoinTerminalOutput<'a> {
 }
 
 #[derive(Serialize)]
+struct JoinNeedsAttentionOutput<'a> {
+    ok: bool,
+    status: &'static str,
+    join_id: &'a str,
+    reason: &'static str,
+    recovery: &'static str,
+    next_retry_at_ms: Option<i64>,
+}
+
+#[derive(Serialize)]
 struct JoinNoneOutput {
     ok: bool,
     status: &'static str,
@@ -251,6 +261,7 @@ fn join_id(response: &JoinSpaceResponse) -> &str {
         JoinSpaceResponse::Active { join_id, .. }
         | JoinSpaceResponse::Pending { join_id, .. }
         | JoinSpaceResponse::Processing { join_id, .. }
+        | JoinSpaceResponse::NeedsAttention { join_id, .. }
         | JoinSpaceResponse::Rejected { join_id, .. }
         | JoinSpaceResponse::Terminated { join_id, .. } => join_id,
     }
@@ -326,7 +337,9 @@ fn join_response_outcome(
     let ok = match intent {
         JoinResponseIntent::Start => !matches!(
             response,
-            JoinSpaceResponse::Rejected { .. } | JoinSpaceResponse::Terminated { .. }
+            JoinSpaceResponse::NeedsAttention { .. }
+                | JoinSpaceResponse::Rejected { .. }
+                | JoinSpaceResponse::Terminated { .. }
         ),
         JoinResponseIntent::Status => true,
         JoinResponseIntent::Cancel => matches!(
@@ -498,6 +511,44 @@ fn render_join_response(
                 outcome.exit_code
             }
         }
+        JoinSpaceResponse::NeedsAttention {
+            join_id,
+            reason: _,
+            recovery: _,
+            next_retry_at_ms,
+        } => {
+            let reason = "outcome_cannot_be_proven";
+            let recovery = "preserve_data_and_contact_support";
+            if json {
+                spinner.finish_and_clear();
+                crate::output::emit_json_with_code(
+                    &JoinNeedsAttentionOutput {
+                        ok: outcome.ok,
+                        status: "needs_attention",
+                        join_id,
+                        reason,
+                        recovery,
+                        next_retry_at_ms: *next_retry_at_ms,
+                    },
+                    "join response",
+                    outcome.exit_code,
+                )
+            } else {
+                if outcome.ok {
+                    spinner.finish_and_clear();
+                } else {
+                    ui::spinner_finish_error(spinner, "Join result needs attention");
+                }
+                ui::info("status", "needs_attention");
+                ui::info("join_id", join_id);
+                ui::info("reason", reason);
+                ui::info("recovery", recovery);
+                if let Some(next_retry_at_ms) = next_retry_at_ms {
+                    ui::info("next_retry_at_ms", &next_retry_at_ms.to_string());
+                }
+                outcome.exit_code
+            }
+        }
         JoinSpaceResponse::Rejected { join_id, reason } => {
             let reason = match reason {
                 uc_daemon_contract::api::dto::v2::setup::JoinSpaceRejectionReason::InvitationUnavailable => "invitation_unavailable",
@@ -506,6 +557,11 @@ fn render_join_response(
                 uc_daemon_contract::api::dto::v2::setup::JoinSpaceRejectionReason::BaseHistoryChanged => "base_history_changed",
                 uc_daemon_contract::api::dto::v2::setup::JoinSpaceRejectionReason::JoinerHistoryAhead => "joiner_history_ahead",
                 uc_daemon_contract::api::dto::v2::setup::JoinSpaceRejectionReason::HistoryConflict => "history_conflict",
+                uc_daemon_contract::api::dto::v2::setup::JoinSpaceRejectionReason::CompletionInvalid => "completion_invalid",
+                uc_daemon_contract::api::dto::v2::setup::JoinSpaceRejectionReason::MembershipHistoryInvalid => "membership_history_invalid",
+                uc_daemon_contract::api::dto::v2::setup::JoinSpaceRejectionReason::SecurityMaterialInvalid => "security_material_invalid",
+                uc_daemon_contract::api::dto::v2::setup::JoinSpaceRejectionReason::RelationshipConflict => "relationship_conflict",
+                uc_daemon_contract::api::dto::v2::setup::JoinSpaceRejectionReason::ActivationStateInvalid => "activation_state_invalid",
                 uc_daemon_contract::api::dto::v2::setup::JoinSpaceRejectionReason::PeerUpgradeRequired => "peer_upgrade_required",
                 uc_daemon_contract::api::dto::v2::setup::JoinSpaceRejectionReason::Cancelled => "cancelled",
                 uc_daemon_contract::api::dto::v2::setup::JoinSpaceRejectionReason::RemovedBeforeActivation => "removed_before_activation",

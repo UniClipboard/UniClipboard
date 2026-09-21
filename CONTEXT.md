@@ -114,6 +114,14 @@ _Avoid_: relay-only、server mode
   是 **Receiver-side file transfer projection**（两侧各自为本地投影，不互为真相源）
 - 上述投递全部遵循 **Transient sync semantics**——失败不重试，由用户手动重发
 
+## Language — 更新发布
+
+**Major update confirmation**：
+发布清单要求知情确认时，用户继续下载、安装、复制升级命令或打开下载页前必须先确认
+有效的 Markdown 说明；说明缺失或无效时必须阻止更新。确认只绑定当前目标版本和说明
+正文，任一变化后都必须重新确认。
+_Avoid_: release notes、download confirmation、install confirmation
+
 ## Language — Active clipboard（跨设备活跃剪贴板）
 
 **ActiveClipboardState**（active-clipboard register）：

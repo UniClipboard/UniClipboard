@@ -3,7 +3,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use reqwest::Method;
 use uc_daemon_contract::api::dto::device::LocalDeviceInfoDto;
-use uc_daemon_contract::api::dto::encryption::EncryptionStateResponse;
+use uc_daemon_contract::api::dto::encryption::{EncryptionStateResponse, ProfileRecoveryResponse};
 use uc_daemon_contract::api::types::{
     PeerSnapshotDto, PresenceRefreshResponse, SpaceMemberDto, StatusResponse,
 };
@@ -98,6 +98,10 @@ impl DaemonQueryClient {
     /// (decrypt) fail while the session is still locked.
     pub async fn get_encryption_state(&self) -> Result<EncryptionStateResponse> {
         self.enveloped(Method::GET, "/encryption/state").await
+    }
+
+    pub async fn get_profile_recovery(&self) -> Result<ProfileRecoveryResponse> {
+        self.enveloped(Method::GET, "/encryption/recovery").await
     }
 
     /// Retry the lifecycle boot on the daemon (starts network, opens clipboard capture gate).

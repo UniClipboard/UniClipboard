@@ -1,6 +1,80 @@
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ProfileRecoveryStateDto {
+    NotRequired,
+    AwaitingPassphrase,
+    Recovering,
+    Recovered,
+    PartiallyRecoverable,
+    Failed,
+    AdmissionRecoveryRequired,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum AdmissionRecoveryCategoryDto {
+    CredentialMissing,
+    AuthenticationMismatch,
+    CurrentMetadataInvalid,
+    LegacyFallbackInvalid,
+    LegacyMigrationFailed,
+    RecordRelationIncomplete,
+    DerivedSummaryInvalid,
+    GenerationMismatch,
+    OtherStorageError,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum AdmissionRecoveryStageDto {
+    Credential,
+    RepositoryMetadata,
+    LegacyRepository,
+    RepositoryRecord,
+    RecoverySummary,
+    Storage,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum AdmissionRecoveryActionDto {
+    RestoreCredential,
+    ChooseBackup,
+    RebuildDerivedState,
+    ExportDiagnostics,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AdmissionRecoveryDto {
+    pub category: AdmissionRecoveryCategoryDto,
+    pub stage: AdmissionRecoveryStageDto,
+    pub action: AdmissionRecoveryActionDto,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ProfileRecoveryLossDto {
+    LocalHistory,
+    LocalControlState,
+    DeviceIdentity,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ProfileRecoveryResponse {
+    pub state: ProfileRecoveryStateDto,
+    pub can_submit_passphrase: bool,
+    pub restart_required: bool,
+    pub background_ready: bool,
+    pub cleanup_pending: bool,
+    pub losses: Vec<ProfileRecoveryLossDto>,
+    pub admission: Option<AdmissionRecoveryDto>,
+}
+
 /// Response payload for GET /encryption/state.
 ///
 /// `Deserialize` is required by the Rust daemon-client (`DaemonQueryClient`),
@@ -72,7 +146,11 @@ pub struct ChangeEncryptionPassphraseRequest {
 
 #[cfg(test)]
 mod tests {
-    use super::ChangeEncryptionPassphraseRequest;
+    use super::{
+        AdmissionRecoveryActionDto, AdmissionRecoveryCategoryDto, AdmissionRecoveryDto,
+        AdmissionRecoveryStageDto, ChangeEncryptionPassphraseRequest, ProfileRecoveryResponse,
+        ProfileRecoveryStateDto,
+    };
 
     #[test]
     fn change_passphrase_request_uses_camel_case_wire_fields() {
@@ -86,5 +164,28 @@ mod tests {
         assert_eq!(value["passphrase"], "new secret");
         assert_eq!(value["passphraseConfirmation"], "new secret");
         assert!(value.get("passphrase_confirmation").is_none());
+    }
+
+    #[test]
+    fn admission_recovery_guidance_survives_the_wire_contract() {
+        let response = ProfileRecoveryResponse {
+            state: ProfileRecoveryStateDto::AdmissionRecoveryRequired,
+            can_submit_passphrase: false,
+            restart_required: false,
+            background_ready: false,
+            cleanup_pending: false,
+            losses: Vec::new(),
+            admission: Some(AdmissionRecoveryDto {
+                category: AdmissionRecoveryCategoryDto::LegacyFallbackInvalid,
+                stage: AdmissionRecoveryStageDto::LegacyRepository,
+                action: AdmissionRecoveryActionDto::ChooseBackup,
+            }),
+        };
+
+        let value = serde_json::to_value(response).expect("response serializes");
+        assert_eq!(value["state"], "admission_recovery_required");
+        assert_eq!(value["admission"]["category"], "legacy_fallback_invalid");
+        assert_eq!(value["admission"]["stage"], "legacy_repository");
+        assert_eq!(value["admission"]["action"], "choose_backup");
     }
 }

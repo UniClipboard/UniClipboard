@@ -210,6 +210,17 @@ impl DaemonApiState {
     }
 
     pub async fn health_response(&self) -> HealthResponse {
+        let recovery_required = match self.execute(Operation::QueryProfileRecovery).await {
+            Ok(OperationResult::ProfileRecovery(summary)) => !summary.background_ready,
+            Ok(_) | Err(_) => false,
+        };
+        if recovery_required {
+            return HealthResponse {
+                status: uc_daemon_contract::probe::RECOVERY_REQUIRED_HEALTH_STATUS.to_string(),
+                degraded_reason: Some("profile recovery required".to_string()),
+                ..Self::health_response_for(self.residency)
+            };
+        }
         let degraded = match self.execute(Operation::QueryReceiveReadiness).await {
             Ok(OperationResult::ReceiveReadiness(readiness)) => readiness.degraded,
             Ok(_) | Err(_) => true,

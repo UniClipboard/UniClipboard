@@ -20,14 +20,18 @@ use uc_engine::error_codes::{
     VERIFY_SECURE_STORAGE_ACCESS_FAILED_CODE,
 };
 use uc_engine::{
+    AdmissionRecoveryAction, AdmissionRecoveryCategory, AdmissionRecoveryStage,
     ChangeEncryptionPassphraseInput, EngineError, EngineErrorCategory, Operation, OperationResult,
-    RecoverSessionInput, SecretString, UnlockSpaceInput,
+    ProfileRecoveryLoss, ProfileRecoveryState, RecoverSessionInput, SecretString, UnlockSpaceInput,
 };
 use utoipa;
 
 use crate::api::dto::encryption::{
-    ChangeEncryptionPassphraseRequest, EncryptionActionResponse, EncryptionSessionReadyPayload,
-    EncryptionStateResponse, KeychainAccessResponse, UnlockSpaceRequest, UnlockSpaceResponse,
+    AdmissionRecoveryActionDto, AdmissionRecoveryCategoryDto, AdmissionRecoveryDto,
+    AdmissionRecoveryStageDto, ChangeEncryptionPassphraseRequest, EncryptionActionResponse,
+    EncryptionSessionReadyPayload, EncryptionStateResponse, KeychainAccessResponse,
+    ProfileRecoveryLossDto, ProfileRecoveryResponse, ProfileRecoveryStateDto, UnlockSpaceRequest,
+    UnlockSpaceResponse,
 };
 use crate::api::dto::error::{log_facade_failure, ApiError};
 use crate::api::server::DaemonApiState;
@@ -51,6 +55,7 @@ fn map_encryption_engine_error(
 
 pub fn router() -> Router<DaemonApiState> {
     Router::new()
+        .route("/encryption/recovery", get(get_profile_recovery_handler))
         .route("/encryption/state", get(get_encryption_state_handler))
         .route("/encryption/unlock", post(unlock_handler))
         .route(
@@ -67,6 +72,113 @@ pub fn router() -> Router<DaemonApiState> {
             "/encryption/keychain-access",
             get(verify_keychain_access_handler),
         )
+}
+
+async fn get_profile_recovery_handler(
+    State(state): State<DaemonApiState>,
+) -> Result<Json<ApiEnvelope<ProfileRecoveryResponse>>, ApiError> {
+    let result = state
+        .execute(Operation::QueryProfileRecovery)
+        .await
+        .map_err(|error| {
+            map_encryption_engine_error(
+                "query_profile_recovery",
+                uc_engine::error_codes::PROFILE_RECOVERY_REQUIRED_CODE,
+                "could not query profile recovery",
+                error,
+            )
+        })?;
+    let OperationResult::ProfileRecovery(summary) = result else {
+        return Err(ApiError::internal("unexpected profile recovery result"));
+    };
+
+    Ok(Json(ApiEnvelope::now(ProfileRecoveryResponse {
+        state: match summary.state {
+            ProfileRecoveryState::NotRequired => ProfileRecoveryStateDto::NotRequired,
+            ProfileRecoveryState::AwaitingPassphrase => ProfileRecoveryStateDto::AwaitingPassphrase,
+            ProfileRecoveryState::Recovering => ProfileRecoveryStateDto::Recovering,
+            ProfileRecoveryState::Recovered => ProfileRecoveryStateDto::Recovered,
+            ProfileRecoveryState::PartiallyRecoverable => {
+                ProfileRecoveryStateDto::PartiallyRecoverable
+            }
+            ProfileRecoveryState::Failed => ProfileRecoveryStateDto::Failed,
+            ProfileRecoveryState::AdmissionRecoveryRequired => {
+                ProfileRecoveryStateDto::AdmissionRecoveryRequired
+            }
+        },
+        can_submit_passphrase: summary.can_submit_passphrase,
+        restart_required: summary.restart_required,
+        background_ready: summary.background_ready,
+        cleanup_pending: summary.cleanup_pending,
+        losses: summary
+            .losses
+            .into_iter()
+            .map(|loss| match loss {
+                ProfileRecoveryLoss::LocalHistory => ProfileRecoveryLossDto::LocalHistory,
+                ProfileRecoveryLoss::LocalControlState => ProfileRecoveryLossDto::LocalControlState,
+                ProfileRecoveryLoss::DeviceIdentity => ProfileRecoveryLossDto::DeviceIdentity,
+            })
+            .collect(),
+        admission: summary.admission.map(|admission| AdmissionRecoveryDto {
+            category: match admission.category {
+                AdmissionRecoveryCategory::CredentialMissing => {
+                    AdmissionRecoveryCategoryDto::CredentialMissing
+                }
+                AdmissionRecoveryCategory::AuthenticationMismatch => {
+                    AdmissionRecoveryCategoryDto::AuthenticationMismatch
+                }
+                AdmissionRecoveryCategory::CurrentMetadataInvalid => {
+                    AdmissionRecoveryCategoryDto::CurrentMetadataInvalid
+                }
+                AdmissionRecoveryCategory::LegacyFallbackInvalid => {
+                    AdmissionRecoveryCategoryDto::LegacyFallbackInvalid
+                }
+                AdmissionRecoveryCategory::LegacyMigrationFailed => {
+                    AdmissionRecoveryCategoryDto::LegacyMigrationFailed
+                }
+                AdmissionRecoveryCategory::RecordRelationIncomplete => {
+                    AdmissionRecoveryCategoryDto::RecordRelationIncomplete
+                }
+                AdmissionRecoveryCategory::DerivedSummaryInvalid => {
+                    AdmissionRecoveryCategoryDto::DerivedSummaryInvalid
+                }
+                AdmissionRecoveryCategory::GenerationMismatch => {
+                    AdmissionRecoveryCategoryDto::GenerationMismatch
+                }
+                AdmissionRecoveryCategory::OtherStorageError => {
+                    AdmissionRecoveryCategoryDto::OtherStorageError
+                }
+            },
+            stage: match admission.stage {
+                AdmissionRecoveryStage::Credential => AdmissionRecoveryStageDto::Credential,
+                AdmissionRecoveryStage::RepositoryMetadata => {
+                    AdmissionRecoveryStageDto::RepositoryMetadata
+                }
+                AdmissionRecoveryStage::LegacyRepository => {
+                    AdmissionRecoveryStageDto::LegacyRepository
+                }
+                AdmissionRecoveryStage::RepositoryRecord => {
+                    AdmissionRecoveryStageDto::RepositoryRecord
+                }
+                AdmissionRecoveryStage::RecoverySummary => {
+                    AdmissionRecoveryStageDto::RecoverySummary
+                }
+                AdmissionRecoveryStage::Storage => AdmissionRecoveryStageDto::Storage,
+            },
+            action: match admission.action {
+                AdmissionRecoveryAction::RestoreCredential => {
+                    AdmissionRecoveryActionDto::RestoreCredential
+                }
+                AdmissionRecoveryAction::ChooseBackup => AdmissionRecoveryActionDto::ChooseBackup,
+                AdmissionRecoveryAction::RebuildDerivedState => {
+                    AdmissionRecoveryActionDto::RebuildDerivedState
+                }
+                AdmissionRecoveryAction::ExportDiagnostics => {
+                    AdmissionRecoveryActionDto::ExportDiagnostics
+                }
+            },
+        }),
+    })))
 }
 
 fn map_change_passphrase_engine_err(error: EngineError) -> ApiError {

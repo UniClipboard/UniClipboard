@@ -155,7 +155,8 @@ pub fn engine_event_to_ws(event: EngineEvent) -> Option<DaemonWsEvent> {
             }),
         ),
         EngineEvent::RefreshRequired { .. } => return Some(refresh_required_ws_event()),
-        EngineEvent::StateChanged { .. }
+        EngineEvent::ProfileRecoveryChanged(_)
+        | EngineEvent::StateChanged { .. }
         | EngineEvent::PeerPresenceChanged(_)
         | EngineEvent::ActiveClipboardChanged(_)
         | EngineEvent::MobileLanSettingsChanged(_)

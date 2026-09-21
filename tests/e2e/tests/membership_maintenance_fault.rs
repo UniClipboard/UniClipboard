@@ -76,17 +76,17 @@ impl SponsorControl {
     }
 }
 
-async fn wait_health(cli: &TestCli, phase: &str) -> Value {
+async fn wait_update_status(cli: &TestCli, phase: &str) -> Value {
     let deadline = Instant::now() + DEADLINE;
     loop {
         let status = cli_json(cli, &["--json", "member", "trust", "status"]);
-        let health = &status["deviceTrust"]["maintenanceHealth"];
-        if health["phase"] == phase {
-            return health.clone();
+        let update = &status["deviceTrust"]["spaceDeviceUpdate"];
+        if update["phase"] == phase {
+            return update.clone();
         }
         assert!(
             Instant::now() < deadline,
-            "maintenance phase {phase} not observed: {health}"
+            "space device update phase {phase} not observed: {update}"
         );
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
@@ -164,22 +164,22 @@ async fn scenario(failure: &str, count: usize) {
     let failed = control.wait(failure_kind, baseline).await;
     let failed_seq = failed["sequence"].as_u64().expect("failure sequence");
     let expected_phase = if failure == "retryable" {
-        "retrying"
+        "retryable_failure"
     } else {
         "needs_attention"
     };
-    let health = wait_health(&cli, expected_phase).await;
+    let update = wait_update_status(&cli, expected_phase).await;
     let mut unused_failures = 0;
     if failure == "retryable" {
         assert!(
-            health["nextRetryAtMs"].as_i64().is_some(),
-            "Engine deadline absent: {health}"
+            update["nextRetryAtMs"].as_i64().is_some(),
+            "Engine deadline absent: {update}"
         );
-        assert!(health["reason"].is_null() && health["recovery"].is_null());
+        assert!(update["reason"].is_null() && update["recovery"].is_null());
     } else {
-        assert_eq!(health["reason"], "membership_history_rejected");
-        assert_eq!(health["recovery"], "resolve_device_trust");
-        assert!(health["nextRetryAtMs"].is_null());
+        assert_eq!(update["reason"], "device_state_rejected");
+        assert_eq!(update["recovery"], "review_devices");
+        assert!(update["nextRetryAtMs"].is_null());
         let cleared = control
             .work(json!({ "command": "clear_membership_history_failures" }))
             .await;
@@ -196,8 +196,8 @@ async fn scenario(failure: &str, count: usize) {
         .wait("membership_history_sync_reply_received", failed_seq)
         .await;
     let reply_seq = reply["sequence"].as_u64().expect("reply sequence");
-    let healthy = wait_health(&cli, "healthy").await;
-    assert!(healthy["nextRetryAtMs"].is_null());
+    let completed = wait_update_status(&cli, "completed").await;
+    assert!(completed["nextRetryAtMs"].is_null());
     let events = control
         .work(json!({ "command": "space_work_events" }))
         .await;
@@ -241,7 +241,7 @@ async fn scenario(failure: &str, count: usize) {
             ]
         );
     }
-    eprintln!("case={failure} baseline={baseline} reply_seq={reply_seq} observed={observed:?} public_phase={}", healthy["phase"]);
+    eprintln!("case={failure} baseline={baseline} reply_seq={reply_seq} observed={observed:?} public_phase={}", completed["phase"]);
     invitation.finish().await;
 }
 

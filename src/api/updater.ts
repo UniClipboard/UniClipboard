@@ -114,6 +114,24 @@ export async function getDownloadProgress(): Promise<DownloadProgressSnapshot> {
   }
 }
 
+export async function confirmUpdate(version: string): Promise<UpdateMetadata> {
+  try {
+    return await commands.confirmUpdate(version)
+  } catch (error) {
+    log.error({ err: error }, '确认重大更新失败')
+    throw error
+  }
+}
+
+export async function ensureUpdateAuthorized(version: string): Promise<void> {
+  try {
+    await commands.ensureUpdateAuthorized(version)
+  } catch (error) {
+    log.error({ err: error }, '更新操作未获授权')
+    throw error
+  }
+}
+
 /**
  * Subscribe to background download events. Returns an unlisten function;
  * call it on cleanup to detach.

@@ -60,6 +60,8 @@ pub fn build() -> Builder<tauri::Wry> {
         crate::commands::updater::download_update,
         crate::commands::updater::cancel_download,
         crate::commands::updater::get_download_progress,
+        crate::commands::updater::confirm_update,
+        crate::commands::updater::ensure_update_authorized,
         crate::commands::updater::install_update,
         crate::commands::updater::get_install_kind,
         crate::commands::updater::dev_open_updater_window,

@@ -159,6 +159,7 @@ export const commands = {
 	currentVersion: string,
 	body: string | null,
 	date: string | null,
+	confirmation: UpdateConfirmation,
 } | null, string>(__TAURI_INVOKE("check_for_update", { channel, trace })),
 	/**
 	 *  Download the pending update in the background, broadcasting progress
@@ -198,6 +199,14 @@ export const commands = {
 	trace_id: string,
 	timestamp: number,
 } | null) => typedError<DownloadProgressSnapshot, string>(__TAURI_INVOKE("get_download_progress", { trace })),
+	confirmUpdate: (version: string, trace: {
+	trace_id: string,
+	timestamp: number,
+} | null) => typedError<UpdateMetadata, string>(__TAURI_INVOKE("confirm_update", { version, trace })),
+	ensureUpdateAuthorized: (version: string, trace: {
+	trace_id: string,
+	timestamp: number,
+} | null) => typedError<null, string>(__TAURI_INVOKE("ensure_update_authorized", { version, trace })),
 	/**
 	 *  Install the pending update.
 	 * 
@@ -682,6 +691,7 @@ export type DownloadProgressSnapshot = {
 	 *  is `Idle`.
 	 */
 	date: string | null,
+	confirmation: UpdateConfirmation,
 };
 
 /**
@@ -758,6 +768,8 @@ export type TraceMetadata = {
 	timestamp: number,
 };
 
+export type UpdateConfirmation = { status: "not_required" } | { status: "pending"; description: string } | { status: "confirmed"; description: string } | { status: "blocked" };
+
 export type UpdateKeyboardShortcutsResult = {
 	keyboardShortcuts: { [key in string]: ShortcutKeyDto },
 };
@@ -768,6 +780,7 @@ export type UpdateMetadata = {
 	currentVersion: string,
 	body: string | null,
 	date: string | null,
+	confirmation: UpdateConfirmation,
 };
 
 /* Tauri Specta runtime */

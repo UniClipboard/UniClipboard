@@ -35,6 +35,7 @@ import { Switch } from '@/components/ui/switch'
 import { toast } from '@/components/ui/toast'
 import { PackageManagerUpdateDialog } from '@/components/update/PackageManagerUpdateDialog'
 import { ReleaseNotes } from '@/components/update/ReleaseNotes'
+import { UpdateConfirmationNotice } from '@/components/update/UpdateConfirmationNotice'
 import { useSetting } from '@/hooks/useSetting'
 import { useShortcutLayer } from '@/hooks/useShortcutLayer'
 import { useUpdate } from '@/hooks/useUpdate'
@@ -82,6 +83,8 @@ const AboutSection: React.FC = () => {
     downloadProgress,
     installKind,
     isManualUpdate,
+    confirmUpdate,
+    ensureUpdateAuthorized,
   } = useUpdate()
   const [appVersion, setAppVersion] = useState<string>('')
   const [autoCheckUpdate, setAutoCheckUpdate] = useOptimisticSetting(
@@ -113,6 +116,9 @@ const AboutSection: React.FC = () => {
   const dialogDismissReasonRef = useRef<DismissSource | null>(null)
   const isInstallingUpdate =
     downloadProgress.phase === 'downloading' || downloadProgress.phase === 'installing'
+  const updateAuthorized =
+    updateInfo?.confirmation.status === 'not_required' ||
+    updateInfo?.confirmation.status === 'confirmed'
   useShortcutLayer({
     layer: 'modal',
     scope: 'modal',
@@ -402,6 +408,12 @@ const AboutSection: React.FC = () => {
                     <ReleaseNotes content={updateInfo?.body ?? ''} fallback={t('update.noNotes')} />
                   </div>
                 </div>
+                {updateInfo && (
+                  <UpdateConfirmationNotice
+                    update={updateInfo}
+                    onConfirm={() => void confirmUpdate()}
+                  />
+                )}
                 {(downloadProgress.phase === 'downloading' ||
                   downloadProgress.phase === 'installing') && (
                   <div className="space-y-2 pt-2">
@@ -445,7 +457,7 @@ const AboutSection: React.FC = () => {
                 event.preventDefault()
                 handleInstallUpdate()
               }}
-              disabled={isInstallingUpdate}
+              disabled={isInstallingUpdate || !updateAuthorized}
             >
               {t('update.updateNow')}
             </AlertDialogAction>
@@ -459,6 +471,8 @@ const AboutSection: React.FC = () => {
           onOpenChange={handlePackageManagerDialogOpenChange}
           installKind={installKind}
           updateInfo={updateInfo}
+          onConfirm={confirmUpdate}
+          ensureAuthorized={ensureUpdateAuthorized}
         />
       )}
 

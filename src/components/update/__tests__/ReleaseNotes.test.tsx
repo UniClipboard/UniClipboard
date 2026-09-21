@@ -28,4 +28,17 @@ describe('ReleaseNotes', () => {
 
     expect(openUrl).toHaveBeenCalledWith('https://example.com/release')
   })
+
+  it('does not render raw HTML from release content', () => {
+    render(
+      <ReleaseNotes
+        content={'<script>alert(1)</script><img src=x onerror=alert(2)>Safe text'}
+        fallback="No notes"
+      />
+    )
+
+    expect(document.querySelector('script')).toBeNull()
+    expect(document.querySelector('img')).toBeNull()
+    expect(screen.getByText(/Safe text/)).toBeInTheDocument()
+  })
 })

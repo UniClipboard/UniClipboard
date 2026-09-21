@@ -49,6 +49,12 @@
     "downloadFailed": "后台下载失败，请稍后重试",
     "downloading": "正在下载...",
     "installing": "正在安装...",
+    "confirmation": {
+      "title": "重要更新说明",
+      "acknowledge": "我已知情",
+      "confirming": "正在确认...",
+      "unavailable": "此更新要求知情确认，但说明暂时不可用。为避免误操作，更新已被阻止，请稍后重新检查。"
+    },
     "packageManager": {
       "title": "请通过系统包管理器升级",
       "portableTitle": "请下载新的便携版",

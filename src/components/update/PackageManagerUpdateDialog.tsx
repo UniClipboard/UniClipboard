@@ -28,6 +28,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { toast } from '@/components/ui/toast'
+import { UpdateConfirmationNotice } from '@/components/update/UpdateConfirmationNotice'
 import { createLogger } from '@/lib/logger'
 
 const log = createLogger('package-manager-update-dialog')
@@ -41,6 +42,8 @@ interface PackageManagerUpdateDialogProps {
   installKind: InstallKind
   /** Update metadata for version display; `null` while not checked. */
   updateInfo: UpdateMetadata | null
+  onConfirm: () => Promise<void>
+  ensureAuthorized: () => Promise<void>
 }
 
 export const PackageManagerUpdateDialog: React.FC<PackageManagerUpdateDialogProps> = ({
@@ -48,9 +51,12 @@ export const PackageManagerUpdateDialog: React.FC<PackageManagerUpdateDialogProp
   onOpenChange,
   installKind,
   updateInfo,
+  onConfirm,
+  ensureAuthorized,
 }) => {
   const { t } = useTranslation()
   const [copied, setCopied] = useState(false)
+  const [confirming, setConfirming] = useState(false)
 
   if (installKind !== 'deb' && installKind !== 'rpm' && installKind !== 'windowsportable') {
     return null
@@ -90,8 +96,24 @@ export const PackageManagerUpdateDialog: React.FC<PackageManagerUpdateDialogProp
     }
   }
 
-  const handleOpenReleasePage = () => {
-    openUrl(RELEASE_PAGE_URL).catch(err => log.error({ err }, 'Failed to open release page'))
+  const handleOpenReleasePage = async () => {
+    try {
+      await ensureAuthorized()
+      await openUrl(RELEASE_PAGE_URL)
+    } catch (err) {
+      log.error({ err }, 'Failed to open release page')
+    }
+  }
+
+  const handleConfirm = async () => {
+    setConfirming(true)
+    try {
+      await onConfirm()
+    } catch (err) {
+      log.error({ err }, 'Failed to confirm update notice')
+    } finally {
+      setConfirming(false)
+    }
   }
 
   return (
@@ -114,6 +136,13 @@ export const PackageManagerUpdateDialog: React.FC<PackageManagerUpdateDialogProp
                 </div>
               )}
               <p className="text-sm text-muted-foreground">{t(hintKey)}</p>
+              {updateInfo && (
+                <UpdateConfirmationNotice
+                  update={updateInfo}
+                  onConfirm={() => void handleConfirm()}
+                  confirming={confirming}
+                />
+              )}
               {!isPortable && (
                 <div className="relative rounded-md border border-border/60 bg-muted/40 px-3 py-2 pr-10 font-mono text-xs text-foreground break-all">
                   {command}
@@ -134,8 +163,12 @@ export const PackageManagerUpdateDialog: React.FC<PackageManagerUpdateDialogProp
           <AlertDialogCancel
             onClick={event => {
               event.preventDefault()
-              handleOpenReleasePage()
+              void handleOpenReleasePage()
             }}
+            disabled={
+              updateInfo?.confirmation.status === 'pending' ||
+              updateInfo?.confirmation.status === 'blocked'
+            }
           >
             {t('update.packageManager.openReleasePage')}
           </AlertDialogCancel>

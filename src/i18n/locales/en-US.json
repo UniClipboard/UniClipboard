@@ -49,6 +49,12 @@
     "downloadFailed": "Background download failed. Please try again.",
     "downloading": "Downloading...",
     "installing": "Installing...",
+    "confirmation": {
+      "title": "Important update information",
+      "acknowledge": "I understand",
+      "confirming": "Confirming...",
+      "unavailable": "This update requires confirmation, but its explanation is unavailable. Updating has been blocked for your safety. Please try checking again later."
+    },
     "packageManager": {
       "title": "Please upgrade via your package manager",
       "portableTitle": "Please download the new portable version",

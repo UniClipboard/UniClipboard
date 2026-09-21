@@ -20,6 +20,8 @@ vi.mock('@/api/updater', () => ({
   installUpdate: vi.fn(),
   downloadUpdate: vi.fn().mockResolvedValue(undefined),
   cancelDownload: vi.fn().mockResolvedValue(undefined),
+  confirmUpdate: vi.fn(),
+  ensureUpdateAuthorized: vi.fn().mockResolvedValue(undefined),
   getDownloadProgress: vi.fn().mockResolvedValue({
     phase: 'idle',
     downloaded: 0,
@@ -28,6 +30,7 @@ vi.mock('@/api/updater', () => ({
     currentVersion: '0.0.0-test',
     body: null,
     date: null,
+    confirmation: { status: 'not_required' },
   }),
   getInstallKind: vi.fn().mockResolvedValue('macos'),
   subscribeUpdateProgress: vi.fn(),
@@ -128,6 +131,7 @@ describe('UpdateProvider', () => {
       currentVersion: '0.0.0-test',
       body: null,
       date: null,
+      confirmation: { status: 'not_required' },
     })
     subscribeUpdateProgressMock.mockReset()
     subscribeUpdateProgressMock.mockImplementation(async () => () => {})
@@ -139,6 +143,7 @@ describe('UpdateProvider', () => {
       currentVersion: '0.1.0',
       date: '2026-01-25T00:00:00Z',
       body: 'Bug fixes',
+      confirmation: { status: 'not_required' },
     })
 
     renderWithSetting(baseSetting, <StateConsumer />)
@@ -154,6 +159,7 @@ describe('UpdateProvider', () => {
       currentVersion: '0.1.0',
       body: null,
       date: null,
+      confirmation: { status: 'not_required' },
     })
 
     renderWithSetting(baseSetting, <AutoCheckOnMountConsumer />)
@@ -173,6 +179,7 @@ describe('UpdateProvider', () => {
       currentVersion: '0.1.0',
       body: null,
       date: null,
+      confirmation: { status: 'not_required' },
     })
 
     renderWithSetting(baseSetting, <StateConsumer />)
@@ -195,6 +202,7 @@ describe('UpdateProvider', () => {
       currentVersion: '0.1.0',
       body: null,
       date: null,
+      confirmation: { status: 'not_required' },
     })
 
     renderWithSetting(baseSetting, <AutoCheckOnMountConsumer />)
@@ -231,6 +239,7 @@ describe('UpdateProvider', () => {
       currentVersion: '0.1.0',
       body: null,
       date: null,
+      confirmation: { status: 'not_required' },
     })
 
     renderWithSetting(baseSetting, <AutoCheckOnMountConsumer />)
@@ -257,6 +266,7 @@ describe('UpdateProvider', () => {
       currentVersion: '0.1.0',
       body: null,
       date: null,
+      confirmation: { status: 'not_required' },
     })
     const autoDownloadOn: Settings = {
       ...baseSetting,

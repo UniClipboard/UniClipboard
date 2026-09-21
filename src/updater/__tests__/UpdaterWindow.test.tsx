@@ -3,7 +3,9 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import {
   checkForUpdate,
+  confirmUpdate,
   downloadUpdate,
+  ensureUpdateAuthorized,
   getAutoDownloadUpdate,
   getDownloadProgress,
   getInstallKind,
@@ -33,7 +35,9 @@ vi.mock('react-i18next', () => ({
 
 vi.mock('@/api/updater', () => ({
   checkForUpdate: vi.fn(),
+  confirmUpdate: vi.fn(),
   downloadUpdate: vi.fn().mockResolvedValue(undefined),
+  ensureUpdateAuthorized: vi.fn().mockResolvedValue(undefined),
   cancelDownload: vi.fn().mockResolvedValue(undefined),
   installUpdate: vi.fn().mockResolvedValue(undefined),
   getInstallKind: vi.fn().mockResolvedValue('macos'),
@@ -50,6 +54,7 @@ const META = {
   currentVersion: '1.1.0',
   body: 'notes',
   date: null,
+  confirmation: { status: 'not_required' },
 }
 
 function snapshot(overrides: Record<string, unknown> = {}) {
@@ -61,6 +66,7 @@ function snapshot(overrides: Record<string, unknown> = {}) {
     currentVersion: META.currentVersion,
     body: META.body,
     date: null,
+    confirmation: META.confirmation,
     ...overrides,
   } as Awaited<ReturnType<typeof getDownloadProgress>>
 }
@@ -76,6 +82,7 @@ beforeEach(() => {
   vi.mocked(getInstallKind).mockResolvedValue('macos')
   vi.mocked(getAutoDownloadUpdate).mockResolvedValue(true)
   vi.mocked(downloadUpdate).mockResolvedValue(undefined)
+  vi.mocked(ensureUpdateAuthorized).mockResolvedValue(undefined)
   vi.mocked(subscribeUpdateProgress).mockResolvedValue(() => {})
   vi.mocked(subscribeUpdateAvailable).mockResolvedValue(() => {})
 })
@@ -92,6 +99,47 @@ describe('UpdaterWindow', () => {
 
     await waitFor(() => expect(downloadUpdate).toHaveBeenCalledTimes(1))
     expect(installUpdate).not.toHaveBeenCalled()
+  })
+
+  it('required confirmation needs an acknowledgement and a separate download click', async () => {
+    const pending = {
+      ...META,
+      confirmation: { status: 'pending', description: '## Important\n\nReview this first.' },
+    } as const
+    const confirmed = {
+      ...META,
+      confirmation: { status: 'confirmed', description: '## Important\n\nReview this first.' },
+    } as const
+    vi.mocked(getDownloadProgress).mockResolvedValue(
+      snapshot({ confirmation: pending.confirmation })
+    )
+    vi.mocked(confirmUpdate).mockResolvedValue(confirmed as never)
+    vi.mocked(checkForUpdate).mockResolvedValue(confirmed as never)
+    const user = userEvent.setup()
+    render(<UpdaterWindow />)
+
+    const download = await screen.findByText('updater.window.downloadUpdate')
+    expect(download).toBeDisabled()
+    expect(screen.getByRole('heading', { name: 'Important' })).toBeInTheDocument()
+
+    await user.click(screen.getByText('update.confirmation.acknowledge'))
+    await waitFor(() => expect(confirmUpdate).toHaveBeenCalledWith(META.version))
+    expect(downloadUpdate).not.toHaveBeenCalled()
+
+    await user.click(screen.getByText('updater.window.downloadUpdate'))
+    await waitFor(() => expect(downloadUpdate).toHaveBeenCalledTimes(1))
+  })
+
+  it('blocks an update whose required explanation is unavailable', async () => {
+    mockSnapshot({ confirmation: { status: 'blocked' } })
+    const user = userEvent.setup()
+    render(<UpdaterWindow />)
+
+    expect(await screen.findByText('update.confirmation.unavailable')).toBeInTheDocument()
+    const download = screen.getByText('updater.window.downloadUpdate')
+    expect(download).toBeDisabled()
+    await user.click(download)
+    expect(downloadUpdate).not.toHaveBeenCalled()
   })
 
   it('downloading: shows a background button that closes the window without cancelling', async () => {
@@ -145,6 +193,7 @@ describe('UpdaterWindow', () => {
     await user.click(btn)
 
     await waitFor(() => expect(openUrl).toHaveBeenCalledTimes(1))
+    expect(ensureUpdateAuthorized).toHaveBeenCalledWith(META.version)
     expect(downloadUpdate).not.toHaveBeenCalled()
     expect(installUpdate).not.toHaveBeenCalled()
   })

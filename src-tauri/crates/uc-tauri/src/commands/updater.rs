@@ -114,6 +114,21 @@ pub struct DownloadProgressSnapshot {
     /// Release date for the available version, if any. `None` when phase
     /// is `Idle`.
     pub date: Option<String>,
+    pub confirmation: UpdateConfirmation,
+}
+
+#[derive(Debug, Clone, Serialize, Default, PartialEq, Eq, specta::Type)]
+#[serde(tag = "status", rename_all = "snake_case")]
+pub enum UpdateConfirmation {
+    #[default]
+    NotRequired,
+    Pending {
+        description: String,
+    },
+    Confirmed {
+        description: String,
+    },
+    Blocked,
 }
 
 /// Metadata returned to the frontend when an update is available.
@@ -124,6 +139,7 @@ pub struct UpdateMetadata {
     pub current_version: String,
     pub body: Option<String>,
     pub date: Option<String>,
+    pub confirmation: UpdateConfirmation,
 }
 
 /// Lifecycle of a pending update. Held inside the `PendingUpdate` mutex.
@@ -137,16 +153,21 @@ pub struct UpdateMetadata {
 pub enum PendingUpdateState {
     #[default]
     None,
-    Available(tauri_plugin_updater::Update),
+    Available {
+        update: tauri_plugin_updater::Update,
+        confirmation: UpdateConfirmation,
+    },
     Downloading {
         info: UpdateMetadata,
         progress: DownloadProgressSnapshot,
         cancel: Arc<Notify>,
+        confirmation: UpdateConfirmation,
     },
     Ready {
         update: tauri_plugin_updater::Update,
         bytes: Vec<u8>,
         downloaded_at: SystemTime,
+        confirmation: UpdateConfirmation,
     },
 }
 
@@ -166,12 +187,58 @@ impl Default for PendingUpdate {
     }
 }
 
-fn metadata_of(update: &tauri_plugin_updater::Update) -> UpdateMetadata {
+fn parse_confirmation(raw: &serde_json::Value) -> UpdateConfirmation {
+    match raw.get("confirmation_required") {
+        None | Some(serde_json::Value::Bool(false)) => UpdateConfirmation::NotRequired,
+        Some(serde_json::Value::Bool(true)) => raw
+            .get("confirmation_description")
+            .and_then(serde_json::Value::as_str)
+            .map(str::trim)
+            .filter(|description| !description.is_empty())
+            .map(|description| UpdateConfirmation::Pending {
+                description: description.to_string(),
+            })
+            .unwrap_or(UpdateConfirmation::Blocked),
+        Some(_) => UpdateConfirmation::Blocked,
+    }
+}
+
+fn carry_confirmation(
+    previous: Option<UpdateConfirmation>,
+    next: UpdateConfirmation,
+) -> UpdateConfirmation {
+    match (previous, next) {
+        (
+            Some(UpdateConfirmation::Confirmed { description: old }),
+            UpdateConfirmation::Pending { description: new },
+        ) if old == new => UpdateConfirmation::Confirmed { description: new },
+        (_, next) => next,
+    }
+}
+
+fn metadata_of(
+    update: &tauri_plugin_updater::Update,
+    confirmation: UpdateConfirmation,
+) -> UpdateMetadata {
     UpdateMetadata {
         version: update.version.clone(),
         current_version: update.current_version.clone(),
         body: update.body.clone(),
         date: update.date.map(|d| d.to_string()),
+        confirmation,
+    }
+}
+
+fn ensure_confirmation(confirmation: &UpdateConfirmation) -> Result<(), String> {
+    match confirmation {
+        UpdateConfirmation::NotRequired | UpdateConfirmation::Confirmed { .. } => Ok(()),
+        UpdateConfirmation::Pending { .. } => {
+            Err("updater: confirmation required before continuing".to_string())
+        }
+        UpdateConfirmation::Blocked => Err(
+            "updater: confirmation is required but the release description is unavailable"
+                .to_string(),
+        ),
     }
 }
 
@@ -318,23 +385,40 @@ pub(crate) async fn do_check_for_update(
                 channel = %channel_str,
                 "download started concurrently; preserving Downloading state"
             );
-            broadcast = update.as_ref().map(metadata_of);
+            broadcast = update
+                .as_ref()
+                .map(|update| metadata_of(update, parse_confirmation(&update.raw_json)));
         } else {
             broadcast = match update {
                 Some(update) => {
-                    let metadata = metadata_of(&update);
+                    let next_confirmation = parse_confirmation(&update.raw_json);
                     info!(
                         channel = %channel_str,
-                        new_version = %metadata.version,
+                        new_version = %update.version,
                         "update available"
                     );
 
                     let prev = std::mem::take(&mut *guard);
+                    let previous_confirmation = match &prev {
+                        PendingUpdateState::Available {
+                            update: old,
+                            confirmation,
+                        } if old.version == update.version => Some(confirmation.clone()),
+                        PendingUpdateState::Ready {
+                            update: old,
+                            confirmation,
+                            ..
+                        } if old.version == update.version => Some(confirmation.clone()),
+                        _ => None,
+                    };
+                    let confirmation = carry_confirmation(previous_confirmation, next_confirmation);
+                    let metadata = metadata_of(&update, confirmation.clone());
                     *guard = match prev {
                         PendingUpdateState::Ready {
                             update: prev_update,
                             bytes,
                             downloaded_at,
+                            ..
                         } if prev_update.version == update.version => {
                             info!(
                                 version = %metadata.version,
@@ -344,9 +428,13 @@ pub(crate) async fn do_check_for_update(
                                 update,
                                 bytes,
                                 downloaded_at,
+                                confirmation,
                             }
                         }
-                        _ => PendingUpdateState::Available(update),
+                        _ => PendingUpdateState::Available {
+                            update,
+                            confirmation,
+                        },
                     };
                     Some(metadata)
                 }
@@ -631,7 +719,7 @@ pub(crate) async fn do_download_update(
 ) -> Result<(), DownloadError> {
     let cancel = Arc::new(Notify::new());
 
-    let (update, info) = {
+    let (update, info, confirmation) = {
         let mut guard = lock_state(&pending.0).map_err(DownloadError::Precondition)?;
         match std::mem::take(&mut *guard) {
             PendingUpdateState::None => {
@@ -639,8 +727,12 @@ pub(crate) async fn do_download_update(
                     "updater: no pending update to download".to_string(),
                 ));
             }
-            PendingUpdateState::Available(update) => {
-                let info = metadata_of(&update);
+            PendingUpdateState::Available {
+                update,
+                confirmation,
+            } => {
+                ensure_confirmation(&confirmation).map_err(DownloadError::Precondition)?;
+                let info = metadata_of(&update, confirmation.clone());
                 let progress = DownloadProgressSnapshot {
                     phase: DownloadPhase::Downloading,
                     downloaded: 0,
@@ -649,13 +741,15 @@ pub(crate) async fn do_download_update(
                     current_version: info.current_version.clone(),
                     body: info.body.clone(),
                     date: info.date.clone(),
+                    confirmation: confirmation.clone(),
                 };
                 *guard = PendingUpdateState::Downloading {
                     info: info.clone(),
                     progress,
                     cancel: cancel.clone(),
+                    confirmation: confirmation.clone(),
                 };
-                (update, info)
+                (update, info, confirmation)
             }
             other @ PendingUpdateState::Downloading { .. } => {
                 *guard = other;
@@ -725,6 +819,7 @@ pub(crate) async fn do_download_update(
                 update,
                 bytes,
                 downloaded_at: SystemTime::now(),
+                confirmation,
             };
             Ok(())
         }
@@ -737,7 +832,10 @@ pub(crate) async fn do_download_update(
                 },
             );
             let mut guard = lock_state(&pending.0).map_err(DownloadError::Cancelled)?;
-            *guard = PendingUpdateState::Available(update);
+            *guard = PendingUpdateState::Available {
+                update,
+                confirmation,
+            };
             Err(DownloadError::Cancelled(
                 "updater: download cancelled".to_string(),
             ))
@@ -749,7 +847,10 @@ pub(crate) async fn do_download_update(
                 DownloadEvent::Failed { error: err.clone() },
             );
             let mut guard = lock_state(&pending.0).map_err(DownloadError::Failed)?;
-            *guard = PendingUpdateState::Available(update);
+            *guard = PendingUpdateState::Available {
+                update,
+                confirmation,
+            };
             Err(DownloadError::Failed(err))
         }
     }
@@ -932,7 +1033,10 @@ pub async fn get_download_progress(
             current_version: current_version.clone(),
             ..Default::default()
         },
-        PendingUpdateState::Available(update) => DownloadProgressSnapshot {
+        PendingUpdateState::Available {
+            update,
+            confirmation,
+        } => DownloadProgressSnapshot {
             phase: DownloadPhase::Available,
             downloaded: 0,
             total: None,
@@ -940,9 +1044,15 @@ pub async fn get_download_progress(
             current_version: update.current_version.clone(),
             body: update.body.clone(),
             date: update.date.map(|d| d.to_string()),
+            confirmation: confirmation.clone(),
         },
         PendingUpdateState::Downloading { progress, .. } => progress.clone(),
-        PendingUpdateState::Ready { update, bytes, .. } => DownloadProgressSnapshot {
+        PendingUpdateState::Ready {
+            update,
+            bytes,
+            confirmation,
+            ..
+        } => DownloadProgressSnapshot {
             phase: DownloadPhase::Ready,
             downloaded: bytes.len() as u64,
             total: Some(bytes.len() as u64),
@@ -950,9 +1060,105 @@ pub async fn get_download_progress(
             current_version: update.current_version.clone(),
             body: update.body.clone(),
             date: update.date.map(|d| d.to_string()),
+            confirmation: confirmation.clone(),
         },
     };
     Ok(snapshot)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn confirm_update(
+    pending: State<'_, PendingUpdate>,
+    version: String,
+    _trace: Option<TraceMetadata>,
+) -> Result<UpdateMetadata, String> {
+    let span = info_span!(
+        "command.updater.confirm_update",
+        trace_id = tracing::field::Empty,
+        trace_ts = tracing::field::Empty,
+    );
+    record_trace_fields(&span, &_trace);
+
+    async move {
+        let mut guard = lock_state(&pending.0)?;
+        let (update, confirmation) = match &mut *guard {
+            PendingUpdateState::Available {
+                update,
+                confirmation,
+            }
+            | PendingUpdateState::Ready {
+                update,
+                confirmation,
+                ..
+            } => (update, confirmation),
+            PendingUpdateState::Downloading { .. } => {
+                return Err("updater: cannot confirm while download is in progress".to_string());
+            }
+            PendingUpdateState::None => return Err("updater: no pending update".to_string()),
+        };
+        if update.version != version {
+            return Err("updater: target version changed; review the new update first".to_string());
+        }
+        *confirmation = match confirmation {
+            UpdateConfirmation::Pending { description } => UpdateConfirmation::Confirmed {
+                description: description.clone(),
+            },
+            UpdateConfirmation::NotRequired => UpdateConfirmation::NotRequired,
+            UpdateConfirmation::Confirmed { description } => UpdateConfirmation::Confirmed {
+                description: description.clone(),
+            },
+            UpdateConfirmation::Blocked => {
+                return Err(
+                    "updater: confirmation is required but the release description is unavailable"
+                        .to_string(),
+                );
+            }
+        };
+        Ok(metadata_of(update, confirmation.clone()))
+    }
+    .instrument(span)
+    .await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn ensure_update_authorized(
+    pending: State<'_, PendingUpdate>,
+    version: String,
+    _trace: Option<TraceMetadata>,
+) -> Result<(), String> {
+    let span = info_span!(
+        "command.updater.ensure_update_authorized",
+        trace_id = tracing::field::Empty,
+        trace_ts = tracing::field::Empty,
+    );
+    record_trace_fields(&span, &_trace);
+
+    async move {
+        let guard = lock_state(&pending.0)?;
+        let (current_version, confirmation) = match &*guard {
+            PendingUpdateState::Available {
+                update,
+                confirmation,
+            }
+            | PendingUpdateState::Ready {
+                update,
+                confirmation,
+                ..
+            } => (update.version.as_str(), confirmation),
+            PendingUpdateState::Downloading {
+                info, confirmation, ..
+            } => (info.version.as_str(), confirmation),
+            PendingUpdateState::None => return Err("updater: no pending update".to_string()),
+        };
+        if current_version != version {
+            return Err("updater: target version changed; review the new update first".to_string());
+        }
+        ensure_confirmation(confirmation)
+    }
+    .instrument(span)
+    .await
 }
 
 /// Install the pending update.
@@ -995,7 +1201,9 @@ pub async fn install_update(
                         "updater: download in progress; wait or cancel first".to_string(),
                     );
                 }
-                PendingUpdateState::Ready { .. } | PendingUpdateState::Available(_) => {
+                PendingUpdateState::Ready { confirmation, .. }
+                | PendingUpdateState::Available { confirmation, .. } => {
+                    ensure_confirmation(confirmation)?;
                     std::mem::take(&mut *guard)
                 }
             }
@@ -1023,7 +1231,12 @@ pub async fn install_update(
             PendingUpdateState::None | PendingUpdateState::Downloading { .. } => {
                 unreachable!("filtered above while holding the lock")
             }
-            PendingUpdateState::Ready { update, bytes, .. } => {
+            PendingUpdateState::Ready {
+                update,
+                bytes,
+                confirmation,
+                ..
+            } => {
                 info!(version = %update.version, size = bytes.len(), "installing pre-downloaded update");
                 let total = bytes.len() as u64;
                 let _ = on_event.send(DownloadEvent::Started {
@@ -1053,6 +1266,7 @@ pub async fn install_update(
                                 update,
                                 bytes,
                                 downloaded_at: SystemTime::now(),
+                                confirmation,
                             };
                         }
                         let _ = on_event.send(DownloadEvent::Failed {
@@ -1062,7 +1276,10 @@ pub async fn install_update(
                     }
                 }
             }
-            PendingUpdateState::Available(update) => {
+            PendingUpdateState::Available {
+                update,
+                confirmation,
+            } => {
                 info!(version = %update.version, "downloading+installing via fallback path");
 
                 let mut first_chunk = true;
@@ -1094,7 +1311,10 @@ pub async fn install_update(
                         // conditional-restore rationale.
                         let mut guard = lock_state(&pending.0)?;
                         if matches!(&*guard, PendingUpdateState::None) {
-                            *guard = PendingUpdateState::Available(update);
+                            *guard = PendingUpdateState::Available {
+                                update,
+                                confirmation,
+                            };
                         }
                         let _ = on_event.send(DownloadEvent::Failed {
                             error: err_str.clone(),
@@ -1465,11 +1685,86 @@ mod tests {
             current_version: "0.9.0".to_string(),
             body: Some("Bug fixes".to_string()),
             date: Some("2026-05-22T00:00:00Z".to_string()),
+            confirmation: UpdateConfirmation::Pending {
+                description: "Review this change".to_string(),
+            },
         };
         assert_eq!(
             serde_json::to_string(&snap).unwrap(),
-            r#"{"phase":"downloading","downloaded":4096,"total":1048576,"version":"0.10.0","currentVersion":"0.9.0","body":"Bug fixes","date":"2026-05-22T00:00:00Z"}"#
+            r#"{"phase":"downloading","downloaded":4096,"total":1048576,"version":"0.10.0","currentVersion":"0.9.0","body":"Bug fixes","date":"2026-05-22T00:00:00Z","confirmation":{"status":"pending","description":"Review this change"}}"#
         );
+    }
+
+    #[test]
+    fn confirmation_manifest_is_backward_compatible_and_fail_closed() {
+        assert_eq!(
+            parse_confirmation(&serde_json::json!({})),
+            UpdateConfirmation::NotRequired
+        );
+        assert_eq!(
+            parse_confirmation(&serde_json::json!({"confirmation_required": false})),
+            UpdateConfirmation::NotRequired
+        );
+        assert_eq!(
+            parse_confirmation(&serde_json::json!({
+                "confirmation_required": true,
+                "confirmation_description": "  Important change  "
+            })),
+            UpdateConfirmation::Pending {
+                description: "Important change".to_string()
+            }
+        );
+        for raw in [
+            serde_json::json!({"confirmation_required": true}),
+            serde_json::json!({"confirmation_required": true, "confirmation_description": null}),
+            serde_json::json!({"confirmation_required": true, "confirmation_description": "  "}),
+            serde_json::json!({"confirmation_required": "yes", "confirmation_description": "x"}),
+        ] {
+            assert_eq!(parse_confirmation(&raw), UpdateConfirmation::Blocked);
+        }
+    }
+
+    #[test]
+    fn confirmation_only_carries_for_the_same_description() {
+        let confirmed = Some(UpdateConfirmation::Confirmed {
+            description: "old".to_string(),
+        });
+        assert_eq!(
+            carry_confirmation(
+                confirmed.clone(),
+                UpdateConfirmation::Pending {
+                    description: "old".to_string()
+                }
+            ),
+            UpdateConfirmation::Confirmed {
+                description: "old".to_string()
+            }
+        );
+        assert_eq!(
+            carry_confirmation(
+                confirmed,
+                UpdateConfirmation::Pending {
+                    description: "changed".to_string()
+                }
+            ),
+            UpdateConfirmation::Pending {
+                description: "changed".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn update_actions_fail_closed_until_confirmation() {
+        assert!(ensure_confirmation(&UpdateConfirmation::NotRequired).is_ok());
+        assert!(ensure_confirmation(&UpdateConfirmation::Confirmed {
+            description: "reviewed".to_string()
+        })
+        .is_ok());
+        assert!(ensure_confirmation(&UpdateConfirmation::Pending {
+            description: "review me".to_string()
+        })
+        .is_err());
+        assert!(ensure_confirmation(&UpdateConfirmation::Blocked).is_err());
     }
 
     #[test]

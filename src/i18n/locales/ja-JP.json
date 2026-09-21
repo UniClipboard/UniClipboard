@@ -1338,12 +1338,12 @@
       "title": "ペアリングされたデバイス"
     },
     "inboundPairings": {
-      "title": "未完了のペアリング",
+      "title": "ペアリング履歴",
       "unnamed": "未完了のペアリング",
       "status": {
-        "awaiting_confirmation": "最終確認を待っています",
-        "confirmation_missed": "最終確認を受信できなかったため、安全に終了処理を進めています",
-        "needs_attention": "対応が必要です：ペアリング結果を確認できません。現在のデータを保持したままサポートにお問い合わせください。",
+        "awaiting_confirmation": "ペアリングを完了しています",
+        "confirmation_missed": "確認を受信できなかったため、安全な完了を待っています",
+        "needs_attention": "対応が必要です：このペアリング結果を確認できません",
         "failed": "ペアリングは完了しませんでした"
       }
     },
@@ -1362,10 +1362,30 @@
         "requestFailed": "接続の復旧を開始できません"
       }
     },
-    "membershipMaintenance": {
-      "retrying": "デバイスグループの更新に失敗しました。自動的に再試行します。",
-      "needsAttention": "デバイスグループの更新に失敗しました。同期を復旧するにはグループを確認してください。",
-      "review": "デバイスグループを確認"
+    "spaceDeviceUpdate": {
+      "completed": "スペースのデバイス状態を更新しました",
+      "updating": {
+        "title": "スペースのデバイス状態を更新しています",
+        "description": "完了すると自動的に更新されます。このページを開いたままにする必要はありません。"
+      },
+      "retrying": {
+        "title": "スペースのデバイス状態を更新しています",
+        "description": "まだ完了していません。後で自動的に再試行します。"
+      },
+      "attention": {
+        "title": "スペースのデバイス状態に対応が必要です",
+        "description": "自動的に完了できません。現在のデータを保持して、後でもう一度確認してください。",
+        "reasons": {
+          "device_state_rejected": "一部のデバイス状態を更新できませんでした。現在のデータを保持して、後でもう一度確認してください。",
+          "device_relationship_conflict": "デバイスの関係が競合しています。操作ウィンドウで残すデバイスを選択してください。",
+          "device_security_update_rejected": "セキュリティ設定を更新できませんでした。関連するデバイスを確認して再試行してください。",
+          "device_upgrade_required": "古いバージョンのデバイスがあります。UniClipboard を更新して再試行してください。"
+        }
+      },
+      "unavailable": {
+        "title": "スペースのデバイス状態を一時的に確認できません",
+        "description": "既存のデバイスは一覧に残ります。もう一度確認できます。"
+      }
     },
     "memberRemoval": {
       "deviceRemoved": {
@@ -2386,8 +2406,8 @@
     },
     "joinPending": {
       "processing": {
-        "title": "ペアリングを完了中",
-        "subtitle": "参加を確認しています。接続が切れた場合は自動で再試行します。"
+        "title": "スペースのデバイス状態を更新しています",
+        "subtitle": "参加を完了しています。接続が切れても自動的に続行します。"
       },
       "title": "確認待ち",
       "subtitle": "参加結果を待っています。",

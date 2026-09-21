@@ -9,7 +9,7 @@ import DeviceListItem from '@/components/device/DeviceListItem'
 import SectionLabel from '@/components/device/DeviceSectionLabel'
 import EmptyAddRow from '@/components/device/EmptyAddRow'
 import LocalDeviceListItem from '@/components/device/LocalDeviceListItem'
-import { MembershipMaintenanceNotice } from '@/components/device/MembershipMaintenanceNotice'
+import { SpaceDeviceUpdateNotice } from '@/components/device/SpaceDeviceUpdateNotice'
 import { type StatusDotTone } from '@/components/device/StatusDot'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -62,29 +62,6 @@ export default function DevicesSidebar({ page }: { page: ReturnType<typeof useDe
   return (
     <aside className="relative flex w-56 shrink-0 flex-col border-r border-border/50 bg-muted/15 xl:w-64">
       <div className="px-3 pt-3">
-        {!deviceTrust && deviceTrustError && (
-          <Alert variant="destructive" data-testid="device-trust-load-error">
-            <AlertDescription className="flex flex-col gap-2 text-ui-caption">
-              <span>{t('devices.deviceTrustUnavailable')}</span>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="self-start"
-                onClick={() => void refreshDeviceTrust()}
-              >
-                <RefreshCw />
-                {t('devices.list.actions.retry')}
-              </Button>
-            </AlertDescription>
-          </Alert>
-        )}
-        <MembershipMaintenanceNotice
-          health={deviceTrust?.maintenanceHealth}
-          onReview={() => {
-            void refreshDeviceTrust()
-          }}
-        />
         {networkRecoveryVisible && (
           <Alert className="mt-2 border-warning/30 bg-warning/10 text-warning">
             <AlertDescription className="flex flex-col gap-2 text-ui-caption">
@@ -225,6 +202,12 @@ export default function DevicesSidebar({ page }: { page: ReturnType<typeof useDe
               />
             )}
 
+            <SpaceDeviceUpdateNotice
+              status={deviceTrust?.spaceDeviceUpdate}
+              loadFailed={!deviceTrust && Boolean(deviceTrustError)}
+              onRetry={() => void refreshDeviceTrust()}
+            />
+
             {(deviceTrust?.inboundPairings?.length ?? 0) > 0 && (
               <>
                 <SectionLabel label={t('devices.inboundPairings.title')} />
@@ -236,10 +219,8 @@ export default function DevicesSidebar({ page }: { page: ReturnType<typeof useDe
                       key={pairing.pairingId}
                       data-testid={`inbound-pairing-${pairing.status}`}
                       className={cn(
-                        'mx-1 flex items-start gap-3 rounded-md border px-3 py-2.5',
-                        needsAttention
-                          ? 'border-warning/40 bg-warning/10 text-warning'
-                          : 'border-border/60 bg-muted/30 text-foreground'
+                        'mx-1 flex items-start gap-3 rounded-md px-3 py-2.5',
+                        needsAttention ? 'bg-warning/10 text-warning' : 'text-foreground'
                       )}
                     >
                       <Icon className="mt-0.5 size-4 shrink-0" aria-hidden="true" />

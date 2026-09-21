@@ -4,7 +4,7 @@ import { getDeviceTrustSnapshot } from '@/api/daemon/device-trust'
 
 afterEach(() => vi.restoreAllMocks())
 
-it('preserves a processing join and its maintenance result from the public response', async () => {
+it('preserves a processing join and its unified space-device result from the public response', async () => {
   const currentJoin = {
     status: 'processing',
     joinId: 'join-1',
@@ -13,21 +13,21 @@ it('preserves a processing join and its maintenance result from the public respo
     sponsorIdentityFingerprint: 'fingerprint-1',
     peerUpgradeRequired: false,
   }
-  const maintenanceHealth = {
-    phase: 'retrying',
+  const spaceDeviceUpdate = {
+    phase: 'retryable_failure',
     reason: null,
     recovery: null,
     nextRetryAtMs: 12345,
   }
   vi.spyOn(daemonClient, 'callEnveloped').mockResolvedValue({
     revision: 1,
-    deviceTrust: { currentJoin, maintenanceHealth },
+    deviceTrust: { currentJoin, spaceDeviceUpdate },
     issues: [],
   } as never)
 
   const snapshot = await getDeviceTrustSnapshot()
   expect(snapshot.currentJoin).toEqual(currentJoin)
-  expect(snapshot.maintenanceHealth).toEqual(maintenanceHealth)
+  expect(snapshot.spaceDeviceUpdate).toEqual(spaceDeviceUpdate)
 })
 
 it('preserves attention and unfinished pairing states from the public response', async () => {

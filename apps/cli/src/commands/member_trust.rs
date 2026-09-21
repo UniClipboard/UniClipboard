@@ -389,6 +389,8 @@ mod tests {
                 current_change: None,
                 current_join: None,
                 pending_inbound_member: None,
+                inbound_pairings: vec![],
+                space_device_update: Default::default(),
                 maintenance_health: Default::default(),
                 devices: vec![],
                 recovery: "not_available_in_this_version".to_string(),

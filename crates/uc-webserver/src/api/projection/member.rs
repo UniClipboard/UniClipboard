@@ -17,8 +17,9 @@ use uc_engine::{
     DeviceTrustUnavailableReasonSummary, MemberProtectionStatusSummary, MemberProtectionSummary,
     MemberSyncPreferencesPatch, MemberSyncPreferencesSummary,
     MembershipMaintenanceHealthPhaseSummary, MembershipMaintenanceProblemSummary,
-    MembershipMaintenanceRecoverySummary, PairingConfirmationSummary, SpaceProtectionModeSummary,
-    SpaceProtectionSummary,
+    MembershipMaintenanceRecoverySummary, PairingConfirmationSummary,
+    SpaceDeviceUpdatePhaseSummary, SpaceDeviceUpdateProblemSummary,
+    SpaceDeviceUpdateRecoverySummary, SpaceProtectionModeSummary, SpaceProtectionSummary,
 };
 
 use super::{IntoApiDto, IntoDomain};
@@ -31,7 +32,9 @@ use crate::api::dto::member::{
     InboundPairingStatusDto, MemberProtectionDto, MemberProtectionStatusDto,
     MemberSyncPreferencesDto, MembershipMaintenanceHealthDto, MembershipMaintenanceHealthPhaseDto,
     MembershipMaintenanceProblemDto, MembershipMaintenanceRecoveryDto, PairingConfirmationDto,
-    PendingInboundMemberDto, SpaceProtectionDto, SpaceProtectionModeDto,
+    PendingInboundMemberDto, SpaceDeviceUpdatePhaseDto, SpaceDeviceUpdateProblemDto,
+    SpaceDeviceUpdateRecoveryDto, SpaceDeviceUpdateStatusDto, SpaceProtectionDto,
+    SpaceProtectionModeDto,
 };
 use crate::api::dto::settings::{ContentTypesDto, ContentTypesPatchDto};
 
@@ -150,6 +153,46 @@ impl IntoApiDto<DeviceTrustSnapshotDto> for DeviceTrustSnapshotSummary {
                 }
             }),
             inbound_pairings,
+            space_device_update: SpaceDeviceUpdateStatusDto {
+                phase: match self.space_device_update.phase {
+                    SpaceDeviceUpdatePhaseSummary::Updating => SpaceDeviceUpdatePhaseDto::Updating,
+                    SpaceDeviceUpdatePhaseSummary::Completed => {
+                        SpaceDeviceUpdatePhaseDto::Completed
+                    }
+                    SpaceDeviceUpdatePhaseSummary::RetryableFailure => {
+                        SpaceDeviceUpdatePhaseDto::RetryableFailure
+                    }
+                    SpaceDeviceUpdatePhaseSummary::NeedsAttention => {
+                        SpaceDeviceUpdatePhaseDto::NeedsAttention
+                    }
+                },
+                reason: self.space_device_update.reason.map(|reason| match reason {
+                    SpaceDeviceUpdateProblemSummary::DeviceStateRejected => {
+                        SpaceDeviceUpdateProblemDto::DeviceStateRejected
+                    }
+                    SpaceDeviceUpdateProblemSummary::DeviceRelationshipConflict => {
+                        SpaceDeviceUpdateProblemDto::DeviceRelationshipConflict
+                    }
+                    SpaceDeviceUpdateProblemSummary::DeviceSecurityUpdateRejected => {
+                        SpaceDeviceUpdateProblemDto::DeviceSecurityUpdateRejected
+                    }
+                    SpaceDeviceUpdateProblemSummary::DeviceUpgradeRequired => {
+                        SpaceDeviceUpdateProblemDto::DeviceUpgradeRequired
+                    }
+                }),
+                recovery: self
+                    .space_device_update
+                    .recovery
+                    .map(|recovery| match recovery {
+                        SpaceDeviceUpdateRecoverySummary::ReviewDevices => {
+                            SpaceDeviceUpdateRecoveryDto::ReviewDevices
+                        }
+                        SpaceDeviceUpdateRecoverySummary::UpdateApp => {
+                            SpaceDeviceUpdateRecoveryDto::UpdateApp
+                        }
+                    }),
+                next_retry_at_ms: self.space_device_update.next_retry_at_ms,
+            },
             maintenance_health: MembershipMaintenanceHealthDto {
                 phase: match self.maintenance_health.phase {
                     MembershipMaintenanceHealthPhaseSummary::Healthy => {
@@ -525,6 +568,12 @@ mod tests {
             current_join: None,
             pending_inbound_member: None,
             inbound_pairings: Vec::new(),
+            space_device_update: uc_engine::SpaceDeviceUpdateStatusSummary {
+                phase: SpaceDeviceUpdatePhaseSummary::NeedsAttention,
+                reason: Some(SpaceDeviceUpdateProblemSummary::DeviceRelationshipConflict),
+                recovery: Some(SpaceDeviceUpdateRecoverySummary::ReviewDevices),
+                next_retry_at_ms: None,
+            },
             maintenance_health: uc_engine::MembershipMaintenanceHealthSummary {
                 phase: MembershipMaintenanceHealthPhaseSummary::NeedsAttention,
                 reason: Some(MembershipMaintenanceProblemSummary::MembershipHistoryRejected),
@@ -561,6 +610,14 @@ mod tests {
             MembershipMaintenanceHealthPhaseDto::NeedsAttention
         );
         assert_eq!(mapped.maintenance_health.next_retry_at_ms, Some(12345));
+        assert_eq!(
+            mapped.space_device_update.phase,
+            SpaceDeviceUpdatePhaseDto::NeedsAttention
+        );
+        assert_eq!(
+            mapped.space_device_update.reason,
+            Some(SpaceDeviceUpdateProblemDto::DeviceRelationshipConflict)
+        );
         assert_eq!(
             mapped.devices[0].pairing_confirmation,
             Some(PairingConfirmationDto::Unconfirmed)

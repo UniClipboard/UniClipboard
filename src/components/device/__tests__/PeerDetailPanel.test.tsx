@@ -90,7 +90,7 @@ function renderPanel({
   status,
   onUnpair = vi.fn(),
 }: {
-  status?: { kind: 'pairing_unconfirmed'; label: string }
+  status?: { kind: 'recovery_required'; label: string }
   onUnpair?: (peerId: string) => void
 } = {}) {
   return render(
@@ -225,15 +225,15 @@ describe('PeerDetailPanel sync controls', () => {
     ).toBeInTheDocument()
   })
 
-  it('keeps removal available when pairing was not confirmed in time', async () => {
+  it('keeps removal available when the device needs recovery', async () => {
     const onUnpair = vi.fn()
     const user = userEvent.setup()
     renderPanel({
-      status: { kind: 'pairing_unconfirmed', label: '已完成配对，但未被确认' },
+      status: { kind: 'recovery_required', label: '无法验证设备资料' },
       onUnpair,
     })
 
-    expect(screen.getByText('已完成配对，但未被确认')).toBeVisible()
+    expect(screen.getByText('无法验证设备资料')).toBeVisible()
     await user.click(screen.getByRole('button', { name: 'Unpair' }))
     expect(onUnpair).toHaveBeenCalledWith('peer-1')
   })

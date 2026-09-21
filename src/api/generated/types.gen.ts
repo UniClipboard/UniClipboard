@@ -801,6 +801,7 @@ export type DeviceTrustSnapshotDto = {
     pendingInboundMember?: PendingInboundMemberDto | null;
     recovery: string;
     revision: number;
+    spaceDeviceUpdate?: SpaceDeviceUpdateStatusDto;
     updatedAtMs: number;
 };
 
@@ -3409,6 +3410,19 @@ export type ShortcutInstallMethodViewDto = {
  * accepted without a wrapping tag, matching the TypeScript type `string | string[]`.
  */
 export type ShortcutKeyDto = string | Array<string>;
+
+export type SpaceDeviceUpdatePhaseDto = 'updating' | 'completed' | 'retryable_failure' | 'needs_attention';
+
+export type SpaceDeviceUpdateProblemDto = 'device_state_rejected' | 'device_relationship_conflict' | 'device_security_update_rejected' | 'device_upgrade_required';
+
+export type SpaceDeviceUpdateRecoveryDto = 'review_devices' | 'update_app';
+
+export type SpaceDeviceUpdateStatusDto = {
+    nextRetryAtMs?: number | null;
+    phase: SpaceDeviceUpdatePhaseDto;
+    reason?: SpaceDeviceUpdateProblemDto | null;
+    recovery?: SpaceDeviceUpdateRecoveryDto | null;
+};
 
 export type SpaceMemberDto = {
     /**

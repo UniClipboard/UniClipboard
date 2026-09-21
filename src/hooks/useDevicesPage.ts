@@ -124,7 +124,7 @@ export function useDevicesPage() {
   )
   const {
     snapshot: deviceTrust,
-    decisionError: deviceTrustError,
+    refreshError: deviceTrustError,
     refresh: refreshDeviceTrust,
   } = useDeviceTrust()
   const manualRefreshInProgress =

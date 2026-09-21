@@ -16,6 +16,7 @@ export interface DeviceTrustContextValue {
   deviceGroups: DeviceGroupChoices | null
   snapshot: DeviceTrustSnapshot | null
   loading: boolean
+  refreshError?: string | null
   decisionBusy: boolean
   decisionError: string | null
   localRemovalConfirmationIssueId: string | null

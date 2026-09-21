@@ -20,6 +20,7 @@ import { daemonWs, type DaemonWsEvent } from '@/lib/daemon-ws'
 interface DeviceTrustState {
   deviceGroups: DeviceGroupChoices | null
   loading: boolean
+  refreshError: string | null
   decisionBusy: boolean
   decisionError: string | null
   localRemovalConfirmationIssueId: string | null
@@ -46,6 +47,7 @@ type DeviceTrustStateAction =
 const initialState: DeviceTrustState = {
   deviceGroups: null,
   loading: false,
+  refreshError: null,
   decisionBusy: false,
   decisionError: null,
   localRemovalConfirmationIssueId: null,
@@ -79,6 +81,7 @@ function stateReducer(state: DeviceTrustState, action: DeviceTrustStateAction): 
         decision: state.acknowledging ? null : state.decision,
         acknowledging: false,
         loading: false,
+        refreshError: null,
         decisionError:
           state.decisionError === 'device_state_changed' && action.deviceGroups.issues.length > 0
             ? state.decisionError
@@ -92,7 +95,13 @@ function stateReducer(state: DeviceTrustState, action: DeviceTrustStateAction): 
           : null,
       }
     case 'refresh_failed':
-      return { ...state, loading: false, acknowledging: false, decisionError: action.error }
+      return {
+        ...state,
+        loading: false,
+        acknowledging: false,
+        refreshError: action.error,
+        decisionError: state.acknowledging ? action.error : state.decisionError,
+      }
     case 'choice_started':
       return { ...state, decisionBusy: true, decisionError: null, decision: action.decision }
     case 'acknowledged':

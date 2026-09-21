@@ -97,7 +97,7 @@ describe('DeviceTrustProvider', () => {
     getDeviceGroupChoices.mockRejectedValueOnce(new Error('temporarily unavailable'))
     const { result } = renderHook(() => useDeviceTrust(), { wrapper })
 
-    await waitFor(() => expect(result.current.decisionError).toBe('temporarily unavailable'))
+    await waitFor(() => expect(result.current.refreshError).toBe('temporarily unavailable'))
 
     expect(getDeviceGroupChoices).toHaveBeenCalledTimes(1)
     expect(result.current.deviceGroups).toBeNull()

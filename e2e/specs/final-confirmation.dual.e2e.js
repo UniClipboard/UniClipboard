@@ -131,9 +131,10 @@ dualDescribe('最终确认失败后的加入界面', () => {
     const peerCount = await sponsor.$$('[data-testid^="device-peer-"]')
     expect(peerCount).toHaveLength(1)
     await sponsor.waitUntil(
-      async () =>
-        (await sponsor.$('[data-testid^="device-peer-"]').getAttribute('data-status')) !==
-        'pairing_awaiting_confirmation',
+      async () => {
+        const status = await sponsor.$('[data-testid^="device-peer-"]').getAttribute('data-status')
+        return status === 'online' || status === 'offline'
+      },
       {
         timeout: 30000,
         timeoutMsg: '设备列表在加入完成后仍显示等待对方确认',

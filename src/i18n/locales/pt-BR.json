@@ -1341,12 +1341,12 @@
       "title": "Dispositivos pareados"
     },
     "inboundPairings": {
-      "title": "Pareamentos não concluídos",
+      "title": "Histórico de pareamento",
       "unnamed": "Pareamento não concluído",
       "status": {
-        "awaiting_confirmation": "Aguardando a confirmação final",
-        "confirmation_missed": "A confirmação final não foi recebida; concluindo com segurança",
-        "needs_attention": "Requer atenção: não foi possível confirmar o resultado do pareamento. Mantenha os dados atuais e entre em contato com o suporte.",
+        "awaiting_confirmation": "Concluindo o pareamento",
+        "confirmation_missed": "A confirmação não foi recebida; aguardando a conclusão segura",
+        "needs_attention": "Requer atenção: não foi possível confirmar este pareamento",
         "failed": "O pareamento não foi concluído"
       }
     },
@@ -1365,10 +1365,30 @@
         "requestFailed": "Não foi possível iniciar a recuperação da conexão"
       }
     },
-    "membershipMaintenance": {
-      "retrying": "A atualização do grupo de dispositivos falhou; uma nova tentativa será feita automaticamente.",
-      "needsAttention": "A atualização do grupo de dispositivos falhou. Revise o grupo para restaurar a sincronização.",
-      "review": "Revisar grupo de dispositivos"
+    "spaceDeviceUpdate": {
+      "completed": "Status dos dispositivos do espaço atualizado",
+      "updating": {
+        "title": "Atualizando o status dos dispositivos do espaço",
+        "description": "A atualização será automática. Não é preciso manter esta página aberta."
+      },
+      "retrying": {
+        "title": "Atualizando o status dos dispositivos do espaço",
+        "description": "Ainda não foi concluído. Uma nova tentativa será feita automaticamente."
+      },
+      "attention": {
+        "title": "O status dos dispositivos do espaço requer atenção",
+        "description": "Não foi possível concluir automaticamente. Mantenha os dados existentes e verifique novamente mais tarde.",
+        "reasons": {
+          "device_state_rejected": "Não foi possível atualizar o status de alguns dispositivos. Mantenha os dados existentes e verifique novamente mais tarde.",
+          "device_relationship_conflict": "Há um conflito entre dispositivos. Escolha quais manter na janela de ação.",
+          "device_security_update_rejected": "Não foi possível atualizar as configurações de segurança. Verifique os dispositivos e tente novamente.",
+          "device_upgrade_required": "Um dispositivo usa uma versão antiga. Atualize o UniClipboard e tente novamente."
+        }
+      },
+      "unavailable": {
+        "title": "O status dos dispositivos do espaço está temporariamente indisponível",
+        "description": "Seus dispositivos continuam na lista. Você pode verificar novamente."
+      }
     },
     "memberRemoval": {
       "deviceRemoved": {
@@ -2393,8 +2413,8 @@
     },
     "joinPending": {
       "processing": {
-        "title": "Concluindo o pareamento",
-        "subtitle": "A confirmação está em andamento. Se a conexão falhar, haverá nova tentativa automática."
+        "title": "Atualizando o status dos dispositivos do espaço",
+        "subtitle": "Concluindo a entrada. O processo continuará automaticamente se a conexão for interrompida."
       },
       "title": "Aguardando confirmação",
       "subtitle": "Aguardando o resultado da entrada.",

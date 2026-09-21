@@ -1337,12 +1337,12 @@
       "title": "已配對裝置"
     },
     "inboundPairings": {
-      "title": "未完成的配對",
+      "title": "配對記錄",
       "unnamed": "未完成的配對",
       "status": {
-        "awaiting_confirmation": "正在等待最終確認",
-        "confirmation_missed": "未收到最終確認，正在安全完成收尾",
-        "needs_attention": "需要處理：無法確認配對結果。請保留現有資料並聯絡支援。",
+        "awaiting_confirmation": "正在完成配對",
+        "confirmation_missed": "未收到確認，正在等待安全收尾",
+        "needs_attention": "需要處理：無法確認本次配對結果",
         "failed": "配對未完成"
       }
     },
@@ -1361,10 +1361,27 @@
         "requestFailed": "無法開始恢復連接"
       }
     },
-    "membershipMaintenance": {
-      "retrying": "裝置群組更新暫時失敗，稍後會自動重試。",
-      "needsAttention": "裝置群組更新失敗，請檢查裝置群組以恢復同步。",
-      "review": "檢查裝置群組"
+    "spaceDeviceUpdate": {
+      "completed": "空間裝置狀態已更新",
+      "updating": {
+        "title": "正在更新空間裝置狀態",
+        "description": "完成後會自動重新整理，無需保持此頁面開啟。"
+      },
+      "retrying": { "title": "正在更新空間裝置狀態", "description": "暫時未完成，稍後自動重試。" },
+      "attention": {
+        "title": "空間裝置狀態需要處理",
+        "description": "目前無法自動完成。請保留現有資料，稍後重新檢查。",
+        "reasons": {
+          "device_state_rejected": "部分裝置狀態未能更新。請保留現有資料，稍後重新檢查。",
+          "device_relationship_conflict": "裝置關係存在衝突，請依照處理視窗中的提示選擇要保留的裝置。",
+          "device_security_update_rejected": "安全設定未能更新，請檢查相關裝置後重試。",
+          "device_upgrade_required": "有裝置版本過舊，請更新 UniClipboard 後重試。"
+        }
+      },
+      "unavailable": {
+        "title": "暫時無法確認空間裝置狀態",
+        "description": "現有裝置仍保留在清單中，可以重新檢查。"
+      }
     },
     "memberRemoval": {
       "deviceRemoved": {
@@ -2384,7 +2401,10 @@
       }
     },
     "joinPending": {
-      "processing": { "title": "正在完成配對", "subtitle": "正在確認加入；連線中斷後會自動重試。" },
+      "processing": {
+        "title": "正在更新空間裝置狀態",
+        "subtitle": "正在完成加入；連線中斷後會自動繼續。"
+      },
       "title": "等待確認",
       "subtitle": "正在等待加入結果。",
       "actions": { "cancel": "取消加入", "back": "返回" },

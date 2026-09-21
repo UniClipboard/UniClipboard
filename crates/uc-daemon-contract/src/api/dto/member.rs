@@ -250,12 +250,49 @@ pub struct DeviceTrustSnapshotDto {
     #[serde(default)]
     pub inbound_pairings: Vec<InboundPairingDto>,
     #[serde(default)]
+    pub space_device_update: SpaceDeviceUpdateStatusDto,
+    #[serde(default)]
     pub maintenance_health: MembershipMaintenanceHealthDto,
     pub devices: Vec<DeviceTrustRelationshipDto>,
     pub recovery: String,
     pub allowed_actions: Vec<DeviceTrustActionDto>,
     pub blocked_reason: Option<DeviceTrustUnavailableReasonDto>,
     pub updated_at_ms: i64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum SpaceDeviceUpdatePhaseDto {
+    Updating,
+    #[default]
+    Completed,
+    RetryableFailure,
+    NeedsAttention,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum SpaceDeviceUpdateProblemDto {
+    DeviceStateRejected,
+    DeviceRelationshipConflict,
+    DeviceSecurityUpdateRejected,
+    DeviceUpgradeRequired,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum SpaceDeviceUpdateRecoveryDto {
+    ReviewDevices,
+    UpdateApp,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct SpaceDeviceUpdateStatusDto {
+    pub phase: SpaceDeviceUpdatePhaseDto,
+    pub reason: Option<SpaceDeviceUpdateProblemDto>,
+    pub recovery: Option<SpaceDeviceUpdateRecoveryDto>,
+    pub next_retry_at_ms: Option<i64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema, Default)]
@@ -380,6 +417,7 @@ mod device_group_choice_dto_tests {
             current_join: None,
             pending_inbound_member: None,
             inbound_pairings: Vec::new(),
+            space_device_update: SpaceDeviceUpdateStatusDto::default(),
             maintenance_health: MembershipMaintenanceHealthDto::default(),
             devices: Vec::new(),
             recovery: "not_available_in_this_version".to_string(),
@@ -387,6 +425,26 @@ mod device_group_choice_dto_tests {
             blocked_reason: None,
             updated_at_ms: 1,
         }
+    }
+
+    #[test]
+    fn space_device_update_uses_stable_wire_fields_and_defaults() {
+        let mut value = serde_json::to_value(snapshot()).unwrap();
+        value["spaceDeviceUpdate"] = json!({
+            "phase": "needs_attention",
+            "reason": "device_relationship_conflict",
+            "recovery": "review_devices",
+            "nextRetryAtMs": 12345
+        });
+        let decoded: DeviceTrustSnapshotDto = serde_json::from_value(value.clone()).unwrap();
+        assert_eq!(serde_json::to_value(decoded).unwrap(), value);
+
+        value.as_object_mut().unwrap().remove("spaceDeviceUpdate");
+        let legacy: DeviceTrustSnapshotDto = serde_json::from_value(value).unwrap();
+        assert_eq!(
+            legacy.space_device_update.phase,
+            SpaceDeviceUpdatePhaseDto::Completed
+        );
     }
 
     #[test]

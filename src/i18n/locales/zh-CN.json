@@ -1336,12 +1336,12 @@
       "title": "已配对设备"
     },
     "inboundPairings": {
-      "title": "未完成的配对",
+      "title": "配对记录",
       "unnamed": "未完成的配对",
       "status": {
-        "awaiting_confirmation": "正在等待最终确认",
-        "confirmation_missed": "未收到最终确认，正在安全收尾",
-        "needs_attention": "需要处理：无法确认配对结果。请保留现有资料并联系支持。",
+        "awaiting_confirmation": "正在完成配对",
+        "confirmation_missed": "未收到确认，正在等待安全收尾",
+        "needs_attention": "需要处理：无法确认本次配对结果",
         "failed": "配对未完成"
       }
     },
@@ -1360,10 +1360,30 @@
         "requestFailed": "无法开始恢复连接"
       }
     },
-    "membershipMaintenance": {
-      "retrying": "设备组更新暂时失败，稍后会自动重试。",
-      "needsAttention": "设备组更新失败，请检查设备组以恢复同步。",
-      "review": "检查设备组"
+    "spaceDeviceUpdate": {
+      "completed": "空间设备状态已更新",
+      "updating": {
+        "title": "正在更新空间设备状态",
+        "description": "完成后会自动刷新，无需保持此页面打开。"
+      },
+      "retrying": {
+        "title": "正在更新空间设备状态",
+        "description": "暂时未完成，稍后自动重试。"
+      },
+      "attention": {
+        "title": "空间设备状态需要处理",
+        "description": "当前无法自动完成。请保留现有资料，稍后重新检查。",
+        "reasons": {
+          "device_state_rejected": "部分设备状态未能更新。请保留现有资料，稍后重新检查。",
+          "device_relationship_conflict": "设备关系存在冲突，请按处理窗口中的提示选择要保留的设备。",
+          "device_security_update_rejected": "安全设置未能更新，请检查相关设备后重试。",
+          "device_upgrade_required": "有设备版本过旧，请更新 UniClipboard 后重试。"
+        }
+      },
+      "unavailable": {
+        "title": "暂时无法确认空间设备状态",
+        "description": "现有设备仍保留在列表中，可以重新检查。"
+      }
     },
     "addDevice": {
       "title": "邀请新设备",
@@ -2385,8 +2405,8 @@
     },
     "joinPending": {
       "processing": {
-        "title": "正在完成配对",
-        "subtitle": "正在确认加入；连接中断后会自动重试。"
+        "title": "正在更新空间设备状态",
+        "subtitle": "正在完成加入；连接中断后会自动继续。"
       },
       "title": "等待对方确认",
       "subtitle": "正在等待加入结果。",

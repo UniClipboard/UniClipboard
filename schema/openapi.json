@@ -1556,6 +1556,9 @@
             "minimum": 0,
             "type": "integer"
           },
+          "spaceDeviceUpdate": {
+            "$ref": "#/components/schemas/SpaceDeviceUpdateStatusDto"
+          },
           "updatedAtMs": {
             "format": "int64",
             "type": "integer"
@@ -6128,6 +6131,63 @@
             "type": "array"
           }
         ]
+      },
+      "SpaceDeviceUpdatePhaseDto": {
+        "enum": [
+          "updating",
+          "completed",
+          "retryable_failure",
+          "needs_attention"
+        ],
+        "type": "string"
+      },
+      "SpaceDeviceUpdateProblemDto": {
+        "enum": [
+          "device_state_rejected",
+          "device_relationship_conflict",
+          "device_security_update_rejected",
+          "device_upgrade_required"
+        ],
+        "type": "string"
+      },
+      "SpaceDeviceUpdateRecoveryDto": {
+        "enum": [
+          "review_devices",
+          "update_app"
+        ],
+        "type": "string"
+      },
+      "SpaceDeviceUpdateStatusDto": {
+        "properties": {
+          "nextRetryAtMs": {
+            "format": "int64",
+            "nullable": true,
+            "type": "integer"
+          },
+          "phase": {
+            "$ref": "#/components/schemas/SpaceDeviceUpdatePhaseDto"
+          },
+          "reason": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SpaceDeviceUpdateProblemDto"
+              }
+            ],
+            "nullable": true
+          },
+          "recovery": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SpaceDeviceUpdateRecoveryDto"
+              }
+            ],
+            "nullable": true
+          }
+        },
+        "required": [
+          "phase"
+        ],
+        "type": "object"
       },
       "SpaceMemberDto": {
         "properties": {

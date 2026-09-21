@@ -66,25 +66,21 @@ const snapshot: DeviceTrustSnapshot = {
 }
 
 describe('device trust list view', () => {
-  it.each([
-    [
-      'awaiting_peer_confirmation',
-      'pairing_awaiting_confirmation',
-      'deviceTrust.status.awaitingPeerConfirmation',
-    ],
-    ['unconfirmed', 'pairing_unconfirmed', 'deviceTrust.status.unconfirmed'],
-  ] as const)('shows the Engine-owned pairing state %s', (pairingConfirmation, kind, label) => {
-    expect(
-      getDeviceTrustStatus(
-        {
-          ...snapshot.devices[1],
-          groupRelationship: 'confirmation_pending',
-          pairingConfirmation,
-        },
-        key => key
-      )
-    ).toEqual({ tone: 'warning', status: { kind, label } })
-  })
+  it.each([['awaiting_peer_confirmation'], ['unconfirmed']] as const)(
+    'does not let the legacy pairing state %s override connection status',
+    pairingConfirmation => {
+      expect(
+        getDeviceTrustStatus(
+          {
+            ...snapshot.devices[1],
+            groupRelationship: 'confirmation_pending',
+            pairingConfirmation,
+          },
+          key => key
+        )
+      ).toBeNull()
+    }
+  )
 
   it('returns to normal connection status after pairing is confirmed', () => {
     expect(

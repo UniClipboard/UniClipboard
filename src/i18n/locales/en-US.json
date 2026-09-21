@@ -1337,12 +1337,12 @@
       "title": "Paired devices"
     },
     "inboundPairings": {
-      "title": "Unfinished pairings",
+      "title": "Pairing history",
       "unnamed": "Unfinished pairing",
       "status": {
-        "awaiting_confirmation": "Waiting for final confirmation",
-        "confirmation_missed": "Final confirmation was not received; finishing safely",
-        "needs_attention": "Needs attention: the pairing result cannot be confirmed. Keep existing data and contact support.",
+        "awaiting_confirmation": "Finishing pairing",
+        "confirmation_missed": "Confirmation was not received; waiting to finish safely",
+        "needs_attention": "Needs attention: this pairing result cannot be confirmed",
         "failed": "Pairing did not finish"
       }
     },
@@ -1361,10 +1361,30 @@
         "requestFailed": "Could not start connection recovery"
       }
     },
-    "membershipMaintenance": {
-      "retrying": "Device group update failed; it will retry automatically.",
-      "needsAttention": "Device group update failed. Review the device group to restore syncing.",
-      "review": "Review device group"
+    "spaceDeviceUpdate": {
+      "completed": "Space device status updated",
+      "updating": {
+        "title": "Updating space device status",
+        "description": "This refreshes automatically. You do not need to keep this page open."
+      },
+      "retrying": {
+        "title": "Updating space device status",
+        "description": "Not finished yet. It will retry automatically."
+      },
+      "attention": {
+        "title": "Space device status needs attention",
+        "description": "This cannot finish automatically. Keep your existing data and check again later.",
+        "reasons": {
+          "device_state_rejected": "Some device status could not be updated. Keep your existing data and check again later.",
+          "device_relationship_conflict": "Device relationships conflict. Choose which devices to keep in the action window.",
+          "device_security_update_rejected": "Security settings could not be updated. Check the affected devices and try again.",
+          "device_upgrade_required": "A device is using an older version. Update UniClipboard and try again."
+        }
+      },
+      "unavailable": {
+        "title": "Space device status is temporarily unavailable",
+        "description": "Your existing devices remain listed. You can check again."
+      }
     },
     "addDevice": {
       "title": "Invite a new device",
@@ -2387,8 +2407,8 @@
     },
     "joinPending": {
       "processing": {
-        "title": "Completing pairing",
-        "subtitle": "Confirmation is in progress. If the connection fails, it will be retried automatically."
+        "title": "Updating space device status",
+        "subtitle": "Finishing the join. It will continue automatically if the connection is interrupted."
       },
       "title": "Waiting for confirmation",
       "subtitle": "Waiting for the join result.",

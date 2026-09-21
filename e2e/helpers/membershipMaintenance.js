@@ -69,9 +69,9 @@ export async function runMaintenanceScenario(failure) {
   const connection = daemonConnection(process.env.E2E_UC_SPONSOR_PROFILE)
   const auth = await session(connection)
   const work = body => request(connection, auth, '/e2e/space-work', 'POST', body)
-  const health = async () =>
+  const updateStatus = async () =>
     (await request(connection, auth, '/member/device-group-choices', 'GET')).data.deviceTrust
-      .maintenanceHealth
+      .spaceDeviceUpdate
   const count = failure === 'retryable' ? 2 : 1024
   const armed = await work({ command: 'arm_membership_history_failures', failure, count })
   expect(typeof armed.after_sequence).toBe('number')
@@ -88,11 +88,11 @@ export async function runMaintenanceScenario(failure) {
     kind: failureKind,
     after_sequence: armed.after_sequence,
   })
-  const expectedPhase = failure === 'retryable' ? 'retrying' : 'needs_attention'
+  const expectedPhase = failure === 'retryable' ? 'retryable_failure' : 'needs_attention'
   let affected
   await sponsor.waitUntil(
     async () => {
-      affected = await health()
+      affected = await updateStatus()
       return affected.phase === expectedPhase
     },
     { timeout: 30000, timeoutMsg: `公开维护状态未进入 ${expectedPhase}` }
@@ -102,29 +102,32 @@ export async function runMaintenanceScenario(failure) {
     expect(affected.reason).toBe(null)
     expect(affected.recovery).toBe(null)
   } else {
-    expect(affected.reason).toBe('membership_history_rejected')
-    expect(affected.recovery).toBe('resolve_device_trust')
+    expect(affected.reason).toBe('device_state_rejected')
+    expect(affected.recovery).toBe('review_devices')
     expect(affected.nextRetryAtMs).toBe(null)
   }
 
+  await expect(await pairingComplete(joiner, 'Joiner')).toExist()
   await expect(await pairingComplete(sponsor, 'Sponsor')).toExist()
+  await click(joiner, '[data-testid="setup-complete-done"]')
   await click(sponsor, '[data-testid="setup-complete-done"]')
+  await element(joiner, '[data-testid="history-preview-motion"]')
   await element(sponsor, '[data-testid="history-preview-motion"]')
   await click(sponsor, 'a[href="/devices"]')
-  const alert = await element(sponsor, '[data-testid="membership-maintenance-alert"]')
+  const alert = await element(sponsor, '[data-testid="space-device-update-status"]')
   await expect(alert).toExist()
   const text = await alert.getText()
   if (failure === 'retryable') {
     expect(text).toContain('自动重试')
     expect(await alert.$('button').isExisting()).toBe(false)
   } else {
-    expect(text).toContain('请检查设备组')
-    expect(await alert.$('button').isExisting()).toBe(true)
+    expect(text).toContain('需要处理')
+    expect(text).not.toContain('成员历史')
   }
   expect(text).not.toContain('Joiner')
   expect(text).not.toContain('Sponsor')
   expect(text).not.toContain('加入中')
-  expect(text).not.toContain('更新空间')
+  expect(text).toContain('空间设备状态')
   await screenshot(sponsor, path.join(evidenceDir, 'affected.png'))
 
   let remaining = null
@@ -144,10 +147,21 @@ export async function runMaintenanceScenario(failure) {
   let recovered
   await sponsor.waitUntil(
     async () => {
-      recovered = await health()
-      return recovered.phase === 'healthy'
+      recovered = await updateStatus()
+      return recovered.phase !== expectedPhase
     },
-    { timeout: 30000, timeoutMsg: '真实回复后公开维护状态未恢复正常' }
+    { timeout: 30000, timeoutMsg: '真实回复后公开空间设备状态仍停留在失败状态' }
+  )
+  await screenshot(sponsor, path.join(evidenceDir, 'after-reply.png'))
+  await sponsor.waitUntil(
+    async () => {
+      recovered = await updateStatus()
+      return recovered.phase === 'completed'
+    },
+    {
+      timeout: 30000,
+      timeoutMsg: `真实回复后公开空间设备状态未恢复完成，当前阶段 ${recovered?.phase}`,
+    }
   )
   await alert.waitForExist({ reverse: true, timeout: 30000 })
   await screenshot(sponsor, path.join(evidenceDir, 'healthy.png'))
@@ -188,7 +202,7 @@ export async function runMaintenanceScenario(failure) {
     )
   )
   console.log(
-    'membership maintenance:',
+    'space device update:',
     failure,
     observed,
     'remaining:',

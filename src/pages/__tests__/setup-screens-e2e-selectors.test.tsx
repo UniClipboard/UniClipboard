@@ -118,7 +118,7 @@ describe('setup screens e2e selectors', () => {
     expect(screen.getByTestId('setup-join-cancel')).toBeInTheDocument()
     rerender(<JoinPendingScreen status="processing" onCancel={onCancel} />)
     expect(screen.getByTestId('setup-join-processing')).toBeInTheDocument()
-    expect(screen.getByText('Completing pairing')).toBeInTheDocument()
+    expect(screen.getByText('Updating space device status')).toBeInTheDocument()
     expect(screen.queryByTestId('setup-join-cancel')).not.toBeInTheDocument()
   })
 

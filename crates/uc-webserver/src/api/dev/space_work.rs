@@ -33,6 +33,12 @@ fn kind(name: &str) -> Option<DevSpaceWorkEventKind> {
         "final_confirmation_connection_failed" => {
             Some(DevSpaceWorkEventKind::FinalConfirmationConnectionFailed)
         }
+        "final_confirmation_sponsor_committed" => {
+            Some(DevSpaceWorkEventKind::FinalConfirmationSponsorCommitted)
+        }
+        "final_confirmation_success_reply_dropped" => {
+            Some(DevSpaceWorkEventKind::FinalConfirmationSuccessReplyDropped)
+        }
         "final_confirmation_retry_started" => {
             Some(DevSpaceWorkEventKind::FinalConfirmationRetryStarted)
         }
@@ -62,6 +68,12 @@ fn event(value: DevSpaceWorkEvent) -> Value {
     let name = match value.kind {
         DevSpaceWorkEventKind::FinalConfirmationConnectionFailed => {
             "final_confirmation_connection_failed"
+        }
+        DevSpaceWorkEventKind::FinalConfirmationSponsorCommitted => {
+            "final_confirmation_sponsor_committed"
+        }
+        DevSpaceWorkEventKind::FinalConfirmationSuccessReplyDropped => {
+            "final_confirmation_success_reply_dropped"
         }
         DevSpaceWorkEventKind::FinalConfirmationRetryStarted => "final_confirmation_retry_started",
         DevSpaceWorkEventKind::FinalConfirmationReplyReceived => {

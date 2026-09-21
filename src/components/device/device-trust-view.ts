@@ -14,8 +14,6 @@ export type DeviceRowStatus = {
     | 'recovery_required'
     | 'removed'
     | 'diverged'
-    | 'pairing_awaiting_confirmation'
-    | 'pairing_unconfirmed'
   label: string
   description?: string
 }
@@ -65,27 +63,6 @@ export function getDeviceTrustStatus(
   }
   if (device.groupRelationship === 'pending_local_decision') {
     return { tone: 'warning', status: { kind: 'removing', label: t('deviceTrust.status.pending') } }
-  }
-  if (device.pairingConfirmation === 'awaiting_peer_confirmation') {
-    return {
-      tone: 'warning',
-      status: {
-        kind: 'pairing_awaiting_confirmation',
-        label: t('deviceTrust.status.awaitingPeerConfirmation'),
-      },
-    }
-  }
-  if (device.pairingConfirmation === 'unconfirmed') {
-    return {
-      tone: 'warning',
-      status: {
-        kind: 'pairing_unconfirmed',
-        label: t('deviceTrust.status.unconfirmed'),
-      },
-    }
-  }
-  if (device.groupRelationship === 'confirmation_pending') {
-    return { tone: 'warning', status: { kind: 'paused', label: t('setup.joinPending.title') } }
   }
   return null
 }

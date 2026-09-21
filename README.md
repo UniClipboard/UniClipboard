@@ -320,6 +320,7 @@ uniclip space join --switch --code <code> # Switch to another space
 uniclip member list             # List paired devices and presence
 uniclip send "hello"            # Send text to other devices
 uniclip send ./report.pdf        # Send an existing file
+printf '%s\n' ./a.png './b c.pdf' | uniclip send --file # Send paths from stdin
 uniclip send --text report.pdf   # Force an existing filename to be sent as text
 uniclip watch                   # Stream incoming clipboard events
 uniclip space status            # Inspect the active space and daemon

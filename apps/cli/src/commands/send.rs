@@ -1,6 +1,7 @@
 //! `uniclip send` — text, file, and resend dispatch through the daemon.
 
-use std::io::Read;
+use std::collections::HashSet;
+use std::io::{IsTerminal, Read};
 use std::path::PathBuf;
 
 use serde::Serialize;
@@ -26,10 +27,9 @@ pub struct SendArgs {
     pub input: Option<String>,
     /// Whether `--text` explicitly disables path auto-detection.
     pub force_text: bool,
-    /// Path to a file to send instead of text. Mutually exclusive with
-    /// positional text and `--resend`. The daemon owns the blob provider and
-    /// the CLI waits for the selected targets to reach terminal states.
-    pub file: Option<PathBuf>,
+    /// Whether file mode is enabled. A positional value is one path; without
+    /// one, stdin supplies one complete path per line.
+    pub file: bool,
     /// Entry id to **resend**. When set, the daemon pulls the original snapshot.
     pub resend: Option<String>,
     /// Optional list of target device IDs. Empty vec means "no filter"
@@ -67,6 +67,13 @@ pub async fn run(args: SendArgs, json: bool, verbose: bool) -> i32 {
                     return exit_codes::EXIT_ERROR;
                 }
             },
+            Ok(SendInput::StdinFiles) => match read_file_paths_from_stdin() {
+                Ok(paths) => Some(SendInput::Files(paths)),
+                Err(message) => {
+                    ui::error(&message);
+                    return exit_codes::EXIT_ERROR;
+                }
+            },
             Ok(SendInput::Text(text)) if text.is_empty() => {
                 ui::error("Empty plaintext — nothing to send.");
                 return exit_codes::EXIT_ERROR;
@@ -93,10 +100,15 @@ pub async fn run(args: SendArgs, json: bool, verbose: bool) -> i32 {
         Some(SendInput::File(path)) => {
             run_send_file_via_daemon(&*service, path, peers_str, json).await
         }
+        Some(SendInput::Files(paths)) => {
+            run_send_files_via_daemon(&*service, paths, peers_str, json).await
+        }
         Some(SendInput::Text(text)) => {
             run_send_via_daemon(&*service, mode, Some(text), args.resend, peers_str, json).await
         }
-        Some(SendInput::Stdin) => unreachable!("stdin is resolved before daemon connection"),
+        Some(SendInput::Stdin | SendInput::StdinFiles) => {
+            unreachable!("stdin is resolved before daemon connection")
+        }
         None => run_send_via_daemon(&*service, mode, None, args.resend, peers_str, json).await,
     }
 }
@@ -104,21 +116,27 @@ pub async fn run(args: SendArgs, json: bool, verbose: bool) -> i32 {
 #[derive(Debug, PartialEq, Eq)]
 enum SendInput {
     Stdin,
+    StdinFiles,
     Text(String),
     File(PathBuf),
+    Files(Vec<PathBuf>),
 }
 
 fn classify_input(
     positional: Option<String>,
-    explicit_file: Option<PathBuf>,
+    force_file: bool,
     force_text: bool,
 ) -> Result<SendInput, String> {
-    if let Some(path) = explicit_file {
-        return classify_file(path);
-    }
     let Some(value) = positional else {
-        return Ok(SendInput::Stdin);
+        return Ok(if force_file {
+            SendInput::StdinFiles
+        } else {
+            SendInput::Stdin
+        });
     };
+    if force_file {
+        return classify_file(PathBuf::from(value));
+    }
     if force_text {
         return Ok(SendInput::Text(value));
     }
@@ -155,9 +173,49 @@ fn classify_file(path: PathBuf) -> Result<SendInput, String> {
     if !metadata.is_file() {
         return Err(format!("Path is not a regular file: {}", path.display()));
     }
+    std::fs::File::open(&path)
+        .map_err(|error| format!("File is not readable {}: {error}", path.display()))?;
     path.canonicalize()
         .map(SendInput::File)
         .map_err(|error| format!("Failed to resolve file path {}: {error}", path.display()))
+}
+
+fn parse_file_paths(input: &str) -> Result<Vec<PathBuf>, String> {
+    let mut paths = Vec::new();
+    let mut seen = HashSet::new();
+
+    for raw_line in input.split('\n') {
+        let line = raw_line.strip_suffix('\r').unwrap_or(raw_line);
+        if line.is_empty() {
+            continue;
+        }
+        let path = match classify_file(PathBuf::from(line))? {
+            SendInput::File(path) => path,
+            _ => unreachable!("classify_file only returns file input"),
+        };
+        if seen.insert(path.clone()) {
+            paths.push(path);
+        }
+    }
+
+    if paths.is_empty() {
+        Err("No file paths were provided on stdin.".to_string())
+    } else {
+        Ok(paths)
+    }
+}
+
+fn read_file_paths_from_stdin() -> Result<Vec<PathBuf>, String> {
+    if std::io::stdin().is_terminal() {
+        return Err(
+            "File mode needs a path argument or file paths piped through stdin.".to_string(),
+        );
+    }
+    let mut input = String::new();
+    std::io::stdin()
+        .read_to_string(&mut input)
+        .map_err(|error| format!("Failed to read file paths from stdin: {error}"))?;
+    parse_file_paths(&input)
 }
 
 fn looks_like_path(path: &std::path::Path, raw: &str) -> bool {
@@ -314,14 +372,18 @@ fn read_plaintext(arg: Option<String>) -> Result<String, String> {
     std::io::stdin()
         .read_to_string(&mut buf)
         .map_err(|err| format!("read stdin failed: {err}"))?;
+    Ok(normalize_plaintext_stdin(buf))
+}
+
+fn normalize_plaintext_stdin(mut text: String) -> String {
     // Trim a single trailing newline so `echo foo | send` matches `send foo`.
-    if buf.ends_with('\n') {
-        buf.pop();
-        if buf.ends_with('\r') {
-            buf.pop();
+    if text.ends_with('\n') {
+        text.pop();
+        if text.ends_with('\r') {
+            text.pop();
         }
     }
-    Ok(buf)
+    text
 }
 
 fn short_hash(hash: &str) -> &str {
@@ -333,6 +395,22 @@ fn short_hash(hash: &str) -> &str {
 }
 
 // ── File send through the daemon ──────────────────────────────────────
+
+async fn run_send_files_via_daemon(
+    service: &dyn DaemonService,
+    paths: Vec<PathBuf>,
+    peers: Option<Vec<String>>,
+    json: bool,
+) -> i32 {
+    let mut exit_code = exit_codes::EXIT_SUCCESS;
+    for path in paths {
+        let result = run_send_file_via_daemon(service, path, peers.clone(), json).await;
+        if result != exit_codes::EXIT_SUCCESS {
+            exit_code = result;
+        }
+    }
+    exit_code
+}
 
 async fn run_send_file_via_daemon(
     service: &dyn DaemonService,
@@ -569,13 +647,17 @@ mod tests {
         let raw = path.to_string_lossy().into_owned();
 
         assert!(matches!(
-            classify_input(Some(raw.clone()), None, false).unwrap(),
+            classify_input(Some(raw.clone()), false, false).unwrap(),
             SendInput::File(_)
         ));
         assert_eq!(
-            classify_input(Some(raw.clone()), None, true).unwrap(),
+            classify_input(Some(raw.clone()), false, true).unwrap(),
             SendInput::Text(raw)
         );
+        assert!(matches!(
+            classify_input(Some(path.to_string_lossy().into_owned()), true, false).unwrap(),
+            SendInput::File(_)
+        ));
     }
 
     #[test]
@@ -583,17 +665,117 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let directory_error = classify_input(
             Some(directory.path().to_string_lossy().into_owned()),
-            None,
+            false,
             false,
         )
         .unwrap_err();
         assert!(directory_error.contains("Directory sending is not supported"));
 
-        let missing_error = classify_input(Some("./missing.pdf".into()), None, false).unwrap_err();
+        let missing_error = classify_input(Some("./missing.pdf".into()), false, false).unwrap_err();
         assert!(missing_error.contains("Path does not exist"));
         assert_eq!(
-            classify_input(Some("hello world".into()), None, false).unwrap(),
+            classify_input(Some("hello world".into()), false, false).unwrap(),
             SendInput::Text("hello world".into())
+        );
+    }
+
+    #[test]
+    fn omitted_input_selects_text_or_file_stdin_mode() {
+        assert_eq!(
+            classify_input(None, false, false).unwrap(),
+            SendInput::Stdin
+        );
+        assert_eq!(
+            classify_input(None, true, false).unwrap(),
+            SendInput::StdinFiles
+        );
+    }
+
+    #[test]
+    fn file_path_stdin_supports_multiple_lines_spaces_blanks_crlf_and_duplicates() {
+        let directory = tempfile::tempdir().unwrap();
+        let first = directory.path().join("first file.txt");
+        let second = directory.path().join("second.txt");
+        std::fs::write(&first, b"first").unwrap();
+        std::fs::write(&second, b"second").unwrap();
+        let input = format!(
+            "{}\r\n\n{}\r\n{}\n",
+            first.display(),
+            second.display(),
+            first.display()
+        );
+
+        let paths = parse_file_paths(&input).unwrap();
+
+        assert_eq!(
+            paths,
+            vec![
+                first.canonicalize().unwrap(),
+                second.canonicalize().unwrap()
+            ]
+        );
+    }
+
+    #[test]
+    fn file_path_stdin_rejects_empty_input_invalid_paths_and_directories_atomically() {
+        assert_eq!(
+            parse_file_paths("\n\r\n").unwrap_err(),
+            "No file paths were provided on stdin."
+        );
+
+        let directory = tempfile::tempdir().unwrap();
+        let valid = directory.path().join("valid.txt");
+        std::fs::write(&valid, b"valid").unwrap();
+        let missing = directory.path().join("missing.txt");
+        let invalid_input = format!("{}\n{}\n", valid.display(), missing.display());
+        assert!(parse_file_paths(&invalid_input)
+            .unwrap_err()
+            .contains("Failed to inspect file"));
+
+        assert!(
+            parse_file_paths(&format!("{}\n", directory.path().display()))
+                .unwrap_err()
+                .contains("Directory sending is not supported")
+        );
+    }
+
+    #[test]
+    fn file_path_stdin_preserves_backslashes_and_non_newline_whitespace() {
+        let error = parse_file_paths("C:\\Users\\Example\\file name.txt\r\n").unwrap_err();
+        assert!(error.contains("C:\\Users\\Example\\file name.txt"));
+
+        let directory = tempfile::tempdir().unwrap();
+        let spaced = directory.path().join(" padded ");
+        std::fs::write(&spaced, b"spaces").unwrap();
+        let paths = parse_file_paths(&format!("{}\n", spaced.display())).unwrap();
+        assert_eq!(paths, vec![spaced.canonicalize().unwrap()]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn file_path_stdin_rejects_unreadable_files() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("unreadable.txt");
+        std::fs::write(&path, b"secret").unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o000)).unwrap();
+
+        let error = parse_file_paths(&format!("{}\n", path.display())).unwrap_err();
+
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
+        assert!(error.contains("File is not readable"));
+    }
+
+    #[test]
+    fn plaintext_stdin_is_never_reclassified_as_a_path() {
+        assert_eq!(
+            classify_input(None, false, false).unwrap(),
+            SendInput::Stdin
+        );
+        assert_eq!(
+            normalize_plaintext_stdin("./looks/like/a/path\r\n".to_string()),
+            "./looks/like/a/path"
         );
     }
 

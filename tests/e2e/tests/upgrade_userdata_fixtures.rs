@@ -317,37 +317,59 @@ async fn tracked_v0191_fixture_upgrades_to_current_in_a_fresh_dev_profile() {
             .join(format!("iroh-identity_{}", profile.name)),
     );
     assert!(!legacy_identity.is_empty());
-    let daemon = TestDaemon::start_preserving_with(profile, &NodeBinarySet::current(), None)
+    let mut daemon = TestDaemon::start_preserving_with(profile, &NodeBinarySet::current(), None)
         .await
         .unwrap();
     let cli = TestCli::new(&daemon.profile);
 
-    let status = cli.run_capture(&["--json", "status"]);
+    let first = healthy_fixture_snapshot(&cli);
+    assert_eq!(
+        regular_files(&daemon.profile.data_dir().join("iroh-identity")),
+        legacy_identity
+    );
+
+    daemon
+        .restart_preserving_as_gui_with(&NodeBinarySet::current())
+        .await
+        .unwrap();
+    let second = healthy_fixture_snapshot(&TestCli::new(&daemon.profile));
+    assert_eq!(first, second, "v0.19.1 state changed after restart");
+    assert_eq!(
+        regular_files(&daemon.profile.data_dir().join("iroh-identity")),
+        legacy_identity
+    );
+    daemon.kill();
+}
+
+fn healthy_fixture_snapshot(cli: &TestCli) -> (Value, Value, Value) {
+    let status = cli.run_capture(&["--json", "space", "status"]);
     assert!(
         status.success(),
         "fixture upgrade status failed: {}",
         status.stderr
     );
     let status: Value = serde_json::from_str(status.stdout.trim()).unwrap();
+    assert_eq!(status["profile_recovery"]["state"], "not_required");
     assert_eq!(status["device_trust"]["local_membership"], "active");
-    let members = cli.run_capture(&["--json", "members"]);
+
+    let members = cli.run_capture(&["--json", "member", "list"]);
     assert!(
         members.success(),
         "fixture members failed: {}",
         members.stderr
     );
-    assert_eq!(
-        serde_json::from_str::<Value>(members.stdout.trim())
-            .unwrap()
-            .as_array()
-            .unwrap()
-            .len(),
-        1
+    let members: Value = serde_json::from_str(members.stdout.trim()).unwrap();
+    assert_eq!(members.as_array().unwrap().len(), 1);
+
+    let history = cli.run_capture(&["--json", "get", "--list", "--limit", "100"]);
+    assert!(
+        history.success(),
+        "fixture history failed: {}",
+        history.stderr
     );
-    assert_eq!(
-        regular_files(&daemon.profile.data_dir().join("iroh-identity")),
-        legacy_identity
-    );
+    let history: Value = serde_json::from_str(history.stdout.trim()).unwrap();
+
+    (status["device_trust"].clone(), members, history)
 }
 
 fn regular_files(root: &std::path::Path) -> Vec<Vec<u8>> {

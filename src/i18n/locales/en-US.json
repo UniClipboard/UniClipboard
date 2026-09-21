@@ -52,6 +52,7 @@
     "confirmation": {
       "title": "Important update information",
       "acknowledge": "I understand",
+      "cancel": "Cancel",
       "confirming": "Confirming...",
       "unavailable": "This update requires confirmation, but its explanation is unavailable. Updating has been blocked for your safety. Please try checking again later."
     },

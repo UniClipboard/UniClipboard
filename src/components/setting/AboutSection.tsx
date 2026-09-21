@@ -35,10 +35,11 @@ import { Switch } from '@/components/ui/switch'
 import { toast } from '@/components/ui/toast'
 import { PackageManagerUpdateDialog } from '@/components/update/PackageManagerUpdateDialog'
 import { ReleaseNotes } from '@/components/update/ReleaseNotes'
-import { UpdateConfirmationNotice } from '@/components/update/UpdateConfirmationNotice'
+import { UpdateConfirmationDialog } from '@/components/update/UpdateConfirmationDialog'
 import { useSetting } from '@/hooks/useSetting'
 import { useShortcutLayer } from '@/hooks/useShortcutLayer'
 import { useUpdate } from '@/hooks/useUpdate'
+import { useUpdateConfirmationGate } from '@/hooks/useUpdateConfirmationGate'
 import { createLogger } from '@/lib/logger'
 import { cn } from '@/lib/utils'
 import type { UpdateChannel } from '@/types/setting'
@@ -116,9 +117,13 @@ const AboutSection: React.FC = () => {
   const dialogDismissReasonRef = useRef<DismissSource | null>(null)
   const isInstallingUpdate =
     downloadProgress.phase === 'downloading' || downloadProgress.phase === 'installing'
-  const updateAuthorized =
-    updateInfo?.confirmation.status === 'not_required' ||
-    updateInfo?.confirmation.status === 'confirmed'
+  const {
+    confirmationDialogOpen,
+    confirmationInProgress,
+    requestUpdateAction,
+    setConfirmationDialogOpen,
+    confirmAndContinue,
+  } = useUpdateConfirmationGate(updateInfo, confirmUpdate)
   useShortcutLayer({
     layer: 'modal',
     scope: 'modal',
@@ -408,12 +413,6 @@ const AboutSection: React.FC = () => {
                     <ReleaseNotes content={updateInfo?.body ?? ''} fallback={t('update.noNotes')} />
                   </div>
                 </div>
-                {updateInfo && (
-                  <UpdateConfirmationNotice
-                    update={updateInfo}
-                    onConfirm={() => void confirmUpdate()}
-                  />
-                )}
                 {(downloadProgress.phase === 'downloading' ||
                   downloadProgress.phase === 'installing') && (
                   <div className="space-y-2 pt-2">
@@ -455,15 +454,23 @@ const AboutSection: React.FC = () => {
             <AlertDialogAction
               onClick={event => {
                 event.preventDefault()
-                handleInstallUpdate()
+                requestUpdateAction(handleInstallUpdate)
               }}
-              disabled={isInstallingUpdate || !updateAuthorized}
+              disabled={isInstallingUpdate}
             >
               {t('update.updateNow')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <UpdateConfirmationDialog
+        open={confirmationDialogOpen}
+        update={updateInfo}
+        confirming={confirmationInProgress}
+        onOpenChange={setConfirmationDialogOpen}
+        onConfirm={confirmAndContinue}
+      />
 
       {installKind && (
         <PackageManagerUpdateDialog

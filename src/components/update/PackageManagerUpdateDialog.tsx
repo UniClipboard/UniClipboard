@@ -28,7 +28,8 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { toast } from '@/components/ui/toast'
-import { UpdateConfirmationNotice } from '@/components/update/UpdateConfirmationNotice'
+import { UpdateConfirmationDialog } from '@/components/update/UpdateConfirmationDialog'
+import { useUpdateConfirmationGate } from '@/hooks/useUpdateConfirmationGate'
 import { createLogger } from '@/lib/logger'
 
 const log = createLogger('package-manager-update-dialog')
@@ -56,7 +57,13 @@ export const PackageManagerUpdateDialog: React.FC<PackageManagerUpdateDialogProp
 }) => {
   const { t } = useTranslation()
   const [copied, setCopied] = useState(false)
-  const [confirming, setConfirming] = useState(false)
+  const {
+    confirmationDialogOpen,
+    confirmationInProgress,
+    requestUpdateAction,
+    setConfirmationDialogOpen,
+    confirmAndContinue,
+  } = useUpdateConfirmationGate(updateInfo, onConfirm)
 
   if (installKind !== 'deb' && installKind !== 'rpm' && installKind !== 'windowsportable') {
     return null
@@ -105,76 +112,63 @@ export const PackageManagerUpdateDialog: React.FC<PackageManagerUpdateDialogProp
     }
   }
 
-  const handleConfirm = async () => {
-    setConfirming(true)
-    try {
-      await onConfirm()
-    } catch (err) {
-      log.error({ err }, 'Failed to confirm update notice')
-    } finally {
-      setConfirming(false)
-    }
-  }
-
   return (
-    <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>{title}</AlertDialogTitle>
-          <AlertDialogDescription asChild>
-            <div className="space-y-3">
-              {updateInfo && (
-                <div className="space-y-1 text-sm">
-                  <div className="flex items-center justify-between text-muted-foreground">
-                    <span>{t('update.currentVersion')}</span>
-                    <span className="text-foreground">{updateInfo.currentVersion}</span>
+    <>
+      <AlertDialog open={open} onOpenChange={onOpenChange}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{title}</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                {updateInfo && (
+                  <div className="space-y-1 text-sm">
+                    <div className="flex items-center justify-between text-muted-foreground">
+                      <span>{t('update.currentVersion')}</span>
+                      <span className="text-foreground">{updateInfo.currentVersion}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-muted-foreground">
+                      <span>{t('update.latestVersion')}</span>
+                      <span className="text-foreground">{updateInfo.version}</span>
+                    </div>
                   </div>
-                  <div className="flex items-center justify-between text-muted-foreground">
-                    <span>{t('update.latestVersion')}</span>
-                    <span className="text-foreground">{updateInfo.version}</span>
+                )}
+                <p className="text-sm text-muted-foreground">{t(hintKey)}</p>
+                {!isPortable && (
+                  <div className="relative rounded-md border border-border/60 bg-muted/40 px-3 py-2 pr-10 font-mono text-xs text-foreground break-all">
+                    {command}
+                    <button
+                      type="button"
+                      aria-label={t('update.packageManager.copyCommand')}
+                      onClick={() => requestUpdateAction(handleCopy)}
+                      className="absolute right-1.5 top-1.5 inline-flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                    >
+                      {copied ? <Check className="size-4" /> : <Copy className="size-4" />}
+                    </button>
                   </div>
-                </div>
-              )}
-              <p className="text-sm text-muted-foreground">{t(hintKey)}</p>
-              {updateInfo && (
-                <UpdateConfirmationNotice
-                  update={updateInfo}
-                  onConfirm={() => void handleConfirm()}
-                  confirming={confirming}
-                />
-              )}
-              {!isPortable && (
-                <div className="relative rounded-md border border-border/60 bg-muted/40 px-3 py-2 pr-10 font-mono text-xs text-foreground break-all">
-                  {command}
-                  <button
-                    type="button"
-                    aria-label={t('update.packageManager.copyCommand')}
-                    onClick={handleCopy}
-                    className="absolute right-1.5 top-1.5 inline-flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                  >
-                    {copied ? <Check className="size-4" /> : <Copy className="size-4" />}
-                  </button>
-                </div>
-              )}
-            </div>
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel
-            onClick={event => {
-              event.preventDefault()
-              void handleOpenReleasePage()
-            }}
-            disabled={
-              updateInfo?.confirmation.status === 'pending' ||
-              updateInfo?.confirmation.status === 'blocked'
-            }
-          >
-            {t('update.packageManager.openReleasePage')}
-          </AlertDialogCancel>
-          <AlertDialogAction>{t('update.packageManager.ok')}</AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+                )}
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              onClick={event => {
+                event.preventDefault()
+                requestUpdateAction(handleOpenReleasePage)
+              }}
+            >
+              {t('update.packageManager.openReleasePage')}
+            </AlertDialogCancel>
+            <AlertDialogAction>{t('update.packageManager.ok')}</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <UpdateConfirmationDialog
+        open={confirmationDialogOpen}
+        update={updateInfo}
+        confirming={confirmationInProgress}
+        onOpenChange={setConfirmationDialogOpen}
+        onConfirm={confirmAndContinue}
+      />
+    </>
   )
 }

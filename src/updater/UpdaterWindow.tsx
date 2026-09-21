@@ -25,8 +25,9 @@ import {
 import { Progress } from '@/components/ui/progress'
 import { Switch } from '@/components/ui/switch'
 import { ReleaseNotes } from '@/components/update/ReleaseNotes'
-import { UpdateConfirmationNotice } from '@/components/update/UpdateConfirmationNotice'
+import { UpdateConfirmationDialog } from '@/components/update/UpdateConfirmationDialog'
 import { useThemeSync } from '@/hooks/useThemeSync'
+import { useUpdateConfirmationGate } from '@/hooks/useUpdateConfirmationGate'
 import { createLogger } from '@/lib/logger'
 import { cn } from '@/lib/utils'
 import appIcon from '@/updater/app-icon.png'
@@ -103,7 +104,6 @@ function useUpdaterState(devPreview: boolean) {
   // `handleInstall`). Kept separate from `phase` so the button can show a
   // transient loading state without entering the download state machine.
   const [preparing, setPreparing] = useState(false)
-  const [confirming, setConfirming] = useState(false)
   // Windows portable ("green") zip cannot self-install: the NSIS payload would
   // install into Program Files instead of refreshing the portable folder. The
   // scheduler already skips auto-download for it, but this window previously
@@ -385,15 +385,8 @@ function useUpdaterState(devPreview: boolean) {
       )
       return
     }
-    setConfirming(true)
-    try {
-      const updated = await confirmUpdate(state.info.version)
-      setState(prev => ({ ...prev, info: updated }))
-    } catch (err) {
-      log.error({ err }, '确认重大更新失败')
-    } finally {
-      setConfirming(false)
-    }
+    const updated = await confirmUpdate(state.info.version)
+    setState(prev => ({ ...prev, info: updated }))
   }, [devPreview, state.info])
 
   const handleCancel = useCallback(async () => {
@@ -412,7 +405,6 @@ function useUpdaterState(devPreview: boolean) {
     state,
     cancelling,
     preparing,
-    confirming,
     isPortable,
     closeWindow,
     handleSkip,
@@ -432,7 +424,6 @@ const ActionButtons: React.FC<{
   preparing: boolean
   /** Portable build: primary action opens the release page instead of installing. */
   isPortable: boolean
-  authorized: boolean
   onCancel: () => void
   onSkip: () => void
   onClose: () => void
@@ -444,7 +435,6 @@ const ActionButtons: React.FC<{
   cancelling,
   preparing,
   isPortable,
-  authorized,
   onCancel,
   onSkip,
   onClose,
@@ -537,7 +527,7 @@ const ActionButtons: React.FC<{
         type="button"
         className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
         onClick={isReady ? onInstall : onDownload}
-        disabled={!hasInfo || preparing || !authorized}
+        disabled={!hasInfo || preparing}
       >
         {preparing ? (
           <>
@@ -565,7 +555,6 @@ const UpdaterWindow: React.FC = () => {
     state,
     cancelling,
     preparing,
-    confirming,
     isPortable,
     closeWindow,
     handleSkip,
@@ -580,8 +569,13 @@ const UpdaterWindow: React.FC = () => {
   const percent = total !== null && total > 0 ? Math.round((downloaded / total) * 100) : null
   const busy = phase === 'downloading' || phase === 'installing'
   const upToDate = phase === 'idle' && !info
-  const authorized =
-    info?.confirmation.status === 'not_required' || info?.confirmation.status === 'confirmed'
+  const {
+    confirmationDialogOpen,
+    confirmationInProgress,
+    requestUpdateAction,
+    setConfirmationDialogOpen,
+    confirmAndContinue,
+  } = useUpdateConfirmationGate(info, handleConfirm)
 
   const headline = upToDate ? t('updater.window.upToDateTitle') : t('updater.window.title')
 
@@ -635,16 +629,6 @@ const UpdaterWindow: React.FC = () => {
         </div>
       )}
 
-      {!busy && !upToDate && info && (
-        <div className="mx-6 mt-3">
-          <UpdateConfirmationNotice
-            update={info}
-            onConfirm={() => void handleConfirm()}
-            confirming={confirming}
-          />
-        </div>
-      )}
-
       {/* Portable build: explain the manual download+replace flow instead of
           the auto-update toggle — in-place self-update does not apply, and a
           silent install failure here previously read as "updates are broken". */}
@@ -670,14 +654,21 @@ const UpdaterWindow: React.FC = () => {
           cancelling={cancelling}
           preparing={preparing}
           isPortable={isPortable}
-          authorized={authorized}
           onCancel={() => void handleCancel()}
           onSkip={handleSkip}
           onClose={closeWindow}
-          onDownload={() => void handleDownload()}
-          onInstall={() => void handleInstall()}
+          onDownload={() => requestUpdateAction(handleDownload)}
+          onInstall={() => requestUpdateAction(handleInstall)}
         />
       </div>
+      <UpdateConfirmationDialog
+        open={confirmationDialogOpen}
+        update={info}
+        confirming={confirmationInProgress}
+        onOpenChange={setConfirmationDialogOpen}
+        onConfirm={confirmAndContinue}
+        presentation="window"
+      />
     </div>
   )
 }

@@ -101,7 +101,7 @@ describe('UpdaterWindow', () => {
     expect(installUpdate).not.toHaveBeenCalled()
   })
 
-  it('required confirmation needs an acknowledgement and a separate download click', async () => {
+  it('opens a full-window confirmation before continuing the requested download', async () => {
     const pending = {
       ...META,
       confirmation: { status: 'pending', description: '## Important\n\nReview this first.' },
@@ -119,14 +119,17 @@ describe('UpdaterWindow', () => {
     render(<UpdaterWindow />)
 
     const download = await screen.findByText('updater.window.downloadUpdate')
-    expect(download).toBeDisabled()
+    expect(download).toBeEnabled()
+    expect(screen.queryByRole('heading', { name: 'Important' })).not.toBeInTheDocument()
+
+    await user.click(download)
+    const confirmationDialog = screen.getByRole('alertdialog')
+    expect(confirmationDialog).toHaveClass('h-screen', 'w-screen')
     expect(screen.getByRole('heading', { name: 'Important' })).toBeInTheDocument()
+    expect(downloadUpdate).not.toHaveBeenCalled()
 
     await user.click(screen.getByText('update.confirmation.acknowledge'))
     await waitFor(() => expect(confirmUpdate).toHaveBeenCalledWith(META.version))
-    expect(downloadUpdate).not.toHaveBeenCalled()
-
-    await user.click(screen.getByText('updater.window.downloadUpdate'))
     await waitFor(() => expect(downloadUpdate).toHaveBeenCalledTimes(1))
   })
 
@@ -135,10 +138,12 @@ describe('UpdaterWindow', () => {
     const user = userEvent.setup()
     render(<UpdaterWindow />)
 
-    expect(await screen.findByText('update.confirmation.unavailable')).toBeInTheDocument()
-    const download = screen.getByText('updater.window.downloadUpdate')
-    expect(download).toBeDisabled()
+    const download = await screen.findByText('updater.window.downloadUpdate')
+    expect(download).toBeEnabled()
     await user.click(download)
+
+    expect(screen.getByText('update.confirmation.unavailable')).toBeInTheDocument()
+    expect(screen.queryByText('update.confirmation.acknowledge')).not.toBeInTheDocument()
     expect(downloadUpdate).not.toHaveBeenCalled()
   })
 

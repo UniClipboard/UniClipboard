@@ -52,6 +52,7 @@
     "confirmation": {
       "title": "Informações importantes da atualização",
       "acknowledge": "Estou ciente",
+      "cancel": "Cancelar",
       "confirming": "Confirmando...",
       "unavailable": "Esta atualização exige confirmação, mas a explicação não está disponível. A atualização foi bloqueada por segurança. Verifique novamente mais tarde."
     },

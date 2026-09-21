@@ -35,9 +35,10 @@ import { toast } from '@/components/ui/toast'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { PackageManagerUpdateDialog } from '@/components/update/PackageManagerUpdateDialog'
 import { ReleaseNotes } from '@/components/update/ReleaseNotes'
-import { UpdateConfirmationNotice } from '@/components/update/UpdateConfirmationNotice'
+import { UpdateConfirmationDialog } from '@/components/update/UpdateConfirmationDialog'
 import { useSetting } from '@/hooks/useSetting'
 import { useUpdate } from '@/hooks/useUpdate'
+import { useUpdateConfirmationGate } from '@/hooks/useUpdateConfirmationGate'
 import { createLogger } from '@/lib/logger'
 import { cn } from '@/lib/utils'
 import { sentryEnabled } from '@/observability/sentry'
@@ -198,9 +199,13 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
   const isReady = phase === 'ready'
   const isAvailable = phase === 'available'
   const indicatorVisible = isAvailable || isDownloading || isReady || isInstalling
-  const updateAuthorized =
-    state.info?.confirmation.status === 'not_required' ||
-    state.info?.confirmation.status === 'confirmed'
+  const {
+    confirmationDialogOpen,
+    confirmationInProgress,
+    requestUpdateAction,
+    setConfirmationDialogOpen,
+    confirmAndContinue,
+  } = useUpdateConfirmationGate(state.info, confirmUpdate)
 
   const downloadPercent =
     state.total !== null && state.total > 0
@@ -502,12 +507,6 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
                     <ReleaseNotes content={state.info?.body ?? ''} fallback={t('update.noNotes')} />
                   </div>
                 </div>
-                {state.info && (
-                  <UpdateConfirmationNotice
-                    update={state.info}
-                    onConfirm={() => void confirmUpdate()}
-                  />
-                )}
                 {isReady && (
                   <div className="text-xs text-emerald-600 dark:text-emerald-400 pt-1">
                     {t('update.readyHint')}
@@ -556,9 +555,9 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
                   <AlertDialogAction
                     onClick={event => {
                       event.preventDefault()
-                      handleStartBackgroundDownload()
+                      requestUpdateAction(handleStartBackgroundDownload)
                     }}
-                    disabled={isInstalling || !updateAuthorized}
+                    disabled={isInstalling}
                   >
                     {t('update.downloadInBackground')}
                   </AlertDialogAction>
@@ -566,9 +565,9 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
                 <AlertDialogAction
                   onClick={event => {
                     event.preventDefault()
-                    void handlePrimaryAction()
+                    requestUpdateAction(handlePrimaryAction)
                   }}
-                  disabled={isInstalling || phase === 'idle' || !updateAuthorized}
+                  disabled={isInstalling || phase === 'idle'}
                 >
                   {isReady ? t('update.installNow') : t('update.updateNow')}
                 </AlertDialogAction>
@@ -577,6 +576,13 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <UpdateConfirmationDialog
+        open={confirmationDialogOpen}
+        update={state.info}
+        confirming={confirmationInProgress}
+        onOpenChange={setConfirmationDialogOpen}
+        onConfirm={confirmAndContinue}
+      />
       {installKind && (
         <PackageManagerUpdateDialog
           open={packageManagerDialogOpen}

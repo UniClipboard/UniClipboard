@@ -220,6 +220,24 @@ pub struct PendingInboundMemberDto {
     pub display_name: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum InboundPairingStatusDto {
+    AwaitingConfirmation,
+    ConfirmationMissed,
+    NeedsAttention,
+    Failed,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct InboundPairingDto {
+    pub pairing_id: String,
+    pub device_id: Option<String>,
+    pub display_name: Option<String>,
+    pub status: InboundPairingStatusDto,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct DeviceTrustSnapshotDto {
@@ -229,6 +247,8 @@ pub struct DeviceTrustSnapshotDto {
     pub current_change: Option<DeviceTrustChangeDto>,
     pub current_join: Option<JoinSpaceResponse>,
     pub pending_inbound_member: Option<PendingInboundMemberDto>,
+    #[serde(default)]
+    pub inbound_pairings: Vec<InboundPairingDto>,
     #[serde(default)]
     pub maintenance_health: MembershipMaintenanceHealthDto,
     pub devices: Vec<DeviceTrustRelationshipDto>,
@@ -359,6 +379,7 @@ mod device_group_choice_dto_tests {
             current_change: None,
             current_join: None,
             pending_inbound_member: None,
+            inbound_pairings: Vec::new(),
             maintenance_health: MembershipMaintenanceHealthDto::default(),
             devices: Vec::new(),
             recovery: "not_available_in_this_version".to_string(),
@@ -383,6 +404,27 @@ mod device_group_choice_dto_tests {
             legacy.maintenance_health.phase,
             MembershipMaintenanceHealthPhaseDto::Healthy
         );
+    }
+
+    #[test]
+    fn inbound_pairing_status_uses_stable_wire_names() {
+        for (status, expected) in [
+            (
+                InboundPairingStatusDto::AwaitingConfirmation,
+                "awaiting_confirmation",
+            ),
+            (
+                InboundPairingStatusDto::ConfirmationMissed,
+                "confirmation_missed",
+            ),
+            (InboundPairingStatusDto::NeedsAttention, "needs_attention"),
+            (InboundPairingStatusDto::Failed, "failed"),
+        ] {
+            assert_eq!(
+                serde_json::to_value(status).expect("serialize inbound pairing status"),
+                json!(expected)
+            );
+        }
     }
 
     #[test]

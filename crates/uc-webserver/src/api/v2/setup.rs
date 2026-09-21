@@ -13,9 +13,9 @@ use axum::{Json, Router};
 use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
 use uc_daemon_contract::api::dto::v2::setup::{
     CancelJoinSpaceRequest, CurrentInvitation, InitializeSpaceRequest, InitializeSpaceResponse,
-    IssueInvitationResponse, JoinSpaceRejectionReason, JoinSpaceResponse,
-    JoinSpaceTerminationReason, JoinedSpaceResponse, RedeemRequest, SetupStateResponse,
-    SwitchSpaceRequest,
+    IssueInvitationResponse, JoinSpaceAttentionReason, JoinSpaceAttentionRecovery,
+    JoinSpaceRejectionReason, JoinSpaceResponse, JoinSpaceTerminationReason, JoinedSpaceResponse,
+    RedeemRequest, SetupStateResponse, SwitchSpaceRequest,
 };
 use uc_daemon_contract::constants::http_route_v2;
 use uc_engine::error_codes::{
@@ -672,6 +672,10 @@ fn map_cancel_join_engine_err(err: EngineError) -> ApiError {
 }
 
 pub(crate) fn join_space_response(status: JoinSpaceStatusSummary) -> JoinSpaceResponse {
+    if let Some(response) = compat_needs_attention_response(&status) {
+        return response;
+    }
+    #[allow(unreachable_patterns)]
     match status {
         JoinSpaceStatusSummary::Active {
             join_id,
@@ -720,31 +724,57 @@ pub(crate) fn join_space_response(status: JoinSpaceStatusSummary) -> JoinSpaceRe
         },
         JoinSpaceStatusSummary::Rejected { join_id, reason } => JoinSpaceResponse::Rejected {
             join_id,
-            reason: match reason {
-                JoinSpaceRejectionReasonSummary::InvitationUnavailable => {
-                    JoinSpaceRejectionReason::InvitationUnavailable
+            reason: match serde_json::to_value(reason)
+                .ok()
+                .and_then(|value| value.as_str().map(std::string::ToString::to_string))
+                .as_deref()
+            {
+                Some("completion_invalid") => JoinSpaceRejectionReason::CompletionInvalid,
+                Some("membership_history_invalid") => {
+                    JoinSpaceRejectionReason::MembershipHistoryInvalid
                 }
-                JoinSpaceRejectionReasonSummary::AuthenticationRejected => {
-                    JoinSpaceRejectionReason::AuthenticationRejected
+                Some("security_material_invalid") => {
+                    JoinSpaceRejectionReason::SecurityMaterialInvalid
                 }
-                JoinSpaceRejectionReasonSummary::IdentityConflict => {
-                    JoinSpaceRejectionReason::IdentityConflict
+                Some("relationship_conflict") => JoinSpaceRejectionReason::RelationshipConflict,
+                Some("activation_state_invalid") => {
+                    JoinSpaceRejectionReason::ActivationStateInvalid
                 }
-                JoinSpaceRejectionReasonSummary::BaseHistoryChanged => {
-                    JoinSpaceRejectionReason::BaseHistoryChanged
-                }
-                JoinSpaceRejectionReasonSummary::JoinerHistoryAhead => {
-                    JoinSpaceRejectionReason::JoinerHistoryAhead
-                }
-                JoinSpaceRejectionReasonSummary::HistoryConflict => {
-                    JoinSpaceRejectionReason::HistoryConflict
-                }
-                JoinSpaceRejectionReasonSummary::PeerUpgradeRequired => {
-                    JoinSpaceRejectionReason::PeerUpgradeRequired
-                }
-                JoinSpaceRejectionReasonSummary::Cancelled => JoinSpaceRejectionReason::Cancelled,
-                JoinSpaceRejectionReasonSummary::RemovedBeforeActivation => {
-                    JoinSpaceRejectionReason::RemovedBeforeActivation
+                _ =>
+                {
+                    #[allow(unreachable_patterns)]
+                    match reason {
+                        JoinSpaceRejectionReasonSummary::InvitationUnavailable => {
+                            JoinSpaceRejectionReason::InvitationUnavailable
+                        }
+                        JoinSpaceRejectionReasonSummary::AuthenticationRejected => {
+                            JoinSpaceRejectionReason::AuthenticationRejected
+                        }
+                        JoinSpaceRejectionReasonSummary::IdentityConflict => {
+                            JoinSpaceRejectionReason::IdentityConflict
+                        }
+                        JoinSpaceRejectionReasonSummary::BaseHistoryChanged => {
+                            JoinSpaceRejectionReason::BaseHistoryChanged
+                        }
+                        JoinSpaceRejectionReasonSummary::JoinerHistoryAhead => {
+                            JoinSpaceRejectionReason::JoinerHistoryAhead
+                        }
+                        JoinSpaceRejectionReasonSummary::HistoryConflict => {
+                            JoinSpaceRejectionReason::HistoryConflict
+                        }
+                        JoinSpaceRejectionReasonSummary::PeerUpgradeRequired => {
+                            JoinSpaceRejectionReason::PeerUpgradeRequired
+                        }
+                        JoinSpaceRejectionReasonSummary::Cancelled => {
+                            JoinSpaceRejectionReason::Cancelled
+                        }
+                        JoinSpaceRejectionReasonSummary::RemovedBeforeActivation => {
+                            JoinSpaceRejectionReason::RemovedBeforeActivation
+                        }
+                        _ => {
+                            unreachable!("new rejection reasons are mapped from their wire value")
+                        }
+                    }
                 }
             },
         },
@@ -760,7 +790,23 @@ pub(crate) fn join_space_response(status: JoinSpaceStatusSummary) -> JoinSpaceRe
                 }
             },
         },
+        _ => unreachable!("new join states are projected before matching legacy states"),
     }
+}
+
+fn compat_needs_attention_response(status: &JoinSpaceStatusSummary) -> Option<JoinSpaceResponse> {
+    let serialized = serde_json::to_value(status).ok()?;
+    if serialized.get("status")?.as_str()? != "needs_attention" {
+        return None;
+    }
+    Some(JoinSpaceResponse::NeedsAttention {
+        join_id: serialized.get("join_id")?.as_str()?.to_owned(),
+        reason: JoinSpaceAttentionReason::OutcomeCannotBeProven,
+        recovery: JoinSpaceAttentionRecovery::PreserveDataAndContactSupport,
+        next_retry_at_ms: serialized
+            .get("next_retry_at_ms")
+            .and_then(serde_json::Value::as_i64),
+    })
 }
 
 #[cfg(test)]

@@ -1525,6 +1525,12 @@
             },
             "type": "array"
           },
+          "inboundPairings": {
+            "items": {
+              "$ref": "#/components/schemas/InboundPairingDto"
+            },
+            "type": "array"
+          },
           "localDeviceId": {
             "type": "string"
           },
@@ -3103,6 +3109,38 @@
         ],
         "type": "object"
       },
+      "InboundPairingDto": {
+        "properties": {
+          "deviceId": {
+            "nullable": true,
+            "type": "string"
+          },
+          "displayName": {
+            "nullable": true,
+            "type": "string"
+          },
+          "pairingId": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/InboundPairingStatusDto"
+          }
+        },
+        "required": [
+          "pairingId",
+          "status"
+        ],
+        "type": "object"
+      },
+      "InboundPairingStatusDto": {
+        "enum": [
+          "awaiting_confirmation",
+          "confirmation_missed",
+          "needs_attention",
+          "failed"
+        ],
+        "type": "string"
+      },
       "InitializeSpaceRequest": {
         "description": "Request body for `POST /v2/setup/initialize`. Maps to\n`SpaceSetupFacade::initialize_space(InitializeSpaceCommand)`.",
         "properties": {
@@ -3160,6 +3198,18 @@
         ],
         "type": "object"
       },
+      "JoinSpaceAttentionReason": {
+        "enum": [
+          "outcome_cannot_be_proven"
+        ],
+        "type": "string"
+      },
+      "JoinSpaceAttentionRecovery": {
+        "enum": [
+          "preserve_data_and_contact_support"
+        ],
+        "type": "string"
+      },
       "JoinSpaceRejectionReason": {
         "enum": [
           "invitation_unavailable",
@@ -3168,6 +3218,11 @@
           "base_history_changed",
           "joiner_history_ahead",
           "history_conflict",
+          "completion_invalid",
+          "membership_history_invalid",
+          "security_material_invalid",
+          "relationship_conflict",
+          "activation_state_invalid",
           "peer_upgrade_required",
           "cancelled",
           "removed_before_activation"
@@ -3272,6 +3327,37 @@
               "sponsorDeviceId",
               "sponsorIdentityFingerprint",
               "peerUpgradeRequired",
+              "status"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "joinId": {
+                "type": "string"
+              },
+              "nextRetryAtMs": {
+                "format": "int64",
+                "nullable": true,
+                "type": "integer"
+              },
+              "reason": {
+                "$ref": "#/components/schemas/JoinSpaceAttentionReason"
+              },
+              "recovery": {
+                "$ref": "#/components/schemas/JoinSpaceAttentionRecovery"
+              },
+              "status": {
+                "enum": [
+                  "needs_attention"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "joinId",
+              "reason",
+              "recovery",
               "status"
             ],
             "type": "object"

@@ -48,9 +48,10 @@ use crate::api::dto::member::{
     DeviceGroupDecisionDto, DeviceGroupRelationshipDto, DeviceGroupRemovalDecisionDto,
     DeviceMembershipDto, DeviceReachabilityDto, DeviceSyncRelationshipDto, DeviceTrustActionDto,
     DeviceTrustChangeDto, DeviceTrustChoiceDto, DeviceTrustImpactDto, DeviceTrustRelationshipDto,
-    DeviceTrustSnapshotDto, DeviceTrustUnavailableReasonDto, MemberProtectionDto,
-    MemberProtectionStatusDto, MemberSyncPreferencesDto, MemberSyncPreferencesPatchDto,
-    MemberSyncResultDto, MembershipMaintenanceHealthDto, MembershipMaintenanceHealthPhaseDto,
+    DeviceTrustSnapshotDto, DeviceTrustUnavailableReasonDto, InboundPairingDto,
+    InboundPairingStatusDto, MemberProtectionDto, MemberProtectionStatusDto,
+    MemberSyncPreferencesDto, MemberSyncPreferencesPatchDto, MemberSyncResultDto,
+    MembershipMaintenanceHealthDto, MembershipMaintenanceHealthPhaseDto,
     MembershipMaintenanceProblemDto, MembershipMaintenanceRecoveryDto, PairingConfirmationDto,
     PendingInboundMemberDto, SpaceProtectionDto, SpaceProtectionModeDto,
 };
@@ -133,9 +134,9 @@ use uc_daemon_contract::api::dto::storage::{
 use uc_daemon_contract::api::dto::upgrade::{AckUpgradePayload, UpgradeStatusDto};
 use uc_daemon_contract::api::dto::v2::setup::{
     CancelJoinSpaceRequest, CurrentInvitation, InitializeSpaceRequest, InitializeSpaceResponse,
-    IssueInvitationResponse, JoinSpaceRejectionReason, JoinSpaceResponse,
-    JoinSpaceTerminationReason, JoinedSpaceResponse, RedeemRequest, SetupStateResponse,
-    SwitchSpaceRequest,
+    IssueInvitationResponse, JoinSpaceAttentionReason, JoinSpaceAttentionRecovery,
+    JoinSpaceRejectionReason, JoinSpaceResponse, JoinSpaceTerminationReason, JoinedSpaceResponse,
+    RedeemRequest, SetupStateResponse, SwitchSpaceRequest,
 };
 use uc_daemon_contract::api::dto::ws::{WsErrorResponse, WsSubscribeRequest};
 use uc_daemon_contract::api::types::DaemonWsEvent;
@@ -413,6 +414,8 @@ impl Modify for ContractMeta {
             MembershipMaintenanceProblemDto,
             MembershipMaintenanceRecoveryDto,
             PendingInboundMemberDto,
+            InboundPairingDto,
+            InboundPairingStatusDto,
             MemberProtectionDto,
             MemberProtectionStatusDto,
             ContentTypesDto,
@@ -596,6 +599,8 @@ impl Modify for ContractMeta {
             RedeemRequest,
             JoinSpaceResponse,
             JoinedSpaceResponse,
+            JoinSpaceAttentionReason,
+            JoinSpaceAttentionRecovery,
             JoinSpaceRejectionReason,
             JoinSpaceTerminationReason,
             SetupStateResponse,

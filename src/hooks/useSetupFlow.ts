@@ -177,7 +177,11 @@ export function useSetupFlow(): UseSetupFlowReturn {
   })
 
   const resolveJoinAdmission = useCallback(async (result: JoinAdmissionResolution) => {
-    if (result.status === 'rejected' || result.status === 'terminated') {
+    if (
+      result.status === 'needs_attention' ||
+      result.status === 'rejected' ||
+      result.status === 'terminated'
+    ) {
       setPageScreen({ kind: 'join_ended', reason: result.reason })
       return
     }
@@ -353,7 +357,11 @@ export function useSetupFlow(): UseSetupFlowReturn {
           setPageScreen({ kind: 'join_pending', joinId: redeem.joinId, status: redeem.status })
           return { ok: true, redeem: null } as const
         }
-        if (redeem.status === 'rejected' || redeem.status === 'terminated') {
+        if (
+          redeem.status === 'needs_attention' ||
+          redeem.status === 'rejected' ||
+          redeem.status === 'terminated'
+        ) {
           setPageScreen({ kind: 'join_ended', reason: redeem.reason })
           return {
             ok: false,

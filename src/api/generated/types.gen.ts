@@ -794,6 +794,7 @@ export type DeviceTrustSnapshotDto = {
     currentChange?: DeviceTrustChangeDto | null;
     currentJoin?: JoinSpaceResponse | null;
     devices: Array<DeviceTrustRelationshipDto>;
+    inboundPairings?: Array<InboundPairingDto>;
     localDeviceId: string;
     localMembership: DeviceMembershipDto;
     maintenanceHealth?: MembershipMaintenanceHealthDto;
@@ -1602,6 +1603,15 @@ export type ImportConfigResponse = {
     unlockRequiredAfterApply: boolean;
 };
 
+export type InboundPairingDto = {
+    deviceId?: string | null;
+    displayName?: string | null;
+    pairingId: string;
+    status: InboundPairingStatusDto;
+};
+
+export type InboundPairingStatusDto = 'awaiting_confirmation' | 'confirmation_missed' | 'needs_attention' | 'failed';
+
 /**
  * Request body for `POST /v2/setup/initialize`. Maps to
  * `SpaceSetupFacade::initialize_space(InitializeSpaceCommand)`.
@@ -1632,7 +1642,11 @@ export type IssueInvitationResponse = {
     expiresAtMs: number;
 };
 
-export type JoinSpaceRejectionReason = 'invitation_unavailable' | 'authentication_rejected' | 'identity_conflict' | 'base_history_changed' | 'joiner_history_ahead' | 'history_conflict' | 'peer_upgrade_required' | 'cancelled' | 'removed_before_activation';
+export type JoinSpaceAttentionReason = 'outcome_cannot_be_proven';
+
+export type JoinSpaceAttentionRecovery = 'preserve_data_and_contact_support';
+
+export type JoinSpaceRejectionReason = 'invitation_unavailable' | 'authentication_rejected' | 'identity_conflict' | 'base_history_changed' | 'joiner_history_ahead' | 'history_conflict' | 'completion_invalid' | 'membership_history_invalid' | 'security_material_invalid' | 'relationship_conflict' | 'activation_state_invalid' | 'peer_upgrade_required' | 'cancelled' | 'removed_before_activation';
 
 /**
  * Stable outcome of a durable space admission.
@@ -1657,6 +1671,12 @@ export type JoinSpaceResponse = {
     sponsorIdentityFingerprint: string;
     status: 'processing';
     targetSpaceId: string;
+} | {
+    joinId: string;
+    nextRetryAtMs?: number | null;
+    reason: JoinSpaceAttentionReason;
+    recovery: JoinSpaceAttentionRecovery;
+    status: 'needs_attention';
 } | {
     joinId: string;
     reason: JoinSpaceRejectionReason;

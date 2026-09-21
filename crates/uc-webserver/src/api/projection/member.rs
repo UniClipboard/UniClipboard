@@ -27,11 +27,11 @@ use crate::api::dto::member::{
     DeviceGroupChoiceResultDto, DeviceGroupChoicesDto, DeviceGroupRelationshipDto,
     DeviceMembershipDto, DeviceReachabilityDto, DeviceSyncRelationshipDto, DeviceTrustActionDto,
     DeviceTrustChangeDto, DeviceTrustChoiceDto, DeviceTrustImpactDto, DeviceTrustRelationshipDto,
-    DeviceTrustSnapshotDto, DeviceTrustUnavailableReasonDto, MemberProtectionDto,
-    MemberProtectionStatusDto, MemberSyncPreferencesDto, MembershipMaintenanceHealthDto,
-    MembershipMaintenanceHealthPhaseDto, MembershipMaintenanceProblemDto,
-    MembershipMaintenanceRecoveryDto, PairingConfirmationDto, PendingInboundMemberDto,
-    SpaceProtectionDto, SpaceProtectionModeDto,
+    DeviceTrustSnapshotDto, DeviceTrustUnavailableReasonDto, InboundPairingDto,
+    InboundPairingStatusDto, MemberProtectionDto, MemberProtectionStatusDto,
+    MemberSyncPreferencesDto, MembershipMaintenanceHealthDto, MembershipMaintenanceHealthPhaseDto,
+    MembershipMaintenanceProblemDto, MembershipMaintenanceRecoveryDto, PairingConfirmationDto,
+    PendingInboundMemberDto, SpaceProtectionDto, SpaceProtectionModeDto,
 };
 use crate::api::dto::settings::{ContentTypesDto, ContentTypesPatchDto};
 
@@ -127,6 +127,14 @@ impl IntoApiDto<SpaceProtectionDto> for SpaceProtectionSummary {
 
 impl IntoApiDto<DeviceTrustSnapshotDto> for DeviceTrustSnapshotSummary {
     fn into_api_dto(self) -> DeviceTrustSnapshotDto {
+        let inbound_pairings = serde_json::to_value(&self)
+            .ok()
+            .and_then(|value| value.get("inbound_pairings").cloned())
+            .and_then(|value| serde_json::from_value::<Vec<InboundPairingCompat>>(value).ok())
+            .unwrap_or_default()
+            .into_iter()
+            .map(InboundPairingCompat::into_dto)
+            .collect();
         DeviceTrustSnapshotDto {
             revision: self.revision,
             local_device_id: self.local_device_id,
@@ -141,6 +149,7 @@ impl IntoApiDto<DeviceTrustSnapshotDto> for DeviceTrustSnapshotSummary {
                     display_name: member.display_name,
                 }
             }),
+            inbound_pairings,
             maintenance_health: MembershipMaintenanceHealthDto {
                 phase: match self.maintenance_health.phase {
                     MembershipMaintenanceHealthPhaseSummary::Healthy => {
@@ -185,6 +194,45 @@ impl IntoApiDto<DeviceTrustSnapshotDto> for DeviceTrustSnapshotSummary {
                 .collect(),
             blocked_reason: self.blocked_reason.map(device_trust_unavailable_reason),
             updated_at_ms: self.updated_at_ms,
+        }
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct InboundPairingCompat {
+    pairing_id: String,
+    device_id: Option<String>,
+    display_name: Option<String>,
+    status: InboundPairingStatusCompat,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum InboundPairingStatusCompat {
+    AwaitingConfirmation,
+    ConfirmationMissed,
+    NeedsAttention,
+    Failed,
+}
+
+impl InboundPairingCompat {
+    fn into_dto(self) -> InboundPairingDto {
+        InboundPairingDto {
+            pairing_id: self.pairing_id,
+            device_id: self.device_id,
+            display_name: self.display_name,
+            status: match self.status {
+                InboundPairingStatusCompat::AwaitingConfirmation => {
+                    InboundPairingStatusDto::AwaitingConfirmation
+                }
+                InboundPairingStatusCompat::ConfirmationMissed => {
+                    InboundPairingStatusDto::ConfirmationMissed
+                }
+                InboundPairingStatusCompat::NeedsAttention => {
+                    InboundPairingStatusDto::NeedsAttention
+                }
+                InboundPairingStatusCompat::Failed => InboundPairingStatusDto::Failed,
+            },
         }
     }
 }
@@ -476,6 +524,7 @@ mod tests {
             }),
             current_join: None,
             pending_inbound_member: None,
+            inbound_pairings: Vec::new(),
             maintenance_health: uc_engine::MembershipMaintenanceHealthSummary {
                 phase: MembershipMaintenanceHealthPhaseSummary::NeedsAttention,
                 reason: Some(MembershipMaintenanceProblemSummary::MembershipHistoryRejected),

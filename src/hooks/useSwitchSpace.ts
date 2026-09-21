@@ -97,7 +97,11 @@ export function useSwitchSpace({ onOpenChange }: { onOpenChange: (open: boolean)
         resolveJoinAdmission(res)
       } else if (res.status === 'pending' || res.status === 'processing') {
         update({ pendingJoinId: res.joinId, step: res.status })
-      } else if (res.status === 'rejected' || res.status === 'terminated') {
+      } else if (
+        res.status === 'needs_attention' ||
+        res.status === 'rejected' ||
+        res.status === 'terminated'
+      ) {
         update({ errorKind: 'internal', errorRaw: res.reason, step: 'failed' })
       }
     } catch (err) {

@@ -74,12 +74,20 @@ export type JoinSpaceRejectionReason =
   | 'base_history_changed'
   | 'joiner_history_ahead'
   | 'history_conflict'
+  | 'completion_invalid'
+  | 'membership_history_invalid'
+  | 'security_material_invalid'
+  | 'relationship_conflict'
+  | 'activation_state_invalid'
   | 'peer_upgrade_required'
   | 'cancelled'
   | 'removed_before_activation'
 
 export type JoinSpaceTerminationReason = 'cancelled' | 'expired' | 'superseded'
-export type JoinSpaceEndReason = JoinSpaceRejectionReason | JoinSpaceTerminationReason
+export type JoinSpaceEndReason =
+  | JoinSpaceRejectionReason
+  | JoinSpaceTerminationReason
+  | 'outcome_cannot_be_proven'
 
 export type JoinSpaceResponse =
   | {
@@ -104,6 +112,13 @@ export type JoinSpaceResponse =
       sponsorDeviceId: string
       sponsorIdentityFingerprint: string
       peerUpgradeRequired: boolean
+    }
+  | {
+      status: 'needs_attention'
+      joinId: string
+      reason: 'outcome_cannot_be_proven'
+      recovery: 'preserve_data_and_contact_support'
+      nextRetryAtMs: number | null
     }
   | { status: 'rejected'; joinId: string; reason: JoinSpaceRejectionReason }
   | { status: 'terminated'; joinId: string; reason: JoinSpaceTerminationReason }

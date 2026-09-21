@@ -98,7 +98,9 @@ pub async fn run(args: SendArgs, json: bool, verbose: bool) -> i32 {
     };
     match input {
         Some(SendInput::File(path)) => {
-            run_send_file_via_daemon(&*service, path, peers_str, json).await
+            run_send_file_via_daemon(&*service, path, peers_str, json, true)
+                .await
+                .exit_code
         }
         Some(SendInput::Files(paths)) => {
             run_send_files_via_daemon(&*service, paths, peers_str, json).await
@@ -402,14 +404,64 @@ async fn run_send_files_via_daemon(
     peers: Option<Vec<String>>,
     json: bool,
 ) -> i32 {
-    let mut exit_code = exit_codes::EXIT_SUCCESS;
+    let mut batch = FileSendBatchResult::default();
     for path in paths {
-        let result = run_send_file_via_daemon(service, path, peers.clone(), json).await;
-        if result != exit_codes::EXIT_SUCCESS {
-            exit_code = result;
+        let result = run_send_file_via_daemon(service, path, peers.clone(), json, false).await;
+        batch.push(result);
+    }
+    if json {
+        match serialize_file_outcomes(&batch.outcomes) {
+            Ok(value) => println!("{value}"),
+            Err(error) => {
+                ui::error(&format!("Failed to serialize outcomes: {error}"));
+                return exit_codes::EXIT_ERROR;
+            }
         }
     }
-    exit_code
+    batch.exit_code
+}
+
+fn serialize_file_outcomes(outcomes: &[SendFileOutcomeDto]) -> serde_json::Result<String> {
+    serde_json::to_string_pretty(outcomes)
+}
+
+struct FileSendRunResult {
+    exit_code: i32,
+    outcome: Option<SendFileOutcomeDto>,
+}
+
+impl FileSendRunResult {
+    fn error() -> Self {
+        Self {
+            exit_code: exit_codes::EXIT_ERROR,
+            outcome: None,
+        }
+    }
+}
+
+struct FileSendBatchResult {
+    exit_code: i32,
+    outcomes: Vec<SendFileOutcomeDto>,
+}
+
+impl Default for FileSendBatchResult {
+    fn default() -> Self {
+        Self {
+            exit_code: exit_codes::EXIT_SUCCESS,
+            outcomes: Vec::new(),
+        }
+    }
+}
+
+impl FileSendBatchResult {
+    fn push(&mut self, result: FileSendRunResult) {
+        if result.exit_code != exit_codes::EXIT_SUCCESS {
+            self.exit_code = result.exit_code;
+        }
+        if let Some(outcome) = result.outcome {
+            self.outcomes.push(outcome);
+        }
+    }
 }
 
 async fn run_send_file_via_daemon(
@@ -417,16 +469,17 @@ async fn run_send_file_via_daemon(
     path: PathBuf,
     peers: Option<Vec<String>>,
     json: bool,
-) -> i32 {
+    emit_json: bool,
+) -> FileSendRunResult {
     let Some(source_path) = path.to_str() else {
         ui::error("File path is not valid Unicode.");
-        return exit_codes::EXIT_ERROR;
+        return FileSendRunResult::error();
     };
     let metadata = match std::fs::metadata(&path) {
         Ok(metadata) => metadata,
         Err(error) => {
             ui::error(&format!("Failed to inspect file: {error}"));
-            return exit_codes::EXIT_ERROR;
+            return FileSendRunResult::error();
         }
     };
     let filename = path
@@ -438,7 +491,7 @@ async fn run_send_file_via_daemon(
         Ok(lease) => lease,
         Err(error) => {
             ui::error(&format!("Failed to hold daemon session lease: {error}"));
-            return exit_codes::EXIT_ERROR;
+            return FileSendRunResult::error();
         }
     };
     let spinner = ui::spinner("Dispatching file via daemon...");
@@ -446,7 +499,7 @@ async fn run_send_file_via_daemon(
         Ok(outcome) => outcome,
         Err(error) => {
             ui::spinner_finish_error(&spinner, &format!("File send failed: {error}"));
-            return exit_codes::EXIT_ERROR;
+            return FileSendRunResult::error();
         }
     };
     ui::spinner_finish_success(
@@ -478,11 +531,11 @@ async fn run_send_file_via_daemon(
             Ok(view) => Some(view),
             Err(WaitError::Cancelled) => {
                 ui::warn("Cancelled while waiting; the daemon may continue active transfers.");
-                return exit_codes::EXIT_ERROR;
+                return FileSendRunResult::error();
             }
             Err(WaitError::Request(error)) => {
                 ui::error(&format!("Failed to query file delivery: {error}"));
-                return exit_codes::EXIT_ERROR;
+                return FileSendRunResult::error();
             }
         }
     };
@@ -508,15 +561,15 @@ async fn run_send_file_via_daemon(
             })
             .unwrap_or_default(),
     };
-    if json {
+    if json && emit_json {
         match serde_json::to_string_pretty(&result) {
             Ok(value) => println!("{value}"),
             Err(error) => {
                 ui::error(&format!("Failed to serialize outcome: {error}"));
-                return exit_codes::EXIT_ERROR;
+                return FileSendRunResult::error();
             }
         }
-    } else {
+    } else if !json {
         ui::bar();
         ui::info("file", &result.filename);
         ui::info("size", &human_size(result.size_bytes));
@@ -539,7 +592,7 @@ async fn run_send_file_via_daemon(
         ui::bar();
         ui::end("File send finished");
     }
-    if result.total_accepted == 0 && result.total_duplicate == 0 {
+    let exit_code = if result.total_accepted == 0 && result.total_duplicate == 0 {
         exit_codes::EXIT_ERROR
     } else if result
         .deliveries
@@ -549,6 +602,10 @@ async fn run_send_file_via_daemon(
         exit_codes::EXIT_ERROR
     } else {
         exit_codes::EXIT_SUCCESS
+    };
+    FileSendRunResult {
+        exit_code,
+        outcome: Some(result),
     }
 }
 
@@ -777,6 +834,70 @@ mod tests {
             normalize_plaintext_stdin("./looks/like/a/path\r\n".to_string()),
             "./looks/like/a/path"
         );
+    }
+
+    #[test]
+    fn multi_file_json_is_one_array() {
+        let outcome = |filename: &str| SendFileOutcomeDto {
+            entry_id: format!("entry-{filename}"),
+            snapshot_hash: format!("hash-{filename}"),
+            filename: filename.to_string(),
+            size_bytes: 1,
+            total_accepted: 1,
+            total_duplicate: 0,
+            total_offline: 0,
+            total_errored: 0,
+            per_target: Vec::new(),
+            deliveries: Vec::new(),
+        };
+
+        let json = serialize_file_outcomes(&[outcome("one.txt"), outcome("two.txt")]).unwrap();
+        let value: serde_json::Value = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(value.as_array().unwrap().len(), 2);
+        assert_eq!(value[0]["filename"], "one.txt");
+        assert_eq!(value[1]["filename"], "two.txt");
+    }
+
+    #[test]
+    fn multi_file_batch_collects_outcomes_and_preserves_failure_exit_code() {
+        let outcome = |filename: &str| SendFileOutcomeDto {
+            entry_id: format!("entry-{filename}"),
+            snapshot_hash: format!("hash-{filename}"),
+            filename: filename.to_string(),
+            size_bytes: 1,
+            total_accepted: 1,
+            total_duplicate: 0,
+            total_offline: 0,
+            total_errored: 0,
+            per_target: Vec::new(),
+            deliveries: Vec::new(),
+        };
+        let mut batch = FileSendBatchResult::default();
+
+        batch.push(FileSendRunResult {
+            exit_code: exit_codes::EXIT_ERROR,
+            outcome: Some(outcome("failed.txt")),
+        });
+        batch.push(FileSendRunResult {
+            exit_code: exit_codes::EXIT_SUCCESS,
+            outcome: Some(outcome("success.txt")),
+        });
+
+        assert_eq!(batch.exit_code, exit_codes::EXIT_ERROR);
+        assert_eq!(batch.outcomes.len(), 2);
+        assert_eq!(batch.outcomes[0].filename, "failed.txt");
+        assert_eq!(batch.outcomes[1].filename, "success.txt");
+    }
+
+    #[test]
+    fn multi_file_batch_keeps_error_without_an_outcome() {
+        let mut batch = FileSendBatchResult::default();
+
+        batch.push(FileSendRunResult::error());
+
+        assert_eq!(batch.exit_code, exit_codes::EXIT_ERROR);
+        assert!(batch.outcomes.is_empty());
     }
 
     #[test]

@@ -24,6 +24,8 @@ export interface UpdateContextType {
   downloadUpdate: () => Promise<void>
   cancelDownload: () => Promise<void>
   installUpdate: () => Promise<void>
+  confirmUpdate: () => Promise<void>
+  ensureUpdateAuthorized: () => Promise<void>
 
   /** Convenience alias for `state.info`. */
   updateInfo: UpdateMetadata | null

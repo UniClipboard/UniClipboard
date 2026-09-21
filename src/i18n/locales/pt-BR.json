@@ -49,6 +49,13 @@
     "downloadFailed": "Falha no download em segundo plano. Tente novamente.",
     "downloading": "Baixando...",
     "installing": "Instalando...",
+    "confirmation": {
+      "title": "Informações importantes da atualização",
+      "acknowledge": "Estou ciente",
+      "cancel": "Cancelar",
+      "confirming": "Confirmando...",
+      "unavailable": "Esta atualização exige confirmação, mas a explicação não está disponível. A atualização foi bloqueada por segurança. Verifique novamente mais tarde."
+    },
     "packageManager": {
       "title": "Atualize pelo seu gerenciador de pacotes",
       "portableTitle": "Baixe a nova versão portátil",

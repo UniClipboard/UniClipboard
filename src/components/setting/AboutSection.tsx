@@ -35,9 +35,11 @@ import { Switch } from '@/components/ui/switch'
 import { toast } from '@/components/ui/toast'
 import { PackageManagerUpdateDialog } from '@/components/update/PackageManagerUpdateDialog'
 import { ReleaseNotes } from '@/components/update/ReleaseNotes'
+import { UpdateConfirmationDialog } from '@/components/update/UpdateConfirmationDialog'
 import { useSetting } from '@/hooks/useSetting'
 import { useShortcutLayer } from '@/hooks/useShortcutLayer'
 import { useUpdate } from '@/hooks/useUpdate'
+import { useUpdateConfirmationGate } from '@/hooks/useUpdateConfirmationGate'
 import { createLogger } from '@/lib/logger'
 import { cn } from '@/lib/utils'
 import type { UpdateChannel } from '@/types/setting'
@@ -82,6 +84,8 @@ const AboutSection: React.FC = () => {
     downloadProgress,
     installKind,
     isManualUpdate,
+    confirmUpdate,
+    ensureUpdateAuthorized,
   } = useUpdate()
   const [appVersion, setAppVersion] = useState<string>('')
   const [autoCheckUpdate, setAutoCheckUpdate] = useOptimisticSetting(
@@ -113,6 +117,13 @@ const AboutSection: React.FC = () => {
   const dialogDismissReasonRef = useRef<DismissSource | null>(null)
   const isInstallingUpdate =
     downloadProgress.phase === 'downloading' || downloadProgress.phase === 'installing'
+  const {
+    confirmationDialogOpen,
+    confirmationInProgress,
+    requestUpdateAction,
+    setConfirmationDialogOpen,
+    confirmAndContinue,
+  } = useUpdateConfirmationGate(updateInfo, confirmUpdate)
   useShortcutLayer({
     layer: 'modal',
     scope: 'modal',
@@ -443,7 +454,7 @@ const AboutSection: React.FC = () => {
             <AlertDialogAction
               onClick={event => {
                 event.preventDefault()
-                handleInstallUpdate()
+                requestUpdateAction(handleInstallUpdate)
               }}
               disabled={isInstallingUpdate}
             >
@@ -453,12 +464,22 @@ const AboutSection: React.FC = () => {
         </AlertDialogContent>
       </AlertDialog>
 
+      <UpdateConfirmationDialog
+        open={confirmationDialogOpen}
+        update={updateInfo}
+        confirming={confirmationInProgress}
+        onOpenChange={setConfirmationDialogOpen}
+        onConfirm={confirmAndContinue}
+      />
+
       {installKind && (
         <PackageManagerUpdateDialog
           open={packageManagerDialogOpen}
           onOpenChange={handlePackageManagerDialogOpenChange}
           installKind={installKind}
           updateInfo={updateInfo}
+          onConfirm={confirmUpdate}
+          ensureAuthorized={ensureUpdateAuthorized}
         />
       )}
 

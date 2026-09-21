@@ -35,8 +35,10 @@ import { toast } from '@/components/ui/toast'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { PackageManagerUpdateDialog } from '@/components/update/PackageManagerUpdateDialog'
 import { ReleaseNotes } from '@/components/update/ReleaseNotes'
+import { UpdateConfirmationDialog } from '@/components/update/UpdateConfirmationDialog'
 import { useSetting } from '@/hooks/useSetting'
 import { useUpdate } from '@/hooks/useUpdate'
+import { useUpdateConfirmationGate } from '@/hooks/useUpdateConfirmationGate'
 import { createLogger } from '@/lib/logger'
 import { cn } from '@/lib/utils'
 import { sentryEnabled } from '@/observability/sentry'
@@ -185,6 +187,8 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
     installUpdate,
     downloadUpdate,
     cancelDownload,
+    confirmUpdate,
+    ensureUpdateAuthorized,
     installKind,
     isManualUpdate,
   } = useUpdate()
@@ -195,6 +199,13 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
   const isReady = phase === 'ready'
   const isAvailable = phase === 'available'
   const indicatorVisible = isAvailable || isDownloading || isReady || isInstalling
+  const {
+    confirmationDialogOpen,
+    confirmationInProgress,
+    requestUpdateAction,
+    setConfirmationDialogOpen,
+    confirmAndContinue,
+  } = useUpdateConfirmationGate(state.info, confirmUpdate)
 
   const downloadPercent =
     state.total !== null && state.total > 0
@@ -544,7 +555,7 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
                   <AlertDialogAction
                     onClick={event => {
                       event.preventDefault()
-                      handleStartBackgroundDownload()
+                      requestUpdateAction(handleStartBackgroundDownload)
                     }}
                     disabled={isInstalling}
                   >
@@ -554,7 +565,7 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
                 <AlertDialogAction
                   onClick={event => {
                     event.preventDefault()
-                    void handlePrimaryAction()
+                    requestUpdateAction(handlePrimaryAction)
                   }}
                   disabled={isInstalling || phase === 'idle'}
                 >
@@ -565,12 +576,21 @@ const Sidebar: React.FC<SidebarProps> = ({ className }) => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <UpdateConfirmationDialog
+        open={confirmationDialogOpen}
+        update={state.info}
+        confirming={confirmationInProgress}
+        onOpenChange={setConfirmationDialogOpen}
+        onConfirm={confirmAndContinue}
+      />
       {installKind && (
         <PackageManagerUpdateDialog
           open={packageManagerDialogOpen}
           onOpenChange={handlePackageManagerDialogOpenChange}
           installKind={installKind}
           updateInfo={state.info}
+          onConfirm={confirmUpdate}
+          ensureAuthorized={ensureUpdateAuthorized}
         />
       )}
     </>

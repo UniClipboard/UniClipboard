@@ -48,6 +48,7 @@ const updateInfo: UpdateMetadata = {
   currentVersion: '0.1.0',
   date: '2026-01-25T00:00:00Z',
   body: 'Bug fixes',
+  confirmation: { status: 'not_required' },
 }
 
 function buildUpdateValue(state: UpdateState): UpdateContextType {
@@ -64,6 +65,8 @@ function buildUpdateValue(state: UpdateState): UpdateContextType {
     downloadUpdate: vi.fn().mockResolvedValue(undefined),
     cancelDownload: vi.fn().mockResolvedValue(undefined),
     installUpdate: vi.fn().mockResolvedValue(undefined),
+    confirmUpdate: vi.fn().mockResolvedValue(undefined),
+    ensureUpdateAuthorized: vi.fn().mockResolvedValue(undefined),
     installKind: 'macos',
     isSystemManaged: false,
     isManualUpdate: false,

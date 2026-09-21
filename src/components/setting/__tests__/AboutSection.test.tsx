@@ -98,6 +98,8 @@ function renderAboutSection({
           downloadUpdate: vi.fn().mockResolvedValue(undefined),
           cancelDownload: vi.fn().mockResolvedValue(undefined),
           installUpdate: vi.fn(),
+          confirmUpdate: vi.fn().mockResolvedValue(undefined),
+          ensureUpdateAuthorized: vi.fn().mockResolvedValue(undefined),
           downloadProgress: { downloaded: 0, total: null, phase: 'idle' as const },
           installKind: 'macos',
           isSystemManaged: false,

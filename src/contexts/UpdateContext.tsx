@@ -2,9 +2,11 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   cancelDownload as apiCancelDownload,
   checkForUpdate,
+  confirmUpdate as apiConfirmUpdate,
   downloadUpdate as apiDownloadUpdate,
   getDownloadProgress,
   getInstallKind,
+  ensureUpdateAuthorized as apiEnsureUpdateAuthorized,
   installUpdate as apiInstallUpdate,
   subscribeUpdateAvailable,
   subscribeUpdateProgress,
@@ -179,6 +181,19 @@ export const UpdateProvider: React.FC<UpdateProviderProps> = ({ children }) => {
     }
   }, [])
 
+  const doConfirmUpdate = useCallback(async () => {
+    const info = stateRef.current.info
+    if (!info) throw new Error('updater: no pending update')
+    const updated = await apiConfirmUpdate(info.version)
+    setState(prev => ({ ...prev, info: updated }))
+  }, [])
+
+  const doEnsureUpdateAuthorized = useCallback(async () => {
+    const info = stateRef.current.info
+    if (!info) throw new Error('updater: no pending update')
+    await apiEnsureUpdateAuthorized(info.version)
+  }, [])
+
   const handleDownloadEvent = useCallback((event: DownloadEvent) => {
     switch (event.event) {
       case 'Started':
@@ -251,6 +266,7 @@ export const UpdateProvider: React.FC<UpdateProviderProps> = ({ children }) => {
                 currentVersion: snapshot.currentVersion,
                 body: snapshot.body,
                 date: snapshot.date,
+                confirmation: snapshot.confirmation,
               }
             : null,
           downloaded: snapshot.downloaded,
@@ -351,6 +367,8 @@ export const UpdateProvider: React.FC<UpdateProviderProps> = ({ children }) => {
       downloadUpdate: doDownloadUpdate,
       cancelDownload: doCancelDownload,
       installUpdate: doInstallUpdate,
+      confirmUpdate: doConfirmUpdate,
+      ensureUpdateAuthorized: doEnsureUpdateAuthorized,
       installKind,
       isSystemManaged,
       isManualUpdate,
@@ -363,6 +381,8 @@ export const UpdateProvider: React.FC<UpdateProviderProps> = ({ children }) => {
       doDownloadUpdate,
       doCancelDownload,
       doInstallUpdate,
+      doConfirmUpdate,
+      doEnsureUpdateAuthorized,
       installKind,
       isSystemManaged,
       isManualUpdate,

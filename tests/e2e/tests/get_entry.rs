@@ -29,6 +29,9 @@ use uc_e2e_tests::{TestCli, TestDaemon, TestProfile};
 
 const EXIT_NO_MATCH: i32 = 6;
 
+// Paired-node discovery is shared within this integration-test process.
+static REAL_PAIR_TEST_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 #[cfg(target_os = "linux")]
 fn shell_quote(value: &std::ffi::OsStr) -> String {
     let value = value.to_string_lossy();
@@ -283,6 +286,7 @@ async fn get_wait_blocks_until_ctrl_c() {
 #[tokio::test]
 #[ignore]
 async fn get_wait_receives_text_and_file_without_replacing_daemon() {
+    let _pair_guard = REAL_PAIR_TEST_LOCK.lock().await;
     let (mut alice_daemon, alice_cli, mut bob_daemon, bob_cli) =
         uc_e2e_tests::pair_two_nodes("get-wait-content", "get-wait-content-pass").await;
 
@@ -355,6 +359,7 @@ async fn get_wait_receives_text_and_file_without_replacing_daemon() {
 #[tokio::test]
 #[ignore]
 async fn get_wait_json_keeps_stdout_parseable_for_a_real_file() {
+    let _pair_guard = REAL_PAIR_TEST_LOCK.lock().await;
     let (mut alice_daemon, alice_cli, mut bob_daemon, bob_cli) =
         uc_e2e_tests::pair_two_nodes("get-wait-json", "get-wait-json-pass").await;
     let output_dir = tempfile::tempdir().expect("get output directory");
@@ -391,6 +396,7 @@ async fn get_wait_json_keeps_stdout_parseable_for_a_real_file() {
 #[tokio::test]
 #[ignore]
 async fn get_wait_shows_real_progress_in_an_interactive_terminal() {
+    let _pair_guard = REAL_PAIR_TEST_LOCK.lock().await;
     let (mut alice_daemon, alice_cli, mut bob_daemon, bob_cli) =
         uc_e2e_tests::pair_two_nodes("get-wait-pty", "get-wait-pty-pass").await;
     let output_dir = tempfile::tempdir().expect("get output directory");

@@ -2259,6 +2259,18 @@
     }
   },
   "setup": {
+    "invitationIssue": {
+      "errors": {
+        "networkNotStarted": "O serviço do aplicativo ainda está iniciando. Aguarde um momento e tente novamente.",
+        "noPublishableAddress": "Este dispositivo não tem uma conexão de rede disponível para o pareamento. Conecte-o a uma rede e tente novamente.",
+        "localPublicationFailed": "Este dispositivo não conseguiu disponibilizar o convite na rede local. Verifique a conexão e tente novamente.",
+        "directoryTransportFailed": "Não foi possível acessar o serviço de convites e o pareamento local não está disponível. Verifique a rede e tente novamente.",
+        "directoryRejected": "O serviço de convites recusou esta solicitação. Não continue tentando; exporte os diagnósticos e entre em contato com o suporte.",
+        "directoryInvalidResponse": "O serviço de convites retornou uma resposta inválida. Tente mais uma vez; se continuar, exporte os diagnósticos e entre em contato com o suporte.",
+        "serviceUnavailable": "O pareamento está temporariamente indisponível. Aguarde um momento e tente novamente.",
+        "internal": "Não foi possível criar o convite. Se continuar, exporte os diagnósticos e entre em contato com o suporte."
+      }
+    },
     "page": {
       "processing": "Processando...",
       "processingJoinSpace": {

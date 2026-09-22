@@ -44,6 +44,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useConfigImport, type ConfigImportErrorKind } from '@/hooks/useConfigImport'
 import { INVITATION_CODE_LENGTH, formatInvitationCode } from '@/lib/invitation-code'
+import { invitationIssueErrorKey, isInvitationIssueRetryable } from '@/lib/invitation-issue-error'
 import { cn } from '@/lib/utils'
 
 // ── Common shell ───────────────────────────────────────────────────────────
@@ -818,12 +819,18 @@ export function SpaceReadyScreen({
   loading?: boolean
 }) {
   const { t } = useTranslation(undefined, { keyPrefix: 'setup.spaceReady' })
+  const { t: tInvitationIssue } = useTranslation()
   const [inviteError, setInviteError] = useState<string | null>(null)
+  const [inviteRetryable, setInviteRetryable] = useState(true)
 
   const handleInvite = async () => {
     setInviteError(null)
+    setInviteRetryable(true)
     const result = await onInvite()
-    if (!result.ok) setInviteError(t('sponsor.issueFailed'))
+    if (!result.ok) {
+      setInviteError(tInvitationIssue(invitationIssueErrorKey(result.kind)))
+      setInviteRetryable(isInvitationIssueRetryable(result.kind))
+    }
   }
 
   return (
@@ -844,7 +851,7 @@ export function SpaceReadyScreen({
           <Button
             data-testid="setup-complete-invite"
             onClick={handleInvite}
-            disabled={loading}
+            disabled={loading || !inviteRetryable}
             className="min-w-40"
           >
             {loading ? (

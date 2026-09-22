@@ -61,6 +61,23 @@ describe('setup screens e2e selectors', () => {
     expect(onDone).toHaveBeenCalledTimes(1)
   })
 
+  it('shows the non-retryable recovery for a rejected invitation request', async () => {
+    const user = userEvent.setup()
+    const onInvite = vi.fn().mockResolvedValue({
+      ok: false,
+      kind: 'directory_rejected',
+      raw: 'safe invitation failure',
+    })
+
+    render(<SpaceReadyScreen onInvite={onInvite} onDone={vi.fn()} />)
+
+    await user.click(screen.getByTestId('setup-complete-invite'))
+    expect(
+      screen.getByText(i18n.t('setup.invitationIssue.errors.directoryRejected'))
+    ).toBeInTheDocument()
+    expect(screen.getByTestId('setup-complete-invite')).toBeDisabled()
+  })
+
   it('keeps sponsor pairing success focused on entering the app', async () => {
     const user = userEvent.setup()
     const onInvite = vi.fn().mockResolvedValue({ ok: true })

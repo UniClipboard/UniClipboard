@@ -22,6 +22,10 @@ use uc_engine::error_codes::{
     CANCEL_INVITATION_NOT_ISSUED_CODE, CANCEL_JOIN_SPACE_NOT_FOUND_CODE,
     CREATE_SPACE_ALREADY_INITIALIZED_CODE, CREATE_SPACE_ALREADY_SETUP_CODE,
     CREATE_SPACE_DEVICE_NAME_REQUIRED_CODE, CREATE_SPACE_PASSPHRASE_MISMATCH_CODE,
+    INVITATION_DIRECTORY_INVALID_RESPONSE_CODE, INVITATION_DIRECTORY_REJECTED_CODE,
+    INVITATION_DIRECTORY_TRANSPORT_FAILED_CODE, INVITATION_INVALID_STATE_CODE,
+    INVITATION_LOCAL_PUBLICATION_FAILED_CODE, INVITATION_NO_LOCAL_ADDRESS_CODE,
+    INVITATION_RECONCILIATION_PENDING_CODE, INVITATION_RECOVERY_REQUIRED_CODE,
     JOIN_SPACE_CONNECTION_LOST_CODE, JOIN_SPACE_CORRUPTED_KEY_CODE,
     JOIN_SPACE_DEVICE_NAME_REQUIRED_CODE, JOIN_SPACE_INVALID_CIPHERTEXT_CODE,
     JOIN_SPACE_INVITATION_EXPIRED_CODE, JOIN_SPACE_INVITATION_NOT_FOUND_CODE,
@@ -178,17 +182,63 @@ pub(crate) async fn issue_invitation(
 
 fn map_issue_engine_err(err: EngineError) -> ApiError {
     let (variant, api): (&'static str, ApiError) = match err.category() {
-        EngineErrorCategory::InvalidState if err.code() == 1221 => (
+        EngineErrorCategory::InvalidState if err.code() == INVITATION_INVALID_STATE_CODE => (
             "network_not_started",
-            ApiError::service_unavailable("network is not started"),
+            ApiError::service_unavailable("network is not started")
+                .with_code("network_not_started"),
         ),
-        EngineErrorCategory::InvalidState if err.code() == 1225 => (
-            "membership_reconciliation_pending",
-            ApiError::service_unavailable(
-                "device changes are still being completed; retry shortly",
-            ),
+        EngineErrorCategory::Unavailable if err.code() == INVITATION_NO_LOCAL_ADDRESS_CODE => (
+            "invitation_no_publishable_address",
+            ApiError::service_unavailable("no usable network address is available for pairing")
+                .with_code("invitation_no_publishable_address"),
         ),
-        EngineErrorCategory::InvalidState if err.code() == 1226 => (
+        EngineErrorCategory::Unavailable
+            if err.code() == INVITATION_LOCAL_PUBLICATION_FAILED_CODE =>
+        {
+            (
+                "invitation_local_publication_failed",
+                ApiError::service_unavailable(
+                    "this device could not publish the pairing invitation",
+                )
+                .with_code("invitation_local_publication_failed"),
+            )
+        }
+        EngineErrorCategory::Unavailable
+            if err.code() == INVITATION_DIRECTORY_TRANSPORT_FAILED_CODE =>
+        {
+            (
+                "invitation_directory_transport_failed",
+                ApiError::service_unavailable("the invitation service could not be reached")
+                    .with_code("invitation_directory_transport_failed"),
+            )
+        }
+        EngineErrorCategory::InvalidState if err.code() == INVITATION_DIRECTORY_REJECTED_CODE => (
+            "invitation_directory_rejected",
+            ApiError::conflict("the invitation service declined the request")
+                .with_code("invitation_directory_rejected"),
+        ),
+        EngineErrorCategory::Unavailable
+            if err.code() == INVITATION_DIRECTORY_INVALID_RESPONSE_CODE =>
+        {
+            (
+                "invitation_directory_invalid_response",
+                ApiError::service_unavailable(
+                    "the invitation service returned an invalid response",
+                )
+                .with_code("invitation_directory_invalid_response"),
+            )
+        }
+        EngineErrorCategory::InvalidState
+            if err.code() == INVITATION_RECONCILIATION_PENDING_CODE =>
+        {
+            (
+                "membership_reconciliation_pending",
+                ApiError::service_unavailable(
+                    "device changes are still being completed; retry shortly",
+                ),
+            )
+        }
+        EngineErrorCategory::InvalidState if err.code() == INVITATION_RECOVERY_REQUIRED_CODE => (
             "space_recovery_required",
             ApiError::conflict("space membership needs recovery before inviting another device"),
         ),
@@ -819,14 +869,14 @@ mod tests {
     #[test]
     fn invitation_failures_do_not_misreport_membership_as_network_startup() {
         for (code, status, expected) in [
-            (1221, 503, "network is not started"),
+            (INVITATION_INVALID_STATE_CODE, 503, "network is not started"),
             (
-                1225,
+                INVITATION_RECONCILIATION_PENDING_CODE,
                 503,
                 "device changes are still being completed; retry shortly",
             ),
             (
-                1226,
+                INVITATION_RECOVERY_REQUIRED_CODE,
                 409,
                 "space membership needs recovery before inviting another device",
             ),
@@ -843,6 +893,53 @@ mod tests {
             ));
             assert_eq!(result.status.as_u16(), status);
             assert_eq!(result.message, expected);
+        }
+    }
+
+    #[test]
+    fn invitation_publication_failures_keep_distinct_public_codes() {
+        for (engine_code, category, status, api_code, message) in [
+            (
+                INVITATION_NO_LOCAL_ADDRESS_CODE,
+                EngineErrorCategory::Unavailable,
+                503,
+                "invitation_no_publishable_address",
+                "no usable network address is available for pairing",
+            ),
+            (
+                INVITATION_LOCAL_PUBLICATION_FAILED_CODE,
+                EngineErrorCategory::Unavailable,
+                503,
+                "invitation_local_publication_failed",
+                "this device could not publish the pairing invitation",
+            ),
+            (
+                INVITATION_DIRECTORY_TRANSPORT_FAILED_CODE,
+                EngineErrorCategory::Unavailable,
+                503,
+                "invitation_directory_transport_failed",
+                "the invitation service could not be reached",
+            ),
+            (
+                INVITATION_DIRECTORY_REJECTED_CODE,
+                EngineErrorCategory::InvalidState,
+                409,
+                "invitation_directory_rejected",
+                "the invitation service declined the request",
+            ),
+            (
+                INVITATION_DIRECTORY_INVALID_RESPONSE_CODE,
+                EngineErrorCategory::Unavailable,
+                503,
+                "invitation_directory_invalid_response",
+                "the invitation service returned an invalid response",
+            ),
+        ] {
+            let result = map_issue_engine_err(EngineError::new(engine_code, category, true));
+            assert_eq!(result.status.as_u16(), status);
+            assert_eq!(result.code, api_code);
+            assert_eq!(result.message, message);
+            assert!(result.details.is_none());
         }
     }
 

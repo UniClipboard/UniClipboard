@@ -2251,6 +2251,18 @@
     }
   },
   "setup": {
+    "invitationIssue": {
+      "errors": {
+        "networkNotStarted": "桌面服务仍在启动，请稍等片刻后重试。",
+        "noPublishableAddress": "这台设备没有可用于配对的网络连接。请先连接网络，然后重试。",
+        "localPublicationFailed": "这台设备未能在本地网络提供邀请码。请检查网络连接，然后重试。",
+        "directoryTransportFailed": "无法连接邀请服务，本地配对也不可用。请检查网络，然后重试。",
+        "directoryRejected": "邀请服务拒绝了本次请求。请勿反复重试，导出诊断信息后联系支持。",
+        "directoryInvalidResponse": "邀请服务返回了无效结果。请重试一次；若仍然失败，请导出诊断信息并联系支持。",
+        "serviceUnavailable": "配对服务暂时不可用，请稍等片刻后重试。",
+        "internal": "未能创建邀请码。若问题持续，请导出诊断信息并联系支持。"
+      }
+    },
     "page": {
       "processing": "正在处理...",
       "processingJoinSpace": {

@@ -7,6 +7,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { StrictMode } from 'react'
 import { I18nextProvider } from 'react-i18next'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { SetupV2Error } from '@/api/daemon/setupV2'
 import AddDeviceDialog from '@/components/device/AddDeviceDialog'
 import i18n from '@/i18n'
 
@@ -32,11 +33,15 @@ vi.mock('@/lib/logger', () => ({
   }),
 }))
 
-vi.mock('@/api/daemon/setupV2', () => ({
-  getSetupState: () => getSetupState(),
-  issuePairingInvitation: () => issuePairingInvitation(),
-  cancelInvitation: () => cancelInvitation(),
-}))
+vi.mock('@/api/daemon/setupV2', async importOriginal => {
+  const actual = await importOriginal<typeof import('@/api/daemon/setupV2')>()
+  return {
+    ...actual,
+    getSetupState: () => getSetupState(),
+    issuePairingInvitation: () => issuePairingInvitation(),
+    cancelInvitation: () => cancelInvitation(),
+  }
+})
 
 vi.mock('@/api/daemon/device-trust', () => ({
   getDeviceTrustSnapshot: () => getDeviceTrustSnapshot(),
@@ -150,9 +155,54 @@ describe('AddDeviceDialog invitation issuing', () => {
     )
 
     await waitFor(() => {
-      expect(screen.getByText(i18n.t('devices.addDevice.errors.issueFailed'))).toBeInTheDocument()
+      expect(screen.getByText(i18n.t('setup.invitationIssue.errors.internal'))).toBeInTheDocument()
     })
     expect(issuePairingInvitation).not.toHaveBeenCalled()
+  })
+
+  it('shows the retry action for a retryable invitation transport failure', async () => {
+    issuePairingInvitation.mockRejectedValue(
+      new SetupV2Error(
+        'directory_transport_failed',
+        'the invitation service could not be reached',
+        503
+      )
+    )
+
+    render(
+      <I18nextProvider i18n={i18n}>
+        <AddDeviceDialog open onOpenChange={() => undefined} />
+      </I18nextProvider>
+    )
+
+    expect(
+      await screen.findByText(i18n.t('setup.invitationIssue.errors.directoryTransportFailed'))
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: i18n.t('devices.addDevice.actions.regenerate') })
+    ).toBeEnabled()
+  })
+
+  it('does not offer repeated retries when the invitation service rejects the request', async () => {
+    issuePairingInvitation.mockRejectedValue(
+      new SetupV2Error('directory_rejected', 'the invitation service declined the request', 409)
+    )
+
+    render(
+      <I18nextProvider i18n={i18n}>
+        <AddDeviceDialog open onOpenChange={() => undefined} />
+      </I18nextProvider>
+    )
+
+    expect(
+      await screen.findByText(i18n.t('setup.invitationIssue.errors.directoryRejected'))
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: i18n.t('devices.addDevice.actions.regenerate') })
+    ).not.toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: i18n.t('devices.addDevice.actions.close') })
+    ).toBeEnabled()
   })
 
   it('confirms the original passphrase before issuing a re-pairing invitation', async () => {

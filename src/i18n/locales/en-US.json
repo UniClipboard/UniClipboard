@@ -2253,6 +2253,18 @@
     }
   },
   "setup": {
+    "invitationIssue": {
+      "errors": {
+        "networkNotStarted": "The desktop service is still starting. Wait a moment, then try again.",
+        "noPublishableAddress": "This device has no usable network connection for pairing. Connect it to a network, then try again.",
+        "localPublicationFailed": "This device could not make the invitation available on the local network. Check its network connection, then try again.",
+        "directoryTransportFailed": "The invitation service could not be reached, and local pairing is unavailable. Check the network, then try again.",
+        "directoryRejected": "The invitation service declined this request. Do not keep retrying; export diagnostics and contact support.",
+        "directoryInvalidResponse": "The invitation service returned an invalid response. Try again once; if it continues, export diagnostics and contact support.",
+        "serviceUnavailable": "Pairing is temporarily unavailable. Wait a moment, then try again.",
+        "internal": "The invitation could not be created. If this continues, export diagnostics and contact support."
+      }
+    },
     "page": {
       "processing": "Processing...",
       "processingJoinSpace": {

@@ -21,10 +21,14 @@ use uc_daemon_contract::api::dto::member::{
 };
 use uc_daemon_contract::api::dto::setup_events::SetupPairingCompletedEvent;
 use uc_daemon_contract::api::dto::v2::setup::JoinSpaceResponse;
+use uc_daemon_contract::api::types::FileTransferProgressPayload;
 use uc_daemon_contract::constants::{ws_event, ws_topic};
 
 use crate::http::exchange_session_token;
-use crate::service::{ControlLeaseGuard, DaemonService, FileExport};
+use crate::realtime::{
+    ClipboardIncomingPendingEvent, FileTransferProgressEvent, FileTransferStatusChangedEvent,
+};
+use crate::service::{ControlLeaseGuard, DaemonService, FileExport, InboundActivityEvent};
 use crate::DaemonClientContext;
 
 pub struct HttpWsDaemonService {
@@ -367,6 +371,170 @@ impl DaemonService for HttpWsDaemonService {
             }
         });
 
+        Ok(rx)
+    }
+
+    async fn subscribe_inbound_activity(&self) -> Result<mpsc::Receiver<InboundActivityEvent>> {
+        let conn = self
+            .ctx
+            .connection_state()
+            .get()
+            .ok_or_else(|| anyhow::anyhow!("daemon connection info not available"))?;
+        let session_token = exchange_session_token(
+            &self.ctx.http(),
+            &self.ctx.connection_state(),
+            conn.pid,
+            self.ctx.client_type(),
+        )
+        .await
+        .context("failed to exchange session token for WS")?;
+        let ws_parsed = url::Url::parse(&conn.ws_url).context("invalid daemon WS URL")?;
+        let host = ws_parsed.host_str().context("daemon WS URL missing host")?;
+        let port = ws_parsed
+            .port_or_known_default()
+            .context("daemon WS URL missing port")?;
+        let mut request = conn
+            .ws_url
+            .as_str()
+            .into_client_request()
+            .map_err(|e| anyhow::anyhow!("invalid WS request: {e}"))?;
+        request.headers_mut().insert(
+            "Authorization",
+            format!("Session {}", session_token)
+                .parse()
+                .map_err(|e| anyhow::anyhow!("invalid auth header: {e}"))?,
+        );
+        let tcp = tokio::net::TcpStream::connect((host, port))
+            .await
+            .map_err(|e| anyhow::anyhow!("failed to connect to daemon WS at {host}:{port}: {e}"))?;
+        let (ws_stream, _) = tokio_tungstenite::client_async(request, tcp)
+            .await
+            .map_err(|e| anyhow::anyhow!("WS handshake failed: {e}"))?;
+        let (mut write, mut read) = ws_stream.split();
+        write
+            .send(Message::Text(
+                serde_json::json!({
+                    "action": "subscribe",
+                    "topics": [ws_topic::CLIPBOARD, ws_topic::FILE_TRANSFER],
+                })
+                .to_string(),
+            ))
+            .await
+            .context("failed to send WS subscribe")?;
+
+        let (tx, rx) = mpsc::channel(128);
+        tokio::spawn(async move {
+            while let Some(message) = read.next().await {
+                let text = match message {
+                    Ok(Message::Text(text)) => text,
+                    Ok(Message::Ping(_)) => continue,
+                    Ok(Message::Close(_)) => break,
+                    Err(error) => {
+                        warn!(error = %error, "inbound activity WS read error");
+                        break;
+                    }
+                    Ok(_) => continue,
+                };
+                let envelope: serde_json::Value = match serde_json::from_str(&text) {
+                    Ok(value) => value,
+                    Err(_) => continue,
+                };
+                let event_type = envelope.get("type").and_then(|value| value.as_str());
+                let Some(payload) = envelope.get("payload").cloned() else {
+                    continue;
+                };
+                let event = match event_type {
+                    Some(ws_event::CLIPBOARD_INCOMING_PENDING) => {
+                        #[derive(serde::Deserialize)]
+                        #[serde(rename_all = "camelCase")]
+                        struct Payload {
+                            entry_id: String,
+                            #[serde(default)]
+                            attempt_id: Option<String>,
+                            from_device: String,
+                            #[serde(default)]
+                            total_bytes: Option<u64>,
+                            #[serde(default)]
+                            filenames: Vec<String>,
+                        }
+                        serde_json::from_value::<Payload>(payload)
+                            .map_err(|error| {
+                                warn!(error = %error, event_type = ws_event::CLIPBOARD_INCOMING_PENDING, "failed to decode inbound activity payload");
+                            })
+                            .ok()
+                            .map(|value| {
+                                InboundActivityEvent::Pending(ClipboardIncomingPendingEvent {
+                                    entry_id: value.entry_id,
+                                    attempt_id: value.attempt_id,
+                                    from_device: value.from_device,
+                                    total_bytes: value.total_bytes,
+                                    filenames: value.filenames,
+                                })
+                            })
+                    }
+                    Some(ws_event::FILE_TRANSFER_PROGRESS) => {
+                        serde_json::from_value::<FileTransferProgressPayload>(payload)
+                            .map_err(|error| {
+                                warn!(error = %error, event_type = ws_event::FILE_TRANSFER_PROGRESS, "failed to decode inbound activity payload");
+                            })
+                            .ok()
+                            .map(|value| {
+                                InboundActivityEvent::Progress(FileTransferProgressEvent {
+                                    transfer_id: value.transfer_id,
+                                    entry_id: value.entry_id,
+                                    attempt_id: value.attempt_id,
+                                    peer_id: value.peer_id,
+                                    direction: value.direction,
+                                    bytes_transferred: value.bytes_transferred,
+                                    total_bytes: value.total_bytes,
+                                })
+                            })
+                    }
+                    Some(ws_event::FILE_TRANSFER_STATUS_CHANGED) => {
+                        #[derive(serde::Deserialize)]
+                        #[serde(rename_all = "camelCase")]
+                        struct Payload {
+                            transfer_id: String,
+                            entry_id: Option<String>,
+                            #[serde(default)]
+                            attempt_id: Option<String>,
+                            status: String,
+                            #[serde(default)]
+                            reason: Option<String>,
+                        }
+                        serde_json::from_value::<Payload>(payload)
+                            .map_err(|error| {
+                                warn!(error = %error, event_type = ws_event::FILE_TRANSFER_STATUS_CHANGED, "failed to decode inbound activity payload");
+                            })
+                            .ok()
+                            .map(|value| {
+                                InboundActivityEvent::Status(FileTransferStatusChangedEvent {
+                                    transfer_id: value.transfer_id,
+                                    entry_id: value.entry_id,
+                                    attempt_id: value.attempt_id,
+                                    status: value.status,
+                                    reason: value.reason,
+                                })
+                            })
+                    }
+                    Some(ws_event::CLIPBOARD_NEW_CONTENT) => {
+                        serde_json::from_value::<InboundEntryEvent>(payload)
+                            .map_err(|error| {
+                                warn!(error = %error, event_type = ws_event::CLIPBOARD_NEW_CONTENT, "failed to decode inbound activity payload");
+                            })
+                            .ok()
+                            .filter(|entry| entry.origin == "remote")
+                            .map(InboundActivityEvent::Completed)
+                    }
+                    _ => None,
+                };
+                if let Some(event) = event {
+                    if tx.send(event).await.is_err() {
+                        break;
+                    }
+                }
+            }
+        });
         Ok(rx)
     }
 

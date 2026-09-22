@@ -27,7 +27,7 @@ pub use http::{
     SearchQueryRequest,
 };
 pub use http_ws_service::HttpWsDaemonService;
-pub use service::{ControlLeaseGuard, DaemonService, FileExport};
+pub use service::{ControlLeaseGuard, DaemonService, FileExport, InboundActivityEvent};
 pub use ws_bridge::{BridgeState, DaemonWsBridge, DaemonWsBridgeConfig, DaemonWsBridgeError};
 
 const ENV_BASE_URL: &str = "UNICLIPBOARD_DAEMON_BASE_URL";

@@ -106,8 +106,10 @@ uniclip get --list -n 20
 uniclip search "报告"
 ```
 
-`get` 默认读取已经进入本机历史的内容并立即返回。`get --wait` 只处理下一条新内容
-并退出。`watch` 会持续等待并打印之后收到的内容，直到按下 Ctrl-C：
+`get` 默认读取已经进入本机历史的内容并立即返回。`get --wait` 只处理命令订阅建立后
+到达的下一条匹配内容并退出，可与 `--type` 或 `--id` 组合。交互终端会为已匹配的文件
+显示真实接收进度；进度只写入 stderr，因此 stdout 仍可安全用于管道和 JSON。
+`watch` 会持续等待并打印之后收到的内容，直到按下 Ctrl-C：
 
 ```bash
 uniclip watch

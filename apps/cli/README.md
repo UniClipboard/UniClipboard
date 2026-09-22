@@ -71,6 +71,8 @@ cargo build -p uc-cli
 uniclip get                      # 取最新一条可用条目
 uniclip get -c                   # 取回并复制到当前终端所在电脑的剪贴板
 uniclip get -w                   # 等待下一条同步内容，输出后退出
+uniclip get -w --type file       # 等待下一条文件，并在交互终端显示接收进度
+uniclip get -w --id <ENTRY-ID>   # 只等待命令启动后到达的指定条目
 uniclip get --copy --wait        # 等待下一条同步内容，复制后退出
 uniclip get --type image         # 取最新一张图片
 uniclip get --type file -o ~/in  # 取最新一个文件并落地到 ~/in
@@ -90,6 +92,11 @@ uniclip get --list -n 20         # 仅列出最近 20 条，不取回
 
 等待提示只写入 stderr，实际内容或落盘路径仍只写入 stdout，因此
 `uniclip get --wait | other-command` 可以安全用于管道。等待期间按 Ctrl-C 会结束本次命令。
+交互终端接收文件时，已知总大小显示真实字节数、总量和百分比；未知总大小显示已接收
+字节数与活动状态。`--wait` 可与 `--type` 或 `--id` 组合，但仍只接受命令订阅建立后
+到达的内容，不会取用历史记录或已经完成的旧任务。当前 daemon 的入站 pending 事件只能
+在文件名非空时提前确认 `file` 类型，不能可靠区分 `image`、`text` 和 `link`；因此这些
+类型过滤会等最终条目可分类后再决定是否匹配，不会为了提前显示进度而误锁其他内容。
 
 旧的 `uniclip recv [--out DIR]` 已隐藏并进入弃用期。它本次仍保持原有文件接收、落盘、
 stdout 和退出结果，并在 stderr 提醒改用 `uniclip get --wait`。新脚本不要再使用 `recv`；

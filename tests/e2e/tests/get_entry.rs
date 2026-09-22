@@ -29,6 +29,38 @@ use uc_e2e_tests::{TestCli, TestDaemon, TestProfile};
 
 const EXIT_NO_MATCH: i32 = 6;
 
+// Paired-node discovery is shared within this integration-test process.
+static REAL_PAIR_TEST_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+#[cfg(target_os = "linux")]
+fn shell_quote(value: &std::ffi::OsStr) -> String {
+    let value = value.to_string_lossy();
+    format!("'{}'", value.replace('\'', "'\"'\"'"))
+}
+
+fn script_command(
+    transcript: &std::path::Path,
+    binary: &std::path::Path,
+    args: &[&str],
+) -> std::process::Command {
+    let mut command = std::process::Command::new("script");
+    command.arg("-q");
+    #[cfg(target_os = "linux")]
+    {
+        let invocation = std::iter::once(binary.as_os_str())
+            .chain(args.iter().map(std::ffi::OsStr::new))
+            .map(shell_quote)
+            .collect::<Vec<_>>()
+            .join(" ");
+        command.args(["-c", &invocation]).arg(transcript);
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        command.arg(transcript).arg(binary).args(args);
+    }
+    command
+}
+
 /// Start a daemon and init a space, returning (daemon, cli). The daemon stays
 /// alive (held by the returned handle) so `get` reuses it as a running peer.
 async fn setup_initialized_node(name: &str) -> (TestDaemon, TestCli) {
@@ -237,8 +269,15 @@ async fn get_wait_blocks_until_ctrl_c() {
         child.try_wait().expect("read wait state").is_none(),
         "get --wait must not use an entry that existed before its subscription"
     );
-    let _ = child.kill();
-    let _ = child.wait();
+    let signal_result = unsafe { libc::kill(child.id() as i32, libc::SIGINT) };
+    assert_eq!(signal_result, 0, "failed to send SIGINT to get --wait");
+    let output = wait_for_output(child, Duration::from_secs(10));
+    assert!(output.status.success(), "Ctrl-C should stop cleanly");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !stderr.contains('\r') && !stderr.contains("\u{1b}["),
+        "non-interactive Ctrl-C must not leave terminal control sequences: {stderr:?}"
+    );
 }
 
 /// Two concurrent waiters attach to the same daemon and independently receive
@@ -247,6 +286,7 @@ async fn get_wait_blocks_until_ctrl_c() {
 #[tokio::test]
 #[ignore]
 async fn get_wait_receives_text_and_file_without_replacing_daemon() {
+    let _pair_guard = REAL_PAIR_TEST_LOCK.lock().await;
     let (mut alice_daemon, alice_cli, mut bob_daemon, bob_cli) =
         uc_e2e_tests::pair_two_nodes("get-wait-content", "get-wait-content-pass").await;
 
@@ -290,15 +330,113 @@ async fn get_wait_receives_text_and_file_without_replacing_daemon() {
     tokio::time::sleep(Duration::from_secs(2)).await;
 
     let source_dir = tempfile::tempdir().expect("source directory");
-    let source = source_dir.path().join("waited.txt");
-    std::fs::write(&source, b"waited-file-content").expect("write source file");
+    let source = source_dir.path().join("waited.bin");
+    let source_bytes: Vec<u8> = (0..32 * 1024 * 1024)
+        .map(|index| ((index * 31 + 17) % 251) as u8)
+        .collect();
+    std::fs::write(&source, &source_bytes).expect("write source file");
     let sent = alice_cli.run_capture(&["send", "--file", source.to_str().expect("source path")]);
     assert!(sent.success(), "file send failed: {}", sent.stderr);
 
     let output = wait_for_output(file_waiter, Duration::from_secs(30));
     assert!(output.status.success(), "file waiter failed: {}", String::from_utf8_lossy(&output.stderr));
     let received = std::path::PathBuf::from(String::from_utf8_lossy(&output.stdout).trim());
-    assert_eq!(std::fs::read(received).expect("read received file"), b"waited-file-content");
+    assert_eq!(
+        std::fs::read(received).expect("read received file"),
+        source_bytes,
+        "the materialized large file must be byte-identical"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !stderr.contains('\r') && !stderr.contains("\u{1b}["),
+        "non-interactive stderr must not contain terminal control sequences: {stderr:?}"
+    );
+}
+
+/// JSON mode keeps stdout reserved for the final result while transfer status
+/// remains on stderr. This covers the same real daemon/file path as the human
+/// output test rather than a renderer-only fixture.
+#[tokio::test]
+#[ignore]
+async fn get_wait_json_keeps_stdout_parseable_for_a_real_file() {
+    let _pair_guard = REAL_PAIR_TEST_LOCK.lock().await;
+    let (mut alice_daemon, alice_cli, mut bob_daemon, bob_cli) =
+        uc_e2e_tests::pair_two_nodes("get-wait-json", "get-wait-json-pass").await;
+    let output_dir = tempfile::tempdir().expect("get output directory");
+    let waiter = std::process::Command::new(bob_cli.binary_path())
+        .env("UC_PROFILE", &bob_cli.profile_name)
+        .env("UNICLIPBOARD_ENV", "development")
+        .args(["--json", "get", "--wait", "--type", "file", "--out"])
+        .arg(output_dir.path())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("spawn JSON file waiter");
+    tokio::time::sleep(Duration::from_secs(2)).await;
+
+    let source_dir = tempfile::tempdir().expect("source directory");
+    let source = source_dir.path().join("json-wait.bin");
+    let source_bytes = vec![0x5a; 8 * 1024 * 1024];
+    std::fs::write(&source, &source_bytes).expect("write source file");
+    let sent = alice_cli.run_capture(&["send", "--file", source.to_str().expect("source path")]);
+    assert!(sent.success(), "file send failed: {}", sent.stderr);
+
+    let output = wait_for_output(waiter, Duration::from_secs(60));
+    assert!(output.status.success(), "JSON waiter failed: {}", String::from_utf8_lossy(&output.stderr));
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout)
+        .expect("stdout must contain exactly one final JSON value");
+    let received = std::path::PathBuf::from(value["path"].as_str().expect("JSON path"));
+    assert_eq!(std::fs::read(received).expect("read received file"), source_bytes);
+    assert!(alice_daemon.is_running());
+    assert!(bob_daemon.is_running());
+}
+
+/// Runs the receiver behind a real pseudo-terminal and preserves the raw
+/// transcript when `UC_PROGRESS_EVIDENCE_PATH` is set.
+#[tokio::test]
+#[ignore]
+async fn get_wait_shows_real_progress_in_an_interactive_terminal() {
+    let _pair_guard = REAL_PAIR_TEST_LOCK.lock().await;
+    let (mut alice_daemon, alice_cli, mut bob_daemon, bob_cli) =
+        uc_e2e_tests::pair_two_nodes("get-wait-pty", "get-wait-pty-pass").await;
+    let output_dir = tempfile::tempdir().expect("get output directory");
+    let transcript = std::env::var_os("UC_PROGRESS_EVIDENCE_PATH")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| output_dir.path().join("terminal-progress.log"));
+    let output_dir_arg = output_dir.path().to_string_lossy().into_owned();
+    let mut waiter_command = script_command(
+        &transcript,
+        bob_cli.binary_path(),
+        &["get", "--wait", "--type", "file", "--out", &output_dir_arg],
+    );
+    let waiter = waiter_command
+        .env("UC_PROFILE", &bob_cli.profile_name)
+        .env("UNICLIPBOARD_ENV", "development")
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("spawn pseudo-terminal waiter");
+    tokio::time::sleep(Duration::from_secs(2)).await;
+
+    let source_dir = tempfile::tempdir().expect("source directory");
+    let source = source_dir.path().join("interactive-progress.bin");
+    let source_bytes: Vec<u8> = (0..64 * 1024 * 1024)
+        .map(|index| ((index * 13 + 7) % 251) as u8)
+        .collect();
+    std::fs::write(&source, &source_bytes).expect("write source file");
+    let sent = alice_cli.run_capture(&["send", "--file", source.to_str().expect("source path")]);
+    assert!(sent.success(), "file send failed: {}", sent.stderr);
+
+    let output = wait_for_output(waiter, Duration::from_secs(90));
+    assert!(output.status.success(), "PTY waiter failed: {}", String::from_utf8_lossy(&output.stderr));
+    let transcript_bytes = std::fs::read(&transcript).expect("read terminal transcript");
+    let transcript_text = String::from_utf8_lossy(&transcript_bytes);
+    assert!(transcript_text.contains("Receiving"), "terminal transcript did not show receiving state");
+    assert!(transcript_text.contains('%'), "terminal transcript did not show percentage progress");
+    let received = output_dir.path().join("interactive-progress.bin");
+    assert_eq!(std::fs::read(received).expect("read received file"), source_bytes);
+    assert!(alice_daemon.is_running());
+    assert!(bob_daemon.is_running());
 }
 
 fn wait_for_output(mut child: std::process::Child, timeout: Duration) -> std::process::Output {

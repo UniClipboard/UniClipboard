@@ -305,6 +305,21 @@ pub fn spinner_finish_error(pb: &ProgressBar, message: &str) {
     error(message);
 }
 
+/// Create a byte progress bar on stderr using the CLI's standard alignment.
+pub fn byte_progress(total: u64, message: &str) -> ProgressBar {
+    let pb = ProgressBar::new(total);
+    pb.set_style(
+        ProgressStyle::with_template(
+            " {spinner}  {msg} {bytes}/{total_bytes} ({percent}%) [{wide_bar}]",
+        )
+        .expect("valid byte progress template")
+        .progress_chars("=> "),
+    );
+    pb.set_message(message.to_string());
+    pb.enable_steady_tick(std::time::Duration::from_millis(120));
+    pb
+}
+
 // ── Verification code display ───────────────────────────────────────
 
 /// Display a verification code prominently.

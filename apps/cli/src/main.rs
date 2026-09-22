@@ -304,7 +304,7 @@ enum Commands {
         copy: bool,
         /// Wait for the next remotely synced entry instead of reading the
         /// current latest entry. Exits after handling one entry.
-        #[arg(short = 'w', long, conflicts_with_all = ["kind", "id", "list", "limit"])]
+        #[arg(short = 'w', long, conflicts_with_all = ["list", "limit"])]
         wait: bool,
     },
     /// Publish or fetch encrypted large payload blobs
@@ -1739,15 +1739,15 @@ mod tests {
     }
 
     #[test]
-    fn get_wait_rejects_existing_entry_selectors() {
+    fn get_wait_accepts_filters_but_rejects_list_mode() {
         for args in [
             vec!["uniclip", "get", "--wait", "--type", "text"],
             vec!["uniclip", "get", "--wait", "--id", "ent-1"],
-            vec!["uniclip", "get", "--wait", "--list"],
-            vec!["uniclip", "get", "--wait", "--limit", "10"],
         ] {
-            assert!(Cli::try_parse_from(args).is_err());
+            assert!(Cli::try_parse_from(args).is_ok());
         }
+        assert!(Cli::try_parse_from(["uniclip", "get", "--wait", "--list"]).is_err());
+        assert!(Cli::try_parse_from(["uniclip", "get", "--wait", "--limit", "10"]).is_err());
     }
 
     #[test]

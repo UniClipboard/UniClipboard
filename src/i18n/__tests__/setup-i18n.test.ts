@@ -191,6 +191,18 @@ describe('setup i18n keys', () => {
     )
   })
 
+  it('distinguishes retryable and non-retryable invitation failures', async () => {
+    await i18n.changeLanguage('zh-CN')
+    expect(i18n.t('setup.invitationIssue.errors.directoryTransportFailed')).toContain('重试')
+    expect(i18n.t('setup.invitationIssue.errors.directoryRejected')).toContain('请勿反复重试')
+
+    await i18n.changeLanguage('en-US')
+    expect(i18n.t('setup.invitationIssue.errors.directoryTransportFailed')).toContain('try again')
+    expect(i18n.t('setup.invitationIssue.errors.directoryRejected')).toContain(
+      'Do not keep retrying'
+    )
+  })
+
   it('normalizes language tags to the nearest supported locale', () => {
     expect(normalizeLanguage('zh')).toBe('zh-CN')
     expect(normalizeLanguage('zh-CN')).toBe('zh-CN')

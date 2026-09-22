@@ -187,6 +187,11 @@ export type RedeemInvitationErrorKind =
 
 export type IssueInvitationErrorKind =
   | 'network_not_started' // 503
+  | 'no_publishable_address' // 503, retryable
+  | 'local_publication_failed' // 503, retryable
+  | 'directory_transport_failed' // 503, retryable
+  | 'directory_rejected' // 409, not retryable
+  | 'directory_invalid_response' // 503, retryable
   | 'service_unavailable' // 503
   | 'internal' // 500
 
@@ -327,9 +332,26 @@ function classifyRedeemError(err: unknown): SetupV2Error<RedeemInvitationErrorKi
 function classifyIssueError(err: unknown): SetupV2Error<IssueInvitationErrorKind> {
   const status = pickStatus(err)
   const raw = rawMessage(err)
-  const lower = raw.toLowerCase()
+  const code = pickBody(err).code
+  if (code === 'invitation_no_publishable_address') {
+    return new SetupV2Error('no_publishable_address', raw, status)
+  }
+  if (code === 'invitation_local_publication_failed') {
+    return new SetupV2Error('local_publication_failed', raw, status)
+  }
+  if (code === 'invitation_directory_transport_failed') {
+    return new SetupV2Error('directory_transport_failed', raw, status)
+  }
+  if (code === 'invitation_directory_rejected') {
+    return new SetupV2Error('directory_rejected', raw, status)
+  }
+  if (code === 'invitation_directory_invalid_response') {
+    return new SetupV2Error('directory_invalid_response', raw, status)
+  }
   if (status === 503) {
-    if (lower.includes('not started')) return new SetupV2Error('network_not_started', raw, status)
+    if (code === 'network_not_started' || raw.toLowerCase().includes('not started')) {
+      return new SetupV2Error('network_not_started', raw, status)
+    }
     return new SetupV2Error('service_unavailable', raw, status)
   }
   return new SetupV2Error('internal', raw, status)

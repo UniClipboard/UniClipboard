@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { daemonClient } from '@/api/daemon/client'
 import { DaemonApiError, DaemonErrorCode } from '@/api/daemon/errors'
-import { redeemInvitation, switchSpace } from '@/api/daemon/setupV2'
+import { issuePairingInvitation, redeemInvitation, switchSpace } from '@/api/daemon/setupV2'
 import * as sdk from '@/api/generated/sdk.gen'
 
 describe('six-digit invitation requests', () => {
@@ -44,6 +44,37 @@ function unreadableHistoryConfirmationError(path: string): DaemonApiError {
     message: 'explicit confirmation is required',
   })
 }
+
+function invitationIssueError(code: string, status: number): DaemonApiError {
+  return new DaemonApiError(
+    DaemonErrorCode.INTERNAL_ERROR,
+    `${status} on /v2/setup/issue-invitation`,
+    {
+      code,
+      message: 'safe invitation failure',
+    }
+  )
+}
+
+describe('setup v2 invitation issue errors', () => {
+  afterEach(() => vi.restoreAllMocks())
+
+  it.each([
+    ['invitation_no_publishable_address', 503, 'no_publishable_address'],
+    ['invitation_local_publication_failed', 503, 'local_publication_failed'],
+    ['invitation_directory_transport_failed', 503, 'directory_transport_failed'],
+    ['invitation_directory_rejected', 409, 'directory_rejected'],
+    ['invitation_directory_invalid_response', 503, 'directory_invalid_response'],
+  ])('classifies %s by its stable daemon code', async (code, status, kind) => {
+    vi.spyOn(daemonClient, 'callEnveloped').mockRejectedValue(invitationIssueError(code, status))
+
+    await expect(issuePairingInvitation()).rejects.toMatchObject({
+      kind,
+      raw: 'safe invitation failure',
+      httpStatus: status,
+    })
+  })
+})
 
 describe('setup v2 sponsor upgrade errors', () => {
   afterEach(() => {

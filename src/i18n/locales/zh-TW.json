@@ -2248,6 +2248,18 @@
     }
   },
   "setup": {
+    "invitationIssue": {
+      "errors": {
+        "networkNotStarted": "桌面服務仍在啟動，請稍候片刻再重試。",
+        "noPublishableAddress": "這台裝置沒有可用於配對的網路連線。請先連接網路，然後重試。",
+        "localPublicationFailed": "這台裝置無法在本機網路提供邀請碼。請檢查網路連線，然後重試。",
+        "directoryTransportFailed": "無法連接邀請服務，本機配對也無法使用。請檢查網路，然後重試。",
+        "directoryRejected": "邀請服務拒絕了本次要求。請勿反覆重試，匯出診斷資訊後聯絡支援。",
+        "directoryInvalidResponse": "邀請服務傳回了無效結果。請重試一次；若仍然失敗，請匯出診斷資訊並聯絡支援。",
+        "serviceUnavailable": "配對服務暫時無法使用，請稍候片刻再重試。",
+        "internal": "無法建立邀請碼。若問題持續，請匯出診斷資訊並聯絡支援。"
+      }
+    },
     "page": {
       "processing": "正在處理...",
       "processingJoinSpace": {

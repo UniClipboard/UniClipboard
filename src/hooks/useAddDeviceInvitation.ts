@@ -6,6 +6,8 @@ import {
   getSetupState,
   issuePairingInvitation,
   type CurrentInvitation,
+  type IssueInvitationErrorKind,
+  SetupV2Error,
 } from '@/api/daemon/setupV2'
 import { isUnlockSpaceError, unlockSpaceWithPassphrase } from '@/api/security'
 import type { SetupInvitationRevokedEvent } from '@/api/setupEvents'
@@ -16,6 +18,7 @@ import {
 } from '@/components/security/passphrase-change-availability'
 import { daemonWs } from '@/lib/daemon-ws'
 import { formatInvitationCode } from '@/lib/invitation-code'
+import { invitationIssueErrorKey, isInvitationIssueRetryable } from '@/lib/invitation-issue-error'
 import { createLogger } from '@/lib/logger'
 
 const log = createLogger('add-device-dialog')
@@ -36,6 +39,7 @@ interface InvitationState {
   issuedAtMs: number | null
   loading: boolean
   error: string | null
+  issueRetryable: boolean | null
   step: AddDeviceInvitationStep
   failureReason: string | null
   passphrase: string
@@ -64,6 +68,7 @@ export function useAddDeviceInvitation({
       issuedAtMs: null,
       loading: false,
       error: null,
+      issueRetryable: null,
       step: 'invitation',
       failureReason: null,
       passphrase: '',
@@ -89,10 +94,15 @@ export function useAddDeviceInvitation({
   // Closing does not revoke it; local form state resets after the exit finishes.
   // Keep translation updates out of the effect dependencies so resource reloads
   // cannot issue another invitation or overwrite the completed state.
-  const reportIssueFailure = useEffectEvent(() => {
-    log.error({ error_kind: 'invitation_issue_failed' }, 'failed to load or issue invitation')
-    update({ error: t('devices.addDevice.errors.issueFailed') })
-  })
+  const reportIssueFailure = (error: unknown) => {
+    const kind: IssueInvitationErrorKind =
+      error instanceof SetupV2Error ? (error.kind as IssueInvitationErrorKind) : 'internal'
+    log.error({ error_kind: kind }, 'failed to load or issue invitation')
+    update({
+      error: t(invitationIssueErrorKey(kind)),
+      issueRetryable: error instanceof SetupV2Error ? isInvitationIssueRetryable(kind) : true,
+    })
+  }
   const restoreOrIssueInvitation = useEffectEvent(async (isCancelled: () => boolean) => {
     update({ loading: true, error: null })
     try {
@@ -118,9 +128,9 @@ export function useAddDeviceInvitation({
         update({ invitation: issued, issuedAtMs: Date.now() })
         log.info({ event: 'invitation_ready', mode: 'standard' }, 'pairing invitation ready')
       }
-    } catch {
+    } catch (error) {
       if (isCancelled()) return
-      reportIssueFailure()
+      reportIssueFailure(error)
     } finally {
       if (!isCancelled()) update({ loading: false })
     }
@@ -238,7 +248,13 @@ export function useAddDeviceInvitation({
   }
 
   const handleRegenerate = async () => {
-    update({ loading: true, error: null, step: 'invitation', failureReason: null })
+    update({
+      loading: true,
+      error: null,
+      issueRetryable: null,
+      step: 'invitation',
+      failureReason: null,
+    })
     try {
       initialDeviceIdsRef.current = activeDeviceIds(await getDeviceTrustSnapshot())
       try {
@@ -252,9 +268,8 @@ export function useAddDeviceInvitation({
       const issued = await issuePairingInvitation()
       update({ invitation: issued, issuedAtMs: Date.now() })
       log.info({ event: 'invitation_ready', mode: 'regenerated' }, 'pairing invitation ready')
-    } catch {
-      log.error({ error_kind: 'invitation_issue_failed' }, 'regenerate invitation failed')
-      update({ error: t('devices.addDevice.errors.issueFailed') })
+    } catch (error) {
+      reportIssueFailure(error)
     } finally {
       update({ loading: false })
     }
@@ -275,6 +290,10 @@ export function useAddDeviceInvitation({
         're-pairing invitation ready'
       )
     } catch (err) {
+      if (err instanceof SetupV2Error) {
+        reportIssueFailure(err)
+        return
+      }
       const wrongPassphrase = isUnlockSpaceError(err) && err.code === 'WRONG_PASSPHRASE'
       if (wrongPassphrase) {
         log.info(
@@ -317,12 +336,8 @@ export function useAddDeviceInvitation({
           { event: 'invitation_ready', mode: 'passphrase_reset' },
           'pairing invitation ready'
         )
-      } catch {
-        log.error(
-          { error_kind: 'invitation_issue_failed' },
-          'failed to issue invitation after passphrase reset'
-        )
-        update({ error: t('devices.addDevice.errors.issueFailed') })
+      } catch (error) {
+        reportIssueFailure(error)
       } finally {
         update({ loading: false })
       }

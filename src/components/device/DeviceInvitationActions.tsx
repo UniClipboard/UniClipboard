@@ -13,8 +13,17 @@ export default function DeviceInvitationActions({
   formId?: string
 }) {
   const { t } = useTranslation()
-  const { invitation, loading, step, copied, expired, handleCopy, handleCancel, handleRegenerate } =
-    invitationState
+  const {
+    invitation,
+    loading,
+    step,
+    copied,
+    expired,
+    issueRetryable,
+    handleCopy,
+    handleCancel,
+    handleRegenerate,
+  } = invitationState
   if (step === 'success') return null
   if (step === 'credentials') {
     return formId ? (
@@ -39,14 +48,16 @@ export default function DeviceInvitationActions({
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
             {t('devices.addDevice.actions.close')}
           </Button>
-          <Button onClick={handleRegenerate} disabled={loading}>
-            {loading ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <RefreshCw className="size-4" />
-            )}
-            {t('devices.addDevice.actions.regenerate')}
-          </Button>
+          {issueRetryable !== false && (
+            <Button onClick={handleRegenerate} disabled={loading}>
+              {loading ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <RefreshCw className="size-4" />
+              )}
+              {t('devices.addDevice.actions.regenerate')}
+            </Button>
+          )}
         </>
       ) : (
         <>

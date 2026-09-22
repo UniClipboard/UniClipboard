@@ -588,6 +588,18 @@ export const commands = {
 };
 
 /* Types */
+export type AdmissionRecoveryActionDto = "restore_credential" | "choose_backup" | "rebuild_derived_state" | "export_diagnostics";
+
+export type AdmissionRecoveryCategoryDto = "credential_missing" | "authentication_mismatch" | "current_metadata_invalid" | "legacy_fallback_invalid" | "legacy_migration_failed" | "record_relation_incomplete" | "derived_summary_invalid" | "generation_mismatch" | "other_storage_error";
+
+export type AdmissionRecoveryDto = {
+	category: AdmissionRecoveryCategoryDto,
+	stage: AdmissionRecoveryStageDto,
+	action: AdmissionRecoveryActionDto,
+};
+
+export type AdmissionRecoveryStageDto = "credential" | "repository_metadata" | "legacy_repository" | "repository_record" | "recovery_summary" | "storage";
+
 export type AutoResult = "effects" | "smooth";
 
 /**
@@ -878,9 +890,10 @@ export type ProfileRecoveryResponse = {
 	backgroundReady: boolean,
 	cleanupPending: boolean,
 	losses: ProfileRecoveryLossDto[],
+	admission: AdmissionRecoveryDto | null,
 };
 
-export type ProfileRecoveryStateDto = "not_required" | "awaiting_passphrase" | "recovering" | "recovered" | "partially_recoverable" | "failed";
+export type ProfileRecoveryStateDto = "not_required" | "awaiting_passphrase" | "recovering" | "recovered" | "partially_recoverable" | "failed" | "admission_recovery_required";
 
 export type QuickPanelDoubleTapModifierArg = "disabled" | "alt" | "control" | "meta";
 

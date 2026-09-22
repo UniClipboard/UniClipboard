@@ -2412,5 +2412,44 @@
         "done": "完成"
       }
     }
+  },
+  "profileAdmissionRecovery": {
+    "category": "本機資料需要處理",
+    "title": "現有資料無法安全開啟",
+    "description": "儲存的成員資料不一致。為避免繼續改寫，UniClipboard 已停止啟動歷史內容、剪貼簿監聽和裝置同步。",
+    "issue": "問題",
+    "stage": "發現位置",
+    "nextStep": "建議下一步",
+    "preserved": "現有資料沒有被刪除或取代。",
+    "help": "請保持目前資料和備份不變。嘗試其他副本或尋求協助前，先匯出診斷資料。",
+    "export": "匯出診斷資料",
+    "exporting": "正在匯出診斷資料…",
+    "exported": "診斷資料已匯出。",
+    "exportFailed": "無法匯出診斷資料。請檢查儲存位置和剩餘空間後再試一次。",
+    "categories": {
+      "credential_missing": "缺少必要的成員憑證",
+      "authentication_mismatch": "儲存的憑證與成員資料不相符",
+      "current_metadata_invalid": "目前成員資料無效",
+      "legacy_fallback_invalid": "較早的成員資料也無效",
+      "legacy_migration_failed": "較早的成員資料無法安全升級",
+      "record_relation_incomplete": "相關成員記錄不完整",
+      "derived_summary_invalid": "儲存的成員摘要無效",
+      "generation_mismatch": "成員記錄來自不同代次",
+      "other_storage_error": "無法讀取成員資料"
+    },
+    "stages": {
+      "credential": "讀取儲存的憑證時",
+      "repository_metadata": "讀取目前成員資料時",
+      "legacy_repository": "讀取較早的成員資料時",
+      "repository_record": "讀取成員記錄時",
+      "recovery_summary": "讀取成員摘要時",
+      "storage": "讀取本機儲存空間時"
+    },
+    "actions": {
+      "restore_credential": "從可信任的副本還原憑證",
+      "choose_backup": "使用這份資料的可靠備份",
+      "rebuild_derived_state": "使用受支援的恢復工具重建成員摘要",
+      "export_diagnostics": "先匯出診斷資料並尋求協助，不要改動目前資料"
+    }
   }
 }

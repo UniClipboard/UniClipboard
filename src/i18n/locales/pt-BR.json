@@ -2420,5 +2420,44 @@
         "done": "Concluir"
       }
     }
+  },
+  "profileAdmissionRecovery": {
+    "category": "Os dados locais precisam de atenção",
+    "title": "Não foi possível abrir seus dados com segurança",
+    "description": "Os dados salvos dos membros estão inconsistentes. Para evitar alterações, o UniClipboard não iniciou o histórico, o monitoramento da área de transferência nem a sincronização de dispositivos.",
+    "issue": "Problema",
+    "stage": "Encontrado ao ler",
+    "nextStep": "Próxima etapa recomendada",
+    "preserved": "Seus dados existentes não foram excluídos nem substituídos.",
+    "help": "Mantenha este perfil e os backups inalterados. Exporte os diagnósticos antes de tentar outra cópia ou pedir ajuda.",
+    "export": "Exportar diagnósticos",
+    "exporting": "Exportando diagnósticos…",
+    "exported": "Diagnósticos exportados.",
+    "exportFailed": "Não foi possível exportar os diagnósticos. Verifique o local de destino e o espaço disponível e tente novamente.",
+    "categories": {
+      "credential_missing": "Uma credencial de membro necessária está ausente",
+      "authentication_mismatch": "A credencial salva não corresponde aos dados dos membros",
+      "current_metadata_invalid": "Os dados atuais dos membros são inválidos",
+      "legacy_fallback_invalid": "Os dados anteriores dos membros também são inválidos",
+      "legacy_migration_failed": "Os dados anteriores dos membros não puderam ser atualizados com segurança",
+      "record_relation_incomplete": "Os registros relacionados dos membros estão incompletos",
+      "derived_summary_invalid": "O resumo salvo dos membros é inválido",
+      "generation_mismatch": "Os registros dos membros pertencem a gerações diferentes",
+      "other_storage_error": "Não foi possível ler os dados dos membros"
+    },
+    "stages": {
+      "credential": "a credencial salva",
+      "repository_metadata": "os dados atuais dos membros",
+      "legacy_repository": "os dados anteriores dos membros",
+      "repository_record": "os registros dos membros",
+      "recovery_summary": "o resumo dos membros",
+      "storage": "o armazenamento local"
+    },
+    "actions": {
+      "restore_credential": "Restaurar a credencial de uma cópia confiável",
+      "choose_backup": "Usar um backup íntegro deste perfil",
+      "rebuild_derived_state": "Reconstruir o resumo dos membros com uma ferramenta de recuperação compatível",
+      "export_diagnostics": "Exportar diagnósticos e pedir ajuda antes de alterar o perfil"
+    }
   }
 }

@@ -238,6 +238,7 @@ mod engine_event_tests {
             background_ready: false,
             cleanup_pending: false,
             losses: Vec::new(),
+            admission: None,
         };
         let event = engine_event_to_ws(EngineEvent::ProfileRecoveryChanged(summary)).unwrap();
         assert_eq!(event.topic, ws_topic::ENCRYPTION);

@@ -291,9 +291,14 @@ async fn get_profile_recovery_handler(
     ApiError,
 > {
     use uc_daemon_contract::api::dto::encryption::{
-        ProfileRecoveryLossDto as L, ProfileRecoveryResponse, ProfileRecoveryStateDto as S,
+        AdmissionRecoveryActionDto as AA, AdmissionRecoveryCategoryDto as AC, AdmissionRecoveryDto,
+        AdmissionRecoveryStageDto as AS, ProfileRecoveryLossDto as L, ProfileRecoveryResponse,
+        ProfileRecoveryStateDto as S,
     };
-    use uc_engine::{ProfileRecoveryLoss as EL, ProfileRecoveryState as ES};
+    use uc_engine::{
+        AdmissionRecoveryAction as EAA, AdmissionRecoveryCategory as EAC,
+        AdmissionRecoveryStage as EAS, ProfileRecoveryLoss as EL, ProfileRecoveryState as ES,
+    };
     let result = state
         .execute(Operation::QueryProfileRecovery)
         .await
@@ -317,6 +322,7 @@ async fn get_profile_recovery_handler(
             ES::Recovered => S::Recovered,
             ES::PartiallyRecoverable => S::PartiallyRecoverable,
             ES::Failed => S::Failed,
+            ES::AdmissionRecoveryRequired => S::AdmissionRecoveryRequired,
         },
         can_submit_passphrase: summary.can_submit_passphrase,
         restart_required: summary.restart_required,
@@ -331,6 +337,33 @@ async fn get_profile_recovery_handler(
                 EL::DeviceIdentity => L::DeviceIdentity,
             })
             .collect(),
+        admission: summary.admission.map(|admission| AdmissionRecoveryDto {
+            category: match admission.category {
+                EAC::CredentialMissing => AC::CredentialMissing,
+                EAC::AuthenticationMismatch => AC::AuthenticationMismatch,
+                EAC::CurrentMetadataInvalid => AC::CurrentMetadataInvalid,
+                EAC::LegacyFallbackInvalid => AC::LegacyFallbackInvalid,
+                EAC::LegacyMigrationFailed => AC::LegacyMigrationFailed,
+                EAC::RecordRelationIncomplete => AC::RecordRelationIncomplete,
+                EAC::DerivedSummaryInvalid => AC::DerivedSummaryInvalid,
+                EAC::GenerationMismatch => AC::GenerationMismatch,
+                EAC::OtherStorageError => AC::OtherStorageError,
+            },
+            stage: match admission.stage {
+                EAS::Credential => AS::Credential,
+                EAS::RepositoryMetadata => AS::RepositoryMetadata,
+                EAS::LegacyRepository => AS::LegacyRepository,
+                EAS::RepositoryRecord => AS::RepositoryRecord,
+                EAS::RecoverySummary => AS::RecoverySummary,
+                EAS::Storage => AS::Storage,
+            },
+            action: match admission.action {
+                EAA::RestoreCredential => AA::RestoreCredential,
+                EAA::ChooseBackup => AA::ChooseBackup,
+                EAA::RebuildDerivedState => AA::RebuildDerivedState,
+                EAA::ExportDiagnostics => AA::ExportDiagnostics,
+            },
+        }),
     })))
 }
 

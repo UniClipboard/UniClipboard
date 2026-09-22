@@ -1,5 +1,7 @@
+import { Download, TriangleAlert } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { exportStartupLogs } from '@/api/startup-support'
 import { AppStateShell } from '@/components/app/AppStateShell'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -23,6 +25,11 @@ export default function ProfileRecoveryPage({
 }) {
   const { t } = useTranslation()
   const [form, setForm] = useState({ passphrase: '', submitting: false, errorKey: '' })
+
+  if (status.state === 'admission_recovery_required') {
+    return <AdmissionRecoveryView status={status} />
+  }
+
   const busy = form.submitting || status.state === 'recovering'
   const statusErrorKey =
     status.state === 'partially_recoverable'
@@ -98,6 +105,73 @@ export default function ProfileRecoveryPage({
           {t('profileRecovery.help')}
         </p>
       </form>
+    </AppStateShell>
+  )
+}
+
+function AdmissionRecoveryView({ status }: { status: ProfileRecoveryResponse }) {
+  const { t } = useTranslation()
+  const [exportState, setExportState] = useState<'idle' | 'exporting' | 'done' | 'failed'>('idle')
+  const admission = status.admission
+  const exportDiagnostics = async () => {
+    if (exportState === 'exporting') return
+    setExportState('exporting')
+    try {
+      const path = await exportStartupLogs()
+      setExportState(path ? 'done' : 'idle')
+    } catch {
+      setExportState('failed')
+    }
+  }
+
+  return (
+    <AppStateShell
+      title={t('profileAdmissionRecovery.title')}
+      description={t('profileAdmissionRecovery.description')}
+      width="compact"
+    >
+      <div className="mt-6 flex items-center gap-2 text-ui-body font-medium text-destructive">
+        <TriangleAlert className="size-4" aria-hidden="true" />
+        {t('profileAdmissionRecovery.category')}
+      </div>
+      {admission && (
+        <dl className="mt-5 grid grid-cols-[auto_1fr] gap-x-5 gap-y-3 border-y border-border py-4 text-ui-body">
+          <dt className="text-muted-foreground">{t('profileAdmissionRecovery.issue')}</dt>
+          <dd>{t(`profileAdmissionRecovery.categories.${admission.category}`)}</dd>
+          <dt className="text-muted-foreground">{t('profileAdmissionRecovery.stage')}</dt>
+          <dd>{t(`profileAdmissionRecovery.stages.${admission.stage}`)}</dd>
+          <dt className="text-muted-foreground">{t('profileAdmissionRecovery.nextStep')}</dt>
+          <dd>{t(`profileAdmissionRecovery.actions.${admission.action}`)}</dd>
+        </dl>
+      )}
+      <p className="mt-5 text-ui-body font-medium">{t('profileAdmissionRecovery.preserved')}</p>
+      <p className="mt-2 text-ui-caption text-muted-foreground">
+        {t('profileAdmissionRecovery.help')}
+      </p>
+      <Button
+        type="button"
+        variant="outline"
+        className="mt-6"
+        disabled={exportState === 'exporting'}
+        onClick={() => void exportDiagnostics()}
+      >
+        <Download data-icon="inline-start" aria-hidden="true" />
+        {t(
+          exportState === 'exporting'
+            ? 'profileAdmissionRecovery.exporting'
+            : 'profileAdmissionRecovery.export'
+        )}
+      </Button>
+      {exportState === 'done' && (
+        <p role="status" className="mt-3 text-ui-caption text-emerald-600 dark:text-emerald-400">
+          {t('profileAdmissionRecovery.exported')}
+        </p>
+      )}
+      {exportState === 'failed' && (
+        <p role="alert" className="mt-3 text-ui-caption text-destructive">
+          {t('profileAdmissionRecovery.exportFailed')}
+        </p>
+      )}
     </AppStateShell>
   )
 }

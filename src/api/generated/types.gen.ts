@@ -35,6 +35,18 @@ export type AckUpgradePayload = {
     acknowledged: string;
 };
 
+export type AdmissionRecoveryActionDto = 'restore_credential' | 'choose_backup' | 'rebuild_derived_state' | 'export_diagnostics';
+
+export type AdmissionRecoveryCategoryDto = 'credential_missing' | 'authentication_mismatch' | 'current_metadata_invalid' | 'legacy_fallback_invalid' | 'legacy_migration_failed' | 'record_relation_incomplete' | 'derived_summary_invalid' | 'generation_mismatch' | 'other_storage_error';
+
+export type AdmissionRecoveryDto = {
+    action: AdmissionRecoveryActionDto;
+    category: AdmissionRecoveryCategoryDto;
+    stage: AdmissionRecoveryStageDto;
+};
+
+export type AdmissionRecoveryStageDto = 'credential' | 'repository_metadata' | 'legacy_repository' | 'repository_record' | 'recovery_summary' | 'storage';
+
 /**
  * Canonical daemon HTTP error body.
  *
@@ -2341,6 +2353,7 @@ export type ProfileRecoveryEnvelope = {
 export type ProfileRecoveryLossDto = 'local_history' | 'local_control_state' | 'device_identity';
 
 export type ProfileRecoveryResponse = {
+    admission?: AdmissionRecoveryDto | null;
     backgroundReady: boolean;
     canSubmitPassphrase: boolean;
     cleanupPending: boolean;
@@ -2349,7 +2362,7 @@ export type ProfileRecoveryResponse = {
     state: ProfileRecoveryStateDto;
 };
 
-export type ProfileRecoveryStateDto = 'not_required' | 'awaiting_passphrase' | 'recovering' | 'recovered' | 'partially_recoverable' | 'failed';
+export type ProfileRecoveryStateDto = 'not_required' | 'awaiting_passphrase' | 'recovering' | 'recovered' | 'partially_recoverable' | 'failed' | 'admission_recovery_required';
 
 export type QuickPanelDoubleTapModifierDto = 'disabled' | 'alt' | 'control' | 'meta';
 

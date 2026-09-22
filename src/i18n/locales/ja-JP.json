@@ -2413,5 +2413,44 @@
         "done": "完了"
       }
     }
+  },
+  "profileAdmissionRecovery": {
+    "category": "ローカルデータの確認が必要です",
+    "title": "既存のデータを安全に開けませんでした",
+    "description": "保存されたメンバー情報に不整合があります。データの上書きを防ぐため、履歴、クリップボード監視、デバイス同期を開始していません。",
+    "issue": "問題",
+    "stage": "検出箇所",
+    "nextStep": "推奨される対応",
+    "preserved": "既存のデータは削除も置換もされていません。",
+    "help": "現在のプロファイルとバックアップを変更しないでください。別のコピーを試す前やサポートへ連絡する前に、診断情報をエクスポートしてください。",
+    "export": "診断情報をエクスポート",
+    "exporting": "診断情報をエクスポート中…",
+    "exported": "診断情報をエクスポートしました。",
+    "exportFailed": "診断情報をエクスポートできませんでした。保存先と空き容量を確認して、もう一度お試しください。",
+    "categories": {
+      "credential_missing": "必要なメンバー資格情報がありません",
+      "authentication_mismatch": "保存された資格情報がメンバー情報と一致しません",
+      "current_metadata_invalid": "現在のメンバー情報が無効です",
+      "legacy_fallback_invalid": "以前のメンバー情報も無効です",
+      "legacy_migration_failed": "以前のメンバー情報を安全に更新できませんでした",
+      "record_relation_incomplete": "関連するメンバー記録が不完全です",
+      "derived_summary_invalid": "保存されたメンバー概要が無効です",
+      "generation_mismatch": "メンバー記録の世代が一致しません",
+      "other_storage_error": "メンバー情報を読み取れませんでした"
+    },
+    "stages": {
+      "credential": "保存された資格情報",
+      "repository_metadata": "現在のメンバー情報",
+      "legacy_repository": "以前のメンバー情報",
+      "repository_record": "メンバー記録",
+      "recovery_summary": "メンバー概要",
+      "storage": "ローカルストレージ"
+    },
+    "actions": {
+      "restore_credential": "信頼できるコピーから資格情報を復元する",
+      "choose_backup": "このプロファイルの正常なバックアップを使用する",
+      "rebuild_derived_state": "対応する復旧ツールでメンバー概要を再構築する",
+      "export_diagnostics": "現在のデータを変更する前に診断情報をエクスポートしてサポートへ連絡する"
+    }
   }
 }

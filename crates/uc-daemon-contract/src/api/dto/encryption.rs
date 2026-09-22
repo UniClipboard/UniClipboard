@@ -10,6 +10,49 @@ pub enum ProfileRecoveryStateDto {
     Recovered,
     PartiallyRecoverable,
     Failed,
+    AdmissionRecoveryRequired,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema, specta::Type)]
+#[serde(rename_all = "snake_case")]
+pub enum AdmissionRecoveryCategoryDto {
+    CredentialMissing,
+    AuthenticationMismatch,
+    CurrentMetadataInvalid,
+    LegacyFallbackInvalid,
+    LegacyMigrationFailed,
+    RecordRelationIncomplete,
+    DerivedSummaryInvalid,
+    GenerationMismatch,
+    OtherStorageError,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema, specta::Type)]
+#[serde(rename_all = "snake_case")]
+pub enum AdmissionRecoveryStageDto {
+    Credential,
+    RepositoryMetadata,
+    LegacyRepository,
+    RepositoryRecord,
+    RecoverySummary,
+    Storage,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema, specta::Type)]
+#[serde(rename_all = "snake_case")]
+pub enum AdmissionRecoveryActionDto {
+    RestoreCredential,
+    ChooseBackup,
+    RebuildDerivedState,
+    ExportDiagnostics,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct AdmissionRecoveryDto {
+    pub category: AdmissionRecoveryCategoryDto,
+    pub stage: AdmissionRecoveryStageDto,
+    pub action: AdmissionRecoveryActionDto,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema, specta::Type)]
@@ -29,6 +72,7 @@ pub struct ProfileRecoveryResponse {
     pub background_ready: bool,
     pub cleanup_pending: bool,
     pub losses: Vec<ProfileRecoveryLossDto>,
+    pub admission: Option<AdmissionRecoveryDto>,
 }
 
 #[cfg(test)]
@@ -44,6 +88,7 @@ mod recovery_tests {
             background_ready: false,
             cleanup_pending: false,
             losses: Vec::new(),
+            admission: None,
         };
         let value = serde_json::to_value(response).unwrap();
         assert_eq!(value["restartRequired"], true);

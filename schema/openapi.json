@@ -31,6 +31,59 @@
         ],
         "type": "object"
       },
+      "AdmissionRecoveryActionDto": {
+        "enum": [
+          "restore_credential",
+          "choose_backup",
+          "rebuild_derived_state",
+          "export_diagnostics"
+        ],
+        "type": "string"
+      },
+      "AdmissionRecoveryCategoryDto": {
+        "enum": [
+          "credential_missing",
+          "authentication_mismatch",
+          "current_metadata_invalid",
+          "legacy_fallback_invalid",
+          "legacy_migration_failed",
+          "record_relation_incomplete",
+          "derived_summary_invalid",
+          "generation_mismatch",
+          "other_storage_error"
+        ],
+        "type": "string"
+      },
+      "AdmissionRecoveryDto": {
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/AdmissionRecoveryActionDto"
+          },
+          "category": {
+            "$ref": "#/components/schemas/AdmissionRecoveryCategoryDto"
+          },
+          "stage": {
+            "$ref": "#/components/schemas/AdmissionRecoveryStageDto"
+          }
+        },
+        "required": [
+          "category",
+          "stage",
+          "action"
+        ],
+        "type": "object"
+      },
+      "AdmissionRecoveryStageDto": {
+        "enum": [
+          "credential",
+          "repository_metadata",
+          "legacy_repository",
+          "repository_record",
+          "recovery_summary",
+          "storage"
+        ],
+        "type": "string"
+      },
       "ApiErrorResponse": {
         "description": "Canonical daemon HTTP error body.\n\nWire shape: `{ \"code\": \"<machine_code>\", \"message\": \"<human text>\" }` plus an\noptional `details` object. `code` is a stable snake_case token (e.g.\n`not_found`, `bad_request`, `runtime_unavailable`, `conflict`,\n`internal_error`, `payload_unavailable`). `message` is human-readable\nEnglish; setup-v2 error classifiers and the clipboard restore-410 handler\nsubstring-match it, so the strings are LOAD-BEARING — do not silently reword.\n\n`Deserialize` is added (the original webserver struct was Serialize-only) so\nthe Rust `uc-daemon-client` and tests can decode error bodies.",
         "properties": {
@@ -4281,6 +4334,14 @@
       },
       "ProfileRecoveryResponse": {
         "properties": {
+          "admission": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AdmissionRecoveryDto"
+              }
+            ],
+            "nullable": true
+          },
           "backgroundReady": {
             "type": "boolean"
           },
@@ -4320,7 +4381,8 @@
           "recovering",
           "recovered",
           "partially_recoverable",
-          "failed"
+          "failed",
+          "admission_recovery_required"
         ],
         "type": "string"
       },

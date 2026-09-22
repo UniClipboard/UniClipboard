@@ -1,11 +1,13 @@
 import { fireEvent, render, screen, waitFor, cleanup } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { exportStartupLogs } from '@/api/startup-support'
 import i18n from '@/i18n'
 import { commands } from '@/lib/ipc'
 import type { ProfileRecoveryResponse } from '@/lib/ipc-bindings.generated'
 import ProfileRecoveryPage from '@/pages/ProfileRecoveryPage'
 
 vi.mock('@/lib/ipc', () => ({ commands: { unlockContent: vi.fn() } }))
+vi.mock('@/api/startup-support', () => ({ exportStartupLogs: vi.fn() }))
 vi.mock('@/store/setupRealtimeStore', () => ({
   ensureSetupRealtimeSync: vi.fn().mockResolvedValue(undefined),
   refreshSetupState: vi.fn().mockResolvedValue(undefined),
@@ -17,6 +19,7 @@ const status: ProfileRecoveryResponse = {
   backgroundReady: false,
   cleanupPending: false,
   losses: [],
+  admission: null,
 }
 describe('ProfileRecoveryPage', () => {
   beforeEach(async () => {
@@ -102,5 +105,34 @@ describe('ProfileRecoveryPage', () => {
     expect(restart).toHaveBeenCalledOnce()
     expect(commands.unlockContent).not.toHaveBeenCalled()
     expect(screen.queryByText(i18n.t('profileRecovery.recovering'))).toBeNull()
+  })
+
+  it('shows stable admission recovery guidance and exports diagnostics', async () => {
+    vi.mocked(exportStartupLogs).mockResolvedValue('/downloads/uniclipboard-diagnostics.zip')
+    render(
+      <ProfileRecoveryPage
+        status={{
+          ...status,
+          state: 'admission_recovery_required',
+          canSubmitPassphrase: false,
+          admission: {
+            category: 'legacy_fallback_invalid',
+            stage: 'legacy_repository',
+            action: 'choose_backup',
+          },
+        }}
+        onRecovered={vi.fn()}
+        onRestart={vi.fn()}
+      />
+    )
+
+    expect(screen.getByRole('heading')).toHaveTextContent(i18n.t('profileAdmissionRecovery.title'))
+    expect(screen.getByText(i18n.t('profileAdmissionRecovery.preserved'))).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: i18n.t('profileAdmissionRecovery.export') }))
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      i18n.t('profileAdmissionRecovery.exported')
+    )
+    expect(exportStartupLogs).toHaveBeenCalledOnce()
+    expect(commands.unlockContent).not.toHaveBeenCalled()
   })
 })

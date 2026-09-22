@@ -2366,7 +2366,10 @@
     "joinPending": {
       "title": "等待对方确认",
       "subtitle": "正在等待加入结果。",
-      "actions": { "cancel": "取消加入", "back": "返回" },
+      "actions": {
+        "cancel": "取消加入",
+        "back": "返回"
+      },
       "ended": {
         "title": "未能加入空间",
         "reasons": {
@@ -2411,6 +2414,45 @@
       "actions": {
         "done": "完成"
       }
+    }
+  },
+  "profileAdmissionRecovery": {
+    "category": "本机资料需要处理",
+    "title": "现有资料无法安全打开",
+    "description": "保存的成员资料存在不一致。为避免继续改写，UniClipboard 已停止启动历史内容、剪贴板监听和设备同步。",
+    "issue": "问题",
+    "stage": "发现位置",
+    "nextStep": "建议下一步",
+    "preserved": "现有资料没有被删除或替换。",
+    "help": "请保持当前资料和备份不变。尝试其他副本或求助前，先导出诊断资料。",
+    "export": "导出诊断资料",
+    "exporting": "正在导出诊断资料…",
+    "exported": "诊断资料已导出。",
+    "exportFailed": "诊断资料导出失败，请检查保存位置和剩余空间后重试。",
+    "categories": {
+      "credential_missing": "缺少必要的成员凭据",
+      "authentication_mismatch": "保存的凭据与成员资料不匹配",
+      "current_metadata_invalid": "当前成员资料无效",
+      "legacy_fallback_invalid": "较早的成员资料也无效",
+      "legacy_migration_failed": "较早的成员资料无法安全升级",
+      "record_relation_incomplete": "相关成员记录不完整",
+      "derived_summary_invalid": "保存的成员摘要无效",
+      "generation_mismatch": "成员记录来自不同代次",
+      "other_storage_error": "成员资料无法读取"
+    },
+    "stages": {
+      "credential": "读取保存的凭据时",
+      "repository_metadata": "读取当前成员资料时",
+      "legacy_repository": "读取较早的成员资料时",
+      "repository_record": "读取成员记录时",
+      "recovery_summary": "读取成员摘要时",
+      "storage": "读取本机存储时"
+    },
+    "actions": {
+      "restore_credential": "从可信副本恢复凭据",
+      "choose_backup": "使用这个资料档案的可靠备份",
+      "rebuild_derived_state": "使用受支持的恢复工具重建成员摘要",
+      "export_diagnostics": "先导出诊断资料并求助，不要改动当前资料"
     }
   }
 }

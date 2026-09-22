@@ -36,9 +36,7 @@ fn tracked_v0193_source_fixture_validates_and_extracts() {
 
     assert!(data.join("uniclipboard.db").is_file());
     assert!(data.join("uniclipboard.db-wal").is_file());
-    assert!(data
-        .join("iroh-identity_dev-v0193-source-fixture")
-        .is_dir());
+    assert!(data.join("iroh-identity_dev-v0193-source-fixture").is_dir());
     assert!(data.join("iroh-blobs_dev-v0193-source-fixture").is_dir());
 }
 

@@ -311,7 +311,11 @@ async fn get_wait_receives_text_and_file_without_replacing_daemon() {
 
     for child in [first, second] {
         let output = wait_for_output(child, Duration::from_secs(20));
-        assert!(output.status.success(), "waiter failed: {}", String::from_utf8_lossy(&output.stderr));
+        assert!(
+            output.status.success(),
+            "waiter failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
         assert_eq!(String::from_utf8_lossy(&output.stdout), payload);
     }
     assert!(alice_daemon.is_running());
@@ -339,7 +343,11 @@ async fn get_wait_receives_text_and_file_without_replacing_daemon() {
     assert!(sent.success(), "file send failed: {}", sent.stderr);
 
     let output = wait_for_output(file_waiter, Duration::from_secs(30));
-    assert!(output.status.success(), "file waiter failed: {}", String::from_utf8_lossy(&output.stderr));
+    assert!(
+        output.status.success(),
+        "file waiter failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     let received = std::path::PathBuf::from(String::from_utf8_lossy(&output.stdout).trim());
     assert_eq!(
         std::fs::read(received).expect("read received file"),
@@ -382,11 +390,18 @@ async fn get_wait_json_keeps_stdout_parseable_for_a_real_file() {
     assert!(sent.success(), "file send failed: {}", sent.stderr);
 
     let output = wait_for_output(waiter, Duration::from_secs(60));
-    assert!(output.status.success(), "JSON waiter failed: {}", String::from_utf8_lossy(&output.stderr));
+    assert!(
+        output.status.success(),
+        "JSON waiter failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     let value: serde_json::Value = serde_json::from_slice(&output.stdout)
         .expect("stdout must contain exactly one final JSON value");
     let received = std::path::PathBuf::from(value["path"].as_str().expect("JSON path"));
-    assert_eq!(std::fs::read(received).expect("read received file"), source_bytes);
+    assert_eq!(
+        std::fs::read(received).expect("read received file"),
+        source_bytes
+    );
     assert!(alice_daemon.is_running());
     assert!(bob_daemon.is_running());
 }
@@ -428,13 +443,26 @@ async fn get_wait_shows_real_progress_in_an_interactive_terminal() {
     assert!(sent.success(), "file send failed: {}", sent.stderr);
 
     let output = wait_for_output(waiter, Duration::from_secs(90));
-    assert!(output.status.success(), "PTY waiter failed: {}", String::from_utf8_lossy(&output.stderr));
+    assert!(
+        output.status.success(),
+        "PTY waiter failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     let transcript_bytes = std::fs::read(&transcript).expect("read terminal transcript");
     let transcript_text = String::from_utf8_lossy(&transcript_bytes);
-    assert!(transcript_text.contains("Receiving"), "terminal transcript did not show receiving state");
-    assert!(transcript_text.contains('%'), "terminal transcript did not show percentage progress");
+    assert!(
+        transcript_text.contains("Receiving"),
+        "terminal transcript did not show receiving state"
+    );
+    assert!(
+        transcript_text.contains('%'),
+        "terminal transcript did not show percentage progress"
+    );
     let received = output_dir.path().join("interactive-progress.bin");
-    assert_eq!(std::fs::read(received).expect("read received file"), source_bytes);
+    assert_eq!(
+        std::fs::read(received).expect("read received file"),
+        source_bytes
+    );
     assert!(alice_daemon.is_running());
     assert!(bob_daemon.is_running());
 }
@@ -447,7 +475,9 @@ fn wait_for_output(mut child: std::process::Child, timeout: Duration) -> std::pr
         }
         if std::time::Instant::now() >= deadline {
             let _ = child.kill();
-            let output = child.wait_with_output().expect("collect timed-out child output");
+            let output = child
+                .wait_with_output()
+                .expect("collect timed-out child output");
             panic!(
                 "command timed out; stderr={}",
                 String::from_utf8_lossy(&output.stderr)

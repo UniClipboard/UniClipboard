@@ -121,12 +121,17 @@ uniclip watch
 # 显式强制文件模式
 uniclip send --file ./report.pdf
 
+# 从 stdin 逐行读取完整文件路径
+printf '%s\n' ./report.pdf './images/cover art.png' | uniclip send --file
+
 # 等待下一条内容；文件保存到 ./inbox
 uniclip get --wait --out ./inbox
 ```
 
 现有普通文件会被自动识别。文件传输由后台服务负责，所有相关目标进入终态后命令会
-自动退出。可以重复使用 `--peer` 限制目标，按 Ctrl-C 可取消等待。
+自动退出。`-f` / `--file` 没有位置路径时，stdin 表示文件路径列表，而不是文件内容；
+空行会被忽略，所有路径会在发送前完成校验，重复路径只发送一次。可以重复使用
+`--peer` 限制目标，按 Ctrl-C 可取消等待。
 
 ## 管理后台服务
 

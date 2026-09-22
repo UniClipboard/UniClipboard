@@ -192,7 +192,9 @@ enum Commands {
     /// * **Automatic** (default) — an existing regular file is sent as a
     ///   file; other positional input is sent as text; omitted input reads
     ///   text from stdin.
-    /// * **Explicit** — `--text` forces text and `--file` forces a file.
+    /// * **Explicit** — `--text` forces text and `--file` reads file paths
+    ///   from the positional argument or, when omitted, one path per stdin
+    ///   line. Stdin supplies paths, not file contents.
     /// * **Resend** (`--resend <ENTRY-ID>`) — re-fans-out a previously
     ///   captured local entry. The CLI reconstructs the snapshot from
     ///   storage (no stdin / positional text). Fails when the entry is
@@ -213,24 +215,20 @@ enum Commands {
     ///   accepted, no duplicate, no pending). Use `--json` to inspect
     ///   per-bucket counts when a CI harness needs finer-grained checks.
     Send {
-        /// Text or an existing regular file to send. Omit to read text from
-        /// stdin. Mutually exclusive with `--resend` and `--file`.
-        #[arg(value_name = "TEXT", conflicts_with_all = ["resend", "file"])]
+        /// Text or an existing regular file to send. Omit to read from stdin.
+        /// With `--file`, this is treated as a file path; otherwise omitted
+        /// stdin is sent as text. Mutually exclusive with `--resend`.
+        #[arg(value_name = "TEXT_OR_FILE", conflicts_with = "resend")]
         input: Option<String>,
         /// Force the positional argument to be sent as text, even when it
         /// names an existing file.
         #[arg(long = "text", conflicts_with_all = ["resend", "file"])]
         force_text: bool,
-        /// Force the path to be sent as a file. The daemon remains the file
-        /// provider, and the command exits after all relevant targets reach a
-        /// terminal delivery state. Mutually exclusive with `--resend`.
-        #[arg(
-            short = 'f',
-            long = "file",
-            value_name = "PATH",
-            conflicts_with = "resend"
-        )]
-        file: Option<std::path::PathBuf>,
+        /// Send files instead of text. With a positional argument, that value
+        /// is the path. Without one, read one complete file path per stdin
+        /// line; blank lines are ignored. Stdin contains paths, not file data.
+        #[arg(short = 'f', long = "file", conflicts_with_all = ["resend", "force_text"])]
+        file: bool,
         /// Re-fan-out an existing entry by its ID instead of sending
         /// new text. When set, stdin is not consumed.
         #[arg(long, value_name = "ENTRY-ID")]
@@ -1640,6 +1638,8 @@ mod tests {
             "dev-a",
         ])
         .is_ok());
+        assert!(Cli::try_parse_from(["uniclip", "send", "--file"]).is_ok());
+        assert!(Cli::try_parse_from(["uniclip", "send", "-f"]).is_ok());
     }
 
     #[test]

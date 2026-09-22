@@ -129,13 +129,19 @@ clipboard.
 # Explicitly force file mode
 uniclip send --file ./report.pdf
 
+# Read complete file paths from stdin, one per line
+printf '%s\n' ./report.pdf './images/cover art.png' | uniclip send --file
+
 # Wait for the next incoming entry; files are saved under ./inbox
 uniclip get --wait --out ./inbox
 ```
 
 Existing regular files are detected automatically. File sending is owned by the
 daemon, and the command exits after all relevant targets reach a terminal state.
-Use repeatable `--peer` flags to restrict the targets; Ctrl-C cancels the wait.
+When `-f` / `--file` has no positional path, stdin is a list of file paths, not
+file contents. Blank lines are ignored, paths are validated before sending, and
+duplicate paths are sent once. Use repeatable `--peer` flags to restrict the
+targets; Ctrl-C cancels the wait.
 
 ## Manage the background service
 

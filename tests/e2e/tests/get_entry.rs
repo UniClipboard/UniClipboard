@@ -29,6 +29,35 @@ use uc_e2e_tests::{TestCli, TestDaemon, TestProfile};
 
 const EXIT_NO_MATCH: i32 = 6;
 
+#[cfg(target_os = "linux")]
+fn shell_quote(value: &std::ffi::OsStr) -> String {
+    let value = value.to_string_lossy();
+    format!("'{}'", value.replace('\'', "'\"'\"'"))
+}
+
+fn script_command(
+    transcript: &std::path::Path,
+    binary: &std::path::Path,
+    args: &[&str],
+) -> std::process::Command {
+    let mut command = std::process::Command::new("script");
+    command.arg("-q");
+    #[cfg(target_os = "linux")]
+    {
+        let invocation = std::iter::once(binary.as_os_str())
+            .chain(args.iter().map(std::ffi::OsStr::new))
+            .map(shell_quote)
+            .collect::<Vec<_>>()
+            .join(" ");
+        command.args(["-c", &invocation]).arg(transcript);
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        command.arg(transcript).arg(binary).args(args);
+    }
+    command
+}
+
 /// Start a daemon and init a space, returning (daemon, cli). The daemon stays
 /// alive (held by the returned handle) so `get` reuses it as a running peer.
 async fn setup_initialized_node(name: &str) -> (TestDaemon, TestCli) {
@@ -368,12 +397,13 @@ async fn get_wait_shows_real_progress_in_an_interactive_terminal() {
     let transcript = std::env::var_os("UC_PROGRESS_EVIDENCE_PATH")
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|| output_dir.path().join("terminal-progress.log"));
-    let waiter = std::process::Command::new("script")
-        .arg("-q")
-        .arg(&transcript)
-        .arg(bob_cli.binary_path())
-        .args(["get", "--wait", "--type", "file", "--out"])
-        .arg(output_dir.path())
+    let output_dir_arg = output_dir.path().to_string_lossy().into_owned();
+    let mut waiter_command = script_command(
+        &transcript,
+        bob_cli.binary_path(),
+        &["get", "--wait", "--type", "file", "--out", &output_dir_arg],
+    );
+    let waiter = waiter_command
         .env("UC_PROFILE", &bob_cli.profile_name)
         .env("UNICLIPBOARD_ENV", "development")
         .stdout(std::process::Stdio::piped())

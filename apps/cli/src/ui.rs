@@ -306,6 +306,10 @@ pub fn spinner_finish_error(pb: &ProgressBar, message: &str) {
 }
 
 /// Create a byte progress bar on stderr using the CLI's standard alignment.
+///
+/// ```text
+///  ◐  Receiving file 4.0 MiB/8.0 MiB (50%) [=====>      ]
+/// ```
 pub fn byte_progress(total: u64, message: &str) -> ProgressBar {
     let pb = ProgressBar::new(total);
     pb.set_style(

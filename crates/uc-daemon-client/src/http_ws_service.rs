@@ -458,6 +458,9 @@ impl DaemonService for HttpWsDaemonService {
                             filenames: Vec<String>,
                         }
                         serde_json::from_value::<Payload>(payload)
+                            .map_err(|error| {
+                                warn!(error = %error, event_type = ws_event::CLIPBOARD_INCOMING_PENDING, "failed to decode inbound activity payload");
+                            })
                             .ok()
                             .map(|value| {
                                 InboundActivityEvent::Pending(ClipboardIncomingPendingEvent {
@@ -471,6 +474,9 @@ impl DaemonService for HttpWsDaemonService {
                     }
                     Some(ws_event::FILE_TRANSFER_PROGRESS) => {
                         serde_json::from_value::<FileTransferProgressPayload>(payload)
+                            .map_err(|error| {
+                                warn!(error = %error, event_type = ws_event::FILE_TRANSFER_PROGRESS, "failed to decode inbound activity payload");
+                            })
                             .ok()
                             .map(|value| {
                                 InboundActivityEvent::Progress(FileTransferProgressEvent {
@@ -497,6 +503,9 @@ impl DaemonService for HttpWsDaemonService {
                             reason: Option<String>,
                         }
                         serde_json::from_value::<Payload>(payload)
+                            .map_err(|error| {
+                                warn!(error = %error, event_type = ws_event::FILE_TRANSFER_STATUS_CHANGED, "failed to decode inbound activity payload");
+                            })
                             .ok()
                             .map(|value| {
                                 InboundActivityEvent::Status(FileTransferStatusChangedEvent {
@@ -510,6 +519,9 @@ impl DaemonService for HttpWsDaemonService {
                     }
                     Some(ws_event::CLIPBOARD_NEW_CONTENT) => {
                         serde_json::from_value::<InboundEntryEvent>(payload)
+                            .map_err(|error| {
+                                warn!(error = %error, event_type = ws_event::CLIPBOARD_NEW_CONTENT, "failed to decode inbound activity payload");
+                            })
                             .ok()
                             .filter(|entry| entry.origin == "remote")
                             .map(InboundActivityEvent::Completed)

@@ -22,6 +22,31 @@ use uc_e2e_tests::{TestCli, TestDaemon, TestProfile};
 
 const EXIT_ERROR: i32 = 1;
 
+#[cfg(target_os = "linux")]
+fn shell_quote(value: &std::ffi::OsStr) -> String {
+    let value = value.to_string_lossy();
+    format!("'{}'", value.replace('\'', "'\"'\"'"))
+}
+
+fn script_command(transcript: &std::path::Path, binary: &std::path::Path, args: &[&str]) -> Command {
+    let mut command = Command::new("script");
+    command.arg("-q");
+    #[cfg(target_os = "linux")]
+    {
+        let invocation = std::iter::once(binary.as_os_str())
+            .chain(args.iter().map(std::ffi::OsStr::new))
+            .map(shell_quote)
+            .collect::<Vec<_>>()
+            .join(" ");
+        command.args(["-c", &invocation]).arg(transcript);
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        command.arg(transcript).arg(binary).args(args);
+    }
+    command
+}
+
 #[derive(Clone)]
 struct ScriptedState {
     scripts: Arc<Vec<Vec<Value>>>,
@@ -257,11 +282,7 @@ fn completed(entry: &str) -> Value {
 
 fn run_pty(daemon: &ScriptedDaemon, args: &[&str]) -> String {
     let transcript = tempfile::NamedTempFile::new().expect("terminal transcript");
-    let output = Command::new("script")
-        .arg("-q")
-        .arg(transcript.path())
-        .arg(daemon.cli.binary_path())
-        .args(args)
+    let output = script_command(transcript.path(), daemon.cli.binary_path(), args)
         .env("UC_PROFILE", &daemon.cli.profile_name)
         .env("UNICLIPBOARD_ENV", "development")
         .output()

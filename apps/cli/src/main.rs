@@ -302,8 +302,8 @@ enum Commands {
         /// Copy the result to the clipboard on the computer where this terminal is open.
         #[arg(short = 'c', long, conflicts_with = "list")]
         copy: bool,
-        /// Wait for the next remotely synced entry instead of reading the
-        /// current latest entry. Exits after handling one entry.
+        /// Wait for the next matching remotely synced entry after this command
+        /// subscribes instead of reading current history. Exits after one match.
         #[arg(short = 'w', long, conflicts_with_all = ["list", "limit"])]
         wait: bool,
     },

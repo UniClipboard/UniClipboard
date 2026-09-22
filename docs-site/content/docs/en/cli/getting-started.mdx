@@ -113,7 +113,10 @@ uniclip search "report"
 ```
 
 By default, `get` returns content that is already in local history without
-waiting. `get --wait` handles one new delivery and exits. `watch` prints all
+waiting. `get --wait` handles the next matching delivery that arrives after
+the command subscribes and exits. It can be combined with `--type` or `--id`.
+Interactive terminals show real receive progress for a matched file; progress
+stays on stderr, so stdout remains safe for pipes and JSON. `watch` prints all
 future deliveries until you press Ctrl-C:
 
 ```bash

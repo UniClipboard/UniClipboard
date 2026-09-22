@@ -157,8 +157,10 @@ contract described below.
 ### Reading already-synced entries
 
 By default, `get` reads what is **already** in daemon history and returns
-immediately. Add `--wait` to subscribe for one new synced entry, handle it with
-the same output rules, and exit.
+immediately. Add `--wait` to subscribe for the next matching entry that arrives
+after subscription, handle it with the same output rules, and exit. `--wait`
+can be combined with `--type` or `--id`; it never consumes an older history
+entry or an already-finished transfer.
 
 ```bash
 # Newest usable entry (text/link prints to stdout)
@@ -169,6 +171,12 @@ uniclip get -c
 
 # Wait for one new synced entry
 uniclip get -w
+
+# Wait for the next file and show receive progress on interactive stderr
+uniclip get -w --type file
+
+# Wait for this id only if it arrives after the command subscribes
+uniclip get -w --id <ENTRY_ID>
 
 # Wait for one new entry and copy it
 uniclip get --copy --wait
@@ -195,6 +203,15 @@ directly. Waiting messages are written to stderr and do not corrupt stdout.
 With `-c` or `--copy`, text and links copy their content; images and files copy
 the absolute path written to disk. For images and files, `--copy` cannot be
 combined with `--out -`, because streaming the bytes does not produce a path.
+
+While waiting for a matched file, an interactive terminal shows real received
+bytes, total bytes and percentage when the total is known, or received bytes
+plus an activity indicator when it is unknown. Progress is written only to
+stderr; JSON stdout contains only the final result, and non-interactive stderr
+does not contain animation control sequences. The current pending event can
+prove `file` from a non-empty filename list, but cannot reliably distinguish
+`image`, `text`, or `link`, so those filters wait for final classification
+instead of locking an unrelated transfer for early progress.
 
 The old `uniclip recv [--out DIR]` command is hidden and deprecated. Existing
 scripts still work in this release and receive one warning on stderr, but new

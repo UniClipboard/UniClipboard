@@ -262,12 +262,11 @@ jobs:
               BIN_SRC="target/${TARGET}/release/uniclip.exe"
             fi
             ARCHIVE="uniclipboard-cli-${VERSION}-${TARGET}.zip"
-            WORKDIR="$(pwd)"
             STAGE="cli-package-stage"
             rm -rf "$STAGE"
             mkdir -p "$STAGE"
             cp "$BIN_SRC" "$(dirname "$BIN_SRC")/uniclipd.exe" "$STAGE/"
-            powershell -NoProfile -Command "Compress-Archive -Path '$STAGE/*' -DestinationPath '${WORKDIR}/${ARCHIVE}' -Force"
+            powershell -NoProfile -Command "Compress-Archive -Path '$STAGE/*' -DestinationPath '$ARCHIVE' -Force"
           else
             BIN_DIR="target/${TARGET}/release"
             # Fallback for non-cross builds

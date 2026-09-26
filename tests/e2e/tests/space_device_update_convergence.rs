@@ -284,9 +284,9 @@ async fn assert_text_arrives(sender: &Node, receiver: &Node, receiver_id: &str, 
 async fn notified_host_converges_after_pending_group_update_is_delivered() {
     let binaries = NodeBinarySet::current();
     let rendezvous = LocalRendezvous::start().await;
-    let alice = Node::initialized("t0065-sdu-alice", "alice-node", &binaries, &rendezvous).await;
-    let bob = Node::fresh("t0065-sdu-bob", &binaries, &rendezvous).await;
-    let mut carol = Node::fresh("t0065-sdu-carol", &binaries, &rendezvous).await;
+    let alice = Node::initialized("space-update-alice", "alice-node", &binaries, &rendezvous).await;
+    let bob = Node::fresh("space-update-bob", &binaries, &rendezvous).await;
+    let mut carol = Node::fresh("space-update-carol", &binaries, &rendezvous).await;
     join(&alice, &bob, "bob-node").await;
     join(&alice, &carol, "carol-node").await;
     let bob_id = device_id(&alice.cli, "bob-node");
@@ -309,19 +309,19 @@ async fn notified_host_converges_after_pending_group_update_is_delivered() {
         "pending group update",
     )
     .await;
-    eprintln!("[t0065] alice status while carol is offline: {pending}");
+    eprintln!("[space-update-convergence] alice status while carol is offline: {pending}");
 
     let view = Arc::new(Mutex::new(HostView::default()));
     follow_host_notifications(&alice, truth.clone(), Arc::clone(&view)).await;
     tokio::time::sleep(Duration::from_secs(3)).await;
     let before = view.lock().expect("host view").phase.clone();
-    eprintln!("[t0065] host view while carol is offline: {before:?}");
+    eprintln!("[space-update-convergence] host view while carol is offline: {before:?}");
     assert_ne!(before.as_deref(), Some("completed"));
 
     // Let alice's first delivery attempt fail completely so the update backs off.
     tokio::time::sleep(Duration::from_secs(12)).await;
     carol.daemon.resume().expect("resume carol");
-    eprintln!("[t0065] carol resumed");
+    eprintln!("[space-update-convergence] carol resumed");
 
     // carol never accepted bob's removal herself, so her user decides (ADR-020).
     let carol_reader = TrustReader::new(&carol).await;
@@ -356,7 +356,7 @@ async fn notified_host_converges_after_pending_group_update_is_delivered() {
         "--json", "member", "trust", "choose", "--issue", &issue_id, "--choice", &choice_id,
     ]);
     assert!(chosen.success(), "carol decision failed: {chosen:?}");
-    eprintln!("[t0065] carol accepted the removal");
+    eprintln!("[space-update-convergence] carol accepted the removal");
 
     let converged_at = {
         wait_for_phase(
@@ -367,7 +367,7 @@ async fn notified_host_converges_after_pending_group_update_is_delivered() {
         .await;
         Instant::now()
     };
-    eprintln!("[t0065] authoritative status completed");
+    eprintln!("[space-update-convergence] authoritative status completed");
 
     let host_deadline = converged_at + HOST_GRACE;
     loop {
@@ -376,7 +376,9 @@ async fn notified_host_converges_after_pending_group_update_is_delivered() {
             (view.phase.clone(), view.notifications.clone())
         };
         if phase.as_deref() == Some("completed") {
-            eprintln!("[t0065] host view converged; notifications={notifications:?}");
+            eprintln!(
+                "[space-update-convergence] host view converged; notifications={notifications:?}"
+            );
             break;
         }
         assert!(
@@ -387,6 +389,6 @@ async fn notified_host_converges_after_pending_group_update_is_delivered() {
         tokio::time::sleep(Duration::from_millis(1000)).await;
     }
 
-    assert_text_arrives(&alice, &carol, &carol_id, "t0065 alice to carol").await;
-    assert_text_arrives(&carol, &alice, &alice_id, "t0065 carol to alice").await;
+    assert_text_arrives(&alice, &carol, &carol_id, "space update alice to carol").await;
+    assert_text_arrives(&carol, &alice, &alice_id, "space update carol to alice").await;
 }

@@ -180,9 +180,14 @@ parts:
       # ADR-008 D13: ship the daemon next to the GUI so it spawns as a sibling.
       install -Dm755 target/release/uniclipd \
         "${CRAFT_PART_INSTALL}/usr/bin/uniclipd"
+      # The desktop entry names its icon by explicit ${SNAP} path. A bare theme
+      # name makes snapcraft (>= 9.1) guess a hicolor size directory from the
+      # empty ones staged by hicolor-icon-theme and write a nonexistent path
+      # (e.g. 96x96/apps/uniclipboard.xpm), which the Snap Store rejects.
+      # Each icon must sit in the hicolor directory matching its pixel size.
       install -Dm644 snap/local/uniclipboard.desktop \
         "${CRAFT_PART_INSTALL}/usr/share/applications/uniclipboard.desktop"
       install -Dm644 src-tauri/icons/icon.png \
-        "${CRAFT_PART_INSTALL}/usr/share/icons/hicolor/256x256/apps/uniclipboard.png"
+        "${CRAFT_PART_INSTALL}/usr/share/icons/hicolor/512x512/apps/uniclipboard.png"
       install -Dm644 src-tauri/icons/128x128.png \
         "${CRAFT_PART_INSTALL}/usr/share/icons/hicolor/128x128/apps/uniclipboard.png"

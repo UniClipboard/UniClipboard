@@ -134,6 +134,16 @@ jobs:
           retention-days: 7
           if-no-files-found: error
 
+      - name: Verify desktop entry icons
+        # The store rejects snaps whose desktop Icon path is missing; fail
+        # here with the offending path instead of after upload review.
+        env:
+          SNAP_FILE: ${{ steps.build.outputs.snap }}
+        run: |
+          command -v unsquashfs >/dev/null || sudo apt-get install -y squashfs-tools
+          python3 -m unittest discover -s scripts/tests -p test_check_snap_desktop_icons.py
+          python3 scripts/check-snap-desktop-icons.py "$SNAP_FILE"
+
       - name: Check snap store credentials
         id: check-creds
         if: ${{ steps.snap-meta.outputs.release == 'true' }}

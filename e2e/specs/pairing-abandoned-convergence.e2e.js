@@ -2,9 +2,9 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { click, showMainWindow } from '../helpers/dualPeer.js'
 
-const phase = process.env.T0028_GUI_PHASE
-const evidenceDir = process.env.T0028_GUI_EVIDENCE_DIR
-const passphrase = process.env.T0028_PASSPHRASE
+const phase = process.env.ABANDONED_PAIRING_GUI_PHASE
+const evidenceDir = process.env.ABANDONED_PAIRING_GUI_EVIDENCE_DIR
+const passphrase = process.env.ABANDONED_PAIRING_PASSPHRASE
 
 async function unlockIfNeeded() {
   const unlockButton = await $('[data-testid="unlock-content"]')

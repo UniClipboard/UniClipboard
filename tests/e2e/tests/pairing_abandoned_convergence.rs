@@ -14,21 +14,22 @@ use uc_e2e_tests::{
 const DEADLINE: Duration = Duration::from_secs(390);
 
 fn passphrase() -> String {
-    std::env::var("T0028_PASSPHRASE").expect("T0028_PASSPHRASE")
+    std::env::var("ABANDONED_PAIRING_PASSPHRASE").expect("ABANDONED_PAIRING_PASSPHRASE")
 }
 
 fn binaries() -> NodeBinarySet {
-    let directory = std::env::var("T0028_BINARY_DIR").expect("T0028_BINARY_DIR");
+    let directory =
+        std::env::var("ABANDONED_PAIRING_BINARY_DIR").expect("ABANDONED_PAIRING_BINARY_DIR");
     NodeBinarySet::fixed_release_dir_with_discovery(
-        "t0028-local",
+        "abandoned-pairing-local",
         directory,
         uc_e2e_tests::DaemonEndpointDiscovery::ConnectionFile,
     )
-    .expect("t0028 binaries")
+    .expect("abandoned pairing binaries")
 }
 
 fn profile(run: &str, role: &str) -> TestProfile {
-    TestProfile::for_upgrade_fixture(&format!("e2e-t0028-{run}-{role}"))
+    TestProfile::for_upgrade_fixture(&format!("e2e-abandoned-pairing-{run}-{role}"))
         .expect("valid retained profile")
 }
 
@@ -301,7 +302,9 @@ async fn assert_transfer(sender: &TestCli, receiver: &TestCli, receiver_name: &s
 }
 
 fn write_evidence(run: &str, phase: &str, value: &Value) {
-    let root = PathBuf::from(std::env::var("T0028_EVIDENCE_DIR").expect("T0028_EVIDENCE_DIR"));
+    let root = PathBuf::from(
+        std::env::var("ABANDONED_PAIRING_EVIDENCE_DIR").expect("ABANDONED_PAIRING_EVIDENCE_DIR"),
+    );
     std::fs::create_dir_all(&root).expect("create evidence directory");
     std::fs::write(
         root.join(format!("{run}-{phase}.json")),
@@ -317,8 +320,8 @@ async fn abandoned_pairings_red_green() {
         std::env::var_os("UC_E2E_KEEP_PROFILES").is_some(),
         "set UC_E2E_KEEP_PROFILES=1 so the red profile survives for the green run"
     );
-    let run = std::env::var("T0028_RUN_ID").expect("T0028_RUN_ID");
-    let phase = std::env::var("T0028_PHASE").expect("T0028_PHASE");
+    let run = std::env::var("ABANDONED_PAIRING_RUN_ID").expect("ABANDONED_PAIRING_RUN_ID");
+    let phase = std::env::var("ABANDONED_PAIRING_PHASE").expect("ABANDONED_PAIRING_PHASE");
     let binaries = binaries();
     let rendezvous = LocalRendezvous::start().await;
 
@@ -455,14 +458,14 @@ async fn abandoned_pairings_red_green() {
         &sponsor_cli,
         &joiner_cli,
         "Rejoined",
-        "t0028-sponsor-to-rejoined",
+        "abandoned-pairing-sponsor-to-rejoined",
     )
     .await;
     assert_transfer(
         &joiner_cli,
         &sponsor_cli,
         "Sponsor",
-        "t0028-rejoined-to-sponsor",
+        "abandoned-pairing-rejoined-to-sponsor",
     )
     .await;
     write_evidence(

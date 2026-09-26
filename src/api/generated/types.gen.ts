@@ -719,7 +719,7 @@ export type DeviceGroupDecisionDto = {
     target: DeviceGroupChoiceDeviceDto;
 };
 
-export type DeviceGroupRelationshipDto = 'confirmation_pending' | 'consistent' | 'pending_local_decision' | 'diverged' | 'unverifiable' | 'unknown';
+export type DeviceGroupRelationshipDto = 'confirmation_pending' | 'consistent' | 'pending_local_decision' | 'awaiting_removal_acknowledgement' | 'diverged' | 'unverifiable' | 'unknown';
 
 export type DeviceGroupRemovalDecisionDto = 'accepted' | 'rejected';
 
@@ -3413,7 +3413,7 @@ export type ShortcutKeyDto = string | Array<string>;
 
 export type SpaceDeviceUpdatePhaseDto = 'updating' | 'completed' | 'retryable_failure' | 'needs_attention';
 
-export type SpaceDeviceUpdateProblemDto = 'device_state_rejected' | 'device_relationship_conflict' | 'device_security_update_rejected' | 'device_upgrade_required';
+export type SpaceDeviceUpdateProblemDto = 'device_state_rejected' | 'device_relationship_conflict' | 'device_security_update_rejected' | 'device_upgrade_required' | 'local_identity_mismatch';
 
 export type SpaceDeviceUpdateRecoveryDto = 'review_devices' | 'update_app';
 

@@ -1,4 +1,5 @@
 import { createContext } from 'react'
+import type { DeviceGroupChoicesFailure } from '@/api/daemon/device-group-choices-failure'
 import type {
   DeviceGroupChoices,
   DeviceGroupChoiceOutcome,
@@ -17,6 +18,7 @@ export interface DeviceTrustContextValue {
   snapshot: DeviceTrustSnapshot | null
   loading: boolean
   refreshError?: string | null
+  refreshFailure?: DeviceGroupChoicesFailure | null
   decisionBusy: boolean
   decisionError: string | null
   localRemovalConfirmationIssueId: string | null

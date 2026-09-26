@@ -179,6 +179,9 @@ impl IntoApiDto<DeviceTrustSnapshotDto> for DeviceTrustSnapshotSummary {
                     SpaceDeviceUpdateProblemSummary::DeviceUpgradeRequired => {
                         SpaceDeviceUpdateProblemDto::DeviceUpgradeRequired
                     }
+                    SpaceDeviceUpdateProblemSummary::LocalIdentityMismatch => {
+                        SpaceDeviceUpdateProblemDto::LocalIdentityMismatch
+                    }
                 }),
                 recovery: self
                     .space_device_update
@@ -374,6 +377,9 @@ fn device_trust_relationship(
             DeviceGroupRelationshipSummary::Consistent => DeviceGroupRelationshipDto::Consistent,
             DeviceGroupRelationshipSummary::PendingLocalDecision => {
                 DeviceGroupRelationshipDto::PendingLocalDecision
+            }
+            DeviceGroupRelationshipSummary::AwaitingRemovalAcknowledgement => {
+                DeviceGroupRelationshipDto::AwaitingRemovalAcknowledgement
             }
             DeviceGroupRelationshipSummary::Diverged => DeviceGroupRelationshipDto::Diverged,
             DeviceGroupRelationshipSummary::Unverifiable => {
@@ -586,7 +592,7 @@ mod tests {
                 is_local: false,
                 reachability: DeviceReachabilitySummary::Online,
                 membership: DeviceMembershipSummary::Active,
-                group_relationship: DeviceGroupRelationshipSummary::ConfirmationPending,
+                group_relationship: DeviceGroupRelationshipSummary::AwaitingRemovalAcknowledgement,
                 compatibility: DeviceCompatibilitySummary::Compatible,
                 sync_relationship: DeviceSyncRelationshipSummary::PausedUnverifiable,
                 pairing_confirmation: Some(PairingConfirmationSummary::Unconfirmed),
@@ -621,6 +627,10 @@ mod tests {
         assert_eq!(
             mapped.devices[0].pairing_confirmation,
             Some(PairingConfirmationDto::Unconfirmed)
+        );
+        assert_eq!(
+            mapped.devices[0].group_relationship,
+            DeviceGroupRelationshipDto::AwaitingRemovalAcknowledgement
         );
         let change = mapped.current_change.expect("pending device trust change");
         assert_eq!(change.change_id, "change-1");

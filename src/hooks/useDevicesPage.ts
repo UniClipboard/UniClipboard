@@ -48,6 +48,7 @@ const log = createLogger('devices-page')
 type Selection =
   | { kind: 'local' }
   | { kind: 'peer'; id: string }
+  | { kind: 'removed'; id: string }
   | {
       kind: 'mobile'
       id: string
@@ -125,6 +126,7 @@ export function useDevicesPage() {
   const {
     snapshot: deviceTrust,
     refreshError: deviceTrustError,
+    refreshFailure: deviceTrustFailure,
     refresh: refreshDeviceTrust,
   } = useDeviceTrust()
   const manualRefreshInProgress =
@@ -230,6 +232,10 @@ export function useDevicesPage() {
   const [selection, setSelection] = useState<Selection>({ kind: 'local' })
   const selectedPeer =
     selection.kind === 'peer' ? peers.find(p => p.peerId === selection.id) : undefined
+  const selectedRemovedDevice =
+    selection.kind === 'removed'
+      ? trustListView.removedDevices.find(device => device.deviceId === selection.id)
+      : undefined
   const selectedMobile =
     selection.kind === 'mobile' ? mobileDevices.find(d => d.deviceId === selection.id) : undefined
   // An unresolvable selection falls back to the local panel for this render
@@ -240,7 +246,9 @@ export function useDevicesPage() {
   // really vanished (unpaired / revoked) never comes back, so it keeps
   // falling back for every subsequent render anyway.
   const effectiveSelection: Selection =
-    (selection.kind === 'peer' && !selectedPeer) || (selection.kind === 'mobile' && !selectedMobile)
+    (selection.kind === 'peer' && !selectedPeer) ||
+    (selection.kind === 'removed' && !selectedRemovedDevice) ||
+    (selection.kind === 'mobile' && !selectedMobile)
       ? { kind: 'local' }
       : selection
 
@@ -251,7 +259,6 @@ export function useDevicesPage() {
     targetId: null,
     busy: false,
   })
-  const unpairDialogOpen = unpairTargetId !== null
   const unpairBusyRef = useRef(false)
 
   const handleUnpairRequest = (peerId: string) => {
@@ -269,12 +276,34 @@ export function useDevicesPage() {
     unpairBusyRef.current = true
     updateUnpair({ type: 'start' })
     try {
-      await unpairDevice(unpairTargetId)
-      await refreshDeviceTrust()
-      dispatch(fetchSpaceMembers())
-      dispatch(fetchSpaceProtection())
+      const result = await unpairDevice(unpairTargetId)
+      const removalNotificationPending = result.devices.some(
+        device =>
+          device.deviceId === unpairTargetId &&
+          device.membership === 'removed' &&
+          device.groupRelationship === 'awaiting_removal_acknowledgement'
+      )
+      toast.success(
+        t(
+          removalNotificationPending
+            ? 'devices.memberRemoval.notificationPending.title'
+            : 'devices.memberRemoval.removed.title'
+        ),
+        {
+          description: t(
+            removalNotificationPending
+              ? 'devices.memberRemoval.notificationPending.description'
+              : 'devices.memberRemoval.removed.description'
+          ),
+        }
+      )
       setSelection({ kind: 'local' })
       updateUnpair({ type: 'close' })
+      void refreshDeviceTrust().catch(error => {
+        log.warn({ err: error }, 'Device trust refresh failed after device removal')
+      })
+      dispatch(fetchSpaceMembers())
+      dispatch(fetchSpaceProtection())
     } catch (error) {
       log.error({ err: error }, 'failed to remove device')
       toast.error(t('devices.memberRemoval.errors.removeFailed'))
@@ -290,6 +319,7 @@ export function useDevicesPage() {
   }
 
   const unpairTargetDevice = peers.find(d => d.peerId === unpairTargetId)
+  const unpairDialogOpen = unpairTargetId !== null && unpairTargetDevice !== undefined
   const networkRecoveryVisible =
     networkRecoveryError !== null || (networkRecovery !== null && networkRecovery.phase !== 'idle')
   const canRetryNetworkRecovery =
@@ -320,6 +350,7 @@ export function useDevicesPage() {
     refreshDeviceTrust,
     deviceTrust,
     deviceTrustError,
+    deviceTrustFailure,
     refreshConnectionsManually,
     trustListView,
     mobileDevices,
@@ -333,6 +364,7 @@ export function useDevicesPage() {
     selection,
     setSelection,
     selectedPeer,
+    selectedRemovedDevice,
     selectedMobile,
     effectiveSelection,
     switchSpaceOpen,

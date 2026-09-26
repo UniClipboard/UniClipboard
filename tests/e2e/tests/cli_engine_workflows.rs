@@ -236,6 +236,31 @@ fn device_id(cli: &TestCli, name: &str) -> String {
         .unwrap_or_else(|| panic!("member {name} not found"))
 }
 
+/// Until the restarted daemon session is ready, the CLI either cannot hold a
+/// session yet (no JSON body) or the Engine answers with the retryable
+/// `device_group_choices_unavailable`. Any other error code is a real result
+/// and fails immediately.
+async fn wait_for_device_trust_after_restart(node: &Node) -> Value {
+    let deadline = tokio::time::Instant::now() + WAIT_TIMEOUT;
+    loop {
+        let output = node
+            .cli
+            .run_capture(&["--json", "member", "trust", "status"]);
+        if output.success() {
+            return json(&output);
+        }
+        let retryable = serde_json::from_str::<Value>(output.stdout.trim()).map_or(true, |error| {
+            error["code"] == "device_group_choices_unavailable"
+        });
+        assert!(
+            retryable && tokio::time::Instant::now() < deadline,
+            "device trust after restart failed: {output:?}; log={}",
+            node.daemon.diagnostic_log()
+        );
+        tokio::time::sleep(Duration::from_millis(250)).await;
+    }
+}
+
 async fn wait_for_trust_change(node: &Node) -> Value {
     let deadline = tokio::time::Instant::now() + WAIT_TIMEOUT;
     loop {
@@ -913,6 +938,98 @@ async fn member_sync_cli_reads_partially_updates_and_rereads_engine_state() {
     );
     assert!(human_updated.stderr.contains("off"), "{human_updated:?}");
     assert_request_delta(&alice, "PATCH", &sync_path, human_update_requests_before, 1);
+}
+
+#[tokio::test]
+#[ignore]
+async fn removed_member_is_excluded_while_notification_delivery_is_pending() {
+    let binaries = NodeBinarySet::current();
+    let rendezvous = LocalRendezvous::start().await;
+    let mut alice = Node::initialized(
+        "cli-workflow-removal-alice",
+        "alice-node",
+        &binaries,
+        &rendezvous,
+    )
+    .await;
+    let mut bob = Node::fresh("cli-workflow-removal-bob", &binaries, &rendezvous).await;
+    join(&alice, &bob, "bob-node", false).await;
+    let bob_id = device_id(&alice.cli, "bob-node");
+    bob.daemon.kill();
+
+    let first = alice
+        .cli
+        .run_capture(&["--json", "member", "remove", &bob_id]);
+    assert!(
+        first.success(),
+        "first removal failed: {first:?}; log={}",
+        alice.daemon.diagnostic_log()
+    );
+    let first = json(&first);
+    let first_removed = first["devices"]
+        .as_array()
+        .expect("device trust devices")
+        .iter()
+        .find(|device| device["deviceId"] == bob_id)
+        .expect("removed device relationship");
+    assert_eq!(first_removed["membership"], "removed");
+    assert_eq!(
+        first_removed["groupRelationship"],
+        "awaiting_removal_acknowledgement"
+    );
+    assert_eq!(first["spaceDeviceUpdate"]["phase"], "completed");
+    assert!(
+        !members(&alice.cli)
+            .iter()
+            .any(|member| member["device_id"] == bob_id),
+        "removed member remained in the public member list"
+    );
+
+    let repeated = alice
+        .cli
+        .run_capture(&["--json", "member", "remove", &bob_id]);
+    assert!(
+        repeated.success(),
+        "repeated removal failed: {repeated:?}; log={}",
+        alice.daemon.diagnostic_log()
+    );
+    let repeated = json(&repeated);
+    assert_eq!(repeated["revision"], first["revision"]);
+    assert_eq!(repeated["spaceDeviceUpdate"]["phase"], "completed");
+    let repeated_removed = repeated["devices"]
+        .as_array()
+        .expect("repeated device trust devices")
+        .iter()
+        .find(|device| device["deviceId"] == bob_id)
+        .expect("repeated removed device relationship");
+    assert_eq!(repeated_removed, first_removed);
+
+    let human = alice.cli.run_capture(&["member", "remove", &bob_id]);
+    assert!(human.success(), "human repeated removal failed: {human:?}");
+    assert!(
+        human.stderr.contains("Member removed from this device"),
+        "{human:?}"
+    );
+    assert!(
+        human.stderr.contains("notifying other devices"),
+        "{human:?}"
+    );
+
+    alice.restart().await;
+    let after_restart = wait_for_device_trust_after_restart(&alice).await;
+    assert_eq!(
+        after_restart["deviceTrust"]["spaceDeviceUpdate"]["phase"],
+        "completed"
+    );
+    assert!(after_restart["deviceTrust"]["devices"]
+        .as_array()
+        .expect("restarted device trust devices")
+        .iter()
+        .any(|device| {
+            device["deviceId"] == bob_id
+                && device["membership"] == "removed"
+                && device["groupRelationship"] == "awaiting_removal_acknowledgement"
+        }));
 }
 
 #[tokio::test]

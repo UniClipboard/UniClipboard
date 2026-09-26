@@ -1266,6 +1266,7 @@
           "confirmation_pending",
           "consistent",
           "pending_local_decision",
+          "awaiting_removal_acknowledgement",
           "diverged",
           "unverifiable",
           "unknown"
@@ -6146,7 +6147,8 @@
           "device_state_rejected",
           "device_relationship_conflict",
           "device_security_update_rejected",
-          "device_upgrade_required"
+          "device_upgrade_required",
+          "local_identity_mismatch"
         ],
         "type": "string"
       },

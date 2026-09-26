@@ -165,6 +165,20 @@ export async function pairingComplete(instance, label) {
 export async function pairFreshProfiles({ sponsor, joiner, passphrase }) {
   await openFreshSetup(sponsor, joiner)
   await initializeSponsor(sponsor, passphrase)
+  const sponsorProfile = process.env.E2E_UC_SPONSOR_PROFILE
+  if (sponsorProfile) {
+    const connection = daemonConnection(sponsorProfile)
+    await sponsor.waitUntil(
+      async () => {
+        const response = await daemonRequest(connection, '/member/device-group-choices')
+        return response.status === 200
+      },
+      {
+        timeout: 30000,
+        timeoutMsg: 'device group choices did not become available after setup',
+      }
+    )
+  }
   const code = await issueInvitation(sponsor)
   await click(joiner, '[data-testid="setup-entry-join"]')
   await enterInvitation(joiner, code, passphrase)

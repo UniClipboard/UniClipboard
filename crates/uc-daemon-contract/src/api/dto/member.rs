@@ -110,6 +110,7 @@ pub enum DeviceGroupRelationshipDto {
     ConfirmationPending,
     Consistent,
     PendingLocalDecision,
+    AwaitingRemovalAcknowledgement,
     Diverged,
     Unverifiable,
     Unknown,
@@ -277,6 +278,7 @@ pub enum SpaceDeviceUpdateProblemDto {
     DeviceRelationshipConflict,
     DeviceSecurityUpdateRejected,
     DeviceUpgradeRequired,
+    LocalIdentityMismatch,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
@@ -406,6 +408,15 @@ mod device_group_choice_dto_tests {
                 json!(expected)
             );
         }
+    }
+
+    #[test]
+    fn removal_acknowledgement_uses_stable_wire_name() {
+        assert_eq!(
+            serde_json::to_value(DeviceGroupRelationshipDto::AwaitingRemovalAcknowledgement)
+                .expect("serialize removal acknowledgement"),
+            json!("awaiting_removal_acknowledgement")
+        );
     }
 
     fn snapshot() -> DeviceTrustSnapshotDto {

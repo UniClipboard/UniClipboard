@@ -26,7 +26,9 @@ const forwardedArgs = process.argv
   .filter(arg => arg !== '--dual-peer' && arg !== '--triple-peer')
 const requestedSpec = process.env.E2E_SPEC
 const spaceWorkSpec = name =>
-  name === 'final-confirmation.dual.e2e.js' || name.startsWith('membership-maintenance-')
+  name === 'final-confirmation.dual.e2e.js' ||
+  name === 'removal-notification.dual.e2e.js' ||
+  name.startsWith('membership-maintenance-')
 const specFiles = fs
   .readdirSync(path.join(__dirname, 'specs'))
   .filter(name => name.endsWith('.e2e.js'))

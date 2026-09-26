@@ -1,9 +1,6 @@
-import { AnimatePresence } from 'framer-motion'
 import type React from 'react'
 import { useNavigate } from 'react-router'
-import { usePlatform } from '@/hooks/usePlatform'
 import { useSetupFlow } from '@/hooks/useSetupFlow'
-import { cn } from '@/lib/utils'
 import {
   EntryScreen,
   ImportConfigScreen,
@@ -12,7 +9,6 @@ import {
   JoinEndedScreen,
   PairingCompleteScreen,
   RedeemInvitationScreen,
-  SetupBrandPanel,
   ShowInvitationScreen,
   SpaceReadyScreen,
 } from '@/pages/setup/screens'
@@ -103,9 +99,7 @@ const SetupScreen: React.FC<SetupScreenProps> = ({
 }
 
 export default function SetupPage({ onCompleteSetup }: SetupPageProps = {}) {
-  const { isMac } = usePlatform()
   const navigate = useNavigate()
-  const isE2e = import.meta.env.VITE_E2E === '1'
   const {
     screen,
     loading,
@@ -130,57 +124,21 @@ export default function SetupPage({ onCompleteSetup }: SetupPageProps = {}) {
     navigate('/', { replace: true })
   }
 
-  const stepKey = screen.kind
-  const pairingComplete = screen.kind === 'pairing_complete'
-  const screenContent = (
-    <div key={stepKey} className="w-full">
-      <SetupScreen
-        screen={screen}
-        loading={loading}
-        goEntry={goEntry}
-        startCreateSpace={startCreateSpace}
-        startJoinSpace={startJoinSpace}
-        startImportConfig={startImportConfig}
-        initializeSpace={initializeSpace}
-        issueInvitation={issueInvitation}
-        cancelInvitation={cancelInvitation}
-        redeemInvitation={redeemInvitation}
-        cancelJoin={cancelJoin}
-        onDone={handleDone}
-      />
-    </div>
-  )
-
   return (
-    <div
-      className={cn(
-        'grid h-full w-full overflow-hidden bg-background',
-        !pairingComplete && 'lg:grid-cols-[22rem_1fr]'
-      )}
-    >
-      {!pairingComplete && <SetupBrandPanel />}
-
-      <main className="relative flex min-h-0 flex-col bg-background">
-        {/* Drag strip. On macOS below `lg` (brand rail hidden) the traffic
-            lights land here, so leave room; once the rail is shown they move
-            onto it and the strip reclaims the space. */}
-        <header
-          data-tauri-drag-region
-          className={cn('flex h-12 shrink-0 items-center pr-4', isMac ? 'pl-20 lg:pl-6' : 'pl-6')}
-        />
-
-        <div className="flex min-h-0 flex-1 items-center overflow-y-auto px-8 pb-12 sm:px-14">
-          <div className={cn('mx-auto min-w-0 w-full', pairingComplete ? 'max-w-xl' : 'max-w-md')}>
-            {isE2e ? (
-              screenContent
-            ) : (
-              <AnimatePresence mode="wait" initial={false}>
-                {screenContent}
-              </AnimatePresence>
-            )}
-          </div>
-        </div>
-      </main>
-    </div>
+    <SetupScreen
+      key={screen.kind}
+      screen={screen}
+      loading={loading}
+      goEntry={goEntry}
+      startCreateSpace={startCreateSpace}
+      startJoinSpace={startJoinSpace}
+      startImportConfig={startImportConfig}
+      initializeSpace={initializeSpace}
+      issueInvitation={issueInvitation}
+      cancelInvitation={cancelInvitation}
+      redeemInvitation={redeemInvitation}
+      cancelJoin={cancelJoin}
+      onDone={handleDone}
+    />
   )
 }

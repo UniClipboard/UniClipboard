@@ -16,9 +16,11 @@ interface Props {
 }
 
 const categoryIcons = {
-  failed: <AlertCircle className="size-4" />,
-  ready: <Check className="size-4" />,
-  working: <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />,
+  failed: <AlertCircle className="size-4" aria-hidden="true" />,
+  ready: <Check className="size-4" aria-hidden="true" />,
+  working: (
+    <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+  ),
 }
 
 export function StartupProgressScreen({ snapshot, phase = 'default', onRetry, onExport }: Props) {
@@ -48,11 +50,19 @@ export function StartupProgressScreen({ snapshot, phase = 'default', onRetry, on
       )}
 
       {screen.showElapsed && (
-        <p className="mt-5 text-ui-caption tabular-nums text-muted-foreground">
-          {t('upgradeProgress.elapsed', {
-            time: `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, '0')}`,
-          })}
-        </p>
+        <div className="mt-8 flex flex-col gap-2">
+          <div aria-hidden="true" className="h-1.5 overflow-hidden rounded-full bg-muted">
+            <div className="h-full w-1/3 animate-pulse rounded-full bg-primary/35 motion-reduce:animate-none" />
+          </div>
+          <div className="flex justify-between gap-2 text-ui-caption text-muted-foreground">
+            <span>{t('upgradeProgress.processing')}</span>
+            <span className="tabular-nums">
+              {t('upgradeProgress.elapsed', {
+                time: `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, '0')}`,
+              })}
+            </span>
+          </div>
+        </div>
       )}
       {screen.showActivity && <StartupActivity failed={screen.failed} snapshot={snapshot} />}
       <StartupActions

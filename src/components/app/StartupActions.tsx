@@ -56,7 +56,7 @@ export function StartupActions({ failed, onExport, onRetry, required, snapshot }
 
   return (
     <>
-      <div className="mt-8 flex flex-wrap gap-3">
+      <div className="mt-8 flex flex-wrap gap-2">
         {snapshot.allowed_actions.retry && failed && (
           <Button onClick={onRetry}>
             <RotateCw className="size-4" />

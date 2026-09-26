@@ -69,7 +69,7 @@ document.documentElement.classList.toggle('dark', params.get('theme') === 'dark'
 const noop = () => {}
 const expiry = Date.now() + 234_000
 
-function EntryFixture() {
+export default function EntryFixture() {
   const view = params.get('view') || 'startup'
   const [setupStep, setSetupStep] = useState(view)
   let content

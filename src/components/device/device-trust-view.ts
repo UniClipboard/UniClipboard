@@ -13,6 +13,7 @@ export type DeviceRowStatus = {
     | 'removing'
     | 'recovery_required'
     | 'removed'
+    | 'removal_notification_pending'
     | 'diverged'
   label: string
   description?: string
@@ -22,6 +23,7 @@ export interface DeviceTrustListView {
   peers: SpaceMember[]
   relationshipsByDeviceId: Map<string, DeviceTrustRelationship>
   localRelationship: DeviceTrustRelationship | null
+  removedDevices: DeviceTrustRelationship[]
 }
 
 export function buildDeviceTrustListView(
@@ -36,6 +38,12 @@ export function buildDeviceTrustListView(
     peers: admittedPeers,
     relationshipsByDeviceId,
     localRelationship: snapshot?.devices.find(device => device.isLocal) ?? null,
+    removedDevices: (snapshot?.devices ?? []).filter(
+      device =>
+        !device.isLocal &&
+        device.membership === 'removed' &&
+        device.groupRelationship === 'awaiting_removal_acknowledgement'
+    ),
   }
 }
 
@@ -43,6 +51,16 @@ export function getDeviceTrustStatus(
   device: DeviceTrustRelationship,
   t: (key: string) => string
 ): { tone: StatusDotTone; status: DeviceRowStatus } | null {
+  if (device.groupRelationship === 'awaiting_removal_acknowledgement') {
+    return {
+      tone: 'info',
+      status: {
+        kind: 'removal_notification_pending',
+        label: t('devices.memberRemoval.notificationPending.title'),
+        description: t('devices.memberRemoval.notificationPending.description'),
+      },
+    }
+  }
   if (device.groupRelationship === 'diverged') {
     return {
       tone: 'warning',

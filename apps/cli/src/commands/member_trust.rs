@@ -4,7 +4,8 @@ use serde::Serialize;
 use uc_daemon_contract::api::dto::member::{
     ChooseDeviceGroupRequestDto, DeviceGroupChoiceIssueDto, DeviceGroupChoiceOptionDto,
     DeviceGroupChoiceOutcomeDto, DeviceGroupChoiceResultDto, DeviceGroupChoicesDto,
-    DeviceMembershipDto,
+    DeviceGroupRelationshipDto, DeviceMembershipDto, DeviceTrustRelationshipDto,
+    SpaceDeviceUpdateStatusDto,
 };
 
 use crate::commands::app_session::connect_facade_with_lease;
@@ -86,15 +87,8 @@ pub async fn status(json: bool, verbose: bool) -> i32 {
     let state = match service.query_device_group_choices().await {
         Ok(state) => state,
         Err(error) => {
-            return emit_error(
-                json,
-                "device_group_choices_unavailable",
-                &format!(
-                    "Failed to query device groups: {}",
-                    crate::commands::daemon_error_message(&error)
-                ),
-                None,
-            );
+            let (code, message) = query_error(&error);
+            return emit_error(json, code, &message, None);
         }
     };
     emit_status(&state, json)
@@ -117,15 +111,8 @@ pub async fn choose(
     let state = match service.query_device_group_choices().await {
         Ok(state) => state,
         Err(error) => {
-            return emit_error(
-                json,
-                "device_group_choices_unavailable",
-                &format!(
-                    "Failed to query device groups: {}",
-                    crate::commands::daemon_error_message(&error)
-                ),
-                None,
-            );
+            let (code, message) = query_error(&error);
+            return emit_error(json, code, &message, None);
         }
     };
 
@@ -235,6 +222,33 @@ pub(crate) fn emit_status(state: &DeviceGroupChoicesDto, json: bool) -> i32 {
     exit_codes::EXIT_SUCCESS
 }
 
+/// Keeps the operation-local query failures distinct: unlock and recovery are
+/// not fixed by retrying, while `device_group_choices_unavailable` is.
+fn query_error(error: &anyhow::Error) -> (&'static str, String) {
+    let code = error
+        .downcast_ref::<uc_daemon_client::DaemonRequestError>()
+        .and_then(uc_daemon_client::DaemonRequestError::code);
+    match code {
+        Some("device_group_choices_unlock_required") => (
+            "device_group_choices_unlock_required",
+            "Device groups cannot be read while this space is locked. Unlock it, then try again."
+                .to_string(),
+        ),
+        Some("device_group_choices_recovery_required") => (
+            "device_group_choices_recovery_required",
+            "Space membership needs recovery before device groups can be read. Retrying will not fix this; keep your existing data."
+                .to_string(),
+        ),
+        _ => (
+            "device_group_choices_unavailable",
+            format!(
+                "Failed to query device groups: {}",
+                crate::commands::daemon_error_message(error)
+            ),
+        ),
+    }
+}
+
 fn render_status(state: &DeviceGroupChoicesDto) {
     ui::info("revision", &state.revision.to_string());
     ui::info("local_device_id", &state.device_trust.local_device_id);
@@ -243,6 +257,18 @@ fn render_status(state: &DeviceGroupChoicesDto) {
         membership_label(state.device_trust.local_membership),
     );
     ui::info("pending_issues", &state.issues.len().to_string());
+    render_space_device_update(&state.device_trust.space_device_update);
+    let removal_notifications = pending_removal_notifications(state);
+    ui::info(
+        "removal_notifications",
+        &removal_notifications.len().to_string(),
+    );
+    for device in removal_notifications {
+        ui::info(
+            "removed_device",
+            &format!("{} (notifying other devices)", device.display_name),
+        );
+    }
     for issue in &state.issues {
         ui::bar();
         ui::info("issue_id", &issue.issue_id);
@@ -264,6 +290,47 @@ fn render_status(state: &DeviceGroupChoicesDto) {
             );
         }
     }
+}
+
+/// Prints the Engine-owned aggregate status verbatim (wire names), without
+/// deriving completion from any other snapshot field.
+fn render_space_device_update(status: &SpaceDeviceUpdateStatusDto) {
+    ui::info("space_device_update", &wire_name(&status.phase));
+    if let Some(reason) = &status.reason {
+        ui::info("space_device_update_reason", &wire_name(reason));
+    }
+    if let Some(recovery) = &status.recovery {
+        ui::info("space_device_update_recovery", &wire_name(recovery));
+    }
+    if let Some(next_retry_at_ms) = status.next_retry_at_ms {
+        ui::info(
+            "space_device_update_next_retry_at_ms",
+            &next_retry_at_ms.to_string(),
+        );
+    }
+}
+
+fn wire_name(value: &impl Serialize) -> String {
+    match serde_json::to_value(value) {
+        Ok(serde_json::Value::String(name)) => name,
+        _ => "unknown".to_string(),
+    }
+}
+
+fn pending_removal_notifications(
+    state: &DeviceGroupChoicesDto,
+) -> Vec<&DeviceTrustRelationshipDto> {
+    state
+        .device_trust
+        .devices
+        .iter()
+        .filter(|device| {
+            !device.is_local
+                && device.membership == DeviceMembershipDto::Removed
+                && device.group_relationship
+                    == DeviceGroupRelationshipDto::AwaitingRemovalAcknowledgement
+        })
+        .collect()
 }
 
 fn emit_choice(
@@ -373,10 +440,15 @@ fn emit_error(json: bool, code: &str, message: &str, current_issue_id: Option<&s
 
 #[cfg(test)]
 mod tests {
-    use super::{choice_removes_local_device, select_choice, select_issue, SelectionError};
+    use super::{
+        choice_removes_local_device, pending_removal_notifications, query_error, select_choice,
+        select_issue, wire_name, SelectionError,
+    };
     use uc_daemon_contract::api::dto::member::{
-        DeviceGroupChoiceIssueDto, DeviceGroupChoiceOptionDto, DeviceGroupChoicesDto,
-        DeviceMembershipDto, DeviceTrustSnapshotDto,
+        DeviceCompatibilityDto, DeviceGroupChoiceIssueDto, DeviceGroupChoiceOptionDto,
+        DeviceGroupChoicesDto, DeviceGroupRelationshipDto, DeviceMembershipDto,
+        DeviceReachabilityDto, DeviceSyncRelationshipDto, DeviceTrustRelationshipDto,
+        DeviceTrustSnapshotDto, SpaceDeviceUpdateProblemDto,
     };
 
     fn choices() -> DeviceGroupChoicesDto {
@@ -458,5 +530,75 @@ mod tests {
             &issue.choices[1],
             &state.device_trust.local_device_id
         ));
+    }
+
+    #[test]
+    fn reports_only_engine_declared_removal_notifications() {
+        let mut state = choices();
+        state.device_trust.devices = vec![DeviceTrustRelationshipDto {
+            device_id: "peer-a".into(),
+            display_name: "Peer A".into(),
+            is_local: false,
+            reachability: DeviceReachabilityDto::Offline,
+            membership: DeviceMembershipDto::Removed,
+            group_relationship: DeviceGroupRelationshipDto::AwaitingRemovalAcknowledgement,
+            compatibility: DeviceCompatibilityDto::Compatible,
+            sync_relationship: DeviceSyncRelationshipDto::RemovedPeerDevice,
+            pairing_confirmation: None,
+            available_actions: vec![],
+            blocked_reason: None,
+        }];
+
+        let pending = pending_removal_notifications(&state);
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].device_id, "peer-a");
+
+        state.device_trust.devices[0].group_relationship = DeviceGroupRelationshipDto::Unknown;
+        assert!(pending_removal_notifications(&state).is_empty());
+    }
+    #[test]
+    fn query_errors_keep_operation_local_meanings() {
+        use reqwest::StatusCode;
+        use uc_daemon_client::DaemonRequestError;
+
+        let error = |status, code: &str| {
+            anyhow::Error::new(DaemonRequestError::Status {
+                path: "/member/device-group-choices".to_string(),
+                status,
+                code: Some(code.to_string()),
+                message: "safe daemon message".to_string(),
+            })
+        };
+
+        assert_eq!(
+            query_error(&error(
+                StatusCode::CONFLICT,
+                "device_group_choices_unlock_required"
+            ))
+            .0,
+            "device_group_choices_unlock_required"
+        );
+        assert_eq!(
+            query_error(&error(
+                StatusCode::CONFLICT,
+                "device_group_choices_recovery_required"
+            ))
+            .0,
+            "device_group_choices_recovery_required"
+        );
+        let (code, message) = query_error(&error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "runtime_unavailable",
+        ));
+        assert_eq!(code, "device_group_choices_unavailable");
+        assert!(message.contains("safe daemon message"));
+    }
+
+    #[test]
+    fn space_device_update_reason_uses_engine_wire_name() {
+        assert_eq!(
+            wire_name(&SpaceDeviceUpdateProblemDto::LocalIdentityMismatch),
+            "local_identity_mismatch"
+        );
     }
 }

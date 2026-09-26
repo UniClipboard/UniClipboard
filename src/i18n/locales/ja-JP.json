@@ -1379,15 +1379,33 @@
           "device_state_rejected": "一部のデバイス状態を更新できませんでした。現在のデータを保持して、後でもう一度確認してください。",
           "device_relationship_conflict": "デバイスの関係が競合しています。操作ウィンドウで残すデバイスを選択してください。",
           "device_security_update_rejected": "セキュリティ設定を更新できませんでした。関連するデバイスを確認して再試行してください。",
-          "device_upgrade_required": "古いバージョンのデバイスがあります。UniClipboard を更新して再試行してください。"
+          "device_upgrade_required": "古いバージョンのデバイスがあります。UniClipboard を更新して再試行してください。",
+          "local_identity_mismatch": "このデバイスの ID がスペースのメンバー記録と一致しません。既存のデータはそのままにして、後でもう一度確認してください。"
         }
       },
       "unavailable": {
         "title": "スペースのデバイス状態を一時的に確認できません",
         "description": "既存のデバイスは一覧に残ります。もう一度確認できます。"
+      },
+      "unlockRequired": {
+        "title": "スペースのデバイス状態を表示するにはロックを解除してください",
+        "description": "既存のデバイスは引き続き表示されます。このスペースのロックを解除してから、もう一度確認してください。"
+      },
+      "recoveryRequired": {
+        "title": "スペースのデバイス状態の復旧が必要です",
+        "description": "既存のデバイスは引き続き表示されます。再確認しても解決しません。既存のデータはそのままにしてください。"
       }
     },
     "memberRemoval": {
+      "removedDevices": "削除済みのデバイス",
+      "removed": {
+        "title": "デバイスを削除しました",
+        "description": "このデバイスはこのスペースのメンバーではなくなりました。"
+      },
+      "notificationPending": {
+        "title": "このデバイスから削除済み",
+        "description": "他のデバイスに通知しています。操作は必要ありません。"
+      },
       "deviceRemoved": {
         "title": "このデバイスは削除されました",
         "description": "このデバイスはこのスペースに所属していません。招待を使って再ペアリングしてください。"

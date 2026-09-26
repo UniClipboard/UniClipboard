@@ -2,6 +2,7 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { DeviceGroupChoices, DeviceTrustSnapshot } from '@/api/daemon/device-trust'
+import { DaemonApiError, DaemonErrorCode } from '@/api/daemon/errors'
 import { DeviceTrustProvider } from '@/contexts/DeviceTrustContext'
 import { useDeviceTrust } from '@/hooks/useDeviceTrust'
 
@@ -11,8 +12,13 @@ const { getDeviceGroupChoices, chooseDeviceGroup, subscribe } = vi.hoisted(() =>
   subscribe: vi.fn((_topics: string[], _callback: (event: unknown) => void) => vi.fn()),
 }))
 
-vi.mock('@/api/daemon/device-trust', () => ({ getDeviceGroupChoices, chooseDeviceGroup }))
-vi.mock('@/lib/daemon-ws', () => ({ daemonWs: { subscribe, onReconnect: () => vi.fn() } }))
+vi.mock('@/api/daemon/device-trust', () => ({
+  getDeviceGroupChoices,
+  chooseDeviceGroup,
+}))
+vi.mock('@/lib/daemon-ws', () => ({
+  daemonWs: { subscribe, onReconnect: () => vi.fn() },
+}))
 
 const emptySnapshot: DeviceTrustSnapshot = {
   revision: 1,
@@ -144,6 +150,78 @@ describe('DeviceTrustProvider', () => {
     if (!handler) return
     await act(async () => handler({ topic: 'system', eventType: 'system.refresh_required' }))
     await waitFor(() => expect(getDeviceGroupChoices).toHaveBeenCalledTimes(2))
+  })
+
+  it('keeps the unlock and recovery meanings of a failed device group query', async () => {
+    getDeviceGroupChoices
+      .mockRejectedValueOnce(
+        new DaemonApiError(DaemonErrorCode.INTERNAL_ERROR, '409 on /member/device-group-choices', {
+          code: 'device_group_choices_unlock_required',
+          message: 'unlock this space to read device groups',
+        })
+      )
+      .mockRejectedValueOnce(
+        new DaemonApiError(DaemonErrorCode.INTERNAL_ERROR, '409 on /member/device-group-choices', {
+          code: 'device_group_choices_recovery_required',
+          message: 'space membership needs recovery',
+        })
+      )
+      .mockResolvedValueOnce(emptyGroups)
+    const { result } = renderHook(() => useDeviceTrust(), { wrapper })
+    await waitFor(() => expect(result.current.refreshFailure).toBe('unlock_required'))
+
+    await act(async () => result.current.refresh())
+    expect(result.current.refreshFailure).toBe('recovery_required')
+
+    await act(async () => result.current.refresh())
+    expect(result.current.refreshFailure).toBeNull()
+    expect(result.current.deviceGroups).toEqual(emptyGroups)
+  })
+
+  it('treats device-trust events only as invalidation signals', async () => {
+    const refreshedGroups: DeviceGroupChoices = {
+      revision: 2,
+      deviceTrust: {
+        ...emptySnapshot,
+        revision: 2,
+        spaceDeviceUpdate: { phase: 'completed' },
+        devices: [
+          {
+            deviceId: 'removed-peer',
+            displayName: 'Removed Peer',
+            isLocal: false,
+            reachability: 'offline',
+            membership: 'removed',
+            groupRelationship: 'awaiting_removal_acknowledgement',
+            compatibility: 'compatible',
+            syncRelationship: 'removed_peer_device',
+            availableActions: [],
+            blockedReason: null,
+          },
+        ],
+      },
+      issues: [],
+    }
+    getDeviceGroupChoices.mockResolvedValueOnce(emptyGroups).mockResolvedValueOnce(refreshedGroups)
+    const { result } = renderHook(() => useDeviceTrust(), { wrapper })
+    await waitFor(() => expect(result.current.deviceGroups).toEqual(emptyGroups))
+    const handler = subscribe.mock.calls[0]?.[1]
+    expect(handler).toBeDefined()
+    if (!handler) return
+
+    await act(async () =>
+      handler({
+        topic: 'device-trust',
+        eventType: 'device-trust.changed',
+        payload: { revision: 2, devices: [] },
+      })
+    )
+
+    await waitFor(() => expect(result.current.deviceGroups).toEqual(refreshedGroups))
+    expect(getDeviceGroupChoices).toHaveBeenCalledTimes(2)
+    expect(result.current.snapshot?.devices[0]?.groupRelationship).toBe(
+      'awaiting_removal_acknowledgement'
+    )
   })
 
   it('submits opaque ids with the query revision and then refreshes', async () => {

@@ -1,6 +1,7 @@
 import { CircleAlert, LoaderCircle, RefreshCw } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
+import type { DeviceGroupChoicesFailure } from '@/api/daemon/device-group-choices-failure'
 import type { SpaceDeviceUpdateStatusDto } from '@/api/generated/types.gen'
 import { Button } from '@/components/ui/button'
 import { toast } from '@/components/ui/toast'
@@ -8,11 +9,17 @@ import { cn } from '@/lib/utils'
 
 type Props = {
   status?: SpaceDeviceUpdateStatusDto | null
-  loadFailed?: boolean
+  loadFailure?: DeviceGroupChoicesFailure | null
   onRetry?: () => void
 }
 
-export function SpaceDeviceUpdateNotice({ status, loadFailed = false, onRetry }: Props) {
+const loadFailureKeys: Record<DeviceGroupChoicesFailure, string> = {
+  unavailable: 'devices.spaceDeviceUpdate.unavailable',
+  unlock_required: 'devices.spaceDeviceUpdate.unlockRequired',
+  recovery_required: 'devices.spaceDeviceUpdate.recoveryRequired',
+}
+
+export function SpaceDeviceUpdateNotice({ status, loadFailure = null, onRetry }: Props) {
   const { t } = useTranslation()
   const previousPhase = useRef(status?.phase)
 
@@ -29,21 +36,23 @@ export function SpaceDeviceUpdateNotice({ status, loadFailed = false, onRetry }:
     previousPhase.current = status?.phase
   }, [status?.phase, t])
 
-  if (loadFailed) {
+  if (loadFailure) {
+    const keyPrefix = loadFailureKeys[loadFailure]
+    // Querying again cannot resolve a recovery requirement, so no retry is offered.
+    const canRetry = onRetry && loadFailure !== 'recovery_required'
     return (
       <div
         data-testid="space-device-update-status"
+        data-load-failure={loadFailure}
         className="mx-1 flex items-start gap-2.5 rounded-md bg-destructive/8 px-3 py-2.5 text-destructive"
       >
         <CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
         <div className="min-w-0 flex-1">
-          <p className="text-ui-body font-medium">
-            {t('devices.spaceDeviceUpdate.unavailable.title')}
-          </p>
+          <p className="text-ui-body font-medium">{t(`${keyPrefix}.title`)}</p>
           <p className="mt-0.5 text-ui-caption text-muted-foreground">
-            {t('devices.spaceDeviceUpdate.unavailable.description')}
+            {t(`${keyPrefix}.description`)}
           </p>
-          {onRetry && (
+          {canRetry && (
             <Button
               type="button"
               variant="ghost"

@@ -1378,12 +1378,21 @@
           "device_state_rejected": "Some device status could not be updated. Keep your existing data and check again later.",
           "device_relationship_conflict": "Device relationships conflict. Choose which devices to keep in the action window.",
           "device_security_update_rejected": "Security settings could not be updated. Check the affected devices and try again.",
-          "device_upgrade_required": "A device is using an older version. Update UniClipboard and try again."
+          "device_upgrade_required": "A device is using an older version. Update UniClipboard and try again.",
+          "local_identity_mismatch": "This device's identity no longer matches its space membership. Keep your existing data and check again later."
         }
       },
       "unavailable": {
         "title": "Space device status is temporarily unavailable",
         "description": "Your existing devices remain listed. You can check again."
+      },
+      "unlockRequired": {
+        "title": "Unlock to view space device status",
+        "description": "Your existing devices remain listed. Unlock this space, then check again."
+      },
+      "recoveryRequired": {
+        "title": "Space device status needs recovery",
+        "description": "Your existing devices remain listed. Checking again will not fix this. Keep your existing data."
       }
     },
     "addDevice": {
@@ -1459,6 +1468,15 @@
       }
     },
     "memberRemoval": {
+      "removedDevices": "Removed devices",
+      "removed": {
+        "title": "Device removed",
+        "description": "This device is no longer a member of this space."
+      },
+      "notificationPending": {
+        "title": "Removed from this device",
+        "description": "Other devices are being notified. No action is needed."
+      },
       "deviceRemoved": {
         "title": "This device was removed",
         "description": "This device is no longer part of the space. Re-pair with an invitation to rejoin."

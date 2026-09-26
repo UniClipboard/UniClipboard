@@ -40,6 +40,7 @@ export default function DevicesSidebar({ page }: { page: ReturnType<typeof useDe
     networkRecovery,
     deviceTrust,
     deviceTrustError,
+    deviceTrustFailure,
     refreshDeviceTrust,
     networkRecoveryError,
     manualRefreshInProgress,
@@ -204,9 +205,36 @@ export default function DevicesSidebar({ page }: { page: ReturnType<typeof useDe
 
             <SpaceDeviceUpdateNotice
               status={deviceTrust?.spaceDeviceUpdate}
-              loadFailed={!deviceTrust && Boolean(deviceTrustError)}
+              loadFailure={
+                !deviceTrust && deviceTrustError ? (deviceTrustFailure ?? 'unavailable') : null
+              }
               onRetry={() => void refreshDeviceTrust()}
             />
+
+            {trustListView.removedDevices.length > 0 && (
+              <>
+                <SectionLabel label={t('devices.memberRemoval.removedDevices')} />
+                {trustListView.removedDevices.map(device => {
+                  const trustStatus = getDeviceTrustStatus(device, t)
+                  if (!trustStatus) return null
+                  return (
+                    <DeviceListItem
+                      key={device.deviceId}
+                      testId={`removed-device-${device.deviceId}`}
+                      name={device.displayName || t('devices.list.labels.unknownDevice')}
+                      tone={trustStatus.tone}
+                      status={trustStatus.status}
+                      dimmed
+                      selected={
+                        effectiveSelection.kind === 'removed' &&
+                        effectiveSelection.id === device.deviceId
+                      }
+                      onSelect={() => setSelection({ kind: 'removed', id: device.deviceId })}
+                    />
+                  )
+                })}
+              </>
+            )}
 
             {(deviceTrust?.inboundPairings?.length ?? 0) > 0 && (
               <>

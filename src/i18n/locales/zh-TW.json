@@ -1375,15 +1375,33 @@
           "device_state_rejected": "部分裝置狀態未能更新。請保留現有資料，稍後重新檢查。",
           "device_relationship_conflict": "裝置關係存在衝突，請依照處理視窗中的提示選擇要保留的裝置。",
           "device_security_update_rejected": "安全設定未能更新，請檢查相關裝置後重試。",
-          "device_upgrade_required": "有裝置版本過舊，請更新 UniClipboard 後重試。"
+          "device_upgrade_required": "有裝置版本過舊，請更新 UniClipboard 後重試。",
+          "local_identity_mismatch": "本裝置的身分與空間成員記錄不一致。請保留現有資料，稍後再檢查。"
         }
       },
       "unavailable": {
         "title": "暫時無法確認空間裝置狀態",
         "description": "現有裝置仍保留在清單中，可以重新檢查。"
+      },
+      "unlockRequired": {
+        "title": "解鎖後才能查看空間裝置狀態",
+        "description": "現有裝置仍會列出。請先解鎖目前的空間，再重新檢查。"
+      },
+      "recoveryRequired": {
+        "title": "空間裝置狀態需要復原",
+        "description": "現有裝置仍會列出。重新檢查無法解決此問題，請保留現有資料。"
       }
     },
     "memberRemoval": {
+      "removedDevices": "已移除裝置",
+      "removed": {
+        "title": "裝置已移除",
+        "description": "該裝置已不再屬於目前空間。"
+      },
+      "notificationPending": {
+        "title": "已從此裝置移除",
+        "description": "正在通知其他裝置，無需進行操作。"
+      },
       "deviceRemoved": {
         "title": "此裝置已被移除",
         "description": "此裝置已不屬於目前空間。請使用邀請重新配對以加入。"

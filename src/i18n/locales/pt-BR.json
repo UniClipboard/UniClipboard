@@ -1382,15 +1382,33 @@
           "device_state_rejected": "Não foi possível atualizar o status de alguns dispositivos. Mantenha os dados existentes e verifique novamente mais tarde.",
           "device_relationship_conflict": "Há um conflito entre dispositivos. Escolha quais manter na janela de ação.",
           "device_security_update_rejected": "Não foi possível atualizar as configurações de segurança. Verifique os dispositivos e tente novamente.",
-          "device_upgrade_required": "Um dispositivo usa uma versão antiga. Atualize o UniClipboard e tente novamente."
+          "device_upgrade_required": "Um dispositivo usa uma versão antiga. Atualize o UniClipboard e tente novamente.",
+          "local_identity_mismatch": "A identidade deste dispositivo não corresponde mais à sua participação no espaço. Mantenha seus dados atuais e verifique novamente mais tarde."
         }
       },
       "unavailable": {
         "title": "O status dos dispositivos do espaço está temporariamente indisponível",
         "description": "Seus dispositivos continuam na lista. Você pode verificar novamente."
+      },
+      "unlockRequired": {
+        "title": "Desbloqueie para ver o status dos dispositivos do espaço",
+        "description": "Seus dispositivos atuais continuam listados. Desbloqueie este espaço e verifique novamente."
+      },
+      "recoveryRequired": {
+        "title": "O status dos dispositivos do espaço precisa de recuperação",
+        "description": "Seus dispositivos atuais continuam listados. Verificar novamente não resolverá isso. Mantenha seus dados atuais."
       }
     },
     "memberRemoval": {
+      "removedDevices": "Dispositivos removidos",
+      "removed": {
+        "title": "Dispositivo removido",
+        "description": "Este dispositivo não faz mais parte deste espaço."
+      },
+      "notificationPending": {
+        "title": "Removido deste dispositivo",
+        "description": "Os outros dispositivos estão sendo notificados. Nenhuma ação é necessária."
+      },
       "deviceRemoved": {
         "title": "Este dispositivo foi removido",
         "description": "Este dispositivo não faz mais parte do espaço. Faça o pareamento novamente com um convite para entrar."

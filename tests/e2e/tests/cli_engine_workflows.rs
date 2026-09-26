@@ -1032,6 +1032,113 @@ async fn removed_member_is_excluded_while_notification_delivery_is_pending() {
         }));
 }
 
+/// The space creator's network identity must survive its first restart:
+/// devices that pair after the restart see the same sponsor fingerprint that
+/// `init` reported, and devices paired before it keep exchanging content.
+async fn assert_sponsor_identity_survives_restart(name: &str, graceful: bool) {
+    let binaries = NodeBinarySet::current();
+    let rendezvous = LocalRendezvous::start().await;
+    let mut alice = Node::fresh(&format!("{name}-alice"), &binaries, &rendezvous).await;
+    let init = alice.cli.run_capture(&[
+        "--json",
+        "init",
+        "--passphrase",
+        PASSPHRASE,
+        "--device-name",
+        "alice-node",
+    ]);
+    assert!(
+        init.success(),
+        "init failed: {init:?}; log={}",
+        alice.daemon.diagnostic_log()
+    );
+    let created_fingerprint = json(&init)["fingerprint"]
+        .as_str()
+        .expect("init fingerprint")
+        .to_string();
+
+    let bob = Node::fresh(&format!("{name}-bob"), &binaries, &rendezvous).await;
+    let joined = join(&alice, &bob, "bob-node", false).await;
+    assert_eq!(joined["status"], "active", "{joined}");
+    assert_eq!(joined["sponsor_fingerprint"], created_fingerprint.as_str());
+
+    if graceful {
+        alice
+            .daemon
+            .stop_gracefully()
+            .await
+            .expect("graceful sponsor stop");
+    }
+    alice.restart().await;
+    let restarted = wait_for_device_trust_after_restart(&alice).await;
+    assert_eq!(restarted["deviceTrust"]["localMembership"], "active");
+
+    let carol = Node::fresh(&format!("{name}-carol"), &binaries, &rendezvous).await;
+    let rejoined = join(&alice, &carol, "carol-node", false).await;
+    assert_eq!(rejoined["status"], "active", "{rejoined}");
+    assert_eq!(
+        rejoined["sponsor_fingerprint"],
+        created_fingerprint.as_str(),
+        "sponsor network identity changed across restart"
+    );
+
+    let bob_id = device_id(&alice.cli, "bob-node");
+    let alice_id = device_id(&bob.cli, "alice-node");
+    assert_text_arrives(&alice, &bob, &bob_id, &format!("{name} alice to bob")).await;
+    assert_text_arrives(&bob, &alice, &alice_id, &format!("{name} bob to alice")).await;
+}
+
+async fn assert_text_arrives(sender: &Node, receiver: &Node, receiver_id: &str, text: &str) {
+    let deadline = tokio::time::Instant::now() + WAIT_TIMEOUT;
+    loop {
+        let output = sender
+            .cli
+            .run_capture(&["--json", "send", text, "--peer", receiver_id]);
+        if output.success()
+            && serde_json::from_str::<Value>(output.stdout.trim())
+                .is_ok_and(|sent| sent["totalAccepted"] == 1)
+        {
+            break;
+        }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "send did not reach {receiver_id}: {output:?}; log={}",
+            sender.daemon.diagnostic_log()
+        );
+        tokio::time::sleep(Duration::from_secs(1)).await;
+    }
+    loop {
+        let output = receiver
+            .cli
+            .run_capture(&["--json", "get", "--list", "--limit", "20"]);
+        if output.success()
+            && json(&output)
+                .as_array()
+                .is_some_and(|rows| rows.iter().any(|row| row["preview"] == text))
+        {
+            return;
+        }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "text did not arrive: {text}; log={}",
+            receiver.daemon.diagnostic_log()
+        );
+        tokio::time::sleep(Duration::from_millis(250)).await;
+    }
+}
+
+#[tokio::test]
+#[ignore]
+async fn space_creator_keeps_network_identity_after_graceful_restart() {
+    assert_sponsor_identity_survives_restart("cli-workflow-identity-graceful", true).await;
+}
+
+#[tokio::test]
+#[ignore]
+async fn space_creator_keeps_network_identity_after_killed_restart() {
+    assert_sponsor_identity_survives_restart("cli-workflow-identity-killed", false).await;
+}
+
 #[tokio::test]
 #[ignore]
 async fn member_trust_cli_keeps_applies_and_rejects_stale_decisions() {

@@ -61,7 +61,6 @@ pub mod app_dirs;
 pub mod bootstrap;
 pub mod capability;
 pub mod clipboard;
-pub mod fallback_secure_storage;
 pub mod file_secure_storage;
 pub mod portable;
 pub mod ports;

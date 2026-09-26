@@ -966,6 +966,7 @@
   "unlock": {
     "title": "解鎖",
     "description": "您的資料已加密，請解鎖以繼續。",
+    "lockedStatus": "已鎖定",
     "button": "解鎖",
     "unlocking": "正在解鎖...",
     "autoUnlock": {
@@ -2389,6 +2390,7 @@
       "hint": "請妥善保管該口令，所有想加入此空間的裝置都需要輸入它。"
     },
     "showInvitation": {
+      "status": "空間已建立",
       "title": "邀請新裝置",
       "subtitle": "在另一台裝置上輸入這個邀請碼即可加入空間。",
       "expiresIn": "{{remaining}} 後過期",

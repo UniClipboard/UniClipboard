@@ -17,14 +17,12 @@ import {
   type PassphraseChangeAvailability,
 } from '@/components/security/passphrase-change-availability'
 import { daemonWs } from '@/lib/daemon-ws'
-import { formatInvitationCode } from '@/lib/invitation-code'
+import { INVITATION_DEFAULT_TTL_MS, formatInvitationCode } from '@/lib/invitation-code'
 import { invitationIssueErrorKey, isInvitationIssueRetryable } from '@/lib/invitation-issue-error'
 import { createLogger } from '@/lib/logger'
 
 const log = createLogger('add-device-dialog')
 
-// Estimate progress for restored invitations using the default lifetime.
-const DEFAULT_TTL_MS = 5 * 60 * 1000
 // Keep the success message visible before closing.
 const SUCCESS_AUTO_CLOSE_MS = 5000
 
@@ -117,7 +115,7 @@ export function useAddDeviceInvitation({
       if (setupState.currentInvitation) {
         update({ invitation: setupState.currentInvitation })
         // Estimate the issue time for a restored invitation.
-        update({ issuedAtMs: setupState.currentInvitation.expiresAtMs - DEFAULT_TTL_MS })
+        update({ issuedAtMs: setupState.currentInvitation.expiresAtMs - INVITATION_DEFAULT_TTL_MS })
         log.info({ event: 'invitation_ready', mode: 'reused' }, 'pairing invitation ready')
       } else if (setupState.rePairingRequired) {
         update({ step: 'credentials' })
@@ -217,7 +215,8 @@ export function useAddDeviceInvitation({
 
   const remaining = invitation ? Math.max(0, invitation.expiresAtMs - now) : 0
   const expired = invitation && step === 'invitation' ? remaining <= 0 : false
-  const totalMs = invitation && issuedAtMs ? invitation.expiresAtMs - issuedAtMs : DEFAULT_TTL_MS
+  const totalMs =
+    invitation && issuedAtMs ? invitation.expiresAtMs - issuedAtMs : INVITATION_DEFAULT_TTL_MS
   const progress = invitation ? Math.max(0, Math.min(100, (remaining / totalMs) * 100)) : 0
   const display = useMemo(
     () => (invitation ? formatInvitationCode(invitation.code) : ''),

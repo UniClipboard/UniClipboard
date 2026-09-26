@@ -55,7 +55,6 @@ export default function ProfileRecoveryPage({
     <AppStateShell
       title={t('profileRecovery.title')}
       description={t('profileRecovery.description')}
-      width="compact"
     >
       <form onSubmit={submit} className="mt-7 flex flex-col gap-4">
         {status.losses.length > 0 && !errorKey && (

@@ -966,6 +966,7 @@
   "unlock": {
     "title": "Desbloquear",
     "description": "Seus dados estão criptografados. Desbloqueie para continuar.",
+    "lockedStatus": "Bloqueado",
     "button": "Desbloquear",
     "unlocking": "Desbloqueando...",
     "autoUnlock": {
@@ -2400,6 +2401,7 @@
       "hint": "Guarde esta frase secreta em um lugar seguro — você vai precisar dela em todos os dispositivos que entrarem neste Espaço."
     },
     "showInvitation": {
+      "status": "Espaço criado",
       "title": "Convidar um novo dispositivo",
       "subtitle": "Digite este código no dispositivo que vai entrar para adicioná-lo ao Espaço.",
       "expiresIn": "Expira em {{remaining}}",

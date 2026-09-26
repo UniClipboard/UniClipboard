@@ -7,10 +7,13 @@ type Props = { failed: boolean; snapshot: StartupSnapshot }
 export function StartupActivity({ failed, snapshot }: Props) {
   const { t } = useTranslation()
   return (
-    <details className="group mt-8 border-t border-border pt-4">
+    <details className="group mt-8 border-t border-border pt-3">
       <summary className="flex cursor-pointer list-none items-center justify-between text-ui-body text-muted-foreground hover:text-foreground [&::-webkit-details-marker]:hidden">
         {t('upgradeProgress.activity')}
-        <ChevronDown className="size-4 transition-transform group-open:rotate-180" />
+        <ChevronDown
+          className="size-4 transition-transform group-open:rotate-180 motion-reduce:transition-none"
+          aria-hidden="true"
+        />
       </summary>
       <ol className="mt-4 flex flex-col gap-4 text-ui-body">
         {snapshot.upgrade?.steps.map(step => (

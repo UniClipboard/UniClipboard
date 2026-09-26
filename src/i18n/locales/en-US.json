@@ -966,6 +966,7 @@
   "unlock": {
     "title": "Unlock",
     "description": "Your data is encrypted. Please unlock to continue.",
+    "lockedStatus": "Locked",
     "button": "Unlock",
     "unlocking": "Unlocking...",
     "autoUnlock": {
@@ -2394,6 +2395,7 @@
       "hint": "Save this passphrase somewhere safe — you'll need it on every device that joins this space."
     },
     "showInvitation": {
+      "status": "Space created",
       "title": "Invite a new device",
       "subtitle": "Type this code on the joining device to add it to the space.",
       "expiresIn": "Expires in {{remaining}}",

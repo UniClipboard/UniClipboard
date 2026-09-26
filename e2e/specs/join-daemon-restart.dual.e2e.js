@@ -1,10 +1,10 @@
-import { mkdirSync } from 'node:fs'
 import path from 'node:path'
 import { browser, expect } from '@wdio/globals'
 import {
   click,
   daemonConnection,
   dualDescribe,
+  evidenceDirectory,
   element,
   enterInvitation,
   initializeSponsor,
@@ -26,14 +26,7 @@ dualDescribe('等待中的加入恢复', () => {
     const code = await issueInvitation(sponsor)
     const sponsorDaemon = daemonConnection(process.env.E2E_UC_SPONSOR_PROFILE)
     const joinerDaemon = daemonConnection(process.env.E2E_UC_JOINER_PROFILE)
-    const evidenceDir = path.join(
-      process.cwd(),
-      '.herdr-project',
-      'uni-t-0028',
-      'evidence',
-      `wdio-${process.pid}`
-    )
-    mkdirSync(evidenceDir, { recursive: true })
+    const evidenceDir = evidenceDirectory('join-daemon-restart')
 
     process.kill(sponsorDaemon.pid, 'SIGSTOP')
     try {

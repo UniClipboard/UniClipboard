@@ -1,6 +1,18 @@
 import { execFileSync } from 'node:child_process'
-import { closeSync, ftruncateSync, openSync, readFileSync } from 'node:fs'
+import { closeSync, ftruncateSync, mkdirSync, openSync, readFileSync } from 'node:fs'
+import path from 'node:path'
 import { browser, expect } from '@wdio/globals'
+
+/**
+ * Directory for one scenario run's screenshots and event dumps. Defaults to the
+ * git-ignored `target/e2e-evidence`; set `E2E_EVIDENCE_DIR` to keep them elsewhere.
+ */
+export function evidenceDirectory(scenario) {
+  const root = process.env.E2E_EVIDENCE_DIR ?? path.join(process.cwd(), 'target', 'e2e-evidence')
+  const directory = path.join(root, `${scenario}-${process.pid}`)
+  mkdirSync(directory, { recursive: true })
+  return directory
+}
 
 export const dualDescribe =
   browser.isMultiremote && process.platform === 'darwin' ? describe : describe.skip

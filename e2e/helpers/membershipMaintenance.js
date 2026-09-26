@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto'
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { browser, expect } from '@wdio/globals'
 import {
@@ -7,6 +7,7 @@ import {
   daemonConnection,
   element,
   enterInvitation,
+  evidenceDirectory,
   initializeSponsor,
   issueInvitation,
   openFreshSetup,
@@ -55,14 +56,7 @@ export async function runMaintenanceScenario(failure) {
   const sponsor = browser.sponsor
   const joiner = browser.joiner
   const passphrase = randomBytes(24).toString('hex')
-  const evidenceDir = path.join(
-    process.cwd(),
-    '.herdr-project',
-    'uni-t-0028',
-    'evidence',
-    `maintenance-${failure}-${process.pid}`
-  )
-  mkdirSync(evidenceDir, { recursive: true })
+  const evidenceDir = evidenceDirectory(`maintenance-${failure}`)
   await openFreshSetup(sponsor, joiner)
   await initializeSponsor(sponsor, passphrase)
   const code = await issueInvitation(sponsor)

@@ -1,10 +1,10 @@
-import { mkdirSync } from 'node:fs'
 import path from 'node:path'
 import { browser, expect } from '@wdio/globals'
 import {
   click,
   daemonConnection,
   dualDescribe,
+  evidenceDirectory,
   element,
   enterInvitation,
   initializeSponsor,
@@ -53,14 +53,7 @@ dualDescribe('最终确认失败后的加入界面', () => {
     const sponsor = browser.sponsor
     const joiner = browser.joiner
     const passphrase = 'isolated-final-confirmation-passphrase'
-    const evidenceDir = path.join(
-      process.cwd(),
-      '.herdr-project',
-      'uni-t-0028',
-      'evidence',
-      `final-confirmation-gui-${process.pid}`
-    )
-    mkdirSync(evidenceDir, { recursive: true })
+    const evidenceDir = evidenceDirectory('final-confirmation-gui')
 
     await openFreshSetup(sponsor, joiner)
     await initializeSponsor(sponsor, passphrase)

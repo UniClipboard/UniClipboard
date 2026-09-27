@@ -264,6 +264,13 @@ jobs:
       - name: Build development CLI for shared-device E2E tests
         run: CARGO_TARGET_DIR=target/e2e-dev cargo build -p uc-cli --features uc-cli/dev-tools
 
+      - name: Build Engine host for final-confirmation E2E test
+        run: |
+          engine_manifest="$({ cargo metadata --locked --format-version 1; } | jq -r '.packages[] | select(.name == "uc-engine") | .manifest_path')"
+          engine_root="$(cd "$(dirname "$engine_manifest")/../.." && pwd)"
+          cargo build --manifest-path "$engine_root/Cargo.toml" -p uc-connectivity-host --locked
+          echo "UC_E2E_SPACE_WORK_HOST=$engine_root/target/debug/uc-connectivity-host" >> "$GITHUB_ENV"
+
       - name: Run E2E tests
         run: >-
           UC_E2E_DEV_CLI="$GITHUB_WORKSPACE/target/e2e-dev/debug/uniclip"

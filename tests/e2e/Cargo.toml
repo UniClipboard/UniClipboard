@@ -59,4 +59,5 @@ zip = { version = "2.4.2", default-features = false, features = ["deflate"] }
 
 [dev-dependencies]
 assert_cmd = "2"
+tokio-tungstenite = "0.24"
 predicates = "3"

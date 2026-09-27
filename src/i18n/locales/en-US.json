@@ -2503,7 +2503,7 @@
   "profileAdmissionRecovery": {
     "category": "Local data needs attention",
     "title": "Your existing data could not be opened safely",
-    "description": "UniClipboard stopped before starting history, clipboard monitoring, or device sync because the saved membership data is inconsistent.",
+    "description": "UniClipboard could not confirm that the saved local data was safe to open, so it did not start history, clipboard monitoring, or device sync.",
     "issue": "Issue",
     "stage": "Found while reading",
     "nextStep": "Recommended next step",

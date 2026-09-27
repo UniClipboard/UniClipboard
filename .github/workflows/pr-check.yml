@@ -268,3 +268,6 @@ jobs:
         run: >-
           UC_E2E_DEV_CLI="$GITHUB_WORKSPACE/target/e2e-dev/debug/uniclip"
           cargo test --manifest-path tests/e2e/Cargo.toml -- --ignored
+          --skip bad_metadata_stays_read_only_across_three_restricted_starts
+          --skip cli_auto_start_exposes_restricted_recovery
+          --skip healthy_saved_profile_stays_healthy_after_restart

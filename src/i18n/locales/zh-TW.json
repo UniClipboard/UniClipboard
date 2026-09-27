@@ -2495,7 +2495,7 @@
   "profileAdmissionRecovery": {
     "category": "本機資料需要處理",
     "title": "現有資料無法安全開啟",
-    "description": "儲存的成員資料不一致。為避免繼續改寫，UniClipboard 已停止啟動歷史內容、剪貼簿監聽和裝置同步。",
+    "description": "UniClipboard 無法確認儲存的本機資料能夠安全開啟，因此沒有啟動歷史內容、剪貼簿監聽或裝置同步。",
     "issue": "問題",
     "stage": "發現位置",
     "nextStep": "建議下一步",

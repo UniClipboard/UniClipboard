@@ -2506,7 +2506,7 @@
   "profileAdmissionRecovery": {
     "category": "Os dados locais precisam de atenção",
     "title": "Não foi possível abrir seus dados com segurança",
-    "description": "Os dados salvos dos membros estão inconsistentes. Para evitar alterações, o UniClipboard não iniciou o histórico, o monitoramento da área de transferência nem a sincronização de dispositivos.",
+    "description": "O UniClipboard não conseguiu confirmar que os dados locais salvos poderiam ser abertos com segurança, por isso não iniciou o histórico, o monitoramento da área de transferência nem a sincronização de dispositivos.",
     "issue": "Problema",
     "stage": "Encontrado ao ler",
     "nextStep": "Próxima etapa recomendada",

@@ -2501,7 +2501,7 @@
   "profileAdmissionRecovery": {
     "category": "本机资料需要处理",
     "title": "现有资料无法安全打开",
-    "description": "保存的成员资料存在不一致。为避免继续改写，UniClipboard 已停止启动历史内容、剪贴板监听和设备同步。",
+    "description": "UniClipboard 无法确认保存的本机资料能够安全打开，因此没有启动历史内容、剪贴板监听或设备同步。",
     "issue": "问题",
     "stage": "发现位置",
     "nextStep": "建议下一步",

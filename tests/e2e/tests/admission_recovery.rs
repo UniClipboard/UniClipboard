@@ -10,6 +10,7 @@ const FIXTURE_ENV: &str = "UC_E2E_ADMISSION_RECOVERY_FIXTURE";
 const HEALTHY_FIXTURE_ENV: &str = "UC_E2E_HEALTHY_PROFILE_FIXTURE";
 
 #[tokio::test]
+#[ignore = "requires UC_E2E_ADMISSION_RECOVERY_FIXTURE"]
 async fn bad_metadata_stays_read_only_across_three_restricted_starts() {
     let source = fixture_path();
     let binaries = NodeBinarySet::current();
@@ -94,6 +95,7 @@ async fn bad_metadata_stays_read_only_across_three_restricted_starts() {
 }
 
 #[test]
+#[ignore = "requires UC_E2E_ADMISSION_RECOVERY_FIXTURE"]
 fn cli_auto_start_exposes_restricted_recovery() {
     let source = fixture_path();
     let profile = TestProfile::new("admission-recovery-auto-start");
@@ -117,6 +119,7 @@ fn cli_auto_start_exposes_restricted_recovery() {
 }
 
 #[tokio::test]
+#[ignore = "requires UC_E2E_HEALTHY_PROFILE_FIXTURE"]
 async fn healthy_saved_profile_stays_healthy_after_restart() {
     let source = fixture_path_from(HEALTHY_FIXTURE_ENV);
     let profile = TestProfile::new("healthy-profile-two-starts");

@@ -18,6 +18,7 @@ use axum::{Json, Router};
 use futures_util::StreamExt;
 use serde_json::{json, Value};
 use tokio::net::TcpListener;
+use uc_daemon_contract::DAEMON_API_REVISION;
 use uc_e2e_tests::{TestCli, TestDaemon, TestProfile};
 
 const EXIT_ERROR: i32 = 1;
@@ -150,7 +151,7 @@ async fn health() -> Json<Value> {
     Json(envelope(json!({
         "status": "ok",
         "packageVersion": "1.0.0-alpha.17",
-        "apiRevision": "setup-pairing-http-routes-v2-event-wired-residency-restart-inbound-notice-summary-relay-credentials-diagnostic-capture-v1-profile-recovery-v2-custom-relays-v1",
+        "apiRevision": DAEMON_API_REVISION,
         "residency": "standalone"
     })))
 }

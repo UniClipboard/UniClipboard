@@ -3901,6 +3901,7 @@ dependencies = [
  "tokio",
  "tokio-tungstenite",
  "uc-app-paths",
+ "uc-daemon-contract",
  "uc-daemon-process",
  "uc-platform",
  "uuid",

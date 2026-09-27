@@ -44,6 +44,12 @@ Engine 拥有的本机资料密钥恢复状态，区分等待原口令、恢复�
 要求重启应用而不是在同一进程内重复尝试。
 _Avoid_: content unlock、client-side recovery state、factory reset
 
+**Admission recovery**：
+Engine 在本机资料无法安全进入正常运行时给出的只读受限状态，包含问题分类、发现阶段和建议操作；
+该状态只允许查询恢复说明与导出诊断，历史、成员管理、发送和同步均不可运行，原资料不得改写。
+客户端只能展示 Engine 给出的事实，不得自行分类、修复或扩大权限。
+_Avoid_: client-side profile repair、best-effort startup、partial normal mode
+
 **Content lock**：
 桌面端对内容和管理界面的本地访问控制；`auto_unlock_enabled` 只决定启动后是否自动显示
 内容，不控制后台加密会话、剪贴板监听或设备同步。主窗口与快捷面板必须读取同一权威结果。

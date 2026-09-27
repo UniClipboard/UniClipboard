@@ -89,7 +89,7 @@ export function AppContentView({
     )
   } else if (view === 'setup') {
     content = (
-      <>
+      <AppStateFrame titleBar={fullTitleBar}>
         <SetupPage
           onCompleteSetup={() => {
             bootstrap.setEncryptionStatus({ initialized: true, session_ready: true })
@@ -97,22 +97,20 @@ export function AppContentView({
           }}
         />
         <Toaster />
-      </>
+      </AppStateFrame>
     )
   } else if (view === 'unlock') {
     content = (
       <AppStateFrame titleBar={fullTitleBar}>
-        <div className="flex min-h-0 flex-1 flex-col">
-          <UnlockPage
-            onUnlockSucceeded={() => {
-              bootstrap.setEncryptionStatus({ initialized: true, session_ready: true })
-              contentLock.refresh()
-            }}
-            onResetSucceeded={() =>
-              bootstrap.setEncryptionStatus({ initialized: false, session_ready: false })
-            }
-          />
-        </div>
+        <UnlockPage
+          onUnlockSucceeded={() => {
+            bootstrap.setEncryptionStatus({ initialized: true, session_ready: true })
+            contentLock.refresh()
+          }}
+          onResetSucceeded={() =>
+            bootstrap.setEncryptionStatus({ initialized: false, session_ready: false })
+          }
+        />
       </AppStateFrame>
     )
   } else {

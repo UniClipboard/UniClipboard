@@ -113,7 +113,10 @@ uniclip search "report"
 ```
 
 By default, `get` returns content that is already in local history without
-waiting. `get --wait` handles one new delivery and exits. `watch` prints all
+waiting. `get --wait` handles the next matching delivery that arrives after
+the command subscribes and exits. It can be combined with `--type` or `--id`.
+Interactive terminals show real receive progress for a matched file; progress
+stays on stderr, so stdout remains safe for pipes and JSON. `watch` prints all
 future deliveries until you press Ctrl-C:
 
 ```bash
@@ -129,13 +132,19 @@ clipboard.
 # Explicitly force file mode
 uniclip send --file ./report.pdf
 
+# Read complete file paths from stdin, one per line
+printf '%s\n' ./report.pdf './images/cover art.png' | uniclip send --file
+
 # Wait for the next incoming entry; files are saved under ./inbox
 uniclip get --wait --out ./inbox
 ```
 
 Existing regular files are detected automatically. File sending is owned by the
 daemon, and the command exits after all relevant targets reach a terminal state.
-Use repeatable `--peer` flags to restrict the targets; Ctrl-C cancels the wait.
+When `-f` / `--file` has no positional path, stdin is a list of file paths, not
+file contents. Blank lines are ignored, paths are validated before sending, and
+duplicate paths are sent once. Use repeatable `--peer` flags to restrict the
+targets; Ctrl-C cancels the wait.
 
 ## Manage the background service
 

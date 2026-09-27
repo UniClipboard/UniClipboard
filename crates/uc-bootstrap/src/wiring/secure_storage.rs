@@ -1,115 +1,71 @@
-//! Desktop secure-storage preparation and read-only legacy identity fallback.
+//! Desktop secure-storage preparation.
+//!
+//! The host store only exposes entries the platform keystore actually holds.
+//! `<app_data_root>/iroh-identity` belongs to the Engine, which reads and
+//! writes the network identity there directly; it must never be aliased into
+//! this store, or the Engine's migration cleanup of host entries would delete
+//! the live identity.
 
-use std::path::PathBuf;
 use std::sync::Arc;
 
-use uc_platform::fallback_secure_storage::FallbackSecureStorage;
-use uc_platform::file_secure_storage::FileSecureStorage;
 use uc_platform::ports::SecureStorageProvider;
 
 use super::error::{WiringError, WiringResult};
 use crate::layer::paths::DesktopHostPaths;
 
-const LEGACY_IDENTITY_STORE_KEY: &str = "iroh-identity:v1";
-
 pub(crate) struct SecureStoragePrelude {
     pub(crate) secure_storage: Arc<dyn SecureStorageProvider>,
-}
-
-pub(crate) fn build_identity_storage(
-    primary: Arc<dyn SecureStorageProvider>,
-    legacy_identity_dir: PathBuf,
-) -> Arc<dyn SecureStorageProvider> {
-    let legacy: Arc<dyn SecureStorageProvider> =
-        Arc::new(FileSecureStorage::with_base_dir(legacy_identity_dir));
-    Arc::new(FallbackSecureStorage::new(
-        primary,
-        legacy,
-        vec![LEGACY_IDENTITY_STORE_KEY.to_string()],
-    ))
-}
-
-fn build_legacy_identity_fallback(
-    primary: Arc<dyn SecureStorageProvider>,
-    app_data_root: &std::path::Path,
-) -> Arc<dyn SecureStorageProvider> {
-    build_identity_storage(primary, app_data_root.join("iroh-identity"))
 }
 
 pub(crate) fn build_secure_storage_prelude(
     paths: &DesktopHostPaths,
 ) -> WiringResult<SecureStoragePrelude> {
-    let app_data_root = paths.app_data_root_dir.clone();
     let secure_storage =
         uc_platform::secure_storage::create_default_secure_storage_in_app_data_root(
-            app_data_root.clone(),
+            paths.app_data_root_dir.clone(),
         )
         .map_err(|error| WiringError::SecureStorageInit(error.to_string()))?;
-
-    let secure_storage = build_legacy_identity_fallback(secure_storage, &app_data_root);
 
     Ok(SecureStoragePrelude { secure_storage })
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use uc_platform::ports::SecureStorageError;
+    use uc_platform::file_secure_storage::FileSecureStorage;
+    use uc_platform::ports::SecureStorageProvider;
 
-    #[derive(Default)]
-    struct EmptySecureStorage;
-
-    impl SecureStorageProvider for EmptySecureStorage {
-        fn get(&self, _key: &str) -> Result<Option<Vec<u8>>, SecureStorageError> {
-            Ok(None)
-        }
-
-        fn set(&self, _key: &str, _value: &[u8]) -> Result<(), SecureStorageError> {
-            Ok(())
-        }
-
-        fn delete(&self, _key: &str) -> Result<(), SecureStorageError> {
-            Ok(())
-        }
-    }
+    const ENGINE_IDENTITY_KEY: &str = "iroh-identity:v1";
 
     #[test]
-    fn legacy_identity_fallback_does_not_repeat_profile_suffix_or_create_directories() {
+    fn host_store_cleanup_never_touches_the_engine_identity_directory() {
         let temporary = tempfile::tempdir().unwrap();
-        let profiled_app_data_root = temporary.path().join("app.uniclipboard.desktop-a");
-        let primary: Arc<dyn SecureStorageProvider> = Arc::new(EmptySecureStorage);
+        let app_data_root = temporary.path().join("app.uniclipboard.desktop-a");
+        let engine_identity = FileSecureStorage::with_base_dir(app_data_root.join("iroh-identity"));
+        engine_identity
+            .set(ENGINE_IDENTITY_KEY, b"engine-owned")
+            .unwrap();
+        let host = FileSecureStorage::new_in_app_data_root(app_data_root).unwrap();
 
-        let _storage = build_legacy_identity_fallback(primary, &profiled_app_data_root);
-
-        assert!(!profiled_app_data_root.join("iroh-identity_a").exists());
-        assert!(!profiled_app_data_root.join("iroh-identity").exists());
-    }
-
-    #[test]
-    fn legacy_identity_read_preserves_the_original_files() {
-        let temporary = tempfile::tempdir().unwrap();
-        let profiled_app_data_root = temporary.path().join("app.uniclipboard.desktop-a");
-        let legacy_identity_dir = profiled_app_data_root.join("iroh-identity");
-        std::fs::create_dir_all(&legacy_identity_dir).unwrap();
-        let legacy_identity_file = legacy_identity_dir.join("69726f682d6964656e746974793a7631.bin");
-        std::fs::write(&legacy_identity_file, b"legacy-identity").unwrap();
-
-        let primary_root = temporary.path().join("primary");
-        let primary: Arc<dyn SecureStorageProvider> =
-            Arc::new(FileSecureStorage::new_in_app_data_root(primary_root.clone()).unwrap());
-        let storage = build_legacy_identity_fallback(primary, &profiled_app_data_root);
+        assert_eq!(host.get(ENGINE_IDENTITY_KEY).unwrap(), None);
+        host.delete(ENGINE_IDENTITY_KEY).unwrap();
 
         assert_eq!(
-            storage.get(LEGACY_IDENTITY_STORE_KEY).unwrap().as_deref(),
-            Some(&b"legacy-identity"[..])
+            engine_identity.get(ENGINE_IDENTITY_KEY).unwrap().as_deref(),
+            Some(&b"engine-owned"[..])
         );
-        assert!(legacy_identity_file.exists());
-        assert!(primary_root
-            .join("keyring")
-            .read_dir()
-            .unwrap()
-            .next()
-            .is_none());
-        assert!(!profiled_app_data_root.join("iroh-identity_a").exists());
+    }
+
+    #[test]
+    fn a_real_legacy_host_entry_remains_visible_for_engine_migration() {
+        let temporary = tempfile::tempdir().unwrap();
+        let host = FileSecureStorage::new_in_app_data_root(temporary.path().to_path_buf()).unwrap();
+        host.set(ENGINE_IDENTITY_KEY, b"legacy-host-entry").unwrap();
+
+        assert_eq!(
+            host.get(ENGINE_IDENTITY_KEY).unwrap().as_deref(),
+            Some(&b"legacy-host-entry"[..])
+        );
+        host.delete(ENGINE_IDENTITY_KEY).unwrap();
+        assert_eq!(host.get(ENGINE_IDENTITY_KEY).unwrap(), None);
     }
 }

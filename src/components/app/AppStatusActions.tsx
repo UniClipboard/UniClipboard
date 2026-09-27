@@ -1,4 +1,4 @@
-import { ArrowUpCircle, Download, Loader2, MessageCircle, RotateCw } from 'lucide-react'
+import { ArrowUpCircle, Check, Download, Loader2, MessageCircle, RotateCw } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { contactAuthor, exportStartupLogs, STARTUP_SUPPORT_URL } from '@/api/startup-support'
@@ -48,7 +48,7 @@ export function AppStatusActions({ onRetry, retrying, versionTooOld }: Props) {
 
   return (
     <>
-      <div className="mt-7 flex flex-wrap gap-3">
+      <div className="mt-7 flex flex-wrap gap-2">
         {!versionTooOld && (
           <Button disabled={retrying || action !== null} onClick={onRetry}>
             {retrying ? (
@@ -71,11 +71,7 @@ export function AppStatusActions({ onRetry, retrying, versionTooOld }: Props) {
           )}
           {t(versionTooOld ? 'startupFailure.update' : 'settings.sections.about.checkUpdate')}
         </Button>
-        <Button
-          variant="outline"
-          disabled={action !== null}
-          onClick={() => void runAction('export')}
-        >
+        <Button variant="ghost" disabled={action !== null} onClick={() => void runAction('export')}>
           {action === 'export' ? (
             <Loader2 className="size-4 animate-spin" />
           ) : (
@@ -95,12 +91,20 @@ export function AppStatusActions({ onRetry, retrying, versionTooOld }: Props) {
       {feedback && (
         <div
           role={feedback.error ? 'alert' : 'status'}
-          className="mt-5 break-words rounded-md border border-border p-3 text-ui-body [overflow-wrap:anywhere]"
+          className="mt-4 flex items-start gap-2 break-words rounded-lg border border-border px-3 py-2.5 text-ui-body [overflow-wrap:anywhere]"
         >
-          {feedback.message}
-          {feedback.error && (
-            <p className="mt-1 select-text text-muted-foreground">{STARTUP_SUPPORT_URL}</p>
+          {!feedback.error && (
+            <Check
+              className="mt-0.5 size-4 shrink-0 text-emerald-700 dark:text-emerald-400"
+              aria-hidden="true"
+            />
           )}
+          <div className="min-w-0">
+            {feedback.message}
+            {feedback.error && (
+              <p className="mt-1 select-text text-muted-foreground">{STARTUP_SUPPORT_URL}</p>
+            )}
+          </div>
         </div>
       )}
     </>

@@ -133,15 +133,15 @@ function SwitchSpaceDialogInner({
         </div>
       </div>
     )
-  } else if (step === 'pending') {
+  } else if (step === 'pending' || step === 'processing') {
     body = (
       <div className="flex flex-col items-center gap-4 py-8">
         <div className="flex size-14 items-center justify-center rounded-full bg-primary/10 text-primary">
           <Loader2 className="size-7 animate-spin" />
         </div>
         <div className="text-center">
-          <p className="text-ui-section font-semibold text-foreground">{t('pending.title')}</p>
-          <p className="mt-1 text-ui-body text-muted-foreground">{t('pending.subtitle')}</p>
+          <p className="text-ui-section font-semibold text-foreground">{t(`${step}.title`)}</p>
+          <p className="mt-1 text-ui-body text-muted-foreground">{t(`${step}.subtitle`)}</p>
         </div>
       </div>
     )
@@ -261,8 +261,8 @@ function SwitchSpaceDialogInner({
                 ? t('failed.title')
                 : step === 'migrating'
                   ? t('migrating.title')
-                  : step === 'pending'
-                    ? t('pending.title')
+                  : step === 'pending' || step === 'processing'
+                    ? t(`${step}.title`)
                     : t('title')}
           </DialogTitle>
           {step === 'input' && <DialogDescription>{t('subtitle')}</DialogDescription>}

@@ -22,6 +22,7 @@ import type {
   DeviceTrustRelationshipDto,
   DeviceTrustSnapshotDto,
   DeviceTrustUnavailableReasonDto,
+  InboundPairingDto,
   JoinSpaceResponse as GeneratedJoinSpaceResponse,
   PendingInboundMemberDto,
 } from '@/api/generated/types.gen'
@@ -38,6 +39,7 @@ export type DeviceTrustImpact = DeviceTrustImpactDto
 export type DeviceTrustChange = DeviceTrustChangeDto
 export type DeviceTrustRelationship = DeviceTrustRelationshipDto
 export type PendingInboundMember = PendingInboundMemberDto
+export type InboundPairing = InboundPairingDto
 export type DeviceTrustSnapshot = Omit<DeviceTrustSnapshotDto, 'currentJoin'> & {
   currentJoin?: JoinSpaceResponse | null
 }
@@ -55,8 +57,16 @@ const DEVICE_GROUP_CHOICE_TIMEOUT_MS = 60_000
 function normalizeJoinSpaceResponse(
   response: GeneratedJoinSpaceResponse | null | undefined
 ): JoinSpaceResponse | null | undefined {
-  if (!response || response.status === 'rejected' || response.status === 'terminated') {
+  if (
+    !response ||
+    response.status === 'rejected' ||
+    response.status === 'terminated' ||
+    response.status === 'processing'
+  ) {
     return response
+  }
+  if (response.status === 'needs_attention') {
+    return { ...response, nextRetryAtMs: response.nextRetryAtMs ?? null }
   }
   if (response.status === 'pending') {
     return {

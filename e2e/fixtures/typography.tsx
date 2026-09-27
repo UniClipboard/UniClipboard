@@ -26,7 +26,7 @@ import {
   ShowInvitationScreen,
   RedeemInvitationScreen,
   JoinPendingScreen,
-  JoinRejectedScreen,
+  JoinEndedScreen,
   SpaceReadyScreen,
   PairingCompleteScreen,
   ImportConfigScreen,
@@ -283,10 +283,8 @@ export default function TypographyFixture() {
         {step === 'show-invitation' && (
           <ShowInvitationScreen code="123456789012" expiresAtMs={expiry} onCancel={noop} />
         )}
-        {step === 'pending' && <JoinPendingScreen onCancel={noop} />}
-        {step === 'rejected' && (
-          <JoinRejectedScreen reason="authentication_rejected" onBack={noop} />
-        )}
+        {step === 'pending' && <JoinPendingScreen status="pending" onCancel={noop} />}
+        {step === 'rejected' && <JoinEndedScreen reason="authentication_rejected" onBack={noop} />}
         {step === 'ready' && (
           <SpaceReadyScreen onInvite={async () => ({ ok: true })} onDone={noop} />
         )}

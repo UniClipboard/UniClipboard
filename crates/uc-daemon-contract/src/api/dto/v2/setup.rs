@@ -90,6 +90,26 @@ pub enum JoinSpaceResponse {
         #[schema(rename = "peerUpgradeRequired")]
         peer_upgrade_required: bool,
     },
+    Processing {
+        #[schema(rename = "joinId")]
+        join_id: String,
+        #[schema(rename = "targetSpaceId")]
+        target_space_id: String,
+        #[schema(rename = "sponsorDeviceId")]
+        sponsor_device_id: String,
+        #[schema(rename = "sponsorIdentityFingerprint")]
+        sponsor_identity_fingerprint: String,
+        #[schema(rename = "peerUpgradeRequired")]
+        peer_upgrade_required: bool,
+    },
+    NeedsAttention {
+        #[schema(rename = "joinId")]
+        join_id: String,
+        reason: JoinSpaceAttentionReason,
+        recovery: JoinSpaceAttentionRecovery,
+        #[schema(rename = "nextRetryAtMs")]
+        next_retry_at_ms: Option<i64>,
+    },
     Rejected {
         #[schema(rename = "joinId")]
         join_id: String,
@@ -123,9 +143,26 @@ pub enum JoinSpaceRejectionReason {
     BaseHistoryChanged,
     JoinerHistoryAhead,
     HistoryConflict,
+    CompletionInvalid,
+    MembershipHistoryInvalid,
+    SecurityMaterialInvalid,
+    RelationshipConflict,
+    ActivationStateInvalid,
     PeerUpgradeRequired,
     Cancelled,
     RemovedBeforeActivation,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum JoinSpaceAttentionReason {
+    OutcomeCannotBeProven,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum JoinSpaceAttentionRecovery {
+    PreserveDataAndContactSupport,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
@@ -344,6 +381,17 @@ mod tests {
         assert_eq!(json["sponsorIdentityFingerprint"], "fingerprint-1");
         assert_eq!(json["cancelRequested"], false);
         assert!(json.get("join_id").is_none());
+    }
+
+    #[test]
+    fn join_space_processing_response_preserves_nonterminal_identity() {
+        let json = serde_json::json!({
+            "status": "processing", "joinId": "join-1", "targetSpaceId": "space-1",
+            "sponsorDeviceId": "sponsor-1", "sponsorIdentityFingerprint": "fingerprint-1",
+            "peerUpgradeRequired": false
+        });
+        let decoded: JoinSpaceResponse = serde_json::from_value(json.clone()).unwrap();
+        assert_eq!(serde_json::to_value(decoded).unwrap(), json);
     }
 
     #[test]

@@ -196,11 +196,32 @@ struct JoinPendingOutput<'a> {
 }
 
 #[derive(Serialize)]
+struct JoinProcessingOutput<'a> {
+    peer_upgrade_required: bool,
+    ok: bool,
+    status: &'static str,
+    join_id: &'a str,
+    target_space_id: &'a str,
+    sponsor_device_id: &'a str,
+    sponsor_fingerprint: &'a str,
+}
+
+#[derive(Serialize)]
 struct JoinTerminalOutput<'a> {
     ok: bool,
     status: &'static str,
     join_id: &'a str,
     reason: &'a str,
+}
+
+#[derive(Serialize)]
+struct JoinNeedsAttentionOutput<'a> {
+    ok: bool,
+    status: &'static str,
+    join_id: &'a str,
+    reason: &'static str,
+    recovery: &'static str,
+    next_retry_at_ms: Option<i64>,
 }
 
 #[derive(Serialize)]
@@ -239,13 +260,19 @@ fn join_id(response: &JoinSpaceResponse) -> &str {
     match response {
         JoinSpaceResponse::Active { join_id, .. }
         | JoinSpaceResponse::Pending { join_id, .. }
+        | JoinSpaceResponse::Processing { join_id, .. }
+        | JoinSpaceResponse::NeedsAttention { join_id, .. }
         | JoinSpaceResponse::Rejected { join_id, .. }
         | JoinSpaceResponse::Terminated { join_id, .. } => join_id,
     }
 }
 
 fn should_wait_for_join(response: &JoinSpaceResponse, no_wait: bool) -> bool {
-    !no_wait && matches!(response, JoinSpaceResponse::Pending { .. })
+    !no_wait
+        && matches!(
+            response,
+            JoinSpaceResponse::Pending { .. } | JoinSpaceResponse::Processing { .. }
+        )
 }
 
 fn join_poll_decision(
@@ -258,7 +285,10 @@ fn join_poll_decision(
     if join_id(&current) != expected_join_id {
         return JoinPollDecision::Replaced;
     }
-    if matches!(current, JoinSpaceResponse::Pending { .. }) {
+    if matches!(
+        current,
+        JoinSpaceResponse::Pending { .. } | JoinSpaceResponse::Processing { .. }
+    ) {
         JoinPollDecision::Continue
     } else {
         JoinPollDecision::Finished(current)
@@ -307,7 +337,9 @@ fn join_response_outcome(
     let ok = match intent {
         JoinResponseIntent::Start => !matches!(
             response,
-            JoinSpaceResponse::Rejected { .. } | JoinSpaceResponse::Terminated { .. }
+            JoinSpaceResponse::NeedsAttention { .. }
+                | JoinSpaceResponse::Rejected { .. }
+                | JoinSpaceResponse::Terminated { .. }
         ),
         JoinResponseIntent::Status => true,
         JoinResponseIntent::Cancel => matches!(
@@ -448,6 +480,75 @@ fn render_join_response(
                 outcome.exit_code
             }
         }
+        JoinSpaceResponse::Processing {
+            join_id,
+            target_space_id,
+            sponsor_device_id,
+            sponsor_identity_fingerprint,
+            peer_upgrade_required,
+        } => {
+            if json {
+                spinner.finish_and_clear();
+                crate::output::emit_json_with_code(
+                    &JoinProcessingOutput {
+                        peer_upgrade_required: *peer_upgrade_required,
+                        ok: outcome.ok,
+                        status: "processing",
+                        join_id,
+                        target_space_id,
+                        sponsor_device_id,
+                        sponsor_fingerprint: sponsor_identity_fingerprint,
+                    },
+                    "join response",
+                    outcome.exit_code,
+                )
+            } else {
+                spinner.finish_and_clear();
+                ui::info("status", "processing");
+                ui::info("join_id", join_id);
+                ui::info("target_space_id", target_space_id);
+                ui::info("sponsor_device_id", sponsor_device_id);
+                outcome.exit_code
+            }
+        }
+        JoinSpaceResponse::NeedsAttention {
+            join_id,
+            reason: _,
+            recovery: _,
+            next_retry_at_ms,
+        } => {
+            let reason = "outcome_cannot_be_proven";
+            let recovery = "preserve_data_and_contact_support";
+            if json {
+                spinner.finish_and_clear();
+                crate::output::emit_json_with_code(
+                    &JoinNeedsAttentionOutput {
+                        ok: outcome.ok,
+                        status: "needs_attention",
+                        join_id,
+                        reason,
+                        recovery,
+                        next_retry_at_ms: *next_retry_at_ms,
+                    },
+                    "join response",
+                    outcome.exit_code,
+                )
+            } else {
+                if outcome.ok {
+                    spinner.finish_and_clear();
+                } else {
+                    ui::spinner_finish_error(spinner, "Join result needs attention");
+                }
+                ui::info("status", "needs_attention");
+                ui::info("join_id", join_id);
+                ui::info("reason", reason);
+                ui::info("recovery", recovery);
+                if let Some(next_retry_at_ms) = next_retry_at_ms {
+                    ui::info("next_retry_at_ms", &next_retry_at_ms.to_string());
+                }
+                outcome.exit_code
+            }
+        }
         JoinSpaceResponse::Rejected { join_id, reason } => {
             let reason = match reason {
                 uc_daemon_contract::api::dto::v2::setup::JoinSpaceRejectionReason::InvitationUnavailable => "invitation_unavailable",
@@ -456,6 +557,11 @@ fn render_join_response(
                 uc_daemon_contract::api::dto::v2::setup::JoinSpaceRejectionReason::BaseHistoryChanged => "base_history_changed",
                 uc_daemon_contract::api::dto::v2::setup::JoinSpaceRejectionReason::JoinerHistoryAhead => "joiner_history_ahead",
                 uc_daemon_contract::api::dto::v2::setup::JoinSpaceRejectionReason::HistoryConflict => "history_conflict",
+                uc_daemon_contract::api::dto::v2::setup::JoinSpaceRejectionReason::CompletionInvalid => "completion_invalid",
+                uc_daemon_contract::api::dto::v2::setup::JoinSpaceRejectionReason::MembershipHistoryInvalid => "membership_history_invalid",
+                uc_daemon_contract::api::dto::v2::setup::JoinSpaceRejectionReason::SecurityMaterialInvalid => "security_material_invalid",
+                uc_daemon_contract::api::dto::v2::setup::JoinSpaceRejectionReason::RelationshipConflict => "relationship_conflict",
+                uc_daemon_contract::api::dto::v2::setup::JoinSpaceRejectionReason::ActivationStateInvalid => "activation_state_invalid",
                 uc_daemon_contract::api::dto::v2::setup::JoinSpaceRejectionReason::PeerUpgradeRequired => "peer_upgrade_required",
                 uc_daemon_contract::api::dto::v2::setup::JoinSpaceRejectionReason::Cancelled => "cancelled",
                 uc_daemon_contract::api::dto::v2::setup::JoinSpaceRejectionReason::RemovedBeforeActivation => "removed_before_activation",
@@ -968,8 +1074,8 @@ mod tests {
     use super::{
         join_cancel_decision, join_error_output, join_poll_decision, join_response_outcome,
         next_reconnect_delay, normalize_invitation_code, should_wait_for_join, JoinCancelDecision,
-        JoinPendingOutput, JoinPollDecision, JoinResponseIntent, JoinTerminalOutput,
-        JOIN_POLL_INTERVAL, JOIN_RECONNECT_MAX_INTERVAL,
+        JoinPendingOutput, JoinPollDecision, JoinProcessingOutput, JoinResponseIntent,
+        JoinTerminalOutput, JOIN_POLL_INTERVAL, JOIN_RECONNECT_MAX_INTERVAL,
     };
     use crate::exit_codes;
     use reqwest::StatusCode;
@@ -1158,6 +1264,39 @@ mod tests {
         .expect("serialize terminated join");
         assert_eq!(terminated["status"], "terminated");
         assert_eq!(terminated["reason"], "expired");
+    }
+
+    #[test]
+    fn processing_is_reported_as_nonterminal_and_waitable() {
+        let processing = JoinSpaceResponse::Processing {
+            join_id: "join-1".to_owned(),
+            target_space_id: "space-1".to_owned(),
+            sponsor_device_id: "sponsor".to_owned(),
+            sponsor_identity_fingerprint: "fingerprint".to_owned(),
+            peer_upgrade_required: false,
+        };
+        assert!(should_wait_for_join(&processing, false));
+        assert!(!should_wait_for_join(&processing, true));
+        assert_eq!(
+            join_poll_decision("join-1", Some(processing.clone())),
+            JoinPollDecision::Continue
+        );
+        assert_eq!(
+            join_cancel_decision(Some(&processing)),
+            JoinCancelDecision::Report(&processing)
+        );
+        let json = serde_json::to_value(JoinProcessingOutput {
+            peer_upgrade_required: false,
+            ok: true,
+            status: "processing",
+            join_id: "join-1",
+            target_space_id: "space-1",
+            sponsor_device_id: "sponsor",
+            sponsor_fingerprint: "fingerprint",
+        })
+        .unwrap();
+        assert_eq!(json["status"], "processing");
+        assert!(json.get("cancel_requested").is_none());
     }
 
     #[test]

@@ -15,8 +15,11 @@ use uc_engine::{
     DeviceTrustChoiceSummary, DeviceTrustImpactSummary, DeviceTrustRecoverySummary,
     DeviceTrustRelationshipSummary, DeviceTrustSnapshotSummary,
     DeviceTrustUnavailableReasonSummary, MemberProtectionStatusSummary, MemberProtectionSummary,
-    MemberSyncPreferencesPatch, MemberSyncPreferencesSummary, PairingConfirmationSummary,
-    SpaceProtectionModeSummary, SpaceProtectionSummary,
+    MemberSyncPreferencesPatch, MemberSyncPreferencesSummary,
+    MembershipMaintenanceHealthPhaseSummary, MembershipMaintenanceProblemSummary,
+    MembershipMaintenanceRecoverySummary, PairingConfirmationSummary,
+    SpaceDeviceUpdatePhaseSummary, SpaceDeviceUpdateProblemSummary,
+    SpaceDeviceUpdateRecoverySummary, SpaceProtectionModeSummary, SpaceProtectionSummary,
 };
 
 use super::{IntoApiDto, IntoDomain};
@@ -25,9 +28,13 @@ use crate::api::dto::member::{
     DeviceGroupChoiceResultDto, DeviceGroupChoicesDto, DeviceGroupRelationshipDto,
     DeviceMembershipDto, DeviceReachabilityDto, DeviceSyncRelationshipDto, DeviceTrustActionDto,
     DeviceTrustChangeDto, DeviceTrustChoiceDto, DeviceTrustImpactDto, DeviceTrustRelationshipDto,
-    DeviceTrustSnapshotDto, DeviceTrustUnavailableReasonDto, MemberProtectionDto,
-    MemberProtectionStatusDto, MemberSyncPreferencesDto, PairingConfirmationDto,
-    PendingInboundMemberDto, SpaceProtectionDto, SpaceProtectionModeDto,
+    DeviceTrustSnapshotDto, DeviceTrustUnavailableReasonDto, InboundPairingDto,
+    InboundPairingStatusDto, MemberProtectionDto, MemberProtectionStatusDto,
+    MemberSyncPreferencesDto, MembershipMaintenanceHealthDto, MembershipMaintenanceHealthPhaseDto,
+    MembershipMaintenanceProblemDto, MembershipMaintenanceRecoveryDto, PairingConfirmationDto,
+    PendingInboundMemberDto, SpaceDeviceUpdatePhaseDto, SpaceDeviceUpdateProblemDto,
+    SpaceDeviceUpdateRecoveryDto, SpaceDeviceUpdateStatusDto, SpaceProtectionDto,
+    SpaceProtectionModeDto,
 };
 use crate::api::dto::settings::{ContentTypesDto, ContentTypesPatchDto};
 
@@ -123,6 +130,14 @@ impl IntoApiDto<SpaceProtectionDto> for SpaceProtectionSummary {
 
 impl IntoApiDto<DeviceTrustSnapshotDto> for DeviceTrustSnapshotSummary {
     fn into_api_dto(self) -> DeviceTrustSnapshotDto {
+        let inbound_pairings = serde_json::to_value(&self)
+            .ok()
+            .and_then(|value| value.get("inbound_pairings").cloned())
+            .and_then(|value| serde_json::from_value::<Vec<InboundPairingCompat>>(value).ok())
+            .unwrap_or_default()
+            .into_iter()
+            .map(InboundPairingCompat::into_dto)
+            .collect();
         DeviceTrustSnapshotDto {
             revision: self.revision,
             local_device_id: self.local_device_id,
@@ -137,6 +152,77 @@ impl IntoApiDto<DeviceTrustSnapshotDto> for DeviceTrustSnapshotSummary {
                     display_name: member.display_name,
                 }
             }),
+            inbound_pairings,
+            space_device_update: SpaceDeviceUpdateStatusDto {
+                phase: match self.space_device_update.phase {
+                    SpaceDeviceUpdatePhaseSummary::Updating => SpaceDeviceUpdatePhaseDto::Updating,
+                    SpaceDeviceUpdatePhaseSummary::Completed => {
+                        SpaceDeviceUpdatePhaseDto::Completed
+                    }
+                    SpaceDeviceUpdatePhaseSummary::RetryableFailure => {
+                        SpaceDeviceUpdatePhaseDto::RetryableFailure
+                    }
+                    SpaceDeviceUpdatePhaseSummary::NeedsAttention => {
+                        SpaceDeviceUpdatePhaseDto::NeedsAttention
+                    }
+                },
+                reason: self.space_device_update.reason.map(|reason| match reason {
+                    SpaceDeviceUpdateProblemSummary::DeviceStateRejected => {
+                        SpaceDeviceUpdateProblemDto::DeviceStateRejected
+                    }
+                    SpaceDeviceUpdateProblemSummary::DeviceRelationshipConflict => {
+                        SpaceDeviceUpdateProblemDto::DeviceRelationshipConflict
+                    }
+                    SpaceDeviceUpdateProblemSummary::DeviceSecurityUpdateRejected => {
+                        SpaceDeviceUpdateProblemDto::DeviceSecurityUpdateRejected
+                    }
+                    SpaceDeviceUpdateProblemSummary::DeviceUpgradeRequired => {
+                        SpaceDeviceUpdateProblemDto::DeviceUpgradeRequired
+                    }
+                    SpaceDeviceUpdateProblemSummary::LocalIdentityMismatch => {
+                        SpaceDeviceUpdateProblemDto::LocalIdentityMismatch
+                    }
+                }),
+                recovery: self
+                    .space_device_update
+                    .recovery
+                    .map(|recovery| match recovery {
+                        SpaceDeviceUpdateRecoverySummary::ReviewDevices => {
+                            SpaceDeviceUpdateRecoveryDto::ReviewDevices
+                        }
+                        SpaceDeviceUpdateRecoverySummary::UpdateApp => {
+                            SpaceDeviceUpdateRecoveryDto::UpdateApp
+                        }
+                    }),
+                next_retry_at_ms: self.space_device_update.next_retry_at_ms,
+            },
+            maintenance_health: MembershipMaintenanceHealthDto {
+                phase: match self.maintenance_health.phase {
+                    MembershipMaintenanceHealthPhaseSummary::Healthy => {
+                        MembershipMaintenanceHealthPhaseDto::Healthy
+                    }
+                    MembershipMaintenanceHealthPhaseSummary::Retrying => {
+                        MembershipMaintenanceHealthPhaseDto::Retrying
+                    }
+                    MembershipMaintenanceHealthPhaseSummary::NeedsAttention => {
+                        MembershipMaintenanceHealthPhaseDto::NeedsAttention
+                    }
+                },
+                reason: self.maintenance_health.reason.map(|reason| match reason {
+                    MembershipMaintenanceProblemSummary::MembershipHistoryRejected => {
+                        MembershipMaintenanceProblemDto::MembershipHistoryRejected
+                    }
+                }),
+                recovery: self
+                    .maintenance_health
+                    .recovery
+                    .map(|recovery| match recovery {
+                        MembershipMaintenanceRecoverySummary::ResolveDeviceTrust => {
+                            MembershipMaintenanceRecoveryDto::ResolveDeviceTrust
+                        }
+                    }),
+                next_retry_at_ms: self.maintenance_health.next_retry_at_ms,
+            },
             devices: self
                 .devices
                 .into_iter()
@@ -154,6 +240,45 @@ impl IntoApiDto<DeviceTrustSnapshotDto> for DeviceTrustSnapshotSummary {
                 .collect(),
             blocked_reason: self.blocked_reason.map(device_trust_unavailable_reason),
             updated_at_ms: self.updated_at_ms,
+        }
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct InboundPairingCompat {
+    pairing_id: String,
+    device_id: Option<String>,
+    display_name: Option<String>,
+    status: InboundPairingStatusCompat,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum InboundPairingStatusCompat {
+    AwaitingConfirmation,
+    ConfirmationMissed,
+    NeedsAttention,
+    Failed,
+}
+
+impl InboundPairingCompat {
+    fn into_dto(self) -> InboundPairingDto {
+        InboundPairingDto {
+            pairing_id: self.pairing_id,
+            device_id: self.device_id,
+            display_name: self.display_name,
+            status: match self.status {
+                InboundPairingStatusCompat::AwaitingConfirmation => {
+                    InboundPairingStatusDto::AwaitingConfirmation
+                }
+                InboundPairingStatusCompat::ConfirmationMissed => {
+                    InboundPairingStatusDto::ConfirmationMissed
+                }
+                InboundPairingStatusCompat::NeedsAttention => {
+                    InboundPairingStatusDto::NeedsAttention
+                }
+                InboundPairingStatusCompat::Failed => InboundPairingStatusDto::Failed,
+            },
         }
     }
 }
@@ -252,6 +377,9 @@ fn device_trust_relationship(
             DeviceGroupRelationshipSummary::Consistent => DeviceGroupRelationshipDto::Consistent,
             DeviceGroupRelationshipSummary::PendingLocalDecision => {
                 DeviceGroupRelationshipDto::PendingLocalDecision
+            }
+            DeviceGroupRelationshipSummary::AwaitingRemovalAcknowledgement => {
+                DeviceGroupRelationshipDto::AwaitingRemovalAcknowledgement
             }
             DeviceGroupRelationshipSummary::Diverged => DeviceGroupRelationshipDto::Diverged,
             DeviceGroupRelationshipSummary::Unverifiable => {
@@ -445,13 +573,26 @@ mod tests {
             }),
             current_join: None,
             pending_inbound_member: None,
+            inbound_pairings: Vec::new(),
+            space_device_update: uc_engine::SpaceDeviceUpdateStatusSummary {
+                phase: SpaceDeviceUpdatePhaseSummary::NeedsAttention,
+                reason: Some(SpaceDeviceUpdateProblemSummary::DeviceRelationshipConflict),
+                recovery: Some(SpaceDeviceUpdateRecoverySummary::ReviewDevices),
+                next_retry_at_ms: None,
+            },
+            maintenance_health: uc_engine::MembershipMaintenanceHealthSummary {
+                phase: MembershipMaintenanceHealthPhaseSummary::NeedsAttention,
+                reason: Some(MembershipMaintenanceProblemSummary::MembershipHistoryRejected),
+                recovery: Some(MembershipMaintenanceRecoverySummary::ResolveDeviceTrust),
+                next_retry_at_ms: Some(12345),
+            },
             devices: vec![DeviceTrustRelationshipSummary {
                 device_id: "device-peer".to_string(),
                 display_name: "Peer".to_string(),
                 is_local: false,
                 reachability: DeviceReachabilitySummary::Online,
                 membership: DeviceMembershipSummary::Active,
-                group_relationship: DeviceGroupRelationshipSummary::ConfirmationPending,
+                group_relationship: DeviceGroupRelationshipSummary::AwaitingRemovalAcknowledgement,
                 compatibility: DeviceCompatibilitySummary::Compatible,
                 sync_relationship: DeviceSyncRelationshipSummary::PausedUnverifiable,
                 pairing_confirmation: Some(PairingConfirmationSummary::Unconfirmed),
@@ -471,8 +612,25 @@ mod tests {
         assert_eq!(mapped.local_device_id, "device-local");
         assert_eq!(mapped.revision, 7);
         assert_eq!(
+            mapped.maintenance_health.phase,
+            MembershipMaintenanceHealthPhaseDto::NeedsAttention
+        );
+        assert_eq!(mapped.maintenance_health.next_retry_at_ms, Some(12345));
+        assert_eq!(
+            mapped.space_device_update.phase,
+            SpaceDeviceUpdatePhaseDto::NeedsAttention
+        );
+        assert_eq!(
+            mapped.space_device_update.reason,
+            Some(SpaceDeviceUpdateProblemDto::DeviceRelationshipConflict)
+        );
+        assert_eq!(
             mapped.devices[0].pairing_confirmation,
             Some(PairingConfirmationDto::Unconfirmed)
+        );
+        assert_eq!(
+            mapped.devices[0].group_relationship,
+            DeviceGroupRelationshipDto::AwaitingRemovalAcknowledgement
         );
         let change = mapped.current_change.expect("pending device trust change");
         assert_eq!(change.change_id, "change-1");

@@ -144,6 +144,29 @@ describe('SwitchSpaceDialog durable admission', () => {
     })
   })
 
+  it('shows processing without a cancellation action after confirmation', async () => {
+    switchSpace.mockResolvedValue({
+      status: 'processing',
+      joinId: 'join-123',
+      targetSpaceId: 'space-123',
+      sponsorDeviceId: 'sponsor-123',
+      sponsorIdentityFingerprint: 'fingerprint',
+      peerUpgradeRequired: false,
+    })
+    render(
+      <I18nextProvider i18n={i18n}>
+        <SwitchSpaceDialog open onOpenChange={vi.fn()} />
+      </I18nextProvider>
+    )
+    fireEvent.change(screen.getByLabelText('Invitation code'), { target: { value: '012345' } })
+    fireEvent.change(screen.getByLabelText('New space passphrase'), {
+      target: { value: 'passphrase' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Switch' }))
+    await waitFor(() => expect(screen.getAllByText('Completing the switch')).not.toHaveLength(0))
+    expect(screen.queryByRole('button', { name: 'Cancel' })).not.toBeInTheDocument()
+  })
+
   it('requests cancellation for the pending switch admission', async () => {
     render(
       <I18nextProvider i18n={i18n}>

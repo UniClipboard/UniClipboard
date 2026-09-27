@@ -454,3 +454,29 @@ PLAYWRIGHT_CHANNEL=chrome node e2e/typography-browser.mjs
 ```
 
 `PLAYWRIGHT_MODULE` 可以指定独立安装的浏览器工具；`TYPOGRAPHY_TEST_URL`、`TYPOGRAPHY_TEST_OUTPUT` 分别指定预览地址和截图/检查记录目录。测试不会提交反馈、修改真实配对或读取个人剪贴板。
+
+## 17. 启动、解锁与首次设置
+
+主窗口进入历史记录之前的所有全窗状态共用 `src/components/app/AppStateShell.tsx`：启动中、资料升级、启动失败、资料恢复、解锁，以及首次设置的全部步骤。外层统一由 `AppStateFrame` 提供主窗口 `TitleBar`，首次设置不再自带拖拽条或品牌侧栏，Windows 与 Linux 自绘边框下同样保留窗口按钮。
+
+| 区域 | 规格 |
+| --- | --- |
+| 内容列 | 左对齐，最大宽度 `max-w-md`（28rem），在窗口内垂直居中；内容超出时纵向滚动 |
+| 应用标识 | 真实应用图标 `size-8` + 「UniClipboard」正文 600，与下方内容相距 40px |
+| 状态行 | 可选；图标 + 正文，距标题 12px。进行中用旋转图标，失败用 destructive 色和错误图标，完成用 success 色和对勾，锁定用锁形图标；颜色之外必须同时有图标和文字 |
+| 标题与说明 | `h1` 为 `text-ui-title`，说明为 `text-ui-body-relaxed` muted，间距 8px |
+| 操作 | 按钮组间距 8px。前进与返回成对出现时，返回在左（ghost），主操作在右；单一主操作左对齐。解锁主按钮为 `lg` 通栏 |
+| 错误 | 字段错误紧跟字段并设置 `aria-invalid`、`aria-describedby`；非字段错误放在内容与操作之间。均为正文 14、`role="alert"` |
+| 进度 | 有真实百分比时显示当前步骤、百分比、数量和已用时；没有时只显示不定进度条与已用时，不编造步骤或百分比 |
+
+解锁由用户点击后先尝试系统钥匙串；不可用时在同一页展开口令表单，不使用弹窗。重置仍通过需要输入 RESET 的确认弹窗，关闭后焦点回到重置入口。口令输入统一使用 `src/components/ui/password-input.tsx` 的显示/隐藏开关。
+
+复现入口：
+
+```bash
+npx vitest run src/pages src/components/app src/styles/__tests__/typography.test.ts
+UI_FIXTURE_ENTRY=e2e/fixtures/app-entry.tsx UI_FIXTURE_PORT=1452 node e2e/visual-effects-server.mjs
+PLAYWRIGHT_CHANNEL=chrome node e2e/app-entry-browser.mjs
+```
+
+浏览器脚本覆盖 18 种状态在中英文、浅深色、900×600 与 1280×800 下的字号、单一 `h1`、按钮名称和横向溢出，并检查解锁的键盘路径、钥匙串回退、口令错误、重置确认及首次设置的字段校验。预览使用合成的原生响应，不连接后台、不读取钥匙串；`APP_ENTRY_TEST_OUTPUT` 指定截图与结果目录。

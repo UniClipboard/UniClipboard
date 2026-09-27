@@ -12,8 +12,17 @@ export default function AddDeviceInvitationStep({
   hasExternalActions: boolean
 }) {
   const { t } = useTranslation()
-  const { invitation, loading, error, remaining, expired, progress, display, handleRegenerate } =
-    invitationState
+  const {
+    invitation,
+    loading,
+    error,
+    issueRetryable,
+    remaining,
+    expired,
+    progress,
+    display,
+    handleRegenerate,
+  } = invitationState
 
   if (loading && !invitation) {
     return (
@@ -27,7 +36,7 @@ export default function AddDeviceInvitationStep({
     return (
       <div className="flex flex-col items-center gap-3 py-10">
         <p className="text-ui-body text-destructive">{error}</p>
-        {!hasExternalActions && (
+        {!hasExternalActions && issueRetryable !== false && (
           <Button variant="outline" size="sm" onClick={handleRegenerate} disabled={loading}>
             <RefreshCw className="mr-2 size-3.5" />
             {t('devices.addDevice.actions.regenerate')}

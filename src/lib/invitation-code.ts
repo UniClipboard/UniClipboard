@@ -1,5 +1,8 @@
 export const INVITATION_CODE_LENGTH = 6
 
+/** Default invitation lifetime, used to estimate progress when the issue time is unknown. */
+export const INVITATION_DEFAULT_TTL_MS = 5 * 60 * 1000
+
 /** Format a six-digit code as `XXX-XXX` without truncating unexpected values. */
 export function formatInvitationCode(raw: string): string {
   const clean = raw.replace(/[\s-]/g, '')

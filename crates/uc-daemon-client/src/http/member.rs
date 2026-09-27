@@ -167,7 +167,7 @@ mod tests {
                             "isLocal": true,
                             "reachability": "online",
                             "membership": "active",
-                            "groupRelationship": "consistent",
+                            "groupRelationship": "awaiting_removal_acknowledgement",
                             "compatibility": "compatible",
                             "syncRelationship": "usable",
                             "availableActions": [],
@@ -216,7 +216,7 @@ mod tests {
         assert_eq!(status.local_membership, DeviceMembershipDto::Active);
         assert_eq!(
             status.devices[0].group_relationship,
-            DeviceGroupRelationshipDto::Consistent
+            DeviceGroupRelationshipDto::AwaitingRemovalAcknowledgement
         );
         assert_eq!(
             status.devices[0].sync_relationship,

@@ -322,14 +322,14 @@ describe('startup window frame before setup hydration', () => {
     expect(screen.queryByRole('button', { name: '关闭' })).not.toBeInTheDocument()
   })
 
-  it('leaves setup page chrome to the setup layout', () => {
+  it('keeps setup inside the shared app state frame', () => {
     state.failed = false
     state.connected = true
     state.hydrated = true
     state.setupRequired = true
     render(<AppContentWithBar />)
     expect(screen.getByRole('main')).toHaveTextContent('Setup')
-    expect(screen.queryByRole('button', { name: '关闭' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '关闭' })).toBeVisible()
   })
 
   it('keeps one startup screen until an existing user can enter history', () => {

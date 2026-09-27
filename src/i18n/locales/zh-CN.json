@@ -966,6 +966,7 @@
   "unlock": {
     "title": "解锁",
     "description": "您的数据已加密，请解锁以继续。",
+    "lockedStatus": "已锁定",
     "button": "解锁",
     "unlocking": "正在解锁...",
     "autoUnlock": {
@@ -1335,6 +1336,16 @@
     "pairedDevices": {
       "title": "已配对设备"
     },
+    "inboundPairings": {
+      "title": "配对记录",
+      "unnamed": "未完成的配对",
+      "status": {
+        "awaiting_confirmation": "正在完成配对",
+        "confirmation_missed": "未收到确认，正在等待安全收尾",
+        "needs_attention": "需要处理：无法确认本次配对结果",
+        "failed": "配对未完成"
+      }
+    },
     "convergence": {
       "converging": "正在连接空间内的其他设备",
       "waitingForOfflineMember": "正在等待离线设备完成资料更新",
@@ -1348,6 +1359,40 @@
       "errors": {
         "statusFailed": "暂时无法读取连接恢复状态",
         "requestFailed": "无法开始恢复连接"
+      }
+    },
+    "spaceDeviceUpdate": {
+      "completed": "空间设备状态已更新",
+      "updating": {
+        "title": "正在更新空间设备状态",
+        "description": "完成后会自动刷新，无需保持此页面打开。"
+      },
+      "retrying": {
+        "title": "正在更新空间设备状态",
+        "description": "暂时未完成，稍后自动重试。"
+      },
+      "attention": {
+        "title": "空间设备状态需要处理",
+        "description": "当前无法自动完成。请保留现有资料，稍后重新检查。",
+        "reasons": {
+          "device_state_rejected": "部分设备状态未能更新。请保留现有资料，稍后重新检查。",
+          "device_relationship_conflict": "设备关系存在冲突，请按处理窗口中的提示选择要保留的设备。",
+          "device_security_update_rejected": "安全设置未能更新，请检查相关设备后重试。",
+          "device_upgrade_required": "有设备版本过旧，请更新 UniClipboard 后重试。",
+          "local_identity_mismatch": "本设备的身份与空间成员记录不一致。请保留现有数据，稍后再检查。"
+        }
+      },
+      "unavailable": {
+        "title": "暂时无法确认空间设备状态",
+        "description": "现有设备仍保留在列表中，可以重新检查。"
+      },
+      "unlockRequired": {
+        "title": "解锁后才能查看空间设备状态",
+        "description": "现有设备仍会列出。请先解锁当前空间，再重新检查。"
+      },
+      "recoveryRequired": {
+        "title": "空间设备状态需要恢复",
+        "description": "现有设备仍会列出。重新检查无法解决此问题，请保留现有数据。"
       }
     },
     "addDevice": {
@@ -1423,6 +1468,15 @@
       }
     },
     "memberRemoval": {
+      "removedDevices": "已移除设备",
+      "removed": {
+        "title": "设备已移除",
+        "description": "该设备已不再属于当前空间。"
+      },
+      "notificationPending": {
+        "title": "已从此设备移除",
+        "description": "正在通知其他设备，无需进行操作。"
+      },
       "deviceRemoved": {
         "title": "此设备已被移除",
         "description": "此设备已不属于当前空间。请使用邀请重新配对以加入。"
@@ -1935,6 +1989,10 @@
         "title": "等待对方确认",
         "subtitle": "正在等待对方确认这次切换。"
       },
+      "processing": {
+        "title": "正在完成切换",
+        "subtitle": "正在进行最终确认；连接中断后会自动重试。"
+      },
       "success": {
         "title": "切换成功",
         "subtitle_one": "已用新主密钥迁移 1 条剪贴板记录。",
@@ -1966,7 +2024,8 @@
           "internal": "内部错误 —— 请查看 daemon 日志。"
         }
       }
-    }
+    },
+    "deviceTrustUnavailable": "设备状态暂时不可用。请稍后重试。"
   },
   "pairing": {
     "globalRequest": {
@@ -2211,6 +2270,18 @@
     }
   },
   "setup": {
+    "invitationIssue": {
+      "errors": {
+        "networkNotStarted": "桌面服务仍在启动，请稍等片刻后重试。",
+        "noPublishableAddress": "这台设备没有可用于配对的网络连接。请先连接网络，然后重试。",
+        "localPublicationFailed": "这台设备未能在本地网络提供邀请码。请检查网络连接，然后重试。",
+        "directoryTransportFailed": "无法连接邀请服务，本地配对也不可用。请检查网络，然后重试。",
+        "directoryRejected": "邀请服务拒绝了本次请求。请勿反复重试，导出诊断信息后联系支持。",
+        "directoryInvalidResponse": "邀请服务返回了无效结果。请重试一次；若仍然失败，请导出诊断信息并联系支持。",
+        "serviceUnavailable": "配对服务暂时不可用，请稍等片刻后重试。",
+        "internal": "未能创建邀请码。若问题持续，请导出诊断信息并联系支持。"
+      }
+    },
     "page": {
       "processing": "正在处理...",
       "processingJoinSpace": {
@@ -2322,6 +2393,7 @@
       "hint": "请妥善保管该口令，所有想加入此空间的设备都需要输入它。"
     },
     "showInvitation": {
+      "status": "空间已创建",
       "title": "邀请新设备",
       "subtitle": "在另一台设备上输入这个邀请码即可加入空间。",
       "expiresIn": "{{remaining}} 后过期",
@@ -2364,6 +2436,10 @@
       }
     },
     "joinPending": {
+      "processing": {
+        "title": "正在更新空间设备状态",
+        "subtitle": "正在完成加入；连接中断后会自动继续。"
+      },
       "title": "等待对方确认",
       "subtitle": "正在等待加入结果。",
       "actions": {
@@ -2379,6 +2455,12 @@
           "base_history_changed": "对方空间已发生变化，请重新获取邀请码。",
           "joiner_history_ahead": "本机历史无法加入该空间。",
           "history_conflict": "两边的历史无法合并。",
+          "completion_invalid": "最终确认无效，未完成的配对已停止。",
+          "membership_history_invalid": "成员历史无效，未完成的配对已停止。",
+          "security_material_invalid": "安全资料无效，未完成的配对已停止。",
+          "relationship_conflict": "设备关系存在冲突，未完成的配对已停止。",
+          "activation_state_invalid": "设备启用状态无效，未完成的配对已停止。",
+          "outcome_cannot_be_proven": "无法安全确认本次配对结果。请保留现有资料并联系支持。",
           "peer_upgrade_required": "对方设备需要更新 UniClipboard。",
           "cancelled": "本次加入已取消。",
           "expired": "本次加入已到期，未完成的配对已自动结束。",

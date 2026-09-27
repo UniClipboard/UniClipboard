@@ -5,6 +5,9 @@
 //! transports (Unix domain socket, named pipe) only need a new
 //! impl — CLI code stays unchanged.
 
+use crate::realtime::{
+    ClipboardIncomingPendingEvent, FileTransferProgressEvent, FileTransferStatusChangedEvent,
+};
 use anyhow::Result;
 use async_trait::async_trait;
 use tokio::sync::mpsc;
@@ -33,6 +36,15 @@ use uc_daemon_contract::api::dto::v2::setup::JoinSpaceResponse;
 pub struct FileExport {
     pub filename: String,
     pub bytes: Vec<u8>,
+}
+
+/// Ordered inbound events needed by one-shot CLI receivers.
+#[derive(Debug, Clone)]
+pub enum InboundActivityEvent {
+    Pending(ClipboardIncomingPendingEvent),
+    Progress(FileTransferProgressEvent),
+    Status(FileTransferStatusChangedEvent),
+    Completed(InboundEntryEvent),
 }
 
 #[async_trait]
@@ -93,6 +105,11 @@ pub trait DaemonService: Send + Sync {
     /// **receiver-side** `entry_id`. The implementation filters to
     /// `origin == "remote"` so local clipboard captures do not leak through.
     async fn subscribe_inbound_entries(&self) -> Result<mpsc::Receiver<InboundEntryEvent>>;
+
+    /// Subscribe to the ordered clipboard + file-transfer event stream used by
+    /// `get --wait`. Keeping these events on one WebSocket preserves their
+    /// daemon emission order and lets callers correlate by entry/attempt id.
+    async fn subscribe_inbound_activity(&self) -> Result<mpsc::Receiver<InboundActivityEvent>>;
 
     /// Export the bytes of an entry's first materialized free-file
     /// (ADR-008 P5-1b) by calling `GET /clipboard/entries/{id}/file`.

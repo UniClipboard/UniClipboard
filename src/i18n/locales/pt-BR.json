@@ -966,6 +966,7 @@
   "unlock": {
     "title": "Desbloquear",
     "description": "Seus dados estão criptografados. Desbloqueie para continuar.",
+    "lockedStatus": "Bloqueado",
     "button": "Desbloquear",
     "unlocking": "Desbloqueando...",
     "autoUnlock": {
@@ -1318,6 +1319,7 @@
   "devices": {
     "title": "Gerenciamento de dispositivos",
     "addNew": "Convidar novo dispositivo",
+    "deviceTrustUnavailable": "O status do dispositivo está temporariamente indisponível. Tente novamente em instantes.",
     "thisDevice": {
       "title": "Este dispositivo",
       "syncActive": "Sincronização ativa",
@@ -1339,6 +1341,16 @@
     "pairedDevices": {
       "title": "Dispositivos pareados"
     },
+    "inboundPairings": {
+      "title": "Histórico de pareamento",
+      "unnamed": "Pareamento não concluído",
+      "status": {
+        "awaiting_confirmation": "Concluindo o pareamento",
+        "confirmation_missed": "A confirmação não foi recebida; aguardando a conclusão segura",
+        "needs_attention": "Requer atenção: não foi possível confirmar este pareamento",
+        "failed": "O pareamento não foi concluído"
+      }
+    },
     "convergence": {
       "converging": "Conectando aos outros dispositivos deste Espaço",
       "waitingForOfflineMember": "Aguardando dispositivos offline atualizarem os dados do Espaço",
@@ -1354,7 +1366,50 @@
         "requestFailed": "Não foi possível iniciar a recuperação da conexão"
       }
     },
+    "spaceDeviceUpdate": {
+      "completed": "Status dos dispositivos do espaço atualizado",
+      "updating": {
+        "title": "Atualizando o status dos dispositivos do espaço",
+        "description": "A atualização será automática. Não é preciso manter esta página aberta."
+      },
+      "retrying": {
+        "title": "Atualizando o status dos dispositivos do espaço",
+        "description": "Ainda não foi concluído. Uma nova tentativa será feita automaticamente."
+      },
+      "attention": {
+        "title": "O status dos dispositivos do espaço requer atenção",
+        "description": "Não foi possível concluir automaticamente. Mantenha os dados existentes e verifique novamente mais tarde.",
+        "reasons": {
+          "device_state_rejected": "Não foi possível atualizar o status de alguns dispositivos. Mantenha os dados existentes e verifique novamente mais tarde.",
+          "device_relationship_conflict": "Há um conflito entre dispositivos. Escolha quais manter na janela de ação.",
+          "device_security_update_rejected": "Não foi possível atualizar as configurações de segurança. Verifique os dispositivos e tente novamente.",
+          "device_upgrade_required": "Um dispositivo usa uma versão antiga. Atualize o UniClipboard e tente novamente.",
+          "local_identity_mismatch": "A identidade deste dispositivo não corresponde mais à sua participação no espaço. Mantenha seus dados atuais e verifique novamente mais tarde."
+        }
+      },
+      "unavailable": {
+        "title": "O status dos dispositivos do espaço está temporariamente indisponível",
+        "description": "Seus dispositivos continuam na lista. Você pode verificar novamente."
+      },
+      "unlockRequired": {
+        "title": "Desbloqueie para ver o status dos dispositivos do espaço",
+        "description": "Seus dispositivos atuais continuam listados. Desbloqueie este espaço e verifique novamente."
+      },
+      "recoveryRequired": {
+        "title": "O status dos dispositivos do espaço precisa de recuperação",
+        "description": "Seus dispositivos atuais continuam listados. Verificar novamente não resolverá isso. Mantenha seus dados atuais."
+      }
+    },
     "memberRemoval": {
+      "removedDevices": "Dispositivos removidos",
+      "removed": {
+        "title": "Dispositivo removido",
+        "description": "Este dispositivo não faz mais parte deste espaço."
+      },
+      "notificationPending": {
+        "title": "Removido deste dispositivo",
+        "description": "Os outros dispositivos estão sendo notificados. Nenhuma ação é necessária."
+      },
       "deviceRemoved": {
         "title": "Este dispositivo foi removido",
         "description": "Este dispositivo não faz mais parte do espaço. Faça o pareamento novamente com um convite para entrar."
@@ -1940,6 +1995,10 @@
         "title": "Aguardando confirmação",
         "subtitle": "Aguardando o outro dispositivo confirmar esta troca."
       },
+      "processing": {
+        "title": "Concluindo a troca",
+        "subtitle": "A confirmação final está em andamento. Se a conexão falhar, haverá nova tentativa automática."
+      },
       "success": {
         "title": "Espaço alterado",
         "subtitle_one": "1 registro da área de transferência migrado com a nova chave mestra.",
@@ -2219,6 +2278,18 @@
     }
   },
   "setup": {
+    "invitationIssue": {
+      "errors": {
+        "networkNotStarted": "O serviço do aplicativo ainda está iniciando. Aguarde um momento e tente novamente.",
+        "noPublishableAddress": "Este dispositivo não tem uma conexão de rede disponível para o pareamento. Conecte-o a uma rede e tente novamente.",
+        "localPublicationFailed": "Este dispositivo não conseguiu disponibilizar o convite na rede local. Verifique a conexão e tente novamente.",
+        "directoryTransportFailed": "Não foi possível acessar o serviço de convites e o pareamento local não está disponível. Verifique a rede e tente novamente.",
+        "directoryRejected": "O serviço de convites recusou esta solicitação. Não continue tentando; exporte os diagnósticos e entre em contato com o suporte.",
+        "directoryInvalidResponse": "O serviço de convites retornou uma resposta inválida. Tente mais uma vez; se continuar, exporte os diagnósticos e entre em contato com o suporte.",
+        "serviceUnavailable": "O pareamento está temporariamente indisponível. Aguarde um momento e tente novamente.",
+        "internal": "Não foi possível criar o convite. Se continuar, exporte os diagnósticos e entre em contato com o suporte."
+      }
+    },
     "page": {
       "processing": "Processando...",
       "processingJoinSpace": {
@@ -2330,6 +2401,7 @@
       "hint": "Guarde esta frase secreta em um lugar seguro — você vai precisar dela em todos os dispositivos que entrarem neste Espaço."
     },
     "showInvitation": {
+      "status": "Espaço criado",
       "title": "Convidar um novo dispositivo",
       "subtitle": "Digite este código no dispositivo que vai entrar para adicioná-lo ao Espaço.",
       "expiresIn": "Expira em {{remaining}}",
@@ -2372,6 +2444,10 @@
       }
     },
     "joinPending": {
+      "processing": {
+        "title": "Atualizando o status dos dispositivos do espaço",
+        "subtitle": "Concluindo a entrada. O processo continuará automaticamente se a conexão for interrompida."
+      },
       "title": "Aguardando confirmação",
       "subtitle": "Aguardando o resultado da entrada.",
       "actions": { "cancel": "Cancelar entrada", "back": "Voltar" },
@@ -2388,7 +2464,13 @@
           "cancelled": "Esta entrada foi cancelada.",
           "expired": "Esta entrada expirou, então o pareamento incompleto foi encerrado automaticamente.",
           "superseded": "Um pareamento mais recente substituiu esta entrada.",
-          "removed_before_activation": "O outro dispositivo removeu este dispositivo antes da confirmação."
+          "removed_before_activation": "O outro dispositivo removeu este dispositivo antes da confirmação.",
+          "completion_invalid": "O pareamento incompleto foi encerrado porque a confirmação final era inválida.",
+          "membership_history_invalid": "O pareamento incompleto foi encerrado porque o histórico de membros era inválido.",
+          "security_material_invalid": "O pareamento incompleto foi encerrado porque as informações de segurança eram inválidas.",
+          "relationship_conflict": "O pareamento incompleto foi encerrado porque havia um conflito entre os dispositivos.",
+          "activation_state_invalid": "O pareamento incompleto foi encerrado porque o estado de ativação do dispositivo era inválido.",
+          "outcome_cannot_be_proven": "Não foi possível confirmar com segurança o resultado deste pareamento. Mantenha os dados atuais e entre em contato com o suporte."
         }
       }
     },

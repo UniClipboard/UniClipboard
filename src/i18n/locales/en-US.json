@@ -966,6 +966,7 @@
   "unlock": {
     "title": "Unlock",
     "description": "Your data is encrypted. Please unlock to continue.",
+    "lockedStatus": "Locked",
     "button": "Unlock",
     "unlocking": "Unlocking...",
     "autoUnlock": {
@@ -1336,6 +1337,16 @@
     "pairedDevices": {
       "title": "Paired devices"
     },
+    "inboundPairings": {
+      "title": "Pairing history",
+      "unnamed": "Unfinished pairing",
+      "status": {
+        "awaiting_confirmation": "Finishing pairing",
+        "confirmation_missed": "Confirmation was not received; waiting to finish safely",
+        "needs_attention": "Needs attention: this pairing result cannot be confirmed",
+        "failed": "Pairing did not finish"
+      }
+    },
     "convergence": {
       "converging": "Connecting to other devices in this space",
       "waitingForOfflineMember": "Waiting for offline devices to update their space data",
@@ -1349,6 +1360,40 @@
       "errors": {
         "statusFailed": "Connection recovery status is temporarily unavailable",
         "requestFailed": "Could not start connection recovery"
+      }
+    },
+    "spaceDeviceUpdate": {
+      "completed": "Space device status updated",
+      "updating": {
+        "title": "Updating space device status",
+        "description": "This refreshes automatically. You do not need to keep this page open."
+      },
+      "retrying": {
+        "title": "Updating space device status",
+        "description": "Not finished yet. It will retry automatically."
+      },
+      "attention": {
+        "title": "Space device status needs attention",
+        "description": "This cannot finish automatically. Keep your existing data and check again later.",
+        "reasons": {
+          "device_state_rejected": "Some device status could not be updated. Keep your existing data and check again later.",
+          "device_relationship_conflict": "Device relationships conflict. Choose which devices to keep in the action window.",
+          "device_security_update_rejected": "Security settings could not be updated. Check the affected devices and try again.",
+          "device_upgrade_required": "A device is using an older version. Update UniClipboard and try again.",
+          "local_identity_mismatch": "This device's identity no longer matches its space membership. Keep your existing data and check again later."
+        }
+      },
+      "unavailable": {
+        "title": "Space device status is temporarily unavailable",
+        "description": "Your existing devices remain listed. You can check again."
+      },
+      "unlockRequired": {
+        "title": "Unlock to view space device status",
+        "description": "Your existing devices remain listed. Unlock this space, then check again."
+      },
+      "recoveryRequired": {
+        "title": "Space device status needs recovery",
+        "description": "Your existing devices remain listed. Checking again will not fix this. Keep your existing data."
       }
     },
     "addDevice": {
@@ -1424,6 +1469,15 @@
       }
     },
     "memberRemoval": {
+      "removedDevices": "Removed devices",
+      "removed": {
+        "title": "Device removed",
+        "description": "This device is no longer a member of this space."
+      },
+      "notificationPending": {
+        "title": "Removed from this device",
+        "description": "Other devices are being notified. No action is needed."
+      },
       "deviceRemoved": {
         "title": "This device was removed",
         "description": "This device is no longer part of the space. Re-pair with an invitation to rejoin."
@@ -1936,6 +1990,10 @@
         "title": "Waiting for confirmation",
         "subtitle": "Waiting for the other device to confirm this switch."
       },
+      "processing": {
+        "title": "Completing the switch",
+        "subtitle": "The final confirmation is in progress. It will retry automatically if the connection fails."
+      },
       "success": {
         "title": "Switched space",
         "subtitle_one": "Migrated 1 clipboard record under the new master key.",
@@ -1968,7 +2026,8 @@
           "internal": "Internal error — see daemon logs."
         }
       }
-    }
+    },
+    "deviceTrustUnavailable": "Device status is temporarily unavailable. Try again shortly."
   },
   "pairing": {
     "globalRequest": {
@@ -2213,6 +2272,18 @@
     }
   },
   "setup": {
+    "invitationIssue": {
+      "errors": {
+        "networkNotStarted": "The desktop service is still starting. Wait a moment, then try again.",
+        "noPublishableAddress": "This device has no usable network connection for pairing. Connect it to a network, then try again.",
+        "localPublicationFailed": "This device could not make the invitation available on the local network. Check its network connection, then try again.",
+        "directoryTransportFailed": "The invitation service could not be reached, and local pairing is unavailable. Check the network, then try again.",
+        "directoryRejected": "The invitation service declined this request. Do not keep retrying; export diagnostics and contact support.",
+        "directoryInvalidResponse": "The invitation service returned an invalid response. Try again once; if it continues, export diagnostics and contact support.",
+        "serviceUnavailable": "Pairing is temporarily unavailable. Wait a moment, then try again.",
+        "internal": "The invitation could not be created. If this continues, export diagnostics and contact support."
+      }
+    },
     "page": {
       "processing": "Processing...",
       "processingJoinSpace": {
@@ -2324,6 +2395,7 @@
       "hint": "Save this passphrase somewhere safe — you'll need it on every device that joins this space."
     },
     "showInvitation": {
+      "status": "Space created",
       "title": "Invite a new device",
       "subtitle": "Type this code on the joining device to add it to the space.",
       "expiresIn": "Expires in {{remaining}}",
@@ -2366,6 +2438,10 @@
       }
     },
     "joinPending": {
+      "processing": {
+        "title": "Updating space device status",
+        "subtitle": "Finishing the join. It will continue automatically if the connection is interrupted."
+      },
       "title": "Waiting for confirmation",
       "subtitle": "Waiting for the join result.",
       "actions": {
@@ -2381,6 +2457,12 @@
           "base_history_changed": "The host space changed. Get a new invitation and try again.",
           "joiner_history_ahead": "This device history cannot join the space.",
           "history_conflict": "The two histories cannot be merged.",
+          "completion_invalid": "The final confirmation was invalid, so the unfinished pairing stopped.",
+          "membership_history_invalid": "The membership history was invalid, so the unfinished pairing stopped.",
+          "security_material_invalid": "The security material was invalid, so the unfinished pairing stopped.",
+          "relationship_conflict": "The device relationship conflicted, so the unfinished pairing stopped.",
+          "activation_state_invalid": "The activation state was invalid, so the unfinished pairing stopped.",
+          "outcome_cannot_be_proven": "The pairing result cannot be confirmed safely. Keep existing data and contact support.",
           "peer_upgrade_required": "The other device must update UniClipboard.",
           "cancelled": "This join was cancelled.",
           "expired": "This join expired, so the unfinished pairing ended automatically.",

@@ -731,7 +731,7 @@ export type DeviceGroupDecisionDto = {
     target: DeviceGroupChoiceDeviceDto;
 };
 
-export type DeviceGroupRelationshipDto = 'confirmation_pending' | 'consistent' | 'pending_local_decision' | 'diverged' | 'unverifiable' | 'unknown';
+export type DeviceGroupRelationshipDto = 'confirmation_pending' | 'consistent' | 'pending_local_decision' | 'awaiting_removal_acknowledgement' | 'diverged' | 'unverifiable' | 'unknown';
 
 export type DeviceGroupRemovalDecisionDto = 'accepted' | 'rejected';
 
@@ -806,11 +806,14 @@ export type DeviceTrustSnapshotDto = {
     currentChange?: DeviceTrustChangeDto | null;
     currentJoin?: JoinSpaceResponse | null;
     devices: Array<DeviceTrustRelationshipDto>;
+    inboundPairings?: Array<InboundPairingDto>;
     localDeviceId: string;
     localMembership: DeviceMembershipDto;
+    maintenanceHealth?: MembershipMaintenanceHealthDto;
     pendingInboundMember?: PendingInboundMemberDto | null;
     recovery: string;
     revision: number;
+    spaceDeviceUpdate?: SpaceDeviceUpdateStatusDto;
     updatedAtMs: number;
 };
 
@@ -1613,6 +1616,15 @@ export type ImportConfigResponse = {
     unlockRequiredAfterApply: boolean;
 };
 
+export type InboundPairingDto = {
+    deviceId?: string | null;
+    displayName?: string | null;
+    pairingId: string;
+    status: InboundPairingStatusDto;
+};
+
+export type InboundPairingStatusDto = 'awaiting_confirmation' | 'confirmation_missed' | 'needs_attention' | 'failed';
+
 /**
  * Request body for `POST /v2/setup/initialize`. Maps to
  * `SpaceSetupFacade::initialize_space(InitializeSpaceCommand)`.
@@ -1643,7 +1655,11 @@ export type IssueInvitationResponse = {
     expiresAtMs: number;
 };
 
-export type JoinSpaceRejectionReason = 'invitation_unavailable' | 'authentication_rejected' | 'identity_conflict' | 'base_history_changed' | 'joiner_history_ahead' | 'history_conflict' | 'peer_upgrade_required' | 'cancelled' | 'removed_before_activation';
+export type JoinSpaceAttentionReason = 'outcome_cannot_be_proven';
+
+export type JoinSpaceAttentionRecovery = 'preserve_data_and_contact_support';
+
+export type JoinSpaceRejectionReason = 'invitation_unavailable' | 'authentication_rejected' | 'identity_conflict' | 'base_history_changed' | 'joiner_history_ahead' | 'history_conflict' | 'completion_invalid' | 'membership_history_invalid' | 'security_material_invalid' | 'relationship_conflict' | 'activation_state_invalid' | 'peer_upgrade_required' | 'cancelled' | 'removed_before_activation';
 
 /**
  * Stable outcome of a durable space admission.
@@ -1661,6 +1677,19 @@ export type JoinSpaceResponse = {
     sponsorIdentityFingerprint?: string | null;
     status: 'pending';
     targetSpaceId?: string | null;
+} | {
+    joinId: string;
+    peerUpgradeRequired: boolean;
+    sponsorDeviceId: string;
+    sponsorIdentityFingerprint: string;
+    status: 'processing';
+    targetSpaceId: string;
+} | {
+    joinId: string;
+    nextRetryAtMs?: number | null;
+    reason: JoinSpaceAttentionReason;
+    recovery: JoinSpaceAttentionRecovery;
+    status: 'needs_attention';
 } | {
     joinId: string;
     reason: JoinSpaceRejectionReason;
@@ -1967,6 +1996,19 @@ export type MemberSyncResultEnvelope = {
      */
     ts: number;
 };
+
+export type MembershipMaintenanceHealthDto = {
+    nextRetryAtMs?: number | null;
+    phase: MembershipMaintenanceHealthPhaseDto;
+    reason?: MembershipMaintenanceProblemDto | null;
+    recovery?: MembershipMaintenanceRecoveryDto | null;
+};
+
+export type MembershipMaintenanceHealthPhaseDto = 'healthy' | 'retrying' | 'needs_attention';
+
+export type MembershipMaintenanceProblemDto = 'membership_history_rejected';
+
+export type MembershipMaintenanceRecoveryDto = 'resolve_device_trust';
 
 /**
  * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
@@ -3381,6 +3423,19 @@ export type ShortcutInstallMethodViewDto = {
  * accepted without a wrapping tag, matching the TypeScript type `string | string[]`.
  */
 export type ShortcutKeyDto = string | Array<string>;
+
+export type SpaceDeviceUpdatePhaseDto = 'updating' | 'completed' | 'retryable_failure' | 'needs_attention';
+
+export type SpaceDeviceUpdateProblemDto = 'device_state_rejected' | 'device_relationship_conflict' | 'device_security_update_rejected' | 'device_upgrade_required' | 'local_identity_mismatch';
+
+export type SpaceDeviceUpdateRecoveryDto = 'review_devices' | 'update_app';
+
+export type SpaceDeviceUpdateStatusDto = {
+    nextRetryAtMs?: number | null;
+    phase: SpaceDeviceUpdatePhaseDto;
+    reason?: SpaceDeviceUpdateProblemDto | null;
+    recovery?: SpaceDeviceUpdateRecoveryDto | null;
+};
 
 export type SpaceMemberDto = {
     /**

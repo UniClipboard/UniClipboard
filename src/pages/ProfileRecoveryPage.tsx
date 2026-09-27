@@ -62,7 +62,6 @@ export default function ProfileRecoveryPage({
     <AppStateShell
       title={t('profileRecovery.title')}
       description={t('profileRecovery.description')}
-      width="compact"
     >
       <form onSubmit={submit} className="mt-7 flex flex-col gap-4">
         {status.losses.length > 0 && !errorKey && (
@@ -128,7 +127,6 @@ function AdmissionRecoveryView({ status }: { status: ProfileRecoveryResponse }) 
     <AppStateShell
       title={t('profileAdmissionRecovery.title')}
       description={t('profileAdmissionRecovery.description')}
-      width="compact"
     >
       <div className="mt-6 flex items-center gap-2 text-ui-body font-medium text-destructive">
         <TriangleAlert className="size-4" aria-hidden="true" />

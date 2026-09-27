@@ -8,6 +8,10 @@ import {
   type ReactNode,
 } from 'react'
 import {
+  deviceGroupChoicesFailure,
+  type DeviceGroupChoicesFailure,
+} from '@/api/daemon/device-group-choices-failure'
+import {
   chooseDeviceGroup,
   getDeviceGroupChoices,
   type DeviceGroupChoiceOutcome,
@@ -20,6 +24,8 @@ import { daemonWs, type DaemonWsEvent } from '@/lib/daemon-ws'
 interface DeviceTrustState {
   deviceGroups: DeviceGroupChoices | null
   loading: boolean
+  refreshError: string | null
+  refreshFailure: DeviceGroupChoicesFailure | null
   decisionBusy: boolean
   decisionError: string | null
   localRemovalConfirmationIssueId: string | null
@@ -31,7 +37,11 @@ interface DeviceTrustState {
 type DeviceTrustStateAction =
   | { type: 'refresh_started' }
   | { type: 'refresh_finished'; deviceGroups: DeviceGroupChoices }
-  | { type: 'refresh_failed'; error: string }
+  | {
+      type: 'refresh_failed'
+      error: string
+      failure: DeviceGroupChoicesFailure
+    }
   | { type: 'choice_started'; decision: DeviceGroupDecision }
   | { type: 'acknowledged' }
   | { type: 'confirmation_cancelled' }
@@ -46,6 +56,8 @@ type DeviceTrustStateAction =
 const initialState: DeviceTrustState = {
   deviceGroups: null,
   loading: false,
+  refreshError: null,
+  refreshFailure: null,
   decisionBusy: false,
   decisionError: null,
   localRemovalConfirmationIssueId: null,
@@ -79,6 +91,8 @@ function stateReducer(state: DeviceTrustState, action: DeviceTrustStateAction): 
         decision: state.acknowledging ? null : state.decision,
         acknowledging: false,
         loading: false,
+        refreshError: null,
+        refreshFailure: null,
         decisionError:
           state.decisionError === 'device_state_changed' && action.deviceGroups.issues.length > 0
             ? state.decisionError
@@ -92,9 +106,21 @@ function stateReducer(state: DeviceTrustState, action: DeviceTrustStateAction): 
           : null,
       }
     case 'refresh_failed':
-      return { ...state, loading: false, acknowledging: false, decisionError: action.error }
+      return {
+        ...state,
+        loading: false,
+        acknowledging: false,
+        refreshError: action.error,
+        refreshFailure: action.failure,
+        decisionError: state.acknowledging ? action.error : state.decisionError,
+      }
     case 'choice_started':
-      return { ...state, decisionBusy: true, decisionError: null, decision: action.decision }
+      return {
+        ...state,
+        decisionBusy: true,
+        decisionError: null,
+        decision: action.decision,
+      }
     case 'acknowledged':
       return {
         ...state,
@@ -177,7 +203,11 @@ export function DeviceTrustProvider({
         deviceGroupsRef.current = deviceGroups
         dispatch({ type: 'refresh_finished', deviceGroups })
       } catch (error) {
-        dispatch({ type: 'refresh_failed', error: errorMessage(error) })
+        dispatch({
+          type: 'refresh_failed',
+          error: errorMessage(error),
+          failure: deviceGroupChoicesFailure(error),
+        })
         const refreshQueuedDuringAttempt =
           forceRefreshPendingRef.current || requiredRevisionRef.current > attemptedRevision
         if (!refreshQueuedDuringAttempt) return
@@ -271,7 +301,12 @@ export function DeviceTrustProvider({
       decisionBusyRef.current = true
       dispatch({
         type: 'choice_started',
-        decision: { groups: deviceGroups, issueId, choiceId, outcome: 'submitting' },
+        decision: {
+          groups: deviceGroups,
+          issueId,
+          choiceId,
+          outcome: 'submitting',
+        },
       })
       try {
         const result = await chooseDeviceGroup(

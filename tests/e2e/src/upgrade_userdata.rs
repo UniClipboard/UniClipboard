@@ -148,8 +148,7 @@ impl UpgradeUserdataManifest {
                 if self.source_asset_sha256.is_empty()
                     && self.source_commit.as_deref().is_some_and(is_git_commit)
                     && self.source_binaries.as_ref().is_some_and(|binaries| {
-                        is_sha256(&binaries.cli_sha256)
-                            && is_sha256(&binaries.daemon_sha256)
+                        is_sha256(&binaries.cli_sha256) && is_sha256(&binaries.daemon_sha256)
                     }) => {}
             _ => return Err("upgrade userdata source provenance is invalid".to_string()),
         }

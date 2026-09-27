@@ -1,5 +1,5 @@
 import { Loader2 } from 'lucide-react'
-import { useState } from 'react'
+import { useState, type RefObject } from 'react'
 import { useTranslation } from 'react-i18next'
 import { isFactoryResetError, resetSpace, type FactoryResetError } from '@/api/security'
 import {
@@ -23,6 +23,8 @@ interface FactoryResetDialogProps {
   open: boolean
   onClose: () => void
   onResetSucceeded?: () => void
+  /** Element that receives focus when the dialog closes, e.g. the control that opened it. */
+  finalFocus?: RefObject<HTMLElement | null>
 }
 
 function errorI18nKey(error: FactoryResetError): string {
@@ -38,7 +40,12 @@ function errorI18nKey(error: FactoryResetError): string {
   }
 }
 
-export function FactoryResetDialog({ open, onClose, onResetSucceeded }: FactoryResetDialogProps) {
+export function FactoryResetDialog({
+  open,
+  onClose,
+  onResetSucceeded,
+  finalFocus,
+}: FactoryResetDialogProps) {
   const { t } = useTranslation()
   const [confirmation, setConfirmation] = useState('')
   const [resetting, setResetting] = useState(false)
@@ -90,7 +97,7 @@ export function FactoryResetDialog({ open, onClose, onResetSucceeded }: FactoryR
         close()
       }}
     >
-      <AlertDialogContent>
+      <AlertDialogContent finalFocus={finalFocus}>
         <AlertDialogHeader>
           <AlertDialogTitle>{t('unlock.factoryReset.modal.title')}</AlertDialogTitle>
           <AlertDialogDescription>{t('unlock.factoryReset.modal.warning')}</AlertDialogDescription>

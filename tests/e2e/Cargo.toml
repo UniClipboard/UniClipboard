@@ -50,6 +50,8 @@ uc-platform = { path = "../../crates/uc-platform" }
 image = { version = "0.25", default-features = false, features = ["png", "tiff"] }
 libc = "0.2"
 wiremock = "0.6"
+axum = { version = "0.7", features = ["ws"] }
+futures-util = "0.3"
 flate2 = "1"
 sha2 = "0.10"
 tar = "0.4"

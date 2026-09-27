@@ -58,6 +58,18 @@ const snapshot: DeviceTrustSnapshot = {
       availableActions: [],
       blockedReason: null,
     },
+    {
+      deviceId: 'peer-removed',
+      displayName: 'Removed Peer',
+      isLocal: false,
+      reachability: 'offline',
+      membership: 'removed',
+      groupRelationship: 'awaiting_removal_acknowledgement',
+      compatibility: 'compatible',
+      syncRelationship: 'removed_peer_device',
+      availableActions: [],
+      blockedReason: null,
+    },
   ],
   recovery: 'not_available_in_this_version',
   allowedActions: [],
@@ -66,25 +78,21 @@ const snapshot: DeviceTrustSnapshot = {
 }
 
 describe('device trust list view', () => {
-  it.each([
-    [
-      'awaiting_peer_confirmation',
-      'pairing_awaiting_confirmation',
-      'deviceTrust.status.awaitingPeerConfirmation',
-    ],
-    ['unconfirmed', 'pairing_unconfirmed', 'deviceTrust.status.unconfirmed'],
-  ] as const)('shows the Engine-owned pairing state %s', (pairingConfirmation, kind, label) => {
-    expect(
-      getDeviceTrustStatus(
-        {
-          ...snapshot.devices[1],
-          groupRelationship: 'confirmation_pending',
-          pairingConfirmation,
-        },
-        key => key
-      )
-    ).toEqual({ tone: 'warning', status: { kind, label } })
-  })
+  it.each([['awaiting_peer_confirmation'], ['unconfirmed']] as const)(
+    'does not let the legacy pairing state %s override connection status',
+    pairingConfirmation => {
+      expect(
+        getDeviceTrustStatus(
+          {
+            ...snapshot.devices[1],
+            groupRelationship: 'confirmation_pending',
+            pairingConfirmation,
+          },
+          key => key
+        )
+      ).toBeNull()
+    }
+  )
 
   it('returns to normal connection status after pairing is confirmed', () => {
     expect(
@@ -105,5 +113,35 @@ describe('device trust list view', () => {
     expect(view.relationshipsByDeviceId.get('peer-a')?.displayName).toBe('Peer A')
     expect(view.relationshipsByDeviceId.get('peer-b')?.displayName).toBe('Peer B')
     expect(view.localRelationship?.deviceId).toBe('local')
+  })
+
+  it('keeps removed devices separate while their removal notice is being delivered', () => {
+    const view = buildDeviceTrustListView([admittedPeer], {
+      ...snapshot,
+      spaceDeviceUpdate: { phase: 'completed' },
+    })
+
+    expect(view.peers.map(peer => peer.peerId)).toEqual(['peer-a'])
+    expect(view.removedDevices.map(device => device.deviceId)).toEqual(['peer-removed'])
+    expect(view.removedDevices[0]?.membership).toBe('removed')
+    expect(getDeviceTrustStatus(view.removedDevices[0]!, key => key)).toEqual({
+      tone: 'info',
+      status: {
+        kind: 'removal_notification_pending',
+        label: 'devices.memberRemoval.notificationPending.title',
+        description: 'devices.memberRemoval.notificationPending.description',
+      },
+    })
+  })
+
+  it('does not retain a removed row after the Engine stops returning it', () => {
+    const view = buildDeviceTrustListView([admittedPeer], {
+      ...snapshot,
+      devices: snapshot.devices.filter(device => device.deviceId !== 'peer-removed'),
+      spaceDeviceUpdate: { phase: 'completed' },
+    })
+
+    expect(view.removedDevices).toEqual([])
+    expect(view.peers.map(peer => peer.peerId)).toEqual(['peer-a'])
   })
 })

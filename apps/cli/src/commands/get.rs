@@ -38,9 +38,11 @@ use base64::engine::general_purpose::STANDARD;
 use base64::Engine as _;
 use clap::ValueEnum;
 use serde::Serialize;
-use uc_daemon_client::DaemonService;
+use uc_daemon_client::{DaemonService, InboundActivityEvent};
 use uc_daemon_contract::api::dto::clipboard::EntryProjectionResponseDto;
+use uc_daemon_contract::api::types::FileTransferDirection;
 
+use crate::commands::inbound_wait::InboundActivityUpdate;
 use crate::exit_codes;
 use crate::ui;
 
@@ -140,31 +142,223 @@ pub async fn run(args: GetArgs, json: bool, verbose: bool) -> i32 {
 
 async fn run_wait(service: Box<dyn DaemonService>, args: &GetArgs, json: bool) -> i32 {
     let mut session =
-        match crate::commands::inbound_wait::InboundWaitSession::connect(service).await {
+        match crate::commands::inbound_wait::InboundWaitSession::connect_activity(service).await {
             Ok(session) => session,
             Err(code) => return code,
         };
-    ui::info(
-        "status",
-        "Waiting for the next synced entry — press Ctrl-C to stop",
-    );
-    let event = match session.next().await {
-        Ok(Some(event)) => event,
-        Ok(None) => return exit_codes::EXIT_SUCCESS,
-        Err(code) => return code,
-    };
-    let target = match find_entry(session.service(), &event.entry_id).await {
-        Ok(Some(entry)) => entry,
-        Ok(None) => {
-            ui::error("The synced entry arrived but could not be read from history.");
-            return exit_codes::EXIT_ERROR;
+    let mut display = WaitDisplay::new(json);
+    let mut target: Option<WaitTarget> = None;
+
+    loop {
+        let event = match session.next_activity().await {
+            Ok(Some(event)) => event,
+            Ok(None) => {
+                display.clear();
+                return exit_codes::EXIT_SUCCESS;
+            }
+            Err(code) => {
+                display.clear();
+                return code;
+            }
+        };
+        let InboundActivityUpdate::Event(event) = event else {
+            target = None;
+            display.waiting();
+            continue;
+        };
+        match event {
+            InboundActivityEvent::Pending(pending) => {
+                if target.is_none() && pending_can_match(&pending, args) {
+                    target = Some(WaitTarget {
+                        entry_id: pending.entry_id,
+                        attempt_id: pending.attempt_id,
+                    });
+                }
+            }
+            InboundActivityEvent::Progress(progress) => {
+                if progress.direction == FileTransferDirection::Receiving
+                    && target.as_ref().is_some_and(|target| {
+                        target.matches(progress.entry_id.as_deref(), progress.attempt_id.as_deref())
+                    })
+                {
+                    display.progress(progress.bytes_transferred, progress.total_bytes);
+                }
+            }
+            InboundActivityEvent::Status(status) => {
+                if target.as_ref().is_some_and(|target| {
+                    target.matches(status.entry_id.as_deref(), status.attempt_id.as_deref())
+                }) && matches!(status.status.as_str(), "failed" | "cancelled")
+                {
+                    display.clear();
+                    ui::error(&format!(
+                        "Incoming transfer {}: {}",
+                        status.status,
+                        status.reason.as_deref().unwrap_or("no reason reported")
+                    ));
+                    return exit_codes::EXIT_ERROR;
+                }
+            }
+            InboundActivityEvent::Completed(completed) => {
+                if let Some(selected) = &target {
+                    if selected.entry_id != completed.entry_id {
+                        continue;
+                    }
+                }
+                let entry = match find_entry(session.service(), &completed.entry_id).await {
+                    Ok(Some(entry)) => entry,
+                    Ok(None) => {
+                        display.clear();
+                        ui::error("The synced entry arrived but could not be read from history.");
+                        return exit_codes::EXIT_ERROR;
+                    }
+                    Err(err) => {
+                        display.clear();
+                        ui::error(&format!("Failed to read the synced entry: {err}"));
+                        return exit_codes::EXIT_ERROR;
+                    }
+                };
+                if !entry_matches_args(&entry, args) {
+                    if target
+                        .as_ref()
+                        .is_some_and(|target| target.entry_id == entry.id)
+                    {
+                        target = None;
+                        display.waiting();
+                    }
+                    continue;
+                }
+                display.clear();
+                return materialize(session.service(), &entry, args, json).await;
+            }
         }
-        Err(err) => {
-            ui::error(&format!("Failed to read the synced entry: {err}"));
-            return exit_codes::EXIT_ERROR;
+    }
+}
+
+#[derive(Debug)]
+struct WaitTarget {
+    entry_id: String,
+    attempt_id: Option<String>,
+}
+
+impl WaitTarget {
+    fn matches(&self, entry_id: Option<&str>, attempt_id: Option<&str>) -> bool {
+        entry_id == Some(self.entry_id.as_str())
+            && self
+                .attempt_id
+                .as_deref()
+                .is_none_or(|expected| attempt_id == Some(expected))
+    }
+}
+
+fn pending_can_match(
+    pending: &uc_daemon_client::realtime::ClipboardIncomingPendingEvent,
+    args: &GetArgs,
+) -> bool {
+    if let Some(id) = args.id.as_deref() {
+        return pending.entry_id == id;
+    }
+    match args.kind {
+        None => true,
+        Some(GetKind::File) => !pending.filenames.is_empty(),
+        Some(GetKind::Image | GetKind::Text | GetKind::Link) => false,
+    }
+}
+
+fn entry_matches_args(entry: &EntryProjectionResponseDto, args: &GetArgs) -> bool {
+    args.id.as_deref().is_none_or(|id| entry.id == id)
+        && args
+            .kind
+            .is_none_or(|kind| classify(entry) == kind_to_category(kind))
+        && !is_lost(entry)
+}
+
+struct WaitDisplay {
+    interactive: bool,
+    progress: Option<indicatif::ProgressBar>,
+}
+
+impl WaitDisplay {
+    fn new(json: bool) -> Self {
+        let interactive = !json && std::io::stderr().is_terminal();
+        let mut display = Self {
+            interactive,
+            progress: None,
+        };
+        if interactive {
+            display.progress = Some(ui::spinner(
+                "Waiting for the next synced entry — press Ctrl-C to stop",
+            ));
+        } else if !json {
+            ui::info(
+                "status",
+                "Waiting for the next synced entry — press Ctrl-C to stop",
+            );
         }
-    };
-    materialize(session.service(), &target, args, json).await
+        display
+    }
+
+    fn waiting(&mut self) {
+        if self.interactive {
+            self.clear();
+            self.progress = Some(ui::spinner(
+                "Waiting for the next matching synced entry — press Ctrl-C to stop",
+            ));
+        }
+    }
+
+    fn progress(&mut self, completed: u64, total: Option<u64>) {
+        if !self.interactive {
+            return;
+        }
+        let replace = match (&self.progress, total) {
+            (Some(current), Some(total)) => current.length() != Some(total),
+            (Some(current), None) => current.length().is_some(),
+            (None, _) => true,
+        };
+        if replace {
+            self.clear();
+            self.progress = Some(match total {
+                Some(total) => ui::byte_progress(total, "Receiving"),
+                None => ui::spinner("Receiving"),
+            });
+        }
+        if let Some(progress) = &self.progress {
+            match total {
+                Some(total) => {
+                    progress.set_length(total);
+                    progress.set_position(completed.min(total));
+                }
+                None => progress.set_message(format!("Receiving {}", human_size(completed))),
+            }
+        }
+    }
+
+    fn clear(&mut self) {
+        if let Some(progress) = self.progress.take() {
+            progress.finish_and_clear();
+        }
+    }
+}
+
+impl Drop for WaitDisplay {
+    fn drop(&mut self) {
+        self.clear();
+    }
+}
+
+fn human_size(bytes: u64) -> String {
+    const UNITS: [&str; 5] = ["B", "KiB", "MiB", "GiB", "TiB"];
+    let mut value = bytes as f64;
+    let mut unit = 0;
+    while value >= 1024.0 && unit < UNITS.len() - 1 {
+        value /= 1024.0;
+        unit += 1;
+    }
+    if unit == 0 {
+        format!("{bytes} {}", UNITS[unit])
+    } else {
+        format!("{value:.1} {}", UNITS[unit])
+    }
 }
 
 async fn find_entry(

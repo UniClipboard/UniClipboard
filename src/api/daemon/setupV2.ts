@@ -74,12 +74,20 @@ export type JoinSpaceRejectionReason =
   | 'base_history_changed'
   | 'joiner_history_ahead'
   | 'history_conflict'
+  | 'completion_invalid'
+  | 'membership_history_invalid'
+  | 'security_material_invalid'
+  | 'relationship_conflict'
+  | 'activation_state_invalid'
   | 'peer_upgrade_required'
   | 'cancelled'
   | 'removed_before_activation'
 
 export type JoinSpaceTerminationReason = 'cancelled' | 'expired' | 'superseded'
-export type JoinSpaceEndReason = JoinSpaceRejectionReason | JoinSpaceTerminationReason
+export type JoinSpaceEndReason =
+  | JoinSpaceRejectionReason
+  | JoinSpaceTerminationReason
+  | 'outcome_cannot_be_proven'
 
 export type JoinSpaceResponse =
   | {
@@ -96,6 +104,21 @@ export type JoinSpaceResponse =
       sponsorIdentityFingerprint: string | null
       cancelRequested: boolean
       peerUpgradeRequired?: boolean
+    }
+  | {
+      status: 'processing'
+      joinId: string
+      targetSpaceId: string
+      sponsorDeviceId: string
+      sponsorIdentityFingerprint: string
+      peerUpgradeRequired: boolean
+    }
+  | {
+      status: 'needs_attention'
+      joinId: string
+      reason: 'outcome_cannot_be_proven'
+      recovery: 'preserve_data_and_contact_support'
+      nextRetryAtMs: number | null
     }
   | { status: 'rejected'; joinId: string; reason: JoinSpaceRejectionReason }
   | { status: 'terminated'; joinId: string; reason: JoinSpaceTerminationReason }
@@ -164,6 +187,11 @@ export type RedeemInvitationErrorKind =
 
 export type IssueInvitationErrorKind =
   | 'network_not_started' // 503
+  | 'no_publishable_address' // 503, retryable
+  | 'local_publication_failed' // 503, retryable
+  | 'directory_transport_failed' // 503, retryable
+  | 'directory_rejected' // 409, not retryable
+  | 'directory_invalid_response' // 503, retryable
   | 'service_unavailable' // 503
   | 'internal' // 500
 
@@ -304,9 +332,26 @@ function classifyRedeemError(err: unknown): SetupV2Error<RedeemInvitationErrorKi
 function classifyIssueError(err: unknown): SetupV2Error<IssueInvitationErrorKind> {
   const status = pickStatus(err)
   const raw = rawMessage(err)
-  const lower = raw.toLowerCase()
+  const code = pickBody(err).code
+  if (code === 'invitation_no_publishable_address') {
+    return new SetupV2Error('no_publishable_address', raw, status)
+  }
+  if (code === 'invitation_local_publication_failed') {
+    return new SetupV2Error('local_publication_failed', raw, status)
+  }
+  if (code === 'invitation_directory_transport_failed') {
+    return new SetupV2Error('directory_transport_failed', raw, status)
+  }
+  if (code === 'invitation_directory_rejected') {
+    return new SetupV2Error('directory_rejected', raw, status)
+  }
+  if (code === 'invitation_directory_invalid_response') {
+    return new SetupV2Error('directory_invalid_response', raw, status)
+  }
   if (status === 503) {
-    if (lower.includes('not started')) return new SetupV2Error('network_not_started', raw, status)
+    if (code === 'network_not_started' || raw.toLowerCase().includes('not started')) {
+      return new SetupV2Error('network_not_started', raw, status)
+    }
     return new SetupV2Error('service_unavailable', raw, status)
   }
   return new SetupV2Error('internal', raw, status)

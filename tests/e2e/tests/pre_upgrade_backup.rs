@@ -95,7 +95,10 @@ async fn v0193_upgrade_preserves_verified_backup_before_startup_changes() {
         .send()
         .await
         .expect("unlock upgraded profile");
-    assert!(unlock.status().is_success(), "upgraded profile did not unlock");
+    assert!(
+        unlock.status().is_success(),
+        "upgraded profile did not unlock"
+    );
 
     let history = client
         .get(format!("{}/clipboard/entries?limit=100", daemon.base_url()))
@@ -103,7 +106,10 @@ async fn v0193_upgrade_preserves_verified_backup_before_startup_changes() {
         .send()
         .await
         .expect("read upgraded history");
-    assert!(history.status().is_success(), "upgraded history was unavailable");
+    assert!(
+        history.status().is_success(),
+        "upgraded history was unavailable"
+    );
     let history: Value = history.json().await.expect("decode upgraded history");
     let entries = history
         .get("data")
@@ -113,9 +119,7 @@ async fn v0193_upgrade_preserves_verified_backup_before_startup_changes() {
     for record in expected["records"].as_array().expect("expected records") {
         let id = record["id"].as_str().expect("expected record id");
         assert!(
-            entries
-                .iter()
-                .any(|entry| entry["id"].as_str() == Some(id)),
+            entries.iter().any(|entry| entry["id"].as_str() == Some(id)),
             "upgraded history lost record {id}"
         );
     }
@@ -133,10 +137,16 @@ async fn v0193_upgrade_preserves_verified_backup_before_startup_changes() {
     );
     let archives: Vec<_> = first_backup
         .iter()
-        .filter(|path| path.extension().is_some_and(|extension| extension == "archive"))
+        .filter(|path| {
+            path.extension()
+                .is_some_and(|extension| extension == "archive")
+        })
         .cloned()
         .collect();
-    assert!(!archives.is_empty(), "verified file archive was not published");
+    assert!(
+        !archives.is_empty(),
+        "verified file archive was not published"
+    );
 
     daemon
         .restart_preserving()
@@ -302,7 +312,9 @@ async fn upgrade_backup_list_supports_confirmed_manual_deletion() {
     let backups = list["data"].as_array().expect("upgrade backup array");
     assert_eq!(backups.len(), 1);
     assert_eq!(backups[0]["sourceProduct"], "0.19.3");
-    assert!(backups[0]["sizeBytes"].as_u64().is_some_and(|size| size > 0));
+    assert!(backups[0]["sizeBytes"]
+        .as_u64()
+        .is_some_and(|size| size > 0));
     let backup_id = backups[0]["id"].as_str().expect("backup id");
 
     let rejected = client

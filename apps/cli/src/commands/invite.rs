@@ -215,7 +215,7 @@ pub async fn run(json: bool, verbose: bool) -> i32 {
     let invitation = match ctx.setup_v2_client().issue_invitation().await {
         Ok(invitation) => invitation,
         Err(err) => {
-            let message = crate::commands::daemon_error_message(&err);
+            let message = invitation_request_error_message(&err);
             output.request_failed(&spinner, &message);
             return exit_codes::EXIT_ERROR;
         }
@@ -266,6 +266,35 @@ pub async fn run(json: bool, verbose: bool) -> i32 {
             }
             EXIT_SIGINT
         }
+    }
+}
+
+fn invitation_request_error_message(err: &anyhow::Error) -> String {
+    let code = err
+        .downcast_ref::<uc_daemon_client::DaemonRequestError>()
+        .and_then(uc_daemon_client::DaemonRequestError::code);
+    match code {
+        Some("invitation_no_publishable_address") => {
+            "No usable network connection is available for pairing. Connect this device to a network, then try again."
+                .to_string()
+        }
+        Some("invitation_local_publication_failed") => {
+            "This device could not make the invitation available on the local network. Check its network connection, then try again."
+                .to_string()
+        }
+        Some("invitation_directory_transport_failed") => {
+            "The invitation service could not be reached, and local pairing is unavailable. Check the network, then try again."
+                .to_string()
+        }
+        Some("invitation_directory_rejected") => {
+            "The invitation service declined this request. Do not keep retrying; export diagnostics and contact support."
+                .to_string()
+        }
+        Some("invitation_directory_invalid_response") => {
+            "The invitation service returned an invalid response. Try again once; if it continues, export diagnostics and contact support."
+                .to_string()
+        }
+        _ => crate::commands::daemon_error_message(err),
     }
 }
 
@@ -437,7 +466,49 @@ async fn membership_diagnostics_revision(
 
 #[cfg(test)]
 mod tests {
-    use super::InviteEvent;
+    use reqwest::StatusCode;
+    use uc_daemon_client::DaemonRequestError;
+
+    use super::{invitation_request_error_message, InviteEvent};
+
+    #[test]
+    fn invitation_request_failures_show_distinct_recovery_actions() {
+        for (code, expected) in [
+            (
+                "invitation_no_publishable_address",
+                "No usable network connection is available for pairing. Connect this device to a network, then try again.",
+            ),
+            (
+                "invitation_local_publication_failed",
+                "This device could not make the invitation available on the local network. Check its network connection, then try again.",
+            ),
+            (
+                "invitation_directory_transport_failed",
+                "The invitation service could not be reached, and local pairing is unavailable. Check the network, then try again.",
+            ),
+            (
+                "invitation_directory_rejected",
+                "The invitation service declined this request. Do not keep retrying; export diagnostics and contact support.",
+            ),
+            (
+                "invitation_directory_invalid_response",
+                "The invitation service returned an invalid response. Try again once; if it continues, export diagnostics and contact support.",
+            ),
+        ] {
+            let error = anyhow::Error::new(DaemonRequestError::Status {
+                path: "/v2/setup/issue-invitation".to_string(),
+                status: if code == "invitation_directory_rejected" {
+                    StatusCode::CONFLICT
+                } else {
+                    StatusCode::SERVICE_UNAVAILABLE
+                },
+                code: Some(code.to_string()),
+                message: "safe daemon message".to_string(),
+            });
+
+            assert_eq!(invitation_request_error_message(&error), expected);
+        }
+    }
 
     #[test]
     fn json_events_are_independently_parseable() {

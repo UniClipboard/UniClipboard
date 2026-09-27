@@ -966,6 +966,7 @@
   "unlock": {
     "title": "解鎖",
     "description": "您的資料已加密，請解鎖以繼續。",
+    "lockedStatus": "已鎖定",
     "button": "解鎖",
     "unlocking": "正在解鎖...",
     "autoUnlock": {
@@ -1315,6 +1316,7 @@
   "devices": {
     "title": "裝置管理",
     "addNew": "邀請新裝置",
+    "deviceTrustUnavailable": "裝置狀態暫時無法使用。請稍後重試。",
     "thisDevice": {
       "title": "本裝置",
       "syncActive": "同步已開啓",
@@ -1335,6 +1337,16 @@
     "pairedDevices": {
       "title": "已配對裝置"
     },
+    "inboundPairings": {
+      "title": "配對記錄",
+      "unnamed": "未完成的配對",
+      "status": {
+        "awaiting_confirmation": "正在完成配對",
+        "confirmation_missed": "未收到確認，正在等待安全收尾",
+        "needs_attention": "需要處理：無法確認本次配對結果",
+        "failed": "配對未完成"
+      }
+    },
     "convergence": {
       "converging": "正在連接空間內的其他裝置",
       "waitingForOfflineMember": "正在等待離線裝置完成資料更新",
@@ -1350,7 +1362,47 @@
         "requestFailed": "無法開始恢復連接"
       }
     },
+    "spaceDeviceUpdate": {
+      "completed": "空間裝置狀態已更新",
+      "updating": {
+        "title": "正在更新空間裝置狀態",
+        "description": "完成後會自動重新整理，無需保持此頁面開啟。"
+      },
+      "retrying": { "title": "正在更新空間裝置狀態", "description": "暫時未完成，稍後自動重試。" },
+      "attention": {
+        "title": "空間裝置狀態需要處理",
+        "description": "目前無法自動完成。請保留現有資料，稍後重新檢查。",
+        "reasons": {
+          "device_state_rejected": "部分裝置狀態未能更新。請保留現有資料，稍後重新檢查。",
+          "device_relationship_conflict": "裝置關係存在衝突，請依照處理視窗中的提示選擇要保留的裝置。",
+          "device_security_update_rejected": "安全設定未能更新，請檢查相關裝置後重試。",
+          "device_upgrade_required": "有裝置版本過舊，請更新 UniClipboard 後重試。",
+          "local_identity_mismatch": "本裝置的身分與空間成員記錄不一致。請保留現有資料，稍後再檢查。"
+        }
+      },
+      "unavailable": {
+        "title": "暫時無法確認空間裝置狀態",
+        "description": "現有裝置仍保留在清單中，可以重新檢查。"
+      },
+      "unlockRequired": {
+        "title": "解鎖後才能查看空間裝置狀態",
+        "description": "現有裝置仍會列出。請先解鎖目前的空間，再重新檢查。"
+      },
+      "recoveryRequired": {
+        "title": "空間裝置狀態需要復原",
+        "description": "現有裝置仍會列出。重新檢查無法解決此問題，請保留現有資料。"
+      }
+    },
     "memberRemoval": {
+      "removedDevices": "已移除裝置",
+      "removed": {
+        "title": "裝置已移除",
+        "description": "該裝置已不再屬於目前空間。"
+      },
+      "notificationPending": {
+        "title": "已從此裝置移除",
+        "description": "正在通知其他裝置，無需進行操作。"
+      },
       "deviceRemoved": {
         "title": "此裝置已被移除",
         "description": "此裝置已不屬於目前空間。請使用邀請重新配對以加入。"
@@ -1935,6 +1987,10 @@
         "title": "等待對方確認",
         "subtitle": "正在等待對方確認這次切換。"
       },
+      "processing": {
+        "title": "正在完成切換",
+        "subtitle": "正在進行最終確認；連線中斷後會自動重試。"
+      },
       "success": {
         "title": "切換成功",
         "subtitle_one": "已用新主密鑰遷移 1 條剪貼簿記錄。",
@@ -2211,6 +2267,18 @@
     }
   },
   "setup": {
+    "invitationIssue": {
+      "errors": {
+        "networkNotStarted": "桌面服務仍在啟動，請稍候片刻再重試。",
+        "noPublishableAddress": "這台裝置沒有可用於配對的網路連線。請先連接網路，然後重試。",
+        "localPublicationFailed": "這台裝置無法在本機網路提供邀請碼。請檢查網路連線，然後重試。",
+        "directoryTransportFailed": "無法連接邀請服務，本機配對也無法使用。請檢查網路，然後重試。",
+        "directoryRejected": "邀請服務拒絕了本次要求。請勿反覆重試，匯出診斷資訊後聯絡支援。",
+        "directoryInvalidResponse": "邀請服務傳回了無效結果。請重試一次；若仍然失敗，請匯出診斷資訊並聯絡支援。",
+        "serviceUnavailable": "配對服務暫時無法使用，請稍候片刻再重試。",
+        "internal": "無法建立邀請碼。若問題持續，請匯出診斷資訊並聯絡支援。"
+      }
+    },
     "page": {
       "processing": "正在處理...",
       "processingJoinSpace": {
@@ -2322,6 +2390,7 @@
       "hint": "請妥善保管該口令，所有想加入此空間的裝置都需要輸入它。"
     },
     "showInvitation": {
+      "status": "空間已建立",
       "title": "邀請新裝置",
       "subtitle": "在另一台裝置上輸入這個邀請碼即可加入空間。",
       "expiresIn": "{{remaining}} 後過期",
@@ -2364,6 +2433,10 @@
       }
     },
     "joinPending": {
+      "processing": {
+        "title": "正在更新空間裝置狀態",
+        "subtitle": "正在完成加入；連線中斷後會自動繼續。"
+      },
       "title": "等待確認",
       "subtitle": "正在等待加入結果。",
       "actions": { "cancel": "取消加入", "back": "返回" },
@@ -2376,6 +2449,12 @@
           "base_history_changed": "對方空間已發生變化，請重新取得邀請碼。",
           "joiner_history_ahead": "本機歷史無法加入該空間。",
           "history_conflict": "兩邊的歷史無法合併。",
+          "completion_invalid": "最終確認無效，未完成的配對已停止。",
+          "membership_history_invalid": "成員歷史無效，未完成的配對已停止。",
+          "security_material_invalid": "安全資料無效，未完成的配對已停止。",
+          "relationship_conflict": "裝置關係存在衝突，未完成的配對已停止。",
+          "activation_state_invalid": "裝置啟用狀態無效，未完成的配對已停止。",
+          "outcome_cannot_be_proven": "無法安全確認本次配對結果。請保留現有資料並聯絡支援。",
           "peer_upgrade_required": "對方裝置需要更新 UniClipboard。",
           "cancelled": "本次加入已取消。",
           "expired": "本次加入已到期，未完成的配對已自動結束。",

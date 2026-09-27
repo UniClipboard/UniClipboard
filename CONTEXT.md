@@ -90,9 +90,19 @@ Engine 持久拥有的 Space 成员变更收敛状态，统一表达本机已应
 消息到达顺序自行推断。`removed` 是独立的本机长期事实，重新加入后才清除。
 _Avoid_: member revocation、client-side convergence、offline inference
 
+**Space device update**：
+Engine 汇总给出的空间设备状态更新事实，阶段为更新中、已完成、暂未完成并将自动重试（可带下次
+重试时间）或无法自动完成；无法自动完成时附带原因，并可能附带处理方式（检查设备或更新应用）。
+原因 `local_identity_mismatch` 表示本机当前网络身份与已验证成员历史中的本机身份不一致，
+它没有处理方式，自动重试也不能消除；客户端不得提供修复入口，只提示保留现有数据。
+客户端只原样展示这一事实，不得从成员数量、在线情况、设备关系或同步状态推断是否完成。
+_Avoid_: maintenance health、client-side completion inference、repair button
+
 **Device trust relationship**：
 Engine 对一台已知设备给出的完整关系视图，由成员资格、在线情况、设备组关系、版本兼容性
-和同步关系五个彼此独立的事实组成；任何一项都不得被客户端用来推断另一项。
+和同步关系五个彼此独立的事实组成；任何一项都不得被客户端用来推断另一项。设备组关系
+`awaiting_removal_acknowledgement` 表示该设备已从本机移除、Engine 正在通知其他设备：它是只读的
+提示状态，不需要用户操作，不阻塞 **Space device update** 完成，客户端不得重试、计时或自行清理。
 _Avoid_: device status、peer state、client-side trust inference
 
 **Pairing confirmation**：
@@ -101,6 +111,12 @@ Engine 在当前成员关系上给出的配对确认展示事实：`awaiting_pee
 `confirmed` 表示双方已经确认。客户端只展示当前事实并在收到变化通知后重新读取，不自行计算
 期限、推断确认或驱动撤销；在线情况和同步关系仍是独立事实。
 _Avoid_: client-side pairing timer、online confirmation、pairing success inference
+
+**Inbound pairing**：
+Engine 给出的入站配对历史记录，状态为正在完成配对、未收到确认但等待安全完成、无法确认结果或
+未完成。它与 **Pairing confirmation** 相互独立：入站配对记录不是 **SpaceMember**，不进入
+**Current member device list**，也不得遮挡或替换可用的正式设备。
+_Avoid_: pending member、pairing candidate list
 
 **Pending device change**：
 Engine 持久保存、等待本机用户决定的一次设备组移除变化，包含稳定编号、提出设备、移除目标
@@ -114,6 +130,8 @@ Engine 针对当前设备组问题给出的可选成员集合，包含是否为�
 涉及移除本机必须再次确认，提交结果分别表达已完成、等待完成或需要重新配对，不得把提交成功当作完成。
 候选原因和影响预览也由 Engine 给出；候选成员、预期同步范围、暂停同步、等待确认和需要重新加入是独立事实。
 预期同步范围不代表已获同步授权或已经恢复同步，客户端不得从名单差异自行推导影响。
+查询失败分为需要解锁、需要恢复和暂时不可用三类，只有暂时不可用可以通过重新查询解决；
+查询失败时已有设备仍保持显示。
 _Avoid_: client-side group inference、fixed apply-or-keep decision
 
 **Membership divergence**：
@@ -124,7 +142,9 @@ _Avoid_: temporary split、sync failure、pending recovery
 
 **Current member device list**：
 设备页展示的当前 Space 成员集合，只以 **SpaceMember** 为准；历史设备关系仍可用于安全判断
-和待决定流程，但不同空间、等待加入或已移除的设备不得因此进入或重新进入设备列表。
+和待决定流程，但不同空间、等待加入或已移除的设备不得因此进入或重新进入设备列表。Engine 同时给出
+`membership = removed` 与 `awaiting_removal_acknowledgement` 的设备只在单独的「已移除设备」
+只读分区中显示，直到 Engine 不再返回；它不属于当前成员列表，也不会让该设备重新成为成员。
 _Avoid_: trusted peer list、relationship history、all known devices
 
 **Re-pairing required**：

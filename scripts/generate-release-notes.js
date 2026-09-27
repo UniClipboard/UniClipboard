@@ -182,7 +182,7 @@ export function buildInstallerTable({
     `| ${platform} | ${arch} | [${fileName}](${baseUrl}/${fileName}) |`
 
   const rows = []
-  if (macosArm64) rows.push(makeRow('macOS', 'Apple Silicon (M1/M2/M3)', macosArm64))
+  if (macosArm64) rows.push(makeRow('macOS', 'Apple Silicon', macosArm64))
   if (macosX64) rows.push(makeRow('macOS', 'Intel', macosX64))
   if (linuxDebX64) rows.push(makeRow('Linux', 'Debian/Ubuntu x86_64 (.deb)', linuxDebX64))
   if (linuxDebArm) rows.push(makeRow('Linux', 'Debian/Ubuntu aarch64 (.deb)', linuxDebArm))
@@ -253,7 +253,7 @@ function buildCliInstallerTable({ artifactsDir, baseUrl }) {
     `| ${platform} | ${arch} | [${fileName}](${baseUrl}/${fileName}) |`
 
   const rows = []
-  if (macosArm64) rows.push(makeRow('macOS', 'Apple Silicon (M1/M2/M3)', macosArm64))
+  if (macosArm64) rows.push(makeRow('macOS', 'Apple Silicon', macosArm64))
   if (macosX64) rows.push(makeRow('macOS', 'Intel', macosX64))
   if (linuxX64) rows.push(makeRow('Linux', 'x86_64', linuxX64))
   if (linuxArm64) rows.push(makeRow('Linux', 'aarch64', linuxArm64))

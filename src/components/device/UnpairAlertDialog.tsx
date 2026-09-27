@@ -45,7 +45,10 @@ const UnpairAlertDialog: React.FC<UnpairAlertDialogProps> = ({
             variant="destructive"
             disabled={busy}
             aria-busy={busy}
-            onClick={onConfirm}
+            onClick={event => {
+              event.preventDefault()
+              onConfirm()
+            }}
           >
             {busy && <Loader2 aria-hidden="true" className="size-4 animate-spin" />}
             {busy ? t('devices.unpair.cancelling') : t('devices.list.actions.unpair')}

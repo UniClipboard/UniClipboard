@@ -112,8 +112,7 @@ async fn file_send_directory_path_rejected() {
 }
 
 /// `send --file <path> <text>` and `send --file <path> --resend <id>` should
-/// both fail due to clap's `conflicts_with` guards. These are argument-level
-/// mutual exclusion errors that fire before any runtime logic.
+/// both fail at argument parsing before any runtime logic.
 #[tokio::test]
 #[ignore]
 async fn file_send_mutual_exclusion_flags() {
@@ -123,9 +122,8 @@ async fn file_send_mutual_exclusion_flags() {
         .expect("daemon start failed");
     let cli = TestCli::new(&daemon.profile);
 
-    // Case 1: --file with positional text
-    // clap enforces conflicts_with = ["file"] on the text positional,
-    // so this should be rejected at the argument parsing layer.
+    // Case 1: file mode accepts one positional path, so trailing text is an
+    // unexpected second positional argument.
     let tmp = tempfile::NamedTempFile::new().expect("create temp file");
     let path_str = tmp.path().to_str().expect("temp path to str");
 
@@ -135,10 +133,9 @@ async fn file_send_mutual_exclusion_flags() {
         "send --file with text should fail, got exit=0"
     );
     let combined1 = format!("{}{}", output1.stdout, output1.stderr);
-    // clap produces "cannot be used with" in its conflict error messages
     assert!(
-        combined1.contains("cannot be used with") || combined1.contains("conflict"),
-        "expected mutual exclusion error for --file + text, got: stdout={}, stderr={}",
+        combined1.contains("unexpected argument") && combined1.contains("some-text"),
+        "expected the trailing text argument to be rejected, got: stdout={}, stderr={}",
         output1.stdout,
         output1.stderr
     );

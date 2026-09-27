@@ -29,6 +29,12 @@ function instance(profile, extraEnv = {}) {
           UC_PROFILE: profile,
           UC_DISABLE_SINGLE_INSTANCE: '1',
           UC_CLIPBOARD_MODE: 'passive',
+          ...(process.env.E2E_RENDEZVOUS_URL
+            ? { UC_E2E_RENDEZVOUS_BASE_URL: process.env.E2E_RENDEZVOUS_URL }
+            : {}),
+          ...(process.env.E2E_SPACE_WORK_TOKEN
+            ? { UC_E2E_SPACE_WORK_TOKEN: process.env.E2E_SPACE_WORK_TOKEN }
+            : {}),
           ...extraEnv,
         },
       },

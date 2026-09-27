@@ -59,7 +59,7 @@ describe('UnlockPage', () => {
     expect(screen.queryByText(i18n.t('settings.sections.security.title'))).not.toBeInTheDocument()
     expect(screen.getAllByText('UniClipboard')).toHaveLength(1)
     expect(screen.getByRole('button', { name: i18n.t('unlock.button') })).toHaveClass('w-full')
-    expect(container.querySelector('.max-w-lg')).not.toBeNull()
+    expect(container.querySelector('.max-w-md')).not.toBeNull()
   })
 
   it('unlocks directly when the explicit keyring attempt succeeds', async () => {
@@ -82,7 +82,7 @@ describe('UnlockPage', () => {
     expect(screen.queryByRole('switch')).not.toBeInTheDocument()
   })
 
-  it('opens passphrase modal when secure storage authentication is unavailable', async () => {
+  it('shows the inline passphrase form when secure storage authentication is unavailable', async () => {
     const onUnlockSucceeded = vi.fn()
     vi.mocked(commands.unlockContentFromKeyring).mockResolvedValue(false)
 
@@ -96,7 +96,7 @@ describe('UnlockPage', () => {
     expect(screen.getByText(i18n.t('unlock.passphraseModal.title'))).toBeInTheDocument()
   })
 
-  it('opens passphrase modal when secure storage authentication rejects', async () => {
+  it('shows the inline passphrase form when secure storage authentication rejects', async () => {
     const onUnlockSucceeded = vi.fn()
     vi.mocked(commands.unlockContentFromKeyring).mockRejectedValue({
       code: 'INTERNAL',
@@ -113,7 +113,7 @@ describe('UnlockPage', () => {
     expect(screen.getByText(i18n.t('unlock.passphraseModal.title'))).toBeInTheDocument()
   })
 
-  it('successfully unlocks with a correct passphrase from the modal', async () => {
+  it('successfully unlocks with a correct passphrase from the inline form', async () => {
     const onUnlockSucceeded = vi.fn()
     vi.mocked(verifyKeychainAccess).mockResolvedValue(false)
     vi.mocked(commands.unlockContent).mockResolvedValue(null)
@@ -140,12 +140,9 @@ describe('UnlockPage', () => {
     })
     expect(refreshSetupState).toHaveBeenCalledTimes(1)
     expect(onUnlockSucceeded).toHaveBeenCalledTimes(1)
-    await waitFor(() => {
-      expect(screen.queryByText(i18n.t('unlock.passphraseModal.title'))).not.toBeInTheDocument()
-    })
   })
 
-  it('shows WRONG_PASSPHRASE message and keeps modal open on wrong passphrase', async () => {
+  it('shows WRONG_PASSPHRASE message and keeps the form open on wrong passphrase', async () => {
     const onUnlockSucceeded = vi.fn()
     vi.mocked(verifyKeychainAccess).mockResolvedValue(false)
     vi.mocked(commands.unlockContent).mockRejectedValue({

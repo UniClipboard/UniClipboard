@@ -7,6 +7,7 @@ import LocalPanelSkeleton from '@/components/device/LocalPanelSkeleton'
 import MobileDevicePanel from '@/components/device/MobileDevicePanel'
 import MobileSyncSettingsDialog from '@/components/device/MobileSyncSettingsDialog'
 import PeerDetailPanelContainer from '@/components/device/PeerDetailPanelContainer'
+import RemovedDevicePanel from '@/components/device/RemovedDevicePanel'
 import SwitchSpaceDialog from '@/components/device/SwitchSpaceDialog'
 import UnpairAlertDialog from '@/components/device/UnpairAlertDialog'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -53,6 +54,7 @@ const DevicesPage: React.FC = () => {
     selection,
     setSelection,
     selectedPeer,
+    selectedRemovedDevice,
     selectedMobile,
     effectiveSelection,
     switchSpaceOpen,
@@ -129,6 +131,10 @@ const DevicesPage: React.FC = () => {
             />
           )}
 
+          {effectiveSelection.kind === 'removed' && selectedRemovedDevice && (
+            <RemovedDevicePanel device={selectedRemovedDevice} />
+          )}
+
           {effectiveSelection.kind === 'mobile' && selectedMobile && (
             <MobileDevicePanel
               key={selectedMobile.deviceId}
@@ -156,13 +162,15 @@ const DevicesPage: React.FC = () => {
           dispatch(fetchSpaceProtection())
         }}
       />
-      <UnpairAlertDialog
-        open={unpairDialogOpen}
-        onOpenChange={handleUnpairDialogOpenChange}
-        deviceName={unpairTargetDevice?.deviceName || t('devices.list.labels.unknownDevice')}
-        busy={unpairBusy}
-        onConfirm={handleUnpairConfirm}
-      />
+      {unpairDialogOpen && unpairTargetDevice && (
+        <UnpairAlertDialog
+          open
+          onOpenChange={handleUnpairDialogOpenChange}
+          deviceName={unpairTargetDevice.deviceName || t('devices.list.labels.unknownDevice')}
+          busy={unpairBusy}
+          onConfirm={handleUnpairConfirm}
+        />
+      )}
       <MobileSyncSettingsDialog
         open={settingsSheetOpen}
         onOpenChange={mobileActions.setSettingsSheetOpen}

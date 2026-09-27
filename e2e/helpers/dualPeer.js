@@ -1,6 +1,18 @@
 import { execFileSync } from 'node:child_process'
-import { closeSync, ftruncateSync, openSync, readFileSync } from 'node:fs'
+import { closeSync, ftruncateSync, mkdirSync, openSync, readFileSync } from 'node:fs'
+import path from 'node:path'
 import { browser, expect } from '@wdio/globals'
+
+/**
+ * Directory for one scenario run's screenshots and event dumps. Defaults to the
+ * git-ignored `target/e2e-evidence`; set `E2E_EVIDENCE_DIR` to keep them elsewhere.
+ */
+export function evidenceDirectory(scenario) {
+  const root = process.env.E2E_EVIDENCE_DIR ?? path.join(process.cwd(), 'target', 'e2e-evidence')
+  const directory = path.join(root, `${scenario}-${process.pid}`)
+  mkdirSync(directory, { recursive: true })
+  return directory
+}
 
 export const dualDescribe =
   browser.isMultiremote && process.platform === 'darwin' ? describe : describe.skip
@@ -153,6 +165,20 @@ export async function pairingComplete(instance, label) {
 export async function pairFreshProfiles({ sponsor, joiner, passphrase }) {
   await openFreshSetup(sponsor, joiner)
   await initializeSponsor(sponsor, passphrase)
+  const sponsorProfile = process.env.E2E_UC_SPONSOR_PROFILE
+  if (sponsorProfile) {
+    const connection = daemonConnection(sponsorProfile)
+    await sponsor.waitUntil(
+      async () => {
+        const response = await daemonRequest(connection, '/member/device-group-choices')
+        return response.status === 200
+      },
+      {
+        timeout: 30000,
+        timeoutMsg: 'device group choices did not become available after setup',
+      }
+    )
+  }
   const code = await issueInvitation(sponsor)
   await click(joiner, '[data-testid="setup-entry-join"]')
   await enterInvitation(joiner, code, passphrase)

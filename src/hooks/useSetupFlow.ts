@@ -52,7 +52,7 @@ export type SetupScreen =
   /** S4 — joiner: paste invitation code + passphrase. */
   | { kind: 'redeem_invitation' }
   /** S4a — joiner: durable admission is waiting for its final outcome. */
-  | { kind: 'join_pending'; joinId: string }
+  | { kind: 'join_pending'; joinId: string; status: 'pending' | 'processing' }
   /** S4b — joiner: durable admission ended without activation. */
   | { kind: 'join_ended'; reason: JoinSpaceEndReason }
   /** Sponsor Space is ready and can issue its first invitation. */
@@ -177,7 +177,11 @@ export function useSetupFlow(): UseSetupFlowReturn {
   })
 
   const resolveJoinAdmission = useCallback(async (result: JoinAdmissionResolution) => {
-    if (result.status === 'rejected' || result.status === 'terminated') {
+    if (
+      result.status === 'needs_attention' ||
+      result.status === 'rejected' ||
+      result.status === 'terminated'
+    ) {
       setPageScreen({ kind: 'join_ended', reason: result.reason })
       return
     }
@@ -195,7 +199,41 @@ export function useSetupFlow(): UseSetupFlowReturn {
   }, [])
 
   const pendingJoinId = pageScreen?.kind === 'join_pending' ? pageScreen.joinId : null
-  useJoinAdmission(pendingJoinId, resolveJoinAdmission)
+  useJoinAdmission(pendingJoinId, resolveJoinAdmission, result => {
+    setPageScreen(current =>
+      current?.kind === 'join_pending' && current.joinId === result.joinId
+        ? { ...current, status: result.status }
+        : current
+    )
+  })
+
+  useEffect(() => {
+    if (flow.kind !== 'entry' || pageScreen !== null) return
+    let active = true
+    const restoreJoin = async () => {
+      try {
+        const currentJoin = (await getDeviceTrustSnapshot()).currentJoin
+        if (!active || !currentJoin) return
+        if (currentJoin.status === 'pending' || currentJoin.status === 'processing') {
+          setPageScreen({
+            kind: 'join_pending',
+            joinId: currentJoin.joinId,
+            status: currentJoin.status,
+          })
+        } else {
+          await resolveJoinAdmission(currentJoin)
+        }
+      } catch (err) {
+        log.warn({ err }, 'failed to restore durable admission')
+      }
+    }
+    void restoreJoin()
+    const unsubscribeReconnect = daemonWs.onReconnect(() => void restoreJoin())
+    return () => {
+      active = false
+      unsubscribeReconnect()
+    }
+  }, [flow.kind, pageScreen, resolveJoinAdmission])
 
   useEffect(() => {
     if (flow.kind !== 'invitation_pending') return
@@ -315,11 +353,15 @@ export function useSetupFlow(): UseSetupFlowReturn {
           code: input.code,
           passphrase: input.passphrase,
         })
-        if (redeem.status === 'pending') {
-          setPageScreen({ kind: 'join_pending', joinId: redeem.joinId })
+        if (redeem.status === 'pending' || redeem.status === 'processing') {
+          setPageScreen({ kind: 'join_pending', joinId: redeem.joinId, status: redeem.status })
           return { ok: true, redeem: null } as const
         }
-        if (redeem.status === 'rejected' || redeem.status === 'terminated') {
+        if (
+          redeem.status === 'needs_attention' ||
+          redeem.status === 'rejected' ||
+          redeem.status === 'terminated'
+        ) {
           setPageScreen({ kind: 'join_ended', reason: redeem.reason })
           return {
             ok: false,

@@ -1,5 +1,5 @@
 import { LayoutGroup, m } from 'framer-motion'
-import { RefreshCw, Settings2 } from 'lucide-react'
+import { CircleAlert, Clock3, RefreshCw, Settings2 } from 'lucide-react'
 import type { SpaceMember } from '@/api/daemon/members'
 import { type MobileDeviceView } from '@/api/tauri-command/mobile_sync'
 import { derivePeerStatusTone } from '@/components/device/connection-channel-utils'
@@ -9,6 +9,7 @@ import DeviceListItem from '@/components/device/DeviceListItem'
 import SectionLabel from '@/components/device/DeviceSectionLabel'
 import EmptyAddRow from '@/components/device/EmptyAddRow'
 import LocalDeviceListItem from '@/components/device/LocalDeviceListItem'
+import { SpaceDeviceUpdateNotice } from '@/components/device/SpaceDeviceUpdateNotice'
 import { type StatusDotTone } from '@/components/device/StatusDot'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -37,6 +38,10 @@ export default function DevicesSidebar({ page }: { page: ReturnType<typeof useDe
     spaceMembersError,
     spaceProtectionError,
     networkRecovery,
+    deviceTrust,
+    deviceTrustError,
+    deviceTrustFailure,
+    refreshDeviceTrust,
     networkRecoveryError,
     manualRefreshInProgress,
     peers,
@@ -196,6 +201,69 @@ export default function DevicesSidebar({ page }: { page: ReturnType<typeof useDe
                 label={t('devices.panel.addMenu.trigger')}
                 onClick={() => setAddP2PDialogOpen(true)}
               />
+            )}
+
+            <SpaceDeviceUpdateNotice
+              status={deviceTrust?.spaceDeviceUpdate}
+              loadFailure={
+                !deviceTrust && deviceTrustError ? (deviceTrustFailure ?? 'unavailable') : null
+              }
+              onRetry={() => void refreshDeviceTrust()}
+            />
+
+            {trustListView.removedDevices.length > 0 && (
+              <>
+                <SectionLabel label={t('devices.memberRemoval.removedDevices')} />
+                {trustListView.removedDevices.map(device => {
+                  const trustStatus = getDeviceTrustStatus(device, t)
+                  if (!trustStatus) return null
+                  return (
+                    <DeviceListItem
+                      key={device.deviceId}
+                      testId={`removed-device-${device.deviceId}`}
+                      name={device.displayName || t('devices.list.labels.unknownDevice')}
+                      tone={trustStatus.tone}
+                      status={trustStatus.status}
+                      dimmed
+                      selected={
+                        effectiveSelection.kind === 'removed' &&
+                        effectiveSelection.id === device.deviceId
+                      }
+                      onSelect={() => setSelection({ kind: 'removed', id: device.deviceId })}
+                    />
+                  )
+                })}
+              </>
+            )}
+
+            {(deviceTrust?.inboundPairings?.length ?? 0) > 0 && (
+              <>
+                <SectionLabel label={t('devices.inboundPairings.title')} />
+                {deviceTrust?.inboundPairings?.map(pairing => {
+                  const needsAttention = pairing.status === 'needs_attention'
+                  const Icon = needsAttention ? CircleAlert : Clock3
+                  return (
+                    <div
+                      key={pairing.pairingId}
+                      data-testid={`inbound-pairing-${pairing.status}`}
+                      className={cn(
+                        'mx-1 flex items-start gap-3 rounded-md px-3 py-2.5',
+                        needsAttention ? 'bg-warning/10 text-warning' : 'text-foreground'
+                      )}
+                    >
+                      <Icon className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+                      <span className="min-w-0">
+                        <span className="block truncate text-ui-body font-medium">
+                          {pairing.displayName || t('devices.inboundPairings.unnamed')}
+                        </span>
+                        <span className="mt-1 block text-ui-caption text-muted-foreground">
+                          {t(`devices.inboundPairings.status.${pairing.status}`)}
+                        </span>
+                      </span>
+                    </div>
+                  )
+                })}
+              </>
             )}
 
             {mobileDevices.length > 0 && (

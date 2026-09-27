@@ -110,6 +110,7 @@ pub enum DeviceGroupRelationshipDto {
     ConfirmationPending,
     Consistent,
     PendingLocalDecision,
+    AwaitingRemovalAcknowledgement,
     Diverged,
     Unverifiable,
     Unknown,
@@ -220,6 +221,24 @@ pub struct PendingInboundMemberDto {
     pub display_name: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum InboundPairingStatusDto {
+    AwaitingConfirmation,
+    ConfirmationMissed,
+    NeedsAttention,
+    Failed,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct InboundPairingDto {
+    pub pairing_id: String,
+    pub device_id: Option<String>,
+    pub display_name: Option<String>,
+    pub status: InboundPairingStatusDto,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct DeviceTrustSnapshotDto {
@@ -229,11 +248,83 @@ pub struct DeviceTrustSnapshotDto {
     pub current_change: Option<DeviceTrustChangeDto>,
     pub current_join: Option<JoinSpaceResponse>,
     pub pending_inbound_member: Option<PendingInboundMemberDto>,
+    #[serde(default)]
+    pub inbound_pairings: Vec<InboundPairingDto>,
+    #[serde(default)]
+    pub space_device_update: SpaceDeviceUpdateStatusDto,
+    #[serde(default)]
+    pub maintenance_health: MembershipMaintenanceHealthDto,
     pub devices: Vec<DeviceTrustRelationshipDto>,
     pub recovery: String,
     pub allowed_actions: Vec<DeviceTrustActionDto>,
     pub blocked_reason: Option<DeviceTrustUnavailableReasonDto>,
     pub updated_at_ms: i64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum SpaceDeviceUpdatePhaseDto {
+    Updating,
+    #[default]
+    Completed,
+    RetryableFailure,
+    NeedsAttention,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum SpaceDeviceUpdateProblemDto {
+    DeviceStateRejected,
+    DeviceRelationshipConflict,
+    DeviceSecurityUpdateRejected,
+    DeviceUpgradeRequired,
+    LocalIdentityMismatch,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum SpaceDeviceUpdateRecoveryDto {
+    ReviewDevices,
+    UpdateApp,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct SpaceDeviceUpdateStatusDto {
+    pub phase: SpaceDeviceUpdatePhaseDto,
+    pub reason: Option<SpaceDeviceUpdateProblemDto>,
+    pub recovery: Option<SpaceDeviceUpdateRecoveryDto>,
+    pub next_retry_at_ms: Option<i64>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum MembershipMaintenanceHealthPhaseDto {
+    #[default]
+    Healthy,
+    Retrying,
+    NeedsAttention,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum MembershipMaintenanceProblemDto {
+    MembershipHistoryRejected,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum MembershipMaintenanceRecoveryDto {
+    ResolveDeviceTrust,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct MembershipMaintenanceHealthDto {
+    pub phase: MembershipMaintenanceHealthPhaseDto,
+    pub reason: Option<MembershipMaintenanceProblemDto>,
+    pub recovery: Option<MembershipMaintenanceRecoveryDto>,
+    pub next_retry_at_ms: Option<i64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
@@ -319,6 +410,15 @@ mod device_group_choice_dto_tests {
         }
     }
 
+    #[test]
+    fn removal_acknowledgement_uses_stable_wire_name() {
+        assert_eq!(
+            serde_json::to_value(DeviceGroupRelationshipDto::AwaitingRemovalAcknowledgement)
+                .expect("serialize removal acknowledgement"),
+            json!("awaiting_removal_acknowledgement")
+        );
+    }
+
     fn snapshot() -> DeviceTrustSnapshotDto {
         DeviceTrustSnapshotDto {
             revision: 1,
@@ -327,11 +427,72 @@ mod device_group_choice_dto_tests {
             current_change: None,
             current_join: None,
             pending_inbound_member: None,
+            inbound_pairings: Vec::new(),
+            space_device_update: SpaceDeviceUpdateStatusDto::default(),
+            maintenance_health: MembershipMaintenanceHealthDto::default(),
             devices: Vec::new(),
             recovery: "not_available_in_this_version".to_string(),
             allowed_actions: Vec::new(),
             blocked_reason: None,
             updated_at_ms: 1,
+        }
+    }
+
+    #[test]
+    fn space_device_update_uses_stable_wire_fields_and_defaults() {
+        let mut value = serde_json::to_value(snapshot()).unwrap();
+        value["spaceDeviceUpdate"] = json!({
+            "phase": "needs_attention",
+            "reason": "device_relationship_conflict",
+            "recovery": "review_devices",
+            "nextRetryAtMs": 12345
+        });
+        let decoded: DeviceTrustSnapshotDto = serde_json::from_value(value.clone()).unwrap();
+        assert_eq!(serde_json::to_value(decoded).unwrap(), value);
+
+        value.as_object_mut().unwrap().remove("spaceDeviceUpdate");
+        let legacy: DeviceTrustSnapshotDto = serde_json::from_value(value).unwrap();
+        assert_eq!(
+            legacy.space_device_update.phase,
+            SpaceDeviceUpdatePhaseDto::Completed
+        );
+    }
+
+    #[test]
+    fn maintenance_health_uses_stable_wire_fields_and_defaults() {
+        let mut value = serde_json::to_value(snapshot()).unwrap();
+        value["maintenanceHealth"] = json!({
+            "phase": "needs_attention", "reason": "membership_history_rejected",
+            "recovery": "resolve_device_trust", "nextRetryAtMs": 12345
+        });
+        let decoded: DeviceTrustSnapshotDto = serde_json::from_value(value.clone()).unwrap();
+        assert_eq!(serde_json::to_value(decoded).unwrap(), value);
+        value.as_object_mut().unwrap().remove("maintenanceHealth");
+        let legacy: DeviceTrustSnapshotDto = serde_json::from_value(value).unwrap();
+        assert_eq!(
+            legacy.maintenance_health.phase,
+            MembershipMaintenanceHealthPhaseDto::Healthy
+        );
+    }
+
+    #[test]
+    fn inbound_pairing_status_uses_stable_wire_names() {
+        for (status, expected) in [
+            (
+                InboundPairingStatusDto::AwaitingConfirmation,
+                "awaiting_confirmation",
+            ),
+            (
+                InboundPairingStatusDto::ConfirmationMissed,
+                "confirmation_missed",
+            ),
+            (InboundPairingStatusDto::NeedsAttention, "needs_attention"),
+            (InboundPairingStatusDto::Failed, "failed"),
+        ] {
+            assert_eq!(
+                serde_json::to_value(status).expect("serialize inbound pairing status"),
+                json!(expected)
+            );
         }
     }
 

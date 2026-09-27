@@ -1,4 +1,4 @@
-import { AlertCircle } from 'lucide-react'
+import { AlertCircle, ChevronDown } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { DaemonBootstrapFailure } from '@/lib/ipc'
 import { AppStateShell } from './AppStateShell'
@@ -32,11 +32,15 @@ export function AppStatusScreen({
     >
       <AppStatusActions onRetry={onRetry} retrying={retrying} versionTooOld={versionTooOld} />
       {detail && (
-        <details className="mt-8 border-t border-border pt-4 text-ui-body">
-          <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+        <details className="group mt-8 border-t border-border pt-3 text-ui-body">
+          <summary className="flex cursor-pointer list-none items-center justify-between text-muted-foreground hover:text-foreground [&::-webkit-details-marker]:hidden">
             {t('startupFailure.details')}
+            <ChevronDown
+              className="size-4 transition-transform group-open:rotate-180 motion-reduce:transition-none"
+              aria-hidden="true"
+            />
           </summary>
-          <pre className="mt-3 max-h-40 select-text overflow-y-auto whitespace-pre-wrap break-words font-mono text-ui-caption text-muted-foreground [overflow-wrap:anywhere]">
+          <pre className="mt-3 max-h-40 select-text overflow-y-auto whitespace-pre-wrap break-words rounded-lg bg-muted px-3 py-2.5 font-mono text-ui-caption text-muted-foreground [overflow-wrap:anywhere]">
             {detail}
           </pre>
         </details>

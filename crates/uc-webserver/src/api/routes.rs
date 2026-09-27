@@ -49,14 +49,12 @@ use uc_daemon_contract::api::dto::device::ConnectivityOpportunityRequest;
 /// Takes state to return Router<DaemonApiState> so it can be merged
 /// with router_l2_plus without type mismatch.
 pub fn router_l1(state: DaemonApiState) -> Router<DaemonApiState> {
-    let mut router = Router::new()
+    let router = Router::new()
         .route("/health", get(health))
         .with_state(state.clone());
 
     #[cfg(debug_assertions)]
-    {
-        router = router.merge(crate::api::dev::router(state));
-    }
+    let router = router.merge(crate::api::dev::router(state));
 
     // NOTE: cors_middleware is applied once at the outermost layer in
     // `build_router` so it wraps all merged sub-routers. Do not re-layer it
@@ -127,6 +125,9 @@ pub fn router_l2_plus(state: DaemonApiState) -> Router<DaemonApiState> {
             post(capture_current_clipboard_handler),
         )
         .with_state(state.clone());
+
+    #[cfg(all(debug_assertions, feature = "e2e-rendezvous"))]
+    let router = router.merge(crate::api::dev::space_work::router(state.clone()));
 
     // Apply middleware layers.
     // NOTE: cors_middleware is NOT applied here; it is layered once at the

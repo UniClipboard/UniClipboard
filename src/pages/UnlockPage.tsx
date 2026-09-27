@@ -1,5 +1,5 @@
-import { Loader2, Unlock } from 'lucide-react'
-import { useState } from 'react'
+import { Loader2, Lock, LockOpen } from 'lucide-react'
+import { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AppStateShell } from '@/components/app/AppStateShell'
 import { Button } from '@/components/ui/button'
@@ -7,7 +7,7 @@ import { commands } from '@/lib/ipc'
 import { createLogger } from '@/lib/logger'
 import { ensureSetupRealtimeSync, refreshSetupState } from '@/store/setupRealtimeStore'
 import { FactoryResetDialog } from './unlock/FactoryResetDialog'
-import { PassphraseUnlockDialog } from './unlock/PassphraseUnlockDialog'
+import { PassphraseUnlockForm } from './unlock/PassphraseUnlockForm'
 
 const log = createLogger('unlock-page')
 
@@ -16,12 +16,13 @@ interface UnlockPageProps {
   onResetSucceeded?: () => void
 }
 
-type OpenDialog = 'passphrase' | 'reset' | null
-
 export default function UnlockPage({ onUnlockSucceeded, onResetSucceeded }: UnlockPageProps) {
   const { t } = useTranslation()
-  const [openDialog, setOpenDialog] = useState<OpenDialog>(null)
+  const [needsPassphrase, setNeedsPassphrase] = useState(false)
+  const [resetOpen, setResetOpen] = useState(false)
   const [unlocking, setUnlocking] = useState(false)
+  const [submittingPassphrase, setSubmittingPassphrase] = useState(false)
+  const resetLinkRef = useRef<HTMLButtonElement>(null)
 
   const finishUnlock = async () => {
     try {
@@ -46,51 +47,60 @@ export default function UnlockPage({ onUnlockSucceeded, onResetSucceeded }: Unlo
     } finally {
       setUnlocking(false)
     }
-    setOpenDialog('passphrase')
+    setNeedsPassphrase(true)
   }
 
   return (
     <>
       <AppStateShell
-        title={t('unlock.title')}
-        description={t('unlock.description')}
-        width="compact"
+        category={t('unlock.lockedStatus')}
+        categoryIcon={<Lock className="size-4" aria-hidden="true" />}
+        title={t(needsPassphrase ? 'unlock.passphraseModal.title' : 'unlock.title')}
+        description={t(
+          needsPassphrase ? 'unlock.passphraseModal.description' : 'unlock.description'
+        )}
       >
-        <div className="mt-7">
+        {needsPassphrase ? (
+          <PassphraseUnlockForm
+            onUnlocked={finishUnlock}
+            onSubmittingChange={setSubmittingPassphrase}
+          />
+        ) : (
           <Button
             data-testid="unlock-content"
-            className="w-full"
+            size="lg"
+            className="mt-7 w-full"
             onClick={() => void unlock()}
             disabled={unlocking}
+            aria-busy={unlocking}
           >
             {unlocking ? (
-              <Loader2 className="mr-2 size-5 animate-spin" />
+              <Loader2 className="size-4 animate-spin" aria-hidden="true" />
             ) : (
-              <Unlock className="mr-2 size-5" />
+              <LockOpen className="size-4" aria-hidden="true" />
             )}
             {unlocking ? t('unlock.unlocking') : t('unlock.button')}
           </Button>
+        )}
 
+        <div className="mt-8 border-t border-border pt-4">
           <button
+            ref={resetLinkRef}
             type="button"
-            onClick={() => setOpenDialog('reset')}
-            className="mt-8 text-ui-caption text-muted-foreground/70 underline-offset-4 transition-colors hover:text-muted-foreground hover:underline"
+            onClick={() => setResetOpen(true)}
+            disabled={unlocking || submittingPassphrase}
+            className="rounded-sm text-ui-body text-muted-foreground underline decoration-border underline-offset-4 transition-colors outline-none hover:text-foreground hover:decoration-current focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50"
           >
             {t('unlock.factoryReset.link')}
           </button>
         </div>
       </AppStateShell>
 
-      <PassphraseUnlockDialog
-        open={openDialog === 'passphrase'}
-        onClose={() => setOpenDialog(null)}
-        onResetRequested={() => setOpenDialog('reset')}
-        onUnlocked={finishUnlock}
-      />
       <FactoryResetDialog
-        open={openDialog === 'reset'}
-        onClose={() => setOpenDialog(null)}
+        open={resetOpen}
+        onClose={() => setResetOpen(false)}
         onResetSucceeded={onResetSucceeded}
+        finalFocus={resetLinkRef}
       />
     </>
   )

@@ -25,6 +25,12 @@ use crate::api::dto::member::{
 use crate::api::projection::{IntoApiDto, IntoDomain};
 use crate::api::server::DaemonApiState;
 
+// Operation-local Engine codes for `QueryDeviceGroupChoices`. The same numbers
+// mean different things in other operations (e.g. unlock), so they are only
+// interpreted together with the operation name.
+const DEVICE_GROUP_LOCKED_CODE: u32 = 1212;
+const DEVICE_GROUP_RECOVERY_CODE: u32 = 1213;
+
 pub fn router() -> Router<DaemonApiState> {
     Router::new()
         .route(
@@ -303,6 +309,16 @@ pub(crate) fn map_member_engine_error(
             )
         } else {
             match error.code() {
+                DEVICE_GROUP_LOCKED_CODE if op == "query_device_group_choices" => (
+                    "device_group_choices_unlock_required",
+                    ApiError::conflict("unlock this space to read device groups")
+                        .with_code("device_group_choices_unlock_required"),
+                ),
+                DEVICE_GROUP_RECOVERY_CODE if op == "query_device_group_choices" => (
+                    "device_group_choices_recovery_required",
+                    ApiError::conflict("space membership needs recovery; retrying will not help")
+                        .with_code("device_group_choices_recovery_required"),
+                ),
                 MEMBER_INVALID_INPUT_CODE => (
                     "invalid_input",
                     ApiError::bad_request("member device ID must not be empty"),
@@ -364,6 +380,43 @@ mod tests {
             assert_eq!(api.code, "internal_error");
             assert!(api.details.is_none());
         }
+    }
+
+    #[test]
+    fn device_group_query_keeps_unlock_and_recovery_meanings() {
+        let unavailable = map_member_engine_error(
+            "",
+            "query_device_group_choices",
+            EngineError::new(1211, EngineErrorCategory::Unavailable, true),
+        );
+        assert_eq!(unavailable.status, StatusCode::SERVICE_UNAVAILABLE);
+
+        let locked = map_member_engine_error(
+            "",
+            "query_device_group_choices",
+            EngineError::new(1212, EngineErrorCategory::InvalidState, false),
+        );
+        assert_eq!(locked.status, StatusCode::CONFLICT);
+        assert_eq!(locked.code, "device_group_choices_unlock_required");
+
+        let recovery = map_member_engine_error(
+            "",
+            "query_device_group_choices",
+            EngineError::new(1213, EngineErrorCategory::InvalidState, false),
+        );
+        assert_eq!(recovery.status, StatusCode::CONFLICT);
+        assert_eq!(recovery.code, "device_group_choices_recovery_required");
+    }
+
+    #[test]
+    fn device_group_query_codes_are_not_reused_by_other_operations() {
+        let api = map_member_engine_error(
+            "",
+            "choose_device_group",
+            EngineError::new(1212, EngineErrorCategory::InvalidState, false),
+        );
+
+        assert_eq!(api.code, "internal_error");
     }
 
     #[test]

@@ -30,6 +30,9 @@ use utoipa::{OpenApi, ToSchema};
 use crate::api::server::DaemonApiState;
 use crate::security::claims::{SessionTokenClaims, LEVEL_L2, REFRESH_AT_SECS, TTL_SECS};
 
+#[cfg(feature = "e2e-rendezvous")]
+pub mod space_work;
+
 /// Check whether dev auth bypass is enabled at runtime.
 ///
 /// Enabled when `UNICLIPBOARD_ENV=development` — this is set by the CLI

@@ -222,6 +222,53 @@ describe('useSetupFlow joiner admission', () => {
     })
   })
 
+  it('restores a processing admission after the setup page remounts', async () => {
+    getDeviceTrustSnapshot.mockResolvedValue({
+      currentJoin: {
+        status: 'processing',
+        joinId: 'join-123',
+        targetSpaceId: 'space-123',
+        sponsorDeviceId: 'sponsor-123',
+        sponsorIdentityFingerprint: 'fingerprint',
+        peerUpgradeRequired: false,
+      },
+    })
+    const { result } = renderHook(() => useSetupFlow())
+    await waitFor(() =>
+      expect(result.current.screen).toEqual({
+        kind: 'join_pending',
+        joinId: 'join-123',
+        status: 'processing',
+      })
+    )
+  })
+
+  it('restores a completed admission after the setup page remounts', async () => {
+    const joined = {
+      status: 'active',
+      joinId: 'join-123',
+      joinedSpace: {
+        sponsorDeviceId: 'sponsor-123',
+        sponsorIdentityFingerprint: 'fingerprint',
+        spaceId: 'space-123',
+        selfDeviceId: 'local-123',
+        selfIdentityFingerprint: 'local-fingerprint',
+        migratedRecords: null,
+        preservedUnreadableRecords: null,
+      },
+    }
+    getDeviceTrustSnapshot.mockResolvedValue({ currentJoin: joined })
+    getSetupState.mockResolvedValue({ hasCompleted: true, currentInvitation: null })
+    renderHook(() => useSetupFlow())
+    await waitFor(() =>
+      expect(applyServerSetupState).toHaveBeenCalledWith(expect.anything(), {
+        kind: 'pairing_succeeded',
+        role: 'joiner',
+        redeem: joined,
+      })
+    )
+  })
+
   it('keeps a pending admission visible with its join id', async () => {
     const { result } = renderHook(() => useSetupFlow())
 
@@ -236,7 +283,35 @@ describe('useSetupFlow joiner admission', () => {
     expect(result.current.screen).toEqual({
       kind: 'join_pending',
       joinId: 'join-123',
+      status: 'pending',
     })
+  })
+
+  it('updates the admission screen when the same join starts processing', async () => {
+    const { result } = renderHook(() => useSetupFlow())
+    act(() => result.current.startJoinSpace())
+    await act(async () => {
+      await result.current.redeemInvitation({ code: '012345', passphrase: 'passphrase' })
+    })
+    getDeviceTrustSnapshot.mockResolvedValue({
+      currentJoin: {
+        status: 'processing',
+        joinId: 'join-123',
+        targetSpaceId: 'space-123',
+        sponsorDeviceId: 'sponsor-123',
+        sponsorIdentityFingerprint: 'fingerprint',
+        peerUpgradeRequired: false,
+      },
+    })
+    act(() => deviceTrustHandler?.({ eventType: 'device-trust.changed' }))
+    await waitFor(() =>
+      expect(result.current.screen).toEqual({
+        kind: 'join_pending',
+        joinId: 'join-123',
+        status: 'processing',
+      })
+    )
+    expect(applyServerSetupState).not.toHaveBeenCalled()
   })
 
   it('uses the matching durable admission result after a device-trust update', async () => {

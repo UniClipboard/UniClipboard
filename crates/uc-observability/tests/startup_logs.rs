@@ -236,3 +236,134 @@ fn offline_export_fails_when_every_log_is_outside_the_window() {
     assert!(result.is_err());
     assert_eq!(fs::read_to_string(output).unwrap(), "existing");
 }
+
+/// Keeps a log unreadable to the exporter for as long as the guard lives.
+struct UnreadableLog {
+    #[cfg(windows)]
+    _exclusive: fs::File,
+}
+
+/// Write an earlier-run log whose name and modification time both fall
+/// before `2026-09-02`, then make it unreadable.
+#[allow(clippy::unwrap_used)]
+fn unreadable_log(path: &std::path::Path, content: &str) -> UnreadableLog {
+    fs::write(path, content).unwrap();
+    let earlier = std::time::SystemTime::from(Utc.with_ymd_and_hms(2026, 9, 1, 0, 0, 0).unwrap());
+    fs::File::options()
+        .write(true)
+        .open(path)
+        .unwrap()
+        .set_modified(earlier)
+        .unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(path, fs::Permissions::from_mode(0o000)).unwrap();
+        UnreadableLog {}
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        let exclusive = fs::File::options()
+            .read(true)
+            .share_mode(0)
+            .open(path)
+            .unwrap();
+        UnreadableLog {
+            _exclusive: exclusive,
+        }
+    }
+}
+
+#[allow(clippy::unwrap_used)]
+fn since_2026_09_02() -> Option<chrono::DateTime<Utc>> {
+    Some(Utc.with_ymd_and_hms(2026, 9, 2, 0, 0, 0).unwrap())
+}
+
+#[cfg(any(unix, windows))]
+#[test]
+fn offline_export_fails_when_unreadable_logs_are_outside_the_window() {
+    let root = tempfile::tempdir().unwrap();
+    let logs = root.path().join("logs");
+    fs::create_dir(&logs).unwrap();
+    let _unreadable = unreadable_log(
+        &logs.join("uniclipboard-daemon.json.2026-09-01"),
+        "earlier failure\n",
+    );
+    let output = root.path().join("support.zip");
+    fs::write(&output, "existing").unwrap();
+
+    let result = export_diagnostic_logs(
+        &logs,
+        &output,
+        DiagnosticArchiveRequest {
+            mode: DiagnosticArchiveMode::Offline,
+            since: since_2026_09_02(),
+            engine_preparation: None,
+            startup_status: None,
+        },
+    );
+
+    assert!(result.is_err());
+    assert_eq!(fs::read_to_string(output).unwrap(), "existing");
+}
+
+#[cfg(any(unix, windows))]
+#[test]
+fn online_export_does_not_report_unreadable_logs_outside_the_window() {
+    let root = tempfile::tempdir().unwrap();
+    let logs = root.path().join("logs");
+    fs::create_dir(&logs).unwrap();
+    let _unreadable = unreadable_log(
+        &logs.join("uniclipboard-daemon.json.2026-09-01"),
+        "earlier failure\n",
+    );
+    fs::write(logs.join("engine.2026-09-11.jsonl"), "{}\n").unwrap();
+    let output = root.path().join("support.zip");
+
+    let report = export_diagnostic_logs(
+        &logs,
+        &output,
+        DiagnosticArchiveRequest {
+            mode: DiagnosticArchiveMode::Online,
+            since: since_2026_09_02(),
+            engine_preparation: None,
+            startup_status: None,
+        },
+    )
+    .unwrap();
+
+    assert_eq!(report.included_files, ["engine.2026-09-11.jsonl"]);
+    assert!(report.unreadable_files.is_empty());
+}
+
+#[cfg(any(unix, windows))]
+#[test]
+fn offline_export_keeps_startup_status_when_every_log_in_the_window_is_unreadable() {
+    let root = tempfile::tempdir().unwrap();
+    let logs = root.path().join("logs");
+    fs::create_dir(&logs).unwrap();
+    let _unreadable = unreadable_log(
+        &logs.join("uniclipboard-daemon.json.2026-09-01"),
+        "startup failure\n",
+    );
+    let output = root.path().join("support.zip");
+    let startup_status = serde_json::json!({ "service_failed": true });
+
+    export_startup_logs_with_status(&logs, &output, Some(startup_status.clone())).unwrap();
+
+    let mut archive = zip::ZipArchive::new(fs::File::open(output).unwrap()).unwrap();
+    assert_eq!(archive.len(), 1);
+    let mut manifest = String::new();
+    archive
+        .by_name("manifest.json")
+        .unwrap()
+        .read_to_string(&mut manifest)
+        .unwrap();
+    let manifest: serde_json::Value = serde_json::from_str(&manifest).unwrap();
+    assert_eq!(manifest["startupStatus"], startup_status);
+    assert_eq!(
+        manifest["collection"]["unreadableFiles"][0],
+        "uniclipboard-daemon.json.2026-09-01"
+    );
+}

@@ -86,8 +86,9 @@ pub fn export_diagnostic_logs(
         concurrent_writes_possible: true,
     };
 
-    let mut outside_window = 0;
-    let candidate_count = candidates.len();
+    // Files that belong to the requested window, whether or not they could be
+    // read. An offline export with none of them has nothing to report.
+    let mut in_window = 0;
     {
         let mut archive = zip::ZipWriter::new(temporary.as_file_mut());
         for candidate in candidates {
@@ -98,13 +99,27 @@ pub fn export_diagnostic_logs(
             let Ok((input, metadata)) = File::open(&candidate.path)
                 .and_then(|input| input.metadata().map(|metadata| (input, metadata)))
             else {
-                report.unreadable_files.push(candidate.name);
+                // Without a handle, fall back to the listed metadata so an
+                // unreadable file outside the window stays out of the report.
+                match &candidate.listed {
+                    Some(listed)
+                        if !within_window(
+                            candidate.date,
+                            listed.modified().ok(),
+                            request.since,
+                        ) => {}
+                    Some(_) => {
+                        in_window += 1;
+                        report.unreadable_files.push(candidate.name);
+                    }
+                    None => report.unreadable_files.push(candidate.name),
+                }
                 continue;
             };
             if !within_window(candidate.date, metadata.modified().ok(), request.since) {
-                outside_window += 1;
                 continue;
             }
+            in_window += 1;
             // Copy the length observed at open time rather than reading to
             // EOF, so an export converges while writers keep appending; later
             // records are covered by `concurrent_writes_possible`.
@@ -132,9 +147,9 @@ pub fn export_diagnostic_logs(
     }
 
     // The window is checked against the opened handle, so an offline export
-    // whose every file falls outside it is only known here. Dropping the
-    // temporary archive leaves any existing destination untouched.
-    if outside_window == candidate_count && matches!(request.mode, DiagnosticArchiveMode::Offline) {
+    // with no file inside it is only known here. Dropping the temporary
+    // archive leaves any existing destination untouched.
+    if in_window == 0 && matches!(request.mode, DiagnosticArchiveMode::Offline) {
         bail!("No application logs are available to export");
     }
 
@@ -147,6 +162,8 @@ struct LogCandidate {
     path: PathBuf,
     name: String,
     date: NaiveDate,
+    /// Directory-entry metadata; only used when the file cannot be opened.
+    listed: Option<fs::Metadata>,
 }
 
 fn collect_log_files(logs_dir: &Path) -> Result<(Vec<LogCandidate>, Vec<String>)> {
@@ -178,6 +195,7 @@ fn collect_log_files(logs_dir: &Path) -> Result<(Vec<LogCandidate>, Vec<String>)
             path: entry.path(),
             name,
             date,
+            listed: entry.metadata().ok(),
         });
     }
     Ok((files, unreadable))

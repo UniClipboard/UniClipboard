@@ -22,6 +22,7 @@
     "tauri": "tauri",
     "daemon:dev": "node scripts/prepare-daemon-sidecar.mjs --debug",
     "daemon:sidecar": "node scripts/prepare-daemon-sidecar.mjs",
+    "mbx:exec": "bash scripts/build-cache/mbx.sh --exec",
     "tauri:dev": "cross-env UNICLIPBOARD_ENV=development UC_PROFILE=dev tauri dev",
     "tauri:dev:profile": "node scripts/tauri-dev-profile.mjs",
     "tauri:build": "bun run daemon:sidecar && tauri build",

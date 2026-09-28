@@ -208,3 +208,31 @@ fn offline_export_embeds_terminal_startup_status() {
     assert_eq!(manifest["mode"], "offline");
     assert_eq!(manifest["startupStatus"], startup_status);
 }
+
+#[test]
+fn offline_export_fails_when_every_log_is_outside_the_window() {
+    let root = tempfile::tempdir().unwrap();
+    let logs = root.path().join("logs");
+    fs::create_dir(&logs).unwrap();
+    fs::write(
+        logs.join("uniclipboard-daemon.json.2026-09-09"),
+        "old failure\n",
+    )
+    .unwrap();
+    let output = root.path().join("support.zip");
+    fs::write(&output, "existing").unwrap();
+
+    let result = export_diagnostic_logs(
+        &logs,
+        &output,
+        DiagnosticArchiveRequest {
+            mode: DiagnosticArchiveMode::Offline,
+            since: Some(Utc::now() + chrono::Duration::days(1)),
+            engine_preparation: None,
+            startup_status: None,
+        },
+    );
+
+    assert!(result.is_err());
+    assert_eq!(fs::read_to_string(output).unwrap(), "existing");
+}

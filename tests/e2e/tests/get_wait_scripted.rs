@@ -18,6 +18,7 @@ use axum::{Json, Router};
 use futures_util::StreamExt;
 use serde_json::{json, Value};
 use tokio::net::TcpListener;
+use uc_daemon_contract::api::types::HealthResponse;
 use uc_daemon_contract::DAEMON_API_REVISION;
 use uc_e2e_tests::{TestCli, TestDaemon, TestProfile};
 
@@ -50,6 +51,8 @@ fn script_command(transcript: &std::path::Path, binary: &std::path::Path, args: 
 
 #[derive(Clone)]
 struct ScriptedState {
+    /// Reported by `/health`; must equal the CLI under test or it refuses the daemon.
+    package_version: Arc<str>,
     scripts: Arc<Vec<Vec<Value>>>,
     next_script: Arc<AtomicUsize>,
     entries: Arc<Mutex<HashMap<String, ScriptedEntry>>>,
@@ -88,9 +91,13 @@ impl ScriptedDaemon {
         )
         .expect("decode backing daemon connection");
         let backing_pid = backing_connection["pid"].as_u64().expect("backing daemon pid");
+        // `init` already passed the CLI's version check against this real daemon,
+        // so its reported version is the one the CLI under test expects.
+        let package_version = backing_package_version(&daemon).await;
         let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind scripted daemon");
         let port = listener.local_addr().expect("scripted address").port();
         let state = ScriptedState {
+            package_version: package_version.into(),
             scripts: Arc::new(scripts),
             next_script: Arc::new(AtomicUsize::new(0)),
             entries: Arc::new(Mutex::new(
@@ -147,10 +154,24 @@ impl Drop for ScriptedDaemon {
     }
 }
 
-async fn health() -> Json<Value> {
+async fn backing_package_version(daemon: &TestDaemon) -> String {
+    let body: Value = reqwest::get(format!("{}/health", daemon.base_url()))
+        .await
+        .expect("request backing daemon health")
+        .error_for_status()
+        .expect("backing daemon health status")
+        .json()
+        .await
+        .expect("decode backing daemon health");
+    let health: HealthResponse =
+        serde_json::from_value(body["data"].clone()).expect("backing daemon health payload");
+    health.package_version
+}
+
+async fn health(State(state): State<ScriptedState>) -> Json<Value> {
     Json(envelope(json!({
         "status": "ok",
-        "packageVersion": "1.0.0-alpha.17",
+        "packageVersion": &*state.package_version,
         "apiRevision": DAEMON_API_REVISION,
         "residency": "standalone"
     })))

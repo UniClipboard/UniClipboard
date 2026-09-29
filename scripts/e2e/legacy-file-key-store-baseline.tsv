@@ -1,7 +1,17 @@
 # Expected outcome of tests/e2e/tests/legacy_file_key_store.rs when only the
-# production code is reverted to the base commit. "defect" rows reproduce the
-# reported failure; "observable" rows fail only because the base has no
-# selection log or source record; "protection" rows already pass on the base.
+# production code (crates and apps) is reverted to one specific commit:
+# 687ce81da8a7e4150523fdd3901b7691b7236633, the base of #1753 and therefore the
+# last state of main before the Linux file key store fix (777199bce) landed.
+# "defect" rows reproduce the reported failure; "observable" rows fail only
+# because that commit has no selection log or source record; "protection" rows
+# already pass there.
+#
+# This table describes that one historical commit, not "the pull request base".
+# Only the manual baseline variant of .github/workflows/legacy-file-key-store-e2e.yml
+# consumes it (workflow_dispatch, variant=baseline). Ordinary pull requests run
+# the fix variant, where every case must pass; do not point a pull request at
+# this table and do not rewrite these rows to passed, which would delete the
+# evidence that issue #1751 was real.
 legacy_file_key_store_starts_without_a_secret_service	failed	defect: startup fails although the file KEK is intact (issue 1751)
 legacy_file_key_store_stays_authoritative_when_a_secret_service_appears	failed	defect: the first start without a secret service fails
 an_empty_secret_service_without_a_record_keeps_the_file_key_store	failed	defect: the base selects the empty secret service and asks for the passphrase

@@ -1,14 +1,31 @@
 name: 'Legacy File Key Store E2E'
-run-name: 'legacy-file-key-store-e2e-${{ github.event_name }}-${{ github.run_number }}'
+run-name: "legacy-file-key-store-e2e-${{ github.event_name }}-${{ (github.event_name == 'workflow_dispatch' && inputs.variant) || 'fix' }}-${{ github.run_number }}"
 
 # Linux profiles whose KEK lives in the pre-1.0 file key store (issue #1751).
 # Runs scripts/e2e/linux-legacy-file-key-store.sh against the tracked v0.19.3
 # synthetic fixture with private session buses and an isolated gnome-keyring;
 # no repository secrets are used and no host keyring is touched.
 #
-# - baseline: production code reverted to the base commit, test harness kept;
-#   every case must match scripts/e2e/legacy-file-key-store-baseline.tsv.
-# - fix: the pull request as-is; every case must pass.
+# Two variants, deliberately on different triggers:
+#
+# - fix (pull_request and workflow_dispatch): the ref as-is. This is the
+#   ordinary regression guard; every case must pass.
+# - baseline (workflow_dispatch only): production code reverted to the pinned
+#   commit from before the fix landed, test harness kept from this ref. It
+#   proves the defect was real and must match
+#   scripts/e2e/legacy-file-key-store-baseline.tsv exactly.
+#
+# The baseline is pinned to an immutable commit on purpose. It used to revert to
+# github.event.pull_request.base.sha, which stopped describing the pre-fix state
+# as soon as #1753 merged into main: from then on the baseline rebuilt the fixed
+# code and every expected failure turned into an unexpected pass on every
+# pull request that touched the paths below.
+#
+# The pinned baseline keeps the current workspace manifests, lockfiles and test
+# harness, so it also checks that the historical proof still reproduces with
+# today's dependencies. If the reverted crates ever stop compiling against them,
+# the run fails loudly (build failure, or "error (harness did not compile)" for
+# every case) instead of silently reporting expected failures.
 on:
   pull_request:
     branches: [main]
@@ -24,20 +41,30 @@ on:
       - 'scripts/e2e/legacy-file-key-store-baseline.tsv'
       - '.github/workflows/legacy-file-key-store-e2e.yml'
   workflow_dispatch:
+    inputs:
+      variant:
+        description: 'fix = regression on this ref; baseline = historical RED proof against the pinned pre-fix commit'
+        type: choice
+        default: fix
+        options:
+          - fix
+          - baseline
 
 permissions:
   contents: read
 
 jobs:
   e2e:
-    name: 'Linux / ${{ matrix.variant }}'
+    name: "Linux / ${{ (github.event_name == 'workflow_dispatch' && inputs.variant) || 'fix' }}"
     # A non-root runner, so directory-permission cases are really exercised.
     runs-on: ubuntu-24.04
     timeout-minutes: 90
-    strategy:
-      fail-fast: false
-      matrix:
-        variant: [baseline, fix]
+    env:
+      # A pull request only ever runs the regression; the baseline is manual.
+      VARIANT: ${{ (github.event_name == 'workflow_dispatch' && inputs.variant) || 'fix' }}
+      # Base of #1753, i.e. the last commit before the Linux file key store fix
+      # (777199bce) landed on main. Immutable; never derive this from an event.
+      BASELINE_SHA: 687ce81da8a7e4150523fdd3901b7691b7236633
 
     steps:
       - uses: actions/checkout@v6
@@ -63,28 +90,30 @@ jobs:
           workspaces: |
             . -> target
             tests/e2e -> target
-          shared-key: legacy-file-key-store-e2e-${{ matrix.variant }}
+          shared-key: legacy-file-key-store-e2e-${{ env.VARIANT }}
           save-if: false
 
-      - name: Revert production code to the base commit
-        if: matrix.variant == 'baseline'
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      - name: Revert production code to the pinned pre-fix commit
+        if: env.VARIANT == 'baseline'
         run: |
-          base="${BASE_SHA:-$(git merge-base origin/main HEAD)}"
-          git checkout "$base" -- crates apps
-          echo "UC_E2E_SOURCE_NOTE=baseline: crates and apps from $base, harness from $(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          set -euo pipefail
+          if ! git cat-file -e "$BASELINE_SHA^{commit}" 2>/dev/null; then
+            echo "the pinned baseline commit $BASELINE_SHA is not in this checkout" >&2
+            exit 1
+          fi
+          git checkout "$BASELINE_SHA" -- crates apps
+          echo "UC_E2E_SOURCE_NOTE=baseline: crates and apps from the pinned pre-fix commit $BASELINE_SHA (base of #1753), harness from $(git rev-parse HEAD)" >> "$GITHUB_ENV"
           echo "UC_E2E_EXPECTED_RESULTS=$GITHUB_WORKSPACE/scripts/e2e/legacy-file-key-store-baseline.tsv" >> "$GITHUB_ENV"
           git status --short
 
       - name: Record fix provenance
-        if: matrix.variant == 'fix'
+        if: env.VARIANT == 'fix'
         run: |
           echo "UC_E2E_SOURCE_NOTE=fix: $(git rev-parse HEAD)" >> "$GITHUB_ENV"
 
       - name: Run legacy file key store E2E
         env:
-          ARTIFACTS_DIR: ${{ runner.temp }}/legacy-file-key-store-${{ matrix.variant }}
+          ARTIFACTS_DIR: ${{ runner.temp }}/legacy-file-key-store-${{ env.VARIANT }}
           UC_E2E_REQUIRE_SECRET_SERVICE: '1'
         run: bash scripts/e2e/linux-legacy-file-key-store.sh
 
@@ -92,7 +121,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: legacy-file-key-store-e2e-${{ matrix.variant }}
-          path: ${{ runner.temp }}/legacy-file-key-store-${{ matrix.variant }}
+          name: legacy-file-key-store-e2e-${{ env.VARIANT }}
+          path: ${{ runner.temp }}/legacy-file-key-store-${{ env.VARIANT }}
           if-no-files-found: warn
           retention-days: 14

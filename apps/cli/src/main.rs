@@ -237,6 +237,22 @@ enum Commands {
         /// for multiple peers (e.g. `--peer dev-a --peer dev-b`).
         #[arg(long = "peer", value_name = "DEVICE-ID")]
         peers: Vec<String>,
+        /// Total seconds to wait BEFORE dispatch, as one deadline shared by
+        /// three stages: the local daemon becoming ready (started on demand),
+        /// then the target devices connecting.
+        ///
+        /// With `--peer`, every listed device must be connected. Without it,
+        /// one connected paired device is enough (later devices are not
+        /// awaited). If the deadline passes, nothing is sent: exit 5 when the
+        /// daemon was not ready, exit 1 when a device was not connected.
+        /// Once dispatched, a send is never retried.
+        ///
+        /// `0` is a special value, not "no wait": it restores the pre-deadline
+        /// behavior: the daemon start wait keeps its built-in 45 s budget and
+        /// target devices are NOT waited for, so an offline target is reported
+        /// in the send outcome. `--resend` only waits for the daemon.
+        #[arg(long = "connect-timeout", value_name = "SECONDS", default_value_t = 15)]
+        connect_timeout: u64,
     },
     /// Watch inbound clipboard payloads from paired peers and print each
     /// delivery as it lands. Press Ctrl-C to stop.
@@ -732,6 +748,7 @@ fn main() -> anyhow::Result<()> {
                 file,
                 resend,
                 peers,
+                connect_timeout,
             } => {
                 commands::send::run(
                     commands::send::SendArgs {
@@ -740,6 +757,8 @@ fn main() -> anyhow::Result<()> {
                         file,
                         resend,
                         peers,
+                        connect_timeout: (connect_timeout > 0)
+                            .then(|| std::time::Duration::from_secs(connect_timeout)),
                     },
                     cli.json,
                     cli.verbose,

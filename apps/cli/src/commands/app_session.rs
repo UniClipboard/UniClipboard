@@ -4,7 +4,7 @@
 //! daemon) or delegate to a running daemon via `DaemonService`.
 
 use crate::exit_codes;
-use crate::local_daemon::{probe_running, probe_running_for_reuse};
+use crate::local_daemon::{probe_running, probe_running_for_reuse, probe_running_for_reuse_within};
 use crate::ui;
 
 use uc_daemon_client::{
@@ -121,14 +121,55 @@ pub async fn build_app_session(verbose: bool) -> Result<CliAppSession, i32> {
 /// * Incompatible              → clear error (no silent attach).
 /// * Absent                    → setup gate, then spawn a Oneshot daemon.
 pub async fn connect_or_spawn_oneshot_daemon(verbose: bool) -> Result<Box<dyn DaemonService>, i32> {
+    connect_or_spawn_oneshot_daemon_until(verbose, None).await
+}
+
+/// [`connect_or_spawn_oneshot_daemon`] bounded by one absolute `deadline`
+/// shared by the incumbent-readiness wait and the spawned-daemon health wait,
+/// so the total wait cannot exceed the caller's budget. A missed deadline
+/// exits with [`exit_codes::EXIT_DAEMON_UNREACHABLE`] and names the stage.
+/// `None` keeps the default startup budget and exit codes.
+pub async fn connect_or_spawn_oneshot_daemon_until(
+    verbose: bool,
+    deadline: Option<tokio::time::Instant>,
+) -> Result<Box<dyn DaemonService>, i32> {
     let _ = verbose; // reserved; the daemon path builds no in-process session.
-    match probe_running_for_reuse().await {
+    let remaining = |default: std::time::Duration| match deadline {
+        Some(deadline) => deadline.saturating_duration_since(tokio::time::Instant::now()),
+        None => default,
+    };
+    let report_timeout = |error: &crate::local_daemon::LocalDaemonError| -> i32 {
+        ui::error(&error.to_string());
+        if deadline.is_some()
+            && matches!(
+                error,
+                crate::local_daemon::LocalDaemonError::StartupTimeout { .. }
+            )
+        {
+            ui::warn(
+                "The daemon may still be starting. Retry, raise --connect-timeout, \
+                 or run `uniclip start` first.",
+            );
+            exit_codes::EXIT_DAEMON_UNREACHABLE
+        } else {
+            exit_codes::EXIT_ERROR
+        }
+    };
+    let probe = probe_running_for_reuse_within(remaining(
+        uc_daemon_process::timing::DAEMON_STARTUP_TIMEOUT,
+    ))
+    .await;
+    match probe {
         Ok(ProbeOutcome::Compatible(_)) => build_daemon_client_service(true),
         Ok(outcome @ ProbeOutcome::Incompatible { .. }) => {
             ui::error(&crate::local_daemon::incompatible_outcome_error(outcome).to_string());
             Err(exit_codes::EXIT_DAEMON_UNREACHABLE)
         }
-        Ok(ProbeOutcome::Absent) => match crate::local_daemon::spawn_oneshot_and_wait().await {
+        Ok(ProbeOutcome::Absent) => match crate::local_daemon::spawn_oneshot_and_wait_within(
+            remaining(uc_daemon_process::timing::DAEMON_STARTUP_TIMEOUT),
+        )
+        .await
+        {
             Ok(_session) => {
                 let context = DaemonClientContext::from_env().map_err(|error| {
                     ui::error(&format!("Failed to connect to daemon: {error}"));
@@ -155,13 +196,15 @@ pub async fn connect_or_spawn_oneshot_daemon(verbose: bool) -> Result<Box<dyn Da
                     }
                 }
             }
-            Err(err) => {
-                ui::error(&err.to_string());
-                Err(exit_codes::EXIT_ERROR)
-            }
+            Err(err) => Err(report_timeout(&err)),
         },
         // No in-process fallback in P5-1a. connect/timeout already map to
         // Absent upstream, so a probe Err is a genuine failure → hard error.
+        Err(err @ crate::local_daemon::LocalDaemonError::StartupTimeout { .. })
+            if deadline.is_some() =>
+        {
+            Err(report_timeout(&err))
+        }
         Err(err) => {
             ui::error(&format!("Failed to probe local daemon: {err}"));
             Err(exit_codes::EXIT_DAEMON_UNREACHABLE)

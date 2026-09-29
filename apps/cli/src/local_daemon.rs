@@ -205,17 +205,19 @@ pub async fn probe_running() -> Result<ProbeOutcome, LocalDaemonError> {
 /// same-version daemon. The latter can win single-instance arbitration and
 /// terminate the healthy incumbent that the command was supposed to reuse.
 pub async fn probe_running_for_reuse() -> Result<ProbeOutcome, LocalDaemonError> {
+    probe_running_for_reuse_within(STARTUP_TIMEOUT).await
+}
+
+/// [`probe_running_for_reuse`] with a caller-supplied wait budget for a live
+/// but not-yet-healthy incumbent.
+pub async fn probe_running_for_reuse_within(
+    timeout: Duration,
+) -> Result<ProbeOutcome, LocalDaemonError> {
     let client = uc_daemon_client::build_local_http_client_with_timeout(PROBE_TIMEOUT)
         .map_err(|error| LocalDaemonError::ProbeClient(error.into()))?;
     let mut probe = || probe_daemon_health(&client);
     let mut incumbent_is_live = daemon_conn_points_to_live_process;
-    probe_for_reuse_with(
-        &mut probe,
-        &mut incumbent_is_live,
-        STARTUP_TIMEOUT,
-        POLL_INTERVAL,
-    )
-    .await
+    probe_for_reuse_with(&mut probe, &mut incumbent_is_live, timeout, POLL_INTERVAL).await
 }
 
 async fn probe_for_reuse_with<Probe, ProbeFuture, Incumbent>(
@@ -296,7 +298,7 @@ pub async fn ensure_local_daemon_running() -> Result<LocalDaemonSession, LocalDa
 
     let client = uc_daemon_client::build_local_http_client_with_timeout(PROBE_TIMEOUT)
         .map_err(|error| LocalDaemonError::ProbeClient(error.into()))?;
-    spawn_and_wait_healthy(&client).await
+    spawn_and_wait_healthy(&client, STARTUP_TIMEOUT).await
 }
 
 /// The action [`ensure_or_promote_local_daemon`] takes for a probed daemon
@@ -356,7 +358,7 @@ pub async fn ensure_or_promote_local_daemon(
         ProbeAction::Spawn => {
             let client = uc_daemon_client::build_local_http_client_with_timeout(PROBE_TIMEOUT)
                 .map_err(|error| LocalDaemonError::ProbeClient(error.into()))?;
-            spawn_and_wait_healthy(&client).await
+            spawn_and_wait_healthy(&client, STARTUP_TIMEOUT).await
         }
         ProbeAction::Incompatible => match outcome {
             ProbeOutcome::Incompatible {
@@ -378,13 +380,21 @@ pub async fn ensure_or_promote_local_daemon(
 /// classified the daemon as Absent) and does NOT touch the start-only
 /// promote path.
 pub async fn spawn_oneshot_and_wait() -> Result<LocalDaemonSession, LocalDaemonError> {
+    spawn_oneshot_and_wait_within(STARTUP_TIMEOUT).await
+}
+
+/// [`spawn_oneshot_and_wait`] with a caller-supplied health-wait budget. The
+/// spawned daemon keeps starting after the budget expires; only the wait ends.
+pub async fn spawn_oneshot_and_wait_within(
+    timeout: Duration,
+) -> Result<LocalDaemonSession, LocalDaemonError> {
     let client = uc_daemon_client::build_local_http_client_with_timeout(PROBE_TIMEOUT)
         .map_err(|error| LocalDaemonError::ProbeClient(error.into()))?;
     std::env::set_var(
         uc_daemon_process::spawn_contract::RUN_MODE_ENV,
         uc_daemon_process::spawn_contract::RUN_MODE_ONESHOT,
     );
-    spawn_and_wait_healthy(&client).await
+    spawn_and_wait_healthy(&client, timeout).await
 }
 
 /// Promote a transient `Oneshot` daemon to a persistent `target` residency via a
@@ -476,7 +486,10 @@ async fn promote_oneshot_daemon(
 /// [`ensure_or_promote_local_daemon`]: spawn a detached daemon and wait for it to
 /// become healthy. Returns `spawned:true`. Show a spinner so the user sees
 /// progress — daemon cold start can take many seconds in debug builds.
-async fn spawn_and_wait_healthy(client: &Client) -> Result<LocalDaemonSession, LocalDaemonError> {
+async fn spawn_and_wait_healthy(
+    client: &Client,
+    timeout: Duration,
+) -> Result<LocalDaemonSession, LocalDaemonError> {
     let spinner = crate::ui::spinner("Starting local daemon…");
 
     if let Err(error) =
@@ -490,7 +503,7 @@ async fn spawn_and_wait_healthy(client: &Client) -> Result<LocalDaemonSession, L
     // handle. The probe loop below is the only proof of life.
 
     let mut probe = || probe_daemon_health(client);
-    match wait_for_daemon_health(&mut probe, STARTUP_TIMEOUT, POLL_INTERVAL, None).await {
+    match wait_for_daemon_health(&mut probe, timeout, POLL_INTERVAL, None).await {
         Ok(()) => {
             crate::ui::spinner_finish_success(&spinner, "Local daemon ready");
             Ok(LocalDaemonSession {

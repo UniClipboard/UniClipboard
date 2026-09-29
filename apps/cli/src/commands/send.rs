@@ -1,20 +1,27 @@
 //! `uniclip send` — text, file, and resend dispatch through the daemon.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::io::{IsTerminal, Read};
 use std::path::PathBuf;
+use std::time::Duration;
 
+use indicatif::ProgressBar;
 use serde::Serialize;
+use tokio::sync::mpsc;
 
-use uc_daemon_client::DaemonService;
+use uc_daemon_client::realtime::FileTransferProgressEvent;
+use uc_daemon_client::{
+    ControlLeaseGuard, DaemonClientContext, DaemonService, InboundActivityEvent,
+};
 use uc_daemon_contract::api::dto::clipboard_command::{
     DispatchOutcomeResponse, PerTargetOutcomeDto,
 };
 use uc_daemon_contract::api::dto::clipboard_delivery::{
     EntryDeliveryStatusDto, EntryDeliveryTargetDto, EntryDeliveryViewDto,
 };
+use uc_daemon_contract::api::types::{FileTransferDirection, PeerSnapshotDto};
 
-use crate::commands::app_session::connect_or_spawn_oneshot_daemon;
+use crate::commands::app_session::connect_or_spawn_oneshot_daemon_until;
 use crate::exit_codes;
 use crate::ui;
 
@@ -35,7 +42,14 @@ pub struct SendArgs {
     /// Optional list of target device IDs. Empty vec means "no filter"
     /// (full fan-out for new entry; derived diff for resend).
     pub peers: Vec<String>,
+    /// Total wait budget for daemon readiness and target-device connection
+    /// before dispatch. `None` keeps the legacy behavior: default daemon
+    /// startup budget and no wait for target devices.
+    pub connect_timeout: Option<Duration>,
 }
+
+/// Poll interval while waiting for target devices to connect.
+const TARGET_POLL_INTERVAL: Duration = Duration::from_millis(500);
 
 pub async fn run(args: SendArgs, json: bool, verbose: bool) -> i32 {
     let mode = if args.resend.is_some() {
@@ -92,8 +106,31 @@ pub async fn run(args: SendArgs, json: bool, verbose: bool) -> i32 {
         Some(args.peers.clone())
     };
 
-    let service = match connect_or_spawn_oneshot_daemon(verbose).await {
-        Ok(s) => s,
+    // One absolute deadline bounds daemon readiness and target connection so
+    // no stage can restart the clock. Dispatch happens at most once, after
+    // this phase, so a wait can never duplicate a send.
+    let deadline = args
+        .connect_timeout
+        .map(|timeout| tokio::time::Instant::now() + timeout);
+    let wait_for_targets = deadline.is_some() && matches!(mode, SendMode::New);
+    let prepared = tokio::select! {
+        biased;
+        _ = tokio::signal::ctrl_c() => {
+            ui::warn("Cancelled before dispatch; nothing was sent.");
+            return exit_codes::EXIT_ERROR;
+        }
+        prepared = prepare_dispatch(
+            verbose,
+            deadline,
+            wait_for_targets.then_some(args.peers.as_slice()),
+            args.connect_timeout.unwrap_or_default(),
+        ) => prepared,
+    };
+    // Hold the control-WS lease to the end of the command (bind to a named
+    // var, NOT `_`) so a transient Oneshot daemon does not self-terminate
+    // mid-fan-out (ADR-008 P5-1a).
+    let (service, _lease) = match prepared {
+        Ok(prepared) => prepared,
         Err(code) => return code,
     };
     match input {
@@ -112,6 +149,125 @@ pub async fn run(args: SendArgs, json: bool, verbose: bool) -> i32 {
             unreachable!("stdin is resolved before daemon connection")
         }
         None => run_send_via_daemon(&*service, mode, None, args.resend, peers_str, json).await,
+    }
+}
+
+/// Connect to the daemon (spawning a transient one when absent), take the
+/// control lease, then optionally wait for the send targets to connect.
+async fn prepare_dispatch(
+    verbose: bool,
+    deadline: Option<tokio::time::Instant>,
+    wait_for_peers: Option<&[String]>,
+    budget: Duration,
+) -> Result<(Box<dyn DaemonService>, ControlLeaseGuard), i32> {
+    let service = connect_or_spawn_oneshot_daemon_until(verbose, deadline).await?;
+    let lease = service.hold_control_lease().await.map_err(|error| {
+        ui::error(&format!("Failed to hold daemon session lease: {error}"));
+        exit_codes::EXIT_ERROR
+    })?;
+    if let (Some(requested), Some(deadline)) = (wait_for_peers, deadline) {
+        wait_for_targets(requested, deadline, budget).await?;
+    }
+    Ok((service, lease))
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum TargetReadiness {
+    /// Enough targets are connected to dispatch.
+    Ready,
+    /// No target is known, so waiting cannot help; dispatch reports it.
+    NothingToWaitFor,
+    /// Still waiting; carries a human-readable reason.
+    Waiting(String),
+}
+
+/// Decide whether the send targets are connected, using only the daemon's
+/// reported `connected` state. With `--peer`, every listed device must be
+/// connected. Without it, one connected paired device is enough.
+fn target_readiness(peers: &[PeerSnapshotDto], requested: &[String]) -> TargetReadiness {
+    if requested.is_empty() {
+        let paired: Vec<&PeerSnapshotDto> = peers.iter().filter(|peer| peer.is_paired).collect();
+        if paired.is_empty() {
+            return TargetReadiness::NothingToWaitFor;
+        }
+        if paired.iter().any(|peer| peer.connected) {
+            return TargetReadiness::Ready;
+        }
+        return TargetReadiness::Waiting(format!(
+            "none of {} paired device(s) is connected",
+            paired.len()
+        ));
+    }
+    let pending: Vec<String> = requested
+        .iter()
+        .filter_map(|id| match peers.iter().find(|peer| peer.peer_id == *id) {
+            Some(peer) if peer.connected => None,
+            Some(_) => Some(format!("{id} (offline)")),
+            None => Some(format!("{id} (unknown device)")),
+        })
+        .collect();
+    if pending.is_empty() {
+        TargetReadiness::Ready
+    } else {
+        TargetReadiness::Waiting(pending.join(", "))
+    }
+}
+
+/// Wait until [`target_readiness`] is satisfied or `deadline` passes. Only
+/// read-only queries are repeated; nothing is dispatched here.
+async fn wait_for_targets(
+    requested: &[String],
+    deadline: tokio::time::Instant,
+    budget: Duration,
+) -> Result<(), i32> {
+    let context = DaemonClientContext::from_env().map_err(|error| {
+        ui::error(&format!("Failed to connect to daemon: {error}"));
+        exit_codes::EXIT_ERROR
+    })?;
+    let query = context.query_client();
+    let mut spinner: Option<ProgressBar> = None;
+    loop {
+        let waiting = match query.get_peers().await {
+            Ok(peers) => match target_readiness(&peers, requested) {
+                TargetReadiness::Ready | TargetReadiness::NothingToWaitFor => {
+                    if let Some(spinner) = spinner {
+                        spinner.finish_and_clear();
+                    }
+                    return Ok(());
+                }
+                TargetReadiness::Waiting(reason) => reason,
+            },
+            // The peer list is only an optimization for waiting. If it cannot
+            // be read (no space yet, locked session, daemon error), stop
+            // waiting and let dispatch report the authoritative error.
+            Err(error) => {
+                tracing::debug!(%error, "peer list unavailable; skipping target wait");
+                if let Some(spinner) = spinner {
+                    spinner.finish_and_clear();
+                }
+                return Ok(());
+            }
+        };
+        if spinner.is_none() {
+            spinner = Some(ui::spinner("Waiting for target device(s) to connect..."));
+        }
+        if tokio::time::Instant::now() >= deadline {
+            if let Some(spinner) = spinner {
+                spinner.finish_and_clear();
+            }
+            ui::error(&format!(
+                "Timed out after {}s waiting for target device(s) to connect: {waiting}. \
+                 Nothing was sent.",
+                budget.as_secs()
+            ));
+            ui::warn(
+                "Bring the device online, check `uniclip members`, or raise --connect-timeout.",
+            );
+            return Err(exit_codes::EXIT_ERROR);
+        }
+        let pause = TARGET_POLL_INTERVAL
+            .min(deadline.saturating_duration_since(tokio::time::Instant::now()));
+        tokio::time::sleep(pause).await;
     }
 }
 
@@ -238,19 +394,6 @@ async fn run_send_via_daemon(
     peers: Option<Vec<String>>,
     json: bool,
 ) -> i32 {
-    // ADR-008 P5-1a: hold a control-WS lease across the dispatch call so a
-    // transient Oneshot daemon does not self-terminate mid-fan-out. The HTTP
-    // dispatch blocks until the daemon's bounded fan-out deadline, so holding
-    // the lease to the end of this fn covers the in-flight send. Bind to a named
-    // var (NOT `_`) so it lives to scope end; `_` would drop it immediately.
-    let _lease = match service.hold_control_lease().await {
-        Ok(guard) => guard,
-        Err(err) => {
-            ui::error(&format!("Failed to hold daemon session lease: {err}"));
-            return exit_codes::EXIT_ERROR;
-        }
-    };
-
     match mode {
         SendMode::New => {
             let text = plaintext.expect("plaintext populated in new-entry mode");
@@ -487,11 +630,13 @@ async fn run_send_file_via_daemon(
         .and_then(|name| name.to_str())
         .unwrap_or("file")
         .to_string();
-    let _lease = match service.hold_control_lease().await {
-        Ok(lease) => lease,
+    // Subscribe before dispatch so no early progress is missed. Progress is
+    // optional: a failed subscription never blocks the send.
+    let mut activity = match service.subscribe_inbound_activity().await {
+        Ok(rx) => Some(rx),
         Err(error) => {
-            ui::error(&format!("Failed to hold daemon session lease: {error}"));
-            return FileSendRunResult::error();
+            tracing::debug!(%error, "file progress subscription unavailable");
+            None
         }
     };
     let spinner = ui::spinner("Dispatching file via daemon...");
@@ -527,7 +672,23 @@ async fn run_send_file_via_daemon(
     let delivery = if accepted_targets.is_empty() {
         None
     } else {
-        match wait_for_file_delivery(service, &outcome.entry_id, &accepted_targets).await {
+        let interactive = !json && std::io::stderr().is_terminal();
+        let mut progress = FileProgress::new(
+            interactive,
+            outcome.entry_id.clone(),
+            accepted_targets.len(),
+            &filename,
+        );
+        let waited = wait_for_file_delivery(
+            service,
+            &outcome.entry_id,
+            &accepted_targets,
+            activity.as_mut(),
+            &mut progress,
+        )
+        .await;
+        progress.finish();
+        match waited {
             Ok(view) => Some(view),
             Err(WaitError::Cancelled) => {
                 ui::warn("Cancelled while waiting; the daemon may continue active transfers.");
@@ -619,8 +780,17 @@ async fn wait_for_file_delivery(
     service: &dyn DaemonService,
     entry_id: &str,
     accepted_targets: &std::collections::HashSet<String>,
+    mut activity: Option<&mut mpsc::Receiver<InboundActivityEvent>>,
+    progress: &mut FileProgress,
 ) -> Result<EntryDeliveryViewDto, WaitError> {
     loop {
+        if let Some(activity) = activity.as_deref_mut() {
+            while let Ok(event) = activity.try_recv() {
+                if let InboundActivityEvent::Progress(event) = event {
+                    progress.observe(&event);
+                }
+            }
+        }
         let view = service
             .entry_delivery(entry_id)
             .await
@@ -628,9 +798,107 @@ async fn wait_for_file_delivery(
         if all_targets_terminal(&view, accepted_targets) {
             return Ok(view);
         }
+        progress.refresh();
         tokio::select! {
             _ = tokio::signal::ctrl_c() => return Err(WaitError::Cancelled),
             _ = tokio::time::sleep(std::time::Duration::from_millis(250)) => {}
+        }
+    }
+}
+
+/// Interactive byte progress for one outbound file.
+///
+/// Bytes come from the receiving peers' fetch-progress reports relayed by the
+/// Engine (`direction: sending`, keyed by the entry id); they measure what the
+/// peers have received, not local read or network-write progress. With several
+/// targets the bar sums bytes across targets and stays a spinner until every
+/// accepted target has reported a known total. Terminal outcomes always come
+/// from the delivery view, never from this display.
+struct FileProgress {
+    interactive: bool,
+    entry_id: String,
+    expected_targets: usize,
+    label: String,
+    reports: HashMap<String, (u64, Option<u64>)>,
+    bar: Option<ProgressBar>,
+    has_length: bool,
+}
+
+impl FileProgress {
+    fn new(interactive: bool, entry_id: String, expected_targets: usize, filename: &str) -> Self {
+        Self {
+            interactive,
+            entry_id,
+            expected_targets,
+            label: format!("Sending {filename}"),
+            reports: HashMap::new(),
+            bar: None,
+            has_length: false,
+        }
+    }
+
+    fn observe(&mut self, event: &FileTransferProgressEvent) {
+        if event.direction != FileTransferDirection::Sending
+            || event.entry_id.as_deref() != Some(self.entry_id.as_str())
+        {
+            return;
+        }
+        let entry = self
+            .reports
+            .entry(event.peer_id.clone())
+            .or_insert((0, None));
+        // Keep the display monotonic; reports are throttled and may reorder.
+        entry.0 = entry.0.max(event.bytes_transferred);
+        entry.1 = event.total_bytes.or(entry.1);
+    }
+
+    /// Aggregate `(received, total)` once every accepted target has a known
+    /// non-zero total; `None` while any part is unknown.
+    fn aggregate(&self) -> Option<(u64, u64)> {
+        if self.reports.len() < self.expected_targets {
+            return None;
+        }
+        let mut received = 0u64;
+        let mut total = 0u64;
+        for (bytes, target_total) in self.reports.values() {
+            let target_total = (*target_total)?;
+            received = received.saturating_add((*bytes).min(target_total));
+            total = total.saturating_add(target_total);
+        }
+        (total > 0).then_some((received, total))
+    }
+
+    fn refresh(&mut self) {
+        if !self.interactive {
+            return;
+        }
+        match self.aggregate() {
+            Some((received, total)) => {
+                if !self.has_length {
+                    if let Some(bar) = self.bar.take() {
+                        bar.finish_and_clear();
+                    }
+                    self.bar = Some(ui::byte_progress(total, &self.label));
+                    self.has_length = true;
+                }
+                if let Some(bar) = &self.bar {
+                    bar.set_length(total);
+                    bar.set_position(received);
+                }
+            }
+            None if self.bar.is_none() => {
+                self.bar = Some(ui::spinner(&format!(
+                    "{}: waiting for the receiving device...",
+                    self.label
+                )));
+            }
+            None => {}
+        }
+    }
+
+    fn finish(&mut self) {
+        if let Some(bar) = self.bar.take() {
+            bar.finish_and_clear();
         }
     }
 }
@@ -942,5 +1210,94 @@ mod tests {
         assert!(!all_targets_terminal(&view, &targets));
         view.deliveries[1].status = EntryDeliveryStatusDto::Delivered;
         assert!(all_targets_terminal(&view, &targets));
+    }
+
+    fn peer(id: &str, paired: bool, connected: bool) -> PeerSnapshotDto {
+        PeerSnapshotDto {
+            peer_id: id.to_string(),
+            device_name: None,
+            addresses: Vec::new(),
+            is_paired: paired,
+            connected,
+            pairing_state: "paired".to_string(),
+            channel: "unknown".to_string(),
+            connection_address: None,
+        }
+    }
+
+    #[test]
+    fn target_readiness_requires_every_listed_peer_to_be_connected() {
+        let peers = [peer("a", true, true), peer("b", true, false)];
+        assert_eq!(
+            target_readiness(&peers, &["a".into()]),
+            TargetReadiness::Ready
+        );
+        assert_eq!(
+            target_readiness(&peers, &["a".into(), "b".into(), "c".into()]),
+            TargetReadiness::Waiting("b (offline), c (unknown device)".into())
+        );
+    }
+
+    #[test]
+    fn target_readiness_without_peer_flag_needs_one_connected_paired_device() {
+        assert_eq!(
+            target_readiness(&[], &[]),
+            TargetReadiness::NothingToWaitFor
+        );
+        assert_eq!(
+            target_readiness(&[peer("x", false, true)], &[]),
+            TargetReadiness::NothingToWaitFor
+        );
+        assert!(matches!(
+            target_readiness(&[peer("a", true, false)], &[]),
+            TargetReadiness::Waiting(_)
+        ));
+        assert_eq!(
+            target_readiness(&[peer("a", true, false), peer("b", true, true)], &[]),
+            TargetReadiness::Ready
+        );
+    }
+
+    fn progress_event(
+        entry: &str,
+        peer: &str,
+        bytes: u64,
+        total: Option<u64>,
+    ) -> FileTransferProgressEvent {
+        FileTransferProgressEvent {
+            transfer_id: entry.to_string(),
+            entry_id: Some(entry.to_string()),
+            attempt_id: None,
+            peer_id: peer.to_string(),
+            direction: FileTransferDirection::Sending,
+            bytes_transferred: bytes,
+            total_bytes: total,
+        }
+    }
+
+    #[test]
+    fn file_progress_aggregates_only_when_every_target_reported_a_total() {
+        let mut progress = FileProgress::new(false, "e1".into(), 2, "f.bin");
+        assert_eq!(progress.aggregate(), None);
+        progress.observe(&progress_event("e1", "a", 50, Some(100)));
+        assert_eq!(progress.aggregate(), None, "second target has not reported");
+        progress.observe(&progress_event("e1", "b", 10, None));
+        assert_eq!(progress.aggregate(), None, "unknown total stays unknown");
+        progress.observe(&progress_event("e1", "b", 20, Some(100)));
+        assert_eq!(progress.aggregate(), Some((70, 200)));
+    }
+
+    #[test]
+    fn file_progress_ignores_other_entries_and_never_goes_backwards() {
+        let mut progress = FileProgress::new(false, "e1".into(), 1, "f.bin");
+        progress.observe(&progress_event("other", "a", 99, Some(100)));
+        assert_eq!(progress.aggregate(), None);
+        progress.observe(&progress_event("e1", "a", 60, Some(100)));
+        progress.observe(&progress_event("e1", "a", 30, Some(100)));
+        assert_eq!(progress.aggregate(), Some((60, 100)));
+        let mut receiving = progress_event("e1", "a", 100, Some(100));
+        receiving.direction = FileTransferDirection::Receiving;
+        progress.observe(&receiving);
+        assert_eq!(progress.aggregate(), Some((60, 100)));
     }
 }

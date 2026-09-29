@@ -286,10 +286,43 @@ async fn legacy_file_key_store_stays_authoritative_when_a_secret_service_appears
         "the legacy KEK must stay intact",
     );
     assert!(
+        daemon_log(&daemon.profile).contains("using the recorded secure storage source"),
+        "the restart must use the source recorded by the first run"
+    );
+    assert!(
+        source_record(&daemon.profile)
+            .is_some_and(|record| record.contains(r#""store":"legacy_file""#)),
+        "a secret service that appears later must not replace the recorded file key store"
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires Linux, built binaries and an isolated secret service"]
+async fn an_empty_secret_service_without_a_record_keeps_the_file_key_store() {
+    let profile = restored_profile("empty-service");
+    let kek = read_kek(&profile);
+
+    let daemon = TestDaemon::start_preserving_configured_with(
+        profile,
+        &NodeBinarySet::current(),
+        None,
+        session(bus("UC_E2E_PRESENT_SECRET_SERVICE_BUS")),
+    )
+    .await
+    .unwrap_or_else(|error| panic!("start with an empty secret service failed: {error}"));
+
+    assert_unlocked_history(&daemon).await;
+    assert_same_secret(
+        &read_kek(&daemon.profile),
+        &kek,
+        "the legacy KEK must stay intact",
+    );
+    assert!(
         daemon_log(&daemon.profile)
             .contains("system secure store holds none of the legacy file entries"),
         "an available but empty secret service must not replace the file key store"
     );
+    wait_for_source_record(&daemon.profile, "legacy_file").await;
 }
 
 #[tokio::test]

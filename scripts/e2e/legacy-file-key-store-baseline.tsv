@@ -4,6 +4,7 @@
 # selection log or source record; "protection" rows already pass on the base.
 legacy_file_key_store_starts_without_a_secret_service	failed	defect: startup fails although the file KEK is intact (issue 1751)
 legacy_file_key_store_stays_authoritative_when_a_secret_service_appears	failed	defect: the first start without a secret service fails
+an_empty_secret_service_without_a_record_keeps_the_file_key_store	failed	defect: the base selects the empty secret service and asks for the passphrase
 missing_legacy_key_store_fails_closed_without_an_empty_file_store	passed	protection: the base already refuses to create an empty file store
 a_wrong_legacy_kek_asks_for_the_passphrase_without_being_overwritten	failed	defect: startup fails before passphrase recovery can run
 an_unreadable_legacy_key_store_fails_closed_and_stays_intact	failed	observable: the base also fails to start but never names the unreadable store

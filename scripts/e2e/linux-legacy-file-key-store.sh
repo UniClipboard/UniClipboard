@@ -158,6 +158,7 @@ TESTS=(
 )
 PRESENT_TESTS=(
   legacy_file_key_store_stays_authoritative_when_a_secret_service_appears
+  an_empty_secret_service_without_a_record_keeps_the_file_key_store
   entries_split_between_the_file_store_and_a_secret_service_fail_closed
   a_secret_service_holding_every_legacy_entry_keeps_authority
   a_stale_secret_service_kek_asks_for_the_passphrase_and_leaves_the_file_store_intact

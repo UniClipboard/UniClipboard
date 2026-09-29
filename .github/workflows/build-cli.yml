@@ -189,115 +189,26 @@ jobs:
           # container, -mno-outline-atomics on aarch64) builds it the same way.
           cargo build --release -p uc-daemon --bin uniclipd ${{ matrix.args }} --timings
 
-      - name: import Apple certificate (macOS only)
-        if: matrix.platform == 'macos-latest'
+      - name: package CLI binary
+        id: package
+        shell: bash
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-        run: |
-          CERTIFICATE_PATH=$RUNNER_TEMP/build_certificate.p12
-          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
-          KEYCHAIN_PASSWORD=$(openssl rand -hex 12)
-
-          echo -n "$APPLE_CERTIFICATE" | base64 --decode -o $CERTIFICATE_PATH
-
-          security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
-          security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
-
-          security import $CERTIFICATE_PATH -P "$APPLE_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
-          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
-          security list-keychain -d user -s $KEYCHAIN_PATH
-
-          echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
-
-      - name: sign CLI binary (macOS only)
-        if: matrix.platform == 'macos-latest'
-        run: |
-          # Extract signing identity from imported certificate
-          IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | grep "Developer ID Application" | head -1 | sed 's/.*"\(.*\)".*/\1/')
-          if [ -z "$IDENTITY" ]; then
-            echo "ERROR: No Developer ID Application identity found in keychain"
-            security find-identity -v -p codesigning "$KEYCHAIN_PATH"
-            exit 1
-          fi
-          echo "Signing with: $IDENTITY"
-
-          TARGET="${{ matrix.target }}"
-
-          # Sign both bundled binaries: the CLI and the daemon it spawns.
-          for BIN_NAME in uniclip uniclipd; do
-            BIN_PATH="target/${TARGET}/release/${BIN_NAME}"
-            if [ ! -f "$BIN_PATH" ]; then
-              BIN_PATH="target/release/${BIN_NAME}"
-            fi
-            echo "Signing $BIN_PATH"
-            codesign --force --options runtime --sign "$IDENTITY" --keychain "$KEYCHAIN_PATH" "$BIN_PATH"
-            codesign --verify --verbose "$BIN_PATH"
-          done
-
-      - name: notarize CLI binary (macOS only)
-        if: matrix.platform == 'macos-latest'
-        env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
-          TARGET="${{ matrix.target }}"
-          BIN_DIR="target/${TARGET}/release"
-          if [ ! -f "${BIN_DIR}/uniclip" ]; then
+          # Windows builds with the host default target (args=""), landing in
+          # target/release; the other targets pass --target.
+          if [ -n "${{ matrix.args }}" ]; then
+            BIN_DIR="target/${{ matrix.target }}/release"
+          else
             BIN_DIR="target/release"
           fi
-
-          # notarytool requires a zip archive; stage both binaries so the CLI
-          # and the daemon it spawns are notarized together.
-          STAGE="$RUNNER_TEMP/cli-notarize-stage"
-          rm -rf "$STAGE"
-          mkdir -p "$STAGE"
-          cp "${BIN_DIR}/uniclip" "${BIN_DIR}/uniclipd" "$STAGE/"
-          NOTARIZE_ZIP="$RUNNER_TEMP/cli-notarize.zip"
-          ditto -c -k "$STAGE" "$NOTARIZE_ZIP"
-
-          xcrun notarytool submit "$NOTARIZE_ZIP" \
-            --apple-id "$APPLE_ID" \
-            --password "$APPLE_PASSWORD" \
-            --team-id "$APPLE_TEAM_ID" \
-            --wait
-
-          # Note: stapler staple only works on .app/.dmg/.pkg bundles, not bare binaries.
-          # For standalone CLI binaries, Gatekeeper checks the notarization ticket online.
-
-      - name: package CLI binary
-        id: package
-        shell: bash
-        run: |
-          VERSION=$(node -p "require('./package.json').version")
-          TARGET="${{ matrix.target }}"
-
-          # Ship `uniclipd` next to `uniclip` so `uniclip start` can spawn the
-          # daemon as a sibling binary (ADR-008 D13).
-          if [ "${{ matrix.platform }}" = "windows-latest" ]; then
-            BIN_SRC="target/release/uniclip.exe"
-            # Windows non-cross build puts binary in target/release/, not target/{target}/release/
-            if [ ! -f "$BIN_SRC" ]; then
-              BIN_SRC="target/${TARGET}/release/uniclip.exe"
-            fi
-            ARCHIVE="uniclipboard-cli-${VERSION}-${TARGET}.zip"
-            # 7z stores paths as given on the command line, so add the exes
-            # from inside their directory to keep the archive root flat
-            # (matching the tar.gz layout).
-            WORKDIR="$(pwd)"
-            (cd "$(dirname "$BIN_SRC")" && 7z a "${WORKDIR}/${ARCHIVE}" uniclip.exe uniclipd.exe)
-          else
-            BIN_DIR="target/${TARGET}/release"
-            # Fallback for non-cross builds
-            if [ ! -f "${BIN_DIR}/uniclip" ]; then
-              BIN_DIR="target/release"
-            fi
-            ARCHIVE="uniclipboard-cli-${VERSION}-${TARGET}.tar.gz"
-            tar -czf "$ARCHIVE" -C "$BIN_DIR" uniclip uniclipd
-          fi
-          echo "archive=$ARCHIVE" >> "$GITHUB_OUTPUT"
+          EXE=""
+          case "${{ matrix.target }}" in *windows*) EXE=".exe" ;; esac
+          bash scripts/ci/package-cli.sh "${{ matrix.target }}" "$BIN_DIR/uniclip$EXE" "$BIN_DIR/uniclipd$EXE"
 
       - name: Upload Cargo timing reports
         if: always()
@@ -313,7 +224,3 @@ jobs:
         with:
           name: cli-${{ matrix.target }}
           path: uniclipboard-cli-*
-
-      - name: cleanup keychain (macOS only)
-        if: matrix.platform == 'macos-latest' && always()
-        run: security delete-keychain $RUNNER_TEMP/app-signing.keychain-db 2>/dev/null || true

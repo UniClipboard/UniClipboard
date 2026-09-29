@@ -135,7 +135,26 @@ try {
     `expected ~${raceTarget}, got ${generalAfterRace}`
   )
 
-  // 6. Ordinary interaction still works after switching.
+  // 6. A taller window leaves a category less to scroll, so the restore is
+  //    clamped. Once the window shrinks back, the stored offset must survive.
+  await selectCategory(page, GENERAL)
+  await scrollTo(page, generalMax)
+  await selectCategory(page, SYNC)
+  // General is inactive while the window grows, so only its restore is clamped.
+  await page.setViewportSize({ width: 1100, height: 1400 })
+  await selectCategory(page, GENERAL)
+  const clampedByHeight = await scrollTop(page)
+  await selectCategory(page, SYNC)
+  await page.setViewportSize({ width: 1100, height: 700 })
+  await selectCategory(page, GENERAL)
+  const generalAfterResize = await scrollTop(page)
+  check(
+    'a clamped restore does not shrink the stored offset',
+    Math.abs(generalAfterResize - generalMax) <= 2,
+    `expected ~${generalMax}, got ${generalAfterResize} (clamped to ${clampedByHeight} while tall)`
+  )
+
+  // 7. Ordinary interaction still works after switching.
   await selectCategory(page, GENERAL)
   const deviceName = page.getByRole('textbox').first()
   await deviceName.fill('Scroll memory check')
@@ -148,7 +167,7 @@ try {
   await page.close()
 }
 
-// 7. A destroyed webview (main window closed, reopened from the tray) forgets the
+// 8. A destroyed webview (main window closed, reopened from the tray) forgets the
 //    positions. A fresh page load is the browser equivalent of that webview teardown.
 const reopened = await open()
 try {

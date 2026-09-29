@@ -59,17 +59,6 @@ jobs:
       save_cache: true
     secrets: inherit
 
-  warmup-windows-cli:
-    needs: maintain-caches
-    # 先预热 Windows CLI:这是最近 release 没命中的关键路径。
-    # CLI 全平台 cache 会明显挤占 10GB 配额,如后续确实需要再按平台扩展。
-    name: Warm Windows CLI cache
-    uses: ./.github/workflows/build-cli.yml
-    with:
-      platform: 'windows-latest'
-      save_cache: true
-    secrets: inherit
-
   warmup-test-app:
     name: Warm Windows x64 test app cache
     needs: maintain-caches

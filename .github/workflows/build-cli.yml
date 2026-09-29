@@ -15,6 +15,16 @@ on:
           - 'windows-latest'
           - 'all'
         default: 'all'
+      channel:
+        description: '发布渠道(决定 uniclipd 编译期嵌入的 APP_ENV)'
+        required: false
+        type: choice
+        options:
+          - 'stable'
+          - 'alpha'
+          - 'beta'
+          - 'rc'
+        default: 'stable'
       save_cache:
         description: '是否保存构建缓存(用于手动验证 cache warmup)'
         required: false
@@ -32,6 +42,11 @@ on:
         required: false
         type: string
         default: ''
+      channel:
+        description: '发布渠道,决定 uniclipd 编译期嵌入的 APP_ENV'
+        required: false
+        type: string
+        default: 'stable'
       save_cache:
         description: '是否保存构建缓存'
         required: false
@@ -151,6 +166,12 @@ jobs:
           # 只在 main 写缓存,tag/PR 只读。详见 build.yml 同名 step 的注释。
           save-if: ${{ inputs.save_cache || github.ref == 'refs/heads/main' }}
 
+      - name: resolve APP_ENV from channel
+        id: resolve-env
+        env:
+          UC_CHANNEL: ${{ inputs.channel || 'stable' }}
+        run: node scripts/ci/resolve-app-env.mjs
+
       - name: build CLI binary
         # musl 链接器 + ring/cc-rs 的 C 编译器都指到 musl-gcc,产物完全静态,
         # 不再链 host glibc。其他 platform 这两个 env 是 noop。
@@ -180,6 +201,12 @@ jobs:
           CFLAGS_aarch64_unknown_linux_musl: "-mno-outline-atomics"
           CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_RUSTFLAGS: "-C relocation-model=static"
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_RUSTFLAGS: "-C relocation-model=static"
+          # uniclipd embeds these at compile time (option_env!), exactly like the
+          # app's sidecar build in build.yml, so every shipped daemon reports to
+          # the same Sentry/PostHog projects and environment.
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          POSTHOG_PROJECT_KEY: ${{ secrets.POSTHOG_PROJECT_KEY }}
+          APP_ENV: ${{ steps.resolve-env.outputs.app_env }}
         run: |
           cargo build --release -p uc-cli ${{ matrix.args }} --timings
           # ADR-008 D13: ship the standalone `uniclipd` daemon in the same

@@ -16,6 +16,7 @@ on:
       - 'scripts/__tests__/build-mode.test.ts'
       - 'scripts/ci/isolate-build-toolchain.mjs'
       - 'scripts/__tests__/ci-toolchains.test.ts'
+      - '.github/workflows/release.yml'
       - 'scripts/ci/resolve-app-env.mjs'
       - 'scripts/__tests__/cli-packaging.test.ts'
 

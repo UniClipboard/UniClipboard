@@ -17,7 +17,7 @@ uc-daemon-client = { path = "../uc-daemon-client" }
 # Lightweight directory-layout authority — resolves app data/cache roots without
 # pulling in the heavyweight uc-platform or uc-bootstrap dependency trees.
 uc-app-paths = { path = "../uc-app-paths" }
-tokio = { version = "1", features = ["full", "test-util"] }
+tokio = { version = "1", features = ["full"] }
 tokio-util = "0.7"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -50,6 +50,8 @@ windows = { version = "0.61", features = [
 ] }
 
 [dev-dependencies]
+# Paused-clock tests only; production builds must not carry tokio test-util.
+tokio = { version = "1", features = ["test-util"] }
 cargo_metadata = "0.19.2"
 uc-daemon-process = { path = "../uc-daemon-process", features = [
   "test-helpers",

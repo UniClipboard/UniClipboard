@@ -38,6 +38,8 @@ objc2 = "0.6"
 objc2-app-kit = { version = "0.3", features = ["NSApplication", "NSResponder"] }
 
 [dev-dependencies]
+# oneshot tests use start_paused; formerly supplied by feature unification through uc-webserver.
+tokio = { version = "1", features = ["test-util"] }
 uc-daemon-local = { path = "../../crates/uc-daemon-local", features = ["test-helpers"] }
 chrono = { version = "0.4", default-features = true }
 tempfile = "3"

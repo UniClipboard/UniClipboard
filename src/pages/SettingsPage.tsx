@@ -64,14 +64,19 @@ function SettingsPage() {
     if (!viewport) return
     const limit = Math.max(0, viewport.scrollHeight - viewport.clientHeight)
     viewport.scrollTop = Math.min(readSettingsScrollOffset(activeCategory), limit)
-    // Recorded while scrolling: reading the offset on teardown would already see
-    // it clamped by the incoming category's shorter content.
+    // Recorded while scrolling, which also covers leaving the settings page.
+    // Reading the offset on teardown instead would already see it clamped by the
+    // incoming category's shorter content.
     const record = () => rememberSettingsScrollOffset(activeCategory, viewport.scrollTop)
     viewport.addEventListener('scroll', record, { passive: true })
     return () => viewport.removeEventListener('scroll', record)
   }, [activeCategory])
 
   const handleCategoryChange = (category: string) => {
+    // Scroll events are delivered at a later rendering step, so a switch in the
+    // same frame as the last scroll would otherwise store a stale offset.
+    const viewport = viewportRef.current
+    if (viewport) rememberSettingsScrollOffset(activeCategory, viewport.scrollTop)
     setActiveCategory(category)
   }
 

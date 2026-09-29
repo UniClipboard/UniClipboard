@@ -36,6 +36,21 @@ async function scrollTo(page, top) {
   await page.waitForTimeout(120)
 }
 
+/** Scroll and switch category in one frame, before the scroll event is delivered. */
+async function scrollAndSwitchInSameFrame(page, top, categoryName) {
+  await viewport(page).evaluate(
+    (node, [value, name]) => {
+      node.scrollTop = value
+      const button = [...document.querySelectorAll('button')].find(
+        element => element.textContent.trim() === name
+      )
+      button.click()
+    },
+    [top, categoryName]
+  )
+  await page.waitForTimeout(150)
+}
+
 function check(label, condition, detail) {
   if (condition) {
     console.log(`ok   ${label}`)
@@ -108,7 +123,19 @@ try {
     `expected ~${generalMax}, got ${generalAfterShort}`
   )
 
-  // 5. Ordinary interaction still works after switching.
+  // 5. Scrolling and switching within one frame, before the scroll event is
+  //    delivered, still stores the offset the user left behind.
+  const raceTarget = Math.max(0, generalMax - 60)
+  await scrollAndSwitchInSameFrame(page, raceTarget, SYNC)
+  await selectCategory(page, GENERAL)
+  const generalAfterRace = await scrollTop(page)
+  check(
+    'a switch in the same frame as the scroll keeps the offset',
+    Math.abs(generalAfterRace - raceTarget) <= 2,
+    `expected ~${raceTarget}, got ${generalAfterRace}`
+  )
+
+  // 6. Ordinary interaction still works after switching.
   await selectCategory(page, GENERAL)
   const deviceName = page.getByRole('textbox').first()
   await deviceName.fill('Scroll memory check')
@@ -121,7 +148,7 @@ try {
   await page.close()
 }
 
-// 6. A destroyed webview (main window closed, reopened from the tray) forgets the
+// 7. A destroyed webview (main window closed, reopened from the tray) forgets the
 //    positions. A fresh page load is the browser equivalent of that webview teardown.
 const reopened = await open()
 try {

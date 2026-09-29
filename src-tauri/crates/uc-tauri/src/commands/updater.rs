@@ -24,12 +24,12 @@ use tauri_plugin_updater::UpdaterExt as _;
 use tokio::sync::Notify;
 use tracing::{error, info, info_span, warn, Instrument};
 use uc_daemon_client::{DaemonConnectionState, DaemonSettingsClient};
+use uc_daemon_contract::api::dto::analytics::{
+    CaptureUiEventRequest, UiInstallKind, UiUpdateAction, UiUpdateActionOutcome,
+    UiUpdateCheckOutcome, UiUpdateCheckSource, UiUpdateFailureKind,
+};
 use uc_daemon_contract::api::dto::settings::{
     GeneralSettingsPatchDto, SettingsPatchDto, UpdateChannelDto as UpdateChannel,
-};
-use uc_observability::analytics::{
-    Event, InstallKind as AnalyticsInstallKind, UpdateAction, UpdateActionOutcome,
-    UpdateCheckOutcome, UpdateCheckSource, UpdateFailureKind,
 };
 
 use crate::commands::TraceMetadata;
@@ -380,17 +380,17 @@ pub(crate) async fn do_check_for_update(
 }
 
 /// Convert the running binary's [`InstallKind`] (Tauri command wire form) to
-/// the telemetry [`AnalyticsInstallKind`]. Both enums must stay wire-equivalent
+/// the analytics wire [`UiInstallKind`]. Both enums must stay wire-equivalent
 /// (schema doc §7.9)；这里只是把同形态值在两个 crate 的类型之间搬运一次。
-pub(crate) fn install_kind_for_telemetry(kind: InstallKind) -> AnalyticsInstallKind {
+pub(crate) fn install_kind_for_telemetry(kind: InstallKind) -> UiInstallKind {
     match kind {
-        InstallKind::Macos => AnalyticsInstallKind::Macos,
-        InstallKind::Windows => AnalyticsInstallKind::Windows,
-        InstallKind::WindowsPortable => AnalyticsInstallKind::WindowsPortable,
-        InstallKind::AppImage => AnalyticsInstallKind::AppImage,
-        InstallKind::Deb => AnalyticsInstallKind::Deb,
-        InstallKind::Rpm => AnalyticsInstallKind::Rpm,
-        InstallKind::Unknown => AnalyticsInstallKind::Unknown,
+        InstallKind::Macos => UiInstallKind::Macos,
+        InstallKind::Windows => UiInstallKind::Windows,
+        InstallKind::WindowsPortable => UiInstallKind::WindowsPortable,
+        InstallKind::AppImage => UiInstallKind::AppImage,
+        InstallKind::Deb => UiInstallKind::Deb,
+        InstallKind::Rpm => UiInstallKind::Rpm,
+        InstallKind::Unknown => UiInstallKind::Unknown,
     }
 }
 
@@ -402,7 +402,7 @@ pub(crate) fn install_kind_for_telemetry(kind: InstallKind) -> AnalyticsInstallK
 ///
 /// 重命名禁止（schema doc §8），值仅四个：`network` / `http_error` /
 /// `parse_error` / `other`。
-pub(crate) fn classify_check_failure(err: &str) -> UpdateFailureKind {
+pub(crate) fn classify_check_failure(err: &str) -> UiUpdateFailureKind {
     let lower = err.to_ascii_lowercase();
     if lower.contains("signature")
         || lower.contains("minisign")
@@ -410,13 +410,13 @@ pub(crate) fn classify_check_failure(err: &str) -> UpdateFailureKind {
         || lower.contains("json")
         || lower.contains("decode")
     {
-        UpdateFailureKind::ParseError
+        UiUpdateFailureKind::ParseError
     } else if lower.contains("http")
         || lower.contains("status code")
         || lower.contains(" 4")
         || lower.contains(" 5")
     {
-        UpdateFailureKind::HttpError
+        UiUpdateFailureKind::HttpError
     } else if lower.contains("connect")
         || lower.contains("dns")
         || lower.contains("tls")
@@ -425,9 +425,9 @@ pub(crate) fn classify_check_failure(err: &str) -> UpdateFailureKind {
         || lower.contains("network")
         || lower.contains("transport")
     {
-        UpdateFailureKind::Network
+        UiUpdateFailureKind::Network
     } else {
-        UpdateFailureKind::Other
+        UiUpdateFailureKind::Other
     }
 }
 
@@ -500,15 +500,15 @@ pub async fn check_for_update(
 
         let install_kind = install_kind_for_telemetry(detect_install_kind());
         let (outcome, failure_kind) = match &result {
-            Ok(Some(_)) => (UpdateCheckOutcome::Available, None),
-            Ok(None) => (UpdateCheckOutcome::UpToDate, None),
+            Ok(Some(_)) => (UiUpdateCheckOutcome::Available, None),
+            Ok(None) => (UiUpdateCheckOutcome::UpToDate, None),
             Err(err) => (
-                UpdateCheckOutcome::Failed,
+                UiUpdateCheckOutcome::Failed,
                 Some(classify_check_failure(err)),
             ),
         };
-        analytics.capture(Event::UpdateCheckPerformed {
-            source: UpdateCheckSource::Manual,
+        analytics.capture_in_background(CaptureUiEventRequest::CheckPerformed {
+            source: UiUpdateCheckSource::Manual,
             outcome,
             failure_kind,
             install_kind,
@@ -616,19 +616,21 @@ pub(crate) async fn perform_manual_check_from_tray(app: &AppHandle) {
     }
 
     let (outcome, failure_kind) = match &result {
-        Ok(Some(_)) => (UpdateCheckOutcome::Available, None),
-        Ok(None) => (UpdateCheckOutcome::UpToDate, None),
+        Ok(Some(_)) => (UiUpdateCheckOutcome::Available, None),
+        Ok(None) => (UiUpdateCheckOutcome::UpToDate, None),
         Err(err) => (
-            UpdateCheckOutcome::Failed,
+            UiUpdateCheckOutcome::Failed,
             Some(classify_check_failure(err)),
         ),
     };
-    runtime.analytics().capture(Event::UpdateCheckPerformed {
-        source: UpdateCheckSource::Manual,
-        outcome,
-        failure_kind,
-        install_kind,
-    });
+    runtime
+        .analytics()
+        .capture_in_background(CaptureUiEventRequest::CheckPerformed {
+            source: UiUpdateCheckSource::Manual,
+            outcome,
+            failure_kind,
+            install_kind,
+        });
 }
 
 /// Download the pending update in the background.
@@ -648,7 +650,7 @@ pub(crate) async fn perform_manual_check_from_tray(app: &AppHandle) {
 /// rejections (state machine misuse) from in-flight cancellation /
 /// failure. The Tauri command flattens that back into the historical
 /// `Result<(), String>` wire shape; the scheduler can map terminal
-/// states directly to `UpdateActionOutcome` without string heuristics.
+/// states directly to `UiUpdateActionOutcome` without string heuristics.
 ///
 /// Pre-condition: state must be `Available`. `Downloading` /
 /// `Ready` / `None` return `DownloadError::Precondition`.
@@ -786,7 +788,7 @@ pub(crate) async fn do_download_update(
 ///
 /// Distinguishes precondition rejections (state-machine misuse, e.g.
 /// "already downloading") from in-flight cancellation / failure so the
-/// Tauri command can map them onto `UpdateActionOutcome` without string
+/// Tauri command can map them onto `UiUpdateActionOutcome` without string
 /// heuristics. The inner `String` is the legacy wire error message
 /// returned to the frontend.
 pub(crate) enum DownloadError {
@@ -796,10 +798,10 @@ pub(crate) enum DownloadError {
     /// a download attempt).
     Precondition(String),
     /// `cancel_download` was signalled mid-stream. Maps to
-    /// `UpdateActionOutcome::Cancelled`.
+    /// `UiUpdateActionOutcome::Cancelled`.
     Cancelled(String),
     /// `Update::download` returned an error or a downstream lock acquire
-    /// failed. Maps to `UpdateActionOutcome::Failed`.
+    /// failed. Maps to `UiUpdateActionOutcome::Failed`.
     Failed(String),
 }
 
@@ -873,22 +875,22 @@ pub async fn download_update(
         // download lifecycle emits Started once + terminal once.
         let did_start = !matches!(result, Err(DownloadError::Precondition(_)));
         if did_start {
-            analytics.capture(Event::UpdateActionInvoked {
-                action: UpdateAction::DownloadBg,
-                outcome: UpdateActionOutcome::Started,
+            analytics.capture_in_background(CaptureUiEventRequest::ActionInvoked {
+                action: UiUpdateAction::DownloadBg,
+                outcome: UiUpdateActionOutcome::Started,
                 error_kind: None,
             });
         }
 
         let outcome = match &result {
-            Ok(()) => Some(UpdateActionOutcome::Succeeded),
-            Err(DownloadError::Cancelled(_)) => Some(UpdateActionOutcome::Cancelled),
-            Err(DownloadError::Failed(_)) => Some(UpdateActionOutcome::Failed),
+            Ok(()) => Some(UiUpdateActionOutcome::Succeeded),
+            Err(DownloadError::Cancelled(_)) => Some(UiUpdateActionOutcome::Cancelled),
+            Err(DownloadError::Failed(_)) => Some(UiUpdateActionOutcome::Failed),
             Err(DownloadError::Precondition(_)) => None,
         };
         if let Some(outcome) = outcome {
-            analytics.capture(Event::UpdateActionInvoked {
-                action: UpdateAction::DownloadBg,
+            analytics.capture_in_background(CaptureUiEventRequest::ActionInvoked {
+                action: UiUpdateAction::DownloadBg,
                 outcome,
                 error_kind: result
                     .as_ref()
@@ -1511,7 +1513,7 @@ mod tests {
 
     #[test]
     fn install_kind_for_telemetry_round_trips_wire_form() {
-        // 两个 InstallKind（commands/updater.rs 与 uc-observability::analytics）必须
+        // 两个 InstallKind（commands/updater.rs 与 uc-daemon-contract 的 UiInstallKind）必须
         // wire-equivalent（schema doc §7.9）。锁住映射后任何一侧加变体都会编译报错。
         for (src, expected_wire) in [
             (InstallKind::Macos, r#""macos""#),
@@ -1579,24 +1581,27 @@ mod tests {
         for (input, expected) in [
             (
                 "signature verification failed",
-                UpdateFailureKind::ParseError,
+                UiUpdateFailureKind::ParseError,
             ),
-            ("minisign error", UpdateFailureKind::ParseError),
-            ("failed to parse manifest", UpdateFailureKind::ParseError),
-            ("invalid JSON in response", UpdateFailureKind::ParseError),
-            ("base64 decode failed", UpdateFailureKind::ParseError),
-            ("HTTP 404 Not Found", UpdateFailureKind::HttpError),
+            ("minisign error", UiUpdateFailureKind::ParseError),
+            ("failed to parse manifest", UiUpdateFailureKind::ParseError),
+            ("invalid JSON in response", UiUpdateFailureKind::ParseError),
+            ("base64 decode failed", UiUpdateFailureKind::ParseError),
+            ("HTTP 404 Not Found", UiUpdateFailureKind::HttpError),
             (
                 "server returned status code 500",
-                UpdateFailureKind::HttpError,
+                UiUpdateFailureKind::HttpError,
             ),
-            ("connection refused", UpdateFailureKind::Network),
-            ("dns resolution failed", UpdateFailureKind::Network),
-            ("tls handshake error", UpdateFailureKind::Network),
-            ("operation timed out", UpdateFailureKind::Network),
-            ("transport error", UpdateFailureKind::Network),
-            ("something completely unexpected", UpdateFailureKind::Other),
-            ("", UpdateFailureKind::Other),
+            ("connection refused", UiUpdateFailureKind::Network),
+            ("dns resolution failed", UiUpdateFailureKind::Network),
+            ("tls handshake error", UiUpdateFailureKind::Network),
+            ("operation timed out", UiUpdateFailureKind::Network),
+            ("transport error", UiUpdateFailureKind::Network),
+            (
+                "something completely unexpected",
+                UiUpdateFailureKind::Other,
+            ),
+            ("", UiUpdateFailureKind::Other),
         ] {
             assert_eq!(
                 classify_check_failure(input),

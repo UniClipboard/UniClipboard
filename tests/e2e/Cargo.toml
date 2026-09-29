@@ -46,6 +46,8 @@ uuid = { version = "1", features = ["v4"] }
 dirs-next = "2"
 uc-app-paths = { path = "../../crates/uc-app-paths" }
 uc-daemon-contract = { path = "../../crates/uc-daemon-contract" }
+# Sends update analytics exactly as the GUI does (update_analytics_capture).
+uc-daemon-client = { path = "../../crates/uc-daemon-client" }
 uc-daemon-process = { path = "../../crates/uc-daemon-process" }
 uc-platform = { path = "../../crates/uc-platform" }
 image = { version = "0.25", default-features = false, features = ["png", "tiff"] }

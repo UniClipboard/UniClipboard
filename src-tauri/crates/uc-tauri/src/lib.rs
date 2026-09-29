@@ -9,7 +9,6 @@ compile_error!("the e2e feature is restricted to debug builds");
 
 pub mod activity_hud;
 pub mod adapters;
-pub mod analytics_forward;
 pub mod bootstrap;
 pub mod commands;
 mod desktop_theme;

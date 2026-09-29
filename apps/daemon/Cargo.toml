@@ -17,7 +17,7 @@ path = "src/main.rs"
 uc-bootstrap = { path = "../../crates/uc-bootstrap" }
 uc-platform = { path = "../../crates/uc-platform" }
 uc-engine.workspace = true
-uc-observability = { path = "../../crates/uc-observability" }
+uc-observability = { path = "../../crates/uc-observability", features = ["analytics"] }
 uc-daemon-contract = { path = "../../crates/uc-daemon-contract" }
 uc-daemon-local = { path = "../../crates/uc-daemon-local" }
 uc-webserver = { path = "../../crates/uc-webserver" }

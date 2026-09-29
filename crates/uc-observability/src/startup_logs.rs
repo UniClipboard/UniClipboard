@@ -202,7 +202,7 @@ fn collect_log_files(logs_dir: &Path) -> Result<(Vec<LogCandidate>, Vec<String>)
 }
 
 fn managed_log_date(name: &str) -> Option<NaiveDate> {
-    if let Some(date) = uc_engine::observability::diagnostics::managed_log_file_date(name) {
+    if let Some(date) = engine_log_file_date(name) {
         return Some(date);
     }
     [
@@ -215,6 +215,14 @@ fn managed_log_date(name: &str) -> Option<NaiveDate> {
         name.strip_prefix(prefix)
             .and_then(|date| NaiveDate::parse_from_str(date, "%Y-%m-%d").ok())
     })
+}
+
+/// Date of an Engine daily log (`engine.YYYY-MM-DD.jsonl`). Mirrors Engine
+/// `managed_log_file_date` so the GUI need not link the Engine; the daemon's
+/// `engine_log_file_name_contract` test keeps the two equal.
+pub fn engine_log_file_date(name: &str) -> Option<NaiveDate> {
+    let date = name.strip_prefix("engine.")?.strip_suffix(".jsonl")?;
+    NaiveDate::parse_from_str(date, "%Y-%m-%d").ok()
 }
 
 fn within_window(

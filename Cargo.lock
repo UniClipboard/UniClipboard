@@ -10829,7 +10829,6 @@ dependencies = [
  "uc-daemon-client",
  "uc-daemon-contract",
  "uc-daemon-process",
- "uc-observability",
  "url",
  "uuid",
  "windows 0.61.3",

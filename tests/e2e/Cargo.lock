@@ -3843,14 +3843,35 @@ checksum = "b6f5e870be6c3b371b77fe0ee0bafb859fa4964b4404c27de1d380043c4dda20"
 
 [[package]]
 name = "uc-app-paths"
-version = "1.0.0-alpha.18"
+version = "1.0.0"
 dependencies = [
  "dirs",
 ]
 
 [[package]]
+name = "uc-daemon-client"
+version = "1.0.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "futures-util",
+ "percent-encoding",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "tokio",
+ "tokio-tungstenite",
+ "tokio-util",
+ "tracing",
+ "uc-daemon-contract",
+ "uc-daemon-process",
+ "url",
+]
+
+[[package]]
 name = "uc-daemon-contract"
-version = "1.0.0-alpha.18"
+version = "1.0.0"
 dependencies = [
  "chrono",
  "semver",
@@ -3864,7 +3885,7 @@ dependencies = [
 
 [[package]]
 name = "uc-daemon-process"
-version = "1.0.0-alpha.18"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "libc",
@@ -3901,6 +3922,7 @@ dependencies = [
  "tokio",
  "tokio-tungstenite",
  "uc-app-paths",
+ "uc-daemon-client",
  "uc-daemon-contract",
  "uc-daemon-process",
  "uc-platform",
@@ -3911,7 +3933,7 @@ dependencies = [
 
 [[package]]
 name = "uc-platform"
-version = "1.0.0-alpha.18"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "async-trait",

@@ -256,7 +256,7 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
     // blob workers (the daemon owns all of that). All business calls go over
     // daemon HTTP/WS (`uc-daemon-client`); host events arrive over the daemon
     // WS (`DaemonWsBridge`), not an in-process `host_event_bus`.
-    let mut client_deps = build_gui_client_context()?;
+    let client_deps = build_gui_client_context()?;
 
     let daemon_connection_state = DaemonConnectionState::default();
     let daemon_ownership = DaemonOwnership::default();
@@ -271,20 +271,16 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
     // `commands::startup::get_daemon_bootstrap_failure`.
     let daemon_bootstrap_status = crate::commands::startup::DaemonBootstrapStatus::default();
 
-    // ADR-008 D20: the daemon is the single authoritative analytics sender.
-    // `wire_gui_client_deps` leaves the GUI client with a Noop sink (no
-    // in-process PostHog key); here we layer on the daemon-forwarding sink so
-    // the few update-lifecycle events emitted by the GUI's own Rust background
-    // tasks (updater / scheduler) reach the daemon over HTTP instead of a second
-    // in-process sink. The webview's UI events already POST directly
-    // (`src/api/daemon/analytics.ts`).
-    client_deps.analytics = Arc::new(
-        crate::analytics_forward::DaemonForwardingAnalyticsSink::new(
-            DaemonConnectionState::clone(&daemon_connection_state),
-        )?,
-    );
+    // ADR-008 D20: the daemon is the single authoritative analytics sender, so
+    // the GUI holds no in-process sink. The few update-lifecycle events emitted
+    // by the GUI's own Rust background tasks (updater / scheduler) are sent to
+    // the daemon over HTTP as `CaptureUiEventRequest`; the webview's UI events
+    // already POST directly (`src/api/daemon/analytics.ts`).
+    let analytics = uc_daemon_client::DaemonAnalyticsClient::new(DaemonConnectionState::clone(
+        &daemon_connection_state,
+    ))?;
 
-    let runtime = Arc::new(TauriAppRuntime::new(client_deps));
+    let runtime = Arc::new(TauriAppRuntime::new(client_deps, analytics));
 
     let explicit_single_instance_disable = std::env::var("UC_DISABLE_SINGLE_INSTANCE").ok();
     let development_mode = crate::runtime_environment::development_mode();

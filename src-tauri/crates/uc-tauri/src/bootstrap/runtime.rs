@@ -37,9 +37,9 @@
 
 use std::sync::{Arc, RwLock};
 
+use uc_daemon_client::DaemonAnalyticsClient;
 use uc_desktop::gui_wiring::GuiClientDeps;
 use uc_desktop::DesktopRuntime;
-use uc_observability::analytics::AnalyticsPort;
 
 /// Tauri 端的应用运行时句柄。
 ///
@@ -48,6 +48,9 @@ use uc_observability::analytics::AnalyticsPort;
 /// 通过 `app_handle()`。
 pub struct TauriAppRuntime {
     desktop: Arc<DesktopRuntime>,
+    /// Forwards the GUI's update-lifecycle analytics to the daemon, the single
+    /// authoritative analytics sender (ADR-008 D20).
+    analytics: DaemonAnalyticsClient,
     /// Tauri AppHandle for event emission (set after Tauri setup).
     app_handle: Arc<RwLock<Option<tauri::AppHandle>>>,
 }
@@ -56,14 +59,15 @@ impl TauriAppRuntime {
     /// 从 [`GuiClientDeps`] 装配纯客户端 `DesktopRuntime` + 在外层加一个空
     /// `AppHandle`,产出 `TauriAppRuntime`。ADR-008 P3-3 (B2'-3): GUI 是外部
     /// daemon 的纯客户端,不再持有进程内 facade / sqlite。
-    pub fn new(client: GuiClientDeps) -> Self {
-        Self::from_desktop(Arc::new(DesktopRuntime::new(client)))
+    pub fn new(client: GuiClientDeps, analytics: DaemonAnalyticsClient) -> Self {
+        Self::from_desktop(Arc::new(DesktopRuntime::new(client)), analytics)
     }
 
     /// 已经有 `DesktopRuntime` 时直接包一层。
-    pub fn from_desktop(desktop: Arc<DesktopRuntime>) -> Self {
+    pub fn from_desktop(desktop: Arc<DesktopRuntime>, analytics: DaemonAnalyticsClient) -> Self {
         Self {
             desktop,
+            analytics,
             app_handle: Arc::new(RwLock::new(None)),
         }
     }
@@ -111,9 +115,10 @@ impl TauriAppRuntime {
         self.desktop.device_id()
     }
 
-    /// 产品 telemetry sink。Tauri command body / 后台任务直接
-    /// `capture(Event::X)`，gate 由 `GatedAnalyticsSink` 守护。
-    pub fn analytics(&self) -> Arc<dyn AnalyticsPort> {
-        self.desktop.analytics()
+    /// Update-lifecycle analytics client. Command bodies and background tasks
+    /// call `capture_in_background(CaptureUiEventRequest::X)`; the daemon applies
+    /// the telemetry gate.
+    pub fn analytics(&self) -> DaemonAnalyticsClient {
+        self.analytics.clone()
     }
 }

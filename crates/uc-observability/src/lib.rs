@@ -45,6 +45,7 @@
 //!     .try_init()?;
 //! ```
 
+#[cfg(feature = "analytics")]
 pub mod analytics;
 pub mod analytics_gate;
 mod context;

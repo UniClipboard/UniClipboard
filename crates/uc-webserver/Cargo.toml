@@ -13,7 +13,7 @@ path = "src/lib.rs"
 uc-daemon-contract = { path = "../uc-daemon-contract" }
 uc-daemon-local = { path = "../uc-daemon-local" }
 uc-engine = { workspace = true, features = ["lan-compat"] }
-uc-observability = { path = "../uc-observability" }
+uc-observability = { path = "../uc-observability", features = ["analytics"] }
 anyhow = "1.0"
 async-trait = "0.1"
 axum = { version = "0.7", features = ["ws", "tokio", "http1", "http2", "multipart"] }

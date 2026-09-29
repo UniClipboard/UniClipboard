@@ -657,6 +657,7 @@ P2 落地（2026-05-21，与 update scheduler / 系统通知同 PR）。覆盖"�
 - **scheduler-only 的 source 值**：`startup` / `scheduled` / `window_show` 仅由 `update_scheduler` emit；命令行 / UI 触发的"检查更新"按钮 emit `manual`。两类 source **绝不** 混用同一调用路径——避免"用户主动检查"与"后台检查"分子错位。
 - **版本字符串相等比较**：去重与 dashboard slicing 都按字符串相等处理，不引入 semver。channel 切换（如 stable → alpha）导致的版本号变化按"新版本"语义处理，会重新通知一次。
 - **prompt cooldown 抑制显式化**：弹窗冷却期（stable 72h / 预发布 24h，`update_prompt_throttle.json` 持久化）会让 `update_check_performed { outcome: available }` 与 `update_notification_shown` 出现缺口，缺口由 `update_prompt_suppressed` 解释——同一版本在冷却期内每轮 scheduled 检查各 emit 一条（衡量抑制压力），auto-download ready-fallback 路径同一轮内不重复 emit。手动检查绕过冷却期，不产生该事件。
+- **现状：`update_prompt_suppressed` 未送达**：GUI 进程不持有分析 sink，只能把事件编码为 daemon 线上契约 `CaptureUiEventRequest` 发送到 `POST /analytics/capture`；该契约没有此事件，所以冷却期分支目前不发送它，上面的缺口解释在 PostHog 中不可用。补齐需要先在 `CaptureUiEventRequest` 与 daemon 映射中增加对应变体。
 
 落地备注（保留以便回溯）：
 

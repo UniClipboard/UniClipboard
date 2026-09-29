@@ -8,7 +8,7 @@ description = "Desktop host capability preparation for uc-engine"
 [dependencies]
 uc-engine.workspace = true
 uc-platform = { path = "../uc-platform" }
-uc-observability = { path = "../uc-observability" }
+uc-observability = { path = "../uc-observability", features = ["analytics"] }
 # Directory-layout authority: used to locate the superseded `<data>/logs`
 # directory for one-time cleanup after logs moved to the platform-conventional
 # location.

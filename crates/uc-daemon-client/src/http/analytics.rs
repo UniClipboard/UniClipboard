@@ -48,4 +48,27 @@ impl DaemonAnalyticsClient {
         )
         .await?)
     }
+
+    /// Fire-and-forget [`Self::capture`] for synchronous call sites (the GUI
+    /// updater and update scheduler). The POST is spawned on the ambient tokio
+    /// runtime and its failure is only `debug`-logged; outside a runtime the
+    /// event is dropped with a debug line instead of panicking.
+    pub fn capture_in_background(&self, event: CaptureUiEventRequest) {
+        match tokio::runtime::Handle::try_current() {
+            Ok(handle) => {
+                let client = self.clone();
+                handle.spawn(async move {
+                    if let Err(err) = client.capture(event).await {
+                        tracing::debug!(
+                            error = %err,
+                            "daemon-forward analytics: capture failed (best-effort)"
+                        );
+                    }
+                });
+            }
+            Err(_) => {
+                tracing::debug!("daemon-forward analytics: no tokio runtime; dropping event");
+            }
+        }
+    }
 }

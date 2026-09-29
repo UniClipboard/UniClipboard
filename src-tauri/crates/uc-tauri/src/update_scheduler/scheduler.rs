@@ -28,10 +28,11 @@ use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, info, warn};
 use uc_daemon_client::{DaemonSettingsClient, DaemonSetupV2Client};
-use uc_daemon_contract::api::dto::settings::UpdateChannelDto as UpdateChannel;
-use uc_observability::analytics::{
-    Event, UpdateAction, UpdateActionOutcome, UpdateCheckOutcome, UpdateCheckSource,
+use uc_daemon_contract::api::dto::analytics::{
+    CaptureUiEventRequest, UiUpdateAction, UiUpdateActionOutcome, UiUpdateCheckOutcome,
+    UiUpdateCheckSource,
 };
+use uc_daemon_contract::api::dto::settings::UpdateChannelDto as UpdateChannel;
 
 use super::last_check_at::LastCheckAt;
 use super::notify_context::{NotifyContext, NotifyTrigger};
@@ -320,28 +321,30 @@ async fn run_one_iteration(
 
     let (outcome, failure_kind, iter_outcome) = match &result {
         Ok(Some(_)) => (
-            UpdateCheckOutcome::Available,
+            UiUpdateCheckOutcome::Available,
             None,
             IterationOutcome::Success,
         ),
         Ok(None) => (
-            UpdateCheckOutcome::UpToDate,
+            UiUpdateCheckOutcome::UpToDate,
             None,
             IterationOutcome::Success,
         ),
         Err(err) => (
-            UpdateCheckOutcome::Failed,
+            UiUpdateCheckOutcome::Failed,
             Some(classify_check_failure(err)),
             IterationOutcome::Failure,
         ),
     };
 
-    deps.notify.analytics.capture(Event::UpdateCheckPerformed {
-        source: UpdateCheckSource::Scheduled,
-        outcome,
-        failure_kind,
-        install_kind,
-    });
+    deps.notify
+        .analytics
+        .capture_in_background(CaptureUiEventRequest::CheckPerformed {
+            source: UiUpdateCheckSource::Scheduled,
+            outcome,
+            failure_kind,
+            install_kind,
+        });
 
     iter_outcome
 }
@@ -404,29 +407,33 @@ async fn auto_download(deps: &SchedulerDeps, app: &AppHandle, pending: &PendingU
 
     let did_start = !matches!(result, Err(DownloadError::Precondition(_)));
     if did_start {
-        deps.notify.analytics.capture(Event::UpdateActionInvoked {
-            action: UpdateAction::DownloadBg,
-            outcome: UpdateActionOutcome::Started,
-            error_kind: None,
-        });
+        deps.notify
+            .analytics
+            .capture_in_background(CaptureUiEventRequest::ActionInvoked {
+                action: UiUpdateAction::DownloadBg,
+                outcome: UiUpdateActionOutcome::Started,
+                error_kind: None,
+            });
     }
 
     let terminal = match &result {
-        Ok(()) => Some(UpdateActionOutcome::Succeeded),
-        Err(DownloadError::Cancelled(_)) => Some(UpdateActionOutcome::Cancelled),
-        Err(DownloadError::Failed(_)) => Some(UpdateActionOutcome::Failed),
+        Ok(()) => Some(UiUpdateActionOutcome::Succeeded),
+        Err(DownloadError::Cancelled(_)) => Some(UiUpdateActionOutcome::Cancelled),
+        Err(DownloadError::Failed(_)) => Some(UiUpdateActionOutcome::Failed),
         Err(DownloadError::Precondition(_)) => None,
     };
     if let Some(outcome) = terminal {
-        deps.notify.analytics.capture(Event::UpdateActionInvoked {
-            action: UpdateAction::DownloadBg,
-            outcome,
-            error_kind: result
-                .as_ref()
-                .err()
-                .and_then(|e| e.error_kind())
-                .map(|s| s.to_string()),
-        });
+        deps.notify
+            .analytics
+            .capture_in_background(CaptureUiEventRequest::ActionInvoked {
+                action: UiUpdateAction::DownloadBg,
+                outcome,
+                error_kind: result
+                    .as_ref()
+                    .err()
+                    .and_then(|e| e.error_kind())
+                    .map(|s| s.to_string()),
+            });
     }
 
     matches!(result, Ok(()))

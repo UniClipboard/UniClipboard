@@ -1,4 +1,6 @@
+import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { resolveAppEnv } from '../ci/resolve-app-env.mjs'
@@ -86,5 +88,67 @@ describe('CLI daemon debug symbols', () => {
     expect(step(source, 'Upload Sentry debug symbols')).toContain(
       'sentry-cli debug-files upload --include-sources "$TARGET_DIR"'
     )
+  })
+})
+
+// Run a setup-matrix step's `run:` block with the given expressions substituted
+// and return what it wrote to GITHUB_OUTPUT.
+function runStep(body: string, expressions: Record<string, string>, env: Record<string, string>) {
+  const lines = body.slice(body.indexOf('run: |\n') + 'run: |\n'.length).split('\n')
+  const indent = lines[0].match(/^ */)?.[0].length ?? 0
+  let script = lines.map(line => line.slice(indent)).join('\n')
+  for (const [expression, value] of Object.entries(expressions)) {
+    script = script.split(expression).join(value)
+  }
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'uc-cli-matrix-'))
+  try {
+    const output = path.join(directory, 'output')
+    const result = spawnSync('bash', ['-e', '-c', script], {
+      encoding: 'utf8',
+      env: { ...process.env, ...env, GITHUB_OUTPUT: output },
+    })
+    expect(result.status, result.stdout + result.stderr).toBe(0)
+    const last = fs.readFileSync(output, 'utf8').trim().split('\n').pop() ?? ''
+    return JSON.parse(last.replace(/^matrix=/, '')) as Array<{ target: string }>
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true })
+  }
+}
+
+describe('release CLI matrix', () => {
+  const source = read('build-cli.yml')
+  const releasePlatforms = [
+    ...read('release.yml').matchAll(/^ {10}- '((?:all|macos|ubuntu|windows)[^']*)'$/gm),
+  ].map(match => match[1])
+
+  function cliTargets(platform: string, linuxOnly: boolean) {
+    const matrix = runStep(
+      step(source, 'Generate matrix'),
+      { "${{ inputs.platform || 'all' }}": platform },
+      { WINDOWS_RUNNER: 'windows-latest' }
+    )
+    return runStep(
+      step(source, 'Select CLI targets'),
+      {},
+      { MATRIX: JSON.stringify(matrix), LINUX_ONLY: String(linuxOnly) }
+    ).map(entry => entry.target)
+  }
+
+  it('accepts every platform the Release workflow can pass', () => {
+    expect(releasePlatforms).toContain('windows-arm64')
+    for (const platform of releasePlatforms) {
+      for (const target of cliTargets(platform, true)) {
+        expect(target).toMatch(/-linux-musl$/)
+      }
+    }
+  })
+
+  it('maps the app-only Windows platform names to CLI targets', () => {
+    expect(cliTargets('windows-x86_64', false)).toEqual(['x86_64-pc-windows-msvc'])
+    expect(cliTargets('windows-arm64', false)).toEqual([])
+    expect(cliTargets('all', true)).toEqual([
+      'x86_64-unknown-linux-musl',
+      'aarch64-unknown-linux-musl',
+    ])
   })
 })

@@ -100,10 +100,14 @@ jobs:
             echo 'matrix=[{"platform":"ubuntu-22.04","target":"x86_64-unknown-linux-musl","args":"--target x86_64-unknown-linux-musl","container":"ghcr.io/uniclipboard/build-bookworm:latest"}]' >> "$GITHUB_OUTPUT"
           elif [ "$PLATFORM" == "ubuntu-22.04-arm" ]; then
             echo 'matrix=[{"platform":"ubuntu-22.04-arm","target":"aarch64-unknown-linux-musl","args":"--target aarch64-unknown-linux-musl","container":"ghcr.io/uniclipboard/build-bookworm:latest"}]' >> "$GITHUB_OUTPUT"
-          elif [ "$PLATFORM" == "windows-latest" ]; then
+          elif [ "$PLATFORM" == "windows-latest" ] || [ "$PLATFORM" == "windows-x86_64" ]; then
             echo "matrix=[{\"platform\":\"windows-latest\",\"runner\":\"$WINDOWS_RUNNER\",\"target\":\"x86_64-pc-windows-msvc\",\"args\":\"\"}]" >> "$GITHUB_OUTPUT"
+          elif [ "$PLATFORM" == "windows-arm64" ]; then
+            # Release accepts the app's platform names; there is no Windows
+            # arm64 CLI archive, so this selection builds no CLI target.
+            echo 'matrix=[]' >> "$GITHUB_OUTPUT"
           else
-            echo "Error: Unknown platform '$PLATFORM'. Valid options: all, macos-aarch64, macos-x86_64, ubuntu-22.04, ubuntu-22.04-arm, windows-latest"
+            echo "Error: Unknown platform '$PLATFORM'. Valid options: all, macos-aarch64, macos-x86_64, ubuntu-22.04, ubuntu-22.04-arm, windows-latest, windows-x86_64, windows-arm64"
             exit 1
           fi
 

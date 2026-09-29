@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 import InsetSurface from '@/components/layout/InsetSurface'
 import {
@@ -6,6 +6,10 @@ import {
   SETTINGS_CATEGORIES,
   type SettingsCategory,
 } from '@/components/setting/settings-config'
+import {
+  readSettingsScrollOffset,
+  rememberSettingsScrollOffset,
+} from '@/components/setting/settings-scroll-session'
 import SettingsPageHeader from '@/components/setting/SettingsPageHeader'
 import SettingsSidebar from '@/components/setting/SettingsSidebar'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -51,6 +55,22 @@ function SettingsPage() {
     }
   }, [locationState, navigate, locationPathname])
 
+  const viewportRef = useRef<HTMLDivElement | null>(null)
+
+  // One scroll area serves every category, so its offset carries over unless the
+  // outgoing category's offset is stored and the incoming one's is restored.
+  useLayoutEffect(() => {
+    const viewport = viewportRef.current
+    if (!viewport) return
+    const limit = Math.max(0, viewport.scrollHeight - viewport.clientHeight)
+    viewport.scrollTop = Math.min(readSettingsScrollOffset(activeCategory), limit)
+    // Recorded while scrolling: reading the offset on teardown would already see
+    // it clamped by the incoming category's shorter content.
+    const record = () => rememberSettingsScrollOffset(activeCategory, viewport.scrollTop)
+    viewport.addEventListener('scroll', record, { passive: true })
+    return () => viewport.removeEventListener('scroll', record)
+  }, [activeCategory])
+
   const handleCategoryChange = (category: string) => {
     setActiveCategory(category)
   }
@@ -69,7 +89,7 @@ function SettingsPage() {
 
   const content = (
     <SidebarInset className="min-h-0 bg-transparent">
-      <ScrollArea className="flex-1 min-h-0">
+      <ScrollArea className="flex-1 min-h-0" viewportRef={viewportRef}>
         <div className="p-4 sm:p-6 lg:p-8">
           {ActiveSection && (
             <SettingContentLayout header={sectionHeader}>

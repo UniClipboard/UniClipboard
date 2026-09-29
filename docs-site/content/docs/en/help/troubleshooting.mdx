@@ -67,16 +67,37 @@ Read the error printed by the foreground process. If it cannot find or start
 files back in the same directory. The desktop app and CLI can normally share
 one profile and one daemon.
 
-### Daemon log shows "System secure storage probe failed; falling back to file-based KEK"
+### Daemon log shows "system secure store is unavailable for this run"
 
-This WARN means the daemon could not reach the freedesktop Secret Service
-(GNOME Keyring / KWallet) at startup. The daemon still starts; the Key
-Encryption Key is just written to disk under the app's data directory
-instead of into the system keyring. Two situations commonly trigger it:
+This WARN means the daemon could not use the freedesktop Secret Service
+(GNOME Keyring / KWallet) at startup. What happens next depends on where
+this profile's Key Encryption Key (KEK) already lives:
+
+- **Profiles that already use the file key store** — versions before 1.0
+  degraded to a file under the app's data directory (`keyring/`) whenever
+  the Secret Service probe failed. Those profiles keep using that file,
+  whether or not a secret service becomes available later. The log shows
+  `using the legacy file key store`. Nothing is copied, moved, or deleted
+  between the two stores.
+- **Profiles without a file key store** — the daemon does **not** create an
+  empty file store as a substitute. Startup stops with "The app could not
+  start", and the logs show `engine startup failed` with an error code.
+  Make the Secret Service reachable, then restart the app.
+- **Profiles with entries in both places** — when the Secret Service holds
+  only some of the entries in the file store, the daemon cannot tell which
+  copy is complete. It stops without changing either store, and the log
+  shows `hold different entries`. Keep both, export diagnostics, and contact
+  support.
+- **Once a profile with a file key store has unlocked**, the daemon records
+  which store it used in `secure-storage-source.json` in the app's data
+  directory, and uses only that store from then on. If the recorded store is
+  unavailable, startup stops instead of switching to the other store. Do not
+  edit or delete that file.
+
+Two situations commonly make the Secret Service unreachable:
 
 **Snap sandbox** — AppArmor refused the D-Bus call because the
-`password-manager-service` plug is not connected. Reconnect it to move
-the KEK back into the system keyring:
+`password-manager-service` plug is not connected:
 
 ```bash
 sudo snap connect uniclipboard:password-manager-service
@@ -85,10 +106,10 @@ sudo snap connect uniclipboard:password-manager-service
 
 **Minimal Wayland session (hyprland / sway, etc.)** — the session looks
 like a desktop (`DISPLAY` and `DBUS_SESSION_BUS_ADDRESS` are set), so the
-daemon tries the system keyring, but no secret service is running — or one
-is running but locked with no prompter to unlock it. The probe is bounded
-by a short timeout, so the daemon degrades to file-based KEK after a few
-seconds instead of hanging. To keep using the system keyring, run an
+daemon tries the system keyring, but no secret service is running (the log
+reads `The name is not activatable`), or one is running but locked with no
+prompter to unlock it. The probe is bounded by a short timeout, so the
+daemon reports the problem after a few seconds instead of hanging. Run an
 unlocked secret service in the session, for example:
 
 ```bash
@@ -97,11 +118,9 @@ gnome-keyring-daemon --start --components=secrets
 # or enable KeePassXC's "Secret Service Integration"
 ```
 
-On older revisions the same situation could hang or crash daemon bootstrap
-with `Daemon startup/probe failed during Tauri bootstrap`. Current
-revisions degrade to file-based KEK instead; reconnecting the snap plug or
-starting a secret service then only affects _where_ the KEK is stored, not
-_whether_ the daemon starts.
+Do not delete the app's `keyring/` directory to "reset" storage: for
+profiles that use the file key store it holds the only copy of the KEK, and
+removing it forces passphrase recovery.
 
 ## Pairing failures
 

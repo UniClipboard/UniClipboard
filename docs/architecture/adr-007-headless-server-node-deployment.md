@@ -86,6 +86,15 @@ mobile_lan 是 **明文 HTTP + Basic Auth**，仅为可信 LAN 设计。公网�
 
 `ServerHeadless` 复用 `Standalone` 的强制 auto-unlock + `FileSecureStorage` 文件式 KEK。容器内 `HOME`/data dir 一致即可无人值守解锁；不引入任何新的 env 口令注入。
 
+文件式 KEK 只用于检测到无桌面环境（或 WSL、便携版）的宿主。检测到桌面环境时，桌面宿主使用系统安全存储：系统安全存储不可用时直接报告，不为新资料创建空的文件存储。唯一的兼容边界是 1.0 之前版本在系统安全存储探测失败时写下的 `<app_data_root>/keyring` 条目。这些资料的 KEK 可能只存在于该文件存储中，因此每次启动时整体选择一处存储（`crates/uc-platform/src/secure_storage/legacy_file.rs`）：
+
+- 已有来源记录 `<app_data_root>/secure-storage-source.json`：始终使用记录的存储；该存储不可用时直接失败，不改用另一处。记录无法识别时同样失败。
+- 没有记录时，按两处实际持有的旧条目临时选择：系统安全存储持有全部旧条目，用系统安全存储；系统安全存储不可用或一条都不持有，用文件存储；只持有一部分或无法判断，不选择任何存储。
+- 临时选择只在有证据时写入记录：Engine 用所选存储的 KEK 解锁了资料（daemon 启动恢复返回 `unlocked: true`），或者第一次写入、删除即将改动所选存储。记录先于改动写入，并通过原子替换落盘；只读的运行不写记录。
+- 没有旧条目的资料永远不写记录，行为与原来一致。
+
+选择过程不在两处之间复制、迁移、覆盖或删除条目。记录只包含存储类别（`system` / `legacy_file`），不含用户内容。它必须在任何密钥可用之前读取，因此以明文保存。
+
 ### 2.7 置备：加入已有空间，一次性交互，先于 daemon 启动
 
 因为 `join` / `mobile-sync` 写命令都 `refuse_if_daemon_running()`，置备全部在 server 启动 **之前** 用一次性容器完成：

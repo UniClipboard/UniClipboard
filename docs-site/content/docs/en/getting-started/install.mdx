@@ -217,7 +217,7 @@ After installing, grant the snap permission to read/write the system keyring (GN
 sudo snap connect uniclipboard:password-manager-service
 ```
 
-Skipping this step is not fatal — the daemon falls back to a file-based Key Encryption Key under the snap's data directory and will start either way (look for `System secure storage probe failed; falling back to file-based KEK` in the logs). Connecting the plug just moves the KEK into the OS-managed keyring, which is what other system applications already use.
+New installations need this step: without a reachable keyring the daemon refuses to create an empty file-based key store, and the app reports that it could not start. Profiles created by versions before 1.0 that already keep their Key Encryption Key in a file under the snap's data directory keep using that file; connecting the plug later does not move it.
 
 `password-manager-service` is not auto-connect at install time; once the auto-connect request lands on the snap store this command will become unnecessary for new installs.
 

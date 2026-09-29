@@ -56,18 +56,25 @@ uniclip start --foreground -v
 或把同版本的 `uniclip` 与 `uniclipd` 放回同一个目录。桌面应用和 CLI 通常可以
 共用一个 profile 和同一个后台服务。
 
-### 守护进程日志里出现 "System secure storage probe failed; falling back to file-based KEK"
+### 守护进程日志里出现 "system secure store is unavailable for this run"
 
-这条 WARN 说明守护进程启动时够不到 freedesktop Secret Service（GNOME Keyring / KWallet）。守护进程不会因此崩，只是 Key Encryption Key 落到了应用数据目录的文件里，而不是系统钥匙串。常见两种触发场景：
+这条 WARN 说明守护进程启动时用不了 freedesktop Secret Service（GNOME Keyring / KWallet）。接下来怎么走，取决于这份资料的 Key Encryption Key（KEK）原本存在哪里：
 
-**Snap 沙箱** —— AppArmor 拒绝了 D-Bus 调用，原因是 `password-manager-service` plug 没接上。接上它就能把 KEK 搬回系统钥匙串：
+- **已经在用文件密钥存储的资料**：1.0 之前的版本在 Secret Service 探测失败时，会降级到应用数据目录下的文件（`keyring/`）。这类资料会继续使用这个文件，之后系统密钥服务变得可用也不会改变。日志里会出现 `using the legacy file key store`。两种存储之间不会复制、搬移或删除任何条目。
+- **没有文件密钥存储的资料**：守护进程**不会**创建一个空的文件存储来顶替。启动会停在“应用未能启动”，日志里能看到带错误码的 `engine startup failed`。让 Secret Service 可以访问后，再重启应用。
+- **两处都有条目的资料**：如果 Secret Service 只持有文件存储中的一部分条目，守护进程无法判断哪一份是完整的。它会停止启动，不改动任何一处存储，日志里能看到 `hold different entries`。请保留两处数据，导出诊断记录后联系支持。
+- **使用文件密钥存储的资料成功解锁过一次之后**，守护进程会把所用的存储记录在应用数据目录下的 `secure-storage-source.json` 中，此后只使用这一处。记录的存储不可用时，启动会停止，不会改用另一处。请不要编辑或删除这个文件。
+
+常见的两种不可访问场景：
+
+**Snap 沙箱**：AppArmor 拒绝了 D-Bus 调用，原因是 `password-manager-service` plug 没接上：
 
 ```bash
 sudo snap connect uniclipboard:password-manager-service
 # 接好之后重启应用
 ```
 
-**极简 Wayland 会话（hyprland / sway 等）** —— 会话看起来像桌面（`DISPLAY` 和 `DBUS_SESSION_BUS_ADDRESS` 都有），守护进程于是尝试系统钥匙串，但实际没有运行 secret service —— 或者跑着却处于锁定状态、又没有解锁 prompter。探测有一个短超时兜底，所以守护进程会在几秒后降级到文件式 KEK，而不是卡死。想继续用系统钥匙串，就在会话里跑一个已解锁的 secret service，例如：
+**极简 Wayland 会话（hyprland / sway 等）**：会话看起来像桌面（`DISPLAY` 和 `DBUS_SESSION_BUS_ADDRESS` 都有），守护进程于是尝试系统钥匙串。但实际上可能没有运行 secret service（日志是 `The name is not activatable`），也可能跑着却处于锁定状态，又没有解锁 prompter。探测有短超时兜底，守护进程会在几秒后报告问题，而不是卡死。请在会话里运行一个已解锁的 secret service，例如：
 
 ```bash
 gnome-keyring-daemon --start --components=secrets
@@ -75,7 +82,7 @@ gnome-keyring-daemon --start --components=secrets
 # 或在 KeePassXC 里开启 "Secret Service Integration"
 ```
 
-更早的版本遇到同样情况会卡住或直接 `Daemon startup/probe failed during Tauri bootstrap` 崩溃。当前版本会改为降级到文件式 KEK；这时无论接 snap plug 还是起 secret service，都只决定 KEK _存在哪里_，不再决定守护进程能不能起。
+不要为了“重置存储”删除应用数据目录下的 `keyring/`。对在用文件密钥存储的资料来说，那里是 KEK 的唯一副本；删掉以后只能通过口令恢复。
 
 ## 配对失败
 

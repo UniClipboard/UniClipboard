@@ -189,7 +189,7 @@ sudo snap install uniclipboard --edge
 sudo snap connect uniclipboard:password-manager-service
 ```
 
-不接这一步也能跑——守护进程会降级到文件 KEK，存放在 snap 数据目录下（日志里能看到 `System secure storage probe failed; falling back to file-based KEK`）。接上 plug 只是把 KEK 搬进 OS 管理的钥匙串，跟其他系统应用走同一套机制。
+新安装需要执行这一步：够不到钥匙串时，守护进程不会创建空的文件密钥存储，应用会提示未能启动。1.0 之前的版本已经把 KEK 存在 snap 数据目录下文件里的资料，会继续使用那个文件；之后再接上 plug 也不会搬移它。
 
 `password-manager-service` 当前不是 auto-connect interface；等 snap store 的 auto-connect 申请通过后，新安装就不再需要手动执行这条命令。
 

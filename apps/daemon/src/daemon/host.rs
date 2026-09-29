@@ -127,7 +127,11 @@ async fn run_async_with_diagnostics(
     let (engine, events) = match started {
         Ok(result) => result,
         Err(error) => {
-            tracing::error!("engine startup failed; startup status remains available");
+            // Engine errors carry only a stable code and category, never secrets.
+            tracing::error!(
+                error = %format!("{error:#}"),
+                "engine startup failed; startup status remains available"
+            );
             // Keep the terminal snapshot readable until an explicit retry or full quit.
             wait_for_shutdown_signal().await?;
             startup_server.shutdown().await?;
@@ -178,9 +182,12 @@ async fn run_async_with_diagnostics(
         .await
         .map_err(anyhow::Error::new);
 
-    if result.is_err() {
+    if let Err(error) = &result {
         startup_server.mark_service_failed();
-        tracing::error!("daemon service startup failed; startup status remains available");
+        tracing::error!(
+            error = %format!("{error:#}"),
+            "daemon service startup failed; startup status remains available"
+        );
         wait_for_shutdown_signal().await?;
     }
     startup_server.shutdown().await?;

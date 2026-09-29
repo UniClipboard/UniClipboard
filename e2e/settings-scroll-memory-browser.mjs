@@ -53,7 +53,11 @@ try {
   const ABOUT = '关于'
 
   // 1. First visit to a category starts at the top.
-  check('first visit starts at top', (await scrollTop(page)) === 0, `scrollTop=${await scrollTop(page)}`)
+  check(
+    'first visit starts at top',
+    (await scrollTop(page)) === 0,
+    `scrollTop=${await scrollTop(page)}`
+  )
 
   // 2. Scroll general to the bottom, switch to sync: sync must start at the top.
   const generalMax = await maxScroll(page)
@@ -121,7 +125,11 @@ try {
 //    positions. A fresh page load is the browser equivalent of that webview teardown.
 const reopened = await open()
 try {
-  check('reopened window starts at top', (await scrollTop(reopened)) === 0, await scrollTop(reopened))
+  check(
+    'reopened window starts at top',
+    (await scrollTop(reopened)) === 0,
+    await scrollTop(reopened)
+  )
   await reopened.screenshot({ path: `${output}/reopened.png` })
 } finally {
   await reopened.close()

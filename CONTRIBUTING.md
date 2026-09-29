@@ -92,18 +92,12 @@ Optional but useful:
 ### Clone and Install
 
 ```bash
-# `--recurse-submodules` pulls our `iroh-blobs` fork under
-# `src-tauri/vendor/iroh-blobs/`; without it `cargo build` fails.
-git clone --recurse-submodules https://github.com/UniClipboard/UniClipboard.git
+git clone https://github.com/UniClipboard/UniClipboard.git
 cd UniClipboard
 bun install
 ```
 
-Already cloned without submodules? Run:
-
-```bash
-git submodule update --init --recursive
-```
+The repository has no Git submodules. Cargo fetches the pinned `UniClipboard/Engine` and `iroh-blobs` Git dependencies declared in the root `Cargo.toml`.
 
 `bun install` triggers Husky hook installation via the `prepare` script. Pre-commit lint-staged checks will run automatically on `git commit`.
 
@@ -130,10 +124,11 @@ Each peer uses a different `UC_PROFILE` so their data, vault, and logs do not co
 ### Build a Release Bundle
 
 ```bash
-bun tauri build
+# Builds the `uniclipd` daemon sidecar, then runs `tauri build`
+bun run tauri:build
 ```
 
-Bundles land in `src-tauri/target/release/bundle/`.
+Bundles land in `target/release/bundle/`.
 
 ### Release-time Secrets (Telemetry)
 

@@ -92,18 +92,12 @@
 ### 克隆与安装
 
 ```bash
-# `--recurse-submodules` 会同步拉取 `src-tauri/vendor/iroh-blobs/`
-# 下的 iroh-blobs fork，缺这个 `cargo build` 会失败。
-git clone --recurse-submodules https://github.com/UniClipboard/UniClipboard.git
+git clone https://github.com/UniClipboard/UniClipboard.git
 cd UniClipboard
 bun install
 ```
 
-如果克隆时漏了 `--recurse-submodules`：
-
-```bash
-git submodule update --init --recursive
-```
+仓库不包含 Git 子模块。根目录 `Cargo.toml` 中固定版本的 `UniClipboard/Engine` 与 `iroh-blobs` Git 依赖由 Cargo 自动拉取。
 
 `bun install` 会通过 `prepare` 脚本自动安装 Husky 钩子，`git commit` 时会自动跑 lint-staged 检查。
 
@@ -147,10 +141,11 @@ bun tauri:dev:profile b
 ### 构建发行包
 
 ```bash
-bun tauri build
+# 先构建 `uniclipd` 守护进程 sidecar，再执行 `tauri build`
+bun run tauri:build
 ```
 
-产物会出现在 `src-tauri/target/release/bundle/`。
+产物会出现在 `target/release/bundle/`。
 
 ### 发布期 Telemetry Secrets
 

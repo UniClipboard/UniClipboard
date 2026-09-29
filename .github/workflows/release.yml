@@ -160,6 +160,7 @@ jobs:
       platform: ${{ inputs.platform || 'all' }}
       branch: ${{ inputs.branch || '' }}
       channel: ${{ needs.validate.outputs.channel }}
+      package_cli: true
     secrets: inherit
 
   build-cli:
@@ -169,6 +170,8 @@ jobs:
       platform: ${{ inputs.platform || 'all' }}
       branch: ${{ inputs.branch || '' }}
       channel: ${{ needs.validate.outputs.channel }}
+      # macOS and Windows x64 CLI archives come from the build job above.
+      linux_only: true
     secrets: inherit
 
   create-release:

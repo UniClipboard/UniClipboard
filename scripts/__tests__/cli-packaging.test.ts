@@ -53,6 +53,27 @@ describe('shipped uniclipd builds', () => {
       )
     }
   })
+
+  it('packages macOS and Windows x64 CLI archives from the release app sidecar', () => {
+    const build = read('build.yml')
+    const guard =
+      "if: inputs.package_cli && inputs.build_mode == 'release' && (matrix.platform == 'macos-latest' || matrix.target == 'x86_64-pc-windows-msvc')"
+    for (const name of ['build CLI binary', 'package CLI binary', 'upload CLI artifact']) {
+      expect(step(build, name)).toContain(guard)
+    }
+    expect(step(build, 'package CLI binary')).toContain(
+      '"src-tauri/binaries/uniclipd-${{ matrix.target }}$EXE"'
+    )
+    // The CLI must reuse the sidecar, never rebuild the daemon in the app job.
+    expect(build.match(/-p uc-daemon/g) ?? []).toHaveLength(0)
+
+    const release = read('release.yml')
+    expect(release).toContain('package_cli: true')
+    expect(release).toContain('linux_only: true')
+    expect(step(read('build-cli.yml'), 'Select CLI targets')).toContain(
+      'e.target.includes("-linux-musl")'
+    )
+  })
 })
 
 describe('CLI daemon debug symbols', () => {

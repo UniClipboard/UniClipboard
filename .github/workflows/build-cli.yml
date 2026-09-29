@@ -47,6 +47,14 @@ on:
         required: false
         type: string
         default: 'stable'
+      linux_only:
+        description: >-
+          Build only the Linux musl targets. Release sets this because build.yml
+          packages the macOS and Windows x64 CLI archives from the app build's
+          uniclipd sidecar (same target triple, profile and telemetry env).
+        required: false
+        type: boolean
+        default: false
       save_cache:
         description: '是否保存构建缓存'
         required: false
@@ -57,7 +65,7 @@ jobs:
   setup-matrix:
     runs-on: ubuntu-latest
     outputs:
-      matrix: ${{ steps.set-matrix.outputs.matrix }}
+      matrix: ${{ steps.select-targets.outputs.matrix }}
       windows-runner: ${{ steps.select-windows-runner.outputs.runner }}
       windows-runner-source: ${{ steps.select-windows-runner.outputs.source }}
     steps:
@@ -99,9 +107,25 @@ jobs:
             exit 1
           fi
 
+      - name: Select CLI targets
+        id: select-targets
+        # With linux_only, keep only the musl targets: Linux CLI builds are
+        # musl-static while the app ships glibc binaries, so they cannot reuse
+        # the app build's uniclipd. Every other target is packaged by build.yml.
+        env:
+          MATRIX: ${{ steps.set-matrix.outputs.matrix }}
+          LINUX_ONLY: ${{ inputs.linux_only }}
+        run: |
+          node -e '
+            const all = JSON.parse(process.env.MATRIX)
+            const keep = process.env.LINUX_ONLY === "true" ? all.filter(e => e.target.includes("-linux-musl")) : all
+            console.log("matrix=" + JSON.stringify(keep))
+          ' >> "$GITHUB_OUTPUT"
+
   build-cli:
     name: Build CLI ${{ matrix.target }}
     needs: setup-matrix
+    if: needs.setup-matrix.outputs.matrix != '[]'
     runs-on: ${{ matrix.runner || matrix.platform }}
     container: ${{ matrix.container || null }}
     strategy:

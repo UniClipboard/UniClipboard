@@ -37,6 +37,10 @@ on:
         type: choice
         options: ['release', 'test']
         default: 'test'
+      package_cli:
+        description: '同时用本次 sidecar 打包 macOS / Windows x64 CLI(仅 release 构建方式)'
+        type: boolean
+        default: false
   workflow_call:
     inputs:
       build_mode:
@@ -61,6 +65,14 @@ on:
         default: 'stable'
       save_cache:
         description: '是否保存构建缓存'
+        required: false
+        type: boolean
+        default: false
+      package_cli:
+        description: >-
+          Also package the CLI archive for macOS and Windows x64 from this
+          build's uniclipd sidecar (release build mode only). The CLI and app
+          use the same target triple there, so one daemon build serves both.
         required: false
         type: boolean
         default: false
@@ -420,6 +432,44 @@ jobs:
           powershell -Command "Compress-Archive -Path '$STAGE/*' -DestinationPath '$ZIP' -Force"
           echo "Built portable zip:"
           ls -la "$OUT_DIR"
+
+      # CLI archive for the targets where the CLI and the app share a target
+      # triple (macOS, Windows x64). It ships the exact uniclipd staged as the
+      # app's sidecar, so the daemon is compiled once per target; Linux CLI
+      # archives are musl-static and still come from build-cli.yml.
+      - name: build CLI binary
+        if: inputs.package_cli && inputs.build_mode == 'release' && (matrix.platform == 'macos-latest' || matrix.target == 'x86_64-pc-windows-msvc')
+        shell: bash
+        run: cargo build --release -p uc-cli ${{ matrix.args }} --timings
+
+      - name: package CLI binary
+        if: inputs.package_cli && inputs.build_mode == 'release' && (matrix.platform == 'macos-latest' || matrix.target == 'x86_64-pc-windows-msvc')
+        shell: bash
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          if [ -n "${{ matrix.args }}" ]; then
+            BIN_DIR="target/${{ matrix.target }}/release"
+          else
+            BIN_DIR="target/release"
+          fi
+          EXE=""
+          case "${{ matrix.target }}" in *windows*) EXE=".exe" ;; esac
+          bash scripts/ci/package-cli.sh "${{ matrix.target }}" \
+            "$BIN_DIR/uniclip$EXE" \
+            "src-tauri/binaries/uniclipd-${{ matrix.target }}$EXE"
+
+      - name: upload CLI artifact
+        if: inputs.package_cli && inputs.build_mode == 'release' && (matrix.platform == 'macos-latest' || matrix.target == 'x86_64-pc-windows-msvc')
+        uses: actions/upload-artifact@v7
+        with:
+          name: cli-${{ matrix.target }}
+          path: uniclipboard-cli-*
+          if-no-files-found: error
 
       - name: Upload Sentry debug symbols
         # Test bundles are not released and should not upload symbols under the release version.

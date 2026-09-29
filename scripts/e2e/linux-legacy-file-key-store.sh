@@ -165,6 +165,7 @@ PRESENT_TESTS=(
   a_confirmed_system_source_is_not_replaced_when_the_secret_service_disappears
   a_confirmed_file_source_is_kept_when_the_secret_service_holds_a_different_key
   an_unconfirmed_run_records_nothing_and_changes_no_key
+  a_passphrase_recovery_during_an_outage_does_not_pin_the_file_store
 )
 [[ -n "${UC_E2E_PRESENT_SECRET_SERVICE_BUS:-}" ]] && TESTS+=("${PRESENT_TESTS[@]}")
 

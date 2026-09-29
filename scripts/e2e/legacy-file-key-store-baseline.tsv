@@ -13,5 +13,6 @@ entries_split_between_the_file_store_and_a_secret_service_fail_closed	failed	def
 a_secret_service_holding_every_legacy_entry_keeps_authority	failed	observable: the base selects the same store but records no source
 a_stale_secret_service_kek_asks_for_the_passphrase_and_leaves_the_file_store_intact	failed	observable: the base recovers the same way but records no source
 a_confirmed_system_source_is_not_replaced_when_the_secret_service_disappears	failed	observable: the base records no source, so no confirmation exists to keep
-a_confirmed_file_source_is_kept_when_the_secret_service_holds_a_different_key	failed	defect: the first start without a secret service fails
+a_confirmed_file_source_is_kept_when_the_secret_service_holds_a_different_key	failed	defect: the base selects the empty secret service and asks for the passphrase
 an_unconfirmed_run_records_nothing_and_changes_no_key	failed	defect: the start without a secret service fails instead of asking for the passphrase
+a_passphrase_recovery_during_an_outage_does_not_pin_the_file_store	failed	defect: the start without a secret service fails instead of asking for the passphrase

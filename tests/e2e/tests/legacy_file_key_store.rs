@@ -247,10 +247,17 @@ async fn legacy_file_key_store_starts_without_a_secret_service() {
         "the legacy KEK must stay intact",
     );
     assert!(
-        daemon_log(&daemon.profile).contains("using the legacy file key store"),
+        daemon_log(&daemon.profile)
+            .contains("using the legacy file key store without recording it"),
         "the daemon log must name the selected key store"
     );
-    wait_for_source_record(&daemon.profile, "legacy_file").await;
+    // Background recovery has unlocked the profile; an outage must not record it.
+    tokio::time::sleep(Duration::from_secs(3)).await;
+    assert_eq!(
+        source_record(&daemon.profile),
+        None,
+        "a choice made during an outage must stay unrecorded"
+    );
 }
 
 #[tokio::test]
@@ -286,14 +293,11 @@ async fn legacy_file_key_store_stays_authoritative_when_a_secret_service_appears
         "the legacy KEK must stay intact",
     );
     assert!(
-        daemon_log(&daemon.profile).contains("using the recorded secure storage source"),
-        "the restart must use the source recorded by the first run"
+        daemon_log(&daemon.profile)
+            .contains("system secure store holds none of the legacy file entries"),
+        "an available but empty secret service must not replace the file key store"
     );
-    assert!(
-        source_record(&daemon.profile)
-            .is_some_and(|record| record.contains(r#""store":"legacy_file""#)),
-        "a secret service that appears later must not replace the recorded file key store"
-    );
+    wait_for_source_record(&daemon.profile, "legacy_file").await;
 }
 
 #[tokio::test]
@@ -634,10 +638,10 @@ async fn a_confirmed_file_source_is_kept_when_the_secret_service_holds_a_differe
         profile,
         &NodeBinarySet::current(),
         None,
-        session(bus("UC_E2E_ABSENT_SECRET_SERVICE_BUS")),
+        session(bus("UC_E2E_PRESENT_SECRET_SERVICE_BUS")),
     )
     .await
-    .unwrap_or_else(|error| panic!("start without the secret service failed: {error}"));
+    .unwrap_or_else(|error| panic!("start with an empty secret service failed: {error}"));
     assert_unlocked_history(&daemon).await;
     wait_for_source_record(&daemon.profile, "legacy_file").await;
     daemon.stop_gracefully().await.expect("stop first daemon");
@@ -758,4 +762,74 @@ async fn an_unrecognized_source_record_fails_closed() {
         Some(r#"{"store":"elsewhere"}"#)
     );
     assert!(daemon_log(&daemon.profile).contains("source record is not recognized"));
+}
+
+#[tokio::test]
+#[ignore = "requires Linux, built binaries and an isolated secret service"]
+async fn a_passphrase_recovery_during_an_outage_does_not_pin_the_file_store() {
+    let profile = restored_profile("outage-recovery");
+    let kek = read_kek(&profile);
+    let secret_service = secret_service_for(&profile);
+    secret_service
+        .set(LEGACY_KEK_KEY, &kek)
+        .expect("seed the secret service with the valid KEK");
+    std::fs::write(
+        profile.data_dir().join("keyring").join(LEGACY_KEK_FILE),
+        [0x77_u8; 32],
+    )
+    .expect("leave a stale KEK in the file store");
+
+    let mut daemon = TestDaemon::start_preserving_configured_with(
+        profile,
+        &NodeBinarySet::current(),
+        None,
+        session(bus("UC_E2E_ABSENT_SECRET_SERVICE_BUS")),
+    )
+    .await
+    .unwrap_or_else(|error| panic!("stale file KEK did not reach recovery: {error}"));
+    let recovery = authorized_get(&daemon, "/encryption/recovery").await;
+    assert_eq!(recovery["state"], "awaiting_passphrase");
+    let client = reqwest::Client::new();
+    let session_token = get_session_token(&daemon, &client).await;
+    let unlock = client
+        .post(format!(
+            "{}/encryption/unlock-with-passphrase",
+            daemon.base_url()
+        ))
+        .header("Authorization", format!("Session {session_token}"))
+        .json(&serde_json::json!({ "passphrase": expected()["passphrase"] }))
+        .send()
+        .await
+        .expect("unlock request");
+    assert!(
+        unlock.status().is_success(),
+        "the passphrase must unlock during the outage"
+    );
+    tokio::time::sleep(Duration::from_secs(3)).await;
+    assert_eq!(
+        source_record(&daemon.profile),
+        None,
+        "a recovery during an outage must not pin the file store"
+    );
+    daemon
+        .stop_gracefully()
+        .await
+        .expect("stop recovered daemon");
+
+    daemon
+        .restart_preserving_configured_with(session(bus("UC_E2E_PRESENT_SECRET_SERVICE_BUS")))
+        .await
+        .unwrap_or_else(|error| {
+            panic!(
+                "restart with the secret service failed: {error}\n{}",
+                daemon.diagnostic_log()
+            )
+        });
+    assert_unlocked_history(&daemon).await;
+    wait_for_source_record(&daemon.profile, "system").await;
+    assert_same_secret(
+        &secret_service.get(LEGACY_KEK_KEY).expect("read system KEK"),
+        &Some(kek.clone()),
+        "the system store must stay intact",
+    );
 }

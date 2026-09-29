@@ -51,7 +51,7 @@ dbg_macro = "warn"
 [workspace.dependencies]
 # All desktop consumers use one immutable Engine revision. Features remain
 # opt-in at each host boundary so LAN compatibility cannot become a default.
-uc-engine = { git = "https://github.com/UniClipboard/Engine.git", rev = "3f3eef7450e06013c3178b716eee9d5a3c419349" }
+uc-engine = { git = "https://github.com/UniClipboard/Engine.git", rev = "c7a821b4d899d32b375a707d2551f382e088b306" }
 
 # tauri 2.11 是 specta rc.25 兼容的最低版本 —— 2.10.x 及之前在
 # `tauri/src/ipc/channel.rs` 用了 `#[specta(remote=..., rename="...")]`
@@ -77,9 +77,9 @@ iroh-blobs = { git = "https://github.com/UniClipboard/iroh-blobs.git", rev = "b3
 # Engine carries the patched source under third_party and applies it through its
 # own [patch], but [patch] does not propagate to dependents, so a release built
 # from this repository would otherwise resolve the unpatched crates.io 0.6.3.
-# The revision is an Engine commit on main, not a branch, so a clean checkout on
-# every target resolves the same source.
-swarm-discovery = { git = "https://github.com/UniClipboard/Engine.git", rev = "79cf0111c48dcb2af77980b7817263e7373b975c" }
+# The revision is the Engine release commit this repository already pins for
+# uc-engine, so the whole graph resolves one Engine source.
+swarm-discovery = { git = "https://github.com/UniClipboard/Engine.git", rev = "c7a821b4d899d32b375a707d2551f382e088b306" }
 
 # dev profile:用 line-tables-only 替代完整 dwarf,大幅缩短 link 阶段。
 # 实测 inner-loop 11s → 4s(-65%),target 体积 46GB → 4.4GB(-91%)。

@@ -1,5 +1,13 @@
 #!/usr/bin/env node
 
+// Keeps every entry of .cargo/audit.toml tied to the facts that justify it.
+// An ignored advisory is only acceptable while the reason it was accepted still
+// holds, so this fails when the dependency moves, when the vulnerable code path
+// becomes reachable, or when an entry appears that has no justification here.
+//
+// The libcrux and quick-xml exceptions were removed once Engine v1.1.0-rc.21
+// brought hpke-rs 0.7 and quick-xml 0.41: those advisories are fixed, not waived.
+
 import { execFileSync } from 'node:child_process'
 import { readFileSync, readdirSync } from 'node:fs'
 import { dirname, join, relative, resolve } from 'node:path'
@@ -9,27 +17,21 @@ import { fileURLToPath } from 'node:url'
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url))
 const REPOSITORY_ROOT = resolve(SCRIPT_DIR, '../..')
 
-const EXPECTED_VERSIONS = new Map([
-  ['hpke-rs', '0.6.1'],
-  ['hpke-rs-libcrux', '0.6.1'],
-  ['libcrux-aesgcm', '0.0.7'],
-  ['libcrux-chacha20poly1305', '0.0.7'],
-  ['libcrux-secrets', '0.0.5'],
-  ['libcrux-sha3', '0.0.8'],
-])
+// RUSTSEC-2023-0071: the Marvin Attack timing side-channel in `rsa`. It arrives
+// through jsonwebtoken and upstream still ships no fixed release, so the entry
+// stays until one does. It is accepted only because the RSA code path is never
+// entered: the JWT layer signs and verifies with HS256 (HMAC) alone.
+const EXPECTED_ADVISORIES = ['RUSTSEC-2023-0071']
 
-const EXPECTED_ADVISORIES = [
-  'RUSTSEC-2026-0211',
-  'RUSTSEC-2026-0209',
-  'RUSTSEC-2026-0124',
-  'RUSTSEC-2026-0212',
-  'RUSTSEC-2026-0207',
-  'RUSTSEC-2026-0208',
-]
+// The advisory applies to this crate; a version bump means the exception has to
+// be re-reviewed against whatever upstream changed.
+const REVIEWED_VERSIONS = new Map([['rsa', '0.9.10']])
 
-const INACTIVE_PRODUCTION_CRATES = ['libcrux-aesgcm', 'libcrux-chacha20poly1305']
-const ACTIVE_REVIEWED_CRATES = ['libcrux-sha3 v0.0.8', 'libcrux-secrets v0.0.5']
-const DIRECT_API_PATTERN = /\blibcrux_(?:aesgcm|chacha20poly1305|secrets|sha3)\b/
+// Files that decide which JWT algorithms are used. Any RSA-family algorithm here
+// would make the vulnerable path reachable and void the exception.
+const JWT_ALGORITHM_SOURCES = ['crates/uc-webserver/src/security/claims.rs']
+const RSA_JWT_ALGORITHM_PATTERN = /Algorithm::(?:RS|PS)\d{3}/
+
 const RUST_SOURCE_ROOTS = ['apps', 'crates', 'src-tauri']
 const PRODUCTION_TARGETS = [
   'x86_64-unknown-linux-gnu',
@@ -46,13 +48,8 @@ function run(command, args) {
   })
 }
 
-function cargoMetadata() {
-  const output = run('cargo', ['metadata', '--format-version', '1', '--locked'])
-  try {
-    return JSON.parse(output)
-  } catch (error) {
-    throw new Error(`cargo metadata returned invalid JSON: ${String(error)}`, { cause: error })
-  }
+function read(relativePath) {
+  return readFileSync(join(REPOSITORY_ROOT, relativePath), 'utf8')
 }
 
 function addProblem(problems, check, message) {
@@ -60,7 +57,7 @@ function addProblem(problems, check, message) {
 }
 
 function checkVersions(metadata, problems) {
-  for (const [name, expectedVersion] of EXPECTED_VERSIONS) {
+  for (const [name, expectedVersion] of REVIEWED_VERSIONS) {
     const versions = [
       ...new Set(metadata.packages.filter(pkg => pkg.name === name).map(pkg => pkg.version)),
     ]
@@ -74,6 +71,52 @@ function checkVersions(metadata, problems) {
   }
 }
 
+// The exception rests on the RSA signing code never running, which holds as long
+// as no workspace crate depends on `rsa` directly and no JWT call site selects an
+// RSA algorithm.
+function checkVulnerablePathStaysUnreachable(metadata, problems) {
+  const workspaceMembers = new Set(metadata.workspace_members)
+  for (const pkg of metadata.packages.filter(candidate => workspaceMembers.has(candidate.id))) {
+    for (const dependency of pkg.dependencies) {
+      if (REVIEWED_VERSIONS.has(dependency.name)) {
+        addProblem(
+          problems,
+          'direct dependency',
+          `${pkg.name} now directly depends on ${dependency.name}`
+        )
+      }
+    }
+  }
+
+  for (const source of JWT_ALGORITHM_SOURCES) {
+    if (RSA_JWT_ALGORITHM_PATTERN.test(read(source))) {
+      addProblem(problems, 'affected API use', `${source} selects an RSA JWT algorithm`)
+    }
+  }
+
+  const pendingDirectories = RUST_SOURCE_ROOTS.map(root => join(REPOSITORY_ROOT, root))
+  while (pendingDirectories.length > 0) {
+    const directory = pendingDirectories.pop()
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const absolutePath = join(directory, entry.name)
+      if (entry.isDirectory()) {
+        if (entry.name !== 'target') pendingDirectories.push(absolutePath)
+        continue
+      }
+      if (!entry.isFile() || !entry.name.endsWith('.rs')) continue
+      if (RSA_JWT_ALGORITHM_PATTERN.test(readFileSync(absolutePath, 'utf8'))) {
+        addProblem(
+          problems,
+          'affected API use',
+          `${relative(REPOSITORY_ROOT, absolutePath)} selects an RSA JWT algorithm`
+        )
+      }
+    }
+  }
+}
+
+// `rsa` must stay a transitive dependency of the compiled graph on every shipped
+// target; if it ever became a root of its own the reachability argument changes.
 function checkProductionFeatures(problems) {
   const tree = PRODUCTION_TARGETS.map(target =>
     run('cargo', [
@@ -89,81 +132,51 @@ function checkProductionFeatures(problems) {
     ])
   ).join('\n')
 
-  for (const crate of INACTIVE_PRODUCTION_CRATES) {
-    if (hasExactPackage(tree, crate)) {
-      addProblem(problems, 'production feature graph', `${crate} became active`)
-    }
-  }
-  for (const crate of ACTIVE_REVIEWED_CRATES) {
-    const [name, version] = crate.split(' v')
-    if (!hasExactPackage(tree, name, version)) {
-      addProblem(problems, 'production feature graph', `${crate} is no longer on the reviewed path`)
-    }
-  }
-}
-
-function hasExactPackage(tree, name, version) {
-  const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  const escapedVersion = version?.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') ?? '\\S+'
-  return new RegExp(`^${escapedName} v${escapedVersion}(?: \\(\\*\\))?$`, 'm').test(tree)
-}
-
-function checkDirectApiUse(metadata, problems) {
-  const workspaceMembers = new Set(metadata.workspace_members)
-  for (const pkg of metadata.packages.filter(candidate => workspaceMembers.has(candidate.id))) {
-    for (const dependency of pkg.dependencies) {
-      if (EXPECTED_VERSIONS.has(dependency.name) && dependency.name !== 'hpke-rs') {
-        addProblem(
-          problems,
-          'direct dependency',
-          `${pkg.name} now directly depends on ${dependency.name}`
-        )
-      }
-    }
-  }
-
-  const pendingDirectories = RUST_SOURCE_ROOTS.map(root => join(REPOSITORY_ROOT, root))
-  while (pendingDirectories.length > 0) {
-    const directory = pendingDirectories.pop()
-    for (const entry of readdirSync(directory, { withFileTypes: true })) {
-      const absolutePath = join(directory, entry.name)
-      if (entry.isDirectory()) {
-        pendingDirectories.push(absolutePath)
-        continue
-      }
-      if (!entry.isFile() || !entry.name.endsWith('.rs')) continue
-
-      const source = readFileSync(absolutePath, 'utf8')
-      const relativePath = relative(REPOSITORY_ROOT, absolutePath)
-      if (DIRECT_API_PATTERN.test(source)) {
-        addProblem(problems, 'affected API use', `${relativePath} directly references libcrux APIs`)
-      }
+  for (const [name, version] of REVIEWED_VERSIONS) {
+    if (!new RegExp(`^${name} v${version.replaceAll('.', '\\.')}(?: \\(\\*\\))?$`, 'm').test(tree)) {
+      addProblem(
+        problems,
+        'production feature graph',
+        `${name} v${version} is no longer on the reviewed path`
+      )
     }
   }
 }
 
 function checkAuditConfiguration(problems) {
-  const auditConfig = readFileSync(join(REPOSITORY_ROOT, '.cargo/audit.toml'), 'utf8')
+  const auditConfig = read('.cargo/audit.toml')
+  const listed = new Set(
+    [...auditConfig.matchAll(/^\s*"(RUSTSEC-\d{4}-\d{4})",?\s*$/gm)].map(match => match[1])
+  )
   for (const advisory of EXPECTED_ADVISORIES) {
-    if (!auditConfig.includes(`"${advisory}"`)) {
+    if (!listed.has(advisory)) {
       addProblem(problems, 'audit configuration', `${advisory} is no longer explicitly tracked`)
+    }
+  }
+  for (const advisory of listed) {
+    if (!EXPECTED_ADVISORIES.includes(advisory)) {
+      addProblem(
+        problems,
+        'audit configuration',
+        `${advisory} is ignored without a justification in this guard`
+      )
     }
   }
 }
 
 function main() {
   const problems = []
-  const metadata = cargoMetadata()
+  const metadata = JSON.parse(run('cargo', ['metadata', '--format-version', '1', '--locked']))
 
   checkVersions(metadata, problems)
+  checkVulnerablePathStaysUnreachable(metadata, problems)
   checkProductionFeatures(problems)
-  checkDirectApiUse(metadata, problems)
   checkAuditConfiguration(problems)
 
   if (problems.length > 0) {
     console.error('Cargo audit exception assumptions changed:')
     for (const problem of problems) console.error(`- ${problem}`)
-    console.error('Review issues #1464 through #1469 and remove fixed audit exceptions.')
+    console.error('Re-review the exception, or drop it if the advisory now has a fix.')
     process.exitCode = 1
     return
   }

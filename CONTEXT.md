@@ -32,6 +32,17 @@ _Avoid_: password、secret、AES key
 （机器持有的根密钥）。
 _Avoid_: pin、key、token
 
+**Key store source**：
+保存一份资料 KEK 的那一处宿主存储，可能是系统安全存储，也可能是 1.0 之前版本在系统存储探测失败时写下的
+**Legacy file key store**（`<app_data_root>/keyring`）。每次启动为整份资料选定一处，不按条目混用：
+一旦存在 `<app_data_root>/secure-storage-source.json` 记录，就只使用记录的那一处；记录的存储不可用或
+记录无法识别时，启动失败，不改用另一处。没有记录时，按两处实际持有的旧条目选择；两处持有的条目不一致时，同样启动失败。
+只有在 Engine 用所选存储的 KEK 解锁了资料，或第一次写入、删除即将改动所选存储时，才写入记录。
+没有旧文件条目的资料永远不写记录，新资料也不会回退到空的文件存储。两处之间从不复制、迁移或删除条目。
+记录只含存储类别（`system` / `legacy_file`），必须在任何密钥可用之前读取，因此是默认加密规则的明文例外。
+详见 `docs/architecture/adr-007-headless-server-node-deployment.md` §2.6。
+_Avoid_: keyring fallback、key migration、file KEK fallback
+
 **Passphrase change**：
 用户为已解锁的 Space 自定义新 **Passphrase** 的单一业务动作；只有本机成员有效、成员
 状态可确认且不存在其他正常或暂停设备时允许。成功后保留同一 **MasterKey**、历史记录
@@ -278,6 +289,7 @@ _Avoid_: relay-only、server mode
   原始字节来自该 event 的 **SystemClipboardSnapshot**，拆成多条 **Representation**
 - **MasterKey** 由 **Passphrase** 经 KEK 解包，是 **Space** 内一切密文的根密钥；
   解锁后以 **ActiveSpace** 句柄表达
+- 不经口令解锁时，KEK 只从 **Key store source** 读取；来源一经记录，系统存储可用性的变化不会改变它
 - 发送侧每条 entry 对每台对端设备各记一条 **EntryDeliveryRecord**；接收侧对应的
   是 **Receiver-side file transfer projection**（两侧各自为本地投影，不互为真相源）
 - 上述投递全部遵循 **Transient sync semantics**；在 **Global synchronization** 与

@@ -196,10 +196,13 @@ jobs:
       # Compile the GUI package on its own. The workspace check above unifies
       # features across members, so a GUI dependency that only the daemon side
       # enables (e.g. `uc-observability/analytics`) would be hidden there.
+      # `custom-protocol` is left off: it only switches Tauri to embedding
+      # `frontendDist`, which this job does not build, and does not change the
+      # Rust dependency graph.
       - name: Check GUI package without workspace feature unification
         env:
           TAURI_CONFIG: '{"bundle":{"externalBin":[]}}'
-        run: cargo check -p uniclipboard --features uniclipboard/custom-protocol --locked
+        run: cargo check -p uniclipboard --locked
 
       # Also resolves the GUI package (`uniclipboard`) on its own with
       # `cargo tree` and fails if it links any Engine package. The workspace

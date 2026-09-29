@@ -22,8 +22,10 @@
 //! - legacy file entries only some of which the system store holds: no store,
 //!   because either one alone would hide entries that only the other holds.
 //!
-//! Such a choice is provisional. It becomes the recorded source only on
-//! evidence: the Engine unlocked the profile with the selected store's key
+//! Such a choice is provisional. A choice made only because the system store
+//! was unavailable is never recorded: it holds for that run, and a later run
+//! that can consult both stores decides. Any other choice becomes the recorded
+//! source only on evidence: the Engine unlocked the profile with the selected store's key
 //! (`SecureStorageSource::confirm_unlocked_by_stored_key`), or the first write
 //! or delete is about to change the selected store. The record is written
 //! before that change, so the stores never diverge unrecorded; it is replaced
@@ -147,6 +149,10 @@ struct Selection {
     store: SelectedStore,
     /// Legacy file entries exist, so the choice must not change across runs.
     tracked: bool,
+    /// Both stores were consulted. A choice made only because the system
+    /// store could not answer is never recorded, so an outage cannot pin a
+    /// profile to the file store.
+    recordable: bool,
 }
 
 const SYSTEM_RECORD: &str = r#"{"version":1,"store":"system"}"#;
@@ -193,6 +199,7 @@ impl LegacyFileAwareStorage {
                 Ok(Selection {
                     store,
                     tracked: true,
+                    recordable: true,
                 })
             }
             None => self.select(),
@@ -226,7 +233,7 @@ impl LegacyFileAwareStorage {
 
     fn ensure_recorded(&self) -> Result<(), SelectionFailure> {
         let selection = self.selection.get_or_init(|| self.decide()).clone()?;
-        if !selection.tracked {
+        if !selection.tracked || !selection.recordable {
             return Ok(());
         }
         let mut recorded = self.recorded.lock().unwrap_or_else(|p| p.into_inner());
@@ -288,6 +295,7 @@ impl LegacyFileAwareStorage {
             return Ok(Selection {
                 store: SelectedStore::System,
                 tracked: false,
+                recordable: false,
             });
         }
         let mut held_by_system = 0;
@@ -299,11 +307,12 @@ impl LegacyFileAwareStorage {
                     info!(
                         legacy_entry_count = names.len(),
                         system_error = %error,
-                        "system secure store is unavailable; using the legacy file key store"
+                        "system secure store is unavailable; using the legacy file key store without recording it"
                     );
                     return Ok(Selection {
                         store: SelectedStore::LegacyFile,
                         tracked: true,
+                        recordable: false,
                     });
                 }
                 Err(error) => {
@@ -323,6 +332,7 @@ impl LegacyFileAwareStorage {
             return Ok(Selection {
                 store: SelectedStore::System,
                 tracked: true,
+                recordable: true,
             });
         }
         if held_by_system > 0 {
@@ -345,6 +355,7 @@ impl LegacyFileAwareStorage {
         Ok(Selection {
             store: SelectedStore::LegacyFile,
             tracked: true,
+            recordable: true,
         })
     }
 }
@@ -720,7 +731,7 @@ mod tests {
         let (legacy, _) = legacy_store(root);
         legacy.set(PROFILE_KEY, b"file-kek").unwrap();
 
-        let (first, source) = open_tracked(Arc::new(UnavailableStorage), root);
+        let (first, source) = open_tracked(Arc::new(RecordingStorage::default()), root);
         assert_eq!(
             first.get(PROFILE_KEY).unwrap().as_deref(),
             Some(&b"file-kek"[..])
@@ -743,7 +754,7 @@ mod tests {
         let (legacy, _) = legacy_store(root);
         legacy.set(PROFILE_KEY, b"file-kek").unwrap();
 
-        let (first, _) = open_tracked(Arc::new(UnavailableStorage), root);
+        let (first, _) = open_tracked(Arc::new(RecordingStorage::default()), root);
         first.set(PROFILE_KEY, b"authenticated-kek").unwrap();
         assert!(
             record(root).is_some(),
@@ -757,6 +768,30 @@ mod tests {
             Some(&b"authenticated-kek"[..])
         );
         assert!(system.writes().is_empty());
+    }
+
+    #[test]
+    fn an_outage_never_records_the_file_store() {
+        let temporary = tempfile::tempdir().unwrap();
+        let root = temporary.path();
+        let (legacy, _) = legacy_store(root);
+        legacy.set(PROFILE_KEY, b"stale-file-kek").unwrap();
+
+        // Passphrase recovery during an outage rewrites the provisional store.
+        let (first, source) = open_tracked(Arc::new(UnavailableStorage), root);
+        first.set(PROFILE_KEY, b"authenticated-kek").unwrap();
+        source.confirm_unlocked_by_stored_key();
+        assert!(
+            record(root).is_none(),
+            "a choice made only because the system store was unavailable must stay provisional"
+        );
+
+        let system = Arc::new(RecordingStorage::holding(PROFILE_KEY, b"system-kek"));
+        let (restarted, _) = open_tracked(system, root);
+        assert_eq!(
+            restarted.get(PROFILE_KEY).unwrap().as_deref(),
+            Some(&b"system-kek"[..])
+        );
     }
 
     #[test]
@@ -849,7 +884,7 @@ mod tests {
             return;
         }
 
-        let (storage, _) = open_tracked(Arc::new(UnavailableStorage), &root);
+        let (storage, _) = open_tracked(Arc::new(RecordingStorage::default()), &root);
         let result = storage.set(PROFILE_KEY, b"replacement");
 
         std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o700)).unwrap();

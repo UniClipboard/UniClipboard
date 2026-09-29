@@ -37,7 +37,7 @@ _Avoid_: pin、key、token
 **Legacy file key store**（`<app_data_root>/keyring`）。每次启动为整份资料选定一处，不按条目混用：
 一旦存在 `<app_data_root>/secure-storage-source.json` 记录，就只使用记录的那一处；记录的存储不可用或
 记录无法识别时，启动失败，不改用另一处。没有记录时，按两处实际持有的旧条目选择；两处持有的条目不一致时，同样启动失败。
-只有在 Engine 用所选存储的 KEK 解锁了资料，或第一次写入、删除即将改动所选存储时，才写入记录。
+只有在能同时查询两处存储的前提下，Engine 用所选存储的 KEK 解锁了资料，或第一次写入、删除即将改动所选存储时，才写入记录；因系统存储不可用而选用文件存储时从不写记录。
 没有旧文件条目的资料永远不写记录，新资料也不会回退到空的文件存储。两处之间从不复制、迁移或删除条目。
 记录只含存储类别（`system` / `legacy_file`），必须在任何密钥可用之前读取，因此是默认加密规则的明文例外。
 详见 `docs/architecture/adr-007-headless-server-node-deployment.md` §2.6。

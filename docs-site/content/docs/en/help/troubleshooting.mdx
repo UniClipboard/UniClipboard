@@ -88,9 +88,11 @@ this profile's Key Encryption Key (KEK) already lives:
   copy is complete. It stops without changing either store, and the log
   shows `hold different entries`. Keep both, export diagnostics, and contact
   support.
-- **Once a profile with a file key store has unlocked**, the daemon records
-  which store it used in `secure-storage-source.json` in the app's data
-  directory, and uses only that store from then on. If the recorded store is
+- **Once a profile with a file key store has unlocked while the Secret
+  Service could be consulted**, the daemon records which store it used in
+  `secure-storage-source.json` in the app's data directory, and uses only
+  that store from then on. A run during a Secret Service outage never writes
+  this record. If the recorded store is
   unavailable, startup stops instead of switching to the other store. Do not
   edit or delete that file.
 

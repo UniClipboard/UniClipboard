@@ -16,6 +16,8 @@ on:
       - 'scripts/__tests__/build-mode.test.ts'
       - 'scripts/ci/isolate-build-toolchain.mjs'
       - 'scripts/__tests__/ci-toolchains.test.ts'
+      - 'scripts/ci/resolve-app-env.mjs'
+      - 'scripts/__tests__/cli-packaging.test.ts'
 
 permissions:
   contents: read
@@ -31,4 +33,4 @@ jobs:
           node-version: '24'
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
-      - run: bun x vitest run scripts/__tests__/actions-cache-policy.test.ts scripts/__tests__/build-mode.test.ts scripts/__tests__/ci-toolchains.test.ts
+      - run: bun x vitest run scripts/__tests__/actions-cache-policy.test.ts scripts/__tests__/build-mode.test.ts scripts/__tests__/ci-toolchains.test.ts scripts/__tests__/cli-packaging.test.ts

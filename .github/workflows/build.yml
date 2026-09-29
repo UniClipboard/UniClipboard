@@ -249,19 +249,9 @@ jobs:
         # 该值同时注入给 Rust 后端 (APP_ENV, option_env! 编译期读取) 和前端
         # (VITE_APP_ENV, Vite 在 build 时内联),保证前后端 environment 一致。
         id: resolve-env
-        shell: bash
-        run: |
-          CHANNEL="${{ inputs.channel || 'stable' }}"
-          case "$CHANNEL" in
-            stable) APP_ENV="production" ;;
-            alpha|beta|rc) APP_ENV="$CHANNEL" ;;
-            *)
-              echo "::warning::未知 channel '$CHANNEL',回退为 production"
-              APP_ENV="production"
-              ;;
-          esac
-          echo "app_env=$APP_ENV" >> "$GITHUB_OUTPUT"
-          echo "Resolved APP_ENV=$APP_ENV (from channel=$CHANNEL)"
+        env:
+          UC_CHANNEL: ${{ inputs.channel || 'stable' }}
+        run: node scripts/ci/resolve-app-env.mjs
 
       - name: prepare uniclipd sidecar
         # ADR-008 D13: the standalone `uniclipd` daemon ships *inside* the GUI

@@ -65,6 +65,31 @@ function cargoMetadata() {
   }
 }
 
+// The GUI package is resolved on its own (not with workspace feature
+// unification), exactly as `tauri build` compiles it.
+function guiProductionGraph() {
+  return execFileSync(
+    'cargo',
+    [
+      'tree',
+      '--locked',
+      '--package',
+      'uniclipboard',
+      '--features',
+      'uniclipboard/custom-protocol',
+      '--target',
+      'all',
+      '--edges',
+      'normal,build',
+      '--prefix',
+      'none',
+      '--format',
+      '{p}',
+    ],
+    { cwd: REPOSITORY_ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }
+  )
+}
+
 function workspacePackages(metadata) {
   const members = new Set(metadata.workspace_members)
   return metadata.packages.filter(candidate => members.has(candidate.id))
@@ -262,6 +287,30 @@ function checkLanIsolation(metadata, sources) {
   return problems
 }
 
+// The GUI is a pure daemon client and must not link the Engine. Match by source
+// and by name: a local Engine override replaces the Git source with a path but
+// keeps the package names.
+function checkGuiGraph(guiGraph) {
+  const problems = []
+  const lines = guiGraph.split('\n')
+  if (!lines.some(line => line.startsWith('uc-tauri '))) {
+    addProblem(problems, 'gui boundary', 'cargo tree did not resolve the GUI graph')
+  }
+  const enginePackages = new Set(
+    lines
+      .filter(
+        line =>
+          line.includes('github.com/UniClipboard/Engine') ||
+          MIGRATED_PACKAGES.has(line.split(' ')[0])
+      )
+      .map(line => line.replace(/ \(\*\)$/, ''))
+  )
+  for (const enginePackage of enginePackages) {
+    addProblem(problems, 'gui boundary', `GUI production graph links ${enginePackage}`)
+  }
+  return problems
+}
+
 function repositorySources() {
   return {
     mobileLanLifecycle: read('apps/daemon/src/daemon/mobile_lan_lifecycle.rs'),
@@ -275,6 +324,7 @@ function collectProblems(metadata, sources, options) {
       ...checkRepositoryBoundary(metadata, options),
       ...checkPublicSurface(metadata),
       ...checkLanIsolation(metadata, sources),
+      ...checkGuiGraph(sources.guiGraph),
     ]
   } catch (error) {
     return [`engine provenance: ${error instanceof Error ? error.message : String(error)}`]
@@ -315,6 +365,30 @@ function runNegativeFixtures(metadata, sources) {
     sources
   )
   expectRejected(
+    'Engine in the GUI production graph',
+    (_changed, changedSources) => {
+      changedSources.guiGraph += `\nuc-engine v0.0.0 (${ENGINE_REPOSITORY}?rev=0)\n`
+    },
+    metadata,
+    sources
+  )
+  expectRejected(
+    'locally overridden Engine in the GUI production graph',
+    (_changed, changedSources) => {
+      changedSources.guiGraph += '\nuc-core v0.0.0 (/local/engine/crates/uc-core)\n'
+    },
+    metadata,
+    sources
+  )
+  expectRejected(
+    'unresolved GUI graph',
+    (_changed, changedSources) => {
+      changedSources.guiGraph = ''
+    },
+    metadata,
+    sources
+  )
+  expectRejected(
     'automatic LAN fallback',
     (_changed, changedSources) => {
       changedSources.mobileLanLifecycle = changedSources.mobileLanLifecycle.replace(
@@ -336,7 +410,7 @@ function main() {
   }
 
   const metadata = cargoMetadata()
-  const sources = repositorySources()
+  const sources = { ...repositorySources(), guiGraph: guiProductionGraph() }
   const problems = collectProblems(metadata, sources)
   if (problems.length > 0) {
     for (const problem of problems) process.stderr.write(`ERROR ${problem}\n`)

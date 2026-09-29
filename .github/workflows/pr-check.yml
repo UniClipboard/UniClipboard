@@ -31,6 +31,7 @@ on:
       - '.github/workflows/pr-check.yml'
       - '.github/workflows/membership-e2e.yml'
       - 'scripts/e2e/run-membership-matrix.sh'
+      - 'scripts/architecture/**'
 
 permissions:
   contents: read
@@ -72,6 +73,7 @@ jobs:
               - '.github/workflows/pr-check.yml'
               - '.github/workflows/membership-e2e.yml'
               - 'scripts/e2e/run-membership-matrix.sh'
+              - 'scripts/architecture/**'
 
   frontend:
     name: Frontend Type Check
@@ -191,6 +193,18 @@ jobs:
           TAURI_CONFIG: '{"bundle":{"externalBin":[]}}'
         run: cargo check --workspace --locked
 
+      # Compile the GUI package on its own. The workspace check above unifies
+      # features across members, so a GUI dependency that only the daemon side
+      # enables (e.g. `uc-observability/analytics`) would be hidden there.
+      - name: Check GUI package without workspace feature unification
+        env:
+          TAURI_CONFIG: '{"bundle":{"externalBin":[]}}'
+        run: cargo check -p uniclipboard --features uniclipboard/custom-protocol --locked
+
+      # Also resolves the GUI package (`uniclipboard`) on its own with
+      # `cargo tree` and fails if it links any Engine package. The workspace
+      # `cargo check` above cannot catch this: feature unification lets the
+      # daemon side enable `uc-observability/analytics` for every member.
       - name: Verify Engine repository extraction rules
         run: bun run check:engine-repository
 
@@ -261,6 +275,19 @@ jobs:
       - name: Build daemon and CLI binaries
         run: cargo build -p uc-daemon -p uc-cli --features uc-daemon/e2e-rendezvous
 
+      # Same package selection and features as the build above, so the Engine
+      # and daemon dependencies are reused rather than rebuilt. The daemon is
+      # the only build that links both the Engine and Desktop's local log-name
+      # parser used by diagnostic export.
+      - name: Run Engine log-file-name contract test
+        env:
+          UC_E2E_EVIDENCE_DIR: ${{ runner.temp }}/e2e-evidence
+        run: |
+          mkdir -p "$UC_E2E_EVIDENCE_DIR"
+          cargo test -p uc-daemon -p uc-cli --features uc-daemon/e2e-rendezvous \
+            --test engine_log_file_name_contract 2>&1 \
+            | tee "$UC_E2E_EVIDENCE_DIR/engine_log_file_name_contract.log"
+
       - name: Build development CLI for shared-device E2E tests
         run: CARGO_TARGET_DIR=target/e2e-dev cargo build -p uc-cli --features uc-cli/dev-tools
 
@@ -272,6 +299,10 @@ jobs:
           echo "UC_E2E_SPACE_WORK_HOST=$engine_root/target/debug/uc-connectivity-host" >> "$GITHUB_ENV"
 
       - name: Run E2E tests
+        env:
+          # Tests that support it write redacted evidence here (see
+          # tests/e2e/tests/update_analytics_capture.rs).
+          UC_E2E_EVIDENCE_DIR: ${{ runner.temp }}/e2e-evidence
         run: >-
           UC_E2E_DEV_CLI="$GITHUB_WORKSPACE/target/e2e-dev/debug/uniclip"
           cargo test --manifest-path tests/e2e/Cargo.toml -- --ignored
@@ -279,3 +310,33 @@ jobs:
           --skip cli_auto_start_exposes_restricted_recovery
           --skip healthy_saved_profile_stays_healthy_after_restart
           --skip abandoned_pairings_red_green
+
+      - name: Record E2E evidence source
+        if: always()
+        env:
+          UC_E2E_EVIDENCE_DIR: ${{ runner.temp }}/e2e-evidence
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          mkdir -p "$UC_E2E_EVIDENCE_DIR"
+          {
+            echo "head_sha=$HEAD_SHA"
+            echo "base_sha=$BASE_SHA"
+            echo "tested_merge_sha=$GITHUB_SHA"
+            echo "run=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT"
+            echo "runner=$RUNNER_OS-$RUNNER_ARCH"
+            rustc --version
+            cargo --version
+            echo "rerun: cargo build -p uc-daemon -p uc-cli --features uc-daemon/e2e-rendezvous"
+            echo "rerun: cargo test -p uc-daemon -p uc-cli --features uc-daemon/e2e-rendezvous --test engine_log_file_name_contract"
+            echo "rerun: UC_E2E_EVIDENCE_DIR=<dir> cargo test --manifest-path tests/e2e/Cargo.toml --test update_analytics_capture -- --ignored"
+          } > "$UC_E2E_EVIDENCE_DIR/source.txt"
+
+      - name: Upload E2E evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/e2e-evidence
+          if-no-files-found: warn
+          retention-days: 14

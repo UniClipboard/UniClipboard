@@ -1,0 +1,97 @@
+name: 'Legacy File Key Store E2E'
+run-name: 'legacy-file-key-store-e2e-${{ github.event_name }}-${{ github.run_number }}'
+
+# Linux profiles whose KEK lives in the pre-1.0 file key store (issue #1751).
+# Runs scripts/e2e/linux-legacy-file-key-store.sh against the tracked v0.19.3
+# synthetic fixture with private session buses and an isolated gnome-keyring;
+# no repository secrets are used and no host keyring is touched.
+#
+# - baseline: production code reverted to the base commit, test harness kept;
+#   every case must match scripts/e2e/legacy-file-key-store-baseline.tsv.
+# - fix: the pull request as-is; every case must pass.
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'crates/uc-platform/**'
+      - 'crates/uc-bootstrap/**'
+      - 'apps/daemon/**'
+      - 'tests/e2e/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'scripts/e2e/linux-legacy-file-key-store.sh'
+      - 'scripts/e2e/legacy-file-key-store-baseline.tsv'
+      - '.github/workflows/legacy-file-key-store-e2e.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    name: 'Linux / ${{ matrix.variant }}'
+    # A non-root runner, so directory-permission cases are really exercised.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [baseline, fix]
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Install pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.95.0
+
+      - name: Install build and isolated session dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential pkg-config cmake clang libssl-dev \
+            libdbus-1-dev libwayland-dev libxkbcommon-dev \
+            dbus-daemon dbus-bin gnome-keyring
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+            tests/e2e -> target
+          shared-key: legacy-file-key-store-e2e-${{ matrix.variant }}
+          save-if: false
+
+      - name: Revert production code to the base commit
+        if: matrix.variant == 'baseline'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          base="${BASE_SHA:-$(git merge-base origin/main HEAD)}"
+          git checkout "$base" -- crates apps
+          echo "UC_E2E_SOURCE_NOTE=baseline: crates and apps from $base, harness from $(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          echo "UC_E2E_EXPECTED_RESULTS=$GITHUB_WORKSPACE/scripts/e2e/legacy-file-key-store-baseline.tsv" >> "$GITHUB_ENV"
+          git status --short
+
+      - name: Record fix provenance
+        if: matrix.variant == 'fix'
+        run: echo "UC_E2E_SOURCE_NOTE=fix: $(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Run legacy file key store E2E
+        env:
+          ARTIFACTS_DIR: ${{ runner.temp }}/legacy-file-key-store-${{ matrix.variant }}
+          UC_E2E_REQUIRE_SECRET_SERVICE: '1'
+        run: bash scripts/e2e/linux-legacy-file-key-store.sh
+
+      - name: Upload results, redacted logs and checksums
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: legacy-file-key-store-e2e-${{ matrix.variant }}
+          path: ${{ runner.temp }}/legacy-file-key-store-${{ matrix.variant }}
+          if-no-files-found: warn
+          retention-days: 14

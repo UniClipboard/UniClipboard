@@ -126,13 +126,26 @@ impl TestDaemon {
         binaries: &NodeBinarySet,
         rendezvous_base_url: Option<&str>,
     ) -> Result<Self, String> {
+        Self::start_preserving_configured_with(profile, binaries, rendezvous_base_url, |_| {}).await
+    }
+
+    /// Spawn on userdata already restored into this profile without waiting
+    /// for health, so a test can inspect a daemon whose startup failed.
+    pub fn spawn_preserving_configured_with(
+        profile: TestProfile,
+        binaries: &NodeBinarySet,
+        rendezvous_base_url: Option<&str>,
+        configure: impl FnOnce(&mut Command),
+    ) -> Result<Self, String> {
         let binary = binaries.daemon.clone();
         let rendezvous_base_url = rendezvous_base_url.map(str::to_string);
-        let child = Self::command(&profile, &binary, rendezvous_base_url.as_deref())
-            .map_err(|error| format!("prepare restored profile failed: {error}"))?
+        let mut command = Self::command(&profile, &binary, rendezvous_base_url.as_deref())
+            .map_err(|error| format!("prepare restored profile failed: {error}"))?;
+        configure(&mut command);
+        let child = command
             .spawn()
             .map_err(|error| format!("spawn restored profile failed: {error}"))?;
-        let mut daemon = Self {
+        Ok(Self {
             child: Some(child),
             profile,
             port: 0,
@@ -140,7 +153,21 @@ impl TestDaemon {
             uses_legacy_fixed_port: binaries.endpoint_discovery
                 == DaemonEndpointDiscovery::FixedProfilePort,
             rendezvous_base_url,
-        };
+        })
+    }
+
+    pub async fn start_preserving_configured_with(
+        profile: TestProfile,
+        binaries: &NodeBinarySet,
+        rendezvous_base_url: Option<&str>,
+        configure: impl FnOnce(&mut Command),
+    ) -> Result<Self, String> {
+        let mut daemon = Self::spawn_preserving_configured_with(
+            profile,
+            binaries,
+            rendezvous_base_url,
+            configure,
+        )?;
         if let Err(error) = daemon.wait_for_endpoint(Duration::from_secs(30)).await {
             return Err(format!("{error}\n{}", daemon.diagnostic_log()));
         }
@@ -187,6 +214,28 @@ impl TestDaemon {
         );
         self.wait_for_endpoint(Duration::from_secs(30)).await?;
         self.wait_healthy(Duration::from_secs(30)).await
+    }
+
+    /// Restart on the same userdata without waiting for health, so a test can
+    /// inspect a restart whose startup fails.
+    pub fn respawn_preserving_configured_with(
+        &mut self,
+        configure: impl FnOnce(&mut Command),
+    ) -> Result<(), String> {
+        self.kill();
+        let mut command = Self::command(
+            &self.profile,
+            &self.binary,
+            self.rendezvous_base_url.as_deref(),
+        )
+        .map_err(|e| format!("prepare configured respawn failed: {e}"))?;
+        configure(&mut command);
+        self.child = Some(
+            command
+                .spawn()
+                .map_err(|e| format!("configured respawn failed: {e}"))?,
+        );
+        Ok(())
     }
 
     pub async fn restart_preserving_with_system_clipboard(&mut self) -> Result<(), String> {

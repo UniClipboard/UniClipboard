@@ -169,14 +169,31 @@ PRESENT_TESTS=(
 
 FAILED=0
 : > "$ARTIFACTS/results.tsv"
-for test_name in "${TESTS[@]}"; do
-  cargo test --manifest-path tests/e2e/Cargo.toml --test legacy_file_key_store \
-    -- --ignored --exact "$test_name" --test-threads=1 > "$ARTIFACTS/$test_name.log" 2>&1
-  status=$?
-  result=passed
-  [[ "$status" -eq 0 ]] || { result=failed; FAILED=1; }
-  printf '%s\t%s\n' "$test_name" "$result" | tee -a "$ARTIFACTS/results.tsv"
-done
+# A harness that does not compile proves nothing about the product: stop here
+# so no case can be counted as an expected failure.
+if ! cargo test --manifest-path tests/e2e/Cargo.toml --test legacy_file_key_store --no-run \
+  > "$ARTIFACTS/harness-build.log" 2>&1; then
+  for test_name in "${TESTS[@]}"; do
+    printf '%s\t%s\n' "$test_name" "error (harness did not compile)" | tee -a "$ARTIFACTS/results.tsv"
+  done
+  FAILED=1
+else
+  for test_name in "${TESTS[@]}"; do
+    cargo test --manifest-path tests/e2e/Cargo.toml --test legacy_file_key_store \
+      -- --ignored --exact "$test_name" --test-threads=1 > "$ARTIFACTS/$test_name.log" 2>&1
+    # passed/failed only when exactly this case ran; anything else is a harness error.
+    if grep -q 'test result: ok. 1 passed' "$ARTIFACTS/$test_name.log"; then
+      result=passed
+    elif grep -q 'test result: FAILED. 0 passed; 1 failed' "$ARTIFACTS/$test_name.log"; then
+      result=failed
+      FAILED=1
+    else
+      result=error
+      FAILED=1
+    fi
+    printf '%s\t%s\n' "$test_name" "$result" | tee -a "$ARTIFACTS/results.tsv"
+  done
+fi
 if [[ -z "${UC_E2E_PRESENT_SECRET_SERVICE_BUS:-}" ]]; then
   for test_name in "${PRESENT_TESTS[@]}"; do
     printf '%s\t%s\n' "$test_name" "not run ($PRESENT_STATUS)" | tee -a "$ARTIFACTS/results.tsv"

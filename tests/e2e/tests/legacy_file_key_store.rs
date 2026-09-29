@@ -194,7 +194,7 @@ const SOURCE_RECORD: &str = "secure-storage-source.json";
 
 /// Compares key material without printing it, even for synthetic fixtures.
 #[track_caller]
-fn assert_same_secret<T: PartialEq>(actual: T, expected: T, message: &str) {
+fn assert_same_secret<T: PartialEq>(actual: &T, expected: &T, message: &str) {
     assert!(actual == expected, "{message} (key bytes withheld)");
 }
 
@@ -242,8 +242,8 @@ async fn legacy_file_key_store_starts_without_a_secret_service() {
 
     assert_unlocked_history(&daemon).await;
     assert_same_secret(
-        read_kek(&daemon.profile),
-        kek,
+        &read_kek(&daemon.profile),
+        &kek,
         "the legacy KEK must stay intact",
     );
     assert!(
@@ -281,8 +281,8 @@ async fn legacy_file_key_store_stays_authoritative_when_a_secret_service_appears
 
     assert_unlocked_history(&daemon).await;
     assert_same_secret(
-        read_kek(&daemon.profile),
-        kek,
+        &read_kek(&daemon.profile),
+        &kek,
         "the legacy KEK must stay intact",
     );
     assert!(
@@ -343,8 +343,8 @@ async fn a_wrong_legacy_kek_asks_for_the_passphrase_without_being_overwritten() 
     let recovery = authorized_get(&daemon, "/encryption/recovery").await;
     assert_eq!(recovery["state"], "awaiting_passphrase");
     assert_same_secret(
-        read_kek(&daemon.profile),
-        replaced,
+        &read_kek(&daemon.profile),
+        &replaced,
         "the stored KEK must not change before the passphrase is authenticated",
     );
 
@@ -399,8 +399,8 @@ async fn an_unreadable_legacy_key_store_fails_closed_and_stays_intact() {
 
     assert_eq!(status["progress"]["failure"]["reason"], "startup_failed");
     assert_same_secret(
-        read_kek(&daemon.profile),
-        kek,
+        &read_kek(&daemon.profile),
+        &kek,
         "the legacy KEK must stay intact",
     );
     assert!(
@@ -433,18 +433,18 @@ async fn entries_split_between_the_file_store_and_a_secret_service_fail_closed()
 
     assert_eq!(status["progress"]["failure"]["reason"], "startup_failed");
     assert_same_secret(
-        read_kek(&daemon.profile),
-        kek,
+        &read_kek(&daemon.profile),
+        &kek,
         "the legacy KEK must stay intact",
     );
     assert_same_secret(
-        std::fs::read(keyring.join(LEGACY_IDENTITY_FILE)).expect("read file-only entry"),
-        vec![7_u8; 32],
+        &std::fs::read(keyring.join(LEGACY_IDENTITY_FILE)).expect("read file-only entry"),
+        &vec![7_u8; 32],
         "a stored key changed",
     );
     assert_same_secret(
-        secret_service.get(LEGACY_KEK_KEY).expect("read seeded KEK"),
-        Some(kek),
+        &secret_service.get(LEGACY_KEK_KEY).expect("read seeded KEK"),
+        &Some(kek.clone()),
         "the secret service copy must stay intact",
     );
     assert!(
@@ -474,8 +474,8 @@ async fn a_secret_service_holding_every_legacy_entry_keeps_authority() {
 
     assert_unlocked_history(&daemon).await;
     assert_same_secret(
-        read_kek(&daemon.profile),
-        kek,
+        &read_kek(&daemon.profile),
+        &kek,
         "the file copy must stay intact",
     );
     assert!(
@@ -512,8 +512,8 @@ async fn a_stale_secret_service_kek_asks_for_the_passphrase_and_leaves_the_file_
         "no legacy material may be reported lost"
     );
     assert_same_secret(
-        secret_service.get(LEGACY_KEK_KEY).expect("read stale KEK"),
-        Some(stale),
+        &secret_service.get(LEGACY_KEK_KEY).expect("read stale KEK"),
+        &Some(stale.clone()),
         "the stored KEK must not change before the passphrase is authenticated",
     );
 
@@ -537,8 +537,8 @@ async fn a_stale_secret_service_kek_asks_for_the_passphrase_and_leaves_the_file_
     assert_eq!(state["sessionReady"], true);
     assert_history_decrypts(&daemon);
     assert_same_secret(
-        read_kek(&daemon.profile),
-        kek,
+        &read_kek(&daemon.profile),
+        &kek,
         "the file store must stay intact",
     );
     wait_for_source_record(&daemon.profile, "system").await;
@@ -580,14 +580,14 @@ async fn a_confirmed_system_source_is_not_replaced_when_the_secret_service_disap
 
     assert_eq!(status["progress"]["failure"]["reason"], "startup_failed");
     assert_same_secret(
-        read_kek(&daemon.profile),
-        stale,
+        &read_kek(&daemon.profile),
+        &stale,
         "the stale file KEK must not change",
     );
     assert_eq!(source_record(&daemon.profile), record);
     assert_same_secret(
-        secret_service.get(LEGACY_KEK_KEY).expect("read system KEK"),
-        Some(kek),
+        &secret_service.get(LEGACY_KEK_KEY).expect("read system KEK"),
+        &Some(kek.clone()),
         "the recorded store must stay intact",
     );
 }
@@ -626,13 +626,13 @@ async fn a_confirmed_file_source_is_kept_when_the_secret_service_holds_a_differe
 
     assert_unlocked_history(&daemon).await;
     assert_same_secret(
-        read_kek(&daemon.profile),
-        kek,
+        &read_kek(&daemon.profile),
+        &kek,
         "the file KEK must stay intact",
     );
     assert_same_secret(
-        secret_service.get(LEGACY_KEK_KEY).expect("read system KEK"),
-        Some(stale),
+        &secret_service.get(LEGACY_KEK_KEY).expect("read system KEK"),
+        &Some(stale.clone()),
         "the unselected store must not change",
     );
 }
@@ -670,8 +670,8 @@ async fn an_unconfirmed_run_records_nothing_and_changes_no_key() {
         "a locked run must not record"
     );
     assert_same_secret(
-        read_kek(&daemon.profile),
-        stale,
+        &read_kek(&daemon.profile),
+        &stale,
         "no key may change without authentication",
     );
     daemon.stop_gracefully().await.expect("stop locked daemon");
@@ -688,8 +688,8 @@ async fn an_unconfirmed_run_records_nothing_and_changes_no_key() {
     assert_unlocked_history(&daemon).await;
     wait_for_source_record(&daemon.profile, "system").await;
     assert_same_secret(
-        read_kek(&daemon.profile),
-        stale,
+        &read_kek(&daemon.profile),
+        &stale,
         "the unselected file store must not change",
     );
 }
@@ -716,8 +716,8 @@ async fn an_unrecognized_source_record_fails_closed() {
 
     assert_eq!(status["progress"]["failure"]["reason"], "startup_failed");
     assert_same_secret(
-        read_kek(&daemon.profile),
-        kek,
+        &read_kek(&daemon.profile),
+        &kek,
         "the legacy KEK must stay intact",
     );
     assert_eq!(

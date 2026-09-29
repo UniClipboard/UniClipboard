@@ -133,7 +133,9 @@ function checkProductionFeatures(problems) {
   ).join('\n')
 
   for (const [name, version] of REVIEWED_VERSIONS) {
-    if (!new RegExp(`^${name} v${version.replaceAll('.', '\\.')}(?: \\(\\*\\))?$`, 'm').test(tree)) {
+    if (
+      !new RegExp(`^${name} v${version.replaceAll('.', '\\.')}(?: \\(\\*\\))?$`, 'm').test(tree)
+    ) {
       addProblem(
         problems,
         'production feature graph',

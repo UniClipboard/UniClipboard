@@ -101,7 +101,10 @@ jobs:
             echo "the pinned baseline commit $BASELINE_SHA is not in this checkout" >&2
             exit 1
           fi
-          git checkout "$BASELINE_SHA" -- crates apps
+          # --no-overlay so files added after the pin are removed instead of
+          # surviving next to the reverted code; the harness, scripts,
+          # manifests and lockfiles outside crates and apps are untouched.
+          git checkout --no-overlay "$BASELINE_SHA" -- crates apps
           echo "UC_E2E_SOURCE_NOTE=baseline: crates and apps from the pinned pre-fix commit $BASELINE_SHA (base of #1753), harness from $(git rev-parse HEAD)" >> "$GITHUB_ENV"
           echo "UC_E2E_EXPECTED_RESULTS=$GITHUB_WORKSPACE/scripts/e2e/legacy-file-key-store-baseline.tsv" >> "$GITHUB_ENV"
           git status --short

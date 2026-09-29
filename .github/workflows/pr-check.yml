@@ -301,18 +301,24 @@ jobs:
           cargo build --manifest-path "$engine_root/Cargo.toml" -p uc-connectivity-host --locked
           echo "UC_E2E_SPACE_WORK_HOST=$engine_root/target/debug/uc-connectivity-host" >> "$GITHUB_ENV"
 
+      # `--no-fail-fast` runs every test binary even after one fails, so an
+      # unrelated failing suite cannot hide the result of the others; the step
+      # still fails if any test fails. The per-test results are kept with the
+      # evidence artifact.
       - name: Run E2E tests
         env:
           # Tests that support it write redacted evidence here (see
           # tests/e2e/tests/update_analytics_capture.rs).
           UC_E2E_EVIDENCE_DIR: ${{ runner.temp }}/e2e-evidence
-        run: >-
-          UC_E2E_DEV_CLI="$GITHUB_WORKSPACE/target/e2e-dev/debug/uniclip"
-          cargo test --manifest-path tests/e2e/Cargo.toml -- --ignored
-          --skip bad_metadata_stays_read_only_across_three_restricted_starts
-          --skip cli_auto_start_exposes_restricted_recovery
-          --skip healthy_saved_profile_stays_healthy_after_restart
-          --skip abandoned_pairings_red_green
+          UC_E2E_DEV_CLI: ${{ github.workspace }}/target/e2e-dev/debug/uniclip
+        run: |
+          mkdir -p "$UC_E2E_EVIDENCE_DIR"
+          cargo test --manifest-path tests/e2e/Cargo.toml --no-fail-fast -- --ignored \
+            --skip bad_metadata_stays_read_only_across_three_restricted_starts \
+            --skip cli_auto_start_exposes_restricted_recovery \
+            --skip healthy_saved_profile_stays_healthy_after_restart \
+            --skip abandoned_pairings_red_green 2>&1 \
+            | tee "$UC_E2E_EVIDENCE_DIR/e2e-suite.log"
 
       - name: Record E2E evidence source
         if: always()
@@ -334,6 +340,15 @@ jobs:
             echo "rerun: cargo test -p uc-daemon -p uc-cli --features uc-daemon/e2e-rendezvous --test engine_log_file_name_contract"
             echo "rerun: UC_E2E_EVIDENCE_DIR=<dir> cargo test --manifest-path tests/e2e/Cargo.toml --test update_analytics_capture -- --ignored"
           } > "$UC_E2E_EVIDENCE_DIR/source.txt"
+          # Per-test outcomes of the full suite (test names and ok/FAILED only).
+          if [ -f "$UC_E2E_EVIDENCE_DIR/e2e-suite.log" ]; then
+            sed 's/\x1b\[[0-9;]*m//g' "$UC_E2E_EVIDENCE_DIR/e2e-suite.log" \
+              | grep -E '^(test .* \.\.\. |     Running |test result: )' \
+              > "$UC_E2E_EVIDENCE_DIR/e2e-results.txt" || true
+            # The raw suite log embeds test-daemon diagnostics on failure; it
+            # stays in the job log and is not uploaded.
+            rm -f "$UC_E2E_EVIDENCE_DIR/e2e-suite.log"
+          fi
 
       - name: Upload E2E evidence
         if: always()

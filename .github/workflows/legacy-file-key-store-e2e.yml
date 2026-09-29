@@ -79,7 +79,8 @@ jobs:
 
       - name: Record fix provenance
         if: matrix.variant == 'fix'
-        run: echo "UC_E2E_SOURCE_NOTE=fix: $(git rev-parse HEAD)" >> "$GITHUB_ENV"
+        run: |
+          echo "UC_E2E_SOURCE_NOTE=fix: $(git rev-parse HEAD)" >> "$GITHUB_ENV"
 
       - name: Run legacy file key store E2E
         env:

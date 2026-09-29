@@ -54,3 +54,16 @@ describe('shipped uniclipd builds', () => {
     }
   })
 })
+
+describe('CLI daemon debug symbols', () => {
+  const source = read('build-cli.yml')
+
+  it('uploads daemon debug symbols after building and before packaging', () => {
+    const upload = source.indexOf('- name: Upload Sentry debug symbols')
+    expect(upload).toBeGreaterThan(source.indexOf('--bin uniclipd'))
+    expect(upload).toBeLessThan(source.indexOf('- name: package CLI binary'))
+    expect(step(source, 'Upload Sentry debug symbols')).toContain(
+      'sentry-cli debug-files upload --include-sources "$TARGET_DIR"'
+    )
+  })
+})

@@ -216,6 +216,29 @@ jobs:
           # container, -mno-outline-atomics on aarch64) builds it the same way.
           cargo build --release -p uc-daemon --bin uniclipd ${{ matrix.args }} --timings
 
+      - name: Upload Sentry debug symbols
+        # uniclipd embeds the backend Sentry DSN, so its crashes need these
+        # symbols to be readable. Same upload as build.yml; skipped when the
+        # Sentry upload credentials are not configured.
+        shell: bash
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+        run: |
+          if [ -z "$SENTRY_AUTH_TOKEN" ] || [ -z "$SENTRY_PROJECT" ]; then
+            echo "::warning::SENTRY_AUTH_TOKEN/SENTRY_PROJECT not configured — skipping debug-files upload"
+            exit 0
+          fi
+          npm install -g @sentry/cli
+          if [ -n "${{ matrix.args }}" ]; then
+            TARGET_DIR="target/${{ matrix.target }}/release"
+          else
+            TARGET_DIR="target/release"
+          fi
+          echo "Uploading debug files from $TARGET_DIR"
+          sentry-cli debug-files upload --include-sources "$TARGET_DIR"
+
       - name: package CLI binary
         id: package
         shell: bash

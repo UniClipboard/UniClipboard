@@ -2,8 +2,15 @@
 
 use std::{path::PathBuf, sync::Arc};
 
+mod legacy_file;
 mod probed;
+pub use legacy_file::SecureStorageSource;
 use probed::ProbedSecureStorage;
+
+/// Directory of the file key store under the app data root.
+const FILE_KEY_STORE_DIR: &str = "keyring";
+/// Record of which store holds a profile's keys once both could.
+const SOURCE_RECORD_FILE: &str = "secure-storage-source.json";
 use tracing::{debug, error, info, warn};
 
 use crate::{
@@ -172,47 +179,57 @@ where
 fn secure_storage_from_capability(
     capability: SecureStorageCapability,
 ) -> Result<Arc<dyn SecureStorageProvider>, SecureStorageFactoryError> {
-    secure_storage_from_capability_with_base_dir(capability, None)
+    secure_storage_from_capability_in_app_data_root(capability, None)
+        .map(|selected| selected.storage)
+}
+
+/// A selected provider plus the handle through which the host confirms that
+/// the Engine opened the profile with the stored key.
+pub struct SelectedSecureStorage {
+    pub storage: Arc<dyn SecureStorageProvider>,
+    pub source: SecureStorageSource,
 }
 
 /// Create a secure storage instance matching the provided secure storage capability.
 ///
-/// If `capability` indicates system storage, returns a system-backed implementation wrapped in
-/// `Arc<dyn SecureStorageProvider>`. If `capability` is `FileBasedKeystore`, returns a file-backed
-/// implementation using the provided `base_dir`. If `base_dir` is `None`,
-/// returns `SecureStorageFactoryError::FileBasedInit` with `std::io::ErrorKind::NotFound`.
-/// If `capability` is `Unsupported`, returns `SecureStorageFactoryError::Unsupported` containing
-/// the provided capability.
-///
-/// The `base_dir` argument supplies the application data root required for file-based storage;
-/// construction does not create the directory or access the secret service.
-///
-/// # Examples
-///
-/// ```ignore
-/// # use std::sync::Arc;
-/// # use std::path::PathBuf;
-/// # use uc_platform::capability::SecureStorageCapability;
-/// # use uc_platform::secure_storage::secure_storage_from_capability_with_base_dir;
-/// let temp_dir = std::env::temp_dir();
-/// let storage = secure_storage_from_capability_with_base_dir(
-///     SecureStorageCapability::FileBasedKeystore,
-///     Some(temp_dir),
-/// );
-/// assert!(storage.is_ok());
-/// ```
-fn secure_storage_from_capability_with_base_dir(
+/// `SystemKeyring` returns the system store, which also keeps the pre-1.0 file
+/// store under `<app_data_root>/keyring` authoritative for entries it already
+/// holds when `app_data_root` is known. `FileBasedKeystore` returns that file
+/// store and requires `app_data_root`. Construction does not create directories
+/// or access the secret service.
+fn secure_storage_from_capability_in_app_data_root(
     capability: SecureStorageCapability,
-    base_dir: Option<PathBuf>,
-) -> Result<Arc<dyn SecureStorageProvider>, SecureStorageFactoryError> {
+    app_data_root: Option<PathBuf>,
+) -> Result<SelectedSecureStorage, SecureStorageFactoryError> {
     match capability {
-        SecureStorageCapability::SystemKeyring => Ok(Arc::new(ProbedSecureStorage::new(Arc::new(
-            SystemSecureStorage::new(),
-        ))) as Arc<dyn SecureStorageProvider>),
+        SecureStorageCapability::SystemKeyring => {
+            let system = Arc::new(ProbedSecureStorage::new(Arc::new(
+                SystemSecureStorage::new(),
+            ))) as Arc<dyn SecureStorageProvider>;
+            Ok(match app_data_root {
+                Some(root) => {
+                    let (storage, source) =
+                        legacy_file::system_storage_preserving_legacy_file_entries(
+                            system,
+                            FileSecureStorage::with_base_dir(root.join(FILE_KEY_STORE_DIR)),
+                            root.join(SOURCE_RECORD_FILE),
+                        );
+                    SelectedSecureStorage { storage, source }
+                }
+                None => SelectedSecureStorage {
+                    storage: system,
+                    source: SecureStorageSource::untracked(),
+                },
+            })
+        }
         SecureStorageCapability::FileBasedKeystore => {
-            if let Some(base_dir) = base_dir {
-                Ok(Arc::new(FileSecureStorage::with_base_dir(base_dir))
-                    as Arc<dyn SecureStorageProvider>)
+            if let Some(root) = app_data_root {
+                Ok(SelectedSecureStorage {
+                    storage: Arc::new(FileSecureStorage::with_base_dir(
+                        root.join(FILE_KEY_STORE_DIR),
+                    )),
+                    source: SecureStorageSource::untracked(),
+                })
             } else {
                 Err(SecureStorageFactoryError::FileBasedInit(
                     std::io::Error::new(
@@ -279,11 +296,15 @@ pub fn create_default_secure_storage(
 }
 
 /// Select a provider without accessing secrets or modifying userdata.
-/// System probing is deferred until first access, after Engine startup backup.
+/// System probing and store selection are deferred until first access. For an
+/// encrypted profile that access is the Engine's key preparation, which runs
+/// before its startup backup, so neither may modify userdata.
 /// An inaccessible system store never falls back to a different empty store.
 ///
 /// Detects the platform's secure storage capability and returns an appropriate provider:
-/// - If system secure storage is available, returns the system-backed implementation.
+/// - If system secure storage is available, returns the system-backed implementation,
+///   except that entries already held by the legacy file store under
+///   `<app_data_root>/keyring` stay there (see `legacy_file`).
 /// - If a file-based keystore is detected, selects a file-backed implementation rooted at
 ///   `app_data_root`.
 /// - If secure storage is unsupported, returns `SecureStorageFactoryError::Unsupported`.
@@ -307,18 +328,18 @@ pub fn create_default_secure_storage(
 /// let app_data_root = std::env::temp_dir().join("my_app_storage");
 /// let res = create_default_secure_storage_in_app_data_root(app_data_root);
 /// // On platforms with system secure storage support this may still return Ok.
-/// assert!(matches!(res, Ok(_)) || matches!(res, Err(SecureStorageFactoryError::Unsupported { .. })));
+/// assert!(res.is_ok() || matches!(res, Err(SecureStorageFactoryError::Unsupported { .. })));
 /// ```
 pub fn create_default_secure_storage_in_app_data_root(
     app_data_root: PathBuf,
-) -> Result<Arc<dyn SecureStorageProvider>, SecureStorageFactoryError> {
+) -> Result<SelectedSecureStorage, SecureStorageFactoryError> {
     let capability = if crate::portable::is_portable() {
         SecureStorageCapability::FileBasedKeystore
     } else {
         detect_storage_capability()
     };
     debug!(capability = ?capability, "Selected secure storage capability");
-    secure_storage_from_capability_with_base_dir(capability, Some(app_data_root.join("keyring")))
+    secure_storage_from_capability_in_app_data_root(capability, Some(app_data_root))
 }
 
 #[cfg(test)]

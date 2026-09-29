@@ -9,24 +9,28 @@
 use std::sync::Arc;
 
 use uc_platform::ports::SecureStorageProvider;
+use uc_platform::secure_storage::SecureStorageSource;
 
 use super::error::{WiringError, WiringResult};
 use crate::layer::paths::DesktopHostPaths;
 
 pub(crate) struct SecureStoragePrelude {
     pub(crate) secure_storage: Arc<dyn SecureStorageProvider>,
+    pub(crate) source: SecureStorageSource,
 }
 
 pub(crate) fn build_secure_storage_prelude(
     paths: &DesktopHostPaths,
 ) -> WiringResult<SecureStoragePrelude> {
-    let secure_storage =
-        uc_platform::secure_storage::create_default_secure_storage_in_app_data_root(
-            paths.app_data_root_dir.clone(),
-        )
-        .map_err(|error| WiringError::SecureStorageInit(error.to_string()))?;
+    let selected = uc_platform::secure_storage::create_default_secure_storage_in_app_data_root(
+        paths.app_data_root_dir.clone(),
+    )
+    .map_err(|error| WiringError::SecureStorageInit(error.to_string()))?;
 
-    Ok(SecureStoragePrelude { secure_storage })
+    Ok(SecureStoragePrelude {
+        secure_storage: selected.storage,
+        source: selected.source,
+    })
 }
 
 #[cfg(test)]

@@ -20,14 +20,21 @@ impl ProbedSecureStorage {
         self.ready
             .get_or_init(|| {
                 #[cfg(target_os = "linux")]
-                {
+                let result = {
                     let inner = Arc::clone(&self.inner);
                     super::run_probe_with_timeout(super::SYSTEM_STORAGE_PROBE_TIMEOUT, move || {
                         super::probe_system_storage_integrity(inner.as_ref())
                     })
-                }
+                };
                 #[cfg(not(target_os = "linux"))]
-                super::probe_system_storage_reachable(self.inner.as_ref())
+                let result = super::probe_system_storage_reachable(self.inner.as_ref());
+                if let Err(error) = &result {
+                    tracing::warn!(
+                        probe_error = %error,
+                        "system secure store is unavailable for this run"
+                    );
+                }
+                result
             })
             .as_ref()
             .map_err(|error| SecureStorageError::Unavailable(error.clone()))

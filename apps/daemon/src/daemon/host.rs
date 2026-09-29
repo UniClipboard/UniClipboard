@@ -75,6 +75,7 @@ async fn run_async_with_diagnostics(
     let prepared = prepare_desktop_engine_host()?;
     let process_paths = prepared.process_paths().clone();
     let analytics = prepared.analytics();
+    let secure_storage_source = prepared.secure_storage_source();
     let file_handles: Arc<dyn DaemonFileHandles> =
         Arc::new(DesktopDaemonFileHandles::new(prepared.file_handles()));
     let (engine_config, host_capabilities) = prepared.into_engine_start();
@@ -149,7 +150,7 @@ async fn run_async_with_diagnostics(
     .await;
 
     record_upgrade_status_at_startup(&engine).await;
-    spawn_startup_recovery(run_mode, Arc::clone(&engine));
+    spawn_startup_recovery(run_mode, Arc::clone(&engine), secure_storage_source);
 
     let wake_monitor = match super::system_wake::start(Arc::clone(&engine)).await {
         Ok(monitor) => Some(monitor),

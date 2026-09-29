@@ -21,6 +21,7 @@ use uc_platform::clipboard::{
     SystemClipboardSnapshot,
 };
 use uc_platform::ports::{SecureStorageError, SecureStorageProvider};
+use uc_platform::secure_storage::SecureStorageSource;
 
 use crate::layer::paths::{resolve_desktop_host_paths, DesktopHostPaths};
 use crate::layer::platform::{create_desktop_system_clipboard, SystemClipboardWiring};
@@ -34,6 +35,7 @@ pub struct DesktopEngineHost {
     process_paths: DesktopHostProcessPaths,
     file_handles: DesktopHostFileHandles,
     analytics: DesktopHostAnalytics,
+    secure_storage_source: SecureStorageSource,
 }
 
 impl DesktopEngineHost {
@@ -47,6 +49,11 @@ impl DesktopEngineHost {
 
     pub fn analytics(&self) -> DesktopHostAnalytics {
         self.analytics.clone()
+    }
+
+    /// Confirms the selected key store once the Engine unlocked the profile with it.
+    pub fn secure_storage_source(&self) -> SecureStorageSource {
+        self.secure_storage_source.clone()
     }
 
     pub fn into_engine_start(self) -> (EngineConfig, HostCapabilities) {
@@ -95,7 +102,8 @@ fn host_directories(paths: &DesktopHostPaths, temporary_dir: PathBuf) -> HostDir
 
 pub fn prepare_desktop_engine_host() -> WiringResult<DesktopEngineHost> {
     let paths = resolve_desktop_host_paths()?;
-    let secure_storage = build_secure_storage_prelude(&paths)?.secure_storage;
+    let secure_storage_prelude = build_secure_storage_prelude(&paths)?;
+    let secure_storage = secure_storage_prelude.secure_storage;
     let (_, system_clipboard, clipboard_wiring) = create_desktop_system_clipboard()?.into_parts();
     let file_handles = DesktopHostFileHandles::default();
     let file_registry = Arc::clone(&file_handles.file_registry);
@@ -136,6 +144,7 @@ pub fn prepare_desktop_engine_host() -> WiringResult<DesktopEngineHost> {
         process_paths: DesktopHostProcessPaths::from_app_paths(&paths),
         file_handles,
         analytics,
+        secure_storage_source: secure_storage_prelude.source,
     })
 }
 

@@ -4,10 +4,15 @@ use std::sync::Arc;
 
 use tracing::{info_span, Instrument};
 use uc_engine::{Engine, Operation, OperationResult, RecoverSessionInput, UpgradeStatusSummary};
+use uc_platform::secure_storage::SecureStorageSource;
 
 use super::run_mode::DaemonRunMode;
 
-pub fn spawn_startup_recovery(_run_mode: DaemonRunMode, engine: Arc<Engine>) {
+pub fn spawn_startup_recovery(
+    _run_mode: DaemonRunMode,
+    engine: Arc<Engine>,
+    secure_storage_source: SecureStorageSource,
+) {
     let recovery = tokio::spawn(
         async move {
             let recovery = engine
@@ -21,7 +26,12 @@ pub fn spawn_startup_recovery(_run_mode: DaemonRunMode, engine: Arc<Engine>) {
                 Ok(OperationResult::SessionRecovered {
                     unlocked: true,
                     resumed,
-                }) => tracing::info!(resumed, "background engine session recovery completed"),
+                }) => {
+                    // The Engine opened the profile with the stored key, which
+                    // proves the selected key store holds this profile's keys.
+                    secure_storage_source.confirm_unlocked_by_stored_key();
+                    tracing::info!(resumed, "background engine session recovery completed")
+                }
                 Ok(OperationResult::SessionRecovered {
                     unlocked: false, ..
                 }) => tracing::info!("background engine session remains locked"),

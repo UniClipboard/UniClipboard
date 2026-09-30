@@ -19,7 +19,7 @@ await i18n.changeLanguage(params.get('language') || 'en-US')
 const site = params.get('site') ?? 'clear-history'
 const noop = () => {}
 
-function Fixture() {
+export default function Fixture() {
   switch (site) {
     case 'delete':
       return <DeleteConfirmDialog open onOpenChange={noop} onConfirm={noop} count={3} />

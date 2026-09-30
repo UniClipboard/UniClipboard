@@ -46,7 +46,7 @@ const body =
       ? [<p key="w">{'A'.repeat(200)}</p>]
       : paragraphs(1)
 
-function Fixture() {
+export default function Fixture() {
   if (kind === 'alert') {
     return (
       <AlertDialog open>

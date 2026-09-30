@@ -249,7 +249,8 @@ Windows 上 ⌘ 对应 Ctrl，⌥ 对应 Alt。
 上游合并记录（2026-09-30）：
 - Engine PR #130 已合并，合并提交 `f45d08c90c01aaa78ee29d6117aa3cd2fe329e3d`（2026-09-30T09:00:52Z），范围为 U2 `SettingsChanged`、U3 `tag_match`、U4 批量计数、U5 每日计数，U6 已移除。它只比固定版本 `c7a821b`（`v1.1.0-rc.21`）多一个提交，因此包含 rc.21 修复；它 **不是** t-0106 的 LAN-only 分支，不能据此认为 `trusted_networks` / `listen_port` 绑定已合并。
 - 上文“本地 Engine 覆盖”“未提交”的描述已过期：t-0110 线程已关闭，其工作区已删除，资料改从已合并源码与线程归档取用。
-- 内容锁（任务 A）已在 Desktop 后台完成，不依赖 Engine 新接口；本分支的固定版本仍是 `c7a821b`。改用 `f45d08c` 需要在 `crates/uc-webserver/src/api/search.rs` 补 `tag_match`，并在 `crates/uc-webserver/src/api/event_emitter.rs` 为 `SettingsChanged` 增加分支，之后重跑隔离 E2E；该工作随 #1774 / #1784 跟踪。
+- 内容锁（任务 A）已在 Desktop 后台完成，不依赖 Engine 新接口。本分支的固定版本已改为已合并的 `f45d08c90c01aaa78ee29d6117aa3cd2fe329e3d`：只补了 `SearchEntriesInput.tag_match`（不设置，默认“任一”）和 `SettingsChanged`（暂不转发）两处适配，行为不变；已用该版本重新打包，隔离 E2E 55/55 与 35/35 通过。标签“且”、条数与每日计数、设置推送的接线仍随 #1774 / #1784 进行。`main` 仍固定 `c7a821b`。
+- 最终发布来源还必须包含 t-0106 的 LAN-only 工作；本分支没有 LAN-only 本地覆盖。
 
 ### 阶段 2：辅助程序集成
 - 覆盖 A1、A3、A4，B5–B8、B11。

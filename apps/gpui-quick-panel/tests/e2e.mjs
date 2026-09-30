@@ -318,7 +318,7 @@ test('GPUI quick panel native end-to-end', { timeout: 180_000 }, async t => {
     // "#" lists every tag; the first one is `link`. Each flow starts from a fresh panel.
     const firstOfHash = async keys => {
       await text('#')
-      await query({ query: '#' })
+      await query({ query: '' })
       for (const name of keys) await key(name)
       await key('tab')
       const sent = await until('a search with one tag', async () => {
@@ -337,9 +337,36 @@ test('GPUI quick panel native end-to-end', { timeout: 180_000 }, async t => {
     await run('Up and Down choose among suggestions: Up after Down comes back', async () => {
       assert.equal(await firstOfHash(['down', 'up']), 'link')
     })
+    // Plain words list three suggestions (image type, favorited, 工作) above the results. Up at the
+    // first result enters the list from below; Tab or Enter accepts the highlighted one.
+    await run('Up at the first result enters the suggestions from below', async () => {
+      await text('图片 收藏 工作 预览')
+      await query({ query: '图片 收藏 工作 预览' })
+      await key('up')
+      await key('tab')
+      await query({ query: '图片 收藏 预览', tags: ['工作'] })
+      await noPaste()
+    })
+    await run('Up twice reaches the second suggestion and Enter accepts it', async () => {
+      await text('图片 收藏 工作 预览')
+      await query({ query: '图片 收藏 工作 预览' })
+      await key('up')
+      await key('up')
+      await key('return')
+      await query({ query: '图片 工作 预览', tags: ['favorited'] })
+      await noPaste()
+    })
+    await run('Down from the end of the suggestions returns to the results', async () => {
+      await text('图片 收藏 工作 预览')
+      await query({ query: '图片 收藏 工作 预览' })
+      await key('up')
+      await key('down')
+      await key('return')
+      await until('the selected result was pasted', async () => (await state()).restores.length > restoreBaseline)
+    })
     await run('Backspace in an empty search box removes the last filter chip', async () => {
       await text('#')
-      await query({ query: '#' })
+      await query({ query: '' })
       await key('tab')
       await until('one tag chip', async () => (await state()).lastSearch?.tags?.length === 1)
       await key('delete')
@@ -353,7 +380,7 @@ test('GPUI quick panel native end-to-end', { timeout: 180_000 }, async t => {
       'Backspace with text in the search box deletes a character, not the chip',
       async () => {
         await text('#')
-        await query({ query: '#' })
+        await query({ query: '' })
         await key('tab')
         await until('one tag chip', async () => (await state()).lastSearch?.tags?.length === 1)
         await input('type', ['ab'])

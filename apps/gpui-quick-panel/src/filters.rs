@@ -81,6 +81,18 @@ fn daemon_type(value: &str) -> &str {
     }
 }
 
+/// The text to search for. Words made only of punctuation (a lone `#`, `@` or `/` being typed as a
+/// filter prefix, say) hold nothing the search index can match, and the daemon answers such a query
+/// with an error, so they are sent as an empty text: a filter-only search.
+fn searchable_text(query: &str) -> String {
+    let trimmed = query.trim();
+    if trimmed.chars().any(char::is_alphanumeric) {
+        trimmed.into()
+    } else {
+        String::new()
+    }
+}
+
 impl Filters {
     pub fn request(&self) -> SearchQueryRequest {
         self.request_on(Local::now().date_naive())
@@ -95,7 +107,7 @@ impl Filters {
             .map(|range| range.bounds_ms(today))
             .unzip();
         SearchQueryRequest {
-            query: self.query.trim().into(),
+            query: searchable_text(&self.query),
             operator: None,
             time_preset: None,
             from_ms,
@@ -448,6 +460,28 @@ pub fn remaining_query(query: &str, matched: &std::ops::Range<usize>) -> String 
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn punctuation_only_text_is_sent_as_an_empty_query() {
+        for text in ["@", "#", "/", " @ ", "# @ /", "...", "—"] {
+            let filters = Filters {
+                query: text.into(),
+                ..Default::default()
+            };
+            assert_eq!(filters.request_on(today()).query, "", "for {text:?}");
+        }
+        for text in ["a", "#w", "@ hello", "设", "co-de", " 12 "] {
+            let filters = Filters {
+                query: text.into(),
+                ..Default::default()
+            };
+            assert_eq!(
+                filters.request_on(today()).query,
+                text.trim(),
+                "for {text:?}"
+            );
+        }
+    }
 
     #[test]
     fn arrows_belong_to_the_suggestions_only_while_a_filter_word_is_typed() {

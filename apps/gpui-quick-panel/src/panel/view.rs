@@ -19,7 +19,7 @@ impl Panel {
                 return div().flex_1().min_w_0().into_any_element();
             };
             let image = self.images.get(&item.entry_id);
-            let selected = self.selection.selected() == Some(ix);
+            let selected = self.selection.selected() == Some(ix) && !self.suggestions_focused;
             let primary = cx.theme().primary;
             let tile = div()
                 .id(("image", ix))
@@ -459,6 +459,8 @@ impl PreviewSnapshot {
 
 impl Render for Panel {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.suggestions_focused =
+            self.suggestions_focused && !self.suggestion_options(cx).is_empty();
         let history = self.history_view(cx);
         div()
             .size_full()

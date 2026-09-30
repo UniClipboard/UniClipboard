@@ -127,6 +127,8 @@ pub struct Panel {
     reconnect_task: Option<Task<()>>,
     suggestions_open: bool,
     suggestion_cursor: usize,
+    /// The arrow keys are in the suggestion list rather than in the results.
+    suggestions_focused: bool,
     tags: Vec<String>,
     members: Vec<SpaceMemberDto>,
     images: HashMap<String, ImageData>,
@@ -214,6 +216,7 @@ impl Panel {
             reconnect_task: None,
             suggestions_open: false,
             suggestion_cursor: 0,
+            suggestions_focused: false,
             tags: filters::BUILTIN_TAGS.iter().map(|s| (*s).into()).collect(),
             members: vec![],
             images: HashMap::new(),
@@ -788,6 +791,10 @@ impl Panel {
         self.close_actions(window, cx);
         self.suggestions_open = !self.filters.query.is_empty();
         self.suggestion_cursor = 0;
+        // Typing a filter word (#tag, @device, /type) starts in the suggestions; plain words stay
+        // in the results.
+        self.suggestions_focused = filters::typing_a_filter(&self.filters.query)
+            && !self.suggestion_options(cx).is_empty();
         self.hovered = None;
         self.keyboard = true;
         self.search(window, cx);
@@ -1465,15 +1472,15 @@ impl Panel {
             cx.notify();
             return;
         }
-        if matches!(key, "up" | "down")
-            && !command
-            && !modifiers.shift
-            && !modifiers.alt
-            && self.actions.is_none()
-            && self.arrow_in_suggestions(key == "down", cx)
-        {
-            cx.stop_propagation();
-            return;
+        if !command && !modifiers.shift && !modifiers.alt && self.actions.is_none() {
+            if matches!(key, "up" | "down") && self.arrow_between_zones(key == "down", cx) {
+                cx.stop_propagation();
+                return;
+            }
+            if key == "enter" && self.suggestions_focused && self.accept_suggestion(window, cx) {
+                cx.stop_propagation();
+                return;
+            }
         }
         if !self.loading && !self.busy && self.items.is_empty() && !command && !modifiers.shift {
             let shown = self.visible_relaxations().len();

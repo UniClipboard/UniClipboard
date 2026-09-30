@@ -113,14 +113,19 @@ impl Panel {
             return false;
         }
         let options = self.suggestion_options(cx);
-        let Some(option) = options.get(self.suggestion_cursor.min(options.len().saturating_sub(1)))
-        else {
+        let at = if self.suggestions_focused {
+            self.suggestion_cursor.min(options.len().saturating_sub(1))
+        } else {
+            0
+        };
+        let Some(option) = options.get(at) else {
             return false;
         };
         self.filters.accept(option);
         let remaining = filters::remaining_query(&self.input.read(cx).value(), &option.matched);
         self.filters.query = remaining.clone();
         self.suggestion_cursor = 0;
+        self.suggestions_focused = false;
         self.input.update(cx, |input, cx| {
             input.set_value(remaining, window, cx);
             input.focus(window, cx);
@@ -131,22 +136,35 @@ impl Panel {
         true
     }
 
-    /// Up and Down while a filter word is being typed: move the suggestion that Tab would accept.
-    /// Returns whether the key was taken; otherwise the arrows move through the results.
-    pub(super) fn arrow_in_suggestions(&mut self, down: bool, cx: &mut Context<Self>) -> bool {
-        if !filters::typing_a_filter(&self.input.read(cx).value()) {
-            return false;
-        }
+    /// Up and Down between the results and the suggestion list, which is drawn above them:
+    /// Up at the first result enters the list from below, Down at its end goes back to the
+    /// results. Returns whether the key was taken; otherwise the arrows move through the results.
+    pub(super) fn arrow_between_zones(&mut self, down: bool, cx: &mut Context<Self>) -> bool {
         let count = self.suggestion_options(cx).len();
-        if count < 2 {
+        if count == 0 {
+            self.suggestions_focused = false;
             return false;
         }
-        let cursor = self.suggestion_cursor.min(count - 1);
-        self.suggestion_cursor = if down {
-            (cursor + 1) % count
-        } else {
-            (cursor + count - 1) % count
-        };
+        if self.suggestions_focused {
+            let cursor = self.suggestion_cursor.min(count - 1);
+            if down && cursor + 1 < count {
+                self.suggestion_cursor = cursor + 1;
+            } else if down && !self.items.is_empty() {
+                self.suggestions_focused = false;
+                self.suggestion_cursor = 0;
+            } else if !down {
+                self.suggestion_cursor = cursor.saturating_sub(1);
+            }
+            cx.notify();
+            return true;
+        }
+        let columns = if self.filters.images_only() { 3 } else { 1 };
+        let at_top = self.items.is_empty() || self.selection.index < columns;
+        if down || !at_top {
+            return false;
+        }
+        self.suggestions_focused = true;
+        self.suggestion_cursor = count - 1;
         cx.notify();
         true
     }
@@ -295,7 +313,11 @@ impl Panel {
         let muted = theme.muted_foreground;
         let accent = theme.primary;
         let query = self.input.read(cx).value().to_string();
-        let cursor = self.suggestion_cursor.min(options.len() - 1);
+        let cursor = if self.suggestions_focused {
+            self.suggestion_cursor.min(options.len() - 1)
+        } else {
+            0
+        };
         let start = filters::suggestion_window_start(cursor, MAX_SUGGESTIONS);
         let hidden = options.len().saturating_sub(start + MAX_SUGGESTIONS);
         let mut rows = options
@@ -626,7 +648,7 @@ impl Panel {
     fn row(&self, ix: usize, cx: &Context<Self>) -> AnyElement {
         let item = &self.items[ix];
         let kind = RowKind::of(item);
-        let selected = self.selection.selected() == Some(ix);
+        let selected = self.selection.selected() == Some(ix) && !self.suggestions_focused;
         let theme = cx.theme();
         let ink: Hsla = if selected {
             theme.primary_foreground

@@ -19,11 +19,16 @@ const fullText = new Map([
   ['fixture-4', Array.from({length:120}, (_, i) => `第 ${i+1} 行：这是一段用于验证预览高度上限与内部滚动的长文本。`).join('\n')],
   ['fixture-5', '多行内容验证\n第二行：预览跟随记录\n第三行：小箭头保持对齐\n第四行：窗口高度由内容决定\n第五行：历史窗口保持不动'],
 ]);
+// Two devices' worth of history: rows 6 and 7 came from the paired phone.
+rows[6].sourceDevice = 'peer-iphone';
+rows[7].sourceDevice = 'peer-iphone';
 rows[4].textPreview = '长文本验证（120 行）';
 rows[5].textPreview = '多行内容验证（5 行）';
 const imageBytes=new Map();
 const settings=JSON.parse(readFileSync(new URL('./settings.json',import.meta.url),'utf8'));
 settings.general.theme=process.env.UC_GPUI_FIXTURE_THEME??'system';
+// The panel reads words as pinyin initials only in a Chinese interface, whatever the system says.
+settings.general.language='zh-CN';
 if(process.env.UC_GPUI_IMAGE_FIXTURES==='1'){
   const images=[['landscape','横图预览 · 设计'],['portrait','竖图预览'],['transparent','透明图片预览'],['small','小图预览']];
   const imageRows=images.map(([name,label])=>{
@@ -55,18 +60,25 @@ const server = createServer(async (request, response) => {
       tagId, count: rows.filter(row => row.tags.includes(tagId)).length, isBuiltin: builtins.includes(tagId),
     })), ts: Date.now() });
   }
-  if (url.pathname === '/paired-devices') return json(200, {data:[],ts:Date.now()});
+  if (url.pathname === '/paired-devices') return json(200, {data:[{peerId:'peer-iphone',deviceName:'iPhone',pairingState:'paired',lastSeenAtMs:null,connected:true,channel:'direct',connectionAddress:null}],ts:Date.now()});
   if (url.pathname === '/search/query') {
     state.searches++;
     const query = url.searchParams.get('query') ?? '';
     state.searchStarts.push(query);
     if (query === 'error') return json(503, { error: { code: 'index_rebuilding', message: 'Synthetic failure' } });
     if (query === 'slow') await new Promise(resolve => setTimeout(resolve, 900));
-    const type=url.searchParams.get('contentTypes'); const tags=(url.searchParams.get('tags') ?? '').split(',').filter(Boolean);
+    // Every list parameter is comma separated, and the values of one parameter are alternatives.
+    const list = name => (url.searchParams.get(name) ?? '').split(',').filter(Boolean);
+    const types=list('contentTypes'), tags=list('tags'), sources=list('sourceDevices');
+    const fromMs=url.searchParams.has('fromMs')?Number(url.searchParams.get('fromMs')):null;
+    const toMs=url.searchParams.has('toMs')?Number(url.searchParams.get('toMs')):null;
     const offset=Number(url.searchParams.get('offset')??0), limit=Number(url.searchParams.get('limit')??50);
-    state.lastSearch={query, contentType:type, tags, offset, limit};
+    state.lastSearch={query, types, tags, sources, fromMs, toMs, offset, limit};
     state.requests.push(state.lastSearch);
-    const results = rows.filter(row => row.textPreview.toLowerCase().includes(query.toLowerCase())&&(!type||row.contentType===type)&&(!tags.length||tags.some(tag=>row.tags.includes(tag))));
+    const results = rows.filter(row => row.textPreview.toLowerCase().includes(query.toLowerCase())
+      &&(!types.length||types.includes(row.contentType))&&(!tags.length||tags.some(tag=>row.tags.includes(tag)))
+      &&(!sources.length||sources.includes(row.sourceDevice))
+      &&(fromMs===null||(row.activeTimeMs>=fromMs&&row.activeTimeMs<=toMs)));
     return json(200, { data: { items: results.slice(offset, offset + limit), total: results.length, hasMore: results.length > offset + limit, state: 'ready' }, ts: Date.now() });
   }
   if(request.method==='GET'&&url.pathname.startsWith('/clipboard/entries/')){

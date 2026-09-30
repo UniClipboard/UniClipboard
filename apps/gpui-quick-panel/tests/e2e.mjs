@@ -72,12 +72,16 @@ test('GPUI quick panel native end-to-end', { timeout: 180_000 }, async t => {
     await hotkey('cmd,a');
     await input('paste', ['--text', value]);
   };
+  // Waits for a search with these conditions. `time` is a predicate on the range the panel sent
+  // (`{ fromMs, toMs }`); without it the request must carry no time range.
   const query = async (expected, after = -1) => until(`query ${JSON.stringify(expected)}`, async () => {
     const result = await state();
     if (result.searches <= after) return false;
     const last = result.lastSearch;
-    return last && last.query === expected.query && last.contentType === (expected.type ?? null)
-      && JSON.stringify([...last.tags].sort()) === JSON.stringify([...(expected.tags ?? [])].sort()) && result;
+    const same = (a, b) => JSON.stringify([...a].sort()) === JSON.stringify([...b].sort());
+    return last && last.query === expected.query && same(last.types, expected.types ?? [])
+      && same(last.tags, expected.tags ?? []) && same(last.sources, expected.sources ?? [])
+      && (expected.time ? last.fromMs !== null && expected.time(last) : last.fromMs === null && last.toMs === null) && result;
   });
   const noPaste = async () => {
     // Wait beyond the panel's 80 ms delayed paste and 300 ms search debounce.
@@ -95,6 +99,12 @@ test('GPUI quick panel native end-to-end', { timeout: 180_000 }, async t => {
     const before = events().length;
     target.stdin.write(`click ${origin[0] + x} ${origin[1] + y} ${app.pid}\n`);
     const click = await until('guarded native click', () => events().slice(before).find(e => e.event === 'click'));
+    if (!click.ok) {
+      // Name what is on top of the point, so a failure says which window took it.
+      const swift = 'import CoreGraphics;import Foundation;let w=CGWindowListCopyWindowInfo([.optionOnScreenOnly,.excludeDesktopElements],kCGNullWindowID) as! [[String:Any]];for i in w{print(i[kCGWindowOwnerPID as String] ?? "",i[kCGWindowLayer as String] ?? "",i[kCGWindowName as String] ?? "",i[kCGWindowBounds as String] ?? "")}';
+      const { stdout } = await exec('swift', ['-e', swift]).catch(error => ({ stdout: String(error) }));
+      await writeFile(join(artifacts, 'click-windows.txt'), `point ${origin[0] + x},${origin[1] + y}; panel pid ${app.pid}; bounds ${JSON.stringify(window.bounds)}\n${stdout}`);
+    }
     assert.equal(click.ok, true, 'The test panel must own the click point');
   };
   const fresh = async () => {
@@ -137,7 +147,7 @@ test('GPUI quick panel native end-to-end', { timeout: 180_000 }, async t => {
 
     await run('Tab from an empty search cycles the type filter, and Shift+Tab goes back', async () => {
       await key('tab');
-      const cycled = await query({ query: '', type: 'text' });
+      const cycled = await query({ query: '', types: ['text'] });
       await noPaste();
       await hotkey('shift,tab');
       await query({ query: '' }, cycled.searches);
@@ -166,7 +176,7 @@ test('GPUI quick panel native end-to-end', { timeout: 180_000 }, async t => {
       await text('图片 设计');
       await query({ query: '图片 设计', tags: ['工作'] });
       await key('tab');
-      await query({ query: '设计', type: 'image', tags: ['工作'] });
+      await query({ query: '设计', types: ['image'], tags: ['工作'] });
       await noPaste();
     });
     await run('Escape dismisses suggestions without discarding the query', async () => {
@@ -192,18 +202,55 @@ test('GPUI quick panel native end-to-end', { timeout: 180_000 }, async t => {
       await noPaste();
       await query({ query: 'slow' });
     });
-    await run('multiple tags select the intersection rather than the first union result', async () => {
+    await run('several tags are alternatives sent in one request', async () => {
       await text('图片 收藏 工作 预览'); await query({ query: '图片 收藏 工作 预览' });
       await key('tab');
-      await query({ query: '收藏 工作 预览', type: 'image' });
+      await query({ query: '收藏 工作 预览', types: ['image'] });
       await key('tab');
-      await query({ query: '工作 预览', type: 'image', tags: ['favorited'] });
+      await query({ query: '工作 预览', types: ['image'], tags: ['favorited'] });
       await key('tab');
-      await query({ query: '预览', type: 'image', tags: ['favorited', '工作'] });
+      const sent = await query({ query: '预览', types: ['image'], tags: ['favorited', '工作'] });
       await noPaste();
+      // The panel asks once and shows what the daemon returned: no paging to narrow the result.
+      assert.ok((await state()).requests.every(request => request.offset === 0), 'The panel must not page through results');
+      const expected = (await (await fetch(`${address}/search/query?query=${encodeURIComponent('预览')}&contentTypes=image&tags=${encodeURIComponent('favorited,工作')}&limit=50&offset=0`, {
+        headers: { authorization: 'Session fixture-session' } })).json()).data.items;
+      assert.ok(expected.length > 1, 'The fixture must have more than the entry carrying both tags');
       await hotkey('cmd,c');
-      await until('intersection result copied', async () => (await state()).restores.length > restoreBaseline);
-      assert.deepEqual((await state()).restores.slice(restoreBaseline), ['image-landscape']);
+      await until('first result copied', async () => (await state()).restores.length > restoreBaseline);
+      assert.deepEqual((await state()).restores.slice(restoreBaseline), [expected[0].entryId]);
+      assert.ok(sent.searches > 0);
+    });
+    await run('@ picks a device and / picks a type', async () => {
+      await text('@iph'); await query({ query: '@iph' });
+      await key('tab');
+      await query({ query: '', sources: ['peer-iphone'] });
+      await text('/image'); await query({ query: '/image', sources: ['peer-iphone'] });
+      await key('tab');
+      await query({ query: '', types: ['image'], sources: ['peer-iphone'] });
+      await noPaste();
+    });
+    await run('a date in the search text becomes a time range and the next one replaces it', async () => {
+      const hour = 3_600_000;
+      await text('docker 3d'); await query({ query: 'docker 3d' });
+      await key('tab');
+      const three = await query({ query: 'docker', time: r => Math.abs((r.toMs - r.fromMs + 1) - 72 * hour) <= hour });
+      await noPaste();
+      await text('docker 昨天'); await query({ query: 'docker 昨天', time: r => r.fromMs === three.lastSearch.fromMs });
+      await key('tab');
+      await query({ query: 'docker', time: r => Math.abs((r.toMs - r.fromMs + 1) - 24 * hour) <= hour && r.toMs < Date.now() });
+      await noPaste();
+    });
+    await run('pinyin initials suggest a type and a time, and a second one replaces the first', async () => {
+      await text('tp jt'); await query({ query: 'tp jt' });
+      await key('tab');
+      await query({ query: 'jt', types: ['image'] });
+      await key('tab');
+      const today = await query({ query: '', types: ['image'], time: r => r.toMs >= Date.now() && r.toMs - r.fromMs < 25 * 3_600_000 });
+      await text('zt'); await query({ query: 'zt', types: ['image'], time: r => r.fromMs === today.lastSearch.fromMs });
+      await key('tab');
+      await query({ query: '', types: ['image'], time: r => r.toMs < today.lastSearch.fromMs && today.lastSearch.fromMs - r.fromMs <= 25 * 3_600_000 });
+      await noPaste();
     });
     await run('plain Enter pastes the history result even when suggestions are visible', async () => {
       await text('工作 设计'); await query({ query: '工作 设计' });

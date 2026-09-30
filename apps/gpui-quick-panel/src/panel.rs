@@ -354,7 +354,7 @@ impl Panel {
             }
             let id = self.preview.entry.as_ref()?;
             let index = self.items.iter().position(|item| &item.entry_id == id)?;
-            let mut item = if self.filters.content_type == 3 {
+            let mut item = if self.filters.images_only() {
                 *self.image_bounds.get(id)?
             } else {
                 self.scroll.bounds_for_item(index)?

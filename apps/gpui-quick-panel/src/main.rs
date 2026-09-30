@@ -1,7 +1,9 @@
 mod appearance;
 mod backend;
+mod date_range;
 mod filters;
 mod image_geometry;
+mod language;
 mod lifecycle;
 mod modifier_keys;
 mod panel;

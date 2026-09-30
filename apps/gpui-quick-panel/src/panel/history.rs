@@ -79,10 +79,10 @@ pub(super) fn keycap(label: impl Into<gpui::SharedString>, cx: &App) -> gpui::Di
 }
 
 impl Panel {
-    /// Text of a filter chip: `#tag`, `@device`, or the label of a type, time or extension.
+    /// Text of a filter chip: `#tag`, `@device`, or the label of a type or time range.
     fn chip_label(&self, dimension: Dimension, value: &str) -> String {
         match dimension {
-            Dimension::Tag => format!("#{}", filters::label(value)),
+            Dimension::Tag => format!("#{}", strings::value_label(value)),
             Dimension::Source => {
                 let name = self
                     .members
@@ -91,8 +91,8 @@ impl Panel {
                     .map_or(value, |member| member.device_name.as_str());
                 format!("@{name}")
             }
-            Dimension::Extension => format!(".{value}"),
-            Dimension::Type | Dimension::Time => filters::label(value).to_string(),
+            Dimension::Type => strings::value_label(value).to_string(),
+            Dimension::Time => value.to_string(),
         }
     }
 
@@ -122,7 +122,15 @@ impl Panel {
             .iter()
             .map(|member| (member.peer_id.clone(), member.device_name.clone()))
             .collect::<Vec<_>>();
-        filters::suggestions(&self.input.read(cx).value(), &self.tags, &sources)
+        let catalog = filters::Catalog {
+            tags: &self.tags,
+            sources: &sources,
+            today: chrono::Local::now().date_naive(),
+            initials: crate::language::is_chinese(
+                self.general.as_ref().and_then(|g| g.language.as_deref()),
+            ),
+        };
+        filters::suggestions(&self.input.read(cx).value(), &catalog)
             .into_iter()
             .filter(|option| !self.filters.contains(option.dimension, &option.value))
             .collect()
@@ -142,12 +150,8 @@ impl Panel {
         else {
             return false;
         };
-        let Some(matched) = option.matched.clone() else {
-            return false;
-        };
-        self.filters
-            .apply(option.dimension, Some(option.value.clone()));
-        let remaining = filters::remaining_query(&self.input.read(cx).value(), &matched);
+        self.filters.accept(option);
+        let remaining = filters::remaining_query(&self.input.read(cx).value(), &option.matched);
         self.filters.query = remaining.clone();
         self.suggestion_cursor = 0;
         self.input.update(cx, |input, cx| {
@@ -188,12 +192,7 @@ impl Panel {
         if self.busy {
             return;
         }
-        let count = filters::TYPES.len();
-        self.filters.content_type = if reverse {
-            (self.filters.content_type + count - 1) % count
-        } else {
-            (self.filters.content_type + 1) % count
-        };
+        self.filters.cycle_type(reverse);
         self.suggestions_open = false;
         self.hovered = None;
         self.keyboard = true;
@@ -205,14 +204,16 @@ impl Panel {
         let theme = cx.theme();
         let muted = theme.muted_foreground;
         let accent = theme.primary;
+        // One type is shown at the right end of the row, where Tab changes it; several are chips.
+        let type_chips = self.filters.types.len() > 1;
         let chips = self
             .filters
             .chips()
             .into_iter()
-            .filter(|(dimension, _)| *dimension != Dimension::Type)
+            .filter(|(dimension, _)| type_chips || *dimension != Dimension::Type)
             .collect::<Vec<_>>();
         let typed = !self.input.read(cx).value().is_empty();
-        let active_type = self.filters.content_type > 0;
+        let active_type = self.filters.single_type().is_some();
         div()
             .h(units(48.))
             .flex_shrink_0()
@@ -287,7 +288,12 @@ impl Panel {
                                     .font_weight(gpui::FontWeight::MEDIUM)
                             })
                             .when(!active_type, |label| label.text_color(muted))
-                            .child(filters::label(filters::TYPES[self.filters.content_type])),
+                            .child(
+                                self.filters
+                                    .single_type()
+                                    .map_or(strings::ALL_TYPES, strings::value_label)
+                                    .to_string(),
+                            ),
                     )
                     .child(keycap("⇥", cx)),
             )
@@ -320,10 +326,8 @@ impl Panel {
             .take(MAX_SUGGESTIONS)
             .enumerate()
             .map(|(ix, option)| {
-                let word = option
-                    .matched
-                    .as_ref()
-                    .and_then(|range| query.get(range.clone()))
+                let word = query
+                    .get(option.matched.clone())
                     .unwrap_or_default()
                     .to_string();
                 let value = self.chip_label(option.dimension, &option.value);
@@ -484,7 +488,7 @@ impl Panel {
             .cloned()
             .or_else(|| item.link_urls.first().cloned())
             .or_else(|| item.text_preview.clone())
-            .unwrap_or_else(|| filters::label(&item.content_type).into())
+            .unwrap_or_else(|| strings::value_label(&item.content_type).into())
             .replace(['\n', '\r'], " ");
 
         let leading = match self.images.get(&item.entry_id) {
@@ -712,10 +716,10 @@ impl Panel {
                         .child(div().text_size(units(11.)).child(strings::TRY_OTHER_TERMS)),
                 )
             })
-            .when(!self.loading && self.filters.content_type != 3, |list| {
+            .when(!self.loading && !self.filters.images_only(), |list| {
                 list.children((0..self.items.len()).map(|ix| self.row(ix, cx)))
             })
-            .when(!self.loading && self.filters.content_type == 3, |list| {
+            .when(!self.loading && self.filters.images_only(), |list| {
                 list.child(self.image_wall(cx))
             });
         let mut card = div()

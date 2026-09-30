@@ -315,7 +315,7 @@ impl PreviewSnapshot {
         let Some(item) = self.item.as_ref() else {
             return card.into_any_element();
         };
-        let mut metadata = filters::label(&item.content_type).to_string();
+        let mut metadata = crate::strings::value_label(&item.content_type).to_string();
         if let Some(text) = &self.text {
             metadata.push_str(&format!(" · {} 个字符", text.encode_utf16().count()));
         }

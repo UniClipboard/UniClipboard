@@ -39,8 +39,10 @@ final class Target: NSObject, NSApplicationDelegate, NSTextViewDelegate {
                         if parts.count == 4, let x = Double(parts[1]), let y = Double(parts[2]), let pid = Int32(parts[3]) {
                             let point = CGPoint(x: x, y: y)
                             let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
+                            // The pointer's own sprite is a window at the top layer; it is not what a click lands on.
                             let hit = windows.first { info in
-                                guard let bounds = info[kCGWindowBounds as String] as? [String: Any],
+                                guard (info[kCGWindowLayer as String] as? Int ?? 0) < 1_000_000,
+                                      let bounds = info[kCGWindowBounds as String] as? [String: Any],
                                       let rect = CGRect(dictionaryRepresentation: bounds as CFDictionary) else { return false }
                                 return rect.contains(point)
                             }

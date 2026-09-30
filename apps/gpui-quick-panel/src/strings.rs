@@ -7,10 +7,26 @@ pub const SEARCH_PLACEHOLDER: &str = "搜索，或输入 # 标签  @ 设备  / �
 pub const SUGGESTIONS: &str = "建议";
 pub const ACCEPT_IN_ORDER: &str = "按顺序接受";
 pub const RICH_TEXT: &str = "富文本";
+pub const ALL_TYPES: &str = "全部";
 pub const NO_MATCHES: &str = "暂无匹配的记录";
 pub const TRY_OTHER_TERMS: &str = "试试其他关键词或筛选条件";
 pub const SEARCHING: &str = "正在搜索…";
 pub const JUST_NOW: &str = "刚刚";
+
+/// Display name of a content type or a built-in tag; anything else (a custom tag) is shown as is.
+pub fn value_label(value: &str) -> &str {
+    match value {
+        "text" => "文本",
+        "richtext" => RICH_TEXT,
+        "image" => "图片",
+        "file" => "文件",
+        "link" => "链接",
+        "code" => "代码",
+        "favorited" => "收藏",
+        "directory" => "文件夹",
+        _ => value,
+    }
+}
 
 /// Footer text naming where the selected entry will be pasted.
 pub fn paste_to(application: Option<&str>) -> String {

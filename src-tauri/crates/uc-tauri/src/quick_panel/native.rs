@@ -57,6 +57,11 @@ impl QuickPanelBackend {
         Self {}
     }
 
+    /// Whether the helper implements the modifier double-tap trigger on this platform.
+    pub fn supports_double_tap() -> bool {
+        cfg!(target_os = "macos")
+    }
+
     /// True when the native helper owns the quick panel.
     pub fn is_native(&self) -> bool {
         #[cfg(any(target_os = "macos", target_os = "windows"))]

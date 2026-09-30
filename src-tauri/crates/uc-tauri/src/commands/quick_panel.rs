@@ -343,12 +343,32 @@ pub async fn set_quick_panel_double_tap_modifier(
         let target: QuickPanelDoubleTapModifier = modifier.into();
         let target_dto = target;
 
-        if backend.is_native() && target != QuickPanelDoubleTapModifier::Disabled {
-            // The native helper does not observe the double-tap modifier yet, so accepting
-            // the setting would promise a trigger that never fires.
-            return Err(CommandError::Conflict(
-                "modifier double-tap is not available with the native quick panel yet".to_string(),
-            ));
+        if backend.is_native() {
+            if target != QuickPanelDoubleTapModifier::Disabled
+                && !quick_panel::QuickPanelBackend::supports_double_tap()
+            {
+                // Accepting the setting would promise a trigger that never fires.
+                return Err(CommandError::Conflict(
+                    "modifier double-tap is not available with the native quick panel on this platform yet"
+                        .to_string(),
+                ));
+            }
+            // The helper owns the trigger and reads the setting at startup: persist it, then
+            // restart the helper so the new value takes effect.
+            if current.quick_panel.double_tap_modifier != target_dto {
+                client
+                    .update_settings(SettingsPatchDto {
+                        quick_panel: Some(QuickPanelSettingsPatchDto {
+                            double_tap_modifier: Some(target_dto),
+                            ..Default::default()
+                        }),
+                        ..Default::default()
+                    })
+                    .await
+                    .map_err(CommandError::internal)?;
+                backend.restart();
+            }
+            return Ok(());
         }
 
         let persisted_matches = current.quick_panel.double_tap_modifier == target_dto;

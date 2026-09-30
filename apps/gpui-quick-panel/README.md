@@ -1,6 +1,6 @@
 # GPUI 快捷面板
 
-这是独立运行、不参与发行的原生快捷面板验证程序，复用现有 UniClipboard 后台。
+这是原生快捷面板，复用现有 UniClipboard 后台。macOS 安装包随附并默认使用它（可执行文件名为 `uniclip-quick-panel`，crate 名仍为 `uc-gpui-quick-panel`）；Windows 尚未移植，Linux 继续使用 WebView 面板。
 
 ## 当前窗口设计
 
@@ -27,6 +27,14 @@ UC_PROFILE=dev UC_GPUI_SHORTCUT=ctrl+alt+space cargo run -p uc-gpui-quick-panel
 `UC_GPUI_SCALE` 可设为 0.8 至 1.5。当前原型不读取 Tauri 私有的 WebView 本地存储。
 
 macOS 构建需要包含 Metal 编译工具的 Xcode。如默认版本缺少组件，可仅为本次命令设置 `DEVELOPER_DIR`，不改系统默认设置。
+
+## 发行与默认行为
+
+- **默认启用（仅 macOS）**：GUI 启动时选择原生面板，环境变量 `UC_GPUI_QUICK_PANEL=0` 可关回 WebView 面板；Windows 仍需显式设为 `1`。找不到助手可执行文件时自动退回 WebView 面板。
+- **打包**：`scripts/prepare-daemon-sidecar.mjs` 在 macOS 上除 `uniclipd` 外还构建并暂存 `src-tauri/binaries/uniclip-quick-panel-<triple>`，`src-tauri/tauri.macos.conf.json` 把它列入 `externalBin`，安装后位于 `Contents/MacOS/`，与 GUI 可执行文件同目录。所有已调用该脚本的入口（`build.yml`、`alpha-build.yml`、`daemon:dev`、`dev-update-loop`）无需改动。
+- **内容锁兜底（GUI 侧）**：助手只在“设置开启且内容已解锁”时运行。启动时未解锁不启动；锁定时终止助手进程，无论面板是否可见，窗口随之消失；解锁后再启动。GUI 每 3 秒观察一次锁状态，取不到答案按锁定处理。这只是 GUI 侧的保护，**不是 daemon 的安全边界**：daemon 不执行内容锁，其他本地进程仍可通过 daemon 读取；根治需要后台任务 A/B。
+- **主窗口关闭**：WebView 随窗口销毁，应用留在托盘，助手继续运行，占用很低。
+- **交付检查**：`python3 apps/gpui-quick-panel/tests/delivery_check.py <UniClipboard.app> [输出目录]` 在打包产物上用全新 profile、不设 `UC_GPUI_QUICK_PANEL` 复现首次安装，检查包内含助手、未初始化不启动、GUI 内完成引导后自动启动、显示中与隐藏中锁定都停止、解锁后再启动、GUI 崩溃后不遗留助手、重启后未解锁不启动且 GUI 解锁按钮可启动、关闭主窗口后托盘与助手保留、`=0` 关闭。需要唤醒的显示器且期间不动键鼠，结果写入 `results.txt`，不删除任何 profile 或日志。
 
 ## 已接入的操作
 

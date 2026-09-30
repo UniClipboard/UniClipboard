@@ -3,7 +3,7 @@ title: Quick Panel
 description: The keyboard-first clipboard history overlay — invoke, filter, preview, paste.
 ---
 
-import { Tab, Tabs } from 'fumadocs-ui/components/tabs'
+import { Tab, Tabs } from "fumadocs-ui/components/tabs";
 
 The Quick Panel is UniClipboard's keyboard-first entry point: a
 floating overlay that lists the current space's clipboard history.
@@ -22,10 +22,19 @@ panel auto-hides when it loses focus — by design it doesn't try to
 hold focus indefinitely.
 
 <Callout type="info">
-  Hotkey doesn't seem to fire? It's almost always a conflict with another app's shortcut, not a bug.
-  Rebind it under [Settings — Shortcuts](../guides/settings#shortcuts) to a free combo. If you'd
-  rather not have the panel at all, you can turn the whole feature off under [Settings — Quick
-  Panel](../guides/settings#quick-panel) — that unregisters the hotkey immediately.
+  Hotkey doesn't seem to fire? It's almost always a conflict with another app's
+  shortcut, not a bug. Rebind it under [Settings —
+  Shortcuts](../guides/settings#shortcuts) to a free combo. If you'd rather not
+  have the panel at all, you can turn the whole feature off under [Settings —
+  Quick Panel](../guides/settings#quick-panel) — that unregisters the hotkey
+  immediately.
+</Callout>
+
+<Callout type="info">
+  On macOS the Quick Panel is a native panel that ships with the app; see "macOS
+  native panel" below. **The key bindings, right-click menu, filter prefixes and
+  thumbnail wall described in the rest of this page are those of the Windows /
+  Linux panel** and differ from macOS.
 </Callout>
 
 On native Wayland sessions whose compositor cannot provide global hotkeys, bind this command in
@@ -55,6 +64,31 @@ hyprctl configerrors
 ```
 
 An empty result from the second command means the configuration is valid. `Super+Ctrl+V` now opens or closes the Quick Panel while the UniClipboard GUI is running. If the GUI is not running, the command exits with an error instead of starting it. Quick Panel must remain enabled in UniClipboard settings.
+
+## macOS native panel
+
+The macOS installer includes a separate native panel process. It is used by default, and stays resident in the tray with very low usage after the main window is closed. To go back to the previous panel, set the environment variable `UC_GPUI_QUICK_PANEL=0` before starting the app. While content is locked (before you enter the passphrase in the main window) the panel does not run; it becomes available again once you unlock.
+
+| Key                       | Action                                                                          |
+| ------------------------- | ------------------------------------------------------------------------------- |
+| `↑` / `↓`                 | Move the selection                                                              |
+| `Enter`                   | Paste the selected item                                                         |
+| `Shift + Enter`           | Paste as plain text                                                             |
+| `Cmd + Enter`             | Paste and keep the panel open                                                   |
+| `Cmd + K`                 | Open the action list (paste, copy, open, send to device, favorite, delete, ...) |
+| `Cmd + 1`–`9`             | Paste the first rows; in the image grid, paste visible cell 1–9                 |
+| `Cmd + O`                 | Open a link or file (not supported for images)                                  |
+| `Cmd + Backspace`         | Clear the search text and all filters                                           |
+| `Cmd + Shift + Backspace` | Delete the selected item                                                        |
+| `Cmd + Shift + O`         | Open the main window                                                            |
+| `Cmd + ,`                 | Open settings                                                                   |
+| `Esc`                     | Close the panel                                                                 |
+
+The right-click menu is replaced by the `Cmd + K` action list. `Alt + Backspace` no longer deletes an item; it deletes the previous word in the search box.
+
+Type to search the history, and add conditions with shorthand: `#tag`, `@device`, `/type`, confirmed with `Tab`. Typing a date or range (such as `9.1-9.15`, `last week`, or `3d`) suggests a time condition; in a Chinese interface, pinyin initials also work (for example `tp` for images, `zt` for yesterday). Several values of one dimension are OR-ed, different dimensions are AND-ed; there is one time value and a new one replaces it. AND between tags is not supported yet.
+
+When images are the only type, the list becomes a 3×3 grid: arrow keys move between cells, `Cmd + 1`–`9` pastes the matching cell, and the grid scrolls by rows past nine images. Pages for an empty history, a locked state, no results and a disconnected background appear in the list area.
 
 ## Keyboard controls
 
@@ -175,8 +209,8 @@ sessions — every reopen starts unfiltered. The panel is a use-and-throw
 surface, not a workbench.
 
 <Callout type="info">
-  The CLI equivalent is `uniclip search` with `--type`, `--ext`, `--from-ms`, and `--to-ms`. See
-  [CLI reference — Search](../cli/reference#search).
+  The CLI equivalent is `uniclip search` with `--type`, `--ext`, `--from-ms`,
+  and `--to-ms`. See [CLI reference — Search](../cli/reference#search).
 </Callout>
 
 ## Customizing the hotkey

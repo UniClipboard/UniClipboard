@@ -1,5 +1,11 @@
 import { getCurrentWindow } from '@tauri-apps/api/window'
-import { useMemo, useRef, type PointerEvent as ReactPointerEvent } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  type PointerEvent as ReactPointerEvent,
+} from 'react'
 import { usePlatform } from '@/hooks/usePlatform'
 import { createLogger } from '@/lib/logger'
 
@@ -50,27 +56,52 @@ interface WindowDragOptions {
  */
 export function useWindowDrag({ allowInteractive = false }: WindowDragOptions = {}) {
   const { isLinux, isTauri } = usePlatform()
-  const startRef = useRef<{ x: number; y: number } | null>(null)
+  const pressRef = useRef<{ pointerId: number; x: number; y: number } | null>(null)
+  const stopListeningRef = useRef<(() => void) | null>(null)
   const enabled = isLinux && isTauri
+
+  // The release may land outside the drag surface (no pointer capture), so the
+  // press is cleared by window-level listeners that exist only while it is armed.
+  const reset = useCallback(() => {
+    pressRef.current = null
+    stopListeningRef.current?.()
+    stopListeningRef.current = null
+  }, [])
+
+  useEffect(() => reset, [reset])
 
   return useMemo(() => {
     if (!enabled) return {}
 
-    const reset = () => {
-      startRef.current = null
+    const arm = (press: { pointerId: number; x: number; y: number }) => {
+      reset()
+      pressRef.current = press
+      const onEnd = (event: PointerEvent) => {
+        if (event.pointerId === press.pointerId) reset()
+      }
+      window.addEventListener('pointerup', onEnd, true)
+      window.addEventListener('pointercancel', onEnd, true)
+      window.addEventListener('blur', reset)
+      stopListeningRef.current = () => {
+        window.removeEventListener('pointerup', onEnd, true)
+        window.removeEventListener('pointercancel', onEnd, true)
+        window.removeEventListener('blur', reset)
+      }
     }
 
     return {
       onPointerDownCapture: (event: ReactPointerEvent<HTMLElement>) => {
+        // Any new press supersedes a stale one, even when it does not arm a drag.
+        reset()
         if (event.button !== 0) return
         const target = event.target as Element | null
         if (!allowInteractive && target?.closest(INTERACTIVE_SELECTOR)) return
-        startRef.current = { x: event.clientX, y: event.clientY }
+        arm({ pointerId: event.pointerId, x: event.clientX, y: event.clientY })
       },
       onPointerMoveCapture: (event: ReactPointerEvent<HTMLElement>) => {
-        const start = startRef.current
-        if (!start || (event.buttons & 1) === 0) return
-        if (Math.hypot(event.clientX - start.x, event.clientY - start.y) < DRAG_THRESHOLD_PX) return
+        const press = pressRef.current
+        if (!press || event.pointerId !== press.pointerId || (event.buttons & 1) === 0) return
+        if (Math.hypot(event.clientX - press.x, event.clientY - press.y) < DRAG_THRESHOLD_PX) return
         reset()
         if (handledEvents.has(event.nativeEvent)) return
         handledEvents.add(event.nativeEvent)
@@ -78,8 +109,6 @@ export function useWindowDrag({ allowInteractive = false }: WindowDragOptions = 
           .startDragging()
           .catch(error => log.warn({ err: error }, 'Failed to start window drag'))
       },
-      onPointerUpCapture: reset,
-      onPointerCancelCapture: reset,
     }
-  }, [allowInteractive, enabled])
+  }, [allowInteractive, enabled, reset])
 }

@@ -3,10 +3,7 @@ mod image_preview;
 mod preview_window;
 mod view;
 
-gpui::actions!(
-    quick_panel,
-    [NextSuggestion, PreviousSuggestion, NextCandidate]
-);
+gpui::actions!(quick_panel, [NextSuggestion, PreviousSuggestion]);
 
 use crate::{
     backend::{self, EntryAction},

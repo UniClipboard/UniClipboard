@@ -104,7 +104,6 @@ fn main() -> anyhow::Result<()> {
                 gpui::KeyBinding::new("ctrl-c", gpui_component::input::Copy, Some("QuickPanel")),
                 gpui::KeyBinding::new("tab", panel::NextSuggestion, Some("QuickPanel")),
                 gpui::KeyBinding::new("shift-tab", panel::PreviousSuggestion, Some("QuickPanel")),
-                gpui::KeyBinding::new("alt-tab", panel::NextCandidate, Some("QuickPanel")),
             ]);
             let manager = match shortcuts::Shortcuts::new() {
                 Ok(manager) => manager,

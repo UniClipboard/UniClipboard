@@ -151,17 +151,6 @@ impl Panel {
         true
     }
 
-    /// Moves the suggestion that Tab would accept.
-    pub(super) fn next_suggestion_candidate(&mut self, cx: &mut Context<Self>) -> bool {
-        let count = self.suggestion_options(cx).len();
-        if count < 2 {
-            return false;
-        }
-        self.suggestion_cursor = (self.suggestion_cursor + 1) % count;
-        cx.notify();
-        true
-    }
-
     /// Tab: accept the suggestion at the cursor; without suggestions, cycle the type filter.
     pub(super) fn tab(&mut self, reverse: bool, window: &mut Window, cx: &mut Context<Self>) {
         if self.input.update(cx, |input, cx| {

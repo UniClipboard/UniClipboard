@@ -470,9 +470,6 @@ impl Render for Panel {
             .on_action(
                 cx.listener(|this, _: &PreviousSuggestion, window, cx| this.tab(true, window, cx)),
             )
-            .on_action(cx.listener(|this, _: &NextCandidate, _, cx| {
-                this.next_suggestion_candidate(cx);
-            }))
             .capture_action(cx.listener(Self::copy_action))
             // The input binds Command+Backspace (Ctrl+Backspace off macOS) to a deletion; the panel
             // uses the shortcut to clear the search and its filters instead.

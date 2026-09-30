@@ -51,6 +51,11 @@ fn open_panel(
                 px(window_pair::PANEL_HEIGHT as f32),
             )),
             window_background: gpui::WindowBackgroundAppearance::Transparent,
+            // The panel stays hidden until the shortcut or the double tap asks for it. Showing it
+            // at startup would pop it up whenever the GUI starts the helper, and its first frame
+            // would use the system theme before the settings arrive.
+            show: false,
+            focus: false,
             ..Default::default()
         },
         |window, cx| {

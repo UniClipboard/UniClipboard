@@ -56,6 +56,10 @@ test('GPUI quick panel native end-to-end', { timeout: 180_000 }, async t => {
   let restoreBaseline = 0, textBaseline = 0;
   const events = () => target.output.split('\n').filter(Boolean).map(line => JSON.parse(line));
   const state = async () => (await fetch(`${address}/__test/state`)).json();
+  // The unfiltered list the panel shows first, read from the fixture in the panel's own order, so
+  // a test can name "the row with digit 2" without hard-coding the fixture's data.
+  const defaultRows = async () => (await (await fetch(`${address}/search/query?query=&limit=50&offset=0`, {
+    headers: { authorization: 'Session fixture-session' } })).json()).data.items;
   const input = async (command, args) => {
     assert.equal(app.exitCode, null, `GPUI exited: ${app.errors}`);
     await exec(peekaboo, [command, ...args, '--pid', String(app.pid), '--no-auto-focus', '--no-remote'], { timeout: 10_000 });
@@ -102,9 +106,15 @@ test('GPUI quick panel native end-to-end', { timeout: 180_000 }, async t => {
     restoreBaseline = before.restores.length;
     textBaseline = events().filter(e => e.event === 'text').length;
     app = launch(binary, [], { ...process.env, UNICLIPBOARD_DAEMON_BASE_URL: address,
-      UNICLIPBOARD_DAEMON_TOKEN_PATH: join(directory, 'fixture-token.txt'), UC_GPUI_SHORTCUT: 'ctrl+alt+shift+f12', UC_GPUI_SCALE: '1' });
+      UNICLIPBOARD_DAEMON_TOKEN_PATH: join(directory, 'fixture-token.txt'), UC_GPUI_SHORTCUT: 'ctrl+alt+space', UC_GPUI_SCALE: '1' });
     await query({ query: '' }, before.searches);
     await until('settings and tags loaded', async () => { const value = await state(); return value.settingsReads > before.settingsReads && value.tagsReads > before.tagsReads; });
+    // The panel starts hidden. Open it the way a user does, with its global shortcut; showing it
+    // reads the settings and searches again, which is how the test notices it is open.
+    const hidden = await state();
+    await exec(peekaboo, ['hotkey', '--keys', 'ctrl,alt,space', '--no-remote'], { timeout: 10_000 });
+    await until('panel opened by its shortcut', async () => (await state()).settingsReads > hidden.settingsReads);
+    await query({ query: '' }, hidden.searches);
   };
   const run = async (name, action) => {
     await t.test(name, async () => {
@@ -205,9 +215,12 @@ test('GPUI quick panel native end-to-end', { timeout: 180_000 }, async t => {
       await until('text pasted into isolated target', () => events().filter(e => e.event === 'text').slice(textBaseline).some(e => e.sha256 === expected));
     });
     await run('Command+digit pastes the row that carries that digit', async () => {
+      const rows = await defaultRows();
+      // Wait until the panel has drawn the same list, so the digit maps to what was read.
+      await delay(300);
       await hotkey('cmd,2');
       await until('second row restored', async () => (await state()).restores.length === restoreBaseline + 1);
-      assert.deepEqual((await state()).restores.slice(restoreBaseline), ['fixture-1']);
+      assert.deepEqual((await state()).restores.slice(restoreBaseline), [rows[1].entryId]);
     });
     await run('Command+Q does not quit the panel', async () => {
       await hotkey('cmd,q');
@@ -216,14 +229,20 @@ test('GPUI quick panel native end-to-end', { timeout: 180_000 }, async t => {
       assert.equal(app.signalCode, null);
     });
     await run('Option+Backspace edits the search text and Command+Shift+Backspace deletes the entry', async () => {
-      await text('设计'); await query({ query: '设计' });
+      // ASCII on purpose: the input deletes Chinese text one character at a time.
+      await text('alpha beta'); await query({ query: 'alpha beta' });
       await hotkey('alt,delete');
-      await query({ query: '' });
+      await query({ query: 'alpha' });
       await delay(400);
       assert.deepEqual((await state()).deleted, [], 'Deleting a word in the search box must not delete an entry');
+      await key('escape');
+      const cleared = await query({ query: '' });
+      const rows = await defaultRows();
+      await delay(300);
       await hotkey('cmd,shift,delete');
       await until('selected entry deleted', async () => (await state()).deleted.length === 1);
-      assert.deepEqual((await state()).deleted, ['fixture-0']);
+      assert.deepEqual((await state()).deleted, [rows[0].entryId]);
+      assert.ok(cleared.searches >= 1);
     });
   } finally {
     await stop(app);

@@ -100,6 +100,9 @@ pub struct Panel {
     anchor: (f64, f64),
     scale: f64,
     cursor_anchored: bool,
+    /// General settings from the last successful read. They are applied before every show, so the
+    /// first frame already has the configured theme instead of waiting for a new request.
+    general: Option<uc_daemon_contract::api::dto::settings::GeneralSettingsDto>,
     _subscriptions: Vec<Subscription>,
     blur_task: Option<Task<()>>,
 }
@@ -169,7 +172,8 @@ impl Panel {
             hovered: None,
             keyboard: true,
             pointer_moved: false,
-            visible: true,
+            visible: false,
+            general: None,
             shown_at: Instant::now(),
             anchor: (f64::from(bounds.origin.x), f64::from(bounds.origin.y)),
             scale: std::env::var("UC_GPUI_SCALE")
@@ -217,6 +221,9 @@ impl Panel {
         });
         self.load_options(window, cx);
         self.search(window, cx);
+        if crate::appearance::apply(self.general.as_ref(), window, cx).is_err() {
+            tracing::warn!("Could not apply quick panel theme settings");
+        }
         if let Err(message) = platform::set_visible(window, true) {
             self.message = Some(message);
         }
@@ -453,6 +460,9 @@ impl Panel {
                             this.cursor_anchored=matches!(settings.quick_panel.position,uc_daemon_contract::api::dto::settings::QuickPanelPositionDto::FollowCursor);
                             if cx.global_mut::<crate::shortcuts::Shortcuts>().configure(settings).is_err(){this.message=Some("无法注册快捷键，可能已被其他程序占用。".into());}
                             this.apply_double_tap_modifier(settings.quick_panel.double_tap_modifier, cx);
+                        }
+                        if let Some(settings) = &options.settings {
+                            this.general = Some(settings.general.clone());
                         }
                         if crate::appearance::apply(
                             options.settings.as_ref().map(|s| &s.general),

@@ -419,7 +419,9 @@ impl Panel {
                                 .size(units(16.))
                                 .rounded(units(4.))
                                 .bg(theme.foreground)
-                                .text_color(theme.background)
+                                // The panel's own background token is transparent, so take the
+                                // opaque card colour for the letter.
+                                .text_color(cx.global::<crate::appearance::Surfaces>().background)
                                 .text_size(units(9.))
                                 .flex()
                                 .items_center()
@@ -508,27 +510,28 @@ impl Panel {
                 .text_color(quiet)
                 .into_any_element(),
         };
-        let label: AnyElement = match kind {
-            RowKind::Link => {
-                let (host, path) = split_link(&text);
-                div()
-                    .child(
-                        div()
-                            .font_weight(gpui::FontWeight::MEDIUM)
-                            .child(host.to_string()),
-                    )
-                    .child(div().text_color(quiet).child(path.to_string()))
-                    .flex()
-                    .truncate()
-                    .into_any_element()
-            }
-            RowKind::Code => div()
-                .font_family(theme.mono_font_family.clone())
-                .text_size(units(12.))
-                .child(text.clone())
-                .into_any_element(),
-            _ => div().child(text.clone()).into_any_element(),
-        };
+        // Ellipsis only works when the text is a direct child of the truncating element, so plain
+        // text and code put the string straight into the row's text cell. A link needs its host
+        // emphasised, so it is two parts whose path part truncates.
+        let link = (kind == RowKind::Link).then(|| {
+            let (host, path) = split_link(&text);
+            div()
+                .flex()
+                .child(
+                    div()
+                        .flex_shrink_0()
+                        .font_weight(gpui::FontWeight::MEDIUM)
+                        .child(host.to_string()),
+                )
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .truncate()
+                        .text_color(quiet)
+                        .child(path.to_string()),
+                )
+        });
         let secondary = match kind {
             RowKind::RichText => Some(strings::RICH_TEXT.to_string()),
             RowKind::File => item
@@ -585,8 +588,13 @@ impl Panel {
                     .flex_1()
                     .min_w_0()
                     .truncate()
-                    .when(lost, |text| text.opacity(0.5).line_through())
-                    .child(label),
+                    .when(lost, |cell| cell.opacity(0.5).line_through())
+                    .when(kind == RowKind::Code, |cell| {
+                        cell.font_family(theme.mono_font_family.clone())
+                            .text_size(units(12.))
+                    })
+                    .when_some(link, |cell, link| cell.child(link))
+                    .when(kind != RowKind::Link, |cell| cell.child(text.clone())),
             )
             .when_some(secondary, |row, label| {
                 row.child(self.secondary_chip(label, selected, cx))

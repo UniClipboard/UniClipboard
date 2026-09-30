@@ -1,6 +1,7 @@
 use std::time::Duration;
 
 use uc_daemon_client::DaemonClientContext;
+use uc_daemon_contract::api::auth::DaemonConnectionInfo;
 use uc_daemon_contract::api::dto::search::SearchQueryResultDto;
 
 #[derive(Debug)]
@@ -22,10 +23,34 @@ impl std::fmt::Display for SearchFailure {
     }
 }
 
+/// Process-wide daemon context. Every operation shares one connection state so
+/// the session token obtained from `/auth/connect` is cached across requests
+/// instead of being exchanged again for each search, preview or action.
+static SHARED_CONTEXT: std::sync::Mutex<Option<(DaemonConnectionInfo, DaemonClientContext)>> =
+    std::sync::Mutex::new(None);
+
 async fn context() -> Result<DaemonClientContext, String> {
     let connection = uc_daemon_client::resolve_connection_info_from_env()
         .map_err(|_| "无法连接 UniClipboard，请先启动并解锁桌面应用。".to_string())?;
-    DaemonClientContext::new(connection).map_err(|_| "无法创建后台连接。".to_string())
+    shared_context(connection)
+}
+
+/// Returns the shared context, rebuilding it only when the resolved connection
+/// (address or bearer token) differs from the one it was built for, for example
+/// after the daemon restarts. A rebuild starts a fresh session-token cache.
+fn shared_context(connection: DaemonConnectionInfo) -> Result<DaemonClientContext, String> {
+    let mut shared = SHARED_CONTEXT
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if let Some((known, context)) = shared.as_ref() {
+        if *known == connection {
+            return Ok(context.clone());
+        }
+    }
+    let context = DaemonClientContext::new(connection.clone())
+        .map_err(|_| "无法创建后台连接。".to_string())?;
+    *shared = Some((connection, context.clone()));
+    Ok(context)
 }
 
 #[cfg(test)]
@@ -424,6 +449,37 @@ mod tests {
             String::from_utf8_lossy(&output.stdout),
             String::from_utf8_lossy(&output.stderr)
         );
+    }
+
+    fn connection(port: u16, token: &str) -> DaemonConnectionInfo {
+        DaemonConnectionInfo {
+            base_url: format!("http://127.0.0.1:{port}"),
+            ws_url: format!("ws://127.0.0.1:{port}/ws"),
+            token: token.into(),
+            pid: 1,
+        }
+    }
+
+    fn cached_connection() -> Option<DaemonConnectionInfo> {
+        SHARED_CONTEXT
+            .lock()
+            .unwrap()
+            .as_ref()
+            .map(|(known, _)| known.clone())
+    }
+
+    #[test]
+    fn shared_context_is_reused_until_the_daemon_connection_changes() {
+        let first = connection(48001, "token-a");
+        shared_context(first.clone()).unwrap();
+        assert!(cached_connection() == Some(first.clone()));
+        // The same connection keeps the cached context (and its session token).
+        shared_context(first.clone()).unwrap();
+        assert!(cached_connection() == Some(first));
+        // A restarted daemon has a new address and token, so the cache must follow it.
+        let restarted = connection(48002, "token-b");
+        shared_context(restarted.clone()).unwrap();
+        assert!(cached_connection() == Some(restarted));
     }
 
     #[tokio::test]

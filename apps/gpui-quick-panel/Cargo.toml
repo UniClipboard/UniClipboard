@@ -27,7 +27,7 @@ uc-daemon-contract = { path = "../../crates/uc-daemon-contract" }
 uc-desktop = { path = "../../crates/uc-desktop" }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-objc2-app-kit = { version = "0.3", features = ["NSWorkspace", "NSRunningApplication"] }
+objc2-app-kit = { version = "0.3", features = ["NSApplication", "NSWorkspace", "NSRunningApplication"] }
 core-graphics = { version = "0.24", features = ["elcapitan"] }
 objc2 = "0.6"
 objc2-foundation = "0.3"

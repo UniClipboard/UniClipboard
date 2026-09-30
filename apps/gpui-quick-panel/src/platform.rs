@@ -130,6 +130,30 @@ pub fn panel_anchor(_: bool, _: f64, _: f64) -> Result<(f64, f64), String> {
     Err("此平台窗口定位尚未实现。".into())
 }
 
+/// Runs the process as a background app: no Dock icon or menu bar, like a menu bar utility.
+///
+/// GPUI selects the regular activation policy just before it calls the launch callback, so this
+/// has to run inside that callback rather than earlier.
+#[cfg(target_os = "macos")]
+pub fn run_as_background_app() {
+    use objc2::MainThreadMarker;
+    use objc2_app_kit::{NSApplication, NSApplicationActivationPolicy};
+
+    let Some(main_thread) = MainThreadMarker::new() else {
+        tracing::warn!("Not on the main thread; keeping the regular activation policy");
+        return;
+    };
+    let switched = NSApplication::sharedApplication(main_thread)
+        .setActivationPolicy(NSApplicationActivationPolicy::Accessory);
+    if !switched {
+        tracing::warn!("Could not switch to the accessory activation policy");
+    }
+}
+
+/// Windows popups are already tool windows without a taskbar button.
+#[cfg(not(target_os = "macos"))]
+pub fn run_as_background_app() {}
+
 #[cfg(target_os = "macos")]
 pub fn reveal_path(path: &str) -> Result<(), String> {
     use objc2_foundation::{NSArray, NSString, NSURL};

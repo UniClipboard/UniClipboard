@@ -2,6 +2,7 @@ mod appearance;
 mod backend;
 mod filters;
 mod image_geometry;
+mod lifecycle;
 mod panel;
 mod platform;
 mod selection;
@@ -65,11 +66,17 @@ fn main() -> anyhow::Result<()> {
         .with_max_level(tracing::Level::WARN)
         .with_writer(std::io::stderr)
         .init();
+    if std::env::args()
+        .any(|argument| argument == uc_desktop::quick_panel_helper::EXIT_WHEN_STDIN_CLOSES)
+    {
+        lifecycle::watch_parent(std::io::stdin(), || std::process::exit(0));
+    }
     let runtime = tokio::runtime::Runtime::new()?;
     let handle = runtime.handle().clone();
     Application::new()
         .with_assets(gpui_component_assets::Assets)
         .run(move |cx| {
+            platform::run_as_background_app();
             gpui_component::init(cx);
             cx.bind_keys([
                 gpui::KeyBinding::new("cmd-c", gpui_component::input::Copy, Some("QuickPanel")),

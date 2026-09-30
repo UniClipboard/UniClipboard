@@ -321,13 +321,10 @@ test('GPUI quick panel native end-to-end', { timeout: 180_000 }, async t => {
       await query({ query: '#' })
       for (const name of keys) await key(name)
       await key('tab')
-      const sent = await until(
-        'a search with one tag',
-        async () => {
-          const last = (await state()).lastSearch
-          return last?.query === '' && last.tags.length === 1 && last
-        }
-      )
+      const sent = await until('a search with one tag', async () => {
+        const last = (await state()).lastSearch
+        return last?.query === '' && last.tags.length === 1 && last
+      })
       await noPaste()
       return sent.tags[0]
     }

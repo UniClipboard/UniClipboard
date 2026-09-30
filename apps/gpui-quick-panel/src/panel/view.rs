@@ -477,6 +477,7 @@ impl Render for Panel {
             // The input binds Command+Backspace (Ctrl+Backspace off macOS) to a deletion; the panel
             // uses the shortcut to clear the search and its filters instead.
             .capture_action(cx.listener(Self::clear_action))
+            .capture_action(cx.listener(Self::backspace_action))
             .capture_action(cx.listener(Self::move_left_action))
             .capture_action(cx.listener(Self::move_right_action))
             .capture_key_down(cx.listener(Self::key_down))

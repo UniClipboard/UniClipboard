@@ -1205,6 +1205,25 @@ impl Panel {
         self.search(window, cx);
     }
 
+    /// Backspace in an empty search box removes the last filter chip. The input binds Backspace to
+    /// its own deletion, which runs before a plain key listener, so the panel takes the action.
+    fn backspace_action(
+        &mut self,
+        _: &gpui_component::input::Backspace,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.visible && self.actions.is_none() && self.input.read(cx).value().is_empty() {
+            if let Some((dimension, value)) = self.filters.chips().last().cloned() {
+                self.remove_filter(dimension, &value, window, cx);
+                cx.stop_propagation();
+                cx.notify();
+                return;
+            }
+        }
+        cx.propagate();
+    }
+
     #[cfg(target_os = "macos")]
     fn clear_action(
         &mut self,
@@ -1409,13 +1428,6 @@ impl Panel {
             self.ask_host(HelperRequest::OpenSettings, window, cx);
             cx.stop_propagation();
             return;
-        }
-        if key == "backspace" && value.is_empty() && !modifiers.alt {
-            if let Some((dimension, value)) = self.filters.chips().last().cloned() {
-                self.remove_filter(dimension, &value, window, cx);
-                cx.stop_propagation();
-                return;
-            }
         }
         if key == "l" && command && !modifiers.shift && self.disconnected.is_some() {
             match uc_app_paths::app_log_dir() {

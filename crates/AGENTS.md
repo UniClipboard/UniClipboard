@@ -13,8 +13,8 @@
 |- apps/                 # Runnable binaries
 |  |- cli/                 # `uniclip` CLI (daemon client; heavy deps feature-gated)
 |  |- daemon/              # GUI-agnostic daemon runtime; hosts the `uniclipd` binary
-|  |- gpui-quick-panel/    # (no description)
-|- crates/               # Library crates (12)
+|  |- quick-panel/         # (no description)
+|- crates/               # Library crates (13)
 |  # -- Desktop host adapters --
 |  |- uc-platform/      # OS adapters: clipboard, secure storage, autostart
 |  |- uc-app-paths/     # Lightweight directory-layout authority (data/cache/tmp)
@@ -30,6 +30,8 @@
 |  |- uc-desktop/       # Desktop host: runtime, daemon probe, background tasks (GUI-framework-agnostic)
 |  |- uc-cli-macros/    # Proc-macros for uc-cli (internal)
 |  |- p2p-bench/        # Throwaway perf-spike bins (not shipped; publish = false)
+|  # -- Other --
+|  |- quick-panel-core/ # Platform-independent logic of the GPUI quick panel: query model, state machine, ports
 |- src-tauri/            # Desktop GUI app (Tauri packaging shell; dir name pinned by tauri-cli)
 |  |- src/               # Thin bin: hands off to uc_tauri::run(generate_context!())
 |  `- crates/uc-tauri/    # Tauri adapter: commands (via tauri-specta), tray, quick panel, run loop

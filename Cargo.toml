@@ -22,7 +22,8 @@ members = [
   "crates/p2p-bench",
   "apps/cli",
   "apps/daemon",
-  "apps/gpui-quick-panel",
+  "crates/quick-panel-core",
+  "apps/quick-panel",
   "src-tauri",
   "src-tauri/crates/uc-tauri",
 ]

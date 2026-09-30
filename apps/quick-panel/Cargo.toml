@@ -1,0 +1,51 @@
+[package]
+name = "quick-panel"
+version = "0.1.0"
+edition = "2021"
+license.workspace = true
+publish = false
+
+[[bin]]
+name = "uniclip-quick-panel"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+async-trait = "0.1"
+async-channel = "2"
+base64 = "0.22"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp"] }
+chrono = "0.4"
+csscolorparser = "0.8"
+serde_json = "1"
+raw-window-handle = "0.6"
+gpui = "=0.2.2"
+gpui-component = "=0.5.1"
+gpui-component-assets = "=0.5.1"
+global-hotkey = "0.8"
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time"] }
+tokio-util = "0.7"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+uc-app-paths = { path = "../../crates/uc-app-paths" }
+uc-daemon-client = { path = "../../crates/uc-daemon-client" }
+uc-daemon-contract = { path = "../../crates/uc-daemon-contract" }
+uc-desktop = { path = "../../crates/uc-desktop" }
+quick-panel-core = { path = "../../crates/quick-panel-core" }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2-app-kit = { version = "0.3", features = ["NSApplication", "NSWorkspace", "NSRunningApplication"] }
+core-graphics = { version = "0.24", features = ["elcapitan"] }
+# Same versions and features as the GUI's modifier double-tap reader, which this crate copies.
+objc2-application-services = { version = "0.3", default-features = false, features = ["HIServices", "AXUIElement"] }
+objc2-core-graphics = { version = "0.3", features = ["CGEventSource", "CGEventTypes", "CGRemoteOperation"] }
+objc2 = "0.6"
+objc2-foundation = "0.3"
+objc2-quartz-core = "0.3"
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+wiremock = "0.6"
+tempfile = "3"

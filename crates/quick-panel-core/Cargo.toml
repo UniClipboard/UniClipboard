@@ -1,0 +1,27 @@
+[package]
+name = "quick-panel-core"
+version.workspace = true
+license.workspace = true
+edition = "2021"
+publish = false
+description = "Platform-independent logic of the GPUI quick panel: query model, state machine, ports"
+
+[lib]
+name = "quick_panel_core"
+path = "src/lib.rs"
+
+# This crate must stay free of GPUI, AppKit and any async runtime so that it builds and tests on
+# every target.
+[dependencies]
+async-trait = "0.1"
+chrono = "0.4"
+pinyin = "0.10"
+# Only the channel types: no runtime is started here.
+tokio = { version = "1", default-features = false, features = ["sync"] }
+uc-daemon-contract = { path = "../uc-daemon-contract" }
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+serde_json = "1"

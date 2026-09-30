@@ -9573,6 +9573,55 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a993555f31e5a609f617c12db6250dedcac1b0a85076912c436e6fc9b2c8e6a3"
 
 [[package]]
+name = "quick-panel"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-channel 2.5.0",
+ "async-trait",
+ "base64 0.22.1",
+ "chrono",
+ "core-graphics 0.24.0",
+ "csscolorparser",
+ "global-hotkey",
+ "gpui",
+ "gpui-component",
+ "gpui-component-assets",
+ "image",
+ "objc2",
+ "objc2-app-kit",
+ "objc2-application-services",
+ "objc2-core-graphics",
+ "objc2-foundation",
+ "objc2-quartz-core",
+ "quick-panel-core",
+ "raw-window-handle",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "tracing-subscriber",
+ "uc-app-paths",
+ "uc-daemon-client",
+ "uc-daemon-contract",
+ "uc-desktop",
+ "wiremock",
+]
+
+[[package]]
+name = "quick-panel-core"
+version = "1.0.1"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "pinyin",
+ "serde_json",
+ "tokio",
+ "uc-daemon-contract",
+]
+
+[[package]]
 name = "quick-xml"
 version = "0.41.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -13755,42 +13804,6 @@ dependencies = [
  "url",
  "uuid",
  "zeroize",
-]
-
-[[package]]
-name = "uc-gpui-quick-panel"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-channel 2.5.0",
- "base64 0.22.1",
- "chrono",
- "core-graphics 0.24.0",
- "csscolorparser",
- "global-hotkey",
- "gpui",
- "gpui-component",
- "gpui-component-assets",
- "image",
- "objc2",
- "objc2-app-kit",
- "objc2-application-services",
- "objc2-core-graphics",
- "objc2-foundation",
- "objc2-quartz-core",
- "pinyin",
- "raw-window-handle",
- "serde_json",
- "tempfile",
- "tokio",
- "tokio-util",
- "tracing",
- "tracing-subscriber",
- "uc-app-paths",
- "uc-daemon-client",
- "uc-daemon-contract",
- "uc-desktop",
- "wiremock",
 ]
 
 [[package]]

@@ -284,6 +284,24 @@ fn standalone(query: &str, alias: &str) -> Option<std::ops::Range<usize>> {
         })
 }
 
+/// Pinyin initials of a name, `设计素材` -> `sjsc`; Latin letters and digits stand for themselves.
+fn initials_of(name: &str) -> String {
+    use pinyin::ToPinyin;
+    name.chars()
+        .filter_map(|ch| match ch.to_pinyin() {
+            Some(pinyin) => pinyin.first_letter().chars().next(),
+            None => ch.is_ascii_alphanumeric().then(|| ch.to_ascii_lowercase()),
+        })
+        .collect()
+}
+
+/// Whether a typed word (lowercase Latin letters, at least two) abbreviates `name`.
+fn abbreviates(word: &str, name: &str) -> bool {
+    word.len() >= 2
+        && word.chars().all(|c| c.is_ascii_lowercase())
+        && (initials_of(name).starts_with(word) || name.to_lowercase().starts_with(word))
+}
+
 pub fn suggestions(query: &str, catalog: &Catalog) -> Vec<Suggestion> {
     let mut result = Vec::new();
     let words = date_range::words(query);
@@ -364,6 +382,37 @@ pub fn suggestions(query: &str, catalog: &Catalog) -> Vec<Suggestion> {
                         value: value.into(),
                         matched: word.clone(),
                         time,
+                        replace: true,
+                    });
+                }
+            }
+        }
+    }
+    if catalog.initials {
+        // Custom tags and device names: `sjsc` for a tag named 设计素材, `ip` for iPhone.
+        for word in &words {
+            let text = &query[word.clone()];
+            let named = catalog
+                .tags
+                .iter()
+                .map(|tag| (Dimension::Tag, tag.as_str(), value_label(tag)))
+                .chain(
+                    catalog
+                        .sources
+                        .iter()
+                        .map(|(id, name)| (Dimension::Source, id.as_str(), name.as_str())),
+                );
+            for (dimension, value, name) in named {
+                if abbreviates(text, name)
+                    && !result
+                        .iter()
+                        .any(|s| s.dimension == dimension && s.value == value)
+                {
+                    result.push(Suggestion {
+                        dimension,
+                        value: value.into(),
+                        matched: word.clone(),
+                        time: None,
                         replace: true,
                     });
                 }
@@ -629,6 +678,45 @@ mod tests {
         assert!(suggestions("tpx", &chinese(&tags, &[])).is_empty());
         assert!(suggestions("dm", &chinese(&tags, &[])).is_empty());
         assert_eq!(suggestions("lj", &chinese(&tags, &[]))[0].value, "link");
+    }
+
+    #[test]
+    fn pinyin_initials_reach_custom_tags_and_device_names() {
+        let tags = strings(&["设计素材与灵感收集", "工作"]);
+        let devices = vec![
+            ("p1".to_string(), "iPhone".to_string()),
+            ("p2".to_string(), "iPad".to_string()),
+            ("p3".to_string(), "小米手机".to_string()),
+        ];
+        let pick = |query: &str, catalog: &Catalog| -> Vec<(Dimension, String)> {
+            suggestions(query, catalog)
+                .into_iter()
+                .map(|s| (s.dimension, s.value))
+                .collect()
+        };
+        let on = chinese(&tags, &devices);
+        assert_eq!(
+            pick("sjsc", &on),
+            [(Dimension::Tag, "设计素材与灵感收集".to_string())]
+        );
+        assert_eq!(pick("gz", &on), [(Dimension::Tag, "工作".to_string())]);
+        assert_eq!(
+            pick("ip", &on),
+            [
+                (Dimension::Source, "p1".to_string()),
+                (Dimension::Source, "p2".to_string())
+            ]
+        );
+        assert_eq!(pick("xmsj", &on), [(Dimension::Source, "p3".to_string())]);
+        // One letter, digits, capitals and a disabled gate suggest nothing.
+        assert!(pick("s", &on).is_empty());
+        assert!(pick("IP", &on).is_empty());
+        assert!(pick("ip", &catalog(&tags, &devices)).is_empty());
+        // A replacing suggestion, like the other pinyin ones.
+        let mut filters = Filters::default();
+        filters.add(Dimension::Source, "p3".into());
+        filters.accept(&suggestions("ip", &on)[0]);
+        assert_eq!(filters.sources, ["p1"]);
     }
 
     #[test]

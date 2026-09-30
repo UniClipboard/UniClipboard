@@ -364,6 +364,14 @@ test('GPUI quick panel native end-to-end', { timeout: 180_000 }, async t => {
       await key('return')
       await until('the selected result was pasted', async () => (await state()).restores.length > restoreBaseline)
     })
+    await run('Backspace with nothing to delete does not search again', async () => {
+      const before = (await state()).searches
+      await key('delete')
+      await key('delete')
+      await key('delete')
+      await delay(700)
+      assert.equal((await state()).searches, before, 'The list must not refresh')
+    })
     await run('Backspace in an empty search box removes the last filter chip', async () => {
       await text('#')
       await query({ query: '' })

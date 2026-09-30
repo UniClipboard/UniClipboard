@@ -787,7 +787,12 @@ impl Panel {
         if self.busy {
             return;
         }
-        self.filters.query = self.input.read(cx).value().to_string();
+        let value = self.input.read(cx).value().to_string();
+        // The input also reports edits that change nothing, such as Backspace in an empty box.
+        if value == self.filters.query {
+            return;
+        }
+        self.filters.query = value;
         self.close_actions(window, cx);
         self.suggestions_open = !self.filters.query.is_empty();
         self.suggestion_cursor = 0;
@@ -1244,12 +1249,14 @@ impl Panel {
         cx: &mut Context<Self>,
     ) {
         if self.visible && self.actions.is_none() && self.input.read(cx).value().is_empty() {
+            // Nothing to delete in the box: remove the last chip if there is one, and in any
+            // case keep the input from reporting an edit that would search again.
             if let Some((dimension, value)) = self.filters.chips().last().cloned() {
                 self.remove_filter(dimension, &value, window, cx);
-                cx.stop_propagation();
                 cx.notify();
-                return;
             }
+            cx.stop_propagation();
+            return;
         }
         cx.propagate();
     }

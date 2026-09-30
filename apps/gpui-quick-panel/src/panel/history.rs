@@ -3,7 +3,10 @@
 use super::view::units;
 use super::*;
 use crate::strings;
-use gpui::{div, img, AnyElement, App, Hsla, IntoElement, MouseButton, ObjectFit};
+use gpui::{
+    div, img, AnyElement, App, HighlightStyle, Hsla, IntoElement, MouseButton, ObjectFit,
+    StyledText,
+};
 use gpui_component::{
     button::{Button, ButtonVariants},
     input::Input,
@@ -15,7 +18,20 @@ pub(super) const VISIBLE_ROWS: usize = 9;
 /// Suggestions listed at most; more are folded into "还有 N 条".
 const MAX_SUGGESTIONS: usize = 3;
 
-use crate::content::{split_link, Kind as RowKind};
+use crate::content::{match_ranges, split_link, Kind as RowKind};
+
+/// The words of `text` that the search matched, on a `tint` background taken from the theme.
+fn marked(text: &str, query: &str, tint: Hsla) -> StyledText {
+    let mark = HighlightStyle {
+        background_color: Some(tint),
+        ..Default::default()
+    };
+    StyledText::new(text.to_string()).with_highlights(
+        match_ranges(text, query)
+            .into_iter()
+            .map(|range| (range, mark)),
+    )
+}
 
 fn row_icon(kind: RowKind) -> IconName {
     match kind {
@@ -28,6 +44,15 @@ fn row_icon(kind: RowKind) -> IconName {
 }
 
 /// Small rounded key label, the panel's only decoration.
+fn dimension_icon(dimension: Dimension) -> IconName {
+    match dimension {
+        Dimension::Type => IconName::File,
+        Dimension::Tag => IconName::Asterisk,
+        Dimension::Source => IconName::Inbox,
+        Dimension::Time => IconName::Calendar,
+    }
+}
+
 pub(super) fn keycap(label: impl Into<gpui::SharedString>, cx: &App) -> gpui::Div {
     let theme = cx.theme();
     div()
@@ -260,7 +285,11 @@ impl Panel {
                         .flex_shrink_0()
                         .text_size(units(12.))
                         .text_color(muted)
-                        .child(strings::result_count(self.total)),
+                        .child(if self.suggestion_options(cx).is_empty() {
+                            strings::result_count(self.total)
+                        } else {
+                            strings::text_match_count(self.total)
+                        }),
                 )
             })
             .child(
@@ -303,15 +332,23 @@ impl Panel {
             .into_any_element()
     }
 
-    /// Candidate filters for the words typed. Tab accepts the highlighted one.
-    fn suggestion_strip(&self, cx: &Context<Self>) -> Option<AnyElement> {
+    /// Number of leading children the suggestion block adds to the result list, so that result
+    /// `ix` is child `ix + list_lead`.
+    pub(super) fn list_lead(&self, cx: &Context<Self>) -> usize {
+        usize::from(!self.suggestion_options(cx).is_empty())
+    }
+
+    /// Candidate filters for the words typed, then the heading of the text matches below them.
+    /// Tab accepts the highlighted suggestion. One child of the result list.
+    fn suggestion_block(&self, cx: &Context<Self>) -> Option<AnyElement> {
         let options = self.suggestion_options(cx);
         if options.is_empty() {
             return None;
         }
         let theme = cx.theme();
-        let muted = theme.muted_foreground;
+        let quiet = theme.muted_foreground;
         let accent = theme.primary;
+        let surface = cx.global::<crate::appearance::Surfaces>().background;
         let query = self.input.read(cx).value().to_string();
         let cursor = if self.suggestions_focused {
             self.suggestion_cursor.min(options.len() - 1)
@@ -320,7 +357,23 @@ impl Panel {
         };
         let start = filters::suggestion_window_start(cursor, MAX_SUGGESTIONS);
         let hidden = options.len().saturating_sub(start + MAX_SUGGESTIONS);
-        let mut rows = options
+        let heading = |label: String, note: Option<&'static str>| {
+            div()
+                .h(units(22.))
+                .flex_shrink_0()
+                .px(units(8.))
+                .flex()
+                .items_center()
+                .text_size(units(11.))
+                .font_weight(gpui::FontWeight::SEMIBOLD)
+                .text_color(quiet)
+                .child(label)
+                .child(div().flex_1())
+                .when_some(note, |row, note| {
+                    row.child(div().font_weight(gpui::FontWeight::NORMAL).child(note))
+                })
+        };
+        let rows = options
             .iter()
             .enumerate()
             .skip(start)
@@ -333,61 +386,109 @@ impl Panel {
                 let value = self.chip_label(option.dimension, &option.value);
                 let highlighted = ix == cursor;
                 div()
-                    .h(units(28.))
+                    .h(units(30.))
                     .flex_shrink_0()
-                    .px(units(10.))
+                    .pl(units(6.))
+                    .pr(units(8.))
                     .rounded(units(7.))
                     .flex()
                     .items_center()
                     .gap(units(8.))
-                    .text_size(units(13.))
+                    .text_size(units(12.5))
                     .when(highlighted, |row| row.bg(accent.opacity(0.12)))
-                    .child(div().child(word).text_color(muted))
-                    .child(div().text_color(muted).child("→"))
+                    .child(div().w(units(16.)).flex_shrink_0())
                     .child(
                         div()
-                            .flex_1()
-                            .min_w_0()
-                            .truncate()
-                            .font_weight(gpui::FontWeight::MEDIUM)
-                            .child(value),
+                            .w(units(24.))
+                            .flex_shrink_0()
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .child(
+                                Icon::new(dimension_icon(option.dimension))
+                                    .size(units(14.))
+                                    .text_color(quiet),
+                            ),
                     )
-                    .when(highlighted, |row| row.child(keycap("⇥", cx)))
+                    .child(
+                        div()
+                            .px(units(5.))
+                            .rounded(units(4.))
+                            .bg(theme.foreground.opacity(0.06))
+                            .font_family(theme.mono_font_family.clone())
+                            .text_size(units(11.5))
+                            .line_height(units(18.))
+                            .child(word),
+                    )
+                    .child(div().text_color(quiet).child("→"))
+                    .child(
+                        div()
+                            .text_color(quiet)
+                            .child(strings::dimension_label(option.dimension)),
+                    )
+                    .child(
+                        div().flex_1().min_w_0().flex().child(
+                            div()
+                                .px(units(7.))
+                                .py(units(1.))
+                                .rounded(units(5.))
+                                .font_weight(gpui::FontWeight::SEMIBOLD)
+                                .text_color(accent)
+                                .bg(if highlighted {
+                                    surface
+                                } else {
+                                    theme.foreground.opacity(0.06)
+                                })
+                                .truncate()
+                                .child(value),
+                        ),
+                    )
+                    .child(
+                        div()
+                            .flex_shrink_0()
+                            .flex()
+                            .items_center()
+                            .gap(units(4.))
+                            .text_size(units(11.))
+                            .text_color(quiet)
+                            .when(!highlighted, |hint| hint.child(strings::PRESS_AGAIN))
+                            .child(keycap("⇥", cx)),
+                    )
                     .into_any_element()
             })
             .collect::<Vec<_>>();
-        if hidden > 0 {
-            rows.push(
-                div()
-                    .h(units(20.))
-                    .px(units(10.))
-                    .text_size(units(11.))
-                    .text_color(muted)
-                    .child(format!("还有 {hidden} 条"))
-                    .into_any_element(),
-            );
-        }
+        let unmatched = filters::unmatched_words(&query, &options);
         Some(
             div()
                 .flex_shrink_0()
-                .px(units(6.))
-                .pt(units(6.))
-                .pb(units(4.))
-                .border_b_1()
-                .border_color(theme.border.opacity(0.5))
+                .flex()
+                .flex_col()
+                .child(heading(
+                    strings::SUGGESTIONS.to_string(),
+                    (options.len() > 1).then_some(strings::ACCEPT_IN_ORDER),
+                ))
+                .children(rows)
+                .when(hidden > 0, |block| {
+                    block.child(
+                        div()
+                            .h(units(20.))
+                            .px(units(8.))
+                            .flex()
+                            .items_center()
+                            .text_size(units(11.))
+                            .text_color(quiet)
+                            .child(format!("还有 {hidden} 条")),
+                    )
+                })
                 .child(
                     div()
-                        .px(units(10.))
-                        .pb(units(2.))
-                        .flex()
-                        .items_center()
-                        .gap(units(6.))
-                        .text_size(units(11.))
-                        .text_color(muted)
-                        .child(strings::SUGGESTIONS)
-                        .child(strings::ACCEPT_IN_ORDER),
+                        .h(units(1.))
+                        .mx(units(6.))
+                        .my(units(6.))
+                        .flex_shrink_0()
+                        .bg(theme.border.opacity(0.6)),
                 )
-                .children(rows)
+                .child(heading(strings::text_matches_heading(&unmatched), None))
                 .into_any_element(),
         )
     }
@@ -696,6 +797,14 @@ impl Panel {
         // Ellipsis only works when the text is a direct child of the truncating element, so plain
         // text and code put the string straight into the row's text cell. A link needs its host
         // emphasised, so it is two parts whose path part truncates.
+        let query = self.input.read(cx).value().to_string();
+        // The theme's primary colour marks matches; on the selected row that colour is the row
+        // background, so its foreground is used instead.
+        let tint = if selected {
+            theme.primary_foreground.opacity(0.3)
+        } else {
+            theme.primary.opacity(0.22)
+        };
         let link = (kind == RowKind::Link).then(|| {
             let (host, path) = split_link(&text);
             div()
@@ -704,7 +813,7 @@ impl Panel {
                     div()
                         .flex_shrink_0()
                         .font_weight(gpui::FontWeight::MEDIUM)
-                        .child(host.to_string()),
+                        .child(marked(host, &query, tint)),
                 )
                 .child(
                     div()
@@ -712,7 +821,7 @@ impl Panel {
                         .min_w_0()
                         .truncate()
                         .text_color(quiet)
-                        .child(path.to_string()),
+                        .child(marked(path, &query, tint)),
                 )
         });
         let secondary = match kind {
@@ -774,7 +883,9 @@ impl Panel {
                             .text_size(units(12.))
                     })
                     .when_some(link, |cell, link| cell.child(link))
-                    .when(kind != RowKind::Link, |cell| cell.child(text.clone())),
+                    .when(kind != RowKind::Link, |cell| {
+                        cell.child(marked(&text, &query, tint))
+                    }),
             )
             .when_some(secondary, |row, label| {
                 row.child(self.secondary_chip(label, selected, cx))
@@ -859,6 +970,7 @@ impl Panel {
                         .child(strings::SEARCHING),
                 )
             })
+            .when_some(self.suggestion_block(cx), |list, block| list.child(block))
             .when(!self.loading && self.items.is_empty(), |list| {
                 list.child(self.empty_page(cx))
             })
@@ -882,7 +994,6 @@ impl Panel {
             .text_color(theme.foreground)
             .overflow_hidden()
             .child(self.search_row(cx))
-            .when_some(self.suggestion_strip(cx), |card, strip| card.child(strip))
             .child(list);
         if let Some(message) = self.message.as_ref().filter(|_| !self.locked) {
             card = card.child(

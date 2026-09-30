@@ -29,6 +29,7 @@ pub const OPEN_MAIN_WINDOW: &str = "打开主窗口";
 pub const SETTINGS: &str = "设置…";
 pub const SUGGESTIONS: &str = "建议";
 pub const ACCEPT_IN_ORDER: &str = "按顺序接受";
+pub const PRESS_AGAIN: &str = "再按";
 pub const RICH_TEXT: &str = "富文本";
 pub const ALL_TYPES: &str = "全部";
 pub const TRY_OTHER_TERMS: &str = "试试其他关键词或筛选条件";
@@ -75,6 +76,31 @@ pub fn paste_to(application: Option<&str>) -> String {
 /// Number of results shown at the right end of the search row.
 pub fn result_count(total: u32) -> String {
     format!("{total} 条")
+}
+
+/// Count shown while suggestions are pending: the results are text matches only.
+pub fn text_match_count(total: u32) -> String {
+    format!("{total} 条文字匹配")
+}
+
+/// Heading of the text matches under the suggestions; the words that stayed plain text follow it.
+pub fn text_matches_heading(words: &str) -> String {
+    if words.is_empty() {
+        "文字匹配".to_string()
+    } else {
+        format!("文字匹配 · {words}")
+    }
+}
+
+/// Name of a filter dimension in a suggestion row.
+pub fn dimension_label(dimension: crate::filters::Dimension) -> &'static str {
+    use crate::filters::Dimension;
+    match dimension {
+        Dimension::Type => "类型",
+        Dimension::Tag => "标签",
+        Dimension::Source => "设备",
+        Dimension::Time => "时间",
+    }
 }
 
 /// Short age of an entry: "刚刚", "5m", "3h" or "2d".

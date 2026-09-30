@@ -24,7 +24,8 @@ impl Kind {
             "file" => Self::File,
             _ if tagged("link") || !item.link_urls.is_empty() => Self::Link,
             _ if tagged("code") => Self::Code,
-            "richtext" => Self::RichText,
+            // The search index files rich text under the category `html`.
+            "html" => Self::RichText,
             _ => Self::Text,
         }
     }
@@ -135,6 +136,58 @@ pub fn code_lines(text: &str) -> Vec<(usize, &str)> {
         .collect()
 }
 
+/// Byte ranges of `text` that match the words of `query`, for highlighting. Words are matched
+/// case-insensitively; words without a letter or digit are not searched, so they are not marked.
+/// Matches separated only by punctuation (`tp_zt` for `tp zt`) merge into one range.
+pub fn match_ranges(text: &str, query: &str) -> Vec<std::ops::Range<usize>> {
+    let words: Vec<Vec<char>> = query
+        .split_whitespace()
+        .filter(|word| word.chars().any(char::is_alphanumeric))
+        .map(|word| word.chars().collect())
+        .collect();
+    let chars: Vec<(usize, char)> = text.char_indices().collect();
+    let same = |a: char, b: char| a == b || a.to_lowercase().eq(b.to_lowercase());
+    let mut found: Vec<(usize, usize)> = Vec::new(); // char index ranges, end exclusive
+    for word in &words {
+        let mut at = 0;
+        while at + word.len() <= chars.len() {
+            if word
+                .iter()
+                .zip(&chars[at..])
+                .all(|(n, (_, c))| same(*n, *c))
+            {
+                found.push((at, at + word.len()));
+                at += word.len();
+            } else {
+                at += 1;
+            }
+        }
+    }
+    found.sort_unstable();
+    let mut merged: Vec<(usize, usize)> = Vec::new();
+    for (start, end) in found {
+        match merged.last_mut() {
+            Some(last)
+                if start <= last.1
+                    || chars[last.1..start]
+                        .iter()
+                        .all(|(_, c)| !c.is_alphanumeric() && !c.is_whitespace()) =>
+            {
+                last.1 = last.1.max(end);
+            }
+            _ => merged.push((start, end)),
+        }
+    }
+    merged
+        .into_iter()
+        .map(|(start, end)| {
+            let from = chars[start].0;
+            let to = chars.get(end).map_or(text.len(), |(at, _)| *at);
+            from..to
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -170,7 +223,7 @@ mod tests {
     #[test]
     fn a_row_is_classified_from_the_existing_fields_only() {
         assert_eq!(Kind::of(&entry("text")), Kind::Text);
-        assert_eq!(Kind::of(&entry("richtext")), Kind::RichText);
+        assert_eq!(Kind::of(&entry("html")), Kind::RichText);
         assert_eq!(Kind::of(&entry("image")), Kind::Image);
         assert_eq!(Kind::of(&entry("file")), Kind::File);
         let mut code = entry("text");
@@ -264,5 +317,25 @@ mod tests {
         assert_eq!(code_lines("a\n\nb"), [(1, "a"), (2, ""), (3, "b")]);
         let long = "x\n".repeat(MAX_CODE_LINES + 10);
         assert_eq!(code_lines(&long).len(), MAX_CODE_LINES);
+    }
+    #[test]
+    fn matches_ignore_case_and_stay_on_char_boundaries() {
+        assert_eq!(match_ranges("Docker compose", "docker"), vec![0..6]);
+        assert_eq!(
+            match_ranges("周会 Docker 纪要", "docker 纪要"),
+            vec![7..13, 14..20]
+        );
+        assert_eq!(match_ranges("İstanbul", "stan"), vec![2..6]);
+        assert_eq!(
+            match_ranges("x", "xyz"),
+            Vec::<std::ops::Range<usize>>::new()
+        );
+    }
+
+    #[test]
+    fn matches_across_punctuation_merge_and_punctuation_words_are_skipped() {
+        assert_eq!(match_ranges("tp_zt_export.csv", "tp zt"), vec![0..5]);
+        assert_eq!(match_ranges("a b", "a b"), vec![0..1, 2..3]);
+        assert!(match_ranges("#tag", "#").is_empty());
     }
 }

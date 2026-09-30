@@ -242,6 +242,24 @@ pub struct Catalog<'a> {
     pub initials: bool,
 }
 
+/// The words of `query` that no suggestion claims: they stay plain text search.
+pub fn unmatched_words(query: &str, options: &[Suggestion]) -> String {
+    let mut words = Vec::new();
+    let mut at = 0;
+    for word in query.split_whitespace() {
+        let start = at + query[at..].find(word).unwrap_or(0);
+        let end = start + word.len();
+        at = end;
+        let claimed = options
+            .iter()
+            .any(|option| option.matched.start < end && start < option.matched.end);
+        if !claimed {
+            words.push(word);
+        }
+    }
+    words.join(" ")
+}
+
 /// A filter the typed words could become. Nothing changes until it is accepted.
 #[derive(Clone, Debug)]
 pub struct Suggestion {
@@ -806,5 +824,22 @@ mod tests {
         filters.add(Dimension::Type, "file".into());
         filters.accept(&suggestions("tp", &chinese(&[], &[]))[0]);
         assert_eq!(filters.types, ["image"]);
+    }
+
+    #[test]
+    fn words_no_suggestion_claims_stay_text() {
+        let claim = |range: std::ops::Range<usize>| Suggestion {
+            dimension: Dimension::Type,
+            value: "image".into(),
+            matched: range,
+            time: None,
+            replace: false,
+        };
+        assert_eq!(
+            unmatched_words("ip jt docker", &[claim(0..2), claim(3..5)]),
+            "docker"
+        );
+        assert_eq!(unmatched_words("tp zt", &[claim(0..2), claim(3..5)]), "");
+        assert_eq!(unmatched_words("docker", &[]), "docker");
     }
 }

@@ -423,7 +423,7 @@ impl Panel {
             let mut item = if self.filters.images_only() {
                 *self.image_bounds.get(id)?
             } else {
-                self.scroll.bounds_for_item(index)?
+                self.scroll.bounds_for_item(index + self.list_lead(cx))?
             };
             item.origin += self.scroll.offset();
             let viewport = self.scroll.bounds();
@@ -1071,7 +1071,7 @@ impl Panel {
         if self.filters.images_only() {
             self.grid_top = crate::grid::first_row_for(ix, self.grid_top, self.items.len());
         } else {
-            self.scroll.scroll_to_item(ix);
+            self.scroll.scroll_to_item(ix + self.list_lead(cx));
         }
         self.schedule_preview(window, cx);
         cx.notify();

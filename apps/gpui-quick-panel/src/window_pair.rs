@@ -4,6 +4,8 @@ pub const PANEL_WIDTH: f64 = 380.;
 pub const PANEL_HEIGHT: f64 = 366.;
 /// Preview body width, not counting the pointer.
 pub const PREVIEW_WIDTH: f64 = 400.;
+/// Body width of the action list, which the preview window shows in place of a preview.
+pub const ACTIONS_WIDTH: f64 = 380.;
 pub const WINDOW_GAP: f64 = 8.;
 pub const POINTER_DEPTH: f64 = 8.;
 pub const POINTER_HALF_HEIGHT: f64 = 7.;
@@ -54,13 +56,22 @@ pub struct PreviewPlacement {
 }
 
 pub fn preview_placement(anchor: PreviewAnchor, measured_height: f64) -> PreviewPlacement {
+    preview_placement_with_width(anchor, PREVIEW_WIDTH, measured_height)
+}
+
+/// Placement for a body of `body_width` (unscaled), whose content is `measured_height` tall.
+pub fn preview_placement_with_width(
+    anchor: PreviewAnchor,
+    body_width: f64,
+    measured_height: f64,
+) -> PreviewPlacement {
     let scale = anchor.scale;
     let inset = (SCREEN_INSET * scale).min(anchor.screen.height / 4.);
     let available_height = (anchor.screen.height - 2. * inset).max(1.);
     let maximum = (MAX_PREVIEW_HEIGHT * scale).min(available_height);
     let minimum = (MIN_PREVIEW_HEIGHT * scale).min(maximum);
     let height = measured_height.clamp(minimum, maximum);
-    preview_placement_for_size(anchor, PREVIEW_WIDTH * scale, height)
+    preview_placement_for_size(anchor, body_width * scale, height)
 }
 
 pub fn preview_capacity(anchor: PreviewAnchor) -> (f64, f64) {
@@ -208,5 +219,14 @@ mod tests {
     fn empty_content_still_has_room_for_the_pointer_and_metadata() {
         let p = preview_placement(anchor(300.), 0.);
         assert_eq!(p.frame.height, MIN_PREVIEW_HEIGHT);
+    }
+    #[test]
+    fn the_action_list_is_as_wide_as_the_history_window() {
+        let a = anchor(300.);
+        let preview = preview_placement(a, 200.);
+        let actions = preview_placement_with_width(a, ACTIONS_WIDTH, 200.);
+        assert_eq!(preview.frame.width, PREVIEW_WIDTH + POINTER_DEPTH);
+        assert_eq!(actions.frame.width, ACTIONS_WIDTH + POINTER_DEPTH);
+        assert_eq!(actions.frame.height, preview.frame.height);
     }
 }

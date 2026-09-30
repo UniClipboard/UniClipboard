@@ -1,7 +1,7 @@
 use super::*;
 use crate::window_pair::{
-    preview_capacity, preview_placement, preview_placement_for_size, PreviewPlacement, PreviewSide,
-    POINTER_DEPTH, POINTER_HALF_HEIGHT,
+    preview_capacity, preview_placement, preview_placement_for_size, preview_placement_with_width,
+    PreviewPlacement, PreviewSide, ACTIONS_WIDTH, POINTER_DEPTH, POINTER_HALF_HEIGHT,
 };
 use gpui::{canvas, div, point, px, AnyWindowHandle, IntoElement, PathBuilder, Render};
 use gpui_component::ActiveTheme;
@@ -176,7 +176,13 @@ impl PreviewWindow {
             let (Some(content), Some(chrome)) = (self.content_height, self.chrome_height) else {
                 return;
             };
-            preview_placement(anchor, content + chrome)
+            // The action list is narrower than a preview.
+            let width = if self.snapshot.actions.is_some() {
+                ACTIONS_WIDTH
+            } else {
+                crate::window_pair::PREVIEW_WIDTH
+            };
+            preview_placement_with_width(anchor, width, content + chrome)
         };
         if self.placement != Some(placement) {
             let frame = placement.frame;

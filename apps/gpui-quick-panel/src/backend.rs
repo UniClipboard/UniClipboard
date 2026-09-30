@@ -74,10 +74,18 @@ pub async fn search_filtered(
             .await
             .map_err(|_| SearchFailure::Disconnected)?
             .search_client();
-        client
-            .query(filters.request())
-            .await
-            .map_err(search_failure)
+        match client.query(filters.request()).await {
+            Ok(result) => Ok(result),
+            // Text the index cannot search for (a single Latin letter, say) is an answer, not a
+            // failure: nothing matches.
+            Err(error) if nothing_searchable(&error) => Ok(SearchQueryResultDto {
+                items: vec![],
+                total: 0,
+                has_more: false,
+                state: "ready".into(),
+            }),
+            Err(error) => Err(search_failure(error)),
+        }
     };
     tokio::time::timeout(Duration::from_secs(8), operation)
         .await
@@ -96,6 +104,19 @@ pub async fn count(filters: crate::filters::Filters) -> Option<u32> {
         .await
         .ok()
         .flatten()
+}
+
+/// The daemon refused the query because it holds no term the search index can match.
+fn nothing_searchable(error: &anyhow::Error) -> bool {
+    matches!(
+        error.downcast_ref::<uc_daemon_client::DaemonRequestError>(),
+        Some(uc_daemon_client::DaemonRequestError::Status { status, code, .. })
+            if is_unsearchable(status.as_u16(), code.as_deref())
+    )
+}
+
+fn is_unsearchable(status: u16, code: Option<&str>) -> bool {
+    status == 400 && code == Some("invalid_query")
 }
 
 fn search_failure(error: anyhow::Error) -> SearchFailure {
@@ -325,6 +346,14 @@ pub async fn watch_changes(send: tokio::sync::mpsc::Sender<Live>) {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn an_unsearchable_query_is_no_result_not_a_failure() {
+        assert!(is_unsearchable(400, Some("invalid_query")));
+        assert!(!is_unsearchable(500, Some("search_failed")));
+        assert!(!is_unsearchable(400, Some("bad_request")));
+        assert!(!is_unsearchable(400, None));
+    }
     use super::*;
     use serde_json::json;
     use wiremock::{

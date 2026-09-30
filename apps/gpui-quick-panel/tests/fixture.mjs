@@ -205,6 +205,11 @@ const server = createServer(async (request, response) => {
       return json(423, { error: { code: 'session_locked', message: 'Locked' } })
     if (query === 'error')
       return json(503, { error: { code: 'index_rebuilding', message: 'Synthetic failure' } })
+    // Text the index has no term for, such as one Latin letter: the daemon refuses it as invalid.
+    if (query === 'l')
+      return json(400, {
+        error: { code: 'invalid_query', message: 'query produced no searchable terms' },
+      })
     if (query === 'slow') await new Promise(resolve => setTimeout(resolve, 900))
     // Every list parameter is comma separated, and the values of one parameter are alternatives.
     const list = name => (url.searchParams.get(name) ?? '').split(',').filter(Boolean)

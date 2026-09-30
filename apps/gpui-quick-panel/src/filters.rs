@@ -302,6 +302,22 @@ fn abbreviates(word: &str, name: &str) -> bool {
         && (initials_of(name).starts_with(word) || name.to_lowercase().starts_with(word))
 }
 
+/// Whether the word being typed (the last one) is a filter word: `#tag`, `@device` or `/type`.
+/// Only then do the arrow keys belong to the suggestions; for plain words they move through the
+/// results, even when a suggestion happens to be listed.
+pub fn typing_a_filter(query: &str) -> bool {
+    !query.ends_with(char::is_whitespace)
+        && query
+            .split_whitespace()
+            .next_back()
+            .is_some_and(|word| word.starts_with(['#', '@', '/']))
+}
+
+/// First suggestion shown, so that the highlighted one is always inside a window of `shown`.
+pub fn suggestion_window_start(cursor: usize, shown: usize) -> usize {
+    (cursor + 1).saturating_sub(shown.max(1))
+}
+
 pub fn suggestions(query: &str, catalog: &Catalog) -> Vec<Suggestion> {
     let mut result = Vec::new();
     let words = date_range::words(query);
@@ -432,6 +448,27 @@ pub fn remaining_query(query: &str, matched: &std::ops::Range<usize>) -> String 
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn arrows_belong_to_the_suggestions_only_while_a_filter_word_is_typed() {
+        assert!(typing_a_filter("#"));
+        assert!(typing_a_filter("#de"));
+        assert!(typing_a_filter("hello @mac"));
+        assert!(typing_a_filter("/im"));
+        assert!(!typing_a_filter(""));
+        assert!(!typing_a_filter("图片"));
+        assert!(!typing_a_filter("#work notes"));
+        assert!(!typing_a_filter("#work "));
+    }
+
+    #[test]
+    fn the_suggestion_window_follows_the_highlight() {
+        assert_eq!(suggestion_window_start(0, 3), 0);
+        assert_eq!(suggestion_window_start(2, 3), 0);
+        assert_eq!(suggestion_window_start(3, 3), 1);
+        assert_eq!(suggestion_window_start(7, 3), 5);
+        assert_eq!(suggestion_window_start(0, 0), 0);
+    }
     use super::*;
 
     fn today() -> NaiveDate {

@@ -1430,6 +1430,16 @@ impl Panel {
             cx.notify();
             return;
         }
+        if matches!(key, "up" | "down")
+            && !command
+            && !modifiers.shift
+            && !modifiers.alt
+            && self.actions.is_none()
+            && self.arrow_in_suggestions(key == "down", cx)
+        {
+            cx.stop_propagation();
+            return;
+        }
         if !self.loading && !self.busy && self.items.is_empty() && !command && !modifiers.shift {
             let shown = self.visible_relaxations().len();
             match key {

@@ -131,6 +131,26 @@ impl Panel {
         true
     }
 
+    /// Up and Down while a filter word is being typed: move the suggestion that Tab would accept.
+    /// Returns whether the key was taken; otherwise the arrows move through the results.
+    pub(super) fn arrow_in_suggestions(&mut self, down: bool, cx: &mut Context<Self>) -> bool {
+        if !filters::typing_a_filter(&self.input.read(cx).value()) {
+            return false;
+        }
+        let count = self.suggestion_options(cx).len();
+        if count < 2 {
+            return false;
+        }
+        let cursor = self.suggestion_cursor.min(count - 1);
+        self.suggestion_cursor = if down {
+            (cursor + 1) % count
+        } else {
+            (cursor + count - 1) % count
+        };
+        cx.notify();
+        true
+    }
+
     /// Moves the suggestion that Tab would accept.
     pub(super) fn next_suggestion_candidate(&mut self, cx: &mut Context<Self>) -> bool {
         let count = self.suggestion_options(cx).len();
@@ -287,11 +307,13 @@ impl Panel {
         let accent = theme.primary;
         let query = self.input.read(cx).value().to_string();
         let cursor = self.suggestion_cursor.min(options.len() - 1);
-        let hidden = options.len().saturating_sub(MAX_SUGGESTIONS);
+        let start = filters::suggestion_window_start(cursor, MAX_SUGGESTIONS);
+        let hidden = options.len().saturating_sub(start + MAX_SUGGESTIONS);
         let mut rows = options
             .iter()
-            .take(MAX_SUGGESTIONS)
             .enumerate()
+            .skip(start)
+            .take(MAX_SUGGESTIONS)
             .map(|(ix, option)| {
                 let word = query
                     .get(option.matched.clone())

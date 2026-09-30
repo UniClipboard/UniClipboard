@@ -204,7 +204,17 @@ test('GPUI quick panel native end-to-end', { timeout: 180_000 }, async t => {
     )
     await query({ query: '' }, hidden.searches)
   }
+  // `UC_GPUI_E2E_ONLY` runs just the flows whose name contains the text (case-insensitive; several
+  // words separated by `|`). Setup still happens once; the other flows are reported as skipped.
+  const only = (process.env.UC_GPUI_E2E_ONLY ?? '')
+    .split('|')
+    .map(word => word.trim().toLowerCase())
+    .filter(Boolean)
   const run = async (name, action) => {
+    if (only.length > 0 && !only.some(word => name.toLowerCase().includes(word))) {
+      await t.test(name, { skip: 'not selected by UC_GPUI_E2E_ONLY' }, () => {})
+      return
+    }
     await t.test(name, async () => {
       await fresh()
       try {
@@ -304,6 +314,31 @@ test('GPUI quick panel native end-to-end', { timeout: 180_000 }, async t => {
       await input('type', ['x'])
       await query({ query: '工作 设计x' })
       await noPaste()
+    })
+    // "#" lists every tag; the first one is `link`. Each flow starts from a fresh panel.
+    const firstOfHash = async keys => {
+      await text('#')
+      await query({ query: '#' })
+      for (const name of keys) await key(name)
+      await key('tab')
+      const sent = await until(
+        'a search with one tag',
+        async () => {
+          const last = (await state()).lastSearch
+          return last?.query === '' && last.tags.length === 1 && last
+        }
+      )
+      await noPaste()
+      return sent.tags[0]
+    }
+    await run('Up and Down choose among suggestions: Tab alone takes the first', async () => {
+      assert.equal(await firstOfHash([]), 'link')
+    })
+    await run('Up and Down choose among suggestions: Down moves to the next one', async () => {
+      assert.notEqual(await firstOfHash(['down']), 'link')
+    })
+    await run('Up and Down choose among suggestions: Up after Down comes back', async () => {
+      assert.equal(await firstOfHash(['down', 'up']), 'link')
     })
     await run(
       'clicking a filter chip removes only that condition and returns input focus',

@@ -246,6 +246,11 @@ Windows 上 ⌘ 对应 Ctrl，⌥ 对应 Alt。
 - **发布门槛：** 任务 A 完成前，面板不得发布或交给用户使用。
 - **Engine 版本：** Engine 合并不作为本地开工门槛。联调期可以覆盖为 t-0110 的本地工作区，但必须记录工作区路径、HEAD `c7a821b4d899d32b375a707d2551f382e088b306` 和未提交的改动集，并用构建元数据确认构建确实用了这份源码。最终 PR 或发布前，必须换成已合并的不可变 Engine 版本并重新验证。
 
+上游合并记录（2026-09-30）：
+- Engine PR #130 已合并，合并提交 `f45d08c90c01aaa78ee29d6117aa3cd2fe329e3d`（2026-09-30T09:00:52Z），范围为 U2 `SettingsChanged`、U3 `tag_match`、U4 批量计数、U5 每日计数，U6 已移除。它只比固定版本 `c7a821b`（`v1.1.0-rc.21`）多一个提交，因此包含 rc.21 修复；它 **不是** t-0106 的 LAN-only 分支，不能据此认为 `trusted_networks` / `listen_port` 绑定已合并。
+- 上文“本地 Engine 覆盖”“未提交”的描述已过期：t-0110 线程已关闭，其工作区已删除，资料改从已合并源码与线程归档取用。
+- 内容锁（任务 A）已在 Desktop 后台完成，不依赖 Engine 新接口；本分支的固定版本仍是 `c7a821b`。改用 `f45d08c` 需要在 `crates/uc-webserver/src/api/search.rs` 补 `tag_match`，并在 `crates/uc-webserver/src/api/event_emitter.rs` 为 `SettingsChanged` 增加分支，之后重跑隔离 E2E；该工作随 #1774 / #1784 跟踪。
+
 ### 阶段 2：辅助程序集成
 - 覆盖 A1、A3、A4，B5–B8、B11。
 - 内容：共享会话；GUI 启动与监管，GUI 退出时辅助程序同步退出，轻量模式下不启动；快捷键与双击修饰键的归属迁移；设置实时生效。

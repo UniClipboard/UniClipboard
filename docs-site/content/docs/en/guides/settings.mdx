@@ -46,6 +46,12 @@ Diagnostics and usage analytics are separate toggles. They do not include clipbo
 Zoom changes rendering density only (think DPI). It doesn't touch your
 data and doesn't sync to other devices.
 
+### Window layout
+
+The main window remembers its normal size, position and maximized state when you close it or restart the app. Minimized and fullscreen states are not restored. Layout stays local to the current profile and is stored separately from general settings; it is not synchronized between devices.
+
+If a display is disconnected or its scaling changes, the restored window is fitted to an available display. Temporary restoration adjustments keep the preferred layout; later stable adjustments are remembered on a best-effort basis. Wayland compositors control window placement, so absolute position restoration is unavailable there.
+
 ### Follow Omarchy theme
 
 Enabled by default. In an available Omarchy session, the main window and quick panel follow the desktop's light/dark mode and colors. Manual theme mode, palette presets, and custom color controls are disabled. Turning the switch off immediately restores your previous app theme settings; turning it back on does not erase them.

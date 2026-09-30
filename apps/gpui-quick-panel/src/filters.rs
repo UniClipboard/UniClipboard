@@ -101,14 +101,6 @@ impl Filters {
         }
     }
 
-    pub fn toggle(&mut self, dimension: Dimension, value: String) {
-        if self.contains(dimension, &value) {
-            self.remove(dimension, &value);
-        } else {
-            self.apply(dimension, Some(value));
-        }
-    }
-
     pub fn remove(&mut self, dimension: Dimension, value: &str) {
         if dimension == Dimension::Tag {
             self.tags.retain(|tag| tag != value);
@@ -246,21 +238,6 @@ mod tests {
         filters.remove(Dimension::Type, "image");
         assert!(filters.request().content_types.is_empty());
         assert_eq!(filters.request().tags, ["favorited", "code"]);
-    }
-
-    #[test]
-    fn toggling_replaces_types_but_preserves_other_selected_tags() {
-        let mut filters = Filters::default();
-        filters.toggle(Dimension::Type, "image".into());
-        filters.toggle(Dimension::Tag, "favorited".into());
-        filters.toggle(Dimension::Tag, "工作".into());
-        filters.toggle(Dimension::Type, "text".into());
-        assert_eq!(filters.request().content_types, ["text"]);
-        assert_eq!(filters.request().tags, ["favorited", "工作"]);
-        filters.toggle(Dimension::Tag, "favorited".into());
-        filters.toggle(Dimension::Type, "text".into());
-        assert!(filters.request().content_types.is_empty());
-        assert_eq!(filters.request().tags, ["工作"]);
     }
 
     #[test]

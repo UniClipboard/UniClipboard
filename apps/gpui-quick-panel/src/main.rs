@@ -8,6 +8,7 @@ mod panel;
 mod platform;
 mod selection;
 mod shortcuts;
+mod strings;
 mod window_pair;
 
 use global_hotkey::{GlobalHotKeyEvent, HotKeyState};
@@ -90,6 +91,7 @@ fn main() -> anyhow::Result<()> {
                 gpui::KeyBinding::new("ctrl-c", gpui_component::input::Copy, Some("QuickPanel")),
                 gpui::KeyBinding::new("tab", panel::NextSuggestion, Some("QuickPanel")),
                 gpui::KeyBinding::new("shift-tab", panel::PreviousSuggestion, Some("QuickPanel")),
+                gpui::KeyBinding::new("alt-tab", panel::NextCandidate, Some("QuickPanel")),
             ]);
             let manager = match shortcuts::Shortcuts::new() {
                 Ok(manager) => manager,

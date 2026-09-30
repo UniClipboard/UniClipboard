@@ -1,11 +1,9 @@
 use super::*;
 use gpui::{div, img, AnyElement, IntoElement, MouseButton, ObjectFit, Render};
 use gpui_component::{
-    button::{Button, ButtonVariants},
-    input::Input,
     menu::{ContextMenuExt, PopupMenu, PopupMenuItem},
     text::TextView,
-    ActiveTheme, Icon, IconName, Sizable,
+    ActiveTheme, IconName,
 };
 
 pub(super) fn units(value: f32) -> gpui::Rems {
@@ -13,7 +11,7 @@ pub(super) fn units(value: f32) -> gpui::Rems {
 }
 
 impl Panel {
-    fn row_menu(
+    pub(super) fn row_menu(
         item: SearchResultDto,
         members: Vec<SpaceMemberDto>,
         ix: usize,
@@ -143,339 +141,7 @@ impl Panel {
             ))
     }
 
-    fn row(&self, ix: usize, cx: &Context<Self>) -> AnyElement {
-        let item = &self.items[ix];
-        let selected = self.selection.selected() == Some(ix);
-        let theme = cx.theme();
-        let muted = theme.muted_foreground;
-        let foreground = theme.foreground;
-        let primary = theme.primary;
-        let on_primary = theme.primary_foreground;
-        let lost = item.payload_state.as_deref() == Some("Lost");
-        let text = item
-            .file_names
-            .first()
-            .cloned()
-            .or_else(|| item.link_urls.first().cloned())
-            .or_else(|| item.text_preview.clone())
-            .unwrap_or_else(|| filters::label(&item.content_type).into());
-        let icon = if item.content_type == "image" {
-            IconName::Frame
-        } else {
-            IconName::File
-        };
-        let mut leading = Icon::new(icon)
-            .size(units(14.))
-            .text_color(if selected {
-                on_primary.opacity(0.7)
-            } else {
-                muted.opacity(0.6)
-            })
-            .into_any_element();
-        if let Some(image) = self.images.get(&item.entry_id) {
-            leading = div()
-                .w(units(20.))
-                .h(units(16.))
-                .flex_shrink_0()
-                .overflow_hidden()
-                .rounded_sm()
-                .child(
-                    img(image.image.clone())
-                        .size_full()
-                        .object_fit(ObjectFit::Cover),
-                )
-                .into_any_element();
-        }
-        let minutes = ((chrono::Utc::now().timestamp_millis() - item.active_time_ms) as f64
-            / 60000.)
-            .round() as i64;
-        let time = if minutes < 1 {
-            "just now".into()
-        } else if minutes < 60 {
-            format!("{minutes}m")
-        } else if minutes < 1440 {
-            format!("{}h", minutes / 60)
-        } else {
-            format!("{}d", minutes / 1440)
-        };
-        let entity = cx.entity();
-        let menu_item = item.clone();
-        let menu_members = self.members.clone();
-        let row = div()
-            .id(gpui::SharedString::from(item.entry_id.clone()))
-            .w_full()
-            .h(units(32.25))
-            .px(units(8.))
-            .py(units(8.))
-            .rounded(units(6.))
-            .flex()
-            .items_center()
-            .gap(units(8.))
-            .cursor_pointer()
-            .text_size(units(13.))
-            .line_height(units(16.25))
-            .text_color(if selected { on_primary } else { foreground })
-            .when(selected, |row| row.bg(primary))
-            .when(!selected && !self.keyboard, |row| {
-                row.hover(|row| row.bg(theme.muted.opacity(0.5)))
-            })
-            .child(
-                div()
-                    .w(units(20.))
-                    .flex_shrink_0()
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .child(leading),
-            )
-            .child(
-                div()
-                    .flex_1()
-                    .min_w_0()
-                    .truncate()
-                    .when(lost, |text| text.opacity(0.5).line_through())
-                    .child(text.replace(['\n', '\r'], " ")),
-            )
-            .when(item.tags.iter().any(|tag| tag == "favorited"), |row| {
-                row.child(
-                    Icon::new(IconName::Star)
-                        .size(units(12.))
-                        .text_color(gpui::rgb(0xfbbf24)),
-                )
-            })
-            .child(
-                div()
-                    .flex_shrink_0()
-                    .text_size(units(11.))
-                    .text_color(if selected {
-                        on_primary.opacity(0.6)
-                    } else {
-                        muted.opacity(0.5)
-                    })
-                    .child(time),
-            )
-            .when(ix < 10, |row| {
-                row.child(
-                    div()
-                        .flex_shrink_0()
-                        .rounded(units(3.))
-                        .border_1()
-                        .border_color(if selected {
-                            on_primary.opacity(0.3)
-                        } else {
-                            theme.border
-                        })
-                        .px(units(4.))
-                        .py(units(2.))
-                        .text_size(units(10.))
-                        .line_height(units(10.))
-                        .text_color(if selected {
-                            on_primary.opacity(0.7)
-                        } else {
-                            muted.opacity(0.5)
-                        })
-                        .child(format!("⌘{}", if ix == 9 { 0 } else { ix + 1 })),
-                )
-            })
-            .on_click(
-                cx.listener(move |this, event: &gpui::ClickEvent, window, cx| {
-                    this.select(ix, window, cx);
-                    this.restore(true, event.modifiers().alt, window, cx);
-                }),
-            )
-            .on_mouse_down(
-                MouseButton::Right,
-                cx.listener(move |this, _, window, cx| this.select(ix, window, cx)),
-            )
-            .on_hover(cx.listener(move |this, hovered, window, cx| {
-                if *hovered && !this.keyboard && this.pointer_moved && !this.loading {
-                    this.hovered = Some(ix);
-                    this.schedule_preview(window, cx);
-                    cx.notify();
-                }
-            }))
-            .context_menu(move |menu, window, cx| {
-                Self::row_menu(
-                    menu_item.clone(),
-                    menu_members.clone(),
-                    ix,
-                    menu,
-                    entity.clone(),
-                    window,
-                    cx,
-                )
-            });
-        // ContextMenuExt owns a fixed element ID. Scope the whole wrapper by
-        // entry, not just its child row, so sibling menus do not share state.
-        div()
-            .id(gpui::SharedString::from(format!(
-                "entry-menu-{}",
-                item.entry_id
-            )))
-            .w_full()
-            .child(row)
-            .into_any_element()
-    }
-
-    fn history_view(&self, window: &Window, cx: &Context<Self>) -> AnyElement {
-        let theme = cx.theme();
-        let border = theme.border.opacity(0.5);
-        let muted = theme.muted_foreground;
-        let filters = self.filters.chips();
-        let has_content = !filters.is_empty() || !self.input.read(cx).value().is_empty();
-        let search = div().px(units(12.)).py(units(8.)).child(
-            div()
-                .min_h(units(28.))
-                .w_full()
-                .rounded(units(16.))
-                .border_1()
-                .border_color(theme.border.opacity(0.6))
-                .bg(theme.muted.opacity(0.7))
-                .flex()
-                .items_center()
-                .gap(units(6.))
-                .px(units(7.))
-                .child(
-                    div().flex_1().min_w_0().child(
-                        Input::new(&self.input)
-                            .appearance(false)
-                            .small()
-                            .disabled(self.busy)
-                            .px_0()
-                            .gap(units(8.))
-                            .prefix(
-                                div()
-                                    .w(units(20.))
-                                    .flex_shrink_0()
-                                    .flex()
-                                    .items_center()
-                                    .justify_center()
-                                    .child(
-                                        Icon::new(IconName::Search)
-                                            .size(units(14.))
-                                            .text_color(muted.opacity(0.5)),
-                                    ),
-                            )
-                            .text_size(units(12.)),
-                    ),
-                )
-                .when(!has_content && self.total > 0, |view| {
-                    view.child(
-                        div()
-                            .text_size(units(11.))
-                            .text_color(muted.opacity(0.4))
-                            .child(format!("{} 项", self.total)),
-                    )
-                })
-                .when(has_content, |view| {
-                    view.child(
-                        Button::new("clear")
-                            .icon(IconName::Close)
-                            .ghost()
-                            .xsmall()
-                            .on_click(cx.listener(|this, _, window, cx| this.clear(window, cx))),
-                    )
-                }),
-        );
-        let anchor_tracker = cx.entity().downgrade();
-        let list = div()
-            .on_children_prepainted(move |_, window, cx| {
-                let tracker = anchor_tracker.clone();
-                window.defer(cx, move |window, cx| {
-                    let _ = tracker.update(cx, |this, cx| this.update_preview_anchor(window, cx));
-                });
-            })
-            .id("history-list")
-            .flex_1()
-            .min_h_0()
-            .overflow_y_scroll()
-            .px(units(12.))
-            .py(units(4.))
-            .track_scroll(&self.scroll)
-            .on_mouse_move(cx.listener(|this, _, _, _| {
-                this.pointer_moved = true;
-                this.keyboard = false;
-            }))
-            .when(self.loading, |list| {
-                list.child(
-                    div()
-                        .size_full()
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .text_size(units(13.))
-                        .text_color(muted)
-                        .child("正在搜索…"),
-                )
-            })
-            .when(!self.loading && self.items.is_empty(), |list| {
-                list.child(
-                    div()
-                        .size_full()
-                        .flex()
-                        .flex_col()
-                        .gap_2()
-                        .items_center()
-                        .justify_center()
-                        .text_color(muted)
-                        .child(Icon::new(IconName::Search).size(units(24.)))
-                        .child("暂无匹配的记录")
-                        .child(
-                            div()
-                                .text_size(units(11.))
-                                .child("试试其他关键词或筛选条件"),
-                        ),
-                )
-            })
-            .when(!self.loading && self.filters.content_type != 3, |list| {
-                list.children((0..self.items.len()).map(|ix| self.row(ix, cx)))
-            })
-            .when(!self.loading && self.filters.content_type == 3, |list| {
-                list.child(self.image_wall(cx))
-            });
-        let mut card = div()
-            .relative()
-            .w(units(360.))
-            .h_full()
-            .flex_shrink_0()
-            .flex()
-            .flex_col()
-            .rounded(units(12.))
-            .border_1()
-            .border_color(border)
-            .bg(cx.global::<crate::appearance::Surfaces>().background)
-            .text_color(theme.foreground)
-            .overflow_hidden()
-            .child(search)
-            .child(self.filter_bar(window, cx))
-            .child(list);
-        if let Some(message) = &self.message {
-            card = card.child(
-                div()
-                    .px_3()
-                    .py_2()
-                    .text_size(units(11.))
-                    .text_color(theme.danger)
-                    .child(message.clone())
-                    .child(
-                        Button::new("retry")
-                            .label(if self.locked { "解锁" } else { "重试" })
-                            .ghost()
-                            .xsmall()
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                if this.locked {
-                                    this.action(String::new(), EntryAction::Unlock, window, cx)
-                                } else {
-                                    this.search(window, cx)
-                                }
-                            })),
-                    ),
-            );
-        }
-        card.into_any_element()
-    }
-
-    fn image_wall(&self, cx: &Context<Self>) -> AnyElement {
+    pub(super) fn image_wall(&self, cx: &Context<Self>) -> AnyElement {
         let mut columns: [Vec<usize>; 3] = Default::default();
         let mut heights = [0_f32; 3];
         for (ix, item) in self.items.iter().enumerate() {
@@ -758,17 +424,20 @@ impl PreviewSnapshot {
 }
 
 impl Render for Panel {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let history = self.history_view(window, cx);
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let history = self.history_view(cx);
         div()
             .size_full()
             .text_color(cx.theme().foreground)
             .key_context("QuickPanel")
-            .on_action(cx.listener(|this, _: &NextSuggestion, window, cx| {
-                this.focus_filter_suggestion(false, window, cx)
-            }))
-            .on_action(cx.listener(|this, _: &PreviousSuggestion, window, cx| {
-                this.focus_filter_suggestion(true, window, cx)
+            .on_action(
+                cx.listener(|this, _: &NextSuggestion, window, cx| this.tab(false, window, cx)),
+            )
+            .on_action(
+                cx.listener(|this, _: &PreviousSuggestion, window, cx| this.tab(true, window, cx)),
+            )
+            .on_action(cx.listener(|this, _: &NextCandidate, _, cx| {
+                this.next_suggestion_candidate(cx);
             }))
             .capture_action(cx.listener(Self::copy_action))
             .capture_key_down(cx.listener(Self::key_down))

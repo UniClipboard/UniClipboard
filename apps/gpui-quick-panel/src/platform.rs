@@ -21,6 +21,14 @@ mod macos {
             )
         }
 
+        /// Display name of the application the paste goes to, if there is one.
+        pub fn name(&self) -> Option<String> {
+            self.0
+                .as_ref()
+                .and_then(|app| app.localizedName())
+                .map(|name| name.to_string())
+        }
+
         pub fn check(&self) -> Result<(), String> {
             // Accessibility permission is checked without opening a system prompt.
             if !unsafe { AXIsProcessTrusted() } {
@@ -385,6 +393,9 @@ impl PasteTarget {
     }
     pub fn capture() -> Self {
         Self
+    }
+    pub fn name(&self) -> Option<String> {
+        None
     }
     pub fn check(&self) -> Result<(), String> {
         Err("此原型的自动粘贴仅支持 macOS；请使用复制按钮。".into())

@@ -14,7 +14,7 @@ const rows = Array.from({ length: 125 }, (_, index) => ({
   fileExtensions: [], fileNames: [], filePaths: [], linkUrls: [], sourceDevice: null,
   payloadState: index === 2 ? 'Lost' : null,
 }));
-const state = { searches: 0, restores: [], authenticated: 0, lastSearch: null, requests: [], searchStarts: [], settingsReads: 0, tagsReads: 0 };
+const state = { searches: 0, restores: [], deleted: [], authenticated: 0, lastSearch: null, requests: [], searchStarts: [], settingsReads: 0, tagsReads: 0 };
 const fullText = new Map([
   ['fixture-4', Array.from({length:120}, (_, i) => `第 ${i+1} 行：这是一段用于验证预览高度上限与内部滚动的长文本。`).join('\n')],
   ['fixture-5', '多行内容验证\n第二行：预览跟随记录\n第三行：小箭头保持对齐\n第四行：窗口高度由内容决定\n第五行：历史窗口保持不动'],
@@ -86,6 +86,12 @@ const server = createServer(async (request, response) => {
     const result = spawnSync('pbcopy', { input: row.textPreview });
     if (result.status !== 0) return json(500, {});
     state.restores.push(row.entryId);
+    response.writeHead(204);
+    return response.end();
+  }
+  if (request.method === 'DELETE' && url.pathname.startsWith('/clipboard/entries/')) {
+    // Records the request only; the rows stay so that every test starts from the same list.
+    state.deleted.push(url.pathname.split('/').at(-1));
     response.writeHead(204);
     return response.end();
   }

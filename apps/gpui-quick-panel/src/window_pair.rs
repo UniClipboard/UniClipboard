@@ -1,5 +1,9 @@
-pub const PANEL_WIDTH: f64 = 360.;
-pub const PANEL_HEIGHT: f64 = 420.;
+/// History window: 380 wide; a 48 search row, nine 30 rows with 6 padding (282), a 34 footer and
+/// the 1 px border on both sides.
+pub const PANEL_WIDTH: f64 = 380.;
+pub const PANEL_HEIGHT: f64 = 366.;
+/// Preview body width, not counting the pointer.
+pub const PREVIEW_WIDTH: f64 = 400.;
 pub const WINDOW_GAP: f64 = 8.;
 pub const POINTER_DEPTH: f64 = 8.;
 pub const POINTER_HALF_HEIGHT: f64 = 7.;
@@ -56,7 +60,7 @@ pub fn preview_placement(anchor: PreviewAnchor, measured_height: f64) -> Preview
     let maximum = (MAX_PREVIEW_HEIGHT * scale).min(available_height);
     let minimum = (MIN_PREVIEW_HEIGHT * scale).min(maximum);
     let height = measured_height.clamp(minimum, maximum);
-    preview_placement_for_size(anchor, PANEL_WIDTH * scale, height)
+    preview_placement_for_size(anchor, PREVIEW_WIDTH * scale, height)
 }
 
 pub fn preview_capacity(anchor: PreviewAnchor) -> (f64, f64) {
@@ -116,14 +120,14 @@ mod tests {
             history: Rect {
                 x: 400.,
                 y: 200.,
-                width: 360.,
-                height: 420.,
+                width: 380.,
+                height: 366.,
             },
             item: Rect {
                 x: 406.,
                 y,
-                width: 348.,
-                height: 32.,
+                width: 368.,
+                height: 30.,
             },
             screen: Rect {
                 x: 0.,
@@ -141,9 +145,9 @@ mod tests {
         assert_eq!(
             p.frame,
             Rect {
-                x: 768.,
-                y: 246.,
-                width: 368.,
+                x: 788.,
+                y: 245.,
+                width: 408.,
                 height: 140.
             }
         );
@@ -183,12 +187,12 @@ mod tests {
     fn negative_coordinates_and_ui_scale_are_supported() {
         let mut a = anchor(400.);
         a.history.x = -1800.;
-        a.history.width = 450.;
+        a.history.width = 475.;
         a.screen.x = -1920.;
         a.scale = 1.25;
         let p = preview_placement(a, 200.);
-        assert_eq!(p.frame.x, -1340.);
-        assert_eq!(p.frame.width, 460.);
+        assert_eq!(p.frame.x, -1315.);
+        assert_eq!(p.frame.width, 510.);
         assert_eq!(p.frame.y + p.pointer_y, a.item.center_y());
     }
     #[test]

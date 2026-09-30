@@ -1,9 +1,12 @@
-mod filter_bar;
+mod history;
 mod image_preview;
 mod preview_window;
 mod view;
 
-gpui::actions!(quick_panel, [NextSuggestion, PreviousSuggestion]);
+gpui::actions!(
+    quick_panel,
+    [NextSuggestion, PreviousSuggestion, NextCandidate]
+);
 
 use crate::{
     backend::{self, EntryAction},
@@ -63,11 +66,6 @@ impl PreviewSnapshot {
 
 pub struct Panel {
     input: Entity<InputState>,
-    filter_navigation: bool,
-    filter_picker_open: bool,
-    filter_generation: usize,
-    filter_picker_index: usize,
-    filter_scroll: ScrollHandle,
     items: Vec<SearchResultDto>,
     selection: Selection,
     scroll: ScrollHandle,
@@ -90,6 +88,7 @@ pub struct Panel {
     image_bounds: HashMap<String, gpui::Bounds<gpui::Pixels>>,
     filters: Filters,
     suggestions_open: bool,
+    suggestion_cursor: usize,
     tags: Vec<String>,
     members: Vec<SpaceMemberDto>,
     images: HashMap<String, ImageData>,
@@ -113,7 +112,8 @@ impl Panel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        let input = cx.new(|cx| InputState::new(window, cx).placeholder("搜索剪贴板…"));
+        let input = cx
+            .new(|cx| InputState::new(window, cx).placeholder(crate::strings::SEARCH_PLACEHOLDER));
         input.update(cx, |input, cx| input.focus(window, cx));
         let subscription = cx.subscribe_in(&input, window, |this, _, event, window, cx| {
             if let InputEvent::Change = event {
@@ -140,11 +140,6 @@ impl Panel {
         let bounds = window.bounds();
         let mut panel = Self {
             input,
-            filter_navigation: false,
-            filter_picker_open: false,
-            filter_generation: 0,
-            filter_picker_index: 0,
-            filter_scroll: ScrollHandle::new(),
             items: vec![],
             selection: Selection::default(),
             scroll: ScrollHandle::new(),
@@ -167,6 +162,7 @@ impl Panel {
             image_bounds: HashMap::new(),
             filters: Filters::default(),
             suggestions_open: false,
+            suggestion_cursor: 0,
             tags: filters::BUILTIN_TAGS.iter().map(|s| (*s).into()).collect(),
             members: vec![],
             images: HashMap::new(),
@@ -211,6 +207,7 @@ impl Panel {
         self.pointer_moved = false;
         self.message = None;
         self.suggestions_open = false;
+        self.suggestion_cursor = 0;
         self.visible = true;
         self.shown_at = Instant::now();
         self.position(window, cx);
@@ -233,8 +230,6 @@ impl Panel {
             return;
         }
         self.visible = false;
-        self.filter_picker_open = false;
-        self.filter_navigation = false;
         self.preview_anchor = None;
         self.request = None;
         self.preview.task = None;
@@ -307,7 +302,7 @@ impl Panel {
     fn show_preview(&mut self, history: &mut Window, cx: &mut Context<Self>) {
         self.update_preview_anchor(history, cx);
         let width =
-            (crate::window_pair::PANEL_WIDTH + crate::window_pair::POINTER_DEPTH) * self.scale;
+            (crate::window_pair::PREVIEW_WIDTH + crate::window_pair::POINTER_DEPTH) * self.scale;
         let height = crate::window_pair::MIN_PREVIEW_HEIGHT * self.scale;
         if self.preview_window.is_none() {
             let snapshot = self.preview_snapshot();
@@ -510,17 +505,8 @@ impl Panel {
             return;
         }
         self.filters.query = self.input.read(cx).value().to_string();
-        self.filter_generation = if self.filter_picker_open {
-            self.filter_generation + 1
-        } else {
-            0
-        };
-        self.filter_picker_open = false;
-        self.filter_navigation = false;
         self.suggestions_open = !self.filters.query.is_empty();
-        self.filter_picker_index = 0;
-        self.filter_scroll
-            .set_offset(gpui::point(gpui::px(0.), gpui::px(0.)));
+        self.suggestion_cursor = 0;
         self.hovered = None;
         self.keyboard = true;
         self.search(window, cx);
@@ -817,8 +803,7 @@ impl Panel {
     fn clear(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.filters = Filters::default();
         self.suggestions_open = false;
-        self.filter_picker_open = false;
-        self.filter_navigation = false;
+        self.suggestion_cursor = 0;
         self.input.update(cx, |input, cx| {
             input.set_value("", window, cx);
             input.focus(window, cx);
@@ -838,7 +823,7 @@ impl Panel {
                     .selected_text_range(false, window, cx)
                     .is_some_and(|selection| !selection.range.is_empty())
         });
-        if editing || self.filter_navigation || self.filter_picker_open {
+        if editing {
             cx.propagate();
             return;
         }
@@ -857,19 +842,10 @@ impl Panel {
         }
         let key = event.keystroke.key.as_str();
         let modifiers = event.keystroke.modifiers;
-        if key == "k" && modifiers.platform {
-            if self.filter_picker_open {
-                self.close_filter_picker(window, cx);
-            } else {
-                self.open_filter_picker(window, cx);
-            }
-            cx.stop_propagation();
-            return;
-        }
         let value = self.input.read(cx).value();
         if key == "escape" {
-            if self.suggestions_open || self.filter_picker_open {
-                self.close_filter_picker(window, cx);
+            if !self.suggestion_options(cx).is_empty() {
+                self.suggestions_open = false;
             } else if !value.is_empty() || !self.filters.chips().is_empty() {
                 self.clear(window, cx);
             } else {
@@ -882,15 +858,6 @@ impl Panel {
         if self.locked && key == "enter" {
             self.action(String::new(), EntryAction::Unlock, window, cx);
             cx.stop_propagation();
-            return;
-        }
-        if (self.filter_navigation || self.filter_picker_open)
-            && modifiers.platform
-            && matches!(key, "a" | "c" | "v" | "x")
-        {
-            return;
-        }
-        if self.handle_filter_key(event, window, cx) {
             return;
         }
         if key == "backspace" && value.is_empty() && !modifiers.alt {
@@ -931,9 +898,9 @@ impl Panel {
                     && digit.len() == 1
                     && digit.as_bytes()[0].is_ascii_digit() =>
             {
-                let number = key.parse::<usize>().unwrap_or(0);
-                let ix = if number == 0 { 9 } else { number - 1 };
-                if ix < self.items.len() {
+                // Command+1 to Command+9 paste the rows that carry those digits.
+                let ix = key.parse::<usize>().unwrap_or(0).wrapping_sub(1);
+                if ix < history::VISIBLE_ROWS && ix < self.items.len() {
                     self.select(ix, window, cx);
                     self.restore(true, modifiers.alt, window, cx);
                 }

@@ -125,9 +125,12 @@ test('GPUI quick panel native end-to-end', { timeout: 180_000 }, async t => {
     fixture = launch(process.execPath, [join(directory, 'fixture.mjs')], { ...process.env, UC_GPUI_FIXTURE_PORT: '0', UC_GPUI_IMAGE_FIXTURES: '1', UC_GPUI_FILTER_FIXTURES: '1', UC_GPUI_FIXTURE_THEME: process.env.UC_GPUI_E2E_THEME ?? 'light' });
     address = await until('fixture startup', () => fixture.output.match(/http:\/\/127\.0\.0\.1:\d+/)?.[0]);
 
-    await run('Tab from an empty search starts at the first filter option', async () => {
-      await key('tab'); await key('return');
-      await query({ query: '', type: 'text' });
+    await run('Tab from an empty search cycles the type filter, and Shift+Tab goes back', async () => {
+      await key('tab');
+      const cycled = await query({ query: '', type: 'text' });
+      await noPaste();
+      await hotkey('shift,tab');
+      await query({ query: '' }, cycled.searches);
       await noPaste();
     });
     await run('typing a matching label still searches the full text', async () => {
@@ -144,46 +147,30 @@ test('GPUI quick panel native end-to-end', { timeout: 180_000 }, async t => {
       assert.equal(clipboard.sha256, digest('工作 设计'));
       await noPaste();
     });
-    await run('Tab and Enter convert a tag while preserving the remaining query', async () => {
+    await run('Tab turns a matching word into a filter and keeps the remaining query', async () => {
       await text('工作 设计');
       await query({ query: '工作 设计' });
-      await key('tab'); await key('return');
+      await key('tab');
       await query({ query: '设计', tags: ['工作'] });
       await noPaste();
       await text('图片 设计');
       await query({ query: '图片 设计', tags: ['工作'] });
-      await key('tab'); await key('return');
+      await key('tab');
       await query({ query: '设计', type: 'image', tags: ['工作'] });
       await noPaste();
     });
     await run('Escape dismisses suggestions without discarding the query', async () => {
       await text('工作 设计'); await query({ query: '工作 设计' });
-      await key('tab'); await key('escape');
+      await key('escape');
       await input('type', ['x']);
       await query({ query: '工作 设计x' });
       await noPaste();
     });
-    await run('browse supports repeated keyboard selection and cancellation in the same input', async () => {
-      await text('设计'); await query({ query: '设计' });
-      await hotkey('cmd,k'); await key('down'); await key('return');
-      await query({ query: '设计', type: 'image' });
-      await key('down'); await key('down'); await key('down'); await key('return');
-      const selected = await query({ query: '设计', type: 'image', tags: ['favorited'] });
-      await key('return');
-      await query({ query: '设计', type: 'image' }, selected.searches);
-      await key('escape'); await input('type', ['x']);
-      await query({ query: '设计x', type: 'image' });
-      await noPaste();
-    });
-    await run('clicking a selected filter removes only that condition and returns input focus', async () => {
+    await run('clicking a filter chip removes only that condition and returns input focus', async () => {
       await text('工作 设计'); await query({ query: '工作 设计' });
-      await key('tab'); await key('return'); await query({ query: '设计', tags: ['工作'] });
-      const window = await windowInfo();
-      const [origin] = window.bounds;
-      const beforeClick = events().length;
-      target.stdin.write(`click ${origin[0] + 32} ${origin[1] + 58} ${app.pid}\n`);
-      const click = await until('guarded native click', () => events().slice(beforeClick).find(e => e.event === 'click'));
-      assert.equal(click.ok, true, 'Test panel must own the topmost window at the click point');
+      await key('tab'); await query({ query: '设计', tags: ['工作'] });
+      // The chip sits after the search icon in the 48 px search row.
+      await clickAt(60, 25);
       await query({ query: '设计' });
       await input('type', ['x']); await query({ query: '设计x' });
       await noPaste();
@@ -197,39 +184,16 @@ test('GPUI quick panel native end-to-end', { timeout: 180_000 }, async t => {
     });
     await run('multiple tags select the intersection rather than the first union result', async () => {
       await text('图片 收藏 工作 预览'); await query({ query: '图片 收藏 工作 预览' });
-      await key('tab'); await key('return');
+      await key('tab');
       await query({ query: '收藏 工作 预览', type: 'image' });
-      await key('tab'); await key('return');
+      await key('tab');
       await query({ query: '工作 预览', type: 'image', tags: ['favorited'] });
-      await key('tab'); await key('return');
+      await key('tab');
       await query({ query: '预览', type: 'image', tags: ['favorited', '工作'] });
       await noPaste();
       await hotkey('cmd,c');
       await until('intersection result copied', async () => (await state()).restores.length > restoreBaseline);
       assert.deepEqual((await state()).restores.slice(restoreBaseline), ['image-landscape']);
-    });
-    await run('clicking overflow expands in place and hidden chips intercept history clicks', async () => {
-      await clickAt(332, 58); await delay(220);
-      await clickAt(32, 88);
-      await query({ query: '', tags: ['link'] });
-      await noPaste();
-    });
-    await run('keyboard navigation reaches tags below the three-row viewport', async () => {
-      await clickAt(332, 58); await key('up'); await key('return');
-      await query({ query: '', tags: ['临时备忘'] });
-      await noPaste();
-    });
-    await run('expanded filters leave history in place and cover no more than three rows', async () => {
-      await hotkey('cmd,k');
-      await delay(220);
-      const window = await windowInfo();
-      const [origin] = window.bounds;
-      const beforeClick = events().length;
-      target.stdin.write(`click ${origin[0] + 32} ${origin[1] + 150} ${app.pid}\n`);
-      const click = await until('history click below the three-row float', () => events().slice(beforeClick).find(e => e.event === 'click'));
-      assert.equal(click.ok, true);
-      await until('unmoved third history entry restored', async () => (await state()).restores.length > restoreBaseline);
-      assert.deepEqual((await state()).restores.slice(restoreBaseline), ['image-portrait']);
     });
     await run('plain Enter pastes the history result even when suggestions are visible', async () => {
       await text('工作 设计'); await query({ query: '工作 设计' });
@@ -239,6 +203,27 @@ test('GPUI quick panel native end-to-end', { timeout: 180_000 }, async t => {
       assert.deepEqual((await state()).restores.slice(restoreBaseline), ['fixture-0']);
       const expected = digest('GPUI quick panel paste verification · 工作 设计');
       await until('text pasted into isolated target', () => events().filter(e => e.event === 'text').slice(textBaseline).some(e => e.sha256 === expected));
+    });
+    await run('Command+digit pastes the row that carries that digit', async () => {
+      await hotkey('cmd,2');
+      await until('second row restored', async () => (await state()).restores.length === restoreBaseline + 1);
+      assert.deepEqual((await state()).restores.slice(restoreBaseline), ['fixture-1']);
+    });
+    await run('Command+Q does not quit the panel', async () => {
+      await hotkey('cmd,q');
+      await delay(1000);
+      assert.equal(app.exitCode, null, 'A supervised panel must keep running; its GUI decides when it stops');
+      assert.equal(app.signalCode, null);
+    });
+    await run('Option+Backspace edits the search text and Command+Shift+Backspace deletes the entry', async () => {
+      await text('设计'); await query({ query: '设计' });
+      await hotkey('alt,delete');
+      await query({ query: '' });
+      await delay(400);
+      assert.deepEqual((await state()).deleted, [], 'Deleting a word in the search box must not delete an entry');
+      await hotkey('cmd,shift,delete');
+      await until('selected entry deleted', async () => (await state()).deleted.length === 1);
+      assert.deepEqual((await state()).deleted, ['fixture-0']);
     });
   } finally {
     await stop(app);

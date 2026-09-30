@@ -747,7 +747,11 @@ impl PreviewSnapshot {
                     .py(units(6.))
                     .text_size(units(11.))
                     .text_color(muted)
-                    .child("⌥⌫ 删除"),
+                    .child(if cfg!(target_os = "macos") {
+                        "⌘⇧⌫ 删除"
+                    } else {
+                        "Ctrl+Shift+⌫ 删除"
+                    }),
             );
         card.into_any_element()
     }

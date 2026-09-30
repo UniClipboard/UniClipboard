@@ -24,6 +24,7 @@ tracing = "0.1"
 tracing-subscriber = "0.3"
 uc-daemon-client = { path = "../../crates/uc-daemon-client" }
 uc-daemon-contract = { path = "../../crates/uc-daemon-contract" }
+uc-desktop = { path = "../../crates/uc-desktop" }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2-app-kit = { version = "0.3", features = ["NSWorkspace", "NSRunningApplication"] }

@@ -13778,6 +13778,7 @@ dependencies = [
  "tracing-subscriber",
  "uc-daemon-client",
  "uc-daemon-contract",
+ "uc-desktop",
  "wiremock",
 ]
 

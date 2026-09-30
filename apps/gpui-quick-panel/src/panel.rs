@@ -907,7 +907,9 @@ impl Panel {
             "v" if (modifiers.platform || modifiers.control) && value.is_empty() => {
                 self.restore(true, modifiers.alt, window, cx)
             }
-            "backspace" if modifiers.alt => {
+            // Deleting an entry is destructive, so it needs Command/Ctrl+Shift+Backspace.
+            // Plain Option+Backspace must stay with the search input (delete previous word).
+            "backspace" if (modifiers.platform || modifiers.control) && modifiers.shift => {
                 if let Some(item) = self.active_index().and_then(|i| self.items.get(i)) {
                     self.action(item.entry_id.clone(), EntryAction::Delete, window, cx);
                 }

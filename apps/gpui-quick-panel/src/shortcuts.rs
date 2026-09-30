@@ -1,7 +1,7 @@
 use global_hotkey::{hotkey::HotKey, GlobalHotKeyManager};
 use gpui::Global;
 use std::time::{Duration, Instant};
-use uc_daemon_contract::api::dto::settings::{SettingsDto, ShortcutKeyDto};
+use uc_daemon_contract::api::dto::settings::SettingsDto;
 
 pub struct Shortcuts {
     manager: GlobalHotKeyManager,
@@ -21,9 +21,9 @@ impl Shortcuts {
             pending: None,
             definitions: vec![],
         };
-        host.replace(vec![
-            std::env::var("UC_GPUI_SHORTCUT").unwrap_or_else(|_| "super+ctrl+v".into())
-        ])?;
+        host.replace(vec![std::env::var("UC_GPUI_SHORTCUT").unwrap_or_else(
+            |_| uc_desktop::shortcuts::DEFAULT_QUICK_PANEL_SHORTCUT.into(),
+        )])?;
         Ok(host)
     }
 
@@ -31,17 +31,11 @@ impl Shortcuts {
         if let Ok(value) = std::env::var("UC_GPUI_SHORTCUT") {
             return self.replace(vec![value]);
         }
-        let bindings = if !settings.quick_panel.enabled {
-            vec![]
-        } else {
-            match settings.keyboard_shortcuts.get("global.toggleQuickPanel") {
-                Some(ShortcutKeyDto::Single(value)) if !value.trim().is_empty() => {
-                    vec![value.clone()]
-                }
-                Some(ShortcutKeyDto::Multiple(values)) if !values.is_empty() => values.clone(),
-                _ => vec!["super+ctrl+v".into()],
-            }
-        };
+        // Whether the panel is enabled is decided by the GUI, which starts and stops this
+        // process. While it runs, the configured shortcut (or the platform default) stays
+        // registered, so disabling can never leave it without a way to reopen.
+        let bindings =
+            uc_desktop::shortcuts::resolve_quick_panel_shortcuts(&settings.keyboard_shortcuts);
         self.replace(bindings)
     }
 

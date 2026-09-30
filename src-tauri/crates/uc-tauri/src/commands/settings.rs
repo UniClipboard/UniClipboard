@@ -113,6 +113,7 @@ pub async fn update_keyboard_shortcuts(
     connection_state: State<'_, DaemonConnectionState>,
     shortcut_registry: State<'_, CurrentShortcuts>,
     update_lock: State<'_, KeyboardShortcutsUpdateLock>,
+    backend: State<'_, quick_panel::QuickPanelBackend>,
     shortcuts: HashMap<String, Option<ShortcutKeyDto>>,
     _trace: Option<TraceMetadata>,
 ) -> Result<UpdateKeyboardShortcutsResult, CommandError> {
@@ -138,7 +139,9 @@ pub async fn update_keyboard_shortcuts(
             .keyboard_shortcuts
             .into_iter()
             .map(|(id, key)| (id, shortcut_view_from_contract(key)))
-            .collect();
+            .collect::<HashMap<_, _>>();
+        let previous_quick_panel_shortcuts =
+            quick_panel_shortcuts_from_keyboard_shortcuts(&current_shortcuts);
         let next_keyboard_shortcuts =
             apply_keyboard_shortcut_patch_to_map(current_shortcuts, &shortcuts);
 
@@ -148,7 +151,11 @@ pub async fn update_keyboard_shortcuts(
         // `set_quick_panel_enabled` 命令会根据当前 keyboard_shortcuts 注册。
         // Compositor-managed activation must not interfere with saving ordinary
         // in-app shortcuts, and CurrentShortcuts must reflect actual OS grabs.
-        let new_registered_shortcuts = if quick_panel_enabled && !quick_panel::uses_compositor_shortcuts() {
+        // With the native helper the GUI registers no global shortcut at all.
+        let new_registered_shortcuts = if quick_panel_enabled
+            && !quick_panel::uses_compositor_shortcuts()
+            && !backend.is_native()
+        {
             quick_panel_shortcuts_from_keyboard_shortcuts(&next_keyboard_shortcuts)
         } else {
             Vec::new()
@@ -179,6 +186,13 @@ pub async fn update_keyboard_shortcuts(
             // we computed locally; the wire result only carries success/restart.
             Ok(_) => {
                 shortcut_registry.replace(new_registered_shortcuts);
+                if backend.is_native()
+                    && previous_quick_panel_shortcuts
+                        != quick_panel_shortcuts_from_keyboard_shortcuts(&next_keyboard_shortcuts)
+                {
+                    // The helper registers its shortcut at startup, so a new one needs a restart.
+                    backend.restart();
+                }
                 Ok(UpdateKeyboardShortcutsResult {
                     keyboard_shortcuts: keyboard_shortcuts_to_dto(&next_keyboard_shortcuts),
                 })

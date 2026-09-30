@@ -12,12 +12,14 @@ mod layer_shell;
 pub(crate) mod linux;
 #[cfg(target_os = "macos")]
 mod macos;
+mod native;
 #[cfg(any(target_os = "windows", test))]
 mod paste_sequence;
 mod shortcut_registry;
 #[cfg(target_os = "windows")]
 mod windows;
 
+pub use native::QuickPanelBackend;
 pub use shortcut_registry::{uses_compositor_shortcuts, TauriGlobalShortcutRegistry};
 
 use std::sync::Mutex;

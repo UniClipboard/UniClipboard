@@ -572,6 +572,11 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
             // 避免对用不到该功能的用户造成全局快捷键占用 / 资源浪费。
             // 运行期的开关切换由 `set_quick_panel_enabled` command 协调，
             // 这里只负责"以最近持久化的偏好启动"。
+            // The native helper (when selected) owns the quick panel's shortcut, double-tap
+            // trigger and window, so everything below that sets those up is skipped for it.
+            app.manage(quick_panel::QuickPanelBackend::select());
+            let native_quick_panel = app.state::<quick_panel::QuickPanelBackend>().is_native();
+
             let (
                 silent_start,
                 is_silent_mode,
@@ -630,7 +635,7 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
 
             if app
                 .state::<quick_panel::QuickPanelToggleController>()
-                .configure(quick_panel_enabled)
+                .configure(quick_panel_enabled && !native_quick_panel)
             {
                 quick_panel::request_toggle(app.handle());
             }
@@ -690,7 +695,7 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                 app.handle()
                     .plugin(tauri_plugin_global_shortcut::Builder::new().build())?;
 
-                if quick_panel_enabled {
+                if quick_panel_enabled && !native_quick_panel {
                     // 从设置读取快捷键覆盖；未配置或为空则回落到桌面层默认。
                     let shortcuts = uc_desktop::shortcuts::resolve_quick_panel_shortcuts(
                         &initial_keyboard_shortcuts,
@@ -712,7 +717,10 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                         }
                     }
                 } else {
-                    info!("Quick panel disabled in settings, skipping global shortcut registration");
+                    info!(
+                        native_quick_panel,
+                        "Quick panel disabled or owned by the native helper, skipping global shortcut registration"
+                    );
                 }
             }
 
@@ -737,7 +745,7 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                 },
             );
             let startup_modifier = desired_live_modifier(
-                quick_panel_enabled,
+                quick_panel_enabled && !native_quick_panel,
                 modifier_double_tap_availability(),
                 quick_panel_double_tap_modifier,
             );
@@ -805,9 +813,12 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
             // claimed WebView2 initialization priority. This still avoids the
             // first-shortcut activation problem while keeping the user-facing
             // window on the critical startup path.
-            if quick_panel_enabled {
+            if quick_panel_enabled && !native_quick_panel {
                 quick_panel::pre_create(app.handle());
             }
+            // No-op unless the native helper is selected; then it runs exactly while enabled.
+            app.state::<quick_panel::QuickPanelBackend>()
+                .set_enabled(quick_panel_enabled);
 
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             app.handle()
@@ -1046,6 +1057,9 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                     // legacy-in-process safety live in the stop helper.
                     task_registry_for_run.token().cancel();
                     app_handle.state::<ModifierDoubleTapMonitor>().shutdown();
+                    // Fires for every clean exit, including the lightweight-mode exit that
+                    // leaves the daemon running: there is no quick panel without the GUI.
+                    app_handle.state::<quick_panel::QuickPanelBackend>().shutdown();
                     if app_handle
                         .state::<crate::lightweight::QuitIntent>()
                         .should_stop_daemon_on_exit()

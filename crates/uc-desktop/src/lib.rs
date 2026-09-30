@@ -16,7 +16,6 @@ pub use uc_daemon_contract::DAEMON_API_REVISION;
 pub mod daemon;
 pub mod daemon_probe;
 pub mod daemon_recovery;
-pub mod desktop_preferences;
 pub mod file_ports;
 pub mod gui_wiring;
 #[cfg(target_os = "linux")]
@@ -24,6 +23,7 @@ pub mod hyprland;
 pub mod modifier_double_tap;
 pub mod modifier_double_tap_monitor;
 pub mod paths;
+pub mod preferences;
 pub mod runtime;
 pub mod shell_settings;
 pub mod shortcuts;

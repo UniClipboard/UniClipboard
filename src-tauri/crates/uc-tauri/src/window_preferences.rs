@@ -6,9 +6,9 @@ use std::{
 };
 use tauri::{Manager, WebviewWindow, WindowEvent};
 use tracing::{warn, Instrument};
-use uc_desktop::desktop_preferences::{
-    self as preferences, Constraints, Monitor, NormalGeometry, Observation, Placement, Point,
-    PreferencesStore, Size, WindowTracker,
+use uc_desktop::preferences::{
+    self, Constraints, Monitor, NormalGeometry, Observation, Placement, Point, PreferencesStore,
+    Size, WindowTracker,
 };
 
 const SETTLE_DELAY: Duration = Duration::from_millis(300);

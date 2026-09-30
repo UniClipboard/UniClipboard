@@ -879,11 +879,6 @@ impl Panel {
             cx.notify();
             return;
         }
-        if key == "q" && modifiers.platform {
-            cx.quit();
-            cx.stop_propagation();
-            return;
-        }
         if self.locked && key == "enter" {
             self.action(String::new(), EntryAction::Unlock, window, cx);
             cx.stop_propagation();

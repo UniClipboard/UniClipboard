@@ -167,6 +167,124 @@ impl PreviewSnapshot {
             .into_any_element()
     }
 
+    /// The preview body of an entry, by kind.
+    fn body(
+        &self,
+        item: &SearchResultDto,
+        text: &str,
+        border: gpui::Hsla,
+        window: &mut Window,
+        cx: &mut Context<preview_window::PreviewWindow>,
+    ) -> AnyElement {
+        use crate::content::{self, Kind};
+        let theme = cx.theme();
+        let (muted, mono) = (theme.muted_foreground, theme.mono_font_family.clone());
+        match Kind::of(item) {
+            Kind::File => div()
+                .p(units(16.))
+                .flex()
+                .flex_col()
+                .gap(units(8.))
+                .children(content::files(item).into_iter().map(|(name, path)| {
+                    div()
+                        .p(units(12.))
+                        .rounded_lg()
+                        .border_1()
+                        .border_color(border)
+                        .flex()
+                        .flex_col()
+                        .gap(units(4.))
+                        .child(div().text_size(units(14.)).child(name))
+                        .children(path.map(|path| {
+                            div()
+                                .text_size(units(11.))
+                                .text_color(muted)
+                                .font_family(mono.clone())
+                                .child(path)
+                        }))
+                }))
+                .into_any_element(),
+            Kind::Link => {
+                let urls: Vec<&String> = item.link_urls.iter().collect();
+                let (host, rest) = urls
+                    .first()
+                    .map_or(("", ""), |url| content::split_link(url));
+                div()
+                    .p(units(20.))
+                    .flex()
+                    .flex_col()
+                    .gap(units(6.))
+                    .child(
+                        div()
+                            .text_size(units(20.))
+                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                            .child(host.to_string()),
+                    )
+                    .child(
+                        div()
+                            .text_size(units(12.))
+                            .text_color(muted)
+                            .font_family(mono)
+                            .child(rest.to_string()),
+                    )
+                    .children(urls.iter().skip(1).map(|url| {
+                        div()
+                            .text_size(units(12.))
+                            .text_color(muted)
+                            .child((*url).clone())
+                    }))
+                    .when(
+                        !text.trim().is_empty()
+                            && urls.first().is_none_or(|u| u.as_str() != text.trim()),
+                        |view| {
+                            view.child(
+                                div()
+                                    .pt(units(8.))
+                                    .text_size(units(13.))
+                                    .child(text.to_string()),
+                            )
+                        },
+                    )
+                    .into_any_element()
+            }
+            Kind::Code => div()
+                .py(units(12.))
+                .text_size(units(13.))
+                .line_height(units(20.))
+                .font_family(mono)
+                .children(content::code_lines(text).into_iter().map(|(number, line)| {
+                    div()
+                        .flex()
+                        .child(
+                            div()
+                                .w(units(44.))
+                                .flex_shrink_0()
+                                .pr(units(10.))
+                                .text_right()
+                                .text_color(muted.opacity(0.7))
+                                .child(number.to_string()),
+                        )
+                        .child(div().flex_1().min_w_0().child(line.to_string()))
+                }))
+                .into_any_element(),
+            Kind::Text | Kind::RichText | Kind::Image => {
+                let escaped = text
+                    .replace('&', "&amp;")
+                    .replace('<', "&lt;")
+                    .replace('>', "&gt;");
+                div()
+                    .p(units(20.))
+                    .text_size(units(14.))
+                    .line_height(units(22.))
+                    .child(
+                        TextView::html("preview-text", format!("<pre>{escaped}</pre>"), window, cx)
+                            .selectable(true),
+                    )
+                    .into_any_element()
+            }
+        }
+    }
+
     pub(super) fn preview_view(
         &self,
         window: &mut Window,
@@ -211,13 +329,16 @@ impl PreviewSnapshot {
         let Some(item) = self.item.as_ref() else {
             return card.into_any_element();
         };
-        let mut metadata = crate::strings::value_label(&item.content_type).to_string();
-        if let Some(text) = &self.text {
-            metadata.push_str(&format!(" · {} 个字符", text.encode_utf16().count()));
-        }
-        if let Some(image) = self.image.as_ref() {
-            metadata.push_str(&format!(" · {} × {}", image.width, image.height));
-        }
+        let mut metadata = crate::content::header(&crate::content::Facts {
+            item,
+            text: self.text.as_deref(),
+            image: self
+                .image
+                .as_ref()
+                .map(|image| (image.width, image.height, image.size_bytes)),
+            source_name: self.source_name.as_deref(),
+            now_ms: self.now_ms,
+        });
         if let Some(actions) = &self.actions {
             metadata = actions.title.clone();
         }
@@ -243,37 +364,8 @@ impl PreviewSnapshot {
                 .text_color(muted)
                 .child("正在加载…")
                 .into_any_element()
-        } else if item.content_type == "file" {
-            div()
-                .p_6()
-                .flex()
-                .flex_col()
-                .gap_3()
-                .children(item.file_names.iter().map(|name| {
-                    div()
-                        .p_4()
-                        .rounded_lg()
-                        .border_1()
-                        .border_color(border)
-                        .text_size(units(14.))
-                        .child(name.clone())
-                }))
-                .into_any_element()
         } else {
-            let escaped = text
-                .replace('&', "&amp;")
-                .replace('<', "&lt;")
-                .replace('>', "&gt;");
-            div()
-                .p(units(24.))
-                .text_size(units(14.))
-                .font_family("JetBrains Mono")
-                .line_height(units(22.))
-                .child(
-                    TextView::html("preview-text", format!("<pre>{escaped}</pre>"), window, cx)
-                        .selectable(true),
-                )
-                .into_any_element()
+            self.body(item, text, border, window, cx)
         };
         let measured_content = div()
             .w_full()

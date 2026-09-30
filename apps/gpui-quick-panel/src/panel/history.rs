@@ -15,47 +15,15 @@ pub(super) const VISIBLE_ROWS: usize = 9;
 /// Suggestions listed at most; more are folded into "还有 N 条".
 const MAX_SUGGESTIONS: usize = 3;
 
-/// What a history entry looks like in its row, decided from the fields the daemon already sends.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum RowKind {
-    Text,
-    RichText,
-    Link,
-    Code,
-    Image,
-    File,
-}
+use crate::content::{split_link, Kind as RowKind};
 
-impl RowKind {
-    fn of(item: &SearchResultDto) -> Self {
-        let tagged = |name: &str| item.tags.iter().any(|tag| tag == name);
-        match item.content_type.as_str() {
-            "image" => Self::Image,
-            "file" => Self::File,
-            _ if tagged("link") || !item.link_urls.is_empty() => Self::Link,
-            _ if tagged("code") => Self::Code,
-            "richtext" => Self::RichText,
-            _ => Self::Text,
-        }
-    }
-
-    fn icon(self) -> IconName {
-        match self {
-            Self::Link => IconName::Globe,
-            Self::Code => IconName::SquareTerminal,
-            Self::Image => IconName::Frame,
-            Self::File => IconName::File,
-            Self::Text | Self::RichText => IconName::Menu,
-        }
-    }
-}
-
-/// Splits a link into its host and the rest, so the host can be emphasised.
-fn split_link(url: &str) -> (&str, &str) {
-    let without_scheme = url.split_once("://").map_or(url, |(_, rest)| rest);
-    match without_scheme.find('/') {
-        Some(at) => without_scheme.split_at(at),
-        None => (without_scheme, ""),
+fn row_icon(kind: RowKind) -> IconName {
+    match kind {
+        RowKind::Link => IconName::Globe,
+        RowKind::Code => IconName::SquareTerminal,
+        RowKind::Image => IconName::Frame,
+        RowKind::File => IconName::File,
+        RowKind::Text | RowKind::RichText => IconName::Menu,
     }
 }
 
@@ -518,7 +486,7 @@ impl Panel {
                         .object_fit(ObjectFit::Cover),
                 )
                 .into_any_element(),
-            _ => Icon::new(kind.icon())
+            _ => Icon::new(row_icon(kind))
                 .size(units(14.))
                 .text_color(quiet)
                 .into_any_element(),
@@ -751,55 +719,5 @@ impl Panel {
             );
         }
         card.child(self.footer(cx)).into_any_element()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn entry(content_type: &str) -> SearchResultDto {
-        SearchResultDto {
-            entry_id: "id".into(),
-            content_type: content_type.into(),
-            active_time_ms: 0,
-            tags: vec![],
-            text_preview: None,
-            char_count: None,
-            mime_type: "text/plain".into(),
-            file_extensions: vec![],
-            file_names: vec![],
-            file_paths: vec![],
-            link_urls: vec![],
-            source_device: None,
-            payload_state: None,
-        }
-    }
-
-    #[test]
-    fn a_row_is_classified_from_the_existing_fields_only() {
-        assert_eq!(RowKind::of(&entry("text")), RowKind::Text);
-        assert_eq!(RowKind::of(&entry("richtext")), RowKind::RichText);
-        assert_eq!(RowKind::of(&entry("image")), RowKind::Image);
-        assert_eq!(RowKind::of(&entry("file")), RowKind::File);
-        let mut code = entry("text");
-        code.tags = vec!["code".into()];
-        assert_eq!(RowKind::of(&code), RowKind::Code);
-        let mut link = entry("text");
-        link.link_urls = vec!["https://example.com/a".into()];
-        assert_eq!(RowKind::of(&link), RowKind::Link);
-        // A link wins over the code tag, and rich text that carries a link is still a link.
-        link.tags = vec!["code".into()];
-        assert_eq!(RowKind::of(&link), RowKind::Link);
-    }
-
-    #[test]
-    fn a_link_is_split_into_host_and_path() {
-        assert_eq!(
-            split_link("https://github.com/uniclipboard/desktop/pull/1767"),
-            ("github.com", "/uniclipboard/desktop/pull/1767")
-        );
-        assert_eq!(split_link("example.com"), ("example.com", ""));
-        assert_eq!(split_link("http://localhost:8080"), ("localhost:8080", ""));
     }
 }

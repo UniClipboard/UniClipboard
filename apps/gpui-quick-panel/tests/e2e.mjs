@@ -314,6 +314,15 @@ test('GPUI quick panel native end-to-end', { timeout: 180_000 }, async t => {
       await input('type', ['x']);
       await query({ query: 'x' });
     });
+    await run('the preview presents code, a link and files each in their own form', async () => {
+      // Screenshots are the evidence; the assertion is that the satellite window exists for each.
+      for (const [word, name] of [['kind_code', 'code'], ['github.com', 'link'], ['kind_file', 'file']]) {
+        await text(word); await query({ query: word });
+        await delay(1200);
+        await exec(peekaboo, ['image', '--pid', String(app.pid), '--window-title', 'UniClipboard Preview', '--path', join(artifacts, `preview-${name}.png`), '--capture-focus', 'background', '--no-remote']);
+        await stat(join(artifacts, `preview-${name}.png`));
+      }
+    });
     await run('Command+Q does not quit the panel', async () => {
       await hotkey('cmd,q');
       await delay(1000);

@@ -22,6 +22,10 @@ const fullText = new Map([
 // Two devices' worth of history: rows 6 and 7 came from the paired phone.
 rows[6].sourceDevice = 'peer-iphone';
 rows[7].sourceDevice = 'peer-iphone';
+// One row of each kind the preview presents differently: code, a link and files.
+Object.assign(rows[8], { tags: ['code'], textPreview: 'fn kind_code() {\n    let answer = 42;\n    println!("{answer}");\n}' });
+Object.assign(rows[9], { tags: ['link'], textPreview: 'https://github.com/uniclipboard/desktop/pull/1767', linkUrls: ['https://github.com/uniclipboard/desktop/pull/1767'] });
+Object.assign(rows[10], { contentType: 'file', textPreview: 'kind_file.pdf', fileNames: ['kind_file.pdf', 'kind_notes.txt'], filePaths: ['/Users/test/Documents/kind_file.pdf', '/Users/test/Documents/kind_notes.txt'], fileExtensions: ['pdf', 'txt'] });
 rows[4].textPreview = '长文本验证（120 行）';
 rows[5].textPreview = '多行内容验证（5 行）';
 const imageBytes=new Map();

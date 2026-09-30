@@ -78,6 +78,9 @@ struct PreviewSnapshot {
     anchor: Option<crate::window_pair::PreviewAnchor>,
     scale: f64,
     actions: Option<ActionsView>,
+    /// Name of the device the entry came from, when it is known.
+    source_name: Option<String>,
+    now_ms: i64,
 }
 
 impl PreviewSnapshot {
@@ -449,6 +452,13 @@ impl Panel {
             .as_ref()
             .and_then(|item| self.images.get(&item.entry_id))
             .cloned();
+        let source_name = item.as_ref().and_then(|item| {
+            let id = item.source_device.as_deref()?;
+            self.members
+                .iter()
+                .find(|member| member.peer_id == id)
+                .map(|member| member.device_name.clone())
+        });
         PreviewSnapshot {
             item,
             image,
@@ -457,6 +467,8 @@ impl Panel {
             anchor: self.preview_anchor,
             scale: self.scale,
             actions: self.actions_view(),
+            source_name,
+            now_ms: chrono::Utc::now().timestamp_millis(),
         }
     }
 

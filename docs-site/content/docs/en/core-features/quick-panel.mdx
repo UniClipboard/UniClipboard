@@ -69,6 +69,8 @@ An empty result from the second command means the configuration is valid. `Super
 
 The macOS installer includes a separate native panel process. It is used by default, and stays resident in the tray with very low usage after the main window is closed. To go back to the previous panel, set the environment variable `UC_GPUI_QUICK_PANEL=0` before starting the app. While content is locked (before you enter the passphrase in the main window) the panel shows a locked page and can read no history: the background refuses its requests, and the moment content gets locked the panel also drops every row, thumbnail and preview it was showing. Press `Enter` to open the main window and unlock; the panel refreshes by itself afterwards.
 
+This lock covers the app interface only (the main window and the quick panel): the `uniclip` command-line tool and other clients are not affected. It is also not a defence against a malicious local process, because the client type is declared by the caller and the background trusts the same system user that holds the local connection token. Encryption of data at rest does not depend on this lock.
+
 | Key                       | Action                                                                          |
 | ------------------------- | ------------------------------------------------------------------------------- |
 | `↑` / `↓`                 | Move the selection                                                              |

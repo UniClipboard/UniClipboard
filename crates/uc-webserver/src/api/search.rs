@@ -103,6 +103,7 @@ fn search_input_from_params(params: SearchQueryParams) -> SearchEntriesInput {
         extensions: params.extensions,
         source_devices: params.source_devices,
         tags: params.tags,
+        tag_match: None,
         limit: params.limit,
         offset: params.offset,
     }

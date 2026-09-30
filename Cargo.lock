@@ -11887,7 +11887,7 @@ dependencies = [
 [[package]]
 name = "swarm-discovery"
 version = "0.6.3"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=c7a821b4d899d32b375a707d2551f382e088b306#c7a821b4d899d32b375a707d2551f382e088b306"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=f45d08c90c01aaa78ee29d6117aa3cd2fe329e3d#f45d08c90c01aaa78ee29d6117aa3cd2fe329e3d"
 dependencies = [
  "acto",
  "hickory-proto",
@@ -13480,7 +13480,7 @@ dependencies = [
 [[package]]
 name = "uc-application"
 version = "1.1.0-rc.21"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=c7a821b4d899d32b375a707d2551f382e088b306#c7a821b4d899d32b375a707d2551f382e088b306"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=f45d08c90c01aaa78ee29d6117aa3cd2fe329e3d#f45d08c90c01aaa78ee29d6117aa3cd2fe329e3d"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -13572,7 +13572,7 @@ dependencies = [
 [[package]]
 name = "uc-content-hash"
 version = "1.1.0-rc.21"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=c7a821b4d899d32b375a707d2551f382e088b306#c7a821b4d899d32b375a707d2551f382e088b306"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=f45d08c90c01aaa78ee29d6117aa3cd2fe329e3d#f45d08c90c01aaa78ee29d6117aa3cd2fe329e3d"
 dependencies = [
  "blake3",
  "hex",
@@ -13581,7 +13581,7 @@ dependencies = [
 [[package]]
 name = "uc-core"
 version = "1.1.0-rc.21"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=c7a821b4d899d32b375a707d2551f382e088b306#c7a821b4d899d32b375a707d2551f382e088b306"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=f45d08c90c01aaa78ee29d6117aa3cd2fe329e3d#f45d08c90c01aaa78ee29d6117aa3cd2fe329e3d"
 dependencies = [
  "anyhow",
  "arrayvec",
@@ -13734,7 +13734,7 @@ dependencies = [
 [[package]]
 name = "uc-engine"
 version = "1.1.0-rc.21"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=c7a821b4d899d32b375a707d2551f382e088b306#c7a821b4d899d32b375a707d2551f382e088b306"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=f45d08c90c01aaa78ee29d6117aa3cd2fe329e3d#f45d08c90c01aaa78ee29d6117aa3cd2fe329e3d"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -13796,7 +13796,7 @@ dependencies = [
 [[package]]
 name = "uc-infra"
 version = "1.1.0-rc.21"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=c7a821b4d899d32b375a707d2551f382e088b306#c7a821b4d899d32b375a707d2551f382e088b306"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=f45d08c90c01aaa78ee29d6117aa3cd2fe329e3d#f45d08c90c01aaa78ee29d6117aa3cd2fe329e3d"
 dependencies = [
  "anyhow",
  "argon2",
@@ -13865,7 +13865,7 @@ dependencies = [
 [[package]]
 name = "uc-mobile-lan"
 version = "1.1.0-rc.21"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=c7a821b4d899d32b375a707d2551f382e088b306#c7a821b4d899d32b375a707d2551f382e088b306"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=f45d08c90c01aaa78ee29d6117aa3cd2fe329e3d#f45d08c90c01aaa78ee29d6117aa3cd2fe329e3d"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -13887,7 +13887,7 @@ dependencies = [
 [[package]]
 name = "uc-mobile-proto"
 version = "1.1.0-rc.21"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=c7a821b4d899d32b375a707d2551f382e088b306#c7a821b4d899d32b375a707d2551f382e088b306"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=f45d08c90c01aaa78ee29d6117aa3cd2fe329e3d#f45d08c90c01aaa78ee29d6117aa3cd2fe329e3d"
 dependencies = [
  "base64 0.22.1",
  "chrono",
@@ -13922,7 +13922,7 @@ dependencies = [
 [[package]]
 name = "uc-observability-contract"
 version = "1.1.0-rc.21"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=c7a821b4d899d32b375a707d2551f382e088b306#c7a821b4d899d32b375a707d2551f382e088b306"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=f45d08c90c01aaa78ee29d6117aa3cd2fe329e3d#f45d08c90c01aaa78ee29d6117aa3cd2fe329e3d"
 dependencies = [
  "anyhow",
  "chrono",
@@ -13939,7 +13939,7 @@ dependencies = [
 [[package]]
 name = "uc-observability-runtime"
 version = "1.1.0-rc.21"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=c7a821b4d899d32b375a707d2551f382e088b306#c7a821b4d899d32b375a707d2551f382e088b306"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=f45d08c90c01aaa78ee29d6117aa3cd2fe329e3d#f45d08c90c01aaa78ee29d6117aa3cd2fe329e3d"
 dependencies = [
  "cc",
  "chrono",

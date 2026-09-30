@@ -165,6 +165,7 @@ pub fn engine_event_to_ws(event: EngineEvent) -> Option<DaemonWsEvent> {
         | EngineEvent::PeerPresenceChanged(_)
         | EngineEvent::ActiveClipboardChanged(_)
         | EngineEvent::MobileLanSettingsChanged(_)
+        | EngineEvent::SettingsChanged(_)
         | EngineEvent::OperationFinished { .. }
         | EngineEvent::LifecycleFailed { .. }
         | EngineEvent::Fatal { .. } => return None,

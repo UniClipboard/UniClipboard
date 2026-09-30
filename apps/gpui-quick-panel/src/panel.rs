@@ -426,6 +426,22 @@ impl Panel {
         }
     }
 
+    /// Applies the persisted double-tap modifier. Starting the worker can block briefly, so it
+    /// runs off the UI thread; a failure (for example no Accessibility permission) only means the
+    /// trigger is unavailable, and the keyboard shortcut keeps working.
+    fn apply_double_tap_modifier(
+        &self,
+        modifier: uc_daemon_contract::api::dto::settings::QuickPanelDoubleTapModifierDto,
+        cx: &mut Context<Self>,
+    ) {
+        let monitor = cx.global::<crate::modifier_keys::DoubleTap>().0.clone();
+        self.runtime.spawn_blocking(move || {
+            if monitor.set_modifier(modifier).is_err() {
+                tracing::warn!("Modifier double-tap trigger is unavailable");
+            }
+        });
+    }
+
     fn load_options(&mut self, window: &Window, cx: &mut Context<Self>) {
         let runtime = self.runtime.clone();
         self.options_task = Some(cx.spawn_in(window, async move |this, cx| {
@@ -441,6 +457,7 @@ impl Panel {
                         if let Some(settings)=&options.settings{
                             this.cursor_anchored=matches!(settings.quick_panel.position,uc_daemon_contract::api::dto::settings::QuickPanelPositionDto::FollowCursor);
                             if cx.global_mut::<crate::shortcuts::Shortcuts>().configure(settings).is_err(){this.message=Some("无法注册快捷键，可能已被其他程序占用。".into());}
+                            this.apply_double_tap_modifier(settings.quick_panel.double_tap_modifier, cx);
                         }
                         if crate::appearance::apply(
                             options.settings.as_ref().map(|s| &s.general),

@@ -29,6 +29,9 @@ uc-desktop = { path = "../../crates/uc-desktop" }
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2-app-kit = { version = "0.3", features = ["NSApplication", "NSWorkspace", "NSRunningApplication"] }
 core-graphics = { version = "0.24", features = ["elcapitan"] }
+# Same versions and features as the GUI's modifier double-tap reader, which this crate copies.
+objc2-application-services = { version = "0.3", default-features = false, features = ["HIServices", "AXUIElement"] }
+objc2-core-graphics = { version = "0.3", features = ["CGEventSource", "CGEventTypes", "CGRemoteOperation"] }
 objc2 = "0.6"
 objc2-foundation = "0.3"
 objc2-quartz-core = "0.3"

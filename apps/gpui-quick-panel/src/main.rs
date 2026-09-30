@@ -3,6 +3,7 @@ mod backend;
 mod filters;
 mod image_geometry;
 mod lifecycle;
+mod modifier_keys;
 mod panel;
 mod platform;
 mod selection;
@@ -16,6 +17,12 @@ use gpui::{
 use gpui_component::Root;
 use panel::Panel;
 use std::time::Duration;
+
+/// What asks the panel to open or close.
+enum Trigger {
+    Hotkey(GlobalHotKeyEvent),
+    DoubleTap,
+}
 
 fn open_panel(
     cx: &mut App,
@@ -103,6 +110,18 @@ fn main() -> anyhow::Result<()> {
                 }
             };
             cx.set_global(manager);
+            // Both triggers feed one channel. This must exist before the panel opens, because
+            // the panel applies the persisted double-tap modifier as soon as it loads settings.
+            let (send, receive) = async_channel::unbounded();
+            let hotkey_send = send.clone();
+            GlobalHotKeyEvent::set_event_handler(Some(move |event| {
+                let _ = hotkey_send.try_send(Trigger::Hotkey(event));
+            }));
+            cx.set_global(modifier_keys::DoubleTap(modifier_keys::new_monitor(
+                move || {
+                    let _ = send.try_send(Trigger::DoubleTap);
+                },
+            )));
             let (window, panel) = match open_panel(cx, handle.clone(), None) {
                 Ok(panel) => panel,
                 Err(_) => {
@@ -111,19 +130,19 @@ fn main() -> anyhow::Result<()> {
                     return;
                 }
             };
-            let (send, receive) = async_channel::unbounded();
-            GlobalHotKeyEvent::set_event_handler(Some(move |event| {
-                let _ = send.try_send(event);
-            }));
             cx.spawn(async move |cx| {
-                while let Ok(event) = receive.recv().await {
-                    if event.state != HotKeyState::Pressed {
-                        continue;
+                while let Ok(trigger) = receive.recv().await {
+                    if let Trigger::Hotkey(event) = &trigger {
+                        if event.state != HotKeyState::Pressed {
+                            continue;
+                        }
                     }
                     if cx
                         .update(|cx| {
-                            if !cx.global_mut::<shortcuts::Shortcuts>().pressed(event.id) {
-                                return;
+                            if let Trigger::Hotkey(event) = &trigger {
+                                if !cx.global_mut::<shortcuts::Shortcuts>().pressed(event.id) {
+                                    return;
+                                }
                             }
                             if window
                                 .update(cx, |_, window, cx| {

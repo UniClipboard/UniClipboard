@@ -4,7 +4,7 @@
 状态：决策已全部确定（见“决策记录”）；macOS 部分已进入交付流程。进度（2026-09-30）：
 - 阶段 2、阶段 4 的 R1、R2、R4–R4d、R5、R7、R9 已完成并通过端到端（浅色、深色各 29 条，合成后台）；R7 为 3×3 图片九宫格。
 - macOS 交付：安装包随附 `uniclip-quick-panel` 并默认使用；`UC_GPUI_QUICK_PANEL=0` 可关回 WebView 面板；关闭主窗口后 WebView 销毁，托盘与助手保留。
-- 内容锁：后台任务 A、B、C 仍无人承接。作为兜底，GUI 只在内容已解锁时运行助手，锁定即终止（GUI 侧保护，不是 daemon 的安全边界）。任务 A/B 仍是根治方案。
+- 内容锁（任务 A/U1，D2）：已迁入 daemon。授权只在内存，按请求现算，GUI 类会话（`gui`、`helper`）在未授权时读历史相关路由得 423 `content_locked`，`content-lock` WS 主题推送 `content_lock.changed`；CLI 与其他客户端语义不变。它锁的是 GUI 界面，不是对声称自己是 CLI 的本地进程的防线。设置推送（U2）、标签「且」（U3）、计数（U4）等仍依赖 Engine 上游，不在此次范围。
 - 未做的功能（R3、R6、R8、R10、R-1、Windows 阶段 3、阶段 5 剩余项等）已转为 issue，不在本次交付范围。
 - 验证证据和逐项结果见线程报告与 `apps/gpui-quick-panel/tests/delivery_check.py`，本文件不再重复。
 范围：在 macOS 与 Windows 上，以 GPUI 原生面板取代现有 React/Tauri 快捷面板；Linux 暂时保留 React 面板。

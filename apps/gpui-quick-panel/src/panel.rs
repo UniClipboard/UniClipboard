@@ -708,19 +708,30 @@ impl Panel {
     fn watch(&mut self, window: &Window, cx: &mut Context<Self>) {
         let runtime = self.runtime.clone();
         self.live_task = Some(cx.spawn_in(window, async move |this, cx| loop {
-            let (send, mut receive) = tokio::sync::mpsc::channel(1);
+            let (send, mut receive) = tokio::sync::mpsc::channel(8);
             runtime.spawn(
                 backend::watch_changes(send).instrument(tracing::info_span!("gpui.realtime")),
             );
-            while receive.recv().await.is_some() {
-                cx.background_executor()
-                    .timer(Duration::from_millis(120))
-                    .await;
-                while receive.try_recv().is_ok() {}
+            while let Some(first) = receive.recv().await {
+                let mut event = first;
+                if event == backend::Live::Changed {
+                    cx.background_executor()
+                        .timer(Duration::from_millis(120))
+                        .await;
+                    // Several changes are one search, but a lock among them must win.
+                    while let Ok(next) = receive.try_recv() {
+                        if next != backend::Live::Changed {
+                            event = next;
+                        }
+                    }
+                }
                 if this
-                    .update_in(cx, |this, window, cx| {
-                        if this.visible && !this.busy {
-                            this.search(window, cx);
+                    .update_in(cx, |this, window, cx| match event {
+                        backend::Live::ContentLocked => this.drop_content(cx),
+                        backend::Live::Changed | backend::Live::ContentUnlocked => {
+                            if this.visible && !this.busy {
+                                this.search(window, cx);
+                            }
                         }
                     })
                     .is_err()
@@ -730,6 +741,35 @@ impl Panel {
             }
             cx.background_executor().timer(Duration::from_secs(2)).await;
         }));
+    }
+
+    /// The daemon says content is locked. Everything derived from history goes at once, shown or
+    /// not: rows, thumbnails, previews, the action list and the names of tags and devices. A
+    /// search that was already running is discarded by bumping the revision.
+    fn drop_content(&mut self, cx: &mut Context<Self>) {
+        tracing::warn!("Quick panel dropped its content: content is locked");
+        self.revision += 1;
+        self.request = None;
+        self.loading = false;
+        self.locked = true;
+        self.disconnected = None;
+        self.reconnect_task = None;
+        self.actions = None;
+        self.items.clear();
+        self.total = 0;
+        self.selection.reset(0);
+        self.images.clear();
+        self.image_bounds.clear();
+        self.grid_top = 0;
+        self.preview = PreviewState::default();
+        self.preview_anchor = None;
+        self.relaxations.clear();
+        self.tags.clear();
+        self.members.clear();
+        self.message = None;
+        self.hovered = None;
+        self.hide_preview(cx);
+        cx.notify();
     }
 
     fn input_changed(&mut self, window: &mut Window, cx: &mut Context<Self>) {

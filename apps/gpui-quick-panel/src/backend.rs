@@ -254,9 +254,23 @@ async fn preview_inner(id: String, kind: String) -> Result<Preview, String> {
     })
 }
 
-pub async fn watch_changes(send: tokio::sync::mpsc::Sender<()>) {
+/// What the daemon's event stream tells the panel.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Live {
+    /// Something changed; search again if the panel is open.
+    Changed,
+    /// Content got locked: drop everything held, whether the panel is shown or not.
+    ContentLocked,
+    /// Content got unlocked: search again if the panel is open.
+    ContentUnlocked,
+}
+
+pub async fn watch_changes(send: tokio::sync::mpsc::Sender<Live>) {
     use std::sync::Arc;
-    use uc_daemon_client::{realtime::RealtimeTopic, DaemonWsBridge, DaemonWsBridgeConfig};
+    use uc_daemon_client::{
+        realtime::{RealtimeEvent, RealtimeTopic},
+        DaemonWsBridge, DaemonWsBridgeConfig,
+    };
     let Ok(context) = context().await else {
         return;
     };
@@ -273,6 +287,7 @@ pub async fn watch_changes(send: tokio::sync::mpsc::Sender<()>) {
                 RealtimeTopic::FileTransfer,
                 RealtimeTopic::Peers,
                 RealtimeTopic::Setup,
+                RealtimeTopic::ContentLock,
             ],
         )
         .await
@@ -293,8 +308,15 @@ pub async fn watch_changes(send: tokio::sync::mpsc::Sender<()>) {
             _=&mut run=>break,
             _=discovery.tick()=>{if let Ok(connection)=uc_daemon_client::resolve_connection_info_from_env(){state.set(connection);}},
             event=events.recv()=>{
-                if event.is_none(){break;}
-                if send.try_send(()).is_err()&&send.is_closed(){break;}
+                let Some(event)=event else{break;};
+                match event{
+                    // A lock must never be dropped because the queue is full, so it waits for room.
+                    RealtimeEvent::ContentLockChanged(change)=>{
+                        let live=if change.unlocked{Live::ContentUnlocked}else{Live::ContentLocked};
+                        if send.send(live).await.is_err(){break;}
+                    }
+                    _=>{if send.try_send(Live::Changed).is_err()&&send.is_closed(){break;}}
+                }
             },
         }
     }

@@ -349,20 +349,23 @@ test('GPUI quick panel native end-to-end', { timeout: 180_000 }, async t => {
       })
       await noPaste()
     })
-    await run('Backspace with text in the search box deletes a character, not the chip', async () => {
-      await text('#')
-      await query({ query: '#' })
-      await key('tab')
-      await until('one tag chip', async () => (await state()).lastSearch?.tags?.length === 1)
-      await input('type', ['ab'])
-      await until('ab typed', async () => (await state()).lastSearch?.query === 'ab')
-      await key('delete')
-      await until('one character left', async () => {
-        const last = (await state()).lastSearch
-        return last?.query === 'a' && last.tags.length === 1
-      })
-      await noPaste()
-    })
+    await run(
+      'Backspace with text in the search box deletes a character, not the chip',
+      async () => {
+        await text('#')
+        await query({ query: '#' })
+        await key('tab')
+        await until('one tag chip', async () => (await state()).lastSearch?.tags?.length === 1)
+        await input('type', ['ab'])
+        await until('ab typed', async () => (await state()).lastSearch?.query === 'ab')
+        await key('delete')
+        await until('one character left', async () => {
+          const last = (await state()).lastSearch
+          return last?.query === 'a' && last.tags.length === 1
+        })
+        await noPaste()
+      }
+    )
     await run(
       'clicking a filter chip removes only that condition and returns input focus',
       async () => {

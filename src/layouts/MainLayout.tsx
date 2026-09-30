@@ -1,12 +1,12 @@
-import { getCurrentWindow } from '@tauri-apps/api/window'
 import { LayoutGroup } from 'framer-motion'
-import React, { ReactNode, useId, useMemo, useRef, useState } from 'react'
+import React, { ReactNode, useId, useMemo, useState } from 'react'
 import InsetSurface from '@/components/layout/InsetSurface'
 import SidebarFooter from '@/components/layout/SidebarFooter'
 import SidebarNavigation from '@/components/layout/SidebarNavigation'
 import { ContentToolbar } from '@/components/TitleBar'
 import { SidebarSlotContext } from '@/contexts/sidebar-slot-context'
 import { usePlatform } from '@/hooks/usePlatform'
+import { useWindowDrag } from '@/hooks/useWindowDrag'
 import { useWindowFrame } from '@/hooks/useWindowFrame'
 
 interface MainLayoutProps {
@@ -24,32 +24,13 @@ interface ContentToolbarProps {
 
 const SidebarArea: React.FC<SidebarAreaProps> = ({ title }) => {
   const selectionId = useId()
-  const dragStartRef = useRef<{ x: number; y: number } | null>(null)
-
-  const handlePointerDown = (event: React.PointerEvent<HTMLElement>) => {
-    if (event.button !== 0) return
-    dragStartRef.current = { x: event.clientX, y: event.clientY }
-  }
-
-  const handlePointerMove = (event: React.PointerEvent<HTMLElement>) => {
-    const start = dragStartRef.current
-    if (!start || (event.buttons & 1) === 0) return
-    if (Math.hypot(event.clientX - start.x, event.clientY - start.y) < 4) return
-    dragStartRef.current = null
-    void getCurrentWindow()
-      .startDragging()
-      .catch(() => undefined)
-  }
+  const dragHandlers = useWindowDrag({ allowInteractive: true })
 
   return (
     <aside
       data-tauri-drag-region
-      onPointerDownCapture={handlePointerDown}
-      onPointerMoveCapture={handlePointerMove}
-      onPointerUpCapture={() => {
-        dragStartRef.current = null
-      }}
-      className="flex h-full w-12 shrink-0 flex-col"
+      {...dragHandlers}
+      className="flex h-full w-12 shrink-0 touch-none flex-col"
     >
       <div data-tauri-drag-region className="h-10 shrink-0">
         {title}
@@ -72,6 +53,8 @@ const LinuxMainLayout: React.FC<MainLayoutProps & SidebarAreaProps & ContentTool
   children,
   toolbarHostRef,
 }) => {
+  const dragHandlers = useWindowDrag()
+
   return (
     <>
       <SidebarArea />
@@ -79,7 +62,8 @@ const LinuxMainLayout: React.FC<MainLayoutProps & SidebarAreaProps & ContentTool
       <main className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-card text-card-foreground">
         <div
           data-tauri-drag-region="deep"
-          className="flex h-10 shrink-0 items-center justify-end px-3"
+          {...dragHandlers}
+          className="flex h-10 shrink-0 touch-none items-center justify-end px-3"
         >
           <div ref={toolbarHostRef} className="flex items-center" />
         </div>

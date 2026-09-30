@@ -2,6 +2,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window'
 import { Minus, Square, X } from 'lucide-react'
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { usePlatform } from '@/hooks/usePlatform'
+import { useWindowDrag } from '@/hooks/useWindowDrag'
 import { useWindowFrame } from '@/hooks/useWindowFrame'
 import { commands } from '@/lib/ipc'
 import { createLogger } from '@/lib/logger'
@@ -88,6 +89,7 @@ export const ContentToolbar = ({ className, rightSlot }: ContentToolbarProps) =>
 
   const { isMac, isTauri } = usePlatform()
   const { hasCustomWindowControls } = useWindowFrame()
+  const dragHandlers = useWindowDrag()
   const windowRef = useMemo(() => (isTauri ? getCurrentWindow() : null), [isTauri])
 
   const syncTrafficLightPosition = useCallback(() => {
@@ -169,12 +171,13 @@ export const ContentToolbar = ({ className, rightSlot }: ContentToolbarProps) =>
   return (
     <div
       data-tauri-drag-region
+      {...dragHandlers}
       onDoubleClick={() => {
         if (!hasCustomWindowControls) return
         handleToggleMaximize()
       }}
       className={cn(
-        'relative z-20 flex h-10 w-full shrink-0 select-none items-center justify-end bg-transparent',
+        'relative z-20 flex h-10 w-full shrink-0 touch-none select-none items-center justify-end bg-transparent',
         className
       )}
     >
@@ -211,10 +214,13 @@ export const ContentToolbar = ({ className, rightSlot }: ContentToolbarProps) =>
 }
 
 export const TitleBar = ({ className, rightSlot }: TitleBarProps) => {
+  const dragHandlers = useWindowDrag()
+
   return (
     <div
       data-tauri-drag-region
-      className={cn('relative z-20 flex h-10 w-full shrink-0 bg-transparent', className)}
+      {...dragHandlers}
+      className={cn('relative z-20 flex h-10 w-full shrink-0 touch-none bg-transparent', className)}
     >
       <SidebarTitle className="min-w-0 flex-1" />
       <ContentToolbar className="w-auto" rightSlot={rightSlot} />

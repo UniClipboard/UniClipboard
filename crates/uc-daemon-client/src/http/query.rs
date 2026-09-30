@@ -3,7 +3,9 @@ use std::sync::Arc;
 use anyhow::Result;
 use reqwest::Method;
 use uc_daemon_contract::api::dto::device::LocalDeviceInfoDto;
-use uc_daemon_contract::api::dto::encryption::EncryptionStateResponse;
+use uc_daemon_contract::api::dto::encryption::{
+    ContentLockStatusResponse, EncryptionStateResponse,
+};
 use uc_daemon_contract::api::types::{
     PeerSnapshotDto, PresenceRefreshResponse, SpaceMemberDto, StatusResponse,
 };
@@ -119,6 +121,38 @@ impl DaemonQueryClient {
         )
         .await?;
         Ok(())
+    }
+
+    /// Whether the daemon lets GUI-class clients (this client is one) read history-derived
+    /// content right now. Content routes answer 423 `content_locked` when it is `false`.
+    pub async fn get_content_lock(&self) -> Result<ContentLockStatusResponse> {
+        self.enveloped(Method::GET, "/content-lock").await
+    }
+
+    /// Verify the passphrase and grant content access. A wrong passphrase leaves the lock as it
+    /// was. Never log the request body or include it in errors.
+    pub async fn unlock_content(&self, passphrase: &str) -> Result<ContentLockStatusResponse> {
+        Ok(enveloped_request(
+            &self.http,
+            &self.connection_state,
+            &self.client_type,
+            Method::POST,
+            "/content-lock/unlock",
+            |request| request.json(&serde_json::json!({ "passphrase": passphrase })),
+        )
+        .await?)
+    }
+
+    /// Resume the session from the OS keychain and grant content access. Only for an explicit
+    /// user action.
+    pub async fn unlock_content_from_keyring(&self) -> Result<ContentLockStatusResponse> {
+        self.enveloped(Method::POST, "/content-lock/unlock-keyring")
+            .await
+    }
+
+    /// Withdraw content access without locking the encryption session.
+    pub async fn revoke_content(&self) -> Result<ContentLockStatusResponse> {
+        self.enveloped(Method::POST, "/content-lock/revoke").await
     }
 
     /// Retry the lifecycle boot on the daemon (starts network, opens clipboard capture gate).

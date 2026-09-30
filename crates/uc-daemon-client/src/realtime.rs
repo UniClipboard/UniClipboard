@@ -11,6 +11,8 @@ pub enum RealtimeTopic {
     Setup,
     Clipboard,
     FileTransfer,
+    /// Whether the daemon lets GUI-class clients show content. Carries no content.
+    ContentLock,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -129,6 +131,14 @@ pub struct ReceiveAttemptStateChangedEvent {
     pub state: String,
 }
 
+/// The content-lock answer changed. `unlocked == false` means everything shown must be dropped;
+/// `true` means content may be fetched again. A newer `generation` supersedes an older one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ContentLockChangedEvent {
+    pub unlocked: bool,
+    pub generation: u64,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum RealtimeEvent {
     PairingUpdated(PairingUpdatedEvent),
@@ -144,6 +154,7 @@ pub enum RealtimeEvent {
     ReceiveAttemptStateChanged(ReceiveAttemptStateChangedEvent),
     FileTransferStatusChanged(FileTransferStatusChangedEvent),
     FileTransferProgress(FileTransferProgressEvent),
+    ContentLockChanged(ContentLockChangedEvent),
 }
 
 #[async_trait]

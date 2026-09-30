@@ -1097,6 +1097,25 @@ fn map_daemon_ws_event(event: DaemonWsEvent) -> Option<RealtimeEvent> {
                 }
             }
         }
+        ws_event::CONTENT_LOCK_CHANGED => {
+            let unlocked = event.payload.get("unlocked").and_then(|v| v.as_bool());
+            let generation = event.payload.get("generation").and_then(|v| v.as_u64());
+            match (unlocked, generation) {
+                (Some(unlocked), Some(generation)) => Some(RealtimeEvent::ContentLockChanged(
+                    crate::realtime::ContentLockChangedEvent {
+                        unlocked,
+                        generation,
+                    },
+                )),
+                // Not being able to read it must never look like "unlocked".
+                _ => Some(RealtimeEvent::ContentLockChanged(
+                    crate::realtime::ContentLockChangedEvent {
+                        unlocked: false,
+                        generation: 0,
+                    },
+                )),
+            }
+        }
         ws_event::PAIRED_DEVICES_CHANGED => {
             match serde_json::from_value::<SpaceMembersChangedPayload>(event.payload) {
                 Ok(payload) => {
@@ -1391,6 +1410,7 @@ fn event_topic(event: &RealtimeEvent) -> RealtimeTopic {
         RealtimeEvent::FileTransferStatusChanged(_) | RealtimeEvent::FileTransferProgress(_) => {
             RealtimeTopic::FileTransfer
         }
+        RealtimeEvent::ContentLockChanged(_) => RealtimeTopic::ContentLock,
     }
 }
 
@@ -1402,6 +1422,7 @@ fn topic_name(topic: &RealtimeTopic) -> &'static str {
         RealtimeTopic::Setup => ws_topic::SETUP,
         RealtimeTopic::Clipboard => ws_topic::CLIPBOARD,
         RealtimeTopic::FileTransfer => ws_topic::FILE_TRANSFER,
+        RealtimeTopic::ContentLock => ws_topic::CONTENT_LOCK,
     }
 }
 

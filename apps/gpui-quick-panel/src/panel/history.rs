@@ -359,6 +359,175 @@ impl Panel {
         )
     }
 
+    /// What the list area shows when there is nothing to list: first use, locked, disconnected, or
+    /// no match with ways to loosen the search.
+    fn empty_page(&self, cx: &Context<Self>) -> AnyElement {
+        use crate::states::{classify, Empty};
+        let theme = cx.theme();
+        let muted = theme.muted_foreground;
+        let searching = !self.filters.query.trim().is_empty() || !self.filters.chips().is_empty();
+        let kind = classify(self.locked, self.disconnected.is_some(), searching);
+        let hint = |keys: &'static str, label: &'static str| {
+            div()
+                .flex()
+                .items_center()
+                .gap(units(6.))
+                .text_size(units(12.))
+                .text_color(muted)
+                .child(label)
+                .child(keycap(keys, cx))
+        };
+        let (icon, title, detail) = match kind {
+            Empty::FirstUse => (
+                IconName::Inbox,
+                strings::FIRST_USE_TITLE.to_string(),
+                strings::FIRST_USE_HINT.to_string(),
+            ),
+            Empty::Locked => (
+                IconName::Asterisk,
+                strings::LOCKED_TITLE.to_string(),
+                strings::LOCKED_HINT.to_string(),
+            ),
+            Empty::Disconnected => (
+                IconName::TriangleAlert,
+                strings::DISCONNECTED_TITLE.to_string(),
+                strings::reconnecting(self.disconnected.unwrap_or(1)),
+            ),
+            Empty::NoMatch => (
+                IconName::Search,
+                strings::no_match(&self.filters.query),
+                String::new(),
+            ),
+        };
+        let visible = self.visible_relaxations();
+        let mut page = div()
+            .size_full()
+            .px(units(24.))
+            .flex()
+            .flex_col()
+            .gap(units(10.))
+            .items_center()
+            .justify_center()
+            .text_color(muted)
+            .child(Icon::new(icon).size(units(26.)))
+            .child(
+                div()
+                    .text_size(units(15.))
+                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                    .text_color(theme.foreground)
+                    .child(title),
+            );
+        if kind == Empty::NoMatch && visible.is_empty() {
+            page = page.child(div().text_size(units(12.)).child(strings::TRY_OTHER_TERMS));
+        } else if kind != Empty::NoMatch {
+            page = page.child(div().text_size(units(12.)).text_center().child(detail));
+            if kind == Empty::Disconnected {
+                page = page.child(
+                    div()
+                        .text_size(units(12.))
+                        .text_center()
+                        .child(strings::RECONNECT_HINT),
+                );
+            }
+        }
+        match kind {
+            Empty::FirstUse => {
+                let shortcut = cx
+                    .global::<crate::shortcuts::Shortcuts>()
+                    .display()
+                    .unwrap_or_default();
+                page = page
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(units(6.))
+                            .text_size(units(12.))
+                            .child(strings::SUMMON_ANYTIME)
+                            .child(keycap(shortcut, cx)),
+                    )
+                    .child(hint("esc", strings::CLOSE));
+            }
+            Empty::Locked => {
+                page = page
+                    .child(hint("⏎", strings::UNLOCK))
+                    .child(hint("esc", strings::CLOSE));
+            }
+            Empty::Disconnected => {
+                page = page
+                    .child(hint("⏎", strings::RECONNECT_NOW))
+                    .child(hint(
+                        if cfg!(target_os = "macos") {
+                            "⌘L"
+                        } else {
+                            "Ctrl+L"
+                        },
+                        strings::VIEW_LOGS,
+                    ))
+                    .child(hint("esc", strings::CLOSE));
+            }
+            Empty::NoMatch if !visible.is_empty() => {
+                let cursor = self.relax_cursor.min(visible.len() - 1);
+                page = page
+                    .child(div().text_size(units(12.)).child(strings::TRY_RELAXING))
+                    .child(
+                        div().w_full().flex().flex_col().gap(units(2.)).children(
+                            visible
+                                .iter()
+                                .enumerate()
+                                .map(|(index, (relaxation, count))| {
+                                    div()
+                                        .h(units(30.))
+                                        .px(units(10.))
+                                        .rounded(units(7.))
+                                        .flex()
+                                        .items_center()
+                                        .gap(units(8.))
+                                        .text_size(units(13.))
+                                        .text_color(theme.foreground)
+                                        .when(index == cursor, |row| {
+                                            row.bg(theme.primary.opacity(0.12))
+                                        })
+                                        .child(
+                                            div()
+                                                .w(units(14.))
+                                                .text_color(muted)
+                                                .child((index + 1).to_string()),
+                                        )
+                                        .child(
+                                            div()
+                                                .flex_1()
+                                                .min_w_0()
+                                                .truncate()
+                                                .child(relaxation.label.clone()),
+                                        )
+                                        .child(div().text_size(units(12.)).text_color(muted).child(
+                                            count.map_or("…".to_string(), strings::result_count),
+                                        ))
+                                }),
+                        ),
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(units(14.))
+                            .child(hint("⏎", strings::APPLY_SUGGESTION))
+                            .child(hint(
+                                if cfg!(target_os = "macos") {
+                                    "⌘⌫"
+                                } else {
+                                    "Ctrl+⌫"
+                                },
+                                strings::CLEAR,
+                            )),
+                    );
+            }
+            Empty::NoMatch => {}
+        }
+        page.into_any_element()
+    }
+
     fn footer(&self, cx: &Context<Self>) -> AnyElement {
         let theme = cx.theme();
         let name = self.target.name();
@@ -658,19 +827,7 @@ impl Panel {
                 )
             })
             .when(!self.loading && self.items.is_empty(), |list| {
-                list.child(
-                    div()
-                        .size_full()
-                        .flex()
-                        .flex_col()
-                        .gap_2()
-                        .items_center()
-                        .justify_center()
-                        .text_color(muted)
-                        .child(Icon::new(IconName::Search).size(units(24.)))
-                        .child(strings::NO_MATCHES)
-                        .child(div().text_size(units(11.)).child(strings::TRY_OTHER_TERMS)),
-                )
+                list.child(self.empty_page(cx))
             })
             .when(!self.loading && !self.filters.images_only(), |list| {
                 list.children((0..self.items.len()).map(|ix| self.row(ix, cx)))
@@ -694,7 +851,7 @@ impl Panel {
             .child(self.search_row(cx))
             .when_some(self.suggestion_strip(cx), |card, strip| card.child(strip))
             .child(list);
-        if let Some(message) = &self.message {
+        if let Some(message) = self.message.as_ref().filter(|_| !self.locked) {
             card = card.child(
                 div()
                     .flex_shrink_0()

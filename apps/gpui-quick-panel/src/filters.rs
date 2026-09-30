@@ -41,7 +41,7 @@ pub enum Dimension {
     Time,
 }
 
-#[derive(Clone, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Filters {
     pub query: String,
     pub types: Vec<String>,

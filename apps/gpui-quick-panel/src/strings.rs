@@ -8,11 +8,25 @@ pub const ACTIONS: &str = "操作";
 pub const SEND_TO: &str = "发送到";
 pub const ACTIONS_HINT: &str = "↑↓ 选择 · ⏎ 执行 · esc 返回";
 pub const NOTHING_TO_OPEN: &str = "这条记录没有可打开的链接或文件。";
+pub const NO_LOG_DIR: &str = "找不到日志目录。";
+pub const FIRST_USE_TITLE: &str = "还没有剪贴板历史";
+pub const FIRST_USE_HINT: &str = "在任意设备上复制内容，都会出现在这里。";
+pub const SUMMON_ANYTIME: &str = "随时唤起";
+pub const LOCKED_TITLE: &str = "历史已加密锁定";
+pub const LOCKED_HINT: &str = "解锁后才能读取。";
+pub const UNLOCK: &str = "解锁";
+pub const DISCONNECTED_TITLE: &str = "同步服务未响应";
+pub const RECONNECT_HINT: &str = "本次唤起期间恢复会自动刷新列表。";
+pub const RECONNECT_NOW: &str = "立即重连";
+pub const VIEW_LOGS: &str = "查看日志";
+pub const CLOSE: &str = "关闭";
+pub const TRY_RELAXING: &str = "试试放宽：";
+pub const APPLY_SUGGESTION: &str = "应用建议";
+pub const CLEAR: &str = "清空";
 pub const SUGGESTIONS: &str = "建议";
 pub const ACCEPT_IN_ORDER: &str = "按顺序接受";
 pub const RICH_TEXT: &str = "富文本";
 pub const ALL_TYPES: &str = "全部";
-pub const NO_MATCHES: &str = "暂无匹配的记录";
 pub const TRY_OTHER_TERMS: &str = "试试其他关键词或筛选条件";
 pub const SEARCHING: &str = "正在搜索…";
 pub const JUST_NOW: &str = "刚刚";
@@ -29,6 +43,20 @@ pub fn value_label(value: &str) -> &str {
         "favorited" => "收藏",
         "directory" => "文件夹",
         _ => value,
+    }
+}
+
+/// Explains the disconnected page: how many times the panel has tried to reach the daemon.
+pub fn reconnecting(attempt: u32) -> String {
+    format!("正在自动重连（第 {attempt} 次）。")
+}
+
+/// Says what found nothing, with the typed words when there are any.
+pub fn no_match(query: &str) -> String {
+    if query.trim().is_empty() {
+        "没有符合条件的内容".to_string()
+    } else {
+        format!("没有匹配“{}”的内容", query.trim())
     }
 }
 

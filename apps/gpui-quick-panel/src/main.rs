@@ -12,6 +12,7 @@ mod panel;
 mod platform;
 mod selection;
 mod shortcuts;
+mod states;
 mod strings;
 mod window_pair;
 

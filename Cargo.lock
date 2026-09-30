@@ -13785,6 +13785,7 @@ dependencies = [
  "tokio-util",
  "tracing",
  "tracing-subscriber",
+ "uc-app-paths",
  "uc-daemon-client",
  "uc-daemon-contract",
  "uc-desktop",

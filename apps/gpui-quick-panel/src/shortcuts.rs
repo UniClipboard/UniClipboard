@@ -27,6 +27,13 @@ impl Shortcuts {
         Ok(host)
     }
 
+    /// The first registered shortcut as shown to the user, e.g. "⌃⌘V".
+    pub fn display(&self) -> Option<String> {
+        self.definitions
+            .first()
+            .map(|binding| shortcut_text(binding))
+    }
+
     pub fn configure(&mut self, settings: &SettingsDto) -> anyhow::Result<()> {
         if let Ok(value) = std::env::var("UC_GPUI_SHORTCUT") {
             return self.replace(vec![value]);
@@ -104,5 +111,66 @@ impl Shortcuts {
             }
         }
         false
+    }
+}
+
+/// A shortcut such as "super+ctrl+v" as symbols on macOS ("⌃⌘V") and words elsewhere ("Ctrl+V").
+/// A two-stroke shortcut shows both strokes.
+pub fn shortcut_text(binding: &str) -> String {
+    let mac = cfg!(target_os = "macos");
+    binding
+        .split_whitespace()
+        .map(|stroke| {
+            let mut modifiers = vec![];
+            let mut key = String::new();
+            for part in stroke.split('+') {
+                match part.to_ascii_lowercase().as_str() {
+                    "ctrl" | "control" => modifiers.push((0, "⌃", "Ctrl")),
+                    "alt" | "option" => modifiers.push((1, "⌥", "Alt")),
+                    "shift" => modifiers.push((2, "⇧", "Shift")),
+                    "super" | "cmd" | "command" | "meta" | "win" => {
+                        modifiers.push((3, "⌘", if mac { "Cmd" } else { "Win" }))
+                    }
+                    "space" => key = "Space".into(),
+                    other => key = other.to_uppercase(),
+                }
+            }
+            modifiers.sort_by_key(|(order, _, _)| *order);
+            if mac {
+                modifiers
+                    .iter()
+                    .map(|(_, symbol, _)| *symbol)
+                    .collect::<String>()
+                    + &key
+            } else {
+                modifiers
+                    .iter()
+                    .map(|(_, _, name)| *name)
+                    .chain(std::iter::once(key.as_str()))
+                    .collect::<Vec<_>>()
+                    .join("+")
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn shortcuts_are_shown_with_symbols_in_the_usual_order() {
+        assert_eq!(shortcut_text("super+ctrl+v"), "⌃⌘V");
+        assert_eq!(shortcut_text("ctrl+alt+space"), "⌃⌥Space");
+        assert_eq!(shortcut_text("shift+super+k"), "⇧⌘K");
+    }
+
+    #[test]
+    #[cfg(not(target_os = "macos"))]
+    fn shortcuts_are_shown_as_words() {
+        assert_eq!(shortcut_text("ctrl+alt+v"), "Ctrl+Alt+V");
+        assert_eq!(shortcut_text("ctrl+alt+space"), "Ctrl+Alt+Space");
     }
 }

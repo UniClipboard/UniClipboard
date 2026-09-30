@@ -323,6 +323,46 @@ test('GPUI quick panel native end-to-end', { timeout: 180_000 }, async t => {
         await stat(join(artifacts, `preview-${name}.png`));
       }
     });
+    await run('a search with nothing found offers to loosen the condition with the most effect', async () => {
+      await text('#工作 预览'); await query({ query: '#工作 预览' });
+      await key('tab'); await query({ query: '预览', tags: ['工作'] });
+      // With no suggestion left, Tab cycles the type filter; text has no 工作 image.
+      await key('tab'); const empty = await query({ query: '预览', types: ['text'], tags: ['工作'] });
+      await until('counts for the relaxations requested', async () => (await state()).requests.some(r => r.limit === 1 && r.types.length === 0 && r.tags.includes('工作')));
+      await delay(300);
+      await exec(peekaboo, ['image', '--pid', String(app.pid), '--window-title', 'UniClipboard History', '--path', join(artifacts, 'state-no-match.png'), '--capture-focus', 'background', '--no-remote']);
+      await key('return');
+      await query({ query: '预览', tags: ['工作'] }, empty.searches);
+      await noPaste();
+    });
+    await run('a daemon that does not answer shows the disconnected page and is retried', async () => {
+      await text('drop');
+      await until('first attempt', async () => (await state()).searchStarts.filter(q => q === 'drop').length >= 1);
+      await delay(600);
+      await exec(peekaboo, ['image', '--pid', String(app.pid), '--window-title', 'UniClipboard History', '--path', join(artifacts, 'state-disconnected.png'), '--capture-focus', 'background', '--no-remote']);
+      const attempts = () => state().then(value => value.searchStarts.filter(q => q === 'drop').length);
+      await until('automatic retry', async () => (await attempts()) >= 2, 8000);
+      const before = await attempts();
+      await key('return');
+      await until('immediate retry on Enter', async () => (await attempts()) > before, 2000);
+      await hotkey('cmd,delete');
+      await query({ query: '' }, (await state()).searches - 1);
+      await noPaste();
+    });
+    await run('an empty history shows the first-use page with the shortcut', async () => {
+      await fetch(`${address}/__test/empty?on=1`);
+      try {
+        const before = await state();
+        await exec(peekaboo, ['hotkey', '--keys', 'ctrl,alt,space', '--no-remote'], { timeout: 10_000 });
+        await delay(300);
+        await exec(peekaboo, ['hotkey', '--keys', 'ctrl,alt,space', '--no-remote'], { timeout: 10_000 });
+        await until('panel searched the empty history', async () => (await state()).searches > before.searches);
+        await delay(400);
+        await exec(peekaboo, ['image', '--pid', String(app.pid), '--window-title', 'UniClipboard History', '--path', join(artifacts, 'state-first-use.png'), '--capture-focus', 'background', '--no-remote']);
+      } finally {
+        await fetch(`${address}/__test/empty?on=0`);
+      }
+    });
     await run('Command+Q does not quit the panel', async () => {
       await hotkey('cmd,q');
       await delay(1000);

@@ -8,6 +8,9 @@ use uc_daemon_contract::api::dto::search::SearchQueryResultDto;
 pub enum SearchFailure {
     Locked,
     Failed,
+    /// The daemon cannot be reached at all: no connection info, a refused connection or a failed
+    /// authorization. Unlike `Failed` it is worth retrying by itself.
+    Disconnected,
     Unavailable(String),
     Timeout,
 }
@@ -17,6 +20,7 @@ impl std::fmt::Display for SearchFailure {
         f.write_str(match self {
             Self::Locked => "剪贴板已锁定，请解锁后继续。",
             Self::Failed => "搜索失败，请重试。",
+            Self::Disconnected => "同步服务未响应。",
             Self::Unavailable(message) => message,
             Self::Timeout => "搜索超时，请重试。",
         })
@@ -68,7 +72,7 @@ pub async fn search_filtered(
     let operation = async {
         let client = context()
             .await
-            .map_err(SearchFailure::Unavailable)?
+            .map_err(|_| SearchFailure::Disconnected)?
             .search_client();
         client
             .query(filters.request())
@@ -80,7 +84,28 @@ pub async fn search_filtered(
         .map_err(|_| SearchFailure::Timeout)?
 }
 
+/// How many entries match, without fetching them; used to size the suggestions to relax a search.
+pub async fn count(filters: crate::filters::Filters) -> Option<u32> {
+    let mut request = filters.request();
+    request.limit = 1;
+    let operation = async {
+        let client = context().await.ok()?.search_client();
+        client.query(request).await.ok().map(|result| result.total)
+    };
+    tokio::time::timeout(Duration::from_secs(8), operation)
+        .await
+        .ok()
+        .flatten()
+}
+
 fn search_failure(error: anyhow::Error) -> SearchFailure {
+    use uc_daemon_client::DaemonRequestError as Error;
+    if matches!(
+        error.downcast_ref::<Error>(),
+        Some(Error::NotConnected | Error::Transport { .. } | Error::Auth { .. })
+    ) {
+        return SearchFailure::Disconnected;
+    }
     if error
         .downcast_ref::<uc_daemon_client::DaemonRequestError>()
         .and_then(|e| e.status())

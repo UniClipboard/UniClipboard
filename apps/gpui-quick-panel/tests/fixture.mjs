@@ -50,6 +50,8 @@ const server = createServer(async (request, response) => {
     response.end(JSON.stringify(body));
   };
   if (url.pathname === '/__test/state') return json(200, state);
+  // Empties or refills the history, to see the first-use page.
+  if (url.pathname === '/__test/empty') { state.empty = url.searchParams.get('on') === '1'; return json(200, { empty: state.empty }); }
   if (url.pathname === '/auth/connect') {
     if (request.headers.authorization !== 'Bearer fixture-token') return json(401, {});
     state.authenticated++;
@@ -66,9 +68,14 @@ const server = createServer(async (request, response) => {
   }
   if (url.pathname === '/paired-devices') return json(200, {data:[{peerId:'peer-iphone',deviceName:'iPhone',pairingState:'paired',lastSeenAtMs:null,connected:true,channel:'direct',connectionAddress:null}],ts:Date.now()});
   if (url.pathname === '/search/query') {
-    state.searches++;
+    // A request for one entry only counts matches (for the suggestions to loosen a search); it is
+    // recorded in `requests` but is not a search the panel is showing.
+    const countOnly = url.searchParams.get('limit') === '1';
+    if (!countOnly) state.searches++;
     const query = url.searchParams.get('query') ?? '';
-    state.searchStarts.push(query);
+    if (!countOnly) state.searchStarts.push(query);
+    // A dropped connection, as when the daemon is down.
+    if (query === 'drop') return request.socket.destroy();
     if (query === 'error') return json(503, { error: { code: 'index_rebuilding', message: 'Synthetic failure' } });
     if (query === 'slow') await new Promise(resolve => setTimeout(resolve, 900));
     // Every list parameter is comma separated, and the values of one parameter are alternatives.
@@ -77,9 +84,10 @@ const server = createServer(async (request, response) => {
     const fromMs=url.searchParams.has('fromMs')?Number(url.searchParams.get('fromMs')):null;
     const toMs=url.searchParams.has('toMs')?Number(url.searchParams.get('toMs')):null;
     const offset=Number(url.searchParams.get('offset')??0), limit=Number(url.searchParams.get('limit')??50);
-    state.lastSearch={query, types, tags, sources, fromMs, toMs, offset, limit};
-    state.requests.push(state.lastSearch);
-    const results = rows.filter(row => row.textPreview.toLowerCase().includes(query.toLowerCase())
+    const entry = {query, types, tags, sources, fromMs, toMs, offset, limit};
+    if (!countOnly) state.lastSearch = entry;
+    state.requests.push(entry);
+    const results = state.empty ? [] : rows.filter(row => row.textPreview.toLowerCase().includes(query.toLowerCase())
       &&(!types.length||types.includes(row.contentType))&&(!tags.length||tags.some(tag=>row.tags.includes(tag)))
       &&(!sources.length||sources.includes(row.sourceDevice))
       &&(fromMs===null||(row.activeTimeMs>=fromMs&&row.activeTimeMs<=toMs)));

@@ -118,6 +118,13 @@ pub struct Panel {
     image_bounds: HashMap<String, gpui::Bounds<gpui::Pixels>>,
     filters: Filters,
     actions: Option<ActionList>,
+    /// Ways to loosen a search that found nothing, each with how many entries it would show.
+    relaxations: Vec<(crate::states::Relaxation, Option<u32>)>,
+    relax_cursor: usize,
+    count_task: Option<Task<()>>,
+    /// Failed attempts to reach the daemon since it last answered.
+    disconnected: Option<u32>,
+    reconnect_task: Option<Task<()>>,
     suggestions_open: bool,
     suggestion_cursor: usize,
     tags: Vec<String>,
@@ -196,6 +203,11 @@ impl Panel {
             image_bounds: HashMap::new(),
             filters: Filters::default(),
             actions: None,
+            relaxations: vec![],
+            relax_cursor: 0,
+            count_task: None,
+            disconnected: None,
+            reconnect_task: None,
             suggestions_open: false,
             suggestion_cursor: 0,
             tags: filters::BUILTIN_TAGS.iter().map(|s| (*s).into()).collect(),
@@ -233,6 +245,9 @@ impl Panel {
         self.target = Rc::new(PasteTarget::capture());
         self.filters = Filters::default();
         self.actions = None;
+        self.disconnected = None;
+        self.reconnect_task = None;
+        self.relaxations.clear();
         self.items.clear();
         self.selection.reset(0);
         self.preview = PreviewState::default();
@@ -271,6 +286,7 @@ impl Panel {
         }
         self.visible = false;
         self.actions = None;
+        self.reconnect_task = None;
         self.preview_anchor = None;
         self.request = None;
         self.preview.task = None;
@@ -749,17 +765,106 @@ impl Panel {
                 this.loading = false;
                 match result {
                     Ok(result) => {
-                        this.locked = false; this.total = result.total; this.items = result.items;this.image_bounds.clear();
+                        this.locked = false; this.disconnected = None; this.reconnect_task = None;
+                        this.total = result.total; this.items = result.items;this.image_bounds.clear();
                         this.selection.reset(this.items.len()); this.scroll.set_offset(gpui::point(gpui::px(0.),gpui::px(0.)));
                         this.schedule_preview(window,cx);this.load_images(window,cx);
                     }
-                    Err(error) => { this.locked = matches!(error,backend::SearchFailure::Locked); this.message = Some(error.to_string()); this.items.clear(); this.selection.reset(0); }
+                    Err(error) => {
+                        this.locked = matches!(error,backend::SearchFailure::Locked);
+                        // Locked and disconnected have pages of their own instead of a message.
+                        let own_page = this.locked || matches!(error, backend::SearchFailure::Disconnected);
+                        this.message = (!own_page).then(|| error.to_string());
+                        if matches!(error, backend::SearchFailure::Disconnected) {
+                            this.disconnected = Some(this.disconnected.unwrap_or(0) + 1);
+                            this.schedule_reconnect(window, cx);
+                        } else {
+                            this.disconnected = None;
+                        }
+                        this.items.clear(); this.total = 0; this.selection.reset(0);
+                    }
+                }
+                this.relaxations.clear();
+                this.count_task = None;
+                if this.items.is_empty() && this.message.is_none() && !this.locked && this.disconnected.is_none() {
+                    this.load_relaxations(window, cx);
                 }
                 if this.items.is_empty() { this.preview = PreviewState::default(); this.layout(window,cx); }
                 cx.notify();
             });
         }));
         cx.notify();
+    }
+
+    fn device_name(&self, id: &str) -> String {
+        self.members
+            .iter()
+            .find(|member| member.peer_id == id)
+            .map_or_else(|| id.to_string(), |member| member.device_name.clone())
+    }
+
+    /// Tries the daemon again a few seconds after it did not answer, for as long as the panel is
+    /// open. The attempt count is shown on the disconnected page.
+    fn schedule_reconnect(&mut self, window: &Window, cx: &mut Context<Self>) {
+        self.reconnect_task = Some(cx.spawn_in(window, async move |this, cx| {
+            cx.background_executor().timer(Duration::from_secs(3)).await;
+            let _ = this.update_in(cx, |this, window, cx| {
+                if this.visible && this.disconnected.is_some() {
+                    this.search(window, cx);
+                }
+            });
+        }));
+    }
+
+    /// Works out how many entries each way of loosening the search would show.
+    fn load_relaxations(&mut self, window: &Window, cx: &mut Context<Self>) {
+        let options = crate::states::relaxations(&self.filters, |id| self.device_name(id));
+        self.relax_cursor = 0;
+        if options.is_empty() {
+            return;
+        }
+        let queries: Vec<Filters> = options.iter().map(|o| o.filters.clone()).collect();
+        self.relaxations = options.into_iter().map(|o| (o, None)).collect();
+        let revision = self.revision;
+        let runtime = self.runtime.clone();
+        self.count_task = Some(cx.spawn_in(window, async move |this, cx| {
+            let mut totals = vec![];
+            for filters in queries {
+                totals.push(runtime.spawn(backend::count(filters)).await.ok().flatten());
+            }
+            let _ = this.update(cx, |this, cx| {
+                if this.revision != revision {
+                    return;
+                }
+                for ((_, count), total) in this.relaxations.iter_mut().zip(totals) {
+                    *count = total;
+                }
+                cx.notify();
+            });
+        }));
+    }
+
+    /// The suggestions worth showing: those that would find something, or are still being counted.
+    fn visible_relaxations(&self) -> Vec<&(crate::states::Relaxation, Option<u32>)> {
+        self.relaxations
+            .iter()
+            .filter(|(_, count)| *count != Some(0))
+            .collect()
+    }
+
+    fn apply_relaxation(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some((relaxation, _)) = self
+            .visible_relaxations()
+            .get(self.relax_cursor)
+            .map(|entry| (*entry).clone())
+        else {
+            return;
+        };
+        self.filters = relaxation.filters;
+        self.suggestions_open = false;
+        self.hovered = None;
+        self.keyboard = true;
+        self.search(window, cx);
     }
 
     fn active_index(&self) -> Option<usize> {
@@ -1181,6 +1286,39 @@ impl Panel {
             if let Some((dimension, value)) = self.filters.chips().last().cloned() {
                 self.remove_filter(dimension, &value, window, cx);
                 cx.stop_propagation();
+                return;
+            }
+        }
+        if key == "l" && command && !modifiers.shift && self.disconnected.is_some() {
+            match uc_app_paths::app_log_dir() {
+                Some(dir) => {
+                    if let Err(message) = platform::open_target(&dir.to_string_lossy()) {
+                        self.message = Some(message);
+                    }
+                }
+                None => self.message = Some(strings::NO_LOG_DIR.into()),
+            }
+            cx.stop_propagation();
+            cx.notify();
+            return;
+        }
+        if !self.loading && !self.busy && self.items.is_empty() && !command && !modifiers.shift {
+            let shown = self.visible_relaxations().len();
+            match key {
+                "enter" if self.disconnected.is_some() => self.search(window, cx),
+                "enter" if shown > 0 => self.apply_relaxation(window, cx),
+                "up" | "down" if shown > 0 => {
+                    self.relax_cursor = if key == "down" {
+                        (self.relax_cursor + 1) % shown
+                    } else {
+                        (self.relax_cursor + shown - 1) % shown
+                    };
+                }
+                _ => {}
+            }
+            if matches!(key, "enter" | "up" | "down") {
+                cx.stop_propagation();
+                cx.notify();
                 return;
             }
         }

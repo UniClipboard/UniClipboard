@@ -4,6 +4,7 @@ mod backend;
 mod content;
 mod date_range;
 mod filters;
+mod host;
 mod image_geometry;
 mod language;
 mod lifecycle;
@@ -87,6 +88,7 @@ fn main() -> anyhow::Result<()> {
     if std::env::args()
         .any(|argument| argument == uc_desktop::quick_panel_helper::EXIT_WHEN_STDIN_CLOSES)
     {
+        host::mark_supervised();
         lifecycle::watch_parent(std::io::stdin(), || std::process::exit(0));
     }
     let runtime = tokio::runtime::Runtime::new()?;

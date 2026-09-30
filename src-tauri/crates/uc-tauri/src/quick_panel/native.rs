@@ -18,6 +18,22 @@ use uc_desktop::quick_panel_helper::{resolve_helper_exe_path, ProcessLauncher, S
 /// Environment variable that selects the native quick panel (`1`) on macOS and Windows.
 pub const NATIVE_QUICK_PANEL_ENV: &str = "UC_GPUI_QUICK_PANEL";
 
+/// Carries out what the helper asks of the GUI. Window work goes to the main thread.
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn request_handler(app: tauri::AppHandle) -> uc_desktop::quick_panel_helper::RequestHandler {
+    use uc_desktop::quick_panel_helper::HelperRequest;
+    std::sync::Arc::new(move |request| {
+        let handle = app.clone();
+        let result = app.run_on_main_thread(move || match request {
+            HelperRequest::ShowMainWindow => crate::main_window::show_main_window(&handle),
+            HelperRequest::OpenSettings => crate::main_window::show_settings_window(&handle),
+        });
+        if let Err(error) = result {
+            error!(error = %error, "Could not carry out a request of the quick panel helper");
+        }
+    })
+}
+
 /// Managed state holding the selected implementation.
 pub struct QuickPanelBackend {
     #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -28,7 +44,7 @@ impl QuickPanelBackend {
     /// Chooses the implementation from the environment. Falls back to the WebView panel when the
     /// helper executable is missing, so the user is never left without a quick panel.
     #[cfg(any(target_os = "macos", target_os = "windows"))]
-    pub fn select() -> Self {
+    pub fn select(app: &tauri::AppHandle) -> Self {
         if std::env::var(NATIVE_QUICK_PANEL_ENV).as_deref() != Ok("1") {
             return Self { helper: None };
         }
@@ -36,9 +52,10 @@ impl QuickPanelBackend {
             Some(executable) => {
                 info!(path = %executable.display(), "Using the native quick panel helper");
                 Self {
-                    helper: Some(SupervisedHelper::new(ProcessLauncher::for_helper(
-                        executable,
-                    ))),
+                    helper: Some(SupervisedHelper::new(
+                        ProcessLauncher::for_helper(executable)
+                            .with_request_handler(request_handler(app.clone())),
+                    )),
                 }
             }
             None => {
@@ -53,7 +70,7 @@ impl QuickPanelBackend {
 
     /// Other platforms only have the WebView panel.
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    pub fn select() -> Self {
+    pub fn select(_: &tauri::AppHandle) -> Self {
         Self {}
     }
 

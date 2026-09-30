@@ -19,6 +19,8 @@ pub enum Action {
     Send(Option<String>),
     Favorite(bool),
     Delete,
+    OpenMainWindow,
+    OpenSettings,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -105,9 +107,21 @@ pub fn rows(item: &SearchResultDto, target: Option<&str>) -> Vec<Row> {
         true,
     ));
     rows.push(row(
+        Action::OpenMainWindow,
+        crate::strings::OPEN_MAIN_WINDOW,
+        Some(keys("⌘⇧O", "Ctrl+Shift+O")),
+        true,
+    ));
+    rows.push(row(
         Action::Delete,
         "删除",
         Some(keys("⌘⇧⌫", "Ctrl+Shift+⌫")),
+        true,
+    ));
+    rows.push(row(
+        Action::OpenSettings,
+        crate::strings::SETTINGS,
+        Some(keys("⌘,", "Ctrl+,")),
         true,
     ));
     rows
@@ -202,7 +216,9 @@ mod tests {
                 Action::Copy,
                 Action::ChooseDevice,
                 Action::Favorite(true),
+                Action::OpenMainWindow,
                 Action::Delete,
+                Action::OpenSettings,
             ]
         );
         assert_eq!(rows[0].label, "粘贴到 Terminal");

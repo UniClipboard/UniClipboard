@@ -574,7 +574,7 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
             // 这里只负责"以最近持久化的偏好启动"。
             // The native helper (when selected) owns the quick panel's shortcut, double-tap
             // trigger and window, so everything below that sets those up is skipped for it.
-            app.manage(quick_panel::QuickPanelBackend::select());
+            app.manage(quick_panel::QuickPanelBackend::select(app.handle()));
             let native_quick_panel = app.state::<quick_panel::QuickPanelBackend>().is_native();
 
             let (

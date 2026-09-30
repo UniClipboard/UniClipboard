@@ -76,6 +76,8 @@ const server = createServer(async (request, response) => {
     if (!countOnly) state.searchStarts.push(query);
     // A dropped connection, as when the daemon is down.
     if (query === 'drop') return request.socket.destroy();
+    // The content lock, as the daemon answers while history is locked.
+    if (query === 'locked') return json(423, { error: { code: 'session_locked', message: 'Locked' } });
     if (query === 'error') return json(503, { error: { code: 'index_rebuilding', message: 'Synthetic failure' } });
     if (query === 'slow') await new Promise(resolve => setTimeout(resolve, 900));
     // Every list parameter is comma separated, and the values of one parameter are alternatives.

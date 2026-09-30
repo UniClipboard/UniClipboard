@@ -38,6 +38,47 @@ const GRACEFUL_EXIT: Duration = Duration::from_secs(1);
 /// How often the driver thread checks on the helper.
 const TICK_INTERVAL: Duration = Duration::from_millis(500);
 
+/// What the helper asks the GUI to do. The helper has no main window of its own, so anything that
+/// belongs to the GUI (unlocking, settings, the history page) goes through these requests.
+///
+/// On the wire each request is one line of JSON on the helper's standard output, for example
+/// `{"request":"open_settings"}`. Lines that are not requests (log noise, a newer helper's
+/// requests) are ignored, so the two sides can be updated one at a time.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HelperRequest {
+    /// Bring the main window to the front. The lock screen there is how the content is unlocked.
+    ShowMainWindow,
+    /// Bring the main window to the front on its settings page.
+    OpenSettings,
+}
+
+impl HelperRequest {
+    const fn wire_name(self) -> &'static str {
+        match self {
+            Self::ShowMainWindow => "show_main_window",
+            Self::OpenSettings => "open_settings",
+        }
+    }
+
+    /// The line the helper writes for this request, without the newline.
+    pub fn to_line(self) -> String {
+        format!(r#"{{"request":"{}"}}"#, self.wire_name())
+    }
+
+    /// Reads one line of the helper's output; `None` for anything that is not a known request.
+    pub fn from_line(line: &str) -> Option<Self> {
+        let value: serde_json::Value = serde_json::from_str(line.trim()).ok()?;
+        match value.get("request")?.as_str()? {
+            "show_main_window" => Some(Self::ShowMainWindow),
+            "open_settings" => Some(Self::OpenSettings),
+            _ => None,
+        }
+    }
+}
+
+/// Receives the requests of a helper. It runs on a reader thread, so it must not block for long.
+pub type RequestHandler = Arc<dyn Fn(HelperRequest) + Send + Sync>;
+
 /// A running helper.
 pub trait HelperChild: Send {
     /// Returns `true` once the helper has exited.
@@ -268,6 +309,7 @@ pub fn resolve_helper_exe_path() -> Option<PathBuf> {
 pub struct ProcessLauncher {
     executable: PathBuf,
     arguments: Vec<String>,
+    on_request: Option<RequestHandler>,
 }
 
 impl ProcessLauncher {
@@ -275,7 +317,14 @@ impl ProcessLauncher {
         Self {
             executable,
             arguments,
+            on_request: None,
         }
+    }
+
+    /// Delivers the helper's requests to `handler`.
+    pub fn with_request_handler(mut self, handler: RequestHandler) -> Self {
+        self.on_request = Some(handler);
+        self
     }
 
     /// The helper as shipped: it exits when the GUI goes away.
@@ -290,7 +339,11 @@ impl HelperLauncher for ProcessLauncher {
         command
             .args(&self.arguments)
             .stdin(Stdio::piped())
-            .stdout(Stdio::null());
+            .stdout(if self.on_request.is_some() {
+                Stdio::piped()
+            } else {
+                Stdio::null()
+            });
         #[cfg(windows)]
         {
             use std::os::windows::process::CommandExt;
@@ -299,6 +352,23 @@ impl HelperLauncher for ProcessLauncher {
         }
         let mut child = command.spawn()?;
         let input = child.stdin.take();
+        if let (Some(handler), Some(output)) = (self.on_request.clone(), child.stdout.take()) {
+            // Ends by itself when the helper exits and closes its output.
+            let reader = std::thread::Builder::new()
+                .name("quick-panel-requests".into())
+                .spawn(move || {
+                    for line in std::io::BufRead::lines(std::io::BufReader::new(output)) {
+                        let Ok(line) = line else { break };
+                        match HelperRequest::from_line(&line) {
+                            Some(request) => handler(request),
+                            None => tracing::debug!("Ignored a line of helper output"),
+                        }
+                    }
+                });
+            if let Err(error) = reader {
+                warn!(error = %error, "Could not read the helper's requests");
+            }
+        }
         Ok(Box::new(ProcessChild { child, input }))
     }
 }
@@ -333,6 +403,56 @@ impl HelperChild for ProcessChild {
 mod tests {
     use super::*;
     use std::sync::atomic::{AtomicU32, Ordering};
+
+    #[test]
+    fn a_request_survives_the_round_trip_through_a_line() {
+        for request in [HelperRequest::ShowMainWindow, HelperRequest::OpenSettings] {
+            assert_eq!(HelperRequest::from_line(&request.to_line()), Some(request));
+        }
+    }
+
+    #[test]
+    fn lines_that_are_not_known_requests_are_ignored() {
+        for line in [
+            "",
+            "plain log text",
+            r#"{"request":"reboot_the_world"}"#,
+            r#"{"other":"open_settings"}"#,
+            r#"{"request":7}"#,
+            "[1,2]",
+        ] {
+            assert_eq!(HelperRequest::from_line(line), None, "{line:?}");
+        }
+        // Surrounding whitespace, as in a CRLF line ending, is fine.
+        assert_eq!(
+            HelperRequest::from_line("  {\"request\":\"open_settings\"}\r\n"),
+            Some(HelperRequest::OpenSettings)
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_real_process_delivers_its_requests_and_noise_is_skipped() {
+        let (send, receive) = std::sync::mpsc::channel();
+        let send = Mutex::new(send);
+        let mut launcher = ProcessLauncher::new(
+            PathBuf::from("/bin/sh"),
+            vec![
+                "-c".into(),
+                r#"echo noise; echo '{"request":"open_settings"}'; echo '{"request":"show_main_window"}'"#
+                    .into(),
+            ],
+        )
+        .with_request_handler(Arc::new(move |request| {
+            let _ = lock(&send).send(request);
+        }));
+        let mut child = launcher.launch().unwrap();
+        let first = receive.recv_timeout(Duration::from_secs(5)).unwrap();
+        let second = receive.recv_timeout(Duration::from_secs(5)).unwrap();
+        assert_eq!(first, HelperRequest::OpenSettings);
+        assert_eq!(second, HelperRequest::ShowMainWindow);
+        child.terminate();
+    }
 
     #[derive(Default)]
     struct Shared {

@@ -176,7 +176,6 @@ pub enum EntryAction {
     Favorite(bool),
     Delete,
     Send(Option<String>),
-    Unlock,
 }
 
 pub async fn action(id: String, action: EntryAction) -> Result<(), String> {
@@ -189,7 +188,6 @@ pub async fn action(id: String, action: EntryAction) -> Result<(), String> {
             .resend_entry(&id, peer.map(|p| vec![p]))
             .await
             .map(|_| ()),
-        EntryAction::Unlock => context.query_client().unlock_encryption().await.map(|_| ()),
     };
     result.map_err(|_| "操作失败，请重试。".into())
 }

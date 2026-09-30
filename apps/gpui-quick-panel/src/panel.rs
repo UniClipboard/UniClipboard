@@ -28,6 +28,7 @@ use std::{
 };
 use tracing::Instrument;
 use uc_daemon_contract::api::{dto::search::SearchResultDto, types::SpaceMemberDto};
+use uc_desktop::quick_panel_helper::HelperRequest;
 
 #[derive(Clone)]
 struct ImageData {
@@ -617,6 +618,8 @@ impl Panel {
                     self.message = Some(message);
                 }
             }
+            Action::OpenMainWindow => self.ask_host(HelperRequest::ShowMainWindow, window, cx),
+            Action::OpenSettings => self.ask_host(HelperRequest::OpenSettings, window, cx),
             Action::Send(peer) => self.action(id, EntryAction::Send(peer), window, cx),
             Action::Favorite(value) => self.action(id, EntryAction::Favorite(value), window, cx),
             Action::Delete => self.action(id, EntryAction::Delete, window, cx),
@@ -739,12 +742,18 @@ impl Panel {
     }
 
     fn search(&mut self, window: &Window, cx: &mut Context<Self>) {
+        self.run_search(false, window, cx);
+    }
+
+    /// A search. A silent one keeps the page on screen while it runs, for retries by the panel
+    /// itself.
+    fn run_search(&mut self, silent: bool, window: &Window, cx: &mut Context<Self>) {
         if self.busy {
             return;
         }
         self.revision += 1;
         let revision = self.revision;
-        self.loading = true;
+        self.loading = !silent;
         self.message = None;
         self.hovered = None;
         self.preview.task = None;
@@ -780,6 +789,8 @@ impl Panel {
                             this.schedule_reconnect(window, cx);
                         } else {
                             this.disconnected = None;
+                            // A locked history is unlocked in the main window; look again soon.
+                            if this.locked { this.schedule_reconnect(window, cx); }
                         }
                         this.items.clear(); this.total = 0; this.selection.reset(0);
                     }
@@ -796,6 +807,17 @@ impl Panel {
         cx.notify();
     }
 
+    /// Asks the GUI for something only it can do, and gets out of its way.
+    fn ask_host(&mut self, request: HelperRequest, window: &mut Window, cx: &mut Context<Self>) {
+        match crate::host::send(request) {
+            Ok(()) => self.dismiss(window, cx),
+            Err(message) => {
+                self.message = Some(message);
+                cx.notify();
+            }
+        }
+    }
+
     fn device_name(&self, id: &str) -> String {
         self.members
             .iter()
@@ -809,8 +831,8 @@ impl Panel {
         self.reconnect_task = Some(cx.spawn_in(window, async move |this, cx| {
             cx.background_executor().timer(Duration::from_secs(3)).await;
             let _ = this.update_in(cx, |this, window, cx| {
-                if this.visible && this.disconnected.is_some() {
-                    this.search(window, cx);
+                if this.visible && (this.disconnected.is_some() || this.locked) {
+                    this.run_search(true, window, cx);
                 }
             });
         }));
@@ -1278,7 +1300,17 @@ impl Panel {
             return;
         }
         if self.locked && key == "enter" {
-            self.action(String::new(), EntryAction::Unlock, window, cx);
+            self.ask_host(HelperRequest::ShowMainWindow, window, cx);
+            cx.stop_propagation();
+            return;
+        }
+        if command && key == "o" && modifiers.shift {
+            self.ask_host(HelperRequest::ShowMainWindow, window, cx);
+            cx.stop_propagation();
+            return;
+        }
+        if command && key == "," && !modifiers.shift {
+            self.ask_host(HelperRequest::OpenSettings, window, cx);
             cx.stop_propagation();
             return;
         }

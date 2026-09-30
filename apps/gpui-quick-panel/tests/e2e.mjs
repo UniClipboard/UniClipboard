@@ -116,7 +116,8 @@ test('GPUI quick panel native end-to-end', { timeout: 180_000 }, async t => {
     restoreBaseline = before.restores.length;
     deletedBaseline = before.deleted.length;
     textBaseline = events().filter(e => e.event === 'text').length;
-    app = launch(binary, [], { ...process.env, UNICLIPBOARD_DAEMON_BASE_URL: address,
+    // Started the way the GUI starts it: with the flag, and with stdin and stdout piped.
+    app = launch(binary, ['--exit-when-stdin-closes'], { ...process.env, UNICLIPBOARD_DAEMON_BASE_URL: address,
       UNICLIPBOARD_DAEMON_TOKEN_PATH: join(directory, 'fixture-token.txt'), UC_GPUI_SHORTCUT: 'ctrl+alt+space', UC_GPUI_SCALE: '1' });
     await query({ query: '' }, before.searches);
     await until('settings and tags loaded', async () => { const value = await state(); return value.settingsReads > before.settingsReads && value.tagsReads > before.tagsReads; });
@@ -281,7 +282,9 @@ test('GPUI quick panel native end-to-end', { timeout: 180_000 }, async t => {
       for (const [title, name] of [['UniClipboard History', 'actions-history'], ['UniClipboard Preview', 'actions-list']]) {
         await exec(peekaboo, ['image', '--pid', String(app.pid), '--window-title', title, '--path', join(artifacts, `${name}.png`), '--capture-focus', 'background', '--no-remote']).catch(() => {});
       }
-      // With the list open, Up moves its cursor from the first row to the last one, Delete.
+      // With the list open, Up moves its cursor from the first row to the last one (Settings)
+      // and then to Delete above it.
+      await key('up');
       await key('up');
       await key('return');
       await until('selected entry deleted from the list', async () => (await state()).deleted.length === deletedBaseline + 1);
@@ -362,6 +365,37 @@ test('GPUI quick panel native end-to-end', { timeout: 180_000 }, async t => {
       } finally {
         await fetch(`${address}/__test/empty?on=0`);
       }
+    });
+    // The requests the panel makes of the GUI arrive as JSON lines on its stdout.
+    const requests = () => app.output.split('\n').filter(line => line.includes('"request"')).map(line => JSON.parse(line).request);
+    await run('Command+Shift+O and Command+comma ask the GUI for the main window and the settings', async () => {
+      await delay(300);
+      await hotkey('cmd,shift,o');
+      await until('main window requested', async () => requests().includes('show_main_window'));
+      // The request closes the panel; open it again for the next one.
+      await delay(300);
+      await exec(peekaboo, ['hotkey', '--keys', 'ctrl,alt,space', '--no-remote'], { timeout: 10_000 });
+      await delay(500);
+      await hotkey('cmd,comma');
+      await until('settings requested', async () => requests().includes('open_settings'));
+      assert.deepEqual(requests(), ['show_main_window', 'open_settings']);
+    });
+    await run('the last row of the action list opens the settings', async () => {
+      await delay(300);
+      await hotkey('cmd,k'); await delay(300);
+      await key('up');
+      await key('return');
+      await until('settings requested from the list', async () => requests().includes('open_settings'));
+    });
+    await run('a locked history shows the lock page, and Enter asks the GUI for the main window', async () => {
+      await text('locked');
+      await until('locked search', async () => (await state()).searchStarts.includes('locked'));
+      await delay(500);
+      await exec(peekaboo, ['image', '--pid', String(app.pid), '--window-title', 'UniClipboard History', '--path', join(artifacts, 'state-locked.png'), '--capture-focus', 'background', '--no-remote']);
+      await key('return');
+      await until('main window requested to unlock', async () => requests().includes('show_main_window'));
+      // The panel looks again by itself while it stays locked.
+      assert.equal((await state()).restores.length, restoreBaseline);
     });
     await run('Command+Q does not quit the panel', async () => {
       await hotkey('cmd,q');

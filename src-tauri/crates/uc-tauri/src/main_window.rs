@@ -148,6 +148,22 @@ fn load_state() -> MutexGuard<'static, MainWindowLoadState> {
     })
 }
 
+/// Opens the main window on its settings page. Shared by the tray menu and the native quick panel.
+///
+/// The route is recorded BEFORE the window is shown: `show_main_window` may have to recreate a
+/// destroyed window, and the emit below would race the fresh webview's listener registration. The
+/// frontend drains the pending route on boot (`take_pending_navigation`) and discards it after
+/// consuming a live `ui://navigate` event, so the two channels never double-navigate.
+pub fn show_settings_window(app: &tauri::AppHandle) {
+    use tauri::Emitter;
+    app.state::<crate::commands::startup::PendingNavigation>()
+        .set("/settings");
+    show_main_window(app);
+    if let Err(error) = app.emit("ui://navigate", "/settings") {
+        warn!(error = %error, "Failed to emit ui://navigate event");
+    }
+}
+
 /// Request the main window: recreate it if needed, then reveal it once its
 /// page and frontend are ready, or the generation's readiness deadline expires.
 pub fn show_main_window(app: &tauri::AppHandle) {

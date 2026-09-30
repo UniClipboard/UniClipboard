@@ -386,7 +386,7 @@ impl Panel {
             Empty::Locked => (
                 IconName::Asterisk,
                 strings::LOCKED_TITLE.to_string(),
-                strings::LOCKED_HINT.to_string(),
+                strings::LOCKED_HINT_GUI.to_string(),
             ),
             Empty::Disconnected => (
                 IconName::TriangleAlert,
@@ -862,16 +862,10 @@ impl Panel {
                     .child(message.clone())
                     .child(
                         Button::new("retry")
-                            .label(if self.locked { "解锁" } else { "重试" })
+                            .label("重试")
                             .ghost()
                             .xsmall()
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                if this.locked {
-                                    this.action(String::new(), EntryAction::Unlock, window, cx)
-                                } else {
-                                    this.search(window, cx)
-                                }
-                            })),
+                            .on_click(cx.listener(|this, _, window, cx| this.search(window, cx))),
                     ),
             );
         }

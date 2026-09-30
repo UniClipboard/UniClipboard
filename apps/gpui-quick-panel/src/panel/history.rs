@@ -7,7 +7,6 @@ use gpui::{div, img, AnyElement, App, Hsla, IntoElement, MouseButton, ObjectFit}
 use gpui_component::{
     button::{Button, ButtonVariants},
     input::Input,
-    menu::ContextMenuExt,
     ActiveTheme, Icon, IconName, Sizable,
 };
 
@@ -440,6 +439,16 @@ impl Panel {
                     )
                     .child(keycap("⏎", cx)),
             )
+            .child(div().flex_1())
+            .child(div().child(strings::ACTIONS))
+            .child(keycap(
+                if cfg!(target_os = "macos") {
+                    "⌘K"
+                } else {
+                    "Ctrl+K"
+                },
+                cx,
+            ))
             .into_any_element()
     }
 
@@ -545,9 +554,6 @@ impl Panel {
             _ => None,
         };
         let elapsed = chrono::Utc::now().timestamp_millis() - item.active_time_ms;
-        let entity = cx.entity();
-        let menu_item = item.clone();
-        let menu_members = self.members.clone();
         let row = div()
             .id(gpui::SharedString::from(item.entry_id.clone()))
             .w_full()
@@ -630,12 +636,15 @@ impl Panel {
             .on_click(
                 cx.listener(move |this, event: &gpui::ClickEvent, window, cx| {
                     this.select(ix, window, cx);
-                    this.restore(true, event.modifiers().alt, window, cx);
+                    this.restore(true, event.modifiers().shift, false, window, cx);
                 }),
             )
             .on_mouse_down(
                 MouseButton::Right,
-                cx.listener(move |this, _, window, cx| this.select(ix, window, cx)),
+                cx.listener(move |this, _, window, cx| {
+                    this.select(ix, window, cx);
+                    this.open_actions(window, cx);
+                }),
             )
             .on_hover(cx.listener(move |this, hovered, window, cx| {
                 if *hovered && !this.keyboard && this.pointer_moved && !this.loading {
@@ -643,29 +652,8 @@ impl Panel {
                     this.schedule_preview(window, cx);
                     cx.notify();
                 }
-            }))
-            .context_menu(move |menu, window, cx| {
-                Self::row_menu(
-                    menu_item.clone(),
-                    menu_members.clone(),
-                    ix,
-                    menu,
-                    entity.clone(),
-                    window,
-                    cx,
-                )
-            });
-        // ContextMenuExt owns a fixed element ID. Scope the whole wrapper by entry, not just its
-        // child row, so sibling menus do not share state.
-        div()
-            .id(gpui::SharedString::from(format!(
-                "entry-menu-{}",
-                item.entry_id
-            )))
-            .w_full()
-            .flex_shrink_0()
-            .child(row)
-            .into_any_element()
+            }));
+        div().w_full().flex_shrink_0().child(row).into_any_element()
     }
 
     pub(super) fn history_view(&self, cx: &Context<Self>) -> AnyElement {

@@ -171,6 +171,27 @@ pub fn reveal_path(path: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Opens a web link in the browser or a file in its default application.
+#[cfg(target_os = "macos")]
+pub fn open_target(target: &str) -> Result<(), String> {
+    use objc2_foundation::{NSString, NSURL};
+    let url = if target.starts_with("http://") || target.starts_with("https://") {
+        NSURL::URLWithString(&NSString::from_str(target)).ok_or("链接无效。")?
+    } else {
+        NSURL::fileURLWithPath(&NSString::from_str(target))
+    };
+    if objc2_app_kit::NSWorkspace::sharedWorkspace().openURL(&url) {
+        Ok(())
+    } else {
+        Err("无法打开这项内容。".into())
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn open_target(_: &str) -> Result<(), String> {
+    Err("此平台尚未实现打开。".into())
+}
+
 #[cfg(not(target_os = "macos"))]
 pub fn reveal_path(_: &str) -> Result<(), String> {
     Err("此平台尚未实现文件定位。".into())

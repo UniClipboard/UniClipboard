@@ -53,7 +53,7 @@ test('GPUI quick panel native end-to-end', { timeout: 180_000 }, async t => {
   await mkdir(artifacts, { recursive: true });
   let fixture, target, app;
   let address;
-  let restoreBaseline = 0, textBaseline = 0;
+  let restoreBaseline = 0, textBaseline = 0, deletedBaseline = 0;
   const events = () => target.output.split('\n').filter(Boolean).map(line => JSON.parse(line));
   const state = async () => (await fetch(`${address}/__test/state`)).json();
   // The unfiltered list the panel shows first, read from the fixture in the panel's own order, so
@@ -114,6 +114,7 @@ test('GPUI quick panel native end-to-end', { timeout: 180_000 }, async t => {
     await until('paste target is active', () => events().slice(count).some(e => e.event === 'front' && e.active));
     const before = await state();
     restoreBaseline = before.restores.length;
+    deletedBaseline = before.deleted.length;
     textBaseline = events().filter(e => e.event === 'text').length;
     app = launch(binary, [], { ...process.env, UNICLIPBOARD_DAEMON_BASE_URL: address,
       UNICLIPBOARD_DAEMON_TOKEN_PATH: join(directory, 'fixture-token.txt'), UC_GPUI_SHORTCUT: 'ctrl+alt+space', UC_GPUI_SCALE: '1' });
@@ -242,14 +243,16 @@ test('GPUI quick panel native end-to-end', { timeout: 180_000 }, async t => {
       await noPaste();
     });
     await run('pinyin initials suggest a type and a time, and a second one replaces the first', async () => {
-      await text('tp jt'); await query({ query: 'tp jt' });
+      const hour = 3_600_000;
+      // zt is yesterday; no fixture tag abbreviates to it, unlike jt (the tag 截图).
+      await text('tp zt'); await query({ query: 'tp zt' });
       await key('tab');
-      await query({ query: 'jt', types: ['image'] });
+      await query({ query: 'zt', types: ['image'] });
       await key('tab');
-      const today = await query({ query: '', types: ['image'], time: r => r.toMs >= Date.now() && r.toMs - r.fromMs < 25 * 3_600_000 });
-      await text('zt'); await query({ query: 'zt', types: ['image'], time: r => r.fromMs === today.lastSearch.fromMs });
+      const yesterday = await query({ query: '', types: ['image'], time: r => Math.abs((r.toMs - r.fromMs + 1) - 24 * hour) <= hour && r.toMs < Date.now() });
+      await text('bz'); await query({ query: 'bz', types: ['image'], time: r => r.fromMs === yesterday.lastSearch.fromMs });
       await key('tab');
-      await query({ query: '', types: ['image'], time: r => r.toMs < today.lastSearch.fromMs && today.lastSearch.fromMs - r.fromMs <= 25 * 3_600_000 });
+      await query({ query: '', types: ['image'], time: r => Math.abs((r.toMs - r.fromMs + 1) - 168 * hour) <= hour });
       await noPaste();
     });
     await run('plain Enter pastes the history result even when suggestions are visible', async () => {
@@ -269,6 +272,48 @@ test('GPUI quick panel native end-to-end', { timeout: 180_000 }, async t => {
       await until('second row restored', async () => (await state()).restores.length === restoreBaseline + 1);
       assert.deepEqual((await state()).restores.slice(restoreBaseline), [rows[1].entryId]);
     });
+    await run('Command+K opens the action list, and Enter runs the row under its cursor', async () => {
+      const rows = await defaultRows();
+      await delay(300);
+      await hotkey('cmd,k');
+      await delay(600);
+      // Evidence for the eye: the history window and the list in the satellite window.
+      for (const [title, name] of [['UniClipboard History', 'actions-history'], ['UniClipboard Preview', 'actions-list']]) {
+        await exec(peekaboo, ['image', '--pid', String(app.pid), '--window-title', title, '--path', join(artifacts, `${name}.png`), '--capture-focus', 'background', '--no-remote']).catch(() => {});
+      }
+      // With the list open, Up moves its cursor from the first row to the last one, Delete.
+      await key('up');
+      await key('return');
+      await until('selected entry deleted from the list', async () => (await state()).deleted.length === deletedBaseline + 1);
+      assert.deepEqual((await state()).deleted.slice(deletedBaseline), [rows[0].entryId]);
+      assert.equal((await state()).restores.length, restoreBaseline, 'Enter in the list must not paste');
+    });
+    await run('Escape closes the action list and keeps the panel open', async () => {
+      await delay(300);
+      await hotkey('cmd,k'); await delay(300);
+      await key('escape'); await delay(200);
+      assert.equal(app.exitCode, null);
+      await input('type', ['x']);
+      await query({ query: 'x' });
+      assert.deepEqual((await state()).deleted.slice(deletedBaseline), []);
+    });
+    await run('Command+Backspace clears the search text and the filters', async () => {
+      await text('工作 设计'); await query({ query: '工作 设计' });
+      await key('tab'); const filtered = await query({ query: '设计', tags: ['工作'] });
+      await hotkey('cmd,delete');
+      await query({ query: '' }, filtered.searches);
+      await noPaste();
+    });
+    await run('Command+Enter pastes and keeps the panel open', async () => {
+      const rows = await defaultRows();
+      await delay(300);
+      await hotkey('cmd,return');
+      await until('entry restored', async () => (await state()).restores.length === restoreBaseline + 1);
+      assert.deepEqual((await state()).restores.slice(restoreBaseline), [rows[0].entryId]);
+      await delay(300);
+      await input('type', ['x']);
+      await query({ query: 'x' });
+    });
     await run('Command+Q does not quit the panel', async () => {
       await hotkey('cmd,q');
       await delay(1000);
@@ -281,14 +326,14 @@ test('GPUI quick panel native end-to-end', { timeout: 180_000 }, async t => {
       await hotkey('alt,delete');
       await query({ query: 'alpha' });
       await delay(400);
-      assert.deepEqual((await state()).deleted, [], 'Deleting a word in the search box must not delete an entry');
+      assert.deepEqual((await state()).deleted.slice(deletedBaseline), [], 'Deleting a word in the search box must not delete an entry');
       await key('escape');
       const cleared = await query({ query: '' });
       const rows = await defaultRows();
       await delay(300);
       await hotkey('cmd,shift,delete');
-      await until('selected entry deleted', async () => (await state()).deleted.length === 1);
-      assert.deepEqual((await state()).deleted, [rows[0].entryId]);
+      await until('selected entry deleted', async () => (await state()).deleted.length === deletedBaseline + 1);
+      assert.deepEqual((await state()).deleted.slice(deletedBaseline), [rows[0].entryId]);
       assert.ok(cleared.searches >= 1);
     });
   } finally {

@@ -50,6 +50,7 @@ impl PreviewWindow {
                 || this.snapshot.text != next.text
                 || this.snapshot.loading != next.loading
                 || this.snapshot.scale != next.scale
+                || this.snapshot.actions != next.actions
                 || image_changed;
             this.snapshot = next;
             if this.snapshot.is_image() {
@@ -105,6 +106,18 @@ impl PreviewWindow {
             shown: false,
             image_view,
         }
+    }
+
+    /// Runs an action chosen by a click. The history window keeps the keyboard focus and owns
+    /// the selected entry, so the panel runs it there.
+    pub(super) fn run_action(&mut self, action: crate::actions::Action, cx: &mut Context<Self>) {
+        let panel = self.panel.clone();
+        let history = self.history;
+        cx.defer(move |cx| {
+            let _ = history.update(cx, |_, window, cx| {
+                panel.update(cx, |panel, cx| panel.run_action(action, window, cx))
+            });
+        });
     }
 
     pub(super) fn measure(

@@ -13,6 +13,7 @@ use crate::{
     filters::{self, Dimension, Filters},
     platform::{self, PasteTarget},
     selection::Selection,
+    strings,
 };
 use gpui::{
     prelude::*, Context, Entity, EntityInputHandler, Image, ImageFormat, KeyDownEvent,
@@ -46,6 +47,28 @@ struct PreviewState {
     task: Option<Task<()>>,
 }
 
+/// The action list as the satellite window draws it.
+#[derive(Clone, PartialEq)]
+struct ActionsView {
+    title: String,
+    rows: Vec<crate::actions::Row>,
+    cursor: usize,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ActionsPage {
+    Main,
+    Devices,
+}
+
+/// The open action list. It acts on the selected entry.
+struct ActionList {
+    page: ActionsPage,
+    cursor: usize,
+    /// The preview was opened by the list and must be reloaded when the list closes.
+    forced_preview: bool,
+}
+
 #[derive(Clone)]
 struct PreviewSnapshot {
     item: Option<SearchResultDto>,
@@ -54,13 +77,17 @@ struct PreviewSnapshot {
     loading: bool,
     anchor: Option<crate::window_pair::PreviewAnchor>,
     scale: f64,
+    actions: Option<ActionsView>,
 }
 
 impl PreviewSnapshot {
+    /// An image is drawn full size, except while the action list replaces it.
     fn is_image(&self) -> bool {
-        self.item
-            .as_ref()
-            .is_some_and(|item| item.content_type == "image")
+        self.actions.is_none()
+            && self
+                .item
+                .as_ref()
+                .is_some_and(|item| item.content_type == "image")
     }
 }
 
@@ -87,6 +114,7 @@ pub struct Panel {
     preview_anchor: Option<crate::window_pair::PreviewAnchor>,
     image_bounds: HashMap<String, gpui::Bounds<gpui::Pixels>>,
     filters: Filters,
+    actions: Option<ActionList>,
     suggestions_open: bool,
     suggestion_cursor: usize,
     tags: Vec<String>,
@@ -164,6 +192,7 @@ impl Panel {
             preview_anchor: None,
             image_bounds: HashMap::new(),
             filters: Filters::default(),
+            actions: None,
             suggestions_open: false,
             suggestion_cursor: 0,
             tags: filters::BUILTIN_TAGS.iter().map(|s| (*s).into()).collect(),
@@ -200,6 +229,7 @@ impl Panel {
         }
         self.target = Rc::new(PasteTarget::capture());
         self.filters = Filters::default();
+        self.actions = None;
         self.items.clear();
         self.selection.reset(0);
         self.preview = PreviewState::default();
@@ -237,6 +267,7 @@ impl Panel {
             return;
         }
         self.visible = false;
+        self.actions = None;
         self.preview_anchor = None;
         self.request = None;
         self.preview.task = None;
@@ -425,7 +456,163 @@ impl Panel {
             loading: self.preview.loading,
             anchor: self.preview_anchor,
             scale: self.scale,
+            actions: self.actions_view(),
         }
+    }
+
+    /// The rows the list shows now: the entry's actions, or the devices to send to.
+    fn action_rows(&self) -> Option<(String, Vec<crate::actions::Row>)> {
+        let list = self.actions.as_ref()?;
+        let item = self.active_index().and_then(|ix| self.items.get(ix))?;
+        Some(match list.page {
+            ActionsPage::Main => (
+                strings::ACTIONS.to_string(),
+                crate::actions::rows(item, self.target.name().as_deref()),
+            ),
+            ActionsPage::Devices => (
+                strings::SEND_TO.to_string(),
+                crate::actions::device_rows(&self.members),
+            ),
+        })
+    }
+
+    fn actions_view(&self) -> Option<ActionsView> {
+        let (title, rows) = self.action_rows()?;
+        let cursor = self
+            .actions
+            .as_ref()?
+            .cursor
+            .min(rows.len().saturating_sub(1));
+        Some(ActionsView {
+            title,
+            rows,
+            cursor,
+        })
+    }
+
+    /// Command+K: shows what can be done with the selected entry in the satellite window.
+    fn open_actions(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.loading || self.busy || self.actions.is_some() {
+            return;
+        }
+        let Some(item) = self.active_index().and_then(|ix| self.items.get(ix)) else {
+            return;
+        };
+        let id = item.entry_id.clone();
+        let forced_preview = self.preview.entry.as_deref() != Some(&id);
+        if forced_preview {
+            self.preview.task = None;
+            self.preview.entry = Some(id);
+            self.preview.text = None;
+            self.preview.loading = false;
+        }
+        self.preview.expanded = true;
+        self.actions = Some(ActionList {
+            page: ActionsPage::Main,
+            cursor: 0,
+            forced_preview,
+        });
+        if let Some((_, rows)) = self.action_rows() {
+            if let Some(list) = self.actions.as_mut() {
+                list.cursor = crate::actions::first_enabled(&rows);
+            }
+        }
+        self.show_preview(window, cx);
+        cx.notify();
+    }
+
+    fn close_actions(&mut self, window: &Window, cx: &mut Context<Self>) {
+        let Some(list) = self.actions.take() else {
+            return;
+        };
+        if list.forced_preview {
+            // The preview text was never loaded for this entry; load it as if it had just been
+            // selected.
+            self.preview.entry = None;
+            self.schedule_preview(window, cx);
+        }
+        cx.notify();
+    }
+
+    fn move_action_cursor(&mut self, forward: bool, cx: &mut Context<Self>) {
+        let Some((_, rows)) = self.action_rows() else {
+            return;
+        };
+        if let Some(list) = self.actions.as_mut() {
+            list.cursor = crate::actions::step(&rows, list.cursor.min(rows.len() - 1), forward);
+        }
+        cx.notify();
+    }
+
+    /// Runs an action from the list, from a click or from Enter.
+    fn run_action(
+        &mut self,
+        action: crate::actions::Action,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        use crate::actions::Action;
+        let Some(item) = self
+            .active_index()
+            .and_then(|ix| self.items.get(ix))
+            .cloned()
+        else {
+            return;
+        };
+        if let Action::ChooseDevice = action {
+            self.actions = self.actions.take().map(|list| ActionList {
+                page: ActionsPage::Devices,
+                cursor: 0,
+                ..list
+            });
+            if let Some((_, rows)) = self.action_rows() {
+                if let Some(list) = self.actions.as_mut() {
+                    list.cursor = crate::actions::first_enabled(&rows);
+                }
+            }
+            cx.notify();
+            return;
+        }
+        // The list is closed first: pasting hides the panel, and the other actions leave it.
+        self.close_actions(window, cx);
+        let id = item.entry_id.clone();
+        match action {
+            Action::Paste => self.restore(true, false, false, window, cx),
+            Action::PastePlain => self.restore(true, true, false, window, cx),
+            Action::PasteKeepOpen => self.restore(true, false, true, window, cx),
+            Action::Copy => self.restore(false, false, false, window, cx),
+            Action::PastePaths => self.paste_paths(item.file_paths, window, cx),
+            Action::Open => self.open_selected(window, cx),
+            Action::RevealFile => {
+                let path = item.file_paths.iter().find(|p| !p.is_empty());
+                if let Some(Err(message)) = path.map(|p| platform::reveal_path(p)) {
+                    self.message = Some(message);
+                }
+            }
+            Action::Send(peer) => self.action(id, EntryAction::Send(peer), window, cx),
+            Action::Favorite(value) => self.action(id, EntryAction::Favorite(value), window, cx),
+            Action::Delete => self.action(id, EntryAction::Delete, window, cx),
+            Action::ChooseDevice => {}
+        }
+        cx.notify();
+    }
+
+    /// Command+O: opens the link in the browser or the file in its default application.
+    fn open_selected(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(target) = self
+            .active_index()
+            .and_then(|ix| self.items.get(ix))
+            .and_then(crate::actions::openable)
+        else {
+            self.message = Some(strings::NOTHING_TO_OPEN.into());
+            cx.notify();
+            return;
+        };
+        match platform::open_target(&target) {
+            Ok(()) => self.dismiss(window, cx),
+            Err(message) => self.message = Some(message),
+        }
+        cx.notify();
     }
 
     /// Applies the persisted double-tap modifier. Starting the worker can block briefly, so it
@@ -515,6 +702,7 @@ impl Panel {
             return;
         }
         self.filters.query = self.input.read(cx).value().to_string();
+        self.close_actions(window, cx);
         self.suggestions_open = !self.filters.query.is_empty();
         self.suggestion_cursor = 0;
         self.hovered = None;
@@ -682,7 +870,14 @@ impl Panel {
         cx.notify();
     }
 
-    fn restore(&mut self, paste: bool, plain: bool, window: &mut Window, cx: &mut Context<Self>) {
+    fn restore(
+        &mut self,
+        paste: bool,
+        plain: bool,
+        keep_open: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         if self.loading || self.busy {
             return;
         }
@@ -725,7 +920,9 @@ impl Panel {
                                     return false;
                                 }
                             }
-                            this.dismiss(window, cx);
+                            if !keep_open {
+                                this.dismiss(window, cx);
+                            }
                             true
                         }
                         _ => {
@@ -821,6 +1018,35 @@ impl Panel {
         self.search(window, cx);
     }
 
+    #[cfg(target_os = "macos")]
+    fn clear_action(
+        &mut self,
+        _: &gpui_component::input::DeleteToBeginningOfLine,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.clear_all(window, cx);
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    fn clear_action(
+        &mut self,
+        _: &gpui_component::input::DeleteToPreviousWordStart,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.clear_all(window, cx);
+    }
+
+    fn clear_all(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.visible {
+            return;
+        }
+        self.clear(window, cx);
+        cx.stop_propagation();
+        cx.notify();
+    }
+
     fn copy_action(
         &mut self,
         _: &gpui_component::input::Copy,
@@ -837,8 +1063,61 @@ impl Panel {
             cx.propagate();
             return;
         }
-        self.restore(false, false, window, cx);
+        self.restore(false, false, false, window, cx);
         cx.stop_propagation();
+    }
+
+    /// Keys while the action list is open. Returns whether the list took the key.
+    fn action_list_key(
+        &mut self,
+        key: &str,
+        modifiers: &gpui::Modifiers,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let Some(page) = self.actions.as_ref().map(|list| list.page) else {
+            return false;
+        };
+        let back = |this: &mut Self, window: &mut Window, cx: &mut Context<Self>| {
+            if page == ActionsPage::Devices {
+                this.actions = this.actions.take().map(|list| ActionList {
+                    page: ActionsPage::Main,
+                    cursor: 0,
+                    ..list
+                });
+                if let Some((_, rows)) = this.action_rows() {
+                    if let Some(list) = this.actions.as_mut() {
+                        list.cursor = crate::actions::first_enabled(&rows);
+                    }
+                }
+            } else {
+                this.close_actions(window, cx);
+            }
+        };
+        match key {
+            "up" | "down" => self.move_action_cursor(key == "down", cx),
+            "n" | "p" if modifiers.control => self.move_action_cursor(key == "n", cx),
+            "escape" => back(self, window, cx),
+            "left" | "backspace" if page == ActionsPage::Devices && !modifiers.platform => {
+                back(self, window, cx)
+            }
+            // Shift and Command with Enter are the direct paste shortcuts; they close the list
+            // and fall through.
+            "enter" if !modifiers.shift && !modifiers.platform && !modifiers.control => {
+                let chosen = self
+                    .actions_view()
+                    .and_then(|view| view.rows.get(view.cursor).cloned());
+                if let Some(row) = chosen.filter(|row| row.enabled) {
+                    self.run_action(row.action, window, cx);
+                }
+            }
+            "enter" => {
+                self.close_actions(window, cx);
+                return false;
+            }
+            _ => return false,
+        }
+        true
     }
 
     fn key_down(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
@@ -853,6 +1132,22 @@ impl Panel {
         let key = event.keystroke.key.as_str();
         let modifiers = event.keystroke.modifiers;
         let value = self.input.read(cx).value();
+        let command = modifiers.platform || modifiers.control;
+        if key == "k" && command && !modifiers.shift {
+            if self.actions.is_some() {
+                self.close_actions(window, cx);
+            } else {
+                self.open_actions(window, cx);
+            }
+            cx.stop_propagation();
+            cx.notify();
+            return;
+        }
+        if self.actions.is_some() && self.action_list_key(key, &modifiers, window, cx) {
+            cx.stop_propagation();
+            cx.notify();
+            return;
+        }
         if key == "escape" {
             if !self.suggestion_options(cx).is_empty() {
                 self.suggestions_open = false;
@@ -892,10 +1187,12 @@ impl Panel {
                 self.selection.move_by(if key == "p" { -1 } else { 1 });
                 self.select(self.selection.index, window, cx);
             }
-            "enter" => self.restore(true, modifiers.alt, window, cx),
-            "v" if (modifiers.platform || modifiers.control) && value.is_empty() => {
-                self.restore(true, modifiers.alt, window, cx)
+            // Enter pastes, Shift+Enter pastes plain text, Command+Enter pastes and keeps the panel.
+            "enter" => self.restore(true, modifiers.shift && !command, command, window, cx),
+            "v" if command && value.is_empty() => {
+                self.restore(true, modifiers.shift, false, window, cx)
             }
+            "o" if command && !modifiers.shift => self.open_selected(window, cx),
             // Deleting an entry is destructive, so it needs Command/Ctrl+Shift+Backspace.
             // Plain Option+Backspace must stay with the search input (delete previous word).
             "backspace" if (modifiers.platform || modifiers.control) && modifiers.shift => {
@@ -912,7 +1209,7 @@ impl Panel {
                 let ix = key.parse::<usize>().unwrap_or(0).wrapping_sub(1);
                 if ix < history::VISIBLE_ROWS && ix < self.items.len() {
                     self.select(ix, window, cx);
-                    self.restore(true, modifiers.alt, window, cx);
+                    self.restore(true, modifiers.shift, false, window, cx);
                 }
             }
             _ => return,

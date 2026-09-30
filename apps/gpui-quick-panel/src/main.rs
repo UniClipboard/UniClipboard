@@ -1,3 +1,4 @@
+mod actions;
 mod appearance;
 mod backend;
 mod date_range;

@@ -1,146 +1,12 @@
 use super::*;
 use gpui::{div, img, AnyElement, IntoElement, MouseButton, ObjectFit, Render};
-use gpui_component::{
-    menu::{ContextMenuExt, PopupMenu, PopupMenuItem},
-    text::TextView,
-    ActiveTheme, IconName,
-};
+use gpui_component::{text::TextView, ActiveTheme};
 
 pub(super) fn units(value: f32) -> gpui::Rems {
     gpui::rems(value / 16.)
 }
 
 impl Panel {
-    pub(super) fn row_menu(
-        item: SearchResultDto,
-        members: Vec<SpaceMemberDto>,
-        ix: usize,
-        menu: PopupMenu,
-        entity: Entity<Self>,
-        window: &mut Window,
-        cx: &mut Context<PopupMenu>,
-    ) -> PopupMenu {
-        let unavailable = item.payload_state.as_deref() == Some("Lost");
-        let copy = entity.clone();
-        let favorite = entity.clone();
-        let delete = entity.clone();
-        let id = item.entry_id.clone();
-        let favorite_id = id.clone();
-        let delete_id = id.clone();
-        let is_favorite = item.tags.iter().any(|tag| tag == "favorited");
-        let send_entity = entity.clone();
-        let paths = item.file_paths.clone();
-        let path_entity = entity.clone();
-        let reveal = paths.first().cloned();
-        let menu = menu.item(
-            PopupMenuItem::new("复制")
-                .icon(IconName::Copy)
-                .disabled(unavailable)
-                .on_click(move |_, window, cx| {
-                    copy.update(cx, |this, cx| {
-                        this.select(ix, window, cx);
-                        this.restore(false, false, window, cx);
-                    });
-                }),
-        );
-        let menu = if item.content_type == "file" {
-            menu.item(
-                PopupMenuItem::new("粘贴文件路径")
-                    .icon(IconName::File)
-                    .disabled(unavailable)
-                    .on_click(move |_, window, cx| {
-                        path_entity
-                            .update(cx, |this, cx| this.paste_paths(paths.clone(), window, cx));
-                    }),
-            )
-        } else {
-            menu
-        };
-        let menu = menu
-            .item(
-                PopupMenuItem::new(if is_favorite {
-                    "取消收藏"
-                } else {
-                    "收藏"
-                })
-                .icon(IconName::Star)
-                .on_click(move |_, window, cx| {
-                    favorite.update(cx, |this, cx| {
-                        this.action(
-                            favorite_id.clone(),
-                            EntryAction::Favorite(!is_favorite),
-                            window,
-                            cx,
-                        )
-                    });
-                }),
-            )
-            .submenu("发送到设备", window, cx, move |mut menu, _, _| {
-                if members.is_empty() {
-                    return menu.item(PopupMenuItem::new("没有配对设备").disabled(true));
-                }
-                let entity = send_entity.clone();
-                let id = id.clone();
-                let all_id = id.clone();
-                menu = menu
-                    .item(
-                        PopupMenuItem::new("所有设备")
-                            .disabled(unavailable)
-                            .on_click(move |_, window, cx| {
-                                entity.update(cx, |this, cx| {
-                                    this.action(all_id.clone(), EntryAction::Send(None), window, cx)
-                                });
-                            }),
-                    )
-                    .separator();
-                for member in &members {
-                    let entity = send_entity.clone();
-                    let id = id.clone();
-                    let peer = member.peer_id.clone();
-                    menu = menu.item(
-                        PopupMenuItem::new(member.device_name.clone())
-                            .disabled(unavailable || !member.connected)
-                            .on_click(move |_, window, cx| {
-                                entity.update(cx, |this, cx| {
-                                    this.action(
-                                        id.clone(),
-                                        EntryAction::Send(Some(peer.clone())),
-                                        window,
-                                        cx,
-                                    )
-                                });
-                            }),
-                    );
-                }
-                menu
-            });
-        let menu = if let Some(path) = reveal {
-            let entity = entity.clone();
-            menu.item(
-                PopupMenuItem::new("在文件夹中显示")
-                    .icon(IconName::FolderOpen)
-                    .on_click(move |_, _, cx| {
-                        if let Err(message) = platform::reveal_path(&path) {
-                            entity.update(cx, |this, cx| {
-                                this.message = Some(message);
-                                cx.notify();
-                            });
-                        }
-                    }),
-            )
-        } else {
-            menu
-        };
-        menu.separator()
-            .item(PopupMenuItem::new("删除").icon(IconName::Delete).on_click(
-                move |_, window, cx| {
-                    delete.update(cx, |this, cx| {
-                        this.action(delete_id.clone(), EntryAction::Delete, window, cx)
-                    });
-                },
-            ))
-    }
-
     pub(super) fn image_wall(&self, cx: &Context<Self>) -> AnyElement {
         let mut columns: [Vec<usize>; 3] = Default::default();
         let mut heights = [0_f32; 3];
@@ -216,12 +82,15 @@ impl Panel {
                             .on_click(cx.listener(
                                 move |this, event: &gpui::ClickEvent, window, cx| {
                                     this.select(ix, window, cx);
-                                    this.restore(true, event.modifiers().alt, window, cx);
+                                    this.restore(true, event.modifiers().shift, false, window, cx);
                                 },
                             ))
                             .on_mouse_down(
                                 MouseButton::Right,
-                                cx.listener(move |this, _, window, cx| this.select(ix, window, cx)),
+                                cx.listener(move |this, _, window, cx| {
+                                    this.select(ix, window, cx);
+                                    this.open_actions(window, cx);
+                                }),
                             )
                             .on_hover(cx.listener(move |this, hovered, window, cx| {
                                 if *hovered && !this.keyboard && this.pointer_moved {
@@ -230,24 +99,8 @@ impl Panel {
                                     cx.notify();
                                 }
                             }));
-                        let item = item.clone();
-                        let members = self.members.clone();
-                        let entity = cx.entity();
-                        let menu_id =
-                            gpui::SharedString::from(format!("image-menu-{}", item.entry_id));
                         let bounds_id = item.entry_id.clone();
                         let bounds_tracker = cx.entity().downgrade();
-                        let menu = tile.context_menu(move |menu, window, cx| {
-                            Self::row_menu(
-                                item.clone(),
-                                members.clone(),
-                                ix,
-                                menu,
-                                entity.clone(),
-                                window,
-                                cx,
-                            )
-                        });
                         div()
                             .on_children_prepainted(move |bounds, window, cx| {
                                 if let Some(bounds) = bounds.first().copied() {
@@ -260,9 +113,8 @@ impl Panel {
                                     });
                                 }
                             })
-                            .id(menu_id)
                             .w_full()
-                            .child(menu)
+                            .child(tile)
                             .into_any_element()
                     }))
             }))
@@ -271,6 +123,50 @@ impl Panel {
 }
 
 impl PreviewSnapshot {
+    /// The rows of the action list. A click runs the row through the panel, which owns the
+    /// selected entry and the history window that keeps the keyboard focus.
+    fn actions_list(
+        &self,
+        actions: &ActionsView,
+        cx: &mut Context<preview_window::PreviewWindow>,
+    ) -> AnyElement {
+        let theme = cx.theme();
+        let (accent, muted) = (theme.primary, theme.muted_foreground);
+        div()
+            .p(units(6.))
+            .flex()
+            .flex_col()
+            .gap(units(2.))
+            .children(actions.rows.iter().enumerate().map(|(index, row)| {
+                let selected = index == actions.cursor;
+                let action = row.action.clone();
+                let enabled = row.enabled;
+                div()
+                    .id(("action", index))
+                    .h(units(30.))
+                    .px(units(10.))
+                    .rounded(units(7.))
+                    .flex()
+                    .items_center()
+                    .gap(units(8.))
+                    .text_size(units(13.))
+                    .when(selected, |line| line.bg(accent.opacity(0.12)))
+                    .when(!enabled, |line| line.opacity(0.4))
+                    .when(enabled, |line| line.cursor_pointer())
+                    .child(div().flex_1().min_w_0().truncate().child(row.label.clone()))
+                    .children(
+                        row.shortcut
+                            .map(|keys| div().text_size(units(11.)).text_color(muted).child(keys)),
+                    )
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        if enabled {
+                            this.run_action(action.clone(), cx);
+                        }
+                    }))
+            }))
+            .into_any_element()
+    }
+
     pub(super) fn preview_view(
         &self,
         window: &mut Window,
@@ -322,6 +218,9 @@ impl PreviewSnapshot {
         if let Some(image) = self.image.as_ref() {
             metadata.push_str(&format!(" · {} × {}", image.width, image.height));
         }
+        if let Some(actions) = &self.actions {
+            metadata = actions.title.clone();
+        }
         card = card.child(
             div()
                 .p(units(12.))
@@ -335,7 +234,9 @@ impl PreviewSnapshot {
             .as_deref()
             .or(item.text_preview.as_deref())
             .unwrap_or("");
-        let content = if self.loading {
+        let content = if let Some(actions) = &self.actions {
+            self.actions_list(actions, cx)
+        } else if self.loading {
             div()
                 .p_6()
                 .text_size(units(14.))
@@ -413,7 +314,9 @@ impl PreviewSnapshot {
                     .py(units(6.))
                     .text_size(units(11.))
                     .text_color(muted)
-                    .child(if cfg!(target_os = "macos") {
+                    .child(if self.actions.is_some() {
+                        crate::strings::ACTIONS_HINT
+                    } else if cfg!(target_os = "macos") {
                         "⌘⇧⌫ 删除"
                     } else {
                         "Ctrl+Shift+⌫ 删除"
@@ -440,6 +343,9 @@ impl Render for Panel {
                 this.next_suggestion_candidate(cx);
             }))
             .capture_action(cx.listener(Self::copy_action))
+            // The input binds Command+Backspace (Ctrl+Backspace off macOS) to a deletion; the panel
+            // uses the shortcut to clear the search and its filters instead.
+            .capture_action(cx.listener(Self::clear_action))
             .capture_key_down(cx.listener(Self::key_down))
             .child(history)
     }

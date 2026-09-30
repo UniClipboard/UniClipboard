@@ -4,6 +4,10 @@
 //! they are used; they move here when the code around them is reworked.
 
 pub const SEARCH_PLACEHOLDER: &str = "搜索，或输入 # 标签  @ 设备  / 类型";
+pub const ACTIONS: &str = "操作";
+pub const SEND_TO: &str = "发送到";
+pub const ACTIONS_HINT: &str = "↑↓ 选择 · ⏎ 执行 · esc 返回";
+pub const NOTHING_TO_OPEN: &str = "这条记录没有可打开的链接或文件。";
 pub const SUGGESTIONS: &str = "建议";
 pub const ACCEPT_IN_ORDER: &str = "按顺序接受";
 pub const RICH_TEXT: &str = "富文本";

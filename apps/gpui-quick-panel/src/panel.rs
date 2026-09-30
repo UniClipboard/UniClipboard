@@ -146,6 +146,9 @@ pub struct Panel {
     general: Option<uc_daemon_contract::api::dto::settings::GeneralSettingsDto>,
     _subscriptions: Vec<Subscription>,
     blur_task: Option<Task<()>>,
+    /// While pasting with the panel kept open, the target is in front for a moment; losing focus
+    /// then does not close the panel.
+    blur_grace_until: Option<Instant>,
 }
 
 impl Panel {
@@ -233,6 +236,7 @@ impl Panel {
             cursor_anchored: false,
             _subscriptions: vec![subscription, activation],
             blur_task: None,
+            blur_grace_until: None,
         };
         panel.position(window, cx);
         panel.load_options(window, cx);
@@ -290,6 +294,7 @@ impl Panel {
             return;
         }
         self.visible = false;
+        self.target.return_focus();
         self.actions = None;
         self.reconnect_task = None;
         self.preview_anchor = None;
@@ -314,6 +319,12 @@ impl Panel {
 
     fn dismiss_if_unfocused(&mut self, history: &mut Window, cx: &mut Context<Self>) {
         if !self.visible || history.is_window_active() {
+            return;
+        }
+        if self
+            .blur_grace_until
+            .is_some_and(|until| Instant::now() < until)
+        {
             return;
         }
         let preview_focused = self
@@ -1121,6 +1132,11 @@ impl Panel {
                 })
                 .unwrap_or(false);
             if proceed && paste {
+                if keep_open {
+                    let _ = this.update(cx, |this, _| {
+                        this.blur_grace_until = Some(Instant::now() + Duration::from_millis(800));
+                    });
+                }
                 cx.background_executor()
                     .timer(Duration::from_millis(80))
                     .await;
@@ -1129,6 +1145,16 @@ impl Panel {
                         this.toggle(window, cx);
                         this.message = Some(message);
                         cx.notify();
+                    });
+                } else if keep_open {
+                    // The target had to be in front to receive the paste; take the panel back.
+                    cx.background_executor()
+                        .timer(Duration::from_millis(150))
+                        .await;
+                    let _ = this.update_in(cx, |this, window, _| {
+                        if this.visible {
+                            let _ = platform::set_visible(window, true);
+                        }
                     });
                 }
             }

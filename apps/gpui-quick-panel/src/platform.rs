@@ -3,7 +3,7 @@ mod macos {
     use core_graphics::event::{CGEvent, CGEventFlags};
     use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
     use objc2::rc::Retained;
-    use objc2_app_kit::{NSRunningApplication, NSWorkspace};
+    use objc2_app_kit::{NSApplicationActivationOptions, NSRunningApplication, NSWorkspace};
 
     #[link(name = "ApplicationServices", kind = "framework")]
     extern "C" {
@@ -41,17 +41,59 @@ mod macos {
             if app.isTerminated() {
                 return Err("原应用已退出，请重新唤起面板。".into());
             }
+            // The panel itself is the active application while it is open; anything else in front
+            // that is not the target means the user moved on.
+            let ours = std::process::id() as i32;
             if NSWorkspace::sharedWorkspace()
                 .frontmostApplication()
-                .is_none_or(|front| front.processIdentifier() != app.processIdentifier())
+                .is_none_or(|front| {
+                    front.processIdentifier() != app.processIdentifier()
+                        && front.processIdentifier() != ours
+                })
             {
                 return Err("焦点已切换，请回到目标应用重新唤起面板。".into());
             }
             Ok(())
         }
 
+        fn target_is_front(app: &NSRunningApplication) -> bool {
+            NSWorkspace::sharedWorkspace()
+                .frontmostApplication()
+                .is_some_and(|front| front.processIdentifier() == app.processIdentifier())
+        }
+
+        /// Brings the target application back to the front and waits until it is there.
+        pub fn bring_front(&self) -> Result<(), String> {
+            let app = self.0.as_ref().ok_or("没有可粘贴的目标应用。")?;
+            if Self::target_is_front(app) {
+                return Ok(());
+            }
+            #[allow(deprecated)]
+            app.activateWithOptions(NSApplicationActivationOptions::ActivateAllWindows);
+            for _ in 0..60 {
+                if Self::target_is_front(app) {
+                    return Ok(());
+                }
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            Err("无法切回目标应用，请重新唤起面板。".into())
+        }
+
+        /// When the panel is the active application, hands focus back to the target. Nothing
+        /// happens if the user has already gone to another application.
+        pub fn return_focus(&self) {
+            let ours = std::process::id() as i32;
+            if NSWorkspace::sharedWorkspace()
+                .frontmostApplication()
+                .is_some_and(|front| front.processIdentifier() == ours)
+            {
+                let _ = self.bring_front();
+            }
+        }
+
         pub fn type_text(&self, text: &str) -> Result<(), String> {
             self.check()?;
+            self.bring_front()?;
             let app = self.0.as_ref().ok_or("没有可粘贴的目标应用。")?;
             let source = CGEventSource::new(CGEventSourceStateID::HIDSystemState)
                 .map_err(|_| "无法创建输入事件。")?;
@@ -68,6 +110,7 @@ mod macos {
 
         pub fn paste(&self) -> Result<(), String> {
             self.check()?;
+            self.bring_front()?;
             let app = self.0.as_ref().ok_or("没有可粘贴的目标应用。")?;
             let source = CGEventSource::new(CGEventSourceStateID::HIDSystemState)
                 .map_err(|_| "无法创建粘贴事件。")?;
@@ -197,6 +240,19 @@ pub fn reveal_path(_: &str) -> Result<(), String> {
     Err("此平台尚未实现文件定位。".into())
 }
 
+/// Makes this process the active application.
+#[cfg(target_os = "macos")]
+pub fn activate_app() {
+    if let Some(main_thread) = objc2::MainThreadMarker::new() {
+        #[allow(deprecated)]
+        objc2_app_kit::NSApplication::sharedApplication(main_thread)
+            .activateIgnoringOtherApps(true);
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn activate_app() {}
+
 #[cfg(target_os = "macos")]
 pub fn set_visible(window: &gpui::Window, visible: bool) -> Result<(), String> {
     use raw_window_handle::{HasWindowHandle, RawWindowHandle};
@@ -210,6 +266,10 @@ pub fn set_visible(window: &gpui::Window, visible: bool) -> Result<(), String> {
     native.setHasShadow(true);
     if visible {
         native.orderFrontRegardless();
+        // An input method only attaches to the active application, so the panel has to be it while
+        // it is open. The paste target is put back in front before anything is pasted, and when the
+        // panel closes (see `PasteTarget::return_focus`).
+        activate_app();
         native.makeKeyWindow();
     } else {
         native.orderOut(None);
@@ -421,6 +481,7 @@ impl PasteTarget {
     pub fn check(&self) -> Result<(), String> {
         Err("此原型的自动粘贴仅支持 macOS；请使用复制按钮。".into())
     }
+    pub fn return_focus(&self) {}
     pub fn paste(&self) -> Result<(), String> {
         self.check()
     }

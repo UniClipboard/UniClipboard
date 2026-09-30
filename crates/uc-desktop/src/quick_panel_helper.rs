@@ -343,7 +343,10 @@ impl HelperLauncher for ProcessLauncher {
                 Stdio::piped()
             } else {
                 Stdio::null()
-            });
+            })
+            // An app started from the Finder has no stderr to inherit, so the helper's own
+            // diagnostics would be lost. They are forwarded into the GUI's log instead.
+            .stderr(Stdio::piped());
         #[cfg(windows)]
         {
             use std::os::windows::process::CommandExt;
@@ -351,6 +354,17 @@ impl HelperLauncher for ProcessLauncher {
             command.creation_flags(CREATE_NO_WINDOW);
         }
         let mut child = command.spawn()?;
+        if let Some(diagnostics) = child.stderr.take() {
+            // Ends by itself when the helper exits and closes its stderr.
+            let _ = std::thread::Builder::new()
+                .name("quick-panel-diagnostics".into())
+                .spawn(move || {
+                    for line in std::io::BufRead::lines(std::io::BufReader::new(diagnostics)) {
+                        let Ok(line) = line else { break };
+                        tracing::info!(target: "quick_panel_helper", "{line}");
+                    }
+                });
+        }
         let input = child.stdin.take();
         if let (Some(handler), Some(output)) = (self.on_request.clone(), child.stdout.take()) {
             // Ends by itself when the helper exits and closes its output.

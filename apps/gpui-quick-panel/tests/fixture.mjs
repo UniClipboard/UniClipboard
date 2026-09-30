@@ -42,6 +42,13 @@ if(process.env.UC_GPUI_IMAGE_FIXTURES==='1'){
   });
   if(process.env.UC_GPUI_FILTER_FIXTURES==='1') imageRows.reverse();
   rows.unshift(...imageRows);
+  // Eight more images at the end make twelve, so the 3 x 3 grid has a fourth row to scroll to.
+  const kinds=images.map(([name])=>name);
+  for(let n=1;n<=8;n++){
+    const entryId=`image-extra-${n}`;
+    imageBytes.set(entryId,readFileSync(new URL(`./images/${kinds[n%kinds.length]}.png`,import.meta.url)));
+    rows.push({...rows[0],entryId,textPreview:`网格图 ${n}`,contentType:'image',mimeType:'image/png',tags:['image'],payloadState:null,charCount:null});
+  }
 }
 const server = createServer(async (request, response) => {
   const url = new URL(request.url, 'http://localhost');

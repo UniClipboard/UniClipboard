@@ -1,122 +1,161 @@
 use super::*;
 use gpui::{div, img, AnyElement, IntoElement, MouseButton, ObjectFit, Render};
-use gpui_component::{text::TextView, ActiveTheme};
+use gpui_component::{text::TextView, ActiveTheme, Icon, IconName};
 
 pub(super) fn units(value: f32) -> gpui::Rems {
     gpui::rems(value / 16.)
 }
 
 impl Panel {
+    /// The image grid: three rows of three equal cells, showing the entries from `grid_top`.
+    /// The badge of a cell is the digit that Command plus that digit pastes.
     pub(super) fn image_wall(&self, cx: &Context<Self>) -> AnyElement {
-        let mut columns: [Vec<usize>; 3] = Default::default();
-        let mut heights = [0_f32; 3];
-        for (ix, item) in self.items.iter().enumerate() {
-            let ratio = self
-                .images
-                .get(&item.entry_id)
-                .map(|i| i.width as f32 / i.height.max(1) as f32)
-                .unwrap_or(1.)
-                .clamp(0.45, 2.2);
-            let column = (0..3)
-                .min_by(|a, b| heights[*a].total_cmp(&heights[*b]))
-                .unwrap_or(0);
-            columns[column].push(ix);
-            heights[column] += 1. / ratio;
-        }
+        use crate::grid;
+        let visible = grid::visible(self.grid_top, self.items.len());
+        let now_ms = chrono::Utc::now().timestamp_millis();
+        let cell = |slot: usize| -> AnyElement {
+            let ix = visible.start + slot;
+            let Some(item) = (ix < visible.end).then(|| &self.items[ix]) else {
+                return div().flex_1().min_w_0().into_any_element();
+            };
+            let image = self.images.get(&item.entry_id);
+            let selected = self.selection.selected() == Some(ix);
+            let primary = cx.theme().primary;
+            let tile = div()
+                .id(("image", ix))
+                .size_full()
+                .relative()
+                .rounded(units(7.))
+                .overflow_hidden()
+                .bg(cx.theme().muted)
+                .flex()
+                .items_center()
+                .justify_center()
+                .cursor_pointer()
+                .when(selected, |tile| {
+                    tile.border_2()
+                        .border_color(primary)
+                        .shadow(vec![gpui::BoxShadow {
+                            color: primary.opacity(0.14),
+                            offset: gpui::point(gpui::px(0.), gpui::px(0.)),
+                            blur_radius: gpui::px(0.),
+                            spread_radius: gpui::px(3.),
+                        }])
+                })
+                .when(!selected, |tile| {
+                    tile.border_1().border_color(cx.theme().border.opacity(0.4))
+                })
+                .map(|tile| match image {
+                    Some(image) => tile.child(
+                        img(image.image.clone())
+                            .size_full()
+                            .object_fit(ObjectFit::Cover),
+                    ),
+                    None => tile.child(
+                        Icon::new(IconName::Frame)
+                            .size(units(20.))
+                            .text_color(cx.theme().muted_foreground.opacity(0.7)),
+                    ),
+                })
+                .child(
+                    div()
+                        .absolute()
+                        .left(units(5.))
+                        .top(units(5.))
+                        .min_w(units(16.))
+                        .h(units(16.))
+                        .rounded(units(4.))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .bg(if selected {
+                            primary
+                        } else {
+                            gpui::black().opacity(0.45)
+                        })
+                        .text_color(if selected {
+                            cx.theme().primary_foreground
+                        } else {
+                            gpui::white()
+                        })
+                        .text_size(units(10.))
+                        .child((slot + 1).to_string()),
+                )
+                .child(
+                    div()
+                        .absolute()
+                        .right(units(5.))
+                        .bottom(units(4.))
+                        .px(units(4.))
+                        .rounded(units(4.))
+                        .bg(gpui::black().opacity(0.35))
+                        .text_color(gpui::white().opacity(0.92))
+                        .text_size(units(10.))
+                        .child(strings::relative_time(now_ms - item.active_time_ms)),
+                )
+                .on_click(
+                    cx.listener(move |this, event: &gpui::ClickEvent, window, cx| {
+                        this.select(ix, window, cx);
+                        this.restore(true, event.modifiers().shift, false, window, cx);
+                    }),
+                )
+                .on_mouse_down(
+                    MouseButton::Right,
+                    cx.listener(move |this, _, window, cx| {
+                        this.select(ix, window, cx);
+                        this.open_actions(window, cx);
+                    }),
+                )
+                .on_hover(cx.listener(move |this, hovered, window, cx| {
+                    if *hovered && !this.keyboard && this.pointer_moved {
+                        this.hovered = Some(ix);
+                        this.schedule_preview(window, cx);
+                        cx.notify();
+                    }
+                }));
+            let bounds_id = item.entry_id.clone();
+            let bounds_tracker = cx.entity().downgrade();
+            div()
+                .on_children_prepainted(move |bounds, window, cx| {
+                    if let Some(bounds) = bounds.first().copied() {
+                        let tracker = bounds_tracker.clone();
+                        let id = bounds_id.clone();
+                        window.defer(cx, move |window, cx| {
+                            let _ = tracker.update(cx, |this, cx| {
+                                this.record_image_bounds(id, bounds, window, cx)
+                            });
+                        });
+                    }
+                })
+                .flex_1()
+                .min_w_0()
+                .h_full()
+                .p(units(2.))
+                .child(tile)
+                .into_any_element()
+        };
         div()
+            .size_full()
             .flex()
-            .w_full()
-            .gap(units(4.))
-            .items_start()
-            .children(columns.into_iter().map(|indices| {
+            .flex_col()
+            .on_scroll_wheel(cx.listener(|this, event: &gpui::ScrollWheelEvent, _, cx| {
+                // One row per notch; a trackpad reports pixels, so 30 px make a row.
+                let line = event.delta.pixel_delta(gpui::px(30.)).y;
+                let rows = (f32::from(-line) / 30.).round() as isize;
+                let next = crate::grid::scrolled(this.grid_top, rows, this.items.len());
+                if next != this.grid_top {
+                    this.grid_top = next;
+                    this.image_bounds.clear();
+                    cx.notify();
+                }
+            }))
+            .children((0..grid::ROWS).map(|row| {
                 div()
                     .flex_1()
-                    .min_w_0()
+                    .min_h_0()
+                    .w_full()
                     .flex()
-                    .flex_col()
-                    .gap(units(4.))
-                    .children(indices.into_iter().map(|ix| {
-                        let item = &self.items[ix];
-                        let image = self.images.get(&item.entry_id);
-                        let selected = self.selection.selected() == Some(ix);
-                        let ratio = image
-                            .map(|i| i.width as f32 / i.height.max(1) as f32)
-                            .unwrap_or(1.)
-                            .clamp(0.45, 2.2);
-                        let tile = div()
-                            .id(("image", ix))
-                            .w_full()
-                            .h(units(109. / ratio))
-                            .relative()
-                            .rounded_md()
-                            .overflow_hidden()
-                            .border_2()
-                            .border_color(if selected {
-                                cx.theme().primary
-                            } else {
-                                cx.theme().border.opacity(0.3)
-                            })
-                            .bg(cx.theme().muted)
-                            .cursor_pointer()
-                            .when_some(image, |tile, image| {
-                                tile.child(
-                                    img(image.image.clone())
-                                        .size_full()
-                                        .object_fit(ObjectFit::Cover),
-                                )
-                            })
-                            .when(ix < 10, |tile| {
-                                tile.child(
-                                    div()
-                                        .absolute()
-                                        .bottom(units(4.))
-                                        .right(units(4.))
-                                        .rounded_sm()
-                                        .bg(gpui::black().opacity(0.6))
-                                        .text_color(gpui::white())
-                                        .px_1()
-                                        .text_size(units(10.))
-                                        .child(format!("⌘{}", if ix == 9 { 0 } else { ix + 1 })),
-                                )
-                            })
-                            .on_click(cx.listener(
-                                move |this, event: &gpui::ClickEvent, window, cx| {
-                                    this.select(ix, window, cx);
-                                    this.restore(true, event.modifiers().shift, false, window, cx);
-                                },
-                            ))
-                            .on_mouse_down(
-                                MouseButton::Right,
-                                cx.listener(move |this, _, window, cx| {
-                                    this.select(ix, window, cx);
-                                    this.open_actions(window, cx);
-                                }),
-                            )
-                            .on_hover(cx.listener(move |this, hovered, window, cx| {
-                                if *hovered && !this.keyboard && this.pointer_moved {
-                                    this.hovered = Some(ix);
-                                    this.schedule_preview(window, cx);
-                                    cx.notify();
-                                }
-                            }));
-                        let bounds_id = item.entry_id.clone();
-                        let bounds_tracker = cx.entity().downgrade();
-                        div()
-                            .on_children_prepainted(move |bounds, window, cx| {
-                                if let Some(bounds) = bounds.first().copied() {
-                                    let tracker = bounds_tracker.clone();
-                                    let id = bounds_id.clone();
-                                    window.defer(cx, move |window, cx| {
-                                        let _ = tracker.update(cx, |this, cx| {
-                                            this.record_image_bounds(id, bounds, window, cx)
-                                        });
-                                    });
-                                }
-                            })
-                            .w_full()
-                            .child(tile)
-                            .into_any_element()
-                    }))
+                    .children((0..grid::COLUMNS).map(|column| cell(row * grid::COLUMNS + column)))
             }))
             .into_any_element()
     }
@@ -438,6 +477,8 @@ impl Render for Panel {
             // The input binds Command+Backspace (Ctrl+Backspace off macOS) to a deletion; the panel
             // uses the shortcut to clear the search and its filters instead.
             .capture_action(cx.listener(Self::clear_action))
+            .capture_action(cx.listener(Self::move_left_action))
+            .capture_action(cx.listener(Self::move_right_action))
             .capture_key_down(cx.listener(Self::key_down))
             .child(history)
     }

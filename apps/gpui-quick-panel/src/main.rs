@@ -4,6 +4,7 @@ mod backend;
 mod content;
 mod date_range;
 mod filters;
+mod grid;
 mod host;
 mod image_geometry;
 mod language;

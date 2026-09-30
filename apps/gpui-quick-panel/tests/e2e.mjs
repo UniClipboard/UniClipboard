@@ -317,6 +317,33 @@ test('GPUI quick panel native end-to-end', { timeout: 180_000 }, async t => {
       await input('type', ['x']);
       await query({ query: 'x' });
     });
+    await run('the image grid moves in two dimensions and Enter pastes the selected cell', async () => {
+      const images = (await (await fetch(`${address}/search/query?query=&contentTypes=image&limit=50&offset=0`, {
+        headers: { authorization: 'Session fixture-session' } })).json()).data.items;
+      assert.equal(images.length, 12);
+      await text('/image'); await query({ query: '/image' });
+      await key('tab'); await query({ query: '', types: ['image'] });
+      await delay(1500);
+      await exec(peekaboo, ['image', '--pid', String(app.pid), '--window-title', 'UniClipboard History', '--path', join(artifacts, 'grid-history.png'), '--capture-focus', 'background', '--no-remote']).catch(() => {});
+      // From cell 1: right to cell 2, down to cell 5.
+      await key('right'); await key('down'); await delay(300);
+      await key('return');
+      await until('cell 5 restored', async () => (await state()).restores.length === restoreBaseline + 1);
+      assert.deepEqual((await state()).restores.slice(restoreBaseline), [images[4].entryId]);
+    });
+    await run('the image grid scrolls by rows and Command plus a digit pastes that cell', async () => {
+      const images = (await (await fetch(`${address}/search/query?query=&contentTypes=image&limit=50&offset=0`, {
+        headers: { authorization: 'Session fixture-session' } })).json()).data.items;
+      await text('/image'); await query({ query: '/image' });
+      await key('tab'); await query({ query: '', types: ['image'] });
+      await delay(1000);
+      // Three rows down leaves the first page; the badges then name entries 4 to 12.
+      await key('down'); await key('down'); await key('down'); await delay(400);
+      await exec(peekaboo, ['image', '--pid', String(app.pid), '--window-title', 'UniClipboard History', '--path', join(artifacts, 'grid-scrolled.png'), '--capture-focus', 'background', '--no-remote']).catch(() => {});
+      await hotkey('cmd,9');
+      await until('cell 9 restored', async () => (await state()).restores.length === restoreBaseline + 1);
+      assert.deepEqual((await state()).restores.slice(restoreBaseline), [images[11].entryId]);
+    });
     await run('the preview presents code, a link and files each in their own form', async () => {
       // Screenshots are the evidence; the assertion is that the satellite window exists for each.
       for (const [word, name] of [['kind_code', 'code'], ['github.com', 'link'], ['kind_file', 'file']]) {

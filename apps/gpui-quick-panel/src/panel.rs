@@ -117,6 +117,8 @@ pub struct Panel {
     preview_window: Option<gpui::AnyWindowHandle>,
     preview_anchor: Option<crate::window_pair::PreviewAnchor>,
     image_bounds: HashMap<String, gpui::Bounds<gpui::Pixels>>,
+    /// First visible row of the image grid; the grid shows three rows from here.
+    grid_top: usize,
     filters: Filters,
     actions: Option<ActionList>,
     /// Ways to loosen a search that found nothing, each with how many entries it would show.
@@ -202,6 +204,7 @@ impl Panel {
             preview_window: None,
             preview_anchor: None,
             image_bounds: HashMap::new(),
+            grid_top: 0,
             filters: Filters::default(),
             actions: None,
             relaxations: vec![],
@@ -254,6 +257,7 @@ impl Panel {
         self.preview = PreviewState::default();
         self.images.clear();
         self.image_bounds.clear();
+        self.grid_top = 0;
         self.preview_anchor = None;
         self.hovered = None;
         self.keyboard = true;
@@ -775,7 +779,7 @@ impl Panel {
                 match result {
                     Ok(result) => {
                         this.locked = false; this.disconnected = None; this.reconnect_task = None;
-                        this.total = result.total; this.items = result.items;this.image_bounds.clear();
+                        this.total = result.total; this.items = result.items;this.image_bounds.clear();this.grid_top = 0;
                         this.selection.reset(this.items.len()); this.scroll.set_offset(gpui::point(gpui::px(0.),gpui::px(0.)));
                         this.schedule_preview(window,cx);this.load_images(window,cx);
                     }
@@ -1004,7 +1008,11 @@ impl Panel {
         self.selection.index = ix;
         self.hovered = None;
         self.keyboard = true;
-        self.scroll.scroll_to_item(ix);
+        if self.filters.images_only() {
+            self.grid_top = crate::grid::first_row_for(ix, self.grid_top, self.items.len());
+        } else {
+            self.scroll.scroll_to_item(ix);
+        }
         self.schedule_preview(window, cx);
         cx.notify();
     }
@@ -1175,6 +1183,54 @@ impl Panel {
         cx: &mut Context<Self>,
     ) {
         self.clear_all(window, cx);
+    }
+
+    /// Moves the grid selection one step.
+    fn grid_step(
+        &mut self,
+        direction: crate::grid::Direction,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) {
+        let next = crate::grid::step(self.selection.index, self.items.len(), direction);
+        self.select(next, window, cx);
+    }
+
+    /// Left and right move the grid selection while the search box is empty; with text in it
+    /// they stay with the caret. The input binds them as actions, so they must be caught here.
+    fn grid_sideways(
+        &mut self,
+        direction: crate::grid::Direction,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) {
+        let free = self.visible
+            && self.filters.images_only()
+            && !self.loading
+            && self.actions.is_none()
+            && self.input.read(cx).value().is_empty();
+        if free {
+            self.grid_step(direction, window, cx);
+            cx.stop_propagation();
+        }
+    }
+
+    fn move_left_action(
+        &mut self,
+        _: &gpui_component::input::MoveLeft,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.grid_sideways(crate::grid::Direction::Left, window, cx);
+    }
+
+    fn move_right_action(
+        &mut self,
+        _: &gpui_component::input::MoveRight,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.grid_sideways(crate::grid::Direction::Right, window, cx);
     }
 
     fn clear_all(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -1360,7 +1416,17 @@ impl Panel {
             }
             return;
         }
+        let grid = self.filters.images_only();
         match key {
+            "up" | "down" if grid => self.grid_step(
+                if key == "up" {
+                    crate::grid::Direction::Up
+                } else {
+                    crate::grid::Direction::Down
+                },
+                window,
+                cx,
+            ),
             "up" | "down" => {
                 self.selection.move_by(if key == "up" { -1 } else { 1 });
                 self.select(self.selection.index, window, cx);
@@ -1387,9 +1453,15 @@ impl Panel {
                     && digit.len() == 1
                     && digit.as_bytes()[0].is_ascii_digit() =>
             {
-                // Command+1 to Command+9 paste the rows that carry those digits.
-                let ix = key.parse::<usize>().unwrap_or(0).wrapping_sub(1);
-                if ix < history::VISIBLE_ROWS && ix < self.items.len() {
+                // Command+1 to Command+9 paste the rows, or the grid cells, that carry those digits.
+                let number = key.parse::<usize>().unwrap_or(0);
+                let ix = if grid {
+                    crate::grid::entry_for_number(number, self.grid_top, self.items.len())
+                } else {
+                    let ix = number.wrapping_sub(1);
+                    (ix < history::VISIBLE_ROWS && ix < self.items.len()).then_some(ix)
+                };
+                if let Some(ix) = ix {
                     self.select(ix, window, cx);
                     self.restore(true, modifiers.shift, false, window, cx);
                 }

@@ -819,6 +819,9 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
             // No-op unless the native helper is selected; then it runs exactly while enabled.
             app.state::<quick_panel::QuickPanelBackend>()
                 .set_enabled(quick_panel_enabled);
+            // The helper starts only once content is unlocked, and stops if it gets locked.
+            #[cfg(any(target_os = "macos", target_os = "windows"))]
+            quick_panel::watch_content_lock(app.handle().clone());
 
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             app.handle()

@@ -1,6 +1,6 @@
 //! GUI-only authentication. Background encryption and synchronization are independent.
 
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::Mutex;
 use tracing::{debug, info, info_span, warn, Instrument};
 use uc_daemon_client::{DaemonConnectionState, DaemonQueryClient, DaemonSettingsClient};
@@ -88,6 +88,58 @@ pub async fn show_content_unlock(app: AppHandle, _trace: Option<TraceMetadata>) 
     .await
 }
 
+/// Whether the GUI lets content be shown: setup is done, the daemon session is ready and the
+/// GUI grant is held. The native quick panel helper runs only while this is true.
+///
+/// This is a GUI-side gate. The daemon does not enforce the content lock for its own clients, so
+/// it is not a security boundary against other local processes.
+pub(crate) async fn resolve_content_unlocked(
+    state: &ContentLockState,
+    connection: &DaemonConnectionState,
+    query: &DaemonQueryClient,
+) -> Result<bool, CommandError> {
+    let (grant_generation, cached_grant) = {
+        let grant = state.0.lock().await;
+        (grant.generation, grant.value)
+    };
+    if !query
+        .get_profile_recovery()
+        .await
+        .map_err(CommandError::internal)?
+        .background_ready
+    {
+        let mut grant = state.0.lock().await;
+        grant.replace_if_generation(grant_generation, None);
+        debug!("Content remains hidden during profile recovery");
+        return Ok(false);
+    }
+    let encryption = query
+        .get_encryption_state()
+        .await
+        .map_err(CommandError::internal)?;
+    if !encryption.initialized {
+        let mut grant = state.0.lock().await;
+        grant.replace_if_generation(grant_generation, None);
+        debug!("Content remains hidden until setup completes");
+        return Ok(false);
+    }
+    let queried_grant = if cached_grant.is_none() {
+        let settings = DaemonSettingsClient::new(connection.clone())
+            .map_err(CommandError::internal)?
+            .get_settings()
+            .await
+            .map_err(CommandError::internal)?;
+        Some(settings.security.auto_unlock_enabled)
+    } else {
+        cached_grant
+    };
+    let mut grant = state.0.lock().await;
+    grant.replace_if_generation(grant_generation, queried_grant);
+    let unlocked = grant.value.unwrap_or(false) && encryption.session_ready;
+    debug!(unlocked, "Content lock status queried");
+    Ok(unlocked)
+}
+
 #[tauri::command]
 #[specta::specta]
 pub async fn get_content_unlocked(
@@ -102,50 +154,9 @@ pub async fn get_content_unlocked(
         trace_ts = tracing::field::Empty
     );
     record_trace_fields(&span, &_trace);
-    async {
-        let (grant_generation, cached_grant) = {
-            let grant = state.0.lock().await;
-            (grant.generation, grant.value)
-        };
-        if !query
-            .get_profile_recovery()
-            .await
-            .map_err(CommandError::internal)?
-            .background_ready
-        {
-            let mut grant = state.0.lock().await;
-            grant.replace_if_generation(grant_generation, None);
-            debug!("Content remains hidden during profile recovery");
-            return Ok(false);
-        }
-        let encryption = query
-            .get_encryption_state()
-            .await
-            .map_err(CommandError::internal)?;
-        if !encryption.initialized {
-            let mut grant = state.0.lock().await;
-            grant.replace_if_generation(grant_generation, None);
-            debug!("Content remains hidden until setup completes");
-            return Ok(false);
-        }
-        let queried_grant = if cached_grant.is_none() {
-            let settings = DaemonSettingsClient::new(connection.inner().clone())
-                .map_err(CommandError::internal)?
-                .get_settings()
-                .await
-                .map_err(CommandError::internal)?;
-            Some(settings.security.auto_unlock_enabled)
-        } else {
-            cached_grant
-        };
-        let mut grant = state.0.lock().await;
-        grant.replace_if_generation(grant_generation, queried_grant);
-        let unlocked = grant.value.unwrap_or(false) && encryption.session_ready;
-        debug!(unlocked, "Content lock status queried");
-        Ok(unlocked)
-    }
-    .instrument(span)
-    .await
+    async { resolve_content_unlocked(&state, &connection, &query).await }
+        .instrument(span)
+        .await
 }
 
 #[tauri::command]
@@ -197,6 +208,8 @@ pub async fn unlock_content_from_keyring(
         }
 
         state.0.lock().await.replace(Some(true));
+        app.state::<crate::quick_panel::QuickPanelBackend>()
+            .set_content_unlocked(true);
         info!("Content unlocked with the keyring after explicit user action");
         if let Err(error) = app.emit("content-lock-changed", ()) {
             warn!(error = %error, "Content lock notification failed");
@@ -228,6 +241,8 @@ pub async fn unlock_content(
             .await
             .map_err(ContentUnlockError::from_daemon)?;
         state.0.lock().await.replace(Some(true));
+        app.state::<crate::quick_panel::QuickPanelBackend>()
+            .set_content_unlocked(true);
         info!("Content unlocked after passphrase verification");
         // Events invalidate cached views, never convey authentication authority.
         if let Err(error) = app.emit("content-lock-changed", ()) {

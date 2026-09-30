@@ -11040,6 +11040,7 @@ dependencies = [
  "socket2 0.6.5",
  "syn 2.0.119",
  "sysinfo",
+ "tempfile",
  "thiserror 1.0.69",
  "tokio",
  "tokio-util",

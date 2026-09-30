@@ -295,6 +295,7 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
     let builder = tauri::Builder::default()
         // Register TauriAppRuntime for Tauri commands
         .manage(runtime.clone())
+        .manage(crate::window_preferences::DesktopWindowPreferences::load(runtime.desktop().storage_paths().desktop_preferences_path()))
         .manage(crate::commands::content_lock::ContentLockState::default())
         .manage(crate::visual_effects::VisualEffectsService::default())
         .manage(uc_daemon_client::DaemonQueryClient::new(daemon_connection_state.clone())?)
@@ -1014,6 +1015,7 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                         api.prevent_exit();
                         return;
                     }
+                    crate::window_preferences::flush(app_handle);
                     info!(?code, "App exit requested, cancelling all tracked tasks");
                     task_registry_for_run.token().cancel();
                     // ADR-008 D3 (P4-3, revised): the daemon-teardown decision is
@@ -1035,6 +1037,7 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
                 }
                 tauri::RunEvent::Exit => {
                     info!("Application exiting");
+                    crate::window_preferences::flush(app_handle);
                     // Fires for every clean termination, including macOS Cmd-Q /
                     // app-Quit (which skip `ExitRequested` entirely). Cancel again
                     // — idempotent — so the Cmd-Q path also tears down tracked

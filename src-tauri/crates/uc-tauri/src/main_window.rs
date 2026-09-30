@@ -5,8 +5,8 @@
 //! click / tray menu, macOS Dock `Reopen`, startup barrier, single-instance
 //! second launch) funnels through [`show_main_window`], which recreates the
 //! window from that same config entry when it is gone — the config stays the
-//! source of truth for appearance defaults; the resident process retains the
-//! last normal inner size across window recreation.
+//! source of truth for appearance defaults; desktop preferences retain the
+//! normal geometry and maximized state across window recreation and app restarts.
 //!
 //! Closing the window is NOT intercepted anymore: the window (and its webview
 //! process — JS heap, DOM, image caches, WS connections) is destroyed,
@@ -37,7 +37,6 @@ const REOPEN_REVEAL_GRACE: Duration = Duration::from_millis(500);
 #[derive(Default)]
 struct MainWindowLoadState {
     generation: u64,
-    normal_size: Option<tauri::LogicalSize<f64>>,
     page_loaded: bool,
     frontend_ready: bool,
     reveal_requested: bool,
@@ -49,25 +48,6 @@ struct MainWindowLoadState {
 }
 
 impl MainWindowLoadState {
-    fn remember_size(
-        &mut self,
-        generation: u64,
-        size: tauri::PhysicalSize<u32>,
-        scale_factor: f64,
-        normal: bool,
-    ) {
-        if self.generation == generation
-            && !self.destroyed
-            && normal
-            && size.width > 0
-            && size.height > 0
-            && scale_factor.is_finite()
-            && scale_factor > 0.0
-        {
-            self.normal_size = Some(size.to_logical(scale_factor));
-        }
-    }
-
     fn mark_created(&mut self) -> u64 {
         self.generation += 1;
         self.page_loaded = false;
@@ -151,7 +131,6 @@ impl MainWindowLoadState {
 
 static MAIN_WINDOW_LOAD_STATE: Mutex<MainWindowLoadState> = Mutex::new(MainWindowLoadState {
     generation: 0,
-    normal_size: None,
     page_loaded: false,
     frontend_ready: false,
     reveal_requested: false,
@@ -266,9 +245,18 @@ pub(crate) fn mark_presentation_ready(window: &tauri::WebviewWindow, generation:
 }
 
 fn reveal_main_window(window: &tauri::WebviewWindow) {
-    let _ = window.unminimize();
-    let _ = window.show();
-    let _ = window.set_focus();
+    let app = window.app_handle().clone();
+    let window = window.clone();
+    // Readiness/grace callbacks can run on Tokio threads. GTK display queries
+    // and all restore/reveal operations belong on the native event thread.
+    if let Err(error) = app.run_on_main_thread(move || {
+        crate::window_preferences::prepare_reveal(&window);
+        if let Err(error) = window.unminimize().and_then(|_| window.show()).and_then(|_| window.set_focus()) {
+            warn!(error = %error, error_kind = "main_window_reveal", "Failed to reveal main window");
+        }
+    }) {
+        warn!(error = %error, error_kind = "main_window_reveal_dispatch", "Failed to dispatch main window reveal");
+    }
 }
 
 fn schedule_reveal_fallback(window: &tauri::WebviewWindow, generation: u64) {
@@ -345,91 +333,15 @@ fn create_main_window(
             }
         })
         .build()?;
-    // Restore before registering resize events so construction defaults cannot
-    // overwrite the remembered size, and before revealing the hidden window.
-    let normal_size = load_state().normal_size;
-    if let Some(size) = normal_size {
-        if let Err(error) = restore_main_window_size(&window, &config, size) {
-            warn!(error = %error, error_kind = "window_size_restore", retryable = true, generation, "Failed to restore main window size");
-        }
-    }
+    crate::window_preferences::attach(&window);
     schedule_reveal_fallback(&window, generation);
-    let event_window = window.clone();
-    window.on_window_event(move |event| match event {
-        tauri::WindowEvent::Resized(_) | tauri::WindowEvent::CloseRequested { .. } => {
-            if let Err(error) = remember_main_window_size(&event_window, generation) {
-                warn!(error = %error, error_kind = "window_size_capture", retryable = true, generation, "Failed to remember main window size");
-            }
+    window.on_window_event(move |event| {
+        if matches!(event, tauri::WindowEvent::Destroyed) {
+            load_state().mark_destroyed(generation);
         }
-        tauri::WindowEvent::Destroyed => load_state().mark_destroyed(generation),
-        _ => {}
     });
     info!("Main window created from config");
     Ok(window)
-}
-
-// Query the live window rather than an event's potentially stale physical size:
-// its scale factor and minimized/maximized/fullscreen state must describe the
-// same snapshot. CloseRequested also covers a resize just before closing.
-fn remember_main_window_size(window: &tauri::WebviewWindow, generation: u64) -> tauri::Result<()> {
-    if window.is_minimized()? || window.is_maximized()? || window.is_fullscreen()? {
-        return Ok(());
-    }
-    let size = window.inner_size()?;
-    let scale_factor = window.scale_factor()?;
-    load_state().remember_size(generation, size, scale_factor, true);
-    Ok(())
-}
-
-fn restored_dimension(saved: f64, min: Option<f64>, max: Option<f64>, available: f64) -> f64 {
-    let upper = max.unwrap_or(available).min(available).max(1.0);
-    saved.max(min.unwrap_or(1.0)).min(upper)
-}
-
-fn restore_main_window_size(
-    window: &tauri::WebviewWindow,
-    config: &tauri::utils::config::WindowConfig,
-    saved: tauri::LogicalSize<f64>,
-) -> tauri::Result<()> {
-    let mut available = tauri::LogicalSize::new(f64::INFINITY, f64::INFINITY);
-    if let Some(monitor) = window.current_monitor()? {
-        let scale = window.scale_factor()?;
-        let inner = window.inner_size()?;
-        let outer = window.outer_size()?;
-        let area = monitor.work_area().size;
-        // Reserve native borders/titlebar as well as the taskbar/dock. Keeping
-        // logical dimensions avoids enlargement when reopening at another DPI.
-        available = tauri::PhysicalSize::new(
-            area.width
-                .saturating_sub(outer.width.saturating_sub(inner.width))
-                .max(1),
-            area.height
-                .saturating_sub(outer.height.saturating_sub(inner.height))
-                .max(1),
-        )
-        .to_logical(scale);
-        // A high-DPI or smaller display can be below the usual minimum size.
-        window.set_min_size(Some(tauri::LogicalSize::new(
-            config.min_width.unwrap_or(1.0).min(available.width),
-            config.min_height.unwrap_or(1.0).min(available.height),
-        )))?;
-    }
-    window.set_size(tauri::LogicalSize::new(
-        restored_dimension(
-            saved.width,
-            config.min_width,
-            config.max_width,
-            available.width,
-        ),
-        restored_dimension(
-            saved.height,
-            config.min_height,
-            config.max_height,
-            available.height,
-        ),
-    ))?;
-    window.center()?;
-    Ok(())
 }
 
 /// macOS: force the Dock to repaint this app's icon after flipping back to the
@@ -487,67 +399,6 @@ fn refresh_dock_icon(app: &tauri::AppHandle) {
 #[cfg(test)]
 mod tests {
     use super::MainWindowLoadState;
-
-    #[test]
-    fn resized_dimensions_survive_repeated_window_recreation() {
-        let mut state = MainWindowLoadState::default();
-        let first = state.mark_created();
-        state.remember_size(first, tauri::PhysicalSize::new(1800, 1200), 1.5, true);
-        state.mark_destroyed(first);
-        let second = state.mark_created();
-        assert_eq!(
-            state.normal_size,
-            Some(tauri::LogicalSize::new(1200.0, 800.0))
-        );
-        state.remember_size(second, tauri::PhysicalSize::new(1100, 700), 1.0, true);
-        state.mark_destroyed(second);
-        state.mark_created();
-        assert_eq!(
-            state.normal_size,
-            Some(tauri::LogicalSize::new(1100.0, 700.0))
-        );
-    }
-
-    #[test]
-    fn transient_and_stale_sizes_do_not_replace_normal_dimensions() {
-        let mut state = MainWindowLoadState::default();
-        let first = state.mark_created();
-        state.remember_size(first, tauri::PhysicalSize::new(1100, 700), 1.0, true);
-        for normal in [false, true] {
-            state.remember_size(first, tauri::PhysicalSize::new(0, 0), 1.0, normal);
-        }
-        state.remember_size(first, tauri::PhysicalSize::new(1920, 1080), 1.0, false);
-        state.remember_size(first, tauri::PhysicalSize::new(900, 600), f64::NAN, true);
-        state.mark_destroyed(first);
-        state.remember_size(first, tauri::PhysicalSize::new(900, 600), 1.0, true);
-        state.mark_created();
-        state.remember_size(first, tauri::PhysicalSize::new(900, 600), 1.0, true);
-        assert_eq!(
-            state.normal_size,
-            Some(tauri::LogicalSize::new(1100.0, 700.0))
-        );
-    }
-
-    #[test]
-    fn restored_dimensions_respect_display_and_config_constraints() {
-        assert_eq!(
-            super::restored_dimension(1600.0, Some(900.0), None, 1200.0),
-            1200.0
-        );
-        assert_eq!(
-            super::restored_dimension(700.0, Some(900.0), None, 1200.0),
-            900.0
-        );
-        assert_eq!(
-            super::restored_dimension(1600.0, Some(900.0), Some(1000.0), 1200.0),
-            1000.0
-        );
-        // Accessibility scaling can leave less space than the configured minimum.
-        assert_eq!(
-            super::restored_dimension(1100.0, Some(900.0), None, 800.0),
-            800.0
-        );
-    }
 
     #[test]
     fn warm_open_requires_frame_readiness_and_restored_content() {

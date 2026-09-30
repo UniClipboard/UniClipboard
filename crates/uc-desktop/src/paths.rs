@@ -21,6 +21,10 @@ impl DesktopPaths {
         })
     }
 
+    pub fn desktop_preferences_path(&self) -> PathBuf {
+        self.app_data_root_dir.join("desktop-preferences.json")
+    }
+
     pub fn last_notified_update_path(&self) -> PathBuf {
         self.app_data_root_dir.join("last_notified_update.json")
     }

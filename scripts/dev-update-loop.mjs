@@ -153,7 +153,11 @@ function ensureSidecar(flags) {
     cwd: repoRoot,
     encoding: 'utf8',
   }).stdout?.trim()
-  const staged = triple && existsSync(join(srcTauri, 'binaries', `uniclipd-${triple}`))
+  const staged =
+    triple &&
+    existsSync(join(srcTauri, 'binaries', `uniclipd-${triple}`)) &&
+    (!triple.includes('apple-darwin') ||
+      existsSync(join(srcTauri, 'binaries', `uniclip-quick-panel-${triple}`)))
   if (staged && !flags['rebuild-sidecar']) {
     log(`sidecar already staged for ${triple} (pass --rebuild-sidecar to force)`)
     return

@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// Prepare the `uniclipd` daemon as a Tauri sidecar (externalBin).
+// Prepare the `uniclipd` daemon as a Tauri sidecar (externalBin). On macOS it also stages the
+// native quick panel helper `uniclip-quick-panel` the same way (see src-tauri/tauri.macos.conf.json).
 //
 // ADR-008 D13 bundles `uniclipd` into the GUI installer so the GUI (and CLI)
 // can spawn it as a *sibling* of the app executable — see
@@ -107,3 +108,21 @@ const sidecarPath = join(binariesDir, `uniclipd-${triple}${exeSuffix}`)
 copyFileSync(builtPath, sidecarPath)
 if (!isWindows) chmodSync(sidecarPath, 0o755)
 console.log(`[sidecar] staged ${builtPath} -> ${sidecarPath}`)
+
+// 4) macOS only: the native quick panel helper ships next to the app executable too, where
+//    `uc-desktop` `resolve_helper_exe_path` looks for it. Other platforms keep the WebView panel.
+if (triple.includes('apple-darwin')) {
+  const helperArgs = ['build', '-p', 'uc-gpui-quick-panel', '--bin', 'uniclip-quick-panel']
+  if (release) helperArgs.push('--release')
+  if (target) helperArgs.push('--target', target)
+  if (timings) helperArgs.push('--timings')
+  console.log(`[sidecar] cargo ${helperArgs.join(' ')}`)
+  execFileSync('cargo', helperArgs, { cwd: repoRoot, stdio: 'inherit' })
+  const helperBuilt = target
+    ? join(repoRoot, 'target', triple, profile, 'uniclip-quick-panel')
+    : join(repoRoot, 'target', profile, 'uniclip-quick-panel')
+  const helperPath = join(binariesDir, `uniclip-quick-panel-${triple}`)
+  copyFileSync(helperBuilt, helperPath)
+  chmodSync(helperPath, 0o755)
+  console.log(`[sidecar] staged ${helperBuilt} -> ${helperPath}`)
+}

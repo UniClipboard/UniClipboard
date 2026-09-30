@@ -11,7 +11,7 @@ import { createHash } from 'node:crypto';
 
 const exec = promisify(execFile);
 const directory = dirname(fileURLToPath(import.meta.url));
-const binary = resolve(process.env.UC_GPUI_E2E_BINARY ?? join(directory, '../../../target/debug/uc-gpui-quick-panel'));
+const binary = resolve(process.env.UC_GPUI_E2E_BINARY ?? join(directory, '../../../target/debug/uniclip-quick-panel'));
 const peekaboo = process.env.PEEKABOO_BIN ?? '/opt/homebrew/bin/peekaboo';
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 const digest = text => createHash('sha256').update(text).digest('hex');

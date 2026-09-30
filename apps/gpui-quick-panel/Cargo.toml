@@ -5,6 +5,10 @@ edition = "2021"
 license.workspace = true
 publish = false
 
+[[bin]]
+name = "uniclip-quick-panel"
+path = "src/main.rs"
+
 [dependencies]
 anyhow = "1"
 async-channel = "2"

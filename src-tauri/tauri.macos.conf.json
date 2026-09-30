@@ -1,0 +1,5 @@
+{
+  "bundle": {
+    "externalBin": ["binaries/uniclipd", "binaries/uniclip-quick-panel"]
+  }
+}

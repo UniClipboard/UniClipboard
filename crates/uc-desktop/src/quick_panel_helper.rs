@@ -24,7 +24,7 @@ use tracing::{info, warn};
 pub const EXIT_WHEN_STDIN_CLOSES: &str = "--exit-when-stdin-closes";
 
 /// File stem of the helper executable that ships next to the GUI.
-pub const HELPER_EXE_STEM: &str = "uc-gpui-quick-panel";
+pub const HELPER_EXE_STEM: &str = "uniclip-quick-panel";
 
 /// Base of the exponential delay before restarting a helper that exited unexpectedly.
 const RESTART_BASE_DELAY: Duration = Duration::from_secs(1);
@@ -660,7 +660,7 @@ mod tests {
 
     #[test]
     fn a_missing_helper_executable_is_a_launch_error() {
-        let mut launcher = ProcessLauncher::for_helper("/nonexistent/uc-gpui-quick-panel".into());
+        let mut launcher = ProcessLauncher::for_helper("/nonexistent/uniclip-quick-panel".into());
         assert!(launcher.launch().is_err());
     }
 }

@@ -54,6 +54,8 @@ run_case() {
   local test_status=${PIPESTATUS[0]}
   if [[ $test_status -eq 0 ]] && ! grep -Eq 'test result: ok\. 1 passed;' "$log_file"; then
     echo "$case_id did not execute exactly one test" | tee -a "$log_file" >&2
+    # A missing test is a matrix configuration error, even for diagnostic cases.
+    effective_classification="required"
     test_status=1
   fi
 
@@ -91,9 +93,9 @@ else
     FAILED=1
   else
     run_case H1 required historical-membership membership_compatibility h1_current_joiner_rejects_legacy_sponsor_without_partial_setup
-    run_case H2 required historical-membership membership_compatibility h2_join_succeeds_after_legacy_sponsor_is_upgraded_in_place
-    run_case H3 diagnostic historical-membership membership_compatibility h3_partial_upgrade_reports_waiting_for_upgrade
-    run_case H4 required historical-membership membership_compatibility h4_final_legacy_upgrade_converges_without_repairing
+    run_case H2 required historical-membership membership_compatibility h2_join_succeeds_after_upgraded_sponsor_confirms_re_pairing
+    run_case H3 diagnostic historical-membership membership_compatibility h3_partial_upgrade_isolates_the_upgraded_device
+    run_case H4 required historical-membership membership_compatibility h4_upgraded_legacy_devices_recover_only_after_explicit_re_pairing
   fi
 fi
 

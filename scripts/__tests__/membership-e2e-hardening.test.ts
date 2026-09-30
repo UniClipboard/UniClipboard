@@ -1,4 +1,6 @@
+import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 
@@ -73,19 +75,80 @@ describe('membership E2E hardening', () => {
     expect(script).toContain("grep -Eq 'test result: ok\\. 1 passed;'")
   })
 
-  it('references existing membership convergence tests', () => {
-    const script = read('scripts/e2e/run-membership-matrix.sh')
-    const convergence = read('tests/e2e/tests/membership_convergence.rs')
-    const testNames = Array.from(
-      script.matchAll(/run_case\s+\S+\s+\S+\s+\S*\s+membership_convergence\s+(\S+)/g),
-      match => match[1]
-    )
+  it.each(['membership_convergence', 'membership_compatibility'])(
+    'references existing %s tests',
+    testTarget => {
+      const script = read('scripts/e2e/run-membership-matrix.sh')
+      const source = read(`tests/e2e/tests/${testTarget}.rs`)
+      const testNames = Array.from(
+        script.matchAll(
+          new RegExp(`run_case\\s+\\S+\\s+\\S+\\s+\\S+\\s+${testTarget}\\s+(\\S+)`, 'g')
+        ),
+        match => match[1]
+      )
 
-    expect(testNames.length).toBeGreaterThan(0)
-    for (const testName of testNames) {
-      expect(convergence).toContain(`async fn ${testName}()`)
+      expect(testNames.length).toBeGreaterThan(0)
+      for (const testName of testNames) {
+        expect(source).toContain(`async fn ${testName}()`)
+      }
     }
-  })
+  )
+
+  it.each([
+    ['none', 'pass', 0, 'H3', 'passed'],
+    ['h2_', 'zero', 1, 'H2', 'failed'],
+    ['h3_', 'zero', 1, 'H3', 'failed'],
+    ['h4_', 'zero', 1, 'H4', 'failed'],
+    ['h3_', 'failure', 0, 'H3', 'diagnostic-failed'],
+  ])(
+    'handles %s %s results without hiding missing tests',
+    (selector, outcome, status, caseId, result) => {
+      const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'membership-matrix-'))
+      try {
+        const bashEnv = path.join(temporary, 'cargo-stub.sh')
+        fs.writeFileSync(
+          bashEnv,
+          `
+cargo() {
+  if [[ "$*" == *"$STUB_SELECTOR"* ]]; then
+    if [[ "$STUB_OUTCOME" == zero ]]; then
+      echo 'test result: ok. 0 passed; 0 failed; 0 ignored; 4 filtered out;'
+      return 0
+    fi
+    echo 'test result: FAILED. 0 passed; 1 failed; 0 ignored;'
+    return 101
+  fi
+  echo 'test result: ok. 1 passed; 0 failed; 0 ignored;'
+}
+`
+        )
+        const execution = spawnSync('bash', ['scripts/e2e/run-membership-matrix.sh', 'nightly'], {
+          cwd: projectRoot,
+          encoding: 'utf8',
+          env: {
+            ...process.env,
+            BASH_ENV: bashEnv,
+            STUB_SELECTOR: selector,
+            STUB_OUTCOME: outcome,
+            UC_E2E_ARTIFACT_DIR: temporary,
+            UC_E2E_LEGACY_RELEASE_DIR: temporary,
+            GITHUB_STEP_SUMMARY: '',
+          },
+        })
+        expect(execution.error).toBeUndefined()
+        expect(execution.status, execution.stdout + execution.stderr).toBe(status)
+        const results = fs.readFileSync(path.join(temporary, 'results.tsv'), 'utf8')
+        const classification = outcome === 'zero' ? 'required' : 'diagnostic'
+        expect(results).toContain(`${caseId}\tnightly\t${classification}\t${result}`)
+        expect(results).toContain('H4\tnightly\trequired\t')
+        if (outcome === 'zero') {
+          expect(execution.stderr).toContain(`${caseId} did not execute exactly one test`)
+        }
+      } finally {
+        fs.rmSync(temporary, { recursive: true, force: true })
+      }
+    }
+  )
 
   it('guards the E2E-only rendezvous override and release preparation', () => {
     const wiring = read('crates/uc-bootstrap/src/wiring/desktop_host.rs')

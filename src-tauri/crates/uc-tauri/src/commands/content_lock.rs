@@ -1,34 +1,13 @@
-//! GUI-only authentication. Background encryption and synchronization are independent.
+//! GUI commands for the content lock. The lock itself lives in the daemon
+//! (`uc-webserver` `api/content_lock.rs`): it decides, per request, whether GUI-class clients may
+//! read history-derived content. These commands only ask it and tell it the user's choices, so
+//! there is no second copy of the state in this process.
 
-use tauri::{AppHandle, Emitter, Manager, State};
-use tokio::sync::Mutex;
+use tauri::{AppHandle, Emitter, State};
 use tracing::{debug, info, info_span, warn, Instrument};
-use uc_daemon_client::{DaemonConnectionState, DaemonQueryClient, DaemonSettingsClient};
+use uc_daemon_client::DaemonQueryClient;
 
 use super::{record_trace_fields, CommandError, TraceMetadata};
-
-#[derive(Default)]
-struct ContentGrant {
-    value: Option<bool>,
-    generation: u64,
-}
-
-impl ContentGrant {
-    fn replace(&mut self, value: Option<bool>) {
-        self.value = value;
-        self.generation = self.generation.wrapping_add(1);
-    }
-
-    fn replace_if_generation(&mut self, generation: u64, value: Option<bool>) {
-        if self.generation == generation {
-            self.replace(value);
-        }
-    }
-}
-
-/// A process-local grant shared by every webview; never persisted or set by a webview.
-#[derive(Default)]
-pub struct ContentLockState(Mutex<ContentGrant>);
 
 #[derive(serde::Deserialize, specta::Type)]
 pub struct ContentUnlockRequest {
@@ -88,63 +67,10 @@ pub async fn show_content_unlock(app: AppHandle, _trace: Option<TraceMetadata>) 
     .await
 }
 
-/// Whether the GUI lets content be shown: setup is done, the daemon session is ready and the
-/// GUI grant is held. The native quick panel helper runs only while this is true.
-///
-/// This is a GUI-side gate. The daemon does not enforce the content lock for its own clients, so
-/// it is not a security boundary against other local processes.
-pub(crate) async fn resolve_content_unlocked(
-    state: &ContentLockState,
-    connection: &DaemonConnectionState,
-    query: &DaemonQueryClient,
-) -> Result<bool, CommandError> {
-    let (grant_generation, cached_grant) = {
-        let grant = state.0.lock().await;
-        (grant.generation, grant.value)
-    };
-    if !query
-        .get_profile_recovery()
-        .await
-        .map_err(CommandError::internal)?
-        .background_ready
-    {
-        let mut grant = state.0.lock().await;
-        grant.replace_if_generation(grant_generation, None);
-        debug!("Content remains hidden during profile recovery");
-        return Ok(false);
-    }
-    let encryption = query
-        .get_encryption_state()
-        .await
-        .map_err(CommandError::internal)?;
-    if !encryption.initialized {
-        let mut grant = state.0.lock().await;
-        grant.replace_if_generation(grant_generation, None);
-        debug!("Content remains hidden until setup completes");
-        return Ok(false);
-    }
-    let queried_grant = if cached_grant.is_none() {
-        let settings = DaemonSettingsClient::new(connection.clone())
-            .map_err(CommandError::internal)?
-            .get_settings()
-            .await
-            .map_err(CommandError::internal)?;
-        Some(settings.security.auto_unlock_enabled)
-    } else {
-        cached_grant
-    };
-    let mut grant = state.0.lock().await;
-    grant.replace_if_generation(grant_generation, queried_grant);
-    let unlocked = grant.value.unwrap_or(false) && encryption.session_ready;
-    debug!(unlocked, "Content lock status queried");
-    Ok(unlocked)
-}
-
+/// Whether the daemon lets this GUI show content right now.
 #[tauri::command]
 #[specta::specta]
 pub async fn get_content_unlocked(
-    state: State<'_, ContentLockState>,
-    connection: State<'_, DaemonConnectionState>,
     query: State<'_, DaemonQueryClient>,
     _trace: Option<TraceMetadata>,
 ) -> Result<bool, CommandError> {
@@ -154,9 +80,16 @@ pub async fn get_content_unlocked(
         trace_ts = tracing::field::Empty
     );
     record_trace_fields(&span, &_trace);
-    async { resolve_content_unlocked(&state, &connection, &query).await }
-        .instrument(span)
-        .await
+    async {
+        let status = query
+            .get_content_lock()
+            .await
+            .map_err(CommandError::internal)?;
+        debug!(unlocked = status.unlocked, "Content lock status queried");
+        Ok(status.unlocked)
+    }
+    .instrument(span)
+    .await
 }
 
 #[tauri::command]
@@ -187,7 +120,6 @@ pub async fn get_profile_recovery(
 #[specta::specta]
 pub async fn unlock_content_from_keyring(
     app: AppHandle,
-    state: State<'_, ContentLockState>,
     query: State<'_, DaemonQueryClient>,
     _trace: Option<TraceMetadata>,
 ) -> Result<bool, CommandError> {
@@ -198,19 +130,16 @@ pub async fn unlock_content_from_keyring(
     );
     record_trace_fields(&span, &_trace);
     async {
-        let resumed = query
-            .unlock_encryption()
+        let status = query
+            .unlock_content_from_keyring()
             .await
             .map_err(CommandError::internal)?;
-        if !resumed {
+        if !status.unlocked {
             debug!("Keyring did not contain a usable encryption key");
             return Ok(false);
         }
-
-        state.0.lock().await.replace(Some(true));
-        app.state::<crate::quick_panel::QuickPanelBackend>()
-            .set_content_unlocked(true);
         info!("Content unlocked with the keyring after explicit user action");
+        // Events invalidate cached views, never convey authentication authority.
         if let Err(error) = app.emit("content-lock-changed", ()) {
             warn!(error = %error, "Content lock notification failed");
         }
@@ -224,7 +153,6 @@ pub async fn unlock_content_from_keyring(
 #[specta::specta]
 pub async fn unlock_content(
     app: AppHandle,
-    state: State<'_, ContentLockState>,
     query: State<'_, DaemonQueryClient>,
     request: ContentUnlockRequest,
     _trace: Option<TraceMetadata>,
@@ -237,14 +165,10 @@ pub async fn unlock_content(
     record_trace_fields(&span, &_trace);
     async {
         query
-            .unlock_with_passphrase(&request.passphrase)
+            .unlock_content(&request.passphrase)
             .await
             .map_err(ContentUnlockError::from_daemon)?;
-        state.0.lock().await.replace(Some(true));
-        app.state::<crate::quick_panel::QuickPanelBackend>()
-            .set_content_unlocked(true);
         info!("Content unlocked after passphrase verification");
-        // Events invalidate cached views, never convey authentication authority.
         if let Err(error) = app.emit("content-lock-changed", ()) {
             warn!(error = %error, "Content lock notification failed");
         }
@@ -252,31 +176,4 @@ pub async fn unlock_content(
     }
     .instrument(span)
     .await
-}
-
-#[cfg(test)]
-mod tests {
-    use super::ContentGrant;
-
-    #[test]
-    fn replacing_a_grant_advances_its_generation() {
-        let mut grant = ContentGrant::default();
-        let initial_generation = grant.generation;
-
-        grant.replace(Some(true));
-
-        assert_eq!(grant.value, Some(true));
-        assert_ne!(grant.generation, initial_generation);
-    }
-
-    #[test]
-    fn stale_query_cannot_replace_a_newer_grant() {
-        let mut grant = ContentGrant::default();
-        let query_generation = grant.generation;
-        grant.replace(Some(true));
-
-        grant.replace_if_generation(query_generation, Some(false));
-
-        assert_eq!(grant.value, Some(true));
-    }
 }

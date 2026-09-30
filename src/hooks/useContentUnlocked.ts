@@ -37,7 +37,7 @@ export function useContentUnlocked(enabled = true) {
       .catch(() => {
         log.warn('Content lock listener unavailable; status checks remain active')
       })
-    const unsubscribe = daemonWs.subscribe(['encryption'], () => void check())
+    const unsubscribe = daemonWs.subscribe(['encryption', 'content-lock'], () => void check())
     const timer = window.setInterval(() => void check(), 5_000)
     window.addEventListener('focus', check)
     void check()

@@ -13,6 +13,7 @@ import { invoke as __TAURI_INVOKE, Channel } from "@tauri-apps/api/core";
 
 /** Commands */
 export const commands = {
+	/**  Whether the daemon lets this GUI show content right now. */
 	getContentUnlocked: (trace: {
 	trace_id: string,
 	timestamp: number,

@@ -19,8 +19,6 @@ mod shortcut_registry;
 #[cfg(target_os = "windows")]
 mod windows;
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-pub use native::watch_content_lock;
 pub use native::QuickPanelBackend;
 pub use shortcut_registry::{uses_compositor_shortcuts, TauriGlobalShortcutRegistry};
 

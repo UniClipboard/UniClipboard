@@ -394,6 +394,42 @@ export type ConnectivityOpportunityRequest = {
     reason: ConnectivityOpportunity;
 };
 
+/**
+ * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
+ *
+ * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
+ * via [`ApiEnvelope::now`] (the contract carries only the type + the clock
+ * helper, not a hard dependency on when the handler reads the clock).
+ * `rename_all = "camelCase"` is a no-op for the single-word fields here but is
+ * declared for forward-compat.
+ *
+ * IMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named
+ * OpenAPI component is declared in the `#[aliases(...)]` block below. Add a new
+ * alias line whenever a new payload type needs enveloping. NEVER register the
+ * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
+ * generic, and an un-aliased generic inlines an anonymous schema.
+ */
+export type ContentLockStatusEnvelope = {
+    data: ContentLockStatusResponse;
+    /**
+     * Server time when the response was built (unix epoch milliseconds).
+     */
+    ts: number;
+};
+
+/**
+ * Whether history-derived content may be shown to GUI-class clients (`gui`, `helper`).
+ *
+ * `unlocked` is computed at read time from the in-memory grant AND the encryption facts
+ * (initialised, session ready, background ready), so losing the session revokes visibility
+ * without any extra coupling. `generation` changes with every grant change, so a client can
+ * tell a stale answer from a current one.
+ */
+export type ContentLockStatusResponse = {
+    generation: number;
+    unlocked: boolean;
+};
+
 export type ContentTypesDto = {
     codeSnippet: boolean;
     file: boolean;
@@ -4844,6 +4880,105 @@ export type PreviewConfigImportResponses = {
 };
 
 export type PreviewConfigImportResponse = PreviewConfigImportResponses[keyof PreviewConfigImportResponses];
+
+export type GetContentLockData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/content-lock';
+};
+
+export type GetContentLockErrors = {
+    /**
+     * The state could not be read
+     */
+    503: ApiErrorResponse;
+};
+
+export type GetContentLockError = GetContentLockErrors[keyof GetContentLockErrors];
+
+export type GetContentLockResponses = {
+    /**
+     * Whether content may be shown to GUI-class clients
+     */
+    200: ContentLockStatusEnvelope;
+};
+
+export type GetContentLockResponse = GetContentLockResponses[keyof GetContentLockResponses];
+
+export type RevokeContentAccessData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/content-lock/revoke';
+};
+
+export type RevokeContentAccessResponses = {
+    /**
+     * Content access withdrawn
+     */
+    200: ContentLockStatusEnvelope;
+};
+
+export type RevokeContentAccessResponse = RevokeContentAccessResponses[keyof RevokeContentAccessResponses];
+
+export type UnlockContentData = {
+    body: UnlockSpaceRequest;
+    path?: never;
+    query?: never;
+    url: '/content-lock/unlock';
+};
+
+export type UnlockContentErrors = {
+    /**
+     * Wrong passphrase
+     */
+    403: ApiErrorResponse;
+    /**
+     * Setup not completed / space not initialized
+     */
+    409: ApiErrorResponse;
+    /**
+     * Space key material corrupted
+     */
+    422: ApiErrorResponse;
+};
+
+export type UnlockContentError = UnlockContentErrors[keyof UnlockContentErrors];
+
+export type UnlockContentResponses = {
+    /**
+     * Content unlocked
+     */
+    200: ContentLockStatusEnvelope;
+};
+
+export type UnlockContentResponse = UnlockContentResponses[keyof UnlockContentResponses];
+
+export type UnlockContentFromKeyringData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/content-lock/unlock-keyring';
+};
+
+export type UnlockContentFromKeyringErrors = {
+    /**
+     * Internal server error
+     */
+    500: ApiErrorResponse;
+};
+
+export type UnlockContentFromKeyringError = UnlockContentFromKeyringErrors[keyof UnlockContentFromKeyringErrors];
+
+export type UnlockContentFromKeyringResponses = {
+    /**
+     * Content unlocked when the keychain held a usable key
+     */
+    200: ContentLockStatusEnvelope;
+};
+
+export type UnlockContentFromKeyringResponse = UnlockContentFromKeyringResponses[keyof UnlockContentFromKeyringResponses];
 
 export type GetLocalDeviceInfoData = {
     body?: never;

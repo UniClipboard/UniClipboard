@@ -12,15 +12,24 @@ Usage: python3 delivery_check.py <path to UniClipboard.app> [output dir]
 """
 import json, os, signal, subprocess, sys, time, urllib.error, urllib.request
 
-APP = os.path.abspath(sys.argv[1])
-GUI = os.path.join(APP, "Contents/MacOS/uniclipboard")
-HELPER_NAME = "uniclip-quick-panel"
-RUN = str(int(time.time()))
-OUT = os.path.abspath(sys.argv[2]) if len(sys.argv) > 2 else os.path.join(os.getcwd(), f"delivery-{RUN}")
-os.makedirs(OUT, exist_ok=True)
 PEEKABOO = "/opt/homebrew/bin/peekaboo"
 PASSPHRASE = "DeliveryCheck-2026!"
-RESULTS = open(os.path.join(OUT, "results.txt"), "a")
+HELPER_NAME = "uniclip-quick-panel"
+RUN = str(int(time.time()))
+APP = GUI = OUT = RESULTS = None
+
+
+def configure(app, out=None):
+    """Points the helpers at one app bundle and one output directory. The script's own entry
+    point calls this; other checks that import this module do too."""
+    global APP, GUI, OUT, RESULTS
+    APP = os.path.abspath(app)
+    GUI = os.path.join(APP, "Contents/MacOS/uniclipboard")
+    OUT = os.path.abspath(out) if out else os.path.join(os.getcwd(), f"delivery-{RUN}")
+    os.makedirs(OUT, exist_ok=True)
+    RESULTS = open(os.path.join(OUT, "results.txt"), "a")
+
+
 passed = []
 
 
@@ -96,7 +105,7 @@ class Profile:
         self.gui = subprocess.Popen([GUI], env=env, stdout=log, stderr=log, stdin=subprocess.DEVNULL)
         return self.gui.pid
 
-    def api(self, method, path, body=None):
+    def api(self, method, path, body=None, client_type="cli", pid=None):
         c = self.conn()
         base = f"http://{c['host']}:{c['port']}"
 
@@ -111,7 +120,7 @@ class Profile:
             except urllib.error.HTTPError as e:
                 return e.code, e.read()
 
-        status, raw = call("POST", "/auth/connect", {"pid": os.getpid(), "clientType": "cli"}, {"authorization": "Bearer " + c["token"]})
+        status, raw = call("POST", "/auth/connect", {"pid": pid or os.getpid(), "clientType": client_type}, {"authorization": "Bearer " + c["token"]})
         token = json.loads(raw)["data"]["sessionToken"]
         status, raw = call(method, path, body if body is not None else ({} if method == "POST" else None), {"authorization": "Session " + token})
         return status, raw.decode(errors="replace")
@@ -233,12 +242,15 @@ def main():
     open(os.path.join(OUT, "package-contents.txt"), "w").write(sh("ls", "-la", os.path.join(APP, "Contents/MacOS")))
 
     # 1. A first install: brand-new profile, no environment variable. Nothing is set up, so
-    #    content is locked and no helper may run.
+    #    content is locked: the helper runs, and the daemon refuses it any content.
     p = Profile("first")
     gui = p.start()
     check("fresh profile: daemon came up", bool(wait_for(p.conn, 90)))
     time.sleep(20)
-    check("fresh profile (nothing set up, locked): no helper is running", helper_of(gui) is None)
+    helper = helper_of(gui)
+    check("fresh profile: the helper is running by default", bool(helper), f"pid {helper}")
+    status, body = p.api("GET", "/search/query?query=&limit=1", client_type="gui")
+    check("fresh profile (nothing set up): the daemon refuses content to a GUI-class client", status == 423 and "content_locked" in body, f"{status} {body[:80]}")
 
     # 2. Setting up in the GUI unlocks content: the helper starts by itself, with the default
     #    settings. (A setup done through the daemon API alone does not give the GUI its grant.)
@@ -246,23 +258,29 @@ def main():
     onboard_in_gui(gui)
     shot("first-run-after-onboarding.png")
     check("space initialised through the GUI", p.api("GET", "/encryption/state")[1].find('"initialized":true') >= 0)
-    helper = wait_for(lambda: helper_of(gui), 20)
-    check("first install default: the helper starts once content is unlocked", bool(helper), f"pid {helper}")
+    helper = helper_of(gui)
+    check("first install default: the same helper keeps running through setup", bool(helper), f"pid {helper}")
+    status, body = p.api("GET", "/search/query?query=&limit=1", client_type="gui")
+    check("after setup in the GUI: the daemon serves content to a GUI-class client", status == 200, f"{status} {body[:80]}")
     if helper:
         time.sleep(3)
         port = p.conn()["port"]
         check("helper is connected to this profile's daemon", f":{port}" in sh("lsof", "-a", "-p", str(helper), "-i", "tcp", "-n", "-P"))
 
-    # 3. Locking while the panel is hidden stops the helper; unlocking starts it again.
+    # 3. Locking the session refuses content at once and leaves the helper up; unlocking the
+    #    session brings content back because the GUI still holds its grant.
     status, _ = p.api("POST", "/encryption/lock")
     check("daemon session locked", status == 200)
-    check("locked while hidden: the helper is stopped", bool(helper) and bool(wait_for(lambda: not alive(helper), 12)), f"pid {helper}")
-    check("locked: no helper remains under the GUI", helper_of(gui) is None)
+    time.sleep(1)
+    status, body = p.api("GET", "/search/query?query=&limit=1", client_type="gui")
+    check("session locked: the daemon refuses content to a GUI-class client", status == 423 and "content_locked" in body, f"{status} {body[:80]}")
+    check("session locked: the helper is still running", alive(helper))
     status, _ = p.api("POST", "/encryption/unlock")
-    helper = wait_for(lambda: helper_of(gui), 15)
-    check("unlocked again: the helper starts again", bool(helper), f"pid {helper}")
+    time.sleep(1)
+    status, body = p.api("GET", "/search/query?query=&limit=1", client_type="gui")
+    check("session unlocked again: content is served again (the grant was kept)", status == 200, f"{status} {body[:80]}")
 
-    # 4. Locking while the panel is shown stops the helper and clears what it showed.
+    # 4. Locking while the panel is shown: the panel drops what it showed.
     hide_gui(gui)
     time.sleep(2)
     hotkey("cmd,ctrl,v")
@@ -272,13 +290,17 @@ def main():
     shot("shown-before-lock.png")
     check("panel is on screen before locking", bool(shown), shown)
     p.api("POST", "/encryption/lock")
-    check("locked while shown: the helper is stopped", bool(helper) and bool(wait_for(lambda: not alive(helper), 12)))
+    gui_log_path = os.path.join(OUT, f"{p.name}-gui{p.count}.log")
+    dropped = wait_for(lambda: "Quick panel dropped its content" in open(gui_log_path, errors="replace").read(), 10)
+    check("locked while shown: the panel says it dropped rows, images and previews", bool(dropped))
     time.sleep(1)
     shot("shown-after-lock.png")
-    check("locked while shown: no panel window is left on screen", bool(shown) and not panel_windows(helper))
+    check("locked while shown: the panel window stays, showing the locked page", bool(shown) and bool(panel_windows(helper)))
     p.api("POST", "/encryption/unlock")
-    helper = wait_for(lambda: helper_of(gui), 15)
-    check("unlocked: helper back", bool(helper))
+    time.sleep(2)
+    check("unlocked: content is served again", p.api("GET", "/search/query?query=&limit=1", client_type="gui")[0] == 200)
+    hotkey("cmd,ctrl,v")
+    time.sleep(1)
 
     # 5. GUI crash: the helper must not outlive it. The daemon keeps running by design.
     daemon_pid = p.conn()["pid"]
@@ -288,21 +310,21 @@ def main():
     check("no helper is left after a GUI crash", bool(helper) and bool(wait_for(lambda: not alive(helper), 10)), f"pid {helper}")
     check("daemon survives a GUI crash (by design)", alive(daemon_pid))
 
-    # 6. GUI restart: the GUI grant starts closed (auto unlock is off), so no helper until the
-    #    user unlocks in the GUI. Then the real Unlock button starts it.
+    # 6. GUI restart: the GUI grant starts closed (auto unlock is off), so the helper runs but
+    #    is refused content until the user unlocks in the GUI with the real Unlock button.
     gui = p.start()
     time.sleep(25)
     wait_for(lambda: "UniClipboard - ID" in sh(PEEKABOO, "list", "windows", "--pid", str(gui), "--no-remote"), 30)
-    check("restart with content locked in the GUI: no helper is started", helper_of(gui) is None)
-    check("...while the daemon session itself is ready (why the gate is GUI-side)", p.api("GET", "/search/query?query=&limit=1")[0] == 200)
+    helper = wait_for(lambda: helper_of(gui), 20)
+    check("restart with content locked in the GUI: the helper runs", bool(helper), f"pid {helper}")
+    status, body = p.api("GET", "/search/query?query=&limit=1", client_type="gui")
+    check("...but the daemon refuses it content (the reported leak is closed)", status == 423 and "content_locked" in body, f"{status} {body[:80]}")
     shot("restart-locked-gui.png")
-    helper = None
     for attempt in range(1, 4):
         say(f"unlock click attempt {attempt}:", click_in_window(gui, 450, 371)[:200])
-        helper = wait_for(lambda: helper_of(gui), 10)
-        if helper:
+        if wait_for(lambda: p.api("GET", "/search/query?query=&limit=1", client_type="gui")[0] == 200, 10):
             break
-    check("Unlock button in the GUI starts the helper", bool(helper), f"pid {helper}")
+    check("Unlock button in the GUI grants content access", p.api("GET", "/search/query?query=&limit=1", client_type="gui")[0] == 200)
     shot("restart-unlocked-gui.png")
 
     # 7. Closing the main window destroys its WebView; the tray and the helper stay.
@@ -347,4 +369,6 @@ def main():
     return 0 if all(passed) else 1
 
 
-sys.exit(main())
+if __name__ == "__main__":
+    configure(sys.argv[1], sys.argv[2] if len(sys.argv) > 2 else None)
+    sys.exit(main())

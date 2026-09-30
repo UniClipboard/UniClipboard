@@ -622,6 +622,42 @@
         ],
         "type": "object"
       },
+      "ContentLockStatusEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ContentLockStatusResponse"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "ContentLockStatusResponse": {
+        "description": "Whether history-derived content may be shown to GUI-class clients (`gui`, `helper`).\n\n`unlocked` is computed at read time from the in-memory grant AND the encryption facts\n(initialised, session ready, background ready), so losing the session revokes visibility\nwithout any extra coupling. `generation` changes with every grant change, so a client can\ntell a stale answer from a current one.",
+        "properties": {
+          "generation": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "unlocked": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "unlocked",
+          "generation"
+        ],
+        "type": "object"
+      },
       "ContentTypesDto": {
         "properties": {
           "codeSnippet": {
@@ -8773,6 +8809,185 @@
         "summary": "POST /config/import/preview",
         "tags": [
           "config"
+        ]
+      }
+    },
+    "/content-lock": {
+      "get": {
+        "operationId": "getContentLock",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContentLockStatusEnvelope"
+                }
+              }
+            },
+            "description": "Whether content may be shown to GUI-class clients"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "The state could not be read"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "GET /content-lock",
+        "tags": [
+          "encryption"
+        ]
+      }
+    },
+    "/content-lock/revoke": {
+      "post": {
+        "description": "Withdraws the grant. Deliberately does not lock the encryption session: background sync and\ncapture keep working, only what GUI surfaces may show changes.",
+        "operationId": "revokeContentAccess",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContentLockStatusEnvelope"
+                }
+              }
+            },
+            "description": "Content access withdrawn"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "POST /content-lock/revoke",
+        "tags": [
+          "encryption"
+        ]
+      }
+    },
+    "/content-lock/unlock": {
+      "post": {
+        "description": "Verifies the passphrase (even when the session is already ready) and grants content access.\nA wrong passphrase leaves everything as it was. The body is never logged.",
+        "operationId": "unlockContent",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UnlockSpaceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContentLockStatusEnvelope"
+                }
+              }
+            },
+            "description": "Content unlocked"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Wrong passphrase"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Setup not completed / space not initialized"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Space key material corrupted"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "POST /content-lock/unlock",
+        "tags": [
+          "encryption"
+        ]
+      }
+    },
+    "/content-lock/unlock-keyring": {
+      "post": {
+        "description": "Resumes the session from the OS keychain and grants content access. Only for an explicit user\naction in the app, never called on its own.",
+        "operationId": "unlockContentFromKeyring",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContentLockStatusEnvelope"
+                }
+              }
+            },
+            "description": "Content unlocked when the keychain held a usable key"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "POST /content-lock/unlock-keyring",
+        "tags": [
+          "encryption"
         ]
       }
     },

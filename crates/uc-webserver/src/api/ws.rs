@@ -40,14 +40,43 @@ use crate::security::rate_limiter::{RateLimitDecision, AUTHENTICATED_MAX_REQUEST
 
 type ClientTopics = Arc<RwLock<HashSet<String>>>;
 
+/// Topics whose events describe history-derived content (previews, file names, senders). A
+/// connection of a gated client type receives none of them while content is locked.
+fn carries_content(topic: &str) -> bool {
+    matches!(topic, ws_topic::CLIPBOARD | ws_topic::FILE_TRANSFER)
+}
+
+#[cfg(test)]
+pub(crate) fn carries_content_for_tests(topic: &str) -> bool {
+    carries_content(topic)
+}
+
+/// What a connection needs to be held to the content lock. `None` for clients the lock does not
+/// apply to.
+type ContentGate = Option<DaemonApiState>;
+
 async fn forward_broadcast_events(
     mut broadcast_rx: broadcast::Receiver<DaemonWsEvent>,
     fanout_topics: ClientTopics,
     fanout_tx: mpsc::Sender<DaemonWsEvent>,
+    content_gate: ContentGate,
 ) {
     loop {
         match broadcast_rx.recv().await {
             Ok(event) => {
+                if let Some(state) = &content_gate {
+                    if carries_content(event.topic.as_str()) {
+                        // Decided per event, from the daemon's current answer, so a lock takes
+                        // effect on the next event. Not being able to tell counts as locked.
+                        let unlocked = crate::api::content_lock::resolve_status(state)
+                            .await
+                            .map(|status| status.unlocked)
+                            .unwrap_or(false);
+                        if !unlocked {
+                            continue;
+                        }
+                    }
+                }
                 let matched_topics = {
                     let guard = fanout_topics.read().await;
                     guard
@@ -274,10 +303,13 @@ async fn handle_connection(socket: WebSocket, state: DaemonApiState, claims: Ses
         let fanout_tx = outbound_tx.clone();
 
         // Fanout task: receives daemon events and forwards them to the client via outbound_tx.
+        let content_gate =
+            crate::api::content_lock::client_is_gated(&claims.client_type).then(|| state.clone());
         let fanout_task = tokio::spawn(forward_broadcast_events(
             broadcast_rx,
             fanout_topics,
             fanout_tx,
+            content_gate,
         ));
 
         // Heartbeat channel: the heartbeat task signals `Stale` when the client
@@ -500,6 +532,7 @@ fn is_supported_topic(topic: &str) -> bool {
             | ws_topic::PAIRING_SESSION
             | ws_topic::PAIRING_VERIFICATION
             | ws_topic::SETUP
+            | ws_topic::CONTENT_LOCK
             | ws_topic::CLIPBOARD
             | ws_topic::FILE_TRANSFER
             | ws_topic::ENCRYPTION
@@ -594,6 +627,16 @@ async fn build_snapshot_event(
         ws_topic::FILE_TRANSFER => Ok(None),
         ws_topic::DEVICE_TRUST => Ok(None),
         ws_topic::NETWORK_RECOVERY => Ok(None),
+
+        ws_topic::CONTENT_LOCK => snapshot_event(
+            ws_topic::CONTENT_LOCK,
+            ws_event::CONTENT_LOCK_CHANGED,
+            None,
+            crate::api::content_lock::resolve_status(state)
+                .await
+                .map_err(|error| anyhow::anyhow!(error.message))?,
+        )
+        .map(Some),
 
         ws_topic::ENCRYPTION => {
             // No snapshot for encryption — only an event is emitted on session_ready.
@@ -770,7 +813,12 @@ mod tests {
             .send(test_event("second"))
             .expect("send second event");
 
-        let task = tokio::spawn(forward_broadcast_events(broadcast_rx, topics, outbound_tx));
+        let task = tokio::spawn(forward_broadcast_events(
+            broadcast_rx,
+            topics,
+            outbound_tx,
+            None,
+        ));
 
         let event = timeout(Duration::from_secs(1), outbound_rx.recv())
             .await

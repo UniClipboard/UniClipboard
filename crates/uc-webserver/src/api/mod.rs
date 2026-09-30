@@ -5,6 +5,7 @@ pub mod auth;
 pub mod blob;
 pub mod clipboard;
 pub mod config;
+pub mod content_lock;
 pub mod control_lease;
 pub mod device;
 pub mod diagnostics;

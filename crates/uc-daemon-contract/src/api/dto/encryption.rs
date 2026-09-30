@@ -112,6 +112,19 @@ pub struct EncryptionStateResponse {
     pub session_ready: bool,
 }
 
+/// Whether history-derived content may be shown to GUI-class clients (`gui`, `helper`).
+///
+/// `unlocked` is computed at read time from the in-memory grant AND the encryption facts
+/// (initialised, session ready, background ready), so losing the session revokes visibility
+/// without any extra coupling. `generation` changes with every grant change, so a client can
+/// tell a stale answer from a current one.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ContentLockStatusResponse {
+    pub unlocked: bool,
+    pub generation: u64,
+}
+
 /// Internal event payload for the encryption.session_ready WS event.
 /// Serialized as part of DaemonWsEvent payload.
 #[derive(Debug, Clone, Serialize, ToSchema)]

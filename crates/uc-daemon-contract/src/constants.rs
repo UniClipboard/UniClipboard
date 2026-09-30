@@ -18,6 +18,8 @@ pub mod ws_topic {
     pub const SEARCH: &str = "search";
     pub const DEVICE_TRUST: &str = "device-trust";
     pub const NETWORK_RECOVERY: &str = "network-recovery";
+    /// Content-lock grant changes. Carries no content, only whether content may be shown.
+    pub const CONTENT_LOCK: &str = "content-lock";
 }
 
 /// WebSocket event type names emitted within topics.
@@ -68,6 +70,9 @@ pub mod ws_event {
     pub const SEARCH_REBUILD_PROGRESS: &str = "search.rebuild_progress";
     pub const DEVICE_TRUST_CHANGED: &str = "device-trust.changed";
     pub const NETWORK_RECOVERY_CHANGED: &str = "network-recovery.changed";
+    /// The content-lock grant changed, or a fact it depends on did (`{ unlocked, generation }`).
+    /// Clients must drop what they show when `unlocked` is false and refetch when it is true.
+    pub const CONTENT_LOCK_CHANGED: &str = "content_lock.changed";
     /// Lightweight inbound clipboard notice for CLI `watch` (ADR-008 P2.5).
     /// Emitted alongside `CLIPBOARD_NEW_CONTENT`; carries only display summaries
     /// and delivery metadata, never the full clipboard payload.
@@ -151,6 +156,15 @@ pub mod http_route {
     pub const CLIPBOARD_BLOBS: &str = "/clipboard/blobs";
     /// GET /clipboard/thumbnails/:rep_id — serve raw thumbnail binary content
     pub const CLIPBOARD_THUMBNAILS: &str = "/clipboard/thumbnails";
+    /// GET /content-lock — whether history-derived content may be shown to GUI-class clients
+    pub const CONTENT_LOCK: &str = "/content-lock";
+    /// POST /content-lock/unlock — verify the passphrase and grant content access
+    pub const CONTENT_LOCK_UNLOCK: &str = "/content-lock/unlock";
+    /// POST /content-lock/unlock-keyring — resume the session from the OS keychain and grant
+    /// content access (explicit user action only)
+    pub const CONTENT_LOCK_UNLOCK_KEYRING: &str = "/content-lock/unlock-keyring";
+    /// POST /content-lock/revoke — withdraw the grant; the encryption session is left alone
+    pub const CONTENT_LOCK_REVOKE: &str = "/content-lock/revoke";
     /// GET /search/query — execute a structured search query (Phase 92)
     pub const SEARCH_QUERY: &str = "/search/query";
     /// GET /search/status — get search index availability status (Phase 92)

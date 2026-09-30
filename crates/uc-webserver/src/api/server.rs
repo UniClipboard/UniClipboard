@@ -129,6 +129,9 @@ pub struct DaemonApiState {
     /// in this slice: only an Oneshot daemon's restart endpoint calls `request()`,
     /// and no Oneshot daemon exists until L8d.
     pub restart: crate::api::restart::RestartCoordinator,
+    /// The content-lock grant: whether GUI-class clients may read history-derived content.
+    /// In memory only, shared by every clone of this state, reset when the daemon restarts.
+    pub content_lock: crate::api::content_lock::ContentLock,
 }
 
 /// Max concurrent full-buffer blob pulls (D6 interim RSS guard; see
@@ -168,6 +171,7 @@ impl DaemonApiState {
             lease_registry: ControlLeaseRegistry::new(),
             quiescing: quiescing.clone(),
             restart: crate::api::restart::RestartCoordinator::new(quiescing),
+            content_lock: crate::api::content_lock::ContentLock::default(),
         }
     }
 
@@ -844,6 +848,11 @@ pub async fn run_http_server(
     // the socket address will be a default value (127.0.0.1:0) since there's no real
     // TCP connection. The SlidingWindowRateLimiter unit tests cover rate limiting logic
     // independently. IP-based rate limiting works correctly in production.
+    // Follows encryption events and revokes the content grant when its holder is gone.
+    tokio::spawn(crate::api::content_lock::run_watcher(
+        state.clone(),
+        cancel.clone(),
+    ));
     let make_service = build_router(state).into_make_service_with_connect_info::<SocketAddr>();
 
     axum::serve(listener, make_service)

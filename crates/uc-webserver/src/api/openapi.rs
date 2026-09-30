@@ -35,9 +35,10 @@ use crate::api::dto::diagnostics::{
 };
 use crate::api::dto::encryption::{
     AdmissionRecoveryActionDto, AdmissionRecoveryCategoryDto, AdmissionRecoveryDto,
-    AdmissionRecoveryStageDto, ChangeEncryptionPassphraseRequest, EncryptionActionResponse,
-    EncryptionStateResponse, KeychainAccessResponse, ProfileRecoveryLossDto,
-    ProfileRecoveryResponse, ProfileRecoveryStateDto, UnlockSpaceRequest, UnlockSpaceResponse,
+    AdmissionRecoveryStageDto, ChangeEncryptionPassphraseRequest, ContentLockStatusResponse,
+    EncryptionActionResponse, EncryptionStateResponse, KeychainAccessResponse,
+    ProfileRecoveryLossDto, ProfileRecoveryResponse, ProfileRecoveryStateDto, UnlockSpaceRequest,
+    UnlockSpaceResponse,
 };
 use crate::api::dto::error::ApiErrorResponse;
 use crate::api::dto::member::{
@@ -108,27 +109,28 @@ use uc_daemon_contract::api::dto::config::{
 use uc_daemon_contract::api::dto::envelope::{
     AckUpgradeEnvelope, CancelEntryReceiveEnvelope, CancelTransferEnvelope,
     CaptureCurrentClipboardEnvelope, CaptureUiEventEnvelope, ClearCacheEnvelope,
-    ClearHistoryEnvelope, ClipboardStatsEnvelope, CustomRelayListEnvelope,
-    CustomRelayMutationResultEnvelope, DebugStatusEnvelope, DeleteUpgradeBackupEnvelope,
-    DeviceGroupChoiceResultEnvelope, DeviceGroupChoicesEnvelope, DeviceTrustEnvelope,
-    DiagnosticCaptureStopEnvelope, DiagnosticStatusEnvelope, DispatchOutcomeEnvelope,
-    EncryptionActionEnvelope, EncryptionStateEnvelope, EntryDeliveryViewEnvelope,
-    EntryDetailEnvelope, EntryReceiveProgressEnvelope, EntryReceiveProgressListEnvelope,
-    EntryResourceEnvelope, ExportConfigEnvelope, ImportConfigEnvelope, KeychainAccessEnvelope,
-    LanInterfaceListEnvelope, LifecycleStatusEnvelope, ListEntriesEnvelope,
-    LocalDeviceInfoEnvelope, LogExportEnvelope, MemberSyncPreferencesEnvelope,
-    MemberSyncResultEnvelope, MobileDeviceListEnvelope, MobileSyncActionEnvelope,
-    MobileSyncSettingsEnvelope, NetworkRecoveryStatusEnvelope, PeerSnapshotListEnvelope,
-    PresenceRefreshEnvelope, PreviewImportEnvelope, ProfileRecoveryEnvelope,
-    RegisterMobileDeviceEnvelope, RelayCredentialStatusEnvelope, RelayProbeOutcomeEnvelope,
-    RelaySaveResultEnvelope, ResendEnvelope, RestartAcceptedEnvelope, RestoreEntryEnvelope,
-    RotateMobilePasswordEnvelope, SearchQueryEnvelope, SearchRebuildEnvelope, SearchStatusEnvelope,
-    SearchTagsEnvelope, SessionTokenEnvelope, SettingsEnvelope, SettingsUpdateResultEnvelope,
-    SetupCancelJoinEnvelope, SetupInitializeEnvelope, SetupIssueInvitationEnvelope,
-    SetupRedeemEnvelope, SetupStateEnvelope, SetupSwitchSpaceEnvelope, SpaceMemberListEnvelope,
-    SpaceProtectionEnvelope, StatusEnvelope, StorageStatsEnvelope, ToggleFavoriteEnvelope,
-    UnlockSpaceEnvelope, UpdateDebugModeEnvelope, UpdateMobileDeviceEnvelope,
-    UpdateMobileSyncSettingsEnvelope, UpgradeBackupListEnvelope, UpgradeStatusEnvelope,
+    ClearHistoryEnvelope, ClipboardStatsEnvelope, ContentLockStatusEnvelope,
+    CustomRelayListEnvelope, CustomRelayMutationResultEnvelope, DebugStatusEnvelope,
+    DeleteUpgradeBackupEnvelope, DeviceGroupChoiceResultEnvelope, DeviceGroupChoicesEnvelope,
+    DeviceTrustEnvelope, DiagnosticCaptureStopEnvelope, DiagnosticStatusEnvelope,
+    DispatchOutcomeEnvelope, EncryptionActionEnvelope, EncryptionStateEnvelope,
+    EntryDeliveryViewEnvelope, EntryDetailEnvelope, EntryReceiveProgressEnvelope,
+    EntryReceiveProgressListEnvelope, EntryResourceEnvelope, ExportConfigEnvelope,
+    ImportConfigEnvelope, KeychainAccessEnvelope, LanInterfaceListEnvelope,
+    LifecycleStatusEnvelope, ListEntriesEnvelope, LocalDeviceInfoEnvelope, LogExportEnvelope,
+    MemberSyncPreferencesEnvelope, MemberSyncResultEnvelope, MobileDeviceListEnvelope,
+    MobileSyncActionEnvelope, MobileSyncSettingsEnvelope, NetworkRecoveryStatusEnvelope,
+    PeerSnapshotListEnvelope, PresenceRefreshEnvelope, PreviewImportEnvelope,
+    ProfileRecoveryEnvelope, RegisterMobileDeviceEnvelope, RelayCredentialStatusEnvelope,
+    RelayProbeOutcomeEnvelope, RelaySaveResultEnvelope, ResendEnvelope, RestartAcceptedEnvelope,
+    RestoreEntryEnvelope, RotateMobilePasswordEnvelope, SearchQueryEnvelope, SearchRebuildEnvelope,
+    SearchStatusEnvelope, SearchTagsEnvelope, SessionTokenEnvelope, SettingsEnvelope,
+    SettingsUpdateResultEnvelope, SetupCancelJoinEnvelope, SetupInitializeEnvelope,
+    SetupIssueInvitationEnvelope, SetupRedeemEnvelope, SetupStateEnvelope,
+    SetupSwitchSpaceEnvelope, SpaceMemberListEnvelope, SpaceProtectionEnvelope, StatusEnvelope,
+    StorageStatsEnvelope, ToggleFavoriteEnvelope, UnlockSpaceEnvelope, UpdateDebugModeEnvelope,
+    UpdateMobileDeviceEnvelope, UpdateMobileSyncSettingsEnvelope, UpgradeBackupListEnvelope,
+    UpgradeStatusEnvelope,
 };
 use uc_daemon_contract::api::dto::storage::{
     ClearCacheRequest, ClearCacheResponse, DeleteUpgradeBackupRequest, DeleteUpgradeBackupResponse,
@@ -239,6 +241,10 @@ impl Modify for ContractMeta {
         crate::api::encryption::get_profile_recovery_handler,
         crate::api::encryption::change_encryption_passphrase_handler,
         crate::api::encryption::lock_handler,
+        crate::api::content_lock::get_status_handler,
+        crate::api::content_lock::unlock_handler,
+        crate::api::content_lock::unlock_keyring_handler,
+        crate::api::content_lock::revoke_handler,
         crate::api::encryption::factory_reset_handler,
         crate::api::encryption::verify_keychain_access_handler,
         // ── settings ───────────────────────────────────────────────
@@ -462,6 +468,8 @@ impl Modify for ContractMeta {
             AdmissionRecoveryStageDto,
             AdmissionRecoveryActionDto,
             EncryptionActionEnvelope,
+            ContentLockStatusEnvelope,
+            ContentLockStatusResponse,
             KeychainAccessEnvelope,
             UnlockSpaceEnvelope,
             EncryptionStateResponse,
@@ -749,6 +757,7 @@ mod assembly_smoke_tests {
         // CLI file dispatch adds one path and operation: 80 / 89.
         // Profile recovery status adds one path and operation: 81 / 90.
         // Engine-owned custom relay query/mutation share one path: 82 / 92.
+        // The daemon-owned content lock adds four paths and four operations: 86 / 96.
         const HTTP_METHODS: [&str; 7] =
             ["get", "put", "post", "delete", "patch", "head", "options"];
         let paths = value
@@ -757,8 +766,8 @@ mod assembly_smoke_tests {
             .expect("OpenAPI doc must declare paths");
         assert_eq!(
             paths.len(),
-            82,
-            "expected exactly 82 path templates, found {}: {:?}",
+            86,
+            "expected exactly 86 path templates, found {}: {:?}",
             paths.len(),
             paths.keys().collect::<Vec<_>>()
         );
@@ -772,13 +781,17 @@ mod assembly_smoke_tests {
             })
             .sum();
         assert_eq!(
-            operation_count, 92,
-            "expected exactly 92 operations across all paths, found {operation_count}"
+            operation_count, 96,
+            "expected exactly 96 operations across all paths, found {operation_count}"
         );
 
         // A few frozen operationIds (§D) must be present somewhere in the doc.
         let json = serde_json::to_string(&value).expect("re-serialize to string");
         for op in [
+            "getContentLock",
+            "unlockContent",
+            "unlockContentFromKeyring",
+            "revokeContentAccess",
             "dispatchClipboardText",
             "restoreClipboardEntry",
             "setupV2SwitchSpace",

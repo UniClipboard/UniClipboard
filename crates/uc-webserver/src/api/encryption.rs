@@ -449,6 +449,16 @@ async fn get_encryption_state_handler(
 async fn unlock_handler(
     State(state): State<DaemonApiState>,
 ) -> Result<Json<ApiEnvelope<EncryptionActionResponse>>, ApiError> {
+    let resumed = resume_session_from_keyring(&state).await?;
+    Ok(Json(ApiEnvelope::now(EncryptionActionResponse {
+        success: resumed,
+    })))
+}
+
+/// Resumes the encryption session from the OS keychain. Returns whether a session is ready
+/// afterwards (`false` when the space is not initialised). Shared by `POST /encryption/unlock`
+/// and `POST /content-lock/unlock-keyring`, so both behave the same way.
+pub(crate) async fn resume_session_from_keyring(state: &DaemonApiState) -> Result<bool, ApiError> {
     let result = state
         .execute(Operation::RecoverSession(RecoverSessionInput {
             allow_secure_storage_unlock: true,
@@ -459,18 +469,14 @@ async fn unlock_handler(
     match result {
         OperationResult::SessionRecovered { unlocked: true, .. } => {
             info!("encryption session auto-unlocked via keyring");
-            broadcast_session_ready(&state);
-            Ok(Json(ApiEnvelope::now(EncryptionActionResponse {
-                success: true,
-            })))
+            broadcast_session_ready(state);
+            Ok(true)
         }
         OperationResult::SessionRecovered {
             unlocked: false, ..
         } => {
             info!("encryption not initialized, skipping auto-unlock");
-            Ok(Json(ApiEnvelope::now(EncryptionActionResponse {
-                success: false,
-            })))
+            Ok(false)
         }
         _ => Err(ApiError::internal(
             "engine returned an unexpected recovery result",
@@ -506,9 +512,20 @@ async fn unlock_with_passphrase_handler(
     State(state): State<DaemonApiState>,
     Json(req): Json<UnlockSpaceRequest>,
 ) -> Result<Json<ApiEnvelope<UnlockSpaceResponse>>, ApiError> {
+    let space_id = unlock_space_with_passphrase(&state, req.passphrase).await?;
+    Ok(Json(ApiEnvelope::now(UnlockSpaceResponse { space_id })))
+}
+
+/// Verifies the passphrase against the space and unlocks it. Shared by
+/// `POST /encryption/unlock-with-passphrase` and `POST /content-lock/unlock`. The passphrase is
+/// never logged.
+pub(crate) async fn unlock_space_with_passphrase(
+    state: &DaemonApiState,
+    passphrase: String,
+) -> Result<String, ApiError> {
     let result = state
         .execute(Operation::UnlockSpace(UnlockSpaceInput {
-            passphrase: SecretString::new(req.passphrase),
+            passphrase: SecretString::new(passphrase),
         }))
         .await
         .map_err(map_unlock_engine_err)?;
@@ -519,9 +536,8 @@ async fn unlock_with_passphrase_handler(
     };
 
     info!("space unlocked via passphrase");
-    broadcast_session_ready(&state);
-
-    Ok(Json(ApiEnvelope::now(UnlockSpaceResponse { space_id })))
+    broadcast_session_ready(state);
+    Ok(space_id)
 }
 
 /// POST /encryption/passphrase
@@ -616,6 +632,8 @@ async fn lock_handler(
     }
 
     info!("encryption session cleared (locked)");
+    // Losing the session takes content visibility with it; tell content-lock subscribers.
+    crate::api::content_lock::notify_facts_changed(&state);
     Ok(Json(ApiEnvelope::now(EncryptionActionResponse {
         success: true,
     })))
@@ -648,6 +666,7 @@ async fn factory_reset_handler(
     }
 
     info!("space factory-reset completed");
+    crate::api::content_lock::notify_facts_changed(&state);
     Ok(Json(ApiEnvelope::now(EncryptionActionResponse {
         success: true,
     })))

@@ -14087,6 +14087,7 @@ dependencies = [
  "tracing-subscriber",
  "uc-daemon-contract",
  "uc-daemon-local",
+ "uc-daemon-process",
  "uc-engine",
  "uc-observability",
  "url",

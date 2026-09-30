@@ -30,8 +30,8 @@ use crate::api::dto::diagnostics::{
     UpdateDebugModeResultDto,
 };
 use crate::api::dto::encryption::{
-    EncryptionActionResponse, EncryptionStateResponse, KeychainAccessResponse,
-    ProfileRecoveryResponse, UnlockSpaceResponse,
+    ContentLockStatusResponse, EncryptionActionResponse, EncryptionStateResponse,
+    KeychainAccessResponse, ProfileRecoveryResponse, UnlockSpaceResponse,
 };
 use crate::api::dto::member::{
     DeviceGroupChoiceResultDto, DeviceGroupChoicesDto, DeviceTrustSnapshotDto,
@@ -129,6 +129,7 @@ use crate::api::types::{
     ProfileRecoveryEnvelope = ApiEnvelope<ProfileRecoveryResponse>,
     KeychainAccessEnvelope = ApiEnvelope<KeychainAccessResponse>,
     EncryptionActionEnvelope = ApiEnvelope<EncryptionActionResponse>,
+    ContentLockStatusEnvelope = ApiEnvelope<ContentLockStatusResponse>,
     UnlockSpaceEnvelope = ApiEnvelope<UnlockSpaceResponse>,
     // ── upgrade ─────────────────────────────────────────────────────
     UpgradeStatusEnvelope = ApiEnvelope<UpgradeStatusDto>,

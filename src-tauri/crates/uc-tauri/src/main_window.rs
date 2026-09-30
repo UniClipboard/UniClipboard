@@ -61,6 +61,10 @@ impl MainWindowLoadState {
         self.generation
     }
 
+    fn is_live_generation(&self, generation: u64) -> bool {
+        self.generation == generation && !self.destroyed
+    }
+
     fn request_reveal(&mut self) -> bool {
         self.reveal_requested = true;
         self.consume_reveal_request()
@@ -193,12 +197,16 @@ pub fn show_main_window(app: &tauri::AppHandle) {
         }
     };
 
-    if !load_state().request_reveal() {
-        info!("Main window reveal deferred until page and frontend are ready");
-        return;
-    }
+    let generation = {
+        let mut state = load_state();
+        if !state.request_reveal() {
+            info!("Main window reveal deferred until page and frontend are ready");
+            return;
+        }
+        state.generation
+    };
 
-    reveal_main_window(&window);
+    reveal_main_window(&window, generation);
 }
 
 fn handle_page_load_finished(window: &tauri::WebviewWindow, generation: u64) {
@@ -207,7 +215,7 @@ fn handle_page_load_finished(window: &tauri::WebviewWindow, generation: u64) {
         async move {
             tokio::time::sleep(REOPEN_REVEAL_GRACE).await;
             if load_state().mark_grace_elapsed(generation) {
-                reveal_main_window(&delayed_window);
+                reveal_main_window(&delayed_window, generation);
                 info!(
                     generation,
                     "Main window revealed while restoration continues"
@@ -220,7 +228,7 @@ fn handle_page_load_finished(window: &tauri::WebviewWindow, generation: u64) {
         return;
     }
 
-    reveal_main_window(window);
+    reveal_main_window(window, generation);
     info!(
         generation,
         "Main window revealed after page and frontend became ready"
@@ -229,7 +237,7 @@ fn handle_page_load_finished(window: &tauri::WebviewWindow, generation: u64) {
 
 pub(crate) fn handle_frontend_ready(window: &tauri::WebviewWindow, generation: u64) {
     if load_state().mark_frontend_ready(generation) {
-        reveal_main_window(window);
+        reveal_main_window(window, generation);
         info!(
             generation,
             "Main window revealed after page and frontend became ready"
@@ -239,17 +247,22 @@ pub(crate) fn handle_frontend_ready(window: &tauri::WebviewWindow, generation: u
 
 pub(crate) fn mark_presentation_ready(window: &tauri::WebviewWindow, generation: u64) {
     if window.label() == MAIN_WINDOW_LABEL && load_state().mark_content_ready(generation) {
-        reveal_main_window(window);
+        reveal_main_window(window, generation);
         info!(generation, "Main window revealed with restored content");
     }
 }
 
-fn reveal_main_window(window: &tauri::WebviewWindow) {
+fn reveal_main_window(window: &tauri::WebviewWindow, generation: u64) {
     let app = window.app_handle().clone();
     let window = window.clone();
     // Readiness/grace callbacks can run on Tokio threads. GTK display queries
     // and all restore/reveal operations belong on the native event thread.
     if let Err(error) = app.run_on_main_thread(move || {
+        // A queued reveal must not restore an obsolete handle into the next
+        // window generation's preference session.
+        if !load_state().is_live_generation(generation) {
+            return;
+        }
         crate::window_preferences::prepare_reveal(&window);
         if let Err(error) = window.unminimize().and_then(|_| window.show()).and_then(|_| window.set_focus()) {
             warn!(error = %error, error_kind = "main_window_reveal", "Failed to reveal main window");
@@ -282,7 +295,7 @@ fn schedule_reveal_fallback(window: &tauri::WebviewWindow, generation: u64) {
                     retryable = false,
                     "Main window readiness timed out; revealing the existing window"
                 );
-                reveal_main_window(&window);
+                reveal_main_window(&window, generation);
             }) {
                 warn!(
                     generation,
@@ -399,6 +412,21 @@ fn refresh_dock_icon(app: &tauri::AppHandle) {
 #[cfg(test)]
 mod tests {
     use super::MainWindowLoadState;
+
+    #[test]
+    fn queued_reveal_cannot_restore_a_destroyed_or_replaced_window() {
+        let mut state = MainWindowLoadState::default();
+        let first = state.mark_created();
+        state.request_reveal();
+        assert!(state.mark_reveal_timeout(first));
+        assert!(state.is_live_generation(first));
+        // The native callback can run after close, or after another creation.
+        state.mark_destroyed(first);
+        assert!(!state.is_live_generation(first));
+        let second = state.mark_created();
+        assert!(!state.is_live_generation(first));
+        assert!(state.is_live_generation(second));
+    }
 
     #[test]
     fn warm_open_requires_frame_readiness_and_restored_content() {

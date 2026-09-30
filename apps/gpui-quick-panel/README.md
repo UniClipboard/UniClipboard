@@ -38,7 +38,7 @@ macOS 构建需要包含 Metal 编译工具的 Xcode。如默认版本缺少组�
 - 回车／点击粘贴，Option 纯文本；搜索框无选中文字时 Command+C 复制并收起；空查询 Command+V 粘贴。
 - 右键复制、收藏、删除、发送设备、文件路径粘贴与定位文件。
 - 图片缩略图与三列图片墙、文字／图片／文件预览、后台变更订阅。
-- 现有主题预设和自定义颜色、Inter 与 JetBrains Mono 字体。
+- 现有主题预设和自定义颜色；字体使用系统字体（正文为系统界面字体，等宽在 macOS 为 Menlo、其他平台为 Consolas），不打包字体文件。
 
 自动粘贴需要 macOS 辅助功能权限；原应用已退出或焦点变化时保留错误提示，不盲发按键。原型只连接已有后台，不负责启动、初始化后台，不创建用户内容数据库或磁盘缓存。
 
@@ -104,11 +104,10 @@ uv run --with pillow python apps/gpui-quick-panel/tests/check_surface.py <历史
 
 全依赖严格检查仍会遇到既有 `uc-app-paths` 文档缩进警告，因此上面的严格检查使用 `--no-deps`。验证从隔离源码目录运行，避开本机祖先目录的 Engine 路径覆盖；锁文件保留仓库固定的 Engine 提交。
 
-主题和字体由已有前端来源导出，禁止独立维护另一套颜色值：
+主题颜色由已有前端来源导出，禁止独立维护另一套颜色值：
 
 ```bash
 bun apps/gpui-quick-panel/export-theme.ts
-uv run --with fonttools --with brotli python apps/gpui-quick-panel/export-fonts.py
 ```
 
 ## 高级搜索验证（2026-09-10）

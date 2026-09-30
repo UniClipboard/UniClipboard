@@ -91,16 +91,6 @@ fn main() -> anyhow::Result<()> {
                 gpui::KeyBinding::new("tab", panel::NextSuggestion, Some("QuickPanel")),
                 gpui::KeyBinding::new("shift-tab", panel::PreviousSuggestion, Some("QuickPanel")),
             ]);
-            if cx
-                .text_system()
-                .add_fonts(vec![
-                    std::borrow::Cow::Borrowed(include_bytes!("../assets/fonts/Inter.ttf")),
-                    std::borrow::Cow::Borrowed(include_bytes!("../assets/fonts/JetBrainsMono.ttf")),
-                ])
-                .is_err()
-            {
-                tracing::warn!("Could not load quick panel fonts");
-            }
             let manager = match shortcuts::Shortcuts::new() {
                 Ok(manager) => manager,
                 Err(_) => {

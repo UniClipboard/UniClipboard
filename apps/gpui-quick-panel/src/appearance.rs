@@ -82,7 +82,7 @@ pub fn apply(
     theme.colors.ring = color("ring")?;
     // Root paints the framework background; floating cards own their separate surfaces.
     theme.colors.background = gpui::transparent_black();
-    theme.font_family = "Inter".into();
-    theme.mono_font_family = "JetBrains Mono".into();
+    // Fonts stay at the system defaults of gpui-component (the system UI font; Menlo on macOS and
+    // Consolas elsewhere for monospace), so nothing is bundled.
     Ok(())
 }

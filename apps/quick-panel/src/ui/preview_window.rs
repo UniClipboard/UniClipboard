@@ -55,15 +55,17 @@ impl PreviewWindow {
             this.snapshot = next;
             if this.snapshot.is_image() {
                 if let Some(view) = &this.image_view {
-                    view.update(cx, |view, cx| view.update_source(&this.snapshot, cx));
+                    view.update(cx, |view, cx| {
+                        view.update_source(&this.snapshot, window, cx)
+                    });
                 } else {
                     this.image_view =
                         Some(cx.new(|cx| {
                             image_preview::ImagePreview::new(&this.snapshot, window, cx)
                         }));
                 }
-            } else {
-                this.image_view = None;
+            } else if let Some(view) = this.image_view.take() {
+                view.update(cx, |view, cx| view.release(window, cx));
             }
             if changed {
                 this.generation += 1;

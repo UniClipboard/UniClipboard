@@ -66,6 +66,9 @@ impl PanelState {
         vec![
             Effect::ReturnFocus,
             Effect::CancelReconnect,
+            // A hidden panel draws nothing, so it keeps no bitmaps; the next show loads them again.
+            Effect::ClearImages,
+            Effect::ClearImageBounds,
             Effect::ClearPreviewAnchor,
             Effect::CancelSearch,
             Effect::CancelPreview,

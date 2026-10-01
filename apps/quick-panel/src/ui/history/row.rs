@@ -29,7 +29,7 @@ impl Panel {
             .unwrap_or_else(|| text::value_label(&item.content_type).into())
             .replace(['\n', '\r'], " ");
 
-        let leading = match self.images.get(&item.entry_id) {
+        let leading = match self.thumbnails.get(&item.entry_id) {
             Some(image) if kind == RowKind::Image => div()
                 .w(units(24.))
                 .h(units(16.))

@@ -18,7 +18,7 @@ impl Panel {
             let Some(item) = (ix < visible.end).then(|| &self.state.search.items[ix]) else {
                 return div().flex_1().min_w_0().into_any_element();
             };
-            let image = self.images.get(&item.entry_id);
+            let image = self.thumbnails.get(&item.entry_id);
             let selected =
                 self.state.search.selection.selected() == Some(ix) && !self.state.suggest.focused;
             let primary = cx.theme().primary;

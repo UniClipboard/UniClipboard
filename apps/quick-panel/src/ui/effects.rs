@@ -19,7 +19,33 @@ impl Panel {
                 queue.push_front(follow);
             }
         }
+        self.release_stale_preview_image();
         cx.notify();
+    }
+
+    /// Gives back every bitmap and stops the work that would make more.
+    fn clear_images(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.tasks.thumbnails = None;
+        self.tasks.preview_decode = None;
+        self.preview_decoding = None;
+        for (_, data) in self.thumbnails.drain() {
+            cx.drop_image(data.image, Some(window));
+        }
+        // The preview window draws this bitmap, so it gives the texture back itself (see
+        // `ImagePreview::update_source`).
+        self.preview_image = None;
+    }
+
+    /// Lets go of the preview bitmap once the preview is no longer of its entry.
+    fn release_stale_preview_image(&mut self) {
+        let wanted = self.state.preview.entry.as_deref();
+        if self
+            .preview_image
+            .as_ref()
+            .is_some_and(|(id, _)| Some(id.as_str()) != wanted)
+        {
+            self.preview_image = None;
+        }
     }
 
     /// Carries out one effect. What it reports at once comes back as effects to run next.
@@ -61,7 +87,7 @@ impl Panel {
                 let lead = self.list_lead(cx);
                 self.scroll.scroll_to_item(ix + lead);
             }
-            Effect::ClearImages => self.images.clear(),
+            Effect::ClearImages => self.clear_images(window, cx),
             Effect::ClearImageBounds => self.image_bounds.clear(),
             Effect::ClearPreviewAnchor => self.preview_anchor = None,
             Effect::Search {
@@ -114,9 +140,29 @@ impl Panel {
                 self.tasks.preview_load = None;
             }
             Effect::StoreImage { id, payload, size } => {
-                if let Some(data) = Self::image_data(payload, size) {
-                    self.images.insert(id, data);
-                }
+                let renderer = cx.svg_renderer();
+                let runtime = self.runtime.clone();
+                self.preview_decoding = Some(id.clone());
+                self.tasks.preview_decode = Some(cx.spawn_in(window, async move |this, cx| {
+                    let decoded = runtime
+                        .spawn_blocking(move || {
+                            images::full(payload, size, |image| image.to_image_data(renderer).ok())
+                        })
+                        .await
+                        .ok()
+                        .flatten();
+                    let _ = this.update_in(cx, |this, _, cx| {
+                        this.preview_decoding = None;
+                        // The preview may have moved on while the image was being decoded; a
+                        // bitmap that was never drawn needs no release.
+                        if let Some(data) = decoded {
+                            if this.state.preview.entry.as_deref() == Some(id.as_str()) {
+                                this.preview_image = Some((id, data));
+                            }
+                        }
+                        cx.notify();
+                    });
+                }));
             }
             Effect::ScheduleBlurCheck(delay) => {
                 self.tasks.blur = Some(cx.spawn_in(window, async move |this, cx| {
@@ -386,15 +432,41 @@ impl Panel {
         });
     }
 
-    /// Loads the thumbnails of the image entries that have none yet, four at a time.
+    /// Loads the thumbnails of the image entries that have none yet, two at a time.
+    ///
+    /// A hidden panel draws nothing, so it loads nothing; the next show searches and loads again.
+    /// Only one image is decoded at a time, since a screenshot needs width x height x 4 bytes
+    /// while it is decoded, and the images in flight are held in memory in their encoded form.
     fn load_thumbnails(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.state.session.visible {
+            return;
+        }
+        // Bitmaps of entries that left the list are given back; a session cannot pile them up.
+        let listed: std::collections::HashSet<&str> = self
+            .state
+            .search
+            .items
+            .iter()
+            .map(|item| item.entry_id.as_str())
+            .collect();
+        let gone: Vec<String> = self
+            .thumbnails
+            .keys()
+            .filter(|id| !listed.contains(id.as_str()))
+            .cloned()
+            .collect();
+        for id in gone {
+            if let Some(data) = self.thumbnails.remove(&id) {
+                cx.drop_image(data.image, Some(window));
+            }
+        }
         let ids = self
             .state
             .search
             .items
             .iter()
             .filter(|item| {
-                item.content_type == "image" && !self.images.contains_key(&item.entry_id)
+                item.content_type == "image" && !self.thumbnails.contains_key(&item.entry_id)
             })
             .map(|item| item.entry_id.clone())
             .collect::<Vec<_>>();
@@ -409,16 +481,37 @@ impl Panel {
                 async move {
                     let mut tasks = tokio::task::JoinSet::new();
                     let mut ids = ids.into_iter();
+                    let decoding = Arc::new(tokio::sync::Semaphore::new(1));
                     loop {
-                        while tasks.len() < 4 {
+                        while tasks.len() < 2 {
                             let Some(id) = ids.next() else {
                                 break;
                             };
                             let history = history.clone();
+                            let decoding = decoding.clone();
                             tasks.spawn(
                                 async move {
                                     let result = history.preview(id.clone(), "image".into()).await;
-                                    (id, result)
+                                    // Decoding is CPU work and must not hold a runtime worker.
+                                    let decoded = match result {
+                                        Ok(data) => {
+                                            let size = data.size;
+                                            let _turn = decoding.acquire().await;
+                                            match data.image {
+                                                Some(payload) => {
+                                                    tokio::task::spawn_blocking(move || {
+                                                        images::thumbnail(payload, size)
+                                                    })
+                                                    .await
+                                                    .ok()
+                                                    .flatten()
+                                                }
+                                                None => None,
+                                            }
+                                        }
+                                        Err(_) => None,
+                                    };
+                                    (id, decoded)
                                 }
                                 .in_current_span(),
                             );
@@ -440,14 +533,10 @@ impl Panel {
                 }
                 .instrument(tracing::info_span!("gpui.thumbnails")),
             );
-            while let Some((id, result)) = receive.recv().await {
+            while let Some((id, decoded)) = receive.recv().await {
                 let _ = this.update(cx, |this, cx| {
-                    if let Some(data) = result.ok().and_then(|data| {
-                        let size = data.size;
-                        data.image
-                            .and_then(|payload| Self::image_data(payload, size))
-                    }) {
-                        this.images.insert(id, data);
+                    if let Some(data) = decoded {
+                        this.thumbnails.insert(id, data);
                     }
                     cx.notify();
                 });

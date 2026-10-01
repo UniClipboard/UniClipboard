@@ -27,7 +27,7 @@ pub struct ImagePreview {
 }
 
 impl ImagePreview {
-    pub fn new(snapshot: &PreviewSnapshot, window: &Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(snapshot: &PreviewSnapshot, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let mut view = Self {
             entry_id: None,
             data: None,
@@ -43,14 +43,31 @@ impl ImagePreview {
             checker_key: None,
             focus: cx.focus_handle(),
         };
-        view.update_source(snapshot, cx);
+        view.update_source(snapshot, window, cx);
         view
     }
 
-    pub fn update_source(&mut self, snapshot: &PreviewSnapshot, cx: &mut Context<Self>) {
+    pub fn update_source(
+        &mut self,
+        snapshot: &PreviewSnapshot,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let id = snapshot.item.as_ref().map(|item| item.entry_id.clone());
         let reset = self.entry_id != id;
         self.entry_id = id;
+        // This window is the one that draws the bitmap, so its texture is given back here, as soon
+        // as the bitmap is replaced or gone. Giving it back from anywhere else would let a repaint
+        // upload it again.
+        if let Some(old) = self.data.take() {
+            if !snapshot
+                .image
+                .as_ref()
+                .is_some_and(|new| Arc::ptr_eq(&new.image, &old.image))
+            {
+                cx.drop_image(old.image, Some(window));
+            }
+        }
         self.data = snapshot.image.clone();
         self.loading = snapshot.loading;
         self.error = if !self.loading && self.data.is_none() {
@@ -141,7 +158,22 @@ impl ImagePreview {
         }
     }
 
-    fn checkerboard(&mut self, cx: &Context<Self>) -> Option<Arc<RenderImage>> {
+    /// Gives the bitmaps back to GPUI. Call before the view is dropped.
+    pub fn release(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(data) = self.data.take() {
+            cx.drop_image(data.image, Some(window));
+        }
+        if let Some(checker) = self.checker.take() {
+            cx.drop_image(checker, Some(window));
+        }
+        self.checker_key = None;
+    }
+
+    fn checkerboard(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<Arc<RenderImage>> {
         let width = (self.viewport.viewport.width * self.display_scale).ceil() as u32;
         let height = (self.viewport.viewport.height * self.display_scale).ceil() as u32;
         if width == 0 || height == 0 {
@@ -173,6 +205,10 @@ impl ImagePreview {
                     b
                 }
             });
+            // The size follows the preview, so the old bitmap would otherwise stay in the atlas.
+            if let Some(old) = self.checker.take() {
+                cx.drop_image(old, Some(window));
+            }
             self.checker = Some(Arc::new(RenderImage::new(vec![image::Frame::new(raster)])));
             self.checker_key = Some(key);
         }
@@ -191,7 +227,7 @@ impl Render for ImagePreview {
         let display_scale = f64::from(window.scale_factor());
         let size = self.viewport.displayed_size();
         let origin = self.viewport.origin();
-        let checker = self.checkerboard(cx);
+        let checker = self.checkerboard(window, cx);
         let image = self.data.as_ref().map(|data| data.image.clone());
         let can_zoom = self.viewport.native.width > self.viewport.viewport.width + 1.
             || self.viewport.native.height > self.viewport.viewport.height + 1.;

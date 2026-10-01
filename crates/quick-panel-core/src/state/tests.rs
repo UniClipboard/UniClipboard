@@ -383,6 +383,15 @@ fn toggling_an_open_panel_hides_it() {
 }
 
 #[test]
+fn hiding_the_panel_gives_back_its_images() {
+    let fixture = Fixture::new();
+    let mut state = PanelState::new(fixture.now);
+    searched(&mut state, &["a", "b"]);
+    let effects = state.on_event(Event::WindowHidden, &fixture.ctx());
+    assert!(has(&effects, |e| matches!(e, Effect::ClearImages)));
+}
+
+#[test]
 fn a_window_that_cannot_be_hidden_stays_open_with_the_reason() {
     let (mut state, fixture) = open_panel(&["a"]);
     state.on_event(

@@ -167,8 +167,12 @@ impl Panel {
             .cloned();
         let image = item
             .as_ref()
-            .and_then(|item| self.images.get(&item.entry_id))
-            .cloned();
+            .and_then(|item| {
+                self.preview_image
+                    .as_ref()
+                    .filter(|(id, _)| id == &item.entry_id)
+            })
+            .map(|(_, data)| data.clone());
         let source_name = item.as_ref().and_then(|item| {
             let id = item.source_device.as_deref()?;
             state
@@ -183,7 +187,9 @@ impl Panel {
             item,
             image,
             text: state.preview.text.clone(),
-            loading: state.preview.loading,
+            loading: state.preview.loading
+                || (self.preview_decoding.is_some()
+                    && self.preview_decoding.as_deref() == state.preview.entry.as_deref()),
             anchor: self.preview_anchor,
             scale: self.scale,
             actions: state.actions_view(&data.ctx()),

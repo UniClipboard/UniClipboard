@@ -195,6 +195,7 @@ impl Panel {
             actions: state.actions_view(&data.ctx()),
             source_name,
             now_ms: chrono::Utc::now().timestamp_millis(),
+            open: state.session.visible,
         }
     }
 }

@@ -8,7 +8,7 @@
 // the shortcut of the installed app) and driven with peekaboo, so a visible, unlocked desktop is
 // required. The metric is `phys_footprint` from `footprint` (what Activity Monitor shows), never RSS.
 import { spawn, execFile } from 'node:child_process'
-import { readFileSync, appendFileSync, mkdtempSync } from 'node:fs'
+import { readFileSync, appendFileSync, mkdtempSync, rmSync } from 'node:fs'
 import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
@@ -31,6 +31,8 @@ const cycles = Number(arg('cycles', 10))
 const hold = Number(arg('hold', 0))
 // Like `hold`, but while the panel is open, right after the first show has settled.
 const holdShown = Number(arg('hold-shown', 0))
+// Fast show / search / hide rounds after the normal run, to exercise cancellation.
+const churn = Number(arg('churn', 0))
 const datasets = arg('datasets', 'empty,text,medium,large,animated,rotating').split(',')
 const peekaboo = process.env.PEEKABOO_BIN ?? '/opt/homebrew/bin/peekaboo'
 if (!binary || !imageDir || !outFile) throw new Error('--binary, --images and --out are required')
@@ -198,10 +200,15 @@ function startDaemon(name) {
   )
 }
 
+let footprintCalls = 0
 async function footprint(pid, scratch) {
-  const file = join(scratch, `fp-${pid}.json`)
-  await exec('footprint', ['-j', file, String(pid)]).catch(() => {})
+  // A fresh file for every call, and a failure is a failure: reading an earlier call's file would
+  // report an old sample as a new one.
+  const file = join(scratch, `fp-${pid}-${++footprintCalls}.json`)
+  await exec('footprint', ['-j', file, String(pid)])
   const process_ = JSON.parse(readFileSync(file, 'utf8')).processes[0]
+  if (process_.pid !== pid) throw new Error(`footprint reported pid ${process_.pid}, not ${pid}`)
+  rmSync(file)
   const category = name => process_.categories[name]?.dirty ?? 0
   const { stdout } = await exec('ps', ['-o', 'rss=', '-p', String(pid)])
   return {
@@ -217,6 +224,13 @@ async function footprint(pid, scratch) {
       Object.entries(process_.categories).map(([key, value]) => [key, value.dirty ?? 0])
     ),
   }
+}
+
+// CPU time the process has used so far, in seconds (`ps` prints [dd-][hh:]mm:ss.cc).
+async function cpuSeconds(pid) {
+  const { stdout } = await exec('ps', ['-o', 'time=', '-p', String(pid)])
+  const parts = stdout.trim().replace(/^(\d+)-/, '$1:').split(':')
+  return parts.reduce((total, part) => total * 60 + Number(part), 0)
 }
 
 const press = (pid, ...keys) =>
@@ -252,9 +266,24 @@ async function runDataset(name, scratch) {
     }
     throw new Error(`${name}: timed out waiting for ${description}`)
   }
-  // Opens the panel with its shortcut and waits until it has searched again, and until every
-  // image of the first page has been fetched (so a measurement never catches a half-loaded panel).
-  // Returns how long the images took, in milliseconds.
+  // The panel has done the work it was asked for when it stops using CPU. Delivery of the images
+  // by the daemon is not that: they are decoded afterwards, off the request path, so this waits
+  // for three consecutive 400 ms windows with less than 30 ms of CPU time in each.
+  const quiet = async () => {
+    let still = 0
+    let last = await cpuSeconds(app.pid)
+    const end = Date.now() + 60_000
+    while (still < 3) {
+      if (Date.now() > end) throw new Error(`${name}: the panel kept using CPU for 60 s`)
+      await delay(400)
+      const now = await cpuSeconds(app.pid)
+      still = now - last < 0.03 ? still + 1 : 0
+      last = now
+    }
+  }
+  // Opens the panel with its shortcut and waits until it has searched again, until every image of
+  // the first page has been delivered, and then until it is quiet (see `quiet`). Returns how long
+  // that took, in milliseconds: from the shortcut to the panel being idle again.
   const show = async () => {
     const before = { ...daemon.stats }
     const started = Date.now()
@@ -275,9 +304,8 @@ async function runDataset(name, scratch) {
       'the images to be fetched',
       () => daemon.stats.resources - before.resources >= images
     )
-    const loadMs = Date.now() - started
-    await delay(1500)
-    return loadMs
+    await quiet()
+    return Date.now() - started
   }
   const hide = async () => {
     await press(app.pid, 'escape')
@@ -320,6 +348,29 @@ async function runDataset(name, scratch) {
     await record('hidden-after-preview-5s')
     await delay(30000)
     await record('hidden-after-preview-35s')
+    if (churn > 0) {
+      // Show, change the search at once (rotating histories answer with new images), and hide
+      // before anything has settled; then show again. Cancelled loads and decodes must not leave
+      // bitmaps behind or run past the decode limit.
+      for (let round = 1; round <= churn; round++) {
+        await hotkey()
+        await delay(120)
+        await exec(peekaboo, ['type', 'a', '--pid', String(app.pid), '--no-auto-focus', '--no-remote'], {
+          timeout: 15_000,
+        })
+        await delay(350)
+        await press(app.pid, 'escape')
+        await delay(80)
+        if (round % 10 === 0) await record(`churn-${round}-hidden-fast`)
+      }
+      const churnMs = await show()
+      await record('churn-final-shown', { loadMs: churnMs })
+      await hide()
+      await delay(5000)
+      await record('churn-final-hidden-5s')
+      await delay(30000)
+      await record('churn-final-hidden-35s')
+    }
     if (hold > 0) {
       console.log(`${name}: holding pid ${app.pid} for ${hold}s`)
       await delay(hold * 1000)

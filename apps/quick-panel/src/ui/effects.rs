@@ -142,10 +142,16 @@ impl Panel {
             Effect::StoreImage { id, payload, size } => {
                 let renderer = cx.svg_renderer();
                 let runtime = self.runtime.clone();
+                let gate = self.decode_gate.clone();
                 self.preview_decoding = Some(id.clone());
                 self.tasks.preview_decode = Some(cx.spawn_in(window, async move |this, cx| {
+                    // Waiting for the gate happens here, so dropping this task also drops the wait.
+                    let Ok(permit) = gate.acquire_owned().await else {
+                        return;
+                    };
                     let decoded = runtime
                         .spawn_blocking(move || {
+                            let _permit = permit;
                             images::full(payload, size, |image| image.to_image_data(renderer).ok())
                         })
                         .await
@@ -438,6 +444,9 @@ impl Panel {
     /// Only one image is decoded at a time, since a screenshot needs width x height x 4 bytes
     /// while it is decoded, and the images in flight are held in memory in their encoded form.
     fn load_thumbnails(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        // A new pass replaces the running one, even when nothing is left to load: the old pass
+        // must not put back a bitmap that was just given back.
+        self.tasks.thumbnails = None;
         if !self.state.session.visible {
             return;
         }
@@ -475,20 +484,20 @@ impl Panel {
         }
         let runtime = self.runtime.clone();
         let history = self.history.clone();
+        let gate = self.decode_gate.clone();
         self.tasks.thumbnails = Some(cx.spawn_in(window, async move |this, cx| {
             let (send, mut receive) = tokio::sync::mpsc::channel(4);
             runtime.spawn(
                 async move {
                     let mut tasks = tokio::task::JoinSet::new();
                     let mut ids = ids.into_iter();
-                    let decoding = Arc::new(tokio::sync::Semaphore::new(1));
                     loop {
                         while tasks.len() < 2 {
                             let Some(id) = ids.next() else {
                                 break;
                             };
                             let history = history.clone();
-                            let decoding = decoding.clone();
+                            let gate = gate.clone();
                             tasks.spawn(
                                 async move {
                                     let result = history.preview(id.clone(), "image".into()).await;
@@ -496,17 +505,17 @@ impl Panel {
                                     let decoded = match result {
                                         Ok(data) => {
                                             let size = data.size;
-                                            let _turn = decoding.acquire().await;
-                                            match data.image {
-                                                Some(payload) => {
+                                            match (data.image, gate.acquire_owned().await) {
+                                                (Some(payload), Ok(permit)) => {
                                                     tokio::task::spawn_blocking(move || {
+                                                        let _permit = permit;
                                                         images::thumbnail(payload, size)
                                                     })
                                                     .await
                                                     .ok()
                                                     .flatten()
                                                 }
-                                                None => None,
+                                                _ => None,
                                             }
                                         }
                                         Err(_) => None,
@@ -535,7 +544,17 @@ impl Panel {
             );
             while let Some((id, decoded)) = receive.recv().await {
                 let _ = this.update(cx, |this, cx| {
-                    if let Some(data) = decoded {
+                    // Only a bitmap that is still wanted is kept: the panel is open and the entry
+                    // is in the current results. Anything else was never drawn, so dropping it
+                    // is all the release it needs.
+                    let wanted = this.state.session.visible
+                        && this
+                            .state
+                            .search
+                            .items
+                            .iter()
+                            .any(|item| item.entry_id == id);
+                    if let Some(data) = decoded.filter(|_| wanted) {
                         this.thumbnails.insert(id, data);
                     }
                     cx.notify();

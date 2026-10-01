@@ -57,12 +57,16 @@ struct PreviewSnapshot {
     /// Name of the device the entry came from, when it is known.
     source_name: Option<String>,
     now_ms: i64,
+    /// The panel is open. A hidden panel draws nothing, so its preview window keeps no bitmaps.
+    open: bool,
 }
 
 impl PreviewSnapshot {
-    /// An image is drawn full size, except while the action list replaces it.
+    /// An image is drawn full size, except while the action list replaces it, and only while the
+    /// panel is open.
     fn is_image(&self) -> bool {
-        self.actions.is_none()
+        self.open
+            && self.actions.is_none()
             && self
                 .item
                 .as_ref()
@@ -106,6 +110,10 @@ pub struct Panel {
     preview_image: Option<(String, ImageData)>,
     /// The entry whose preview image has arrived from the daemon and is being decoded.
     preview_decoding: Option<String>,
+    /// Allows one image decode at a time across the whole panel. A permit travels into the
+    /// blocking closure, so it is released when the decode ends, not when the task that asked
+    /// for it is dropped (dropping a task cannot stop a blocking closure that already started).
+    decode_gate: Arc<tokio::sync::Semaphore>,
     anchor: (f64, f64),
     scale: f64,
     /// General settings from the last successful read. They are applied before every show, so the
@@ -183,6 +191,7 @@ impl Panel {
             thumbnails: HashMap::new(),
             preview_image: None,
             preview_decoding: None,
+            decode_gate: Arc::new(tokio::sync::Semaphore::new(1)),
             anchor: (f64::from(bounds.origin.x), f64::from(bounds.origin.y)),
             scale: std::env::var("UC_GPUI_SCALE")
                 .ok()

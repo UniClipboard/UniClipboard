@@ -29,6 +29,8 @@ const cycles = Number(arg('cycles', 10))
 // Keeps the panel running this many seconds after the last measurement, so that it can be
 // inspected (for example with vmmap) while it is in its final state.
 const hold = Number(arg('hold', 0))
+// Like `hold`, but while the panel is open, right after the first show has settled.
+const holdShown = Number(arg('hold-shown', 0))
 const datasets = arg('datasets', 'empty,text,medium,large,animated,rotating').split(',')
 const peekaboo = process.env.PEEKABOO_BIN ?? '/opt/homebrew/bin/peekaboo'
 if (!binary || !imageDir || !outFile) throw new Error('--binary, --images and --out are required')
@@ -287,6 +289,10 @@ async function runDataset(name, scratch) {
     await record('first-show', { loadMs, images: expectedImages(daemon.rows()) })
     await delay(10000)
     await record('shown-12s')
+    if (holdShown > 0) {
+      console.log(`${name}: holding pid ${app.pid} while shown for ${holdShown}s`)
+      await delay(holdShown * 1000)
+    }
     await hide()
     await delay(5000)
     await record('hidden-5s')

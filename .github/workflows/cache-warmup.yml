@@ -157,7 +157,8 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf xvfb
+          # Same list as coverage.yml; libxkbcommon-x11-dev is linked by the GPUI quick panel's test binary.
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf xvfb libxkbcommon-x11-dev
 
       - name: Generate coverage report
         env:

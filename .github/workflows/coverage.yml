@@ -60,7 +60,9 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf xvfb
+          # libxkbcommon-x11-dev: the workspace includes the GPUI quick panel (apps/quick-panel), whose
+          # Linux test binary links xkbcommon-x11 (rust-lld: unable to find library -lxkbcommon-x11).
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf xvfb libxkbcommon-x11-dev
 
       - name: Generate coverage report
         env:

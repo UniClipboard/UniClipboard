@@ -30,7 +30,11 @@ fn shell_quote(value: &std::ffi::OsStr) -> String {
     format!("'{}'", value.replace('\'', "'\"'\"'"))
 }
 
-fn script_command(transcript: &std::path::Path, binary: &std::path::Path, args: &[&str]) -> Command {
+fn script_command(
+    transcript: &std::path::Path,
+    binary: &std::path::Path,
+    args: &[&str],
+) -> Command {
     let mut command = Command::new("script");
     command.arg("-q");
     #[cfg(target_os = "linux")]
@@ -71,7 +75,11 @@ struct ScriptedDaemon {
 }
 
 impl ScriptedDaemon {
-    async fn start(name: &str, scripts: Vec<Vec<Value>>, entries: &[(&str, &'static str, &'static str)]) -> Self {
+    async fn start(
+        name: &str,
+        scripts: Vec<Vec<Value>>,
+        entries: &[(&str, &'static str, &'static str)],
+    ) -> Self {
         let profile = TestProfile::new(name);
         let daemon = TestDaemon::start(profile)
             .await
@@ -84,17 +92,25 @@ impl ScriptedDaemon {
             "--device-name",
             "scripted-get-wait",
         ]);
-        assert!(initialized.success(), "initialize backing daemon: {}", initialized.stderr);
+        assert!(
+            initialized.success(),
+            "initialize backing daemon: {}",
+            initialized.stderr
+        );
         let connection_path = daemon.profile.data_dir().join("daemon.conn");
         let backing_connection: Value = serde_json::from_slice(
             &std::fs::read(&connection_path).expect("read backing daemon connection"),
         )
         .expect("decode backing daemon connection");
-        let backing_pid = backing_connection["pid"].as_u64().expect("backing daemon pid");
+        let backing_pid = backing_connection["pid"]
+            .as_u64()
+            .expect("backing daemon pid");
         // `init` already passed the CLI's version check against this real daemon,
         // so its reported version is the one the CLI under test expects.
         let package_version = backing_package_version(&daemon).await;
-        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind scripted daemon");
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind scripted daemon");
         let port = listener.local_addr().expect("scripted address").port();
         let state = ScriptedState {
             package_version: package_version.into(),
@@ -103,9 +119,7 @@ impl ScriptedDaemon {
             entries: Arc::new(Mutex::new(
                 entries
                     .iter()
-                    .map(|(id, kind, content)| {
-                        ((*id).to_string(), ScriptedEntry { kind, content })
-                    })
+                    .map(|(id, kind, content)| ((*id).to_string(), ScriptedEntry { kind, content }))
                     .collect(),
             )),
         };
@@ -117,7 +131,9 @@ impl ScriptedDaemon {
             .route("/clipboard/entries/:id", get(entry_detail))
             .with_state(state);
         let task = tokio::spawn(async move {
-            axum::serve(listener, app).await.expect("serve scripted daemon");
+            axum::serve(listener, app)
+                .await
+                .expect("serve scripted daemon");
         });
         std::fs::write(
             &connection_path,
@@ -262,44 +278,56 @@ fn event(event_type: &str, payload: Value) -> Value {
 }
 
 fn pending(entry: &str, attempt: &str, total: Option<u64>, filenames: &[&str]) -> Value {
-    event("clipboard.incoming_pending", json!({
-        "entryId": entry,
-        "attemptId": attempt,
-        "fromDevice": "peer",
-        "totalBytes": total,
-        "filenames": filenames
-    }))
+    event(
+        "clipboard.incoming_pending",
+        json!({
+            "entryId": entry,
+            "attemptId": attempt,
+            "fromDevice": "peer",
+            "totalBytes": total,
+            "filenames": filenames
+        }),
+    )
 }
 
 fn progress(entry: &str, attempt: &str, direction: &str, bytes: u64, total: Option<u64>) -> Value {
-    event("file-transfer.progress", json!({
-        "transferId": format!("transfer-{entry}"),
-        "entryId": entry,
-        "attemptId": attempt,
-        "peerId": "peer",
-        "direction": direction,
-        "bytesTransferred": bytes,
-        "totalBytes": total
-    }))
+    event(
+        "file-transfer.progress",
+        json!({
+            "transferId": format!("transfer-{entry}"),
+            "entryId": entry,
+            "attemptId": attempt,
+            "peerId": "peer",
+            "direction": direction,
+            "bytesTransferred": bytes,
+            "totalBytes": total
+        }),
+    )
 }
 
 fn status(entry: &str, attempt: &str, status: &str) -> Value {
-    event("file-transfer.status_changed", json!({
-        "transferId": format!("transfer-{entry}"),
-        "entryId": entry,
-        "attemptId": attempt,
-        "status": status,
-        "reason": "scripted"
-    }))
+    event(
+        "file-transfer.status_changed",
+        json!({
+            "transferId": format!("transfer-{entry}"),
+            "entryId": entry,
+            "attemptId": attempt,
+            "status": status,
+            "reason": "scripted"
+        }),
+    )
 }
 
 fn completed(entry: &str) -> Value {
-    event("clipboard.new_content", json!({
-        "entryId": entry,
-        "preview": entry,
-        "origin": "remote",
-        "fromDevice": "peer"
-    }))
+    event(
+        "clipboard.new_content",
+        json!({
+            "entryId": entry,
+            "preview": entry,
+            "origin": "remote",
+            "fromDevice": "peer"
+        }),
+    )
 }
 
 fn run_pty(daemon: &ScriptedDaemon, args: &[&str]) -> String {
@@ -309,7 +337,11 @@ fn run_pty(daemon: &ScriptedDaemon, args: &[&str]) -> String {
         .env("UNICLIPBOARD_ENV", "development")
         .output()
         .expect("run scripted PTY command");
-    assert!(output.status.success(), "PTY command failed: {}", String::from_utf8_lossy(&output.stderr));
+    assert!(
+        output.status.success(),
+        "PTY command failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     std::fs::read_to_string(transcript.path()).expect("read terminal transcript")
 }
 
@@ -327,11 +359,18 @@ async fn get_wait_progress_correlates_direction_entry_attempt_and_known_total() 
             completed("target"),
         ]],
         &[("target", "text", "known-total-result")],
-    ).await;
+    )
+    .await;
     let transcript = run_pty(&daemon, &["get", "--wait"]);
-    assert!(transcript.contains("500 B/1000 B"), "target progress missing: {transcript:?}");
+    assert!(
+        transcript.contains("500 B/1000 B"),
+        "target progress missing: {transcript:?}"
+    );
     for unrelated in ["991 B", "992 B", "993 B"] {
-        assert!(!transcript.contains(unrelated), "unrelated progress leaked: {transcript:?}");
+        assert!(
+            !transcript.contains(unrelated),
+            "unrelated progress leaked: {transcript:?}"
+        );
     }
     assert!(transcript.contains("known-total-result"));
 }
@@ -347,19 +386,29 @@ async fn get_wait_unknown_total_and_json_keep_stdout_clean() {
             completed("unknown"),
         ]],
         &[("unknown", "text", "unknown-total-result")],
-    ).await;
+    )
+    .await;
     let transcript = run_pty(&daemon, &["get", "--wait"]);
     assert!(transcript.contains("Receiving"));
-    assert!(transcript.contains("4.0 KiB"), "unknown total bytes missing: {transcript:?}");
+    assert!(
+        transcript.contains("4.0 KiB"),
+        "unknown total bytes missing: {transcript:?}"
+    );
 
     let json_daemon = ScriptedDaemon::start(
         "get-wait-script-json",
         vec![vec![completed("json-entry")]],
         &[("json-entry", "text", "json-result")],
-    ).await;
-    let output = json_daemon.command().args(["--json", "get", "--wait"]).output().expect("run JSON wait");
+    )
+    .await;
+    let output = json_daemon
+        .command()
+        .args(["--json", "get", "--wait"])
+        .output()
+        .expect("run JSON wait");
     assert!(output.status.success());
-    let value: Value = serde_json::from_slice(&output.stdout).expect("stdout must be one JSON value");
+    let value: Value =
+        serde_json::from_slice(&output.stdout).expect("stdout must be one JSON value");
     assert_eq!(value["text"], "json-result");
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(!stderr.contains('\r') && !stderr.contains("\u{1b}["));
@@ -375,18 +424,38 @@ async fn get_wait_filters_ignore_mismatches_and_id_does_not_lock_existing_transf
             completed("other"),
             completed("wanted"),
         ]],
-        &[("other", "text", "wrong"), ("wanted", "text", "wanted-result")],
-    ).await;
-    let output = daemon.command().args(["get", "--wait", "--id", "wanted"]).output().expect("run id wait");
-    assert!(output.status.success(), "id wait failed: {}", String::from_utf8_lossy(&output.stderr));
+        &[
+            ("other", "text", "wrong"),
+            ("wanted", "text", "wanted-result"),
+        ],
+    )
+    .await;
+    let output = daemon
+        .command()
+        .args(["get", "--wait", "--id", "wanted"])
+        .output()
+        .expect("run id wait");
+    assert!(
+        output.status.success(),
+        "id wait failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     assert_eq!(String::from_utf8_lossy(&output.stdout), "wanted-result");
 
     let typed = ScriptedDaemon::start(
         "get-wait-script-type",
         vec![vec![completed("file-entry"), completed("text-entry")]],
-        &[("file-entry", "file", "wrong"), ("text-entry", "text", "typed-result")],
-    ).await;
-    let output = typed.command().args(["get", "--wait", "--type", "text"]).output().expect("run type wait");
+        &[
+            ("file-entry", "file", "wrong"),
+            ("text-entry", "text", "typed-result"),
+        ],
+    )
+    .await;
+    let output = typed
+        .command()
+        .args(["get", "--wait", "--type", "text"])
+        .output()
+        .expect("run type wait");
     assert!(output.status.success());
     assert_eq!(String::from_utf8_lossy(&output.stdout), "typed-result");
 }
@@ -402,8 +471,15 @@ async fn get_wait_target_failure_and_cancellation_exit_with_clean_noninteractive
                 status("target", "attempt", terminal),
             ]],
             &[],
-        ).await;
-        let output = daemon.command().args(["get", "--wait"]).stdout(Stdio::piped()).stderr(Stdio::piped()).output().expect("run terminal wait");
+        )
+        .await;
+        let output = daemon
+            .command()
+            .args(["get", "--wait"])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .output()
+            .expect("run terminal wait");
         assert_eq!(output.status.code(), Some(EXIT_ERROR));
         assert!(output.stdout.is_empty());
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -425,10 +501,22 @@ async fn get_wait_reconnect_clears_the_previous_target() {
             vec![status("stale", "attempt", "failed"), completed("fresh")],
         ],
         &[("fresh", "text", "reconnected-result")],
-    ).await;
-    let output = daemon.command().args(["get", "--wait"]).output().expect("run reconnect wait");
-    assert!(output.status.success(), "reconnect wait failed: {}", String::from_utf8_lossy(&output.stderr));
-    assert_eq!(String::from_utf8_lossy(&output.stdout), "reconnected-result");
+    )
+    .await;
+    let output = daemon
+        .command()
+        .args(["get", "--wait"])
+        .output()
+        .expect("run reconnect wait");
+    assert!(
+        output.status.success(),
+        "reconnect wait failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "reconnected-result"
+    );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("reconnecting") && stderr.contains("Reconnected"));
 }

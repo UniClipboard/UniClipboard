@@ -140,6 +140,12 @@ export const commands = {
 	detail: string,
 	observedVersion: string | null,
 	expectedVersion: string | null,
+	/**
+	 *  Last startup status observed from the daemon when it reported a terminal failure. Kept
+	 *  here because the daemon may exit afterwards, so the failure page must not depend on
+	 *  reading the status again.
+	 */
+	startupStatus: DaemonStartupStatus | null,
 } | null, CommandError>(__TAURI_INVOKE("get_daemon_bootstrap_failure", { trace })),
 	/**  Read authenticated startup state without requiring a working business API. */
 	getDaemonStartupStatus: (trace: {
@@ -682,6 +688,12 @@ export type DaemonBootstrapFailure = {
 	detail: string,
 	observedVersion: string | null,
 	expectedVersion: string | null,
+	/**
+	 *  Last startup status observed from the daemon when it reported a terminal failure. Kept
+	 *  here because the daemon may exit afterwards, so the failure page must not depend on
+	 *  reading the status again.
+	 */
+	startupStatus: DaemonStartupStatus | null,
 };
 
 /**
@@ -930,7 +942,12 @@ export type StartupFailureDto = {
 	retryable: boolean,
 };
 
-export type StartupFailureReasonDto = "backup_failed" | "storage_full" | "permission_denied" | "storage_unavailable" | "protection_unavailable" | "corrupt_data" | "source_changed" | "already_running" | "startup_failed";
+export type StartupFailureReasonDto = "backup_failed" | "storage_full" | "permission_denied" | "storage_unavailable" | "protection_unavailable" | 
+/**
+ *  The key that decrypts the upgrade-backup security record is missing. Raised by the
+ *  host from the structured Engine start result, never by Engine progress snapshots.
+ */
+"upgrade_backup_key_missing" | "corrupt_data" | "source_changed" | "already_running" | "startup_failed";
 
 export type StartupSnapshotDto = {
 	attempt_id: string,

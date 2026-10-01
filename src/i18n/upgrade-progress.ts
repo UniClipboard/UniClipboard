@@ -47,6 +47,8 @@ export const upgradeProgressZh = {
     storage_unavailable: '暂时无法访问本地存储。请检查磁盘是否可用。',
     protection_unavailable:
       '资料的保护信息暂时不可用。请保留现有资料并导出诊断记录；如果资料来自另一台设备，需要检查原设备的保护材料。',
+    upgrade_backup_key_missing:
+      '升级备份的安全记录需要一把密钥才能解密，但这把密钥已经缺失，所以应用无法继续启动。这并不表示剪贴板内容或其他用户资料已经丢失，现有资料和备份都没有被改动。此情况重试无法解决，请不要重复安装或重试，也不要删除备份。请导出诊断记录并联系作者，由其确认下一步。',
     corrupt_data: '资料校验未通过。请保留现有资料并导出诊断记录。',
     source_changed: '升级期间原资料发生了变化。关闭使用该资料的其他程序后重试。',
     already_running: '另一项任务正在处理这份资料。请等待它完成。',
@@ -111,6 +113,8 @@ export const upgradeProgressJa: typeof upgradeProgressZh = {
       'ローカルストレージにアクセスできません。ディスクが利用可能か確認してください。',
     protection_unavailable:
       'データ保護情報を利用できません。既存のデータを保持し、診断情報をエクスポートしてください。別の端末から移したデータには、元の端末の保護情報が必要な場合があります。',
+    upgrade_backup_key_missing:
+      'アップグレード用バックアップのセキュリティ記録を復号するための鍵が見つからないため、アプリを起動できません。クリップボードの内容やその他のデータがすべて失われたという意味ではなく、既存のデータとバックアップは変更されていません。再試行では解決しません。再インストールや再試行を繰り返したり、バックアップを削除したりしないでください。診断情報をエクスポートして開発者に連絡し、次の手順を確認してください。',
     corrupt_data:
       'データの検証に失敗しました。既存のデータを保持し、診断情報をエクスポートしてください。',
     source_changed:
@@ -181,6 +185,8 @@ export const upgradeProgressPt: typeof upgradeProgressZh = {
       'O armazenamento local está indisponível. Verifique se o disco está acessível.',
     protection_unavailable:
       'As informações de proteção dos dados estão indisponíveis. Preserve os dados existentes e exporte o diagnóstico. Dados movidos de outro dispositivo podem precisar das informações de proteção originais.',
+    upgrade_backup_key_missing:
+      'A chave necessária para decifrar o registro de segurança do backup de atualização está ausente, por isso o aplicativo não consegue iniciar. Isso não significa que o conteúdo da área de transferência ou outros dados tenham sido perdidos: os dados e os backups existentes não foram alterados. Tentar novamente não resolve. Não reinstale, não repita a tentativa e não exclua os backups. Exporte o diagnóstico e entre em contato com o autor para confirmar o próximo passo.',
     corrupt_data:
       'A verificação dos dados falhou. Preserve os dados existentes e exporte o diagnóstico.',
     source_changed:
@@ -250,6 +256,8 @@ export const upgradeProgressRu: typeof upgradeProgressZh = {
     storage_unavailable: 'Локальное хранилище недоступно. Проверьте доступность диска.',
     protection_unavailable:
       'Данные защиты недоступны. Сохраните существующие данные и экспортируйте диагностику. Для данных с другого устройства могут потребоваться исходные данные защиты.',
+    upgrade_backup_key_missing:
+      'Ключ, необходимый для расшифровки записи безопасности резервной копии обновления, отсутствует, поэтому приложение не может запуститься. Это не означает, что содержимое буфера обмена или другие данные утеряны: существующие данные и резервные копии не изменялись. Повторная попытка не поможет. Не переустанавливайте приложение, не повторяйте попытки и не удаляйте резервные копии. Экспортируйте диагностику и свяжитесь с автором, чтобы уточнить дальнейшие действия.',
     corrupt_data:
       'Проверка данных не пройдена. Сохраните существующие данные и экспортируйте диагностику.',
     source_changed:
@@ -317,6 +325,8 @@ export const upgradeProgressEn = {
     storage_unavailable: 'Local storage is unavailable. Check that the disk is accessible.',
     protection_unavailable:
       'Data protection materials are unavailable. Keep the existing data and export diagnostics. Data moved from another device may require its original protection materials.',
+    upgrade_backup_key_missing:
+      'The key needed to decrypt the security record of the upgrade backup is missing, so the app cannot continue starting. This does not mean your clipboard content or other data has been lost: your existing data and backups have not been changed. Retrying will not fix this. Do not reinstall, retry repeatedly, or delete backups. Export diagnostics and contact the author to confirm the next step.',
     corrupt_data: 'Data verification failed. Keep the existing data and export diagnostics.',
     source_changed:
       'The original data changed during the upgrade. Close other apps using this data before retrying.',

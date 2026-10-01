@@ -131,6 +131,26 @@ export function createSpecRuns({
         },
       ]
     }
+    if (slug === 'startup-failure') {
+      if (hostPlatform !== 'darwin' || hostArch !== 'arm64') return []
+      const fixture = upgradeFixtures.at(-1)
+      return [
+        { scenario: 'upgrade-backup-key-missing', seed: [] },
+        { scenario: 'other-start-failure', seed: ['--shared-directory'] },
+      ].map(({ scenario, seed }) => {
+        const scenarioProfile = `${isolatedProfile}-${scenario}`
+        return {
+          spec,
+          profiles: [scenarioProfile],
+          env: { E2E_UC_PROFILE: scenarioProfile, E2E_STARTUP_SCENARIO: scenario },
+          fixture: {
+            directory: `tests/e2e/fixtures/upgrades/v${fixture.version}/macos-aarch64/single-node-empty`,
+            profile: scenarioProfile,
+          },
+          staleUpgradeBackup: { profile: scenarioProfile, args: seed },
+        }
+      })
+    }
     if (slug === 'upgrade-re-pair-notice' && hostPlatform === 'darwin' && hostArch === 'arm64') {
       return upgradeFixtures.map(fixture => {
         const versionSlug = fixture.version.replaceAll('.', '-').replaceAll('+', '-')

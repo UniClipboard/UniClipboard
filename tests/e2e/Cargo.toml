@@ -30,6 +30,10 @@ path = "src/bin/build_upgrade_userdata_fixture.rs"
 name = "restore-upgrade-userdata-fixture"
 path = "src/bin/restore_upgrade_userdata_fixture.rs"
 
+[[bin]]
+name = "seed-stale-upgrade-security-record"
+path = "src/bin/seed_stale_upgrade_security_record.rs"
+
 [features]
 membership-diagnostics = []
 historical-membership = []
@@ -57,6 +61,7 @@ axum = { version = "0.7", features = ["ws"] }
 futures-util = "0.3"
 flate2 = "1"
 sha2 = "0.10"
+blake3 = "1"
 tar = "0.4"
 zip = { version = "2.4.2", default-features = false, features = ["deflate"] }
 

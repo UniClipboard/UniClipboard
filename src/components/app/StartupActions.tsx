@@ -103,9 +103,10 @@ export function StartupActions({ failed, onExport, onRetry, required, snapshot }
         )}
       </div>
       {exportState === 'failed' && (
-        <p role="alert" className="mt-3 text-ui-body text-destructive">
-          {t('upgradeProgress.exportFailed')}
-        </p>
+        <div role="alert" className="mt-3 break-words text-ui-body [overflow-wrap:anywhere]">
+          <p className="text-destructive">{t('upgradeProgress.exportFailed')}</p>
+          <p className="mt-1 select-text text-muted-foreground">{STARTUP_SUPPORT_URL}</p>
+        </div>
       )}
       {exportState === 'done' && (
         <p role="status" className="mt-3 text-ui-body text-muted-foreground">

@@ -19,6 +19,12 @@ pub enum DaemonBootstrapError {
     Client(anyhow::Error),
     #[error("failed to probe daemon health: {0}")]
     Probe(anyhow::Error),
+    /// The daemon's own startup status reports a terminal failure. The last observed status is
+    /// kept so the GUI can still explain the failure after the daemon process has exited.
+    #[error("daemon startup did not complete; see startup status")]
+    StartupFailed {
+        status: Box<uc_daemon_contract::startup::DaemonStartupStatus>,
+    },
     #[error("incompatible daemon is already running: {details}")]
     IncompatibleDaemon { details: String },
     /// ADR-008 P4-7 (OQ-downgrade-rollback): the running daemon is a strictly

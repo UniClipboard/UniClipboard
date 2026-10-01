@@ -58,6 +58,7 @@ describe('startup recovery screen', () => {
           detail: 'version mismatch',
           observedVersion: '2.0.0',
           expectedVersion: '1.0.0',
+          startupStatus: null,
         }}
         onRetry={vi.fn()}
       />

@@ -133,6 +133,9 @@ async fn run_async_with_diagnostics(
                 error = %format!("{error:#}"),
                 "engine startup failed; startup status remains available"
             );
+            if let Some(engine_error) = error.downcast_ref::<uc_engine::EngineError>() {
+                startup_server.record_engine_start_failure(engine_error);
+            }
             // Keep the terminal snapshot readable until an explicit retry or full quit.
             wait_for_shutdown_signal().await?;
             startup_server.shutdown().await?;

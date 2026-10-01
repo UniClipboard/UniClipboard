@@ -136,6 +136,10 @@ pub struct DaemonBootstrapFailure {
     pub detail: String,
     pub observed_version: Option<String>,
     pub expected_version: Option<String>,
+    /// Last startup status observed from the daemon when it reported a terminal failure. Kept
+    /// here because the daemon may exit afterwards, so the failure page must not depend on
+    /// reading the status again.
+    pub startup_status: Option<uc_daemon_contract::startup::DaemonStartupStatus>,
 }
 
 /// Classify a [`DaemonBootstrapError`] into the frontend-facing payload.
@@ -149,12 +153,21 @@ pub fn classify_bootstrap_failure(error: &DaemonBootstrapError) -> DaemonBootstr
             detail: error.to_string(),
             observed_version: Some(observed.clone()),
             expected_version: Some(expected.clone()),
+            startup_status: None,
+        },
+        DaemonBootstrapError::StartupFailed { status } => DaemonBootstrapFailure {
+            kind: DaemonBootstrapFailureKind::Unavailable,
+            detail: error.to_string(),
+            observed_version: None,
+            expected_version: None,
+            startup_status: Some((**status).clone()),
         },
         _ => DaemonBootstrapFailure {
             kind: DaemonBootstrapFailureKind::Unavailable,
             detail: error.to_string(),
             observed_version: None,
             expected_version: None,
+            startup_status: None,
         },
     }
 }

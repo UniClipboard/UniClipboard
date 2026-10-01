@@ -32,6 +32,7 @@ describe('appBootstrapReducer', () => {
       detail: 'Expected a newer app version',
       observedVersion: '2.0.0',
       expectedVersion: '2.1.0',
+      startupStatus: null,
     }
 
     expect(

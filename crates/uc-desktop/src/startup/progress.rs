@@ -131,9 +131,9 @@ where
                 });
             }
             if status.is_failed() {
-                return Err(DaemonBootstrapError::Probe(anyhow::anyhow!(
-                    "daemon startup did not complete; see startup status"
-                )));
+                return Err(DaemonBootstrapError::StartupFailed {
+                    status: Box::new(status),
+                });
             }
             // A responding startup owner is not a failed health check. The UI shows its progress.
             deadline = tokio::time::Instant::now() + timeout;

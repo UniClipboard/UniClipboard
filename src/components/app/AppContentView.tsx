@@ -56,6 +56,18 @@ export function AppContentView({
         <AppStatusScreen detail={null} onRetry={recovery.refresh} />
       </AppStateFrame>
     )
+  } else if (view === 'failure' && bootstrap.bootstrapFailure?.startupStatus) {
+    // The daemon reported a structured startup failure and may have exited since, so the
+    // GUI-held status is the source for the page.
+    content = (
+      <AppStateFrame titleBar={fullTitleBar}>
+        <StartupProgressScreen
+          snapshot={startupViewSnapshot(bootstrap.bootstrapFailure.startupStatus, false)}
+          onRetry={bootstrap.retry}
+          onExport={async () => (await exportStartupLogs()) !== null}
+        />
+      </AppStateFrame>
+    )
   } else if (view === 'failure') {
     content = (
       <AppStateFrame titleBar={fullTitleBar}>

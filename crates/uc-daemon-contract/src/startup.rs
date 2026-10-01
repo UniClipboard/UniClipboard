@@ -42,6 +42,9 @@ pub enum StartupFailureReasonDto {
     PermissionDenied,
     StorageUnavailable,
     ProtectionUnavailable,
+    /// The key that decrypts the upgrade-backup security record is missing. Raised by the
+    /// host from the structured Engine start result, never by Engine progress snapshots.
+    UpgradeBackupKeyMissing,
     CorruptData,
     SourceChanged,
     AlreadyRunning,

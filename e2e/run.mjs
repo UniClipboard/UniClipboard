@@ -192,6 +192,24 @@ for (const specRun of specRuns) {
       `升级 userdata 样本恢复失败：${path.basename(specRun.spec)}`
     )
   }
+  if (specRun.staleUpgradeBackup) {
+    run(
+      'cargo',
+      [
+        'run',
+        '--locked',
+        '--manifest-path',
+        'tests/e2e/Cargo.toml',
+        '--bin',
+        'seed-stale-upgrade-security-record',
+        '--',
+        '--profile',
+        specRun.staleUpgradeBackup.profile,
+        ...specRun.staleUpgradeBackup.args,
+      ],
+      `过期升级备份记录样本准备失败：${path.basename(specRun.spec)}`
+    )
+  }
   if (recoverySpec) {
     const recoveryProfile = specRun.env.E2E_UC_PROFILE
     if (!recoveryProfile?.includes('profile-key-recovery'))

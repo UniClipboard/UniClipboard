@@ -4,3 +4,5 @@ if (import.meta.env.DEV && new URLSearchParams(window.location.search).has('upgr
 } else {
   void import('@/bootstrap')
 }
+
+void import('@/diagnostics/dragProbe').then(m => m.installDragProbe())

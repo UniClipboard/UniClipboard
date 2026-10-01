@@ -200,4 +200,9 @@ This permanently discards the old pairing, trust, and sync relationships but
 keeps local history, completed files, settings, device identity, and unlock
 access. Every device must pair again. This is not a factory reset.
 
+Reset keeps the current passphrase. To change it, use `uniclip space change-passphrase`
+(only for an unlocked space where this device is the only member). `uniclip space init`
+is for a device that has no space yet and fails with "setup has already been completed"
+after a reset.
+
 See the [CLI reference](./reference) for all public commands and options.

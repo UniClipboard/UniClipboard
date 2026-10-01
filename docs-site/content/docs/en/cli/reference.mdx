@@ -17,10 +17,18 @@ the user guide.
 | `uniclip space invite`      | Issue a one-time pairing invitation.                                                                           |
 | `uniclip space join`        | Enter an invitation interactively, or pass `--code <CODE>`; add `--switch` to move to a different space.      |
 | `uniclip space reset --yes` | Rebuild as a new one-device space while retaining local history, completed files, settings, and device access. |
+| `uniclip space change-passphrase` | Change the space passphrase of an unlocked, single-device space while keeping local history. |
 
 Space reset permanently discards old pairing, trust, and sync relationships.
 Every device must pair again. It does not erase local history and is not a
-factory reset.
+factory reset. It keeps the current passphrase.
+
+`uniclip space change-passphrase` prompts for the new passphrase twice (or takes
+`--passphrase <PASSPHRASE>`; required with `--json`). It does not ask for the
+current passphrase. It is only accepted while this device is the only member of
+the space and the space is unlocked, and it invalidates unused pairing
+invitations. `uniclip space init` cannot be used for this: it only works on a
+device that has no space yet.
 
 For scripts, `uniclip --json space init --passphrase <PASSPHRASE>` returns one
 JSON object containing `space_id`, `device_id`, and `fingerprint`. The

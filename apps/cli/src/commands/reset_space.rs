@@ -18,7 +18,7 @@ pub async fn run(json: bool, verbose: bool) -> i32 {
         ui::warn("All existing device relationships will be permanently discarded.");
         ui::info(
             "kept",
-            "Local clipboard history, completed files, settings, device identity, and unlock access.",
+            "Local clipboard history, completed files, settings, device identity, unlock access, and the current passphrase.",
         );
     }
 
@@ -44,6 +44,10 @@ pub async fn run(json: bool, verbose: bool) -> i32 {
         )
     } else {
         ui::success("Space rebuilt. Local history was kept; pair every device again.");
+        ui::info(
+            "note",
+            "The passphrase is unchanged. To change it, run `uniclip space change-passphrase`.",
+        );
         exit_codes::EXIT_SUCCESS
     }
 }

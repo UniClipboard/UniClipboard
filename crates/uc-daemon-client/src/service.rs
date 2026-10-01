@@ -57,6 +57,13 @@ pub trait DaemonService: Send + Sync {
 
     async fn reset_space(&self) -> Result<()>;
 
+    /// Replace the space passphrase of an unlocked, single-device space.
+    async fn change_encryption_passphrase(
+        &self,
+        passphrase: &str,
+        passphrase_confirmation: &str,
+    ) -> Result<()>;
+
     async fn choose_device_group(
         &self,
         request: &ChooseDeviceGroupRequestDto,

@@ -184,4 +184,8 @@ uniclip space reset --yes
 这会永久废弃旧的配对、信任和同步关系，但保留本机历史、已完成文件、设置、
 设备身份和解锁能力。所有设备都需要重新配对。这不是恢复出厂设置。
 
+重建不会改变当前口令。要修改口令，请使用 `uniclip space change-passphrase`（仅限已解锁且本机是
+唯一成员的空间）。`uniclip space init` 只用于还没有空间的设备，重建后再运行会提示
+“setup has already been completed”。
+
 所有公开命令和参数见 [CLI 参考](./reference)。

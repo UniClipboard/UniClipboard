@@ -4,11 +4,12 @@ use anyhow::Result;
 use reqwest::Method;
 use uc_daemon_contract::api::dto::device::LocalDeviceInfoDto;
 use uc_daemon_contract::api::dto::encryption::{
-    ContentLockStatusResponse, EncryptionStateResponse,
+    ChangeEncryptionPassphraseRequest, ContentLockStatusResponse, EncryptionStateResponse,
 };
 use uc_daemon_contract::api::types::{
     PeerSnapshotDto, PresenceRefreshResponse, SpaceMemberDto, StatusResponse,
 };
+use uc_daemon_contract::constants::http_route;
 
 use crate::http::enveloped::{empty_request, enveloped_request};
 use crate::DaemonConnectionState;
@@ -118,6 +119,31 @@ impl DaemonQueryClient {
             Method::POST,
             "/encryption/unlock-with-passphrase",
             |request| request.json(&serde_json::json!({ "passphrase": passphrase })),
+        )
+        .await?;
+        Ok(())
+    }
+
+    /// Replace the space passphrase. The daemon only accepts it for an unlocked, single-device
+    /// space and retires outstanding pairing invitations. Never log the request body or include
+    /// it in errors.
+    pub async fn change_encryption_passphrase(
+        &self,
+        passphrase: &str,
+        passphrase_confirmation: &str,
+    ) -> Result<()> {
+        let _: serde_json::Value = enveloped_request(
+            &self.http,
+            &self.connection_state,
+            &self.client_type,
+            Method::POST,
+            http_route::ENCRYPTION_PASSPHRASE,
+            |request| {
+                request.json(&ChangeEncryptionPassphraseRequest {
+                    passphrase: passphrase.to_string(),
+                    passphrase_confirmation: passphrase_confirmation.to_string(),
+                })
+            },
         )
         .await?;
         Ok(())
@@ -245,5 +271,73 @@ mod connectivity_tests {
             .unwrap()
             .iter()
             .all(|request| request.url.path() != "/presence/refresh"));
+    }
+
+    #[tokio::test]
+    async fn change_encryption_passphrase_posts_both_fields_with_the_session() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST")).and(path("/auth/connect"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "data": { "sessionToken": "test-session", "expiresInSecs": 300, "refreshAtSecs": 240 }, "ts": 1
+            }))).mount(&server).await;
+        Mock::given(method("POST"))
+            .and(path("/encryption/passphrase"))
+            .and(body_json(serde_json::json!({
+                "passphrase": "new-secret",
+                "passphraseConfirmation": "new-secret"
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "data": { "success": true }, "ts": 2
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let state = DaemonConnectionState::default();
+        state.set(DaemonConnectionInfo {
+            base_url: server.uri(),
+            ws_url: "ws://127.0.0.1/unused".into(),
+            token: "test-bearer".into(),
+            pid: 42,
+        });
+        let client = DaemonQueryClient::new(state).unwrap();
+
+        client
+            .change_encryption_passphrase("new-secret", "new-secret")
+            .await
+            .expect("passphrase change request");
+    }
+
+    #[tokio::test]
+    async fn change_encryption_passphrase_surfaces_the_daemon_rejection_message() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST")).and(path("/auth/connect"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "data": { "sessionToken": "test-session", "expiresInSecs": 300, "refreshAtSecs": 240 }, "ts": 1
+            }))).mount(&server).await;
+        Mock::given(method("POST"))
+            .and(path("/encryption/passphrase"))
+            .respond_with(ResponseTemplate::new(409).set_body_json(serde_json::json!({
+                "code": "MULTIPLE_DEVICES",
+                "message": "passphrase can only be changed in a single-device space"
+            })))
+            .mount(&server)
+            .await;
+        let state = DaemonConnectionState::default();
+        state.set(DaemonConnectionInfo {
+            base_url: server.uri(),
+            ws_url: "ws://127.0.0.1/unused".into(),
+            token: "test-bearer".into(),
+            pid: 42,
+        });
+        let client = DaemonQueryClient::new(state).unwrap();
+
+        let error = client
+            .change_encryption_passphrase("a", "a")
+            .await
+            .expect_err("a multi-device space must be rejected");
+        let request_error = error
+            .downcast_ref::<crate::DaemonRequestError>()
+            .expect("typed daemon error");
+        assert_eq!(request_error.code(), Some("MULTIPLE_DEVICES"));
     }
 }

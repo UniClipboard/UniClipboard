@@ -120,9 +120,22 @@ pub async fn run(args: InitArgs, json: bool, verbose: bool) -> i32 {
             } else {
                 ui::error(&crate::commands::daemon_error_message(&err));
             }
+            if !json && is_already_set_up(&err) {
+                ui::info(
+                    "hint",
+                    "This device already has a space. To change its passphrase, run `uniclip space change-passphrase`.",
+                );
+            }
             exit_codes::EXIT_ERROR
         }
     }
+}
+
+/// `space init` is first-run only; the daemon answers 409 once a space exists.
+fn is_already_set_up(err: &anyhow::Error) -> bool {
+    err.downcast_ref::<uc_daemon_client::DaemonRequestError>()
+        .and_then(uc_daemon_client::DaemonRequestError::status)
+        == Some(reqwest::StatusCode::CONFLICT)
 }
 
 #[cfg(test)]

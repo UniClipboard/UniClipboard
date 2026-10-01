@@ -44,6 +44,7 @@ cargo build -p uc-cli
 | `uniclip space join --no-wait`            | 发起加入后，如果请求仍在等待，只报告当前状态并立即返回。                                                                                                                                                                                                 |
 | `uniclip space join status`               | 查看 Engine 保存的当前加入状态。                                                                                                                                                                                                                         |
 | `uniclip space join cancel`               | 取消当前仍在等待的加入请求。                                                                                                                                                                                                                             |
+| `uniclip space change-passphrase`         | 修改已解锁、仅本机一个成员的空间口令；保留本机历史，作废未使用的邀请。可用 `--passphrase`，`--json` 模式必须提供。 |
 | `uniclip space reset --yes`               | 重建为只包含本机的新空间；保留本机历史、已完成文件、设置、设备身份和解锁能力，所有设备需要重新配对。                                                                                                                                                      |
 | `uniclip member list`               | 列出空间成员（本机 + 已配对设备）及在线状态；加 `--probe` 主动探测刷新状态。旧的 `members` 与 `devices` 已隐藏并弃用，但仍可调用。                                                                                                                       |
 | `uniclip member remove <PEER-ID>`   | 移除一个空间成员；即使对方离线也会立即记录并停止向它发送新内容。                                                                                                                                                                                         |
@@ -151,7 +152,8 @@ uniclip blob fetch <TICKET> --entry-id <ENTRY_ID> --out ./restored.bin
 
 `uniclip space reset --yes` 会创建一个只包含本机的新空间，并永久废弃与所有旧设备的
 配对、信任和同步关系。本机剪贴板历史、已完成文件、设置、设备身份和解锁能力都会保留；
-其他设备不会被删除，但必须重新配对后才能恢复同步。这不是恢复出厂设置。
+其他设备不会被删除，但必须重新配对后才能恢复同步。这不是恢复出厂设置，口令保持不变；
+要修改口令请用 `uniclip space change-passphrase`，`uniclip space init` 只适用于还没有空间的设备。
 
 ## 隐藏的剪贴板诊断命令组（`probe`）
 

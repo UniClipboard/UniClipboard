@@ -442,6 +442,12 @@ enum SpaceCommands {
         #[arg(long, required = true)]
         yes: bool,
     },
+    /// Change the space passphrase (unlocked, single-device space only). Keeps local history.
+    ChangePassphrase {
+        /// New space passphrase. If omitted, prompts interactively with confirmation.
+        #[arg(long)]
+        passphrase: Option<String>,
+    },
     /// Join a space with an invitation code and passphrase.
     #[command(args_conflicts_with_subcommands = true)]
     Join {
@@ -526,6 +532,14 @@ async fn run_space_command(command: SpaceCommands, json: bool, verbose: bool) ->
         }
         SpaceCommands::Invite => commands::invite::run(json, verbose).await,
         SpaceCommands::Reset { yes: _ } => commands::reset_space::run(json, verbose).await,
+        SpaceCommands::ChangePassphrase { passphrase } => {
+            commands::change_passphrase::run(
+                commands::change_passphrase::ChangePassphraseArgs { passphrase },
+                json,
+                verbose,
+            )
+            .await
+        }
         SpaceCommands::Join {
             code,
             passphrase,
@@ -998,6 +1012,34 @@ mod tests {
                     ..
                 }
             }) if code == "ABCD-1234" && passphrase == "secret"
+        ));
+    }
+
+    #[test]
+    fn space_change_passphrase_parses_with_and_without_inline_passphrase() {
+        let interactive = Cli::try_parse_from(["uniclip", "space", "change-passphrase"])
+            .expect("interactive change-passphrase must parse");
+        assert!(matches!(
+            interactive.command,
+            Some(Commands::Space {
+                command: SpaceCommands::ChangePassphrase { passphrase: None }
+            })
+        ));
+
+        let scripted = Cli::try_parse_from([
+            "uniclip",
+            "--json",
+            "space",
+            "change-passphrase",
+            "--passphrase",
+            "secret",
+        ])
+        .expect("scripted change-passphrase must parse");
+        assert!(matches!(
+            scripted.command,
+            Some(Commands::Space {
+                command: SpaceCommands::ChangePassphrase { passphrase: Some(p) }
+            }) if p == "secret"
         ));
     }
 

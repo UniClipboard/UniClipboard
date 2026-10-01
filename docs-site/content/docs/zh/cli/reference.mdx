@@ -15,9 +15,15 @@ description: uniclip 发布版中的空间、成员、内容、搜索、诊断�
 | `uniclip space invite`      | 签发一次性配对邀请。                                                               |
 | `uniclip space join`        | 交互输入邀请码，或传入 `--code <CODE>`；加 `--switch` 可切换到另一个空间。         |
 | `uniclip space reset --yes` | 重建为只包含本机的新空间，同时保留本机历史、已完成文件、设置、设备身份和解锁能力。 |
+| `uniclip space change-passphrase` | 修改已解锁的单设备空间的口令，保留本机历史。 |
 
 空间重建会永久废弃旧的配对、信任和同步关系，所有设备都需要重新配对。它不会删除本机
-历史，也不是恢复出厂设置。
+历史，也不是恢复出厂设置，并且保持当前口令不变。
+
+`uniclip space change-passphrase` 会让你输入两次新口令（也可用 `--passphrase <PASSPHRASE>`，
+`--json` 模式下必须提供），不要求输入当前口令。只有本机是空间唯一成员且空间已解锁时才会
+被接受，并会作废尚未使用的配对邀请。不能用 `uniclip space init` 代替：它只适用于还没有
+空间的设备。
 
 脚本可以运行 `uniclip --json space init --passphrase <PASSPHRASE>`，成功后会得到一个
 包含 `space_id`、`device_id` 和 `fingerprint` 的 JSON 对象。JSON 模式不会打开交互提示，

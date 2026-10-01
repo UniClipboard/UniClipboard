@@ -345,6 +345,7 @@ The `uniclip` CLI works with or without the GUI (e.g. on servers). Common comman
 ```bash
 uniclip space init                          # Create a new encrypted space on this device
 uniclip space invite                        # Generate a short-lived invitation code
+uniclip space change-passphrase             # Change the space passphrase (unlocked, single-device space)
 uniclip space join --code <code>            # Join a space (re-pair, non-destructive)
 uniclip space join --switch --code <code>   # Switch to another space
 uniclip space status                        # Inspect the active space and daemon

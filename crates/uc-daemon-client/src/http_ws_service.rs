@@ -59,6 +59,17 @@ impl DaemonService for HttpWsDaemonService {
         self.ctx.setup_v2_client().reset_space().await
     }
 
+    async fn change_encryption_passphrase(
+        &self,
+        passphrase: &str,
+        passphrase_confirmation: &str,
+    ) -> Result<()> {
+        self.ctx
+            .query_client()
+            .change_encryption_passphrase(passphrase, passphrase_confirmation)
+            .await
+    }
+
     async fn choose_device_group(
         &self,
         request: &ChooseDeviceGroupRequestDto,

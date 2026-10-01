@@ -3,6 +3,7 @@ pub mod app_session;
 pub mod blob;
 #[cfg(feature = "dev-tools")]
 pub mod capture_files;
+pub mod change_passphrase;
 pub mod debug;
 #[cfg(feature = "dev-tools")]
 pub mod dev;

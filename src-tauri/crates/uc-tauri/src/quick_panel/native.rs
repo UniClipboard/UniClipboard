@@ -21,9 +21,13 @@ use tracing::{error, info};
 use uc_desktop::quick_panel_helper::{resolve_helper_exe_path, ProcessLauncher, SupervisedHelper};
 
 /// Environment variable that selects the native quick panel (`1`) or the WebView one (`0`).
+/// Only read where the native helper exists; other platforms have just the WebView panel.
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 pub const NATIVE_QUICK_PANEL_ENV: &str = "UC_GPUI_QUICK_PANEL";
 
-/// Whether the native panel is wanted, given the variable and the platform default.
+/// Whether the native panel is wanted, given the variable and the platform default. Compiled on
+/// every platform under test so that the selection rule is checked everywhere.
+#[cfg(any(target_os = "macos", target_os = "windows", test))]
 fn native_wanted(value: Option<&str>, default_on: bool) -> bool {
     match value {
         Some("1") => true,

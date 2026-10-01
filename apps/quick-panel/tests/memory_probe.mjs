@@ -234,7 +234,7 @@ async function runDataset(name, scratch) {
       UNICLIPBOARD_DAEMON_BASE_URL: daemon.address,
       UNICLIPBOARD_DAEMON_TOKEN_PATH: join(here, 'fixture-token.txt'),
       UC_GPUI_SHORTCUT: 'ctrl+alt+space',
-      UC_GPUI_SCALE: '1',
+      UC_GPUI_SCALE: process.env.PROBE_SCALE ?? '1',
     },
     stdio: ['pipe', 'ignore', 'ignore'],
   })

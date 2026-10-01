@@ -362,7 +362,10 @@ test('GPUI quick panel native end-to-end', { timeout: 180_000 }, async t => {
       await key('up')
       await key('down')
       await key('return')
-      await until('the selected result was pasted', async () => (await state()).restores.length > restoreBaseline)
+      await until(
+        'the selected result was pasted',
+        async () => (await state()).restores.length > restoreBaseline
+      )
     })
     await run('Backspace with nothing to delete does not search again', async () => {
       const before = (await state()).searches
@@ -732,16 +735,19 @@ test('GPUI quick panel native end-to-end', { timeout: 180_000 }, async t => {
         await stat(join(artifacts, `preview-${name}.png`))
       }
     })
-    await run('one letter the index cannot search is "nothing found", not a failed search', async () => {
-      await text('l')
-      await query({ query: 'l' })
-      await delay(500)
-      assert.ok(
-        !app.errors.includes('Quick panel query failed'),
-        'The panel must not treat an unsearchable query as a failed search'
-      )
-      await noPaste()
-    })
+    await run(
+      'one letter the index cannot search is "nothing found", not a failed search',
+      async () => {
+        await text('l')
+        await query({ query: 'l' })
+        await delay(500)
+        assert.ok(
+          !app.errors.includes('Quick panel query failed'),
+          'The panel must not treat an unsearchable query as a failed search'
+        )
+        await noPaste()
+      }
+    )
     await run(
       'a search with nothing found offers to loosen the condition with the most effect',
       async () => {

@@ -9611,7 +9611,7 @@ dependencies = [
 
 [[package]]
 name = "quick-panel-core"
-version = "1.0.1"
+version = "1.1.0-alpha.1"
 dependencies = [
  "async-trait",
  "chrono",
@@ -13521,7 +13521,7 @@ checksum = "b6f5e870be6c3b371b77fe0ee0bafb859fa4964b4404c27de1d380043c4dda20"
 
 [[package]]
 name = "uc-app-paths"
-version = "1.0.1"
+version = "1.1.0-alpha.1"
 dependencies = [
  "dirs 6.0.0",
 ]
@@ -13560,7 +13560,7 @@ dependencies = [
 
 [[package]]
 name = "uc-bootstrap"
-version = "1.0.1"
+version = "1.1.0-alpha.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -13580,7 +13580,7 @@ dependencies = [
 
 [[package]]
 name = "uc-cli"
-version = "1.0.1"
+version = "1.1.0-alpha.1"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -13611,7 +13611,7 @@ dependencies = [
 
 [[package]]
 name = "uc-cli-macros"
-version = "1.0.1"
+version = "1.1.0-alpha.1"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -13654,7 +13654,7 @@ dependencies = [
 
 [[package]]
 name = "uc-daemon"
-version = "1.0.1"
+version = "1.1.0-alpha.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -13679,7 +13679,7 @@ dependencies = [
 
 [[package]]
 name = "uc-daemon-client"
-version = "1.0.1"
+version = "1.1.0-alpha.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -13701,7 +13701,7 @@ dependencies = [
 
 [[package]]
 name = "uc-daemon-contract"
-version = "1.0.1"
+version = "1.1.0-alpha.1"
 dependencies = [
  "chrono",
  "semver",
@@ -13715,7 +13715,7 @@ dependencies = [
 
 [[package]]
 name = "uc-daemon-local"
-version = "1.0.1"
+version = "1.1.0-alpha.1"
 dependencies = [
  "anyhow",
  "fs2",
@@ -13733,7 +13733,7 @@ dependencies = [
 
 [[package]]
 name = "uc-daemon-process"
-version = "1.0.1"
+version = "1.1.0-alpha.1"
 dependencies = [
  "anyhow",
  "libc",
@@ -13752,7 +13752,7 @@ dependencies = [
 
 [[package]]
 name = "uc-desktop"
-version = "1.0.1"
+version = "1.1.0-alpha.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -13914,7 +13914,7 @@ dependencies = [
 
 [[package]]
 name = "uc-observability"
-version = "1.0.1"
+version = "1.1.0-alpha.1"
 dependencies = [
  "anyhow",
  "chrono",
@@ -13983,7 +13983,7 @@ dependencies = [
 
 [[package]]
 name = "uc-platform"
-version = "1.0.1"
+version = "1.1.0-alpha.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -14018,7 +14018,7 @@ dependencies = [
 
 [[package]]
 name = "uc-tauri"
-version = "1.0.1"
+version = "1.1.0-alpha.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -14077,7 +14077,7 @@ dependencies = [
 
 [[package]]
 name = "uc-webserver"
-version = "1.0.1"
+version = "1.1.0-alpha.1"
 dependencies = [
  "anyhow",
  "argon2",
@@ -14189,7 +14189,7 @@ checksum = "dbc4bc3a9f746d862c45cb89d705aa10f187bb96c76001afab07a0d35ce60142"
 
 [[package]]
 name = "uniclipboard"
-version = "1.0.1"
+version = "1.1.0-alpha.1"
 dependencies = [
  "serde_json",
  "tauri",

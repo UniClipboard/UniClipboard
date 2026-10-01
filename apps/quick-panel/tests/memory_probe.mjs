@@ -9,12 +9,12 @@
 // required. The metric is `phys_footprint` from `footprint` (what Activity Monitor shows), never RSS.
 import { spawn, execFile } from 'node:child_process'
 import { readFileSync, appendFileSync, mkdtempSync } from 'node:fs'
-import { crc32 } from 'node:zlib'
 import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
+import { crc32 } from 'node:zlib'
 
 const exec = promisify(execFile)
 const here = dirname(fileURLToPath(import.meta.url))
@@ -91,7 +91,10 @@ function buildDataset(name, generation = 0) {
     case 'large':
       return [...images(8, 'large'), ...texts(200)]
     case 'animated':
-      return [{ ...images(1, 'animated', 'image/gif', 'gif')[0], file: 'animated.gif' }, ...texts(50)]
+      return [
+        { ...images(1, 'animated', 'image/gif', 'gif')[0], file: 'animated.gif' },
+        ...texts(50),
+      ]
     case 'rotating':
       return images(50, 'medium')
     default:
@@ -144,7 +147,10 @@ function startDaemon(name) {
       return response.end(bytes)
     }
     if (url.pathname.startsWith('/clipboard/entries/')) {
-      const id = url.pathname.split('/').at(-2) === 'entries' ? url.pathname.split('/').at(-1) : url.pathname.split('/').at(-2)
+      const id =
+        url.pathname.split('/').at(-2) === 'entries'
+          ? url.pathname.split('/').at(-1)
+          : url.pathname.split('/').at(-2)
       const found = rows.find(r => r.entryId === id)
       if (!found) return json(404, {})
       if (url.pathname.endsWith('/resource')) {
@@ -180,7 +186,12 @@ function startDaemon(name) {
   })
   return new Promise(resolve =>
     server.listen(0, '127.0.0.1', () =>
-      resolve({ server, stats, rows: () => rows, address: `http://127.0.0.1:${server.address().port}` })
+      resolve({
+        server,
+        stats,
+        rows: () => rows,
+        address: `http://127.0.0.1:${server.address().port}`,
+      })
     )
   )
 }

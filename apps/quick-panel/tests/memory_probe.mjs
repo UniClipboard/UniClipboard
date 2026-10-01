@@ -229,7 +229,10 @@ async function footprint(pid, scratch) {
 // CPU time the process has used so far, in seconds (`ps` prints [dd-][hh:]mm:ss.cc).
 async function cpuSeconds(pid) {
   const { stdout } = await exec('ps', ['-o', 'time=', '-p', String(pid)])
-  const parts = stdout.trim().replace(/^(\d+)-/, '$1:').split(':')
+  const parts = stdout
+    .trim()
+    .replace(/^(\d+)-/, '$1:')
+    .split(':')
   return parts.reduce((total, part) => total * 60 + Number(part), 0)
 }
 
@@ -355,9 +358,13 @@ async function runDataset(name, scratch) {
       for (let round = 1; round <= churn; round++) {
         await hotkey()
         await delay(120)
-        await exec(peekaboo, ['type', 'a', '--pid', String(app.pid), '--no-auto-focus', '--no-remote'], {
-          timeout: 15_000,
-        })
+        await exec(
+          peekaboo,
+          ['type', 'a', '--pid', String(app.pid), '--no-auto-focus', '--no-remote'],
+          {
+            timeout: 15_000,
+          }
+        )
         await delay(350)
         await press(app.pid, 'escape')
         await delay(80)

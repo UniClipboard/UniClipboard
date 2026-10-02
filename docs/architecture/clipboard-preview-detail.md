@@ -113,7 +113,7 @@ impl<R: ClipboardEntryRepository> GetEntryResourceUseCase<R> {
 
 ### API Layer (Tauri Commands)
 
-**File**: `src-tauri/crates/uc-tauri/src/commands/clipboard.rs`
+**File**: `crates/uc-tauri/src/commands/clipboard.rs`
 
 ```rust
 /// Get clipboard history entries (preview only)

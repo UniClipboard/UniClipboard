@@ -420,12 +420,12 @@ runtime.usecases().initialize_encryption()
 
 | Command                  | File                                                                                      | Status             | Use Case Exists | Needs Refactor |
 | ------------------------ | ----------------------------------------------------------------------------------------- | ------------------ | --------------- | -------------- |
-| `get_clipboard_entries`  | [clipboard.rs:12-40](../../src-tauri/crates/uc-tauri/src/commands/clipboard.rs#L12-L40)   | ✅ Refactored      | ✅              | No             |
-| `delete_clipboard_entry` | [clipboard.rs:42-79](../../src-tauri/crates/uc-tauri/src/commands/clipboard.rs#L42-L79)   | 📝 Documented TODO | ❌              | **TODO**       |
-| `capture_clipboard`      | [clipboard.rs:81-142](../../src-tauri/crates/uc-tauri/src/commands/clipboard.rs#L81-L142) | 📝 Documented TODO | ❌              | **TODO**       |
-| `initialize_encryption`  | [encryption.rs:22-31](../../src-tauri/crates/uc-tauri/src/commands/encryption.rs#L22-L31) | ✅ Refactored      | ✅              | No             |
-| `get_settings`           | [settings.rs:37-49](../../src-tauri/crates/uc-tauri/src/commands/settings.rs#L37-L49)     | 📝 Documented TODO | ❌              | **TODO**       |
-| `update_settings`        | [settings.rs:81-94](../../src-tauri/crates/uc-tauri/src/commands/settings.rs#L81-L94)     | 📝 Documented TODO | ❌              | **TODO**       |
+| `get_clipboard_entries`  | [clipboard.rs:12-40](../../crates/uc-tauri/src/commands/clipboard.rs#L12-L40)   | ✅ Refactored      | ✅              | No             |
+| `delete_clipboard_entry` | [clipboard.rs:42-79](../../crates/uc-tauri/src/commands/clipboard.rs#L42-L79)   | 📝 Documented TODO | ❌              | **TODO**       |
+| `capture_clipboard`      | [clipboard.rs:81-142](../../crates/uc-tauri/src/commands/clipboard.rs#L81-L142) | 📝 Documented TODO | ❌              | **TODO**       |
+| `initialize_encryption`  | [encryption.rs:22-31](../../crates/uc-tauri/src/commands/encryption.rs#L22-L31) | ✅ Refactored      | ✅              | No             |
+| `get_settings`           | [settings.rs:37-49](../../crates/uc-tauri/src/commands/settings.rs#L37-L49)     | 📝 Documented TODO | ❌              | **TODO**       |
+| `update_settings`        | [settings.rs:81-94](../../crates/uc-tauri/src/commands/settings.rs#L81-L94)     | 📝 Documented TODO | ❌              | **TODO**       |
 
 ### Legend / 图例
 

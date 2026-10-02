@@ -27,7 +27,7 @@ Use this document when editing Rust, Tauri commands, daemon handlers, async loop
 ## tauri-specta IPC bindings (issue #698)
 
 所有 `#[tauri::command]` 通过 `tauri-specta` 自动派生 TypeScript 客户端，
-单一真相源在 `src-tauri/crates/uc-tauri/src/specta_builder.rs` 的
+单一真相源在 `crates/uc-tauri/src/specta_builder.rs` 的
 `build()` 函数。新增 / 修改 / 删除一个命令时必须：
 
 1. **Rust 端**：

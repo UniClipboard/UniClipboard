@@ -11,7 +11,7 @@
 // 拒绝是否属于「用户操作错误」—— 是则不上报 Sentry(正常产品流程),
 // 否则按系统错误上报。未列出的 code 默认按系统错误处理(fail-safe)。
 //
-// 权威来源:`src-tauri/crates/uc-tauri/src/commands/severity.rs`。
+// 权威来源:`crates/uc-tauri/src/commands/severity.rs`。
 
 export const USER_FACING_ERROR_CODES: ReadonlySet<string> = new Set([
   "AccessibilityPermissionRequired",

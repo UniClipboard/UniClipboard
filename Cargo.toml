@@ -4,7 +4,7 @@
 # - apps/    runnable binaries (cli => uniclip, daemon => uniclipd)
 # - crates/  desktop host, platform, observability, and daemon libraries
 # - src-tauri/  Tauri packaging only: the `uniclipboard` desktop bin package
-#               plus its adapter crate src-tauri/crates/uc-tauri
+#               its adapter crate lives in crates/uc-tauri
 
 [workspace]
 members = [
@@ -25,7 +25,7 @@ members = [
   "crates/quick-panel-core",
   "apps/quick-panel",
   "src-tauri",
-  "src-tauri/crates/uc-tauri",
+  "crates/uc-tauri",
 ]
 # `tests/e2e` is the CLI E2E test crate. It's excluded from the workspace
 # so `cargo check --workspace` doesn't pull reqwest/libc/assert_cmd into

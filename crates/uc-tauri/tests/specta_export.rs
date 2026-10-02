@@ -18,12 +18,12 @@ use std::path::PathBuf;
 
 use specta_typescript::Typescript;
 
-/// 从 `src-tauri/crates/uc-tauri/` 走到 repo 根的 `src/lib/ipc-bindings.generated.ts`。
+/// 从 `crates/uc-tauri/` 走到 repo 根的 `src/lib/ipc-bindings.generated.ts`。
 /// `CARGO_MANIFEST_DIR` 在 compile 时被替换成绝对路径，避免被 cwd 影响。
-const BINDINGS_PATH_FROM_CRATE: &str = "../../../src/lib/ipc-bindings.generated.ts";
+const BINDINGS_PATH_FROM_CRATE: &str = "../../src/lib/ipc-bindings.generated.ts";
 
 /// 错误分级表的导出目标 —— 与 binding 同目录的 `error-severity.generated.ts`。
-const SEVERITY_PATH_FROM_CRATE: &str = "../../../src/lib/error-severity.generated.ts";
+const SEVERITY_PATH_FROM_CRATE: &str = "../../src/lib/error-severity.generated.ts";
 
 /// Header written at the top of each generated file.
 ///
@@ -81,7 +81,7 @@ fn export_error_severity() {
          // 拒绝是否属于「用户操作错误」—— 是则不上报 Sentry(正常产品流程),\n\
          // 否则按系统错误上报。未列出的 code 默认按系统错误处理(fail-safe)。\n\
          //\n\
-         // 权威来源:`src-tauri/crates/uc-tauri/src/commands/severity.rs`。\n\n",
+         // 权威来源:`crates/uc-tauri/src/commands/severity.rs`。\n\n",
     );
     body.push_str("export const USER_FACING_ERROR_CODES: ReadonlySet<string> = new Set([\n");
     for code in uc_tauri::commands::severity::user_facing_error_codes() {

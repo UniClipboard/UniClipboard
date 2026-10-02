@@ -13,13 +13,9 @@ The separation enforces architecture boundaries:
 
 ## Architecture
 
-```
-src-tauri/crates/
-├── uc-core/      # Domain layer (ports)
-├── uc-app/       # Application layer (use cases, AppBuilder)
-├── uc-platform/  # Platform adapters (clipboard, keyring, etc.)
-├── uc-infra/     # Infrastructure implementations
-└── uc-tauri/     # Tauri-specific adapters (this crate)
+```text
+crates/uc-tauri/   # Tauri-specific adapters (this crate): commands, tray, quick panel, run loop
+src-tauri/         # Tauri packaging shell: the `uniclipboard` bin, tauri.conf.json, icons, capabilities
 ```
 
 ## Modules

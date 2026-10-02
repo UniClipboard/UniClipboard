@@ -63,7 +63,7 @@
 ## Files Touched (Key)
 
 - `src-tauri/crates/uc-platform/src/adapters/libp2p_network.rs`
-- `src-tauri/crates/uc-tauri/src/bootstrap/wiring.rs`
+- `crates/uc-tauri/src/bootstrap/wiring.rs`
 - `src-tauri/crates/uc-platform/Cargo.toml`
 - `src-tauri/Cargo.toml`
 - `package.json`

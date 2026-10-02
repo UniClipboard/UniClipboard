@@ -87,7 +87,7 @@ Provides:
 
 #### 2. Bootstrap Configuration
 
-**Location**: `src-tauri/crates/uc-tauri/src/bootstrap/`
+**Location**: `crates/uc-tauri/src/bootstrap/`
 
 ```
 bootstrap/
@@ -896,8 +896,8 @@ The pre-migration Seq signal files have been moved to `docs/_archive/seq/signals
 - [Sentry distributed tracing — sentry-trace + baggage](https://docs.sentry.io/concepts/key-terms/tracing/distributed-tracing/)
 - Source:
   - `src-tauri/crates/uc-observability/` (profile, format, init, redact, telemetry_gate)
-  - `src-tauri/crates/uc-tauri/src/bootstrap/tracing.rs` (Sentry + uc-observability composition)
-  - `src-tauri/crates/uc-tauri/src/bootstrap/logging.rs` (legacy log plugin, Webview + stdout)
+  - `crates/uc-tauri/src/bootstrap/tracing.rs` (Sentry + uc-observability composition)
+  - `crates/uc-tauri/src/bootstrap/logging.rs` (legacy log plugin, Webview + stdout)
   - `src/observability/sentry.ts` (frontend Sentry init + redaction hooks)
   - `src/lib/logger.ts` (pino → Sentry.logger bridge)
 - Archive:

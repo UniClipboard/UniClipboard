@@ -516,7 +516,7 @@ must retire the affected flow rather than create a parallel future protocol here
 | -------------------------- | ---------------------------------------------------------------------------------------------------- |
 | Rust encoder/decoder       | `src-tauri/crates/uc-application/src/usecases/mobile_sync/connect_uri.rs` (added in Phase 1)         |
 | Use-case integration       | `src-tauri/crates/uc-application/src/usecases/mobile_sync/register_device.rs` (Phase 2)              |
-| Tauri DTO                  | `src-tauri/crates/uc-tauri/src/commands/mobile_sync.rs` — `connectUri` field added (Phase 2)         |
+| Tauri DTO                  | `crates/uc-tauri/src/commands/mobile_sync.rs` — `connectUri` field added (Phase 2)         |
 | TypeScript parser          | `src/lib/mobileSyncConnectUri.ts` (added in Phase 3)                                                 |
 | Credential modal           | `src/components/device/MobileSyncCredentialModal.tsx` — primary QR switches to connect URI (Phase 3) |
 | Golden vector (Rust tests) | `connect_uri.rs::tests` — uses §7 vectors verbatim                                                   |

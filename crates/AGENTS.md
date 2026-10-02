@@ -1,6 +1,6 @@
 # PROJECT KNOWLEDGE BASE
 
-**最后刷新：** 2026-07-31（自动；16 个工作区 crate）
+**最后刷新：** 2026-10-02（自动；18 个工作区 crate）
 
 ## OVERVIEW
 
@@ -13,8 +13,8 @@
 |- apps/                 # Runnable binaries
 |  |- cli/                 # `uniclip` CLI (daemon client; heavy deps feature-gated)
 |  |- daemon/              # GUI-agnostic daemon runtime; hosts the `uniclipd` binary
-|  |- quick-panel/         # (no description)
-|- crates/               # Library crates (13)
+|  |- quick-panel/         # GPUI quick panel app (`uniclip-quick-panel`, macOS default)
+|- crates/               # Library crates (14)
 |  # -- Desktop host adapters --
 |  |- uc-platform/      # OS adapters: clipboard, secure storage, autostart
 |  |- uc-app-paths/     # Lightweight directory-layout authority (data/cache/tmp)
@@ -30,11 +30,11 @@
 |  |- uc-desktop/       # Desktop host: runtime, daemon probe, background tasks (GUI-framework-agnostic)
 |  |- uc-cli-macros/    # Proc-macros for uc-cli (internal)
 |  |- p2p-bench/        # Throwaway perf-spike bins (not shipped; publish = false)
+|  |- uc-tauri/         # Tauri adapter: commands (via tauri-specta), tray, quick panel, run loop
 |  # -- Other --
 |  |- quick-panel-core/ # Platform-independent logic of the GPUI quick panel: query model, state machine, ports
-|- src-tauri/            # Desktop GUI app (Tauri packaging shell; dir name pinned by tauri-cli)
+|- src-tauri/            # Desktop GUI bin: Tauri packaging shell (dir name pinned by tauri-cli); adapter crate is crates/uc-tauri
 |  |- src/               # Thin bin: hands off to uc_tauri::run(generate_context!())
-|  `- crates/uc-tauri/    # Tauri adapter: commands (via tauri-specta), tray, quick panel, run loop
 ```
 
 
@@ -42,12 +42,12 @@
 
 | Task                      | Location                                             | Notes                                                                   |
 | ------------------------- | ---------------------------------------------------- | ----------------------------------------------------------------------- |
-| Tauri run loop & setup    | `src-tauri/crates/uc-tauri/src/run.rs`               | `run()` (line ~200); window/lifecycle, `.manage(...)`, `.setup(...)`    |
-| IPC command registration  | `src-tauri/crates/uc-tauri/src/specta_builder.rs`    | tauri-specta single source of truth (runtime invoke + codegen)          |
+| Tauri run loop & setup    | `crates/uc-tauri/src/run.rs`               | `run()` (line ~200); window/lifecycle, `.manage(...)`, `.setup(...)`    |
+| IPC command registration  | `crates/uc-tauri/src/specta_builder.rs`    | tauri-specta single source of truth (runtime invoke + codegen)          |
 | Engine 发布版本           | `Cargo.toml`                                         | 所有使用方共享一个固定的 `UniClipboard/Engine` 发布标签                 |
 | Desktop host preparation  | `crates/uc-bootstrap/src/wiring/`                    | Desktop paths, secure storage and clipboard selection                   |
-| Runtime/usecase accessors | `src-tauri/crates/uc-tauri/src/bootstrap/runtime.rs` | `AppRuntime`, `usecases()` factory                                      |
-| Tauri commands            | `src-tauri/crates/uc-tauri/src/commands/`            | Commands call app-layer usecases (or daemon HTTP since ADR-008)         |
+| Runtime/usecase accessors | `crates/uc-tauri/src/bootstrap/runtime.rs` | `AppRuntime`, `usecases()` factory                                      |
+| Tauri commands            | `crates/uc-tauri/src/commands/`            | Commands call app-layer usecases (or daemon HTTP since ADR-008)         |
 | Platform adapters         | `crates/uc-platform/src/`                            | clipboard (linux X11/Wayland, windows, macos), secure storage, app dirs |
 | Daemon API surface        | `crates/uc-webserver/src/api/`                       | HTTP + WS endpoints; ApiEnvelope normalization                          |
 | Legacy reference          | Removed (2026-02-26)                                 | Do not reintroduce legacy module tree                                   |
@@ -57,8 +57,8 @@
 | Symbol           | Type | Location                                          | Role                                     |
 | ---------------- | ---- | ------------------------------------------------- | ---------------------------------------- |
 | `main`           | fn   | `src-tauri/src/main.rs`                           | Process entry; calls `uc_tauri::run`     |
-| `run`            | fn   | `src-tauri/crates/uc-tauri/src/run.rs`            | Tauri builder + window/run loop          |
-| `build` (specta) | fn   | `src-tauri/crates/uc-tauri/src/specta_builder.rs` | IPC command registration (single source) |
+| `run`            | fn   | `crates/uc-tauri/src/run.rs`            | Tauri builder + window/run loop          |
+| `build` (specta) | fn   | `crates/uc-tauri/src/specta_builder.rs` | IPC command registration (single source) |
 
 ## CONVENTIONS (PROJECT-SPECIFIC)
 

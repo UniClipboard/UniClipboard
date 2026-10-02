@@ -4,7 +4,7 @@
 
 ## 窗口生命周期
 
-`src-tauri/crates/uc-tauri/src/quick_panel/linux.rs` 在快捷面板同步创建期间注册 GTK `Application::window-added` 信号，先初始化 Layer Shell，再由 Tauri 完成窗口和 WebView 创建。钩子只处理第一个窗口，创建结束后立即断开，并校验它与 Tauri 返回的窗口相同。不得在已经实现底层资源的 GTK 窗口上初始化 Layer Shell，也不得把 WebView 移入不受 Tauri 管理的窗口。
+`crates/uc-tauri/src/quick_panel/linux.rs` 在快捷面板同步创建期间注册 GTK `Application::window-added` 信号，先初始化 Layer Shell，再由 Tauri 完成窗口和 WebView 创建。钩子只处理第一个窗口，创建结束后立即断开，并校验它与 Tauri 返回的窗口相同。不得在已经实现底层资源的 GTK 窗口上初始化 Layer Shell，也不得把 WebView 移入不受 Tauri 管理的窗口。
 
 初始化完成后允许 GTK 内部调整大小：否则不可调整大小的 GTK 窗口会保留 WebKit 的自然尺寸，使小屏高度上限失效。Layer Shell surface 不具备普通桌面窗口的交互缩放边框，实际大小仍由本模块的尺寸请求控制。
 
@@ -46,7 +46,7 @@ o.bind("SUPER + SHIFT + V", "UniClipboard", "uniclipboard --quick-panel")
 
 在 Omarchy 会话中，外观设置的“跟随 Omarchy 主题”默认开启，由桌面统一控制主窗口、快捷面板和更新窗口的深浅模式与配色，同时禁用手动主题选择、预设配色和自定义颜色。关闭后恢复原有应用主题设置。偏好由 desktop 本地保存，不经过 Engine 或 daemon 设置接口，详见 [desktop 本地主题偏好](desktop-theme-preferences.md)。主题切换无需重启，隐藏的快捷面板也保持订阅。初始主题快照在读取本地偏好后提供，避免关闭开关后启动时短暂应用 Omarchy 配色；daemon 就绪后读取原有应用主题设置，进入历史页面时不重建主题订阅。
 
-该适配仅由 GUI 的 `src-tauri/crates/uc-tauri/src/desktop_theme/` 管理：检查会话的 `OMARCHY_PATH` 与当前主题目录，从用户主目录下的 `.local/state/omarchy/current/theme/colors.toml` 读取调色板。只安装 Omarchy 包、未进入 Omarchy 会话时不开启；其他系统不提供配色覆盖。此入口针对使用上述状态目录的 Omarchy 版本。
+该适配仅由 GUI 的 `crates/uc-tauri/src/desktop_theme/` 管理：检查会话的 `OMARCHY_PATH` 与当前主题目录，从用户主目录下的 `.local/state/omarchy/current/theme/colors.toml` 读取调色板。只安装 Omarchy 包、未进入 Omarchy 会话时不开启；其他系统不提供配色覆盖。此入口针对使用上述状态目录的 Omarchy 版本。
 
 Omarchy 会整体替换主题目录，因此监听其稳定父目录并合并文件事件。读取失败或主题内容无效时保留最近一次有效配色；后续文件变化会重新读取。调色板仅驻留内存，不写入业务设置，不修改系统 GTK 配置，不安装主题钩子。
 

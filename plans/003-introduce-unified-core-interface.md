@@ -107,7 +107,7 @@ daemon 是第一个生产消费者。迁移后桌面行为保持不变，`uc-boo
 cargo test -p uc-engine
 cargo test -p uc-bootstrap
 cargo check -p uc-daemon -p uc-desktop -p uc-tauri -p uc-cli
-rg -n 'CliAppRuntime|pub app_facade|pub .*AppDeps' apps crates/uc-desktop src-tauri/crates/uc-tauri
+rg -n 'CliAppRuntime|pub app_facade|pub .*AppDeps' apps crates/uc-desktop crates/uc-tauri
 ```
 
 预期前三条通过；最后一条在生产调用路径中无匹配。

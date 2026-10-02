@@ -225,7 +225,7 @@ impl TrayState {
         #[cfg(target_os = "macos")]
         {
             let tray_icon =
-                tauri::image::Image::from_bytes(include_bytes!("../../../icons/tray-icon@2x.png"))?;
+                tauri::image::Image::from_bytes(include_bytes!("../../../src-tauri/icons/tray-icon@2x.png"))?;
             builder = builder.icon(tray_icon).icon_as_template(true);
         }
         #[cfg(not(target_os = "macos"))]

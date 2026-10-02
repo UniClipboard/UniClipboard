@@ -46,6 +46,8 @@ const KNOWN_DESCRIPTIONS = {
   'uc-daemon-client': 'Daemon HTTP + WS client (used by GUI + CLI)',
   'uc-desktop': 'Desktop host: runtime, daemon probe, background tasks (GUI-framework-agnostic)',
   'uc-tauri': 'Tauri adapter: commands (via tauri-specta), tray, quick panel, run loop',
+  'quick-panel': 'GPUI quick panel app (`uniclip-quick-panel`, macOS default)',
+  'quick-panel-core': 'Platform-independent logic of the GPUI quick panel: query model, state machine, ports',
   'uc-cli': '`uniclip` CLI (daemon client; heavy deps feature-gated)',
   'uc-cli-macros': 'Proc-macros for uc-cli (internal)',
   'p2p-bench': 'Throwaway perf-spike bins (not shipped; publish = false)',
@@ -113,7 +115,6 @@ function categorizeMember(cratePath) {
 function generateStructure(members) {
   const apps = members.filter(m => m.startsWith('apps/'))
   const libs = members.filter(m => m.startsWith('crates/'))
-  const tauri = members.filter(m => m === 'src-tauri' || m.startsWith('src-tauri/'))
   const lines = [
     '```text',
     '.                        # repo root = cargo workspace',
@@ -160,18 +161,9 @@ function generateStructure(members) {
   }
 
   lines.push(
-    '|- src-tauri/            # Desktop GUI app (Tauri packaging shell; dir name pinned by tauri-cli)'
+    '|- src-tauri/            # Desktop GUI bin: Tauri packaging shell (dir name pinned by tauri-cli); adapter crate is crates/uc-tauri'
   )
-  for (const m of tauri) {
-    if (m === 'src-tauri') {
-      lines.push(
-        '|  |- src/               # Thin bin: hands off to uc_tauri::run(generate_context!())'
-      )
-    } else {
-      const name = basename(m)
-      lines.push(`|  \`- crates/${name}/    # ${getDescription(m)}`)
-    }
-  }
+  lines.push('|  |- src/               # Thin bin: hands off to uc_tauri::run(generate_context!())')
   lines.push('```')
 
   return lines.join('\n')
@@ -207,8 +199,8 @@ function replaceSection(content, newStructure) {
 
 function updateRefreshDate(content, crateCount) {
   const today = new Date().toISOString().slice(0, 10)
-  const refreshLine = `**Last refreshed:** ${today} (auto; ${crateCount} workspace crates)`
-  return content.replace(/\*\*Last refreshed:\*\*.*$/m, refreshLine)
+  const refreshLine = `**最后刷新：** ${today}（自动；${crateCount} 个工作区 crate）`
+  return content.replace(/\*\*(?:Last refreshed:|最后刷新：)\*\*.*$/m, refreshLine)
 }
 
 // -- Main --

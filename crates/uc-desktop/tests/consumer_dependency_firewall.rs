@@ -35,7 +35,7 @@ const PRODUCTION_SOURCE_ROOTS: [&str; 9] = [
     "crates/uc-desktop/src",
     "crates/uc-platform/src",
     "crates/uc-webserver/src/api",
-    "src-tauri/crates/uc-tauri/src",
+    "crates/uc-tauri/src",
 ];
 
 #[test]

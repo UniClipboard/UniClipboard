@@ -31,7 +31,7 @@
 | `src/components/motion/center-morph-modal.css` | 已响应低效果标记 | 保留弹窗布局和关闭语义，测试零时长退出 |
 | `src/lib/theme-transition.ts` | 读取低效果标记；另有 `documentElement.animate()` | 切换模式时应结束已启动效果，保留最终主题状态 |
 | `src/components/motion/input.tsx` | 有命令式 `animate()` 错误抖动 | 公共控制需覆盖取消、复位与静态错误提示 |
-| `src-tauri/crates/uc-tauri/src/run.rs`、`specta_builder.rs` | 管理桌面状态、集中注册类型化命令 | 新服务归此壳层；注意不是 `crates/uc-tauri/` |
+| `crates/uc-tauri/src/run.rs`、`specta_builder.rs` | 管理桌面状态、集中注册类型化命令 | 新服务归此壳层（Tauri 适配 crate） |
 | `Cargo.lock` | 已锁定 `sysinfo 0.38.4`，`uc-tauri` 尚未直接依赖 | 原生 CPU/内存采集优先复用同版本，不再引入完整系统监控栈 |
 | `src/updater/main.tsx` | 另一个独立界面入口 | 纳入效果覆盖审计；不改更新业务 |
 
@@ -92,11 +92,11 @@ Linux 默认选中的仍是“自动”，不要把保存的用户选择改成�
 
 | 新增模块 | 职责 |
 | --- | --- |
-| `src-tauri/crates/uc-tauri/src/visual_effects.rs` | 纯决策、进程级状态、版本与汇总；变大后才按职责拆子模块 |
-| `src-tauri/crates/uc-tauri/src/visual_effects_storage.rs` | 有界读取、校验、原子替换配置文件 |
-| `src-tauri/crates/uc-tauri/src/visual_effects_probe.rs` | 启动等待上限、结果映射与未知处理 |
+| `crates/uc-tauri/src/visual_effects.rs` | 纯决策、进程级状态、版本与汇总；变大后才按职责拆子模块 |
+| `crates/uc-tauri/src/visual_effects_storage.rs` | 有界读取、校验、原子替换配置文件 |
+| `crates/uc-tauri/src/visual_effects_probe.rs` | 启动等待上限、结果映射与未知处理 |
 | `crates/uc-desktop/src/visual_capabilities.rs` 及同名目录 | 框架无关的 CPU/内存读取、Metal/Direct3D 能力查询和联合分类 |
-| `src-tauri/crates/uc-tauri/src/commands/visual_effects.rs` | 类型化命令，薄转发，不复制策略 |
+| `crates/uc-tauri/src/commands/visual_effects.rs` | 类型化命令，薄转发，不复制策略 |
 | `src/api/visual-effects.ts` | 命令及事件封装、错误反馈 |
 | `src/lib/visual-effects-store.ts` | 每窗口只读快照、订阅和重连；无磁盘写入、无硬件分类 |
 | `src/hooks/useVisualEffects.ts` | 用 `useSyncExternalStore` 暴露稳定快照 |

@@ -21,16 +21,16 @@
 #     Xorg login (set X11_NATIVE=1 to assert).
 #
 # Usage (from repo root):
-#   ./scripts/test_x11_e2e.sh
-#   X11_NATIVE=1 ./scripts/test_x11_e2e.sh   # require pure Xorg (no WAYLAND_DISPLAY)
-#   KEEP_LOGS=1  ./scripts/test_x11_e2e.sh   # keep log dir on success
-#   TIMEOUT_SECS=15 ./scripts/test_x11_e2e.sh
+#   ./scripts/e2e/x11-clipboard.sh
+#   X11_NATIVE=1 ./scripts/e2e/x11-clipboard.sh   # require pure Xorg (no WAYLAND_DISPLAY)
+#   KEEP_LOGS=1  ./scripts/e2e/x11-clipboard.sh   # keep log dir on success
+#   TIMEOUT_SECS=15 ./scripts/e2e/x11-clipboard.sh
 #
 # Requirements: xclip, $DISPLAY, cargo. Run-time ~30-60s after first build.
 
 set -euo pipefail
 
-REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 WORKSPACE_ROOT="$REPO_ROOT"
 TIMEOUT_SECS="${TIMEOUT_SECS:-10}"
 LOG_DIR="$(mktemp -d -t uniclip-x11-e2e.XXXXXX)"

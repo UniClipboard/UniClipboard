@@ -17,7 +17,7 @@ const repositoryRoot = resolve(__dirname, '../..')
 const adopter = resolve(repositoryRoot, 'scripts/adopt-engine-release.mjs')
 const preflight = resolve(repositoryRoot, 'scripts/architecture/check-engine-repository.mjs')
 const workflowPath = resolve(repositoryRoot, '.github/workflows/adopt-engine-release.yml')
-const interopScript = resolve(repositoryRoot, 'scripts/test_pair_e2e.sh')
+const interopScript = resolve(repositoryRoot, 'scripts/e2e/pair.sh')
 const roots: string[] = []
 
 function write(path: string, content: string) {

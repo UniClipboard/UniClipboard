@@ -3,7 +3,7 @@
 # Single-machine end-to-end clipboard sync smoke test (Slice 2, Phase
 # 2 wire-level + Phase 3 CLI envelope).
 #
-# Builds on `test_pair_e2e.sh`'s flow (alice/bob profiles, --dev mode,
+# Builds on `pair.sh`'s flow (alice/bob profiles, --dev mode,
 # real rendezvous), then exercises the iroh clipboard ALPN via
 # `ClipboardSyncFacade::dispatch_snapshot` (Phase 3 · T9):
 #   * alice: init (A1) + invite (B1)
@@ -71,7 +71,7 @@ trap cleanup EXIT
 echo "==> Wiping previous profile state"
 /bin/rm -rf "$ALICE_DIR" "$BOB_DIR"
 
-# ─── Pair (mirrors test_pair_e2e.sh) ─────────────────────────────────────────
+# ─── Pair (mirrors pair.sh) ─────────────────────────────────────────
 
 echo "==> alice: init"
 "$CLI" $COMMON_FLAGS --profile alice init \

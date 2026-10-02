@@ -3,7 +3,7 @@
 # Single-machine end-to-end test for `uniclip send --resend` — ADR-005
 # Stage 1a CLI surface.
 #
-# Mirrors `test_clipboard_e2e.sh`'s alice/bob pairing recipe, then
+# Mirrors `clipboard.sh`'s alice/bob pairing recipe, then
 # walks the 7 verdicts that cover the resend command:
 #
 #   1. bob OFFLINE, alice resend     → no acceptance / no duplicate
@@ -87,7 +87,7 @@ trap cleanup EXIT
 echo "==> Wiping previous profile state"
 /bin/rm -rf "$ALICE_DIR" "$BOB_DIR"
 
-# ─── Pair (mirrors test_pair_e2e.sh / test_clipboard_e2e.sh) ────────────────
+# ─── Pair (mirrors pair.sh / clipboard.sh) ────────────────
 
 echo "==> alice: init"
 "$CLI" $COMMON_FLAGS --profile alice init \

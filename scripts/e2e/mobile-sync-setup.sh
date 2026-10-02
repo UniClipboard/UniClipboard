@@ -16,7 +16,7 @@
 # 不在范围:
 #   * 真 LAN HTTP 路由层(走 webserver 集成测试)
 #   * 真机 iPhone 安装流程(留给用户)
-#   * SyncClipboard 协议本地链路(走 test_mobile_sync_debug_e2e.sh)
+#   * SyncClipboard 协议本地链路(走 mobile-sync-debug.sh)
 #
 # Requirements:
 #   * macOS(profile data dir 走 `~/Library/Application Support`)

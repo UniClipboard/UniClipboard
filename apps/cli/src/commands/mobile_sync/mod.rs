@@ -61,7 +61,7 @@ pub enum MobileSyncCommands {
     /// (no iPhone required). All subcommands require the daemon to be stopped.
     ///
     /// `#[command(hide=true)]` keeps these out of the public `--help`
-    /// surface — they are dev / E2E only(`scripts/test_mobile_sync_debug_e2e.sh`),
+    /// surface — they are dev / E2E only(`scripts/e2e/mobile-sync-debug.sh`),
     /// not user-facing. Still callable explicitly.
     #[cfg(feature = "dev-tools")]
     #[command(hide = true)]

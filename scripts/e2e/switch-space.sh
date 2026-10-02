@@ -20,8 +20,8 @@
 #   * Network access to the production rendezvous service.
 #   * --dev mode to avoid Keychain collisions between the two profiles.
 #
-# 与 `test_pair_e2e.sh` 共用 alice/bob 两个 profile 和清理流程；本脚本走
-# `join --switch` 的切换分支（bob 显式选择迁移），对照 `test_pair_e2e.sh`
+# 与 `pair.sh` 共用 alice/bob 两个 profile 和清理流程；本脚本走
+# `join --switch` 的切换分支（bob 显式选择迁移），对照 `pair.sh`
 # 的首次加入分支。
 
 set -euo pipefail

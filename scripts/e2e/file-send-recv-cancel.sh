@@ -3,7 +3,7 @@
 # End-to-end verification of `uniclip send -f` + `uniclip recv` + Ctrl-C
 # cancel pipeline (P1-7 verdict for the cancel work).
 #
-# Pair alice/bob via the same flow as test_clipboard_e2e.sh, then:
+# Pair alice/bob via the same flow as clipboard.sh, then:
 #   1. CANCEL CASE:  alice serves big.bin → bob recv → SIGINT bob mid-fetch
 #                    → expect "Cancelled" outcome + no file at target.
 #   2. SUCCESS CASE: alice serves small.bin → bob recv to completion

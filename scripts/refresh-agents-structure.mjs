@@ -47,7 +47,8 @@ const KNOWN_DESCRIPTIONS = {
   'uc-desktop': 'Desktop host: runtime, daemon probe, background tasks (GUI-framework-agnostic)',
   'uc-tauri': 'Tauri adapter: commands (via tauri-specta), tray, quick panel, run loop',
   'quick-panel': 'GPUI quick panel app (`uniclip-quick-panel`, macOS default)',
-  'quick-panel-core': 'Platform-independent logic of the GPUI quick panel: query model, state machine, ports',
+  'quick-panel-core':
+    'Platform-independent logic of the GPUI quick panel: query model, state machine, ports',
   'uc-cli': '`uniclip` CLI (daemon client; heavy deps feature-gated)',
   'uc-cli-macros': 'Proc-macros for uc-cli (internal)',
   'p2p-bench': 'Throwaway perf-spike bins (not shipped; publish = false)',

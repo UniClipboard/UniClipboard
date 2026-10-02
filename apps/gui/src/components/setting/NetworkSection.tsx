@@ -84,7 +84,7 @@ const NetworkSection: React.FC = () => {
   // 当前持久值（来自 SettingContext，作为 baseline）
   const persistedAllowRelay = setting?.network?.allowRelayFallback ?? true
   // Engine owns the relay overview; re-read it after any relay or LAN-only change.
-  const relayOverview = useRelayOverview(customRelays, persistedAllowRelay)
+  const relayOverview = useRelayOverview(customRelays, persistedAllowRelay, !relayLoading)
   const persistedAllowOverlay = setting?.network?.allowOverlayNetworkAddrs ?? false
   const persistedCongestionController: CongestionController =
     setting?.network?.congestionController ?? 'cubic'

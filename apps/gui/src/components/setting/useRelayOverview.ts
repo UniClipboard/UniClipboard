@@ -16,11 +16,13 @@ export interface RelayOverviewState {
  * Loads the Engine-owned relay overview. The overview is re-read whenever
  * the custom relay list or the LAN-only setting changes, so the displayed
  * state always comes from Engine rather than from local assumptions. A stale
- * response never overwrites a newer one.
+ * response never overwrites a newer one. While `enabled` is false (settings still
+ * loading and the daemon connection not yet established) no request is made.
  */
 export function useRelayOverview(
   customRelays: unknown,
-  allowRelayFallback: boolean
+  allowRelayFallback: boolean,
+  enabled = true
 ): RelayOverviewState {
   const [overview, setOverview] = useState<RelayOverview | null>(null)
   const [loading, setLoading] = useState(true)
@@ -45,11 +47,12 @@ export function useRelayOverview(
   }, [])
 
   useEffect(() => {
+    if (!enabled) return
     void reload()
     return () => {
       requestRef.current += 1
     }
-  }, [reload, customRelays, allowRelayFallback])
+  }, [enabled, reload, customRelays, allowRelayFallback])
 
   return { overview, loading, failed, reload }
 }

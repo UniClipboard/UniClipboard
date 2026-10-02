@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url'
 import { createSpecRuns } from './run-plan.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const rootDir = path.resolve(__dirname, '..')
+const rootDir = path.resolve(__dirname, '../../..')
 const dualPeerMode = process.argv.includes('--dual-peer')
 const triplePeerMode = process.argv.includes('--triple-peer')
 if (dualPeerMode && triplePeerMode) {

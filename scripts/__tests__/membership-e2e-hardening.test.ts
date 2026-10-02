@@ -183,7 +183,7 @@ cargo() {
     )
     expect(workflow).toContain('run: bun run check:cargo-audit-exceptions')
     expect(guard).not.toContain("run('git'")
-    expect(guard).toContain("const RUST_SOURCE_ROOTS = ['apps', 'crates', 'src-tauri']")
+    expect(guard).toContain("const RUST_SOURCE_ROOTS = ['apps', 'crates']")
     expect(guard).toContain("'x86_64-unknown-linux-gnu'")
     expect(guard).toContain("'x86_64-pc-windows-msvc'")
     expect(guard).toContain("'x86_64-apple-darwin'")

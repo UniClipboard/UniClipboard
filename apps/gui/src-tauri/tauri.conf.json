@@ -4,10 +4,19 @@
   "version": "1.1.0-alpha.2",
   "identifier": "app.uniclipboard.desktop",
   "build": {
-    "beforeDevCommand": "bun run dev:sweep && bun run dev:sweep-port && bun run daemon:dev && bun run dev",
+    "beforeDevCommand": {
+      "script": "bun run dev:sweep && bun run dev:sweep-port && bun run daemon:dev && bun run dev",
+      "cwd": "../../.."
+    },
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "bun run build",
-    "beforeBundleCommand": "node scripts/prepare-linux-bundle.mjs",
+    "beforeBuildCommand": {
+      "script": "bun run build",
+      "cwd": "../../.."
+    },
+    "beforeBundleCommand": {
+      "script": "node scripts/prepare-linux-bundle.mjs",
+      "cwd": "../../.."
+    },
     "frontendDist": "../dist"
   },
   "app": {
@@ -64,11 +73,11 @@
       },
       "deb": {
         "depends": ["libayatana-appindicator3-1", "libgtk-layer-shell0"],
-        "desktopTemplate": "../packaging/linux/uniclipboard.desktop.hbs"
+        "desktopTemplate": "../../../packaging/linux/uniclipboard.desktop.hbs"
       },
       "rpm": {
         "depends": ["libayatana-appindicator-gtk3", "gtk-layer-shell"],
-        "desktopTemplate": "../packaging/linux/uniclipboard.desktop.hbs"
+        "desktopTemplate": "../../../packaging/linux/uniclipboard.desktop.hbs"
       }
     },
     "windows": {

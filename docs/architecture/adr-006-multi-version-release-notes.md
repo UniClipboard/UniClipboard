@@ -20,7 +20,7 @@
 | R2 | `manifests/<channel>.json`、`artifacts/v<ver>/<file>` | 唯一可信的发布载荷源 |
 | Cloudflare Worker | `workers/update-server/src/index.ts` | `GET /<channel>.json` → R2 透传 manifest；`GET /artifacts/v<ver>/<file>` → R2 透传二进制 |
 | GitHub Pages | `<channel>.json`（fallback 镜像） | Tauri updater 的备用 endpoint |
-| Tauri 客户端 | `src-tauri/tauri.conf.json` updater.endpoints | `https://release.uniclipboard.app/<channel>.json` → 失败回退到 gh-pages |
+| Tauri 客户端 | `apps/gui/src-tauri/tauri.conf.json` updater.endpoints | `https://release.uniclipboard.app/<channel>.json` → 失败回退到 gh-pages |
 
 每次发布只重写 **一份** `<channel>.json`，里面的 `notes` 只描述当前版本。
 
@@ -213,7 +213,7 @@ async function mergeNotes(channel, fromVersion, env) {
 
 ### 2.8 客户端配置改动
 
-`src-tauri/tauri.conf.json`：
+`apps/gui/src-tauri/tauri.conf.json`：
 
 ```json
 "endpoints": [
@@ -246,7 +246,7 @@ async function mergeNotes(channel, fromVersion, env) {
 | `scripts/archive-release-notes.js` | 新文件 — 上传单版本归档 + 更新 channel 索引 |
 | `scripts/__tests__/archive-release-notes.test.ts` | 新文件 — 单元测试，覆盖 semver 排序、并发安全标注、from 不在索引的边界 |
 | `.github/workflows/release.yml` | 在 R2 步骤后追加「Archive release notes & update channel index」 |
-| `src-tauri/tauri.conf.json` | endpoint 加 `?from={{current_version}}` |
+| `apps/gui/src-tauri/tauri.conf.json` | endpoint 加 `?from={{current_version}}` |
 | `docs/release-workflow.md` | 文档增补「跨版本 notes 拼接行为」一节 |
 
 ### 3.2 兼容性

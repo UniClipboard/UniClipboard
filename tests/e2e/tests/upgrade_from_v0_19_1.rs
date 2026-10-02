@@ -858,7 +858,7 @@ async fn u02_image_file_favorite_search_restore_and_delete_survive_upgrade() {
     let image_source = tempfile::tempdir().expect("create legacy image source dir");
     let tiff_path = image_source.path().join("v0191-upgrade-image.tiff");
     let png_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../src-tauri/test_resources/google.png");
+        .join("../../apps/gui/src-tauri/test_resources/google.png");
     let conversion = Command::new("/usr/bin/sips")
         .args(["-s", "format", "tiff"])
         .arg(&png_path)

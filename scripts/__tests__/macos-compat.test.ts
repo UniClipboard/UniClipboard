@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { findUnsupportedJavaScript } from '../check-macos-compat.mjs'
 
 const projectRoot = path.resolve(__dirname, '../..')
+const guiRoot = path.join(projectRoot, 'apps', 'gui')
 
 function readProjectFile(filePath: string): string {
   try {
@@ -77,8 +78,8 @@ describe('macOS 12.5 compatibility guard', () => {
 
   it('keeps the build and bundle configuration aligned with macOS 12.5', async () => {
     const packageJson = requireJsonObject(
-      parseProjectJson(path.join(projectRoot, 'package.json')),
-      'package.json'
+      parseProjectJson(path.join(guiRoot, 'package.json')),
+      'apps/gui/package.json'
     )
     const packageScripts = requireJsonObject(packageJson.scripts, 'package.json scripts')
     const packageDependencies = requireJsonObject(
@@ -86,21 +87,21 @@ describe('macOS 12.5 compatibility guard', () => {
       'package.json dependencies'
     )
     const tauriConfig = requireJsonObject(
-      parseProjectJson(path.join(projectRoot, 'src-tauri', 'tauri.conf.json')),
+      parseProjectJson(path.join(guiRoot, 'src-tauri', 'tauri.conf.json')),
       'tauri.conf.json'
     )
     const tauriBundle = requireJsonObject(tauriConfig.bundle, 'tauri.conf.json bundle')
     const macOSBundle = requireJsonObject(tauriBundle.macOS, 'tauri.conf.json macOS bundle')
     const viteConfig = await resolveConfig(
-      { configFile: path.join(projectRoot, 'vite.config.ts') },
+      { configFile: path.join(guiRoot, 'vite.config.ts') },
       'build',
       'production'
     )
     const releaseNotes = readProjectFile(
-      path.join(projectRoot, 'src', 'components', 'update', 'ReleaseNotes.tsx')
+      path.join(guiRoot, 'src', 'components', 'update', 'ReleaseNotes.tsx')
     )
 
-    expect(packageScripts.build).toContain('node scripts/check-macos-compat.mjs')
+    expect(packageScripts.build).toContain('scripts/check-macos-compat.mjs')
     expect(packageDependencies).not.toHaveProperty('remark-gfm')
     expect(macOSBundle.minimumSystemVersion).toBe('12.5')
     expect(viteConfig.build.target).toBe('safari15.6')

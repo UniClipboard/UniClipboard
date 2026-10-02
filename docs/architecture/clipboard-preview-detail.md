@@ -146,7 +146,7 @@ fn register_uc_protocol() {
 
 ### Type Definitions
 
-**File**: `src/api/clipboardItems.ts`
+**File**: `apps/gui/src/api/clipboardItems.ts`
 
 ```typescript
 // Backend projection type
@@ -196,7 +196,7 @@ if (entry.has_detail) {
 
 ### UI Component Logic
 
-**File**: `src/components/clipboard/ClipboardItem.tsx`
+**File**: `apps/gui/src/components/clipboard/ClipboardItem.tsx`
 
 The component implements smart expand/collapse behavior:
 
@@ -348,5 +348,5 @@ Existing entries in database:
 ## References
 
 - Backend: `src-tauri/crates/uc-infra/src/clipboard/materializer.rs`
-- Frontend API: `src/api/clipboardItems.ts`
-- UI Component: `src/components/clipboard/ClipboardItem.tsx`
+- Frontend API: `apps/gui/src/api/clipboardItems.ts`
+- UI Component: `apps/gui/src/components/clipboard/ClipboardItem.tsx`

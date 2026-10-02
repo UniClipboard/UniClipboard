@@ -4,11 +4,11 @@ Use this document when editing React, TypeScript, Tailwind, UX flows, or fronten
 
 ## Frontend Layout Rules
 
-- 主窗口所有页面与弹层的文字遵循 [DESIGN.md 第 5 节](../../DESIGN.md#5-文字规格)，只使用统一语义文字样式或继承共享控件角色，不在页面单独设置字号、行高、字距，也不覆盖控件的文字角色。修改后运行 `src/styles/__tests__/typography.test.ts`；增加文字用途时先更新规范。
+- 主窗口所有页面与弹层的文字遵循 [DESIGN.md 第 5 节](../../apps/gui/DESIGN.md#5-文字规格)，只使用统一语义文字样式或继承共享控件角色，不在页面单独设置字号、行高、字距，也不覆盖控件的文字角色。修改后运行 `apps/gui/src/styles/__tests__/typography.test.ts`；增加文字用途时先更新规范。
 
-- 设置页内容区遵循 [DESIGN.md](../../DESIGN.md) 中的详细规范，复用统一页头、`SettingGroup` 与 `SettingRow`。窗口、侧栏和外层容器不因设置页视觉统一而改造。
+- 设置页内容区遵循 [DESIGN.md](../../apps/gui/DESIGN.md) 中的详细规范，复用统一页头、`SettingGroup` 与 `SettingRow`。窗口、侧栏和外层容器不因设置页视觉统一而改造。
 
-- 操作菜单（点击、右键及子菜单）统一使用 `src/components/motion/context-menu/`。下拉选项保留 `Select` 的选值语义，并与操作菜单共同复用 `src/components/motion/menu/` 的面板、展开动画和高亮；不得另建平行的菜单展示实现。快捷键录入、颜色编辑、二维码和详情说明保留内容浮层的交互语义；通用 `PopoverContent` 同样复用上述面板与展开动画，不使用菜单的方向键导航接管录入或表单。
+- 操作菜单（点击、右键及子菜单）统一使用 `apps/gui/src/components/motion/context-menu/`。下拉选项保留 `Select` 的选值语义，并与操作菜单共同复用 `apps/gui/src/components/motion/menu/` 的面板、展开动画和高亮；不得另建平行的菜单展示实现。快捷键录入、颜色编辑、二维码和详情说明保留内容浮层的交互语义；通用 `PopoverContent` 同样复用上述面板与展开动画，不使用菜单的方向键导航接管录入或表单。
 
 - **No fixed-pixel layouts.**
   - Use **Tailwind utilities** or **rem** units.
@@ -51,7 +51,7 @@ Examples:
 - 保存状态由发起操作的控件持有，避免禁用或刷新无关的设置行。`SettingProvider` 继续负责保存排队与权威值更新，控件不另存业务设置副本。
 - 设置上下文使用 `use-context-selector`，不要通过 React 的 `use()` 直接读取 `SettingContext`。主题应用仅依赖外观配置，修改同步等其他配置不应重新写入整页主题。
 
-- Prefer API wrappers in `src/api/*` and shared helpers over direct `invoke()` in components.
+- Prefer API wrappers in `apps/gui/src/api/*` and shared helpers over direct `invoke()` in components.
 - Keep route gating in `App.tsx` or layout-level logic, not duplicated in leaf components.
 - Avoid parallel state sources for the same domain (local cache + Redux for the same truth).
 - Match TypeScript DTO field names to actual Rust serde output. Do not assume global snake_case or camelCase consistency.
@@ -59,7 +59,7 @@ Examples:
 ## Calling Tauri commands (issue #698)
 
 All `#[tauri::command]` definitions are exported as a typed `commands` object via
-`tauri-specta`. Frontend code MUST go through the wrapper in `src/lib/ipc.ts`
+`tauri-specta`. Frontend code MUST go through the wrapper in `apps/gui/src/lib/ipc.ts`
 rather than calling `invoke()` / `invokeWithTrace()` with a stringly-typed
 command name.
 
@@ -73,7 +73,7 @@ await commands.updateMobileSyncSettings(patch)
 ```
 
 The wrapper preserves trace_id injection, Sentry breadcrumbs, and arg
-redaction. The generated bindings live in `src/lib/ipc-bindings.generated.ts`
+redaction. The generated bindings live in `apps/gui/src/lib/ipc-bindings.generated.ts`
 (git-tracked, do not hand-edit). When you change a Rust command/DTO, regenerate
 with `cargo test -p uc-tauri --test specta_export` and commit the diff — see
 `docs/agent/rust-tauri-rules.md` ("tauri-specta IPC bindings") for the Rust
@@ -91,7 +91,7 @@ For frontend unit tests involving Vitest mocks, fake timers, or jsdom, prefer `n
 
 - **不要用 `forwardRef`**。React 19 把 `ref` 当普通 prop。新组件直接 `function C({ ref, ...props }: Props & { ref?: React.Ref<T> })`,不要包 `forwardRef`。
 - **不要用 `useContext`**,改用 `use(Context)`。`use()` 可条件调用，适用范围更广。
-- **不要用 `flushSync`** 触发非紧急更新，用 `startTransition`。`document.startViewTransition()` 与 React 的 `<ViewTransition>` 不兼容 (react-doctor 会标 `no-document-start-view-transition`),除非有特殊需求 (如 `src/lib/theme-transition.ts` 的 circular reveal) 否则避免。
+- **不要用 `flushSync`** 触发非紧急更新，用 `startTransition`。`document.startViewTransition()` 与 React 的 `<ViewTransition>` 不兼容 (react-doctor 会标 `no-document-start-view-transition`),除非有特殊需求 (如 `apps/gui/src/lib/theme-transition.ts` 的 circular reveal) 否则避免。
 - **不要用 `React.MutableRefObject`**(已废弃),用 `React.RefObject<T | null>`。
 
 ### useEffect 卫生
@@ -156,7 +156,7 @@ For frontend unit tests involving Vitest mocks, fake timers, or jsdom, prefer `n
 - **删除 dependency 时检查 `radix-ui` umbrella 是否传递引入**,frontend 只用 umbrella 即可。
 - **保留这些"看起来没用"的 devDep**(react-doctor 误报):
   - `react-doctor`、`react-grab`、`@react-grab/mcp` — 通过 npm 脚本 / 工具调用，不在 import 里。
-  - `@wdio/local-runner`、`@wdio/mocha-framework`、`@wdio/spec-reporter` — 通过 `e2e/wdio.conf.mjs` 的 `runner` / `framework` / `reporters` 配置字符串引用，scanner 看不到。
+  - `@wdio/local-runner`、`@wdio/mocha-framework`、`@wdio/spec-reporter` — 通过 `apps/gui/e2e/wdio.conf.mjs` 的 `runner` / `framework` / `reporters` 配置字符串引用，scanner 看不到。
   - `autocorrect-node` — `lint-staged` 配置里调 binary。
 - **Tauri JS 插件**(`@tauri-apps/plugin-*`):只在前端真的 import 时才装。仅 Rust 侧用的 (autostart / global-shortcut / updater) 不需要 JS 包。
 

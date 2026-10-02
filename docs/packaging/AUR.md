@@ -46,27 +46,27 @@ Execute in this order:
 These were collected by scanning the repo on 2026-05-19. The PKGBUILDs in §6/§7 already consume these values. Re-check anything marked **HUMAN** before pushing.
 
 ### Build & runtime
-- [x] **Tech stack:** Tauri 2.11 + React 19 + TypeScript + Tailwind 4 (`src-tauri/Cargo.toml:136`, `package.json:92,113`).
+- [x] **Tech stack:** Tauri 2.11 + React 19 + TypeScript + Tailwind 4 (`apps/gui/src-tauri/Cargo.toml:136`, `package.json:92,113`).
 - [x] **Build command:** `bun run tauri build` (`.github/workflows/build.yml:268-269`).
 - [x] **Package manager:** **bun** (not pnpm). Lockfile is `bun.lock`. Arch no longer ships a concrete `bun` package, so the PKGBUILD uses the AUR `bun-bin` provider.
 - [x] **`makedepends`:** `git rust nodejs bun-bin pkgconf`. Pinning `bun-bin` avoids the self-referential build dependency exposed when an AUR helper selects `bun-git` as the virtual `bun` provider. No `openssl-sys`/`libsqlite3-sys`-style sys crates spotted in workspace deps.
-- [x] **`depends`:** `webkit2gtk-4.1 gtk3 libayatana-appindicator libnotify` (mapped from `src-tauri/tauri.conf.json:48-54` .deb runtime deps).
+- [x] **`depends`:** `webkit2gtk-4.1 gtk3 libayatana-appindicator libnotify` (mapped from `apps/gui/src-tauri/tauri.conf.json:48-54` .deb runtime deps).
 - [x] **Arches:** `x86_64 aarch64`. CI builds both for Linux (`.github/workflows/build.yml:71-86`).
 - [ ] **Minimum glibc:** **HUMAN** — CI builds in `debian:bookworm` (glibc 2.36) but no documented floor. Arch ships glibc ≥ 2.39, so practically a non-issue.
 
 ### Distribution
-- [x] **License:** `AGPL-3.0-only` (`LICENSE` header; `src-tauri/Cargo.toml:4`). **Note:** the initial skeleton placeholder said MIT — that was wrong; §6/§7 are now corrected.
+- [x] **License:** `AGPL-3.0-only` (`LICENSE` header; `apps/gui/src-tauri/Cargo.toml:4`). **Note:** the initial skeleton placeholder said MIT — that was wrong; §6/§7 are now corrected.
 - [x] **Release artifacts:** `.deb`, `.rpm`, `.AppImage` (Linux); `.dmg` (macOS); `.msi`/`.exe` (Windows). No upstream source tarball published — the `uniclipboard` AUR package pulls GitHub's auto-generated `archive/refs/tags/v$VER.tar.gz`.
-- [x] **Signatures:** Tauri **updater** already signs payloads with minisign (pubkey embedded at `src-tauri/tauri.conf.json:64`). **But** that key signs the in-app update bundle, not the release tarball or .deb — §11 (release-artifact signing) is still required for PKGBUILD-side verification.
+- [x] **Signatures:** Tauri **updater** already signs payloads with minisign (pubkey embedded at `apps/gui/src-tauri/tauri.conf.json:64`). **But** that key signs the in-app update bundle, not the release tarball or .deb — §11 (release-artifact signing) is still required for PKGBUILD-side verification.
 - [x] **Tag format:** `v$VERSION` (e.g. `v0.10.0`, `v0.10.1-alpha.1`). v-prefixed.
 - [x] **systemd user service:** none. App runs as a normal GUI process started by the user.
-- [x] **Desktop integration:** generic `.desktop` file lives at `packaging/linux/uniclipboard.desktop` (created 2026-05-19, content forked from `snap/local/uniclipboard.desktop`). Icons come from `src-tauri/icons/` (32/64/128/128@2x); PKGBUILD renames them into hicolor `apps/uniclipboard.png` at install. Note there are now three desktop sources: this AUR file, `snap/local/uniclipboard.desktop`, and the Handlebars template `packaging/linux/uniclipboard.desktop.hbs` consumed by the Tauri bundler for deb/rpm/appimage (wired via `bundle.linux.deb.desktopTemplate` + `rpm.desktopTemplate` in `src-tauri/tauri.conf.json`; the path is resolved relative to `src-tauri/` since `tauri build` chdirs there). All three must keep `Categories=Network;Utility;` in sync — consolidate later if any drifts.
+- [x] **Desktop integration:** generic `.desktop` file lives at `packaging/linux/uniclipboard.desktop` (created 2026-05-19, content forked from `snap/local/uniclipboard.desktop`). Icons come from `apps/gui/src-tauri/icons/` (32/64/128/128@2x); PKGBUILD renames them into hicolor `apps/uniclipboard.png` at install. Note there are now three desktop sources: this AUR file, `snap/local/uniclipboard.desktop`, and the Handlebars template `packaging/linux/uniclipboard.desktop.hbs` consumed by the Tauri bundler for deb/rpm/appimage (wired via `bundle.linux.deb.desktopTemplate` + `rpm.desktopTemplate` in `apps/gui/src-tauri/tauri.conf.json`; the path is resolved relative to `src-tauri/` since `tauri build` chdirs there). All three must keep `Categories=Network;Utility;` in sync — consolidate later if any drifts.
 - [x] **Config / data paths (Linux):** `$XDG_DATA_HOME/app.uniclipboard.desktop/` + `$XDG_CACHE_HOME/app.uniclipboard.desktop/` (`src-tauri/crates/uc-platform/src/app_dirs.rs:92-99`). Note the unusual `app.uniclipboard.desktop` dir name — matters for any future uninstall hook.
 
 ### Project metadata
 - [x] **Homepage:** `https://www.uniclipboard.app` (confirmed in README).
 - [x] **Bug tracker:** `https://github.com/UniClipboard/UniClipboard/issues`.
-- [x] **Binary name:** `uniclipboard` (`src-tauri/Cargo.toml:2`). Product name `UniClipboard` is display-only.
+- [x] **Binary name:** `uniclipboard` (`apps/gui/src-tauri/Cargo.toml:2`). Product name `UniClipboard` is display-only.
 - [x] **AUR account:** **`uniclipboard`** — `aur@uniclipboard.app` (registered 2026-05-19). Org-owned, not tied to a personal AUR identity, so continuity survives maintainer turnover.
 
 ### Version target for the `uniclipboard` (stable) AUR package
@@ -146,10 +146,10 @@ package() {
                  "$pkgdir/usr/share/applications/uniclipboard.desktop"
 
   # Hicolor icons, renamed from Tauri's size-named source files.
-  install -Dm644 "src-tauri/icons/32x32.png"       "$pkgdir/usr/share/icons/hicolor/32x32/apps/uniclipboard.png"
-  install -Dm644 "src-tauri/icons/64x64.png"       "$pkgdir/usr/share/icons/hicolor/64x64/apps/uniclipboard.png"
-  install -Dm644 "src-tauri/icons/128x128.png"     "$pkgdir/usr/share/icons/hicolor/128x128/apps/uniclipboard.png"
-  install -Dm644 "src-tauri/icons/128x128@2x.png"  "$pkgdir/usr/share/icons/hicolor/256x256/apps/uniclipboard.png"
+  install -Dm644 "apps/gui/src-tauri/icons/32x32.png"       "$pkgdir/usr/share/icons/hicolor/32x32/apps/uniclipboard.png"
+  install -Dm644 "apps/gui/src-tauri/icons/64x64.png"       "$pkgdir/usr/share/icons/hicolor/64x64/apps/uniclipboard.png"
+  install -Dm644 "apps/gui/src-tauri/icons/128x128.png"     "$pkgdir/usr/share/icons/hicolor/128x128/apps/uniclipboard.png"
+  install -Dm644 "apps/gui/src-tauri/icons/128x128@2x.png"  "$pkgdir/usr/share/icons/hicolor/256x256/apps/uniclipboard.png"
 
   install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
 }
@@ -243,7 +243,7 @@ Send to czyt (AUR profile email, or via GitHub @czyt). Replace placeholders befo
 
 Out of scope for the initial AUR push, but plan for:
 
-- **Heads-up — there's already a minisign key in `src-tauri/tauri.conf.json:64`.** That key signs the Tauri **updater** payload (the in-app auto-update bundle), not the GitHub release tarball or .deb. For AUR verification we need a **separate** signing step over the release artifacts (or, debatably, repurpose the existing key — but mixing the two roles makes key rotation harder, so prefer a second key).
+- **Heads-up — there's already a minisign key in `apps/gui/src-tauri/tauri.conf.json:64`.** That key signs the Tauri **updater** payload (the in-app auto-update bundle), not the GitHub release tarball or .deb. For AUR verification we need a **separate** signing step over the release artifacts (or, debatably, repurpose the existing key — but mixing the two roles makes key rotation harder, so prefer a second key).
 - Add `minisign -S` to the GitHub Actions release workflow. Generate a dedicated release-artifact key (`minisign -G`), store the secret key encrypted in repo secrets, publish public key in `SECURITY.md`.
 - Update `uniclipboard` PKGBUILD to download `.sig` alongside tarball and verify in `prepare()`.
 - Coordinate the same change into `uniclipboard-bin` with czyt (he can verify the `.deb`'s `.sig` before extraction).

@@ -64,7 +64,7 @@ describe('shipped uniclipd builds', () => {
       expect(step(build, name)).toContain(guard)
     }
     expect(step(build, 'package CLI binary')).toContain(
-      '"src-tauri/binaries/uniclipd-${{ matrix.target }}$EXE"'
+      '"apps/gui/src-tauri/binaries/uniclipd-${{ matrix.target }}$EXE"'
     )
     // The CLI must reuse the sidecar, never rebuild the daemon in the app job.
     expect(build.match(/-p uc-daemon/g) ?? []).toHaveLength(0)

@@ -98,7 +98,7 @@ let base_url = match settings.mobile_sync.lan_advertise_base_url.clone() {
 | 项 | 结论 |
 | --- | --- |
 | 钉死 IP（`lan_advertise_ip=Some`） | 原规格 §5.1 漏列。排在 **公网入口之后、其余网卡之前** —— 无公网入口时 `urls[0]` = 钉死 IP，与 v1 `url` 取值完全一致 |
-| TS 生成侧 | **同步纳入范围**。`src/lib/mobileSyncConnectUri.ts` 的 `buildConnectUri` 是生产路径（凭据弹窗切 host 实时重算 QR），不改则切 host 后码退化为单地址。前端重算时把所选 host 提升为 `urls[0]`，其余候选保序跟随 |
+| TS 生成侧 | **同步纳入范围**。`apps/gui/src/lib/mobileSyncConnectUri.ts` 的 `buildConnectUri` 是生产路径（凭据弹窗切 host 实时重算 QR），不改则切 host 后码退化为单地址。前端重算时把所选 host 提升为 `urls[0]`，其余候选保序跟随 |
 | 单候选时 `urls` | 编码器 **省略整个字段**（而非 `["唯一候选"]`）—— 最常见单网卡场景与 v1 字节零漂移，由 build 层结构性保证 |
 | Docker `br-*` 收敛 | `docker0` / `veth*` 按名直接剔除；`br-*` 仅当地址落在 `172.16/12` 段内才剔除（§10 风险的收敛实现），PR review 确认名单 |
 | 探测失败降级 | 已有公网入口/钉死 IP 候选时，网卡探测失败仅 `warn` 并继续（v1 在这两条路径不探测网卡，不能让探测失败弄死老路径）；无任何候选时照旧报错 |

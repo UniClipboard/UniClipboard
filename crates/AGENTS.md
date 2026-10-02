@@ -14,6 +14,7 @@
 |  |- cli/                 # `uniclip` CLI (daemon client; heavy deps feature-gated)
 |  |- daemon/              # GUI-agnostic daemon runtime; hosts the `uniclipd` binary
 |  |- quick-panel/         # GPUI quick panel app (`uniclip-quick-panel`, macOS default)
+|  |- gui/src-tauri/       # Tauri desktop bin package (packaging shell; hands off to uc-tauri)
 |- crates/               # Library crates (14)
 |  # -- Desktop host adapters --
 |  |- uc-platform/      # OS adapters: clipboard, secure storage, autostart
@@ -56,7 +57,7 @@
 
 | Symbol           | Type | Location                                | Role                                     |
 | ---------------- | ---- | --------------------------------------- | ---------------------------------------- |
-| `main`           | fn   | `src-tauri/src/main.rs`                 | Process entry; calls `uc_tauri::run`     |
+| `main`           | fn   | `apps/gui/src-tauri/src/main.rs`                 | Process entry; calls `uc_tauri::run`     |
 | `run`            | fn   | `crates/uc-tauri/src/run.rs`            | Tauri builder + window/run loop          |
 | `build` (specta) | fn   | `crates/uc-tauri/src/specta_builder.rs` | IPC command registration (single source) |
 
@@ -117,7 +118,7 @@ bun run test:coverage
 ## NOTES
 
 - `src-legacy/` was removed on 2026-02-26; treat any references as historical context only.
-- Root `AGENTS.md` is the navigation index; this file is the Rust-workspace knowledge base covering `crates/`, `apps/`, and `src-tauri/`. Tauri packaging details live in `src-tauri/AGENTS.md`.
+- Root `AGENTS.md` is the navigation index; this file is the Rust-workspace knowledge base covering `crates/`, `apps/`, and `src-tauri/`. Tauri packaging details live in `apps/gui/src-tauri/AGENTS.md`.
 - Any change touching `crates/uc-platform/src/clipboard/` (especially the Linux X11/Wayland adapters) should run the package's focused validation before merge.
 - Engine and LAN compatibility releases are produced only by `UniClipboard/Engine`; desktop keeps no mobile binding source or release workflow.
 - Log files live in the platform-conventional log location (separate from the data root since the logs split). Single source of truth: `uc_app_paths::app_log_dir()`. Per-role files `uniclipboard-{gui,daemon,cli}.json.<date>`, daily rotation, 7-day retention (older pruned on start).

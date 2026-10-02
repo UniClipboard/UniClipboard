@@ -343,7 +343,7 @@ Add to your CI pipeline:
 ## Related Documents
 
 - `docs/security-audit.md` — Security audit with token handling, rate limiting, PID verification
-- `src/api/daemon/client.ts` — HTTP client (session exchange)
-- `src/lib/daemon-ws.ts` — WebSocket client (subscribe, reconnect)
+- `apps/gui/src/api/daemon/client.ts` — HTTP client (session exchange)
+- `apps/gui/src/lib/daemon-ws.ts` — WebSocket client (subscribe, reconnect)
 - `src-tauri/crates/uc-daemon/src/api/ws.rs` — Daemon WS handler
 - `src-tauri/crates/uc-daemon/src/api/auth.rs` — Daemon auth endpoint

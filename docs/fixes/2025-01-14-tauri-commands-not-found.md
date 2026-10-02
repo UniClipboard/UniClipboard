@@ -15,13 +15,13 @@ These errors prevented the application from starting properly.
 
 ### Issue 1: `get_setup_state` Not Registered
 
-**Root Cause**: The setup status command was defined in the legacy codebase but was not registered in the new architecture's `src-tauri/src/main.rs`.
+**Root Cause**: The setup status command was defined in the legacy codebase but was not registered in the new architecture's `apps/gui/src-tauri/src/main.rs`.
 
 **Evidence**:
 
 - Frontend call: `invoke('get_setup_state')`
 - Legacy definition: legacy API module
-- Missing registration: `src-tauri/src/main.rs` (no entry for this command)
+- Missing registration: `apps/gui/src-tauri/src/main.rs` (no entry for this command)
 
 ### Issue 2: `enable_modern_window_style` Not Registered
 
@@ -29,7 +29,7 @@ These errors prevented the application from starting properly.
 
 **Evidence**:
 
-- Frontend import: `src/components/TitleBar.tsx:1` → `enableModernWindowStyle()`
+- Frontend import: `apps/gui/src/components/TitleBar.tsx:1` → `enableModernWindowStyle()`
 - npm package: `package.json:26` → `@cloudworxx/tauri-plugin-mac-rounded-corners`
 - Missing: No `src-tauri/src/plugins/` directory
 - Missing: No command registration in `main.rs`
@@ -88,7 +88,7 @@ Key commands:
 
 ### 3. Updated main.rs
 
-**File**: `src-tauri/src/main.rs`
+**File**: `apps/gui/src-tauri/src/main.rs`
 
 Added imports:
 

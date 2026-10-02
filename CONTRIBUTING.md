@@ -285,7 +285,7 @@ Tests use Vitest with `@testing-library/react`. Place colocated tests next to th
 ### Rust
 
 ```bash
-cd src-tauri
+cd apps/gui/src-tauri
 cargo test --workspace
 ```
 

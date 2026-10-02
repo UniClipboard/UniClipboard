@@ -6,7 +6,7 @@
 //! 的 `#[cfg(debug_assertions)]` 里。我们项目用 workspace lib crate
 //! (`uc-tauri`)，没有 main 入口；放到 dev-test target 有三个好处：
 //! 1. 命令清单变更后任何人 `cargo test --workspace` 都会立刻刷新 binding；
-//! 2. CI 跑这个 test → `git diff --exit-code src/lib/ipc-bindings.generated.ts`
+//! 2. CI 跑这个 test → `git diff --exit-code apps/gui/src/lib/ipc-bindings.generated.ts`
 //!    就是天然的 schema drift 闸门；
 //! 3. 不污染 release binary（test target 不进 prod 链路）。
 //!
@@ -18,12 +18,12 @@ use std::path::PathBuf;
 
 use specta_typescript::Typescript;
 
-/// 从 `crates/uc-tauri/` 走到 repo 根的 `src/lib/ipc-bindings.generated.ts`。
+/// 从 `crates/uc-tauri/` 走到 repo 根的 `apps/gui/src/lib/ipc-bindings.generated.ts`。
 /// `CARGO_MANIFEST_DIR` 在 compile 时被替换成绝对路径，避免被 cwd 影响。
-const BINDINGS_PATH_FROM_CRATE: &str = "../../src/lib/ipc-bindings.generated.ts";
+const BINDINGS_PATH_FROM_CRATE: &str = "../../apps/gui/src/lib/ipc-bindings.generated.ts";
 
 /// 错误分级表的导出目标 —— 与 binding 同目录的 `error-severity.generated.ts`。
-const SEVERITY_PATH_FROM_CRATE: &str = "../../src/lib/error-severity.generated.ts";
+const SEVERITY_PATH_FROM_CRATE: &str = "../../apps/gui/src/lib/error-severity.generated.ts";
 
 /// Header written at the top of each generated file.
 ///

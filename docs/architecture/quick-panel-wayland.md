@@ -18,7 +18,7 @@ Linux 面板打开即同时显示左侧历史和右侧预览，默认尺寸为 8
 
 GTK3 运行库 `libgtk-layer-shell.so.0` 按需加载。库不可用时会记录能力降级事件；GTK 已安装的回调要求库在进程生命周期内保持加载。GTK4 的同名用途库不能替代 GTK3 版本。
 
-Deb、RPM、AUR 和 Nix 包装声明了此运行时依赖，Snap 通过 `stage-packages` 携带 GTK3 Layer Shell。AppImage 在 Tauri 的 `beforeBundleCommand` 中运行 `scripts/prepare-linux-bundle.mjs`，按目标架构检查系统库并暂存到 `src-tauri/binaries/linux/`，再通过 `bundle.linux.appimage.files` 放入包内的 `usr/lib/`；缺库或架构不匹配时打包失败，不能依赖 ELF 自动扫描发现动态加载的库。
+Deb、RPM、AUR 和 Nix 包装声明了此运行时依赖，Snap 通过 `stage-packages` 携带 GTK3 Layer Shell。AppImage 在 Tauri 的 `beforeBundleCommand` 中运行 `scripts/prepare-linux-bundle.mjs`，按目标架构检查系统库并暂存到 `apps/gui/src-tauri/binaries/linux/`，再通过 `bundle.linux.appimage.files` 放入包内的 `usr/lib/`；缺库或架构不匹配时打包失败，不能依赖 ELF 自动扫描发现动态加载的库。
 
 Linux 发布工作流在上传前运行 `scripts/check-linux-bundles.py`，检查实际 Deb、RPM 的强制依赖及 AppImage 内库的架构、SONAME 和入口符号。直接运行开发二进制仍需自行安装该运行库，并重新启动 GUI。
 
@@ -50,7 +50,7 @@ o.bind("SUPER + SHIFT + V", "UniClipboard", "uniclipboard --quick-panel")
 
 Omarchy 会整体替换主题目录，因此监听其稳定父目录并合并文件事件。读取失败或主题内容无效时保留最近一次有效配色；后续文件变化会重新读取。调色板仅驻留内存，不写入业务设置，不修改系统 GTK 配置，不安装主题钩子。
 
-前端通过 `src/lib/window-theme.ts` 统一选择最终主题，窗口只消费深浅模式与语义颜色变量。初始查询和实时事件带版本号，避免旧查询覆盖新主题；GUI 退出时取消文件监听。daemon、Engine 和其他平台不承担 Omarchy 适配逻辑。
+前端通过 `apps/gui/src/lib/window-theme.ts` 统一选择最终主题，窗口只消费深浅模式与语义颜色变量。初始查询和实时事件带版本号，避免旧查询覆盖新主题；GUI 退出时取消文件监听。daemon、Engine 和其他平台不承担 Omarchy 适配逻辑。
 
 ## 粘贴与能力边界
 

@@ -8,7 +8,7 @@
 //!
 //! 1. **运行时**：`builder.invoke_handler()` 直接接进 `tauri::Builder::invoke_handler`。
 //! 2. **codegen**：`tests/specta_export.rs` 调 `builder.export(...)` 写出
-//!    `src/lib/ipc-bindings.generated.ts`，CI 跑同一个 test → `git diff
+//!    `apps/gui/src/lib/ipc-bindings.generated.ts`，CI 跑同一个 test → `git diff
 //!    --exit-code` 检查 schema drift。
 //!
 //! 两条管道用同一个 `Builder` 实例的好处：清单只在一个地方维护，

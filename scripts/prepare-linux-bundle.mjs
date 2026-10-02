@@ -29,7 +29,7 @@ if ((process.env.TAURI_ENV_PLATFORM ?? process.platform) === 'linux') {
     )
   }
   const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-  const destination = resolve(root, 'src-tauri/binaries/linux', soname)
+  const destination = resolve(root, 'apps/gui/src-tauri/binaries/linux', soname)
   mkdirSync(dirname(destination), { recursive: true })
   copyFileSync(source, destination)
   console.log(`Staged ${soname} for ${arch}`)

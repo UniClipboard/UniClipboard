@@ -6,10 +6,8 @@ on:
     branches: [main]
     types: [opened, synchronize, reopened]
     paths:
-      - 'src/**'
       - 'crates/**'
       - 'apps/**'
-      - 'src-tauri/**'
       - 'tests/e2e/**'
       - 'vendor/**'
       - 'Cargo.toml'
@@ -18,13 +16,7 @@ on:
       - 'clippy.toml'
       - 'package.json'
       - 'bun.lock'
-      - 'tsconfig*.json'
-      - 'vite.config.ts'
-      - 'tailwind.config.js'
       - '.oxlintrc.json'
-      - 'index.html'
-      - 'quick-panel.html'
-      - 'public/**'
       - '.oxfmtrc.json'
       - '.github/workflows/format.yml'
 

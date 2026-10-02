@@ -9,7 +9,7 @@ Generate the changelog for the current release.
 
 1. Require a base tag or commit. Ask only when it cannot be inferred from the request or current release context.
 2. Read `docs/CHANGELOG_TEMPLATE.md` for the required format and rules.
-3. Read the current version from `src-tauri/tauri.conf.json`.
+3. Read the current version from `apps/gui/src-tauri/tauri.conf.json`.
 4. Inspect commits from the base through `HEAD` with `git log <base>..HEAD --oneline`. Read full commits when the subject is insufficient.
 5. Ignore release-cut commits and internal-only changes unless they have user-visible impact.
 6. Consolidate entries by pull request and user-visible intent. Never repeat the same pull request in one section.

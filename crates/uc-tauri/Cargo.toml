@@ -61,7 +61,7 @@ uuid = { version = "1", features = ["serde"] }
 #   `Builder::invoke_handler()` 直接喂给 `tauri::Builder::invoke_handler`。
 #
 # 版本钉到 2.0.0-rc.25 / 0.0.12（issue #698 调研选定）。toolchain 已在
-# src-tauri/rust-toolchain.toml 钉到 stable 1.95，满足 rc.24+ 内部
+# apps/gui/src-tauri/rust-toolchain.toml 钉到 stable 1.95，满足 rc.24+ 内部
 # `debug_closure_helpers` 等 feature 的 Rust 1.94+ 要求。
 # RC 期 minor 版本不保证 API 稳定，升级前必须重跑
 # `cargo test -p uc-tauri --test specta_export` 验证 binding 无 schema drift。

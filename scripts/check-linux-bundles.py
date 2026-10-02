@@ -34,7 +34,7 @@ def check(bundle_root):
                         cwd=directory, check=True, stdout=subprocess.DEVNULL,
                     )
                     library = pathlib.Path(directory) / "squashfs-root/usr/lib/libgtk-layer-shell.so.0"
-                    staged = pathlib.Path(__file__).resolve().parent.parent / "src-tauri/binaries/linux/libgtk-layer-shell.so.0"
+                    staged = pathlib.Path(__file__).resolve().parent.parent / "apps/gui/src-tauri/binaries/linux/libgtk-layer-shell.so.0"
                     if not library.is_file():
                         raise RuntimeError(f"{package.name}: missing or incorrect bundled GTK3 Layer Shell")
                     # linuxdeploy may strip or patch the library. Compare ELF

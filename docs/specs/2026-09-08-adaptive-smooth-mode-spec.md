@@ -14,7 +14,7 @@
 
 文档完成与功能完成分开。自动模式先用明确的原生能力门槛选择初始效果，再由真实交互修正下一次启动结果；能力检测不等同于帧率保证。修复原实现始终返回 unknown 后，不再让缺少完整设备校准报告阻止有可靠能力信号的设备启用效果。S5/S7 仍负责补充代表设备和完整跨平台证据，不能用模拟输入冒充真机实测。
 
-开始实施时依次读 `VISION.md`、`docs/agent/workflow-rules.md`、`docs/agent/frontend-ui-rules.md`、`src/AGENTS.md`；修改 Rust 前补读 `docs/agent/rust-tauri-rules.md`、`crates/AGENTS.md`、`src-tauri/AGENTS.md`。本文拟新增的路径会明确标为“新增”，不要误认为已有模块。
+开始实施时依次读 `VISION.md`、`docs/agent/workflow-rules.md`、`docs/agent/frontend-ui-rules.md`、`apps/gui/src/AGENTS.md`；修改 Rust 前补读 `docs/agent/rust-tauri-rules.md`、`crates/AGENTS.md`、`apps/gui/src-tauri/AGENTS.md`。本文拟新增的路径会明确标为“新增”，不要误认为已有模块。
 
 ## 2. 研究依据与现状
 
@@ -22,18 +22,18 @@
 
 | 位置 | 当前行为 | 实施影响 |
 | --- | --- | --- |
-| `src/lib/platform.ts` | `reduceVisualEffects = isLinux || isWindows`；写入 `data-uc-low-effects` | 移除此处分散的效果判断；Linux 自动流畅规则移入统一策略，平台信息仍保留 |
-| `src/lib/window-ui.ts` | 两种窗口共同使用的初始化入口，写平台标记并初始化缩放等 | 在此接入效果初始化及清理，不改变其他偏好 |
-| `src/App.tsx`、`src/quick-panel/QuickPanelApp.tsx` | 各有 `LazyMotion`、`MotionConfig` | 分别接同一个状态服务；快捷面板的 `Toaster` 也须放入效果控制范围 |
-| `src/components/setting/AppearanceSection.tsx` | 业务外观设置通过 `useSetting`，已有设备本地缩放与窗口边框设置 | 新增独立设置行，不给 Engine 设置对象加字段 |
-| `src/lib/ui-scale.ts`、`src/lib/window-frame.ts` | 本地存储、当前窗口事件和 `storage` 事件 | 可参考订阅方式，但不足以定义一次 GUI 启动的统一自动结果 |
-| `src/styles/globals.css` | 全局关闭 CSS 动画、过渡、背景模糊；清除阴影变量，玻璃样式变不透明 | 不保证停止 Motion/命令式动画；须审核必要加载反馈 |
-| `src/components/motion/center-morph-modal.css` | 已响应低效果标记 | 保留弹窗布局和关闭语义，测试零时长退出 |
-| `src/lib/theme-transition.ts` | 读取低效果标记；另有 `documentElement.animate()` | 切换模式时应结束已启动效果，保留最终主题状态 |
-| `src/components/motion/input.tsx` | 有命令式 `animate()` 错误抖动 | 公共控制需覆盖取消、复位与静态错误提示 |
+| `apps/gui/src/lib/platform.ts` | `reduceVisualEffects = isLinux || isWindows`；写入 `data-uc-low-effects` | 移除此处分散的效果判断；Linux 自动流畅规则移入统一策略，平台信息仍保留 |
+| `apps/gui/src/lib/window-ui.ts` | 两种窗口共同使用的初始化入口，写平台标记并初始化缩放等 | 在此接入效果初始化及清理，不改变其他偏好 |
+| `apps/gui/src/App.tsx`、`apps/gui/src/quick-panel/QuickPanelApp.tsx` | 各有 `LazyMotion`、`MotionConfig` | 分别接同一个状态服务；快捷面板的 `Toaster` 也须放入效果控制范围 |
+| `apps/gui/src/components/setting/AppearanceSection.tsx` | 业务外观设置通过 `useSetting`，已有设备本地缩放与窗口边框设置 | 新增独立设置行，不给 Engine 设置对象加字段 |
+| `apps/gui/src/lib/ui-scale.ts`、`apps/gui/src/lib/window-frame.ts` | 本地存储、当前窗口事件和 `storage` 事件 | 可参考订阅方式，但不足以定义一次 GUI 启动的统一自动结果 |
+| `apps/gui/src/styles/globals.css` | 全局关闭 CSS 动画、过渡、背景模糊；清除阴影变量，玻璃样式变不透明 | 不保证停止 Motion/命令式动画；须审核必要加载反馈 |
+| `apps/gui/src/components/motion/center-morph-modal.css` | 已响应低效果标记 | 保留弹窗布局和关闭语义，测试零时长退出 |
+| `apps/gui/src/lib/theme-transition.ts` | 读取低效果标记；另有 `documentElement.animate()` | 切换模式时应结束已启动效果，保留最终主题状态 |
+| `apps/gui/src/components/motion/input.tsx` | 有命令式 `animate()` 错误抖动 | 公共控制需覆盖取消、复位与静态错误提示 |
 | `crates/uc-tauri/src/run.rs`、`specta_builder.rs` | 管理桌面状态、集中注册类型化命令 | 新服务归此壳层（Tauri 适配 crate） |
 | `Cargo.lock` | 已锁定 `sysinfo 0.38.4`，`uc-tauri` 尚未直接依赖 | 原生 CPU/内存采集优先复用同版本，不再引入完整系统监控栈 |
-| `src/updater/main.tsx` | 另一个独立界面入口 | 纳入效果覆盖审计；不改更新业务 |
+| `apps/gui/src/updater/main.tsx` | 另一个独立界面入口 | 纳入效果覆盖审计；不改更新业务 |
 
 本地安装的 Motion 代码也已核实：`useReducedMotion()` 在 `useState` 初始化时读取系统值，并不读取本产品的用户选择；不能把替换根部属性当成所有已挂载组件都会立即更新的证据。实施时以锁定版本的源码和运行测试为准。
 
@@ -97,12 +97,12 @@ Linux 默认选中的仍是“自动”，不要把保存的用户选择改成�
 | `crates/uc-tauri/src/visual_effects_probe.rs` | 启动等待上限、结果映射与未知处理 |
 | `crates/uc-desktop/src/visual_capabilities.rs` 及同名目录 | 框架无关的 CPU/内存读取、Metal/Direct3D 能力查询和联合分类 |
 | `crates/uc-tauri/src/commands/visual_effects.rs` | 类型化命令，薄转发，不复制策略 |
-| `src/api/visual-effects.ts` | 命令及事件封装、错误反馈 |
-| `src/lib/visual-effects-store.ts` | 每窗口只读快照、订阅和重连；无磁盘写入、无硬件分类 |
-| `src/hooks/useVisualEffects.ts` | 用 `useSyncExternalStore` 暴露稳定快照 |
-| `src/components/motion/VisualEffectsProvider.tsx` | 根部动画配置和公共效果上下文 |
-| `src/lib/visual-effects-sampler.ts` | 前台交互期间轻量采样，提交汇总，不决定模式 |
-| `src/components/setting/SmoothModeSetting.tsx` | 单独一行设置及该行的保存反馈 |
+| `apps/gui/src/api/visual-effects.ts` | 命令及事件封装、错误反馈 |
+| `apps/gui/src/lib/visual-effects-store.ts` | 每窗口只读快照、订阅和重连；无磁盘写入、无硬件分类 |
+| `apps/gui/src/hooks/useVisualEffects.ts` | 用 `useSyncExternalStore` 暴露稳定快照 |
+| `apps/gui/src/components/motion/VisualEffectsProvider.tsx` | 根部动画配置和公共效果上下文 |
+| `apps/gui/src/lib/visual-effects-sampler.ts` | 前台交互期间轻量采样，提交汇总，不决定模式 |
+| `apps/gui/src/components/setting/SmoothModeSetting.tsx` | 单独一行设置及该行的保存反馈 |
 
 已有 `platform.ts` 最终仅负责平台事实。迁移后删除 `PlatformInfo.reduceVisualEffects`；`isLowEffectsEnabled` 迁到效果模块。全局样式标记只能由效果状态入口写入。
 
@@ -230,8 +230,8 @@ GUI 服务串行授予一次采样许可，确保两个窗口不会重复采样�
 新增测试文件以 `visual-effects` 命名，便于独立执行：
 
 ```bash
-npx vitest run src/lib/__tests__/visual-effects-store.test.ts src/lib/__tests__/visual-effects-sampler.test.ts
-npx vitest run src/components/setting/__tests__/SmoothModeSetting.test.tsx
+npx vitest run apps/gui/src/lib/__tests__/visual-effects-store.test.ts apps/gui/src/lib/__tests__/visual-effects-sampler.test.ts
+npx vitest run apps/gui/src/components/setting/__tests__/SmoothModeSetting.test.tsx
 cargo test -p uc-tauri visual_effects
 cargo test -p uc-tauri --test specta_export
 bun run lint

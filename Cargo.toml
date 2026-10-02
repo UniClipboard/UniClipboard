@@ -3,8 +3,9 @@
 # Layout:
 # - apps/    runnable binaries (cli => uniclip, daemon => uniclipd)
 # - crates/  desktop host, platform, observability, and daemon libraries
-# - src-tauri/  Tauri packaging only: the `uniclipboard` desktop bin package
-#               its adapter crate lives in crates/uc-tauri
+# - apps/gui/  desktop GUI app: React frontend (package.json, src/) plus the
+#               Tauri packaging shell apps/gui/src-tauri (the `uniclipboard` bin
+#               package); its adapter crate lives in crates/uc-tauri
 
 [workspace]
 members = [
@@ -24,7 +25,7 @@ members = [
   "apps/daemon",
   "crates/quick-panel-core",
   "apps/quick-panel",
-  "src-tauri",
+  "apps/gui/src-tauri",
   "crates/uc-tauri",
 ]
 # `tests/e2e` is the CLI E2E test crate. It's excluded from the workspace

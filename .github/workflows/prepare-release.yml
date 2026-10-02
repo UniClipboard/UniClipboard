@@ -155,7 +155,7 @@ jobs:
           VERSION="${{ steps.version.outputs.version }}"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml Cargo.toml Cargo.lock docs/changelog/
+          git add package.json apps/gui/src-tauri/tauri.conf.json apps/gui/src-tauri/Cargo.toml Cargo.toml Cargo.lock docs/changelog/
           git commit -m "chore: bump version to ${VERSION}"
 
       - name: Render Codex changelog prompt

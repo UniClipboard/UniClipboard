@@ -24,7 +24,7 @@ tauri-build = { version = "2", features = [] }
 # Tauri shell entry — bin crate hands control to uc-tauri, which owns all
 # Tauri-specific plumbing (commands, plugins, builder/setup, run loop) and
 # pulls uc-bootstrap transitively for context construction.
-uc-tauri = { path = "../crates/uc-tauri" }
+uc-tauri = { path = "../../../crates/uc-tauri" }
 
 # Required for the tauri::generate_context!() macro the bin still calls.
 tauri = { workspace = true }

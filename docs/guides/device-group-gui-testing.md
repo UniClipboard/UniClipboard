@@ -21,8 +21,8 @@ Cargo 串行运行，沿用已有外置 target 和编译缓存。界面或原生
 ## 生成与复用资料
 
 ```sh
-node e2e/conflict-userdata.mjs generate four
-node e2e/conflict-userdata.mjs generate five
+node apps/gui/e2e/conflict-userdata.mjs generate four
+node apps/gui/e2e/conflict-userdata.mjs generate five
 ```
 
 生成器通过正常创建、邀请和加入流程形成同一设备组；成员数量和激活状态达到条件后才保存。
@@ -30,7 +30,7 @@ node e2e/conflict-userdata.mjs generate five
 清单包括 Engine 提交、角色、前置状态、校验值及仅供本机测试的凭据。基线目录只读，整个测试目录仅供当前用户访问，不提交这些文件。
 
 生成时必须等到所有成员关系为已确认且可用。需要重新生成时先停止相关运行，再显式执行
-`node e2e/conflict-userdata.mjs archive four`（或 `five`）归档旧基线；归档保留原数据，不删除或覆盖。
+`node apps/gui/e2e/conflict-userdata.mjs archive four`（或 `five`）归档旧基线；归档保留原数据，不删除或覆盖。
 
 恢复会整套复制持久化资料（包括解锁所需资料），排除后台端口、进程号、锁和会话连接文件。新配置统一使用
 `conflict-e2e-<运行编号>-<角色>`，不会写入或重置原有 a/b/c/d。
@@ -44,17 +44,17 @@ node e2e/conflict-userdata.mjs generate five
 下列入口自动恢复基线、启动实际窗口、运行操作、保存证据并停止本轮后台：
 
 ```sh
-npx --yes --package=node@24 node e2e/conflict-suite.mjs four apply
-npx --yes --package=node@24 node e2e/conflict-suite.mjs four cross-local
-npx --yes --package=node@24 node e2e/conflict-suite.mjs four cross-remote
-npx --yes --package=node@24 node e2e/conflict-suite.mjs four disagreement
-npx --yes --package=node@24 node e2e/conflict-suite.mjs five local-remove
-npx --yes --package=node@24 node e2e/conflict-suite.mjs four new-peer
-npx --yes --package=node@24 node e2e/conflict-suite.mjs four disconnect
-npx --yes --package=node@24 node e2e/conflict-suite.mjs four restart-cycle
-npx --yes --package=node@24 node e2e/conflict-suite.mjs four response-loss
-npx --yes --package=node@24 node e2e/conflict-suite.mjs four controlled
-npx --yes --package=node@24 node e2e/conflict-suite.mjs four native-keyboard
+npx --yes --package=node@24 node apps/gui/e2e/conflict-suite.mjs four apply
+npx --yes --package=node@24 node apps/gui/e2e/conflict-suite.mjs four cross-local
+npx --yes --package=node@24 node apps/gui/e2e/conflict-suite.mjs four cross-remote
+npx --yes --package=node@24 node apps/gui/e2e/conflict-suite.mjs four disagreement
+npx --yes --package=node@24 node apps/gui/e2e/conflict-suite.mjs five local-remove
+npx --yes --package=node@24 node apps/gui/e2e/conflict-suite.mjs four new-peer
+npx --yes --package=node@24 node apps/gui/e2e/conflict-suite.mjs four disconnect
+npx --yes --package=node@24 node apps/gui/e2e/conflict-suite.mjs four restart-cycle
+npx --yes --package=node@24 node apps/gui/e2e/conflict-suite.mjs four response-loss
+npx --yes --package=node@24 node apps/gui/e2e/conflict-suite.mjs four controlled
+npx --yes --package=node@24 node apps/gui/e2e/conflict-suite.mjs four native-keyboard
 ```
 
 | 场景                       | 验证内容                                                                                                      |
@@ -79,7 +79,7 @@ npx --yes --package=node@24 node e2e/conflict-suite.mjs four native-keyboard
 运行全部场景（包含四/五配置的重复恢复运行）：
 
 ```sh
-npx --yes --package=node@24 node e2e/conflict-all.mjs
+npx --yes --package=node@24 node apps/gui/e2e/conflict-all.mjs
 ```
 
 也可使用 `bun run e2e:conflicts four apply` 与 `bun run e2e:conflicts:all`。
@@ -95,7 +95,7 @@ npx --yes --package=node@24 node e2e/conflict-all.mjs
 修复 Engine 后可显式从此前失败运行复制新配置，验证旧资料迁移与恢复，而非只验证新建组：
 
 ```sh
-npx --yes --package=node@24 node e2e/conflict-suite.mjs four recover-frozen .cache/device-group-e2e/run-<旧运行编号>/run.json
+npx --yes --package=node@24 node apps/gui/e2e/conflict-suite.mjs four recover-frozen .cache/device-group-e2e/run-<旧运行编号>/run.json
 ```
 
 入口支持此前四配置远端组故障，以及 `four new-peer` 形成的五配置故障。它在新窗口处理未完成选择，检查成员名单、实际文本接收和被排除目标的发送结果。
@@ -107,14 +107,14 @@ npx --yes --package=node@24 node e2e/conflict-suite.mjs four recover-frozen .cac
 单独恢复用于现场调查：
 
 ```sh
-node e2e/conflict-userdata.mjs restore four
+node apps/gui/e2e/conflict-userdata.mjs restore four
 ```
 
-将该命令输出的清单路径作为 `CONFLICT_RUN` 传给 `e2e/wdio.conflict.conf.mjs`；优先使用上面的场景入口，它负责完整清理。
+将该命令输出的清单路径作为 `CONFLICT_RUN` 传给 `apps/gui/e2e/wdio.conflict.conf.mjs`；优先使用上面的场景入口，它负责完整清理。
 停止时显式提供该次清单，下面的 `<运行编号>` 应替换为实际值：
 
 ```sh
-node e2e/conflict-userdata.mjs stop four .cache/device-group-e2e/run-<运行编号>/run.json
+node apps/gui/e2e/conflict-userdata.mjs stop four .cache/device-group-e2e/run-<运行编号>/run.json
 ```
 
 不要直接删除互斥目录来绕过正在运行的检查。工具会校验测试配置及进程归属，并处理 GUI 结束后延迟启动的后台。

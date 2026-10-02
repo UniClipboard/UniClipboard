@@ -102,9 +102,9 @@ describe('updateCargoLock', () => {
     tempDirs.push(repoDir)
     process.chdir(repoDir)
 
-    fs.mkdirSync(path.join(repoDir, 'src-tauri'), { recursive: true })
+    fs.mkdirSync(path.join(repoDir, 'apps', 'gui', 'src-tauri'), { recursive: true })
     fs.writeFileSync(
-      path.join(repoDir, 'src-tauri', 'Cargo.toml'),
+      path.join(repoDir, 'apps', 'gui', 'src-tauri', 'Cargo.toml'),
       '[package]\nname = "uniclipboard"\nversion = "0.2.0-alpha.4"\n',
       'utf8'
     )
@@ -127,9 +127,9 @@ describe('updateCargoLock', () => {
     tempDirs.push(repoDir)
     process.chdir(repoDir)
 
-    fs.mkdirSync(path.join(repoDir, 'src-tauri'), { recursive: true })
+    fs.mkdirSync(path.join(repoDir, 'apps', 'gui', 'src-tauri'), { recursive: true })
     fs.writeFileSync(
-      path.join(repoDir, 'src-tauri', 'Cargo.toml'),
+      path.join(repoDir, 'apps', 'gui', 'src-tauri', 'Cargo.toml'),
       '[package]\nname = "uniclipboard"\nversion = "0.2.0-alpha.4"\n',
       'utf8'
     )

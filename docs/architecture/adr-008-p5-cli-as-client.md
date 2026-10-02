@@ -146,7 +146,7 @@ uniclip ──① uc-bootstrap ──────→ build_cli_app_facade / buil
 反转 D7「置备保留 in-process」——端点已为 GUI 建好，CLI 复用。
 
 > **rev3 关键修正（R2-F2，反转 rev2 的「删 setup-mode」）**：读父 ADR **D16**（`adr-008-uniclipd-split-gui-as-client.md` line 179-190）确认 **setup-mode 是强制的 daemon 两阶段生命周期**，rev2「删 setup-mode」基于未读 D16 的错误假设。须区分两件正交的事：
-> - **置备协议**（用哪套 HTTP）：✅ rev2 判断正确——走 **`/v2/setup/*`**（`SETUP_INITIALIZE`/`REDEEM`/`SWITCH_SPACE`/`STATE`/`CANCEL`/`ISSUE_INVITATION`/`MIGRATION_PROGRESS`，包 `SpaceSetupFacade`）。前端生成 SDK（`src/api/generated/sdk.gen.ts`/`types.gen.ts`、`src/store/setupRealtimeStore.ts`）实证在用；`/setup/*`(DaemonSetupClient) 前端+Rust 均无调用点，确为 legacy，弃用。
+> - **置备协议**（用哪套 HTTP）：✅ rev2 判断正确——走 **`/v2/setup/*`**（`SETUP_INITIALIZE`/`REDEEM`/`SWITCH_SPACE`/`STATE`/`CANCEL`/`ISSUE_INVITATION`/`MIGRATION_PROGRESS`，包 `SpaceSetupFacade`）。前端生成 SDK（`apps/gui/src/api/generated/sdk.gen.ts`/`types.gen.ts`、`apps/gui/src/store/setupRealtimeStore.ts`）实证在用；`/setup/*`(DaemonSetupClient) 前端+Rust 均无调用点，确为 legacy，弃用。
 > - **setup-mode**（daemon 生命周期阶段）：❌ rev2 删错，**必须保留**——未 setup-complete 的 daemon 起在 setup-mode（轻装：HTTP + `/setup/*`·`/v2/setup/*` 路由 + setup WS；clipboard capture / sync dispatch / mobile_lan **不构造**），置备完 **重启** 进 operational。
 
 - **首次置备 `init` / `join` = 「确保目标 profile daemon 在 setup-mode + 经 `/v2/setup/*` 驱动 + 置备完重启进 operational」**，与 GUI 同协议同状态机（仅 `setup_complete=false` 的设备走此路径）：

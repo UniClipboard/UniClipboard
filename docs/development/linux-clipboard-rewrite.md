@@ -95,7 +95,7 @@ UniClipboard Linux 平台层依赖 `clipboard-rs 0.3.3`：
 
 - `cargo check --workspace --all-targets` 全平台 0 warning 0 error
 - `cargo clippy -p uc-platform -p uc-desktop --all-targets -- -D warnings` 全平台 0 warning（**注意**：本机 Fedora 44 没装 clippy；CI 上跑）
-- `cargo fmt --manifest-path=src-tauri/Cargo.toml --all -- --check` 0 diff
+- `cargo fmt --manifest-path=apps/gui/src-tauri/Cargo.toml --all -- --check` 0 diff
 - `cargo test -p uc-platform --lib` 全部通过
 
 ### 3.2 运行时（手动 / 半自动）
@@ -579,13 +579,13 @@ crates/uc-cli/
 ```bash
 # Terminal A: 启动 watcher
 RUST_LOG="info,uc_platform=debug" cargo run \
-    --manifest-path=src-tauri/Cargo.toml \
+    --manifest-path=apps/gui/src-tauri/Cargo.toml \
     --example wayland_watch \
     -p uc-platform
 
 # 强制走 wlr 路径回归（在同时通告 ext+wlr 的 compositor 上有用）
 UC_FORCE_DATA_CONTROL=wlr RUST_LOG="info,uc_platform=debug" cargo run \
-    --manifest-path=src-tauri/Cargo.toml \
+    --manifest-path=apps/gui/src-tauri/Cargo.toml \
     --example wayland_watch \
     -p uc-platform
 
@@ -603,7 +603,7 @@ wl-copy --type image/png < /tmp/sample.png
 ```bash
 # 单次执行（write→wl-paste校验→read 三步内置）
 RUST_LOG="info,uc_platform=debug" cargo run \
-    --manifest-path=src-tauri/Cargo.toml \
+    --manifest-path=apps/gui/src-tauri/Cargo.toml \
     --example wayland_clipboard_test \
     -p uc-platform
 ```
@@ -639,7 +639,7 @@ bun run tauri:dev:peerB
 ```bash
 # Watcher（实时打印外部 xclip / xsel 触发的 snapshot）
 RUST_LOG="info,uc_platform=debug" cargo run \
-    --manifest-path=src-tauri/Cargo.toml \
+    --manifest-path=apps/gui/src-tauri/Cargo.toml \
     --example x11_watch \
     -p uc-platform
 
@@ -653,7 +653,7 @@ head -c 20000000 /dev/urandom | base64 | xclip -selection clipboard -i
 ```bash
 # Read/Write 单次跑（write → xclip/xsel 验证 → 自身 read）
 RUST_LOG="info,uc_platform=debug" cargo run \
-    --manifest-path=src-tauri/Cargo.toml \
+    --manifest-path=apps/gui/src-tauri/Cargo.toml \
     --example x11_clipboard_test \
     -p uc-platform
 ```

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createSpecRuns } from '../../e2e/run-plan.mjs'
+import { createSpecRuns } from '../../apps/gui/e2e/run-plan.mjs'
 
 describe('GUI E2E run plan', () => {
   it.each(['win32', 'linux'])('does not run macOS key-loss fixtures on %s', hostPlatform => {

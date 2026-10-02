@@ -112,7 +112,7 @@ bun run tauri:dev
 bun run test
 
 # Run Rust workspace tests
-(cd src-tauri && cargo test --workspace)
+(cd apps/gui/src-tauri && cargo test --workspace)
 
 # Build for production
 bun run tauri build

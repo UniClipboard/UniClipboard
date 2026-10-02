@@ -5,8 +5,9 @@
 # keeps the context transfer small and avoids shipping huge artifact trees
 # (Rust `target/`, node_modules) into the daemon.
 #
-# IMPORTANT: do NOT exclude `crates/`, `apps/` or `src-tauri/` — the build
-# needs their workspace manifests and sources.
+# IMPORTANT: do NOT exclude `crates/` or `apps/` (including
+# `apps/gui/src-tauri/`) — the build needs their workspace manifests and sources.
+# Only the GUI's frontend directories under apps/gui are irrelevant here.
 
 .git
 .github
@@ -16,8 +17,10 @@ node_modules
 dist
 dist-ssr
 docs-site
-e2e
-public
+apps/gui/src
+apps/gui/e2e
+apps/gui/public
+apps/gui/dist
 assets
 snap
 coverage

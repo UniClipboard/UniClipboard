@@ -96,9 +96,9 @@ Read: `docs/agent/project-memory.md`
 Then selectively read:
 - `docs/README.md` and linked docs for current-state guidance
 - `.planning/` for roadmap, milestones, and spike research notes
-- `src/AGENTS.md` for frontend-local navigation
+- `apps/gui/src/AGENTS.md` for frontend-local navigation
 - `crates/AGENTS.md` for Rust-workspace navigation (crates/ + apps/ + src-tauri/)
-- `src-tauri/AGENTS.md` for Tauri packaging specifics
+- `apps/gui/src-tauri/AGENTS.md` for Tauri packaging specifics
 - `apps/cli/AGENTS.md` for `uniclip` CLI-local rules
 
 Log file locations (platform-conventional, separate from the data root; single
@@ -125,14 +125,14 @@ Use when:
 ### Frontend task
 1. `AGENTS.md`
 2. `docs/agent/frontend-ui-rules.md`
-3. `src/AGENTS.md`
+3. `apps/gui/src/AGENTS.md`
 4. relevant code/docs only
 
 ### Rust/Tauri task
 1. `AGENTS.md`
 2. `docs/agent/rust-tauri-rules.md`
 3. `docs/agent/architecture-rules.md` if boundaries are involved
-4. `crates/AGENTS.md` (plus `src-tauri/AGENTS.md` for packaging work)
+4. `crates/AGENTS.md` (plus `apps/gui/src-tauri/AGENTS.md` for packaging work)
 5. relevant code/docs only
 
 ### Complex bug in unfamiliar area

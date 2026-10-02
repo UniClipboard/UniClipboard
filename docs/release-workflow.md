@@ -39,8 +39,8 @@ bun run version:bump --type patch --channel alpha --dry-run
 该脚本会自动更新以下文件中的版本号：
 
 - `package.json`
-- `src-tauri/tauri.conf.json`
-- `src-tauri/Cargo.toml`
+- `apps/gui/src-tauri/tauri.conf.json`
+- `apps/gui/src-tauri/Cargo.toml`
 
 参数说明：
 

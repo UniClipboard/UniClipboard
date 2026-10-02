@@ -8,19 +8,15 @@ on:
   push:
     branches: [main]
     paths:
-      - 'src/**'
+      - 'apps/gui/**'
       - 'package.json'
       - 'bun.lock'
-      - 'tsconfig*.json'
-      - 'vite.config.ts'
       - '.github/workflows/frontend-coverage.yml'
   pull_request:
     paths:
-      - 'src/**'
+      - 'apps/gui/**'
       - 'package.json'
       - 'bun.lock'
-      - 'tsconfig*.json'
-      - 'vite.config.ts'
       - '.github/workflows/frontend-coverage.yml'
 
 jobs:
@@ -58,7 +54,7 @@ jobs:
         uses: codecov/codecov-action@v5.5.2
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          files: ./coverage/frontend/lcov.info
+          files: ./apps/gui/coverage/frontend/lcov.info
           flags: frontend
           name: frontend-coverage
           fail_ci_if_error: false

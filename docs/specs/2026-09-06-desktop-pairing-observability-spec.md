@@ -24,9 +24,9 @@
 
 | 位置 | 已有能力 | 尚缺能力 |
 | --- | --- | --- |
-| `src/observability/diagnostics.ts` | 厂商无关的调用入口，当前使用 Sentry | 标准跨进程上下文及用户动作完整生命周期 |
-| `src/observability/trace.ts` | 每次调用独立结束；重叠操作不猜测普通日志归属 | 异步请求、继续执行与结果呈现之间的明确关联 |
-| `src/lib/ipc.ts`、Tauri commands | 传递编号与时间并写入日志 | 真正建立父子关系，而不只是同名日志字段 |
+| `apps/gui/src/observability/diagnostics.ts` | 厂商无关的调用入口，当前使用 Sentry | 标准跨进程上下文及用户动作完整生命周期 |
+| `apps/gui/src/observability/trace.ts` | 每次调用独立结束；重叠操作不猜测普通日志归属 | 异步请求、继续执行与结果呈现之间的明确关联 |
+| `apps/gui/src/lib/ipc.ts`、Tauri commands | 传递编号与时间并写入日志 | 真正建立父子关系，而不只是同名日志字段 |
 | daemon HTTP 中间件 | 独立请求编号、入口日志、响应耗时 | 接收前端上下文，并延续至 Engine |
 | 新版 Engine 工作区 | 独立配对生命周期、受控追踪与日志输出 | 外部父关系、与桌面采集初始化组合、宿主服务资源配置 |
 | Engine runtime / Collector | 有限字段和来源允许规则 | 接受经过批准的桌面节点与配对父关系 |
@@ -204,7 +204,7 @@ Engine 不是单独进程时，不为了图形人为拆成另一个服务。服�
 | 顺序 | 修改范围 | 通过门槛 |
 | --- | --- | --- |
 | A：采集组合 | Engine 公共观测装配；Desktop `crates/uc-bootstrap/src/observability/`；开发 Collector | 一个真实 daemon 同时保留本机日志和 Sentry，显式启用后可导出一个受控步骤；重复初始化、关闭、退出均验证 |
-| B：请求关联 | `src/observability/`、两条本机调用包装、daemon client/HTTP 中间件、Tauri 元数据及生成声明 | 两个并发请求不串线；合法上下文接续；缺失/非法不影响业务；旧元数据路径完成删除 |
+| B：请求关联 | `apps/gui/src/observability/`、两条本机调用包装、daemon client/HTTP 中间件、Tauri 元数据及生成声明 | 两个并发请求不串线；合法上下文接续；缺失/非法不影响业务；旧元数据路径完成删除 |
 | C：加入闭环 | `useSetupFlow.ts`、`useJoinAdmission.ts`、邀请方确认流程；Engine 生命周期及过滤合同 | c/d 实际加入从点击到呈现可查询；请求返回 pending 后仍可跟踪；对端记录与日志可关联 |
 | D：边界与交付 | 恢复、隐私、设置、跨平台测试与开发使用说明 | 下表验收完成，范围外能力明确保留，不把模拟通过当作真实设备通过 |
 
@@ -241,4 +241,4 @@ Engine 不是单独进程时，不为了图形人为拆成另一个服务。服�
 - [OpenTelemetry 上下文传播](https://opentelemetry.io/docs/concepts/context-propagation/)：跨边界延续及日志关联。
 - [OpenTelemetry instrumentation scope](https://opentelemetry.io/docs/concepts/instrumentation-scope/)：区分宿主服务与内部模块。
 - Engine 仓 `docs/design-docs/observability.md`：业务动作归属、隐私与可解释性规则；`tests/observability/collector/README.md`：当前开发入口。上游变更须同步其事实来源，本文不替代 Engine 的内部合同。
-- Desktop 当前证据：`src/observability/diagnostics.ts`、`src/observability/trace.ts`、`src/hooks/useSetupFlow.ts`、`src/hooks/useJoinAdmission.ts`、`crates/uc-webserver/src/api/server.rs`、`crates/uc-bootstrap/src/observability/tracing.rs`。
+- Desktop 当前证据：`apps/gui/src/observability/diagnostics.ts`、`apps/gui/src/observability/trace.ts`、`apps/gui/src/hooks/useSetupFlow.ts`、`apps/gui/src/hooks/useJoinAdmission.ts`、`crates/uc-webserver/src/api/server.rs`、`crates/uc-bootstrap/src/observability/tracing.rs`。

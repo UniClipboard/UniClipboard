@@ -21,7 +21,7 @@ use anyhow::Result;
 ///
 /// Encoder-CPU regressions in dev profile are mitigated by the
 /// `opt-level = 3` overrides on `image` / `png` / `fdeflate` / `flate2` /
-/// `miniz_oxide` in `src-tauri/Cargo.toml`.
+/// `miniz_oxide` in `apps/gui/src-tauri/Cargo.toml`.
 ///
 /// The CF_DIB → PNG path is only the **second-tier** strategy on Windows:
 /// modern screenshot sources (Chrome, Office, Snipping Tool, Snipaste, 微信)

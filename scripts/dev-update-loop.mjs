@@ -48,7 +48,7 @@ import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const srcTauri = join(repoRoot, 'src-tauri')
+const srcTauri = join(repoRoot, 'apps', 'gui', 'src-tauri')
 const tauriConf = join(srcTauri, 'tauri.conf.json')
 
 // All generated state lives under the gitignored target dir.

@@ -1,7 +1,10 @@
 {
   "$schema": "https://schema.tauri.app/config",
   "build": {
-    "beforeBuildCommand": "bun run build:e2e"
+    "beforeBuildCommand": {
+      "script": "bun run build:e2e",
+      "cwd": "../../.."
+    }
   },
   "app": {
     "withGlobalTauri": true,

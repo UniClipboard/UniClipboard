@@ -45,7 +45,7 @@ Use this document when editing Rust, Tauri commands, daemon handlers, async loop
      需要补 `#[specta(type = Option<T>)]`，告诉 specta 实际 wire 类型。
 
 2. **Codegen**：本地跑 `cargo test -p uc-tauri --test specta_export` 重新
-   生成 `src/lib/ipc-bindings.generated.ts`，并把它一起提交。CI
+   生成 `apps/gui/src/lib/ipc-bindings.generated.ts`，并把它一起提交。CI
    `pr-check.yml` 会用 `git diff --exit-code` 校验，drift 会拒绝合并。
 
 3. **平台条件命令**：新增带 `#[cfg(target_os = "...")]` 的命令时，函数

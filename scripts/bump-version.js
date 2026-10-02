@@ -64,7 +64,7 @@ export function updatePackageJson(newVersion, dryRun) {
 }
 
 export function updateTauriConfig(newVersion, dryRun) {
-  const configPath = path.join(process.cwd(), 'src-tauri', 'tauri.conf.json')
+  const configPath = path.join(process.cwd(), 'apps', 'gui', 'src-tauri', 'tauri.conf.json')
   const config = JSON.parse(fs.readFileSync(configPath, 'utf8'))
   const oldVersion = config.version
 
@@ -80,7 +80,7 @@ export function updateTauriConfig(newVersion, dryRun) {
 export function updateCargoToml(
   newVersion,
   dryRun,
-  relativePath = path.join('src-tauri', 'Cargo.toml'),
+  relativePath = path.join('apps', 'gui', 'src-tauri', 'Cargo.toml'),
   section = 'package'
 ) {
   const cargoPath = path.join(process.cwd(), relativePath)
@@ -125,8 +125,8 @@ export function updateCargoToml(
 
 export function updateCargoLock(newVersion, dryRun) {
   // The cargo workspace lives at the repo root, so Cargo.lock does too; the
-  // `uniclipboard` package manifest still lives in src-tauri/Cargo.toml.
-  const cargoTomlPath = path.join(process.cwd(), 'src-tauri', 'Cargo.toml')
+  // `uniclipboard` package manifest lives in apps/gui/src-tauri/Cargo.toml.
+  const cargoTomlPath = path.join(process.cwd(), 'apps', 'gui', 'src-tauri', 'Cargo.toml')
   const cargoLockPath = path.join(process.cwd(), 'Cargo.lock')
 
   if (!fs.existsSync(cargoLockPath)) {

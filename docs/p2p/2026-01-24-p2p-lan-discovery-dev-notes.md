@@ -36,7 +36,7 @@
 
 - `cargo test -p uc-platform libp2p_network -- --nocapture`
   - 9 tests pass (includes e2e mDNS test)
-- `cd src-tauri && cargo test --workspace`
+- `cd apps/gui/src-tauri && cargo test --workspace`
   - Baseline failure: mac_rounded_corners/cocoa unresolved (known issue)
 - `bun run tauri:dev`
   - Starts successfully when Keychain access is allowed
@@ -53,7 +53,7 @@
 
 ## Dependency Notes
 
-- libp2p dependencies moved out of `src-tauri/Cargo.toml` into `uc-platform/Cargo.toml`
+- libp2p dependencies moved out of `apps/gui/src-tauri/Cargo.toml` into `uc-platform/Cargo.toml`
 - `libp2p-stream` is now used in active platform code (`src-tauri/crates/uc-platform`)
 - Tauri log plugin mismatch fix:
   - JS: `@tauri-apps/plugin-log` pinned to 2.7.1 in `package.json`
@@ -65,12 +65,12 @@
 - `src-tauri/crates/uc-platform/src/adapters/libp2p_network.rs`
 - `crates/uc-tauri/src/bootstrap/wiring.rs`
 - `src-tauri/crates/uc-platform/Cargo.toml`
-- `src-tauri/Cargo.toml`
+- `apps/gui/src-tauri/Cargo.toml`
 - `package.json`
 
 ## Baseline Failures
 
-- `cd src-tauri && cargo test --workspace` fails due to `mac_rounded_corners/cocoa` missing crate
+- `cd apps/gui/src-tauri && cargo test --workspace` fails due to `mac_rounded_corners/cocoa` missing crate
 
 ## Next Steps (if needed)
 

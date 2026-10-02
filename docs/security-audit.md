@@ -1,7 +1,7 @@
 # Security Audit Report — Phase 75
 
 **Date**: 2026-03-30
-**Scope**: Daemon HTTP API (uc-daemon), Frontend Daemon Client (src/api/daemon/, src/lib/)
+**Scope**: Daemon HTTP API (uc-daemon), Frontend Daemon Client (apps/gui/src/api/daemon/, apps/gui/src/lib/)
 **Phase**: M003 S05 — Frontend-Daemon Integration Testing & Security Audit
 
 ---
@@ -12,14 +12,14 @@
 
 | File | Finding |
 |------|---------|
-| `src/api/daemon/client.ts` | Session token stored **in-memory only** (`this.session`). `destroy()` clears it. |
-| `src/lib/daemon-auth.ts` | Uses `daemonClient` in-memory session. No persistence. |
-| `src/lib/daemon-ws.ts` | WebSocket auth token passed via URL query param (`?auth=Session%20TOKEN`) at connection time only — ephemeral, not persisted. |
+| `apps/gui/src/api/daemon/client.ts` | Session token stored **in-memory only** (`this.session`). `destroy()` clears it. |
+| `apps/gui/src/lib/daemon-auth.ts` | Uses `daemonClient` in-memory session. No persistence. |
+| `apps/gui/src/lib/daemon-ws.ts` | WebSocket auth token passed via URL query param (`?auth=Session%20TOKEN`) at connection time only — ephemeral, not persisted. |
 
 **grep results** (non-test files):
-- `src/components/feedback/FeedbackDialog.tsx`: `localStorage` used only for user email (not tokens) ✅
-- `src/components/clipboard/ClipboardContent.tsx`: `localStorage` used only for panel layout preferences ✅
-- `src/i18n/index.ts`: `localStorage` used only for language preference ✅
+- `apps/gui/src/components/feedback/FeedbackDialog.tsx`: `localStorage` used only for user email (not tokens) ✅
+- `apps/gui/src/components/clipboard/ClipboardContent.tsx`: `localStorage` used only for panel layout preferences ✅
+- `apps/gui/src/i18n/index.ts`: `localStorage` used only for language preference ✅
 
 **Result**: ✅ PASS — No session tokens stored in persistent browser storage. Session tokens exist only in memory (`daemonClient.session`).
 
@@ -31,9 +31,9 @@
 
 | Location | Auth Method | Assessment |
 |----------|-------------|------------|
-| `src/api/daemon/client.ts:172` | `Authorization: Bearer <token>` (initial `/auth/connect`) | ✅ Correct |
-| `src/api/daemon/client.ts:214` | `Authorization: Session <session>` (all subsequent requests) | ✅ Correct |
-| `src/lib/daemon-ws.ts:203` | `?auth=Session%20TOKEN` URL query param | ⚠️ Acceptable — browsers prohibit custom headers on WebSocket upgrade |
+| `apps/gui/src/api/daemon/client.ts:172` | `Authorization: Bearer <token>` (initial `/auth/connect`) | ✅ Correct |
+| `apps/gui/src/api/daemon/client.ts:214` | `Authorization: Session <session>` (all subsequent requests) | ✅ Correct |
+| `apps/gui/src/lib/daemon-ws.ts:203` | `?auth=Session%20TOKEN` URL query param | ⚠️ Acceptable — browsers prohibit custom headers on WebSocket upgrade |
 
 **WebSocket auth rationale**: Browser WebSocket API (`new WebSocket(url)`) does not support custom headers during the upgrade handshake. The session token is passed in the URL query parameter (`?auth=Session%20TOKEN`) at connection time. This is:
 - **Acceptable** because the daemon runs on the local loopback interface only (`127.0.0.1`)
@@ -232,7 +232,7 @@ fn claims_expired_token_rejected() {
 
 The browser WebSocket API (`new WebSocket(url)`) does not support custom headers on the upgrade request. The session token is therefore passed as a URL query parameter.
 
-**Implementation** (`src/lib/daemon-ws.ts:197-204`):
+**Implementation** (`apps/gui/src/lib/daemon-ws.ts:197-204`):
 ```typescript
 private _openSocket(): void {
   const token = daemonClient.currentSession?.token
@@ -283,7 +283,7 @@ See `docs/uat/direct-daemon-ws.md` for full UAT runbook.
 
 ### Check: Frontend consumer receives corrected WebSocket envelopes
 
-The `useClipboardEventStream` hook (`src/hooks/__tests__/useClipboardEventStream.test.tsx`) verifies that:
+The `useClipboardEventStream` hook (`apps/gui/src/hooks/__tests__/useClipboardEventStream.test.tsx`) verifies that:
 1. Corrected daemon event envelopes (snake_case from Rust → camelCase normalized) reach the frontend consumer
 2. The hook handles `clipboard.new-content`, `clipboard.deleted`, and remote invalidation events
 3. Throttling logic correctly deduplicates rapid remote events
@@ -297,7 +297,7 @@ The `useClipboardEventStream` hook (`src/hooks/__tests__/useClipboardEventStream
 
 **Run consumer tests**:
 ```bash
-npx vitest run src/hooks/__tests__/useClipboardEventStream.test.tsx
+npx vitest run apps/gui/src/hooks/__tests__/useClipboardEventStream.test.tsx
 ```
 
 ---
@@ -335,7 +335,7 @@ npx vitest run src/hooks/__tests__/useClipboardEventStream.test.tsx
 grep -rn "localStorage.setItem.*token\|sessionStorage.setItem.*token" src/ --include="*.ts" --include="*.tsx"
 
 # Authorization header check
-grep -rn "Authorization.*Bearer\|Authorization.*Session" src/api/daemon/ --include="*.ts"
+grep -rn "Authorization.*Bearer\|Authorization.*Session" apps/gui/src/api/daemon/ --include="*.ts"
 
 # Rate limiter config
 grep -n "MAX_REQUESTS\|WINDOW_SECS" src-tauri/crates/uc-daemon/src/security/rate_limiter.rs
@@ -350,10 +350,10 @@ grep -rn "cors\|tower-http" src-tauri/crates/uc-daemon/
 grep -rn "confirmed" src-tauri/crates/uc-daemon/src/api/storage.rs
 
 # Browser WS auth check
-grep -n "auth.*encodeURIComponent\|encodeURIComponent.*auth" src/lib/daemon-ws.ts
+grep -n "auth.*encodeURIComponent\|encodeURIComponent.*auth" apps/gui/src/lib/daemon-ws.ts
 
 # Consumer-level WS test
-npx vitest run src/hooks/__tests__/useClipboardEventStream.test.tsx
+npx vitest run apps/gui/src/hooks/__tests__/useClipboardEventStream.test.tsx
 
 # Live daemon WS proof harness
 node scripts/verify-direct-daemon-ws.mjs --self-test

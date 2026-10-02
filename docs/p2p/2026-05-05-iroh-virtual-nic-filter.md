@@ -11,7 +11,7 @@ UniClipboard 通过 iroh 建立设备之间的直连。iroh 在协商 NAT
 穿透时会把本机所有可达的网络地址（"direct addresses"）发布到
 pkarr/mDNS/DHT，让对端的 magicsock 拿到候选列表后逐个尝试连接。
 
-问题在于：现代用户机器上常有**虚拟网卡**，它们的 IP 看起来像普通
+问题在于：现代用户机器上常有 **虚拟网卡**，它们的 IP 看起来像普通
 LAN 地址，但跨主机不可达：
 
 | 网段 | 来源 | 跨主机可达性 |
@@ -49,7 +49,7 @@ LAN 地址，但跨主机不可达：
 198.18.x 没有任何合法跨主机用例 —— 暴露给用户只会增加误用面，没有收益。
 
 **为什么 Tailscale 段需要 opt-in？**
-如果两台设备**都在同一个 tailnet** 中，且真实 LAN/公网直连不通，那
+如果两台设备 **都在同一个 tailnet** 中，且真实 LAN/公网直连不通，那
 Tailscale 100.x / fd7a:: 是合法可达路径，过滤反而让用户损失一条
 路径。这是少数派但真实场景。
 
@@ -354,7 +354,7 @@ let endpoint = Endpoint::builder(presets::N0)
 
 #### 4.6.1 UI 组件
 
-`src/components/setting/NetworkSection.tsx` 是 Phase 95 已有的网络
+`apps/gui/src/components/setting/NetworkSection.tsx` 是 Phase 95 已有的网络
 设置组件，本次新增第二个 SettingRow：
 
 - 复用既有 `RestartBanner` 组件（任一开关切换后共享 banner，因为
@@ -377,7 +377,7 @@ let endpoint = Endpoint::builder(presets::N0)
 
 前端有两处 `NetworkSettings` 类型：
 
-- `src/api/daemon/settings.ts` — wire 边界类型（与 daemon HTTP API 对齐）
+- `apps/gui/src/api/daemon/settings.ts` — wire 边界类型（与 daemon HTTP API 对齐）
 - `src/types/setting.ts` — 应用内类型（与 `uc-core::Settings` 对齐）
 
 两处都加 `allowOverlayNetworkAddrs: boolean` 字段，由人工 cross-review
@@ -385,7 +385,7 @@ let endpoint = Endpoint::builder(presets::N0)
 
 #### 4.6.3 i18n 文案
 
-`src/i18n/locales/en-US.json` / `zh-CN.json` 在
+`apps/gui/src/i18n/locales/en-US.json` / `zh-CN.json` 在
 `settings.sections.network.allowOverlayAddrs` 下新增完整 key 树：
 
 ```
@@ -405,7 +405,7 @@ allowOverlayAddrs:
 
 #### 4.6.4 toSettingsPatchRequest 的 spread 改造
 
-`src/api/daemon/settings.ts` 中 patch 构造改为 spread：
+`apps/gui/src/api/daemon/settings.ts` 中 patch 构造改为 spread：
 
 ```typescript
 if (settings.network) {
@@ -459,7 +459,7 @@ pub(crate) fn publish(&self, data: &EndpointData) {
 - pkarr 公网 DHT、mDNS LAN 广播、可能的 DNS publisher 都拿到的是
   **过滤后的子集**。
 - peer 通过任何 lookup 渠道查询本机时，得到的候选地址列表里
-  **不会包含**我们丢弃的虚拟网卡 IP。
+  **不会包含** 我们丢弃的虚拟网卡 IP。
 
 ### 5.3 publish snapshot ≠ publish 给 peer 的内容
 
@@ -487,7 +487,7 @@ info!(
 `AddrFilter` 同样作用于 lookup 返回结果：本机通过 pkarr/mDNS/DHT
 查询某个对端 NodeId 时，返回的候选地址列表也过这个 filter。即使
 对端发来的列表里包含 `100.x`（比如对端用的是旧版本没装这个
-filter），本机的 magicsock **也不会去拨**这些地址。
+filter），本机的 magicsock **也不会去拨** 这些地址。
 
 这就是为什么"两边都升级"虽然是最干净的，但单边升级也仍然有
 保护效果——本机至少不会被坏候选拖累。
@@ -553,20 +553,20 @@ production 路径：
 }
 ```
 
-直接编辑文件后**必须重启 daemon** 才能生效。
+直接编辑文件后 **必须重启 daemon** 才能生效。
 
 ### 6.3 何时建议开启 `allow_overlay_network_addrs`
 
-仅在以下条件**同时**满足时考虑开启：
+仅在以下条件 **同时** 满足时考虑开启：
 
-1. 两台设备**都**安装了 Tailscale（或其他相同的 overlay 网络）
+1. 两台设备 **都** 安装了 Tailscale（或其他相同的 overlay 网络）
    并加入同一个 tailnet
-2. 真实 LAN / 公网 NAT 穿透**不通**（连接持续走 relay 或失败）
+2. 真实 LAN / 公网 NAT 穿透 **不通**（连接持续走 relay 或失败）
 3. 在 Tailscale 客户端里能 `ping` / `ssh` 通对端，证明 overlay 路径
    本身可用
 
 不满足任一条件，开启后只会让连接变慢（多消耗 path-validation
-预算去试不通的 100.x），不会带来任何收益。**默认保持关闭**就好。
+预算去试不通的 100.x），不会带来任何收益。**默认保持关闭** 就好。
 
 ## 7. 日志与可观测性
 
@@ -597,7 +597,7 @@ dropped_count=<N>
 dropped=[<list of "ip:port">]
 ```
 
-只有当输入候选集**确实**包含被过滤段的 IP 时才打印（`apply_addr_filter`
+只有当输入候选集 **确实** 包含被过滤段的 IP 时才打印（`apply_addr_filter`
 对干净候选走 `Cow::Borrowed` 快路径不打日志）。
 
 ### 7.3 排障 grep 命令
@@ -643,7 +643,7 @@ grep "iroh endpoint publish snapshot" "$LOG" | tail -3
    - `dropped` 日志中包含本机的 `100.x:port`（Tailscale IPv4）
    - 如果本机有 Tailscale IPv6 ULA，也应被丢弃
 2. **打开开关 + 重启**，确认 ALLOWED 状态下：
-   - `dropped` 日志中**不再**包含 `100.x`
+   - `dropped` 日志中 **不再** 包含 `100.x`
    - 仍然丢弃 `198.18.x`、`169.254.x`（始终过滤类）
 
 ### 8.3 Level 3 — 跨设备连通性（需要两台设备）
@@ -663,7 +663,7 @@ grep "iroh endpoint publish snapshot" "$LOG" | tail -3
   取反点位于 `uc-bootstrap/src/network_policy.rs`
 - `allow_overlay_network_addrs` 全链路正向同名传递 → 不参与铁律
 - 任何在 DTO / View / 前端 store 维护反向布尔镜像字段都视为回归
-- 既有审计测试在 `src/api/daemon/__tests__/settings.test.ts` 的
+- 既有审计测试在 `apps/gui/src/api/daemon/__tests__/settings.test.ts` 的
   `反向命名审计 (Pitfall 1 fence)` describe 块里钉死
 
 ### 9.2 BIND_LOCK 进程级单次（Pitfall 3）

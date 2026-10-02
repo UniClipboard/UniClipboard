@@ -37,17 +37,16 @@ dist-ssr
 **/target/debug/.fingerprint/
 **/target/debug/incremental/
 **/uniclipboard.db
-src-tauri/uniclipboard.db
-src-tauri/crates/**/target/**
-src-tauri/.app_data/
-src-tauri/.app_data_a/
-src-tauri/.app_data_b/
-public/splashscreen.html
+apps/gui/src-tauri/uniclipboard.db
+apps/gui/src-tauri/.app_data/
+apps/gui/src-tauri/.app_data_a/
+apps/gui/src-tauri/.app_data_b/
+apps/gui/public/splashscreen.html
 .worktrees/
 .env
 .seq-api-key
 target
-src-tauri/binaries/
+apps/gui/src-tauri/binaries/
 
 # ── GSD baseline (auto-generated) ──
 .gsd/activity/
@@ -104,7 +103,7 @@ snap/.snapcraft/
 
 # p2p-bench spike runtime store (throwaway diagnostic)
 p2p-bench-store/
-src-tauri/p2p-bench-store/
+apps/gui/src-tauri/p2p-bench-store/
 # planning-with-files artifacts (per-session working memory, not project state)
 /task_plan.md
 /progress.md

@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 // Prepare the `uniclipd` daemon as a Tauri sidecar (externalBin). On macOS it also stages the
-// native quick panel helper `uniclip-quick-panel` the same way (see src-tauri/tauri.macos.conf.json).
+// native quick panel helper `uniclip-quick-panel` the same way (see apps/gui/src-tauri/tauri.macos.conf.json).
 //
 // ADR-008 D13 bundles `uniclipd` into the GUI installer so the GUI (and CLI)
 // can spawn it as a *sibling* of the app executable — see
 // `uc-daemon-local` `spawn.rs::resolve_daemon_exe_path`, whose first strategy
 // is "look for `uniclipd` next to the current exe". Tauri's externalBin
-// mechanism copies `src-tauri/binaries/uniclipd-<target-triple>` into the
+// mechanism copies `apps/gui/src-tauri/binaries/uniclipd-<target-triple>` into the
 // bundle next to the main binary (Contents/MacOS on macOS, usr/bin on Linux,
 // install dir on Windows) with the triple suffix stripped, which lands exactly
 // where the sibling lookup expects it.
@@ -33,7 +33,7 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const srcTauri = join(repoRoot, 'src-tauri')
+const srcTauri = join(repoRoot, 'apps', 'gui', 'src-tauri')
 
 function parseArgs(argv) {
   let target = ''

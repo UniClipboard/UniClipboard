@@ -3,7 +3,7 @@
 //! ## 为什么需要这个模块
 //!
 //! `tauri.conf.json` 用 `titleBarStyle: "Overlay"` + `hiddenTitle: true` 让前端
-//! 自绘 titlebar（见 `src/components/TitleBar.tsx`），但 macOS 系统画的三色
+//! 自绘 titlebar（见 `apps/gui/src/components/TitleBar.tsx`），但 macOS 系统画的三色
 //! 交通灯默认 y-origin 是按"系统标准 titlebar 高度 (28pt)"算的居中位置——
 //! 我们自绘的标题栏是 40pt，两个高度对不上，肉眼看就是按钮偏上。Tauri 2 并未
 //! 对外暴露 `setTrafficLightPosition` API；第三方

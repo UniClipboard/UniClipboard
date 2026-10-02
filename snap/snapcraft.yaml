@@ -127,14 +127,14 @@ parts:
         | sh -s -- -y --profile minimal --default-toolchain stable
       export PATH="$HOME/.bun/bin:$HOME/.cargo/bin:$PATH"
 
-      # 1) 前端构建 —— vite 把 src/ 编到 dist/,Tauri 的 build.rs (调
-      # tauri_build::build()) 在 cargo build 时把 dist/ 嵌进 binary。
+      # 1) 前端构建 —— vite 把 apps/gui/src/ 编到 apps/gui/dist/,Tauri 的 build.rs (调
+      # tauri_build::build()) 在 cargo build 时把 apps/gui/dist/ 嵌进 binary。
       bun install --frozen-lockfile
       bun run build
 
       # 2) 后端构建 —— 直接 cargo build,绕过 tauri-cli (不需要 .deb /
       # AppImage / updater signing 这些 snap 用不到的逻辑)。binary 名字
-      # 由 src-tauri/Cargo.toml 的 [package].name 决定 = "uniclipboard"。
+      # 由 apps/gui/src-tauri/Cargo.toml 的 [package].name 决定 = "uniclipboard"。
       #
       # `--features custom-protocol` 必传：开了 Tauri 才走 `tauri://localhost`
       # 协议从嵌入的 frontendDist 加载 webview;不开的话 release binary 仍
@@ -144,7 +144,7 @@ parts:
       #
       # ADR-008 D13 给 tauri.conf.json 加了 externalBin: ["binaries/uniclipd"],
       # build.rs 里的 tauri_build::build() 会在编 GUI 时强制要求
-      # src-tauri/binaries/uniclipd-<triple> 存在并把它拷进 bundle。但 snap 用
+      # apps/gui/src-tauri/binaries/uniclipd-<triple> 存在并把它拷进 bundle。但 snap 用
       # 纯 cargo build(不走 tauri-cli bundling),且下面把 uniclipd 从
       # target/release 直接 install 到 usr/bin —— 根本不依赖 Tauri 的 sidecar
       # 暂存机制。用 TAURI_CONFIG 作 JSON Merge Patch 把 externalBin 清空(空数组
@@ -153,8 +153,7 @@ parts:
       # build-environment 会被 craft-parts 的双引号注入吞掉内层引号(详见上面
       # build-environment 的 NOTE)。
       export TAURI_CONFIG='{"bundle":{"externalBin":[]}}'
-      cd src-tauri
-      cargo build --release --locked --bin uniclipboard --features custom-protocol
+      cargo build --release --locked -p uniclipboard --bin uniclipboard --features custom-protocol
       # ADR-008 D13: also build the standalone `uniclipd` daemon, installed next
       # to the GUI below so the GUI spawns it as a sibling ($SNAP/usr/bin/uniclipd).
       # It needs no custom-protocol (no webview) and shares the GUI crate graph,
@@ -162,19 +161,18 @@ parts:
       # clang for aws-lc-sys, which uniclipd pulls via iroh just like the GUI.
       #
       # `-p uc-daemon` is REQUIRED: the `uniclipd` bin lives in the uc-daemon
-      # workspace member, not in the `uniclipboard` package we cd'd into above.
+      # workspace member, not in the `uniclipboard` package built above.
       # Without it cargo errors "no bin target named `uniclipd` in default-run
       # packages". Matches scripts/prepare-sidecars.mjs (`cargo build -p
       # uc-daemon --bin uniclipd`), the same invocation CI uses for the sidecar.
       cargo build --release --locked -p uc-daemon --bin uniclipd
-      cd ..
 
       # 3) 安装到 snap install 目录。strict snap 启动时 mount 这个目录
       # 到 /usr,所以路径必须以 usr/ 开头。
       # NOTE: artifacts land in the workspace-root target/ (#1041 moved the
-      # cargo workspace root to the repo root; `cd src-tauri` no longer creates
-      # a nested target/). After the `cd ..` above we are at the repo root, so
-      # the release binaries are at target/release/, NOT src-tauri/target/.
+      # cargo workspace root to the repo root, so there is no nested target/ under
+      # the GUI package). We are at the repo root, so the release binaries are at
+      # target/release/.
       install -Dm755 target/release/uniclipboard \
         "${CRAFT_PART_INSTALL}/usr/bin/uniclipboard"
       # ADR-008 D13: ship the daemon next to the GUI so it spawns as a sibling.
@@ -187,7 +185,7 @@ parts:
       # Each icon must sit in the hicolor directory matching its pixel size.
       install -Dm644 snap/local/uniclipboard.desktop \
         "${CRAFT_PART_INSTALL}/usr/share/applications/uniclipboard.desktop"
-      install -Dm644 src-tauri/icons/icon.png \
+      install -Dm644 apps/gui/src-tauri/icons/icon.png \
         "${CRAFT_PART_INSTALL}/usr/share/icons/hicolor/512x512/apps/uniclipboard.png"
-      install -Dm644 src-tauri/icons/128x128.png \
+      install -Dm644 apps/gui/src-tauri/icons/128x128.png \
         "${CRAFT_PART_INSTALL}/usr/share/icons/hicolor/128x128/apps/uniclipboard.png"

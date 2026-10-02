@@ -299,7 +299,7 @@ bun test --run     # 单次运行，CI 中适用
 ### Rust
 
 ```bash
-cd src-tauri
+cd apps/gui/src-tauri
 cargo test --workspace
 ```
 

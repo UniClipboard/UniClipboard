@@ -20,7 +20,7 @@ REMOTE_HOST="${E2E_REMOTE_HOST:-fedora}"
 REMOTE_PATH="${E2E_REMOTE_PATH:-projects/uniclipboard}"
 
 list_cards() {
-  for f in e2e/cards/*.md; do
+  for f in apps/gui/e2e/cards/*.md; do
     name=$(basename "$f" .md)
     case "$name" in
       SCHEMA|README) continue ;;
@@ -38,10 +38,10 @@ if [ "${1:-}" = "--list" ] || [ "${1:-}" = "" ]; then
 fi
 
 CARD_ID="$1"
-SPEC_PATH="e2e/specs/${CARD_ID}.e2e.js"
+SPEC_PATH="apps/gui/e2e/specs/${CARD_ID}.e2e.js"
 
-if [ ! -f "e2e/cards/${CARD_ID}.md" ]; then
-  echo "卡片不存在: e2e/cards/${CARD_ID}.md" >&2
+if [ ! -f "apps/gui/e2e/cards/${CARD_ID}.md" ]; then
+  echo "卡片不存在: apps/gui/e2e/cards/${CARD_ID}.md" >&2
   exit 2
 fi
 
@@ -88,7 +88,7 @@ ssh "$REMOTE_HOST" "cd ~/$REMOTE_PATH && \
   export PATH=\$HOME/.bun/bin:\$HOME/.cargo/bin:\$PATH && \
   export E2E_KEEP_PROFILE='${E2E_KEEP_PROFILE:-0}' && \
   bun install --ignore-scripts >/dev/null 2>&1 && \
-  bunx wdio run e2e/wdio.conf.mjs --spec $SPEC_PATH"
+  bunx wdio run apps/gui/e2e/wdio.conf.mjs --spec $SPEC_PATH"
 EXIT_CODE=$?
 
 # 3) 抓远端日志摘要（最多 3 个最近 log 文件名，给归因 agent 起点）

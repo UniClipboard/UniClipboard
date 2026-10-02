@@ -4,7 +4,7 @@
 
 ## 控制方式
 
-当前锁定的 Motion 提供 `MotionGlobalConfig.skipAnimations` 与导出的 `visualElementStore`。统一入口在偏好变化时更新已挂载元素的减少动效标记，结束其值动画及布局动画；新挂载元素由各窗口 `VisualEffectsProvider` 控制。原有页面不重挂载，因此输入、选择和焦点不随模式切换丢失。此逻辑集中在 `src/lib/visual-effects-motion.ts`，升级 Motion 后必须重跑浏览器检查。
+当前锁定的 Motion 提供 `MotionGlobalConfig.skipAnimations` 与导出的 `visualElementStore`。统一入口在偏好变化时更新已挂载元素的减少动效标记，结束其值动画及布局动画；新挂载元素由各窗口 `VisualEffectsProvider` 控制。原有页面不重挂载，因此输入、选择和焦点不随模式切换丢失。此逻辑集中在 `apps/gui/src/lib/visual-effects-motion.ts`，升级 Motion 后必须重跑浏览器检查。
 
 ## 来源清单
 
@@ -26,8 +26,8 @@
 ## 重复执行
 
 ```bash
-node e2e/visual-effects-server.mjs
-PLAYWRIGHT_CHANNEL=chrome node e2e/visual-effects-browser.mjs
+node apps/gui/e2e/visual-effects-server.mjs
+PLAYWRIGHT_CHANNEL=chrome node apps/gui/e2e/visual-effects-browser.mjs
 ```
 
 浏览器脚本需要可解析的 Playwright 安装；可用 `PLAYWRIGHT_MODULE` 指向独立安装的模块入口，避免修改生产依赖。测试服务构建实际公共组件，用浏览器专用模拟连接隔离后台业务，不能替代 Tauri 事件、存储或强弱设备性能证明。

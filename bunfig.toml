@@ -1,0 +1,5 @@
+[install]
+# Keep the hoisted layout the repository used before the GUI became a workspace
+# package: a single-package project defaults to hoisted, a workspace defaults to
+# isolated, and the GUI imports transitive packages such as @sentry/core.
+linker = "hoisted"

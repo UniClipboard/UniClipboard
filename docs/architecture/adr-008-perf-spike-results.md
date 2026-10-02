@@ -6,7 +6,7 @@
 - **bench**：`src-tauri/crates/p2p-bench/src/bin/http_blob_bench.rs`（throwaway，`publish=false`，iroh 依赖已 feature-gate 不牵连）。最小 axum server 忠实复刻生产 full-buffer blob 端点 + 一个对照 streaming 变体（从磁盘分块读，模拟流式 `BlobReaderPort`）。
 - **复现**：
   ```
-  cd src-tauri && cargo build --release -p p2p-bench --bin http_blob_bench
+  cd apps/gui/src-tauri && cargo build --release -p p2p-bench --bin http_blob_bench
   /usr/bin/time -l target/release/http_blob_bench --payload-bytes 67108864 --concurrent 4 --rounds 20 --warmup 3 --mode full-buffer
   ```
 

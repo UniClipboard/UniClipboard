@@ -9,7 +9,7 @@ SCRIPT = pathlib.Path(__file__).resolve().parents[1] / "check-linux-bundles.py"
 SPEC = importlib.util.spec_from_file_location("linux_bundles", SCRIPT)
 bundles = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(bundles)
-LIBRARY = SCRIPT.parent.parent / "src-tauri/binaries/linux/libgtk-layer-shell.so.0"
+LIBRARY = SCRIPT.parent.parent / "apps/gui/src-tauri/binaries/linux/libgtk-layer-shell.so.0"
 
 
 @unittest.skipUnless(LIBRARY.is_file(), "Run prepare-linux-bundle.mjs first")

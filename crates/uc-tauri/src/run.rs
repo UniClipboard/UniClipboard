@@ -169,7 +169,7 @@ async fn wait_for_terminate_signal() {
 /// # Examples
 ///
 /// ```rust,ignore
-/// // In src-tauri/src/main.rs
+/// // In apps/gui/src-tauri/src/main.rs
 /// let ctx = tauri::generate_context!();
 /// crate::run(ctx).expect("failed to start tauri application");
 /// ```
@@ -275,7 +275,7 @@ pub fn run(tauri_ctx: tauri::Context<tauri::Wry>) -> anyhow::Result<()> {
     // the GUI holds no in-process sink. The few update-lifecycle events emitted
     // by the GUI's own Rust background tasks (updater / scheduler) are sent to
     // the daemon over HTTP as `CaptureUiEventRequest`; the webview's UI events
-    // already POST directly (`src/api/daemon/analytics.ts`).
+    // already POST directly (`apps/gui/src/api/daemon/analytics.ts`).
     let analytics = uc_daemon_client::DaemonAnalyticsClient::new(DaemonConnectionState::clone(
         &daemon_connection_state,
     ))?;

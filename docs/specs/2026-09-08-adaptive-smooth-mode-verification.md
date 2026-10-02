@@ -20,7 +20,7 @@ S1、S2 的代码已接入；S3 完成主要效果控制但全交互矩阵尚未
 | Specta 导出 | 通过，生成文件已更新 |
 | 浏览器实际组件检查 | 通过：双页通知、进行中动画终态、输入、弹窗关闭与焦点、系统偏好、重载、窄窗口；模拟连接，不是原生双窗口证明 |
 | React Doctor | 包括未跟踪新文件，未报告新文件问题；仍提示原有输入组件复杂度，未修改其控制流 |
-| 全仓 lint | 未通过：已有 `e2e/wdio.conflict.conf.mjs` 空 catch 错误；新文件定向检查通过 |
+| 全仓 lint | 未通过：已有 `apps/gui/e2e/wdio.conflict.conf.mjs` 空 catch 错误；新文件定向检查通过 |
 | 跨平台与真实设备性能 | 未完成，详见校准报告 |
 
 ## 原生窗口验证
@@ -52,5 +52,5 @@ M4 / 24 GiB 本机已完成新策略验证：宿主能力测试 3 项、shell �
 
 - [效果来源审计](2026-09-08-adaptive-smooth-mode-effects-audit.md)
 - [能力校准状态](2026-09-08-adaptive-smooth-mode-calibration.md)
-- 浏览器：`e2e/visual-effects-server.mjs`、`e2e/visual-effects-browser.mjs`。
-- 原生：`e2e/specs/visual-effects.e2e.js`，使用独立 profile 和带 WebDriver 支持的 GUI 构建。
+- 浏览器：`apps/gui/e2e/visual-effects-server.mjs`、`apps/gui/e2e/visual-effects-browser.mjs`。
+- 原生：`apps/gui/e2e/specs/visual-effects.e2e.js`，使用独立 profile 和带 WebDriver 支持的 GUI 构建。

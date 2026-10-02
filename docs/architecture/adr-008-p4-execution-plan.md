@@ -98,7 +98,7 @@
 - **gate**：`cargo check --workspace`；模拟 SIGKILL 后下次启动检出残留 marker；graceful 退出后无残留；红条在重开 GUI 显示。
 
 ### P4-6 · D20 analytics 单源收口 `refactor:` / `feat:` ✅ 已落地（2026-06-04）
-> **核实结论（2026-06-04）**：核心链路 P3-c 已就绪——daemon `POST /analytics/capture` 端点 + 契约 + 前端 webview 直发（`src/api/daemon/analytics.ts`）。本切片补完 Rust 侧残余 + 收口两决策（人确认）：① **完整路由**——GUI 自身 Rust 后台任务（updater / scheduler / notify_context）发的 update 动作事件也走 daemon；② **各 profile 独立 distinct_id**。
+> **核实结论（2026-06-04）**：核心链路 P3-c 已就绪——daemon `POST /analytics/capture` 端点 + 契约 + 前端 webview 直发（`apps/gui/src/api/daemon/analytics.ts`）。本切片补完 Rust 侧残余 + 收口两决策（人确认）：① **完整路由**——GUI 自身 Rust 后台任务（updater / scheduler / notify_context）发的 update 动作事件也走 daemon；② **各 profile 独立 distinct_id**。
 > **本切片实际改动**：
 > - 设备级信号（`active_device_count` / `is_first_run` / `app_opened`）核实 **只由 daemon 发**——GUI 纯客户端走 `build_gui_client_context`，不 compose `EventContext`、不 emit 设备级事件（`wire_gui_client_deps` 原先仍建真实 PostHog sink，本切片改为 `NoopAnalyticsSink`，杜绝进程内发送端）。oneshot/`cli start` 同理不 compose EventContext，天然只发动作级。
 > - 扩展契约 `CaptureUiEventRequest` +`CheckPerformed`/`NotificationShown` 两变体（+4 mirror 枚举），webserver `into_event` 映射 + `mirror_enums_share_wire_form` 锁 wire 等价。

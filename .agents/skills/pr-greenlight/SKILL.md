@@ -67,7 +67,7 @@ From the file list, classify what changed into categories:
 | `openapi` | `schema/openapi.json`, files with `#[utoipa::path]` |
 | `docs-site` | `docs-site/**` |
 | `markdown` | `*.md` (outside docs-site) |
-| `generated` | `src/api/generated/**`, `src/lib/ipc-bindings.generated.ts` |
+| `generated` | `apps/gui/src/api/generated/**`, `apps/gui/src/lib/ipc-bindings.generated.ts` |
 
 Store the categories in state as `change_categories`.
 
@@ -108,15 +108,15 @@ git add schema/openapi.json
 
 # 2. IPC bindings (if tauri-ipc changed)
 cargo test -p uc-tauri --test specta_export 2>&1
-git diff --exit-code src/lib/ipc-bindings.generated.ts
+git diff --exit-code apps/gui/src/lib/ipc-bindings.generated.ts
 # If diff: stage it
-git add src/lib/ipc-bindings.generated.ts
+git add apps/gui/src/lib/ipc-bindings.generated.ts
 
 # 3. API client (if openapi.json changed in step 1 or was already changed)
 bun run gen:client 2>&1
-git diff --exit-code src/api/generated/
+git diff --exit-code apps/gui/src/api/generated/
 # If diff: stage it
-git add src/api/generated/
+git add apps/gui/src/api/generated/
 ```
 
 ### 2c — Lint (scoped to changed files)

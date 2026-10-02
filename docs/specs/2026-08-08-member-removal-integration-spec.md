@@ -42,7 +42,7 @@ Workspace convergence 是 Engine 对当前 Space 的完整成员收敛快照。�
 ```bash
 bun run gen:api
 bun run build
-npx vitest run src/pages/device-status-utils.test.ts
+npx vitest run apps/gui/src/pages/device-status-utils.test.ts
 cargo check -p uc-daemon --bin uniclipd
 cargo test -p uc-webserver workspace_convergence_mapping_preserves_complete_engine_state
 cargo test -p uc-webserver workspace_convergence_changes_include_the_complete_engine_state

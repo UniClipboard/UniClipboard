@@ -168,7 +168,7 @@ bun run tauri:dev
 bun run test
 
 # Rust tests
-(cd src-tauri && cargo test --workspace)
+(cd apps/gui/src-tauri && cargo test --workspace)
 
 # Build for production
 bun run tauri build
@@ -315,17 +315,17 @@ Large clipboard items (images, rich text) stored separately:
 
 ```bash
 # Run all Rust tests
-cd src-tauri && cargo test --workspace
+cd apps/gui/src-tauri && cargo test --workspace
 
 # Run specific crate tests
-cd src-tauri && cargo test -p uc-core
-cd src-tauri && cargo test -p uc-app
+cd apps/gui/src-tauri && cargo test -p uc-core
+cd apps/gui/src-tauri && cargo test -p uc-app
 
 # Run integration tests
-cd src-tauri && cargo test --test '*_integration_test' -- --ignored
+cd apps/gui/src-tauri && cargo test --test '*_integration_test' -- --ignored
 
 # Run with logging
-cd src-tauri && RUST_LOG=debug cargo test --workspace
+cd apps/gui/src-tauri && RUST_LOG=debug cargo test --workspace
 ```
 
 ## Further Reading

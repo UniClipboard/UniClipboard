@@ -80,10 +80,10 @@ package() {
 
   # Hicolor 图标，从 Tauri 的 size-named 源文件重命名到标准 apps/ 路径。
   # 128@2x 当成 256x256（@2x 是 macOS Retina 概念，Linux 用尺寸而非 DPI 区分）。
-  install -Dm644 "src-tauri/icons/32x32.png"       "$pkgdir/usr/share/icons/hicolor/32x32/apps/$_pkgname.png"
-  install -Dm644 "src-tauri/icons/64x64.png"       "$pkgdir/usr/share/icons/hicolor/64x64/apps/$_pkgname.png"
-  install -Dm644 "src-tauri/icons/128x128.png"     "$pkgdir/usr/share/icons/hicolor/128x128/apps/$_pkgname.png"
-  install -Dm644 "src-tauri/icons/128x128@2x.png"  "$pkgdir/usr/share/icons/hicolor/256x256/apps/$_pkgname.png"
+  install -Dm644 "apps/gui/src-tauri/icons/32x32.png"       "$pkgdir/usr/share/icons/hicolor/32x32/apps/$_pkgname.png"
+  install -Dm644 "apps/gui/src-tauri/icons/64x64.png"       "$pkgdir/usr/share/icons/hicolor/64x64/apps/$_pkgname.png"
+  install -Dm644 "apps/gui/src-tauri/icons/128x128.png"     "$pkgdir/usr/share/icons/hicolor/128x128/apps/$_pkgname.png"
+  install -Dm644 "apps/gui/src-tauri/icons/128x128@2x.png"  "$pkgdir/usr/share/icons/hicolor/256x256/apps/$_pkgname.png"
 
   install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
 }

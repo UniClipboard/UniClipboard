@@ -29,14 +29,13 @@ RUN echo 'Acquire::Retries "5";' > /etc/apt/apt.conf.d/80-retries \
 
 WORKDIR /build
 
-# The Rust workspace lives at the repo root. src-tauri/ is still copied because
-# the workspace member list includes the Tauri packages; only manifests are
+# The Rust workspace lives at the repo root. The Tauri packages are workspace
+# members under apps/gui/src-tauri/ and arrive with apps/; only manifests are
 # parsed, the GUI is not compiled here.
 COPY Cargo.toml Cargo.lock rust-toolchain.toml clippy.toml ./
 COPY .cargo/ ./.cargo/
 COPY crates/ ./crates/
 COPY apps/ ./apps/
-COPY src-tauri/ ./src-tauri/
 
 # Pick the musl target matching the build host arch (native compile, no cross).
 # Build and copy the binary out within a single RUN: the target/ dir is a

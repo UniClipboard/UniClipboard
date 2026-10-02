@@ -14,7 +14,7 @@
 ## 2. 背景
 
 - 现状（代码已核实）：端口由 `crates/uc-daemon-process/src/socket.rs` 以 FNV-1a hash 派生（默认 `42715`，profile 落入 `42719+` 区间）；该文件注释自认"会与无关本地服务碰撞"。碰撞后 `crates/uc-webserver/src/api/server.rs` 的 `run_http_server` 重试 5 秒，超时即 daemon 启动失败。
-- 前端连接信息经 ~500ms 轮询 `get_daemon_connection_info` 获取（`src/lib/daemon-connection-info.ts`，60s 超时上限）；RAW bearer 经该命令进入 webview（ADR-008 C7 已订正的现状）。
+- 前端连接信息经 ~500ms 轮询 `get_daemon_connection_info` 获取（`apps/gui/src/lib/daemon-connection-info.ts`，60s 超时上限）；RAW bearer 经该命令进入 webview（ADR-008 C7 已订正的现状）。
 - 评审触发：评估"在 HTTP+WS 之外新增一套 socket 通道"（动机：Windows 防火墙 / 端口冲突 / 原生侧连接可靠性 / 安全加固）。
 
 ## 3. 被否掉的方案

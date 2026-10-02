@@ -4,13 +4,13 @@ This guide documents how UniClipboard publishes Tauri updater artifacts to GitHu
 
 ## Prerequisites
 
-- Tauri updater plugin enabled in `src-tauri/tauri.conf.json`.
+- Tauri updater plugin enabled in `apps/gui/src-tauri/tauri.conf.json`.
 - `createUpdaterArtifacts` enabled so `.sig` files are generated.
 - A signing keypair generated with `cargo tauri signer generate`.
 
 ## Required Tauri Configuration
 
-Update `src-tauri/tauri.conf.json`:
+Update `apps/gui/src-tauri/tauri.conf.json`:
 
 ```json
 {

@@ -1434,7 +1434,7 @@ mod tests {
 
     #[test]
     fn download_event_wire_format_is_stable() {
-        // The shape here matches the TS `DownloadEvent` union in `src/api/updater.ts`.
+        // The shape here matches the TS `DownloadEvent` union in `apps/gui/src/api/updater.ts`.
         // Changing it will silently break the existing dialog progress bar.
         let started = DownloadEvent::Started {
             content_length: Some(1_048_576),

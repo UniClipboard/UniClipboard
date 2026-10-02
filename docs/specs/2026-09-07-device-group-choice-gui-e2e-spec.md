@@ -91,7 +91,7 @@ Engine 已提供候选展示资料和冲突稳定性修复，Desktop 已接通�
 
 ## 4. Engine 资料接入规则
 
-唯一生成类型来源：`src/api/generated/types.gen.ts`。禁止手改生成文件或再定义一套相同业务类型。
+唯一生成类型来源：`apps/gui/src/api/generated/types.gen.ts`。禁止手改生成文件或再定义一套相同业务类型。
 
 | 字段 | 展示规则 |
 | --- | --- |
@@ -141,7 +141,7 @@ Engine 已提供候选展示资料和冲突稳定性修复，Desktop 已接通�
 
 ### 6.1 组织与入口
 
-优先扩展 `e2e/run.mjs`、`e2e/run-plan.mjs` 及现有双/三配置辅助工具，先评估当前 macOS GUI 驱动能力，再添加四/五配置支持。不另造一套仅用于截图的假应用来替代真实验收。
+优先扩展 `apps/gui/e2e/run.mjs`、`apps/gui/e2e/run-plan.mjs` 及现有双/三配置辅助工具，先评估当前 macOS GUI 驱动能力，再添加四/五配置支持。不另造一套仅用于截图的假应用来替代真实验收。
 
 须交付四类可运行入口，具体命令名在实现时确定并写入测试说明：
 
@@ -222,9 +222,9 @@ G05 需在确定的恢复完成条件后，再主动触发证据重放或重启�
 | C：可复用场景 | 扩展 `e2e/` 运行工具、场景定义、生成/恢复脚本与说明 | 四/五配置可成套生成、恢复，至少两轮验证起点一致 |
 | D：全场景验收 | GUI 场景、受控样本、断线/失败注入及报告 | G01–G09、U01–U10 全部实际通过 |
 
-沿用 `src/api/daemon/device-trust.ts` 的完整返回值与已生成类型；Rust 资料转发当前已接通，除核对发现缺口外不重复修改。
+沿用 `apps/gui/src/api/daemon/device-trust.ts` 的完整返回值与已生成类型；Rust 资料转发当前已接通，除核对发现缺口外不重复修改。
 
-优先扩展现有测试：`DeviceTrustDialog.test.tsx`、`device-trust-model.test.ts`、`device-trust-view.test.ts`、`DeviceTrustContext.test.tsx`、`DeviceTrustContext.handoff.test.tsx`，以及已有 `e2e/specs/device-removal-choice.dual.e2e.js`、`offline-removal-choice.triple.e2e.js` 的通用准备能力。
+优先扩展现有测试：`DeviceTrustDialog.test.tsx`、`device-trust-model.test.ts`、`device-trust-view.test.ts`、`DeviceTrustContext.test.tsx`、`DeviceTrustContext.handoff.test.tsx`，以及已有 `apps/gui/e2e/specs/device-removal-choice.dual.e2e.js`、`offline-removal-choice.triple.e2e.js` 的通用准备能力。
 
 新场景和运行说明以实际实现的命令为准，必须能让下一位开发者无需重新询问即可生成数据并重跑。不得仅交付手工点击步骤、临时机器文件或已经变化的个人配置。
 
@@ -233,8 +233,8 @@ G05 需在确定的恢复完成条件后，再主动触发证据重放或重启�
 自动检查入口（从 Desktop 根目录运行）：
 
 ```sh
-npx --yes --package=node@24 node node_modules/vitest/vitest.mjs run --dir src/components/device/__tests__
-npx --yes --package=node@24 node node_modules/vitest/vitest.mjs run --dir src/contexts/__tests__ DeviceTrustContext
+npx --yes --package=node@24 node node_modules/vitest/vitest.mjs run --dir apps/gui/src/components/device/__tests__
+npx --yes --package=node@24 node node_modules/vitest/vitest.mjs run --dir apps/gui/src/contexts/__tests__ DeviceTrustContext
 node node_modules/typescript/bin/tsc --noEmit
 bun run build
 git diff --check

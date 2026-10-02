@@ -23,6 +23,7 @@ class BundleChecks(unittest.TestCase):
         self.deb = "libc6 (>= 2.36), libgtk-layer-shell0 (>= 0.8), libgtk-3-0"
         self.rpm = "gtk3\ngtk-layer-shell\n"
         self.library = LIBRARY.read_bytes()
+        self.extra_bundled = []
         original_output = bundles.output
         original_run = bundles.subprocess.run
 
@@ -39,8 +40,12 @@ class BundleChecks(unittest.TestCase):
             cwd = kwargs["cwd"]
             if self.library is not None:
                 target = pathlib.Path(cwd) / "squashfs-root/usr/lib/libgtk-layer-shell.so.0"
-                target.parent.mkdir(parents=True)
+                target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes(self.library)
+            for relative in self.extra_bundled:
+                extra = pathlib.Path(cwd) / "squashfs-root" / relative
+                extra.parent.mkdir(parents=True, exist_ok=True)
+                extra.write_bytes(b"\x7fELF")
 
         self.enterContext(patch.object(bundles, "output", side_effect=output))
         self.enterContext(patch.object(bundles.subprocess, "run", side_effect=extract))
@@ -69,6 +74,20 @@ class BundleChecks(unittest.TestCase):
         self.library = data
         with self.assertRaisesRegex(RuntimeError, "architecture"):
             bundles.check(self.root)
+
+    def test_bundled_libwayland_client_fails(self):
+        self.extra_bundled = ["usr/lib/libwayland-client.so.0"]
+        with self.assertRaisesRegex(RuntimeError, "bundles host-coupled libwayland-client"):
+            bundles.check(self.root)
+
+    def test_multiarch_bundled_libwayland_client_fails(self):
+        self.extra_bundled = ["usr/lib/x86_64-linux-gnu/libwayland-client.so.0"]
+        with self.assertRaisesRegex(RuntimeError, "bundles host-coupled libwayland-client"):
+            bundles.check(self.root)
+
+    def test_other_libwayland_libraries_are_allowed(self):
+        self.extra_bundled = ["usr/lib/libwayland-cursor.so.0", "usr/lib/libwayland-egl.so.1"]
+        bundles.check(self.root)
 
     def test_missing_artifacts_fail(self):
         with self.assertRaisesRegex(RuntimeError, "No deb artifact"):

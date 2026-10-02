@@ -1,11 +1,18 @@
 #!/usr/bin/env python3
-"""Reject Linux release artifacts that omit the GTK3 Layer Shell runtime."""
+"""Reject Linux release artifacts that omit the GTK3 Layer Shell runtime or bundle host-coupled libraries."""
 
 import pathlib
 import re
 import subprocess
 import sys
 import tempfile
+
+
+# The host Mesa EGL driver is loaded into the same process as the bundled GTK and
+# WebKit and links the host's libwayland-client. A bundled copy shadows it and,
+# when older than the host driver expects, breaks EGL initialization. These
+# patterns are anchored at the AppImage root, as `--appimage-extract` requires.
+HOST_COUPLED_LIBRARIES = ("usr/lib*/libwayland-client.so*", "usr/lib*/*/libwayland-client.so*")
 
 
 def output(*args):
@@ -43,6 +50,21 @@ def check(bundle_root):
                     expected = staged.read_bytes()[:20]
                     if header[:4] != b"\x7fELF" or header[4:6] != expected[4:6] or header[18:20] != expected[18:20]:
                         raise RuntimeError(f"{package.name}: incorrect GTK3 Layer Shell architecture")
+                    for pattern in HOST_COUPLED_LIBRARIES:
+                        subprocess.run(
+                            [str(package), "--appimage-extract", pattern],
+                            cwd=directory, check=True, stdout=subprocess.DEVNULL,
+                        )
+                    extracted = pathlib.Path(directory) / "squashfs-root"
+                    bundled = sorted(
+                        path.relative_to(extracted).as_posix()
+                        for path in extracted.rglob("libwayland-client.so*")
+                    )
+                    if bundled:
+                        raise RuntimeError(
+                            f"{package.name}: bundles host-coupled libwayland-client ({', '.join(bundled)}); "
+                            "see docs/architecture/linux-appimage-library-policy.md"
+                        )
                     dynamic = output("readelf", "-d", str(library))
                     symbols = output("readelf", "--dyn-syms", "--wide", str(library))
                     if "[libgtk-layer-shell.so.0]" not in dynamic or "gtk_layer_init_for_window" not in symbols:

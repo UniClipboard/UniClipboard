@@ -3,6 +3,7 @@ import { execFileSync } from 'node:child_process'
 import { copyFileSync, mkdirSync, readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { installPinnedLinuxdeploy } from './linux-appimage-tools.mjs'
 
 if ((process.env.TAURI_ENV_PLATFORM ?? process.platform) === 'linux') {
   const arch = process.env.TAURI_ENV_ARCH ?? process.arch
@@ -33,4 +34,9 @@ if ((process.env.TAURI_ENV_PLATFORM ?? process.platform) === 'linux') {
   mkdirSync(dirname(destination), { recursive: true })
   copyFileSync(source, destination)
   console.log(`Staged ${soname} for ${arch}`)
+
+  const linuxdeploy = await installPinnedLinuxdeploy({
+    arch: machine === 62 ? 'x86_64' : 'aarch64',
+  })
+  console.log(`Pinned linuxdeploy at ${linuxdeploy}`)
 }

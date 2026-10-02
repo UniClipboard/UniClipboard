@@ -74,10 +74,6 @@ __pycache__/
 venv/
 target/
 vendor/
-# `vendor/iroh-blobs` (repo root) is a git submodule (see .gitmodules) pinning
-# our fork at github.com/UniClipboard/iroh-blobs. Negate the generic
-# `vendor/` rule so submodule state shows up in `git status`.
-!/vendor/
 coverage/
 .cache/
 tmp/

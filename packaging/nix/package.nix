@@ -1,10 +1,10 @@
 # nixpkgs derivation for UniClipboard — binary repackage of the upstream AppImage.
 #
 # Why a binary repackage instead of a source build:
-#   UniClipboard is a Tauri app (Rust workspace + bun-built frontend + a vendored
-#   iroh-blobs git dependency + a sidecar `uniclipd` daemon). A from-source build
+#   UniClipboard is a Tauri app (Rust workspace + bun-built frontend + a pinned
+#   iroh-blobs fork git dependency + a sidecar `uniclipd` daemon). A from-source build
 #   under the Nix sandbox would need a fixed-output bun/node_modules derivation, a
-#   cargoLock entry for the vendored git source, and two separate binaries — hard
+#   cargoLock entry for the git sources, and two separate binaries — hard
 #   to land and to keep green. Wrapping the official AppImage is an accepted
 #   nixpkgs pattern for this class of app and is far easier to maintain. If a
 #   reviewer asks for a source build, see ./README.md for the migration path.

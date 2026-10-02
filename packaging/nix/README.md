@@ -10,7 +10,7 @@ Repology 抓取 nixpkgs 的 6 个 stable channel + unstable。**一次合并的 
 
 ## 方案：从 AppImage 二进制重打包
 
-本 derivation **不从源码编译**，而是用 `appimageTools.wrapType2` 包装官方发布的 AppImage。原因：UniClipboard 是 Tauri 应用（Rust workspace + bun 前端 + vendored `iroh-blobs` + sidecar `uniclipd`），在 Nix 沙箱里从源码构建需要 fixed-output 的 bun 依赖、带 git 源的 `cargoLock`、双二进制产物，落地和维护成本都很高。二进制重打包是 nixpkgs 对这类应用的常见、被接受的做法。
+本 derivation **不从源码编译**，而是用 `appimageTools.wrapType2` 包装官方发布的 AppImage。原因：UniClipboard 是 Tauri 应用（Rust workspace + bun 前端 + 固定的 `iroh-blobs` fork（git 依赖） + sidecar `uniclipd`），在 Nix 沙箱里从源码构建需要 fixed-output 的 bun 依赖、带 git 源的 `cargoLock`、双二进制产物，落地和维护成本都很高。二进制重打包是 nixpkgs 对这类应用的常见、被接受的做法。
 
 代价：部分 reviewer 偏好源码构建。若被要求，迁移路径见文末「迁移到源码构建」。
 
@@ -74,4 +74,4 @@ Repology 抓取 nixpkgs 的 6 个 stable channel + unstable。**一次合并的 
 
 ## 迁移到源码构建（仅在 reviewer 要求时）
 
-大方向：`rustPlatform.buildRustPackage` + `cargoLock.lockFileContents`（含 vendored `iroh-blobs` 的 `outputHashes`）+ 用 `stdenvNoCC` 预构建 bun 前端为 fixed-output derivation，再 `nativeBuildInputs` 加 `wrapGAppsHook4 pkg-config`、`buildInputs` 加 `webkitgtk_4_1 libsoup_3 libayatana-appindicator`。本 `meta` 与 desktop/icon 处理可直接复用。
+大方向：`rustPlatform.buildRustPackage` + `cargoLock.lockFileContents`（含 `iroh-blobs` fork 与 Engine git 源的 `outputHashes`）+ 用 `stdenvNoCC` 预构建 bun 前端为 fixed-output derivation，再 `nativeBuildInputs` 加 `wrapGAppsHook4 pkg-config`、`buildInputs` 加 `webkitgtk_4_1 libsoup_3 libayatana-appindicator`。本 `meta` 与 desktop/icon 处理可直接复用。

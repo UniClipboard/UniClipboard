@@ -2,9 +2,11 @@ import assert from 'node:assert/strict'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { pathToFileURL } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { build, loadConfigFromFile } from 'vite'
 
+// The Vite config and the fixture entry resolve against the GUI package root.
+process.chdir(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'))
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright')
 const fixtureEntry = 'e2e/fixtures/settings.tsx'
 const outDir = await mkdtemp(path.join(tmpdir(), 'relay-overview-e2e-'))

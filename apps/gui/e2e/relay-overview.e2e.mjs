@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -48,6 +48,16 @@ try {
   page.on('pageerror', error => pageErrors.push(error.message))
   const url = `${pathToFileURL(path.join(outDir, 'index.html')).href}?category=network`
 
+  // Optional evidence: RELAY_OVERVIEW_ARTIFACT_DIR receives a screenshot and the DOM of the relay group per scenario.
+  const artifactDir = process.env.RELAY_OVERVIEW_ARTIFACT_DIR
+  if (artifactDir) await mkdir(artifactDir, { recursive: true })
+  const capture = async name => {
+    if (!artifactDir) return
+    const group = page.locator('fieldset', { has: page.getByTestId('built-in-relay-list') })
+    const target = (await group.count()) ? group : page.locator('body')
+    await target.screenshot({ path: path.join(artifactDir, `${name}.png`) })
+    await writeFile(path.join(artifactDir, `${name}.html`), await target.evaluate(n => n.outerHTML))
+  }
   const entry = (source, regionId, relayUrl, inEffect, credentialConfigured = false) => ({
     source,
     regionId,
@@ -105,6 +115,7 @@ try {
   const pageText = await page.locator('body').innerText()
   assert.ok(!/已连接|connected/i.test(pageText.replace('并不表示已经连上某个中继', '')))
 
+  await capture('01-built-in-applied')
   // 2. Reload with applied mode absent: node not started, nothing claimed as in effect.
   script({
     savedMode: 'builtIn',
@@ -118,6 +129,7 @@ try {
   assert.equal(await applied().getAttribute('data-applied-mode'), 'none')
   assert.equal(await page.locator('[data-in-effect="true"]').count(), 0)
 
+  await capture('02-node-not-started')
   // 3. change_pending: the pending notice is shown and in_effect is not flipped locally.
   script({
     savedMode: 'builtIn',
@@ -133,6 +145,7 @@ try {
   assert.equal(await applied().getAttribute('data-change-pending'), 'true')
   assert.equal(await page.locator('[data-in-effect="true"]').count(), 0)
 
+  await capture('03-change-pending')
   // 4. Custom list replaces built-in: rows dimmed and marked not used; custom rows stay editable.
   script({
     savedMode: 'custom',
@@ -150,6 +163,7 @@ try {
   assert.equal(await rows().count(), 4)
   await page.locator('input[value="https://relay-one.example.com/"]').waitFor()
 
+  await capture('04-custom-replaces-built-in')
   // 5. Disabled (LAN-only) wins: listed, none in effect, dimmed.
   script({
     savedMode: 'disabled',
@@ -165,6 +179,7 @@ try {
     .waitFor()
   assert.equal(await page.locator('[data-in-effect="true"]').count(), 0)
 
+  await capture('05-lan-only-disabled')
   // 6. Unknown future region id falls back to the URL.
   script({
     savedMode: 'builtIn',
@@ -179,6 +194,7 @@ try {
     'https://sae1-1.relay.example.net./'
   )
 
+  await capture('06-unknown-region-url-fallback')
   // 7. Query failure shows a retryable error, never an empty list; retry recovers.
   script(
     { savedMode: 'builtIn', appliedMode: 'builtIn', changePending: false, entries: builtIn(true) },
@@ -187,10 +203,13 @@ try {
   await page.goto(url)
   await page.getByText('无法加载内置中继列表。', { exact: true }).waitFor()
   assert.equal(await rows().count(), 0)
+  await capture('06b-load-error-retry')
   await page.getByRole('button', { name: '重试' }).click()
   await rows().first().waitFor()
   assert.equal(await rows().count(), 4)
 
+  await page.getByRole('button', { name: '重试' }).waitFor({ state: 'detached' })
+  await capture('07-after-retry')
   assert.deepEqual(pageErrors, [])
   console.log(
     'PASS: built-in relay overview — localized rows, URL fallback, read-only, applied/not-started/change-pending, custom replacement, LAN-only, and retryable failure'

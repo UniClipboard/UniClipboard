@@ -142,15 +142,16 @@ async fn custom_relay_replaces_built_in_and_is_applied_after_restart() {
     assert_eq!(list.len(), BUILT_IN.len() + 1, "{saved}");
     assert_eq!(list[BUILT_IN.len()]["source"], "custom");
     assert_eq!(list[BUILT_IN.len()]["url"], CUSTOM_URL);
-    assert!(
-        list[..BUILT_IN.len()]
-            .iter()
-            .all(|e| e["inEffect"] == false),
-        "built-in relays must not be in effect while custom relays are saved: {saved}"
-    );
+    // `inEffect` follows the RUNNING node, not the saved settings: until the node is rebuilt
+    // the built-in relays stay in effect and the new custom relay is not.
     if applied_before == "builtIn" {
         assert_eq!(saved["changePending"], true, "{saved}");
         assert_eq!(saved["appliedMode"], "builtIn", "{saved}");
+        assert!(
+            list[..BUILT_IN.len()].iter().all(|e| e["inEffect"] == true),
+            "{saved}"
+        );
+        assert_eq!(list[BUILT_IN.len()]["inEffect"], false, "{saved}");
     }
     let settings = ctx.get("/settings").await;
     assert_eq!(settings["network"]["customRelayUrls"], json!([CUSTOM_URL]));

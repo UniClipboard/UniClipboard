@@ -21,7 +21,7 @@ uc-application / uc-core
 
 ## 职责
 
-`uc-tauri` 负责（且**仅**负责）Tauri 框架特定的事情：
+`uc-tauri` 负责（且 **仅** 负责）Tauri 框架特定的事情：
 
 - Tauri `Builder` 装配、`setup` 钩子、plugin 注册
 - `#[tauri::command]` 注册与参数/错误适配
@@ -36,8 +36,8 @@ uc-application / uc-core
 
 ## 不负责
 
-- ❌ 任何**业务规则**（业务规则在 `uc-application` / `uc-core`）
-- ❌ 任何**框架无关的桌面宿主能力**——daemon 生命周期协调、后台任务调度
+- ❌ 任何 **业务规则**（业务规则在 `uc-application` / `uc-core`）
+- ❌ 任何 **框架无关的桌面宿主能力**——daemon 生命周期协调、后台任务调度
   循环、IPC 路径策略、健康检查策略，这些必须在 `uc-desktop` 里，shell
   之间共享
 - ❌ `uc-application` 内部模块的直接调用（只能走 `AppFacade`）

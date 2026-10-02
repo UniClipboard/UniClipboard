@@ -15,6 +15,8 @@ pub fn set_visible(window: &gpui::Window, visible: bool) -> Result<(), PlatformE
     let view = unsafe { &*handle.ns_view.as_ptr().cast::<objc2_app_kit::NSView>() };
     let native = view.window().ok_or(PlatformError::PanelWindowClosed)?;
     native.setHasShadow(true);
+    // Without this the system fades the window in and out, which makes closing feel slow.
+    native.setAnimationBehavior(objc2_app_kit::NSWindowAnimationBehavior::None);
     if visible {
         native.orderFrontRegardless();
         // An input method only attaches to the active application, so the panel has to be it while

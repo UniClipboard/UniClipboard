@@ -29,14 +29,19 @@ impl FrontApplication {
             .is_some_and(|front| front.processIdentifier() == app.processIdentifier())
     }
 
+    /// Asks the system to bring the target application to the front, without waiting for it.
+    fn request_front(app: &NSRunningApplication) {
+        #[allow(deprecated)]
+        app.activateWithOptions(NSApplicationActivationOptions::ActivateAllWindows);
+    }
+
     /// Brings the target application back to the front and waits until it is there.
     pub fn bring_front(&self) -> Result<(), PlatformError> {
         let app = self.0.as_ref().ok_or(PlatformError::PasteTargetMissing)?;
         if Self::target_is_front(app) {
             return Ok(());
         }
-        #[allow(deprecated)]
-        app.activateWithOptions(NSApplicationActivationOptions::ActivateAllWindows);
+        Self::request_front(app);
         for _ in 0..60 {
             if Self::target_is_front(app) {
                 return Ok(());
@@ -82,13 +87,19 @@ impl PasteTarget for FrontApplication {
 
     /// When the panel is the active application, hands focus back to the target. Nothing
     /// happens if the user has already gone to another application.
+    ///
+    /// This runs on the UI thread while the panel closes, so it only requests the activation. The
+    /// system reports the new frontmost application through that thread's run loop, so waiting
+    /// for it here would stall the run loop until the wait times out.
     fn return_focus(&self) {
         let ours = std::process::id() as i32;
         if NSWorkspace::sharedWorkspace()
             .frontmostApplication()
             .is_some_and(|front| front.processIdentifier() == ours)
         {
-            let _ = self.bring_front();
+            if let Some(app) = self.0.as_ref() {
+                Self::request_front(app);
+            }
         }
     }
 

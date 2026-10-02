@@ -10,53 +10,53 @@
 
 ```text
 .                        # repo root = cargo workspace
-|- apps/                 # Runnable binaries
-|  |- cli/                 # `uniclip` CLI (daemon client; heavy deps feature-gated)
-|  |- daemon/              # GUI-agnostic daemon runtime; hosts the `uniclipd` binary
-|  |- quick-panel/         # GPUI quick panel app (`uniclip-quick-panel`, macOS default)
-|- crates/               # Library crates (14)
-|  # -- Desktop host adapters --
-|  |- uc-platform/      # OS adapters: clipboard, secure storage, autostart
-|  |- uc-app-paths/     # Lightweight directory-layout authority (data/cache/tmp)
-|  |- uc-observability/ # Dual-output tracing, profile filtering, Sentry/analytics scope
-|  |- uc-bootstrap/     # Desktop host capability preparation for the independent core engine
-|  # -- Daemon split (ADR-007/008) --
-|  |- uc-daemon-contract/ # Transport DTOs/contracts shared by client + server
-|  |- uc-daemon-process/ # Thin process primitives: PID file, socket path, spawn, health-wait
-|  |- uc-daemon-local/  # Local process coordination: auth token, socket discovery, health polling
-|  |- uc-webserver/     # Daemon's 127.0.0.1 HTTP + WebSocket API (OpenAPI / ApiEnvelope)
-|  |- uc-daemon-client/ # Daemon HTTP + WS client (used by GUI + CLI)
-|  # -- Shells / entrypoints --
-|  |- uc-desktop/       # Desktop host: runtime, daemon probe, background tasks (GUI-framework-agnostic)
-|  |- uc-cli-macros/    # Proc-macros for uc-cli (internal)
-|  |- p2p-bench/        # Throwaway perf-spike bins (not shipped; publish = false)
-|  |- uc-tauri/         # Tauri adapter: commands (via tauri-specta), tray, quick panel, run loop
-|  # -- Other --
-|  |- quick-panel-core/ # Platform-independent logic of the GPUI quick panel: query model, state machine, ports
-|- src-tauri/            # Desktop GUI bin: Tauri packaging shell (dir name pinned by tauri-cli); adapter crate is crates/uc-tauri
-|  |- src/               # Thin bin: hands off to uc_tauri::run(generate_context!())
+| - apps/                 # Runnable binaries                                                                                       |
+| --------------------------------------------------------------------------------------------------------------------------------- |
+|                                                                                                                                   |
+|                                                                                                                                   |
+| - crates/               # Library crates (14)                                                                                     |
+| # -- Desktop host adapters --                                                                                                     |
+|                                                                                                                                   |
+|                                                                                                                                   |
+|                                                                                                                                   |
+|                                                                                                                                   |
+| # -- Daemon split (ADR-007/008) --                                                                                                |
+|                                                                                                                                   |
+|                                                                                                                                   |
+|                                                                                                                                   |
+|                                                                                                                                   |
+|                                                                                                                                   |
+| # -- Shells / entrypoints --                                                                                                      |
+|                                                                                                                                   |
+|                                                                                                                                   |
+|                                                                                                                                   |
+|                                                                                                                                   |
+| # -- Other --                                                                                                                     |
+|                                                                                                                                   |
+| - src-tauri/            # Desktop GUI bin: Tauri packaging shell (dir name pinned by tauri-cli); adapter crate is crates/uc-tauri |
+|                                                                                                                                   |
 ```
 
 
 ## WHERE TO LOOK
 
-| Task                      | Location                                             | Notes                                                                   |
-| ------------------------- | ---------------------------------------------------- | ----------------------------------------------------------------------- |
+| Task                      | Location                                   | Notes                                                                   |
+| ------------------------- | ------------------------------------------ | ----------------------------------------------------------------------- |
 | Tauri run loop & setup    | `crates/uc-tauri/src/run.rs`               | `run()` (line ~200); window/lifecycle, `.manage(...)`, `.setup(...)`    |
 | IPC command registration  | `crates/uc-tauri/src/specta_builder.rs`    | tauri-specta single source of truth (runtime invoke + codegen)          |
-| Engine 发布版本           | `Cargo.toml`                                         | 所有使用方共享一个固定的 `UniClipboard/Engine` 发布标签                 |
-| Desktop host preparation  | `crates/uc-bootstrap/src/wiring/`                    | Desktop paths, secure storage and clipboard selection                   |
+| Engine 发布版本           | `Cargo.toml`                               | 所有使用方共享一个固定的 `UniClipboard/Engine` 发布标签                 |
+| Desktop host preparation  | `crates/uc-bootstrap/src/wiring/`          | Desktop paths, secure storage and clipboard selection                   |
 | Runtime/usecase accessors | `crates/uc-tauri/src/bootstrap/runtime.rs` | `AppRuntime`, `usecases()` factory                                      |
 | Tauri commands            | `crates/uc-tauri/src/commands/`            | Commands call app-layer usecases (or daemon HTTP since ADR-008)         |
-| Platform adapters         | `crates/uc-platform/src/`                            | clipboard (linux X11/Wayland, windows, macos), secure storage, app dirs |
-| Daemon API surface        | `crates/uc-webserver/src/api/`                       | HTTP + WS endpoints; ApiEnvelope normalization                          |
-| Legacy reference          | Removed (2026-02-26)                                 | Do not reintroduce legacy module tree                                   |
+| Platform adapters         | `crates/uc-platform/src/`                  | clipboard (linux X11/Wayland, windows, macos), secure storage, app dirs |
+| Daemon API surface        | `crates/uc-webserver/src/api/`             | HTTP + WS endpoints; ApiEnvelope normalization                          |
+| Legacy reference          | Removed (2026-02-26)                       | Do not reintroduce legacy module tree                                   |
 
 ## CODE MAP
 
-| Symbol           | Type | Location                                          | Role                                     |
-| ---------------- | ---- | ------------------------------------------------- | ---------------------------------------- |
-| `main`           | fn   | `src-tauri/src/main.rs`                           | Process entry; calls `uc_tauri::run`     |
+| Symbol           | Type | Location                                | Role                                     |
+| ---------------- | ---- | --------------------------------------- | ---------------------------------------- |
+| `main`           | fn   | `src-tauri/src/main.rs`                 | Process entry; calls `uc_tauri::run`     |
 | `run`            | fn   | `crates/uc-tauri/src/run.rs`            | Tauri builder + window/run loop          |
 | `build` (specta) | fn   | `crates/uc-tauri/src/specta_builder.rs` | IPC command registration (single source) |
 

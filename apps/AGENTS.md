@@ -8,8 +8,8 @@
 | `daemon/` | `uc-daemon` | `uniclipd` | （暂无；遵循 workspace 规则） |
 | `quick-panel/` | `quick-panel` | GPUI 快捷面板（macOS 随安装包发布，可执行文件 `uniclip-quick-panel`） | `README.md` |
 | `android-probe/`、`ios-probe/`、`ohos-probe/` | - | 移动端验收宿主应用（非 Rust） | 不发布；**当前不可构建**：它们依赖已移出本仓的 `uc-mobile-probe-core` 与 `uc-ohos-napi`（`scripts/architecture/check-engine-repository.mjs` 禁止其回到本仓），处置待定 |
-| `../src-tauri/`（物理位置见说明） | `uniclipboard` | 桌面 GUI（Tauri 打包壳；适配 crate 为 `crates/uc-tauri`） | `apps/gui/src-tauri/AGENTS.md` |
+| `gui/` | `uniclipboard`（`gui/src-tauri`）、`uniclipboard-gui`（前端，JS） | 桌面 GUI：Tauri + React。`gui/` 是标准 Tauri 项目根（`package.json`、`src/`、`src-tauri/`）；Tauri 适配 crate 为 `crates/uc-tauri` | `apps/gui/src/AGENTS.md`（前端）、`apps/gui/src-tauri/AGENTS.md`（打包壳） |
 
-桌面 GUI 在逻辑上也是一个 app，但物理目录必须叫 `src-tauri/` 且位于仓库根——这是 tauri-cli 的项目发现约定（`src-tauri/` + `tauri.conf.json`），官方不支持重命名，所以它不放在本目录下。
+桌面 GUI 的全部文件（React 前端、Vite/TypeScript/Tailwind 配置、GUI 端到端测试、设计规范、Tauri 打包壳）都在 `apps/gui/`。`src-tauri/` 这个目录名沿用 Tauri 默认，位置不受限：tauri-cli 2.11.1 从仓库根或 `apps/gui/` 运行都能发现 `apps/gui/src-tauri/tauri.conf.json`（2026-10-02 用 `tauri info` 与带 `cwd` 的构建钩子实测）。仓库根的 `package.json` 只是 bun workspace 根和命令转发入口（`bun tauri:dev` 等照旧可用），GUI 依赖与脚本以 `apps/gui/package.json` 为准。
 
 新增 app 时：路径依赖指向 `../../crates/uc-*`，在根 `Cargo.toml` 的 members 中注册，并补一行本表。

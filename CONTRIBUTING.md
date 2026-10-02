@@ -159,12 +159,11 @@ or to issue / PR text.
 
 ```text
 .
-├── src/                # React + TypeScript frontend (Tauri webview)
-├── src-tauri/          # Rust workspace (daemon, app shell, core, infra, platform crates)
+├── apps/gui/           # Desktop GUI: React + TypeScript frontend (src/) and the Tauri shell (src-tauri/)
+├── apps/, crates/      # Rust workspace members (daemon, CLI, quick panel, host and platform crates)
 ├── workers/            # Cloudflare Worker for the encrypted relay
 ├── docs/               # Architecture, agent rules, release workflow, UAT, etc.
 ├── scripts/            # Dev/release scripts (e.g. bump-version.js)
-├── public/             # Static assets served by Vite
 ├── assets/             # Marketing/icon assets
 ├── AGENTS.md           # Root navigation index for repository instructions
 └── README.md           # User-facing project introduction

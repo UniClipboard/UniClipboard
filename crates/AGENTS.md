@@ -4,7 +4,7 @@
 
 ## OVERVIEW
 
-桌面 Rust 工作区以根目录 `Cargo.toml` 为入口：系统适配器和守护进程库位于 `crates/`，`uniclip` 与 `uniclipd` 位于 `apps/`，Tauri 打包位于 `src-tauri/`。可移植引擎由独立的 `UniClipboard/Engine` 仓库拥有，本仓通过一个固定发布标签使用它。GUI 和 CLI 都通过本机 HTTP 与 WebSocket 访问独立守护进程。
+桌面 Rust 工作区以根目录 `Cargo.toml` 为入口：系统适配器和守护进程库位于 `crates/`，`uniclip` 与 `uniclipd` 位于 `apps/`，桌面 GUI（前端与 Tauri 打包壳）位于 `apps/gui/`。可移植引擎由独立的 `UniClipboard/Engine` 仓库拥有，本仓通过一个固定发布标签使用它。GUI 和 CLI 都通过本机 HTTP 与 WebSocket 访问独立守护进程。
 
 ## STRUCTURE
 
@@ -14,7 +14,7 @@
 |  |- cli/                 # `uniclip` CLI (daemon client; heavy deps feature-gated)
 |  |- daemon/              # GUI-agnostic daemon runtime; hosts the `uniclipd` binary
 |  |- quick-panel/         # GPUI quick panel app (`uniclip-quick-panel`, macOS default)
-|  |- gui/src-tauri/       # Tauri desktop bin package (packaging shell; hands off to uc-tauri)
+|  |- gui/src-tauri/       # Desktop GUI bin: Tauri packaging shell of apps/gui (frontend: apps/gui/src); hands off to uc-tauri
 |- crates/               # Library crates (14)
 |  # -- Desktop host adapters --
 |  |- uc-platform/      # OS adapters: clipboard, secure storage, autostart
@@ -34,8 +34,6 @@
 |  |- uc-tauri/         # Tauri adapter: commands (via tauri-specta), tray, quick panel, run loop
 |  # -- Other --
 |  |- quick-panel-core/ # Platform-independent logic of the GPUI quick panel: query model, state machine, ports
-|- src-tauri/            # Desktop GUI bin: Tauri packaging shell (dir name pinned by tauri-cli); adapter crate is crates/uc-tauri
-|  |- src/               # Thin bin: hands off to uc_tauri::run(generate_context!())
 ```
 
 
@@ -118,7 +116,7 @@ bun run test:coverage
 ## NOTES
 
 - `src-legacy/` was removed on 2026-02-26; treat any references as historical context only.
-- Root `AGENTS.md` is the navigation index; this file is the Rust-workspace knowledge base covering `crates/`, `apps/`, and `src-tauri/`. Tauri packaging details live in `apps/gui/src-tauri/AGENTS.md`.
+- Root `AGENTS.md` is the navigation index; this file is the Rust-workspace knowledge base covering `crates/` and `apps/` (including `apps/gui/src-tauri/`). Tauri packaging details live in `apps/gui/src-tauri/AGENTS.md`.
 - Any change touching `crates/uc-platform/src/clipboard/` (especially the Linux X11/Wayland adapters) should run the package's focused validation before merge.
 - Engine and LAN compatibility releases are produced only by `UniClipboard/Engine`; desktop keeps no mobile binding source or release workflow.
 - Log files live in the platform-conventional log location (separate from the data root since the logs split). Single source of truth: `uc_app_paths::app_log_dir()`. Per-role files `uniclipboard-{gui,daemon,cli}.json.<date>`, daily rotation, 7-day retention (older pruned on start).

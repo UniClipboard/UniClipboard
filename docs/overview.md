@@ -178,16 +178,15 @@ bun run tauri build
 
 ```
 uniclipboard-desktop/
-├── src/                      # Frontend (React + TypeScript)
-│   ├── pages/               # Route pages (Dashboard, Devices, Settings)
-│   ├── components/          # Reusable UI components
-│   ├── store/               # Redux slices
-│   └── api/                 # Tauri command invocations
+├── apps/gui/                 # Desktop GUI (Tauri + React)
+│   ├── src/                 # Frontend (React + TypeScript)
+│   │   ├── pages/           # Route pages (Dashboard, Devices, Settings)
+│   │   ├── components/      # Reusable UI components
+│   │   ├── store/           # Redux slices
+│   │   └── api/             # Tauri command invocations
+│   └── src-tauri/           # Tauri shell: bin entrypoint, tauri.conf.json, icons
 │
-├── src-tauri/               # Backend (Rust)
-│   ├── crates/              # Modular architecture (see above)
-│   ├── src/                 # Tauri GUI entrypoint and platform glue
-│   └── tauri.conf.json      # Tauri configuration
+├── crates/                  # Rust library crates (see above), incl. uc-tauri (Tauri adapter)
 │
 ├── docs/                    # Documentation (this file)
 └── CLAUDE.md                # Instructions for Claude Code

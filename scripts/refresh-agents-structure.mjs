@@ -52,7 +52,8 @@ const KNOWN_DESCRIPTIONS = {
   'uc-cli': '`uniclip` CLI (daemon client; heavy deps feature-gated)',
   'uc-cli-macros': 'Proc-macros for uc-cli (internal)',
   'p2p-bench': 'Throwaway perf-spike bins (not shipped; publish = false)',
-  uniclipboard: 'Tauri desktop bin package (packaging shell; hands off to uc-tauri)',
+  uniclipboard:
+    'Desktop GUI bin: Tauri packaging shell of apps/gui (frontend: apps/gui/src); hands off to uc-tauri',
 }
 
 function getDescription(cratePath) {
@@ -161,10 +162,6 @@ function generateStructure(members) {
     }
   }
 
-  lines.push(
-    '|- src-tauri/            # Desktop GUI bin: Tauri packaging shell (dir name pinned by tauri-cli); adapter crate is crates/uc-tauri'
-  )
-  lines.push('|  |- src/               # Thin bin: hands off to uc_tauri::run(generate_context!())')
   lines.push('```')
 
   return lines.join('\n')

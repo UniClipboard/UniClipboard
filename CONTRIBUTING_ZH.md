@@ -171,12 +171,11 @@ issue / PR 正文。**
 
 ```text
 .
-├── src/                # React + TypeScript 前端（Tauri webview）
-├── src-tauri/          # Rust 工作区（daemon、app、core、infra、platform 等 crate）
+├── apps/gui/           # 桌面 GUI：React + TypeScript 前端（src/）与 Tauri 打包壳（src-tauri/）
+├── apps/、crates/      # Rust 工作区成员（daemon、CLI、快捷面板、宿主与平台 crate）
 ├── workers/            # Cloudflare Worker，加密中继
 ├── docs/               # 架构、agent 规则、发布流程、UAT 等
 ├── scripts/            # 开发/发布脚本（如 bump-version.js）
-├── public/             # Vite 提供的静态资源
 ├── assets/             # 营销/图标素材
 ├── AGENTS.md           # 仓库说明的根导航索引
 └── README.md           # 面向用户的项目介绍

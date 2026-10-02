@@ -18,5 +18,7 @@ Rust workspace 的导航与知识库在 `crates/AGENTS.md`；本文件只覆盖 
 
 - 所有 cargo 命令从仓库根执行（workspace 根）；构建产物在根 `target/`。
 - `tauri.conf.json` 的 `externalBin: binaries/uniclipd` 要求构建/检查 `uniclipboard` 包前先运行 `node scripts/prepare-sidecars.mjs --debug`，否则 tauri-build 校验 sidecar 资源失败。
-- 改动 Tauri command 后跑 `cargo test -p uc-tauri --test specta_export` 重新生成 `src/lib/ipc-bindings.generated.ts` 并一并提交（规则详见 `docs/agent/rust-tauri-rules.md`）。
+- 改动 Tauri command 后跑 `cargo test -p uc-tauri --test specta_export` 重新生成 `apps/gui/src/lib/ipc-bindings.generated.ts` 并一并提交（规则详见 `docs/agent/rust-tauri-rules.md`）。
 - Tauri 适配 crate 是 `crates/uc-tauri`（commands、tray、quick panel、run loop），与其他库 crate 同处 `crates/`；本目录只保留 tauri-cli 要求的打包壳，不要在这里新增任何 crate。
+- `tauri.conf.json` 的 `beforeDevCommand`、`beforeBuildCommand`、`beforeBundleCommand` 用对象形式并显式 `cwd`（相对本目录，指向仓库根），所以从仓库根或 `apps/gui/` 调用 tauri，钩子都在仓库根运行根 `package.json` 的脚本。
+- `tauri` 的 `--config <path>` 按调用时的当前目录解析：经根 `bun run tauri` 转发时当前目录是 `apps/gui`，因此写 `src-tauri/tauri.dev.conf.json` 这样的相对路径。

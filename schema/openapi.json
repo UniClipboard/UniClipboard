@@ -4880,6 +4880,94 @@
         ],
         "type": "object"
       },
+      "RelayEntrySourceDto": {
+        "description": "Where a relay overview entry comes from.",
+        "enum": [
+          "builtIn",
+          "custom"
+        ],
+        "type": "string"
+      },
+      "RelayOverviewDto": {
+        "description": "Engine-owned relay overview: built-in entries first, then custom entries.",
+        "properties": {
+          "appliedMode": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/RelayRoutingModeDto"
+              }
+            ],
+            "nullable": true
+          },
+          "changePending": {
+            "description": "Saved settings differ from the running node.",
+            "type": "boolean"
+          },
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/RelayOverviewEntryDto"
+            },
+            "type": "array"
+          },
+          "savedMode": {
+            "$ref": "#/components/schemas/RelayRoutingModeDto"
+          }
+        },
+        "required": [
+          "savedMode",
+          "changePending",
+          "entries"
+        ],
+        "type": "object"
+      },
+      "RelayOverviewEntryDto": {
+        "description": "One relay overview entry. `in_effect` means the running node was configured\nwith this relay; it is not a connectivity claim.",
+        "properties": {
+          "credentialConfigured": {
+            "description": "Custom entries only; the credential value is never returned.",
+            "type": "boolean"
+          },
+          "inEffect": {
+            "type": "boolean"
+          },
+          "regionId": {
+            "description": "Stable region id of a built-in relay (`na-east`, `na-west`, `eu`,\n`asia-pacific`); unknown future ids must be rendered as the URL.",
+            "nullable": true,
+            "type": "string"
+          },
+          "source": {
+            "$ref": "#/components/schemas/RelayEntrySourceDto"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "url",
+          "credentialConfigured",
+          "inEffect"
+        ],
+        "type": "object"
+      },
+      "RelayOverviewEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/RelayOverviewDto"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
       "RelayProbeCredentialDto": {
         "discriminator": {
           "propertyName": "mode"
@@ -5105,6 +5193,15 @@
           "credential"
         ],
         "type": "object"
+      },
+      "RelayRoutingModeDto": {
+        "description": "Relay routing implied by settings. Priority: `disabled` (LAN-only) over\n`custom` (replaces the built-in list) over `builtIn`.",
+        "enum": [
+          "builtIn",
+          "custom",
+          "disabled"
+        ],
+        "type": "string"
       },
       "RelaySaveRequestDto": {
         "description": "Saves a relay URL list and its URL-scoped credential as one operation.",
@@ -11749,6 +11846,54 @@
           }
         ],
         "summary": "POST /settings/relay-credential/status",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/settings/relay-overview": {
+      "get": {
+        "operationId": "getRelayOverview",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RelayOverviewEnvelope"
+                }
+              }
+            },
+            "description": "Engine-owned built-in and custom relay overview"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Relay overview query failed"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Credential storage unavailable"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
         "tags": [
           "settings"
         ]

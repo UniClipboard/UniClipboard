@@ -8,6 +8,7 @@ export {
   CustomRelayMutationError,
   getCustomRelays,
   getRelayCredentialStatus,
+  getRelayOverview,
   getSettings,
   probeRelayUrl,
   saveRelay,

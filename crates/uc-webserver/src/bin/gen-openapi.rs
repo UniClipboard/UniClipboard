@@ -66,9 +66,10 @@ use uc_webserver::api::openapi::ApiDoc;
 /// Daemon-owned CLI file dispatch adds one path and operation: 80 / 89.
 /// Profile recovery adds one path and operation: 81 / 90. Engine-owned custom
 /// relay query/mutation share one path: 82 / 92. The daemon-owned content lock adds four
-/// paths and four operations (status, unlock, unlock-keyring, revoke): 86 / 96.
-const EXPECTED_PATHS: usize = 86;
-const EXPECTED_OPERATIONS: usize = 96;
+/// paths and four operations (status, unlock, unlock-keyring, revoke): 86 / 96. The relay overview adds one path and
+/// operation: 87 / 97.
+const EXPECTED_PATHS: usize = 87;
+const EXPECTED_OPERATIONS: usize = 97;
 const SCHEMA_PREFIX: &str = "#/components/schemas/";
 const HTTP_METHODS: [&str; 7] = ["get", "put", "post", "delete", "patch", "head", "options"];
 

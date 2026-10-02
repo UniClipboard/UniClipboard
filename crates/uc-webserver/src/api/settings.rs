@@ -17,17 +17,18 @@ use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
 use uc_engine::{
     CustomRelayMutation, CustomRelayMutationOutcome, CustomRelayRejection, CustomRelaySummary,
     EngineError, EngineErrorCategory, Operation, OperationResult, RelayCredentialEdit,
-    RelayCredentialInput, RelayCredentialStatus, RelayProbeCredential, RelayProbeInput,
-    RelayProbeOutcome, SaveRelayInput, SaveRelayOutcome, SecretString, SettingsPatch,
-    SettingsUpdateOutcome,
+    RelayCredentialInput, RelayCredentialStatus, RelayEntrySource, RelayOverview,
+    RelayProbeCredential, RelayProbeInput, RelayProbeOutcome, RelayRoutingMode, SaveRelayInput,
+    SaveRelayOutcome, SecretString, SettingsPatch, SettingsUpdateOutcome,
 };
 
 use crate::api::dto::error::{log_facade_failure, ApiError};
 use crate::api::dto::settings::{
     CustomRelayDto, CustomRelayMutationDto, CustomRelayMutationResultDto, RelayCredentialEditDto,
-    RelayCredentialRequestDto, RelayCredentialStatusDto, RelayProbeCredentialDto,
-    RelayProbeOutcomeDto, RelayProbeRequestDto, RelaySaveRequestDto, RelaySaveResultDto,
-    SettingsDto, SettingsPatchDto, SettingsUpdateResultDto,
+    RelayCredentialRequestDto, RelayCredentialStatusDto, RelayEntrySourceDto, RelayOverviewDto,
+    RelayOverviewEntryDto, RelayProbeCredentialDto, RelayProbeOutcomeDto, RelayProbeRequestDto,
+    RelayRoutingModeDto, RelaySaveRequestDto, RelaySaveResultDto, SettingsDto, SettingsPatchDto,
+    SettingsUpdateResultDto,
 };
 use crate::api::projection::{IntoApiDto, IntoDomain};
 use crate::api::server::DaemonApiState;
@@ -46,6 +47,7 @@ pub fn router() -> Router<DaemonApiState> {
             "/settings/custom-relays",
             get(get_custom_relays_handler).post(mutate_custom_relay_handler),
         )
+        .route("/settings/relay-overview", get(get_relay_overview_handler))
 }
 
 #[utoipa::path(
@@ -66,6 +68,70 @@ async fn get_custom_relays_handler(
     let relays = query_custom_relays(&state).await?;
     info!(relay_count = relays.len(), "custom relay query succeeded");
     Ok(Json(ApiEnvelope::now(relays)))
+}
+
+#[utoipa::path(
+    get,
+    path = "/settings/relay-overview",
+    tag = "settings",
+    operation_id = "getRelayOverview",
+    responses(
+        (status = 200, description = "Engine-owned built-in and custom relay overview", body = RelayOverviewEnvelope),
+        (status = 500, description = "Relay overview query failed", body = ApiErrorResponse),
+        (status = 503, description = "Credential storage unavailable", body = ApiErrorResponse)
+    )
+)]
+#[instrument(name = "api.settings.relay_overview.get", level = "info", skip(state))]
+pub(crate) async fn get_relay_overview_handler(
+    State(state): State<DaemonApiState>,
+) -> Result<Json<ApiEnvelope<RelayOverviewDto>>, ApiError> {
+    let result = state
+        .execute(Operation::QueryRelayOverview)
+        .await
+        .map_err(|error| relay_credential_error_to_api("query_relay_overview", error))?;
+    let OperationResult::RelayOverview(overview) = result else {
+        return Err(relay_credential_unexpected_result_to_api(
+            "query_relay_overview",
+            "engine returned an unexpected relay overview result",
+        ));
+    };
+    let dto = relay_overview_to_dto(overview);
+    info!(
+        entry_count = dto.entries.len(),
+        change_pending = dto.change_pending,
+        "relay overview query succeeded"
+    );
+    Ok(Json(ApiEnvelope::now(dto)))
+}
+
+fn relay_routing_mode_to_dto(mode: RelayRoutingMode) -> RelayRoutingModeDto {
+    match mode {
+        RelayRoutingMode::BuiltIn => RelayRoutingModeDto::BuiltIn,
+        RelayRoutingMode::Custom => RelayRoutingModeDto::Custom,
+        RelayRoutingMode::Disabled => RelayRoutingModeDto::Disabled,
+    }
+}
+
+fn relay_overview_to_dto(overview: RelayOverview) -> RelayOverviewDto {
+    RelayOverviewDto {
+        saved_mode: relay_routing_mode_to_dto(overview.saved_mode),
+        applied_mode: overview.applied_mode.map(relay_routing_mode_to_dto),
+        change_pending: overview.change_pending,
+        entries: overview
+            .entries
+            .into_iter()
+            .map(|entry| RelayOverviewEntryDto {
+                source: match entry.source {
+                    RelayEntrySource::BuiltIn => RelayEntrySourceDto::BuiltIn,
+                    RelayEntrySource::Custom => RelayEntrySourceDto::Custom,
+                },
+                region_id: entry.region_id,
+                url: entry.url,
+                credential_configured: entry.credential_configured,
+                in_effect: entry.in_effect,
+            })
+            .collect(),
+    }
 }
 
 #[utoipa::path(

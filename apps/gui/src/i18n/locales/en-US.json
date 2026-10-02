@@ -557,7 +557,8 @@
         "groups": {
           "connection": "Connection",
           "relays": "Relay servers",
-          "performance": "Transfer performance"
+          "performance": "Transfer performance",
+          "builtInRelays": "Built-in relays"
         },
         "loadError": "Failed to load settings:",
         "lanOnly": {
@@ -670,6 +671,32 @@
         "restartBanner": {
           "message": "Network settings changed. A background service restart is needed to apply.",
           "errorMessage": "Background service restart failed. Please retry or restart the app manually."
+        },
+        "builtInRelays": {
+          "description": "Relay servers shipped with the app. They are read-only here and are never written to your custom relay settings.",
+          "loading": "Loading built-in relays…",
+          "loadError": "Could not load the built-in relay list.",
+          "retry": "Retry",
+          "routing": {
+            "builtIn": "Built-in relays are used for relaying.",
+            "custom": "Custom relays are set and replace the built-in relays. Built-in relays are not used.",
+            "disabled": "Relays are off (LAN-only Mode). Built-in relays are not used."
+          },
+          "changePending": "Saved settings differ from the running network node. They apply the next time the node is rebuilt, such as after restarting the app; reconnecting an existing session does not necessarily apply them.",
+          "applied": "The running network node uses the saved relay settings. This does not mean a relay is connected.",
+          "notStarted": "The network node has not started yet, so the applied configuration is not known.",
+          "source": "Built-in",
+          "status": {
+            "configured": "Configured on the running node",
+            "notConfigured": "Not configured on the running node",
+            "notUsed": "Not used"
+          },
+          "regions": {
+            "na-east": "North America East",
+            "na-west": "North America West",
+            "eu": "Europe",
+            "asia-pacific": "Asia Pacific"
+          }
         }
       },
       "storage": {

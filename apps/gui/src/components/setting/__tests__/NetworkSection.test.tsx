@@ -24,6 +24,17 @@ vi.mock('@/lib/ipc', () => ({
   },
 }))
 
+// The relay overview is covered by BuiltInRelaysField tests and the settings E2E;
+// here it is held in a loaded state so its retry control does not shadow the custom relay one.
+vi.mock('@/components/setting/useRelayOverview', () => ({
+  useRelayOverview: () => ({
+    overview: { savedMode: 'builtIn', appliedMode: 'builtIn', changePending: false, entries: [] },
+    loading: false,
+    failed: false,
+    reload: vi.fn(),
+  }),
+}))
+
 vi.mock('@/hooks/useSetting', () => ({
   useSetting: vi.fn(),
 }))

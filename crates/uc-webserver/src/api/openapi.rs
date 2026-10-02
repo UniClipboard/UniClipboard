@@ -78,12 +78,13 @@ use crate::api::dto::settings::{
     KeyboardShortcutsPatchDto, NetworkSettingsDto, NetworkSettingsPatchDto, PairingSettingsDto,
     PairingSettingsPatchDto, QuickPanelDoubleTapModifierDto, QuickPanelPositionDto,
     QuickPanelSettingsDto, QuickPanelSettingsPatchDto, RelayCredentialEditDto,
-    RelayCredentialRequestDto, RelayCredentialStatusDto, RelayProbeCredentialDto,
-    RelayProbeOutcomeDto, RelayProbeRequestDto, RelaySaveRequestDto, RelaySaveResultDto,
-    RetentionPolicyDto, RetentionPolicyPatchDto, RetentionRuleDto, RuleEvaluationDto,
-    SecuritySettingsDto, SecuritySettingsPatchDto, SettingsDto, SettingsPatchDto,
-    SettingsUpdateResultDto, ShortcutKeyDto, StartupModeDto, SyncFrequencyDto, SyncSettingsDto,
-    SyncSettingsPatchDto, ThemeDto, UpdateChannelDto,
+    RelayCredentialRequestDto, RelayCredentialStatusDto, RelayEntrySourceDto, RelayOverviewDto,
+    RelayOverviewEntryDto, RelayProbeCredentialDto, RelayProbeOutcomeDto, RelayProbeRequestDto,
+    RelayRoutingModeDto, RelaySaveRequestDto, RelaySaveResultDto, RetentionPolicyDto,
+    RetentionPolicyPatchDto, RetentionRuleDto, RuleEvaluationDto, SecuritySettingsDto,
+    SecuritySettingsPatchDto, SettingsDto, SettingsPatchDto, SettingsUpdateResultDto,
+    ShortcutKeyDto, StartupModeDto, SyncFrequencyDto, SyncSettingsDto, SyncSettingsPatchDto,
+    ThemeDto, UpdateChannelDto,
 };
 use uc_daemon_contract::api::dto::analytics::{
     CaptureUiEventRequest, CaptureUiEventResponse, UiDialogOpenSource, UiDismissSource,
@@ -122,11 +123,11 @@ use uc_daemon_contract::api::dto::envelope::{
     MobileSyncActionEnvelope, MobileSyncSettingsEnvelope, NetworkRecoveryStatusEnvelope,
     PeerSnapshotListEnvelope, PresenceRefreshEnvelope, PreviewImportEnvelope,
     ProfileRecoveryEnvelope, RegisterMobileDeviceEnvelope, RelayCredentialStatusEnvelope,
-    RelayProbeOutcomeEnvelope, RelaySaveResultEnvelope, ResendEnvelope, RestartAcceptedEnvelope,
-    RestoreEntryEnvelope, RotateMobilePasswordEnvelope, SearchQueryEnvelope, SearchRebuildEnvelope,
-    SearchStatusEnvelope, SearchTagsEnvelope, SessionTokenEnvelope, SettingsEnvelope,
-    SettingsUpdateResultEnvelope, SetupCancelJoinEnvelope, SetupInitializeEnvelope,
-    SetupIssueInvitationEnvelope, SetupRedeemEnvelope, SetupStateEnvelope,
+    RelayOverviewEnvelope, RelayProbeOutcomeEnvelope, RelaySaveResultEnvelope, ResendEnvelope,
+    RestartAcceptedEnvelope, RestoreEntryEnvelope, RotateMobilePasswordEnvelope,
+    SearchQueryEnvelope, SearchRebuildEnvelope, SearchStatusEnvelope, SearchTagsEnvelope,
+    SessionTokenEnvelope, SettingsEnvelope, SettingsUpdateResultEnvelope, SetupCancelJoinEnvelope,
+    SetupInitializeEnvelope, SetupIssueInvitationEnvelope, SetupRedeemEnvelope, SetupStateEnvelope,
     SetupSwitchSpaceEnvelope, SpaceMemberListEnvelope, SpaceProtectionEnvelope, StatusEnvelope,
     StorageStatsEnvelope, ToggleFavoriteEnvelope, UnlockSpaceEnvelope, UpdateDebugModeEnvelope,
     UpdateMobileDeviceEnvelope, UpdateMobileSyncSettingsEnvelope, UpgradeBackupListEnvelope,
@@ -254,6 +255,7 @@ impl Modify for ContractMeta {
         crate::api::settings::get_relay_credential_handler,
         crate::api::settings::save_relay_handler,
         crate::api::settings::get_custom_relays_handler,
+        crate::api::settings::get_relay_overview_handler,
         crate::api::settings::mutate_custom_relay_handler,
         crate::api::diagnostics::get_debug_status_handler,
         crate::api::diagnostics::update_debug_mode_handler,
@@ -485,6 +487,11 @@ impl Modify for ContractMeta {
             RelayCredentialStatusEnvelope,
             RelaySaveResultEnvelope,
             CustomRelayListEnvelope,
+            RelayOverviewEnvelope,
+            RelayOverviewDto,
+            RelayRoutingModeDto,
+            RelayEntrySourceDto,
+            RelayOverviewEntryDto,
             CustomRelayMutationResultEnvelope,
             SettingsDto,
             SettingsUpdateResultDto,
@@ -758,6 +765,7 @@ mod assembly_smoke_tests {
         // Profile recovery status adds one path and operation: 81 / 90.
         // Engine-owned custom relay query/mutation share one path: 82 / 92.
         // The daemon-owned content lock adds four paths and four operations: 86 / 96.
+        // The relay overview adds one path and operation: 87 / 97.
         const HTTP_METHODS: [&str; 7] =
             ["get", "put", "post", "delete", "patch", "head", "options"];
         let paths = value
@@ -766,8 +774,8 @@ mod assembly_smoke_tests {
             .expect("OpenAPI doc must declare paths");
         assert_eq!(
             paths.len(),
-            86,
-            "expected exactly 86 path templates, found {}: {:?}",
+            87,
+            "expected exactly 87 path templates, found {}: {:?}",
             paths.len(),
             paths.keys().collect::<Vec<_>>()
         );
@@ -781,8 +789,8 @@ mod assembly_smoke_tests {
             })
             .sum();
         assert_eq!(
-            operation_count, 96,
-            "expected exactly 96 operations across all paths, found {operation_count}"
+            operation_count, 97,
+            "expected exactly 97 operations across all paths, found {operation_count}"
         );
 
         // A few frozen operationIds (§D) must be present somewhere in the doc.
@@ -804,6 +812,7 @@ mod assembly_smoke_tests {
             "getDeviceGroupChoices",
             "chooseDeviceGroup",
             "getCustomRelays",
+            "getRelayOverview",
             "mutateCustomRelay",
         ] {
             assert!(

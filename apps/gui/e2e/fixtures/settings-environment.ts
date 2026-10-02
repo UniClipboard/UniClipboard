@@ -2,8 +2,34 @@ import { daemonClient } from '@/api/daemon/client'
 import { visualEffectsApi } from '@/api/visual-effects'
 import { INITIAL_EFFECTS, initializeVisualEffects } from '@/lib/visual-effects-store'
 
+const BUILT_IN_RELAYS = [
+  ['na-east', 'https://use1-1.relay.n0.iroh.link./'],
+  ['na-west', 'https://usw1-1.relay.n0.iroh.link./'],
+  ['eu', 'https://euc1-1.relay.n0.iroh.link./'],
+  ['asia-pacific', 'https://aps1-1.relay.n0.iroh.link./'],
+] as const
+
+function builtInOverview(inEffect: boolean) {
+  return {
+    savedMode: 'builtIn',
+    appliedMode: inEffect ? 'builtIn' : null,
+    changePending: false,
+    entries: BUILT_IN_RELAYS.map(([regionId, url]) => ({
+      source: 'builtIn',
+      regionId,
+      url,
+      credentialConfigured: false,
+      inEffect,
+    })),
+  }
+}
+
 declare global {
   interface Window {
+    /** Scripted `GET /settings/relay-overview` response for browser E2E. */
+    __relayOverviewFixture?: { response: unknown; calls: number }
+    /** Optional harness binding returning the scripted response or a failure. */
+    __relayOverviewScript?: () => Promise<{ response?: unknown; fail?: boolean }>
     __settingsFixtureNative?: {
       restartCalls: number
       restartShouldFail: boolean
@@ -43,6 +69,7 @@ export function installSettingsFixtureEnvironment() {
       },
     },
   })
+  window.__relayOverviewFixture = { response: builtInOverview(true), calls: 0 }
   const originalFetch = window.fetch.bind(window)
   window.fetch = async (request, options) => {
     const url = new URL(request instanceof Request ? request.url : String(request), location.href)
@@ -55,6 +82,16 @@ export function installSettingsFixtureEnvironment() {
     if (url.pathname.startsWith('/fixture-daemon/')) {
       if (url.pathname === '/fixture-daemon/settings/relay-probe') {
         return Response.json({ data: { kind: 'success', latencyMs: 12 }, ts: Date.now() })
+      }
+      if (url.pathname === '/fixture-daemon/settings/relay-overview') {
+        const scripted = window.__relayOverviewFixture!
+        scripted.calls += 1
+        // A browser harness may script the response from outside the page.
+        const external = await window.__relayOverviewScript?.()
+        if (external?.fail) {
+          return Response.json({ error: 'relay overview unavailable' }, { status: 500 })
+        }
+        return Response.json({ data: external?.response ?? scripted.response, ts: Date.now() })
       }
       const responses: Record<string, unknown> = {
         '/fixture-daemon/storage/stats': {

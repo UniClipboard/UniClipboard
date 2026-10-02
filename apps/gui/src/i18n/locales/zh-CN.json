@@ -557,7 +557,8 @@
         "groups": {
           "connection": "连接方式",
           "relays": "中继服务器",
-          "performance": "传输性能"
+          "performance": "传输性能",
+          "builtInRelays": "内置中继"
         },
         "loadError": "加载设置失败:",
         "lanOnly": {
@@ -670,6 +671,32 @@
         "restartBanner": {
           "message": "网络设置已更改，需要重启后台服务才能生效。",
           "errorMessage": "后台服务重启失败，请重试或手动重启应用。"
+        },
+        "builtInRelays": {
+          "description": "应用自带的中继服务器。此处只读，不会写入你的自定义中继设置。",
+          "loading": "正在加载内置中继…",
+          "loadError": "无法加载内置中继列表。",
+          "retry": "重试",
+          "routing": {
+            "builtIn": "当前使用内置中继进行中继转发。",
+            "custom": "已设置自定义中继，它会替换内置中继，内置中继不被使用。",
+            "disabled": "中继已关闭（LAN-only 模式），内置中继不被使用。"
+          },
+          "changePending": "已保存的设置与正在运行的网络节点不一致，将在节点下次重建（例如重启应用）后生效；仅重新连接现有会话不一定会应用。",
+          "applied": "正在运行的网络节点使用已保存的中继设置。这并不表示已经连上某个中继。",
+          "notStarted": "网络节点尚未启动，暂时无法确定已应用的配置。",
+          "source": "内置",
+          "status": {
+            "configured": "已配置到运行中的节点",
+            "notConfigured": "未配置到运行中的节点",
+            "notUsed": "未使用"
+          },
+          "regions": {
+            "na-east": "北美东部",
+            "na-west": "北美西部",
+            "eu": "欧洲",
+            "asia-pacific": "亚太"
+          }
         }
       },
       "storage": {

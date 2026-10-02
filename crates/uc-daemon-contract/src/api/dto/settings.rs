@@ -177,6 +177,51 @@ pub struct CustomRelayDto {
     pub credential_configured: bool,
 }
 
+/// Relay routing implied by settings. Priority: `disabled` (LAN-only) over
+/// `custom` (replaces the built-in list) over `builtIn`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub enum RelayRoutingModeDto {
+    BuiltIn,
+    Custom,
+    Disabled,
+}
+
+/// Where a relay overview entry comes from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub enum RelayEntrySourceDto {
+    BuiltIn,
+    Custom,
+}
+
+/// One relay overview entry. `in_effect` means the running node was configured
+/// with this relay; it is not a connectivity claim.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct RelayOverviewEntryDto {
+    pub source: RelayEntrySourceDto,
+    /// Stable region id of a built-in relay (`na-east`, `na-west`, `eu`,
+    /// `asia-pacific`); unknown future ids must be rendered as the URL.
+    pub region_id: Option<String>,
+    pub url: String,
+    /// Custom entries only; the credential value is never returned.
+    pub credential_configured: bool,
+    pub in_effect: bool,
+}
+
+/// Engine-owned relay overview: built-in entries first, then custom entries.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct RelayOverviewDto {
+    pub saved_mode: RelayRoutingModeDto,
+    /// Routing the running node was bound with; absent before the node exists.
+    pub applied_mode: Option<RelayRoutingModeDto>,
+    /// Saved settings differ from the running node.
+    pub change_pending: bool,
+    pub entries: Vec<RelayOverviewEntryDto>,
+}
+
 /// One item-scoped custom relay mutation.
 #[derive(Clone, Serialize, Deserialize, ToSchema)]
 #[serde(

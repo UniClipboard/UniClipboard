@@ -2593,6 +2593,66 @@ export type RelayCredentialStatusEnvelope = {
     ts: number;
 };
 
+/**
+ * Where a relay overview entry comes from.
+ */
+export type RelayEntrySourceDto = 'builtIn' | 'custom';
+
+/**
+ * Engine-owned relay overview: built-in entries first, then custom entries.
+ */
+export type RelayOverviewDto = {
+    appliedMode?: RelayRoutingModeDto | null;
+    /**
+     * Saved settings differ from the running node.
+     */
+    changePending: boolean;
+    entries: Array<RelayOverviewEntryDto>;
+    savedMode: RelayRoutingModeDto;
+};
+
+/**
+ * One relay overview entry. `in_effect` means the running node was configured
+ * with this relay; it is not a connectivity claim.
+ */
+export type RelayOverviewEntryDto = {
+    /**
+     * Custom entries only; the credential value is never returned.
+     */
+    credentialConfigured: boolean;
+    inEffect: boolean;
+    /**
+     * Stable region id of a built-in relay (`na-east`, `na-west`, `eu`,
+     * `asia-pacific`); unknown future ids must be rendered as the URL.
+     */
+    regionId?: string | null;
+    source: RelayEntrySourceDto;
+    url: string;
+};
+
+/**
+ * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
+ *
+ * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
+ * via [`ApiEnvelope::now`] (the contract carries only the type + the clock
+ * helper, not a hard dependency on when the handler reads the clock).
+ * `rename_all = "camelCase"` is a no-op for the single-word fields here but is
+ * declared for forward-compat.
+ *
+ * IMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named
+ * OpenAPI component is declared in the `#[aliases(...)]` block below. Add a new
+ * alias line whenever a new payload type needs enveloping. NEVER register the
+ * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
+ * generic, and an un-aliased generic inlines an anonymous schema.
+ */
+export type RelayOverviewEnvelope = {
+    data: RelayOverviewDto;
+    /**
+     * Server time when the response was built (unix epoch milliseconds).
+     */
+    ts: number;
+};
+
 export type RelayProbeCredentialDto = {
     mode: 'stored';
 } | {
@@ -2666,6 +2726,12 @@ export type RelayProbeRequestDto = {
      */
     url: string;
 };
+
+/**
+ * Relay routing implied by settings. Priority: `disabled` (LAN-only) over
+ * `custom` (replaces the built-in list) over `builtIn`.
+ */
+export type RelayRoutingModeDto = 'builtIn' | 'custom' | 'disabled';
 
 /**
  * Saves a relay URL list and its URL-scoped credential as one operation.
@@ -6452,6 +6518,35 @@ export type GetRelayCredentialStatusResponses = {
 };
 
 export type GetRelayCredentialStatusResponse = GetRelayCredentialStatusResponses[keyof GetRelayCredentialStatusResponses];
+
+export type GetRelayOverviewData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/settings/relay-overview';
+};
+
+export type GetRelayOverviewErrors = {
+    /**
+     * Relay overview query failed
+     */
+    500: ApiErrorResponse;
+    /**
+     * Credential storage unavailable
+     */
+    503: ApiErrorResponse;
+};
+
+export type GetRelayOverviewError = GetRelayOverviewErrors[keyof GetRelayOverviewErrors];
+
+export type GetRelayOverviewResponses = {
+    /**
+     * Engine-owned built-in and custom relay overview
+     */
+    200: RelayOverviewEnvelope;
+};
+
+export type GetRelayOverviewResponse = GetRelayOverviewResponses[keyof GetRelayOverviewResponses];
 
 export type ProbeRelayUrlData = {
     body: RelayProbeRequestDto;

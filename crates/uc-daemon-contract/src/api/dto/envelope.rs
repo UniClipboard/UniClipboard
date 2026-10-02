@@ -46,8 +46,8 @@ use crate::api::dto::search::{
     SearchQueryResultDto, SearchRebuildAcceptedData, SearchStatusData, SearchTagDto,
 };
 use crate::api::dto::settings::{
-    CustomRelayDto, CustomRelayMutationResultDto, RelayCredentialStatusDto, RelayProbeOutcomeDto,
-    RelaySaveResultDto, SettingsDto, SettingsUpdateResultDto,
+    CustomRelayDto, CustomRelayMutationResultDto, RelayCredentialStatusDto, RelayOverviewDto,
+    RelayProbeOutcomeDto, RelaySaveResultDto, SettingsDto, SettingsUpdateResultDto,
 };
 use crate::api::dto::storage::{
     ClearCacheResponse, DeleteUpgradeBackupResponse, StorageStatsDto, UpgradeBackupDto,
@@ -104,6 +104,7 @@ use crate::api::types::{
     RelayCredentialStatusEnvelope = ApiEnvelope<RelayCredentialStatusDto>,
     RelaySaveResultEnvelope = ApiEnvelope<RelaySaveResultDto>,
     CustomRelayListEnvelope = ApiEnvelope<Vec<CustomRelayDto>>,
+    RelayOverviewEnvelope = ApiEnvelope<RelayOverviewDto>,
     CustomRelayMutationResultEnvelope = ApiEnvelope<CustomRelayMutationResultDto>,
     DebugStatusEnvelope = ApiEnvelope<DebugStatusDto>,
     UpdateDebugModeEnvelope = ApiEnvelope<UpdateDebugModeResultDto>,

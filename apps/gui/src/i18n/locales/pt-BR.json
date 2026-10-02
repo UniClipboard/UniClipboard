@@ -557,7 +557,8 @@
         "groups": {
           "connection": "Conexão",
           "relays": "Servidores de retransmissão",
-          "performance": "Desempenho da transferência"
+          "performance": "Desempenho da transferência",
+          "builtInRelays": "Relays integrados"
         },
         "loadError": "Falha ao carregar as configurações:",
         "lanOnly": {
@@ -670,6 +671,32 @@
         "restartBanner": {
           "message": "As configurações de rede mudaram. É preciso reiniciar o serviço em segundo plano para aplicar.",
           "errorMessage": "Falha ao reiniciar o serviço em segundo plano. Tente novamente ou reinicie o app manualmente."
+        },
+        "builtInRelays": {
+          "description": "Servidores de relay incluídos no app. Aqui são somente leitura e nunca são gravados nas suas configurações de relay personalizado.",
+          "loading": "Carregando relays integrados…",
+          "loadError": "Não foi possível carregar a lista de relays integrados.",
+          "retry": "Tentar novamente",
+          "routing": {
+            "builtIn": "Os relays integrados são usados para retransmissão.",
+            "custom": "Há relays personalizados definidos e eles substituem os integrados. Os relays integrados não são usados.",
+            "disabled": "Os relays estão desativados (modo LAN-only). Os relays integrados não são usados."
+          },
+          "changePending": "As configurações salvas diferem do nó de rede em execução. Elas são aplicadas na próxima vez que o nó for recriado, como ao reiniciar o app; reconectar uma sessão existente não as aplica necessariamente.",
+          "applied": "O nó de rede em execução usa as configurações de relay salvas. Isso não significa que um relay esteja conectado.",
+          "notStarted": "O nó de rede ainda não foi iniciado, então a configuração aplicada não é conhecida.",
+          "source": "Integrado",
+          "status": {
+            "configured": "Configurado no nó em execução",
+            "notConfigured": "Não configurado no nó em execução",
+            "notUsed": "Não usado"
+          },
+          "regions": {
+            "na-east": "América do Norte (Leste)",
+            "na-west": "América do Norte (Oeste)",
+            "eu": "Europa",
+            "asia-pacific": "Ásia-Pacífico"
+          }
         }
       },
       "storage": {
@@ -2450,7 +2477,10 @@
       },
       "title": "Aguardando confirmação",
       "subtitle": "Aguardando o resultado da entrada.",
-      "actions": { "cancel": "Cancelar entrada", "back": "Voltar" },
+      "actions": {
+        "cancel": "Cancelar entrada",
+        "back": "Voltar"
+      },
       "ended": {
         "title": "Não foi possível entrar no espaço",
         "reasons": {

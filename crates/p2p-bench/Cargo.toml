@@ -43,9 +43,10 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # iroh P2P bench deps (optional, gated behind the `iroh` feature)
-iroh = { version = "1.0.0-rc.1", optional = true }
-iroh-blobs = { version = "0.102", optional = true }
-noq-proto = { version = "1.0.0-rc.1", optional = true }
+iroh = { version = "1.3", optional = true }
+# Same fork revision Engine's uc-infra depends on, so the workspace resolves a single iroh-blobs.
+iroh-blobs = { git = "https://github.com/UniClipboard/iroh-blobs.git", rev = "124780fb69768b8506565b2760c435182f9e2d20", optional = true }
+noq-proto = { version = "1.3", optional = true }
 futures-lite = { version = "2", optional = true }
 time = { version = "0.3", features = ["formatting", "macros"], optional = true }
 

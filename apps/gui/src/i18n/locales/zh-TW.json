@@ -557,7 +557,8 @@
         "groups": {
           "connection": "連線方式",
           "relays": "中繼伺服器",
-          "performance": "傳輸效能"
+          "performance": "傳輸效能",
+          "builtInRelays": "內建中繼"
         },
         "loadError": "載入設定失敗:",
         "lanOnly": {
@@ -670,6 +671,32 @@
         "restartBanner": {
           "message": "網路設定已更改，需要重新啟動背景服務才能生效。",
           "errorMessage": "背景服務重新啟動失敗，請重試或手動重新啟動應用程式。"
+        },
+        "builtInRelays": {
+          "description": "應用程式內建的中繼伺服器。此處為唯讀，不會寫入你的自訂中繼設定。",
+          "loading": "正在載入內建中繼…",
+          "loadError": "無法載入內建中繼清單。",
+          "retry": "重試",
+          "routing": {
+            "builtIn": "目前使用內建中繼進行中繼轉送。",
+            "custom": "已設定自訂中繼，它會取代內建中繼，內建中繼不會被使用。",
+            "disabled": "中繼已關閉（LAN-only 模式），內建中繼不會被使用。"
+          },
+          "changePending": "已儲存的設定與正在執行的網路節點不一致，將在節點下次重建（例如重新啟動應用程式）後生效；僅重新連線現有工作階段不一定會套用。",
+          "applied": "正在執行的網路節點使用已儲存的中繼設定。這並不表示已連上某個中繼。",
+          "notStarted": "網路節點尚未啟動，暫時無法確定已套用的設定。",
+          "source": "內建",
+          "status": {
+            "configured": "已設定於執行中的節點",
+            "notConfigured": "未設定於執行中的節點",
+            "notUsed": "未使用"
+          },
+          "regions": {
+            "na-east": "北美東部",
+            "na-west": "北美西部",
+            "eu": "歐洲",
+            "asia-pacific": "亞太"
+          }
         }
       },
       "storage": {
@@ -1368,7 +1395,10 @@
         "title": "正在更新空間裝置狀態",
         "description": "完成後會自動重新整理，無需保持此頁面開啟。"
       },
-      "retrying": { "title": "正在更新空間裝置狀態", "description": "暫時未完成，稍後自動重試。" },
+      "retrying": {
+        "title": "正在更新空間裝置狀態",
+        "description": "暫時未完成，稍後自動重試。"
+      },
       "attention": {
         "title": "空間裝置狀態需要處理",
         "description": "目前無法自動完成。請保留現有資料，稍後重新檢查。",
@@ -2439,7 +2469,10 @@
       },
       "title": "等待確認",
       "subtitle": "正在等待加入結果。",
-      "actions": { "cancel": "取消加入", "back": "返回" },
+      "actions": {
+        "cancel": "取消加入",
+        "back": "返回"
+      },
       "ended": {
         "title": "無法加入空間",
         "reasons": {

@@ -54,7 +54,7 @@ dbg_macro = "warn"
 [workspace.dependencies]
 # All desktop consumers use one immutable Engine revision. Features remain
 # opt-in at each host boundary so LAN compatibility cannot become a default.
-uc-engine = { git = "https://github.com/UniClipboard/Engine.git", rev = "4ece7ac475a3b9fc4fe73e46ceb0371eabe17b2b" }
+uc-engine = { git = "https://github.com/UniClipboard/Engine.git", rev = "2feadb0a7d29cda2f42cd986bd104308d5289504" }
 
 # tauri 2.11 是 specta rc.25 兼容的最低版本 —— 2.10.x 及之前在
 # `tauri/src/ipc/channel.rs` 用了 `#[specta(remote=..., rename="...")]`
@@ -67,22 +67,6 @@ tauri = { version = "2.11", features = [
   "protocol-asset",
 ] }
 tauri-plugin-autostart = "2"
-
-# Pin the UniClipboard iroh-blobs fork at b33af91e8a4bd189cc0f954fc6584feb5ffd1823
-# (version 0.102.0, MIT OR Apache-2.0). It fixes HashContext::persist(), which
-# otherwise leaves BaoFileStorage poisoned after persisting a non-partial state.
-# This must remain an auditable Git revision rather than a local submodule so a
-# clean checkout resolves the same patched blob implementation on every target.
-[patch.crates-io]
-iroh-blobs = { git = "https://github.com/UniClipboard/iroh-blobs.git", rev = "b33af91e8a4bd189cc0f954fc6584feb5ffd1823" }
-# swarm-discovery 0.6.3 plus the UniClipboard fix that lets a closed discovery
-# actor drop its delayed GC send instead of retrying it every 10 ms forever.
-# Engine carries the patched source under third_party and applies it through its
-# own [patch], but [patch] does not propagate to dependents, so a release built
-# from this repository would otherwise resolve the unpatched crates.io 0.6.3.
-# The revision is the same Engine revision this repository pins for uc-engine,
-# so the whole graph resolves one Engine source.
-swarm-discovery = { git = "https://github.com/UniClipboard/Engine.git", rev = "4ece7ac475a3b9fc4fe73e46ceb0371eabe17b2b" }
 
 # dev profile:用 line-tables-only 替代完整 dwarf,大幅缩短 link 阶段。
 # 实测 inner-loop 11s → 4s(-65%),target 体积 46GB → 4.4GB(-91%)。

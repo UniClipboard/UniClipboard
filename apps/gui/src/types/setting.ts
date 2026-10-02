@@ -207,6 +207,28 @@ export interface CustomRelay {
   credentialConfigured: boolean
 }
 
+/** Routing implied by settings; `disabled` (LAN-only) wins over `custom` over `builtIn`. */
+export type RelayRoutingMode = 'builtIn' | 'custom' | 'disabled'
+
+export interface RelayOverviewEntry {
+  source: 'builtIn' | 'custom'
+  /** Stable built-in region id; unknown future ids must fall back to the URL. */
+  regionId: string | null
+  url: string
+  credentialConfigured: boolean
+  /** The running node is configured with this relay. Not a connectivity claim. */
+  inEffect: boolean
+}
+
+export interface RelayOverview {
+  savedMode: RelayRoutingMode
+  /** Routing the running node was bound with; null before the node exists. */
+  appliedMode: RelayRoutingMode | null
+  /** Saved settings differ from the running node. */
+  changePending: boolean
+  entries: RelayOverviewEntry[]
+}
+
 export type CustomRelayMutation =
   | { action: 'add'; url: string; credential: RelayCredentialEdit }
   | {

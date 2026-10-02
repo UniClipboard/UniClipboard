@@ -25,6 +25,7 @@
 
 import {
   getCustomRelays as getCustomRelaysSdk,
+  getRelayOverview as getRelayOverviewSdk,
   getRelayCredentialStatus as getRelayCredentialStatusSdk,
   getSettings as getSettingsSdk,
   mutateCustomRelay as mutateCustomRelaySdk,
@@ -41,7 +42,12 @@ import type {
   RelaySaveResultDto,
   SettingsPatchDto,
 } from '@/api/generated/types.gen'
-import type { CustomRelay, CustomRelayMutation, CustomRelayMutationResult } from '@/types/setting'
+import type {
+  CustomRelay,
+  CustomRelayMutation,
+  CustomRelayMutationResult,
+  RelayOverview,
+} from '@/types/setting'
 import { daemonClient } from './client'
 
 // ── Enums ──────────────────────────────────────────────────────
@@ -321,6 +327,24 @@ export async function getRelayCredentialStatus(url: string): Promise<RelayCreden
 
 export async function getCustomRelays(): Promise<CustomRelay[]> {
   return daemonClient.callEnveloped(() => getCustomRelaysSdk({ throwOnError: true }))
+}
+
+export async function getRelayOverview(): Promise<RelayOverview> {
+  const overview = await daemonClient.callEnveloped(() =>
+    getRelayOverviewSdk({ throwOnError: true })
+  )
+  return {
+    savedMode: overview.savedMode,
+    appliedMode: overview.appliedMode ?? null,
+    changePending: overview.changePending,
+    entries: overview.entries.map(entry => ({
+      source: entry.source,
+      regionId: entry.regionId ?? null,
+      url: entry.url,
+      credentialConfigured: entry.credentialConfigured,
+      inEffect: entry.inEffect,
+    })),
+  }
 }
 
 export async function mutateCustomRelay(

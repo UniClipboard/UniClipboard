@@ -162,7 +162,7 @@ function ensureSidecar(flags) {
     log(`sidecar already staged for ${triple} (pass --rebuild-sidecar to force)`)
     return
   }
-  run('node', [join(repoRoot, 'scripts', 'prepare-daemon-sidecar.mjs'), '--debug'])
+  run('node', [join(repoRoot, 'scripts', 'prepare-sidecars.mjs'), '--debug'])
 }
 
 // Write a minimal `-c` override config merged onto tauri.conf.json: isolated

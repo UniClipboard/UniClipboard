@@ -69,7 +69,7 @@ jobs:
           # ADR-008 D13 added `externalBin: ["binaries/uniclipd"]` to
           # tauri.conf.json, so `tauri_build::build()` requires and copies
           # `src-tauri/binaries/uniclipd-<triple>` at compile time. Real bundles
-          # stage it via prepare-daemon-sidecar.mjs (build.yml / alpha-build.yml),
+          # stage it via prepare-sidecars.mjs (build.yml / alpha-build.yml),
           # but this job only measures coverage and never ships the sidecar — and
           # the copy would clobber the workspace's own instrumented `uniclipd` bin
           # in the target dir, breaking `cargo llvm-cov`'s object scan. Override

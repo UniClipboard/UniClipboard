@@ -25,7 +25,7 @@
 // instead of going through this script.
 //
 // Usage:
-//   node scripts/prepare-daemon-sidecar.mjs [--target <triple>] [--debug] [--timings]
+//   node scripts/prepare-sidecars.mjs [--target <triple>] [--debug] [--timings]
 
 import { execFileSync } from 'node:child_process'
 import { chmodSync, copyFileSync, mkdirSync } from 'node:fs'

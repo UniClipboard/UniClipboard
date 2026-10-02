@@ -141,7 +141,7 @@ jobs:
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           POSTHOG_PROJECT_KEY: ${{ secrets.POSTHOG_PROJECT_KEY }}
           APP_ENV: alpha
-        run: node scripts/prepare-daemon-sidecar.mjs ${{ matrix.args }}
+        run: node scripts/prepare-sidecars.mjs ${{ matrix.args }}
 
       - name: build alpha release
         uses: tauri-apps/tauri-action@v0

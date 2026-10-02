@@ -279,7 +279,7 @@ jobs:
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           POSTHOG_PROJECT_KEY: ${{ secrets.POSTHOG_PROJECT_KEY }}
           APP_ENV: ${{ steps.resolve-env.outputs.app_env }}
-        run: node scripts/prepare-daemon-sidecar.mjs ${{ matrix.args }} --timings
+        run: node scripts/prepare-sidecars.mjs ${{ matrix.args }} --timings
 
       - name: build Tauri app (macOS signed)
         if: matrix.platform == 'macos-latest'
@@ -408,7 +408,7 @@ jobs:
             exit 1
           fi
 
-          # Daemon sidecar: prepare-daemon-sidecar.mjs built it into the same
+          # Daemon sidecar: prepare-sidecars.mjs built it into the same
           # release dir before `tauri build`. Hard-fail if missing — a portable
           # zip without the daemon cannot start at all.
           DAEMON="$RELEASE_DIR/uniclipd.exe"

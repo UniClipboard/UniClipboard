@@ -134,14 +134,13 @@ jobs:
     # matrix.container 仅 Linux 条目设置,其他 platform 该字段缺失 → null →
     # GitHub Actions 跳过容器,直接在 host runner 上执行。
     container: ${{ matrix.container || null }}
-    # sccache R2 pilot (aarch64-apple-darwin only): binds every matrix job to
-    # an environment so the sccache step below can read BUILD_CACHE_R2_*
-    # secrets. Non-pilot targets get the unrestricted read-only environment,
-    # which they never read from, so this adds no new access for them.
-    # github.ref is the trigger ref (release tags included), not the branch
-    # actually checked out via inputs.branch, matching the writer
-    # environment's own main-only deployment restriction.
-    environment: ${{ (matrix.target == 'aarch64-apple-darwin' && github.ref == 'refs/heads/main') && 'desktop-build-cache-writer' || 'desktop-build-cache-reader' }}
+    # sccache R2, all targets (grew out of the aarch64-apple-darwin-only pilot,
+    # t-0160): binds every matrix job to an environment so the sccache step
+    # below can read BUILD_CACHE_R2_* secrets. github.ref is the trigger ref
+    # (release tags included), not the branch actually checked out via
+    # inputs.branch, matching the writer environment's own main-only
+    # deployment restriction.
+    environment: ${{ github.ref == 'refs/heads/main' && 'desktop-build-cache-writer' || 'desktop-build-cache-reader' }}
     strategy:
       fail-fast: false
       matrix:
@@ -202,19 +201,19 @@ jobs:
           # toolchain than the pinned channel cargo runs.
           targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || matrix.target == 'aarch64-pc-windows-msvc' && 'aarch64-pc-windows-msvc' || '' }}
 
-      # sccache R2 pilot, aarch64-apple-darwin only (see docs/design-docs if this
-      # expands: modeled on Engine's ADR-029 shared bucket `uniclipboard-build-cache`).
-      # Other targets keep the existing GitHub Actions `target/` cache untouched.
+      # sccache R2, all targets (grew out of the aarch64-apple-darwin-only
+      # pilot, t-0160; modeled on Engine's ADR-029 shared bucket
+      # `uniclipboard-build-cache`). Per-target object prefix keeps each
+      # target's cache entries independent inside the shared bucket.
       - name: install sccache
-        if: matrix.target == 'aarch64-apple-darwin'
         uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
         with:
           version: v0.18.0
 
       - name: configure sccache for R2
         id: sccache-config
-        if: matrix.target == 'aarch64-apple-darwin'
         env:
+          TARGET: ${{ matrix.target }}
           BUILD_CACHE_R2_ENDPOINT: ${{ secrets.BUILD_CACHE_R2_ENDPOINT }}
           BUILD_CACHE_R2_ACCESS_KEY_ID: ${{ secrets.BUILD_CACHE_R2_ACCESS_KEY_ID }}
           BUILD_CACHE_R2_SECRET_ACCESS_KEY: ${{ secrets.BUILD_CACHE_R2_SECRET_ACCESS_KEY }}
@@ -225,12 +224,25 @@ jobs:
             echo "enabled=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+          case "$TARGET" in
+            aarch64-apple-darwin) os_arch=darwin-arm64 ;;
+            x86_64-apple-darwin) os_arch=darwin-x64 ;;
+            x86_64-unknown-linux-gnu) os_arch=linux-x64 ;;
+            aarch64-unknown-linux-gnu) os_arch=linux-arm64 ;;
+            x86_64-pc-windows-msvc) os_arch=windows-x64 ;;
+            aarch64-pc-windows-msvc) os_arch=windows-arm64 ;;
+            *)
+              echo "::warning title=sccache::unrecognized target '$TARGET', sccache stays off, falling back to the existing rust-cache target/ cache."
+              echo "enabled=false" >> "$GITHUB_OUTPUT"
+              exit 0
+              ;;
+          esac
           {
             echo "RUSTC_WRAPPER=sccache"
             echo "SCCACHE_BUCKET=uniclipboard-build-cache"
             echo "SCCACHE_ENDPOINT=$BUILD_CACHE_R2_ENDPOINT"
             echo "SCCACHE_REGION=auto"
-            echo "SCCACHE_S3_KEY_PREFIX=desktop/sccache/v1/darwin-arm64"
+            echo "SCCACHE_S3_KEY_PREFIX=desktop/sccache/v1/$os_arch"
             echo "AWS_ACCESS_KEY_ID=$BUILD_CACHE_R2_ACCESS_KEY_ID"
             echo "AWS_SECRET_ACCESS_KEY=$BUILD_CACHE_R2_SECRET_ACCESS_KEY"
           } >> "$GITHUB_ENV"
@@ -258,11 +270,11 @@ jobs:
           shared-key: ${{ matrix.target }}${{ steps.build-mode.outputs.suffix }}
           # The measured workspace-cache experiment still rebuilt every application crate.
           cache-workspace-crates: false
-          # aarch64-apple-darwin's compiled output is sccache/R2's job once
-          # sccache actually got R2 credentials; without them (e.g. fork PR)
-          # this falls back to caching target/ here instead of going fully
-          # cold on both caches.
-          cache-targets: ${{ !(matrix.target == 'aarch64-apple-darwin' && steps.sccache-config.outputs.enabled == 'true') }}
+          # Compiled output is sccache/R2's job once sccache actually got R2
+          # credentials; without them (e.g. fork PR, unrecognized target) this
+          # falls back to caching target/ here instead of going fully cold on
+          # both caches.
+          cache-targets: ${{ steps.sccache-config.outputs.enabled != 'true' }}
           # 只在 main 写缓存,其他分支(含 tag 触发的 release)只读。
           # Windows Post Cache Rust 上传单次 ~2m43s (25682907543),tag run
           # 通常基于刚合入 main 的代码,命中已存的 main cache 即可,不必再

@@ -116,10 +116,16 @@ jobs:
     # same environment Mobile's mirror-android-gitcode job uses.
     environment: mirror
     steps:
-      - name: Checkout repository at the release tag
+      # Not pinned to inputs.tag_name: the registration-building scripts below
+      # must be the current ones, not whatever existed at that historical tag
+      # (a tag cut before this mirror feature existed has no sha256 field in
+      # its own copy of build-flare-release-registration.js, so backfilling
+      # it would always fail "every registered artifact must have a sha256").
+      # Changelog notes for past versions stay on the default branch, so this
+      # still finds the right docs/changelog/<version>(.zh).md files.
+      - name: Checkout
         uses: actions/checkout@v6
         with:
-          ref: ${{ inputs.tag_name }}
           persist-credentials: false
 
       - name: Download release assets from the GitHub Release

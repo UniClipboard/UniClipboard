@@ -4,6 +4,18 @@
 # authoritative sources: this workflow only adds an optional mirror and never
 # rebuilds, re-signs or repackages any installer.
 #
+# Where the transfer runs: GitCode's upload endpoint is in mainland China and a
+# GitHub runner reaches it at a few KiB/s, same as Mobile found for the Android
+# APK — except Desktop's installers are larger and there are several of them per
+# release. So this job logs in to the same Shanghai host Mobile already uses
+# over SSH; `scripts/remote/gitcode-mirror-host-desktop.py` (the forced command
+# of this key) downloads each installer from R2, which is fast from China,
+# checks it against the SHA-256 already registered with FlareRelease, and runs
+# the upload script installed on the host once for the whole batch. Only a
+# one-line request and the settings travel over the SSH session (nothing is
+# stored there); no code does, so the key cannot be used to run anything else.
+# The host refuses a script that differs from this commit's.
+#
 # Only the artifacts FlareRelease already has registered for this release can
 # be mirrored: today that is the single updater archive selected per platform
 # (macOS .app.tar.gz, Linux .AppImage(.tar.gz), Windows .nsis.zip/.exe) — see
@@ -19,7 +31,15 @@
 #   original release job computed. FlareRelease accepts each mirror only when
 #   size and SHA-256 equal the artifact it already registered.
 #
-# Configuration (already set, nothing is created by this workflow):
+# Configuration (nothing is created by this workflow):
+#   environment mirror (only the main branch may use it, shared with Mobile's
+#                        own mirror-android-gitcode workflow) holding:
+#   secret   MIRROR_SSH_KEY                       private key whose public half is authorized on the
+#                                                  host, already used by Mobile's mirror workflow
+#   variable MIRROR_SSH_HOST, MIRROR_SSH_USER     the Shanghai host and its unprivileged user, same
+#                                                  values as Mobile's (default user uniclip-mirror)
+#   variable MIRROR_SSH_PORT (optional)           default 22
+#   variable MIRROR_SSH_KNOWN_HOSTS               the host's public keys (ssh-keyscan output)
 #   secret   GITCODE_RELEASE_TOKEN                 GitCode bot token. UniClipboard org secret
 #                                                  (selected repositories), shared with the
 #                                                  Mobile repo's own mirror workflow — each repo
@@ -32,6 +52,11 @@
 #   variable GITCODE_TARGET_COMMITISH (optional)   branch for new release tags, default main
 #   variable UPDATE_SERVER_URL                     already used by release.yml (manifest base URL)
 #   secret   FLARE_RELEASE_ACCESS_CLIENT_ID/SECRET already used by release.yml
+#
+# The host-side files (scripts/remote/gitcode-mirror-host-desktop.py and
+# scripts/mirror-desktop-installers-to-gitcode.mjs) are deployed separately by
+# a maintainer with scripts/remote/deploy-gitcode-mirror-host-desktop.sh; this
+# workflow never installs or changes anything on the host.
 
 name: mirror-desktop-gitcode
 
@@ -87,16 +112,14 @@ jobs:
     name: Mirror desktop installers to GitCode
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    # The SSH key is an environment secret that only the main branch may use,
+    # same environment Mobile's mirror-android-gitcode job uses.
+    environment: mirror
     steps:
       - name: Checkout repository at the release tag
         uses: actions/checkout@v6
         with:
           ref: ${{ inputs.tag_name }}
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: lts/*
 
       - name: Download release assets from the GitHub Release
         continue-on-error: ${{ inputs.non_blocking == true }}
@@ -106,6 +129,11 @@ jobs:
         run: |
           mkdir -p release-assets
           gh release download "$RELEASE_TAG" --repo "${{ github.repository }}" --dir release-assets
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: lts/*
 
       - name: Rebuild the FlareRelease registration payload
         id: registration
@@ -131,13 +159,22 @@ jobs:
             --source "github-actions:${{ github.repository }}:${{ github.run_id }}" \
             --output "flare-release/registration.json"
 
-      - name: Mirror the installers
+      - name: Mirror the installers over the Shanghai relay
         id: mirror
         continue-on-error: ${{ inputs.non_blocking == true }}
         # Shorter than the job timeout: a job timeout would fail the run even
-        # though this step is non-blocking. The script stops itself earlier still.
-        timeout-minutes: 35
+        # though this step is non-blocking. The host script stops itself earlier still.
+        timeout-minutes: 40
         env:
+          RELEASE_TAG: ${{ inputs.tag_name }}
+          VERSION: ${{ inputs.version }}
+          NON_BLOCKING: ${{ inputs.non_blocking == true && 'true' || 'false' }}
+          PRERELEASE: ${{ contains(inputs.tag_name, '-alpha.') || contains(inputs.tag_name, '-beta') || contains(inputs.tag_name, '-rc') }}
+          MIRROR_SSH_KEY: ${{ secrets.MIRROR_SSH_KEY }}
+          MIRROR_SSH_HOST: ${{ vars.MIRROR_SSH_HOST }}
+          MIRROR_SSH_USER: ${{ vars.MIRROR_SSH_USER }}
+          MIRROR_SSH_PORT: ${{ vars.MIRROR_SSH_PORT }}
+          MIRROR_SSH_KNOWN_HOSTS: ${{ vars.MIRROR_SSH_KNOWN_HOSTS }}
           GITCODE_TOKEN: ${{ secrets.GITCODE_RELEASE_TOKEN }}
           GITCODE_OWNER: ${{ vars.GITCODE_OWNER }}
           GITCODE_REPO: ${{ vars.GITCODE_REPO }}
@@ -146,14 +183,81 @@ jobs:
           FLARE_RELEASE_ACCESS_CLIENT_ID: ${{ secrets.FLARE_RELEASE_ACCESS_CLIENT_ID }}
           FLARE_RELEASE_ACCESS_CLIENT_SECRET: ${{ secrets.FLARE_RELEASE_ACCESS_CLIENT_SECRET }}
         run: |
-          node scripts/mirror-desktop-installers-to-gitcode.mjs \
-            --registration flare-release/registration.json \
-            --artifacts-dir release-assets \
-            --tag "${{ inputs.tag_name }}" \
-            --deadline-ms 1980000 \
-            --source "github-actions:${{ github.repository }}:${{ github.run_id }}" \
-            --missing-config "${{ inputs.non_blocking == true && 'skip' || 'fail' }}" \
-            --provenance gitcode-mirror/provenance.json
+          set +x
+          set +e
+          set -o pipefail
+          shopt -s nullglob
+          missing=()
+          for name in MIRROR_SSH_KEY MIRROR_SSH_HOST MIRROR_SSH_KNOWN_HOSTS GITCODE_TOKEN GITCODE_OWNER GITCODE_REPO FLARE_RELEASE_ACCESS_CLIENT_ID FLARE_RELEASE_ACCESS_CLIENT_SECRET; do
+            if [ -z "${!name}" ]; then missing+=("$name"); fi
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            reason="GitCode mirroring is not configured; missing ${missing[*]}"
+            if [ "$NON_BLOCKING" = "true" ]; then
+              echo "::warning title=GitCode mirror skipped::$reason"
+              exit 0
+            fi
+            echo "::error::$reason"
+            exit 1
+          fi
+
+          artifacts=$(node -e '
+            const registration = require("./flare-release/registration.json")
+            const list = (registration.artifacts ?? []).map(a => ({ filename: a.filename, sha256: a.sha256 }))
+            if (list.some(a => !a.sha256)) {
+              console.error("::error::every registered artifact must have a sha256 before it can be mirrored")
+              process.exit(1)
+            }
+            process.stdout.write(JSON.stringify(list))
+          ')
+
+          # The upload script runs from a root-owned copy on the host; this is the
+          # version this commit expects, and the host refuses any other.
+          script_sha=$(sha256sum scripts/mirror-desktop-installers-to-gitcode.mjs | cut -d' ' -f1)
+
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$MIRROR_SSH_KEY" > ~/.ssh/mirror_key
+          chmod 600 ~/.ssh/mirror_key
+          printf '%s\n' "$MIRROR_SSH_KNOWN_HOSTS" > ~/.ssh/mirror_known_hosts
+
+          # Settings are read from the environment by jq, so no secret is ever a
+          # command-line argument.
+          request=$(ARTIFACTS_JSON="$artifacts" jq -nc \
+            --arg tag "$RELEASE_TAG" \
+            --arg version "$VERSION" \
+            --arg scriptSha256 "$script_sha" \
+            --arg prerelease "$PRERELEASE" \
+            --arg source "github-actions:${{ github.repository }}:${{ github.run_id }}" \
+            '{tag: $tag, version: $version, scriptSha256: $scriptSha256, prerelease: ($prerelease == "true"), source: $source,
+              artifacts: (env.ARTIFACTS_JSON | fromjson),
+              env: ({
+                GITCODE_TOKEN: env.GITCODE_TOKEN,
+                GITCODE_OWNER: env.GITCODE_OWNER,
+                GITCODE_REPO: env.GITCODE_REPO,
+                GITCODE_API_BASE: env.GITCODE_API_BASE,
+                GITCODE_TARGET_COMMITISH: env.GITCODE_TARGET_COMMITISH,
+                FLARE_RELEASE_ACCESS_CLIENT_ID: env.FLARE_RELEASE_ACCESS_CLIENT_ID,
+                FLARE_RELEASE_ACCESS_CLIENT_SECRET: env.FLARE_RELEASE_ACCESS_CLIENT_SECRET
+              } | with_entries(select(.value != null and .value != "")))}')
+
+          mkdir -p gitcode-mirror
+          # One JSON line and nothing else; the forced command on the host validates
+          # it and runs its own installed copy of the upload script.
+          printf '%s\n' "$request" \
+            | timeout 2340 ssh \
+              -i ~/.ssh/mirror_key \
+              -p "${MIRROR_SSH_PORT:-22}" \
+              -o BatchMode=yes \
+              -o StrictHostKeyChecking=yes \
+              -o UserKnownHostsFile=$HOME/.ssh/mirror_known_hosts \
+              -o ConnectTimeout=30 \
+              -o ServerAliveInterval=30 \
+              -o ServerAliveCountMax=6 \
+              "${MIRROR_SSH_USER:-uniclip-mirror}@$MIRROR_SSH_HOST" \
+            | tee gitcode-mirror/ssh.log
+          status=$?
+          sed -n 's/^::provenance:://p' gitcode-mirror/ssh.log | tail -1 > gitcode-mirror/provenance.json || true
+          exit "$status"
 
       - name: Keep the mirror provenance
         if: ${{ always() }}

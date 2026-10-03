@@ -3,6 +3,9 @@ export const releaseCacheTargets = [
   { platform: 'macos-aarch64', target: 'aarch64-apple-darwin' },
   { platform: 'windows-arm64', target: 'aarch64-pc-windows-msvc' },
   { platform: 'windows-x86_64', target: 'x86_64-pc-windows-msvc' },
+  { platform: 'macos-x86_64', target: 'x86_64-apple-darwin' },
+  { platform: 'ubuntu-22.04', target: 'x86_64-unknown-linux-gnu' },
+  { platform: 'ubuntu-22.04-arm', target: 'aarch64-unknown-linux-gnu' },
 ]
 
 export function appCachePriority(key) {

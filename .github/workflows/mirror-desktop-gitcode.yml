@@ -26,10 +26,11 @@
 #   FlareRelease, non-blocking: a missing configuration or a failed mirror
 #   produces a warning annotation and a job summary, never a failed release.
 # - Run by hand (workflow_dispatch) to retry or to mirror an older tag. It
-#   downloads installers and manifest inputs from the GitHub Release and the
-#   repository at that tag, then rebuilds the same registration payload the
-#   original release job computed. FlareRelease accepts each mirror only when
-#   size and SHA-256 equal the artifact it already registered.
+#   downloads installers from the GitHub Release at that tag and rebuilds the
+#   registration payload with the current (default-branch) scripts and
+#   changelog files — not whatever existed at that historical tag, which may
+#   predate this mirror feature entirely. FlareRelease accepts each mirror
+#   only when size and SHA-256 equal the artifact it already registered.
 #
 # Configuration (nothing is created by this workflow):
 #   environment mirror (only the main branch may use it, shared with Mobile's

@@ -154,15 +154,17 @@ R2 始终是安装包的权威来源。已登记到 FlareRelease 的 Desktop 安
 
 **前置条件**：FlareRelease 的登记 payload 必须包含每个制品的 `sha256`（`scripts/build-flare-release-registration.js` 已经计算并发送）；`PUT /api/mirrors` 要求制品的已登记 `sha256` 非空且与镜像上传的字节一致，否则拒绝（`Mirror sha256 does not match the artifact`）。
 
-**配置**（尚未配置，配置到位前镜像步骤会按"未配置"跳过并给出 warning，不阻断发布）：
+**配置**：
 
 | 名称 | 类型 | 说明 |
 | --- | --- | --- |
-| `GITCODE_RELEASE_TOKEN` | repository secret | GitCode 机器人 token |
-| `GITCODE_OWNER` / `GITCODE_REPO` | repository variable | 镜像仓库，已知为 `UniClipboard` / `UniClipboard`，仓库默认分支需要至少一个 commit |
-| `GITCODE_API_BASE` | repository variable（可选） | 默认 `https://api.gitcode.com/api/v5` |
-| `GITCODE_TARGET_COMMITISH` | repository variable（可选） | 新建 Release 的目标分支，默认 `main` |
+| `GITCODE_RELEASE_TOKEN` | `UniClipboard` 组织 secret（selected repositories，已包含本仓库与 `UniClipboard/UniClip`） | GitCode 机器人 token，与 Mobile 共用同一枚 token，分别用各自的 `GITCODE_OWNER`/`GITCODE_REPO` 指向不同镜像仓库 |
+| `GITCODE_OWNER` / `GITCODE_REPO` | repository variable（已配置为 `UniClipboard` / `UniClipboard`） | 镜像仓库，仓库默认分支需要至少一个 commit |
+| `GITCODE_API_BASE` | repository variable（可选，未配置，使用默认值） | 默认 `https://api.gitcode.com/api/v5` |
+| `GITCODE_TARGET_COMMITISH` | repository variable（可选，未配置，使用默认值） | 新建 Release 的目标分支，默认 `main` |
 | `FLARE_RELEASE_ACCESS_CLIENT_ID` / `_SECRET` | 已有的组织 secret | 与 Release 登记共用 |
+
+全部必需配置已就绪，下一次正式发布即可触发真实镜像（本任务仍未做过真实 GitCode 上传验证）。
 
 **已知限制**（与 Mobile 一致）：302 重定向发生后服务器无法补救，镜像失败时客户端若不自动回退需手动切换下载源；撤回或下架只会停止重定向，不能召回已分享出去的镜像链接；GitCode 附件的大小上限未知，Desktop 安装包可能比 Mobile 的 APK 更大，第一次真实上传才能验证是否可行。
 

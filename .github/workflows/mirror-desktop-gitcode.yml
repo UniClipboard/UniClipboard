@@ -19,11 +19,15 @@
 #   original release job computed. FlareRelease accepts each mirror only when
 #   size and SHA-256 equal the artifact it already registered.
 #
-# Configuration (nothing is created by this workflow):
-#   secret   GITCODE_RELEASE_TOKEN                 GitCode bot token, repository secret
+# Configuration (already set, nothing is created by this workflow):
+#   secret   GITCODE_RELEASE_TOKEN                 GitCode bot token. UniClipboard org secret
+#                                                  (selected repositories), shared with the
+#                                                  Mobile repo's own mirror workflow — each repo
+#                                                  points it at a different GitCode release via
+#                                                  its own GITCODE_OWNER/GITCODE_REPO below.
 #   variable GITCODE_OWNER, GITCODE_REPO           the mirror repository (must already exist,
 #                                                  with at least one commit on its default branch).
-#                                                  Known target: UniClipboard/UniClipboard on GitCode.
+#                                                  Set to UniClipboard/UniClipboard on GitCode.
 #   variable GITCODE_API_BASE (optional)           default https://api.gitcode.com/api/v5
 #   variable GITCODE_TARGET_COMMITISH (optional)   branch for new release tags, default main
 #   variable UPDATE_SERVER_URL                     already used by release.yml (manifest base URL)

@@ -203,9 +203,19 @@ fn secure_storage_from_capability_in_app_data_root(
 ) -> Result<SelectedSecureStorage, SecureStorageFactoryError> {
     match capability {
         SecureStorageCapability::SystemKeyring => {
-            let system = Arc::new(ProbedSecureStorage::new(Arc::new(
-                SystemSecureStorage::new(),
-            ))) as Arc<dyn SecureStorageProvider>;
+            // A file store at the same path the legacy-entry reconciliation below
+            // also uses: when the system store deterministically rejects binary
+            // writes (t-0155), falling back here keeps a single on-disk location
+            // for this profile's keys instead of inventing a second one.
+            let file_fallback = app_data_root.as_ref().map(|root| {
+                Arc::new(FileSecureStorage::with_base_dir(
+                    root.join(FILE_KEY_STORE_DIR),
+                )) as Arc<dyn SecureStorageProvider>
+            });
+            let system = Arc::new(ProbedSecureStorage::with_file_fallback(
+                Arc::new(SystemSecureStorage::new()),
+                file_fallback,
+            )) as Arc<dyn SecureStorageProvider>;
             Ok(match app_data_root {
                 Some(root) => {
                     let (storage, source) =

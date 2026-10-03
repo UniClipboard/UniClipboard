@@ -4,13 +4,48 @@ use crate::ports::{SecureStorageError, SecureStorageProvider};
 
 const SERVICE_NAME: &str = "UniClipboard";
 
+/// True when `msg` is the deterministic Secret Service rejection of a binary write,
+/// caused by the `secret-service` crate hardcoding `content_type: "text/plain"` on
+/// every write with no way to request `application/octet-stream`. A backend that
+/// strictly validates UTF-8 for text-declared content rejects the write outright
+/// with wording to this effect (observed: "Secret value contains invalid UTF-8
+/// sequences but content_type declares text encoding; use application/octet-stream
+/// for binary data"). This is distinct from KWallet's issue #838 (write succeeds,
+/// read-back silently mangled) — here the write never lands at all, and it fails
+/// identically on every retry because the payload (random bytes) is essentially
+/// never valid UTF-8.
+///
+/// Matched by substrings rather than one fixed string so it still catches minor
+/// wording differences across Secret Service backend implementations, while
+/// staying specific enough not to misclassify a genuine outage.
+pub(crate) fn is_binary_content_rejected(msg: &str) -> bool {
+    let lower = msg.to_ascii_lowercase();
+    lower.contains("invalid utf-8")
+        && (lower.contains("content_type") || lower.contains("content type"))
+        && (lower.contains("text encoding") || lower.contains("text/plain"))
+}
+
 /// Classify a `keyring::Error::PlatformFailure` into a domain `SecureStorageError`.
 ///
 /// Linux backends surface D-Bus / Secret Service transport faults as `PlatformFailure(msg)`
 /// with the underlying error text. These should map to `Unavailable` (service crashed, no
 /// owner, activation failed, connection lost) rather than `PermissionDenied`, which is
 /// reserved for genuine ACL / prompt-dismissed outcomes.
+///
+/// The binary-content-type rejection (see `is_binary_content_rejected`) is deliberately
+/// kept out of `Unavailable`/`PermissionDenied`: it is neither a transport outage nor an
+/// ACL refusal, but a structural incompatibility between this backend and binary secrets.
+/// It still surfaces as `Other`, but with wording that names the real cause instead of
+/// the generic "platform failure" prefix, so logs and the probe-level fallback decision
+/// (see `secure_storage::probed`) can recognize it without re-deriving the classification.
 fn classify_platform_failure(msg: &str) -> SecureStorageError {
+    if is_binary_content_rejected(msg) {
+        return SecureStorageError::Other(format!(
+            "secret service rejected a binary write because it declares content_type \
+             text/plain and strictly validates UTF-8 (deterministic, not a transient \
+             outage): {msg}"
+        ));
+    }
     let lower = msg.to_ascii_lowercase();
     let unavailable_markers = [
         "remote peer disconnected",
@@ -181,6 +216,47 @@ mod tests {
             classify_platform_failure("org.freedesktop.DBus.Error.NameHasNoOwner"),
             SecureStorageError::Unavailable(_)
         ));
+    }
+
+    /// The exact wording observed in t-0155's diagnostic log (12/12 identical failures).
+    const BINARY_CONTENT_REJECTION_TEXT: &str = "DBus error: Secret value contains invalid \
+        UTF-8 sequences but content_type declares text encoding; use \
+        application/octet-stream for binary data";
+
+    #[test]
+    fn binary_content_rejection_is_detected() {
+        assert!(is_binary_content_rejected(BINARY_CONTENT_REJECTION_TEXT));
+        // Must not be swept into a generic Unavailable/PermissionDenied bucket.
+        assert!(matches!(
+            classify_platform_failure(BINARY_CONTENT_REJECTION_TEXT),
+            SecureStorageError::Other(_)
+        ));
+        match classify_platform_failure(BINARY_CONTENT_REJECTION_TEXT) {
+            SecureStorageError::Other(msg) => {
+                assert!(
+                    msg.contains("deterministic") && msg.contains("content_type"),
+                    "classification must name the real cause, got: {msg}"
+                );
+            }
+            other => panic!("expected Other, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn genuine_unavailability_is_not_mistaken_for_binary_content_rejection() {
+        let genuinely_unavailable = [
+            "DBus error: Remote peer disconnected",
+            "org.freedesktop.DBus.Error.ServiceUnknown: The name is not activatable",
+            "org.freedesktop.DBus.Error.NameHasNoOwner",
+            "system secret service did not respond within 3s; treating as unavailable",
+            "secret service did not preserve binary payload (wrote 32 bytes, read 65 bytes back)",
+        ];
+        for msg in genuinely_unavailable {
+            assert!(
+                !is_binary_content_rejected(msg),
+                "must not misclassify a genuine outage as binary-content rejection: {msg}"
+            );
+        }
     }
 
     #[test]

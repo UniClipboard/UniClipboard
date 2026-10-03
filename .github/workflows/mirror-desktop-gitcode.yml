@@ -120,6 +120,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ inputs.tag_name }}
+          persist-credentials: false
 
       - name: Download release assets from the GitHub Release
         continue-on-error: ${{ inputs.non_blocking == true }}
@@ -209,7 +210,7 @@ jobs:
               process.exit(1)
             }
             process.stdout.write(JSON.stringify(list))
-          ')
+          ') || exit 1
 
           # The upload script runs from a root-owned copy on the host; this is the
           # version this commit expects, and the host refuses any other.
@@ -238,7 +239,7 @@ jobs:
                 GITCODE_TARGET_COMMITISH: env.GITCODE_TARGET_COMMITISH,
                 FLARE_RELEASE_ACCESS_CLIENT_ID: env.FLARE_RELEASE_ACCESS_CLIENT_ID,
                 FLARE_RELEASE_ACCESS_CLIENT_SECRET: env.FLARE_RELEASE_ACCESS_CLIENT_SECRET
-              } | with_entries(select(.value != null and .value != "")))}')
+              } | with_entries(select(.value != null and .value != "")))}') || exit 1
 
           mkdir -p gitcode-mirror
           # One JSON line and nothing else; the forced command on the host validates

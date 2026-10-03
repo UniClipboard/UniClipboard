@@ -161,6 +161,12 @@ jobs:
       branch: ${{ inputs.branch || '' }}
       channel: ${{ needs.validate.outputs.channel }}
       package_cli: true
+      # A release tag can land while cache-warmup.yml is still writing a
+      # freshly-bumped Cargo.lock's cache, so the read-only release build
+      # races it and loses to GHA cache LRU eviction (see t-0159). Writing
+      # this release's own cache backfills it for the next run even when
+      # that race is lost, at the cost of one extra write per release.
+      save_cache: true
     secrets: inherit
 
   build-cli:

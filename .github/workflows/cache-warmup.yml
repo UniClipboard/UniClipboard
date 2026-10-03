@@ -3,14 +3,15 @@ name: 'Cache Warmup'
 on:
   push:
     branches: [main]
+    # Only paths that actually invalidate the Rust/sccache cache key (deps,
+    # toolchain, cargo config) or change which targets get warmed
+    # (release-cache-policy.mjs). CI plumbing files (build.yml,
+    # cache-warmup.yml itself, runner selection, GHA cache maintenance) don't
+    # set RUSTFLAGS or anything else that affects the compiled output, so
+    # editing them doesn't need an immediate re-warm — they used to be listed
+    # here and fired a full 6-target warmup on every unrelated CI edit.
     paths:
-      - '.github/workflows/cache-warmup.yml'
-      - '.github/workflows/build.yml'
-      - 'scripts/ci/configure-build-mode.mjs'
-      - 'scripts/ci/isolate-build-toolchain.mjs'
-      - 'scripts/ci/select-windows-runner.mjs'
       - 'scripts/ci/release-cache-policy.mjs'
-      - 'scripts/ci/maintain-actions-cache.mjs'
       - 'Cargo.lock'
       - 'Cargo.toml'
       - 'rust-toolchain.toml'

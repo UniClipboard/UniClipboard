@@ -212,6 +212,7 @@ jobs:
           version: v0.18.0
 
       - name: configure sccache for R2
+        id: sccache-config
         if: matrix.target == 'aarch64-apple-darwin'
         env:
           BUILD_CACHE_R2_ENDPOINT: ${{ secrets.BUILD_CACHE_R2_ENDPOINT }}
@@ -221,6 +222,7 @@ jobs:
         run: |
           if [[ -z "$BUILD_CACHE_R2_ENDPOINT" || -z "$BUILD_CACHE_R2_ACCESS_KEY_ID" || -z "$BUILD_CACHE_R2_SECRET_ACCESS_KEY" ]]; then
             echo "::warning title=sccache::R2 secrets not available in this run (e.g. fork PR); sccache stays off, falling back to the existing rust-cache target/ cache."
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           {
@@ -232,6 +234,7 @@ jobs:
             echo "AWS_ACCESS_KEY_ID=$BUILD_CACHE_R2_ACCESS_KEY_ID"
             echo "AWS_SECRET_ACCESS_KEY=$BUILD_CACHE_R2_SECRET_ACCESS_KEY"
           } >> "$GITHUB_ENV"
+          echo "enabled=true" >> "$GITHUB_OUTPUT"
 
       - name: Prepend cargo bin to PATH
         # macos-15-arm64 runner image 20260511+ 预装了 Homebrew rustup
@@ -255,9 +258,11 @@ jobs:
           shared-key: ${{ matrix.target }}${{ steps.build-mode.outputs.suffix }}
           # The measured workspace-cache experiment still rebuilt every application crate.
           cache-workspace-crates: false
-          # aarch64-apple-darwin's compiled output is now sccache/R2's job;
-          # only ~/.cargo/registry (third-party sources) still comes from here.
-          cache-targets: ${{ matrix.target != 'aarch64-apple-darwin' }}
+          # aarch64-apple-darwin's compiled output is sccache/R2's job once
+          # sccache actually got R2 credentials; without them (e.g. fork PR)
+          # this falls back to caching target/ here instead of going fully
+          # cold on both caches.
+          cache-targets: ${{ !(matrix.target == 'aarch64-apple-darwin' && steps.sccache-config.outputs.enabled == 'true') }}
           # 只在 main 写缓存,其他分支(含 tag 触发的 release)只读。
           # Windows Post Cache Rust 上传单次 ~2m43s (25682907543),tag run
           # 通常基于刚合入 main 的代码,命中已存的 main cache 即可,不必再

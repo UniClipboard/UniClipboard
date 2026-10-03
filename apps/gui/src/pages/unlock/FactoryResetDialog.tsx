@@ -13,6 +13,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { commands } from '@/lib/ipc'
 import { createLogger } from '@/lib/logger'
 import { refreshSetupState } from '@/store/setupRealtimeStore'
 
@@ -51,11 +52,12 @@ export function FactoryResetDialog({
   const { t } = useTranslation()
   const [confirmation, setConfirmation] = useState('')
   const [resetting, setResetting] = useState(false)
+  const [restarting, setRestarting] = useState(false)
   const [errorKey, setErrorKey] = useState<string | null>(null)
   const confirmed = confirmation.trim() === CONFIRMATION_TOKEN
 
   const close = () => {
-    if (resetting) return
+    if (resetting || restarting) return
     onClose()
     setConfirmation('')
     setErrorKey(null)
@@ -77,6 +79,27 @@ export function FactoryResetDialog({
       onResetSucceeded?.()
     } catch (error) {
       if (isFactoryResetError(error)) {
+        if (error.code === 'RESTART_REQUIRED') {
+          // Key material is already wiped on the daemon side; the daemon's
+          // Engine runtime itself failed to rebuild in place. Restarting
+          // only the GUI leaves that daemon process (and its broken Engine)
+          // running, so this must restart the daemon first — mirroring the
+          // existing restartDaemon() -> restartApp() sequence used after a
+          // config import that also requires a fresh Engine on next boot.
+          setRestarting(true)
+          try {
+            await commands.restartDaemon()
+            await commands.restartApp()
+          } catch (restartError) {
+            log.error(
+              { err: restartError },
+              'Failed to restart daemon after factory-reset runtime rebuild failure'
+            )
+            setRestarting(false)
+            setErrorKey(errorI18nKey(error))
+          }
+          return
+        }
         setErrorKey(errorI18nKey(error))
       } else {
         log.error({ err: error }, 'Unexpected factory reset error')
@@ -92,7 +115,7 @@ export function FactoryResetDialog({
       open={open}
       onOpenChange={(nextOpen, eventDetails) => {
         if (nextOpen) return
-        if (resetting) {
+        if (resetting || restarting) {
           eventDetails.cancel()
           return
         }
@@ -115,7 +138,7 @@ export function FactoryResetDialog({
             value={confirmation}
             onChange={event => setConfirmation(event.target.value)}
             placeholder={t('unlock.factoryReset.modal.confirmPlaceholder')}
-            disabled={resetting}
+            disabled={resetting || restarting}
             autoFocus
             autoComplete="off"
             spellCheck={false}
@@ -129,18 +152,22 @@ export function FactoryResetDialog({
         )}
 
         <AlertDialogFooter>
-          <Button variant="outline" onClick={close} disabled={resetting}>
+          <Button variant="outline" onClick={close} disabled={resetting || restarting}>
             {t('unlock.factoryReset.modal.cancel')}
           </Button>
           <Button
             variant="destructive"
             onClick={() => void submit()}
-            disabled={!confirmed || resetting}
+            disabled={!confirmed || resetting || restarting}
           >
-            {resetting ? (
+            {resetting || restarting ? (
               <>
                 <Loader2 className="mr-2 size-4 animate-spin" />
-                {t('unlock.factoryReset.modal.resetting')}
+                {t(
+                  restarting
+                    ? 'unlock.factoryReset.modal.restarting'
+                    : 'unlock.factoryReset.modal.resetting'
+                )}
               </>
             ) : (
               t('unlock.factoryReset.modal.confirm')

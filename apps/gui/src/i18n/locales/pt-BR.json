@@ -1042,12 +1042,13 @@
         "confirmPlaceholder": "RESET",
         "confirm": "Redefinir",
         "resetting": "Redefinindo...",
+        "restarting": "Reiniciando...",
         "cancel": "Cancelar"
       },
       "errors": {
         "keyMaterialWipeFailed": "Falha ao apagar o material de chave; a redefinição não foi concluída. Tente novamente ou reinicie o aplicativo.",
         "storageFailed": "O material de chave foi apagado, mas não foi possível salvar o estado. Reinicie o aplicativo para concluir a redefinição.",
-        "restartRequired": "O espaço foi redefinido, mas o aplicativo não conseguiu retomar automaticamente. Reinicie o aplicativo para concluir a redefinição.",
+        "restartRequired": "O espaço foi redefinido, mas o reinício automático falhou. Reinicie o aplicativo para concluir a redefinição.",
         "facadeUnavailable": "O aplicativo ainda está iniciando. Aguarde um momento e tente novamente.",
         "internal": "Falha inesperada ao redefinir. Tente novamente ou reinicie o aplicativo."
       }

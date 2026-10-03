@@ -1042,12 +1042,13 @@
         "confirmPlaceholder": "RESET",
         "confirm": "Reset",
         "resetting": "Resetting...",
+        "restarting": "Restarting...",
         "cancel": "Cancel"
       },
       "errors": {
         "keyMaterialWipeFailed": "Failed to wipe key material; reset did not complete. Please try again or restart the application.",
         "storageFailed": "Key material was cleared but the status could not be saved. Please restart the application to finish resetting.",
-        "restartRequired": "The space was reset, but the app could not resume automatically. Please restart the application to finish resetting.",
+        "restartRequired": "The space was reset, but the automatic restart failed. Please restart the application to finish resetting.",
         "facadeUnavailable": "The app is still starting up. Please wait a moment and try again.",
         "internal": "Reset failed unexpectedly. Please try again or restart the application."
       }

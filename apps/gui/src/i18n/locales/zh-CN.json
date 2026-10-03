@@ -1042,12 +1042,13 @@
         "confirmPlaceholder": "RESET",
         "confirm": "重置",
         "resetting": "正在重置...",
+        "restarting": "正在重启...",
         "cancel": "取消"
       },
       "errors": {
         "keyMaterialWipeFailed": "密钥材料删除失败，重置未完成。请稍后重试或重启应用。",
         "storageFailed": "密钥已清除但状态未保存，请重启应用以完成重置。",
-        "restartRequired": "空间已重置，但应用未能自动恢复，请重启应用以完成重置。",
+        "restartRequired": "空间已重置，但自动重启失败，请重启应用以完成重置。",
         "facadeUnavailable": "应用仍在启动中，请稍后重试。",
         "internal": "重置失败，请重试或重启应用。"
       }

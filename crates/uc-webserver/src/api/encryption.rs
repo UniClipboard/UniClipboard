@@ -176,7 +176,7 @@ fn map_factory_reset_engine_err(error: EngineError) -> ApiError {
             ApiError {
                 status: StatusCode::SERVICE_UNAVAILABLE,
                 code: "RESTART_REQUIRED".to_string(),
-                message: "key material was cleared but the engine could not restart; restart the application".to_string(),
+                message: "key material was cleared but the engine could not rebuild its runtime; restart the daemon".to_string(),
                 details: None,
             },
         ),

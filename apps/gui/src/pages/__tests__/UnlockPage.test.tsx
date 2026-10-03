@@ -21,7 +21,12 @@ vi.mock('@/hooks/usePlatform', () => ({
 }))
 
 vi.mock('@/lib/ipc', () => ({
-  commands: { unlockContent: vi.fn(), unlockContentFromKeyring: vi.fn() },
+  commands: {
+    unlockContent: vi.fn(),
+    unlockContentFromKeyring: vi.fn(),
+    restartDaemon: vi.fn(),
+    restartApp: vi.fn(),
+  },
 }))
 
 const updateSecuritySettingMock = vi.fn()
@@ -325,12 +330,56 @@ describe('UnlockPage', () => {
       expect(screen.getByText(i18n.t('unlock.factoryReset.modal.title'))).toBeInTheDocument()
     })
 
-    it('shows the restart-required error when the engine cannot rebuild its runtime', async () => {
+    it('restarts the daemon then the app when the engine cannot rebuild its runtime', async () => {
       const onResetSucceeded = vi.fn()
       vi.mocked(resetSpace).mockRejectedValue({
         code: 'RESTART_REQUIRED',
         message: 'engine could not restart',
       })
+      vi.mocked(commands.restartDaemon).mockResolvedValue(undefined)
+      vi.mocked(commands.restartApp).mockResolvedValue(undefined)
+      render(<UnlockPage onResetSucceeded={onResetSucceeded} />)
+
+      const resetLink = screen.getAllByRole('button', {
+        name: i18n.t('unlock.factoryReset.link'),
+      })[0]
+      await act(async () => resetLink.click())
+
+      const input = screen.getByLabelText(
+        i18n.t('unlock.factoryReset.modal.confirmPrompt')
+      ) as HTMLInputElement
+      fireEvent.change(input, { target: { value: 'RESET' } })
+
+      await act(async () => {
+        screen
+          .getByRole('button', {
+            name: i18n.t('unlock.factoryReset.modal.confirm'),
+          })
+          .click()
+      })
+
+      // Restarting only the GUI would leave the daemon (and its broken
+      // Engine) running, so the daemon must be restarted first.
+      await waitFor(() => {
+        expect(commands.restartDaemon).toHaveBeenCalledTimes(1)
+      })
+      expect(commands.restartApp).toHaveBeenCalledTimes(1)
+      expect(onResetSucceeded).not.toHaveBeenCalled()
+      // app.restart() never returns on the happy path — the dialog stays
+      // open in its restarting state rather than closing/erroring.
+      expect(screen.getByText(i18n.t('unlock.factoryReset.modal.title'))).toBeInTheDocument()
+      expect(
+        screen.queryByText(i18n.t('unlock.factoryReset.errors.restartRequired'))
+      ).not.toBeInTheDocument()
+    })
+
+    it('falls back to the restart-required message when the automatic daemon restart fails', async () => {
+      const onResetSucceeded = vi.fn()
+      vi.mocked(resetSpace).mockRejectedValue({
+        code: 'RESTART_REQUIRED',
+        message: 'engine could not restart',
+      })
+      vi.mocked(commands.restartDaemon).mockRejectedValue(new Error('daemon spawn failed'))
       render(<UnlockPage onResetSucceeded={onResetSucceeded} />)
 
       const resetLink = screen.getAllByRole('button', {
@@ -356,6 +405,7 @@ describe('UnlockPage', () => {
           screen.getByText(i18n.t('unlock.factoryReset.errors.restartRequired'))
         ).toBeInTheDocument()
       })
+      expect(commands.restartApp).not.toHaveBeenCalled()
       expect(onResetSucceeded).not.toHaveBeenCalled()
       expect(screen.getByText(i18n.t('unlock.factoryReset.modal.title'))).toBeInTheDocument()
     })

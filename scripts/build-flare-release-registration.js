@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { createHash } from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
@@ -44,6 +45,9 @@ export function buildRegistration({ version, channel, manifest, artifactsDir, so
       r2Key: `artifacts/v${version}/${filename}`,
       downloadUrl: entry.url,
       size: fs.statSync(artifactPath).size,
+      // Required by FlareRelease's PUT /api/mirrors contract, which only
+      // marks a mirror ready when it equals the artifact's recorded sha256.
+      sha256: createHash('sha256').update(fs.readFileSync(artifactPath)).digest('hex'),
       signature: entry.signature,
     }
   })

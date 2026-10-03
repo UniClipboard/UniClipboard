@@ -1,0 +1,167 @@
+# Copies the desktop installers that were registered with FlareRelease to a
+# GitCode Release and registers each verified copy with FlareRelease, which
+# then redirects users in mainland China to it. GitHub and R2 stay the
+# authoritative sources: this workflow only adds an optional mirror and never
+# rebuilds, re-signs or repackages any installer.
+#
+# Only the artifacts FlareRelease already has registered for this release can
+# be mirrored: today that is the single updater archive selected per platform
+# (macOS .app.tar.gz, Linux .AppImage(.tar.gz), Windows .nsis.zip/.exe) — see
+# docs/release-workflow.md "GitCode mirror" for why .dmg/.deb/.rpm/the
+# Windows portable zip are not covered yet.
+#
+# - Called by release.yml after the release is published and registered with
+#   FlareRelease, non-blocking: a missing configuration or a failed mirror
+#   produces a warning annotation and a job summary, never a failed release.
+# - Run by hand (workflow_dispatch) to retry or to mirror an older tag. It
+#   downloads installers and manifest inputs from the GitHub Release and the
+#   repository at that tag, then rebuilds the same registration payload the
+#   original release job computed. FlareRelease accepts each mirror only when
+#   size and SHA-256 equal the artifact it already registered.
+#
+# Configuration (nothing is created by this workflow):
+#   secret   GITCODE_RELEASE_TOKEN                 GitCode bot token, repository secret
+#   variable GITCODE_OWNER, GITCODE_REPO           the mirror repository (must already exist,
+#                                                  with at least one commit on its default branch).
+#                                                  Known target: UniClipboard/UniClipboard on GitCode.
+#   variable GITCODE_API_BASE (optional)           default https://api.gitcode.com/api/v5
+#   variable GITCODE_TARGET_COMMITISH (optional)   branch for new release tags, default main
+#   variable UPDATE_SERVER_URL                     already used by release.yml (manifest base URL)
+#   secret   FLARE_RELEASE_ACCESS_CLIENT_ID/SECRET already used by release.yml
+
+name: mirror-desktop-gitcode
+
+permissions:
+  contents: read
+
+on:
+  workflow_call:
+    inputs:
+      tag_name:
+        description: 'Release tag whose installers are mirrored (for example v1.1.0-alpha.3)'
+        required: true
+        type: string
+      version:
+        description: 'Version without the leading v (for example 1.1.0-alpha.3)'
+        required: true
+        type: string
+      channel:
+        description: 'Release channel (stable, alpha, beta, rc)'
+        required: true
+        type: string
+      non_blocking:
+        description: 'Report problems as warnings instead of failing the run'
+        required: false
+        default: false
+        type: boolean
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Release tag whose installers are mirrored (for example v1.1.0-alpha.3)'
+        required: true
+        type: string
+      version:
+        description: 'Version without the leading v (for example 1.1.0-alpha.3)'
+        required: true
+        type: string
+      channel:
+        description: 'Release channel (stable, alpha, beta, rc)'
+        required: true
+        type: choice
+        options:
+          - stable
+          - alpha
+          - beta
+          - rc
+
+concurrency:
+  group: gitcode-mirror-${{ inputs.tag_name }}
+  cancel-in-progress: false
+
+jobs:
+  mirror:
+    name: Mirror desktop installers to GitCode
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout repository at the release tag
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.tag_name }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: lts/*
+
+      - name: Download release assets from the GitHub Release
+        continue-on-error: ${{ inputs.non_blocking == true }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ inputs.tag_name }}
+        run: |
+          mkdir -p release-assets
+          gh release download "$RELEASE_TAG" --repo "${{ github.repository }}" --dir release-assets
+
+      - name: Rebuild the FlareRelease registration payload
+        id: registration
+        continue-on-error: ${{ inputs.non_blocking == true }}
+        env:
+          VERSION: ${{ inputs.version }}
+          CHANNEL: ${{ inputs.channel }}
+          PUBLIC_URL: ${{ vars.UPDATE_SERVER_URL }}
+        run: |
+          node scripts/assemble-update-manifest.js \
+            --version "$VERSION" \
+            --artifacts-dir release-assets \
+            --output "flare-release/manifest.json" \
+            --base-url "${PUBLIC_URL}/artifacts/v${VERSION}" \
+            --notes-file "docs/changelog/${VERSION}.md" \
+            --zh-notes-file "docs/changelog/${VERSION}.zh.md"
+
+          node scripts/build-flare-release-registration.js \
+            --version "$VERSION" \
+            --channel "$CHANNEL" \
+            --manifest "flare-release/manifest.json" \
+            --artifacts-dir release-assets \
+            --source "github-actions:${{ github.repository }}:${{ github.run_id }}" \
+            --output "flare-release/registration.json"
+
+      - name: Mirror the installers
+        id: mirror
+        continue-on-error: ${{ inputs.non_blocking == true }}
+        # Shorter than the job timeout: a job timeout would fail the run even
+        # though this step is non-blocking. The script stops itself earlier still.
+        timeout-minutes: 35
+        env:
+          GITCODE_TOKEN: ${{ secrets.GITCODE_RELEASE_TOKEN }}
+          GITCODE_OWNER: ${{ vars.GITCODE_OWNER }}
+          GITCODE_REPO: ${{ vars.GITCODE_REPO }}
+          GITCODE_API_BASE: ${{ vars.GITCODE_API_BASE }}
+          GITCODE_TARGET_COMMITISH: ${{ vars.GITCODE_TARGET_COMMITISH }}
+          FLARE_RELEASE_ACCESS_CLIENT_ID: ${{ secrets.FLARE_RELEASE_ACCESS_CLIENT_ID }}
+          FLARE_RELEASE_ACCESS_CLIENT_SECRET: ${{ secrets.FLARE_RELEASE_ACCESS_CLIENT_SECRET }}
+        run: |
+          node scripts/mirror-desktop-installers-to-gitcode.mjs \
+            --registration flare-release/registration.json \
+            --artifacts-dir release-assets \
+            --tag "${{ inputs.tag_name }}" \
+            --deadline-ms 1980000 \
+            --source "github-actions:${{ github.repository }}:${{ github.run_id }}" \
+            --missing-config "${{ inputs.non_blocking == true && 'skip' || 'fail' }}" \
+            --provenance gitcode-mirror/provenance.json
+
+      - name: Keep the mirror provenance
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: gitcode-mirror-provenance-${{ inputs.tag_name }}
+          path: gitcode-mirror/provenance.json
+          if-no-files-found: ignore
+
+      - name: Warn that the mirror is incomplete
+        if: ${{ always() && (steps.registration.outcome == 'failure' || steps.mirror.outcome == 'failure') }}
+        env:
+          RELEASE_TAG: ${{ inputs.tag_name }}
+        run: |
+          echo "::warning title=GitCode mirror not available::The release is published from GitHub and R2. Users in mainland China are not redirected until the mirror succeeds. Run mirror-desktop-gitcode with tag $RELEASE_TAG, version and channel to retry."

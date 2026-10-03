@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -48,6 +49,7 @@ describe('buildFlareReleaseRegistration', () => {
           filename: 'UniClipboard.app.tar.gz',
           r2Key: 'artifacts/v1.2.3-alpha.1/UniClipboard.app.tar.gz',
           size: 8,
+          sha256: createHash('sha256').update('artifact').digest('hex'),
           signature: 'signed',
         },
       ],

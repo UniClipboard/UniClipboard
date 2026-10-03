@@ -491,6 +491,18 @@ jobs:
           echo "### FlareRelease" >> $GITHUB_STEP_SUMMARY
           echo "Release registered as Ready. Promote it explicitly in FlareRelease when approved." >> $GITHUB_STEP_SUMMARY
 
+  mirror-desktop-gitcode:
+    name: Mirror desktop installers to GitCode
+    needs: [validate, create-release]
+    if: success()
+    uses: ./.github/workflows/mirror-desktop-gitcode.yml
+    with:
+      tag_name: v${{ needs.validate.outputs.version }}
+      version: ${{ needs.validate.outputs.version }}
+      channel: ${{ needs.validate.outputs.channel }}
+      non_blocking: true
+    secrets: inherit
+
   dispatch-snap:
     # snap 构建耗时较长,不能作为 reusable job 挂在 release 里等待。
     # 这里仅异步触发独立的 snap.yml,让主发布流程在常规产物完成后尽快结束。

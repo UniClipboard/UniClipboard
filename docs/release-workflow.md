@@ -142,6 +142,30 @@ CI 使用专门的 Cloudflare Access service token。以下凭据由 `UniClipboa
 
 切换后，Desktop CI 不再写入 R2 中的 `manifests/*.json`、`release-notes/index/*.json` 或 GitHub Pages 的 Channel manifest。旧 R2 JSON 只作为迁移备份保留。`workers/update-server` 的部署入口已经停用，但代码会保留到生产验证完成且约定的回滚窗口结束；窗口内如需回退，使用 Cloudflare Worker version rollback，不重新启用两套长期并行的发布状态。
 
+## GitCode 镜像
+
+R2 始终是安装包的权威来源。已登记到 FlareRelease 的 Desktop 安装包可以额外拥有一份经校验的 GitCode/AtomGit 副本，中国大陆的下载请求会被重定向到该副本；公开的安装包地址和更新清单保持不变。镜像契约与 Mobile（线程 t-0153）共用同一套 FlareRelease `PUT /api/mirrors` / `POST /api/mirrors/revoke` 接口，但 GitCode 目标仓库不同：Desktop 镜像到 GitCode 上的 `UniClipboard/UniClipboard`，与 Mobile 的镜像仓库彼此独立。
+
+**覆盖范围**：FlareRelease 的 `PUT /api/mirrors` 只会在已登记的 `(product, version, filename)` 三元组上生效——Desktop 每个平台目前只登记一个更新用安装包（macOS `.app.tar.gz`、Linux `.AppImage(.tar.gz)`、Windows `.nsis.zip`/`.exe`，见 `scripts/assemble-update-manifest.js` 的平台选择规则）。`.dmg`、`.deb`、`.rpm` 以及 Windows 便携版 zip 仍然只上传到 R2 和 GitHub Release，**不会** 被镜像，因为 FlareRelease 目前没有为它们登记制品记录。如果要覆盖这些安装包，需要先扩展 Desktop 的 FlareRelease 登记（`scripts/build-flare-release-registration.js`）把它们也加入 `artifacts` 数组——FlareRelease 的登记 schema 本身已支持任意数量的制品，不需要改 FlareRelease 代码。
+
+**实现**：`scripts/mirror-desktop-installers-to-gitcode.mjs` 读取已经生成的 `flare-release/registration.json`，对其中列出的每个安装包独立执行：计算本地字节的 SHA-256 → 确保 GitCode 上存在该 tag 的 Release → 已有同名文件则按字节比对决定复用或报错（**不覆盖、不删除**）→ 否则上传 → 匿名回读校验 size + SHA-256 → 调用 `PUT /api/mirrors` 登记。单个安装包失败不影响其余安装包继续镜像。超时、重试（默认 3 次，每次重新申请上传地址）、单次运行的总截止时间（`--deadline-ms`，默认 18 分钟）与 Mobile 的实现完全一致。
+
+**触发方式**：`release.yml` 在 `create-release` 成功后以 `non_blocking: true` 调用可复用工作流 `mirror-desktop-gitcode.yml`；镜像失败只产生 `::warning` 和 job summary，从不导致发布失败。该工作流也支持 `workflow_dispatch` 手动重跑或补镜像旧 tag——此时它会从 GitHub Release 重新下载安装包，并用仓库里相同的两个脚本重新计算登记 payload。
+
+**前置条件**：FlareRelease 的登记 payload 必须包含每个制品的 `sha256`（`scripts/build-flare-release-registration.js` 已经计算并发送）；`PUT /api/mirrors` 要求制品的已登记 `sha256` 非空且与镜像上传的字节一致，否则拒绝（`Mirror sha256 does not match the artifact`）。
+
+**配置**（尚未配置，配置到位前镜像步骤会按"未配置"跳过并给出 warning，不阻断发布）：
+
+| 名称 | 类型 | 说明 |
+| --- | --- | --- |
+| `GITCODE_RELEASE_TOKEN` | repository secret | GitCode 机器人 token |
+| `GITCODE_OWNER` / `GITCODE_REPO` | repository variable | 镜像仓库，已知为 `UniClipboard` / `UniClipboard`，仓库默认分支需要至少一个 commit |
+| `GITCODE_API_BASE` | repository variable（可选） | 默认 `https://api.gitcode.com/api/v5` |
+| `GITCODE_TARGET_COMMITISH` | repository variable（可选） | 新建 Release 的目标分支，默认 `main` |
+| `FLARE_RELEASE_ACCESS_CLIENT_ID` / `_SECRET` | 已有的组织 secret | 与 Release 登记共用 |
+
+**已知限制**（与 Mobile 一致）：302 重定向发生后服务器无法补救，镜像失败时客户端若不自动回退需手动切换下载源；撤回或下架只会停止重定向，不能召回已分享出去的镜像链接；GitCode 附件的大小上限未知，Desktop 安装包可能比 Mobile 的 APK 更大，第一次真实上传才能验证是否可行。
+
 ### 完成发布
 
 工作流执行完成后：

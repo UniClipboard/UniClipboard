@@ -336,8 +336,8 @@ describe('UnlockPage', () => {
         code: 'RESTART_REQUIRED',
         message: 'engine could not restart',
       })
-      vi.mocked(commands.restartDaemon).mockResolvedValue(undefined)
-      vi.mocked(commands.restartApp).mockResolvedValue(undefined)
+      vi.mocked(commands.restartDaemon).mockResolvedValue(null)
+      vi.mocked(commands.restartApp).mockResolvedValue(null)
       render(<UnlockPage onResetSucceeded={onResetSucceeded} />)
 
       const resetLink = screen.getAllByRole('button', {

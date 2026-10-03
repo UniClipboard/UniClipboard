@@ -324,5 +324,40 @@ describe('UnlockPage', () => {
       // Modal stays open so the user can decide what to do next
       expect(screen.getByText(i18n.t('unlock.factoryReset.modal.title'))).toBeInTheDocument()
     })
+
+    it('shows the restart-required error when the engine cannot rebuild its runtime', async () => {
+      const onResetSucceeded = vi.fn()
+      vi.mocked(resetSpace).mockRejectedValue({
+        code: 'RESTART_REQUIRED',
+        message: 'engine could not restart',
+      })
+      render(<UnlockPage onResetSucceeded={onResetSucceeded} />)
+
+      const resetLink = screen.getAllByRole('button', {
+        name: i18n.t('unlock.factoryReset.link'),
+      })[0]
+      await act(async () => resetLink.click())
+
+      const input = screen.getByLabelText(
+        i18n.t('unlock.factoryReset.modal.confirmPrompt')
+      ) as HTMLInputElement
+      fireEvent.change(input, { target: { value: 'RESET' } })
+
+      await act(async () => {
+        screen
+          .getByRole('button', {
+            name: i18n.t('unlock.factoryReset.modal.confirm'),
+          })
+          .click()
+      })
+
+      await waitFor(() => {
+        expect(
+          screen.getByText(i18n.t('unlock.factoryReset.errors.restartRequired'))
+        ).toBeInTheDocument()
+      })
+      expect(onResetSucceeded).not.toHaveBeenCalled()
+      expect(screen.getByText(i18n.t('unlock.factoryReset.modal.title'))).toBeInTheDocument()
+    })
   })
 })

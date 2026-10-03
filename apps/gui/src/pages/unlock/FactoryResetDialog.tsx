@@ -33,6 +33,8 @@ function errorI18nKey(error: FactoryResetError): string {
       return 'unlock.factoryReset.errors.keyMaterialWipeFailed'
     case 'STORAGE_FAILED':
       return 'unlock.factoryReset.errors.storageFailed'
+    case 'RESTART_REQUIRED':
+      return 'unlock.factoryReset.errors.restartRequired'
     case 'FACADE_UNAVAILABLE':
       return 'unlock.factoryReset.errors.facadeUnavailable'
     case 'INTERNAL':

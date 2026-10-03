@@ -1047,6 +1047,7 @@
       "errors": {
         "keyMaterialWipeFailed": "密鑰材料刪除失敗，重置未完成。請稍後重試或重新啟動應用程式。",
         "storageFailed": "密鑰已清除但狀態未儲存，請重新啟動應用程式以完成重置。",
+        "restartRequired": "空間已重置，但應用程式未能自動恢復，請重新啟動應用程式以完成重置。",
         "facadeUnavailable": "應用程式仍在啟動中，請稍後重試。",
         "internal": "重置失敗，請重試或重新啟動應用程式。"
       }

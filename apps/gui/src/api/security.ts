@@ -70,6 +70,7 @@ const UNLOCK_SPACE_CODES: ReadonlySet<string> = new Set([
 const FACTORY_RESET_CODES: ReadonlySet<string> = new Set([
   'KEY_MATERIAL_WIPE_FAILED',
   'STORAGE_FAILED',
+  'RESTART_REQUIRED',
   'INTERNAL',
 ])
 

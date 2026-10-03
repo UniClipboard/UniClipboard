@@ -13,13 +13,13 @@ use uc_engine::error_codes::{
     ENCRYPTION_PASSPHRASE_MEMBERSHIP_RECOVERY_CODE, ENCRYPTION_PASSPHRASE_MISMATCH_CODE,
     ENCRYPTION_PASSPHRASE_MULTIPLE_DEVICES_CODE, ENCRYPTION_PASSPHRASE_UNAVAILABLE_CODE,
     FACTORY_RESET_FAILED_CODE, FACTORY_RESET_KEY_MATERIAL_FAILED_CODE,
-    FACTORY_RESET_STORAGE_FAILED_CODE, FACTORY_RESET_UNAVAILABLE_CODE, LOCK_ENCRYPTION_FAILED_CODE,
-    PROFILE_RECOVERY_PARTIAL_CODE, PROFILE_RECOVERY_PERSISTENCE_FAILED_CODE,
-    PROFILE_RECOVERY_REQUIRED_CODE, PROFILE_RECOVERY_UNSUPPORTED_CODE,
-    QUERY_ENCRYPTION_STATE_FAILED_CODE, RECOVER_SESSION_RECEIVE_UNAVAILABLE_CODE,
-    UNLOCK_SPACE_CORRUPTED_CODE, UNLOCK_SPACE_NOT_INITIALIZED_CODE,
-    UNLOCK_SPACE_SETUP_NOT_COMPLETED_CODE, UNLOCK_SPACE_UNAUTHORIZED_CODE,
-    VERIFY_SECURE_STORAGE_ACCESS_FAILED_CODE,
+    FACTORY_RESET_RESTART_REQUIRED_CODE, FACTORY_RESET_STORAGE_FAILED_CODE,
+    FACTORY_RESET_UNAVAILABLE_CODE, LOCK_ENCRYPTION_FAILED_CODE, PROFILE_RECOVERY_PARTIAL_CODE,
+    PROFILE_RECOVERY_PERSISTENCE_FAILED_CODE, PROFILE_RECOVERY_REQUIRED_CODE,
+    PROFILE_RECOVERY_UNSUPPORTED_CODE, QUERY_ENCRYPTION_STATE_FAILED_CODE,
+    RECOVER_SESSION_RECEIVE_UNAVAILABLE_CODE, UNLOCK_SPACE_CORRUPTED_CODE,
+    UNLOCK_SPACE_NOT_INITIALIZED_CODE, UNLOCK_SPACE_SETUP_NOT_COMPLETED_CODE,
+    UNLOCK_SPACE_UNAUTHORIZED_CODE, VERIFY_SECURE_STORAGE_ACCESS_FAILED_CODE,
 };
 use uc_engine::{
     ChangeEncryptionPassphraseInput, EngineError, EngineErrorCategory, Operation, OperationResult,
@@ -168,6 +168,15 @@ fn map_factory_reset_engine_err(error: EngineError) -> ApiError {
                 status: StatusCode::INTERNAL_SERVER_ERROR,
                 code: "INTERNAL".to_string(),
                 message: "factory reset failed".to_string(),
+                details: None,
+            },
+        ),
+        FACTORY_RESET_RESTART_REQUIRED_CODE => (
+            "restart_required",
+            ApiError {
+                status: StatusCode::SERVICE_UNAVAILABLE,
+                code: "RESTART_REQUIRED".to_string(),
+                message: "key material was cleared but the engine could not restart; restart the application".to_string(),
                 details: None,
             },
         ),
@@ -970,5 +979,20 @@ mod tests {
             assert_eq!(api.message, message);
             assert!(api.details.is_none());
         }
+    }
+
+    /// The engine's post-reset runtime-rebuild failure (#136) surfaces as its
+    /// own semantic code so the frontend can tell the user to restart the app,
+    /// instead of folding into the generic unexpected-engine-error branch.
+    #[test]
+    fn map_factory_reset_engine_err_maps_restart_required() {
+        let api = map_factory_reset_engine_err(EngineError::new(
+            FACTORY_RESET_RESTART_REQUIRED_CODE,
+            EngineErrorCategory::Unavailable,
+            false,
+        ));
+        assert_eq!(api.status, StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(api.code, "RESTART_REQUIRED");
+        assert!(api.details.is_none());
     }
 }

@@ -17,6 +17,7 @@ export type FactoryResetError =
   | { code: 'FACADE_UNAVAILABLE' }
   | { code: 'KEY_MATERIAL_WIPE_FAILED'; message: string }
   | { code: 'STORAGE_FAILED'; message: string }
+  | { code: 'RESTART_REQUIRED'; message: string }
   | { code: 'INTERNAL'; message: string }
 
 /** Type guard for `resetSpace` rejections. */

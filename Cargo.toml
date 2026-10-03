@@ -114,10 +114,9 @@ opt-level = 3
 opt-level = 3
 
 [profile.release]
-panic = "abort"   # Strip expensive panic clean-up logic
-codegen-units = 1 # Compile crates one after another so the compiler can optimize better
-lto = true        # Enables link to optimizations
-opt-level = "z"   # Optimize for binary size
+panic = "abort"  # Strip expensive panic clean-up logic
+lto = "thin"     # Cross-crate LTO without fat LTO's single-threaded whole-program codegen pass
+opt-level = "z"  # Optimize for binary size
 # 关键:Sentry symbolication 需要 debug info。`line-tables-only` 只保留地址→
 # 文件/行号映射,不带变量名等更重的信息,体积成本最小;配合 split-debuginfo
 # 和 strip = "symbols",最终 binary 仍然干净,debug info 单独打包成

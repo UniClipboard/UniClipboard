@@ -159,6 +159,9 @@ describe('cache workflow ownership', () => {
       'macos-aarch64',
       'windows-arm64',
       'windows-x86_64',
+      'macos-x86_64',
+      'ubuntu-22.04',
+      'ubuntu-22.04-arm',
     ])
     expect(source).toContain("platform: 'windows-x86_64'")
     expect(source).not.toContain("platform: 'all'")

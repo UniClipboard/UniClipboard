@@ -25,6 +25,11 @@ permissions:
   contents: read
   actions: write
   pull-requests: read
+  # Linux targets' build-tauri job pulls ghcr.io/uniclipboard/build-bookworm
+  # via the implicit GITHUB_TOKEN container login; without this the pull is
+  # denied. Never exercised before releaseCacheTargets included a Linux
+  # target.
+  packages: read
 
 concurrency:
   group: cache-warmup-${{ github.ref }}

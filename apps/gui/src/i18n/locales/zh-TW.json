@@ -1126,7 +1126,7 @@
       "clearAll": "清除全部",
       "close": "關閉搜尋面板",
       "filterCategories": "篩選類別",
-      "results": "{{count}} 條結果",
+      "results_other": "{{count}} 條結果",
       "done": "完成"
     },
     "sidebar": {

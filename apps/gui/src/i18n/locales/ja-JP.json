@@ -1127,7 +1127,7 @@
       "clearAll": "すべてクリア",
       "close": "検索パネルを閉じる",
       "filterCategories": "フィルタカテゴリ",
-      "results": "{{count}} 件の結果",
+      "results_other": "{{count}} 件の結果",
       "done": "完了"
     },
     "sidebar": {

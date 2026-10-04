@@ -1131,7 +1131,10 @@
       "clearAll": "Очистить всё",
       "close": "Закрыть панель поиска",
       "filterCategories": "Категории фильтров",
-      "results": "Результатов: {{count}}",
+      "results_one": "{{count}} результат",
+      "results_few": "{{count}} результата",
+      "results_many": "{{count}} результатов",
+      "results_other": "{{count}} результата",
       "done": "Готово"
     },
     "sidebar": {

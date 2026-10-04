@@ -1128,7 +1128,9 @@
       "clearAll": "Limpar tudo",
       "close": "Fechar painel de pesquisa",
       "filterCategories": "Categorias de filtro",
-      "results": "{{count}} resultados",
+      "results_one": "{{count}} resultado",
+      "results_many": "{{count}} resultados",
+      "results_other": "{{count}} resultados",
       "done": "Concluir"
     },
     "sidebar": {

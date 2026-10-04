@@ -1126,7 +1126,7 @@
       "clearAll": "清除全部",
       "close": "关闭搜索面板",
       "filterCategories": "筛选类别",
-      "results": "{{count}} 条结果",
+      "results_other": "{{count}} 条结果",
       "done": "完成"
     },
     "sidebar": {

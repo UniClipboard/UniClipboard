@@ -1127,7 +1127,8 @@
       "clearAll": "Clear all",
       "close": "Close search panel",
       "filterCategories": "Filter categories",
-      "results": "{{count}} results",
+      "results_one": "{{count}} result",
+      "results_other": "{{count}} results",
       "done": "Done"
     },
     "sidebar": {

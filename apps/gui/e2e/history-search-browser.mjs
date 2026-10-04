@@ -354,6 +354,18 @@ await runPhase(
     phase.steps.push('Devices sidebar "Pinned" -> /history with Pinned active (0 pinned rows)')
 
     await clickText('All items', { inSidebar: true })
+    // Let the filter settle before leaving: the page snapshots its state on unmount.
+    await browser.waitUntil(
+      () =>
+        browser.execute(
+          () =>
+            document
+              .querySelector('nav[aria-label="Library"] [aria-current="true"]')
+              ?.textContent.trim() === 'All items'
+        ),
+      { timeout: 10_000, timeoutMsg: 'All items never became the active Library row' }
+    )
+    await waitRows(3)
     await clickText('Settings', { inSidebar: true })
     await waitPath('/settings')
     await shot('nav-05-settings')

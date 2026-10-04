@@ -108,6 +108,24 @@ describe('CompositeSearchBar', () => {
     expect(props.onQueryChange).toHaveBeenCalledWith('')
   })
 
+  it('shows per-candidate hit counts computed with the other filters held fixed', async () => {
+    const user = userEvent.setup()
+    const fetchCounts = vi.fn().mockResolvedValue([5, 0, 1234, 7])
+    renderSearchBar({ timeRange: 'today', fetchCounts })
+
+    await user.type(screen.getByRole('combobox'), 'type:')
+
+    expect(await screen.findByText('1,234', {}, { timeout: 2000 })).toBeInTheDocument()
+    expect(fetchCounts).toHaveBeenCalledTimes(1)
+    const [queries] = fetchCounts.mock.calls[0]
+    expect(queries).toEqual([
+      { query: '', contentTypes: 'text', timePreset: 'today' },
+      { query: '', contentTypes: 'html', timePreset: 'today' },
+      { query: '', tags: 'image', timePreset: 'today' },
+      { query: '', contentTypes: 'file', timePreset: 'today' },
+    ])
+  })
+
   it('reopens the last chip as an editable token on Backspace in an empty input', async () => {
     const user = userEvent.setup()
     const props = renderSearchBar({ contentFilter: Filter.Image, extensionFilter: 'md' })

@@ -3,6 +3,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { Filter } from '@/api/clipboardItems'
+import { countSearch } from '@/api/daemon/search'
 import ClipboardActionBar from '@/components/clipboard/ClipboardActionBar'
 import ClipboardPreview from '@/components/clipboard/ClipboardPreview'
 import DeleteConfirmDialog from '@/components/clipboard/DeleteConfirmDialog'
@@ -46,6 +47,7 @@ const HistoryPage: React.FC = () => {
     tagOptions: c.searchableTags,
     totalCount: c.browseCount,
     inputRef: c.searchInputRef,
+    fetchCounts: countSearch,
   })
   const searchSuggestionsOpen = compositeSearch.expanded && compositeSearch.buffer.trim().length > 0
 

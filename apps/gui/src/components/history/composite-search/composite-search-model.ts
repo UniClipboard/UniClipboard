@@ -26,7 +26,13 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { Filter } from '@/api/clipboardItems'
-import type { SearchTagDto, TimeRangePreset } from '@/api/daemon/search'
+import {
+  MAX_SEARCH_COUNT_BATCH,
+  type SearchParams,
+  type SearchTagDto,
+  type TimeRangePreset,
+} from '@/api/daemon/search'
+import { buildLiveSearchModel, liveModelToSearchParams } from '@/hooks/liveSearchModel'
 import { mergeSearchTagOptions, type SearchTagOption } from '@/lib/search-tags'
 
 /** A selectable source device (P2P space member or mobile-sync device). */
@@ -205,6 +211,45 @@ export interface FilterSnapshot {
   source: string | null
   time: TimeRangePreset
   extension: string | null
+}
+
+// ── Count queries ───────────────────────────────────────────────
+
+function withDimension(
+  current: FilterSnapshot,
+  dimension: Dimension,
+  value: string
+): FilterSnapshot {
+  if (dimension === 'type') return { ...current, type: value as Filter }
+  if (dimension === 'time') return { ...current, time: value as TimeRangePreset }
+  return { ...current, [dimension]: value }
+}
+
+function snapshotToSearchParams(snapshot: FilterSnapshot, query: string): SearchParams {
+  return liveModelToSearchParams(
+    buildLiveSearchModel({
+      query,
+      activeFilter: snapshot.type,
+      tagFilter: snapshot.tag,
+      sourceFilter: snapshot.source,
+      extensionFilter: snapshot.extension,
+      timeRange: snapshot.time,
+    })
+  )
+}
+
+/**
+ * One count query per candidate: the current filters with that candidate
+ * applied. Picking a candidate clears the text query, so the counts do too.
+ * Capped at the daemon's batch size; later candidates get no count.
+ */
+export function buildCandidateCountQueries(
+  candidates: CandidateItem[],
+  current: FilterSnapshot
+): SearchParams[] {
+  return candidates
+    .slice(0, MAX_SEARCH_COUNT_BATCH)
+    .map(c => snapshotToSearchParams(withDimension(current, c.dimension, c.value), ''))
 }
 
 /** i18n keys for each dimension's group header in the suggestion panel. */

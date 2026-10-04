@@ -7,6 +7,7 @@ import type { SearchTagOption } from '@/lib/search-tags'
 import {
   applyDimensionValue,
   buildAllCandidates,
+  buildCandidateCountQueries,
   buildCandidates,
   buildChips,
   buildSyntaxSuggestions,
@@ -21,6 +22,7 @@ import {
   type SourceOption,
 } from './composite-search-model'
 import type { PanelOption } from './SuggestionPanel'
+import { type FetchSearchCounts, useSearchCounts } from './useSearchCounts'
 
 export interface CompositeSearchBarProps {
   contentFilter: Filter
@@ -43,6 +45,8 @@ export interface CompositeSearchBarProps {
   clearShortcutEnabled?: boolean
   suggestionActivation?: 'focus' | 'intentional'
   showFilterPanelButton?: boolean
+  /** Enables per-candidate hit counts; omitted → no counts, no network. */
+  fetchCounts?: FetchSearchCounts
   className?: string
 }
 
@@ -64,6 +68,7 @@ export function useCompositeSearchBar({
   inputRef,
   onUnhandledKeyDown,
   suggestionActivation = 'focus',
+  fetchCounts,
 }: CompositeSearchBarProps) {
   const { t } = useTranslation()
   // Seed the text buffer from the restored session query so the box reflects an
@@ -91,6 +96,13 @@ export function useCompositeSearchBar({
     : buildAllCandidates(buffer, { t, sourceOptions, tagOptions, current })
   const syntaxSuggestions =
     inToken || buffer.trimStart().startsWith('#') ? [] : buildSyntaxSuggestions(buffer, t)
+  const expanded = open && syntaxSuggestions.length + candidates.length > 0
+  // Only a single typed dimension stays within one count batch; the flat
+  // all-dimension panel would not.
+  const candidateCounts = useSearchCounts(
+    expanded && inToken ? buildCandidateCountQueries(candidates, current) : null,
+    fetchCounts
+  )
   const options: PanelOption[] = [
     ...syntaxSuggestions.map(s => ({
       id: `seed-${s.dimension}`,
@@ -107,11 +119,11 @@ export function useCompositeSearchBar({
         !inToken && (i === 0 || candidates[i - 1].dimension !== c.dimension)
           ? t(DIMENSION_LABEL_KEYS[c.dimension])
           : undefined,
+      hint: candidateCounts?.[i]?.toLocaleString(),
     })),
   ]
   const clampedHighlight =
     highlight < 0 || options.length === 0 ? -1 : Math.min(highlight, options.length - 1)
-  const expanded = open && options.length > 0
   const suggestionsHandleKeys = expanded || suggestionActivation === 'focus'
   const handlers: DimensionHandlers = {
     onContentFilterChange,

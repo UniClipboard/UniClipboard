@@ -11,6 +11,7 @@ import EmptyAddRow from '@/components/device/EmptyAddRow'
 import LocalDeviceListItem from '@/components/device/LocalDeviceListItem'
 import { SpaceDeviceUpdateNotice } from '@/components/device/SpaceDeviceUpdateNotice'
 import { type StatusDotTone } from '@/components/device/StatusDot'
+import TrafficLightOverhang from '@/components/history/sidebar/TrafficLightOverhang'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -62,6 +63,8 @@ export default function DeviceList({ page }: { page: ReturnType<typeof useDevice
   } = page
   return (
     <aside className="relative flex w-56 shrink-0 flex-col border-r border-border/50 bg-muted/15 xl:w-64">
+      {/* Collapsed: the first rows start below the traffic-light band. */}
+      <TrafficLightOverhang className="h-13 w-full" />
       <div className="px-3 pt-3">
         {networkRecoveryVisible && (
           <Alert className="mt-2 border-warning/30 bg-warning/10 text-warning">

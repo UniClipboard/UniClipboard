@@ -12,6 +12,7 @@ export type ShortcutAction =
   | 'clipboard.favorite'
   | 'clipboard.search'
   | 'navigation.settings'
+  | 'navigation.toggleSidebar'
   | string
 
 /**
@@ -103,6 +104,19 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
     scope: 'global',
     description: 'settings.sections.shortcuts.actions.goSettings',
   },
+
+  // macOS: show or hide the Library sidebar (the system's Hide Sidebar key).
+  ...(isMac
+    ? [
+        {
+          id: 'nav.toggleSidebar',
+          key: 'meta+ctrl+s',
+          action: 'navigation.toggleSidebar',
+          scope: 'global' as const,
+          description: 'settings.sections.shortcuts.actions.toggleSidebar',
+        },
+      ]
+    : []),
 
   // ===== Global (OS-level) =====
   {

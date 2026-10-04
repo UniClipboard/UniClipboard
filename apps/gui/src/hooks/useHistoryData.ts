@@ -7,7 +7,7 @@ import {
   writeHistorySessionSnapshot,
   type HistoryLiveSnapshot,
 } from '@/hooks/historySessionSnapshot'
-import { type LiveSearchQueryModel } from '@/hooks/liveSearchModel'
+import { buildLiveSearchModel, type LiveSearchQueryModel } from '@/hooks/liveSearchModel'
 import { useHistorySourceOptions } from '@/hooks/useHistorySourceOptions'
 import { useLiveSearch } from '@/hooks/useLiveSearch'
 import type { ClipboardFileItem, DisplayClipboardItem } from '@/lib/clipboard-entry'
@@ -151,15 +151,15 @@ export function useHistoryData() {
 
   // ── Unified live browse/search list ───────────────────────────
   const model = useMemo<LiveSearchQueryModel>(
-    () => ({
-      query: state.submittedQuery.trim(),
-      contentTypes: filterToContentTypes(state.activeFilter),
-      tags:
-        [filterToTags(state.activeFilter), state.tagFilter].filter(Boolean).join(',') || undefined,
-      sourceDevices: state.sourceFilter ?? undefined,
-      extensions: state.extensionFilter ?? undefined,
-      timeRange: state.timeRange,
-    }),
+    () =>
+      buildLiveSearchModel({
+        query: state.submittedQuery.trim(),
+        activeFilter: state.activeFilter,
+        tagFilter: state.tagFilter,
+        sourceFilter: state.sourceFilter,
+        extensionFilter: state.extensionFilter,
+        timeRange: state.timeRange,
+      }),
     [
       state.submittedQuery,
       state.activeFilter,

@@ -21,7 +21,8 @@
  * dimension is active,
  * `useLiveSearch` refetches the base query instead of patching (§4.8 fallback).
  */
-import type { TimeRangePreset } from '@/api/daemon/search'
+import { type Filter, filterToContentTypes, filterToTags } from '@/api/clipboardItems'
+import type { SearchParams, TimeRangePreset } from '@/api/daemon/search'
 import type { ClipboardEntryType, DisplayClipboardItem } from '@/lib/clipboard-entry'
 
 /**
@@ -50,6 +51,45 @@ export interface LiveSearchQueryModel {
   extensions?: string
   /** Time-range preset; `all_time`/undefined means no time filter. */
   timeRange?: TimeRangePreset
+}
+
+/** The History page's filter state, before it is resolved to wire params. */
+export interface HistoryFilterState {
+  query: string
+  activeFilter: Filter
+  tagFilter: string | null
+  sourceFilter: string | null
+  extensionFilter: string | null
+  timeRange: TimeRangePreset
+}
+
+/** Resolve filter state into the query model the list shows. */
+export function buildLiveSearchModel(state: HistoryFilterState): LiveSearchQueryModel {
+  return {
+    query: state.query,
+    contentTypes: filterToContentTypes(state.activeFilter),
+    tags:
+      [filterToTags(state.activeFilter), state.tagFilter].filter(Boolean).join(',') || undefined,
+    sourceDevices: state.sourceFilter ?? undefined,
+    extensions: state.extensionFilter ?? undefined,
+    timeRange: state.timeRange,
+  }
+}
+
+/**
+ * Wire params for a query model. Single mapping shared by the list query and
+ * the candidate/zero-result counts, so a count always matches the list the
+ * user would see.
+ */
+export function liveModelToSearchParams(model: LiveSearchQueryModel): SearchParams {
+  return {
+    query: model.query,
+    contentTypes: model.contentTypes,
+    tags: model.tags,
+    extensions: model.extensions,
+    sourceDevices: model.sourceDevices,
+    timePreset: model.timeRange && model.timeRange !== 'all_time' ? model.timeRange : undefined,
+  }
 }
 
 /**

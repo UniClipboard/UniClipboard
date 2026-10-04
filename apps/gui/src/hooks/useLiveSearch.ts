@@ -10,6 +10,7 @@ import { daemonWs } from '@/lib/daemon-ws'
 import { createLogger } from '@/lib/logger'
 import {
   canPatchLive,
+  liveModelToSearchParams,
   matchesFilter,
   patchLiveItem,
   prependLiveItem,
@@ -168,18 +169,15 @@ export function useLiveSearch(options: UseLiveSearchOptions): UseLiveSearchResul
     abortRef.current = controller
     setIsLoading(true)
 
-    querySearch(
-      {
-        query,
-        contentTypes,
-        tags,
-        extensions,
-        sourceDevices,
-        timePreset: timeRange && timeRange !== 'all_time' ? timeRange : undefined,
-        limit,
-      },
-      controller.signal
-    )
+    const params = liveModelToSearchParams({
+      query,
+      contentTypes,
+      tags,
+      sourceDevices,
+      extensions,
+      timeRange,
+    })
+    querySearch({ ...params, limit }, controller.signal)
       .then(response => {
         if (controller.signal.aborted) return
         setItems(response.data.items.map(searchResultToDisplayItem))

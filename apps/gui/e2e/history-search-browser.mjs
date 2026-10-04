@@ -205,6 +205,16 @@ await runPhase(
     if (await disable.isExisting()) await disable.click()
     await shot('00-history')
     phase.steps.push('complete /history page: sidebar, 5 rows, preview')
+    // Column geometry, compared against the design's 220 | 560 | 500 at 1280×800.
+    phase.metrics = await browser.execute(() => {
+      const width = el => (el ? Math.round(el.getBoundingClientRect().width) : null)
+      return {
+        rootFontSize: getComputedStyle(document.documentElement).fontSize,
+        sidebar: width(document.querySelector('aside:has(nav[aria-label="Library"])')),
+        list: width(document.querySelector('[data-panel-id="history-list"], #history-list')),
+        preview: width(document.querySelector('[data-panel-id="history-preview"], #history-preview')),
+      }
+    })
 
     // The search field sits at the top of the list column (no toolbar trigger).
     const input = await browser.$('[role="combobox"][aria-label="Search and filter"]')

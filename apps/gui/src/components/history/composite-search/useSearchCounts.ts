@@ -4,7 +4,10 @@ import { createLogger } from '@/lib/logger'
 
 const log = createLogger('use-search-counts')
 
-/** Batch count fetcher; resolves to counts in input order. */
+/**
+ * Batch count fetcher; resolves to counts in input order. Pass a stable
+ * reference: a new function each render restarts the debounce forever.
+ */
 export type FetchSearchCounts = (queries: SearchParams[], signal: AbortSignal) => Promise<number[]>
 
 const DEBOUNCE_MS = 250

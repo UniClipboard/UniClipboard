@@ -54,4 +54,21 @@ describe('useDeleteFlow', () => {
     })
     expect(remove).toHaveBeenCalledWith('entry-1')
   })
+
+  it('deletes every id of a bulk request and counts them for the dialog', async () => {
+    const remove = vi.fn().mockResolvedValue(undefined)
+    const { result } = renderHook(() => useDeleteFlow(remove, 10))
+
+    act(() => result.current.requestDelete(['entry-1', 'entry-2']))
+    expect(result.current.deleteCount).toBe(2)
+
+    act(() => result.current.confirmDelete())
+    expect(result.current.deletingIds).toEqual(new Set(['entry-1', 'entry-2']))
+    await act(async () => {
+      await vi.runAllTimersAsync()
+    })
+    expect(remove).toHaveBeenCalledTimes(2)
+    expect(remove).toHaveBeenCalledWith('entry-2')
+    expect(result.current.deletingIds.size).toBe(0)
+  })
 })

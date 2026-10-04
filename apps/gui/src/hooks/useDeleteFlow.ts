@@ -4,52 +4,67 @@ import {
   setDeleteConfirmationEnabled,
 } from '@/lib/delete-confirmation-preference'
 
+const NONE: ReadonlySet<string> = new Set()
+
 /**
  * Delete flow for the history grid: the saved preference optionally gates
  * removal behind a confirm dialog, then a brief "deleting" window drives the
- * card's exit animation before the entry is dropped. The caller supplies the
- * already error-handled async removal.
+ * rows' exit animation before the entries are dropped. One request may carry
+ * several ids (the list's bulk selection). The caller supplies the already
+ * error-handled async removal.
  */
 export function useDeleteFlow(remove: (id: string) => Promise<void>, animateMs = 400) {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
-  const [deletingId, setDeletingId] = useState<string | null>(null)
-  const targetRef = useRef<string | null>(null)
+  const [deletingIds, setDeletingIds] = useState<ReadonlySet<string>>(NONE)
+  // The ids the open dialog would delete; drives its count.
+  const [targetIds, setTargetIds] = useState<readonly string[]>([])
+  const targetRef = useRef<readonly string[]>([])
 
   const startDelete = useCallback(
-    (targetId: string) => {
+    (ids: readonly string[]) => {
       setDeleteDialogOpen(false)
-      setDeletingId(targetId)
+      setDeletingIds(new Set(ids))
       // Defer the removal so the exit animation can play first.
       setTimeout(async () => {
-        await remove(targetId)
-        setDeletingId(null)
-        targetRef.current = null
+        await Promise.all(ids.map(id => remove(id)))
+        setDeletingIds(NONE)
+        targetRef.current = []
       }, animateMs)
     },
     [remove, animateMs]
   )
 
   const requestDelete = useCallback(
-    (id: string) => {
-      targetRef.current = id
+    (idOrIds: string | readonly string[]) => {
+      const ids = typeof idOrIds === 'string' ? [idOrIds] : idOrIds
+      if (ids.length === 0) return
+      targetRef.current = ids
+      setTargetIds(ids)
       if (readDeleteConfirmationEnabled()) {
         setDeleteDialogOpen(true)
         return
       }
-      startDelete(id)
+      startDelete(ids)
     },
     [startDelete]
   )
 
   const confirmDelete = useCallback(
     (skipFutureConfirmation = false) => {
-      const targetId = targetRef.current
-      if (!targetId) return
+      const ids = targetRef.current
+      if (ids.length === 0) return
       if (skipFutureConfirmation) setDeleteConfirmationEnabled(false)
-      startDelete(targetId)
+      startDelete(ids)
     },
     [startDelete]
   )
 
-  return { deleteDialogOpen, setDeleteDialogOpen, deletingId, requestDelete, confirmDelete }
+  return {
+    deleteDialogOpen,
+    setDeleteDialogOpen,
+    deletingIds,
+    deleteCount: targetIds.length,
+    requestDelete,
+    confirmDelete,
+  }
 }

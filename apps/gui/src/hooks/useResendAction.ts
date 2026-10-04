@@ -134,6 +134,12 @@ export interface UseResendActionResult {
    * 错误同样在 hook 内吞下。
    */
   resendToPeer: (entryId: string | null, deviceId: string) => Promise<void>
+  /**
+   * Send several entries at once (the history list's bulk selection), to one
+   * peer or, without `deviceId`, to every eligible peer. Entries already in
+   * flight are skipped; the outcome is one summary toast, not one per entry.
+   */
+  resendMany: (entryIds: readonly string[], deviceId?: string) => Promise<void>
 }
 
 export function useResendAction(): UseResendActionResult {
@@ -201,6 +207,40 @@ export function useResendAction(): UseResendActionResult {
     [fireResend]
   )
 
+  const resendMany = useCallback(
+    async (entryIds: readonly string[], deviceId?: string) => {
+      const ids = entryIds.filter(
+        id =>
+          !entryInFlightSet.has(id) &&
+          !(deviceId ? peerInFlightMap.get(id)?.has(deviceId) : peerInFlightMap.get(id)?.size)
+      )
+      if (ids.length === 0) return
+      for (const id of ids) {
+        if (deviceId) markPeerStart(id, deviceId)
+        else markEntryStart(id)
+      }
+      const results = await Promise.allSettled(
+        ids.map(id =>
+          resendEntry({ entryId: id, targetDeviceIds: deviceId ? [deviceId] : null }).finally(
+            () => {
+              if (deviceId) markPeerSettle(id, deviceId)
+              else markEntrySettle(id)
+            }
+          )
+        )
+      )
+      const sent = results.filter(result => result.status === 'fulfilled').length
+      const firstError = results.find(result => result.status === 'rejected')
+      if (firstError) log.warn({ err: firstError.reason, count: ids.length }, 'bulk resend failed')
+      if (sent === 0 && firstError) {
+        toast.error(translateResendError(firstError.reason, t))
+        return
+      }
+      toast.success(t('delivery.resend.success.bulk', { sent, total: ids.length }))
+    },
+    [t]
+  )
+
   const isEntryInFlight = useCallback(
     (entryId: string | null) => (entryId ? entryInFlightSet.has(entryId) : false),
     []
@@ -217,6 +257,7 @@ export function useResendAction(): UseResendActionResult {
     isPeerInFlight,
     resendAll,
     resendToPeer,
+    resendMany,
   }
 }
 

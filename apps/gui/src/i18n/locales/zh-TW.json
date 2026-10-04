@@ -1127,6 +1127,19 @@
       "filterCategories": "篩選類別",
       "results": "{{count}} 條結果",
       "done": "完成"
+    },
+    "sidebar": {
+      "allItems": "全部項目",
+      "pinned": "已置頂",
+      "recentlyDeleted": "最近刪除",
+      "smartViews": "智能視圖",
+      "smartViewsEmpty": "尚無視圖",
+      "tags": "標籤",
+      "tagsEmpty": "尚無標籤",
+      "devices": "裝置",
+      "devicesOnline": "{{online}}/{{total}} 線上",
+      "devicesEmpty": "尚無已配對裝置",
+      "settings": "設定"
     }
   },
   "dashboard": {

@@ -1133,6 +1133,19 @@
       "results": "Результатов: {{count}}",
       "done": "Готово"
     },
+    "sidebar": {
+      "allItems": "Все элементы",
+      "pinned": "Закреплённые",
+      "recentlyDeleted": "Недавно удалённые",
+      "smartViews": "Умные представления",
+      "smartViewsEmpty": "Представлений пока нет",
+      "tags": "Теги",
+      "tagsEmpty": "Тегов пока нет",
+      "devices": "Устройства",
+      "devicesOnline": "{{online}} из {{total}} онлайн",
+      "devicesEmpty": "Нет сопряжённых устройств",
+      "settings": "Настройки"
+    },
     "subtitle_few": "{{count}} элемента",
     "subtitle_many": "{{count}} элементов"
   },

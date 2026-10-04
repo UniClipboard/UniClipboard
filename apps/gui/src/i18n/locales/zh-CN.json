@@ -1127,6 +1127,19 @@
       "filterCategories": "筛选类别",
       "results": "{{count}} 条结果",
       "done": "完成"
+    },
+    "sidebar": {
+      "allItems": "全部项目",
+      "pinned": "已置顶",
+      "recentlyDeleted": "最近删除",
+      "smartViews": "智能视图",
+      "smartViewsEmpty": "暂无视图",
+      "tags": "标签",
+      "tagsEmpty": "暂无标签",
+      "devices": "设备",
+      "devicesOnline": "{{online}}/{{total}} 在线",
+      "devicesEmpty": "暂无已配对设备",
+      "settings": "设置"
     }
   },
   "dashboard": {

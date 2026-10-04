@@ -1128,6 +1128,19 @@
       "filterCategories": "Filter categories",
       "results": "{{count}} results",
       "done": "Done"
+    },
+    "sidebar": {
+      "allItems": "All items",
+      "pinned": "Pinned",
+      "recentlyDeleted": "Recently deleted",
+      "smartViews": "Smart Views",
+      "smartViewsEmpty": "No views yet",
+      "tags": "Tags",
+      "tagsEmpty": "No tags yet",
+      "devices": "Devices",
+      "devicesOnline": "{{online}} of {{total}} online",
+      "devicesEmpty": "No paired devices",
+      "settings": "Settings"
     }
   },
   "dashboard": {

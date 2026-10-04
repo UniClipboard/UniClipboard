@@ -1129,6 +1129,19 @@
       "filterCategories": "Categorias de filtro",
       "results": "{{count}} resultados",
       "done": "Concluir"
+    },
+    "sidebar": {
+      "allItems": "Todos os itens",
+      "pinned": "Fixados",
+      "recentlyDeleted": "Excluídos recentemente",
+      "smartViews": "Visualizações inteligentes",
+      "smartViewsEmpty": "Ainda não há visualizações",
+      "tags": "Etiquetas",
+      "tagsEmpty": "Ainda não há etiquetas",
+      "devices": "Dispositivos",
+      "devicesOnline": "{{online}} de {{total}} on-line",
+      "devicesEmpty": "Nenhum dispositivo pareado",
+      "settings": "Configurações"
     }
   },
   "dashboard": {

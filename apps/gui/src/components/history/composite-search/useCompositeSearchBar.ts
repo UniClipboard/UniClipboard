@@ -197,8 +197,12 @@ export function useCompositeSearchBar({
     if (e.key === 'Backspace' && buffer === '' && chips.length > 0) {
       e.preventDefault()
       const lastChip = chips[chips.length - 1]
+      const value = String(current[lastChip.dimension])
       resetDimension(lastChip.dimension)
-      setBuffer(buildTokenText(lastChip.dimension, String(current[lastChip.dimension])))
+      // A multi-tag chip (set from the filter panel) has no single-token form:
+      // committing a typed tag replaces the whole selection.
+      if (lastChip.dimension === 'tag' && value.includes(',')) return
+      setBuffer(buildTokenText(lastChip.dimension, value))
       setHighlight(0)
       setOpen(true)
       return

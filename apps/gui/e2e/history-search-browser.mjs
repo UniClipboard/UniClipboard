@@ -251,7 +251,7 @@ await runPhase(
     const relaxations = () =>
       browser.execute(() =>
         [...document.querySelectorAll('button')]
-          .filter(b => /\d+ results?$/.test(b.textContent ?? ''))
+          .filter(b => /^Without .*\d+ items?$/.test(b.textContent ?? ''))
           .map(b => [b.getAttribute('aria-label'), b.textContent, b.disabled])
       )
     await browser.waitUntil(async () => (await relaxations()).length === 3, {
@@ -259,10 +259,17 @@ await runPhase(
       timeoutMsg: 'relaxations never appeared on the page',
     })
     assert.deepEqual(await relaxations(), [
-      ['Remove filter: Text', 'Text0 results', true],
-      ['Remove filter: e2e-phone', 'e2e-phone0 results', true],
-      ['Remove filter: .md', '.md3 results', false],
+      ['Remove filter: Text', 'Without Text0 items', true],
+      ['Remove filter: e2e-phone', 'Without e2e-phone0 items', true],
+      ['Remove filter: .md', 'Without .md3 items', false],
     ])
+    assert.match(await browser.$('body').getText(), /No items match all 3 filters/)
+    // The design shows B3 with suggestions closed.
+    await browser.keys(['Escape'])
+    await browser.waitUntil(async () => (await browser.$$('[role="option"]')).length === 0, {
+      timeout: 5_000,
+      timeoutMsg: 'suggestions never closed',
+    })
     await shot('B3-no-results-relaxations')
     phase.steps.push(
       'B3: 3 chips -> 0 rows; drop Text 0, drop e2e-phone 0 (both disabled), drop .md 3'
@@ -270,7 +277,9 @@ await runPhase(
 
     // The chip's own X shares the aria-label; the relaxation is the one with a count.
     await browser.execute(() =>
-      [...document.querySelectorAll('button')].find(b => b.textContent === '.md3 results').click()
+      [...document.querySelectorAll('button')]
+        .find(b => b.textContent === 'Without .md3 items')
+        .click()
     )
     await waitRows(3)
     await shot('B3-after-dropping-md')

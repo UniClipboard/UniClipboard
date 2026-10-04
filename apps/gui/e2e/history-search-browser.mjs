@@ -51,17 +51,22 @@ async function openBrowser(width, height) {
   })
 }
 
-const report = { components: { steps: [] }, fullPage: { steps: [] } }
+const report = {
+  components: { steps: [] },
+  fullPage: { steps: [] },
+  fullPageWindows: { steps: [] },
+  fullPageLinuxSystemFrame: { steps: [] },
+}
 const writeReport = () =>
   writeFile(path.join(output, 'browser-result.json'), JSON.stringify(report, null, 2))
 
-async function runPhase(name, entry, port, size, body) {
+async function runPhase(name, entry, port, size, body, extraQuery = '') {
   const server = await serveFixture(entry, port)
   const browser = await openBrowser(size.width, size.height)
   const phase = report[name]
   const shot = async file => browser.saveScreenshot(path.join(output, `${name}-${file}.png`))
   try {
-    await browser.url(`http://127.0.0.1:${port}/${query}`)
+    await browser.url(`http://127.0.0.1:${port}/${query}${extraQuery}`)
     await body(browser, phase, shot)
     phase.result = 'pass'
   } catch (error) {
@@ -321,9 +326,7 @@ await runPhase(
     })
     await shot('nav-02-devices-mobile-detail')
     await browser.execute(() =>
-      [...document.querySelectorAll('button')]
-        .find(b => b.title === 'Join another space')
-        .click()
+      [...document.querySelectorAll('button')].find(b => b.title === 'Join another space').click()
     )
     const dialog = await browser.$('[role="dialog"]')
     await dialog.waitForDisplayed({ timeout: 10_000 })
@@ -367,4 +370,133 @@ await runPhase(
   }
 )
 
-console.log(`PASS components=${report.components.result} fullPage=${report.fullPage.result}`)
+// ── C. Windows / Linux branches of the same complete page ────────────────────
+// Browser DOM checks of the platform branch only (navigator overridden by the
+// fixture) — not a native Windows/Linux acceptance. These platforms keep the
+// pre-slice-13 shell: icon rail navigation, toolbar search overlay, window
+// controls; the Devices page has no second (Library) navigation.
+async function railBranch(browser, phase, shot, { platform, windowControls }) {
+  const rowCount = () =>
+    browser.execute(() => document.querySelectorAll('[data-testid="history-row"]').length)
+  await browser.waitUntil(async () => (await rowCount()) === 5, {
+    timeout: 20_000,
+    timeoutMsg: 'history list never showed 5 rows',
+  })
+  const disable = await browser.$('//button[normalize-space()="Disable"]')
+  if (await disable.isExisting()) await disable.click()
+  const path = () => browser.execute(() => location.pathname)
+  const waitPath = expected =>
+    browser.waitUntil(async () => (await path()) === expected, {
+      timeout: 10_000,
+      timeoutMsg: `never navigated to ${expected}`,
+    })
+  const dom = () =>
+    browser.execute(() => ({
+      platform: document.documentElement.dataset.ucPlatform,
+      rail: document.querySelectorAll('aside.w-12').length,
+      railLinks: [...document.querySelectorAll('aside.w-12 a')].map(a =>
+        a.getAttribute('aria-label')
+      ),
+      library: document.querySelectorAll('nav[aria-label="Library"]').length,
+      dragStripInLibrary: document.querySelectorAll(
+        'aside:has(nav[aria-label="Library"]) > [data-tauri-drag-region]'
+      ).length,
+      manageLink: [...document.querySelectorAll('a')].some(a => a.textContent.trim() === 'Manage'),
+      inlineSearch: document.querySelectorAll('[role="combobox"]').length,
+      toolbarTrigger: document.querySelectorAll('button[aria-label="Search and filter"]').length,
+      windowControls: ['最小化', '最大化', '关闭'].filter(label =>
+        document.querySelector(`button[aria-label="${label}"]`)
+      ),
+    }))
+
+  const history = await dom()
+  assert.equal(history.platform, platform)
+  assert.equal(history.rail, 1, 'icon rail present')
+  assert.deepEqual(history.railLinks, ['History', 'Devices', 'Settings'])
+  assert.equal(history.library, 1, 'History keeps its pre-slice Library panel')
+  assert.equal(history.dragStripInLibrary, 0, 'no macOS traffic-light strip')
+  assert.equal(history.manageLink, false, 'no second Devices entry in the Library panel')
+  assert.equal(history.inlineSearch, 0, 'no list-column search')
+  assert.equal(history.toolbarTrigger, 1, 'toolbar search trigger')
+  assert.deepEqual(history.windowControls, windowControls)
+  await shot('00-history')
+  phase.steps.push(
+    `${platform}: icon rail [History, Devices, Settings]; Library panel without strip/Manage; toolbar search trigger; window controls ${JSON.stringify(windowControls)}`
+  )
+
+  await (await browser.$('button[aria-label="Search and filter"]')).click()
+  const input = await browser.$('[data-testid="history-search-surface"] [role="combobox"]')
+  await input.waitForExist({ timeout: 10_000 })
+  await browser.keys('type:'.split(''))
+  await browser.waitUntil(
+    async () =>
+      JSON.stringify(await optionTexts(browser)) ===
+      JSON.stringify(['Text3', 'Rich Text0', 'Image0', 'File2']),
+    { timeout: 15_000, timeoutMsg: 'toolbar search candidates never showed counts' }
+  )
+  await shot('01-toolbar-search-counts')
+  await browser.keys(['Enter'])
+  await browser.waitUntil(async () => (await rowCount()) === 3, {
+    timeout: 15_000,
+    timeoutMsg: 'Text filter from the toolbar search never applied',
+  })
+  await browser.keys(['Escape'])
+  phase.steps.push(
+    'toolbar search overlay: type: candidates Text 3 / Rich Text 0 / Image 0 / File 2; Enter applies Text'
+  )
+
+  await (await browser.$('aside.w-12 a[aria-label="Devices"]')).click()
+  await waitPath('/devices')
+  await (await browser.$('[data-testid="devices-add-device"]')).waitForExist({ timeout: 10_000 })
+  const devices = await dom()
+  assert.equal(devices.rail, 1)
+  assert.equal(devices.library, 0, 'Devices has no second navigation on this platform')
+  await shot('02-devices')
+  phase.steps.push('rail Devices -> /devices: device list + detail, no Library sidebar')
+
+  await (await browser.$('aside.w-12 a[aria-label="Settings"]')).click()
+  await waitPath('/settings')
+  await shot('03-settings')
+  await browser.execute(() =>
+    [...document.querySelectorAll('a, button')].find(el => el.textContent.trim() === 'Back').click()
+  )
+  await waitPath('/devices')
+  await (await browser.$('aside.w-12 a[aria-label="History"]')).click()
+  await waitPath('/history')
+  phase.steps.push('rail Settings -> /settings; Back -> /devices; rail History -> /history')
+
+  assert.deepEqual(
+    await browser.execute(() => window.__ucPageErrors ?? []),
+    [],
+    'no uncaught page errors'
+  )
+}
+
+await runPhase(
+  'fullPageWindows',
+  'e2e/fixtures/history-full-app.tsx',
+  1465,
+  { width: 1280, height: 800 },
+  (browser, phase, shot) =>
+    railBranch(browser, phase, shot, {
+      platform: 'windows',
+      windowControls: ['最小化', '最大化', '关闭'],
+    }),
+  '&platform=windows'
+)
+
+await runPhase(
+  'fullPageLinuxSystemFrame',
+  'e2e/fixtures/history-full-app.tsx',
+  1467,
+  { width: 1280, height: 800 },
+  (browser, phase, shot) =>
+    railBranch(browser, phase, shot, { platform: 'linux', windowControls: [] }),
+  '&platform=linux&frame=system'
+)
+
+console.log(
+  `PASS ${Object.entries(report)
+    .map(([name, phase]) => `${name}=${phase.result}`)
+    .join(' ')}`
+)

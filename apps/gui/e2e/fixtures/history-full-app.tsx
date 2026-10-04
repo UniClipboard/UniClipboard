@@ -66,5 +66,24 @@ Object.defineProperty(window, '__TAURI_EVENT_PLUGIN_INTERNALS__', {
   value: { unregisterListener: () => {} },
 })
 
+// Optional platform branch for checking the Windows/Linux layouts in a browser
+// (DOM only, not a native acceptance): ?platform=windows|linux, ?frame=system.
+const platformOverride = params.get('platform')
+if (platformOverride === 'windows' || platformOverride === 'linux') {
+  const windows = platformOverride === 'windows'
+  const fake = {
+    userAgent: windows
+      ? 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0 Safari/537.36'
+      : 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0 Safari/537.36',
+    platform: windows ? 'Win32' : 'Linux x86_64',
+    userAgentData: { platform: windows ? 'Windows' : 'Linux', brands: [], mobile: false },
+  }
+  for (const [key, value] of Object.entries(fake)) {
+    Object.defineProperty(navigator, key, { configurable: true, get: () => value })
+  }
+}
+const frame = params.get('frame')
+if (frame) localStorage.setItem('uniclipboard.useSystemWindowFrame', frame)
+
 history.replaceState(null, '', '/history')
 void import('@/bootstrap')

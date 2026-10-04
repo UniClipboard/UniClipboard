@@ -41,6 +41,10 @@ interface CompositeSearchInputProps {
   variant?: 'compact' | 'list'
   /** Keyboard shortcut shown at the field's end while closed, e.g. ⌘F. */
   shortcutHint?: string
+  /** The buffer is a `key:value` token; the list variant sets it in mono. */
+  typingToken?: boolean
+  /** Keyboard help under the list variant's suggestions. */
+  suggestionsFooter?: string
   className?: string
 }
 
@@ -76,6 +80,8 @@ function CompositeSearchInput({
   onHighlight,
   variant = 'compact',
   shortcutHint,
+  typingToken = false,
+  suggestionsFooter,
   className,
 }: CompositeSearchInputProps) {
   const list = variant === 'list'
@@ -172,7 +178,10 @@ function CompositeSearchInput({
             }}
             onBlur={() => onOpenChange(false)}
             placeholder={chips.length === 0 ? placeholder : ''}
-            className="min-w-0 flex-1 bg-transparent text-ui-body text-foreground outline-none placeholder:text-muted-foreground/50"
+            className={cn(
+              'min-w-0 flex-1 bg-transparent text-ui-body outline-none placeholder:text-muted-foreground/50',
+              list && typingToken ? 'font-mono text-primary' : 'text-foreground'
+            )}
           />
           {shortcutHint && !open && <Kbd className="shrink-0">{shortcutHint}</Kbd>}
           {!list && totalCount > 0 && !open && chips.length === 0 && (
@@ -203,6 +212,8 @@ function CompositeSearchInput({
               highlightIndex={clampedHighlight}
               onSelect={onSelectOption}
               onHighlight={onHighlight}
+              variant={variant}
+              footer={suggestionsFooter}
             />
           )}
         </div>

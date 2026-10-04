@@ -1121,6 +1121,7 @@
       },
       "noMatches": "无匹配项",
       "removeFilter": "移除筛选：{{filter}}",
+      "keyboardHint": "↑↓ 选择 · ↵ 或 ⇥ 转为筛选条件 · 输入框为空时 ⌫ 编辑上一个条件",
       "relaxTitle": "试试去掉一个筛选条件",
       "moreFilters": "展开其余 {{count}} 个筛选",
       "clearAll": "清除全部",

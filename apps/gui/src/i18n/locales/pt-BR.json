@@ -1123,6 +1123,7 @@
       },
       "noMatches": "Nenhum resultado",
       "removeFilter": "Remover filtro: {{filter}}",
+      "keyboardHint": "↑↓ escolher · ↵ ou ⇥ vira filtro · ⌫ com o campo vazio edita o último filtro",
       "relaxTitle": "Tente remover um filtro",
       "moreFilters": "Mostrar mais {{count}} filtros",
       "clearAll": "Limpar tudo",

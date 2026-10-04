@@ -1122,6 +1122,7 @@
       },
       "noMatches": "No matches",
       "removeFilter": "Remove filter: {{filter}}",
+      "keyboardHint": "↑↓ choose · ↵ or ⇥ turn into chip · ⌫ on an empty field edits the last chip",
       "relaxTitle": "Try removing one filter",
       "moreFilters": "Show {{count}} more filters",
       "clearAll": "Clear all",

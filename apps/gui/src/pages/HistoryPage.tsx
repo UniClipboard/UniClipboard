@@ -36,7 +36,12 @@ import { useShortcut } from '@/hooks/useShortcut'
 const HistoryPage: React.FC = () => {
   const { t } = useTranslation()
   const c = useHistoryController()
+  // The layout decides where search lives: a toolbar overlay where it offers a
+  // toolbar host (Windows, Linux), the top of the list column where it does not
+  // (macOS). Both read the same search state.
+  const { contentToolbarHost } = useSidebarSlot()
   const searchProps: CompositeSearchBarProps = {
+    variant: contentToolbarHost ? 'compact' : 'list',
     contentFilter: c.filter.activeFilter,
     sourceFilter: c.filter.sourceFilter,
     tagFilter: c.filter.tagFilter,
@@ -78,10 +83,6 @@ const HistoryPage: React.FC = () => {
     navigate(location.pathname, { replace: true, state: null })
   }, [libraryFilter, location.pathname, navigate, setContentFilter])
 
-  // The layout decides where search lives: a toolbar overlay where it offers a
-  // toolbar host (Windows, Linux), the top of the list column where it does not
-  // (macOS). Both read the same search state.
-  const { contentToolbarHost } = useSidebarSlot()
   const [searchOpen, setSearchOpen] = useState(false)
   const searchControlRef = useRef<HTMLDivElement>(null)
   const searchSuggestionsOpen = compositeSearch.expanded && compositeSearch.buffer.trim().length > 0
@@ -227,7 +228,6 @@ const HistoryPage: React.FC = () => {
                   <div className="px-4 py-2.5">
                     <CompositeSearchBarView
                       {...searchProps}
-                      variant="list"
                       shortcutHint="⌘F"
                       state={compositeSearch}
                     />

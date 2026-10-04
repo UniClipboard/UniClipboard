@@ -72,6 +72,7 @@ export function useCompositeSearchBar({
   onUnhandledKeyDown,
   suggestionActivation = 'focus',
   fetchCounts,
+  variant = 'compact',
 }: CompositeSearchBarProps) {
   const { t } = useTranslation()
   // Seed the text buffer from the restored session query so the box reflects an
@@ -118,11 +119,17 @@ export function useCompositeSearchBar({
       label: c.label,
       icon: c.icon,
       isActive: c.isActive,
+      // The list-column field also names the dimension being typed (HList B1).
       header:
-        !inToken && (i === 0 || candidates[i - 1].dimension !== c.dimension)
+        (!inToken && (i === 0 || candidates[i - 1].dimension !== c.dimension)) ||
+        (inToken && variant === 'list' && i === 0)
           ? t(DIMENSION_LABEL_KEYS[c.dimension])
           : undefined,
       hint: candidateCounts?.[i]?.toLocaleString(),
+      countLabel:
+        candidateCounts?.[i] === undefined
+          ? undefined
+          : t('history.subtitle', { count: candidateCounts[i] }),
     })),
   ]
   const clampedHighlight =
@@ -272,6 +279,7 @@ export function useCompositeSearchBar({
     setOpen,
     panelId,
     current,
+    inToken,
     chips,
     options,
     visibleChips: open ? chips : chips.slice(0, 2),

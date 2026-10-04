@@ -193,9 +193,12 @@ await runPhase(
         timeout: 20_000,
         timeoutMsg: `history list never showed ${n} rows`,
       })
+    // The list-column panel shows "<value><n items>" and marks the highlighted row with ↵.
+    const listOptionTexts = async () =>
+      (await optionTexts(browser)).map(text => text.replace('↵', ''))
     const waitOptions = expected =>
       browser.waitUntil(
-        async () => JSON.stringify(await optionTexts(browser)) === JSON.stringify(expected),
+        async () => JSON.stringify(await listOptionTexts()) === JSON.stringify(expected),
         { timeout: 15_000, timeoutMsg: `options never became ${JSON.stringify(expected)}` }
       )
     const keys = text => browser.keys(text.split(''))
@@ -212,7 +215,9 @@ await runPhase(
         rootFontSize: getComputedStyle(document.documentElement).fontSize,
         sidebar: width(document.querySelector('aside:has(nav[aria-label="Library"])')),
         list: width(document.querySelector('[data-panel-id="history-list"], #history-list')),
-        preview: width(document.querySelector('[data-panel-id="history-preview"], #history-preview')),
+        preview: width(
+          document.querySelector('[data-panel-id="history-preview"], #history-preview')
+        ),
       }
     })
 
@@ -221,11 +226,11 @@ await runPhase(
     await input.waitForExist({ timeout: 10_000 })
     await input.click()
     await keys('from:e2e')
-    await waitOptions(['e2e-phone3'])
+    await waitOptions(['e2e-phone3 items'])
     await browser.keys(['Enter'])
     await waitRows(3)
     await keys('type:')
-    await waitOptions(['Text3', 'Rich Text0', 'Image0', 'File0'])
+    await waitOptions(['Text3 items', 'Rich Text0 items', 'Image0 items', 'File0 items'])
     await shot('B1-typeahead-with-from-chip')
     phase.steps.push('B1: from:e2e-phone chip + "type:" -> Text 3 / Rich Text 0 / Image 0 / File 0')
 
@@ -240,7 +245,7 @@ await runPhase(
     await browser.keys(Array(6).fill('Backspace'))
     await waitRows(3)
     await keys('ext:md')
-    await waitOptions(['.md0'])
+    await waitOptions(['.md0 items'])
     await browser.keys(['Enter'])
     await waitRows(0)
     const relaxations = () =>
@@ -276,7 +281,7 @@ await runPhase(
     await browser.keys(['Backspace'])
     assert.equal(await input.getValue(), 'from:e2e-phone')
     await waitRows(3)
-    await waitOptions(['e2e-phone3'])
+    await waitOptions(['e2e-phone3 items'])
     await shot('chip-edit-backspace')
     await browser.keys(['Enter'])
     await waitRows(3)

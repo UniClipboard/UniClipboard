@@ -497,17 +497,48 @@ jobs:
           echo "### FlareRelease" >> $GITHUB_STEP_SUMMARY
           echo "Release registered as Ready. Promote it explicitly in FlareRelease when approved." >> $GITHUB_STEP_SUMMARY
 
-  mirror-desktop-gitcode:
-    name: Mirror desktop installers to GitCode
+  dispatch-mirror-alpha:
+    # alpha release 由本 workflow 用 GITHUB_TOKEN 直接创建为已发布状态,不会
+    # 触发 mirror-desktop-gitcode.yml 的 release.published 入口(GITHUB_TOKEN
+    # 产生的事件不会级联触发其他 workflow)。这里和 dispatch-copr-alpha /
+    # dispatch-snap / dispatch-npm-alpha 一样,异步触发一个独立的 workflow
+    # run,不在本 run 内等待镜像完成。
+    #
+    # 必须显式把 dispatch 的 ref 定为 main:mirror-desktop-gitcode.yml 的
+    # mirror job 用了 `environment: mirror`,该 environment 的部署分支策略
+    # 只允许 main。旧实现用 `uses: ./.github/workflows/mirror-desktop-gitcode.yml`
+    # 内联调用,job 的 ref 是本次发布的 tag,会在任何 step 执行前被
+    # environment protection rule 直接拒绝——这是 job 启动前的拒绝,reusable
+    # workflow 内部的 non_blocking/continue-on-error 完全介入不到这一层
+    # (issue: mirror job 在 v1.1.1 (#1835) 上以 "Tag is not allowed to deploy
+    # to mirror due to environment protection rules" 零 step 失败)。改成从
+    # main 发起 workflow_dispatch 后,job 的 ref 就是 main,满足保护规则;
+    # 通过 inputs 传递这次发布不可变的 tag_name/version/channel,实际镜像的
+    # 仍是这次发布登记的产物,不是 main 分支当前任何未发布的内容。
+    name: Dispatch GitCode mirror for alpha
     needs: [validate, create-release]
-    if: success()
-    uses: ./.github/workflows/mirror-desktop-gitcode.yml
-    with:
-      tag_name: v${{ needs.validate.outputs.version }}
-      version: ${{ needs.validate.outputs.version }}
-      channel: ${{ needs.validate.outputs.channel }}
-      non_blocking: true
-    secrets: inherit
+    if: ${{ success() && needs.validate.outputs.channel == 'alpha' }}
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Dispatch GitCode mirror
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.validate.outputs.version }}
+          CHANNEL: ${{ needs.validate.outputs.channel }}
+        run: |
+          gh api \
+            --method POST \
+            "repos/${{ github.repository }}/actions/workflows/mirror-desktop-gitcode.yml/dispatches" \
+            -f ref="main" \
+            -f inputs[tag_name]="v${VERSION}" \
+            -f inputs[version]="${VERSION}" \
+            -f inputs[channel]="${CHANNEL}" \
+            -f inputs[non_blocking]="true"
+
+          echo "Dispatched mirror-desktop-gitcode.yml for v${VERSION} (${CHANNEL}) from main." >> "$GITHUB_STEP_SUMMARY"
 
   dispatch-snap:
     # snap 构建耗时较长,不能作为 reusable job 挂在 release 里等待。

@@ -103,18 +103,79 @@ on:
           - alpha
           - beta
           - rc
+      non_blocking:
+        description: 'Report problems as warnings instead of failing the run'
+        required: false
+        default: false
+        type: boolean
+  # Fires once a human actually publishes a stable/beta/rc GitHub Release
+  # (draft -> published). alpha releases skip this entirely: they are
+  # published directly with GITHUB_TOKEN by release.yml, which never fires
+  # `release.published` (GITHUB_TOKEN-authored events don't cascade into
+  # other workflow runs) — release.yml's own dispatch-mirror-alpha job
+  # covers that channel instead.
+  #
+  # This trigger only runs the redispatch-from-release job below, never the
+  # mirror job directly: a run started by the `release` event still carries
+  # the tag as its own ref, so the mirror job's `environment: mirror`
+  # (main-only deployment branch policy) would reject it exactly like the
+  # old inline call from release.yml did. redispatch-from-release carries no
+  # environment and is free to run on that ref; its only job is to start a
+  # *new*, separate workflow_dispatch run pinned to `ref: main`, which is
+  # what actually satisfies the environment's branch policy.
+  release:
+    types: [published]
 
 concurrency:
-  group: gitcode-mirror-${{ inputs.tag_name }}
+  group: gitcode-mirror-${{ inputs.tag_name || github.event.release.tag_name }}
   cancel-in-progress: false
 
 jobs:
+  redispatch-from-release:
+    name: Redispatch mirror from a trusted main ref
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Dispatch from main with the published tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ github.event.release.tag_name }}
+        run: |
+          # Same channel derivation as release.yml's validate job: strip the
+          # leading v, then a `-<word>` suffix names the channel, else stable.
+          VERSION="${TAG_NAME#v}"
+          if [[ "$VERSION" =~ -([a-zA-Z]+) ]]; then
+            CHANNEL="${BASH_REMATCH[1]}"
+          else
+            CHANNEL="stable"
+          fi
+
+          gh api \
+            --method POST \
+            "repos/${{ github.repository }}/actions/workflows/mirror-desktop-gitcode.yml/dispatches" \
+            -f ref="main" \
+            -f inputs[tag_name]="$TAG_NAME" \
+            -f inputs[version]="$VERSION" \
+            -f inputs[channel]="$CHANNEL" \
+            -f inputs[non_blocking]="true"
+
+          echo "Dispatched mirror-desktop-gitcode.yml for $TAG_NAME ($CHANNEL) from main." >> "$GITHUB_STEP_SUMMARY"
+
   mirror:
     name: Mirror desktop installers to GitCode
+    if: github.event_name != 'release'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     # The SSH key is an environment secret that only the main branch may use,
-    # same environment Mobile's mirror-android-gitcode job uses.
+    # same environment Mobile's mirror-android-gitcode job uses. Only a run
+    # dispatched with `ref: main` (workflow_dispatch, from
+    # redispatch-from-release or release.yml's dispatch-mirror-alpha) ever
+    # reaches this job; a run triggered directly by `release.published`
+    # stops at redispatch-from-release above, since `inputs.*` would be
+    # empty here and this job's ref would still be the tag.
     environment: mirror
     steps:
       # Not pinned to inputs.tag_name: the registration-building scripts below

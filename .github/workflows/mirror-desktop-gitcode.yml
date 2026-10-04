@@ -203,6 +203,26 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: lts/*
+
+      # Not gated by `non_blocking`: a draft release or a mismatched
+      # tag_name/version/channel is a caller error, not a flaky-infra
+      # condition — it must always stop the job before anything is
+      # downloaded or uploaded, on every entry point (automatic or manual
+      # workflow_dispatch) alike.
+      - name: Reject draft releases and inconsistent tag/version/channel
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          node scripts/validate-mirror-release.mjs \
+            --repo "${{ github.repository }}" \
+            --tag-name "${{ inputs.tag_name }}" \
+            --version "${{ inputs.version }}" \
+            --channel "${{ inputs.channel }}"
+
       - name: Download release assets from the GitHub Release
         continue-on-error: ${{ inputs.non_blocking == true }}
         env:
@@ -211,11 +231,6 @@ jobs:
         run: |
           mkdir -p release-assets
           gh release download "$RELEASE_TAG" --repo "${{ github.repository }}" --dir release-assets
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: lts/*
 
       - name: Rebuild the FlareRelease registration payload
         id: registration

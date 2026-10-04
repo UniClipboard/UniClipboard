@@ -20,6 +20,7 @@ pub mod file_ports;
 pub mod gui_wiring;
 #[cfg(target_os = "linux")]
 pub mod hyprland;
+pub mod language;
 pub mod modifier_double_tap;
 pub mod modifier_double_tap_monitor;
 pub mod paths;

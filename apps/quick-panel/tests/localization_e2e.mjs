@@ -39,7 +39,6 @@ const EXPECTED = {
     hint: '选择',
     locked: '应用界面已锁定',
     firstUse: '还没有剪贴板历史',
-    chip: '9月1日',
   },
   'zh-TW': {
     ocr: 'zh-Hant',
@@ -50,7 +49,6 @@ const EXPECTED = {
     hint: '選擇',
     locked: '應用程式介面已鎖定',
     firstUse: '還沒有剪貼簿歷史',
-    chip: '9月1日',
   },
   'en-US': {
     ocr: 'en-US',
@@ -61,7 +59,6 @@ const EXPECTED = {
     hint: 'select',
     locked: 'The app is locked',
     firstUse: 'No clipboard history yet',
-    chip: 'Sep 1',
   },
   'ja-JP': {
     ocr: 'ja-JP',
@@ -72,7 +69,6 @@ const EXPECTED = {
     hint: '選択',
     locked: 'アプリはロックされています',
     firstUse: 'クリップボード履歴はまだありません',
-    chip: '9月1日',
   },
   'ru-RU': {
     ocr: 'ru-RU',
@@ -83,7 +79,6 @@ const EXPECTED = {
     hint: 'выбор',
     locked: 'Приложение заблокировано',
     firstUse: 'История буфера обмена пока пуста',
-    chip: '01.09',
   },
   'pt-BR': {
     ocr: 'pt-BR',
@@ -94,7 +89,6 @@ const EXPECTED = {
     hint: 'selecionar',
     locked: 'O app está bloqueado',
     firstUse: 'Ainda não há histórico',
-    chip: '01/09',
   },
 }
 // Labels of the old, hard-coded panel. None may appear in a language other than Chinese.
@@ -301,10 +295,13 @@ test('GPUI quick panel follows the configured language', { timeout: 600_000 }, a
         )
   }
 
-  const run = async (name, language, body) => {
+  // `beforePanel` sets the fixture up before the panel starts, so that its first read already
+  // sees it (a locked fixture, for the locked page).
+  const run = async (name, language, body, beforePanel = async () => {}) => {
     await t.test(name, async () => {
       await startFixture(language)
       try {
+        await beforePanel()
         await startPanel()
         await body()
       } finally {
@@ -340,27 +337,49 @@ test('GPUI quick panel follows the configured language', { timeout: 600_000 }, a
       await toggle()
       await delay(800)
       const before = await toggle()
-      await read('switch-first-frame', 'history', 'zh-CN')
+      // Evidence only: the window may not be listed yet, and the frame may be the old language.
+      await read('switch-first-frame', 'history', 'zh-CN').catch(error =>
+        manifest.steps.push({ step: 'switch-first-frame', missing: String(error) })
+      )
       await until('settings read again', async () => (await fixtureState()).settingsReads > before)
       await delay(700)
       await checkHistoryAndMenu('switch-after', 'zh-CN')
     })
-    // e: the locked page follows the configured language, not the system one.
-    const other = bundleFor(system) === 'ja-JP' ? 'ru-RU' : 'ja-JP'
-    await run('locked page follows the configured language', other, async () => {
-      await fetch(`${address}/__test/locked?on=1`)
-      await open()
-      const lines = await read('locked', 'history', other)
-      assert.ok(contains(lines, EXPECTED[other].locked), `locked page in ${other}: ${lines}`)
-    })
-    // f: a typed date range becomes a chip labelled in the configured language.
+    // e: the locked page follows the configured language, not the system one, from the panel's
+    // first read on (the content is locked before it starts), and after a change while locked.
+    const [other, third] = ['ja-JP', 'ru-RU', 'pt-BR'].filter(l => l !== bundleFor(system))
+    await run(
+      'locked page follows the configured language',
+      other,
+      async () => {
+        await open()
+        const lines = await read('locked', 'history', other)
+        assert.ok(contains(lines, EXPECTED[other].locked), `locked page in ${other}: ${lines}`)
+        await fetch(`${address}/__test/language?value=${third}`)
+        await toggle()
+        await delay(800)
+        await open()
+        const changed = await read('locked-changed', 'history', third)
+        assert.ok(contains(changed, EXPECTED[third].locked), `locked page in ${third}: ${changed}`)
+      },
+      async () => {
+        await fetch(`${address}/__test/locked?on=1`)
+      }
+    )
+    // f: a typed date range becomes a chip labelled in the configured language. The text starts
+    // with a letter, as in e2e.mjs, so no key of it is taken as a list shortcut.
     await run('date chip is localized', 'en-US', async () => {
       await open()
-      await type('9.1-9.15')
+      await type('docker 3d')
       // Tab accepts the suggested time range. Never Enter: it would paste the selected entry.
       await press('tab')
+      await until('search with the time range', async () => {
+        const last = (await fixtureState()).lastSearch
+        return last?.query === 'docker' && last.fromMs !== null
+      })
+      await delay(500)
       const lines = await read('date-chip', 'history', 'en-US')
-      assert.ok(contains(lines, EXPECTED['en-US'].chip), `date chip: ${lines}`)
+      assert.ok(contains(lines, 'Last 3 days'), `date chip: ${lines}`)
     })
     // g: a page the panel draws itself, here the first-use page.
     await run('first-use page is localized', 'pt-BR', async () => {

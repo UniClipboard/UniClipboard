@@ -7,8 +7,9 @@ run-name: >-
 # Chocolatey 没有官方自动升级 bot(不像 nixpkgs 的 r-ryantm、Scoop Extras 的
 # excavator),每个新版本都得我们自己 pack + push。本 workflow 在 stable
 # release 正式发布后自动:下载 NSIS 安装器、算 sha256(并与 release 自带的
-# minisign 签名 SHA256SUMS.txt 交叉核对防篡改)、回填 nuspec 与 install 脚本、
-# choco pack、choco push 到 community repo。
+# minisign 签名 SHA256SUMS.txt 交叉核对防篡改)、回填 nuspec(version、
+# releaseNotes)、install 脚本(checksum64)与 VERIFICATION.txt、choco pack、
+# choco push 到 community repo。
 #
 # 首版仍需人工过 moderation 上架;之后版本走 trusted maintainer 自动校验。
 # 与 homebrew-tap.yml / copr.yml 一样监听 release.published —— stable release
@@ -79,8 +80,17 @@ jobs:
 
           $nuspec  = 'packaging/chocolatey/uniclipboard.nuspec'
           $install = 'packaging/chocolatey/tools/chocolateyInstall.ps1'
-          (Get-Content $nuspec)  -replace '<version>[^<]*</version>', "<version>$env:VERSION</version>" | Set-Content $nuspec
+          $verify  = 'packaging/chocolatey/tools/VERIFICATION.txt'
+          (Get-Content $nuspec) `
+            -replace '<version>[^<]*</version>', "<version>$env:VERSION</version>" `
+            -replace '<releaseNotes>[^<]*</releaseNotes>', "<releaseNotes>https://github.com/UniClipboard/UniClipboard/releases/tag/v$env:VERSION</releaseNotes>" |
+            Set-Content $nuspec
           (Get-Content $install) -replace "checksum64\s+= '[^']*'", "checksum64     = '$sha'" | Set-Content $install
+          (Get-Content $verify) `
+            -replace 'releases/tag/v[0-9][^\s]*', "releases/tag/v$env:VERSION" `
+            -replace 'UniClipboard_[0-9][^\s]*_x64-setup\.exe', "UniClipboard_${env:VERSION}_x64-setup.exe" `
+            -replace '(?<=checksum64 \(sha256\): )[0-9a-f]+', $sha |
+            Set-Content $verify
 
       - name: Pack
         shell: pwsh

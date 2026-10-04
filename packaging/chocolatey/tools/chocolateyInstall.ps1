@@ -10,10 +10,8 @@ $packageArgs = @{
   # single x64 installer covers both; add url/checksum for arm64 if you want a
   # native ARM64 install path.
   url64bit       = "https://github.com/UniClipboard/UniClipboard/releases/download/v$version/UniClipboard_${version}_x64-setup.exe"
-  # Placeholder. Fill before pushing — see ..\README.md (Get-RemoteChecksum or
-  # the minisign-signed SHA256SUMS.txt from the release). Do NOT trust a hash
-  # produced by an untrusted shell.
-  checksum64     = 'REPLACE_WITH_SHA256'
+  # Cross-checked against the v1.1.0 release's minisign-signed SHA256SUMS.txt.
+  checksum64     = '64932773bd70a1a3d3c53f43eb1144e68e60fd598c7347e63a2896a18b25f1cf'
   checksumType64 = 'sha256'
   silentArgs     = '/S'   # NSIS silent install
   validExitCodes = @(0)

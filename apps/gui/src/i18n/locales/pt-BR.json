@@ -1123,6 +1123,7 @@
       },
       "noMatches": "Nenhum resultado",
       "removeFilter": "Remover filtro: {{filter}}",
+      "relaxTitle": "Tente remover um filtro",
       "moreFilters": "Mostrar mais {{count}} filtros",
       "clearAll": "Limpar tudo",
       "close": "Fechar painel de pesquisa",

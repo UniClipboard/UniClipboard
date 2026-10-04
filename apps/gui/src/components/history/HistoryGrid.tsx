@@ -30,6 +30,8 @@ interface HistoryGridProps {
   onCardClick: (id: string) => void
   onHoverChange: (id: string, hovered: boolean) => void
   onScrollStateRestored?: () => void
+  /** Extra actions under the "no results" message of an active search. */
+  emptyStateActions?: React.ReactNode
 }
 
 /**
@@ -57,6 +59,7 @@ const HistoryGrid: React.FC<HistoryGridProps> = ({
   onCardClick,
   onHoverChange,
   onScrollStateRestored,
+  emptyStateActions,
 }) => {
   const { t } = useTranslation()
 
@@ -83,6 +86,7 @@ const HistoryGrid: React.FC<HistoryGridProps> = ({
                 <p className="text-ui-body text-muted-foreground/50">
                   {t('clipboard.search.noResultsSub')}
                 </p>
+                {emptyStateActions && <div className="pt-3">{emptyStateActions}</div>}
               </>
             ) : (
               <>

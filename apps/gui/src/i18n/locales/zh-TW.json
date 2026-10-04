@@ -1121,6 +1121,7 @@
       },
       "noMatches": "無匹配項",
       "removeFilter": "移除篩選：{{filter}}",
+      "relaxTitle": "試試移除一個篩選條件",
       "moreFilters": "展開其餘 {{count}} 個篩選",
       "clearAll": "清除全部",
       "close": "關閉搜尋面板",

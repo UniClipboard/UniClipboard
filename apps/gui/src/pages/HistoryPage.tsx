@@ -13,6 +13,8 @@ import {
   HistorySearchPanel,
 } from '@/components/history/composite-search'
 import { useCompositeSearchBar } from '@/components/history/composite-search/useCompositeSearchBar'
+import { useZeroResultRelaxations } from '@/components/history/composite-search/useZeroResultRelaxations'
+import ZeroResultRelaxations from '@/components/history/composite-search/ZeroResultRelaxations'
 import {
   HISTORY_ENTRY_ANIMATION,
   HISTORY_PREVIEW_ENTRY_TRANSITION,
@@ -50,6 +52,13 @@ const HistoryPage: React.FC = () => {
     fetchCounts: countSearch,
   })
   const searchSuggestionsOpen = compositeSearch.expanded && compositeSearch.buffer.trim().length > 0
+  const relaxations = useZeroResultRelaxations({
+    active: c.isSearchActive && !c.searchLoading && c.items.length === 0,
+    chips: compositeSearch.chips,
+    current: compositeSearch.current,
+    query: c.filter.submittedQuery.trim(),
+    fetchCounts: countSearch,
+  })
 
   useShortcut({
     id: 'clipboard.search',
@@ -197,6 +206,14 @@ const HistoryPage: React.FC = () => {
                 onCardClick={c.handleCardClick}
                 onHoverChange={c.handleHoverChange}
                 onScrollStateRestored={() => c.setScrollState(null)}
+                emptyStateActions={
+                  relaxations && (
+                    <ZeroResultRelaxations
+                      relaxations={relaxations}
+                      onRemove={compositeSearch.resetDimension}
+                    />
+                  )
+                }
               />
             </div>
           </ResizablePanel>

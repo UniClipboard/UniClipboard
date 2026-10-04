@@ -262,6 +262,7 @@ export function useCompositeSearchBar({
     open,
     setOpen,
     panelId,
+    current,
     chips,
     options,
     visibleChips: open ? chips : chips.slice(0, 2),

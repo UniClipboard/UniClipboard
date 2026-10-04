@@ -4,6 +4,7 @@ import { Filter } from '@/api/clipboardItems'
 import {
   buildCandidates,
   buildChips,
+  buildRelaxationQueries,
   parseBuffer,
   searchableTagsToOptions,
   type FilterSnapshot,
@@ -137,5 +138,21 @@ describe('composite search model', () => {
 
     expect(chip.dimension).toBe('tag')
     expect(chip.label).toBe('#链接')
+  })
+
+  it('builds one relaxation query per chip, dropping only that chip', () => {
+    const snapshot: FilterSnapshot = {
+      ...current,
+      type: Filter.Image,
+      time: 'today',
+      extension: 'png',
+    }
+    const chips = buildChips({ t, sourceOptions: [], current: snapshot, tagOptions: [] })
+
+    expect(buildRelaxationQueries(chips, snapshot, 'logo')).toEqual([
+      { query: 'logo', timePreset: 'today', extensions: 'png' },
+      { query: 'logo', tags: 'image', extensions: 'png' },
+      { query: 'logo', tags: 'image', timePreset: 'today' },
+    ])
   })
 })

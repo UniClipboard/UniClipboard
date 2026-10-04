@@ -1122,6 +1122,7 @@
       },
       "noMatches": "一致しません",
       "removeFilter": "フィルタを削除: {{filter}}",
+      "relaxTitle": "フィルタを 1 つ外してみてください",
       "moreFilters": "さらに {{count}} 個のフィルタを表示",
       "clearAll": "すべてクリア",
       "close": "検索パネルを閉じる",

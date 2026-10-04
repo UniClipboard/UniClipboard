@@ -225,6 +225,10 @@ function withDimension(
   return { ...current, [dimension]: value }
 }
 
+function withoutDimension(current: FilterSnapshot, dimension: Dimension): FilterSnapshot {
+  return { ...current, [dimension]: DIMENSION_DEFAULTS[dimension] }
+}
+
 function snapshotToSearchParams(snapshot: FilterSnapshot, query: string): SearchParams {
   return liveModelToSearchParams(
     buildLiveSearchModel({
@@ -250,6 +254,15 @@ export function buildCandidateCountQueries(
   return candidates
     .slice(0, MAX_SEARCH_COUNT_BATCH)
     .map(c => snapshotToSearchParams(withDimension(current, c.dimension, c.value), ''))
+}
+
+/** One count query per chip: the current search with only that chip removed. */
+export function buildRelaxationQueries(
+  chips: ChipData[],
+  current: FilterSnapshot,
+  query: string
+): SearchParams[] {
+  return chips.map(chip => snapshotToSearchParams(withoutDimension(current, chip.dimension), query))
 }
 
 /** i18n keys for each dimension's group header in the suggestion panel. */

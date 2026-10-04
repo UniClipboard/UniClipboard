@@ -1122,6 +1122,7 @@
       },
       "noMatches": "No matches",
       "removeFilter": "Remove filter: {{filter}}",
+      "relaxTitle": "Try removing one filter",
       "moreFilters": "Show {{count}} more filters",
       "clearAll": "Clear all",
       "close": "Close search panel",

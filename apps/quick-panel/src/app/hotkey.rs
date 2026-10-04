@@ -21,6 +21,9 @@ impl Shortcuts {
             pending: None,
             definitions: vec![],
         };
+        if super::test_control::enabled() {
+            return Ok(host);
+        }
         host.replace(vec![std::env::var("UC_GPUI_SHORTCUT").unwrap_or_else(
             |_| uc_desktop::shortcuts::DEFAULT_QUICK_PANEL_SHORTCUT.into(),
         )])?;
@@ -35,6 +38,9 @@ impl Shortcuts {
     }
 
     pub fn configure(&mut self, settings: &SettingsDto) -> anyhow::Result<()> {
+        if super::test_control::enabled() {
+            return Ok(());
+        }
         if let Ok(value) = std::env::var("UC_GPUI_SHORTCUT") {
             return self.replace(vec![value]);
         }

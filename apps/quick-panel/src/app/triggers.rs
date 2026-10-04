@@ -6,13 +6,15 @@
 use global_hotkey::{GlobalHotKeyEvent, HotKeyState};
 use gpui::{App, AsyncApp};
 
-use super::{double_tap, hotkey};
+use super::{double_tap, hotkey, test_control};
 use crate::ui::Panel;
 
 /// What asks the panel to open or close.
 pub enum Trigger {
     Hotkey(GlobalHotKeyEvent),
     DoubleTap,
+    /// A `toggle` line from the end-to-end tests, see `test_control`.
+    TestControl,
 }
 
 /// Registers both triggers. The channel must exist before the panel opens, because the panel
@@ -21,6 +23,9 @@ pub fn install(cx: &mut App) -> anyhow::Result<async_channel::Receiver<Trigger>>
     let manager = hotkey::Shortcuts::new()?;
     cx.set_global(manager);
     let (send, receive) = async_channel::unbounded();
+    if test_control::enabled() {
+        test_control::read_stdin(send.clone());
+    }
     let hotkey_send = send.clone();
     GlobalHotKeyEvent::set_event_handler(Some(move |event| {
         let _ = hotkey_send.try_send(Trigger::Hotkey(event));

@@ -436,6 +436,9 @@ impl Panel {
         modifier: uc_daemon_contract::api::dto::settings::QuickPanelDoubleTapModifierDto,
         cx: &mut Context<Self>,
     ) {
+        if crate::app::test_control::enabled() {
+            return;
+        }
         let monitor = cx.global::<crate::app::double_tap::DoubleTap>().0.clone();
         self.runtime.spawn_blocking(move || {
             if monitor.set_modifier(modifier).is_err() {

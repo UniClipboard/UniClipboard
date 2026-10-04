@@ -3,6 +3,7 @@
 pub mod double_tap;
 pub mod hotkey;
 mod lifecycle;
+pub mod test_control;
 mod triggers;
 mod window;
 
@@ -25,7 +26,10 @@ pub fn run() -> anyhow::Result<()> {
         .any(|argument| argument == uc_desktop::quick_panel_helper::EXIT_WHEN_STDIN_CLOSES)
     {
         host.mark_supervised();
-        lifecycle::watch_parent(std::io::stdin(), || std::process::exit(0));
+        // Under test control standard input carries commands, and its reader exits on its end.
+        if !test_control::enabled() {
+            lifecycle::watch_parent(std::io::stdin(), || std::process::exit(0));
+        }
     }
     // Until the settings are read the panel follows the system, as the main window does for an
     // unset language; the search box takes its placeholder from this when it is created.

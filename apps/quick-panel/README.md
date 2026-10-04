@@ -154,6 +154,18 @@ bun apps/quick-panel/export-theme.ts
 
 （已被取代）2026-09-10 的原型曾在客户端遍历分页结果计算标签交集。现已移除：多个标签一次请求发给后台，按并集返回，客户端不再翻页收窄。标签取“且”等待后台的 `tagMode=all`（桌面后台任务 C），在此之前不提供，也不回退到客户端扫描。
 
+## 界面语言端到端测试
+
+```bash
+cargo build -p quick-panel
+UC_GPUI_L10N_E2E_CONFIRM=1 UC_GPUI_E2E_BINARY=target/debug/uniclip-quick-panel \
+  node --test apps/quick-panel/tests/localization_e2e.mjs
+```
+
+用真实 GPUI 程序和合成后台，逐一核对六种语言、无效语言标签、未设置时跟随系统、运行中切换、锁定页、日期条件和首次使用页。文字由 `tests/read_text.swift` 对面板自身窗口截图做系统 OCR 读取；非中文语言另做一遍中文识别，确认旧中文文案不再出现。
+
+隔离方式：面板以 `UC_GPUI_TEST_CONTROL=stdin` 启动，不注册全局快捷键和修饰键双击，只由标准输入的 `toggle` 行开合，标准输入结束即退出；按键只投递给面板进程。合成后台设 `UC_GPUI_FIXTURE_NO_CLIPBOARD=1`，拒绝一切恢复请求而不写系统剪贴板，测试结束时若有任何恢复请求即判失败。`/__test/locked?on=1` 模拟内容锁定：历史、标签、设备返回 423，设置照常返回。面板仍会在屏幕上出现并获得焦点，所以未设 `UC_GPUI_L10N_E2E_CONFIRM=1` 时测试在启动任何进程前就失败。截图、OCR 文字、提交号和可执行文件哈希写入 `UC_GPUI_E2E_ARTIFACTS`（默认临时目录）下的 `manifest.json`。切换语言后首次打开的首帧仍可能是旧语言（设置返回前），测试只记录这一帧，不作断言。
+
 ## 原生客户端端到端测试
 
 ```bash

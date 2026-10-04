@@ -8,7 +8,7 @@ pub mod host;
 pub mod platform;
 
 pub use history::{
-    EntryAction, HistoryService, ImagePayload, Live, Options, PreviewData, SearchFailure,
+    Choices, EntryAction, HistoryService, ImagePayload, Live, Options, PreviewData, SearchFailure,
     ServiceError,
 };
 pub use host::{HostLink, HostRequest};

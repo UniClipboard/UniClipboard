@@ -1,7 +1,9 @@
 use std::time::Duration;
 
-use quick_panel_core::ports::{EntryAction, Options, ServiceError};
+use quick_panel_core::ports::{Choices, EntryAction, Options, ServiceError};
 use quick_panel_core::query::filters::BUILTIN_TAGS;
+
+use uc_daemon_client::DaemonClientContext;
 
 use super::DaemonHistory;
 
@@ -23,6 +25,14 @@ impl DaemonHistory {
 
     pub(super) async fn load_options(&self) -> Result<Options, ServiceError> {
         let context = self.context()?;
+        let settings = context.settings_client().get_settings().await.ok();
+        Ok(Options {
+            choices: Self::load_choices(&context).await,
+            settings,
+        })
+    }
+
+    async fn load_choices(context: &DaemonClientContext) -> Result<Choices, ServiceError> {
         let mut tags: Vec<String> = BUILTIN_TAGS.iter().map(|s| (*s).into()).collect();
         let fetched = context
             .search_client()
@@ -39,12 +49,7 @@ impl DaemonHistory {
             .get_paired_devices()
             .await
             .map_err(|_| ServiceError::DevicesUnavailable)?;
-        let settings = context.settings_client().get_settings().await.ok();
-        Ok(Options {
-            tags,
-            members,
-            settings,
-        })
+        Ok(Choices { tags, members })
     }
 
     pub(super) async fn entry_action(

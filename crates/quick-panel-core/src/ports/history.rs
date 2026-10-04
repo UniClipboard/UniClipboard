@@ -86,9 +86,17 @@ impl std::error::Error for ServiceError {}
 /// Filter choices and settings read when the panel opens.
 #[derive(Debug)]
 pub struct Options {
+    /// Read on their own: the daemon refuses tags and devices while the content is locked, but
+    /// still serves the settings the locked page is drawn with.
+    pub choices: Result<Choices, ServiceError>,
+    pub settings: Option<SettingsDto>,
+}
+
+/// The tags and devices to filter by.
+#[derive(Debug)]
+pub struct Choices {
     pub tags: Vec<String>,
     pub members: Vec<SpaceMemberDto>,
-    pub settings: Option<SettingsDto>,
 }
 
 /// An action on one entry, other than restoring it to the clipboard.

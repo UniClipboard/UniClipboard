@@ -1053,8 +1053,10 @@ fn what_the_daemon_lists_replaces_the_catalog_and_reaches_the_shell() {
     let (mut state, fixture) = open_panel(&["a"]);
     let effects = state.on_event(
         Event::OptionsLoaded(Ok(Box::new(Options {
-            tags: vec!["work".into()],
-            members: vec![],
+            choices: Ok(crate::ports::Choices {
+                tags: vec!["work".into()],
+                members: vec![],
+            }),
             settings: None,
         }))),
         &fixture.ctx(),

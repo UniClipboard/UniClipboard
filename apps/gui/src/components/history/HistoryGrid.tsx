@@ -5,6 +5,7 @@ import { Virtuoso, type StateSnapshot, type VirtuosoHandle } from 'react-virtuos
 import { HistoryScroller, HistoryList } from '@/components/history/history-scroll-components'
 import HistoryGridRow from '@/components/history/HistoryGridRow'
 import type { DisplayClipboardItem } from '@/lib/clipboard-entry'
+import { cn } from '@/lib/utils'
 
 const historyScrollComponents = { Scroller: HistoryScroller, List: HistoryList }
 
@@ -32,6 +33,8 @@ interface HistoryGridProps {
   onScrollStateRestored?: () => void
   /** Extra actions under the "no results" message of an active search. */
   emptyStateActions?: React.ReactNode
+  /** Replaces the "no results" title and subtitle of an active search. */
+  emptyStateText?: { title: string; subtitle: string }
 }
 
 /**
@@ -60,6 +63,7 @@ const HistoryGrid: React.FC<HistoryGridProps> = ({
   onHoverChange,
   onScrollStateRestored,
   emptyStateActions,
+  emptyStateText,
 }) => {
   const { t } = useTranslation()
 
@@ -78,13 +82,14 @@ const HistoryGrid: React.FC<HistoryGridProps> = ({
           <div className="text-center space-y-1">
             {isSearchActive ? (
               <>
-                <p className="text-ui-section">
-                  {submittedQuery.trim()
-                    ? t('clipboard.search.noResults', { query: submittedQuery })
-                    : t('clipboard.search.noResultsFiltered')}
+                <p className={cn('text-ui-section', emptyStateText && 'text-foreground')}>
+                  {emptyStateText?.title ??
+                    (submittedQuery.trim()
+                      ? t('clipboard.search.noResults', { query: submittedQuery })
+                      : t('clipboard.search.noResultsFiltered'))}
                 </p>
                 <p className="text-ui-body text-muted-foreground/50">
-                  {t('clipboard.search.noResultsSub')}
+                  {emptyStateText?.subtitle ?? t('clipboard.search.noResultsSub')}
                 </p>
                 {emptyStateActions && <div className="pt-3">{emptyStateActions}</div>}
               </>

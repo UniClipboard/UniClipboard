@@ -271,8 +271,19 @@ const HistoryPage: React.FC = () => {
                     <ZeroResultRelaxations
                       relaxations={relaxations}
                       onRemove={compositeSearch.resetDimension}
+                      variant={searchProps.variant}
                     />
                   )
+                }
+                emptyStateText={
+                  relaxations && searchProps.variant === 'list'
+                    ? {
+                        title: t('history.composite.relaxTitleAll', {
+                          count: compositeSearch.chips.length,
+                        }),
+                        subtitle: t('history.composite.relaxPrompt'),
+                      }
+                    : undefined
                 }
               />
             </div>

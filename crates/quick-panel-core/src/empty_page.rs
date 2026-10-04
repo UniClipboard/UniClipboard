@@ -2,7 +2,7 @@
 //! suggestions to relax a search that found nothing.
 
 use crate::query::filters::{Dimension, Filters};
-use crate::text::value_label;
+use crate::text::{fill, t, value_label};
 
 /// A search with one condition loosened, offered when nothing matched.
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -25,24 +25,30 @@ pub fn relaxations(filters: &Filters, device_name: impl Fn(&str) -> String) -> V
     };
     match filters.types.as_slice() {
         [] => {}
-        [only] => without(Dimension::Type, format!("去掉 /{}", value_label(only))),
-        _ => without(Dimension::Type, "去掉所有类型".into()),
+        [only] => without(
+            Dimension::Type,
+            fill(t().remove_type, &[("value", value_label(only))]),
+        ),
+        _ => without(Dimension::Type, t().remove_all_types.into()),
     }
     match filters.tags.as_slice() {
         [] => {}
-        [only] => without(Dimension::Tag, format!("去掉 #{}", value_label(only))),
-        _ => without(Dimension::Tag, "去掉所有标签".into()),
+        [only] => without(
+            Dimension::Tag,
+            fill(t().remove_tag, &[("value", value_label(only))]),
+        ),
+        _ => without(Dimension::Tag, t().remove_all_tags.into()),
     }
     if filters.time.is_some() {
-        without(Dimension::Time, "时间范围扩大到全部".into());
+        without(Dimension::Time, t().widen_time.into());
     }
     match filters.sources.as_slice() {
         [] => {}
         [only] => without(
             Dimension::Source,
-            format!("去掉 @{}，包含所有设备", device_name(only)),
+            fill(t().remove_device, &[("name", &device_name(only))]),
         ),
-        _ => without(Dimension::Source, "包含所有设备".into()),
+        _ => without(Dimension::Source, t().include_all_devices.into()),
     }
     result
 }

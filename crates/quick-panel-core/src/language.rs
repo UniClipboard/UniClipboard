@@ -1,39 +1,63 @@
-//! Which language the interface is in, for the features that only exist in Chinese.
+//! The language the panel's own text is in.
+//!
+//! There is one current language for the whole process, like the main window's single i18next
+//! instance: error messages are produced by `Display` implementations, which cannot be handed a
+//! language. The app sets it from the settings; everything else only reads it.
 
-/// Whether the interface language is Chinese.
-///
-/// `configured` is `general.language` from the settings. When it is unset the GUI follows the
-/// system language, so this does too; `system_language` reads it. Where the system language cannot
-/// be read the answer is yes, because the panel's own text is Chinese only until it is translated.
-pub fn is_chinese(
-    configured: Option<&str>,
-    system_language: impl FnOnce() -> Option<String>,
-) -> bool {
-    match configured.filter(|tag| !tag.trim().is_empty()) {
-        Some(tag) => is_chinese_tag(tag),
-        None => system_language().is_none_or(|tag| is_chinese_tag(&tag)),
+use std::sync::atomic::{AtomicU8, Ordering};
+
+/// The languages the main window ships, which the panel has text for as well.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum Language {
+    ZhCn,
+    ZhTw,
+    EnUs,
+    JaJp,
+    RuRu,
+    PtBr,
+}
+
+/// Simplified Chinese until the app has resolved the configured or system language at startup.
+static CURRENT: AtomicU8 = AtomicU8::new(Language::ZhCn as u8);
+
+const ALL: [Language; 6] = [
+    Language::ZhCn,
+    Language::ZhTw,
+    Language::EnUs,
+    Language::JaJp,
+    Language::RuRu,
+    Language::PtBr,
+];
+
+impl Language {
+    /// The language of a locale as `normalize_language` in `crates/uc-desktop/src/language.rs`
+    /// returns it. That function already falls back to `en-US`, so does this.
+    pub fn for_locale(locale: &str) -> Self {
+        match locale {
+            "zh-CN" => Self::ZhCn,
+            "zh-TW" => Self::ZhTw,
+            "ja-JP" => Self::JaJp,
+            "ru-RU" => Self::RuRu,
+            "pt-BR" => Self::PtBr,
+            _ => Self::EnUs,
+        }
     }
-}
 
-/// `zh`, `zh-CN`, `zh_TW` and `zh-Hant` are Chinese; the primary subtag decides.
-fn is_chinese_tag(tag: &str) -> bool {
-    tag.trim()
-        .split(['-', '_', '.'])
-        .next()
-        .is_some_and(|primary| primary.eq_ignore_ascii_case("zh"))
-}
+    pub fn current() -> Self {
+        let value = CURRENT.load(Ordering::Relaxed);
+        ALL.into_iter()
+            .find(|language| *language as u8 == value)
+            .unwrap_or(Self::ZhCn)
+    }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+    /// Makes this the language of all text produced from now on.
+    pub fn make_current(self) {
+        CURRENT.store(self as u8, Ordering::Relaxed);
+    }
 
-    #[test]
-    fn the_primary_subtag_decides() {
-        for tag in ["zh", "zh-CN", "zh_TW", "zh-Hant-TW", "ZH", "zh_CN.UTF-8"] {
-            assert!(is_chinese(Some(tag), || None), "{tag}");
-        }
-        for tag in ["en-US", "ja-JP", "pt-BR", "zhuang"] {
-            assert!(!is_chinese(Some(tag), || None), "{tag}");
-        }
+    /// Whether typed words are also read as pinyin initials (`tp` for 图片).
+    pub fn reads_pinyin_initials(self) -> bool {
+        matches!(self, Self::ZhCn | Self::ZhTw)
     }
 }

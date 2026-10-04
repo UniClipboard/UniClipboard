@@ -8,6 +8,8 @@ use std::ops::Range;
 
 use chrono::{Datelike, Duration, Local, NaiveDate, NaiveDateTime, NaiveTime, TimeZone, Weekday};
 
+use crate::text::{fill, t, Dates};
+
 /// Separators between the two ends of a range. `-` is tried last because dates use it as well.
 const SEPARATORS: [&str; 7] = ["..", "~", "～", "–", "—", "到", "至"];
 /// How many words a range may span, e.g. `9月1日 到 15日`.
@@ -146,20 +148,26 @@ fn next_month(date: NaiveDate) -> NaiveDate {
 /// Words with a fixed meaning: 今天, 上周, 本月, 8月, 最近3天, 3d.
 fn keyword(text: &str, today: NaiveDate) -> Option<DateRange> {
     match text {
-        "今天" => return days(today, today + Duration::days(1), "今天"),
-        "昨天" => return days(today - Duration::days(1), today, "昨天"),
-        "前天" => return days(today - Duration::days(2), today - Duration::days(1), "前天"),
+        "今天" => return days(today, today + Duration::days(1), dates().today),
+        "昨天" => return days(today - Duration::days(1), today, dates().yesterday),
+        "前天" => {
+            return days(
+                today - Duration::days(2),
+                today - Duration::days(1),
+                dates().day_before_yesterday,
+            )
+        }
         "本周" | "这周" => {
             let start = week_start(today);
-            return days(start, start + Duration::days(7), "本周");
+            return days(start, start + Duration::days(7), dates().this_week);
         }
         "上周" => {
             let start = week_start(today) - Duration::days(7);
-            return days(start, start + Duration::days(7), "上周");
+            return days(start, start + Duration::days(7), dates().last_week);
         }
         "本月" | "这个月" => {
             let start = month_start(today.year(), today.month())?;
-            return days(start, next_month(start), "本月");
+            return days(start, next_month(start), dates().this_month);
         }
         "上月" | "上个月" => {
             let this = month_start(today.year(), today.month())?;
@@ -167,13 +175,17 @@ fn keyword(text: &str, today: NaiveDate) -> Option<DateRange> {
                 this.year() - i32::from(this.month() == 1),
                 (this.month() + 10) % 12 + 1,
             )?;
-            return days(start, this, "上月");
+            return days(start, this, dates().last_month);
         }
         _ => {}
     }
     if let Some(count) = recent_days(text) {
         let start = today - Duration::days(count - 1);
-        return days(start, today + Duration::days(1), &format!("最近{count}天"));
+        return days(
+            start,
+            today + Duration::days(1),
+            &dates().last_days.of(count),
+        );
     }
     let (numbers, tail) = numbers_and_tail(text)?;
     if tail != "月" {
@@ -186,11 +198,12 @@ fn keyword(text: &str, today: NaiveDate) -> Option<DateRange> {
     };
     let year = year.unwrap_or_else(|| today.year() - i32::from(month > today.month()));
     let start = month_start(year, month)?;
-    let label = if year == today.year() {
-        format!("{month}月")
+    let pattern = if year == today.year() {
+        dates().month
     } else {
-        format!("{year}年{month}月")
+        dates().month_with_year
     };
+    let label = date_text(pattern, start);
     days(start, next_month(start), &label)
 }
 
@@ -275,14 +288,15 @@ fn both_ends(left: &str, right: &str, today: NaiveDate) -> Option<DateRange> {
 fn bounded(piece: &Piece, from: bool, today: NaiveDate) -> Option<DateRange> {
     let (start, _) = resolve_start(piece, today)?;
     if from {
-        let label = format!("{}起", day_label(start.date(), today.year()));
+        let label = fill(
+            dates().since,
+            &[("date", &day_label(start.date(), today.year()))],
+        );
         range(Some(start), None, label)
     } else {
         let end = piece_end(piece, start);
-        let label = format!(
-            "{}前",
-            day_label((end - Duration::seconds(1)).date(), today.year())
-        );
+        let last = day_label((end - Duration::seconds(1)).date(), today.year());
+        let label = fill(dates().until, &[("date", &last)]);
         range(None, Some(end), label)
     }
 }
@@ -568,12 +582,33 @@ fn first_on_or_after(from: NaiveDate, matches: impl Fn(NaiveDate) -> bool) -> Op
         .find(|date| matches(*date))
 }
 
+fn dates() -> &'static Dates {
+    &t().dates
+}
+
+/// A date in a pattern of the current language, see [`Dates`].
+fn date_text(pattern: &str, date: NaiveDate) -> String {
+    let month = date.month();
+    fill(
+        pattern,
+        &[
+            ("y", &date.year().to_string()),
+            ("mm", &format!("{month:02}")),
+            ("m", &month.to_string()),
+            ("dd", &format!("{:02}", date.day())),
+            ("d", &date.day().to_string()),
+            ("month", dates().months[month as usize - 1]),
+        ],
+    )
+}
+
 fn day_label(date: NaiveDate, reference_year: i32) -> String {
-    if date.year() == reference_year {
-        format!("{}月{}日", date.month(), date.day())
+    let pattern = if date.year() == reference_year {
+        dates().day
     } else {
-        format!("{}年{}月{}日", date.year(), date.month(), date.day())
-    }
+        dates().day_with_year
+    };
+    date_text(pattern, date)
 }
 
 fn label_range(start: NaiveDateTime, end: NaiveDateTime, today: NaiveDate) -> String {
@@ -593,7 +628,7 @@ fn label_range(start: NaiveDateTime, end: NaiveDateTime, today: NaiveDate) -> St
         return day_label(first_day, today.year());
     }
     let right = if first_day.year() == last_day.year() && first_day.month() == last_day.month() {
-        format!("{}日", last_day.day())
+        date_text(dates().end_day_same_month, last_day)
     } else {
         day_label(last_day, first_day.year())
     };

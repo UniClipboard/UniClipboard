@@ -34,27 +34,28 @@ pub enum PlatformError {
 
 impl fmt::Display for PlatformError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use crate::text::platform as t;
         f.write_str(match self {
-            Self::Unsupported => t::UNSUPPORTED,
-            Self::PanelWindowInaccessible => t::PANEL_WINDOW_INACCESSIBLE,
-            Self::PreviewWindowInaccessible => t::PREVIEW_WINDOW_INACCESSIBLE,
-            Self::UnsupportedWindowKind => t::UNSUPPORTED_WINDOW_KIND,
-            Self::PanelWindowClosed => t::PANEL_WINDOW_CLOSED,
-            Self::PreviewWindowClosed => t::PREVIEW_WINDOW_CLOSED,
-            Self::PreviewLayerNotReady => t::PREVIEW_LAYER_NOT_READY,
-            Self::MainThreadRequired => t::MAIN_THREAD_REQUIRED,
-            Self::NoDisplay => t::NO_DISPLAY,
-            Self::InvalidLink => t::INVALID_LINK,
-            Self::CannotOpen => t::CANNOT_OPEN,
-            Self::NoPastePermission => t::NO_PASTE_PERMISSION,
-            Self::NoPasteTarget => t::NO_PASTE_TARGET,
-            Self::PasteTargetQuit => t::PASTE_TARGET_QUIT,
-            Self::FocusMoved => t::FOCUS_MOVED,
-            Self::CannotReturnToTarget => t::CANNOT_RETURN_TO_TARGET,
-            Self::PasteTargetMissing => t::PASTE_TARGET_MISSING,
-            Self::CannotCreateTypingEvent => t::CANNOT_CREATE_TYPING_EVENT,
-            Self::CannotCreatePasteEvent => t::CANNOT_CREATE_PASTE_EVENT,
+            Self::Unsupported => crate::text::t().platform.unsupported,
+            Self::PanelWindowInaccessible => crate::text::t().platform.panel_window_inaccessible,
+            Self::PreviewWindowInaccessible => {
+                crate::text::t().platform.preview_window_inaccessible
+            }
+            Self::UnsupportedWindowKind => crate::text::t().platform.unsupported_window_kind,
+            Self::PanelWindowClosed => crate::text::t().platform.panel_window_closed,
+            Self::PreviewWindowClosed => crate::text::t().platform.preview_window_closed,
+            Self::PreviewLayerNotReady => crate::text::t().platform.preview_layer_not_ready,
+            Self::MainThreadRequired => crate::text::t().platform.main_thread_required,
+            Self::NoDisplay => crate::text::t().platform.no_display,
+            Self::InvalidLink => crate::text::t().platform.invalid_link,
+            Self::CannotOpen => crate::text::t().platform.cannot_open,
+            Self::NoPastePermission => crate::text::t().platform.no_paste_permission,
+            Self::NoPasteTarget => crate::text::t().platform.no_paste_target,
+            Self::PasteTargetQuit => crate::text::t().platform.paste_target_quit,
+            Self::FocusMoved => crate::text::t().platform.focus_moved,
+            Self::CannotReturnToTarget => crate::text::t().platform.cannot_return_to_target,
+            Self::PasteTargetMissing => crate::text::t().platform.paste_target_missing,
+            Self::CannotCreateTypingEvent => crate::text::t().platform.cannot_create_typing_event,
+            Self::CannotCreatePasteEvent => crate::text::t().platform.cannot_create_paste_event,
         })
     }
 }

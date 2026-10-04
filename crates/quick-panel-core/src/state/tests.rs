@@ -75,8 +75,6 @@ impl Fixture {
             composing: false,
             selecting: false,
             today: NaiveDate::from_ymd_opt(2026, 9, 30).unwrap(),
-            configured_language: Some("zh-CN"),
-            system_language: || None,
         }
     }
 }

@@ -69,6 +69,7 @@ pub fn rows(item: &SearchResultDto, target: Option<&str>) -> Vec<Row> {
     let textual = matches!(item.content_type.as_str(), "text" | "richtext");
     let is_file = item.content_type == "file";
     let favorite = item.tags.iter().any(|tag| tag == "favorited");
+    let t = crate::text::t();
     let mut rows = vec![row(
         Action::Paste,
         crate::text::paste_to(target),
@@ -76,51 +77,51 @@ pub fn rows(item: &SearchResultDto, target: Option<&str>) -> Vec<Row> {
         usable,
     )];
     if textual {
-        rows.push(row(Action::PastePlain, "粘贴为纯文本", Some("⇧⏎"), usable));
+        rows.push(row(Action::PastePlain, t.paste_plain, Some("⇧⏎"), usable));
     }
     rows.push(row(
         Action::PasteKeepOpen,
-        "粘贴并保持面板",
+        t.paste_keep_open,
         Some(keys("⌘⏎", "Ctrl+⏎")),
         usable,
     ));
     rows.push(row(
         Action::Copy,
-        "只复制",
+        t.copy_only,
         Some(keys("⌘C", "Ctrl+C")),
         usable,
     ));
     if is_file {
-        rows.push(row(Action::PastePaths, "粘贴文件路径", None, usable));
+        rows.push(row(Action::PastePaths, t.paste_paths, None, usable));
     }
     if openable(item).is_some() {
-        rows.push(row(Action::Open, "打开", Some(keys("⌘O", "Ctrl+O")), true));
+        rows.push(row(Action::Open, t.open, Some(keys("⌘O", "Ctrl+O")), true));
     }
     if is_file && item.file_paths.iter().any(|path| !path.is_empty()) {
-        rows.push(row(Action::RevealFile, "在文件夹中显示", None, true));
+        rows.push(row(Action::RevealFile, t.reveal_file, None, true));
     }
-    rows.push(row(Action::ChooseDevice, "发送到设备", None, usable));
+    rows.push(row(Action::ChooseDevice, t.send_to_device, None, usable));
     rows.push(row(
         Action::Favorite(!favorite),
-        if favorite { "取消收藏" } else { "收藏" },
+        if favorite { t.unfavorite } else { t.favorite },
         None,
         true,
     ));
     rows.push(row(
         Action::OpenMainWindow,
-        crate::text::OPEN_MAIN_WINDOW,
+        crate::text::t().open_main_window,
         Some(keys("⌘⇧O", "Ctrl+Shift+O")),
         true,
     ));
     rows.push(row(
         Action::Delete,
-        "删除",
+        t.delete,
         Some(keys("⌘⇧⌫", "Ctrl+Shift+⌫")),
         true,
     ));
     rows.push(row(
         Action::OpenSettings,
-        crate::text::SETTINGS,
+        crate::text::t().settings,
         Some(keys("⌘,", "Ctrl+,")),
         true,
     ));
@@ -131,7 +132,7 @@ pub fn rows(item: &SearchResultDto, target: Option<&str>) -> Vec<Row> {
 pub fn device_rows(members: &[SpaceMemberDto]) -> Vec<Row> {
     let mut rows = vec![row(
         Action::Send(None),
-        "所有设备",
+        crate::text::t().all_devices,
         None,
         !members.is_empty(),
     )];

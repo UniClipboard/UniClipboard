@@ -73,7 +73,8 @@ const imageBytes = new Map()
 const settings = JSON.parse(readFileSync(new URL('./settings.json', import.meta.url), 'utf8'))
 settings.general.theme = process.env.UC_GPUI_FIXTURE_THEME ?? 'system'
 // The panel reads words as pinyin initials only in a Chinese interface, whatever the system says.
-settings.general.language = 'zh-CN'
+// An empty value leaves the language unset, so the panel follows the system language.
+settings.general.language = process.env.UC_GPUI_FIXTURE_LANGUAGE ?? 'zh-CN'
 if (process.env.UC_GPUI_IMAGE_FIXTURES === '1') {
   const images = [
     ['landscape', '横图预览 · 设计'],
@@ -133,6 +134,12 @@ const server = createServer(async (request, response) => {
     response.end(JSON.stringify(body))
   }
   if (url.pathname === '/__test/state') return json(200, state)
+  // Changes the configured language, as the main window's language setting does; the panel
+  // reads it again the next time it opens.
+  if (url.pathname === '/__test/language') {
+    settings.general.language = url.searchParams.get('value') || null
+    return json(200, { language: settings.general.language })
+  }
   // Empties or refills the history, to see the first-use page.
   if (url.pathname === '/__test/empty') {
     state.empty = url.searchParams.get('on') === '1'

@@ -24,6 +24,7 @@ use gpui::{
     Subscription, Task, Window,
 };
 use gpui_component::input::{InputEvent, InputState};
+use quick_panel_core::language::Language;
 use quick_panel_core::ports::{HistoryService, HostLink, PasteTarget};
 use quick_panel_core::query::filters::{self, Dimension};
 use quick_panel_core::state::{
@@ -129,7 +130,21 @@ struct CtxData {
     input: String,
     composing: bool,
     selecting: bool,
-    language: Option<String>,
+}
+
+/// Makes the language of the settings current, the way the main window picks its own: the
+/// configured language when there is one, the system language otherwise, both through
+/// `normalize_language`. Returns whether it changed.
+pub fn apply_language(configured: Option<&str>) -> bool {
+    let tag = configured
+        .filter(|tag| !tag.trim().is_empty())
+        .map(str::to_string)
+        .or_else(platform::system_language)
+        .unwrap_or_default();
+    let language = Language::for_locale(uc_desktop::language::normalize_language(&tag));
+    let changed = language != Language::current();
+    language.make_current();
+    changed
 }
 
 impl CtxData {
@@ -142,8 +157,6 @@ impl CtxData {
             composing: self.composing,
             selecting: self.selecting,
             today: chrono::Local::now().date_naive(),
-            configured_language: self.language.as_deref(),
-            system_language: platform::system_language,
         }
     }
 }
@@ -158,7 +171,8 @@ impl Panel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        let input = cx.new(|cx| InputState::new(window, cx).placeholder(text::SEARCH_PLACEHOLDER));
+        let input =
+            cx.new(|cx| InputState::new(window, cx).placeholder(text::t().search_placeholder));
         input.update(cx, |input, cx| input.focus(window, cx));
         let subscription = cx.subscribe_in(&input, window, |this, _, event, window, cx| {
             if let InputEvent::Change = event {
@@ -216,10 +230,6 @@ impl Panel {
             input: self.input.read(cx).value().to_string(),
             composing: false,
             selecting: false,
-            language: self
-                .general
-                .as_ref()
-                .and_then(|general| general.language.clone()),
         }
     }
 

@@ -32,12 +32,12 @@ impl Kind {
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::Text => "文本",
-            Self::RichText => text::RICH_TEXT,
-            Self::Link => "链接",
-            Self::Code => "代码",
-            Self::Image => "图片",
-            Self::File => "文件",
+            Self::Text => text::t().kind_text,
+            Self::RichText => text::t().kind_rich_text,
+            Self::Link => text::t().kind_link,
+            Self::Code => text::t().kind_code,
+            Self::Image => text::t().kind_image,
+            Self::File => text::t().kind_file,
         }
     }
 }
@@ -82,15 +82,15 @@ pub fn header(facts: &Facts) -> String {
     let lines = text.map_or(0, |t| t.lines().count());
     let mut parts = vec![kind.label().to_string()];
     match kind {
-        Kind::Code => parts.extend((lines > 0).then(|| format!("{lines} 行"))),
+        Kind::Code => parts.extend((lines > 0).then(|| text::t().lines.of(lines as i64))),
         Kind::Text | Kind::RichText => {
             if lines > 1 {
-                parts.push(format!("{lines} 行"));
+                parts.push(text::t().lines.of(lines as i64));
             } else if let Some(count) = item
                 .char_count
                 .or_else(|| text.map(|t| t.chars().count() as i64))
             {
-                parts.push(format!("{count} 个字符"));
+                parts.push(text::t().characters.of(count));
             }
         }
         Kind::Link => {
@@ -104,10 +104,10 @@ pub fn header(facts: &Facts) -> String {
                 parts.push(size_text(bytes));
             }
         }
-        Kind::File => parts.push(format!("{} 项", item.file_names.len().max(1))),
+        Kind::File => parts.push(text::t().items.of(item.file_names.len().max(1) as i64)),
     }
     if let Some(name) = facts.source_name {
-        parts.push(format!("来自 {name}"));
+        parts.push(text::fill(text::t().from_device, &[("name", name)]));
     }
     parts.push(text::relative_time(facts.now_ms - item.active_time_ms));
     parts.join(" · ")

@@ -47,10 +47,10 @@ pub(super) fn rows_of(state: &PanelState, ctx: &Ctx) -> Option<(String, Vec<Row>
                     _ => true,
                 })
                 .collect();
-            (text::ACTIONS.to_string(), rows)
+            (text::t().actions.to_string(), rows)
         }
         ActionsPage::Devices => (
-            text::SEND_TO.to_string(),
+            text::t().send_to.to_string(),
             actions::device_rows(&state.catalog.members),
         ),
     })

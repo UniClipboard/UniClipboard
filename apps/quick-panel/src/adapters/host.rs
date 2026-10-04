@@ -26,7 +26,7 @@ impl SupervisorLink {
 impl HostLink for SupervisorLink {
     fn send(&self, request: HostRequest) -> Result<(), String> {
         if !self.supervised.load(Ordering::Relaxed) {
-            return Err(quick_panel_core::text::NEEDS_APP.into());
+            return Err(quick_panel_core::text::t().needs_app.into());
         }
         let line = match request {
             HostRequest::ShowMainWindow => HelperRequest::ShowMainWindow,
@@ -36,7 +36,7 @@ impl HostLink for SupervisorLink {
         let mut out = std::io::stdout().lock();
         writeln!(out, "{line}")
             .and_then(|()| out.flush())
-            .map_err(|_| quick_panel_core::text::HOST_GONE.to_string())
+            .map_err(|_| quick_panel_core::text::t().host_gone.to_string())
     }
 }
 
@@ -48,7 +48,7 @@ mod tests {
     fn requests_are_refused_without_a_supervisor() {
         assert_eq!(
             SupervisorLink::default().send(HostRequest::OpenSettings),
-            Err(quick_panel_core::text::NEEDS_APP.to_string())
+            Err(quick_panel_core::text::t().needs_app.to_string())
         );
     }
 }

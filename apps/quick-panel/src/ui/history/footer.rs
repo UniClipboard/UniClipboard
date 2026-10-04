@@ -50,13 +50,13 @@ impl Panel {
                         if self.ctx_data(cx).ctx().capabilities.auto_paste {
                             text::paste_to(name.as_deref())
                         } else {
-                            text::COPY.to_string()
+                            text::t().copy.to_string()
                         },
                     ))
                     .child(keycap("⏎", cx)),
             )
             .child(div().flex_1())
-            .child(div().child(text::ACTIONS))
+            .child(div().child(text::t().actions))
             .child(keycap(
                 if cfg!(target_os = "macos") {
                     "⌘K"

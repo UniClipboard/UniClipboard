@@ -83,7 +83,7 @@ impl Panel {
                 )
         });
         let secondary = match kind {
-            RowKind::RichText => Some(text::RICH_TEXT.to_string()),
+            RowKind::RichText => Some(text::t().kind_rich_text.to_string()),
             RowKind::File => item
                 .file_extensions
                 .first()

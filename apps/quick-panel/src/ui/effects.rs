@@ -263,7 +263,7 @@ impl Panel {
                         self.state.set_message(error.to_string());
                     }
                 }
-                None => self.state.set_message(text::NO_LOG_DIR),
+                None => self.state.set_message(text::t().no_log_dir),
             },
             Effect::HostRequest(request) => {
                 return self.feed(Event::HostRequested(self.host.send(request)), window, cx);
@@ -412,10 +412,16 @@ impl Panel {
                 .configure(settings)
                 .is_err()
             {
-                self.state.set_message(text::SHORTCUT_TAKEN);
+                self.state.set_message(text::t().shortcut_taken);
             }
             self.apply_double_tap_modifier(settings.quick_panel.double_tap_modifier, cx);
             self.general = Some(settings.general.clone());
+            if crate::ui::apply_language(settings.general.language.as_deref()) {
+                let placeholder = text::t().search_placeholder;
+                self.input.update(cx, |input, cx| {
+                    input.set_placeholder(placeholder, window, cx);
+                });
+            }
         }
         if crate::ui::appearance::apply(settings.map(|s| &s.general), window, cx).is_err() {
             tracing::warn!("Could not apply quick panel theme settings");

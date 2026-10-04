@@ -1,6 +1,6 @@
 //! Suggestions for the words typed in the search box.
 
-use crate::language;
+use crate::language::Language;
 use crate::query::filters::{self, Suggestion};
 
 use super::{Ctx, Effect, Effects, PanelState};
@@ -22,7 +22,7 @@ impl PanelState {
             tags: &self.catalog.tags,
             sources: &sources,
             today: ctx.today,
-            initials: language::is_chinese(ctx.configured_language, ctx.system_language),
+            initials: Language::current().reads_pinyin_initials(),
         };
         filters::suggestions(ctx.input, &catalog)
             .into_iter()

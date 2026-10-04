@@ -27,6 +27,9 @@ pub fn run() -> anyhow::Result<()> {
         host.mark_supervised();
         lifecycle::watch_parent(std::io::stdin(), || std::process::exit(0));
     }
+    // Until the settings are read the panel follows the system, as the main window does for an
+    // unset language; the search box takes its placeholder from this when it is created.
+    crate::ui::apply_language(None);
     let runtime = tokio::runtime::Runtime::new()?;
     let handle = runtime.handle().clone();
     let history: Arc<dyn HistoryService> = Arc::new(DaemonHistory::new());

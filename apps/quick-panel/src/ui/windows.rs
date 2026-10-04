@@ -82,7 +82,7 @@ impl Panel {
             ) {
                 Ok(handle) => self.preview_window = Some(handle.into()),
                 Err(_) => {
-                    self.state.set_message(text::PREVIEW_WINDOW_FAILED);
+                    self.state.set_message(text::t().preview_window_failed);
                 }
             }
         }

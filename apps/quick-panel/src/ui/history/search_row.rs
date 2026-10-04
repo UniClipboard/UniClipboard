@@ -105,7 +105,7 @@ impl Panel {
                                     .search
                                     .filters
                                     .single_type()
-                                    .map_or(text::ALL_TYPES, text::value_label)
+                                    .map_or(text::t().all_types, text::value_label)
                                     .to_string(),
                             ),
                     )

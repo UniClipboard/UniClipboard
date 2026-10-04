@@ -29,17 +29,17 @@ impl Panel {
         let (icon, title, detail) = match kind {
             Empty::FirstUse => (
                 IconName::Inbox,
-                text::FIRST_USE_TITLE.to_string(),
-                text::FIRST_USE_HINT.to_string(),
+                text::t().first_use_title.to_string(),
+                text::t().first_use_hint.to_string(),
             ),
             Empty::Locked => (
                 IconName::Asterisk,
-                text::LOCKED_TITLE.to_string(),
-                text::LOCKED_HINT_GUI.to_string(),
+                text::t().locked_title.to_string(),
+                text::t().locked_hint_gui.to_string(),
             ),
             Empty::Disconnected => (
                 IconName::TriangleAlert,
-                text::DISCONNECTED_TITLE.to_string(),
+                text::t().disconnected_title.to_string(),
                 text::reconnecting(self.state.search.disconnected.unwrap_or(1)),
             ),
             Empty::NoMatch => (
@@ -67,7 +67,7 @@ impl Panel {
                     .child(title),
             );
         if kind == Empty::NoMatch && visible.is_empty() {
-            page = page.child(div().text_size(units(12.)).child(text::TRY_OTHER_TERMS));
+            page = page.child(div().text_size(units(12.)).child(text::t().try_other_terms));
         } else if kind != Empty::NoMatch {
             page = page.child(div().text_size(units(12.)).text_center().child(detail));
             if kind == Empty::Disconnected {
@@ -75,7 +75,7 @@ impl Panel {
                     div()
                         .text_size(units(12.))
                         .text_center()
-                        .child(text::RECONNECT_HINT),
+                        .child(text::t().reconnect_hint),
                 );
             }
         }
@@ -92,33 +92,33 @@ impl Panel {
                             .items_center()
                             .gap(units(6.))
                             .text_size(units(12.))
-                            .child(text::SUMMON_ANYTIME)
+                            .child(text::t().summon_anytime)
                             .child(keycap(shortcut, cx)),
                     )
-                    .child(hint("esc", text::CLOSE));
+                    .child(hint("esc", text::t().close));
             }
             Empty::Locked => {
                 page = page
-                    .child(hint("⏎", text::UNLOCK))
-                    .child(hint("esc", text::CLOSE));
+                    .child(hint("⏎", text::t().unlock))
+                    .child(hint("esc", text::t().close));
             }
             Empty::Disconnected => {
                 page = page
-                    .child(hint("⏎", text::RECONNECT_NOW))
+                    .child(hint("⏎", text::t().reconnect_now))
                     .child(hint(
                         if cfg!(target_os = "macos") {
                             "⌘L"
                         } else {
                             "Ctrl+L"
                         },
-                        text::VIEW_LOGS,
+                        text::t().view_logs,
                     ))
-                    .child(hint("esc", text::CLOSE));
+                    .child(hint("esc", text::t().close));
             }
             Empty::NoMatch if !visible.is_empty() => {
                 let cursor = self.state.search.relax_cursor.min(visible.len() - 1);
                 page = page
-                    .child(div().text_size(units(12.)).child(text::TRY_RELAXING))
+                    .child(div().text_size(units(12.)).child(text::t().try_relaxing))
                     .child(
                         div().w_full().flex().flex_col().gap(units(2.)).children(
                             visible
@@ -161,14 +161,14 @@ impl Panel {
                             .flex()
                             .items_center()
                             .gap(units(14.))
-                            .child(hint("⏎", text::APPLY_SUGGESTION))
+                            .child(hint("⏎", text::t().apply_suggestion))
                             .child(hint(
                                 if cfg!(target_os = "macos") {
                                     "⌘⌫"
                                 } else {
                                     "Ctrl+⌫"
                                 },
-                                text::CLEAR,
+                                text::t().clear,
                             )),
                     );
             }

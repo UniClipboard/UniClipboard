@@ -75,7 +75,7 @@ impl ImagePreview {
                 snapshot
                     .text
                     .clone()
-                    .unwrap_or_else(|| quick_panel_core::text::service::IMAGE_UNREADABLE.into()),
+                    .unwrap_or_else(|| text::t().service.image_unreadable.into()),
             )
         } else {
             None
@@ -333,9 +333,9 @@ impl Render for ImagePreview {
                                     IconName::Maximize
                                 })
                                 .label(if self.viewport.actual_size {
-                                    quick_panel_core::text::FIT_TO_WINDOW
+                                    text::t().fit_to_window
                                 } else {
-                                    quick_panel_core::text::ACTUAL_SIZE
+                                    text::t().actual_size
                                 })
                                 .ghost()
                                 .small()
@@ -390,7 +390,7 @@ impl Render for ImagePreview {
                         div().text_size(gpui::rems(0.8125)).child(
                             self.error
                                 .clone()
-                                .unwrap_or_else(|| quick_panel_core::text::LOADING_IMAGE.into()),
+                                .unwrap_or_else(|| text::t().loading_image.into()),
                         ),
                     ),
             );

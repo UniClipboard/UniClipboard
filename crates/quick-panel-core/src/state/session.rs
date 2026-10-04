@@ -7,10 +7,6 @@ use crate::selection::Selection;
 
 use super::{timing, Ctx, Effect, Effects, PanelState, Preview};
 
-/// Shown when restoring an entry to the clipboard failed.
-const COPY_FAILED: &str = "复制失败，请重试。";
-const NO_PATHS: &str = "没有可粘贴的文件路径。";
-
 impl PanelState {
     /// The shortcut or the double tap: closes the panel if it is open, opens it otherwise.
     pub fn toggle(&mut self, ctx: &Ctx) -> Effects {
@@ -119,7 +115,7 @@ impl PanelState {
             return vec![];
         };
         if item.payload_state.as_deref() == Some("Lost") {
-            self.session.message = Some(crate::text::service::ENTRY_GONE.into());
+            self.session.message = Some(crate::text::t().service.entry_gone.into());
             return vec![];
         }
         let paste = paste && ctx.capabilities.auto_paste;
@@ -149,7 +145,7 @@ impl PanelState {
     ) -> Effects {
         self.session.busy = false;
         if result.is_err() {
-            self.session.message = Some(COPY_FAILED.into());
+            self.session.message = Some(crate::text::t().service.copy_failed.into());
             return vec![];
         }
         if paste {
@@ -181,7 +177,7 @@ impl PanelState {
             .filter(|p| !p.is_empty())
             .collect::<Vec<_>>();
         if paths.is_empty() {
-            self.session.message = Some(NO_PATHS.into());
+            self.session.message = Some(crate::text::t().service.no_paths.into());
             return vec![];
         }
         if let Err(error) = ctx.target.check() {
@@ -228,7 +224,7 @@ impl PanelState {
         match result {
             Ok(()) => self.search(),
             Err(_) => {
-                self.session.message = Some(crate::text::service::ACTION_FAILED.into());
+                self.session.message = Some(crate::text::t().service.action_failed.into());
                 vec![]
             }
         }
@@ -237,7 +233,7 @@ impl PanelState {
     /// Command+O: opens the link in the browser or the file in its default application.
     pub fn open_selected(&mut self) -> Effects {
         let Some(target) = self.active_item().and_then(actions::openable) else {
-            self.session.message = Some(crate::text::NOTHING_TO_OPEN.into());
+            self.session.message = Some(crate::text::t().nothing_to_open.into());
             return vec![];
         };
         vec![Effect::OpenTarget(target)]

@@ -76,10 +76,6 @@ pub struct Ctx<'a> {
     /// The search box has selected text.
     pub selecting: bool,
     pub today: NaiveDate,
-    /// `general.language` from the settings.
-    pub configured_language: Option<&'a str>,
-    /// Reads the system language, for when none is configured.
-    pub system_language: fn() -> Option<String>,
 }
 
 /// What the shell has to do. The state never does these itself.

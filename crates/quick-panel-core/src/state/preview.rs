@@ -4,9 +4,6 @@ use crate::ports::{PreviewData, ServiceError};
 
 use super::{timing, Effect, Effects, PanelState};
 
-/// Shown in place of a preview that could not be read.
-const UNREADABLE: &str = "无法读取预览，请重试。";
-
 impl PanelState {
     /// Follows the selection with the preview, after a short pause.
     pub fn schedule_preview(&mut self) -> Effects {
@@ -62,7 +59,7 @@ impl PanelState {
                 }
             }
             Err(_) => {
-                self.preview.text = Some(UNREADABLE.into());
+                self.preview.text = Some(crate::text::t().service.preview_unreadable_retry.into());
                 vec![]
             }
         }

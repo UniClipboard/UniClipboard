@@ -116,7 +116,7 @@ impl Panel {
                             .gap(units(4.))
                             .text_size(units(11.))
                             .text_color(quiet)
-                            .when(!highlighted, |hint| hint.child(text::PRESS_AGAIN))
+                            .when(!highlighted, |hint| hint.child(text::t().press_again))
                             .child(keycap("⇥", cx)),
                     )
                     .into_any_element()
@@ -129,8 +129,8 @@ impl Panel {
                 .flex()
                 .flex_col()
                 .child(heading(
-                    text::SUGGESTIONS.to_string(),
-                    (options.len() > 1).then_some(text::ACCEPT_IN_ORDER),
+                    text::t().suggestions.to_string(),
+                    (options.len() > 1).then_some(text::t().accept_in_order),
                 ))
                 .children(rows)
                 .when(hidden > 0, |block| {

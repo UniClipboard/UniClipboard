@@ -399,7 +399,7 @@ impl PreviewSnapshot {
                 .p_6()
                 .text_size(units(14.))
                 .text_color(muted)
-                .child(quick_panel_core::text::LOADING)
+                .child(quick_panel_core::text::t().loading)
                 .into_any_element()
         } else {
             self.body(item, text, border, window, cx)
@@ -444,11 +444,11 @@ impl PreviewSnapshot {
                     .text_size(units(11.))
                     .text_color(muted)
                     .child(if self.actions.is_some() {
-                        quick_panel_core::text::ACTIONS_HINT
+                        quick_panel_core::text::t().actions_hint
                     } else if cfg!(target_os = "macos") {
-                        quick_panel_core::text::DELETE_HINT_MAC
+                        quick_panel_core::text::t().delete_hint_mac
                     } else {
-                        quick_panel_core::text::DELETE_HINT_OTHER
+                        quick_panel_core::text::t().delete_hint_other
                     }),
             );
         card.into_any_element()

@@ -8,7 +8,6 @@ use uc_daemon_contract::api::dto::settings::SettingsDto;
 use uc_daemon_contract::api::types::SpaceMemberDto;
 
 use crate::query::filters::Filters;
-use crate::text::service as t;
 
 /// Why a search did not produce a result list. The `Display` text is what the user is shown.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -27,11 +26,11 @@ pub enum SearchFailure {
 impl fmt::Display for SearchFailure {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
-            Self::Locked => t::LOCKED,
-            Self::Failed => t::SEARCH_FAILED,
-            Self::Disconnected => t::DISCONNECTED,
-            Self::Interrupted => t::INTERRUPTED,
-            Self::Timeout => t::SEARCH_TIMEOUT,
+            Self::Locked => crate::text::t().service.locked,
+            Self::Failed => crate::text::t().service.search_failed,
+            Self::Disconnected => crate::text::t().service.disconnected,
+            Self::Interrupted => crate::text::t().service.interrupted,
+            Self::Timeout => crate::text::t().service.search_timeout,
         })
     }
 }
@@ -63,21 +62,21 @@ pub enum ServiceError {
 impl fmt::Display for ServiceError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
-            Self::NotRunning => t::NOT_RUNNING,
-            Self::CannotConnect => t::CANNOT_CONNECT,
-            Self::RestoreFailed => t::RESTORE_FAILED,
-            Self::RestoreTimeout => t::RESTORE_TIMEOUT,
-            Self::ActionFailed => t::ACTION_FAILED,
-            Self::TagsUnavailable => t::TAGS_UNAVAILABLE,
-            Self::DevicesUnavailable => t::DEVICES_UNAVAILABLE,
-            Self::PreviewTimeout => t::PREVIEW_TIMEOUT,
-            Self::PreviewUnreadable => t::PREVIEW_UNREADABLE,
-            Self::EntryGone => t::ENTRY_GONE,
-            Self::ImageUnreadable => t::IMAGE_UNREADABLE,
-            Self::ImageGone => t::IMAGE_GONE,
-            Self::ImageBadFormat => t::IMAGE_BAD_FORMAT,
-            Self::ImageUnsupported => t::IMAGE_UNSUPPORTED,
-            Self::ImageUndecodable => t::IMAGE_UNDECODABLE,
+            Self::NotRunning => crate::text::t().service.not_running,
+            Self::CannotConnect => crate::text::t().service.cannot_connect,
+            Self::RestoreFailed => crate::text::t().service.restore_failed,
+            Self::RestoreTimeout => crate::text::t().service.restore_timeout,
+            Self::ActionFailed => crate::text::t().service.action_failed,
+            Self::TagsUnavailable => crate::text::t().service.tags_unavailable,
+            Self::DevicesUnavailable => crate::text::t().service.devices_unavailable,
+            Self::PreviewTimeout => crate::text::t().service.preview_timeout,
+            Self::PreviewUnreadable => crate::text::t().service.preview_unreadable,
+            Self::EntryGone => crate::text::t().service.entry_gone,
+            Self::ImageUnreadable => crate::text::t().service.image_unreadable,
+            Self::ImageGone => crate::text::t().service.image_gone,
+            Self::ImageBadFormat => crate::text::t().service.image_bad_format,
+            Self::ImageUnsupported => crate::text::t().service.image_unsupported,
+            Self::ImageUndecodable => crate::text::t().service.image_undecodable,
         })
     }
 }

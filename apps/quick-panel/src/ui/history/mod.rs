@@ -123,7 +123,7 @@ impl Panel {
                         .justify_center()
                         .text_size(units(13.))
                         .text_color(muted)
-                        .child(text::SEARCHING),
+                        .child(text::t().searching),
                 )
             })
             .when_some(self.suggestion_block(cx), |list, block| list.child(block))
@@ -173,7 +173,7 @@ impl Panel {
                     .child(message.clone())
                     .child(
                         Button::new("retry")
-                            .label(text::RETRY)
+                            .label(text::t().retry)
                             .ghost()
                             .xsmall()
                             .on_click(cx.listener(|this, _, window, cx| this.search(window, cx))),

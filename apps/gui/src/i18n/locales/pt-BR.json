@@ -1134,6 +1134,7 @@
       "done": "Concluir"
     },
     "sidebar": {
+      "library": "Biblioteca",
       "allItems": "Todos os itens",
       "pinned": "Fixados",
       "recentlyDeleted": "Excluídos recentemente",
@@ -1144,6 +1145,7 @@
       "devices": "Dispositivos",
       "devicesOnline": "{{online}} de {{total}} on-line",
       "devicesEmpty": "Nenhum dispositivo pareado",
+      "manageDevices": "Gerenciar",
       "settings": "Configurações"
     }
   },

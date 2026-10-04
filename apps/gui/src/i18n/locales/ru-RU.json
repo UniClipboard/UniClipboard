@@ -1138,6 +1138,7 @@
       "done": "Готово"
     },
     "sidebar": {
+      "library": "Библиотека",
       "allItems": "Все элементы",
       "pinned": "Закреплённые",
       "recentlyDeleted": "Недавно удалённые",
@@ -1148,6 +1149,7 @@
       "devices": "Устройства",
       "devicesOnline": "{{online}} из {{total}} онлайн",
       "devicesEmpty": "Нет сопряжённых устройств",
+      "manageDevices": "Управлять",
       "settings": "Настройки"
     },
     "subtitle_few": "{{count}} элемента",

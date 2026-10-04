@@ -1,6 +1,7 @@
 import { m } from 'framer-motion'
-import React from 'react'
+import React, { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useLocation, useNavigate } from 'react-router'
 import { Filter } from '@/api/clipboardItems'
 import { countSearch } from '@/api/daemon/search'
 import ClipboardActionBar from '@/components/clipboard/ClipboardActionBar'
@@ -19,6 +20,7 @@ import {
   HISTORY_PREVIEW_ENTRY_TRANSITION,
 } from '@/components/history/history-entry-animation'
 import HistoryGrid from '@/components/history/HistoryGrid'
+import { HISTORY_LIBRARY_FILTER_STATE } from '@/components/history/sidebar/history-sidebar-types'
 import HistorySidebar from '@/components/history/sidebar/HistorySidebar'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
 import { useHistoryController } from '@/hooks/useHistoryController'
@@ -55,6 +57,20 @@ const HistoryPage: React.FC = () => {
     fetchCounts: countSearch,
   })
 
+  // A Library row picked on the Devices page arrives as router state; apply it
+  // once, then drop it so back/forward navigation does not re-apply it.
+  const location = useLocation()
+  const navigate = useNavigate()
+  const libraryFilter = (location.state as Record<string, unknown> | null)?.[
+    HISTORY_LIBRARY_FILTER_STATE
+  ] as Filter | undefined
+  const { setContentFilter } = c.filterActions
+  useEffect(() => {
+    if (!libraryFilter) return
+    setContentFilter(libraryFilter)
+    navigate(location.pathname, { replace: true, state: null })
+  }, [libraryFilter, location.pathname, navigate, setContentFilter])
+
   const focusSearch = () => c.searchInputRef.current?.focus()
   useShortcut({
     id: 'clipboard.search',
@@ -84,8 +100,7 @@ const HistoryPage: React.FC = () => {
         <HistorySidebar
           context="history"
           activeFilter={c.filter.activeFilter}
-          onSelectAllItems={() => c.filterActions.setContentFilter(Filter.All)}
-          onSelectPinned={() => c.filterActions.setContentFilter(Filter.Favorited)}
+          onSelectLibrary={c.filterActions.setContentFilter}
         />
         <ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1">
           {/* List */}

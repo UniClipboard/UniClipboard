@@ -1130,6 +1130,7 @@
       "done": "完成"
     },
     "sidebar": {
+      "library": "資料庫",
       "allItems": "全部項目",
       "pinned": "已置頂",
       "recentlyDeleted": "最近刪除",
@@ -1140,6 +1141,7 @@
       "devices": "裝置",
       "devicesOnline": "{{online}}/{{total}} 線上",
       "devicesEmpty": "尚無已配對裝置",
+      "manageDevices": "管理",
       "settings": "設定"
     }
   },

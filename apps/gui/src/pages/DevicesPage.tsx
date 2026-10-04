@@ -10,6 +10,7 @@ import PeerDetailPanelContainer from '@/components/device/PeerDetailPanelContain
 import RemovedDevicePanel from '@/components/device/RemovedDevicePanel'
 import SwitchSpaceDialog from '@/components/device/SwitchSpaceDialog'
 import UnpairAlertDialog from '@/components/device/UnpairAlertDialog'
+import HistorySidebar from '@/components/history/sidebar/HistorySidebar'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
   AlertDialog,
@@ -71,6 +72,7 @@ const DevicesPage: React.FC = () => {
   } = page
   return (
     <div className="flex h-full min-w-0">
+      <HistorySidebar context="devices" />
       {/* ── list column ───────────────────────────────────────── */}
       <DeviceList page={page} />
 

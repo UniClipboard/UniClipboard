@@ -1130,6 +1130,7 @@
       "done": "完成"
     },
     "sidebar": {
+      "library": "资料库",
       "allItems": "全部项目",
       "pinned": "已置顶",
       "recentlyDeleted": "最近删除",
@@ -1140,6 +1141,7 @@
       "devices": "设备",
       "devicesOnline": "{{online}}/{{total}} 在线",
       "devicesEmpty": "暂无已配对设备",
+      "manageDevices": "管理",
       "settings": "设置"
     }
   },

@@ -1131,6 +1131,7 @@
       "done": "完了"
     },
     "sidebar": {
+      "library": "ライブラリ",
       "allItems": "すべてのアイテム",
       "pinned": "ピン留め",
       "recentlyDeleted": "最近削除した項目",
@@ -1141,6 +1142,7 @@
       "devices": "デバイス",
       "devicesOnline": "{{online}}/{{total}} オンライン",
       "devicesEmpty": "ペアリング済みデバイスはありません",
+      "manageDevices": "管理",
       "settings": "設定"
     }
   },

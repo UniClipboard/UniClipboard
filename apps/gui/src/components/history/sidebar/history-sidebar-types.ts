@@ -1,4 +1,14 @@
-/** Which page is hosting the shared Library sidebar; drives the Devices
- * section's default expansion and whether top-level rows link out to
- * `/history` (see history-window-exec-plan.md slice 1). */
-export type HistorySidebarContext = 'history' | 'devices'
+import type { Filter } from '@/api/clipboardItems'
+
+/** Router state key carrying a Library row picked outside the History page. */
+export const HISTORY_LIBRARY_FILTER_STATE = 'historyLibraryFilter'
+
+/** On History the Library rows drive the page's own filter; on Devices they
+ * navigate back to History with the chosen filter in router state. */
+export type HistorySidebarProps =
+  | {
+      context: 'history'
+      activeFilter: Filter
+      onSelectLibrary: (filter: Filter.All | Filter.Favorited) => void
+    }
+  | { context: 'devices' }

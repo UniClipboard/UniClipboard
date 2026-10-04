@@ -1132,6 +1132,7 @@
       "done": "Done"
     },
     "sidebar": {
+      "library": "Library",
       "allItems": "All items",
       "pinned": "Pinned",
       "recentlyDeleted": "Recently deleted",
@@ -1142,6 +1143,7 @@
       "devices": "Devices",
       "devicesOnline": "{{online}} of {{total}} online",
       "devicesEmpty": "No paired devices",
+      "manageDevices": "Manage",
       "settings": "Settings"
     }
   },

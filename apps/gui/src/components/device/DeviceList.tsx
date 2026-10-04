@@ -17,6 +17,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useDevicesPage } from '@/hooks/useDevicesPage'
 import { formatRelativeTime } from '@/hooks/useRelativeTime'
+import { isMobileDeviceActive } from '@/lib/mobile-device-status'
 import { cn } from '@/lib/utils'
 import {
   clearLocalDeviceError,
@@ -26,7 +27,6 @@ import {
   fetchSpaceProtection,
 } from '@/store/slices/devicesSlice'
 
-const MOBILE_ACTIVE_WINDOW_MS = 10 * 60 * 1000
 export default function DeviceList({ page }: { page: ReturnType<typeof useDevicesPage> }) {
   const {
     selectionId,
@@ -330,6 +330,5 @@ function peerDotTone(peer: SpaceMember): StatusDotTone {
 }
 
 function mobileDotTone(mobile: MobileDeviceView, now: number): StatusDotTone {
-  if (mobile.lastSeenAtMs == null) return 'off'
-  return now - mobile.lastSeenAtMs <= MOBILE_ACTIVE_WINDOW_MS ? 'info' : 'off'
+  return isMobileDeviceActive(mobile, now) ? 'info' : 'off'
 }

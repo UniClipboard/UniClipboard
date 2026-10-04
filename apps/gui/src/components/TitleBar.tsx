@@ -1,9 +1,9 @@
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { Minus, Square, X } from 'lucide-react'
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
+import { useMacTrafficLightPosition } from '@/hooks/useMacTrafficLightPosition'
 import { usePlatform } from '@/hooks/usePlatform'
 import { useWindowFrame } from '@/hooks/useWindowFrame'
-import { commands } from '@/lib/ipc'
 import { createLogger } from '@/lib/logger'
 import { cn } from '@/lib/utils'
 
@@ -86,28 +86,15 @@ export const SidebarTitle = ({ className, rightSlot }: TitleBarSectionProps) => 
 export const ContentToolbar = ({ className, rightSlot }: ContentToolbarProps) => {
   const [isMaximized, setIsMaximized] = useState(false)
 
-  const { isMac, isTauri } = usePlatform()
+  const { isTauri } = usePlatform()
   const { hasCustomWindowControls } = useWindowFrame()
   const windowRef = useMemo(() => (isTauri ? getCurrentWindow() : null), [isTauri])
-
-  const syncTrafficLightPosition = useCallback(() => {
-    if (!isMac) return
-    commands
-      .setTrafficLightPosition(MAC_TRAFFIC_LIGHT_OFFSET.x, MAC_TRAFFIC_LIGHT_OFFSET.y)
-      .catch(error => {
-        log.error({ err: error }, 'Failed to set traffic light position')
-      })
-  }, [isMac])
+  useMacTrafficLightPosition(MAC_TRAFFIC_LIGHT_OFFSET)
 
   useEffect(() => {
     if (!isTauri || !windowRef) return
 
     let mounted = true
-
-    // macOS 系统会在 unmaximize / 全屏切换后把按钮重置回标准位置，
-    // mount 一次 + 每次 resize 都重发，保证视觉一致。
-    syncTrafficLightPosition()
-
     windowRef.isMaximized().then(value => {
       if (mounted) setIsMaximized(value)
     })
@@ -115,14 +102,13 @@ export const ContentToolbar = ({ className, rightSlot }: ContentToolbarProps) =>
     const unlistenPromise = windowRef.onResized(async () => {
       if (!mounted) return
       setIsMaximized(await windowRef.isMaximized())
-      syncTrafficLightPosition()
     })
 
     return () => {
       mounted = false
       unlistenPromise.then(unlisten => unlisten())
     }
-  }, [isTauri, windowRef, syncTrafficLightPosition])
+  }, [isTauri, windowRef])
 
   const handleMinimize = async () => {
     log.debug({ isTauri }, 'Minimize clicked')

@@ -1,5 +1,6 @@
 import { act, render, screen, waitFor } from '@testing-library/react'
 import React from 'react'
+import { MemoryRouter } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { useHistoryController } from '@/hooks/useHistoryController'
 import HistoryPage from '@/pages/HistoryPage'
@@ -218,6 +219,14 @@ function makeControllerState(
   } as HistoryControllerState
 }
 
+function renderPage() {
+  return render(
+    <MemoryRouter initialEntries={['/history']}>
+      <HistoryPage />
+    </MemoryRouter>
+  )
+}
+
 describe('HistoryPage', () => {
   beforeEach(() => {
     shortcuts.configs = []
@@ -225,7 +234,7 @@ describe('HistoryPage', () => {
   })
 
   it('focuses the list-column search from the configurable shortcut', async () => {
-    render(<HistoryPage />)
+    renderPage()
 
     const shortcut = shortcuts.configs.find(config => config.id === 'clipboard.search')
     expect(shortcut?.key).toBe('mod+f')
@@ -236,7 +245,7 @@ describe('HistoryPage', () => {
   })
 
   it('opens search with slash only outside form fields', () => {
-    render(<HistoryPage />)
+    renderPage()
 
     const shortcut = shortcuts.configs.find(
       config => Array.isArray(config.key) && config.key.includes('/') && config.key.includes('、')
@@ -248,7 +257,7 @@ describe('HistoryPage', () => {
   })
 
   it('animates the preview pane shortly after history rows start entering', () => {
-    render(<HistoryPage />)
+    renderPage()
 
     const previewMotion = screen.getByTestId('history-preview-motion')
 
@@ -268,7 +277,7 @@ describe('HistoryPage', () => {
   })
 
   it('keeps the history list within readable bounds while preview uses extra width', () => {
-    render(<HistoryPage />)
+    renderPage()
 
     expect(screen.getByTestId('history-list-panel')).toHaveAttribute('data-default-size', '42%')
     expect(screen.getByTestId('history-list-panel')).toHaveAttribute('data-min-size', '20rem')

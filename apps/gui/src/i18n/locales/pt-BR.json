@@ -856,7 +856,8 @@
           "favoriteClipboardItem": "Favoritar o item atual da área de transferência",
           "searchHistory": "Pesquisar histórico",
           "zoomIn": "Aumentar o zoom",
-          "zoomOut": "Diminuir o zoom"
+          "zoomOut": "Diminuir o zoom",
+          "toggleSidebar": "Mostrar ou ocultar a barra lateral"
         },
         "issues": {
           "sameScope": "Conflito de atalho no mesmo escopo: {{key}}",
@@ -1068,6 +1069,16 @@
     "subtitle_many": "{{count}} itens",
     "subtitle_other": "{{count}} itens",
     "searchPlaceholder": "Pesquisar na área de transferência…",
+    "listSearchPlaceholder": "Pesquise ou digite # from: type: on:",
+    "listSearchPlaceholderMore": "Adicione palavras ou outro filtro…",
+    "list": {
+      "selectItem": "Selecionar {{title}}",
+      "selected_one": "{{count}} selecionado",
+      "selected_other": "{{count}} selecionados",
+      "selected_many": "{{count}} selecionados",
+      "bulkActions": "Ações em lote",
+      "sendTo": "Enviar para…"
+    },
     "loadMore": "Carregar mais",
     "unknownFile": "Arquivo desconhecido",
     "filter": {
@@ -1110,7 +1121,16 @@
       "size": "Tamanho",
       "fileCount": "Arquivos",
       "urlCount": "URLs",
-      "fileMissing": "(ausente)"
+      "fileMissing": "(ausente)",
+      "aria": "Detalhes do item",
+      "emptyTitle": "Nada selecionado",
+      "emptyHint": "Escolha um item para visualizar ou enviar.",
+      "from": "De <strong>{{device}}</strong>",
+      "copied": "Copiado",
+      "pin": "Fixar",
+      "unpin": "Desafixar",
+      "sendToDevice": "Enviar para dispositivo…",
+      "shortcutHint": "C copiar · F fixar · D excluir"
     },
     "composite": {
       "title": "Pesquisar e filtrar",
@@ -1147,12 +1167,13 @@
       "smartViews": "Visualizações inteligentes",
       "smartViewsEmpty": "Ainda não há visualizações",
       "tags": "Etiquetas",
-      "tagsEmpty": "Ainda não há etiquetas",
       "devices": "Dispositivos",
       "devicesOnline": "{{online}} de {{total}} on-line",
       "devicesEmpty": "Nenhum dispositivo pareado",
       "manageDevices": "Gerenciar",
-      "settings": "Configurações"
+      "settings": "Configurações",
+      "show": "Mostrar barra lateral",
+      "hide": "Ocultar barra lateral"
     }
   },
   "dashboard": {
@@ -2267,7 +2288,8 @@
         "pending": "Reenviando…"
       },
       "success": {
-        "summary": "Reenvio despachado · {{accepted}}/{{total}} aceitos"
+        "summary": "Reenvio despachado · {{accepted}}/{{total}} aceitos",
+        "bulk": "{{sent}} de {{total}} itens enviados"
       },
       "error": {
         "synchronizationDisabled": "A sincronização está desativada. Ative-a para reenviar o conteúdo.",

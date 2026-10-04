@@ -856,7 +856,8 @@
           "favoriteClipboardItem": "現在のクリップボード項目をお気に入り",
           "searchHistory": "履歴を検索",
           "zoomIn": "拡大",
-          "zoomOut": "縮小"
+          "zoomOut": "縮小",
+          "toggleSidebar": "サイドバーの表示/非表示"
         },
         "issues": {
           "sameScope": "同じスコープ内のショートカットの競合: {{key}}",
@@ -1067,6 +1068,15 @@
     "subtitle_one": "{{count}} 件",
     "subtitle_other": "{{count}} 件",
     "searchPlaceholder": "クリップボードを検索…",
+    "listSearchPlaceholder": "検索、または # from: type: on: を入力",
+    "listSearchPlaceholderMore": "キーワードやフィルタを追加…",
+    "list": {
+      "selectItem": "{{title}} を選択",
+      "selected_one": "{{count}} 件選択",
+      "selected_other": "{{count}} 件選択",
+      "bulkActions": "一括操作",
+      "sendTo": "送信先…"
+    },
     "loadMore": "さらに読み込む",
     "unknownFile": "不明ファイル",
     "filter": {
@@ -1109,7 +1119,16 @@
       "size": "サイズ",
       "fileCount": "ファイル",
       "urlCount": "URL",
-      "fileMissing": "(欠落)"
+      "fileMissing": "(欠落)",
+      "aria": "項目の詳細",
+      "emptyTitle": "何も選択されていません",
+      "emptyHint": "項目を選ぶとプレビューや送信ができます。",
+      "from": "<strong>{{device}}</strong> から",
+      "copied": "コピー日時",
+      "pin": "ピン留め",
+      "unpin": "ピン留めを解除",
+      "sendToDevice": "デバイスに送信…",
+      "shortcutHint": "C コピー · F ピン留め · D 削除"
     },
     "composite": {
       "title": "検索とフィルタ",
@@ -1143,12 +1162,13 @@
       "smartViews": "スマートビュー",
       "smartViewsEmpty": "ビューはまだありません",
       "tags": "タグ",
-      "tagsEmpty": "タグはまだありません",
       "devices": "デバイス",
       "devicesOnline": "{{online}}/{{total}} オンライン",
       "devicesEmpty": "ペアリング済みデバイスはありません",
       "manageDevices": "管理",
-      "settings": "設定"
+      "settings": "設定",
+      "show": "サイドバーを表示",
+      "hide": "サイドバーを非表示"
     }
   },
   "dashboard": {
@@ -2257,7 +2277,8 @@
         "pending": "再送信中…"
       },
       "success": {
-        "summary": "再送信しました · {{accepted}}/{{total}} 件を受け付けました"
+        "summary": "再送信しました · {{accepted}}/{{total}} 件を受け付けました",
+        "bulk": "{{total}} 件中 {{sent}} 件を送信しました"
       },
       "error": {
         "synchronizationDisabled": "同期が無効です。コンテンツを再送するには同期を有効にしてください。",

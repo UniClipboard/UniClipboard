@@ -856,7 +856,8 @@
           "favoriteClipboardItem": "Favorite current clipboard item",
           "searchHistory": "Search history",
           "zoomIn": "Zoom in",
-          "zoomOut": "Zoom out"
+          "zoomOut": "Zoom out",
+          "toggleSidebar": "Show or hide the sidebar"
         },
         "issues": {
           "sameScope": "Shortcut conflict in same scope: {{key}}",
@@ -1067,6 +1068,15 @@
     "subtitle_one": "{{count}} item",
     "subtitle_other": "{{count}} items",
     "searchPlaceholder": "Search clipboard…",
+    "listSearchPlaceholder": "Search, or type # from: type: on:",
+    "listSearchPlaceholderMore": "Add words or another filter…",
+    "list": {
+      "selectItem": "Select {{title}}",
+      "selected_one": "{{count}} selected",
+      "selected_other": "{{count}} selected",
+      "bulkActions": "Bulk actions",
+      "sendTo": "Send to…"
+    },
     "loadMore": "Load more",
     "unknownFile": "Unknown file",
     "filter": {
@@ -1109,7 +1119,16 @@
       "size": "Size",
       "fileCount": "Files",
       "urlCount": "URLs",
-      "fileMissing": "(missing)"
+      "fileMissing": "(missing)",
+      "aria": "Item detail",
+      "emptyTitle": "Nothing selected",
+      "emptyHint": "Pick an item to preview or send it.",
+      "from": "From <strong>{{device}}</strong>",
+      "copied": "Copied",
+      "pin": "Pin",
+      "unpin": "Unpin",
+      "sendToDevice": "Send to device…",
+      "shortcutHint": "C copy · F pin · D delete"
     },
     "composite": {
       "title": "Search and filter",
@@ -1144,12 +1163,13 @@
       "smartViews": "Smart Views",
       "smartViewsEmpty": "No views yet",
       "tags": "Tags",
-      "tagsEmpty": "No tags yet",
       "devices": "Devices",
       "devicesOnline": "{{online}} of {{total}} online",
       "devicesEmpty": "No paired devices",
       "manageDevices": "Manage",
-      "settings": "Settings"
+      "settings": "Settings",
+      "show": "Show sidebar",
+      "hide": "Hide sidebar"
     }
   },
   "dashboard": {
@@ -2259,7 +2279,8 @@
         "pending": "Resending…"
       },
       "success": {
-        "summary": "Resend dispatched · {{accepted}}/{{total}} accepted"
+        "summary": "Resend dispatched · {{accepted}}/{{total}} accepted",
+        "bulk": "Sent {{sent}} of {{total}} items"
       },
       "error": {
         "synchronizationDisabled": "Sync is disabled. Turn it on to resend content.",

@@ -860,7 +860,8 @@
           "favoriteClipboardItem": "Добавить текущий элемент в избранное",
           "searchHistory": "Поиск по истории",
           "zoomIn": "Увеличить",
-          "zoomOut": "Уменьшить"
+          "zoomOut": "Уменьшить",
+          "toggleSidebar": "Показать или скрыть боковую панель"
         },
         "issues": {
           "sameScope": "Конфликт сочетаний в одной области: {{key}}",
@@ -1071,6 +1072,17 @@
     "subtitle_one": "{{count}} элемент",
     "subtitle_other": "{{count}} элементов",
     "searchPlaceholder": "Поиск в буфере обмена…",
+    "listSearchPlaceholder": "Ищите или введите # from: type: on:",
+    "listSearchPlaceholderMore": "Добавьте слова или ещё фильтр…",
+    "list": {
+      "selectItem": "Выбрать {{title}}",
+      "selected_one": "Выбрано: {{count}}",
+      "selected_other": "Выбрано: {{count}}",
+      "bulkActions": "Массовые действия",
+      "sendTo": "Отправить на…",
+      "selected_few": "Выбрано: {{count}}",
+      "selected_many": "Выбрано: {{count}}"
+    },
     "loadMore": "Загрузить ещё",
     "unknownFile": "Неизвестный файл",
     "filter": {
@@ -1113,7 +1125,16 @@
       "size": "Размер",
       "fileCount": "Файлов",
       "urlCount": "Ссылок",
-      "fileMissing": "(отсутствует)"
+      "fileMissing": "(отсутствует)",
+      "aria": "Сведения об элементе",
+      "emptyTitle": "Ничего не выбрано",
+      "emptyHint": "Выберите элемент, чтобы просмотреть или отправить его.",
+      "from": "С <strong>{{device}}</strong>",
+      "copied": "Скопировано",
+      "pin": "Закрепить",
+      "unpin": "Открепить",
+      "sendToDevice": "Отправить на устройство…",
+      "shortcutHint": "C копировать · F закрепить · D удалить"
     },
     "composite": {
       "title": "Поиск и фильтры",
@@ -1152,12 +1173,13 @@
       "smartViews": "Умные представления",
       "smartViewsEmpty": "Представлений пока нет",
       "tags": "Теги",
-      "tagsEmpty": "Тегов пока нет",
       "devices": "Устройства",
       "devicesOnline": "{{online}} из {{total}} онлайн",
       "devicesEmpty": "Нет сопряжённых устройств",
       "manageDevices": "Управлять",
-      "settings": "Настройки"
+      "settings": "Настройки",
+      "show": "Показать боковую панель",
+      "hide": "Скрыть боковую панель"
     },
     "subtitle_few": "{{count}} элемента",
     "subtitle_many": "{{count}} элементов"
@@ -2279,7 +2301,8 @@
         "pending": "Отправка…"
       },
       "success": {
-        "summary": "Повторная отправка запущена · принято {{accepted}}/{{total}}"
+        "summary": "Повторная отправка запущена · принято {{accepted}}/{{total}}",
+        "bulk": "Отправлено {{sent}} из {{total}}"
       },
       "error": {
         "synchronizationDisabled": "Синхронизация выключена. Включите её, чтобы отправить содержимое повторно.",

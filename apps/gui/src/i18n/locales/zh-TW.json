@@ -856,7 +856,8 @@
           "favoriteClipboardItem": "我的最愛目前剪貼簿項目",
           "searchHistory": "搜尋歷史記錄",
           "zoomIn": "放大介面",
-          "zoomOut": "縮小介面"
+          "zoomOut": "縮小介面",
+          "toggleSidebar": "顯示或隱藏側邊欄"
         },
         "issues": {
           "sameScope": "同一作用域內快捷鍵衝突：{{key}}",
@@ -1066,6 +1067,15 @@
     "title": "歷程記錄",
     "subtitle_other": "{{count}} 項",
     "searchPlaceholder": "搜尋剪貼簿…",
+    "listSearchPlaceholder": "搜尋，或輸入 # from: type: on:",
+    "listSearchPlaceholderMore": "繼續輸入關鍵詞或加入篩選…",
+    "list": {
+      "selectItem": "選取 {{title}}",
+      "selected_one": "已選 {{count}} 項",
+      "selected_other": "已選 {{count}} 項",
+      "bulkActions": "批次操作",
+      "sendTo": "傳送到…"
+    },
     "loadMore": "載入更多",
     "unknownFile": "未知檔案",
     "filter": {
@@ -1108,7 +1118,16 @@
       "size": "大小",
       "fileCount": "檔案數",
       "urlCount": "連結數",
-      "fileMissing": "（已丟失）"
+      "fileMissing": "（已丟失）",
+      "aria": "項目詳情",
+      "emptyTitle": "未選擇項目",
+      "emptyHint": "選擇一個項目以預覽或傳送。",
+      "from": "來自 <strong>{{device}}</strong>",
+      "copied": "複製於",
+      "pin": "置頂",
+      "unpin": "取消置頂",
+      "sendToDevice": "傳送到裝置…",
+      "shortcutHint": "C 複製 · F 置頂 · D 刪除"
     },
     "composite": {
       "title": "搜尋與篩選",
@@ -1141,12 +1160,13 @@
       "smartViews": "智能視圖",
       "smartViewsEmpty": "尚無視圖",
       "tags": "標籤",
-      "tagsEmpty": "尚無標籤",
       "devices": "裝置",
       "devicesOnline": "{{online}}/{{total}} 線上",
       "devicesEmpty": "尚無已配對裝置",
       "manageDevices": "管理",
-      "settings": "設定"
+      "settings": "設定",
+      "show": "顯示側邊欄",
+      "hide": "隱藏側邊欄"
     }
   },
   "dashboard": {
@@ -2255,7 +2275,8 @@
         "pending": "正在重發…"
       },
       "success": {
-        "summary": "已觸發重發 · {{accepted}}/{{total}} 接收"
+        "summary": "已觸發重發 · {{accepted}}/{{total}} 接收",
+        "bulk": "已傳送 {{sent}} / {{total}} 項"
       },
       "error": {
         "synchronizationDisabled": "同步已關閉。請先開啟同步，再重發內容。",

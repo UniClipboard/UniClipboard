@@ -2,8 +2,11 @@ import type { LucideIcon } from 'lucide-react'
 import { useSidebarSlot } from '@/contexts/sidebar-slot-context'
 import { cn } from '@/lib/utils'
 
-interface HistorySidebarNavItemProps {
-  icon: LucideIcon
+type HistorySidebarNavItemProps = (
+  | { icon: LucideIcon; leading?: never }
+  // A custom 14px leading mark (e.g. a tag's colour dot) in place of an icon.
+  | { icon?: never; leading: React.ReactNode }
+) & {
   label: string
   active?: boolean
   disabled?: boolean
@@ -13,6 +16,7 @@ interface HistorySidebarNavItemProps {
 
 function HistorySidebarNavItem({
   icon: Icon,
+  leading,
   label,
   active = false,
   disabled = false,
@@ -43,7 +47,13 @@ function HistorySidebarNavItem({
         disabled && 'cursor-default opacity-60'
       )}
     >
-      <Icon className={cn('size-3.5 shrink-0', windowEdge && 'opacity-75')} aria-hidden="true" />
+      {Icon ? (
+        <Icon className={cn('size-3.5 shrink-0', windowEdge && 'opacity-75')} aria-hidden="true" />
+      ) : (
+        <span aria-hidden="true" className="flex size-3.5 shrink-0 items-center justify-center">
+          {leading}
+        </span>
+      )}
       <span className="min-w-0 flex-1 truncate text-left">{label}</span>
       {trailing}
     </button>

@@ -21,8 +21,12 @@ vi.mock('@/components/history/HistoryCard', async () => {
 vi.mock('@/components/history/HistoryGridRow', async () => {
   const React = await import('react')
   return {
-    default: ({ item }: { item: DisplayClipboardItem }) =>
-      React.createElement('div', { 'data-testid': `history-row-${item.id}` }, item.id),
+    default: ({ item, dayStart }: { item: DisplayClipboardItem; dayStart?: number }) =>
+      React.createElement(
+        'div',
+        { 'data-testid': `history-row-${item.id}`, 'data-day-start': dayStart },
+        item.id
+      ),
   }
 })
 
@@ -101,7 +105,7 @@ function renderGrid({
       submittedQuery={submittedQuery}
       searchLoading={searchLoading}
       copySuccessId={null}
-      deletingId={null}
+      deletingIds={new Set()}
       hasMore={hasMore}
       onLoadMore={onLoadMore}
       onCopy={noop}
@@ -117,6 +121,40 @@ function renderGrid({
 }
 
 describe('HistoryGrid', () => {
+  it('opens a day header only on the first row of each calendar day in the list layout', () => {
+    const day = (d: number, h: number) => new Date(2026, 8, d, h).getTime()
+    const items = [day(28, 9), day(28, 8), day(27, 22)].map((activeTime, index) => ({
+      ...makeItem(index),
+      activeTime,
+    }))
+    render(
+      <HistoryGrid
+        items={items}
+        layout="list"
+        seenIds={new Set<string>()}
+        selectedId={null}
+        isSearchActive={false}
+        submittedQuery=""
+        searchLoading={false}
+        copySuccessId={null}
+        deletingIds={new Set()}
+        hasMore={false}
+        onLoadMore={noop}
+        onCopy={noop}
+        onFilePathsAction={noop}
+        onDelete={noop}
+        onToggleFavorite={noop}
+        onCardClick={noop}
+        onHoverChange={noop}
+      />
+    )
+
+    const dayStart = (id: string) => screen.getByTestId(`history-row-${id}`).dataset.dayStart
+    expect(dayStart('entry-0')).toBe(String(day(28, 9)))
+    expect(dayStart('entry-1')).toBeUndefined()
+    expect(dayStart('entry-2')).toBe(String(day(27, 22)))
+  })
+
   it('renders only the visible subset through the virtualized list', () => {
     const items = Array.from({ length: 25 }, (_value, index) => makeItem(index))
 
@@ -170,7 +208,7 @@ describe('HistoryGrid', () => {
         submittedQuery=""
         searchLoading={true}
         copySuccessId={null}
-        deletingId={null}
+        deletingIds={new Set()}
         hasMore={false}
         onLoadMore={noop}
         onCopy={noop}
@@ -193,7 +231,7 @@ describe('HistoryGrid', () => {
         submittedQuery=""
         searchLoading={false}
         copySuccessId={null}
-        deletingId={null}
+        deletingIds={new Set()}
         hasMore={false}
         onLoadMore={noop}
         onCopy={noop}

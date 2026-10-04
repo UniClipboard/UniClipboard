@@ -2,8 +2,10 @@ import { Loader2, Search } from 'lucide-react'
 import React from 'react'
 import { useTranslation } from 'react-i18next'
 import { Virtuoso, type StateSnapshot, type VirtuosoHandle } from 'react-virtuoso'
+import { deviceLabel } from '@/components/clipboard/entry-delivery-labels'
 import { HistoryScroller, HistoryList } from '@/components/history/history-scroll-components'
-import HistoryGridRow from '@/components/history/HistoryGridRow'
+import HistoryGridRow, { type HistoryRowLayout } from '@/components/history/HistoryGridRow'
+import { dayKey } from '@/components/history/list/history-list-format'
 import type { DisplayClipboardItem } from '@/lib/clipboard-entry'
 import { cn } from '@/lib/utils'
 
@@ -11,6 +13,13 @@ const historyScrollComponents = { Scroller: HistoryScroller, List: HistoryList }
 
 interface HistoryGridProps {
   items: DisplayClipboardItem[]
+  /** Row presentation; `list` also groups rows under day headers. */
+  layout?: HistoryRowLayout
+  /** List layout: origin device id -> name, for the rows' meta line. */
+  sourceDeviceNames?: Record<string, string>
+  /** List layout: the bulk-selected ids and their toggle. */
+  checkedIds?: ReadonlySet<string>
+  onToggleChecked?: (id: string) => void
   /** Ids already rendered once; gates the one-shot entrance animation. */
   seenIds: Set<string>
   /** Currently previewed entry; its row gets the active highlight. */
@@ -21,7 +30,7 @@ interface HistoryGridProps {
   submittedQuery: string
   searchLoading: boolean
   copySuccessId: string | null
-  deletingId: string | null
+  deletingIds: ReadonlySet<string>
   hasMore: boolean
   onLoadMore: () => void
   onCopy: (id: string) => void
@@ -44,6 +53,10 @@ interface HistoryGridProps {
  */
 const HistoryGrid: React.FC<HistoryGridProps> = ({
   items,
+  layout = 'card',
+  sourceDeviceNames,
+  checkedIds,
+  onToggleChecked,
   seenIds,
   selectedId,
   listRef,
@@ -52,7 +65,7 @@ const HistoryGrid: React.FC<HistoryGridProps> = ({
   submittedQuery,
   searchLoading,
   copySuccessId,
-  deletingId,
+  deletingIds,
   hasMore,
   onLoadMore,
   onCopy,
@@ -66,9 +79,19 @@ const HistoryGrid: React.FC<HistoryGridProps> = ({
   emptyStateText,
 }) => {
   const { t } = useTranslation()
+  // List layout: loaded rows per calendar day, for the day headers.
+  const dayCounts = React.useMemo(() => {
+    const counts = new Map<number, number>()
+    if (layout !== 'list') return counts
+    for (const item of items) {
+      const key = dayKey(item.activeTime)
+      counts.set(key, (counts.get(key) ?? 0) + 1)
+    }
+    return counts
+  }, [items, layout])
 
   return (
-    <div className="flex-1 min-h-0 overflow-hidden">
+    <div className="@container flex-1 min-h-0 overflow-hidden">
       {searchLoading && items.length === 0 ? (
         <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-3 pb-10">
           <Loader2 className="size-5 text-muted-foreground/40 animate-spin" />
@@ -122,11 +145,28 @@ const HistoryGrid: React.FC<HistoryGridProps> = ({
           itemContent={(index, item) => (
             <HistoryGridRow
               item={item}
+              layout={layout}
+              dayStart={
+                layout === 'list' &&
+                (index === 0 || dayKey(items[index - 1].activeTime) !== dayKey(item.activeTime))
+                  ? item.activeTime
+                  : undefined
+              }
+              dayCount={dayCounts.get(dayKey(item.activeTime))}
+              deviceName={
+                layout === 'list' && item.sourceDeviceId
+                  ? deviceLabel(sourceDeviceNames?.[item.sourceDeviceId], item.sourceDeviceId)
+                  : undefined
+              }
               seenIds={seenIds}
               isActive={item.id === selectedId}
               copySuccess={copySuccessId === item.id}
-              isDeleting={deletingId === item.id}
-              showDivider={index < items.length - 1}
+              checked={checkedIds?.has(item.id) ?? false}
+              anyChecked={(checkedIds?.size ?? 0) > 0}
+              onToggleChecked={onToggleChecked}
+              isDeleting={deletingIds.has(item.id)}
+              // The list rules every row (HList.dc.html); cards skip the last.
+              showDivider={layout === 'list' || index < items.length - 1}
               onCopy={onCopy}
               onFilePathsAction={onFilePathsAction}
               onDelete={onDelete}

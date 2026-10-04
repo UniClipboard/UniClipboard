@@ -63,6 +63,11 @@ const writeReport = () =>
 async function runPhase(name, entry, port, size, body, extraQuery = '') {
   const server = await serveFixture(entry, port)
   const browser = await openBrowser(size.width, size.height)
+  // Match the design artboards' 1280×800 so screenshots compare at the same size.
+  await browser.setViewport({ width: size.width, height: size.height })
+  // The theme follows the system by default; pin light so runs compare with the
+  // (light) design artboards regardless of the host's appearance.
+  await browser.emulate('colorScheme', 'light')
   const phase = report[name]
   const shot = async file => browser.saveScreenshot(path.join(output, `${name}-${file}.png`))
   try {

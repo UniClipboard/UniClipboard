@@ -695,7 +695,7 @@ pub async fn restart_local_daemon(
             // **立刻**（在真正开始关闭序列之前）打上干净退出标记，所以哪怕请求
             // 超时、下面还是回退硬杀，标记也已经写对了。Unix 上 SIGTERM 本来就
             // 能触发正常关闭序列，这里统一走同一条路径，不再区分平台。
-            match request_graceful_stop(GRACEFUL_STOP_REQUEST_TIMEOUT).await {
+            match request_graceful_stop(metadata.pid, GRACEFUL_STOP_REQUEST_TIMEOUT).await {
                 Ok(()) => {
                     tracing::info!(
                         pid = metadata.pid,
@@ -778,11 +778,34 @@ pub async fn restart_local_daemon(
 /// (`POST /lifecycle/graceful-stop`), bounded by `timeout`. `Err` carries a
 /// human-readable reason; the caller's only recourse on `Err` is a hard
 /// terminate, so every failure path here must be distinguishable from success.
-async fn request_graceful_stop(timeout: Duration) -> Result<(), String> {
+///
+/// `expected_pid` is the PID the caller already D22-verified as the live
+/// daemon it means to stop (read moments earlier from the PID file). Between
+/// that read and this call, `daemon.conn` could in principle have been
+/// rewritten by a *different* process (the old daemon exited and something
+/// else — a `uniclip start`, a replacement spawn — claimed the connection
+/// file first); sending graceful-stop there would mark a stranger daemon's
+/// run clean and shut down the wrong process. Re-checking the PID closes
+/// that window: a mismatch is treated as failure so the caller never sends a
+/// control request it isn't sure is reaching the daemon it verified.
+async fn request_graceful_stop(expected_pid: u32, timeout: Duration) -> Result<(), String> {
     let conn = uc_daemon_process::socket::read_daemon_conn_file()
         .map_err(|e| format!("failed to read daemon connection file: {e}"))?
         .ok_or_else(|| "daemon connection file is missing".to_string())?;
+    verify_conn_pid_matches(conn.pid, expected_pid)?;
     request_graceful_stop_at(daemon_connection_info_from_conn(&conn), timeout).await
+}
+
+/// Pure guard split out of [`request_graceful_stop`] so the PID-mismatch
+/// rejection is independently unit-testable.
+fn verify_conn_pid_matches(conn_pid: u32, expected_pid: u32) -> Result<(), String> {
+    if conn_pid != expected_pid {
+        return Err(format!(
+            "daemon connection file now names pid {conn_pid}, not the expected pid {expected_pid} \
+             — refusing to send graceful-stop to a different daemon"
+        ));
+    }
+    Ok(())
 }
 
 /// Core of [`request_graceful_stop`], taking the connection info explicitly so
@@ -1246,6 +1269,22 @@ mod tests {
         assert_eq!(info.base_url, "http://127.0.0.1:54321");
         assert_eq!(info.ws_url, "ws://127.0.0.1:54321/ws");
         assert_eq!(info.token, "tok");
+    }
+
+    #[test]
+    fn verify_conn_pid_matches_accepts_the_same_daemon() {
+        verify_conn_pid_matches(111, 111).expect("identical pid must pass");
+    }
+
+    #[test]
+    fn verify_conn_pid_matches_rejects_a_replaced_daemon() {
+        // daemon.conn now names a different pid than the one restart_local_daemon
+        // already verified — a replacement daemon claimed the connection file
+        // between that check and this call. Sending graceful-stop here would
+        // mark a stranger daemon's run clean; must be refused instead.
+        let error = verify_conn_pid_matches(222, 111)
+            .expect_err("a pid mismatch must be rejected, not silently followed");
+        assert!(error.contains("222") && error.contains("111"));
     }
 
     async fn mock_daemon_requiring_session() -> MockServer {

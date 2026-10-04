@@ -21,13 +21,21 @@ import {
 } from '@/components/history/composite-search/useCompositeSearchBar'
 import { useZeroResultRelaxations } from '@/components/history/composite-search/useZeroResultRelaxations'
 import ZeroResultRelaxations from '@/components/history/composite-search/ZeroResultRelaxations'
+import HistoryDetailPanel from '@/components/history/detail/HistoryDetailPanel'
 import {
   HISTORY_ENTRY_ANIMATION,
   HISTORY_PREVIEW_ENTRY_TRANSITION,
 } from '@/components/history/history-entry-animation'
 import HistoryGrid from '@/components/history/HistoryGrid'
-import { HISTORY_LIBRARY_FILTER_STATE } from '@/components/history/sidebar/history-sidebar-types'
+import { DETAIL_COLUMN_MIN } from '@/components/history/layout/history-layout'
+import { useHistoryListColumn } from '@/components/history/layout/useHistoryListColumn'
+import HistoryBulkBar from '@/components/history/list/HistoryBulkBar'
+import {
+  HISTORY_LIBRARY_FILTER_STATE,
+  HISTORY_TAG_FILTER_STATE,
+} from '@/components/history/sidebar/history-sidebar-types'
 import HistorySidebar from '@/components/history/sidebar/HistorySidebar'
+import TrafficLightOverhang from '@/components/history/sidebar/TrafficLightOverhang'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
 import { useSidebarSlot } from '@/contexts/sidebar-slot-context'
 import { useHistoryController } from '@/hooks/useHistoryController'
@@ -61,6 +69,7 @@ const HistoryPage: React.FC = () => {
     fetchCounts: countSearch,
   }
   const compositeSearch = useCompositeSearchBar(searchProps)
+  const listColumn = useHistoryListColumn()
   const relaxations = useZeroResultRelaxations({
     active: c.isSearchActive && !c.searchLoading && c.items.length === 0,
     chips: compositeSearch.chips,
@@ -69,19 +78,20 @@ const HistoryPage: React.FC = () => {
     fetchCounts: countSearch,
   })
 
-  // A Library row picked on the Devices page arrives as router state; apply it
-  // once, then drop it so back/forward navigation does not re-apply it.
+  // A Library or Tags row picked on the Devices page arrives as router state;
+  // apply it once, then drop it so back/forward navigation does not re-apply it.
   const location = useLocation()
   const navigate = useNavigate()
-  const libraryFilter = (location.state as Record<string, unknown> | null)?.[
-    HISTORY_LIBRARY_FILTER_STATE
-  ] as Filter | undefined
-  const { setContentFilter } = c.filterActions
+  const routerState = location.state as Record<string, unknown> | null
+  const libraryFilter = routerState?.[HISTORY_LIBRARY_FILTER_STATE] as Filter | undefined
+  const tagFilter = routerState?.[HISTORY_TAG_FILTER_STATE] as string | undefined
+  const { setContentFilter, setTagFilter } = c.filterActions
   useEffect(() => {
-    if (!libraryFilter) return
-    setContentFilter(libraryFilter)
+    if (!libraryFilter && !tagFilter) return
+    if (libraryFilter) setContentFilter(libraryFilter)
+    if (tagFilter) setTagFilter(tagFilter)
     navigate(location.pathname, { replace: true, state: null })
-  }, [libraryFilter, location.pathname, navigate, setContentFilter])
+  }, [libraryFilter, tagFilter, location.pathname, navigate, setContentFilter, setTagFilter])
 
   const [searchOpen, setSearchOpen] = useState(false)
   const searchControlRef = useRef<HTMLDivElement>(null)
@@ -131,6 +141,19 @@ const HistoryPage: React.FC = () => {
     handler: focusSearch,
     useKey: true,
   })
+
+  const copySelected = () => {
+    if (c.selectedId) c.handleCopy(c.selectedId)
+  }
+  const toggleSelectedFavorite = () => {
+    if (c.selectedItem) {
+      c.handleToggleFavorite(c.selectedItem.id, c.selectedItem.isFavorited === true)
+    }
+  }
+  const deleteSelected = () => {
+    if (c.selectedId) c.requestDelete(c.selectedId)
+  }
+  const selectedCopySuccess = c.copySuccessId !== null && c.copySuccessId === c.selectedId
 
   const filterPanel = (
     <HistoryFilterPanel
@@ -211,46 +234,52 @@ const HistoryPage: React.FC = () => {
           context="history"
           activeFilter={c.filter.activeFilter}
           onSelectLibrary={c.filterActions.setContentFilter}
+          tags={c.searchableTags}
+          activeTag={c.filter.tagFilter}
+          onSelectTag={setTagFilter}
+          countsRevision={c.items}
         />
-        <ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1">
+        <ResizablePanelGroup
+          orientation="horizontal"
+          className="min-h-0 flex-1"
+          {...(contentToolbarHost ? {} : listColumn.groupProps)}
+        >
           {/* List */}
           <ResizablePanel
             id="history-list"
-            // macOS (HList.dc.html): a 560px list that keeps its width while the
-            // detail column flexes. Pixels, because react-resizable-panels
-            // resolves `rem` against the body font size (14px here), not the root.
-            defaultSize={contentToolbarHost ? '42%' : '560px'}
-            groupResizeBehavior={contentToolbarHost ? undefined : 'preserve-pixel-size'}
-            minSize={contentToolbarHost ? '20rem' : '320px'}
-            maxSize={contentToolbarHost ? '36rem' : '640px'}
+            // macOS: per-window-tier constraints (history-layout.ts); the list
+            // keeps its pixel width while the detail column flexes.
+            {...(contentToolbarHost
+              ? { defaultSize: '42%', minSize: '20rem', maxSize: '36rem' }
+              : listColumn.panelProps)}
           >
-            <div className="flex h-full min-w-0 flex-col">
+            <div className="relative flex h-full min-w-0 flex-col">
               {!contentToolbarHost && (
-                // HList.dc.html: query bar, facet row, summary.
+                // HList.dc.html: query bar and facet row.
                 <div className="shrink-0">
-                  <div className="px-4 py-2.5">
-                    <CompositeSearchBarView
-                      {...searchProps}
-                      shortcutHint="⌘F"
-                      state={compositeSearch}
-                    />
+                  <div className="flex py-2.5 pl-4 pr-4">
+                    <TrafficLightOverhang className="w-3.5 self-stretch" />
+                    <div className="min-w-0 flex-1">
+                      <CompositeSearchBarView
+                        {...searchProps}
+                        shortcutHint="⌘F"
+                        state={compositeSearch}
+                      />
+                    </div>
                   </div>
-                  <div className="flex h-11 items-center border-b border-border/60 px-4">
+                  <div className="flex h-11 items-center overflow-x-auto border-b border-border/60 px-4 [scrollbar-width:none]">
                     <SearchFacetRow
                       chips={compositeSearch.chips}
                       onSeedDimension={compositeSearch.seedDimension}
                       onClearAll={() => compositeSearch.clearAll()}
                     />
                   </div>
-                  <div className="flex h-10 items-center border-b border-border/40 px-4.5 text-ui-caption">
-                    <span className="font-semibold text-foreground">
-                      {t('history.subtitle', { count: c.browseCount })}
-                    </span>
-                  </div>
                 </div>
               )}
               <HistoryGrid
                 items={c.items}
+                layout={contentToolbarHost ? 'card' : 'list'}
+                sourceDeviceNames={c.sourceDeviceNames}
                 seenIds={c.seenIds}
                 selectedId={c.selectedId}
                 listRef={c.listRef}
@@ -259,7 +288,9 @@ const HistoryPage: React.FC = () => {
                 submittedQuery={c.filter.submittedQuery}
                 searchLoading={c.searchLoading}
                 copySuccessId={c.copySuccessId}
-                deletingId={c.deletingId}
+                deletingIds={c.deletingIds}
+                checkedIds={contentToolbarHost ? undefined : c.checkedIds}
+                onToggleChecked={c.toggleChecked}
                 hasMore={c.hasMore}
                 onLoadMore={c.handleLoadMore}
                 onCopy={c.handleCopy}
@@ -289,16 +320,23 @@ const HistoryPage: React.FC = () => {
                     : undefined
                 }
               />
+              {!contentToolbarHost && c.checkedItems.length > 0 && (
+                <HistoryBulkBar
+                  items={c.checkedItems}
+                  onPin={c.pinChecked}
+                  onDelete={c.deleteChecked}
+                />
+              )}
             </div>
           </ResizablePanel>
 
-          <ResizableHandle />
+          <ResizableHandle {...(contentToolbarHost ? {} : listColumn.handleProps)} />
 
           {/* Preview */}
           <ResizablePanel
             id="history-preview"
             defaultSize={contentToolbarHost ? '58%' : undefined}
-            minSize="35%"
+            minSize={contentToolbarHost ? '35%' : `${DETAIL_COLUMN_MIN}px`}
           >
             <m.div
               data-testid="history-preview-motion"
@@ -307,30 +345,30 @@ const HistoryPage: React.FC = () => {
               transition={HISTORY_PREVIEW_ENTRY_TRANSITION}
               className="relative flex h-full min-w-0 flex-col"
             >
-              <ClipboardPreview
-                item={c.selectedItem}
-                actions={delivery => (
-                  <ClipboardActionBar
-                    item={c.selectedItem}
-                    delivery={delivery}
-                    copySuccess={c.copySuccessId !== null && c.copySuccessId === c.selectedId}
-                    onCopy={() => {
-                      if (c.selectedId) c.handleCopy(c.selectedId)
-                    }}
-                    onToggleFavorite={() => {
-                      if (c.selectedItem) {
-                        c.handleToggleFavorite(
-                          c.selectedItem.id,
-                          c.selectedItem.isFavorited === true
-                        )
-                      }
-                    }}
-                    onDelete={() => {
-                      if (c.selectedId) c.requestDelete(c.selectedId)
-                    }}
-                  />
-                )}
-              />
+              {contentToolbarHost ? (
+                <ClipboardPreview
+                  item={c.selectedItem}
+                  actions={delivery => (
+                    <ClipboardActionBar
+                      item={c.selectedItem}
+                      delivery={delivery}
+                      copySuccess={selectedCopySuccess}
+                      onCopy={copySelected}
+                      onToggleFavorite={toggleSelectedFavorite}
+                      onDelete={deleteSelected}
+                    />
+                  )}
+                />
+              ) : (
+                // macOS: HDetail.dc.html detail column.
+                <HistoryDetailPanel
+                  item={c.selectedItem}
+                  copySuccess={selectedCopySuccess}
+                  onCopy={copySelected}
+                  onToggleFavorite={toggleSelectedFavorite}
+                  onDelete={deleteSelected}
+                />
+              )}
             </m.div>
           </ResizablePanel>
         </ResizablePanelGroup>
@@ -340,7 +378,7 @@ const HistoryPage: React.FC = () => {
         open={c.deleteDialogOpen}
         onOpenChange={c.setDeleteDialogOpen}
         onConfirm={c.confirmDelete}
-        count={1}
+        count={Math.max(c.deleteCount, 1)}
       />
     </div>
   )

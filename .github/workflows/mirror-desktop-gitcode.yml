@@ -216,12 +216,16 @@ jobs:
       - name: Reject draft releases and inconsistent tag/version/channel
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO_NAME: ${{ github.repository }}
+          TAG_NAME: ${{ inputs.tag_name }}
+          VERSION: ${{ inputs.version }}
+          CHANNEL: ${{ inputs.channel }}
         run: |
           node scripts/validate-mirror-release.mjs \
-            --repo "${{ github.repository }}" \
-            --tag-name "${{ inputs.tag_name }}" \
-            --version "${{ inputs.version }}" \
-            --channel "${{ inputs.channel }}"
+            --repo "$REPO_NAME" \
+            --tag-name "$TAG_NAME" \
+            --version "$VERSION" \
+            --channel "$CHANNEL"
 
       - name: Download release assets from the GitHub Release
         continue-on-error: ${{ inputs.non_blocking == true }}

@@ -91,6 +91,9 @@ const EXPECTED = {
     firstUse: 'Ainda não há histórico',
   },
 }
+// Custom tags and the device of the fixture (`fixture.mjs`), which the locked page must not show.
+const FIXTURE_TAGS = ['工作', '项目资料归档', '稍后处理', '参考资料', '临时备忘']
+const FIXTURE_DEVICE = 'iPhone'
 // Labels of the old, hard-coded panel. None may appear in a language other than Chinese.
 const CHINESE_LABELS = ['粘贴为纯文本', '粘贴并保持面板', '只复制', '搜索，或输入', '全部']
 
@@ -366,6 +369,44 @@ test('GPUI quick panel follows the configured language', { timeout: 600_000 }, a
         await fetch(`${address}/__test/locked?on=1`)
       }
     )
+    // K1, K3: tags and device names read while unlocked must not show on the locked page when the
+    // lock is learned from a 423 (the fixture sends no lock notice, as when one is missed), and
+    // must come back after unlocking without reopening. Suggestions are the only place they show.
+    await run('locked page shows no earlier tags or devices', 'en-US', async () => {
+      const suggestions = async (step, prefix) => {
+        await type(prefix)
+        await delay(400)
+        const lines = await read(step, 'history', 'en-US')
+        await press('delete')
+        return lines
+      }
+      const tagsShown = lines => FIXTURE_TAGS.filter(tag => contains(lines.chinese, tag))
+      await open()
+      // Baseline: unlocked, `#` lists the fixture's tags, so their absence later means something.
+      assert.ok(tagsShown(await suggestions('lock-before-tags', '#')).length > 0, 'tags while open')
+      await toggle()
+      await delay(800)
+      await fetch(`${address}/__test/locked?on=1`)
+      await open()
+      const lockedTags = await suggestions('lock-tags', '#')
+      assert.ok(contains(lockedTags, EXPECTED['en-US'].locked), 'locked page shown')
+      assert.deepEqual(tagsShown(lockedTags), [], 'no tag names while locked')
+      const lockedDevices = await suggestions('lock-devices', '@')
+      assert.ok(!contains(lockedDevices, FIXTURE_DEVICE), 'no device names while locked')
+      const before = (await fixtureState()).tagsReads
+      await fetch(`${address}/__test/locked?on=0`)
+      // The locked panel searches again every 3 s; success reads the tags again.
+      await until(
+        'tags read after unlock',
+        async () => (await fixtureState()).tagsReads > before,
+        15_000
+      )
+      await delay(600)
+      assert.ok(
+        tagsShown(await suggestions('lock-after-tags', '#')).length > 0,
+        'tags after unlock'
+      )
+    })
     // f: a typed date range becomes a chip labelled in the configured language. The text starts
     // with a letter, as in e2e.mjs, so no key of it is taken as a list shortcut.
     await run('date chip is localized', 'en-US', async () => {

@@ -52,6 +52,10 @@ impl PanelState {
         self.search.loading = false;
         match result {
             Ok(result) => {
+                // Tags and devices were dropped while locked; read them again now it is open.
+                if self.search.locked {
+                    effects.push(Effect::LoadOptions);
+                }
                 self.search.locked = false;
                 self.search.disconnected = None;
                 effects.push(Effect::CancelReconnect);
@@ -66,6 +70,11 @@ impl PanelState {
             }
             Err(error) => {
                 self.search.locked = matches!(error, SearchFailure::Locked);
+                // A 423 means locked as much as the lock notice does, which may have been missed.
+                if self.search.locked {
+                    self.catalog.tags.clear();
+                    self.catalog.members.clear();
+                }
                 // Locked and disconnected have pages of their own instead of a message.
                 let own_page = self.search.locked || matches!(error, SearchFailure::Disconnected);
                 self.session.message = (!own_page).then(|| error.to_string());
@@ -185,8 +194,9 @@ impl PanelState {
             );
         }
         let Options { choices, settings } = *options;
-        // A failed read of the choices keeps what was known, and the settings still apply.
-        if let Ok(Choices { tags, members }) = choices {
+        // A failed read of the choices keeps what was known, and the settings still apply. While
+        // locked nothing is taken, not even an answer that was on its way when the lock came.
+        if let (Ok(Choices { tags, members }), false) = (choices, self.search.locked) {
             self.catalog.tags = tags;
             self.catalog.members = members;
         }

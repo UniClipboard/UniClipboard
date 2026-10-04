@@ -58,7 +58,14 @@ function HistorySidebar(props: HistorySidebarProps) {
     props.context === 'history' && props.activeFilter === filter
 
   return (
-    <aside className="flex w-55 shrink-0 flex-col border-r border-border/50 bg-sidebar text-sidebar-foreground">
+    <aside
+      className={cn(
+        'flex shrink-0 flex-col border-r border-border/50',
+        libraryOwnsNavigation
+          ? 'w-55 bg-sidebar text-sidebar-foreground'
+          : 'w-56 bg-muted/15 xl:w-60'
+      )}
+    >
       {libraryOwnsNavigation && (
         <div
           data-tauri-drag-region
@@ -70,7 +77,7 @@ function HistorySidebar(props: HistorySidebarProps) {
       <ScrollArea className="min-h-0 flex-1">
         <nav
           aria-label={t('history.sidebar.library')}
-          className={cn('flex flex-col px-2.5 pb-3', !libraryOwnsNavigation && 'pt-2')}
+          className={cn('flex flex-col pb-3', libraryOwnsNavigation ? 'px-2.5' : 'px-2 pt-2')}
         >
           <HistorySidebarNavItem
             icon={Inbox}
@@ -158,10 +165,18 @@ function HistorySidebar(props: HistorySidebarProps) {
         </nav>
       </ScrollArea>
 
-      <div className="flex items-center justify-between gap-2 px-2.5 py-2">
+      <div
+        className={cn(
+          'flex items-center justify-between gap-2 py-2',
+          libraryOwnsNavigation ? 'px-2.5' : 'border-t border-border/50 px-3'
+        )}
+      >
         <NavLink
           to="/settings"
-          className="flex min-w-0 items-center gap-2 rounded-md px-2.5 py-1 text-ui-body text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+          className={cn(
+            'flex min-w-0 items-center gap-2 rounded-md py-1 text-ui-body text-muted-foreground hover:text-foreground',
+            libraryOwnsNavigation ? 'px-2.5 hover:bg-muted/60' : 'px-1.5'
+          )}
         >
           <Settings className="size-3.5 shrink-0" aria-hidden="true" />
           <span className="truncate">{t('history.sidebar.settings')}</span>

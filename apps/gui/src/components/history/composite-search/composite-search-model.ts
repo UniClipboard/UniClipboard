@@ -119,6 +119,15 @@ export function applyDimensionValue(
   else h.onExtensionFilterChange(value)
 }
 
+/**
+ * Render a dimension's current value back into typed-token syntax (e.g.
+ * `type:image`), so removing a chip via Backspace can drop the user back into
+ * editing it instead of just clearing it.
+ */
+export function buildTokenText(dimension: Dimension, value: string): string {
+  return dimension === 'tag' ? `${SYNTAX_KEYS.tag}${value}` : `${SYNTAX_KEYS[dimension]}:${value}`
+}
+
 /** Reset a dimension to its default (no filter). */
 export function resetDimensionValue(dimension: Dimension, h: DimensionHandlers): void {
   if (dimension === 'type') h.onContentFilterChange(DIMENSION_DEFAULTS.type)

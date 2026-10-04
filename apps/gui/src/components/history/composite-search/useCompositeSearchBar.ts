@@ -10,6 +10,7 @@ import {
   buildCandidates,
   buildChips,
   buildSyntaxSuggestions,
+  buildTokenText,
   DIMENSION_LABEL_KEYS,
   parseBuffer,
   resetDimensionValue,
@@ -195,7 +196,11 @@ export function useCompositeSearchBar({
     }
     if (e.key === 'Backspace' && buffer === '' && chips.length > 0) {
       e.preventDefault()
-      resetDimension(chips[chips.length - 1].dimension)
+      const lastChip = chips[chips.length - 1]
+      resetDimension(lastChip.dimension)
+      setBuffer(buildTokenText(lastChip.dimension, String(current[lastChip.dimension])))
+      setHighlight(0)
+      setOpen(true)
       return
     }
     if (

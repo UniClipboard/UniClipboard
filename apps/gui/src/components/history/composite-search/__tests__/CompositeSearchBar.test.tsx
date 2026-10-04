@@ -107,6 +107,19 @@ describe('CompositeSearchBar', () => {
     expect(props.onExtensionFilterChange).toHaveBeenCalledWith(null)
     expect(props.onQueryChange).toHaveBeenCalledWith('')
   })
+
+  it('reopens the last chip as an editable token on Backspace in an empty input', async () => {
+    const user = userEvent.setup()
+    const props = renderSearchBar({ contentFilter: Filter.Image, extensionFilter: 'md' })
+
+    const input = screen.getByRole('combobox')
+    await user.click(input)
+    await user.keyboard('{Backspace}')
+
+    expect(props.onExtensionFilterChange).toHaveBeenCalledWith(null)
+    expect(props.onContentFilterChange).not.toHaveBeenCalled()
+    expect(input).toHaveValue('ext:md')
+  })
 })
 
 function renderFilterPanel(

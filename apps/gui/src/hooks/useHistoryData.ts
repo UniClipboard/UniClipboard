@@ -118,6 +118,16 @@ export function useHistoryData() {
   const pendingItems = useAppSelector(s => s.clipboard.pendingItems)
   const spaceMembers = useAppSelector(s => s.devices.spaceMembers)
   const sourceOptions = useHistorySourceOptions()
+  const localDevice = useAppSelector(s => s.devices.localDevice)
+
+  // Origin id -> device name for the list rows' meta line: this device, paired
+  // peers, and mobile-sync devices (the same roster the `from:` filter offers).
+  const sourceDeviceNames = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const option of sourceOptions) map[option.id] = option.name
+    if (localDevice) map[localDevice.peerId] = localDevice.deviceName
+    return map
+  }, [sourceOptions, localDevice])
 
   const deviceNameByPeerId = useMemo(() => {
     const map: Record<string, string> = {}
@@ -246,6 +256,7 @@ export function useHistoryData() {
     },
     actions,
     sourceOptions,
+    sourceDeviceNames,
     baseItems,
     liveSnapshot,
     /** Match count for the current query (total history count while browsing). */

@@ -234,6 +234,7 @@ export function searchResultToDisplayItem(r: SearchResultDto): DisplayClipboardI
     // `isDirectory`. Drives the status-only send row for directory sends.
     isDirectory: r.tags.includes('directory'),
     textPreview: r.textPreview ?? undefined,
+    ...(r.sourceDevice ? { sourceDeviceId: r.sourceDevice } : {}),
   }
 }
 

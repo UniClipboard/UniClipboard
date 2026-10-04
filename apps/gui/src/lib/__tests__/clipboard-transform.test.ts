@@ -192,6 +192,13 @@ function makeSearchResult(overrides: Partial<SearchResultDto> = {}): SearchResul
 }
 
 describe('searchResultToDisplayItem', () => {
+  it('carries the origin device id only when the source is known', () => {
+    expect(
+      searchResultToDisplayItem(makeSearchResult({ sourceDevice: 'peer-1' })).sourceDeviceId
+    ).toBe('peer-1')
+    expect(searchResultToDisplayItem(makeSearchResult())).not.toHaveProperty('sourceDeviceId')
+  })
+
   it('keeps link search results tagged as links', () => {
     const item = searchResultToDisplayItem(
       makeSearchResult({

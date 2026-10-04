@@ -136,6 +136,9 @@ export interface DisplayClipboardItem {
   isDirectory?: boolean
   /** Source device name, only for pending inbound placeholder rows. */
   device?: string
+  /** Originating device id (search rows only; absent when the source is
+   * unknown). Resolve its name through the History source roster. */
+  sourceDeviceId?: string
   /** Fallback preview text when `content` is unavailable (search/pending rows). */
   textPreview?: string
 }

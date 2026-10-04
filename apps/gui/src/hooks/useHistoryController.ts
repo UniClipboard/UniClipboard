@@ -15,7 +15,7 @@ import type { DisplayClipboardItem } from '@/lib/clipboard-entry'
 import { createLogger } from '@/lib/logger'
 import { useAppDispatch } from '@/store/hooks'
 import { copyToClipboard, removeClipboardItem } from '@/store/slices/clipboardSlice'
-import { fetchSpaceMembers } from '@/store/slices/devicesSlice'
+import { fetchLocalDeviceInfo, fetchSpaceMembers } from '@/store/slices/devicesSlice'
 import {
   readHistorySessionSnapshot,
   updateHistorySessionSelection,
@@ -53,6 +53,13 @@ export function useHistoryController() {
       .unwrap()
       .catch(err => {
         log.warn({ err }, 'failed to prime paired-device list')
+      })
+    // Most rows originate on this device; without its name their meta line
+    // would fall back to a truncated device id.
+    dispatch(fetchLocalDeviceInfo())
+      .unwrap()
+      .catch(err => {
+        log.warn({ err }, 'failed to load local device info')
       })
   }, [dispatch])
 
@@ -128,8 +135,14 @@ export function useHistoryController() {
     [dispatch, t, data.removeItem]
   )
 
-  const { deleteDialogOpen, setDeleteDialogOpen, deletingId, requestDelete, confirmDelete } =
-    useDeleteFlow(removeEntry)
+  const {
+    deleteDialogOpen,
+    setDeleteDialogOpen,
+    deletingIds,
+    deleteCount,
+    requestDelete,
+    confirmDelete,
+  } = useDeleteFlow(removeEntry)
 
   // ── Favorite toggle ───────────────────────────────────────────
   // Optimistically flip the override, call the backend, and revert on failure.
@@ -196,6 +209,48 @@ export function useHistoryController() {
     () => orderedItems.find(it => it.id === selectedId) ?? null,
     [orderedItems, selectedId]
   )
+
+  // ── Bulk selection (HList.dc.html checkboxes) ─────────────────
+  // Independent of `selectedId`, the previewed row. Ids that leave the list
+  // (deleted, filtered out) drop out of the effective set on their own.
+  const [checkedState, setCheckedState] = useState<ReadonlySet<string>>(() => new Set())
+  const checkedIds = useMemo(() => {
+    const ids = new Set<string>()
+    for (const id of checkedState) if (orderedItemIds.has(id)) ids.add(id)
+    return ids
+  }, [checkedState, orderedItemIds])
+  const toggleChecked = useCallback((id: string) => {
+    setCheckedState(prev => {
+      const next = new Set(prev)
+      if (!next.delete(id)) next.add(id)
+      return next
+    })
+  }, [])
+  const clearChecked = useCallback(() => setCheckedState(new Set()), [])
+  const checkedItems = useMemo(
+    () => orderedItems.filter(item => checkedIds.has(item.id)),
+    [orderedItems, checkedIds]
+  )
+
+  // Pin all checked rows, or unpin them when every one is already pinned.
+  const pinChecked = useCallback(() => {
+    const pin = checkedItems.some(item => item.isFavorited !== true)
+    for (const item of checkedItems) {
+      const current = item.isFavorited === true
+      if (current !== pin) void handleToggleFavorite(item.id, current)
+    }
+  }, [checkedItems, handleToggleFavorite])
+  const deleteChecked = useCallback(
+    () => requestDelete(checkedItems.map(item => item.id)),
+    [checkedItems, requestDelete]
+  )
+
+  useShortcut({
+    key: 'escape',
+    scope: 'clipboard',
+    enabled: checkedIds.size > 0,
+    handler: clearChecked,
+  })
 
   // ── Hover keyboard shortcuts ──────────────────────────────────
   useShortcut({
@@ -273,6 +328,7 @@ export function useHistoryController() {
     filter: data.filter,
     filterActions: data.actions,
     sourceOptions: data.sourceOptions,
+    sourceDeviceNames: data.sourceDeviceNames,
     searchableTags,
     browseCount: data.browseCount,
     indexState: data.indexState,
@@ -292,7 +348,15 @@ export function useHistoryController() {
     handleHoverChange,
     selectedId,
     copySuccessId,
-    deletingId,
+    deletingIds,
+
+    // Bulk selection.
+    checkedIds,
+    checkedItems,
+    toggleChecked,
+    clearChecked,
+    pinChecked,
+    deleteChecked,
 
     // Preview region.
     selectedItem,
@@ -307,6 +371,7 @@ export function useHistoryController() {
     // Delete confirmation dialog.
     deleteDialogOpen,
     setDeleteDialogOpen,
+    deleteCount,
     confirmDelete,
   }
 }

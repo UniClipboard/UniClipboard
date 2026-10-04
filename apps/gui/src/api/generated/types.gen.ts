@@ -5456,6 +5456,20 @@ export type GetHealthResponses = {
 
 export type GetHealthResponse = GetHealthResponses[keyof GetHealthResponses];
 
+export type RequestGracefulStopData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/lifecycle/graceful-stop';
+};
+
+export type RequestGracefulStopResponses = {
+    /**
+     * Graceful stop requested; shutdown sequence started
+     */
+    202: unknown;
+};
+
 export type SignalLifecycleReadyData = {
     body?: never;
     path?: never;

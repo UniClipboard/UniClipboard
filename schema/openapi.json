@@ -9817,6 +9817,29 @@
         ]
       }
     },
+    "/lifecycle/graceful-stop": {
+      "post": {
+        "description": "process, regardless of residency.\n\nThe true root cause this closes: on Windows, a caller-initiated restart\n(e.g. GUI settings-change restart in `uc-desktop::daemon_probe::restart_local_daemon`)\nhas no real signal to send — `TerminateProcess` kills the process before its\nasync graceful-shutdown task ever runs `mark_clean_exit()`, so the next boot\nlogs a false \"previous daemon run exited abnormally\". This endpoint lets the\ncaller ask first: the start marker is cleared HERE, synchronously, before the\nshutdown sequence even starts, so the marker is already correct even if the\ncaller's graceful wait times out and it falls back to a hard kill.\n\nDeliberately NOT routed through [`RestartCoordinator`] — that machinery is\nreserved for Oneshot-residency promotion (ADR-008 P5-L L8c) and refuses any\nother residency. This endpoint works for every residency and does not touch\n`quiescing`.",
+        "operationId": "requestGracefulStop",
+        "responses": {
+          "202": {
+            "description": "Graceful stop requested; shutdown sequence started"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "POST /lifecycle/graceful-stop — request an orderly shutdown of THIS daemon",
+        "tags": [
+          "lifecycle"
+        ]
+      }
+    },
     "/lifecycle/ready": {
       "post": {
         "description": "创建、加入和解锁操作已经由 `Engine` 在返回成功前完成接收恢复。本端点\n只保留客户端幂等确认，不再持有或重复调用内部接收接口。",

@@ -68,8 +68,11 @@ use uc_webserver::api::openapi::ApiDoc;
 /// relay query/mutation share one path: 82 / 92. The daemon-owned content lock adds four
 /// paths and four operations (status, unlock, unlock-keyring, revoke): 86 / 96. The relay overview adds one path and
 /// operation: 87 / 97.
-const EXPECTED_PATHS: usize = 87;
-const EXPECTED_OPERATIONS: usize = 97;
+/// t-0171 added `POST /lifecycle/graceful-stop` (caller-requested orderly
+/// shutdown, any residency — distinct from the Oneshot-only controlled
+/// restart): +1 path, +1 operation → 88 / 98.
+const EXPECTED_PATHS: usize = 88;
+const EXPECTED_OPERATIONS: usize = 98;
 const SCHEMA_PREFIX: &str = "#/components/schemas/";
 const HTTP_METHODS: [&str; 7] = ["get", "put", "post", "delete", "patch", "head", "options"];
 

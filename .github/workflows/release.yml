@@ -529,16 +529,21 @@ jobs:
           VERSION: ${{ needs.validate.outputs.version }}
           CHANNEL: ${{ needs.validate.outputs.channel }}
         run: |
+          # non_blocking is intentionally left at its default (false): this
+          # dispatched run is already isolated from release.yml's own
+          # conclusion and from the other 3 channels (separate workflow run,
+          # no `needs` edge to or from it) — continue-on-error inside the
+          # mirror job would only serve to hide a real mirror failure from
+          # its own run, which is the one place it must stay visible.
           gh api \
             --method POST \
             "repos/${{ github.repository }}/actions/workflows/mirror-desktop-gitcode.yml/dispatches" \
             -f ref="main" \
             -f inputs[tag_name]="v${VERSION}" \
             -f inputs[version]="${VERSION}" \
-            -f inputs[channel]="${CHANNEL}" \
-            -f inputs[non_blocking]="true"
+            -f inputs[channel]="${CHANNEL}"
 
-          echo "Dispatched mirror-desktop-gitcode.yml for v${VERSION} (${CHANNEL}) from main." >> "$GITHUB_STEP_SUMMARY"
+          echo "Dispatched mirror-desktop-gitcode.yml for v${VERSION} (${CHANNEL}) from main; this only confirms the dispatch request was accepted, not that the mirror itself will succeed." >> "$GITHUB_STEP_SUMMARY"
 
   dispatch-snap:
     # snap 构建耗时较长,不能作为 reusable job 挂在 release 里等待。

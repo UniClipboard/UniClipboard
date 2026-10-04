@@ -22,9 +22,18 @@
 # docs/release-workflow.md "GitCode mirror" for why .dmg/.deb/.rpm/the
 # Windows portable zip are not covered yet.
 #
-# - Called by release.yml after the release is published and registered with
-#   FlareRelease, non-blocking: a missing configuration or a failed mirror
-#   produces a warning annotation and a job summary, never a failed release.
+# - Dispatched with `ref: main` once a release is actually published and
+#   registered with FlareRelease — never called inline from release.yml
+#   (that job's own ref would be the release tag, which `environment:
+#   mirror`'s main-only deployment branch policy rejects before any step
+#   runs). release.yml's dispatch-mirror-alpha job covers alpha directly;
+#   this file's own `release: types: [published]` trigger (via the small
+#   redispatch-from-release job, which carries no environment) covers
+#   stable/beta/rc. Both dispatch calls leave `non_blocking` at its default
+#   (false): each dispatched run is independent of release.yml and of the
+#   other channels, so a real mirror failure must show as a failed run
+#   here, not be hidden by continue-on-error. `non_blocking: true` remains
+#   available for a deliberately best-effort manual run (see below).
 # - Run by hand (workflow_dispatch) to retry or to mirror an older tag. It
 #   downloads installers from the GitHub Release at that tag and rebuilds the
 #   registration payload with the current (default-branch) scripts and
@@ -153,16 +162,20 @@ jobs:
             CHANNEL="stable"
           fi
 
+          # non_blocking is intentionally left at its default (false): this
+          # dispatched run is its own, separate workflow run — nothing
+          # downstream of the release depends on it — so a real mirror
+          # failure must show as a failed run here, not be swallowed by
+          # continue-on-error the way `non_blocking: true` would.
           gh api \
             --method POST \
             "repos/${{ github.repository }}/actions/workflows/mirror-desktop-gitcode.yml/dispatches" \
             -f ref="main" \
             -f inputs[tag_name]="$TAG_NAME" \
             -f inputs[version]="$VERSION" \
-            -f inputs[channel]="$CHANNEL" \
-            -f inputs[non_blocking]="true"
+            -f inputs[channel]="$CHANNEL"
 
-          echo "Dispatched mirror-desktop-gitcode.yml for $TAG_NAME ($CHANNEL) from main." >> "$GITHUB_STEP_SUMMARY"
+          echo "Dispatched mirror-desktop-gitcode.yml for $TAG_NAME ($CHANNEL) from main; this only confirms the dispatch request was accepted, not that the mirror itself will succeed." >> "$GITHUB_STEP_SUMMARY"
 
   mirror:
     name: Mirror desktop installers to GitCode

@@ -18,6 +18,7 @@ use uc_daemon_contract::api::dto::envelope::{ApiEnvelope, LifecycleStatusEnvelop
 use uc_daemon_contract::api::types::{
     DaemonResidency, LifecyclePendingReason, RestartAccepted, RestartRequest,
 };
+use uc_daemon_contract::constants::http_route;
 
 use super::types::LifecycleStatusResponse;
 use crate::api::dto::error::ApiError;
@@ -33,6 +34,13 @@ pub fn router() -> Router<DaemonApiState> {
         // ADR-008 P5-L L8d-1: controlled restart, surfaced as a typed client
         // contract (OpenAPI + generated TS SDK + native uc-daemon-client method).
         .route("/lifecycle/restart", post(restart_handler))
+        // Caller-requested orderly shutdown of THIS daemon process, any
+        // residency — unlike `/lifecycle/restart` this is not an Oneshot
+        // promotion and does not touch the `RestartCoordinator`.
+        .route(
+            http_route::LIFECYCLE_GRACEFUL_STOP,
+            post(graceful_stop_handler),
+        )
 }
 
 /// 通知 daemon：客户端已经观察到核心完成解锁和接收恢复。
@@ -372,6 +380,93 @@ async fn restart_handler(
                 .with_code("invalid_target")
                 .into_response()
         }
+    }
+}
+
+/// POST /lifecycle/graceful-stop — request an orderly shutdown of THIS daemon
+/// process, regardless of residency.
+///
+/// The true root cause this closes: on Windows, a caller-initiated restart
+/// (e.g. GUI settings-change restart in `uc-desktop::daemon_probe::restart_local_daemon`)
+/// has no real signal to send — `TerminateProcess` kills the process before its
+/// async graceful-shutdown task ever runs `mark_clean_exit()`, so the next boot
+/// logs a false "previous daemon run exited abnormally". This endpoint lets the
+/// caller ask first: the start marker is cleared HERE, synchronously, before the
+/// shutdown sequence even starts, so the marker is already correct even if the
+/// caller's graceful wait times out and it falls back to a hard kill.
+///
+/// Deliberately NOT routed through [`RestartCoordinator`] — that machinery is
+/// reserved for Oneshot-residency promotion (ADR-008 P5-L L8c) and refuses any
+/// other residency. This endpoint works for every residency and does not touch
+/// `quiescing`.
+#[utoipa::path(
+    post,
+    path = "/lifecycle/graceful-stop",
+    tag = "lifecycle",
+    operation_id = "requestGracefulStop",
+    responses(
+        (status = 202, description = "Graceful stop requested; shutdown sequence started")
+    )
+)]
+async fn graceful_stop_handler(State(state): State<DaemonApiState>) -> impl IntoResponse {
+    info!("graceful stop requested via HTTP control plane");
+    perform_graceful_stop(state.run_marker.as_ref(), &state.graceful_stop_requested);
+    StatusCode::ACCEPTED.into_response()
+}
+
+/// Pure(ish) side-effect core of [`graceful_stop_handler`], split out so it is
+/// unit-testable without composing a full `DaemonApiState` (would otherwise
+/// require a real `Engine`).
+fn perform_graceful_stop(
+    run_marker: Option<&uc_daemon_local::crash_marker::DaemonRunMarker>,
+    notify: &tokio::sync::Notify,
+) {
+    if let Some(marker) = run_marker {
+        if let Err(error) = marker.mark_clean_exit() {
+            tracing::warn!(%error, "graceful-stop: failed to mark this run's clean exit");
+        }
+    }
+    notify.notify_one();
+}
+
+#[cfg(test)]
+mod graceful_stop_tests {
+    use super::*;
+    use uc_daemon_local::crash_marker::DaemonRunMarker;
+
+    #[tokio::test]
+    async fn graceful_stop_clears_the_start_marker_and_notifies() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let marker = DaemonRunMarker::new(temp.path().to_path_buf());
+        // Simulate an in-flight run: a start marker is on disk.
+        marker.begin_run(4242).unwrap();
+
+        let notify = tokio::sync::Notify::new();
+        perform_graceful_stop(Some(&marker), &notify);
+
+        // The marker must be cleared SYNCHRONOUSLY by the handler, not deferred
+        // to the (not-yet-run) shutdown sequence.
+        assert_eq!(
+            marker.begin_run(9999).unwrap(),
+            None,
+            "a graceful-stop request must clear the start marker so the next boot is silent"
+        );
+        // The select loop's wait must be woken.
+        tokio::time::timeout(std::time::Duration::from_millis(50), notify.notified())
+            .await
+            .expect("graceful-stop must notify the shutdown waiter");
+    }
+
+    #[tokio::test]
+    async fn graceful_stop_without_a_run_marker_still_notifies() {
+        // Assembly paths that don't wire a run marker (tests, non-standard
+        // hosts) must not panic — only the marker side effect is skipped.
+        let notify = tokio::sync::Notify::new();
+        perform_graceful_stop(None, &notify);
+
+        tokio::time::timeout(std::time::Duration::from_millis(50), notify.notified())
+            .await
+            .expect("graceful-stop must notify even without a run marker");
     }
 }
 

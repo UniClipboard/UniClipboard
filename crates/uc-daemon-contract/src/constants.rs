@@ -192,6 +192,13 @@ pub mod http_route {
     pub const CLIPBOARD_CANCEL_TRANSFER: &str = "/clipboard/cancel-transfer";
     /// POST /lifecycle/restart — request a controlled restart/promotion (ADR-008 P5-L L8d-1)
     pub const LIFECYCLE_RESTART: &str = "/lifecycle/restart";
+    /// POST /lifecycle/graceful-stop — request an orderly shutdown of THIS daemon
+    /// process (any residency). Marks the run's crash-detection start marker
+    /// clean before the shutdown sequence runs, so a caller-initiated restart
+    /// (e.g. a GUI settings-change restart) is never misreported as an abnormal
+    /// exit on the next boot, even if the caller later force-kills the process
+    /// because the graceful path did not finish in time.
+    pub const LIFECYCLE_GRACEFUL_STOP: &str = "/lifecycle/graceful-stop";
     /// GET/POST /network/recovery — query or manually request network recovery.
     pub const NETWORK_RECOVERY: &str = "/network/recovery";
     /// POST /config/export — export the current configuration to an encrypted `.ucbundle` (issue #1110)

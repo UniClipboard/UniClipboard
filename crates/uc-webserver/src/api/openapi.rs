@@ -268,6 +268,7 @@ impl Modify for ContractMeta {
         crate::api::lifecycle::retry_lifecycle_handler,
         crate::api::lifecycle::lifecycle_ready_handler,
         crate::api::lifecycle::restart_handler,
+        crate::api::lifecycle::graceful_stop_handler,
         // ── upgrade ────────────────────────────────────────────────
         crate::api::upgrade::get_upgrade_status_handler,
         crate::api::upgrade::ack_upgrade_handler,
@@ -766,6 +767,9 @@ mod assembly_smoke_tests {
         // Engine-owned custom relay query/mutation share one path: 82 / 92.
         // The daemon-owned content lock adds four paths and four operations: 86 / 96.
         // The relay overview adds one path and operation: 87 / 97.
+        // t-0171 added `POST /lifecycle/graceful-stop` (caller-requested orderly
+        // shutdown, any residency — distinct from the Oneshot-only controlled
+        // restart): +1 path, +1 operation → 88 / 98.
         const HTTP_METHODS: [&str; 7] =
             ["get", "put", "post", "delete", "patch", "head", "options"];
         let paths = value
@@ -774,8 +778,8 @@ mod assembly_smoke_tests {
             .expect("OpenAPI doc must declare paths");
         assert_eq!(
             paths.len(),
-            87,
-            "expected exactly 87 path templates, found {}: {:?}",
+            88,
+            "expected exactly 88 path templates, found {}: {:?}",
             paths.len(),
             paths.keys().collect::<Vec<_>>()
         );
@@ -789,8 +793,8 @@ mod assembly_smoke_tests {
             })
             .sum();
         assert_eq!(
-            operation_count, 97,
-            "expected exactly 97 operations across all paths, found {operation_count}"
+            operation_count, 98,
+            "expected exactly 98 operations across all paths, found {operation_count}"
         );
 
         // A few frozen operationIds (§D) must be present somewhere in the doc.

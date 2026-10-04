@@ -43,6 +43,12 @@ pub const HEALTH_CHECK_TIMEOUT: Duration = uc_daemon_process::timing::DAEMON_STA
 pub const HEALTH_POLL_INTERVAL: Duration = Duration::from_millis(200);
 pub const PROBE_TIMEOUT: Duration = Duration::from_secs(2);
 pub const INCOMPATIBLE_DAEMON_EXIT_TIMEOUT: Duration = Duration::from_millis(1500);
+/// Budget for `POST /lifecycle/graceful-stop` to be accepted by the old daemon
+/// before `restart_local_daemon` gives up on the graceful path and falls back
+/// to a hard terminate. This only bounds the REQUEST (the daemon replies as
+/// soon as it has queued the shutdown, not once shutdown completes) — the
+/// actual process-exit wait is the separate `exit_timeout` loop below.
+pub const GRACEFUL_STOP_REQUEST_TIMEOUT: Duration = Duration::from_secs(3);
 
 /// Probes the daemon HTTP health endpoint for the active profile and classifies its health.
 ///
@@ -680,10 +686,32 @@ pub async fn restart_local_daemon(
                 });
             }
 
-            // ── 2. SIGTERM 旧 daemon ──────────────────────────────
-            tracing::info!(pid = metadata.pid, "restart_local_daemon: sending SIGTERM");
-            if let Err(e) = terminate_local_daemon_pid(metadata.pid) {
-                tracing::warn!(pid = metadata.pid, error = %e, "SIGTERM failed, proceeding to spawn");
+            // ── 2. 请求旧 daemon 优雅停止——失败才回退硬杀 ──────────
+            // 根因（t-0170/t-0171）：Windows 没有真正的信号机制，旧实现在这里
+            // 直接 `TerminateProcess`——跟单实例驱逐用的强杀是同一个原语，daemon
+            // 的异步关闭任务（里面才会调 `mark_clean_exit()`）根本没机会跑，下次
+            // 启动就会把这次正常重启误报成 "previous daemon run exited
+            // abnormally"。改成先走 HTTP 控制面请求优雅停止：daemon 收到请求后
+            // **立刻**（在真正开始关闭序列之前）打上干净退出标记，所以哪怕请求
+            // 超时、下面还是回退硬杀，标记也已经写对了。Unix 上 SIGTERM 本来就
+            // 能触发正常关闭序列，这里统一走同一条路径，不再区分平台。
+            match request_graceful_stop(GRACEFUL_STOP_REQUEST_TIMEOUT).await {
+                Ok(()) => {
+                    tracing::info!(
+                        pid = metadata.pid,
+                        "restart_local_daemon: requested graceful stop via HTTP"
+                    );
+                }
+                Err(reason) => {
+                    tracing::warn!(
+                        pid = metadata.pid,
+                        %reason,
+                        "restart_local_daemon: graceful-stop request failed, falling back to hard terminate"
+                    );
+                    if let Err(e) = terminate_local_daemon_pid(metadata.pid) {
+                        tracing::warn!(pid = metadata.pid, error = %e, "hard terminate failed, proceeding to spawn");
+                    }
+                }
             }
 
             // ── 3. 等待旧 daemon 进程真正退出 ────────────────────
@@ -744,6 +772,52 @@ pub async fn restart_local_daemon(
     let info = load_daemon_connection_info()?;
     tracing::info!("restart_local_daemon: daemon restarted successfully");
     Ok(info)
+}
+
+/// Ask the daemon currently named by `daemon.conn` to shut down gracefully
+/// (`POST /lifecycle/graceful-stop`), bounded by `timeout`. `Err` carries a
+/// human-readable reason; the caller's only recourse on `Err` is a hard
+/// terminate, so every failure path here must be distinguishable from success.
+async fn request_graceful_stop(timeout: Duration) -> Result<(), String> {
+    let conn = uc_daemon_process::socket::read_daemon_conn_file()
+        .map_err(|e| format!("failed to read daemon connection file: {e}"))?
+        .ok_or_else(|| "daemon connection file is missing".to_string())?;
+    request_graceful_stop_at(daemon_connection_info_from_conn(&conn), timeout).await
+}
+
+/// Core of [`request_graceful_stop`], taking the connection info explicitly so
+/// it is testable against a mock daemon without touching `daemon.conn`.
+async fn request_graceful_stop_at(
+    connection_info: DaemonConnectionInfo,
+    timeout: Duration,
+) -> Result<(), String> {
+    let context = uc_daemon_client::DaemonClientContext::with_connection_info(
+        connection_info,
+        "gui".to_string(),
+    )
+    .map_err(|e| format!("failed to build daemon client: {e}"))?;
+    let client = context.lifecycle_client();
+    match tokio::time::timeout(timeout, client.graceful_stop()).await {
+        Ok(Ok(())) => Ok(()),
+        Ok(Err(error)) => Err(format!("graceful-stop request failed: {error}")),
+        Err(_) => Err("graceful-stop request timed out".to_string()),
+    }
+}
+
+/// Build the HTTP connection info a daemon client needs from the raw
+/// `daemon.conn` record — mirrors `uc_daemon_client::resolve_connection_info_from_env`'s
+/// URL construction (kept free of I/O so it is independently unit-testable).
+fn daemon_connection_info_from_conn(
+    conn: &uc_daemon_process::socket::DaemonConnFile,
+) -> DaemonConnectionInfo {
+    let base_url = format!("http://{}:{}", conn.host, conn.port);
+    let ws_url = format!("{}/ws", base_url.replacen("http://", "ws://", 1));
+    DaemonConnectionInfo {
+        base_url,
+        ws_url,
+        token: conn.token.clone(),
+        pid: std::process::id(),
+    }
 }
 
 #[cfg(test)]
@@ -1152,5 +1226,105 @@ mod tests {
             |_pid| Ok(()),
         );
         assert!(!stopped);
+    }
+
+    // ------- restart_local_daemon's graceful-stop-first contract (t-0171) -----
+
+    #[test]
+    fn daemon_connection_info_from_conn_builds_http_and_ws_urls() {
+        let conn = uc_daemon_process::socket::DaemonConnFile {
+            format: uc_daemon_process::socket::DAEMON_CONN_FORMAT,
+            host: "127.0.0.1".to_string(),
+            port: 54321,
+            token: "tok".to_string(),
+            pid: 999,
+            started_at_ms: 0,
+        };
+
+        let info = daemon_connection_info_from_conn(&conn);
+
+        assert_eq!(info.base_url, "http://127.0.0.1:54321");
+        assert_eq!(info.ws_url, "ws://127.0.0.1:54321/ws");
+        assert_eq!(info.token, "tok");
+    }
+
+    async fn mock_daemon_requiring_session() -> MockServer {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/auth/connect"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "data": {
+                    "sessionToken": "test-session",
+                    "expiresInSecs": 300,
+                    "refreshAtSecs": 240
+                },
+                "ts": 1
+            })))
+            .mount(&server)
+            .await;
+        server
+    }
+
+    fn connection_info_for(server: &MockServer) -> DaemonConnectionInfo {
+        DaemonConnectionInfo {
+            base_url: server.uri(),
+            ws_url: "ws://127.0.0.1/unused".to_string(),
+            token: "test-bearer".to_string(),
+            pid: 42,
+        }
+    }
+
+    #[tokio::test]
+    async fn graceful_stop_request_succeeds_against_a_healthy_daemon() {
+        // This is the "GUI-triggered graceful restart" scenario: the daemon is
+        // alive and answers the request, so `restart_local_daemon` must NOT
+        // fall back to a hard terminate — the daemon marks its own clean exit.
+        let server = mock_daemon_requiring_session().await;
+        Mock::given(method("POST"))
+            .and(path(uc_daemon_contract::constants::http_route::LIFECYCLE_GRACEFUL_STOP))
+            .respond_with(ResponseTemplate::new(202))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        request_graceful_stop_at(connection_info_for(&server), Duration::from_secs(1))
+            .await
+            .expect("graceful-stop must succeed against a responsive daemon");
+    }
+
+    #[tokio::test]
+    async fn graceful_stop_request_reports_failure_when_daemon_rejects_it() {
+        // This is the "real abnormal exit / unresponsive daemon" scenario:
+        // `restart_local_daemon` must see an `Err` here so it falls back to the
+        // old hard-terminate path and the crash marker stays correctly set.
+        let server = mock_daemon_requiring_session().await;
+        Mock::given(method("POST"))
+            .and(path(uc_daemon_contract::constants::http_route::LIFECYCLE_GRACEFUL_STOP))
+            .respond_with(ResponseTemplate::new(500))
+            .mount(&server)
+            .await;
+
+        let error = request_graceful_stop_at(connection_info_for(&server), Duration::from_secs(1))
+            .await
+            .expect_err("a non-2xx response must surface as Err, not a silent success");
+        assert!(error.contains("graceful-stop request failed"));
+    }
+
+    #[tokio::test]
+    async fn graceful_stop_request_times_out_against_a_hanging_daemon() {
+        // A daemon that never answers (hung / already dying) must not block
+        // `restart_local_daemon` forever — the timeout must fire and report Err
+        // so the caller falls back to a hard terminate.
+        let server = mock_daemon_requiring_session().await;
+        Mock::given(method("POST"))
+            .and(path(uc_daemon_contract::constants::http_route::LIFECYCLE_GRACEFUL_STOP))
+            .respond_with(ResponseTemplate::new(202).set_delay(Duration::from_secs(5)))
+            .mount(&server)
+            .await;
+
+        let error = request_graceful_stop_at(connection_info_for(&server), Duration::from_millis(100))
+            .await
+            .expect_err("a hanging daemon must time out, not hang the restart");
+        assert!(error.contains("timed out"));
     }
 }

@@ -48,6 +48,7 @@ argon2 = "0.5.3"
 libc = "0.2"
 reqwest = { version = "0.12", default-features = false }
 tokio-tungstenite = "0.24"
+tempfile = "3"
 
 [features]
 e2e-rendezvous = ["uc-engine/dev-tools"]

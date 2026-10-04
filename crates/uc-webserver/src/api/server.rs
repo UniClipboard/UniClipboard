@@ -132,6 +132,17 @@ pub struct DaemonApiState {
     /// The content-lock grant: whether GUI-class clients may read history-derived content.
     /// In memory only, shared by every clone of this state, reset when the daemon restarts.
     pub content_lock: crate::api::content_lock::ContentLock,
+    /// Reverse crash-detection marker for THIS run (`uc-daemon-local::crash_marker`).
+    /// `POST /lifecycle/graceful-stop` calls `mark_clean_exit()` on it immediately,
+    /// before the shutdown sequence runs, so a caller-requested restart is never
+    /// misreported as an abnormal exit even if a slow shutdown is later force-killed.
+    /// `None` for assembly paths / tests that don't wire a real run marker.
+    pub run_marker: Option<uc_daemon_local::crash_marker::DaemonRunMarker>,
+    /// Woken by `POST /lifecycle/graceful-stop` to tell the daemon's main select
+    /// loop to begin the same orderly shutdown sequence used for an OS shutdown
+    /// signal. `Arc`-backed so every `DaemonApiState` clone shares the same
+    /// notifier as the host's main loop.
+    pub graceful_stop_requested: Arc<tokio::sync::Notify>,
 }
 
 /// Max concurrent full-buffer blob pulls (D6 interim RSS guard; see
@@ -172,6 +183,8 @@ impl DaemonApiState {
             quiescing: quiescing.clone(),
             restart: crate::api::restart::RestartCoordinator::new(quiescing),
             content_lock: crate::api::content_lock::ContentLock::default(),
+            run_marker: None,
+            graceful_stop_requested: Arc::new(tokio::sync::Notify::new()),
         }
     }
 
@@ -390,6 +403,13 @@ impl DaemonApiState {
 
     pub fn with_deferred_ready_notify(mut self, notify: Arc<tokio::sync::Notify>) -> Self {
         self.deferred_ready_notify = Some(notify);
+        self
+    }
+
+    /// Inject this run's crash-detection marker so `POST /lifecycle/graceful-stop`
+    /// can mark it clean immediately on request.
+    pub fn with_run_marker(mut self, run_marker: uc_daemon_local::crash_marker::DaemonRunMarker) -> Self {
+        self.run_marker = Some(run_marker);
         self
     }
 

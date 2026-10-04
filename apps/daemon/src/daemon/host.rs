@@ -228,13 +228,15 @@ async fn run_daemon_surfaces(
         Arc::new(DesktopDiagnosticArchive::new(
             process_paths.logs_dir().to_path_buf(),
         )),
-    );
+    )
+    .with_run_marker(run_marker.clone());
     api_state.startup_ready = Some(startup_ready);
     let (event_tx, _) = broadcast::channel::<DaemonWsEvent>(64);
     api_state.event_tx = event_tx.clone();
 
     let restart = api_state.restart.clone();
     let lease_registry = api_state.lease_registry.clone();
+    let graceful_stop_requested = api_state.graceful_stop_requested.clone();
     let cancel = CancellationToken::new();
     let http_cancel = cancel.child_token();
     let cleanup_cancel = cancel.child_token();
@@ -279,6 +281,12 @@ async fn run_daemon_surfaces(
         result = wait_for_shutdown_signal(), if run_mode.listens_to_os_signals() => {
             result?;
             info!("shutdown signal received");
+        }
+        _ = graceful_stop_requested.notified() => {
+            // POST /lifecycle/graceful-stop already marked this run's exit
+            // clean (synchronously, before notifying) — this just drives the
+            // same orderly shutdown sequence an OS signal would.
+            info!("graceful stop requested via HTTP control plane");
         }
         result = &mut http_handle => {
             http_completed = true;

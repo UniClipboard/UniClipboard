@@ -5,6 +5,7 @@
  * - `GET /search/query` → execute a structured search query
  * - `GET /search/status` → search index availability snapshot
  * - `POST /search/rebuild` → trigger manual full rebuild
+ * - `POST /search/count` → batch-count matches for several filter combinations
  *
  * # Type alignment
  * Frontend types are kept identical to backend query params so no mapping
@@ -24,6 +25,7 @@
  */
 
 import {
+  countSearchEntries,
   getSearchTags as getSearchTagsSdk,
   searchQuery,
   getSearchStatus as getSearchStatusSdk,
@@ -141,6 +143,22 @@ export interface SearchParams {
 
 // ── API functions ──────────────────────────────────────────────
 
+type FilterParams = { query: string } & Partial<
+  Record<'contentTypes' | 'tags' | 'extensions' | 'sourceDevices' | 'timePreset', string>
+>
+
+// Only emit keys that are actually present, preserving the "undefined/empty ==
+// no filter" wire semantics shared by `/search/query` and `/search/count`.
+function toFilterParams(params: SearchParams): FilterParams {
+  const out: FilterParams = { query: params.query }
+  if (params.contentTypes) out.contentTypes = params.contentTypes
+  if (params.tags) out.tags = params.tags
+  if (params.extensions) out.extensions = params.extensions
+  if (params.sourceDevices) out.sourceDevices = params.sourceDevices
+  if (params.timePreset) out.timePreset = params.timePreset
+  return out
+}
+
 /**
  * Execute a search query against the daemon search index.
  *
@@ -153,17 +171,7 @@ export async function querySearch(
   params: SearchParams,
   signal?: AbortSignal
 ): Promise<SearchQueryResponse> {
-  // Only emit query keys that are actually present, preserving the previous
-  // "undefined/empty == no filter" wire semantics (the old query-string builder
-  // skipped falsy optional params).
-  const query: { query: string; [key: string]: string | number } = {
-    query: params.query,
-  }
-  if (params.contentTypes) query.contentTypes = params.contentTypes
-  if (params.tags) query.tags = params.tags
-  if (params.extensions) query.extensions = params.extensions
-  if (params.sourceDevices) query.sourceDevices = params.sourceDevices
-  if (params.timePreset) query.timePreset = params.timePreset
+  const query: { query: string; [key: string]: string | number } = toFilterParams(params)
   if (params.limit != null) query.limit = params.limit
   if (params.offset != null) query.offset = params.offset
 
@@ -197,6 +205,31 @@ export async function getSearchStatus(): Promise<SearchStatusResponse> {
 export async function getSearchTags(): Promise<SearchTagsResponse> {
   const envelope = await daemonClient.callSdk(() => getSearchTagsSdk({ throwOnError: true }))
   return envelope as unknown as SearchTagsResponse
+}
+
+/** Most filter combinations the daemon counts in one request. */
+export const MAX_SEARCH_COUNT_BATCH = 32
+
+/**
+ * Count matching entries for several filter combinations in one round trip,
+ * returned in input order. Pagination fields are ignored.
+ *
+ * @throws {DaemonApiError} 400 for more than {@link MAX_SEARCH_COUNT_BATCH}
+ * queries, 423 if session locked, 503 while the index is not ready (counts are
+ * never approximated from the main store).
+ */
+export async function countSearch(
+  queries: SearchParams[],
+  signal?: AbortSignal
+): Promise<number[]> {
+  const envelope = await daemonClient.callSdk(() =>
+    countSearchEntries({
+      body: { queries: queries.map(toFilterParams) },
+      signal,
+      throwOnError: true,
+    })
+  )
+  return envelope.data.counts
 }
 
 /**

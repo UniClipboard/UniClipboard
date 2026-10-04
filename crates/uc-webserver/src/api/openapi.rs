@@ -68,8 +68,8 @@ use crate::api::dto::mobile_sync::{
 };
 use crate::api::dto::pairing::UnpairDeviceRequest;
 use crate::api::dto::search::{
-    SearchQueryResultDto, SearchRebuildAcceptedData, SearchResultDto, SearchStatusData,
-    SearchTagDto,
+    SearchCountQueryDto, SearchCountRequestDto, SearchCountResultDto, SearchQueryResultDto,
+    SearchRebuildAcceptedData, SearchResultDto, SearchStatusData, SearchTagDto,
 };
 use crate::api::dto::settings::{
     CongestionControllerDto, ContentTypesDto, ContentTypesPatchDto, CustomRelayDto,
@@ -125,13 +125,13 @@ use uc_daemon_contract::api::dto::envelope::{
     ProfileRecoveryEnvelope, RegisterMobileDeviceEnvelope, RelayCredentialStatusEnvelope,
     RelayOverviewEnvelope, RelayProbeOutcomeEnvelope, RelaySaveResultEnvelope, ResendEnvelope,
     RestartAcceptedEnvelope, RestoreEntryEnvelope, RotateMobilePasswordEnvelope,
-    SearchQueryEnvelope, SearchRebuildEnvelope, SearchStatusEnvelope, SearchTagsEnvelope,
-    SessionTokenEnvelope, SettingsEnvelope, SettingsUpdateResultEnvelope, SetupCancelJoinEnvelope,
-    SetupInitializeEnvelope, SetupIssueInvitationEnvelope, SetupRedeemEnvelope, SetupStateEnvelope,
-    SetupSwitchSpaceEnvelope, SpaceMemberListEnvelope, SpaceProtectionEnvelope, StatusEnvelope,
-    StorageStatsEnvelope, ToggleFavoriteEnvelope, UnlockSpaceEnvelope, UpdateDebugModeEnvelope,
-    UpdateMobileDeviceEnvelope, UpdateMobileSyncSettingsEnvelope, UpgradeBackupListEnvelope,
-    UpgradeStatusEnvelope,
+    SearchCountEnvelope, SearchQueryEnvelope, SearchRebuildEnvelope, SearchStatusEnvelope,
+    SearchTagsEnvelope, SessionTokenEnvelope, SettingsEnvelope, SettingsUpdateResultEnvelope,
+    SetupCancelJoinEnvelope, SetupInitializeEnvelope, SetupIssueInvitationEnvelope,
+    SetupRedeemEnvelope, SetupStateEnvelope, SetupSwitchSpaceEnvelope, SpaceMemberListEnvelope,
+    SpaceProtectionEnvelope, StatusEnvelope, StorageStatsEnvelope, ToggleFavoriteEnvelope,
+    UnlockSpaceEnvelope, UpdateDebugModeEnvelope, UpdateMobileDeviceEnvelope,
+    UpdateMobileSyncSettingsEnvelope, UpgradeBackupListEnvelope, UpgradeStatusEnvelope,
 };
 use uc_daemon_contract::api::dto::storage::{
     ClearCacheRequest, ClearCacheResponse, DeleteUpgradeBackupRequest, DeleteUpgradeBackupResponse,
@@ -207,6 +207,7 @@ impl Modify for ContractMeta {
         crate::api::search::search_status_handler,
         crate::api::search::search_rebuild_handler,
         crate::api::search::search_tags_handler,
+        crate::api::search::search_count_handler,
         // ── storage ────────────────────────────────────────────────
         crate::api::storage::get_storage_stats_handler,
         crate::api::storage::clear_cache_handler,
@@ -351,11 +352,15 @@ impl Modify for ContractMeta {
             SearchStatusEnvelope,
             SearchRebuildEnvelope,
             SearchTagsEnvelope,
+            SearchCountEnvelope,
             SearchQueryResultDto,
             SearchStatusData,
             SearchRebuildAcceptedData,
             SearchResultDto,
             SearchTagDto,
+            SearchCountQueryDto,
+            SearchCountRequestDto,
+            SearchCountResultDto,
             // ── storage ────────────────────────────────────────────
             StorageStatsEnvelope,
             ClearCacheEnvelope,
@@ -770,6 +775,7 @@ mod assembly_smoke_tests {
         // t-0171 added `POST /lifecycle/graceful-stop` (caller-requested orderly
         // shutdown, any residency — distinct from the Oneshot-only controlled
         // restart): +1 path, +1 operation → 88 / 98.
+        // Batch search counting adds one path and operation: 89 / 99.
         const HTTP_METHODS: [&str; 7] =
             ["get", "put", "post", "delete", "patch", "head", "options"];
         let paths = value
@@ -778,8 +784,8 @@ mod assembly_smoke_tests {
             .expect("OpenAPI doc must declare paths");
         assert_eq!(
             paths.len(),
-            88,
-            "expected exactly 88 path templates, found {}: {:?}",
+            89,
+            "expected exactly 89 path templates, found {}: {:?}",
             paths.len(),
             paths.keys().collect::<Vec<_>>()
         );
@@ -793,8 +799,8 @@ mod assembly_smoke_tests {
             })
             .sum();
         assert_eq!(
-            operation_count, 98,
-            "expected exactly 98 operations across all paths, found {operation_count}"
+            operation_count, 99,
+            "expected exactly 99 operations across all paths, found {operation_count}"
         );
 
         // A few frozen operationIds (§D) must be present somewhere in the doc.

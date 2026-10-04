@@ -43,7 +43,8 @@ use crate::api::dto::mobile_sync::{
     UpdateMobileSyncSettingsResultDto,
 };
 use crate::api::dto::search::{
-    SearchQueryResultDto, SearchRebuildAcceptedData, SearchStatusData, SearchTagDto,
+    SearchCountResultDto, SearchQueryResultDto, SearchRebuildAcceptedData, SearchStatusData,
+    SearchTagDto,
 };
 use crate::api::dto::settings::{
     CustomRelayDto, CustomRelayMutationResultDto, RelayCredentialStatusDto, RelayOverviewDto,
@@ -142,6 +143,7 @@ use crate::api::types::{
     SearchRebuildEnvelope = ApiEnvelope<SearchRebuildAcceptedData>,
     SearchQueryEnvelope = ApiEnvelope<SearchQueryResultDto>,
     SearchTagsEnvelope = ApiEnvelope<Vec<SearchTagDto>>,
+    SearchCountEnvelope = ApiEnvelope<SearchCountResultDto>,
     // ── storage ────────────────────────────────────────────────────
     StorageStatsEnvelope = ApiEnvelope<StorageStatsDto>,
     ClearCacheEnvelope = ApiEnvelope<ClearCacheResponse>,

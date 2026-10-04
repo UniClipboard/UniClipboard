@@ -24,7 +24,9 @@ use uc_engine::error_codes::{
     SEARCH_INVALID_QUERY_CODE, SEARCH_REBUILD_ALREADY_RUNNING_CODE,
     SEARCH_SERVICE_UNAVAILABLE_CODE, SEARCH_SESSION_LOCKED_CODE,
 };
-use uc_engine::{EngineError, Operation, OperationResult, SearchEntriesInput};
+use uc_engine::{
+    CountSearchEntriesInput, EngineError, Operation, OperationResult, SearchEntriesInput,
+};
 use utoipa::IntoParams;
 
 use crate::api::dto::error::{log_facade_failure, ApiError};
@@ -33,8 +35,8 @@ use crate::api::dto::error::{log_facade_failure, ApiError};
 // `ApiEnvelope<T>` aliases declared in the contract's `dto/envelope.rs`. The
 // concrete payload DTOs below are re-exported through `crate::api::dto::search`.
 use crate::api::dto::search::{
-    SearchQueryResultDto, SearchRebuildAcceptedData, SearchResultDto, SearchStatusData,
-    SearchTagDto,
+    SearchCountQueryDto, SearchCountRequestDto, SearchCountResultDto, SearchQueryResultDto,
+    SearchRebuildAcceptedData, SearchResultDto, SearchStatusData, SearchTagDto,
 };
 use crate::api::projection::IntoApiDto;
 use crate::api::server::DaemonApiState;
@@ -109,6 +111,25 @@ fn search_input_from_params(params: SearchQueryParams) -> SearchEntriesInput {
     }
 }
 
+fn search_input_from_count_query(query: SearchCountQueryDto) -> SearchEntriesInput {
+    SearchEntriesInput {
+        query: query.query,
+        operator: query.operator,
+        time_preset: query.time_preset,
+        from_ms: query.from_ms,
+        to_ms: query.to_ms,
+        content_types: query.content_types,
+        extensions: query.extensions,
+        source_devices: query.source_devices,
+        tags: query.tags,
+        tag_match: None,
+        // Ignored by the engine's count path, but `SearchEntriesInput` has no
+        // separate "count" shape — zero keeps intent obvious either way.
+        limit: 0,
+        offset: 0,
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Session lock guard
 // ---------------------------------------------------------------------------
@@ -161,6 +182,7 @@ pub fn router() -> Router<DaemonApiState> {
         .route(http_route::SEARCH_STATUS, get(search_status_handler))
         .route(http_route::SEARCH_REBUILD, post(search_rebuild_handler))
         .route(http_route::SEARCH_TAGS, get(search_tags_handler))
+        .route(http_route::SEARCH_COUNT, post(search_count_handler))
 }
 
 // ---------------------------------------------------------------------------
@@ -290,6 +312,67 @@ async fn search_tags_handler(
 
     debug!(tag_count = items.len(), "search tags listed");
     Ok(Json(ApiEnvelope::now(items)))
+}
+
+/// POST /search/count
+///
+/// Batch-count matching entries for up to 32 filter combinations in one
+/// round trip, in request order. Powers the composite search box's
+/// per-candidate hit counts and the zero-result "try removing this chip"
+/// suggestions — both need many small counts without paginated items, which
+/// a body of `GET /search/query` calls would make expensive.
+///
+/// Counts only ever reflect the index (never the degraded main-store
+/// fallback): an approximate count would be worse than none. Returns HTTP
+/// 503 `index_rebuilding` while the index is not ready, same as a filtered
+/// `query`.
+#[utoipa::path(
+    post,
+    path = "/search/count",
+    tag = "search",
+    operation_id = "countSearchEntries",
+    request_body = SearchCountRequestDto,
+    responses(
+        (status = 200, description = "Counts in request order", body = SearchCountEnvelope),
+        (status = 400, description = "Invalid query or more than 32 queries in one batch", body = ApiErrorResponse),
+        (status = 423, description = "Encryption session is locked", body = ApiErrorResponse),
+        (status = 503, description = "Search index not ready, rebuilding, or unavailable", body = ApiErrorResponse),
+        (status = 500, description = "Internal server error", body = ApiErrorResponse),
+    )
+)]
+#[instrument(
+    name = "api.search_count",
+    level = "info",
+    skip(state, body),
+    fields(query_count = body.queries.len())
+)]
+async fn search_count_handler(
+    State(state): State<DaemonApiState>,
+    Json(body): Json<SearchCountRequestDto>,
+) -> Result<Json<ApiEnvelope<SearchCountResultDto>>, ApiError> {
+    require_encryption_ready(&state).await?;
+
+    let queries: Vec<SearchEntriesInput> = body
+        .queries
+        .into_iter()
+        .map(search_input_from_count_query)
+        .collect();
+    let query_count = queries.len();
+
+    let result = state
+        .execute(Operation::CountSearchEntries(CountSearchEntriesInput {
+            queries,
+        }))
+        .await
+        .map_err(|error| map_search_engine_error("search_count", error))?;
+    let OperationResult::SearchCounts(counts) = result else {
+        return Err(ApiError::internal(
+            "engine returned an unexpected search-counts result",
+        ));
+    };
+
+    debug!(query_count, "search counts computed");
+    Ok(Json(ApiEnvelope::now(SearchCountResultDto { counts })))
 }
 
 /// GET /search/status

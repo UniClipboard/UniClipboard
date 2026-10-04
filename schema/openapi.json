@@ -5640,6 +5640,99 @@
         ],
         "type": "string"
       },
+      "SearchCountEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/SearchCountResultDto"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "SearchCountQueryDto": {
+        "description": "One filter combination to count, mirroring `GET /search/query`'s params\nas a JSON body field set (batched counting needs a request body, not a\nquery string).",
+        "properties": {
+          "contentTypes": {
+            "nullable": true,
+            "type": "string"
+          },
+          "extensions": {
+            "nullable": true,
+            "type": "string"
+          },
+          "fromMs": {
+            "format": "int64",
+            "nullable": true,
+            "type": "integer"
+          },
+          "operator": {
+            "nullable": true,
+            "type": "string"
+          },
+          "query": {
+            "type": "string"
+          },
+          "sourceDevices": {
+            "nullable": true,
+            "type": "string"
+          },
+          "tags": {
+            "nullable": true,
+            "type": "string"
+          },
+          "timePreset": {
+            "nullable": true,
+            "type": "string"
+          },
+          "toMs": {
+            "format": "int64",
+            "nullable": true,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "SearchCountRequestDto": {
+        "description": "Request body for `POST /search/count` — up to 32 filter combinations,\ncounted in one round trip.",
+        "properties": {
+          "queries": {
+            "items": {
+              "$ref": "#/components/schemas/SearchCountQueryDto"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "queries"
+        ],
+        "type": "object"
+      },
+      "SearchCountResultDto": {
+        "description": "Response payload for `POST /search/count` — counts in the same order as\nthe request's `queries`.",
+        "properties": {
+          "counts": {
+            "items": {
+              "format": "int32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "counts"
+        ],
+        "type": "object"
+      },
       "SearchQueryEnvelope": {
         "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
         "properties": {
@@ -11124,6 +11217,86 @@
         "summary": "POST /presence/refresh",
         "tags": [
           "system"
+        ]
+      }
+    },
+    "/search/count": {
+      "post": {
+        "description": "Batch-count matching entries for up to 32 filter combinations in one\nround trip, in request order. Powers the composite search box's\nper-candidate hit counts and the zero-result \"try removing this chip\"\nsuggestions — both need many small counts without paginated items, which\na body of `GET /search/query` calls would make expensive.\n\nCounts only ever reflect the index (never the degraded main-store\nfallback): an approximate count would be worse than none. Returns HTTP\n503 `index_rebuilding` while the index is not ready, same as a filtered\n`query`.",
+        "operationId": "countSearchEntries",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SearchCountRequestDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchCountEnvelope"
+                }
+              }
+            },
+            "description": "Counts in request order"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Invalid query or more than 32 queries in one batch"
+          },
+          "423": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Encryption session is locked"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Search index not ready, rebuilding, or unavailable"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "POST /search/count",
+        "tags": [
+          "search"
         ]
       }
     },

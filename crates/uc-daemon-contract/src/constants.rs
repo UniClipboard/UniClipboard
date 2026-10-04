@@ -173,6 +173,9 @@ pub mod http_route {
     pub const SEARCH_REBUILD: &str = "/search/rebuild";
     /// GET /search/tags — list tags present in the index with entry counts
     pub const SEARCH_TAGS: &str = "/search/tags";
+    /// POST /search/count — batch count matching entries for up to 32 filter
+    /// combinations in one round trip (candidate facet counts).
+    pub const SEARCH_COUNT: &str = "/search/count";
     /// GET /upgrade/status — detect upgrade by comparing version cursor to
     /// the running build (P1 thin upgrade detection).
     pub const UPGRADE_STATUS: &str = "/upgrade/status";

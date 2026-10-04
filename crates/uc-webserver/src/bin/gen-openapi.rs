@@ -71,8 +71,9 @@ use uc_webserver::api::openapi::ApiDoc;
 /// t-0171 added `POST /lifecycle/graceful-stop` (caller-requested orderly
 /// shutdown, any residency — distinct from the Oneshot-only controlled
 /// restart): +1 path, +1 operation → 88 / 98.
-const EXPECTED_PATHS: usize = 88;
-const EXPECTED_OPERATIONS: usize = 98;
+/// Batch search counting adds one path and operation: 89 / 99.
+const EXPECTED_PATHS: usize = 89;
+const EXPECTED_OPERATIONS: usize = 99;
 const SCHEMA_PREFIX: &str = "#/components/schemas/";
 const HTTP_METHODS: [&str; 7] = ["get", "put", "post", "delete", "patch", "head", "options"];
 

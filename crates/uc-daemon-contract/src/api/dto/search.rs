@@ -89,3 +89,37 @@ pub struct SearchStatusData {
 pub struct SearchRebuildAcceptedData {
     pub accepted: bool,
 }
+
+/// One filter combination to count, mirroring `GET /search/query`'s params
+/// as a JSON body field set (batched counting needs a request body, not a
+/// query string).
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchCountQueryDto {
+    #[serde(default)]
+    pub query: String,
+    pub operator: Option<String>,
+    pub time_preset: Option<String>,
+    pub from_ms: Option<i64>,
+    pub to_ms: Option<i64>,
+    pub content_types: Option<String>,
+    pub extensions: Option<String>,
+    pub source_devices: Option<String>,
+    pub tags: Option<String>,
+}
+
+/// Request body for `POST /search/count` — up to 32 filter combinations,
+/// counted in one round trip.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchCountRequestDto {
+    pub queries: Vec<SearchCountQueryDto>,
+}
+
+/// Response payload for `POST /search/count` — counts in the same order as
+/// the request's `queries`.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchCountResultDto {
+    pub counts: Vec<u32>,
+}

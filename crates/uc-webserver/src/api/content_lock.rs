@@ -417,6 +417,7 @@ const CONTENT_ROUTES: &[&str] = &[
     "/clipboard/",
     "/search/query",
     "/search/tags",
+    "/search/count",
     "/config/export",
 ];
 
@@ -573,6 +574,7 @@ mod tests {
             "/clipboard/anything-added-later",
             "/search/query",
             "/search/tags",
+            "/search/count",
             "/config/export",
         ] {
             assert_eq!(route_class(path), Some(RouteClass::Content), "{path}");

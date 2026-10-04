@@ -24,6 +24,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { useSidebarSlot } from '@/contexts/sidebar-slot-context'
 import { useDevicesPage } from '@/hooks/useDevicesPage'
 import { createLogger } from '@/lib/logger'
 import {
@@ -37,6 +38,7 @@ import {
 const log = createLogger('devices-page')
 const DevicesPage: React.FC = () => {
   const page = useDevicesPage()
+  const { libraryOwnsNavigation } = useSidebarSlot()
   const {
     t,
     dispatch,
@@ -72,7 +74,7 @@ const DevicesPage: React.FC = () => {
   } = page
   return (
     <div className="flex h-full min-w-0">
-      <HistorySidebar context="devices" />
+      {libraryOwnsNavigation && <HistorySidebar context="devices" />}
       {/* ── list column ───────────────────────────────────────── */}
       <DeviceList page={page} />
 

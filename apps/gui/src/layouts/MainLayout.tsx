@@ -1,9 +1,10 @@
 import { LayoutGroup } from 'framer-motion'
-import React, { ReactNode, useId } from 'react'
+import React, { ReactNode, useId, useMemo, useState } from 'react'
 import InsetSurface from '@/components/layout/InsetSurface'
 import SidebarFooter from '@/components/layout/SidebarFooter'
 import SidebarNavigation from '@/components/layout/SidebarNavigation'
 import { ContentToolbar } from '@/components/TitleBar'
+import { SidebarSlotContext } from '@/contexts/sidebar-slot-context'
 import { useMacTrafficLightPosition } from '@/hooks/useMacTrafficLightPosition'
 import { usePlatform } from '@/hooks/usePlatform'
 import { useWindowDragging } from '@/hooks/useWindowDragging'
@@ -45,12 +46,25 @@ const SidebarArea: React.FC<SidebarAreaProps> = ({ title }) => {
  * When the Linux system frame is enabled, the content uses a flat layout
  * instead of duplicating native window chrome with an inset panel.
  */
-const LinuxMainLayout: React.FC<MainLayoutProps> = ({ children }) => {
+interface ContentToolbarProps {
+  toolbarHostRef: (element: HTMLDivElement | null) => void
+}
+
+const LinuxMainLayout: React.FC<MainLayoutProps & ContentToolbarProps> = ({
+  children,
+  toolbarHostRef,
+}) => {
   return (
     <>
       <SidebarArea />
 
       <main className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-card text-card-foreground">
+        <div
+          data-tauri-drag-region="deep"
+          className="flex h-10 shrink-0 items-center justify-end px-3"
+        >
+          <div ref={toolbarHostRef} className="flex items-center" />
+        </div>
         <div className="min-h-0 flex-1">{children}</div>
       </main>
     </>
@@ -63,13 +77,21 @@ const LinuxMainLayout: React.FC<MainLayoutProps> = ({ children }) => {
  * The app-rendered frame uses one continuous shell background around the
  * sidebar and inset content panel on every desktop platform.
  */
-const InsetMainLayout: React.FC<MainLayoutProps> = ({ children, sidebarTitle }) => {
+const InsetMainLayout: React.FC<MainLayoutProps & ContentToolbarProps> = ({
+  children,
+  sidebarTitle,
+  toolbarHostRef,
+}) => {
   return (
     <>
       <SidebarArea title={sidebarTitle} />
 
       <main className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-        <ContentToolbar />
+        <ContentToolbar
+          rightSlot={
+            <div ref={toolbarHostRef} className="flex min-w-0 flex-1 items-center justify-end" />
+          }
+        />
         <div className="flex min-h-0 flex-1 pb-2 pr-2">
           <InsetSurface className="h-full w-full flex-1 rounded-xl">{children}</InsetSurface>
         </div>
@@ -96,18 +118,40 @@ const MacMainLayout: React.FC<MainLayoutProps> = ({ children }) => {
   )
 }
 
+const MAC_SLOT = { contentToolbarHost: null, libraryOwnsNavigation: true } as const
+
 const MainLayout: React.FC<MainLayoutProps> = ({ children, sidebarTitle }) => {
   const { isLinux, isMac, isTauri } = usePlatform()
   const { useSystemWindowFrame } = useWindowFrame()
+  const [contentToolbarHost, setContentToolbarHost] = useState<HTMLDivElement | null>(null)
+  const railSlot = useMemo(
+    () => ({ contentToolbarHost, libraryOwnsNavigation: false }),
+    [contentToolbarHost]
+  )
+
   if (isMac) {
-    return <MacMainLayout>{children}</MacMainLayout>
+    return (
+      <SidebarSlotContext value={MAC_SLOT}>
+        <MacMainLayout>{children}</MacMainLayout>
+      </SidebarSlotContext>
+    )
   }
 
   if (isLinux && isTauri && useSystemWindowFrame) {
-    return <LinuxMainLayout>{children}</LinuxMainLayout>
+    return (
+      <SidebarSlotContext value={railSlot}>
+        <LinuxMainLayout toolbarHostRef={setContentToolbarHost}>{children}</LinuxMainLayout>
+      </SidebarSlotContext>
+    )
   }
 
-  return <InsetMainLayout sidebarTitle={sidebarTitle}>{children}</InsetMainLayout>
+  return (
+    <SidebarSlotContext value={railSlot}>
+      <InsetMainLayout sidebarTitle={sidebarTitle} toolbarHostRef={setContentToolbarHost}>
+        {children}
+      </InsetMainLayout>
+    </SidebarSlotContext>
+  )
 }
 
 export default MainLayout

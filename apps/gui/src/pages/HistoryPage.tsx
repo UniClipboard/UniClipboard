@@ -1,5 +1,6 @@
 import { m } from 'framer-motion'
-import React, { useEffect } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { useLocation, useNavigate } from 'react-router'
 import { Filter } from '@/api/clipboardItems'
@@ -7,7 +8,11 @@ import { countSearch } from '@/api/daemon/search'
 import ClipboardActionBar from '@/components/clipboard/ClipboardActionBar'
 import ClipboardPreview from '@/components/clipboard/ClipboardPreview'
 import DeleteConfirmDialog from '@/components/clipboard/DeleteConfirmDialog'
-import { HistoryFilterPanel } from '@/components/history/composite-search'
+import {
+  HistoryFilterPanel,
+  HistoryMorphingSearch,
+  HistorySearchPanel,
+} from '@/components/history/composite-search'
 import { CompositeSearchBarView } from '@/components/history/composite-search/CompositeSearchBar'
 import {
   type CompositeSearchBarProps,
@@ -23,6 +28,7 @@ import HistoryGrid from '@/components/history/HistoryGrid'
 import { HISTORY_LIBRARY_FILTER_STATE } from '@/components/history/sidebar/history-sidebar-types'
 import HistorySidebar from '@/components/history/sidebar/HistorySidebar'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
+import { useSidebarSlot } from '@/contexts/sidebar-slot-context'
 import { useHistoryController } from '@/hooks/useHistoryController'
 import { useShortcut } from '@/hooks/useShortcut'
 
@@ -71,7 +77,45 @@ const HistoryPage: React.FC = () => {
     navigate(location.pathname, { replace: true, state: null })
   }, [libraryFilter, location.pathname, navigate, setContentFilter])
 
-  const focusSearch = () => c.searchInputRef.current?.focus()
+  // The layout decides where search lives: a toolbar overlay where it offers a
+  // toolbar host (Windows, Linux), the top of the list column where it does not
+  // (macOS). Both read the same search state.
+  const { contentToolbarHost } = useSidebarSlot()
+  const [searchOpen, setSearchOpen] = useState(false)
+  const searchControlRef = useRef<HTMLDivElement>(null)
+  const searchSuggestionsOpen = compositeSearch.expanded && compositeSearch.buffer.trim().length > 0
+  const hasActiveSearch =
+    c.filter.submittedQuery.trim().length > 0 ||
+    c.filter.activeFilter !== 'all' ||
+    c.filter.tagFilter !== null ||
+    c.filter.sourceFilter !== null ||
+    c.filter.timeRange !== 'all_time' ||
+    c.filter.extensionFilter !== null
+
+  useEffect(() => {
+    if (!searchOpen) return
+
+    const frame = requestAnimationFrame(() => c.searchInputRef.current?.focus())
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node
+      if (searchControlRef.current?.contains(target)) return
+      setSearchOpen(false)
+    }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setSearchOpen(false)
+    }
+
+    document.addEventListener('pointerdown', handlePointerDown)
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      cancelAnimationFrame(frame)
+      document.removeEventListener('pointerdown', handlePointerDown)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [searchOpen, c.searchInputRef])
+
+  const focusSearch = () =>
+    contentToolbarHost ? setSearchOpen(true) : c.searchInputRef.current?.focus()
   useShortcut({
     id: 'clipboard.search',
     key: 'mod+f',
@@ -86,8 +130,72 @@ const HistoryPage: React.FC = () => {
     useKey: true,
   })
 
+  const filterPanel = (
+    <HistoryFilterPanel
+      contentFilter={c.filter.activeFilter}
+      sourceFilter={c.filter.sourceFilter}
+      tagFilter={c.filter.tagFilter}
+      timeRange={c.filter.timeRange}
+      extensionFilter={c.filter.extensionFilter}
+      onContentFilterChange={c.filterActions.setContentFilter}
+      onTagFilterChange={c.filterActions.setTagFilter}
+      onSourceFilterChange={c.filterActions.setSourceFilter}
+      onTimeRangeChange={c.filterActions.setTimeRange}
+      onExtensionFilterChange={c.filterActions.setExtensionFilter}
+      sourceOptions={c.sourceOptions}
+      tagOptions={c.searchableTags}
+    />
+  )
+
   return (
     <div className="relative flex h-full flex-col">
+      {contentToolbarHost
+        ? createPortal(
+            <div className="flex items-center gap-2">
+              {filterPanel}
+              <HistoryMorphingSearch
+                open={searchOpen}
+                active={hasActiveSearch}
+                containerRef={searchControlRef}
+                inputRef={c.searchInputRef}
+                value={compositeSearch.buffer}
+                suggestionsOpen={searchSuggestionsOpen}
+                suggestionsId={compositeSearch.panelId}
+                title={t('history.composite.title')}
+                placeholder={t('history.searchPlaceholder')}
+                resultsLabel={t('history.composite.results', { count: c.browseCount })}
+                clearAllLabel={t('history.composite.clearAll')}
+                onInputChange={compositeSearch.handleInputChange}
+                onInputKeyDown={compositeSearch.handleKeyDown}
+                onClearAll={() => compositeSearch.clearAll()}
+                onOpenChange={setSearchOpen}
+              >
+                <HistorySearchPanel
+                  contentFilter={c.filter.activeFilter}
+                  sourceFilter={c.filter.sourceFilter}
+                  tagFilter={c.filter.tagFilter}
+                  timeRange={c.filter.timeRange}
+                  extensionFilter={c.filter.extensionFilter}
+                  onContentFilterChange={c.filterActions.setContentFilter}
+                  onTagFilterChange={c.filterActions.setTagFilter}
+                  onSourceFilterChange={c.filterActions.setSourceFilter}
+                  onTimeRangeChange={c.filterActions.setTimeRange}
+                  onExtensionFilterChange={c.filterActions.setExtensionFilter}
+                  sourceOptions={c.sourceOptions}
+                  tagOptions={c.searchableTags}
+                  searchPanelId={compositeSearch.panelId}
+                  searchOptions={compositeSearch.options}
+                  searchHighlight={compositeSearch.clampedHighlight}
+                  searchSuggestionsOpen={searchSuggestionsOpen}
+                  onSearchOptionSelect={compositeSearch.selectOption}
+                  onSearchOptionHighlight={compositeSearch.setHighlight}
+                  onDismissSearchSuggestions={() => compositeSearch.setOpen(false)}
+                />
+              </HistoryMorphingSearch>
+            </div>,
+            contentToolbarHost
+          )
+        : null}
       {/* ── Degraded notice: index rebuilding, browse served from main store ─ */}
       {c.indexState === 'degraded' && (
         <div className="shrink-0 mx-2 mb-2 rounded-md bg-amber-500/10 px-3 py-1.5 text-ui-caption text-amber-600 dark:text-amber-400">
@@ -106,23 +214,12 @@ const HistoryPage: React.FC = () => {
           {/* List */}
           <ResizablePanel id="history-list" defaultSize="42%" minSize="20rem" maxSize="36rem">
             <div className="flex h-full min-w-0 flex-col">
-              <div className="flex shrink-0 flex-col gap-2 px-3 pb-2 pt-3">
-                <CompositeSearchBarView {...searchProps} state={compositeSearch} />
-                <HistoryFilterPanel
-                  contentFilter={c.filter.activeFilter}
-                  sourceFilter={c.filter.sourceFilter}
-                  tagFilter={c.filter.tagFilter}
-                  timeRange={c.filter.timeRange}
-                  extensionFilter={c.filter.extensionFilter}
-                  onContentFilterChange={c.filterActions.setContentFilter}
-                  onTagFilterChange={c.filterActions.setTagFilter}
-                  onSourceFilterChange={c.filterActions.setSourceFilter}
-                  onTimeRangeChange={c.filterActions.setTimeRange}
-                  onExtensionFilterChange={c.filterActions.setExtensionFilter}
-                  sourceOptions={c.sourceOptions}
-                  tagOptions={c.searchableTags}
-                />
-              </div>
+              {!contentToolbarHost && (
+                <div className="flex shrink-0 flex-col gap-2 px-3 pb-2 pt-3">
+                  <CompositeSearchBarView {...searchProps} state={compositeSearch} />
+                  {filterPanel}
+                </div>
+              )}
               <HistoryGrid
                 items={c.items}
                 seenIds={c.seenIds}

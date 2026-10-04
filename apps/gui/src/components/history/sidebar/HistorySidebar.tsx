@@ -5,8 +5,8 @@ import { NavLink, useNavigate } from 'react-router'
 import { Filter } from '@/api/clipboardItems'
 import { ThemeToggle } from '@/components/motion/theme-toggle'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { useSidebarSlot } from '@/contexts/sidebar-slot-context'
 import { useMobileDeviceList } from '@/hooks/useMobileDeviceList'
-import { usePlatform } from '@/hooks/usePlatform'
 import { useWindowDragging } from '@/hooks/useWindowDragging'
 import { isMobileDeviceActive } from '@/lib/mobile-device-status'
 import { cn } from '@/lib/utils'
@@ -23,7 +23,9 @@ function HistorySidebar(props: HistorySidebarProps) {
   const { context } = props
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const { isMac } = usePlatform()
+  // On macOS the sidebar is the window's left edge and top-level navigation;
+  // on Windows/Linux the icon rail is, and the sidebar stays a Library panel.
+  const { libraryOwnsNavigation } = useSidebarSlot()
   const windowDragging = useWindowDragging()
   const [smartViewsOpen, setSmartViewsOpen] = useState(false)
   const [tagsOpen, setTagsOpen] = useState(false)
@@ -57,7 +59,7 @@ function HistorySidebar(props: HistorySidebarProps) {
 
   return (
     <aside className="flex w-55 shrink-0 flex-col border-r border-border/50 bg-sidebar text-sidebar-foreground">
-      {isMac && (
+      {libraryOwnsNavigation && (
         <div
           data-tauri-drag-region
           {...windowDragging}
@@ -68,7 +70,7 @@ function HistorySidebar(props: HistorySidebarProps) {
       <ScrollArea className="min-h-0 flex-1">
         <nav
           aria-label={t('history.sidebar.library')}
-          className={cn('flex flex-col px-2.5 pb-3', !isMac && 'pt-2')}
+          className={cn('flex flex-col px-2.5 pb-3', !libraryOwnsNavigation && 'pt-2')}
         >
           <HistorySidebarNavItem
             icon={Inbox}
@@ -113,7 +115,7 @@ function HistorySidebar(props: HistorySidebarProps) {
             open={devicesOpen}
             onOpenChange={setDevicesOpen}
             trailing={
-              context === 'history' ? (
+              context === 'history' && libraryOwnsNavigation ? (
                 <NavLink
                   to="/devices"
                   className="shrink-0 text-ui-caption font-medium text-primary hover:underline"

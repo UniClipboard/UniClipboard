@@ -218,6 +218,7 @@ await runPhase(
         preview: width(
           document.querySelector('[data-panel-id="history-preview"], #history-preview')
         ),
+        groupWidth: width(document.querySelector('#history-list')?.parentElement),
       }
     })
 

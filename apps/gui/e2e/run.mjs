@@ -60,6 +60,7 @@ const specRuns = createSpecRuns({
   removedProfile: process.env.E2E_UC_REMOVED_PROFILE ?? 'wdio-removed',
   hostPlatform: process.platform,
   hostArch: process.arch,
+  tauriApp: process.env.E2E_TAURI_APP,
 })
 const applicationPath =
   process.env.E2E_TAURI_APP ??

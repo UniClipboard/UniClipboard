@@ -41,6 +41,7 @@ export function createSpecRuns({
   removedProfile = 'wdio-removed',
   hostPlatform,
   hostArch,
+  tauriApp,
 }) {
   return specs.flatMap(spec => {
     const slug = scenarioSlug(spec)
@@ -99,6 +100,25 @@ export function createSpecRuns({
     }
 
     const isolatedProfile = `${profile}-${slug}`
+    if (slug === 'history-shell') {
+      // Native macOS evidence only. An unbundled binary named `uniclipboard`
+      // shares ~/Library/WebKit/uniclipboard (WKWebView keys the store by
+      // process name), so require a renamed copy via E2E_TAURI_APP.
+      if (hostPlatform !== 'darwin') return []
+      const executable = tauriApp?.split(/[\\/]/).pop()
+      if (!executable || executable === 'uniclipboard') return []
+      return [
+        {
+          spec,
+          profiles: [isolatedProfile],
+          env: {
+            E2E_UC_PROFILE: isolatedProfile,
+            UC_DISABLE_SYSTEM_CLIPBOARD: '1',
+            UC_GPUI_QUICK_PANEL: '0',
+          },
+        },
+      ]
+    }
     if (slug === 'profile-key-recovery-fresh') {
       if (hostPlatform !== 'darwin') return []
       return [

@@ -111,6 +111,13 @@ vi.mock('@/components/history/HistoryGrid', async () => {
   }
 })
 
+vi.mock('@/components/history/sidebar/HistorySidebar', async () => {
+  const ReactModule = await import('react')
+  return {
+    default: () => ReactModule.createElement('nav', { 'data-testid': 'history-sidebar' }),
+  }
+})
+
 vi.mock('@/components/clipboard/ClipboardPreview', async () => {
   const ReactModule = await import('react')
   return {

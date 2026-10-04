@@ -214,7 +214,13 @@ export function useCompositeSearchBar({
       // A multi-tag chip (set from the filter panel) has no single-token form:
       // committing a typed tag replaces the whole selection.
       if (lastChip.dimension === 'tag' && value.includes(',')) return
-      setBuffer(buildTokenText(lastChip.dimension, value))
+      // Source ids are internal (`mobile_sync:did_…`); candidates also match by
+      // name, so reopen with the name the user recognises.
+      const editable =
+        lastChip.dimension === 'source'
+          ? (sourceOptions.find(o => o.id === value)?.name ?? value)
+          : value
+      setBuffer(buildTokenText(lastChip.dimension, editable))
       setHighlight(0)
       setOpen(true)
       return

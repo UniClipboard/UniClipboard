@@ -1,19 +1,8 @@
 #!/usr/bin/env node
-// Guards mirror-desktop-gitcode.yml's `mirror` job: before anything is
-// downloaded or uploaded, confirms the GitHub Release this request names is
-// actually published (not a draft) and that tag_name/version/channel agree
-// with each other and with the release GitHub itself returns. Runs for both
-// the automatic dispatch paths and the manual `workflow_dispatch` entry —
-// the automatic paths already construct tag_name/version/channel
-// consistently, but the manual entry has no such guarantee, and nothing
-// upstream of this script enforces it.
-//
-// Reuses the same channel-derivation rule as release.yml's `validate` job
-// and mirror-desktop-gitcode.yml's `redispatch-from-release` job: a
-// `-<word>` suffix on the version names the channel, otherwise stable.
-// Looks up the release via a plain, injectable `fetch` (same pattern as
-// scripts/ci/select-windows-runner.mjs's resolveWindowsRunner) rather than
-// shelling out to `gh`, so this is testable without a fake CLI binary.
+// Guards mirror-desktop-gitcode.yml's `mirror` job against a draft release
+// or an inconsistent tag_name/version/channel, before anything downloads
+// or uploads. The automatic dispatch paths already construct these
+// consistently; manual workflow_dispatch does not.
 
 import process from 'node:process'
 
@@ -24,8 +13,6 @@ export function deriveChannelFromVersion(version) {
   return match ? match[1] : 'stable'
 }
 
-// Pure: takes the already-fetched GitHub release object and the requested
-// tag_name/version/channel, returns a list of rejection reasons (empty = ok).
 export function validateMirrorRequest(release, { tagName, version, channel }) {
   const errors = []
 

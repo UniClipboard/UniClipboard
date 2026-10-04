@@ -22,18 +22,12 @@
 # docs/release-workflow.md "GitCode mirror" for why .dmg/.deb/.rpm/the
 # Windows portable zip are not covered yet.
 #
-# - Dispatched with `ref: main` once a release is actually published and
-#   registered with FlareRelease — never called inline from release.yml
-#   (that job's own ref would be the release tag, which `environment:
-#   mirror`'s main-only deployment branch policy rejects before any step
-#   runs). release.yml's dispatch-mirror-alpha job covers alpha directly;
-#   this file's own `release: types: [published]` trigger (via the small
-#   redispatch-from-release job, which carries no environment) covers
-#   stable/beta/rc. Both dispatch calls leave `non_blocking` at its default
-#   (false): each dispatched run is independent of release.yml and of the
-#   other channels, so a real mirror failure must show as a failed run
-#   here, not be hidden by continue-on-error. `non_blocking: true` remains
-#   available for a deliberately best-effort manual run (see below).
+# - Dispatched with `ref: main` once a release is published — never called
+#   inline from release.yml, whose own ref is the release tag and gets
+#   rejected by `environment: mirror`'s main-only branch policy before any
+#   step runs. release.yml's dispatch-mirror-alpha covers alpha; this
+#   file's own `release: types: [published]` (via redispatch-from-release)
+#   covers stable/beta/rc.
 # - Run by hand (workflow_dispatch) to retry or to mirror an older tag. It
 #   downloads installers from the GitHub Release at that tag and rebuilds the
 #   registration payload with the current (default-branch) scripts and
@@ -117,21 +111,10 @@ on:
         required: false
         default: false
         type: boolean
-  # Fires once a human actually publishes a stable/beta/rc GitHub Release
-  # (draft -> published). alpha releases skip this entirely: they are
-  # published directly with GITHUB_TOKEN by release.yml, which never fires
-  # `release.published` (GITHUB_TOKEN-authored events don't cascade into
-  # other workflow runs) — release.yml's own dispatch-mirror-alpha job
-  # covers that channel instead.
-  #
-  # This trigger only runs the redispatch-from-release job below, never the
-  # mirror job directly: a run started by the `release` event still carries
-  # the tag as its own ref, so the mirror job's `environment: mirror`
-  # (main-only deployment branch policy) would reject it exactly like the
-  # old inline call from release.yml did. redispatch-from-release carries no
-  # environment and is free to run on that ref; its only job is to start a
-  # *new*, separate workflow_dispatch run pinned to `ref: main`, which is
-  # what actually satisfies the environment's branch policy.
+  # Fires on a human-published stable/beta/rc release (alpha is published
+  # via GITHUB_TOKEN, which never fires release.published — see
+  # dispatch-mirror-alpha). Only runs redispatch-from-release below, which
+  # carries no environment and re-dispatches to ref=main.
   release:
     types: [published]
 
@@ -162,11 +145,8 @@ jobs:
             CHANNEL="stable"
           fi
 
-          # non_blocking is intentionally left at its default (false): this
-          # dispatched run is its own, separate workflow run — nothing
-          # downstream of the release depends on it — so a real mirror
-          # failure must show as a failed run here, not be swallowed by
-          # continue-on-error the way `non_blocking: true` would.
+          # non_blocking left at its default (false): a real mirror failure
+          # must show as a failed run here, not be swallowed.
           gh api \
             --method POST \
             "repos/${{ github.repository }}/actions/workflows/mirror-desktop-gitcode.yml/dispatches" \
@@ -182,13 +162,8 @@ jobs:
     if: github.event_name != 'release'
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    # The SSH key is an environment secret that only the main branch may use,
-    # same environment Mobile's mirror-android-gitcode job uses. Only a run
-    # dispatched with `ref: main` (workflow_dispatch, from
-    # redispatch-from-release or release.yml's dispatch-mirror-alpha) ever
-    # reaches this job; a run triggered directly by `release.published`
-    # stops at redispatch-from-release above, since `inputs.*` would be
-    # empty here and this job's ref would still be the tag.
+    # Main-only environment secret; only a run dispatched with ref=main
+    # ever reaches this job (see `if:` above).
     environment: mirror
     steps:
       # Not pinned to inputs.tag_name: the registration-building scripts below
@@ -208,11 +183,7 @@ jobs:
         with:
           node-version: lts/*
 
-      # Not gated by `non_blocking`: a draft release or a mismatched
-      # tag_name/version/channel is a caller error, not a flaky-infra
-      # condition — it must always stop the job before anything is
-      # downloaded or uploaded, on every entry point (automatic or manual
-      # workflow_dispatch) alike.
+      # Not gated by `non_blocking`: a caller error, not flaky infra.
       - name: Reject draft releases and inconsistent tag/version/channel
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -50,6 +50,8 @@ export function CompositeSearchBarView({
         onResetDimension={state.resetDimension}
         onSelectOption={state.selectOption}
         onHighlight={state.setHighlight}
+        variant={props.variant}
+        shortcutHint={props.shortcutHint}
         className={props.className}
       />
     </>

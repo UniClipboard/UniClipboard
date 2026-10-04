@@ -14,6 +14,7 @@ import {
   HistorySearchPanel,
 } from '@/components/history/composite-search'
 import { CompositeSearchBarView } from '@/components/history/composite-search/CompositeSearchBar'
+import SearchFacetRow from '@/components/history/composite-search/SearchFacetRow'
 import {
   type CompositeSearchBarProps,
   useCompositeSearchBar,
@@ -212,12 +213,37 @@ const HistoryPage: React.FC = () => {
         />
         <ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1">
           {/* List */}
-          <ResizablePanel id="history-list" defaultSize="42%" minSize="20rem" maxSize="36rem">
+          <ResizablePanel
+            id="history-list"
+            // The macOS three-column design gives the list 560px (HList.dc.html).
+            defaultSize={contentToolbarHost ? '42%' : '35rem'}
+            minSize="20rem"
+            maxSize="36rem"
+          >
             <div className="flex h-full min-w-0 flex-col">
               {!contentToolbarHost && (
-                <div className="flex shrink-0 flex-col gap-2 px-3 pb-2 pt-3">
-                  <CompositeSearchBarView {...searchProps} state={compositeSearch} />
-                  {filterPanel}
+                // HList.dc.html: query bar, facet row, summary.
+                <div className="shrink-0">
+                  <div className="px-4 py-2.5">
+                    <CompositeSearchBarView
+                      {...searchProps}
+                      variant="list"
+                      shortcutHint="⌘F"
+                      state={compositeSearch}
+                    />
+                  </div>
+                  <div className="flex h-11 items-center border-b border-border/60 px-4">
+                    <SearchFacetRow
+                      chips={compositeSearch.chips}
+                      onSeedDimension={compositeSearch.seedDimension}
+                      onClearAll={() => compositeSearch.clearAll()}
+                    />
+                  </div>
+                  <div className="flex h-10 items-center border-b border-border/40 px-4.5 text-ui-caption">
+                    <span className="font-semibold text-foreground">
+                      {t('history.subtitle', { count: c.browseCount })}
+                    </span>
+                  </div>
                 </div>
               )}
               <HistoryGrid
@@ -255,7 +281,11 @@ const HistoryPage: React.FC = () => {
           <ResizableHandle />
 
           {/* Preview */}
-          <ResizablePanel id="history-preview" defaultSize="58%" minSize="35%">
+          <ResizablePanel
+            id="history-preview"
+            defaultSize={contentToolbarHost ? '58%' : undefined}
+            minSize="35%"
+          >
             <m.div
               data-testid="history-preview-motion"
               initial={HISTORY_ENTRY_ANIMATION.initial}

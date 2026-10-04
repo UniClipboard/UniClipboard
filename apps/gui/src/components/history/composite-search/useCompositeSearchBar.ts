@@ -45,6 +45,9 @@ export interface CompositeSearchBarProps {
   clearShortcutEnabled?: boolean
   suggestionActivation?: 'focus' | 'intentional'
   showFilterPanelButton?: boolean
+  /** Field size; see `CompositeSearchInput`. */
+  variant?: 'compact' | 'list'
+  shortcutHint?: string
   /** Enables per-candidate hit counts; omitted → no counts, no network. */
   fetchCounts?: FetchSearchCounts
   className?: string

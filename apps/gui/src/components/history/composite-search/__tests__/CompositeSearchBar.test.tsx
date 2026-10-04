@@ -88,6 +88,18 @@ describe('CompositeSearchBar', () => {
     expect(props.onQuerySubmit).not.toHaveBeenCalled()
   })
 
+  it('applies a time range from an on: token and treats time: as plain text', async () => {
+    const user = userEvent.setup()
+    const props = renderSearchBar()
+
+    const input = screen.getByRole('combobox')
+    await user.type(input, 'on:today{Enter}')
+    expect(props.onTimeRangeChange).toHaveBeenCalledWith('today')
+
+    await user.type(input, 'time:today')
+    expect(props.onQueryChange).toHaveBeenLastCalledWith('time:today')
+  })
+
   it('clears all active dimensions from the clear button', async () => {
     const user = userEvent.setup()
     const props = renderSearchBar({

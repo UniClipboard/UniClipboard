@@ -47,14 +47,14 @@ export type Dimension = 'type' | 'tag' | 'source' | 'time' | 'extension'
 
 /**
  * English syntax-key prefix typed by keyboard users (decision: fixed English
- * keys, not localized). `source` reads `from:` to match common filter-bar
- * conventions; the others mirror their dimension name.
+ * keys, not localized). `source` reads `from:` and `time` reads `on:` to match
+ * common filter-bar conventions; the others mirror their dimension name.
  */
 export const SYNTAX_KEYS: Record<Dimension, string> = {
   type: 'type',
   tag: '#',
   source: 'from',
-  time: 'time',
+  time: 'on',
   extension: 'ext',
 }
 
@@ -62,14 +62,14 @@ export const SYNTAX_KEYS: Record<Dimension, string> = {
 const PREFIX_TO_DIMENSION: Record<string, Dimension> = {
   type: 'type',
   from: 'source',
-  time: 'time',
+  on: 'time',
   ext: 'extension',
 }
 
 /** Physical content-type filters offered as `type:` candidates. */
 const TYPE_FILTERS: readonly Filter[] = [Filter.Text, Filter.RichText, Filter.Image, Filter.File]
 
-/** Time presets offered as `time:` candidates (`all_time` == no filter, excluded). */
+/** Time presets offered as `on:` candidates (`all_time` == no filter, excluded). */
 const TIME_PRESETS: readonly TimeRangePreset[] = [
   'today',
   'yesterday',
@@ -292,8 +292,8 @@ export interface SyntaxSuggestion {
 }
 
 /**
- * Syntax-prefix hints. Typing `t` suggests `type:` / `time:`; `f` suggests
- * `from:`. Keeps the keyboard token syntax discoverable now that the panel
+ * Syntax-prefix hints. Typing `t` suggests `type:`, `o` suggests `on:`, `f`
+ * suggests `from:`. Keeps the keyboard token syntax discoverable now that the panel
  * shows flat values instead of explicit dimension entries. Matches any
  * dimension whose syntax key starts with the typed text.
  */

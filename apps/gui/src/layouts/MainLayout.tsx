@@ -1,12 +1,20 @@
 import { LayoutGroup } from 'framer-motion'
-import React, { ReactNode, useId, useMemo, useState } from 'react'
+import React, { ReactNode, useCallback, useEffect, useId, useMemo, useState } from 'react'
+import { useLocation } from 'react-router'
+import {
+  readLibraryHidden,
+  useHistoryLayoutTier,
+  writeLibraryHidden,
+} from '@/components/history/layout/history-layout'
 import InsetSurface from '@/components/layout/InsetSurface'
 import SidebarFooter from '@/components/layout/SidebarFooter'
 import SidebarNavigation from '@/components/layout/SidebarNavigation'
 import { ContentToolbar } from '@/components/TitleBar'
+import { LibraryChromeContext } from '@/contexts/library-chrome-context'
 import { SidebarSlotContext } from '@/contexts/sidebar-slot-context'
 import { useMacTrafficLightPosition } from '@/hooks/useMacTrafficLightPosition'
 import { usePlatform } from '@/hooks/usePlatform'
+import { useShortcut } from '@/hooks/useShortcut'
 import { useWindowDragging } from '@/hooks/useWindowDragging'
 import { useWindowFrame } from '@/hooks/useWindowFrame'
 
@@ -103,18 +111,68 @@ const InsetMainLayout: React.FC<MainLayoutProps & ContentToolbarProps> = ({
 // The design (Main.dc.html) seats the traffic lights at the top of the
 // full-height Library sidebar rather than in a 40pt title bar.
 const MAC_SIDEBAR_TRAFFIC_LIGHT_OFFSET = { x: 4, y: 8 } as const
+// With the sidebar collapsed the lights sit in the top band over the icon
+// column, centered on the first content column's 44px header controls.
+const MAC_CONTENT_TRAFFIC_LIGHT_OFFSET = { x: 4, y: 16 } as const
 
 /**
  * macOS layout: no title bar row and no icon rail. Each page renders the
  * shared Library sidebar flush with the window edge; it owns the traffic-light
  * strip and the top-level navigation (History, Devices, Settings).
+ *
+ * The sidebar can be hidden (toolbar toggle, ⌃⌘S), and is hidden in the
+ * compact window tier, where the toggle opens it as an overlay drawer instead.
  */
 const MacMainLayout: React.FC<MainLayoutProps> = ({ children }) => {
-  useMacTrafficLightPosition(MAC_SIDEBAR_TRAFFIC_LIGHT_OFFSET)
+  const compact = useHistoryLayoutTier() === 'compact'
+  const [userHidden, setUserHidden] = useState(readLibraryHidden)
+  const [drawerOpen, setDrawerOpen] = useState(false)
+  const [lightsInContent, setLightsInContent] = useState(false)
+  const { pathname } = useLocation()
+
+  // The drawer is a compact-tier overlay; leaving the tier or the page shuts it.
+  useEffect(() => setDrawerOpen(false), [compact, pathname])
+
+  const toggle = useCallback(() => {
+    if (compact) {
+      setDrawerOpen(open => !open)
+      return
+    }
+    setUserHidden(hidden => {
+      writeLibraryHidden(!hidden)
+      return !hidden
+    })
+  }, [compact])
+  const closeDrawer = useCallback(() => setDrawerOpen(false), [])
+  useShortcut({
+    id: 'nav.toggleSidebar',
+    key: 'meta+ctrl+s',
+    scope: 'global',
+    handler: toggle,
+    enableOnFormTags: true,
+  })
+
+  const chrome = useMemo(
+    () => ({
+      hidden: compact || userHidden,
+      drawer: compact,
+      drawerOpen: compact && drawerOpen,
+      toggle,
+      closeDrawer,
+      setLightsInContent,
+    }),
+    [closeDrawer, compact, drawerOpen, toggle, userHidden]
+  )
+
+  useMacTrafficLightPosition(
+    lightsInContent ? MAC_CONTENT_TRAFFIC_LIGHT_OFFSET : MAC_SIDEBAR_TRAFFIC_LIGHT_OFFSET
+  )
   return (
-    <main className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background text-foreground">
-      {children}
-    </main>
+    <LibraryChromeContext value={chrome}>
+      <main className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background text-foreground">
+        {children}
+      </main>
+    </LibraryChromeContext>
   )
 }
 

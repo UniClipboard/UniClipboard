@@ -1,6 +1,7 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { describe, expect, it, vi } from 'vitest'
+import { useLibraryChrome } from '@/contexts/library-chrome-context'
 import MainLayout from '../MainLayout'
 
 const platformState = vi.hoisted(() => ({
@@ -41,6 +42,16 @@ vi.mock('@/hooks/useWindowFrame', () => ({
       !platformState.current.isMac &&
       !windowFrameState.useSystemWindowFrame,
   }),
+}))
+
+const shortcuts = vi.hoisted(() => ({ handlers: new Map<string, () => void>() }))
+vi.mock('@/hooks/useShortcut', () => ({
+  useShortcut: ({ id, handler }: { id?: string; handler: () => void }) => {
+    if (id) shortcuts.handlers.set(id, handler)
+  },
+}))
+vi.mock('@/lib/ipc', () => ({
+  commands: { setTrafficLightPosition: vi.fn().mockResolvedValue(undefined) },
 }))
 
 vi.mock('@/contexts/titlebar-slot-context', () => ({
@@ -140,5 +151,63 @@ describe('MainLayout', () => {
     expect(screen.getByRole('link', { name: 'History' })).toHaveAttribute('href', '/history')
     expect(screen.getByRole('link', { name: 'Devices' })).toHaveAttribute('href', '/devices')
     expect(screen.queryByRole('button', { name: /sidebar/i })).not.toBeInTheDocument()
+  })
+
+  describe('macOS Library sidebar show/hide', () => {
+    function ChromeProbe() {
+      const chrome = useLibraryChrome()
+      return (
+        <button type="button" data-testid="probe" onClick={chrome.toggle}>
+          {`hidden=${chrome.hidden} drawer=${chrome.drawer} open=${chrome.drawerOpen}`}
+        </button>
+      )
+    }
+    const renderMac = (width: number) => {
+      Object.defineProperty(window, 'innerWidth', { configurable: true, value: width })
+      platformState.current = { isWindows: false, isMac: true, isLinux: false, isTauri: true }
+      return render(
+        <MemoryRouter>
+          <MainLayout>
+            <ChromeProbe />
+          </MainLayout>
+        </MemoryRouter>
+      )
+    }
+    const probe = () => screen.getByTestId('probe').textContent
+
+    it('hides the sidebar inline and remembers it in the standard tier', () => {
+      localStorage.clear()
+      const { unmount } = renderMac(1280)
+      expect(probe()).toBe('hidden=false drawer=false open=false')
+
+      fireEvent.click(screen.getByTestId('probe'))
+      expect(probe()).toBe('hidden=true drawer=false open=false')
+      unmount()
+
+      renderMac(1280)
+      expect(probe()).toBe('hidden=true drawer=false open=false')
+      // ⌃⌘S drives the same toggle.
+      act(() => shortcuts.handlers.get('nav.toggleSidebar')?.())
+      expect(probe()).toBe('hidden=false drawer=false open=false')
+      localStorage.clear()
+    })
+
+    it('hides the sidebar in the compact tier and opens it as a drawer', () => {
+      localStorage.clear()
+      renderMac(900)
+      expect(probe()).toBe('hidden=true drawer=true open=false')
+
+      fireEvent.click(screen.getByTestId('probe'))
+      expect(probe()).toBe('hidden=true drawer=true open=true')
+
+      // Widening past the tier shuts the drawer and shows the sidebar inline.
+      act(() => {
+        Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1280 })
+        window.dispatchEvent(new Event('resize'))
+      })
+      expect(probe()).toBe('hidden=false drawer=false open=false')
+      // The compact-tier toggle did not touch the remembered inline choice.
+      expect(localStorage.getItem('uc.library.hidden.v1')).toBeNull()
+    })
   })
 })

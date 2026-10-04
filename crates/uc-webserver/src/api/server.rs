@@ -408,7 +408,10 @@ impl DaemonApiState {
 
     /// Inject this run's crash-detection marker so `POST /lifecycle/graceful-stop`
     /// can mark it clean immediately on request.
-    pub fn with_run_marker(mut self, run_marker: uc_daemon_local::crash_marker::DaemonRunMarker) -> Self {
+    pub fn with_run_marker(
+        mut self,
+        run_marker: uc_daemon_local::crash_marker::DaemonRunMarker,
+    ) -> Self {
         self.run_marker = Some(run_marker);
         self
     }

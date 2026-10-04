@@ -1281,7 +1281,9 @@ mod tests {
         // fall back to a hard terminate — the daemon marks its own clean exit.
         let server = mock_daemon_requiring_session().await;
         Mock::given(method("POST"))
-            .and(path(uc_daemon_contract::constants::http_route::LIFECYCLE_GRACEFUL_STOP))
+            .and(path(
+                uc_daemon_contract::constants::http_route::LIFECYCLE_GRACEFUL_STOP,
+            ))
             .respond_with(ResponseTemplate::new(202))
             .expect(1)
             .mount(&server)
@@ -1299,7 +1301,9 @@ mod tests {
         // old hard-terminate path and the crash marker stays correctly set.
         let server = mock_daemon_requiring_session().await;
         Mock::given(method("POST"))
-            .and(path(uc_daemon_contract::constants::http_route::LIFECYCLE_GRACEFUL_STOP))
+            .and(path(
+                uc_daemon_contract::constants::http_route::LIFECYCLE_GRACEFUL_STOP,
+            ))
             .respond_with(ResponseTemplate::new(500))
             .mount(&server)
             .await;
@@ -1317,14 +1321,17 @@ mod tests {
         // so the caller falls back to a hard terminate.
         let server = mock_daemon_requiring_session().await;
         Mock::given(method("POST"))
-            .and(path(uc_daemon_contract::constants::http_route::LIFECYCLE_GRACEFUL_STOP))
+            .and(path(
+                uc_daemon_contract::constants::http_route::LIFECYCLE_GRACEFUL_STOP,
+            ))
             .respond_with(ResponseTemplate::new(202).set_delay(Duration::from_secs(5)))
             .mount(&server)
             .await;
 
-        let error = request_graceful_stop_at(connection_info_for(&server), Duration::from_millis(100))
-            .await
-            .expect_err("a hanging daemon must time out, not hang the restart");
+        let error =
+            request_graceful_stop_at(connection_info_for(&server), Duration::from_millis(100))
+                .await
+                .expect_err("a hanging daemon must time out, not hang the restart");
         assert!(error.contains("timed out"));
     }
 }

@@ -1,4 +1,5 @@
 import type { LucideIcon } from 'lucide-react'
+import { useSidebarSlot } from '@/contexts/sidebar-slot-context'
 import { cn } from '@/lib/utils'
 
 interface HistorySidebarNavItemProps {
@@ -18,6 +19,9 @@ function HistorySidebarNavItem({
   trailing,
   onClick,
 }: HistorySidebarNavItemProps) {
+  // macOS window-edge sidebar (HSidebar.dc.html): 30px rows, full-contrast
+  // labels, accent background for the current row.
+  const { libraryOwnsNavigation: windowEdge } = useSidebarSlot()
   return (
     <button
       type="button"
@@ -25,13 +29,21 @@ function HistorySidebarNavItem({
       disabled={disabled}
       onClick={onClick}
       className={cn(
-        'flex h-8 w-full items-center gap-2 rounded-md px-2.5 text-ui-body transition-colors',
-        active ? 'bg-muted text-foreground font-medium' : 'text-muted-foreground',
-        !disabled && !active && 'hover:bg-muted/60 hover:text-foreground',
+        'flex w-full items-center text-ui-body transition-colors',
+        windowEdge
+          ? cn(
+              'h-7.5 gap-2.5 rounded-lg px-2.5 text-sidebar-foreground',
+              active ? 'bg-foreground/8 font-medium' : !disabled && 'hover:bg-foreground/5'
+            )
+          : cn(
+              'h-8 gap-2 rounded-md px-2.5',
+              active ? 'bg-muted text-foreground font-medium' : 'text-muted-foreground',
+              !disabled && !active && 'hover:bg-muted/60 hover:text-foreground'
+            ),
         disabled && 'cursor-default opacity-60'
       )}
     >
-      <Icon className="size-3.5 shrink-0" aria-hidden="true" />
+      <Icon className={cn('size-3.5 shrink-0', windowEdge && 'opacity-75')} aria-hidden="true" />
       <span className="min-w-0 flex-1 truncate text-left">{label}</span>
       {trailing}
     </button>

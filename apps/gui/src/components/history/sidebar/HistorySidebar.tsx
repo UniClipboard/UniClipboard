@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { NavLink, useNavigate } from 'react-router'
 import { Filter } from '@/api/clipboardItems'
+import { ThemeModeSwitch } from '@/components/motion/theme-mode-switch'
 import { ThemeToggle } from '@/components/motion/theme-toggle'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useSidebarSlot } from '@/contexts/sidebar-slot-context'
@@ -27,8 +28,8 @@ function HistorySidebar(props: HistorySidebarProps) {
   // on Windows/Linux the icon rail is, and the sidebar stays a Library panel.
   const { libraryOwnsNavigation } = useSidebarSlot()
   const windowDragging = useWindowDragging()
-  const [smartViewsOpen, setSmartViewsOpen] = useState(false)
-  const [tagsOpen, setTagsOpen] = useState(false)
+  const [smartViewsOpen, setSmartViewsOpen] = useState(libraryOwnsNavigation)
+  const [tagsOpen, setTagsOpen] = useState(libraryOwnsNavigation)
   const [devicesOpen, setDevicesOpen] = useState(context === 'devices')
 
   const spaceMembers = useAppSelector(state => state.devices.spaceMembers)
@@ -50,6 +51,10 @@ function HistorySidebar(props: HistorySidebarProps) {
   ]
   const onlineCount = devices.filter(d => d.online).length
 
+  const emptyHintClass = libraryOwnsNavigation
+    ? 'mx-1.5 rounded-lg border border-dashed border-border p-2.5 text-ui-caption text-muted-foreground'
+    : 'px-2.5 py-1.5 text-ui-caption text-muted-foreground/70'
+
   const selectLibrary = (filter: Filter.All | Filter.Favorited) => {
     if (props.context === 'history') props.onSelectLibrary(filter)
     else navigate('/history', { state: { [HISTORY_LIBRARY_FILTER_STATE]: filter } })
@@ -62,7 +67,7 @@ function HistorySidebar(props: HistorySidebarProps) {
       className={cn(
         'flex shrink-0 flex-col border-r border-border/50',
         libraryOwnsNavigation
-          ? 'w-55 bg-sidebar text-sidebar-foreground'
+          ? 'w-55 border-sidebar-border bg-sidebar text-sidebar-foreground'
           : 'w-56 bg-muted/15 xl:w-60'
       )}
     >
@@ -102,9 +107,7 @@ function HistorySidebar(props: HistorySidebarProps) {
             open={smartViewsOpen}
             onOpenChange={setSmartViewsOpen}
           >
-            <p className="px-2.5 py-1.5 text-ui-caption text-muted-foreground/70">
-              {t('history.sidebar.smartViewsEmpty')}
-            </p>
+            <p className={emptyHintClass}>{t('history.sidebar.smartViewsEmpty')}</p>
           </HistorySidebarSection>
 
           <HistorySidebarSection
@@ -112,9 +115,7 @@ function HistorySidebar(props: HistorySidebarProps) {
             open={tagsOpen}
             onOpenChange={setTagsOpen}
           >
-            <p className="px-2.5 py-1.5 text-ui-caption text-muted-foreground/70">
-              {t('history.sidebar.tagsEmpty')}
-            </p>
+            <p className={emptyHintClass}>{t('history.sidebar.tagsEmpty')}</p>
           </HistorySidebarSection>
 
           <HistorySidebarSection
@@ -175,13 +176,19 @@ function HistorySidebar(props: HistorySidebarProps) {
           to="/settings"
           className={cn(
             'flex min-w-0 items-center gap-2 rounded-md py-1 text-ui-body text-muted-foreground hover:text-foreground',
-            libraryOwnsNavigation ? 'px-2.5 hover:bg-muted/60' : 'px-1.5'
+            libraryOwnsNavigation
+              ? 'h-7.5 flex-1 gap-2.5 px-2.5 text-sidebar-foreground hover:bg-foreground/5'
+              : 'px-1.5'
           )}
         >
           <Settings className="size-3.5 shrink-0" aria-hidden="true" />
           <span className="truncate">{t('history.sidebar.settings')}</span>
         </NavLink>
-        <ThemeToggle className="size-7 shrink-0 rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground" />
+        {libraryOwnsNavigation ? (
+          <ThemeModeSwitch className="shrink-0" />
+        ) : (
+          <ThemeToggle className="size-7 shrink-0 rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground" />
+        )}
       </div>
     </aside>
   )

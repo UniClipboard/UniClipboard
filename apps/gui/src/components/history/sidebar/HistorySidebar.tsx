@@ -28,7 +28,8 @@ function HistorySidebar(props: HistorySidebarProps) {
   // on Windows/Linux the icon rail is, and the sidebar stays a Library panel.
   const { libraryOwnsNavigation } = useSidebarSlot()
   const windowDragging = useWindowDragging()
-  const [smartViewsOpen, setSmartViewsOpen] = useState(libraryOwnsNavigation)
+  // Smart Views are out of scope this round; restore with the section below.
+  // const [smartViewsOpen, setSmartViewsOpen] = useState(libraryOwnsNavigation)
   const [tagsOpen, setTagsOpen] = useState(libraryOwnsNavigation)
   const [devicesOpen, setDevicesOpen] = useState(context === 'devices')
 
@@ -102,6 +103,7 @@ function HistorySidebar(props: HistorySidebarProps) {
             disabled
           />
 
+          {/* Smart Views are out of scope this round.
           <HistorySidebarSection
             label={t('history.sidebar.smartViews')}
             open={smartViewsOpen}
@@ -109,6 +111,7 @@ function HistorySidebar(props: HistorySidebarProps) {
           >
             <p className={emptyHintClass}>{t('history.sidebar.smartViewsEmpty')}</p>
           </HistorySidebarSection>
+          */}
 
           <HistorySidebarSection
             label={t('history.sidebar.tags')}

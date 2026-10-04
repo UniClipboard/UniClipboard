@@ -12,10 +12,18 @@ import { buildLiveSearchModel, liveModelToSearchParams } from '@/hooks/liveSearc
 import '@/i18n'
 import '@/styles/globals.css'
 
-// The History search box wired exactly like HistoryPage (same hook, same count
+// Component-level check, NOT the History page: only the search box and the
+// zero-result relaxations, wired like HistoryPage (same hook, same count
 // fetcher, same param mapping, same zero-result component) against a REAL
-// isolated daemon. Only the native session hand-off is stubbed: the test
-// passes a GUI session token it obtained from that daemon.
+// isolated daemon. The full page is covered by `history-full-app.tsx`. Only
+// the native session hand-off is stubbed: the test passes a GUI session token
+// it obtained from that daemon.
+const pageErrors: string[] = []
+Object.assign(window, { __ucPageErrors: pageErrors })
+window.addEventListener('error', e => pageErrors.push(`error: ${e.message}`))
+window.addEventListener('unhandledrejection', e =>
+  pageErrors.push(`rejection: ${String(e.reason)}`)
+)
 const params = new URLSearchParams(location.search)
 const baseUrl = params.get('daemon') ?? ''
 const sessionToken = params.get('token') ?? ''

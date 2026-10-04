@@ -2,16 +2,26 @@
 //! content-lock boundary of `POST /search/count`, against a real daemon.
 //!
 //! Isolation: a fresh `e2e-history-search-*` profile, daemon in server mode
-//! (system clipboard replaced by a no-op), no rendezvous, no GUI. History is
-//! seeded with the development CLI while the daemon is stopped.
+//! (system clipboard replaced by a no-op, so ingest write-back never reaches the
+//! user's clipboard), no rendezvous, no GUI.
+//!
+//! Content enters through real ingestion paths only: files through the local
+//! capture pipeline (`uniclip dev capture-files`, daemon stopped, then the
+//! production `POST /search/rebuild`), texts through the mobile LAN ingest
+//! endpoint (`PUT /SyncClipboard.json` with the Basic credentials from
+//! `uniclip mobile setup`), indexed live. The mobile listener binds
+//! `0.0.0.0:<random free port>` (it has no loopback-only option) for the test's
+//! duration and requires those credentials.
 //!
 //! The count queries below are the exact wire params the History page builds
 //! (`buildCandidateCountQueries` / `buildRelaxationQueries` in
 //! `apps/gui/src/components/history/composite-search/composite-search-model.ts`).
 //!
-//! Optional browser step: set `UC_E2E_HISTORY_BROWSER=1` to drive the real
-//! search components in headless Chromium against this daemon
-//! (`apps/gui/e2e/history-search-real-daemon-browser.mjs`).
+//! Optional browser step: set `UC_E2E_HISTORY_BROWSER=1` to run
+//! `apps/gui/e2e/history-search-browser.mjs` (the repo's webdriverio + the
+//! local Google Chrome, headless) against this daemon, in two separately
+//! reported phases: the search components alone, then the complete frontend
+//! on `/history` with only the Tauri native layer stubbed.
 //!
 //! Artifacts (inputs, every request/response, daemon log, browser output) go
 //! to `UC_E2E_ARTIFACT_DIR`, default `target/e2e-artifacts/history-search`.
@@ -172,6 +182,14 @@ impl Api {
     }
 }
 
+fn free_port() -> u16 {
+    std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port()
+}
+
 fn cli_ok(cli: &TestCli, args: &[&str]) -> String {
     let out = cli.run_capture(args);
     assert!(
@@ -308,13 +326,10 @@ async fn history_search_counts_relaxations_and_content_lock() {
         ],
     );
 
-    // ── Seed history with the daemon stopped (dev commands refuse otherwise).
+    // ── Files: local capture pipeline, daemon stopped (dev commands refuse otherwise).
     daemon.kill();
     let files_dir = daemon.profile.data_dir().join("e2e-seed-files");
     std::fs::create_dir_all(&files_dir).unwrap();
-    for text in TEXTS {
-        cli_ok(&cli, &["dev", "seed-clipboard", "--text", text]);
-    }
     for (name, content) in FILES {
         let path = files_dir.join(name);
         std::fs::write(&path, content).unwrap();
@@ -338,6 +353,94 @@ async fn history_search_counts_relaxations_and_content_lock() {
 
     let (api, cli_token) = Api::connect(&daemon, "cli").await;
     rebuild_index(&api, &mut rec, &cli_token).await;
+
+    // ── Texts: the mobile LAN ingest endpoint, indexed live.
+    let mobile_port = free_port();
+    let setup: Value = serde_json::from_str(
+        cli_ok(
+            &cli,
+            &[
+                "--json",
+                "mobile",
+                "setup",
+                "--non-interactive",
+                "--label",
+                "e2e-phone",
+                "--ip",
+                "127.0.0.1",
+                "--accept-network-risk",
+                "--port",
+                &mobile_port.to_string(),
+            ],
+        )
+        .trim(),
+    )
+    .expect("mobile setup json");
+    let username = setup["username"].as_str().expect("username").to_string();
+    let password = setup["password"].as_str().expect("password").to_string();
+    let mobile_url = format!("http://127.0.0.1:{mobile_port}/SyncClipboard.json");
+    let deadline = Instant::now() + Duration::from_secs(30);
+    loop {
+        let ready = api
+            .client
+            .get(&mobile_url)
+            .basic_auth(&username, Some(&password))
+            .send()
+            .await
+            .is_ok_and(|r| r.status().is_success());
+        if ready {
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "mobile LAN listener never came up"
+        );
+        tokio::time::sleep(Duration::from_millis(250)).await;
+    }
+    for text in TEXTS {
+        let doc = json!({ "type": "Text", "text": text, "hasData": false });
+        let resp = api
+            .client
+            .put(&mobile_url)
+            .basic_auth(&username, Some(&password))
+            .json(&doc)
+            .send()
+            .await
+            .expect("mobile put");
+        let status = resp.status().as_u16();
+        let body = resp.text().await.unwrap_or_default();
+        rec.log.push(json!({
+            "label": "mobile-put-text",
+            "method": "PUT",
+            "path": "/SyncClipboard.json (mobile LAN, Basic auth redacted)",
+            "body": doc,
+            "status": status,
+            "response": body,
+        }));
+        assert!(
+            (200..300).contains(&status),
+            "mobile put {text}: {status} {body}"
+        );
+    }
+    let deadline = Instant::now() + Duration::from_secs(30);
+    loop {
+        let all = total(
+            &api,
+            &mut rec,
+            "query-all-after-ingest",
+            &cli_token,
+            &json!({ "query": "" }),
+        )
+        .await;
+        if all == (TEXTS.len() + FILES.len()) as u64 {
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "ingested texts never reached the index ({all})"
+        );
+        tokio::time::sleep(Duration::from_millis(250)).await;
+    }
     let all = total(
         &api,
         &mut rec,
@@ -375,12 +478,9 @@ async fn history_search_counts_relaxations_and_content_lock() {
             "count must equal the list total for {params}"
         );
     }
-    // `dev seed-clipboard` skips normalization, so seeded text/plain entries
-    // index as `other`, not `text`; only captured files carry a type the
-    // History type filters target.
     assert_eq!(
         type_counts,
-        vec![0, 0, 0, FILES.len() as u64],
+        vec![TEXTS.len() as u64, 0, 0, FILES.len() as u64],
         "type candidates: text, rich text, image, file"
     );
 
@@ -448,6 +548,40 @@ async fn history_search_counts_relaxations_and_content_lock() {
         "neither single drop helps: both shown disabled"
     );
 
+    // Relaxing either chip helps, by different amounts.
+    let zero_three = json!({ "query": "", "contentTypes": "text", "extensions": "md" });
+    assert_eq!(
+        total(
+            &api,
+            &mut rec,
+            "query-zero-result-3",
+            &cli_token,
+            &zero_three
+        )
+        .await,
+        0
+    );
+    let relax_three = [
+        json!({ "query": "", "extensions": "md" }), // drop type
+        json!({ "query": "", "contentTypes": "text" }), // drop ext
+    ];
+    let relax_three_counts = counts(
+        &api,
+        &mut rec,
+        "count-relaxations-3",
+        &cli_token,
+        &relax_three,
+    )
+    .await;
+    assert_eq!(relax_three_counts, vec![1, TEXTS.len() as u64]);
+    for (params, count) in relax_three.iter().zip(&relax_three_counts) {
+        let listed = total(&api, &mut rec, "query-relaxation", &cli_token, params).await;
+        assert_eq!(
+            *count, listed,
+            "relaxation count must equal the list total for {params}"
+        );
+    }
+
     // Batch cap.
     let too_many: Vec<Value> = (0..33).map(|_| json!({ "query": "" })).collect();
     let (status, body) = api
@@ -480,7 +614,7 @@ async fn history_search_counts_relaxations_and_content_lock() {
         assert_eq!(status, 200, "gui content unlock: {body}");
         let gui_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../apps/gui");
         let out = Command::new("node")
-            .arg("e2e/history-search-real-daemon-browser.mjs")
+            .arg("e2e/history-search-browser.mjs")
             .current_dir(&gui_dir)
             .env("UC_E2E_DAEMON_URL", daemon.base_url())
             .env("UC_E2E_GUI_TOKEN", &gui_token)

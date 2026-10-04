@@ -196,9 +196,10 @@ await runPhase(
     await shot('00-history')
     phase.steps.push('complete /history page: sidebar, 5 rows, preview')
 
-    await (await browser.$('button[aria-label="Search and filter"]')).click()
-    const input = await browser.$('[role="combobox"]')
+    // The search field sits at the top of the list column (no toolbar trigger).
+    const input = await browser.$('[role="combobox"][aria-label="Search and filter"]')
     await input.waitForExist({ timeout: 10_000 })
+    await input.click()
     await keys('from:e2e')
     await waitOptions(['e2e-phone3'])
     await browser.keys(['Enter'])
@@ -262,6 +263,101 @@ await runPhase(
     phase.steps.push(
       'Backspace reopened the source chip as "from:e2e-phone" (name, not id); Enter re-applies it'
     )
+
+    // ── Shell navigation: History <-> Devices <-> Settings via the sidebar.
+    const path = () => browser.execute(() => location.pathname)
+    const waitPath = expected =>
+      browser.waitUntil(async () => (await path()) === expected, {
+        timeout: 10_000,
+        timeoutMsg: `never navigated to ${expected}`,
+      })
+    const clickText = (text, { inSidebar }) =>
+      browser.execute(
+        (wanted, sidebar) => {
+          const target = [...document.querySelectorAll('a, button')].find(
+            el =>
+              Boolean(el.closest('aside:has(nav[aria-label="Library"])')) === sidebar &&
+              el.textContent.trim() === wanted
+          )
+          if (!target) throw new Error(`no ${sidebar ? 'sidebar' : 'page'} control "${wanted}"`)
+          target.click()
+        },
+        text,
+        inSidebar
+      )
+    const pageText = () => browser.execute(() => document.body.innerText)
+    assert.equal(
+      await browser.execute(() => document.querySelectorAll('[aria-label="Library"]').length),
+      1,
+      'one Library sidebar'
+    )
+    assert.equal(
+      await browser.execute(() => document.querySelectorAll('aside.w-12').length),
+      0,
+      'no icon rail on macOS'
+    )
+
+    await clickText('Manage', { inSidebar: true })
+    await waitPath('/devices')
+    await browser.waitUntil(async () => (await pageText()).includes('1 of 1 online'), {
+      timeout: 10_000,
+      timeoutMsg: 'Devices sidebar never showed "1 of 1 online"',
+    })
+    await shot('nav-01-devices')
+    phase.steps.push('sidebar "Manage" -> /devices; shared sidebar shows DEVICES "1 of 1 online"')
+
+    // Device management stays in the main content: list + detail.
+    const detailText = () =>
+      browser.execute(() => document.querySelector('main main')?.innerText ?? '')
+    await browser.execute(() => {
+      const row = [...document.querySelectorAll('button, [role="button"], a')].find(
+        el => !el.closest('nav[aria-label="Library"]') && el.textContent.includes('e2e-phone')
+      )
+      row.click()
+    })
+    await browser.waitUntil(async () => (await detailText()).includes('e2e-phone'), {
+      timeout: 10_000,
+      timeoutMsg: 'mobile device detail never opened',
+    })
+    await shot('nav-02-devices-mobile-detail')
+    await browser.execute(() =>
+      [...document.querySelectorAll('button')]
+        .find(b => b.title === 'Join another space')
+        .click()
+    )
+    const dialog = await browser.$('[role="dialog"]')
+    await dialog.waitForDisplayed({ timeout: 10_000 })
+    await shot('nav-03-devices-join-space-dialog')
+    await browser.keys(['Escape'])
+    await dialog.waitForDisplayed({ reverse: true, timeout: 10_000 })
+    phase.steps.push(
+      'device list in main content: selecting e2e-phone opens its detail; "Join another space" dialog opens and cancels'
+    )
+
+    await clickText('Pinned', { inSidebar: true })
+    await waitPath('/history')
+    await browser.waitUntil(
+      () =>
+        browser.execute(
+          () =>
+            document
+              .querySelector('nav[aria-label="Library"] [aria-current="true"]')
+              ?.textContent.trim() === 'Pinned'
+        ),
+      { timeout: 10_000, timeoutMsg: 'Pinned never became the active Library row' }
+    )
+    await waitRows(0)
+    await shot('nav-04-history-pinned-from-devices')
+    phase.steps.push('Devices sidebar "Pinned" -> /history with Pinned active (0 pinned rows)')
+
+    await clickText('All items', { inSidebar: true })
+    await clickText('Settings', { inSidebar: true })
+    await waitPath('/settings')
+    await shot('nav-05-settings')
+    await clickText('Back', { inSidebar: false })
+    await waitPath('/history')
+    await waitRows(3)
+    phase.steps.push('sidebar "Settings" -> /settings; Back -> /history')
 
     assert.deepEqual(
       await browser.execute(() => window.__ucPageErrors ?? []),

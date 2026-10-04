@@ -1,5 +1,4 @@
-import { act, render, screen, waitFor, within } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import React from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { useHistoryController } from '@/hooks/useHistoryController'
@@ -9,10 +8,6 @@ type HistoryControllerState = ReturnType<typeof useHistoryController>
 
 const controller = vi.hoisted(() => ({
   current: null as unknown,
-}))
-
-const sidebarSlot = vi.hoisted(() => ({
-  contentToolbarHost: null as HTMLElement | null,
 }))
 
 const shortcuts = vi.hoisted(() => ({
@@ -71,12 +66,6 @@ vi.mock('framer-motion', async () => {
     },
   }
 })
-
-vi.mock('@/contexts/sidebar-slot-context', () => ({
-  useSidebarSlot: () => ({
-    contentToolbarHost: sidebarSlot.contentToolbarHost,
-  }),
-}))
 
 vi.mock('@/hooks/useShortcut', () => ({
   useShortcut: (config: {
@@ -233,101 +222,16 @@ describe('HistoryPage', () => {
   beforeEach(() => {
     shortcuts.configs = []
     controller.current = makeControllerState()
-    sidebarSlot.contentToolbarHost = document.createElement('div')
-    document.body.append(sidebarSlot.contentToolbarHost)
   })
 
-  it('puts the horizontal filter strip in the content toolbar', () => {
-    render(<HistoryPage />)
-
-    expect(sidebarSlot.contentToolbarHost).toContainElement(
-      screen.getByTestId('history-filter-panel')
-    )
-  })
-
-  it('puts the search control in the content toolbar', () => {
-    render(<HistoryPage />)
-
-    const trigger = screen.getByRole('button', { name: 'history.composite.title' })
-    expect(sidebarSlot.contentToolbarHost).toContainElement(trigger)
-    expect(trigger).toHaveClass('rounded-full', 'bg-muted/50', 'text-foreground')
-    expect(trigger).not.toHaveClass('rounded-md', 'focus-visible:ring-2', 'focus-visible:ring-ring')
-    expect(trigger.querySelector('svg')).toHaveClass('opacity-80')
-  })
-
-  it('morphs the toolbar trigger into a right-anchored surface above the filter strip', async () => {
-    const user = userEvent.setup()
-    render(<HistoryPage />)
-
-    const filterPanel = screen.getByTestId('history-filter-panel')
-    const trigger = screen.getByRole('button', { name: 'history.composite.title' })
-    const layoutId = trigger.getAttribute('data-motion-layout-id')
-
-    expect(layoutId).toBeTruthy()
-    await user.click(trigger)
-
-    const surface = screen.getByTestId('history-search-surface')
-    expect(sidebarSlot.contentToolbarHost).toContainElement(surface)
-    expect(sidebarSlot.contentToolbarHost).toContainElement(filterPanel)
-    expect(surface).toHaveClass('absolute', 'right-0', 'top-0', 'z-50')
-    expect(surface).toHaveAttribute('data-motion-layout-id', layoutId)
-  })
-
-  it('keeps the query when closed and returns focus to the search trigger', async () => {
-    const user = userEvent.setup()
-    render(<HistoryPage />)
-
-    await user.click(screen.getByRole('button', { name: 'history.composite.title' }))
-    const input = screen.getByRole('combobox', { name: 'history.searchPlaceholder' })
-    await user.type(input, 'invoice')
-    await user.keyboard('{Escape}')
-
-    const trigger = screen.getByRole('button', { name: 'history.composite.title' })
-    await waitFor(() => expect(trigger).toHaveFocus())
-    expect(trigger).not.toHaveClass('focus-visible:ring-2', 'focus-visible:ring-ring')
-    expect(trigger).toHaveClass('rounded-full', 'bg-muted/50', 'text-foreground')
-    await user.click(trigger)
-
-    expect(screen.getByRole('combobox', { name: 'history.searchPlaceholder' })).toHaveValue(
-      'invoice'
-    )
-  })
-
-  it('puts the result count beside the X and clears while closing the surface', async () => {
-    const user = userEvent.setup()
-    render(<HistoryPage />)
-
-    await user.click(screen.getByRole('button', { name: 'history.composite.title' }))
-    const input = screen.getByRole('combobox', { name: 'history.searchPlaceholder' })
-    await user.type(input, 'invoice')
-
-    const inputRow = input.parentElement
-    expect(inputRow).not.toBeNull()
-    expect(
-      within(inputRow as HTMLElement).getByText('history.composite.results')
-    ).toBeInTheDocument()
-    const clearButton = within(inputRow as HTMLElement).getByRole('button', {
-      name: 'history.composite.clearAll',
-    })
-    expect(screen.queryByText('history.composite.title')).not.toBeInTheDocument()
-
-    await user.click(clearButton)
-
-    expect(screen.queryByTestId('history-search-surface')).not.toBeInTheDocument()
-    const trigger = screen.getByRole('button', { name: 'history.composite.title' })
-    await waitFor(() => expect(trigger).toHaveFocus())
-    await user.click(trigger)
-    expect(screen.getByRole('combobox', { name: 'history.searchPlaceholder' })).toHaveValue('')
-  })
-
-  it('opens and focuses search from the configurable shortcut', async () => {
+  it('focuses the list-column search from the configurable shortcut', async () => {
     render(<HistoryPage />)
 
     const shortcut = shortcuts.configs.find(config => config.id === 'clipboard.search')
     expect(shortcut?.key).toBe('mod+f')
 
     act(() => shortcut?.handler())
-    const input = await screen.findByRole('combobox', { name: 'history.searchPlaceholder' })
+    const input = screen.getByRole('combobox', { name: 'history.composite.title' })
     await waitFor(() => expect(input).toHaveFocus())
   })
 
@@ -341,19 +245,6 @@ describe('HistoryPage', () => {
     expect(shortcut?.id).toBeUndefined()
     expect(shortcut?.enableOnFormTags).not.toBe(true)
     expect(shortcut?.useKey).toBe(true)
-  })
-
-  it('disables browser text correction in the toolbar search', async () => {
-    const user = userEvent.setup()
-    render(<HistoryPage />)
-
-    await user.click(screen.getByRole('button', { name: 'history.composite.title' }))
-    const input = screen.getByRole('combobox', { name: 'history.searchPlaceholder' })
-
-    expect(input).toHaveAttribute('autocorrect', 'off')
-    expect(input).toHaveAttribute('autocapitalize', 'off')
-    expect(input).toHaveAttribute('autocomplete', 'off')
-    expect(input).toHaveAttribute('spellcheck', 'false')
   })
 
   it('animates the preview pane shortly after history rows start entering', () => {

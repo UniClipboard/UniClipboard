@@ -27,7 +27,7 @@ import {
 } from '@/store/slices/devicesSlice'
 
 const MOBILE_ACTIVE_WINDOW_MS = 10 * 60 * 1000
-export default function DevicesSidebar({ page }: { page: ReturnType<typeof useDevicesPage> }) {
+export default function DeviceList({ page }: { page: ReturnType<typeof useDevicesPage> }) {
   const {
     selectionId,
     t,

@@ -1,7 +1,7 @@
 import React from 'react'
 import AddDeviceDialog from '@/components/device/AddDeviceDialog'
 import ConnectMobileDialog from '@/components/device/ConnectMobileDialog'
-import DevicesSidebar from '@/components/device/DevicesSidebar'
+import DeviceList from '@/components/device/DeviceList'
 import LocalDevicePanel from '@/components/device/LocalDevicePanel'
 import LocalPanelSkeleton from '@/components/device/LocalPanelSkeleton'
 import MobileDevicePanel from '@/components/device/MobileDevicePanel'
@@ -72,7 +72,7 @@ const DevicesPage: React.FC = () => {
   return (
     <div className="flex h-full min-w-0">
       {/* ── list column ───────────────────────────────────────── */}
-      <DevicesSidebar page={page} />
+      <DeviceList page={page} />
 
       {/* ── detail pane ───────────────────────────────────────── */}
       <main className="min-w-0 flex-1 bg-muted/20">

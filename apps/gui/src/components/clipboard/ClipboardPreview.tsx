@@ -1,8 +1,8 @@
 import { Clipboard } from 'lucide-react'
-import React, { useCallback, useState } from 'react'
+import React from 'react'
 import { useTranslation } from 'react-i18next'
-import { cancelEntryReceive, cancelFileTransfer } from '@/api/file_transfer'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { useCancelEntryTransfer } from '@/hooks/useCancelEntryTransfer'
 import { useClipboardPreviewState } from '@/hooks/useClipboardPreviewState'
 import { useEntryDelivery } from '@/hooks/useEntryDelivery'
 import type {
@@ -12,7 +12,6 @@ import type {
 } from '@/lib/clipboard-entry'
 import { linkItemFromTextContent } from '@/lib/clipboard-utils'
 import { cn } from '@/lib/utils'
-import { reportError } from '@/observability/errors'
 import ClipboardPreviewInfo from './ClipboardPreviewInfo'
 import CodePreview from './preview-renderers/CodePreview'
 import FilePreview from './preview-renderers/FilePreview'
@@ -37,7 +36,7 @@ interface PreviewContentProps {
   setImageDimensions: ReturnType<typeof useClipboardPreviewState>['setImageDimensions']
 }
 
-const PreviewContent: React.FC<PreviewContentProps> = ({
+export const PreviewContent: React.FC<PreviewContentProps> = ({
   item,
   loading,
   preview,
@@ -124,30 +123,7 @@ const ClipboardPreview: React.FC<ClipboardPreviewProps> = ({ item, actions }) =>
     transfer,
   } = useClipboardPreviewState(item)
   const { delivery } = useEntryDelivery(item?.id ?? null)
-  const [cancelling, setCancelling] = useState(false)
-
-  const itemId = item?.id
-  const transferId = transfer?.transferId
-  const attemptId = transfer?.attemptId
-  const handleCancelTransfer = useCallback(async () => {
-    if (!transferId || cancelling) return
-    setCancelling(true)
-    try {
-      if (itemId && attemptId) {
-        await cancelEntryReceive(itemId, attemptId)
-      } else {
-        await cancelFileTransfer(transferId)
-      }
-    } catch (err) {
-      reportError(err, {
-        command: itemId && attemptId ? 'cancelEntryReceive' : 'cancelFileTransfer',
-        transferId,
-      })
-    } finally {
-      // 无论成功或失败都释放本地锁，避免后续 transfer 被误禁用。
-      setCancelling(false)
-    }
-  }, [attemptId, cancelling, itemId, transferId])
+  const { cancelling, cancel: handleCancelTransfer } = useCancelEntryTransfer(item?.id, transfer)
 
   if (!item) {
     return (

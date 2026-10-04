@@ -16,9 +16,18 @@ import { useAppSelector } from '@/store/hooks'
 interface ClipboardSendMenuProps {
   entryId: string
   disabled?: boolean
+  /** Replaces the default action-bar button with a custom trigger element. */
+  renderTrigger?: (state: {
+    disabled: boolean
+    busy: boolean
+  }) => ReactElement<Record<string, unknown>>
 }
 
-export default function ClipboardSendMenu({ entryId, disabled }: ClipboardSendMenuProps) {
+export default function ClipboardSendMenu({
+  entryId,
+  disabled,
+  renderTrigger,
+}: ClipboardSendMenuProps) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const [expanded, setExpanded] = useState(false)
@@ -33,32 +42,38 @@ export default function ClipboardSendMenu({ entryId, disabled }: ClipboardSendMe
 
   return (
     <ContextMenu open={open} onOpenChange={setOpen}>
-      <ExpandableActionBar
-        size="sm"
-        expanded={open || expanded}
-        onExpandedChange={setExpanded}
-        items={[
-          {
-            id: 'send',
-            label: t('clipboard.contextMenu.send'),
-            icon: busy ? (
-              <Loader2 className="size-3.5 animate-spin" />
-            ) : (
-              <Send className="size-3.5" />
-            ),
-            disabled: disabled || busy,
-            renderButton: (button: ReactElement<Record<string, unknown>>) => (
-              <ContextMenuTrigger activation="click" disabled={disabled || busy}>
-                {button}
-              </ContextMenuTrigger>
-            ),
-          },
-        ]}
-        classNames={{
-          track: 'min-h-7 border-0 bg-transparent p-0 shadow-none backdrop-blur-none',
-          item: 'hover:text-foreground',
-        }}
-      />
+      {renderTrigger ? (
+        <ContextMenuTrigger activation="click" disabled={disabled || busy}>
+          {renderTrigger({ disabled: Boolean(disabled) || busy, busy })}
+        </ContextMenuTrigger>
+      ) : (
+        <ExpandableActionBar
+          size="sm"
+          expanded={open || expanded}
+          onExpandedChange={setExpanded}
+          items={[
+            {
+              id: 'send',
+              label: t('clipboard.contextMenu.send'),
+              icon: busy ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Send className="size-3.5" />
+              ),
+              disabled: disabled || busy,
+              renderButton: (button: ReactElement<Record<string, unknown>>) => (
+                <ContextMenuTrigger activation="click" disabled={disabled || busy}>
+                  {button}
+                </ContextMenuTrigger>
+              ),
+            },
+          ]}
+          classNames={{
+            track: 'min-h-7 border-0 bg-transparent p-0 shadow-none backdrop-blur-none',
+            item: 'hover:text-foreground',
+          }}
+        />
+      )}
       <ContextMenuContent
         side="top"
         ariaLabel={t('clipboard.contextMenu.send')}

@@ -29,7 +29,6 @@ import {
 import React, { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import type {
-  DeliveryFailureReason,
   EntryDeliveryStatusView,
   EntryDeliveryTargetView,
   EntryDeliveryView,
@@ -39,6 +38,7 @@ import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/h
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useResendAction, type UseResendActionResult } from '@/hooks/useResendAction'
 import { cn } from '@/lib/utils'
+import { deviceLabel, getStatusLabel, renderStatusTone } from './entry-delivery-labels'
 
 interface EntryDeliveryBadgeProps {
   delivery: EntryDeliveryView | null
@@ -52,25 +52,6 @@ type SyncSummary =
   | 'waiting'
   | 'superseded'
   | 'pending'
-
-const FAILURE_REASON_KEYS: Record<DeliveryFailureReason, string> = {
-  localPolicy: 'delivery.failureReason.localPolicy',
-  peerRejected: 'delivery.failureReason.peerRejected',
-  peerIncompatible: 'delivery.failureReason.peerIncompatible',
-  io: 'delivery.failureReason.io',
-  internal: 'delivery.failureReason.internal',
-}
-
-function truncateDeviceId(deviceId: string): string {
-  if (deviceId.length <= 10) return deviceId
-  return `${deviceId.slice(0, 8)}…`
-}
-
-/** 名字优先于 id:后端解析到真实 name 就用,否则截断 device_id。 */
-function deviceLabel(name: string | null | undefined, deviceId: string): string {
-  if (name && name.trim().length > 0) return name
-  return truncateDeviceId(deviceId)
-}
 
 function summarize(targets: readonly EntryDeliveryTargetView[]): SyncSummary | null {
   if (targets.length === 0) return null
@@ -480,50 +461,6 @@ const StatusIcon: React.FC<{ status: EntryDeliveryStatusView }> = ({ status }) =
       return <History className="size-3" />
     case 'failed':
       return <X className="size-3" />
-  }
-}
-
-function getStatusLabel(
-  status: EntryDeliveryStatusView,
-  t: (key: string, opts?: Record<string, unknown>) => string
-): string {
-  switch (status.tag) {
-    case 'delivered':
-      return t('delivery.status.delivered')
-    case 'duplicate':
-      return t('delivery.status.duplicate')
-    case 'pending':
-      return t('delivery.status.pending')
-    case 'unreachable':
-      return t('delivery.status.unreachable')
-    case 'superseded':
-      return t('delivery.status.superseded')
-    case 'failed':
-      return t('delivery.status.failedWithReason', {
-        reason: t(FAILURE_REASON_KEYS[status.reason]),
-      })
-  }
-}
-
-interface StatusTone {
-  icon: string
-  label: string
-}
-
-function renderStatusTone(status: EntryDeliveryStatusView): StatusTone {
-  switch (status.tag) {
-    case 'delivered':
-      return { icon: 'text-emerald-500', label: 'text-foreground/80' }
-    case 'duplicate':
-      return { icon: 'text-emerald-500/70', label: 'text-muted-foreground' }
-    case 'pending':
-      return { icon: 'text-muted-foreground/60', label: 'text-muted-foreground' }
-    case 'unreachable':
-      return { icon: 'text-muted-foreground/60', label: 'text-muted-foreground' }
-    case 'superseded':
-      return { icon: 'text-muted-foreground/60', label: 'text-muted-foreground' }
-    case 'failed':
-      return { icon: 'text-destructive', label: 'text-destructive' }
   }
 }
 

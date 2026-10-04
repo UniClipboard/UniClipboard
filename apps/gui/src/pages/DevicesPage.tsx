@@ -26,6 +26,7 @@ import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useSidebarSlot } from '@/contexts/sidebar-slot-context'
 import { useDevicesPage } from '@/hooks/useDevicesPage'
+import { useSearchTags } from '@/hooks/useSearchTags'
 import { createLogger } from '@/lib/logger'
 import {
   clearLocalDeviceError,
@@ -36,6 +37,14 @@ import {
 } from '@/store/slices/devicesSlice'
 
 const log = createLogger('devices-page')
+
+/** The Library sidebar on Devices; it loads its own Tags rows, which History
+ * gets from its controller, so only a mounted sidebar fetches them. */
+function DevicesLibrarySidebar() {
+  const tags = useSearchTags()
+  return <HistorySidebar context="devices" tags={tags} />
+}
+
 const DevicesPage: React.FC = () => {
   const page = useDevicesPage()
   const { libraryOwnsNavigation } = useSidebarSlot()
@@ -74,7 +83,7 @@ const DevicesPage: React.FC = () => {
   } = page
   return (
     <div className="flex h-full min-w-0">
-      {libraryOwnsNavigation && <HistorySidebar context="devices" />}
+      {libraryOwnsNavigation && <DevicesLibrarySidebar />}
       {/* ── list column ───────────────────────────────────────── */}
       <DeviceList page={page} />
 

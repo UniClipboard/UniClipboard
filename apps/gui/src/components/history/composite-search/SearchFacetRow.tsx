@@ -17,7 +17,7 @@ function SearchFacetRow({ chips, onSeedDimension, onClearAll }: SearchFacetRowPr
   const { t } = useTranslation()
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex flex-1 items-center gap-2">
       {FACETS.map(dimension => {
         const count = chips.filter(chip => chip.dimension === dimension).length
         return (
@@ -27,7 +27,7 @@ function SearchFacetRow({ chips, onSeedDimension, onClearAll }: SearchFacetRowPr
             onMouseDown={event => event.preventDefault()}
             onClick={() => onSeedDimension(dimension)}
             className={cn(
-              'inline-flex h-7.5 items-center gap-1.5 rounded-full border px-2.5 text-ui-body font-medium transition-colors',
+              'inline-flex h-7.5 shrink-0 items-center gap-1.5 rounded-full border px-2.5 text-ui-body font-medium transition-colors',
               count > 0
                 ? 'border-primary/40 bg-primary/5 text-foreground'
                 : 'border-border bg-background text-foreground hover:bg-muted/60'

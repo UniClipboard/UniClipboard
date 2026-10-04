@@ -32,7 +32,13 @@ export function CompositeSearchBarView({
         hasContent={state.hasContent}
         totalCount={props.totalCount}
         title={state.t('history.composite.title')}
-        placeholder={state.t('history.searchPlaceholder')}
+        placeholder={state.t(
+          props.variant !== 'list'
+            ? 'history.searchPlaceholder'
+            : state.chips.length === 0
+              ? 'history.listSearchPlaceholder'
+              : 'history.listSearchPlaceholderMore'
+        )}
         countLabel={state.t('history.subtitle', { count: props.totalCount })}
         moreFiltersLabel={state.t('history.composite.moreFilters', {
           count: state.hiddenChipCount,

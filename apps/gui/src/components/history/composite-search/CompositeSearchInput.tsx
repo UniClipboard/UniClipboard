@@ -177,7 +177,8 @@ function CompositeSearchInput({
               if (openOnFocus) onOpenChange(true)
             }}
             onBlur={() => onOpenChange(false)}
-            placeholder={chips.length === 0 ? placeholder : ''}
+            // The list variant keeps a prompt beside its chips (HList.dc.html).
+            placeholder={chips.length === 0 || list ? placeholder : ''}
             className={cn(
               'min-w-0 flex-1 bg-transparent text-ui-body outline-none placeholder:text-muted-foreground/50',
               list && typingToken ? 'font-mono text-primary' : 'text-foreground'

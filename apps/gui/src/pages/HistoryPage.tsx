@@ -216,10 +216,13 @@ const HistoryPage: React.FC = () => {
           {/* List */}
           <ResizablePanel
             id="history-list"
-            // The macOS three-column design gives the list 560px (HList.dc.html).
-            defaultSize={contentToolbarHost ? '42%' : '35rem'}
-            minSize="20rem"
-            maxSize="36rem"
+            // macOS (HList.dc.html): a 560px list that keeps its width while the
+            // detail column flexes. Pixels, because react-resizable-panels
+            // resolves `rem` against the body font size (14px here), not the root.
+            defaultSize={contentToolbarHost ? '42%' : '560px'}
+            groupResizeBehavior={contentToolbarHost ? undefined : 'preserve-pixel-size'}
+            minSize={contentToolbarHost ? '20rem' : '320px'}
+            maxSize={contentToolbarHost ? '36rem' : '640px'}
           >
             <div className="flex h-full min-w-0 flex-col">
               {!contentToolbarHost && (

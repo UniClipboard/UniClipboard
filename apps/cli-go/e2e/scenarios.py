@@ -87,7 +87,14 @@ def argument_errors(r):
                  ["search", "--from-ms", "x"], ["search", "--limit", "99999999999"],
                  ["mobile", "setup", "--port", "70000"], ["space"], ["member"], ["space", "--json"],
                  ["--profile"], ["--version"], ["-V"], [], ["help"], ["help", "space", "join"],
-                 ["space", "join", "help", "status"], ["mobile-sync"], ["devices", "--bogus"]):
+                 ["space", "join", "help", "status"], ["mobile-sync"], ["devices", "--bogus"],
+                 # clap "did you mean" suggestions
+                 ["sned"], ["space", "stauts"], ["member", "lsit"], ["get", "--wiat"], ["search", "--limt", "3"],
+                 ["--jsn", "stop"], ["devic"], ["hlp"], ["space", "join", "stauts"], ["mobile", "netwrk"],
+                 ["debug", "captur", "strt"], ["stop", "--jsonn"], ["send", "--pear", "x"], ["get", "--tpye", "text"],
+                 ["help", "sned"], ["mobile-sync", "statu"], ["membrs"], ["send", "--text", "--nope"],
+                 ["space", "join", "--cod", "x"], ["get", "--wait", "--tpye", "x"], ["search", "--json", "--limt", "3"],
+                 ["--profile", "x", "sned"], ["member", "sync", "set", "dev", "--sned", "on"]):
         r.run("args " + " ".join(args), args, timeout=20)
 
 

@@ -39,6 +39,7 @@ func (e *usageError) render() string {
 
 // Context carries the parsed arguments of one invocation.
 type Context struct {
+	root   *Context
 	Cmd    *Command
 	Args   []string
 	values map[string]*flagValue
@@ -230,7 +231,7 @@ func (c *Context) smartUsage(include, exclude string) []string {
 			add(f.Long)
 		}
 	}
-	for _, long := range c.used {
+	for _, long := range c.allUsed() {
 		add(long)
 	}
 	if include != "" {
@@ -249,6 +250,40 @@ func (c *Context) smartUsage(include, exclude string) []string {
 		}
 	}
 	return []string{strings.Join(parts, " ")}
+}
+
+// allUsed lists given flags: globals (parsed on the root) first, then the
+// command's own, each in command-line order.
+func (c *Context) allUsed() []string {
+	if c.root == nil || c.root == c {
+		return c.used
+	}
+	return append(append([]string{}, c.root.used...), c.used...)
+}
+
+// unknownLong renders clap's unknown `--flag` error with its "similar
+// argument" suggestion and the matching usage line.
+func (c *Context) unknownLong(arg string) *usageError {
+	name := strings.TrimPrefix(arg, "--")
+	if i := strings.IndexByte(name, '='); i >= 0 {
+		name = name[:i]
+	}
+	e := &usageError{msg: fmt.Sprintf("unexpected argument '%s' found", arg)}
+	if found := didYouMean(name, c.Cmd.longNames()); len(found) > 0 {
+		best := found[len(found)-1]
+		e.tip = fmt.Sprintf("a similar argument exists: '--%s'", best)
+		e.usage = c.smartUsage(best, "")
+		return e
+	}
+	if len(c.Cmd.Args) > 0 {
+		e.tip = fmt.Sprintf("to pass '%s' as a value, use '-- %s'", arg, arg)
+	}
+	if len(c.allUsed()) > 0 {
+		e.usage = c.smartUsage("", "")
+	} else {
+		e.usage = c.Cmd.usageLines()
+	}
+	return e
 }
 
 // unexpected renders clap's unknown-argument error; the `--` tip only
@@ -355,7 +390,7 @@ func (c *Context) displayOf(id string) string {
 
 var (
 	reNeedsArg  = regexp.MustCompile(`^flag needs an argument: (?:--(\S+)|'(.)' in -\S+)$`)
-	reUnknown   = regexp.MustCompile(`^unknown flag: (--\S+)$`)
+	reUnknown   = regexp.MustCompile(`^unknown flag: (--.+)$`)
 	reUnknownSh = regexp.MustCompile(`^unknown shorthand flag: '(.)' in -\S*$`)
 	reBadSyntax = regexp.MustCompile(`^bad flag syntax: (\S+)$`)
 )
@@ -366,7 +401,7 @@ func Execute(root *Command) int {
 	link(root)
 	ctxs := map[*cobra.Command]*Context{}
 	var exitCode int
-	cobraRoot := build(root, ctxs, &exitCode)
+	cobraRoot := build(root, ctxs, &exitCode, nil)
 	cobraRoot.SetArgs(os.Args[1:])
 	cobraRoot.SetOut(os.Stdout)
 	cobraRoot.SetErr(os.Stderr)
@@ -414,6 +449,9 @@ func translate(err error, ctx *Context) *usageError {
 		arg = m[1]
 	}
 	if arg != "" && ctx != nil {
+		if strings.HasPrefix(arg, "--") {
+			return ctx.unknownLong(arg)
+		}
 		return ctx.unexpected(arg)
 	}
 	return &usageError{msg: msg, usage: usage}
@@ -431,8 +469,8 @@ func wantsLongHelp() bool {
 	return false
 }
 
-func build(spec *Command, ctxs map[*cobra.Command]*Context, exitCode *int) *cobra.Command {
-	ctx := &Context{Cmd: spec, values: map[string]*flagValue{}}
+func build(spec *Command, ctxs map[*cobra.Command]*Context, exitCode *int, rootContext *Context) *cobra.Command {
+	ctx := &Context{Cmd: spec, values: map[string]*flagValue{}, root: rootContext}
 	cmd := &cobra.Command{
 		Use:                spec.Name,
 		Aliases:            spec.Aliases,
@@ -443,6 +481,10 @@ func build(spec *Command, ctxs map[*cobra.Command]*Context, exitCode *int) *cobr
 		CompletionOptions:  cobra.CompletionOptions{DisableDefaultCmd: true},
 	}
 	ctxs[cmd] = ctx
+	if rootContext == nil {
+		rootContext = ctx
+		ctx.root = ctx
+	}
 	flags := cmd.Flags()
 	if spec.parent == nil {
 		flags = cmd.PersistentFlags()
@@ -491,7 +533,11 @@ func build(spec *Command, ctxs map[*cobra.Command]*Context, exitCode *int) *cobr
 		if len(args) > len(spec.Args) {
 			extra := args[len(spec.Args)]
 			if len(spec.Subs) > 0 && len(spec.Args) == 0 {
-				return &usageError{msg: fmt.Sprintf("unrecognized subcommand '%s'", extra), usage: spec.usageLines()}
+				e := &usageError{msg: fmt.Sprintf("unrecognized subcommand '%s'", extra), usage: spec.usageLines()}
+				if found := didYouMean(extra, spec.subcommandNames()); len(found) > 0 {
+					e.tip = subcommandTip(found)
+				}
+				return e
 			}
 			return &usageError{msg: fmt.Sprintf("unexpected argument '%s' found", extra), usage: spec.usageLines()}
 		}
@@ -536,7 +582,7 @@ func build(spec *Command, ctxs map[*cobra.Command]*Context, exitCode *int) *cobr
 		return nil
 	}
 	for _, s := range spec.Subs {
-		cmd.AddCommand(build(s, ctxs, exitCode))
+		cmd.AddCommand(build(s, ctxs, exitCode, rootContext))
 	}
 	return cmd
 }

@@ -86,8 +86,18 @@ jobs:
           shared-key: membership-e2e-${{ runner.os }}
           save-if: ${{ github.event_name == 'schedule' }}
 
-      - name: Build daemon and CLI
-        run: cargo build -p uc-daemon -p uc-dev-cli --features uc-daemon/e2e-rendezvous
+      - name: Build daemon
+        run: cargo build -p uc-daemon --features uc-daemon/e2e-rendezvous
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: apps/cli-go/go.mod
+          cache-dependency-path: apps/cli-go/go.sum
+
+      - name: Build the user-facing CLI
+        # The suites resolve the CLI (Go, apps/cli-go) from target/debug/uniclip.
+        run: scripts/e2e/build-cli.sh
 
       - name: Verify fixed release preparation
         run: cargo test --manifest-path tests/e2e/Cargo.toml --test release_assets

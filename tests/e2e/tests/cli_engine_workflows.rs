@@ -523,7 +523,9 @@ async fn no_wait_returns_a_saved_pending_join_while_sponsor_is_offline() {
 #[tokio::test]
 #[ignore]
 async fn space_reset_rebuilds_membership_and_preserves_local_history() {
-    let binaries = NodeBinarySet::current_dev_cli();
+    // The node runs on the user-facing CLI; only seeding history needs the
+    // development CLI, which has no daemon API behind it.
+    let binaries = NodeBinarySet::current();
     let rendezvous = LocalRendezvous::start().await;
     let mut alice = Node::initialized(
         "cli-workflow-reset-alice",
@@ -535,7 +537,9 @@ async fn space_reset_rebuilds_membership_and_preserves_local_history() {
     assert_eq!(setup_state(&alice).await["rePairingRequired"], false);
 
     alice.daemon.kill();
-    let seeded = alice.cli.run_capture(&[
+    let dev_cli =
+        TestCli::with_binaries(&alice.daemon.profile, &NodeBinarySet::current_dev_cli());
+    let seeded = dev_cli.run_capture(&[
         "dev",
         "seed-clipboard",
         "--text",

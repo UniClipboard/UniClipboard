@@ -221,6 +221,58 @@ describe('Rust development CLI stays out of production builds', () => {
   })
 })
 
+describe('E2E harness drives the Go CLI', () => {
+  const root = path.resolve(__dirname, '../..')
+  const text = (file: string) => fs.readFileSync(path.join(root, file), 'utf8')
+  const scripts = fs
+    .readdirSync(path.join(root, 'scripts/e2e'))
+    .filter(file => file.endsWith('.sh'))
+    .map(file => `scripts/e2e/${file}`)
+
+  it.each(scripts)('%s never names the retired Rust CLI crate or binary', file => {
+    expect(text(file)).not.toMatch(/uc-cli\b|uniclipboard-cli|--bin uniclip\b/)
+  })
+
+  it.each(scripts)('%s runs development commands through DEV_CLI, not CLI', file => {
+    // `dev seed-clipboard`, `dev dump-clipboard` and `mobile debug` exist only in uc-dev-cli.
+    for (const line of text(file).split('\n')) {
+      if (/\b(dev (seed|dump)-clipboard|mobile debug)\b/.test(line) && line.includes('"$CLI"')) {
+        throw new Error(`${file}: development command through the user-facing CLI: ${line.trim()}`)
+      }
+    }
+  })
+
+  it('builds the Go CLI into the directory the suites resolve it from', () => {
+    const build = text('scripts/e2e/build-cli.sh')
+    expect(build).toContain('go build -o "$TARGET_DIR/debug/uniclip$EXE" ./cmd/uniclip')
+    const binaries = text('tests/e2e/src/binaries.rs')
+    expect(binaries).toContain('exe_name("uniclip")')
+    expect(binaries).toContain('exe_name("uc-dev-cli")')
+    expect(binaries).toContain('UC_E2E_CLI')
+    expect(binaries).toContain('UC_E2E_DEV_CLI')
+  })
+
+  it.each([
+    ['pr-check.yml', 'Run E2E tests'],
+    ['membership-e2e.yml', 'Run membership matrix'],
+  ])('%s builds the Go CLI before the "%s" step', (file, runStep) => {
+    const workflow = text(`.github/workflows/${file}`)
+    const build = workflow.indexOf('run: scripts/e2e/build-cli.sh')
+    expect(build).toBeGreaterThan(workflow.indexOf('uses: actions/setup-go@v6'))
+    expect(workflow.indexOf('uses: actions/setup-go@v6')).toBeGreaterThan(-1)
+    expect(build).toBeGreaterThan(-1)
+    expect(build).toBeLessThan(workflow.indexOf(`- name: ${runStep}\n`))
+    // The daemon build must not drag the development CLI along.
+    expect(workflow).not.toMatch(/cargo build -p uc-daemon -p uc-dev-cli/)
+  })
+
+  it('points the dev-CLI override at uc-dev-cli', () => {
+    expect(text('.github/workflows/pr-check.yml')).toContain(
+      'UC_E2E_DEV_CLI: ${{ github.workspace }}/target/e2e-dev/debug/uc-dev-cli'
+    )
+  })
+})
+
 describe('Go CLI build info', () => {
   it('matches the workspace version and the daemon API revision', () => {
     const root = path.resolve(__dirname, '../..')

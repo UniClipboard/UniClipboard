@@ -27,6 +27,7 @@
 set -euo pipefail
 
 CLI="${CLI:-./target/debug/uniclip}"
+DEV_CLI="${DEV_CLI:-./target/debug/uc-dev-cli}"
 PASSPHRASE_ALICE="${PASSPHRASE_ALICE:-hunter22hunter22}"
 PASSPHRASE_BOB="${PASSPHRASE_BOB:-bobsfirstpasspass}"
 SEED_TEXT="${SEED_TEXT:-secret-clipboard-message-from-bob}"
@@ -40,7 +41,13 @@ fi
 
 if [[ ! -x "$CLI" ]]; then
     echo "ERROR: CLI binary not found at $CLI" >&2
-    echo "Build first: cargo build -p uc-cli --bin uniclip" >&2
+    echo "Build first: scripts/e2e/build-cli.sh" >&2
+    exit 2
+fi
+
+if [[ ! -x "$DEV_CLI" ]]; then
+    echo "ERROR: development CLI binary not found at $DEV_CLI" >&2
+    echo "Build first: cargo build -p uc-dev-cli --features uc-dev-cli/dev-tools" >&2
     exit 2
 fi
 
@@ -71,11 +78,11 @@ echo "==> bob: init (passphrase B — bob's original space, will be migrated awa
     --device-name "bob (e2e)"
 
 echo "==> bob: dev seed-clipboard (encrypted under passphrase B's master key)"
-"$CLI" $COMMON_FLAGS --profile bob dev seed-clipboard \
+"$DEV_CLI" $COMMON_FLAGS --profile bob dev seed-clipboard \
     --text "$SEED_TEXT"
 
 echo "==> bob: dev dump-clipboard (sanity — should show seeded text decrypted under B's key)"
-PRE_DUMP="$("$CLI" $COMMON_FLAGS --profile bob dev dump-clipboard --limit 5)"
+PRE_DUMP="$("$DEV_CLI" $COMMON_FLAGS --profile bob dev dump-clipboard --limit 5)"
 echo "$PRE_DUMP" | sed 's/^/    bob_pre | /'
 if ! echo "$PRE_DUMP" | grep -qF "$SEED_TEXT"; then
     echo "FAIL: bob's pre-switch dump did not contain the seeded text" >&2
@@ -143,7 +150,7 @@ if [[ $ALICE_EXIT -ne 0 ]]; then
 fi
 
 echo "==> bob: dev dump-clipboard (post-switch — must still show seeded text decrypted under A's master key)"
-POST_DUMP="$("$CLI" $COMMON_FLAGS --profile bob dev dump-clipboard --limit 5)"
+POST_DUMP="$("$DEV_CLI" $COMMON_FLAGS --profile bob dev dump-clipboard --limit 5)"
 echo "$POST_DUMP" | sed 's/^/    bob_post | /'
 if ! echo "$POST_DUMP" | grep -qF "$SEED_TEXT"; then
     echo "FAIL: bob's post-switch dump did not contain the seeded text — re-encryption broke data" >&2

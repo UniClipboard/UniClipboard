@@ -31,7 +31,19 @@ impl TestCli {
 
     /// Run a uniclip command with the test profile automatically set.
     /// Returns the raw Output for assertions.
+    ///
+    /// Panics with a build hint when the binary under test is missing: the
+    /// suite runs a prebuilt CLI (the Go `uniclip`, or `uc-dev-cli` for the
+    /// development commands) and a bare "No such file" is hard to act on.
     pub fn run(&self, args: &[&str]) -> std::io::Result<Output> {
+        assert!(
+            self.binary.is_file(),
+            "CLI binary not found at {}. Build the user-facing CLI with \
+             `scripts/e2e/build-cli.sh` (set UC_E2E_CLI to use another binary), or the \
+             development CLI with `cargo build -p uc-dev-cli --features uc-dev-cli/dev-tools` \
+             (UC_E2E_DEV_CLI overrides its path).",
+            self.binary.display()
+        );
         Command::new(&self.binary)
             .env("UC_PROFILE", &self.profile_name)
             .env("UNICLIPBOARD_ENV", "development")

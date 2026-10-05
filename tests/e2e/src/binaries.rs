@@ -14,40 +14,55 @@ pub struct NodeBinarySet {
     pub endpoint_discovery: DaemonEndpointDiscovery,
 }
 
+/// Directory holding the binaries under test: `$CARGO_TARGET_DIR/debug`
+/// (default `<repo>/target/debug`).
+fn debug_dir() -> PathBuf {
+    std::env::var_os("CARGO_TARGET_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target"))
+        .join("debug")
+}
+
+fn exe_name(stem: &str) -> String {
+    if cfg!(windows) {
+        format!("{stem}.exe")
+    } else {
+        stem.to_string()
+    }
+}
+
 impl NodeBinarySet {
+    /// Current daemon paired with the user-facing CLI.
+    ///
+    /// The daemon is the Rust `uniclipd` and the CLI is the Go `uniclip`
+    /// (`apps/cli-go`), both resolved from `$CARGO_TARGET_DIR/debug`. Build the
+    /// CLI there with `scripts/e2e/build-cli.sh`. `UC_E2E_CLI` points the suite
+    /// at a different CLI binary, for example to compare against a baseline.
     pub fn current() -> Self {
-        let target_dir = std::env::var_os("CARGO_TARGET_DIR")
+        let debug = debug_dir();
+        let cli = std::env::var_os("UC_E2E_CLI")
             .map(PathBuf::from)
-            .unwrap_or_else(|| Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target"));
-        let cli_name = if cfg!(windows) {
-            "uniclip.exe"
-        } else {
-            "uniclip"
-        };
-        let daemon_name = if cfg!(windows) {
-            "uniclipd.exe"
-        } else {
-            "uniclipd"
-        };
+            .unwrap_or_else(|| debug.join(exe_name("uniclip")));
         Self {
             version: "current".to_string(),
-            cli: target_dir.join("debug").join(cli_name),
-            daemon: target_dir.join("debug").join(daemon_name),
+            cli,
+            daemon: debug.join(exe_name("uniclipd")),
             endpoint_discovery: DaemonEndpointDiscovery::ConnectionFile,
         }
     }
 
-    /// Current daemon paired with a CLI built for hidden development commands.
+    /// Current daemon paired with the Rust development CLI `uc-dev-cli`, for the
+    /// hidden development commands (`dev seed-clipboard` and friends) that have
+    /// no daemon API and therefore no equivalent in the Go CLI.
     ///
-    /// CI keeps the default CLI for the broad E2E suite and supplies its
-    /// separately built development CLI through `UC_E2E_DEV_CLI`. Local runs
-    /// that build `uc-cli` with `dev-tools` in the normal target directory do
-    /// not need the override.
+    /// Build it with `cargo build -p uc-dev-cli --features uc-dev-cli/dev-tools`;
+    /// it is resolved from `$CARGO_TARGET_DIR/debug`. CI builds it into a
+    /// separate target directory and passes it through `UC_E2E_DEV_CLI`.
     pub fn current_dev_cli() -> Self {
         let mut binaries = Self::current();
-        if let Some(cli) = std::env::var_os("UC_E2E_DEV_CLI") {
-            binaries.cli = cli.into();
-        }
+        binaries.cli = std::env::var_os("UC_E2E_DEV_CLI")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| debug_dir().join(exe_name("uc-dev-cli")));
         binaries.version = "current-dev-cli".to_string();
         binaries
     }

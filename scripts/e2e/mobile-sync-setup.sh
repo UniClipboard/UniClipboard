@@ -21,7 +21,7 @@
 # Requirements:
 #   * macOS(profile data dir 走 `~/Library/Application Support`)
 #   * `--dev` 模式(避开 keychain、用 file-based secure storage)
-#   * uniclip binary 已 build:`cargo build -p uc-cli --bin uniclip`
+#   * uniclip binary 已 build:`scripts/e2e/build-cli.sh`
 
 set -euo pipefail
 
@@ -37,7 +37,7 @@ fi
 
 if [[ ! -x "$CLI" ]]; then
     echo "ERROR: CLI binary not found at $CLI" >&2
-    echo "Build first: cargo build -p uc-cli --bin uniclip" >&2
+    echo "Build first: scripts/e2e/build-cli.sh" >&2
     exit 2
 fi
 

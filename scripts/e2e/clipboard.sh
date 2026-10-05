@@ -26,7 +26,7 @@
 
 set -euo pipefail
 
-CLI="${CLI:-./target/debug/uniclipboard-cli}"
+CLI="${CLI:-./target/debug/uniclip}"
 PASSPHRASE="${PASSPHRASE:-hunter22hunter22}"
 PAIR_WAIT_SECS="${PAIR_WAIT_SECS:-30}"
 DELIVER_SECS="${DELIVER_SECS:-10}"
@@ -39,7 +39,7 @@ fi
 
 if [[ ! -x "$CLI" ]]; then
     echo "ERROR: CLI binary not found at $CLI" >&2
-    echo "Build first: cargo build -p uc-cli --bin uniclipboard-cli" >&2
+    echo "Build first: scripts/e2e/build-cli.shboard-cli" >&2
     exit 2
 fi
 

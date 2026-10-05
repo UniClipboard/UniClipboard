@@ -8,9 +8,16 @@ default (real HOME, live system clipboard) is not used.
 
 Usage:
   project_suite.py --target-dir DIR --out FILE [--threads N] [--only TEST_BINARY ...]
+                   [--repo DIR] [--cli PATH] [--dev-cli PATH]
 
-DIR/debug must contain `uniclip` and an `e2e-rendezvous` `uniclipd`
-(`cargo build -p uc-daemon -p uc-dev-cli --features uc-daemon/e2e-rendezvous`).
+DIR/debug must contain `uniclipd` built with the `e2e-rendezvous` feature
+(`cargo build -p uc-daemon --features uc-daemon/e2e-rendezvous`) and, unless
+--cli is given, the user-facing CLI (`scripts/e2e/build-cli.sh`). --dev-cli
+points the few tests that seed history at `uc-dev-cli`
+(`cargo build -p uc-dev-cli --features uc-dev-cli/dev-tools`); --cli lets the
+same compiled tests drive another CLI binary, for baseline comparisons.
+--repo runs the suite from another checkout (default: this one), which is how
+it runs from outside a directory tree with a cargo config override.
 Writes one `binary<TAB>test<TAB>result` line per test to FILE.
 """
 import argparse
@@ -30,8 +37,8 @@ SKIPS = ["bad_metadata_stays_read_only_across_three_restricted_starts",
 RESULT = re.compile(r"^test (\S+) \.\.\. (ok|FAILED|ignored)", re.M)
 
 
-def test_binaries():
-    out = subprocess.run(["cargo", "test", "--manifest-path", os.path.join(REPO, "tests", "e2e", "Cargo.toml"),
+def test_binaries(repo):
+    out = subprocess.run(["cargo", "test", "--manifest-path", os.path.join(repo, "tests", "e2e", "Cargo.toml"),
                           "--no-run", "--message-format=json"], capture_output=True, text=True, check=True).stdout
     bins = {}
     for line in out.splitlines():
@@ -50,25 +57,36 @@ def main():
     ap.add_argument("--out", required=True)
     ap.add_argument("--threads", default="2")
     ap.add_argument("--only", nargs="*")
+    ap.add_argument("--repo", default=REPO)
+    ap.add_argument("--cli")
+    ap.add_argument("--dev-cli")
     args = ap.parse_args()
+    repo = os.path.abspath(args.repo)
     target = os.path.abspath(args.target_dir)
-    for name in ("uniclip", "uniclipd"):
+    required = ["uniclipd"] + ([] if args.cli else ["uniclip"])
+    for name in required:
         if not os.path.isfile(os.path.join(target, "debug", name)):
             sys.exit(f"missing {target}/debug/{name}")
     logs = args.out + ".logs"
     os.makedirs(logs, exist_ok=True)
     lines = []
-    for name, exe in sorted(test_binaries().items()):
+    for name, exe in sorted(test_binaries(repo).items()):
         if args.only and name not in args.only:
             continue
         home = tempfile.mkdtemp(prefix=f"uc-suite-{name}-")
         env = {"HOME": home, "PATH": os.environ["PATH"], "TMPDIR": os.environ.get("TMPDIR", "/tmp"),
                "CARGO_TARGET_DIR": target, "UC_DISABLE_SYSTEM_CLIPBOARD": "1",
                "UC_E2E_EVIDENCE_DIR": os.path.join(logs, name + "-evidence")}
+        if os.environ.get("CARGO_HOME"):
+            env["CARGO_HOME"] = os.environ["CARGO_HOME"]
+        if args.cli:
+            env["UC_E2E_CLI"] = os.path.abspath(args.cli)
+        if args.dev_cli:
+            env["UC_E2E_DEV_CLI"] = os.path.abspath(args.dev_cli)
         argv = [exe, "--ignored", f"--test-threads={args.threads}"]
         for skip in SKIPS:
             argv += ["--skip", skip]
-        proc = subprocess.run(argv, capture_output=True, text=True, env=env, cwd=os.path.join(REPO, "tests", "e2e"))
+        proc = subprocess.run(argv, capture_output=True, text=True, env=env, cwd=os.path.join(repo, "tests", "e2e"))
         with open(os.path.join(logs, name + ".log"), "w") as fh:
             fh.write(proc.stdout + "\n--- stderr\n" + proc.stderr)
         found = RESULT.findall(proc.stdout)

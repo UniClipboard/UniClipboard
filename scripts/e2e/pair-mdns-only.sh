@@ -4,7 +4,7 @@
 # discovery channel introduced in Phase 3 without any rendezvous
 # round-trips.
 #
-# Forks two `uniclipboard-cli` processes under separate `--profile`
+# Forks two `uniclip` processes under separate `--profile`
 # names with `settings.network.allow_relay_fallback = false` (a.k.a.
 # LAN-only Mode). Under that flag:
 #   * sponsor adapter's `issue_invitation` skips the rendezvous POST
@@ -23,7 +23,7 @@
 #   - macOS (profile data dirs live under ~/Library/Application Support)
 #   - --dev mode to avoid Keychain collisions between the two profiles
 #   - python3 (used to patch settings.json)
-#   - Built CLI binary; default at target/debug/uniclipboard-cli
+#   - Built CLI binary; default at target/debug/uniclip (scripts/e2e/build-cli.sh)
 #
 # Notes:
 #   - Multicast on macOS loopback is restricted; swarm-discovery uses
@@ -32,7 +32,7 @@
 
 set -euo pipefail
 
-CLI="${CLI:-./target/debug/uniclipboard-cli}"
+CLI="${CLI:-./target/debug/uniclip}"
 PASSPHRASE="${PASSPHRASE:-hunter22hunter22}"
 WAIT_SECS="${WAIT_SECS:-30}"
 COMMON_FLAGS="--dev"
@@ -44,7 +44,7 @@ fi
 
 if [[ ! -x "$CLI" ]]; then
     echo "ERROR: CLI binary not found at $CLI" >&2
-    echo "Build first: cargo build -p uc-cli --bin uniclipboard-cli" >&2
+    echo "Build first: scripts/e2e/build-cli.shboard-cli" >&2
     exit 2
 fi
 

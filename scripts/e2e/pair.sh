@@ -42,7 +42,7 @@ fi
 for cli in "$ALICE_CLI" "$BOB_CLI"; do
     if [[ ! -x "$cli" ]]; then
         echo "ERROR: CLI binary not found at $cli" >&2
-        echo "Build first: cargo build -p uc-cli --bin uniclip" >&2
+        echo "Build first: scripts/e2e/build-cli.sh" >&2
         exit 2
     fi
 done

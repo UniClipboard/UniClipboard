@@ -26,6 +26,7 @@
 set -euo pipefail
 
 CLI="${CLI:-./target/debug/uniclip}"
+DEV_CLI="${DEV_CLI:-./target/debug/uc-dev-cli}"
 PASSPHRASE="${PASSPHRASE:-hunter22hunter22}"
 PAIR_WAIT_SECS="${PAIR_WAIT_SECS:-30}"
 WATCH_READY_SECS="${WATCH_READY_SECS:-30}"
@@ -53,7 +54,13 @@ BOB_DIR="$APP_ROOT/app.uniclipboard.desktop-bob"
 
 if [[ ! -x "$CLI" ]]; then
     echo "ERROR: CLI binary not found at $CLI" >&2
-    echo "Build first: cargo build -p uc-cli --bin uniclip" >&2
+    echo "Build first: scripts/e2e/build-cli.sh" >&2
+    exit 2
+fi
+
+if [[ ! -x "$DEV_CLI" ]]; then
+    echo "ERROR: development CLI binary not found at $DEV_CLI" >&2
+    echo "Build first: cargo build -p uc-dev-cli --features uc-dev-cli/dev-tools" >&2
     exit 2
 fi
 
@@ -164,7 +171,7 @@ echo "    bob device_id: $BOB_DEVICE_ID"
 
 echo "==> alice: dev seed-clipboard --text \"$FIXTURE_TEXT\""
 SEED_OUT="$(mktemp -t uc_seed.XXXXXX)"
-"$CLI" $COMMON_FLAGS --profile alice dev seed-clipboard --text "$FIXTURE_TEXT" > "$SEED_OUT" 2>&1
+"$DEV_CLI" $COMMON_FLAGS --profile alice dev seed-clipboard --text "$FIXTURE_TEXT" > "$SEED_OUT" 2>&1
 ENTRY_ID="$(grep -E '^SEED_ENTRY_ID=' "$SEED_OUT" | head -1 | cut -d= -f2)"
 if [[ -z "$ENTRY_ID" ]]; then
     echo "FAIL: alice dev seed-clipboard didn't emit SEED_ENTRY_ID" >&2

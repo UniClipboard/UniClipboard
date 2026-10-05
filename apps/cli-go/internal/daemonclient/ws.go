@@ -30,8 +30,13 @@ func (c *Client) DialWS(ctx context.Context) (*WS, error) {
 	}
 	header := http.Header{}
 	header.Set("Authorization", "Session "+token)
-	conn, _, err := websocket.Dial(ctx, c.WSURL, &websocket.DialOptions{HTTPHeader: header, HTTPClient: NewLocalHTTPClient(0)})
+	conn, resp, err := websocket.Dial(ctx, c.WSURL, &websocket.DialOptions{HTTPHeader: header, HTTPClient: NewLocalHTTPClient(0)})
 	if err != nil {
+		if resp != nil && resp.StatusCode != http.StatusSwitchingProtocols {
+			// tungstenite's `Error::Http` Display, e.g. while a restarted
+			// daemon is not ready yet ("HTTP error: 503 Service Unavailable").
+			return nil, fmt.Errorf("WS handshake failed: HTTP error: %s", StatusText(resp.StatusCode))
+		}
 		return nil, fmt.Errorf("WS handshake failed: %w", err)
 	}
 	conn.SetReadLimit(-1)

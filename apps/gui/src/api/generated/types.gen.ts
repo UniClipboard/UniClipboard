@@ -449,6 +449,15 @@ export type ContentTypesPatchDto = {
 };
 
 /**
+ * `POST /history/tags` body. `color` applies only when the tag is new; an
+ * existing tag returned by create-or-get keeps its color.
+ */
+export type CreateHistoryTagRequest = {
+    color?: HistoryTagColorDto | null;
+    name: string;
+};
+
+/**
  * Companion to [`SetupStateResponse::current_invitation`].
  */
 export type CurrentInvitation = {
@@ -1601,6 +1610,293 @@ export type HealthResponse = {
 };
 
 /**
+ * Tags on a selection: `applied == selected` means every selected entry has
+ * the tag; `0 < applied < selected` is a partial tag. `selected` counts only
+ * entries that still exist.
+ */
+export type HistoryEntryTagSummaryDto = {
+    selected: number;
+    tags: Array<HistoryTagApplicationDto>;
+};
+
+/**
+ * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
+ *
+ * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
+ * via [`ApiEnvelope::now`] (the contract carries only the type + the clock
+ * helper, not a hard dependency on when the handler reads the clock).
+ * `rename_all = "camelCase"` is a no-op for the single-word fields here but is
+ * declared for forward-compat.
+ *
+ * IMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named
+ * OpenAPI component is declared in the `#[aliases(...)]` block below. Add a new
+ * alias line whenever a new payload type needs enveloping. NEVER register the
+ * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
+ * generic, and an un-aliased generic inlines an anonymous schema.
+ */
+export type HistoryEntryTagSummaryEnvelope = {
+    data: HistoryEntryTagSummaryDto;
+    /**
+     * Server time when the response was built (unix epoch milliseconds).
+     */
+    ts: number;
+};
+
+/**
+ * How many of the selected entries carry one tag.
+ */
+export type HistoryTagApplicationDto = {
+    applied: number;
+    tagId: string;
+};
+
+/**
+ * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
+ *
+ * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
+ * via [`ApiEnvelope::now`] (the contract carries only the type + the clock
+ * helper, not a hard dependency on when the handler reads the clock).
+ * `rename_all = "camelCase"` is a no-op for the single-word fields here but is
+ * declared for forward-compat.
+ *
+ * IMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named
+ * OpenAPI component is declared in the `#[aliases(...)]` block below. Add a new
+ * alias line whenever a new payload type needs enveloping. NEVER register the
+ * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
+ * generic, and an un-aliased generic inlines an anonymous schema.
+ */
+export type HistoryTagBatchEnvelope = {
+    data: HistoryTagBatchResultDto;
+    /**
+     * Server time when the response was built (unix epoch milliseconds).
+     */
+    ts: number;
+};
+
+/**
+ * Add/remove outcome. Pairs already in the requested state count as
+ * `unchanged`; ids of missing entries are skipped and listed, and the existing
+ * entries are applied in one transaction.
+ */
+export type HistoryTagBatchResultDto = {
+    changed: number;
+    missingEntryIds: Array<string>;
+    unchanged: number;
+};
+
+/**
+ * A palette color name, or a custom color as `#rrggbb` (lowercase when returned).
+ */
+export type HistoryTagColorDto = string;
+
+/**
+ * Create-or-get result: `created` is `false` when a tag with the same
+ * normalized, case-insensitive name already existed and `tag` is that tag.
+ */
+export type HistoryTagCreatedDto = {
+    created: boolean;
+    tag: HistoryTagDto;
+};
+
+/**
+ * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
+ *
+ * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
+ * via [`ApiEnvelope::now`] (the contract carries only the type + the clock
+ * helper, not a hard dependency on when the handler reads the clock).
+ * `rename_all = "camelCase"` is a no-op for the single-word fields here but is
+ * declared for forward-compat.
+ *
+ * IMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named
+ * OpenAPI component is declared in the `#[aliases(...)]` block below. Add a new
+ * alias line whenever a new payload type needs enveloping. NEVER register the
+ * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
+ * generic, and an un-aliased generic inlines an anonymous schema.
+ */
+export type HistoryTagCreatedEnvelope = {
+    data: HistoryTagCreatedDto;
+    /**
+     * Server time when the response was built (unix epoch milliseconds).
+     */
+    ts: number;
+};
+
+/**
+ * Deleting a tag only detaches it; the entries stay.
+ */
+export type HistoryTagDeletedDto = {
+    detached: number;
+};
+
+/**
+ * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
+ *
+ * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
+ * via [`ApiEnvelope::now`] (the contract carries only the type + the clock
+ * helper, not a hard dependency on when the handler reads the clock).
+ * `rename_all = "camelCase"` is a no-op for the single-word fields here but is
+ * declared for forward-compat.
+ *
+ * IMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named
+ * OpenAPI component is declared in the `#[aliases(...)]` block below. Add a new
+ * alias line whenever a new payload type needs enveloping. NEVER register the
+ * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
+ * generic, and an un-aliased generic inlines an anonymous schema.
+ */
+export type HistoryTagDeletedEnvelope = {
+    data: HistoryTagDeletedDto;
+    /**
+     * Server time when the response was built (unix epoch milliseconds).
+     */
+    ts: number;
+};
+
+/**
+ * One local history tag. `name` is `null` when the stored name cannot be
+ * decrypted; such a tag can only be deleted.
+ */
+export type HistoryTagDto = {
+    createdAtMs: number;
+    /**
+     * Associations in the authoritative table. `/search/tags` counts indexed
+     * entries instead, so the two may briefly differ while the index rebuilds.
+     */
+    entryCount: number;
+    name?: string | null;
+    tagId: string;
+};
+
+/**
+ * Entry ids for add/remove and for the selection summary (1..=1000 per call;
+ * duplicates are collapsed).
+ */
+export type HistoryTagEntriesRequest = {
+    entryIds: Array<string>;
+};
+
+/**
+ * How tags are presented: the tags the sidebar shows, in order, and each
+ * tag's color. Ids are builtin tag ids (`link`, `code`, `image`,
+ * `directory`) or local tag ids; a local tag has a color only once one was
+ * chosen.
+ */
+export type HistoryTagLayoutDto = {
+    colors: {
+        [key: string]: HistoryTagColorDto;
+    };
+    sidebar: Array<string>;
+};
+
+/**
+ * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
+ *
+ * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
+ * via [`ApiEnvelope::now`] (the contract carries only the type + the clock
+ * helper, not a hard dependency on when the handler reads the clock).
+ * `rename_all = "camelCase"` is a no-op for the single-word fields here but is
+ * declared for forward-compat.
+ *
+ * IMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named
+ * OpenAPI component is declared in the `#[aliases(...)]` block below. Add a new
+ * alias line whenever a new payload type needs enveloping. NEVER register the
+ * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
+ * generic, and an un-aliased generic inlines an anonymous schema.
+ */
+export type HistoryTagLayoutEnvelope = {
+    data: HistoryTagLayoutDto;
+    /**
+     * Server time when the response was built (unix epoch milliseconds).
+     */
+    ts: number;
+};
+
+/**
+ * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
+ *
+ * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
+ * via [`ApiEnvelope::now`] (the contract carries only the type + the clock
+ * helper, not a hard dependency on when the handler reads the clock).
+ * `rename_all = "camelCase"` is a no-op for the single-word fields here but is
+ * declared for forward-compat.
+ *
+ * IMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named
+ * OpenAPI component is declared in the `#[aliases(...)]` block below. Add a new
+ * alias line whenever a new payload type needs enveloping. NEVER register the
+ * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
+ * generic, and an un-aliased generic inlines an anonymous schema.
+ */
+export type HistoryTagMergeEnvelope = {
+    data: HistoryTagMergeResultDto;
+    /**
+     * Server time when the response was built (unix epoch milliseconds).
+     */
+    ts: number;
+};
+
+export type HistoryTagMergeResultDto = {
+    alreadyOnTarget: number;
+    moved: number;
+};
+
+/**
+ * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
+ *
+ * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
+ * via [`ApiEnvelope::now`] (the contract carries only the type + the clock
+ * helper, not a hard dependency on when the handler reads the clock).
+ * `rename_all = "camelCase"` is a no-op for the single-word fields here but is
+ * declared for forward-compat.
+ *
+ * IMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named
+ * OpenAPI component is declared in the `#[aliases(...)]` block below. Add a new
+ * alias line whenever a new payload type needs enveloping. NEVER register the
+ * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
+ * generic, and an un-aliased generic inlines an anonymous schema.
+ */
+export type HistoryTagRenameEnvelope = {
+    data: HistoryTagRenameResultDto;
+    /**
+     * Server time when the response was built (unix epoch milliseconds).
+     */
+    ts: number;
+};
+
+/**
+ * Rename outcome. A name taken by another tag is not written; the GUI offers
+ * to merge into `existingTagId` instead.
+ */
+export type HistoryTagRenameResultDto = {
+    kind: 'renamed';
+    tag: HistoryTagDto;
+} | {
+    existingTagId: string;
+    kind: 'name_conflict';
+};
+
+/**
+ * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
+ *
+ * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
+ * via [`ApiEnvelope::now`] (the contract carries only the type + the clock
+ * helper, not a hard dependency on when the handler reads the clock).
+ * `rename_all = "camelCase"` is a no-op for the single-word fields here but is
+ * declared for forward-compat.
+ *
+ * IMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named
+ * OpenAPI component is declared in the `#[aliases(...)]` block below. Add a new
+ * alias line whenever a new payload type needs enveloping. NEVER register the
+ * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
+ * generic, and an un-aliased generic inlines an anonymous schema.
+ */
+export type HistoryTagsEnvelope = {
+    data: Array<HistoryTagDto>;
+    /**
+     * Server time when the response was built (unix epoch milliseconds).
+     */
+    ts: number;
+};
+
+/**
  * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
  *
  * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
@@ -2045,6 +2341,14 @@ export type MembershipMaintenanceHealthPhaseDto = 'healthy' | 'retrying' | 'need
 export type MembershipMaintenanceProblemDto = 'membership_history_rejected';
 
 export type MembershipMaintenanceRecoveryDto = 'resolve_device_trust';
+
+/**
+ * `POST /history/tags/{tag_id}/merge` body: tags folded into the path tag,
+ * then deleted (1..=100; the target must not be among them).
+ */
+export type MergeHistoryTagsRequest = {
+    sourceTagIds: Array<string>;
+};
 
 /**
  * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
@@ -2773,6 +3077,13 @@ export type RelaySaveResultEnvelope = {
 };
 
 /**
+ * `PATCH /history/tags/{tag_id}` body.
+ */
+export type RenameHistoryTagRequest = {
+    name: string;
+};
+
+/**
  * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
  *
  * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
@@ -3324,6 +3635,28 @@ export type SessionTokenResponse = {
      * HS256-signed JWT session token.
      */
     sessionToken: string;
+};
+
+/**
+ * `PUT /history/tags/{tag_id}/color` body; `null` clears a local tag's color
+ * (a builtin tag goes back to its default).
+ */
+export type SetHistoryTagColorRequest = {
+    color?: HistoryTagColorDto | null;
+};
+
+/**
+ * `PUT /history/tags/{tag_id}/sidebar` body. Adding a tag puts it last.
+ */
+export type SetHistoryTagInSidebarRequest = {
+    inSidebar: boolean;
+};
+
+/**
+ * `PUT /history/tags/layout/sidebar` body: the sidebar's tags, in order.
+ */
+export type SetHistoryTagSidebarRequest = {
+    tagIds: Array<string>;
 };
 
 export type SettingsDto = {
@@ -5511,6 +5844,505 @@ export type GetHealthResponses = {
 };
 
 export type GetHealthResponse = GetHealthResponses[keyof GetHealthResponses];
+
+export type ListHistoryTagsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/history/tags';
+};
+
+export type ListHistoryTagsErrors = {
+    /**
+     * Encryption session is locked
+     */
+    423: ApiErrorResponse;
+    /**
+     * Internal server error
+     */
+    500: ApiErrorResponse;
+    /**
+     * Tags unavailable for this profile
+     */
+    503: ApiErrorResponse;
+};
+
+export type ListHistoryTagsError = ListHistoryTagsErrors[keyof ListHistoryTagsErrors];
+
+export type ListHistoryTagsResponses = {
+    /**
+     * Local history tags
+     */
+    200: HistoryTagsEnvelope;
+};
+
+export type ListHistoryTagsResponse = ListHistoryTagsResponses[keyof ListHistoryTagsResponses];
+
+export type CreateHistoryTagData = {
+    body: CreateHistoryTagRequest;
+    path?: never;
+    query?: never;
+    url: '/history/tags';
+};
+
+export type CreateHistoryTagErrors = {
+    /**
+     * Invalid name or tag limit reached
+     */
+    400: ApiErrorResponse;
+    /**
+     * Encryption session is locked
+     */
+    423: ApiErrorResponse;
+    /**
+     * Internal server error
+     */
+    500: ApiErrorResponse;
+    /**
+     * Tags unavailable for this profile
+     */
+    503: ApiErrorResponse;
+};
+
+export type CreateHistoryTagError = CreateHistoryTagErrors[keyof CreateHistoryTagErrors];
+
+export type CreateHistoryTagResponses = {
+    /**
+     * Tag created, or the existing tag
+     */
+    200: HistoryTagCreatedEnvelope;
+};
+
+export type CreateHistoryTagResponse = CreateHistoryTagResponses[keyof CreateHistoryTagResponses];
+
+export type GetHistoryTagLayoutData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/history/tags/layout';
+};
+
+export type GetHistoryTagLayoutErrors = {
+    /**
+     * Encryption session is locked
+     */
+    423: ApiErrorResponse;
+    /**
+     * Internal server error
+     */
+    500: ApiErrorResponse;
+    /**
+     * Tags unavailable for this profile
+     */
+    503: ApiErrorResponse;
+};
+
+export type GetHistoryTagLayoutError = GetHistoryTagLayoutErrors[keyof GetHistoryTagLayoutErrors];
+
+export type GetHistoryTagLayoutResponses = {
+    /**
+     * Sidebar tags and colors
+     */
+    200: HistoryTagLayoutEnvelope;
+};
+
+export type GetHistoryTagLayoutResponse = GetHistoryTagLayoutResponses[keyof GetHistoryTagLayoutResponses];
+
+export type SetHistoryTagSidebarData = {
+    body: SetHistoryTagSidebarRequest;
+    path?: never;
+    query?: never;
+    url: '/history/tags/layout/sidebar';
+};
+
+export type SetHistoryTagSidebarErrors = {
+    /**
+     * An id the layout cannot hold
+     */
+    400: ApiErrorResponse;
+    /**
+     * A tag was not found
+     */
+    404: ApiErrorResponse;
+    /**
+     * Encryption session is locked
+     */
+    423: ApiErrorResponse;
+    /**
+     * Internal server error
+     */
+    500: ApiErrorResponse;
+    /**
+     * Tags unavailable for this profile
+     */
+    503: ApiErrorResponse;
+};
+
+export type SetHistoryTagSidebarError = SetHistoryTagSidebarErrors[keyof SetHistoryTagSidebarErrors];
+
+export type SetHistoryTagSidebarResponses = {
+    /**
+     * The updated layout
+     */
+    200: HistoryTagLayoutEnvelope;
+};
+
+export type SetHistoryTagSidebarResponse = SetHistoryTagSidebarResponses[keyof SetHistoryTagSidebarResponses];
+
+export type SummarizeHistoryEntryTagsData = {
+    body: HistoryTagEntriesRequest;
+    path?: never;
+    query?: never;
+    url: '/history/tags/summary';
+};
+
+export type SummarizeHistoryEntryTagsErrors = {
+    /**
+     * Empty or oversized selection
+     */
+    400: ApiErrorResponse;
+    /**
+     * Encryption session is locked
+     */
+    423: ApiErrorResponse;
+    /**
+     * Internal server error
+     */
+    500: ApiErrorResponse;
+    /**
+     * Tags unavailable for this profile
+     */
+    503: ApiErrorResponse;
+};
+
+export type SummarizeHistoryEntryTagsError = SummarizeHistoryEntryTagsErrors[keyof SummarizeHistoryEntryTagsErrors];
+
+export type SummarizeHistoryEntryTagsResponses = {
+    /**
+     * Tags on the selection
+     */
+    200: HistoryEntryTagSummaryEnvelope;
+};
+
+export type SummarizeHistoryEntryTagsResponse = SummarizeHistoryEntryTagsResponses[keyof SummarizeHistoryEntryTagsResponses];
+
+export type DeleteHistoryTagData = {
+    body?: never;
+    path: {
+        /**
+         * Tag id
+         */
+        tag_id: string;
+    };
+    query?: never;
+    url: '/history/tags/{tag_id}';
+};
+
+export type DeleteHistoryTagErrors = {
+    /**
+     * Tag not found
+     */
+    404: ApiErrorResponse;
+    /**
+     * Encryption session is locked
+     */
+    423: ApiErrorResponse;
+    /**
+     * Internal server error
+     */
+    500: ApiErrorResponse;
+    /**
+     * Tags unavailable for this profile
+     */
+    503: ApiErrorResponse;
+};
+
+export type DeleteHistoryTagError = DeleteHistoryTagErrors[keyof DeleteHistoryTagErrors];
+
+export type DeleteHistoryTagResponses = {
+    /**
+     * Tag deleted
+     */
+    200: HistoryTagDeletedEnvelope;
+};
+
+export type DeleteHistoryTagResponse = DeleteHistoryTagResponses[keyof DeleteHistoryTagResponses];
+
+export type RenameHistoryTagData = {
+    body: RenameHistoryTagRequest;
+    path: {
+        /**
+         * Tag id
+         */
+        tag_id: string;
+    };
+    query?: never;
+    url: '/history/tags/{tag_id}';
+};
+
+export type RenameHistoryTagErrors = {
+    /**
+     * Invalid name
+     */
+    400: ApiErrorResponse;
+    /**
+     * Tag not found
+     */
+    404: ApiErrorResponse;
+    /**
+     * Encryption session is locked
+     */
+    423: ApiErrorResponse;
+    /**
+     * Internal server error
+     */
+    500: ApiErrorResponse;
+    /**
+     * Tags unavailable for this profile
+     */
+    503: ApiErrorResponse;
+};
+
+export type RenameHistoryTagError = RenameHistoryTagErrors[keyof RenameHistoryTagErrors];
+
+export type RenameHistoryTagResponses = {
+    /**
+     * Renamed, or the conflicting tag
+     */
+    200: HistoryTagRenameEnvelope;
+};
+
+export type RenameHistoryTagResponse = RenameHistoryTagResponses[keyof RenameHistoryTagResponses];
+
+export type SetHistoryTagColorData = {
+    body: SetHistoryTagColorRequest;
+    path: {
+        /**
+         * Tag id (local or builtin)
+         */
+        tag_id: string;
+    };
+    query?: never;
+    url: '/history/tags/{tag_id}/color';
+};
+
+export type SetHistoryTagColorErrors = {
+    /**
+     * An id the layout cannot hold
+     */
+    400: ApiErrorResponse;
+    /**
+     * Tag not found
+     */
+    404: ApiErrorResponse;
+    /**
+     * Encryption session is locked
+     */
+    423: ApiErrorResponse;
+    /**
+     * Internal server error
+     */
+    500: ApiErrorResponse;
+    /**
+     * Tags unavailable for this profile
+     */
+    503: ApiErrorResponse;
+};
+
+export type SetHistoryTagColorError = SetHistoryTagColorErrors[keyof SetHistoryTagColorErrors];
+
+export type SetHistoryTagColorResponses = {
+    /**
+     * The updated layout
+     */
+    200: HistoryTagLayoutEnvelope;
+};
+
+export type SetHistoryTagColorResponse = SetHistoryTagColorResponses[keyof SetHistoryTagColorResponses];
+
+export type AddHistoryTagToEntriesData = {
+    body: HistoryTagEntriesRequest;
+    path: {
+        /**
+         * Tag id
+         */
+        tag_id: string;
+    };
+    query?: never;
+    url: '/history/tags/{tag_id}/entries/add';
+};
+
+export type AddHistoryTagToEntriesErrors = {
+    /**
+     * Empty or oversized batch
+     */
+    400: ApiErrorResponse;
+    /**
+     * Tag not found
+     */
+    404: ApiErrorResponse;
+    /**
+     * Encryption session is locked
+     */
+    423: ApiErrorResponse;
+    /**
+     * Internal server error
+     */
+    500: ApiErrorResponse;
+    /**
+     * Tags unavailable for this profile
+     */
+    503: ApiErrorResponse;
+};
+
+export type AddHistoryTagToEntriesError = AddHistoryTagToEntriesErrors[keyof AddHistoryTagToEntriesErrors];
+
+export type AddHistoryTagToEntriesResponses = {
+    /**
+     * Batch applied
+     */
+    200: HistoryTagBatchEnvelope;
+};
+
+export type AddHistoryTagToEntriesResponse = AddHistoryTagToEntriesResponses[keyof AddHistoryTagToEntriesResponses];
+
+export type RemoveHistoryTagFromEntriesData = {
+    body: HistoryTagEntriesRequest;
+    path: {
+        /**
+         * Tag id
+         */
+        tag_id: string;
+    };
+    query?: never;
+    url: '/history/tags/{tag_id}/entries/remove';
+};
+
+export type RemoveHistoryTagFromEntriesErrors = {
+    /**
+     * Empty or oversized batch
+     */
+    400: ApiErrorResponse;
+    /**
+     * Tag not found
+     */
+    404: ApiErrorResponse;
+    /**
+     * Encryption session is locked
+     */
+    423: ApiErrorResponse;
+    /**
+     * Internal server error
+     */
+    500: ApiErrorResponse;
+    /**
+     * Tags unavailable for this profile
+     */
+    503: ApiErrorResponse;
+};
+
+export type RemoveHistoryTagFromEntriesError = RemoveHistoryTagFromEntriesErrors[keyof RemoveHistoryTagFromEntriesErrors];
+
+export type RemoveHistoryTagFromEntriesResponses = {
+    /**
+     * Batch applied
+     */
+    200: HistoryTagBatchEnvelope;
+};
+
+export type RemoveHistoryTagFromEntriesResponse = RemoveHistoryTagFromEntriesResponses[keyof RemoveHistoryTagFromEntriesResponses];
+
+export type MergeHistoryTagsData = {
+    body: MergeHistoryTagsRequest;
+    path: {
+        /**
+         * Target tag id
+         */
+        tag_id: string;
+    };
+    query?: never;
+    url: '/history/tags/{tag_id}/merge';
+};
+
+export type MergeHistoryTagsErrors = {
+    /**
+     * Invalid sources (empty, too many, or the target itself)
+     */
+    400: ApiErrorResponse;
+    /**
+     * A tag was not found
+     */
+    404: ApiErrorResponse;
+    /**
+     * Encryption session is locked
+     */
+    423: ApiErrorResponse;
+    /**
+     * Internal server error
+     */
+    500: ApiErrorResponse;
+    /**
+     * Tags unavailable for this profile
+     */
+    503: ApiErrorResponse;
+};
+
+export type MergeHistoryTagsError = MergeHistoryTagsErrors[keyof MergeHistoryTagsErrors];
+
+export type MergeHistoryTagsResponses = {
+    /**
+     * Tags merged
+     */
+    200: HistoryTagMergeEnvelope;
+};
+
+export type MergeHistoryTagsResponse = MergeHistoryTagsResponses[keyof MergeHistoryTagsResponses];
+
+export type SetHistoryTagInSidebarData = {
+    body: SetHistoryTagInSidebarRequest;
+    path: {
+        /**
+         * Tag id (local or builtin)
+         */
+        tag_id: string;
+    };
+    query?: never;
+    url: '/history/tags/{tag_id}/sidebar';
+};
+
+export type SetHistoryTagInSidebarErrors = {
+    /**
+     * An id the layout cannot hold
+     */
+    400: ApiErrorResponse;
+    /**
+     * Tag not found
+     */
+    404: ApiErrorResponse;
+    /**
+     * Encryption session is locked
+     */
+    423: ApiErrorResponse;
+    /**
+     * Internal server error
+     */
+    500: ApiErrorResponse;
+    /**
+     * Tags unavailable for this profile
+     */
+    503: ApiErrorResponse;
+};
+
+export type SetHistoryTagInSidebarError = SetHistoryTagInSidebarErrors[keyof SetHistoryTagInSidebarErrors];
+
+export type SetHistoryTagInSidebarResponses = {
+    /**
+     * The updated layout
+     */
+    200: HistoryTagLayoutEnvelope;
+};
+
+export type SetHistoryTagInSidebarResponse = SetHistoryTagInSidebarResponses[keyof SetHistoryTagInSidebarResponses];
 
 export type RequestGracefulStopData = {
     body?: never;

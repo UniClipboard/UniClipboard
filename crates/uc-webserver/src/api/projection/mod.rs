@@ -18,6 +18,7 @@
 //! has exactly one source of truth.
 
 pub mod clipboard;
+pub mod history_tags;
 pub mod member;
 pub mod search;
 pub mod settings;

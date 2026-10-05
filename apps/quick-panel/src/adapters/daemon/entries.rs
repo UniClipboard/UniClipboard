@@ -39,7 +39,9 @@ impl DaemonHistory {
             .tags()
             .await
             .map_err(|_| ServiceError::TagsUnavailable)?;
-        for tag in fetched {
+        // Local history tags are listed by opaque id; this panel cannot name
+        // them yet, so it offers builtin tags only.
+        for tag in fetched.into_iter().filter(|tag| tag.is_builtin) {
             if !tags.contains(&tag.tag_id) {
                 tags.push(tag.tag_id);
             }

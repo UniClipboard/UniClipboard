@@ -9,6 +9,7 @@ pub mod diagnostics;
 pub mod encryption;
 pub mod envelope;
 pub mod error;
+pub mod history_tags;
 pub mod member;
 pub mod mobile_sync;
 pub mod pairing;

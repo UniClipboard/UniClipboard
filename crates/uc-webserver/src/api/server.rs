@@ -143,6 +143,9 @@ pub struct DaemonApiState {
     /// signal. `Arc`-backed so every `DaemonApiState` clone shares the same
     /// notifier as the host's main loop.
     pub graceful_stop_requested: Arc<tokio::sync::Notify>,
+    /// The History sidebar's tags and each tag's color. In memory unless the
+    /// daemon injects its file-backed store via [`Self::with_tag_layout`].
+    pub tag_layout: Arc<crate::api::tag_layout::TagLayoutStore>,
 }
 
 /// Max concurrent full-buffer blob pulls (D6 interim RSS guard; see
@@ -185,6 +188,7 @@ impl DaemonApiState {
             content_lock: crate::api::content_lock::ContentLock::default(),
             run_marker: None,
             graceful_stop_requested: Arc::new(tokio::sync::Notify::new()),
+            tag_layout: Arc::new(crate::api::tag_layout::TagLayoutStore::in_memory()),
         }
     }
 
@@ -199,6 +203,12 @@ impl DaemonApiState {
     /// daemon assembly boundary.
     pub fn with_residency(mut self, residency: DaemonResidency) -> Self {
         self.residency = residency;
+        self
+    }
+
+    /// Inject the daemon's file-backed tag layout store.
+    pub fn with_tag_layout(mut self, store: Arc<crate::api::tag_layout::TagLayoutStore>) -> Self {
+        self.tag_layout = store;
         self
     }
 

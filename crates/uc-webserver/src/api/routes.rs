@@ -90,6 +90,7 @@ pub fn router_l2_plus(state: DaemonApiState) -> Router<DaemonApiState> {
     let router = Router::new()
         .merge(crate::api::clipboard::router())
         .merge(crate::api::search::router())
+        .merge(crate::api::history_tags::router())
         .merge(crate::api::device::router())
         .merge(crate::api::member::router())
         .merge(crate::api::mobile_sync::router())

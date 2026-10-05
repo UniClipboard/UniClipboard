@@ -419,6 +419,7 @@ const CONTENT_ROUTES: &[&str] = &[
     "/search/tags",
     "/search/count",
     "/config/export",
+    "/history/",
 ];
 
 /// Routes that stay open while locked, with the reason. Kept as data so the audit test can tell

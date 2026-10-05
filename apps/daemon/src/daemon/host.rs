@@ -19,6 +19,7 @@ use uc_observability::analytics::AnalyticsPort;
 use uc_webserver::api::auth::load_or_create_auth_token_from_conn;
 use uc_webserver::api::server::{run_http_server, DaemonApiState, DaemonFileHandles};
 use uc_webserver::api::startup::StartupServer;
+use uc_webserver::api::tag_layout::TagLayoutStore;
 use uc_webserver::api::types::{DaemonResidency, DaemonWsEvent};
 use uc_webserver::security::{cleanup_rate_limiter_task, SecurityState};
 
@@ -223,6 +224,12 @@ async fn run_daemon_surfaces(
     )
     .with_residency(run_mode.into())
     .with_analytics(analytics_sink)
+    .with_tag_layout(Arc::new(TagLayoutStore::load(
+        process_paths
+            .app_data_root()
+            .join("history-tags")
+            .join("layout.v1.json"),
+    )))
     .with_diagnostics(
         diagnostics.clone(),
         Arc::new(DesktopDiagnosticArchive::new(

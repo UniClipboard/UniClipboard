@@ -182,6 +182,395 @@ impl Api {
     }
 }
 
+/// `{ data }` of a 200 response, or a panic naming the step.
+fn data(label: &str, (status, body): (u16, Value)) -> Value {
+    assert_eq!(status, 200, "{label}: {body}");
+    body["data"].clone()
+}
+
+async fn list_tags(api: &Api, rec: &mut Recorder, token: &str, label: &str) -> Value {
+    let response = api
+        .call(
+            rec,
+            label,
+            token,
+            reqwest::Method::GET,
+            "/history/tags",
+            None,
+            None,
+        )
+        .await;
+    data(label, response)
+}
+
+async fn add_tag(
+    api: &Api,
+    rec: &mut Recorder,
+    token: &str,
+    label: &str,
+    tag: &str,
+    entries: Value,
+) -> Value {
+    let path = format!("/history/tags/{tag}/entries/add");
+    let body = json!({ "entryIds": entries });
+    let response = api
+        .call(
+            rec,
+            label,
+            token,
+            reqwest::Method::POST,
+            &path,
+            None,
+            Some(&body),
+        )
+        .await;
+    data(label, response)
+}
+
+/// Local history tags over HTTP against the real Engine: create-or-get, batch
+/// add/remove with a missing entry, selection summary, search filter/count/
+/// facet, rename conflict, merge, delete, and the error mapping. Leaves no tag
+/// behind so later steps see the seeded state.
+async fn history_tags_lifecycle(api: &Api, rec: &mut Recorder, token: &str) {
+    use reqwest::Method;
+    let tags = "/history/tags";
+    assert_eq!(
+        list_tags(api, rec, token, "tags-list-empty").await,
+        json!([])
+    );
+
+    let created = data(
+        "tags-create",
+        api.call(
+            rec,
+            "tags-create",
+            token,
+            Method::POST,
+            tags,
+            None,
+            Some(&json!({ "name": "Deploy" })),
+        )
+        .await,
+    );
+    assert_eq!(created["created"], true, "{created}");
+    assert_eq!(created["tag"]["name"], "Deploy");
+    let deploy = created["tag"]["tagId"].as_str().unwrap().to_string();
+    let again = data(
+        "tags-create-same-name",
+        api.call(
+            rec,
+            "tags-create-same-name",
+            token,
+            Method::POST,
+            tags,
+            None,
+            Some(&json!({ "name": "  deploy " })),
+        )
+        .await,
+    );
+    assert_eq!(
+        again["created"], false,
+        "trimmed, case-insensitive create-or-get: {again}"
+    );
+    assert_eq!(again["tag"]["tagId"], deploy.as_str());
+    let (status, body) = api
+        .call(
+            rec,
+            "tags-create-empty",
+            token,
+            Method::POST,
+            tags,
+            None,
+            Some(&json!({ "name": "   " })),
+        )
+        .await;
+    assert_eq!(status, 400, "empty name: {body}");
+
+    let texts = data(
+        "tags-query-texts",
+        api.call(
+            rec,
+            "tags-query-texts",
+            token,
+            Method::GET,
+            "/search/query",
+            Some(&json!({ "query": "", "contentTypes": "text" })),
+            None,
+        )
+        .await,
+    );
+    let mut ids: Vec<String> = texts["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|item| item["entryId"].as_str().unwrap().to_string())
+        .collect();
+    ids.sort();
+    assert_eq!(ids.len(), TEXTS.len());
+    let (t0, t1, t2) = (ids[0].clone(), ids[1].clone(), ids[2].clone());
+
+    let batch = add_tag(
+        api,
+        rec,
+        token,
+        "tags-add-two-and-missing",
+        &deploy,
+        json!([t0, t1, "missing-entry"]),
+    )
+    .await;
+    assert_eq!(
+        batch,
+        json!({ "changed": 2, "unchanged": 0, "missingEntryIds": ["missing-entry"] })
+    );
+    let batch = add_tag(api, rec, token, "tags-add-again", &deploy, json!([t0])).await;
+    assert_eq!(
+        batch,
+        json!({ "changed": 0, "unchanged": 1, "missingEntryIds": [] })
+    );
+
+    let summary = data(
+        "tags-summary",
+        api.call(
+            rec,
+            "tags-summary",
+            token,
+            Method::POST,
+            "/history/tags/summary",
+            None,
+            Some(&json!({ "entryIds": [t0, t1, t2] })),
+        )
+        .await,
+    );
+    assert_eq!(
+        summary,
+        json!({ "selected": 3, "tags": [{ "tagId": deploy, "applied": 2 }] })
+    );
+
+    // Search sees the association at once (query-time join, no index write).
+    let filtered = data(
+        "tags-search-filter",
+        api.call(
+            rec,
+            "tags-search-filter",
+            token,
+            Method::GET,
+            "/search/query",
+            Some(&json!({ "query": "", "tags": deploy })),
+            None,
+        )
+        .await,
+    );
+    assert_eq!(filtered["total"], 2, "{filtered}");
+    assert!(filtered["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|item| item["tags"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|t| t == deploy.as_str())));
+    assert_eq!(
+        counts(
+            api,
+            rec,
+            "tags-search-count",
+            token,
+            &[json!({ "query": "", "tags": deploy })]
+        )
+        .await,
+        vec![2]
+    );
+    let facet = data(
+        "tags-search-facet",
+        api.call(
+            rec,
+            "tags-search-facet",
+            token,
+            Method::GET,
+            "/search/tags",
+            None,
+            None,
+        )
+        .await,
+    );
+    assert!(
+        facet
+            .as_array()
+            .unwrap()
+            .contains(&json!({ "tagId": deploy, "count": 2, "isBuiltin": false })),
+        "custom tag in /search/tags: {facet}"
+    );
+    let listed = list_tags(api, rec, token, "tags-list-one").await;
+    assert_eq!(listed[0]["entryCount"], 2, "{listed}");
+
+    // Rename: a taken name is a 200 conflict, not a write.
+    let release = data(
+        "tags-create-release",
+        api.call(
+            rec,
+            "tags-create-release",
+            token,
+            Method::POST,
+            tags,
+            None,
+            Some(&json!({ "name": "Release" })),
+        )
+        .await,
+    )["tag"]["tagId"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let rename_path = format!("{tags}/{release}");
+    let conflict = data(
+        "tags-rename-conflict",
+        api.call(
+            rec,
+            "tags-rename-conflict",
+            token,
+            Method::PATCH,
+            &rename_path,
+            None,
+            Some(&json!({ "name": "DEPLOY" })),
+        )
+        .await,
+    );
+    assert_eq!(
+        conflict,
+        json!({ "kind": "name_conflict", "existingTagId": deploy })
+    );
+    let renamed = data(
+        "tags-rename",
+        api.call(
+            rec,
+            "tags-rename",
+            token,
+            Method::PATCH,
+            &rename_path,
+            None,
+            Some(&json!({ "name": "Hotfix" })),
+        )
+        .await,
+    );
+    assert_eq!(renamed["kind"], "renamed", "{renamed}");
+    assert_eq!(renamed["tag"]["name"], "Hotfix");
+
+    // Merge Hotfix (t1, t2) into Deploy (t0, t1).
+    add_tag(
+        api,
+        rec,
+        token,
+        "tags-add-hotfix",
+        &release,
+        json!([t1, t2]),
+    )
+    .await;
+    let merge_path = format!("{tags}/{deploy}/merge");
+    let merged = data(
+        "tags-merge",
+        api.call(
+            rec,
+            "tags-merge",
+            token,
+            Method::POST,
+            &merge_path,
+            None,
+            Some(&json!({ "sourceTagIds": [release] })),
+        )
+        .await,
+    );
+    assert_eq!(merged, json!({ "moved": 1, "alreadyOnTarget": 1 }));
+    let listed = list_tags(api, rec, token, "tags-list-after-merge").await;
+    assert_eq!(listed.as_array().unwrap().len(), 1, "{listed}");
+    assert_eq!(listed[0]["entryCount"], 3, "{listed}");
+
+    // Error mapping.
+    let (status, body) = api
+        .call(
+            rec,
+            "tags-merge-into-itself",
+            token,
+            Method::POST,
+            &merge_path,
+            None,
+            Some(&json!({ "sourceTagIds": [deploy] })),
+        )
+        .await;
+    assert_eq!(status, 400, "target among sources: {body}");
+    let (status, body) = api
+        .call(
+            rec,
+            "tags-add-unknown-tag",
+            token,
+            Method::POST,
+            "/history/tags/no-such-tag/entries/add",
+            None,
+            Some(&json!({ "entryIds": [t0] })),
+        )
+        .await;
+    assert_eq!(status, 404, "unknown tag: {body}");
+    let (status, body) = api
+        .call(
+            rec,
+            "tags-add-empty-batch",
+            token,
+            Method::POST,
+            &format!("{tags}/{deploy}/entries/add"),
+            None,
+            Some(&json!({ "entryIds": [] })),
+        )
+        .await;
+    assert_eq!(status, 400, "empty batch: {body}");
+
+    let removed = data(
+        "tags-remove",
+        api.call(
+            rec,
+            "tags-remove",
+            token,
+            Method::POST,
+            &format!("{tags}/{deploy}/entries/remove"),
+            None,
+            Some(&json!({ "entryIds": [t0] })),
+        )
+        .await,
+    );
+    assert_eq!(
+        removed,
+        json!({ "changed": 1, "unchanged": 0, "missingEntryIds": [] })
+    );
+    let deleted = data(
+        "tags-delete",
+        api.call(
+            rec,
+            "tags-delete",
+            token,
+            Method::DELETE,
+            &format!("{tags}/{deploy}"),
+            None,
+            None,
+        )
+        .await,
+    );
+    assert_eq!(deleted, json!({ "detached": 2 }));
+    assert_eq!(
+        list_tags(api, rec, token, "tags-list-after-delete").await,
+        json!([])
+    );
+    assert_eq!(
+        counts(
+            api,
+            rec,
+            "tags-entries-kept",
+            token,
+            &[json!({ "query": "" })]
+        )
+        .await,
+        vec![(TEXTS.len() + FILES.len()) as u64],
+        "deleting a tag keeps its entries"
+    );
+}
+
 fn free_port() -> u16 {
     std::net::TcpListener::bind("127.0.0.1:0")
         .unwrap()
@@ -597,6 +986,9 @@ async fn history_search_counts_relaxations_and_content_lock() {
         .await;
     assert_eq!(status, 400, "33 queries must be rejected: {body}");
 
+    // ── Local history tags over HTTP.
+    history_tags_lifecycle(&api, &mut rec, &cli_token).await;
+
     // ── Optional browser step against this daemon (GUI client session).
     if std::env::var("UC_E2E_HISTORY_BROWSER").as_deref() == Ok("1") {
         let (_, gui_token) = Api::connect(&daemon, "gui").await;
@@ -661,6 +1053,19 @@ async fn history_search_counts_relaxations_and_content_lock() {
         )
         .await;
     assert_eq!(status, 423, "gui count while content locked: {body}");
+    assert_eq!(body["code"], "content_locked", "{body}");
+    let (status, body) = api
+        .call(
+            &mut rec,
+            "gui-tags-while-content-locked",
+            &gui_token,
+            reqwest::Method::GET,
+            "/history/tags",
+            None,
+            None,
+        )
+        .await;
+    assert_eq!(status, 423, "gui tags while content locked: {body}");
     assert_eq!(body["code"], "content_locked", "{body}");
     let (status, _) = api
         .call(
@@ -734,6 +1139,20 @@ async fn history_search_counts_relaxations_and_content_lock() {
         )
         .await;
     assert_eq!(status, 423, "cli count while session locked: {body}");
+    assert_eq!(body["code"], "session_locked", "{body}");
+    // Engine code 1405 maps to the same 423 session_locked.
+    let (status, body) = api
+        .call(
+            &mut rec,
+            "cli-tags-while-session-locked",
+            &cli_token,
+            reqwest::Method::POST,
+            "/history/tags",
+            None,
+            Some(&json!({ "name": "Locked" })),
+        )
+        .await;
+    assert_eq!(status, 423, "cli tag create while session locked: {body}");
     assert_eq!(body["code"], "session_locked", "{body}");
 
     println!("ARTIFACTS={}", rec.dir.display());

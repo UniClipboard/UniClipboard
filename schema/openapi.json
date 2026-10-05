@@ -718,6 +718,26 @@
         },
         "type": "object"
       },
+      "CreateHistoryTagRequest": {
+        "description": "`POST /history/tags` body. `color` applies only when the tag is new; an\nexisting tag returned by create-or-get keeps its color.",
+        "properties": {
+          "color": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/HistoryTagColorDto"
+              }
+            ],
+            "nullable": true
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
       "CurrentInvitation": {
         "description": "Companion to [`SetupStateResponse::current_invitation`].",
         "properties": {
@@ -3146,6 +3166,382 @@
         ],
         "type": "object"
       },
+      "HistoryEntryTagSummaryDto": {
+        "description": "Tags on a selection: `applied == selected` means every selected entry has\nthe tag; `0 < applied < selected` is a partial tag. `selected` counts only\nentries that still exist.",
+        "properties": {
+          "selected": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "tags": {
+            "items": {
+              "$ref": "#/components/schemas/HistoryTagApplicationDto"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "selected",
+          "tags"
+        ],
+        "type": "object"
+      },
+      "HistoryEntryTagSummaryEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/HistoryEntryTagSummaryDto"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "HistoryTagApplicationDto": {
+        "description": "How many of the selected entries carry one tag.",
+        "properties": {
+          "applied": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "tagId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "tagId",
+          "applied"
+        ],
+        "type": "object"
+      },
+      "HistoryTagBatchEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/HistoryTagBatchResultDto"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "HistoryTagBatchResultDto": {
+        "description": "Add/remove outcome. Pairs already in the requested state count as\n`unchanged`; ids of missing entries are skipped and listed, and the existing\nentries are applied in one transaction.",
+        "properties": {
+          "changed": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "missingEntryIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "unchanged": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "changed",
+          "unchanged",
+          "missingEntryIds"
+        ],
+        "type": "object"
+      },
+      "HistoryTagColorDto": {
+        "description": "A palette color name, or a custom color as `#rrggbb` (lowercase when returned).",
+        "pattern": "^(orange|blue|green|purple|gray|#[0-9a-fA-F]{6})$",
+        "type": "string"
+      },
+      "HistoryTagCreatedDto": {
+        "description": "Create-or-get result: `created` is `false` when a tag with the same\nnormalized, case-insensitive name already existed and `tag` is that tag.",
+        "properties": {
+          "created": {
+            "type": "boolean"
+          },
+          "tag": {
+            "$ref": "#/components/schemas/HistoryTagDto"
+          }
+        },
+        "required": [
+          "tag",
+          "created"
+        ],
+        "type": "object"
+      },
+      "HistoryTagCreatedEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/HistoryTagCreatedDto"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "HistoryTagDeletedDto": {
+        "description": "Deleting a tag only detaches it; the entries stay.",
+        "properties": {
+          "detached": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "detached"
+        ],
+        "type": "object"
+      },
+      "HistoryTagDeletedEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/HistoryTagDeletedDto"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "HistoryTagDto": {
+        "description": "One local history tag. `name` is `null` when the stored name cannot be\ndecrypted; such a tag can only be deleted.",
+        "properties": {
+          "createdAtMs": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "entryCount": {
+            "description": "Associations in the authoritative table. `/search/tags` counts indexed\nentries instead, so the two may briefly differ while the index rebuilds.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "name": {
+            "nullable": true,
+            "type": "string"
+          },
+          "tagId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "tagId",
+          "createdAtMs",
+          "entryCount"
+        ],
+        "type": "object"
+      },
+      "HistoryTagEntriesRequest": {
+        "description": "Entry ids for add/remove and for the selection summary (1..=1000 per call;\nduplicates are collapsed).",
+        "properties": {
+          "entryIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "entryIds"
+        ],
+        "type": "object"
+      },
+      "HistoryTagLayoutDto": {
+        "description": "How tags are presented: the tags the sidebar shows, in order, and each\ntag's color. Ids are builtin tag ids (`link`, `code`, `image`,\n`directory`) or local tag ids; a local tag has a color only once one was\nchosen.",
+        "properties": {
+          "colors": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/HistoryTagColorDto"
+            },
+            "type": "object"
+          },
+          "sidebar": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "sidebar",
+          "colors"
+        ],
+        "type": "object"
+      },
+      "HistoryTagLayoutEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/HistoryTagLayoutDto"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "HistoryTagMergeEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/HistoryTagMergeResultDto"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "HistoryTagMergeResultDto": {
+        "properties": {
+          "alreadyOnTarget": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "moved": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "moved",
+          "alreadyOnTarget"
+        ],
+        "type": "object"
+      },
+      "HistoryTagRenameEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/HistoryTagRenameResultDto"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "HistoryTagRenameResultDto": {
+        "description": "Rename outcome. A name taken by another tag is not written; the GUI offers\nto merge into `existingTagId` instead.",
+        "discriminator": {
+          "propertyName": "kind"
+        },
+        "oneOf": [
+          {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "renamed"
+                ],
+                "type": "string"
+              },
+              "tag": {
+                "$ref": "#/components/schemas/HistoryTagDto"
+              }
+            },
+            "required": [
+              "tag",
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "existingTagId": {
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "name_conflict"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "existingTagId",
+              "kind"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "HistoryTagsEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/HistoryTagDto"
+            },
+            "type": "array"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
       "ImportConfigEnvelope": {
         "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
         "properties": {
@@ -3969,6 +4365,21 @@
           "resolve_device_trust"
         ],
         "type": "string"
+      },
+      "MergeHistoryTagsRequest": {
+        "description": "`POST /history/tags/{tag_id}/merge` body: tags folded into the path tag,\nthen deleted (1..=100; the target must not be among them).",
+        "properties": {
+          "sourceTagIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "sourceTagIds"
+        ],
+        "type": "object"
       },
       "MobileDeviceListEnvelope": {
         "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
@@ -5264,6 +5675,18 @@
         ],
         "type": "object"
       },
+      "RenameHistoryTagRequest": {
+        "description": "`PATCH /history/tags/{tag_id}` body.",
+        "properties": {
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
       "ResendEnvelope": {
         "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
         "properties": {
@@ -6067,6 +6490,47 @@
           "sessionToken",
           "expiresInSecs",
           "refreshAtSecs"
+        ],
+        "type": "object"
+      },
+      "SetHistoryTagColorRequest": {
+        "description": "`PUT /history/tags/{tag_id}/color` body; `null` clears a local tag's color\n(a builtin tag goes back to its default).",
+        "properties": {
+          "color": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/HistoryTagColorDto"
+              }
+            ],
+            "nullable": true
+          }
+        },
+        "type": "object"
+      },
+      "SetHistoryTagInSidebarRequest": {
+        "description": "`PUT /history/tags/{tag_id}/sidebar` body. Adding a tag puts it last.",
+        "properties": {
+          "inSidebar": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "inSidebar"
+        ],
+        "type": "object"
+      },
+      "SetHistoryTagSidebarRequest": {
+        "description": "`PUT /history/tags/layout/sidebar` body: the sidebar's tags, in order.",
+        "properties": {
+          "tagIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "tagIds"
         ],
         "type": "object"
       },
@@ -9910,6 +10374,1059 @@
         ]
       }
     },
+    "/history/tags": {
+      "get": {
+        "description": "This device's tags with their association counts, most used first.",
+        "operationId": "listHistoryTags",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HistoryTagsEnvelope"
+                }
+              }
+            },
+            "description": "Local history tags"
+          },
+          "423": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Encryption session is locked"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Tags unavailable for this profile"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "GET /history/tags",
+        "tags": [
+          "history-tags"
+        ]
+      },
+      "post": {
+        "description": "Create a tag, or return the existing one with the same name.",
+        "operationId": "createHistoryTag",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateHistoryTagRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HistoryTagCreatedEnvelope"
+                }
+              }
+            },
+            "description": "Tag created, or the existing tag"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Invalid name or tag limit reached"
+          },
+          "423": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Encryption session is locked"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Tags unavailable for this profile"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "POST /history/tags",
+        "tags": [
+          "history-tags"
+        ]
+      }
+    },
+    "/history/tags/layout": {
+      "get": {
+        "description": "The tags the History sidebar shows, in order, and each tag's color.",
+        "operationId": "getHistoryTagLayout",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HistoryTagLayoutEnvelope"
+                }
+              }
+            },
+            "description": "Sidebar tags and colors"
+          },
+          "423": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Encryption session is locked"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Tags unavailable for this profile"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "GET /history/tags/layout",
+        "tags": [
+          "history-tags"
+        ]
+      }
+    },
+    "/history/tags/layout/sidebar": {
+      "put": {
+        "description": "Replace the sidebar's tags and their order. Duplicates are collapsed.",
+        "operationId": "setHistoryTagSidebar",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetHistoryTagSidebarRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HistoryTagLayoutEnvelope"
+                }
+              }
+            },
+            "description": "The updated layout"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "An id the layout cannot hold"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "A tag was not found"
+          },
+          "423": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Encryption session is locked"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Tags unavailable for this profile"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "PUT /history/tags/layout/sidebar",
+        "tags": [
+          "history-tags"
+        ]
+      }
+    },
+    "/history/tags/summary": {
+      "post": {
+        "description": "Which tags a selection of entries (1..=1000) carries, for partial tag state.",
+        "operationId": "summarizeHistoryEntryTags",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HistoryTagEntriesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HistoryEntryTagSummaryEnvelope"
+                }
+              }
+            },
+            "description": "Tags on the selection"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Empty or oversized selection"
+          },
+          "423": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Encryption session is locked"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Tags unavailable for this profile"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "POST /history/tags/summary",
+        "tags": [
+          "history-tags"
+        ]
+      }
+    },
+    "/history/tags/{tag_id}": {
+      "delete": {
+        "description": "Delete a tag; its entries stay.",
+        "operationId": "deleteHistoryTag",
+        "parameters": [
+          {
+            "description": "Tag id",
+            "in": "path",
+            "name": "tag_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HistoryTagDeletedEnvelope"
+                }
+              }
+            },
+            "description": "Tag deleted"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Tag not found"
+          },
+          "423": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Encryption session is locked"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Tags unavailable for this profile"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "DELETE /history/tags/{tag_id}",
+        "tags": [
+          "history-tags"
+        ]
+      },
+      "patch": {
+        "description": "Rename a tag. A name held by another tag is not written: the result says\n`name_conflict` with that tag's id (HTTP 200).",
+        "operationId": "renameHistoryTag",
+        "parameters": [
+          {
+            "description": "Tag id",
+            "in": "path",
+            "name": "tag_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RenameHistoryTagRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HistoryTagRenameEnvelope"
+                }
+              }
+            },
+            "description": "Renamed, or the conflicting tag"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Invalid name"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Tag not found"
+          },
+          "423": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Encryption session is locked"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Tags unavailable for this profile"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "PATCH /history/tags/{tag_id}",
+        "tags": [
+          "history-tags"
+        ]
+      }
+    },
+    "/history/tags/{tag_id}/color": {
+      "put": {
+        "description": "Set a tag's color; `null` clears it (a builtin tag returns to its default).",
+        "operationId": "setHistoryTagColor",
+        "parameters": [
+          {
+            "description": "Tag id (local or builtin)",
+            "in": "path",
+            "name": "tag_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetHistoryTagColorRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HistoryTagLayoutEnvelope"
+                }
+              }
+            },
+            "description": "The updated layout"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "An id the layout cannot hold"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Tag not found"
+          },
+          "423": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Encryption session is locked"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Tags unavailable for this profile"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "PUT /history/tags/{tag_id}/color",
+        "tags": [
+          "history-tags"
+        ]
+      }
+    },
+    "/history/tags/{tag_id}/entries/add": {
+      "post": {
+        "description": "Attach the tag to entries (1..=1000). Already-tagged entries are\n`unchanged`; missing entries are skipped and listed.",
+        "operationId": "addHistoryTagToEntries",
+        "parameters": [
+          {
+            "description": "Tag id",
+            "in": "path",
+            "name": "tag_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HistoryTagEntriesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HistoryTagBatchEnvelope"
+                }
+              }
+            },
+            "description": "Batch applied"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Empty or oversized batch"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Tag not found"
+          },
+          "423": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Encryption session is locked"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Tags unavailable for this profile"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "POST /history/tags/{tag_id}/entries/add",
+        "tags": [
+          "history-tags"
+        ]
+      }
+    },
+    "/history/tags/{tag_id}/entries/remove": {
+      "post": {
+        "description": "Detach the tag from entries (1..=1000), with the same batch semantics as add.",
+        "operationId": "removeHistoryTagFromEntries",
+        "parameters": [
+          {
+            "description": "Tag id",
+            "in": "path",
+            "name": "tag_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HistoryTagEntriesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HistoryTagBatchEnvelope"
+                }
+              }
+            },
+            "description": "Batch applied"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Empty or oversized batch"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Tag not found"
+          },
+          "423": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Encryption session is locked"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Tags unavailable for this profile"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "POST /history/tags/{tag_id}/entries/remove",
+        "tags": [
+          "history-tags"
+        ]
+      }
+    },
+    "/history/tags/{tag_id}/merge": {
+      "post": {
+        "description": "Fold the source tags (1..=100) into the path tag, then delete them.",
+        "operationId": "mergeHistoryTags",
+        "parameters": [
+          {
+            "description": "Target tag id",
+            "in": "path",
+            "name": "tag_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MergeHistoryTagsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HistoryTagMergeEnvelope"
+                }
+              }
+            },
+            "description": "Tags merged"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Invalid sources (empty, too many, or the target itself)"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "A tag was not found"
+          },
+          "423": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Encryption session is locked"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Tags unavailable for this profile"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "POST /history/tags/{tag_id}/merge",
+        "tags": [
+          "history-tags"
+        ]
+      }
+    },
+    "/history/tags/{tag_id}/sidebar": {
+      "put": {
+        "description": "Show a tag in the sidebar (last) or take it out.",
+        "operationId": "setHistoryTagInSidebar",
+        "parameters": [
+          {
+            "description": "Tag id (local or builtin)",
+            "in": "path",
+            "name": "tag_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetHistoryTagInSidebarRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HistoryTagLayoutEnvelope"
+                }
+              }
+            },
+            "description": "The updated layout"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "An id the layout cannot hold"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Tag not found"
+          },
+          "423": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Encryption session is locked"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Tags unavailable for this profile"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "summary": "PUT /history/tags/{tag_id}/sidebar",
+        "tags": [
+          "history-tags"
+        ]
+      }
+    },
     "/lifecycle/graceful-stop": {
       "post": {
         "description": "process, regardless of residency.\n\nThe true root cause this closes: on Windows, a caller-initiated restart\n(e.g. GUI settings-change restart in `uc-desktop::daemon_probe::restart_local_daemon`)\nhas no real signal to send — `TerminateProcess` kills the process before its\nasync graceful-shutdown task ever runs `mark_clean_exit()`, so the next boot\nlogs a false \"previous daemon run exited abnormally\". This endpoint lets the\ncaller ask first: the start marker is cleared HERE, synchronously, before the\nshutdown sequence even starts, so the marker is already correct even if the\ncaller's graceful wait times out and it falls back to a hard kill.\n\nDeliberately NOT routed through [`RestartCoordinator`] — that machinery is\nreserved for Oneshot-residency promotion (ADR-008 P5-L L8c) and refuses any\nother residency. This endpoint works for every residency and does not touch\n`quiescing`.",
@@ -13080,6 +14597,10 @@
     {
       "description": "Query, index status, and index rebuild",
       "name": "search"
+    },
+    {
+      "description": "This device's local history tags: list, create, rename, merge, delete, entry associations (never synced), and the sidebar layout and colors",
+      "name": "history-tags"
     },
     {
       "description": "Storage stats and cache maintenance",

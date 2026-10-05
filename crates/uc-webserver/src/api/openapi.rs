@@ -41,6 +41,13 @@ use crate::api::dto::encryption::{
     UnlockSpaceResponse,
 };
 use crate::api::dto::error::ApiErrorResponse;
+use crate::api::dto::history_tags::{
+    CreateHistoryTagRequest, HistoryEntryTagSummaryDto, HistoryTagApplicationDto,
+    HistoryTagBatchResultDto, HistoryTagColorDto, HistoryTagCreatedDto, HistoryTagDeletedDto,
+    HistoryTagDto, HistoryTagEntriesRequest, HistoryTagLayoutDto, HistoryTagMergeResultDto,
+    HistoryTagRenameResultDto, MergeHistoryTagsRequest, RenameHistoryTagRequest,
+    SetHistoryTagColorRequest, SetHistoryTagInSidebarRequest, SetHistoryTagSidebarRequest,
+};
 use crate::api::dto::member::{
     ChooseDeviceGroupRequestDto, DeviceCompatibilityDto, DeviceGroupChangeDto,
     DeviceGroupChangeKindDto, DeviceGroupChangeSideDto, DeviceGroupChoiceDeviceDto,
@@ -117,21 +124,24 @@ use uc_daemon_contract::api::dto::envelope::{
     DispatchOutcomeEnvelope, EncryptionActionEnvelope, EncryptionStateEnvelope,
     EntryDeliveryViewEnvelope, EntryDetailEnvelope, EntryReceiveProgressEnvelope,
     EntryReceiveProgressListEnvelope, EntryResourceEnvelope, ExportConfigEnvelope,
-    ImportConfigEnvelope, KeychainAccessEnvelope, LanInterfaceListEnvelope,
-    LifecycleStatusEnvelope, ListEntriesEnvelope, LocalDeviceInfoEnvelope, LogExportEnvelope,
-    MemberSyncPreferencesEnvelope, MemberSyncResultEnvelope, MobileDeviceListEnvelope,
-    MobileSyncActionEnvelope, MobileSyncSettingsEnvelope, NetworkRecoveryStatusEnvelope,
-    PeerSnapshotListEnvelope, PresenceRefreshEnvelope, PreviewImportEnvelope,
-    ProfileRecoveryEnvelope, RegisterMobileDeviceEnvelope, RelayCredentialStatusEnvelope,
-    RelayOverviewEnvelope, RelayProbeOutcomeEnvelope, RelaySaveResultEnvelope, ResendEnvelope,
-    RestartAcceptedEnvelope, RestoreEntryEnvelope, RotateMobilePasswordEnvelope,
-    SearchCountEnvelope, SearchQueryEnvelope, SearchRebuildEnvelope, SearchStatusEnvelope,
-    SearchTagsEnvelope, SessionTokenEnvelope, SettingsEnvelope, SettingsUpdateResultEnvelope,
-    SetupCancelJoinEnvelope, SetupInitializeEnvelope, SetupIssueInvitationEnvelope,
-    SetupRedeemEnvelope, SetupStateEnvelope, SetupSwitchSpaceEnvelope, SpaceMemberListEnvelope,
-    SpaceProtectionEnvelope, StatusEnvelope, StorageStatsEnvelope, ToggleFavoriteEnvelope,
-    UnlockSpaceEnvelope, UpdateDebugModeEnvelope, UpdateMobileDeviceEnvelope,
-    UpdateMobileSyncSettingsEnvelope, UpgradeBackupListEnvelope, UpgradeStatusEnvelope,
+    HistoryEntryTagSummaryEnvelope, HistoryTagBatchEnvelope, HistoryTagCreatedEnvelope,
+    HistoryTagDeletedEnvelope, HistoryTagLayoutEnvelope, HistoryTagMergeEnvelope,
+    HistoryTagRenameEnvelope, HistoryTagsEnvelope, ImportConfigEnvelope, KeychainAccessEnvelope,
+    LanInterfaceListEnvelope, LifecycleStatusEnvelope, ListEntriesEnvelope,
+    LocalDeviceInfoEnvelope, LogExportEnvelope, MemberSyncPreferencesEnvelope,
+    MemberSyncResultEnvelope, MobileDeviceListEnvelope, MobileSyncActionEnvelope,
+    MobileSyncSettingsEnvelope, NetworkRecoveryStatusEnvelope, PeerSnapshotListEnvelope,
+    PresenceRefreshEnvelope, PreviewImportEnvelope, ProfileRecoveryEnvelope,
+    RegisterMobileDeviceEnvelope, RelayCredentialStatusEnvelope, RelayOverviewEnvelope,
+    RelayProbeOutcomeEnvelope, RelaySaveResultEnvelope, ResendEnvelope, RestartAcceptedEnvelope,
+    RestoreEntryEnvelope, RotateMobilePasswordEnvelope, SearchCountEnvelope, SearchQueryEnvelope,
+    SearchRebuildEnvelope, SearchStatusEnvelope, SearchTagsEnvelope, SessionTokenEnvelope,
+    SettingsEnvelope, SettingsUpdateResultEnvelope, SetupCancelJoinEnvelope,
+    SetupInitializeEnvelope, SetupIssueInvitationEnvelope, SetupRedeemEnvelope, SetupStateEnvelope,
+    SetupSwitchSpaceEnvelope, SpaceMemberListEnvelope, SpaceProtectionEnvelope, StatusEnvelope,
+    StorageStatsEnvelope, ToggleFavoriteEnvelope, UnlockSpaceEnvelope, UpdateDebugModeEnvelope,
+    UpdateMobileDeviceEnvelope, UpdateMobileSyncSettingsEnvelope, UpgradeBackupListEnvelope,
+    UpgradeStatusEnvelope,
 };
 use uc_daemon_contract::api::dto::storage::{
     ClearCacheRequest, ClearCacheResponse, DeleteUpgradeBackupRequest, DeleteUpgradeBackupResponse,
@@ -208,6 +218,19 @@ impl Modify for ContractMeta {
         crate::api::search::search_rebuild_handler,
         crate::api::search::search_tags_handler,
         crate::api::search::search_count_handler,
+        // ── local history tags ─────────────────────────────────────
+        crate::api::history_tags::list_history_tags,
+        crate::api::history_tags::create_history_tag,
+        crate::api::history_tags::rename_history_tag,
+        crate::api::history_tags::delete_history_tag,
+        crate::api::history_tags::add_tag_to_entries,
+        crate::api::history_tags::remove_tag_from_entries,
+        crate::api::history_tags::summarize_entry_tags,
+        crate::api::history_tags::merge_history_tags,
+        crate::api::history_tags::get_history_tag_layout,
+        crate::api::history_tags::set_history_tag_sidebar,
+        crate::api::history_tags::set_history_tag_color,
+        crate::api::history_tags::set_history_tag_in_sidebar,
         // ── storage ────────────────────────────────────────────────
         crate::api::storage::get_storage_stats_handler,
         crate::api::storage::clear_cache_handler,
@@ -361,6 +384,32 @@ impl Modify for ContractMeta {
             SearchCountQueryDto,
             SearchCountRequestDto,
             SearchCountResultDto,
+            // ── local history tags ─────────────────────────────────
+            HistoryTagsEnvelope,
+            HistoryTagCreatedEnvelope,
+            HistoryTagRenameEnvelope,
+            HistoryTagBatchEnvelope,
+            HistoryEntryTagSummaryEnvelope,
+            HistoryTagMergeEnvelope,
+            HistoryTagDeletedEnvelope,
+            HistoryTagLayoutEnvelope,
+            HistoryTagDto,
+            HistoryTagCreatedDto,
+            HistoryTagRenameResultDto,
+            HistoryTagBatchResultDto,
+            HistoryTagApplicationDto,
+            HistoryEntryTagSummaryDto,
+            HistoryTagMergeResultDto,
+            HistoryTagDeletedDto,
+            CreateHistoryTagRequest,
+            RenameHistoryTagRequest,
+            HistoryTagEntriesRequest,
+            MergeHistoryTagsRequest,
+            HistoryTagColorDto,
+            HistoryTagLayoutDto,
+            SetHistoryTagSidebarRequest,
+            SetHistoryTagColorRequest,
+            SetHistoryTagInSidebarRequest,
             // ── storage ────────────────────────────────────────────
             StorageStatsEnvelope,
             ClearCacheEnvelope,
@@ -644,6 +693,7 @@ impl Modify for ContractMeta {
     tags(
         (name = "clipboard", description = "Clipboard entry CRUD, stats, resources, binary blobs/thumbnails, history actions, and delivery"),
         (name = "search", description = "Query, index status, and index rebuild"),
+        (name = "history-tags", description = "This device's local history tags: list, create, rename, merge, delete, entry associations (never synced), and the sidebar layout and colors"),
         (name = "storage", description = "Storage stats and cache maintenance"),
         (name = "config", description = "Whole-installation configuration migration: export, import preview, and staged import"),
         (name = "device", description = "Local device identity"),
@@ -776,6 +826,8 @@ mod assembly_smoke_tests {
         // shutdown, any residency — distinct from the Oneshot-only controlled
         // restart): +1 path, +1 operation → 88 / 98.
         // Batch search counting adds one path and operation: 89 / 99.
+        // Local history tags add six paths and eight operations: 95 / 107.
+        // The tag layout adds four paths and four operations: 99 / 111.
         const HTTP_METHODS: [&str; 7] =
             ["get", "put", "post", "delete", "patch", "head", "options"];
         let paths = value
@@ -784,8 +836,8 @@ mod assembly_smoke_tests {
             .expect("OpenAPI doc must declare paths");
         assert_eq!(
             paths.len(),
-            89,
-            "expected exactly 89 path templates, found {}: {:?}",
+            99,
+            "expected exactly 99 path templates, found {}: {:?}",
             paths.len(),
             paths.keys().collect::<Vec<_>>()
         );
@@ -799,8 +851,8 @@ mod assembly_smoke_tests {
             })
             .sum();
         assert_eq!(
-            operation_count, 99,
-            "expected exactly 99 operations across all paths, found {operation_count}"
+            operation_count, 111,
+            "expected exactly 111 operations across all paths, found {operation_count}"
         );
 
         // A few frozen operationIds (§D) must be present somewhere in the doc.

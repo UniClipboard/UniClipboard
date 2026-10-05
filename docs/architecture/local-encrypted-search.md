@@ -746,3 +746,43 @@ render 列加密堵住了 `search_document`，但同一份内容还从另一处�
 
 文件系统层历史残留（已删除页曾写过盘、TRIM 前的扇区、旧备份）在无全库/全盘加密前提下无法
 保证清除，记入威胁模型边界。
+
+## 附录 B：本机历史标签（2026-10-04）
+
+用户给条目打的自定义标签由 Engine 实现，Desktop 只做 HTTP 转发与界面。标签和条目关联只存在于
+**本机历史**：不进入任何同步载荷，另一台设备看不到；界面与文档不承诺跨设备同步。Engine 不存
+颜色，界面按标签 id 确定性取色（`customTagTint`），因此同名标签在不同设备上的颜色不保证一致。
+
+### 接口（`crates/uc-webserver/src/api/history_tags.rs`）
+
+| 方法与路径 | 作用 |
+|---|---|
+| `GET /history/tags` | 本机标签及关联条目数，使用最多的在前 |
+| `POST /history/tags` | 按名称新建；同名（去首尾空白、忽略大小写）时返回已有标签，`created: false` |
+| `PATCH /history/tags/{tag_id}` | 改名；与另一标签同名时不写入，返回 `kind: "name_conflict"` 与其 id（HTTP 200） |
+| `DELETE /history/tags/{tag_id}` | 删除标签，条目保留 |
+| `POST /history/tags/{tag_id}/entries/add`、`…/entries/remove` | 批量关联/移除（每次 1–1000 条）：已处于目标状态的计入 `unchanged`，不存在的条目跳过并列入 `missingEntryIds`，其余在一个事务内生效 |
+| `POST /history/tags/summary` | 一组条目各带哪些标签（多选时的部分状态） |
+| `POST /history/tags/{tag_id}/merge` | 把来源标签（1–100 个）并入该标签后删除来源 |
+
+`/history/` 归入内容锁的 `CONTENT_ROUTES`：GUI 会话在内容锁定时得到 423 `content_locked`。
+
+错误映射：Engine 1401 → 400，1402 → 404，1405（会话锁定）→ 423 `session_locked`（与搜索接口相同），
+1406（旧 profile 未升级或没有活动空间）→ 503 `runtime_unavailable`，其余 → 500。
+
+### 与搜索的关系
+
+- 自定义标签 id 与内置 id 同列出现在 `SearchResultDto.tags`；前端用内置集合（须与 Engine
+  `uc-core/src/search/tag.rs::builtin` 一致）把它分出来，得到条目的 `userTagIds`。
+- 现有 `tags` 过滤参数、`POST /search/count`、`GET /search/tags`（`isBuiltin: false`）直接覆盖自定义标签。
+- 两套计数：`GET /history/tags` 的 `entryCount` 来自权威关联表，用于管理面板和打标签时的候选；
+  侧边栏与搜索候选的计数来自 `GET /search/tags`（只计已索引条目，与过滤结果一致）。索引重建期间
+  两者可能短暂不同；锁定或重建期间 `GET /search/tags` 不列自定义标签。
+
+### 持久化边界（Engine 侧，摘自 t-0180 交付说明）
+
+- 标签名与创建时间经 MasterKey AEAD 封装；每个带标签的条目一行，其标签 id 集合同样封装，条目删除时级联删除。
+- 搜索索引只以搜索密钥 HMAC 后的 posting 记录标签成员，重建时从封装行重新派生。
+- 仍为明文：随机生成的 `tag_id` 行键、某条目「存在标签关联行」这一事实，以及同一保护组内的 HMAC
+  相等关系（与关键词 posting 的既有泄露面相同）。
+- 标签名无法解密时 `name` 为 `null`：界面显示「无法读取的标签」，只允许删除。

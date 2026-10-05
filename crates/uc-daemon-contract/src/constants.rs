@@ -176,6 +176,18 @@ pub mod http_route {
     /// POST /search/count — batch count matching entries for up to 32 filter
     /// combinations in one round trip (candidate facet counts).
     pub const SEARCH_COUNT: &str = "/search/count";
+    /// GET/POST /history/tags — list or create this device's local history tags;
+    /// `/history/tags/{tag_id}` (PATCH rename, DELETE) and its `/entries/add`,
+    /// `/entries/remove`, `/merge` actions hang off the same prefix.
+    pub const HISTORY_TAGS: &str = "/history/tags";
+    /// POST /history/tags/summary — which tags a set of entries carries.
+    pub const HISTORY_TAGS_SUMMARY: &str = "/history/tags/summary";
+    /// GET /history/tags/layout — the sidebar's tags in order and each tag's
+    /// color; `PUT /history/tags/layout/sidebar` replaces the sidebar order.
+    /// `/history/tags/{tag_id}/color` and `/sidebar` (PUT) change one tag.
+    pub const HISTORY_TAGS_LAYOUT: &str = "/history/tags/layout";
+    /// PUT /history/tags/layout/sidebar — replace the sidebar's tags and order.
+    pub const HISTORY_TAGS_LAYOUT_SIDEBAR: &str = "/history/tags/layout/sidebar";
     /// GET /upgrade/status — detect upgrade by comparing version cursor to
     /// the running build (P1 thin upgrade detection).
     pub const UPGRADE_STATUS: &str = "/upgrade/status";

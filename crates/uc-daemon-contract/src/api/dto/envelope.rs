@@ -33,6 +33,11 @@ use crate::api::dto::encryption::{
     ContentLockStatusResponse, EncryptionActionResponse, EncryptionStateResponse,
     KeychainAccessResponse, ProfileRecoveryResponse, UnlockSpaceResponse,
 };
+use crate::api::dto::history_tags::{
+    HistoryEntryTagSummaryDto, HistoryTagBatchResultDto, HistoryTagCreatedDto,
+    HistoryTagDeletedDto, HistoryTagDto, HistoryTagLayoutDto, HistoryTagMergeResultDto,
+    HistoryTagRenameResultDto,
+};
 use crate::api::dto::member::{
     DeviceGroupChoiceResultDto, DeviceGroupChoicesDto, DeviceTrustSnapshotDto,
     MemberSyncPreferencesDto, MemberSyncResultDto, SpaceProtectionDto,
@@ -144,6 +149,15 @@ use crate::api::types::{
     SearchQueryEnvelope = ApiEnvelope<SearchQueryResultDto>,
     SearchTagsEnvelope = ApiEnvelope<Vec<SearchTagDto>>,
     SearchCountEnvelope = ApiEnvelope<SearchCountResultDto>,
+    // ── local history tags ──────────────────────────────────────────
+    HistoryTagsEnvelope = ApiEnvelope<Vec<HistoryTagDto>>,
+    HistoryTagCreatedEnvelope = ApiEnvelope<HistoryTagCreatedDto>,
+    HistoryTagRenameEnvelope = ApiEnvelope<HistoryTagRenameResultDto>,
+    HistoryTagBatchEnvelope = ApiEnvelope<HistoryTagBatchResultDto>,
+    HistoryEntryTagSummaryEnvelope = ApiEnvelope<HistoryEntryTagSummaryDto>,
+    HistoryTagMergeEnvelope = ApiEnvelope<HistoryTagMergeResultDto>,
+    HistoryTagDeletedEnvelope = ApiEnvelope<HistoryTagDeletedDto>,
+    HistoryTagLayoutEnvelope = ApiEnvelope<HistoryTagLayoutDto>,
     // ── storage ────────────────────────────────────────────────────
     StorageStatsEnvelope = ApiEnvelope<StorageStatsDto>,
     ClearCacheEnvelope = ApiEnvelope<ClearCacheResponse>,

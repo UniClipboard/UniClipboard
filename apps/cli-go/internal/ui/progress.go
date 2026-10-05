@@ -24,6 +24,39 @@ type Spinner struct {
 	total    uint64
 	position uint64
 	bytes    bool
+	limiter  rateLimiter // guarded by the package-level mu
+}
+
+// rateLimiter is indicatif's token bucket for update-driven redraws: a burst
+// of maxBurst draws is allowed, then one per interval (default 20 Hz).
+type rateLimiter struct {
+	interval time.Duration
+	capacity int
+	prev     time.Time
+}
+
+const (
+	maxBurst       = 20
+	redrawInterval = 50 * time.Millisecond
+)
+
+func newRateLimiter() rateLimiter {
+	return rateLimiter{interval: redrawInterval, capacity: maxBurst, prev: time.Now()}
+}
+
+func (l *rateLimiter) allow(now time.Time) bool {
+	if now.Before(l.prev) {
+		return false
+	}
+	elapsed := now.Sub(l.prev)
+	if l.capacity == 0 && elapsed < l.interval {
+		return false
+	}
+	gained := int(elapsed / l.interval)
+	remainder := elapsed % l.interval
+	l.capacity = min(maxBurst, l.capacity+gained-1)
+	l.prev = now.Add(-remainder)
+	return true
 }
 
 // NewSpinner starts a spinner rendering ` {spinner}  {msg}`.
@@ -38,6 +71,7 @@ func NewByteProgress(total uint64, message string) *Spinner {
 
 func start(s *Spinner) *Spinner {
 	s.hidden = !StderrIsTerminal()
+	s.limiter = newRateLimiter()
 	s.done = make(chan struct{})
 	if s.hidden {
 		return s
@@ -97,11 +131,26 @@ func (s *Spinner) line() string {
 
 func (s *Spinner) draw() { fmt.Fprint(os.Stderr, "\r\x1b[2K"+s.line()) }
 
+// redraw draws after a state change, like indicatif: immediately unless the
+// rate limiter is out of tokens (the steady tick catches up).
+func (s *Spinner) redraw() {
+	if s.hidden {
+		return
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if active != s || !s.limiter.allow(time.Now()) {
+		return
+	}
+	s.draw()
+}
+
 // SetMessage replaces the spinner message.
 func (s *Spinner) SetMessage(message string) {
 	s.mu.Lock()
 	s.message = message
 	s.mu.Unlock()
+	s.redraw()
 }
 
 // SetPosition updates byte progress.
@@ -109,6 +158,7 @@ func (s *Spinner) SetPosition(position uint64) {
 	s.mu.Lock()
 	s.position = position
 	s.mu.Unlock()
+	s.redraw()
 }
 
 // SetLength updates the byte progress total.
@@ -116,6 +166,7 @@ func (s *Spinner) SetLength(total uint64) {
 	s.mu.Lock()
 	s.total = total
 	s.mu.Unlock()
+	s.redraw()
 }
 
 // Clear removes the spinner line (indicatif `finish_and_clear`).

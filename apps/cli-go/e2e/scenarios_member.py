@@ -39,6 +39,10 @@ def _mask_ids(r, ids):
         # The joiner's join id is random per pairing run.
         step.out = re.sub(rb'("joinId": )"[A-Za-z0-9_-]+"', rb'\1"<JOIN_ID>"', step.out)
         step.out = _sort_device_arrays(step.out)
+        # A peer's last-known reachability without --probe is network timing
+        # (offline vs unknown); the daemon reports it and both CLIs pass it on.
+        if b'"is_local": false' in step.out and step.argv[-2:] == ["member", "list"]:
+            step.out = re.sub(rb'("state": )"(?:offline|unknown)"', rb'\1"<UNPROBED>"', step.out)
 
 
 def _sort_device_arrays(out):

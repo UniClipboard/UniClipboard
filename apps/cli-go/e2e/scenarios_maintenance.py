@@ -17,6 +17,8 @@ _MINUTE_DATE = re.compile(rb"\b\d{4}-\d{2}-\d{2} \d{2}:\d{2}\b")
 _VOLATILE = [
     (re.compile(rb"(remainingMs\"?: )\d+"), rb"\1<REMAINING>"),
     (re.compile(rb"diagnostics-\d{8}-\d{6}"), b"diagnostics-<STAMP>"),
+    # The daemon's /auth/connect rate-limit message counts down per second.
+    (re.compile(rb"retry after \d+ seconds"), b"retry after <N> seconds"),
 ]
 
 

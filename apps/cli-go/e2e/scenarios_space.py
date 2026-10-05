@@ -335,14 +335,22 @@ def space_join_bad_code(r):
 @scenario
 def space_join_status_cancel_empty(r):
     """join status / cancel with nothing pending, on fresh and initialized profiles."""
+    _stop_daemon(r)
     run(r, "status fresh", ["space", "join", "status"])
+    _stop_daemon(r)
     run(r, "status fresh json", ["--json", "space", "join", "status"])
+    _stop_daemon(r)
     run(r, "cancel fresh", ["space", "join", "cancel"])
+    _stop_daemon(r)
     run(r, "cancel fresh json", ["--json", "space", "join", "cancel"])
     init_space(r)
+    _stop_daemon(r)
     run(r, "status initialized", ["space", "join", "status"])
+    _stop_daemon(r)
     run(r, "cancel initialized json", ["--json", "space", "join", "cancel"])
+    _stop_daemon(r)
     run(r, "legacy join status", ["join", "status"])
+    _stop_daemon(r)
     run(r, "legacy join cancel json", ["--json", "join", "cancel"])
 
 

@@ -397,6 +397,10 @@ def mobile_deprecated_alias(r):
     masked(r, "alias status json", ["--json", "mobile-sync", "status"])
     masked(r, "alias setup json", ["--json", "mobile-sync", "setup", "--accept-network-risk", "--label", "Old",
                                    "--port", PORT_ALIAS], stdin=b"")
+    masked(r, "alias add json", ["--json", "mobile-sync", "add", "--label", "Old Two"], stdin=b"")
+    masked(r, "alias network interfaces json", ["--json", "mobile-sync", "network", "interfaces"])
+    masked(r, "alias network set", ["mobile-sync", "network", "set", "--ip", "192.168.77.5", "--port", PORT_ALIAS,
+                                    "--accept-network-risk"])
     masked(r, "alias network off", ["mobile-sync", "network", "off"])
     masked(r, "alias revoke json without id", ["--json", "mobile-sync", "revoke"])
     masked(r, "alias disable", ["mobile-sync", "disable"])

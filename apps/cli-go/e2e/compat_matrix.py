@@ -37,9 +37,18 @@ def scenario_index():
                     getattr(d, "id", None) == "scenario" for d in node.decorator_list):
                 lists = []
                 for sub in ast.walk(node):
-                    if isinstance(sub, (ast.List, ast.Tuple)) and sub.elts and all(
-                            isinstance(e, ast.Constant) and isinstance(e.value, str) for e in sub.elts):
-                        lists.append([e.value for e in sub.elts])
+                    if isinstance(sub, (ast.List, ast.Tuple)) and sub.elts and isinstance(
+                            sub.elts[0], ast.Constant) and isinstance(sub.elts[0].value, str):
+                        # Non-literal elements (variables, *SETUP) become placeholders.
+                        items = []
+                        for e in sub.elts:
+                            if isinstance(e, ast.Constant) and isinstance(e.value, str):
+                                items.append(e.value)
+                            elif isinstance(e, ast.Starred) and isinstance(e.value, ast.Name):
+                                items.append("<" + e.value.id + ">")
+                            else:
+                                items.append("<var>")
+                        lists.append(items)
                 out[node.name] = (os.path.basename(path), lists)
     return out
 

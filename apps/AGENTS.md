@@ -1,11 +1,10 @@
 # apps 本地规则
 
-`apps/` 存放可直接运行的程序；Rust 库 crate 一律放 `crates/`。`cli-go/` 是独立的 Go 模块，不属于 cargo workspace。Rust workspace 的导航与知识库见 `crates/AGENTS.md`。
+`apps/` 存放可直接运行的生产程序；开发专用的 crate（如 Rust 开发 CLI `uc-dev-cli`）在 `tools/`。Rust 库 crate 一律放 `crates/`。`cli-go/` 是独立的 Go 模块，不属于 cargo workspace。Rust workspace 的导航与知识库见 `crates/AGENTS.md`。
 
 | 目录 | 包名 | 产物 | 本地规则 |
 | --- | --- | --- | --- |
-| `cli/` | `uc-dev-cli` | `uc-dev-cli`（开发与诊断工具；用户端 `uniclip` 见 `cli-go/`） | `apps/cli/AGENTS.md` |
-| `cli-go/` | Go 模块 `github.com/UniClipboard/UniClipboard/apps/cli-go` | `uniclip` 的 Go 实现（迁移中，尚未替换发布产物） | `apps/cli-go/AGENTS.md` |
+| `cli-go/` | Go 模块 `github.com/UniClipboard/UniClipboard/apps/cli-go` | 用户端终端客户端 `uniclip`（Go 实现，发布产物由它构建） | `apps/cli-go/AGENTS.md` |
 | `daemon/` | `uc-daemon` | `uniclipd` | （暂无；遵循 workspace 规则） |
 | `quick-panel/` | `quick-panel` | GPUI 快捷面板（macOS 随安装包发布，可执行文件 `uniclip-quick-panel`） | `README.md` |
 | `android-probe/`、`ios-probe/`、`ohos-probe/` | - | 移动端验收宿主应用（非 Rust） | 不发布；**当前不可构建**：它们依赖已移出本仓的 `uc-mobile-probe-core` 与 `uc-ohos-napi`（`scripts/architecture/check-engine-repository.mjs` 禁止其回到本仓），处置待定 |

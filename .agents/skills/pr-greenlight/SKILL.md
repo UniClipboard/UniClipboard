@@ -150,7 +150,7 @@ bun run test -- --run 2>&1 | tail -40
 
 # Rust tests are slow — only run focused tests for changed crates
 # Detect changed crates from file paths
-CHANGED_CRATES=$(git diff main...HEAD --name-only -- 'crates/*/src' 'apps/*/src' | sed 's|.*/\(crates/[^/]*\)/.*|\1|;s|.*/\(apps/[^/]*\)/.*|\1|' | sort -u)
+CHANGED_CRATES=$(git diff main...HEAD --name-only -- 'crates/*/src' 'apps/*/src' 'tools/*/src' | sed 's|.*/\(crates/[^/]*\)/.*|\1|;s|.*/\(apps/[^/]*\)/.*|\1|' | sort -u)
 for crate_path in $CHANGED_CRATES; do
   crate_name=$(basename $crate_path)
   cargo test -p $crate_name --lib 2>&1 | tail -20

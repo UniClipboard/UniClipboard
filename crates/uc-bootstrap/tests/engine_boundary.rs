@@ -887,7 +887,7 @@ fn daemon_binary_resource_handlers_delegate_to_engine() {
 #[test]
 fn cli_dev_tools_do_not_expose_the_legacy_runtime() {
     let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let cli = manifest.join("../../apps/cli/src");
+    let cli = manifest.join("../../tools/uc-dev-cli/src");
     let mut violations = Vec::new();
 
     for path in rust_sources(&cli) {

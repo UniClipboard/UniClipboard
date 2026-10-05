@@ -4,7 +4,7 @@
 
 `apps/cli-go` 是 `uniclip` 命令行的 Go 实现，模块为
 `github.com/UniClipboard/UniClipboard/apps/cli-go`，入口 `cmd/uniclip`。迁移期间与
-Rust 实现 `apps/cli` 并存；在用户决定替换发布产物之前，Rust CLI 仍是默认构建与发布对象。
+Rust 开发 CLI `tools/uc-dev-cli`（原 `apps/cli`）并存。用户端 `uniclip` 的发布构建使用本 Go 实现，Rust CLI 不进入任何生产构建。
 
 它只负责参数解析、终端输出、交互输入、退出码，以及通过 daemon 已有的 HTTP / WebSocket
 接口调用权威应用动作。

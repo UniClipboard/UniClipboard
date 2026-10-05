@@ -2,7 +2,7 @@
 
 ## 定位
 
-`uc-dev-cli` 是 UniClipboard 的开发与诊断命令行 crate，构建出的二进制名是 `uc-dev-cli`（原 `uc-cli` / `uniclip`）。
+`uc-dev-cli` 是 UniClipboard 的开发与诊断命令行 crate，构建出的二进制名是 `uc-dev-cli`（原 `uc-cli` / `uniclip`），位于 `tools/uc-dev-cli`（原 `apps/cli`）。它是 workspace 成员但不在 `default-members` 中，`publish = false`。
 
 **面向用户的终端客户端 `uniclip` 已由 Go 实现 `apps/cli-go` 承担，发布产物也应使用它。** 本 crate 不再是用户终端客户端：它保留的意义是 `dev-tools` 命令（`probe`、`blob`、`dev`、`mobile debug`，依赖进程内 Engine 或平台剪贴板，daemon 没有对应接口）以及作为 Go 实现的兼容性对照基线。除非先在 `apps/cli-go` 中同步，不要在本 crate 新增用户命令。
 

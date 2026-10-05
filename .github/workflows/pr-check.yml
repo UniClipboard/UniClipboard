@@ -9,6 +9,7 @@ on:
     paths:
       - 'crates/**'
       - 'apps/**'
+      - 'tools/**'
       - 'tests/e2e/**'
       - 'vendor/**'
       - 'Cargo.toml'
@@ -54,6 +55,7 @@ jobs:
             rust:
               - 'crates/**'
               - 'apps/**'
+              - 'tools/**'
               - 'tests/e2e/**'
               - 'vendor/**'
               - 'Cargo.toml'

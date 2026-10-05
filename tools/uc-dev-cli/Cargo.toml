@@ -3,6 +3,7 @@ name = "uc-dev-cli"
 version.workspace = true
 license.workspace = true
 edition = "2021"
+publish = false
 description = "Development and diagnostics command-line interface for UniClipboard"
 
 [[bin]]

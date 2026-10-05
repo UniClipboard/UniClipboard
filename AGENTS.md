@@ -99,7 +99,7 @@ Then selectively read:
 - `apps/gui/src/AGENTS.md` for frontend-local navigation
 - `crates/AGENTS.md` for Rust-workspace navigation (crates/ + apps/ + src-tauri/)
 - `apps/gui/src-tauri/AGENTS.md` for Tauri packaging specifics
-- `apps/cli/AGENTS.md` for `uniclip` CLI-local rules
+- `tools/AGENTS.md` for development-only crates, `tools/uc-dev-cli/AGENTS.md` for the Rust development CLI
 - `apps/cli-go/AGENTS.md` for the Go `uniclip` implementation (migration in progress)
 
 Log file locations (platform-conventional, separate from the data root; single

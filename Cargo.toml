@@ -1,7 +1,9 @@
 # Root cargo workspace for the UniClipboard monorepo.
 #
 # Layout:
-# - apps/    runnable binaries (cli => uniclip, daemon => uniclipd)
+# - apps/    runnable production programs (daemon => uniclipd, quick panel, GUI);
+#            the user-facing CLI `uniclip` is the Go module apps/cli-go
+# - tools/   development-only crates (uc-dev-cli); never part of a production build
 # - crates/  desktop host, platform, observability, and daemon libraries
 # - apps/gui/  desktop GUI app: React frontend (package.json, src/) plus the
 #               Tauri packaging shell apps/gui/src-tauri (the `uniclipboard` bin
@@ -21,7 +23,30 @@ members = [
   "crates/uc-cli-macros",
   "crates/uc-daemon-client",
   "crates/p2p-bench",
-  "apps/cli",
+  "tools/uc-dev-cli",
+  "apps/daemon",
+  "crates/quick-panel-core",
+  "apps/quick-panel",
+  "apps/gui/src-tauri",
+  "crates/uc-tauri",
+]
+# Production packages only. The development tools (the Rust development CLI and
+# its proc-macro helper) are workspace members, so `--workspace` and `-p` still
+# build and test them, but a bare `cargo build` / `cargo test` / `cargo run` at the
+# repository root does not touch them. Keep this list equal to `members` minus
+# those tools; scripts/__tests__/cli-packaging.test.ts enforces it.
+default-members = [
+  "crates/uc-platform",
+  "crates/uc-app-paths",
+  "crates/uc-observability",
+  "crates/uc-bootstrap",
+  "crates/uc-daemon-contract",
+  "crates/uc-daemon-process",
+  "crates/uc-daemon-local",
+  "crates/uc-webserver",
+  "crates/uc-desktop",
+  "crates/uc-daemon-client",
+  "crates/p2p-bench",
   "apps/daemon",
   "crates/quick-panel-core",
   "apps/quick-panel",

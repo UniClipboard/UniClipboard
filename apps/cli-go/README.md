@@ -2,7 +2,7 @@
 
 `apps/cli-go` 是 `uniclip` 命令行的 Go 实现。它只做参数解析、交互、终端输出与退出码，
 所有业务动作都通过 `uniclipd` 已有的 HTTP / WebSocket 接口完成，与 Rust 实现
-`apps/cli` 使用同一套路由、DTO、`daemon.conn` / `.daemon-pid` / 交接记录与环境变量约定。
+`tools/uc-dev-cli`（原 `apps/cli`）使用同一套路由、DTO、`daemon.conn` / `.daemon-pid` / 交接记录与环境变量约定。
 
 迁移期间两者并存。Rust CLI 仍是默认构建与发布对象；是否把发布产物切换为 Go 版本由维护者决定，
 见文末「切换发布产物」。
@@ -78,7 +78,7 @@ Rust 的 `dev-tools` 特性（release 构建不包含）提供以下隐藏命令
 
 可选的处置方式（尚未决定）：
 
-1. **保留 Rust 开发工具二进制（已采用）**：Rust CLI 重命名为包 `uc-dev-cli`、二进制 `uc-dev-cli`，用 `cargo build -p uc-dev-cli --features dev-tools` 构建，仅供开发、诊断与 E2E 使用；用户端 `uniclip` 是本 Go 实现。改动最小，不扩大 daemon 接口；代价是 `apps/cli` 在开发期继续存在。
+1. **保留 Rust 开发工具二进制（已采用）**：Rust CLI 重命名为包 `uc-dev-cli`、二进制 `uc-dev-cli`，目录迁至 `tools/uc-dev-cli`，并从 `default-members` 中排除，用 `cargo build -p uc-dev-cli --features dev-tools` 构建，仅供开发、诊断与 E2E 使用；用户端 `uniclip` 是本 Go 实现。改动最小，不扩大 daemon 接口；代价是 `apps/cli` 在开发期继续存在。
 2. **增加仅开发构建可用的 daemon 路由**：把上述操作暴露为受特性开关保护的 daemon 接口，再由 Go 实现。可以彻底移除 Rust CLI，但会扩大 daemon 的攻击面，需要单独评审。
 3. **Go 侧直接访问平台剪贴板**（仅 `probe`）：需要 cgo 或平台 API 绑定，并与 `uc-platform` 重复实现，不推荐。
 

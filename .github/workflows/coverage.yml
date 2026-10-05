@@ -9,6 +9,7 @@ on:
     paths:
       - 'crates/**'
       - 'apps/**'
+      - 'tools/**'
       - 'tests/e2e/**'
       - 'vendor/**'
       - 'Cargo.toml'
@@ -20,6 +21,7 @@ on:
     paths:
       - 'crates/**'
       - 'apps/**'
+      - 'tools/**'
       - 'tests/e2e/**'
       - 'vendor/**'
       - 'Cargo.toml'

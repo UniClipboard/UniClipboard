@@ -180,6 +180,26 @@ describe('Rust development CLI stays out of production builds', () => {
     expect(source).not.toMatch(/uc-dev-cli|\buc-cli\b/)
   })
 
+  it('is a development crate: outside default-members and never published', () => {
+    const root = path.resolve(__dirname, '../..')
+    const manifest = fs.readFileSync(path.join(root, 'Cargo.toml'), 'utf8')
+    const list = (key: string) =>
+      [
+        ...(
+          manifest.match(new RegExp(`^${key} = \\[\\n([\\s\\S]*?)\\n\\]`, 'm'))?.[1] ?? ''
+        ).matchAll(/"([^"]+)"/g),
+      ].map(match => match[1])
+    const tools = ['tools/uc-dev-cli', 'crates/uc-cli-macros']
+    const members = list('members')
+    for (const tool of tools) expect(members).toContain(tool)
+    // `--workspace` and `-p` still reach the tools, a bare `cargo build` does not,
+    // and nothing else may silently drop out of the default set.
+    expect(list('default-members')).toEqual(members.filter(member => !tools.includes(member)))
+    for (const file of ['tools/uc-dev-cli/Cargo.toml', 'crates/uc-cli-macros/Cargo.toml']) {
+      expect(fs.readFileSync(path.join(root, file), 'utf8'), file).toMatch(/^publish = false$/m)
+    }
+  })
+
   it('no Cargo manifest depends on it', () => {
     const manifests: string[] = []
     const walk = (dir: string) => {
@@ -190,10 +210,13 @@ describe('Rust development CLI stays out of production builds', () => {
         else if (entry.name === 'Cargo.toml') manifests.push(full)
       }
     }
-    for (const dir of ['apps', 'crates']) walk(path.join(root, dir))
-    const own = path.join(root, 'apps/cli/Cargo.toml')
+    for (const dir of ['apps', 'crates', 'tools']) walk(path.join(root, dir))
+    const own = path.join(root, 'tools/uc-dev-cli/Cargo.toml')
     for (const manifest of manifests.filter(file => file !== own)) {
-      expect(fs.readFileSync(manifest, 'utf8'), manifest).not.toContain('uc-dev-cli')
+      // A dependency declaration (`uc-dev-cli = ...` or `package = "uc-dev-cli"`), not a mention.
+      expect(fs.readFileSync(manifest, 'utf8'), manifest).not.toMatch(
+        /^\s*uc-dev-cli\s*=|package\s*=\s*"uc-dev-cli"/m
+      )
     }
   })
 })

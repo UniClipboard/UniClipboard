@@ -32,7 +32,7 @@ const REVIEWED_VERSIONS = new Map([['rsa', '0.9.10']])
 const JWT_ALGORITHM_SOURCES = ['crates/uc-webserver/src/security/claims.rs']
 const RSA_JWT_ALGORITHM_PATTERN = /Algorithm::(?:RS|PS)\d{3}/
 
-const RUST_SOURCE_ROOTS = ['apps', 'crates']
+const RUST_SOURCE_ROOTS = ['apps', 'crates', 'tools']
 const PRODUCTION_TARGETS = [
   'x86_64-unknown-linux-gnu',
   'x86_64-pc-windows-msvc',

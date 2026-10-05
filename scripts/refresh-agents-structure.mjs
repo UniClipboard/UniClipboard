@@ -94,7 +94,7 @@ const LAYER_ORDER = [
   },
 ]
 
-// Resolve the cargo package name (dir basename != package name for apps/*).
+// Resolve the cargo package name (dir basename != package name for apps/* and tools/*).
 function packageName(cratePath) {
   const tomlPath = join(ROOT, cratePath, 'Cargo.toml')
   if (existsSync(tomlPath)) {
@@ -116,6 +116,7 @@ function categorizeMember(cratePath) {
 
 function generateStructure(members) {
   const apps = members.filter(m => m.startsWith('apps/'))
+  const tools = members.filter(m => m.startsWith('tools/'))
   const libs = members.filter(m => m.startsWith('crates/'))
   const lines = [
     '```text',
@@ -126,6 +127,15 @@ function generateStructure(members) {
     const dir = m.slice('apps/'.length)
     const padding = Math.max(1, 20 - dir.length)
     lines.push(`|  |- ${dir}/${' '.repeat(padding)}# ${getDescription(m)}`)
+  }
+
+  if (tools.length > 0) {
+    lines.push('|- tools/                # Development-only crates (never in production builds)')
+    for (const m of tools) {
+      const dir = m.slice('tools/'.length)
+      const padding = Math.max(1, 20 - dir.length)
+      lines.push(`|  |- ${dir}/${' '.repeat(padding)}# ${getDescription(m)}`)
+    }
   }
 
   lines.push(`|- crates/               # Library crates (${libs.length})`)

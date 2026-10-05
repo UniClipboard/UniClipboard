@@ -27,7 +27,7 @@ const INTERNAL_PACKAGES: [&str; 5] = [
 ];
 
 const PRODUCTION_SOURCE_ROOTS: [&str; 9] = [
-    "apps/cli/src",
+    "tools/uc-dev-cli/src",
     "apps/daemon/src",
     "crates/uc-bootstrap/src",
     "crates/uc-daemon-client/src",

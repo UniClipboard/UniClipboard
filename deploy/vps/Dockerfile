@@ -38,6 +38,7 @@ COPY Cargo.toml Cargo.lock rust-toolchain.toml clippy.toml ./
 COPY .cargo/ ./.cargo/
 COPY crates/ ./crates/
 COPY apps/ ./apps/
+COPY tools/ ./tools/
 
 # Pick the musl target matching the build host arch (native compile, no cross).
 # Build and copy the binary out within a single RUN: the target/ dir is a

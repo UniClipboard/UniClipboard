@@ -3,7 +3,8 @@ name = "uc-cli-macros"
 version.workspace = true
 license.workspace = true
 edition = "2021"
-description = "Proc-macros for uc-cli (internal)"
+publish = false
+description = "Proc-macros for uc-dev-cli (internal)"
 
 [lib]
 proc-macro = true

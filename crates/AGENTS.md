@@ -11,10 +11,11 @@
 ```text
 .                        # repo root = cargo workspace
 |- apps/                 # Runnable binaries
-|  |- cli/                 # `uc-dev-cli` development and diagnostics CLI (user-facing `uniclip` is apps/cli-go)
 |  |- daemon/              # GUI-agnostic daemon runtime; hosts the `uniclipd` binary
 |  |- quick-panel/         # GPUI quick panel app (`uniclip-quick-panel`, macOS default)
 |  |- gui/src-tauri/       # Desktop GUI bin: Tauri packaging shell of apps/gui (frontend: apps/gui/src); hands off to uc-tauri
+|- tools/                # Development-only crates (never in production builds)
+|  |- uc-dev-cli/          # `uc-dev-cli` development and diagnostics CLI (user-facing `uniclip` is apps/cli-go)
 |- crates/               # Library crates (14)
 |  # -- Desktop host adapters --
 |  |- uc-platform/      # OS adapters: clipboard, secure storage, autostart

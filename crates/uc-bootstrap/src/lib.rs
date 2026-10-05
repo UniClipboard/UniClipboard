@@ -9,7 +9,7 @@ pub mod observability;
 pub mod wiring;
 
 // The top-level re-exports below ARE the crate's external contract: the symbols
-// daemon (apps/daemon) and the CLI dev-tools feature (apps/cli) consume. Keep
+// daemon (apps/daemon) and the dev CLI dev-tools feature (tools/uc-dev-cli) consume. Keep
 // this list in sync with that contract — everything else stays crate-internal
 // (`pub(crate)`), reachable only within the composition root.
 

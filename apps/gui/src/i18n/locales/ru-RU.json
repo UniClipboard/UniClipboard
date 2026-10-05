@@ -1072,7 +1072,7 @@
     "subtitle_one": "{{count}} элемент",
     "subtitle_other": "{{count}} элементов",
     "searchPlaceholder": "Поиск в буфере обмена…",
-    "listSearchPlaceholder": "Ищите или введите # from: type: on:",
+    "listSearchPlaceholder": "Ищите или введите # @ / on:",
     "listSearchPlaceholderMore": "Добавьте слова или ещё фильтр…",
     "list": {
       "selectItem": "Выбрать {{title}}",

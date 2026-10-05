@@ -1067,7 +1067,7 @@
     "title": "历史记录",
     "subtitle_other": "{{count}} 项",
     "searchPlaceholder": "搜索剪贴板…",
-    "listSearchPlaceholder": "搜索，或输入 # from: type: on:",
+    "listSearchPlaceholder": "搜索，或输入 # @ / on:",
     "listSearchPlaceholderMore": "继续输入关键词或添加筛选…",
     "list": {
       "selectItem": "选择 {{title}}",

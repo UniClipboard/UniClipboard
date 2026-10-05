@@ -1068,7 +1068,7 @@
     "subtitle_one": "{{count}} item",
     "subtitle_other": "{{count}} items",
     "searchPlaceholder": "Search clipboard…",
-    "listSearchPlaceholder": "Search, or type # from: type: on:",
+    "listSearchPlaceholder": "Search, or type # @ / on:",
     "listSearchPlaceholderMore": "Add words or another filter…",
     "list": {
       "selectItem": "Select {{title}}",

@@ -1067,7 +1067,7 @@
     "title": "歷程記錄",
     "subtitle_other": "{{count}} 項",
     "searchPlaceholder": "搜尋剪貼簿…",
-    "listSearchPlaceholder": "搜尋，或輸入 # from: type: on:",
+    "listSearchPlaceholder": "搜尋，或輸入 # @ / on:",
     "listSearchPlaceholderMore": "繼續輸入關鍵詞或加入篩選…",
     "list": {
       "selectItem": "選取 {{title}}",

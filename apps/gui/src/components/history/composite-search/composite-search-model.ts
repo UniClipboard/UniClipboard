@@ -3,7 +3,7 @@
  *
  * This module owns the *vocabulary* of the composite search box: the filter
  * dimensions (content type / source device / time range), how a raw input
- * buffer parses into either a free-text query or a `key:value` token, and how
+ * buffer parses into either a free-text query or a filter token, and how
  * the current filter state projects into renderable chips and suggestion
  * candidates.
  *
@@ -51,27 +51,39 @@ export interface SourceOption {
 export type Dimension = 'type' | 'tag' | 'source' | 'time' | 'extension'
 
 /**
- * English syntax-key prefix typed by keyboard users (decision: fixed English
- * keys, not localized). `source` reads `from:` and `time` reads `on:` to match
- * common filter-bar conventions; the others mirror their dimension name.
+ * The prefix typed before a filter value (fixed, not localized). Tag, source
+ * and type take the GPUI quick panel's one-character sigils (`#work`,
+ * `@iPhone`, `/image`, see `crates/quick-panel-core/src/query/filters.rs`);
+ * time and extension, which the quick panel has no sigil for, keep a
+ * `key:` keyword.
  */
 export const SYNTAX_KEYS: Record<Dimension, string> = {
-  type: 'type',
+  type: '/',
   tag: '#',
-  source: 'from',
-  time: 'on',
-  extension: 'ext',
+  source: '@',
+  time: 'on:',
+  extension: 'ext:',
 }
 
-/** Reverse map: typed prefix (lowercased) -> dimension. */
-const PREFIX_TO_DIMENSION: Record<string, Dimension> = {
-  type: 'type',
-  from: 'source',
-  on: 'time',
-  ext: 'extension',
+const DIMENSIONS = Object.keys(SYNTAX_KEYS) as Dimension[]
+
+/** Whether the dimension is typed with a one-character sigil rather than a `key:`. */
+function isSigil(dimension: Dimension): boolean {
+  return !SYNTAX_KEYS[dimension].endsWith(':')
 }
 
-/** Physical content-type filters offered as `type:` candidates. */
+/** Reverse maps: sigil -> dimension, and lowercase keyword (without `:`) -> dimension. */
+const SIGIL_TO_DIMENSION = new Map(
+  DIMENSIONS.filter(isSigil).map(dimension => [SYNTAX_KEYS[dimension], dimension])
+)
+const KEYWORD_TO_DIMENSION = new Map(
+  DIMENSIONS.filter(dimension => !isSigil(dimension)).map(dimension => [
+    SYNTAX_KEYS[dimension].slice(0, -1),
+    dimension,
+  ])
+)
+
+/** Physical content-type filters offered as `/` candidates. */
 const TYPE_FILTERS: readonly Filter[] = [Filter.Text, Filter.RichText, Filter.Image, Filter.File]
 
 /** Time presets offered as `on:` candidates (`all_time` == no filter, excluded). */
@@ -134,11 +146,11 @@ export function applyDimensionValue(
 
 /**
  * Render a dimension's current value back into typed-token syntax (e.g.
- * `type:image`), so removing a chip via Backspace can drop the user back into
+ * `/image`), so removing a chip via Backspace can drop the user back into
  * editing it instead of just clearing it.
  */
 export function buildTokenText(dimension: Dimension, value: string): string {
-  return dimension === 'tag' ? `${SYNTAX_KEYS.tag}${value}` : `${SYNTAX_KEYS[dimension]}:${value}`
+  return `${SYNTAX_KEYS[dimension]}${value}`
 }
 
 /** Reset a dimension to its default (no filter). */
@@ -160,29 +172,37 @@ export type ParsedBuffer =
  * Classify the live input buffer.
  *
  * A buffer is a *token* only when (after leading whitespace) it starts with a
- * known `key:` prefix — e.g. `type:image`. Trailing whitespace after the value
- * marks it ready to commit into a chip. Anything else (including text with an
- * unrelated colon like a URL) is free-text query. Keeping tokens anchored to
- * the buffer start lets a query and chips coexist without ambiguous parsing.
+ * known prefix — a sigil (`#work`, `@iPhone`, `/image`) or a `key:` keyword
+ * (`on:today`). Trailing whitespace after the value marks it ready to commit
+ * into a chip. Anything else (including text with an unrelated colon like a
+ * URL) is free-text query. Keeping tokens anchored to the buffer start lets a
+ * query and chips coexist without ambiguous parsing.
  */
 export function parseBuffer(buffer: string): ParsedBuffer {
   const lead = buffer.replace(/^\s+/, '')
-  const tagMatch = /^#([\s\S]*)$/.exec(lead)
-  if (tagMatch) {
-    const rest = tagMatch[1]
-    const committed = /\s$/.test(rest) && rest.trim().length > 0
-    return { kind: 'token', dimension: 'tag', partial: rest.trim(), committed }
-  }
-  const match = /^([a-zA-Z]+):([\s\S]*)$/.exec(lead)
-  if (match) {
-    const dimension = PREFIX_TO_DIMENSION[match[1].toLowerCase()]
-    if (dimension) {
-      const rest = match[2]
-      const committed = /\s$/.test(rest) && rest.trim().length > 0
-      return { kind: 'token', dimension, partial: rest.trim(), committed }
-    }
-  }
-  return { kind: 'query', text: buffer }
+  const sigil = SIGIL_TO_DIMENSION.get(lead.charAt(0))
+  const keyword = sigil ? null : /^([a-zA-Z]+):([\s\S]*)$/.exec(lead)
+  const dimension = sigil ?? (keyword ? KEYWORD_TO_DIMENSION.get(keyword[1].toLowerCase()) : null)
+  if (!dimension) return { kind: 'query', text: buffer }
+  const rest = keyword ? keyword[2] : lead.slice(1)
+  const committed = /\s$/.test(rest) && rest.trim().length > 0
+  return { kind: 'token', dimension, partial: rest.trim(), committed }
+}
+
+/**
+ * {@link parseBuffer}, except that a sigil word naming nothing stays text
+ * search, as in the quick panel: `/tmp` or `@home` searches for that text
+ * instead of dead-ending in a token with no candidates. A bare sigil still
+ * opens its dimension's suggestions.
+ */
+export function resolveBuffer(buffer: string, ctx: CandidateContext): ParsedBuffer {
+  const parsed = parseBuffer(buffer)
+  return parsed.kind === 'token' &&
+    isSigil(parsed.dimension) &&
+    parsed.partial &&
+    buildCandidates(parsed.dimension, parsed.partial, ctx).length === 0
+    ? { kind: 'query', text: buffer }
+    : parsed
 }
 
 // ── Candidates & chips ──────────────────────────────────────────
@@ -312,34 +332,28 @@ export interface SyntaxSuggestion {
   dimension: Dimension
   /** Dimension display name, e.g. 类型. */
   label: string
-  /** The syntax seed to surface/apply, e.g. `type:`. */
+  /** The syntax seed to surface/apply, e.g. `on:`. */
   hint: string
   icon: LucideIcon
 }
 
 /**
- * Syntax-prefix hints. Typing `t` suggests `type:`, `o` suggests `on:`, `f`
- * suggests `from:`. Keeps the keyboard token syntax discoverable now that the panel
- * shows flat values instead of explicit dimension entries. Matches any
- * dimension whose syntax key starts with the typed text.
+ * Keyword-prefix hints: typing `o` suggests `on:`, `e` suggests `ext:`. Keeps
+ * the keyword syntax discoverable now that the panel shows flat values instead
+ * of explicit dimension entries. Sigil dimensions need no hint — a typed sigil
+ * already opens that dimension's values.
  */
 export function buildSyntaxSuggestions(partial: string, t: Translate): SyntaxSuggestion[] {
   const needle = partial.trimStart().toLowerCase()
   if (!needle) return []
-  return (['type', 'tag', 'source', 'time', 'extension'] as const).flatMap(dimension =>
-    dimension === 'tag' && needle !== '#'
-      ? []
-      : SYNTAX_KEYS[dimension].startsWith(needle)
-        ? [
-            {
-              dimension,
-              label: t(DIMENSION_LABEL_KEYS[dimension]),
-              hint: dimension === 'tag' ? SYNTAX_KEYS[dimension] : `${SYNTAX_KEYS[dimension]}:`,
-              icon: DIMENSION_ICONS[dimension],
-            },
-          ]
-        : []
-  )
+  return DIMENSIONS.filter(
+    dimension => !isSigil(dimension) && SYNTAX_KEYS[dimension].startsWith(needle)
+  ).map(dimension => ({
+    dimension,
+    label: t(DIMENSION_LABEL_KEYS[dimension]),
+    hint: SYNTAX_KEYS[dimension],
+    icon: DIMENSION_ICONS[dimension],
+  }))
 }
 
 function matchRank(partial: string, ...haystacks: string[]): number | null {
@@ -355,18 +369,20 @@ function matchRank(partial: string, ...haystacks: string[]): number | null {
 const SUBSTRING_RANK = 2
 
 /** Candidate values for one dimension, narrowed by the typed `partial`. */
+export interface CandidateContext {
+  t: Translate
+  sourceOptions: SourceOption[]
+  current: FilterSnapshot
+  tagOptions: SearchTagOption[]
+  /** Only values starting with `partial` (the list variant's "starting
+   * with" suggestions); otherwise substrings match too, ranked last. */
+  prefixOnly?: boolean
+}
+
 export function buildCandidates(
   dimension: Dimension,
   partial: string,
-  ctx: {
-    t: Translate
-    sourceOptions: SourceOption[]
-    current: FilterSnapshot
-    tagOptions: SearchTagOption[]
-    /** Only values starting with `partial` (the list variant's "starting
-     * with" suggestions); otherwise substrings match too, ranked last. */
-    prefixOnly?: boolean
-  }
+  ctx: CandidateContext
 ): CandidateItem[] {
   const rankOf = (...haystacks: string[]) => {
     const rank = matchRank(partial, ...haystacks)

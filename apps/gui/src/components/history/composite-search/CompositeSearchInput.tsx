@@ -42,7 +42,7 @@ interface CompositeSearchInputProps {
   variant?: 'compact' | 'list'
   /** Keyboard shortcut shown at the field's end while closed, e.g. ⌘F. */
   shortcutHint?: string
-  /** The dimension of the `key:value` token being typed, if any; the list
+  /** The dimension of the filter token being typed, if any; the list
    * variant sets the token in mono, in that dimension's color. */
   typingDimension?: Dimension
   /** Keyboard help under the list variant's suggestions. */

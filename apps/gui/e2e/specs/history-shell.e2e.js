@@ -324,15 +324,15 @@ describe('macOS three-column shell (native)', () => {
   it('opens the list-column search suggestions', async () => {
     const input = await $('[role="combobox"]')
     await input.click()
-    await browser.keys('type:'.split(''))
+    await browser.keys(['/'])
     await browser.waitUntil(async () => (await $$('[role="option"]')).length === 4, {
       timeout: 15000,
-      timeoutMsg: 'type: suggestions never showed',
+      timeoutMsg: '/ suggestions never showed',
     })
     await nativeShot('02-history-search')
-    await browser.keys(Array(5).fill('Backspace'))
+    await browser.keys(['Backspace'])
     await browser.keys(['Escape'])
-    report.steps.push('search field in the list column shows the type: suggestions')
+    report.steps.push('search field in the list column shows the / suggestions')
   })
 
   it('navigates History -> Devices -> Settings -> back -> History', async () => {

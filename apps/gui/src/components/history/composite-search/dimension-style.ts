@@ -15,7 +15,7 @@ export const DIMENSION_CHIP_CLASS: Record<Dimension, string> = {
   extension: 'bg-muted text-foreground/75',
 }
 
-/** Text color of a `key:value` token while it is typed. */
+/** Text color of a filter token while it is typed. */
 export const DIMENSION_INK_CLASS: Record<Dimension, string> = {
   type: 'text-blue-800 dark:text-blue-300',
   tag: 'text-orange-800 dark:text-orange-300',
@@ -24,8 +24,8 @@ export const DIMENSION_INK_CLASS: Record<Dimension, string> = {
   extension: 'text-foreground/75',
 }
 
-/** The syntax word a chip names its filter by ("from arch-desktop"). Fixed
- * English like the typed keys; the tag dimension, typed as `#`, reads `tag`. */
+/** The word a chip names its filter by ("from arch-desktop"). Fixed English,
+ * independent of the typed prefix: `@` reads `from`, `#` reads `tag`. */
 export const DIMENSION_CHIP_KEY: Record<Dimension, string> = {
   type: 'type',
   tag: 'tag',

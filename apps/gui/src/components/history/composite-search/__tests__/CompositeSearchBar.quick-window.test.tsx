@@ -120,7 +120,7 @@ describe('CompositeSearchBar quick window usage', () => {
     renderSearchBar({ onContentFilterChange })
 
     const input = screen.getByRole('combobox', { name: 'history.composite.title' })
-    await user.type(input, 'type:')
+    await user.type(input, '/')
 
     expect(input).toHaveAttribute('aria-expanded', 'true')
     expect(screen.getByRole('listbox', { name: 'history.composite.title' })).toBeInTheDocument()

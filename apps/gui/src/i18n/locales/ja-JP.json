@@ -1068,7 +1068,7 @@
     "subtitle_one": "{{count}} 件",
     "subtitle_other": "{{count}} 件",
     "searchPlaceholder": "クリップボードを検索…",
-    "listSearchPlaceholder": "検索、または # from: type: on: を入力",
+    "listSearchPlaceholder": "検索、または # @ / on: を入力",
     "listSearchPlaceholderMore": "キーワードやフィルタを追加…",
     "list": {
       "selectItem": "{{title}} を選択",

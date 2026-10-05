@@ -124,13 +124,13 @@ await runPhase(
     await waitTotal(5)
     phase.steps.push('initial list: 5 entries')
 
-    await type('type:')
+    await type('/')
     await waitOptions(['Text3', 'Rich Text0', 'Image0', 'File2'])
     await shot('01-type-candidate-counts')
-    phase.steps.push('type: candidates Text 3 / Rich Text 0 / Image 0 / File 2')
+    phase.steps.push('/ candidates Text 3 / Rich Text 0 / Image 0 / File 2')
 
-    await browser.keys(['Backspace', 'Backspace', 'Backspace', 'Backspace', 'Backspace'])
-    await type('type:text')
+    await browser.keys(['Backspace'])
+    await type('/text')
     await browser.keys(['Enter'])
     await waitTotal(3)
     await type('ext:md')
@@ -138,7 +138,7 @@ await runPhase(
     await shot('02-ext-candidate-count-with-text-chip')
     await browser.keys(['Enter'])
     await waitTotal(0)
-    phase.steps.push('chips type:text + ext:md -> 0 entries (.md candidate showed 0)')
+    phase.steps.push('chips /text + ext:md -> 0 entries (.md candidate showed 0)')
 
     // B3: both one-chip relaxations, singular and plural counts.
     await browser.waitUntil(
@@ -178,7 +178,7 @@ await runPhase(
 
 // ── B. full page ────────────────────────────────────────────────────────────
 // Same demo data, complete /history page. States mirror the design artboards:
-// B1 type-ahead with a `from:` chip, B2 filtered results, B3 no results with
+// B1 type-ahead with an `@` chip, B2 filtered results, B3 no results with
 // one-filter relaxations.
 await runPhase(
   'fullPage',
@@ -226,14 +226,14 @@ await runPhase(
     const input = await browser.$('[role="combobox"][aria-label="Search and filter"]')
     await input.waitForExist({ timeout: 10_000 })
     await input.click()
-    await keys('from:e2e')
+    await keys('@e2e')
     await waitOptions(['e2e-phone3 items'])
     await browser.keys(['Enter'])
     await waitRows(3)
-    await keys('type:')
+    await keys('/')
     await waitOptions(['Text3 items', 'Rich Text0 items', 'Image0 items', 'File0 items'])
     await shot('B1-typeahead-with-from-chip')
-    phase.steps.push('B1: from:e2e-phone chip + "type:" -> Text 3 / Rich Text 0 / Image 0 / File 0')
+    phase.steps.push('B1: @e2e-phone chip + "/" -> Text 3 / Rich Text 0 / Image 0 / File 0')
 
     await browser.keys(['Enter'])
     await waitRows(3)
@@ -241,7 +241,7 @@ await runPhase(
     await browser.keys(['Enter'])
     await waitRows(1)
     await shot('B2-filtered-results')
-    phase.steps.push('B2: chips from:e2e-phone + Text, keyword "agenda" -> 1 row')
+    phase.steps.push('B2: chips @e2e-phone + Text, keyword "agenda" -> 1 row')
 
     await browser.keys(Array(6).fill('Backspace'))
     await waitRows(3)
@@ -289,14 +289,14 @@ await runPhase(
     // Chips are ordered type -> source -> extension, so the last one is the source.
     await input.click()
     await browser.keys(['Backspace'])
-    assert.equal(await input.getValue(), 'from:e2e-phone')
+    assert.equal(await input.getValue(), '@e2e-phone')
     await waitRows(3)
     await waitOptions(['e2e-phone3 items'])
     await shot('chip-edit-backspace')
     await browser.keys(['Enter'])
     await waitRows(3)
     phase.steps.push(
-      'Backspace reopened the source chip as "from:e2e-phone" (name, not id); Enter re-applies it'
+      'Backspace reopened the source chip as "@e2e-phone" (name, not id); Enter re-applies it'
     )
 
     // ── Shell navigation: History <-> Devices <-> Settings via the sidebar.
@@ -469,7 +469,7 @@ async function railBranch(browser, phase, shot, { platform, windowControls }) {
   await (await browser.$('button[aria-label="Search and filter"]')).click()
   const input = await browser.$('[data-testid="history-search-surface"] [role="combobox"]')
   await input.waitForExist({ timeout: 10_000 })
-  await browser.keys('type:'.split(''))
+  await browser.keys(['/'])
   await browser.waitUntil(
     async () =>
       JSON.stringify(await optionTexts(browser)) ===
@@ -484,7 +484,7 @@ async function railBranch(browser, phase, shot, { platform, windowControls }) {
   })
   await browser.keys(['Escape'])
   phase.steps.push(
-    'toolbar search overlay: type: candidates Text 3 / Rich Text 0 / Image 0 / File 2; Enter applies Text'
+    'toolbar search overlay: / candidates Text 3 / Rich Text 0 / Image 0 / File 2; Enter applies Text'
   )
 
   await (await browser.$('aside.w-12 a[aria-label="Devices"]')).click()

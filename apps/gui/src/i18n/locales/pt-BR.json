@@ -1069,7 +1069,7 @@
     "subtitle_many": "{{count}} itens",
     "subtitle_other": "{{count}} itens",
     "searchPlaceholder": "Pesquisar na área de transferência…",
-    "listSearchPlaceholder": "Pesquise ou digite # from: type: on:",
+    "listSearchPlaceholder": "Pesquise ou digite # @ / on:",
     "listSearchPlaceholderMore": "Adicione palavras ou outro filtro…",
     "list": {
       "selectItem": "Selecionar {{title}}",

@@ -14,8 +14,8 @@ import {
   buildSyntaxSuggestions,
   buildTokenText,
   DIMENSION_LABEL_KEYS,
-  parseBuffer,
   resetDimensionValue,
+  resolveBuffer,
   SYNTAX_KEYS,
   type CandidateItem,
   type Dimension,
@@ -95,22 +95,16 @@ export function useCompositeSearchBar({
     extension: extensionFilter,
   }
   const chips = buildChips({ t, sourceOptions, tagOptions, current })
-  const parsed = parseBuffer(buffer)
+  // The list variant's typed token suggests values *starting with* it.
+  const tokenContext = { t, sourceOptions, tagOptions, current, prefixOnly: variant === 'list' }
+  const parsed = resolveBuffer(buffer, tokenContext)
   const inToken = parsed.kind === 'token'
   const tokenDimension = parsed.kind === 'token' ? parsed.dimension : undefined
-  // The list variant's typed token suggests values *starting with* it.
   const listToken = variant === 'list' && parsed.kind === 'token'
   const candidates: CandidateItem[] = inToken
-    ? buildCandidates(parsed.dimension, parsed.partial, {
-        t,
-        sourceOptions,
-        tagOptions,
-        current,
-        prefixOnly: variant === 'list',
-      })
+    ? buildCandidates(parsed.dimension, parsed.partial, tokenContext)
     : buildAllCandidates(buffer, { t, sourceOptions, tagOptions, current })
-  const syntaxSuggestions =
-    inToken || buffer.trimStart().startsWith('#') ? [] : buildSyntaxSuggestions(buffer, t)
+  const syntaxSuggestions = inToken ? [] : buildSyntaxSuggestions(buffer, t)
   const expanded = open && syntaxSuggestions.length + candidates.length > 0
   // Only a single typed dimension stays within one count batch; the flat
   // all-dimension panel would not.
@@ -221,10 +215,7 @@ export function useCompositeSearchBar({
   }
 
   const seedDimension = (dimension: Dimension) => {
-    // The tag dimension's syntax key (`#`) is the whole prefix; the others take a
-    // trailing colon (`type:`). Seeding `#:` would make `parseBuffer` treat `:`
-    // as the partial tag text and surface no useful matches.
-    setBuffer(dimension === 'tag' ? SYNTAX_KEYS.tag : `${SYNTAX_KEYS[dimension]}:`)
+    setBuffer(SYNTAX_KEYS[dimension])
     setHighlight(0)
     onQueryChange('')
     inputRef.current?.focus()
@@ -244,7 +235,7 @@ export function useCompositeSearchBar({
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const next = e.target.value
-    const p = parseBuffer(next)
+    const p = resolveBuffer(next, tokenContext)
     setBuffer(next)
     setHighlight(p.kind === 'token' ? 0 : -1)
     setOpen(suggestionActivation === 'focus' || p.kind === 'token')

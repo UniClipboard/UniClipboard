@@ -76,7 +76,7 @@ describe('CompositeSearchBar', () => {
     const user = userEvent.setup()
     const props = renderSearchBar()
 
-    await user.type(screen.getByRole('combobox'), 'type:image{Enter}')
+    await user.type(screen.getByRole('combobox'), '/image{Enter}')
 
     expect(props.onContentFilterChange).toHaveBeenCalledWith(Filter.Image)
     expect(props.onQuerySubmit).not.toHaveBeenCalled()
@@ -92,6 +92,26 @@ describe('CompositeSearchBar', () => {
 
     await user.type(input, 'time:today')
     expect(props.onQueryChange).toHaveBeenLastCalledWith('time:today')
+  })
+
+  it('picks a source device from an @ token', async () => {
+    const user = userEvent.setup()
+    const props = renderSearchBar()
+
+    await user.type(screen.getByRole('combobox'), '@mac{Enter}')
+
+    expect(props.onSourceFilterChange).toHaveBeenCalledWith('device-1')
+  })
+
+  it('searches a path starting with / as text', async () => {
+    const user = userEvent.setup()
+    const props = renderSearchBar()
+
+    await user.type(screen.getByRole('combobox'), '/tmp/build.log{Enter}')
+
+    expect(props.onQueryChange).toHaveBeenLastCalledWith('/tmp/build.log')
+    expect(props.onQuerySubmit).toHaveBeenCalledWith('/tmp/build.log')
+    expect(props.onContentFilterChange).not.toHaveBeenCalled()
   })
 
   it('adds a typed tag to the existing tag selection', async () => {
@@ -155,7 +175,7 @@ describe('CompositeSearchBar', () => {
     const fetchCounts = vi.fn().mockResolvedValue([5, 0, 1234, 7])
     renderSearchBar({ timeRange: 'today', fetchCounts })
 
-    await user.type(screen.getByRole('combobox'), 'type:')
+    await user.type(screen.getByRole('combobox'), '/')
 
     expect(await screen.findByText('1,234', {}, { timeout: 2000 })).toBeInTheDocument()
     expect(fetchCounts).toHaveBeenCalledTimes(1)

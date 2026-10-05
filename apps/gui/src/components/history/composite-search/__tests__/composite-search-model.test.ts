@@ -8,7 +8,10 @@ import {
   buildCandidates,
   buildChips,
   buildRelaxationQueries,
+  buildSyntaxSuggestions,
+  buildTokenText,
   parseBuffer,
+  resolveBuffer,
   searchableTagsToOptions,
   type FilterSnapshot,
 } from '../composite-search-model'
@@ -98,6 +101,45 @@ describe('composite search model', () => {
       partial: 'lin',
       committed: false,
     })
+  })
+
+  it('reads the quick panel sigils and leaves the old keywords and URLs as text', () => {
+    const token = (value: string) => {
+      const parsed = parseBuffer(value)
+      return parsed.kind === 'token' ? [parsed.dimension, parsed.partial] : null
+    }
+    expect(token('@iPhone')).toEqual(['source', 'iPhone'])
+    expect(token('  /image')).toEqual(['type', 'image'])
+    expect(token('/')).toEqual(['type', ''])
+    expect(token('on:today')).toEqual(['time', 'today'])
+    for (const text of ['type:image', 'from:phone', 'a@b.com', 'https://example.com']) {
+      expect(parseBuffer(text)).toEqual({ kind: 'query', text })
+    }
+  })
+
+  it('keeps a sigil word that names nothing as text search', () => {
+    const context = { t, sourceOptions: [], current, tagOptions: searchableTagsToOptions([]) }
+    expect(resolveBuffer('/tmp/build.log', context)).toEqual({
+      kind: 'query',
+      text: '/tmp/build.log',
+    })
+    expect(resolveBuffer('@home', context)).toEqual({ kind: 'query', text: '@home' })
+    expect(resolveBuffer('/im', context)).toMatchObject({ kind: 'token', dimension: 'type' })
+    expect(resolveBuffer('@', context)).toMatchObject({ kind: 'token', dimension: 'source' })
+    // Keyword tokens keep their candidates panel even when nothing matches.
+    expect(resolveBuffer('on:xyz', context)).toMatchObject({ kind: 'token', dimension: 'time' })
+  })
+
+  it('renders chips back into their typed prefix', () => {
+    expect(buildTokenText('type', 'image')).toBe('/image')
+    expect(buildTokenText('source', 'iPhone')).toBe('@iPhone')
+    expect(buildTokenText('tag', 'code')).toBe('#code')
+    expect(buildTokenText('extension', 'md')).toBe('ext:md')
+  })
+
+  it('hints only the keyword prefixes', () => {
+    expect(buildSyntaxSuggestions('o', t).map(s => s.hint)).toEqual(['on:'])
+    expect(buildSyntaxSuggestions('t', t)).toEqual([])
   })
 
   it('parses ext as a shared extension token', () => {

@@ -2,6 +2,7 @@ import { Folder } from 'lucide-react'
 import { describe, expect, it } from 'vitest'
 import { Filter } from '@/api/clipboardItems'
 import {
+  buildCandidateTotalQueries,
   buildCandidates,
   buildChips,
   buildRelaxationQueries,
@@ -20,6 +21,25 @@ const current: FilterSnapshot = {
 }
 
 describe('composite search model', () => {
+  it('drops substring matches when only prefixes may match', () => {
+    const context = { t, sourceOptions: [], current, tagOptions: searchableTagsToOptions([]) }
+    // `directory` contains "re" but does not start with it.
+    expect(buildCandidates('tag', 're', context).map(c => c.value)).toContain('directory')
+    expect(
+      buildCandidates('tag', 're', { ...context, prefixOnly: true }).map(c => c.value)
+    ).not.toContain('directory')
+  })
+
+  it('counts each candidate on its own, ignoring the other filters', () => {
+    const candidates = buildCandidates('type', 'image', {
+      t,
+      sourceOptions: [],
+      current: { ...current, source: 'device-1' },
+      tagOptions: [],
+    })
+    expect(buildCandidateTotalQueries(candidates)).toEqual([{ query: '', tags: 'image' }])
+  })
+
   it('represents every selected tag in the chip and suggestions', () => {
     const context = {
       t,

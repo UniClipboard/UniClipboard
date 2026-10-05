@@ -58,7 +58,7 @@ export function CompositeSearchBarView({
         onHighlight={state.setHighlight}
         variant={props.variant}
         shortcutHint={props.shortcutHint}
-        typingToken={state.inToken}
+        typingDimension={state.tokenDimension}
         suggestionsFooter={
           props.variant === 'list' ? state.t('history.composite.keyboardHint') : undefined
         }

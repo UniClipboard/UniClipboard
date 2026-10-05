@@ -1141,11 +1141,27 @@
       "dimension": {
         "type": "Тип",
         "tag": "Тег",
-        "source": "Источник",
+        "source": "Устройство",
         "time": "Время",
         "extension": "Расширение"
       },
       "noMatches": "Совпадений нет",
+      "header": {
+        "startingWith": "{{dimension}}, начинающиеся с «{{partial}}»",
+        "all": "{{dimension}}",
+        "dimension": {
+          "type": "Типы",
+          "tag": "Теги",
+          "source": "Устройства",
+          "time": "Периоды",
+          "extension": "Расширения"
+        }
+      },
+      "inContext_one": "{{count}} {{context}}",
+      "inContext_few": "{{count}} {{context}}",
+      "inContext_many": "{{count}} {{context}}",
+      "inContext_other": "{{count}} {{context}}",
+      "noneInContext": "ни одного {{context}}",
       "removeFilter": "Удалить фильтр: {{filter}}",
       "keyboardHint": "↑↓ выбор · ↵ или ⇥ — в фильтр · ⌫ в пустом поле правит последний фильтр",
       "relaxTitle": "Попробуйте убрать один фильтр",

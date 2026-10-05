@@ -1134,11 +1134,24 @@
       "dimension": {
         "type": "类型",
         "tag": "标签",
-        "source": "来源",
+        "source": "设备",
         "time": "时间",
         "extension": "扩展名"
       },
       "noMatches": "无匹配项",
+      "header": {
+        "startingWith": "以“{{partial}}”开头的{{dimension}}",
+        "all": "{{dimension}}",
+        "dimension": {
+          "type": "类型",
+          "tag": "标签",
+          "source": "设备",
+          "time": "时间",
+          "extension": "扩展名"
+        }
+      },
+      "inContext_other": "{{context}} {{count}} 项",
+      "noneInContext": "{{context}} 无",
       "removeFilter": "移除筛选：{{filter}}",
       "keyboardHint": "↑↓ 选择 · ↵ 或 ⇥ 转为筛选条件 · 输入框为空时 ⌫ 编辑上一个条件",
       "relaxTitle": "试试去掉一个筛选条件",

@@ -8,6 +8,7 @@ import {
   applyDimensionValue,
   buildAllCandidates,
   buildCandidateCountQueries,
+  buildCandidateTotalQueries,
   buildCandidates,
   buildChips,
   buildSyntaxSuggestions,
@@ -21,6 +22,7 @@ import {
   type DimensionHandlers,
   type SourceOption,
 } from './composite-search-model'
+import { DIMENSION_CHIP_KEY } from './dimension-style'
 import type { PanelOption } from './SuggestionPanel'
 import { type FetchSearchCounts, useSearchCounts } from './useSearchCounts'
 
@@ -95,8 +97,17 @@ export function useCompositeSearchBar({
   const chips = buildChips({ t, sourceOptions, tagOptions, current })
   const parsed = parseBuffer(buffer)
   const inToken = parsed.kind === 'token'
+  const tokenDimension = parsed.kind === 'token' ? parsed.dimension : undefined
+  // The list variant's typed token suggests values *starting with* it.
+  const listToken = variant === 'list' && parsed.kind === 'token'
   const candidates: CandidateItem[] = inToken
-    ? buildCandidates(parsed.dimension, parsed.partial, { t, sourceOptions, tagOptions, current })
+    ? buildCandidates(parsed.dimension, parsed.partial, {
+        t,
+        sourceOptions,
+        tagOptions,
+        current,
+        prefixOnly: variant === 'list',
+      })
     : buildAllCandidates(buffer, { t, sourceOptions, tagOptions, current })
   const syntaxSuggestions =
     inToken || buffer.trimStart().startsWith('#') ? [] : buildSyntaxSuggestions(buffer, t)
@@ -107,6 +118,51 @@ export function useCompositeSearchBar({
     expanded && inToken ? buildCandidateCountQueries(candidates, current) : null,
     fetchCounts
   )
+  // List variant (HList.dc.html B1): the other active filters qualify the
+  // typed dimension — the header reads "Tags starting with "re" · from
+  // arch-desktop" and each value counts "12 items · 4 from arch-desktop".
+  const contextChips = listToken ? chips.filter(chip => chip.dimension !== tokenDimension) : []
+  const context = contextChips
+    .map(chip => `${DIMENSION_CHIP_KEY[chip.dimension]} ${chip.label}`)
+    .join(' · ')
+  const candidateTotals = useSearchCounts(
+    expanded && contextChips.length > 0 ? buildCandidateTotalQueries(candidates) : null,
+    fetchCounts
+  )
+  const listHeader =
+    parsed.kind === 'token'
+      ? [
+          t(
+            parsed.partial
+              ? 'history.composite.header.startingWith'
+              : 'history.composite.header.all',
+            {
+              dimension: t(`history.composite.header.dimension.${parsed.dimension}`),
+              partial: parsed.partial,
+            }
+          ),
+          context,
+        ]
+          .filter(Boolean)
+          .join(' · ')
+      : undefined
+  const listHint = (i: number): { countLabel?: string; muted?: boolean } => {
+    const inFilters = candidateCounts?.[i]
+    if (inFilters === undefined) return {}
+    if (!context) return { countLabel: t('history.subtitle', { count: inFilters }) }
+    const total = candidateTotals?.[i]
+    const qualified =
+      inFilters > 0
+        ? t('history.composite.inContext', { count: inFilters, context })
+        : t('history.composite.noneInContext', { context })
+    return {
+      countLabel:
+        total === undefined
+          ? qualified
+          : `${t('history.subtitle', { count: total })} · ${qualified}`,
+      muted: inFilters === 0,
+    }
+  }
   const options: PanelOption[] = [
     ...syntaxSuggestions.map(s => ({
       id: `seed-${s.dimension}`,
@@ -116,20 +172,27 @@ export function useCompositeSearchBar({
     })),
     ...candidates.map((c, i) => ({
       id: c.id,
+      dimension: c.dimension,
       label: c.label,
       icon: c.icon,
       isActive: c.isActive,
       // The list-column field also names the dimension being typed (HList B1).
-      header:
-        (!inToken && (i === 0 || candidates[i - 1].dimension !== c.dimension)) ||
-        (inToken && variant === 'list' && i === 0)
+      header: listToken
+        ? i === 0
+          ? listHeader
+          : undefined
+        : !inToken && (i === 0 || candidates[i - 1].dimension !== c.dimension)
           ? t(DIMENSION_LABEL_KEYS[c.dimension])
           : undefined,
       hint: candidateCounts?.[i]?.toLocaleString(),
-      countLabel:
-        candidateCounts?.[i] === undefined
-          ? undefined
-          : t('history.subtitle', { count: candidateCounts[i] }),
+      ...(variant === 'list'
+        ? listHint(i)
+        : {
+            countLabel:
+              candidateCounts?.[i] === undefined
+                ? undefined
+                : t('history.subtitle', { count: candidateCounts[i] }),
+          }),
     })),
   ]
   const clampedHighlight =
@@ -280,6 +343,7 @@ export function useCompositeSearchBar({
     panelId,
     current,
     inToken,
+    tokenDimension,
     chips,
     options,
     visibleChips: open ? chips : chips.slice(0, 2),

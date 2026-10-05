@@ -132,6 +132,34 @@ describe('CompositeSearchBar', () => {
     ])
   })
 
+  it('qualifies a typed token by the other filters in the list variant', async () => {
+    const user = userEvent.setup()
+    // In-filter counts, then the candidate's total on its own.
+    const fetchCounts = vi
+      .fn()
+      .mockImplementation(async (queries: { sourceDevices?: string }[]) =>
+        queries.map(query => (query.sourceDevices ? 0 : 2))
+      )
+    renderSearchBar({ variant: 'list', sourceFilter: 'device-1', fetchCounts })
+
+    // The chip names its dimension's syntax key; the list field has no ✕.
+    expect(screen.getByText('from')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'history.composite.clearAll' })).toBeNull()
+
+    await user.type(screen.getByRole('combobox'), '#c')
+    expect(
+      screen.getByText('history.composite.header.startingWith · from MacBook')
+    ).toBeInTheDocument()
+    expect(screen.getByText('#code')).toBeInTheDocument()
+    expect(
+      await screen.findByText(
+        'history.subtitle · history.composite.noneInContext',
+        {},
+        { timeout: 2000 }
+      )
+    ).toBeInTheDocument()
+  })
+
   it('reopens the last chip as an editable token on Backspace in an empty input', async () => {
     const user = userEvent.setup()
     const props = renderSearchBar({ contentFilter: Filter.Image, extensionFilter: 'md' })

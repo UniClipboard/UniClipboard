@@ -3,6 +3,7 @@ import { Kbd } from '@/components/ui/kbd'
 import { cn } from '@/lib/utils'
 import type { ChipData } from './composite-search-model'
 import type { Dimension } from './composite-search-model'
+import { DIMENSION_INK_CLASS } from './dimension-style'
 import FilterChip from './FilterChip'
 import SuggestionPanel, { type PanelOption } from './SuggestionPanel'
 
@@ -41,8 +42,9 @@ interface CompositeSearchInputProps {
   variant?: 'compact' | 'list'
   /** Keyboard shortcut shown at the field's end while closed, e.g. ⌘F. */
   shortcutHint?: string
-  /** The buffer is a `key:value` token; the list variant sets it in mono. */
-  typingToken?: boolean
+  /** The dimension of the `key:value` token being typed, if any; the list
+   * variant sets the token in mono, in that dimension's color. */
+  typingDimension?: Dimension
   /** Keyboard help under the list variant's suggestions. */
   suggestionsFooter?: string
   className?: string
@@ -80,7 +82,7 @@ function CompositeSearchInput({
   onHighlight,
   variant = 'compact',
   shortcutHint,
-  typingToken = false,
+  typingDimension,
   suggestionsFooter,
   className,
 }: CompositeSearchInputProps) {
@@ -111,30 +113,36 @@ function CompositeSearchInput({
           data-slot="composite-search-field"
           data-state={open ? 'open' : 'closed'}
           className={cn(
-            'flex items-center gap-1.5 border transition-colors',
-            list ? 'min-h-11 rounded-xl py-1.5 pl-3' : 'min-h-7 rounded-2xl py-1 pl-3',
-            open
+            'flex items-center transition-colors',
+            list
               ? cn(
-                  'absolute inset-x-0 top-0 z-40 flex-wrap bg-popover pr-9 shadow-md',
-                  list ? 'border-foreground' : 'border-border'
+                  // HList.dc.html query bar: a 1.5px border that darkens on
+                  // focus, ringed in the accent's soft tint.
+                  'min-h-11 gap-1.25 rounded-[11px] border-[1.5px] py-1.75 pl-3 pr-2 focus-within:ring-4 focus-within:ring-history-focus-ring',
+                  open
+                    ? 'absolute inset-x-0 top-0 z-40 flex-wrap border-foreground bg-background ring-4 ring-history-focus-ring'
+                    : 'relative flex-nowrap overflow-hidden border-input bg-muted/60 focus-within:border-foreground focus-within:bg-background'
                 )
               : cn(
-                  'relative flex-nowrap overflow-hidden pr-3',
-                  list
-                    ? 'border-input bg-muted/60 focus-within:border-foreground focus-within:bg-background'
-                    : 'border-border/60 bg-muted/70 focus-within:border-border focus-within:bg-muted'
+                  'min-h-7 gap-1.5 rounded-2xl border py-1 pl-3',
+                  open
+                    ? 'absolute inset-x-0 top-0 z-40 flex-wrap border-border bg-popover pr-9 shadow-md'
+                    : 'relative flex-nowrap overflow-hidden border-border/60 bg-muted/70 pr-3 focus-within:border-border focus-within:bg-muted'
                 )
           )}
         >
           <Search
             className={cn(
               'shrink-0',
-              list ? 'size-4 text-foreground' : 'size-3.5 text-muted-foreground/50'
+              list ? 'mr-0.75 size-3.75 text-foreground' : 'size-3.5 text-muted-foreground/50'
             )}
+            strokeWidth={list ? 2.2 : undefined}
           />
           {visibleChips.map(chip => (
             <FilterChip
               key={chip.dimension}
+              dimension={chip.dimension}
+              variant={variant}
               icon={chip.icon}
               label={chip.label}
               onActivate={() => onSeedDimension(chip.dimension)}
@@ -181,16 +189,27 @@ function CompositeSearchInput({
             placeholder={chips.length === 0 || list ? placeholder : ''}
             className={cn(
               'min-w-0 flex-1 bg-transparent text-ui-body outline-none placeholder:text-muted-foreground/50',
-              list && typingToken ? 'font-mono text-primary' : 'text-foreground'
+              list && typingDimension
+                ? cn('font-mono', DIMENSION_INK_CLASS[typingDimension])
+                : 'text-foreground'
             )}
           />
-          {shortcutHint && !open && <Kbd className="shrink-0">{shortcutHint}</Kbd>}
+          {shortcutHint &&
+            (list ? (
+              // Outlined and kept while typing (HList.dc.html).
+              <Kbd className="shrink-0 border border-input bg-transparent px-1.5 font-mono">
+                {shortcutHint}
+              </Kbd>
+            ) : (
+              !open && <Kbd className="shrink-0">{shortcutHint}</Kbd>
+            ))}
           {!list && totalCount > 0 && !open && chips.length === 0 && (
             <span className="shrink-0 text-ui-caption tabular-nums text-muted-foreground/40">
               {countLabel}
             </span>
           )}
-          {hasContent && (
+          {/* The list variant clears from the facet row's Clear instead. */}
+          {hasContent && !list && (
             <button
               type="button"
               onMouseDown={e => e.preventDefault()}

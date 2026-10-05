@@ -1137,11 +1137,26 @@
       "dimension": {
         "type": "Tipo",
         "tag": "Tag",
-        "source": "Origem",
+        "source": "Dispositivo",
         "time": "Período",
         "extension": "Extensão"
       },
       "noMatches": "Nenhum resultado",
+      "header": {
+        "startingWith": "{{dimension}} começando com “{{partial}}”",
+        "all": "{{dimension}}",
+        "dimension": {
+          "type": "Tipos",
+          "tag": "Tags",
+          "source": "Dispositivos",
+          "time": "Períodos",
+          "extension": "Extensões"
+        }
+      },
+      "inContext_one": "{{count}} {{context}}",
+      "inContext_many": "{{count}} {{context}}",
+      "inContext_other": "{{count}} {{context}}",
+      "noneInContext": "nenhum {{context}}",
       "removeFilter": "Remover filtro: {{filter}}",
       "keyboardHint": "↑↓ escolher · ↵ ou ⇥ vira filtro · ⌫ com o campo vazio edita o último filtro",
       "relaxTitle": "Tente remover um filtro",

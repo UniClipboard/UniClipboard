@@ -1135,11 +1135,25 @@
       "dimension": {
         "type": "タイプ",
         "tag": "タグ",
-        "source": "ソース",
+        "source": "デバイス",
         "time": "時間",
         "extension": "拡張子"
       },
       "noMatches": "一致しません",
+      "header": {
+        "startingWith": "「{{partial}}」で始まる{{dimension}}",
+        "all": "{{dimension}}",
+        "dimension": {
+          "type": "タイプ",
+          "tag": "タグ",
+          "source": "デバイス",
+          "time": "時間",
+          "extension": "拡張子"
+        }
+      },
+      "inContext_one": "{{context}} {{count}} 件",
+      "inContext_other": "{{context}} {{count}} 件",
+      "noneInContext": "{{context}} なし",
       "removeFilter": "フィルタを削除: {{filter}}",
       "keyboardHint": "↑↓ 選択 · ↵ または ⇥ で条件に変換 · 空欄で ⌫ を押すと直前の条件を編集",
       "relaxTitle": "フィルタを 1 つ外してみてください",

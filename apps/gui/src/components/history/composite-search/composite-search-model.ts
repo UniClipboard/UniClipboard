@@ -256,6 +256,21 @@ export function buildCandidateCountQueries(
     .map(c => snapshotToSearchParams(withDimension(current, c.dimension, c.value), ''))
 }
 
+/** One count query per candidate on its own, ignoring the other filters: the
+ * "12 items" before "· 4 from arch-desktop" in the list variant's hint. */
+export function buildCandidateTotalQueries(candidates: CandidateItem[]): SearchParams[] {
+  const none: FilterSnapshot = {
+    type: DIMENSION_DEFAULTS.type,
+    tag: DIMENSION_DEFAULTS.tag,
+    source: DIMENSION_DEFAULTS.source,
+    time: DIMENSION_DEFAULTS.time,
+    extension: DIMENSION_DEFAULTS.extension,
+  }
+  return candidates
+    .slice(0, MAX_SEARCH_COUNT_BATCH)
+    .map(c => snapshotToSearchParams(withDimension(none, c.dimension, c.value), ''))
+}
+
 /** One count query per chip: the current search with only that chip removed. */
 export function buildRelaxationQueries(
   chips: ChipData[],
@@ -325,9 +340,8 @@ function matchRank(partial: string, ...haystacks: string[]): number | null {
   return null
 }
 
-function matches(partial: string, ...haystacks: string[]): boolean {
-  return matchRank(partial, ...haystacks) !== null
-}
+/** Rank 2 is a substring match; prefix-only matching drops it. */
+const SUBSTRING_RANK = 2
 
 /** Candidate values for one dimension, narrowed by the typed `partial`. */
 export function buildCandidates(
@@ -338,14 +352,22 @@ export function buildCandidates(
     sourceOptions: SourceOption[]
     current: FilterSnapshot
     tagOptions: SearchTagOption[]
+    /** Only values starting with `partial` (the list variant's "starting
+     * with" suggestions); otherwise substrings match too, ranked last. */
+    prefixOnly?: boolean
   }
 ): CandidateItem[] {
+  const rankOf = (...haystacks: string[]) => {
+    const rank = matchRank(partial, ...haystacks)
+    return rank === null || (ctx.prefixOnly && rank >= SUBSTRING_RANK) ? null : rank
+  }
+  const matches = (...haystacks: string[]) => rankOf(...haystacks) !== null
   const selectedTags = new Set(ctx.current.tag?.split(',') ?? [])
   switch (dimension) {
     case 'type':
       return TYPE_FILTERS.flatMap(filter => {
         const label = ctx.t(`history.type.${filter}`)
-        return matches(partial, filter, label)
+        return matches(filter, label)
           ? [
               {
                 id: `cand-type-${filter}`,
@@ -362,7 +384,7 @@ export function buildCandidates(
       return ctx.tagOptions
         .flatMap((tag, index) => {
           const label = ctx.t(`history.type.${tag.id}`, { defaultValue: tag.id })
-          const rank = matchRank(partial, tag.id, label)
+          const rank = rankOf(tag.id, label)
           return rank === null ? [] : [{ tag, label, rank, index }]
         })
         .sort((a, b) => a.rank - b.rank || b.tag.count - a.tag.count || a.index - b.index)
@@ -376,7 +398,7 @@ export function buildCandidates(
         }))
     case 'source':
       return ctx.sourceOptions.flatMap(opt =>
-        matches(partial, opt.name, opt.id)
+        matches(opt.name, opt.id)
           ? [
               {
                 id: `cand-source-${opt.id}`,
@@ -392,7 +414,7 @@ export function buildCandidates(
     case 'time':
       return TIME_PRESETS.flatMap(preset => {
         const label = ctx.t(`history.timeRange.${preset}`)
-        return matches(partial, preset, label)
+        return matches(preset, label)
           ? [
               {
                 id: `cand-time-${preset}`,
@@ -408,7 +430,7 @@ export function buildCandidates(
     case 'extension':
       return EXTENSION_FILTERS.flatMap(ext => {
         const label = `.${ext}`
-        return matches(partial, ext, label)
+        return matches(ext, label)
           ? [
               {
                 id: `cand-extension-${ext}`,

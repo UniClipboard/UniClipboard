@@ -1,6 +1,8 @@
 import { Check, type LucideIcon } from 'lucide-react'
 import { Fragment, useEffect, useRef } from 'react'
 import { cn } from '@/lib/utils'
+import type { Dimension } from './composite-search-model'
+import { DIMENSION_CHIP_CLASS } from './dimension-style'
 
 export interface PanelOption {
   /** Stable id, also used as the React key. */
@@ -15,6 +17,11 @@ export interface PanelOption {
   hint?: string
   /** Hit count as words ("3 items"), shown by the list variant. */
   countLabel?: string
+  /** The value's dimension; the list variant tints its chip by it. Absent on
+   * syntax seeds (`type:`). */
+  dimension?: Dimension
+  /** Nothing matches under the other active filters: the chip dims. */
+  muted?: boolean
 }
 
 interface SuggestionPanelProps {
@@ -56,7 +63,7 @@ function SuggestionPanel({
 
   if (variant === 'list') {
     return (
-      <div className="absolute inset-x-0 top-full z-50 mt-1.5 overflow-hidden rounded-xl border border-border bg-popover text-popover-foreground shadow-lg">
+      <div className="absolute inset-x-0 top-full z-50 mt-1.5 overflow-hidden rounded-xl border border-border bg-popover text-popover-foreground shadow-[0_20px_48px_rgb(14_15_18/0.2)]">
         <div
           id={panelId}
           role="listbox"
@@ -69,7 +76,7 @@ function SuggestionPanel({
             return (
               <Fragment key={opt.id}>
                 {opt.header && (
-                  <div className="px-2.5 pb-1.5 pt-2 text-ui-caption font-semibold text-muted-foreground">
+                  <div className="px-2.5 pb-1.5 pt-2 text-ui-caption font-semibold uppercase text-muted-foreground">
                     {opt.header}
                   </div>
                 )}
@@ -85,13 +92,27 @@ function SuggestionPanel({
                   onMouseEnter={() => onHighlight(i)}
                   className={cn(
                     'flex h-9 w-full items-center gap-3 rounded-lg px-2.5 text-left',
-                    active && 'bg-primary/5'
+                    active && 'bg-history-accent-soft'
                   )}
                 >
-                  <span className="inline-flex h-5.5 shrink-0 items-center gap-1.5 rounded-full bg-foreground/8 px-2 text-ui-caption font-semibold text-foreground">
-                    <Icon className="size-3 opacity-70" aria-hidden="true" />
-                    {opt.label}
-                  </span>
+                  {opt.dimension ? (
+                    // A value: the chip it turns into, in its dimension's tint.
+                    <span
+                      className={cn(
+                        'inline-flex h-5.5 shrink-0 items-center rounded-full px-2 text-ui-caption font-semibold',
+                        opt.muted
+                          ? 'bg-muted text-muted-foreground'
+                          : DIMENSION_CHIP_CLASS[opt.dimension]
+                      )}
+                    >
+                      {opt.dimension === 'tag' ? `#${opt.label}` : opt.label}
+                    </span>
+                  ) : (
+                    <span className="inline-flex h-5.5 shrink-0 items-center gap-1.5 rounded-full bg-foreground/8 px-2 text-ui-caption font-semibold text-foreground">
+                      <Icon className="size-3 opacity-70" aria-hidden="true" />
+                      {opt.label}
+                    </span>
+                  )}
                   <span className="min-w-0 flex-1 truncate text-ui-caption text-muted-foreground">
                     {opt.countLabel ?? opt.hint}
                   </span>

@@ -86,6 +86,8 @@ pub fn build() -> Builder<tauri::Wry> {
         crate::commands::storage::open_logs_directory,
         crate::commands::diagnostics::export_startup_logs,
         crate::commands::storage::reveal_path,
+        crate::commands::storage::save_image_as,
+        crate::commands::storage::open_image_externally,
         // ── quick panel ─────────────────────────────────────────────────────
         crate::commands::quick_panel::paste_to_previous_app,
         crate::commands::quick_panel::type_file_paths_to_previous_app,

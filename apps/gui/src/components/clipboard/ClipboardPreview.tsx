@@ -35,6 +35,10 @@ interface PreviewContentProps {
   transfer: ReturnType<typeof useClipboardPreviewState>['transfer']
   setImageDimensions: ReturnType<typeof useClipboardPreviewState>['setImageDimensions']
   codeVariant?: CodePreviewVariant
+  /** Fit images into the parent's box instead of letting them scroll. */
+  imageFit?: boolean
+  imageActualSize?: boolean
+  onImageType?: (mime: string) => void
 }
 
 export const PreviewContent: React.FC<PreviewContentProps> = ({
@@ -46,6 +50,9 @@ export const PreviewContent: React.FC<PreviewContentProps> = ({
   transfer,
   setImageDimensions,
   codeVariant,
+  imageFit,
+  imageActualSize,
+  onImageType,
 }) => {
   const { t } = useTranslation()
   const textItem = item.content as ClipboardTextItem | null
@@ -91,6 +98,9 @@ export const PreviewContent: React.FC<PreviewContentProps> = ({
           loading={loading}
           preview={preview}
           setImageDimensions={setImageDimensions}
+          fit={imageFit}
+          actualSize={imageActualSize}
+          onImageType={onImageType}
         />
       )
     }

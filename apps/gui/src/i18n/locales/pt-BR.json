@@ -1130,8 +1130,15 @@
       "pin": "Fixar",
       "unpin": "Desafixar",
       "sendToDevice": "Enviar para dispositivo…",
-      "stored": "Armazenamento",
-      "encrypted": "Criptografado em repouso",
+      "imageFit": "Ajustar",
+      "imageActual": "100%",
+      "imageZoom": "Zoom da imagem",
+      "quickLook": "Visualização rápida",
+      "quickLookClose": "Fechar visualização",
+      "saveAs": "Salvar como…",
+      "openInPreview": "Abrir na Pré-visualização",
+      "imageFileName": "Imagem da área de transferência",
+      "imageActionFailed": "Não foi possível exportar a imagem.",
       "shortcutHint": "C copiar · T etiquetar · F fixar · D excluir"
     },
     "composite": {

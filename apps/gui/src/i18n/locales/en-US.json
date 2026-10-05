@@ -1128,8 +1128,15 @@
       "pin": "Pin",
       "unpin": "Unpin",
       "sendToDevice": "Send to device…",
-      "stored": "Stored",
-      "encrypted": "Encrypted at rest",
+      "imageFit": "Fit",
+      "imageActual": "100%",
+      "imageZoom": "Image zoom",
+      "quickLook": "Quick Look",
+      "quickLookClose": "Close preview",
+      "saveAs": "Save as…",
+      "openInPreview": "Open in Preview",
+      "imageFileName": "Clipboard image",
+      "imageActionFailed": "Couldn’t export the image.",
       "shortcutHint": "C copy · T tag · F pin · D delete"
     },
     "composite": {

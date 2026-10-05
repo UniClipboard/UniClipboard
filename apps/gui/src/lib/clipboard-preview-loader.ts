@@ -19,6 +19,7 @@ export async function loadClipboardPreview(entryId: string): Promise<ClipboardPr
       entryId,
       contentType: 'image',
       sizeBytes: resource.sizeBytes,
+      mimeType: resource.mimeType,
       imageBlobPath: getResourceImageUrl(resource) ?? undefined,
       requiresExplicitLoad: resource.sizeBytes > INLINE_PREVIEW_MAX_BYTES,
     }

@@ -12,6 +12,8 @@ export interface ClipboardPreviewData {
    * keeps this cacheable without the 300s-token 401 churn.
    */
   imageBlobPath?: string
+  /** Image MIME type from the entry's resource (e.g. `image/png`). */
+  mimeType?: string
   fileNames?: string[]
   /**
    * Image preview exceeds the auto-inline threshold (D6 / ADR-008 P3-d): the

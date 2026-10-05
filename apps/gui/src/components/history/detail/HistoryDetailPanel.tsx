@@ -1,18 +1,8 @@
-import { Check, Pin, Send, Trash2 } from 'lucide-react'
+import { Check, Download, ExternalLink, Pin, Send, Trash2 } from 'lucide-react'
 import React from 'react'
 import { Trans, useTranslation } from 'react-i18next'
-import type {
-  EntryDeliveryStatusView,
-  EntryDeliveryView,
-} from '@/api/tauri-command/clipboard_delivery'
 import { PreviewContent } from '@/components/clipboard/ClipboardPreview'
 import ClipboardSendMenu from '@/components/clipboard/ClipboardSendMenu'
-import {
-  deviceLabel,
-  getStatusLabel,
-  renderStatusTone,
-} from '@/components/clipboard/entry-delivery-labels'
-import EntryDeliveryBadge from '@/components/clipboard/EntryDeliveryBadge'
 import { isLargeTextPreview } from '@/components/clipboard/preview-renderers/textPreviewUtils'
 import TransferProgressBar from '@/components/clipboard/TransferProgressBar'
 import {
@@ -22,6 +12,7 @@ import {
 import { formatCopiedAt } from '@/components/history/list/history-list-format'
 import { historyKind, KIND_TINT } from '@/components/history/list/history-list-kind'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { useBlobImageObjectUrl } from '@/hooks/useBlobImageObjectUrl'
 import { useCancelEntryTransfer } from '@/hooks/useCancelEntryTransfer'
 import { useClipboardPreviewState } from '@/hooks/useClipboardPreviewState'
 import { useEntryDelivery } from '@/hooks/useEntryDelivery'
@@ -31,10 +22,14 @@ import type {
   ClipboardTextItem,
   DisplayClipboardItem,
 } from '@/lib/clipboard-entry'
+import { imageFormatLabel } from '@/lib/image-handoff'
 import { cn } from '@/lib/utils'
 import { formatFileSize } from '@/utils'
 import { DETAIL_SECTION_LABEL } from './detail-styles'
+import HistoryDetailDelivery from './HistoryDetailDelivery'
 import HistoryDetailTags, { type DetailTagsProps } from './HistoryDetailTags'
+import ImageQuickLook from './ImageQuickLook'
+import { useHistoryImageActions } from './useHistoryImageActions'
 
 interface HistoryDetailPanelProps {
   item: DisplayClipboardItem | null
@@ -53,7 +48,11 @@ const pillButton =
   'inline-flex h-10.5 items-center gap-2 rounded-full px-5 text-ui-body font-medium transition-colors disabled:opacity-50'
 
 // At most three cards: Copied, Size, and one of Dimensions, Files or Stored.
-const GRID_COLS: Record<number, string> = { 1: 'grid-cols-1', 2: 'grid-cols-2', 3: 'grid-cols-3' }
+const GRID_COLS: Record<number, string> = {
+  1: 'grid-cols-1',
+  2: 'grid-cols-2',
+  3: 'grid-cols-3',
+}
 
 interface MetaCardProps {
   id: string
@@ -70,52 +69,6 @@ function MetaCard({ label, value, mono }: Omit<MetaCardProps, 'id'>) {
         {value}
       </span>
     </div>
-  )
-}
-
-function deliveryDot(status: EntryDeliveryStatusView): string {
-  switch (status.tag) {
-    case 'delivered':
-    case 'duplicate':
-      return 'bg-emerald-500'
-    case 'failed':
-      return 'bg-destructive'
-    default:
-      return 'bg-muted-foreground/40'
-  }
-}
-
-function DeliverySection({ delivery }: { delivery: EntryDeliveryView }) {
-  const { t } = useTranslation()
-  const note =
-    delivery.source.tag === 'historical'
-      ? t('delivery.list.historical')
-      : delivery.deliveries.length === 0
-        ? t('delivery.list.noPeers')
-        : null
-  return (
-    <section className="flex shrink-0 flex-col" aria-label={t('delivery.section.aria')}>
-      <div className="flex items-center justify-between gap-3 pb-1">
-        <h3 className={DETAIL_SECTION_LABEL}>{t('delivery.list.title')}</h3>
-        {/* Summary, per-device popover and resend, shared with the quick panel. */}
-        <EntryDeliveryBadge delivery={delivery} />
-      </div>
-      {note ? (
-        <p className="py-1.5 text-ui-caption text-muted-foreground">{note}</p>
-      ) : (
-        delivery.deliveries.map(target => (
-          <div key={target.targetDeviceId} className="flex h-7.5 items-center gap-2.5 text-ui-body">
-            <span className={cn('size-2 shrink-0 rounded-full', deliveryDot(target.status))} />
-            <span className="min-w-0 flex-1 truncate">
-              {deviceLabel(target.targetDeviceName, target.targetDeviceId)}
-            </span>
-            <span className={cn('shrink-0 text-ui-caption', renderStatusTone(target.status).label)}>
-              {getStatusLabel(target.status, t)}
-            </span>
-          </div>
-        ))
-      )}
-    </section>
   )
 }
 
@@ -136,6 +89,15 @@ const HistoryDetailPanel: React.FC<HistoryDetailPanelProps> = ({
   const state = useClipboardPreviewState(item)
   const { delivery } = useEntryDelivery(item?.id ?? null)
   const { cancelling, cancel } = useCancelEntryTransfer(item?.id, state.transfer)
+  const imageDescriptor =
+    state.preview?.contentType === 'image' ? (state.preview.imageBlobPath ?? null) : null
+  const imageActions = useHistoryImageActions(
+    item?.id,
+    imageDescriptor,
+    item?.type === 'image' && !item.isUnavailable
+  )
+  // Cached by path, so this is the object URL the stage already shows.
+  const quickLookSrc = useBlobImageObjectUrl(imageDescriptor, imageActions.quickLook)
 
   if (!item) {
     return (
@@ -159,10 +121,11 @@ const HistoryDetailPanel: React.FC<HistoryDetailPanelProps> = ({
     item.content !== null &&
     isLargeTextPreview(item.content as ClipboardTextItem, state.preview, state.loading)
   // Code and large text own their scrolling; everything else scrolls in the box.
-  const fillsBox = isLargeText || kind === 'code'
-  // Text, code and links get the design's fixed 170px box with the facts below
-  // it; images and files keep filling the column until their own stage exists.
-  const fixedBox = kind === 'text' || kind === 'code' || kind === 'link'
+  const isImage = item.type === 'image'
+  const fillsBox = isLargeText || kind === 'code' || isImage
+  // Text, code and links start at the design's 170px box; the box grows with
+  // the window height, and the facts below keep their natural size.
+  const compactBox = kind === 'text' || kind === 'code' || kind === 'link'
   const content = (
     <PreviewContent
       item={item}
@@ -173,6 +136,9 @@ const HistoryDetailPanel: React.FC<HistoryDetailPanelProps> = ({
       transfer={state.transfer}
       setImageDimensions={state.setImageDimensions}
       codeVariant="block"
+      imageFit
+      imageActualSize={imageActions.mode === 'actual'}
+      onImageType={imageActions.onImageType}
     />
   )
 
@@ -184,31 +150,35 @@ const HistoryDetailPanel: React.FC<HistoryDetailPanelProps> = ({
   }
   const image = item.type === 'image' ? (item.content as ClipboardImageItem | null) : null
   const sizeLabel =
-    image && image.size > 0 ? formatFileSize(image.size) : getContentSizeLabel(item, t)
+    image && image.size > 0
+      ? formatFileSize(image.size)
+      : isImage && state.preview && state.preview.sizeBytes > 0
+        ? formatFileSize(state.preview.sizeBytes)
+        : getContentSizeLabel(item, t)
+  const imageFormat = imageActions.formatLabel ?? imageFormatLabel(state.preview?.mimeType)
   const size: MetaCardProps | null = sizeLabel
-    ? { id: 'size', label: t('history.detail.size'), value: sizeLabel }
+    ? {
+        id: 'size',
+        label: t('history.detail.size'),
+        value: isImage && imageFormat ? `${imageFormat} · ${sizeLabel}` : sizeLabel,
+      }
     : null
   const dims =
     state.imageDimensions ??
     (image && image.width > 0 ? { width: image.width, height: image.height } : null)
   const files = item.type === 'file' ? (item.content as ClipboardFileItem | null) : null
-  // Only inline text is AEAD-encrypted in the database; file bodies in the
-  // managed cache are exempt (AGENTS.md), so files never claim it, and neither
-  // does an entry whose payload is gone.
-  const third: MetaCardProps | null = item.isUnavailable
-    ? null
-    : files
-      ? files.file_names.length > 1
-        ? {
-            id: 'files',
-            label: t('history.detail.fileCount'),
-            value: String(files.file_names.length),
-          }
-        : null
-      : { id: 'stored', label: t('history.detail.stored'), value: t('history.detail.encrypted') }
+  // A third card only appears for multi-file entries (the file count).
+  const third: MetaCardProps | null =
+    !item.isUnavailable && files && files.file_names.length > 1
+      ? {
+          id: 'files',
+          label: t('history.detail.fileCount'),
+          value: String(files.file_names.length),
+        }
+      : null
   // Design order: images lead with Dimensions and end with Copied; everything
-  // else reads Copied, Size, then Files (multi-file) or how text is stored.
-  const cards: MetaCardProps[] = image
+  // else reads Copied, Size, then Files (multi-file).
+  const cards: MetaCardProps[] = isImage
     ? [
         ...(dims
           ? [
@@ -230,7 +200,10 @@ const HistoryDetailPanel: React.FC<HistoryDetailPanelProps> = ({
       className="@container flex h-full min-w-0 flex-col bg-muted/20"
       data-testid="clipboard-detail"
     >
-      <header className="flex h-15 shrink-0 items-center gap-2.5 pl-6 pr-5">
+      <header
+        data-tauri-drag-region="deep"
+        className="flex h-15 shrink-0 items-center gap-2.5 pl-6 pr-5"
+      >
         <span
           className={cn(
             'inline-flex h-6 shrink-0 items-center rounded-full px-2.25 text-ui-caption font-semibold',
@@ -244,7 +217,9 @@ const HistoryDetailPanel: React.FC<HistoryDetailPanelProps> = ({
             <Trans
               i18nKey="history.detail.from"
               values={{ device: source.label }}
-              components={{ strong: <strong className="font-semibold text-foreground" /> }}
+              components={{
+                strong: <strong className="font-semibold text-foreground" />,
+              }}
             />
           )}
         </span>
@@ -253,6 +228,7 @@ const HistoryDetailPanel: React.FC<HistoryDetailPanelProps> = ({
           aria-pressed={isFavorited}
           aria-label={t(isFavorited ? 'history.detail.unpin' : 'history.detail.pin')}
           title={t(isFavorited ? 'history.detail.unpin' : 'history.detail.pin')}
+          data-tauri-drag-region="false"
           onClick={onToggleFavorite}
           className={cn(
             iconButton,
@@ -267,6 +243,7 @@ const HistoryDetailPanel: React.FC<HistoryDetailPanelProps> = ({
           type="button"
           aria-label={t('clipboard.actionBar.delete')}
           title={t('clipboard.actionBar.delete')}
+          data-tauri-drag-region="false"
           onClick={onDelete}
           className={cn(
             iconButton,
@@ -277,46 +254,83 @@ const HistoryDetailPanel: React.FC<HistoryDetailPanelProps> = ({
         </button>
       </header>
 
-      {/* Past 760px the content stops stretching and stays left-aligned. */}
-      <div className="flex min-h-0 w-full max-w-190 flex-1 flex-col gap-4.5 px-6 py-5">
-        {state.effectiveStatus === 'transferring' && state.transfer?.status === 'active' && (
-          <TransferProgressBar
-            progress={state.transfer}
-            variant="compact"
-            onCancel={cancel}
-            cancelling={cancelling}
-          />
-        )}
-        <div
-          className={cn(
-            'relative overflow-hidden rounded-[0.875rem] bg-card',
-            // The dark code block carries its own edge, as in the design.
-            kind !== 'code' && 'border border-border/60',
-            fixedBox ? 'h-42.5 shrink-0' : 'min-h-40 flex-1'
+      {/* The body scrolls on its own so the header and footer stay pinned. */}
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="flex min-h-full w-full flex-col gap-4.5 px-6 py-5">
+          {state.effectiveStatus === 'transferring' && state.transfer?.status === 'active' && (
+            <TransferProgressBar
+              progress={state.transfer}
+              variant="compact"
+              onCancel={cancel}
+              cancelling={cancelling}
+            />
           )}
-        >
-          {fillsBox ? (
-            <div className="absolute inset-0">{content}</div>
-          ) : (
-            <ScrollArea className="h-full [&_[data-slot=scroll-area-viewport]>div]:!block">
-              <div className="min-h-full">{content}</div>
-            </ScrollArea>
+          <div
+            className={cn(
+              'relative overflow-hidden rounded-[0.875rem] bg-card',
+              // The dark code block carries its own edge, as in the design.
+              kind !== 'code' && 'border border-border/60',
+              isImage && 'bg-muted',
+              compactBox ? 'min-h-42.5 flex-1' : 'min-h-40 flex-1'
+            )}
+          >
+            {fillsBox ? (
+              <div className="absolute inset-0">{content}</div>
+            ) : (
+              <div className="absolute inset-0">
+                <ScrollArea className="h-full [&_[data-slot=scroll-area-viewport]>div]:!block">
+                  <div className="min-h-full">{content}</div>
+                </ScrollArea>
+              </div>
+            )}
+            {isImage && imageDescriptor && (
+              <div className="absolute bottom-2.5 right-2.5 flex gap-1">
+                <div role="group" aria-label={t('history.detail.imageZoom')} className="flex gap-1">
+                  {(['fit', 'actual'] as const).map(mode => (
+                    <button
+                      key={mode}
+                      type="button"
+                      aria-pressed={imageActions.mode === mode}
+                      onClick={() => imageActions.setMode(mode)}
+                      className={cn(
+                        'h-6.5 rounded-[0.4375rem] px-2.25 text-ui-caption text-white transition-colors',
+                        imageActions.mode === mode ? 'bg-black/85' : 'bg-black/60 hover:bg-black/75'
+                      )}
+                    >
+                      {t(mode === 'fit' ? 'history.detail.imageFit' : 'history.detail.imageActual')}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => imageActions.setQuickLook(true)}
+                  className="inline-flex h-6.5 items-center gap-1.25 rounded-[0.4375rem] bg-black/60 px-2.25 text-ui-caption text-white transition-colors hover:bg-black/75"
+                >
+                  {t('history.detail.quickLook')}
+                  <kbd aria-hidden="true" className="font-mono">
+                    ␣
+                  </kbd>
+                </button>
+              </div>
+            )}
+          </div>
+          {tagging && item.userTagIds && (
+            <HistoryDetailTags tagIds={item.userTagIds} {...tagging} />
           )}
+          <div
+            className={cn(
+              'grid shrink-0 gap-2.5',
+              GRID_COLS[cards.length],
+              // Under 480px three cards are too narrow for their values; wrap to two.
+              cards.length > 2 && '@max-[30rem]:grid-cols-2'
+            )}
+          >
+            {cards.map(card => (
+              <MetaCard key={card.id} label={card.label} value={card.value} mono={card.mono} />
+            ))}
+          </div>
+          {delivery && <HistoryDetailDelivery delivery={delivery} />}
         </div>
-        {tagging && item.userTagIds && <HistoryDetailTags tagIds={item.userTagIds} {...tagging} />}
-        <div
-          className={cn(
-            'grid shrink-0 gap-2.5',
-            GRID_COLS[cards.length],
-            // Under 480px three cards are too narrow for their values; wrap to two.
-            cards.length > 2 && '@max-[30rem]:grid-cols-2'
-          )}
-        >
-          {cards.map(card => (
-            <MetaCard key={card.id} label={card.label} value={card.value} mono={card.mono} />
-          ))}
-        </div>
-        {delivery && <DeliverySection delivery={delivery} />}
       </div>
 
       <footer className="flex h-17 shrink-0 items-center gap-2 border-t border-border/60 bg-background pl-6 pr-5">
@@ -355,11 +369,42 @@ const HistoryDetailPanel: React.FC<HistoryDetailPanelProps> = ({
             </button>
           )}
         />
+        {isImage && (
+          <>
+            <button
+              type="button"
+              disabled={item.isUnavailable || !imageActions.canAct || imageActions.busy}
+              onClick={() => void imageActions.saveAs()}
+              className={cn(
+                pillButton,
+                'border border-border bg-background px-4 text-foreground hover:bg-muted/60 @max-[30rem]:px-3.5'
+              )}
+            >
+              <Download className="hidden size-3.5 @max-[30rem]:block" aria-hidden="true" />
+              <span className="@max-[30rem]:sr-only">{t('history.detail.saveAs')}</span>
+            </button>
+            <button
+              type="button"
+              disabled={item.isUnavailable || !imageActions.canAct || imageActions.busy}
+              onClick={() => void imageActions.openExternally()}
+              className={cn(
+                pillButton,
+                'border border-border bg-background px-4 text-foreground hover:bg-muted/60 @max-[48rem]:px-3.5'
+              )}
+            >
+              <ExternalLink className="hidden size-3.5 @max-[48rem]:block" aria-hidden="true" />
+              <span className="@max-[48rem]:sr-only">{t('history.detail.openInPreview')}</span>
+            </button>
+          </>
+        )}
         <span className="flex-1" />
         <span className="truncate text-ui-caption text-muted-foreground @max-[30rem]:hidden">
           {t('history.detail.shortcutHint')}
         </span>
       </footer>
+      {imageActions.quickLook && (
+        <ImageQuickLook src={quickLookSrc} onClose={() => imageActions.setQuickLook(false)} />
+      )}
     </section>
   )
 }

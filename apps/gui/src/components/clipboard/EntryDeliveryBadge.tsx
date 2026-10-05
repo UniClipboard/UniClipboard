@@ -25,6 +25,7 @@ import {
   LoaderCircle,
   RefreshCw,
   X,
+  type LucideIcon,
 } from 'lucide-react'
 import React, { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -44,7 +45,7 @@ interface EntryDeliveryBadgeProps {
   delivery: EntryDeliveryView | null
 }
 
-type SyncSummary =
+export type SyncSummary =
   | 'synced'
   | 'syncing'
   | 'partial'
@@ -53,7 +54,7 @@ type SyncSummary =
   | 'superseded'
   | 'pending'
 
-function summarize(targets: readonly EntryDeliveryTargetView[]): SyncSummary | null {
+export function summarize(targets: readonly EntryDeliveryTargetView[]): SyncSummary | null {
   if (targets.length === 0) return null
   let delivered = 0
   let failed = 0
@@ -179,6 +180,64 @@ const SourceBadge: React.FC<SourceBadgeProps> = ({ source }) => {
   )
 }
 
+/** Icon, label and tone for a summary; shared by the badge and the detail column. */
+export function syncSummaryView(
+  summary: SyncSummary,
+  t: (key: string, opts?: Record<string, unknown>) => string
+): { Icon: LucideIcon; label: string; tone: string; spin: boolean } {
+  switch (summary) {
+    case 'synced':
+      return {
+        Icon: CheckCircle2,
+        label: t('delivery.summary.synced'),
+        tone: 'text-emerald-500',
+        spin: false,
+      }
+    case 'syncing':
+      return {
+        Icon: LoaderCircle,
+        label: t('delivery.summary.syncing'),
+        tone: 'text-sky-500',
+        spin: true,
+      }
+    case 'partial':
+      return {
+        Icon: AlertCircle,
+        label: t('delivery.summary.partial'),
+        tone: 'text-amber-500',
+        spin: false,
+      }
+    case 'failed':
+      return {
+        Icon: AlertCircle,
+        label: t('delivery.summary.failed'),
+        tone: 'text-destructive',
+        spin: false,
+      }
+    case 'waiting':
+      return {
+        Icon: CircleDashed,
+        label: t('delivery.summary.waiting'),
+        tone: 'text-muted-foreground/70',
+        spin: false,
+      }
+    case 'superseded':
+      return {
+        Icon: History,
+        label: t('delivery.summary.superseded'),
+        tone: 'text-muted-foreground/70',
+        spin: false,
+      }
+    case 'pending':
+      return {
+        Icon: CircleDashed,
+        label: t('delivery.summary.pending'),
+        tone: 'text-muted-foreground/70',
+        spin: false,
+      }
+  }
+}
+
 interface SyncBadgeProps {
   summary: SyncSummary
   deliveries: readonly EntryDeliveryTargetView[]
@@ -200,59 +259,7 @@ const SyncBadge: React.FC<SyncBadgeProps> = ({
   resendable,
   resendAction,
 }) => {
-  const { Icon, label, tone, spin } = useMemo(() => {
-    switch (summary) {
-      case 'synced':
-        return {
-          Icon: CheckCircle2,
-          label: t('delivery.summary.synced'),
-          tone: 'text-emerald-500',
-          spin: false,
-        }
-      case 'syncing':
-        return {
-          Icon: LoaderCircle,
-          label: t('delivery.summary.syncing'),
-          tone: 'text-sky-500',
-          spin: true,
-        }
-      case 'partial':
-        return {
-          Icon: AlertCircle,
-          label: t('delivery.summary.partial'),
-          tone: 'text-amber-500',
-          spin: false,
-        }
-      case 'failed':
-        return {
-          Icon: AlertCircle,
-          label: t('delivery.summary.failed'),
-          tone: 'text-destructive',
-          spin: false,
-        }
-      case 'waiting':
-        return {
-          Icon: CircleDashed,
-          label: t('delivery.summary.waiting'),
-          tone: 'text-muted-foreground/70',
-          spin: false,
-        }
-      case 'superseded':
-        return {
-          Icon: History,
-          label: t('delivery.summary.superseded'),
-          tone: 'text-muted-foreground/70',
-          spin: false,
-        }
-      case 'pending':
-        return {
-          Icon: CircleDashed,
-          label: t('delivery.summary.pending'),
-          tone: 'text-muted-foreground/70',
-          spin: false,
-        }
-    }
-  }, [summary, t])
+  const { Icon, label, tone, spin } = useMemo(() => syncSummaryView(summary, t), [summary, t])
 
   // HoverCard 原生处理 hover 行为:trigger ↔ content 互相 hover 时不会进入
   // 关闭流程,跨越间隙也不会触发 close → open 的闪烁。

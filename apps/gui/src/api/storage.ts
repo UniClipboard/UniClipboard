@@ -61,6 +61,21 @@ export async function revealPath(path: string): Promise<void> {
   await commands.revealPath(path)
 }
 
+/**
+ * Ask where to save an image and write its bytes there. Resolves to the chosen
+ * path, or `null` when the user cancels the dialog.
+ */
+export async function saveImageAs(fileName: string, bytes: Uint8Array): Promise<string | null> {
+  const { commands } = await import('@/lib/ipc')
+  return commands.saveImageAs(fileName, Array.from(bytes))
+}
+
+/** Open an image in the system's default image viewer (Preview on macOS). */
+export async function openImageExternally(fileName: string, bytes: Uint8Array): Promise<void> {
+  const { commands } = await import('@/lib/ipc')
+  await commands.openImageExternally(fileName, Array.from(bytes))
+}
+
 // Re-export clipboard history clearance from daemon clipboard API.
 // This is used by StorageSection for the "clear all history" action.
 export { clearClipboardHistory as clearAllClipboardHistory } from './daemon/clipboard'

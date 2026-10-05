@@ -1128,8 +1128,15 @@
       "pin": "ピン留め",
       "unpin": "ピン留めを解除",
       "sendToDevice": "デバイスに送信…",
-      "stored": "保存",
-      "encrypted": "暗号化して保存",
+      "imageFit": "フィット",
+      "imageActual": "100%",
+      "imageZoom": "画像の拡大率",
+      "quickLook": "クイックルック",
+      "quickLookClose": "プレビューを閉じる",
+      "saveAs": "別名で保存…",
+      "openInPreview": "プレビューで開く",
+      "imageFileName": "クリップボード画像",
+      "imageActionFailed": "画像を書き出せませんでした。",
       "shortcutHint": "C コピー · T タグ · F ピン留め · D 削除"
     },
     "composite": {

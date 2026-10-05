@@ -381,6 +381,24 @@ export const commands = {
 	timestamp: number,
 } | null) => typedError<null, CommandError>(__TAURI_INVOKE("reveal_path", { path, trace })),
 	/**
+	 *  Ask where to save a decoded clipboard image and write it there. Returns the
+	 *  chosen path, or `None` when the user cancels the dialog.
+	 *  弹出保存对话框并写入图片；用户取消时返回 `None`。
+	 */
+	saveImageAs: (fileName: string, data: number[], trace: {
+	trace_id: string,
+	timestamp: number,
+} | null) => typedError<string | null, CommandError>(__TAURI_INVOKE("save_image_as", { fileName, data, trace })),
+	/**
+	 *  Write a decoded clipboard image to a temporary file and open it in the
+	 *  system's default image viewer (Preview on macOS).
+	 *  将图片写入临时文件，并用系统默认图片查看器打开。
+	 */
+	openImageExternally: (fileName: string, data: number[], trace: {
+	trace_id: string,
+	timestamp: number,
+} | null) => typedError<null, CommandError>(__TAURI_INVOKE("open_image_externally", { fileName, data, trace })),
+	/**
 	 *  Hide the quick panel, re-activate the previous app, and paste.
 	 * 
 	 *  隐藏快捷面板，重新激活之前的应用，并粘贴。

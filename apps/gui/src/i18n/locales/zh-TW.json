@@ -1127,8 +1127,15 @@
       "pin": "置頂",
       "unpin": "取消置頂",
       "sendToDevice": "傳送到裝置…",
-      "stored": "儲存",
-      "encrypted": "加密儲存",
+      "imageFit": "符合",
+      "imageActual": "100%",
+      "imageZoom": "圖片縮放",
+      "quickLook": "快速檢視",
+      "quickLookClose": "關閉預覽",
+      "saveAs": "另存為…",
+      "openInPreview": "在預覽程式中開啟",
+      "imageFileName": "剪貼簿圖片",
+      "imageActionFailed": "無法匯出這張圖片。",
       "shortcutHint": "C 複製 · T 標籤 · F 置頂 · D 刪除"
     },
     "composite": {

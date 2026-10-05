@@ -1127,8 +1127,15 @@
       "pin": "置顶",
       "unpin": "取消置顶",
       "sendToDevice": "发送到设备…",
-      "stored": "存储",
-      "encrypted": "加密保存",
+      "imageFit": "适应",
+      "imageActual": "100%",
+      "imageZoom": "图片缩放",
+      "quickLook": "快速查看",
+      "quickLookClose": "关闭预览",
+      "saveAs": "另存为…",
+      "openInPreview": "在预览中打开",
+      "imageFileName": "剪贴板图片",
+      "imageActionFailed": "无法导出这张图片。",
       "shortcutHint": "C 复制 · T 标签 · F 置顶 · D 删除"
     },
     "composite": {

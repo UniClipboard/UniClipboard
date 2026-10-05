@@ -139,3 +139,14 @@ def pairing_fixture(r):
     sponsor, joiner = pair(r)
     r.run("sponsor status", ["--json", "space", "status"], profile=sponsor)
     r.run("joiner status", ["--json", "space", "status"], profile=joiner)
+
+
+def _load_group_scenarios():
+    """Register scenarios from scenarios_<group>.py files next to this one."""
+    import importlib
+    import pathlib
+    for path in sorted(pathlib.Path(__file__).parent.glob("scenarios_*.py")):
+        importlib.import_module(path.stem)
+
+
+_load_group_scenarios()

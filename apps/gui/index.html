@@ -11,6 +11,49 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>UniClipboard</title>
+    <!-- Startup screen: painted from this static markup before any script loads, and replaced
+         when React renders into #root. Colors mirror the default (zinc) theme background. -->
+    <style>
+      html,
+      body {
+        margin: 0;
+        background: #fff;
+      }
+      .uc-splash {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #fff;
+      }
+      .uc-splash-spinner {
+        width: 22px;
+        height: 22px;
+        box-sizing: border-box;
+        border: 2px solid rgb(113 113 122 / 0.25);
+        border-top-color: rgb(113 113 122 / 0.9);
+        border-radius: 50%;
+        animation: uc-splash-spin 0.9s linear infinite;
+      }
+      @keyframes uc-splash-spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .uc-splash-spinner {
+          animation-duration: 3s;
+        }
+      }
+      @media (prefers-color-scheme: dark) {
+        html,
+        body,
+        .uc-splash {
+          background: #18181b;
+        }
+      }
+    </style>
     <script>
       const startupTimingIndex = Math.round(performance.now())
       console.log(
@@ -20,7 +63,11 @@
   </head>
 
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div class="uc-splash" role="status" aria-label="Loading">
+        <div class="uc-splash-spinner"></div>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

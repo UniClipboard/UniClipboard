@@ -41,8 +41,14 @@ def _mask_ids(r, ids):
         step.out = _sort_device_arrays(step.out)
         # A peer's last-known reachability without --probe is network timing
         # (offline vs unknown); the daemon reports it and both CLIs pass it on.
-        if b'"is_local": false' in step.out and step.argv[-2:] == ["member", "list"]:
-            step.out = re.sub(rb'("state": )"(?:offline|unknown)"', rb'\1"<UNPROBED>"', step.out)
+        # Without --probe a peer's state is its last-known reachability, which
+        # is network timing (online, offline or unknown); the daemon reports it
+        # and both CLIs pass it on.
+        if step.argv[-2:] == ["member", "list"]:
+            step.out = re.sub(rb'("state": )"(?:online|offline|unknown)"(\s*\}\s*\])', rb'\1"<UNPROBED>"\2',
+                              step.out)
+            step.err = re.sub(rb'(\xc2\xb7: [^\n]*?) \((?:online|offline|unknown)\)\n', rb'\1 (<UNPROBED>)\n',
+                              step.err)
 
 
 def _sort_device_arrays(out):

@@ -190,12 +190,19 @@ def _clean_terminal(raw):
 @scenario
 def space_init_flows(r):
     """init input validation, human and JSON success, then already-initialized."""
+    _stop_daemon(r)
     run(r, "init empty passphrase", ["space", "init", "--passphrase", "", "--device-name", "a"])
+    _stop_daemon(r)
     run(r, "init blank passphrase json", ["--json", "space", "init", "--passphrase", "  "])
+    _stop_daemon(r)
     run(r, "init json without passphrase", ["--json", "space", "init", "--device-name", "a"])
+    _stop_daemon(r)
     run(r, "init human", ["space", "init", "--passphrase", PASSPHRASE, "--device-name", "compat-a"])
+    _stop_daemon(r)
     run(r, "init again human", ["space", "init", "--passphrase", PASSPHRASE, "--device-name", "compat-a"])
+    _stop_daemon(r)
     run(r, "init again json", ["--json", "space", "init", "--passphrase", PASSPHRASE, "--device-name", "compat-a"])
+    _stop_daemon(r)
     run(r, "legacy init again", ["init", "--passphrase", PASSPHRASE, "--device-name", "compat-a"])
     run(r, "status after init", ["--json", "space", "status"], cli="rust")
 
@@ -203,7 +210,9 @@ def space_init_flows(r):
 @scenario
 def space_init_json(r):
     """JSON init on a fresh profile, then the legacy alias in JSON mode."""
+    _stop_daemon(r)
     run(r, "init json", ["--json", "space", "init", "--passphrase", PASSPHRASE, "--device-name", "compat-j"])
+    _stop_daemon(r)
     run(r, "legacy init json again", ["--json", "init", "--passphrase", PASSPHRASE, "--device-name", "compat-j"])
     run(r, "status after json init", ["--json", "space", "status"], cli="rust")
 
@@ -480,12 +489,18 @@ def space_reset_paired(r):
 @scenario
 def space_change_passphrase_flows(r):
     """change-passphrase validation, single-device success, and fresh profile."""
+    _stop_daemon(r)
     run(r, "change empty", ["space", "change-passphrase", "--passphrase", ""])
+    _stop_daemon(r)
     run(r, "change json without passphrase", ["--json", "space", "change-passphrase"])
+    _stop_daemon(r)
     run(r, "change fresh profile", ["space", "change-passphrase", "--passphrase", NEW_PASSPHRASE])
     init_space(r)
+    _stop_daemon(r)
     run(r, "change single device", ["space", "change-passphrase", "--passphrase", NEW_PASSPHRASE])
+    _stop_daemon(r)
     run(r, "change single device json", ["--json", "space", "change-passphrase", "--passphrase", PASSPHRASE])
+    _stop_daemon(r)
     _pty_run(r, "change prompts", ["space", "change-passphrase"],
              answers=[("New space passphrase", NEW_PASSPHRASE.encode() + b"\r"),
                       ("Confirm passphrase", NEW_PASSPHRASE.encode() + b"\r")])

@@ -22,6 +22,8 @@ interface HistoryGridRowProps {
   dayCount?: number
   /** List layout: the origin device's name, when known. */
   deviceName?: string
+  /** List layout: local tag id -> name, for the row's tag chips. */
+  tagNames?: ReadonlyMap<string, string | null>
   /** List layout: bulk selection state and toggle. */
   checked?: boolean
   anyChecked?: boolean
@@ -51,6 +53,7 @@ const HistoryGridRow: React.FC<HistoryGridRowProps> = React.memo(
     dayStart,
     dayCount = 0,
     deviceName,
+    tagNames,
     checked = false,
     anyChecked = false,
     onToggleChecked,
@@ -101,6 +104,7 @@ const HistoryGridRow: React.FC<HistoryGridRowProps> = React.memo(
             <HistoryListRow
               item={item}
               deviceName={deviceName}
+              tagNames={tagNames}
               checked={checked}
               anyChecked={anyChecked}
               onToggleChecked={onToggleChecked ?? noop}

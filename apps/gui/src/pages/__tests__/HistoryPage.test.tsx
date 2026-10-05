@@ -226,6 +226,8 @@ function makeControllerState(
     searchInputRef: { current: null },
     searchLoading: false,
     searchableTags: [],
+    historyTags: { tags: [], available: false },
+    tagNames: new Map(),
     seenIds: new Set<string>(),
     selectedId: null,
     selectedItem: null,

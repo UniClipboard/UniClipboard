@@ -10,7 +10,8 @@ import {
 
 const log = createLogger('use-search-tags')
 
-export function useSearchTags(): SearchTagOption[] {
+/** Searchable tags with counts. Bump `revision` after a tag change to refetch. */
+export function useSearchTags(revision = 0): SearchTagOption[] {
   const { isLocked } = useEncryptionSessionState()
   const [tags, setTags] = useState<SearchTagOption[]>(() => defaultSearchTagOptions())
 
@@ -31,7 +32,7 @@ export function useSearchTags(): SearchTagOption[] {
     return () => {
       cancelled = true
     }
-  }, [isLocked])
+  }, [isLocked, revision])
 
   return tags
 }

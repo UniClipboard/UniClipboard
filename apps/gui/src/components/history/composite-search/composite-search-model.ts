@@ -36,6 +36,7 @@ import { buildLiveSearchModel, liveModelToSearchParams } from '@/hooks/liveSearc
 import {
   mergeSearchTagOptions,
   splitSearchTags,
+  tagLabel,
   toggleSearchTag,
   type SearchTagOption,
 } from '@/lib/search-tags'
@@ -410,7 +411,7 @@ export function buildCandidates(
     case 'tag':
       return ctx.tagOptions
         .flatMap((tag, index) => {
-          const label = ctx.t(`history.type.${tag.id}`, { defaultValue: tag.id })
+          const label = tagLabel(tag, ctx.t)
           const rank = rankOf(tag.id, label)
           return rank === null ? [] : [{ tag, label, rank, index }]
         })
@@ -519,7 +520,9 @@ export function buildChips(ctx: {
     const tags = splitSearchTags(tag)
     chips.push({
       dimension: 'tag',
-      label: tags.map(id => `#${ctx.t(`history.type.${id}`, { defaultValue: id })}`).join(', '),
+      label: tags
+        .map(id => `#${tagLabel(ctx.tagOptions.find(o => o.id === id) ?? { id }, ctx.t)}`)
+        .join(', '),
       icon: TYPE_ICONS[opt?.id ?? tag] ?? Hash,
       valueCount: tags.length,
     })

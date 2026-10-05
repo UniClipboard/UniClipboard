@@ -20,6 +20,9 @@ interface HistoryGridProps {
   layout?: HistoryRowLayout
   /** List layout: origin device id -> name, for the rows' meta line. */
   sourceDeviceNames?: Record<string, string>
+  /** List layout: local tag id -> name, for the rows' tag chips; absent while
+   * local tags are unavailable. */
+  tagNames?: ReadonlyMap<string, string | null>
   /** List layout: the bulk-selected ids and their toggle. */
   checkedIds?: ReadonlySet<string>
   onToggleChecked?: (id: string) => void
@@ -58,6 +61,7 @@ const HistoryGrid: React.FC<HistoryGridProps> = ({
   items,
   layout = 'card',
   sourceDeviceNames,
+  tagNames,
   checkedIds,
   onToggleChecked,
   seenIds,
@@ -173,6 +177,7 @@ const HistoryGrid: React.FC<HistoryGridProps> = ({
                     ? deviceLabel(sourceDeviceNames?.[item.sourceDeviceId], item.sourceDeviceId)
                     : undefined
                 }
+                tagNames={layout === 'list' ? tagNames : undefined}
                 seenIds={seenIds}
                 isActive={item.id === selectedId}
                 copySuccess={copySuccessId === item.id}

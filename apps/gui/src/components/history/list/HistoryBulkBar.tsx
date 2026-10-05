@@ -15,6 +15,8 @@ import { useAppSelector } from '@/store/hooks'
 interface HistoryBulkBarProps {
   items: DisplayClipboardItem[]
   onPin: () => void
+  /** Open the selection's tag editor; absent while tags are unavailable. */
+  onTag?: () => void
   onDelete: () => void
 }
 
@@ -23,10 +25,10 @@ const ACTION_CLASS =
 
 /**
  * HList.dc.html bulk bar: floats over the list bottom while rows are checked
- * and acts on all of them. Tagging is left out: there is no tag assignment
- * API yet.
+ * and acts on all of them. "Tag…" hands over to the detail column's
+ * selection tags.
  */
-function HistoryBulkBar({ items, onPin, onDelete }: HistoryBulkBarProps) {
+function HistoryBulkBar({ items, onPin, onTag, onDelete }: HistoryBulkBarProps) {
   const { t } = useTranslation()
   const members = useAppSelector(state => state.devices.spaceMembers)
   const action = useResendAction()
@@ -45,6 +47,11 @@ function HistoryBulkBar({ items, onPin, onDelete }: HistoryBulkBarProps) {
       <button type="button" className={ACTION_CLASS} onClick={onPin}>
         {t(unpin ? 'clipboard.contextMenu.unfavorite' : 'clipboard.contextMenu.favorite')}
       </button>
+      {onTag && (
+        <button type="button" className={ACTION_CLASS} onClick={onTag}>
+          {t('history.tags.tagEllipsis')}
+        </button>
+      )}
       <ContextMenu>
         <ContextMenuTrigger activation="click">
           <button type="button" className={ACTION_CLASS}>

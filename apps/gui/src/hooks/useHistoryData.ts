@@ -269,5 +269,7 @@ export function useHistoryData() {
     indexState: live.state,
     /** Optimistically drop an entry after the user deletes it. */
     removeItem: live.removeItem,
+    /** Re-query the current window, e.g. after its tags changed. */
+    refetch: live.refetch,
   }
 }

@@ -15,7 +15,7 @@ import { toast } from '@/components/ui/toast'
 import { useDebounce } from '@/hooks/useDebounce'
 import { useHistorySourceOptions } from '@/hooks/useHistorySourceOptions'
 import { usePlatform } from '@/hooks/usePlatform'
-import { useSearchTags } from '@/hooks/useSearchTags'
+import { useTagCatalog } from '@/hooks/useTagCatalog'
 import { pasteableFilePaths } from '@/lib/clipboard-utils'
 import { commands } from '@/lib/ipc'
 import { createLogger } from '@/lib/logger'
@@ -157,7 +157,7 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
   // `useHistorySearch` owns the actual query normalization for the daemon call.
   const debouncedSearchQuery = useDebounce(filters.query, 300)
   const activeSearchQuery = filters.query.trim() === '' ? '' : debouncedSearchQuery
-  const searchableTags = useSearchTags()
+  const { searchableTags } = useTagCatalog()
   const sourceOptions = useHistorySourceOptions()
 
   const [unlocking, setUnlocking] = useState(false)

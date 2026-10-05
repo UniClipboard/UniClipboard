@@ -1,9 +1,10 @@
 import { m } from 'framer-motion'
-import { Inbox, MonitorCog, Pin, Settings, Smartphone, Trash2 } from 'lucide-react'
+import { Inbox, MonitorCog, Pin, Plus, Settings, Smartphone, Trash2 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { NavLink, useNavigate } from 'react-router'
 import { Filter } from '@/api/clipboardItems'
+import { useTagTints } from '@/components/history/tags/tag-colors-context'
 import { ThemeModeSwitch } from '@/components/motion/theme-mode-switch'
 import { ThemeToggle } from '@/components/motion/theme-toggle'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -13,6 +14,7 @@ import { useLibraryCounts } from '@/hooks/useLibraryCounts'
 import { useMobileDeviceList } from '@/hooks/useMobileDeviceList'
 import { useWindowDragging } from '@/hooks/useWindowDragging'
 import { isMobileDeviceActive } from '@/lib/mobile-device-status'
+import { tagLabel } from '@/lib/search-tags'
 import { cn } from '@/lib/utils'
 import { useAppSelector } from '@/store/hooks'
 import {
@@ -23,7 +25,7 @@ import {
   SIDEBAR_PEEK_TRANSITION,
   SIDEBAR_RAIL_WIDTH,
 } from './history-sidebar-motion'
-import { sidebarTagRows, tagDotClass } from './history-sidebar-tags'
+import { sidebarTagRows } from './history-sidebar-tags'
 import {
   HISTORY_LIBRARY_FILTER_STATE,
   HISTORY_TAG_FILTER_STATE,
@@ -42,8 +44,8 @@ import { LibraryToggleButton } from './LibraryToggle'
  * collapsed toggle peeks the full sidebar over the content. In the compact
  * window tier it is collapsed and the toggle pins that overlay as a drawer.
  * Smart Views are
- * out of scope this round (exec plan, "已决定"); Tags always list the builtin
- * tags and the `file` content type, then any custom tag in use. */
+ * out of scope this round (exec plan, "已决定"); Tags list the daemon's
+ * sidebar tags in order, with `+` and "All tags" opening the tag Library. */
 function HistorySidebar(props: HistorySidebarProps) {
   const { context } = props
   const { t } = useTranslation()
@@ -79,7 +81,8 @@ function HistorySidebar(props: HistorySidebarProps) {
   ]
   const onlineCount = devices.filter(d => d.online).length
 
-  const tagRows = sidebarTagRows(props.tags)
+  const tagRows = props.sidebarTagIds && sidebarTagRows(props.sidebarTagIds, props.tags)
+  const tintOf = useTagTints()
   const libraryCounts = useLibraryCounts(
     props.context === 'history' ? props.countsRevision : undefined
   )
@@ -90,10 +93,10 @@ function HistorySidebar(props: HistorySidebarProps) {
       </span>
     )
 
-  // Smart Views' empty hint; restore with the section below.
-  // const emptyHintClass = libraryOwnsNavigation
-  //   ? 'mx-1.5 rounded-lg border border-dashed border-border p-2.5 text-ui-caption text-muted-foreground'
-  //   : 'px-2.5 py-1.5 text-ui-caption text-muted-foreground/70'
+  // A section's empty hint (Tags now, Smart Views once they return).
+  const emptyHintClass = libraryOwnsNavigation
+    ? 'mx-1.5 rounded-lg border border-dashed border-border p-2.5 text-ui-caption text-muted-foreground'
+    : 'px-2.5 py-1.5 text-ui-caption text-muted-foreground/70'
 
   // Collapsed, the traffic lights drop into the top band, level with the
   // content header; expanded, they sit over the sidebar.
@@ -152,8 +155,19 @@ function HistorySidebar(props: HistorySidebarProps) {
     if (props.context === 'history') props.onSelectTag(activeTag === tag ? null : tag)
     else navigate('/history', { state: { [HISTORY_TAG_FILTER_STATE]: tag } })
   }
-  // The `file` row is a content type: picking it again goes back to All items.
-  const selectFile = () => selectLibrary(libraryActive(Filter.File) ? Filter.All : Filter.File)
+  const tagLibrary =
+    props.context === 'history' && props.tagLibrary
+      ? {
+          total: props.tagLibrary.total,
+          // A keyboard-activated click (`detail` 0) gets focus back on close;
+          // a pointer click leaves focus alone, as WebKit never focused it.
+          open: (event: React.MouseEvent<HTMLElement>) => {
+            const returnFocusTo = event.detail === 0 ? event.currentTarget : null
+            closeOverlay()
+            props.tagLibrary?.open(returnFocusTo)
+          },
+        }
+      : null
 
   // Collapsed: an icon column; the full sidebar opens over it (peek or
   // compact-tier drawer), so the columns beside it never shift.
@@ -234,19 +248,49 @@ function HistorySidebar(props: HistorySidebarProps) {
             label={t('history.sidebar.tags')}
             open={tagsOpen}
             onOpenChange={setTagsOpen}
+            trailing={
+              tagLibrary ? (
+                <button
+                  type="button"
+                  aria-label={t('history.tags.manage')}
+                  onClick={tagLibrary.open}
+                  className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-foreground/5 hover:text-foreground outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/50"
+                >
+                  <Plus className="size-3" strokeWidth={3} aria-hidden="true" />
+                </button>
+              ) : undefined
+            }
           >
-            {tagRows.map(row => (
-              <HistorySidebarNavItem
-                key={row.id}
-                leading={<span className={cn('size-2 rounded-full', tagDotClass(row.id))} />}
-                label={`#${t(`history.type.${row.id}`, { defaultValue: row.id })}`}
-                active={row.kind === 'file' ? libraryActive(Filter.File) : activeTag === row.id}
-                onClick={row.kind === 'file' ? selectFile : () => selectTag(row.id)}
-                // An empty builtin row shows no count, as does a locked
-                // session, whose tag counts are unknown.
-                trailing={countBadge(row.count || undefined)}
-              />
-            ))}
+            {tagRows?.length === 0 ? (
+              <p className={emptyHintClass}>{t('history.tags.sidebarEmpty')}</p>
+            ) : (
+              tagRows?.map(row => (
+                <HistorySidebarNavItem
+                  key={row.id}
+                  leading={
+                    <span
+                      style={tintOf(row.id).style}
+                      className={cn('size-2 rounded-full', tintOf(row.id).dot)}
+                    />
+                  }
+                  label={`#${tagLabel(row, t)}`}
+                  active={activeTag === row.id}
+                  onClick={() => selectTag(row.id)}
+                  // An empty row shows no count, as does a locked session,
+                  // whose tag counts are unknown.
+                  trailing={countBadge(row.count || undefined)}
+                />
+              ))
+            )}
+            {tagLibrary && tagLibrary.total > 0 && (
+              <button
+                type="button"
+                onClick={tagLibrary.open}
+                className="flex h-7 items-center rounded-lg pl-8.5 pr-2.5 text-left text-ui-body text-muted-foreground hover:bg-foreground/5 hover:text-foreground outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/50"
+              >
+                {t('history.tags.allTags', { n: tagLibrary.total })}
+              </button>
+            )}
           </HistorySidebarSection>
 
           <HistorySidebarSection

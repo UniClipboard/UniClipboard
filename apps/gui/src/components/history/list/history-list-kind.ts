@@ -32,20 +32,30 @@ export const KIND_TINT: Record<HistoryKind, string> = {
 /** Tags a row shows as chips (HList.dc.html), most telling first. */
 export type HistoryRowTag = 'link' | 'code' | 'directory'
 
-/** Chip tints; hues match the sidebar's Tags dots (`tagDotClass`). */
-export const ROW_TAG_TINT: Record<HistoryRowTag, string> = {
-  link: 'bg-blue-500/10 text-blue-800 dark:text-blue-300',
-  code: 'bg-violet-500/12 text-violet-800 dark:text-violet-300',
-  directory: 'bg-muted text-foreground/75',
-}
+/** A chip on a row: one of this device's local tags (`name` is `null` when it
+ * cannot be read), or a builtin content tag. */
+export type HistoryRowChip =
+  | { kind: 'local'; id: string; name: string | null }
+  | { kind: 'builtin'; tag: HistoryRowTag }
 
-/** The row's tag chips, at most two: its tags minus the one its kind badge
- * already shows (no `#link` beside a URL badge). */
-export function rowTags(item: DisplayClipboardItem, kind: HistoryKind): HistoryRowTag[] {
-  const tags: HistoryRowTag[] = []
-  for (const tag of item.contentTags ?? []) {
-    if ((tag === 'link' || tag === 'code') && tag !== kind) tags.push(tag)
+/** Most chips a row shows. */
+const ROW_CHIP_LIMIT = 2
+
+/** The row's tag chips (HList.dc.html), at most two: its local tags first,
+ * then its builtin tags minus the one its kind badge already shows (no `#link`
+ * beside a URL badge). Local tags show only once `tagNames` knows them. */
+export function rowChips(
+  item: DisplayClipboardItem,
+  kind: HistoryKind,
+  tagNames?: ReadonlyMap<string, string | null>
+): HistoryRowChip[] {
+  const chips: HistoryRowChip[] = []
+  for (const id of item.userTagIds ?? []) {
+    if (tagNames?.has(id)) chips.push({ kind: 'local', id, name: tagNames.get(id) ?? null })
   }
-  if (item.isDirectory) tags.push('directory')
-  return tags.slice(0, 2)
+  for (const tag of item.contentTags ?? []) {
+    if ((tag === 'link' || tag === 'code') && tag !== kind) chips.push({ kind: 'builtin', tag })
+  }
+  if (item.isDirectory) chips.push({ kind: 'builtin', tag: 'directory' })
+  return chips.slice(0, ROW_CHIP_LIMIT)
 }

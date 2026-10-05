@@ -22,6 +22,10 @@ import {
 import { useZeroResultRelaxations } from '@/components/history/composite-search/useZeroResultRelaxations'
 import ZeroResultRelaxations from '@/components/history/composite-search/ZeroResultRelaxations'
 import HistoryDetailPanel from '@/components/history/detail/HistoryDetailPanel'
+import type { DetailTagsProps } from '@/components/history/detail/HistoryDetailTags'
+import HistorySelectionPanel, {
+  type SelectionTaggingProps,
+} from '@/components/history/detail/HistorySelectionPanel'
 import {
   HISTORY_ENTRY_ANIMATION,
   HISTORY_PREVIEW_ENTRY_TRANSITION,
@@ -36,6 +40,9 @@ import {
 } from '@/components/history/sidebar/history-sidebar-types'
 import HistorySidebar from '@/components/history/sidebar/HistorySidebar'
 import TrafficLightOverhang from '@/components/history/sidebar/TrafficLightOverhang'
+import { LIBRARY_BUILTIN_TAG_IDS } from '@/components/history/tags/history-tag-library'
+import HistoryTagManager from '@/components/history/tags/HistoryTagManager'
+import { NO_TAG_COLORS, TagColorsContext } from '@/components/history/tags/tag-colors-context'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
 import { useSidebarSlot } from '@/contexts/sidebar-slot-context'
 import { useHistoryController } from '@/hooks/useHistoryController'
@@ -44,6 +51,8 @@ import { useShortcut } from '@/hooks/useShortcut'
 const HistoryPage: React.FC = () => {
   const { t } = useTranslation()
   const c = useHistoryController()
+  // The sidebar control that opened the tag Library by keyboard, if any.
+  const [tagManagerReturnFocus, setTagManagerReturnFocus] = useState<HTMLElement | null>(null)
   // The layout decides where search lives: a toolbar overlay where it offers a
   // toolbar host (Windows, Linux), the top of the list column where it does not
   // (macOS). Both read the same search state.
@@ -67,6 +76,7 @@ const HistoryPage: React.FC = () => {
     totalCount: c.browseCount,
     inputRef: c.searchInputRef,
     fetchCounts: countSearch,
+    onCreateTag: c.historyTags.available ? c.createTagForSearch : undefined,
   }
   const compositeSearch = useCompositeSearchBar(searchProps)
   const listColumn = useHistoryListColumn()
@@ -154,6 +164,35 @@ const HistoryPage: React.FC = () => {
     if (c.selectedId) c.requestDelete(c.selectedId)
   }
   const selectedCopySuccess = c.copySuccessId !== null && c.copySuccessId === c.selectedId
+  // Local tags of the selected entry for the macOS detail column; hidden while
+  // tags are unavailable.
+  const detailTagging = (): DetailTagsProps | null => {
+    const selected = c.selectedItem
+    return c.historyTags.available && selected
+      ? {
+          tags: c.historyTags.tags,
+          editorOpen: c.tagEditorFor === selected.id,
+          onEditorOpenChange: open => c.setTagEditorFor(open ? selected.id : null),
+          onAdd: tagId => c.addTagToItems(tagId, [selected.id]),
+          onCreate: (name, color) => c.tagItemsByName(name, [selected.id], color),
+          onRemove: tagId => c.removeTagFromItems(tagId, [selected.id]),
+        }
+      : null
+  }
+  // The checked rows' tags, shown in place of the detail while two or more are checked.
+  const selectionTagging = (): SelectionTaggingProps | null => {
+    if (!c.historyTags.available) return null
+    const ids = c.checkedItems.map(item => item.id)
+    return {
+      tags: c.historyTags.tags,
+      summary: c.selectionTagSummary,
+      editorOpen: c.selectionTagEditorOpen,
+      onEditorOpenChange: c.setSelectionTagEditorOpen,
+      onAddToAll: tagId => c.addTagToItems(tagId, ids),
+      onCreateForAll: (name, color) => c.tagItemsByName(name, ids, color),
+      onRemoveFromAll: tagId => c.removeTagFromItems(tagId, ids),
+    }
+  }
 
   const filterPanel = (
     <HistoryFilterPanel
@@ -173,214 +212,262 @@ const HistoryPage: React.FC = () => {
   )
 
   return (
-    <div className="relative flex h-full flex-col">
-      {contentToolbarHost
-        ? createPortal(
-            <div className="flex items-center gap-2">
-              {filterPanel}
-              <HistoryMorphingSearch
-                open={searchOpen}
-                active={hasActiveSearch}
-                containerRef={searchControlRef}
-                inputRef={c.searchInputRef}
-                value={compositeSearch.buffer}
-                suggestionsOpen={searchSuggestionsOpen}
-                suggestionsId={compositeSearch.panelId}
-                title={t('history.composite.title')}
-                placeholder={t('history.searchPlaceholder')}
-                resultsLabel={t('history.composite.results', { count: c.browseCount })}
-                clearAllLabel={t('history.composite.clearAll')}
-                onInputChange={compositeSearch.handleInputChange}
-                onInputKeyDown={compositeSearch.handleKeyDown}
-                onClearAll={() => compositeSearch.clearAll()}
-                onOpenChange={setSearchOpen}
-              >
-                <HistorySearchPanel
-                  contentFilter={c.filter.activeFilter}
-                  sourceFilter={c.filter.sourceFilter}
-                  tagFilter={c.filter.tagFilter}
-                  timeRange={c.filter.timeRange}
-                  extensionFilter={c.filter.extensionFilter}
-                  onContentFilterChange={c.filterActions.setContentFilter}
-                  onTagFilterChange={c.filterActions.setTagFilter}
-                  onSourceFilterChange={c.filterActions.setSourceFilter}
-                  onTimeRangeChange={c.filterActions.setTimeRange}
-                  onExtensionFilterChange={c.filterActions.setExtensionFilter}
-                  sourceOptions={c.sourceOptions}
-                  tagOptions={c.searchableTags}
-                  searchPanelId={compositeSearch.panelId}
-                  searchOptions={compositeSearch.options}
-                  searchHighlight={compositeSearch.clampedHighlight}
-                  searchSuggestionsOpen={searchSuggestionsOpen}
-                  onSearchOptionSelect={compositeSearch.selectOption}
-                  onSearchOptionHighlight={compositeSearch.setHighlight}
-                  onDismissSearchSuggestions={() => compositeSearch.setOpen(false)}
-                />
-              </HistoryMorphingSearch>
-            </div>,
-            contentToolbarHost
-          )
-        : null}
-      {/* ── Degraded notice: index rebuilding, browse served from main store ─ */}
-      {c.indexState === 'degraded' && (
-        <div className="shrink-0 mx-2 mb-2 rounded-md bg-amber-500/10 px-3 py-1.5 text-ui-caption text-amber-600 dark:text-amber-400">
-          {t('clipboard.search.degraded')}
-        </div>
-      )}
+    <TagColorsContext value={c.tagLayout?.colors ?? NO_TAG_COLORS}>
+      <div className="relative flex h-full flex-col">
+        {contentToolbarHost
+          ? createPortal(
+              <div className="flex items-center gap-2">
+                {filterPanel}
+                <HistoryMorphingSearch
+                  open={searchOpen}
+                  active={hasActiveSearch}
+                  containerRef={searchControlRef}
+                  inputRef={c.searchInputRef}
+                  value={compositeSearch.buffer}
+                  suggestionsOpen={searchSuggestionsOpen}
+                  suggestionsId={compositeSearch.panelId}
+                  title={t('history.composite.title')}
+                  placeholder={t('history.searchPlaceholder')}
+                  resultsLabel={t('history.composite.results', { count: c.browseCount })}
+                  clearAllLabel={t('history.composite.clearAll')}
+                  onInputChange={compositeSearch.handleInputChange}
+                  onInputKeyDown={compositeSearch.handleKeyDown}
+                  onClearAll={() => compositeSearch.clearAll()}
+                  onOpenChange={setSearchOpen}
+                >
+                  <HistorySearchPanel
+                    contentFilter={c.filter.activeFilter}
+                    sourceFilter={c.filter.sourceFilter}
+                    tagFilter={c.filter.tagFilter}
+                    timeRange={c.filter.timeRange}
+                    extensionFilter={c.filter.extensionFilter}
+                    onContentFilterChange={c.filterActions.setContentFilter}
+                    onTagFilterChange={c.filterActions.setTagFilter}
+                    onSourceFilterChange={c.filterActions.setSourceFilter}
+                    onTimeRangeChange={c.filterActions.setTimeRange}
+                    onExtensionFilterChange={c.filterActions.setExtensionFilter}
+                    sourceOptions={c.sourceOptions}
+                    tagOptions={c.searchableTags}
+                    searchPanelId={compositeSearch.panelId}
+                    searchOptions={compositeSearch.options}
+                    searchHighlight={compositeSearch.clampedHighlight}
+                    searchSuggestionsOpen={searchSuggestionsOpen}
+                    onSearchOptionSelect={compositeSearch.selectOption}
+                    onSearchOptionHighlight={compositeSearch.setHighlight}
+                    onDismissSearchSuggestions={() => compositeSearch.setOpen(false)}
+                  />
+                </HistoryMorphingSearch>
+              </div>,
+              contentToolbarHost
+            )
+          : null}
+        {/* ── Degraded notice: index rebuilding, browse served from main store ─ */}
+        {c.indexState === 'degraded' && (
+          <div className="shrink-0 mx-2 mb-2 rounded-md bg-amber-500/10 px-3 py-1.5 text-ui-caption text-amber-600 dark:text-amber-400">
+            {t('clipboard.search.degraded')}
+          </div>
+        )}
 
-      {/* ── Library sidebar + list + preview ── */}
-      <div className="flex min-h-0 flex-1">
-        <HistorySidebar
-          context="history"
-          activeFilter={c.filter.activeFilter}
-          onSelectLibrary={c.filterActions.setContentFilter}
-          tags={c.searchableTags}
-          activeTag={c.filter.tagFilter}
-          onSelectTag={setTagFilter}
-          countsRevision={c.items}
-        />
-        <ResizablePanelGroup
-          orientation="horizontal"
-          className="min-h-0 flex-1"
-          {...(contentToolbarHost ? {} : listColumn.groupProps)}
-        >
-          {/* List */}
-          <ResizablePanel
-            id="history-list"
-            // macOS: per-window-tier constraints (history-layout.ts); the list
-            // keeps its pixel width while the detail column flexes.
-            {...(contentToolbarHost
-              ? { defaultSize: '42%', minSize: '20rem', maxSize: '36rem' }
-              : listColumn.panelProps)}
+        {/* ── Library sidebar + list + preview ── */}
+        <div className="flex min-h-0 flex-1">
+          <HistorySidebar
+            context="history"
+            activeFilter={c.filter.activeFilter}
+            onSelectLibrary={c.filterActions.setContentFilter}
+            tags={c.searchableTags}
+            sidebarTagIds={c.tagLayout?.sidebar ?? null}
+            activeTag={c.filter.tagFilter}
+            onSelectTag={setTagFilter}
+            tagLibrary={
+              !contentToolbarHost && c.historyTags.available
+                ? {
+                    total: c.historyTags.tags.length + LIBRARY_BUILTIN_TAG_IDS.length,
+                    open: returnFocusTo => {
+                      setTagManagerReturnFocus(returnFocusTo)
+                      c.setTagManagerOpen(true)
+                    },
+                  }
+                : undefined
+            }
+            countsRevision={c.items}
+          />
+          <ResizablePanelGroup
+            orientation="horizontal"
+            className="min-h-0 flex-1"
+            {...(contentToolbarHost ? {} : listColumn.groupProps)}
           >
-            <div className="relative flex h-full min-w-0 flex-col">
-              {!contentToolbarHost && (
-                // HList.dc.html: query bar and facet row.
-                <div className="shrink-0">
-                  <div className="flex py-2.5 pl-4 pr-4">
-                    <TrafficLightOverhang className="w-3.5 self-stretch" />
-                    <div className="min-w-0 flex-1">
-                      <CompositeSearchBarView
-                        {...searchProps}
-                        shortcutHint="⌘F"
-                        state={compositeSearch}
+            {/* List */}
+            <ResizablePanel
+              id="history-list"
+              // macOS: per-window-tier constraints (history-layout.ts); the list
+              // keeps its pixel width while the detail column flexes.
+              {...(contentToolbarHost
+                ? { defaultSize: '42%', minSize: '20rem', maxSize: '36rem' }
+                : listColumn.panelProps)}
+            >
+              <div className="relative flex h-full min-w-0 flex-col">
+                {!contentToolbarHost && (
+                  // HList.dc.html: query bar and facet row.
+                  <div className="shrink-0">
+                    <div className="flex py-2.5 pl-4 pr-4">
+                      <TrafficLightOverhang className="w-3.5 self-stretch" />
+                      <div className="min-w-0 flex-1">
+                        <CompositeSearchBarView
+                          {...searchProps}
+                          shortcutHint="⌘F"
+                          state={compositeSearch}
+                        />
+                      </div>
+                    </div>
+                    <div className="flex items-center overflow-x-auto px-4 pb-1.75 pt-0.5 [scrollbar-width:none]">
+                      <SearchFacetRow
+                        chips={compositeSearch.chips}
+                        onSeedDimension={compositeSearch.seedDimension}
+                        onClearAll={() => compositeSearch.clearAll()}
                       />
                     </div>
                   </div>
-                  <div className="flex items-center overflow-x-auto px-4 pb-1.75 pt-0.5 [scrollbar-width:none]">
-                    <SearchFacetRow
-                      chips={compositeSearch.chips}
-                      onSeedDimension={compositeSearch.seedDimension}
-                      onClearAll={() => compositeSearch.clearAll()}
-                    />
-                  </div>
-                </div>
-              )}
-              <HistoryGrid
-                items={c.items}
-                layout={contentToolbarHost ? 'card' : 'list'}
-                sourceDeviceNames={c.sourceDeviceNames}
-                seenIds={c.seenIds}
-                selectedId={c.selectedId}
-                listRef={c.listRef}
-                restoreStateFrom={c.scrollState}
-                isSearchActive={c.isSearchActive}
-                submittedQuery={c.filter.submittedQuery}
-                searchLoading={c.searchLoading}
-                copySuccessId={c.copySuccessId}
-                deletingIds={c.deletingIds}
-                checkedIds={contentToolbarHost ? undefined : c.checkedIds}
-                onToggleChecked={c.toggleChecked}
-                hasMore={c.hasMore}
-                onLoadMore={c.handleLoadMore}
-                onCopy={c.handleCopy}
-                onFilePathsAction={c.handleCopyFilePaths}
-                onDelete={c.requestDelete}
-                onToggleFavorite={c.handleToggleFavorite}
-                onCardClick={c.handleCardClick}
-                onHoverChange={c.handleHoverChange}
-                onScrollStateRestored={() => c.setScrollState(null)}
-                emptyStateActions={
-                  relaxations && (
-                    <ZeroResultRelaxations
-                      relaxations={relaxations}
-                      onRemove={compositeSearch.resetDimension}
-                      variant={searchProps.variant}
-                    />
-                  )
-                }
-                emptyStateText={
-                  relaxations && searchProps.variant === 'list'
-                    ? {
-                        title: t('history.composite.relaxTitleAll', {
-                          count: compositeSearch.chips.length,
-                        }),
-                        subtitle: t('history.composite.relaxPrompt'),
-                      }
-                    : undefined
-                }
-              />
-              {!contentToolbarHost && c.checkedItems.length > 0 && (
-                <HistoryBulkBar
-                  items={c.checkedItems}
-                  onPin={c.pinChecked}
-                  onDelete={c.deleteChecked}
+                )}
+                <HistoryGrid
+                  items={c.items}
+                  layout={contentToolbarHost ? 'card' : 'list'}
+                  sourceDeviceNames={c.sourceDeviceNames}
+                  tagNames={c.historyTags.available ? c.tagNames : undefined}
+                  seenIds={c.seenIds}
+                  selectedId={c.selectedId}
+                  listRef={c.listRef}
+                  restoreStateFrom={c.scrollState}
+                  isSearchActive={c.isSearchActive}
+                  submittedQuery={c.filter.submittedQuery}
+                  searchLoading={c.searchLoading}
+                  copySuccessId={c.copySuccessId}
+                  deletingIds={c.deletingIds}
+                  checkedIds={contentToolbarHost ? undefined : c.checkedIds}
+                  onToggleChecked={c.toggleChecked}
+                  hasMore={c.hasMore}
+                  onLoadMore={c.handleLoadMore}
+                  onCopy={c.handleCopy}
+                  onFilePathsAction={c.handleCopyFilePaths}
+                  onDelete={c.requestDelete}
+                  onToggleFavorite={c.handleToggleFavorite}
+                  onCardClick={c.handleCardClick}
+                  onHoverChange={c.handleHoverChange}
+                  onScrollStateRestored={() => c.setScrollState(null)}
+                  emptyStateActions={
+                    relaxations && (
+                      <ZeroResultRelaxations
+                        relaxations={relaxations}
+                        onRemove={compositeSearch.resetDimension}
+                        variant={searchProps.variant}
+                      />
+                    )
+                  }
+                  emptyStateText={
+                    relaxations && searchProps.variant === 'list'
+                      ? {
+                          title: t('history.composite.relaxTitleAll', {
+                            count: compositeSearch.chips.length,
+                          }),
+                          subtitle: t('history.composite.relaxPrompt'),
+                        }
+                      : undefined
+                  }
                 />
-              )}
-            </div>
-          </ResizablePanel>
+                {!contentToolbarHost && c.checkedItems.length > 0 && (
+                  <HistoryBulkBar
+                    items={c.checkedItems}
+                    onPin={c.pinChecked}
+                    onTag={
+                      c.historyTags.available && c.checkedItems.length > 1
+                        ? () => c.setSelectionTagEditorOpen(true)
+                        : undefined
+                    }
+                    onDelete={c.deleteChecked}
+                  />
+                )}
+              </div>
+            </ResizablePanel>
 
-          <ResizableHandle {...(contentToolbarHost ? {} : listColumn.handleProps)} />
+            <ResizableHandle {...(contentToolbarHost ? {} : listColumn.handleProps)} />
 
-          {/* Preview */}
-          <ResizablePanel
-            id="history-preview"
-            defaultSize={contentToolbarHost ? '58%' : undefined}
-            minSize={contentToolbarHost ? '35%' : `${DETAIL_COLUMN_MIN}px`}
-          >
-            <m.div
-              data-testid="history-preview-motion"
-              initial={HISTORY_ENTRY_ANIMATION.initial}
-              animate={HISTORY_ENTRY_ANIMATION.animate}
-              transition={HISTORY_PREVIEW_ENTRY_TRANSITION}
-              className="relative flex h-full min-w-0 flex-col"
+            {/* Preview */}
+            <ResizablePanel
+              id="history-preview"
+              defaultSize={contentToolbarHost ? '58%' : undefined}
+              minSize={contentToolbarHost ? '35%' : `${DETAIL_COLUMN_MIN}px`}
             >
-              {contentToolbarHost ? (
-                <ClipboardPreview
-                  item={c.selectedItem}
-                  actions={delivery => (
-                    <ClipboardActionBar
-                      item={c.selectedItem}
-                      delivery={delivery}
-                      copySuccess={selectedCopySuccess}
-                      onCopy={copySelected}
-                      onToggleFavorite={toggleSelectedFavorite}
-                      onDelete={deleteSelected}
-                    />
-                  )}
-                />
-              ) : (
-                // macOS: HDetail.dc.html detail column.
-                <HistoryDetailPanel
-                  item={c.selectedItem}
-                  copySuccess={selectedCopySuccess}
-                  onCopy={copySelected}
-                  onToggleFavorite={toggleSelectedFavorite}
-                  onDelete={deleteSelected}
-                />
-              )}
-            </m.div>
-          </ResizablePanel>
-        </ResizablePanelGroup>
-      </div>
+              <m.div
+                data-testid="history-preview-motion"
+                initial={HISTORY_ENTRY_ANIMATION.initial}
+                animate={HISTORY_ENTRY_ANIMATION.animate}
+                transition={HISTORY_PREVIEW_ENTRY_TRANSITION}
+                className="relative flex h-full min-w-0 flex-col"
+              >
+                {contentToolbarHost ? (
+                  <ClipboardPreview
+                    item={c.selectedItem}
+                    actions={delivery => (
+                      <ClipboardActionBar
+                        item={c.selectedItem}
+                        delivery={delivery}
+                        copySuccess={selectedCopySuccess}
+                        onCopy={copySelected}
+                        onToggleFavorite={toggleSelectedFavorite}
+                        onDelete={deleteSelected}
+                      />
+                    )}
+                  />
+                ) : // macOS: the selection's tags while 2+ rows are checked, else the detail column.
+                c.checkedItems.length > 1 && c.historyTags.available ? (
+                  <HistorySelectionPanel
+                    count={c.checkedItems.length}
+                    tagging={selectionTagging()}
+                  />
+                ) : (
+                  <HistoryDetailPanel
+                    item={c.selectedItem}
+                    tagging={detailTagging()}
+                    copySuccess={selectedCopySuccess}
+                    onCopy={copySelected}
+                    onToggleFavorite={toggleSelectedFavorite}
+                    onDelete={deleteSelected}
+                  />
+                )}
+              </m.div>
+            </ResizablePanel>
+          </ResizablePanelGroup>
+        </div>
 
-      <DeleteConfirmDialog
-        open={c.deleteDialogOpen}
-        onOpenChange={c.setDeleteDialogOpen}
-        onConfirm={c.confirmDelete}
-        count={Math.max(c.deleteCount, 1)}
-      />
-    </div>
+        {/* macOS only, like the detail column's tags. */}
+        {!contentToolbarHost && (
+          <HistoryTagManager
+            open={c.tagManagerOpen && c.historyTags.available}
+            returnFocusTo={tagManagerReturnFocus}
+            onOpenChange={c.setTagManagerOpen}
+            tags={c.historyTags.tags}
+            searchTags={c.searchableTags}
+            sidebarTagIds={c.tagLayout?.sidebar ?? null}
+            onCreate={c.createTag}
+            onSetColor={c.setTagColor}
+            onSetInSidebar={c.setTagInSidebar}
+            onRename={c.renameTag}
+            onMerge={c.mergeTagsInto}
+            onDelete={c.deleteTags}
+            onShowItems={tagId => {
+              setTagFilter(tagId)
+              c.setTagManagerOpen(false)
+            }}
+          />
+        )}
+
+        <DeleteConfirmDialog
+          open={c.deleteDialogOpen}
+          onOpenChange={c.setDeleteDialogOpen}
+          onConfirm={c.confirmDelete}
+          count={Math.max(c.deleteCount, 1)}
+        />
+      </div>
+    </TagColorsContext>
   )
 }
 

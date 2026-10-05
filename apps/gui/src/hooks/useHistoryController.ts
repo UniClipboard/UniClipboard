@@ -3,17 +3,31 @@ import { useTranslation } from 'react-i18next'
 import type { StateSnapshot, VirtuosoHandle } from 'react-virtuoso'
 import { favoriteClipboardItem, Filter, unfavoriteClipboardItem } from '@/api/clipboardItems'
 import { restoreClipboardEntry } from '@/api/daemon'
+import {
+  addTagToEntries,
+  createHistoryTag,
+  deleteHistoryTag,
+  mergeHistoryTags,
+  removeTagFromEntries,
+  renameHistoryTag,
+  setHistoryTagColor,
+  setHistoryTagInSidebar,
+  type HistoryTagColorDto,
+  type HistoryTagRenameResultDto,
+} from '@/api/daemon/history-tags'
 import { toast } from '@/components/ui/toast'
 import { useCopyFeedback } from '@/hooks/useCopyFeedback'
 import { useDeleteFlow } from '@/hooks/useDeleteFlow'
 import { useHistoryData } from '@/hooks/useHistoryData'
-import { useSearchTags } from '@/hooks/useSearchTags'
+import { useSelectionTagSummary } from '@/hooks/useSelectionTagSummary'
 import { useShortcut } from '@/hooks/useShortcut'
 import { useShortcutScope } from '@/hooks/useShortcutScope'
+import { useTagCatalog } from '@/hooks/useTagCatalog'
 import { useTransferProgress } from '@/hooks/useTransferProgress'
 import type { DisplayClipboardItem } from '@/lib/clipboard-entry'
 import { createLogger } from '@/lib/logger'
-import { splitSearchTags } from '@/lib/search-tags'
+import { splitSearchTags, tagLabel } from '@/lib/search-tags'
+import { DEFAULT_TAG_COLOR } from '@/lib/tag-colors'
 import { useAppDispatch } from '@/store/hooks'
 import { copyToClipboard, removeClipboardItem } from '@/store/slices/clipboardSlice'
 import { fetchLocalDeviceInfo, fetchSpaceMembers } from '@/store/slices/devicesSlice'
@@ -65,7 +79,15 @@ export function useHistoryController() {
   }, [dispatch])
 
   const data = useHistoryData()
-  const searchableTags = useSearchTags()
+  // One revision drives both tag sources: bump it after any tag change.
+  const [tagRevision, setTagRevision] = useState(0)
+  const { searchableTags, historyTags, layout: tagLayout } = useTagCatalog(tagRevision)
+  const { refetch } = data
+  // After a tag change: names and counts, and the rows' own tag ids.
+  const refreshTags = useCallback(() => {
+    setTagRevision(revision => revision + 1)
+    refetch()
+  }, [refetch])
   const initialSnapshot = readHistorySessionSnapshot()
 
   // Hover only selects a keyboard shortcut target; visual state belongs to the card.
@@ -286,6 +308,127 @@ export function useHistoryController() {
     preventDefault: false,
   })
 
+  // ── Local tags ─────────────────────────────────────────────────
+  // The entry whose tag editor is open; switching entries closes it.
+  const [tagEditorFor, setTagEditorFor] = useState<string | null>(null)
+  // With several rows checked, the detail column tags the whole selection
+  // (HDetail.dc.html `multi`); its editor closes once fewer than two remain.
+  const selectionTagging = checkedIds.size > 1
+  const [selectionEditorWanted, setSelectionTagEditorOpen] = useState(false)
+  const selectionTagEditorOpen = selectionEditorWanted && selectionTagging
+  const checkedIdList = useMemo(() => [...checkedIds], [checkedIds])
+  // Local tag id → name (`null`: unreadable), for the list rows' chips.
+  const tagNames = useMemo(
+    () => new Map(historyTags.tags.map(tag => [tag.tagId, tag.name ?? null])),
+    [historyTags.tags]
+  )
+  const selectionTagSummary = useSelectionTagSummary(
+    checkedIdList,
+    historyTags.available && selectionTagging,
+    tagRevision
+  )
+  useShortcut({
+    key: 't',
+    scope: 'clipboard',
+    enabled: (selectionTagging || selectedItem !== null) && historyTags.available,
+    handler: () => {
+      if (selectionTagging) setSelectionTagEditorOpen(true)
+      else setTagEditorFor(selectedItem?.id ?? null)
+    },
+  })
+
+  // Every tag change ends the same way: refetch names, counts and rows, or say
+  // it failed. Returns whether it succeeded.
+  const runTagChange = useCallback(
+    async (change: () => Promise<unknown>): Promise<boolean> => {
+      try {
+        await change()
+        return true
+      } catch (err) {
+        log.warn({ err }, 'history tag change failed')
+        toast.error(t('history.tags.failed'))
+        return false
+      } finally {
+        refreshTags()
+      }
+    },
+    [refreshTags, t]
+  )
+  const addTagToItems = useCallback(
+    (tagId: string, entryIds: string[]) => runTagChange(() => addTagToEntries(tagId, entryIds)),
+    [runTagChange]
+  )
+  const removeTagFromItems = useCallback(
+    (tagId: string, entryIds: string[]) =>
+      runTagChange(() => removeTagFromEntries(tagId, entryIds)),
+    [runTagChange]
+  )
+  // The Library's tag manager (HManage.dc.html, tags tab).
+  const [tagManagerOpen, setTagManagerOpen] = useState(false)
+  const createTag = useCallback(
+    (name: string, color?: HistoryTagColorDto) => runTagChange(() => createHistoryTag(name, color)),
+    [runTagChange]
+  )
+  /** A tag's color in the tag layout; `null` clears it. */
+  const setTagColor = useCallback(
+    (tagId: string, color: HistoryTagColorDto | null) =>
+      runTagChange(() => setHistoryTagColor(tagId, color)),
+    [runTagChange]
+  )
+  /** Show a tag in the sidebar (last) or take it out. */
+  const setTagInSidebar = useCallback(
+    (tagId: string, inSidebar: boolean) =>
+      runTagChange(() => setHistoryTagInSidebar(tagId, inSidebar)),
+    [runTagChange]
+  )
+  /** Resolves to the outcome (`renamed` or `name_conflict`), or `null` on failure. */
+  const renameTag = useCallback(
+    async (tagId: string, name: string): Promise<HistoryTagRenameResultDto | null> => {
+      let result: HistoryTagRenameResultDto | null = null
+      await runTagChange(async () => {
+        result = await renameHistoryTag(tagId, name)
+      })
+      return result
+    },
+    [runTagChange]
+  )
+  const mergeTagsInto = useCallback(
+    (targetTagId: string, sourceTagIds: string[]) =>
+      runTagChange(() => mergeHistoryTags(targetTagId, sourceTagIds)),
+    [runTagChange]
+  )
+  /** Delete tags one after another; their items stay. */
+  const deleteTags = useCallback(
+    (tagIds: string[]) =>
+      runTagChange(async () => {
+        for (const tagId of tagIds) await deleteHistoryTag(tagId)
+      }),
+    [runTagChange]
+  )
+
+  /** Create-or-get by name for the search field's "+ Create #name"; resolves
+   * to the tag's id, or `null` when it failed. */
+  const createTagForSearch = useCallback(
+    async (name: string): Promise<string | null> => {
+      let tagId: string | null = null
+      await runTagChange(async () => {
+        tagId = (await createHistoryTag(name, DEFAULT_TAG_COLOR)).tag.tagId
+      })
+      return tagId
+    },
+    [runTagChange]
+  )
+
+  /** Create-or-get by name (the Engine folds case and spacing), then attach. */
+  const tagItemsByName = useCallback(
+    (name: string, entryIds: string[], color?: HistoryTagColorDto) =>
+      runTagChange(async () => {
+        const { tag } = await createHistoryTag(name, color)
+        await addTagToEntries(tag.tagId, entryIds)
+      }),
+    [runTagChange]
+  )
+
   const handleCardClick = useCallback(
     (id: string) => setSelection({ id, items: orderedItems }),
     [orderedItems]
@@ -318,7 +461,7 @@ export function useHistoryController() {
   const viewLabel =
     data.filter.tagFilter !== null
       ? splitSearchTags(data.filter.tagFilter)
-          .map(id => t(`history.type.${id}`, { defaultValue: id }))
+          .map(id => tagLabel(searchableTags.find(tag => tag.id === id) ?? { id }, t))
           .join(', ')
       : data.filter.activeFilter === Filter.All
         ? t('history.filter.all')
@@ -333,6 +476,27 @@ export function useHistoryController() {
     sourceOptions: data.sourceOptions,
     sourceDeviceNames: data.sourceDeviceNames,
     searchableTags,
+    historyTags,
+    tagLayout,
+    tagNames,
+    refreshTags,
+    tagEditorFor,
+    setTagEditorFor,
+    selectionTagSummary,
+    selectionTagEditorOpen,
+    setSelectionTagEditorOpen,
+    addTagToItems,
+    removeTagFromItems,
+    tagItemsByName,
+    tagManagerOpen,
+    setTagManagerOpen,
+    createTag,
+    setTagColor,
+    setTagInSidebar,
+    createTagForSearch,
+    renameTag,
+    mergeTagsInto,
+    deleteTags,
     browseCount: data.browseCount,
     indexState: data.indexState,
     isSearchActive: data.isSearchActive,

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useEffectEvent, useRef, useState } from 'react'
 import { DaemonApiError, DaemonErrorCode } from '@/api/daemon/errors'
+import { summarizeEntryTags } from '@/api/daemon/history-tags'
 import { querySearch } from '@/api/daemon/search'
 import type { HistoryLiveSnapshot } from '@/hooks/historySessionSnapshot'
 import { useClipboardEventStream } from '@/hooks/useClipboardEventStream'
@@ -8,6 +9,7 @@ import type { ClipboardEntry, DisplayClipboardItem } from '@/lib/clipboard-entry
 import { clipboardEntryToDisplayItem, searchResultToDisplayItem } from '@/lib/clipboard-transform'
 import { daemonWs } from '@/lib/daemon-ws'
 import { createLogger } from '@/lib/logger'
+import { isBuiltinTagId } from '@/lib/search-tags'
 import {
   canPatchLive,
   liveModelToSearchParams,
@@ -245,6 +247,16 @@ export function useLiveSearch(options: UseLiveSearchOptions): UseLiveSearchResul
       const display = clipboardEntryToDisplayItem(entry)
       if (!matchesFilter(display, current)) return
       setItems(prev => prependLiveItem(prev, display))
+      // The browse entry has no local tags; ask for them so the row's chips
+      // and the detail's TAGS block show without a refetch.
+      summarizeEntryTags([display.id])
+        .then(summary => {
+          const userTagIds = summary.tags
+            .filter(tag => tag.applied > 0 && !isBuiltinTagId(tag.tagId))
+            .map(tag => tag.tagId)
+          setItems(prev => patchLiveItem(prev, display.id, { userTagIds }))
+        })
+        .catch(err => log.debug({ err, entryId: display.id }, 'live entry tags unavailable'))
     },
     [query, contentTypes, tags, sourceDevices, extensions, timeRange]
   )

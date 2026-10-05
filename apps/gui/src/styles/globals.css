@@ -47,6 +47,44 @@
   --history-focus-ring: color-mix(in oklab, #8fa8e6 22%, transparent);
 }
 
+/* Tag colors (HDetail.dc.html / HList.dc.html palette): `--tag-<c>` is the
+   swatch and dot, `-soft` a filled chip's ground, `-ink` its text. */
+:root {
+  --tag-orange: #d8743a;
+  --tag-orange-soft: #fbe6d8;
+  --tag-orange-ink: #a94f1c;
+  --tag-blue: #3e5fa8;
+  --tag-blue-soft: #e9eef8;
+  --tag-blue-ink: #2e4c8f;
+  --tag-green: #2f9e6a;
+  --tag-green-soft: #e6f4ec;
+  --tag-green-ink: #2f7a55;
+  --tag-purple: #7a3e8f;
+  --tag-purple-soft: #f3e8f7;
+  --tag-purple-ink: #7a3e8f;
+  --tag-gray: #b4bac6;
+  --tag-gray-soft: #eceef2;
+  --tag-gray-ink: #3a3d44;
+}
+
+:root.dark {
+  --tag-orange: #e08a55;
+  --tag-orange-soft: color-mix(in oklab, #e08a55 18%, transparent);
+  --tag-orange-ink: #f0a77c;
+  --tag-blue: #7f9bd9;
+  --tag-blue-soft: color-mix(in oklab, #7f9bd9 18%, transparent);
+  --tag-blue-ink: #a9bceb;
+  --tag-green: #4cb884;
+  --tag-green-soft: color-mix(in oklab, #4cb884 18%, transparent);
+  --tag-green-ink: #8fd0ae;
+  --tag-purple: #a66bbb;
+  --tag-purple-soft: color-mix(in oklab, #a66bbb 18%, transparent);
+  --tag-purple-ink: #cda2dc;
+  --tag-gray: #8a909c;
+  --tag-gray-soft: color-mix(in oklab, #8a909c 18%, transparent);
+  --tag-gray-ink: #c9cdd4;
+}
+
 /* Shared text roles for every application-owned main-window surface. */
 @utility text-ui-caption {
   font-size: var(--font-size-caption);
@@ -302,6 +340,21 @@
   --color-history-accent-soft: var(--history-accent-soft);
   --color-history-accent-line: var(--history-accent-line);
   --color-history-focus-ring: var(--history-focus-ring);
+  --color-tag-orange: var(--tag-orange);
+  --color-tag-orange-soft: var(--tag-orange-soft);
+  --color-tag-orange-ink: var(--tag-orange-ink);
+  --color-tag-blue: var(--tag-blue);
+  --color-tag-blue-soft: var(--tag-blue-soft);
+  --color-tag-blue-ink: var(--tag-blue-ink);
+  --color-tag-green: var(--tag-green);
+  --color-tag-green-soft: var(--tag-green-soft);
+  --color-tag-green-ink: var(--tag-green-ink);
+  --color-tag-purple: var(--tag-purple);
+  --color-tag-purple-soft: var(--tag-purple-soft);
+  --color-tag-purple-ink: var(--tag-purple-ink);
+  --color-tag-gray: var(--tag-gray);
+  --color-tag-gray-soft: var(--tag-gray-soft);
+  --color-tag-gray-ink: var(--tag-gray-ink);
   --color-info-foreground: var(--info-foreground);
   --color-info: var(--info);
   --color-accent-foreground: var(--accent-foreground);

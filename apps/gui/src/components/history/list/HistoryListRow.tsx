@@ -8,6 +8,7 @@ import {
 } from '@/components/history/history-card/history-card-utils'
 import HistoryCardTransferProgress from '@/components/history/history-card/HistoryCardTransferProgress'
 import { useResourceImageUrl } from '@/components/history/history-card/useResourceImageUrl'
+import { useTagTints } from '@/components/history/tags/tag-colors-context'
 import { Checkbox } from '@/components/ui/checkbox'
 import type {
   ClipboardFileItem,
@@ -16,6 +17,7 @@ import type {
   DisplayClipboardItem,
 } from '@/lib/clipboard-entry'
 import { linkItemFromTextContent } from '@/lib/clipboard-utils'
+import { tagLabel } from '@/lib/search-tags'
 import { cn } from '@/lib/utils'
 import { useAppSelector } from '@/store/hooks'
 import {
@@ -24,14 +26,7 @@ import {
   selectTransferByEntryId,
 } from '@/store/slices/fileTransferSlice'
 import { formatClockTime } from './history-list-format'
-import {
-  historyKind,
-  KIND_GLYPH,
-  KIND_TINT,
-  ROW_TAG_TINT,
-  rowTags,
-  type HistoryKind,
-} from './history-list-kind'
+import { historyKind, KIND_GLYPH, KIND_TINT, rowChips, type HistoryKind } from './history-list-kind'
 
 interface HistoryListRowProps {
   item: DisplayClipboardItem
@@ -46,6 +41,8 @@ interface HistoryListRowProps {
   isDeleting: boolean
   onClick: (id: string) => void
   onHoverChange: (id: string, hovered: boolean) => void
+  /** Local tag id -> name; absent while local tags are unavailable. */
+  tagNames?: ReadonlyMap<string, string | null>
 }
 
 /** One-line title for a row: the text itself, the link, the file name, or the
@@ -118,8 +115,10 @@ function HistoryListRow({
   isDeleting,
   onClick,
   onHoverChange,
+  tagNames,
 }: HistoryListRowProps) {
   const { t, i18n } = useTranslation()
+  const tintOf = useTagTints()
   const kind = historyKind(item)
   const isFileType = item.type === 'file'
   const transfer = useAppSelector(state =>
@@ -170,7 +169,7 @@ function HistoryListRow({
   )
 
   const title = rowTitle(item, kind, t('history.type.image', 'image'))
-  const tags = rowTags(item, kind)
+  const chips = rowChips(item, kind, tagNames)
 
   return (
     <div
@@ -233,19 +232,26 @@ function HistoryListRow({
           </span>
         </span>
       </span>
-      {tags.length > 0 && (
-        <span className="relative z-10 flex shrink-0 gap-1 @max-[25rem]:hidden">
-          {tags.map(tag => (
-            <span
-              key={tag}
-              className={cn(
-                'inline-flex h-5 items-center rounded-full px-1.75 text-ui-caption font-semibold',
-                ROW_TAG_TINT[tag]
-              )}
-            >
-              #{t(`history.type.${tag}`)}
-            </span>
-          ))}
+      {chips.length > 0 && (
+        <span className="relative z-10 flex min-w-0 shrink-0 gap-1 @max-[25rem]:hidden">
+          {chips.map(chip => {
+            const tint = tintOf(chip.kind === 'local' ? chip.id : chip.tag)
+            return (
+              <span
+                key={chip.kind === 'local' ? chip.id : chip.tag}
+                style={tint.style}
+                className={cn(
+                  'inline-flex h-5 max-w-28 items-center truncate rounded-full px-1.75 text-ui-caption font-semibold',
+                  tint.chip
+                )}
+              >
+                #
+                {chip.kind === 'local'
+                  ? tagLabel({ id: chip.id, name: chip.name, isBuiltin: false }, t)
+                  : t(`history.type.${chip.tag}`)}
+              </span>
+            )
+          })}
         </span>
       )}
       {item.isFavorited && (

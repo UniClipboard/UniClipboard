@@ -197,10 +197,16 @@ await runPhase(
     const listOptionTexts = async () =>
       (await optionTexts(browser)).map(text => text.replace('↵', ''))
     const waitOptions = expected =>
-      browser.waitUntil(
-        async () => JSON.stringify(await listOptionTexts()) === JSON.stringify(expected),
-        { timeout: 15_000, timeoutMsg: `options never became ${JSON.stringify(expected)}` }
-      )
+      browser
+        .waitUntil(
+          async () => JSON.stringify(await listOptionTexts()) === JSON.stringify(expected),
+          { timeout: 15_000 }
+        )
+        .catch(async () => {
+          throw new Error(
+            `options never became ${JSON.stringify(expected)}; last ${JSON.stringify(await listOptionTexts())}`
+          )
+        })
     const keys = text => browser.keys(text.split(''))
 
     await waitRows(5)
@@ -208,6 +214,86 @@ await runPhase(
     if (await disable.isExisting()) await disable.click()
     await shot('00-history')
     phase.steps.push('complete /history page: sidebar, 5 rows, preview')
+
+    // ── Detail column (HDetail.dc.html `item`): fixed content box for text, the
+    // design's three fact cards, a text-only Send and the real C key on Copy.
+    const detail = () =>
+      browser.execute(() => {
+        const root = document.querySelector('[data-testid="clipboard-detail"]')
+        const box = root?.querySelector('.rounded-\\[0\\.875rem\\]')
+        const footer = root?.querySelector('footer')
+        const send = [...(footer?.querySelectorAll('button') ?? [])].find(b =>
+          b.textContent.includes('Send to device')
+        )
+        return {
+          boxHeight: box ? Math.round(box.getBoundingClientRect().height) : null,
+          cards: [...(root?.querySelectorAll('.grid > div') ?? [])].map(card =>
+            [...card.children].map(child => child.textContent)
+          ),
+          copyText: footer?.querySelector('button')?.textContent ?? null,
+          sendIconVisible: send
+            ? [...send.querySelectorAll('svg')].some(svg => svg.getBoundingClientRect().width > 0)
+            : null,
+        }
+      })
+    // A real pointer click: rows select on pointer events, not a synthetic click().
+    const selectRow = async text => {
+      for (const row of await browser.$$('[data-testid="history-row"]')) {
+        if ((await row.getText()).includes(text)) return row.click()
+      }
+      throw new Error(`no history row containing "${text}"`)
+    }
+    const detailShows = text =>
+      browser.execute(
+        wanted =>
+          document.querySelector('[data-testid="clipboard-detail"]')?.textContent.includes(wanted),
+        text
+      )
+    const waitDetail = (label, predicate) =>
+      browser.waitUntil(async () => predicate(await detail()), {
+        timeout: 10_000,
+        timeoutMsg: `${label}: detail never settled`,
+      })
+
+    await selectRow('meeting agenda')
+    await browser.waitUntil(() => detailShows('meeting agenda: roadmap review'), {
+      timeout: 10_000,
+      timeoutMsg: 'detail never showed the selected text entry',
+    })
+    await waitDetail('text', d => d.cards.length === 3)
+    const textDetail = await detail()
+    phase.detailText = textDetail
+    assert.equal(textDetail.boxHeight, 170, 'text content box is the design 170px')
+    assert.deepEqual(
+      textDetail.cards.map(([label]) => label),
+      ['Copied', 'Size', 'Stored'],
+      'text cards: Copied / Size / Stored'
+    )
+    assert.equal(textDetail.cards[1][1], '30 chars', 'size of the selected entry')
+    assert.equal(textDetail.cards[2][1], 'Encrypted at rest')
+    assert.equal(textDetail.copyText, 'CopyC', 'Copy carries its real C key')
+    assert.equal(textDetail.sendIconVisible, false, 'Send is text-only at full width')
+    await shot('A2-detail-text')
+    phase.steps.push(
+      'A2 detail (text): 170px box; cards Copied / Size / Stored "Encrypted at rest"; Copy C; Send text-only'
+    )
+
+    await selectRow('design-notes.md')
+    await browser.waitUntil(() => detailShows('design-notes.md'), {
+      timeout: 10_000,
+      timeoutMsg: 'detail never showed the selected file entry',
+    })
+    await waitDetail('file', d => !d.cards.some(([label]) => label === 'Stored'))
+    const fileDetail = await detail()
+    phase.detailFile = fileDetail
+    assert.ok(fileDetail.boxHeight > 170, 'file content box keeps filling the column')
+    assert.deepEqual(
+      fileDetail.cards.map(([label]) => label),
+      ['Copied'],
+      'a single file never claims encrypted storage (and has no size label)'
+    )
+    await shot('A2-detail-file')
+    phase.steps.push('detail (single file): box fills the column; only Copied, no Stored')
     // Column geometry, compared against the design's 220 | 560 | 500 at 1280×800.
     phase.metrics = await browser.execute(() => {
       const width = el => (el ? Math.round(el.getBoundingClientRect().width) : null)
@@ -222,6 +308,416 @@ await runPhase(
       }
     })
 
+    // ── Local tags by name: a tag made over the daemon API, then seen by name
+    // (never by its opaque id) in the sidebar, the `#` candidates and the chip.
+    const daemon = async (method, path, body) => {
+      const response = await fetch(`${daemonUrl}${path}`, {
+        method,
+        headers: { Authorization: `Session ${token}`, 'Content-Type': 'application/json' },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      })
+      const json = await response.json().catch(() => null)
+      assert.equal(response.status, 200, `${method} ${path}: ${JSON.stringify(json)}`)
+      return json.data
+    }
+    // Leave History for Devices and come back: the page remounts and reloads its
+    // tags (a browser refresh would drop the fixture's stubbed startup).
+    const remountHistory = async () => {
+      const clickSidebar = text =>
+        browser.execute(wanted => {
+          const target = [
+            ...document.querySelectorAll(
+              'aside:has(nav[aria-label="Library"]) a, aside:has(nav[aria-label="Library"]) button'
+            ),
+          ].find(el => el.textContent.trim().replace(/\d+$/, '') === wanted)
+          if (!target) throw new Error(`no sidebar control "${wanted}"`)
+          target.click()
+        }, text)
+      await browser.execute(() =>
+        document.querySelector('aside:has(nav[aria-label="Library"]) a[href="/devices"]').click()
+      )
+      await browser.waitUntil(
+        async () => (await browser.execute(() => location.pathname)) === '/devices',
+        { timeout: 10_000, timeoutMsg: 'never reached /devices' }
+      )
+      await clickSidebar('All items')
+      await browser.waitUntil(
+        async () => (await browser.execute(() => location.pathname)) === '/history',
+        { timeout: 10_000, timeoutMsg: 'never came back to /history' }
+      )
+      await waitRows(5)
+    }
+    const texts = await daemon('GET', '/search/query?query=&contentTypes=text')
+    const textIds = Object.fromEntries(texts.items.map(item => [item.textPreview, item.entryId]))
+    const deploy = (await daemon('POST', '/history/tags', { name: 'Deploy' })).tag.tagId
+    await daemon('POST', `/history/tags/${deploy}/entries/add`, {
+      entryIds: [
+        textIds['meeting agenda: roadmap review'],
+        textIds['release notes for version 1.2'],
+      ],
+    })
+    await remountHistory()
+    const sidebarTagRows = () =>
+      browser.execute(() =>
+        [
+          ...document.querySelectorAll(
+            'aside:has(nav[aria-label="Library"]) button, aside:has(nav[aria-label="Library"]) a'
+          ),
+        ]
+          .map(el => el.textContent.trim())
+          .filter(text => text.startsWith('#'))
+      )
+    await browser.waitUntil(async () => (await sidebarTagRows()).includes('#Deploy2'), {
+      timeout: 10_000,
+      timeoutMsg: 'sidebar never listed #Deploy with 2 items',
+    })
+    assert.ok(
+      !(await sidebarTagRows()).some(text => text.includes(deploy)),
+      'the opaque tag id never shows'
+    )
+    const tagInput = await browser.$('[role="combobox"][aria-label="Search and filter"]')
+    await tagInput.click()
+    await keys('#dep')
+    await waitOptions(['#Deploy2 items'])
+    await browser.keys(['Enter'])
+    await waitRows(2)
+    assert.equal(
+      await browser.execute(
+        () => document.querySelectorAll('[aria-label="Remove filter: #Deploy"]').length
+      ),
+      1,
+      'the chip names the tag'
+    )
+    await shot('C0-tag-by-name')
+    phase.steps.push(
+      'local tag "Deploy" on 2 texts (API): sidebar "#Deploy 2"; "#dep" -> "#Deploy 2 items"; chip "#Deploy" -> 2 rows'
+    )
+    await browser.execute(() =>
+      document.querySelector('[aria-label="Remove filter: #Deploy"]').click()
+    )
+    await waitRows(5)
+    await daemon('DELETE', `/history/tags/${deploy}`)
+    await remountHistory()
+    await browser.waitUntil(async () => !(await sidebarTagRows()).includes('#Deploy2'), {
+      timeout: 10_000,
+      timeoutMsg: 'deleted tag stayed in the sidebar',
+    })
+
+    // ── C1: tag from the detail column, all through the UI.
+    const detailChips = () =>
+      browser.execute(() =>
+        [...document.querySelectorAll('[data-testid="detail-tag-chip"]')].map(chip =>
+          chip.textContent.trim()
+        )
+      )
+    const editorOptions = () =>
+      browser.execute(() =>
+        [
+          ...document.querySelectorAll(
+            '[role="listbox"][aria-label="Tag suggestions"] [role="option"]'
+          ),
+        ].map(option => option.textContent.replace(/\s+/g, ' ').trim())
+      )
+    const openTagEditor = async () => {
+      await browser.keys(['t'])
+      await (await browser.$('input[aria-label="Tag name"]')).waitForExist({ timeout: 5_000 })
+    }
+    const waitSidebarTag = (text, label) =>
+      browser.waitUntil(async () => (await sidebarTagRows()).includes(text), {
+        timeout: 10_000,
+        timeoutMsg: `sidebar never showed ${text} (${label})`,
+      })
+
+    await selectRow('meeting agenda')
+    await browser.waitUntil(() => detailShows('meeting agenda: roadmap review'), {
+      timeout: 10_000,
+      timeoutMsg: 'detail never showed the meeting agenda entry',
+    })
+    await openTagEditor()
+    await keys('Deploy')
+    assert.deepEqual(await editorOptions(), ['Create#Deploy↵'])
+    await shot('C1-create-tag')
+    await browser.keys(['Enter'])
+    await browser.waitUntil(async () => (await detailChips()).includes('#Deploy'), {
+      timeout: 10_000,
+      timeoutMsg: 'the new tag never showed on the entry',
+    })
+    await waitSidebarTag('#Deploy1', 'after create')
+    phase.steps.push(
+      'C1: T on "meeting agenda", type "Deploy", Enter -> chip #Deploy, sidebar #Deploy 1'
+    )
+
+    await selectRow('release notes')
+    await browser.waitUntil(() => detailShows('release notes for version 1.2'), {
+      timeout: 10_000,
+      timeoutMsg: 'detail never showed the release notes entry',
+    })
+    await openTagEditor()
+    await keys('dep')
+    await browser.waitUntil(
+      async () =>
+        JSON.stringify(await editorOptions()) === JSON.stringify(['Create#dep↵', '#Deploy1']),
+      { timeout: 5_000, timeoutMsg: 'editor never offered "Create #dep" then #Deploy' }
+    )
+    await shot('C1-similar-tag')
+    await browser.keys(['ArrowDown', 'Enter'])
+    await browser.waitUntil(async () => (await detailChips()).includes('#Deploy'), {
+      timeout: 10_000,
+      timeoutMsg: 'the existing tag never attached',
+    })
+    await waitSidebarTag('#Deploy2', 'after attaching the existing tag')
+    const facetAfterAttach = await daemon('GET', '/search/tags')
+    const deployTag = (await daemon('GET', '/history/tags')).find(tag => tag.name === 'Deploy')
+    assert.ok(deployTag, 'Deploy exists over the API')
+    assert.equal(deployTag.entryCount, 2)
+    assert.ok(
+      facetAfterAttach.some(tag => tag.tagId === deployTag.tagId && tag.count === 2),
+      'the index agrees: 2 entries'
+    )
+    await shot('C1-existing-tag-attached')
+    phase.steps.push(
+      'C1: "dep" offers Create #dep then #Deploy 1; ↓ Enter attaches #Deploy -> sidebar 2, API entryCount 2, /search/tags 2'
+    )
+
+    await selectRow('meeting agenda')
+    await browser.waitUntil(async () => (await detailChips()).includes('#Deploy'), {
+      timeout: 10_000,
+      timeoutMsg: 'chip missing on the first entry',
+    })
+    await (await browser.$('button[aria-label="Remove #Deploy"]')).click()
+    await browser.waitUntil(async () => (await detailChips()).length === 0, {
+      timeout: 10_000,
+      timeoutMsg: 'the chip never went away',
+    })
+    await waitSidebarTag('#Deploy1', 'after removing')
+    phase.steps.push('C1: ✕ on #Deploy -> chip gone, sidebar #Deploy 1')
+
+    await daemon('DELETE', `/history/tags/${deployTag.tagId}`)
+    await remountHistory()
+    await browser.waitUntil(
+      async () => !(await sidebarTagRows()).some(text => text.startsWith('#Deploy')),
+      { timeout: 10_000, timeoutMsg: 'deleted tag stayed in the sidebar' }
+    )
+
+    // ── C2: tag several rows. Docker on 2 of 3, Deploy on 1 of 3 (via the API),
+    // then partial tags, ⌥-click and "Tag…" through the UI.
+    const docker = (await daemon('POST', '/history/tags', { name: 'Docker' })).tag.tagId
+    const deploy2 = (await daemon('POST', '/history/tags', { name: 'Deploy' })).tag.tagId
+    const meeting = textIds['meeting agenda: roadmap review']
+    const release = textIds['release notes for version 1.2']
+    await daemon('POST', `/history/tags/${docker}/entries/add`, { entryIds: [meeting, release] })
+    await daemon('POST', `/history/tags/${deploy2}/entries/add`, { entryIds: [meeting] })
+    await remountHistory()
+    // ⌘-click checks a row (the checkboxes only appear once one is checked).
+    const check = title =>
+      browser.execute(label => {
+        const card = [...document.querySelectorAll('[data-testid="history-card"]')].find(el =>
+          el.textContent.includes(label)
+        )
+        if (!card) throw new Error(`no row for ${label}`)
+        // The row's click target is its full-size "Open" button.
+        card
+          .querySelector(':scope > button')
+          .dispatchEvent(new MouseEvent('click', { bubbles: true, metaKey: true }))
+      }, title)
+    await check('meeting agenda: roadmap review')
+    await check('release notes for version 1.2')
+    await check('grocery list: milk, eggs, coffee')
+    const selectionChips = () =>
+      browser.execute(() =>
+        [...document.querySelectorAll('[data-testid="selection-tag-chip"]')].map(chip =>
+          chip.textContent.trim()
+        )
+      )
+    const waitSelectionChips = (expected, label) =>
+      browser.waitUntil(
+        async () => JSON.stringify(await selectionChips()) === JSON.stringify(expected),
+        { timeout: 10_000, timeoutMsg: `selection chips never became ${expected} (${label})` }
+      )
+    await waitSelectionChips(['#Docker2/3', '#Deploy1/3'], 'initial')
+    await shot('C2-selection-tags')
+    phase.steps.push('C2: 3 rows checked -> detail shows #Docker 2/3, #Deploy 1/3')
+
+    await browser.execute(() =>
+      document
+        .querySelector('[data-testid="selection-tag-chip"][aria-label^="Add #Deploy"]')
+        .click()
+    )
+    await waitSelectionChips(['#Deploy3/3', '#Docker2/3'], 'after completing Deploy')
+    await waitSidebarTag('#Deploy3', 'after completing Deploy')
+    await browser.execute(() =>
+      document
+        .querySelector('[data-testid="selection-tag-chip"][aria-label^="Add #Docker"]')
+        .dispatchEvent(new MouseEvent('click', { bubbles: true, altKey: true }))
+    )
+    await waitSelectionChips(['#Deploy3/3'], 'after ⌥-click on Docker')
+    assert.equal(
+      (await daemon('GET', '/history/tags')).find(tag => tag.name === 'Docker').entryCount,
+      0
+    )
+    phase.steps.push(
+      'C2: click partial #Deploy -> 3/3 (sidebar 3); ⌥-click #Docker -> gone from all (API 0)'
+    )
+
+    await browser.execute(() =>
+      [...document.querySelectorAll('[role="toolbar"][aria-label="Bulk actions"] button')]
+        .find(button => button.textContent.trim() === 'Tag…')
+        .click()
+    )
+    await (await browser.$('input[aria-label="Tag name"]')).waitForExist({ timeout: 5_000 })
+    await keys('Release')
+    await browser.keys(['Enter'])
+    await waitSelectionChips(['#Deploy3/3', '#Release3/3'], 'after Tag… Release')
+    await shot('C2-tag-all')
+    phase.steps.push('C2: bulk bar "Tag…" -> type "Release" Enter -> #Release 3/3')
+
+    await browser.keys(['Escape'])
+    await browser.waitUntil(
+      async () =>
+        (await browser.execute(
+          () => document.querySelectorAll('[data-testid="selection-detail"]').length
+        )) === 0,
+      { timeout: 5_000, timeoutMsg: 'selection panel stayed after Escape' }
+    )
+    for (const tag of await daemon('GET', '/history/tags')) {
+      await daemon('DELETE', `/history/tags/${tag.tagId}`)
+    }
+    await remountHistory()
+    await browser.waitUntil(
+      async () => !(await sidebarTagRows()).some(text => /^#(Deploy|Docker|Release)/.test(text)),
+      { timeout: 10_000, timeoutMsg: 'tags stayed in the sidebar after cleanup' }
+    )
+
+    // ── C3: the tag manager. Deploy (meeting, release), Release (release,
+    // grocery) and an unused Temp, made over the API.
+    const grocery = textIds['grocery list: milk, eggs, coffee']
+    const deploy3 = (await daemon('POST', '/history/tags', { name: 'Deploy' })).tag.tagId
+    const release3 = (await daemon('POST', '/history/tags', { name: 'Release' })).tag.tagId
+    await daemon('POST', '/history/tags', { name: 'Temp' })
+    await daemon('POST', `/history/tags/${deploy3}/entries/add`, { entryIds: [meeting, release] })
+    await daemon('POST', `/history/tags/${release3}/entries/add`, { entryIds: [release, grocery] })
+    await remountHistory()
+    await browser.execute(() => document.querySelector('button[aria-label="Manage tags"]').click())
+    const managerRows = () =>
+      browser.execute(() =>
+        [...document.querySelectorAll('[role="dialog"] [data-testid="tag-manager-row"]')].map(row =>
+          row.textContent.trim()
+        )
+      )
+    const waitManagerRows = (expected, label) =>
+      browser.waitUntil(
+        async () => JSON.stringify(await managerRows()) === JSON.stringify(expected),
+        { timeout: 10_000, timeoutMsg: `manager rows never became ${expected} (${label})` }
+      )
+    await waitManagerRows(['#Deploy2', '#Release2', '#Tempunused0'], 'opened')
+    await shot('C3-tag-manager')
+    phase.steps.push('C3: sidebar Manage -> Tags · 3: #Deploy 2, #Release 2, #Temp unused 0')
+
+    const openRowMenu = name =>
+      browser.execute(label => {
+        document.querySelector(`button[aria-label="Actions for ${label}"]`).click()
+      }, name)
+    const pickMenuItem = async text => {
+      await browser.waitUntil(
+        () =>
+          browser.execute(
+            wanted =>
+              [...document.querySelectorAll('[role="menuitem"]')].some(
+                item => item.textContent.trim() === wanted
+              ),
+            text
+          ),
+        { timeout: 5_000, timeoutMsg: `menu item "${text}" never appeared` }
+      )
+      await browser.execute(wanted => {
+        ;[...document.querySelectorAll('[role="menuitem"]')]
+          .find(item => item.textContent.trim() === wanted)
+          .click()
+      }, text)
+    }
+    const renameTo = async (name, next) => {
+      await openRowMenu(name)
+      await pickMenuItem('Rename…')
+      const field = await browser.$(`input[aria-label="Rename ${name}"]`)
+      await field.waitForExist({ timeout: 5_000 })
+      await field.click()
+      await browser.keys(['Meta', 'a'])
+      await browser.keys(['Meta'])
+      await keys(next)
+      await browser.keys(['Enter'])
+    }
+
+    // Renaming to a taken name (any case) offers the merge instead.
+    await renameTo('#Release', 'deploy')
+    const mergeOffer = await browser.$('//button[normalize-space()="Merge into #Deploy"]')
+    await mergeOffer.waitForExist({ timeout: 10_000 })
+    assert.match(await browser.$('[role="dialog"]').getText(), /#Deploy already exists\./)
+    await shot('C3-rename-conflict')
+    await mergeOffer.click()
+    await waitManagerRows(['#Deploy3', '#Tempunused0'], 'after merging Release into Deploy')
+    const afterMerge = await daemon('GET', '/history/tags')
+    assert.deepEqual(
+      afterMerge.map(tag => [tag.name, tag.entryCount]),
+      [
+        ['Deploy', 3],
+        ['Temp', 0],
+      ]
+    )
+    phase.steps.push(
+      'C3: rename #Release -> "deploy" says #Deploy already exists; "Merge into #Deploy" -> Deploy 3 (API agrees)'
+    )
+
+    await renameTo('#Temp', 'Scratch')
+    await waitManagerRows(['#Deploy3', '#Scratchunused0'], 'after renaming Temp')
+    await openRowMenu('#Scratch')
+    await pickMenuItem('Delete tag (items stay)')
+    await waitManagerRows(['#Deploy3'], 'after deleting Scratch')
+    phase.steps.push('C3: rename #Temp -> Scratch; delete #Scratch (items stay)')
+
+    await browser.execute(() =>
+      [...document.querySelectorAll('[role="dialog"] button')]
+        .find(button => button.textContent.trim() === '+ New tag')
+        .click()
+    )
+    await (await browser.$('input[aria-label="New tag name"]')).waitForExist({ timeout: 5_000 })
+    await keys('Inbox')
+    await browser.keys(['Enter'])
+    await waitManagerRows(['#Deploy3', '#Inboxunused0'], 'after + New tag')
+    await openRowMenu('#Inbox')
+    await pickMenuItem('Delete tag (items stay)')
+    await waitManagerRows(['#Deploy3'], 'after deleting Inbox')
+    phase.steps.push('C3: + New tag "Inbox" -> unused row; deleted again')
+
+    await openRowMenu('#Deploy')
+    await pickMenuItem('Show items')
+    await browser.waitUntil(
+      async () =>
+        (await browser.execute(() => document.querySelectorAll('[role="dialog"]').length)) === 0,
+      { timeout: 5_000, timeoutMsg: 'manager stayed open after Show items' }
+    )
+    await waitRows(3)
+    await shot('C3-show-items')
+    phase.steps.push('C3: Show items on #Deploy -> manager closes, list shows its 3 entries')
+
+    // Picking the active tag row again clears the filter.
+    await browser.execute(() =>
+      [
+        ...document.querySelectorAll(
+          'aside:has(nav[aria-label="Library"]) button, aside:has(nav[aria-label="Library"]) a'
+        ),
+      ]
+        .find(el => el.textContent.trim() === '#Deploy3')
+        .click()
+    )
+    await waitRows(5)
+    await daemon('DELETE', `/history/tags/${deploy3}`)
+    await remountHistory()
+    await browser.waitUntil(
+      async () =>
+        !(await sidebarTagRows()).some(text => /^#(Deploy|Release|Temp|Scratch)/.test(text)),
+      { timeout: 10_000, timeoutMsg: 'tags stayed in the sidebar after the manager steps' }
+    )
+
     // The search field sits at the top of the list column (no toolbar trigger).
     const input = await browser.$('[role="combobox"][aria-label="Search and filter"]')
     await input.waitForExist({ timeout: 10_000 })
@@ -231,9 +727,17 @@ await runPhase(
     await browser.keys(['Enter'])
     await waitRows(3)
     await keys('/')
-    await waitOptions(['Text3 items', 'Rich Text0 items', 'Image0 items', 'File0 items'])
+    // Two-part counts (b069bcf79): all items, then those matching the other chips.
+    await waitOptions([
+      'Text3 items · 3 from e2e-phone',
+      'Rich Text0 items · none from e2e-phone',
+      'Image0 items · none from e2e-phone',
+      'File2 items · none from e2e-phone',
+    ])
     await shot('B1-typeahead-with-from-chip')
-    phase.steps.push('B1: @e2e-phone chip + "/" -> Text 3 / Rich Text 0 / Image 0 / File 0')
+    phase.steps.push(
+      'B1: @e2e-phone chip + "/" -> Text 3·3 / Rich Text 0·none / Image 0·none / File 2·none from e2e-phone'
+    )
 
     await browser.keys(['Enter'])
     await waitRows(3)
@@ -246,7 +750,7 @@ await runPhase(
     await browser.keys(Array(6).fill('Backspace'))
     await waitRows(3)
     await keys('ext:md')
-    await waitOptions(['.md0 items'])
+    await waitOptions(['.md1 item · none type Text · from e2e-phone'])
     await browser.keys(['Enter'])
     await waitRows(0)
     const relaxations = () =>
@@ -291,7 +795,7 @@ await runPhase(
     await browser.keys(['Backspace'])
     assert.equal(await input.getValue(), '@e2e-phone')
     await waitRows(3)
-    await waitOptions(['e2e-phone3 items'])
+    await waitOptions(['e2e-phone3 items · 3 type Text'])
     await shot('chip-edit-backspace')
     await browser.keys(['Enter'])
     await waitRows(3)
@@ -312,7 +816,8 @@ await runPhase(
           const target = [...document.querySelectorAll('a, button')].find(
             el =>
               Boolean(el.closest('aside:has(nav[aria-label="Library"])')) === sidebar &&
-              el.textContent.trim() === wanted
+              // Library rows end with their item count ("Pinned0").
+              el.textContent.trim().replace(/\d+$/, '') === wanted
           )
           if (!target) throw new Error(`no ${sidebar ? 'sidebar' : 'page'} control "${wanted}"`)
           target.click()
@@ -332,7 +837,10 @@ await runPhase(
       'no icon rail on macOS'
     )
 
-    await clickText('Manage', { inSidebar: true })
+    // Devices' "Manage" link (Tags has a "Manage" button of its own).
+    await browser.execute(() =>
+      document.querySelector('aside:has(nav[aria-label="Library"]) a[href="/devices"]').click()
+    )
     await waitPath('/devices')
     await browser.waitUntil(async () => (await pageText()).includes('1 of 1 online'), {
       timeout: 10_000,
@@ -375,7 +883,8 @@ await runPhase(
           () =>
             document
               .querySelector('nav[aria-label="Library"] [aria-current="true"]')
-              ?.textContent.trim() === 'Pinned'
+              ?.textContent.trim()
+              .replace(/\d+$/, '') === 'Pinned'
         ),
       { timeout: 10_000, timeoutMsg: 'Pinned never became the active Library row' }
     )
@@ -391,7 +900,8 @@ await runPhase(
           () =>
             document
               .querySelector('nav[aria-label="Library"] [aria-current="true"]')
-              ?.textContent.trim() === 'All items'
+              ?.textContent.trim()
+              .replace(/\d+$/, '') === 'All items'
         ),
       { timeout: 10_000, timeoutMsg: 'All items never became the active Library row' }
     )

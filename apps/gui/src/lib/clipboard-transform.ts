@@ -21,6 +21,7 @@ import {
   isImageContentType,
   parseFileItemsFromUriList,
 } from '@/lib/clipboard-utils'
+import { isBuiltinTagId } from '@/lib/search-tags'
 
 export function projectClipboardEntry(dto: ClipboardEntryDto): ClipboardEntry {
   const isFile = isFileContentType(dto.contentType)
@@ -235,6 +236,7 @@ export function searchResultToDisplayItem(r: SearchResultDto): DisplayClipboardI
     isDirectory: r.tags.includes('directory'),
     textPreview: r.textPreview ?? undefined,
     ...(r.sourceDevice ? { sourceDeviceId: r.sourceDevice } : {}),
+    userTagIds: r.tags.filter(tag => !isBuiltinTagId(tag)),
   }
 }
 

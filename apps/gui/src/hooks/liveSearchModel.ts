@@ -184,9 +184,9 @@ function tagMatches(tag: string, item: DisplayClipboardItem): boolean {
   if (tag === 'link') return item.contentTags?.includes('link') === true
   if (tag === 'code') return item.contentTags?.includes('code') === true
   if (tag === 'favorited') return item.isFavorited === true
-  // Custom tags aren't derivable from a DisplayItem; treat as non-matching so a
-  // new entry is never optimistically shown under a tag it may not carry.
-  return false
+  // A local tag matches through the item's own tag ids; builtin tags without a
+  // display flag (`image`, `directory`) never match optimistically.
+  return item.userTagIds?.includes(tag) === true
 }
 
 /**
@@ -217,7 +217,13 @@ export function prependLiveItem(
   incoming: DisplayClipboardItem,
   cap: number = MAX_LIVE_ITEMS
 ): DisplayClipboardItem[] {
-  const next = [incoming, ...items.filter(it => it.id !== incoming.id)]
+  // A browse entry carries no local tags: an entry already listed keeps its own.
+  const listed = items.find(it => it.id === incoming.id)
+  const merged =
+    incoming.userTagIds === undefined && listed?.userTagIds !== undefined
+      ? { ...incoming, userTagIds: listed.userTagIds }
+      : incoming
+  const next = [merged, ...items.filter(it => it.id !== incoming.id)]
   return next.length > cap ? next.slice(0, cap) : next
 }
 

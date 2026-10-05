@@ -216,6 +216,66 @@ describe('CompositeSearchBar', () => {
     ).toBeInTheDocument()
   })
 
+  it('ends a typed tag with "+ Create" and filters by the new tag once created', async () => {
+    const user = userEvent.setup()
+    const onCreateTag = vi.fn().mockResolvedValue('tag-new')
+    const props = renderSearchBar({
+      variant: 'list',
+      tagOptions: [{ id: 'tag-release', count: 12, isBuiltin: false, name: 'release' }],
+      onCreateTag,
+    })
+
+    await user.type(screen.getByRole('combobox'), '#re')
+    const options = screen.getAllByRole('option')
+    expect(options.map(option => option.textContent)).toEqual([
+      expect.stringContaining('#release'),
+      expect.stringContaining('history.tags.createNamed'),
+    ])
+
+    await user.click(options[1])
+    expect(onCreateTag).toHaveBeenCalledWith('re')
+    await vi.waitFor(() => expect(props.onTagFilterChange).toHaveBeenCalledWith('tag-new'))
+  })
+
+  it('offers no "+ Create" for a tag that already exists', async () => {
+    const user = userEvent.setup()
+    renderSearchBar({
+      variant: 'list',
+      tagOptions: [{ id: 'tag-release', count: 12, isBuiltin: false, name: 'release' }],
+      onCreateTag: vi.fn(),
+    })
+
+    await user.type(screen.getByRole('combobox'), '#Release')
+    expect(screen.queryByText('history.tags.createNamed')).toBeNull()
+  })
+
+  it('offers no "+ Create" for a builtin tag typed by its id', async () => {
+    const user = userEvent.setup()
+    renderSearchBar({
+      variant: 'list',
+      tagOptions: [{ id: 'code', count: 2, isBuiltin: true }],
+      onCreateTag: vi.fn(),
+    })
+
+    await user.type(screen.getByRole('combobox'), '#code')
+    expect(screen.queryByText('history.tags.createNamed')).toBeNull()
+  })
+
+  it('searches a #word naming no tag as text, with "+ Create" one arrow away', async () => {
+    const user = userEvent.setup()
+    const onCreateTag = vi.fn().mockResolvedValue('tag-new')
+    const props = renderSearchBar({ variant: 'list', tagOptions: [], onCreateTag })
+
+    const input = screen.getByRole('combobox')
+    await user.type(input, '#hotfix{Enter}')
+    expect(props.onQuerySubmit).toHaveBeenCalledWith('#hotfix')
+    expect(onCreateTag).not.toHaveBeenCalled()
+
+    await user.click(input)
+    await user.keyboard('{ArrowDown}{Enter}')
+    expect(onCreateTag).toHaveBeenCalledWith('hotfix')
+  })
+
   it('reopens the last chip as an editable token on Backspace in an empty input', async () => {
     const user = userEvent.setup()
     const props = renderSearchBar({ contentFilter: Filter.Image, extensionFilter: 'md' })

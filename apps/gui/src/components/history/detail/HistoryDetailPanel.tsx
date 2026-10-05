@@ -33,16 +33,18 @@ import type {
 } from '@/lib/clipboard-entry'
 import { cn } from '@/lib/utils'
 import { formatFileSize } from '@/utils'
+import { DETAIL_SECTION_LABEL } from './detail-styles'
+import HistoryDetailTags, { type DetailTagsProps } from './HistoryDetailTags'
 
 interface HistoryDetailPanelProps {
   item: DisplayClipboardItem | null
+  /** Local tags for the entry; absent or `null` hides the TAGS block. */
+  tagging?: DetailTagsProps | null
   copySuccess: boolean
   onCopy: () => void
   onToggleFavorite: () => void
   onDelete: () => void
 }
-
-const SECTION_LABEL = 'text-ui-caption font-semibold uppercase text-muted-foreground'
 
 const iconButton =
   'flex size-8.5 shrink-0 items-center justify-center rounded-[0.5625rem] border transition-colors'
@@ -50,13 +52,20 @@ const iconButton =
 const pillButton =
   'inline-flex h-10.5 items-center gap-2 rounded-full px-5 text-ui-body font-medium transition-colors disabled:opacity-50'
 
-// At most three cards: Copied, Size, and Dimensions or Files.
+// At most three cards: Copied, Size, and one of Dimensions, Files or Stored.
 const GRID_COLS: Record<number, string> = { 1: 'grid-cols-1', 2: 'grid-cols-2', 3: 'grid-cols-3' }
 
-function MetaCard({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+interface MetaCardProps {
+  id: string
+  label: string
+  value: string
+  mono?: boolean
+}
+
+function MetaCard({ label, value, mono }: Omit<MetaCardProps, 'id'>) {
   return (
     <div className="flex min-w-0 flex-col gap-0.5 rounded-[0.625rem] bg-muted px-3 py-2.5">
-      <span className={SECTION_LABEL}>{label}</span>
+      <span className={DETAIL_SECTION_LABEL}>{label}</span>
       <span className={cn('truncate text-ui-body font-medium', mono && 'font-mono tabular-nums')}>
         {value}
       </span>
@@ -87,7 +96,7 @@ function DeliverySection({ delivery }: { delivery: EntryDeliveryView }) {
   return (
     <section className="flex shrink-0 flex-col" aria-label={t('delivery.section.aria')}>
       <div className="flex items-center justify-between gap-3 pb-1">
-        <h3 className={SECTION_LABEL}>{t('delivery.list.title')}</h3>
+        <h3 className={DETAIL_SECTION_LABEL}>{t('delivery.list.title')}</h3>
         {/* Summary, per-device popover and resend, shared with the quick panel. */}
         <EntryDeliveryBadge delivery={delivery} />
       </div>
@@ -117,6 +126,7 @@ function DeliverySection({ delivery }: { delivery: EntryDeliveryView }) {
  */
 const HistoryDetailPanel: React.FC<HistoryDetailPanelProps> = ({
   item,
+  tagging,
   copySuccess,
   onCopy,
   onToggleFavorite,
@@ -150,6 +160,9 @@ const HistoryDetailPanel: React.FC<HistoryDetailPanelProps> = ({
     isLargeTextPreview(item.content as ClipboardTextItem, state.preview, state.loading)
   // Code and large text own their scrolling; everything else scrolls in the box.
   const fillsBox = isLargeText || kind === 'code'
+  // Text, code and links get the design's fixed 170px box with the facts below
+  // it; images and files keep filling the column until their own stage exists.
+  const fixedBox = kind === 'text' || kind === 'code' || kind === 'link'
   const content = (
     <PreviewContent
       item={item}
@@ -159,38 +172,57 @@ const HistoryDetailPanel: React.FC<HistoryDetailPanelProps> = ({
       entryStatus={state.entryStatus}
       transfer={state.transfer}
       setImageDimensions={state.setImageDimensions}
+      codeVariant="block"
     />
   )
 
-  const cards: { id: string; label: string; value: string; mono?: boolean }[] = [
-    {
-      id: 'copied',
-      label: t('history.detail.copied'),
-      value: formatCopiedAt(item.activeTime, i18n.language),
-      mono: true,
-    },
-  ]
+  const copied: MetaCardProps = {
+    id: 'copied',
+    label: t('history.detail.copied'),
+    value: formatCopiedAt(item.activeTime, i18n.language),
+    mono: true,
+  }
   const image = item.type === 'image' ? (item.content as ClipboardImageItem | null) : null
-  const size = image && image.size > 0 ? formatFileSize(image.size) : getContentSizeLabel(item, t)
-  if (size) cards.push({ id: 'size', label: t('history.detail.size'), value: size })
+  const sizeLabel =
+    image && image.size > 0 ? formatFileSize(image.size) : getContentSizeLabel(item, t)
+  const size: MetaCardProps | null = sizeLabel
+    ? { id: 'size', label: t('history.detail.size'), value: sizeLabel }
+    : null
   const dims =
     state.imageDimensions ??
     (image && image.width > 0 ? { width: image.width, height: image.height } : null)
-  if (dims) {
-    cards.push({
-      id: 'dims',
-      label: t('clipboard.preview.dimensions'),
-      value: `${dims.width} × ${dims.height}`,
-    })
-  }
   const files = item.type === 'file' ? (item.content as ClipboardFileItem | null) : null
-  if (files && files.file_names.length > 1) {
-    cards.push({
-      id: 'files',
-      label: t('history.detail.fileCount'),
-      value: String(files.file_names.length),
-    })
-  }
+  // Only inline text is AEAD-encrypted in the database; file bodies in the
+  // managed cache are exempt (AGENTS.md), so files never claim it, and neither
+  // does an entry whose payload is gone.
+  const third: MetaCardProps | null = item.isUnavailable
+    ? null
+    : files
+      ? files.file_names.length > 1
+        ? {
+            id: 'files',
+            label: t('history.detail.fileCount'),
+            value: String(files.file_names.length),
+          }
+        : null
+      : { id: 'stored', label: t('history.detail.stored'), value: t('history.detail.encrypted') }
+  // Design order: images lead with Dimensions and end with Copied; everything
+  // else reads Copied, Size, then Files (multi-file) or how text is stored.
+  const cards: MetaCardProps[] = image
+    ? [
+        ...(dims
+          ? [
+              {
+                id: 'dims',
+                label: t('clipboard.preview.dimensions'),
+                value: `${dims.width} × ${dims.height}`,
+              },
+            ]
+          : []),
+        ...(size ? [size] : []),
+        copied,
+      ]
+    : [copied, ...(size ? [size] : []), ...(third ? [third] : [])]
 
   return (
     <section
@@ -255,7 +287,14 @@ const HistoryDetailPanel: React.FC<HistoryDetailPanelProps> = ({
             cancelling={cancelling}
           />
         )}
-        <div className="relative min-h-40 flex-1 overflow-hidden rounded-[0.875rem] border border-border/60 bg-card">
+        <div
+          className={cn(
+            'relative overflow-hidden rounded-[0.875rem] bg-card',
+            // The dark code block carries its own edge, as in the design.
+            kind !== 'code' && 'border border-border/60',
+            fixedBox ? 'h-42.5 shrink-0' : 'min-h-40 flex-1'
+          )}
+        >
           {fillsBox ? (
             <div className="absolute inset-0">{content}</div>
           ) : (
@@ -264,6 +303,7 @@ const HistoryDetailPanel: React.FC<HistoryDetailPanelProps> = ({
             </ScrollArea>
           )}
         </div>
+        {tagging && item.userTagIds && <HistoryDetailTags tagIds={item.userTagIds} {...tagging} />}
         <div
           className={cn(
             'grid shrink-0 gap-2.5',
@@ -288,6 +328,12 @@ const HistoryDetailPanel: React.FC<HistoryDetailPanelProps> = ({
         >
           {copySuccess && <Check className="size-4" aria-hidden="true" />}
           {copySuccess ? t('clipboard.item.actions.copied') : t('clipboard.actionBar.copy')}
+          {/* The real shortcut (useHistoryController), styled like the design's key hint. */}
+          {!copySuccess && (
+            <kbd aria-hidden="true" className="font-mono text-ui-caption text-background/60">
+              C
+            </kbd>
+          )}
         </button>
         <ClipboardSendMenu
           key={item.id}
@@ -302,7 +348,8 @@ const HistoryDetailPanel: React.FC<HistoryDetailPanelProps> = ({
                 'border border-border bg-background px-4.5 text-foreground hover:bg-muted/60 @max-[30rem]:px-3.5'
               )}
             >
-              <Send className="size-3.5" aria-hidden="true" />
+              {/* Text-only like the design; the icon stands in once the label hides. */}
+              <Send className="hidden size-3.5 @max-[30rem]:block" aria-hidden="true" />
               {/* Icon-only under 480px; the label stays as the accessible name. */}
               <span className="@max-[30rem]:sr-only">{t('history.detail.sendToDevice')}</span>
             </button>

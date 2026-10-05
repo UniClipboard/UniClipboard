@@ -1,7 +1,7 @@
 import { ChevronDown, ChevronUp, Hash } from 'lucide-react'
 import { useLayoutEffect, useId, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { splitSearchTags, toggleSearchTag, type SearchTagOption } from '@/lib/search-tags'
+import { splitSearchTags, tagLabel, toggleSearchTag, type SearchTagOption } from '@/lib/search-tags'
 import { cn } from '@/lib/utils'
 import { QUICK_PANEL_FOOTER_CLASS_NAME } from '@/quick-panel/constants'
 
@@ -59,7 +59,7 @@ function QuickPanelTagFilterBar({ tagFilter, tagOptions, onChange }: QuickPanelT
       >
         {tagOptions.map(tag => {
           const active = selectedTags.has(tag.id)
-          const label = t(`history.type.${tag.id}`, { defaultValue: tag.id })
+          const label = tagLabel(tag, t)
 
           return (
             <button

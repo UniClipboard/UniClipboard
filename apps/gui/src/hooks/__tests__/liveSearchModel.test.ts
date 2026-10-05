@@ -131,6 +131,13 @@ describe('prependLiveItem', () => {
     expect(next[0].activeTime).toBe(99)
   })
 
+  it('keeps the local tags of a re-copied entry that is already listed', () => {
+    const items = [makeItem({ id: 'a', type: 'text', userTagIds: ['t-deploy'] })]
+    const next = prependLiveItem(items, makeItem({ id: 'a', type: 'text', activeTime: 99 }))
+    expect(next[0].userTagIds).toEqual(['t-deploy'])
+    expect(next[0].activeTime).toBe(99)
+  })
+
   it('trims the oldest tail past the cap', () => {
     const items = [makeItem({ id: 'a', type: 'text' }), makeItem({ id: 'b', type: 'text' })]
     const next = prependLiveItem(items, makeItem({ id: 'c', type: 'text' }), 2)

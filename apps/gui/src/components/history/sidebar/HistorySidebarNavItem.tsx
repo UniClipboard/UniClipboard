@@ -33,7 +33,8 @@ function HistorySidebarNavItem({
       disabled={disabled}
       onClick={onClick}
       className={cn(
-        'flex w-full items-center text-ui-body transition-colors',
+        // An inset ring: an outer one would spill past the sidebar's edge.
+        'flex w-full items-center text-ui-body transition-colors outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/50',
         windowEdge
           ? cn(
               'h-7.5 gap-2.5 rounded-lg px-2.5 text-sidebar-foreground',

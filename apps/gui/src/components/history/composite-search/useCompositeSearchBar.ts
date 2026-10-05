@@ -1,3 +1,4 @@
+import { Plus } from 'lucide-react'
 import { useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Filter } from '@/api/clipboardItems'
@@ -14,6 +15,7 @@ import {
   buildSyntaxSuggestions,
   buildTokenText,
   DIMENSION_LABEL_KEYS,
+  parseBuffer,
   resetDimensionValue,
   resolveBuffer,
   SYNTAX_KEYS,
@@ -52,6 +54,9 @@ export interface CompositeSearchBarProps {
   shortcutHint?: string
   /** Enables per-candidate hit counts; omitted → no counts, no network. */
   fetchCounts?: FetchSearchCounts
+  /** List variant: offer "+ Create #name" after a typed `tag:` value no tag
+   * has. Resolves to the new tag's id, or `null` when it was not created. */
+  onCreateTag?: (name: string) => Promise<string | null>
   className?: string
 }
 
@@ -74,6 +79,7 @@ export function useCompositeSearchBar({
   onUnhandledKeyDown,
   suggestionActivation = 'focus',
   fetchCounts,
+  onCreateTag,
   variant = 'compact',
 }: CompositeSearchBarProps) {
   const { t } = useTranslation()
@@ -105,7 +111,24 @@ export function useCompositeSearchBar({
     ? buildCandidates(parsed.dimension, parsed.partial, tokenContext)
     : buildAllCandidates(buffer, { t, sourceOptions, tagOptions, current })
   const syntaxSuggestions = inToken ? [] : buildSyntaxSuggestions(buffer, t)
-  const expanded = open && syntaxSuggestions.length + candidates.length > 0
+  // HList.dc.html B1: a typed tag no tag has yet ends the list with "+ Create".
+  // A `#name` naming no tag stays a text search (see `resolveBuffer`), so the
+  // offer reads the raw buffer; Enter still searches the text, and the offer
+  // is picked only by arrow keys or a click.
+  const typed = parseBuffer(buffer)
+  const createName =
+    variant === 'list' && onCreateTag && typed.kind === 'token' && typed.dimension === 'tag'
+      ? typed.partial
+      : ''
+  const createOffer =
+    createName !== '' &&
+    // A builtin tag matches by id as well as its translated label.
+    !buildCandidates('tag', createName, tokenContext).some(c =>
+      [c.value, c.label].some(name => name.toLocaleLowerCase() === createName.toLocaleLowerCase())
+    )
+      ? createName
+      : null
+  const expanded = open && syntaxSuggestions.length + candidates.length + (createOffer ? 1 : 0) > 0
   // Only a single typed dimension stays within one count batch; the flat
   // all-dimension panel would not.
   const candidateCounts = useSearchCounts(
@@ -188,6 +211,18 @@ export function useCompositeSearchBar({
                 : t('history.subtitle', { count: candidateCounts[i] }),
           }),
     })),
+    ...(createOffer
+      ? [
+          {
+            id: 'create-tag',
+            label: t('history.tags.createNamed', { name: createOffer }),
+            icon: Plus,
+            create: true,
+            header: candidates.length === 0 ? t(DIMENSION_LABEL_KEYS.tag) : undefined,
+            hint: t('history.tags.createHint'),
+          },
+        ]
+      : []),
   ]
   const clampedHighlight =
     highlight < 0 || options.length === 0 ? -1 : Math.min(highlight, options.length - 1)
@@ -247,6 +282,13 @@ export function useCompositeSearchBar({
     }
   }
 
+  const createTag = async (name: string) => {
+    const tagId = await onCreateTag?.(name)
+    if (!tagId) return
+    applyDimensionValue('tag', tagId, handlers, current)
+    resetBuffer()
+  }
+
   const selectOption = (index: number) => {
     if (index < syntaxSuggestions.length) {
       seedDimension(syntaxSuggestions[index].dimension)
@@ -254,6 +296,7 @@ export function useCompositeSearchBar({
     }
     const c = candidates[index - syntaxSuggestions.length]
     if (c) applyCandidate(c)
+    else if (createOffer) void createTag(createOffer)
   }
 
   const hasContent = chips.length > 0 || buffer.length > 0

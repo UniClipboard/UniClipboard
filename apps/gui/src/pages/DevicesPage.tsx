@@ -11,6 +11,7 @@ import RemovedDevicePanel from '@/components/device/RemovedDevicePanel'
 import SwitchSpaceDialog from '@/components/device/SwitchSpaceDialog'
 import UnpairAlertDialog from '@/components/device/UnpairAlertDialog'
 import HistorySidebar from '@/components/history/sidebar/HistorySidebar'
+import { NO_TAG_COLORS, TagColorsContext } from '@/components/history/tags/tag-colors-context'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
   AlertDialog,
@@ -26,7 +27,7 @@ import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useSidebarSlot } from '@/contexts/sidebar-slot-context'
 import { useDevicesPage } from '@/hooks/useDevicesPage'
-import { useSearchTags } from '@/hooks/useSearchTags'
+import { useTagCatalog } from '@/hooks/useTagCatalog'
 import { createLogger } from '@/lib/logger'
 import {
   clearLocalDeviceError,
@@ -41,8 +42,16 @@ const log = createLogger('devices-page')
 /** The Library sidebar on Devices; it loads its own Tags rows, which History
  * gets from its controller, so only a mounted sidebar fetches them. */
 function DevicesLibrarySidebar() {
-  const tags = useSearchTags()
-  return <HistorySidebar context="devices" tags={tags} />
+  const { searchableTags, layout } = useTagCatalog()
+  return (
+    <TagColorsContext value={layout?.colors ?? NO_TAG_COLORS}>
+      <HistorySidebar
+        context="devices"
+        tags={searchableTags}
+        sidebarTagIds={layout?.sidebar ?? null}
+      />
+    </TagColorsContext>
+  )
 }
 
 const DevicesPage: React.FC = () => {

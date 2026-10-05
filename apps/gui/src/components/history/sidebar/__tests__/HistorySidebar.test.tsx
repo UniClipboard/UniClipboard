@@ -45,7 +45,15 @@ function renderSidebar(
     tags = [],
     activeTag = null,
     activeFilter = Filter.All,
-  }: { tags?: SearchTagOption[]; activeTag?: string | null; activeFilter?: Filter } = {}
+    tagLibrary,
+    sidebarTagIds = null,
+  }: {
+    tags?: SearchTagOption[]
+    sidebarTagIds?: readonly string[] | null
+    activeTag?: string | null
+    activeFilter?: Filter
+    tagLibrary?: { total: number; open: () => void }
+  } = {}
 ) {
   const onSelectLibrary = vi.fn()
   const onSelectTag = vi.fn()
@@ -58,8 +66,10 @@ function renderSidebar(
             activeFilter={activeFilter}
             onSelectLibrary={onSelectLibrary}
             tags={tags}
+            sidebarTagIds={sidebarTagIds}
             activeTag={activeTag}
             onSelectTag={onSelectTag}
+            tagLibrary={tagLibrary}
             countsRevision={null}
           />
         </LibraryChromeContext>
@@ -159,53 +169,82 @@ describe('HistorySidebar show/hide (macOS)', () => {
 })
 
 describe('HistorySidebar tags', () => {
-  it('always lists the builtin rows, then custom tags in use by count', () => {
+  it('lists the layout sidebar tags in its order, at most six', () => {
     renderSidebar(true, chrome(), {
-      tags: [
-        tag('link', 3, true),
-        tag('favorited', 9, true),
-        tag('code', 0, true),
-        tag('docker', 38),
-        tag('work', 57),
-        tag('stale', 0),
-      ],
+      tags: [tag('link', 3, true), tag('code', 0, true), tag('docker', 38), tag('work', 57)],
+      sidebarTagIds: ['docker', 'link', 'code', 'image', 'directory', 'work', 'extra'],
     })
 
     const rows = screen.getAllByRole('button', { name: /^#/ })
     expect(rows.map(row => row.textContent)).toEqual([
+      '#docker38',
       '#link3',
       '#code',
       '#image',
-      '#file',
       '#directory',
       '#work57',
-      '#docker38',
     ])
   })
 
-  it('filters by content type from the file row and returns to All items', async () => {
-    const user = userEvent.setup()
-    const { onSelectLibrary, onSelectTag } = renderSidebar(true)
+  it('shows a hint when the sidebar holds no tag', () => {
+    renderSidebar(true, chrome(), { tags: [tag('work', 5)], sidebarTagIds: [] })
 
-    await user.click(screen.getByRole('button', { name: '#file' }))
-    expect(onSelectLibrary).toHaveBeenLastCalledWith(Filter.File)
-    expect(onSelectTag).not.toHaveBeenCalled()
+    expect(screen.queryAllByRole('button', { name: /^#/ })).toEqual([])
+    expect(screen.getByText('history.tags.sidebarEmpty')).toBeInTheDocument()
   })
 
-  it('marks the active file row and picks All items when it is picked again', async () => {
-    const user = userEvent.setup()
-    const { onSelectLibrary } = renderSidebar(true, chrome(), { activeFilter: Filter.File })
+  it('shows neither rows nor the hint while the layout is unknown', () => {
+    renderSidebar(true, chrome(), { tags: [tag('work', 5)], sidebarTagIds: null })
 
-    const file = screen.getByRole('button', { name: '#file' })
-    expect(file).toHaveAttribute('aria-current', 'true')
-    await user.click(file)
-    expect(onSelectLibrary).toHaveBeenLastCalledWith(Filter.All)
+    expect(screen.queryAllByRole('button', { name: /^#/ })).toEqual([])
+    expect(screen.queryByText('history.tags.sidebarEmpty')).toBeNull()
+  })
+
+  it('opens the tag Library from the + icon and from All tags', async () => {
+    const user = userEvent.setup()
+    const open = vi.fn()
+    renderSidebar(true, chrome(), {
+      tags: [tag('work', 57)],
+      sidebarTagIds: ['work'],
+      tagLibrary: { total: 12, open },
+    })
+
+    await user.click(screen.getByRole('button', { name: 'history.tags.manage' }))
+    await user.click(screen.getByRole('button', { name: 'history.tags.allTags' }))
+    expect(open).toHaveBeenCalledTimes(2)
+  })
+
+  it('asks for focus back on close only when the Library was opened by keyboard', async () => {
+    const user = userEvent.setup()
+    const open = vi.fn()
+    renderSidebar(true, chrome(), {
+      tags: [tag('work', 57)],
+      sidebarTagIds: ['work'],
+      tagLibrary: { total: 12, open },
+    })
+    const plus = screen.getByRole('button', { name: 'history.tags.manage' })
+
+    await user.click(plus)
+    expect(open).toHaveBeenLastCalledWith(null)
+    plus.focus()
+    await user.keyboard('{Enter}')
+    expect(open).toHaveBeenLastCalledWith(plus)
+  })
+
+  it('offers no Library entry while local tags are unavailable', () => {
+    renderSidebar(true, chrome(), { tags: [tag('work', 57)] })
+
+    expect(screen.queryByRole('button', { name: 'history.tags.manage' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'history.tags.allTags' })).toBeNull()
   })
 
   it('filters by a tag and clears it when picked again', async () => {
     const user = userEvent.setup()
     const tags = [tag('work', 57), tag('docker', 38)]
-    const { onSelectTag, rerender } = renderSidebar(true, chrome(), { tags })
+    const { onSelectTag, rerender } = renderSidebar(true, chrome(), {
+      tags,
+      sidebarTagIds: ['work', 'docker'],
+    })
 
     await user.click(screen.getByRole('button', { name: /#docker/ }))
     expect(onSelectTag).toHaveBeenLastCalledWith('docker')
@@ -219,6 +258,7 @@ describe('HistorySidebar tags', () => {
               activeFilter={Filter.All}
               onSelectLibrary={vi.fn()}
               tags={tags}
+              sidebarTagIds={['work', 'docker']}
               activeTag="docker"
               onSelectTag={onSelectTag}
               countsRevision={null}

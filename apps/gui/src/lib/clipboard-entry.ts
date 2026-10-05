@@ -141,4 +141,8 @@ export interface DisplayClipboardItem {
   sourceDeviceId?: string
   /** Fallback preview text when `content` is unavailable (search/pending rows). */
   textPreview?: string
+  /** This device's local tags on the entry: the ids in a search row's `tags`
+   * that are not builtin; names come from `GET /history/tags`. Absent on rows
+   * that cannot carry tags (pending inbound placeholders). */
+  userTagIds?: string[]
 }

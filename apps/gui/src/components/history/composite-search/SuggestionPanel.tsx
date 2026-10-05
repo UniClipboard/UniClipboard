@@ -22,6 +22,8 @@ export interface PanelOption {
   dimension?: Dimension
   /** Nothing matches under the other active filters: the chip dims. */
   muted?: boolean
+  /** "+ Create #name": a tag that does not exist yet, drawn as a dashed chip. */
+  create?: boolean
 }
 
 interface SuggestionPanelProps {
@@ -95,7 +97,11 @@ function SuggestionPanel({
                     active && 'bg-history-accent-soft'
                   )}
                 >
-                  {opt.dimension ? (
+                  {opt.create ? (
+                    <span className="inline-flex h-5.5 shrink-0 items-center rounded-full border border-dashed border-border bg-background px-2 text-ui-caption font-semibold text-foreground/80">
+                      {opt.label}
+                    </span>
+                  ) : opt.dimension ? (
                     // A value: the chip it turns into, in its dimension's tint.
                     <span
                       className={cn(

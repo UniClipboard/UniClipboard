@@ -40,7 +40,13 @@ function renderRow(
     checked = false,
     anyChecked,
     onToggleChecked = vi.fn(),
-  }: { checked?: boolean; anyChecked?: boolean; onToggleChecked?: () => void } = {}
+    tagNames,
+  }: {
+    checked?: boolean
+    anyChecked?: boolean
+    onToggleChecked?: () => void
+    tagNames?: ReadonlyMap<string, string | null>
+  } = {}
 ) {
   render(
     <HistoryListRow
@@ -53,6 +59,7 @@ function renderRow(
       isDeleting={false}
       onClick={onClick}
       onHoverChange={vi.fn()}
+      tagNames={tagNames}
     />
   )
   return { onClick, onToggleChecked }
@@ -79,6 +86,31 @@ describe('HistoryListRow', () => {
 
     expect(screen.getByText('#history.type.link')).toBeInTheDocument()
     expect(screen.queryByText('#history.type.code')).toBeNull()
+  })
+
+  it('chips its local tags first, two chips at most', () => {
+    renderRow(
+      textItem({ contentTags: ['code', 'link'], userTagIds: ['t-deploy', 't-docker'] }),
+      vi.fn(),
+      undefined,
+      {
+        tagNames: new Map([
+          ['t-deploy', 'deploy'],
+          ['t-docker', 'docker'],
+        ]),
+      }
+    )
+
+    expect(screen.getByText('#deploy')).toBeInTheDocument()
+    expect(screen.getByText('#docker')).toBeInTheDocument()
+    expect(screen.queryByText('#history.type.link')).toBeNull()
+  })
+
+  it('leaves local tags out until their names are known', () => {
+    renderRow(textItem({ contentTags: ['code', 'link'], userTagIds: ['t-deploy'] }))
+
+    expect(screen.queryByText('#t-deploy')).toBeNull()
+    expect(screen.getByText('#history.type.link')).toBeInTheDocument()
   })
 
   it('chips a folder entry as a directory', () => {

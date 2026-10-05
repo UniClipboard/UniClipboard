@@ -244,7 +244,9 @@ describe('E2E harness drives the Go CLI', () => {
 
   it('builds the Go CLI into the directory the suites resolve it from', () => {
     const build = text('scripts/e2e/build-cli.sh')
-    expect(build).toContain('go build -o "$TARGET_DIR/debug/uniclip$EXE" ./cmd/uniclip')
+    expect(build).toContain(
+      'go build -buildvcs=false -o "$TARGET_DIR/debug/uniclip$EXE" ./cmd/uniclip'
+    )
     const binaries = text('tests/e2e/src/binaries.rs')
     expect(binaries).toContain('exe_name("uniclip")')
     expect(binaries).toContain('exe_name("uc-dev-cli")')

@@ -37,5 +37,5 @@ if ! git diff --quiet -- internal/buildinfo; then
 fi
 
 # Static, reproducible build: no cgo, no local paths, no symbol tables.
-CGO_ENABLED=0 GOOS=$GOOS GOARCH=$GOARCH go build -trimpath -ldflags "-s -w" -o "$OUTPUT_ABS" ./cmd/uniclip
+CGO_ENABLED=0 GOOS=$GOOS GOARCH=$GOARCH go build -trimpath -buildvcs=false -ldflags "-s -w" -o "$OUTPUT_ABS" ./cmd/uniclip
 echo "built $OUTPUT_ABS for $GOOS/$GOARCH"

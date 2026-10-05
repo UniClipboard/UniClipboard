@@ -56,7 +56,7 @@ default-members = [
 # `tests/e2e` is the CLI E2E test crate. It's excluded from the workspace
 # so `cargo check --workspace` doesn't pull reqwest/libc/assert_cmd into
 # every PR check. Build it explicitly: `cargo test --manifest-path tests/e2e/Cargo.toml`
-exclude = ["tests/e2e"]
+exclude = ["tests/e2e", "third_party/tao"]
 resolver = "2"
 
 [workspace.package]
@@ -97,6 +97,11 @@ tauri-plugin-autostart = "2"
 # 实测 inner-loop 11s → 4s(-65%),target 体积 46GB → 4.4GB(-91%)。
 # 保留行号信息,panic backtrace / 断点 by line / #[track_caller] 全部正常;
 # 牺牲的是 lldb 里看变量值时的类型详细信息(平时调试一般不依赖)。
+# tao 0.35.3 + tauri-apps/tao#1207 (macOS webview stays synced during window zoom).
+# See third_party/README.md; remove once the fix ships in a tao release.
+[patch.crates-io]
+tao = { path = "third_party/tao" }
+
 [profile.dev]
 debug = "line-tables-only"
 split-debuginfo = "unpacked"

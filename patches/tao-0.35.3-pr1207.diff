@@ -1,0 +1,223 @@
+diff --git a/.changes/macos-window-zoom-webview-resize.md b/.changes/macos-window-zoom-webview-resize.md
+new file mode 100644
+index 000000000..6199afce5
+--- /dev/null
++++ b/.changes/macos-window-zoom-webview-resize.md
+@@ -0,0 +1,5 @@
++---
++"tao": patch
++---
++
++Fixed macOS window maximize and titlebar zoom animations to keep WebView content in sync with window resizing.
+diff --git a/src/platform_impl/macos/util/async.rs b/src/platform_impl/macos/util/async.rs
+index 23dd8ec48..1033ad918 100644
+--- a/src/platform_impl/macos/util/async.rs
++++ b/src/platform_impl/macos/util/async.rs
+@@ -8,10 +8,10 @@ use std::{
+ };
+ 
+ use core_graphics::base::CGFloat;
+-use dispatch2::{DispatchQueue, DispatchQueueAttr};
++use dispatch2::DispatchQueue;
+ use objc2::{rc::autoreleasepool, Message};
+ use objc2_app_kit::{NSScreen, NSView, NSWindow, NSWindowStyleMask};
+-use objc2_foundation::{MainThreadMarker, NSPoint, NSSize, NSString};
++use objc2_foundation::{MainThreadMarker, NSPoint, NSRect, NSSize, NSString};
+ 
+ use crate::{
+   dpi::LogicalSize,
+@@ -152,6 +152,28 @@ pub unsafe fn restore_display_mode_async(ns_screen: u32) {
+   });
+ }
+ 
++unsafe fn screen_visible_frame(ns_window: &NSWindow) -> NSRect {
++  if let Some(screen) = ns_window.screen() {
++    screen.visibleFrame()
++  } else {
++    let mtm = MainThreadMarker::new_unchecked();
++    let screen = NSScreen::mainScreen(mtm).unwrap();
++    NSScreen::visibleFrame(&screen)
++  }
++}
++
++unsafe fn animate_window_frame(ns_window: &NSWindow, new_rect: NSRect) {
++  let animation_context = class!(NSAnimationContext);
++  let _: () = msg_send![animation_context, beginGrouping];
++  let context: id = msg_send![animation_context, currentContext];
++  let duration = ns_window.animationResizeTime(new_rect);
++  let _: () = msg_send![context, setDuration: duration];
++  let _: () = msg_send![context, setAllowsImplicitAnimation: YES];
++  let animator: id = msg_send![ns_window, animator];
++  let _: () = msg_send![animator, setFrame: new_rect, display: YES];
++  let _: () = msg_send![animation_context, endGrouping];
++}
++
+ // `setMaximized` is not thread-safe
+ pub unsafe fn set_maximized_async(
+   ns_window: &NSWindow,
+@@ -173,25 +195,16 @@ pub unsafe fn set_maximized_async(
+ 
+       shared_state_lock.maximized = maximized;
+ 
+-      let curr_mask = ns_window.styleMask();
+       if shared_state_lock.fullscreen.is_some() {
+         // Handle it in window_did_exit_fullscreen
+         return;
+-      } else if curr_mask.contains(NSWindowStyleMask::Resizable)
+-        && curr_mask.contains(NSWindowStyleMask::Titled)
+-      {
+-        // Just use the native zoom if resizable
+-        ns_window.zoom(None);
+       } else {
+-        // if it's not resizable, we set the frame directly
+         let new_rect = if maximized {
+-          let mtm = MainThreadMarker::new_unchecked();
+-          let screen = NSScreen::mainScreen(mtm).unwrap();
+-          NSScreen::visibleFrame(&screen)
++          screen_visible_frame(&ns_window)
+         } else {
+           shared_state_lock.saved_standard_frame()
+         };
+-        let _: () = msg_send![&*ns_window, setFrame:new_rect, display:NO, animate: YES];
++        animate_window_frame(&ns_window, new_rect);
+       }
+ 
+       trace!("Unlocked shared state in `set_maximized`");
+diff --git a/src/platform_impl/macos/window.rs b/src/platform_impl/macos/window.rs
+index e3122f086..aae919f3f 100644
+--- a/src/platform_impl/macos/window.rs
++++ b/src/platform_impl/macos/window.rs
+@@ -972,19 +972,7 @@ impl UnownedWindow {
+   }
+ 
+   pub(crate) fn is_zoomed(&self) -> bool {
+-    // Previously, is_zoomed temporarily mutated the window's styleMask(or resizable)
+-    // to force macOS to return a valid result for borderless windows.
+-    // This synchronous mutation could trigger unnecessary layout passes or state inconsistencies.
+-    // Related issue: https://github.com/rust-windowing/winit/issues/4071 and https://github.com/tauri-apps/plugins-workspace/issues/3240
+-
+     unsafe {
+-      let curr_mask = self.ns_window.styleMask();
+-
+-      let required = NSWindowStyleMask::Titled | NSWindowStyleMask::Resizable;
+-      if curr_mask.contains(required) {
+-        return self.ns_window.isZoomed();
+-      }
+-
+       if let Some(screen) = self.ns_window.screen() {
+         let frame = self.ns_window.frame();
+         let visible_frame = screen.visibleFrame();
+@@ -993,7 +981,6 @@ impl UnownedWindow {
+           && (frame.size.height - visible_frame.size.height).abs() < 1.0;
+       }
+ 
+-      // Fallback to original `isZoomed` check
+       self.ns_window.isZoomed()
+     }
+   }
+diff --git a/src/platform_impl/macos/window_delegate.rs b/src/platform_impl/macos/window_delegate.rs
+index 2e0ceab39..f445fe856 100644
+--- a/src/platform_impl/macos/window_delegate.rs
++++ b/src/platform_impl/macos/window_delegate.rs
+@@ -17,7 +17,7 @@ use objc2::{
+ use objc2_app_kit::{
+   self as appkit, NSApplicationPresentationOptions, NSPasteboard, NSView, NSWindow,
+ };
+-use objc2_foundation::{ns_string, NSArray, NSAutoreleasePool, NSString, NSUInteger};
++use objc2_foundation::{ns_string, NSArray, NSAutoreleasePool, NSRect, NSString, NSUInteger};
+ use once_cell::sync::Lazy;
+ 
+ use crate::{
+@@ -55,10 +55,6 @@ pub struct WindowDelegateState {
+ 
+   // Used to prevent redundant events.
+   previous_scale_factor: f64,
+-
+-  // Used to prevent resized events from being fired
+-  // when we are using our workaround in the `is_zoomed` function.
+-  is_checking_zoomed_in: bool,
+ }
+ 
+ impl WindowDelegateState {
+@@ -71,7 +67,6 @@ impl WindowDelegateState {
+       initial_fullscreen,
+       previous_position: None,
+       previous_scale_factor: scale_factor,
+-      is_checking_zoomed_in: false,
+     };
+     if (scale_factor - 1.0).abs() > f64::EPSILON {
+       delegate_state.emit_static_scale_factor_changed_event();
+@@ -172,19 +167,14 @@ static WINDOW_DELEGATE_CLASS: Lazy<WindowDelegateClass> = Lazy::new(|| unsafe {
+     sel!(initWithTao:),
+     init_with_tao as extern "C" fn(_, _, _) -> _,
+   );
+-  decl.add_method(
+-    sel!(markIsCheckingZoomedIn),
+-    mark_is_checking_zoomed_in as extern "C" fn(_, _),
+-  );
+-  decl.add_method(
+-    sel!(clearIsCheckingZoomedIn),
+-    clear_is_checking_zoomed_in as extern "C" fn(_, _),
+-  );
+-
+   decl.add_method(
+     sel!(windowShouldClose:),
+     window_should_close as extern "C" fn(_, _, _) -> _,
+   );
++  decl.add_method(
++    sel!(windowShouldZoom:toFrame:),
++    window_should_zoom as extern "C" fn(_, _, _, _) -> _,
++  );
+   decl.add_method(
+     sel!(windowWillClose:),
+     window_will_close as extern "C" fn(_, _, _),
+@@ -311,18 +301,6 @@ extern "C" fn init_with_tao(this: &Object, _sel: Sel, state: *mut c_void) -> id
+   }
+ }
+ 
+-extern "C" fn mark_is_checking_zoomed_in(this: &Object, _sel: Sel) {
+-  with_state(&*this, |state| {
+-    state.is_checking_zoomed_in = true;
+-  });
+-}
+-
+-extern "C" fn clear_is_checking_zoomed_in(this: &Object, _sel: Sel) {
+-  with_state(&*this, |state| {
+-    state.is_checking_zoomed_in = false;
+-  });
+-}
+-
+ extern "C" fn window_should_close(this: &Object, _: Sel, _: id) -> BOOL {
+   trace!("Triggered `windowShouldClose:`");
+   with_state(this, |state| state.emit_event(WindowEvent::CloseRequested));
+@@ -330,6 +308,17 @@ extern "C" fn window_should_close(this: &Object, _: Sel, _: id) -> BOOL {
+   NO
+ }
+ 
++extern "C" fn window_should_zoom(this: &Object, _: Sel, _: id, _: NSRect) -> BOOL {
++  trace!("Triggered `windowShouldZoom:toFrame:`");
++  with_state(this, |state| {
++    state.with_window(|window| {
++      window.set_maximized(!window.is_zoomed());
++    });
++  });
++  trace!("Completed `windowShouldZoom:toFrame:`");
++  NO
++}
++
+ extern "C" fn window_will_close(this: &Object, _: Sel, _: id) {
+   trace!("Triggered `windowWillClose:`");
+   with_state(this, |state| unsafe {
+@@ -346,10 +335,8 @@ extern "C" fn window_will_close(this: &Object, _: Sel, _: id) {
+ extern "C" fn window_did_resize(this: &Object, _: Sel, _: id) {
+   trace!("Triggered `windowDidResize:`");
+   with_state(this, |state| {
+-    if !state.is_checking_zoomed_in {
+-      state.emit_resize_event();
+-      state.emit_move_event();
+-    }
++    state.emit_resize_event();
++    state.emit_move_event();
+   });
+   trace!("Completed `windowDidResize:`");
+ }

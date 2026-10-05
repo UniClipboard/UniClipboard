@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/UniClipboard/UniClipboard/apps/cli-go/internal/errctx"
 	"io"
 	"net/http"
 	"net/url"
@@ -191,7 +192,7 @@ func (c *Client) SessionToken(ctx context.Context) (string, error) {
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("failed to send session token exchange request: %w", err)
+		return "", errctx.Wrap("failed to send session token exchange request", err)
 	}
 	defer resp.Body.Close()
 	data, _ := io.ReadAll(resp.Body)
@@ -204,7 +205,7 @@ func (c *Client) SessionToken(ctx context.Context) (string, error) {
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(data, &env); err != nil {
-		return "", fmt.Errorf("failed to decode session token exchange response: %w", err)
+		return "", errctx.Wrap("failed to decode session token exchange response", err)
 	}
 	return env.Data.SessionToken, nil
 }

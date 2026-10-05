@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/UniClipboard/UniClipboard/apps/cli-go/internal/errctx"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -60,11 +61,11 @@ func ReadConnFile() (*ConnFile, error) {
 		return nil, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("failed to read daemon connection file at %s: %w", path, err)
+		return nil, errctx.Wrap(fmt.Sprintf("failed to read daemon connection file at %s", path), err)
 	}
 	var conn ConnFile
 	if err := json.Unmarshal(data, &conn); err != nil {
-		return nil, fmt.Errorf("failed to parse daemon connection file at %s: %w", path, err)
+		return nil, errctx.Wrap(fmt.Sprintf("failed to parse daemon connection file at %s", path), err)
 	}
 	if conn.Format != connFormat {
 		return nil, fmt.Errorf("unsupported daemon connection file format %d at %s (expected %d)", conn.Format, path, connFormat)

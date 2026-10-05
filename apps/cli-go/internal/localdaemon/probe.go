@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/UniClipboard/UniClipboard/apps/cli-go/internal/errctx"
 	"io"
 	"net"
 	"os"
@@ -97,7 +98,7 @@ var probeClient = daemonclient.NewLocalHTTPClient(probeTimeout)
 func Probe() (Outcome, error) {
 	conn, err := daemonproc.ReadConnFile()
 	if err != nil {
-		return Outcome{}, &Error{Kind: ErrResolveAddress, Err: fmt.Errorf("failed to read daemon connection file: %w", err)}
+		return Outcome{}, &Error{Kind: ErrResolveAddress, Err: errctx.Wrap("failed to read daemon connection file", err)}
 	}
 	if conn == nil {
 		return Outcome{Kind: Absent}, nil
@@ -113,7 +114,7 @@ func probeAt(baseURL string) (Outcome, error) {
 		if (errors.As(err, &opErr) && opErr.Op == "dial") || (errors.As(err, &netErr) && netErr.Timeout()) {
 			return Outcome{Kind: Absent}, nil
 		}
-		return Outcome{}, &Error{Kind: ErrProbe, Err: fmt.Errorf("daemon health probe request failed: %w", err)}
+		return Outcome{}, &Error{Kind: ErrProbe, Err: errctx.Wrap("daemon health probe request failed", err)}
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
@@ -121,7 +122,7 @@ func probeAt(baseURL string) (Outcome, error) {
 	}
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return Outcome{}, &Error{Kind: ErrProbe, Err: fmt.Errorf("failed to read daemon health response body: %w", err)}
+		return Outcome{}, &Error{Kind: ErrProbe, Err: errctx.Wrap("failed to read daemon health response body", err)}
 	}
 	var env struct {
 		Data *Health `json:"data"`
@@ -154,7 +155,7 @@ func ProbeForReuse(timeout time.Duration) (Outcome, error) {
 		}
 		live, err := daemonproc.ConnPointsToLiveDaemon()
 		if err != nil {
-			return Outcome{}, &Error{Kind: ErrResolveAddress, Err: err}
+			return Outcome{}, &Error{Kind: ErrResolveAddress, Err: errctx.Wrap("failed to read daemon connection file", err)}
 		}
 		if !live {
 			return outcome, nil
@@ -202,9 +203,14 @@ func (e *Error) Error() string {
 	case ErrProbe:
 		return fmt.Sprintf("failed to probe local daemon health for setup: %v", e.Err)
 	case ErrSpawn:
+		// Rust converts SpawnDaemonError into its inner error, dropping the
+		// SpawnDaemonError Display prefix.
 		var spawnErr *daemonproc.SpawnError
-		if errors.As(e.Err, &spawnErr) && spawnErr.ResolveBinary {
-			return fmt.Sprintf("failed to resolve CLI executable for daemon spawn: %v", e.Err)
+		if errors.As(e.Err, &spawnErr) {
+			if spawnErr.ResolveBinary {
+				return fmt.Sprintf("failed to resolve CLI executable for daemon spawn: %v", spawnErr.Err)
+			}
+			return fmt.Sprintf("failed to spawn daemon process: %v", spawnErr.Err)
 		}
 		return fmt.Sprintf("failed to spawn daemon process: %v", e.Err)
 	case ErrStartupTimeout:

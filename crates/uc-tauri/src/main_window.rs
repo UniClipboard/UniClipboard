@@ -314,6 +314,18 @@ fn sync_webview_to_window(window: &tauri::WebviewWindow) {
     }
 }
 
+/// Native background shown wherever the webview does not cover the window. Matches the
+/// startup screen in `index.html`; the frontend replaces it with the real theme background.
+fn paint_initial_window_background(window: &tauri::WebviewWindow) {
+    let color = match window.theme() {
+        Ok(tauri::Theme::Dark) => tauri::window::Color(24, 24, 27, 255),
+        _ => tauri::window::Color(255, 255, 255, 255),
+    };
+    if let Err(error) = window.set_background_color(Some(color)) {
+        warn!(error = %error, error_kind = "main_window_background", "Failed to set the initial window background");
+    }
+}
+
 fn schedule_reveal_fallback(window: &tauri::WebviewWindow, generation: u64) {
     let window = window.clone();
     let app = window.app_handle().clone();
@@ -390,10 +402,16 @@ fn create_main_window(
         .build()?;
     crate::window_preferences::attach(&window);
     schedule_reveal_fallback(&window, generation);
-    window.on_window_event(move |event| {
-        if matches!(event, tauri::WindowEvent::Destroyed) {
-            load_state().mark_destroyed(generation);
+    paint_initial_window_background(&window);
+    let resized_window = window.clone();
+    window.on_window_event(move |event| match event {
+        tauri::WindowEvent::Destroyed => load_state().mark_destroyed(generation),
+        // A restored maximize completes asynchronously; follow it while the window is
+        // hidden so the webview already has the final size on the first visible frame.
+        tauri::WindowEvent::Resized(_) if !resized_window.is_visible().unwrap_or(true) => {
+            sync_webview_to_window(&resized_window)
         }
+        _ => {}
     });
     info!("Main window created from config");
     Ok(window)

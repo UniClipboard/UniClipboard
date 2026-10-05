@@ -71,6 +71,7 @@ func Tree() *cli.Command {
 						Run: runSpaceChangePassphrase,
 					},
 					{
+						Run:              runSpaceJoin,
 						Name:             "join",
 						About:            "Join a space with an invitation code and passphrase",
 						ArgsConflictSubs: true,
@@ -212,6 +213,7 @@ func Tree() *cli.Command {
 			},
 			{
 				Name:             "search",
+				Run:              runSearch,
 				About:            "Search clipboard history. Provide a query to search, or use the `status` / `rebuild` subcommands to inspect or maintain the index",
 				ArgsConflictSubs: true,
 				Flags: []*cli.Flag{
@@ -245,6 +247,7 @@ func Tree() *cli.Command {
 			},
 			{
 				Name:  "upgrade",
+				Run:   runUpgrade,
 				About: "Inspect or advance the upgrade-detection cursor (manual verification for the P1 thin upgrade module). Bare `upgrade` prints status; use the `ack` subcommand to advance the cursor",
 				Subs: []*cli.Command{
 					{
@@ -344,6 +347,7 @@ func Tree() *cli.Command {
 				Run:       runInvite,
 			},
 			{
+				Run:              runJoin,
 				Name:             "join",
 				Hidden:           true,
 				About:            "Join a space with an invitation code and passphrase",

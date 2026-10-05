@@ -22,6 +22,54 @@ def init_space(r, profile=None, name="compat-a"):
           cli="rust", profile=profile, compare=False)
 
 
+def pair(r, sponsor=None, joiner=None, timeout=90):
+    """Fixture: init `sponsor` and pair `joiner` into its space with the Rust
+    CLI, exactly like scripts/e2e/pair.sh. Returns (sponsor, joiner) profiles.
+    Needs the production rendezvous service (network)."""
+    sponsor = sponsor or r.profile
+    joiner = joiner or r.profile + "-b"
+    r.extra_profiles.append(joiner)
+    init_space(r, profile=sponsor, name="compat-sponsor")
+    invite = r.spawn("fixture: invite", ["space", "invite"], profile=sponsor, cli="rust")
+    code, buf, deadline = None, b"", time.time() + timeout
+    fd = invite["proc"].stdout
+    os.set_blocking(fd.fileno(), False)
+    while time.time() < deadline and code is None:
+        chunk = fd.read() or b""
+        buf += chunk
+        for line in buf.decode(errors="replace").splitlines():
+            if line.startswith("INVITATION_CODE="):
+                code = line.split("=", 1)[1].strip()
+        if invite["proc"].poll() is not None and code is None:
+            break
+        time.sleep(0.3)
+    if code is None:
+        raise RuntimeError("no invitation code: " + buf.decode(errors="replace"))
+    join = r.run("fixture: join", ["space", "join", "--code", code, "--passphrase", PASSPHRASE,
+                                  "--device-name", "compat-joiner"], cli="rust", profile=joiner,
+                 compare=False, timeout=timeout)
+    if join.code != 0:
+        raise RuntimeError(f"join failed: {join.code} {join.err!r}")
+    # The baseline `space invite` keeps waiting after a successful join, so
+    # confirm membership on the sponsor instead, then interrupt the invite.
+    deadline, members = time.time() + timeout, []
+    while time.time() < deadline:
+        listed = r.run("fixture: member list", ["--json", "member", "list"], cli="rust", profile=sponsor,
+                       compare=False)
+        try:
+            members = json.loads(listed.out)
+        except ValueError:
+            members = []
+        if len(members) >= 2:
+            break
+        time.sleep(2)
+    os.set_blocking(fd.fileno(), True)
+    r.finish(invite, sig=signal.SIGINT, timeout=30, compare=False)
+    if len(members) < 2:
+        raise RuntimeError(f"sponsor does not list the joiner: {members!r}")
+    return sponsor, joiner
+
+
 @scenario
 def argument_errors(r):
     """Parse-time errors never reach the daemon; exit 2 and clap text."""
@@ -83,3 +131,11 @@ def foreground_start(r):
     r.run("start while foreground runs", ["--json", "start"])
     step = r.finish(h, sig=signal.SIGINT, compare=False)
     r.note("foreground ended by SIGINT", {"exit": step.code, "stdout": step.out.decode()})
+
+
+@scenario
+def pairing_fixture(r):
+    """Smoke test of the shared pairing fixture."""
+    sponsor, joiner = pair(r)
+    r.run("sponsor status", ["--json", "space", "status"], profile=sponsor)
+    r.run("joiner status", ["--json", "space", "status"], profile=joiner)

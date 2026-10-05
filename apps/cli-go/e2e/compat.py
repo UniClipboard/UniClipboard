@@ -55,6 +55,7 @@ class Runner:
         self.profile = f"compat-{scenario}"
         self.steps = []
         self.background = []
+        self.extra_profiles = []
 
     def env(self, profile=None, extra=None):
         return isolated_env(self.home, profile or self.profile, extra)
@@ -75,9 +76,9 @@ class Runner:
             self.steps.append(step)
         return step
 
-    def spawn(self, label, args, profile=None, env=None, stdin=None):
+    def spawn(self, label, args, profile=None, env=None, stdin=None, cli="self"):
         """Start a long-running CLI step (watch, invite, get --wait)."""
-        binary = os.path.join(self.bindir, "uniclip")
+        binary = os.path.join(self.rust_dir if cli == "rust" else self.bindir, "uniclip")
         proc = subprocess.Popen([binary, *args], stdin=subprocess.PIPE if stdin is not None else subprocess.DEVNULL,
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=self.env(profile, env),
                                 start_new_session=True)
@@ -119,7 +120,7 @@ class Runner:
         for handle in self.background:
             if handle["proc"].poll() is None:
                 handle["proc"].kill()
-        for profile in {self.profile, *getattr(self, "extra_profiles", [])}:
+        for profile in {self.profile, *self.extra_profiles}:
             subprocess.run([os.path.join(self.rust_dir, "uniclip"), "stop"], capture_output=True,
                            env=self.env(profile), timeout=60)
 

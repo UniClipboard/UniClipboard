@@ -90,9 +90,15 @@ Rust 的 `dev-tools` 特性（release 构建不包含）提供以下隐藏命令
 - Linux aarch64：在 ARM Linux 真机上原生运行差分测试。
 - Linux x86_64、Windows x86_64 / arm64、macOS x86_64：只验证了交叉编译，没有原生运行，交叉编译不等于原生验收。
 
-## 切换发布产物（待决定）
+## 发布构建
 
-`scripts/ci/package-cli.sh` 接受任意 `uniclip` 路径，因此切换只需在 `build-cli.yml`（以及为 macOS / Windows
-打包 CLI 的 `build.yml` 步骤）中，用 `scripts/ci/build-go-cli.sh <triple> <path>` 的产物替换
-`cargo build -p uc-cli` 的产物。切换前还需要：决定 `dev-tools` 命令的处置方式；完成 Windows 原生验收；
-确认 macOS 签名与公证流程对 Go 二进制同样适用。
+用户端 `uniclip` 的发布构建已改为本 Go 实现；Rust CLI 已重命名为 `uc-dev-cli`，不再进入任何生产构建。
+
+- `build.yml`（桌面端与 macOS / Windows x64 的 CLI 压缩包）：`build-sidecar` 先构建并以单个 tar 上传 `uniclipd`，随后 `build-gui` 与 `build-cli`（Go）并行，二者都只依赖沙车产物。
+- `build-cli.yml`（Linux musl 静态 CLI，以及手动全平台）：同样先构建 `uniclipd`，再由 Go 作业打包。
+- `deploy/vps/Dockerfile`：Rust 阶段只构建 `uniclipd`，独立的 Go 阶段构建 `uniclip`。
+- 产物名与压缩包内容（`uniclip` + `uniclipd` 同目录）保持不变，`release.yml`、npm 打包与签名公证流程无需改动。
+- 沙车用单个 tar 传递：保留可执行位，并避免 `uniclipd-*.exe` 被 `release.yml` 的 `*.exe` 资产收集规则误发布。
+- 守卫（`scripts/__tests__/cli-packaging.test.ts`、`scripts/architecture/check-engine-repository.mjs`）：生产构建文件不得出现 `uc-dev-cli` 或 `uc-cli`，任何包不得依赖 `uc-dev-cli`，`internal/buildinfo` 必须与 `Cargo.toml` 和 daemon 契约一致。
+
+这些 CI 变更只做了静态验证（actionlint、全部脚本测试、变异检查），没有在 GitHub 上真实运行过；macOS 的 Go 二进制签名与公证、Windows 自托管运行器上的 Go 工具链尚未验证。

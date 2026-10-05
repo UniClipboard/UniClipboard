@@ -90,6 +90,8 @@ function guiProductionGraph() {
   )
 }
 
+const DEV_CLI_PACKAGE = 'uc-dev-cli'
+
 function workspacePackages(metadata) {
   const members = new Set(metadata.workspace_members)
   return metadata.packages.filter(candidate => members.has(candidate.id))
@@ -205,6 +207,16 @@ function checkPublicSurface(metadata) {
         problems,
         'consumer firewall',
         `${packageMetadata.name} directly depends on ${forbidden.join(', ')}`
+      )
+    }
+    // The Rust development CLI is a leaf binary for development and E2E
+    // diagnostics. Anything that depends on it, in any dependency kind, could
+    // pull it (and its dev-tools features) into a production build.
+    if (packageMetadata.dependencies.some(item => item.name === DEV_CLI_PACKAGE)) {
+      addProblem(
+        problems,
+        'development tool boundary',
+        `${packageMetadata.name} depends on ${DEV_CLI_PACKAGE}; it must stay a leaf binary`
       )
     }
   }
@@ -360,6 +372,15 @@ function runNegativeFixtures(metadata, sources) {
     changed => {
       const engine = dependency(workspacePackageByName(changed, 'uc-observability'), 'uc-engine')
       engine.source = `git+${ENGINE_REPOSITORY}?tag=v0.20.0-rc.5`
+    },
+    metadata,
+    sources
+  )
+  expectRejected(
+    'production package depending on the development CLI',
+    changed => {
+      const daemon = workspacePackageByName(changed, 'uc-daemon')
+      daemon.dependencies.push({ name: DEV_CLI_PACKAGE, kind: null, optional: false, features: [] })
     },
     metadata,
     sources

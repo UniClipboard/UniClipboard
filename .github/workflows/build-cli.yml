@@ -85,7 +85,7 @@ jobs:
           WINDOWS_RUNNER: ${{ steps.select-windows-runner.outputs.runner }}
         run: |
           # CLI Linux target 选 musl 静态编译:
-          # uc-cli 走 ring + rustls (无 aws-lc-sys / 无 openssl-sys),依赖图
+          # uniclipd 走 ring + rustls (无 aws-lc-sys / 无 openssl-sys),依赖图
           # 里没有 C 库,musl 静态链可以一气呵成,glibc 完全无关。产物可直接
           # 在任意 Linux (包括 Ubuntu 20.04 / Alpine / 老 RHEL) 上跑。
           # 容器仍用 debian:bookworm 拿 musl-tools / cmake / clang 工具链。
@@ -126,8 +126,10 @@ jobs:
             console.log("matrix=" + JSON.stringify(keep))
           ' >> "$GITHUB_OUTPUT"
 
-  build-cli:
-    name: Build CLI ${{ matrix.target }}
+  # The shipped `uniclipd` daemon is built first (static musl on Linux). The Go
+  # CLI job then packages it next to the CLI.
+  build-sidecar:
+    name: Build sidecar ${{ matrix.target }}
     needs: setup-matrix
     if: needs.setup-matrix.outputs.matrix != '[]'
     runs-on: ${{ matrix.runner || matrix.platform }}
@@ -200,7 +202,7 @@ jobs:
           UC_CHANNEL: ${{ inputs.channel || 'stable' }}
         run: node scripts/ci/resolve-app-env.mjs
 
-      - name: build CLI binary
+      - name: build uniclipd
         # musl 链接器 + ring/cc-rs 的 C 编译器都指到 musl-gcc,产物完全静态,
         # 不再链 host glibc。其他 platform 这两个 env 是 noop。
         #
@@ -236,12 +238,11 @@ jobs:
           POSTHOG_PROJECT_KEY: ${{ secrets.POSTHOG_PROJECT_KEY }}
           APP_ENV: ${{ steps.resolve-env.outputs.app_env }}
         run: |
-          cargo build --release -p uc-cli ${{ matrix.args }} --timings
-          # ADR-008 D13: ship the standalone `uniclipd` daemon in the same
-          # tarball so `uniclip start` spawns it as a sibling. uniclipd shares
-          # uc-cli's iroh / aws-lc-sys subgraph, so the musl static-link
-          # toolchain configured above (musl-gcc + cmake/clang in the bookworm
-          # container, -mno-outline-atomics on aarch64) builds it the same way.
+          # ADR-008 D13: the standalone `uniclipd` daemon ships in the same
+          # tarball as the CLI so `uniclip start` spawns it as a sibling. The
+          # musl static-link toolchain configured above (musl-gcc +
+          # cmake/clang in the bookworm container, -mno-outline-atomics on
+          # aarch64) builds it fully static.
           cargo build --release -p uc-daemon --bin uniclipd ${{ matrix.args }} --timings
 
       - name: Upload Sentry debug symbols
@@ -267,15 +268,18 @@ jobs:
           echo "Uploading debug files from $TARGET_DIR"
           sentry-cli debug-files upload --include-sources "$TARGET_DIR"
 
-      - name: package CLI binary
-        id: package
+      - name: Upload Cargo timing reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: cargo-timings-cli-sidecar-${{ matrix.target }}
+          path: target/cargo-timings/*.html
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: package sidecar artifact
+        # One tar keeps the executable bit through artifact upload/download.
         shell: bash
-        env:
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           # Windows builds with the host default target (args=""), landing in
           # target/release; the other targets pass --target.
@@ -286,16 +290,82 @@ jobs:
           fi
           EXE=""
           case "${{ matrix.target }}" in *windows*) EXE=".exe" ;; esac
-          bash scripts/ci/package-cli.sh "${{ matrix.target }}" "$BIN_DIR/uniclip$EXE" "$BIN_DIR/uniclipd$EXE"
+          mkdir -p sidecar-stage
+          cp "$BIN_DIR/uniclipd$EXE" sidecar-stage/
+          tar -cf sidecar.tar -C sidecar-stage .
 
-      - name: Upload Cargo timing reports
-        if: always()
+      - name: upload sidecar artifact
         uses: actions/upload-artifact@v7
         with:
-          name: cargo-timings-cli-${{ matrix.target }}
-          path: target/cargo-timings/*.html
-          if-no-files-found: ignore
-          retention-days: 14
+          name: cli-sidecar-${{ matrix.target }}
+          path: sidecar.tar
+          if-no-files-found: error
+          retention-days: 3
+
+  # User-facing CLI (Go, apps/cli-go): no Rust toolchain and no container, it
+  # only packages the daemon from build-sidecar. It never builds or links the
+  # Rust development CLI.
+  build-cli:
+    name: Build CLI ${{ matrix.target }}
+    needs: [setup-matrix, build-sidecar]
+    if: needs.setup-matrix.outputs.matrix != '[]'
+    runs-on: ${{ matrix.runner || matrix.platform }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.setup-matrix.outputs.matrix) }}
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.branch || github.ref }}
+          persist-credentials: false
+
+      - name: setup node
+        uses: actions/setup-node@v6
+        with:
+          node-version: lts/*
+
+      - name: setup Go
+        uses: actions/setup-go@v6
+        with:
+          # The module pins its Go version and toolchain.
+          go-version-file: apps/cli-go/go.mod
+          cache-dependency-path: apps/cli-go/go.sum
+
+      - name: download uniclipd sidecar
+        uses: actions/download-artifact@v6
+        with:
+          name: cli-sidecar-${{ matrix.target }}
+          path: sidecar-artifact
+
+      - name: stage uniclipd sidecar
+        shell: bash
+        run: |
+          mkdir -p sidecar
+          tar -xf sidecar-artifact/sidecar.tar -C sidecar
+
+      - name: build Go CLI
+        shell: bash
+        run: |
+          EXE=""
+          case "${{ matrix.target }}" in *windows*) EXE=".exe" ;; esac
+          mkdir -p target/go-cli
+          scripts/ci/build-go-cli.sh "${{ matrix.target }}" "target/go-cli/uniclip$EXE"
+
+      - name: package CLI binary
+        id: package
+        shell: bash
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          EXE=""
+          case "${{ matrix.target }}" in *windows*) EXE=".exe" ;; esac
+          bash scripts/ci/package-cli.sh "${{ matrix.target }}" "target/go-cli/uniclip$EXE" "sidecar/uniclipd$EXE"
 
       - name: upload artifact
         uses: actions/upload-artifact@v7

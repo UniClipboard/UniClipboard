@@ -2,25 +2,27 @@
 #
 # Headless UniClipboard server node for VPS deployment (ADR-007).
 #
-# Two stages:
-#   1. builder  — compiles the `uniclip` + `uniclipd` binaries as static musl
-#                 executables. `uniclip start` spawns `uniclipd` as a child
-#                 process even in `--foreground` mode, so both must be present.
-#   2. runtime  — minimal Alpine image that runs the binary as a non-root
-#                 user with HOME=/data anchoring all state on a mounted volume.
+# Three stages:
+#   1. builder     — compiles the `uniclipd` daemon as a static musl executable.
+#   2. cli-builder — compiles the user-facing `uniclip` CLI (Go, apps/cli-go) as
+#                    a static executable. `uniclip start` spawns `uniclipd` as a
+#                    child process even in `--foreground` mode, so both must be
+#                    present in the runtime image.
+#   3. runtime     — minimal Alpine image that runs the binaries as a non-root
+#                    user with HOME=/data anchoring all state on a mounted volume.
 #
 # Build context is the repository ROOT (see deploy/vps/docker-compose.yml),
 # so paths below are repo-relative.
 
 # ── builder ──────────────────────────────────────────────────────────────────
-# uc-cli's dependency graph is ring + rustls (no openssl-sys / aws-lc-sys), so
+# The daemon's dependency graph is ring + rustls (no openssl-sys / aws-lc-sys), so
 # the musl target links fully statically with zero C-runtime dependencies — the
 # resulting binary runs on the Alpine runtime stage (and anywhere else) as-is.
 FROM rust:1.95-bookworm AS builder
 
 # musl-tools provides musl-gcc, the static C linker that `ring`/`cc` invoke for
 # the *-musl target. cmake + clang/libclang build aws-lc-sys (pulled into the
-# uc-cli graph via aws-lc-rs). This mirrors .github/docker/build-bookworm.Dockerfile
+# daemon graph via aws-lc-rs). This mirrors .github/docker/build-bookworm.Dockerfile
 # minus the GUI libs. `Acquire::Retries` rides out transient Debian mirror 5xx.
 RUN echo 'Acquire::Retries "5";' > /etc/apt/apt.conf.d/80-retries \
  && apt-get update \
@@ -57,9 +59,18 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
       *) echo "unsupported build arch: $(uname -m)" >&2; exit 1 ;; \
     esac; \
     rustup target add "$TARGET"; \
-    cargo build --locked --release -p uc-cli -p uc-daemon --target "$TARGET"; \
-    cp "target/$TARGET/release/uniclip" /uniclip; \
+    cargo build --locked --release -p uc-daemon --bin uniclipd --target "$TARGET"; \
     cp "target/$TARGET/release/uniclipd" /uniclipd
+
+# ── cli-builder ──────────────────────────────────────────────────────────────
+# The Go CLI needs no C toolchain (CGO_ENABLED=0) and builds natively for the
+# build host arch, like the daemon stage. go.mod pins the Go version and
+# toolchain; GOTOOLCHAIN=auto fetches the pinned toolchain when this image's Go
+# is older.
+FROM golang:1.26-alpine AS cli-builder
+WORKDIR /src/apps/cli-go
+COPY apps/cli-go/ ./
+RUN CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o /uniclip ./cmd/uniclip
 
 # ── runtime ──────────────────────────────────────────────────────────────────
 FROM alpine:3.20 AS runtime
@@ -71,7 +82,7 @@ RUN apk add --no-cache ca-certificates \
  && mkdir -p /data \
  && chown uniclip:uniclip /data
 
-COPY --from=builder /uniclip /usr/local/bin/uniclip
+COPY --from=cli-builder /uniclip /usr/local/bin/uniclip
 COPY --from=builder /uniclipd /usr/local/bin/uniclipd
 
 # HOME=/data anchors ALL persistent state under the mounted volume — iroh

@@ -47,15 +47,29 @@ describe('hosted build toolchain isolation', () => {
     ])
   })
 
-  it('isolates both desktop and CLI builds before cache lookup', () => {
+  it('isolates every Rust-building job before cache lookup', () => {
     for (const file of ['build.yml', 'build-cli.yml']) {
       const source = fs.readFileSync(
         path.resolve(__dirname, '../../.github/workflows', file),
         'utf8'
       )
-      const isolation = source.indexOf('run: node scripts/ci/isolate-build-toolchain.mjs')
-      expect(isolation).toBeGreaterThan(source.indexOf('name: install Rust toolchain'))
-      expect(isolation).toBeLessThan(source.indexOf('name: Cache Rust dependencies'))
+      const body = source.slice(source.indexOf('\njobs:\n') + '\njobs:\n'.length)
+      const parts = body.split(/^ {2}([a-z][\w-]*):\n/m)
+      let rustJobs = 0
+      for (let i = 1; i < parts.length; i += 2) {
+        const job = parts[i + 1]
+        if (!job.includes('name: install Rust toolchain')) continue
+        rustJobs += 1
+        const isolation = job.indexOf('run: node scripts/ci/isolate-build-toolchain.mjs')
+        expect(isolation, `${file} ${parts[i]}`).toBeGreaterThan(
+          job.indexOf('name: install Rust toolchain')
+        )
+        expect(isolation, `${file} ${parts[i]}`).toBeLessThan(
+          job.indexOf('name: Cache Rust dependencies')
+        )
+      }
+      // The sidecar job and, in build.yml, the GUI job.
+      expect(rustJobs).toBeGreaterThanOrEqual(file === 'build.yml' ? 2 : 1)
     }
   })
 })

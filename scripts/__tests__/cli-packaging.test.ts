@@ -18,6 +18,25 @@ function step(source: string, name: string) {
   return source.slice(start, next === -1 ? undefined : start + 1 + next)
 }
 
+// Jobs of a workflow file, keyed by job id, with each job's raw text.
+function jobs(source: string) {
+  const body = source.slice(source.indexOf('\njobs:\n') + '\njobs:\n'.length)
+  const parts = body.split(/^ {2}([a-z][\w-]*):\n/m)
+  const result: Record<string, string> = {}
+  for (let i = 1; i < parts.length; i += 2) result[parts[i]] = parts[i + 1]
+  return result
+}
+
+function needsOf(job: string): string[] {
+  const match = job.match(/^ {4}needs: (.*)$/m)
+  return match
+    ? match[1]
+        .replace(/[[\]]/g, '')
+        .split(',')
+        .map(item => item.trim())
+    : []
+}
+
 const TELEMETRY_ENV = [
   'SENTRY_DSN: ${{ secrets.SENTRY_DSN }}',
   'POSTHOG_PROJECT_KEY: ${{ secrets.POSTHOG_PROJECT_KEY }}',
@@ -43,7 +62,7 @@ describe('APP_ENV resolution', () => {
 describe('shipped uniclipd builds', () => {
   it('embeds the same telemetry env in the app sidecar and the CLI daemon', () => {
     const sidecar = step(read('build.yml'), 'prepare uniclipd sidecar')
-    const cli = step(read('build-cli.yml'), 'build CLI binary')
+    const cli = step(read('build-cli.yml'), 'build uniclipd')
     expect(cli).toContain('cargo build --release -p uc-daemon --bin uniclipd')
     for (const line of TELEMETRY_ENV) {
       expect(sidecar).toContain(line)
@@ -58,12 +77,15 @@ describe('shipped uniclipd builds', () => {
 
   it('packages macOS and Windows x64 CLI archives from the release app sidecar', () => {
     const build = read('build.yml')
-    const guard =
-      "if: inputs.package_cli && inputs.build_mode == 'release' && (matrix.platform == 'macos-latest' || matrix.target == 'x86_64-pc-windows-msvc')"
-    for (const name of ['build CLI binary', 'package CLI binary', 'upload CLI artifact']) {
-      expect(step(build, name)).toContain(guard)
-    }
-    expect(step(build, 'package CLI binary')).toContain(
+    const cli = jobs(build)['build-cli']
+    expect(cli).toContain(
+      "if: inputs.package_cli && inputs.build_mode == 'release' && needs.setup-matrix.outputs.cli-matrix != '[]'"
+    )
+    // Only the targets that share a triple with the app reuse its sidecar.
+    expect(step(build, 'Select CLI targets')).toContain(
+      'e.platform === "macos-latest" || e.target === "x86_64-pc-windows-msvc"'
+    )
+    expect(step(cli, 'package CLI binary')).toContain(
       '"apps/gui/src-tauri/binaries/uniclipd-${{ matrix.target }}$EXE"'
     )
     // The CLI must reuse the sidecar, never rebuild the daemon in the app job.
@@ -75,6 +97,120 @@ describe('shipped uniclipd builds', () => {
     expect(step(read('build-cli.yml'), 'Select CLI targets')).toContain(
       'e.target.includes("-linux-musl")'
     )
+  })
+})
+
+describe('build job graph', () => {
+  it.each([
+    ['build.yml', 'build-gui'],
+    ['build.yml', 'build-cli'],
+    ['build-cli.yml', 'build-cli'],
+  ])('%s builds the sidecar first, then runs %s after it', (file, job) => {
+    const all = jobs(read(file))
+    expect(needsOf(all['build-sidecar'])).toEqual(['setup-matrix'])
+    expect(needsOf(all[job])).toContain('build-sidecar')
+  })
+
+  it('runs the GUI build and the Go CLI build in parallel', () => {
+    const all = jobs(read('build.yml'))
+    expect(needsOf(all['build-gui'])).not.toContain('build-cli')
+    expect(needsOf(all['build-cli'])).not.toContain('build-gui')
+  })
+
+  it('builds the daemon only in the sidecar job', () => {
+    const build = jobs(read('build.yml'))
+    expect(build['build-sidecar']).toContain('run: node scripts/prepare-sidecars.mjs')
+    for (const job of ['build-gui', 'build-cli']) {
+      expect(build[job]).not.toContain('run: node scripts/prepare-sidecars.mjs')
+      expect(build[job]).not.toContain('cargo build')
+    }
+    const cliWorkflow = jobs(read('build-cli.yml'))
+    expect(cliWorkflow['build-sidecar']).toContain('--bin uniclipd')
+    expect(cliWorkflow['build-cli']).not.toContain('cargo ')
+  })
+
+  it('builds the user-facing CLI from the Go module, without a Rust toolchain', () => {
+    for (const file of ['build.yml', 'build-cli.yml']) {
+      const cli = jobs(read(file))['build-cli']
+      expect(cli).toContain('uses: actions/setup-go@v6')
+      expect(cli).toContain('go-version-file: apps/cli-go/go.mod')
+      expect(step(cli, 'build Go CLI')).toContain('scripts/ci/build-go-cli.sh')
+      expect(cli).not.toContain('install Rust toolchain')
+    }
+  })
+
+  it('hands the sidecar over as one tar, never as loose release-like files', () => {
+    // release.yml collects every *.exe / *.json / *.sig under the downloaded
+    // artifacts, so a loose uniclipd-*.exe would be published as a release asset.
+    for (const [file, name] of [
+      ['build.yml', 'sidecar-${{ matrix.target }}'],
+      ['build-cli.yml', 'cli-sidecar-${{ matrix.target }}'],
+    ]) {
+      const all = jobs(read(file))
+      const upload = step(all['build-sidecar'], 'upload sidecar artifact')
+      expect(upload).toContain('path: sidecar.tar')
+      expect(upload).toContain(`name: ${name}`)
+      expect(all['build-sidecar']).not.toMatch(/path: .*binaries/)
+      for (const consumer of Object.keys(all).filter(job =>
+        needsOf(all[job]).includes('build-sidecar')
+      )) {
+        expect(step(all[consumer], 'download uniclipd sidecar')).toContain(`name: ${name}`)
+      }
+    }
+  })
+})
+
+describe('Rust development CLI stays out of production builds', () => {
+  const root = path.resolve(__dirname, '../..')
+  const production = [
+    '.github/workflows/build.yml',
+    '.github/workflows/build-cli.yml',
+    '.github/workflows/release.yml',
+    '.github/workflows/alpha-build.yml',
+    '.github/workflows/build-server-image.yml',
+    'deploy/vps/Dockerfile',
+    'scripts/prepare-sidecars.mjs',
+    'scripts/build-npm-packages.mjs',
+    'scripts/ci/package-cli.sh',
+    'scripts/ci/build-go-cli.sh',
+  ]
+
+  it.each(production)('%s does not build or package the Rust CLI crate', file => {
+    const source = fs.readFileSync(path.join(root, file), 'utf8')
+    expect(source).not.toMatch(/uc-dev-cli|\buc-cli\b/)
+  })
+
+  it('no Cargo manifest depends on it', () => {
+    const manifests: string[] = []
+    const walk = (dir: string) => {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        if (entry.name === 'target' || entry.name === 'node_modules') continue
+        const full = path.join(dir, entry.name)
+        if (entry.isDirectory()) walk(full)
+        else if (entry.name === 'Cargo.toml') manifests.push(full)
+      }
+    }
+    for (const dir of ['apps', 'crates']) walk(path.join(root, dir))
+    const own = path.join(root, 'apps/cli/Cargo.toml')
+    for (const manifest of manifests.filter(file => file !== own)) {
+      expect(fs.readFileSync(manifest, 'utf8'), manifest).not.toContain('uc-dev-cli')
+    }
+  })
+})
+
+describe('Go CLI build info', () => {
+  it('matches the workspace version and the daemon API revision', () => {
+    const root = path.resolve(__dirname, '../..')
+    const read = (file: string) => fs.readFileSync(path.join(root, file), 'utf8')
+    const version = read('Cargo.toml').match(/\[workspace\.package\]\s*version = "([^"]+)"/)?.[1]
+    const revision = read('crates/uc-daemon-contract/src/lib.rs').match(
+      /DAEMON_API_REVISION: &str =\s*"([^"]+)"/
+    )?.[1]
+    const info = read('apps/cli-go/internal/buildinfo/buildinfo.go')
+    expect(version).toBeTruthy()
+    expect(revision).toBeTruthy()
+    expect(info).toContain(`const PackageVersion = "${version}"`)
+    expect(info).toContain(`const DaemonAPIRevision = "${revision}"`)
   })
 })
 

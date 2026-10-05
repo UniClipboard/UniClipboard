@@ -38,6 +38,31 @@ def _mask_ids(r, ids):
                 step.argv = [a.replace(value, placeholder) for a in step.argv]
         # The joiner's join id is random per pairing run.
         step.out = re.sub(rb'("joinId": )"[A-Za-z0-9_-]+"', rb'\1"<JOIN_ID>"', step.out)
+        step.out = _sort_device_arrays(step.out)
+
+
+def _sort_device_arrays(out):
+    """The daemon orders `devices` by device id, and ids are random per run,
+    so the two flavors' runs can list the same devices in different orders.
+    Both CLIs pass this array through unchanged; sort it by the masked id."""
+    try:
+        value = json.loads(out)
+    except ValueError:
+        return out
+
+    def walk(node):
+        if isinstance(node, dict):
+            for key, child in node.items():
+                if key == "devices" and isinstance(child, list) and all(
+                        isinstance(d, dict) and "deviceId" in d for d in child):
+                    child.sort(key=lambda d: d["deviceId"])
+                walk(child)
+        elif isinstance(node, list):
+            for child in node:
+                walk(child)
+
+    walk(value)
+    return (json.dumps(value, indent=2, ensure_ascii=False) + "\n").encode()
 
 
 def _run_tty(r, label, args, profile=None, keys=b"", timeout=60):

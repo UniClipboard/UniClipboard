@@ -148,7 +148,13 @@ def _adopt_pty():
     fcntl.ioctl(0, termios.TIOCSCTTY, 0)
 
 
-def pty_run(r, label, args, script, timeout=90):
+def _adopt_pty_ignoring_sigint():
+    """As _adopt_pty, with SIGINT inherited as ignored (a background job)."""
+    _adopt_pty()
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
+
+
+def pty_run(r, label, args, script, timeout=90, ignore_sigint=False):
     """Run the flavor's CLI with stdin and stderr on a pty (prompts render)
     and stdout on a pipe. `script` is a list of (expected_text, keys): wait
     until the terminal shows expected_text, then type keys."""
@@ -156,7 +162,8 @@ def pty_run(r, label, args, script, timeout=90):
     master, slave = pty.openpty()
     fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", 40, 200, 0, 0))
     proc = subprocess.Popen([binary, *args], stdin=slave, stdout=subprocess.PIPE, stderr=slave,
-                            env=r.env(extra={"TERM": "xterm"}), preexec_fn=_adopt_pty)
+                            env=r.env(extra={"TERM": "xterm"}),
+                            preexec_fn=_adopt_pty_ignoring_sigint if ignore_sigint else _adopt_pty)
     os.close(slave)
     transcript, stdout = b"", b""
     deadline = time.time() + timeout
@@ -444,5 +451,20 @@ def mobile_interactive_interrupt(r):
           stdin=b"", compare=False)
     pty_run(r, "setup ctrl-c at risk prompt", ["mobile", "setup", "--port", PORT_PTY], [(CONFIRM_READY, b"\x03")])
     pty_run(r, "revoke ctrl-c at picker", ["mobile", "revoke"], [("Pick device", b"\x03")])
+    probe_status(r, "state after interrupts")
+    r.run("disable", ["--json", "mobile", "disable"], cli="rust", compare=False)
+
+
+@scenario
+def mobile_interactive_interrupt_ignored(r):
+    """Ctrl-C at a prompt while SIGINT is inherited as ignored: the prompt
+    reports an interrupted read and the command aborts with exit 1."""
+    init_space(r)
+    start_daemon(r)
+    r.run("fixture: device", ["--json", *SETUP, "--label", "Pty", "--port", PORT_PTY], cli="rust",
+          stdin=b"", compare=False)
+    pty_run(r, "setup ctrl-c at risk prompt", ["mobile", "setup", "--port", PORT_PTY], [(CONFIRM_READY, b"\x03")],
+            ignore_sigint=True)
+    pty_run(r, "revoke ctrl-c at picker", ["mobile", "revoke"], [("Pick device", b"\x03")], ignore_sigint=True)
     probe_status(r, "state after interrupts")
     r.run("disable", ["--json", "mobile", "disable"], cli="rust", compare=False)

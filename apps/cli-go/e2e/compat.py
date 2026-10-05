@@ -140,6 +140,12 @@ def render(step, home):
 
 
 def main():
+    # A runner started as a shell background job inherits SIGINT as ignored,
+    # and children would inherit that too. Restore default handling so CLI
+    # Ctrl-C behavior does not depend on how the runner was launched; the
+    # ignored case is covered by explicit scenarios.
+    if signal.getsignal(signal.SIGINT) == signal.SIG_IGN:
+        signal.signal(signal.SIGINT, signal.default_int_handler)
     ap = argparse.ArgumentParser()
     ap.add_argument("--rust", required=True)
     ap.add_argument("--go", required=True)

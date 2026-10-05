@@ -1,7 +1,5 @@
 package ui
 
-import "os"
-
-// raiseInterrupt exits with STATUS_CONTROL_C_EXIT, as a Ctrl-C-terminated
-// console process does.
-func raiseInterrupt() { os.Exit(0xC000013A) }
+// raiseInterrupt is a no-op on Windows: the console delivers Ctrl-C to the
+// process group itself, and the caller reports the interrupted read.
+func raiseInterrupt() {}

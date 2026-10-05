@@ -96,11 +96,16 @@ func (k *keyReader) read() (key, error) {
 
 func writeErr(s string) { fmt.Fprint(os.Stderr, s) }
 
-// interrupt mirrors Ctrl-C while raw mode is active: like the Rust CLI the
-// process ends by SIGINT itself and writes nothing more.
-func interrupt(k *keyReader) {
+// errReadInterrupted is console's io::Error for Ctrl-C read in raw mode.
+var errReadInterrupted = errors.New("read interrupted")
+
+// interrupt mirrors console's handling of Ctrl-C in raw mode: restore the
+// terminal, raise SIGINT at this process (which ends it unless SIGINT is
+// ignored or handled), then report the interrupted read to the caller.
+func interrupt(k *keyReader) error {
 	k.close()
 	raiseInterrupt()
+	return errReadInterrupted
 }
 
 // Confirm renders ` ?  Prompt [y/N]` and resolves on y/n/Enter to
@@ -128,7 +133,7 @@ func Confirm(prompt string, def bool) (bool, error) {
 			return false, err
 		}
 		if k.intr {
-			interrupt(keys)
+			return false, fmt.Errorf("IO error: %w", interrupt(keys))
 		}
 		if k.ch == 'y' || k.ch == 'Y' {
 			value = true
@@ -172,7 +177,7 @@ func Input(prompt string, allowEmpty bool) (string, error) {
 				return "", err
 			}
 			if k.intr {
-				interrupt(keys)
+				return "", fmt.Errorf("IO error: %w", interrupt(keys))
 			}
 			if k.enter {
 				break
@@ -222,7 +227,7 @@ func Password(prompt string) (string, error) {
 		}
 		switch {
 		case k.intr:
-			interrupt(keys)
+			return "", fmt.Errorf("password input failed: %w", interrupt(keys))
 		case k.enter:
 			keys.close()
 			writeErr("\r\x1b[2K\x1b[1A\r\x1b[2K")

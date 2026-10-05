@@ -54,6 +54,11 @@ def _qr_summary(qr):
 def _mask(r, out, err):
     """Mask per-run credentials in one step's stdout/stderr."""
     out, err = out.decode("utf-8", "replace"), err.decode("utf-8", "replace")
+    # Type-ahead artifact: when the typed Enter reaches the terminal before
+    # the CLI has switched to raw mode, the line discipline echoes "\r\n"
+    # after the masked prompt's bar prefix. That depends on typing timing, not
+    # on the CLI (a Rust-vs-Rust control differs about half the runs).
+    err = err.replace("\u2502  \r\n\r\x1b[2K\x1b[1A", "\u2502  \r\x1b[2K\x1b[1A")
     secrets = {}
     try:
         data = json.loads(out)

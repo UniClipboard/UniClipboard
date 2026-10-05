@@ -6,7 +6,7 @@ import { bumpVersion, parseSemver } from '../bump-version-lib.js'
 import { updateCargoLock, updateCargoToml } from '../bump-version.js'
 
 describe('workspace version inheritance', () => {
-  it('uc-cli uses version.workspace = true', () => {
+  it('uc-dev-cli uses version.workspace = true', () => {
     const content = fs.readFileSync(path.resolve(__dirname, '../../apps/cli/Cargo.toml'), 'utf8')
     expect(content).toContain('version.workspace = true')
     expect(content).not.toMatch(/^version\s*=\s*"[\d.]+"/m)

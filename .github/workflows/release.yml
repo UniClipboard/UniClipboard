@@ -89,7 +89,7 @@ jobs:
 
       - name: Refresh Cargo.lock for workspace members
         if: github.event_name == 'workflow_dispatch'
-        run: cargo update -p uc-cli
+        run: cargo update -p uc-dev-cli
 
       - name: Set outputs
         id: set-outputs

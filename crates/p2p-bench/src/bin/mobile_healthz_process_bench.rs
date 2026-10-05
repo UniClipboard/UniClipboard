@@ -8,7 +8,7 @@
 //!
 //! ```bash
 //! cargo build --release -p uc-daemon --bin uniclipd
-//! cargo build --release -p uc-cli --bin uniclip
+//! cargo build --release -p uc-dev-cli --bin uc-dev-cli
 //! cargo build --release -p p2p-bench --bin mobile_healthz_process_bench
 //! UC_LOG_FILE="$(pwd)/target/mobile-healthz-daemon.jsonl" \
 //!   target/release/mobile_healthz_process_bench

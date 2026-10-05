@@ -4,7 +4,7 @@
 
 | 目录 | 包名 | 产物 | 本地规则 |
 | --- | --- | --- | --- |
-| `cli/` | `uc-cli` | `uniclip` | `apps/cli/AGENTS.md` |
+| `cli/` | `uc-dev-cli` | `uc-dev-cli`（开发与诊断工具；用户端 `uniclip` 见 `cli-go/`） | `apps/cli/AGENTS.md` |
 | `cli-go/` | Go 模块 `github.com/UniClipboard/UniClipboard/apps/cli-go` | `uniclip` 的 Go 实现（迁移中，尚未替换发布产物） | `apps/cli-go/AGENTS.md` |
 | `daemon/` | `uc-daemon` | `uniclipd` | （暂无；遵循 workspace 规则） |
 | `quick-panel/` | `quick-panel` | GPUI 快捷面板（macOS 随安装包发布，可执行文件 `uniclip-quick-panel`） | `README.md` |

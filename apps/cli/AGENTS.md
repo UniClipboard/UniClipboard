@@ -1,8 +1,10 @@
-# uc-cli 本地规则
+# uc-dev-cli 本地规则
 
 ## 定位
 
-`uc-cli` 是 UniClipboard 的终端入口 crate，构建出的二进制名是 `uniclip`。
+`uc-dev-cli` 是 UniClipboard 的开发与诊断命令行 crate，构建出的二进制名是 `uc-dev-cli`（原 `uc-cli` / `uniclip`）。
+
+**面向用户的终端客户端 `uniclip` 已由 Go 实现 `apps/cli-go` 承担，发布产物也应使用它。** 本 crate 不再是用户终端客户端：它保留的意义是 `dev-tools` 命令（`probe`、`blob`、`dev`、`mobile debug`，依赖进程内 Engine 或平台剪贴板，daemon 没有对应接口）以及作为 Go 实现的兼容性对照基线。除非先在 `apps/cli-go` 中同步，不要在本 crate 新增用户命令。
 
 它只负责命令行参数、终端输出、交互输入、进程退出码，以及把用户动作转交给应用层。不要在 CLI 层重新实现业务规则。
 
@@ -70,13 +72,13 @@ dialoguer 的 `Confirm` / `Input` / `Password` 必须用 `ui::confirm` / `ui::in
 改动本 crate 后，至少运行：
 
 ```bash
-cargo test -p uc-cli
-cargo run -p uc-cli -- --help
+cargo test -p uc-dev-cli
+cargo run -p uc-dev-cli -- --help
 ```
 
 如果改了某个子命令，还要运行对应 help，例如：
 
 ```bash
-cargo run -p uc-cli -- search --help
-cargo run -p uc-cli -- blob --help
+cargo run -p uc-dev-cli -- search --help
+cargo run -p uc-dev-cli -- blob --help
 ```

@@ -213,7 +213,7 @@ function checkPublicSurface(metadata) {
     ['uc-daemon', 'uc-engine'],
     ['uc-bootstrap', 'uc-engine'],
     ['uc-webserver', 'uc-engine'],
-    ['uc-cli', 'uc-engine'],
+    ['uc-dev-cli', 'uc-engine'],
     ['uc-observability', 'uc-engine'],
   ]
   for (const [packageName, dependencyName] of requiredDependencies) {
@@ -247,20 +247,20 @@ function checkLanIsolation(metadata, sources) {
     }
   }
 
-  const cli = workspacePackageByName(metadata, 'uc-cli')
+  const cli = workspacePackageByName(metadata, 'uc-dev-cli')
   const cliEngine = dependency(cli, 'uc-engine')
   if (!cliEngine?.optional || !cliEngine.features.includes('dev-tools')) {
     addProblem(
       problems,
       'compatibility gate',
-      'uc-cli must keep uc-engine optional and restricted to dev-tools'
+      'uc-dev-cli must keep uc-engine optional and restricted to dev-tools'
     )
   }
   if (!(cli.features['dev-tools'] ?? []).includes('uc-engine/lan-compat')) {
     addProblem(
       problems,
       'compatibility gate',
-      'uc-cli dev-tools must enable LAN compatibility explicitly'
+      'uc-dev-cli dev-tools must enable LAN compatibility explicitly'
     )
   }
 

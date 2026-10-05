@@ -1,12 +1,12 @@
 [package]
-name = "uc-cli"
+name = "uc-dev-cli"
 version.workspace = true
 license.workspace = true
 edition = "2021"
-description = "Command-line interface for UniClipboard"
+description = "Development and diagnostics command-line interface for UniClipboard"
 
 [[bin]]
-name = "uniclip"
+name = "uc-dev-cli"
 path = "src/main.rs"
 
 [features]

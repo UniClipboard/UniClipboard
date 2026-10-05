@@ -49,8 +49,8 @@ const KNOWN_DESCRIPTIONS = {
   'quick-panel': 'GPUI quick panel app (`uniclip-quick-panel`, macOS default)',
   'quick-panel-core':
     'Platform-independent logic of the GPUI quick panel: query model, state machine, ports',
-  'uc-cli': '`uniclip` CLI (daemon client; heavy deps feature-gated)',
-  'uc-cli-macros': 'Proc-macros for uc-cli (internal)',
+  'uc-dev-cli': '`uc-dev-cli` development and diagnostics CLI (user-facing `uniclip` is apps/cli-go)',
+  'uc-cli-macros': 'Proc-macros for uc-dev-cli (internal)',
   'p2p-bench': 'Throwaway perf-spike bins (not shipped; publish = false)',
   uniclipboard:
     'Desktop GUI bin: Tauri packaging shell of apps/gui (frontend: apps/gui/src); hands off to uc-tauri',

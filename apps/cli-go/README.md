@@ -78,11 +78,11 @@ Rust 的 `dev-tools` 特性（release 构建不包含）提供以下隐藏命令
 
 可选的处置方式（尚未决定）：
 
-1. **保留 Rust 开发工具二进制**：继续用 `cargo build -p uc-cli --features dev-tools` 构建仅供开发与 E2E 使用的 Rust CLI，发布版使用 Go CLI。改动最小，不扩大 daemon 接口；代价是 `apps/cli` 在开发期继续存在。
+1. **保留 Rust 开发工具二进制（已采用）**：Rust CLI 重命名为包 `uc-dev-cli`、二进制 `uc-dev-cli`，用 `cargo build -p uc-dev-cli --features dev-tools` 构建，仅供开发、诊断与 E2E 使用；用户端 `uniclip` 是本 Go 实现。改动最小，不扩大 daemon 接口；代价是 `apps/cli` 在开发期继续存在。
 2. **增加仅开发构建可用的 daemon 路由**：把上述操作暴露为受特性开关保护的 daemon 接口，再由 Go 实现。可以彻底移除 Rust CLI，但会扩大 daemon 的攻击面，需要单独评审。
 3. **Go 侧直接访问平台剪贴板**（仅 `probe`）：需要 cgo 或平台 API 绑定，并与 `uc-platform` 重复实现，不推荐。
 
-建议先采用方案 1。
+已采用方案 1。
 
 ## 平台验证边界
 

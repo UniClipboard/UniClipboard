@@ -61,7 +61,7 @@ trap cleanup EXIT
 
 # Build with the host's real toolchain configuration before isolating XDG paths.
 if [[ "$SKIP_BUILD" -eq 0 ]]; then
-  cargo build -p uc-daemon -p uc-cli 2>&1 | tail -n 5 | tee "$ARTIFACTS/build.log"
+  cargo build -p uc-daemon -p uc-dev-cli 2>&1 | tail -n 5 | tee "$ARTIFACTS/build.log"
   [[ "${PIPESTATUS[0]}" -eq 0 ]] || { echo "build failed" >&2; exit 1; }
 fi
 

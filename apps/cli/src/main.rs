@@ -33,9 +33,9 @@ fn init_macos_appkit() {}
 
 #[derive(Parser)]
 #[command(
-    name = "uniclip",
+    name = "uc-dev-cli",
     version,
-    about = "UniClipboard command-line interface"
+    about = "UniClipboard development and diagnostics command-line interface"
 )]
 struct Cli {
     /// Output in JSON format
@@ -852,10 +852,10 @@ mod tests {
     use clap::{CommandFactory, Parser};
 
     #[test]
-    fn cli_binary_name_is_uniclip() {
+    fn cli_binary_name_is_uc_dev_cli() {
         let command = Cli::command();
 
-        assert_eq!(command.get_name(), "uniclip");
+        assert_eq!(command.get_name(), "uc-dev-cli");
     }
 
     #[test]

@@ -267,7 +267,7 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Build daemon and CLI binaries
-        run: cargo build -p uc-daemon -p uc-cli --features uc-daemon/e2e-rendezvous
+        run: cargo build -p uc-daemon -p uc-dev-cli --features uc-daemon/e2e-rendezvous
 
       # Same package selection and features as the build above, so the Engine
       # and daemon dependencies are reused rather than rebuilt. The daemon is
@@ -281,12 +281,12 @@ jobs:
         shell: bash
         run: |
           mkdir -p "$UC_E2E_EVIDENCE_DIR"
-          cargo test -p uc-daemon -p uc-cli --features uc-daemon/e2e-rendezvous \
+          cargo test -p uc-daemon -p uc-dev-cli --features uc-daemon/e2e-rendezvous \
             --test engine_log_file_name_contract 2>&1 \
             | tee "$UC_E2E_EVIDENCE_DIR/engine_log_file_name_contract.log"
 
       - name: Build development CLI for shared-device E2E tests
-        run: CARGO_TARGET_DIR=target/e2e-dev cargo build -p uc-cli --features uc-cli/dev-tools
+        run: CARGO_TARGET_DIR=target/e2e-dev cargo build -p uc-dev-cli --features uc-dev-cli/dev-tools
 
       - name: Build Engine host for final-confirmation E2E test
         run: |
@@ -332,8 +332,8 @@ jobs:
             echo "runner=$RUNNER_OS-$RUNNER_ARCH"
             rustc --version
             cargo --version
-            echo "rerun: cargo build -p uc-daemon -p uc-cli --features uc-daemon/e2e-rendezvous"
-            echo "rerun: cargo test -p uc-daemon -p uc-cli --features uc-daemon/e2e-rendezvous --test engine_log_file_name_contract"
+            echo "rerun: cargo build -p uc-daemon -p uc-dev-cli --features uc-daemon/e2e-rendezvous"
+            echo "rerun: cargo test -p uc-daemon -p uc-dev-cli --features uc-daemon/e2e-rendezvous --test engine_log_file_name_contract"
             echo "rerun: UC_E2E_EVIDENCE_DIR=<dir> cargo test --manifest-path tests/e2e/Cargo.toml --test update_analytics_capture -- --ignored"
           } > "$UC_E2E_EVIDENCE_DIR/source.txt"
           # Per-test outcomes of the full suite (test names and ok/FAILED only).

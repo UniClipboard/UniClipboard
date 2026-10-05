@@ -10,7 +10,7 @@ Usage:
   project_suite.py --target-dir DIR --out FILE [--threads N] [--only TEST_BINARY ...]
 
 DIR/debug must contain `uniclip` and an `e2e-rendezvous` `uniclipd`
-(`cargo build -p uc-daemon -p uc-cli --features uc-daemon/e2e-rendezvous`).
+(`cargo build -p uc-daemon -p uc-dev-cli --features uc-daemon/e2e-rendezvous`).
 Writes one `binary<TAB>test<TAB>result` line per test to FILE.
 """
 import argparse

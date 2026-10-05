@@ -7,7 +7,7 @@ use syn::visit::Visit;
 
 const CONSUMER_PACKAGES: [&str; 10] = [
     "uc-bootstrap",
-    "uc-cli",
+    "uc-dev-cli",
     "uc-daemon",
     "uc-daemon-client",
     "uc-daemon-contract",

@@ -13464,37 +13464,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "uc-cli"
-version = "1.1.1"
-dependencies = [
- "anyhow",
- "base64 0.22.1",
- "chrono",
- "clap",
- "console",
- "dialoguer",
- "hostname",
- "indicatif",
- "libc",
- "reqwest 0.12.28",
- "rustls",
- "serde",
- "serde_json",
- "tempfile",
- "tokio",
- "tracing",
- "uc-app-paths",
- "uc-bootstrap",
- "uc-daemon-client",
- "uc-daemon-contract",
- "uc-daemon-process",
- "uc-engine",
- "uc-observability",
- "uc-platform",
- "uuid",
-]
-
-[[package]]
 name = "uc-cli-macros"
 version = "1.1.1"
 dependencies = [
@@ -13663,6 +13632,37 @@ dependencies = [
  "uuid",
  "windows 0.61.3",
  "wiremock",
+]
+
+[[package]]
+name = "uc-dev-cli"
+version = "1.1.1"
+dependencies = [
+ "anyhow",
+ "base64 0.22.1",
+ "chrono",
+ "clap",
+ "console",
+ "dialoguer",
+ "hostname",
+ "indicatif",
+ "libc",
+ "reqwest 0.12.28",
+ "rustls",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "uc-app-paths",
+ "uc-bootstrap",
+ "uc-daemon-client",
+ "uc-daemon-contract",
+ "uc-daemon-process",
+ "uc-engine",
+ "uc-observability",
+ "uc-platform",
+ "uuid",
 ]
 
 [[package]]

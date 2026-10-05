@@ -61,8 +61,11 @@ trap cleanup EXIT
 
 # Build with the host's real toolchain configuration before isolating XDG paths.
 if [[ "$SKIP_BUILD" -eq 0 ]]; then
-  cargo build -p uc-daemon -p uc-dev-cli 2>&1 | tail -n 5 | tee "$ARTIFACTS/build.log"
+  # The daemon is the Rust uniclipd; the CLI the suite drives is the Go uniclip.
+  cargo build -p uc-daemon 2>&1 | tail -n 5 | tee "$ARTIFACTS/build.log"
   [[ "${PIPESTATUS[0]}" -eq 0 ]] || { echo "build failed" >&2; exit 1; }
+  scripts/e2e/build-cli.sh 2>&1 | tail -n 3 | tee -a "$ARTIFACTS/build.log"
+  [[ "${PIPESTATUS[0]}" -eq 0 ]] || { echo "CLI build failed" >&2; exit 1; }
 fi
 
 for directory in data cache state config runtime services; do

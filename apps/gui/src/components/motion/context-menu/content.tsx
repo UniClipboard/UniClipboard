@@ -52,6 +52,7 @@ export function ContextMenuContent({
   className,
   ariaLabel = 'Context menu',
   side = 'bottom',
+  align = 'start',
 }: ContextMenuContentProps) {
   const context = useContextMenuContext('ContextMenuContent')
   const [mounted, setMounted] = useState(false)
@@ -75,16 +76,21 @@ export function ContextMenuContent({
 
     const rect = content.getBoundingClientRect()
     const triggerRect = context.parent ? context.triggerRef.current?.getBoundingClientRect() : null
-    const targetX = triggerRect
-      ? triggerRect.right + rect.width > window.innerWidth - VIEWPORT_PADDING
-        ? triggerRect.left - rect.width + 4
-        : triggerRect.right - 4
-      : context.point.x
-    const targetY = triggerRect
-      ? triggerRect.top - 6
-      : side === 'top'
-        ? context.point.y - rect.height - 6
-        : context.point.y
+    const below = !triggerRect && align === 'end' ? context.point.anchor : undefined
+    const targetX = below
+      ? below.right - rect.width
+      : triggerRect
+        ? triggerRect.right + rect.width > window.innerWidth - VIEWPORT_PADDING
+          ? triggerRect.left - rect.width + 4
+          : triggerRect.right - 4
+        : context.point.x
+    const targetY = below
+      ? below.bottom + 4
+      : triggerRect
+        ? triggerRect.top - 6
+        : side === 'top'
+          ? context.point.y - rect.height - 6
+          : context.point.y
     const left = Math.max(
       VIEWPORT_PADDING,
       Math.min(
@@ -126,6 +132,7 @@ export function ContextMenuContent({
     }
   }, [
     side,
+    align,
     mounted,
     context.open,
     context.point,

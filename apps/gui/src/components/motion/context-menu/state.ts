@@ -26,7 +26,9 @@ import { createContext, type ReactElement, type ReactNode, type Ref, use } from 
 
 export type OpenModality = 'pointer' | 'keyboard' | 'touch'
 
-export type MenuPoint = { x: number; y: number }
+/** Where a menu opens. A click-activated trigger also passes its far edges,
+ * so an `align="end"` menu can hang below it, flush with its right edge. */
+export type MenuPoint = { x: number; y: number; anchor?: { right: number; bottom: number } }
 
 export const VIEWPORT_PADDING = 8
 
@@ -116,6 +118,8 @@ export interface ContextMenuTriggerProps {
 
 export interface ContextMenuContentProps {
   side?: 'bottom' | 'top'
+  /** `end`: below a click-activated trigger, its right edge on the trigger's. */
+  align?: 'start' | 'end'
   children: ReactNode
   className?: string
   ariaLabel?: string

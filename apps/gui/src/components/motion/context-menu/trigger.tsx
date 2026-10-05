@@ -144,7 +144,10 @@ export function ContextMenuTrigger({
         return
       }
       const rect = event.currentTarget.getBoundingClientRect()
-      context.openAt({ x: rect.left, y: rect.top }, event.detail === 0 ? 'keyboard' : 'pointer')
+      context.openAt(
+        { x: rect.left, y: rect.top, anchor: { right: rect.right, bottom: rect.bottom } },
+        event.detail === 0 ? 'keyboard' : 'pointer'
+      )
     },
     'aria-expanded': context.open,
     // The long press is ours: without this iOS runs its own on the same

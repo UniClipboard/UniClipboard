@@ -3,15 +3,33 @@ import type { ClipboardCodeItem } from '@/lib/clipboard-entry'
 import type { ClipboardPreviewData } from '@/lib/clipboard-preview-cache'
 import { countCodeLines, resolveCodePreviewText } from './codePreviewUtils'
 
+/** `editor`: line-numbered, unwrapped pane. `block`: the macOS detail column's
+ * dark, wrapped code block (HDetail.dc.html), no gutter. */
+export type CodePreviewVariant = 'editor' | 'block'
+
 interface CodePreviewProps {
   item: ClipboardCodeItem
   preview: ClipboardPreviewData | null
+  variant?: CodePreviewVariant
 }
 
-const CodePreview: React.FC<CodePreviewProps> = ({ item, preview }) => {
+const CodePreview: React.FC<CodePreviewProps> = ({ item, preview, variant = 'editor' }) => {
   const code = resolveCodePreviewText(item.code, preview)
-  const lineCount = countCodeLines(code)
 
+  if (variant === 'block') {
+    return (
+      <div
+        data-testid="code-preview"
+        className="h-full overflow-auto bg-zinc-900 font-mono text-ui-body-relaxed text-zinc-300 dark:bg-black/60"
+      >
+        <pre className="selectable px-5 py-4.5 break-all whitespace-pre-wrap">
+          <code>{code}</code>
+        </pre>
+      </div>
+    )
+  }
+
+  const lineCount = countCodeLines(code)
   return (
     <div
       data-testid="code-preview"

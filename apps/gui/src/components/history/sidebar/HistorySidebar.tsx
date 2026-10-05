@@ -188,7 +188,7 @@ function HistorySidebar(props: HistorySidebarProps) {
       className={cn(
         'flex h-full shrink-0 flex-col',
         !libraryOwnsNavigation
-          ? 'w-56 border-r border-border/50 bg-muted/15 xl:w-60'
+          ? 'w-56 border-r border-border bg-muted/15 xl:w-60'
           : variant === 'inline'
             ? 'w-55 text-sidebar-foreground'
             : 'w-55 text-sidebar-foreground'
@@ -389,7 +389,7 @@ function HistorySidebar(props: HistorySidebarProps) {
           borderTopRightRadius: hidden ? 12 : 0,
         }}
         transition={LIBRARY_SIDEBAR_TRANSITION}
-        className="absolute inset-x-0 bottom-0 border-r border-t border-sidebar-border bg-sidebar data-[band=false]:border-t-0"
+        className="absolute inset-x-0 bottom-0 border-r border-t border-border bg-sidebar data-[band=false]:border-t-0"
         data-band={hidden}
       />
       <div className="relative h-full overflow-hidden">{rail ?? renderPanel('inline')}</div>

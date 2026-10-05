@@ -107,7 +107,7 @@ function HistorySidebarRail({
             disabled
             render={<button type="button" disabled />}
           />
-          <span className="mb-2.5 mt-1 h-px w-7 bg-sidebar-border" aria-hidden="true" />
+          <span className="mb-2.5 mt-1 h-px w-7 bg-border" aria-hidden="true" />
           <RailItem
             icon={MonitorSmartphone}
             label={t('history.sidebar.devices')}

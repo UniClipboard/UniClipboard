@@ -610,33 +610,22 @@ mod tests {
     }
 }
 
-/// Only macOS uses transparency and the shared native window effects.
 fn configure_main_window_config_for_platform(config: &mut tauri::utils::config::WindowConfig) {
     // Start without native chrome; the webview applies the saved preference
     // before rendering, including on startup failure and window recreation.
     if cfg!(any(target_os = "linux", target_os = "windows")) {
         config.decorations = false;
     }
-    if !cfg!(target_os = "macos") {
-        config.transparent = false;
-        config.window_effects = None;
-    }
 }
 
 #[cfg(test)]
 mod surface_tests {
     #[test]
-    fn main_window_surface_matches_platform_support() {
-        let mut config = tauri::utils::config::WindowConfig {
-            transparent: true,
-            window_effects: Some(Default::default()),
-            ..Default::default()
-        };
+    fn main_window_drops_native_chrome_on_linux_and_windows() {
+        let mut config = tauri::utils::config::WindowConfig::default();
         super::configure_main_window_config_for_platform(&mut config);
         if cfg!(any(target_os = "linux", target_os = "windows")) {
             assert!(!config.decorations);
         }
-        assert_eq!(config.transparent, cfg!(target_os = "macos"));
-        assert_eq!(config.window_effects.is_some(), cfg!(target_os = "macos"));
     }
 }

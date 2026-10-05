@@ -32,14 +32,8 @@
         "minHeight": 600,
         "titleBarStyle": "Overlay",
         "hiddenTitle": true,
-        "transparent": true,
         "visible": false,
-        "devtools": false,
-        "windowEffects": {
-          "effects": ["hudWindow"],
-          "state": "active",
-          "radius": 16
-        }
+        "devtools": false
       }
     ],
     "security": {

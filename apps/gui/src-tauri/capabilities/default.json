@@ -16,6 +16,8 @@
     "core:window:allow-hide",
     "core:window:allow-show",
     "core:window:allow-set-focus",
+    "core:window:allow-set-theme",
+    "core:window:allow-set-background-color",
     "core:window:allow-set-decorations",
     "core:event:allow-listen",
     "core:event:allow-emit",

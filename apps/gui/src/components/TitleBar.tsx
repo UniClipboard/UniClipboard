@@ -23,8 +23,7 @@ type ContentToolbarProps = TitleBarSectionProps
 
 // macOS 三色交通灯相对系统标准位置的偏移，屏幕坐标系：正 X 向右、正 Y 向下。
 // 自绘 titlebar 高度 40pt vs 系统默认 28pt，按钮要向下挪一点才视觉居中；
-// 同时整体往右挪让它远离 macOS 窗口圆角。圆角本身由 tauri.conf.json
-// `windowEffects.radius` 接管。后端实现见
+// 同时整体往右挪让它远离 macOS 窗口圆角。后端实现见
 // `crates/uc-tauri/src/commands/window_chrome.rs`。
 const MAC_TRAFFIC_LIGHT_OFFSET = {
   x: 0,

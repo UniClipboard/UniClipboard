@@ -13,7 +13,7 @@ import signal
 import subprocess
 import time
 
-from scenarios import scenario, pair, init_space
+from scenarios import scenario, pair, init_space, settle_oneshot
 
 
 class _Step:
@@ -404,6 +404,7 @@ def recv_remote(r):
     """Deprecated `recv`: skips text, saves the first file, then exits."""
     sponsor, joiner = pair(r)
     out = os.path.join(r.home, "recv-out")
+    settle_oneshot(r, profile=joiner)
     h = _spawn_ready(r, "recv", ["recv", "-o", out], "Waiting for incoming file", joiner)
     _send(r, sponsor, ["--text", "not a file"], "text")
     sample = os.path.join(r.home, "received.txt")
@@ -413,6 +414,7 @@ def recv_remote(r):
     _finish(r, h)
     r.note("recv out dir", _listing(out))
 
+    settle_oneshot(r, profile=joiner)
     h = _spawn_ready(r, "recv --json", ["--json", "recv", "--out", out], None, joiner)
     time.sleep(6)  # --json prints no readiness line
     big = os.path.join(r.home, "recv-big.bin")

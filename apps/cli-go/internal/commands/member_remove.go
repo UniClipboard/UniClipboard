@@ -46,7 +46,7 @@ func runMemberRemove(ctx *cli.Context) int {
 	err = client.Enveloped(context.Background(), daemonclient.Request{
 		Method: http.MethodPost,
 		Path:   "/pairing/unpair",
-		JSON:   struct {
+		JSON: struct {
 			PeerID string `json:"peerId"`
 		}{peerID},
 	}, &raw)

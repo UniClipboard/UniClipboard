@@ -86,6 +86,12 @@ def incompatible_daemons(r):
     _against(r, "degraded same version", 200, _health(status="degraded"))
     _against(r, "failed status", 200, _health(status="failed"))
     _against(r, "http 500", 500, b"{}")
+
+
+@scenario
+def malformed_health_bodies(r):
+    """Known difference: the decode-error detail is serde_json's text in Rust
+    and encoding/json's in Go. Exit codes and the message prefix match."""
     _against(r, "garbage body", 200, b"not json")
     _against(r, "missing data", 200, b'{"ts":1}')
 

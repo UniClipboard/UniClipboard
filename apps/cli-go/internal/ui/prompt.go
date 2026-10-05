@@ -96,11 +96,11 @@ func (k *keyReader) read() (key, error) {
 
 func writeErr(s string) { fmt.Fprint(os.Stderr, s) }
 
-// interrupt mirrors the terminal's Ctrl-C while raw mode is active.
+// interrupt mirrors Ctrl-C while raw mode is active: like the Rust CLI the
+// process ends by SIGINT itself and writes nothing more.
 func interrupt(k *keyReader) {
 	k.close()
-	writeErr("\r\n")
-	os.Exit(130)
+	raiseInterrupt()
 }
 
 // Confirm renders ` ?  Prompt [y/N]` and resolves on y/n/Enter to

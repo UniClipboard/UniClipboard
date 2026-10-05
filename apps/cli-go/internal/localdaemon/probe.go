@@ -23,7 +23,7 @@ import (
 const (
 	probeTimeout        = 2 * time.Second
 	pollInterval        = 200 * time.Millisecond
-	predecessorRelease  = 5*time.Second + 5*time.Second // SHUTDOWN_JOIN_TIMEOUT + IROH_TEARDOWN_MARGIN
+	predecessorRelease  = 2*5*time.Second + 5*time.Second // 2 * SHUTDOWN_JOIN_TIMEOUT + IROH_TEARDOWN_MARGIN
 	lockAcquireDeadline = 2 * predecessorRelease
 	// StartupTimeout is DAEMON_STARTUP_TIMEOUT.
 	StartupTimeout      = lockAcquireDeadline + 15*time.Second

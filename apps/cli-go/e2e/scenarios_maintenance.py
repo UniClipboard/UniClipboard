@@ -7,7 +7,7 @@ import re
 import time
 import zipfile
 
-from scenarios import scenario, pair, init_space
+from scenarios import scenario, pair, init_space, settle_oneshot
 
 # Human search output renders minute-precision UTC dates; the two flavors run
 # minutes apart, so mask them (the JSON forms keep full precision via <MS>).
@@ -197,7 +197,9 @@ def search_oneshot(r):
     init_space(r)
     r.run("fixture: stop", ["stop"], cli="rust", compare=False)
     masked(r, "query (oneshot)", ["search", "anything"])
+    settle_oneshot(r)
     masked(r, "status (oneshot)", ["--json", "search", "status"])
+    settle_oneshot(r)
     masked(r, "missing query (oneshot)", ["search"])
 
 
@@ -302,8 +304,11 @@ def upgrade_transitions(r):
 def upgrade_oneshot(r):
     """Upgrade commands through a transient daemon."""
     init_space(r)
+    settle_oneshot(r)
     r.run("status (oneshot)", ["upgrade", "status"])
+    settle_oneshot(r)
     r.run("ack (oneshot, json)", ["--json", "upgrade", "ack"])
+    settle_oneshot(r)
     r.run("bare (oneshot)", ["upgrade"])
 
 
@@ -322,7 +327,9 @@ def debug_mode(r):
     r.run("off again json", ["--json", "debug", "off"])
     r.run("restart fixture", ["stop"], cli="rust", compare=False)
     r.run("on (oneshot)", ["debug", "on"])
+    settle_oneshot(r)
     r.run("status (oneshot)", ["--json", "debug", "status"])
+    settle_oneshot(r)
     r.run("off (oneshot)", ["debug", "off"])
 
 

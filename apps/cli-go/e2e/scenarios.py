@@ -22,6 +22,13 @@ def init_space(r, profile=None, name="compat-a"):
           cli="rust", profile=profile, compare=False)
 
 
+def settle_oneshot(r, profile=None):
+    """Fixture: stop any daemon left by the previous step (a oneshot daemon
+    lingers until its idle exit), so each oneshot step starts from no daemon
+    and deterministically prints its own startup line."""
+    r.run("fixture: no daemon", ["stop"], cli="rust", profile=profile, compare=False)
+
+
 def pair(r, sponsor=None, joiner=None, timeout=90):
     """Fixture: init `sponsor` and pair `joiner` into its space with the Rust
     CLI, exactly like scripts/e2e/pair.sh. Returns (sponsor, joiner) profiles.

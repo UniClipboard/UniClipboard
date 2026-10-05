@@ -3,6 +3,7 @@ package daemonproc
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/UniClipboard/UniClipboard/apps/cli-go/internal/errctx"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -51,7 +52,7 @@ func ResolveDaemonExe() (string, error) {
 	}
 	path, err := exec.LookPath(name)
 	if err != nil {
-		return "", &SpawnError{ResolveBinary: true, Err: fmt.Errorf("`%s` not found as sibling of the spawning binary or in PATH: %w", name, err)}
+		return "", &SpawnError{ResolveBinary: true, Err: errctx.Wrap(fmt.Sprintf("`%s` not found as sibling of the spawning binary or in PATH", name), err)}
 	}
 	return path, nil
 }
@@ -81,7 +82,7 @@ func SpawnDetachedDaemon() error {
 	}
 	configureDetached(cmd)
 	if err := cmd.Start(); err != nil {
-		return &SpawnError{Err: fmt.Errorf("failed to spawn daemon via `%s`: %w", exe, err)}
+		return &SpawnError{Err: errctx.Wrap(fmt.Sprintf("failed to spawn daemon via `%s`", exe), err)}
 	}
 	return cmd.Process.Release()
 }

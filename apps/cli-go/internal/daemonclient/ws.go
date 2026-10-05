@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/UniClipboard/UniClipboard/apps/cli-go/internal/errctx"
 	"net/http"
 
 	"github.com/coder/websocket"
@@ -25,7 +26,7 @@ type WS struct {
 func (c *Client) DialWS(ctx context.Context) (*WS, error) {
 	token, err := c.SessionToken(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to exchange session token for WS: %w", err)
+		return nil, errctx.Wrap("failed to exchange session token for WS", err)
 	}
 	header := http.Header{}
 	header.Set("Authorization", "Session "+token)
@@ -41,7 +42,7 @@ func (c *Client) DialWS(ctx context.Context) (*WS, error) {
 func (w *WS) Subscribe(ctx context.Context, topics ...string) error {
 	data, _ := json.Marshal(map[string]any{"action": "subscribe", "topics": topics})
 	if err := w.conn.Write(ctx, websocket.MessageText, data); err != nil {
-		return fmt.Errorf("failed to send WS subscribe: %w", err)
+		return errctx.Wrap("failed to send WS subscribe", err)
 	}
 	return nil
 }

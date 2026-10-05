@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/UniClipboard/UniClipboard/apps/cli-go/internal/errctx"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -34,7 +35,7 @@ func ReadPidMetadata() (*PidMetadata, error) {
 		return nil, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("failed to read daemon pid file %s: %w", path, err)
+		return nil, errctx.Wrap(fmt.Sprintf("failed to read daemon pid file %s", path), err)
 	}
 	trimmed := strings.TrimSpace(string(raw))
 	if trimmed == "" {
@@ -77,7 +78,7 @@ func isDaemonBinaryName(name string) bool {
 func ConnPointsToLiveDaemon() (bool, error) {
 	conn, err := ReadConnFile()
 	if err != nil {
-		return false, fmt.Errorf("failed to read daemon connection file: %w", err)
+		return false, err
 	}
 	if conn == nil {
 		return false, nil

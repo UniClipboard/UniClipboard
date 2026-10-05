@@ -161,6 +161,9 @@ def main():
         if args.only and name not in args.only:
             continue
         rendered = {}
+        stale = os.path.join(out_dir, f"{name}.diff")
+        if os.path.exists(stale):
+            os.remove(stale)
         for flavor, bindir in (("rust", rust_dir), ("go", go_dir)):
             runner = Runner(flavor, bindir, rust_dir, work, name)
             started = time.time()

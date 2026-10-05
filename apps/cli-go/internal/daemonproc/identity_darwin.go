@@ -1,30 +1,33 @@
 package daemonproc
 
 import (
-	"unsafe"
+	"bytes"
 
 	"golang.org/x/sys/unix"
 )
 
-const procPidPathInfoMaxSize = 4 * 1024
-
-// processExe uses proc_pidpath via the PROC_PIDPATHINFO syscall.
+// processExe returns the executable path (or, for processes of other users,
+// the kernel process name) without cgo. Rust uses proc_pidpath; only the
+// basename prefix matters to IsActiveDaemon, which the 16-byte process name
+// preserves for `uniclipd`/`uniclip` and their suffixed sidecar names.
 func processExe(pid uint32) (string, bool) {
-	buf := make([]byte, procPidPathInfoMaxSize)
-	n, err := procPidPath(int(pid), buf)
-	if err != nil || n <= 0 {
+	if raw, err := unix.SysctlRaw("kern.procargs2", int(pid)); err == nil && len(raw) > 4 {
+		path := raw[4:] // skip argc
+		if i := bytes.IndexByte(path, 0); i > 0 {
+			return string(path[:i]), true
+		}
+	}
+	info, err := unix.SysctlKinfoProc("kern.proc.pid", int(pid))
+	if err != nil {
 		return "", false
 	}
-	return string(buf[:n]), true
-}
-
-func procPidPath(pid int, buf []byte) (int, error) {
-	const procInfoCallPidInfo = 2
-	const procPidPathInfo = 11
-	r, _, errno := unix.Syscall6(unix.SYS_PROC_INFO, procInfoCallPidInfo, uintptr(pid), procPidPathInfo, 0,
-		uintptr(unsafe.Pointer(&buf[0])), uintptr(len(buf)))
-	if errno != 0 {
-		return 0, errno
+	comm := info.Proc.P_comm[:]
+	n := bytes.IndexByte(comm, 0)
+	if n < 0 {
+		n = len(comm)
 	}
-	return int(r), nil
+	if n == 0 {
+		return "", false
+	}
+	return string(comm[:n]), true
 }

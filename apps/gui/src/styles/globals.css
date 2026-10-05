@@ -28,6 +28,25 @@
   --history-selection-background: oklch(0.3 0.006 286.033);
 }
 
+/* History search accent (HList.dc.html): a fixed blue for the field's focus
+   ring, active facets, the highlighted suggestion and their count badges,
+   independent of the theme preset's primary. */
+:root {
+  --history-accent: #3e5fa8;
+  --history-accent-foreground: #ffffff;
+  --history-accent-soft: #f4f7fd;
+  --history-accent-line: #afc0e3;
+  --history-focus-ring: #e9eef8;
+}
+
+:root.dark {
+  --history-accent: #8fa8e6;
+  --history-accent-foreground: #0e0f12;
+  --history-accent-soft: color-mix(in oklab, #8fa8e6 12%, transparent);
+  --history-accent-line: color-mix(in oklab, #8fa8e6 45%, transparent);
+  --history-focus-ring: color-mix(in oklab, #8fa8e6 22%, transparent);
+}
+
 /* Shared text roles for every application-owned main-window surface. */
 @utility text-ui-caption {
   font-size: var(--font-size-caption);
@@ -278,6 +297,11 @@
   --color-success: var(--success);
   --color-warning-foreground: var(--warning-foreground);
   --color-warning: var(--warning);
+  --color-history-accent: var(--history-accent);
+  --color-history-accent-foreground: var(--history-accent-foreground);
+  --color-history-accent-soft: var(--history-accent-soft);
+  --color-history-accent-line: var(--history-accent-line);
+  --color-history-focus-ring: var(--history-focus-ring);
   --color-info-foreground: var(--info-foreground);
   --color-info: var(--info);
   --color-accent-foreground: var(--accent-foreground);

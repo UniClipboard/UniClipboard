@@ -29,13 +29,13 @@ function SearchFacetRow({ chips, onSeedDimension, onClearAll }: SearchFacetRowPr
             className={cn(
               'inline-flex h-7.5 shrink-0 items-center gap-1.5 rounded-full border px-2.5 text-ui-body font-medium transition-colors',
               count > 0
-                ? 'border-primary/40 bg-primary/5 text-foreground'
+                ? 'border-history-accent-line bg-history-accent-soft text-foreground'
                 : 'border-border bg-background text-foreground hover:bg-muted/60'
             )}
           >
             {t(DIMENSION_LABEL_KEYS[dimension])}
             {count > 0 && (
-              <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-ui-caption text-primary-foreground">
+              <span className="inline-flex h-4.25 min-w-4.25 items-center justify-center rounded-full bg-history-accent px-1.25 text-ui-caption text-history-accent-foreground">
                 {count}
               </span>
             )}
@@ -49,7 +49,7 @@ function SearchFacetRow({ chips, onSeedDimension, onClearAll }: SearchFacetRowPr
           type="button"
           onMouseDown={event => event.preventDefault()}
           onClick={onClearAll}
-          className="shrink-0 whitespace-nowrap text-ui-body font-medium text-primary hover:underline"
+          className="shrink-0 whitespace-nowrap text-ui-body font-medium text-history-accent hover:underline"
         >
           {t('history.composite.clearAll')}
         </button>

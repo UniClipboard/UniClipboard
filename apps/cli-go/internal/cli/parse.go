@@ -119,6 +119,10 @@ func (v *flagValue) fail(e *usageError) error {
 
 func (v *flagValue) Set(raw string) error {
 	f := v.flag
+	if f.Kind != Bool && len(raw) > 1 && raw[0] == '-' {
+		// clap does not take a hyphen-leading token as an option value.
+		return v.fail(v.ctx.unexpected(raw))
+	}
 	if v.set && f.Kind != Strings {
 		return v.fail(&usageError{msg: fmt.Sprintf("the argument '%s' cannot be used multiple times", f.display()), usage: v.ctx.Cmd.usageLines()})
 	}
@@ -132,8 +136,12 @@ func (v *flagValue) Set(raw string) error {
 		if bits == 0 {
 			bits = 64
 		}
-		if _, err := parseRustInt(raw, false, bits); err != nil {
+		n, err := parseRustInt(raw, false, 64)
+		if err != nil {
 			return v.fail(&usageError{msg: fmt.Sprintf("invalid value '%s' for '%s': %s", raw, f.display(), err)})
+		}
+		if max := uint64(1)<<bits - 1; bits < 64 && uint64(n) > max {
+			return v.fail(&usageError{msg: fmt.Sprintf("invalid value '%s' for '%s': %s is not in 0..=%d", raw, f.display(), strconv.FormatUint(uint64(n), 10), max)})
 		}
 	case Int:
 		if _, err := parseRustInt(raw, true, 64); err != nil {
@@ -187,7 +195,7 @@ func parseRustInt(raw string, signed bool, bits int) (int64, error) {
 		if err != nil {
 			return 0, errors.New("number too large to fit in target type")
 		}
-		return int64(n), nil
+		return int64(n), nil //nolint:gosec // callers re-read as uint64
 	}
 	n, err := strconv.ParseInt(raw, 10, bits)
 	if err != nil {
@@ -234,13 +242,23 @@ func (c *Context) smartUsage(include, exclude string) []string {
 		}
 	}
 	for i, a := range cmd.Args {
-		if i < len(c.Args) {
+		if i < len(c.Args) && exclude != "arg:"+a.Name {
 			parts = append(parts, "<"+a.Name+">")
 		} else {
 			parts = append(parts, a.display())
 		}
 	}
 	return []string{strings.Join(parts, " ")}
+}
+
+// unexpected renders clap's unknown-argument error; the `--` tip only
+// appears when the command takes positional arguments.
+func (c *Context) unexpected(arg string) *usageError {
+	e := &usageError{msg: fmt.Sprintf("unexpected argument '%s' found", arg), usage: c.Cmd.usageLines()}
+	if len(c.Cmd.Args) > 0 {
+		e.tip = fmt.Sprintf("to pass '%s' as a value, use '-- %s'", arg, arg)
+	}
+	return e
 }
 
 func (c *Context) validate() error {
@@ -395,8 +413,8 @@ func translate(err error, ctx *Context) *usageError {
 	} else if m := reBadSyntax.FindStringSubmatch(msg); m != nil {
 		arg = m[1]
 	}
-	if arg != "" {
-		return &usageError{msg: fmt.Sprintf("unexpected argument '%s' found", arg), tip: fmt.Sprintf("to pass '%s' as a value, use '-- %s'", arg, arg), usage: usage}
+	if arg != "" && ctx != nil {
+		return ctx.unexpected(arg)
 	}
 	return &usageError{msg: msg, usage: usage}
 }
@@ -500,6 +518,15 @@ func build(spec *Command, ctxs map[*cobra.Command]*Context, exitCode *int) *cobr
 				// `uniclip` alone prints help plus a blank line, exit 0.
 				fmt.Fprint(os.Stdout, spec.Help(false)+"\n")
 				return nil
+			}
+			if len(ctx.used) > 0 || len(rootCtx(ctxs, c).used) > 0 {
+				names := []string{}
+				for _, s := range spec.visibleSubs() {
+					names = append(names, s.Name)
+				}
+				names = append(names, "help")
+				msg := fmt.Sprintf("'%s' requires a subcommand but one was not provided\n  [subcommands: %s]", "uniclip"+strings.TrimPrefix(spec.path(), "uniclip"), strings.Join(names, ", "))
+				return &usageError{msg: msg, usage: spec.usageLines()}
 			}
 			fmt.Fprint(os.Stderr, spec.Help(false))
 			*exitCode = 2

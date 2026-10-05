@@ -51,3 +51,9 @@ func canonicalize(path string) (string, error) {
 	}
 	return filepath.EvalSymlinks(abs)
 }
+
+// isNotFound matches Rust's `ErrorKind::NotFound` (ENOENT only).
+func isNotFound(err error) bool {
+	var errno syscall.Errno
+	return errors.As(err, &errno) && errno == syscall.ENOENT
+}

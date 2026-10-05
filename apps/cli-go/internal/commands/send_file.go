@@ -110,7 +110,7 @@ func runSendFileViaDaemon(client *daemonclient.Client, path string, peers []stri
 	}
 	info, err := os.Stat(path)
 	if err != nil {
-		ui.Error("Failed to inspect file: " + rustIOErrorText(err))
+		ui.Error("Failed to inspect file: " + rustIOError(err))
 		return failed
 	}
 	filename := filepath.Base(path)

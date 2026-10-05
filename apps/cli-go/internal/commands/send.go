@@ -10,7 +10,6 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 	"unicode/utf8"
 
@@ -232,7 +231,7 @@ func classifySendInput(value string, present, forceFile, forceText bool) (sendIn
 	case isNotFound(err):
 		return sendInput{kind: sendInputText, text: value}, nil
 	default:
-		return sendInput{}, fmt.Errorf("Failed to inspect path %s: %s", value, rustIOErrorText(err))
+		return sendInput{}, fmt.Errorf("Failed to inspect path %s: %s", value, rustIOError(err))
 	}
 }
 
@@ -241,7 +240,7 @@ func classifySendInput(value string, present, forceFile, forceText bool) (sendIn
 func classifySendFile(path string) (sendInput, error) {
 	info, err := os.Stat(path)
 	if err != nil {
-		return sendInput{}, fmt.Errorf("Failed to inspect file %s: %s", path, rustIOErrorText(err))
+		return sendInput{}, fmt.Errorf("Failed to inspect file %s: %s", path, rustIOError(err))
 	}
 	if info.IsDir() {
 		return sendInput{}, fmt.Errorf("Directory sending is not supported: %s", path)
@@ -251,12 +250,12 @@ func classifySendFile(path string) (sendInput, error) {
 	}
 	file, err := os.Open(path)
 	if err != nil {
-		return sendInput{}, fmt.Errorf("File is not readable %s: %s", path, rustIOErrorText(err))
+		return sendInput{}, fmt.Errorf("File is not readable %s: %s", path, rustIOError(err))
 	}
 	file.Close()
 	canonical, err := canonicalizePath(path)
 	if err != nil {
-		return sendInput{}, fmt.Errorf("Failed to resolve file path %s: %s", path, rustIOErrorText(err))
+		return sendInput{}, fmt.Errorf("Failed to resolve file path %s: %s", path, rustIOError(err))
 	}
 	return sendInput{kind: sendInputFile, paths: []string{canonical}}, nil
 }
@@ -268,26 +267,6 @@ func canonicalizePath(path string) (string, error) {
 		return "", err
 	}
 	return filepath.EvalSymlinks(abs)
-}
-
-// isNotFound matches Rust's `ErrorKind::NotFound` (ENOENT only).
-func isNotFound(err error) bool {
-	var errno syscall.Errno
-	return errors.As(err, &errno) && errno == syscall.ENOENT
-}
-
-// rustIOErrorText renders an OS error like Rust's `io::Error` Display:
-// `<strerror> (os error N)`.
-func rustIOErrorText(err error) string {
-	var errno syscall.Errno
-	if errors.As(err, &errno) {
-		text := errno.Error()
-		if text != "" {
-			text = strings.ToUpper(text[:1]) + text[1:]
-		}
-		return fmt.Sprintf("%s (os error %d)", text, int(errno))
-	}
-	return err.Error()
 }
 
 func looksLikePath(raw string) bool {
@@ -302,7 +281,7 @@ func looksLikePath(raw string) bool {
 func readStdinUTF8() (string, error) {
 	data, err := io.ReadAll(os.Stdin)
 	if err != nil {
-		return "", errors.New(rustIOErrorText(err))
+		return "", errors.New(rustIOError(err))
 	}
 	if !utf8.Valid(data) {
 		return "", errors.New("stream did not contain valid UTF-8")

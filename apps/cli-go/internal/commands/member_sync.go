@@ -109,17 +109,6 @@ func newContentTypesPatch(all bool, enabled []string) *contentTypesPatch {
 	}
 }
 
-// asciiLower lowercases ASCII letters only, like `str::to_ascii_lowercase`.
-func asciiLower(s string) string {
-	b := []byte(s)
-	for i, c := range b {
-		if c >= 'A' && c <= 'Z' {
-			b[i] = c + ('a' - 'A')
-		}
-	}
-	return string(b)
-}
-
 func buildMemberSyncPatch(ctx *cli.Context) (*memberSyncPatch, error) {
 	if !ctx.Has("send") && !ctx.Has("receive") && !ctx.Has("send-types") && !ctx.Has("receive-types") {
 		return nil, syncPatchError("provide at least one sync setting to change")

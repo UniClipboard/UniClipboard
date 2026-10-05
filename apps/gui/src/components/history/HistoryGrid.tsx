@@ -9,7 +9,10 @@ import { dayKey } from '@/components/history/list/history-list-format'
 import type { DisplayClipboardItem } from '@/lib/clipboard-entry'
 import { cn } from '@/lib/utils'
 
-const historyScrollComponents = { Scroller: HistoryScroller, List: HistoryList }
+const historyScrollComponents = {
+  Scroller: HistoryScroller,
+  List: HistoryList,
+}
 
 interface HistoryGridProps {
   items: DisplayClipboardItem[]
@@ -108,7 +111,9 @@ const HistoryGrid: React.FC<HistoryGridProps> = ({
                 <p className={cn('text-ui-section', emptyStateText && 'text-foreground')}>
                   {emptyStateText?.title ??
                     (submittedQuery.trim()
-                      ? t('clipboard.search.noResults', { query: submittedQuery })
+                      ? t('clipboard.search.noResults', {
+                          query: submittedQuery,
+                        })
                       : t('clipboard.search.noResultsFiltered'))}
                 </p>
                 <p className="text-ui-body text-muted-foreground/50">
@@ -142,39 +147,51 @@ const HistoryGrid: React.FC<HistoryGridProps> = ({
           endReached={() => {
             if (hasMore && !searchLoading) onLoadMore()
           }}
-          itemContent={(index, item) => (
-            <HistoryGridRow
-              item={item}
-              layout={layout}
-              dayStart={
-                layout === 'list' &&
-                (index === 0 || dayKey(items[index - 1].activeTime) !== dayKey(item.activeTime))
-                  ? item.activeTime
-                  : undefined
-              }
-              dayCount={dayCounts.get(dayKey(item.activeTime))}
-              deviceName={
-                layout === 'list' && item.sourceDeviceId
-                  ? deviceLabel(sourceDeviceNames?.[item.sourceDeviceId], item.sourceDeviceId)
-                  : undefined
-              }
-              seenIds={seenIds}
-              isActive={item.id === selectedId}
-              copySuccess={copySuccessId === item.id}
-              checked={checkedIds?.has(item.id) ?? false}
-              anyChecked={(checkedIds?.size ?? 0) > 0}
-              onToggleChecked={onToggleChecked}
-              isDeleting={deletingIds.has(item.id)}
-              // The list rules every row (HList.dc.html); cards skip the last.
-              showDivider={layout === 'list' || index < items.length - 1}
-              onCopy={onCopy}
-              onFilePathsAction={onFilePathsAction}
-              onDelete={onDelete}
-              onToggleFavorite={onToggleFavorite}
-              onClick={onCardClick}
-              onHoverChange={onHoverChange}
-            />
-          )}
+          itemContent={(index, item) => {
+            const opensDay =
+              layout === 'list' &&
+              (index === 0 || dayKey(items[index - 1].activeTime) !== dayKey(item.activeTime))
+            const next = items[index + 1] as DisplayClipboardItem | undefined
+            const isChecked = (id: string) => checkedIds?.has(id) ?? false
+            const checked = isChecked(item.id)
+            return (
+              <HistoryGridRow
+                item={item}
+                layout={layout}
+                dayStart={opensDay ? item.activeTime : undefined}
+                // Consecutive checked rows of one day read as one block.
+                joinsPrevious={checked && !opensDay && index > 0 && isChecked(items[index - 1].id)}
+                joinsNext={
+                  checked &&
+                  next !== undefined &&
+                  isChecked(next.id) &&
+                  dayKey(next.activeTime) === dayKey(item.activeTime)
+                }
+                dayCount={dayCounts.get(dayKey(item.activeTime))}
+                deviceName={
+                  layout === 'list' && item.sourceDeviceId
+                    ? deviceLabel(sourceDeviceNames?.[item.sourceDeviceId], item.sourceDeviceId)
+                    : undefined
+                }
+                seenIds={seenIds}
+                isActive={item.id === selectedId}
+                copySuccess={copySuccessId === item.id}
+                checked={checked}
+                anyChecked={(checkedIds?.size ?? 0) > 0}
+                onToggleChecked={onToggleChecked}
+                isDeleting={deletingIds.has(item.id)}
+                // List rows are separated by spacing alone (HList.dc.html); cards
+                // rule all but the last.
+                showDivider={layout === 'card' && index < items.length - 1}
+                onCopy={onCopy}
+                onFilePathsAction={onFilePathsAction}
+                onDelete={onDelete}
+                onToggleFavorite={onToggleFavorite}
+                onClick={onCardClick}
+                onHoverChange={onHoverChange}
+              />
+            )
+          }}
         />
       )}
     </div>

@@ -267,7 +267,7 @@ const HistoryPage: React.FC = () => {
                       />
                     </div>
                   </div>
-                  <div className="flex h-11 items-center overflow-x-auto border-b border-border/60 px-4 [scrollbar-width:none]">
+                  <div className="flex items-center overflow-x-auto px-4 pb-1.75 pt-0.5 [scrollbar-width:none]">
                     <SearchFacetRow
                       chips={compositeSearch.chips}
                       onSeedDimension={compositeSearch.seedDimension}

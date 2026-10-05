@@ -55,7 +55,7 @@ const GRID_COLS: Record<number, string> = { 1: 'grid-cols-1', 2: 'grid-cols-2', 
 
 function MetaCard({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
-    <div className="flex min-w-0 flex-col gap-0.5 rounded-[0.625rem] border border-border/60 bg-background px-3 py-2.5">
+    <div className="flex min-w-0 flex-col gap-0.5 rounded-[0.625rem] bg-muted px-3 py-2.5">
       <span className={SECTION_LABEL}>{label}</span>
       <span className={cn('truncate text-ui-body font-medium', mono && 'font-mono tabular-nums')}>
         {value}
@@ -95,10 +95,7 @@ function DeliverySection({ delivery }: { delivery: EntryDeliveryView }) {
         <p className="py-1.5 text-ui-caption text-muted-foreground">{note}</p>
       ) : (
         delivery.deliveries.map(target => (
-          <div
-            key={target.targetDeviceId}
-            className="flex h-8 items-center gap-2.5 border-b border-border/40 text-ui-body"
-          >
+          <div key={target.targetDeviceId} className="flex h-7.5 items-center gap-2.5 text-ui-body">
             <span className={cn('size-2 shrink-0 rounded-full', deliveryDot(target.status))} />
             <span className="min-w-0 flex-1 truncate">
               {deviceLabel(target.targetDeviceName, target.targetDeviceId)}
@@ -201,7 +198,7 @@ const HistoryDetailPanel: React.FC<HistoryDetailPanelProps> = ({
       className="@container flex h-full min-w-0 flex-col bg-muted/20"
       data-testid="clipboard-detail"
     >
-      <header className="flex h-15 shrink-0 items-center gap-2.5 border-b border-border/60 bg-background pl-6 pr-5">
+      <header className="flex h-15 shrink-0 items-center gap-2.5 pl-6 pr-5">
         <span
           className={cn(
             'inline-flex h-6 shrink-0 items-center rounded-full px-2.25 text-ui-caption font-semibold',

@@ -26,6 +26,10 @@ interface HistoryGridRowProps {
   checked?: boolean
   anyChecked?: boolean
   onToggleChecked?: (id: string) => void
+  /** List layout: the row above / below is also checked and in the same day,
+   * so the shared edge drops its rounding and the run reads as one block. */
+  joinsPrevious?: boolean
+  joinsNext?: boolean
   /** Ids already mounted once; gates the one-shot entrance animation. */
   seenIds: Set<string>
   isActive: boolean
@@ -50,6 +54,8 @@ const HistoryGridRow: React.FC<HistoryGridRowProps> = React.memo(
     checked = false,
     anyChecked = false,
     onToggleChecked,
+    joinsPrevious = false,
+    joinsNext = false,
     seenIds,
     isActive,
     copySuccess,
@@ -76,6 +82,10 @@ const HistoryGridRow: React.FC<HistoryGridRowProps> = React.memo(
         transition={HISTORY_ENTRY_ANIMATION.transition}
         className={cn(
           'relative overflow-hidden transition-colors',
+          // List rows are inset rounded blocks; selection is their fill.
+          layout === 'list' && 'mx-2 rounded-[0.625rem]',
+          joinsPrevious && 'rounded-t-none',
+          joinsNext && 'rounded-b-none',
           showDivider && 'border-b border-border/40',
           isActive && 'bg-(--history-selection-background)'
         )}

@@ -181,7 +181,8 @@ function HistoryListRow({
       onMouseLeave={handleMouseLeave}
       onContextMenu={handleContextMenu}
       className={cn(
-        'relative flex h-14 cursor-pointer items-center gap-3 pl-4.5 pr-4 transition-colors',
+        // With the wrapper's 0.5rem inset, content still starts 1.125rem in.
+        'relative flex h-14 cursor-pointer items-center gap-3 pl-2.5 pr-2 transition-colors',
         isDeleting
           ? 'bg-destructive/10 opacity-60'
           : copySuccess

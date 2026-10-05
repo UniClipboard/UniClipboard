@@ -1,7 +1,9 @@
 import { Folder } from 'lucide-react'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { Filter } from '@/api/clipboardItems'
 import {
+  applyDimensionValue,
+  buildCandidateCountQueries,
   buildCandidateTotalQueries,
   buildCandidates,
   buildChips,
@@ -52,6 +54,35 @@ describe('composite search model', () => {
     expect(candidates.find(item => item.value === 'link')?.isActive).toBe(true)
     expect(candidates.find(item => item.value === 'code')?.isActive).toBe(true)
     expect(candidates.find(item => item.value === 'directory')?.isActive).toBe(false)
+  })
+
+  it('toggles a tag in and out of a multi-tag selection', () => {
+    const onTagFilterChange = vi.fn()
+    const handlers = {
+      onContentFilterChange: vi.fn(),
+      onTagFilterChange,
+      onSourceFilterChange: vi.fn(),
+      onTimeRangeChange: vi.fn(),
+      onExtensionFilterChange: vi.fn(),
+    }
+    applyDimensionValue('tag', 'code', handlers, { ...current, tag: 'link' })
+    applyDimensionValue('tag', 'link', handlers, { ...current, tag: 'link,code' })
+    applyDimensionValue('tag', 'link', handlers, { ...current, tag: 'link' })
+    expect(onTagFilterChange.mock.calls).toEqual([['link,code'], ['code'], [null]])
+  })
+
+  it('counts a tag candidate as the selection that clicking it would produce', () => {
+    const snapshot = { ...current, tag: 'link' }
+    const candidates = buildCandidates('tag', '', {
+      t,
+      sourceOptions: [],
+      current: snapshot,
+      tagOptions: searchableTagsToOptions([]),
+    }).filter(c => c.value === 'link' || c.value === 'code')
+    expect(buildCandidateCountQueries(candidates, snapshot)).toEqual([
+      { query: '' },
+      { query: '', tags: 'link,code' },
+    ])
   })
 
   it('parses # as a tag token', () => {

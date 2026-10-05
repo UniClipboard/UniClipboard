@@ -71,7 +71,15 @@ function HistorySearchPanel(props: HistorySearchPanelProps) {
   const chips = buildChips(candidateContext)
   const visibleChips =
     props.contentFilter === Filter.Favorited
-      ? [{ dimension: 'type' as const, label: t('history.filter.favorited'), icon: Star }, ...chips]
+      ? [
+          {
+            dimension: 'type' as const,
+            label: t('history.filter.favorited'),
+            icon: Star,
+            valueCount: 1,
+          },
+          ...chips,
+        ]
       : chips
   const typeIsAll = props.contentFilter === Filter.All
 
@@ -190,7 +198,7 @@ function HistorySearchPanel(props: HistorySearchPanelProps) {
                     key={candidate.id}
                     type="button"
                     onClick={() =>
-                      applyDimensionValue(candidate.dimension, candidate.value, handlers)
+                      applyDimensionValue(candidate.dimension, candidate.value, handlers, current)
                     }
                     className={`flex h-9 min-w-0 items-center gap-2 rounded-md px-3 text-left text-ui-body transition-colors ${
                       candidate.isActive ? 'bg-primary/10 text-foreground' : 'hover:bg-muted'

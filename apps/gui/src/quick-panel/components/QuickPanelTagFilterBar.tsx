@@ -1,7 +1,7 @@
 import { ChevronDown, ChevronUp, Hash } from 'lucide-react'
 import { useLayoutEffect, useId, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import type { SearchTagOption } from '@/lib/search-tags'
+import { splitSearchTags, toggleSearchTag, type SearchTagOption } from '@/lib/search-tags'
 import { cn } from '@/lib/utils'
 import { QUICK_PANEL_FOOTER_CLASS_NAME } from '@/quick-panel/constants'
 
@@ -18,7 +18,7 @@ function QuickPanelTagFilterBar({ tagFilter, tagOptions, onChange }: QuickPanelT
   const listRef = useRef<HTMLDivElement>(null)
   const [overflowing, setOverflowing] = useState(false)
   const [expanded, setExpanded] = useState(false)
-  const selectedTags = new Set(tagFilter?.split(',').filter(Boolean) ?? [])
+  const selectedTags = new Set(splitSearchTags(tagFilter))
   const showExpanded = overflowing && expanded
 
   useLayoutEffect(() => {
@@ -66,12 +66,7 @@ function QuickPanelTagFilterBar({ tagFilter, tagOptions, onChange }: QuickPanelT
               key={tag.id}
               type="button"
               aria-pressed={active}
-              onClick={() => {
-                const nextTags = new Set(selectedTags)
-                if (active) nextTags.delete(tag.id)
-                else nextTags.add(tag.id)
-                onChange(nextTags.size > 0 ? [...nextTags].join(',') : null)
-              }}
+              onClick={() => onChange(toggleSearchTag(tagFilter, tag.id))}
               className={cn(
                 'inline-flex h-6 shrink-0 items-center gap-1 whitespace-nowrap rounded-md px-1.5 text-[11px] transition-colors',
                 active

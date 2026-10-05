@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Filter } from '@/api/clipboardItems'
 import type { TimeRangePreset } from '@/api/daemon/search'
 import { readHistorySessionSnapshot } from '@/hooks/historySessionSnapshot'
-import type { SearchTagOption } from '@/lib/search-tags'
+import { splitSearchTags, type SearchTagOption } from '@/lib/search-tags'
 import {
   applyDimensionValue,
   buildAllCandidates,
@@ -208,7 +208,11 @@ export function useCompositeSearchBar({
   const resetDimension = (dimension: Dimension) => resetDimensionValue(dimension, handlers)
 
   const applyCandidate = (c: CandidateItem) => {
-    applyDimensionValue(c.dimension, c.value, handlers)
+    applyDimensionValue(c.dimension, c.value, handlers, current)
+    resetBuffer()
+  }
+
+  const resetBuffer = () => {
     setBuffer('')
     onQueryChange('')
     setHighlight(-1)
@@ -232,7 +236,10 @@ export function useCompositeSearchBar({
     const exact =
       cands.find(c => c.value.toLowerCase() === partial.toLowerCase()) ??
       (cands.length === 1 ? cands[0] : undefined)
-    if (exact) applyCandidate(exact)
+    // Typing an already-selected tag keeps it; only clicking its checked row
+    // toggles it off.
+    if (exact?.dimension === 'tag' && exact.isActive) resetBuffer()
+    else if (exact) applyCandidate(exact)
   }
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -282,11 +289,13 @@ export function useCompositeSearchBar({
     if (e.key === 'Backspace' && buffer === '' && chips.length > 0) {
       e.preventDefault()
       const lastChip = chips[chips.length - 1]
-      const value = String(current[lastChip.dimension])
-      resetDimension(lastChip.dimension)
-      // A multi-tag chip (set from the filter panel) has no single-token form:
-      // committing a typed tag replaces the whole selection.
-      if (lastChip.dimension === 'tag' && value.includes(',')) return
+      // The tag chip holds the whole selection: pop only its last tag back
+      // into the buffer and keep the rest selected.
+      const tags = splitSearchTags(current.tag)
+      const value =
+        lastChip.dimension === 'tag' ? tags[tags.length - 1] : String(current[lastChip.dimension])
+      if (lastChip.dimension === 'tag') applyDimensionValue('tag', value, handlers, current)
+      else resetDimension(lastChip.dimension)
       // Source ids are internal (`mobile_sync:did_…`); candidates also match by
       // name, so reopen with the name the user recognises.
       const editable =

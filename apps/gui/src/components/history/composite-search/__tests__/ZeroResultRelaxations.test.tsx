@@ -18,8 +18,11 @@ describe('ZeroResultRelaxations', () => {
     render(
       <ZeroResultRelaxations
         relaxations={[
-          { chip: { dimension: 'type', label: 'Image', icon: ImageIcon }, count: 12 },
-          { chip: { dimension: 'time', label: 'Today', icon: Clock }, count: 0 },
+          {
+            chip: { dimension: 'type', label: 'Image', icon: ImageIcon, valueCount: 1 },
+            count: 12,
+          },
+          { chip: { dimension: 'time', label: 'Today', icon: Clock, valueCount: 1 }, count: 0 },
         ]}
         onRemove={onRemove}
       />

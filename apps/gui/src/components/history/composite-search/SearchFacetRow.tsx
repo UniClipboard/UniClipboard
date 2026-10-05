@@ -12,14 +12,16 @@ interface SearchFacetRowProps {
 }
 
 /** HList.dc.html facet row: one button per filter dimension, badged with how
- * many chips it holds; a button seeds the search field with that dimension. */
+ * many values it holds; a button seeds the search field with that dimension. */
 function SearchFacetRow({ chips, onSeedDimension, onClearAll }: SearchFacetRowProps) {
   const { t } = useTranslation()
 
   return (
     <div className="flex flex-1 items-center gap-2">
       {FACETS.map(dimension => {
-        const count = chips.filter(chip => chip.dimension === dimension).length
+        const count = chips
+          .filter(chip => chip.dimension === dimension)
+          .reduce((sum, chip) => sum + chip.valueCount, 0)
         return (
           <button
             key={dimension}

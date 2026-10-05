@@ -13,6 +13,7 @@ import { useShortcutScope } from '@/hooks/useShortcutScope'
 import { useTransferProgress } from '@/hooks/useTransferProgress'
 import type { DisplayClipboardItem } from '@/lib/clipboard-entry'
 import { createLogger } from '@/lib/logger'
+import { splitSearchTags } from '@/lib/search-tags'
 import { useAppDispatch } from '@/store/hooks'
 import { copyToClipboard, removeClipboardItem } from '@/store/slices/clipboardSlice'
 import { fetchLocalDeviceInfo, fetchSpaceMembers } from '@/store/slices/devicesSlice'
@@ -316,7 +317,9 @@ export function useHistoryController() {
   // "文本", …), falling back to "全部" while unfiltered.
   const viewLabel =
     data.filter.tagFilter !== null
-      ? t(`history.type.${data.filter.tagFilter}`, { defaultValue: data.filter.tagFilter })
+      ? splitSearchTags(data.filter.tagFilter)
+          .map(id => t(`history.type.${id}`, { defaultValue: id }))
+          .join(', ')
       : data.filter.activeFilter === Filter.All
         ? t('history.filter.all')
         : data.filter.activeFilter === Filter.Favorited

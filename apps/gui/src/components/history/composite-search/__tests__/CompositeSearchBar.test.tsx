@@ -94,6 +94,42 @@ describe('CompositeSearchBar', () => {
     expect(props.onQueryChange).toHaveBeenLastCalledWith('time:today')
   })
 
+  it('adds a typed tag to the existing tag selection', async () => {
+    const user = userEvent.setup()
+    const props = renderSearchBar({
+      tagFilter: 'link',
+      tagOptions: [
+        { id: 'link', count: 3, isBuiltin: true },
+        { id: 'code', count: 2, isBuiltin: true },
+      ],
+    })
+
+    await user.type(screen.getByRole('combobox'), '#code ')
+
+    expect(props.onTagFilterChange).toHaveBeenCalledWith('link,code')
+  })
+
+  it('keeps an already-selected tag when it is typed again', async () => {
+    const user = userEvent.setup()
+    const props = renderSearchBar({ tagFilter: 'link,code' })
+
+    await user.type(screen.getByRole('combobox'), '#code ')
+
+    expect(props.onTagFilterChange).not.toHaveBeenCalled()
+  })
+
+  it('pops only the last tag back into the field on Backspace', async () => {
+    const user = userEvent.setup()
+    const props = renderSearchBar({ tagFilter: 'link,code' })
+
+    const input = screen.getByRole('combobox')
+    await user.click(input)
+    await user.keyboard('{Backspace}')
+
+    expect(props.onTagFilterChange).toHaveBeenCalledWith('link')
+    expect(input).toHaveValue('#code')
+  })
+
   it('clears all active dimensions from the clear button', async () => {
     const user = userEvent.setup()
     const props = renderSearchBar({
@@ -217,6 +253,25 @@ describe('HistoryFilterPanel', () => {
     expect(props.onSourceFilterChange).toHaveBeenCalledWith(null)
     expect(props.onTimeRangeChange).toHaveBeenCalledWith('all_time')
     expect(props.onExtensionFilterChange).toHaveBeenCalledWith(null)
+  })
+
+  it('toggles tags in and out of a multi-tag selection', async () => {
+    const user = userEvent.setup()
+    const props = renderFilterPanel({
+      contentFilter: Filter.All,
+      tagFilter: 'link,code',
+      tagOptions: [
+        { id: 'link', count: 3, isBuiltin: true },
+        { id: 'code', count: 2, isBuiltin: true },
+        { id: 'image', count: 1, isBuiltin: true },
+      ],
+    })
+
+    await user.click(screen.getByRole('button', { name: 'code', pressed: true }))
+    await user.click(screen.getByRole('button', { name: 'image', pressed: false }))
+
+    expect(props.onTagFilterChange).toHaveBeenNthCalledWith(1, 'link')
+    expect(props.onTagFilterChange).toHaveBeenNthCalledWith(2, 'link,code,image')
   })
 
   it('keeps the all icon when no filter is active', () => {

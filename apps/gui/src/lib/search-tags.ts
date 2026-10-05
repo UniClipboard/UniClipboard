@@ -17,6 +17,18 @@ const BUILTIN_SEARCH_TAGS: SearchTagOption[] = [
   { id: 'directory', count: 0, isBuiltin: true },
 ]
 
+/** Split a tag selection (comma-separated, OR semantics on the search API). */
+export function splitSearchTags(selection: string | null): string[] {
+  return selection?.split(',').filter(Boolean) ?? []
+}
+
+/** Add `tag` to the selection, or remove it when already selected; empty → null. */
+export function toggleSearchTag(selection: string | null, tag: string): string | null {
+  const tags = splitSearchTags(selection)
+  const next = tags.includes(tag) ? tags.filter(id => id !== tag) : [...tags, tag]
+  return next.length > 0 ? next.join(',') : null
+}
+
 export function defaultSearchTagOptions(): SearchTagOption[] {
   return BUILTIN_SEARCH_TAGS
 }

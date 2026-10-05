@@ -7,7 +7,7 @@ import { Filter } from '@/api/clipboardItems'
 import type { TimeRangePreset } from '@/api/daemon/search'
 import SelectionIndicator from '@/components/ui/selection-indicator'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import type { SearchTagOption } from '@/lib/search-tags'
+import { toggleSearchTag, type SearchTagOption } from '@/lib/search-tags'
 import { cn } from '@/lib/utils'
 import { buildCandidates, type SourceOption } from './composite-search-model'
 
@@ -152,7 +152,7 @@ function HistoryFilterPanel({
               icon={option.icon}
               label={option.label}
               active={option.isActive}
-              onClick={() => onTagFilterChange(option.isActive ? null : option.value)}
+              onClick={() => onTagFilterChange(toggleSearchTag(tagFilter, option.value))}
             />
           ))}
         </m.div>

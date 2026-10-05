@@ -33,7 +33,12 @@ import {
   type TimeRangePreset,
 } from '@/api/daemon/search'
 import { buildLiveSearchModel, liveModelToSearchParams } from '@/hooks/liveSearchModel'
-import { mergeSearchTagOptions, type SearchTagOption } from '@/lib/search-tags'
+import {
+  mergeSearchTagOptions,
+  splitSearchTags,
+  toggleSearchTag,
+  type SearchTagOption,
+} from '@/lib/search-tags'
 
 /** A selectable source device (P2P space member or mobile-sync device). */
 export interface SourceOption {
@@ -112,14 +117,16 @@ export interface DimensionHandlers {
 }
 
 /** Apply a raw candidate value to its dimension's state. Single dispatch point
- * shared by the chip input and the quick filter bar so they can't drift. */
+ * shared by the chip input and the quick filter bar so they can't drift. Tags
+ * are multi-select: a tag value toggles in or out of the current selection. */
 export function applyDimensionValue(
   dimension: Dimension,
   value: string,
-  h: DimensionHandlers
+  h: DimensionHandlers,
+  current: FilterSnapshot
 ): void {
   if (dimension === 'type') h.onContentFilterChange(value as Filter)
-  else if (dimension === 'tag') h.onTagFilterChange(value)
+  else if (dimension === 'tag') h.onTagFilterChange(toggleSearchTag(current.tag, value))
   else if (dimension === 'source') h.onSourceFilterChange(value)
   else if (dimension === 'time') h.onTimeRangeChange(value as TimeRangePreset)
   else h.onExtensionFilterChange(value)
@@ -200,6 +207,8 @@ export interface ChipData {
   dimension: Dimension
   label: string
   icon: LucideIcon
+  /** Values the chip holds: the tag chip carries the whole multi-tag selection. */
+  valueCount: number
 }
 
 type Translate = (key: string, opts?: Record<string, unknown>) => string
@@ -222,6 +231,8 @@ function withDimension(
 ): FilterSnapshot {
   if (dimension === 'type') return { ...current, type: value as Filter }
   if (dimension === 'time') return { ...current, time: value as TimeRangePreset }
+  // Mirror `applyDimensionValue` so a count matches the list a click would show.
+  if (dimension === 'tag') return { ...current, tag: toggleSearchTag(current.tag, value) }
   return { ...current, [dimension]: value }
 }
 
@@ -362,7 +373,7 @@ export function buildCandidates(
     return rank === null || (ctx.prefixOnly && rank >= SUBSTRING_RANK) ? null : rank
   }
   const matches = (...haystacks: string[]) => rankOf(...haystacks) !== null
-  const selectedTags = new Set(ctx.current.tag?.split(',') ?? [])
+  const selectedTags = new Set(splitSearchTags(ctx.current.tag))
   switch (dimension) {
     case 'type':
       return TYPE_FILTERS.flatMap(filter => {
@@ -484,17 +495,17 @@ export function buildChips(ctx: {
       dimension: 'type',
       label: ctx.t(`history.type.${type}`),
       icon: TYPE_ICONS[type] ?? FileText,
+      valueCount: 1,
     })
   }
   if (tag !== null) {
     const opt = ctx.tagOptions.find(o => o.id === tag)
+    const tags = splitSearchTags(tag)
     chips.push({
       dimension: 'tag',
-      label: tag
-        .split(',')
-        .map(id => `#${ctx.t(`history.type.${id}`, { defaultValue: id })}`)
-        .join(', '),
+      label: tags.map(id => `#${ctx.t(`history.type.${id}`, { defaultValue: id })}`).join(', '),
       icon: TYPE_ICONS[opt?.id ?? tag] ?? Hash,
+      valueCount: tags.length,
     })
   }
   if (source !== null) {
@@ -503,6 +514,7 @@ export function buildChips(ctx: {
       dimension: 'source',
       label: opt?.name ?? ctx.t('history.source.label'),
       icon: opt?.kind === 'mobile' ? Smartphone : Laptop,
+      valueCount: 1,
     })
   }
   if (time !== 'all_time') {
@@ -510,6 +522,7 @@ export function buildChips(ctx: {
       dimension: 'time',
       label: ctx.t(`history.timeRange.${time}`),
       icon: Clock,
+      valueCount: 1,
     })
   }
   if (extension !== null) {
@@ -517,6 +530,7 @@ export function buildChips(ctx: {
       dimension: 'extension',
       label: `.${extension}`,
       icon: FileCode,
+      valueCount: 1,
     })
   }
   return chips

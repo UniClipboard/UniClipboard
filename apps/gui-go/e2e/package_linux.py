@@ -66,7 +66,13 @@ RUNTIME = {  # go arch -> (asset, SHA-256, ELF e_machine)
 LINUXDEPLOY_PIN_FILE = ROOT / 'scripts/linux-appimage-tools.mjs'
 LINUXDEPLOY_BASE = 'https://github.com/tauri-apps/binary-releases/releases/download'
 # Libraries that belong to the host's driver stack and must never be inside the AppImage (policy document).
-HOST_ONLY_LIBS = ('libwayland-client.so', 'libEGL.so', 'libGL.so', 'libGLX.so', 'libGLdispatch.so', 'libdrm.so', 'libgbm.so', 'libvulkan.so')
+HOST_ONLY_LIBS = ('libwayland-client.so', 'libEGL.so', 'libGL.so', 'libGLX.so', 'libGLdispatch.so', 'libdrm.so', 'libgbm.so', 'libvulkan.so',
+                'libGLESv1_CM.so', 'libGLESv2.so', 'libOpenGL.so',
+                'libdbus-1.so')  # libdbus: the host's dbus-launch/daemon helpers load it through AppRun's LD_LIBRARY_PATH (17c7, Fedora)  # 17c7: libglvnd's other entry points (dlopen'd, not in linuxdeploy's exclude list)
+# The GIO modules the AppImage carries: the TLS backend of GLib (libsoup 3 and so WebKitGTK reach HTTPS through it). Nothing else: gvfs, dconf,
+# libproxy and gnome-proxy are host-ABI or out of scope (docs/architecture/gui-go-linux-appimage-runtime-deps.md).
+GIO_MODULES = ('libgiognutls.so',)
+GIO_MODULE_PACKAGE = 'glib-networking'
 WEBKIT_HELPERS = ('WebKitWebProcess', 'WebKitNetworkProcess', 'WebKitGPUProcess')
 APPRUN = GUI / 'e2e/linux/appimage/AppRun'
 ICONS = {'32x32': '32x32.png', '128x128': '128x128.png', '256x256': '128x128@2x.png'}
@@ -280,13 +286,40 @@ def inspect_appdir(appdir, helper_dir):
         'webkit': has('libwebkit2gtk-4.1.so'), 'gtk3': has('libgtk-3.so'), 'glib': has('libglib-2.0.so'), 'gio': has('libgio-2.0.so'),
         'helpers': sorted(h for h in WEBKIT_HELPERS if (inside / h).is_file()), 'injectedBundle': (inside / 'injected-bundle').is_dir(),
         'hostOnlyLibrariesFound': sorted({n for n in names if any(n.startswith(p) for p in HOST_ONLY_LIBS)}),
+        'gioModules': sorted(p.name for p in (appdir / 'usr/lib/gio/modules').iterdir()),
         'gioModuleDirs': sorted(str(p.relative_to(appdir)) for p in appdir.rglob('modules') if p.parent.name == 'gio'),
         'hooks': sorted(p.name for p in (appdir / 'apprun-hooks').glob('*')) if (appdir / 'apprun-hooks').is_dir() else [],
         'fileCount': len(files),
     }
 
 
-def build_appimage(stage, out, arch, name, tools, daemon, relocate=True, marker=None):
+def deploy_gio_modules(appdir):
+    """Copy the GIO modules in GIO_MODULES into usr/lib/gio/modules and prove each one's provenance and that every library it needs is either in the
+    AppDir or a libc-family library: a module whose dependency is missing would only fail at run time, on a host that happens to lack it."""
+    moddir = Path(run(['pkg-config', '--variable=giomoduledir', 'gio-2.0'], capture=True))
+    shipped = {p.name for p in (appdir / 'usr/lib').rglob('*.so*') if p.is_file() or p.is_symlink()}
+    libc_family = re.compile(r'^(libc|libm|libdl|libpthread|librt|ld-linux.*)\.so(\.\d+)*$')
+    rows = []
+    for name in GIO_MODULES:
+        src = moddir / name
+        if not src.is_file():
+            sys.exit(f'{src} is missing in the build image: install {GIO_MODULE_PACKAGE} (the GIO TLS backend)')
+        owner = run(['dpkg', '-S', str(src)], capture=True)
+        if not owner.startswith(GIO_MODULE_PACKAGE):
+            sys.exit(f'{src} is not owned by {GIO_MODULE_PACKAGE}: {owner}')
+        version = run(['dpkg-query', '-W', '-f', '${Version}', GIO_MODULE_PACKAGE], capture=True)
+        dest = appdir / 'usr/lib/gio/modules' / name
+        shutil.copy2(src, dest)
+        needed = re.findall(r'\(NEEDED\)\s+Shared library: \[(.+?)\]', run(['readelf', '-d', str(dest)], capture=True))
+        missing = sorted(n for n in needed if n not in shipped and not libc_family.match(n))
+        if missing:
+            sys.exit(f'{name} needs libraries that are neither in the AppDir nor libc-family: {missing}')
+        rows.append({'module': name, 'source': str(src), 'package': GIO_MODULE_PACKAGE, 'packageVersion': version, 'sha256': sha256(dest), 'needed': needed})
+    glib_version = run(['dpkg-query', '-W', '-f', '${Version}', 'libglib2.0-0t64'], capture=True)
+    return {'modules': rows, 'bundledGLibPackageVersion': glib_version}
+
+
+def build_appimage(stage, out, arch, name, tools, daemon, relocate=True, marker=None, tls_module=True):
     tools.mkdir(exist_ok=True)
     tool_url, tool_pin = APPIMAGETOOL[arch]
     appimagetool = fetch_verified(tool_url, tool_pin, tools / 'appimagetool')
@@ -314,6 +347,7 @@ def build_appimage(stage, out, arch, name, tools, daemon, relocate=True, marker=
     # The pinned Wails GTK plugin deploys no GIO modules. An empty bundled directory is what AppRun's GIO_MODULE_DIR points
     # at, so the bundled GLib never loads the host's (ABI-incompatible) gvfs/dconf modules.
     (appdir / 'usr/lib/gio/modules').mkdir(parents=True)
+    gio_modules_info = None  # filled after linuxdeploy, once the libraries a module needs are in the AppDir
     # The bundled gdk-pixbuf recognises image formats through the shared MIME database (shared-mime-info). A host without
     # /usr/share/mime (a minimal container, but also any machine that never installed it) makes every GTK icon or dialog image
     # fail with "Couldn't recognize the image file format", and GTK aborts on the resulting assertion (observed in 17c5: the startup
@@ -335,6 +369,19 @@ def build_appimage(stage, out, arch, name, tools, daemon, relocate=True, marker=
     # NO_STRIP: the bundled strip cannot process the .relr.dyn sections of current distributions' GTK libraries (Wails does the same).
     run(cmd, env=dict(os.environ, DEPLOY_GTK_VERSION='3', NO_STRIP='1', ARCH=ARCH[arch][1], PATH=f'{tools}:{os.environ["PATH"]}'))
 
+    # 17c7: the TLS backend. The module comes from the build image's glib-networking package, i.e. built against the very GLib/GnuTLS that
+    # linuxdeploy just bundled (same distribution release), which is why it can be loaded where the host's gvfs/dconf modules cannot.
+    gio_modules_info = deploy_gio_modules(appdir) if tls_module else 'DISABLED (negative control: the bundled GIO module directory stays empty)'
+
+    # libdbus-1 is the host's. linuxdeploy's exclude list does not name it, and its `--exclude-library` option is honoured by the main run but not by the
+    # GTK plugin's own deployment pass (the log shows "Skipping ... blacklisted libdbus" and then the plugin deploying it anyway). A bundled copy shadows
+    # the host's for every host helper the GUI starts through AppRun's LD_LIBRARY_PATH: observed 17c7 on Fedora, whose dbus-launch (libdbus 1.16.2)
+    # failed on the bundled older copy ("version LIBDBUS_PRIVATE_1.16.2 not found", rc 127) and the GUI then exited 1 without a message.
+    # Removed after linuxdeploy; inspect_appdir fails the package if any libdbus is left.
+    removed_dbus = sorted(p.name for p in (appdir / 'usr/lib').glob('libdbus-1.so*'))
+    for p in (appdir / 'usr/lib').glob('libdbus-1.so*'):
+        p.unlink()
+
     # linuxdeploy sets an $ORIGIN rpath on every executable it is given, which changes the bytes. The daemon is given to it so that
     # its libraries are deployed, then the original file is put back: AppRun's LD_LIBRARY_PATH covers the lookup, and the daemon
     # in the image stays byte-identical to the one built with evidence.
@@ -351,7 +398,7 @@ def build_appimage(stage, out, arch, name, tools, daemon, relocate=True, marker=
     info = {'linuxdeploy': {'release': release, 'sha256': pin}, 'daemonRestoredAfterLinuxdeploy': True, 'daemonHashChain': daemon_chain, 'appimagetoolSha256': tool_pin,
             'gtkPlugin': {'source': str(plugin_source), 'wailsModuleDir': str(wails_dir), 'sha256': sha256(plugin)},
             'webkitHelperDirectory': str(helper_dir), 'updateMarker': bool(marker),
-            'sharedMimeCache': {'source': str(mime_cache), 'sha256': sha256(mime_cache)}}
+            'sharedMimeCache': {'source': str(mime_cache), 'sha256': sha256(mime_cache)}, 'gioModules': gio_modules_info, 'libdbusRemoved': removed_dbus}
     info['relocation'] = relocate_webkit(appdir, helper_dir) if relocate else 'DISABLED (negative control)'
     info['inspection'] = inspect_appdir(appdir, helper_dir)
     ins = info['inspection']
@@ -364,6 +411,8 @@ def build_appimage(stage, out, arch, name, tools, daemon, relocate=True, marker=
         problems.append(f"host driver libraries bundled: {ins['hostOnlyLibrariesFound']}")
     if not ins['gioModuleDirs']:
         problems.append('no bundled GIO module directory for GIO_MODULE_DIR')
+    if ins['gioModules'] != (sorted(GIO_MODULES) if tls_module else []):
+        problems.append(f"bundled GIO modules are {ins['gioModules']}, expected exactly {sorted(GIO_MODULES) if tls_module else []}")
     if problems:
         sys.exit('AppDir inspection failed: ' + '; '.join(problems))
     image = out / name
@@ -405,6 +454,8 @@ def main():
     parser.add_argument('--gui-binary', type=Path, help='package this prebuilt GUI (e.g. the gtk3,e2e build) instead of building the release one; marks the output E2E')
     parser.add_argument('--appimage-only', action='store_true', help='build only the AppImage and its updater archive (no deb/rpm)')
     parser.add_argument('--update-marker', help='write this text to usr/share/uniclipboard/update-marker.txt inside the AppImage (update E2E: tells v2 from v1)')
+    parser.add_argument('--negative-control-no-tls-module', action='store_true',
+                        help='NEGATIVE CONTROL (17c7): leave the bundled GIO module directory empty (what 17c4-17c6 shipped); HTTPS in the WebView must fail; prefixed NEGTLS-')
     parser.add_argument('--negative-control-no-relocation', action='store_true',
                         help='NEGATIVE CONTROL: skip the WebKit helper relocation; the result must not start without a host WebKitGTK; prefixed NEGCONTROL-')
     parser.add_argument('--tools-dir', type=Path, help='keep the downloaded, SHA-256-verified tools here (default: a throwaway directory in --out)')
@@ -424,7 +475,10 @@ def main():
         if not args.daemon_evidence:
             sys.exit('--daemon-evidence is required: a daemon of unverified origin is not packaged (use --packaging-check-fixture for a marked check build)')
         evidence = read_daemon_evidence(args.daemon_evidence, args.daemon)
-    prefix = 'FIXTURE-' if fixture else ('NEGCONTROL-' if args.negative_control_no_relocation else ('E2E-' if args.gui_binary else ''))
+    if args.negative_control_no_relocation and args.negative_control_no_tls_module:
+        sys.exit('pick one negative control')
+    prefix = ('FIXTURE-' if fixture else 'NEGCONTROL-' if args.negative_control_no_relocation else 'NEGTLS-' if args.negative_control_no_tls_module
+              else 'E2E-' if args.gui_binary else '')
     out = args.out.resolve()
     if out.exists() and any(out.iterdir()):
         sys.exit(f'{out} is not empty: pick a new directory, earlier artifacts are not overwritten')
@@ -465,7 +519,8 @@ def main():
     tools = args.tools_dir.resolve() if args.tools_dir else out / 'tools'
     tools.mkdir(parents=True, exist_ok=True)
     image, appimage = build_appimage(stage, out, args.arch, f'{prefix}{product}_{version}_{deb_name}.AppImage', tools, args.daemon,
-                                     relocate=not args.negative_control_no_relocation, marker=args.update_marker)
+                                     relocate=not args.negative_control_no_relocation, marker=args.update_marker,
+                                     tls_module=not args.negative_control_no_tls_module)
     archive = out / f'{image.name}.tar.gz'
     with tarfile.open(archive, 'w:gz') as tar:
         tar.add(image, arcname=image.name)
@@ -481,7 +536,7 @@ def main():
         daemon['note'] = 'placeholder daemon'
     (out / 'package-manifest.json').write_text(json.dumps({
         'source': prov, 'arch': args.arch, 'version': version, 'tags': tags, 'go': run(['go', 'version'], capture=True),
-        'purpose': 'packaging-check' if fixture else ('negative-control' if args.negative_control_no_relocation else ('e2e-package' if args.gui_binary else 'package')),
+        'purpose': 'packaging-check' if fixture else ('negative-control' if (args.negative_control_no_relocation or args.negative_control_no_tls_module) else ('e2e-package' if args.gui_binary else 'package')),
         'productionUsable': False, 'daemon': daemon, 'appimage': appimage, 'extra': extra,
         'sha256': {p.name: sha256(p) for p in outputs},
         'signed': False, 'nativeDesktopVerified': False, 'appImageRunProven': False,

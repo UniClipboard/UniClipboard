@@ -2,10 +2,11 @@
 # AppRun of the Go GUI AppImage (docs/architecture/gui-go-linux-appimage.md).
 #   * linuxdeploy installs this file as AppRun.wrapped behind its own generated AppRun, which first sources the plugin hook
 #     (the Wails GTK plugin exports GDK_BACKEND=x11 and the GTK, GDK-pixbuf and GSettings paths);
-#   * points GIO_MODULE_DIR at the bundled module directory (deliberately empty: the pinned Wails GTK plugin deploys no GIO
-#     modules): GIO_EXTRA_MODULES would only append, so the bundled GLib would still scan the host's module directory and
+#   * points GIO_MODULE_DIR at the bundled module directory, which holds exactly the TLS backend (libgiognutls.so from the build image's
+#     glib-networking, packaging step `deploy_gio_modules`; the pinned Wails GTK plugin deploys none, and without it libsoup/WebKitGTK
+#     have no HTTPS): GIO_EXTRA_MODULES would only append, so the bundled GLib would still scan the host's module directory and
 #     load gvfs/dconf modules built for another GLib
-#     (docs/architecture/linux-appimage-library-policy.md, "GIO module ABI mixing");
+#     (docs/architecture/linux-appimage-library-policy.md, "GIO module ABI mixing"; docs/architecture/gui-go-linux-appimage-runtime-deps.md);
 #   * runs from $APPDIR/usr: libwebkit2gtk's compiled-in helper directory `/usr/lib/<triple>/webkit2gtk-4.1` was rewritten to
 #     `././/lib/<triple>/webkit2gtk-4.1` at packaging time, a path that only resolves relative to $APPDIR/usr.
 # The GUI consumes no file or URL argument (its only argument is the quick-panel launch flag), so changing the working

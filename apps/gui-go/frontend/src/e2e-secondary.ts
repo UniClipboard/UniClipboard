@@ -35,3 +35,54 @@ export function reportPanelOnShow() {
     })
   )
 }
+
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+const report = (step: string, ok: boolean, detail?: unknown) =>
+  Call.ByName('main.EvidenceService.Record', { window: 'updater', step, ok, detail })
+
+async function waitUntil(label: string, probe: () => boolean, ms = 60000) {
+  const end = Date.now() + ms
+  while (Date.now() < end) {
+    if (probe()) return
+    await sleep(100)
+  }
+  throw new Error(`timeout: ${label}`)
+}
+
+// The primary action is the last button of the window (download, then install).
+const primaryButton = () => [...document.querySelectorAll('button')].at(-1) as HTMLButtonElement
+
+/** Updater window entry for E2E: dev preview check, or the real signed-update flow. */
+export async function driveUpdater() {
+  const phase = (await Call.ByName('main.EvidenceService.Phase')) as string
+  if (!phase.startsWith('update')) {
+    await reportMounted('updater', 'updater-mounted', '0.99.0')
+    return
+  }
+  try {
+    const { Events } = await import('@wailsio/runtime')
+    let outcome: { event: string; error?: string } | null = null
+    Events.On('update-download-progress', e => {
+      const data = e.data as { event: string; data?: { error?: string } }
+      if (data.event === 'Finished' || data.event === 'Failed')
+        outcome = { event: data.event, error: data.data?.error }
+    })
+    await waitUntil('release shown', () => document.body.innerText.includes('99.0.0'))
+    await report('updater-shows-release', true, { text: document.body.innerText.slice(0, 200) })
+    primaryButton().click() // download
+    await waitUntil('download outcome', () => outcome !== null, 120000)
+    const result = outcome as unknown as { event: string; error?: string }
+    if (phase === 'update-bad') {
+      await report('update-download-rejected', result.event === 'Failed', { error: result.error })
+      await Call.ByName('main.EvidenceService.Control', 'exit')
+      return
+    }
+    await report('update-download-verified', result.event === 'Finished')
+    await waitUntil('install button enabled', () => !primaryButton().disabled)
+    await sleep(500)
+    await report('update-install-clicked', true)
+    primaryButton().click() // install and restart
+  } catch (error) {
+    await report('update-driver-error', false, String(error))
+  }
+}

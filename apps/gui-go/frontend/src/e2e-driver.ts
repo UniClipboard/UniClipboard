@@ -52,13 +52,27 @@ const mainLayout = () =>
   !$('#unlock-passphrase') &&
   !$('[data-testid="unlock-content"]')
 
-async function navigate(go: () => void, href: string, marker: () => unknown, step: string) {
+async function navigate(
+  go: () => void,
+  href: string,
+  marker: () => unknown,
+  step: string,
+  retryClick = false
+) {
   go()
-  await waitFor(step, () => location.pathname.startsWith(href) && marker())
+  const arrived = () => location.pathname.startsWith(href) && marker()
+  // A click can land while the sidebar is still animating in; retry link clicks until the route changes.
+  for (let attempt = 0; retryClick && attempt < 20 && !arrived(); attempt++) {
+    await sleep(1000)
+    if (!arrived()) go()
+  }
+  await waitFor(step, arrived)
   await record(step, true, { path: location.pathname })
 }
 
 async function run() {
+  const phase = (await Call.ByName('main.EvidenceService.Phase')) as string
+  if (phase.startsWith('update')) return runUpdateScenario(phase)
   await waitFor('app root content', () => document.getElementById('root')?.children.length)
   // A diagnostic page would never contain the shared app's router state.
   await record('shared-app-mounted', !$('#refresh') && !!document.getElementById('root'))
@@ -120,13 +134,14 @@ async function run() {
   const click = (href: string) => () =>
     void waitFor(`link ${href}`, () => link(href)).then(a => a.click())
   // At this window width the shared layout shows devices as a panel of the history route.
-  await navigate(click('/devices'), '/', devicesPage, 'devices')
+  await navigate(click('/devices'), '/', devicesPage, 'devices', true)
   const beforeSettings = location.pathname
   await navigate(
     click('/settings'),
     '/settings',
     () => $('[data-testid="settings-page-header"]'),
-    'settings'
+    'settings',
+    true
   )
   await navigate(
     () => history.back(),
@@ -139,7 +154,7 @@ async function run() {
   await control('reopen-main')
   // The WebView survived the hide/show cycle with its React state and host bindings intact.
   const pid = await Call.ByName('main.HostService.Invoke', 'get_tauri_pid', {})
-  await record('webview-alive-after-reopen', !!(pid as { ok: boolean }).ok && !!mainLayout())
+  await record('webview-alive-after-reopen', !!(pid as { ok: boolean }).ok && !!link('/settings'))
   // Second windows: the real updater (dev preview) and quick panel pages.
   await control('open-updater')
   await sleep(3000)
@@ -152,6 +167,27 @@ async function run() {
   // Give the orchestrator time to read daemon state before the GUI exits.
   await sleep(2500)
   await control('exit')
+}
+
+// Update scenarios drive the release feed served by the orchestrator: the main window
+// starts the flow and the updater window (e2e-secondary.ts) performs the clicks.
+async function runUpdateScenario(phase: string) {
+  await waitFor('app root content', () => document.getElementById('root')?.children.length)
+  await control('update-state')
+  if (phase === 'update-good' && (await installedBundle())) {
+    await record('update-relaunched', true)
+    await sleep(1500)
+    await control('exit')
+    return
+  }
+  await control('update-check')
+  // The updater window reports the rest; keep this window alive meanwhile.
+  await sleep(120000)
+}
+
+async function installedBundle(): Promise<boolean> {
+  const rows = (await Call.ByName('main.EvidenceService.Installed')) as boolean
+  return rows
 }
 
 run().catch(error =>

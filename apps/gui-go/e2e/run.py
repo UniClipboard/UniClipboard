@@ -92,7 +92,8 @@ def main():
         for run in range(2):
             start = len(evidence.read_text().splitlines())
             with (out / f'gui-{run}.log').open('w') as log:
-                proc = subprocess.Popen([str(binary)], env=env, stdout=log, stderr=log)
+                run_env = dict(env, UC_GUI_GO_EXIT_MODE='full' if run == 1 else 'keep')
+                proc = subprocess.Popen([str(binary)], env=run_env, stdout=log, stderr=log)
                 taken = set()
 
                 def capture(row, run=run, taken=taken):
@@ -108,7 +109,7 @@ def main():
                 assert all(r['ok'] for r in rows), f'failed steps: {[r for r in rows if not r["ok"]]}'
                 assert 'shared-app-mounted' in steps and 'home' in steps and 'devices' in steps and 'settings' in steps
                 assert 'native-main-closed' in steps and 'native-main-reopened' in steps
-                for needed in ('updater-mounted', 'native-updater-opened', 'native-updater-closed', 'quick-panel-mounted', 'native-quick-panel-visible', 'quick-panel-shown-state', 'native-quick-panel-dismissed'):
+                for needed in ('updater-mounted', 'native-updater-opened', 'native-updater-closed', 'quick-panel-mounted', 'native-quick-panel-visible', 'quick-panel-shown-state', 'native-quick-panel-dismissed', 'tray-sync-toggle'):
                     assert needed in steps, f'missing step {needed}'
                 shot = out / f'main-{run}.png'
                 results.setdefault('screenshots', []).append({'file': shot.name, 'captured': screenshot(proc.pid, shot)})
@@ -119,10 +120,18 @@ def main():
                 with urllib.request.build_opener(urllib.request.ProxyHandler({})).open(f"http://{conn['host']}:{conn['port']}/health", timeout=5) as r:
                     assert json.load(r)['data']['status'] == 'ok'
                 results['rounds'].append({'run': run, 'firstScreen': steps['first-screen']['detail']['state'], 'steps': sorted(steps), 'daemonPID': daemon_pid})
-                proc.send_signal(signal.SIGTERM)
-                code = proc.wait(timeout=30)
+                # The driver exits the GUI itself: round 0 keeps the daemon (lightweight), round 1 quits fully.
+                code = proc.wait(timeout=60)
                 results['rounds'][-1]['guiExit'] = code
-                assert pid_alive(daemon_pid), 'daemon stopped with GUI'
+                assert code == 0, f'GUI exit code {code}'
+                if run == 0:
+                    assert pid_alive(daemon_pid), 'daemon stopped with a lightweight exit'
+                else:
+                    deadline = time.monotonic() + 15
+                    while pid_alive(daemon_pid) and time.monotonic() < deadline:
+                        time.sleep(.2)
+                    assert not pid_alive(daemon_pid), 'full quit left the daemon running'
+                    results['fullQuitStoppedDaemon'] = True
         assert daemon_pids[0] == daemon_pids[1], 'second GUI replaced the daemon'
         results['daemonReused'] = True
         results['passed'] = True
@@ -141,6 +150,9 @@ def main():
                     results['daemonExitedAfterCleanup'] = True
                     break
                 time.sleep(.2)
+        if results.get('fullQuitStoppedDaemon') and stop.returncode in (0, 1):
+            # The last run quit fully, so the daemon is already gone and `stop` finds nothing.
+            results['daemonExitedAfterCleanup'] = True
         if not results['daemonExitedAfterCleanup']:
             results['passed'] = False
         (out / 'cleanup.json').write_text(stop.stdout)

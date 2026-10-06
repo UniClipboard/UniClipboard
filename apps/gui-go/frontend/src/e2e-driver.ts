@@ -147,7 +147,11 @@ async function run() {
   await control('show-quick-panel')
   await sleep(3000)
   await control('dismiss-quick-panel')
+  await control('tray-check')
   await record('driver-complete', true)
+  // Give the orchestrator time to read daemon state before the GUI exits.
+  await sleep(2500)
+  await control('exit')
 }
 
 run().catch(error =>

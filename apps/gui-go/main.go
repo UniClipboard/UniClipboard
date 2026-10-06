@@ -31,6 +31,8 @@ type HostService struct {
 	client  *daemonclient.Client
 	effects *visualEffects
 	panel   panelState
+	exit    exitIntent
+	tray    *trayMenu
 
 	quitting atomic.Bool
 
@@ -90,11 +92,6 @@ func (h *HostService) openMainWindow() {
 		e.Cancel()
 		w.Hide()
 	})
-}
-
-func (h *HostService) Quit() {
-	h.quitting.Store(true)
-	h.app.Quit()
 }
 
 func validateIsolation() error {
@@ -191,10 +188,12 @@ func main() {
 	services := []application.Service{application.NewService(host)}
 	services = append(services, e2eServices(host)...)
 	app := application.New(application.Options{Name: "UniClipboard Go GUI", Services: services, Assets: application.AssetOptions{Handler: application.BundledAssetFileServer(content)},
-		ShouldQuit: func() bool { host.quitting.Store(true); return true }})
+		ShouldQuit: func() bool { host.quitting.Store(true); return true },
+		OnShutdown: host.stopDaemonOnExit})
 	host.app = app
 	host.openMainWindow()
 	host.preCreateQuickPanel()
+	host.initTray()
 	if err := app.Run(); err != nil {
 		log.Fatal(err)
 	}

@@ -119,3 +119,26 @@ func installKind() string {
 	}
 	return "unknown"
 }
+
+func init() {
+	register(map[string]commandFunc{
+		"set_tray_language": func(_ context.Context, h *HostService, args commandArgs) (any, error) {
+			var language string
+			if err := args.decode("language", &language); err != nil {
+				return nil, err
+			}
+			h.tray.setLanguage(language)
+			return nil, nil
+		},
+		"restart_app": func(_ context.Context, h *HostService, _ commandArgs) (any, error) {
+			go h.fullRestart()
+			return nil, nil
+		},
+		"restart_daemon": func(_ context.Context, _ *HostService, _ commandArgs) (any, error) {
+			if err := restartDaemon(); err != nil {
+				return nil, internalError(err)
+			}
+			return nil, nil
+		},
+	})
+}

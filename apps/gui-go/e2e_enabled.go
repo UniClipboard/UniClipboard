@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -95,8 +96,31 @@ func (s *EvidenceService) Control(action string) error {
 		time.Sleep(300 * time.Millisecond)
 		w, ok := h.app.Window.GetByName(quickPanelWindowName)
 		return s.write(Step{Window: quickPanelWindowName, Step: "native-quick-panel-dismissed", OK: ok && !w.IsVisible()})
-	case "quit":
-		go func() { time.Sleep(300 * time.Millisecond); h.Quit() }()
+	case "tray-check":
+		// The tray menu handlers call the same functions; the DOM cannot click a native menu.
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		defer cancel()
+		before, err := h.readSyncEnabled(ctx)
+		if err != nil {
+			return s.write(Step{Window: "tray", Step: "tray-sync-toggle", OK: false, Detail: err.Error()})
+		}
+		beforeLabel := h.tray.syncLabel()
+		err = h.toggleSync()
+		after, readErr := h.readSyncEnabled(ctx)
+		afterLabel := h.tray.syncLabel()
+		ok := err == nil && readErr == nil && after == !before && beforeLabel != afterLabel
+		if err == nil {
+			err = h.toggleSync() // restore the original setting
+		}
+		h.tray.setLanguage("zh-CN")
+		zh := h.tray.syncLabel()
+		h.tray.setLanguage("en")
+		return s.write(Step{Window: "tray", Step: "tray-sync-toggle", OK: ok && err == nil, Detail: map[string]any{
+			"before": before, "after": after, "labelBefore": beforeLabel, "labelAfter": afterLabel, "zhLabel": zh, "iconCreated": h.tray.tray != nil}})
+	case "exit":
+		// Lightweight exit leaves the daemon for the next launch; a full quit stops it.
+		keep := os.Getenv("UC_GUI_GO_EXIT_MODE") != "full"
+		go func() { time.Sleep(300 * time.Millisecond); h.quit(keep) }()
 		return nil
 	}
 	return fmt.Errorf("unknown control action %q", action)

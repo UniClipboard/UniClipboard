@@ -665,6 +665,21 @@ UC_LINUX_IMAGE=uc-gui-go-linux-build:17c2 apps/gui-go/e2e/linux/run_17c7.sh <新
 apps/gui-go/e2e/linux/run_17c7_supplement.sh <最终运行目录> <新目录>                     # 只在保留的包与镜像上复验 harness
 ```
 
+## AppImage 内的宿主辅助程序（第 17c10 片）
+
+契约、失败方式、基线、修复与最终结果在 [docs/architecture/gui-go-linux-appimage-host-helpers.md](../../docs/architecture/gui-go-linux-appimage-host-helpers.md)（文档是在基线红灯和修复代码之后补写的，顺序见该文）。证据目录 `/Users/mark/.herdr-projects/uni/t-0188-artifacts/linux-17c10/`（约 2 GB，仓库只索引）。
+
+- 缺陷：AppRun 与 linuxdeploy GTK 钩子的环境（`LD_LIBRARY_PATH`、`GIO_MODULE_DIR`、`XDG_DATA_DIRS`、`GTK_*`…）被产品启动的 `xdg-open`（打开数据/日志目录、显示、外部打开图片、链接）继承，宿主 `xdg-open`/`gio`/`grep` 加载包内库。Fedora 44 + GNOME 分发下功能失败（`gio: undefined symbol g_unix_mount_entry_get_options`，xdg-open 退出 3，目录/图片/日志/显示都没有送达）；Ubuntu 24.04 碰巧可用（同 GLib 版本）但同样加载包内库。只还原 `LD_LIBRARY_PATH` 不够（`GIO_MODULE_DIR` 仍让宿主 libgio 加载包内 TLS 模块）。
+- 修复（窄）：`host_helper_env_linux.go` 在 AppImage 内去掉指向挂载的变量与 `LD_LIBRARY_PATH`/`XDG_DATA_DIRS` 的挂载项并以用户主目录为工作目录；链接改走 host 命令 `open_url`（Wails `Browser.OpenURL` 没有环境注入点，Linux 以外仍用 Wails）。GUI 自身、守护进程、重启、更新后拉起环境不变。
+- 验证：Ubuntu 24.04 与 Fedora 44（generic/GNOME 两种 xdg-open 分发）真实 AppImage + 真实 release daemon + strace，基线 12/12/12/18 项失败，修复后各 33/33；TLS 回归各 19/19，便携模式 64/64。处理程序是 `sh` 记录脚本（受控目标），不是真实浏览器或文件管理器。
+- 仍 OPEN：真实浏览器/文件管理器/portal、`GDK_BACKEND`/`GTK_THEME` 泄漏、便携模式 HOME 换成 `.home` 使用户默认应用不可见、非便携模式、其他发行版、原生 amd64、Tauri 包行为对照（只有静态证据：同钩子、捆绑 libdbus/libglib 与自带 `xdg-open`）。
+
+### 17c10 复跑
+
+```bash
+apps/gui-go/e2e/linux/run_17c10.sh <新目录> baseline|final   # 干净提交；先 run.sh daemon-release；镜像构建失败即中止
+```
+
 ## Linux 窗口管理器下的快捷面板：窗口缩放、工作区、焦点（第 17c9 片）
 
 契约（来源）、基线与全部失败实验、根因、修复和最终结果在 [docs/architecture/gui-go-linux-x11-wm-window-scale.md](../../docs/architecture/gui-go-linux-x11-wm-window-scale.md)。证据目录 `/Users/mark/.herdr-projects/uni/t-0188-artifacts/linux-17c9/`（约 1.5 GB，仓库只索引）。
@@ -708,6 +723,7 @@ apps/gui-go/e2e/linux/run_17c8.sh wayland <标签> <新目录>   # 既有 sway �
 - Linux 17c2：Layer Shell 面板与每输出定位/上限由容器内真实无头 sway 验证（见“17c2 结果”），Hyprland/GNOME/KDE 与真实桌面未验证。Linux 17c：证据来自容器内 Xvfb + 私有 D-Bus（无窗口管理器、Wayland、portal、托盘宿主、通知服务、Secret Service）与脚本化 Hyprland socket；默认快捷键用 e2e 测试接缝；（17c 当时）AppImage 不自包含、daemon 来源未核验；17c4 已补自包含 AppImage 与真实 release daemon 证据（容器内干净宿主，仍无真实 Linux 桌面运行证据）。详见“Linux（第 17c 片）”与“自包含 Linux AppImage（第 17c4 片）”。
 - Windows 17b：同上，另可为 arm64 编译、安装器脚本可编译；daemon 以 `TerminateProcess` 强制终止（非优雅关闭）；Windows 生产入口、安装器、原位更新、自启迁移、双击修饰键的真实读取/焦点/可见性均未验证；真实 Rust daemon + NSIS/便携包的原生安装与更新仍 OPEN；官方发布签名验证仍 OPEN。
 - Windows：17a 代码可为 windows/amd64 编译（普通与 e2e 标签、`go vet` 通过），没有任何 Windows 运行证据（真实可见、焦点、按键、冲突、粘贴、托盘、通知、daemon 停止、单实例均未验证，runner 离线）；Linux、安装签名、Windows 更新与 GPUI 在 Windows 的 N/A 说明见上。
+- Linux 17c10：AppImage 宿主辅助程序（xdg-open/gio）环境由 Ubuntu 24.04 与 Fedora 44 容器内真实 AppImage + strace 验证，处理程序是 `sh` 记录脚本；真实浏览器/文件管理器、portal、便携模式 HOME、非便携模式、其他发行版、原生 amd64 仍 OPEN（见“AppImage 内的宿主辅助程序”）。
 - Linux 17c9：窗口缩放（0.8/1.5、钳制）、工作区、首次映射/显示隐藏/基础焦点已在 Openbox 下验证；GNOME/KDE 窗口管理器、Wayland 实机、HiDPI、原生桌面、GPU 仍 OPEN（见“Linux 窗口管理器下的快捷面板”）。
 - Linux 17c8：X11 面板首映射尺寸与默认快捷键的真实设置页链路在 Xvfb（无窗口管理器）里验证，仅默认窗口缩放；窗口缩放其他取值、真实窗口管理器、Wayland 实机、AppImage 内重跑仍 OPEN（见“Linux 默认快捷键与 X11 面板尺寸（第 17c8 片）”）。
 - Linux 17c7：AppImage 的 GIO TLS 模块与 libdbus/libglvnd 边界由 Ubuntu 24.04 与 Fedora 44 两个无 GTK/WebKit 的容器宿主上的真实 WebView HTTPS 与进程映射验证（见“AppImage 运行时动态依赖（第 17c7 片）”）；原生 amd64、其他发行版、真实桌面/GPU、系统代理仍 OPEN。

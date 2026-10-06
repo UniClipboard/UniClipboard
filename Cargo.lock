@@ -351,7 +351,7 @@ version = "1.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "40c48f72fd53cd289104fc64099abca73db4166ad86ea0b4341abe65af83dadc"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -362,7 +362,7 @@ checksum = "291e6a250ff86cd4a820112fb8898808a366d8f9f58ce16d1f538353ad55747d"
 dependencies = [
  "anstyle",
  "once_cell_polyfill",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -1153,7 +1153,7 @@ dependencies = [
  "bitflags 2.13.1",
  "cexpr",
  "clang-sys",
- "itertools 0.13.0",
+ "itertools 0.11.0",
  "log",
  "prettyplease",
  "proc-macro2",
@@ -1173,7 +1173,7 @@ dependencies = [
  "bitflags 2.13.1",
  "cexpr",
  "clang-sys",
- "itertools 0.13.0",
+ "itertools 0.11.0",
  "log",
  "prettyplease",
  "proc-macro2",
@@ -2907,7 +2907,7 @@ dependencies = [
  "libc",
  "option-ext",
  "redox_users 0.5.2",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -3358,7 +3358,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -4027,8 +4027,8 @@ dependencies = [
  "libc",
  "log",
  "rustversion",
- "windows-link 0.2.1",
- "windows-result 0.4.1",
+ "windows-link 0.1.3",
+ "windows-result 0.3.4",
 ]
 
 [[package]]
@@ -4160,7 +4160,7 @@ dependencies = [
  "gobject-sys 0.21.5",
  "libc",
  "system-deps 7.0.8",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -5253,7 +5253,7 @@ dependencies = [
  "libc",
  "percent-encoding",
  "pin-project-lite",
- "socket2 0.6.5",
+ "socket2 0.5.10",
  "tokio",
  "tower-service",
  "tracing",
@@ -5271,7 +5271,7 @@ dependencies = [
  "js-sys",
  "log",
  "wasm-bindgen",
- "windows-core 0.62.2",
+ "windows-core 0.57.0",
 ]
 
 [[package]]
@@ -5809,7 +5809,7 @@ dependencies = [
 [[package]]
 name = "iroh-mdns-address-lookup"
 version = "0.6.0"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=18415aa83a47bd3870c2a1f114b268fc3ed0495a#18415aa83a47bd3870c2a1f114b268fc3ed0495a"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=d4dd324a1a88a622ed5fc503a506745a8fdca350#d4dd324a1a88a622ed5fc503a506745a8fdca350"
 dependencies = [
  "data-encoding",
  "derive_more 2.1.1",
@@ -7140,7 +7140,7 @@ dependencies = [
  "png 0.18.1",
  "serde",
  "thiserror 2.0.19",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -7572,7 +7572,7 @@ dependencies = [
  "pin-project-lite",
  "rustc-hash 2.1.3",
  "rustls",
- "socket2 0.6.5",
+ "socket2 0.5.10",
  "thiserror 2.0.19",
  "tokio",
  "tokio-stream",
@@ -7617,7 +7617,7 @@ checksum = "4dc50afea61aff926e150a36c31f06094608848e114a3fe667d76ec233163b1c"
 dependencies = [
  "cfg_aliases",
  "libc",
- "socket2 0.6.5",
+ "socket2 0.5.10",
  "tracing",
  "windows-sys 0.61.2",
 ]
@@ -7715,7 +7715,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -7852,7 +7852,7 @@ version = "0.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "680998035259dcfcafe653688bf2aa6d3e2dc05e98be6ab46afb089dc84f1df8"
 dependencies = [
- "proc-macro-crate 2.0.0",
+ "proc-macro-crate 1.3.1",
  "proc-macro2",
  "quote",
  "syn 2.0.119",
@@ -9394,7 +9394,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b570b25f7617e43d59005d0990ccb79e950a423952cea19671b7a876da390adf"
 dependencies = [
  "anyhow",
- "itertools 0.13.0",
+ "itertools 0.11.0",
  "proc-macro2",
  "quote",
  "syn 2.0.119",
@@ -9534,7 +9534,7 @@ dependencies = [
  "quinn-udp",
  "rustc-hash 2.1.3",
  "rustls",
- "socket2 0.6.5",
+ "socket2 0.5.10",
  "thiserror 2.0.19",
  "tokio",
  "tracing",
@@ -9573,9 +9573,9 @@ dependencies = [
  "cfg_aliases",
  "libc",
  "once_cell",
- "socket2 0.6.5",
+ "socket2 0.5.10",
  "tracing",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -9930,7 +9930,7 @@ dependencies = [
  "cfg-if",
  "libc",
  "rustix 1.1.4",
- "windows 0.62.2",
+ "windows 0.61.3",
 ]
 
 [[package]]
@@ -10318,7 +10318,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.12.1",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -10386,7 +10386,7 @@ dependencies = [
  "security-framework 3.7.0",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -10664,7 +10664,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5b55fb86dfd3a2f5f76ea78310a88f96c4ea21a3031f8d212443d56123fd0521"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -11349,7 +11349,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c3d1e2c7f27f8d4cb10542a02c49005dbd6e93095799d6f3be745fae9f8fedd4"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -11547,7 +11547,7 @@ dependencies = [
  "cfg-if",
  "libc",
  "psm",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -11821,7 +11821,7 @@ dependencies = [
 [[package]]
 name = "swarm-discovery"
 version = "0.6.3"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=18415aa83a47bd3870c2a1f114b268fc3ed0495a#18415aa83a47bd3870c2a1f114b268fc3ed0495a"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=d4dd324a1a88a622ed5fc503a506745a8fdca350#d4dd324a1a88a622ed5fc503a506745a8fdca350"
 dependencies = [
  "acto",
  "hickory-proto",
@@ -12645,7 +12645,7 @@ dependencies = [
  "getrandom 0.4.3",
  "once_cell",
  "rustix 1.1.4",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -13303,7 +13303,7 @@ dependencies = [
  "png 0.18.1",
  "serde",
  "thiserror 2.0.19",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -13414,7 +13414,7 @@ dependencies = [
 [[package]]
 name = "uc-application"
 version = "1.1.0-rc.22"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=18415aa83a47bd3870c2a1f114b268fc3ed0495a#18415aa83a47bd3870c2a1f114b268fc3ed0495a"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=d4dd324a1a88a622ed5fc503a506745a8fdca350#d4dd324a1a88a622ed5fc503a506745a8fdca350"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -13475,7 +13475,7 @@ dependencies = [
 [[package]]
 name = "uc-content-hash"
 version = "1.1.0-rc.22"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=18415aa83a47bd3870c2a1f114b268fc3ed0495a#18415aa83a47bd3870c2a1f114b268fc3ed0495a"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=d4dd324a1a88a622ed5fc503a506745a8fdca350#d4dd324a1a88a622ed5fc503a506745a8fdca350"
 dependencies = [
  "blake3",
  "hex",
@@ -13484,7 +13484,7 @@ dependencies = [
 [[package]]
 name = "uc-core"
 version = "1.1.0-rc.22"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=18415aa83a47bd3870c2a1f114b268fc3ed0495a#18415aa83a47bd3870c2a1f114b268fc3ed0495a"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=d4dd324a1a88a622ed5fc503a506745a8fdca350#d4dd324a1a88a622ed5fc503a506745a8fdca350"
 dependencies = [
  "anyhow",
  "arrayvec",
@@ -13501,6 +13501,7 @@ dependencies = [
  "tokio",
  "tokio-util",
  "uc-content-hash",
+ "unicode-normalization",
  "url",
  "uuid",
  "zeroize",
@@ -13668,7 +13669,7 @@ dependencies = [
 [[package]]
 name = "uc-engine"
 version = "1.1.0-rc.22"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=18415aa83a47bd3870c2a1f114b268fc3ed0495a#18415aa83a47bd3870c2a1f114b268fc3ed0495a"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=d4dd324a1a88a622ed5fc503a506745a8fdca350#d4dd324a1a88a622ed5fc503a506745a8fdca350"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -13681,7 +13682,12 @@ dependencies = [
  "tracing-subscriber",
  "uc-application",
  "uc-core",
- "uc-infra",
+ "uc-infra-content",
+ "uc-infra-local",
+ "uc-infra-p2p",
+ "uc-infra-profile",
+ "uc-infra-security",
+ "uc-infra-storage",
  "uc-mobile-lan",
  "uc-mobile-proto",
  "uc-observability-contract",
@@ -13692,9 +13698,134 @@ dependencies = [
 ]
 
 [[package]]
-name = "uc-infra"
+name = "uc-infra-content"
 version = "1.1.0-rc.22"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=18415aa83a47bd3870c2a1f114b268fc3ed0495a#18415aa83a47bd3870c2a1f114b268fc3ed0495a"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=d4dd324a1a88a622ed5fc503a506745a8fdca350#d4dd324a1a88a622ed5fc503a506745a8fdca350"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "blake3",
+ "chacha20poly1305",
+ "image",
+ "indexmap 2.14.0",
+ "mockall",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.19",
+ "tokio",
+ "tracing",
+ "uc-application",
+ "uc-core",
+ "uc-infra-crypto",
+ "uc-infra-local",
+ "uc-infra-security",
+ "uc-observability-contract",
+ "uuid",
+ "zstd",
+]
+
+[[package]]
+name = "uc-infra-crypto"
+version = "1.1.0-rc.22"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=d4dd324a1a88a622ed5fc503a506745a8fdca350#d4dd324a1a88a622ed5fc503a506745a8fdca350"
+dependencies = [
+ "anyhow",
+ "argon2",
+ "base32",
+ "blake3",
+ "chacha20poly1305",
+ "chrono",
+ "hkdf 0.12.4",
+ "opaque-ke",
+ "openmls",
+ "openmls_basic_credential",
+ "openmls_memory_storage",
+ "openmls_rust_crypto",
+ "openmls_traits",
+ "rand 0.8.7",
+ "rand 0.9.5",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "subtle",
+ "thiserror 2.0.19",
+ "uc-core",
+ "uc-observability-contract",
+ "zeroize",
+]
+
+[[package]]
+name = "uc-infra-local"
+version = "1.1.0-rc.22"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=d4dd324a1a88a622ed5fc503a506745a8fdca350#d4dd324a1a88a622ed5fc503a506745a8fdca350"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "blake3",
+ "chrono",
+ "hex",
+ "libc",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.19",
+ "tokio",
+ "tracing",
+ "uc-core",
+ "uc-observability-contract",
+ "uuid",
+ "windows-sys 0.59.0",
+]
+
+[[package]]
+name = "uc-infra-p2p"
+version = "1.1.0-rc.22"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=d4dd324a1a88a622ed5fc503a506745a8fdca350#d4dd324a1a88a622ed5fc503a506745a8fdca350"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "blake3",
+ "bytes",
+ "chrono",
+ "futures-util",
+ "hex",
+ "hmac 0.12.1",
+ "if-addrs",
+ "iroh",
+ "iroh-blobs",
+ "iroh-mdns-address-lookup",
+ "iroh-relay",
+ "iroh-tickets",
+ "noq-proto",
+ "opentelemetry",
+ "opentelemetry_sdk",
+ "postcard",
+ "rand 0.9.5",
+ "reqwest 0.12.28",
+ "rustls",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "swarm-discovery",
+ "tempfile",
+ "thiserror 2.0.19",
+ "tokio",
+ "tracing",
+ "tracing-opentelemetry",
+ "uc-application",
+ "uc-core",
+ "uc-infra-crypto",
+ "uc-infra-security",
+ "uc-observability-contract",
+ "uc-sync-protocol",
+ "uuid",
+ "zeroize",
+]
+
+[[package]]
+name = "uc-infra-profile"
+version = "1.1.0-rc.22"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=d4dd324a1a88a622ed5fc503a506745a8fdca350#d4dd324a1a88a622ed5fc503a506745a8fdca350"
 dependencies = [
  "anyhow",
  "argon2",
@@ -13707,22 +13838,13 @@ dependencies = [
  "chrono",
  "diesel",
  "diesel_migrations",
- "futures-util",
  "hex",
  "hkdf 0.12.4",
  "hmac 0.12.1",
- "if-addrs",
- "image",
  "indexmap 2.14.0",
  "iroh",
- "iroh-blobs",
- "iroh-mdns-address-lookup",
- "iroh-relay",
- "iroh-tickets",
  "libc",
  "libsqlite3-sys",
- "network-interface",
- "noq-proto",
  "opaque-ke",
  "openmls",
  "openmls_basic_credential",
@@ -13734,13 +13856,10 @@ dependencies = [
  "postcard",
  "rand 0.8.7",
  "rand 0.9.5",
- "reqwest 0.12.28",
- "rustls",
  "serde",
  "serde_json",
  "sha2 0.10.9",
  "subtle",
- "swarm-discovery",
  "tar",
  "tempfile",
  "thiserror 2.0.19",
@@ -13749,6 +13868,12 @@ dependencies = [
  "tracing-opentelemetry",
  "uc-application",
  "uc-core",
+ "uc-infra-content",
+ "uc-infra-crypto",
+ "uc-infra-local",
+ "uc-infra-p2p",
+ "uc-infra-security",
+ "uc-infra-storage",
  "uc-observability-contract",
  "uc-sync-protocol",
  "unicode-normalization",
@@ -13762,15 +13887,85 @@ dependencies = [
 ]
 
 [[package]]
+name = "uc-infra-security"
+version = "1.1.0-rc.22"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=d4dd324a1a88a622ed5fc503a506745a8fdca350#d4dd324a1a88a622ed5fc503a506745a8fdca350"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "blake3",
+ "chrono",
+ "hex",
+ "hkdf 0.12.4",
+ "hmac 0.12.1",
+ "postcard",
+ "rand 0.9.5",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "thiserror 2.0.19",
+ "tokio",
+ "tracing",
+ "uc-application",
+ "uc-core",
+ "uc-infra-crypto",
+ "uc-infra-local",
+ "uc-observability-contract",
+ "uuid",
+ "windows-sys 0.59.0",
+ "zeroize",
+]
+
+[[package]]
+name = "uc-infra-storage"
+version = "1.1.0-rc.22"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=d4dd324a1a88a622ed5fc503a506745a8fdca350#d4dd324a1a88a622ed5fc503a506745a8fdca350"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "blake3",
+ "chrono",
+ "diesel",
+ "diesel_migrations",
+ "hex",
+ "hkdf 0.12.4",
+ "hmac 0.12.1",
+ "image",
+ "libsqlite3-sys",
+ "postcard",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "thiserror 2.0.19",
+ "tokio",
+ "tracing",
+ "uc-application",
+ "uc-core",
+ "uc-infra-crypto",
+ "uc-infra-local",
+ "uc-infra-security",
+ "uc-observability-contract",
+ "unicode-normalization",
+ "unicode-segmentation",
+ "url",
+ "uuid",
+ "zeroize",
+]
+
+[[package]]
 name = "uc-mobile-lan"
 version = "1.1.0-rc.22"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=18415aa83a47bd3870c2a1f114b268fc3ed0495a#18415aa83a47bd3870c2a1f114b268fc3ed0495a"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=d4dd324a1a88a622ed5fc503a506745a8fdca350#d4dd324a1a88a622ed5fc503a506745a8fdca350"
 dependencies = [
+ "anyhow",
+ "argon2",
  "async-trait",
  "base64 0.22.1",
  "hex",
  "image",
+ "network-interface",
  "qrcode",
+ "rand 0.9.5",
  "sha2 0.10.9",
  "thiserror 2.0.19",
  "tokio",
@@ -13786,7 +13981,7 @@ dependencies = [
 [[package]]
 name = "uc-mobile-proto"
 version = "1.1.0-rc.22"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=18415aa83a47bd3870c2a1f114b268fc3ed0495a#18415aa83a47bd3870c2a1f114b268fc3ed0495a"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=d4dd324a1a88a622ed5fc503a506745a8fdca350#d4dd324a1a88a622ed5fc503a506745a8fdca350"
 dependencies = [
  "base64 0.22.1",
  "chrono",
@@ -13821,7 +14016,7 @@ dependencies = [
 [[package]]
 name = "uc-observability-contract"
 version = "1.1.0-rc.22"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=18415aa83a47bd3870c2a1f114b268fc3ed0495a#18415aa83a47bd3870c2a1f114b268fc3ed0495a"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=d4dd324a1a88a622ed5fc503a506745a8fdca350#d4dd324a1a88a622ed5fc503a506745a8fdca350"
 dependencies = [
  "anyhow",
  "chrono",
@@ -13838,7 +14033,7 @@ dependencies = [
 [[package]]
 name = "uc-observability-runtime"
 version = "1.1.0-rc.22"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=18415aa83a47bd3870c2a1f114b268fc3ed0495a#18415aa83a47bd3870c2a1f114b268fc3ed0495a"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=d4dd324a1a88a622ed5fc503a506745a8fdca350#d4dd324a1a88a622ed5fc503a506745a8fdca350"
 dependencies = [
  "cc",
  "chrono",
@@ -13905,9 +14100,10 @@ dependencies = [
 [[package]]
 name = "uc-sync-protocol"
 version = "1.1.0-rc.22"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=18415aa83a47bd3870c2a1f114b268fc3ed0495a#18415aa83a47bd3870c2a1f114b268fc3ed0495a"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=d4dd324a1a88a622ed5fc503a506745a8fdca350#d4dd324a1a88a622ed5fc503a506745a8fdca350"
 dependencies = [
  "anyhow",
+ "base64 0.22.1",
  "bytes",
  "postcard",
  "serde",
@@ -14022,7 +14218,7 @@ checksum = "f2f6fb2847f6742cd76af783a2a2c49e9375d0a111c7bef6f71cd9e738c72d6e"
 dependencies = [
  "memoffset",
  "tempfile",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -14924,7 +15120,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]
@@ -15705,8 +15901,8 @@ dependencies = [
  "log",
  "serde",
  "thiserror 2.0.19",
- "windows 0.62.2",
- "windows-core 0.62.2",
+ "windows 0.59.0",
+ "windows-core 0.59.0",
 ]
 
 [[package]]

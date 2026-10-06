@@ -79,7 +79,7 @@ dbg_macro = "warn"
 [workspace.dependencies]
 # All desktop consumers use one immutable Engine revision. Features remain
 # opt-in at each host boundary so LAN compatibility cannot become a default.
-uc-engine = { git = "https://github.com/UniClipboard/Engine.git", rev = "18415aa83a47bd3870c2a1f114b268fc3ed0495a" }
+uc-engine = { git = "https://github.com/UniClipboard/Engine.git", rev = "d4dd324a1a88a622ed5fc503a506745a8fdca350" }
 
 # tauri 2.11 是 specta rc.25 兼容的最低版本 —— 2.10.x 及之前在
 # `tauri/src/ipc/channel.rs` 用了 `#[specta(remote=..., rename="...")]`

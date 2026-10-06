@@ -93,13 +93,37 @@ class Target(http.server.ThreadingHTTPServer):
         return [r for r in self.requests if r['path'] == path]
 
 
+def children_exes(pid):
+    """Executables of the direct children of `pid` (root reads /proc/<pid>/task/*/children): the application a foreground xdg-open is waiting for."""
+    exes = []
+    try:
+        for task in Path(f'/proc/{pid}/task').iterdir():
+            for c in (task / 'children').read_text().split():
+                try:
+                    exes.append(os.readlink(f'/proc/{c}/exe'))
+                except OSError:
+                    pass
+    except OSError:
+        pass
+    return exes
+
+
 def open_as_user(out, label, target, env):
-    """The host's own xdg-open as the user. Output goes to files, not pipes: the real application it starts inherits the descriptors and would keep a pipe open
-    (dev3: subprocess.run timed out on the browser). The files are evidence (the application's own stderr)."""
+    """Start the host's own xdg-open as the user and do NOT wait for it. xdg-open waits for the application it starts when it runs it directly (the generic
+    dispatch runs e.g. `nautilus --new-window` as its foreground child and returns only when that first instance exits; `gio open` under GNOME returns at once and
+    the application is a D-Bus service: diag_xdg_open_generic.sh, artifacts xdg-open-generic-diag-ubuntu-v2). A blocking subprocess.run therefore turned a healthy
+    generic dispatch into a TimeoutExpired (final-b3aca3d11/real-*-generic, kept). Output goes to files, not pipes. The contract is the EFFECT (window / request); the
+    exit status of xdg-open is checked only if it has exited by then (must be 0), otherwise it is recorded as `running` with the executables of its children."""
     o, e = out / f'host-{label}.stdout', out / f'host-{label}.stderr'
-    with o.open('w') as fo, e.open('w') as fe:
-        res = subprocess.run(['xdg-open', target], env=env, user=USER, group=USER, extra_groups=[], stdout=fo, stderr=fe, timeout=60)
-    return res.returncode, e.read_text(errors='replace')[-400:]
+    fo, fe = o.open('w'), e.open('w')
+    proc = subprocess.Popen(['xdg-open', target], env=env, user=USER, group=USER, extra_groups=[], stdout=fo, stderr=fe)
+    return proc
+
+
+def host_state(proc, err_file):
+    rc = proc.poll()
+    return {'rc': rc, 'status': 'running' if rc is None else f'exited {rc}', 'childExes': children_exes(proc.pid) if rc is None else [],
+            'stderrTail': Path(err_file).read_text(errors='replace')[-300:]}
 
 
 def window_titles(env):
@@ -267,34 +291,82 @@ def main():
         hdir.mkdir()
         os.chown(hdir, account.pw_uid, account.pw_gid)
         hpath = f'/uc11-host-{nonce}'
-        rc, err = open_as_user(out, 'dir', str(hdir), env)
+        p_dir = open_as_user(out, 'dir', str(hdir), env)
         titles = wait_window(env, hdir.name, 30)
-        run.check('T0 control: the host xdg-open (host environment, no GUI) opens a REAL file manager window titled with the directory name', rc == 0 and bool(titles), {'rc': rc, 'err': err, 'titles': titles})
-        rc, err = open_as_user(out, 'url', f'http://127.0.0.1:{target_http.port}{hpath}', env)
+        st_dir = host_state(p_dir, out / 'host-dir.stderr')
+        run.check('T0 control: the host xdg-open (host environment, no GUI) opens a REAL file manager window titled with the directory name', st_dir['rc'] in (0, None) and bool(titles), {**st_dir, 'titles': titles})
+        p_url = open_as_user(out, 'url', f'http://127.0.0.1:{target_http.port}{hpath}', env)
         deadline = time.monotonic() + 40
         while not target_http.hits(hpath) and time.monotonic() < deadline:
             time.sleep(.4)
         hits = target_http.hits(hpath)
-        run.check('T0 control: the host xdg-open reaches the REAL browser, which requests the controlled HTTP target (browser User-Agent)', rc == 0 and len(hits) == 1 and args.browser_ua in hits[0]['ua'],
-                  {'rc': rc, 'hits': hits, 'err': err})
+        st_url = host_state(p_url, out / 'host-url.stderr')
+        run.check('T0 control: the host xdg-open reaches the REAL browser, which requests the controlled HTTP target (browser User-Agent)', st_url['rc'] in (0, None) and len(hits) == 1 and args.browser_ua in hits[0]['ua'],
+                  {**st_url, 'hits': hits})
         title_http = wait_window(env, f'uc11-host-{nonce}', 20)
         run.check('T0 control: the browser window shows the page title served by the target (page evidence)', bool(title_http), title_http)
         hpng = fixtures / f'uc11-hostimg-{nonce}.png'
         hpng.write_bytes(png_bytes())
         os.chown(hpng, account.pw_uid, account.pw_gid)
-        rc, err = open_as_user(out, 'png', str(hpng), env)
+        p_png = open_as_user(out, 'png', str(hpng), env)
         titles = wait_window(env, hpng.name, 30)
-        run.check('T0 control: the host xdg-open opens the PNG in a REAL image viewer (window titled with the file name)', rc == 0 and bool(titles), {'rc': rc, 'titles': titles})
+        st_png = host_state(p_png, out / 'host-png.stderr')
+        run.check('T0 control: the host xdg-open opens the PNG in a REAL image viewer (window titled with the file name)', st_png['rc'] in (0, None) and bool(titles), {**st_png, 'titles': titles})
         r['hostControlApps'] = [inspect(p, mount_marker) for p in app_processes(account.pw_uid)]
+        # negative control: a file whose type the HOST says has no default application. The first version wrote the text "x" (text/plain): under the generic dispatch some
+        # application is registered for it and it opened (dev10), so that file was not a handlerless type. The fixture is therefore checked with the host's own xdg-mime.
         nohandler = fixtures / f'uc11-nohandler-{nonce}.uc11nohandler'
-        nohandler.write_text('x')
+        nohandler.write_bytes(b'\x00\x01\x02UC11\xfe\xff' * 8)
         os.chown(nohandler, account.pw_uid, account.pw_gid)
-        before_titles = set(window_titles(env))
-        rc, err = open_as_user(out, 'nohandler', str(nohandler), env)
-        time.sleep(4)
-        run.check('T0 negative control: a type with no registered application is NOT opened (xdg-open non-zero or no new window with that name)',
-                  not [t for t in window_titles(env) if nohandler.name in t], {'rc': rc, 'stderr': err})
+        nh_type = as_user(['xdg-mime', 'query', 'filetype', str(nohandler)], env).stdout.strip()
+        nh_default = as_user(['xdg-mime', 'query', 'default', nh_type], env).stdout.strip()
+        r['negativeControlFixture'] = {'filetype': nh_type, 'defaultAccordingToHost': nh_default}
+        run.check('T0 negative-control fixture: the host\'s own xdg-mime reports NO default application for the control file\'s type', nh_type != '' and nh_default == '', r['negativeControlFixture'])
+        # Dispatch tracing (strace -f, execve only, root with -u uc): what xdg-open ACTUALLY started, window titles and application processes before/after.
+        def traced_dispatch(label, target):
+            titles_before, apps_before = set(window_titles(env)), set(app_processes(account.pw_uid))
+            trace, err = out / f'host-{label}.strace', out / f'host-{label}.stderr'
+            with err.open('w') as fe:
+                proc = subprocess.Popen(['strace', '-u', USER, '-f', '-q', '-s', '256', '-e', 'trace=execve', '-o', str(trace), 'xdg-open', target], env=env, stdout=fe, stderr=fe)
+                try:
+                    proc.wait(timeout=20)
+                except subprocess.TimeoutExpired:
+                    pass
+            time.sleep(4)
+            st = host_state(proc, err)
+            names = sorted({m.group(1).rsplit('/', 1)[-1] for m in re.finditer(r'execve\("([^"]+)"', trace.read_text(errors='replace'))})
+            titles_after, apps_after = set(window_titles(env)), set(app_processes(account.pw_uid))
+            return proc, {**st, 'executablesRun': names, 'newWindowTitles': sorted(titles_after - titles_before), 'newApplicationPids': sorted(apps_after - apps_before),
+                          'realApplicationRun': sorted(set(names) & (APP_EXES | {'firefox', 'epiphany', 'gio-launch-desktop'}))}
+
+        # (1) A file whose type the host says has NO default application. The first hypothesis ("no registration => nothing is opened") is REFUTED by dev10/dev12 (kept):
+        # under the generic dispatch xdg-open falls back to the browser (`x-www-browser` -> Epiphany ran: executablesRun below), under GNOME `gio open` rejects with a native
+        # error (exit 4, "Failed to find default application for content type"). Both are the host's own behaviour and are RECORDED as observations; only the GNOME rejection
+        # is a check, because only there the host rejects. This scenario is NOT the negative control of the harness.
+        p_no, nd = traced_dispatch('nohandler', str(nohandler))
+        r['unregisteredTypeDispatch'] = {**nd, 'fixture': r['negativeControlFixture'], 'observation': 'browser fallback observed (generic dispatch)' if nd['realApplicationRun'] else 'no application started'}
+        if args.desktop == 'gnome':
+            run.check('T0 observation checked (GNOME dispatch): for a type with no default application `gio open` rejects with its native error (exit 4, "Failed to find default application") and starts no real application',
+                      nd['rc'] == 4 and 'Failed to find default application' in nd['stderrTail'] and not nd['realApplicationRun'], nd)
+        # (2) The harness negative control: a path that does not exist. xdg-open's documented exit status is 2 ("one of the files ... did not exist"), observed under the generic
+        # dispatch; under GNOME xdg-open hands the path to `gio open`, which rejects with ITS exit status 4 and ITS message (dev13: first version asserted 2 for both and failed on
+        # gnome, kept). The contract: non-zero exit, the host's native "does not exist / no such file" message, nothing delivered; the exit status per dispatch is recorded.
+        missing = fixtures / f'uc11-does-not-exist-{nonce}'
+        p_miss, md = traced_dispatch('missing', str(missing))
+        r['missingPathDispatch'] = md
+        run.check('T0 negative control (independent of any registration): a path that does not exist is rejected by the host xdg-open (generic: xdg-open exit 2; GNOME: `gio open` exit 4; both recorded) with the native message of the host, starts no real application, creates no window and no application process',
+                  md['rc'] not in (0, None) and md['rc'] == (2 if args.desktop == 'generic' else 4) and re.search(r'(?i)does not exist|no such file', md['stderrTail']) is not None and not md['realApplicationRun'] and not md['newWindowTitles'] and not md['newApplicationPids'], md)
+        # Stopping the applications ends a foreground xdg-open: its exit status HERE (e.g. 4 after SIGTERM of the first Nautilus instance) is the consequence of the
+        # runner's cleanup, not of the dispatch. Recorded to keep it apart from a natural exit (st_* above, sampled before the cleanup).
         kill_apps(account.pw_uid)
+        r['hostControlCleanupExits'] = {}
+        for label, proc in (('dir', p_dir), ('url', p_url), ('png', p_png)):
+            try:
+                r['hostControlCleanupExits'][label] = proc.wait(timeout=20)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                r['hostControlCleanupExits'][label] = 'killed by the runner after 20 s'
+        r['hostControlStates'] = {'dir': st_dir, 'url': st_url, 'png': st_png}
         run.check('T0 the real applications of the host control are stopped before the GUI starts (every later window comes from the GUI chain)', not app_processes(account.pw_uid), app_processes(account.pw_uid))
 
         # --- the real GUI, non-portable
@@ -415,7 +487,11 @@ def main():
                   [a for a in all_apps if a['envPointingIntoMount']])
         r['recordedNotAsserted'] = {'gdkBackend': sorted({str(a['gdkBackend']) for a in all_apps}), 'gtkTheme': sorted({str(a['gtkTheme']) for a in all_apps}), 'note': 'GDK_BACKEND / GTK_THEME are inherited: AppRun hook vs user setting cannot be told apart (17c10); changed only on a real new failure'}
 
-        # --- the strace chain: xdg-open was started by the GUI with the sanitised environment
+        # --- the strace chain: xdg-open was started by the GUI with the sanitised environment. Under the generic dispatch xdg-open stays alive as the foreground parent
+        # of the first application instance: sample which xdg-open processes are still running (and their children) BEFORE the GUI exit and the cleanup, so that a
+        # natural exit, a still-running foreground wait and an exit caused by the cleanup can be told apart.
+        alive_xdg = {pid: children_exes(pid) for pid, (exe, _) in procs().items() if exe.endswith('/xdg-open') or (exe.endswith('/dash') and any('xdg-open' in a for a in cmdline_of(pid)))}
+        r['xdgOpenAliveBeforeGuiExit'] = {str(k): v for k, v in alive_xdg.items()}
         gui.ctl('exit', 'control-exit')
         deadline = time.monotonic() + 40
         while pid_alive(gui_pid) and time.monotonic() < deadline:
@@ -429,9 +505,12 @@ def main():
         launches.clear()
         execs, children, _, exits = parse_trace(run.trace)
         gui_started = [e for e in execs if e['rc'] == 0 and e['exe'].endswith('/xdg-open')]
-        r['xdgOpenFromGui'] = [{'argv': e['argv'][1:], 'exit': exits.get(e['pid']), 'varsIntoMount': sorted(k for k, v in e['env'].items() if mount in v), 'ldLibraryPath': e['env'].get('LD_LIBRARY_PATH')} for e in gui_started]
-        run.check('G1 every xdg-open the GUI started (strace execve) exited 0 and carries no variable pointing into the mount and no LD_LIBRARY_PATH',
-                  len(gui_started) >= 6 and all(x['exit'] == 'exit 0' and not x['varsIntoMount'] and not x['ldLibraryPath'] for x in r['xdgOpenFromGui']), r['xdgOpenFromGui'])
+        r['xdgOpenFromGui'] = [{'pid': e['pid'], 'argv': e['argv'][1:], 'exit': exits.get(e['pid']), 'aliveBeforeGuiExit': e['pid'] in alive_xdg, 'childrenWhileAlive': alive_xdg.get(e['pid']),
+                                'varsIntoMount': sorted(k for k, v in e['env'].items() if mount in v), 'ldLibraryPath': e['env'].get('LD_LIBRARY_PATH')} for e in gui_started]
+        # a natural exit must be 0; a still-running foreground xdg-open is allowed only with a live application child (its exit after the runner's cleanup is not judged)
+        ok_exit = lambda x: (x['exit'] == 'exit 0') or (x['aliveBeforeGuiExit'] and bool(x['childrenWhileAlive']))
+        run.check('G1 every xdg-open the GUI started (strace execve) carries no variable pointing into the mount and no LD_LIBRARY_PATH; each either exited 0 or was still running as the foreground parent of a live application (generic dispatch), none exited non-zero on its own',
+                  len(gui_started) >= 6 and all(ok_exit(x) and not x['varsIntoMount'] and not x['ldLibraryPath'] for x in r['xdgOpenFromGui']), r['xdgOpenFromGui'])
         if args.f7:
             # --- F7 (OPEN product question): portable mode replaces HOME with <AppImage>.home for the whole process tree. The user's own default application (written to the
             # real HOME, as in G5) is then invisible to xdg-open. Reproduced with the real applications and RECORDED; nothing here passes or fails on it.

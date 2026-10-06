@@ -315,6 +315,7 @@ apps/gui-go/e2e/linux/run.sh package <dir>  # 容器内：生产前端包 + pack
 | L5 Wayland Layer Shell 面板；L6 Hyprland 光标定位与可用区域上限 | **已实现，容器内真实 sway 验证**（17c2） | 真实 Hyprland/GNOME/KDE、真实 GPU 与桌面输入栈仍未验证；AppImage 的 `AppRun` 强制 `GDK_BACKEND=x11`，打包产物里 Layer Shell 不会激活，要在 17c4 的 AppImage 切片里处理（并随包带上 `libgtk-layer-shell.so.0`，Tauri 即如此） |
 | L19 更新清单把所有 Linux AppImage 归到 `linux-x86_64` | 既有缺陷，生成器未改 | 必做独立切片 17c3：修 `scripts/assemble-update-manifest.js`，用隔离 fixture 清单验证，不触发正式发布、不改生产源 |
 | L20 AppImage 自包含与真实 daemon 来源、真实 AppImage 启动与更新（arm64）；rpm 的 `.build-id` 清理 | **已完成（17c4，容器内干净宿主；见“自包含 Linux AppImage（第 17c4 片）”）** | **仍 OPEN**：amd64 构建与运行、原生桌面、deb/rpm 实装、真实注销/登录自启动与更新后条目有效性、官方签名发布验证 |
+| L21 AppImage portable 模式（数据根落在只读挂载） | **已完成（17c5，容器内非 root 用户、无 Secret Service；见“AppImage portable 模式（第 17c5 片）”）** | **仍 OPEN**：真实登录会话读取自启动条目、更新后自启动、Windows/macOS 路径的重新运行、`--appimage-extract-and-run`、amd64、原生桌面 |
 | 产品默认 `ctrl+alt+v` 与真实前端首次启动/配置同步的 Linux E2E（不用测试接缝） | 脚本未写 | 后续必做 E2E |
 | AppImage 自写自启条目、旧 Tauri 条目清理、`release` 标签生产入口与非便携数据根 | 代码已写，**脚本未运行** | 后续必做 |
 | 真实 Hyprland（`hl.dsp.*` 语法与按键到达）、portal 快捷键、托盘、通知、`SystemDidWake`、窗口聚焦与位置、deb/rpm 的真实包管理器检测分支、AppImage 真实更新重启 | 原生/真实桌面未验证 | 需要授权的 Linux 主机，或为各项设计更真实的隔离环境 |
@@ -552,7 +553,7 @@ python3 -I apps/gui-go/e2e/update_manifest_run.py --generator <dir>/baseline.js 
 - **TLS/HTTPS WebView**：包内没有 `glib-networking`，未验证 WebView 访问 HTTPS。
 - **Secret Service**：测试用的 gnome-keyring 在独立容器，是 unlocked 的一次性钥匙环；真实桌面钥匙环的提示/锁定行为未验证。产品观察：Secret Service 无法给出提示时，daemon 的 `/encryption/state` 无限期挂起（Engine 行为，未改）。
 - **`libGLESv2` 与 dlopen 依赖审计**：固定版排除列表的缺口，见上；绿灯不推广到其他发行版。
-- **AppImage portable 模式**：未实现、未验收（数据根落在只读挂载）；非 portable 已验证，portable 的路径解析与可写目录方案仍是后续切片。
+- **AppImage portable 模式**：17c4 未实现；**17c5 已实现并验收**，见下一节。
 
 ### 17c4 Wails 优先审计（固定版 `v3.0.0-beta.28`）
 
@@ -579,6 +580,57 @@ UC_LINUX_IMAGE=uc-gui-go-linux-build:17c2 apps/gui-go/e2e/linux/run.sh daemon-re
 UC_LINUX_IMAGE=uc-gui-go-linux-build:17c2 apps/gui-go/e2e/linux/run_17c4.sh <新目录>
 ```
 
+## AppImage portable 模式（第 17c5 片）
+
+契约、审计与逐项证据映射在 [docs/architecture/gui-go-linux-appimage-portable.md](../../docs/architecture/gui-go-linux-appimage-portable.md)。证据目录 `/Users/mark/.herdr-projects/uni/t-0188-artifacts/linux-17c5/`（仓库只索引）。
+
+### 实现
+
+- 规则（Rust `crates/uc-app-paths` 与 Go `packages/desktop-host-go/apppaths` 同一规则）：可执行文件位于 `APPDIR` 之下才算在 AppImage 内；此时 portable = `<APPIMAGE>.home` 目录存在（AppImage runtime 自己的约定，同时 runtime 把 `$HOME` 指向它），或 `UC_PORTABLE` 为真（此时 `.home` 必须已存在）；数据根 `<APPIMAGE>.home/data`。`APPIMAGE` 无效或 `.home` 缺失而请求了 portable 是 **无效状态**，所有目录解析返回「不可用」，没有回退到 XDG/共享用户 profile。非 AppImage 的既有规则（`portable.dat`、`UC_PORTABLE`、可执行文件旁 `data`）不变。
+- GUI 启动（release 形态）先检查 `PortableError` 并预检数据根可写；失败时用 Wails 的 `app.Dialog.Error()`（在 `ApplicationStarted` 里弹出）加 stderr，退出码 1（`apps/gui-go/startup_failure.go`、`environment_release.go`）。
+- 自启动：portable AppImage 内 `$HOME` 被重定向到 `.home`，会话读不到那里；自启动目录改为绝对 `XDG_CONFIG_HOME` 或 passwd 数据库中的真实主目录（`autostart_linux.go`），非 portable 不变。
+- 打包：把构建镜像的 `/usr/share/mime/mime.cache`（157 KB）放入 AppDir。没有它，干净宿主上包内 gdk-pixbuf 认不出图片格式，GTK 在 `gtkiconhelper.c` 断言处 `SIGABRT`（错误对话框因此崩溃，见保留的 `iter2/e2e-portable/fail-*.log`）。
+- daemon：`uc-app-paths` 是 daemon 的输入，重新构建（构建 HEAD `be709456e`，SHA-256 `ea0f0bcb…f6c6`，证据 `daemon-17c5/build-evidence.txt`）；17c4 的 `e41904ca…` 保留为基线 `daemon-17c4-baseline/`，不作为本片行为证据。
+
+### Wails 优先审计（固定版 `v3.0.0-beta.28`）
+
+| 能力 | Wails API（源码） | 采用方式 | 差距证据 | 验收 |
+| --- | --- | --- | --- | --- |
+| portable / 数据根 / AppImage 可写目录 | `pkg/application` 里没有 portable 或 `APPIMAGE` 的引用 | 无对应 API，自有适配；**采用成熟 AppImage runtime 的 `.home` 机制**（实测：目录存在时 `$HOME` 被设置；`$APPIMAGE` 为解析后的绝对路径；空格与非 ASCII 正常） | `.home` 只改 `$HOME`，不改 daemon 的文件 keystore 选择，所以 Rust 与 Go 仍需同一规则 | `probe-portable-home`；`e2e-portable` |
+| 启动失败提示 | `app.Dialog.Error()` | 采用（需运行中的事件循环，故在 `ApplicationStarted` 里弹出） | — | F8/F9/F10 |
+| 自启动 | `app.Autostart` | AppImage 内沿用 17c4 的最小适配，只改目录来源 | — | P2、S2 |
+
+已完成切片查重：没有新增平台机制；`apps/gui-go/e2e_update_control.go` 只新增 `e2e` 标签下的控制动词 `autostart-state`。
+
+### 结果（最终运行 `final-ad2f3ef2d`，干净提交 `ad2f3ef2d`；补充 `supplement-9475c3497`，提交 `9475c3497`）
+
+| 运行 | 结果 |
+| --- | --- |
+| `e2e-portable`（非 root、无 Secret Service、`release,e2e` 构建、真实 AppImage、真实 daemon） | 64/64 |
+| `--supplement`（陈旧 `APPIMAGE`、`XDG_CONFIG_HOME`） | 13/13 |
+| 非 portable 回归 `e2e-full` / `e2e-negative` / release 冒烟 | 34/34、2/2、5/5 |
+| `probe-pixbuf-mime` | 有 `mime.cache` 成功，无则失败 |
+
+保留的失败：`iter1`（uid 冲突、缺 `SYS_PTRACE`、CLI 自拉起第二个 daemon、控制动词缺失）、`iter2`（FUSE 挂载对 root 不可见、更新后原进程退出、**对话框崩溃 58/64**）、`iter3`（61/64：断言过严，随后改为白名单 64/64 两次），打包尝试各自独立目录，失败的目录与日志都保留。
+
+### 17c5 未证明（nothing dropped）
+
+- 真实登录会话读取自启动条目、注销登录、更新之后的自启动有效性。
+- `--appimage-extract-and-run`、真实只读文件系统挂载、对话框文字内容、窗口管理器下的行为。
+- 伪造的 `APPIMAGE`（`APPDIR` 一并伪造）无来源验证。
+- Windows/macOS 路径的重新运行（只有编译与既有 Rust 单元测试）；amd64；原生桌面；官方签名发布验证；dlopen 依赖审计；WebView HTTPS。
+- CLI 的 `UNICLIPBOARD_DAEMON_BASE_URL` 覆盖路径缺少 `/ws`（既有缺陷）。本片 E2E 里的 CLI 软链只是客户端定位的测试适配，不是 GUI 与 daemon 一致性的证明。
+
+### 17c5 复跑
+
+```bash
+# 一次性：真实 release daemon（写入 /cache/out-release/build-evidence.txt），然后每次使用新的输出目录，要求干净的提交
+UC_LINUX_IMAGE=uc-gui-go-linux-build:17c2 apps/gui-go/e2e/linux/run.sh daemon-release
+UC_LINUX_IMAGE=uc-gui-go-linux-build:17c2 apps/gui-go/e2e/linux/run_17c5.sh <新目录>
+# 只跑补充场景（对已打包的 AppImage）
+UC_PORTABLE_E2E_ARGS=--supplement apps/gui-go/e2e/linux/run.sh appimage-portable-e2e <新目录> <AppImage> <feed> <package-manifest.json>
+```
+
 ## 验收边界
 
 - Wails 与 runtime 同时固定为 `3.0.0-beta.28`；这是 beta 原型，不是生产迁移完成。
@@ -589,6 +641,7 @@ UC_LINUX_IMAGE=uc-gui-go-linux-build:17c2 apps/gui-go/e2e/linux/run_17c4.sh <新
 - Linux 17c2：Layer Shell 面板与每输出定位/上限由容器内真实无头 sway 验证（见“17c2 结果”），Hyprland/GNOME/KDE 与真实桌面未验证。Linux 17c：证据来自容器内 Xvfb + 私有 D-Bus（无窗口管理器、Wayland、portal、托盘宿主、通知服务、Secret Service）与脚本化 Hyprland socket；默认快捷键用 e2e 测试接缝；（17c 当时）AppImage 不自包含、daemon 来源未核验；17c4 已补自包含 AppImage 与真实 release daemon 证据（容器内干净宿主，仍无真实 Linux 桌面运行证据）。详见“Linux（第 17c 片）”与“自包含 Linux AppImage（第 17c4 片）”。
 - Windows 17b：同上，另可为 arm64 编译、安装器脚本可编译；daemon 以 `TerminateProcess` 强制终止（非优雅关闭）；Windows 生产入口、安装器、原位更新、自启迁移、双击修饰键的真实读取/焦点/可见性均未验证；真实 Rust daemon + NSIS/便携包的原生安装与更新仍 OPEN；官方发布签名验证仍 OPEN。
 - Windows：17a 代码可为 windows/amd64 编译（普通与 e2e 标签、`go vet` 通过），没有任何 Windows 运行证据（真实可见、焦点、按键、冲突、粘贴、托盘、通知、daemon 停止、单实例均未验证，runner 离线）；Linux、安装签名、Windows 更新与 GPUI 在 Windows 的 N/A 说明见上。
+- Linux 17c5：AppImage portable 模式由容器内非 root 用户、无 Secret Service 的真实 AppImage 与真实 release daemon 验证（见“AppImage portable 模式（第 17c5 片）”）；真实登录会话、更新后自启动、Windows/macOS 重新运行、amd64 与原生桌面仍 OPEN。
 - 单实例：投递尽力而为；`application.New`→`Run` 的毫秒窗口内的激活不可接收；Windows/Linux 与 macOS Dock 再点击未验证；窗口重放曾触发原生 `SIGSEGV`（根因未定位，见“Wails 能力审计”）。
 - 17a macOS：`webview_panel_shortcut_run.py` 控制器断言 17 项通过、原生可见性 3 项未验证（显示器仍休眠，`CGDisplayIsAsleep=1`，仅相关性，不断定根因）；`single_instance_run.py` 因 `--quick-panel` 行为变化重跑一次通过；未重跑整套 quiet 回归。
 - 显示器休眠时（本片回归时 `CGDisplayIsAsleep=1`）`startup_run.py`（轻量重开 `mainVisible=false`）、`native_panel_run.py`（页面驱动在 `native-ready` 后不再推进，GUI 因此不会自行退出）、`run.py`（`driver-complete` 超时）失败；基线 `ae8738f2a` 在同一状态下同样失败，故不归因本片。`tray_devices_run.py` 与 `single_instance_run.py` 在该状态下通过。需在显示器唤醒时重跑这三项并与基线对照。

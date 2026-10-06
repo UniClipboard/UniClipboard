@@ -93,4 +93,53 @@ GUI 启动 daemon 时继承环境（`daemonproc/spawn.go`：`os.Environ()` 加 `
 
 ## 验证结果
 
-（实现与 E2E 完成后补录。）
+最终运行：干净提交 `ad2f3ef2d`（`apps/gui-go/e2e/linux/run_17c5.sh`，约 6 分钟），daemon 是为本片重新构建的 release daemon（构建 HEAD `be709456e`，`uc-app-paths` 改动已包含，SHA-256 `ea0f0bcb53e949ba94fc71e97748103e4f7136b4a354924991d686cc4d29f6c6`；17c4 的 `e41904ca…` 只作为基线保留，**不是** 本片的行为证据）。随后在新提交 `9475c3497`（只增加测试场景）对同一个最终 AppImage 跑了补充场景。
+
+| 运行 | 结果 |
+| --- | --- |
+| `e2e-portable`（非 root 用户、无 Secret Service、真实 AppImage、真实 release daemon） | 64/64 |
+| 补充场景 `--supplement`（F11、`XDG_CONFIG_HOME`） | 13/13 |
+| 17c4 非 portable 回归：`e2e-full`（含 Secret Service 与更新） | 34/34 |
+| 17c4 回归：`e2e-negative`（无重定位对照包必须失败） | 2/2 |
+| 17c4 回归：release 标签冒烟（无控制面） | 5/5 |
+| `probe-pixbuf-mime`（有/无 `mime.cache` 对照） | 有：PNG 可加载；无：失败（探针能区分） |
+| `probe-portable-home`（runtime `.home` 机制探针，原始输出） | 见证据目录 `logs/probe-portable-home.log` |
+
+### 失败方式逐项证据
+
+| # | 状态 | 证据（`appimage-assertions.json` 的检查名） |
+| --- | --- | --- |
+| F1 | 已验证 | `P1 daemon.conn is under <AppImage>.home/data/app.uniclipboard.desktop`；`P1 portable data root holds the daemon pid file…`；`P1 the file keystore lives in the portable data root`；GUI 与 daemon 实际写入的文件都在该目录 |
+| F2 | 已验证 | `P1 GUI and daemon see the same real APPIMAGE path … and HOME = the portable home`（各自 `/proc/<pid>/environ`）；`P1 the panel reports ready`。这是 GUI 与 daemon 一致性的独立证明，**不依赖** CLI 软链 |
+| F3 | 已验证（三项 + 功能） | `P1 no Secret Service is reachable`（`ListNames`、`ListActivatableNames`、无 service 文件、无 keyring 进程）；文件 keystore；`P1 the encrypted space was created …`、`P3 the encrypted space is still initialised and unlocked …`；`P1 the real user home (passwd) received nothing`。session bus 地址为空不是契约：GLib 为 GUI 自动拉起一个空总线，daemon 继承其地址 |
+| F4 | 已验证 | AppImage 在 `dir with space é/My App.AppImage`，经符号链接启动；`P1 --appimage-portable-home … creates <AppImage>.home next to the real file`；`APPIMAGE` 为解析后的真实路径 |
+| F5 | 已验证 | `P1 a user setting …`、`P1 a clipboard entry written through the daemon is found again through the encrypted index`；`P3`：重启后设置、空间状态（稳定字段一致）、条目读回；`P3 no plaintext of the written entry or the passphrase in any file of the portable data root` |
+| F6 | 已验证 | `P4`：不受信任签名被拒绝且字节不变；可信更新后文件 SHA-256 等于 v2；新进程在新挂载（marker）；旧 daemon 退出（`/proc` 状态）；新 daemon 在同一 `.home/data`；设置、条目、空间在更新后读回；`.home` 文件未丢失 |
+| F7 | 已验证（注册位置）；真实登录会话 **未验证** | `P2 enabling autostart writes <passwd home>/.config/autostart/UniClipboard.desktop`；`P2 the portable home has NO autostart entry`；`P2 the UI state is consistent`（偏好、注册状态、报告路径）；补充 `S2`：绝对 `XDG_CONFIG_HOME` 优先 |
+| F8 | 已验证 | `F8 …owned by root and 0555 while the AppImage runs as the unprivileged uid`；消息、对话框窗口、退出码 1、`.home` 仍为空、无 daemon、真实 HOME 无未知新增（白名单） |
+| F9 | 已验证 | `F9` 消息指出缺失目录与修复命令；对话框；退出码 1；没有创建 `.home`；无 daemon |
+| F10 | 已验证 | `F10` 解包 AppRun 无 `$APPIMAGE` 且 `UC_PORTABLE=1`：消息、对话框、退出码 1；解包树不变 |
+| F11 | 已验证（补充运行） | `S1`：可执行文件不在 `APPDIR` 下、`APPIMAGE` 指向一个带 `.home` 的真实 AppImage：旧规则（`<exe 目录>/data`）生效，daemon 在那里，诱饵 AppImage 的 `.home` 保持为空 |
+| F12 | 部分 | Linux 非 portable：`e2e-full` 34/34、`e2e-negative` 2/2、release 冒烟 5/5。其他平台：`apppaths` 的 Windows/macOS 路径（旧规则）未改动，`GOOS=windows`、`GOOS=darwin` 的 `go build/vet` 通过，`cargo test -p uc-app-paths`（11 项）通过；**没有在 Windows 或 macOS 上重新运行 E2E** |
+| F13 | 已验证 | `build-evidence.txt`（`daemon_source_dirty=false`，head `be709456e`）；清单的哈希链；`P1`/`P4` 的 `the daemon executes from the mount and is byte-identical to the build evidence` |
+| F14 | 已声明 | 见下「不证明的边界」 |
+| F15 | 已验证 | `probe-pixbuf-mime` 对照；F8/F9/F10 的对话框不再崩溃 |
+
+`.home` 自动激活（无 `UC_PORTABLE`）由 `P1` 证明（首次启动 `environments.gui.UC_PORTABLE` 为空，数据根仍是 `.home/data`）；`UC_PORTABLE=1` 在已有 `.home` 时走同一路径由 `P3` 证明，缺少 `.home` 时失败由 F9 证明。
+
+### 实施中被事实修正的几处（保留的失败运行）
+
+- `iter1`：第一次运行用了错误的 uid（Ubuntu 镜像里 `ubuntu` 占用 1000），随后 root 读不了非 root 进程的 `/proc/<pid>/exe`（缺 `SYS_PTRACE`，仅本任务容器加了该 capability，不改全局 Docker）；CLI 找不到 daemon 后自己拉起了第二个 daemon 并写入真实用户目录（夹具问题）；控制通道没有 `autostart-state` 动词。
+- `iter2`：FUSE 挂载只对挂载它的用户可见，root 不能哈希挂载里的 daemon，也不能 `stat` 挂载点；更新后原进程按设计退出，检查要改到全新启动的进程；**`run4` 中错误对话框让 GTK 崩溃（F15）**，保留 `iter2/e2e-portable/fail-*.log`。
+- `iter3`：对话框修复后 61/64，剩下三项是「真实 HOME 完全不变」断言过严（GTK 对话框写 fontconfig 缓存）。第一次修订用了名称黑名单，被指出会放过未知写入，改为明确白名单（见「断言口径的更正」）。
+
+## 未完成（open，不能记为完成）
+
+- 真实桌面登录会话读取自启动条目并启动；注销登录；**更新之后** 的自启动有效性。
+- `--appimage-extract-and-run`（`APPDIR` 为可写解包目录、`APPIMAGE` 已设置）没有端到端运行；规则对它同样适用（可执行文件在 `APPDIR` 下），但没有证据。
+- 伪造的 `APPIMAGE`（`APPDIR` 同时伪造）指向另一个存在的文件时按其 `.home` 解析，无来源验证。
+- Windows、macOS 的 `apppaths` 路径没有重新运行 E2E；Tauri 的 `get_install_kind` 在 portable AppImage 里会先判为 `WindowsPortable`（Tauri 外壳待删，不在本片处理）。
+- 真实只读挂载（本片用非 root 与他人拥有的 `0555` 目录证明权限失败，未用只读文件系统挂载）。
+- 错误对话框的文字内容没有被读取（只证明窗口出现、可关闭、退出码 1、消息在 stderr）；容器里没有窗口管理器。
+- CLI 的 `UNICLIPBOARD_DAEMON_BASE_URL` 覆盖路径缺少 `/ws`（既有缺陷，未修）。
+- 其余沿用 17c4：amd64、原生桌面、官方签名发布验证、dlopen 依赖审计、WebView HTTPS。

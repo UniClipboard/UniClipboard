@@ -17,11 +17,15 @@
 ; Same registry identity as the Tauri installer (per-user): Software\Microsoft\Windows\CurrentVersion\Uninstall\<product>
 ; with InstallLocation / UninstallString, so Add/Remove Programs, the uninstaller and the next update keep working.
 ;
-; Not implemented relative to the Tauri template (recorded gaps): version comparison / downgrade protection, the
-; "delete app data" uninstall option, WiX migration, language selector, per-machine install mode.
+; Parity with the Tauri template: version comparison with `nsis_tauri_utils::SemverCompare` (the same plugin, fetched and
+; hash-checked by package_windows.py) and refusal of a downgrade; the "delete app data" uninstall option.
+; Deliberately not implemented, with the reason: WiX migration (tauri.conf.json bundles `nsis` only, no MSI was ever
+; shipped), the language selector (`displayLanguageSelector` is not set, English only), per-machine install mode
+; (`installMode` is not set: current user). The Tauri template's interactive "reinstall / uninstall first" page is
+; replaced by overwriting in place (same registry identity, same files).
 ;
 ; Required defines (package_windows.py): PRODUCTNAME VERSION VERSIONWITHBUILD MANUFACTURER BUNDLEID MAINBINARYNAME
-; SRC_MAIN SRC_DAEMON ICON OUTFILE HOOKS
+; SRC_MAIN SRC_DAEMON ICON OUTFILE HOOKS PLUGINDIR
 
 Unicode true
 ManifestDPIAware true
@@ -32,6 +36,7 @@ RequestExecutionLevel user
 !include FileFunc.nsh
 !include LogicLib.nsh
 !include x64.nsh
+!addplugindir /x86-unicode "${PLUGINDIR}"
 !include "${HOOKS}"
 
 !define UNINSTKEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCTNAME}"
@@ -65,6 +70,12 @@ VIAddVersionKey "LegalCopyright" "${MANUFACTURER}"
 !define MUI_FINISHPAGE_RUN_FUNCTION RunMainBinary
 !define MUI_PAGE_CUSTOMFUNCTION_PRE SkipIfPassive
 !insertmacro MUI_PAGE_FINISH
+; "Delete app data" check box on the uninstall confirmation page (Tauri template, adapted).
+Var DeleteAppDataCheckbox
+Var DeleteAppDataCheckboxState
+!define MUI_PAGE_CUSTOMFUNCTION_SHOW un.ConfirmShow
+!define MUI_PAGE_CUSTOMFUNCTION_LEAVE un.ConfirmLeave
+!define MUI_PAGE_CUSTOMFUNCTION_PRE un.SkipIfPassive
 !insertmacro MUI_UNPAGE_CONFIRM
 !insertmacro MUI_UNPAGE_INSTFILES
 !insertmacro MUI_LANGUAGE "English"
@@ -108,6 +119,26 @@ Function .onInit
   ${If} $INSTDIR == "${PLACEHOLDER_INSTALL_DIR}"
     StrCpy $INSTDIR "$LOCALAPPDATA\${PRODUCTNAME}"
     Call RestorePreviousInstallLocation
+  ${EndIf}
+  ; Refuse to replace a newer installed version (Tauri: ALLOWDOWNGRADES false). SemverCompare gives 1 for an
+  ; upgrade, 0 for the same version and -1 for a downgrade; an unreadable installed version is treated as older.
+  ReadRegStr $R1 HKCU "${UNINSTKEY}" "DisplayVersion"
+  ${If} $R1 != ""
+    nsis_tauri_utils::SemverCompare "${VERSION}" $R1
+    Pop $R0
+    ${If} $R0 = -1
+      ${If} ${Silent}
+      ${OrIf} $PassiveMode = 1
+        System::Call 'kernel32::AttachConsole(i -1)i.r0'
+        ${If} $0 <> 0
+          System::Call 'kernel32::GetStdHandle(i -11)i.r0'
+          FileWrite $0 "A newer version of ${PRODUCTNAME} ($R1) is already installed; downgrades are not allowed.$\r$\n"
+        ${EndIf}
+      ${Else}
+        MessageBox MB_ICONSTOP "A newer version of ${PRODUCTNAME} ($R1) is already installed. Uninstall it first to install version ${VERSION}."
+      ${EndIf}
+      Abort
+    ${EndIf}
   ${EndIf}
 FunctionEnd
 
@@ -180,6 +211,32 @@ Function .onInstSuccess
   ${EndIf}
 FunctionEnd
 
+Function un.SkipIfPassive
+  ${IfThen} $PassiveMode = 1 ${|} Abort ${|}
+FunctionEnd
+
+Function un.ConfirmShow
+  FindWindow $1 "#32770" "" $HWNDPARENT
+  System::Call "user32::GetDpiForWindow(p r1) i .r2"
+  ${If} $2 = 0
+    StrCpy $2 96
+  ${EndIf}
+  IntOp $5 100 * $2
+  IntOp $6 400 * $2
+  IntOp $7 25 * $2
+  IntOp $5 $5 / 96
+  IntOp $6 $6 / 96
+  IntOp $7 $7 / 96
+  System::Call 'user32::CreateWindowEx(i ${__NSD_CheckBox_EXSTYLE}, w "${__NSD_CheckBox_CLASS}", w "Delete the application data", i ${__NSD_CheckBox_STYLE}, i 0, i r5, i r6, i r7, p r1, i0, i0, i0) i .s'
+  Pop $DeleteAppDataCheckbox
+  SendMessage $HWNDPARENT ${WM_GETFONT} 0 0 $1
+  SendMessage $DeleteAppDataCheckbox ${WM_SETFONT} $1 1
+FunctionEnd
+
+Function un.ConfirmLeave
+  SendMessage $DeleteAppDataCheckbox ${BM_GETCHECK} 0 0 $DeleteAppDataCheckboxState
+FunctionEnd
+
 Function un.onInit
   ${GetOptions} $CMDLINE "/P" $PassiveMode
   ${IfNot} ${Errors}
@@ -205,6 +262,15 @@ Section "Uninstall"
   ${EndIf}
   DeleteRegKey HKCU "${UNINSTKEY}"
   DeleteRegKey /ifempty HKCU "${MANUPRODUCTKEY}"
+  ; The data the application keeps for itself (database, keys, caches: %LOCALAPPDATA%\<identifier>, and the WebView2
+  ; profile under %APPDATA%) is only removed when asked for, never on an update (Tauri template behavior).
+  ${If} $DeleteAppDataCheckboxState = 1
+  ${AndIf} $UpdateMode <> 1
+    DeleteRegKey /ifempty HKCU "Software\${MANUFACTURER}"
+    SetShellVarContext current
+    RmDir /r "$APPDATA\${BUNDLEID}"
+    RmDir /r "$LOCALAPPDATA\${BUNDLEID}"
+  ${EndIf}
   ${If} $PassiveMode = 1
   ${OrIf} $UpdateMode = 1
     SetAutoClose true

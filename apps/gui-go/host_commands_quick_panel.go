@@ -121,7 +121,12 @@ func init() {
 			if h.helper == nil {
 				return nil, h.setWebViewModifier(ctx, modifier)
 			}
-			// The native helper (macOS) owns the trigger and reads it at startup: persist, then restart it.
+			// The native helper owns the trigger and implements it on macOS only (Tauri `supports_double_tap`):
+			// accepting the setting elsewhere would promise a trigger that never fires.
+			if modifier != "disabled" && runtime.GOOS != "darwin" {
+				return nil, commandError{Code: "Conflict", Message: "modifier double-tap is not available with the native quick panel on this platform yet"}
+			}
+			// The helper reads the trigger at startup: persist, then restart it.
 			current, err := h.loadQuickPanelSettings(ctx)
 			if err != nil {
 				return nil, internalError(err)

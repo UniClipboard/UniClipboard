@@ -73,6 +73,22 @@ def check_daemon(path, arch):
     return r.returncode == 0, (r.stdout.strip() if r.returncode == 0 else r.stderr.strip())
 
 
+# The NSIS plugin of the Tauri installer (SemverCompare, RunAsUser). The URL and SHA-1 are the ones the Tauri bundler
+# pins (nsis_tauri_utils v0.5.3, from its embedded NSIS setup); the download is refused when the hash differs.
+TAURI_UTILS_URL = 'https://github.com/tauri-apps/nsis-tauri-utils/releases/download/nsis_tauri_utils-v0.5.3/nsis_tauri_utils.dll'
+TAURI_UTILS_SHA1 = '75197FEE3C6A814FE035788D1C34EAD39349B860'
+
+
+def fetch_tauri_utils(dest):
+    import urllib.request
+    dest.mkdir(parents=True, exist_ok=True)
+    data = urllib.request.urlopen(TAURI_UTILS_URL, timeout=60).read()
+    if hashlib.sha1(data).hexdigest().upper() != TAURI_UTILS_SHA1:
+        sys.exit('nsis_tauri_utils.dll does not match the hash pinned by the Tauri bundler')
+    (dest / 'nsis_tauri_utils.dll').write_bytes(data)
+    return dest
+
+
 def wails_version():
     mod = (GUI / 'go.mod').read_text()
     return re.search(r'github.com/wailsapp/wails/v3 (v[0-9][^\s]*)', mod).group(1)
@@ -104,6 +120,8 @@ def main():
     product, version, ident = conf['productName'], conf['version'], conf['identifier']
     pubkey = conf['plugins']['updater']['pubkey']
     arch = ARCH_NAMES[args.arch]
+    # Tauri's default publisher is the second element of the identifier (tauri-utils config.rs `publisher`).
+    manufacturer = ident.split('.')[1]
     prov = provenance()
 
     # Resources (icon, version info, manifest) with the pinned Wails CLI, not a hand-made .rc.
@@ -136,11 +154,12 @@ def main():
     finally:
         syso.unlink(missing_ok=True)
 
+    plugins = fetch_tauri_utils(out / 'plugins')
     setup = out / f'{prefix}{product}_{version}_{arch}-setup.exe'
     run(['makensis', '-V2', f'-DPRODUCTNAME={product}', f'-DVERSION={version}', f'-DVERSIONWITHBUILD={version}.0',
-         f'-DMANUFACTURER={product}', f'-DBUNDLEID={ident}', f'-DMAINBINARYNAME={product}.exe', f'-DSRC_MAIN={exe}',
+         f'-DMANUFACTURER={manufacturer}', f'-DBUNDLEID={ident}', f'-DMAINBINARYNAME={product}.exe', f'-DSRC_MAIN={exe}',
          f'-DSRC_DAEMON={args.daemon.resolve()}', f'-DICON={ROOT / "apps/gui/src-tauri/icons/icon.ico"}', f'-DOUTFILE={setup}',
-         f'-DHOOKS={ROOT / "apps/gui/src-tauri/windows/installer-hooks.nsh"}', str(GUI / 'windows/installer.nsi')])
+         f'-DHOOKS={ROOT / "apps/gui/src-tauri/windows/installer-hooks.nsh"}', f'-DPLUGINDIR={plugins}', str(GUI / 'windows/installer.nsi')])
 
     portable = out / f'{prefix}{product}_{version}_{arch}-portable.zip'
     with zipfile.ZipFile(portable, 'w', zipfile.ZIP_DEFLATED) as z:

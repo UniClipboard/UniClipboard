@@ -1,9 +1,9 @@
 import { attachConsole } from '@tauri-apps/plugin-log'
 import React from 'react'
-import ReactDOM from 'react-dom/client'
 import { Provider } from 'react-redux'
 import { getDeviceMeta } from '@/api/runtime'
 import App from '@/App'
+import { getAppRoot } from '@/app-root'
 import { MainWindowReady } from '@/components/app/MainWindowReady'
 import '@/i18n'
 import { connectDaemonWs, registerDaemonShutdownListener } from '@/lib/daemon-ws-bootstrap'
@@ -87,7 +87,7 @@ registerDaemonShutdownListener().catch(err => {
 })
 
 void Promise.all([windowFrameReady, windowThemeReady]).then(() => {
-  ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
+  getAppRoot().render(
     <React.StrictMode>
       <Provider store={store}>
         <DiagnosticsErrorBoundary

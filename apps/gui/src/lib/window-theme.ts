@@ -3,6 +3,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window'
 import { subscribeDesktopTheme } from '@/lib/desktop-theme'
 import type { DesktopTheme } from '@/lib/desktop-theme'
 import { applyThemeOverrides, applyThemePreset, DEFAULT_THEME_COLOR } from '@/lib/theme-engine'
+import { writeCachedThemeMode } from '@/lib/theme-mode-cache'
 import { startThemeTransition } from '@/lib/theme-transition'
 import type { Settings } from '@/types/setting'
 
@@ -64,6 +65,7 @@ export function createWindowThemeController(animate = false) {
       if (disposed || currentGeneration !== generation) return
       root.classList.remove('light', 'dark')
       root.classList.add(mode)
+      writeCachedThemeMode(mode)
       if (external) {
         for (const [key, value] of Object.entries(external.variables))
           root.style.setProperty(key, value)

@@ -1,8 +1,7 @@
 import { ArrowUpCircle, Download, Loader2, MessageCircle, RotateCw } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { contactAuthor, STARTUP_SUPPORT_URL } from '@/api/startup-support'
-import { checkForUpdate, openUpdaterWindow } from '@/api/updater'
+import { STARTUP_SUPPORT_URL } from '@/api/startup-support-url'
 import { Button } from '@/components/ui/button'
 import type { StartupSnapshot } from '@/lib/startup-progress'
 
@@ -35,6 +34,9 @@ export function StartupActions({ failed, onExport, onRetry, required, snapshot }
     if (contactState === 'working') return
     setContactState('working')
     try {
+      // Loaded on demand: both modules pull in IPC and diagnostics, which the early startup
+      // screen must not wait for.
+      const { contactAuthor } = await import('@/api/startup-support')
       await contactAuthor()
       setContactState('done')
     } catch {
@@ -46,6 +48,7 @@ export function StartupActions({ failed, onExport, onRetry, required, snapshot }
     if (updateState === 'working') return
     setUpdateState('working')
     try {
+      const { checkForUpdate, openUpdaterWindow } = await import('@/api/updater')
       await openUpdaterWindow()
       await checkForUpdate(null)
       setUpdateState('idle')

@@ -11,63 +11,244 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>UniClipboard</title>
+    <script>
+      // Same key and fallback as src/lib/theme-mode-cache.ts.
+      try {
+        const stored = localStorage.getItem('uniclipboard.themeMode')
+        const dark =
+          stored === 'dark' ||
+          (stored !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches)
+        document.documentElement.classList.add(dark ? 'dark' : 'light')
+      } catch {}
+    </script>
     <!-- Startup screen: painted from this static markup before any script loads, and replaced
-         when React renders into #root. Colors mirror the default (zinc) theme background. -->
+         when React renders into #root. It mirrors AppStateShell with the pending startup
+         snapshot (default zinc theme colors). The copy below must match
+         src/i18n/upgrade-progress.ts; src/__tests__/index-startup-splash.test.ts enforces it. -->
     <style>
       html,
       body {
         margin: 0;
         background: #fff;
+        color: oklch(0.21 0.006 285.885);
+        font-family:
+          system-ui,
+          -apple-system,
+          'Segoe UI',
+          sans-serif;
+      }
+      html.dark,
+      html.dark body {
+        background: oklch(0.21 0.006 285.885);
+        color: oklch(0.985 0 0);
       }
       .uc-splash {
         position: fixed;
         inset: 0;
         display: flex;
-        align-items: center;
-        justify-content: center;
+        overflow-y: auto;
         background: #fff;
       }
-      .uc-splash-spinner {
-        width: 22px;
-        height: 22px;
+      html.dark .uc-splash {
+        background: oklch(0.21 0.006 285.885);
+      }
+      .uc-splash-body {
+        display: flex;
+        flex-direction: column;
+        width: 100%;
+        max-width: 28rem;
+        margin: auto;
         box-sizing: border-box;
-        border: 2px solid rgb(113 113 122 / 0.25);
-        border-top-color: rgb(113 113 122 / 0.9);
+        padding: 1.5rem 1.5rem 3rem;
+      }
+      .uc-splash-brand {
+        display: flex;
+        align-items: center;
+        gap: 0.625rem;
+        margin-bottom: 2.5rem;
+        font-size: 0.875rem;
+        line-height: 1.25rem;
+        font-weight: 600;
+      }
+      .uc-splash-brand img {
+        width: 2rem;
+        height: 2rem;
+      }
+      .uc-splash-muted {
+        color: oklch(0.552 0.014 285.938);
+      }
+      html.dark .uc-splash-muted {
+        color: oklch(0.705 0.015 286.067);
+      }
+      .uc-splash-category {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin-bottom: 0.75rem;
+        font-size: 0.875rem;
+        line-height: 1.25rem;
+      }
+      .uc-splash-spinner {
+        width: 1rem;
+        height: 1rem;
+        box-sizing: border-box;
+        border: 2px solid currentColor;
+        border-right-color: transparent;
         border-radius: 50%;
         animation: uc-splash-spin 0.9s linear infinite;
+      }
+      .uc-splash h1 {
+        margin: 0;
+        font-size: 1.5rem;
+        line-height: 2rem;
+        font-weight: 600;
+      }
+      .uc-splash p {
+        margin: 0.5rem 0 0;
+        font-size: 0.875rem;
+        line-height: 1.5rem;
+      }
+      .uc-splash-bar {
+        margin-top: 2rem;
+        height: 0.375rem;
+        overflow: hidden;
+        border-radius: 9999px;
+        background: oklch(0.961 0.006 286.478);
+      }
+      html.dark .uc-splash-bar {
+        background: oklch(0.274 0.006 286.033);
+      }
+      .uc-splash-bar > div {
+        width: 33.333%;
+        height: 100%;
+        border-radius: 9999px;
+        background: oklch(0.21 0.006 285.885 / 0.35);
+        animation: uc-splash-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+      }
+      html.dark .uc-splash-bar > div {
+        background: oklch(0.985 0 0 / 0.35);
+      }
+      .uc-splash-meta {
+        display: flex;
+        justify-content: space-between;
+        gap: 0.5rem;
+        margin-top: 0.5rem;
+        font-size: 0.75rem;
+        line-height: 1rem;
+        font-variant-numeric: tabular-nums;
       }
       @keyframes uc-splash-spin {
         to {
           transform: rotate(360deg);
         }
       }
-      @media (prefers-reduced-motion: reduce) {
-        .uc-splash-spinner {
-          animation-duration: 3s;
+      @keyframes uc-splash-pulse {
+        50% {
+          opacity: 0.5;
         }
       }
-      @media (prefers-color-scheme: dark) {
-        html,
-        body,
-        .uc-splash {
-          background: #18181b;
+      @media (prefers-reduced-motion: reduce) {
+        .uc-splash-spinner,
+        .uc-splash-bar > div {
+          animation: none;
         }
       }
     </style>
-    <script>
-      const startupTimingIndex = Math.round(performance.now())
-      console.log(
-        `[StartupTiming] index.html inline t=${startupTimingIndex}ms ts=${new Date().toISOString()}`
-      )
-    </script>
   </head>
 
   <body>
     <div id="root">
-      <div class="uc-splash" role="status" aria-label="Loading">
-        <div class="uc-splash-spinner"></div>
+      <div class="uc-splash" role="status">
+        <div class="uc-splash-body">
+          <div class="uc-splash-brand">
+            <img src="/src/updater/app-icon.png" alt="" width="32" height="32" />
+            <span>UniClipboard</span>
+          </div>
+          <div class="uc-splash-category uc-splash-muted">
+            <span class="uc-splash-spinner"></span>
+            <span data-copy="category"></span>
+          </div>
+          <h1 data-copy="title"></h1>
+          <p class="uc-splash-muted" data-copy="description"></p>
+          <div class="uc-splash-bar"><div></div></div>
+          <div class="uc-splash-meta uc-splash-muted">
+            <span data-copy="processing"></span>
+            <span data-copy="elapsed"></span>
+          </div>
+        </div>
       </div>
     </div>
+    <script type="application/json" id="uc-splash-copy">
+      {
+        "en-US": {
+          "category": "Starting up",
+          "title": "Starting the app",
+          "description": "Connecting to the background service. The app will open when ready.",
+          "processing": "Processing",
+          "elapsed": "Elapsed 0:00"
+        },
+        "zh-CN": {
+          "category": "启动准备",
+          "title": "正在启动",
+          "description": "正在连接后台服务，就绪后将自动进入应用。",
+          "processing": "处理中",
+          "elapsed": "已用时 0:00"
+        },
+        "zh-TW": {
+          "category": "启动准备",
+          "title": "正在启动",
+          "description": "正在连接后台服务，就绪后将自动进入应用。",
+          "processing": "处理中",
+          "elapsed": "已用时 0:00"
+        },
+        "ja-JP": {
+          "category": "起動準備",
+          "title": "アプリを起動しています",
+          "description": "バックグラウンドサービスに接続しています。準備ができると自動的に開きます。",
+          "processing": "処理中",
+          "elapsed": "経過時間 0:00"
+        },
+        "ru-RU": {
+          "category": "Подготовка к запуску",
+          "title": "Запуск приложения",
+          "description": "Подключение к фоновой службе. Приложение откроется, когда всё будет готово.",
+          "processing": "Обработка",
+          "elapsed": "Прошло 0:00"
+        },
+        "pt-BR": {
+          "category": "Inicialização",
+          "title": "Iniciando o aplicativo",
+          "description": "Conectando ao serviço em segundo plano. O aplicativo abrirá quando estiver pronto.",
+          "processing": "Processando",
+          "elapsed": "Tempo decorrido 0:00"
+        }
+      }
+    </script>
+    <script>
+      // Fill the startup screen copy in the stored or system language, mirroring the locale
+      // resolution in src/i18n/index.ts.
+      try {
+        const copy = JSON.parse(document.getElementById('uc-splash-copy').textContent)
+        let language = null
+        try {
+          language = localStorage.getItem('uniclipboard.language')
+        } catch {}
+        if (!copy[language]) {
+          const parts = (navigator.language || 'en').toLowerCase().split('-')
+          const traditional = ['hant', 'tw', 'hk', 'mo'].some(part => parts.includes(part))
+          language =
+            parts[0] === 'zh'
+              ? traditional
+                ? 'zh-TW'
+                : 'zh-CN'
+              : { ja: 'ja-JP', ru: 'ru-RU', pt: 'pt-BR' }[parts[0]] || 'en-US'
+        }
+        document.querySelectorAll('[data-copy]').forEach(node => {
+          node.textContent = copy[language][node.getAttribute('data-copy')]
+        })
+      } catch {}
+    </script>
+
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

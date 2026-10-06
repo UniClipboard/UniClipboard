@@ -50,6 +50,8 @@ vi.mock('@/observability/diagnostics', () => ({
   DiagnosticsErrorBoundary: ({ children }: { children: ReactNode }) => children,
 }))
 
+// The early startup screen has its own test; these tests cover the bootstrap module.
+vi.mock('@/startup-screen', () => ({ showStartupScreen: vi.fn() }))
 vi.mock('@/store', () => ({
   store: {},
 }))

@@ -39,7 +39,7 @@
 | F3 | 打包进了 `libwayland-client`、`libEGL`、`libGL*`、`libdrm`、Mesa 等宿主驱动栈库 | 解包后的文件清单检查（排除列表即策略）；`check-linux-bundles.py` 的同一断言在本包上执行 |
 | F4 | `GIO_MODULE_DIR` 缺失，自带 GLib 加载宿主 GIO 模块（gvfs/dconf）崩溃 | 干净容器没有宿主 GIO 模块；另在带 gvfs 的 17c2 容器里再跑一遍启动，日志不得含 GIO/EGL/loader 错误 |
 | F5 | daemon 不是真实 release 产物或与 GUI 版本不匹配（GUI 对 daemon 版本做握手） | 记录来源证据；启动后 `daemon.conn` 的 pid 的 `/proc/<pid>/exe` 位于挂载内，其 SHA-256 等于 `build-evidence.txt`；GUI 到 daemon 的 HTTP/WS 握手成功（`panelReady`） |
-| F6 | `cd "$APPDIR"` 破坏相对路径参数 | GUI 不消费相对路径的命令行参数（`%U` 来自桌面入口）；`UC_APPIMAGE_ORIGINAL_CWD` 保留原目录。本片只确认现有参数处理没有相对路径依赖，deep link/文件关联不在范围 |
+| F6 | `cd "$APPDIR/usr"` 破坏相对路径语义 | 已核对事实：GUI 唯一消费的参数是 quick-panel 启动标志（`main.go` 的 `hasArg`）与自启动的 `--autostart`，没有文件参数、没有 deep link/URL 处理，桌面入口里的 `%U` 无消费者。因此没有需要保留的相对路径语义，AppRun 不导出原工作目录（没有消费者的变量不加）；将来若加文件关联，必须在那时设计原目录传递 |
 | F7 | 自启动条目指向临时挂载路径，或旧 Tauri 条目与新条目并存 | 真实 AppImage 内 `update_autostart(true)`：`Exec=` 必须等于 `$APPIMAGE` 且不在 `/tmp/.mount_*`；预置 Tauri 风格旧条目被清除；禁用后条目消失 |
 | F8 | 更新验证链：未受信任签名被安装 | 复用 17c3 的 fixture 密钥：不受信任签名的下载必须被拒绝，AppImage 文件字节不变 |
 | F9 | 更新后文件被替换但重启仍运行旧映像，或旧 daemon 残留 | 更新后新进程的 `/proc/<pid>/exe` 在新映像挂载内、`$APPIMAGE` 文件的 SHA-256 等于 v2、旧 daemon pid 已退出 |
@@ -49,13 +49,15 @@
 
 ## E2E 设计
 
-镜像：在 `ubuntu:24.04` 上 **只** 安装 Xvfb、xauth、D-Bus、xdotool、`libgl1`、`libegl1`、`libgl1-mesa-dri`、`libx11-6`、`libwayland-client0`、字体与 `libfuse2`，不装 GTK/WebKit。该镜像按 AppImage 规范属于「宿主驱动栈」，与策略文档一致。构建镜像沿用 `uc-gui-go-linux-build:17c2`。
+镜像 `uc-gui-go-linux-runtime:17c4`（`apps/gui-go/e2e/linux/Dockerfile.17c4-runtime`）：`ubuntu:24.04` 上 **没有** GTK3/GTK4、WebKitGTK、JavaScriptCore、libsoup、cairo、pango、gdk-pixbuf。它只提供 AppImage 约定留给宿主的库。第一次启动失败（`probe1`：`libharfbuzz.so.0: cannot open shared object file`）后，没有凭「AppDir 里缺了」就往宿主里装库，而是先把包内二进制的 `NEEDED` 减去 AppDir 内已有的库，得到 23 个宿主提供的 soname（`probe2/host-provided-sonames.txt`），再逐个核对它们是否是 **固定版 linuxdeploy 排除列表** 中的一行（`probe3/exclude-check-exact.txt`：从 `linuxdeploy-07333c6` 二进制中提取的排序列表，23/23 为精确行）。因此 `libharfbuzz`、`libfreetype`、`libfontconfig`、`libfribidi`、`libexpat`、`libstdc++`、`libgcc_s`、`libgmp`、`libgpg-error`、`libcom_err`、`libz`、`libxcb`、`libX11`、`libX11-xcb`、`libdrm`、`libgbm`、`libEGL`、`libGL`、`libwayland-client` 与 libc 家族都是 **标准的宿主前置条件**，不是打包缺陷。
+
+**宿主 GLib 的存在**：`libharfbuzz0b` 在 Debian/Ubuntu 上依赖 `libglib2.0-0t64`，所以这个宿主有 GLib/GIO，每个桌面都一样。因此验收口径是「宿主没有 GTK/WebKitGTK」，**不是**「宿主没有 GLib」。GLib 不在排除列表中，AppImage 自带一份；E2E 用 `/proc/<pid>/maps` 证明 GUI 与 WebKit 进程实际映射的是包内的 `libglib-2.0`、`libgio-2.0`（挂载路径下），而不是宿主的副本。
 
 脚本 `apps/gui-go/e2e/linux_appimage_run.py`（运行在干净镜像中，复用 `linux_xvfb_run.py` 的 `Gui` 控制文件通道）：
 
 1. `clean-host`：`ldconfig -p` 中没有 `libwebkit2gtk-4.1`、`libgtk-3`。
 2. `launch`：用隔离临时 HOME、`UC_PORTABLE=1`、file keystore、`UC_DISABLE_SYSTEM_CLIPBOARD=1` 启动 AppImage；断言 `panelReady`、辅助进程与 daemon 的映像归属、daemon SHA。
-3. `autostart`：F7 的三项断言。
+3. `autostart`：F7 的三项断言；分别用 `release+e2e` 构建（release-no-profile：没有 `UC_PROFILE`，条目名是产品名 `UniClipboard.desktop`）与带 `UC_PORTABLE=1` 的运行；**非 portable 数据根** 需要 Secret Service，而 gnome-keyring 会把 GTK 拖进宿主，故先在干净宿主里直接观察 daemon 在无 Secret Service 时的表现，结果写入「验证结果」；若 daemon 不能启动，非 portable 数据根保持 OPEN 并给出该原因
 4. `update-bad` / `update-good`：F8、F9；v2 AppImage 与 v1 由同一管线构建，v2 多一个 e2e 专用标记文件，签名用 `e2e/updatetool` 的隔离 fixture 私钥，feed 是本地 HTTP 服务。
 5. `negative-control`：对照包（无重定位）在同一环境必须启动失败。
 

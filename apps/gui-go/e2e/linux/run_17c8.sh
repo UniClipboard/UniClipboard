@@ -4,6 +4,8 @@
 #                                      the Go CLI in the container into a NEW cache directory /cache/out-17c8-<tag> (refuses to reuse
 #                                      one). The 17c5 release daemon is copied in after a SHA-256 check (never rebuilt, never run
 #                                      with --version). Provenance (HEAD, dirty diff, dist tree hash, binary SHA-256) goes to <artdir>/inputs/.
+#   run_17c8.sh wayland <tag> <outdir>  the existing headless-sway Layer Shell E2E (linux_wayland_run.py) against the same binaries (the 17c8 change
+#                                      moved the Linux panel size constants that path shares); same copy-out rule as `run`.
 #   run_17c8.sh run <tag> <outdir>     run the scenario against /cache/out-17c8-<tag>; the binaries it ran are copied into <outdir>/binaries.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -45,5 +47,15 @@ case "$mode" in
       code=$?
       kill $xvfb 2>/dev/null
       exit $code' ;;
+  wayland)
+    "${docker_run[@]}" -e CACHE_DIR="$CACHE_DIR" "$IMAGE" bash -c '
+      set -e
+      [ -d "$CACHE_DIR" ]
+      mkdir -p /out/binaries && cp "$CACHE_DIR"/gui-go "$CACHE_DIR"/uniclip "$CACHE_DIR"/uniclipd /out/binaries/
+      (cd /out/binaries && sha256sum * > /out/binaries.sha256)
+      uname -a > /out/container-uname.txt; sway --version > /out/sway-version.txt; git -C /work rev-parse HEAD > /out/head.txt
+      set +e
+      dbus-run-session -- python3 apps/gui-go/e2e/linux_wayland_run.py --out /out --binaries /out/binaries
+      exit $?' ;;
   *) echo "unknown mode" >&2; exit 2 ;;
 esac

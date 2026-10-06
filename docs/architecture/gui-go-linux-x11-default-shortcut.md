@@ -42,3 +42,35 @@
 - Wayland / GNOME / KDE / Hyprland 实机、真实 GPU、窗口管理器下的焦点与放置、粘贴到前一个应用。
 - XGrabKey 的 CapsLock/NumLock 变体：已读 Wails 源码，未在 Xvfb 里用真实锁定修饰键验证。
 - 原生 amd64、AppImage 内的同一场景（本片不改变打包输入，没有重跑 AppImage 回归；原因见 PR 说明）。
+
+## 修复
+
+唯一的产品改动：`apps/gui-go/windows.go` 的 `panelSize` 在 Linux 上返回固定 800x560（乘以窗口缩放系数，钳制在 0.8–1.5，非有限值按 1 处理），不再使用 macOS/Windows 的卡片几何（360x420 加两侧 16 像素，预览展开时加宽）。Wayland Layer Shell 路径原来就用同一组常量；常量与 `linuxPanelDimensions` 从仅 Linux+gtk3 编译的 `panel_layer_linux.go` 移到 `windows.go`，两条路径共用同一个来源，没有并行的两套数值。预创建、显示前定尺寸、前端的 `set_quick_panel_window_size` 三处调用都经过同一个函数。macOS/Windows 的数值与分支未改（darwin 与 windows/amd64 编译通过，`go test .` 通过，没有新增单元测试）。
+
+## 修复后的实际结果（`t-0188-artifacts/linux-17c8/green1`）
+
+- 同一套场景、同一 release daemon（SHA-256 与 baseline 相同），GUI 在修改后的工作树构建（`inputs/dirty.diff` 含修复，随后以提交 `4cd8856e3` 固化），17 项检查全部通过。
+- C4：面板首次映射尺寸 **800x560**（CreateNotify 800x560，ConfigureNotify 定位到 (240,120)，正好是 1280x800 屏幕上的居中位置，随后 MapNotify）。
+- C5：首次 MapNotify 之后没有改变尺寸的 ConfigureNotify；第二次显示只有 MapNotify。这是在默认窗口缩放下的结论。
+- baseline 同样没有首映射后的尺寸跳变；修复改变的是“首映射尺寸错误”，不是“跳变”。本片没有观察到、也没有消除过 X11 上的尺寸跳变。
+- C1–C3 与 baseline 一致，仍全绿。
+
+## 复跑
+
+```bash
+apps/gui-go/e2e/linux/run_17c8.sh build <tag> <artifact-dir>   # 真实前端（VITE_GUI_GO_E2E=1）+ 容器内构建 + 来源记录；tag 不可复用
+apps/gui-go/e2e/linux/run_17c8.sh run <tag> <artifact-dir>     # Xvfb 内 L1–L4；拷出实际运行的二进制与 SHA-256
+```
+
+`run` 的退出码即断言结果；`linux-assertions.json` 里 `quick_panel_x11_timeline` 是该窗口的 X 结构事件序列（`xev-root-substructure.log` 是原始日志，时间戳是接收时刻的单调时钟）。前提：Docker、`uc-gui-go-linux-build:17c2` 镜像、`uc-gui-go-linux-cache` 卷里有 17c5 的 release daemon（构建脚本检查 SHA-256）。
+
+## 默认启用状态与设置页（来源）
+
+daemon 的 `quickPanel.enabled` 在新资料上默认为 true（见上，`product_default_enabled`）。场景里“用户打开开关”的 L2 步骤只在默认为关时才执行，本次因此没有执行；驱动在 `observe`/`rebind` 阶段不会改动该开关。
+
+## 仍为 OPEN（没有删减目标）
+
+- 非默认窗口缩放下的 X11 尺寸与首帧之后的尺寸变化（`gtk_window_set_default_size` 对已映射窗口的行为需要单独的事件序列）。
+- 真实窗口管理器下的焦点与放置、Wayland（GNOME/KDE/Hyprland 实机）、真实 GPU、粘贴到前一个应用。
+- CapsLock/NumLock 变体的真实按键验证（源码已读）。
+- AppImage 内的同一场景：本片只改 `windows.go` 的面板尺寸与 E2E 脚本，打包输入没有变化，所以没有重跑 AppImage 回归；原生 amd64 同样没有。

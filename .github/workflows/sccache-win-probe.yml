@@ -39,35 +39,21 @@ jobs:
         env:
           UC_PINNED_RUST: 1.95.0
         run: node scripts/ci/isolate-build-toolchain.mjs
-      - name: probe
-        shell: bash
-        run: |
-          set -x
-          which cargo sccache || true
-          mkdir -p "$RUNNER_TEMP/p/src" && cd "$RUNNER_TEMP/p"
-          printf '[package]\nname="p"\nversion="0.1.0"\nedition="2021"\n' > Cargo.toml
-          echo 'fn main(){}' > src/main.rs
-          echo "--- direct cargo from bash"
-          cargo build --release
-          sccache --show-stats | head -4
-          rm -rf target
-          echo "--- cargo via node execFileSync"
-          node -e "require('child_process').execFileSync('cargo',['build','--release'],{stdio:'inherit'})"
-          sccache --show-stats | head -4
-          echo "--- node resolves cargo to:"
-          node -e "const c=require('child_process');console.log(c.execFileSync('where',['cargo'],{encoding:'utf8'}));console.log(process.env.RUSTC_WRAPPER, process.env.PATH.split(';').filter(p=>/sccache|cargo/i.test(p)))"
-          echo "--- error log"
-          cat "$RUNNER_TEMP/sccache-err.log" 2>/dev/null | tail -20 || true
-      - name: real sidecar build for three minutes
+      - name: full sidecar build with a stats sampler
         shell: bash
         run: |
           set +e
-          sccache --zero-stats
-          timeout 180 node scripts/prepare-sidecars.mjs --timings > "$RUNNER_TEMP/real.log" 2>&1
-          echo "--- real build tail"
-          tail -5 "$RUNNER_TEMP/real.log"
-          echo "--- stats after 180s"
-          sccache --show-stats | head -12
-          echo "--- error log"
-          tail -30 "$RUNNER_TEMP/sccache-err.log" 2>/dev/null
+          ( while true; do
+              echo "$(date -u +%T) $(sccache --show-stats | grep -E 'Compile requests  |Cache misses  |Cache hits  ' | tr -s ' ' | tr '\n' ';')" >> "$RUNNER_TEMP/sampler.log"
+              sleep 45
+            done ) &
+          node scripts/prepare-sidecars.mjs --timings > "$RUNNER_TEMP/real.log" 2>&1
+          echo "build exit=$?"
+          kill %1 2>/dev/null
+          echo "--- sampler"
+          cat "$RUNNER_TEMP/sampler.log"
+          echo "--- final stats"
+          sccache --show-stats | head -8
+          echo "--- error log (non-WARN opendal lines)"
+          grep -v "opendal::services" "$RUNNER_TEMP/sccache-err.log" | tail -30
           exit 0

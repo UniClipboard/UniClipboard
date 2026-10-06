@@ -235,15 +235,15 @@ beta.28 在 Linux 默认链接 GTK4 + `webkitgtk-6.0`；构建标签 `gtk3` 切�
 | L2 | X11 全局快捷键，默认 `ctrl+alt+v`，冲突报错，两段和弦 | `shortcut_registry.rs` | **有**：`global_shortcut_linux_x11.go`（XGrabKey） | 直接用 `app.GlobalShortcut`，沿用既有 Uni 适配 | Xvfb（`xvfb-run6/7/8`）：E2E **测试绑定**（`ctrl+alt+shift+f11`，经 `UC_GUI_GO_E2E_DEFAULT_SHORTCUT` 覆盖，**不是产品默认 `ctrl+alt+v`**）经 Wails 注册；第二个 X 客户端无法抢占同一组合（证明 XGrabKey 真实存在）；真实 XTEST 按键显示/隐藏；另一客户端占用时更换返回 `Conflict`（“already registered”）且旧绑定保留，释放后同一更换成功。**产品默认快捷键与真实前端首次启动/配置同步路径未覆盖，仍需无测试接缝的后续 E2E** |
 | L3 | Wayland：不注册，用户在合成器绑定 `uniclipboard --quick-panel`，界面给出说明 | `shortcut_registry.rs:26-31,90-94` | **有** portal 后端（`global_shortcut_linux_portal.go`），但 `register` 恒返回 nil，失败只走应用错误处理，**无法确认已绑定**，最终按键由合成器决定 | 仍交给 Wails portal 请求；`quick_panel_uses_compositor_shortcuts` 在 Wayland 下恒为 true（`compositor_linux.go`），界面显示绑定说明；`--quick-panel` 经单实例到达 | 模拟 Wayland 环境（`WAYLAND_DISPLAY`/`XDG_SESSION_TYPE=wayland`，无 portal）：compositor 标志为 true、GUI 不崩溃（`xvfb-run6/7/8` 检查 9）；`--quick-panel` 转发见 L12；**portal 真实绑定与 Wayland 会话未验证** |
 | L4 | WebView 面板：显示/隐藏、失焦隐藏、聚焦、定位 | `quick_panel/mod.rs` | 窗口与屏幕 API | 复用既有 WebView 面板；Linux 的 `panelFocus` 用普通聚焦（无前台锁） | Xvfb 只证明显示/隐藏状态；**无窗口管理器，真实聚焦、失焦隐藏与位置未验证** |
-| L5 | Wayland Layer Shell 面板（覆盖层、全屏点击关闭背板、独占键盘） | `layer_shell.rs`、`linux.rs` | **无** | **代码未实现，后续必做切片（17c2）**。Tauri 靠 dlopen `libgtk-layer-shell`；Go 侧要先做选型核对（复用 `libgtk-layer-shell` 经 cgo/dlopen，或其他成熟方案），再实现；不得以“没有原生主机”替代实现 | **未实现，必做** |
-| L6 | Hyprland 光标定位与按显示器的可用区域/比例上限（90% 宽、80% 高） | `uc_desktop::hyprland`、`linux.rs:prepare_show` | 无 | **代码未实现，后续必做切片（17c2，与 L5 同属 Wayland 面板）**；当前面板只按通用屏幕居中/跟随光标，不是 Tauri 契约 | **未实现，必做** |
+| L5 | Wayland Layer Shell 面板（覆盖层、全屏点击关闭背板、独占键盘） | `layer_shell.rs`、`linux.rs` | **无**（beta.28 源码全文检索零命中；只提供 `NativeWindow()`） | `internal/layershell`（cgo，`dlopen("libgtk-layer-shell.so.0")`，与 Tauri 同一成熟库，不手写协议）+ `panel_layer_linux.go`；隐藏面板在 realize 之前 `Attach`；每个输出一张透明背板，背板输入区域挖掉面板矩形，点击以 **释放** 事件关闭；显示时键盘独占，任何隐藏路径都释放键盘并销毁背板 | 容器内真实无头 sway（wlroots）：协议角色、overlay 层、命名空间、独占键盘、Esc 经真实前端关闭、点击面板内/外、每输出背板；`wayland-run9/10/11/12` 31/31。**Hyprland、GNOME、KDE、真实 GPU/桌面未验证**；缺库回退只证明回退可用（不算 L5 完成） |
+| L6 | Hyprland 光标定位与按显示器的可用区域/比例上限（90% 宽、80% 高） | `uc_desktop::hyprland`、`linux.rs:prepare_show` | 无 | `internal/hyprland` 的 `Cursor()`（`j/cursorpos`）+ `layerLayout`：光标所在输出（否则主显示器、再退到第 0 个）、该输出的工作区、90%/80% 上限、`axisAnchored` 的向前/翻转/夹紧、`windowScale` [0.8,1.5] | 两个不同尺寸/缩放/位置的 sway 输出，从合成器截图差分量出面板矩形并与独立重写的期望比较（含 720×400 小输出上限）；光标来自 **脚本化 Hyprland socket**，不是真实 Hyprland |
 | L7 | 粘贴到前一个应用：仅 Hyprland（记录活动窗口、校验、聚焦、确认、`send_shortcut`，终端用 Ctrl+Shift+V）；其他环境明确报“不支持” | `hyprland.rs`、`linux.rs` | **无** | `internal/hyprland`（同协议、同校验、同期限）+ `previous_app_linux.go`；非 Hyprland 返回 Tauri 的原文错误并重新显示面板；`type_file_paths` 明确不支持 | 脚本化 socket 契约 29/29（`linux_contract`，`contract/`）；Xvfb 整链（显示时记录活动窗口 → 校验 → 聚焦 → 确认 → `CTRL SHIFT V` 发到该地址，对脚本化 socket）通过；非 Hyprland 环境的明确错误通过；**真实 Hyprland 未验证**（`hl.dsp.*` 语法随 Hyprland 版本） |
 | L8 | 双击修饰键：仅原生 X11；有 `WAYLAND_DISPLAY`（含 XWayland）或无 `DISPLAY` 报 `unsupported_display_session` | `modifier_double_tap_platform.rs` | **无** 键盘状态接口 | `modifier_keys_linux.go`：cgo `XQueryKeymap`，选中键与其他键的快照语义与 Tauri 一致，复用既有检测器 | Xvfb 真实 XTEST：两次 Alt 轻击打开面板，Alt+ 其他键不算轻击；模拟 Wayland 环境返回 `unsupported_display_session` 并拒绝设置。采样为 20 ms 轮询，极短的按键会落在两次采样之间（见结果小节 run4） |
 | L9 | 开机自启：XDG `.desktop`，参数 `--autostart`，单 profile | `adapters/autostart.rs` | **有**：`autostart_linux.go` | 直接用 `app.Autostart`；**缺口**：AppImage 内 `os.Executable()` 是镜像临时挂载路径（`resolvedExecutable`，无覆盖项），故 AppImage 下自写同格式条目，`Exec=$APPIMAGE`（`autostart_linux.go`）；旧 Tauri 同名条目（Exec 指向其他程序）在对账时清理 | Xvfb 隔离 `XDG_CONFIG_HOME`：启用写出 `UniClipboard-<profile>.desktop`（`Exec` 指向本可执行文件，带 `--autostart`），停用删除（走 Wails 路径）。**AppImage 自写条目与旧 Tauri 条目清理未运行**；Tauri `auto-launch` 的文件名为 **推断** 未核实 |
 | L10 | 数据根、日志、便携模式 | `uc-app-paths` | 无 | 既有 `apppaths`（XDG） | 与 Tauri 同路径实现；Xvfb 便携沙箱运行通过，生产（非便携）数据根未运行 |
 | L11 | daemon：兄弟路径 `uniclipd`，detached 启动，退出时 SIGTERM（轻量模式/重启保留） | `spawn.rs`、`daemon_probe.rs` | 无 | 既有 `daemonproc`/`daemonlife` | Xvfb：GUI 退出码 0、daemon 被 GUI 停止（SIGTERM 路径）；轻量模式/重启保留 daemon 未重跑 |
 | L12 | 单实例与 `--quick-panel` 转发；无 GUI 时退出码 1 | `run.rs:391-455` | **有**：D-Bus（`single_instance_linux.go`） | 既有 `single_instance.go` | Xvfb 私有 D-Bus：`--quick-panel` 的第二个进程转发给运行中的 GUI 并显示面板（先确认面板原为隐藏）；普通第二次启动退出 0；无 GUI 时退出码 1 未测 |
-| L13 | 托盘（appindicator） | `tray.rs` | **有**：StatusNotifierItem（`systemtray_linux.go`），不需要 libappindicator | 既有托盘逻辑。Wails 源码走 StatusNotifierItem，不链接 libappindicator；deb/rpm 的运行时依赖（含 `gtk-layer-shell`）待 L5 选型后再定，本片的包只声明 GTK3/WebKitGTK/X11 | **无托盘宿主，未验证** |
+| L13 | 托盘（appindicator） | `tray.rs` | **有**：StatusNotifierItem（`systemtray_linux.go`），不需要 libappindicator | 既有托盘逻辑。Wails 源码走 StatusNotifierItem，不链接 libappindicator；deb/rpm 现在与 Tauri 一致地声明 `libgtk-layer-shell0` / `gtk-layer-shell`（17c2 改了 `package_linux.py`，**包未重建、依赖声明未在包管理器里验证**） | **无托盘宿主，未验证** |
 | L14 | 通知 | `lightweight.rs` | **有**：D-Bus（`notifications_linux.go`） | 既有通知逻辑 | **无通知服务，未验证** |
 | L15 | 唤醒补检查 | Tauri 在 Linux 没有（`wake_source.rs` 空实现） | **有**：`Linux.SystemDidWake`（logind，映射到 `Common.SystemDidWake`） | 现有更新调度器的唤醒路径直接适用，比 Tauri 多一个能力 | **未验证**（需要真实挂起/恢复） |
 | L16 | WebKitGTK DMABUF：Wayland 下默认关闭 | `run.rs:176-250` | 无 | `webkit_env_linux.go` | 代码；未在真实 Wayland 验证 |
@@ -312,7 +312,7 @@ apps/gui-go/e2e/linux/run.sh package <dir>  # 容器内：生产前端包 + pack
 
 | 项 | 性质 | 去向 |
 | --- | --- | --- |
-| L5 Wayland Layer Shell 面板；L6 Hyprland 光标定位与可用区域上限 | **代码未实现** | 必做切片 17c2：先做选型核对，再实现，并以脚本化合成器/真实 Wayland 主机验证 |
+| L5 Wayland Layer Shell 面板；L6 Hyprland 光标定位与可用区域上限 | **已实现，容器内真实 sway 验证**（17c2） | 真实 Hyprland/GNOME/KDE、真实 GPU 与桌面输入栈仍未验证；AppImage 的 `AppRun` 强制 `GDK_BACKEND=x11`，打包产物里 Layer Shell 不会激活，要在 17c4 的 AppImage 切片里处理（并随包带上 `libgtk-layer-shell.so.0`，Tauri 即如此） |
 | L19 更新清单把所有 Linux AppImage 归到 `linux-x86_64` | 既有缺陷，生成器未改 | 必做独立切片 17c3：修 `scripts/assemble-update-manifest.js`，用隔离 fixture 清单验证，不触发正式发布、不改生产源 |
 | L20 AppImage 自包含（linuxdeploy + 固定插件、`linux-appimage-library-policy.md`）、真实 Rust daemon 来源核验、真实 AppImage 启动与更新工件、rpm 的 `.build-id` 清理、amd64 构建 | **打包集成未完成** | 必做切片 17c4 |
 | 产品默认 `ctrl+alt+v` 与真实前端首次启动/配置同步的 Linux E2E（不用测试接缝） | 脚本未写 | 后续必做 E2E |
@@ -369,6 +369,38 @@ apps/gui-go/e2e/linux/run.sh package <dir>  # 容器内：生产前端包 + pack
 - **不能证明**：Hyprland 本身（Hyprland 不在 Ubuntu 仓库；光标与活动窗口继续用脚本化 socket，与真实 sway 并存）、GNOME（不实现 wlr-layer-shell，走回退）、KDE、真实 GPU 渲染、真实桌面的输入栈。
 - AppImage：Tauri 的 `AppRun` 钩子强制 `GDK_BACKEND=x11`（`docs/architecture/linux-appimage-library-policy.md`），因此在打包产物里 Layer Shell 路径不会激活；本片不改变打包（17c4）。
 
+### 17c2 结果
+
+工件（542 MB，含截图与协议轨迹）在 `/Users/mark/.herdr-projects/uni/t-0188-artifacts/linux-17c2/e2e-runs/`，各文件哈希在同目录上级 `SHA256SUMS-e2e-runs.txt`；镜像构建日志在 `image-build/`。全部运行（含失败）保留，没有删除任何一轮。
+
+**选型与镜像**：Wails 无 Layer Shell（源码检索零命中）；使用成熟的 `libgtk-layer-shell` 0.8.2，运行时 `dlopen`。`dlopen` 发生在 libwayland-client 已被 GTK 加载之后，真实 sway 上初始化成功，所以失败方式 F3（链接顺序）在此环境未出现；未对其他版本或合成器验证。测试用 `uc-gui-go-linux-build:17c2`（`:17c` 之上加 `sway 1.9`、`libgtk-layer-shell0`、`grim`、`wtype`、`wayland-utils`、`python3-gi`、Mesa；`Dockerfile.17c2` + `verify_image_17c2.sh` 严格逐项验收，不依赖工具 `-h` 退出码）。第一版 Dockerfile 把验收命令用 `;` 串在一起会掩盖前面的失败，已改正，`build1.log` 保留。
+
+**运行记录**（场景脚本 `e2e/linux_wayland_run.py`，`run.sh wayland|wayland-nolib`）：
+
+| 运行 | 结果 | 原因归属（有证据） |
+| --- | --- | --- |
+| run1 | 失败（脚本崩溃于焦点检查） | 脚本/环境：无头 sway 没有键盘设备，seat 不下发键盘能力，另一个应用从未获得 `focus-in`。修复：常驻虚拟键盘 |
+| run2、run3、run4（run3 与 run2 同结果，run4 加入页面内监听器诊断） | 各有多项失败（Esc、面板内点击、数项位置测量） | **三个互相独立的原因**：(a) 脚本：面板内容处于 **锁定视图**（`QuickPanelApp.tsx` 只在内容已解锁时才挂载带 Esc 处理器的 `ClipboardHistoryPanel`），Esc 是该视图的无操作；用页面内注入的监听器（`wayland-run4` 的 `escDiagnostics`）证明按键 **到达页面**（`keydown/Escape`，`focus=true`），修复：先经真实主机命令 `unlock_content` 解锁；(b) 脚本：截图差分受其他窗口（平铺的探针窗口焦点边框、输入的字符）、鼠标指针图像污染（run2 的 720×400 面板量成 736×416 是右下角的指针），`hostPlaced` 的数值和合成器里面板矩形其实一致（run2 截图直接量得 1344,84,720×400）。修复：每次测量取同一指针位置的隐藏态基线，并在测量前结束探针窗口；(c) 级联：Esc 失败后面板状态和 toggle 奇偶错位 |
+| run5 | 30/31 | 剩 1 项：**产品缺陷**。点击面板内部会关闭面板。`WAYLAND_DEBUG` 的客户端轨迹显示指针焦点仍在背板（`wl_surface@57`），随后三个 layer surface 全被销毁：**同一层内的堆叠顺序协议未规定**，sway 上背板压在面板之上，Tauri 的“先映射背板就在面板下方”只在 Hyprland 成立 |
+| run6 | 未通过 | 修复为背板输入区域挖掉面板矩形后，第二个输出的点击关闭失败，其后的测量因 toggle 奇偶错位级联；运行约 5 分钟后才结束。现场诊断（同一容器，只读）：Python 在 `time.sleep` 的轮询里（`hrtimer_nanosleep`），GUI 仍在应答，不是死锁；是有界的 15 轮 × 10 s 超时级联（`run6-live-diagnosis.txt`）。同时 `Gui.step` 对重复标签返回旧行，`visible()` 复用标签得到 **过期答案**，是脚本缺陷，已改为唯一标签；无超时的虚拟指针 `readline()` 改为 `select` 带截止时间 |
+| run7、run8 | 30/31 | 剩第二输出的点击。加入 GTK 侧点击计数与 5 个位置的探测：紧接在 **点击关闭** 之后的那次显示里，点击没有到达背板的 GTK 处理器（计数不变），紧接在 host 命令关闭之后的显示则正常。推断原因：在 **按下** 事件里同步销毁被按下的窗口，释放事件无人接收，GDK 残留隐式抓取（推断，未读 GDK 源码证明） |
+| run9 | **31/31** | 修复：改为在 **释放** 事件上关闭；5 个探测点全部命中，无 resync、无 Esc 回退 |
+| run10、run11 | 31/31（同一构建，连续两次） | |
+| run12 | 31/31，**干净提交 `7d599d24c`**（`git status` 无改动）重建后 | 构建身份见 `wayland-run12/build-identity.txt` |
+| wayland-nolib-run1 | 5/6，保留失败 | 回退面板上 Esc 没有关闭：与 run2–4 **同一原因**，我没有先解锁（锁定视图没有 Esc 处理器；页面确实收到 `keydown/Escape`）。脚本缺陷，非回退缺陷 |
+| wayland-nolib-run2 | 7/7 | 先解锁；缺库回退下 Esc 关闭 |
+| xvfb-regression-run1、run2 | 27/27 | 既有 X11 场景在新二进制上通过（run2 是干净提交构建） |
+
+**离线契约**：`go run ./e2e/linux_contract` 现为 34/34（新增 `j/cursorpos` 的读取、非法回复、无应答期限共 5 项）。
+
+**这些运行证明了什么**（容器内真实无头 sway，不是 Hyprland）：Layer Shell 协议全局存在；面板在 realize 之前被转成 layer surface，对已 realize 的主窗口调用被拒绝；sway 日志里面板是命名空间 `uniclipboard-quick-panel`、layer 3（overlay）、每个输出一张 `uniclipboard-quick-panel-dismiss`（锚定 15）；键盘独占：另一个真实 xdg 应用在面板显示时 `focus-out`、打字不到达它，隐藏后 `focus-in` 且打字到达；Esc 经合成器真实键盘到达 GTK、WebView、页面，真实前端关闭面板；面板内点击到达页面且不关闭，面板外点击（含第二输出）关闭并释放键盘、销毁背板；两个输出（1280×800@1、1600×1000@2 即逻辑 800×500）上按截图量得的面板矩形与独立期望相符（含 720×400 小输出上限与居中）；`windowScale` 1.5/0.8；15 轮显示/隐藏无泄漏；粘贴链路隐藏先于 Hyprland 聚焦（脚本化 socket）；缺库时真实 `dlopen` 失败（`OSError ... cannot open shared object file`，在容器里真正移除了库，不是环境变量）并回退到普通窗口。
+
+**不证明**：真实 Hyprland（光标、活动窗口、`hl.dsp.*` 都是脚本化 socket；我让脚本把假光标和 sway 指针保持一致）；GNOME（不实现 wlr-layer-shell，仅有“协议不支持时走回退”的代码路径，未在 GNOME 或任何无该协议的合成器上运行——`supported()` 为假的分支在容器里只经缺库路径间接覆盖）；KDE；真实 GPU/渲染；真实桌面输入栈；portal；X11 下的回退只由既有 Xvfb 场景覆盖；带窗口缩放因子的真实前端交互（只验证了尺寸）。产品默认快捷键 `ctrl+alt+v` 与真实前端首次启动仍同 17c 未覆盖。
+
+**已知非本片引入的警告**：`gui1.log` 周期性出现 `gtk_container_foreach`、`gtk_menu_shell_insert`、`gtk_menu_item_set_submenu` 的 `Gtk-CRITICAL`（约每 10 秒一次，与托盘菜单刷新相关，没有托盘宿主）。17c 的 `xvfb-run8`（没有任何 Layer Shell 代码）里同样出现，故与本片无关；根因未单独追查，记入后续的托盘验证。
+
+**未决项（本片范围内能做而没做的）**：Layer Shell 首次映射时 GTK 先以 WebKit 的 800×560 自然尺寸映射，随后才收缩到上限尺寸（轨迹里先 `set_size(800,560)` 再 `set_size(720,400)`，Tauri 同理），小输出上有一帧的尺寸跳变，未量化；X11 路径的面板尺寸仍是 macOS 的常量而非 Tauri 的 Linux 固定 800×560，只有 Layer 路径用 Linux 常量，两者统一留待后续。
+
 ## 验收边界
 
 - Wails 与 runtime 同时固定为 `3.0.0-beta.28`；这是 beta 原型，不是生产迁移完成。
@@ -376,7 +408,7 @@ apps/gui-go/e2e/linux/run.sh package <dir>  # 容器内：生产前端包 + pack
 - 首次启动可创建独立 daemon；已有兼容持久 daemon 会被复用；不兼容或 oneshot daemon
   会明确拒绝，不执行替换或强制结束。
 - macOS SDK 的链接版本警告仍存在；本轮验证当前系统实际运行，不证明最低系统版本兼容。
-- Linux 17c：证据来自容器内 Xvfb + 私有 D-Bus（无窗口管理器、Wayland、portal、托盘宿主、通知服务、Secret Service）与脚本化 Hyprland socket；默认快捷键用 e2e 测试接缝；Layer Shell/Hyprland 光标定位未实现；AppImage 不自包含、daemon 来源未核验；没有任何真实 Linux 桌面运行证据。详见“Linux（第 17c 片）”。
+- Linux 17c2：Layer Shell 面板与每输出定位/上限由容器内真实无头 sway 验证（见“17c2 结果”），Hyprland/GNOME/KDE 与真实桌面未验证。Linux 17c：证据来自容器内 Xvfb + 私有 D-Bus（无窗口管理器、Wayland、portal、托盘宿主、通知服务、Secret Service）与脚本化 Hyprland socket；默认快捷键用 e2e 测试接缝；AppImage 不自包含、daemon 来源未核验；没有任何真实 Linux 桌面运行证据。详见“Linux（第 17c 片）”。
 - Windows 17b：同上，另可为 arm64 编译、安装器脚本可编译；daemon 以 `TerminateProcess` 强制终止（非优雅关闭）；Windows 生产入口、安装器、原位更新、自启迁移、双击修饰键的真实读取/焦点/可见性均未验证；真实 Rust daemon + NSIS/便携包的原生安装与更新仍 OPEN；官方发布签名验证仍 OPEN。
 - Windows：17a 代码可为 windows/amd64 编译（普通与 e2e 标签、`go vet` 通过），没有任何 Windows 运行证据（真实可见、焦点、按键、冲突、粘贴、托盘、通知、daemon 停止、单实例均未验证，runner 离线）；Linux、安装签名、Windows 更新与 GPUI 在 Windows 的 N/A 说明见上。
 - 单实例：投递尽力而为；`application.New`→`Run` 的毫秒窗口内的激活不可接收；Windows/Linux 与 macOS Dock 再点击未验证；窗口重放曾触发原生 `SIGSEGV`（根因未定位，见“Wails 能力审计”）。

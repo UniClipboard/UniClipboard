@@ -5,7 +5,7 @@ import path from 'node:path'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 
-const PROFILE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/
+export const PROFILE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/
 const PROFILE_PORT_BASE = 20_000
 const PROFILE_PORT_RANGE = 20_000
 
@@ -74,7 +74,7 @@ function availablePort(port, host) {
   })
 }
 
-async function availableDevPort(port, host) {
+export async function availableDevPort(port, host) {
   if (host) return availablePort(port, host)
   // macOS permits a wildcard listener alongside an existing loopback listener.
   // Probe each exact loopback address so another worktree cannot satisfy Tauri's wait.

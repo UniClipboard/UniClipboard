@@ -692,6 +692,9 @@ fn apply_cors_headers(headers: &mut HeaderMap, origin: Option<&str>) {
 fn is_allowed_cors_origin(origin: &str) -> bool {
     origin == "tauri://localhost"
         || origin == "wails://localhost"
+        // The Go GUI's development mode serves the frontend from a local dev server,
+        // and Wails puts that port in the WebView origin.
+        || origin.starts_with("wails://localhost:")
         || origin == "http://tauri.localhost"
         || origin == "https://tauri.localhost"
         || origin.starts_with("http://localhost:")

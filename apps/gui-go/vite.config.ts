@@ -28,7 +28,13 @@ export default defineConfig({
       { find: /^pino$/, replacement: 'pino/browser' },
     ],
   },
-  server: { port: 1520, strictPort: true, fs: { allow: [path('../..')] } },
+  server: {
+    // Wails proxies to this address over IPv4, so do not bind `localhost` (which may resolve to ::1).
+    host: '127.0.0.1',
+    port: Number(process.env.UC_DEV_SERVER_PORT ?? 1520),
+    strictPort: true,
+    fs: { allow: [path('../..')] },
+  },
   build: {
     target: 'safari15.6',
     cssTarget: 'safari15.6',

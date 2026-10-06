@@ -7,15 +7,10 @@ import (
 	"io/fs"
 	"log"
 	"os"
-	"os/user"
-	"path/filepath"
-	"runtime"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/apppaths"
 	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/daemonclient"
 	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/daemonlife"
 	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/daemonproc"
@@ -95,67 +90,8 @@ func (h *HostService) openMainWindow() {
 	})
 }
 
-func validateIsolation() error {
-	if runtime.GOOS != "darwin" {
-		return fmt.Errorf("this PoC currently permits only macOS isolation")
-	}
-	for _, key := range []string{"UNICLIPBOARD_DAEMON_BASE_URL", "UNICLIPBOARD_DAEMON_TOKEN_PATH", "UC_PORTABLE", "UC_DAEMON_RUN_MODE"} {
-		if os.Getenv(key) != "" {
-			return fmt.Errorf("isolated PoC refuses override %s", key)
-		}
-	}
-	if strings.ContainsAny(os.Getenv("UC_PROFILE"), "/\\.") {
-		return fmt.Errorf("invalid isolated profile")
-	}
-	if apppaths.IsPortable() {
-		return fmt.Errorf("isolated PoC refuses portable mode")
-	}
-
-	u, err := user.Current()
-	if err != nil {
-		return err
-	}
-	home, err := filepath.EvalSymlinks(os.Getenv("HOME"))
-	if err != nil {
-		return err
-	}
-	real, err := filepath.EvalSymlinks(u.HomeDir)
-	if err != nil {
-		return err
-	}
-	if !strings.HasPrefix(filepath.Base(home), "uc-gui-go-") || home == real || strings.HasPrefix(home, real+string(os.PathSeparator)+"Library"+string(os.PathSeparator)) || !strings.HasPrefix(os.Getenv("UC_PROFILE"), "gui-go-") || os.Getenv("UC_GUI_GO_ISOLATED") != "1" || os.Getenv("UC_DISABLE_SYSTEM_CLIPBOARD") != "1" || os.Getenv("UNICLIPBOARD_ENV") != "development" {
-		return fmt.Errorf("Go GUI PoC requires an isolated HOME, gui-go-* profile, UC_GUI_GO_ISOLATED=1, UC_DISABLE_SYSTEM_CLIPBOARD=1 and UNICLIPBOARD_ENV=development")
-	}
-	root, ok := apppaths.AppDataRoot()
-	if !ok {
-		return fmt.Errorf("data root unavailable")
-	}
-	ancestor := root
-	for {
-		_, err := os.Stat(ancestor)
-		if err == nil {
-			break
-		}
-		if !os.IsNotExist(err) {
-			return err
-		}
-		parent := filepath.Dir(ancestor)
-		if parent == ancestor {
-			return fmt.Errorf("data root has no existing ancestor")
-		}
-		ancestor = parent
-	}
-	ancestor, err = filepath.EvalSymlinks(ancestor)
-	if err != nil {
-		return err
-	}
-	if ancestor != home && !strings.HasPrefix(ancestor, home+string(os.PathSeparator)) {
-		return fmt.Errorf("data root escapes isolated HOME")
-	}
-	return nil
-}
 func main() {
-	if err := validateIsolation(); err != nil {
+	if err := validateEnvironment(); err != nil {
 		log.Fatal(err)
 	}
 	outcome, err := daemonlife.ProbeForReuse(daemonlife.StartupTimeout)

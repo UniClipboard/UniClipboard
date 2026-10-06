@@ -1,5 +1,8 @@
-//go:build linux
+//go:build linux && gtk3
 
+// Built only with the gtk3 tag (Wails beta.28 defaults to GTK4; linking both toolkits into one process would fail at run
+// time).
+//
 // Package layershell gives a GTK3 window the wlr-layer-shell role through the mature libgtk-layer-shell, loaded at
 // run time with dlopen exactly as the Tauri shell does (crates/uc-tauri/src/quick_panel/layer_shell.rs): the library is
 // neither linked nor a hard dependency, so a host without it (or without the protocol, as GNOME) keeps the ordinary

@@ -397,6 +397,29 @@ apps/gui-go/e2e/linux/run.sh package <dir>  # 容器内：生产前端包 + pack
 
 **不证明**：真实 Hyprland（光标、活动窗口、`hl.dsp.*` 都是脚本化 socket；我让脚本把假光标和 sway 指针保持一致）；GNOME（不实现 wlr-layer-shell，仅有“协议不支持时走回退”的代码路径，未在 GNOME 或任何无该协议的合成器上运行——`supported()` 为假的分支在容器里只经缺库路径间接覆盖）；KDE；真实 GPU/渲染；真实桌面输入栈；portal；X11 下的回退只由既有 Xvfb 场景覆盖；带窗口缩放因子的真实前端交互（只验证了尺寸）。产品默认快捷键 `ctrl+alt+v` 与真实前端首次启动仍同 17c 未覆盖。
 
+### 17c2 复跑
+
+```sh
+# 一次性：在已有的 :17c 镜像之上加 sway 等（依赖 :17c；Dockerfile.17c2 末尾由 verify_image_17c2.sh 逐项验收）
+docker build --platform linux/arm64 -t uc-gui-go-linux-build:17c2 -f apps/gui-go/e2e/linux/Dockerfile.17c2 apps/gui-go/e2e/linux
+
+# 宿主机：E2E 前端包，然后在 :17c2 容器里构建 GUI（run.sh 默认镜像仍是 :17c，要用环境变量指定）
+VITE_GUI_GO_E2E=1 bun --bun run --cwd apps/gui-go build
+UC_LINUX_IMAGE=uc-gui-go-linux-build:17c2 SKIP_DAEMON=1 apps/gui-go/e2e/linux/run.sh build
+
+# 无头 sway 场景（每次用新的输出目录；加 UC_WAYLAND_RUN_ARGS=--wayland-debug 会保存客户端协议轨迹，目录很大）
+UC_LINUX_IMAGE=uc-gui-go-linux-build:17c2 apps/gui-go/e2e/linux/run.sh wayland <dir>
+# 缺库回退：在一次性容器里真正移除 libgtk-layer-shell 后运行
+UC_LINUX_IMAGE=uc-gui-go-linux-build:17c2 apps/gui-go/e2e/linux/run.sh wayland-nolib <dir>
+# 既有 X11 回归与离线契约
+apps/gui-go/e2e/linux/run.sh xvfb <dir>
+(cd apps/gui-go && go run ./e2e/linux_contract <dir>)
+```
+
+`internal/layershell`、`panel_layer_linux.go` 与 e2e 探针只在 `linux && gtk3` 构建标签下编译（Wails beta.28 默认 GTK4，同一进程里同时链接 GTK3 与 GTK4 会在运行时失败）；其他构建走普通窗口路径。测试用的 `wlr-virtual-pointer` 协议 XML 的来源与哈希见 `apps/gui-go/e2e/linux/protocols/SOURCES.md`。
+
+首帧尺寸与 Tauri 一致：Tauri 的 `show()` 也是先用未缩放的 `panel_dimensions(1.0, false)` 准备窗口，随后前端的 `set_quick_panel_layout` 才带入 `windowScale`，这里同样用 1。
+
 **已知非本片引入的警告**：`gui1.log` 周期性出现 `gtk_container_foreach`、`gtk_menu_shell_insert`、`gtk_menu_item_set_submenu` 的 `Gtk-CRITICAL`（约每 10 秒一次，与托盘菜单刷新相关，没有托盘宿主）。17c 的 `xvfb-run8`（没有任何 Layer Shell 代码）里同样出现，故与本片无关；根因未单独追查，记入后续的托盘验证。
 
 **未决项（本片范围内能做而没做的）**：Layer Shell 首次映射时 GTK 先以 WebKit 的 800×560 自然尺寸映射，随后才收缩到上限尺寸（轨迹里先 `set_size(800,560)` 再 `set_size(720,400)`，Tauri 同理），小输出上有一帧的尺寸跳变，未量化；X11 路径的面板尺寸仍是 macOS 的常量而非 Tauri 的 Linux 固定 800×560，只有 Layer 路径用 Linux 常量，两者统一留待后续。

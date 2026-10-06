@@ -4,6 +4,8 @@
 package apppaths
 
 import (
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -33,7 +35,17 @@ func AppDirNameForProfile() string {
 	return AppDirName
 }
 
-var portableRoot = sync.OnceValue(func() string {
+// portableResolution is the outcome of the portable-mode decision (mirrors the Rust `PortableResolution`).
+type portableResolution struct {
+	root string // portable data root; empty when not portable
+	err  error  // portable was requested but cannot be honoured: no resolver falls back to the system directories
+}
+
+// AppImagePortableHomeSuffix is the suffix of the directory next to an AppImage file that makes it portable: the
+// AppImage runtime's own convention (`<AppImage>.home`), which it also uses to redirect $HOME.
+const AppImagePortableHomeSuffix = ".home"
+
+var portableState = sync.OnceValue(func() portableResolution {
 	forced := false
 	switch v := strings.TrimSpace(os.Getenv("UC_PORTABLE")); {
 	case v == "1", strings.EqualFold(v, "true"), strings.EqualFold(v, "yes"):
@@ -41,31 +53,106 @@ var portableRoot = sync.OnceValue(func() string {
 	}
 	exe, err := os.Executable()
 	if err != nil {
-		return ""
+		return portableResolution{}
+	}
+	return resolvePortable(exe, forced, os.Getenv("APPDIR"), os.Getenv("APPIMAGE"))
+})
+
+// resolvePortable decides portable mode from explicit inputs. Inside an AppImage (the executable lives under
+// APPDIR) the executable directory is a read-only mount, so the AppImage file's `.home` directory is the portable
+// root; anywhere else the executable directory and the `portable.dat` marker apply.
+func resolvePortable(exe string, forced bool, appDir, appImage string) portableResolution {
+	if insideAppDir(exe, appDir) {
+		return resolveAppImagePortable(forced, appImage)
 	}
 	dir := filepath.Dir(exe)
 	if forced {
-		return filepath.Join(dir, portableDataSubdir)
+		return portableResolution{root: filepath.Join(dir, portableDataSubdir)}
 	}
 	if info, err := os.Stat(filepath.Join(dir, portableMarker)); err == nil && info.Mode().IsRegular() {
-		return filepath.Join(dir, portableDataSubdir)
+		return portableResolution{root: filepath.Join(dir, portableDataSubdir)}
 	}
-	return ""
-})
+	return portableResolution{}
+}
+
+// insideAppDir reports whether exe is under the AppImage mount APPDIR points to; an APPIMAGE variable inherited by an
+// unrelated process does not count.
+func insideAppDir(exe, appDir string) bool {
+	if appDir == "" {
+		return false
+	}
+	if resolved, err := filepath.EvalSymlinks(appDir); err == nil {
+		appDir = resolved
+	}
+	if resolved, err := filepath.EvalSymlinks(exe); err == nil {
+		exe = resolved
+	}
+	rel, err := filepath.Rel(appDir, exe)
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator)) && !filepath.IsAbs(rel)
+}
+
+func resolveAppImagePortable(forced bool, appImage string) portableResolution {
+	valid := false
+	if appImage != "" && filepath.IsAbs(appImage) {
+		if info, err := os.Stat(appImage); err == nil && info.Mode().IsRegular() {
+			valid = true
+		}
+	}
+	if !valid {
+		if forced {
+			return portableResolution{err: errors.New("UC_PORTABLE is set, but this process runs inside an AppImage without a valid $APPIMAGE " +
+				"(an absolute path to the AppImage file); start the .AppImage file itself")}
+		}
+		return portableResolution{}
+	}
+	home := appImage + AppImagePortableHomeSuffix
+	if info, err := os.Stat(home); err == nil && info.IsDir() {
+		return portableResolution{root: filepath.Join(home, portableDataSubdir)}
+	}
+	if forced {
+		return portableResolution{err: fmt.Errorf("UC_PORTABLE is set, but the portable home directory %s does not exist; create it with "+
+			"`%s --appimage-portable-home` before starting (the AppImage runtime only redirects $HOME to a directory that exists at startup)", home, appImage)}
+	}
+	return portableResolution{}
+}
 
 // IsPortable reports whether the CLI runs as a portable installation.
-func IsPortable() bool { return portableRoot() != "" }
+func IsPortable() bool { return portableState().root != "" }
+
+// PortableError reports why portable mode was requested but cannot be honoured, or nil. While it is non-nil every
+// directory resolver in this package reports "unavailable" instead of falling back to the system directories.
+func PortableError() error { return portableState().err }
+
+// PortableHome returns the AppImage portable home directory (`<AppImage>.home`) when portable mode is active inside an
+// AppImage: the directory the runtime redirected $HOME to.
+func PortableHome() (string, bool) {
+	root := portableState().root
+	if root == "" || filepath.Base(root) != portableDataSubdir {
+		return "", false
+	}
+	home := filepath.Dir(root)
+	return home, strings.HasSuffix(home, AppImagePortableHomeSuffix) && insideAppDir(currentExe(), os.Getenv("APPDIR"))
+}
+
+func currentExe() string {
+	exe, _ := os.Executable()
+	return exe
+}
 
 func baseDataLocalDir() (string, bool) {
-	if root := portableRoot(); root != "" {
-		return root, true
+	if state := portableState(); state.err != nil {
+		return "", false
+	} else if state.root != "" {
+		return state.root, true
 	}
 	return dataLocalDir()
 }
 
 func baseCacheDir() (string, bool) {
-	if root := portableRoot(); root != "" {
-		return root, true
+	if state := portableState(); state.err != nil {
+		return "", false
+	} else if state.root != "" {
+		return state.root, true
 	}
 	return cacheDir()
 }
@@ -94,8 +181,10 @@ func AppLogDir() (string, bool) {
 	if hasProfile && !isSafeProfileComponent(profile) {
 		return "", false
 	}
-	if root := portableRoot(); root != "" {
-		return filepath.Join(root, "logs"), true
+	if state := portableState(); state.err != nil {
+		return "", false
+	} else if state.root != "" {
+		return filepath.Join(state.root, "logs"), true
 	}
 	name := AppDirName
 	if hasProfile {

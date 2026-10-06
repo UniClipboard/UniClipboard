@@ -33,6 +33,7 @@
 //! features and makes no error-mapping decisions — each consumer maps `None`
 //! to its own error type.
 
+use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
@@ -110,28 +111,142 @@ fn env_forces_portable() -> bool {
     }
 }
 
-fn detect_portable_root() -> Option<PathBuf> {
-    let env_forced = env_forces_portable();
-    let exe = std::env::current_exe().ok()?;
-    let exe_dir = exe.parent()?;
-    resolve_portable_root(exe_dir, env_forced)
+/// Suffix of the directory next to an AppImage file that makes it portable. This is the AppImage runtime's own
+/// convention (`<AppImage>.home`, created by `--appimage-portable-home`): when the directory exists the runtime sets
+/// `$HOME` to it before it starts the application, so the portable data root below lives in the same directory as
+/// everything else the application writes under `$HOME`.
+pub const APPIMAGE_PORTABLE_HOME_SUFFIX: &str = ".home";
+
+/// Outcome of the portable-mode decision.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum PortableResolution {
+    /// Not portable: the per-user system directories apply.
+    Off,
+    /// Portable, with this data root.
+    Root(PathBuf),
+    /// Portable was requested (or implied) but cannot be honoured. There is deliberately no fallback to the system
+    /// directories: that would silently move a portable installation's data and secrets into the shared profile.
+    Invalid(String),
+}
+
+/// `<appimage>.home`, appended to the file name so a path with any characters stays one component.
+fn appimage_portable_home(appimage: &Path) -> PathBuf {
+    let mut name: OsString = appimage.as_os_str().to_owned();
+    name.push(APPIMAGE_PORTABLE_HOME_SUFFIX);
+    PathBuf::from(name)
+}
+
+/// Whether `exe` lives inside the AppImage mount `APPDIR` points to. An `APPIMAGE` variable alone is not enough:
+/// a child process of an AppImage inherits it, but its executable is elsewhere.
+fn inside_appdir(exe: &Path, appdir: Option<&OsStr>) -> bool {
+    let Some(appdir) = appdir.filter(|value| !value.is_empty()) else {
+        return false;
+    };
+    let appdir = std::fs::canonicalize(appdir).unwrap_or_else(|_| PathBuf::from(appdir));
+    let exe = std::fs::canonicalize(exe).unwrap_or_else(|_| exe.to_path_buf());
+    exe.starts_with(&appdir)
+}
+
+fn resolve_appimage_portable(forced: bool, appimage: Option<&OsStr>) -> PortableResolution {
+    let file = appimage
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .filter(|path| path.is_absolute() && path.is_file());
+    let Some(file) = file else {
+        return if forced {
+            PortableResolution::Invalid(
+                "UC_PORTABLE is set, but this process runs inside an AppImage without a valid $APPIMAGE \
+                 (an absolute path to the AppImage file); start the .AppImage file itself"
+                    .to_string(),
+            )
+        } else {
+            PortableResolution::Off
+        };
+    };
+    let home = appimage_portable_home(&file);
+    if home.is_dir() {
+        return PortableResolution::Root(home.join(PORTABLE_DATA_SUBDIR));
+    }
+    if forced {
+        PortableResolution::Invalid(format!(
+            "UC_PORTABLE is set, but the portable home directory {} does not exist; create it with \
+             `{} --appimage-portable-home` before starting (the AppImage runtime only redirects $HOME to a directory \
+             that exists at startup)",
+            home.display(),
+            file.display()
+        ))
+    } else {
+        PortableResolution::Off
+    }
+}
+
+/// Decide portable mode from explicit inputs, without touching process-global state.
+///
+/// Inside an AppImage the executable directory is a read-only mount, so the AppImage file's `.home` directory is the
+/// portable root; anywhere else the executable directory and the `portable.dat` marker apply.
+fn resolve_portable(
+    exe: &Path,
+    env_forced: bool,
+    appdir: Option<&OsStr>,
+    appimage: Option<&OsStr>,
+) -> PortableResolution {
+    if inside_appdir(exe, appdir) {
+        return resolve_appimage_portable(env_forced, appimage);
+    }
+    match exe
+        .parent()
+        .and_then(|dir| resolve_portable_root(dir, env_forced))
+    {
+        Some(root) => PortableResolution::Root(root),
+        None => PortableResolution::Off,
+    }
+}
+
+fn portable_resolution() -> &'static PortableResolution {
+    static CACHE: OnceLock<PortableResolution> = OnceLock::new();
+    CACHE.get_or_init(|| match std::env::current_exe() {
+        Ok(exe) => resolve_portable(
+            &exe,
+            env_forces_portable(),
+            std::env::var_os("APPDIR").as_deref(),
+            std::env::var_os("APPIMAGE").as_deref(),
+        ),
+        Err(_) => PortableResolution::Off,
+    })
 }
 
 /// Resolve (and cache) the portable data root for the running binary.
 ///
-/// Returns `Some(<exe_dir>/data)` in portable mode, `None` otherwise. The
-/// result is cached after the first call: portable status cannot change during
+/// Returns `Some(<exe_dir>/data)` in portable mode (`Some(<AppImage>.home/data)` inside an AppImage), `None`
+/// otherwise. The result is cached after the first call: portable status cannot change during
 /// a process lifetime, and the many call sites (app dirs, daemon socket path,
 /// secure storage, process metadata) should not each re-`current_exe()`. This
 /// is the *single* portable cache shared by every consumer.
 pub fn portable_data_root() -> Option<PathBuf> {
-    static CACHE: OnceLock<Option<PathBuf>> = OnceLock::new();
-    CACHE.get_or_init(detect_portable_root).clone()
+    match portable_resolution() {
+        PortableResolution::Root(root) => Some(root.clone()),
+        _ => None,
+    }
 }
 
 /// Whether the running binary is operating in portable mode.
 pub fn is_portable() -> bool {
     portable_data_root().is_some()
+}
+
+/// Why portable mode was requested but cannot be honoured, if so. While this is `Some`, every directory resolver
+/// returns `None` instead of falling back to the system directories.
+pub fn portable_error() -> Option<String> {
+    match portable_resolution() {
+        PortableResolution::Invalid(reason) => Some(reason.clone()),
+        _ => None,
+    }
+}
+
+/// Human-readable reason a directory resolver returned `None`, for error messages: the portable error when portable
+/// mode is invalid, otherwise `fallback`.
+pub fn unavailable_reason(fallback: &str) -> String {
+    portable_error().unwrap_or_else(|| fallback.to_string())
 }
 
 /// Resolve the base local data directory: the portable redirect when active,
@@ -146,19 +261,21 @@ pub fn base_data_local_dir() -> Option<PathBuf> {
     // is resolved here (the lowest common layer) so every call site — daemon
     // socket path, secure storage, process metadata — follows it without
     // knowing portable mode exists.
-    if let Some(portable_root) = portable_data_root() {
-        return Some(portable_root);
+    match portable_resolution() {
+        PortableResolution::Root(root) => Some(root.clone()),
+        PortableResolution::Invalid(_) => None,
+        PortableResolution::Off => dirs::data_local_dir(),
     }
-    dirs::data_local_dir()
 }
 
 /// Resolve the base cache directory: the portable redirect when active,
 /// otherwise [`dirs::cache_dir`].
 pub fn base_cache_dir() -> Option<PathBuf> {
-    if let Some(portable_root) = portable_data_root() {
-        return Some(portable_root);
+    match portable_resolution() {
+        PortableResolution::Root(root) => Some(root.clone()),
+        PortableResolution::Invalid(_) => None,
+        PortableResolution::Off => dirs::cache_dir(),
     }
-    dirs::cache_dir()
 }
 
 /// Resolve the application data root: `base_data_local_dir().join(app_dir_name)`.
@@ -176,6 +293,9 @@ pub fn app_data_root() -> Option<PathBuf> {
 /// Durable local recovery copies deliberately bypass the portable redirect.
 /// Deleting userdata or the portable installation must not delete these copies.
 pub fn app_upgrade_backup_root(compile_default: Option<&str>) -> Option<PathBuf> {
+    if portable_error().is_some() {
+        return None;
+    }
     let profile = resolve_profile(compile_default);
     upgrade_backup_root_in(&dirs::data_local_dir()?, profile.as_deref())
 }
@@ -258,6 +378,9 @@ pub fn app_log_dir_for_profile(profile: Option<&str>) -> Option<PathBuf> {
     }
     // Portable ("green") builds keep logs next to the executable, alongside the
     // rest of the data, so the app leaves no trace in the system log location.
+    if portable_error().is_some() {
+        return None;
+    }
     if let Some(portable_root) = portable_data_root() {
         return Some(portable_root.join("logs"));
     }

@@ -172,7 +172,11 @@ fn default_manager() -> Result<&'static DaemonPidManager> {
 /// byte-for-byte. Data-root only — daemon-process does not require the cache dir
 /// (the benign P5-0 divergence, preserved).
 fn resolve_pid_path_from_root() -> Result<PathBuf> {
-    let root = app_data_root().context("the system data-local directory is unavailable")?;
+    let root = app_data_root().ok_or_else(|| {
+        anyhow::anyhow!(uc_app_paths::unavailable_reason(
+            "the system data-local directory is unavailable"
+        ))
+    })?;
     Ok(root.join(DAEMON_PID_FILE_NAME))
 }
 

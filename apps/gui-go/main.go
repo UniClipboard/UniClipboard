@@ -115,6 +115,9 @@ func (h *HostService) openMainWindow() {
 
 func main() {
 	if err := validateEnvironment(); err != nil {
+		if releaseBuild {
+			failStartup(err)
+		}
 		log.Fatal(err)
 	}
 	waitForRestartParent()

@@ -86,13 +86,21 @@ impl DaemonConnFile {
 /// assert_eq!(path.file_name().unwrap(), "daemon.conn");
 /// ```
 pub fn resolve_daemon_conn_path() -> Result<PathBuf> {
-    let root = app_data_root().context("the system data-local directory is unavailable")?;
+    let root = app_data_root().ok_or_else(|| {
+        anyhow::anyhow!(uc_app_paths::unavailable_reason(
+            "the system data-local directory is unavailable"
+        ))
+    })?;
     Ok(root.join(DAEMON_CONN_FILE_NAME))
 }
 
 /// Discovery for the authenticated startup-only listener, never a business health endpoint.
 pub fn resolve_startup_conn_path() -> Result<PathBuf> {
-    let root = app_data_root().context("the system data-local directory is unavailable")?;
+    let root = app_data_root().ok_or_else(|| {
+        anyhow::anyhow!(uc_app_paths::unavailable_reason(
+            "the system data-local directory is unavailable"
+        ))
+    })?;
     Ok(root.join("daemon-startup.conn"))
 }
 

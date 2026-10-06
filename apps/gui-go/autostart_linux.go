@@ -7,9 +7,11 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"os/user"
 	"path/filepath"
 	"strings"
 
+	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/apppaths"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
@@ -31,11 +33,27 @@ func (h *HostService) loginItem() osAutostart {
 
 type appImageAutostart struct{ appImage, name string }
 
+// sessionHome is the home directory the desktop session reads its autostart entries from. It is $HOME, except in a
+// portable AppImage: the AppImage runtime sets $HOME to the portable `.home` directory, which no login session ever
+// reads, so an entry written there would be reported as registered and never start. The passwd database still has
+// the user's real home. (An absolute XDG_CONFIG_HOME is unaffected by the runtime and takes precedence in
+// xdgAutostartDir, as it does for the session.)
+func sessionHome() (string, error) {
+	if _, portable := apppaths.PortableHome(); portable {
+		account, err := user.Current()
+		if err != nil {
+			return "", fmt.Errorf("the portable AppImage cannot locate the login session's home directory: %w", err)
+		}
+		return account.HomeDir, nil
+	}
+	return os.UserHomeDir()
+}
+
 func xdgAutostartDir() (string, error) {
 	if config := os.Getenv("XDG_CONFIG_HOME"); config != "" {
 		return filepath.Join(config, "autostart"), nil
 	}
-	home, err := os.UserHomeDir()
+	home, err := sessionHome()
 	if err != nil {
 		return "", err
 	}

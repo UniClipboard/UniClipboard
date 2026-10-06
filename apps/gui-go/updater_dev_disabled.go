@@ -12,3 +12,6 @@ type devUpdate struct {
 // devUpdateOverrides is empty in normal builds: the feed and the trusted key
 // cannot be redirected by the environment.
 func devUpdateOverrides() (devUpdate, bool) { return devUpdate{}, false }
+
+// schedulerTimingOverride keeps the production cadence in normal builds.
+func schedulerTimingOverride(t schedulerTiming) schedulerTiming { return t }

@@ -22,14 +22,16 @@ import (
 var assets embed.FS
 
 type HostService struct {
-	app     *application.App
-	client  *daemonclient.Client
-	effects *visualEffects
-	panel   panelState
-	exit    exitIntent
-	updates updater
-	tray    *trayMenu
-	files   knownFiles
+	app           *application.App
+	client        *daemonclient.Client
+	effects       *visualEffects
+	panel         panelState
+	exit          exitIntent
+	prompts       promptStore
+	stopScheduler context.CancelFunc
+	updates       updater
+	tray          *trayMenu
+	files         knownFiles
 
 	quitting atomic.Bool
 
@@ -127,11 +129,14 @@ func main() {
 	services = append(services, e2eServices(host)...)
 	app := application.New(application.Options{Name: "UniClipboard Go GUI", Services: services, Assets: application.AssetOptions{Handler: application.BundledAssetFileServer(content), Middleware: host.fileMiddleware},
 		ShouldQuit: func() bool { host.quitting.Store(true); return true },
-		OnShutdown: host.stopDaemonOnExit})
+		OnShutdown: host.shutdown})
 	host.app = app
 	host.openMainWindow()
 	host.preCreateQuickPanel()
 	host.initTray()
+	schedulerCtx, stopScheduler := context.WithCancel(context.Background())
+	host.stopScheduler = stopScheduler
+	go host.runUpdateScheduler(schedulerCtx)
 	if err := app.Run(); err != nil {
 		log.Fatal(err)
 	}

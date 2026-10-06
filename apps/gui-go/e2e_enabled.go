@@ -135,6 +135,22 @@ func (s *EvidenceService) Control(action string) error {
 		bundle, _ := update.BundleOf(exe)
 		_, markerErr := os.Stat(filepath.Join(bundle, "Contents", "Resources", "update-marker.txt"))
 		return s.write(Step{Window: "update", Step: "update-state", OK: true, Detail: map[string]any{"installed": markerErr == nil, "pid": os.Getpid(), "bundle": bundle}})
+	case "scheduler-wait-updater":
+		// Nothing asked for a check: the background scheduler alone must surface the update.
+		detail := map[string]any{}
+		ok := false
+		for deadline := time.Now().Add(60 * time.Second); time.Now().Before(deadline) && !ok; time.Sleep(200 * time.Millisecond) {
+			if w, found := h.app.Window.GetByName(updaterWindowName); found && w.IsVisible() {
+				ok = true
+			}
+		}
+		return s.write(Step{Window: updaterWindowName, Step: "scheduler-updater-opened", OK: ok, Detail: detail})
+	case "scheduler-quiet":
+		// Several scheduler iterations must pass without re-prompting a version already announced.
+		timing := schedulerTimingOverride(defaultSchedulerTiming)
+		time.Sleep(4 * timing.success)
+		_, reopened := h.app.Window.GetByName(updaterWindowName)
+		return s.write(Step{Window: updaterWindowName, Step: "scheduler-no-reprompt", OK: !reopened})
 	case "exit":
 		// Lightweight exit leaves the daemon for the next launch; a full quit stops it.
 		keep := os.Getenv("UC_GUI_GO_EXIT_MODE") != "full"

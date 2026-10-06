@@ -4,6 +4,7 @@ package main
 
 import (
 	"os"
+	"time"
 
 	"github.com/UniClipboard/UniClipboard/apps/gui-go/internal/update"
 )
@@ -21,4 +22,13 @@ func devUpdateOverrides() (devUpdate, bool) {
 		return devUpdate{}, false
 	}
 	return devUpdate{endpoints: func(update.Channel) []string { return []string{endpoint} }, publicKey: key}, true
+}
+
+// schedulerTimingOverride shortens the scheduler cadence for the e2e build so a
+// background check can be observed in seconds; jitter is disabled for determinism.
+func schedulerTimingOverride(t schedulerTiming) schedulerTiming {
+	if d, err := time.ParseDuration(os.Getenv("UC_UPDATE_SCHEDULER_INTERVAL")); err == nil && d > 0 {
+		t.setupPoll, t.success, t.jitter, t.failure = d, d, 0, d
+	}
+	return t
 }

@@ -75,6 +75,7 @@ async function run() {
   const phase = (await Call.ByName('main.EvidenceService.Phase')) as string
   if (phase.startsWith('update')) return runUpdateScenario(phase)
   if (phase === 'file-preview') return runFilePreviewScenario()
+  if (phase === 'scheduler') return runSchedulerScenario()
   await waitFor('app root content', () => document.getElementById('root')?.children.length)
   // A diagnostic page would never contain the shared app's router state.
   await record('shared-app-mounted', !$('#refresh') && !!document.getElementById('root'))
@@ -259,6 +260,17 @@ async function runUpdateScenario(phase: string) {
   await control('update-check')
   // The updater window reports the rest; keep this window alive meanwhile.
   await sleep(120000)
+}
+
+// The scheduler scenario never asks for a check: the background scheduler has to open
+// the updater window on its own, and must not open it again for the same version.
+async function runSchedulerScenario() {
+  await waitFor('app root content', () => document.getElementById('root')?.children.length)
+  await control('scheduler-wait-updater')
+  await sleep(4000) // the orchestrator screenshots the window meanwhile
+  await control('close-updater')
+  await control('scheduler-quiet')
+  await control('exit')
 }
 
 async function installedBundle(): Promise<boolean> {

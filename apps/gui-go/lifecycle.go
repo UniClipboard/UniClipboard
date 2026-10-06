@@ -23,6 +23,14 @@ func (h *HostService) quit(keepDaemon bool) {
 	h.app.Quit()
 }
 
+// shutdown stops background work, then the daemon unless the exit keeps it.
+func (h *HostService) shutdown() {
+	if h.stopScheduler != nil {
+		h.stopScheduler()
+	}
+	h.stopDaemonOnExit()
+}
+
 // stopDaemonOnExit terminates the connected daemon and waits for it to exit.
 func (h *HostService) stopDaemonOnExit() {
 	if h.exit.keepDaemon.Load() {

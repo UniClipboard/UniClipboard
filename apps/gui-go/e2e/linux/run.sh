@@ -14,6 +14,7 @@
 #   run.sh appimage-e2e <outdir> <full|negative|smoke> <AppImage> [feed dir] [package-manifest.json]
 #                                (image uc-gui-go-linux-runtime:17c4, NO GTK/WebKitGTK; the Secret Service runs in its own
 #                                container, uc-gui-go-linux-keyring:17c4, sharing a session bus volume) linux_appimage_run.py
+#   (UC_PORTABLE_E2E_ARGS=--supplement runs only the stale-APPIMAGE and XDG_CONFIG_HOME scenarios)
 #   run.sh appimage-portable-e2e <outdir> <AppImage> <feed dir> <package-manifest.json>
 #                                (17c5, image uc-gui-go-linux-runtime:17c4 as an UNPRIVILEGED user, NO Secret Service and no session bus:
 #                                portable mode uses the file keystore) linux_appimage_portable_run.py
@@ -115,7 +116,7 @@ case "$mode" in
       -v "$ROOT:/work:ro" -v "uc-gui-go-linux-cache:/cache:ro" -v "$out:/out" -v "$image:/in/appimage.AppImage:ro" -v "$feed:/in/feed" \
       -v "$manifest:/in/package-manifest.json:ro" \
       uc-gui-go-linux-runtime:17c4 python3 /work/apps/gui-go/e2e/linux_appimage_portable_run.py --out /out --appimage /in/appimage.AppImage \
-      --uniclip /cache/out/uniclip --feed /in/feed --manifest /in/package-manifest.json > "$out/run.log" 2>&1
+      --uniclip /cache/out/uniclip --feed /in/feed --manifest /in/package-manifest.json ${UC_PORTABLE_E2E_ARGS:-} > "$out/run.log" 2>&1
     code=$?
     exit "$code" ;;
   *) echo "usage: run.sh build|xvfb|package|daemon-release|release-e2e-build|package-release|package-appimage [outdir]" >&2; exit 2 ;;

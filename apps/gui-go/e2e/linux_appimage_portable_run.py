@@ -181,6 +181,7 @@ def main():
     parser.add_argument('--uniclip', type=Path, required=True)
     parser.add_argument('--feed', type=Path)
     parser.add_argument('--manifest', type=Path)
+    parser.add_argument('--supplement', action='store_true', help='run only the supplement scenarios (F11, XDG_CONFIG_HOME) against an AppImage')
     args = parser.parse_args()
     out = args.out.resolve()
     out.mkdir(parents=True, exist_ok=True)
@@ -219,7 +220,10 @@ def main():
         run.check('P0 clean host: no libwebkit2gtk / libgtk-3 in the loader cache', not bad, bad)
         run.check('P0 the run is unprivileged and has no Secret Service: uid != 0, no session bus address in the environment',
                   account.pw_uid != 0 and 'DBUS_SESSION_BUS_ADDRESS' not in env, {'uid': account.pw_uid})
-        scenarios(run, launches, args, sandbox, install, target, login_home, original_sha)
+        if args.supplement:
+            supplement(run, launches, args, sandbox, install, target, login_home)
+        else:
+            scenarios(run, launches, args, sandbox, install, target, login_home, original_sha)
         r['passed'] = all(c['ok'] for c in r['checks'])
     except Exception as e:  # keep the evidence of a failed run
         r['error'] = repr(e)
@@ -489,6 +493,89 @@ def dismiss_dialog(run, launch, timeout=60):
         info['exit'] = None
         launch.proc.terminate()
     return info
+
+
+def supplement(run, launches, args, sandbox, install, target, login_home):
+    """Scenarios the main run does not cover: the stale-APPIMAGE rule (F11) and the XDG_CONFIG_HOME branch of the autostart directory."""
+    account = pwd.getpwnam(USER)
+    home_dir = Path(str(target) + '.home')
+    made = as_user([str(target), '--appimage-portable-home'], run.env, timeout=60)
+    run.check('S0 the portable home exists (created by the AppImage runtime)', made.returncode == 0 and home_dir.is_dir(), made.stderr[-300:])
+
+    # --- S1 (F11): an inherited APPIMAGE does not make an ordinary executable portable-from-the-AppImage. The unpacked binary runs with the AppImage's
+    # own environment hook, then APPDIR is pointed elsewhere (the executable is no longer below APPDIR) while APPIMAGE names a real AppImage that HAS a
+    # `.home`: the legacy rule (<exe dir>/data, UC_PORTABLE) must apply, and the decoy's `.home` must stay untouched.
+    unpack = sandbox / 'f11'
+    unpack.mkdir()
+    os.chown(unpack, account.pw_uid, account.pw_gid)
+    ex = subprocess.run([str(args.appimage), '--appimage-extract'], cwd=unpack, user=USER, group=USER, extra_groups=[], capture_output=True, text=True, env=run.env, timeout=300)
+    root = unpack / 'squashfs-root'
+    run.check('S1 the AppImage unpacks', ex.returncode == 0 and (root / 'usr/bin/uniclipboard').exists(), ex.stderr[-300:])
+    decoy = unpack / 'Decoy.AppImage'
+    shutil.copy2(args.appimage, decoy)
+    decoy_home = Path(str(decoy) + '.home')
+    decoy_home.mkdir()
+    for path in (decoy, decoy_home):
+        os.chown(path, account.pw_uid, account.pw_gid)
+    wrapper = unpack / 'run-stale.sh'
+    wrapper.write_text(f"""#!/bin/bash
+export APPDIR={root}
+. {root}/apprun-hooks/linuxdeploy-plugin-gtk.sh
+export APPDIR=/nonexistent-appdir APPIMAGE={decoy} LD_LIBRARY_PATH={root}/usr/lib
+cd {root}/usr
+exec {root}/usr/bin/uniclipboard "$@"
+""")
+    wrapper.chmod(0o755)
+    os.chown(wrapper, account.pw_uid, account.pw_gid)
+    gui = run.launch('stale-appimage', {'UC_PORTABLE': '1'}, appimage=wrapper)
+    launches.append(gui)
+    conn_path, conn = wait_daemon(unpack)
+    legacy_root = root / 'usr/bin/data/app.uniclipboard.desktop'
+    run.results['staleAppimage'] = {'daemonConn': str(conn_path), 'expectedLegacyRoot': str(legacy_root), 'decoyHomeFiles': sorted(tree(decoy_home))}
+    run.check('S1 with APPDIR not containing the executable, a stale APPIMAGE is ignored: the legacy rule (<exe dir>/data) applies and the daemon runs there',
+              conn is not None and conn_path.parent == legacy_root, [str(conn_path), str(legacy_root)])
+    run.check('S1 the AppImage named by the stale APPIMAGE keeps an empty `.home` (nothing was written there)', tree(decoy_home) == {}, sorted(tree(decoy_home)))
+    if conn is not None:
+        env_gui = environ_of(gui.proc.pid)
+        run.check('S1 the process really had the stale environment (APPIMAGE = decoy, APPDIR does not contain the executable)',
+                  env_gui.get('APPIMAGE') == str(decoy) and env_gui.get('APPDIR') == '/nonexistent-appdir', {k: env_gui.get(k) for k in ('APPIMAGE', 'APPDIR')})
+        try:
+            gui.step('bootstrapped', 120)
+            gui.ctl('exit', 'control-exit')
+        except RuntimeError as e:
+            run.results['staleAppimage']['bootstrapNote'] = str(e)
+    try:
+        gui.proc.wait(timeout=60)
+    except subprocess.TimeoutExpired:
+        gui.proc.terminate()
+    deadline = time.monotonic() + 20
+    while conn and pid_alive(conn['pid']) and time.monotonic() < deadline:
+        time.sleep(.3)
+    run.check('S1 the stale-environment GUI and its daemon ended', gui.proc.poll() is not None and not (conn and pid_alive(conn['pid'])))
+
+    # --- S2: an absolute XDG_CONFIG_HOME (which the AppImage runtime does not touch and the login session honours) decides the autostart directory
+    xdg = sandbox / 'xdg-config'
+    xdg.mkdir()
+    os.chown(xdg, account.pw_uid, account.pw_gid)
+    login_before = tree(login_home)
+    gui = run.launch('xdg-config', {'XDG_CONFIG_HOME': str(xdg)}, appimage=target)
+    launches.append(gui)
+    conn_path, conn = wait_daemon(home_dir)
+    run.check('S2 the portable AppImage starts with XDG_CONFIG_HOME set', conn is not None, str(conn_path))
+    if conn is None:
+        return
+    gui.step('bootstrapped', 120)
+    on = gui.invoke('xdg-on', 'update_autostart', {'enabled': True})
+    entry = xdg / 'autostart/UniClipboard.desktop'
+    body = entry.read_text() if entry.exists() else ''
+    run.check('S2 the entry is in $XDG_CONFIG_HOME/autostart (what the session reads), with Exec= the real AppImage path',
+              on.get('ok') and str(target) in body and '--autostart' in body, [on, body])
+    run.check('S2 neither the passwd home nor the portable home got an entry', not (login_home / '.config/autostart/UniClipboard.desktop').exists()
+              and not list(home_dir.rglob('autostart/*.desktop')), sorted(set(tree(login_home)) - set(login_before)))
+    off = gui.invoke('xdg-off', 'update_autostart', {'enabled': False})
+    run.check('S2 disabling removes it', off.get('ok') and not entry.exists(), off)
+    code = stop(gui, conn)
+    run.check('S2 exit 0, daemon stopped', code == 0 and not pid_alive(conn['pid']), {'exit': code})
 
 
 def failures(run, launches, args, sandbox, install, target, login_home):

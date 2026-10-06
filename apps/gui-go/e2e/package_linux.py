@@ -67,8 +67,10 @@ LINUXDEPLOY_PIN_FILE = ROOT / 'scripts/linux-appimage-tools.mjs'
 LINUXDEPLOY_BASE = 'https://github.com/tauri-apps/binary-releases/releases/download'
 # Libraries that belong to the host's driver stack and must never be inside the AppImage (policy document).
 HOST_ONLY_LIBS = ('libwayland-client.so', 'libEGL.so', 'libGL.so', 'libGLX.so', 'libGLdispatch.so', 'libdrm.so', 'libgbm.so', 'libvulkan.so',
+                # 17c7: libglvnd's other entry points (dlopen'd, not in linuxdeploy's exclude list)
                 'libGLESv1_CM.so', 'libGLESv2.so', 'libOpenGL.so',
-                'libdbus-1.so')  # libdbus: the host's dbus-launch/daemon helpers load it through AppRun's LD_LIBRARY_PATH (17c7, Fedora)  # 17c7: libglvnd's other entry points (dlopen'd, not in linuxdeploy's exclude list)
+                # 17c7: the host's dbus-launch/daemon helpers load libdbus through AppRun's LD_LIBRARY_PATH (found on Fedora)
+                'libdbus-1.so')
 # The GIO modules the AppImage carries: the TLS backend of GLib (libsoup 3 and so WebKitGTK reach HTTPS through it). Nothing else: gvfs, dconf,
 # libproxy and gnome-proxy are host-ABI or out of scope (docs/architecture/gui-go-linux-appimage-runtime-deps.md).
 GIO_MODULES = ('libgiognutls.so',)
@@ -344,8 +346,9 @@ def build_appimage(stage, out, arch, name, tools, daemon, relocate=True, marker=
         if (helper_dir / helper).is_file():
             shutil.copy2(helper_dir / helper, target / helper)
     shutil.copytree(helper_dir / 'injected-bundle', target / 'injected-bundle')
-    # The pinned Wails GTK plugin deploys no GIO modules. An empty bundled directory is what AppRun's GIO_MODULE_DIR points
-    # at, so the bundled GLib never loads the host's (ABI-incompatible) gvfs/dconf modules.
+    # The pinned Wails GTK plugin deploys no GIO modules. The bundled directory is what AppRun's GIO_MODULE_DIR points at, so the bundled
+    # GLib never loads the host's (ABI-incompatible) gvfs/dconf modules; deploy_gio_modules fills it with the TLS backend below (only the
+    # --negative-control-no-tls-module variant leaves it empty).
     (appdir / 'usr/lib/gio/modules').mkdir(parents=True)
     gio_modules_info = None  # filled after linuxdeploy, once the libraries a module needs are in the AppDir
     # The bundled gdk-pixbuf recognises image formats through the shared MIME database (shared-mime-info). A host without

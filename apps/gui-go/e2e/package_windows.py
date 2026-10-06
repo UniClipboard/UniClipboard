@@ -64,24 +64,13 @@ def provenance():
             'immutable': not status}
 
 
-PE_MACHINES = {'amd64': 0x8664, 'arm64': 0xAA64}
-MIN_DAEMON_BYTES = 1 << 20  # the real daemon is tens of MB; anything under 1 MiB is not it
-
-
 def check_daemon(path, arch):
-    """A real Windows PE image for the target architecture, or a reason it is not. Returns (ok, reason)."""
-    data = path.read_bytes()
-    if len(data) < MIN_DAEMON_BYTES:
-        return False, f'{len(data)} bytes is too small to be the daemon (minimum {MIN_DAEMON_BYTES})'
-    if data[:2] != b'MZ' or len(data) < 0x40:
-        return False, 'no MZ header'
-    pe = int.from_bytes(data[0x3C:0x40], 'little')
-    if pe + 6 > len(data) or data[pe:pe + 4] != b'PE\0\0':
-        return False, 'no PE signature'
-    machine = int.from_bytes(data[pe + 4:pe + 6], 'little')
-    if machine != PE_MACHINES[arch]:
-        return False, f'PE machine 0x{machine:04X}, expected 0x{PE_MACHINES[arch]:04X} for {arch}'
-    return True, 'ok'
+    """Structure and architecture of the daemon file, by Go's debug/pe (e2e/pecheck). Returns (ok, reason).
+
+    This is the only thing checked. It does NOT show the file is the Rust daemon, where it came from, or that it runs.
+    """
+    r = subprocess.run(['go', 'run', './e2e/pecheck', arch, str(path)], cwd=GUI, capture_output=True, text=True)
+    return r.returncode == 0, (r.stdout.strip() if r.returncode == 0 else r.stderr.strip())
 
 
 def wails_version():
@@ -102,10 +91,10 @@ def main():
         sys.exit(f'{args.daemon} not found: a package without the daemon cannot start')
     daemon_ok, daemon_reason = check_daemon(args.daemon, args.arch)
     if not daemon_ok and not args.packaging_check_fixture:
-        sys.exit(f'{args.daemon} is not a valid {args.arch} daemon: {daemon_reason}')
-    fixture = not daemon_ok  # a daemon that passes the checks is real even when --packaging-check-fixture was given
-    if args.packaging_check_fixture and daemon_ok:
-        print('note: the daemon is a valid PE; it is treated as real', flush=True)
+        sys.exit(f'{args.daemon} is not a valid {args.arch} PE executable: {daemon_reason}')
+    # --packaging-check-fixture ALWAYS means fixture, even when the file is a valid PE. Without it, a valid PE is
+    # accepted as an input of unknown origin: this script cannot tell the Rust daemon from any other executable.
+    fixture = args.packaging_check_fixture
     prefix = 'FIXTURE-' if fixture else ''
     out = args.out.resolve()
     if out.exists() and any(out.iterdir()):
@@ -166,12 +155,11 @@ def main():
         'go': run(['go', 'version'], capture=True), 'wails': wails_version(), 'makensis': run(['makensis', '-VERSION'], capture=True),
         'purpose': 'packaging-check' if fixture else 'package',
         'productionUsable': False,  # never claimed here: unsigned and never run on Windows
-        'daemon': {'kind': 'fixture' if fixture else 'real', 'bytes': args.daemon.stat().st_size, 'sha256': sha256(args.daemon),
-                   'validation': daemon_reason, 'path': str(args.daemon),
-                   **({'realSourceAvailable': False, 'note': 'placeholder, not the Rust daemon: the package cannot start'} if fixture else {})},
-        'outputs': {p.name: {'sha256': sha256(p), 'bytes': p.stat().st_size} for p in outputs},
+        'daemon': {'kind': 'fixture' if fixture else 'supplied-unverified-origin', 'bytes': args.daemon.stat().st_size, 'sha256': sha256(args.daemon),
+                   'peValid': daemon_ok, 'peCheck': daemon_reason, 'path': str(args.daemon), 'identityVerified': False, 'runsVerified': False,
+                   'note': 'PE structure and architecture only (debug/pe). Not shown to be the Rust daemon; origin not verified.'},
         'signed': False, 'windowsRuntimeVerified': False,
-        'note': ('FIXTURE: the daemon is a placeholder; this only proves the exe builds and the installer script compiles. ' if fixture else '') + 'Built and compiled only. Not run on Windows. Not signed. If source.dirty is true the artifacts contain uncommitted changes and are not reproducible from `head`.'}, indent=2) + '\n')
+        'note': ('FIXTURE (--packaging-check-fixture): only proves the exe builds and the installer script compiles. ' if fixture else '') + 'Built and compiled only. Not run on Windows. Not signed. If source.dirty is true the artifacts contain uncommitted changes and are not reproducible from `head`.'}, indent=2) + '\n')
     shutil.rmtree(tools)
     print('built', *[p.name for p in outputs])
 

@@ -26,6 +26,7 @@ import hashlib
 import http.server
 import json
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -285,6 +286,28 @@ def inspect_processes(run, label, launch_pid, expected_daemon_sha, daemon_pid):
     return mount
 
 
+def cli(run, args, *cmd):
+    r = subprocess.run([str(args.uniclip), '--json', *cmd], env=run.env, capture_output=True, text=True, timeout=60)
+    return {'rc': r.returncode, 'stdout': r.stdout.strip(), 'stderr': r.stderr.strip()[-500:]}
+
+
+# Lifecycle state, not user data: the daemon writes the start marker at boot and clears it on a clean shutdown
+# (crates/uc-daemon-local/src/crash_marker.rs), `daemon.conn` is its connection record.
+RUNTIME_STATE_FILES = ('daemon.conn', 'daemon-startup.conn', '.daemon-pid', '.uniclipd.lock', 'daemon-run.json', 'daemon-run.json.tmp')
+
+
+def volatile(key):
+    return bool(re.search(r'(?i)(time|pid|port|started|token)|(_at|At|Ms)$', key))
+
+
+def stable(value):
+    if isinstance(value, dict):
+        return {k: stable(v) for k, v in value.items() if not volatile(k)}
+    if isinstance(value, list):
+        return [stable(v) for v in value]
+    return value
+
+
 def full(run, launches, args, sandbox, home, target, original_sha):
     out = run.out
     manifest = json.loads(args.manifest.read_text()) if args.manifest else {}
@@ -302,6 +325,17 @@ def full(run, launches, args, sandbox, home, target, original_sha):
     mount = inspect_processes(run, '2', gui.proc.pid, daemon_sha, daemon_pid)
     state = gui.ctl('shortcut-state boot', 'shortcut-state-boot')['detail']
     run.check('3 the frontend reached the daemon: the panel reports ready', state.get('panelReady') is True, state)
+
+    # User data written through the real daemon API before the update; read back after it (check 8).
+    default = gui.invoke('ad0', 'get_auto_download_update')
+    flipped = not default['data']
+    written = gui.ctl(f"setting autoDownloadUpdate {'on' if flipped else 'off'}", 'control-setting')
+    readback = gui.invoke('ad1', 'get_auto_download_update')
+    run.check('8 a user setting (general.autoDownloadUpdate, flipped from its default) is written through the daemon API and reads back',
+              written['ok'] and readback['data'] == flipped and flipped != default['data'], [default, written, readback])
+    space_before = cli(run, args, 'space', 'status')
+    run.results['spaceStatusBefore'] = space_before
+    run.check('8 `uniclip space status` works against the bundled daemon (encrypted space, keyring unlocked)', space_before['rc'] == 0 and space_before['stdout'], space_before)
 
     data_root = home / '.local/share/app.uniclipboard.desktop'
     run.check('4 release-no-profile, non-portable data root: ~/.local/share/app.uniclipboard.desktop holds daemon.conn, no profile suffix',
@@ -361,7 +395,7 @@ def full(run, launches, args, sandbox, home, target, original_sha):
         run.check('7 the first process runs the v1 image (no update marker)', first['detail']['installed'] is False, first)
         conn, old_daemon = wait_daemon(home)
         data_before = sorted(str(p.relative_to(home / '.local/share')) for p in (home / '.local/share/app.uniclipboard.desktop').rglob('*') if p.is_file()
-                             and p.name not in ('daemon.conn', 'daemon-startup.conn', '.daemon-pid', '.uniclipd.lock'))
+                             and p.name not in RUNTIME_STATE_FILES)
         # The first process hands over to the replaced file and exits, so from here the evidence file is read without it.
         good.step('update-relaunched', 240, allow_exit=True)
         states = [x for x in read_steps(good.evidence) if x['step'] == 'update-state']
@@ -380,8 +414,30 @@ def full(run, launches, args, sandbox, home, target, original_sha):
         boots = [x for x in read_steps(good.evidence) if x['step'] == 'bootstrapped']
         run.check('7 the restarted process bootstrapped its page against the existing profile (a second `bootstrapped` in the same evidence file)', len(boots) == 2, boots)
         data_after = sorted(str(p.relative_to(home / '.local/share')) for p in (home / '.local/share/app.uniclipboard.desktop').rglob('*') if p.is_file())
-        run.check('7 persisted data survived the update: every data file present before is still there', set(data_before) <= set(data_after),
-                  sorted(set(data_before) - set(data_after)))
+        run.check('7 persisted user data files survived the update (lifecycle state files excluded: they are rewritten at daemon start)',
+                  set(data_before) <= set(data_after), sorted(set(data_before) - set(data_after)))
+        # A fresh launch of the replaced AppImage: same profile, new daemon, user data readable through the real API.
+        post = run.launch('post-update')
+        launches.append(post)
+        pconn, pdaemon = wait_daemon(home)
+        run.check('8 the replaced AppImage starts a daemon on the existing data root', pconn is not None and pdaemon not in (None, old_daemon), [str(pconn), pdaemon, old_daemon])
+        post.step('bootstrapped', 120)
+        pstate = post.ctl('shortcut-state post', 'shortcut-state-post')['detail']
+        run.check('8 the v2 page reached the daemon (panel ready)', pstate.get('panelReady') is True, pstate)
+        pmount = inspect_processes(run, '8', post.proc.pid, daemon_sha, pdaemon)
+        run.check('8 the running image is v2 (marker file in its mount)', pmount is not None and (Path(pmount) / 'usr/share/uniclipboard/update-marker.txt').exists(), pmount)
+        after = post.invoke('ad2', 'get_auto_download_update')
+        run.check('8 the user setting written before the update reads back through the new daemon', after['data'] == flipped, after)
+        space_after = cli(run, args, 'space', 'status')
+        run.results['spaceStatusAfter'] = space_after
+        try:
+            same = stable(json.loads(space_before['stdout'])) == stable(json.loads(space_after['stdout']))
+        except ValueError:
+            same = space_before['stdout'] == space_after['stdout']
+        run.check('8 the encrypted space is still initialised and unlocked after the update, with the same stable status fields', space_after['rc'] == 0 and same,
+                  [stable(json.loads(space_before['stdout'])) if space_before['stdout'].startswith('{') else space_before['stdout'], space_after['stdout'][:600]])
+        post.ctl('exit', 'control-exit')
+        post.proc.wait(timeout=60)
         run.check('7 the relaunched process exited at the end of its scenario', not pid_alive(states[-1]['detail']['pid']))
     finally:
         server.shutdown()

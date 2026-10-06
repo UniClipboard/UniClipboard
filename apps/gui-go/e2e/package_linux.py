@@ -27,6 +27,7 @@ import argparse
 import hashlib
 import json
 import os
+import platform
 import re
 import shutil
 import subprocess
@@ -46,6 +47,20 @@ APPIMAGETOOL = {  # a fixed release tag, SHA-256 verified after the download
               '46fdd785094c7f6e545b61afcfb0f3d98d8eab243f644b4b17698c01d06083d1'),
     'arm64': ('https://github.com/AppImage/appimagetool/releases/download/1.9.0/appimagetool-aarch64.AppImage',
               '04f45ea45b5aa07bb2b071aed9dbf7a5185d3953b11b47358c1311f11ea94a96'),
+}
+# The AppImage runtime that appimagetool embeds in front of the SquashFS. Without --runtime-file appimagetool downloads the
+# CURRENT `continuous` runtime at pack time (an unpinned input; a network blip also fails the package). The runtime provides the
+# `<AppImage>.home` and `$APPIMAGE` semantics the portable mode relies on, so it is pinned here, next to appimagetool, the one consumer
+# (scripts/linux-appimage-tools.mjs only serves the Tauri bundle, which cannot pass --runtime-file).
+# Source: type2-runtime revision 8f39b89 (the build that carries "Create directories for extraction with mode 0700"; the dated tag
+# 20251108 = dd6cebe lacks it). The `continuous` URL is mutable: when it moves on, the SHA-256 check fails closed and the pin must
+# be updated deliberately (docs/architecture/gui-go-linux-appimage-runtime-pin.md). The SHA-256 values are the GitHub asset digests,
+# re-verified by hand and by a gpg check of the published .sig files.
+RUNTIME_REVISION = '8f39b89e2ac31e1640b3d3f7e9a5108e6ce805fa'
+RUNTIME_BASE = 'https://github.com/AppImage/type2-runtime/releases/download/continuous'
+RUNTIME = {  # go arch -> (asset, SHA-256, ELF e_machine)
+    'amd64': ('runtime-x86_64', '156f4bdbde9c52d01814600013e0a273f0118dc2de98975f3c8c63427ec79074', 62),
+    'arm64': ('runtime-aarch64', 'b4ff0030242d0c3bb12ce40541828303cf167493f4793456f0436edd6255c39d', 183),
 }
 # The linuxdeploy pin has one source of truth, shared with the Tauri bundle: scripts/linux-appimage-tools.mjs.
 LINUXDEPLOY_PIN_FILE = ROOT / 'scripts/linux-appimage-tools.mjs'
@@ -142,18 +157,77 @@ def build_rpm(stage, out, version, arch, name):
     return rpm
 
 
-def fetch_verified(url, sha, dest):
-    """Download once into the tools directory and refuse anything whose SHA-256 differs from the pin."""
-    if not dest.exists() or sha256(dest) != sha:
+def elf_machine(path):
+    """e_machine of an ELF file, or None when the file is not a little-endian ELF."""
+    head = Path(path).read_bytes()[:20]
+    if len(head) < 20 or head[:4] != b'\x7fELF' or head[5] != 1:
+        return None
+    return int.from_bytes(head[18:20], 'little')
+
+
+def reject(path, why):
+    """Move a rejected file aside (never delete evidence) and say why."""
+    aside = path.with_name(f'{path.name}.rejected-{sha256(path)[:8]}')
+    path.rename(aside)
+    print(f'REJECTED {path} ({why}); kept as {aside}', file=sys.stderr, flush=True)
+
+
+def fetch_verified(url, sha, dest, machine=None):
+    """Download once into the tools directory and refuse anything whose SHA-256 (or, with `machine`, ELF architecture) differs
+    from the pin. A cached file that fails is moved aside and fetched again; a rejected download is kept as `.rejected-*` and ends
+    the run: there is no fallback to another source."""
+    def problem(path):
+        if machine is not None and elf_machine(path) != machine:
+            return f'ELF e_machine {elf_machine(path)}, expected {machine}'
+        if sha256(path) != sha:
+            return f'SHA-256 {sha256(path)} differs from the pinned {sha}'
+        return None
+    if dest.exists():
+        why = problem(dest)
+        if why:
+            reject(dest, f'cached file: {why}')
+    if not dest.exists():
         part = dest.with_name(dest.name + '.partial')
-        urllib.request.urlretrieve(url, part)
-        if sha256(part) != sha:
-            got = sha256(part)
-            part.unlink()
-            sys.exit(f'{url}: SHA-256 {got} differs from the pinned {sha}')
+        try:
+            urllib.request.urlretrieve(url, part)
+        except OSError as e:
+            sys.exit(f'{url}: cannot download the pinned input ({e}); nothing is packaged without it')
+        why = problem(part)
+        if why:
+            reject(part, f'download of {url}: {why}')
+            sys.exit(f'{url}: {why}')
         part.rename(dest)
     dest.chmod(0o755)
     return dest
+
+
+def section(path, name):
+    """(file offset, size) of an ELF section, from readelf."""
+    m = re.search(r'\]\s+%s\s+PROGBITS\s+\S+\s+([0-9a-f]+)\s+([0-9a-f]+)' % re.escape(name), run(['readelf', '-S', '-W', str(path)], capture=True))
+    if not m:
+        sys.exit(f'{path} has no {name} section')
+    return int(m.group(1), 16), int(m.group(2), 16)
+
+
+def verify_embedded_runtime(image, runtime, arch):
+    """appimagetool writes the runtime file in front of the SquashFS and only fills the runtime's own .digest_md5 section.
+    Anything else that differs means the image does not carry the pinned runtime."""
+    rt, img = runtime.read_bytes(), image.read_bytes()
+    offset, size = section(runtime, '.digest_md5')
+    prefix = img[:len(rt)]
+    masked = lambda b: b[:offset] + b'\0' * size + b[offset + size:]
+    if masked(prefix) != masked(rt):
+        sys.exit(f'{image}: the first {len(rt)} bytes are not the pinned runtime (beyond the .digest_md5 section)')
+    if img[len(rt):len(rt) + 4] != b'hsqs':
+        sys.exit(f'{image}: no SquashFS right after the runtime ({len(rt)} bytes)')
+    reported = None
+    if elf_machine(runtime) == {'x86_64': 62, 'aarch64': 183}.get(platform.machine()):
+        r = subprocess.run([str(image), '--appimage-version'], capture_output=True, text=True)
+        reported = (r.stdout + r.stderr).strip()
+        if r.returncode != 0 or RUNTIME_REVISION[:7] not in reported:
+            sys.exit(f'{image} --appimage-version: rc={r.returncode} {reported!r}; expected revision {RUNTIME_REVISION[:7]}')
+    return {'squashfsOffset': len(rt), 'digestMd5Section': {'offset': offset, 'size': size}, 'prefixSha256': hashlib.sha256(prefix).hexdigest(),
+            'prefixWithDigestZeroedSha256': hashlib.sha256(masked(prefix)).hexdigest(), 'versionReportedByImage': reported or 'not run: the runtime is not for this host architecture'}
 
 
 def linuxdeploy_pin(arch):
@@ -216,6 +290,8 @@ def build_appimage(stage, out, arch, name, tools, daemon, relocate=True, marker=
     tools.mkdir(exist_ok=True)
     tool_url, tool_pin = APPIMAGETOOL[arch]
     appimagetool = fetch_verified(tool_url, tool_pin, tools / 'appimagetool')
+    asset, runtime_sha, machine = RUNTIME[arch]
+    runtime = fetch_verified(f'{RUNTIME_BASE}/{asset}', runtime_sha, tools / f'appimage-{asset}', machine=machine)
     release, pin = linuxdeploy_pin(arch)
     linuxdeploy = fetch_verified(f'{LINUXDEPLOY_BASE}/{release}/linuxdeploy-{ARCH[arch][1]}.AppImage', pin, tools / 'linuxdeploy')
     # The GTK plugin is the one embedded in the pinned Wails module (`wails3 generate appimage` uses it); it is read from the
@@ -291,7 +367,9 @@ def build_appimage(stage, out, arch, name, tools, daemon, relocate=True, marker=
     if problems:
         sys.exit('AppDir inspection failed: ' + '; '.join(problems))
     image = out / name
-    run([str(appimagetool), '--appimage-extract-and-run', '--no-appstream', str(appdir), str(image)], env=dict(os.environ, ARCH=ARCH[arch][1]))
+    run([str(appimagetool), '--appimage-extract-and-run', '--no-appstream', '--runtime-file', str(runtime), str(appdir), str(image)], env=dict(os.environ, ARCH=ARCH[arch][1]))
+    info['runtime'] = {'revision': RUNTIME_REVISION, 'source': f'{RUNTIME_BASE}/{asset}', 'fileSha256': runtime_sha, 'fileBytes': runtime.stat().st_size,
+                       'elfMachine': machine, 'embedded': verify_embedded_runtime(image, runtime, arch)}
     return image, info
 
 

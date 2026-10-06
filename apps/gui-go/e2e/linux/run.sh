@@ -70,10 +70,14 @@ case "$mode" in
       git config --global --add safe.directory /work; export GOPATH=/cache/gopath GOFLAGS=-mod=mod
       python3 apps/gui-go/e2e/package_linux.py --arch arm64 --daemon /cache/out-release/uniclipd --daemon-evidence /cache/out-release/build-evidence.txt --tools-dir /cache/tools --out /out/packages' ;;
   package-appimage)
+    # UC_PACKAGE_DOCKER_ARGS adds docker options for this container only (17c6: `--network none` proves the pack needs no download);
+    # UC_PACKAGE_TOOLS is a host directory used as the tools directory instead of the cache volume's /cache/tools (negative cases).
     out="$(mkdir -p "${2:?outdir}" && cd "$2" && pwd)"; shift 2
-    docker run "${common[@]}" -v "$out:/out" "$IMAGE" bash -c '
+    extra=(); [ -z "${UC_PACKAGE_TOOLS:-}" ] || extra+=(-v "$UC_PACKAGE_TOOLS:/tools")
+    docker run "${common[@]}" ${UC_PACKAGE_DOCKER_ARGS:-} ${extra[@]+"${extra[@]}"} -v "$out:/out" "$IMAGE" bash -c '
       git config --global --add safe.directory /work; export GOPATH=/cache/gopath GOFLAGS=-mod=mod
-      python3 apps/gui-go/e2e/package_linux.py --arch arm64 --daemon /cache/out-release/uniclipd --daemon-evidence /cache/out-release/build-evidence.txt --gui-binary /cache/out-release/gui-go-release-e2e --appimage-only --tools-dir /cache/tools --out /out/pkg "$@"' _ "$@" ;;
+      tools=/cache/tools; [ ! -d /tools ] || tools=/tools
+      python3 apps/gui-go/e2e/package_linux.py --arch arm64 --daemon /cache/out-release/uniclipd --daemon-evidence /cache/out-release/build-evidence.txt --gui-binary /cache/out-release/gui-go-release-e2e --appimage-only --tools-dir "$tools" --out /out/pkg "$@"' _ "$@" ;;
   appimage-feed)
     out="$(mkdir -p "${2:?outdir}" && cd "$2" && pwd)"; archive="$(cd "$(dirname "${3:?v2 AppImage.tar.gz}")" && pwd)/$(basename "$3")"
     docker run "${common[@]}" -v "$out:/out" -v "$archive:/in/update.AppImage.tar.gz:ro" "$IMAGE" bash -c '

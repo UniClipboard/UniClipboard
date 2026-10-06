@@ -15,7 +15,10 @@ X
 chmod +x AD/AppRun
 printf '[Desktop Entry]\nType=Application\nName=p\nExec=p\nIcon=p\nCategories=Utility;\n' > AD/p.desktop
 printf 'x' > AD/p.png
-ARCH=aarch64 /cache/tools/appimagetool --appimage-extract-and-run --no-appstream AD /t/probe.AppImage 2>&1 | tail -5
+# The runtime is the pinned one that package_linux.py caches (17c6); appimagetool must not download its own.
+RT=/cache/tools/appimage-runtime-aarch64; test -f "$RT" || { echo "$RT missing: run a package step first"; exit 2; }
+sha256sum "$RT"
+ARCH=aarch64 /cache/tools/appimagetool --appimage-extract-and-run --no-appstream --runtime-file "$RT" AD /t/probe.AppImage 2>&1 | tail -5
 D="/t/dir with space é"; mkdir -p "$D"; cp probe.AppImage "$D/My App.AppImage"; A="$D/My App.AppImage"
 export HOME=/t/realhome; mkdir -p $HOME
 echo "== plain";   "$A"

@@ -16,7 +16,7 @@ mkdir -p target/gui-go
 cargo build --locked -p uc-daemon
 (cd packages/desktop-host-go && go generate ./buildinfo)
 (cd apps/cli-go && go build -o ../../target/gui-go/uniclip ./cmd/uniclip)
-VITE_E2E="$E2E" bun --bun run --cwd apps/gui-go build
+VITE_GUI_GO_E2E="$E2E" bun --bun run --cwd apps/gui-go build
 (cd apps/gui-go && go build -tags "$TAGS" -o "../../target/gui-go/$APP-binary" .)
 BUNDLE="$ROOT/target/gui-go/$APP.app"
 mkdir -p "$BUNDLE/Contents/MacOS"

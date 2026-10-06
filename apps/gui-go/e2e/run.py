@@ -1,20 +1,63 @@
 #!/usr/bin/env python3
-"""Exercise the real Wails WebView, its bindings and the Rust daemon in isolation."""
+"""Drive the real Wails WebView hosting the shared React frontend against a real daemon.
+
+Each launch runs the in-WebView driver (frontend/src/e2e-driver.ts), whose
+assertions arrive as JSON lines in native.jsonl. The orchestrator owns process
+lifecycle: only PIDs it started are stopped, and exits are verified.
+"""
 import argparse
 import hashlib
 import json
 import os
-from pathlib import Path
+import signal
 import subprocess
 import sys
-import signal
-import urllib.request
 import tempfile
 import time
+import urllib.request
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / 'apps/cli-go/e2e'))
 from isolated import isolated_env
+
+HERE = Path(__file__).resolve().parent
+
+
+def read_steps(path, start):
+    return [json.loads(line) for line in path.read_text().splitlines()[start:]]
+
+
+def wait_for_step(proc, path, start, step, timeout=120):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        rows = read_steps(path, start)
+        for row in rows:
+            if row['step'] == 'driver-error':
+                raise RuntimeError(f"driver error: {row.get('detail')}")
+        if any(r['step'] == step for r in rows):
+            return rows
+        if proc.poll() is not None:
+            raise RuntimeError(f'GUI exited early ({proc.returncode}) before step {step}')
+        time.sleep(.2)
+    raise RuntimeError(f'timeout waiting for step {step}')
+
+
+def screenshot(pid, out):
+    try:
+        wid = subprocess.check_output(['swift', str(HERE / 'window_id.swift'), str(pid)], text=True, timeout=60).strip()
+        subprocess.run(['screencapture', '-x', '-o', '-l', wid, str(out)], check=True, timeout=20)
+        return True
+    except Exception:
+        return False
+
+
+def pid_alive(pid):
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
 
 
 def main():
@@ -29,58 +72,44 @@ def main():
     cli = ROOT / 'target/gui-go/uniclip'
     home = tempfile.mkdtemp(prefix='uc-gui-go-')
     profile = 'gui-go-' + os.path.basename(home)
-    env = isolated_env(home, profile, {'UC_GUI_GO_ISOLATED': '1', 'UC_GUI_GO_EVIDENCE': str(out / 'native.jsonl'), 'PATH': str(ROOT / 'target/debug') + ':' + os.environ['PATH']})
     evidence = out / 'native.jsonl'
     evidence.write_text('')
-    results = {'home': home, 'profile': profile, 'systemClipboardDisabled': True, 'rounds': [], 'passed': False, 'head': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()}
+    env = isolated_env(home, profile, {'UC_GUI_GO_ISOLATED': '1', 'UC_GUI_GO_EVIDENCE': str(evidence), 'PATH': str(ROOT / 'target/debug') + ':' + os.environ['PATH']})
+    results = {'home': home, 'profile': profile, 'systemClipboardDisabled': True, 'rounds': [], 'passed': False,
+               'head': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()}
     proc = None
-    def interrupt(signum, frame):
-        raise KeyboardInterrupt()
-    signal.signal(signal.SIGTERM, interrupt)
+    signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(KeyboardInterrupt()))
     try:
         if args.interactive:
-            print(f'Isolated profile: {profile}\nHOME: {home}\nClose the GUI to end the demo and stop its isolated daemon.', flush=True)
+            print(f'Isolated profile: {profile}\nHOME: {home}\nClose the GUI (Cmd+Q) to end the demo.', flush=True)
             proc = subprocess.Popen([str(binary)], env=env)
             results['guiExit'] = proc.wait()
             results['passed'] = results['guiExit'] == 0
             return
-        pids = []
+        daemon_pids = []
         for run in range(2):
-            previous = len(evidence.read_text().splitlines())
+            start = len(evidence.read_text().splitlines())
             with (out / f'gui-{run}.log').open('w') as log:
                 proc = subprocess.Popen([str(binary)], env=env, stdout=log, stderr=log)
-                deadline = time.monotonic() + 100
-                rows = []
-                while time.monotonic() < deadline:
-                    rows = [json.loads(line) for line in evidence.read_text().splitlines()[previous:]]
-                    if {'main', 'secondary'} <= {r['window'] for r in rows}:
-                        break
-                    if proc.poll() is not None:
-                        raise RuntimeError(f'GUI exited before native assertions: {proc.returncode}; see gui-{run}.log')
-                    time.sleep(.2)
-                assert {'main', 'secondary'} <= {r['window'] for r in rows}, 'native WebView evidence timeout'
-                assert all(r['http'] and r['ws'] and r['session'] and r['refresh'] for r in rows)
-                assert len({r['pid'] for r in rows}) == 1
-                code = proc.wait(timeout=60)
-                assert code == 0, f'GUI exit {code}'
-                pid = rows[0]['pid']
-                os.kill(pid, 0)
+                rows = wait_for_step(proc, evidence, start, 'driver-complete', 180)
+                steps = {r['step']: r for r in rows}
+                assert all(r['ok'] for r in rows), f'failed steps: {[r for r in rows if not r["ok"]]}'
+                assert 'shared-app-mounted' in steps and 'home' in steps and 'devices' in steps and 'settings' in steps
+                assert 'native-main-closed' in steps and 'native-main-reopened' in steps
+                shot = out / f'main-{run}.png'
+                results.setdefault('screenshots', []).append({'file': shot.name, 'captured': screenshot(proc.pid, shot)})
                 conn_path = Path(home) / 'Library/Application Support' / ('app.uniclipboard.desktop-' + profile) / 'daemon.conn'
                 conn = json.loads(conn_path.read_text())
-                assert conn['pid'] == pid
-                with urllib.request.build_opener(urllib.request.ProxyHandler({})).open(f"http://{conn['host']}:{conn['port']}/health", timeout=5) as response:
-                    assert json.load(response)['data']['status'] == 'ok'
-
-                if run == 0:
-                    setup = subprocess.run([str(cli), 'space', 'init', '--passphrase', 'gui-go-synthetic-passphrase', '--device-name', 'gui-go-synthetic'], env=env, capture_output=True, text=True, timeout=60)
-                    assert setup.returncode == 0, 'synthetic CLI setup failed'
-                    results['syntheticCLISetup'] = True
-                status = subprocess.run([str(cli), '--json', 'space', 'status'], env=env, capture_output=True, text=True, timeout=20)
-                assert status.returncode == 0, status.stderr
-                (out / f'cli-status-{run}.json').write_text(status.stdout)
-                results['rounds'].append({'nativeWindows': sorted({r['window'] for r in rows}), 'daemonPID': pid, 'guiExit': code, 'daemonAliveAfterGUIExit': True, 'cliStatus': True})
-                pids.append(pid)
-        assert pids[0] == pids[1], 'second GUI replaced daemon'
+                daemon_pid = conn['pid']
+                daemon_pids.append(daemon_pid)
+                with urllib.request.build_opener(urllib.request.ProxyHandler({})).open(f"http://{conn['host']}:{conn['port']}/health", timeout=5) as r:
+                    assert json.load(r)['data']['status'] == 'ok'
+                results['rounds'].append({'run': run, 'firstScreen': steps['first-screen']['detail']['state'], 'steps': sorted(steps), 'daemonPID': daemon_pid})
+                proc.send_signal(signal.SIGTERM)
+                code = proc.wait(timeout=30)
+                results['rounds'][-1]['guiExit'] = code
+                assert pid_alive(daemon_pid), 'daemon stopped with GUI'
+        assert daemon_pids[0] == daemon_pids[1], 'second GUI replaced the daemon'
         results['daemonReused'] = True
         results['passed'] = True
     finally:
@@ -90,28 +119,26 @@ def main():
         stop = subprocess.run([str(cli), '--json', 'stop'], env=env, capture_output=True, text=True, timeout=80)
         results['cleanupCLIExit'] = stop.returncode
         cleanup_pid = json.loads(stop.stdout).get('pid') if stop.returncode == 0 else None
+        results['daemonExitedAfterCleanup'] = False
         if cleanup_pid:
             deadline = time.monotonic() + 15
             while time.monotonic() < deadline:
-                try:
-                    os.kill(cleanup_pid, 0)
-                except ProcessLookupError:
+                if not pid_alive(cleanup_pid):
                     results['daemonExitedAfterCleanup'] = True
                     break
                 time.sleep(.2)
-        else:
-            results['daemonExitedAfterCleanup'] = stop.returncode == 0
-        if not results.get('daemonExitedAfterCleanup'):
+        if not results['daemonExitedAfterCleanup']:
             results['passed'] = False
-
         (out / 'cleanup.json').write_text(stop.stdout)
         (out / 'assertions.json').write_text(json.dumps(results, indent=2) + '\n')
         manifest = {}
         for file in [binary, cli, ROOT / 'target/debug/uniclipd', ROOT / 'apps/gui-go/go.sum', ROOT / 'bun.lock']:
-            manifest[str(file.relative_to(ROOT))] = hashlib.sha256(file.read_bytes()).hexdigest()
+            if file.exists():
+                manifest[str(file.relative_to(ROOT))] = hashlib.sha256(file.read_bytes()).hexdigest()
         (out / 'build-hashes.json').write_text(json.dumps(manifest, indent=2) + '\n')
     print(json.dumps(results, indent=2))
     assert results['passed'], 'native E2E or cleanup failed'
+
 
 if __name__ == '__main__':
     main()

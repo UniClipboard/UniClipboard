@@ -322,6 +322,14 @@ jobs:
           APP_ENV: ${{ steps.resolve-env.outputs.app_env }}
         run: node scripts/prepare-sidecars.mjs ${{ matrix.args }} --timings
 
+      - name: sccache stats after the sidecar build
+        # Diagnostic: the post-job stats of the Windows sidecar job showed zero
+        # requests while the build recompiled every crate; read the counters
+        # right after the build, before the server can restart.
+        if: always() && steps.sccache-config.outputs.enabled == 'true'
+        shell: bash
+        run: sccache --show-stats | head -12
+
       - name: Upload Sentry debug symbols
         # Test bundles are not released and should not upload symbols under the release version.
         if: inputs.build_mode != 'test'

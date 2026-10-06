@@ -210,6 +210,11 @@ def main():
     def ready(g, label):
         st = g.wait_state(label, lambda s: s['panelReady'], 60)
         g.ctl(f'panel-js beacon{launch[0]} {beacons.script()}', f'panel-js-beacon{launch[0]}')
+        # Set-up, as in linux_wayland_run.py: a fresh launch holds no content grant and the panel shows the unlock view (red3: no
+        # Escape handler there). The history view that real users see is mounted only after the real unlock host command.
+        ur = g.invoke(f'unlock{launch[0]}', 'unlock_content', {'request': {'passphrase': PASSPHRASE}})
+        check(f'launch {launch[0]} set-up: content unlocked through the host command (the panel mounts the history view)', ur['ok'], ur)
+        time.sleep(1.0)
         return st
 
     def page_state(g, label):

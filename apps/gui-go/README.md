@@ -22,7 +22,7 @@ PoC 结束后只能选择继续达到完整功能验收或删除该入口；不�
 ## 当前范围
 
 已验证：真实 daemon 启动与复用、认证、HTTP/WS、共享 React 主界面（设置、解锁、历史、设备、设置页）、
-主窗口关闭隐藏与重开。第二窗口：真实 updater（dev 预览）与 quick panel 页面经多页构建加载，Go 宿主负责窗口创建、两阶段显示、失焦隐藏与尺寸；E2E 只用原生控制触发显示（全局快捷键尚未实现）。托盘与退出语义：托盘菜单（同步开关、打开、设置、检查更新、重启、轻量模式、退出，六种语言标签）；普通退出（托盘退出、Cmd-Q）停止 daemon，轻量模式与重启保留 daemon。更新服务（`internal/update`）：同一份 Tauri 更新清单格式、minisign 签名校验（含 trusted comment）、下载进度与取消、macOS 原位安装并重启；公钥构建时从 Tauri 更新配置注入，E2E 构建才允许用本地清单与临时密钥覆盖。尚未实现：全局快捷键、后台更新调度、Windows/Linux 原位安装、设备同步子菜单、轻量模式通知、更新、通知、文件预览协议、
+主窗口关闭隐藏与重开。第二窗口：真实 updater（dev 预览）与 quick panel 页面经多页构建加载，Go 宿主负责窗口创建、两阶段显示、失焦隐藏与尺寸；E2E 只用原生控制触发显示（全局快捷键尚未实现）。托盘与退出语义：托盘菜单（同步开关、打开、设置、检查更新、重启、轻量模式、退出，六种语言标签）；普通退出（托盘退出、Cmd-Q）停止 daemon，轻量模式与重启保留 daemon。更新服务（`internal/update`）：同一份 Tauri 更新清单格式、minisign 签名校验（含 trusted comment）、下载进度与取消、macOS 原位安装并重启；公钥构建时从 Tauri 更新配置注入，E2E 构建才允许用本地清单与临时密钥覆盖。后台更新调度已实现（含系统唤醒补检查，见“Wails 能力审计”）。尚未实现：全局快捷键、macOS App Nap 补检查、Windows/Linux 原位安装、设备同步子菜单、轻量模式通知、更新、通知、文件预览协议、
 原生粘贴与 GPUI 宿主、Windows/Linux 原生验收。
 
 ## 开发运行（对应 `bun tauri:dev`）
@@ -116,10 +116,29 @@ apps/gui-go/e2e/run.sh <dir>                              # 主流程
 python3 apps/gui-go/e2e/startup_run.py --out <dir>        # 启动模式
 python3 apps/gui-go/e2e/quick_panel_settings_run.py --out <dir>
 python3 apps/gui-go/e2e/scheduler_run.py --out <dir>
+python3 apps/gui-go/e2e/update_wake_run.py --out <dir>    # 唤醒守卫 + 更新 analytics（约 4 分钟）
 ```
 
 宿主的 daemon 客户端（`packages/desktop-host-go/daemonclient`）现在缓存会话令牌至刷新时间，401 时重新交换一次。
 此前每个请求都交换令牌，会触发 daemon 对 `/auth/connect` 的每 IP 每分钟 100 次限流（429），表现为主流程间歇失败。
+
+## 更新唤醒与 analytics
+
+调度行为对照 Tauri（`crates/uc-tauri/src/update_scheduler`）：启动后等 setup 完成再立即检查一次，之后成功 6h ± 15min、失败 30min；系统唤醒（`Common.SystemDidWake`）仅在距上次任意来源的检查不少于 1 小时时补一次检查，被跳过的唤醒不改变周期计时器，连续多次唤醒合并为一次；手动、托盘与调度的检查都会刷新 `lastCheckAt`；`autoCheckUpdate` 关闭时是空闲成功（无请求、无 analytics）。
+
+analytics 沿用 daemon 的 `POST /analytics/capture`（daemon 是唯一发送方并执行“使用情况统计”同意开关，GUI 不连接任何分析后端，也不判断同意）。共享前端已上报 `dialog_opened`、`dismissed` 与 UI 侧 `action_invoked`；Go 原生侧补齐 Tauri 原生侧发送的三类，名称、字段和顺序与 Tauri 一致：
+
+| 事件 | 触发 | 字段 |
+| --- | --- | --- |
+| `check_performed` | `check_for_update` 命令与托盘检查（`manual`）、调度（`scheduled`）；调度在副作用（通知、自动下载）之后发送；`autoCheckUpdate` 关闭或读取设置失败时不发 | `source`、`outcome`（`available`/`up_to_date`/`failed`）、失败时的 `failure_kind`、`install_kind` |
+| `notification_shown` | 更新窗口因新版本打开且已去重之后 | `version`、`delivery_status`（Wails 创建窗口不报告失败，恒为 `sent`）、`install_kind` |
+| `action_invoked`（`download_bg`） | `download_update` 命令与自动下载：开始、终态各一条；前置条件拒绝（含已下载完成、正在下载）不发 | `action`、`outcome`、`error_kind`（仅失败时为 `download_failed`） |
+
+`failure_kind` 与 Tauri 不同：Tauri 对错误文本做子串猜测（例如端点 URL 含 `.json` 会被误判为解析错误），Go 由 `internal/update` 的类型化错误直接给出 `network` / `http_error` / `parse_error` / `other`（签名无效归 `parse_error`，与 Tauri 一致）。
+
+托盘检查与 Tauri 对齐：发现新版本时走“按版本去重、不受冷却限制”的通知路径（会上报 `notification_shown` 并记录已通知版本）；用户主动点击时，已通知或已跳过的版本仍会静默打开窗口（这是 Go 既有的显式行为，Tauri 在该情形下不打开）。
+
+隔离收集端：E2E 使用 debug 构建的 daemon，其分析汇是 `StdoutSink`（写入 daemon JSON 日志，target `uc_observability::analytics`），没有 PostHog 汇，因此测试事件不会离开本机；`update_diag` 行不受同意开关影响，证明 GUI 已发出，`StdoutSink` 行只在通过同意开关后出现。E2E 不设置 `POSTHOG_PROJECT_KEY`。
 
 ## Wails 能力审计
 
@@ -135,7 +154,9 @@ python3 apps/gui-go/e2e/scheduler_run.py --out <dir>
 | 原生对话框 | `app.Dialog`（OpenFile / SaveFile / Info / Error） | 已集成 | 无 | 已覆盖 |
 | 托盘与菜单 | `app.SystemTray`、`app.NewMenu` | 已集成（`tray.go`、`tray_devices.go`） | 仅 Uni 业务菜单内容 | 已覆盖 |
 | 单实例 | `application.Options.SingleInstance`（`single_instance_*.go`） | **未使用**；单实例由 daemon 锁与 PoC 的持久 daemon 检查间接保证 | 需审计：第二次启动应唤起已有窗口而不是起第二个 GUI | 审计切片：核查行为后决定直接启用 `SingleInstance` |
-| 窗口事件、唤醒 | `events.Common.SystemDidWake` / `SystemWillSleep`、`events.Linux.SystemDidWake`、Windows `APMResumeSuspend`；窗口事件与 hook（`events.Common.WindowClosing`、`WindowLostFocus`） | 窗口事件已集成；**唤醒未实现** | 第 15 片的“原生唤醒源”应订阅这些事件，不自写 NSWorkspace / 电源通知代码；`LastCheckAt` 防抖仍是 Uni 业务 | 第 15 片：用 Wails 事件 + e2e 控制模拟唤醒 |
+| 窗口事件 | `events.Common.WindowClosing`、`WindowLostFocus` 等窗口事件与 hook | 已集成 | 无 | 既有主流程 / 面板 E2E |
+| 系统睡眠/恢复（sleep/resume） | `events.Common.SystemDidWake` / `SystemWillSleep`。固定源码的派发路径：macOS `application_darwin.go` 在 `NSWorkspace` 通知中心注册 `NSWorkspaceDidWakeNotification` → `workspaceDidWake:` → `Mac.ApplicationDidWake` → `events_common_darwin.go` 映射为 `Common.SystemDidWake`；Windows `application_windows.go` 的 `WM_POWERBROADCAST` → `Windows.APMResumeAutomatic`（每次恢复都发）→ `events_common_windows.go` 映射为 `Common.SystemDidWake`，`APMResumeSuspend`（仅用户输入触发的恢复后补发）**不** 映射到 Common；Linux `application_linux_dbus.go` 订阅 logind `PrepareForSleep` → `Linux.SystemDidWake` → `Common.SystemDidWake`，无 logind/elogind 时只记 warning 不触发 | **已集成（slice 15）**：`main.go` 只订阅 `Common.SystemDidWake` 一个（平台事件已被重发为 Common 事件，再订阅会重复），回调只向容量为 1 的通道做非阻塞发送；`update_scheduler.go` 的循环用 `lastCheckAt`（墙钟，初值为启动时刻）判断，距上次任意来源的检查不足 1 小时则跳过，且不改动周期计时器；退出时 `shutdown` 先取消订阅再停调度器 | Tauri 契约（`crates/uc-tauri/src/update_scheduler/scheduler.rs` 的 `WAKE_MIN_RECHECK_SECS`）：Windows 监听 `PBT_APMRESUMEAUTOMATIC` 与 `PBT_APMRESUMESUSPEND`，Wails 的 Common 事件只映射前者，而前者每次恢复都会发送，覆盖范围等价。**Linux 在 Tauri 中没有唤醒源**，Go 侧新增，行为未在本机验证。Go 的单调时钟在 macOS 睡眠期间不前进，故必须用墙钟守卫 | 证据 `e2e/update_wake_run.py`：经 Wails 自己的观察者分发链注入唤醒（e2e 构建向 `NSWorkspace` 通知中心发布 `NSWorkspaceDidWakeNotification`，**机器并未睡眠**），listener 被调用的次数记在 GUI 日志中。**未验证**：真实 macOS 睡眠恢复；Windows/Linux 的原生事件（无主机，保持未验证） |
+| macOS App Nap | Tauri 契约：`background_activity_macos.rs` 用 `NSBackgroundActivityScheduler`（标识 `app.uniclipboard.update-check`，间隔 6h，容差 10%），在 App Nap 挂起定时器时仍会触发并经同一 Wake 守卫补一次检查。固定源码核查：beta.28 的 `pkg`、`internal` 中检索 `beginActivity`、`NSBackgroundActivity`、`NSActivity`、`AppNap` 均无结果，**Wails 不覆盖**；`SystemDidWake` 对应的是系统睡眠恢复，不是 App Nap 退出 | **未实现，待办（最终审计必须处理）**：Go 的周期定时器在无可见窗口的 Accessory 进程上是否被 App Nap 拖慢未被测量，也没有对应的补检查来源 | 因 Wails 无此能力，实现它需要一个最小的 macOS 适配（`NSBackgroundActivityScheduler` 或 `NSProcessInfo` 活动声明，接到 `signalWake` 同一通道），属于允许的必要适配，不得因此删除该需求，也不得用系统唤醒注入的验收冒充 App Nap 已完成 | 无。验收需要：Accessory 进程、无可见窗口、长时间空闲下观察周期检查是否按时发出（对照 Tauri 行为），属于真机/长时间验收 |
 | 应用更新 | beta.28 的 `pkg/services` 仅有 `dock`、`fileserver`、`kvstore`、`log`、`notifications`、`sqlite`，**没有更新服务** | 自研 `internal/update`（Tauri 清单格式、minisign 签名含 trusted comment、macOS 原位替换） | Wails 不覆盖；发布格式与签名契约由现有 Tauri 发布流程决定，故保留自研 | 无替换；第 14 片验证生产公钥注入路径 |
 
 审计规则：以后每个新宿主能力在实现前，先在本表补一行并写出源码证据；已完成的切片按此表回头审计，发现重复实现就列为替换切片，不因“已经写过”而保留。
@@ -148,4 +169,7 @@ python3 apps/gui-go/e2e/scheduler_run.py --out <dir>
   会明确拒绝，不执行替换或强制结束。
 - macOS SDK 的链接版本警告仍存在；本轮验证当前系统实际运行，不证明最低系统版本兼容。
 - Windows/Linux、安装签名、更新、托盘、全局快捷键、原生粘贴与 GPUI 尚未验收。
+- 更新唤醒：只验证了经 Wails 观察者分发链注入的 `NSWorkspaceDidWakeNotification`，未验证真实 macOS 睡眠恢复，Windows/Linux 原生事件无主机未验证；macOS App Nap 补检查未实现（见“Wails 能力审计”，最终审计必须处理）。
+- analytics：只验证到 daemon 的 debug 日志汇，未向生产分析服务发送任何测试事件；release 汇（PostHog）端点硬编码，未在隔离环境运行。
+- `scheduler_run.py` 的“更新窗口可见”断言依赖显示器处于唤醒状态：显示器休眠时窗口 `IsVisible` 为假，同一状态下未触碰的 `quick_panel_settings_run.py` 也同样失败，属环境因素，需在显示器唤醒时重跑。
 - quiet 模式不证明真实窗口聚焦、视觉位置与真实全局快捷键；这些仍需可见模式的人工或原生验收。

@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/UniClipboard/UniClipboard/apps/gui-go/internal/update"
@@ -17,19 +18,24 @@ import (
 
 // schedulerTiming mirrors the cadence of the Tauri update scheduler
 // (crates/uc-tauri/src/update_scheduler): setup polling every 30s, a 6h ± 15min
-// cadence after a successful or idle iteration and a fixed 30min retry after a failure.
+// cadence after a successful or idle iteration and a fixed 30min retry after a failure; a system wake runs an
+// extra check only when the last one is older than wakeMinRecheck.
 type schedulerTiming struct {
 	setupPoll time.Duration
 	success   time.Duration
 	jitter    time.Duration
 	failure   time.Duration
+	// wakeMinRecheck is how long after the last check (from any source) a system wake may trigger another
+	// one: below it the check is skipped so a short sleep or a burst of resume events never hits the feed twice.
+	wakeMinRecheck time.Duration
 }
 
 var defaultSchedulerTiming = schedulerTiming{
-	setupPoll: 30 * time.Second,
-	success:   6 * time.Hour,
-	jitter:    15 * time.Minute,
-	failure:   30 * time.Minute,
+	setupPoll:      30 * time.Second,
+	success:        6 * time.Hour,
+	jitter:         15 * time.Minute,
+	failure:        30 * time.Minute,
+	wakeMinRecheck: time.Hour,
 }
 
 // Minimum gap between two scheduler-triggered prompt windows, per channel family.
@@ -135,16 +141,18 @@ func (s *promptStore) recordNotified(channel update.Channel, version string) {
 	s.recordPrompt()
 }
 
-// notifyIfNew opens the updater window for a release the user has not been told
-// about yet and records it only once the window is up. It reports whether it did.
-func (h *HostService) notifyIfNew(channel update.Channel, version string) bool {
+// notifyIfNew opens the updater window for a release the user has not been told about yet, reports the
+// announcement and records it once the window is up. A scheduled trigger also honours the prompt cooldown; a
+// manual one does not. It reports whether it opened the window.
+func (h *HostService) notifyIfNew(channel update.Channel, version string, scheduled bool) bool {
 	s := &h.prompts
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if !s.shouldPrompt(channel, version, true) {
+	if !s.shouldPrompt(channel, version, scheduled) {
 		return false
 	}
 	h.openUpdater(false)
+	h.reportNotification(version, deliverySent)
 	s.recordNotified(channel, version)
 	return true
 }
@@ -186,9 +194,33 @@ func sleepCtx(ctx context.Context, d time.Duration) bool {
 	}
 }
 
-// runUpdateScheduler is the background periodic update check. It waits for setup
-// to complete, checks once immediately, then repeats on the success/failure cadence
-// until ctx is cancelled. Native wake sources (App Nap exit) are not wired yet.
+// lastCheckAt is the wall-clock time of the last finished check from any source, the guard that keeps a
+// wake from re-checking right after a scheduled or manual check. It starts at "now" so the first wake after
+// launch does not duplicate the immediate startup check. Wall clock, not the monotonic timers, because the
+// monotonic clock does not advance while the machine sleeps.
+type lastCheckAt struct{ unix atomic.Int64 }
+
+func (l *lastCheckAt) recordNow() { l.unix.Store(time.Now().Unix()) }
+
+// since is the time since the last check, clamped at zero so a clock set backwards cannot pass the guard.
+func (l *lastCheckAt) since() time.Duration {
+	return max(0, time.Duration(time.Now().Unix()-l.unix.Load())*time.Second)
+}
+
+// signalWake is the Wails SystemDidWake listener: it only queues one pending wake (a burst of resume events
+// collapses into one) and never blocks the Wails event loop.
+func (h *HostService) signalWake() {
+	log.Printf("update scheduler: system wake")
+	select {
+	case h.wake <- struct{}{}:
+	default:
+	}
+}
+
+// runUpdateScheduler is the background periodic update check. It waits for setup to complete, checks once
+// immediately, then repeats on the success/failure cadence until ctx is cancelled. A system wake (signalWake)
+// checks early only when the last check is older than wakeMinRecheck; a skipped wake leaves the cadence timer
+// untouched. Wake events during the setup wait are ignored, as in the Tauri scheduler.
 func (h *HostService) runUpdateScheduler(ctx context.Context) {
 	timing := schedulerTimingOverride(defaultSchedulerTiming)
 	for {
@@ -200,10 +232,31 @@ func (h *HostService) runUpdateScheduler(ctx context.Context) {
 			return
 		}
 	}
+	ok := h.scheduledCheck(ctx)
+	timer := time.NewTimer(timing.next(ok))
+	defer timer.Stop()
 	for {
-		if !sleepCtx(ctx, timing.next(h.scheduledCheck(ctx))) {
+		select {
+		case <-ctx.Done():
 			return
+		case <-timer.C:
+			ok = h.scheduledCheck(ctx)
+		case <-h.wake:
+			since := h.lastCheck.since()
+			if since < timing.wakeMinRecheck {
+				log.Printf("update scheduler: wake skipped, last check %s ago", since.Round(time.Second))
+				continue
+			}
+			log.Printf("update scheduler: wake after %s, checking", since.Round(time.Second))
+			ok = h.scheduledCheck(ctx)
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
+				}
+			}
 		}
+		timer.Reset(timing.next(ok))
 	}
 }
 
@@ -226,24 +279,28 @@ func (h *HostService) scheduledCheck(ctx context.Context) bool {
 	checkCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
 	channel := h.resolveChannel(checkCtx, nil)
-	meta, err := h.checkForUpdate(checkCtx, nil)
+	meta, err := h.lookupUpdate(checkCtx, nil)
 	if err != nil {
 		log.Printf("update scheduler: check failed: %v", err)
-		return false
 	}
-	release, _ := meta.(map[string]any)
-	version, _ := release["version"].(string)
-	if version == "" {
-		return true
-	}
-	opened := h.notifyIfNew(channel, version)
-	if settings.General.AutoDownloadUpdate {
-		// In-place install is supported on macOS, the only host this build targets.
-		if err := h.downloadUpdate(ctx); err != nil {
-			log.Printf("update scheduler: auto-download failed: %v", err)
-		} else if !opened {
-			h.openReadyFallback(channel)
+	// Side effects first, the check event last: that is the order the Tauri scheduler reports them in.
+	if release, _ := meta.(map[string]any); release != nil {
+		if version, _ := release["version"].(string); version != "" {
+			opened := h.notifyIfNew(channel, version, true)
+			if settings.General.AutoDownloadUpdate {
+				// In-place install is supported on macOS, the only host this build targets.
+				// A refused download (already downloaded or running) neither reports nor re-opens the window.
+				switch err := h.downloadUpdateReported(ctx); {
+				case err == nil:
+					if !opened {
+						h.openReadyFallback(channel)
+					}
+				case classifyDownload(err) != downloadPrecondition:
+					log.Printf("update scheduler: auto-download failed: %v", err)
+				}
+			}
 		}
 	}
-	return true
+	h.reportCheck(checkSourceScheduled, meta != nil, err)
+	return err == nil
 }

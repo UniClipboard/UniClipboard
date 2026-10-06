@@ -111,23 +111,27 @@ func (u *updater) metadata() map[string]any {
 	return map[string]any{"version": u.release.Version, "currentVersion": u.release.CurrentVersion, "body": u.release.Body, "date": u.release.Date}
 }
 
-// checkForUpdate runs one lookup and broadcasts the outcome to every window.
-func (h *HostService) checkForUpdate(ctx context.Context, channel *string) (any, error) {
+// lookupUpdate runs one lookup and broadcasts the outcome to every window. Every source (manual, tray,
+// scheduled) goes through it, so any finished check, successful or not, refreshes lastCheck like the Tauri
+// shell does. Callers report the analytics event themselves because the order against the notification and
+// the auto-download differs per source.
+func (h *HostService) lookupUpdate(ctx context.Context, channel *string) (any, error) {
+	defer h.lastCheck.recordNow()
 	u := &h.updates
 	client, err := h.updateClient()
 	if err != nil {
-		return nil, stringError(err.Error())
+		return nil, err
 	}
 	u.mu.Lock()
 	if u.phase == phaseDownloading {
 		u.mu.Unlock()
-		return nil, stringError("updater: download in progress, cannot re-check")
+		return nil, errors.New("updater: download in progress, cannot re-check")
 	}
 	u.mu.Unlock()
 
 	rel, err := client.Check(ctx, h.resolveChannel(ctx, channel))
 	if err != nil {
-		return nil, stringError(err.Error())
+		return nil, err
 	}
 	u.mu.Lock()
 	switch {
@@ -140,33 +144,50 @@ func (h *HostService) checkForUpdate(ctx context.Context, channel *string) (any,
 	default:
 		u.reset(phaseAvailable, rel)
 	}
-	meta := u.metadata()
-	if rel == nil {
-		meta = nil
+	// An untyped nil, not a nil map: callers (and the tray, scheduler and analytics) test the interface for nil.
+	var meta any
+	if rel != nil {
+		meta = u.metadata()
 	}
 	u.mu.Unlock()
 	h.emit(updateAvailableEvent, meta)
 	return meta, nil
 }
 
+// checkForUpdate is the `check_for_update` command: a manual check, reported as such.
+func (h *HostService) checkForUpdate(ctx context.Context, channel *string) (any, error) {
+	meta, err := h.lookupUpdate(ctx, channel)
+	h.reportCheck(checkSourceManual, meta != nil, err)
+	if err != nil {
+		return nil, stringError(err.Error())
+	}
+	return meta, nil
+}
+
+// errAlreadyDownloaded is the Tauri shell's "already downloaded" precondition: the release is verified and
+// waiting, nothing starts and nothing is reported.
+var errAlreadyDownloaded = preconditionError{"updater: already downloaded"}
+
+// downloadUpdate downloads the pending release. A refusal before anything started is a preconditionError and
+// a cancel is a cancelledError (both plain-string on the wire), so callers can report the outcome.
 func (h *HostService) downloadUpdate(ctx context.Context) error {
 	u := &h.updates
 	client, err := h.updateClient()
 	if err != nil {
-		return stringError(err.Error())
+		return preconditionError{stringError(err.Error())}
 	}
 	u.mu.Lock()
 	switch u.phase {
 	case phaseAvailable:
 	case phaseReady:
 		u.mu.Unlock()
-		return nil
+		return errAlreadyDownloaded
 	case phaseDownloading:
 		u.mu.Unlock()
-		return stringError("updater: a download is already running")
+		return preconditionError{"updater: a download is already running"}
 	default:
 		u.mu.Unlock()
-		return stringError("updater: no pending update")
+		return preconditionError{"updater: no pending update"}
 	}
 	rel := u.release
 	dctx, cancel := context.WithCancel(context.Background())
@@ -198,11 +219,22 @@ func (h *HostService) downloadUpdate(ctx context.Context) error {
 	if err != nil {
 		u.phase, u.downloaded, u.total = phaseAvailable, 0, nil
 		h.emit(updateProgressEvent, map[string]any{"event": "Failed", "data": map[string]any{"error": err.Error()}})
+		if errors.Is(err, context.Canceled) {
+			return cancelledError{stringError(err.Error())}
+		}
 		return stringError(err.Error())
 	}
 	u.phase, u.bytes = phaseReady, data
 	h.emit(updateProgressEvent, map[string]any{"event": "Finished"})
 	return nil
+}
+
+// downloadUpdateReported is a user- or scheduler-started background download: the same download plus the
+// download_bg analytics pair. The install path downloads through downloadUpdate and reports nothing here.
+func (h *HostService) downloadUpdateReported(ctx context.Context) error {
+	err := h.downloadUpdate(ctx)
+	h.reportDownload(err)
+	return err
 }
 
 func (h *HostService) cancelDownload() {
@@ -248,9 +280,9 @@ func (h *HostService) installUpdate(ctx context.Context, send func(any)) error {
 		return stringError("updater: no pending update")
 	}
 	u.mu.Unlock()
-	if err := h.downloadUpdate(ctx); err != nil {
+	if err := h.downloadUpdate(ctx); err != nil && err != errAlreadyDownloaded {
 		send(map[string]any{"event": "Failed", "data": map[string]any{"error": err.Error()}})
-		return err
+		return stringError(err.Error())
 	}
 	u.mu.Lock()
 	data := u.bytes
@@ -334,18 +366,25 @@ func (h *HostService) autoDownload(ctx context.Context) (bool, error) {
 	return settings.General.AutoDownloadUpdate, nil
 }
 
-// checkUpdateFromTray is the tray's manual check: open the updater window when a
-// release exists, otherwise tell the user they are current.
+// checkUpdateFromTray is the tray's manual check: open the updater window when a release exists, otherwise
+// tell the user they are current. Like the Tauri shell the announcement goes through the per-version dedup
+// (without the scheduler's cooldown) and is reported; because the user asked, a release that was already
+// announced or skipped still opens the window, silently.
 func (h *HostService) checkUpdateFromTray() {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-	meta, err := h.checkForUpdate(ctx, nil)
+	channel := h.resolveChannel(ctx, nil)
+	meta, err := h.lookupUpdate(ctx, nil)
+	if release, _ := meta.(map[string]any); release != nil {
+		if version, _ := release["version"].(string); version != "" && !h.notifyIfNew(channel, version, false) {
+			h.openUpdater(false)
+		}
+	}
+	h.reportCheck(checkSourceManual, meta != nil, err)
 	switch {
 	case err != nil:
 		h.app.Dialog.Error().SetTitle("UniClipboard").SetMessage(err.Error()).Show()
-	case meta != nil:
-		h.openUpdater(false)
-	default:
+	case meta == nil:
 		h.app.Dialog.Info().SetTitle("UniClipboard").SetMessage(fmt.Sprintf("UniClipboard %s is up to date.", buildinfo.PackageVersion)).Show()
 	}
 }
@@ -360,7 +399,10 @@ func init() {
 			return h.checkForUpdate(ctx, channel)
 		},
 		"download_update": func(ctx context.Context, h *HostService, _ commandArgs) (any, error) {
-			return nil, h.downloadUpdate(ctx)
+			if err := h.downloadUpdateReported(ctx); err != nil {
+				return nil, stringError(err.Error())
+			}
+			return nil, nil
 		},
 		"cancel_download": func(_ context.Context, h *HostService, _ commandArgs) (any, error) {
 			h.cancelDownload()

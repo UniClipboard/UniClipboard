@@ -38,6 +38,10 @@ func schedulerTimingOverride(t schedulerTiming) schedulerTiming {
 	if d, err := time.ParseDuration(os.Getenv("UC_UPDATE_SCHEDULER_INTERVAL")); err == nil && d > 0 {
 		t.setupPoll, t.success, t.jitter, t.failure = d, d, 0, d
 	}
+	// The wake guard is an hour in production; the e2e build shortens it so "stale" is a few seconds away.
+	if d, err := time.ParseDuration(os.Getenv("UC_UPDATE_WAKE_MIN_RECHECK")); err == nil && d > 0 {
+		t.wakeMinRecheck = d
+	}
 	return t
 }
 

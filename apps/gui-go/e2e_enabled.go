@@ -166,8 +166,9 @@ func (s *EvidenceService) Control(action string) error {
 		detail := map[string]any{}
 		ok := false
 		for deadline := time.Now().Add(60 * time.Second); time.Now().Before(deadline) && !ok; time.Sleep(200 * time.Millisecond) {
-			if w, found := h.app.Window.GetByName(updaterWindowName); found && w.IsVisible() {
-				ok = true
+			if w, found := h.app.Window.GetByName(updaterWindowName); found {
+				detail["exists"], detail["visible"], detail["minimised"] = true, w.IsVisible(), w.IsMinimised()
+				ok = w.IsVisible()
 			}
 		}
 		return s.write(Step{Window: updaterWindowName, Step: "scheduler-updater-opened", OK: ok, Detail: detail})
@@ -197,6 +198,9 @@ func (s *EvidenceService) Phase() string { return os.Getenv("UC_GUI_GO_E2E_PHASE
 // UC_GUI_GO_E2E_OBSERVE=<seconds> the service writes a `startup-state` step after that delay and then quits,
 // which is how the startup-mode scenarios observe a hidden window.
 func (s *EvidenceService) ServiceStartup(context.Context, application.ServiceOptions) error {
+	if path := os.Getenv("UC_GUI_GO_E2E_CONTROL_FILE"); path != "" {
+		go s.watchControlFile(path)
+	}
 	seconds, err := strconv.Atoi(os.Getenv("UC_GUI_GO_E2E_OBSERVE"))
 	if err != nil || seconds <= 0 {
 		return nil

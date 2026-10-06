@@ -119,6 +119,41 @@ func DefaultEndpoints(channel Channel) []string {
 
 var errBadManifest = errors.New("update manifest is invalid")
 
+// FailureKind is the analytics wire classification of a failed update check (snake_case, like the daemon's
+// `UiUpdateFailureKind`): where the failure came from rather than a guess from the message text.
+type FailureKind string
+
+const (
+	FailureNetwork FailureKind = "network"
+	FailureHTTP    FailureKind = "http_error"
+	FailureParse   FailureKind = "parse_error"
+	FailureOther   FailureKind = "other"
+)
+
+// kindError tags an error with its failure kind without changing the message the user reads.
+type kindError struct {
+	kind FailureKind
+	err  error
+}
+
+func (e *kindError) Error() string { return e.err.Error() }
+func (e *kindError) Unwrap() error { return e.err }
+
+func tagged(kind FailureKind, err error) error { return &kindError{kind: kind, err: err} }
+
+// Classify reports the failure kind of an error returned by Check: transport failures are network, a non-2xx
+// feed answer is http_error, an undecodable or invalid manifest and a bad signature are parse_error.
+func Classify(err error) FailureKind {
+	var tag *kindError
+	switch {
+	case errors.As(err, &tag):
+		return tag.kind
+	case errors.Is(err, errBadManifest):
+		return FailureParse
+	}
+	return FailureOther
+}
+
 // Check returns the newest release for the channel, or nil when the installed
 // version is current. The first endpoint that answers wins; later endpoints are
 // fallbacks for transport or HTTP failures.
@@ -146,14 +181,14 @@ func (c *Client) fetch(ctx context.Context, endpoint string) (*Manifest, error) 
 	req.Header.Set("Accept", "application/json")
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("connect %s: %w", endpoint, err)
+		return nil, tagged(FailureNetwork, fmt.Errorf("connect %s: %w", endpoint, err))
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusNoContent {
 		return &Manifest{}, nil
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("http status %d from %s", resp.StatusCode, endpoint)
+		return nil, tagged(FailureHTTP, fmt.Errorf("http status %d from %s", resp.StatusCode, endpoint))
 	}
 	var manifest Manifest
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 4<<20)).Decode(&manifest); err != nil {
@@ -244,10 +279,10 @@ func (c *Client) Download(ctx context.Context, rel *Release, progress Progress) 
 func (c *Client) Verify(data []byte, encodedSignature string) error {
 	signature, err := base64.StdEncoding.DecodeString(strings.TrimSpace(encodedSignature))
 	if err != nil {
-		return fmt.Errorf("signature is not valid base64: %w", err)
+		return tagged(FailureParse, fmt.Errorf("signature is not valid base64: %w", err))
 	}
 	if !minisign.Verify(c.PubKey, data, signature) {
-		return errors.New("signature verification failed")
+		return tagged(FailureParse, errors.New("signature verification failed"))
 	}
 	return nil
 }

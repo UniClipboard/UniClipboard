@@ -35,6 +35,10 @@ type HostService struct {
 	notifier      *notifications.NotificationService
 	helper        *quickpanelhelper.Supervisor // nil when the WebView quick panel is in use
 	updates       updater
+	lastCheck     lastCheckAt
+	wake          chan struct{} // pending system wake for the update scheduler, capacity 1
+	analytics     analyticsQueue
+	stopWake      func()
 	tray          *trayMenu
 	files         knownFiles
 
@@ -133,7 +137,8 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	host := &HostService{client: client, effects: newVisualEffects(), notifier: notifications.New()}
+	host := &HostService{client: client, effects: newVisualEffects(), notifier: notifications.New(), wake: make(chan struct{}, 1)}
+	host.lastCheck.recordNow()
 	services := append([]application.Service{application.NewService(host)}, notifierServices(host)...)
 	services = append(services, e2eServices(host)...)
 	app := application.New(application.Options{Name: "UniClipboard Go GUI", Services: services, Mac: application.MacOptions{ActivationPolicy: activationPolicy()}, Assets: application.AssetOptions{Handler: application.BundledAssetFileServer(content), Middleware: host.fileMiddleware},
@@ -160,6 +165,10 @@ func main() {
 		}
 		go host.coldLaunch(startup, spawnedDaemon)
 	})
+	// The mature Wails integration for "the machine woke from sleep": Common.SystemDidWake is mapped on every
+	// platform (NSWorkspaceDidWake, Windows PBT_APMRESUMEAUTOMATIC, logind PrepareForSleep=false). One
+	// subscription only: the platform event is already re-published as the common one.
+	host.stopWake = app.Event.OnApplicationEvent(events.Common.SystemDidWake, func(*application.ApplicationEvent) { host.signalWake() })
 	schedulerCtx, stopScheduler := context.WithCancel(context.Background())
 	host.stopScheduler = stopScheduler
 	go host.runUpdateScheduler(schedulerCtx)

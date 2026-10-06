@@ -99,6 +99,7 @@ async function run() {
   if (phase === 'history-live') return runHistoryLiveScenario()
   if (phase === 'single-image-ui') return runSingleImageUiScenario()
   if (phase === 'scheduler') return runSchedulerScenario()
+  if (phase === 'wake') return // the orchestrator drives this launch through the control file
   if (phase === 'quick-panel-settings') return runQuickPanelSettingsScenario()
   if (phase === 'native-panel') return runNativePanelScenario()
   if (phase === 'file-ops') return runFileOpsScenario()

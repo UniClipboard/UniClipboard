@@ -13,4 +13,5 @@ read -r BUNDLE_ID PRODUCT < <(python3 -c 'import json;c=json.load(open("apps/gui
 (cd apps/gui-go && CGO_ENABLED=1 go build -tags gtk3,production,release,e2e -trimpath -buildvcs=false \
   -ldflags "-w -s -X main.updaterPublicKey= -X main.productName=$PRODUCT -X main.bundleID=$BUNDLE_ID" -o "$OUT/gui-go-release-e2e" .)
 git -C /work rev-parse HEAD > "$OUT/gui-go-release-e2e.head"
+echo gtk3,production,release,e2e > "$OUT/gui-go-release-e2e.tags"
 sha256sum "$OUT/gui-go-release-e2e" | tee "$OUT/gui-go-release-e2e.sha256"

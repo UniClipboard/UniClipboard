@@ -297,7 +297,12 @@ def read_daemon_evidence(path, daemon):
         sys.exit(f'{path}: the daemon was built from a dirty tree; an immutable build is required')
     if 'release' not in fields.get('build_mode', ''):
         sys.exit(f'{path}: not a release build')
-    return {'head': fields.get('head'), 'buildMode': fields.get('build_mode'), 'command': fields.get('command'),
+    # The daemon was built at fields['head']; the packaging commit may be later. Every input of the daemon build must be unchanged.
+    changed = subprocess.run(['git', 'diff', '--name-only', fields.get('head', ''), 'HEAD', '--', 'Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml', 'crates', 'apps/daemon'],
+                             cwd=ROOT, capture_output=True, text=True)
+    if changed.returncode != 0 or changed.stdout.strip():
+        sys.exit(f'daemon sources changed between the build evidence head and HEAD (or the head is unknown): {changed.stdout.strip() or changed.stderr.strip()}')
+    return {'head': fields.get('head'), 'daemonInputsUnchangedUntilHead': True, 'buildMode': fields.get('build_mode'), 'command': fields.get('command'),
             'engineLockEntry': engine[:3], 'evidenceFile': str(path), 'evidenceSha256': sha256(path)}
 
 
@@ -342,8 +347,13 @@ def main():
     prov = provenance()
 
     if args.gui_binary:
-        binary, tags = out / 'uniclipboard', 'prebuilt (--gui-binary)'
+        binary = out / 'uniclipboard'
         shutil.copy2(args.gui_binary, binary)
+        info = {k: (Path(str(args.gui_binary) + '.' + k).read_text().strip() if Path(str(args.gui_binary) + '.' + k).exists() else None) for k in ('head', 'tags', 'sha256')}
+        # build_release_e2e_in_container.sh wrote these next to the binary; the hash must be the binary's own.
+        if info['sha256'] and info['sha256'].split()[0] != sha256(binary):
+            sys.exit(f'{args.gui_binary}.sha256 does not match the file')
+        tags = f"prebuilt (--gui-binary): tags={info['tags']}, built at head={info['head']}, sha256={sha256(binary)}"
     else:
         run(['go', 'generate', './buildinfo'], cwd=ROOT / 'packages/desktop-host-go')
         (GUI / 'assets').mkdir(exist_ok=True)

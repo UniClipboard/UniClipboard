@@ -465,8 +465,11 @@ def negative(run, launches):
         step = gui.step('bootstrapped', 75)
         run.check('N the negative-control package unexpectedly reached the page', False, step)
     except RuntimeError as e:
+        time.sleep(1)
         log = gui.log.read_text(errors='replace')
-        run.check('N the package without helper relocation never reaches the page on a host without WebKitGTK', True, str(e))
+        cause = [l for l in log.splitlines() if 'Failed to spawn child process' in l and 'webkit2gtk-4.1/WebKit' in l and 'No such file or directory' in l]
+        run.check('N the package without helper relocation never reaches the page, and the log names the cause: the host helper path does not exist',
+                  bool(cause), {'wait': str(e), 'cause': cause[:1]})
         run.results['negativeLogTail'] = log[-3000:]
 
 

@@ -3,6 +3,7 @@ import { useAppBootstrap } from '@/hooks/useAppBootstrap'
 import { useContentUnlocked } from '@/hooks/useContentUnlocked'
 import { useMainWindowPresentation } from '@/hooks/useMainWindowPresentation'
 import { useProfileRecovery } from '@/hooks/useProfileRecovery'
+import { useSettledAppView } from '@/hooks/useSettledAppView'
 import { useVisualEffectsSampling } from '@/hooks/useVisualEffectsSampling'
 import type { SetupGate } from '@/lib/app-state'
 import { resolveAppContentState } from './app-content-state'
@@ -60,6 +61,7 @@ export function AppContent({
       appState.needsAttention ||
       bootstrap.spaceReadiness === 'recoveringMembership'
   )
+  const view = useSettledAppView(appState.view)
   return (
     <AppContentView
       bootstrap={bootstrap}
@@ -69,7 +71,7 @@ export function AppContent({
       onSetupComplete={onSetupComplete}
       recovery={recovery}
       sidebarTitle={sidebarTitle}
-      view={appState.view}
+      view={view}
     />
   )
 }

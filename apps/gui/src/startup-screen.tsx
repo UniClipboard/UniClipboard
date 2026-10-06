@@ -24,12 +24,13 @@ export function showStartupScreen(): void {
     detectPlatformInfo(),
     readWindowFramePreference()
   )
+  const titleBar = hasCustomTitleBar ? <div className="h-10 shrink-0" /> : null
   getAppRoot().render(
     <React.StrictMode>
       <WindowShell titleBar={null}>
         <div className="relative h-full w-full overflow-hidden">
           <div className="absolute inset-0 flex min-h-0">
-            <AppStateFrame titleBar={hasCustomTitleBar ? <div className="h-10 shrink-0" /> : null}>
+            <AppStateFrame titleBar={titleBar}>
               <StartupProgressScreen
                 snapshot={pendingStartupSnapshot}
                 onRetry={() => {}}

@@ -18,8 +18,8 @@ use futures_util::{SinkExt, StreamExt};
 use serde_json::Value;
 use tokio_tungstenite::tungstenite::Message;
 use uc_e2e_tests::{
-    get_session_token, InviteSession, LocalRendezvous, NodeBinarySet, TestCli, TestDaemon,
-    TestProfile,
+    confirm_device_group, get_session_token, InviteSession, LocalRendezvous, NodeBinarySet,
+    TestCli, TestDaemon, TestProfile,
 };
 
 const PASSPHRASE: &str = "space-device-update-convergence";
@@ -325,7 +325,7 @@ async fn notified_host_converges_after_pending_group_update_is_delivered() {
 
     // carol never accepted bob's removal herself, so her user decides (ADR-020).
     let carol_reader = TrustReader::new(&carol).await;
-    let (issue_id, choice_id) = {
+    let (issue, choice) = {
         let deadline = Instant::now() + WAIT_TIMEOUT;
         loop {
             if let Ok(value) = carol_reader.raw().await {
@@ -335,10 +335,7 @@ async fn notified_host_converges_after_pending_group_update_is_delivered() {
                             .as_array()?
                             .iter()
                             .find(|choice| choice["isCurrentGroup"] == false)?;
-                        Some((
-                            issue["issueId"].as_str()?.to_string(),
-                            choice["choiceId"].as_str()?.to_string(),
-                        ))
+                        Some((issue.clone(), choice.clone()))
                     })
                 });
                 if let Some(accept) = accept {
@@ -352,10 +349,15 @@ async fn notified_host_converges_after_pending_group_update_is_delivered() {
             tokio::time::sleep(Duration::from_millis(1000)).await;
         }
     };
-    let chosen = carol.cli.run_capture(&[
-        "--json", "member", "trust", "choose", "--issue", &issue_id, "--choice", &choice_id,
-    ]);
-    assert!(chosen.success(), "carol decision failed: {chosen:?}");
+    confirm_device_group(
+        |args| carol.cli.run_capture(args),
+        &issue,
+        &choice,
+        false,
+        WAIT_TIMEOUT,
+    )
+    .await
+    .expect("carol decision failed");
     eprintln!("[space-update-convergence] carol accepted the removal");
 
     let converged_at = {

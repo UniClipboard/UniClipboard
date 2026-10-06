@@ -3843,14 +3843,14 @@ checksum = "b6f5e870be6c3b371b77fe0ee0bafb859fa4964b4404c27de1d380043c4dda20"
 
 [[package]]
 name = "uc-app-paths"
-version = "1.0.0"
+version = "1.1.1"
 dependencies = [
  "dirs",
 ]
 
 [[package]]
 name = "uc-daemon-client"
-version = "1.0.0"
+version = "1.1.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3871,7 +3871,7 @@ dependencies = [
 
 [[package]]
 name = "uc-daemon-contract"
-version = "1.0.0"
+version = "1.1.1"
 dependencies = [
  "chrono",
  "semver",
@@ -3885,7 +3885,7 @@ dependencies = [
 
 [[package]]
 name = "uc-daemon-process"
-version = "1.0.0"
+version = "1.1.1"
 dependencies = [
  "anyhow",
  "libc",
@@ -3933,7 +3933,7 @@ dependencies = [
 
 [[package]]
 name = "uc-platform"
-version = "1.0.0"
+version = "1.1.1"
 dependencies = [
  "anyhow",
  "async-trait",

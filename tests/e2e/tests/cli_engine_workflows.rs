@@ -291,102 +291,27 @@ async fn confirm_device_group(
     expected_choice: &Value,
     confirm_local_removal: bool,
 ) -> Value {
-    let issue_id = expected_issue["issueId"].as_str().expect("issue id");
-    let choice_id = expected_choice["choiceId"].as_str().expect("choice id");
-    let deadline = tokio::time::Instant::now() + WAIT_TIMEOUT;
-    loop {
-        // Each submission represents a new user confirmation of freshly read facts.
-        let current = node
-            .cli
-            .run_capture(&["--json", "member", "trust", "status"]);
-        assert!(
-            current.success(),
-            "read choices before confirmation failed: {current:?}"
-        );
-        let current = json(&current);
-        let issue = current["issues"]
-            .as_array()
-            .expect("issues")
-            .iter()
-            .find(|issue| issue["issueId"] == issue_id)
-            .expect("same issue must remain current");
-        let choice = issue["choices"]
-            .as_array()
-            .expect("choices")
-            .iter()
-            .find(|choice| choice["choiceId"] == choice_id)
-            .expect("same choice must remain available");
-        assert_eq!(
-            issue["reason"]["changes"],
-            expected_issue["reason"]["changes"]
-        );
-        assert_eq!(
-            choice["memberDeviceIds"],
-            expected_choice["memberDeviceIds"]
-        );
-        assert_eq!(choice["membersComplete"], true);
-        assert_eq!(
-            choice["requiresRePairing"],
-            expected_choice["requiresRePairing"]
-        );
-        assert_eq!(
-            choice["impact"]["localDeviceOutcome"],
-            expected_choice["impact"]["localDeviceOutcome"]
-        );
-
-        let mut args = vec![
-            "--json", "member", "trust", "choose", "--issue", issue_id, "--choice", choice_id,
-        ];
-        if confirm_local_removal {
-            args.push("--confirm-local-removal");
-        }
-        let before = daemon_request_count(node, "POST", "/member/device-group-choices");
-        let output = node.cli.run_capture(&args);
-        let after = daemon_request_count(node, "POST", "/member/device-group-choices");
-        if after == before && !output.success() {
-            assert!(
-                tokio::time::Instant::now() < deadline,
-                "device group confirmation never reached the daemon: {output:?}; log={}",
+    uc_e2e_tests::confirm_device_group(
+        |args| {
+            let before = daemon_request_count(node, "POST", "/member/device-group-choices");
+            let output = node.cli.run_capture(args);
+            let after = daemon_request_count(node, "POST", "/member/device-group-choices");
+            let expected_posts = usize::from(args[3] == "choose");
+            assert_eq!(
+                after,
+                before + expected_posts,
+                "unexpected POST count; output={output:?}; log={}",
                 node.daemon.diagnostic_log()
             );
-            tokio::time::sleep(Duration::from_millis(250)).await;
-            continue;
-        }
-        assert_eq!(
-            after,
-            before + 1,
-            "unexpected POST /member/device-group-choices request count; output={output:?}; log={}",
-            node.daemon.diagnostic_log()
-        );
-        let result = json(&output);
-        if result["code"] == "device_group_choice_failed" {
-            assert!(
-                tokio::time::Instant::now() < deadline,
-                "device group choices remained unavailable: {result}; log={}",
-                node.daemon.diagnostic_log()
-            );
-            tokio::time::sleep(Duration::from_millis(250)).await;
-            continue;
-        }
-        if result["result"]["outcome"] != "state_changed" {
-            assert!(
-                output.success(),
-                "device group confirmation failed: {output:?}"
-            );
-            return result;
-        }
-        assert_eq!(output.exit_code, 1);
-        assert_eq!(result["ok"], false);
-        assert!(
-            result["state"]["revision"].as_u64().expect("new revision")
-                > current["revision"].as_u64().expect("reviewed revision")
-        );
-        assert!(
-            tokio::time::Instant::now() < deadline,
-            "device group never settled: {result}"
-        );
-        tokio::time::sleep(Duration::from_millis(250)).await;
-    }
+            output
+        },
+        expected_issue,
+        expected_choice,
+        confirm_local_removal,
+        WAIT_TIMEOUT,
+    )
+    .await
+    .expect("device group confirmation failed")
 }
 
 #[tokio::test]
@@ -537,8 +462,7 @@ async fn space_reset_rebuilds_membership_and_preserves_local_history() {
     assert_eq!(setup_state(&alice).await["rePairingRequired"], false);
 
     alice.daemon.kill();
-    let dev_cli =
-        TestCli::with_binaries(&alice.daemon.profile, &NodeBinarySet::current_dev_cli());
+    let dev_cli = TestCli::with_binaries(&alice.daemon.profile, &NodeBinarySet::current_dev_cli());
     let seeded = dev_cli.run_capture(&[
         "dev",
         "seed-clipboard",

@@ -88,6 +88,7 @@
 - 宿主前置条件不是「没有任何库」：`libharfbuzz` 等 23 个 soname 都是固定版 linuxdeploy 排除列表的精确行（宿主提供是约定，不是打包缺陷）；它们带来宿主 GLib，所以验收口径是「宿主没有 GTK/WebKitGTK」，包内 GLib/GIO 由 `/proc/<pid>/maps` 证明被实际映射。
 - `libGLESv2.so.2` 被 WebKit `dlopen`，不在排除列表中，linuxdeploy 也看不到它，作为同属 libglvnd 的宿主库处理（运行镜像装 `libgles2`）；打包检查的宿主库断言目前不含它。这是 **未覆盖的运行时依赖审计项**：dlopen 的依赖没有被系统地枚举过（只是被一次失败发现），所以本文所有绿灯只代表这个 Ubuntu 24.04 干净容器，**不能推广为任意 Linux 发行版可运行**；后续应对 `dlopen` 的库做一次系统审计，并在多个发行版/Mesa 版本的宿主上验证。
 - linuxdeploy 会给传入的可执行文件加 `RUNPATH`，改变 daemon 字节；清单记录哈希链，包内的 daemon 放回原文件，身份可与构建证据逐字节对照。
+- AppImage 的 runtime（嵌在 SquashFS 之前的 ELF）自 17c6 起由 `package_linux.py` 用 `--runtime-file` 固定，见 [gui-go-linux-appimage-runtime-pin.md](gui-go-linux-appimage-runtime-pin.md)。
 - AppImage 内的 portable 模式在 17c4 **不可用**（数据根落在只读挂载，daemon 起不来，`probe5`）。**17c5 已解决并验收**：portable 的可写根改用 AppImage runtime 自己的 `<AppImage>.home` 约定，见 [gui-go-linux-appimage-portable.md](gui-go-linux-appimage-portable.md)。
   17c4 的验证仍是非 portable 的 XDG 数据根（因此需要 Secret Service，且必须是常驻、已解锁的单个实例：先前的 `--unlock` 交棒方式曾被 D-Bus 重新激活成锁定实例，`/encryption/state` 因等待无法显示的提示而挂起，保留的 `final-70dd6dcbe`）。
 - 自启动只验证注册（`Exec=` 是 AppImage 文件而不是临时挂载、旧条目替换、禁用）；真实注销/登录启动与更新之后的条目有效性、amd64、原生桌面、deb/rpm 实装、官方签名发布验证均未验收。

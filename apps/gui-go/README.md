@@ -596,7 +596,7 @@ UC_LINUX_IMAGE=uc-gui-go-linux-build:17c2 apps/gui-go/e2e/linux/run_17c4.sh <新
 
 | 能力 | Wails API（源码） | 采用方式 | 差距证据 | 验收 |
 | --- | --- | --- | --- | --- |
-| portable / 数据根 / AppImage 可写目录 | `pkg/application` 里没有 portable 或 `APPIMAGE` 的引用 | 无对应 API，自有适配；**采用成熟 AppImage runtime 的 `.home` 机制**（实测：目录存在时 `$HOME` 被设置；`$APPIMAGE` 为解析后的绝对路径；空格与非 ASCII 正常；被测 runtime 是本次观测到的 `type2-runtime` `8f39b89`，字节 SHA-256 `c27d5a2e…1684`，**不是固定的**：`appimagetool`（SHA 固定）在打包时才下载 runtime） | `.home` 只改 `$HOME`，不改 daemon 的文件 keystore 选择，所以 Rust 与 Go 仍需同一规则 | `probe-portable-home`；`e2e-portable` |
+| portable / 数据根 / AppImage 可写目录 | `pkg/application` 里没有 portable 或 `APPIMAGE` 的引用 | 无对应 API，自有适配；**采用成熟 AppImage runtime 的 `.home` 机制**（实测：目录存在时 `$HOME` 被设置；`$APPIMAGE` 为解析后的绝对路径；空格与非 ASCII 正常；被测 runtime 是 `type2-runtime` `8f39b89`；17c5 当时没有固定它（`c27d5a2e…1684` 是嵌入后的前缀哈希，不是资产哈希），**17c6 已固定**，见“固定 AppImage runtime（第 17c6 片）”） | `.home` 只改 `$HOME`，不改 daemon 的文件 keystore 选择，所以 Rust 与 Go 仍需同一规则 | `probe-portable-home`；`e2e-portable` |
 | 启动失败提示 | `app.Dialog.Error()` | 采用（需运行中的事件循环，故在 `ApplicationStarted` 里弹出） | — | F8/F9/F10 |
 | 自启动 | `app.Autostart` | AppImage 内沿用 17c4 的最小适配，只改目录来源 | — | P2、S2 |
 
@@ -619,7 +619,7 @@ UC_LINUX_IMAGE=uc-gui-go-linux-build:17c2 apps/gui-go/e2e/linux/run_17c4.sh <新
 - `--appimage-extract-and-run`、真实只读文件系统挂载、对话框文字内容、窗口管理器下的行为。
 - 伪造的 `APPIMAGE`（`APPDIR` 一并伪造）无来源验证。
 - Windows/macOS 路径的重新运行（只有编译与既有 Rust 单元测试）；amd64；原生桌面；官方签名发布验证；dlopen 依赖审计；WebView HTTPS。
-- **runtime 未固定**：`appimagetool` 的 SHA-256 固定，但它打包时从 GitHub 下载 runtime（`package_linux.py` 不传 `--runtime-file`；17c5 的一次打包因下载失败而重试，失败日志保留）。`8f39b89` 只是本次观测的 revision，不是可复现保证；portable 依赖 runtime 的 `.home` 与 `$APPIMAGE` 语义，所以固定 runtime 的版本/SHA-256/来源是下一片候选（17c6）。
+- runtime 固定：17c5 时未固定，已在 17c6 完成（见下一节）。
 - CLI 的 `UNICLIPBOARD_DAEMON_BASE_URL` 覆盖路径缺少 `/ws`（既有缺陷）。本片 E2E 里的 CLI 软链只是客户端定位的测试适配，不是 GUI 与 daemon 一致性的证明。
 
 ### 17c5 复跑
@@ -632,6 +632,21 @@ UC_LINUX_IMAGE=uc-gui-go-linux-build:17c2 apps/gui-go/e2e/linux/run_17c5.sh <新
 UC_PORTABLE_E2E_ARGS=--supplement apps/gui-go/e2e/linux/run.sh appimage-portable-e2e <新目录> <AppImage> <feed> <package-manifest.json>
 ```
 
+## 固定 AppImage runtime（第 17c6 片）
+
+契约、Wails 优先审计、选型理由（为什么是 `8f39b89` 而不是带日期的 `20251108`）、失败方式与证据映射在 [docs/architecture/gui-go-linux-appimage-runtime-pin.md](../../docs/architecture/gui-go-linux-appimage-runtime-pin.md)。证据目录 `/Users/mark/.herdr-projects/uni/t-0188-artifacts/linux-17c6/`（仓库只索引）。
+
+- 缺陷：`appimagetool 1.9.0` 的 SHA 固定，但 `package_linux.py` 不传 `--runtime-file`，appimagetool 在打包时下载当前的 `continuous` runtime（不可复现，且依赖网络；离线复现：`Failed to download runtime`）。
+- 实现：`package_linux.py` 的 `RUNTIME*` 固定 revision `8f39b89e…`、`continuous` 来源与每架构 SHA-256；`fetch_verified` 先检查 ELF 架构再检查 SHA，拒绝的字节保留为 `*.rejected-<sha8>`；appimagetool 以 `--runtime-file` 调用；打包后校验镜像前缀等于 runtime（只允许 `.digest_md5` 节不同）、紧接 SquashFS，并运行 `--appimage-version`；manifest 的 `appimage.runtime` 记录全部身份。
+- 验收（容器内 arm64，干净提交 `3ed97b642`，`final-3ed97b642`）：离线 v2 打包成功；负面用例 7/7 拒绝（非 ELF、错架构缓存、截断、位翻转、错误 pin SHA、pin 指向错架构、无缓存且无网络）且无 `.AppImage`；缓存损坏联网时自愈并等于 pin；四个包的 runtime 清零摘要后哈希都等于 pin；整套重跑：portable 64/64、`--supplement` 13/13、非 portable 34/34、negative 2/2、release 冒烟 5/5、MIME 探针有/无为成功/失败。
+- 边界：`continuous` URL 可变（没有官方 immutable 链接），SHA 不符时失败而不回退，pin 需有意更新；amd64 只核对了资产 SHA 与 ELF 机型，没有嵌入与运行；gpg 密钥不是独立信任根。
+
+### 17c6 复跑
+
+```bash
+UC_LINUX_IMAGE=uc-gui-go-linux-build:17c2 apps/gui-go/e2e/linux/run_17c6.sh <新目录>   # 干净提交；包含 17c5 全套与 runtime 固定的负面用例
+```
+
 ## 验收边界
 
 - Wails 与 runtime 同时固定为 `3.0.0-beta.28`；这是 beta 原型，不是生产迁移完成。
@@ -642,6 +657,7 @@ UC_PORTABLE_E2E_ARGS=--supplement apps/gui-go/e2e/linux/run.sh appimage-portable
 - Linux 17c2：Layer Shell 面板与每输出定位/上限由容器内真实无头 sway 验证（见“17c2 结果”），Hyprland/GNOME/KDE 与真实桌面未验证。Linux 17c：证据来自容器内 Xvfb + 私有 D-Bus（无窗口管理器、Wayland、portal、托盘宿主、通知服务、Secret Service）与脚本化 Hyprland socket；默认快捷键用 e2e 测试接缝；（17c 当时）AppImage 不自包含、daemon 来源未核验；17c4 已补自包含 AppImage 与真实 release daemon 证据（容器内干净宿主，仍无真实 Linux 桌面运行证据）。详见“Linux（第 17c 片）”与“自包含 Linux AppImage（第 17c4 片）”。
 - Windows 17b：同上，另可为 arm64 编译、安装器脚本可编译；daemon 以 `TerminateProcess` 强制终止（非优雅关闭）；Windows 生产入口、安装器、原位更新、自启迁移、双击修饰键的真实读取/焦点/可见性均未验证；真实 Rust daemon + NSIS/便携包的原生安装与更新仍 OPEN；官方发布签名验证仍 OPEN。
 - Windows：17a 代码可为 windows/amd64 编译（普通与 e2e 标签、`go vet` 通过），没有任何 Windows 运行证据（真实可见、焦点、按键、冲突、粘贴、托盘、通知、daemon 停止、单实例均未验证，runner 离线）；Linux、安装签名、Windows 更新与 GPUI 在 Windows 的 N/A 说明见上。
+- Linux 17c6：AppImage runtime 固定（见“固定 AppImage runtime（第 17c6 片）”），amd64 嵌入与运行、跨发行版 dlopen 审计仍 OPEN。
 - Linux 17c5：AppImage portable 模式由容器内非 root 用户、无 Secret Service 的真实 AppImage 与真实 release daemon 验证（见“AppImage portable 模式（第 17c5 片）”）；真实登录会话、更新后自启动、Windows/macOS 重新运行、amd64 与原生桌面仍 OPEN。
 - 单实例：投递尽力而为；`application.New`→`Run` 的毫秒窗口内的激活不可接收；Windows/Linux 与 macOS Dock 再点击未验证；窗口重放曾触发原生 `SIGSEGV`（根因未定位，见“Wails 能力审计”）。
 - 17a macOS：`webview_panel_shortcut_run.py` 控制器断言 17 项通过、原生可见性 3 项未验证（显示器仍休眠，`CGDisplayIsAsleep=1`，仅相关性，不断定根因）；`single_instance_run.py` 因 `--quick-panel` 行为变化重跑一次通过；未重跑整套 quiet 回归。

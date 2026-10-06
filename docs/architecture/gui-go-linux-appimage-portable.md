@@ -20,7 +20,7 @@ portable 同时承担另一个语义：`is_portable()` 为真时 daemon 选择 *
 
 ### 成熟 AppImage 机制（实测，不是读文档）
 
-固定的 `appimagetool 1.9.0`（SHA-256 固定）本身并不固定它嵌入的 runtime：`package_linux.py` 没有传 `--runtime-file`，appimagetool 在打包时从 GitHub 下载 runtime（17c5 的打包尝试里出现过一次 `Failed to download runtime file`，见证据目录 `iter1/logs/package-v2.failed-network.log`）。**本次观测** 到的 runtime 是 `type2-runtime` revision `8f39b89`（`--appimage-version`），其字节（AppImage 偏移 936456 之前的部分）SHA-256 为 `c27d5a2ec0dcca7a99846673627b4fd37a8cb9ae0fa910aaffde696762ff1684`（`observed-runtime.txt`）。这是观测记录，不是可复现保证：别的时间打包可能得到别的 runtime，而 `.home` 行为、`$APPIMAGE` 语义都是 runtime 提供的，所以 portable 模式依赖一个当前未固定的输入。固定 runtime 的版本、SHA-256 与来源是下一片候选（17c6）。
+17c5 打包时 `appimagetool 1.9.0`（SHA-256 固定）自己从 GitHub 下载 runtime，runtime 当时没有被固定（17c5 的打包尝试里出现过一次 `Failed to download runtime file`，见证据目录 `iter1/logs/package-v2.failed-network.log`）。17c5 实际测试的 runtime 是 `type2-runtime` revision `8f39b89`；`c27d5a2e…1684` 是 **嵌入后** 的前缀哈希（含 AppImage 自己的 MD5），清零 `.digest_md5` 节后与 `runtime-aarch64` 资产相同，哈希为 `b4ff0030…`。**17c6 已固定** 该 runtime（revision、来源、每架构 SHA-256、`--runtime-file`、嵌入校验），并对固定后的字节重跑了本文件的全部探针与场景，见 [gui-go-linux-appimage-runtime-pin.md](gui-go-linux-appimage-runtime-pin.md)。`.home` 行为与 `$APPIMAGE` 语义是 runtime 提供的，所以 portable 模式的前提是这个固定的输入。
 
 `strings` 在该 AppImage 内确认了 `--appimage-portable-home`、`<AppImage>.home` 约定。在无 GTK 的运行镜像里用同一 `appimagetool` 做了最小探针 AppImage（`apps/gui-go/e2e/linux/probe_portable_home.sh`，输出保存在证据目录），事实：
 
@@ -144,5 +144,5 @@ GUI 启动 daemon 时继承环境（`daemonproc/spawn.go`：`os.Environ()` 加 `
 - 真实只读挂载（本片用非 root 与他人拥有的 `0555` 目录证明权限失败，未用只读文件系统挂载）。
 - 错误对话框的文字内容没有被读取（只证明窗口出现、可关闭、退出码 1、消息在 stderr）；容器里没有窗口管理器。
 - CLI 的 `UNICLIPBOARD_DAEMON_BASE_URL` 覆盖路径缺少 `/ws`（既有缺陷，未修）。
-- **runtime 未固定**（见「成熟 AppImage 机制」）：版本、SHA-256、来源固定列为下一片候选 17c6，之后再做跨发行版 dlopen 审计。
+- runtime 固定已在 17c6 完成（arm64 的嵌入与运行已验证，amd64 只核对了资产；见 [gui-go-linux-appimage-runtime-pin.md](gui-go-linux-appimage-runtime-pin.md)）。下一步候选：跨发行版 dlopen 审计。
 - 其余沿用 17c4：amd64、原生桌面、官方签名发布验证、dlopen 依赖审计、WebView HTTPS。

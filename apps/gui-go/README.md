@@ -320,6 +320,55 @@ apps/gui-go/e2e/linux/run.sh package <dir>  # 容器内：生产前端包 + pack
 | 真实 Hyprland（`hl.dsp.*` 语法与按键到达）、portal 快捷键、托盘、通知、`SystemDidWake`、窗口聚焦与位置、deb/rpm 的真实包管理器检测分支、AppImage 真实更新重启 | 原生/真实桌面未验证 | 需要授权的 Linux 主机，或为各项设计更真实的隔离环境 |
 | 镜像下载失败的根因 | 未证明 | 不影响产物；若再出现，先复核代理路径 |
 
+## Linux Layer Shell 面板（第 17c2 片，L5/L6）
+
+分支 `hp/uni/t-0188-go-gui-linux-layer-shell-17c2`，叠加在 17c（#1875）之上。本节先写设计与失败方式，E2E 在实现之前定好范围。
+
+### 选型依据（Wails 优先，已核对固定版本源码）
+
+| 问题 | 核对 | 结论 |
+| --- | --- | --- |
+| Wails `v3.0.0-beta.28` 有无 Layer Shell | 在模块目录内按 `layer.shell`、`layershell`、`gtk_layer` 全文检索，**零命中**；`WebviewWindowOptions`/`LinuxWindow` 没有相关字段 | **缺口**，需要最小补充 |
+| 能否拿到原生窗口 | `linuxWebviewWindow.nativeWindow()` 返回 `GtkWindow*`（`webview_window_linux.go`），经 `Window.NativeWindow()` 公开 | 可以，不需要 fork Wails |
+| 窗口何时 realize | `run()` 里 `windowNew` 用 `gtk_application_window_new`，只有 `windowShow` 调用 `gtk_widget_realize`；`Hidden: true` 的窗口创建后保持 **未 realize** | 在 realize 之前对原生句柄初始化 Layer Shell 是可行的（须由真实运行验证，见失败方式 F1） |
+| 协议实现 | 不手写 `zwlr_layer_shell_v1`；使用成熟库 `libgtk-layer-shell`（GTK3，Ubuntu 24.04 为 0.8.2）。Go 侧没有可复用的成熟绑定（`gotk3` 系绑定要求 gotk3 对象，不能接 Wails 的原始指针） | 与 Tauri 相同：运行时 `dlopen("libgtk-layer-shell.so.0")`，不链接、不增加硬依赖；缺库时回退到普通窗口 |
+| 光标与活动窗口 | 沿用 `internal/hyprland`（与 `uc_desktop::hyprland` 同协议）并补 `Cursor()`（`j/cursorpos`） | 复用 |
+
+接口保持最小：新包 `internal/layershell`（cgo，仅 Linux）只暴露 `Available`、`Attach`、`Place`、`Show`、`Hide` 之类对 `GtkWindow*` 的操作，所有调用在 GTK 主线程（`application.InvokeSync`）执行；定位、尺寸上限与光标选屏的数学在 Go 中，与 Tauri `layout()` 一致。
+
+### Tauri 契约（逐项核对 `crates/uc-tauri/src/quick_panel/{layer_shell,linux,mod}.rs`）
+
+- 激活条件：`GdkDisplay` 类型为 `GdkWaylandDisplay` 且 `gtk_layer_is_supported()`，不是环境变量；否则整条普通窗口路径保持原样。
+- 面板：overlay 层、namespace `uniclipboard-quick-panel`、exclusive zone -1、锚定左 + 上，用左/上 margin 定位；显示时键盘模式 `exclusive`，隐藏时 `none`；非 resizable 的 GTK 窗口会保持 WebKit 的自然尺寸，所以初始化后允许 resizable，尺寸走 `set_size_request` + `resize(1,1)`。
+- 背板：每个输出一张全锚定、namespace `uniclipboard-quick-panel-dismiss`、不可聚焦、透明的 layer surface，点击即隐藏面板；先于面板映射，使面板在同一层的上方；隐藏面板时销毁。
+- 每显示 capture 一次：光标所在输出（Hyprland `j/cursorpos`，找不到则主显示器、再退到第 0 个）、该输出的 work area（逻辑坐标，不乘缩放）。尺寸上限：宽 ≤ work area 宽的 90%，高 ≤ 80%，下取整且至少 1；跟随光标时每个轴用与其他平台相同的 `axis_anchored_position`（间隙 6，向前、向后翻转、夹紧），否则在 work area 居中。
+- Linux 面板基础尺寸固定 800×560，窗口缩放因子 `windowScale` 限制在 [0.8, 1.5]，`set_quick_panel_layout` 带 `windowScale`；预览展开侧在 Linux 恒为右侧。
+- 粘贴：`PanelState.previous_window` 在 `prepare_show` 记录（Hyprland 活动窗口）；粘贴先隐藏面板（释放键盘独占），再聚焦并发送快捷键。
+
+### 失败方式（先于实现）
+
+| # | 失败方式 | 后果 | 检查（E2E，真实合成器） |
+| --- | --- | --- | --- |
+| F1 | 在窗口已 realize 之后才初始化 Layer Shell，或把已实现的普通 xdg-toplevel 当作 layer surface | 库只会报警告，窗口仍是普通 toplevel，看起来“能显示”却没有 overlay/独占键盘 | `Attach` 之后读 `gtk_layer_is_layer_window`，**且** 在合成器侧确认该表面的协议角色是 layer surface（`sway -d` 日志的 layer surface 创建记录，namespace 与 layer 值匹配）；负例：对已 realize 的窗口调用必须被拒绝并返回错误，不假装成功 |
+| F2 | `libgtk-layer-shell.so.0` 缺失、符号缺失、`is_supported` 为假（GNOME、X11） | 崩溃或面板不可用 | 容器中用 `LD_LIBRARY_PATH` 屏蔽库、以及在 Xvfb（X11）下启动：必须回退到普通窗口且既有 Xvfb 场景仍通过；GNOME 在容器里不可证，只写出“协议不存在时走此回退” |
+| F3 | libgtk-layer-shell 的链接顺序要求（在 libwayland-client 之后才加载） | 初始化失败或表面角色错误 | 在真实 sway 上以 `dlopen` 方式加载并读取协议角色；若失败，记录原始日志并改接入方式，不改需求 |
+| F4 | 从非 GTK 线程调用 GTK/Layer Shell | 偶发崩溃 | 所有调用经 `application.InvokeSync`；E2E 多次显示/隐藏循环后进程仍存活 |
+| F5 | 键盘独占未设置或隐藏后未释放 | 面板收不到按键，或隐藏后键盘卡死在不可见的表面 | 另开一个真实 xdg toplevel 并聚焦；显示面板后 `wtype` 的文本落到面板而非该窗口（合成器侧聚焦树）；隐藏后键盘回到该窗口 |
+| F6 | 背板缺失、不覆盖全部输出、点击后面板不隐藏、背板泄漏 | 点外部无法关闭，或残留透明表面吞掉点击 | 两个输出各有一张背板（日志记录 namespace `...-dismiss` 次数）；合成器光标点击面板之外 → 面板隐藏、背板销毁；再次显示不累积；点击面板内部不关闭 |
+| F7 | 面板在 margin 之外定位、超出 work area、比例上限错误 | 面板被裁切或跑到别的输出 | 两个不同分辨率/缩放/位置的输出；光标在第二个输出的各个角；`grim` 截图差分得到面板包围盒，与期望矩形比较；小输出下宽 ≤ 90%、高 ≤ 80% |
+| F8 | 光标不可得（非 Hyprland 或 IPC 失败）或返回非有限值 | 面板落在错误输出 | 无 Hyprland 时居中到主显示器；脚本化 socket 返回 NaN/超大/不回复，回退并不崩溃 |
+| F9 | `set_quick_panel_layout` 丢掉 `windowScale` | 缩放因子被忽略 | 对 1.5 与 0.8 调用后测量尺寸，并检查上限仍然生效 |
+| F10 | 粘贴前未释放独占键盘 | 目标窗口聚焦失败，按键丢失 | 粘贴链路：隐藏先于聚焦，日志顺序可核对（脚本化 Hyprland socket 记录命令时序，合成器里键盘回到目标窗口） |
+| F11 | Wails 的失焦隐藏与独占键盘互相干扰 | 面板立刻关闭或永不关闭 | 在 layer 模式下显示后保持可见、Esc 经前端关闭 |
+
+### E2E 验收范围与边界
+
+隔离容器（linux/arm64，Ubuntu 24.04，镜像 `uc-gui-go-linux-build:17c2` 在 `:17c` 之上加 `sway`、`libgtk-layer-shell0`、`grim`、`wtype`、`wayland-utils`）里的 **sway 1.9 无头后端（wlroots，pixman 渲染）**，真实 Wayland 协议、真实 layer-shell 合成器；不触碰宿主桌面。
+
+- **能证明**：`zwlr_layer_shell_v1` 的协议角色、overlay 层、键盘模式、多输出背板、点击关闭、按输出定位与比例上限、显示/隐藏循环、回退路径（Xvfb/缺库）。
+- **不能证明**：Hyprland 本身（Hyprland 不在 Ubuntu 仓库；光标与活动窗口继续用脚本化 socket，与真实 sway 并存）、GNOME（不实现 wlr-layer-shell，走回退）、KDE、真实 GPU 渲染、真实桌面的输入栈。
+- AppImage：Tauri 的 `AppRun` 钩子强制 `GDK_BACKEND=x11`（`docs/architecture/linux-appimage-library-policy.md`），因此在打包产物里 Layer Shell 路径不会激活；本片不改变打包（17c4）。
+
 ## 验收边界
 
 - Wails 与 runtime 同时固定为 `3.0.0-beta.28`；这是 beta 原型，不是生产迁移完成。

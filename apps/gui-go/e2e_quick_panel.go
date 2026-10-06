@@ -1,0 +1,72 @@
+//go:build e2e
+
+package main
+
+import (
+	"context"
+	"math"
+	"strings"
+	"time"
+)
+
+// controlQuickPanel drives the quick-panel placement checks. Expectations are computed here
+// from the Screen API and the warped cursor, independently of panelOrigin.
+func (s *EvidenceService) controlQuickPanel(action string) (bool, error) {
+	h := s.host
+	switch {
+	case strings.HasPrefix(action, "panel-warp:"):
+		primary := h.app.Screen.GetPrimary().Bounds
+		var x, y float64
+		switch strings.TrimPrefix(action, "panel-warp:") {
+		case "center":
+			x, y = float64(primary.X+primary.Width/2), float64(primary.Y+primary.Height/2)
+		case "near":
+			x, y = float64(primary.X+300), float64(primary.Y+300)
+		case "corner":
+			x, y = float64(primary.X+primary.Width-100), float64(primary.Y+primary.Height-100)
+		}
+		warpCursor(x, y)
+		time.Sleep(200 * time.Millisecond)
+		return true, nil
+	case action == "panel-hide":
+		h.dismissQuickPanel()
+		time.Sleep(300 * time.Millisecond)
+		return true, nil
+	case strings.HasPrefix(action, "panel-show:"):
+		// panel-show:<label>: open the panel for the current settings and report where it landed.
+		label := strings.TrimPrefix(action, "panel-show:")
+		w, ok := h.app.Window.GetByName(quickPanelWindowName)
+		if !ok {
+			return true, s.write(Step{Window: quickPanelWindowName, Step: "panel-" + label, OK: false, Detail: "panel window absent"})
+		}
+		h.showQuickPanel()
+		visible := false
+		for deadline := time.Now().Add(4 * time.Second); time.Now().Before(deadline) && !visible; time.Sleep(100 * time.Millisecond) {
+			visible = w.IsVisible()
+		}
+		x, y := w.Position()
+		width, height := w.Size()
+		cx, cy, _ := cursorPosition()
+		primary := h.app.Screen.GetPrimary().Bounds
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		prefs, _ := h.loadQuickPanelSettings(ctx)
+		detail := map[string]any{"visible": visible, "x": x, "y": y, "width": width, "height": height,
+			"cursor": []float64{cx, cy}, "primary": primary, "prefs": prefs}
+		ok = visible
+		switch label {
+		case "center":
+			wantX := float64(primary.X) + (float64(primary.Width)-float64(width))/2
+			wantY := float64(primary.Y) + (float64(primary.Height)-float64(height))/2
+			ok = ok && math.Abs(float64(x)-wantX) <= 2 && math.Abs(float64(y)-wantY) <= 2
+		case "follow-near":
+			ok = ok && math.Abs(float64(x)-(cx+cursorAnchorGap)) <= 2 && math.Abs(float64(y)-(cy+cursorAnchorGap)) <= 2
+		case "follow-flipped":
+			ok = ok && math.Abs(float64(x)-(cx-cursorAnchorGap-float64(width))) <= 2 && math.Abs(float64(y)-(cy-cursorAnchorGap-float64(height))) <= 2
+		case "disabled":
+			ok = !visible
+		}
+		return true, s.write(Step{Window: quickPanelWindowName, Step: "panel-" + label, OK: ok, Detail: detail})
+	}
+	return false, nil
+}

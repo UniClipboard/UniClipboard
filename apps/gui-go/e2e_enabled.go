@@ -57,6 +57,9 @@ func (s *EvidenceService) Record(step Step) error { return s.write(step) }
 // Control performs native window actions the DOM cannot, and records the
 // resulting native window state as its own evidence step.
 func (s *EvidenceService) Control(action string) error {
+	if handled, err := s.controlQuickPanel(action); handled {
+		return err
+	}
 	h := s.host
 	main, ok := h.app.Window.GetByName("main")
 	switch action {

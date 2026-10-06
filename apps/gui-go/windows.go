@@ -100,9 +100,19 @@ func (h *HostService) showQuickPanel() {
 	if !ok {
 		return
 	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	prefs, err := h.loadQuickPanelSettings(ctx)
+	cancel()
+	if err == nil && !prefs.Enabled {
+		return // the user turned the quick panel off
+	}
 	width, height := panelSize(nil, false)
 	w.SetSize(width, height)
-	w.Center()
+	if x, y, ok := panelOrigin(prefs.Position, h.app.Screen.GetAll(), float64(width), float64(height)); ok {
+		w.SetPosition(x, y)
+	} else {
+		w.Center()
+	}
 	h.panel.lastShown.Store(time.Now().UnixNano())
 	h.emit(quickPanelPrepareShow, nil)
 }

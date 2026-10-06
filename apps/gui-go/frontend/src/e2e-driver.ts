@@ -3,7 +3,9 @@
 // service. It is bundled only when VITE_GUI_GO_E2E=1.
 import { Call } from '@wailsio/runtime'
 import { daemonClient } from '@/api/daemon/client'
+import { setQuickPanelEnabled, setQuickPanelPosition } from '@/api/tauri-command/settings'
 import { daemonWs } from '@/lib/daemon-ws'
+import { commands } from '@/lib/ipc-bindings.generated'
 
 const windowName = 'main'
 // Keep recent console errors so a crashed UI reports its cause, not just a timeout.
@@ -76,6 +78,7 @@ async function run() {
   if (phase.startsWith('update')) return runUpdateScenario(phase)
   if (phase === 'file-preview') return runFilePreviewScenario()
   if (phase === 'scheduler') return runSchedulerScenario()
+  if (phase === 'quick-panel-settings') return runQuickPanelSettingsScenario()
   await waitFor('app root content', () => document.getElementById('root')?.children.length)
   // A diagnostic page would never contain the shared app's router state.
   await record('shared-app-mounted', !$('#refresh') && !!document.getElementById('root'))
@@ -270,6 +273,41 @@ async function runSchedulerScenario() {
   await sleep(4000) // the orchestrator screenshots the window meanwhile
   await control('close-updater')
   await control('scheduler-quiet')
+  await control('exit')
+}
+
+// Quick-panel preferences go through the shared frontend settings API (the code path of the
+// settings UI); the native side then opens the panel and checks where it landed.
+async function runQuickPanelSettingsScenario() {
+  await waitFor('app root content', () => document.getElementById('root')?.children.length)
+  const show = async (label: string) => {
+    await control(`panel-show:${label}`)
+    await sleep(1500) // the orchestrator captures the screen meanwhile
+    await control('panel-hide')
+  }
+  await control('panel-warp:center')
+  await setQuickPanelPosition('center')
+  await show('center')
+  await control('panel-warp:near')
+  await setQuickPanelPosition('follow_cursor')
+  await show('follow-near')
+  await control('panel-warp:corner')
+  await show('follow-flipped')
+  await setQuickPanelEnabled(false)
+  await show('disabled')
+  await setQuickPanelEnabled(true)
+  await show('reenabled')
+  // The generated binding reports command failures as a result value rather than throwing.
+  const refused = await commands.setQuickPanelDoubleTapModifier('alt', null)
+  await record(
+    'double-tap-unavailable-rejected',
+    refused.status === 'error' && refused.error.code === 'Conflict',
+    {
+      result: refused,
+    }
+  )
+  const accepted = await commands.setQuickPanelDoubleTapModifier('disabled', null)
+  await record('double-tap-disabled-accepted', accepted.status === 'ok', { result: accepted })
   await control('exit')
 }
 

@@ -1,0 +1,6 @@
+# Layer on the 17c2 build image (kept as is): a mature X11 window manager for the 17c9 quick panel checks.
+# Openbox (EWMH/ICCCM, 4 desktops by default) is used unmodified; wmctrl reads and drives the EWMH desktop state.
+FROM uc-gui-go-linux-build:17c2
+COPY apt_install.sh /usr/local/bin/
+RUN sh /usr/local/bin/apt_install.sh openbox wmctrl
+RUN openbox --version | head -1 && wmctrl -V | head -1

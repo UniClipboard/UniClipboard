@@ -1,0 +1,4 @@
+# The 17c4 runtime image (Ubuntu 24.04, NO GTK/WebKitGTK) plus binutils: the 17c7 runner reads DT_SONAME of host-loaded libraries with `readelf -d`.
+# binutils adds no GUI toolkit library; verify_image_17c4_runtime.sh is run again on the result.
+FROM uc-gui-go-linux-runtime:17c4
+RUN apt_install.sh binutils && verify_image_17c4_runtime.sh

@@ -1,0 +1,20 @@
+# Second distribution for the 17c7 runtime-dependency E2E: a Fedora "host" WITHOUT GTK3, WebKitGTK, libsoup, cairo, pango (same premise as
+# Dockerfile.17c4-runtime, docs/architecture/gui-go-linux-appimage-runtime-deps.md), with Fedora's own GLib and, deliberately, Fedora's own
+# glib-networking: the host GIO TLS module is built for the HOST's GLib, which is exactly what the AppImage's GIO_MODULE_DIR must keep out.
+# A session bus is a host prerequisite (every desktop has one): the GUI exits 1 without any message when libdbus finds no bus and no `dbus-launch`
+# (found by strace in diag-fedora-start8, 17c7); `dbus-x11` is the same autolaunch helper the Ubuntu image has.
+# Driver stack (libglvnd, Mesa software rasterizer) and the libraries linuxdeploy's exclude list leaves to the host come from Fedora packages.
+# Pinned by the OCI index digest of fedora:44 (the build of 2026-10-06 resolved `latest` to exactly this digest). The dnf repositories still move:
+# the exact package set of the image used for evidence is recorded by `rpm -qa` next to the run (run_17c7.sh).
+FROM fedora:44@sha256:43b29f65a41eb9c35e1cd5323e3bdf3b655c2357a9f4f1ff2f9c2798e5045d80
+RUN dnf -y --setopt=install_weak_deps=False install \
+      xorg-x11-server-Xvfb xorg-x11-xauth dbus-daemon dbus-tools dbus-x11 xdotool xdpyinfo python3 openssl ca-certificates \
+      libglvnd-glx libglvnd-egl libglvnd-gles libglvnd-opengl mesa-dri-drivers mesa-libgbm libX11 libwayland-client dejavu-sans-fonts \
+      fuse-libs fuse3 procps-ng file binutils shadow-utils util-linux findutils \
+      expat fontconfig freetype fribidi harfbuzz gmp libgpg-error libxcb libX11-xcb zlib-ng-compat libcom_err libstdc++ libdrm glib2 glib-networking \
+    && dnf clean all
+# The container image ships an EMPTY /etc/machine-id; libdbus refuses to start a bus with it ("D-Bus library appears to be incorrectly set up", found by strace
+# in diag-fedora-start10, 17c7). Every installed system has one; the Ubuntu runtime image gets it from the dbus package's postinst.
+RUN rm -f /etc/machine-id && dbus-uuidgen --ensure=/etc/machine-id
+COPY verify_image_17c7_fedora.sh /usr/local/bin/
+RUN verify_image_17c7_fedora.sh

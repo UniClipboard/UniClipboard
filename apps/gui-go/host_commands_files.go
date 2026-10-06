@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -47,28 +46,33 @@ func openWithSystem(path string, reveal bool) error {
 	if handled, err := openerOverride(path, reveal); handled {
 		return err
 	}
-	var cmd *exec.Cmd
 	switch runtime.GOOS {
 	case "darwin":
 		if reveal {
-			cmd = exec.Command("open", "-R", path)
-		} else {
-			cmd = exec.Command("open", path)
+			return startHostHelper("open", "-R", path)
 		}
+		return startHostHelper("open", path)
 	case "windows":
 		if reveal {
-			cmd = exec.Command("explorer", "/select,"+path)
-		} else {
-			cmd = exec.Command("cmd", "/c", "start", "", path)
+			return startHostHelper("explorer", "/select,"+path)
 		}
+		return startHostHelper("cmd", "/c", "start", "", path)
 	default:
 		target := path
 		if reveal {
 			target = filepath.Dir(path)
 		}
-		cmd = exec.Command("xdg-open", target)
+		return startHostHelper("xdg-open", target)
 	}
-	return cmd.Start()
+}
+
+// openURLExternally opens a link in the default browser. Wails' Browser.OpenURL is used everywhere except Linux: its xdg-open call has no hook for the
+// environment (pinned beta.28, internal/browser), and from an AppImage that call inherits AppRun's library paths (17c10).
+func (h *HostService) openURLExternally(url string) error {
+	if runtime.GOOS == "linux" {
+		return startHostHelper("xdg-open", url)
+	}
+	return h.app.Browser.OpenURL(url)
 }
 
 // chooseDirectory shows the native folder picker; ok=false means the user cancelled.
@@ -114,6 +118,13 @@ func init() {
 				return nil, nil
 			}
 			return path, nil
+		},
+		"open_url": func(_ context.Context, h *HostService, args commandArgs) (any, error) {
+			var url string
+			if err := args.decode("url", &url); err != nil {
+				return nil, err
+			}
+			return nil, wrapInternal(h.openURLExternally(url))
 		},
 		"open_data_directory": func(context.Context, *HostService, commandArgs) (any, error) {
 			dir, ok := apppaths.AppDataRoot()

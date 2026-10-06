@@ -665,6 +665,23 @@ UC_LINUX_IMAGE=uc-gui-go-linux-build:17c2 apps/gui-go/e2e/linux/run_17c7.sh <新
 apps/gui-go/e2e/linux/run_17c7_supplement.sh <最终运行目录> <新目录>                     # 只在保留的包与镜像上复验 harness
 ```
 
+## Linux 默认快捷键与 X11 面板尺寸（第 17c8 片）
+
+契约、Wails 源码事实、预计失败方式、修改前实际结果、修复与复跑命令在 [docs/architecture/gui-go-linux-x11-default-shortcut.md](../../docs/architecture/gui-go-linux-x11-default-shortcut.md)。证据目录 `/Users/mark/.herdr-projects/uni/t-0188-artifacts/linux-17c8/`（仓库只索引）。
+
+- 场景（`e2e/linux_x11_default_shortcut_run.py`）不设 `UC_GUI_GO_E2E_DEFAULT_SHORTCUT`，经共享前端真实设置页（Settings > Quick panel 的快捷键录入弹层，驱动 `e2e-driver.ts` 的 `linux-shortcut-ui*` 阶段）改绑，用真实 XTEST 按键触发，daemon `/settings` 回读，真实重启后核对保存值；X 根窗口结构事件（xev）记录面板的 CreateNotify/ConfigureNotify/MapNotify。
+- 实测：新资料首次启动 daemon `quickPanel.enabled` 默认 true，默认键 `ctrl+alt+v`（设置页显示相同、宿主登记、Wails 报告 `Alt+Ctrl+V`）；改绑、旧键释放、新键抓取、重启后保存值生效均通过。这些在修改前就已通过。
+- 产品缺陷（唯一）：X11 面板首映射尺寸为 392x452（macOS 卡片几何），契约为 800x560。修复：`windows.go` 的 `panelSize` 在 Linux 返回固定 800x560（乘窗口缩放），常量与 `linuxPanelDimensions` 与 Layer Shell 路径共用。修复后首映射 800x560，首映射后无改变尺寸的 ConfigureNotify。
+- 结论边界：只在默认窗口缩放 1.0、1280x800 的 Xvfb（无窗口管理器）下验证，**不** 代表窗口缩放 0.8–1.5 的其他值、不同工作区尺寸、真实窗口管理器；修改前也没有观察到首映射后的尺寸跳变，本片没有消除过“跳变”。因共用常量被移动，另在同一二进制上重跑既有无头 sway Layer Shell E2E 31/31。AppImage 与打包未重跑：本片不改打包输入。
+
+### 17c8 复跑
+
+```bash
+apps/gui-go/e2e/linux/run_17c8.sh build <新标签> <新目录>
+apps/gui-go/e2e/linux/run_17c8.sh run <标签> <新目录>
+apps/gui-go/e2e/linux/run_17c8.sh wayland <标签> <新目录>   # 既有 sway 场景，影响面核对
+```
+
 ## 验收边界
 
 - Wails 与 runtime 同时固定为 `3.0.0-beta.28`；这是 beta 原型，不是生产迁移完成。
@@ -675,6 +692,7 @@ apps/gui-go/e2e/linux/run_17c7_supplement.sh <最终运行目录> <新目录>   
 - Linux 17c2：Layer Shell 面板与每输出定位/上限由容器内真实无头 sway 验证（见“17c2 结果”），Hyprland/GNOME/KDE 与真实桌面未验证。Linux 17c：证据来自容器内 Xvfb + 私有 D-Bus（无窗口管理器、Wayland、portal、托盘宿主、通知服务、Secret Service）与脚本化 Hyprland socket；默认快捷键用 e2e 测试接缝；（17c 当时）AppImage 不自包含、daemon 来源未核验；17c4 已补自包含 AppImage 与真实 release daemon 证据（容器内干净宿主，仍无真实 Linux 桌面运行证据）。详见“Linux（第 17c 片）”与“自包含 Linux AppImage（第 17c4 片）”。
 - Windows 17b：同上，另可为 arm64 编译、安装器脚本可编译；daemon 以 `TerminateProcess` 强制终止（非优雅关闭）；Windows 生产入口、安装器、原位更新、自启迁移、双击修饰键的真实读取/焦点/可见性均未验证；真实 Rust daemon + NSIS/便携包的原生安装与更新仍 OPEN；官方发布签名验证仍 OPEN。
 - Windows：17a 代码可为 windows/amd64 编译（普通与 e2e 标签、`go vet` 通过），没有任何 Windows 运行证据（真实可见、焦点、按键、冲突、粘贴、托盘、通知、daemon 停止、单实例均未验证，runner 离线）；Linux、安装签名、Windows 更新与 GPUI 在 Windows 的 N/A 说明见上。
+- Linux 17c8：X11 面板首映射尺寸与默认快捷键的真实设置页链路在 Xvfb（无窗口管理器）里验证，仅默认窗口缩放；窗口缩放其他取值、真实窗口管理器、Wayland 实机、AppImage 内重跑仍 OPEN（见“Linux 默认快捷键与 X11 面板尺寸（第 17c8 片）”）。
 - Linux 17c7：AppImage 的 GIO TLS 模块与 libdbus/libglvnd 边界由 Ubuntu 24.04 与 Fedora 44 两个无 GTK/WebKit 的容器宿主上的真实 WebView HTTPS 与进程映射验证（见“AppImage 运行时动态依赖（第 17c7 片）”）；原生 amd64、其他发行版、真实桌面/GPU、系统代理仍 OPEN。
 - Linux 17c6：AppImage runtime 固定（见“固定 AppImage runtime（第 17c6 片）”），amd64 嵌入与运行仍 OPEN（其 dlopen 审计项由 17c7 处理）。
 - Linux 17c5：AppImage portable 模式由容器内非 root 用户、无 Secret Service 的真实 AppImage 与真实 release daemon 验证（见“AppImage portable 模式（第 17c5 片）”）；真实登录会话、更新后自启动、Windows/macOS 重新运行、amd64 与原生桌面仍 OPEN。

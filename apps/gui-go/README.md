@@ -596,7 +596,7 @@ UC_LINUX_IMAGE=uc-gui-go-linux-build:17c2 apps/gui-go/e2e/linux/run_17c4.sh <新
 
 | 能力 | Wails API（源码） | 采用方式 | 差距证据 | 验收 |
 | --- | --- | --- | --- | --- |
-| portable / 数据根 / AppImage 可写目录 | `pkg/application` 里没有 portable 或 `APPIMAGE` 的引用 | 无对应 API，自有适配；**采用成熟 AppImage runtime 的 `.home` 机制**（实测：目录存在时 `$HOME` 被设置；`$APPIMAGE` 为解析后的绝对路径；空格与非 ASCII 正常） | `.home` 只改 `$HOME`，不改 daemon 的文件 keystore 选择，所以 Rust 与 Go 仍需同一规则 | `probe-portable-home`；`e2e-portable` |
+| portable / 数据根 / AppImage 可写目录 | `pkg/application` 里没有 portable 或 `APPIMAGE` 的引用 | 无对应 API，自有适配；**采用成熟 AppImage runtime 的 `.home` 机制**（实测：目录存在时 `$HOME` 被设置；`$APPIMAGE` 为解析后的绝对路径；空格与非 ASCII 正常；被测 runtime 是本次观测到的 `type2-runtime` `8f39b89`，字节 SHA-256 `c27d5a2e…1684`，**不是固定的**：`appimagetool`（SHA 固定）在打包时才下载 runtime） | `.home` 只改 `$HOME`，不改 daemon 的文件 keystore 选择，所以 Rust 与 Go 仍需同一规则 | `probe-portable-home`；`e2e-portable` |
 | 启动失败提示 | `app.Dialog.Error()` | 采用（需运行中的事件循环，故在 `ApplicationStarted` 里弹出） | — | F8/F9/F10 |
 | 自启动 | `app.Autostart` | AppImage 内沿用 17c4 的最小适配，只改目录来源 | — | P2、S2 |
 
@@ -619,6 +619,7 @@ UC_LINUX_IMAGE=uc-gui-go-linux-build:17c2 apps/gui-go/e2e/linux/run_17c4.sh <新
 - `--appimage-extract-and-run`、真实只读文件系统挂载、对话框文字内容、窗口管理器下的行为。
 - 伪造的 `APPIMAGE`（`APPDIR` 一并伪造）无来源验证。
 - Windows/macOS 路径的重新运行（只有编译与既有 Rust 单元测试）；amd64；原生桌面；官方签名发布验证；dlopen 依赖审计；WebView HTTPS。
+- **runtime 未固定**：`appimagetool` 的 SHA-256 固定，但它打包时从 GitHub 下载 runtime（`package_linux.py` 不传 `--runtime-file`；17c5 的一次打包因下载失败而重试，失败日志保留）。`8f39b89` 只是本次观测的 revision，不是可复现保证；portable 依赖 runtime 的 `.home` 与 `$APPIMAGE` 语义，所以固定 runtime 的版本/SHA-256/来源是下一片候选（17c6）。
 - CLI 的 `UNICLIPBOARD_DAEMON_BASE_URL` 覆盖路径缺少 `/ws`（既有缺陷）。本片 E2E 里的 CLI 软链只是客户端定位的测试适配，不是 GUI 与 daemon 一致性的证明。
 
 ### 17c5 复跑

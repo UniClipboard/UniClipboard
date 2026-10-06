@@ -20,7 +20,9 @@ portable 同时承担另一个语义：`is_portable()` 为真时 daemon 选择 *
 
 ### 成熟 AppImage 机制（实测，不是读文档）
 
-固定的 `appimagetool 1.9.0` 嵌入 `type2-runtime`（`8f39b89`）。`strings` 在 AppImage 内确认了 `--appimage-portable-home`、`<AppImage>.home` 约定。在无 GTK 的运行镜像里用同一 `appimagetool` 做了最小探针 AppImage（`apps/gui-go/e2e/linux/probe_portable_home.sh`，输出保存在证据目录），事实：
+固定的 `appimagetool 1.9.0`（SHA-256 固定）本身并不固定它嵌入的 runtime：`package_linux.py` 没有传 `--runtime-file`，appimagetool 在打包时从 GitHub 下载 runtime（17c5 的打包尝试里出现过一次 `Failed to download runtime file`，见证据目录 `iter1/logs/package-v2.failed-network.log`）。**本次观测** 到的 runtime 是 `type2-runtime` revision `8f39b89`（`--appimage-version`），其字节（AppImage 偏移 936456 之前的部分）SHA-256 为 `c27d5a2ec0dcca7a99846673627b4fd37a8cb9ae0fa910aaffde696762ff1684`（`observed-runtime.txt`）。这是观测记录，不是可复现保证：别的时间打包可能得到别的 runtime，而 `.home` 行为、`$APPIMAGE` 语义都是 runtime 提供的，所以 portable 模式依赖一个当前未固定的输入。固定 runtime 的版本、SHA-256 与来源是下一片候选（17c6）。
+
+`strings` 在该 AppImage 内确认了 `--appimage-portable-home`、`<AppImage>.home` 约定。在无 GTK 的运行镜像里用同一 `appimagetool` 做了最小探针 AppImage（`apps/gui-go/e2e/linux/probe_portable_home.sh`，输出保存在证据目录），事实：
 
 - `<AppImage>.home` 目录存在时，runtime 启动 AppRun 之前打印 `Setting $HOME to …` 并把 `$HOME` 设为它；不存在时不改。
 - `$APPIMAGE` 是 **解析符号链接后** 的绝对路径（经 `/t/link` 启动得到真实文件路径）；路径含空格与非 ASCII 字符正常。
@@ -142,4 +144,5 @@ GUI 启动 daemon 时继承环境（`daemonproc/spawn.go`：`os.Environ()` 加 `
 - 真实只读挂载（本片用非 root 与他人拥有的 `0555` 目录证明权限失败，未用只读文件系统挂载）。
 - 错误对话框的文字内容没有被读取（只证明窗口出现、可关闭、退出码 1、消息在 stderr）；容器里没有窗口管理器。
 - CLI 的 `UNICLIPBOARD_DAEMON_BASE_URL` 覆盖路径缺少 `/ws`（既有缺陷，未修）。
+- **runtime 未固定**（见「成熟 AppImage 机制」）：版本、SHA-256、来源固定列为下一片候选 17c6，之后再做跨发行版 dlopen 审计。
 - 其余沿用 17c4：amd64、原生桌面、官方签名发布验证、dlopen 依赖审计、WebView HTTPS。

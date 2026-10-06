@@ -31,6 +31,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from linux_x11_default_shortcut_run import DEFAULT_CHORD, PASSPHRASE, XTrace, daemon_pid_of  # noqa: E402
+from linux_wayland_run import Beacons  # noqa: E402
 from linux_xvfb_run import Gui, key_is_free, pid_alive, xdo  # noqa: E402
 
 BASE_W, BASE_H = 800, 560
@@ -203,8 +204,22 @@ def main():
             time.sleep(.3)
         return code, pid_alive(pid)
 
+    beacons = Beacons()  # the panel PAGE reports key/focus events and its own scale state to this loopback listener
+    page_n = [0]
+
     def ready(g, label):
-        return g.wait_state(label, lambda s: s['panelReady'], 60)
+        st = g.wait_state(label, lambda s: s['panelReady'], 60)
+        g.ctl(f'panel-js beacon{launch[0]} {beacons.script()}', f'panel-js-beacon{launch[0]}')
+        return st
+
+    def page_state(g, label):
+        """What the page itself says: stored window scale (localStorage) and its inner size, via the same beacon listener."""
+        page_n[0] += 1
+        js = ("(function(){var v=localStorage.getItem('uniclipboard.quickPanel.windowScale');fetch('http://127.0.0.1:%d/pagestate/%s/scale='+v+'/inner='"
+              "+innerWidth+'x'+innerHeight+'/focus='+document.hasFocus(),{mode:'no-cors'})})()") % (beacons.port, label)
+        g.ctl(f'panel-js ps{page_n[0]} {js}', f'panel-js-ps{page_n[0]}')
+        time.sleep(0.4)
+        return beacons.seen('pagestate/' + label)
 
     def panel_now(g):
         return panel_of(wm_rows(display), g.proc.pid)
@@ -312,8 +327,11 @@ def main():
         check('L1 show: the host and the X server agree the panel is visible', st['panelVisible'] and p is not None, st)
 
         # Escape typed with the real key reaches the page in the panel (real keyboard focus) and dismisses it
+        t_esc = time.monotonic()
+        facts['L1_before_escape'] = {'focus': x(display, 'xdotool', 'getwindowfocus').strip(), 'active': active_window(display), 'page': page_state(gui, 'before-escape')}
         xdo(display, 'key', 'Escape')
         gone = wait_panel(gui, False)
+        facts['L1_escape_beacons'] = beacons.seen('', t_esc)
         check('L1 Escape (real key) reaches the focused panel page and hides the panel', gone is None, panel_now(gui))
         time.sleep(0.5)
         check('L1 after the panel hides, the WM gives the focus back to the previous target app', active_window(display) == t_id, {'active': active_window(display), 'target': t_id})
@@ -366,6 +384,7 @@ def main():
             xdo(display, 'key', key)
             geo, samples = stable_geometry(g)
             facts.setdefault('geometry_samples', {})[tag] = samples
+            facts.setdefault('page_after_scale_key', {})[tag] = page_state(g, tag)
             exp = sized(new_scale_expected)
             check(f'{label_prefix} live: ctrl-key to scale {new_scale_expected} resizes the MAPPED panel to {exp[0]}x{exp[1]}', geo and (geo[2], geo[3]) == exp,
                   {'before': p0 and (p0['w'], p0['h']), 'after': geo})
@@ -432,6 +451,7 @@ def main():
         check('L4 exit 0, daemon stopped, ctrl+alt+v free again', code == 0 and not alive and key_is_free(display, KEY_V, CTRL | MOD1), {'exit': code, 'daemonAlive': alive})
         gui = None
 
+        facts['beacon_events'] = beacons.events
         panels, parents, rows = first_map_analysis()
         facts['x11_structure'] = {'panel_client_windows': panels, 'frames': parents, 'names': trace.names}
         results['passed'] = all(c['ok'] for c in checks)
@@ -449,6 +469,7 @@ def main():
             panels, parents, rows = first_map_analysis()
             results['panel_x11_timeline'] = rows
             results['window_names'] = trace.names
+            facts['beacon_events'] = beacons.events
         except Exception as exc:  # noqa: BLE001  (evidence writer must not hide the run result)
             results['timeline_error'] = repr(exc)
         wm.terminate()

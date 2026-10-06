@@ -147,6 +147,23 @@ case "$mode" in
       --manifest /in/package-manifest.json --desktop "${UC_HELPERS_DESKTOP:?UC_HELPERS_DESKTOP}" ${UC_HELPERS_E2E_ARGS:-} > "$out/run.log" 2>&1
     code=$?
     exit "$code" ;;
+  appimage-real-e2e)  # 17c11: REAL browser / file manager / image viewer, non-portable. UC_REAL_IMAGE selects the distribution image; UC_HELPERS_DESKTOP generic|gnome; UC_REAL_ARGS browser options
+    out="$(mkdir -p "${2:?outdir}" && cd "$2" && pwd)"
+    image="$(cd "$(dirname "${3:?AppImage}")" && pwd)/$(basename "$3")"
+    manifest="$(cd "$(dirname "${4:?package-manifest.json}")" && pwd)/$(basename "$4")"
+    set +e
+    # An --internal network: the daemon needs a real (non-loopback) interface (with `--network none` its session preparation fails: dev1/dev2), but the network has no
+    # route out, so the browser cannot reach anything but the controlled loopback target. The Engine also fails its p2p bind when the host has no default route (dev4: `engine error 1101`,
+    # reproduced in a bare container), so the runner adds `default dev eth0` (NET_ADMIN) inside this internal network: a fixture requirement, recorded as an open Engine observation. bwrap (WebKit's sandbox in Epiphany) needs seccomp and systempaths unconfined.
+    net="uc17c11-internal-$$"; docker network create --internal "$net" >/dev/null
+    docker run --rm --init --platform linux/arm64 --network "$net" --shm-size 1g --device /dev/fuse --cap-add SYS_ADMIN --cap-add SYS_PTRACE --cap-add NET_ADMIN --security-opt apparmor:unconfined \
+      --security-opt seccomp:unconfined --security-opt systempaths=unconfined \
+      -v "$ROOT:/work:ro" -v "$out:/out" -v "$image:/in/appimage.AppImage:ro" -v "$manifest:/in/package-manifest.json:ro" \
+      "${UC_REAL_IMAGE:?UC_REAL_IMAGE}" python3 /work/apps/gui-go/e2e/linux_appimage_real_helpers_run.py --out /out --appimage /in/appimage.AppImage \
+      --manifest /in/package-manifest.json --desktop "${UC_HELPERS_DESKTOP:?UC_HELPERS_DESKTOP}" ${UC_REAL_ARGS:-} > "$out/run.log" 2>&1
+    code=$?
+    docker network rm "$net" >/dev/null
+    exit "$code" ;;
   appimage-content-check)  # 17c7: extract the AppImage (kept in <outdir>/squashfs-root) and run the mechanical content assertions + the static dlopen audit
     out="$(mkdir -p "${2:?outdir}" && cd "$2" && pwd)"
     image="$(cd "$(dirname "${3:?AppImage}")" && pwd)/$(basename "$3")"

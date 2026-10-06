@@ -4,6 +4,6 @@
 # docs/architecture/gui-go-linux-appimage-real-helpers.md); the runner asserts that the GUI still maps its toolkit from the AppImage mount.
 FROM uc-gui-go-linux-runtime:17c7
 RUN apt_install.sh xdg-utils libglib2.0-bin shared-mime-info strace epiphany-browser nautilus loupe gnome-keyring libsecret-tools dbus-daemon dbus-bin dbus-x11 \
-    x11-utils xdotool fonts-dejavu-core adwaita-icon-theme
+    x11-utils xdotool fonts-dejavu-core adwaita-icon-theme iproute2
 COPY verify_image_17c11.sh /usr/local/bin/
 RUN verify_image_17c11.sh

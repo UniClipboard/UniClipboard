@@ -87,6 +87,20 @@ func panelSize(scale *float64, previewExpanded bool, windowScale float64) (int, 
 	return int(math.Round(width + 2*panelWindowPadding)), int(math.Round(panelBaseHeight*s + 2*panelWindowPadding))
 }
 
+// setPanelSize sizes the quick panel. The panel is created non-resizable, and GTK honours neither a default size nor a
+// resize request that is smaller than the current size of a non-resizable window (it pins min = max = the current size, which
+// the X11 WM_NORMAL_HINTS show). Wails beta.28 SetSize is gtk_window_set_default_size, so on Linux the window is made
+// resizable around the request and locked again, which is Tauri's gtk_window_resize on the same non-resizable window.
+func setPanelSize(w application.Window, width, height int) {
+	if runtime.GOOS != "linux" {
+		w.SetSize(width, height)
+		return
+	}
+	w.SetResizable(true)
+	w.SetSize(width, height)
+	w.SetResizable(false)
+}
+
 // openUpdater creates the decorated updater window, or focuses the existing one.
 func (h *HostService) openUpdater(dev bool) {
 	if w, ok := h.app.Window.GetByName(updaterWindowName); ok {
@@ -151,7 +165,7 @@ func (h *HostService) showQuickPanel() {
 	}
 	if !layerPrepareShow(w, prefs.Position, 1) {
 		width, height := panelSize(nil, false, 1)
-		w.SetSize(width, height)
+		setPanelSize(w, width, height)
 		if x, y, ok := panelOrigin(prefs.Position, h.app.Screen.GetAll(), float64(width), float64(height)); ok {
 			moveWindow(w, x, y)
 		} else {
@@ -262,7 +276,7 @@ func init() {
 			if w, ok := h.app.Window.GetByName(quickPanelWindowName); ok {
 				if !layerSetLayout(w, windowScaleOrOne(windowScale)) {
 					width, height := panelSize(scale, expanded, windowScaleOrOne(windowScale))
-					w.SetSize(width, height)
+					setPanelSize(w, width, height)
 				}
 			}
 			return nil, nil

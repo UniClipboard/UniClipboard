@@ -379,7 +379,9 @@ def main():
         time.sleep(1.0)
         sn = snap('l1-ws2-away', gui.proc.pid)
         facts['L1_ws2_away'] = {'snap': sn, 'host_state': gui.state('l1-ws2-away')}
-        gone = hide(gui, 'l1-ws2-hide-attempt')  # may already be hidden by the blur handler; record, do not assume
+        # leaving the desktop may already have hidden the panel through the blur handler: record the facts, hide only if still open
+        if panel_now(gui):
+            hide(gui, 'l1-ws2-hide')
         time.sleep(0.5)
         st = gui.state('l1-ws2-after')
         facts['L1_ws2_after_chord'] = {'wm_panel': panel_now(gui), 'host': st}
@@ -389,7 +391,7 @@ def main():
             p, geo = show(gui, 'l1-ws2-show')
         check('WS panel shown while desktop 2 is current: managed on desktop 2', p and p['desktop'] == 2, {'panel': p, 'current': current_desktop(display)})
         if panel_now(gui):
-            hide(gui, 'l1-ws2-hide')
+            hide(gui, 'l1-ws2-hide2')
         x(display, 'wmctrl', '-s', '0')
         time.sleep(0.5)
 

@@ -29,7 +29,8 @@ UniClipboard 的故障可以按层定位：**守护进程是否在跑 → 配对
 
 ## 守护进程
 
-CLI 的所有同步功能都依赖守护进程。`uniclip start` 拉起、`uniclip stop` 停掉、`uniclip space status` 看健康度。
+CLI 的所有同步功能都依赖守护进程。`uniclip run` 前台运行；`uniclip service start` 启动用户服务，
+`uniclip service status` 分别检查服务与 HTTP 健康，`uniclip service stop` 停止用户服务。
 
 ```bash
 uniclip space status            # 摘要
@@ -46,10 +47,10 @@ uniclip space status --json     # 字段稳定，方便比对
 - `membership_convergence` —— 当前空间是否已完全连接，可能为 `complete`、
   `converging`、`waiting_for_upgrade` 或 `blocked`。
 
-如果 `daemon.running = false` 但 `uniclip start` 又秒退，先用前台模式抓栈：
+如果 `daemon.running = false` 但 `uniclip service start` 失败，先用前台模式抓栈：
 
 ```bash
-uniclip start --foreground -v
+uniclip run -v
 ```
 
 先看前台进程打印的具体错误。如果它找不到或无法启动 `uniclipd`，请重新安装 CLI，
@@ -166,7 +167,7 @@ uniclip space invite        # 在 sponsor 上重出一张
 
 > 中继看到的永远是密文。中继可用性影响的是 **性能** 与 **可达性**，不影响机密性。详见 [配对与同步 — 传输](../guides/pairing#传输字节实际怎么走)。
 
-文件类负载走的是分块 blob 协议（见 [同步内容 — 大负载](../core-features/sync#大负载文件与大图)），中途断网 / 唤醒后会续传。如果一个大文件 **几小时** 还在零星传，多半是某一块卡住没重试 —— 在发送端 `uniclip stop && uniclip start` 通常能踢一脚。
+文件类负载走的是分块 blob 协议（见 [同步内容 — 大负载](../core-features/sync#大负载文件与大图)），中途断网 / 唤醒后会续传。如果一个大文件 **几小时** 还在零星传，多半是某一块卡住没重试 —— 发送端使用用户服务时可执行 `uniclip service restart`；否则先停止原 daemon，再执行 `uniclip run`。
 
 ## 剪贴板权限
 
@@ -310,7 +311,7 @@ GUI、daemon、CLI 日志，不限于最近 24 小时。**重试** 会重新启�
 ```bash
 # 前台跑守护进程，把 debug 级别日志直接输出到终端
 uniclip stop
-uniclip start --foreground -v
+uniclip run -v
 ```
 
 提交 issue 时请尽量附上：

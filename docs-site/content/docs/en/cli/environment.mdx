@@ -28,14 +28,14 @@ Use the public command for a server that should not access the system
 clipboard:
 
 ```bash
-uniclip start --server
+uniclip run --server
 ```
 
 Linux without `DISPLAY` or `WAYLAND_DISPLAY` also disables clipboard access
 automatically. To force the same behavior in a graphical session, set:
 
 ```bash
-UC_DISABLE_SYSTEM_CLIPBOARD=1 uniclip start
+UC_DISABLE_SYSTEM_CLIPBOARD=1 uniclip run
 ```
 
 ## Direct-connection networking
@@ -64,7 +64,7 @@ uniclip debug off
 developer asks for a specific filter:
 
 ```bash
-RUST_LOG=debug uniclip start --foreground
+RUST_LOG=debug uniclip run
 ```
 
 Verbose logging still applies mandatory privacy limits. Do not leave a very

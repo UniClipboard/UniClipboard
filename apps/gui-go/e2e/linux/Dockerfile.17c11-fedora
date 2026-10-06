@@ -1,0 +1,7 @@
+# 17c11 real-application image, Fedora 44: the 17c7 Fedora runtime image plus the distribution's own Firefox, Nautilus, Loupe, the Secret Service (gnome-keyring,
+# libsecret's secret-tool) and strace/xwininfo/iproute. Like the Ubuntu image it HAS host GTK (see docs/architecture/gui-go-linux-appimage-real-helpers.md).
+FROM uc-gui-go-linux-runtime-fedora:17c7
+RUN dnf -y --setopt=install_weak_deps=False install xdg-utils shared-mime-info strace firefox nautilus loupe gnome-keyring libsecret xwininfo xprop iproute adwaita-icon-theme \
+    && dnf clean all
+COPY verify_image_17c11.sh /usr/local/bin/
+RUN UC_BROWSER_BIN=firefox verify_image_17c11.sh

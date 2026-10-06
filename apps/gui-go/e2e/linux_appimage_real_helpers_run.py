@@ -146,13 +146,30 @@ def app_processes(uid, mount=None):
 
 
 def inspect(pid, mount):
-    exe = os.readlink(f'/proc/{pid}/exe') if Path(f'/proc/{pid}/exe').exists() else ''
-    env = environ_of(pid)
-    libs = sorted(maps_of(pid))
-    return {'pid': pid, 'exe': exe, 'cmdline': cmdline_of(pid)[:6],
-            'envPointingIntoMount': sorted(k for k, v in env.items() if mount in v),
-            'ldLibraryPath': env.get('LD_LIBRARY_PATH'), 'gdkBackend': env.get('GDK_BACKEND'), 'gtkTheme': env.get('GTK_THEME'),
-            'libsMapped': len(libs), 'mountLibs': [l for l in libs if l.startswith(mount)]}
+    """One live application process: executable, environment and mapped libraries, each READ HERE (not through the swallowing helpers of the other runners). `status` is
+    `ok`, `exited` (the process is gone: excluded from the G2 verdict, recorded) or `unreadable` (alive but exe/environ/maps could not be read, errno recorded: the G2 checks
+    FAIL on it, an unread process is never evidence of "no AppImage library"). Reads are retried briefly: a process mid-exec is transiently unreadable."""
+    row = {'pid': pid, 'status': 'ok', 'errno': None}
+    for attempt in range(10):
+        try:
+            exe = os.readlink(f'/proc/{pid}/exe')
+            env = dict(item.split('=', 1) for item in Path(f'/proc/{pid}/environ').read_bytes().decode(errors='replace').split('\0') if '=' in item)
+            libs = sorted({line.split(None, 5)[5].replace(' (deleted)', '') for line in Path(f'/proc/{pid}/maps').read_text().splitlines()
+                           if len(line.split(None, 5)) == 6 and '.so' in line.split(None, 5)[5]})
+            break
+        except OSError as e:
+            row['errno'] = f'{e.errno} {e.strerror}'
+            if not pid_alive(pid):
+                row['status'] = 'exited'
+                break
+            time.sleep(.2)
+    else:
+        row['status'] = 'unreadable'
+    if row['status'] != 'ok':
+        return {**row, 'exe': '', 'cmdline': [], 'envPointingIntoMount': [], 'ldLibraryPath': None, 'gdkBackend': None, 'gtkTheme': None, 'libsMapped': 0, 'mountLibs': []}
+    return {**row, 'exe': exe, 'cmdline': cmdline_of(pid)[:6], 'envPointingIntoMount': sorted(k for k, v in env.items() if mount in v),
+            'ldLibraryPath': env.get('LD_LIBRARY_PATH'), 'gdkBackend': env.get('GDK_BACKEND'), 'gtkTheme': env.get('GTK_THEME'), 'libsMapped': len(libs),
+            'mountLibs': [l for l in libs if l.startswith(mount)]}
 
 
 def kill_apps(uid):
@@ -170,6 +187,7 @@ def main():
     parser.add_argument('--appimage', type=Path, required=True)
     parser.add_argument('--manifest', type=Path)
     parser.add_argument('--desktop', choices=('generic', 'gnome'), required=True)
+    parser.add_argument('--f7', action='store_true', help='after the main scenario, reproduce F7 (portable HOME hides the user default application) with the real applications: recorded, not asserted')
     parser.add_argument('--browser-exe', default='epiphany', help='executable name of the distribution browser (UA and process checks)')
     parser.add_argument('--browser-ua', default='AppleWebKit', help="substring of the browser User-Agent (Epiphany sends a Safari-compatible string without its name; the process check names the browser)")
     parser.add_argument('--browser-desktop', default='org.gnome.Epiphany.desktop', help='desktop entry of that browser (user default scenario)')
@@ -347,7 +365,7 @@ def main():
 
         row = image_action('image-package-default', f'uc11-img-a-{nonce}.png')
         run.check('A open_image_externally (package default): a REAL image viewer window titled with the file name appeared', bool(row['titles']), {'driveResult': row['driveResult'], 'titles': row['titles']})
-        row['apps_exes'] = sorted({a['exe'].rsplit('/', 1)[-1] for a in row['apps']})
+        row['apps_exes'] = sorted({a['exe'].rsplit('/', 1)[-1] for a in row['apps'] if a['status'] == 'ok'})
         run.check('A open_image_externally (package default): the application that opened it is the package default for image/png (Loupe), not an arbitrary one',
                   'loupe' in row['apps_exes'], row['apps_exes'])
 
@@ -359,7 +377,7 @@ def main():
         fname_b = f'uc11-img-b-{nonce}.png'
         before_http = len(target_http.requests)
         row = image_action('image-user-default', fname_b)
-        row['apps_exes'] = sorted({a['exe'].rsplit('/', 1)[-1] for a in row['apps']})
+        row['apps_exes'] = sorted({a['exe'].rsplit('/', 1)[-1] for a in row['apps'] if a['status'] == 'ok'})
         run.check('G5 open_image_externally follows the user\'s own default in the real HOME: the browser (not the package default viewer) shows the image', bool(row['titles']) and args.browser_exe in row['apps_exes'], {'titles': row['titles'], 'apps': row['apps_exes']})
         (home / '.config/mimeapps.list').unlink()
         r['userDefaultRemovedNow'] = as_user(['xdg-mime', 'query', 'default', 'image/png'], e_user).stdout.strip()
@@ -385,10 +403,13 @@ def main():
                   [q['path'] for q in target_http.requests])
 
         # --- the live applications: library origin and environment (G2)
-        all_apps = [inspect(p, mount) for p in app_processes(account.pw_uid, mount)]
+        inspected = [inspect(p, mount) for p in app_processes(account.pw_uid, mount)]
+        all_apps = [a for a in inspected if a['status'] == 'ok']
+        r['liveApplicationsNotRead'] = [a for a in inspected if a['status'] != 'ok']
         exes = sorted({a['exe'].rsplit('/', 1)[-1] for a in all_apps})
         r['liveApplications'] = all_apps
         run.check('G2 the real applications the GUI started are running (file manager, image viewer, browser and its WebKit/Gecko processes)', {'nautilus', 'loupe', args.browser_exe} <= set(exes), exes)
+        run.check('G2 every live application process was READ (exe, environ, maps); a live process that could not be read counts as not verified, an exited one is recorded and excluded', not [a for a in inspected if a['status'] == 'unreadable'], r['liveApplicationsNotRead'])
         run.check('G2 no live application process maps a library from the AppImage mount', all(not a['mountLibs'] for a in all_apps), [a for a in all_apps if a['mountLibs']])
         run.check('G2 no live application process carries a variable that points into the AppImage mount or an AppImage LD_LIBRARY_PATH', all(not a['envPointingIntoMount'] and not (a['ldLibraryPath'] and 'usr/lib' in a['ldLibraryPath'] and mount in a['ldLibraryPath']) for a in all_apps),
                   [a for a in all_apps if a['envPointingIntoMount']])
@@ -411,6 +432,35 @@ def main():
         r['xdgOpenFromGui'] = [{'argv': e['argv'][1:], 'exit': exits.get(e['pid']), 'varsIntoMount': sorted(k for k, v in e['env'].items() if mount in v), 'ldLibraryPath': e['env'].get('LD_LIBRARY_PATH')} for e in gui_started]
         run.check('G1 every xdg-open the GUI started (strace execve) exited 0 and carries no variable pointing into the mount and no LD_LIBRARY_PATH',
                   len(gui_started) >= 6 and all(x['exit'] == 'exit 0' and not x['varsIntoMount'] and not x['ldLibraryPath'] for x in r['xdgOpenFromGui']), r['xdgOpenFromGui'])
+        if args.f7:
+            # --- F7 (OPEN product question): portable mode replaces HOME with <AppImage>.home for the whole process tree. The user's own default application (written to the
+            # real HOME, as in G5) is then invisible to xdg-open. Reproduced with the real applications and RECORDED; nothing here passes or fails on it.
+            kill_apps(account.pw_uid)
+            as_user(['xdg-mime', 'default', args.browser_desktop, 'image/png'], dict(env))
+            r['f7'] = {'userDefaultInRealHome': as_user(['xdg-mime', 'query', 'default', 'image/png'], dict(env)).stdout.strip()}
+            made = as_user([str(target), '--appimage-portable-home'], env, timeout=60)
+            r['f7']['portableHomeCreated'] = made.returncode == 0 and Path(str(target) + '.home').is_dir()
+            gui2 = run.launch('gui2')
+            launches.append(gui2)
+            _, conn2 = wait_daemon(Path(str(target) + '.home'))
+            gui2.step('bootstrapped', 120)
+            wait_panel_ready(gui2, 'f', 120)
+            fname_f = f'uc11-img-f7-{nonce}.png'
+            res = gui2.invoke('f7img', 'open_image_externally', {'fileName': fname_f, 'data': base64.b64encode(png_bytes()).decode()})
+            titles = wait_window(env, fname_f, 40)
+            table2 = procs()
+            gpid = next((pid for pid, (exe, _) in table2.items() if exe.endswith('/usr/bin/uniclipboard')), None)
+            f7_apps = [inspect(p, mount) for p in app_processes(account.pw_uid, mount)]
+            f7_exes = sorted({a['exe'].rsplit('/', 1)[-1] for a in f7_apps if a['status'] == 'ok'})
+            r['f7'].update({'driveResult': res, 'titles': titles, 'openedBy': f7_exes, 'applicationsNotRead': [a for a in f7_apps if a['status'] != 'ok'],
+                            'guiHome': environ_of(gpid).get('HOME') if gpid else None,
+                            'verdict': 'user default NOT honoured (package default opened it)' if 'loupe' in f7_exes and args.browser_exe not in f7_exes else 'user default honoured or unclear: see openedBy'})
+            gui2.ctl('exit', 'control-exit')
+            try:
+                gui2.proc.wait(timeout=60)
+            except subprocess.TimeoutExpired:
+                gui2.proc.terminate()
+            launches.clear()
         r['passed'] = all(c['ok'] for c in r['checks'])
     except StopScenario:
         pass

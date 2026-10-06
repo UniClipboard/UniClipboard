@@ -27,3 +27,8 @@ func helperExecutable() (string, bool) { return quickpanelhelper.ResolveExePath(
 // opener cannot be replaced through the environment.
 func dialogOverride(string) (string, bool)      { return "", false }
 func openerOverride(string, bool) (bool, error) { return false, nil }
+
+// notifyOverride and notifyPermissionOverride are absent in normal builds: notifications always go to
+// the system.
+func notifyOverride(string, string, string) (bool, error) { return false, nil }
+func notifyPermissionOverride() (bool, bool)              { return false, false }

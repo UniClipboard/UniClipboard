@@ -20,6 +20,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 from run import ROOT, isolated_env, read_steps  # noqa: E402
 
+
 PASSPHRASE = 'hunter22hunter22'
 PNG = bytes.fromhex('89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d49444154789c6360000002000154a24f5d0000000049454e44ae426082')
 
@@ -49,35 +50,8 @@ def main():
     results = {'profileA': prof_a, 'profileB': prof_b, 'passed': False}
     invite = proc = None
     try:
-        cli(env_a, 'space', 'init', '--passphrase', PASSPHRASE, '--device-name', 'preview-a')
-        for attempt in range(3):
-            if cli(env_a, 'start', check=False).returncode == 0:
-                break
-            time.sleep(3)
-        else:
-            raise RuntimeError('daemon start failed three times')
-        invite = subprocess.Popen([str(ROOT / 'target/gui-go/uniclip'), 'space', 'invite'], env=env_a, stdout=subprocess.PIPE)
-        os.set_blocking(invite.stdout.fileno(), False)
-        code, buf, deadline = None, '', time.time() + 90
-        while code is None and time.time() < deadline:
-            try:
-                buf += os.read(invite.stdout.fileno(), 4096).decode(errors='replace')
-            except BlockingIOError:
-                pass
-            for line in buf.splitlines():
-                if line.startswith('INVITATION_CODE='):
-                    code = line.split('=', 1)[1].strip()
-            time.sleep(.3)
-        assert code, 'no invitation code (rendezvous service reachable?): ' + buf
-        cli(env_b, 'space', 'join', '--code', code, '--passphrase', PASSPHRASE, '--device-name', 'preview-b', timeout=120)
-        deadline = time.time() + 90
-        while time.time() < deadline:
-            members = json.loads(cli(env_a, '--json', 'member', 'list', check=False).stdout or '[]')
-            if len(members) >= 2:
-                break
-            time.sleep(2)
-        assert len(members) >= 2, 'peer did not join'
-        invite.send_signal(signal.SIGINT)
+        from peers import pair  # noqa: E402  (peers imports this module's helpers)
+        pair(env_a, env_b, 'preview-a', 'preview-b')
         png = Path(home_b) / 'pixel.png'
         png.write_bytes(PNG)
         cli(env_b, 'send', '--file', str(png), timeout=120)

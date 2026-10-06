@@ -17,6 +17,7 @@ import (
 	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/quickpanelhelper"
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
+	"github.com/wailsapp/wails/v3/pkg/services/notifications"
 )
 
 //go:embed all:frontend/dist
@@ -30,6 +31,8 @@ type HostService struct {
 	exit          exitIntent
 	prompts       promptStore
 	stopScheduler context.CancelFunc
+	stopTray      context.CancelFunc
+	notifier      *notifications.NotificationService
 	helper        *quickpanelhelper.Supervisor // nil when the WebView quick panel is in use
 	updates       updater
 	tray          *trayMenu
@@ -127,8 +130,8 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	host := &HostService{client: client, effects: newVisualEffects()}
-	services := []application.Service{application.NewService(host)}
+	host := &HostService{client: client, effects: newVisualEffects(), notifier: notifications.New()}
+	services := []application.Service{application.NewService(host), application.NewService(host.notifier)}
 	services = append(services, e2eServices(host)...)
 	app := application.New(application.Options{Name: "UniClipboard Go GUI", Services: services, Assets: application.AssetOptions{Handler: application.BundledAssetFileServer(content), Middleware: host.fileMiddleware},
 		ShouldQuit: func() bool { host.quitting.Store(true); return true },
@@ -138,6 +141,7 @@ func main() {
 	host.initQuickPanel()
 	go host.reconcileAutoStart()
 	host.initTray()
+	host.watchNotificationClicks()
 	schedulerCtx, stopScheduler := context.WithCancel(context.Background())
 	host.stopScheduler = stopScheduler
 	go host.runUpdateScheduler(schedulerCtx)

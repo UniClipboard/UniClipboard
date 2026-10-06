@@ -88,3 +88,25 @@ func openerOverride(path string, reveal bool) (bool, error) {
 	_, err = f.WriteString(verb + " " + path + "\n")
 	return true, err
 }
+
+// notifyOverride records a notification instead of showing it (the real service needs the user's
+// permission and would pop UI on the tester's desktop): one `id|title|body` line per call, newlines in
+// the body escaped, in UC_GUI_GO_E2E_NOTIFY_LOG.
+func notifyOverride(id, title, body string) (bool, error) {
+	log := os.Getenv("UC_GUI_GO_E2E_NOTIFY_LOG")
+	if log == "" {
+		return false, nil
+	}
+	f, err := os.OpenFile(log, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		return true, err
+	}
+	defer f.Close()
+	_, err = f.WriteString(id + "|" + title + "|" + strings.ReplaceAll(body, "\n", "\\n") + "\n")
+	return true, err
+}
+
+// notifyPermissionOverride answers the permission questions as granted while the recorder is active.
+func notifyPermissionOverride() (bool, bool) {
+	return true, os.Getenv("UC_GUI_GO_E2E_NOTIFY_LOG") != ""
+}

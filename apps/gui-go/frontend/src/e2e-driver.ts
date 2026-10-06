@@ -1,3 +1,8 @@
+import {
+  isPermissionGranted,
+  requestPermission,
+  sendNotification,
+} from '@tauri-apps/plugin-notification'
 // E2E-only scenario driver. It runs inside the real Wails WebView, interacts
 // with the shared React DOM and reports each assertion to the native test
 // service. It is bundled only when VITE_GUI_GO_E2E=1.
@@ -81,6 +86,7 @@ async function run() {
   if (phase === 'quick-panel-settings') return runQuickPanelSettingsScenario()
   if (phase === 'native-panel') return runNativePanelScenario()
   if (phase === 'file-ops') return runFileOpsScenario()
+  if (phase === 'tray-devices') return runTrayDevicesScenario()
   if (phase.startsWith('autostart')) return runAutostartScenario(phase)
   if (phase === 'config-export') return runConfigExportScenario()
   if (phase === 'config-applied') {
@@ -486,6 +492,29 @@ async function runAutostartScenario(phase: string) {
     await control('autostart-state:after-failure')
   }
   await control('exit')
+}
+
+// Tray device-sync submenu with a paired peer, the localized menu, the notification bridge and the
+// lightweight-mode exit.
+async function runTrayDevicesScenario() {
+  await waitFor('app root content', () => document.getElementById('root')?.children.length)
+  // The app sets the tray language from its UI language at startup; pin English before reading labels.
+  const english = await commands.setTrayLanguage('en', null)
+  await record('tray-language-en', english.status === 'ok')
+  await control('tray-menu:initial')
+  await control('tray-devices-wait:tray-peer-b')
+  await control('tray-device-click:tray-peer-b')
+  await control('tray-device-click:tray-peer-b')
+  const language = await commands.setTrayLanguage('zh-CN', null)
+  await record('tray-language-set', language.status === 'ok')
+  await control('tray-menu:zh')
+  const granted = await isPermissionGranted()
+  const requested = await requestPermission()
+  sendNotification({ id: 21021, title: 'Device trust', body: 'Needs a decision' })
+  await sleep(500)
+  await record('notification-bridge', granted === true && requested === 'granted')
+  await control('tray-lightweight')
+  await sleep(10000)
 }
 
 async function installedBundle(): Promise<boolean> {

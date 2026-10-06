@@ -28,6 +28,9 @@ func (h *HostService) shutdown() {
 	if h.stopScheduler != nil {
 		h.stopScheduler()
 	}
+	if h.stopTray != nil {
+		h.stopTray()
+	}
 	if h.helper != nil {
 		h.helper.Shutdown()
 	}

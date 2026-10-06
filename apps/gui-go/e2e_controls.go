@@ -9,9 +9,11 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
-// controlQuickPanel drives the quick-panel placement checks. Expectations are computed here
+// controlQuickPanel handles the e2e controls for the quick panel, tray and login item. Expectations are computed here
 // from the Screen API and the warped cursor, independently of panelOrigin.
 func (s *EvidenceService) controlQuickPanel(action string) (bool, error) {
 	h := s.host
@@ -55,6 +57,61 @@ func (s *EvidenceService) controlQuickPanel(action string) (bool, error) {
 		raw, readErr := os.ReadFile(filepath.Join(home, "Library", "LaunchAgents", item.Name+".plist"))
 		return true, s.write(Step{Window: "main", Step: "autostart-" + label, OK: err == nil && itemErr == nil,
 			Detail: map[string]any{"setting": setting, "registered": readErr == nil, "plist": string(raw), "name": item.Name, "executable": item.Executable}})
+	case action == "tray-menu" || strings.HasPrefix(action, "tray-menu:"):
+		// The tray menu as the user would read it: labels in order, "-" for separators, submenus nested.
+		var walk func(m *application.Menu) []any
+		walk = func(m *application.Menu) []any {
+			var out []any
+			for i := 0; ; i++ {
+				item := m.ItemAt(i)
+				if item == nil {
+					return out
+				}
+				switch {
+				case item.IsSeparator():
+					out = append(out, "-")
+				case item.IsSubmenu():
+					out = append(out, map[string]any{"label": item.Label(), "items": walk(item.GetSubmenu())})
+				default:
+					out = append(out, map[string]any{"label": item.Label(), "enabled": item.Enabled(), "checked": item.Checked()})
+				}
+			}
+		}
+		label := strings.TrimPrefix(strings.TrimPrefix(action, "tray-menu"), ":")
+		return true, s.write(Step{Window: "tray", Step: "tray-menu-" + label, OK: h.tray != nil && h.tray.menu != nil, Detail: walk(h.tray.menu)})
+	case strings.HasPrefix(action, "tray-devices-wait:"):
+		name := strings.TrimPrefix(action, "tray-devices-wait:")
+		var detail map[string]any
+		for deadline := time.Now().Add(90 * time.Second); time.Now().Before(deadline) && detail == nil; time.Sleep(300 * time.Millisecond) {
+			detail = h.tray.devices.itemState(name)
+		}
+		return true, s.write(Step{Window: "tray", Step: "tray-device-listed", OK: detail != nil, Detail: detail})
+	case strings.HasPrefix(action, "tray-device-click:"):
+		name := strings.TrimPrefix(action, "tray-device-click:")
+		d := h.tray.devices
+		id, ok := d.idByName(name)
+		if !ok {
+			return true, s.write(Step{Window: "tray", Step: "tray-device-toggled", OK: false, Detail: "device not in the menu"})
+		}
+		d.click(id) // exactly what the menu item's click handler runs
+		for deadline := time.Now().Add(20 * time.Second); time.Now().Before(deadline); time.Sleep(200 * time.Millisecond) {
+			d.mu.Lock()
+			busy := d.pending[id]
+			d.mu.Unlock()
+			if !busy {
+				break
+			}
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		prefs, err := h.memberSyncPreferences(ctx, id)
+		detail := d.itemState(name)
+		detail["send"], detail["receive"] = prefs.SendEnabled, prefs.ReceiveEnabled
+		return true, s.write(Step{Window: "tray", Step: "tray-device-toggled", OK: err == nil && detail != nil, Detail: detail})
+	case action == "tray-lightweight":
+		// The tray's lightweight item: notify, then exit leaving the daemon running.
+		go h.enterLightweightMode()
+		return true, nil
 	case action == "panel-hide":
 		h.dismissQuickPanel()
 		time.Sleep(300 * time.Millisecond)

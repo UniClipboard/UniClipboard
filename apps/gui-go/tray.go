@@ -29,6 +29,8 @@ type trayMenu struct {
 	syncBusy    bool
 
 	tray                                                    *application.SystemTray
+	menu                                                    *application.Menu
+	devices                                                 *deviceMenu
 	sync, open, settings, checkUpdate, restart, lightweight *application.MenuItem
 	quit                                                    *application.MenuItem
 }
@@ -39,15 +41,16 @@ func (h *HostService) initTray() {
 	menu := h.app.NewMenu()
 	labels := trayLabelTable[t.language]
 	t.sync = menu.Add(labels.syncOn).OnClick(func(*application.Context) { go h.toggleSyncFromTray() })
+	t.devices = newDeviceMenu(h, menu, t.language)
 	menu.AddSeparator()
 	t.open = menu.Add(labels.open).OnClick(func(*application.Context) { h.showMainWindow() })
 	t.settings = menu.Add(labels.settings).OnClick(func(*application.Context) { h.showSettings() })
-	menu.AddSeparator()
 	t.checkUpdate = menu.Add(labels.checkUpdate).OnClick(func(*application.Context) { go h.checkUpdateFromTray() })
 	menu.AddSeparator()
 	t.restart = menu.Add(labels.restart).OnClick(func(*application.Context) { go h.fullRestart() })
-	t.lightweight = menu.Add(labels.lightweight).OnClick(func(*application.Context) { h.quit(true) })
+	t.lightweight = menu.Add(labels.lightweight).OnClick(func(*application.Context) { go h.enterLightweightMode() })
 	t.quit = menu.Add(labels.quit).OnClick(func(*application.Context) { h.quit(false) })
+	t.menu = menu
 
 	t.tray = h.app.SystemTray.New()
 	t.tray.SetTemplateIcon(trayIcon)
@@ -57,7 +60,11 @@ func (h *HostService) initTray() {
 
 	// Keep the toggle label in step with settings changed from any window.
 	h.app.Event.On(settingsChangedEvent, func(e *application.CustomEvent) { h.refreshTraySync(e.Data) })
+	h.app.Event.On(devicesChangedEvent, func(*application.CustomEvent) { t.devices.requestRefresh() })
 	go h.syncTrayFromDaemon()
+	trayCtx, stopTray := context.WithCancel(context.Background())
+	h.stopTray = stopTray
+	go t.devices.run(trayCtx)
 }
 
 func (h *HostService) showMainWindow() {
@@ -100,6 +107,7 @@ func (t *trayMenu) setLanguage(tag string) {
 	defer t.mu.Unlock()
 	t.language = normalizeTrayLanguage(tag)
 	t.applyLabels()
+	t.devices.setLanguage(t.language)
 }
 
 func (t *trayMenu) setSyncEnabled(enabled bool) {
@@ -149,11 +157,16 @@ func (h *HostService) toggleSyncFromTray() {
 	}
 	defer h.tray.reserveSync(false)
 	if err := h.toggleSync(); err != nil {
-		h.tray.mu.Lock()
-		message := trayLabelTable[h.tray.language].syncError
-		h.tray.mu.Unlock()
-		h.app.Dialog.Error().SetTitle("UniClipboard").SetMessage(message).Show()
+		h.showSyncError()
 	}
+}
+
+// showSyncError tells the user a tray sync change did not go through.
+func (h *HostService) showSyncError() {
+	h.tray.mu.Lock()
+	message := trayLabelTable[h.tray.language].syncError
+	h.tray.mu.Unlock()
+	h.app.Dialog.Error().SetTitle("UniClipboard").SetMessage(message).Show()
 }
 
 // toggleSync flips the persisted sync switch through the daemon and notifies windows.

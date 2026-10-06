@@ -4,6 +4,8 @@ package main
 
 import (
 	"os"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/UniClipboard/UniClipboard/apps/gui-go/internal/update"
@@ -41,4 +43,48 @@ func helperExecutable() (string, bool) {
 		return path, true
 	}
 	return quickpanelhelper.ResolveExePath()
+}
+
+var (
+	dialogMu    sync.Mutex
+	dialogCalls = map[string]int{}
+)
+
+// dialogOverride answers a native dialog from the environment so the e2e build can drive file
+// choices without a person: UC_GUI_GO_E2E_DIALOG_<KIND> is a `|`-separated list answered in call
+// order; an empty entry stands for the user cancelling. Past the end of the list it keeps cancelling.
+func dialogOverride(kind string) (string, bool) {
+	value, ok := os.LookupEnv("UC_GUI_GO_E2E_DIALOG_" + strings.ToUpper(kind))
+	if !ok {
+		return "", false
+	}
+	dialogMu.Lock()
+	defer dialogMu.Unlock()
+	answers := strings.Split(value, "|")
+	n := dialogCalls[kind]
+	dialogCalls[kind]++
+	if n >= len(answers) {
+		return "", true
+	}
+	return answers[n], true
+}
+
+// openerOverride records what would have been opened instead of launching the Finder or a viewer
+// on the tester's desktop: one `open|reveal <path>` line per call in UC_GUI_GO_E2E_OPEN_LOG.
+func openerOverride(path string, reveal bool) (bool, error) {
+	log := os.Getenv("UC_GUI_GO_E2E_OPEN_LOG")
+	if log == "" {
+		return false, nil
+	}
+	verb := "open"
+	if reveal {
+		verb = "reveal"
+	}
+	f, err := os.OpenFile(log, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		return true, err
+	}
+	defer f.Close()
+	_, err = f.WriteString(verb + " " + path + "\n")
+	return true, err
 }

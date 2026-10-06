@@ -80,6 +80,7 @@ async function run() {
   if (phase === 'scheduler') return runSchedulerScenario()
   if (phase === 'quick-panel-settings') return runQuickPanelSettingsScenario()
   if (phase === 'native-panel') return runNativePanelScenario()
+  if (phase === 'file-ops') return runFileOpsScenario()
   if (phase === 'native-requests') return runNativeRequestsScenario()
   await waitFor('app root content', () => document.getElementById('root')?.children.length)
   // A diagnostic page would never contain the shared app's router state.
@@ -356,6 +357,43 @@ async function runNativeRequestsScenario() {
   )
   await record('helper-open-settings', true, { path: location.pathname })
   await sleep(1000)
+  await control('exit')
+}
+
+// File and directory commands through the shared frontend bindings. Native dialogs are answered by
+// the e2e build from the environment, and the system opener records instead of launching.
+async function runFileOpsScenario() {
+  await waitFor('app root content', () => document.getElementById('root')?.children.length)
+  const result = async (
+    step: string,
+    call: Promise<{ status: string }>,
+    accept: (r: any) => boolean = r => r.status === 'ok'
+  ) => {
+    const r = await call
+    await record(step, accept(r), { result: r })
+  }
+  const png = [137, 80, 78, 71, 13, 10, 26, 10, 0, 1, 2, 3]
+  const picked = await commands.pickDirectory(null)
+  await record('pick-directory-chosen', picked.status === 'ok', { result: picked })
+  await result('pick-directory-cancelled', commands.pickDirectory(null))
+  await result('save-image-cancelled', commands.saveImageAs('a.png', png, null))
+  await result('save-image-saved', commands.saveImageAs('../../x/shot.png', png, null))
+  await result('open-image-first', commands.openImageExternally('../../etc/first.png', png, null))
+  await result(
+    'open-image-second',
+    commands.openImageExternally('second.png', png.slice(0, 4), null)
+  )
+  await result('open-data-directory', commands.openDataDirectory(null))
+  await result('open-logs-directory', commands.openLogsDirectory(null))
+  const existing = picked.status === 'ok' && picked.data ? picked.data : ''
+  await result('reveal-existing', commands.revealPath(existing, null))
+  await result(
+    'reveal-missing',
+    commands.revealPath('/definitely/not/here', null),
+    r => r.status === 'error' && r.error.code === 'NotFound'
+  )
+  await result('export-logs-cancelled', commands.exportStartupLogs(null))
+  await result('export-logs-saved', commands.exportStartupLogs(null))
   await control('exit')
 }
 

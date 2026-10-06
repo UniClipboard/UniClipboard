@@ -22,3 +22,8 @@ func schedulerTimingOverride(t schedulerTiming) schedulerTiming { return t }
 // helperExecutable is the quick panel helper next to this executable; normal builds cannot
 // redirect it through the environment.
 func helperExecutable() (string, bool) { return quickpanelhelper.ResolveExePath() }
+
+// dialogOverride and openerOverride are absent in normal builds: native dialogs and the system
+// opener cannot be replaced through the environment.
+func dialogOverride(string) (string, bool)      { return "", false }
+func openerOverride(string, bool) (bool, error) { return false, nil }

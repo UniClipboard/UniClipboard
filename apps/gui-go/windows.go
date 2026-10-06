@@ -132,12 +132,14 @@ func (h *HostService) preCreateQuickPanel() {
 		BackgroundType: application.BackgroundTypeTransparent,
 		Mac:            application.MacWindow{DisableShadow: true},
 	}
-	if runtime.GOOS == "linux" { // fixed size through geometry hints, see setPanelSize
-		options.DisableResize = false
-		options.MinWidth, options.MinHeight, options.MaxWidth, options.MaxHeight = width, height, width, height
-	}
 	w := h.app.Window.NewWithOptions(quietOptions(options))
 	attachLayerPanel(w) // Wayland Layer Shell: must happen while the hidden window is still unrealized
+	if runtime.GOOS == "linux" && !layerPanelActive() {
+		// The ordinary X11/XWayland window: fixed size by geometry hints instead of the GTK flag (see setPanelSize). The
+		// Layer Shell surface keeps its own sizing: a minimum hint above a capped surface size breaks small outputs (17c9 F7).
+		w.SetResizable(true)
+		setPanelSize(w, width, height)
+	}
 	w.RegisterHook(events.Common.WindowClosing, func(e *application.WindowEvent) {
 		if h.quitting.Load() {
 			return

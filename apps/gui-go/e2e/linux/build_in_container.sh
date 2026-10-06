@@ -8,7 +8,7 @@ cd /work
 git config --global --add safe.directory /work
 export CARGO_HOME=/cache/cargo RUSTUP_HOME=/cache/rustup CARGO_TARGET_DIR=/cache/target GOPATH=/cache/gopath GOFLAGS=-mod=mod
 export PATH="$CARGO_HOME/bin:$PATH"
-OUT=/cache/out; mkdir -p "$OUT"
+OUT="${UC_OUT_DIR:-/cache/out}"; mkdir -p "$OUT"
 if ! command -v cargo >/dev/null; then
   curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none
 fi

@@ -114,6 +114,7 @@ async function run() {
     return control('exit')
   }
   if (phase === 'native-requests') return runNativeRequestsScenario()
+  if (phase.startsWith('linux-shortcut-ui')) return runLinuxShortcutUiScenario(phase)
   await waitFor('app root content', () => document.getElementById('root')?.children.length)
   // A diagnostic page would never contain the shared app's router state.
   await record('shared-app-mounted', !$('#refresh') && !!document.getElementById('root'))
@@ -578,6 +579,70 @@ async function runNativePanelScenario() {
   await sleep(9000)
   await record('act-exit', true)
   await control('exit')
+}
+
+// Linux quick panel shortcut through the REAL shared settings page: open Settings > Quick panel, report what the page
+// shows (the switch and the effective shortcut, i.e. the frontend default while nothing is stored), then change the
+// shortcut with the real recorder popover. The recorder needs real key events: the orchestrator sends them (XTEST)
+// after the `recorder-open` step and this scenario saves once the recorder shows a candidate. Nothing here calls a
+// host command or the daemon directly. It never turns the quick panel on by itself: a default-off setting stays off
+// unless the phase is `linux-shortcut-ui:enable`; `:rebind` runs the recorder flow on an already enabled panel.
+async function runLinuxShortcutUiScenario(phase: string) {
+  await reachMainLayout()
+  const editLabel = `${i18n.t('settings.sections.shortcuts.edit')} ${i18n.t('settings.sections.shortcuts.actions.toggleQuickPanel')}`
+  const editButton = () => $(`button[aria-label="${editLabel}"]`)
+  const quickPanelSwitch = () => document.querySelector<HTMLElement>('button[role="switch"]')
+  const readState = () => ({
+    enabled: quickPanelSwitch()?.getAttribute('aria-checked'),
+    shortcutLabel: editButton()?.textContent,
+  })
+  await navigate(
+    () => link('/settings')?.click(),
+    '/settings',
+    () => document.querySelectorAll('button[aria-current]').length,
+    'settings-open',
+    true
+  )
+  const categoryName = i18n.t('settings.categories.quickPanel')
+  await waitFor('quick panel category', () =>
+    Array.from(document.querySelectorAll<HTMLElement>('button')).find(
+      b => b.textContent?.trim() === categoryName
+    )
+  ).then(b => b.click())
+  await waitFor('quick panel shortcut row', () => editButton())
+  await record('ui-quick-panel-state', true, { ...readState(), locale: i18n.language })
+  const action = phase.split(':')[1] ?? 'observe'
+  if (action === 'enable') {
+    // The product default may be off. Only this explicit phase plays the user turning the switch on (a separate,
+    // labelled user action); observe/rebind never change it.
+    if (quickPanelSwitch()?.getAttribute('aria-checked') !== 'true') {
+      quickPanelSwitch()!.click()
+      await waitFor('switch on', () => quickPanelSwitch()?.getAttribute('aria-checked') === 'true')
+    }
+    await record('ui-enabled', true, readState())
+    return
+  }
+  if (action !== 'rebind' || quickPanelSwitch()?.getAttribute('aria-checked') !== 'true') return
+  editButton()!.click()
+  const recorder = await waitFor('recorder', () =>
+    document.querySelector<HTMLElement>(
+      `[role="group"][aria-label="${i18n.t('settings.sections.shortcuts.recording')}"]`
+    )
+  )
+  recorder.focus()
+  await record('recorder-open', document.activeElement === recorder)
+  const candidate = await waitFor(
+    'recorded candidate',
+    () => recorder.querySelector('kbd')?.textContent,
+    30000
+  )
+  await record('recorder-candidate', true, { candidate })
+  const saveName = i18n.t('settings.sections.shortcuts.save')
+  Array.from(document.querySelectorAll<HTMLButtonElement>('button'))
+    .find(b => b.textContent?.trim() === saveName)!
+    .click()
+  await waitFor('saved label', () => editButton()?.textContent === candidate, 15000)
+  await record('ui-shortcut-saved', true, readState())
 }
 
 // Requests printed by a stand-in helper: show the hidden main window, then open the settings page.

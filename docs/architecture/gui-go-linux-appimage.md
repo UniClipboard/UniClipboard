@@ -71,3 +71,22 @@
 - **amd64**：见「验证结果」；没有原生 x86_64 Linux 主机时，只有能真实构建并运行的部分才记为已证明。
 - **release 标签 AppImage 的 UI 行为**：release 构建没有测试控制面，只有冒烟级证据。
 - **AppImage 内的 Wayland / Layer Shell**：由 `GDK_BACKEND=x11` 排除，是兼容选择而非已验证能力。
+
+## 验证结果
+
+完整运行（干净提交 `b57fd28e1`，`apps/gui-go/e2e/linux/run_17c4.sh`，细节、保留的失败运行与复跑命令见 `apps/gui-go/README.md`「自包含 Linux AppImage（第 17c4 片）」）：
+
+| 运行 | 结果 |
+| --- | --- |
+| 干净宿主 + 真实 AppImage，`gtk3,production,release,e2e`（F1–F5、F7–F9、数据根、持久数据） | 34/34 |
+| 无重定位对照包（F1/F2 的红灯） | 2/2，日志精确给出 `WebKitNetworkProcess (No such file or directory)` |
+| `gtk3,production,release` 真实 release 包的冒烟（F11，无控制面，不是前端握手） | 5/5 |
+| deb/rpm 重建（F10） | deb 依赖含 `libgtk-layer-shell0`；rpm `Requires` 含 `gtk-layer-shell`；文件表无 `.build-id` |
+
+设计与实现中被事实修正的几处：
+
+- 宿主前置条件不是「没有任何库」：`libharfbuzz` 等 23 个 soname 都是固定版 linuxdeploy 排除列表的精确行（宿主提供是约定，不是打包缺陷）；它们带来宿主 GLib，所以验收口径是「宿主没有 GTK/WebKitGTK」，包内 GLib/GIO 由 `/proc/<pid>/maps` 证明被实际映射。
+- `libGLESv2.so.2` 被 WebKit `dlopen`，不在排除列表中，linuxdeploy 也看不到它，作为同属 libglvnd 的宿主库处理（运行镜像装 `libgles2`）；打包检查的宿主库断言目前不含它（后续项）。
+- linuxdeploy 会给传入的可执行文件加 `RUNPATH`，改变 daemon 字节；清单记录哈希链，包内的 daemon 放回原文件，身份可与构建证据逐字节对照。
+- AppImage 的 portable 模式没有意义（数据根会落在只读挂载内）；验收用非 portable 的 XDG 数据根，因此需要 Secret Service。它放在独立容器（gnome-keyring 会把 GTK 拖进宿主），且必须是常驻、已解锁的单个实例：先前的 `--unlock` 交棒方式曾被 D-Bus 重新激活成锁定实例，`/encryption/state` 因等待无法显示的提示而挂起（保留的 `final-70dd6dcbe`）。
+- 自启动只验证注册（`Exec=` 是 AppImage 文件而不是临时挂载、旧条目替换、禁用）；真实注销/登录启动与更新之后的条目有效性、amd64、原生桌面、deb/rpm 实装、官方签名发布验证均未验收。

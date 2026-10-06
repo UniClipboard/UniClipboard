@@ -140,6 +140,13 @@ async function run() {
   // The WebView survived the hide/show cycle with its React state and host bindings intact.
   const pid = await Call.ByName('main.HostService.Invoke', 'get_tauri_pid', {})
   await record('webview-alive-after-reopen', !!(pid as { ok: boolean }).ok && !!mainLayout())
+  // Second windows: the real updater (dev preview) and quick panel pages.
+  await control('open-updater')
+  await sleep(3000)
+  await control('close-updater')
+  await control('show-quick-panel')
+  await sleep(3000)
+  await control('dismiss-quick-panel')
   await record('driver-complete', true)
 }
 

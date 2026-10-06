@@ -29,5 +29,17 @@ export default defineConfig({
     ],
   },
   server: { port: 1520, strictPort: true, fs: { allow: [path('../..')] } },
-  build: { target: 'safari15.6', cssTarget: 'safari15.6', emptyOutDir: true },
+  build: {
+    target: 'safari15.6',
+    cssTarget: 'safari15.6',
+    emptyOutDir: true,
+    // Same three documents as the Tauri build: main app, quick panel, updater.
+    rollupOptions: {
+      input: {
+        main: path('./frontend/index.html'),
+        'quick-panel': path('./frontend/quick-panel.html'),
+        updater: path('./frontend/updater.html'),
+      },
+    },
+  },
 })

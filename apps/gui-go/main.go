@@ -30,6 +30,7 @@ type HostService struct {
 	app     *application.App
 	client  *daemonclient.Client
 	effects *visualEffects
+	panel   panelState
 
 	quitting atomic.Bool
 
@@ -91,14 +92,6 @@ func (h *HostService) openMainWindow() {
 	})
 }
 
-func (h *HostService) OpenSecondary() {
-	if w, ok := h.app.Window.GetByName("secondary"); ok {
-		w.Show()
-		w.Focus()
-		return
-	}
-	h.app.Window.NewWithOptions(application.WebviewWindowOptions{Name: "secondary", Title: "UniClipboard · Go GUI · 第二窗口", URL: "/?window=secondary", Width: 760, Height: 600})
-}
 func (h *HostService) Quit() {
 	h.quitting.Store(true)
 	h.app.Quit()
@@ -201,6 +194,7 @@ func main() {
 		ShouldQuit: func() bool { host.quitting.Store(true); return true }})
 	host.app = app
 	host.openMainWindow()
+	host.preCreateQuickPanel()
 	if err := app.Run(); err != nil {
 		log.Fatal(err)
 	}

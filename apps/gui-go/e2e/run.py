@@ -28,11 +28,13 @@ def read_steps(path, start):
     return [json.loads(line) for line in path.read_text().splitlines()[start:]]
 
 
-def wait_for_step(proc, path, start, step, timeout=120):
+def wait_for_step(proc, path, start, step, timeout=120, on_step=None):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         rows = read_steps(path, start)
         for row in rows:
+            if on_step:
+                on_step(row)
             if row['step'] == 'driver-error':
                 raise RuntimeError(f"driver error: {row.get('detail')}")
         if any(r['step'] == step for r in rows):
@@ -43,9 +45,9 @@ def wait_for_step(proc, path, start, step, timeout=120):
     raise RuntimeError(f'timeout waiting for step {step}')
 
 
-def screenshot(pid, out):
+def screenshot(pid, out, title=None):
     try:
-        wid = subprocess.check_output(['swift', str(HERE / 'window_id.swift'), str(pid)], text=True, timeout=60).strip()
+        wid = subprocess.check_output(['swift', str(HERE / 'window_id.swift'), str(pid)] + ([title] if title else []), text=True, timeout=60).strip()
         subprocess.run(['screencapture', '-x', '-o', '-l', wid, str(out)], check=True, timeout=20)
         return True
     except Exception:
@@ -91,11 +93,23 @@ def main():
             start = len(evidence.read_text().splitlines())
             with (out / f'gui-{run}.log').open('w') as log:
                 proc = subprocess.Popen([str(binary)], env=env, stdout=log, stderr=log)
-                rows = wait_for_step(proc, evidence, start, 'driver-complete', 180)
+                taken = set()
+
+                def capture(row, run=run, taken=taken):
+                    # The driver keeps each second window open long enough to be captured.
+                    for step, title, name in (('native-updater-opened', 'Software Update', 'updater'), ('native-quick-panel-visible', '-', 'quick-panel')):
+                        if row['step'] == step and step not in taken:
+                            taken.add(step)
+                            shot = out / f'{name}-{run}.png'
+                            results.setdefault('screenshots', []).append({'file': shot.name, 'captured': screenshot(proc.pid, shot, title)})
+
+                rows = wait_for_step(proc, evidence, start, 'driver-complete', 240, capture)
                 steps = {r['step']: r for r in rows}
                 assert all(r['ok'] for r in rows), f'failed steps: {[r for r in rows if not r["ok"]]}'
                 assert 'shared-app-mounted' in steps and 'home' in steps and 'devices' in steps and 'settings' in steps
                 assert 'native-main-closed' in steps and 'native-main-reopened' in steps
+                for needed in ('updater-mounted', 'native-updater-opened', 'native-updater-closed', 'quick-panel-mounted', 'native-quick-panel-visible', 'quick-panel-shown-state', 'native-quick-panel-dismissed'):
+                    assert needed in steps, f'missing step {needed}'
                 shot = out / f'main-{run}.png'
                 results.setdefault('screenshots', []).append({'file': shot.name, 'captured': screenshot(proc.pid, shot)})
                 conn_path = Path(home) / 'Library/Application Support' / ('app.uniclipboard.desktop-' + profile) / 'daemon.conn'

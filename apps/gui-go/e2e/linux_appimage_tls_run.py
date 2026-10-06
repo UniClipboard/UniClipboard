@@ -53,6 +53,11 @@ HOST_OK = re.compile(r'''^(ld-linux.*|(libc|libm|libdl|libpthread|librt|libresol
 HOST_PATH_OK = re.compile(r'/(dri|gbm|vdpau|gallium-pipe)/')
 
 
+class StopScenario(Exception):
+    """A prerequisite failed (already recorded as a failed check): stop the scenario but still write the evidence and exit non-zero. A bare `return` from
+    main() skipped the final sys.exit and made a failed run exit 0 (found in the 17c7 final run, control-17c6-fedora)."""
+
+
 def run_cmd(cmd, **kw):
     return subprocess.run(cmd, capture_output=True, text=True, **kw)
 
@@ -303,7 +308,7 @@ def main():
         conn_path, conn = wait_daemon(sandbox)
         run.check('T1 the real bundled daemon started and published daemon.conn', conn is not None, str(conn_path))
         if conn is None:
-            return
+            raise StopScenario()
         gui.step('bootstrapped', 90)
         state = wait_panel_ready(gui, 'tls', 90)
         run.check('T1 the real WebView loaded the frontend (quick panel page ready)', state.get('panelReady') is True, state)
@@ -312,7 +317,7 @@ def main():
         mount = gui_exe.split('/usr/bin/')[0] if '/usr/bin/' in gui_exe else None
         run.check('T1 the GUI executes from the AppImage mount', bool(mount) and mount.startswith('/tmp/.mount_'), gui_exe)
         if not mount:
-            return
+            raise StopScenario()
         shipped = set(as_user(['find', mount, '(', '-name', '*.so', '-o', '-name', '*.so.*', ')'], run.env).stdout.split())
         shipped = {p.rsplit('/', 1)[-1] for p in shipped}
         r['shippedSonames'] = len(shipped)
@@ -405,6 +410,8 @@ def main():
             stop(gui2, conn2)
             launches.clear()
         r['passed'] = all(c['ok'] for c in r['checks'])
+    except StopScenario:
+        pass
     except Exception as e:  # keep the evidence of a failed run
         r['error'] = repr(e)
         import traceback

@@ -139,7 +139,7 @@ case "$mode" in
     out="$(mkdir -p "${2:?outdir}" && cd "$2" && pwd)"
     image="$(cd "$(dirname "${3:?AppImage}")" && pwd)/$(basename "$3")"
     manifest="$(cd "$(dirname "${4:?package-manifest.json}")" && pwd)/$(basename "$4")"
-    docker run --rm --platform linux/arm64 -v "$ROOT:/work:ro" -v "$out:/out" -v "$image:/in/appimage.AppImage:ro" -v "$manifest:/in/package-manifest.json:ro" "$IMAGE" bash -c '
+    docker run --rm --platform linux/arm64 -e UC_CONTENT_CHECK_ARGS="${UC_CONTENT_CHECK_ARGS:-}" -v "$ROOT:/work:ro" -v "$out:/out" -v "$image:/in/appimage.AppImage:ro" -v "$manifest:/in/package-manifest.json:ro" "$IMAGE" bash -c '
       set -e; cd /out; cp /in/appimage.AppImage ./x.AppImage; chmod +x ./x.AppImage; ./x.AppImage --appimage-extract > extract.log 2>&1
       python3 -I /work/apps/gui-go/e2e/linux/audit_dlopen.py /out/squashfs-root /out/dlopen-audit.json
       python3 -I /work/apps/gui-go/e2e/linux/appimage_content_check.py /out/squashfs-root /in/package-manifest.json /out/content-check.json ${UC_CONTENT_CHECK_ARGS:-}' ;;

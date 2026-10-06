@@ -42,7 +42,8 @@ step control-negtls-ubuntu env UC_TLS_E2E_ARGS="--expect-tls absent" "$R" appima
 step control-negtls-fedora env UC_TLS_IMAGE=uc-gui-go-linux-runtime-fedora:17c7 UC_TLS_E2E_ARGS="--expect-tls absent" "$R" appimage-tls-e2e "$out/control-negtls-fedora" "$NT" "$MN"; cnf=$?
 OLDPKG="$OLD/E2E-UniClipboard_1.1.1_arm64.AppImage"; OLDM="$OLD/package-manifest.json"
 step control-17c6-ubuntu env UC_TLS_E2E_ARGS="--expect-tls absent" "$R" appimage-tls-e2e "$out/control-17c6-ubuntu" "$OLDPKG" "$OLDM"; c6u=$?
-# On Fedora the 17c6 package does not even start (its bundled libdbus breaks the host dbus-launch): recorded, expected non-zero, not part of the verdict.
+# On Fedora the 17c6 package does not even start (its bundled libdbus breaks the host dbus-launch). That is NOT TLS evidence. The expected outcome is asserted:
+# the step must exit non-zero AND the failing stage must be the daemon start (T1), checked below from the assertions file.
 step control-17c6-fedora env UC_TLS_IMAGE=uc-gui-go-linux-runtime-fedora:17c7 UC_TLS_E2E_ARGS="--expect-tls absent" "$R" appimage-tls-e2e "$out/control-17c6-fedora" "$OLDPKG" "$OLDM"; c6f=$?
 # Regression of what the AppDir change can affect: portable (unprivileged, no Secret Service), full (non-portable, real update/restart), negative control, release smoke.
 step e2e-portable "$R" appimage-portable-e2e "$out/e2e-portable" "$V1" "$out/feed" "$M1"; portable=$?
@@ -52,6 +53,14 @@ step frontend-release bash -c "cd '$ROOT' && VITE_GUI_GO_E2E=0 bun --bun run --c
 step package-release "$R" package-release "$out/release" || exit 1
 step e2e-smoke "$R" appimage-e2e "$out/e2e-smoke" smoke "$out/release/packages/UniClipboard_1.1.1_arm64.AppImage"; smoke=$?
 step runtime-identity python3 -I "$ROOT/apps/gui-go/e2e/linux/runtime_pin_check.py" "$M1" "$out/v2/pkg/package-manifest.json" "$out/negative/pkg/package-manifest.json" "$out/release/packages/package-manifest.json"; ident=$?
-echo "content=$content content-negtls=$contentneg tls-ubuntu=$tlsu tls-fedora=$tlsf control-negtls-ubuntu=$cnu control-negtls-fedora=$cnf control-17c6-ubuntu=$c6u control-17c6-fedora(expected non-zero, informational)=$c6f portable=$portable full=$full negative=$neg smoke=$smoke runtime-identity=$ident" | tee -a "$out/steps.txt"
+c6f_ok=1; python3 -I - "$out/control-17c6-fedora/appimage-assertions.json" <<'PY' && c6f_ok=0
+import json, sys
+r = json.load(open(sys.argv[1]))
+bad = [c['check'] for c in r['checks'] if not c['ok']]
+sys.exit(0 if (not r['passed'] and bad and all(b.startswith('T1 the real bundled daemon') for b in bad)) else 1)
+PY
+[ "$c6f" != 0 ] || c6f_ok=1
+echo "control-17c6-fedora-expected-startup-failure-observed=$([ $c6f_ok = 0 ] && echo yes || echo NO)" | tee -a "$out/steps.txt"
+echo "content=$content content-negtls=$contentneg tls-ubuntu=$tlsu tls-fedora=$tlsf control-negtls-ubuntu=$cnu control-negtls-fedora=$cnf control-17c6-ubuntu=$c6u control-17c6-fedora(expected non-zero)=$c6f portable=$portable full=$full negative=$neg smoke=$smoke runtime-identity=$ident" | tee -a "$out/steps.txt"
 ( cd "$out" && find . -type f \( -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' -o -name '*.tar.gz' -o -name 'package-manifest.json' -o -name 'appimage-assertions.json' -o -name 'content-check.json' -o -name 'uniclipboard' \) -not -path '*/squashfs-root/*' -print0 | sort -z | xargs -0 shasum -a 256 > SHA256SUMS.txt )
-[ "$content" = 0 ] && [ "$contentneg" = 0 ] && [ "$tlsu" = 0 ] && [ "$tlsf" = 0 ] && [ "$cnu" = 0 ] && [ "$cnf" = 0 ] && [ "$c6u" = 0 ] && [ "$portable" = 0 ] && [ "$full" = 0 ] && [ "$neg" = 0 ] && [ "$smoke" = 0 ] && [ "$ident" = 0 ]
+[ "$content" = 0 ] && [ "$contentneg" = 0 ] && [ "$tlsu" = 0 ] && [ "$tlsf" = 0 ] && [ "$cnu" = 0 ] && [ "$cnf" = 0 ] && [ "$c6u" = 0 ] && [ "$c6f_ok" = 0 ] && [ "$portable" = 0 ] && [ "$full" = 0 ] && [ "$neg" = 0 ] && [ "$smoke" = 0 ] && [ "$ident" = 0 ]

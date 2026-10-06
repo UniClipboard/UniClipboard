@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/apppaths"
@@ -18,15 +20,37 @@ import (
 	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/daemonlife"
 	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/daemonproc"
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/wailsapp/wails/v3/pkg/events"
 )
 
 //go:embed all:frontend/dist
 var assets embed.FS
 
 type HostService struct {
-	app    *application.App
-	client *daemonclient.Client
+	app     *application.App
+	client  *daemonclient.Client
+	effects *visualEffects
+
+	quitting atomic.Bool
+
+	navMu             sync.Mutex
+	pendingNavigation string
 }
+
+// emit broadcasts an event to every window, matching Tauri's app-wide emit.
+func (h *HostService) emit(name string, payload any) { h.app.Event.Emit(name, payload) }
+
+func (h *HostService) takePendingNavigation() any {
+	h.navMu.Lock()
+	defer h.navMu.Unlock()
+	if h.pendingNavigation == "" {
+		return nil
+	}
+	route := h.pendingNavigation
+	h.pendingNavigation = ""
+	return route
+}
+
 type Connection struct {
 	BaseURL string `json:"baseUrl"`
 	WSURL   string `json:"wsUrl"`
@@ -49,6 +73,24 @@ func (h *HostService) Session() (daemonclient.Session, error) {
 	defer cancel()
 	return h.client.ExchangeSession(ctx, "gui")
 }
+
+// openMainWindow creates the main window. Closing it hides it so the process,
+// daemon connection and window state stay alive until an explicit quit; the
+// dock/reopen handler in Wails shows it again.
+func (h *HostService) openMainWindow() {
+	w := h.app.Window.NewWithOptions(application.WebviewWindowOptions{
+		Name: "main", Title: "UniClipboard", URL: "/", Width: 1100, Height: 720, MinWidth: 900, MinHeight: 600,
+		Mac: application.MacWindow{TitleBar: application.MacTitleBarHiddenInset},
+	})
+	w.RegisterHook(events.Common.WindowClosing, func(e *application.WindowEvent) {
+		if h.quitting.Load() {
+			return
+		}
+		e.Cancel()
+		w.Hide()
+	})
+}
+
 func (h *HostService) OpenSecondary() {
 	if w, ok := h.app.Window.GetByName("secondary"); ok {
 		w.Show()
@@ -57,7 +99,10 @@ func (h *HostService) OpenSecondary() {
 	}
 	h.app.Window.NewWithOptions(application.WebviewWindowOptions{Name: "secondary", Title: "UniClipboard · Go GUI · 第二窗口", URL: "/?window=secondary", Width: 760, Height: 600})
 }
-func (h *HostService) Quit() { h.app.Quit() }
+func (h *HostService) Quit() {
+	h.quitting.Store(true)
+	h.app.Quit()
+}
 
 func validateIsolation() error {
 	if runtime.GOOS != "darwin" {
@@ -149,12 +194,13 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	host := &HostService{client: client}
+	host := &HostService{client: client, effects: newVisualEffects()}
 	services := []application.Service{application.NewService(host)}
 	services = append(services, e2eServices(host)...)
-	app := application.New(application.Options{Name: "UniClipboard Go GUI", Services: services, Assets: application.AssetOptions{Handler: application.BundledAssetFileServer(content)}, Mac: application.MacOptions{ApplicationShouldTerminateAfterLastWindowClosed: true}})
+	app := application.New(application.Options{Name: "UniClipboard Go GUI", Services: services, Assets: application.AssetOptions{Handler: application.BundledAssetFileServer(content)},
+		ShouldQuit: func() bool { host.quitting.Store(true); return true }})
 	host.app = app
-	app.Window.NewWithOptions(application.WebviewWindowOptions{Name: "main", Title: "UniClipboard · Wails v3 Go GUI", URL: "/", Width: 860, Height: 650})
+	host.openMainWindow()
 	if err := app.Run(); err != nil {
 		log.Fatal(err)
 	}

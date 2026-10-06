@@ -1,0 +1,4 @@
+/* Wails drag regions are declared in CSS; the shared markup uses the Tauri attribute. */
+[data-tauri-drag-region] {
+  --wails-draggable: drag;
+}

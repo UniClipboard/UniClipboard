@@ -1,0 +1,23 @@
+// Host adapter for `@tauri-apps/api/window`.
+import { Window } from '@wailsio/runtime'
+import { listen, type UnlistenFn } from './event'
+
+const RESIZED_EVENT = 'common:WindowDidResize'
+
+class HostWindow {
+  setDecorations = async (_decorations: boolean): Promise<void> => undefined
+  isMaximized = (): Promise<boolean> => Window.IsMaximised()
+  minimize = (): Promise<void> => Window.Minimise()
+  maximize = (): Promise<void> => Window.Maximise()
+  unmaximize = (): Promise<void> => Window.UnMaximise()
+  unminimize = (): Promise<void> => Window.UnMinimise()
+  close = (): Promise<void> => Window.Close()
+  show = (): Promise<void> => Window.Show()
+  setFocus = (): Promise<void> => Window.Focus()
+  // Dragging is declared in CSS (`--wails-draggable`) by the host stylesheet.
+  startDragging = async (): Promise<void> => undefined
+  onResized = (handler: () => void): Promise<UnlistenFn> => listen(RESIZED_EVENT, handler)
+}
+
+const current = new HostWindow()
+export const getCurrentWindow = (): HostWindow => current

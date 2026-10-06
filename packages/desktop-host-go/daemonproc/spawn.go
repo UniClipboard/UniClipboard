@@ -13,6 +13,7 @@ import (
 
 // Environment contract shared with `uniclipd` (`uc-daemon-process::spawn_contract`).
 const (
+	NoTakeoverEnv  = "UC_DAEMON_NO_TAKEOVER"
 	RunModeEnv     = "UC_DAEMON_RUN_MODE"
 	RunModeServer  = "server"
 	RunModeOneshot = "oneshot"

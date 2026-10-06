@@ -112,3 +112,6 @@ mod tests {
         assert!(!unattended_from_env());
     }
 }
+
+/// Refuse an occupied profile lock without evicting its owner (foreground/user services).
+pub const NO_TAKEOVER_ENV: &str = "UC_DAEMON_NO_TAKEOVER";

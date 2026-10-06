@@ -32,7 +32,7 @@ services:
       # Anchor all state on the volume (redundant with the image ENV, kept
       # explicit so the contract is visible at the orchestration layer).
       HOME: /data
-      # No system clipboard on a headless box. `start --server` and the
+      # No system clipboard on a headless box. `run --server` and the
       # provisioning commands (join / mobile-sync) already enable Noop on their
       # own paths; setting it service-wide also keeps ad-hoc debugging commands
       # (e.g. `uniclip status`) from trying to open a non-existent display.
@@ -53,7 +53,7 @@ services:
       - '42720'
     networks:
       - uniclip
-    command: ['uniclip', 'start', '--server', '--foreground']
+    command: ['uniclip', 'run', '--server']
     healthcheck:
       # The daemon's loopback control server answers /health on 42715 when no
       # UC_PROFILE is set (the recommended VPS config). Proves the daemon is

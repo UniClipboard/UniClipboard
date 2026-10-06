@@ -56,6 +56,7 @@ func configureRunMode(server bool) {
 }
 
 func runStart(ctx *cli.Context) int {
+	ui.Warn("`uniclip start` is deprecated; use `uniclip run` for foreground or `uniclip service start` for background. This alias retains its existing behavior during the compatibility period.")
 	server := ctx.Bool("server")
 	configureRunMode(server)
 	if ctx.Bool("foreground") {

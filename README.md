@@ -358,7 +358,8 @@ uniclip get                                 # Fetch the latest entry
 uniclip get --wait                          # Wait for the next synced entry
 uniclip get --copy                          # Copy the latest entry to this computer's clipboard
 uniclip search "invoice"                    # Search clipboard history
-uniclip start / stop                        # Daemon lifecycle
+uniclip run                                # Foreground daemon lifecycle
+uniclip service start / restart / status / stop # User service lifecycle
 ```
 
 Run `uniclip --help` for the full list, or see the [CLI reference](https://docs.uniclipboard.app/cli/reference).

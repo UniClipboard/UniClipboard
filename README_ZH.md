@@ -354,7 +354,8 @@ uniclip get                                 # 获取最新一条内容
 uniclip get --wait                          # 等待下一条同步过来的内容
 uniclip get --copy                          # 把最新一条内容复制到本机剪贴板
 uniclip search "invoice"                    # 搜索剪贴板历史
-uniclip start / stop                        # 守护进程生命周期
+uniclip run                                # 前台运行守护进程
+uniclip service start / restart / status / stop # 用户服务生命周期
 ```
 
 完整命令见 `uniclip --help` 或 [CLI 参考](https://docs.uniclipboard.app/zh/cli/reference)。

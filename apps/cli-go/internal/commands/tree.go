@@ -16,9 +16,11 @@ func Tree() *cli.Command {
 			{Long: "profile", ValueName: "NAME", Kind: cli.String, Global: true, Help: "Override the active profile (equivalent to `UC_PROFILE`). Isolates data dir, keychain, and iroh identity — needed to run two CLI instances on the same machine for end-to-end pairing testing"},
 		},
 		Subs: []*cli.Command{
+			{Name: "run", About: "Run the daemon in the foreground; refuse an existing daemon", Flags: []*cli.Flag{{Long: "server", Kind: cli.Bool, Help: "Run headless without the system clipboard"}}, Run: runForeground},
+			serviceTree(),
 			{
 				Name:  "start",
-				About: "Start the daemon (background by default, use --foreground for log streaming)",
+				About: "Deprecated: start in background; use run or service start",
 				Flags: []*cli.Flag{
 					{Long: "foreground", Short: 'f', Kind: cli.Bool, Help: "Run daemon in foreground (log output to terminal)"},
 					{Long: "server", Kind: cli.Bool, Help: "Run as a headless server node (VPS / container): no system clipboard and no clipboard watcher. The node still syncs over iroh as a normal Space member and serves the mobile-sync gateway. Join the Space first (`uniclip space join`) before starting"},

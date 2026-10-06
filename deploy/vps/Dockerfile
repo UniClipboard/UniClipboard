@@ -5,7 +5,7 @@
 # Three stages:
 #   1. builder     — compiles the `uniclipd` daemon as a static musl executable.
 #   2. cli-builder — compiles the user-facing `uniclip` CLI (Go, apps/cli-go) as
-#                    a static executable. `uniclip start` spawns `uniclipd` as a
+#                    a static executable. `uniclip run` executes `uniclipd` as a
 #                    child process even in `--foreground` mode, so both must be
 #                    present in the runtime image.
 #   3. runtime     — minimal Alpine image that runs the binaries as a non-root
@@ -93,9 +93,9 @@ USER uniclip
 WORKDIR /data
 
 # Default: run the headless server daemon in the foreground as the container's
-# main process. `start --server` sets UC_DAEMON_RUN_MODE=server (no system
+# main process. `run --server` sets UC_DAEMON_RUN_MODE=server (no system
 # clipboard, no watcher); `--foreground` keeps it attached. The compose `app`
 # service overrides this explicitly, and one-off provisioning commands replace
 # it entirely (e.g. `docker compose run --rm app uniclip join`). No ENTRYPOINT
 # so `docker compose run app uniclip <cmd>` works without arg duplication.
-CMD ["uniclip", "start", "--server", "--foreground"]
+CMD ["uniclip", "run", "--server"]

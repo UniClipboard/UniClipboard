@@ -4,8 +4,7 @@
 所有业务动作都通过 `uniclipd` 已有的 HTTP / WebSocket 接口完成，与 Rust 实现
 `tools/uc-dev-cli`（原 `apps/cli`）使用同一套路由、DTO、`daemon.conn` / `.daemon-pid` / 交接记录与环境变量约定。
 
-迁移期间两者并存。Rust CLI 仍是默认构建与发布对象；是否把发布产物切换为 Go 版本由维护者决定，
-见文末「切换发布产物」。
+用户端发布构建使用本 Go 实现；Rust `uc-dev-cli` 仅供开发与诊断。
 
 ## 结构
 
@@ -45,6 +44,55 @@ scripts/ci/build-go-cli.sh aarch64-apple-darwin target/uniclip
 脚本会在 `packages/desktop-host-go/buildinfo` 与 `Cargo.toml` 或契约 revision 不一致时失败。运行时 `uniclipd`
 必须与 `uniclip` 同目录或在 `PATH` 上，与 Rust 版相同。
 
+## 前台运行与用户服务
+
+```sh
+uniclip run                         # 前台运行，终端信号和退出码直接交给 daemon
+uniclip run --server                # 无系统剪贴板的前台节点，适合容器
+uniclip --profile work service start # 安装并启动当前用户服务，登录后自动启动
+uniclip --profile work service status
+uniclip --profile work service restart
+uniclip --profile work service stop  # 停止并关闭登录启动，保留服务定义
+```
+
+`run` 在 macOS/Linux 使用进程替换，标准输入、输出、错误和信号均保留；daemon 的退出码
+直接成为命令退出码。Windows 等待同控制台的子进程结束并返回其退出码，控制台行为尚需原生验收。
+未完成 Space 初始化也可运行 daemon，随后从另一终端执行 `space init` 或 `space join`。
+已有 daemon（包括 GUI 所有、oneshot、健康暂时不可达或版本不兼容）时，`run` 拒绝启动，
+不会接管或终止它。daemon 的 `UC_DAEMON_NO_TAKEOVER=1` 启动契约还在原子锁处拒绝并发竞争；
+`run` 强制启用单例保护。CLI 和 daemon 必须使用同批发布产物。
+
+`service` 仅支持 Linux 的 systemd 用户服务和 macOS 的 launchd LaunchAgent。
+Windows 返回明确的未支持错误，其余 CLI 命令仍可使用。不使用 sudo，不安装全局服务。
+macOS 要求当前用户有 GUI 登录域；Linux 要求可连接用户 systemd 管理器。
+服务按 HOME 和 profile 命名，只管理本命令创建的服务；`start` 幂等安装/启动，
+同配置且正在运行时保留 PID，运行中的配置不同则要求先 `service stop` 再以新选项启动。
+`restart` 使用已安装的选项并恢复登录启动，不读取新的 `--server` 设置。`stop` 重复调用成功。
+服务定义保留 `--profile`、`--dev` 对应环境、HOME、XDG 数据目录与日志上下文，
+不保存 daemon 令牌、密码或 shell 中的所有环境变量。用户钥匙串仍可能因登录状态而不可用，
+此时 HTTP 健康会失败，应检查日志。不要让 GUI 与用户服务争用同一 profile。
+
+生产服务要求稳定安装的 `uniclip` 和同目录 `uniclipd`，解析符号链接后拒绝临时目录和
+Git 工作树；便携安装不支持用户服务。开发模式允许工作树二进制，但其路径随工作树删除失效。
+服务启动时再次经过 `run` 的已有 daemon 守卫。服务没有自动崩溃重启策略，避免错误配置循环启动；
+发生失败时可查看状态/日志并显式重启。
+
+`service status` 分别显示 installed、loaded、running 与 http_health，HTTP 状态复用现有
+版本契约探测并核对服务 PID。安装或 PID 存在不代表健康；无运行服务、HTTP 不可达、
+版本不兼容或端点属于其他 daemon 时返回非零。`recovery_required` 保留原样，表示 daemon
+可达但还需要恢复。`start/restart` 等待 HTTP 健康，失败返回非零并保留服务供诊断。
+macOS 控制台日志在 profile 日志目录的 `service.stdout.log` / `service.stderr.log`，
+Linux 控制台日志使用 `journalctl --user -u <status 中的 name>.service`；daemon 自身继续使用原有轮转日志。
+
+登录/重启边界：macOS 在下次 GUI 登录加载 LaunchAgent；Linux 在用户管理器启动时加载启用的
+服务。两者都不承诺未登录就启动。Linux 如需开机用户服务，可由管理员独立配置 linger；
+CLI 不更改该系统设置。手动删除服务：先 `service stop`，再删除 HOME 下对应 LaunchAgent
+或 XDG_CONFIG_HOME 下对应 systemd 用户 unit；Linux 删除后执行 `systemctl --user daemon-reload`。
+
+兼容期中 `uniclip start`（含 `--foreground`、`--server`）保留原有后台默认和 setup 检查，
+只向标准错误输出迁移提示；不会让旧后台脚本突然阻塞。旧 `start --foreground` 保留原语义，
+新脚本应使用 `run`。兼容别名计划在后续显式发布变更中移除，本次不删除。
+
 ## 兼容范围
 
 - 全部发布版命令（包括隐藏的弃用别名 `status`、`init`、`invite`、`join`、`members` / `devices`、`recv`、`mobile-sync`）均已实现。
@@ -55,6 +103,7 @@ scripts/ci/build-go-cli.sh aarch64-apple-darwin target/uniclip
 
 | 场景 | Rust | Go | 处理 |
 | --- | --- | --- | --- |
+| daemon 生命周期命令 | `start` 默认后台 | 新增 `run` 和 `service`；`start` 保留旧行为但向标准错误输出弃用提示 | 有意变更，根 help 和 `start` help 也随之更新 |
 | 交互式口令或文本输入时连续按键 | 只有第一个按键在 raw 模式下读取，其余按键由终端回显，口令会以明文出现在屏幕上 | 全程 raw 模式，只显示掩码 | Rust 的行为是口令泄露缺陷，Go 不复制 |
 | 非终端环境下的口令提示 | 忙等，直到外部超时 | 立即报错 `password input failed: IO error: not a terminal` | 不复制挂起 |
 | `/health` 返回非法 JSON（只有端口被非 uniclipd 进程占用时才会出现） | 显示 serde_json 的解析错误细节 | 显示 Go `encoding/json` 的解析错误细节 | 退出码与前缀一致，细节文本不同 |

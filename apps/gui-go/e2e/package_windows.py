@@ -64,6 +64,26 @@ def provenance():
             'immutable': not status}
 
 
+PE_MACHINES = {'amd64': 0x8664, 'arm64': 0xAA64}
+MIN_DAEMON_BYTES = 1 << 20  # the real daemon is tens of MB; anything under 1 MiB is not it
+
+
+def check_daemon(path, arch):
+    """A real Windows PE image for the target architecture, or a reason it is not. Returns (ok, reason)."""
+    data = path.read_bytes()
+    if len(data) < MIN_DAEMON_BYTES:
+        return False, f'{len(data)} bytes is too small to be the daemon (minimum {MIN_DAEMON_BYTES})'
+    if data[:2] != b'MZ' or len(data) < 0x40:
+        return False, 'no MZ header'
+    pe = int.from_bytes(data[0x3C:0x40], 'little')
+    if pe + 6 > len(data) or data[pe:pe + 4] != b'PE\0\0':
+        return False, 'no PE signature'
+    machine = int.from_bytes(data[pe + 4:pe + 6], 'little')
+    if machine != PE_MACHINES[arch]:
+        return False, f'PE machine 0x{machine:04X}, expected 0x{PE_MACHINES[arch]:04X} for {arch}'
+    return True, 'ok'
+
+
 def wails_version():
     mod = (GUI / 'go.mod').read_text()
     return re.search(r'github.com/wailsapp/wails/v3 (v[0-9][^\s]*)', mod).group(1)
@@ -74,11 +94,19 @@ def main():
     parser.add_argument('--arch', choices=sorted(ARCH_NAMES), required=True)
     parser.add_argument('--daemon', type=Path, required=True, help='uniclipd.exe built for the same architecture')
     parser.add_argument('--out', type=Path, required=True)
+    parser.add_argument('--packaging-check-fixture', action='store_true',
+                        help='PACKAGING CHECK ONLY: accept a placeholder daemon so the installer script can be compiled; outputs are '
+                             'marked fixture, prefixed FIXTURE- and are not a product')
     args = parser.parse_args()
     if not args.daemon.is_file():
         sys.exit(f'{args.daemon} not found: a package without the daemon cannot start')
-    if args.daemon.read_bytes()[:2] != b'MZ':
-        sys.exit(f'{args.daemon} is not a Windows executable')
+    daemon_ok, daemon_reason = check_daemon(args.daemon, args.arch)
+    if not daemon_ok and not args.packaging_check_fixture:
+        sys.exit(f'{args.daemon} is not a valid {args.arch} daemon: {daemon_reason}')
+    fixture = not daemon_ok  # a daemon that passes the checks is real even when --packaging-check-fixture was given
+    if args.packaging_check_fixture and daemon_ok:
+        print('note: the daemon is a valid PE; it is treated as real', flush=True)
+    prefix = 'FIXTURE-' if fixture else ''
     out = args.out.resolve()
     if out.exists() and any(out.iterdir()):
         sys.exit(f'{out} is not empty: pick a new directory, earlier artifacts are not overwritten')
@@ -119,13 +147,13 @@ def main():
     finally:
         syso.unlink(missing_ok=True)
 
-    setup = out / f'{product}_{version}_{arch}-setup.exe'
+    setup = out / f'{prefix}{product}_{version}_{arch}-setup.exe'
     run(['makensis', '-V2', f'-DPRODUCTNAME={product}', f'-DVERSION={version}', f'-DVERSIONWITHBUILD={version}.0',
          f'-DMANUFACTURER={product}', f'-DBUNDLEID={ident}', f'-DMAINBINARYNAME={product}.exe', f'-DSRC_MAIN={exe}',
          f'-DSRC_DAEMON={args.daemon.resolve()}', f'-DICON={ROOT / "apps/gui/src-tauri/icons/icon.ico"}', f'-DOUTFILE={setup}',
          f'-DHOOKS={ROOT / "apps/gui/src-tauri/windows/installer-hooks.nsh"}', str(GUI / 'windows/installer.nsi')])
 
-    portable = out / f'{product}_{version}_{arch}-portable.zip'
+    portable = out / f'{prefix}{product}_{version}_{arch}-portable.zip'
     with zipfile.ZipFile(portable, 'w', zipfile.ZIP_DEFLATED) as z:
         z.write(exe, f'{product}.exe')
         z.write(args.daemon, 'uniclipd.exe')
@@ -136,10 +164,14 @@ def main():
     (out / 'package-manifest.json').write_text(json.dumps({
         'source': prov, 'arch': args.arch, 'version': version, 'tags': 'production,release',
         'go': run(['go', 'version'], capture=True), 'wails': wails_version(), 'makensis': run(['makensis', '-VERSION'], capture=True),
-        'daemon': {'path': str(args.daemon), 'sha256': sha256(args.daemon)},
+        'purpose': 'packaging-check' if fixture else 'package',
+        'productionUsable': False,  # never claimed here: unsigned and never run on Windows
+        'daemon': {'kind': 'fixture' if fixture else 'real', 'bytes': args.daemon.stat().st_size, 'sha256': sha256(args.daemon),
+                   'validation': daemon_reason, 'path': str(args.daemon),
+                   **({'realSourceAvailable': False, 'note': 'placeholder, not the Rust daemon: the package cannot start'} if fixture else {})},
         'outputs': {p.name: {'sha256': sha256(p), 'bytes': p.stat().st_size} for p in outputs},
         'signed': False, 'windowsRuntimeVerified': False,
-        'note': 'Built and compiled only. Not run on Windows. Not signed. If source.dirty is true the artifacts contain uncommitted changes and are not reproducible from `head`.'}, indent=2) + '\n')
+        'note': ('FIXTURE: the daemon is a placeholder; this only proves the exe builds and the installer script compiles. ' if fixture else '') + 'Built and compiled only. Not run on Windows. Not signed. If source.dirty is true the artifacts contain uncommitted changes and are not reproducible from `head`.'}, indent=2) + '\n')
     shutil.rmtree(tools)
     print('built', *[p.name for p in outputs])
 

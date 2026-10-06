@@ -51,6 +51,9 @@ def main():
     run(['go', 'build', '-tags', TAGS[args.mode], '-ldflags', ldflags + ' -H windowsgui', '-o', str(out / 'gui-go.exe'), '.'], cwd=ROOT / 'apps/gui-go', env=env)
     manifest = {'mode': args.mode, 'crossCheckOnly': args.cross_check_only,
                 'commit': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
+                # The artifacts are built from the working tree: a dirty tree means they contain changes HEAD does not.
+                'dirty': bool(subprocess.check_output(['git', 'status', '--porcelain'], cwd=ROOT, text=True).strip()),
+                'diffSha256': hashlib.sha256(subprocess.check_output(['git', 'diff', 'HEAD'], cwd=ROOT)).hexdigest(),
                 'sha256': {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(out.glob('*.exe'))}}
     (out / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
     print(json.dumps(manifest, indent=2))

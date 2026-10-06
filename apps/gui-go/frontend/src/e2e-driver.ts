@@ -81,6 +81,12 @@ async function run() {
   if (phase === 'quick-panel-settings') return runQuickPanelSettingsScenario()
   if (phase === 'native-panel') return runNativePanelScenario()
   if (phase === 'file-ops') return runFileOpsScenario()
+  if (phase === 'config-export') return runConfigExportScenario()
+  if (phase === 'config-applied') {
+    await waitFor('app root content', () => document.getElementById('root')?.children.length)
+    await control('prefs')
+    return control('exit')
+  }
   if (phase === 'native-requests') return runNativeRequestsScenario()
   await waitFor('app root content', () => document.getElementById('root')?.children.length)
   // A diagnostic page would never contain the shared app's router state.
@@ -394,6 +400,61 @@ async function runFileOpsScenario() {
   )
   await result('export-logs-cancelled', commands.exportStartupLogs(null))
   await result('export-logs-saved', commands.exportStartupLogs(null))
+  await control('exit')
+}
+
+// Config package round trip: export, preview (wrong and right password), cancel paths, then stage an
+// import over a changed setting. The next launch (config-applied) shows whether the daemon applied it.
+async function runConfigExportScenario() {
+  await waitFor('app root content', () => document.getElementById('root')?.children.length)
+  const step = async (
+    name: string,
+    call: Promise<{ status: string }>,
+    accept: (r: any) => boolean
+  ) => {
+    const r = await call
+    await record(name, accept(r), { result: r })
+    return r as any
+  }
+  const passphrase = String(await Call.ByName('main.EvidenceService.Secret'))
+  await step(
+    'set-position',
+    setQuickPanelPosition('follow_cursor').then(() => ({ status: 'ok' })),
+    r => r.status === 'ok'
+  )
+  const exported = await step('export', commands.exportConfigPackage(null), r => r.status === 'ok')
+  const bundle = exported.data?.path as string
+  await step(
+    'export-cancelled',
+    commands.exportConfigPackage(null),
+    r => r.status === 'error' && r.error.kind === 'cancelled'
+  )
+  const picked = await step(
+    'pick-bundle',
+    commands.pickConfigBundlePath(null),
+    r => r.status === 'ok' && r.data === bundle
+  )
+  await step(
+    'pick-bundle-cancelled',
+    commands.pickConfigBundlePath(null),
+    r => r.status === 'ok' && r.data === null
+  )
+  await step(
+    'preview-wrong-password',
+    commands.previewConfigImport('definitely-wrong', picked.data, null),
+    r => r.status === 'error' && r.error.kind === 'daemon'
+  )
+  await step(
+    'preview',
+    commands.previewConfigImport(passphrase, bundle, null),
+    r => r.status === 'ok' && !!r.data.profileId && !!r.data.appVersion
+  )
+  await setQuickPanelPosition('center')
+  await step(
+    'import-staged',
+    commands.importConfigPackage(passphrase, bundle, null),
+    r => r.status === 'ok' && r.data.stagedOk === true
+  )
   await control('exit')
 }
 

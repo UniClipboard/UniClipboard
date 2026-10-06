@@ -36,6 +36,12 @@ func (s *EvidenceService) controlQuickPanel(action string) (bool, error) {
 			visible = w.IsVisible()
 		}
 		return true, s.write(Step{Window: "main", Step: "helper-show-main", OK: visible})
+	case action == "prefs":
+		// Reads the persisted quick-panel preferences, a cheap probe of whether a settings change stuck.
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		prefs, err := h.loadQuickPanelSettings(ctx)
+		return true, s.write(Step{Window: "main", Step: "prefs", OK: err == nil, Detail: prefs})
 	case action == "panel-hide":
 		h.dismissQuickPanel()
 		time.Sleep(300 * time.Millisecond)

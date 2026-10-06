@@ -91,7 +91,7 @@ func RegisteredCommands() []string {
 // always receives an object with a stable `code`.
 func wireError(err error) any {
 	switch typed := err.(type) {
-	case commandError, codeError, stringError:
+	case commandError, codeError, stringError, configError:
 		return typed
 	default:
 		return internalError(err)

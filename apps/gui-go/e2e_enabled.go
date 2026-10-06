@@ -170,6 +170,9 @@ func e2eServices(h *HostService) []application.Service {
 // Phase tells the in-WebView driver which scenario this launch runs.
 func (s *EvidenceService) Phase() string { return os.Getenv("UC_GUI_GO_E2E_PHASE") }
 
+// Secret hands the driver the throwaway passphrase of the e2e profile, which the orchestrator chose.
+func (s *EvidenceService) Secret() string { return os.Getenv("UC_GUI_GO_E2E_SECRET") }
+
 // Installed reports whether the running bundle carries the update marker.
 func (s *EvidenceService) Installed() bool {
 	exe, _ := os.Executable()

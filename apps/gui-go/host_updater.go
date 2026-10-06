@@ -265,9 +265,8 @@ func (h *HostService) downloadProgress() map[string]any {
 	return snap
 }
 
-// installUpdate stops the daemon, swaps the app bundle in place and starts the
-// new copy. The daemon is stopped first so the new app replaces it with its own
-// bundled version.
+// installUpdate installs the downloaded release in place (per platform: swap the app bundle, or run the NSIS
+// installer) and then relaunches or quits as that platform's installer contract requires.
 func (h *HostService) installUpdate(ctx context.Context, send func(any)) error {
 	u := &h.updates
 	u.mu.Lock()
@@ -290,20 +289,18 @@ func (h *HostService) installUpdate(ctx context.Context, send func(any)) error {
 	send(map[string]any{"event": "Started", "data": map[string]any{"contentLength": len(data)}})
 	send(map[string]any{"event": "Progress", "data": map[string]any{"chunkLength": len(data)}})
 
-	exe, err := os.Executable()
-	if err == nil {
-		var bundle string
-		if bundle, err = update.BundleOf(exe); err == nil {
-			stopDaemon()
-			err = update.Install(data, bundle)
-		}
+	u.mu.Lock()
+	version := ""
+	if u.release != nil {
+		version = u.release.Version
 	}
-	if err != nil {
+	u.mu.Unlock()
+	if err := h.installPayload(data, version); err != nil {
 		send(map[string]any{"event": "Failed", "data": map[string]any{"error": err.Error()}})
 		return stringError(err.Error())
 	}
 	send(map[string]any{"event": "Finished"})
-	if err := h.restartGUI(); err != nil {
+	if err := h.relaunchAfterInstall(); err != nil {
 		return stringError(err.Error())
 	}
 	return nil

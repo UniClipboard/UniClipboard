@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"strconv"
@@ -49,24 +51,51 @@ func (h *HostService) stopDaemonOnExit() {
 	if h.exit.keepDaemon.Load() {
 		return
 	}
-	stopDaemon()
+	if err := stopDaemon(); err != nil {
+		log.Printf("failed to stop the daemon on exit: %v", err)
+	}
 }
 
-func stopDaemon() {
-	conn, err := daemonproc.ReadConnFile()
-	if err != nil || conn == nil {
-		return
+// stopDaemon terminates the running daemon and waits until it is gone. It mirrors `stop_daemon_before_update`: a
+// missing, stale or in-process (owned by another GUI shell) daemon is nothing to stop, and a daemon that survives is
+// an error the caller decides on (the Windows update install must abort, because the live daemon image blocks the
+// installer).
+func stopDaemon() error {
+	pid, ok, err := runningDaemonPID()
+	if err != nil || !ok {
+		return err
 	}
-	if !daemonproc.Terminate(conn.PID) {
-		return
+	if err := daemonproc.TerminateAndWait(pid, daemonStopTimeout); err != nil {
+		return err
 	}
 	deadline := time.Now().Add(daemonStopTimeout)
 	for time.Now().Before(deadline) {
 		if outcome, err := daemonlife.Probe(); err == nil && outcome.Kind == daemonlife.Absent {
-			return
+			return nil
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
+	return fmt.Errorf("the daemon (pid %d) was still answering %s after the stop", pid, daemonStopTimeout)
+}
+
+// runningDaemonPID returns the pid of the live, GUI-owned daemon. The pid file carries the run mode; the connection
+// file is the fallback for a daemon that predates it.
+func runningDaemonPID() (uint32, bool, error) {
+	meta, err := daemonproc.ReadPidMetadata()
+	if err != nil {
+		return 0, false, err
+	}
+	if meta != nil {
+		if meta.Mode == "in_process" || !daemonproc.IsActiveDaemon(meta.PID) {
+			return 0, false, nil
+		}
+		return meta.PID, true, nil
+	}
+	conn, err := daemonproc.ReadConnFile()
+	if err != nil || conn == nil || !daemonproc.IsActiveDaemon(conn.PID) {
+		return 0, false, err
+	}
+	return conn.PID, true, nil
 }
 
 // restartGUI starts a fresh copy of this executable and exits, keeping the daemon.
@@ -87,7 +116,9 @@ func (h *HostService) restartGUI() error {
 
 // restartDaemon replaces the daemon process; the frontend reconnects by itself.
 func restartDaemon() error {
-	stopDaemon()
+	if err := stopDaemon(); err != nil {
+		return err
+	}
 	if err := daemonproc.SpawnDetachedDaemon("gui"); err != nil {
 		return err
 	}

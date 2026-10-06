@@ -42,7 +42,10 @@ func (a commandArgs) decode(key string, out any) error {
 	if !ok {
 		return commandError{Code: "ValidationError", Message: "missing argument " + key}
 	}
-	return json.Unmarshal(raw, out)
+	if err := json.Unmarshal(raw, out); err != nil {
+		return commandError{Code: "ValidationError", Message: "invalid argument " + key}
+	}
+	return nil
 }
 
 type commandFunc func(ctx context.Context, h *HostService, args commandArgs) (any, error)
@@ -69,7 +72,7 @@ func (h *HostService) Invoke(name string, args map[string]json.RawMessage) Invok
 	defer cancel()
 	data, err := fn(ctx, h, args)
 	if err != nil {
-		return InvokeResult{Error: err}
+		return InvokeResult{Error: wireError(err)}
 	}
 	return InvokeResult{Ok: true, Data: data}
 }
@@ -82,4 +85,15 @@ func RegisteredCommands() []string {
 	}
 	sort.Strings(names)
 	return names
+}
+
+// wireError keeps typed errors as-is and wraps anything else so the WebView
+// always receives an object with a stable `code`.
+func wireError(err error) any {
+	switch typed := err.(type) {
+	case commandError, codeError:
+		return typed
+	default:
+		return internalError(err)
+	}
 }

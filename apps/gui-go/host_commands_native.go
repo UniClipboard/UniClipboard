@@ -69,6 +69,9 @@ func init() {
 			if err := args.decode("mode", &mode); err != nil {
 				return nil, err
 			}
+			if mode != "auto" && mode != "effects" && mode != "smooth" {
+				return nil, commandError{Code: "ValidationError", Message: "unknown visual effects mode"}
+			}
 			h.effects.mu.Lock()
 			h.effects.mode = mode
 			h.effects.revision++
@@ -81,6 +84,9 @@ func init() {
 			var motion string
 			if err := args.decode("systemMotion", &motion); err != nil {
 				return nil, err
+			}
+			if motion != "reduce" && motion != "allow" && motion != "unknown" {
+				return nil, commandError{Code: "ValidationError", Message: "unknown system motion"}
 			}
 			h.effects.mu.Lock()
 			defer h.effects.mu.Unlock()

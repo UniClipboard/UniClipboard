@@ -466,6 +466,33 @@ apps/gui-go/e2e/linux/run.sh xvfb <dir>
 - **消费者**：真实的 `internal/update`（`Check`/`Download`/`Verify`）。一个 e2e 驱动在容器内起本地 HTTP 服务提供 feed 与载荷，容器无网络。linux/arm64（宿主原生）与 linux/amd64（Docker 的 QEMU 仿真）各跑一次，`DefaultTargets` 取自真实 `runtime.GOARCH`。
 - **不能证明**：真实的 Tauri 更新插件运行（只引用其源码行）；真实 AppImage 自更新与重启（17c4）；FlareRelease 服务端是否接受 `linux-aarch64` 这个平台字符串（`windows-aarch64` 已有先例，但服务端未核验）；Windows 键只做生成器输出与基线的逐字节对比，没有在 Windows 上运行消费者；本片不改 `.AppImage.tar.gz` 的现有优先级语义，v1.1.1 没有该资产，故其真实形态未观察。
 
+### 17c3 实现与结果
+
+- **实现（`scripts/assemble-update-manifest.js`，唯一生成器）**：`detectPlatform` 的 AppImage 分支按 basename 中的架构词返回 `linux-aarch64` 或 `linux-x86_64`，未知/无词/同时出现返回 `null`（沿用既有的“Skipping unrecognized”警告，不回退到 x86_64）；`scanArtifacts` 对同一 `linux-*` 键的相同优先级候选抛错，`main` 捕获后以 `Error: ...` 非零退出且不写 `--output`。macOS/Windows 的分支、优先级、键序与输出格式没有改动。没有新增配置层、没有改 workflow/worker。
+- **E2E（`apps/gui-go/e2e/update_manifest_run.py` + `e2e/manifestprobe`）**：真实生成器子进程 → 真实消费者（`internal/update` 的 `DefaultTargets`/`Check`/`Download`/`Verify`，在 linux/arm64 与 linux/amd64 容器内自然取得键；amd64 为 Docker QEMU 仿真，容器 `--network none`）→ 真实 `build-flare-release-registration.js`。10 个生成场景（真实命名、目录嵌套与创建顺序、tar.gz/裸文件跨架构混合及其反向与两者并存、单平台、未知架构、误导性目录名、重复候选）+ 与基线的兼容比对 = 120 项断言。
+- **红灯（未修复生成器 `3a2cc01c5`，`red-run2`）**：59/102 通过。最重要的复现是 S3a：aarch64 以 `.AppImage.tar.gz`、amd64 以裸 `.AppImage` 发布时，`linux-x86_64` 指向 aarch64 的 tar.gz，linux/amd64 的真实客户端 **下载并通过 minisign 校验** 拿到 aarch64 载荷（签名对载荷有效，校验拦不住）；S4（只构建 aarch64）同样把 aarch64 载荷放进 `linux-x86_64`；真实命名 S1 缺 `linux-aarch64`，arm64 客户端报 `no artifact for linux-aarch64`；S5 未知架构（`xx64`、`armv7`、无架构词）被映射为 x86_64；S6 重复候选静默通过。`red-run1` 的失败含我的断言过弱的脚本缺陷（S6 的 stderr 断言误通过、单平台时的交叉校验断言），保留原件（`red-run1` 只保存了断言 JSON 与逐场景原始文件，当时的控制台输出没有落盘），修正后重跑为 `red-run2`。
+- **绿灯（修复后，从干净提交 `284655f8e`，`green-run2`）**：120/120。`green-run1`（未提交的同一份代码）也是 120/120。S1 在 arm64 与 amd64 容器里各自下载并校验自己架构的载荷，另一架构的签名对该载荷被拒绝；S2 的目录/创建顺序对 Linux 两项无影响；S3 三种混合都各指向各自架构的文件；S4 的 amd64 客户端得到 `no artifact`（不再拿到 aarch64 载荷）；S5/S5b 未知与目录名误导都按策略跳过并带警告；S6 非零退出、不写 manifest、报错列出两个路径；登记脚本为两个 Linux 制品给出各自的 filename/size/sha256；macOS/Windows 条目、键序、版本与 notes 与基线逐项一致，宿主 darwin 的真实消费者（installer `app`）通过校验。
+- **其他验证**：现有 `scripts/__tests__/assemble-update-manifest.test.ts` 与 mirror 测试 12/12 通过（未修改）；`--test` 仍输出合法 JSON；`go vet`（宿主与 windows 交叉）通过。
+- **工件**：`/Users/mark/.herdr-projects/uni/t-0188-artifacts/linux-17c3/`（`red-run1/2`、`green-run1/2`、`inputs/` 基线脚本、`SHA256SUMS.txt`；每次运行含原始输入、命令、stdout/stderr、返回码与断言 JSON，各约 31 MB，主要是交叉编译的探针）。库内只有 `e2e-linux-17c3-index/` 的小摘录。
+
+### 17c3 复跑
+
+```sh
+# 基线脚本（未修复版本）用于红灯与兼容比对
+git show 3a2cc01c5:scripts/assemble-update-manifest.js > <dir>/baseline.js
+# 每次使用新的输出目录；需要 Docker（linux/arm64 与 linux/amd64 的 ubuntu:24.04 镜像）与 Go、Node
+python3 -I apps/gui-go/e2e/update_manifest_run.py --generator scripts/assemble-update-manifest.js --baseline <dir>/baseline.js --out <dir>/green-runN
+python3 -I apps/gui-go/e2e/update_manifest_run.py --generator <dir>/baseline.js --baseline <dir>/baseline.js --out <dir>/red-runN   # 预期失败
+```
+
+### 17c3 未证明
+
+- 没有运行真实 Tauri 更新插件（只引用 `tauri-plugin-updater` 2.10.1 的 `updater_arch()` 源码）；没有真实 AppImage 的下载、替换与重启（17c4）。
+- FlareRelease 服务端是否接受 `linux-aarch64` 这个平台字符串未核验（`windows-aarch64` 有先例）；`mirror-desktop-installers-to-gitcode` 按清单逐平台镜像，未在线上运行。
+- Windows 键只与基线逐项比对，没有在 Windows 运行消费者；未运行 darwin/amd64（Rosetta）消费者。
+- `.AppImage.tar.gz` 的真实形态（v1.1.1 没有）未观察，只用 fixture 覆盖了其优先级语义；`--test` 的模拟资产名（`amd64.AppImage.tar.gz.sig`）与真实发布命名不同，未改动。
+- 对真实的 `release.yml` 没有运行；未改任何 workflow、渠道、feed 或真实资产。严格拒绝（相同优先级）会让同一键有两个同优先级资产的发布在生成清单一步失败，这是有意的取舍；该步骤位于 GitHub Release 创建之后，失败时会留下已创建的 release，需要人工处理。
+
 ## 验收边界
 
 - Wails 与 runtime 同时固定为 `3.0.0-beta.28`；这是 beta 原型，不是生产迁移完成。

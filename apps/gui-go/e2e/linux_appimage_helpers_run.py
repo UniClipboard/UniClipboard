@@ -342,9 +342,11 @@ def main():
         direct = {}
         host_env = dict(env)  # the runner's own (host) environment of the unprivileged user
         mount_group = sorted(k for k, v in genv_full.items() if mount in v and k not in ('LD_LIBRARY_PATH', 'GIO_MODULE_DIR', 'XDG_DATA_DIRS', 'PWD'))
-        variants = [('gui-environment', {}), ('gui-environment-ld-debug', {'LD_DEBUG': 'libs'}), ('restore-LD_LIBRARY_PATH', {'LD_LIBRARY_PATH': None}), ('restore-GIO_MODULE_DIR', {'GIO_MODULE_DIR': None}),
+        variants = [('gui-environment', {}), ('gui-environment-ld-debug', {'LD_DEBUG': 'libs'}), ('restore-LD_LIBRARY_PATH', {'LD_LIBRARY_PATH': None}),
+                    ('restore-LD_LIBRARY_PATH-ld-debug', {'LD_LIBRARY_PATH': None, 'LD_DEBUG': 'libs'}), ('restore-GIO_MODULE_DIR', {'GIO_MODULE_DIR': None}),
                     ('restore-XDG_DATA_DIRS', {'XDG_DATA_DIRS': None}), ('restore-LD_LIBRARY_PATH+GIO_MODULE_DIR', {'LD_LIBRARY_PATH': None, 'GIO_MODULE_DIR': None}),
                     ('restore-all-AppRun-variables', {**{k: None for k in ('LD_LIBRARY_PATH', 'GIO_MODULE_DIR', 'XDG_DATA_DIRS', *mount_group)}})]
+        loader_error = re.compile(r'error while loading|version `[^`]+\' not found|symbol lookup error|cannot open shared object|undefined symbol|no version information available')
         for label, change in variants:
             e = dict(genv_full)
             for k, v in change.items():
@@ -357,9 +359,12 @@ def main():
             before = {p.name for p in records()}
             res = subprocess.run(['xdg-open', reveal_target], env=e, user=USER, group=USER, extra_groups=[], capture_output=True, text=True, timeout=60)
             rec = wait_record(before, lambda x: bool(x['args']) and x['args'][-1] in (reveal_target, f'file://{reveal_target}'), 12) if res.returncode == 0 else None
-            dbg = [l.strip() for l in res.stderr.splitlines() if re.search(r'(libgio|libglib|libgobject)-2\.0\.so', l) and re.search(r'find library|calling init', l)]
-            direct[label] = {'rc': res.returncode, 'stderr': res.stderr[-500:] if 'ld-debug' not in label else '', 'recordReached': rec is not None, 'ldDebugGioLines': dbg[:8],
-                             'restored': sorted(change)}
+            lines = res.stderr.splitlines()
+            init_from_mount = sorted({l.split('calling init:', 1)[1].strip() for l in lines if 'calling init:' in l and mount in l})
+            direct[label] = {'rc': res.returncode, 'recordReached': rec is not None, 'restored': sorted(change), 'loaderErrors': sorted({l.strip()[:300] for l in lines if loader_error.search(l)})[:8],
+                             'librariesInitialisedFromMount': [x.rsplit('/', 1)[-1] for x in init_from_mount], 'stderrTail': '' if 'ld-debug' in label else res.stderr[-500:]}
+        gio_raw = subprocess.run(['gio', 'help', 'open'], env=dict(genv_full), user=USER, group=USER, extra_groups=[], capture_output=True, text=True, timeout=60)
+        direct['gio-help-open-gui-environment'] = {'rc': gio_raw.returncode, 'stderr': gio_raw.stderr[-500:]}
         r['directReproduction'] = direct
 
         # `stop()` waits for the traced process, and strace waits for every traced descendant including the detached daemon: bounded wait for the GUI process
@@ -418,13 +423,16 @@ def main():
                 run.check(f'A {name}: xdg-open was started and failed visibly in the trace (non-zero exit): the product cannot see this',
                           chain is not None and chain['exitOfXdgOpen'] not in (None, 'exit 0'), None if chain is None else chain['exitOfXdgOpen'])
         r['actions'] = [{k: v for k, v in a.items() if k != 'matcher'} for a in actions]
-        reach_ok = [a for a in actions if a['expectReach']]
-        run.check('D the host chain with the GUI\'s own environment (direct reproduction) delivers the target', direct['gui-environment']['rc'] == 0 and direct['gui-environment']['recordReached'], direct['gui-environment'])
-        dbg = direct['gui-environment-ld-debug']['ldDebugGioLines']
-        r['ldDebugShowsMountLibgio'] = any(mount in l or '/tmp/.mount_' in l for l in dbg)
-        if args.desktop == 'gnome':
-            run.check('D the loader\'s own LD_DEBUG output for `gio open` under the GUI environment shows libgio/libglib resolved from the AppImage mount (the shadowing mechanism)',
-                      r['ldDebugShowsMountLibgio'], dbg)
+        raw, raw_dbg, fixed, fixed_dbg = (direct[k] for k in ('gui-environment', 'gui-environment-ld-debug', 'restore-LD_LIBRARY_PATH', 'restore-LD_LIBRARY_PATH-ld-debug'))
+        r['rawEnvironmentDelivers'] = raw['rc'] == 0 and raw['recordReached']
+        r['rawEnvironmentObservation'] = ('functional failure' if not r['rawEnvironmentDelivers'] else 'delivers, but see library origin')
+        # D is the CAUSAL NEGATIVE CONTROL of the A checks, not an acceptance of the product: the GUI's own raw environment is what the product used to pass on, so it must
+        # reproduce the mechanism (the loader initialises libraries of the mount in host helpers); the same command with only LD_LIBRARY_PATH restored must not.
+        # Whether the raw environment still delivers is DISTRIBUTION specific (Ubuntu: same GLib version, delivers; Fedora 44 GLib 2.88: fails) and is recorded, not asserted.
+        run.check('D negative control: under the GUI\'s raw environment the loader initialises libraries of the AppImage mount inside the host helper chain (mechanism present)',
+                  bool(raw_dbg['librariesInitialisedFromMount']), {'libs': raw_dbg['librariesInitialisedFromMount'], 'loaderErrors': raw_dbg['loaderErrors'], 'rawDelivers': r['rawEnvironmentDelivers'], 'rawRc': raw['rc']})
+        run.check('D causal control: the same command with ONLY LD_LIBRARY_PATH restored initialises no library of the mount and delivers the target',
+                  not fixed_dbg['librariesInitialisedFromMount'] and fixed['rc'] == 0 and fixed['recordReached'], {'fixed': fixed, 'fixedDebug': fixed_dbg})
         r['passed'] = all(c['ok'] for c in r['checks'])
     except StopScenario:
         pass

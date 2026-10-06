@@ -46,6 +46,7 @@ var errPreviousAppUnsupported = errors.New("Paste to previous app is not yet sup
 type panelState struct {
 	toggle    toggleState
 	lastShown atomic.Int64 // unix nanoseconds
+	relock    atomic.Bool  // Linux: the panel was unlocked for a size request and awaits its resize event
 }
 
 func clampUIScale(scale *float64) float64 {
@@ -87,18 +88,21 @@ func panelSize(scale *float64, previewExpanded bool, windowScale float64) (int, 
 	return int(math.Round(width + 2*panelWindowPadding)), int(math.Round(panelBaseHeight*s + 2*panelWindowPadding))
 }
 
-// setPanelSize sizes the quick panel. The panel is created non-resizable, and GTK honours neither a default size nor a
-// resize request that is smaller than the current size of a non-resizable window (it pins min = max = the current size, which
-// the X11 WM_NORMAL_HINTS show). Wails beta.28 SetSize is gtk_window_set_default_size, so on Linux the window is made
-// resizable around the request and locked again, which is Tauri's gtk_window_resize on the same non-resizable window.
-func setPanelSize(w application.Window, width, height int) {
+// setPanelSize sizes the quick panel. The panel is created non-resizable, and GTK (gtk_window_resize, which is what the
+// gtk3 build of Wails SetSize calls) cannot make a non-resizable window smaller: it pins min = max = the current size, which
+// the X11 WM_NORMAL_HINTS show. So on Linux the window is made resizable for the request and locked again by the
+// resulting Linux WindowDidResize event (locking in the same step races the resize and is ignored).
+func (h *HostService) setPanelSize(w application.Window, width, height int) {
 	if runtime.GOOS != "linux" {
 		w.SetSize(width, height)
 		return
 	}
+	if cw, ch := w.Size(); cw == width && ch == height {
+		return
+	}
+	h.panel.relock.Store(true)
 	w.SetResizable(true)
 	w.SetSize(width, height)
-	w.SetResizable(false)
 }
 
 // openUpdater creates the decorated updater window, or focuses the existing one.
@@ -138,6 +142,11 @@ func (h *HostService) preCreateQuickPanel() {
 		e.Cancel()
 		w.Hide()
 	})
+	w.OnWindowEvent(events.Linux.WindowDidResize, func(*application.WindowEvent) {
+		if h.panel.relock.CompareAndSwap(true, false) {
+			go w.SetResizable(false)
+		}
+	})
 	w.OnWindowEvent(events.Common.WindowLostFocus, func(*application.WindowEvent) {
 		if time.Since(time.Unix(0, h.panel.lastShown.Load())) <= quickPanelBlurDebounce {
 			return
@@ -165,7 +174,7 @@ func (h *HostService) showQuickPanel() {
 	}
 	if !layerPrepareShow(w, prefs.Position, 1) {
 		width, height := panelSize(nil, false, 1)
-		setPanelSize(w, width, height)
+		h.setPanelSize(w, width, height)
 		if x, y, ok := panelOrigin(prefs.Position, h.app.Screen.GetAll(), float64(width), float64(height)); ok {
 			moveWindow(w, x, y)
 		} else {
@@ -276,7 +285,7 @@ func init() {
 			if w, ok := h.app.Window.GetByName(quickPanelWindowName); ok {
 				if !layerSetLayout(w, windowScaleOrOne(windowScale)) {
 					width, height := panelSize(scale, expanded, windowScaleOrOne(windowScale))
-					setPanelSize(w, width, height)
+					h.setPanelSize(w, width, height)
 				}
 			}
 			return nil, nil

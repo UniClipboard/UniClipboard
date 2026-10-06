@@ -35,6 +35,10 @@ jobs:
             echo "SCCACHE_ERROR_LOG=$RUNNER_TEMP/sccache-err.log"
             echo "SCCACHE_LOG=info"
           } >> "$GITHUB_ENV"
+      - name: isolate toolchain like the sidecar job
+        env:
+          UC_PINNED_RUST: 1.95.0
+        run: node scripts/ci/isolate-build-toolchain.mjs
       - name: probe
         shell: bash
         run: |
@@ -54,3 +58,16 @@ jobs:
           node -e "const c=require('child_process');console.log(c.execFileSync('where',['cargo'],{encoding:'utf8'}));console.log(process.env.RUSTC_WRAPPER, process.env.PATH.split(';').filter(p=>/sccache|cargo/i.test(p)))"
           echo "--- error log"
           cat "$RUNNER_TEMP/sccache-err.log" 2>/dev/null | tail -20 || true
+      - name: real sidecar build for three minutes
+        shell: bash
+        run: |
+          set +e
+          sccache --zero-stats
+          timeout 180 node scripts/prepare-sidecars.mjs --timings > "$RUNNER_TEMP/real.log" 2>&1
+          echo "--- real build tail"
+          tail -5 "$RUNNER_TEMP/real.log"
+          echo "--- stats after 180s"
+          sccache --show-stats | head -12
+          echo "--- error log"
+          tail -30 "$RUNNER_TEMP/sccache-err.log" 2>/dev/null
+          exit 0

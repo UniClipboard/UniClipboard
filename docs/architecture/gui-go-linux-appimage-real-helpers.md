@@ -31,6 +31,19 @@
 | G8 | 浏览器首次运行行为（欢迎页、遥测）造成额外请求 | 容器用 `--network none`（受控服务器在回环），额外请求没有出口；Epiphany 不需要额外策略则不加配置 |
 | F7 | 便携模式把 `HOME` 换为 `<AppImage>.home`，用户默认应用不可见 | 用真实应用重现并 **记录**（不判定通过/失败），保持 OPEN，不改产品 |
 
+## 契约修订（运行中发现，保留原失败轮；每条都有原始证据）
+
+17c11 的首个最终运行 `final-b3aca3d11`（保留）中 generic 分发两组失败，最终运行之前的开发运行 dev1–dev14 也全部保留。修订如下，**不是** 放宽产品或断言：
+
+| # | 发现 | 证据 | 修订 |
+| --- | --- | --- | --- |
+| R1 | 容器 `--network none` 下守护进程启动失败（`engine error 1101`，p2p 绑定）；bwrap（Epiphany 的 WebKit 沙箱）需要 `seccomp`/`systempaths` 不受限 | dev1、dev2、dev4；`engine-default-route-diag/`（bridge 与内部网络加默认路由通过，内部网络无默认路由与 `--network none` 失败）| 夹具：`--internal` 网络（无出口）+ 运行器加 `default dev eth0`（`NET_ADMIN`）。**这是夹具要求；「Engine 在没有默认路由的主机上启动失败」是未修复的 Engine 行为（OPEN，Engine 在本仓只读），不是本片修复的产品问题** |
+| R2 | Epiphany 的 User-Agent 是 Safari 兼容串（不含 `Epiphany`）| dev4 | 浏览器由进程 exe 与窗口标题认定，User-Agent 只断言 `AppleWebKit`（Firefox 为 `Firefox/`）|
+| R3 | generic 分发（`XDG_CURRENT_DESKTOP` 未设）下 `xdg-open <目录>` 直接以前台子进程运行 `nautilus --new-window`，窗口出现后 xdg-open 仍存活，直到 Nautilus 退出；GNOME 分发下 `gio open` 立即返回 0，Nautilus 是 gapplication-service | `xdg-open-generic-diag-ubuntu-v2/`、`-fedora/`（首个 `-ubuntu/` 因变量传递错误两组都是 generic，保留作失败轮）| 宿主对照与 GUI 链路都不把「未退出」当失败：观察效果（窗口/请求），记录 `alive/exit/childExes`；自然退出必须为 0，仍在前台等待时必须有存活的应用子进程；清理导致的退出码（例如被终止的 Nautilus 使 xdg-open 退出 4）与自然退出分开记录 |
+| R4 | 「没有默认应用的类型就不会被打开」的假设被反证：generic 分发回退到浏览器（`x-www-browser` → Epiphany 被执行，`dev12-ubuntu-generic`），GNOME 分发由 `gio` 原生拒绝（退出 4，`Failed to find default application for content type`）| `dev10-*`（文本文件也被打开）、`dev12-*` 的 strace | 该场景只作为观察记录（GNOME 下断言原生拒绝），**不再是 harness 的负面对照** |
+| R5 | 独立的负面对照 | `dev13-*` | 不存在的路径：generic 下 xdg-open 退出 2（文档化的状态），GNOME 下 `gio open` 退出 4（xdg-open 把路径交给 gio，沿用 gio 的状态；首版两者都断言 2，在 GNOME 下失败，保留）；二者都带宿主原生「不存在」信息，不执行任何真实应用，无窗口与应用进程 |
+| R6 | 观察器：未读到进程的 exe/environ/maps 不能作为「无挂载库」的证据 | dev8 | `inspect` 直接读取并记录状态与 errno：`exited` 排除并记录，存活但读不到则 G2 失败 |
+
 ## 明确不证明
 
 - 真实桌面会话、portal（`xdg-desktop-portal`）、真实 Wayland（`GDK_BACKEND=x11` 在 Xvfb 上无法对照）、原生 GPU、原生 amd64（容器是 arm64）。

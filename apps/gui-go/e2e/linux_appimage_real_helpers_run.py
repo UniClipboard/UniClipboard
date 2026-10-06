@@ -490,7 +490,7 @@ def main():
         # --- the strace chain: xdg-open was started by the GUI with the sanitised environment. Under the generic dispatch xdg-open stays alive as the foreground parent
         # of the first application instance: sample which xdg-open processes are still running (and their children) BEFORE the GUI exit and the cleanup, so that a
         # natural exit, a still-running foreground wait and an exit caused by the cleanup can be told apart.
-        alive_xdg = {pid: children_exes(pid) for pid, (exe, _) in procs().items() if exe.endswith('/xdg-open') or (exe.endswith('/dash') and any('xdg-open' in a for a in cmdline_of(pid)))}
+        alive_xdg = {pid: children_exes(pid) for pid, (exe, _) in procs().items() if exe.endswith('/xdg-open') or any(a == 'xdg-open' or a.endswith('/xdg-open') for a in cmdline_of(pid))}
         r['xdgOpenAliveBeforeGuiExit'] = {str(k): v for k, v in alive_xdg.items()}
         gui.ctl('exit', 'control-exit')
         deadline = time.monotonic() + 40

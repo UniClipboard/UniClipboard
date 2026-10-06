@@ -241,6 +241,8 @@ impl<T: 'static> EventLoop<T> {
     let user_event_tx = event_tx.clone();
 
     // Create event loop window target.
+    // GTK 0.18 Sender/Receiver are part of this vendored backend contract.
+    #[allow(deprecated)]
     let (window_requests_tx, window_requests_rx) = glib::MainContext::channel(Priority::default());
     let display = gdk::Display::default()
       .expect("GdkDisplay not found. This usually means `gkt_init` hasn't called yet.");
@@ -256,6 +258,8 @@ impl<T: 'static> EventLoop<T> {
     // Spawn x11 thread to receive Device events.
     #[cfg(feature = "x11")]
     let run_device_thread = if window_target.is_x11() {
+      // Keep the channel type used by the vendored X11 device thread.
+      #[allow(deprecated)]
       let (device_tx, device_rx) = glib::MainContext::channel(glib::Priority::default());
       let user_event_tx = user_event_tx.clone();
       let run_device_thread = Rc::new(AtomicBool::new(true));

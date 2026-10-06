@@ -34,6 +34,8 @@ pub fn theme() -> Result<Theme, Error> {
 pub fn receive_theme_changed(window_tx: Sender<(WindowId, WindowRequest)>) -> Result<(), Error> {
   let conn = SyncConnection::new_session()?;
   let match_rule = MatchRule::new_signal("org.freedesktop.portal.Settings", "SettingChanged");
+  // GTK 0.18 channels match the vendored event-loop Sender/Receiver contract.
+  #[allow(deprecated)]
   let (tx, rx) = MainContext::channel(Priority::DEFAULT);
 
   conn.add_match(match_rule, move |_: (), _, msg| {

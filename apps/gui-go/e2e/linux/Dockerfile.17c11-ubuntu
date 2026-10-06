@@ -1,0 +1,9 @@
+# 17c11 real-application image, Ubuntu 24.04: the 17c7 runtime image plus the distribution's own browser (Epiphany: Ubuntu's firefox/chromium are snap stubs),
+# file manager (Nautilus), image viewer (Loupe) and the Secret Service (gnome-keyring + libsecret-tools) that the non-portable GUI needs, in the SAME container
+# as the applications (one user session bus). This image HAS host GTK: the "host has no GTK" premise of 17c4-17c10 does not hold here (see
+# docs/architecture/gui-go-linux-appimage-real-helpers.md); the runner asserts that the GUI still maps its toolkit from the AppImage mount.
+FROM uc-gui-go-linux-runtime:17c7
+RUN apt_install.sh xdg-utils libglib2.0-bin shared-mime-info strace epiphany-browser nautilus loupe gnome-keyring libsecret-tools dbus-daemon dbus-bin dbus-x11 \
+    x11-utils xdotool fonts-dejavu-core adwaita-icon-theme
+COPY verify_image_17c11.sh /usr/local/bin/
+RUN verify_image_17c11.sh

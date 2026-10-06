@@ -109,7 +109,7 @@ def main():
                 assert all(r['ok'] for r in rows), f'failed steps: {[r for r in rows if not r["ok"]]}'
                 assert 'shared-app-mounted' in steps and 'home' in steps and 'devices' in steps and 'settings' in steps
                 assert 'native-main-closed' in steps and 'native-main-reopened' in steps
-                for needed in ('updater-mounted', 'native-updater-opened', 'native-updater-closed', 'quick-panel-mounted', 'native-quick-panel-visible', 'quick-panel-shown-state', 'native-quick-panel-dismissed', 'tray-sync-toggle'):
+                for needed in ('updater-mounted', 'native-updater-opened', 'native-updater-closed', 'quick-panel-mounted', 'native-quick-panel-visible', 'quick-panel-shown-state', 'native-quick-panel-dismissed', 'tray-sync-toggle', 'file-preview-refusals'):
                     assert needed in steps, f'missing step {needed}'
                 shot = out / f'main-{run}.png'
                 results.setdefault('screenshots', []).append({'file': shot.name, 'captured': screenshot(proc.pid, shot)})

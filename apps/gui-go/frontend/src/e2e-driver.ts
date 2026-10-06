@@ -2,6 +2,7 @@
 // with the shared React DOM and reports each assertion to the native test
 // service. It is bundled only when VITE_GUI_GO_E2E=1.
 import { Call } from '@wailsio/runtime'
+import { daemonClient } from '@/api/daemon/client'
 import { daemonWs } from '@/lib/daemon-ws'
 
 const windowName = 'main'
@@ -73,6 +74,7 @@ async function navigate(
 async function run() {
   const phase = (await Call.ByName('main.EvidenceService.Phase')) as string
   if (phase.startsWith('update')) return runUpdateScenario(phase)
+  if (phase === 'file-preview') return runFilePreviewScenario()
   await waitFor('app root content', () => document.getElementById('root')?.children.length)
   // A diagnostic page would never contain the shared app's router state.
   await record('shared-app-mounted', !$('#refresh') && !!document.getElementById('root'))
@@ -162,10 +164,84 @@ async function run() {
   await control('show-quick-panel')
   await sleep(3000)
   await control('dismiss-quick-panel')
+  const refusals = await checkPreviewRefusals()
+  await record(
+    'file-preview-refusals',
+    Object.values(refusals).every(code => code === 404),
+    refusals
+  )
   await control('tray-check')
   await record('driver-complete', true)
   // Give the orchestrator time to read daemon state before the GUI exits.
   await sleep(2500)
+  await control('exit')
+}
+
+// The preview route must refuse anything the daemon's history does not reference.
+async function checkPreviewRefusals(): Promise<Record<string, number>> {
+  const probes: Record<string, string> = {
+    notAnImage: '/etc/passwd',
+    unknownImagePath: '/etc/not-in-history.png',
+    traversal: '/tmp/../etc/not-in-history.png',
+    relative: 'not-in-history.png',
+  }
+  const statuses: Record<string, number> = {}
+  for (const [name, path] of Object.entries(probes)) {
+    statuses[name] = (await fetch(`/host-file?path=${encodeURIComponent(path)}`)).status
+  }
+  return statuses
+}
+
+// `file://` URIs of file entries as the daemon reports them (the shared frontend's path source).
+async function historyFileURIs(): Promise<string[]> {
+  const end = Date.now() + 90000
+  while (Date.now() < end) {
+    const response = await daemonClient.request<{ data: Array<{ preview: string }> }>(
+      '/clipboard/entries?limit=50&offset=0'
+    )
+    const found = response.data
+      .flatMap(entry => entry.preview.split('\n'))
+      .filter(line => /^file:\/\//i.test(line.trim()))
+    if (found.length > 0) return found
+    await sleep(1000)
+  }
+  throw new Error('timeout: file entry in history')
+}
+
+// A received image file must preview through the host route; a locked or unknown path must not.
+async function runFilePreviewScenario() {
+  await waitFor('app root content', () => document.getElementById('root')?.children.length)
+  // CLI-created spaces can leave the setup flow on its invitation step; dismiss it like a user would.
+  await waitFor('unlock or home', () => {
+    $('[data-testid="setup-invitation-cancel"]')?.click()
+    $('[data-testid="setup-complete-later"]')?.click()
+    return $('[data-testid="unlock-content"]') || mainLayout()
+  })
+  if ($('[data-testid="unlock-content"]')) {
+    $('[data-testid="unlock-content"]')!.click()
+    await waitFor('unlocked', () => mainLayout())
+  }
+  const refusals = await checkPreviewRefusals()
+  await record(
+    'file-preview-refusals',
+    Object.values(refusals).every(code => code === 404),
+    refusals
+  )
+  // Take the received file's path from the daemon's history, exactly where the shared frontend
+  // reads it, and fetch it through the host route.
+  const entries = await historyFileURIs()
+  const path = decodeURIComponent(new URL(entries[0].trim()).pathname)
+  const response = await fetch(`/host-file?path=${encodeURIComponent(path)}`)
+  const blob = await response.blob()
+  const bitmap = await createImageBitmap(blob)
+  await record('file-preview-image-loaded', response.status === 200 && bitmap.width > 0, {
+    status: response.status,
+    type: response.headers.get('content-type'),
+    csp: response.headers.get('content-security-policy'),
+    width: bitmap.width,
+    path: path.replace(/^.*\/iroh-blobs\//, '.../iroh-blobs/'),
+  })
+  await sleep(1500)
   await control('exit')
 }
 

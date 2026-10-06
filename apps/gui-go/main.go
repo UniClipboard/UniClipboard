@@ -29,6 +29,7 @@ type HostService struct {
 	exit    exitIntent
 	updates updater
 	tray    *trayMenu
+	files   knownFiles
 
 	quitting atomic.Bool
 
@@ -124,7 +125,7 @@ func main() {
 	host := &HostService{client: client, effects: newVisualEffects()}
 	services := []application.Service{application.NewService(host)}
 	services = append(services, e2eServices(host)...)
-	app := application.New(application.Options{Name: "UniClipboard Go GUI", Services: services, Assets: application.AssetOptions{Handler: application.BundledAssetFileServer(content)},
+	app := application.New(application.Options{Name: "UniClipboard Go GUI", Services: services, Assets: application.AssetOptions{Handler: application.BundledAssetFileServer(content), Middleware: host.fileMiddleware},
 		ShouldQuit: func() bool { host.quitting.Store(true); return true },
 		OnShutdown: host.stopDaemonOnExit})
 	host.app = app

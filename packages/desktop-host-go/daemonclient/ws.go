@@ -4,9 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/UniClipboard/UniClipboard/apps/cli-go/internal/errctx"
 	"net/http"
 
+	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/errctx"
 	"github.com/coder/websocket"
 )
 

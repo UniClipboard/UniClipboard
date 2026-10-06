@@ -10,10 +10,10 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/UniClipboard/UniClipboard/apps/cli-go/internal/daemonclient"
 	"github.com/UniClipboard/UniClipboard/apps/cli-go/internal/exitcode"
 	"github.com/UniClipboard/UniClipboard/apps/cli-go/internal/output"
 	"github.com/UniClipboard/UniClipboard/apps/cli-go/internal/ui"
+	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/daemonclient"
 )
 
 // deliveryPollInterval is the delivery-view poll interval after a file send.

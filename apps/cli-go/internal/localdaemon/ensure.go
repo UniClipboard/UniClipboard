@@ -6,9 +6,10 @@ import (
 	"os"
 	"time"
 
-	"github.com/UniClipboard/UniClipboard/apps/cli-go/internal/daemonclient"
-	"github.com/UniClipboard/UniClipboard/apps/cli-go/internal/daemonproc"
 	"github.com/UniClipboard/UniClipboard/apps/cli-go/internal/ui"
+	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/daemonclient"
+	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/daemonlife"
+	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/daemonproc"
 )
 
 // Session reports how a daemon was obtained.
@@ -20,10 +21,10 @@ type Session struct {
 func resolvedSession(spawned bool) (Session, error) {
 	conn, err := daemonproc.ReadConnFile()
 	if err != nil {
-		return Session{}, &Error{Kind: ErrResolveAddress, Err: err}
+		return Session{}, &daemonlife.Error{Kind: daemonlife.ErrResolveAddress, Err: err}
 	}
 	if conn == nil {
-		return Session{}, &Error{Kind: ErrResolveAddress, Err: errDaemonConnMissing}
+		return Session{}, &daemonlife.Error{Kind: daemonlife.ErrResolveAddress, Err: errDaemonConnMissing}
 	}
 	return Session{BaseURL: conn.BaseURL(), Spawned: spawned}, nil
 }
@@ -37,11 +38,11 @@ const errDaemonConnMissing = stringError("daemon connection file not found (is t
 // spawnAndWait spawns a detached daemon and waits until it is healthy.
 func spawnAndWait(timeout time.Duration) (Session, error) {
 	spinner := ui.NewSpinner("Starting local daemon…")
-	if err := daemonproc.SpawnDetachedDaemon(); err != nil {
+	if err := daemonproc.SpawnDetachedDaemon("cli"); err != nil {
 		spinner.FinishError("Failed to spawn local daemon")
-		return Session{}, &Error{Kind: ErrSpawn, Err: err}
+		return Session{}, &daemonlife.Error{Kind: daemonlife.ErrSpawn, Err: err}
 	}
-	if err := waitHealthy(timeout, ""); err != nil {
+	if err := daemonlife.WaitHealthy(timeout, ""); err != nil {
 		spinner.FinishError("Local daemon failed to start")
 		return Session{}, err
 	}
@@ -59,20 +60,20 @@ func SpawnOneshotAndWait(timeout time.Duration) (Session, error) {
 // EnsureOrPromote is the background `start` path: reuse a persistent daemon,
 // promote a oneshot daemon to target, report an incompatible one, or spawn.
 func EnsureOrPromote(target string) (Session, error) {
-	outcome, err := ProbeForReuse(StartupTimeout)
+	outcome, err := daemonlife.ProbeForReuse(daemonlife.StartupTimeout)
 	if err != nil {
 		return Session{}, err
 	}
 	switch outcome.Kind {
-	case Compatible:
-		if outcome.Health.Residency == ResidencyOneshot {
+	case daemonlife.Compatible:
+		if outcome.Health.Residency == daemonlife.ResidencyOneshot {
 			return promote(target)
 		}
 		return resolvedSession(false)
-	case Incompatible:
-		return Session{}, IncompatibleError(outcome)
+	case daemonlife.Incompatible:
+		return Session{}, daemonlife.IncompatibleError(outcome)
 	default:
-		return spawnAndWait(StartupTimeout)
+		return spawnAndWait(daemonlife.StartupTimeout)
 	}
 }
 
@@ -81,24 +82,24 @@ func promote(target string) (Session, error) {
 	client, err := daemonclient.FromEnv()
 	if err != nil {
 		spinner.FinishError("Failed to reach local daemon for promotion")
-		return Session{}, &Error{Kind: ErrPromoteRestart, Err: err}
+		return Session{}, &daemonlife.Error{Kind: daemonlife.ErrPromoteRestart, Err: err}
 	}
 	err = client.Enveloped(context.Background(), daemonclient.Request{
 		Method: http.MethodPost, Path: "/lifecycle/restart", JSON: map[string]string{"targetMode": target},
 	}, nil)
 	if err != nil {
 		spinner.FinishError("Daemon rejected the promotion request")
-		return Session{}, &Error{Kind: ErrPromoteRestart, Err: err}
+		return Session{}, &daemonlife.Error{Kind: daemonlife.ErrPromoteRestart, Err: err}
 	}
-	if err := waitAbsent(promoteDrainTimeout); err != nil {
+	if err := daemonlife.WaitAbsent(daemonlife.PromoteDrainTimeout); err != nil {
 		spinner.FinishError("Daemon did not drain for promotion")
 		return Session{}, err
 	}
-	if err := daemonproc.SpawnDetachedDaemon(); err != nil {
+	if err := daemonproc.SpawnDetachedDaemon("cli"); err != nil {
 		spinner.FinishError("Failed to spawn promoted daemon")
-		return Session{}, &Error{Kind: ErrSpawn, Err: err}
+		return Session{}, &daemonlife.Error{Kind: daemonlife.ErrSpawn, Err: err}
 	}
-	if err := waitHealthy(StartupTimeout, target); err != nil {
+	if err := daemonlife.WaitHealthy(daemonlife.StartupTimeout, target); err != nil {
 		spinner.FinishError("Promoted daemon failed to start")
 		return Session{}, err
 	}

@@ -1,12 +1,11 @@
-// Package localdaemon mirrors the Rust CLI's `local_daemon` module: health
+// Package daemonlife mirrors the Rust CLI's `local_daemon` module: health
 // classification, reuse probing, detached spawn, and oneshot promotion.
-package localdaemon
+package daemonlife
 
 import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/UniClipboard/UniClipboard/apps/cli-go/internal/errctx"
 	"io"
 	"net"
 	"os"
@@ -14,9 +13,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/UniClipboard/UniClipboard/apps/cli-go/internal/buildinfo"
-	"github.com/UniClipboard/UniClipboard/apps/cli-go/internal/daemonclient"
-	"github.com/UniClipboard/UniClipboard/apps/cli-go/internal/daemonproc"
+	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/buildinfo"
+	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/daemonclient"
+	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/daemonproc"
+	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/errctx"
 )
 
 // Timing contract from `uc-daemon-process::timing`.
@@ -27,7 +27,7 @@ const (
 	lockAcquireDeadline = 2 * predecessorRelease
 	// StartupTimeout is DAEMON_STARTUP_TIMEOUT.
 	StartupTimeout      = lockAcquireDeadline + 15*time.Second
-	promoteDrainTimeout = 2 * 30 * time.Second
+	PromoteDrainTimeout = 2 * 30 * time.Second
 )
 
 // Residency values reported by `/health`.
@@ -336,9 +336,9 @@ func compareSemver(a, b semver) int {
 	return len(a.pre) - len(b.pre)
 }
 
-// waitHealthy polls until a Compatible daemon (optionally with the expected
+// WaitHealthy polls until a Compatible daemon (optionally with the expected
 // residency) answers, an Incompatible one appears, or the timeout passes.
-func waitHealthy(timeout time.Duration, residency string) error {
+func WaitHealthy(timeout time.Duration, residency string) error {
 	deadline := time.Now().Add(timeout)
 	for {
 		outcome, err := Probe()
@@ -361,9 +361,9 @@ func waitHealthy(timeout time.Duration, residency string) error {
 }
 
 // WaitForRunningDaemon waits for a foreground child to publish its endpoint.
-func WaitForRunningDaemon() error { return waitHealthy(StartupTimeout, "") }
+func WaitForRunningDaemon() error { return WaitHealthy(StartupTimeout, "") }
 
-func waitAbsent(timeout time.Duration) error {
+func WaitAbsent(timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	for {
 		outcome, err := Probe()

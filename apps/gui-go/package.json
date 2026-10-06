@@ -1,0 +1,11 @@
+{
+  "name": "@uniclipboard/gui-go",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build"
+  },
+  "dependencies": {
+    "@wailsio/runtime": "3.0.0-beta.28"
+  }
+}

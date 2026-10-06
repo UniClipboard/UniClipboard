@@ -5,7 +5,7 @@
 #
 # The triple is the Rust one used by build-cli.yml, so the Go binary can be
 # packaged by scripts/ci/package-cli.sh next to the matching `uniclipd`.
-# Fails when internal/buildinfo is stale against Cargo.toml or the daemon
+# Fails when shared buildinfo is stale against Cargo.toml or the daemon
 # contract revision.
 set -euo pipefail
 
@@ -20,7 +20,7 @@ case "$TARGET" in
   aarch64-pc-windows-msvc) GOOS=windows GOARCH=arm64 ;;
   x86_64-pc-windows-msvc) GOOS=windows GOARCH=amd64 ;;
   *)
-    echo "ERROR: unsupported target triple: $TARGET" >&2
+    echo "ERROR: shared buildinfo is stale; regenerate packages/desktop-host-go/buildinfo and commit" >&2
     exit 2
     ;;
 esac
@@ -29,10 +29,10 @@ REPO_ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 OUTPUT_ABS=$(cd "$(dirname "$OUTPUT")" && pwd)/$(basename "$OUTPUT")
 cd "$REPO_ROOT/apps/cli-go"
 
-go generate ./internal/buildinfo
-if ! git diff --quiet -- internal/buildinfo; then
-  echo "ERROR: apps/cli-go/internal/buildinfo is stale; run 'go generate ./internal/buildinfo' and commit" >&2
-  git --no-pager diff -- internal/buildinfo >&2
+(cd "$REPO_ROOT/packages/desktop-host-go" && go generate ./buildinfo)
+if ! git diff --quiet -- ../../packages/desktop-host-go/buildinfo; then
+  echo "ERROR: packages/desktop-host-go/buildinfo is stale; run '(cd "$REPO_ROOT/packages/desktop-host-go" && go generate ./buildinfo)' and commit" >&2
+  git --no-pager diff -- ../../packages/desktop-host-go/buildinfo >&2
   exit 1
 fi
 

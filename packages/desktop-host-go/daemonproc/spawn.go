@@ -3,11 +3,12 @@ package daemonproc
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/UniClipboard/UniClipboard/apps/cli-go/internal/errctx"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+
+	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/errctx"
 )
 
 // Environment contract shared with `uniclipd` (`uc-daemon-process::spawn_contract`).
@@ -65,13 +66,13 @@ type handoverRecord struct {
 // SpawnDetachedDaemon starts `uniclipd` in its own session with null stdio,
 // inheriting this process's environment, and applies a pending handover's
 // run mode exactly like the Rust spawn contract.
-func SpawnDetachedDaemon() error {
+func SpawnDetachedDaemon(origin string) error {
 	exe, err := ResolveDaemonExe()
 	if err != nil {
 		return err
 	}
 	cmd := exec.Command(exe)
-	cmd.Env = append(os.Environ(), spawnOriginEnv+"=cli")
+	cmd.Env = append(os.Environ(), spawnOriginEnv+"="+origin)
 	if root, err := AppDataRoot(); err == nil {
 		if data, err := os.ReadFile(filepath.Join(root, handoverFile)); err == nil {
 			var record handoverRecord

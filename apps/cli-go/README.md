@@ -14,14 +14,15 @@
 | `cmd/uniclip` | 入口 |
 | `internal/cli` | 命令规格、基于 cobra/pflag 的解析，以及 clap 风格的 help、参数错误与"相似命令"提示 |
 | `internal/commands` | 命令树（`tree.go`，help 文本的唯一来源）与各命令实现 |
-| `internal/apppaths` | 数据目录、profile 后缀、便携模式、日志目录（对应 `uc-app-paths`） |
-| `internal/daemonproc` | `daemon.conn`、`.daemon-pid`、进程身份校验、分离启动与交接记录（对应 `uc-daemon-process`） |
-| `internal/localdaemon` | `/health` 版本契约判定、复用探测、oneshot 启动与提升（对应 Rust `local_daemon.rs`） |
+| `packages/desktop-host-go/apppaths` | 数据目录、profile 后缀、便携模式、日志目录（对应 `uc-app-paths`） |
+| `packages/desktop-host-go/daemonproc` | `daemon.conn`、`.daemon-pid`、进程身份校验、分离启动与交接记录（对应 `uc-daemon-process`） |
+| `packages/desktop-host-go/daemonlife` | `/health` 版本契约判定、活跃 PID 复用守卫与健康等待 |
+| `internal/localdaemon` | 终端启动提示、oneshot 启动与提升（对应 Rust `local_daemon.rs`） |
 | `internal/session` | 连接或拉起 daemon、控制租约、setup 状态（对应 Rust `app_session.rs`） |
-| `internal/daemonclient` | 会话令牌、信封请求、请求错误、WebSocket 订阅与租约（对应 `uc-daemon-client`） |
+| `packages/desktop-host-go/daemonclient` | 会话令牌、信封请求、请求错误、WebSocket 订阅与租约（对应 `uc-daemon-client`） |
 | `internal/ui`、`internal/output`、`internal/exitcode` | 终端版式与交互、JSON 输出、退出码 |
-| `internal/errctx` | 与 anyhow `.context()` 一致的错误显示 |
-| `internal/buildinfo` | 由 `go generate` 从 `Cargo.toml` 与 daemon 契约生成的版本与 API revision |
+| `packages/desktop-host-go/errctx` | 与 anyhow `.context()` 一致的错误显示 |
+| `packages/desktop-host-go/buildinfo` | 由 `go generate` 从 `Cargo.toml` 与 daemon 契约生成的版本与 API revision |
 | `e2e/` | Rust/Go 差分端到端测试与 help 对照，见 `e2e/README.md` |
 
 ## 构建
@@ -31,7 +32,7 @@
 
 ```sh
 cd apps/cli-go
-go generate ./internal/buildinfo   # 版本或 daemon API revision 变化后
+(cd ../../packages/desktop-host-go && go generate ./buildinfo)   # 版本或 daemon API revision 变化后
 go build -o ../../target/release/uniclip-go ./cmd/uniclip
 ```
 
@@ -41,7 +42,7 @@ go build -o ../../target/release/uniclip-go ./cmd/uniclip
 scripts/ci/build-go-cli.sh aarch64-apple-darwin target/uniclip
 ```
 
-脚本会在 `internal/buildinfo` 与 `Cargo.toml` 或契约 revision 不一致时失败。运行时 `uniclipd`
+脚本会在 `packages/desktop-host-go/buildinfo` 与 `Cargo.toml` 或契约 revision 不一致时失败。运行时 `uniclipd`
 必须与 `uniclip` 同目录或在 `PATH` 上，与 Rust 版相同。
 
 ## 兼容范围
@@ -99,6 +100,6 @@ Rust 的 `dev-tools` 特性（release 构建不包含）提供以下隐藏命令
 - `deploy/vps/Dockerfile`：Rust 阶段只构建 `uniclipd`，独立的 Go 阶段构建 `uniclip`。
 - 产物名与压缩包内容（`uniclip` + `uniclipd` 同目录）保持不变，`release.yml`、npm 打包与签名公证流程无需改动。
 - 沙车用单个 tar 传递：保留可执行位，并避免 `uniclipd-*.exe` 被 `release.yml` 的 `*.exe` 资产收集规则误发布。
-- 守卫（`scripts/__tests__/cli-packaging.test.ts`、`scripts/architecture/check-engine-repository.mjs`）：生产构建文件不得出现 `uc-dev-cli` 或 `uc-cli`，任何包不得依赖 `uc-dev-cli`，`internal/buildinfo` 必须与 `Cargo.toml` 和 daemon 契约一致。
+- 守卫（`scripts/__tests__/cli-packaging.test.ts`、`scripts/architecture/check-engine-repository.mjs`）：生产构建文件不得出现 `uc-dev-cli` 或 `uc-cli`，任何包不得依赖 `uc-dev-cli`，`packages/desktop-host-go/buildinfo` 必须与 `Cargo.toml` 和 daemon 契约一致。
 
 这些 CI 变更只做了静态验证（actionlint、全部脚本测试、变异检查），没有在 GitHub 上真实运行过；macOS 的 Go 二进制签名与公证、Windows 自托管运行器上的 Go 工具链尚未验证。

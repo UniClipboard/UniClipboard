@@ -10,9 +10,9 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/UniClipboard/UniClipboard/apps/cli-go/internal/daemonclient"
 	"github.com/UniClipboard/UniClipboard/apps/cli-go/internal/session"
 	"github.com/UniClipboard/UniClipboard/apps/cli-go/internal/ui"
+	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/daemonclient"
 )
 
 // mobileSession is a daemon client plus the control lease that keeps a

@@ -8,12 +8,13 @@ import (
 	"time"
 
 	"github.com/UniClipboard/UniClipboard/apps/cli-go/internal/cli"
-	"github.com/UniClipboard/UniClipboard/apps/cli-go/internal/daemonproc"
 	"github.com/UniClipboard/UniClipboard/apps/cli-go/internal/exitcode"
 	"github.com/UniClipboard/UniClipboard/apps/cli-go/internal/localdaemon"
 	"github.com/UniClipboard/UniClipboard/apps/cli-go/internal/output"
 	"github.com/UniClipboard/UniClipboard/apps/cli-go/internal/session"
 	"github.com/UniClipboard/UniClipboard/apps/cli-go/internal/ui"
+	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/daemonlife"
+	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/daemonproc"
 )
 
 type startOutput struct {
@@ -70,9 +71,9 @@ func runStart(ctx *cli.Context) int {
 		return code
 	}
 	configureRunMode(server)
-	target := localdaemon.ResidencyStandalone
+	target := daemonlife.ResidencyStandalone
 	if server {
-		target = localdaemon.ResidencyServerHeadless
+		target = daemonlife.ResidencyServerHeadless
 	}
 	sess, err := localdaemon.EnsureOrPromote(target)
 	if err != nil {
@@ -114,20 +115,20 @@ func checkSetupComplete(asJSON bool) (int, bool) {
 }
 
 func startForeground(asJSON bool) int {
-	outcome, err := localdaemon.ProbeForReuse(localdaemon.StartupTimeout)
+	outcome, err := daemonlife.ProbeForReuse(daemonlife.StartupTimeout)
 	if err != nil {
 		ui.Error("Failed to probe local daemon: " + err.Error())
 		return exitcode.DaemonUnreachable
 	}
 	switch outcome.Kind {
-	case localdaemon.Compatible:
+	case daemonlife.Compatible:
 		if code, done := checkSetupComplete(asJSON); done {
 			return code
 		}
 		out := startOutput{Status: "already_running", PID: readPid()}
 		return printOrFail(out, out.human(), asJSON, exitcode.Success)
-	case localdaemon.Incompatible:
-		ui.RawStderr("Error: " + localdaemon.IncompatibleError(outcome).Error())
+	case daemonlife.Incompatible:
+		ui.RawStderr("Error: " + daemonlife.IncompatibleError(outcome).Error())
 		return exitcode.Error
 	}
 	exe, err := daemonproc.ResolveDaemonExe()
@@ -153,7 +154,7 @@ func startForeground(asJSON bool) int {
 		child.Process.Kill()
 		child.Wait()
 	}
-	if err := localdaemon.WaitForRunningDaemon(); err != nil {
+	if err := daemonlife.WaitForRunningDaemon(); err != nil {
 		stop()
 		ui.Error("Failed to start daemon: " + err.Error())
 		return exitcode.Error

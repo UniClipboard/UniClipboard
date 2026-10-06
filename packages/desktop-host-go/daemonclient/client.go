@@ -1,5 +1,5 @@
 // Package daemonclient is the Go counterpart of `uc-daemon-client` for the
-// CLI: connection resolution, `/auth/connect` session tokens, enveloped
+// hosts: connection resolution, `/auth/connect` session tokens, enveloped
 // requests, typed request errors, and the authenticated WebSocket.
 package daemonclient
 
@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/UniClipboard/UniClipboard/apps/cli-go/internal/errctx"
 	"io"
 	"net/http"
 	"net/url"
@@ -17,7 +16,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/UniClipboard/UniClipboard/apps/cli-go/internal/daemonproc"
+	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/daemonproc"
+	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/errctx"
 )
 
 const (
@@ -26,7 +26,7 @@ const (
 	clientType   = "cli"
 )
 
-// Client talks to the local daemon as a `cli` client.
+// Client talks to the local daemon using native authentication.
 type Client struct {
 	BaseURL string
 	WSURL   string
@@ -181,33 +181,53 @@ type sendError struct{ url string }
 
 func (e sendError) Error() string { return fmt.Sprintf("error sending request for url (%s)", e.url) }
 
-// SessionToken exchanges the bearer token for a short-lived session token.
+// Session is the short-lived browser credential returned by the daemon.
+type Session struct {
+	SessionToken  string `json:"sessionToken"`
+	ExpiresInSecs int64  `json:"expiresInSecs"`
+	RefreshAtSecs int64  `json:"refreshAtSecs"`
+}
+
+// SessionToken preserves the CLI session contract.
 func (c *Client) SessionToken(ctx context.Context) (string, error) {
-	body, _ := json.Marshal(map[string]any{"pid": c.pid, "clientType": clientType})
+	session, err := c.ExchangeSession(ctx, clientType)
+	return session.SessionToken, err
+}
+
+// ExchangeSession keeps the local bearer secret in the native host.
+func (c *Client) ExchangeSession(ctx context.Context, clientType string) (Session, error) {
+	body, err := json.Marshal(map[string]any{"pid": c.pid, "clientType": clientType})
+	if err != nil {
+		return Session{}, err
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.BaseURL+"/auth/connect", bytes.NewReader(body))
 	if err != nil {
-		return "", err
+		return Session{}, err
 	}
 	req.Header.Set("Authorization", "Bearer "+c.token)
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return "", errctx.Wrap("failed to send session token exchange request", err)
+		return Session{}, errctx.Wrap("failed to send session token exchange request", err)
 	}
 	defer resp.Body.Close()
-	data, _ := io.ReadAll(resp.Body)
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return Session{}, err
+	}
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		return "", fmt.Errorf("session token exchange failed with status %s: %s", StatusText(resp.StatusCode), data)
+		return Session{}, fmt.Errorf("session token exchange failed with status %s", StatusText(resp.StatusCode))
 	}
-	var env struct {
-		Data struct {
-			SessionToken string `json:"sessionToken"`
-		} `json:"data"`
+	var envelope struct {
+		Data Session `json:"data"`
 	}
-	if err := json.Unmarshal(data, &env); err != nil {
-		return "", errctx.Wrap("failed to decode session token exchange response", err)
+	if err := json.Unmarshal(data, &envelope); err != nil {
+		return Session{}, errctx.Wrap("failed to decode session token exchange response", err)
 	}
-	return env.Data.SessionToken, nil
+	if envelope.Data.SessionToken == "" {
+		return Session{}, errors.New("daemon returned an empty session token")
+	}
+	return envelope.Data, nil
 }
 
 // Request describes one daemon HTTP call.

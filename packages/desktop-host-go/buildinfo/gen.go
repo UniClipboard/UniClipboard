@@ -3,7 +3,7 @@
 // gen.go regenerates buildinfo.go from the Rust workspace, which stays the
 // single source of truth for the package version and daemon API revision.
 //
-//	go run ./internal/buildinfo/gen.go
+//	go generate ./buildinfo
 package main
 
 import (
@@ -14,7 +14,7 @@ import (
 )
 
 func main() {
-	root := filepath.Join("..", "..", "..", "..")
+	root := filepath.Join("..", "..", "..")
 	cargo := mustRead(filepath.Join(root, "Cargo.toml"))
 	contract := mustRead(filepath.Join(root, "crates", "uc-daemon-contract", "src", "lib.rs"))
 

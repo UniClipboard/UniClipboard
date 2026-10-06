@@ -90,11 +90,20 @@
         "use-context-selector": "^2.0.0",
       },
     },
+    "apps/gui-go": {
+      "name": "@uniclipboard/gui-go",
+      "dependencies": {
+        "@wailsio/runtime": "3.0.0-beta.28",
+      },
+    },
   },
   "overrides": {
     "@wdio/native-utils": "2.5.0",
   },
   "packages": {
+    "@uniclipboard/gui-go": ["@uniclipboard/gui-go@workspace:apps/gui-go"],
+    "@wailsio/runtime": ["@wailsio/runtime@3.0.0-beta.28", "", {}, "sha512-IPl7WIsu0uQni9qgYAGm47G1WKNV/YFQannb/1r8orA81+wswJmCt/TS6GNb/U/coIRYyQ3ruO1FNMVwUVDvQQ=="],
+
     "@adobe/css-tools": ["@adobe/css-tools@4.4.4", "", {}, "sha512-Elp+iwUx5rN5+Y8xLt5/GRoG20WGoDCQ/1Fb+1LiGtvwbDavuSk0jhD/eZdckHAuzcDzccnkv+rEjyWfRx18gg=="],
 
     "@asamuzakjp/css-color": ["@asamuzakjp/css-color@5.1.11", "", { "dependencies": { "@asamuzakjp/generational-cache": "^1.0.1", "@csstools/css-calc": "^3.2.0", "@csstools/css-color-parser": "^4.1.0", "@csstools/css-parser-algorithms": "^4.0.0", "@csstools/css-tokenizer": "^4.0.0" } }, "sha512-KVw6qIiCTUQhByfTd78h2yD1/00waTmm9uy/R7Ck/ctUyAPj+AEDLkQIdJW0T8+qGgj3j5bpNKK7Q3G+LedJWg=="],

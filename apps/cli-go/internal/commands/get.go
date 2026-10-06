@@ -14,14 +14,13 @@ import (
 	"syscall"
 	"unicode"
 
-	"golang.org/x/term"
-
 	"github.com/UniClipboard/UniClipboard/apps/cli-go/internal/cli"
-	"github.com/UniClipboard/UniClipboard/apps/cli-go/internal/daemonclient"
 	"github.com/UniClipboard/UniClipboard/apps/cli-go/internal/exitcode"
 	"github.com/UniClipboard/UniClipboard/apps/cli-go/internal/output"
 	"github.com/UniClipboard/UniClipboard/apps/cli-go/internal/session"
 	"github.com/UniClipboard/UniClipboard/apps/cli-go/internal/ui"
+	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/daemonclient"
+	"golang.org/x/term"
 )
 
 // getDefaultLimit is the number of recent entries scanned when selecting or

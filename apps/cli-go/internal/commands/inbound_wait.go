@@ -7,10 +7,10 @@ import (
 	"os/signal"
 	"time"
 
-	"github.com/UniClipboard/UniClipboard/apps/cli-go/internal/daemonclient"
 	"github.com/UniClipboard/UniClipboard/apps/cli-go/internal/exitcode"
 	"github.com/UniClipboard/UniClipboard/apps/cli-go/internal/session"
 	"github.com/UniClipboard/UniClipboard/apps/cli-go/internal/ui"
+	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/daemonclient"
 )
 
 const (

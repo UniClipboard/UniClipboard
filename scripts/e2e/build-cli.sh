@@ -33,7 +33,7 @@ fi
 
 mkdir -p "$TARGET_DIR/debug"
 cd "$ROOT/apps/cli-go"
-# Keep internal/buildinfo in step with Cargo.toml and the daemon contract.
-go generate ./internal/buildinfo
+# Keep shared buildinfo in step with Cargo.toml and the daemon contract.
+(cd "$ROOT/packages/desktop-host-go" && go generate ./buildinfo)
 go build -buildvcs=false -o "$TARGET_DIR/debug/uniclip$EXE" ./cmd/uniclip
 echo "built $TARGET_DIR/debug/uniclip$EXE"

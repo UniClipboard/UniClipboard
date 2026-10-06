@@ -117,6 +117,7 @@
     "webdriverio": "^9.27.1"
   },
   "workspaces": [
-    "apps/gui"
+    "apps/gui",
+    "apps/gui-go"
   ]
 }

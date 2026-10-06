@@ -283,7 +283,7 @@ describe('Go CLI build info', () => {
     const revision = read('crates/uc-daemon-contract/src/lib.rs').match(
       /DAEMON_API_REVISION: &str =\s*"([^"]+)"/
     )?.[1]
-    const info = read('apps/cli-go/internal/buildinfo/buildinfo.go')
+    const info = read('packages/desktop-host-go/buildinfo/buildinfo.go')
     expect(version).toBeTruthy()
     expect(revision).toBeTruthy()
     expect(info).toContain(`const PackageVersion = "${version}"`)

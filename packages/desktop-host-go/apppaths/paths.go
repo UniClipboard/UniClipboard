@@ -1,6 +1,6 @@
 // Package apppaths mirrors the Rust `uc-app-paths` policy: the data root,
 // profile suffix, portable mode, and log directory. It is the single place
-// the Go CLI derives profile-scoped filesystem locations.
+// the Go hosts derive profile-scoped filesystem locations.
 package apppaths
 
 import (

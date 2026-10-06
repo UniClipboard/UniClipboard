@@ -12,11 +12,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/UniClipboard/UniClipboard/apps/cli-go/internal/buildinfo"
-	"github.com/UniClipboard/UniClipboard/apps/cli-go/internal/daemonclient"
 	"github.com/UniClipboard/UniClipboard/apps/cli-go/internal/exitcode"
 	"github.com/UniClipboard/UniClipboard/apps/cli-go/internal/localdaemon"
 	"github.com/UniClipboard/UniClipboard/apps/cli-go/internal/ui"
+	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/buildinfo"
+	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/daemonclient"
+	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/daemonlife"
 )
 
 // Failed carries the exit code of an already-reported failure.
@@ -40,7 +41,7 @@ func ExitCode(err error) int {
 func ConnectOrSpawnOneshot(deadline time.Time) (*daemonclient.Client, error) {
 	remaining := func() time.Duration {
 		if deadline.IsZero() {
-			return localdaemon.StartupTimeout
+			return daemonlife.StartupTimeout
 		}
 		if d := time.Until(deadline); d > 0 {
 			return d
@@ -49,27 +50,27 @@ func ConnectOrSpawnOneshot(deadline time.Time) (*daemonclient.Client, error) {
 	}
 	reportTimeout := func(err error) error {
 		ui.Error(err.Error())
-		var le *localdaemon.Error
-		if !deadline.IsZero() && errors.As(err, &le) && le.Kind == localdaemon.ErrStartupTimeout {
+		var le *daemonlife.Error
+		if !deadline.IsZero() && errors.As(err, &le) && le.Kind == daemonlife.ErrStartupTimeout {
 			ui.Warn("The daemon may still be starting. Retry, raise --connect-timeout, or run `uniclip start` first.")
 			return fail(exitcode.DaemonUnreachable)
 		}
 		return fail(exitcode.Error)
 	}
-	outcome, err := localdaemon.ProbeForReuse(remaining())
+	outcome, err := daemonlife.ProbeForReuse(remaining())
 	if err != nil {
-		var le *localdaemon.Error
-		if errors.As(err, &le) && le.Kind == localdaemon.ErrStartupTimeout && !deadline.IsZero() {
+		var le *daemonlife.Error
+		if errors.As(err, &le) && le.Kind == daemonlife.ErrStartupTimeout && !deadline.IsZero() {
 			return nil, reportTimeout(err)
 		}
 		ui.Error("Failed to probe local daemon: " + err.Error())
 		return nil, fail(exitcode.DaemonUnreachable)
 	}
 	switch outcome.Kind {
-	case localdaemon.Compatible:
+	case daemonlife.Compatible:
 		return buildClient(true)
-	case localdaemon.Incompatible:
-		ui.Error(localdaemon.IncompatibleError(outcome).Error())
+	case daemonlife.Incompatible:
+		ui.Error(daemonlife.IncompatibleError(outcome).Error())
 		return nil, fail(exitcode.DaemonUnreachable)
 	}
 	if _, err := localdaemon.SpawnOneshotAndWait(remaining()); err != nil {
@@ -150,29 +151,29 @@ func buildClient(reportErrors bool) (*daemonclient.Client, error) {
 // EnsureDaemonForSetup reuses, attaches to a matching degraded daemon, or
 // spawns a oneshot daemon for setup commands.
 func EnsureDaemonForSetup(reportErrors bool) (*daemonclient.Client, error) {
-	outcome, err := localdaemon.ProbeForReuse(localdaemon.StartupTimeout)
+	outcome, err := daemonlife.ProbeForReuse(daemonlife.StartupTimeout)
 	if err != nil {
 		report("Failed to probe local daemon: "+err.Error(), reportErrors)
 		return nil, fail(exitcode.DaemonUnreachable)
 	}
 	switch {
-	case outcome.Kind == localdaemon.Compatible:
+	case outcome.Kind == daemonlife.Compatible:
 		return buildClient(reportErrors)
 	case setupControlContractMatches(outcome):
 		return buildClient(reportErrors)
-	case outcome.Kind == localdaemon.Incompatible:
-		report(localdaemon.IncompatibleError(outcome).Error(), reportErrors)
+	case outcome.Kind == daemonlife.Incompatible:
+		report(daemonlife.IncompatibleError(outcome).Error(), reportErrors)
 		return nil, fail(exitcode.DaemonUnreachable)
 	}
-	if _, err := localdaemon.SpawnOneshotAndWait(localdaemon.StartupTimeout); err != nil {
+	if _, err := localdaemon.SpawnOneshotAndWait(daemonlife.StartupTimeout); err != nil {
 		report(err.Error(), reportErrors)
 		return nil, fail(exitcode.Error)
 	}
 	return buildClient(reportErrors)
 }
 
-func setupControlContractMatches(o localdaemon.Outcome) bool {
-	return o.Kind == localdaemon.Incompatible && o.Details == localdaemon.DegradedDetails &&
+func setupControlContractMatches(o daemonlife.Outcome) bool {
+	return o.Kind == daemonlife.Incompatible && o.Details == daemonlife.DegradedDetails &&
 		o.ObservedVersion != nil && *o.ObservedVersion == buildinfo.PackageVersion &&
 		o.ObservedAPIVersion != nil && *o.ObservedAPIVersion == buildinfo.DaemonAPIRevision
 }
@@ -181,7 +182,7 @@ func setupControlContractMatches(o localdaemon.Outcome) bool {
 func WaitAndReconnect(timeout time.Duration) (*daemonclient.Client, error) {
 	deadline := time.Now().Add(timeout)
 	for {
-		if outcome, err := localdaemon.Probe(); err == nil && outcome.Kind == localdaemon.Compatible {
+		if outcome, err := daemonlife.Probe(); err == nil && outcome.Kind == daemonlife.Compatible {
 			return buildClient(true)
 		}
 		if !time.Now().Before(deadline) {

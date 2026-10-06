@@ -658,6 +658,7 @@ fn apply_cors_headers(headers: &mut HeaderMap, origin: Option<&str>) {
 
 fn is_allowed_cors_origin(origin: &str) -> bool {
     origin == "tauri://localhost"
+        || origin == "wails://localhost"
         || origin == "http://tauri.localhost"
         || origin == "https://tauri.localhost"
         || origin.starts_with("http://localhost:")

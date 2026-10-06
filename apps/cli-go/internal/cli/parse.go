@@ -8,11 +8,10 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/UniClipboard/UniClipboard/apps/cli-go/internal/ui"
+	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/buildinfo"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
-
-	"github.com/UniClipboard/UniClipboard/apps/cli-go/internal/buildinfo"
-	"github.com/UniClipboard/UniClipboard/apps/cli-go/internal/ui"
 )
 
 // usageError is a clap-format argument error (exit 2).

@@ -4,12 +4,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/UniClipboard/UniClipboard/apps/cli-go/internal/errctx"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/errctx"
 )
 
 const pidFileName = ".daemon-pid"

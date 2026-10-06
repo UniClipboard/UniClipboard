@@ -6,12 +6,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/UniClipboard/UniClipboard/apps/cli-go/internal/errctx"
 	"io/fs"
 	"os"
 	"path/filepath"
 
-	"github.com/UniClipboard/UniClipboard/apps/cli-go/internal/apppaths"
+	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/apppaths"
+	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/errctx"
 )
 
 const (

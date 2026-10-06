@@ -286,6 +286,20 @@ def inspect_processes(run, label, launch_pid, expected_daemon_sha, daemon_pid):
     return mount
 
 
+def wait_panel_ready(launch, label, timeout=60):
+    """The quick panel page is preloaded after the main page; poll the shortcut state until it reports ready (a late answer is
+    recorded with its delay, a missing one stays a failure)."""
+    start, n, state = time.monotonic(), 0, {}
+    while time.monotonic() - start < timeout:
+        n += 1
+        state = launch.ctl(f'shortcut-state {label}-{n}', f'shortcut-state-{label}-{n}')['detail']
+        if state.get('panelReady') is True:
+            break
+        time.sleep(.5)
+    state['waitedSeconds'] = round(time.monotonic() - start, 1)
+    return state
+
+
 def cli(run, args, *cmd):
     r = subprocess.run([str(args.uniclip), '--json', *cmd], env=run.env, capture_output=True, text=True, timeout=60)
     return {'rc': r.returncode, 'stdout': r.stdout.strip(), 'stderr': r.stderr.strip()[-500:]}
@@ -323,7 +337,7 @@ def full(run, launches, args, sandbox, home, target, original_sha):
     boot = gui.step('bootstrapped', 120)
     run.check('3 the WebView ran the frontend (evidence step `bootstrapped` is written by the page, through the host service)', boot['ok'], boot)
     mount = inspect_processes(run, '2', gui.proc.pid, daemon_sha, daemon_pid)
-    state = gui.ctl('shortcut-state boot', 'shortcut-state-boot')['detail']
+    state = wait_panel_ready(gui, 'boot')
     run.check('3 the frontend reached the daemon: the panel reports ready', state.get('panelReady') is True, state)
 
     # User data written through the real daemon API before the update; read back after it (check 8).
@@ -422,7 +436,7 @@ def full(run, launches, args, sandbox, home, target, original_sha):
         pconn, pdaemon = wait_daemon(home)
         run.check('8 the replaced AppImage starts a daemon on the existing data root', pconn is not None and pdaemon not in (None, old_daemon), [str(pconn), pdaemon, old_daemon])
         post.step('bootstrapped', 120)
-        pstate = post.ctl('shortcut-state post', 'shortcut-state-post')['detail']
+        pstate = wait_panel_ready(post, 'post')
         run.check('8 the v2 page reached the daemon (panel ready)', pstate.get('panelReady') is True, pstate)
         pmount = inspect_processes(run, '8', post.proc.pid, daemon_sha, pdaemon)
         run.check('8 the running image is v2 (marker file in its mount)', pmount is not None and (Path(pmount) / 'usr/share/uniclipboard/update-marker.txt').exists(), pmount)

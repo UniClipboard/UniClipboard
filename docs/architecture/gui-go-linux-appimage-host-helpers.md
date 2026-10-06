@@ -51,13 +51,16 @@ Wails 固定版（beta.28）能力核查：`app.Browser.OpenURL/OpenFile` 与 `a
 
 - 沙箱里的处理程序是 `sh` 记录脚本，**不是** 真实浏览器或文件管理器；真实 Firefox/Chromium/Nautilus/Dolphin 在被打开后如何受 `GDK_BACKEND=x11`、`GTK_THEME` 的影响未验证（修复也不去掉这两个变量，因为无法区分它们是用户设置还是钩子设置，没有钩子前的备份）。
 - 真实桌面会话、portal（`xdg-desktop-portal`）、Wayland、GPU、原生 amd64（容器是 arm64）、更多发行版。
+- 含 `:` 的多值变量只处理了 `LD_LIBRARY_PATH` 与 `XDG_DATA_DIRS`；AppRun 与钩子没有改 `PATH`、`XDG_CONFIG_DIRS` 等（见钩子源码），所以没有处理，其他挂载项若将来出现需要补。
+- 链接以 `-` 开头会被 `xdg-open` 当成选项（Wails 原有 `Browser.OpenURL` 同样，本片没有加校验，`xdg-open` 也不支持 `--`）。
+- `invoke` 失败时抛出的是错误对象而不是 `Error`（共享前端只记录日志）。
 - `APPIMAGE`/`ARGV0`/`OWD` 不指向挂载，修复不去掉它们；宿主默认处理程序本身若是另一个 AppImage 的交互未验证。
 - macOS/Windows 的辅助程序路径、deb/rpm 的 `dpkg-query`/`rpm`。
 - Tauri 包的 libdbus/helper 对照：见「验证结果」。
 
 ## 验证结果
 
-范围（原样）：容器内，arm64 Docker，Xvfb，非 root 用户，便携模式，真实 AppImage + 真实 17c5 发布守护进程（SHA-256 `ea0f0bcb…f6c6`，运行前核对，非桩），宿主侧是真实的 `xdg-open`、`gio`、`xdg-mime`、shared-mime-info（Ubuntu 24.04.5：GLib 2.80.0；Fedora 44：GLib 2.88.3）。处理程序是 `sh` 记录脚本（受控目标），**不是** 真实浏览器或文件管理器。工件在 `/Users/mark/.herdr-projects/uni/t-0188-artifacts/linux-17c10/`（体积超过库容量，库内只有索引）。
+范围（原样）：容器内，arm64 Docker，Xvfb，非 root 用户，便携模式，真实 AppImage + 真实 17c5 发布守护进程（SHA-256 `ea0f0bcb…f6c6`，运行前核对，非桩），宿主侧是真实的 `xdg-open`、`gio`、`xdg-mime`、shared-mime-info（Ubuntu 24.04.5：GLib 2.80.0；Fedora 44：GLib 2.88.3）。处理程序是 `sh` 记录脚本（受控目标），**不是** 真实浏览器或文件管理器。工件在仓库之外的本机证据目录 `t-0188-artifacts/linux-17c10/`（体积超过库容量，库内只有索引）。
 
 ### 基线（红）：修复之前的包
 

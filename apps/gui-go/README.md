@@ -667,7 +667,7 @@ apps/gui-go/e2e/linux/run_17c7_supplement.sh <最终运行目录> <新目录>   
 
 ## AppImage 内的宿主辅助程序（第 17c10 片）
 
-契约、失败方式、基线、修复与最终结果在 [docs/architecture/gui-go-linux-appimage-host-helpers.md](../../docs/architecture/gui-go-linux-appimage-host-helpers.md)（文档是在基线红灯和修复代码之后补写的，顺序见该文）。证据目录 `/Users/mark/.herdr-projects/uni/t-0188-artifacts/linux-17c10/`（约 2 GB，仓库只索引）。
+契约、失败方式、基线、修复与最终结果在 [docs/architecture/gui-go-linux-appimage-host-helpers.md](../../docs/architecture/gui-go-linux-appimage-host-helpers.md)（文档是在基线红灯和修复代码之后补写的，顺序见该文）。证据目录 `t-0188-artifacts/linux-17c10/`（仓库之外，约 2 GB，仓库只索引）。
 
 - 缺陷：AppRun 与 linuxdeploy GTK 钩子的环境（`LD_LIBRARY_PATH`、`GIO_MODULE_DIR`、`XDG_DATA_DIRS`、`GTK_*`…）被产品启动的 `xdg-open`（打开数据/日志目录、显示、外部打开图片、链接）继承，宿主 `xdg-open`/`gio`/`grep` 加载包内库。Fedora 44 + GNOME 分发下功能失败（`gio: undefined symbol g_unix_mount_entry_get_options`，xdg-open 退出 3，目录/图片/日志/显示都没有送达）；Ubuntu 24.04 碰巧可用（同 GLib 版本）但同样加载包内库。只还原 `LD_LIBRARY_PATH` 不够（`GIO_MODULE_DIR` 仍让宿主 libgio 加载包内 TLS 模块）。
 - 修复（窄）：`host_helper_env_linux.go` 在 AppImage 内去掉指向挂载的变量与 `LD_LIBRARY_PATH`/`XDG_DATA_DIRS` 的挂载项并以用户主目录为工作目录；链接改走 host 命令 `open_url`（Wails `Browser.OpenURL` 没有环境注入点，Linux 以外仍用 Wails）。GUI 自身、守护进程、重启、更新后拉起环境不变。

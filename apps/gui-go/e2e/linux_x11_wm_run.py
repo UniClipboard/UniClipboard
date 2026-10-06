@@ -216,7 +216,8 @@ def main():
         """What the page itself says: stored window scale (localStorage) and its inner size, via the same beacon listener."""
         page_n[0] += 1
         js = ("(function(){var v=localStorage.getItem('uniclipboard.quickPanel.windowScale');fetch('http://127.0.0.1:%d/pagestate/%s/scale='+v+'/inner='"
-              "+innerWidth+'x'+innerHeight+'/focus='+document.hasFocus(),{mode:'no-cors'})})()") % (beacons.port, label)
+              "+innerWidth+'x'+innerHeight+'/focus='+document.hasFocus()+'/inputs='+document.querySelectorAll('input').length+'/text='"
+              "+encodeURIComponent(document.body.innerText.slice(0,160)),{mode:'no-cors'})})()") % (beacons.port, label)
         g.ctl(f'panel-js ps{page_n[0]} {js}', f'panel-js-ps{page_n[0]}')
         time.sleep(0.4)
         return beacons.seen('pagestate/' + label)
@@ -332,6 +333,9 @@ def main():
         xdo(display, 'key', 'Escape')
         gone = wait_panel(gui, False)
         facts['L1_escape_beacons'] = beacons.seen('', t_esc)
+        if gone is not None:  # diagnosis only: does the HOST command hide it when called directly (separates the host from the page)?
+            facts['L1_escape_diag'] = {'page': page_state(gui, 'after-escape'), 'host_invoke': gui.invoke('diag-dismiss', 'dismiss_quick_panel')}
+            facts['L1_escape_diag']['gone_after_host_invoke'] = wait_panel(gui, False) is None
         check('L1 Escape (real key) reaches the focused panel page and hides the panel', gone is None, panel_now(gui))
         time.sleep(0.5)
         check('L1 after the panel hides, the WM gives the focus back to the previous target app', active_window(display) == t_id, {'active': active_window(display), 'target': t_id})

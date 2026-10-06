@@ -41,6 +41,7 @@ type HostService struct {
 	quitting atomic.Bool
 
 	shortcutsMu       sync.Mutex
+	mainMu            sync.Mutex
 	navMu             sync.Mutex
 	pendingNavigation string
 }
@@ -86,10 +87,10 @@ func (h *HostService) Session() (daemonclient.Session, error) {
 // daemon connection and window state stay alive until an explicit quit; the
 // dock/reopen handler in Wails shows it again.
 func (h *HostService) openMainWindow() {
-	w := h.app.Window.NewWithOptions(application.WebviewWindowOptions{
+	w := h.app.Window.NewWithOptions(quietOptions(application.WebviewWindowOptions{
 		Name: "main", Title: "UniClipboard", URL: "/", Width: 1100, Height: 720, MinWidth: 900, MinHeight: 600,
 		Mac: application.MacWindow{TitleBar: application.MacTitleBarHiddenInset},
-	})
+	}))
 	w.RegisterHook(events.Common.WindowClosing, func(e *application.WindowEvent) {
 		if h.quitting.Load() {
 			return
@@ -103,6 +104,7 @@ func main() {
 	if err := validateEnvironment(); err != nil {
 		log.Fatal(err)
 	}
+	spawnedDaemon := false // whether this launch started the daemon (a cold start) or attached to one
 	outcome, err := daemonlife.ProbeForReuse(daemonlife.StartupTimeout)
 	if err != nil {
 		log.Fatal(err)
@@ -111,6 +113,7 @@ func main() {
 	case daemonlife.Incompatible:
 		log.Fatal(daemonlife.IncompatibleError(outcome))
 	case daemonlife.Absent:
+		spawnedDaemon = true
 		if err := daemonproc.SpawnDetachedDaemon("gui"); err != nil {
 			log.Fatal(err)
 		}
@@ -133,15 +136,30 @@ func main() {
 	host := &HostService{client: client, effects: newVisualEffects(), notifier: notifications.New()}
 	services := []application.Service{application.NewService(host), application.NewService(host.notifier)}
 	services = append(services, e2eServices(host)...)
-	app := application.New(application.Options{Name: "UniClipboard Go GUI", Services: services, Assets: application.AssetOptions{Handler: application.BundledAssetFileServer(content), Middleware: host.fileMiddleware},
+	app := application.New(application.Options{Name: "UniClipboard Go GUI", Services: services, Mac: application.MacOptions{ActivationPolicy: activationPolicy()}, Assets: application.AssetOptions{Handler: application.BundledAssetFileServer(content), Middleware: host.fileMiddleware},
 		ShouldQuit: func() bool { host.quitting.Store(true); return true },
 		OnShutdown: host.shutdown})
 	host.app = app
-	host.openMainWindow()
+	startup, _ := host.loadStartupSettings()
+	// A Silent or Lightweight launch does not build the window at boot (and so never pays the WebView
+	// cost); it is created the first time something asks to show it.
+	if !startup.hidden() || forceMainWindow() {
+		host.openMainWindow()
+	}
 	host.initQuickPanel()
 	go host.reconcileAutoStart()
 	host.initTray()
 	host.watchNotificationClicks()
+	// The launch sequence waits for the event loop: it may show windows, notify, or quit the app.
+	app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
+		if startup.silent() {
+			// Silent mode leaves no window to see, so tell the user the app is running.
+			if err := host.notify("silent-start", "UniClipboard", backgroundNotice); err != nil {
+				log.Printf("failed to show the silent-start notification: %v", err)
+			}
+		}
+		go host.coldLaunch(startup, spawnedDaemon)
+	})
 	schedulerCtx, stopScheduler := context.WithCancel(context.Background())
 	host.stopScheduler = stopScheduler
 	go host.runUpdateScheduler(schedulerCtx)

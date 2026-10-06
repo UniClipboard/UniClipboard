@@ -2,10 +2,11 @@
 """Quick-panel settings E2E: preferences saved through the shared frontend API change the real panel.
 
 Setup runs through the CLI so the daemon profile is complete. The in-WebView driver sets each preference
-with the same settings API the UI uses; the native test service warps the real pointer, opens the panel and
+with the same settings API the UI uses; the native test service uses an injected pointer position, opens the panel and
 checks its on-screen position against independently computed expectations (centered on the monitor, anchored
 to the cursor, flipped at the screen corner), that a disabled panel stays hidden, and that an unsupported
-modifier double-tap setting is refused. The panel area is captured while each panel is visible.
+modifier double-tap setting is refused. The panel window is captured while it is shown. Quiet mode: the pointer is injected, the panel is parked off-screen
+and its placement recorded rather than applied (see updater_dev_e2e.go).
 """
 import argparse
 import json
@@ -19,7 +20,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 from file_preview_run import PASSPHRASE, cli  # noqa: E402
-from run import ROOT, isolated_env, read_steps  # noqa: E402
+from run import ROOT, isolated_env, read_steps, screenshot  # noqa: E402
 
 STEPS = ['panel-center', 'panel-follow-near', 'panel-follow-flipped', 'panel-disabled', 'panel-reenabled',
          'double-tap-unavailable-rejected', 'double-tap-disabled-accepted']
@@ -59,10 +60,8 @@ def main():
                 seen[row['step']] = row
                 if row['step'].startswith('panel-') and row['step'] not in shot and row['step'] != 'panel-hide':
                     shot.add(row['step'])
-                    d = row['detail']
-                    if d.get('visible'):  # capture only the panel area, not the rest of the desktop
-                        region = f"{d['x'] - 8},{d['y'] - 8},{d['width'] + 16},{d['height'] + 16}"
-                        subprocess.run(['screencapture', '-x', '-R', region, str(out / f"{row['step']}.png")], timeout=20)
+                    if row['detail'].get('visible'):  # capture the panel window itself, wherever it is parked
+                        screenshot(proc.pid, out / f"{row['step']}.png", '-')
             if proc.poll() is not None:
                 seen.update({r['step']: r for r in read_steps(evidence, 0)})  # rows written just before exit
                 break

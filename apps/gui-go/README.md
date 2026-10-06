@@ -86,6 +86,27 @@ daemon 历史条目（`GET /clipboard/entries` 的 `file://` 预览）里；历�
 显示；本路由主要覆盖本机原文件与已落盘的缓存路径。双端 E2E：`apps/gui-go/e2e/file_preview_run.py --out <dir>`
 （需网络访问配对服务）。
 
+### 启动模式与 quiet E2E
+
+`startup.go` 复刻 `crates/uc-desktop/src/startup/actions.rs` 的冷启动序列：补全设备名；仅当本次启动拉起了 daemon
+（冷启动）时才做加密会话恢复与“恢复最近一条剪贴板”；复用已有 daemon（重开）时跳过两者。静默（Silent）与轻量
+（Lightweight）模式启动时不创建主窗口（隐藏的 Wails 窗口从未运行过时 `Show()` 不生效，因此主窗口改为首次需要时
+懒创建）；静默模式发送一条原生通知；轻量模式冷启动进入后台运行，轻量重开则显示窗口。
+
+E2E 默认是 quiet 模式：Accessory 激活策略、窗口停放在屏幕外、指针位置由测试注入、窗口摆放只记录不应用、不抢焦点、
+不移动真实鼠标；`UC_GUI_GO_E2E_VISIBLE=1` 恢复可见模式。quiet 模式下的截图来自窗口自身内容，不能证明视觉位置、
+真实焦点或系统快捷键；这些仍需可见模式的人工/专用主机验收。复跑：
+
+```sh
+apps/gui-go/e2e/run.sh <dir>                              # 主流程
+python3 apps/gui-go/e2e/startup_run.py --out <dir>        # 启动模式
+python3 apps/gui-go/e2e/quick_panel_settings_run.py --out <dir>
+python3 apps/gui-go/e2e/scheduler_run.py --out <dir>
+```
+
+宿主的 daemon 客户端（`packages/desktop-host-go/daemonclient`）现在缓存会话令牌至刷新时间，401 时重新交换一次。
+此前每个请求都交换令牌，会触发 daemon 对 `/auth/connect` 的每 IP 每分钟 100 次限流（429），表现为主流程间歇失败。
+
 ## 验收边界
 
 - Wails 与 runtime 同时固定为 `3.0.0-beta.28`；这是 beta 原型，不是生产迁移完成。

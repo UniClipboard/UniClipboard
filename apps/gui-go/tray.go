@@ -68,11 +68,16 @@ func (h *HostService) initTray() {
 }
 
 func (h *HostService) showMainWindow() {
-	if w, ok := h.app.Window.GetByName("main"); ok {
-		w.UnMinimise()
-		w.Show()
-		w.Focus()
+	h.mainMu.Lock()
+	defer h.mainMu.Unlock() // two callers must not both create the window
+	w, ok := h.app.Window.GetByName("main")
+	if !ok {
+		h.openMainWindow()
+		return
 	}
+	w.UnMinimise()
+	w.Show()
+	focusWindow(w)
 }
 
 func (h *HostService) showSettings() {

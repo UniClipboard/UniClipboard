@@ -5,6 +5,7 @@ package main
 import (
 	"github.com/UniClipboard/UniClipboard/apps/gui-go/internal/update"
 	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/quickpanelhelper"
+	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
 type devUpdate struct {
@@ -32,3 +33,15 @@ func openerOverride(string, bool) (bool, error) { return false, nil }
 // the system.
 func notifyOverride(string, string, string) (bool, error) { return false, nil }
 func notifyPermissionOverride() (bool, bool)              { return false, false }
+
+// forceMainWindow is always false in normal builds.
+func forceMainWindow() bool { return false }
+
+// Window seams. Normal builds place, focus and activate windows directly; the e2e build keeps them out of
+// the tester's way (see updater_dev_e2e.go).
+func quietOptions(o application.WebviewWindowOptions) application.WebviewWindowOptions { return o }
+func focusWindow(w application.Window)                                                 { w.Focus() }
+func moveWindow(w application.Window, x, y int)                                        { w.SetPosition(x, y) }
+func centerWindow(w application.Window)                                                { w.Center() }
+func activationPolicy() application.ActivationPolicy                                   { return application.ActivationPolicyRegular }
+func cursorOverride() (float64, float64, bool)                                         { return 0, 0, false }

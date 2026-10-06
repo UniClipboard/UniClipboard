@@ -8,6 +8,7 @@ import {
 // service. It is bundled only when VITE_GUI_GO_E2E=1.
 import { Call } from '@wailsio/runtime'
 import { daemonClient } from '@/api/daemon/client'
+import { updateSettings } from '@/api/daemon/settings'
 import { setQuickPanelEnabled, setQuickPanelPosition } from '@/api/tauri-command/settings'
 import { daemonWs } from '@/lib/daemon-ws'
 import { commands } from '@/lib/ipc-bindings.generated'
@@ -86,6 +87,8 @@ async function run() {
   if (phase === 'quick-panel-settings') return runQuickPanelSettingsScenario()
   if (phase === 'native-panel') return runNativePanelScenario()
   if (phase === 'file-ops') return runFileOpsScenario()
+  if (phase === 'startup-observe') return // the native observer reports; the hidden window may not run scripts
+  if (phase.startsWith('startup-set:')) return runStartupSetScenario(phase)
   if (phase === 'tray-devices') return runTrayDevicesScenario()
   if (phase.startsWith('autostart')) return runAutostartScenario(phase)
   if (phase === 'config-export') return runConfigExportScenario()
@@ -515,6 +518,28 @@ async function runTrayDevicesScenario() {
   await record('notification-bridge', granted === true && requested === 'granted')
   await control('tray-lightweight')
   await sleep(10000)
+}
+
+// Stores the launch preferences for the next launch (a full quit then stops the daemon, so the next
+// launch is a cold start).
+async function runStartupSetScenario(phase: string) {
+  await waitFor('app root content', () => document.getElementById('root')?.children.length)
+  const [, mode, restore] = phase.split(':')
+  const patch = {
+    general: {
+      startupMode: mode as 'normal' | 'silent' | 'lightweight',
+      restoreLastEntryOnStartup: restore === 'restore',
+    },
+  } as never
+  // The app initializes the daemon client while it boots; retry until it is ready.
+  let saved: { success: boolean } | undefined
+  for (let attempt = 0; attempt < 120 && !saved; attempt++) {
+    saved = await updateSettings(patch).catch(() => undefined)
+    if (!saved) await sleep(500)
+  }
+  if (!saved) throw new Error('settings could not be saved')
+  await record('startup-saved', saved.success, { mode, restore: restore === 'restore' })
+  await control('exit')
 }
 
 async function installedBundle(): Promise<boolean> {

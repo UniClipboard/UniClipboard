@@ -54,7 +54,7 @@ func monitorFor(screens []*application.Screen, x, y float64, haveCursor bool) (r
 
 // panelOrigin resolves where the panel opens. ok=false means "leave the window where it is".
 func panelOrigin(position string, screens []*application.Screen, width, height float64) (int, int, bool) {
-	cx, cy, haveCursor := cursorPosition()
+	cx, cy, haveCursor := pointerPosition()
 	monitor, ok := monitorFor(screens, cx, cy, haveCursor)
 	if !ok {
 		return 0, 0, false
@@ -64,4 +64,12 @@ func panelOrigin(position string, screens []*application.Screen, width, height f
 	}
 	x, y := centeredIn(monitor, width, height)
 	return x, y, true
+}
+
+// pointerPosition is the global pointer position; the e2e build can inject one instead of touching it.
+func pointerPosition() (float64, float64, bool) {
+	if x, y, ok := cursorOverride(); ok {
+		return x, y, true
+	}
+	return cursorPosition()
 }

@@ -55,30 +55,30 @@ func (h *HostService) openUpdater(dev bool) {
 	if w, ok := h.app.Window.GetByName(updaterWindowName); ok {
 		w.UnMinimise()
 		w.Show()
-		w.Focus()
+		focusWindow(w)
 		return
 	}
 	url := "/updater.html"
 	if dev {
 		url += "?dev=1"
 	}
-	w := h.app.Window.NewWithOptions(application.WebviewWindowOptions{
+	w := h.app.Window.NewWithOptions(quietOptions(application.WebviewWindowOptions{
 		Name: updaterWindowName, Title: "Software Update", URL: url,
 		Width: updaterWidth, Height: updaterHeight, DisableResize: true,
-	})
-	w.Center()
+	}))
+	centerWindow(w)
 }
 
 // preCreateQuickPanel builds the hidden, frameless quick panel at startup so
 // showing it later never has to create a window.
 func (h *HostService) preCreateQuickPanel() {
 	width, height := panelSize(nil, false)
-	w := h.app.Window.NewWithOptions(application.WebviewWindowOptions{
+	w := h.app.Window.NewWithOptions(quietOptions(application.WebviewWindowOptions{
 		Name: quickPanelWindowName, Title: "Quick Panel", URL: "/quick-panel.html",
 		Width: width, Height: height, Hidden: true, Frameless: true, DisableResize: true, AlwaysOnTop: true,
 		BackgroundType: application.BackgroundTypeTransparent,
 		Mac:            application.MacWindow{DisableShadow: true},
-	})
+	}))
 	w.RegisterHook(events.Common.WindowClosing, func(e *application.WindowEvent) {
 		if h.quitting.Load() {
 			return
@@ -109,9 +109,9 @@ func (h *HostService) showQuickPanel() {
 	width, height := panelSize(nil, false)
 	w.SetSize(width, height)
 	if x, y, ok := panelOrigin(prefs.Position, h.app.Screen.GetAll(), float64(width), float64(height)); ok {
-		w.SetPosition(x, y)
+		moveWindow(w, x, y)
 	} else {
-		w.Center()
+		centerWindow(w)
 	}
 	h.panel.lastShown.Store(time.Now().UnixNano())
 	h.emit(quickPanelPrepareShow, nil)
@@ -134,10 +134,7 @@ func init() {
 			return nil, nil
 		},
 		"show_content_unlock": func(_ context.Context, h *HostService, _ commandArgs) (any, error) {
-			if w, ok := h.app.Window.GetByName("main"); ok {
-				w.Show()
-				w.Focus()
-			}
+			h.showMainWindow()
 			return nil, nil
 		},
 		"dismiss_quick_panel": func(_ context.Context, h *HostService, _ commandArgs) (any, error) {
@@ -162,7 +159,7 @@ func init() {
 		"finalize_quick_panel_show": func(_ context.Context, h *HostService, _ commandArgs) (any, error) {
 			if w, ok := h.app.Window.GetByName(quickPanelWindowName); ok {
 				w.Show()
-				w.Focus()
+				focusWindow(w)
 			}
 			return nil, nil
 		},

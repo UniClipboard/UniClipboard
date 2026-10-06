@@ -29,8 +29,7 @@ func (s *EvidenceService) controlQuickPanel(action string) (bool, error) {
 		case "corner":
 			x, y = float64(primary.X+primary.Width-100), float64(primary.Y+primary.Height-100)
 		}
-		warpCursor(x, y)
-		time.Sleep(200 * time.Millisecond)
+		injectCursor(x, y) // quiet mode never moves the real pointer
 		return true, nil
 	case action == "wait-main-visible":
 		// The helper's show_main_window request must bring the hidden main window back.
@@ -128,9 +127,9 @@ func (s *EvidenceService) controlQuickPanel(action string) (bool, error) {
 		for deadline := time.Now().Add(4 * time.Second); time.Now().Before(deadline) && !visible; time.Sleep(100 * time.Millisecond) {
 			visible = w.IsVisible()
 		}
-		x, y := w.Position()
+		x, y := placedPosition(w)
 		width, height := w.Size()
-		cx, cy, _ := cursorPosition()
+		cx, cy, _ := pointerPosition()
 		primary := h.app.Screen.GetPrimary().Bounds
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()

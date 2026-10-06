@@ -1,11 +1,11 @@
-// Prints the CGWindowID of the largest on-screen window owned by the given PID,
+// Prints the CGWindowID of the largest window (on-screen or parked off-screen by the quiet e2e mode) owned by the given PID,
 // optionally restricted to windows whose title contains the second argument
 // ("-" selects untitled windows, such as the frameless quick panel).
 import CoreGraphics
 import Foundation
 
 guard CommandLine.arguments.count >= 2, let pid = Int32(CommandLine.arguments[1]) else { exit(2) }
-let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]] ?? []
+let list = CGWindowListCopyWindowInfo([.optionAll], kCGNullWindowID) as? [[String: Any]] ?? []
 let title = CommandLine.arguments.count > 2 ? CommandLine.arguments[2] : nil
 var best: (id: Int, area: Double)?
 for window in list where (window[kCGWindowOwnerPID as String] as? Int32) == pid {

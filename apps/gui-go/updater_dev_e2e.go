@@ -10,6 +10,7 @@ import (
 
 	"github.com/UniClipboard/UniClipboard/apps/gui-go/internal/update"
 	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/quickpanelhelper"
+	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
 type devUpdate struct {
@@ -109,4 +110,88 @@ func notifyOverride(id, title, body string) (bool, error) {
 // notifyPermissionOverride answers the permission questions as granted while the recorder is active.
 func notifyPermissionOverride() (bool, bool) {
 	return true, os.Getenv("UC_GUI_GO_E2E_NOTIFY_LOG") != ""
+}
+
+// forceMainWindow builds the main window even for a Silent or Lightweight launch, so the setup launches of
+// the startup-mode scenarios (which need a page to run their driver in) work whatever mode is stored.
+func forceMainWindow() bool {
+	return strings.HasPrefix(os.Getenv("UC_GUI_GO_E2E_PHASE"), "startup-set")
+}
+
+// Quiet mode keeps a test run off the tester's desktop: the app is an accessory (no Dock icon, no focus
+// stealing), windows are created far off-screen and never moved or focused, and the pointer is never touched
+// (the quick panel's cursor position is injected). Placement is therefore recorded rather than applied, and
+// the assertions read the recorded position. UC_GUI_GO_E2E_VISIBLE=1 turns it off for watching a run.
+func quiet() bool { return os.Getenv("UC_GUI_GO_E2E_VISIBLE") != "1" }
+
+const offscreen = -20000
+
+func quietOptions(o application.WebviewWindowOptions) application.WebviewWindowOptions {
+	if quiet() {
+		o.InitialPosition, o.X, o.Y = application.WindowXY, offscreen, offscreen
+	}
+	return o
+}
+
+func focusWindow(w application.Window) {
+	if !quiet() {
+		w.Focus()
+	}
+}
+
+var (
+	placedMu sync.Mutex
+	placed   = map[string][2]int{}
+)
+
+// moveWindow places a window, or in quiet mode only records where it would have gone.
+func moveWindow(w application.Window, x, y int) {
+	if !quiet() {
+		w.SetPosition(x, y)
+		return
+	}
+	placedMu.Lock()
+	placed[w.Name()] = [2]int{x, y}
+	placedMu.Unlock()
+}
+
+func centerWindow(w application.Window) {
+	if !quiet() {
+		w.Center()
+	}
+}
+
+// placedPosition is where the window is (or, in quiet mode, would be) on screen.
+func placedPosition(w application.Window) (int, int) {
+	placedMu.Lock()
+	defer placedMu.Unlock()
+	if p, ok := placed[w.Name()]; ok && quiet() {
+		return p[0], p[1]
+	}
+	return w.Position()
+}
+
+func activationPolicy() application.ActivationPolicy {
+	if quiet() {
+		return application.ActivationPolicyAccessory
+	}
+	return application.ActivationPolicyRegular
+}
+
+var (
+	cursorMu       sync.Mutex
+	injectedCursor [2]float64
+	cursorInjected bool
+)
+
+func injectCursor(x, y float64) {
+	cursorMu.Lock()
+	injectedCursor, cursorInjected = [2]float64{x, y}, true
+	cursorMu.Unlock()
+}
+
+func cursorOverride() (float64, float64, bool) {
+	cursorMu.Lock()
+	defer cursorMu.Unlock()
+	return injectedCursor[0], injectedCursor[1], cursorInjected && quiet()
 }

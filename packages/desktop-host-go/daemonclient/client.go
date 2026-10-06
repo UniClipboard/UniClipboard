@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/daemonproc"
@@ -33,6 +34,10 @@ type Client struct {
 	token   string
 	pid     uint32
 	http    *http.Client
+
+	sessionMu      sync.Mutex
+	session        string
+	sessionRefresh time.Time
 }
 
 // NewLocalHTTPClient builds an HTTP client that bypasses proxies, like
@@ -188,10 +193,35 @@ type Session struct {
 	RefreshAtSecs int64  `json:"refreshAtSecs"`
 }
 
-// SessionToken preserves the CLI session contract.
+// SessionToken returns a valid session token, exchanging a new one only when the cached token reaches
+// its refresh time. The daemon rate-limits `/auth/connect` per client IP, so a long-running host that
+// exchanged a token per request would be refused (429) under steady use.
 func (c *Client) SessionToken(ctx context.Context) (string, error) {
+	c.sessionMu.Lock()
+	defer c.sessionMu.Unlock()
+	if c.session != "" && time.Now().Before(c.sessionRefresh) {
+		return c.session, nil
+	}
 	session, err := c.ExchangeSession(ctx, clientType)
-	return session.SessionToken, err
+	if err != nil {
+		return "", err
+	}
+	refresh := session.RefreshAtSecs
+	if refresh <= 0 || (session.ExpiresInSecs > 0 && refresh > session.ExpiresInSecs) {
+		refresh = session.ExpiresInSecs / 2
+	}
+	c.session = session.SessionToken
+	c.sessionRefresh = time.Now().Add(time.Duration(refresh) * time.Second)
+	return c.session, nil
+}
+
+// dropSession forgets a token the daemon rejected, so the next request exchanges a fresh one.
+func (c *Client) dropSession(rejected string) {
+	c.sessionMu.Lock()
+	defer c.sessionMu.Unlock()
+	if c.session == rejected {
+		c.session = ""
+	}
 }
 
 // ExchangeSession keeps the local bearer secret in the native host.
@@ -243,6 +273,15 @@ type Request struct {
 // Send performs an authorized request and returns the successful response.
 // The caller closes the body.
 func (c *Client) Send(ctx context.Context, r Request) (*http.Response, error) {
+	resp, err := c.send(ctx, r)
+	if re, ok := AsRequestError(err); ok && re.Kind == ErrStatus && re.Status == http.StatusUnauthorized && r.Body == nil {
+		// The cached session may have been revoked (daemon restart); retry once with a fresh one.
+		return c.send(ctx, r)
+	}
+	return resp, err
+}
+
+func (c *Client) send(ctx context.Context, r Request) (*http.Response, error) {
 	token, err := c.SessionToken(ctx)
 	if err != nil {
 		return nil, &RequestError{Kind: ErrAuth, Path: r.Path, Err: err}
@@ -285,6 +324,9 @@ func (c *Client) Send(ctx context.Context, r Request) (*http.Response, error) {
 			text = "<failed to read body>"
 		}
 		code, message := parseErrorBody(text)
+		if resp.StatusCode == http.StatusUnauthorized {
+			c.dropSession(token)
+		}
 		return nil, &RequestError{Kind: ErrStatus, Path: r.Path, Status: resp.StatusCode, Code: code, Message: message}
 	}
 	return resp, nil

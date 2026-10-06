@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"github.com/UniClipboard/UniClipboard/apps/gui-go/internal/update"
 	"os"
+	"strconv"
 	"sync"
 	"time"
 
@@ -169,6 +170,26 @@ func e2eServices(h *HostService) []application.Service {
 
 // Phase tells the in-WebView driver which scenario this launch runs.
 func (s *EvidenceService) Phase() string { return os.Getenv("UC_GUI_GO_E2E_PHASE") }
+
+// ServiceStartup lets a launch report its own state without any WebView driver: with
+// UC_GUI_GO_E2E_OBSERVE=<seconds> the service writes a `startup-state` step after that delay and then quits,
+// which is how the startup-mode scenarios observe a hidden window.
+func (s *EvidenceService) ServiceStartup(context.Context, application.ServiceOptions) error {
+	seconds, err := strconv.Atoi(os.Getenv("UC_GUI_GO_E2E_OBSERVE"))
+	if err != nil || seconds <= 0 {
+		return nil
+	}
+	go func() {
+		time.Sleep(time.Duration(seconds) * time.Second)
+		h := s.host
+		w, ok := h.app.Window.GetByName("main")
+		stored, _ := h.loadStartupSettings()
+		detail := map[string]any{"mainExists": ok, "mainVisible": ok && w.IsVisible(), "pid": os.Getpid(), "storedStartup": stored}
+		_ = s.write(Step{Window: "main", Step: "startup-state", OK: true, Detail: detail})
+		h.quit(os.Getenv("UC_GUI_GO_EXIT_MODE") != "full")
+	}()
+	return nil
+}
 
 // Secret hands the driver the throwaway passphrase of the e2e profile, which the orchestrator chose.
 func (s *EvidenceService) Secret() string { return os.Getenv("UC_GUI_GO_E2E_SECRET") }

@@ -1,0 +1,56 @@
+name: 'sccache Windows probe'
+on:
+  push:
+    paths:
+      - '.github/workflows/sccache-win-probe.yml'
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: windows-latest
+    environment: desktop-build-cache-reader
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.95.0
+      - uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
+        with:
+          version: v0.18.0
+      - name: configure
+        shell: bash
+        env:
+          E: ${{ secrets.BUILD_CACHE_R2_ENDPOINT }}
+          K: ${{ secrets.BUILD_CACHE_R2_ACCESS_KEY_ID }}
+          S: ${{ secrets.BUILD_CACHE_R2_SECRET_ACCESS_KEY }}
+        run: |
+          {
+            echo "RUSTC_WRAPPER=sccache"
+            echo "SCCACHE_BUCKET=uniclipboard-build-cache"
+            echo "SCCACHE_ENDPOINT=$E"
+            echo "SCCACHE_REGION=auto"
+            echo "SCCACHE_S3_KEY_PREFIX=desktop/sccache/v1/probe"
+            echo "AWS_ACCESS_KEY_ID=$K"
+            echo "AWS_SECRET_ACCESS_KEY=$S"
+            echo "SCCACHE_ERROR_LOG=$RUNNER_TEMP/sccache-err.log"
+            echo "SCCACHE_LOG=info"
+          } >> "$GITHUB_ENV"
+      - name: probe
+        shell: bash
+        run: |
+          set -x
+          which cargo sccache || true
+          mkdir -p "$RUNNER_TEMP/p/src" && cd "$RUNNER_TEMP/p"
+          printf '[package]\nname="p"\nversion="0.1.0"\nedition="2021"\n' > Cargo.toml
+          echo 'fn main(){}' > src/main.rs
+          echo "--- direct cargo from bash"
+          cargo build --release
+          sccache --show-stats | head -4
+          rm -rf target
+          echo "--- cargo via node execFileSync"
+          node -e "require('child_process').execFileSync('cargo',['build','--release'],{stdio:'inherit'})"
+          sccache --show-stats | head -4
+          echo "--- node resolves cargo to:"
+          node -e "const c=require('child_process');console.log(c.execFileSync('where',['cargo'],{encoding:'utf8'}));console.log(process.env.RUSTC_WRAPPER, process.env.PATH.split(';').filter(p=>/sccache|cargo/i.test(p)))"
+          echo "--- error log"
+          cat "$RUNNER_TEMP/sccache-err.log" 2>/dev/null | tail -20 || true

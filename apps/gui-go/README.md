@@ -509,14 +509,14 @@ python3 -I apps/gui-go/e2e/update_manifest_run.py --generator <dir>/baseline.js 
 
 第一次启动失败于 `libharfbuzz.so.0: cannot open shared object file`（`probe1`，保留）。没有凭「AppDir 里缺了」就往测试宿主里装库：先用包内全部 ELF 的 `NEEDED` 减去 AppDir 已有的库，得到 23 个宿主提供的 soname（`probe2/host-provided-sonames.txt`），再逐个核对是否是固定版 linuxdeploy 排除列表中的精确一行（`probe3/exclude-check-exact.txt`，23/23 是）：libharfbuzz、libfreetype、libfontconfig、libfribidi、libexpat、libstdc++、libgcc_s、libgmp、libgpg-error、libcom_err、libz、libxcb、libX11、libX11-xcb、libdrm、libgbm、libEGL、libGL、libwayland-client 与 libc 家族。`libharfbuzz` 在 Ubuntu 上依赖 `libglib2.0-0`，所以干净宿主有宿主 GLib，验收口径是「没有 GTK/WebKitGTK/libsoup/cairo/pango」，不是「没有 GLib」；包内 GLib/GIO 由 `/proc/<pid>/maps` 证明实际被映射。
 
-**`libGLESv2.so.2` 不是排除列表中的行**（`probe3/exclude-check-gles.txt`：同族的 libEGL/libGL/libGLX/libGLdispatch/libOpenGL 在列表里，libGLESv2 不在），它被 WebKit 用 `dlopen` 加载，所以 linuxdeploy 的 `NEEDED` 扫描看不到它；缺失时 `webkit_web_view_new` 以 `Couldn't open libGLESv2.so.2` 后 `SIGABRT`（`probe9`，保留）。它属于同一个 libglvnd 家族，包内自带副本会遮蔽宿主的 libglvnd（策略文档的同类风险），所以归为宿主前置条件（运行镜像装 `libgles2`）。**未做**：打包检查的 `HOST_ONLY_LIBS` 目前不含 `libGLESv2`（固定版排除列表的缺口）；dlopen 的库不会被 linuxdeploy 带进包，所以现状下它不会被打进去，但没有断言保证这一点；是否向 linuxdeploy 上游报告也未做，留作后续。
+**`libGLESv2.so.2` 不是排除列表中的行**（`probe3/exclude-check-gles.txt`：同族的 libEGL/libGL/libGLX/libGLdispatch/libOpenGL 在列表里，libGLESv2 不在），它被 WebKit 用 `dlopen` 加载，所以 linuxdeploy 的 `NEEDED` 扫描看不到它；缺失时 `webkit_web_view_new` 以 `Couldn't open libGLESv2.so.2` 后 `SIGABRT`（`probe9`，保留）。它属于同一个 libglvnd 家族，包内自带副本会遮蔽宿主的 libglvnd（策略文档的同类风险），所以归为宿主前置条件（运行镜像装 `libgles2`）。**这是未覆盖的运行时依赖审计项**：dlopen 的依赖没有被系统枚举过，只是被一次失败发现；所有绿灯只代表这个 Ubuntu 24.04 干净容器，**不能推广为任意 Linux 发行版可运行**。**未做**：打包检查的 `HOST_ONLY_LIBS` 目前不含 `libGLESv2`（固定版排除列表的缺口）；dlopen 的库不会被 linuxdeploy 带进包，所以现状下它不会被打进去，但没有断言保证这一点；是否向 linuxdeploy 上游报告也未做，留作后续。
 
 ### 失败、诊断与修复（保留的原始失败）
 
 | 现象 | 诊断 | 结论 |
 | --- | --- | --- |
 | `pk1-failed-gio-inspection`：AppDir 检查 `no bundled GIO module directory` | 插件不部署 GIO 模块 | 打包缺陷，已修（空模块目录 + `GIO_MODULE_DIR`） |
-| `probe5/6`：UC_PORTABLE 或无 Secret Service 时 daemon 不启动 | portable 的数据根在 AppImage 的只读挂载内；非 portable 时 daemon 日志 `Linux desktop → system keyring → org.freedesktop.secrets 不存在 → engine startup failed 1101` | 测试宿主缺 Secret Service，不是 AppImage 加载失败；AppImage 的 portable 模式本身无意义，验收用非 portable 数据根 |
+| `probe5/6`：UC_PORTABLE 或无 Secret Service 时 daemon 不启动 | portable 的数据根按可执行文件旁解析，在 AppImage 里落在只读挂载内；非 portable 时 daemon 日志 `Linux desktop → system keyring → org.freedesktop.secrets 不存在 → engine startup failed 1101` | 测试宿主缺 Secret Service，不是 AppImage 加载失败；AppImage 内的 portable 模式 **未解决**（数据根在只读挂载内，**不是取消 portable 要求的依据**，路径解析与可写目录方案是待实现验收的后续项）；本片验收用非 portable 数据根 |
 | `probe9`：`libGLESv2.so.2` | 见上 | 宿主前置条件 |
 | `iter2/run1`：daemon 字节不等于构建 SHA；GUI 退出后 `daemonAlive` | linuxdeploy 加 RUNPATH（改写）；daemon 是 PID 1 未回收的僵尸（`/proc/<pid>/stat` 状态 Z） | 前者保留原件并记录哈希链；后者 `docker run --init` + 以 `/proc` 状态与 `/health` 判断，不再用 `kill 0` |
 | `iter2/run1`：可信更新在 `update-download-verified` 之前 `GUI exited (0)` | 更新窗口已显示「已下载」，点击安装后旧进程交棒重启并退出 | 驱动假设错误；改为等待 `update-relaunched` 且允许旧进程退出，真实证明由文件 SHA、新挂载中的 marker、旧 daemon 退出、数据保留承担 |
@@ -551,7 +551,8 @@ python3 -I apps/gui-go/e2e/update_manifest_run.py --generator <dir>/baseline.js 
 - **release 构建的 UI**：只有冒烟，没有 release 标签包的前端握手（E2E 用 `release+e2e` 标签的同一条打包管线）。
 - **TLS/HTTPS WebView**：包内没有 `glib-networking`，未验证 WebView 访问 HTTPS。
 - **Secret Service**：测试用的 gnome-keyring 在独立容器，是 unlocked 的一次性钥匙环；真实桌面钥匙环的提示/锁定行为未验证。产品观察：Secret Service 无法给出提示时，daemon 的 `/encryption/state` 无限期挂起（Engine 行为，未改）。
-- **`libGLESv2`**：固定版排除列表的缺口，见上。
+- **`libGLESv2` 与 dlopen 依赖审计**：固定版排除列表的缺口，见上；绿灯不推广到其他发行版。
+- **AppImage portable 模式**：未实现、未验收（数据根落在只读挂载）；非 portable 已验证，portable 的路径解析与可写目录方案仍是后续切片。
 
 ### 17c4 Wails 优先审计（固定版 `v3.0.0-beta.28`）
 

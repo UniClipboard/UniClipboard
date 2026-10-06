@@ -292,6 +292,23 @@ def main():
                         out_rows.append(dict(e, role='client' if w == pw else 'frame', panel=pw))
         return panels, parents, out_rows
 
+    def wm_resize_attempts(g, tag, tgt=None):
+        """Negative control: the window manager is asked (EWMH _NET_MOVERESIZE_WINDOW via wmctrl, and a client XResizeWindow via
+        xdotool) to resize the panel; a fixed-size panel must keep its size. With tgt (an ordinary resizable window) the same
+        requests must change the size: that proves the requests work on this WM and the check can fail."""
+        win = tgt or panel_now(g)
+        before = (win['w'], win['h'])
+        wid = win['id']
+        x(display, 'wmctrl', '-i', '-r', wid, '-e', f"0,-1,-1,{before[0] + 120},{before[1] + 90}")
+        time.sleep(0.6)
+        after_wm = next(((r['w'], r['h']) for r in wm_rows(display) if r['id'] == wid), None)
+        x(display, 'xdotool', 'windowsize', str(int(wid, 16)), str(before[0] - 100), str(before[1] - 80))
+        time.sleep(0.6)
+        after_x = next(((r['w'], r['h']) for r in wm_rows(display) if r['id'] == wid), None)
+        res = {'before': before, 'after_wm_request': after_wm, 'after_xresize': after_x}
+        facts.setdefault('resize_attempts', {})[tag] = res
+        return before, after_wm, after_x
+
     def window_name(wid):
         return trace.names.get(wid)
 
@@ -325,6 +342,9 @@ def main():
         t_id = int(t_row['id'], 16) if t_row else None
         check('target app: managed by Openbox and active (the previous focus owner)', t_row and active_window(display) == t_id, {'row': t_row, 'active': active_window(display)})
 
+        before, a_wm, a_x = wm_resize_attempts(gui, 'positive-control-target', tgt=t_row)
+        check('positive control: the same WM resize requests DO change an ordinary resizable window (the negative control can fail)',
+              a_wm != before or a_x != before, facts['resize_attempts']['positive-control-target'])
         # first show at scale 1.0
         p, geo = show(gui, 'l1-show1')
         sn = snap('l1-show1', gui.proc.pid)
@@ -338,6 +358,8 @@ def main():
         st = gui.state('l1-visible')
         check('L1 show: the host and the X server agree the panel is visible', st['panelVisible'] and p is not None, st)
 
+        before, a_wm, a_x = wm_resize_attempts(gui, 'panel-1.0')
+        check('FIXED SIZE: WM and client resize requests do not change the panel (800x560 stays)', a_wm == before and a_x == before, facts['resize_attempts']['panel-1.0'])
         # Escape typed with the real key reaches the page in the panel (real keyboard focus) and dismisses it
         t_esc = time.monotonic()
         facts['L1_before_escape'] = {'focus': x(display, 'xdotool', 'getwindowfocus').strip(), 'active': active_window(display), 'page': page_state(gui, 'before-escape')}
@@ -437,6 +459,8 @@ def main():
             scale = new
         check('L2 lower bound reached: 0.8', scale == 0.8)
         scale_step(gui, 'ctrl+minus', 'l2-clamp', 0.8, 'L2 clamp (press beyond 0.8 keeps 0.8)')
+        before, a_wm, a_x = wm_resize_attempts(gui, 'panel-0.8')
+        check('FIXED SIZE at 0.8: WM and client resize requests do not change the panel (640x448 stays)', a_wm == before and a_x == before and before == sized(0.8), facts['resize_attempts']['panel-0.8'])
         hide(gui, 'l2-hide')
         p, geo = show(gui, 'l2-reshow')
         check(f'L2 scale 0.8: re-show maps {sized(0.8)}', geo and (geo[2], geo[3]) == sized(0.8), geo)
@@ -453,6 +477,8 @@ def main():
             scale = new
         check('L3 upper bound reached: 1.5', scale == 1.5)
         scale_step(gui, 'ctrl+equal', 'l3-clamp', 1.5, 'L3 clamp (press beyond 1.5 keeps 1.5)')
+        before, a_wm, a_x = wm_resize_attempts(gui, 'panel-1.5')
+        check('FIXED SIZE at 1.5: WM and client resize requests do not change the panel (1200x840 stays)', a_wm == before and a_x == before and before == sized(1.5), facts['resize_attempts']['panel-1.5'])
         hide(gui, 'l3-hide')
         p, geo = show(gui, 'l3-reshow')
         check(f'L3 scale 1.5: re-show maps {sized(1.5)}', geo and (geo[2], geo[3]) == sized(1.5), geo)

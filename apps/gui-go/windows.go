@@ -49,6 +49,14 @@ func clampUIScale(scale *float64) float64 {
 	return math.Min(math.Max(*scale, minUIScale), maxUIScale)
 }
 
+// windowScaleOrOne is the Linux window scale as Tauri receives it: absent or not finite means 1.
+func windowScaleOrOne(scale *float64) float64 {
+	if scale == nil || math.IsNaN(*scale) || math.IsInf(*scale, 0) {
+		return 1
+	}
+	return *scale
+}
+
 func panelSize(scale *float64, previewExpanded bool) (int, int) {
 	s := clampUIScale(scale)
 	width := panelBaseWidth * s
@@ -87,6 +95,7 @@ func (h *HostService) preCreateQuickPanel() {
 		BackgroundType: application.BackgroundTypeTransparent,
 		Mac:            application.MacWindow{DisableShadow: true},
 	}))
+	attachLayerPanel(w) // Wayland Layer Shell: must happen while the hidden window is still unrealized
 	w.RegisterHook(events.Common.WindowClosing, func(e *application.WindowEvent) {
 		if h.quitting.Load() {
 			return
@@ -119,12 +128,14 @@ func (h *HostService) showQuickPanel() {
 	if err == nil && !prefs.Enabled {
 		return // the user turned the quick panel off
 	}
-	width, height := panelSize(nil, false)
-	w.SetSize(width, height)
-	if x, y, ok := panelOrigin(prefs.Position, h.app.Screen.GetAll(), float64(width), float64(height)); ok {
-		moveWindow(w, x, y)
-	} else {
-		centerWindow(w)
+	if !layerPrepareShow(w, prefs.Position, 1) {
+		width, height := panelSize(nil, false)
+		w.SetSize(width, height)
+		if x, y, ok := panelOrigin(prefs.Position, h.app.Screen.GetAll(), float64(width), float64(height)); ok {
+			moveWindow(w, x, y)
+		} else {
+			centerWindow(w)
+		}
 	}
 	if previousAppInputSupported {
 		// Before the panel takes the focus: what is foreground now is where the paste must go.
@@ -215,20 +226,31 @@ func init() {
 		"set_quick_panel_layout": func(_ context.Context, h *HostService, args commandArgs) (any, error) {
 			var scale *float64
 			var expanded bool
+			var windowScale *float64
 			if err := args.decode("scale", &scale); err != nil {
 				return nil, err
 			}
 			if err := args.decode("previewExpanded", &expanded); err != nil {
 				return nil, err
 			}
+			if _, present := args["windowScale"]; present {
+				if err := args.decode("windowScale", &windowScale); err != nil {
+					return nil, err
+				}
+			}
 			if w, ok := h.app.Window.GetByName(quickPanelWindowName); ok {
-				width, height := panelSize(scale, expanded)
-				w.SetSize(width, height)
+				if !layerSetLayout(w, windowScaleOrOne(windowScale)) {
+					width, height := panelSize(scale, expanded)
+					w.SetSize(width, height)
+				}
 			}
 			return nil, nil
 		},
 		"finalize_quick_panel_show": func(_ context.Context, h *HostService, _ commandArgs) (any, error) {
 			if w, ok := h.app.Window.GetByName(quickPanelWindowName); ok {
+				if layerShow(w) {
+					return nil, nil // the exclusive keyboard mode already gives it the focus
+				}
 				w.Show()
 				panelFocus(w)
 			}

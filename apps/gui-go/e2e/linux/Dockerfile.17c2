@@ -1,0 +1,6 @@
+# Layer on top of the 17c image (kept as is): a headless wlroots compositor for the Layer Shell checks.
+# sway 1.9 runs with the headless backend (WLR_BACKENDS=headless, pixman renderer) and implements zwlr_layer_shell_v1.
+FROM uc-gui-go-linux-build:17c
+COPY apt_install.sh verify_image_17c2.sh /usr/local/bin/
+RUN sh /usr/local/bin/apt_install.sh sway libgtk-layer-shell0 grim wtype wayland-utils libgl1-mesa-dri libegl1 imagemagick python3-gi gir1.2-gtk-3.0
+RUN sh /usr/local/bin/verify_image_17c2.sh

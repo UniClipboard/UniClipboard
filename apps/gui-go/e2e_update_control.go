@@ -27,6 +27,8 @@ import (
 //	close-updater       close the updater window the scheduler opened (its page makes a check of its own)
 //	invoke <label> <command> [<json>]  a host command through Invoke, the path the WebView takes
 //	shortcut-press <label> single|leader <a> <b>|second <b>  injected presses (no keyboard event)
+//	panel-js <label> <js>   run a script in the quick panel page
+//	layer-state <label>     the Layer Shell panel's state as GTK/libgtk-layer-shell report it, and the last placement (Linux)
 //	shortcut-state <label>  the registered global shortcuts next to the stored setting and the panel state
 //	modifier-script <label> <ms:sel:other ...>  drive the scripted keyboard of the modifier double-tap monitor
 //	modifier-state <label>  the monitor's selected modifier, trigger count and panel state
@@ -107,6 +109,20 @@ func (s *EvidenceService) runControlCommand(line string) {
 			detail["helperRunning"] = h.helper.Running()
 		}
 		_ = s.write(Step{Window: "app", Step: "control-state", OK: true, Detail: detail})
+	case "layer-state":
+		_ = s.write(Step{Window: quickPanelWindowName, Step: "layer-state-" + arg, OK: true, Detail: layerStateDetail(h)})
+	case "panel-js":
+		// panel-js <label> <javascript>: run a script in the quick panel page (the e2e driver uses it to install key/focus
+		// listeners that report to its own loopback listener, to see which layer a key stops at)
+		label, script, _ := strings.Cut(arg, " ")
+		w, ok := h.app.Window.GetByName(quickPanelWindowName)
+		if ok {
+			w.ExecJS(script)
+		}
+		_ = s.write(Step{Window: quickPanelWindowName, Step: "panel-js-" + label, OK: ok})
+	case "layer-negative":
+		refused, detail := layerNegativeProbe(h)
+		_ = s.write(Step{Window: "main", Step: "layer-negative-" + arg, OK: refused, Detail: detail})
 	case "restart":
 		// The tray's Restart: replace the daemon, then start a new GUI process and exit this one.
 		_ = s.write(Step{Window: "app", Step: "control-restart", OK: true, Detail: map[string]any{"pid": os.Getpid()}})

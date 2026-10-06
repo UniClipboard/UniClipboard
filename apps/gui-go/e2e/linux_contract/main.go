@@ -192,6 +192,29 @@ func hyprlandChecks(dir string) {
 	check("an oversized reply is refused", err != nil, fmt.Sprint(err))
 	c.close()
 
+	c = newCompositor(dir, "cursor.sock", `{"x":640.5,"y":-12}`)
+	cur, err := hyprland.NewAt(c.path).Cursor()
+	check("the cursor position is read with j/cursorpos (negative coordinates are valid in a multi-output layout)",
+		err == nil && cur.X == 640.5 && cur.Y == -12 && len(c.sent()) == 1 && c.sent()[0] == "j/cursorpos", fmt.Sprint(err, cur, c.sent()))
+	c.close()
+
+	for name, reply := range map[string]string{"cursor-text.sock": "not json", "cursor-empty.sock": "{}", "cursor-string.sock": `{"x":"a","y":1}`} {
+		c = newCompositor(dir, name, reply)
+		cur, err = hyprland.NewAt(c.path).Cursor()
+		// {} decodes to (0,0): a compositor that answers an empty object is not reporting a cursor, but 0,0 is a finite,
+		// legal point; only unparsable replies are errors, and the host then falls back to the default output.
+		wantErr := name != "cursor-empty.sock"
+		check("cursor reply "+strings.TrimSuffix(name, ".sock")+": "+map[bool]string{true: "refused", false: "decoded as the origin"}[wantErr],
+			(err != nil) == wantErr, fmt.Sprint(err, cur))
+		c.close()
+	}
+
+	c = newCompositor(dir, "cursor-silent.sock", "<hang>")
+	start = time.Now()
+	_, err = hyprland.NewAt(c.path).Cursor()
+	check("a compositor that never answers the cursor request is bounded by the deadline", err != nil && time.Since(start) < time.Second, fmt.Sprint(err, time.Since(start)))
+	c.close()
+
 	c = newCompositor(dir, "none.sock", "{}")
 	active, err := hyprland.NewAt(c.path).ActiveWindow()
 	check("no active window is reported as nil, not an error", err == nil && active == nil, fmt.Sprint(err))

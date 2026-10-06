@@ -101,13 +101,13 @@ def build_deb(stage, out, version, arch, name):
     shutil.copytree(stage, d, symlinks=True)
     size_kib = sum(f.stat().st_size for f in d.rglob('*') if f.is_file()) // 1024
     (d / 'DEBIAN').mkdir()
-    # Only GTK3/WebKitGTK/X11. The Tauri deb also needs libayatana-appindicator3 and libgtk-layer-shell0: Wails' tray is
-    # StatusNotifierItem over D-Bus, and the Layer Shell panel (L5) is not implemented yet, so its dependency is
-    # decided together with that work.
+    # GTK3/WebKitGTK/X11 plus libgtk-layer-shell0, as the Tauri deb declares it (the Layer Shell panel loads it with dlopen
+    # and falls back to the ordinary window when it is absent, but the package still pulls it in for the Wayland panel).
+    # The Tauri deb's libayatana-appindicator3 is not needed: Wails' tray is StatusNotifierItem over D-Bus.
     (d / 'DEBIAN/control').write_text(
         f'Package: uniclipboard\nVersion: {version}\nArchitecture: {ARCH[arch][0]}\nSection: utils\nPriority: optional\n'
         f'Installed-Size: {size_kib}\nMaintainer: UniClipboard <support@uniclipboard.app>\n'
-        'Depends: libgtk-3-0, libwebkit2gtk-4.1-0, libx11-6\n'
+        'Depends: libgtk-3-0, libwebkit2gtk-4.1-0, libx11-6, libgtk-layer-shell0\n'
         'Description: Encrypted peer-to-peer clipboard sync between your devices\n')
     deb = out / name
     run(['dpkg-deb', '--root-owner-group', '--build', str(d), str(deb)])
@@ -122,7 +122,7 @@ def build_rpm(stage, out, version, arch, name):
     spec = top / 'SPECS/uniclipboard.spec'
     spec.write_text(
         'Name: uniclipboard\nVersion: %s\nRelease: 1\nSummary: Encrypted peer-to-peer clipboard sync between your devices\n'
-        'License: Proprietary\nRequires: gtk3, webkit2gtk4.1\nAutoReqProv: no\n\n%%description\n'
+        'License: Proprietary\nRequires: gtk3, webkit2gtk4.1, gtk-layer-shell\nAutoReqProv: no\n\n%%description\n'
         'Encrypted peer-to-peer clipboard sync between your devices.\n\n%%install\ncp -a %s/. %%{buildroot}/\n\n%%files\n%s\n'
         % (version, stage, '\n'.join(files)))
     run(['rpmbuild', '-bb', '--define', f'_topdir {top}', '--define', f'_rpmfilename {name}', '--target', ARCH[arch][1] + '-linux', str(spec)])

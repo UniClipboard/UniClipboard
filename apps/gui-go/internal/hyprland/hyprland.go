@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net"
 	"os"
 	"path/filepath"
@@ -70,6 +71,28 @@ func (c *Client) request(command string) (string, error) {
 		return "", errors.New("Hyprland IPC response exceeded the limit")
 	}
 	return string(response), nil
+}
+
+// Cursor is the global pointer position in the compositor's logical layout coordinates.
+type Cursor struct {
+	X float64 `json:"x"`
+	Y float64 `json:"y"`
+}
+
+// Cursor reads the pointer position (`j/cursorpos`); a non-finite coordinate is rejected.
+func (c *Client) Cursor() (Cursor, error) {
+	response, err := c.request("j/cursorpos")
+	if err != nil {
+		return Cursor{}, err
+	}
+	var cursor Cursor
+	if err := json.Unmarshal([]byte(response), &cursor); err != nil {
+		return Cursor{}, errors.New("invalid Hyprland cursor response")
+	}
+	if math.IsNaN(cursor.X) || math.IsInf(cursor.X, 0) || math.IsNaN(cursor.Y) || math.IsInf(cursor.Y, 0) {
+		return Cursor{}, errors.New("invalid Hyprland cursor coordinates")
+	}
+	return cursor, nil
 }
 
 // ActiveWindow is the focused window, or nil when no window has the focus.

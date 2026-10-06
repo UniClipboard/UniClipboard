@@ -350,7 +350,7 @@ apps/gui-go/e2e/linux/run.sh package <dir>  # 容器内：生产前端包 + pack
 | # | 失败方式 | 后果 | 检查（E2E，真实合成器） |
 | --- | --- | --- | --- |
 | F1 | 在窗口已 realize 之后才初始化 Layer Shell，或把已实现的普通 xdg-toplevel 当作 layer surface | 库只会报警告，窗口仍是普通 toplevel，看起来“能显示”却没有 overlay/独占键盘 | `Attach` 之后读 `gtk_layer_is_layer_window`，**且** 在合成器侧确认该表面的协议角色是 layer surface（`sway -d` 日志的 layer surface 创建记录，namespace 与 layer 值匹配）；负例：对已 realize 的窗口调用必须被拒绝并返回错误，不假装成功 |
-| F2 | `libgtk-layer-shell.so.0` 缺失、符号缺失、`is_supported` 为假（GNOME、X11） | 崩溃或面板不可用 | 容器中用 `LD_LIBRARY_PATH` 屏蔽库、以及在 Xvfb（X11）下启动：必须回退到普通窗口且既有 Xvfb 场景仍通过；GNOME 在容器里不可证，只写出“协议不存在时走此回退” |
+| F2 | `libgtk-layer-shell.so.0` 缺失、符号缺失、`is_supported` 为假（GNOME、X11） | 崩溃或面板不可用 | 缺库：用 **真正没有安装该库** 的 `uc-gui-go-linux-build:17c` 镜像（保留的 17c 层不含 `libgtk-layer-shell0`）在 sway 下启动同一 GUI，记录 `dlopen` 的实际失败消息（环境变量如 `LD_LIBRARY_PATH` 不能排除 `ld.so.cache` 与默认目录，所以不用它冒充缺库）；X11：Xvfb 场景（既有）。两者都必须回退到普通窗口，并按原契约工作。**回退只证明不支持的环境下面板仍可用，不算 L5/L6 完成**；GNOME 在容器里不可证，只写出“协议不存在时走此回退” |
 | F3 | libgtk-layer-shell 的链接顺序要求（在 libwayland-client 之后才加载） | 初始化失败或表面角色错误 | 在真实 sway 上以 `dlopen` 方式加载并读取协议角色；若失败，记录原始日志并改接入方式，不改需求 |
 | F4 | 从非 GTK 线程调用 GTK/Layer Shell | 偶发崩溃 | 所有调用经 `application.InvokeSync`；E2E 多次显示/隐藏循环后进程仍存活 |
 | F5 | 键盘独占未设置或隐藏后未释放 | 面板收不到按键，或隐藏后键盘卡死在不可见的表面 | 另开一个真实 xdg toplevel 并聚焦；显示面板后 `wtype` 的文本落到面板而非该窗口（合成器侧聚焦树）；隐藏后键盘回到该窗口 |

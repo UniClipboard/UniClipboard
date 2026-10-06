@@ -212,7 +212,7 @@ def inspect_appdir(appdir, helper_dir):
     }
 
 
-def build_appimage(stage, out, arch, name, tools, relocate=True, marker=None):
+def build_appimage(stage, out, arch, name, tools, daemon, relocate=True, marker=None):
     tools.mkdir(exist_ok=True)
     tool_url, tool_pin = APPIMAGETOOL[arch]
     appimagetool = fetch_verified(tool_url, tool_pin, tools / 'appimagetool')
@@ -250,7 +250,20 @@ def build_appimage(stage, out, arch, name, tools, relocate=True, marker=None):
     # NO_STRIP: the bundled strip cannot process the .relr.dyn sections of current distributions' GTK libraries (Wails does the same).
     run(cmd, env=dict(os.environ, DEPLOY_GTK_VERSION='3', NO_STRIP='1', ARCH=ARCH[arch][1], PATH=f'{tools}:{os.environ["PATH"]}'))
 
-    info = {'linuxdeploy': {'release': release, 'sha256': pin}, 'appimagetoolSha256': tool_pin,
+    # linuxdeploy sets an $ORIGIN rpath on every executable it is given, which changes the bytes. The daemon is given to it so that
+    # its libraries are deployed, then the original file is put back: AppRun's LD_LIBRARY_PATH covers the lookup, and the daemon
+    # in the image stays byte-identical to the one built with evidence.
+    after_linuxdeploy = sha256(appdir / 'usr/bin/uniclipd')
+    runpath_after = run(['readelf', '-d', str(appdir / 'usr/bin/uniclipd')], capture=True)
+    runpath_before = run(['readelf', '-d', str(daemon)], capture=True)
+    shutil.copy2(daemon, appdir / 'usr/bin/uniclipd')
+    (appdir / 'usr/bin/uniclipd').chmod(0o755)
+    daemon_chain = {'builtSha256': sha256(daemon), 'afterLinuxdeploySha256': after_linuxdeploy, 'finalInAppDirSha256': sha256(appdir / 'usr/bin/uniclipd'),
+                    'linuxdeployChangedBytes': after_linuxdeploy != sha256(daemon),
+                    'dynamicBefore': [l for l in runpath_before.splitlines() if 'RUNPATH' in l or 'RPATH' in l],
+                    'dynamicAfterLinuxdeploy': [l for l in runpath_after.splitlines() if 'RUNPATH' in l or 'RPATH' in l]}
+
+    info = {'linuxdeploy': {'release': release, 'sha256': pin}, 'daemonRestoredAfterLinuxdeploy': True, 'daemonHashChain': daemon_chain, 'appimagetoolSha256': tool_pin,
             'gtkPlugin': {'source': str(plugin_source), 'wailsModuleDir': str(wails_dir), 'sha256': sha256(plugin)},
             'webkitHelperDirectory': str(helper_dir), 'updateMarker': bool(marker)}
     info['relocation'] = relocate_webkit(appdir, helper_dir) if relocate else 'DISABLED (negative control)'
@@ -353,7 +366,7 @@ def main():
         extra['rpmFiles'] = run(['rpm', '-qpl', str(rpm)], capture=True)
     tools = args.tools_dir.resolve() if args.tools_dir else out / 'tools'
     tools.mkdir(parents=True, exist_ok=True)
-    image, appimage = build_appimage(stage, out, args.arch, f'{prefix}{product}_{version}_{deb_name}.AppImage', tools,
+    image, appimage = build_appimage(stage, out, args.arch, f'{prefix}{product}_{version}_{deb_name}.AppImage', tools, args.daemon,
                                      relocate=not args.negative_control_no_relocation, marker=args.update_marker)
     archive = out / f'{image.name}.tar.gz'
     with tarfile.open(archive, 'w:gz') as tar:

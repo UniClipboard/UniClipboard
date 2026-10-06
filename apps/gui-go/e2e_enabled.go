@@ -3,7 +3,6 @@
 package main
 
 import (
-	"path/filepath"
 
 	"context"
 	"encoding/json"
@@ -156,10 +155,8 @@ func (s *EvidenceService) Control(action string) error {
 		return s.write(Step{Window: "update", Step: "update-verify", OK: true, Detail: detail})
 	case "update-state":
 		// Reports whether this process runs from a bundle that already carries the update marker.
-		exe, _ := os.Executable()
-		bundle, _ := update.BundleOf(exe)
-		_, markerErr := os.Stat(filepath.Join(bundle, "Contents", "Resources", "update-marker.txt"))
-		return s.write(Step{Window: "update", Step: "update-state", OK: true, Detail: map[string]any{"installed": markerErr == nil, "pid": os.Getpid(), "bundle": bundle}})
+		marker, installed := updateMarker()
+		return s.write(Step{Window: "update", Step: "update-state", OK: true, Detail: map[string]any{"installed": installed, "pid": os.Getpid(), "bundle": marker}})
 	case "scheduler-wait-updater":
 		// Nothing asked for a check: the background scheduler alone must surface the update.
 		detail := map[string]any{}
@@ -221,13 +218,8 @@ func (s *EvidenceService) Secret() string { return os.Getenv("UC_GUI_GO_E2E_SECR
 
 // Installed reports whether the running bundle carries the update marker.
 func (s *EvidenceService) Installed() bool {
-	exe, _ := os.Executable()
-	bundle, err := update.BundleOf(exe)
-	if err != nil {
-		return false
-	}
-	_, err = os.Stat(filepath.Join(bundle, "Contents", "Resources", "update-marker.txt"))
-	return err == nil
+	_, installed := updateMarker()
+	return installed
 }
 
 // waitVisible polls a window's visibility; window show/hide completes asynchronously.

@@ -1,0 +1,8 @@
+# The Secret Service of the 17c4 AppImage E2E, in its OWN container: gnome-keyring depends on GTK3/GTK4, and putting it into the runtime
+# image would void the premise that the host has no GTK (docs/architecture/gui-go-linux-appimage.md). The runtime container joins this
+# container's D-Bus session bus through a shared volume, the way a desktop session's keyring is a separate process.
+FROM ubuntu:24.04
+ENV DEBIAN_FRONTEND=noninteractive
+COPY apt_install.sh keyring_service.sh /usr/local/bin/
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN apt_install.sh dbus gnome-keyring libsecret-tools

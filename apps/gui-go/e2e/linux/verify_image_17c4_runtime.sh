@@ -10,7 +10,7 @@ done
 for tool in Xvfb xdotool xdpyinfo dbus-run-session fusermount3; do
   command -v "$tool" >/dev/null || { echo "missing executable: $tool" >&2; exit 1; }
 done
-for lib in libGL.so.1 libEGL.so.1 libX11.so.6 libwayland-client.so.0 libfuse.so.2; do
+for lib in libGL.so.1 libEGL.so.1 libGLESv2.so.2 libX11.so.6 libwayland-client.so.0 libfuse.so.2; do
   ldconfig -p | grep -q "$lib" || { echo "host driver-stack library missing: $lib" >&2; exit 1; }
 done
 echo "runtime image ok: no GTK/WebKitGTK/libsoup/cairo/pango on the host"

@@ -94,6 +94,12 @@ case "$mode" in
       uc-gui-go-linux-runtime:17c4 python3 /work/apps/gui-go/e2e/linux_appimage_run.py "${runargs[@]}" --uniclip /cache/out/uniclip > "$out/run.log" 2>&1
     code=$?
     docker logs "$keyring" > "$out/keyring-container.log" 2>&1
+    # A bus-activated (locked) keyring or a prompt request means the Secret Service did not behave like an unlocked desktop keyring:
+    # whatever the runner reported, the run is not valid evidence (see keyring_service.sh).
+    if grep -qE "SystemPrompter|couldn't create system prompt|Activating service name='org.freedesktop.secrets'" "$out/keyring-container.log"; then
+      echo "INVALID RUN: the Secret Service container asked for a prompt or re-activated the keyring (see keyring-container.log)" >&2
+      [ "$code" = 0 ] && code=3
+    fi
     docker stop "$keyring" >/dev/null; docker rm "$keyring" >/dev/null; docker volume rm "$bus" >/dev/null
     tail -n 30 "$out/run.log"; exit $code ;;
   *) echo "usage: run.sh build|xvfb|package|daemon-release|release-e2e-build|package-release|package-appimage [outdir]" >&2; exit 2 ;;

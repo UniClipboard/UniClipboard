@@ -301,7 +301,11 @@ def wait_panel_ready(launch, label, timeout=60):
 
 
 def cli(run, args, *cmd):
-    r = subprocess.run([str(args.uniclip), '--json', *cmd], env=run.env, capture_output=True, text=True, timeout=60)
+    try:
+        r = subprocess.run([str(args.uniclip), '--json', *cmd], env=run.env, capture_output=True, text=True, timeout=60)
+    except subprocess.TimeoutExpired as e:  # keep what the CLI printed: a hang is a finding, not an exception that ends the run
+        return {'rc': None, 'timeout': 60, 'stdout': (e.stdout or b'').decode(errors='replace').strip() if isinstance(e.stdout, bytes) else (e.stdout or '').strip(),
+                'stderr': (e.stderr or b'').decode(errors='replace')[-500:] if isinstance(e.stderr, bytes) else (e.stderr or '')[-500:]}
     return {'rc': r.returncode, 'stdout': r.stdout.strip(), 'stderr': r.stderr.strip()[-500:]}
 
 

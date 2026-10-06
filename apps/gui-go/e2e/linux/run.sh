@@ -18,6 +18,7 @@
 #   run.sh appimage-portable-e2e <outdir> <AppImage> <feed dir> <package-manifest.json>
 #                                (17c5, image uc-gui-go-linux-runtime:17c4 as an UNPRIVILEGED user, NO Secret Service and no session bus:
 #                                portable mode uses the file keystore) linux_appimage_portable_run.py
+#   run.sh appimage-helpers-e2e <outdir> <AppImage> <package-manifest.json>   (17c10; UC_HELPERS_IMAGE, UC_HELPERS_DESKTOP=generic|gnome)
 #   run.sh appimage-tls-e2e <outdir> <AppImage> <package-manifest.json>   (17c7; UC_TLS_E2E_ARGS=--expect-tls absent is the failing control)
 # The image is uc-gui-go-linux-build:17c (e2e/linux/Dockerfile); build artifacts live in the docker volume uc-gui-go-linux-cache.
 set -euo pipefail
@@ -133,6 +134,17 @@ case "$mode" in
       -v "$ROOT:/work:ro" -v "$out:/out" -v "$image:/in/appimage.AppImage:ro" -v "$manifest:/in/package-manifest.json:ro" \
       "${UC_TLS_IMAGE:-uc-gui-go-linux-runtime:17c7}" python3 /work/apps/gui-go/e2e/linux_appimage_tls_run.py --out /out --appimage /in/appimage.AppImage \
       --manifest /in/package-manifest.json ${UC_TLS_E2E_ARGS:-} > "$out/run.log" 2>&1
+    code=$?
+    exit "$code" ;;
+  appimage-helpers-e2e)  # 17c10: host helpers (xdg-open, gio, handler) started by the GUI under AppRun's environment. UC_HELPERS_IMAGE selects the distribution image; UC_HELPERS_DESKTOP generic|gnome
+    out="$(mkdir -p "${2:?outdir}" && cd "$2" && pwd)"
+    image="$(cd "$(dirname "${3:?AppImage}")" && pwd)/$(basename "$3")"
+    manifest="$(cd "$(dirname "${4:?package-manifest.json}")" && pwd)/$(basename "$4")"
+    set +e
+    docker run --rm --init --platform linux/arm64 --device /dev/fuse --cap-add SYS_ADMIN --cap-add SYS_PTRACE --security-opt apparmor:unconfined \
+      -v "$ROOT:/work:ro" -v "$out:/out" -v "$image:/in/appimage.AppImage:ro" -v "$manifest:/in/package-manifest.json:ro" \
+      "${UC_HELPERS_IMAGE:?UC_HELPERS_IMAGE}" python3 /work/apps/gui-go/e2e/linux_appimage_helpers_run.py --out /out --appimage /in/appimage.AppImage \
+      --manifest /in/package-manifest.json --desktop "${UC_HELPERS_DESKTOP:?UC_HELPERS_DESKTOP}" ${UC_HELPERS_E2E_ARGS:-} > "$out/run.log" 2>&1
     code=$?
     exit "$code" ;;
   appimage-content-check)  # 17c7: extract the AppImage (kept in <outdir>/squashfs-root) and run the mechanical content assertions + the static dlopen audit

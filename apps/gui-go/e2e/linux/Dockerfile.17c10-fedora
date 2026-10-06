@@ -1,0 +1,5 @@
+# 17c10 host-helper image, Fedora 44: the 17c7 Fedora runtime image plus xdg-utils (`gio` is already in glib2) and strace (observer).
+FROM uc-gui-go-linux-runtime-fedora:17c7
+RUN dnf -y --setopt=install_weak_deps=False install xdg-utils shared-mime-info strace && dnf clean all
+COPY verify_image_17c10.sh /usr/local/bin/
+RUN verify_image_17c10.sh

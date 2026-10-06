@@ -1,0 +1,6 @@
+# 17c10 host-helper image, Ubuntu 24.04: the 17c7 runtime image (NO GTK/WebKitGTK) plus the real host helpers the product starts through `xdg-open`
+# (xdg-utils; `gio` from libglib2.0-bin for the GNOME dispatch) and strace (observer: environment, exit status and library opens of the helper chain).
+FROM uc-gui-go-linux-runtime:17c7
+RUN apt_install.sh xdg-utils libglib2.0-bin shared-mime-info strace
+COPY verify_image_17c10.sh /usr/local/bin/
+RUN verify_image_17c10.sh

@@ -45,9 +45,6 @@ struct MainWindowLoadState {
     content_ready: bool,
     grace_elapsed: bool,
     destroyed: bool,
-    /// Reveal as soon as the page has loaded: `index.html` paints a static startup
-    /// screen, so showing the window early beats waiting for a slow frontend.
-    reveal_on_page_load: bool,
 }
 
 impl MainWindowLoadState {
@@ -61,7 +58,6 @@ impl MainWindowLoadState {
         self.content_ready = false;
         self.grace_elapsed = false;
         self.destroyed = false;
-        self.reveal_on_page_load = false;
         self.generation
     }
 
@@ -93,10 +89,9 @@ impl MainWindowLoadState {
     fn consume_reveal_request(&mut self) -> bool {
         if self.generation == 0
             || self.destroyed
-            || (!((self.reveal_on_page_load && self.page_loaded)
-                || (self.page_loaded
-                    && self.frontend_ready
-                    && (!self.wait_for_content || self.content_ready || self.grace_elapsed)))
+            || (!(self.page_loaded
+                && self.frontend_ready
+                && (!self.wait_for_content || self.content_ready || self.grace_elapsed))
                 && !self.reveal_timeout_elapsed)
             || !self.reveal_requested
         {
@@ -148,7 +143,6 @@ static MAIN_WINDOW_LOAD_STATE: Mutex<MainWindowLoadState> = Mutex::new(MainWindo
     content_ready: false,
     grace_elapsed: false,
     destroyed: false,
-    reveal_on_page_load: false,
 });
 static MAIN_WINDOW_CREATION_LOCK: Mutex<()> = Mutex::new(());
 
@@ -209,9 +203,6 @@ pub fn show_main_window(app: &tauri::AppHandle) {
             load_state().wait_for_content = app
                 .try_state::<uc_daemon_client::DaemonConnectionState>()
                 .is_some_and(|connection| connection.get().is_some());
-            // The startup screen is only verified for the macOS webview; other platforms
-            // still apply window-frame preferences from the frontend before first show.
-            load_state().reveal_on_page_load = cfg!(target_os = "macos");
             match create_main_window(app, generation) {
                 Ok(window) => window,
                 Err(error) => {
@@ -296,6 +287,8 @@ fn reveal_main_window(window: &tauri::WebviewWindow, generation: u64) {
             warn!(error = %error, error_kind = "main_window_reveal", "Failed to reveal main window");
         }
         sync_webview_to_window(&window);
+        activate_app_after_reveal(&window);
+        focus_webview(&window);
     }) {
         warn!(error = %error, error_kind = "main_window_reveal_dispatch", "Failed to dispatch main window reveal");
     }
@@ -314,15 +307,57 @@ fn sync_webview_to_window(window: &tauri::WebviewWindow) {
     }
 }
 
-/// Native background shown wherever the webview does not cover the window. Matches the
-/// startup screen in `index.html`; the frontend replaces it with the real theme background.
-fn paint_initial_window_background(window: &tauri::WebviewWindow) {
-    let color = match window.theme() {
-        Ok(tauri::Theme::Dark) => tauri::window::Color(24, 24, 27, 255),
-        _ => tauri::window::Color(255, 255, 255, 255),
+/// Colour behind the page until the frontend paints, matching the static startup screen in
+/// `index.html` (default theme, light or dark by system appearance).
+///
+/// It must be passed when the window is built: on macOS wry only turns off WKWebView's default
+/// white page background for a colour given at creation, and `set_background_color` after the
+/// fact does not reach the webview layer, so the hidden-then-shown window painted white.
+fn initial_background_color() -> tauri::window::Color {
+    if system_prefers_dark() {
+        tauri::window::Color(24, 24, 27, 255)
+    } else {
+        tauri::window::Color(255, 255, 255, 255)
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn system_prefers_dark() -> bool {
+    use objc2_foundation::{ns_string, NSUserDefaults};
+
+    NSUserDefaults::standardUserDefaults()
+        .stringForKey(ns_string!("AppleInterfaceStyle"))
+        .is_some_and(|style| style.to_string().eq_ignore_ascii_case("dark"))
+}
+
+#[cfg(not(target_os = "macos"))]
+fn system_prefers_dark() -> bool {
+    false
+}
+
+/// macOS: bring the app to the front once the window is shown, so a cold start from a terminal
+/// or launcher does not leave the window behind other apps.
+#[cfg(target_os = "macos")]
+fn activate_app_after_reveal(_window: &tauri::WebviewWindow) {
+    use objc2::MainThreadMarker;
+    use objc2_app_kit::NSApplication;
+
+    let Some(mtm) = MainThreadMarker::new() else {
+        return;
     };
-    if let Err(error) = window.set_background_color(Some(color)) {
-        warn!(error = %error, error_kind = "main_window_background", "Failed to set the initial window background");
+    #[allow(deprecated)]
+    NSApplication::sharedApplication(mtm).activateIgnoringOtherApps(true);
+}
+
+#[cfg(not(target_os = "macos"))]
+fn activate_app_after_reveal(_window: &tauri::WebviewWindow) {}
+
+/// `WebviewWindow::set_focus` only focuses the native window; focus the webview as well so
+/// keyboard input reaches the page as soon as the window is shown.
+fn focus_webview(window: &tauri::WebviewWindow) {
+    let webview: &tauri::Webview = window.as_ref();
+    if let Err(error) = webview.set_focus() {
+        warn!(error = %error, error_kind = "main_window_webview_focus", "Failed to focus the main webview");
     }
 }
 
@@ -388,6 +423,7 @@ fn create_main_window(
         })?;
 
     configure_main_window_config_for_platform(&mut config);
+    config.background_color = Some(initial_background_color());
 
     let window = tauri::WebviewWindowBuilder::from_config(app, &config)?
         .initialization_script(crate::window_frame_environment::initialization_script())
@@ -402,7 +438,6 @@ fn create_main_window(
         .build()?;
     crate::window_preferences::attach(&window);
     schedule_reveal_fallback(&window, generation);
-    paint_initial_window_background(&window);
     let resized_window = window.clone();
     window.on_window_event(move |event| match event {
         tauri::WindowEvent::Destroyed => load_state().mark_destroyed(generation),
@@ -638,26 +673,6 @@ mod tests {
         assert!(state.mark_frontend_ready(generation));
         assert!(!state.mark_loaded(generation));
         assert!(!state.mark_frontend_ready(generation));
-    }
-
-    #[test]
-    fn startup_screen_reveals_on_page_load_without_waiting_for_the_frontend() {
-        let mut state = MainWindowLoadState::default();
-        let generation = state.mark_created();
-        state.reveal_on_page_load = true;
-        assert!(!state.request_reveal());
-        assert!(state.mark_loaded(generation));
-        // Readiness arriving later must not trigger a second reveal.
-        assert!(!state.mark_frontend_ready(generation));
-    }
-
-    #[test]
-    fn without_a_startup_screen_the_reveal_still_waits_for_the_frontend() {
-        let mut state = MainWindowLoadState::default();
-        let generation = state.mark_created();
-        assert!(!state.request_reveal());
-        assert!(!state.mark_loaded(generation));
-        assert!(state.mark_frontend_ready(generation));
     }
 
     #[test]

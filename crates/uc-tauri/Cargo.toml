@@ -162,6 +162,7 @@ objc2-foundation = { version = "0.3", features = [
   "NSBackgroundActivityScheduler",
   "NSString",
   "NSDate",
+  "NSUserDefaults",
   "block2",
 ] }
 # block2 drives the NSBackgroundActivityScheduler completion-handler block used

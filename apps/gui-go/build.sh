@@ -29,8 +29,14 @@ BUNDLE="$ROOT/target/gui-go/$APP.app"
 mkdir -p "$BUNDLE/Contents/MacOS"
 cp "target/gui-go/$APP-binary" "$BUNDLE/Contents/MacOS/gui-go"
 cp apps/gui-go/Info.plist "$BUNDLE/Contents/Info.plist"
+# Bundle identity comes from the Tauri configuration so both shells ship as the same app.
+read -r BUNDLE_ID PRODUCT VERSION < <(python3 -c 'import json;c=json.load(open("apps/gui/src-tauri/tauri.conf.json"));print(c["identifier"],c["productName"],c["version"])')
+PLIST="$BUNDLE/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $BUNDLE_ID" -c "Set :CFBundleName $PRODUCT" "$PLIST"
+/usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string $VERSION" -c "Set :CFBundleVersion $VERSION" "$PLIST"
 if [[ "$MODE" == e2e ]]; then
-  /usr/libexec/PlistBuddy -c 'Set :CFBundleIdentifier app.uniclipboard.gui-go.poc.e2e' "$BUNDLE/Contents/Info.plist"
+  # Only the test build gets its own identity, so it can never collide with a real install.
+  /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $BUNDLE_ID.e2e" "$PLIST"
 fi
 codesign --force --deep --sign - "$BUNDLE"
 echo "Built $BUNDLE"

@@ -2,8 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
 <key>CFBundleExecutable</key><string>gui-go</string>
-<key>CFBundleIdentifier</key><string>app.uniclipboard.gui-go.poc</string>
-<key>CFBundleName</key><string>UniClipboard Go GUI</string>
+<key>CFBundleIdentifier</key><string>app.uniclipboard.desktop</string>
+<key>CFBundleName</key><string>UniClipboard</string>
 <key>CFBundleVersion</key><string>1</string>
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>NSHighResolutionCapable</key><true/>

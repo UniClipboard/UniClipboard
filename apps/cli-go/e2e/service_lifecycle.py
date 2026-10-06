@@ -12,6 +12,7 @@ from pathlib import Path
 import shutil
 import signal
 import subprocess
+import sys
 import time
 import uuid
 
@@ -174,29 +175,66 @@ def main():
         run('reject-production-worktree', ['service', 'start', '--server'], expected=1, selected_env=production)
         record('acceptance', status='passed')
     finally:
+        original_error = sys.exc_info()[0] is not None
+        cleanup_errors = []
         for child in children:
-            if child.poll() is None:
-                child.send_signal(signal.SIGTERM)
-                child.wait(timeout=80)
+            try:
+                if child.poll() is None:
+                    child.send_signal(signal.SIGTERM)
+                    try:
+                        child.wait(timeout=80)
+                    except subprocess.TimeoutExpired:
+                        child.kill()
+                        child.wait(timeout=10)
+            except Exception as error:
+                cleanup_errors.append(f'child {child.pid}: {error}')
         if service_name:
             # All native operations address only the hash of this throwaway HOME/profile.
-            run('cleanup-stop', ['service', 'stop'], expected=None)
-            run('cleanup-profile-stop', ['stop'], expected=None)
-            if os.uname().sysname == 'Darwin':
-                target = f'gui/{os.getuid()}/{service_name}'
-                subprocess.run(['/bin/launchctl', 'enable', target], capture_output=True)
-                check = subprocess.run(['/bin/launchctl', 'print', target], capture_output=True, text=True)
-                path = home / 'Library' / 'LaunchAgents' / (service_name + '.plist')
-                loaded = check.returncode == 0
-            else:
-                path = home / '.config' / 'systemd' / 'user' / (service_name + '.service')
-                loaded = False
-            path.unlink(missing_ok=True)
-            if os.uname().sysname != 'Darwin':
-                subprocess.run(['systemctl', '--user', 'daemon-reload'], env=env, capture_output=True)
+            for label, argv in [('cleanup-stop', ['service', 'stop']),
+                                ('cleanup-profile-stop', ['stop'])]:
+                try:
+                    run(label, argv, expected=None)
+                except Exception as error:
+                    cleanup_errors.append(f'{label}: {error}')
+            macos = os.uname().sysname == 'Darwin'
+            path = (home / 'Library' / 'LaunchAgents' / (service_name + '.plist') if macos
+                    else home / '.config' / 'systemd' / 'user' / (service_name + '.service'))
+            loaded = None
+            try:
+                if macos:
+                    target = f'gui/{os.getuid()}/{service_name}'
+                    subprocess.run(['/bin/launchctl', 'enable', target], capture_output=True)
+                    check = subprocess.run(['/bin/launchctl', 'print', target], capture_output=True, text=True)
+                    loaded = check.returncode == 0
+                else:
+                    check = subprocess.run(['systemctl', '--user', 'is-active', service_name + '.service'],
+                                           env=env, capture_output=True, text=True)
+                    loaded = check.returncode == 0
+                    record('cleanup-systemd-state', exit=check.returncode,
+                           stdout=check.stdout, stderr=check.stderr)
+                    if check.returncode not in (0, 3, 4):
+                        cleanup_errors.append('systemd state check failed')
+            except Exception as error:
+                cleanup_errors.append(f'native state check: {error}')
+            finally:
+                try:
+                    path.unlink(missing_ok=True)
+                    if not macos:
+                        reload = subprocess.run(['systemctl', '--user', 'daemon-reload'],
+                                                env=env, capture_output=True, text=True)
+                        if reload.returncode != 0:
+                            cleanup_errors.append(f'daemon-reload: {reload.stderr}')
+                except Exception as error:
+                    cleanup_errors.append(f'definition removal: {error}')
             record('cleanup', loaded=loaded, definition_exists=path.exists(),
-                   foreground_alive=[p.pid for p in children if p.poll() is None])
-            assert not loaded and not path.exists()
+                   foreground_alive=[p.pid for p in children if p.poll() is None], errors=cleanup_errors)
+            if loaded or path.exists() or any(p.poll() is None for p in children):
+                cleanup_errors.append('service definition or owned process remains')
+        if cleanup_errors:
+            if original_error:
+                print('Cleanup errors: ' + '; '.join(cleanup_errors), file=sys.stderr)
+            else:
+                raise RuntimeError('Cleanup errors: ' + '; '.join(cleanup_errors))
 
 
 if __name__ == '__main__':

@@ -141,7 +141,11 @@ uniclip mobile setup \
 # → 输出 baseUrl、username、password (one-time)、installUrl，
 #   以及一个多地址 QR (ASCII)，手机会逐个地址探活连通
 
-uniclip service start                                # 把 daemon 拉回来
+# macOS/Linux 用户服务
+uniclip service start
+
+# Windows：兼容的后台启动方式（不支持服务命令）
+uniclip start
 ```
 
 非交互模式下 `--label`、`--accept-network-risk` 必填；`--ip` / `--port`

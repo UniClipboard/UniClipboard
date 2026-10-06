@@ -159,7 +159,11 @@ uniclip mobile setup \
 # → prints baseUrl, username, password (one-time), installUrl, and a
 #   multi-address QR (ASCII) that the phone probes address-by-address
 
-uniclip service start                                # bring the daemon back up
+# macOS/Linux user service
+uniclip service start
+
+# Windows: compatibility background startup (service commands are unsupported)
+uniclip start
 ```
 
 For non-interactive runs, `--label` and `--accept-network-risk` are

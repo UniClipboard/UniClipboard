@@ -109,8 +109,9 @@ uniclip space join --code <code>
 uniclip member list
 ```
 
-守护进程会自动启动。可用 `uniclip space status` 查看状态，或用 `uniclip run` 前台运行，
-用 `uniclip service start` / `uniclip service stop` 显式控制用户服务。
+守护进程会自动启动，可用 `uniclip space status` 查看状态。切换到 `uniclip run` 前台运行，
+或 macOS/Linux 的 `uniclip service start` 用户服务之前，先用 `uniclip stop` 停止自动启动的
+独立守护进程。用 `uniclip service stop` 停止已由服务管理的守护进程。
 
 </Tab>
 

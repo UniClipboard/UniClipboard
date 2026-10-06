@@ -86,6 +86,9 @@ func init() {
 			return nil, nil
 		},
 		"unlock_content_from_keyring": func(ctx context.Context, h *HostService, _ commandArgs) (any, error) {
+			if keyringUnlockDenied() {
+				return false, nil // the user refused the keychain prompt: the page falls back to the passphrase form
+			}
 			var status struct {
 				Unlocked bool `json:"unlocked"`
 			}

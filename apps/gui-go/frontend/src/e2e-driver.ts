@@ -10,6 +10,7 @@ import { Call } from '@wailsio/runtime'
 import { daemonClient } from '@/api/daemon/client'
 import { updateSettings } from '@/api/daemon/settings'
 import { setQuickPanelEnabled, setQuickPanelPosition } from '@/api/tauri-command/settings'
+import i18n from '@/i18n'
 import { daemonWs } from '@/lib/daemon-ws'
 import { commands } from '@/lib/ipc-bindings.generated'
 
@@ -29,7 +30,12 @@ console.error = (...args: unknown[]) => {
 const SETUP_PASSPHRASE = 'gui-go-synthetic-passphrase'
 
 const record = (step: string, ok: boolean, detail?: unknown) =>
-  Call.ByName('main.EvidenceService.Record', { window: windowName, step, ok, detail })
+  Call.ByName('main.EvidenceService.Record', {
+    window: windowName,
+    step,
+    ok,
+    detail,
+  })
 const control = (action: string) => Call.ByName('main.EvidenceService.Control', action)
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 const $ = (selector: string) => document.querySelector<HTMLElement>(selector)
@@ -83,6 +89,15 @@ async function run() {
   const phase = (await Call.ByName('main.EvidenceService.Phase')) as string
   if (phase.startsWith('update')) return runUpdateScenario(phase)
   if (phase === 'file-preview') return runFilePreviewScenario()
+  if (phase === 'key-path-verify') {
+    await waitFor('app root content', () => document.getElementById('root')?.children.length)
+    await control('update-verify')
+    return control('exit')
+  }
+  if (phase === 'unlock-wrong') return runUnlockWrongScenario()
+  if (phase === 'unlock-restart') return runUnlockRestartScenario()
+  if (phase === 'history-live') return runHistoryLiveScenario()
+  if (phase === 'single-image-ui') return runSingleImageUiScenario()
   if (phase === 'scheduler') return runSchedulerScenario()
   if (phase === 'quick-panel-settings') return runQuickPanelSettingsScenario()
   if (phase === 'native-panel') return runNativePanelScenario()
@@ -219,9 +234,9 @@ async function checkPreviewRefusals(): Promise<Record<string, number>> {
 async function historyFileURIs(): Promise<string[]> {
   const end = Date.now() + 90000
   while (Date.now() < end) {
-    const response = await daemonClient.request<{ data: Array<{ preview: string }> }>(
-      '/clipboard/entries?limit=50&offset=0'
-    )
+    const response = await daemonClient.request<{
+      data: Array<{ preview: string }>
+    }>('/clipboard/entries?limit=50&offset=0')
     const found = response.data
       .flatMap(entry => entry.preview.split('\n'))
       .filter(line => /^file:\/\//i.test(line.trim()))
@@ -231,8 +246,9 @@ async function historyFileURIs(): Promise<string[]> {
   throw new Error('timeout: file entry in history')
 }
 
-// A received image file must preview through the host route; a locked or unknown path must not.
-async function runFilePreviewScenario() {
+// Brings a CLI-created profile to the main layout the way a user would: dismiss a leftover setup step,
+// unlock through the keyring.
+async function reachMainLayout() {
   await waitFor('app root content', () => document.getElementById('root')?.children.length)
   // CLI-created spaces can leave the setup flow on its invitation step; dismiss it like a user would.
   await waitFor('unlock or home', () => {
@@ -244,6 +260,11 @@ async function runFilePreviewScenario() {
     $('[data-testid="unlock-content"]')!.click()
     await waitFor('unlocked', () => mainLayout())
   }
+}
+
+// A received image file must preview through the host route; a locked or unknown path must not.
+async function runFilePreviewScenario() {
+  await reachMainLayout()
   const refusals = await checkPreviewRefusals()
   await record(
     'file-preview-refusals',
@@ -265,6 +286,197 @@ async function runFilePreviewScenario() {
     path: path.replace(/^.*\/iroh-blobs\//, '.../iroh-blobs/'),
   })
   await sleep(1500)
+  await control('exit')
+}
+
+const contentUnlocked = async () =>
+  (
+    (await Call.ByName('main.HostService.Invoke', 'get_content_unlocked', {})) as {
+      ok: boolean
+      data?: boolean
+    }
+  ).data
+
+// Two ways a profile ends up asking for the passphrase, both through the shared pages: the profile
+// recovery page (the master key is gone) and the unlock page's passphrase form (the keyring unlock fails).
+// A wrong passphrase must be refused with the localized message and leave content locked; the right one unlocks.
+async function runUnlockWrongScenario() {
+  await waitFor('app root content', () => document.getElementById('root')?.children.length)
+  const secret = String(await Call.ByName('main.EvidenceService.Secret'))
+  const screen = await waitFor('passphrase screen', () =>
+    $('#recovery-passphrase') ? 'recovery' : $('[data-testid="unlock-content"]') ? 'unlock' : null
+  )
+  await record('locked-screen', true, {
+    screen,
+    unlocked: await contentUnlocked(),
+  })
+  if (screen === 'unlock') {
+    $('[data-testid="unlock-content"]')!.click()
+    await waitFor('passphrase form after the keyring attempt', () => $('#unlock-passphrase'))
+  }
+  const input = screen === 'recovery' ? '#recovery-passphrase' : '#unlock-passphrase'
+  const submit = () => ($(input) as HTMLInputElement).form?.requestSubmit()
+  fill(input, `${secret}-wrong`)
+  submit()
+  const alert = await waitFor('wrong passphrase alert', () => $('[role="alert"]'))
+  const wanted = i18n.t('unlock.errors.wrongPassphrase')
+  await record('wrong-passphrase-rejected', alert.textContent?.trim() === wanted && !!wanted, {
+    shown: alert.textContent?.trim(),
+    wanted,
+  })
+  await record(
+    'still-locked-after-wrong-passphrase',
+    (await contentUnlocked()) === false && !mainLayout()
+  )
+  fill(input, secret)
+  submit()
+  await waitFor('unlocked', () => mainLayout())
+  await record('right-passphrase-unlocked', (await contentUnlocked()) === true)
+  await sleep(1500)
+  await control('exit')
+}
+
+// After a recovery the next launch must unlock through the keyring again (the recovered key was stored back)
+// and the history written before the key loss must be readable.
+async function runUnlockRestartScenario() {
+  await waitFor('app root content', () => document.getElementById('root')?.children.length)
+  const marker = String(await Call.ByName('main.EvidenceService.Secret'))
+  const screen = await waitFor('first screen', () =>
+    $('#recovery-passphrase')
+      ? 'recovery'
+      : $('#unlock-passphrase')
+        ? 'passphrase'
+        : $('[data-testid="unlock-content"]')
+          ? 'unlock'
+          : mainLayout()
+            ? 'home'
+            : null
+  )
+  await record('restart-first-screen', screen === 'unlock' || screen === 'home', { screen })
+  if (screen === 'unlock') $('[data-testid="unlock-content"]')!.click()
+  await waitFor('unlocked by the keyring', () => mainLayout())
+  const response = await daemonClient.request<{
+    data: Array<{ preview: string }>
+  }>('/clipboard/entries?limit=50&offset=0')
+  const restored = response.data.some(entry => entry.preview.includes(marker))
+  await record('history-restored-after-recovery', restored, {
+    entries: response.data.length,
+  })
+  await sleep(1000)
+  await control('exit')
+}
+
+async function runHistoryLiveScenario() {
+  const marker = String(await Call.ByName('main.EvidenceService.Secret'))
+  await reachMainLayout()
+  const cards = () =>
+    Array.from(document.querySelectorAll<HTMLElement>('[data-testid="history-card"]'))
+  const withMarker = () => cards().find(card => card.textContent?.includes(marker))
+  // Every raw frame the socket delivers after arming, whatever the topic, so the evidence names what drove the update.
+  const socket = daemonWs as unknown as {
+    _handleMessage: (data: string) => void
+  }
+  const handle = socket._handleMessage.bind(daemonWs)
+  let armed = false
+  const frames: string[] = []
+  socket._handleMessage = (data: string) => {
+    if (armed) {
+      try {
+        const m = JSON.parse(data)
+        frames.push(`${m.topic}:${m.type ?? m.event_type}`)
+      } catch {
+        frames.push('unparsed')
+      }
+    }
+    handle(data)
+  }
+  // Same document, same route for the whole scenario: a reload or navigation would make the check meaningless.
+  const loadId = Math.random().toString(36).slice(2)
+  ;(window as unknown as { __e2eLoadId: string }).__e2eLoadId = loadId
+  const route = location.pathname
+  await waitFor('history list rendered', () => $('[data-testid="history-card"]')) // the orchestrator seeds one entry
+  await sleep(1500) // let the initial fetch settle before arming
+  armed = true // before the step is reported: the orchestrator injects the entry once it sees the step
+  await record('history-watch-armed', !withMarker(), {
+    cardsBefore: cards().length,
+    route,
+  })
+  const armedAt = Date.now()
+  const card = await waitFor('history card with the sent text', withMarker, 90000)
+  const cardAfterMs = Date.now() - armedAt
+  // The page learns about daemon writes over the WebSocket: a clipboard or search frame must accompany the card.
+  await sleep(2000)
+  socket._handleMessage = handle
+  const sameDocument = (window as unknown as { __e2eLoadId: string }).__e2eLoadId === loadId
+  await record(
+    'history-live-update',
+    sameDocument &&
+      location.pathname === route &&
+      frames.some(f => f.startsWith('clipboard:') || f.startsWith('search:')),
+    {
+      framesAfterArm: frames,
+      cardAfterMs,
+      cardsAfter: cards().length,
+      newestFirst: cards()[0] === card,
+      text: card.textContent?.slice(0, 80),
+    }
+  )
+  await sleep(1000)
+  await control('exit')
+}
+// A received single image in the real history UI. Which renderer it takes is a property of the shared frontend:
+// a single image uses the daemon's resource bytes (a `blob:` URL). The only `/host-file` consumer is the thumbnail
+// grid of an image *group* (one entry with several image files), and a group entry cannot be produced without the
+// system clipboard (the daemon sends one entry per file and rejects directories), which isolated runs disable.
+// So this scenario pins down the boundary instead of faking a consumer: the single image decodes in the DOM and
+// no `/host-file` request was made for it.
+async function runSingleImageUiScenario() {
+  const name = String(await Call.ByName('main.EvidenceService.Secret'))
+  await reachMainLayout()
+  type Entry = { id: string; preview: string }
+  const end = Date.now() + 120000
+  let entry: Entry | undefined
+  while (!entry && Date.now() < end) {
+    const response = await daemonClient.request<{ data: Entry[] }>(
+      '/clipboard/entries?limit=50&offset=0'
+    )
+    entry = response.data.find(e => e.preview.includes(name) && /file:\/\//i.test(e.preview))
+    if (!entry) await sleep(1000)
+  }
+  if (!entry) throw new Error(`timeout: entry for ${name}`)
+  const card = await waitFor('history card', () =>
+    document.querySelector<HTMLElement>(
+      `[data-testid="history-card"][data-entry-id="${entry!.id}"]`
+    )
+  )
+  card.querySelector<HTMLElement>('button')!.click()
+  const panel = await waitFor('detail panel', () => $('[data-testid="clipboard-detail"]'))
+  const hero = await waitFor(
+    'single image in the detail panel',
+    () => {
+      const img = Array.from(panel.querySelectorAll<HTMLImageElement>('img')).find(
+        i => i.alt === name
+      )
+      return img && img.complete && img.naturalWidth > 0 ? img : null
+    },
+    60000
+  )
+  const src = hero.getAttribute('src') ?? ''
+  const hostFileRequests = performance
+    .getEntriesByType('resource')
+    .filter(
+      r => r.name.includes('/host-file?path=') && r.name.includes(encodeURIComponent(name))
+    ).length
+  await record(
+    'single-image-uses-daemon-bytes',
+    src.startsWith('blob:') && hostFileRequests === 0,
+    {
+      srcScheme: src.slice(0, 5),
+      width: hero.naturalWidth,
+      hostFileRequests,
+    }
+  )
+  await sleep(1000)
   await control('exit')
 }
 
@@ -326,7 +538,9 @@ async function runQuickPanelSettingsScenario() {
     }
   )
   const accepted = await commands.setQuickPanelDoubleTapModifier('disabled', null)
-  await record('double-tap-disabled-accepted', accepted.status === 'ok', { result: accepted })
+  await record('double-tap-disabled-accepted', accepted.status === 'ok', {
+    result: accepted,
+  })
   await control('exit')
 }
 
@@ -347,13 +561,17 @@ async function runNativePanelScenario() {
     { 'global.toggleQuickPanel': 'Ctrl+Alt+Space' },
     null
   )
-  await record('shortcut-saved', shortcut.status === 'ok', { result: shortcut })
+  await record('shortcut-saved', shortcut.status === 'ok', {
+    result: shortcut,
+  })
   await sleep(4000)
   await record('act-double-tap', true)
   const tap = await commands.setQuickPanelDoubleTapModifier('alt', null)
   await record('double-tap-saved', tap.status === 'ok', { result: tap })
   const availability = await commands.getQuickPanelDoubleTapAvailability(null)
-  await record('double-tap-availability', availability.status === 'ok', { result: availability })
+  await record('double-tap-availability', availability.status === 'ok', {
+    result: availability,
+  })
   await sleep(4000)
   await record('act-kill', true) // the orchestrator kills the helper now; it must come back
   await sleep(9000)
@@ -390,7 +608,9 @@ async function runFileOpsScenario() {
   }
   const png = [137, 80, 78, 71, 13, 10, 26, 10, 0, 1, 2, 3]
   const picked = await commands.pickDirectory(null)
-  await record('pick-directory-chosen', picked.status === 'ok', { result: picked })
+  await record('pick-directory-chosen', picked.status === 'ok', {
+    result: picked,
+  })
   await result('pick-directory-cancelled', commands.pickDirectory(null))
   await result('save-image-cancelled', commands.saveImageAs('a.png', png, null))
   await result('save-image-saved', commands.saveImageAs('../../x/shot.png', png, null))
@@ -513,7 +733,11 @@ async function runTrayDevicesScenario() {
   await control('tray-menu:zh')
   const granted = await isPermissionGranted()
   const requested = await requestPermission()
-  sendNotification({ id: 21021, title: 'Device trust', body: 'Needs a decision' })
+  sendNotification({
+    id: 21021,
+    title: 'Device trust',
+    body: 'Needs a decision',
+  })
   await sleep(500)
   await record('notification-bridge', granted === true && requested === 'granted')
   await control('tray-lightweight')
@@ -538,7 +762,10 @@ async function runStartupSetScenario(phase: string) {
     if (!saved) await sleep(500)
   }
   if (!saved) throw new Error('settings could not be saved')
-  await record('startup-saved', saved.success, { mode, restore: restore === 'restore' })
+  await record('startup-saved', saved.success, {
+    mode,
+    restore: restore === 'restore',
+  })
   await control('exit')
 }
 

@@ -11,9 +11,17 @@ import (
 	"path/filepath"
 
 	"aead.dev/minisign"
+	"github.com/UniClipboard/UniClipboard/apps/gui-go/internal/update"
 )
 
 func main() {
+	if len(os.Args) == 3 && os.Args[1] == "parsekey" {
+		// Parses a Tauri `pubkey` value with the same function the app uses and prints its key ID.
+		pub, err := update.ParsePublicKey(os.Args[2])
+		check(err)
+		fmt.Printf("%016X\n", pub.ID())
+		return
+	}
 	if len(os.Args) != 3 {
 		fmt.Fprintln(os.Stderr, "usage: updatetool <artifact> <outdir>")
 		os.Exit(2)

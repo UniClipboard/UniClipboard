@@ -34,6 +34,9 @@ func openerOverride(string, bool) (bool, error) { return false, nil }
 func notifyOverride(string, string, string) (bool, error) { return false, nil }
 func notifyPermissionOverride() (bool, bool)              { return false, false }
 
+// keyringUnlockDenied is always false in normal builds: the keychain attempt always reaches the daemon.
+func keyringUnlockDenied() bool { return false }
+
 // forceMainWindow is always false in normal builds.
 func forceMainWindow() bool { return false }
 

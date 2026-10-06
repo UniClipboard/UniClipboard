@@ -18,12 +18,16 @@ type devUpdate struct {
 	publicKey string
 }
 
-// devUpdateOverrides lets the e2e build point the updater at a local feed signed
-// with a throwaway key, mirroring the Tauri shell's debug-only UC_UPDATE_* overrides.
+// devUpdateOverrides lets the e2e build point the updater at a local feed, mirroring the Tauri shell's
+// debug-only UC_UPDATE_* overrides. With only UC_UPDATE_ENDPOINT set, the trusted key stays the one injected at
+// build time (`updaterPublicKey`), which is how the production key path is exercised against a local feed.
 func devUpdateOverrides() (devUpdate, bool) {
 	endpoint, key := os.Getenv("UC_UPDATE_ENDPOINT"), os.Getenv("UC_UPDATE_PUBKEY")
-	if endpoint == "" || key == "" {
+	if endpoint == "" {
 		return devUpdate{}, false
+	}
+	if key == "" {
+		key = updaterPublicKey
 	}
 	return devUpdate{endpoints: func(update.Channel) []string { return []string{endpoint} }, publicKey: key}, true
 }
@@ -195,3 +199,7 @@ func cursorOverride() (float64, float64, bool) {
 	defer cursorMu.Unlock()
 	return injectedCursor[0], injectedCursor[1], cursorInjected && quiet()
 }
+
+// keyringUnlockDenied lets the e2e build stand in for a refused keychain prompt, the one way a healthy profile
+// reaches the unlock page's passphrase form; the passphrase check itself still goes to the real daemon.
+func keyringUnlockDenied() bool { return os.Getenv("UC_GUI_GO_E2E_KEYRING_UNLOCK") == "denied" }

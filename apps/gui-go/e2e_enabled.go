@@ -133,6 +133,27 @@ func (s *EvidenceService) Control(action string) error {
 			h.openUpdater(false)
 		}
 		return s.write(Step{Window: "update", Step: "update-check", OK: err == nil && meta != nil, Detail: detail})
+	case "update-verify":
+		// Check and download against the configured feed, then report which key was trusted and what happened.
+		// A feed signed by another key must fail the download; an unconfigured key must refuse to check at all.
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		detail := map[string]any{"bakedKeyConfigured": updaterPublicKey != ""}
+		if pub, err := update.ParsePublicKey(updaterPublicKey); err == nil {
+			detail["bakedKeyID"] = fmt.Sprintf("%016X", pub.ID())
+		}
+		meta, err := h.checkForUpdate(ctx, nil)
+		detail["meta"] = meta
+		if err != nil {
+			detail["checkError"] = err.Error()
+		} else if meta != nil {
+			if err = h.downloadUpdate(ctx); err != nil {
+				detail["downloadError"] = err.Error()
+			} else {
+				detail["downloaded"] = true
+			}
+		}
+		return s.write(Step{Window: "update", Step: "update-verify", OK: true, Detail: detail})
 	case "update-state":
 		// Reports whether this process runs from a bundle that already carries the update marker.
 		exe, _ := os.Executable()

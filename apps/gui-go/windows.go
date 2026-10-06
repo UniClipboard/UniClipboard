@@ -87,11 +87,21 @@ func panelSize(scale *float64, previewExpanded bool, windowScale float64) (int, 
 	return int(math.Round(width + 2*panelWindowPadding)), int(math.Round(panelBaseHeight*s + 2*panelWindowPadding))
 }
 
-// panelDisableResize: on Linux the panel stays resizable at the toolkit level. GTK pins a non-resizable window to its
-// creation size and gtk_window_resize (Wails SetSize on gtk3) can then only grow it, so a smaller window scale never took
-// effect, and re-locking after an unlocked resize snaps it back (17c9 red/green runs). The window is frameless, so the user
-// has no resize handles; the size is always set by the host from the window scale.
-var panelDisableResize = runtime.GOOS != "linux"
+// setPanelSize sizes the quick panel. On Linux the panel is fixed-size: the size is pinned by geometry hints (Wails
+// SetMinSize/SetMaxSize, min = max = the target) instead of the GTK non-resizable flag, because GTK pins a non-resizable
+// window to its creation size and can then only grow it (gtk_window_resize, which Wails SetSize calls on gtk3), so a
+// smaller window scale never took effect (17c9). The hints keep the window manager from resizing it. Releasing the minimum
+// first and the maximum second lets the window move to a smaller or a larger target.
+func setPanelSize(w application.Window, width, height int) {
+	if runtime.GOOS != "linux" {
+		w.SetSize(width, height)
+		return
+	}
+	w.SetMinSize(0, 0)
+	w.SetMaxSize(width, height)
+	w.SetSize(width, height)
+	w.SetMinSize(width, height)
+}
 
 // openUpdater creates the decorated updater window, or focuses the existing one.
 func (h *HostService) openUpdater(dev bool) {
@@ -116,12 +126,17 @@ func (h *HostService) openUpdater(dev bool) {
 // showing it later never has to create a window.
 func (h *HostService) preCreateQuickPanel() {
 	width, height := panelSize(nil, false, 1)
-	w := h.app.Window.NewWithOptions(quietOptions(application.WebviewWindowOptions{
+	options := application.WebviewWindowOptions{
 		Name: quickPanelWindowName, Title: "Quick Panel", URL: "/quick-panel.html",
-		Width: width, Height: height, Hidden: true, Frameless: true, DisableResize: panelDisableResize, AlwaysOnTop: true,
+		Width: width, Height: height, Hidden: true, Frameless: true, DisableResize: true, AlwaysOnTop: true,
 		BackgroundType: application.BackgroundTypeTransparent,
 		Mac:            application.MacWindow{DisableShadow: true},
-	}))
+	}
+	if runtime.GOOS == "linux" { // fixed size through geometry hints, see setPanelSize
+		options.DisableResize = false
+		options.MinWidth, options.MinHeight, options.MaxWidth, options.MaxHeight = width, height, width, height
+	}
+	w := h.app.Window.NewWithOptions(quietOptions(options))
 	attachLayerPanel(w) // Wayland Layer Shell: must happen while the hidden window is still unrealized
 	w.RegisterHook(events.Common.WindowClosing, func(e *application.WindowEvent) {
 		if h.quitting.Load() {
@@ -157,7 +172,7 @@ func (h *HostService) showQuickPanel() {
 	}
 	if !layerPrepareShow(w, prefs.Position, 1) {
 		width, height := panelSize(nil, false, 1)
-		w.SetSize(width, height)
+		setPanelSize(w, width, height)
 		if x, y, ok := panelOrigin(prefs.Position, h.app.Screen.GetAll(), float64(width), float64(height)); ok {
 			moveWindow(w, x, y)
 		} else {
@@ -268,7 +283,7 @@ func init() {
 			if w, ok := h.app.Window.GetByName(quickPanelWindowName); ok {
 				if !layerSetLayout(w, windowScaleOrOne(windowScale)) {
 					width, height := panelSize(scale, expanded, windowScaleOrOne(windowScale))
-					w.SetSize(width, height)
+					setPanelSize(w, width, height)
 				}
 			}
 			return nil, nil

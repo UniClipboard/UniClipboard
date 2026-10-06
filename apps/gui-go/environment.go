@@ -23,8 +23,12 @@ var profilePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`)
 //     like `bun tauri:dev`; the profile keeps data, keychain entries and the
 //     daemon separate from the production app.
 //
-// Both require UNICLIPBOARD_ENV=development; production data is never reachable.
+// Both require UNICLIPBOARD_ENV=development; production data is never reachable. The `release` build tag is the one
+// exception: it is the shipped product form and takes its own checks (environment_release.go).
 func validateEnvironment() error {
+	if releaseBuild {
+		return validateRelease()
+	}
 	if runtime.GOOS != "darwin" && runtime.GOOS != "windows" {
 		return fmt.Errorf("the Go GUI currently runs only on macOS and Windows")
 	}

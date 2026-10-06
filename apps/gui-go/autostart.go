@@ -94,6 +94,9 @@ func (p loginItemPolicy) apply(login osAutostart, enabled, reconcile bool) error
 // name is considered, so a named profile never reads the primary entry. The job is not booted out: it may be the
 // process that is running this code.
 func (p loginItemPolicy) sweepLegacy() error {
+	if runtime.GOOS == "windows" {
+		return p.sweepLegacyRunValue()
+	}
 	if runtime.GOOS != "darwin" || p.Home == "" {
 		return nil
 	}
@@ -220,4 +223,20 @@ func init() {
 			return nil, h.updateAutoStart(ctx, enabled)
 		},
 	})
+}
+
+// firstCommandToken is the executable of a Run value: the first token of the command line, honouring surrounding
+// double quotes (paths with spaces), like Wails' own matching in autostart_windows.go.
+func firstCommandToken(command string) string {
+	command = strings.TrimSpace(command)
+	if strings.HasPrefix(command, `"`) {
+		if end := strings.IndexByte(command[1:], '"'); end >= 0 {
+			return command[1 : 1+end]
+		}
+		return command[1:]
+	}
+	if i := strings.IndexAny(command, " \t"); i >= 0 {
+		return command[:i]
+	}
+	return command
 }

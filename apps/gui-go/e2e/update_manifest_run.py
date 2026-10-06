@@ -10,7 +10,12 @@ signatures from a throwaway key. Nothing here touches a feed, a release or a pro
 
 The same assertions run against the unfixed generator (red) and the fixed one (green).
 """
-import argparse, hashlib, json, os, shutil, subprocess, sys
+import argparse
+import hashlib
+import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[3]
@@ -206,7 +211,9 @@ def compat(out, gen, base, notes, host_probe):
     generate(base, assets, mb / "baseline.json", mb / "baseline", notes)
     generate(gen, assets, mb / "current.json", mb / "current", notes)
     b, c = json.loads((mb / "baseline.json").read_text()), json.loads((mb / "current.json").read_text())
-    nl = lambda m: [(k, v) for k, v in m["platforms"].items() if not k.startswith("linux-")]
+    def nl(m):
+        return [(k, v) for k, v in m["platforms"].items() if not k.startswith("linux-")]
+
     expect(scn, "non-Linux platform entries and their order are identical to the baseline", nl(b) == nl(c),
            f"{[k for k, _ in nl(b)]} vs {[k for k, _ in nl(c)]}")
     expect(scn, "version and notes identical to the baseline",

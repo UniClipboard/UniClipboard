@@ -425,6 +425,47 @@ apps/gui-go/e2e/linux/run.sh xvfb <dir>
 
 **未决项（本片范围内能做而没做的）**：Layer Shell 首次映射时 GTK 先以 WebKit 的 800×560 自然尺寸映射，随后才收缩到上限尺寸（轨迹里先 `set_size(800,560)` 再 `set_size(720,400)`，Tauri 同理），小输出上有一帧的尺寸跳变，未量化；X11 路径的面板尺寸仍是 macOS 的常量而非 Tauri 的 Linux 固定 800×560，只有 Layer 路径用 Linux 常量，两者统一留待后续。
 
+## 更新清单生成器的 Linux 架构（第 17c3 片）
+
+分支 `fix/gui-go-update-manifest-linux-arch`，叠加在 17c2（#1876）之上。本节先写问题、策略、失败方式与 E2E 范围，实现在后。不改生产 feed、不触发 release、不改渠道与真实资产。
+
+### 问题（已核对源码与真实发布资产）
+
+- 实际入口：`.github/workflows/release.yml` 与 `.github/workflows/mirror-desktop-gitcode.yml` 都调用同一个 `scripts/assemble-update-manifest.js`，其输出再交给 `scripts/build-flare-release-registration.js`；没有第二套生成器。
+- 真实资产命名（只读取自 GitHub Release `v1.1.1` 的资产列表，`gh release view`）：`UniClipboard_1.1.1_amd64.AppImage(.sig)` 与 `UniClipboard_1.1.1_aarch64.AppImage(.sig)`；该版本没有 `.AppImage.tar.gz`。`release.yml` 把所有构建产物展平到 `release-assets/`，因此文件名（不是目录名）是唯一的架构来源。
+- 消费者合同：Go `apps/gui-go/internal/update.DefaultTargets` 把 `GOARCH` `amd64/arm64` 映射为 `x86_64/aarch64`，查找 `linux-<arch>`（Linux 无 installer 后缀）；Tauri 更新插件 `tauri-plugin-updater` 2.10.1 的 `updater_arch()`（`src/updater.rs`）使用同一组词。两者都只在 `platforms` 里按键名查找，找不到就报“no artifact”。
+- 现状：`detectPlatform` 把每个 `.AppImage.sig` / `.AppImage.tar.gz.sig` 都映射为 `linux-x86_64`，不存在 `linux-aarch64`。真实命名下 `sort()` 使 `_aarch64.AppImage.sig` 先于 `_amd64.AppImage.sig`，二者优先级相同，后者覆盖前者：现状输出的 `linux-x86_64` 碰巧正确，但 `linux-aarch64` 完全缺失，aarch64 用户永远收不到更新。若 aarch64 以 `.AppImage.tar.gz.sig`（优先级 30）发布而 amd64 是裸 `.AppImage.sig`（20），则 aarch64 载荷会占据 `linux-x86_64`：签名对载荷本身有效，minisign 校验拦不住，x86_64 用户会下载并安装 aarch64 二进制。真实 v1.1.1 没有这种组合，这是由代码推出的危险方向，E2E 里用 fixture 复现，不当作已发生的事实。
+
+### 策略（先于实现决定）
+
+1. 架构只取自文件 basename 中以非字母数字边界隔开的词：`aarch64`、`arm64` → `linux-aarch64`；`amd64`、`x86_64`、`x64` → `linux-x86_64`（与同文件里 darwin/windows 分支已有的词汇一致，不引入新词汇）。目录名不参与（真实流水线已展平，且目录名可能含 `ubuntu-22.04-arm` 之类的干扰）。
+2. 两种词同时出现或都不出现（`armv7`、`i686`、无架构）：返回 `null`，沿用现有的“Skipping unrecognized .sig file”警告，**绝不** 回退到 `linux-x86_64`。后果是该文件不进清单（该架构暂无自更新），而不是被错误架构的用户下载。
+3. 同一 `linux-*` 键出现两个 **相同优先级** 的候选：直接报错退出（`exit 1`，信息里列出两个文件名），不再由排序后的“最后一个”静默胜出。不同优先级沿用现有规则（`.AppImage.tar.gz.sig` 30 高于 `.AppImage.sig` 20）。该严格性只加在 Linux 键上；macOS/Windows 的选择规则、优先级、键序、格式、版本与签名语义保持不变（现有 release 没有任何相同优先级的 darwin/windows 配对）。
+4. 不新增配置层、不改 `release.yml`/`mirror-desktop-gitcode.yml`/`workers/update-server`/FlareRelease，不改 `createMockArtifacts` 的数据；不改现有 vitest 文件（项目约束：不为本片补单元测试，用端到端验证）。
+
+### 失败方式（先于实现）
+
+| # | 失败方式 | 后果 | 检查（端到端） |
+| --- | --- | --- | --- |
+| F1 | aarch64 AppImage 被映射成 `linux-x86_64`，清单没有 `linux-aarch64` | aarch64 用户永远收不到更新（Go 消费者 `no artifact for linux-aarch64`） | 真实命名的 fixture 经 **真实生成器** 得到 `linux-aarch64` 与 `linux-x86_64` 各一，URL 的 basename 与签名内容属于各自架构的文件 |
+| F2 | 相同优先级时由排序顺序决定谁胜出 | 结果取决于文件名/目录排序，不可复现 | 把两个架构的文件放进不同的目录嵌套、不同的创建顺序，输出的 Linux 两项必须完全相同 |
+| F3 | `.AppImage.tar.gz.sig`（30）与裸 `.AppImage.sig`（20）跨架构混合时，高优先级的架构占据了另一架构的键 | 错误架构的二进制通过有效签名被安装 | 混合 fixture（aarch64 用 tar.gz，amd64 用裸文件）及其反向；两键各自指向各自架构的文件，签名经真实 minisign 校验该架构的载荷通过 |
+| F4 | 未知或缺失架构（`armv7`、`i686`、无架构词）被默认成 x86_64 | 错误架构的二进制被分发 | fixture 含 `armv7`、无架构的 AppImage：不出现在任何键，stderr 有警告；已知架构不受影响；绝不默认 |
+| F5 | 目录名里的 `arm`/`arm64` 污染判定，或词的子串误匹配（如 `x64` 出现在其他词里） | 误判 | 架构词在目录名而 basename 无词的 fixture 不得被分类；basename 里的边界判定用 `armv7`、`xx64` 之类反例验证 |
+| F6 | 同一键出现两个相同优先级的候选（重复或重名资产） | 静默选择其一 | 两个 amd64 `.AppImage.sig` 放在不同目录：生成器必须非零退出并同时指出两个文件，且不写出 `--output` |
+| F7 | 单平台发布（只构建 `ubuntu-22.04-arm`）输出 `linux-x86_64` | 对 x86_64 用户给出 aarch64 载荷 | 只含 aarch64 的 fixture：清单只有 `linux-aarch64` |
+| F8 | macOS/Windows 的键、键序、URL、签名、版本被改动 | 现有平台自更新回归 | 同一份含 macOS+Windows+Linux 的输入，分别用基线版本（提交 `3a2cc01c5` 的脚本）与修复版本生成：除 `pub_date` 外，非 Linux 键的内容与键序逐字节一致；Go 消费者在 darwin/arm64 宿主上取到 `darwin-aarch64` 并通过签名 |
+| F9 | 登记链路（`build-flare-release-registration.js`）只登记一个 Linux 制品，或 sha256/大小对不上 | 镜像/校验与 manifest 不一致 | 对生成的清单链式运行真实登记脚本，断言两个 Linux 制品各自的 `filename`、`size`、`sha256`（来自 fixture 载荷） |
+| F10 | 签名与载荷错配（一个架构的签名挂在另一个架构的 URL 上） | 校验失败或（更糟）校验到错误载荷 | 真实 Go 消费者（`DefaultTargets` 在 linux/arm64 与 linux/amd64 容器里 **自然** 求出键）：检查、下载、minisign 校验全部通过；负例：用另一架构的签名校验必须失败 |
+| F11 | 键名与消费者不一致（词汇漂移） | 找不到平台 | 容器里的真实 `DefaultTargets("")` 输出写入工件，并与清单键逐一比对 |
+
+### E2E 验收范围与边界
+
+- **生成器**：宿主的 Node（真实脚本、真实命令行）。红灯运行用 `git show 3a2cc01c5:scripts/assemble-update-manifest.js` 提取的未修复版本，绿灯运行用工作树版本，使用同一个 runner 与断言，原始输入、命令、输出与 SHA256 都保留。
+- **输入（FIXTURE）**：文件名取自 `v1.1.1` 的真实发布命名，载荷是合成字节（每个架构不同），签名是用一次性密钥对载荷做的 **真实** minisign 签名（base64，与 Tauri `.sig` 同形）。fixture 不是真实发布资产，不含真实签名密钥。
+- **消费者**：真实的 `internal/update`（`Check`/`Download`/`Verify`）。一个 e2e 驱动在容器内起本地 HTTP 服务提供 feed 与载荷，容器无网络。linux/arm64（宿主原生）与 linux/amd64（Docker 的 QEMU 仿真）各跑一次，`DefaultTargets` 取自真实 `runtime.GOARCH`。
+- **不能证明**：真实的 Tauri 更新插件运行（只引用其源码行）；真实 AppImage 自更新与重启（17c4）；FlareRelease 服务端是否接受 `linux-aarch64` 这个平台字符串（`windows-aarch64` 已有先例，但服务端未核验）；Windows 键只做生成器输出与基线的逐字节对比，没有在 Windows 上运行消费者；本片不改 `.AppImage.tar.gz` 的现有优先级语义，v1.1.1 没有该资产，故其真实形态未观察。
+
 ## 验收边界
 
 - Wails 与 runtime 同时固定为 `3.0.0-beta.28`；这是 beta 原型，不是生产迁移完成。

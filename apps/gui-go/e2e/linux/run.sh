@@ -14,6 +14,9 @@
 #   run.sh appimage-e2e <outdir> <full|negative|smoke> <AppImage> [feed dir] [package-manifest.json]
 #                                (image uc-gui-go-linux-runtime:17c4, NO GTK/WebKitGTK; the Secret Service runs in its own
 #                                container, uc-gui-go-linux-keyring:17c4, sharing a session bus volume) linux_appimage_run.py
+#   run.sh appimage-portable-e2e <outdir> <AppImage> <feed dir> <package-manifest.json>
+#                                (17c5, image uc-gui-go-linux-runtime:17c4 as an UNPRIVILEGED user, NO Secret Service and no session bus:
+#                                portable mode uses the file keystore) linux_appimage_portable_run.py
 # The image is uc-gui-go-linux-build:17c (e2e/linux/Dockerfile); build artifacts live in the docker volume uc-gui-go-linux-cache.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../../../.." && pwd)"
@@ -102,5 +105,18 @@ case "$mode" in
     fi
     docker stop "$keyring" >/dev/null; docker rm "$keyring" >/dev/null; docker volume rm "$bus" >/dev/null
     tail -n 30 "$out/run.log"; exit $code ;;
+  appimage-portable-e2e)  # SYS_PTRACE: the runner (root) reads /proc/<pid>/{exe,environ,maps} of the unprivileged user's processes
+    out="$(mkdir -p "${2:?outdir}" && cd "$2" && pwd)"
+    image="$(cd "$(dirname "${3:?AppImage}")" && pwd)/$(basename "$3")"
+    feed="$(cd "${4:?feed dir}" && pwd)"
+    manifest="$(cd "$(dirname "${5:?package-manifest.json}")" && pwd)/$(basename "$5")"
+    set +e
+    docker run --rm --init --platform linux/arm64 --device /dev/fuse --cap-add SYS_ADMIN --cap-add SYS_PTRACE --security-opt apparmor:unconfined \
+      -v "$ROOT:/work:ro" -v "uc-gui-go-linux-cache:/cache:ro" -v "$out:/out" -v "$image:/in/appimage.AppImage:ro" -v "$feed:/in/feed" \
+      -v "$manifest:/in/package-manifest.json:ro" \
+      uc-gui-go-linux-runtime:17c4 python3 /work/apps/gui-go/e2e/linux_appimage_portable_run.py --out /out --appimage /in/appimage.AppImage \
+      --uniclip /cache/out/uniclip --feed /in/feed --manifest /in/package-manifest.json > "$out/run.log" 2>&1
+    code=$?
+    exit "$code" ;;
   *) echo "usage: run.sh build|xvfb|package|daemon-release|release-e2e-build|package-release|package-appimage [outdir]" >&2; exit 2 ;;
 esac

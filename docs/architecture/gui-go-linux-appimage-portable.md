@@ -49,6 +49,12 @@ portable 同时承担另一个语义：`is_portable()` 为真时 daemon 选择 *
 
 GUI 启动 daemon 时继承环境（`daemonproc/spawn.go`：`os.Environ()` 加 `UC_DAEMON_SPAWN_ORIGIN`），所以 `APPDIR`、`APPIMAGE`、重定向后的 `HOME` 与 `UC_PORTABLE` 原样到达 daemon；daemon 用同一份 `uc-app-paths` 规则算出同一个根。没有新增环境变量，也没有把测试旋钮挪作产品机制。因为 `uc-app-paths` 是 daemon 的输入，必须重新构建 release daemon，并以新身份（构建证据）打包，不沿用 17c4 的 SHA。
 
+### 测试适配：CLI 软链
+
+`uniclip` 不在 AppImage 内，按它自己的 portable 规则（`UC_PORTABLE=1`，`<exe 目录>/data`）找 daemon。E2E 的做法是只含 `uniclip` 的目录加一个 `data` 软链指向 `<AppImage>.home/data`。**这只是客户端定位的测试适配，不是 GUI 与 daemon 数据根一致的证明**：后者由 GUI 与 daemon 各自的 `/proc/<pid>/environ`（同一 `APPIMAGE`、同一重定向后的 `HOME`）、`daemon.conn` 的位置、以及数据文件实际出现的位置独立证明。第一次尝试里 CLI 找不到 daemon，自己拉起了第二个 daemon 并写入真实用户目录（保留在 iter1），那是夹具问题而非产品泄漏，也因此新增了「没有第二个 daemon」「真实用户 HOME 无未知新增」两项断言。
+
+另外观察到（本片不修复）：CLI 的 `UNICLIPBOARD_DAEMON_BASE_URL`/`TOKEN_PATH` 覆盖路径构造 WebSocket URL 时没有追加 `/ws`（`daemonclient.New` 覆盖分支与常规分支不一致），导致 `WS handshake failed: 404`。
+
 ### 自启动
 
 `.home` 把 `$HOME` 指向 portable 目录，而桌面会话读取的是真实用户的 `$XDG_CONFIG_HOME/autostart`（缺省 `<真实 HOME>/.config/autostart`）。若沿用 `os.UserHomeDir()`，注册会写进没人读取的 `.home/.config/autostart` 却报告成功。规则：在 portable AppImage 内，自启动目录 = 绝对的 `XDG_CONFIG_HOME`（会话同样读取它）或 **passwd 数据库中的用户主目录** 下的 `.config/autostart`；非 portable 路径不变。既有产品契约里 Linux 的 portable 并没有禁用自启动，所以不新增限制；写入真实用户目录是用户显式开启「开机启动」的效果，不是后台副作用。
@@ -59,7 +65,7 @@ GUI 启动 daemon 时继承环境（`daemonproc/spawn.go`：`os.Environ()` 加 `
 | --- | --- | --- |
 | F1 | portable 数据根仍在只读挂载，daemon 起不来 | portable E2E：GUI 与 daemon 的 `/proc/<pid>/environ`、daemon 实际打开的文件（`/proc/<pid>/fd`、`daemon.conn` 所在目录）都在 `<APPIMAGE>.home/data` 下，且 `.daemon-pid`、日志、数据库、加密文件都落在该处 |
 | F2 | GUI 与 daemon 算出不同的根（规则漂移，或 `APPIMAGE` 没到 daemon） | GUI 读到 `daemon.conn`（`panelReady`）；`/proc/<daemon pid>/environ` 含同一 `APPIMAGE`；文件树里只有一个数据根 |
-| F3 | portable 仍使用 Secret Service / 真实 HOME，用户秘密外泄到共享 profile | portable E2E **不启动任何 Secret Service**（没有 session bus），daemon 仍起来且加密空间可设置、可解锁；真实用户 HOME（passwd 目录）里除自启动条目外没有任何新文件；`master.key` 等文件 keystore 文件在 `data` 下 |
+| F3 | portable 仍使用 Secret Service / 真实 HOME，用户秘密外泄到共享 profile | portable E2E **不启动任何 Secret Service**。session bus 地址为空不是 portable 的契约（GLib 会为 GUI 自动拉起一个空总线，daemon 继承其地址），所以证据是三项：总线上 `ListNames` 没有、`ListActivatableNames` 也没有 `org.freedesktop.secrets`（且镜像里没有任何 secret/keyring 的 D-Bus service 文件），没有 keyring 进程；再加功能证明：文件 keystore（`data/…/keyring/*.bin`）存在，加密空间初始化、重启后读回、历史条目经加密索引搜回，真实用户 HOME 里没有 UniClipboard 数据 |
 | F4 | 路径含空格、非 ASCII、符号链接启动 | AppImage 放在 `dir with space é/My App.AppImage`，经符号链接启动；`APPIMAGE` 为 realpath，`.home` 在真实文件旁而不是链接旁 |
 | F5 | 设置与加密空间语义不持久 | 经 daemon API 写设置、初始化加密空间并写入一条剪贴板内容；退出（旧 daemon 退出）、再启动、读回相同且无需重新初始化；无明文落库（沿用 AGENTS 的持久化默认密文：在 `data` 下搜索写入的明文内容必须找不到） |
 | F6 | 更新后数据丢失或旧 daemon 残留 | 17c3 的 fixture 更新替换 AppImage 并重启：数据仍在同一 `.home`，新进程的 `/proc/<pid>/exe` 在新挂载内、`$APPIMAGE` 的 SHA-256 等于 v2、旧 daemon pid 已退出（`/proc` 状态 + HTTP，不用 `kill 0`） |
@@ -71,6 +77,11 @@ GUI 启动 daemon 时继承环境（`daemonproc/spawn.go`：`os.Environ()` 加 `
 | F12 | 破坏非 portable 与其他模式 | 17c4 的完整回归（full、negative、release smoke）原样复跑；macOS/Windows 的 `apppaths` 行为不变（该文件的 Linux 逻辑在 `paths_linux.go`，其他平台返回「不在 AppImage 内」） |
 | F13 | daemon 身份被伪造或沿用 17c4 的二进制 | 重新构建，`build-evidence.txt` 记录新的 HEAD、`uc-app-paths` 输入、Engine 修订、SHA-256；`package_linux.py` 已有的校验链拒绝不匹配；运行时 `/proc/<daemon pid>/exe` 的 SHA 对照 |
 | F14 | 容器证据被当成真实桌面证据 | 文档与报告分开陈述（见下） |
+| F15 | 启动错误对话框本身崩溃（实测发现） | 干净宿主没有 `/usr/share/mime` 时，包内 gdk-pixbuf 认不出任何图片格式（`Couldn't recognize the image file format`），GTK 在 `gtkiconhelper.c` 断言处 `SIGABRT`：失败对话框在 F8/F9/F10 里让进程崩溃（保留的 iter2 `e2e-portable/fail-*.log`）。根因用 ctypes 直接调用包内 `libgdk_pixbuf` 复现：装上 `shared-mime-info` 即可加载，只放入 `mime.cache`（157 KB）并经 `XDG_DATA_DIRS`（钩子已把 `$APPDIR/usr/share` 放在最前）也可加载。打包脚本因此把构建镜像的 `/usr/share/mime/mime.cache` 放入 AppDir，缺失即失败，哈希写入清单；探针 `probe_pixbuf_mime.sh` 同时跑有/无该文件两种情形（后者必须失败，证明探针能区分） |
+
+### 断言口径的更正
+
+失败场景（F8–F10）里，没有 `.home` 时 GTK 对话框在真实 HOME 写 fontconfig 缓存，这是 toolkit 行为，不是应用数据回退。断言因此不是「真实 HOME 完全不变」，而是：新增文件清单必须 **全部** 匹配明确的白名单（`.cache`、`.cache/fontconfig`、`<32 位十六进制>-le64.cache-<n>`、`CACHEDIR.TAG`），任何未知新增都判失败；完整新增清单保存在 `appimage-assertions.json` 的 `newInRealHome`。同时断言 `.home` 内容、AppImage 旁目录、解包树不变，且没有 `uniclipd` 进程。第一次修订曾用「路径含 uniclipboard 的黑名单」，被指出会放过未知写入，已改为白名单。
 
 ## 不证明的边界
 

@@ -32,6 +32,7 @@ import (
 //	shortcut-state <label>  the registered global shortcuts next to the stored setting and the panel state
 //	modifier-script <label> <ms:sel:other ...>  drive the scripted keyboard of the modifier double-tap monitor
 //	modifier-state <label>  the monitor's selected modifier, trigger count and panel state
+//	autostart-state <label>  the stored auto-start preference next to the OS login item registration (entry path)
 //	exit                quit, stopping the daemon (UC_GUI_GO_EXIT_MODE=full) or leaving it
 func (s *EvidenceService) watchControlFile(path string) {
 	done := 0
@@ -180,6 +181,9 @@ func (s *EvidenceService) runControlCommand(line string) {
 			"enabled": stored.QuickPanel.Enabled, "panelVisible": visible, "lastShown": h.panel.lastShown.Load(), "panelReady": h.panel.toggle.isReady()}})
 	case "modifier-script", "modifier-state":
 		s.controlModifier(verb, arg)
+	case "autostart-state":
+		// The stored preference next to the login item registration (path included), as the settings page would show it.
+		_, _ = s.controlQuickPanel("autostart-state:" + arg)
 	case "exit":
 		_ = s.write(Step{Window: "update", Step: "control-exit", OK: true})
 		go func() { time.Sleep(300 * time.Millisecond); h.quit(os.Getenv("UC_GUI_GO_EXIT_MODE") != "full") }()

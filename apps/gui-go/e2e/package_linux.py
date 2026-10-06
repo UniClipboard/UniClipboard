@@ -238,6 +238,15 @@ def build_appimage(stage, out, arch, name, tools, daemon, relocate=True, marker=
     # The pinned Wails GTK plugin deploys no GIO modules. An empty bundled directory is what AppRun's GIO_MODULE_DIR points
     # at, so the bundled GLib never loads the host's (ABI-incompatible) gvfs/dconf modules.
     (appdir / 'usr/lib/gio/modules').mkdir(parents=True)
+    # The bundled gdk-pixbuf recognises image formats through the shared MIME database (shared-mime-info). A host without
+    # /usr/share/mime (a minimal container, but also any machine that never installed it) makes every GTK icon or dialog image
+    # fail with "Couldn't recognize the image file format", and GTK aborts on the resulting assertion (observed in 17c5: the startup
+    # error dialog crashed the process). The compiled cache is 157 KB; the hook's XDG_DATA_DIRS (`$APPDIR/usr/share` first) finds it.
+    mime_cache = Path('/usr/share/mime/mime.cache')
+    if not mime_cache.is_file():
+        sys.exit('shared-mime-info is not installed in the build image: /usr/share/mime/mime.cache is missing')
+    (appdir / 'usr/share/mime').mkdir(parents=True)
+    shutil.copy2(mime_cache, appdir / 'usr/share/mime/mime.cache')
     if marker:
         (appdir / 'usr/share/uniclipboard').mkdir(parents=True)
         (appdir / 'usr/share/uniclipboard/update-marker.txt').write_text(marker)
@@ -265,7 +274,8 @@ def build_appimage(stage, out, arch, name, tools, daemon, relocate=True, marker=
 
     info = {'linuxdeploy': {'release': release, 'sha256': pin}, 'daemonRestoredAfterLinuxdeploy': True, 'daemonHashChain': daemon_chain, 'appimagetoolSha256': tool_pin,
             'gtkPlugin': {'source': str(plugin_source), 'wailsModuleDir': str(wails_dir), 'sha256': sha256(plugin)},
-            'webkitHelperDirectory': str(helper_dir), 'updateMarker': bool(marker)}
+            'webkitHelperDirectory': str(helper_dir), 'updateMarker': bool(marker),
+            'sharedMimeCache': {'source': str(mime_cache), 'sha256': sha256(mime_cache)}}
     info['relocation'] = relocate_webkit(appdir, helper_dir) if relocate else 'DISABLED (negative control)'
     info['inspection'] = inspect_appdir(appdir, helper_dir)
     ins = info['inspection']

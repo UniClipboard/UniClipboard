@@ -389,7 +389,8 @@ apps/gui-go/e2e/linux/run.sh package <dir>  # 容器内：生产前端包 + pack
 | run12 | 31/31，**干净提交 `7d599d24c`**（`git status` 无改动）重建后 | 构建身份见 `wayland-run12/build-identity.txt` |
 | wayland-nolib-run1 | 5/6，保留失败 | 回退面板上 Esc 没有关闭：与 run2–4 **同一原因**，我没有先解锁（锁定视图没有 Esc 处理器；页面确实收到 `keydown/Escape`）。脚本缺陷，非回退缺陷 |
 | wayland-nolib-run2 | 7/7 | 先解锁；缺库回退下 Esc 关闭 |
-| xvfb-regression-run1、run2 | 27/27 | 既有 X11 场景在新二进制上通过（run2 是干净提交构建） |
+| run13 | 31/31，**提交 `18b7344e0`**（加入 `gtk3` 构建约束后的最终代码，干净树） | 构建身份见 `wayland-run13/build-identity.txt` |
+| xvfb-regression-run1、run2、run3 | 27/27 | 既有 X11 场景在新二进制上通过（run2 是 `7d599d24c`，run3 是 `18b7344e0`，都是干净提交构建） |
 
 **离线契约**：`go run ./e2e/linux_contract` 现为 34/34（新增 `j/cursorpos` 的读取、非法回复、无应答期限共 5 项）。
 

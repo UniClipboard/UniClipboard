@@ -6,6 +6,10 @@ const RESIZED_EVENT = 'common:WindowDidResize'
 
 class HostWindow {
   setDecorations = async (_decorations: boolean): Promise<void> => undefined
+  // Wails has no runtime per-window theme switch; the page background is painted instead.
+  setTheme = async (_theme: 'light' | 'dark' | null): Promise<void> => undefined
+  setBackgroundColor = (color: [number, number, number, number]): Promise<void> =>
+    Window.SetBackgroundColour(color[0], color[1], color[2], color[3])
   isMaximized = (): Promise<boolean> => Window.IsMaximised()
   minimize = (): Promise<void> => Window.Minimise()
   maximize = (): Promise<void> => Window.Maximise()

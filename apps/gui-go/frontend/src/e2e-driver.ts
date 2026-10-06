@@ -5,6 +5,18 @@ import { Call } from '@wailsio/runtime'
 import { daemonWs } from '@/lib/daemon-ws'
 
 const windowName = 'main'
+// Keep recent console errors so a crashed UI reports its cause, not just a timeout.
+const consoleErrors: string[] = []
+const nativeConsoleError = console.error.bind(console)
+console.error = (...args: unknown[]) => {
+  consoleErrors.push(
+    args
+      .map(a => (a instanceof Error ? (a.stack ?? a.message) : String(a)))
+      .join(' ')
+      .slice(0, 400)
+  )
+  nativeConsoleError(...args)
+}
 const SETUP_PASSPHRASE = 'gui-go-synthetic-passphrase'
 
 const record = (step: string, ok: boolean, detail?: unknown) =>
@@ -32,7 +44,13 @@ function fill(selector: string, value: string) {
 
 const link = (href: string) => $(`a[href="${href}"]`)
 const devicesPage = () => $('[data-testid="devices-add-device"]')
-const mainLayout = () => $('[data-testid="history-search-anchor"]')
+// The history route with the sidebar shell: independent of list content and locale.
+const mainLayout = () =>
+  location.pathname.startsWith('/history') &&
+  link('/settings') &&
+  !$('[data-testid="setup-entry-create"]') &&
+  !$('#unlock-passphrase') &&
+  !$('[data-testid="unlock-content"]')
 
 async function navigate(go: () => void, href: string, marker: () => unknown, step: string) {
   go()
@@ -116,7 +134,6 @@ async function run() {
     () => !$('[data-testid="settings-page-header"]'),
     'navigate-back'
   )
-  await navigate(click('/history'), '/history', mainLayout, 'history')
 
   await control('close-main')
   await control('reopen-main')
@@ -130,6 +147,7 @@ run().catch(error =>
   record('driver-error', false, {
     error: String(error),
     path: location.pathname,
+    consoleErrors: consoleErrors.slice(-5),
     links: [...document.querySelectorAll('a')].map(a => a.getAttribute('href')),
     text: document.body.innerText.slice(0, 300),
   })

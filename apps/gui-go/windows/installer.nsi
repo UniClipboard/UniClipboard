@@ -19,10 +19,12 @@
 ;
 ; Parity with the Tauri template: version comparison with `nsis_tauri_utils::SemverCompare` (the same plugin, fetched and
 ; hash-checked by package_windows.py) and refusal of a downgrade; the "delete app data" uninstall option.
+; The interactive "already installed" page (PageReinstall / PageLeaveReinstall and its English strings) is the Tauri
+; template's own text, ported without the WiX branch; e2e/installer_template_diff.py extracts the template from the
+; pinned Tauri CLI and checks that nothing else differs.
 ; Deliberately not implemented, with the reason: WiX migration (tauri.conf.json bundles `nsis` only, no MSI was ever
 ; shipped), the language selector (`displayLanguageSelector` is not set, English only), per-machine install mode
-; (`installMode` is not set: current user). The Tauri template's interactive "reinstall / uninstall first" page is
-; replaced by overwriting in place (same registry identity, same files).
+; (`installMode` is not set: current user).
 ;
 ; Required defines (package_windows.py): PRODUCTNAME VERSION VERSIONWITHBUILD MANUFACTURER BUNDLEID MAINBINARYNAME
 ; SRC_MAIN SRC_DAEMON ICON OUTFILE HOOKS PLUGINDIR
@@ -62,6 +64,10 @@ VIAddVersionKey "LegalCopyright" "${MANUFACTURER}"
 !define MUI_UNICON "${ICON}"
 !define MUI_PAGE_CUSTOMFUNCTION_PRE SkipIfPassive
 !insertmacro MUI_PAGE_WELCOME
+; Custom page that asks whether to reinstall/uninstall, only if a previous installation was detected (Tauri template).
+Var ReinstallPageCheck
+Var SavedRunValue
+Page custom PageReinstall PageLeaveReinstall
 !define MUI_PAGE_CUSTOMFUNCTION_PRE SkipIfPassive
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_INSTFILES
@@ -79,6 +85,172 @@ Var DeleteAppDataCheckboxState
 !insertmacro MUI_UNPAGE_CONFIRM
 !insertmacro MUI_UNPAGE_INSTFILES
 !insertmacro MUI_LANGUAGE "English"
+
+; English strings of the Tauri template (tauri-cli 2.11.1), used by the page below.
+LangString addOrReinstall ${LANG_ENGLISH} "Add/Reinstall components"
+LangString alreadyInstalled ${LANG_ENGLISH} "Already Installed"
+LangString alreadyInstalledLong ${LANG_ENGLISH} "${PRODUCTNAME} ${VERSION} is already installed. Select the operation you want to perform and click Next to continue."
+LangString chooseMaintenanceOption ${LANG_ENGLISH} "Choose the maintenance option to perform."
+LangString choowHowToInstall ${LANG_ENGLISH} "Choose how you want to install ${PRODUCTNAME}."
+LangString dontUninstall ${LANG_ENGLISH} "Do not uninstall"
+LangString dontUninstallDowngrade ${LANG_ENGLISH} "Do not uninstall (Downgrading without uninstall is disabled for this installer)"
+LangString newerVersionInstalled ${LANG_ENGLISH} "A newer version of ${PRODUCTNAME} is already installed! It is not recommended that you install an older version. If you really want to install this older version, it's better to uninstall the current version first. Select the operation you want to perform and click Next to continue."
+LangString older ${LANG_ENGLISH} "older"
+LangString olderOrUnknownVersionInstalled ${LANG_ENGLISH} "An $R4 version of ${PRODUCTNAME} is installed on your system. It's recommended that you uninstall the current version before installing. Select the operation you want to perform and click Next to continue."
+LangString unableToUninstall ${LANG_ENGLISH} "Unable to uninstall!"
+LangString uninstallApp ${LANG_ENGLISH} "Uninstall ${PRODUCTNAME}"
+LangString uninstallBeforeInstalling ${LANG_ENGLISH} "Uninstall before installing"
+LangString unknown ${LANG_ENGLISH} "unknown"
+
+Function PageReinstall
+  ; Check if there is an existing installation, if not, abort the reinstall page
+  ReadRegStr $R0 HKCU "${UNINSTKEY}" ""
+  ReadRegStr $R1 HKCU "${UNINSTKEY}" "UninstallString"
+  ${IfThen} "$R0$R1" == "" ${|} Abort ${|}
+
+  ; Compare this installar version with the existing installation
+  ; and modify the messages presented to the user accordingly
+  StrCpy $R4 "$(older)"
+  ReadRegStr $R0 HKCU "${UNINSTKEY}" "DisplayVersion"
+  ${IfThen} $R0 == "" ${|} StrCpy $R4 "$(unknown)" ${|}
+
+  nsis_tauri_utils::SemverCompare "${VERSION}" $R0
+  Pop $R0
+  ; Reinstalling the same version
+  ${If} $R0 = 0
+    StrCpy $R1 "$(alreadyInstalledLong)"
+    StrCpy $R2 "$(addOrReinstall)"
+    StrCpy $R3 "$(uninstallApp)"
+    !insertmacro MUI_HEADER_TEXT "$(alreadyInstalled)" "$(chooseMaintenanceOption)"
+  ; Upgrading
+  ${ElseIf} $R0 = 1
+    StrCpy $R1 "$(olderOrUnknownVersionInstalled)"
+    StrCpy $R2 "$(uninstallBeforeInstalling)"
+    StrCpy $R3 "$(dontUninstall)"
+    !insertmacro MUI_HEADER_TEXT "$(alreadyInstalled)" "$(choowHowToInstall)"
+  ; Downgrading (the Tauri configuration has no allowDowngrades, so downgrading without uninstalling is disabled)
+  ${ElseIf} $R0 = -1
+    StrCpy $R1 "$(newerVersionInstalled)"
+    StrCpy $R2 "$(uninstallBeforeInstalling)"
+    StrCpy $R3 "$(dontUninstallDowngrade)"
+    !insertmacro MUI_HEADER_TEXT "$(alreadyInstalled)" "$(choowHowToInstall)"
+  ${Else}
+    Abort
+  ${EndIf}
+
+  ; Skip showing the page if passive
+  ;
+  ; Note that we don't call this earlier at the begining
+  ; of this function because we need to populate some variables
+  ; related to current installed version if detected and whether
+  ; we are downgrading or not.
+  ${If} $PassiveMode = 1
+    Call PageLeaveReinstall
+  ${Else}
+    nsDialogs::Create 1018
+    Pop $R4
+    ${IfThen} $(^RTL) = 1 ${|} nsDialogs::SetRTL $(^RTL) ${|}
+
+    ${NSD_CreateLabel} 0 0 100% 24u $R1
+    Pop $R1
+
+    ${NSD_CreateRadioButton} 30u 50u -30u 8u $R2
+    Pop $R2
+    ${NSD_OnClick} $R2 PageReinstallUpdateSelection
+
+    ${NSD_CreateRadioButton} 30u 70u -30u 8u $R3
+    Pop $R3
+    ; Disable this radio button if downgrading and downgrades are disabled
+    ${IfThen} $R0 = -1 ${|} EnableWindow $R3 0 ${|}
+    ${NSD_OnClick} $R3 PageReinstallUpdateSelection
+
+    ; Check the first radio button if this the first time
+    ; we enter this page or if the second button wasn't
+    ; selected the last time we were on this page
+    ${If} $ReinstallPageCheck <> 2
+      SendMessage $R2 ${BM_SETCHECK} ${BST_CHECKED} 0
+    ${Else}
+      SendMessage $R3 ${BM_SETCHECK} ${BST_CHECKED} 0
+    ${EndIf}
+
+    ${NSD_SetFocus} $R2
+    nsDialogs::Show
+  ${EndIf}
+FunctionEnd
+Function PageReinstallUpdateSelection
+  ${NSD_GetState} $R2 $R1
+  ${If} $R1 == ${BST_CHECKED}
+    StrCpy $ReinstallPageCheck 1
+  ${Else}
+    StrCpy $ReinstallPageCheck 2
+  ${EndIf}
+FunctionEnd
+Function PageLeaveReinstall
+  ${NSD_GetState} $R2 $R1
+
+  ; In update mode, always proceeds without uninstalling
+  ${If} $UpdateMode = 1
+    Goto reinst_done
+  ${EndIf}
+
+  ; $R0 holds whether same(0)/upgrading(1)/downgrading(-1) version
+  ; $R1 holds the radio buttons state:
+  ;   1 => first choice was selected
+  ;   0 => second choice was selected
+  ${If} $R0 = 0 ; Same version, proceed
+    ${If} $R1 = 1              ; User chose to add/reinstall
+      Goto reinst_done
+    ${Else}                    ; User chose to uninstall
+      Goto reinst_uninstall
+    ${EndIf}
+  ${ElseIf} $R0 = 1 ; Upgrading
+    ${If} $R1 = 1              ; User chose to uninstall
+      Goto reinst_uninstall
+    ${Else}
+      Goto reinst_done         ; User chose NOT to uninstall
+    ${EndIf}
+  ${ElseIf} $R0 = -1 ; Downgrading
+    ${If} $R1 = 1              ; User chose to uninstall
+      Goto reinst_uninstall
+    ${Else}
+      Goto reinst_done         ; User chose NOT to uninstall
+    ${EndIf}
+  ${EndIf}
+
+  reinst_uninstall:
+    HideWindow
+    ClearErrors
+
+    ; Not in the Tauri template: the uninstaller removes the login item of a program that is gone, but here the
+    ; program is installed again right after, so the item is put back when the uninstall succeeded.
+    ReadRegStr $SavedRunValue HKCU "${RUNKEY}" "${PRODUCTNAME}"
+    ReadRegStr $4 HKCU "${MANUPRODUCTKEY}" ""
+    ReadRegStr $R1 HKCU "${UNINSTKEY}" "UninstallString"
+    ${IfThen} $UpdateMode = 1 ${|} StrCpy $R1 "$R1 /UPDATE" ${|} ; append /UPDATE
+    ${IfThen} $PassiveMode = 1 ${|} StrCpy $R1 "$R1 /P" ${|} ; append /P
+    StrCpy $R1 "$R1 _?=$4" ; append uninstall directory
+    ExecWait '$R1' $0
+
+    BringToFront
+
+    ${IfThen} ${Errors} ${|} StrCpy $0 2 ${|} ; ExecWait failed, set fake exit code
+
+    ${If} $0 <> 0
+    ${OrIf} ${FileExists} "$INSTDIR\${MAINBINARYNAME}"
+      ; User cancelled NSIS uninstaller? return to select un/reinstall page
+      ${If} $0 = 1
+        Abort
+      ${EndIf}
+
+      ; Other erros? show generic error message and return to select un/reinstall page
+      MessageBox MB_ICONEXCLAMATION "$(unableToUninstall)"
+      Abort
+    ${EndIf}
+    ${If} $SavedRunValue != ""
+      WriteRegStr HKCU "${RUNKEY}" "${PRODUCTNAME}" $SavedRunValue
+    ${EndIf}
+  reinst_done:
+FunctionEnd
 
 Function SkipIfPassive
   ${IfThen} $PassiveMode = 1 ${|} Abort ${|}
@@ -120,24 +292,24 @@ Function .onInit
     StrCpy $INSTDIR "$LOCALAPPDATA\${PRODUCTNAME}"
     Call RestorePreviousInstallLocation
   ${EndIf}
-  ; Refuse to replace a newer installed version (Tauri: ALLOWDOWNGRADES false). SemverCompare gives 1 for an
-  ; upgrade, 0 for the same version and -1 for a downgrade; an unreadable installed version is treated as older.
-  ReadRegStr $R1 HKCU "${UNINSTKEY}" "DisplayVersion"
-  ${If} $R1 != ""
-    nsis_tauri_utils::SemverCompare "${VERSION}" $R1
-    Pop $R0
-    ${If} $R0 = -1
-      ${If} ${Silent}
-      ${OrIf} $PassiveMode = 1
+  ; A downgrade cannot be confirmed without a page: refuse it in silent and passive runs (Tauri: ALLOWDOWNGRADES
+  ; false, its EarlyChecks refuse silent only). Interactively PageReinstall offers "uninstall before installing".
+  ; SemverCompare gives 1 for an upgrade, 0 for the same version and -1 for a downgrade; an unreadable installed
+  ; version is treated as older.
+  ${If} ${Silent}
+  ${OrIf} $PassiveMode = 1
+    ReadRegStr $R1 HKCU "${UNINSTKEY}" "DisplayVersion"
+    ${If} $R1 != ""
+      nsis_tauri_utils::SemverCompare "${VERSION}" $R1
+      Pop $R0
+      ${If} $R0 = -1
         System::Call 'kernel32::AttachConsole(i -1)i.r0'
         ${If} $0 <> 0
           System::Call 'kernel32::GetStdHandle(i -11)i.r0'
           FileWrite $0 "A newer version of ${PRODUCTNAME} ($R1) is already installed; downgrades are not allowed.$\r$\n"
         ${EndIf}
-      ${Else}
-        MessageBox MB_ICONSTOP "A newer version of ${PRODUCTNAME} ($R1) is already installed. Uninstall it first to install version ${VERSION}."
+        Abort
       ${EndIf}
-      Abort
     ${EndIf}
   ${EndIf}
 FunctionEnd

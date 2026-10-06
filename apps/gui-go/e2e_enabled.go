@@ -264,6 +264,7 @@ var evidenceWriter = &EvidenceService{}
 // e2eLaunch records that this process passed the single-instance lock and is the first instance: a second
 // instance exits inside application.New and never reaches it.
 func e2eLaunch(h *HostService) {
+	startTimerProbe()
 	_ = evidenceWriter.write(Step{Window: "app", Step: "launch", OK: true, Detail: map[string]any{
 		"pid": os.Getpid(), "ppid": os.Getppid(), "uniqueID": h.singleInstanceID, "args": os.Args[1:], "bundleID": bundleID}})
 }

@@ -36,9 +36,10 @@ type HostService struct {
 	helper           *quickpanelhelper.Supervisor // nil when the WebView quick panel is in use
 	updates          updater
 	lastCheck        lastCheckAt
-	wake             chan struct{} // pending system wake for the update scheduler, capacity 1
+	wake             chan string // pending wake source (system resume, background activity) for the update scheduler, capacity 1
 	analytics        analyticsQueue
 	stopWake         func()
+	stopActivity     func() // invalidates the macOS background activity
 	tray             *trayMenu
 	singleInstanceID string
 	readyMu          sync.Mutex
@@ -117,7 +118,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	host := &HostService{effects: newVisualEffects(), notifier: notifications.New(), wake: make(chan struct{}, 1)}
+	host := &HostService{effects: newVisualEffects(), notifier: notifications.New(), wake: make(chan string, 1)}
 	host.lastCheck.recordNow()
 	services := append([]application.Service{application.NewService(host)}, notifierServices(host)...)
 	services = append(services, e2eServices(host)...)
@@ -145,7 +146,7 @@ func main() {
 	// a launch arriving meanwhile would be lost. Activations that arrive before bootstrap finishes are held
 	// (see onSecondInstance) and carried out afterwards.
 	app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) { go host.bootstrap() })
-	host.stopWake = app.Event.OnApplicationEvent(events.Common.SystemDidWake, func(*application.ApplicationEvent) { host.signalWake() })
+	host.stopWake = app.Event.OnApplicationEvent(events.Common.SystemDidWake, func(*application.ApplicationEvent) { host.signalWake(wakeSystemResume) })
 	if err := app.Run(); err != nil {
 		log.Fatal(err)
 	}
@@ -203,6 +204,8 @@ func (h *HostService) bootstrap() {
 	if !h.quitting.Load() {
 		schedulerCtx, stopScheduler := context.WithCancel(context.Background())
 		h.stopScheduler = stopScheduler
-		go h.runUpdateScheduler(schedulerCtx)
+		timing := schedulerTimingOverride(defaultSchedulerTiming)
+		h.stopActivity = startBackgroundActivity(timing.activityInterval, func() { h.signalWake(wakeBackgroundActivity) })
+		go h.runUpdateScheduler(schedulerCtx, timing)
 	}
 }

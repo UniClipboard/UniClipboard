@@ -42,6 +42,11 @@ func schedulerTimingOverride(t schedulerTiming) schedulerTiming {
 	if d, err := time.ParseDuration(os.Getenv("UC_UPDATE_WAKE_MIN_RECHECK")); err == nil && d > 0 {
 		t.wakeMinRecheck = d
 	}
+	// The background activity gets its own interval so a feed request can be attributed to the system callback
+	// rather than to the scheduler's own timer; without it the activity keeps the production interval.
+	if d, err := time.ParseDuration(os.Getenv("UC_UPDATE_BACKGROUND_ACTIVITY_INTERVAL")); err == nil && d > 0 {
+		t.activityInterval = d
+	}
 	return t
 }
 

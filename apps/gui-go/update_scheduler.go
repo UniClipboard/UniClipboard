@@ -28,6 +28,9 @@ type schedulerTiming struct {
 	// wakeMinRecheck is how long after the last check (from any source) a system wake may trigger another
 	// one: below it the check is skipped so a short sleep or a burst of resume events never hits the feed twice.
 	wakeMinRecheck time.Duration
+	// activityInterval is the period of the macOS background activity that fires while App Nap suspends the
+	// timers below; like the Tauri shell it equals the success cadence.
+	activityInterval time.Duration
 }
 
 var defaultSchedulerTiming = schedulerTiming{
@@ -36,6 +39,8 @@ var defaultSchedulerTiming = schedulerTiming{
 	jitter:         15 * time.Minute,
 	failure:        30 * time.Minute,
 	wakeMinRecheck: time.Hour,
+
+	activityInterval: 6 * time.Hour,
 }
 
 // Minimum gap between two scheduler-triggered prompt windows, per channel family.
@@ -207,22 +212,30 @@ func (l *lastCheckAt) since() time.Duration {
 	return max(0, time.Duration(time.Now().Unix()-l.unix.Load())*time.Second)
 }
 
-// signalWake is the Wails SystemDidWake listener: it only queues one pending wake (a burst of resume events
-// collapses into one) and never blocks the Wails event loop.
-func (h *HostService) signalWake() {
-	log.Printf("update scheduler: system wake")
+// Where a scheduler wake comes from; the log names it so a check can be traced to its trigger.
+const (
+	wakeSystemResume       = "system-did-wake"     // Wails Common.SystemDidWake: the machine woke from sleep
+	wakeBackgroundActivity = "background-activity" // macOS NSBackgroundActivityScheduler: the system ran the activity, App Nap or not
+)
+
+// signalWake queues one pending wake (a burst of events, from any source, collapses into one) and never blocks
+// the caller: it runs on the Wails event loop and on a system queue.
+func (h *HostService) signalWake(source string) {
+	if source == wakeSystemResume {
+		log.Printf("update scheduler: system wake")
+	}
 	select {
-	case h.wake <- struct{}{}:
+	case h.wake <- source:
 	default:
 	}
 }
 
 // runUpdateScheduler is the background periodic update check. It waits for setup to complete, checks once
-// immediately, then repeats on the success/failure cadence until ctx is cancelled. A system wake (signalWake)
-// checks early only when the last check is older than wakeMinRecheck; a skipped wake leaves the cadence timer
-// untouched. Wake events during the setup wait are ignored, as in the Tauri scheduler.
-func (h *HostService) runUpdateScheduler(ctx context.Context) {
-	timing := schedulerTimingOverride(defaultSchedulerTiming)
+// immediately, then repeats on the success/failure cadence until ctx is cancelled. A wake (signalWake: system
+// resume or the macOS background activity) checks early only when the last check is older than
+// wakeMinRecheck; a skipped wake leaves the cadence timer untouched. Wake events during the setup wait are
+// ignored, as in the Tauri scheduler.
+func (h *HostService) runUpdateScheduler(ctx context.Context, timing schedulerTiming) {
 	for {
 		done, err := h.setupComplete(ctx)
 		if err == nil && done {
@@ -241,13 +254,13 @@ func (h *HostService) runUpdateScheduler(ctx context.Context) {
 			return
 		case <-timer.C:
 			ok = h.scheduledCheck(ctx)
-		case <-h.wake:
+		case source := <-h.wake:
 			since := h.lastCheck.since()
 			if since < timing.wakeMinRecheck {
-				log.Printf("update scheduler: wake skipped, last check %s ago", since.Round(time.Second))
+				log.Printf("update scheduler: wake skipped, last check %s ago (%s)", since.Round(time.Second), source)
 				continue
 			}
-			log.Printf("update scheduler: wake after %s, checking", since.Round(time.Second))
+			log.Printf("update scheduler: wake after %s, checking (%s)", since.Round(time.Second), source)
 			ok = h.scheduledCheck(ctx)
 			if !timer.Stop() {
 				select {

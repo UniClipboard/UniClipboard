@@ -45,6 +45,10 @@ linuxdeploy 的 GTK 插件只设置 `GIO_EXTRA_MODULES`，它是追加语义，�
 
 Tauri CLI 升级到默认使用不早于 `07333c6` 的 linuxdeploy 后，删除 `scripts/linux-appimage-tools.mjs` 及其调用与测试；`check-linux-bundles.py` 中的断言保留。
 
+### Go GUI 的补充（17c7）
+
+Go GUI 的 AppImage（`apps/gui-go`）不走上面的 Tauri 路径，其库边界、GIO TLS 模块与 `libdbus-1` 的决定记录在 [gui-go-linux-appimage-runtime-deps.md](gui-go-linux-appimage-runtime-deps.md)：宿主拥有 libglvnd 全家与 `libdbus-1`；包内只带与捆绑 GLib 同源的 `libgiognutls.so`。Tauri 包是否有同样的 `libdbus` 遮蔽问题没有检查，仍 OPEN。
+
 ## 验证
 
 可复跑脚本：`scripts/linux-appimage-smoke.sh`。它在隔离的 HOME、D-Bus、Secret Service 和嵌套合成器（或 Xvfb）里启动 AppImage，要求窗口出现、前端上报就绪（日志 `Main window revealed`）、进程持续存活，且日志没有 EGL、GIO 或加载器错误；同时保存截图、环境信息与结果。通过条件不依赖截图，截图只作为人工核对材料。

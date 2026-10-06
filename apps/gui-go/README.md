@@ -647,6 +647,24 @@ UC_PORTABLE_E2E_ARGS=--supplement apps/gui-go/e2e/linux/run.sh appimage-portable
 UC_LINUX_IMAGE=uc-gui-go-linux-build:17c2 apps/gui-go/e2e/linux/run_17c6.sh <新目录>   # 干净提交；包含 17c5 全套与 runtime 固定的负面用例
 ```
 
+## AppImage 运行时动态依赖（第 17c7 片）
+
+契约、功能→固定版 API/已有库→集成→缺口→适配→E2E 对照表、边界表（哪些库来自 AppImage、哪些来自宿主）、失败方式与结果在 [docs/architecture/gui-go-linux-appimage-runtime-deps.md](../../docs/architecture/gui-go-linux-appimage-runtime-deps.md)。证据目录 `/Users/mark/.herdr-projects/uni/t-0188-artifacts/linux-17c7/`（仓库只索引）。
+
+- 缺陷（先拿红灯）：17c4–17c6 的 AppRun 把 `GIO_MODULE_DIR` 指向刻意留空的 `usr/lib/gio/modules`，固定版 Wails GTK 插件不部署 GIO 模块，libsoup 3 没有 TLS 后端：真实 WebView 对受信 CA 的本地 HTTPS 服务也失败。
+- 实现：`package_linux.py` 把构建镜像里 `glib-networking` 的 `libgiognutls.so` 复制进该目录（同源同 ABI，manifest 记录来源与 SHA-256）；`libdbus-1` 不再随包（Fedora 上 AppRun 的 `LD_LIBRARY_PATH` 让宿主 `dbus-launch` 加载了包内旧 libdbus，GUI 静默 `exit 1`；Ubuntu 上碰巧同版本）；禁止列表加入 `libGLESv1_CM`/`libGLESv2`/`libOpenGL`/`libdbus-1`。
+- 验证入口：`e2e/linux_appimage_tls_run.py`（真实 WebView 经 `panel-js` 对本地 HTTPS 服务 `fetch`，随机 nonce、受信/不可信 CA、宿主信任控制、重启后的因果对照、四个进程的 `/proc/<pid>/maps` 库来源）、`e2e/linux/appimage_content_check.py`（对解包产物的机械断言）、`e2e/linux/audit_dlopen.py`（静态清单辅助，不是验收）；第二发行版为 Fedora 44（`Dockerfile.17c7-fedora`，镜像固定 digest，自带 GLib 2.88 与宿主 glib-networking）。
+- 结果（干净提交 `53aa76756` 与 harness 修复后的补验 `6bbc91dfe`）：Ubuntu 24.04 与 Fedora 44 的 WebView HTTPS 各 19/19（受信读到令牌且服务端有同 nonce 的请求行，不可信被拒且无请求行，T5 信任后同一请求成功，映射断言）；两发行版的无 TLS 模块对照包各 13/13（受信 HTTPS 也被拒）；17c6 旧包在 Ubuntu 上 13/13 红灯，在 Fedora 上因 libdbus 而 **启动失败**（不是 TLS 证据）；内容检查 8/8 与对照 5/5；回归 portable 64/64、非 portable 34/34、negative 2/2、release 冒烟 5/5、runtime 身份通过。
+- 失败与保留：最终运行整体退出码 1，仅因 `content-negtls`（`run.sh` 没把模式传进容器，harness 缺陷）；同一运行还暴露 `main()` 早退跳过 `sys.exit` 使失败场景退出码为 0。两者在 `6bbc91dfe` 修复，补验在同一批保留的包与镜像上进行，不是整体重新构建。所有诊断与失败 attempt（`dev1`…`dev8`、`diag-*`、`fedora-image-build*.log`、`red1-17c6-ubuntu`）保留。
+- 仍 OPEN：原生 amd64（Docker 的 amd64 是 QEMU，不等于原生）、其他发行版与 Mesa/glibc、系统代理（libproxy/gnome-proxy）、真实桌面/GPU/Wayland、AppRun 的 `LD_LIBRARY_PATH` 对其他宿主助手进程的影响（只证实了 libdbus 一例）、Tauri 包的 libdbus 遮蔽是否同样存在。
+
+### 17c7 复跑
+
+```bash
+UC_LINUX_IMAGE=uc-gui-go-linux-build:17c2 apps/gui-go/e2e/linux/run_17c7.sh <新目录>   # 干净提交；先 run.sh daemon-release；镜像构建失败即中止
+apps/gui-go/e2e/linux/run_17c7_supplement.sh <最终运行目录> <新目录>                     # 只在保留的包与镜像上复验 harness
+```
+
 ## 验收边界
 
 - Wails 与 runtime 同时固定为 `3.0.0-beta.28`；这是 beta 原型，不是生产迁移完成。
@@ -657,7 +675,8 @@ UC_LINUX_IMAGE=uc-gui-go-linux-build:17c2 apps/gui-go/e2e/linux/run_17c6.sh <新
 - Linux 17c2：Layer Shell 面板与每输出定位/上限由容器内真实无头 sway 验证（见“17c2 结果”），Hyprland/GNOME/KDE 与真实桌面未验证。Linux 17c：证据来自容器内 Xvfb + 私有 D-Bus（无窗口管理器、Wayland、portal、托盘宿主、通知服务、Secret Service）与脚本化 Hyprland socket；默认快捷键用 e2e 测试接缝；（17c 当时）AppImage 不自包含、daemon 来源未核验；17c4 已补自包含 AppImage 与真实 release daemon 证据（容器内干净宿主，仍无真实 Linux 桌面运行证据）。详见“Linux（第 17c 片）”与“自包含 Linux AppImage（第 17c4 片）”。
 - Windows 17b：同上，另可为 arm64 编译、安装器脚本可编译；daemon 以 `TerminateProcess` 强制终止（非优雅关闭）；Windows 生产入口、安装器、原位更新、自启迁移、双击修饰键的真实读取/焦点/可见性均未验证；真实 Rust daemon + NSIS/便携包的原生安装与更新仍 OPEN；官方发布签名验证仍 OPEN。
 - Windows：17a 代码可为 windows/amd64 编译（普通与 e2e 标签、`go vet` 通过），没有任何 Windows 运行证据（真实可见、焦点、按键、冲突、粘贴、托盘、通知、daemon 停止、单实例均未验证，runner 离线）；Linux、安装签名、Windows 更新与 GPUI 在 Windows 的 N/A 说明见上。
-- Linux 17c6：AppImage runtime 固定（见“固定 AppImage runtime（第 17c6 片）”），amd64 嵌入与运行、跨发行版 dlopen 审计仍 OPEN。
+- Linux 17c7：AppImage 的 GIO TLS 模块与 libdbus/libglvnd 边界由 Ubuntu 24.04 与 Fedora 44 两个无 GTK/WebKit 的容器宿主上的真实 WebView HTTPS 与进程映射验证（见“AppImage 运行时动态依赖（第 17c7 片）”）；原生 amd64、其他发行版、真实桌面/GPU、系统代理仍 OPEN。
+- Linux 17c6：AppImage runtime 固定（见“固定 AppImage runtime（第 17c6 片）”），amd64 嵌入与运行仍 OPEN（其 dlopen 审计项由 17c7 处理）。
 - Linux 17c5：AppImage portable 模式由容器内非 root 用户、无 Secret Service 的真实 AppImage 与真实 release daemon 验证（见“AppImage portable 模式（第 17c5 片）”）；真实登录会话、更新后自启动、Windows/macOS 重新运行、amd64 与原生桌面仍 OPEN。
 - 单实例：投递尽力而为；`application.New`→`Run` 的毫秒窗口内的激活不可接收；Windows/Linux 与 macOS Dock 再点击未验证；窗口重放曾触发原生 `SIGSEGV`（根因未定位，见“Wails 能力审计”）。
 - 17a macOS：`webview_panel_shortcut_run.py` 控制器断言 17 项通过、原生可见性 3 项未验证（显示器仍休眠，`CGDisplayIsAsleep=1`，仅相关性，不断定根因）；`single_instance_run.py` 因 `--quick-panel` 行为变化重跑一次通过；未重跑整套 quiet 回归。

@@ -63,4 +63,61 @@
 
 ## 验证结果
 
-（实现与运行后补录。）
+证据目录 `/Users/mark/.herdr-projects/uni/t-0188-artifacts/linux-17c7/`（仓库只索引）。全部是容器内 arm64：Docker、Xvfb、非 root 用户、portable 模式（无 Secret Service）、真实 AppImage、真实 release daemon（SHA-256 `ea0f0bcb…f6c6`，输入与 17c5 构建证据一致，未重建）、e2e 标签 GUI 的真实 WebView。
+
+### 红灯（修复前）
+
+对 17c6 的现成包（`E2E-UniClipboard_1.1.1_arm64.AppImage`，`usr/lib/gio/modules` 为空）跑 HTTPS 场景（`red1-17c6-ubuntu`）：受信 CA 的服务端也被 WebView 拒绝（`TypeError: Load failed`），服务端没有收到请求行，只看到握手中断（`UNEXPECTED_EOF`）。`libGLESv2.so.2` 同时被确认为由宿主映射（GUI 与 `WebKitWebProcess` 的 `/proc/<pid>/maps`）。静态审计 `audit_dlopen.py` 对该包得到 14 个「字符串里出现、但既非 NEEDED 也未随包」的 soname（libglvnd 全家、`libgtk-layer-shell`、`libnss_mdns*` 和几个可选 dlopen），只是线索：`libGLESv2` 由 libepoxy 与 WebKit 加载，属于 libglvnd，包内不得带。
+
+### 修复
+
+1. `package_linux.py` 的 `deploy_gio_modules`：把构建镜像里 `glib-networking`（`dpkg -S` 校验归属）的 `libgiognutls.so` 复制进 `usr/lib/gio/modules`，与捆绑的 GLib 2.80 同源同 ABI；校验其 NEEDED 全在 AppDir 或为 libc 家族；manifest 记录来源、包版本与 SHA-256。不带 gvfs、dconf、libproxy、gnome-proxy。
+2. `libdbus-1` 从 AppDir 移除（见下文 F10）；`HOST_ONLY_LIBS` 加入 `libGLESv1_CM`、`libGLESv2`、`libOpenGL`、`libdbus-1`，打包检查在产物里发现它们就失败。linuxdeploy 的 `--exclude-library` 对主流程生效，但 GTK 插件自己的部署轮次不读它（日志里先出现 `Skipping … blacklisted`，随后插件又部署），所以在 linuxdeploy 之后显式移除，并由检查兜底。
+3. AppRun 注释更新（`GIO_MODULE_DIR` 现在指向有内容的目录）。
+
+### 最终运行（干净提交 `53aa76756`，目录 `final-53aa76756`，20:34–20:45 UTC 2026-10-06（约 11 分钟））与补验
+
+流水线整体 `pipeline-exit=1`，原因只有一个：`content-negtls=1`，那是 **测试入口缺陷**（`run.sh appimage-content-check` 没把 `UC_CONTENT_CHECK_ARGS` 传进容器，对照包被按「应有 TLS 模块」检查），不是产品缺陷；原始失败保留。同一运行还暴露：`run.sh appimage-tls-e2e` 的 `main()` 里有早退 `return`，跳过了末尾 `sys.exit`，导致 `control-17c6-fedora` 虽有失败断言却退出码 0。两个缺陷都在 harness 修复后提交 `6bbc91dfe`，并以 `run_17c7_supplement.sh` 在 **同一批保留的产品包与镜像** 上补验（`supplement-6bbc91dfe`，先 `shasum -c` 确认原包字节未变，没有重新构建任何产品）。
+
+| 项 | 结果（读自各 JSON） |
+| --- | --- |
+| 内容检查 `content-v1` | 8/8：模块目录恰为 `libgiognutls.so`，字节等于 manifest（`glib-networking 2.80.0-1build1`，SHA-256 `d5a50688…b2a7`），NEEDED 全在包内，无 GL/EGL/GLES/libdrm/libgbm/libwayland-client/libdbus，MIME 缓存仍在，manifest 记录 libdbus 移除 |
+| 内容检查 `content-negtls`（对照包） | 5/5：模块目录存在且为空 |
+| `tls-ubuntu`（Ubuntu 24.04 宿主，无 GTK/WebKit） | 19/19 |
+| `tls-fedora`（Fedora 44 宿主，无 GTK/WebKit；宿主 GLib 2.88、自带 glib-networking 模块） | 19/19 |
+| 无 TLS 模块对照包，双发行版 | 各 13/13：受信 HTTPS 也被拒，服务端无请求、无证书告警 |
+| 17c6 旧包在 Ubuntu | 13/13（旧包 HTTPS 被拒；与 `red1-17c6-ubuntu` 一致） |
+| 17c6 旧包在 Fedora | 按预期失败：5 项检查，仅 `T1 daemon 启动` 失败；**这不是 TLS 证据**，是 F10（libdbus）的证据。补验里 wrapper 退出码为 1，并有脚本断言「失败阶段只能是 T1」 |
+| 回归（最终运行，同一 v1 包） | portable 64/64，非 portable 完整 34/34（含真实更新与重启），negative 2/2，release 冒烟 5/5，runtime 身份（runtime 字节、manifest）通过 |
+
+`tls-*` 的 19 项覆盖：干净宿主；测试 CA 只装进容器自己的信任机制（Ubuntu `update-ca-certificates`，Fedora `update-ca-trust`）；**宿主信任控制**（用宿主信任库的客户端接受受信服务端、拒绝不可信服务端，才让 fixture 可用）；真实 WebView 经 `panel-js` 对受信服务端 `fetch`，读到随机令牌，服务端收到的请求路径带本次随机 nonce、UA 是 Wails 页面的 `…AppleWebKit/605.1.15 … wails.io/605.1.15`、来源 `wails://localhost`；不可信服务端被拒，服务端无请求行且握手失败；**T5 因果对照**：把不可信 CA 装进宿主信任库并重启 GUI（GLib 的默认 TLS 数据库每进程读一次），同一服务端、同一页面的请求这次成功，请求行带新 nonce，因此之前的拒绝可归因于证书信任，而不是服务端、CORS 或可达性；映射断言。
+
+映射断言（GUI、`WebKitWebProcess`、`WebKitNetworkProcess`、`WebKitGPUProcess` 的 `/proc/<pid>/maps`）：每个 `.so` 要么在挂载内，要么是被分类的宿主库；包内带的 soname 不得从宿主加载；`WebKitNetworkProcess` 必须映射挂载内的 `libgiognutls.so` 与 `libgnutls.so.30`（两发行版都通过，`GIO_MODULE_DIR` 指向挂载内）。Fedora 宿主自己的 `libgiognutls.so`（为宿主 GLib 2.88 构建）在场、没有被使用。`libGLESv2.so.2` 在两个发行版上都由宿主的 libglvnd 提供（映射路径 `/usr/lib*/…/libGLESv2.so.2*`），没有进包。
+
+### 实际遇到的失败与根因（原始日志都保留）
+
+- **F10 libdbus（包缺陷，Ubuntu 上被掩盖）**：Fedora 上 GUI 静默 `exit 1`，没有任何输出。`strace -f`（`diag-fedora-start8/10`）显示：GUI 在没有会话总线时找 `dbus-launch`；Fedora 的 `dbus-launch`（libdbus 1.16.2）经 AppRun 的 `LD_LIBRARY_PATH` 加载了包内的旧 `libdbus-1.so.3`，报 `version 'LIBDBUS_PRIVATE_1.16.2' not found`（rc 127）。Ubuntu 宿主与包内是同一版 libdbus，所以一直碰巧可用。修复是不再随包带 `libdbus-1`（宿主的才与宿主的 dbus 助手匹配）。
+- **镜像缺陷，不是产品缺陷**：Fedora 容器镜像先后缺 `dbus-x11`（无会话总线自动拉起）与有效的 `/etc/machine-id`（libdbus 报 `D-Bus library appears to be incorrectly set up`）。这些在镜像里修复；每轮镜像构建日志都独立保留（`fedora-image-build.log`…`build6`，其中 build5 因 `dbus-uuidgen` 对空文件拒绝而失败，并且之后误在旧镜像上跑了 `dev5`，被保留为失败 attempt）。最终运行在构建失败时立即中止，并记录镜像 ID、os-release 与全部包版本。Fedora 基础镜像固定为 `fedora:44@sha256:43b29f65…`。
+- **`LD_DEBUG` 里的 `soup_uri_new` symbol lookup error**：Ubuntu 与 Fedora 上都出现（`diag-ubuntu-ld1`），而 Ubuntu 上 GUI 正常运行；它是 WebKit 的可恢复探测，不是原因，没有为它添加 libsoup2。
+- **`gui2` 崩溃**：第二次启动后 e2e 控制面的 `shortcut-state` 在宿主 bootstrap 完成前解引用了尚未绑定的 daemon client（仅 e2e 标签代码）；runner 在第二次启动时可能读到旧 daemon 的残留 `daemon.conn` 并提前轮询。runner 改为等待新 daemon pid 与 `bootstrapped` 证据步骤。
+- **T3 的告警文本不稳定**：不可信服务端有时只看到 `Connection reset by peer`，客户端的 `unknown ca` 告警被 TCP 复位抢先（`dev5-green-ubuntu`，保留）。告警文本因此只作证据记录（`untrustedAlertSeen`），断言的是「握手失败、没有请求行」，并由 T5 因果对照提供归因。
+- **GnuTLS 的编译期信任文件**（`/etc/ssl/certs/ca-certificates.crt`）在 Fedora 容器里存在，所以 F3 没有在 Fedora 44 上发生；这只是观察，不是对其他发行版的保证。
+- 我手写的 ELF SONAME 解析被换成 `readelf -d`（读取失败会拒绝分类，不放过）；Fedora 的 `libbz2.so.1`（宿主）与包内 `libbz2.so.1.0` 是两个不同的 soname，两者同时加载不构成遮蔽，该判断来自 `readelf` 读取的 SONAME，而不是放宽文件名。
+
+### 复跑
+
+```bash
+# 干净提交；先 run.sh daemon-release；需要 Docker、bun、网络（镜像构建）
+UC_LINUX_IMAGE=uc-gui-go-linux-build:17c2 apps/gui-go/e2e/linux/run_17c7.sh <新目录>
+# 只在保留的包与镜像上复验 harness 修复：
+apps/gui-go/e2e/linux/run_17c7_supplement.sh <最终运行目录> <新目录>
+```
+
+### 仍 OPEN（没有被缩小）
+
+- 原生 amd64：本机 Docker 的 amd64 是 QEMU 模拟（`uname -m` 为 `x86_64` 并不等于原生），没有原生 x86_64 主机；amd64 的构建、嵌入与运行只能在原生主机或 CI 上证明。
+- 其他发行版与 Mesa/glibc 版本：只测了 Ubuntu 24.04 与 Fedora 44；Arch、openSUSE、Debian sid、Alpine/musl 未测。
+- 系统代理（libproxy、gnome-proxy）：没有带，未验证。
+- 真实桌面、GPU 驱动、Wayland、portal、托盘、通知、休眠、焦点；deb/rpm 原生安装。
+- `AppRun` 的 `LD_LIBRARY_PATH` 仍会进入 GUI 启动的所有宿主助手进程（`xdg-open`、`notify-send` 等）；libdbus 是这一类问题里已证实的一例，其他助手没有逐个审计。
+- 真实登录会话的自启动、注销后登录与更新后条目；官方签名发布；Windows/macOS 全部事项。

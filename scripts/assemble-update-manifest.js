@@ -76,7 +76,8 @@ function parseArgs() {
  * Mapping rules:
  *   - aarch64 + .app.tar.gz.sig  → darwin-aarch64
  *   - x64/x86_64 + .app.tar.gz.sig → darwin-x86_64
- *   - .AppImage.sig or .AppImage.tar.gz.sig → linux-x86_64
+ *   - aarch64/arm64 + .AppImage.sig or .AppImage.tar.gz.sig → linux-aarch64
+ *   - amd64/x86_64/x64 + .AppImage.sig or .AppImage.tar.gz.sig → linux-x86_64
  *   - arm64/aarch64 + .exe.sig / .nsis.zip.sig / .msi.zip.sig → windows-aarch64
  *   - .exe.sig / .nsis.zip.sig / .msi.zip.sig (otherwise) → windows-x86_64
  *
@@ -84,6 +85,13 @@ function parseArgs() {
  * as `windows-<arch>`, so an arm64 NSIS sig MUST map to `windows-aarch64` or it
  * would collide with the x64 entry under `windows-x86_64` and one would clobber
  * the other (whichever scanned last), leaving one arch unable to self-update.
+ *
+ * The Linux architecture comes only from a token of the sig file's basename
+ * (release.yml flattens every asset into one directory, so directory names are
+ * not part of the asset naming). An AppImage whose basename carries no known
+ * architecture token, or both, returns null: it is never defaulted to x86_64,
+ * because the updater would then hand a foreign-architecture binary to the
+ * x86_64 clients with a perfectly valid signature.
  *
  * Returns null if no match.
  */
@@ -105,7 +113,11 @@ function detectPlatform(filePath) {
   }
 
   if (normalized.endsWith('.appimage.tar.gz.sig') || normalized.endsWith('.appimage.sig')) {
-    return 'linux-x86_64'
+    const name = normalized.slice(normalized.lastIndexOf('/') + 1)
+    const isArm = /(?<![a-z0-9])(aarch64|arm64)(?![a-z0-9])/.test(name)
+    const isX64 = /(?<![a-z0-9])(amd64|x86_64|x64)(?![a-z0-9])/.test(name)
+    if (isArm === isX64) return null
+    return isArm ? 'linux-aarch64' : 'linux-x86_64'
   }
 
   if (
@@ -194,6 +206,13 @@ function scanArtifacts(artifactsDir, baseUrl, silent = false) {
     const url = `${baseUrl}/${artifactFilename}`
 
     const existing = selectedByPlatform[platform]
+    // Two equal-priority Linux candidates for one key are duplicate assets; whichever sorted last used to win
+    // silently. Refuse instead of publishing an arbitrary pick.
+    if (existing && existing.priority === priority && platform.startsWith('linux-')) {
+      throw new Error(
+        `Conflicting ${platform} candidates with the same priority: ${existing.sigFile} and ${sigFile}`
+      )
+    }
     if (existing && existing.priority > priority) {
       if (!silent) {
         process.stderr.write(
@@ -286,6 +305,15 @@ function readNotesWithAnnouncement(notesFile, announcementName, silent) {
 }
 
 function main() {
+  try {
+    run()
+  } catch (error) {
+    process.stderr.write(`Error: ${error instanceof Error ? error.message : String(error)}\n`)
+    process.exit(1)
+  }
+}
+
+function run() {
   const options = parseArgs()
 
   // Read notes files if provided

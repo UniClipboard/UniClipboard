@@ -22,7 +22,7 @@ PoC 结束后只能选择继续达到完整功能验收或删除该入口；不�
 ## 当前范围
 
 已验证：真实 daemon 启动与复用、认证、HTTP/WS、共享 React 主界面（设置、解锁、历史、设备、设置页）、
-主窗口关闭隐藏与重开。第二窗口：真实 updater（dev 预览）与 quick panel 页面经多页构建加载，Go 宿主负责窗口创建、两阶段显示、失焦隐藏与尺寸；E2E 只用原生控制触发显示（全局快捷键尚未实现）。尚未实现：全局快捷键、真实更新服务、托盘、更新、通知、文件预览协议、
+主窗口关闭隐藏与重开。第二窗口：真实 updater（dev 预览）与 quick panel 页面经多页构建加载，Go 宿主负责窗口创建、两阶段显示、失焦隐藏与尺寸；E2E 只用原生控制触发显示（全局快捷键尚未实现）。托盘与退出语义：托盘菜单（同步开关、打开、设置、检查更新、重启、轻量模式、退出，六种语言标签）；普通退出（托盘退出、Cmd-Q）停止 daemon，轻量模式与重启保留 daemon。更新服务（`internal/update`）：同一份 Tauri 更新清单格式、minisign 签名校验（含 trusted comment）、下载进度与取消、macOS 原位安装并重启；公钥构建时从 Tauri 更新配置注入，E2E 构建才允许用本地清单与临时密钥覆盖。尚未实现：全局快捷键、后台更新调度、Windows/Linux 原位安装、设备同步子菜单、轻量模式通知、更新、通知、文件预览协议、
 autostart、原生粘贴与 GPUI 宿主、Windows/Linux 原生验收。
 
 ## 运行与复跑
@@ -61,6 +61,10 @@ apps/gui-go/e2e/run.sh target/gui-go/evidence
 Go 只嵌入构建产物 `frontend/dist`，不嵌入源码。
 
 未实现命令清单：`apps/gui-go/e2e/command-coverage.sh`。
+
+更新 E2E：`apps/gui-go/e2e/update_run.py --out <dir>`（需先 `build.sh e2e`）在安装副本上运行：
+不可信签名必须被拒绝且包不变；可信签名则下载、校验、停止旧 daemon、替换自身包、重启，
+重启后的进程发现更新标记；旧进程与旧 daemon 均退出。
 
 ## 验收边界
 

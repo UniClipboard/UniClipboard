@@ -32,6 +32,7 @@ type HostService struct {
 	effects *visualEffects
 	panel   panelState
 	exit    exitIntent
+	updates updater
 	tray    *trayMenu
 
 	quitting atomic.Bool

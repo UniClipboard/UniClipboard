@@ -68,7 +68,7 @@ func (h *HostService) Invoke(name string, args map[string]json.RawMessage) Invok
 	if !ok {
 		return InvokeResult{Error: commandError{Code: "InternalError", Message: fmt.Sprintf("command %s is not available in the Go host", name)}}
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), commandTimeout(name))
 	defer cancel()
 	data, err := fn(ctx, h, args)
 	if err != nil {
@@ -91,9 +91,30 @@ func RegisteredCommands() []string {
 // always receives an object with a stable `code`.
 func wireError(err error) any {
 	switch typed := err.(type) {
-	case commandError, codeError:
+	case commandError, codeError, stringError:
 		return typed
 	default:
 		return internalError(err)
 	}
+}
+
+// channel resolves a frontend Channel argument, which crosses the bridge as
+// `{ "__channel": id }`, into a sender that delivers messages on that id.
+func (a commandArgs) channel(key string) (func(*HostService, any), error) {
+	var ref struct {
+		ID string `json:"__channel"`
+	}
+	if err := a.decode(key, &ref); err != nil || ref.ID == "" {
+		return nil, commandError{Code: "ValidationError", Message: "invalid channel argument " + key}
+	}
+	return func(h *HostService, message any) { h.emit("channel://"+ref.ID, message) }, nil
+}
+
+// commandTimeout gives long-running update commands room; others fail fast.
+func commandTimeout(name string) time.Duration {
+	switch name {
+	case "download_update", "install_update":
+		return 30 * time.Minute
+	}
+	return 30 * time.Second
 }

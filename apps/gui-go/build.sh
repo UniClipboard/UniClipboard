@@ -18,7 +18,13 @@ cargo build --locked -p uc-daemon
 (cd apps/cli-go && go build -o ../../target/gui-go/uniclip ./cmd/uniclip)
 mkdir -p apps/gui-go/assets && cp apps/gui/src-tauri/icons/tray-icon@2x.png apps/gui-go/assets/
 VITE_GUI_GO_E2E="$E2E" bun --bun run --cwd apps/gui-go build
-(cd apps/gui-go && go build -tags "$TAGS" -o "../../target/gui-go/$APP-binary" .)
+# The release signer key comes from the Tauri updater config so both shells trust one key.
+# E2E builds leave it empty and use the local test feed override instead.
+PUBKEY=""
+if [[ "$E2E" == 0 ]]; then
+  PUBKEY="$(python3 -c 'import json;print(json.load(open("apps/gui/src-tauri/tauri.conf.json"))["plugins"]["updater"]["pubkey"])')"
+fi
+(cd apps/gui-go && go build -tags "$TAGS" -ldflags "-X main.updaterPublicKey=$PUBKEY" -o "../../target/gui-go/$APP-binary" .)
 BUNDLE="$ROOT/target/gui-go/$APP.app"
 mkdir -p "$BUNDLE/Contents/MacOS"
 cp "target/gui-go/$APP-binary" "$BUNDLE/Contents/MacOS/gui-go"

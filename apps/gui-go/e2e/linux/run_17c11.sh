@@ -6,7 +6,7 @@
 #         build + package ONE AppImage, then
 #   real      the 17c11 real-application E2E, non-portable: {Ubuntu 24.04 (Epiphany/Nautilus/Loupe), Fedora 44 (Firefox/Nautilus/Loupe)} x {generic, gnome} (+ F7 record on gnome)
 #   control   the same E2E on the 17c10 PRE-FIX AppImage (Fedora, gnome): the real applications must expose the defect (negative control, passed=false is the expected result)
-#   engine    diagnosis of the Engine's default-route requirement (NOT a fix)
+#   engine    diagnosis of the Engine's default-route requirement (NOT a fix); xdg-open generic/GNOME dispatch lifecycle (foreground wait vs gio service)
 #   regress   17c10 helpers x4 (sh recorder), 17c7 WebView TLS x2, 17c5 portable E2E, static content check
 # Needs: Docker with uc-gui-go-linux-build:17c2, uc-gui-go-linux-runtime:17c7, uc-gui-go-linux-runtime-fedora:17c7; network for the image builds; bun on the host.
 set -uo pipefail
@@ -58,6 +58,8 @@ echo "real:$rcs" | tee -a "$out/steps.txt"
 shasum -a 256 "$OLD_APPIMAGE" > "$out/inputs/old-appimage.sha256"
 step control-prefix-fedora-gnome env UC_REAL_IMAGE=uc-gui-go-linux-real-apps:17c11-fedora UC_HELPERS_DESKTOP=gnome UC_REAL_ARGS="$FIREFOX_ARGS" "$R" appimage-real-e2e "$out/control-prefix-fedora-gnome" "$OLD_APPIMAGE" "$(dirname "$OLD_APPIMAGE")/../v1/pkg/package-manifest.json"; echo "control-prefix rc=$? (non-zero expected)" | tee -a "$out/steps.txt"
 step engine-default-route "$E2E/diag_engine_default_route.sh" "$out/engine-default-route" "$V1" uc-gui-go-linux-real-apps:17c11-ubuntu
+step xdg-open-dispatch-ubuntu "$E2E/diag_xdg_open_generic.sh" "$out/xdg-open-dispatch-ubuntu" uc-gui-go-linux-real-apps:17c11-ubuntu
+step xdg-open-dispatch-fedora "$E2E/diag_xdg_open_generic.sh" "$out/xdg-open-dispatch-fedora" uc-gui-go-linux-real-apps:17c11-fedora
 step package-v2 "$R" package-appimage "$out/v2" --update-marker v2-installed || exit 1
 step feed "$R" appimage-feed "$out/feed" "$out/v2/pkg/E2E-UniClipboard_1.1.1_arm64.AppImage.tar.gz" || exit 1
 for combo in ubuntu-generic ubuntu-gnome fedora-generic fedora-gnome; do

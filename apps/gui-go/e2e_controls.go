@@ -52,7 +52,7 @@ func (s *EvidenceService) controlQuickPanel(action string) (bool, error) {
 		setting, err := h.autoStartSetting(ctx)
 		policy, policyErr := currentLoginItemPolicy()
 		// The registration as Wails itself reports it, and the LaunchAgent record it points at when there is one.
-		status, statusErr := h.app.Autostart.Status()
+		status, statusErr := h.loginItem().Status()
 		detail := map[string]any{"setting": setting, "name": policy.name(), "executable": policy.Executable,
 			"bundled": runningFromAppBundle(policy.Executable), "bundleID": bundleIdentifier(),
 			"enabled": status.Enabled, "strategy": string(status.Strategy), "path": status.Path}

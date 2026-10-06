@@ -101,7 +101,7 @@ func runningDaemonPID() (uint32, bool, error) {
 
 // restartGUI starts a fresh copy of this executable and exits, keeping the daemon.
 func (h *HostService) restartGUI() error {
-	exe, err := os.Executable()
+	exe, err := restartExecutable()
 	if err != nil {
 		return err
 	}

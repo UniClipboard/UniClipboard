@@ -1,4 +1,4 @@
-//go:build windows
+//go:build windows || linux
 
 package main
 
@@ -11,10 +11,11 @@ import (
 	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/apppaths"
 )
 
-// validateIsolation enforces the Windows test mode. Neither this host nor the Rust daemon resolve the data root
+// validateIsolation enforces the Windows and Linux test mode. Neither this host nor the Rust daemon resolve the data root
 // from HOME or LOCALAPPDATA: both ask the shell for the known folder, so a temporary HOME would not move anything,
-// and the daemon keeps its encryption key in Credential Manager (only the file-based keystore of portable mode is
-// outside the real user's secrets). The sandbox is therefore a portable installation: a throwaway uc-gui-go-*
+// and the daemon keeps its encryption key in Credential Manager on Windows (on Linux it uses the Secret Service whenever
+// DISPLAY and a session bus exist, which an Xvfb test has). Only the file-based keystore of portable mode is
+// outside the real user's secrets on both. The sandbox is therefore a portable installation: a throwaway uc-gui-go-*
 // directory holding the executables, in which the data root, the caches and the file keystore all live.
 func validateIsolation() error {
 	exe, err := os.Executable()

@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"sync"
 	"time"
 )
@@ -157,6 +158,9 @@ func (m *modifierMonitor) Shutdown() {
 
 func (w *modifierWorker) run(state modifierKeyState, onTrigger func()) {
 	defer close(w.done)
+	if closer, ok := state.(io.Closer); ok {
+		defer closer.Close() // releases the X11 connection of the Linux backend
+	}
 	selected := "disabled"
 	detector := newDoubleTapDetector()
 	ticker := time.NewTicker(modifierPollInterval)

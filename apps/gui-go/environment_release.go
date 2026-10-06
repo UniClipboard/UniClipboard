@@ -16,11 +16,11 @@ const releaseBuild = true
 // validateRelease guards the shipped form. The product is single-profile (the Tauri shell made the same decision),
 // so every development and test knob is refused rather than silently honoured: a profile, a daemon override, the
 // development environment marker and the isolated test mode. Portable mode is allowed (`portable.dat` next to the
-// executable, or UC_PORTABLE). Only Windows ships in this form so far; on other platforms the tag is refused, so a
+// executable, or UC_PORTABLE). Only Windows and Linux ship in this form so far; on other platforms the tag is refused, so a
 // release-tagged binary can never be launched against a real data root by accident.
 func validateRelease() error {
-	if runtime.GOOS != "windows" {
-		return fmt.Errorf("the release form is only available on Windows so far")
+	if runtime.GOOS != "windows" && runtime.GOOS != "linux" {
+		return fmt.Errorf("the release form is only available on Windows and Linux so far")
 	}
 	for _, key := range []string{"UC_PROFILE", "UC_GUI_GO_ISOLATED", "UNICLIPBOARD_DAEMON_BASE_URL", "UNICLIPBOARD_DAEMON_TOKEN_PATH", "UC_DAEMON_RUN_MODE"} {
 		if os.Getenv(key) != "" {

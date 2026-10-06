@@ -139,7 +139,7 @@ func (h *HostService) dismissQuickPanel() {
 	if w, ok := h.app.Window.GetByName(quickPanelWindowName); ok {
 		w.Hide()
 	}
-	if previousAppInputSupported {
+	if previousAppInputSupported && dismissRestoresPrevious {
 		if err := runOnMainThread(restorePreviousForeground); err != nil {
 			log.Printf("quick panel dismiss could not restore the previous foreground window: %v", err)
 		}
@@ -240,7 +240,7 @@ func init() {
 			}
 			return nil, nil
 		},
-		"quick_panel_uses_compositor_shortcuts": func(context.Context, *HostService, commandArgs) (any, error) { return false, nil },
+		"quick_panel_uses_compositor_shortcuts": func(context.Context, *HostService, commandArgs) (any, error) { return usesCompositorShortcuts(), nil },
 		"resolve_quick_panel_expand_side":       func(context.Context, *HostService, commandArgs) (any, error) { return "right", nil },
 	})
 }

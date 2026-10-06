@@ -94,8 +94,11 @@ func (p loginItemPolicy) apply(login osAutostart, enabled, reconcile bool) error
 // name is considered, so a named profile never reads the primary entry. The job is not booted out: it may be the
 // process that is running this code.
 func (p loginItemPolicy) sweepLegacy() error {
-	if runtime.GOOS == "windows" {
+	switch runtime.GOOS {
+	case "windows":
 		return p.sweepLegacyRunValue()
+	case "linux":
+		return p.sweepLegacyDesktopEntry()
 	}
 	if runtime.GOOS != "darwin" || p.Home == "" {
 		return nil
@@ -187,7 +190,7 @@ func (h *HostService) updateAutoStart(ctx context.Context, enabled bool) error {
 	if err != nil {
 		return internalError(err)
 	}
-	return applyAutoStart(daemonAutoStartStore{ctx: ctx, client: h.client}, policy, h.app.Autostart, enabled)
+	return applyAutoStart(daemonAutoStartStore{ctx: ctx, client: h.client}, policy, h.loginItem(), enabled)
 }
 
 // reconcileAutoStart makes the OS registration follow the stored preference at startup. When enabled it
@@ -204,7 +207,7 @@ func (h *HostService) reconcileAutoStart() {
 	}
 	policy, err := currentLoginItemPolicy()
 	if err == nil {
-		err = policy.apply(h.app.Autostart, enabled, true)
+		err = policy.apply(h.loginItem(), enabled, true)
 	}
 	if errors.Is(err, errProfileLoginItem) {
 		log.Printf("skipping OS autostart reconcile: %v", err)

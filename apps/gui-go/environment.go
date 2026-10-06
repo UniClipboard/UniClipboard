@@ -29,8 +29,8 @@ func validateEnvironment() error {
 	if releaseBuild {
 		return validateRelease()
 	}
-	if runtime.GOOS != "darwin" && runtime.GOOS != "windows" {
-		return fmt.Errorf("the Go GUI currently runs only on macOS and Windows")
+	if runtime.GOOS != "darwin" && runtime.GOOS != "windows" && runtime.GOOS != "linux" {
+		return fmt.Errorf("the Go GUI currently runs only on macOS, Windows and Linux")
 	}
 	if os.Getenv("UNICLIPBOARD_ENV") != "development" {
 		return fmt.Errorf("the Go GUI is a development build: set UNICLIPBOARD_ENV=development")

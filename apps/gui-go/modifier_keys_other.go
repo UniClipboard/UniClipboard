@@ -1,11 +1,11 @@
-//go:build !windows
+//go:build !windows && !linux
 
 package main
 
 import "errors"
 
-// modifierDoubleTapAvailable: the WebView panel's modifier trigger exists only on Windows. On macOS the native
-// panel helper owns the trigger, and Linux (X11) is slice 17c.
+// modifierDoubleTapAvailable: the WebView panel's modifier trigger exists on Windows and on native X11. On macOS the native
+// panel helper owns the trigger.
 const modifierDoubleTapAvailable = false
 
 func newPlatformKeyState() (modifierKeyState, error) {

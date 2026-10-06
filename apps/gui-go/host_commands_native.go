@@ -117,7 +117,7 @@ func installKind() string {
 	if runtime.GOOS == "darwin" {
 		return "macos"
 	}
-	return "unknown"
+	return platformInstallKind()
 }
 
 func init() {

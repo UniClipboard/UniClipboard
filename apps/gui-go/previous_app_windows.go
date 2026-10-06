@@ -18,6 +18,9 @@ import (
 // previousAppInputSupported reports that this platform can restore the previous window and send keys to it.
 const previousAppInputSupported = true
 
+// dismissRestoresPrevious: Windows does not give the focus back by itself when the panel hides.
+const dismissRestoresPrevious = true
+
 // Windows restricts SetForegroundWindow to the process that last received input. The workaround the Tauri shell
 // uses (and PowerToys Run before it) is to join the foreground thread's input queue with AttachThreadInput around
 // the call. Wails beta.28 exposes SetForegroundWindow/SetFocus/GetAsyncKeyState (pkg/w32) and x/sys/windows has

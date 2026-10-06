@@ -136,6 +136,7 @@ func main() {
 	host.app = app
 	host.openMainWindow()
 	host.initQuickPanel()
+	go host.reconcileAutoStart()
 	host.initTray()
 	schedulerCtx, stopScheduler := context.WithCancel(context.Background())
 	host.stopScheduler = stopScheduler

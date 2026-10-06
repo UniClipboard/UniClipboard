@@ -5,6 +5,8 @@ package main
 import (
 	"context"
 	"math"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -42,6 +44,17 @@ func (s *EvidenceService) controlQuickPanel(action string) (bool, error) {
 		defer cancel()
 		prefs, err := h.loadQuickPanelSettings(ctx)
 		return true, s.write(Step{Window: "main", Step: "prefs", OK: err == nil, Detail: prefs})
+	case strings.HasPrefix(action, "autostart-state:"):
+		// autostart-state:<label>: the stored preference next to the login item on disk.
+		label := strings.TrimPrefix(action, "autostart-state:")
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		setting, err := h.autoStartSetting(ctx)
+		item, itemErr := loginItem()
+		home, _ := os.UserHomeDir()
+		raw, readErr := os.ReadFile(filepath.Join(home, "Library", "LaunchAgents", item.Name+".plist"))
+		return true, s.write(Step{Window: "main", Step: "autostart-" + label, OK: err == nil && itemErr == nil,
+			Detail: map[string]any{"setting": setting, "registered": readErr == nil, "plist": string(raw), "name": item.Name, "executable": item.Executable}})
 	case action == "panel-hide":
 		h.dismissQuickPanel()
 		time.Sleep(300 * time.Millisecond)

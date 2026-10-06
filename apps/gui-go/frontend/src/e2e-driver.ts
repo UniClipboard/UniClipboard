@@ -81,6 +81,7 @@ async function run() {
   if (phase === 'quick-panel-settings') return runQuickPanelSettingsScenario()
   if (phase === 'native-panel') return runNativePanelScenario()
   if (phase === 'file-ops') return runFileOpsScenario()
+  if (phase.startsWith('autostart')) return runAutostartScenario(phase)
   if (phase === 'config-export') return runConfigExportScenario()
   if (phase === 'config-applied') {
     await waitFor('app root content', () => document.getElementById('root')?.children.length)
@@ -455,6 +456,35 @@ async function runConfigExportScenario() {
     commands.importConfigPackage(passphrase, bundle, null),
     r => r.status === 'ok' && r.data.stagedOk === true
   )
+  await control('exit')
+}
+
+// Launch-at-login: the preference and the OS login item must move together, and a failed OS change must
+// roll the preference back. Each phase is one launch; the orchestrator prepares the disk in between.
+async function runAutostartScenario(phase: string) {
+  await waitFor('app root content', () => document.getElementById('root')?.children.length)
+  const set = async (step: string, enabled: boolean, accept: (r: any) => boolean) => {
+    const r = await commands.updateAutostart(enabled, null)
+    await record(step, accept(r), { result: r })
+  }
+  if (phase === 'autostart') {
+    await set('enable', true, r => r.status === 'ok')
+    await control('autostart-state:enabled')
+    await set('disable', false, r => r.status === 'ok')
+    await control('autostart-state:disabled')
+    await set('enable-again', true, r => r.status === 'ok')
+    await control('autostart-state:enabled-again')
+  } else if (phase === 'autostart-reconcile') {
+    await sleep(3000) // the startup reconcile runs in the background
+    await control('autostart-state:after-startup')
+  } else if (phase === 'autostart-rollback') {
+    await set(
+      'disable-fails',
+      false,
+      r => r.status === 'error' && String(r.error.message).includes('Failed to apply OS autostart')
+    )
+    await control('autostart-state:after-failure')
+  }
   await control('exit')
 }
 

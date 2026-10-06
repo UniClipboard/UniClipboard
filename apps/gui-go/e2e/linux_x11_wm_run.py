@@ -259,13 +259,19 @@ def main():
     def show(g, label, desktop=None):
         chord(g, label)
         p = wait_panel(g, True)
+        if p is None:  # evidence for a show that did not happen
+            facts.setdefault('show_failed', {})[label] = {'host': g.state('sf-' + label), 'rows': wm_rows(display), 'active': active_window(display),
+                                                         'desktop': current_desktop(display), 'beacons_tail': beacons.events[-6:]}
         geo, samples = stable_geometry(g)
         facts.setdefault('geometry_samples', {})[label] = samples
         return p, geo
 
     def hide(g, label):
         chord(g, label)
-        return wait_panel(g, False)
+        r = wait_panel(g, False)
+        facts.setdefault('hides', {})[label] = {'gone': r is None, 'host': g.state('hd-' + label)}
+        check(f'hide ({label}): the chord hides the visible panel', r is None, facts['hides'][label])
+        return r
 
     def first_map_analysis():
         trace.resolve()

@@ -345,6 +345,7 @@ def main():
         variants = [('gui-environment', {}), ('gui-environment-ld-debug', {'LD_DEBUG': 'libs'}), ('restore-LD_LIBRARY_PATH', {'LD_LIBRARY_PATH': None}),
                     ('restore-LD_LIBRARY_PATH-ld-debug', {'LD_LIBRARY_PATH': None, 'LD_DEBUG': 'libs'}), ('restore-GIO_MODULE_DIR', {'GIO_MODULE_DIR': None}),
                     ('restore-XDG_DATA_DIRS', {'XDG_DATA_DIRS': None}), ('restore-LD_LIBRARY_PATH+GIO_MODULE_DIR', {'LD_LIBRARY_PATH': None, 'GIO_MODULE_DIR': None}),
+                    ('restore-LD_LIBRARY_PATH+GIO_MODULE_DIR-ld-debug', {'LD_LIBRARY_PATH': None, 'GIO_MODULE_DIR': None, 'LD_DEBUG': 'libs'}),
                     ('restore-all-AppRun-variables', {**{k: None for k in ('LD_LIBRARY_PATH', 'GIO_MODULE_DIR', 'XDG_DATA_DIRS', *mount_group)}})]
         loader_error = re.compile(r'error while loading|version `[^`]+\' not found|symbol lookup error|cannot open shared object|undefined symbol|no version information available')
         for label, change in variants:
@@ -423,7 +424,7 @@ def main():
                 run.check(f'A {name}: xdg-open was started and failed visibly in the trace (non-zero exit): the product cannot see this',
                           chain is not None and chain['exitOfXdgOpen'] not in (None, 'exit 0'), None if chain is None else chain['exitOfXdgOpen'])
         r['actions'] = [{k: v for k, v in a.items() if k != 'matcher'} for a in actions]
-        raw, raw_dbg, fixed, fixed_dbg = (direct[k] for k in ('gui-environment', 'gui-environment-ld-debug', 'restore-LD_LIBRARY_PATH', 'restore-LD_LIBRARY_PATH-ld-debug'))
+        raw, raw_dbg, fixed, fixed_dbg = (direct[k] for k in ('gui-environment', 'gui-environment-ld-debug', 'restore-LD_LIBRARY_PATH+GIO_MODULE_DIR', 'restore-LD_LIBRARY_PATH+GIO_MODULE_DIR-ld-debug'))
         r['rawEnvironmentDelivers'] = raw['rc'] == 0 and raw['recordReached']
         r['rawEnvironmentObservation'] = ('functional failure' if not r['rawEnvironmentDelivers'] else 'delivers, but see library origin')
         # D is the CAUSAL NEGATIVE CONTROL of the A checks, not an acceptance of the product: the GUI's own raw environment is what the product used to pass on, so it must
@@ -431,7 +432,7 @@ def main():
         # Whether the raw environment still delivers is DISTRIBUTION specific (Ubuntu: same GLib version, delivers; Fedora 44 GLib 2.88: fails) and is recorded, not asserted.
         run.check('D negative control: under the GUI\'s raw environment the loader initialises libraries of the AppImage mount inside the host helper chain (mechanism present)',
                   bool(raw_dbg['librariesInitialisedFromMount']), {'libs': raw_dbg['librariesInitialisedFromMount'], 'loaderErrors': raw_dbg['loaderErrors'], 'rawDelivers': r['rawEnvironmentDelivers'], 'rawRc': raw['rc']})
-        run.check('D causal control: the same command with ONLY LD_LIBRARY_PATH restored initialises no library of the mount and delivers the target',
+        run.check('D causal control: the same command with LD_LIBRARY_PATH and GIO_MODULE_DIR restored (the two variables that make a host program load code from the mount; restoring LD_LIBRARY_PATH alone still lets the host libgio load the bundled GIO TLS module, recorded as `restore-LD_LIBRARY_PATH-ld-debug`) initialises no library of the mount and delivers the target',
                   not fixed_dbg['librariesInitialisedFromMount'] and fixed['rc'] == 0 and fixed['recordReached'], {'fixed': fixed, 'fixedDebug': fixed_dbg})
         r['passed'] = all(c['ok'] for c in r['checks'])
     except StopScenario:

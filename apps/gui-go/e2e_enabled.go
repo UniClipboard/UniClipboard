@@ -71,6 +71,30 @@ func (s *EvidenceService) Control(action string) error {
 		main.Focus()
 		time.Sleep(500 * time.Millisecond)
 		return s.write(Step{Window: "main", Step: "native-main-reopened", OK: main.IsVisible(), Detail: map[string]bool{"visible": main.IsVisible()}})
+	case "open-updater":
+		h.openUpdater(true)
+		time.Sleep(time.Second)
+		w, ok := h.app.Window.GetByName(updaterWindowName)
+		return s.write(Step{Window: updaterWindowName, Step: "native-updater-opened", OK: ok && w.IsVisible()})
+	case "close-updater":
+		w, ok := h.app.Window.GetByName(updaterWindowName)
+		if !ok {
+			return fmt.Errorf("updater window absent")
+		}
+		w.Close()
+		time.Sleep(500 * time.Millisecond)
+		_, still := h.app.Window.GetByName(updaterWindowName)
+		return s.write(Step{Window: updaterWindowName, Step: "native-updater-closed", OK: !still})
+	case "show-quick-panel":
+		h.showQuickPanel()
+		time.Sleep(time.Second)
+		w, ok := h.app.Window.GetByName(quickPanelWindowName)
+		return s.write(Step{Window: quickPanelWindowName, Step: "native-quick-panel-visible", OK: ok && w.IsVisible(), Detail: map[string]bool{"ready": h.panel.ready.Load()}})
+	case "dismiss-quick-panel":
+		h.dismissQuickPanel()
+		time.Sleep(300 * time.Millisecond)
+		w, ok := h.app.Window.GetByName(quickPanelWindowName)
+		return s.write(Step{Window: quickPanelWindowName, Step: "native-quick-panel-dismissed", OK: ok && !w.IsVisible()})
 	case "quit":
 		go func() { time.Sleep(300 * time.Millisecond); h.Quit() }()
 		return nil

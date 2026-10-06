@@ -43,6 +43,7 @@ func (h *HostService) shutdown() {
 	if h.helper != nil {
 		h.helper.Shutdown()
 	}
+	h.modifierMonitor().Shutdown() // release the keyboard poll before the process exits
 	h.stopDaemonOnExit()
 }
 

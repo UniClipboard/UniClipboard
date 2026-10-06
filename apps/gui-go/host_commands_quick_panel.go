@@ -72,6 +72,8 @@ func init() {
 		},
 		"get_quick_panel_double_tap_availability": func(_ context.Context, h *HostService, _ commandArgs) (any, error) {
 			switch {
+			case h.helper == nil && modifierDoubleTapSupported():
+				return "supported", nil // the WebView panel's own monitor (Windows)
 			case h.helper == nil || runtime.GOOS != "darwin":
 				return "unsupported_display_session", nil
 			case !accessibilityTrusted():
@@ -116,11 +118,10 @@ func init() {
 			default:
 				return nil, commandError{Code: "ValidationError", Message: "invalid argument modifier"}
 			}
-			// The modifier double-tap trigger lives in the native helper (macOS); the WebView panel
-			// has none, and accepting the setting would promise a trigger that never fires.
-			if modifier != "disabled" && (h.helper == nil || runtime.GOOS != "darwin") {
-				return nil, commandError{Code: "Conflict", Message: "modifier double-tap is not available with this quick panel on this platform yet"}
+			if h.helper == nil {
+				return nil, h.setWebViewModifier(ctx, modifier)
 			}
+			// The native helper (macOS) owns the trigger and reads it at startup: persist, then restart it.
 			current, err := h.loadQuickPanelSettings(ctx)
 			if err != nil {
 				return nil, internalError(err)
@@ -129,7 +130,6 @@ func init() {
 				if err := h.patchQuickPanel(ctx, map[string]any{"doubleTapModifier": modifier}); err != nil {
 					return nil, err
 				}
-				// The helper reads the trigger at startup: restart it so the new value takes effect.
 				h.restartPanelHelper()
 			}
 			return nil, nil
@@ -219,6 +219,7 @@ func (h *HostService) setWebViewPanelEnabled(ctx context.Context, enabled bool) 
 	defer h.shortcutsMu.Unlock()
 	var settings struct {
 		KeyboardShortcuts map[string]json.RawMessage `json:"keyboardShortcuts"`
+		QuickPanel        quickPanelSettings         `json:"quickPanel"`
 	}
 	if err := h.client.Get(ctx, "/settings", &settings); err != nil {
 		return internalError(err)
@@ -227,10 +228,14 @@ func (h *HostService) setWebViewPanelEnabled(ctx context.Context, enabled bool) 
 	if err := h.applyOSShortcuts(panelShortcutTarget(enabled, settings.KeyboardShortcuts)); err != nil {
 		return err
 	}
+	// The modifier trigger follows the enabled switch like the shortcut does: watched only while the panel is on.
+	previousModifier := h.modifierMonitor().Current()
+	if err := h.modifierMonitor().Set(desiredLiveModifier(enabled, modifierDoubleTapSupported(), settings.QuickPanel.DoubleTapModifier)); err != nil {
+		h.rollbackPanelOS(previous, previousModifier)
+		return commandError{Code: "Conflict", Message: err.Error()}
+	}
 	if err := h.patchQuickPanel(ctx, map[string]any{"enabled": enabled}); err != nil {
-		if rollbackErr := h.applyOSShortcuts(previous); rollbackErr != nil {
-			log.Printf("failed to roll the global shortcut back after the settings save failed: %v", rollbackErr)
-		}
+		h.rollbackPanelOS(previous, previousModifier)
 		return err
 	}
 	h.panel.toggle.setEnabled(enabled)
@@ -238,6 +243,57 @@ func (h *HostService) setWebViewPanelEnabled(ctx context.Context, enabled bool) 
 		h.dismissQuickPanel()
 	}
 	return nil
+}
+
+// rollbackPanelOS puts the global shortcut and the modifier trigger back after a failed change, so the OS state
+// and the persisted settings agree. Failures are only logged: the original error is the one to report.
+func (h *HostService) rollbackPanelOS(shortcuts []string, modifier string) {
+	if err := h.applyOSShortcuts(shortcuts); err != nil {
+		log.Printf("failed to roll the global shortcut back after the settings save failed: %v", err)
+	}
+	if err := h.modifierMonitor().Set(modifier); err != nil {
+		log.Printf("failed to roll the modifier double-tap trigger back after the settings save failed: %v", err)
+	}
+}
+
+// setWebViewModifier is `set_quick_panel_double_tap_modifier` for the WebView panel: the monitor changes first (an
+// unsupported session is refused before anything is saved) and is put back when saving fails (Tauri order).
+func (h *HostService) setWebViewModifier(ctx context.Context, modifier string) error {
+	h.shortcutsMu.Lock()
+	defer h.shortcutsMu.Unlock()
+	current, err := h.loadQuickPanelSettings(ctx)
+	if err != nil {
+		return internalError(err)
+	}
+	if current.Enabled && modifier != "disabled" && !modifierDoubleTapSupported() {
+		return commandError{Code: "Conflict", Message: "modifier double-tap is not available with this quick panel on this platform yet"}
+	}
+	previous := h.modifierMonitor().Current()
+	if err := h.modifierMonitor().Set(desiredLiveModifier(current.Enabled, modifierDoubleTapSupported(), modifier)); err != nil {
+		return commandError{Code: "Conflict", Message: err.Error()}
+	}
+	if current.DoubleTapModifier == modifier {
+		return nil
+	}
+	if err := h.patchQuickPanel(ctx, map[string]any{"doubleTapModifier": modifier}); err != nil {
+		if rollback := h.modifierMonitor().Set(previous); rollback != nil {
+			log.Printf("failed to roll the modifier double-tap trigger back after the settings save failed: %v", rollback)
+		}
+		return err
+	}
+	return nil
+}
+
+// modifierMonitor returns the WebView panel's modifier trigger monitor, created on first use. A trigger toggles the
+// panel exactly like the global shortcut does.
+func (h *HostService) modifierMonitor() *modifierMonitor {
+	h.modifierOnce.Do(func() {
+		h.modifier = newModifierMonitor(modifierKeyStateFactory(), func() {
+			e2eModifierTriggered()
+			h.requestPanelToggle()
+		})
+	})
+	return h.modifier
 }
 
 // initPanelShortcuts registers the quick panel's global shortcut at startup when the WebView panel is in use (the
@@ -262,6 +318,9 @@ func (h *HostService) initPanelShortcuts() {
 	h.shortcutsMu.Lock()
 	if err := h.applyOSShortcuts(panelShortcutTarget(enabled, settings.KeyboardShortcuts)); err != nil {
 		log.Printf("quick panel shortcut not registered: %v", err)
+	}
+	if err := h.modifierMonitor().Set(desiredLiveModifier(enabled, modifierDoubleTapSupported(), settings.QuickPanel.DoubleTapModifier)); err != nil {
+		log.Printf("quick panel modifier double-tap not started: %v", err)
 	}
 	h.shortcutsMu.Unlock()
 	if h.panel.toggle.configure(enabled) {

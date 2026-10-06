@@ -28,6 +28,8 @@ import (
 //	invoke <label> <command> [<json>]  a host command through Invoke, the path the WebView takes
 //	shortcut-press <label> single|leader <a> <b>|second <b>  injected presses (no keyboard event)
 //	shortcut-state <label>  the registered global shortcuts next to the stored setting and the panel state
+//	modifier-script <label> <ms:sel:other ...>  drive the scripted keyboard of the modifier double-tap monitor
+//	modifier-state <label>  the monitor's selected modifier, trigger count and panel state
 //	exit                quit, stopping the daemon (UC_GUI_GO_EXIT_MODE=full) or leaving it
 func (s *EvidenceService) watchControlFile(path string) {
 	done := 0
@@ -160,6 +162,8 @@ func (s *EvidenceService) runControlCommand(line string) {
 		_ = s.write(Step{Window: quickPanelWindowName, Step: "shortcut-state-" + arg, OK: err == nil, Detail: map[string]any{
 			"recorded": recorded, "wails": h.app.GlobalShortcut.GetAll(), "stored": stored.KeyboardShortcuts[quickPanelShortcutKey],
 			"enabled": stored.QuickPanel.Enabled, "panelVisible": visible, "lastShown": h.panel.lastShown.Load(), "panelReady": h.panel.toggle.isReady()}})
+	case "modifier-script", "modifier-state":
+		s.controlModifier(verb, arg)
 	case "exit":
 		_ = s.write(Step{Window: "update", Step: "control-exit", OK: true})
 		go func() { time.Sleep(300 * time.Millisecond); h.quit(os.Getenv("UC_GUI_GO_EXIT_MODE") != "full") }()

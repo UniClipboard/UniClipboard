@@ -52,6 +52,8 @@ type HostService struct {
 	shortcutsMu       sync.Mutex
 	osShortcuts       []string // the shortcuts currently registered with the OS; guarded by shortcutsMu
 	binder            *wailsShortcutBinder
+	modifierOnce      sync.Once
+	modifier          *modifierMonitor // the WebView panel's modifier double-tap trigger; created by modifierMonitor()
 	mainMu            sync.Mutex
 	navMu             sync.Mutex
 	pendingNavigation string

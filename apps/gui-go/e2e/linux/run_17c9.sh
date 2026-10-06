@@ -3,6 +3,8 @@
 #   run_17c9.sh image                  build uc-gui-go-linux-build:17c9-wm (Dockerfile.17c9-wm); prints the image ID and Openbox version
 #   run_17c9.sh build <tag> <artdir>   same build as 17c8 (real VITE_GUI_GO_E2E=1 frontend, gtk3,e2e GUI + Go CLI in the container) into a NEW
 #                                      /cache/out-17c9-<tag>; the 17c5 release daemon is copied in after a SHA-256 check. Provenance -> <artdir>/inputs/.
+#   run_17c9.sh wayland <tag> <outdir>  the existing headless-sway Layer Shell E2E (linux_wayland_run.py) against the same binaries: the 17c9 change touches the
+#                                      panel's creation options, which that path shares.
 #   run_17c9.sh run <tag> <outdir>     run the scenario against /cache/out-17c9-<tag> in Xvfb 1920x1200 + Openbox; the binaries it ran are copied out.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -51,5 +53,15 @@ case "$mode" in
       code=$?
       kill $xvfb 2>/dev/null
       exit $code' ;;
+  wayland)
+    "${docker_run[@]}" -e CACHE_DIR="$CACHE_DIR" "$IMAGE" bash -c '
+      set -e
+      [ -d "$CACHE_DIR" ]
+      mkdir -p /out/binaries && cp "$CACHE_DIR"/gui-go "$CACHE_DIR"/uniclip "$CACHE_DIR"/uniclipd /out/binaries/
+      (cd /out/binaries && sha256sum * > /out/binaries.sha256)
+      uname -a > /out/container-uname.txt; sway --version > /out/sway-version.txt; git -C /work rev-parse HEAD > /out/head.txt
+      set +e
+      dbus-run-session -- python3 apps/gui-go/e2e/linux_wayland_run.py --out /out --binaries /out/binaries
+      exit $?' ;;
   *) echo "unknown mode" >&2; exit 2 ;;
 esac

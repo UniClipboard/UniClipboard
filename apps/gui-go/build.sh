@@ -28,7 +28,10 @@ if [[ "$E2E" == 0 ]]; then
 fi
 # Bundle identity and the login item name come from the Tauri configuration so both shells ship as the same app.
 read -r BUNDLE_ID PRODUCT VERSION < <(python3 -c 'import json;c=json.load(open("apps/gui/src-tauri/tauri.conf.json"));print(c["identifier"],c["productName"],c["version"])')
-(cd apps/gui-go && go build -tags "$TAGS" -ldflags "-X main.updaterPublicKey=$PUBKEY -X main.productName=$PRODUCT" -o "../../target/gui-go/$APP-binary" .)
+# The single-instance scope includes the bundle identifier, so the E2E build never shares an instance with the real app.
+GO_BUNDLE_ID="$BUNDLE_ID"
+if [[ "$MODE" == e2e ]]; then GO_BUNDLE_ID="$BUNDLE_ID.e2e"; fi
+(cd apps/gui-go && go build -tags "$TAGS" -ldflags "-X main.updaterPublicKey=$PUBKEY -X main.productName=$PRODUCT -X main.bundleID=$GO_BUNDLE_ID" -o "../../target/gui-go/$APP-binary" .)
 BUNDLE="$ROOT/target/gui-go/$APP.app"
 mkdir -p "$BUNDLE/Contents/MacOS"
 cp "target/gui-go/$APP-binary" "$BUNDLE/Contents/MacOS/gui-go"

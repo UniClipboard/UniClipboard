@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"os/exec"
+	"strconv"
 	"sync/atomic"
 	"time"
 
@@ -72,7 +73,7 @@ func (h *HostService) restartGUI() error {
 		return err
 	}
 	cmd := exec.Command(exe)
-	cmd.Env = os.Environ()
+	cmd.Env = append(os.Environ(), restartParentEnv+"="+strconv.Itoa(os.Getpid()))
 	if err := cmd.Start(); err != nil {
 		return err
 	}

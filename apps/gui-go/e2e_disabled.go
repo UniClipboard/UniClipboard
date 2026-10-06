@@ -12,3 +12,10 @@ func profileBundleLoginItemAllowed() bool { return false }
 func notifierServices(h *HostService) []application.Service {
 	return []application.Service{application.NewService(h.notifier)}
 }
+
+// The e2e evidence hooks of the single-instance path do nothing in normal builds.
+func e2eLaunch(*HostService) {}
+
+func e2eSecondInstance(*HostService, application.SecondInstanceData, secondLaunchAction) {}
+
+func e2eBootstrapped(*HostService, bool) {}

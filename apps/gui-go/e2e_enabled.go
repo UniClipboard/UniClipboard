@@ -257,3 +257,27 @@ func notifierServices(h *HostService) []application.Service {
 	}
 	return []application.Service{application.NewService(h.notifier)}
 }
+
+// evidenceWriter is shared by the hooks that run outside the Wails service lifecycle.
+var evidenceWriter = &EvidenceService{}
+
+// e2eLaunch records that this process passed the single-instance lock and is the first instance: a second
+// instance exits inside application.New and never reaches it.
+func e2eLaunch(h *HostService) {
+	_ = evidenceWriter.write(Step{Window: "app", Step: "launch", OK: true, Detail: map[string]any{
+		"pid": os.Getpid(), "ppid": os.Getppid(), "uniqueID": h.singleInstanceID, "args": os.Args[1:], "bundleID": bundleID}})
+}
+
+// e2eSecondInstance records the activation the first instance received and what it did with it.
+func e2eSecondInstance(h *HostService, data application.SecondInstanceData, action secondLaunchAction) {
+	_, mainExists := h.app.Window.GetByName("main")
+	_ = evidenceWriter.write(Step{Window: "app", Step: "second-instance", OK: true, Detail: map[string]any{
+		"pid": os.Getpid(), "args": data.Args, "action": string(action), "mainExists": mainExists}})
+}
+
+// e2eBootstrapped records the end of the daemon bootstrap and whether it replayed a held second launch.
+func e2eBootstrapped(h *HostService, replayed bool) {
+	_, mainExists := h.app.Window.GetByName("main")
+	_ = evidenceWriter.write(Step{Window: "app", Step: "bootstrapped", OK: true, Detail: map[string]any{
+		"pid": os.Getpid(), "replayedHeldShow": replayed, "mainExists": mainExists}})
+}

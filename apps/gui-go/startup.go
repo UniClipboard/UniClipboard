@@ -84,7 +84,12 @@ func (h *HostService) coldLaunch(settings startupSettings, spawned bool) {
 	} else {
 		log.Printf("daemon already running (reopen); skipping cold-start recovery and restore")
 	}
-	switch resolveWindowAction(spawned, settings.lightweight()) {
+	action := resolveWindowAction(spawned, settings.lightweight())
+	if action == windowEnterBackgroundOnly && h.heldShow() {
+		// The user launched the app again while it was starting: they want the window, not background-only running.
+		action = windowShow
+	}
+	switch action {
 	case windowEnterBackgroundOnly:
 		log.Printf("lightweight cold start: daemon ready, entering lightweight mode")
 		h.enterLightweightMode()

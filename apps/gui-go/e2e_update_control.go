@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/daemonclient"
+	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/daemonproc"
 )
 
 // watchControlFile is the command channel of the wake/analytics scenarios: the orchestrator appends one command
@@ -26,6 +27,16 @@ import (
 //	exit                quit, stopping the daemon (UC_GUI_GO_EXIT_MODE=full) or leaving it
 func (s *EvidenceService) watchControlFile(path string) {
 	done := 0
+	if restartedGUI {
+		// A restarted GUI inherits the control file: the commands already run belong to its predecessor.
+		if raw, err := os.ReadFile(path); err == nil {
+			for _, line := range strings.Split(string(raw), "\n") {
+				if strings.TrimSpace(line) != "" {
+					done++
+				}
+			}
+		}
+	}
 	for {
 		time.Sleep(100 * time.Millisecond)
 		raw, err := os.ReadFile(path)
@@ -78,6 +89,22 @@ func (s *EvidenceService) runControlCommand(line string) {
 			w.Close()
 		}
 		_ = s.write(Step{Window: "update", Step: "control-close-updater", OK: ok})
+	case "state":
+		// A snapshot of the process the launch scenarios compare across second launches.
+		_, mainExists := h.app.Window.GetByName("main")
+		conn, _ := daemonproc.ReadConnFile()
+		detail := map[string]any{"pid": os.Getpid(), "uniqueID": h.singleInstanceID, "mainExists": mainExists, "label": arg}
+		if conn != nil {
+			detail["daemonPid"] = conn.PID
+		}
+		if h.helper != nil {
+			detail["helperRunning"] = h.helper.Running()
+		}
+		_ = s.write(Step{Window: "app", Step: "control-state", OK: true, Detail: detail})
+	case "restart":
+		// The tray's Restart: replace the daemon, then start a new GUI process and exit this one.
+		_ = s.write(Step{Window: "app", Step: "control-restart", OK: true, Detail: map[string]any{"pid": os.Getpid()}})
+		go h.fullRestart()
 	case "exit":
 		_ = s.write(Step{Window: "update", Step: "control-exit", OK: true})
 		go func() { time.Sleep(300 * time.Millisecond); h.quit(os.Getenv("UC_GUI_GO_EXIT_MODE") != "full") }()

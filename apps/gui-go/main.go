@@ -24,23 +24,27 @@ import (
 var assets embed.FS
 
 type HostService struct {
-	app           *application.App
-	client        *daemonclient.Client
-	effects       *visualEffects
-	panel         panelState
-	exit          exitIntent
-	prompts       promptStore
-	stopScheduler context.CancelFunc
-	stopTray      context.CancelFunc
-	notifier      *notifications.NotificationService
-	helper        *quickpanelhelper.Supervisor // nil when the WebView quick panel is in use
-	updates       updater
-	lastCheck     lastCheckAt
-	wake          chan struct{} // pending system wake for the update scheduler, capacity 1
-	analytics     analyticsQueue
-	stopWake      func()
-	tray          *trayMenu
-	files         knownFiles
+	app              *application.App
+	client           *daemonclient.Client
+	effects          *visualEffects
+	panel            panelState
+	exit             exitIntent
+	prompts          promptStore
+	stopScheduler    context.CancelFunc
+	stopTray         context.CancelFunc
+	notifier         *notifications.NotificationService
+	helper           *quickpanelhelper.Supervisor // nil when the WebView quick panel is in use
+	updates          updater
+	lastCheck        lastCheckAt
+	wake             chan struct{} // pending system wake for the update scheduler, capacity 1
+	analytics        analyticsQueue
+	stopWake         func()
+	tray             *trayMenu
+	singleInstanceID string
+	readyMu          sync.Mutex
+	ready            bool // the daemon bootstrap finished
+	showWhenReady    bool // a second launch asked for the main window before that
+	files            knownFiles
 
 	quitting atomic.Bool
 
@@ -108,6 +112,48 @@ func main() {
 	if err := validateEnvironment(); err != nil {
 		log.Fatal(err)
 	}
+	waitForRestartParent()
+	content, err := fs.Sub(assets, "frontend/dist")
+	if err != nil {
+		log.Fatal(err)
+	}
+	host := &HostService{effects: newVisualEffects(), notifier: notifications.New(), wake: make(chan struct{}, 1)}
+	host.lastCheck.recordNow()
+	services := append([]application.Service{application.NewService(host)}, notifierServices(host)...)
+	services = append(services, e2eServices(host)...)
+	uniqueID, err := singleInstanceID()
+	if err != nil {
+		log.Fatal(err)
+	}
+	host.singleInstanceID = uniqueID
+	// application.New takes the single-instance lock before anything else touches shared state: a second GUI of the
+	// same scope hands its arguments to the first one and exits inside this call, so it never probes or spawns a
+	// daemon, starts the quick panel helper or reconciles the login item. The daemon client is attached afterwards.
+	app := application.New(application.Options{Name: "UniClipboard Go GUI", Services: services, Mac: application.MacOptions{ActivationPolicy: activationPolicy()}, Assets: application.AssetOptions{Handler: application.BundledAssetFileServer(content), Middleware: host.fileMiddleware},
+		SingleInstance: host.singleInstanceOptions(uniqueID),
+		ShouldQuit:     func() bool { host.quitting.Store(true); return true },
+		OnShutdown:     host.shutdown})
+	host.app = app
+	e2eLaunch(host)
+	if hasArg(os.Args[1:], quickPanelLaunchArg) {
+		// Tauri contract (validate_primary_launch): the panel can only be requested from a running GUI.
+		log.Print("UniClipboard GUI is not running; cannot show the quick panel")
+		os.Exit(1)
+	}
+	// Everything that needs the daemon runs once the event loop is up (ApplicationStarted). Wails registers its
+	// second-instance observer when the loop starts, so the seconds a cold daemon start takes must not precede it:
+	// a launch arriving meanwhile would be lost. Activations that arrive before bootstrap finishes are held
+	// (see onSecondInstance) and carried out afterwards.
+	app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) { go host.bootstrap() })
+	host.stopWake = app.Event.OnApplicationEvent(events.Common.SystemDidWake, func(*application.ApplicationEvent) { host.signalWake() })
+	if err := app.Run(); err != nil {
+		log.Fatal(err)
+	}
+}
+
+// bootstrap attaches to (or starts) the daemon and builds the shell around it: windows, tray, quick panel, login item
+// reconcile, the cold-launch sequence and the update scheduler.
+func (h *HostService) bootstrap() {
 	spawnedDaemon := false // whether this launch started the daemon (a cold start) or attached to one
 	outcome, err := daemonlife.ProbeForReuse(daemonlife.StartupTimeout)
 	if err != nil {
@@ -133,46 +179,30 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	content, err := fs.Sub(assets, "frontend/dist")
-	if err != nil {
-		log.Fatal(err)
-	}
-	host := &HostService{client: client, effects: newVisualEffects(), notifier: notifications.New(), wake: make(chan struct{}, 1)}
-	host.lastCheck.recordNow()
-	services := append([]application.Service{application.NewService(host)}, notifierServices(host)...)
-	services = append(services, e2eServices(host)...)
-	app := application.New(application.Options{Name: "UniClipboard Go GUI", Services: services, Mac: application.MacOptions{ActivationPolicy: activationPolicy()}, Assets: application.AssetOptions{Handler: application.BundledAssetFileServer(content), Middleware: host.fileMiddleware},
-		ShouldQuit: func() bool { host.quitting.Store(true); return true },
-		OnShutdown: host.shutdown})
-	host.app = app
-	startup, _ := host.loadStartupSettings()
+	h.client = client
+	startup, _ := h.loadStartupSettings()
 	// A Silent or Lightweight launch does not build the window at boot (and so never pays the WebView
 	// cost); it is created the first time something asks to show it.
 	if !startup.hidden() || forceMainWindow() {
-		host.openMainWindow()
+		h.openMainWindow()
 	}
-	host.initQuickPanel()
-	go host.reconcileAutoStart()
-	host.initTray()
-	host.watchNotificationClicks()
-	// The launch sequence waits for the event loop: it may show windows, notify, or quit the app.
-	app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
-		if startup.silent() {
-			// Silent mode leaves no window to see, so tell the user the app is running.
-			if err := host.notify("silent-start", "UniClipboard", backgroundNotice); err != nil {
-				log.Printf("failed to show the silent-start notification: %v", err)
-			}
+	h.initQuickPanel()
+	go h.reconcileAutoStart()
+	h.initTray()
+	h.watchNotificationClicks()
+	if startup.silent() {
+		// Silent mode leaves no window to see, so tell the user the app is running.
+		if err := h.notify("silent-start", "UniClipboard", backgroundNotice); err != nil {
+			log.Printf("failed to show the silent-start notification: %v", err)
 		}
-		go host.coldLaunch(startup, spawnedDaemon)
-	})
-	// The mature Wails integration for "the machine woke from sleep": Common.SystemDidWake is mapped on every
-	// platform (NSWorkspaceDidWake, Windows PBT_APMRESUMEAUTOMATIC, logind PrepareForSleep=false). One
-	// subscription only: the platform event is already re-published as the common one.
-	host.stopWake = app.Event.OnApplicationEvent(events.Common.SystemDidWake, func(*application.ApplicationEvent) { host.signalWake() })
-	schedulerCtx, stopScheduler := context.WithCancel(context.Background())
-	host.stopScheduler = stopScheduler
-	go host.runUpdateScheduler(schedulerCtx)
-	if err := app.Run(); err != nil {
-		log.Fatal(err)
+	}
+	go func() {
+		h.coldLaunch(startup, spawnedDaemon)
+		h.finishBootstrap()
+	}()
+	if !h.quitting.Load() {
+		schedulerCtx, stopScheduler := context.WithCancel(context.Background())
+		h.stopScheduler = stopScheduler
+		go h.runUpdateScheduler(schedulerCtx)
 	}
 }

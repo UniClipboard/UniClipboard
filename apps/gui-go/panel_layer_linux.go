@@ -17,10 +17,8 @@ import (
 // active only on a Wayland display whose compositor offers the protocol; every other session keeps the ordinary window.
 
 const (
-	linuxPanelWidth, linuxPanelHeight = 800.0, 560.0 // fixed Linux panel size, before the window scale
-	minWindowScale, maxWindowScale    = 0.8, 1.5
-	panelWorkAreaWidthCap             = 0.9 // largest share of an output's work area width
-	panelWorkAreaHeightCap            = 0.8 // largest share of its height
+	panelWorkAreaWidthCap  = 0.9 // largest share of an output's work area width
+	panelWorkAreaHeightCap = 0.8 // largest share of its height
 )
 
 var layerPanel struct {
@@ -48,14 +46,6 @@ func layerLayout(p layerPlacement, width, height float64) (x, y, w, h float64) {
 		return axisAnchored(p.cursorX, p.x, p.w, w), axisAnchored(p.cursorY, p.y, p.h, h), w, h
 	}
 	return p.x + (p.w-w)/2, p.y + (p.h-h)/2, w, h
-}
-
-func linuxPanelDimensions(windowScale float64) (float64, float64) {
-	factor := 1.0
-	if !math.IsNaN(windowScale) && !math.IsInf(windowScale, 0) {
-		factor = math.Min(math.Max(windowScale, minWindowScale), maxWindowScale)
-	}
-	return linuxPanelWidth * factor, linuxPanelHeight * factor
 }
 
 // attachLayerPanel turns the freshly created, still unrealized hidden panel into a layer surface. It must run before

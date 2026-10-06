@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log"
 	"math"
+	"runtime"
 	"sync/atomic"
 	"time"
 
@@ -24,6 +25,11 @@ const (
 	panelPreviewWidth, panelGap     = 360.0, 8.0
 	panelWindowPadding              = 16.0
 	minUIScale, maxUIScale          = 0.8, 1.5
+
+	// Linux panel (X11 window and Wayland Layer Shell alike): fixed size, the content zoom never changes it; only the
+	// window scale does (crates/uc-tauri/src/quick_panel/mod.rs: LINUX_PANEL_WIDTH/HEIGHT, resized_panel_dimensions).
+	linuxPanelWidth, linuxPanelHeight = 800.0, 560.0
+	minWindowScale, maxWindowScale    = 0.8, 1.5
 
 	// Blur events this soon after showing are focus churn, not a dismissal.
 	quickPanelBlurDebounce = 300 * time.Millisecond
@@ -57,7 +63,22 @@ func windowScaleOrOne(scale *float64) float64 {
 	return *scale
 }
 
-func panelSize(scale *float64, previewExpanded bool) (int, int) {
+// linuxPanelDimensions is the Linux panel size in logical pixels for a window scale (not finite means 1).
+func linuxPanelDimensions(windowScale float64) (float64, float64) {
+	factor := 1.0
+	if !math.IsNaN(windowScale) && !math.IsInf(windowScale, 0) {
+		factor = math.Min(math.Max(windowScale, minWindowScale), maxWindowScale)
+	}
+	return linuxPanelWidth * factor, linuxPanelHeight * factor
+}
+
+// panelSize is the quick panel window size. Linux uses the fixed 800x560 contract (content zoom and the preview
+// pane do not change it); the other platforms size the window around the floating cards.
+func panelSize(scale *float64, previewExpanded bool, windowScale float64) (int, int) {
+	if runtime.GOOS == "linux" {
+		width, height := linuxPanelDimensions(windowScale)
+		return int(math.Round(width)), int(math.Round(height))
+	}
 	s := clampUIScale(scale)
 	width := panelBaseWidth * s
 	if previewExpanded {
@@ -88,7 +109,7 @@ func (h *HostService) openUpdater(dev bool) {
 // preCreateQuickPanel builds the hidden, frameless quick panel at startup so
 // showing it later never has to create a window.
 func (h *HostService) preCreateQuickPanel() {
-	width, height := panelSize(nil, false)
+	width, height := panelSize(nil, false, 1)
 	w := h.app.Window.NewWithOptions(quietOptions(application.WebviewWindowOptions{
 		Name: quickPanelWindowName, Title: "Quick Panel", URL: "/quick-panel.html",
 		Width: width, Height: height, Hidden: true, Frameless: true, DisableResize: true, AlwaysOnTop: true,
@@ -129,7 +150,7 @@ func (h *HostService) showQuickPanel() {
 		return // the user turned the quick panel off
 	}
 	if !layerPrepareShow(w, prefs.Position, 1) {
-		width, height := panelSize(nil, false)
+		width, height := panelSize(nil, false, 1)
 		w.SetSize(width, height)
 		if x, y, ok := panelOrigin(prefs.Position, h.app.Screen.GetAll(), float64(width), float64(height)); ok {
 			moveWindow(w, x, y)
@@ -240,7 +261,7 @@ func init() {
 			}
 			if w, ok := h.app.Window.GetByName(quickPanelWindowName); ok {
 				if !layerSetLayout(w, windowScaleOrOne(windowScale)) {
-					width, height := panelSize(scale, expanded)
+					width, height := panelSize(scale, expanded, windowScaleOrOne(windowScale))
 					w.SetSize(width, height)
 				}
 			}

@@ -2,8 +2,8 @@ package daemonproc
 
 import "golang.org/x/sys/windows"
 
-// isPidAlive matches the Rust SYNCHRONIZE + zero-timeout wait check.
-func isPidAlive(pid uint32) bool {
+// IsPidAlive matches the Rust SYNCHRONIZE + zero-timeout wait check.
+func IsPidAlive(pid uint32) bool {
 	h, err := windows.OpenProcess(windows.SYNCHRONIZE, false, pid)
 	if err != nil {
 		return false

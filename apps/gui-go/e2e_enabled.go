@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
-	"github.com/wailsapp/wails/v3/pkg/mac"
 )
 
 // EvidenceService is the e2e-only control plane. It exists solely in builds
@@ -94,7 +93,7 @@ func (s *EvidenceService) Control(action string) error {
 		return s.write(Step{Window: updaterWindowName, Step: "native-updater-closed", OK: !still})
 	case "show-quick-panel":
 		h.showQuickPanel()
-		return s.write(Step{Window: quickPanelWindowName, Step: "native-quick-panel-visible", OK: s.waitVisible(quickPanelWindowName, true), Detail: map[string]bool{"ready": h.panel.ready.Load()}})
+		return s.write(Step{Window: quickPanelWindowName, Step: "native-quick-panel-visible", OK: s.waitVisible(quickPanelWindowName, true), Detail: map[string]bool{"ready": h.panel.toggle.isReady()}})
 	case "dismiss-quick-panel":
 		h.dismissQuickPanel()
 		time.Sleep(300 * time.Millisecond)
@@ -246,8 +245,6 @@ func (s *EvidenceService) waitVisible(name string, want bool) bool {
 func profileBundleLoginItemAllowed() bool {
 	return os.Getenv("UC_GUI_GO_ISOLATED") == "1" && os.Getenv("UC_GUI_GO_E2E_DENY_PROFILE_BUNDLE") != "1"
 }
-
-func bundleIdentifier() string { return mac.GetBundleID() }
 
 // notifierServices: the notification service refuses to start without a bundle identifier. The launch-at-login
 // test runs the bare binary (the LaunchAgent strategy only exists for an unbundled executable) and opts out.

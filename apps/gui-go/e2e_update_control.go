@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"os"
 	"strconv"
@@ -24,6 +25,9 @@ import (
 //	setting <key> on|off  set a general.* flag (usageAnalyticsEnabled, autoCheckUpdate, autoDownloadUpdate)
 //	                      through the daemon settings API, the way the settings page does
 //	close-updater       close the updater window the scheduler opened (its page makes a check of its own)
+//	invoke <label> <command> [<json>]  a host command through Invoke, the path the WebView takes
+//	shortcut-press <label> single|leader <a> <b>|second <b>  injected presses (no keyboard event)
+//	shortcut-state <label>  the registered global shortcuts next to the stored setting and the panel state
 //	exit                quit, stopping the daemon (UC_GUI_GO_EXIT_MODE=full) or leaving it
 func (s *EvidenceService) watchControlFile(path string) {
 	done := 0
@@ -105,6 +109,57 @@ func (s *EvidenceService) runControlCommand(line string) {
 		// The tray's Restart: replace the daemon, then start a new GUI process and exit this one.
 		_ = s.write(Step{Window: "app", Step: "control-restart", OK: true, Detail: map[string]any{"pid": os.Getpid()}})
 		go h.fullRestart()
+	case "invoke":
+		// invoke <label> <command> [<json args>]: a host command through the same Invoke the WebView calls.
+		label, rest, _ := strings.Cut(arg, " ")
+		command, raw, _ := strings.Cut(rest, " ")
+		args := map[string]json.RawMessage{}
+		if strings.TrimSpace(raw) != "" {
+			if err := json.Unmarshal([]byte(raw), &args); err != nil {
+				_ = s.write(Step{Window: "app", Step: "invoke-" + label, OK: false, Detail: "bad arguments: " + err.Error()})
+				return
+			}
+		}
+		result := h.Invoke(command, args)
+		_ = s.write(Step{Window: "app", Step: "invoke-" + label, OK: true, Detail: map[string]any{"command": command, "ok": result.Ok, "error": result.Error, "data": result.Data}})
+	case "shortcut-press":
+		// shortcut-press <label> single | leader <leader> <second> | second <second>: INJECTED key presses. They call the
+		// handlers the OS callback would call (no keyboard event is generated), so they cover the Uni toggle and chord
+		// logic but not the OS binding or key delivery.
+		label, rest, _ := strings.Cut(arg, " ")
+		fields := strings.Fields(rest)
+		ok := len(fields) > 0 && h.binder != nil
+		if ok {
+			switch {
+			case fields[0] == "single":
+				h.requestPanelToggle()
+			case fields[0] == "leader" && len(fields) == 3:
+				h.binder.leaderPressed(fields[1], fields[2])
+			case fields[0] == "second" && len(fields) == 2:
+				h.binder.secondPressed(fields[1])
+			default:
+				ok = false
+			}
+		}
+		time.Sleep(400 * time.Millisecond) // the panel show/hide completes asynchronously
+		_ = s.write(Step{Window: quickPanelWindowName, Step: "shortcut-press-" + label, OK: ok, Detail: line})
+	case "shortcut-state":
+		// What is bound with the OS (as this host recorded it and as Wails reports it) next to what the daemon stored.
+		h.shortcutsMu.Lock()
+		recorded := append([]string{}, h.osShortcuts...)
+		h.shortcutsMu.Unlock()
+		var stored struct {
+			KeyboardShortcuts map[string]json.RawMessage `json:"keyboardShortcuts"`
+			QuickPanel        quickPanelSettings         `json:"quickPanel"`
+		}
+		err := h.client.Get(ctx, "/settings", &stored)
+		visible := false
+		if w, ok := h.app.Window.GetByName(quickPanelWindowName); ok {
+			visible = w.IsVisible()
+		}
+		_ = s.write(Step{Window: quickPanelWindowName, Step: "shortcut-state-" + arg, OK: err == nil, Detail: map[string]any{
+			"recorded": recorded, "wails": h.app.GlobalShortcut.GetAll(), "stored": stored.KeyboardShortcuts[quickPanelShortcutKey],
+			"enabled": stored.QuickPanel.Enabled, "panelVisible": visible, "lastShown": h.panel.lastShown.Load(), "panelReady": h.panel.toggle.isReady()}})
 	case "exit":
 		_ = s.write(Step{Window: "update", Step: "control-exit", OK: true})
 		go func() { time.Sleep(300 * time.Millisecond); h.quit(os.Getenv("UC_GUI_GO_EXIT_MODE") != "full") }()

@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"errors"
+	"log"
 	"math"
 	"sync/atomic"
 	"time"
@@ -25,12 +27,18 @@ const (
 
 	// Blur events this soon after showing are focus churn, not a dismissal.
 	quickPanelBlurDebounce = 300 * time.Millisecond
+	// A blur is only a dismissal when focus is still gone this long after it: AttachThreadInput detaches, IME
+	// popups and WebView focus shuffles raise short spurious blurs (same value as the Tauri shell).
+	quickPanelBlurVerify = 100 * time.Millisecond
 )
+
+// errPreviousAppUnsupported is what the paste commands report where no implementation exists (never a silent success).
+var errPreviousAppUnsupported = errors.New("Paste to previous app is not yet supported on this platform")
 
 // panelState tracks the two-phase quick panel show so a blur right after
 // showing does not immediately hide it again.
 type panelState struct {
-	ready     atomic.Bool
+	toggle    toggleState
 	lastShown atomic.Int64 // unix nanoseconds
 }
 
@@ -87,9 +95,14 @@ func (h *HostService) preCreateQuickPanel() {
 		w.Hide()
 	})
 	w.OnWindowEvent(events.Common.WindowLostFocus, func(*application.WindowEvent) {
-		if time.Since(time.Unix(0, h.panel.lastShown.Load())) > quickPanelBlurDebounce {
-			w.Hide()
+		if time.Since(time.Unix(0, h.panel.lastShown.Load())) <= quickPanelBlurDebounce {
+			return
 		}
+		time.AfterFunc(quickPanelBlurVerify, func() {
+			if !w.IsFocused() {
+				w.Hide()
+			}
+		})
 	})
 }
 
@@ -113,14 +126,72 @@ func (h *HostService) showQuickPanel() {
 	} else {
 		centerWindow(w)
 	}
+	if previousAppInputSupported {
+		// Before the panel takes the focus: what is foreground now is where the paste must go.
+		_ = runOnMainThread(func() error { rememberPreviousForeground(w); return nil })
+	}
 	h.panel.lastShown.Store(time.Now().UnixNano())
 	h.emit(quickPanelPrepareShow, nil)
 }
 
+// dismissQuickPanel hides the panel and hands the keyboard focus back to the window that had it.
 func (h *HostService) dismissQuickPanel() {
 	if w, ok := h.app.Window.GetByName(quickPanelWindowName); ok {
 		w.Hide()
 	}
+	if previousAppInputSupported {
+		if err := runOnMainThread(restorePreviousForeground); err != nil {
+			log.Printf("quick panel dismiss could not restore the previous foreground window: %v", err)
+		}
+	}
+}
+
+// toggleQuickPanel shows the hidden panel and dismisses the visible one.
+func (h *HostService) toggleQuickPanel() {
+	if w, ok := h.app.Window.GetByName(quickPanelWindowName); ok && w.IsVisible() {
+		h.dismissQuickPanel()
+		return
+	}
+	h.showQuickPanel()
+}
+
+// requestPanelToggle is the entry for the global shortcut and for `--quick-panel` launches.
+func (h *HostService) requestPanelToggle() {
+	if h.helper != nil {
+		return // the native helper owns its panel and shortcut; a request has nothing to toggle here
+	}
+	if h.panel.toggle.request() {
+		h.toggleQuickPanel()
+	}
+}
+
+// panelFocus gives the shown panel keyboard focus. On Windows the foreground lock blocks a plain Focus, so the
+// panel claims the foreground the way restorePreviousForeground returns it.
+func panelFocus(w application.Window) {
+	if previousAppInputSupported && !quiet() {
+		_ = runOnMainThread(func() error { forceForegroundWindow(w); return nil })
+		return
+	}
+	focusWindow(w)
+}
+
+// pasteIntoPreviousApp hides the panel, restores the previous window and sends the paste keystroke (or types
+// the text). A failure shows the panel again, like the Tauri shell, so the selection is not lost.
+func (h *HostService) pasteIntoPreviousApp(send func() error) error {
+	if !previousAppInputSupported {
+		return errPreviousAppUnsupported
+	}
+	if w, ok := h.app.Window.GetByName(quickPanelWindowName); ok {
+		w.Hide()
+	}
+	err := runOnMainThread(restorePreviousForeground)
+	if err == nil {
+		err = send()
+	}
+	if err != nil {
+		h.showQuickPanel()
+	}
+	return err
 }
 
 func init() {
@@ -159,12 +230,14 @@ func init() {
 		"finalize_quick_panel_show": func(_ context.Context, h *HostService, _ commandArgs) (any, error) {
 			if w, ok := h.app.Window.GetByName(quickPanelWindowName); ok {
 				w.Show()
-				focusWindow(w)
+				panelFocus(w)
 			}
 			return nil, nil
 		},
 		"mark_quick_panel_ready": func(_ context.Context, h *HostService, _ commandArgs) (any, error) {
-			h.panel.ready.Store(true)
+			if h.panel.toggle.markReady() {
+				h.toggleQuickPanel()
+			}
 			return nil, nil
 		},
 		"quick_panel_uses_compositor_shortcuts": func(context.Context, *HostService, commandArgs) (any, error) { return false, nil },

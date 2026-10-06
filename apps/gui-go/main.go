@@ -50,6 +50,8 @@ type HostService struct {
 	quitting atomic.Bool
 
 	shortcutsMu       sync.Mutex
+	osShortcuts       []string // the shortcuts currently registered with the OS; guarded by shortcutsMu
+	binder            *wailsShortcutBinder
 	mainMu            sync.Mutex
 	navMu             sync.Mutex
 	pendingNavigation string
@@ -188,6 +190,7 @@ func (h *HostService) bootstrap() {
 		h.openMainWindow()
 	}
 	h.initQuickPanel()
+	h.initPanelShortcuts()
 	go h.reconcileAutoStart()
 	h.initTray()
 	h.watchNotificationClicks()

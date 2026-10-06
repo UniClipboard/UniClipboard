@@ -8,10 +8,10 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/apppaths"
+	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/daemonproc"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
@@ -33,9 +33,9 @@ const (
 type secondLaunchAction string
 
 const (
-	actionShowMainWindow  secondLaunchAction = "show-main-window"
-	actionIgnoreAutostart secondLaunchAction = "ignore-autostart"
-	actionIgnoreQuickPane secondLaunchAction = "ignore-quick-panel"
+	actionShowMainWindow   secondLaunchAction = "show-main-window"
+	actionIgnoreAutostart  secondLaunchAction = "ignore-autostart"
+	actionToggleQuickPanel secondLaunchAction = "toggle-quick-panel"
 )
 
 // singleInstanceID is the Wails SingleInstance.UniqueID: the scope of "one GUI". On macOS the lock file lives in
@@ -80,11 +80,11 @@ func hasArg(args []string, want string) bool {
 
 // classifySecondLaunch applies the Tauri single-instance rule (a second launch surfaces the main window) except for
 // the launches that must not: the login item's own launch (a login autostart never pops the window) and the quick
-// panel request (the Go shell has no host-level panel toggle yet; it arrives with the global shortcut slice).
+// panel request (it toggles the panel, not the main window).
 func classifySecondLaunch(args []string) secondLaunchAction {
 	switch {
 	case hasArg(args, quickPanelLaunchArg):
-		return actionIgnoreQuickPane
+		return actionToggleQuickPanel
 	case hasArg(args, autostartLaunchArg):
 		return actionIgnoreAutostart
 	}
@@ -103,8 +103,11 @@ func (h *HostService) onSecondInstance(data application.SecondInstanceData) {
 func (h *HostService) handleSecondLaunch(data application.SecondInstanceData) {
 	action := classifySecondLaunch(data.Args)
 	log.Printf("second instance launch detected (args %q): %s", data.Args, action)
-	if action == actionShowMainWindow && !h.deferShowUntilReady() {
+	switch {
+	case action == actionShowMainWindow && !h.deferShowUntilReady():
 		h.showMainWindow()
+	case action == actionToggleQuickPanel:
+		h.requestPanelToggle() // a request during startup is parked by the toggle controller
 	}
 	e2eSecondInstance(h, data, action)
 }
@@ -160,7 +163,7 @@ func waitForRestartParent() {
 		return
 	}
 	for deadline := time.Now().Add(restartParentWait); time.Now().Before(deadline); time.Sleep(50 * time.Millisecond) {
-		if syscall.Kill(pid, 0) == syscall.ESRCH {
+		if !daemonproc.IsPidAlive(uint32(pid)) {
 			return
 		}
 	}

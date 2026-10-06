@@ -56,7 +56,7 @@ func ReadPidMetadata() (*PidMetadata, error) {
 // IsActiveDaemon mirrors `verify_pid_identity`: the pid is alive and, where
 // the platform exposes it, its executable is a daemon binary.
 func IsActiveDaemon(pid uint32) bool {
-	if !isPidAlive(pid) {
+	if !IsPidAlive(pid) {
 		return false
 	}
 	if exe, ok := processExe(pid); ok {

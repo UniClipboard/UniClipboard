@@ -212,3 +212,14 @@ func cursorOverride() (float64, float64, bool) {
 // keyringUnlockDenied lets the e2e build stand in for a refused keychain prompt, the one way a healthy profile
 // reaches the unlock page's passphrase form; the passphrase check itself still goes to the real daemon.
 func keyringUnlockDenied() bool { return os.Getenv("UC_GUI_GO_E2E_KEYRING_UNLOCK") == "denied" }
+
+// shortcutDefaultOverride replaces the platform default quick panel shortcut with a combination nothing else on the
+// test machine uses, so a run never takes over a shortcut people press.
+func shortcutDefaultOverride() (string, bool) {
+	v := os.Getenv("UC_GUI_GO_E2E_DEFAULT_SHORTCUT")
+	return v, v != ""
+}
+
+// shortcutBackendAllowed keeps scenarios that do not test shortcuts from binding a real system-wide shortcut: only a
+// launch that sets UC_GUI_GO_E2E_SHORTCUTS=1 reaches the OS; the others record the set without registering it.
+func shortcutBackendAllowed() bool { return os.Getenv("UC_GUI_GO_E2E_SHORTCUTS") == "1" }

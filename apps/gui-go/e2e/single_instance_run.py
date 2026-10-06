@@ -249,11 +249,11 @@ def main():
         assert not s['mainExists']
         results['A2_autostartSecond'] = {'exitCode': code, 'seconds': secs, 'secondPid': sec_pid, 'primaryReceived': row, 'secondaryLog': text.strip()[:200]}
 
-        # A3: --quick-panel: ignored (no host panel toggle yet), no window
+        # A3: --quick-panel with the native helper: the helper owns the panel, so the host has nothing to toggle: no window, nothing changes
         code, secs, text, _ = second_launch('a3-quickpanel', pa, out, args=['--quick-panel'])
         assert code == 0 and secs < 5, (code, secs)
         row = a1.step('second-instance', 30, lambda r: '--quick-panel' in r['detail']['args'])[-1]['detail']
-        assert row['action'] == 'ignore-quick-panel' and not row['mainExists'], row
+        assert row['action'] == 'toggle-quick-panel' and not row['mainExists'], row
         unchanged('after-quick-panel')
         results['A3_quickPanelSecond'] = {'exitCode': code, 'seconds': secs, 'primaryReceived': row}
 

@@ -79,6 +79,8 @@ async function run() {
   if (phase === 'file-preview') return runFilePreviewScenario()
   if (phase === 'scheduler') return runSchedulerScenario()
   if (phase === 'quick-panel-settings') return runQuickPanelSettingsScenario()
+  if (phase === 'native-panel') return runNativePanelScenario()
+  if (phase === 'native-requests') return runNativeRequestsScenario()
   await waitFor('app root content', () => document.getElementById('root')?.children.length)
   // A diagnostic page would never contain the shared app's router state.
   await record('shared-app-mounted', !$('#refresh') && !!document.getElementById('root'))
@@ -308,6 +310,52 @@ async function runQuickPanelSettingsScenario() {
   )
   const accepted = await commands.setQuickPanelDoubleTapModifier('disabled', null)
   await record('double-tap-disabled-accepted', accepted.status === 'ok', { result: accepted })
+  await control('exit')
+}
+
+// Native helper supervision: each `act-*` step marks a moment the orchestrator compares the helper
+// process table against. The settings go through the same frontend bindings as the settings UI.
+async function runNativePanelScenario() {
+  await waitFor('app root content', () => document.getElementById('root')?.children.length)
+  await record('native-ready', true)
+  await sleep(5000) // the helper starts
+  await record('act-disable', true)
+  await setQuickPanelEnabled(false)
+  await sleep(4000)
+  await record('act-enable', true)
+  await setQuickPanelEnabled(true)
+  await sleep(4000)
+  await record('act-shortcut', true)
+  const shortcut = await commands.updateKeyboardShortcuts(
+    { 'global.toggleQuickPanel': 'Ctrl+Alt+Space' },
+    null
+  )
+  await record('shortcut-saved', shortcut.status === 'ok', { result: shortcut })
+  await sleep(4000)
+  await record('act-double-tap', true)
+  const tap = await commands.setQuickPanelDoubleTapModifier('alt', null)
+  await record('double-tap-saved', tap.status === 'ok', { result: tap })
+  const availability = await commands.getQuickPanelDoubleTapAvailability(null)
+  await record('double-tap-availability', availability.status === 'ok', { result: availability })
+  await sleep(4000)
+  await record('act-kill', true) // the orchestrator kills the helper now; it must come back
+  await sleep(9000)
+  await record('act-exit', true)
+  await control('exit')
+}
+
+// Requests printed by a stand-in helper: show the hidden main window, then open the settings page.
+async function runNativeRequestsScenario() {
+  await waitFor('app root content', () => document.getElementById('root')?.children.length)
+  await control('close-main')
+  await control('wait-main-visible')
+  await waitFor(
+    'settings after open_settings request',
+    () => location.pathname.startsWith('/settings'),
+    30000
+  )
+  await record('helper-open-settings', true, { path: location.pathname })
+  await sleep(1000)
   await control('exit')
 }
 

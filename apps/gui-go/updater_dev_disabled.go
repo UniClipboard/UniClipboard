@@ -2,7 +2,10 @@
 
 package main
 
-import "github.com/UniClipboard/UniClipboard/apps/gui-go/internal/update"
+import (
+	"github.com/UniClipboard/UniClipboard/apps/gui-go/internal/update"
+	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/quickpanelhelper"
+)
 
 type devUpdate struct {
 	endpoints func(update.Channel) []string
@@ -15,3 +18,7 @@ func devUpdateOverrides() (devUpdate, bool) { return devUpdate{}, false }
 
 // schedulerTimingOverride keeps the production cadence in normal builds.
 func schedulerTimingOverride(t schedulerTiming) schedulerTiming { return t }
+
+// helperExecutable is the quick panel helper next to this executable; normal builds cannot
+// redirect it through the environment.
+func helperExecutable() (string, bool) { return quickpanelhelper.ResolveExePath() }

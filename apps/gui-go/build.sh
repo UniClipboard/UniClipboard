@@ -14,6 +14,8 @@ case "$MODE" in
 esac
 mkdir -p target/gui-go
 cargo build --locked -p uc-daemon
+# The native quick panel helper ships next to the GUI executable, like the Tauri bundle's externalBin.
+cargo build --locked -p quick-panel --bin uniclip-quick-panel
 (cd packages/desktop-host-go && go generate ./buildinfo)
 (cd apps/cli-go && go build -o ../../target/gui-go/uniclip ./cmd/uniclip)
 mkdir -p apps/gui-go/assets && cp apps/gui/src-tauri/icons/tray-icon@2x.png apps/gui-go/assets/
@@ -28,6 +30,7 @@ fi
 BUNDLE="$ROOT/target/gui-go/$APP.app"
 mkdir -p "$BUNDLE/Contents/MacOS"
 cp "target/gui-go/$APP-binary" "$BUNDLE/Contents/MacOS/gui-go"
+cp target/debug/uniclip-quick-panel "$BUNDLE/Contents/MacOS/uniclip-quick-panel"
 cp apps/gui-go/Info.plist "$BUNDLE/Contents/Info.plist"
 # Bundle identity comes from the Tauri configuration so both shells ship as the same app.
 read -r BUNDLE_ID PRODUCT VERSION < <(python3 -c 'import json;c=json.load(open("apps/gui/src-tauri/tauri.conf.json"));print(c["identifier"],c["productName"],c["version"])')

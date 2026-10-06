@@ -87,7 +87,7 @@ def main():
             'platforms': {f'darwin-{arch}-app': {'url': f'{base}/update.app.tar.gz', 'signature': (feed / sig).read_text()}},
         }))
     results = {'home': home, 'profile': profile, 'passed': False, 'version': VERSION}
-    env_base = isolated_env(home, profile, {'UC_GUI_GO_ISOLATED': '1', 'UC_GUI_GO_EVIDENCE': str(evidence), 'UC_UPDATE_PUBKEY': pubkey,
+    env_base = isolated_env(home, profile, {'UC_GPUI_QUICK_PANEL': '0', 'UC_GUI_GO_ISOLATED': '1', 'UC_GUI_GO_EVIDENCE': str(evidence), 'UC_UPDATE_PUBKEY': pubkey,
                                             'PATH': str(ROOT / 'target/debug') + ':' + os.environ['PATH'], 'UC_GUI_GO_EXIT_MODE': 'full'})
     binary = target / 'Contents/MacOS/gui-go'
     marker = target / 'Contents/Resources/update-marker.txt'

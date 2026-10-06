@@ -14,6 +14,7 @@ import (
 	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/daemonclient"
 	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/daemonlife"
 	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/daemonproc"
+	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/quickpanelhelper"
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
 )
@@ -29,12 +30,14 @@ type HostService struct {
 	exit          exitIntent
 	prompts       promptStore
 	stopScheduler context.CancelFunc
+	helper        *quickpanelhelper.Supervisor // nil when the WebView quick panel is in use
 	updates       updater
 	tray          *trayMenu
 	files         knownFiles
 
 	quitting atomic.Bool
 
+	shortcutsMu       sync.Mutex
 	navMu             sync.Mutex
 	pendingNavigation string
 }
@@ -132,7 +135,7 @@ func main() {
 		OnShutdown: host.shutdown})
 	host.app = app
 	host.openMainWindow()
-	host.preCreateQuickPanel()
+	host.initQuickPanel()
 	host.initTray()
 	schedulerCtx, stopScheduler := context.WithCancel(context.Background())
 	host.stopScheduler = stopScheduler

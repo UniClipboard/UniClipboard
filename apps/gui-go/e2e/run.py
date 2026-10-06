@@ -76,7 +76,7 @@ def main():
     profile = 'gui-go-' + os.path.basename(home)
     evidence = out / 'native.jsonl'
     evidence.write_text('')
-    env = isolated_env(home, profile, {'UC_GUI_GO_ISOLATED': '1', 'UC_GUI_GO_EVIDENCE': str(evidence), 'PATH': str(ROOT / 'target/debug') + ':' + os.environ['PATH']})
+    env = isolated_env(home, profile, {'UC_GPUI_QUICK_PANEL': '0', 'UC_GUI_GO_ISOLATED': '1', 'UC_GUI_GO_EVIDENCE': str(evidence), 'PATH': str(ROOT / 'target/debug') + ':' + os.environ['PATH']})
     results = {'home': home, 'profile': profile, 'systemClipboardDisabled': True, 'rounds': [], 'passed': False,
                'head': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()}
     proc = None

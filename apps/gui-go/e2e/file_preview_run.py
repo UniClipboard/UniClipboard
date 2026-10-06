@@ -44,7 +44,7 @@ def main():
     path = str(ROOT / 'target/debug') + ':' + os.environ['PATH']
     env_a = isolated_env(home_a, prof_a, {'PATH': path})
     env_b = isolated_env(home_b, prof_b, {'PATH': path})
-    gui_env = isolated_env(home_a, prof_a, {'PATH': path, 'UC_GUI_GO_ISOLATED': '1', 'UC_GUI_GO_EVIDENCE': str(evidence),
+    gui_env = isolated_env(home_a, prof_a, {'PATH': path, 'UC_GPUI_QUICK_PANEL': '0', 'UC_GUI_GO_ISOLATED': '1', 'UC_GUI_GO_EVIDENCE': str(evidence),
                                            'UC_GUI_GO_E2E_PHASE': 'file-preview', 'UC_GUI_GO_EXIT_MODE': 'full'})
     results = {'profileA': prof_a, 'profileB': prof_b, 'passed': False}
     invite = proc = None

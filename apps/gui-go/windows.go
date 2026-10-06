@@ -170,10 +170,6 @@ func init() {
 			h.panel.ready.Store(true)
 			return nil, nil
 		},
-		// No global shortcut backend exists in this host yet.
-		"get_quick_panel_double_tap_availability": func(context.Context, *HostService, commandArgs) (any, error) {
-			return "unsupported_display_session", nil
-		},
 		"quick_panel_uses_compositor_shortcuts": func(context.Context, *HostService, commandArgs) (any, error) { return false, nil },
 		"resolve_quick_panel_expand_side":       func(context.Context, *HostService, commandArgs) (any, error) { return "right", nil },
 	})

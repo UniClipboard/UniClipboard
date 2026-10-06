@@ -37,7 +37,7 @@ def main():
     evidence.write_text('')
     path = str(ROOT / 'target/debug') + ':' + os.environ['PATH']
     cli_env = isolated_env(home, profile, {'PATH': path})
-    gui_env = isolated_env(home, profile, {'PATH': path, 'UC_GUI_GO_ISOLATED': '1', 'UC_GUI_GO_EVIDENCE': str(evidence),
+    gui_env = isolated_env(home, profile, {'PATH': path, 'UC_GPUI_QUICK_PANEL': '0', 'UC_GUI_GO_ISOLATED': '1', 'UC_GUI_GO_EVIDENCE': str(evidence),
                                            'UC_GUI_GO_E2E_PHASE': 'quick-panel-settings', 'UC_GUI_GO_EXIT_MODE': 'full'})
     results = {'home': home, 'profile': profile, 'passed': False}
     proc = None

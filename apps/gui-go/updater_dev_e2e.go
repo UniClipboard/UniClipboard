@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/UniClipboard/UniClipboard/apps/gui-go/internal/update"
+	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/quickpanelhelper"
 )
 
 type devUpdate struct {
@@ -31,4 +32,13 @@ func schedulerTimingOverride(t schedulerTiming) schedulerTiming {
 		t.setupPoll, t.success, t.jitter, t.failure = d, d, 0, d
 	}
 	return t
+}
+
+// helperExecutable lets the e2e build substitute a stand-in helper to exercise the supervision
+// and request handling deterministically; without the override it is the real helper.
+func helperExecutable() (string, bool) {
+	if path := os.Getenv("UC_QUICK_PANEL_HELPER_EXE"); path != "" {
+		return path, true
+	}
+	return quickpanelhelper.ResolveExePath()
 }

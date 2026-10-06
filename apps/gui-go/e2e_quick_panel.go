@@ -28,6 +28,14 @@ func (s *EvidenceService) controlQuickPanel(action string) (bool, error) {
 		warpCursor(x, y)
 		time.Sleep(200 * time.Millisecond)
 		return true, nil
+	case action == "wait-main-visible":
+		// The helper's show_main_window request must bring the hidden main window back.
+		w, ok := h.app.Window.GetByName("main")
+		visible := false
+		for deadline := time.Now().Add(20 * time.Second); ok && time.Now().Before(deadline) && !visible; time.Sleep(100 * time.Millisecond) {
+			visible = w.IsVisible()
+		}
+		return true, s.write(Step{Window: "main", Step: "helper-show-main", OK: visible})
 	case action == "panel-hide":
 		h.dismissQuickPanel()
 		time.Sleep(300 * time.Millisecond)

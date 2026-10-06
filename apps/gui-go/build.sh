@@ -39,7 +39,8 @@ PLIST="$BUNDLE/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string $VERSION" -c "Set :CFBundleVersion $VERSION" "$PLIST"
 if [[ "$MODE" == e2e ]]; then
   # Only the test build gets its own identity, so it can never collide with a real install.
-  /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $BUNDLE_ID.e2e" "$PLIST"
+  # The name is what System Settings lists for a registered login item, so it must not read as the real app.
+  /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $BUNDLE_ID.e2e" -c "Set :CFBundleName $PRODUCT E2E Test Build" "$PLIST"
 fi
 codesign --force --deep --sign - "$BUNDLE"
 echo "Built $BUNDLE"

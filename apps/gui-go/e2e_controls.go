@@ -6,7 +6,6 @@ import (
 	"context"
 	"math"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -51,11 +50,21 @@ func (s *EvidenceService) controlQuickPanel(action string) (bool, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		setting, err := h.autoStartSetting(ctx)
-		item, itemErr := loginItem()
-		home, _ := os.UserHomeDir()
-		raw, readErr := os.ReadFile(filepath.Join(home, "Library", "LaunchAgents", item.Name+".plist"))
-		return true, s.write(Step{Window: "main", Step: "autostart-" + label, OK: err == nil && itemErr == nil,
-			Detail: map[string]any{"setting": setting, "registered": readErr == nil, "plist": string(raw), "name": item.Name, "executable": item.Executable}})
+		policy, policyErr := currentLoginItemPolicy()
+		// The registration as Wails itself reports it, and the LaunchAgent record it points at when there is one.
+		status, statusErr := h.app.Autostart.Status()
+		detail := map[string]any{"setting": setting, "name": policy.name(), "executable": policy.Executable,
+			"bundled": runningFromAppBundle(policy.Executable), "bundleID": bundleIdentifier(),
+			"enabled": status.Enabled, "strategy": string(status.Strategy), "path": status.Path}
+		if statusErr != nil {
+			detail["statusError"] = statusErr.Error()
+		}
+		if status.Strategy == application.AutostartStrategyLaunchAgent {
+			if raw, readErr := os.ReadFile(status.Path); readErr == nil {
+				detail["plist"] = string(raw)
+			}
+		}
+		return true, s.write(Step{Window: "main", Step: "autostart-" + label, OK: err == nil && policyErr == nil && statusErr == nil, Detail: detail})
 	case action == "tray-menu" || strings.HasPrefix(action, "tray-menu:"):
 		// The tray menu as the user would read it: labels in order, "-" for separators, submenus nested.
 		var walk func(m *application.Menu) []any

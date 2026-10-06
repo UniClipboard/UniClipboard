@@ -696,13 +696,34 @@ async function runAutostartScenario(phase: string) {
     const r = await commands.updateAutostart(enabled, null)
     await record(step, accept(r), { result: r })
   }
-  if (phase === 'autostart') {
-    await set('enable', true, r => r.status === 'ok')
+  // Records the outcome either way: the orchestrator decides what the platform mechanism is allowed to say.
+  const attempt = async (step: string, enabled: boolean) => {
+    const r = await commands.updateAutostart(enabled, null)
+    await record(step, true, { result: r })
+  }
+  if (phase === 'autostart' || phase === 'autostart-bundle') {
+    // Repeated enable and repeated disable must both be idempotent; each state is read back from Wails itself.
+    await set('enable', true, r => phase === 'autostart-bundle' || r.status === 'ok')
     await control('autostart-state:enabled')
+    await set('enable-repeat', true, r => phase === 'autostart-bundle' || r.status === 'ok')
+    await control('autostart-state:enabled-repeat')
     await set('disable', false, r => r.status === 'ok')
     await control('autostart-state:disabled')
-    await set('enable-again', true, r => r.status === 'ok')
-    await control('autostart-state:enabled-again')
+    await set('disable-repeat', false, r => r.status === 'ok')
+    await control('autostart-state:disabled-repeat')
+    await set('enable-final', true, r => phase === 'autostart-bundle' || r.status === 'ok')
+    await control('autostart-state:enabled-final')
+  } else if (phase === 'autostart-cleanup') {
+    await attempt('cleanup-disable', false)
+    await control('autostart-state:cleaned')
+  } else if (phase === 'autostart-refused') {
+    await set(
+      'enable-refused',
+      true,
+      r =>
+        r.status === 'error' && String(r.error.message).includes('must not change the login item')
+    )
+    await control('autostart-state:after-refusal')
   } else if (phase === 'autostart-reconcile') {
     await sleep(3000) // the startup reconcile runs in the background
     await control('autostart-state:after-startup')

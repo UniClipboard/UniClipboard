@@ -23,7 +23,7 @@ PoC 结束后只能选择继续达到完整功能验收或删除该入口；不�
 
 已验证：真实 daemon 启动与复用、认证、HTTP/WS、共享 React 主界面（设置、解锁、历史、设备、设置页）、
 主窗口关闭隐藏与重开。第二窗口：真实 updater（dev 预览）与 quick panel 页面经多页构建加载，Go 宿主负责窗口创建、两阶段显示、失焦隐藏与尺寸；E2E 只用原生控制触发显示（全局快捷键尚未实现）。托盘与退出语义：托盘菜单（同步开关、打开、设置、检查更新、重启、轻量模式、退出，六种语言标签）；普通退出（托盘退出、Cmd-Q）停止 daemon，轻量模式与重启保留 daemon。更新服务（`internal/update`）：同一份 Tauri 更新清单格式、minisign 签名校验（含 trusted comment）、下载进度与取消、macOS 原位安装并重启；公钥构建时从 Tauri 更新配置注入，E2E 构建才允许用本地清单与临时密钥覆盖。尚未实现：全局快捷键、后台更新调度、Windows/Linux 原位安装、设备同步子菜单、轻量模式通知、更新、通知、文件预览协议、
-autostart、原生粘贴与 GPUI 宿主、Windows/Linux 原生验收。
+原生粘贴与 GPUI 宿主、Windows/Linux 原生验收。
 
 ## 开发运行（对应 `bun tauri:dev`）
 
@@ -129,7 +129,7 @@ python3 apps/gui-go/e2e/scheduler_run.py --out <dir>
 
 | 能力 | Wails beta.28 API（源码证据） | 当前实现 | 适配缺口 | 替换切片 / 验收 |
 | --- | --- | --- | --- | --- |
-| 开机自启 | `app.Autostart`：`Enable` / `EnableWithOptions` / `Disable` / `IsEnabled` / `Status`；选项 `Identifier`、`Arguments`；macOS 打包且 ≥13 用 `SMAppService`，否则（含裸二进制）写 LaunchAgent，Windows 写 `HKCU\...\Run`，Linux 写 XDG `.desktop`（`autostart_darwin.go`、`autostart_windows.go`、`autostart_linux.go`） | **重复实现**：`packages/desktop-host-go/autostart`（手写 LaunchAgent plist，仅 macOS）+ `apps/gui-go/autostart.go`（PR #1862） | 需保留：按 profile 区分登录项名（`Identifier`，开发实例不得改动已安装应用）、启动参数、与 daemon 设置的一致性、OS 失败回滚、启动对账。需验证：`SMAppService` 分支不接收 `Arguments`（`smAppServiceRegister()` 无参数）；Tauri 旧版在 `~/Library/LaunchAgents` 注册的项如何迁移或并存；注册仅在下次登录生效 | **单独替换切片（下一片）**：改用 `app.Autostart`，删除手写 OS 层；验收重复启停、真实平台机制（SMAppService / LaunchAgent）与 profile 隔离 |
+| 开机自启 | `app.Autostart`：`Enable` / `EnableWithOptions` / `Disable` / `IsEnabled` / `Status`；选项 `Identifier`、`Arguments`；macOS 打包且 ≥13 用 `SMAppService`，否则（含裸二进制）写 LaunchAgent，Windows 写 `HKCU\...\Run`，Linux 写 XDG `.desktop` | **已替换（slice 14b）**：`autostart.go` 只保留 Uni 适配层，直接调用 `app.Autostart`；已删除 `packages/desktop-host-go/autostart`（无其他消费者，CLI service 的 systemd/launchd 不受影响） | 适配层保留：偏好持久化优先与失败回滚、启动对账（已注册则不重复注册）、`Disable` 无条件调用、`--autostart` 标记（仅 LaunchAgent 路径生效）、旧 Tauri 登录项清理（只删本登录项同名且指向其他可执行文件的 plist，不 bootout）。**Wails 能力缺口（beta.28 源码）**：① `SMAppService` 路径 `Identifier` 只校验、`Arguments` 被丢弃，登录项归整个 bundle，`Identifier` 无法隔离 profile；② LaunchAgent 的 `Status`/`Disable` 按可执行路径而非 label 匹配；③ LaunchAgent 启用会 `launchctl bootstrap` 立刻拉起一个实例（不受 Wails 选项控制）。对策：具名 profile 在 bundle 内运行时拒绝改动系统登录项（仅隔离测试构建可放行）；同一二进制的多个 profile 共享 LaunchAgent 仅靠路径匹配，不声称相互隔离 | 证据 `library/e2e-autostart-wails/`：重复启停、`Status.Strategy`（`launchagent` / `smappservice`）、plist 记录、启动对账、旧项清理、回滚、profile 守卫、测试 bundle 的 `SMAppService` 注册与清理。**未验证**：真实注销/登录后自动启动；`SMAppService` 的独立（BTM）核对；Windows/Linux 机制（slice 17） |
 | 通知 | `services/notifications`（`NotificationService`） | 已集成（`host_notifications.go`） | 仅 Tauri 通知插件语义适配（权限、点击回调事件） | 已覆盖，无替换 |
 | 全局快捷键 | `app.GlobalShortcut`（`global_shortcut_darwin.go`、`global_shortcut_linux_x11.go`、`global_shortcut_linux_portal.go`；Windows 另有实现） | macOS：GPUI 辅助进程自己持有快捷键与双击修饰键（既定决策，Wails 不提供双击修饰键触发）；其他平台尚未实现 | Windows / Linux WebView 面板需用 `app.GlobalShortcut` 注册快捷键并在设置变更时重注册 | 第 17 片（Windows、Linux），采用 Wails API，不手写 |
 | 原生对话框 | `app.Dialog`（OpenFile / SaveFile / Info / Error） | 已集成 | 无 | 已覆盖 |

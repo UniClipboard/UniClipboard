@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/wailsapp/wails/v3/pkg/mac"
 )
 
 // EvidenceService is the e2e-only control plane. It exists solely in builds
@@ -234,4 +235,21 @@ func (s *EvidenceService) waitVisible(name string, want bool) bool {
 		}
 	}
 	return false
+}
+
+// profileBundleLoginItemAllowed lets the isolated test bundle (a distinct bundle id, run with a throwaway
+// HOME) exercise the bundle login item path with a named profile.
+func profileBundleLoginItemAllowed() bool {
+	return os.Getenv("UC_GUI_GO_ISOLATED") == "1" && os.Getenv("UC_GUI_GO_E2E_DENY_PROFILE_BUNDLE") != "1"
+}
+
+func bundleIdentifier() string { return mac.GetBundleID() }
+
+// notifierServices: the notification service refuses to start without a bundle identifier. The launch-at-login
+// test runs the bare binary (the LaunchAgent strategy only exists for an unbundled executable) and opts out.
+func notifierServices(h *HostService) []application.Service {
+	if os.Getenv("UC_GUI_GO_E2E_UNBUNDLED") == "1" {
+		return nil
+	}
+	return []application.Service{application.NewService(h.notifier)}
 }

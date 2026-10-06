@@ -17,7 +17,7 @@
 ## Wails beta.28 源码事实（固定版本）
 
 - 全局快捷键：`global_shortcut_linux_x11.go` 用 `XGrabKey`，同时抓取 CapsLock/NumLock 四种锁定修饰组合（`gsLockMasks`）；已被其他客户端抓取时返回 `the shortcut is already registered (possibly by another application)`，宿主据此返回 `Conflict`。这些语义直接复用，宿主没有自写协议。
-- 窗口尺寸：`linux_cgo.go` 的 `setSize` 调用 `gtk_window_set_default_size`。它对尚未映射的窗口生效；对已映射窗口不会立即缩放。所以首次显示之前设定的尺寸才是首帧尺寸。
+- 窗口尺寸：非 `gtk3` 的 `linux_cgo.go` 的 `setSize` 调用 `gtk_window_set_default_size`（更正，第 17c9 片：本仓产物是 `gtk3` 构建，`linux_cgo_gtk3.go` 的 `setSize` 是 `gtk_window_resize`，见 `gui-go-linux-x11-wm-window-scale.md`）。它对尚未映射的窗口生效；对已映射窗口不会立即缩放。所以首次显示之前设定的尺寸才是首帧尺寸。
 
 ## 预计失败方式（修改前）
 

@@ -665,6 +665,22 @@ UC_LINUX_IMAGE=uc-gui-go-linux-build:17c2 apps/gui-go/e2e/linux/run_17c7.sh <新
 apps/gui-go/e2e/linux/run_17c7_supplement.sh <最终运行目录> <新目录>                     # 只在保留的包与镜像上复验 harness
 ```
 
+## Linux 窗口管理器下的快捷面板：窗口缩放、工作区、焦点（第 17c9 片）
+
+契约（来源）、基线与全部失败实验、根因、修复和最终结果在 [docs/architecture/gui-go-linux-x11-wm-window-scale.md](../../docs/architecture/gui-go-linux-x11-wm-window-scale.md)。证据目录 `/Users/mark/.herdr-projects/uni/t-0188-artifacts/linux-17c9/`（约 1.5 GB，仓库只索引）。
+
+- 唯一产品缺陷：窗口缩放小于 1.0 时 X11 面板仍是 800x560（GTK 把不可缩放窗口钉在创建尺寸，`gtk_window_resize` 只能放大）。修复：普通窗口面板用 Wails `SetMinSize`/`SetMaxSize` 几何提示固定尺寸，不再依赖不可缩放标志；Layer Shell 路径不变。
+- 验证环境：容器内 Xvfb + Openbox 3.6.1（未改配置），不是原生桌面、不是 Wayland、没有 GPU。
+- 结果：X11 61/61（0.8/1.5 与钳制边界、实时缩放、重启后首映射、工作区、焦点、固定尺寸负对照）；Wayland 回归套件 31/31。
+
+### 17c9 复跑
+
+```bash
+apps/gui-go/e2e/linux/run_17c9.sh build <新标签> <新目录>
+apps/gui-go/e2e/linux/run_17c9.sh run <标签> <新目录>
+apps/gui-go/e2e/linux/run_17c9.sh wayland <标签> <新目录>
+```
+
 ## Linux 默认快捷键与 X11 面板尺寸（第 17c8 片）
 
 契约、Wails 源码事实、预计失败方式、修改前实际结果、修复与复跑命令在 [docs/architecture/gui-go-linux-x11-default-shortcut.md](../../docs/architecture/gui-go-linux-x11-default-shortcut.md)。证据目录 `/Users/mark/.herdr-projects/uni/t-0188-artifacts/linux-17c8/`（仓库只索引）。
@@ -692,6 +708,7 @@ apps/gui-go/e2e/linux/run_17c8.sh wayland <标签> <新目录>   # 既有 sway �
 - Linux 17c2：Layer Shell 面板与每输出定位/上限由容器内真实无头 sway 验证（见“17c2 结果”），Hyprland/GNOME/KDE 与真实桌面未验证。Linux 17c：证据来自容器内 Xvfb + 私有 D-Bus（无窗口管理器、Wayland、portal、托盘宿主、通知服务、Secret Service）与脚本化 Hyprland socket；默认快捷键用 e2e 测试接缝；（17c 当时）AppImage 不自包含、daemon 来源未核验；17c4 已补自包含 AppImage 与真实 release daemon 证据（容器内干净宿主，仍无真实 Linux 桌面运行证据）。详见“Linux（第 17c 片）”与“自包含 Linux AppImage（第 17c4 片）”。
 - Windows 17b：同上，另可为 arm64 编译、安装器脚本可编译；daemon 以 `TerminateProcess` 强制终止（非优雅关闭）；Windows 生产入口、安装器、原位更新、自启迁移、双击修饰键的真实读取/焦点/可见性均未验证；真实 Rust daemon + NSIS/便携包的原生安装与更新仍 OPEN；官方发布签名验证仍 OPEN。
 - Windows：17a 代码可为 windows/amd64 编译（普通与 e2e 标签、`go vet` 通过），没有任何 Windows 运行证据（真实可见、焦点、按键、冲突、粘贴、托盘、通知、daemon 停止、单实例均未验证，runner 离线）；Linux、安装签名、Windows 更新与 GPUI 在 Windows 的 N/A 说明见上。
+- Linux 17c9：窗口缩放（0.8/1.5、钳制）、工作区、首次映射/显示隐藏/基础焦点已在 Openbox 下验证；GNOME/KDE 窗口管理器、Wayland 实机、HiDPI、原生桌面、GPU 仍 OPEN（见“Linux 窗口管理器下的快捷面板”）。
 - Linux 17c8：X11 面板首映射尺寸与默认快捷键的真实设置页链路在 Xvfb（无窗口管理器）里验证，仅默认窗口缩放；窗口缩放其他取值、真实窗口管理器、Wayland 实机、AppImage 内重跑仍 OPEN（见“Linux 默认快捷键与 X11 面板尺寸（第 17c8 片）”）。
 - Linux 17c7：AppImage 的 GIO TLS 模块与 libdbus/libglvnd 边界由 Ubuntu 24.04 与 Fedora 44 两个无 GTK/WebKit 的容器宿主上的真实 WebView HTTPS 与进程映射验证（见“AppImage 运行时动态依赖（第 17c7 片）”）；原生 amd64、其他发行版、真实桌面/GPU、系统代理仍 OPEN。
 - Linux 17c6：AppImage runtime 固定（见“固定 AppImage runtime（第 17c6 片）”），amd64 嵌入与运行仍 OPEN（其 dlopen 审计项由 17c7 处理）。

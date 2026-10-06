@@ -18,8 +18,26 @@ export const pendingStartupSnapshot: StartupSnapshot = {
   allowed_actions: { retry: false, export_diagnostics: true },
 }
 
+/**
+ * The daemon flags `upgrade.required` whenever its storage check runs, even when no data is
+ * converted. Treat an upgrade as real only when work is under way, recovering, or has failed;
+ * otherwise the plain startup screen is the right presentation.
+ */
+export function isUpgradeRequired(snapshot: Pick<StartupSnapshot, 'state' | 'upgrade'>): boolean {
+  const upgrade = snapshot.upgrade
+  if (!upgrade?.required) return false
+  return (
+    snapshot.state === 'upgrading' ||
+    snapshot.state === 'failed' ||
+    snapshot.state === 'interrupted' ||
+    snapshot.state === 'recovery_available' ||
+    upgrade.recovering ||
+    upgrade.steps.some(step => step.step !== 'checking' && step.step !== 'preparing')
+  )
+}
+
 export function startupPresentation(snapshot: StartupSnapshot) {
-  const required = snapshot.upgrade?.required === true
+  const required = isUpgradeRequired(snapshot)
   const failed = snapshot.state === 'failed' || snapshot.state === 'interrupted'
   const ready = snapshot.state === 'ready'
   let title = 'preparing'

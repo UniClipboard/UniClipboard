@@ -1,6 +1,7 @@
 import type { SetupGate } from '@/lib/app-state'
 import { startupFailed } from '@/lib/daemon-startup-progress'
 import type { DaemonStartupStatus } from '@/lib/ipc'
+import { isUpgradeRequired } from '@/lib/startup-progress'
 
 export type AppContentView =
   | 'profile-recovery'
@@ -57,7 +58,8 @@ export function resolveAppContentState(input: AppContentStateInput) {
   else if (input.recoveryFailed) view = 'recovery-query-failed'
   else if (showFailure) view = 'failure'
   else if (showStartup)
-    view = input.startupStatus?.progress.upgrade?.required ? 'upgrade' : 'startup'
+    view =
+      input.startupStatus && isUpgradeRequired(input.startupStatus.progress) ? 'upgrade' : 'startup'
   else if (input.setupGate === 'setup') view = 'setup'
   else if (input.encryptionInitialized && (!input.contentUnlocked || !input.sessionReady))
     view = 'unlock'

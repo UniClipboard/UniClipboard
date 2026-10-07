@@ -620,23 +620,43 @@ def main():
         ok_exp, det = ensure_expanded('first')
         check('3a the device submenu was really expanded in the tracked menu (AX press on Device Sync: a second submenu-sized pop-up window beside the root window)', ok_exp, det)
 
-        # 3b natural refresh with the submenu expanded at the start (rows unchanged: the submenu is updated in place, then the whole menu republished)
-        ok_exp, det_b = ensure_expanded('3b')
+        # 3b natural refresh, judged PER PUBLISH. The submenu is re-expanded from the real state whenever it is found collapsed, so several publishes can start
+        # with it expanded. Nothing is assumed about why it collapses: each publish is paired with the last sample before it (expanded or not), the first
+        # collapsed sample after it, and the state read after the next re-expansion (rows and root language). Samples carry wall-clock times (same clock as
+        # the tray-publish records).
         row_i0 = len(gui.rows())
+        samples, expansions = [], []
         t0 = time.time()
-        timeline = []
-        while time.time() - t0 < 24:
+        while time.time() - t0 < 36:
+            ts = time.time()
             rd = ax('read', str(proc.pid))
             rows_b = [d['title'] for d in (device_items(rd['menu']) or [])] if rd.get('ok') else None
-            timeline.append([round(time.time() - t0, 2), rd.get('popupWindows'), rows_b])
-            time.sleep(.25)
-        pubs_rel = [round(t - t0, 2) for t in pub_times(row_i0)]
-        collapses = [timeline[i][0] for i in range(1, len(timeline)) if (timeline[i - 1][1] or 0) >= 2 and (timeline[i][1] or 0) < 2]
-        near = [min((abs(c - p) for p in pubs_rel), default=None) for c in collapses]
-        (out / 'ax-3b-timeline.json').write_text(json.dumps({'timeline': timeline, 'publishRelSeconds': pubs_rel, 'collapseRelSeconds': collapses, 'collapseToNearestPublishSeconds': near}, ensure_ascii=False, indent=1))
-        check('3b PRECONDITION expanded at the start; natural refreshes (>= 2 publishes) ran, the menu never vanished, rows stayed [tray-peer-b]; every collapse of the submenu lies within 1.5 s of a publish (a rebuild), none unexplained',
-              ok_exp and len(pubs_rel) >= 2 and all(t[1] for t in timeline) and all(t[2] == ['tray-peer-b'] for t in timeline) and all(n is not None and n <= 1.5 for n in near),
-              {'expandedAtStart': ok_exp, 'publishes': pubs_rel, 'collapses': collapses, 'collapseToNearestPublishSeconds': near, 'reads': len(timeline), 'readsWithSubmenuWindow': sum(1 for t in timeline if (t[1] or 0) >= 2)})
+            samples.append({'t': ts, 'popups': rd.get('popupWindows'), 'rows': rows_b, 'root': titles(rd['menu']) if rd.get('ok') else None})
+            if rd.get('ok') and (rd.get('popupWindows') or 0) == 1:
+                tp = time.time()
+                ex, att = ensure_expanded('3b-re')
+                expansions.append({'t': tp, 'ok': ex, 'attempts': att})
+            time.sleep(.1)
+        pubs = [(x['detail']['startNs'] / 1e9, x['detail']['endNs'] / 1e9) for x in gui.rows()[row_i0:] if x['step'] == 'tray-publish']
+        per_pub = []
+        for (s, e) in pubs:
+            before = [x for x in samples if x['t'] < s]
+            after = [x for x in samples if x['t'] >= s]
+            expanded_before = bool(before) and (before[-1]['popups'] or 0) >= 2
+            coll = next((x for x in after if (x['popups'] or 0) < 2), None)
+            reexp = next((x for x in expansions if x['t'] >= s), None)
+            post = next((x for x in after if x['t'] >= (reexp['t'] if reexp else 1e18) and (x['popups'] or 0) >= 2), None)
+            per_pub.append({'startRel': round(s - t0, 2), 'durMs': round((e - s) * 1000, 1), 'expandedBefore': expanded_before,
+                            'lastSampleBeforeAgeS': round(s - before[-1]['t'], 2) if before else None,
+                            'firstCollapsedSampleAfterS': round(coll['t'] - s, 2) if coll else None,
+                            'reExpandedAfterS': round(reexp['t'] - s, 2) if reexp and reexp['ok'] else None,
+                            'postState': {'rows': post['rows'], 'rootEnglish': post['root'][1:] == EN} if post else None})
+        (out / 'ax-3b-timeline.json').write_text(json.dumps({'samples': [[round(x['t'] - t0, 2), x['popups'], x['rows']] for x in samples], 'perPublish': per_pub, 'expansions': expansions}, ensure_ascii=False, indent=1))
+        exp_pubs = [x for x in per_pub if x['expandedBefore']]
+        check('3b natural refresh PER PUBLISH: >= 2 publishes started with the submenu expanded (real state before each), the menu never vanished, rows stayed [tray-peer-b], and after each such publish the re-expanded submenu showed the same rows and the English root',
+              len(exp_pubs) >= 2 and all(x['popups'] for x in samples) and all(x['rows'] == ['tray-peer-b'] for x in samples)
+              and all(x['postState'] and x['postState']['rows'] == ['tray-peer-b'] and x['postState']['rootEnglish'] for x in exp_pubs),
+              {'publishes': len(per_pub), 'publishesStartedExpanded': len(exp_pubs), 'perPublish': per_pub, 'samples': len(samples)})
 
         # 3b' MANUAL language change with the submenu expanded at the start
         ok_exp, det_l = ensure_expanded('3b-lang')

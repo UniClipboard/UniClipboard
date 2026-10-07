@@ -7,6 +7,7 @@ import { findUnsupportedJavaScript } from '../check-macos-compat.mjs'
 
 const projectRoot = path.resolve(__dirname, '../..')
 const guiRoot = path.join(projectRoot, 'apps', 'gui')
+const hostRoot = path.join(projectRoot, 'apps', 'gui-go')
 
 function readProjectFile(filePath: string): string {
   try {
@@ -77,23 +78,25 @@ describe('macOS 12.5 compatibility guard', () => {
   })
 
   it('keeps the build and bundle configuration aligned with macOS 12.5', async () => {
+    const hostPackageJson = requireJsonObject(
+      parseProjectJson(path.join(hostRoot, 'package.json')),
+      'apps/gui-go/package.json'
+    )
+    const hostScripts = requireJsonObject(hostPackageJson.scripts, 'apps/gui-go scripts')
     const packageJson = requireJsonObject(
       parseProjectJson(path.join(guiRoot, 'package.json')),
       'apps/gui/package.json'
     )
-    const packageScripts = requireJsonObject(packageJson.scripts, 'package.json scripts')
     const packageDependencies = requireJsonObject(
       packageJson.dependencies,
       'package.json dependencies'
     )
-    const tauriConfig = requireJsonObject(
-      parseProjectJson(path.join(guiRoot, 'src-tauri', 'tauri.conf.json')),
-      'tauri.conf.json'
+    const appConfig = requireJsonObject(
+      parseProjectJson(path.join(hostRoot, 'app.json')),
+      'apps/gui-go/app.json'
     )
-    const tauriBundle = requireJsonObject(tauriConfig.bundle, 'tauri.conf.json bundle')
-    const macOSBundle = requireJsonObject(tauriBundle.macOS, 'tauri.conf.json macOS bundle')
     const viteConfig = await resolveConfig(
-      { configFile: path.join(guiRoot, 'vite.config.ts') },
+      { configFile: path.join(hostRoot, 'vite.config.ts') },
       'build',
       'production'
     )
@@ -101,9 +104,9 @@ describe('macOS 12.5 compatibility guard', () => {
       path.join(guiRoot, 'src', 'components', 'update', 'ReleaseNotes.tsx')
     )
 
-    expect(packageScripts.build).toContain('scripts/check-macos-compat.mjs')
+    expect(hostScripts.build).toContain('scripts/check-macos-compat.mjs')
     expect(packageDependencies).not.toHaveProperty('remark-gfm')
-    expect(macOSBundle.minimumSystemVersion).toBe('12.5')
+    expect(appConfig.minimumSystemVersion).toBe('12.5')
     expect(viteConfig.build.target).toBe('safari15.6')
     expect(viteConfig.build.cssTarget).toBe('safari15.6')
     expect(releaseNotes).not.toContain('remark-gfm')

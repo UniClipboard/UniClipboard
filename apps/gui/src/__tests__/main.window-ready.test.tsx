@@ -42,7 +42,6 @@ vi.mock('@/lib/daemon-ws-bootstrap', () => ({
 vi.mock('@/lib/webview-context-menu', () => ({ initializeWebviewContextMenu: vi.fn() }))
 vi.mock('@/lib/window-theme', () => ({ initializeWindowTheme: mocks.initializeTheme }))
 vi.mock('@/lib/window-ui', () => ({ initializeWindowUi: vi.fn() }))
-vi.mock('@/lib/wdio-test-bridge', () => ({}))
 vi.mock('@/observability/diagnostics', async () => {
   const { ErrorBoundary } = await import('@sentry/react')
   return {

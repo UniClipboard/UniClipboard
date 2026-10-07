@@ -1,6 +1,6 @@
 /**
  * 跨语言契约测试 —— TS 端 `mobileSyncConnectUri.ts` 必须与 Rust 端
- * `src-tauri/.../mobile_sync/connect_uri.rs` 字节级一致。
+ * Engine 仓库 `uc-application` 的 `usecases/mobile_sync/connect_uri.rs` 字节级一致。
  *
  * 核心保护: `GOLDEN_URI` 是规范 §7.1 的 happy-path 字面量, 在 Rust
  * 测试 (`connect_uri.rs:282`) 和这里完全相同。任一侧编码漂移都会让

@@ -1,12 +1,11 @@
 /**
  * Settings Tauri command wrappers — keyboard shortcuts patch.
  *
- * Backend: `crates/uc-tauri/src/commands/settings.rs`.
+ * Backend: the desktop host (`apps/gui-go`) and the daemon settings API.
  *
  * 这层只做"前端 diff → 三态 patch → 把结果摊平回 Record"的薄壳，
  * 真实的命令调用走 `commands.updateKeyboardShortcuts`（来自
- * `ipc-bindings.generated.ts`，类型链由 `cargo test --test specta_export`
- * 强制对齐）。
+ * `ipc-bindings.generated.ts`，宿主命令契约文件）。
  */
 
 import type {

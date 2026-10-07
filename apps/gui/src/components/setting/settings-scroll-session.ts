@@ -2,7 +2,7 @@
  * Scroll offsets of the settings categories for the current window session.
  *
  * The state is deliberately kept in the module heap: closing the main window
- * destroys its webview (see `uc-tauri::run` `CloseRequested`), so reopening from
+ * destroys its webview, so reopening from
  * the tray starts with an empty heap and every category opens at the top again.
  * Nothing is persisted, and leaving the settings page inside the same window
  * keeps the offsets.

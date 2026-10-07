@@ -11,7 +11,6 @@ import { initializeWebviewContextMenu } from '@/lib/webview-context-menu'
 import { initializeWindowFrame } from '@/lib/window-frame-runtime'
 import { initializeWindowTheme } from '@/lib/window-theme'
 import { initializeWindowUi } from '@/lib/window-ui'
-import '@/lib/wdio-test-bridge'
 import {
   applyDiagnosticDeviceContext,
   initializeDiagnostics,

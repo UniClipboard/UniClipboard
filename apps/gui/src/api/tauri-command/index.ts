@@ -6,7 +6,7 @@
  * land here, and the existing `src/api/daemon/*` HTTP path will be migrated
  * over time. See the project memory `project_gui_uses_inprocess_facade.md`.
  *
- * Backend equivalents live in `crates/uc-tauri/src/commands/`.
+ * Backend equivalents live in the desktop host (`apps/gui-go`) and the daemon API.
  */
 
 export * from './mobile_sync'

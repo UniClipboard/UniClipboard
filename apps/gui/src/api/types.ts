@@ -1,8 +1,8 @@
 // Shared DTO and command contract types for Tauri IPC boundary
 // 与后端约定保持同步的数据传输对象和命令错误类型
 
-// Lifecycle status DTO mirrors `LifecycleStatusDto` in `uc-tauri` models.
-// 对应后端 uc-tauri 中的 LifecycleStatusDto 结构。
+// Lifecycle status DTO shared with the desktop host.
+// 与桌面宿主共享的生命周期状态 DTO。
 export type LifecycleState = 'Idle' | 'Pending' | 'Ready' | 'WatcherFailed' | 'NetworkFailed'
 
 export interface LifecycleStatusDto {

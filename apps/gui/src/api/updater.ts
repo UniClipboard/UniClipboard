@@ -13,14 +13,12 @@ import type { UpdateChannel } from '@/types/setting'
 const log = createLogger('updater')
 
 /**
- * Broadcast Tauri event name for background download progress.
- * Mirrors `UPDATE_PROGRESS_EVENT` in `src-tauri/.../commands/updater.rs`.
+ * Host event name for background download progress, emitted by the desktop host updater.
  */
 export const UPDATE_PROGRESS_EVENT = 'update-download-progress'
 
 /**
- * Broadcast Tauri event name carrying the result of `do_check_for_update`.
- * Mirrors `UPDATE_AVAILABLE_EVENT` in `src-tauri/.../commands/updater.rs`.
+ * Host event name carrying the result of an update check, emitted by the desktop host updater.
  *
  * Payload: `UpdateMetadata | null`.
  */

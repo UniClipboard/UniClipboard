@@ -14,7 +14,7 @@
  * ...fields }` union consumers already `switch (err.code)` on, off
  * `DaemonApiError.details` (`{ code, message, details? }`).
  *
- * Backend: `src-tauri/crates/uc-webserver/src/api/mobile_sync.rs`
+ * Backend: `crates/uc-webserver/src/api/mobile_sync.rs`
  */
 
 import { DaemonApiError } from '@/api/daemon/errors'

@@ -15,7 +15,6 @@ import {
 } from '@/api/setupEvents'
 import { connectDaemonWs } from '@/lib/daemon-ws-bootstrap'
 import { createLogger } from '@/lib/logger'
-import { recordWdioE2eEvent } from '@/lib/wdio-test-bridge'
 
 const log = createLogger('setup-realtime-store')
 
@@ -110,10 +109,6 @@ function flowFromState(
 }
 
 function update(flow: SetupFlow, hydrated = true, rePairingRequired = snapshot.rePairingRequired) {
-  recordWdioE2eEvent('setup.flow.updated', {
-    kind: flow.kind,
-    code: flow.kind === 'invitation_pending' ? flow.code : undefined,
-  })
   snapshot = { flow, hydrated, rePairingRequired }
   emitChange()
 }

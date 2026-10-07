@@ -4,7 +4,7 @@
  *
  * # 为什么需要这个文件
  *
- * - 后端在 `src-tauri/.../usecases/mobile_sync/connect_uri.rs` 生成 QR 内容,
+ * - 后端在 Engine 仓库 `uc-application` 的 `usecases/mobile_sync/connect_uri.rs` 生成 QR 内容,
  *   `RegisterMobileDeviceResult.connectUri` DTO 字段把它原样透传给前端。
  * - 前端为何还要一份解码器?
  *   1. 自检: 后端给的 connect URI 是否能在浏览器侧 round-trip 出三栏 ——
@@ -171,7 +171,7 @@ export const URI_MAX_LEN = 2000
  * - `INVALID_URL` 当任一候选不以 `http://` 或 `https://` 开头
  * - `URI_TOO_LONG` 当结果超过 `URI_MAX_LEN` 字符
  *
- * [`build_mobile_sync_connect_uri`]: ../../src-tauri/crates/uc-application/src/usecases/mobile_sync/connect_uri.rs
+ * [`build_mobile_sync_connect_uri`]: https://github.com/UniClipboard/Engine/blob/main/crates/uc-application/src/usecases/mobile_sync/connect_uri.rs
  */
 export function buildConnectUri(
   candidateUrls: string | readonly string[],
@@ -254,7 +254,7 @@ function buildOtherMap(other: ConnectUriOther): Record<string, string> {
  * - 不持久化任何字段
  * - 不修剪 pwd 前后空白(规范 §3.1: pwd 任何字节都合法)
  *
- * [`parse_mobile_sync_connect_uri`]: ../../src-tauri/crates/uc-application/src/usecases/mobile_sync/connect_uri.rs
+ * [`parse_mobile_sync_connect_uri`]: https://github.com/UniClipboard/Engine/blob/main/crates/uc-application/src/usecases/mobile_sync/connect_uri.rs
  */
 export function parseConnectUri(qrText: string): ConnectPayload {
   const raw = qrText.trim()

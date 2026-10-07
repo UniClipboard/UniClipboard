@@ -1,4 +1,5 @@
 import { fileURLToPath } from 'node:url'
+import { sentryVitePlugin } from '@sentry/vite-plugin'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
@@ -6,13 +7,33 @@ import { defineConfig } from 'vite'
 const path = (relative: string) => fileURLToPath(new URL(relative, import.meta.url))
 const host = (name: string) => path(`./frontend/src/host/${name}.ts`)
 
+// Release builds upload source maps to Sentry so production stack traces resolve to the original
+// .tsx file and line. Without the token and project (local development, PR builds without secrets)
+// no source map is emitted at all; with them the maps are deleted after the upload, so they never
+// ship inside the app.
+const sentryAuthToken = process.env.SENTRY_AUTH_TOKEN
+const sentryProject = process.env.VITE_SENTRY_PROJECT
+const sentryEnabled = Boolean(sentryAuthToken && sentryProject)
+const appVersion = process.env.VITE_APP_VERSION
+
 // The business frontend is `apps/gui/src`, referenced in place through `@`.
 // Only the module boundary toward the native shell is replaced: each Tauri
 // package id resolves to a Wails-backed adapter in `frontend/src/host`.
 export default defineConfig({
   root: path('./frontend'),
   publicDir: path('../gui/public'),
-  plugins: [react(), tailwindcss()],
+  plugins: [
+    react(),
+    tailwindcss(),
+    sentryVitePlugin({
+      org: process.env.SENTRY_ORG,
+      project: sentryProject,
+      authToken: sentryAuthToken,
+      release: appVersion ? { name: appVersion } : undefined,
+      sourcemaps: { filesToDeleteAfterUpload: ['**/*.map'] },
+      disable: !sentryEnabled,
+    }),
+  ],
   optimizeDeps: { include: ['cuelume'] },
   resolve: {
     alias: [
@@ -39,7 +60,8 @@ export default defineConfig({
     target: 'safari15.6',
     cssTarget: 'safari15.6',
     emptyOutDir: true,
-    // Same three documents as the Tauri build: main app, quick panel, updater.
+    sourcemap: sentryEnabled ? 'hidden' : false,
+    // Three documents: main app, quick panel, updater.
     rollupOptions: {
       input: {
         main: path('./frontend/index.html'),

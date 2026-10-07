@@ -9,7 +9,7 @@ import {
   upgradeProgressZh,
 } from '@/i18n/upgrade-progress'
 
-const html = readFileSync(resolve(__dirname, '../../index.html'), 'utf8')
+const html = readFileSync(resolve(__dirname, '../../../gui-go/frontend/index.html'), 'utf8')
 const copy = JSON.parse(
   /<script type="application\/json" id="uc-splash-copy">([\s\S]*?)<\/script>/.exec(html)![1]!
 ) as Record<string, Record<string, string>>

@@ -21,8 +21,7 @@ import { createLogger } from '@/lib/logger'
 
 const log = createLogger('daemon-ws-bootstrap')
 
-/** Tauri event the Rust shell emits right before tearing down the in-process
- *  daemon — see `crates/uc-tauri/src/run.rs::FRONTEND_SHUTDOWN_EVENT`. */
+/** Event the desktop host emits right before tearing down the daemon. */
 const APP_SHUTDOWN_EVENT = 'app://shutting-down'
 const DAEMON_CONNECTION_CHANGED_EVENT = 'app://daemon-connection-changed'
 

@@ -48,8 +48,6 @@ vi.mock('@/lib/daemon-ws', () => ({
   },
 }))
 
-vi.mock('@/lib/wdio-test-bridge', () => ({ recordWdioE2eEvent: vi.fn() }))
-
 vi.mock('@/store/setupRealtimeStore', () => ({
   acknowledgeSetupCompletion: vi.fn(),
   applyIssuedInvitation: (...args: unknown[]) => applyIssuedInvitation(...args),

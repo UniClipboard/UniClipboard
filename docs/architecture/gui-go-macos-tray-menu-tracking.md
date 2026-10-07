@@ -131,7 +131,7 @@ Menu.Update -> macosMenu.update -> InvokeSync(main thread):
 
 ## 结果
 
-以下为进行中的中间记录，最终冻结运行的结果在冻结后补充。
+以下先列探索性中间记录，随后是冻结二进制的最终运行。
 
 ### 子菜单展开期间的刷新（中间工件 `final2/full`、`final2/full2`、`final2/full3`）
 
@@ -141,7 +141,22 @@ Menu.Update -> macosMenu.update -> InvokeSync(main thread):
 
 - `final2/full3`（逐次 publish 判定，探索性中间运行，非冻结最终）：36 秒内 3 次自然 publish（每次 6–8 ms 返回）。其中 **2 次开始前最后一次采样为展开状态**（采样年龄 0.12 秒、0.04 秒），之后第一次收起采样分别在 publish 开始后 0.03 秒、0.12 秒，重新展开分别在 0.08 秒、0.17 秒，重新展开后行为 `tray-peer-b`、根菜单为英文。第 3 次开始时已处于收起状态，不计入展开期间的 publish。该时序与“重建后子菜单收起”一致，但仍只是时序证据；采样与 AX 按压都是外部观测，不独立证明机制。
 
+### 冻结二进制的最终运行（`final3`）
+
+来源 `71c455d2f`（干净），Engine `d4dd324a` 与 Cargo.lock 一致且无路径覆盖，manifest 见 `final3/build-manifest.json`，构建日志保留 28 条 ld 警告（对象按 macOS 27.0 编译、按 11.0 链接；更老 macOS 的兼容性 **未证明**）。顺序运行四轮，provenance 的 `stateMutated` 均为 false（菜单由真实右键经 AppKit 跟踪打开，未使用反射填充的开启方式）：
+
+| 运行 | 场景 | 结果 |
+| --- | --- | --- |
+| `final3/full1` | full | 28 项通过，rc=0 |
+| `final3/light1` | lightweight | 9 项通过，rc=0 |
+| `final3/full2` | full | 28 项通过，rc=0 |
+| `final3/light2` | lightweight | 9 项通过，rc=0 |
+
+逐次 publish（3b）：`full1` 4 次 publish 全部开始时子菜单展开，其后第一次收起采样在 0.04–0.12 秒内，重新展开在 0.09–0.17 秒；`full2` 4 次中 3 次开始时展开（收起采样 0.03–0.05 秒、重新展开 0.08–0.11 秒），第 4 次开始时已收起、不计入。每次重新展开后行均为 `tray-peer-b`、根菜单为英文。publish 返回均远小于 2 秒，主线程等待在跟踪期间得到服务。这仍是时序证据；子菜单收起的机制未独立证明，也没有声明“持续展开”。
+
+这些运行 **没有** 证明：Windows 真实托盘；更老的 macOS；其他主机的菜单栏溢出布局；右键路由之外的左键行为（左键执行应用的 `OnClick`）。
+
 ### 覆盖边界
 
 - 3c（结构变化）与 3b MANUAL（语言）目前各只覆盖一次展开期间的变化；收起后的行为靠重新展开后的行与语言一致性验证，不声明“持续展开”。
-- 轻量模式（M5b）尚未运行；Windows 真实托盘仍是 OPEN；整个迁移 OPEN 清单（见全迁移计划与交接文件）不因本切片减少。
+- Windows 真实托盘仍是 OPEN；整个迁移 OPEN 清单（见全迁移计划与交接文件）不因本切片减少。

@@ -70,7 +70,7 @@ Go/Wails 宿主（`apps/gui-go`）现在是唯一的桌面宿主。本文记录�
 ## 对 CI 与发布的影响
 
 - PR 门禁：前端作业跑 `typecheck` 与 Wails 前端构建；Rust 作业跑 `cargo check --workspace`、守卫与 OpenAPI 漂移检查。
-- **发布被阻塞**：`release.yml` 在 Go 发布流水线落地前会显式失败。解除条件是 #1895 至 #1899。
+- **发布被阻塞**：`release.yml` 在 Go 发布流水线落地前会显式失败。解除条件是 #1895 至 #1899。macOS 应用包的构建、签名、公证、DMG 与更新归档（#1895）已由 `build.yml` 的 `package-macos-gui` 作业实现，其验收状态与缺口见 `apps/gui-go/README.md`「macOS 发布构建」；更新签名（#1896）及 Windows、Linux 安装包（#1897、#1898）仍待完成，因此守卫保持不变。
 - 现有已发布版本的更新公钥未变（与旧 `tauri.conf.json` 逐字节一致）。
 
 ## Issue 索引

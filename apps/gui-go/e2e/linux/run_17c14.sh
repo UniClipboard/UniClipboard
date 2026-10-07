@@ -13,7 +13,7 @@ git -C "$ROOT" rev-parse HEAD > "$out/head.txt"; git -C "$ROOT" status --porcela
 git -C "$ROOT" rev-parse "$BEFORE" > "$out/before-commit.txt"
 GITCOMMON="$(cd "$ROOT" && cd "$(git rev-parse --git-common-dir)" && pwd -P)"
 docker run --rm --platform linux/arm64 -v "$ROOT:/work:ro" --mount "type=bind,src=$GITCOMMON,dst=$GITCOMMON,readonly" -e GIT_OPTIONAL_LOCKS=0 \
-  -v uc-gui-go-linux-cache:/cache -v "$out:/out" -e BEFORE="$(cat "$out/before-commit.txt")" uc-gui-go-linux-build:17c9-wm bash -c '
+  -v uc-gui-go-linux-cache:/cache -v "$out:/out" -e RUNS="${RUNS:-before after}" -e BEFORE="$(cat "$out/before-commit.txt")" uc-gui-go-linux-build:17c9-wm bash -c '
 set -uo pipefail
 export GOPATH=/cache/gopath GOFLAGS=-mod=mod CGO_ENABLED=1
 git config --global --add safe.directory /work
@@ -32,7 +32,7 @@ for n in before after; do
   sha256sum /out/bin/$n/* > /out/bin/$n/SHA256SUMS.txt
 done
 cat /cache/out/head.txt > /out/daemon-cli-built-from.txt
-for n in before after; do
+for n in ${RUNS:-before after}; do
   mkdir -p /out/run-$n
   Xvfb :99 -screen 0 1280x800x24 -nolisten tcp & X=$!
   export DISPLAY=:99; for i in $(seq 50); do xdpyinfo >/dev/null 2>&1 && break; sleep 0.2; done

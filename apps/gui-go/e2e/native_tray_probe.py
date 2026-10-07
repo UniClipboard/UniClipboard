@@ -153,7 +153,12 @@ def main():
         r = invoke('set_tray_language', {'language': 'en'})
         l2 = host.wait(lambda l: labels(l)[1:] == ROOT_ORDER, 30, 'en')
         check('5 and back to English', bool(r.get('ok')) and l2 is not None, labels(l2) if l2 else None)
-        time.sleep(args.seconds)  # >= 3 refresh periods with the tray alive
+        # Observe the layout for the window: with no peer the placeholder is rebuilt (new item ids) every 10 s period, so the number of
+        # distinct layouts seen is the number of structural republishes the host actually received.
+        n_before = sum(1 for ln in (out / 'host.jsonl').read_text().splitlines() if '"kind": "layout"' in ln)
+        host.wait(lambda l: False, args.seconds, 'observe refresh periods')
+        n_after = sum(1 for ln in (out / 'host.jsonl').read_text().splitlines() if '"kind": "layout"' in ln)
+        check('6a at least 3 structural republishes reached the host during the observation window (the refresh really ran)', n_after - n_before >= 3, {'layouts': n_after - n_before, 'seconds': args.seconds})
         table = procs()
         classes = socket_classes([proc.pid])
         c = classes.get(str(proc.pid)) or {}

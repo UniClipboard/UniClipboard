@@ -40,7 +40,7 @@
 
 - `apps/gui-go/tray_publish_linux.go`：Linux 上结构变化通过 `SystemTray.SetMenu`（Wails 固定版本 `v3.0.0-beta.28`）发布，由其在主线程重建 dbusmenu 布局并发出 `LayoutUpdated`。
 - `apps/gui-go/tray_publish_other.go`：macOS/Windows 仍调用 `Menu.Update`，但发布回调现在在 `deviceMenu.mu` 与 `trayMenu.mu` 持有期间执行，且 `trayMenu.setLanguage` 的加锁方式有改动；这是对这两个平台托盘路径的真实改动，**本片只做了 `vet`/编译，没有重跑 macOS/Windows 托盘 E2E**。
-- `apps/gui-go/tray_devices.go`、`tray.go`：发布回调在持有 `deviceMenu.mu` 与 `trayMenu.mu` 时调用，保证本项目内没有 goroutine 在平台读取菜单期间修改它；锁序固定为 `deviceMenu.mu` → `trayMenu.mu`，`trayMenu.setLanguage` 先释放自己的锁再进入设备菜单。
+- `apps/gui-go/tray_devices.go`、`tray.go`：发布回调在持有 `deviceMenu.mu` 与 `trayMenu.mu` 时调用，保证本项目内没有 goroutine 在平台读取菜单期间修改它；锁序固定为 `trayMenu.languageMu` → `deviceMenu.mu` → `trayMenu.mu`；`trayMenu.setLanguage` 整体由 `languageMu` 串行化，并在进入设备菜单前释放 `trayMenu.mu`，因此并发调用不会让根菜单与设备子菜单停在不同语言（独立审查发现的缺陷，已修复）。
 - 并发契约（固定源码已核对）：Wails 的菜单点击经 `menuItemClicked` 通道到独立 goroutine，再 `go m.callback`，主线程不会取这两把锁，因此持锁等待 `InvokeSync` 不会与主线程互等。`publish` 在 `initTray` 中先于刷新 goroutine 与事件处理注册赋值，首次渲染必然看到它。
 - 残余（Wails 内部，非本项目可控）：`MenuItem.handleClick` 对复选项的自动翻转与 `SetMenu` 的读取之间没有同步；点击后 `deviceMenu.click` 本就把状态恢复为已存状态。
 - E2E 构建专用钩子 `e2eTrayLanguage` 记录每次 `set_tray_language` 调用，生产构建中为空函数。
@@ -63,7 +63,7 @@
 
 ## 语言切换的一次失败（nat5-native，已保留）
 
-最终包之前的一次 Fedora 原生运行（`nat5-native`）中，`set_tray_language(zh-CN)` 调用返回成功，但宿主 30 秒内菜单始终是英文，该项失败；同一代码的 `nat2`–`nat4` 通过。能证实的：前端 `SettingContext` 在语言设置加载时也会调用 `set_tray_language`（最终包的钩子记录到启动期有两次 `en-US` 调用），此前无记录钩子，无法证明那次失败正是被前端的晚到调用覆盖。已采取的措施不是重跑取绿：加入 E2E 钩子并让运行器先等前端的初始调用出现，再发 `zh-CN`，并断言最后一次调用就是测试的 `zh-CN`；最终包的 8 次主机运行与容器 `after` 都满足这一顺序。**`nat5` 的确切原因仍是推断，未证明。**
+最终包之前，用早期包（`8bfafc99…`，无语言调用钩子）在 Fedora 原生 Wayland 上跑过若干次，全部保留：`nat1` 因部署缺依赖模块未启动；`nat2` 的 daemon 停止检查因 `daemon.conn` 在 daemon 停止时被删除而取不到 PID（探针缺陷）；`nat3`、`nat4` 的标准输出里各项检查（含中文切换）都显示通过，但观察器自身在总线关闭时被 GDBus 的 `exit-on-close` 发出 SIGTERM（rc=143），结果文件为空，因此它们不是完整的通过记录；`nat5` 是观察器修复后的第一次完整运行：`set_tray_language(zh-CN)` 返回成功，但宿主 30 秒内菜单始终是英文，该项失败，其余通过（X11 的 `nat5-x11env` 通过）。能证实的：前端 `SettingContext` 在语言设置加载时也会调用 `set_tray_language`（最终包的钩子记录到启动期有两次 `en-US` 调用）；当时没有记录钩子，无法证明那次失败正是被前端晚到的调用覆盖。已采取的措施不是重跑取绿：加入 E2E 钩子，让运行器先等前端的初始调用出现再发 `zh-CN`，并断言最后一次调用就是测试的 `zh-CN`。**`nat5` 的确切原因仍是推断，未证明。**
 
 ## 未验
 
@@ -74,3 +74,11 @@
 - 最终包源提交 `aaa1417bcce1097d1eae366e0b1b95e9da5ede4d`（manifest `dirty=false`、`immutable=true`），AppImage SHA-256 `ed3f389dd86b2a47d8fc57fb2c48d6fff5641a0a5b97b58a60068a61cf04c734`，E2E 前缀包（`productionUsable=false`），内置 pinned release daemon `ea0f0bcb…`（与 manifest 一致）。此后的提交只含文档，不改变该包。
 - 容器 `e2e4` 使用的 daemon 与 CLI 是 `/cache/out` 中较早构建的 debug 版（来源提交记录在工件 `e2e4/daemon-cli-built-from.txt`），不是 pinned release daemon；主机运行使用包内 release daemon。
 - PR 上下文审计由本会话的 `general-purpose` 只读子代理按审计提示词逐字执行（本会话没有 `context-update-reviewer` 类型），结论 `NO_UPDATE`；分支守卫 `OK_MEANINGFUL`。
+
+## 独立只读源码审查（范围 `de2257e15..HEAD`）
+
+CodeRabbit 在本 PR 上是 `Review skipped`（基线不是默认分支），**没有审查**；PR 上没有任何评审。以下是本会话派出的独立只读子代理的审查，不是 CodeRabbit，也不是人工评审，且它没有运行 Go、Docker 或竞争检测器，只读固定 Wails 源码与工件。
+
+- 锁序、`InvokeSync` 与主线程互等：未发现缺陷。Linux 托盘菜单点击由 `gtkDispatch(item.handleClick)` 分发，回调再在 `go` 中执行，主线程不会取 `deviceMenu.mu`/`trayMenu.mu`；`setMenu` 只取 Wails 的 `itemMapLock`。（此前文档说点击经 `menuItemClicked` 通道，对 SNI 路径不准确，已改正；结论不变。）退出时若有发布正卡在 `InvokeSync`，它持有两把锁，但 `shutdown` 不取这两把锁，退出不会因此挂起。
+- 发现并修复：`setLanguage` 并发调用时根菜单与设备子菜单可能停在不同语言（新的 `languageMu`）；`publish` 字段赋值未在 `deviceMenu.mu` 下进行（已加锁）；运行器“≥3 个刷新周期”的睡眠公式与断言不相称（容器运行改为以托盘注册时刻起算；原生运行改为统计宿主实际收到的结构性重发布次数 ≥3）；本文档对 `nat2`–`nat4` 的描述不准确（已改正）。
+- 未验证或仍存在：macOS 上 `NSMenu` 正在跟踪时 `InvokeSync` 是否被及时服务（若阻塞，`deviceMenu.click` 会在 `deviceMenu.mu` 上等到菜单关闭）；Windows 的 Win32 线程亲和；E2E 控制 `e2e_controls.go` 读取菜单不加锁（仅 E2E 构建）；Wails 内部 `handleClick`/`item.impl`/`checked` 的无同步读写依旧存在，但本项目内的写入现在都与 `SetMenu` 串行，且 `deviceMenu.click` 会恢复已存状态、下一次渲染 10 秒内纠正。

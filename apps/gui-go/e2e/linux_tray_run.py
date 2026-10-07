@@ -227,7 +227,8 @@ def main():
         lay = host.wait(lambda l: labels(l)[1:] == ROOT_ORDER, 30, 'en labels')
         check('7b and back to English', r['ok'] and lay is not None, labels(lay) if lay else None)
 
-        time.sleep(max(0, 35 - (time.time() - host.t0 - 10)))  # make sure >= 3 full refresh periods elapsed since the tray existed
+        reg_t = next(json.loads(l)['t'] for l in (out / 'host.jsonl').read_text().splitlines() if '"registered"' in l)
+        time.sleep(max(0, 35 - (time.time() - host.t0 - reg_t)))  # >= 3 full refresh periods since the tray registered (the peer row is unchanged, so refreshes are not countable here)
         log = (out / 'gui1.log').read_text(errors='replace')
         crit = [l for l in log.splitlines() if 'CRITICAL' in l]
         menu_crit = [l for l in crit if MENU_CRITICAL.search(l)]

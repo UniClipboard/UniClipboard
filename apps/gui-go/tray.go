@@ -23,6 +23,9 @@ const (
 // trayMenu owns the system tray icon and its localized menu. It mirrors the
 // Tauri tray: sync toggle, open, settings, restart, lightweight mode and quit.
 type trayMenu struct {
+	// languageMu serializes whole setLanguage calls so the root labels and the device submenu always end in the same language.
+	// Order: languageMu, then deviceMenu.mu, then mu.
+	languageMu  sync.Mutex
 	mu          sync.Mutex
 	language    string
 	syncEnabled bool
@@ -58,11 +61,13 @@ func (h *HostService) initTray() {
 	t.tray.SetMenu(menu)
 	// Set before the refresh goroutine and the event handlers below exist, so every render sees it. t.mu keeps the
 	// root items (labels, sync state) still while the platform reads the menu.
+	t.devices.mu.Lock() // publishMenu reads the field under this lock
 	t.devices.publish = func() {
 		t.mu.Lock()
 		defer t.mu.Unlock()
 		republishTrayMenu(t.tray, menu)
 	}
+	t.devices.mu.Unlock()
 	t.tray.OnClick(h.showMainWindow)
 
 	// Keep the toggle label in step with settings changed from any window.
@@ -116,6 +121,8 @@ func (t *trayMenu) syncLabel() string {
 
 func (t *trayMenu) setLanguage(tag string) {
 	e2eTrayLanguage(tag)
+	t.languageMu.Lock()
+	defer t.languageMu.Unlock()
 	t.mu.Lock()
 	t.language = normalizeTrayLanguage(tag)
 	t.applyLabels()

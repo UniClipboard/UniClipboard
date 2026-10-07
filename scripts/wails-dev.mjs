@@ -30,6 +30,29 @@ function run(command, args, options = {}) {
   }
 }
 
+// macOS only: the Wails notification service refuses to start without a bundle identifier, which a bare binary does not have.
+// The development binary therefore runs from a minimal ad-hoc signed .app (the same Info.plist template as build.sh) with its own
+// `.dev` identifier, so it never shares notification or login-item state with an installed app. It is still started as a plain
+// child process, so stdio, the exit code and SIGTERM keep working.
+export function makeDevBundle(binary) {
+  const tauri = JSON.parse(fs.readFileSync(path.join(root, 'apps/gui/src-tauri/tauri.conf.json'), 'utf8'))
+  const contents = path.join(path.dirname(binary), 'UniClipboardGoDev.app/Contents')
+  fs.mkdirSync(path.join(contents, 'MacOS'), { recursive: true })
+  const executable = path.join(contents, 'MacOS/gui-go')
+  fs.copyFileSync(binary, executable)
+  const plist = path.join(contents, 'Info.plist')
+  fs.copyFileSync(path.join(gui, 'Info.plist'), plist)
+  run('/usr/libexec/PlistBuddy', [
+    '-c',
+    `Set :CFBundleIdentifier ${tauri.identifier}.dev`,
+    '-c',
+    `Set :CFBundleName ${tauri.productName} Dev`,
+    plist,
+  ])
+  run('codesign', ['--force', '--deep', '--sign', '-', path.join(contents, '..')])
+  return executable
+}
+
 async function waitForServer(port, child, timeoutMs = 60_000) {
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
@@ -93,8 +116,9 @@ export async function main(argv, env = process.env) {
   fs.mkdirSync(path.join(gui, 'frontend/dist'), { recursive: true })
   fs.writeFileSync(path.join(gui, 'frontend/dist/.gitkeep'), '')
   // No `production` tag: Wails then proxies assets to FRONTEND_DEVSERVER_URL.
-  const binary = path.join(out, 'gui-go-dev')
-  run('go', ['build', '-o', binary, '.'], { cwd: gui })
+  const built = path.join(out, 'gui-go-dev')
+  run('go', ['build', '-o', built, '.'], { cwd: gui })
+  const binary = makeDevBundle(built)
 
   const childEnv = {
     ...env,

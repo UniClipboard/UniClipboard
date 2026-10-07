@@ -34,6 +34,7 @@ bun wails:dev:profile <profile>  # 其他开发 profile，等价于 bun tauri:de
 脚本 `scripts/wails-dev.mjs` 依次构建 daemon 与 Go 宿主（不带 `production` 标签），启动 Vite 开发服务器
 （按 profile 取固定端口，被占用则换端口）并让应用通过 `FRONTEND_DEVSERVER_URL` 加载它，前端修改即时热更新；
 Go 或 daemon 改动需重启命令。使用你自己的 HOME 与指定 profile，数据、钥匙串条目和 daemon 与正式版隔离。
+开发二进制会先放进最小的 ad-hoc 签名 `.app`（`target/gui-go/dev/UniClipboardGoDev.app`，标识为 Tauri 标识符加 `.dev`），因为 Wails 的通知服务在 macOS 上没有 bundle identifier 就拒绝启动（`notifications require a valid bundle identifier`），裸二进制会直接退出；它仍作为普通子进程启动，标准输出、退出码与 SIGTERM 不变。
 宿主只在 `UNICLIPBOARD_ENV=development` 且设置了合法 `UC_PROFILE` 时启动；测试用的隔离模式
 （`UC_GUI_GO_ISOLATED=1`，临时 HOME、`gui-go-*` profile、禁用系统剪贴板）仍由 E2E 强制。
 

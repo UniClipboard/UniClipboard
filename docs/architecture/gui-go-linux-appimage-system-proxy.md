@@ -109,6 +109,19 @@ stage3 同一个包上的两个矩阵（每个场景都含页面自身的 HTTP �
 
 首次页面探测运行 `smoke-pageprobe` 失败（保留，见其 `ATTRIBUTION.txt`）：原版本等待 `clipboard` 主题的事件，而该主题在没有复制动作时本就静默，不是连接故障。修正（提交 `16155f180`）：订阅快照主题 `status`、`peers`、`paired-devices` 并带 nonce，以收到的真实快照帧（`status:status.snapshot`）为准；`smoke-pageprobe-v2` 通过。会话令牌不写入共享报告，运行后从 `*.control` 中脱敏。
 
+### P8：环境变量大小写与 `NO_PROXY`（固定 stage3 包）
+
+场景：`env-upper`（只设大写）、`env-conflict`（小写指向放行代理，大写指向不可达端口）、`env-bypass`（`NO_PROXY` 含 WebView 探测主机）、`env-bypass-other`（`NO_PROXY` 只含无关主机）。
+
+| 运行 | 退出码 | 结果 |
+| --- | --- | --- |
+| `stage3/p8-portable` | 3 | `passed=true`、`functionalPassed=false`：路由全部符合，仅 2 项「用户 `NO_PROXY` 保留且加入回环」断言失败。归因：断言读了 GUI 的 `/proc/<pid>/environ`（exec 时的环境），Go `init()` 的 `os.Setenv` 只改运行时副本；探针位置错误，不是产品缺陷（同次运行中 daemon 子进程环境是合并后的值）。目录与 `ATTRIBUTION.txt` 保留 |
+| `stage3/p8-portable-v2` | 0 | 断言改为读子进程（daemon）环境，要求未删除：50 项观测，8/8 要求 |
+| `stage3/p8-nonportable` | 1 | 夹具失败：启动时漏设会话镜像，`secret-tool: not found`，T1 失败，没有场景运行；与产品无关。保留并写有 `ATTRIBUTION.txt` |
+| `stage3/p8-nonportable-v2` | 0 | 会话镜像，56 项观测，8/8 要求，G7 无违规、无 unverified |
+
+路由（便携与非便携一致）：仅大写变量与小写变量一样被 WebView 采用（proxied）；小写与大写冲突时跟随小写（proxied，没有走不可达端口，只作观测，优先级由解析器库决定）；`NO_PROXY` 命中探测主机时 WebView 直连（direct）而 curl 对照仍经代理，`NO_PROXY` 只含无关主机时仍经代理；用户 `NO_PROXY` 项被保留，回环名加在末尾，daemon 回环不经代理，页面 HTTP 与 WebSocket 帧都通过。
+
 ### 仍未完成（OPEN，逐项增量补做）
 
-P5 真实 Go 更新器、P6 受控 Engine rendezvous（仅拒绝型 CONNECT，不转发）、P7 代理中断恢复、P8 大小写与 `NO_PROXY` 优先级、GNOME `ignore-hosts` 遗漏回环时本地 daemon 的行为、PAC / 认证 / 动态设置、Fedora、同一最终干净包上的 17c7/17c5/17c10/17c11/内容检查回归。
+P5 真实 Go 更新器、P6 受控 Engine rendezvous（仅拒绝型 CONNECT，不转发）、P7 代理中断恢复、GNOME `ignore-hosts` 遗漏回环时本地 daemon 的行为、PAC / 认证 / 动态设置、Fedora、同一最终干净包上的 17c7/17c5/17c10/17c11/内容检查回归。

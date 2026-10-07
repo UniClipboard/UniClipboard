@@ -485,6 +485,15 @@ def main():
         r3 = ax('read', str(proc.pid))
         check('2 MANUAL: language restored to English in the open menu', r3.get('ok') and titles(r3['menu'])[1:] == EN, titles(r3['menu']) if r3.get('ok') else r3)
         (out / 'ax-2.json').write_text(json.dumps({'zh': r2, 'en': r3}, ensure_ascii=False, indent=1))
+        # 2b. MANUAL ARTIFICIAL schedule (not a natural one): call A (zh-CN) pauses between its two steps, call B (en) starts meanwhile, while the menu
+        # is tracked. With the 17c14 languageMu the root menu and the device submenu must end in ONE language (B's), read from the open menu.
+        gap = gui.ctl('tray-language-gap g0 900', 'tray-language-gap-g0', 90)
+        time.sleep(1.5)
+        r3b = ax('read', str(proc.pid))
+        sub3b = device_items(r3b['menu']) if r3b.get('ok') else None
+        check('2b MANUAL (artificial schedule): zh-CN and en overlapped while the menu was tracked; the open menu ends in one language with the root and the submenu agreeing',
+              gap['ok'] and (gap['detail'] or {}).get('gapConsumed') is True and r3b.get('ok') and r3b.get('popupWindows') and titles(r3b['menu'])[1:] == EN and sub3b is not None and [d['title'] for d in sub3b] == ['tray-peer-b'],
+              {'gap': gap['detail'], 'root': titles(r3b['menu']) if r3b.get('ok') else r3b, 'popupWindows': r3b.get('popupWindows')})
 
         # 3. device item pressed in the real menu
         sub = device_items(r3['menu']) if r3.get('ok') else None

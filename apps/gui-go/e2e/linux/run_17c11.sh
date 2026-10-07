@@ -8,13 +8,13 @@
 #   control   the same E2E on the 17c10 PRE-FIX AppImage (Fedora, gnome): the real applications must expose the defect (negative control, passed=false is the expected result)
 #   engine    diagnosis of the Engine's default-route requirement (NOT a fix); xdg-open generic/GNOME dispatch lifecycle (foreground wait vs gio service)
 #   regress   17c10 helpers x4 (sh recorder), 17c7 WebView TLS x2, 17c5 portable E2E, static content check
-# Needs: Docker with uc-gui-go-linux-build:17c2, uc-gui-go-linux-runtime:17c7, uc-gui-go-linux-runtime-fedora:17c7; network for the image builds; bun on the host.
+# Needs: UC_OLD_APPIMAGE (the pre-fix AppImage for the control stage), Docker with uc-gui-go-linux-build:17c2, uc-gui-go-linux-runtime:17c7, uc-gui-go-linux-runtime-fedora:17c7; network for the image builds; bun on the host.
 set -uo pipefail
 export UC_LINUX_IMAGE="${UC_LINUX_IMAGE:-uc-gui-go-linux-build:17c2}"
 ROOT="$(cd "$(dirname "$0")/../../../.." && pwd)"
 R="$ROOT/apps/gui-go/e2e/linux/run.sh"
 E2E="$ROOT/apps/gui-go/e2e/linux"
-OLD_APPIMAGE="${UC_OLD_APPIMAGE:-/Users/mark/.herdr-projects/uni/t-0188-artifacts/linux-17c10/baseline-03d304fb5/inputs/appimage-as-run.AppImage}"
+OLD_APPIMAGE="${UC_OLD_APPIMAGE:?UC_OLD_APPIMAGE: the 17c10 pre-fix AppImage (baseline-03d304fb5/inputs/appimage-as-run.AppImage; its package-manifest.json is expected at ../v1/pkg/ next to inputs/)}"
 out="${1:?outdir}"
 [ ! -e "$out" ] || [ -z "$(ls -A "$out")" ] || { echo "$out is not empty" >&2; exit 2; }
 mkdir -p "$out/logs" "$out/inputs" "$out/images"; out="$(cd "$out" && pwd)"
@@ -73,3 +73,10 @@ step e2e-portable "$R" appimage-portable-e2e "$out/e2e-portable" "$V1" "$out/fee
 echo "all:$rcs content=$content tls-ubuntu=$tlsu tls-fedora=$tlsf portable=$portable" | tee -a "$out/steps.txt"
 ( cd "$out" && find . -type f \( -name '*.AppImage' -o -name 'package-manifest.json' -o -name 'appimage-assertions.json' -o -name 'content-check.json' \) -not -path '*/squashfs-root/*' -print0 | sort -z | xargs -0 shasum -a 256 > SHA256SUMS.txt )
 for f in "$out"/real-*/appimage-assertions.json "$out"/control-prefix-*/appimage-assertions.json "$out"/helpers-*/appimage-assertions.json; do python3 -I -c "import json,sys;r=json.load(open(sys.argv[1]));print(sys.argv[1].split('/')[-2], 'checks', len(r['checks']), 'failed', sum(not c['ok'] for c in r['checks']), 'passed', r['passed'])" "$f"; done | tee -a "$out/steps.txt"
+# Exit status: 0 only if every stage that must pass did (real-application matrix, regressions) AND the pre-fix control failed as expected.
+bad=0
+for f in "$out"/real-*/appimage-assertions.json "$out"/helpers-*/appimage-assertions.json "$out"/tls-*/appimage-assertions.json "$out"/e2e-portable/appimage-assertions.json "$out"/content-v1/content-check.json; do
+  python3 -I -c "import json,sys;sys.exit(0 if json.load(open(sys.argv[1])).get('passed') is True else 1)" "$f" || { echo "NOT PASSED: $f" | tee -a "$out/steps.txt"; bad=1; }
+done
+python3 -I -c "import json,sys;sys.exit(1 if json.load(open(sys.argv[1])).get('passed') is True else 0)" "$out/control-prefix-fedora-gnome/appimage-assertions.json" || { echo "CONTROL DID NOT FAIL: the pre-fix package passed the real-application E2E" | tee -a "$out/steps.txt"; bad=1; }
+exit $bad

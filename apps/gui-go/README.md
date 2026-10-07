@@ -677,7 +677,7 @@ apps/gui-go/e2e/linux/run_17c7_supplement.sh <最终运行目录> <新目录>   
 ### 17c11 复跑
 
 ```bash
-apps/gui-go/e2e/linux/run_17c11.sh <新目录>   # 干净提交；先 run.sh daemon-release；每个镜像先删标签再构建，失败即中止；含控制组与回归
+UC_OLD_APPIMAGE=<17c10 修复之前的 AppImage> apps/gui-go/e2e/linux/run_17c11.sh <新目录>   # 干净提交；先 run.sh daemon-release；每个镜像先删标签再构建，失败即中止；含控制组与回归；任一必须通过的阶段失败或控制组没有失败则退出非 0
 ```
 
 ## AppImage 内的宿主辅助程序（第 17c10 片）

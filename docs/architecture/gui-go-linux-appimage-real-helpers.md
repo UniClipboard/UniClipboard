@@ -40,7 +40,7 @@
 | R1 | 容器 `--network none` 下守护进程启动失败（`engine error 1101`，p2p 绑定）；bwrap（Epiphany 的 WebKit 沙箱）需要 `seccomp`/`systempaths` 不受限 | dev1、dev2、dev4；`engine-default-route-diag/`（bridge 与内部网络加默认路由通过，内部网络无默认路由与 `--network none` 失败）| 夹具：`--internal` 网络（无出口）+ 运行器加 `default dev eth0`（`NET_ADMIN`）。**这是夹具要求；「Engine 在没有默认路由的主机上启动失败」是未修复的 Engine 行为（OPEN，Engine 在本仓只读），不是本片修复的产品问题** |
 | R2 | Epiphany 的 User-Agent 是 Safari 兼容串（不含 `Epiphany`）| dev4 | 浏览器由进程 exe 与窗口标题认定，User-Agent 只断言 `AppleWebKit`（Firefox 为 `Firefox/`）|
 | R3 | generic 分发（`XDG_CURRENT_DESKTOP` 未设）下 `xdg-open <目录>` 直接以前台子进程运行 `nautilus --new-window`，窗口出现后 xdg-open 仍存活，直到 Nautilus 退出；GNOME 分发下 `gio open` 立即返回 0，Nautilus 是 gapplication-service | `xdg-open-generic-diag-ubuntu-v2/`、`-fedora/`（首个 `-ubuntu/` 因变量传递错误两组都是 generic，保留作失败轮）| 宿主对照与 GUI 链路都不把「未退出」当失败：观察效果（窗口/请求），记录 `alive/exit/childExes`；自然退出必须为 0，仍在前台等待时必须有存活的应用子进程；清理导致的退出码（例如被终止的 Nautilus 使 xdg-open 退出 4）与自然退出分开记录 |
-| R4 | 「没有默认应用的类型就不会被打开」的假设被反证：generic 分发回退到浏览器（`x-www-browser` → Epiphany 被执行，`dev12-ubuntu-generic`），GNOME 分发由 `gio` 原生拒绝（退出 4，`Failed to find default application for content type`）| `dev10-*`（文本文件也被打开）、`dev12-*` 的 strace | 该场景只作为观察记录（GNOME 下断言原生拒绝），**不再是 harness 的负面对照** |
+| R4 | 「没有默认应用的类型就不会被打开」的假设被反证：generic 分发回退到浏览器（Ubuntu：`x-www-browser` → Epiphany 被执行，`dev12-ubuntu-generic`；Fedora：直接运行 Firefox，`final-a0ac923cb/real-fedora-generic`），GNOME 分发由 `gio` 原生拒绝（退出 4，`Failed to find default application for content type`）| `dev10-*`（文本文件也被打开）、`dev12-*` 的 strace | 该场景只作为观察记录（GNOME 下断言原生拒绝），**不再是 harness 的负面对照** |
 | R5 | 独立的负面对照 | `dev13-*` | 不存在的路径：generic 下 xdg-open 退出 2（文档化的状态），GNOME 下 `gio open` 退出 4（xdg-open 把路径交给 gio，沿用 gio 的状态；首版两者都断言 2，在 GNOME 下失败，保留）；二者都带宿主原生「不存在」信息，不执行任何真实应用，无窗口与应用进程 |
 | R6 | 观察器：未读到进程的 exe/environ/maps 不能作为「无挂载库」的证据 | dev8 | `inspect` 直接读取并记录状态与 errno：`exited` 排除并记录，存活但读不到则 G2 失败 |
 
@@ -65,22 +65,24 @@
 | --- | --- |
 | 真实应用 E2E：Ubuntu 24.04（Epiphany 46.5 / Nautilus 46.4 / Loupe 46.2）× generic、GNOME | 30/30、31/31 |
 | 真实应用 E2E：Fedora 44（Firefox 157 / Nautilus 50.3.1 / Loupe 50.0）× generic、GNOME | 30/30、31/31 |
-| 控制组：17c10 修复 **之前** 的 AppImage（`baseline-03d304fb5`），同一 E2E，Fedora GNOME | **7 项失败（预期）**：`open_logs_directory`、`open_data_directory` 没有窗口，默认 Loupe 没有打开，应用进程映射/环境含挂载库与变量，GUI 启动的 xdg-open 带挂载变量。`reveal_path` 与 URL 在该包上通过（不是所有行为都失败）|
+| 控制组：17c10 修复 **之前** 的 AppImage（`baseline-03d304fb5`），同一 E2E，Fedora GNOME | **7 项失败（预期）**：`open_logs_directory`、`open_data_directory` 没有窗口，默认 Loupe 没有打开，「GUI 启动的真实应用都在运行」不成立（只有 Firefox 在运行），应用进程映射/环境检查失败，GUI 启动的 xdg-open 带挂载变量。`reveal_path` 与 URL 在该包上通过（不是所有行为都失败）|
 | 17c10 回归（`sh` 记录脚本）Ubuntu/Fedora × generic/GNOME | 各 33/33 |
-| 回归：WebView HTTPS（17c7，无 GTK 镜像）Ubuntu/Fedora | 各 rc 0 |
-| 回归：便携模式 E2E（17c5） | rc 0 |
-| 静态内容检查 | rc 0 |
+| 回归：WebView HTTPS（17c7，无 GTK 镜像）Ubuntu/Fedora | 各 19/19 |
+| 回归：便携模式 E2E（17c5） | 64/64 |
+| 静态内容检查 | 通过（`passed: true`）|
 
-每个真实应用运行断言的内容：宿主对照（无 GUI，宿主环境）能打开真实文件管理器、浏览器（受控 HTTP 服务器收到恰好一次请求，窗口标题是页面标题）、图片查看器；GUI 链路：`reveal_path`（窗口标题 = 父目录）、`open_logs_directory`、`open_data_directory`、`open_image_externally`（包默认应用 Loupe）、**用户默认应用**（用户用宿主 `xdg-mime default` 在真实 `~/.config/mimeapps.list` 写入后产品打开的是浏览器；删除后回到 Loupe）、URL（共享前端 `openUrl` → host 命令 `open_url` → 真实浏览器 → 受控服务器：一次请求、浏览器 UA、页面标题、没有其他请求）；GUI 与 WebKit 辅助进程仍从挂载映射 GTK/WebKitGTK/JavaScriptCore/GLib/GIO（宿主有 GTK 时 G7）；所有存活的真实应用进程（Epiphany 及其 WebKit 进程、Firefox、Nautilus、Loupe）逐个读取 exe/environ/maps：没有挂载内的库、没有指向挂载的变量，读不到的存活进程判失败（本次 0 个）；GUI 启动的每个 `xdg-open` 的 strace envp 无挂载变量、无 `LD_LIBRARY_PATH`，退出 0 或是仍在前台等待存活应用的 generic 分发。
+每个真实应用运行断言的内容：宿主对照（无 GUI，宿主环境）能打开真实文件管理器、浏览器（受控 HTTP 服务器收到恰好一次该路径的请求，窗口标题是页面标题；「没有其他请求」的判定排除 `/favicon.ico` 与宿主对照自己的 `/uc11-host-*` 路径，浏览器的 favicon 请求不判为额外目标）、图片查看器；GUI 链路：`reveal_path`（窗口标题 = 父目录）、`open_logs_directory`、`open_data_directory`、`open_image_externally`（包默认应用 Loupe）、**用户默认应用**（用户用宿主 `xdg-mime default` 在真实 `~/.config/mimeapps.list` 写入后产品打开的是浏览器；删除后回到 Loupe）、URL（共享前端 `openUrl` → host 命令 `open_url` → 真实浏览器 → 受控服务器：一次请求、浏览器 UA、页面标题、没有其他请求）；GUI 与 WebKit 辅助进程仍从挂载映射 GTK/WebKitGTK/JavaScriptCore/GLib/GIO（宿主有 GTK 时 G7）；所有存活的真实应用进程（Epiphany 及其 WebKit 进程、Firefox、Nautilus、Loupe）逐个读取 exe/environ/maps：没有挂载内的库、没有指向挂载的变量，读不到的存活进程判失败（本次 0 个）；GUI 启动的每个 `xdg-open` 的 strace envp 无挂载变量、无 `LD_LIBRARY_PATH`，退出 0 或是仍在前台等待存活应用的 generic 分发。
 
 ### 观察（记录，不是修复）
 
 - **F7 用真实应用重现（四组一致，只记录）**：便携模式下（`HOME` = `<AppImage>.home`）用户写入真实 `HOME` 的默认应用（PNG → 浏览器）对 `xdg-open` 不可见，由包默认的 Loupe 打开。保持 OPEN，产品语义待决，未改。
-- **`GDK_BACKEND=x11` 与 `GTK_THEME=Adwaita:light` 泄漏给真实浏览器**：Epiphany（及其 WebKit 进程）和 Firefox 的环境里有这两个变量（AppRun 的 GTK 钩子设置）；Nautilus/Loupe 是 D-Bus 激活的服务，环境来自总线，没有。应用均正常工作，没有新失败，所以按约定 **没有修**；用户可见后果（浏览器被强制浅色主题、在 Wayland 会话里被强制 X11）在真实桌面上未验证，保持 OPEN。
-- **generic 分发的回退**：未注册类型在 generic 分发下回退到浏览器（`x-www-browser` → Epiphany），在 GNOME 分发下由 `gio` 原生拒绝（见 R4）。
+- **`GDK_BACKEND=x11` 与 `GTK_THEME=Adwaita:light` 泄漏给真实浏览器**：Epiphany（及其 WebKit 进程）和 Firefox 的环境里有这两个变量（来源无法与用户设置区分；AppRun 的 GTK 钩子会导出它们）；GNOME 分发的运行里 Nautilus/Loupe 是 D-Bus 激活的服务，环境来自总线，没有这两个变量；generic 分发的运行里所有被启动的应用（含 Nautilus/Loupe）都带有。这两个变量是否由 AppRun 钩子设置无法与用户设置区分（原值没有备份）。应用均正常工作，没有新失败，所以按约定 **没有修**；用户可见后果（浏览器被强制浅色主题、在 Wayland 会话里被强制 X11）在真实桌面上未验证，保持 OPEN。
+- **generic 分发的回退**：未注册类型在 generic 分发下回退到浏览器（Ubuntu：`x-www-browser` → Epiphany；Fedora：`x-www-browser: command not found` 之后由 xdg-open 自己的浏览器探测直接运行 Firefox），在 GNOME 分发下由 `gio` 原生拒绝（见 R4）。
 - **Engine 在没有默认路由的主机上启动失败（`engine error 1101`，p2p 绑定）**：`engine-default-route/` 四种网络对照（bridge 通过、内部网络无默认路由失败、内部网络加默认路由通过、`--network none` 失败），原始守护进程日志在各子目录。**这是夹具要求（运行器加默认路由），不是本片修复的产品问题**；离线（无默认路由）启动失败是否可接受是 Engine/守护进程的 OPEN 问题。
 - 真实 Nautilus 在 generic 分发下的 `GLib-GIO-CRITICAL`（`g_app_info_get_commandline`）出现在无 GUI 的宿主对照里，是宿主应用自己的输出。
 
 ### 保留的失败与过程
 
 `dev1`（`--network none` 下守护进程启动失败；Epiphany 的 bwrap `pivot_root` 被拒）、`dev2`（bwrap 无法挂载 `/proc`）、`dev3`（`xdg-open` 经管道阻塞：真实应用继承描述符，`subprocess.run` 超时）、`dev4`（内部网络无默认路由，守护进程失败；Epiphany UA 断言错误）、`dev5`–`dev14`（通过的路径与观察器修订）、`dev7-fedora-baseline-appimage`（旧包控制组的第一次）、`final-b3aca3d11`（首个最终运行：generic 两组因宿主对照 `subprocess` 等待前台 `xdg-open` 而失败，其余通过）、`xdg-open-generic-diag-ubuntu`（变量传递错误，两组都是 generic）。诊断脚本 `diag_engine_default_route.sh` 的第一次在 Bash 3.2 下因空数组失败，其目录只有一个 `network-create.txt`，我随后删除了该目录并重跑（同名目录的失败原始输出只存在于终端，已无法恢复；遗留的 Docker 内部网络 `uc17c11-diag-12219` 已用精确名称移除）。
+
+驱动 `run_17c11.sh` 在最终运行之后做过一次编辑（审计发现）：`UC_OLD_APPIMAGE` 不再有绝对路径默认值，驱动按各阶段结果设置退出状态。最终运行使用的是编辑之前的驱动；该编辑只改变默认路径与末尾的退出状态，只做了语法检查（`bash -n`），没有重跑。运行器没有在最终运行之后改动。

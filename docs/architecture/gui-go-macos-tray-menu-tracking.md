@@ -74,6 +74,12 @@ Menu.Update -> macosMenu.update -> InvokeSync(main thread):
 
 - **min3-control 终态与模型 S1（保留）**：运行器终态 `timeout waiting for invoke-en0`；精确 pid 核对时运行器 86933、GUI 87071 均已不在进程表（无存活、无 defunct），本任务无残留，daemon 清理列表为空。证据：启动后 `native-window-state` 只写出 2 条（正常约每 2 秒一条）、`tray-publish` 只有第 1 次（+3.4 秒，`durMs=7`，此后定时刷新的第 2 次从未出现）、`invoke-enter` 之后没有 `invoke-return`、AX 读到 0 个状态栏项、前端从未调用 `set_tray_language`（静默控制因此等满 60 秒）。这与“主线程在 bootstrap 后约 3 秒起不再服务派发”相符，但 **现场没有被抓取**（没有 `sample`），起因（宿主状态、模态阻塞、产品缺陷、测试环境）**未知**，不据此断言产品缺陷，也不断言与前面 WebView 驱动停顿相关。修正：运行器在任何控制步骤超时时先对本轮自己的 GUI pid 做 `sample` 与 AX 扫描再退出；记录 GUI 的退出码；在 provenance 记录采集时的宿主空闲时间与睡眠设置。
 
+## 宿主条件：显示器休眠（混杂因素，已确认）
+
+- **证据（只读）**：`CGDisplayIsAsleep(main)=true`、`CGDisplayIsActive(main)=false`、`CGDisplayIsOnline=true`；`pmset -g log`：`2026-10-06 22:48:55 -0700 Display is turned off`；`pmset -g`：`displaysleep 20`，`PreventUserIdleDisplaySleep 0`（系统睡眠被 `UURemote`、`caffeinate` 阻止，显示器睡眠没有被阻止）；`HIDIdleTime` 约 5800–6100 秒（min4/min6 的 provenance）。`screencapture -R` 失败（`could not create image from rect`），整屏截图可生成但裁剪区域为纯黑；`peekaboo list screens` 仍报告 3360×1890 Retina。
+- **结论边界**：**纯黑截图无效**，不能据此得出“菜单不存在”或产品缺陷；`min4-control`/`min5-rightclick`/`min6-rightclick` 的 `ax-open-*-screen.png`、`diag-menubar.png` 作废（保留原件，不作证据）。本片自 base1 起的所有运行都发生在显示器休眠期间（`ctlA/B/C` 的窗口遮挡状态、驱动心跳在约 6.5 秒停止、`min3` 的主线程停滞、`min4–min6` 的 AX 读不到菜单），**显示器休眠是它们共同的混杂因素；是否是原因未证实**——WebKit/AppKit 在显示器休眠时的行为是候选解释，不是结论。
+- **边界**：不更改用户的显示、锁屏、权限设置或无关应用。要在显示器唤醒的会话中验收原生 NSMenu 跟踪，需要使显示器处于唤醒状态（例如用户在场、或授权运行器在每轮运行期间声明一次瞬时用户活动断言）。**未获授权前，原生 NSMenu 跟踪验收标记为“宿主能力缺口：显示器休眠”，不冒称已验证。**
+
 ## 验收契约
 
 必须保留 17c14 的行为：设备子菜单随 10 秒刷新与 `devices://sync-changed` 更新、条目动作、同步开关标签、托盘生命周期。不得：隐藏日志、删除刷新、删除托盘功能、降低锁保证、用 compile/vet 或脚本直接调用代替原生证据。

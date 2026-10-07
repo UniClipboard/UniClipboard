@@ -54,6 +54,30 @@ def ax(*args, check=False):
     return row
 
 
+def shot_near_status_item(pid, dest, below=420):
+    """Screenshot of ONLY the area around this pid's status item and the menu that hangs below it. `screencapture -R` fails on this host
+    ('could not create image from rect'), so a full capture goes to a private temp file, is cropped with sips to the AX frame of the item
+    (+/- 250 pt horizontally, `below` pt down) and is deleted at once; nothing else on the screen is kept."""
+    item = ax('describe', str(pid))
+    frame = (item.get('items') or [{}])[0].get('frame')
+    if not frame:
+        return {'ok': False, 'error': 'no AX frame for the status item'}
+    scale = 2  # Retina: pixels per point on this host (peekaboo list screens: 2.0x)
+    x0, y0 = max(0, int(frame['x'] - 250)), 0
+    w, h = 500, below
+    tmp = Path(tempfile.mkdtemp(prefix='uc-gui-go-shot-'))
+    try:
+        full = tmp / 'full.png'
+        if subprocess.run(['screencapture', '-x', str(full)], capture_output=True, timeout=30).returncode != 0 or not full.exists():
+            return {'ok': False, 'error': 'screencapture failed'}
+        p = subprocess.run(['sips', '-c', str(h * scale), str(w * scale), '--cropOffset', str(y0 * scale), str(x0 * scale), str(full), '--out', str(dest)], capture_output=True, text=True, timeout=30)
+        return {'ok': p.returncode == 0 and Path(dest).exists(), 'frame': frame, 'region': {'x': x0, 'y': y0, 'w': w, 'h': h, 'scale': scale}}
+    finally:
+        for f in tmp.iterdir():
+            f.unlink()
+        tmp.rmdir()
+
+
 def open_menu(gui, pid, how, label, out):
     """Open the status item's menu through AppKit's own tracking and wait until the menu is readable through AX.
 
@@ -67,6 +91,9 @@ def open_menu(gui, pid, how, label, out):
             opened = ax('rightclick', str(pid))
         else:
             opened = gui.ctl(f'tray-open-menu {label}', f'tray-open-menu-{label}')
+        # Native evidence that does not go through AX: the screen next to the status item right after the open (a tracked menu is drawn there).
+        time.sleep(.4)
+        shot_info = shot_near_status_item(pid, out / f'ax-open-{label}-screen.png')
         first = {'ok': False}
         end = time.time() + 12
         while time.time() < end:
@@ -78,7 +105,7 @@ def open_menu(gui, pid, how, label, out):
             watcher.wait(timeout=60)
     seen = [json.loads(l) for l in watch_path.read_text().splitlines() if l.strip()]
     ok_seen = [r['ns'] for r in seen if r.get('ok')]
-    opened = dict(opened, openedSeenByWatch={'reads': len(seen), 'okReads': len(ok_seen), 'firstOkNs': ok_seen[0] if ok_seen else None, 'lastOkNs': ok_seen[-1] if ok_seen else None})
+    opened = dict(opened, screenshot=shot_info, openedSeenByWatch={'reads': len(seen), 'okReads': len(ok_seen), 'firstOkNs': ok_seen[0] if ok_seen else None, 'lastOkNs': ok_seen[-1] if ok_seen else None})
     return opened, first
 
 
@@ -201,7 +228,7 @@ def main():
         if not check('0 the status item of THIS pid is readable through AX', items.get('ok') and items.get('count') == 1, items):
             (out / 'diag-ax-describe.json').write_text(json.dumps(ax('describe', str(proc.pid)), ensure_ascii=False, indent=1))
             (out / 'diag-ax-scan.json').write_text(json.dumps(ax('scan', str(proc.pid)), ensure_ascii=False, indent=1))
-            subprocess.run(['screencapture', '-x', '-R0,0,1500,60', str(out / 'diag-menubar.png')], capture_output=True, timeout=30)
+            shot_near_status_item(proc.pid, out / 'diag-menubar.png', below=60)
             subprocess.run(['sample', str(proc.pid), '2', '-file', str(out / 'diag-sample.txt')], capture_output=True, timeout=60)
             raise RuntimeError('no status item for this pid: nothing further can be attributed to the tray (see diag-*)')
         quiet = gui.ctl('tray-language-quiet q0 5000', 'tray-language-quiet-q0', 90)
@@ -228,7 +255,6 @@ def main():
             # next to the status item, and every menu-like AX node reachable from the application element.
             (out / 'diag-ax-scan.json').write_text(json.dumps(ax('scan', str(proc.pid)), ensure_ascii=False, indent=1))
             subprocess.run(['sample', str(proc.pid), '2', '-file', str(out / 'diag-sample.txt')], capture_output=True, timeout=60)
-            subprocess.run(['screencapture', '-x', '-R0,0,1500,420', str(out / 'diag-menubar.png')], capture_output=True, timeout=30)
             raise RuntimeError('the menu could not be read after open; later steps need it')
         root = first['menu']
         if args.minimal:

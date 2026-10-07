@@ -21,6 +21,9 @@
 - 推论 1：CRITICAL 是真实缺陷，不是无害噪声。
 - 推论 2：设备子菜单在 Linux 上的更新从未到达 dbusmenu 宿主（新增/清空后的条目没有 `impl`），即功能缺失。
 
+
+**来源结论的精度**：真实 Go 栈（`probe1`，`G_DEBUG=fatal-criticals`）**实测证明** 的是：断言由 `Menu.Update` → `(*linuxMenu).update` → `processMenu`（根）→ `processMenu`（子菜单）→ `menuClear` → `gtk_container_get_children` 触发，且调用来自非主线程的 goroutine。“根的 `menuClear` 销毁子项并释放子菜单的 `GtkMenu`，随后 `processMenu(submenu)` 复用已释放的 `native`”这一 **所有权/释放顺序是依据固定 Wails 源码的推断**，本片没有在 native 堆上（如 gdb、ASan、`G_SLICE`/valgrind）实测证明指针确已释放。修复的有效性由修复前后产品对照与主机矩阵证明，不依赖这一推断。
+
 ## 验收契约
 
 必须保留：设备子菜单随 10 秒刷新与 `devices://sync-changed` 更新；条目动作（点击触发回调）；连接状态/同步开关标签刷新；托盘生命周期（注册、退出）。不得：隐藏日志、删除刷新、删除托盘功能、`G_DEBUG` 之类屏蔽。

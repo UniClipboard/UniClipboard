@@ -368,7 +368,12 @@ def main():
             unknown('WebKit processes not found under the mount')
     else:
         check('W6 the GUI process is an X11 client (a connection to the X server, none to the Wayland socket)', xs >= 1 and wl == 0, {'gui': classes.get(str(proc.pid))})
-        check('W6 the GUI environment shows the backend the mode sets (x11)', gui_env.get('GDK_BACKEND') == 'x11', gui_env.get('GDK_BACKEND'))
+        if args.mode == 'x11-session':
+            # /proc/<pid>/environ is the INITIAL block: the value Wails exports in-process (os.Setenv in its init) is not in it, so the effective GDK_BACKEND is not observable from outside.
+            # The evidence for this mode is the socket classes above (X11 connection, no Wayland connection) and the compositor listing; the initial block must NOT carry the variable.
+            check('W10 the process was started WITHOUT GDK_BACKEND (initial environment); the backend choice is read from the sockets, not from an environment variable', gui_env.get('GDK_BACKEND') is None, {'initialEnvironment': gui_env.get('GDK_BACKEND')})
+        else:
+            check('W6 the GUI environment shows the backend the mode sets (x11)', gui_env.get('GDK_BACKEND') == 'x11', gui_env.get('GDK_BACKEND'))
         check('W6 Layer Shell is not used on the X11 backend (layer-state: not supported)', layer.get('supported') is False, {k: layer.get(k) for k in ('supported', 'supportedError')})
         if comp.kind == 'hyprland':
             check('W6 the compositor lists the GUI window as an XWayland client', bool(mine) and all(c.get('xwayland') is True for c in mine), mine)

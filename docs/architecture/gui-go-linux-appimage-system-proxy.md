@@ -52,3 +52,22 @@ PAC（`autoconfig_url`）、代理认证、系统设置动态变更、SOCKS：�
 ## 明确不证明
 
 真实桌面会话、Wayland、GPU、原生 amd64、其他发行版、deb/rpm（不带 AppImage 的 GIO 模块限定，路径 A/B 的行为会不同，OPEN）、macOS/Windows 的系统代理（各自的机制不同）、Engine 内 iroh 的代理能力（Engine 在本仓只读，上表 F 只是源码检索结论）。
+
+## 契约修订
+
+原条款保留，不改写。修订针对「PAC、认证、动态变更」一段的目标偏移风险。
+
+### R1：缺少解析器不是「不适用」，也不是完成
+
+- 原条款写「若 AppImage 内没有解析器，这些不适用于 WebView，标为未支持」。**撤回这条推论作为完成标准**：AppImage 因 `GIO_MODULE_DIR` 限定而丢失发行版成熟的代理解析器（`glib-networking` 的 `libgiolibproxy`/`libgiognomeproxy`、libproxy、dconf GSettings 后端），本身就是需要补齐的打包缺口，不是排除理由。
+- 事实核对（静态，不是行为结论）：旧 Tauri v1.1.1 AppImage（官方资产，SHA-256 见 `linux-17c10/tauri-v1.1.1/sha256.txt`，`unsquashfs -l`）的 `usr/lib/aarch64-linux-gnu/gio/modules` 只有 `libgiognutls.so`，没有 libproxy、gnome-proxy、dconf 模块，且 Tauri 入口同样设置 `GIO_MODULE_DIR`。因此旧包是否在用户机器上使用系统代理，没有被运行验证，**不能用「旧包也没有」当作迁移计划的完成理由**。产品文档（`docs-site`）对代理没有承诺，只有「手机 App 不依赖代理」与「本地代理会拦截中继」两类说明；迁移计划把「AppImage 的系统代理（libproxy/gnome-proxy）」列为明确 OPEN 项（`go-gui-migration-plan.md`），所以验收标准是「真实可用或写明框架/发行版边界」，不能缩小。
+- 执行顺序（先文档，再实现）：
+  1. **基线实测**：当前 AppImage（只带 `libgiognutls`）在 P1–P8 的实际结果，保留失败/不支持的原始证据。
+  2. **调查并复用成熟维护库的打包集成**，不自写 resolver：`glib-networking` 的 `libgiolibproxy.so`/`libgiognomeproxy.so`（与捆绑 GLib 2.80 同源同 ABI，沿用 17c7 `deploy_gio_modules` 的 `dpkg -S` 来源校验与 NEEDED 校验）、libproxy 及其 PAC 运行时、`dconf` 的 `libdconfsettings.so` 与 `gsettings-desktop-schemas`（`org.gnome.system.proxy`）。17c4 已证明 **宿主** 副本会崩溃，所以只能带与捆绑 GLib 同构建的副本，不能放开 `GIO_MODULE_DIR`。
+  3. 补齐后，同一运行器复测：
+     - 回环直连不变（P1/P2：daemon HTTP/WebSocket 与前端可用，代理日志无回环目标）：若解析器从环境读取而没有回环绕过，按 Tauri 既有约定（`localhost,127.0.0.1,::1` 合并进 `NO_PROXY`）在进程入口最小修复，而不是改全局代理环境；
+     - 宿主配置可达：用户的 dconf 数据库（`~/.config/dconf/user`，只读不需要 daemon）与环境变量，在非便携模式与便携模式（`HOME` 被重定向，F7）下各自的实际结果；
+     - 模式：环境变量（大小写、`NO_PROXY`）、GNOME 手动代理、`ignore-hosts` 绕过、PAC（`autoconfig-url`；libproxy 的 PAC 运行时是否可打包与其许可证/体积）、认证（代理 URL 内的凭据：是否可测，不可测则写明）、系统设置动态变更（运行中的 GUI 是否随 `GSettings` 变化而改变路径，还是需要重启）。
+  4. 打包后的体积、许可证、依赖闭包与内容检查（`appimage_content_check.py`、`runtime_pin`）一并更新，并复跑 17c7 TLS、17c5 便携、17c10/17c11 helper 回归。
+- 若出现框架或发行版边界使某一模式无法完成（例如 PAC 运行时没有可再分发的许可，或 WebKitGTK 不随 GSettings 变化刷新），**写出实际证据并保持 OPEN，继续做其余可实现部分**；不因缺少模块、没有测试或没有产品文档而把整项排除。
+- P6 不变：Engine 的 rendezvous 路径只是 Engine 出站的一种，iroh 单独结论。

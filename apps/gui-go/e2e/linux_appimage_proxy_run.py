@@ -242,6 +242,9 @@ GIO_LOOKUP = ('import ctypes,sys;g=ctypes.CDLL("libgio-2.0.so.0");g.g_proxy_reso
               'r=g.g_proxy_resolver_get_default();a=g.g_proxy_resolver_lookup(ctypes.c_void_p(r),sys.argv[1].encode(),None,None);print(a[0].decode() if a else "error")')
 
 
+_as_user = as_user
+
+
 def write_dconf_proxy(port, where, target_app, nonportable, ignore_hosts=None, pac_url=None, auth=None, https_host=True):
     """GNOME's proxy settings (manual proxy, default ignore-hosts), compiled with the distribution's own `dconf compile` (no bus needed).
       user   the user's database ~/.config/dconf/user under the REAL home (what GNOME Settings writes). In portable mode the AppImage's HOME is redirected to
@@ -280,6 +283,11 @@ def write_dconf_proxy(port, where, target_app, nonportable, ignore_hosts=None, p
     # `baseline-a2a001ac`, ran without it: gsettings said 'manual' while `proxy` printed direct://)
     def host_view(home):
         cenv = dict(os.environ, HOME=str(home), XDG_CURRENT_DESKTOP='GNOME')
+        def as_user(cmd, env, timeout):  # a PAC server that never answers makes libproxy's CLI hang: that is a recorded result of the host view, not a crash of the run
+            try:
+                return _as_user(cmd, env, timeout=timeout)
+            except subprocess.TimeoutExpired:
+                return subprocess.CompletedProcess(cmd, -1, '', f'timeout after {timeout}s')
         p = as_user(['proxy', f'https://{CURL_HOST}/'], cenv, timeout=30)
         g = as_user(['gsettings', 'get', 'org.gnome.system.proxy', 'mode'], cenv, timeout=20)
         gio = as_user(['python3', '-c', GIO_LOOKUP, f'https://{CURL_HOST}/'], cenv, timeout=30)  # what GLib's own default resolver answers (the one WebKit's network process asks); libproxy's CLI is a different resolver
@@ -822,9 +830,9 @@ def main():
                 loop_reqs = [t for m, t in reqs if LOOPBACK.search(t)]
                 sc['proxyLoopbackTargets'] = loop_reqs
                 sc['proxyEngineTargets'] = sorted({t for m, t in reqs if not LOOPBACK.search(t) and not any(h in t for h in (WV_HOST, CURL_HOST))})
-                run.check(f'[{name}] control: curl (same configuration, its own hostname) was named by the proxy: the proxy/log chain is valid',
+                chk(f'[{name}] control: curl (same configuration, its own hostname) was named by the proxy: the proxy/log chain is valid',
                           sc['curlControl']['route'] in ('proxied', 'refused') or (name in AUTH_BAD and sc['curlControl']['route'] == 'proxied-no-delivery'), sc['curlControl'])
-                run.check(f'[{name}] control: curl targeting the loopback report port with the same configuration IS in the proxy log (detection power for the loopback claim)',
+                chk(f'[{name}] control: curl targeting the loopback report port with the same configuration IS in the proxy log (detection power for the loopback claim)',
                           any(f':{reports.port}/loopctl' in t for t in loop_reqs), {'curl': loop, 'targets': loop_reqs})
                 leaked = [t for t in loop_reqs if f':{daemon_port}' in t or (f':{reports.port}' in t and '/loopctl' not in t)]
                 chk(f'[{name}] P1 the proxy log names no loopback target of the product (not the daemon port, not the page\'s report channel)', not leaked, leaked)

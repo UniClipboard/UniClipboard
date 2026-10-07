@@ -76,7 +76,17 @@ HOST_ONLY_LIBS = ('libwayland-client.so', 'libEGL.so', 'libGL.so', 'libGLX.so', 
 #  libgiognutls.so      the TLS backend of GLib (libsoup 3 and so WebKitGTK reach HTTPS through it)                       (17c7)
 #  libgiognomeproxy.so  GProxyResolver reading the GNOME proxy settings (org.gnome.system.proxy: manual, ignore-hosts)    (17c12)
 #  libdconfsettings.so  the GSettings backend that reads the user's and the system's dconf databases                      (17c12)
-GIO_MODULES = {'libgiognutls.so': 'glib-networking', 'libgiognomeproxy.so': 'glib-networking', 'libdconfsettings.so': 'dconf-gsettings-backend'}
+#  libgiolibproxy.so    GProxyResolver over libproxy: environment variables (http_proxy ...), PAC, KDE/sysconfig configuration                     (17c12)
+GIO_MODULES = {'libgiognutls.so': 'glib-networking', 'libgiognomeproxy.so': 'glib-networking', 'libdconfsettings.so': 'dconf-gsettings-backend',
+               'libgiolibproxy.so': 'glib-networking'}
+# The libraries libgiolibproxy.so needs that the AppImage does not already carry (computed from the build image's own dependency closure, then frozen here: a new
+# entry is a decision, not an accident). libproxy 0.5's backend hard-links the PAC runtime (duktape) and the PAC downloader (libcurl-gnutls), whose own closure
+# (libssh, libldap/liblber, libsasl2, librtmp, OpenSSL's libcrypto) comes with it; this is the distribution's own dependency set for libproxy, not a choice of ours.
+GIO_SUPPORT_LIBS = {'libproxy.so.1': 'libproxy1v5', 'libpxbackend-1.0.so': 'libproxy1v5', 'libduktape.so.207': 'libduktape207', 'libcurl-gnutls.so.4': 'libcurl3t64-gnutls',
+                    'libssh.so.4': 'libssh-4', 'libldap.so.2': 'libldap2', 'liblber.so.2': 'libldap2', 'libsasl2.so.2': 'libsasl2-2', 'librtmp.so.1': 'librtmp1',
+                    'libcrypto.so.3': 'libssl3t64'}
+# Libraries every Linux host has and that the 17c7 classification (linux_appimage_tls_run.HOST_OK) already leaves to the host.
+GIO_SUPPORT_HOST_OK = ('libz.so.1', 'libgmp.so.10', 'libcom_err.so.2', 'libresolv.so.2')
 WEBKIT_HELPERS = ('WebKitWebProcess', 'WebKitNetworkProcess', 'WebKitGPUProcess')
 APPRUN = GUI / 'e2e/linux/appimage/AppRun'
 ICONS = {'32x32': '32x32.png', '128x128': '128x128.png', '256x256': '128x128@2x.png'}
@@ -298,11 +308,39 @@ def inspect_appdir(appdir, helper_dir):
 
 
 def deploy_gio_modules(appdir):
-    """Copy the GIO modules in GIO_MODULES into usr/lib/gio/modules and prove each one's provenance and that every library it needs is either in the
-    AppDir or a libc-family library: a module whose dependency is missing would only fail at run time, on a host that happens to lack it."""
+    """Copy the GIO modules in GIO_MODULES into usr/lib/gio/modules and the libraries in GIO_SUPPORT_LIBS into usr/lib, prove each one's provenance (the owning
+    distribution package, SHA-256) and that every library it needs is in the AppDir, libc-family or one of GIO_SUPPORT_HOST_OK: a missing dependency would only fail
+    at run time, on a host that happens to lack it."""
     moddir = Path(run(['pkg-config', '--variable=giomoduledir', 'gio-2.0'], capture=True))
-    shipped = {p.name for p in (appdir / 'usr/lib').rglob('*.so*') if p.is_file() or p.is_symlink()}
     libc_family = re.compile(r'^(libc|libm|libdl|libpthread|librt|ld-linux.*)\.so(\.\d+)*$')
+    loader = run(['ldconfig', '-p'], capture=True)
+    libdir_of = {}
+    for line in loader.splitlines():
+        m = re.match(r'\s*(\S+) \(.*\) => (\S+)', line)
+        if m:
+            libdir_of.setdefault(m.group(1), m.group(2))
+    support_rows = []
+    for name, package in GIO_SUPPORT_LIBS.items():
+        src = Path(libdir_of.get(name) or (moddir.parent / 'libproxy' / name))
+        if name == 'libpxbackend-1.0.so':
+            src = moddir.parent / 'libproxy' / name
+        if not src.is_file():
+            sys.exit(f'{name} is missing in the build image: install {package}')
+        real = src.resolve()
+        owner = run(['dpkg', '-S', str(real)], capture=True)
+        if not owner.startswith(package):
+            sys.exit(f'{real} is not owned by {package}: {owner}')
+        dest = appdir / 'usr/lib' / name
+        shutil.copy2(real, dest)
+        support_rows.append({'library': name, 'source': str(real), 'package': package, 'packageVersion': run(['dpkg-query', '-W', '-f', '${Version}', package], capture=True),
+                             'sha256': sha256(dest)})
+    shipped = {p.name for p in (appdir / 'usr/lib').rglob('*.so*') if p.is_file() or p.is_symlink()}
+    for row in support_rows:  # the closure of the support libraries themselves
+        needed = re.findall(r'\(NEEDED\)\s+Shared library: \[(.+?)\]', run(['readelf', '-d', str(appdir / 'usr/lib' / row['library'])], capture=True))
+        missing = sorted(n for n in needed if n not in shipped and not libc_family.match(n) and n not in GIO_SUPPORT_HOST_OK)
+        if missing:
+            sys.exit(f"{row['library']} needs libraries that are neither in the AppDir, libc-family nor host-provided: {missing}")
+        row['needed'] = needed
     rows = []
     for name, package in GIO_MODULES.items():
         src = moddir / name
@@ -320,7 +358,7 @@ def deploy_gio_modules(appdir):
             sys.exit(f'{name} needs libraries that are neither in the AppDir nor libc-family: {missing}')
         rows.append({'module': name, 'source': str(src), 'package': package, 'packageVersion': version, 'sha256': sha256(dest), 'needed': needed})
     glib_version = run(['dpkg-query', '-W', '-f', '${Version}', 'libglib2.0-0t64'], capture=True)
-    return {'modules': rows, 'bundledGLibPackageVersion': glib_version}
+    return {'modules': rows, 'supportLibraries': support_rows, 'bundledGLibPackageVersion': glib_version}
 
 
 def build_appimage(stage, out, arch, name, tools, daemon, relocate=True, marker=None, tls_module=True):

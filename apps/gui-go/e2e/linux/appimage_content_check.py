@@ -33,7 +33,8 @@ present = sorted(p.name for p in moddir.iterdir()) if moddir.is_dir() else None
 if no_tls:
     check('C1 negative control: the bundled GIO module directory exists and is EMPTY', present == [], present)
 else:
-    EXPECTED = {'libgiognutls.so': 'glib-networking', 'libgiognomeproxy.so': 'glib-networking', 'libdconfsettings.so': 'dconf-gsettings-backend'}  # keep in step with package_linux.GIO_MODULES
+    EXPECTED = {'libgiognutls.so': 'glib-networking', 'libgiognomeproxy.so': 'glib-networking', 'libdconfsettings.so': 'dconf-gsettings-backend',
+                'libgiolibproxy.so': 'glib-networking'}  # keep in step with package_linux.GIO_MODULES
     check(f'C1 the bundled GIO module directory holds exactly {sorted(EXPECTED)}', present == sorted(EXPECTED), present)
     recs = {m['module']: m for m in (gio['modules'] if isinstance(gio, dict) else [])}
     libc_family = re.compile(r'^(libc|libm|libdl|libpthread|librt|ld-linux.*)\.so(\.\d+)*$')
@@ -45,6 +46,14 @@ else:
         needed = re.findall(r'\(NEEDED\)\s+Shared library: \[(.+?)\]', subprocess.run(['readelf', '-d', '-W', str(mod)], capture_output=True, text=True, check=True).stdout)
         missing = [n for n in needed if n not in names and not libc_family.match(n)]
         check(f'C3 {name}: every library the module needs is in the AppDir or libc-family', not missing, {'needed': needed, 'missing': missing})
+    SUPPORT = {'libproxy.so.1': 'libproxy1v5', 'libpxbackend-1.0.so': 'libproxy1v5', 'libduktape.so.207': 'libduktape207', 'libcurl-gnutls.so.4': 'libcurl3t64-gnutls', 'libssh.so.4': 'libssh-4',
+               'libldap.so.2': 'libldap2', 'liblber.so.2': 'libldap2', 'libsasl2.so.2': 'libsasl2-2', 'librtmp.so.1': 'librtmp1', 'libcrypto.so.3': 'libssl3t64'}  # keep in step with package_linux.GIO_SUPPORT_LIBS
+    support = {m['library']: m for m in (gio.get('supportLibraries', []) if isinstance(gio, dict) else [])}
+    for name, package in sorted(SUPPORT.items()):
+        f, rec = root / 'usr/lib' / name, support.get(name, {})
+        sha = hashlib.sha256(f.read_bytes()).hexdigest() if f.is_file() else None
+        check(f'C2b {name}: the bytes equal the package manifest (package {package}, recorded SHA-256)', sha is not None and sha == rec.get('sha256') and rec.get('package') == package,
+              {'sha256': sha, 'manifest': {k: rec.get(k) for k in ('package', 'packageVersion', 'source', 'sha256')}})
     check('C4 the TLS library the module needs is shipped (libgnutls.so.30) and libsoup 3 is the HTTP stack', 'libgnutls.so.30' in names and 'libsoup-3.0.so.0' in names, None)
 host_owned = re.compile(r'^(libEGL|libGL|libGLX|libGLdispatch|libOpenGL|libGLESv1_CM|libGLESv2|libdrm|libgbm|libwayland-client|libdbus-1|libvulkan)\.so')
 found = sorted(n for n in names if host_owned.match(n))

@@ -75,6 +75,7 @@ def main():
          "dmg": args.dmg.name, "passed": False, "checks": {}}
     checks = r["checks"]
     gui_pid = daemon_pid = helper_pid = None
+    opener = None
     try:
         assert platform.machine() == args.arch, f"host is {platform.machine()}, the bundle under test is {args.arch}"
         assert not APP.exists(), "/Applications/UniClipboard.app already exists on this machine"
@@ -109,9 +110,9 @@ def main():
 
         env = {"HOME": str(Path.home()), "PATH": MINIMAL_PATH, "USER": os.environ.get("USER", "")}
         assert shutil.which("uniclipd", path=MINIMAL_PATH) is None
-        # LaunchServices, like a double click. The app must not inherit our pipes, or reading them would
-        # wait for the app to exit.
-        subprocess.run(["open", str(APP)], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True, timeout=60)
+        # LaunchServices, like a double click. `open` is not waited for: on a runner it can stay blocked after the
+        # app is already running (observed on macos-latest), and the app must not inherit our pipes.
+        opener = subprocess.Popen(["open", str(APP)], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         deadline = time.monotonic() + 120
         conn = None
         while time.monotonic() < deadline:
@@ -131,6 +132,7 @@ def main():
             checks["health"] = json.load(resp)["data"]["status"]
         assert checks["health"] == "ok"
 
+        checks["openReturned"] = opener.poll()
         gui = sh("pgrep", "-f", str(MACOS / "gui-go"), check=False).stdout.split()
         assert gui, "the GUI process is not running"
         gui_pid = int(gui[0])
@@ -170,6 +172,8 @@ def main():
     except AssertionError as e:
         r["error"] = str(e)
     finally:
+        if opener is not None:
+            opener.kill()
         for pid in (helper_pid, daemon_pid, gui_pid):
             if pid and alive(pid) and image_path(pid).startswith(str(MACOS)):
                 os.kill(pid, 15)

@@ -268,6 +268,29 @@ def page_probe_script(prefix, report_port, base, daemon_token, gui_pid):
             ".catch(function(e){rep('err',String(e))})})()") % (json.dumps(prefix), report_port, json.dumps(base), json.dumps(daemon_token), gui_pid)
 
 
+P8_VARIANTS = {  # name -> (proxy mode, kind); the environment is built by variant_env()
+    'env-upper': ('allow', 'env-upper'),            # only HTTP_PROXY/HTTPS_PROXY/ALL_PROXY (upper case)
+    'env-conflict': ('allow', 'env-conflict'),      # lower case -> allow proxy, upper case -> a dead port: which one does the resolver follow?
+    'env-bypass': ('allow', 'env-bypass'),          # NO_PROXY names the WebView probe host: it must go direct
+    'env-bypass-other': ('allow', 'env-bypass-other'),  # NO_PROXY names an unrelated host: the WebView is still proxied
+}
+REQUIRED_VARIANTS = {'env-bypass': 'direct', 'env-bypass-other': 'proxied'}  # the others are recorded observations (precedence is the resolver library's)
+
+
+def variant_env(kind, port):
+    url = f'http://127.0.0.1:{port}'
+    dead = f'http://127.0.0.1:{free_port()}'
+    if kind == 'env-upper':
+        return {'HTTP_PROXY': url, 'HTTPS_PROXY': url, 'ALL_PROXY': url}
+    if kind == 'env-conflict':
+        return {'http_proxy': url, 'https_proxy': url, 'HTTP_PROXY': dead, 'HTTPS_PROXY': dead}
+    if kind == 'env-bypass':
+        return dict(proxy_env(port), no_proxy=f'{WV_HOST},user-bypass.test', NO_PROXY=f'{WV_HOST},user-bypass.test')
+    if kind == 'env-bypass-other':
+        return dict(proxy_env(port), no_proxy='unrelated.test', NO_PROXY='unrelated.test')
+    raise KeyError(kind)
+
+
 def scenarios():
     """name -> (proxy mode allow|deny|dead|None, configuration kind env|gs-user|gs-ph|gs-sys|None)"""
     s = {'none': (None, None)}
@@ -276,6 +299,7 @@ def scenarios():
     for where in ('user', 'sys', 'ph'):
         for m in ('allow', 'deny', 'dead'):
             s[f'gs-{where}-{m}'] = (m, f'gs-{where}')
+    s.update(P8_VARIANTS)
     return s
 
 
@@ -308,7 +332,7 @@ def main():
     parser.add_argument('--scenarios', default='')
     args = parser.parse_args()
     table = scenarios()
-    chosen = [s for s in args.scenarios.split(',') if s] or list(table)
+    chosen = [s for s in args.scenarios.split(',') if s] or [n for n in table if n not in P8_VARIANTS]  # P8 variants run only when named
     out = args.out.resolve()
     out.mkdir(parents=True, exist_ok=True)
     out.chmod(0o777)
@@ -400,6 +424,9 @@ def main():
             if kind == 'env':
                 penv = proxy_env(port)
                 curl_env = dict(penv)
+            elif name in P8_VARIANTS:
+                penv = variant_env(kind, port)
+                curl_env = {k: v for k, v in penv.items() if k.islower()} or dict(penv)
             elif where:
                 sc['dconf'] = write_dconf_proxy(port, where, target_app, args.nonportable)
                 penv = {'XDG_CURRENT_DESKTOP': 'GNOME'}  # a GNOME session; NO proxy variable
@@ -512,12 +539,17 @@ def main():
             # ---- functional requirements (evaluated only with --require; recorded either way)
             visible = not (where == 'user' and not args.nonportable)  # portable HOME hides the real user's dconf (F7): an observation there, not a requirement
             sc['configurationVisibleToGui'] = visible
-            applies = kind is not None and visible and (kind != 'env' or args.require_env)
+            applies = kind is not None and visible and (not kind.startswith('env') or args.require_env) and (name not in P8_VARIANTS or name in REQUIRED_VARIANTS)
             sc['requirementApplies'] = applies
             if applies:
-                expected = {'allow': 'proxied', 'deny': 'refused', 'dead': 'failed'}[mode]
+                expected = REQUIRED_VARIANTS.get(name) or {'allow': 'proxied', 'deny': 'refused', 'dead': 'failed'}[mode]
                 req(f'[{name}] REQUIRE the real WebView request is {expected} (route observed: {sc["webviewRoute"]})', sc['webviewRoute'] == expected, sc['webview'])
-                if mode in ('deny', 'dead'):
+                if name in P8_VARIANTS:
+                    seen = sc['guiEnvironmentSeen']
+                    user_np = [e for e in penv.get('NO_PROXY', '').split(',') if e]
+                    got = seen.get('NO_PROXY', '') + ',' + seen.get('no_proxy', '')
+                    req(f'[{name}] REQUIRE the GUI process environment keeps the user NO_PROXY entries and gains the loopback names', all(x in got for x in user_np + ['127.0.0.1', 'localhost', '::1']), seen)
+                if mode in ('deny', 'dead') and name not in P8_VARIANTS:
                     req(f'[{name}] REQUIRE no silent direct escape: the target saw no request from the WebView', sc['webview']['targetSaw'] == 0, sc['webview'])
                 req(f'[{name}] REQUIRE the local daemon stays usable: the WebView holds loopback connections to the daemon, the proxy log names no loopback target of the product, and the page itself '
                     f'fetched the daemon over HTTP and received a WebSocket frame', len(web_to_daemon) >= 1 and not leaked and page_http_ok and page_ws_ok,

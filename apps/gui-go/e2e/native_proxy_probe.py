@@ -95,7 +95,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--appimage', type=Path, required=True)
     ap.add_argument('--out', type=Path, required=True)
-    ap.add_argument('--scenario', default='gnome-empty', choices=('env', 'gnome-empty', 'gnome-ignore'))
+    ap.add_argument('--scenario', default='gnome-empty', choices=('env', 'gnome-empty', 'gnome-ignore', 'none'))
     ap.add_argument('--seconds', type=int, default=25)
     args = ap.parse_args()
     out = args.out.resolve()
@@ -135,7 +135,9 @@ def main():
     made = subprocess.run([str(app), '--appimage-portable-home'], env=env, capture_output=True, text=True, timeout=60)
     home = Path(str(app) + '.home')
     check('portable home created next to the task-owned copy', made.returncode == 0 and home.is_dir(), {'rc': made.returncode, 'err': made.stderr[-200:]})
-    if args.scenario == 'env':
+    if args.scenario == 'none':
+        pass  # control: no proxy configured anywhere
+    elif args.scenario == 'env':
         for k in ('http_proxy', 'https_proxy', 'HTTP_PROXY', 'HTTPS_PROXY'):
             env[k] = f'http://127.0.0.1:{sink.port}'
     else:
@@ -193,6 +195,37 @@ def main():
         except OSError:
             pass
         result['guiGioModuleDir'] = gui_env.get('GIO_MODULE_DIR')
+        # which display protocol the GUI really speaks: the Wails GTK plugin forces GDK_BACKEND=x11, so on a Wayland session this is XWayland (X11 backend), NOT the native Wayland backend
+        result['guiGdkBackendEnv'] = gui_env.get('GDK_BACKEND')
+        unix = subprocess.run(['ss', '-xp'], capture_output=True, text=True).stdout.splitlines()
+        mine = [l for l in unix if f'pid={proc.pid},' in l]
+        result['guiDisplaySockets'] = {'x11': sum('.X11-unix' in l for l in mine), 'wayland': sum('wayland-' in l for l in mine)}
+        result['displayBackend'] = 'XWayland (X11 backend)' if result['guiDisplaySockets']['x11'] else ('native Wayland' if result['guiDisplaySockets']['wayland'] else 'unknown')
+        check('record the display backend of the GUI (X11 sockets vs Wayland sockets; not a pass for native Wayland)', True, {**result['guiDisplaySockets'], 'GDK_BACKEND': result['guiGdkBackendEnv']})
+        # an EXTERNAL request of the real WebView (a name that can only be reached through a proxy): the page's own fetch, through the E2E control channel
+        tag, host = 'ext', f"native-probe-{int(time.time())}.invalid"
+        js = "(function(){fetch('https://%s/x',{mode:'no-cors',cache:'no-store'}).catch(function(){})})()" % host
+        step = None
+        try:
+            (out / 'gui.control').open('a').write(f'panel-js {tag} {js}\n')
+            dl = time.monotonic() + 30
+            while time.monotonic() < dl and step is None:
+                for ln in (out / 'gui.jsonl').read_text().splitlines():
+                    try:
+                        row = json.loads(ln)
+                    except ValueError:
+                        continue
+                    if row.get('step') == f'panel-js-{tag}':
+                        step = row
+                time.sleep(.3)
+        except OSError:
+            pass
+        time.sleep(3)
+        seen = [l for l in sink.lines if host in l]
+        result['externalRequest'] = {'host': host, 'controlAck': step is not None, 'sinkLines': seen}
+        check('the page ran the external request (control acknowledged)', step is not None, step)
+        expect_proxied = args.scenario != 'none'
+        check(f'the external request of the WebView {"went to" if expect_proxied else "did NOT go to"} the configured proxy (sink CONNECT/GET names the host)', bool(seen) == expect_proxied, seen)
     # normal exit through SIGTERM to the task-owned GUI only
     proc.terminate()
     try:

@@ -477,7 +477,7 @@ jobs:
             echo "signed=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: download uniclipd and quick panel sidecar
+      - name: download uniclipd sidecar
         uses: actions/download-artifact@v6
         with:
           name: sidecar-${{ matrix.target }}${{ steps.build-mode.outputs.suffix }}

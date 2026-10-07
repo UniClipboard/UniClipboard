@@ -228,6 +228,16 @@ RED（保留）：`stage4/pac-nohelper-portable` 与 `stage4/pac-nohelper-nonpor
 
 失败方式与验收：(1) 宿主有服务时我们误启动 → 抢占；验收：宿主有助手的运行里随包助手进程数为 0；(2) 无服务无总线 → 不启动且不崩溃；(3) 无宿主助手、有会话总线（便携自动启动与非便携）→ `gs-sys-pac-nohelper` 外部 proxied；(4) 回环仍直连（PAC 把回环也指向代理）；(5) GUI 退出后无 `glib-pacrunner` 残留；(6) 宿主 helper 子进程（17c10/11）不带出助手的环境。
 
+#### 审阅后修订：PAC 助手的启动预算、所有权与生命周期（修订契约，写于改代码之前）
+
+对 `838e56cd5` 的 `pacrunner_linux.go` 的审阅发现四个边界问题，修订如下（首版的 stage5 运行继续，不改动；修订后清洁重建同一个包再实证）：
+
+1. **无上限的总线调用**：首版的 `ListActivatableNames` / `NameHasOwner` 用无上下文的 `Call`，2 秒只包住外层的睡眠循环；一次卡住的调用可以无限阻塞 `init`，即无限阻塞启动。修订：连接用 `dbus.ConnectSessionBus(dbus.WithContext(ctx))`，每次调用用 `CallWithContext`，整条启动路径共享一个总预算（3 秒）；`init` 只等「就绪或放弃」信号，超过预算就记录并继续启动，PAC 照旧明确失败。证据不是日志里的 2 秒，而是真实 E2E：总线地址指向不存在的路径（`gs-sys-pac-nobus`）时 GUI 启动延迟有界。
+2. **已有所有者但不可激活**：首版只看可激活列表。修订：启动时若总线上已有该名字的所有者（宿主服务、或其他实例的助手、或手动起的助手），**不启动** 任何进程、不抢占（不带替换标志）；之后通过 `NameOwnerChanged` 监视该名字，所有者消失且宿主不可激活时再启动随包助手（接任）。验证：`gs-sys-pac-owned`（非便携，手动起一个所有者，宿主服务文件在该容器内改名使其不可激活）：随包助手数为 0 且 PAC 成功；杀掉所有者后随包助手接任且 PAC 恢复。
+3. **助手崩溃或被杀后的恢复**：同一个监视在名字所有者变空时重启随包助手，限频（60 秒内最多 5 次，超出则记录并放弃），GNOME 解析器按名字（不是唯一连接名）调用，新所有者出现后无需重连。验证：`gs-sys-pac-kill`：运行中 `kill -9` 助手，随包助手被重新拉起，之后的新 WebView 请求 proxied。
+4. **`Pdeathsig` 绑定的是创建子进程的线程，不是进程**：首版注释「init 跑在主线程，主线程与进程同寿」是假设。修订：所有子进程都由一个 `runtime.LockOSThread()` 且永不解锁、永不退出的监视 goroutine 创建，让创建线程的寿命等于进程寿命；注释据此改写。验证：GUI 正常退出（`exit`）与强制终止（`SIGKILL`）后，随包助手进程都在 8 秒内消失；这是实测，不是源码推断。
+5. **没有会话总线**：连接失败 → 记录并放弃，PAC 明确失败（外部请求 failed，不直连，GUI 其余功能不受影响）。这不是「自包含的 PAC 支持」：GNOME 的 PAC 路径本身需要会话总线，真实桌面总有；无总线时不支持，并按此记录。
+
 ### 回环边界与 live maps（`stage4/boundary-portable`，退出码 0，仅便携，分项结果）
 
 场景 `gs-sys-allow`、`gs-sys-ignore`、`gs-sys-empty`，28 项观测，15/15 要求。`gs-sys-allow`（GNOME 默认 ignore-hosts）与 `gs-sys-empty`（空 ignore-hosts）里，真实 WebView 访问三个各自独立的真实监听器：`127.0.0.2`（`127.0.0.0/8` 中不是 `127.0.0.1` 的成员）、`localhost`、`::1`，监听器都直接收到请求（各 1 次），代理日志没有点名；同一场景里外部请求仍 proxied，伪装主机 `localhost.webview-probe.test` 在 `gs-sys-empty` 里 proxied；`/proc` maps 证明 WebKitNetworkProcess 已映射 `libgiouniclipboardloopback.so`。边界：这是便携模式的分项，不是完整矩阵，也没有非便携和 Fedora；宿主 helper 没有带出该模块、异步/取消/错误传播、无下游解析器的回退仍未验证。

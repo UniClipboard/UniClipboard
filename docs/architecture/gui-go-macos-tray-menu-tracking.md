@@ -56,6 +56,10 @@ Menu.Update -> macosMenu.update -> InvokeSync(main thread):
 - **ctlB-visible（保留，条件无效）**：`UC_GUI_GO_E2E_VISIBLE=1` 已传入 GUI 进程环境（以进程环境核实），但该开关在代码中只控制 `quiet()`（不扭曲真实指针），**不控制窗口显示**；26 条原生状态没有一次 `visible=true`，心跳 `visibilityState` 全为 `hidden`。因此 B **不是** 可见条件，不能据此归因或排除 App Nap/页面节流；它只证明“该开关不是可见性控制”。
 - **修正（失败模型 R4 的测试控制）**：可见条件改为运行器经 E2E 控制文件触发窗口显示（只 `Show`，不 `Focus`），并要求原生状态实际出现 `visible=true` 才算条件成立；同时记录触发前后系统最前台应用，核对是否抢占了前台。条件未成立（无 `visible=true`）则对照作废，原样保留日志。
 
+- **ctlC-shown（保留）与“可见”的实际含义**：`show-main m1` 被控制文件消费、进入宿主并返回（`show-main-m1`，`ok=false`，`visible=false`，`focused=false`），调用前后系统最前台应用相同（`lsappinfo front`，`ASN:0x0-0x1001`）。源码核对（固定 Wails）：`Window.Show()` = `InvokeSync(makeKeyAndOrderFront)`；`IsVisible()` 读的是 `NSWindow.occlusionState & Visible`（被遮挡状态），不是“已 orderFront”。E2E 默认的安静模式（`quiet()`）把 app 设为 Accessory 策略且窗口建在 (-20000, -20000) 屏外，所以 C 里 `Show()` 是在屏外执行的，`visible=false` 意味着 **“可见条件未成立”**（窗口被遮挡/在屏外）。它 **不能** 说明窗口可见性与调用链无因果；三次都隐藏的条件（A、B、C）也排除不了可见性的影响。B（`VISIBLE=1`）关闭了安静模式但从未 `Show`；C 执行了 `Show` 但仍在安静模式。**没有任何一次对照同时满足“窗口在屏幕上且被 orderFront”**，需要 `--visible --show-main` 两者同时（该条件会在测试者桌面上显示窗口，且需验证原生 `visible=true`）。
+- **心跳模式（仅为观察）**：A（n=4）、B、C（n=5）的驱动 JS 心跳都在 JS 时间约 6.5 秒、`tray-language-quiet` 返回前后停止；C 中心跳停止后，由宿主调用驱动的步骤（`call-returned`、`tray-menu-initial`、`tray-device-listed`）仍继续出现。这只是模式，**不是根因**；三次运行不足以推断间歇性的根因。
+- **下一步最小可检验模型（R5）**：窗口同时在屏幕上且 orderFront（原生 `visible=true`，且条件在长跑前即时核实）后，若心跳仍在约 6.5 秒停止，只证明“使窗口可见不足以消除本次停顿”，**不能** 断言与窗口可见性无关（可能有其他共同原因、多因素、或显示后历史状态）；若心跳持续，只支持“与可见性相关”，仍未排除其他变量。无论结果，托盘锁与 NSMenu 跟踪的验收不依赖 WebView 驱动。
+
 ## 验收契约
 
 必须保留 17c14 的行为：设备子菜单随 10 秒刷新与 `devices://sync-changed` 更新、条目动作、同步开关标签、托盘生命周期。不得：隐藏日志、删除刷新、删除托盘功能、降低锁保证、用 compile/vet 或脚本直接调用代替原生证据。

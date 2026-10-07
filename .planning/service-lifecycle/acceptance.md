@@ -3,9 +3,9 @@
 2026-10-07 在 main 的 Go/Wails 宿主退役改动上重新构建并验收。
 
 - main 基线：`8306fde45f150842b75706125b31b029a0a9ae25`（PR #1912）。
-- 受验代码提交：`b369f5328ae7f6ca13a52f310636b453685dc455`。
+- 受验代码提交：`5e887757b3319ed0d49a8e2d9629e187842d62ca`。
 - Engine 依赖沿用该 main 的固定 revision `e86f94cebcec46c1b3a6f49f88cce7a833777640`，本 PR 不改引擎版本。
-- uniclip SHA-256：`9603dd01d0b273bb1e2405c96f82c57ea3821cb46aab61eb5ca697e1cf350ccb`。
+- uniclip SHA-256：`e046acbf292a121673134d5526284ae632b110192a9897fb43da7e043aaf4d25`。
 - uniclipd SHA-256：`c7c448d8953cc8934826e1dea6eab498eafbcb83b9e660943c4a3539feca6624`。
 - 使用原工作树和原分支；rebase 保留 CLI 业务提交，删除只修改已退休 tao 的旧修复提交。
 - 未恢复 Tauri、tao、旧 CI 或宿主构建脚本；退休门禁通过。
@@ -17,7 +17,7 @@ macOS arm64，真实 daemon 和 GUI 用户域 launchd；隔离 HOME 含空格，
 
 - 前台 SIGTERM/SIGINT 正常退出；原子锁占用不会驱逐已有 daemon。
 - 安装、重复启动、状态、重启、停止、重复停止、停止后重启、HTTP 超时、profile 隔离。
-- 拒绝运行中选项变更、生产工作树服务、便携服务和无效 AppImage 便携请求。
+- 拒绝运行中选项变更、生产工作树服务、便携服务、无效 AppImage 便携请求及符号链接临时目录内的生产可执行文件。
 - 旧 start 仍为兼容后台启动并给弃用警告，后台冷启动/停止通过。
 - 退出码夹具返回 37 且标准错误可见；这是进程边界验收，不冒充真实 daemon 崩溃。
 - 清理后 launchd job 未加载、服务定义移除、前台进程全部退出；独立 ps 检查确认四个本次服务/后台 PID 均退出。

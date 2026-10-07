@@ -48,7 +48,8 @@ class Dante:
         self.log.chmod(0o666)
         verdict = 'block' if block else 'pass'
         conf = [f'logoutput: {self.log}', f'internal: 127.0.0.1 port = {self.port}', 'external: eth0', 'socksmethod: none', 'clientmethod: none', 'user.privileged: root', 'user.unprivileged: nobody',
-                'client pass { from: 0.0.0.0/0 to: 0.0.0.0/0 log: connect error }', f'socks {verdict} {{ from: 0.0.0.0/0 to: 0.0.0.0/0 command: connect log: connect error }}']
+                'client pass {', ' from: 0.0.0.0/0 to: 0.0.0.0/0', ' log: connect error', '}',
+                f'socks {verdict} {{', ' from: 0.0.0.0/0 to: 0.0.0.0/0', ' command: connect', ' log: connect error', '}']  # multi-line blocks: the one-line form is a syntax error in Dante 1.4; danted runs in the foreground without -D
         (self.dir / 'danted.conf').write_text('\n'.join(conf) + '\n')
         self.proc = subprocess.Popen(['danted', '-f', str(self.dir / 'danted.conf')], stdout=(self.dir / 'stdout.log').open('w'), stderr=subprocess.STDOUT)
         for _ in range(50):

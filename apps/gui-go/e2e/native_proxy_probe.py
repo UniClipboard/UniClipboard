@@ -200,7 +200,8 @@ def main():
         unix = subprocess.run(['ss', '-xp'], capture_output=True, text=True).stdout.splitlines()
         mine = [l for l in unix if f'pid={proc.pid},' in l]
         result['guiDisplaySockets'] = {'x11': sum('.X11-unix' in l for l in mine), 'wayland': sum('wayland-' in l for l in mine)}
-        result['displayBackend'] = 'XWayland (X11 backend)' if result['guiDisplaySockets']['x11'] else ('native Wayland' if result['guiDisplaySockets']['wayland'] else 'unknown')
+        result['displayBackend'] = ('XWayland (X11 backend; GDK_BACKEND=x11 in the GUI environment)' if result['guiGdkBackendEnv'] == 'x11' else 'XWayland (X11 backend)' if result['guiDisplaySockets']['x11'] else
+                                    'native Wayland' if result['guiDisplaySockets']['wayland'] else 'unknown (neither GDK_BACKEND nor display sockets observable)')
         check('record the display backend of the GUI (X11 sockets vs Wayland sockets; not a pass for native Wayland)', True, {**result['guiDisplaySockets'], 'GDK_BACKEND': result['guiGdkBackendEnv']})
         # an EXTERNAL request of the real WebView (a name that can only be reached through a proxy): the page's own fetch, through the E2E control channel
         tag, host = 'ext', f"native-probe-{int(time.time())}.invalid"

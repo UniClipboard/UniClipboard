@@ -376,7 +376,11 @@ GNOME_VARIANTS = {  # GNOME `ignore-hosts` (system dconf database), allow proxy
     'gs-sys-auth': ('allow', 'gs-sys'),     # GNOME use-authentication + authentication-user/-password
     'gs-sys-auth-bad': ('allow', 'gs-sys'), # wrong stored password: rejected, never direct
     'gs-sys-pac': ('allow', 'gs-sys'),      # mode 'auto' + autoconfig-url: a PAC that proxies every URI; external proxied, loopback still direct (guard)
-    'gs-sys-pac-nohelper': ('allow', 'gs-sys'),  # the same PAC on a host WITHOUT glib-pacrunner (renamed for this scenario only, inside the container): does the package bring its own PAC runtime?
+    'gs-sys-pac-nohelper': ('allow', 'gs-sys'),  # the same PAC on a host where the PAC service is NOT INSTALLED (binary and D-Bus service file renamed for this scenario only, inside the container)
+    'gs-sys-pac-brokenservice': ('allow', 'gs-sys'),  # the service name IS listed but its program is missing (only the binary renamed): activation fails, the bundled helper must take over
+    'gs-sys-pac-kill': ('allow', 'gs-sys'),  # no host service; the bundled helper is killed mid-run and must come back; the GUI is finally killed with SIGKILL and must leave no helper
+    'gs-sys-pac-owned': ('allow', 'gs-sys'),  # non-portable: a host helper already owns the name (service file not activatable): nothing is started or replaced; when the owner is killed the bundled helper takes over
+    'gs-sys-pac-nobus': ('allow', 'gs-sys'),  # the session bus address points nowhere: PAC fails explicitly (never direct), start-up stays bounded, nothing is started
     'gs-sys-empty': ('allow', 'gs-sys'),    # ignore-hosts = @as []: GNOME then has NO loopback bypass; the local daemon must still work (judged like every other scenario)
 }
 GNOME_IGNORE = {'gs-sys-ignore': ['localhost', '127.0.0.0/8', '::1', WV_HOST], 'gs-sys-empty': []}
@@ -385,10 +389,14 @@ REQUIRED_VARIANTS['gs-sys-ignore'] = 'direct'
 REQUIRED_VARIANTS['gs-sys-empty'] = 'proxied'
 REQUIRED_VARIANTS['gs-sys-pac'] = 'proxied'
 REQUIRED_VARIANTS['gs-sys-pac-nohelper'] = 'proxied'
-PAC_SCENARIOS = {'gs-sys-pac', 'gs-sys-pac-nohelper'}
+REQUIRED_VARIANTS.update({'gs-sys-pac-brokenservice': 'proxied', 'gs-sys-pac-kill': 'proxied', 'gs-sys-pac-owned': 'proxied', 'gs-sys-pac-nobus': 'failed'})
+PAC_SCENARIOS = {'gs-sys-pac', 'gs-sys-pac-nohelper', 'gs-sys-pac-brokenservice', 'gs-sys-pac-kill', 'gs-sys-pac-owned', 'gs-sys-pac-nobus'}
 HOST_PACRUNNER = Path('/usr/libexec/glib-pacrunner')
+HOST_PACSERVICE = Path('/usr/share/dbus-1/services/org.gtk.GLib.PACRunner.service')
+RENAME_BINARY = {'gs-sys-pac-nohelper', 'gs-sys-pac-brokenservice', 'gs-sys-pac-kill'}
+RENAME_SERVICE = {'gs-sys-pac-nohelper', 'gs-sys-pac-kill', 'gs-sys-pac-owned'}
 LOOKALIKE_CHECKED = {'gs-sys-empty'}
-LOOPBACK_BOUNDARY = {'gs-sys-allow', 'gs-sys-empty', 'gs-sys-pac', 'gs-sys-pac-nohelper'}
+LOOPBACK_BOUNDARY = {'gs-sys-allow', 'gs-sys-empty', 'gs-sys-pac', 'gs-sys-pac-nohelper', 'gs-sys-pac-brokenservice', 'gs-sys-pac-kill', 'gs-sys-pac-owned', 'gs-sys-pac-nobus'}
 
 
 def scenarios():
@@ -601,10 +609,13 @@ def main():
             mode, kind = table[name]
             sc = r['scenarios'][name] = {'mode': mode, 'kind': kind}
             where = kind.split('-', 1)[1] if kind and kind.startswith('gs-') else None
+            if name == 'gs-sys-pac-owned' and not args.nonportable:
+                sc['skipped'] = 'a host-owned PAC helper on a known session bus needs the non-portable mode (the portable bus is auto-launched and its address is not known to the runner)'
+                continue
             if where == 'ph' and args.nonportable:
                 sc['skipped'] = 'the portable-HOME causal control only exists in portable mode'
                 continue
-            proxy, penv, curl_env = None, {}, {}
+            proxy, penv, curl_env, owned_helper = None, {}, {}, None
             if mode in ('allow', 'deny'):
                 proxy = Proxy(name, mode, AUTH_PROXY.get(name))
                 proxies.append(proxy)
@@ -623,13 +634,21 @@ def main():
                 curl_env = {k: v for k, v in penv.items() if k.islower()} or dict(penv)
             elif where:
                 pac = PacServer(port) if name in PAC_SCENARIOS else None
-                if name == 'gs-sys-pac-nohelper' and HOST_PACRUNNER.exists():
+                if name in RENAME_BINARY and HOST_PACRUNNER.exists():
                     HOST_PACRUNNER.rename(HOST_PACRUNNER.with_name('glib-pacrunner.off'))  # restored in the finally block
+                if name in RENAME_SERVICE and HOST_PACSERVICE.exists():
+                    HOST_PACSERVICE.rename(HOST_PACSERVICE.with_name(HOST_PACSERVICE.name + '.off'))
+                if name == 'gs-sys-pac-owned':  # a host helper that already owns the name on the session bus (not activatable: its service file is renamed above)
+                    owned_helper = subprocess.Popen([str(HOST_PACRUNNER)], env=dict(env, PATH=os.environ['PATH']), user=USER, group=USER, extra_groups=[],
+                                                    stdout=(out / 'owned-pacrunner.log').open('w'), stderr=subprocess.STDOUT)
+                    time.sleep(2)
                 if pac:
                     pacs.append(pac)
                 sc['dconf'] = write_dconf_proxy(port, where, target_app, args.nonportable, GNOME_IGNORE.get(name), f'http://127.0.0.1:{pac.port}/proxy.pac' if pac else None,
                                               (AUTH_USER, AUTH_WRONG if name in AUTH_BAD else AUTH_PASS) if name in AUTH_PROXY else None)
                 penv = {'XDG_CURRENT_DESKTOP': 'GNOME'}  # a GNOME session; NO proxy variable
+                if name == 'gs-sys-pac-nobus':
+                    penv['DBUS_SESSION_BUS_ADDRESS'] = 'unix:path=/nonexistent/uc-no-session-bus'
                 cli_out = sc['dconf']['hostViewWithRealHome']['proxyCli'] if where == 'user' else sc['dconf']['hostViewWithGuiHome']['proxyCli']
                 curl_env = {'https_proxy': cli_out, 'http_proxy': cli_out} if cli_out.startswith('http') else {}  # curl cannot read gsettings: it gets the host libproxy CLI's answer
             sc['proxyPort'], sc['guiEnvironment'] = port, penv
@@ -907,13 +926,70 @@ def main():
                 if args.require:
                     if name == 'gs-sys-pac':
                         req(f'[{name}] REQUIRE the host provides the PAC service: the bundled glib-pacrunner is NOT started (it never replaces a host service)', not bundled_pac, sc['pacrunnerProcesses'])
-                    elif name == 'gs-sys-pac-nohelper':
-                        req(f'[{name}] REQUIRE without a host PAC service the bundled glib-pacrunner (from the AppImage mount) is running', len(bundled_pac) >= 1, sc['pacrunnerProcesses'])
+                    elif name in ('gs-sys-pac-nohelper', 'gs-sys-pac-brokenservice', 'gs-sys-pac-kill'):
+                        req(f'[{name}] REQUIRE without a working host PAC service the bundled glib-pacrunner (from the AppImage mount) is running', len(bundled_pac) >= 1, sc['pacrunnerProcesses'])
+                    elif name in ('gs-sys-pac-owned', 'gs-sys-pac-nobus'):
+                        req(f'[{name}] REQUIRE the bundled glib-pacrunner is NOT started ({"an owner exists" if name.endswith("owned") else "there is no session bus"})', not bundled_pac, sc['pacrunnerProcesses'])
+                def bundled_now():
+                    return [pid for pid, (exe, comm) in procs().items() if exe.endswith('glib-pacrunner') and mount_p and exe.startswith(mount_p)]
+
+                def pac_wv(tag):
+                    nonce_t = secrets.token_hex(6)
+                    n_t = len(proxy.lines())
+                    gui.ctl(f'panel-js {name}-{tag} {reports.script(f"ext-{name}-{tag}", f"https://{WV_HOST}/webview-{tag}-{nonce_t}")}', f'panel-js-{name}-{tag}')
+                    reports.wait(f'ext-{name}-{tag}-ok', 40) or reports.wait(f'ext-{name}-{tag}-err', 25)
+                    time.sleep(1)
+                    return classify(WV_HOST, nonce_t, proxy.lines()[n_t:], target)
+                if args.require and name == 'gs-sys-pac-owned' and owned_helper:
+                    req(f'[{name}] REQUIRE the pre-existing owner is still the owner (alive, not replaced)', owned_helper.poll() is None, owned_helper.pid)
+                    owned_helper.kill()
+                    owned_helper.wait()
+                    dl = time.monotonic() + 10
+                    while not bundled_now() and time.monotonic() < dl:
+                        time.sleep(.3)
+                    req(f'[{name}] REQUIRE after the owner is killed the bundled helper takes over', len(bundled_now()) >= 1, bundled_now())
+                    sc['afterTakeover'] = pac_wv('after-takeover')
+                    req(f'[{name}] REQUIRE PAC works again after the takeover (proxied)', sc['afterTakeover']['route'] == 'proxied', sc['afterTakeover'])
+                    bundled_pac = bundled_now()
+                if args.require and name == 'gs-sys-pac-kill':
+                    victims = bundled_now()
+                    for v in victims:
+                        os.kill(v, 9)
+                    dl = time.monotonic() + 10
+                    while (not bundled_now() or set(bundled_now()) & set(victims)) and time.monotonic() < dl:
+                        time.sleep(.3)
+                    revived = bundled_now()
+                    req(f'[{name}] REQUIRE a killed bundled helper is restarted (new pid)', bool(revived) and not set(revived) & set(victims), {'killed': victims, 'now': revived})
+                    sc['afterKill'] = pac_wv('after-kill')
+                    req(f'[{name}] REQUIRE PAC works after the helper was killed (proxied)', sc['afterKill']['route'] == 'proxied', sc['afterKill'])
+                    bundled_pac = bundled_now()
             if name in PAC_SCENARIOS:
                 sc['pacFetches'] = len(pacs[-1].fetches)
                 chk(f'[{name}] the PAC script was fetched from the controlled server (the configuration was read)', len(pacs[-1].fetches) >= 1, pacs[-1].fetches)
             sc['_bundledPac'] = bundled_pac
             sc['completed'] = True  # every probe and requirement of this scenario ran (an exception before this line leaves it unset)
+            if name == 'gs-sys-pac-kill':  # forced termination of the GUI itself: no graceful exit path, the helper must still go
+                os.kill(gui.proc.pid, 9)
+                gui.proc.wait()
+                dl = time.monotonic() + 10
+                while any(pid_alive(x) for x in bundled_pac) and time.monotonic() < dl:
+                    time.sleep(.3)
+                forced_left = [x for x in bundled_pac if pid_alive(x)]
+                sc['bundledPacLeftoverAfterSigkill'] = forced_left
+                if args.require:
+                    req(f'[{name}] REQUIRE after SIGKILL of the GUI no bundled glib-pacrunner is left', not forced_left, forced_left)
+                for c_ in root.rglob('daemon.conn'):
+                    try:
+                        os.kill(json.loads(c_.read_text())['pid'], 15)
+                    except (OSError, ValueError, KeyError):
+                        pass
+                sc['_bundledPac'] = []
+                launches.clear()
+                if where:
+                    clean_dconf(target_app)
+                if proxy:
+                    proxy.stop()
+                continue
             stop(gui, conn)
             if sc.get('_bundledPac') is not None and sc['_bundledPac']:
                 gone_deadline = time.monotonic() + 8
@@ -952,6 +1028,9 @@ def main():
         off = HOST_PACRUNNER.with_name('glib-pacrunner.off')
         if off.exists():
             off.rename(HOST_PACRUNNER)
+        svc_off = HOST_PACSERVICE.with_name(HOST_PACSERVICE.name + '.off')
+        if svc_off.exists():
+            svc_off.rename(HOST_PACSERVICE)
         for rp in resets + pacs:
             rp.stop()
         for p in proxies:

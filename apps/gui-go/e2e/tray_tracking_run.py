@@ -146,15 +146,24 @@ def collapse_overflow(pid, out, label):
     (out / f'ax-open-{label}-collapse.json').write_text(json.dumps(record, indent=1, ensure_ascii=False))
 
 
-def dismiss_menu(pid):
-    """Close the open menu: AXCancel first (it reports success but did not close a tracked status menu in min17), then, only if the menu is
-    still readable, one Escape; returns what happened and whether the menu is gone."""
+def dismiss_menu(pid, out=None, tag='d'):
+    """Close the open menu: AXCancel first (it reports success but did not close a tracked status menu in min17/min18), then, only if the menu
+    is still readable AND this pid's menu is the one open, one Escape. Records a 6 s timeline of AX reads after the Escape, the system's frontmost
+    application when it was sent, and a main-thread sample around it (is the main thread still inside NSMenuTrackingSession?)."""
     log = {'axCancel': ax('cancel', str(pid))}
     time.sleep(1)
     if ax('read', str(pid)).get('ok'):
         log['stillOpenAfterAxCancel'] = True
+        log['frontmostBeforeEscape'] = subprocess.run(['lsappinfo', 'front'], capture_output=True, text=True).stdout.strip()
+        sampler = subprocess.Popen(['sample', str(pid), '3', '10', '-file', str((out or Path('.')) / f'dismiss-{tag}-sample.txt')], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        time.sleep(.5)
         log['escape'] = ax('escape', '0')
-        time.sleep(1)
+        timeline, t0 = [], time.time()
+        while time.time() - t0 < 6:
+            timeline.append([round(time.time() - t0, 2), bool(ax('read', str(pid)).get('ok'))])
+            time.sleep(.25)
+        sampler.wait(timeout=30)
+        log['readableTimelineAfterEscape'] = timeline
     gone = not ax('read', str(pid)).get('ok')
     log['gone'] = gone
     return gone, log
@@ -281,6 +290,8 @@ def main():
         'daemonSha256': sha(ROOT / 'target/debug/uniclipd'), 'cliSha256': sha(ROOT / 'target/gui-go/uniclip'),
         'hostIdleSeconds': next((int(l.split('=')[-1].strip()) / 1e9 for l in subprocess.run(['ioreg', '-c', 'IOHIDSystem'], capture_output=True, text=True).stdout.splitlines() if 'HIDIdleTime' in l), None),
         'pmsetSleep': [l.strip() for l in subprocess.run(['pmset', '-g'], capture_output=True, text=True).stdout.splitlines() if 'sleep' in l.lower()],
+        'stateMutated': args.open_with == 'control' and not args.probe_bar,
+        'stateMutatedWhy': 'the control opener fills the private SystemTray.menu field by reflection (e2e diagnostic experiment); the rightclick opener does not' if args.open_with == 'control' else None,
         'daemonOrigin': 'target/debug/uniclipd of this worktree (cargo build --locked -p uc-daemon, debug); not independently attested'}, indent=2) + '\n')
 
     def check(name, ok, detail=None):
@@ -389,7 +400,7 @@ def main():
             raise RuntimeError('the menu could not be read after open; later steps need it')
         root = first['menu']
         if args.minimal:
-            gone, dismissal = dismiss_menu(proc.pid)
+            gone, dismissal = dismiss_menu(proc.pid, out, 'minimal')
             check('M the open menu was dismissed (AXCancel, then Escape if it stayed) and is gone', gone, dismissal)
             check('M the root menu read while open is the expected English menu', titles(root)[1:] == EN, titles(root))
             (out / 'ax-minimal.json').write_text(json.dumps({'first': first}, ensure_ascii=False, indent=1))

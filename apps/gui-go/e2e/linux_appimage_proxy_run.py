@@ -48,6 +48,8 @@ RENDEZVOUS_HOST = 'rendezvous.uniclipboard.app'  # Engine d4dd324a (uc-engine 1.
 # In this INTERNAL network the rendezvous name is pointed (/etc/hosts, additional control) at the controlled target: a direct connection of the daemon is then visible there.
 UPDATE_HOST = 'update-feed.test'  # P5: the Go updater's own hostname (its feed), distinct from the WebView's and curl's
 UPDATE_PATH = '/feed-p5.json'
+FEED_INPUTS = Path('/out/feed-inputs')  # pubkey.b64 + good.sig.b64 of the 17c5 update feed, copied next to the output before the run (the E2E build ships an EMPTY updater key: -X main.updaterPublicKey=)
+FEED_SIGNATURE = (FEED_INPUTS / 'good.sig.b64').read_text().strip() if (FEED_INPUTS / 'good.sig.b64').exists() else 'missing-feed-inputs'
 HOSTS = (TARGET_NAME, WV_HOST, CURL_HOST, RENDEZVOUS_HOST, UPDATE_HOST)
 LOOPBACK = re.compile(r'(127\.\d+\.\d+\.\d+|localhost|\[?::1\]?)')
 REQ = re.compile(r'Request \(file descriptor \d+\): (\w+) (\S+)')
@@ -86,7 +88,7 @@ class Target:
             def do_GET(self):
                 if self.path == UPDATE_PATH:  # a Tauri-format feed that announces a newer version; a check never downloads (the download is the P9 isolated flow)
                     feed = {'version': '9999.0.0', 'notes': 'P5 feed probe', 'pub_date': '2026-10-06T00:00:00Z',
-                            'platforms': {PLATFORM_KEY[os.uname().machine]: {'url': f'https://{UPDATE_HOST}/never-downloaded.tar.gz', 'signature': 'cDVwcm9iZQ=='}}}
+                            'platforms': {PLATFORM_KEY[os.uname().machine]: {'url': f'https://{UPDATE_HOST}/never-downloaded.tar.gz', 'signature': FEED_SIGNATURE}}}
                     self.answer(200, json.dumps(feed).encode())
                 else:
                     self.answer(200, b'target-ok')
@@ -323,7 +325,8 @@ def variant_env(kind, port):
     url = f'http://127.0.0.1:{port}'
     dead = f'http://127.0.0.1:{free_port()}'
     if kind.startswith('up-'):
-        feed = {'UC_UPDATE_ENDPOINT': f'https://{UPDATE_HOST}{UPDATE_PATH}'}
+        pub = (FEED_INPUTS / 'pubkey.b64').read_text().strip() if (FEED_INPUTS / 'pubkey.b64').exists() else ''
+        feed = {'UC_UPDATE_ENDPOINT': f'https://{UPDATE_HOST}{UPDATE_PATH}', 'UC_UPDATE_PUBKEY': pub}
         if kind == 'up-none':
             return feed
         return dict(proxy_env(port), **feed, **({'no_proxy': UPDATE_HOST, 'NO_PROXY': UPDATE_HOST} if kind == 'up-bypass' else {}))

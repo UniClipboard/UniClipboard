@@ -93,6 +93,20 @@ func (d *deviceMenu) publishMenu() {
 	}
 }
 
+// entries lists the submenu's visible items in display order; the caller holds d.mu.
+func (d *deviceMenu) entries() []menuEntry {
+	var view []menuEntry
+	if d.placeholder != nil {
+		view = append(view, entryOf("", d.placeholder))
+	}
+	for _, row := range d.rows {
+		if item := d.items[row.ID]; item != nil {
+			view = append(view, entryOf(row.ID, item))
+		}
+	}
+	return view
+}
+
 func (d *deviceMenu) placeholderText() string {
 	labels := deviceSyncLabels[d.language]
 	if d.unavailable {
@@ -105,14 +119,18 @@ func (d *deviceMenu) placeholderText() string {
 func (d *deviceMenu) run(ctx context.Context) {
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
+	e2eTrayRefresh("initial")
 	d.render(d.loadRows(ctx))
 	for {
+		cause := "timer"
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
 		case <-d.refresh:
+			cause = "event"
 		}
+		e2eTrayRefresh(cause)
 		d.render(d.loadRows(ctx))
 	}
 }
@@ -168,7 +186,8 @@ func (h *HostService) memberSyncPreferences(ctx context.Context, id string) (mem
 }
 
 // render shows rows (nil means the daemon could not be read). The submenu is rebuilt only when the set of
-// devices changed; otherwise items are updated in place so an open menu does not flicker.
+// devices changed; otherwise items are updated in place, and the platform menu is republished only if a visible
+// item changed, so an open menu neither flickers nor loses an expanded submenu.
 func (d *deviceMenu) render(rows []deviceRow, completed ...string) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -176,11 +195,11 @@ func (d *deviceMenu) render(rows []deviceRow, completed ...string) {
 		delete(d.pending, id)
 	}
 	d.unavailable = rows == nil
-	same := len(rows) == len(d.rows) && len(rows) > 0
+	same := len(rows) == len(d.rows) && (len(rows) > 0 || d.placeholder != nil)
 	for i := 0; same && i < len(rows); i++ {
 		same = rows[i].ID == d.rows[i].ID
 	}
-	if !same || len(rows) == 0 {
+	if !same {
 		d.sub.Clear()
 		d.items = map[string]*application.MenuItem{}
 		d.placeholder = nil
@@ -195,6 +214,9 @@ func (d *deviceMenu) render(rows []deviceRow, completed ...string) {
 			d.items[row.ID] = item
 		}
 	} else {
+		if len(rows) == 0 {
+			d.placeholder.SetLabel(d.placeholderText())
+		}
 		for _, row := range rows {
 			item := d.items[row.ID]
 			item.SetLabel(row.Name)
@@ -237,6 +259,7 @@ func (d *deviceMenu) save(id string, enabled bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	err := d.saveDeviceSync(ctx, id, enabled)
+	e2eTrayRefresh("save")
 	if err == nil {
 		d.h.emit(devicesChangedEvent, id)
 	} else {

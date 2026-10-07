@@ -311,6 +311,17 @@ func e2eTrayPublish() func() {
 	}
 }
 
+// e2eTrayRefresh records what started one device-menu refresh: "timer" (the 10 s tick), "event" (devices://sync-changed), "save" (a
+// device item's own save) or "initial".
+func e2eTrayRefresh(cause string) {
+	_ = evidenceWriter.write(Step{Window: "tray", Step: "tray-refresh", OK: true, Detail: map[string]any{"cause": cause, "startNs": time.Now().UnixNano()}})
+}
+
+// e2eTrayPublishSkipped records a publish that was not made because the menu equals the last published one.
+func e2eTrayPublishSkipped() {
+	_ = evidenceWriter.write(Step{Window: "tray", Step: "tray-publish-skipped", OK: true, Detail: map[string]any{"startNs": time.Now().UnixNano()}})
+}
+
 // waitTrayLanguageQuiet blocks until no tray language call arrived for quietMs (at most 60 s). The frontend sets the tray language
 // from its settings effect at startup, possibly more than once; a test that pins a language earlier is overwritten by it.
 func waitTrayLanguageQuiet(quietMs int) bool {

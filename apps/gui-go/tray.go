@@ -4,6 +4,7 @@ import (
 	"context"
 	_ "embed"
 	"net/http"
+	"slices"
 	"sync"
 	"time"
 
@@ -30,6 +31,7 @@ type trayMenu struct {
 	language    string
 	syncEnabled bool
 	syncBusy    bool
+	published   []menuEntry // what the platform menu last showed, so an unchanged menu is not republished
 
 	tray                                                    *application.SystemTray
 	menu                                                    *application.Menu
@@ -63,10 +65,18 @@ func (h *HostService) initTray() {
 	// root items (labels, sync state) still while the platform reads the menu.
 	t.devices.mu.Lock() // publishMenu reads the field under this lock
 	t.devices.publish = func() {
-		defer e2eTrayPublish()() // e2e builds record when each publish started and ended; a no-op otherwise
 		t.mu.Lock()
 		defer t.mu.Unlock()
+		// Menu.Update and SystemTray.SetMenu rebuild the whole native menu, which closes an expanded submenu, so a refresh that
+		// changed nothing must not publish. The comparison is against what the last publish showed, read from the items now.
+		view := t.view()
+		if slices.Equal(view, t.published) {
+			e2eTrayPublishSkipped()
+			return
+		}
+		defer e2eTrayPublish()() // e2e builds record when each publish started and ended; a no-op otherwise
 		republishTrayMenu(t.tray, menu)
+		t.published = view
 	}
 	t.devices.mu.Unlock()
 	t.tray.OnClick(h.showMainWindow)
@@ -78,6 +88,27 @@ func (h *HostService) initTray() {
 	trayCtx, stopTray := context.WithCancel(context.Background())
 	h.stopTray = stopTray
 	go t.devices.run(trayCtx)
+}
+
+// menuEntry is the part of a menu item the user can see.
+type menuEntry struct {
+	id, label        string
+	checked, enabled bool
+}
+
+func entryOf(id string, item *application.MenuItem) menuEntry {
+	return menuEntry{id: id, label: item.Label(), checked: item.Checked(), enabled: item.Enabled()}
+}
+
+// view lists every visible item of the root and device menus; it runs with t.mu and the device menu's mu held.
+func (t *trayMenu) view() []menuEntry {
+	view := make([]menuEntry, 0, 16)
+	for _, item := range []*application.MenuItem{t.sync, t.devices.subItem, t.open, t.settings, t.checkUpdate, t.restart, t.lightweight, t.quit} {
+		if item != nil {
+			view = append(view, entryOf("", item))
+		}
+	}
+	return append(view, t.devices.entries()...)
 }
 
 func (h *HostService) showMainWindow() {

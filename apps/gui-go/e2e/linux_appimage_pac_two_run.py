@@ -51,6 +51,7 @@ def main():
     ap.add_argument('--out', type=Path, required=True)
     ap.add_argument('--appimage', type=Path, required=True)
     ap.add_argument('--manifest', type=Path)
+    ap.add_argument('--owned', action='store_true', help='ONE portable GUI on the known bus with a pre-existing non-activatable host owner; the owner is killed and the bundled helper must take over')
     ap.add_argument('--kill', action='store_true', help='the owner GUI is SIGKILLed instead of exiting normally')
     args = ap.parse_args()
     out = args.out.resolve()
@@ -78,8 +79,9 @@ def main():
         env.pop(key, None)
     run = UserRun(out, app_a, env)
     r = run.results
-    r.update({'mode': 'pac-two-gui-' + ('sigkill-owner' if args.kill else 'normal-exit-owner'), 'user': USER, 'kernelMachine': os.uname().machine,
+    r.update({'mode': 'pac-owned-portable' if args.owned else 'pac-two-gui-' + ('sigkill-owner' if args.kill else 'normal-exit-owner'), 'user': USER, 'kernelMachine': os.uname().machine,
               'scope': 'container (--internal network), Xvfb; GUI A non-portable real HOME, GUI B portable copy, ONE shared user session bus; no desktop, GPU, Wayland, native amd64'})
+    r['appimageSha256'] = base.sha256(app_a)
     r['requirements'] = []
 
     def req(name, ok, detail=None):
@@ -113,7 +115,7 @@ def main():
         made = as_user([str(app_b), '--appimage-portable-home'], env, timeout=60)
         run.check('T1 GUI B is a portable copy with its own HOME', made.returncode == 0 and Path(str(app_b) + '.home').is_dir(), made.stderr[-200:])
         # no host PAC service: the bundled helper is the only provider
-        if base.HOST_PACRUNNER.exists():
+        if base.HOST_PACRUNNER.exists() and not args.owned:  # --owned keeps the host binary: it is started below as the pre-existing owner (its service file is renamed: not activatable)
             base.HOST_PACRUNNER.rename(base.HOST_PACRUNNER.with_name('glib-pacrunner.off'))
         if base.HOST_PACSERVICE.exists():
             base.HOST_PACSERVICE.rename(base.HOST_PACSERVICE.with_name(base.HOST_PACSERVICE.name + '.off'))
@@ -122,6 +124,51 @@ def main():
         pacs.append(pac)
         sc['dconf'] = base.write_dconf_proxy(proxy.port, 'sys', app_a, True, None, f'http://127.0.0.1:{pac.port}/proxy.pac')  # system database: visible to both HOMEs
         penv = {'XDG_CURRENT_DESKTOP': 'GNOME'}
+        if args.owned:
+            owner = subprocess.Popen([str(base.HOST_PACRUNNER)], env=dict(env, PATH=os.environ['PATH']), user=USER, group=USER, extra_groups=[], stdout=(out / 'owned-pacrunner.log').open('w'), stderr=subprocess.STDOUT)
+            time.sleep(2)
+            sc['preExistingOwner'] = {'pid': owner.pid, 'exe': base.HOST_PACRUNNER.as_posix(), 'activatable': base.HOST_PACSERVICE.exists()}
+            run.check('fixture: a host PAC helper owns the name before the GUI starts and is NOT activatable (service file renamed)', owner.poll() is None and not base.HOST_PACSERVICE.exists(), sc['preExistingOwner'])
+            gui_b = run.launch('gui-b', extra_env=penv, appimage=app_b)  # PORTABLE GUI on the known bus (DBUS_SESSION_BUS_ADDRESS is in env)
+            launches.append(gui_b)
+            _, conn_b = wait_daemon(Path(str(app_b) + '.home'))
+            run.check('the portable GUI\'s real daemon started', conn_b is not None)
+            if conn_b is None:
+                raise StopScenario()
+            gui_b.step('bootstrapped', 90)
+            state = wait_panel_ready(gui_b, 'b', 90)
+            run.check('the portable GUI\'s real WebView loaded the frontend', state.get('panelReady') is True, state)
+            time.sleep(4)
+
+            def pac_gui_o(tag):
+                nonce = secrets.token_hex(6)
+                n0 = len(proxy.lines())
+                gui_b.ctl(f'panel-js owned-{tag} {reports.script(f"ext-owned-{tag}", f"https://{base.WV_HOST}/webview-{tag}-{nonce}")}', f'panel-js-owned-{tag}')
+                reports.wait(f'ext-owned-{tag}-ok', 40) or reports.wait(f'ext-owned-{tag}-err', 25)
+                time.sleep(1)
+                return base.classify(base.WV_HOST, nonce, proxy.lines()[n0:], target)
+            sc['helpersBefore'] = {str(k): v for k, v in helpers().items()}
+            req('REQUIRE the supervisor respects the existing owner: no AppImage-origin helper is started (only the pre-existing owner exists)', set(helpers()) == {owner.pid}, sc['helpersBefore'])
+            sc['beforeKill'] = pac_gui_o('before')
+            req('REQUIRE PAC works through the pre-existing owner (proxied)', sc['beforeKill']['route'] == 'proxied', sc['beforeKill'])
+            owner.kill()
+            owner.wait()
+            dl = time.monotonic() + 15
+            while not [k for k in helpers() if k != owner.pid] and time.monotonic() < dl:
+                time.sleep(.3)
+            after = {k: v for k, v in helpers().items() if k != owner.pid}
+            sc['helpersAfterOwnerKill'] = {str(k): {'exe': v, 'ppid': ppid_of(k)} for k, v in after.items()}
+            req('REQUIRE after the owner is killed the GUI\'s supervisor takes over with its own helper (parent = the GUI)', len(after) == 1 and ppid_of(next(iter(after))) == gui_b.proc.pid, sc['helpersAfterOwnerKill'])
+            sc['afterTakeover'] = pac_gui_o('after')
+            req('REQUIRE PAC works after the takeover (proxied)', sc['afterTakeover']['route'] == 'proxied', sc['afterTakeover'])
+            sc['exitCode'] = stop(gui_b, conn_b)
+            dl = time.monotonic() + 10
+            while helpers() and time.monotonic() < dl:
+                time.sleep(.3)
+            sc['helpersAfterNormalExit'] = {str(k): v for k, v in helpers().items()}
+            req('REQUIRE after the GUI\'s normal exit no AppImage-origin helper is left', not [k for k, v in helpers().items() if '/tmp/.mount_' in v], sc['helpersAfterNormalExit'])
+            sc['completed'] = True
+            raise StopScenario()
         t0 = time.monotonic()
         gui_a = run.launch('gui-a', extra_env=penv)
         launches.append(gui_a)

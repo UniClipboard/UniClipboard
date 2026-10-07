@@ -23,7 +23,7 @@ cp "$FEED_SRC/pubkey.b64" "$FEED_SRC/good.sig.b64" "$out/inputs/" && shasum -a 2
 step() { local name="$1"; shift; echo "== $name" | tee -a "$out/steps.txt"; "$@" > "$out/logs/$name.log" 2>&1; local rc=$?; echo "   rc=$rc" | tee -a "$out/steps.txt"; return $rc; }
 step daemon-sha docker run --rm --platform linux/arm64 -v uc-gui-go-linux-cache:/cache ubuntu:24.04 sh -c 'sha256sum /cache/out-release/uniclipd; head -4 /cache/out-release/build-evidence.txt'
 grep -q ea0f0bcb53e949ba94fc71e97748103e4f7136b4a354924991d686cc4d29f6c6 "$out/logs/daemon-sha.log" || { echo "daemon SHA-256 differs from the pinned release daemon" >&2; exit 1; }
-for img in uc-gui-go-linux-proxy:17c12-ubuntu uc-gui-go-linux-proxy:17c12-ubuntu-session uc-gui-go-linux-proxy:17c12-ubuntu-session-socks uc-gui-go-linux-proxy:17c12-fedora uc-gui-go-linux-proxy:17c12-fedora-session; do
+for img in uc-gui-go-linux-proxy:17c12-ubuntu uc-gui-go-linux-proxy:17c12-ubuntu-session uc-gui-go-linux-proxy:17c12-ubuntu-session-socks uc-gui-go-linux-proxy:17c12-fedora uc-gui-go-linux-proxy:17c12-fedora-session uc-gui-go-linux-proxy:17c12-fedora-session-socks; do
   docker image inspect "$img" --format '{{.Id}}' > "$out/inputs/image-$(echo "$img" | tr ':/' '__').id" || { echo "missing image $img" >&2; exit 1; }
 done
 step frontend-e2e bash -c "cd '$ROOT' && VITE_GUI_GO_E2E=1 bun --bun run --cwd apps/gui-go build" || exit 1
@@ -50,16 +50,16 @@ for dist, imgp, imgn in (('ubuntu', 'ubuntu', 'ubuntu-session'), ('fedora', 'fed
         for g, names in groups:
             if not names:
                 continue
+            if mode == 'portable' and names == ['gs-sys-pac-owned']:
+                continue  # needs a KNOWN bus: covered by the dedicated <dist>-owned-portable job below (final-2 recorded this scheduling as a skip with 0 requirements; that record is kept)
             image = imgn if mode == 'nonportable' else imgp
-            flags = ('--nonportable ' if mode == 'nonportable' else '') + '--require --require-env' + (' --scenarios ' + ','.join(names))
-            if g == 'default':  # no --scenarios: the runner's own default set
-                flags = ('--nonportable ' if mode == 'nonportable' else '') + '--require --require-env --scenarios ' + ','.join(names)
+            flags = ('--nonportable ' if mode == 'nonportable' else '') + '--require --require-env --scenarios ' + ','.join(names)
             print(f'{dist}-{mode}-{g}|uc-gui-go-linux-proxy:17c12-{image}|linux_appimage_proxy_run.py|{flags}|feed')
-for dist, imgn in (('ubuntu', 'ubuntu-session-socks'),):
-    for name, args in (('two-normal', ''), ('two-kill', '--kill')):
-        print(f'{dist}-{name}|uc-gui-go-linux-proxy:17c12-ubuntu-session|linux_appimage_pac_two_run.py|{args}|')
-    print(f'{dist}-dynamic|uc-gui-go-linux-proxy:17c12-ubuntu-session|linux_appimage_proxy_dynamic_run.py||')
-    print(f'{dist}-socks|uc-gui-go-linux-proxy:17c12-{imgn}|linux_appimage_proxy_dynamic_run.py|--socks|')
+    sess = f'uc-gui-go-linux-proxy:17c12-{imgn}'
+    for name, runner, args in (('two-normal', 'linux_appimage_pac_two_run.py', ''), ('two-kill', 'linux_appimage_pac_two_run.py', '--kill'), ('owned-portable', 'linux_appimage_pac_two_run.py', '--owned'),
+                               ('dynamic', 'linux_appimage_proxy_dynamic_run.py', ''), ('guard-downstream', 'linux_appimage_guard_downstream_run.py', '')):
+        print(f'{dist}-{name}|{sess}|{runner}|{args}|')
+    print(f'{dist}-socks|{sess}-socks|linux_appimage_proxy_dynamic_run.py|--socks|')
 PY
 run_job() { # name|image|runner|args|feed
   IFS='|' read -r name image runner args feed <<< "$1"
@@ -73,11 +73,14 @@ echo "== proxy matrix ($(wc -l < "$out/inputs/matrix.txt") jobs, $JOBS parallel)
 # NUL-separated, one argument per job (BSD xargs -I limits the replacement string to 255 bytes: the first attempt ran zero jobs)
 grep -v '^$' "$out/inputs/matrix.txt" | tr '\n' '\0' | xargs -0 -n1 -P "$JOBS" bash -c 'run_job "$1"' _
 njobs=$(grep -vc '^$' "$out/inputs/matrix.txt"); ran=$(grep -c ' rc=' "$out/steps.txt" || true)
-echo "matrix jobs listed=$njobs recorded=$(grep -cE '^[a-z]+-[a-z-]+ rc=' "$out/steps.txt")" | tee -a "$out/steps.txt"
+recorded=0; while IFS='|' read -r jn _; do [ -z "$jn" ] || { grep -q "^$jn rc=" "$out/steps.txt" && recorded=$((recorded+1)); }; done < "$out/inputs/matrix.txt"
+echo "matrix jobs listed=$njobs recorded=$recorded" | tee -a "$out/steps.txt"  # counted BY NAME (the first version's [a-z-] pattern missed the *-p8 jobs)
 
 
 # ---- regressions on the SAME package
-step feed "$R" appimage-feed "$out/feed" "$(dirname "$V1")/E2E-UniClipboard_1.1.1_arm64.AppImage.tar.gz" || true
+step package-v2 "$R" package-appimage "$out/v2" --update-marker v2-installed || exit 1
+V2="$out/v2/pkg/E2E-UniClipboard_1.1.1_arm64.AppImage"; shasum -a 256 "$V1" "$V2" "$V2.tar.gz" | tee "$out/inputs/update-packages.sha256"
+step feed "$R" appimage-feed "$out/feed" "$V2.tar.gz" || exit 1
 rcs=""
 for combo in ubuntu-generic ubuntu-gnome fedora-generic fedora-gnome; do
   d="${combo%-*}"; m="${combo#*-}"

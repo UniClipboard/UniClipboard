@@ -483,6 +483,7 @@ class PacServer:
         outer = self
         self.fetches = []
         self.mode = mode
+        self.release = threading.Event()  # set by the scenario: a 'hang' connection is held until then (or 300 s)
         script = ('function FindProxyForURL(url, host) { return "PROXY 127.0.0.1:%d"; }\n' % proxy_port).encode()
 
         class Handler(http.server.BaseHTTPRequestHandler):
@@ -494,7 +495,7 @@ class PacServer:
                     self.end_headers()
                     return
                 if outer.mode == 'hang':  # accepts and never answers (until the server is stopped)
-                    time.sleep(120)
+                    outer.release.wait(300)
                     return
                 body = b'this is not a PAC script {{{\n' if outer.mode == 'syntax' else script
                 self.send_response(200)
@@ -1089,9 +1090,33 @@ def main():
                     socks2 = sockets_of(('WebKit', 'uniclipboard', 'uniclipd'))
                     still = [x for x in socks2 if x['proc'].startswith('WebKitNetwork') and x['peer'].endswith(f':{daemon_port}')]
                     req(f'[{name}] REQUIRE after the cancel the WebView still holds its loopback connections to the daemon (the cancelled lookup did not take the page down)', len(still) >= 1, still)
-                    pac.mode = 'ok'  # the PAC server recovers: an OBSERVATION of the resolver's own behaviour after a cancelled/failed download
-                    sc['afterRecovery'] = pac_wv('after-recovery')
-                    chk(f'[{name}] after the PAC server recovered the next request is {sc["afterRecovery"]["route"]} (libproxy may keep its failed-download state; recorded)', True, sc['afterRecovery'])
+                    pfx_c = f'pp-{name}-aftercancel-'  # a FRESH session exchange, authenticated HTTP fetch and WebSocket event frame after the cancel (old sockets prove nothing)
+                    gui.ctl(f'panel-js pagepp-{name}-aftercancel {page_probe_script(pfx_c, reports.port, f"http://{conn["host"]}:{daemon_port}", conn["token"], gui.proc.pid)}', f'panel-js-pagepp-{name}-aftercancel')
+                    got_c = {k: reports.wait(pfx_c + k, 25) for k in ('connect', 'http', 'wsopen', 'wsframe')}
+                    try:
+                        http_c = json.loads((got_c['http'] or {}).get('value') or '{}')
+                    except ValueError:
+                        http_c = {}
+                    sc['afterCancelProbe'] = {k: (v or {}).get('value') for k, v in got_c.items()}
+                    req(f'[{name}] REQUIRE after the cancel the SAME GUI completes a NEW daemon session exchange, an authenticated GET /settings and a WebSocket event frame (not the old sockets)',
+                        http_c.get('status') == 200 and bool(got_c['wsopen']) and bool(got_c['wsframe']), sc['afterCancelProbe'])
+                    # Upstream behaviour (stage6/auth-semantics/pac-recovery.log, GIO resolver without any GUI): glib-pacrunner is single-threaded and libproxy's PAC download has no timeout of its own,
+                    # so while the PAC server holds the connection every lookup fails with the GDBus 25 s "Timeout was reached" error (fail-closed, never direct); the lookups recover only when the
+                    # held connection ends. This scenario therefore proves recovery in two steps: (1) while the connection is still held the external request fails (not direct); (2) the server
+                    # releases the connection and answers the PAC: the NEXT external requests of the SAME GUI must become proxied within a bounded time.
+                    sc['duringHold'] = pac_wv('during-hold')
+                    chk(f'[{name}] while the PAC server still holds the download the external request is {sc["duringHold"]["route"]} (upstream: GDBus timeout error, not direct)', True, sc['duringHold'])
+                    t_rel = time.monotonic()
+                    pac.mode = 'ok'
+                    pac.release.set()
+                    attempts_r = []
+                    for i_r in range(6):
+                        res_r = pac_wv(f'recover-{i_r}')
+                        attempts_r.append({'route': res_r['route'], 'seconds': round(time.monotonic() - t_rel, 1)})
+                        if res_r['route'] == 'proxied':
+                            break
+                    sc['recovery'] = attempts_r
+                    req(f'[{name}] REQUIRE after the PAC server released the held download the SAME GUI\'s external request is proxied again within 120 s of the release (attempts: {attempts_r})', attempts_r[-1]['route'] == 'proxied' and attempts_r[-1]['seconds'] <= 120, attempts_r)
                 if args.require and name == 'gs-sys-pac-kill':
                     victims = bundled_now()
                     for v in victims:

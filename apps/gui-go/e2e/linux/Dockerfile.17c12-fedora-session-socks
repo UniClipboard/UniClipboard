@@ -1,0 +1,5 @@
+# 17c12 SOCKS variant for Fedora: the non-portable session image plus Fedora's own maintained Dante server (dante-server). Fedora installs the upstream name /usr/bin/sockd
+# (Debian/Ubuntu rename it danted); the driver starts `danted`, so the same program is also reachable under that name.
+FROM uc-gui-go-linux-proxy:17c12-fedora-session
+RUN dnf -y install dante-server && dnf clean all && ln -s /usr/bin/sockd /usr/local/bin/danted
+RUN danted -v 2>&1 | head -1

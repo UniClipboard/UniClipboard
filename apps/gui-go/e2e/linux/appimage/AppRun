@@ -1,7 +1,8 @@
 #!/bin/sh
 # AppRun of the Go GUI AppImage (docs/architecture/gui-go-linux-appimage.md).
 #   * linuxdeploy installs this file as AppRun.wrapped behind its own generated AppRun, which first sources the plugin hook
-#     (the Wails GTK plugin exports GDK_BACKEND=x11 and the GTK, GDK-pixbuf and GSettings paths);
+#     (the GTK plugin exports the GTK, GDK-pixbuf and GSettings paths; since 17c13 package_linux.py removes its unconditional GDK_BACKEND=x11 line, so GTK picks
+#     Wayland or X11 itself and a GDK_BACKEND set by the user is honoured);
 #   * points GIO_MODULE_DIR at the bundled module directory, which holds exactly the TLS backend (libgiognutls.so from the build image's
 #     glib-networking, packaging step `deploy_gio_modules`; the pinned Wails GTK plugin deploys none, and without it libsoup/WebKitGTK
 #     have no HTTPS): GIO_EXTRA_MODULES would only append, so the bundled GLib would still scan the host's module directory and

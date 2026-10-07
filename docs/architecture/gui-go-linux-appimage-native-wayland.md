@@ -109,6 +109,8 @@ Wails 优先复查（固定版本 `v3.0.0-beta.28`）：Wails 没有 Layer Shell
 | 17c5 便携 + 更新门（`e2e-portable`，带标记 v2） | 通过 |
 | 17c4 完整 AppImage 运行（Xvfb，`e2e-full`） | 通过 |
 
+W4（库加载顺序）的实际结果：Layer Shell 库由 GUI 在 GTK 与宿主 `libwayland-client` 已加载之后 `dlopen`，包内 0.8.2 在 Hyprland 与 niri 上都成功使 `gtk_layer_is_layer_window` 为真，且合成器侧列出 layer（Omarchy）/ 客户端状态与 niri 的 layer 报告一致（Fedora）；没有出现需要链接顺序或预加载的失败，所以没有加这类补救。该结论只覆盖这两个合成器、库 0.8.2、宿主 libwayland 1.2x 的组合。
+
 ## 本片没有验证（OPEN，不当作通过）
 
 - **Fedora/niri**：面板矩形与居中无法由 `niri msg layers` 读取（UNKNOWN）；该主机没有按键注入工具，layer 的键盘焦点只由客户端状态与合成器的键盘交互报告证明，没有实际按键到达页面的证据。Hyprland 的光标跟随（`follow_cursor`）需要移动真实指针，未做。

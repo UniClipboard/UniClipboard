@@ -23,6 +23,7 @@ type iconFeed struct {
 	// deliveryUnresolved holds the pairs whose last read failed, with the time of the first failure. The refresh tick and a stream reconnect
 	// put them back into deliveryDue until a read succeeds or deliveryGiveUp has passed, so a failed delivery is not lost to one bad read.
 	deliveryUnresolved map[[2]string]time.Time
+	deliveryReading    [2]string     // the pair the worker is reading now; the refresh tick does not queue it again
 	deliveryWake       chan struct{} // capacity 1: wakes deliveryWorker
 
 	refreshReq chan struct{} // capacity 1: snapshot reads run one at a time on run's goroutine, so an old answer cannot overwrite a newer one
@@ -284,8 +285,15 @@ func (f *iconFeed) deliveryWorker(ctx context.Context) {
 			if ctx.Err() != nil {
 				return
 			}
-			err := f.deliveryChanged(ctx, pair[0], pair[1])
 			f.deliveryMu.Lock()
+			f.deliveryReading = pair
+			f.deliveryMu.Unlock()
+			err := f.deliveryChanged(ctx, pair[0], pair[1])
+			if err != nil && ctx.Err() != nil {
+				return // shutting down: not a failure of the read
+			}
+			f.deliveryMu.Lock()
+			f.deliveryReading = [2]string{}
 			if err == nil {
 				delete(f.deliveryUnresolved, pair)
 			} else if _, known := f.deliveryUnresolved[pair]; !known {
@@ -308,6 +316,7 @@ func (f *iconFeed) markUnresolvedLocked(pair [2]string) {
 			}
 		}
 		delete(f.deliveryUnresolved, oldest)
+		log.Printf("tray icon: too many unreadable delivery views, dropping the oldest (entry %s)", oldest[0])
 	}
 	f.deliveryUnresolved[pair] = time.Now()
 }
@@ -319,7 +328,11 @@ func (f *iconFeed) requeueUnresolved() {
 	for pair, since := range f.deliveryUnresolved {
 		if time.Since(since) > deliveryGiveUp {
 			delete(f.deliveryUnresolved, pair)
+			log.Printf("tray icon: giving up on the delivery view of entry %s", pair[0])
 			continue
+		}
+		if pair == f.deliveryReading {
+			continue // being read now: its result settles it
 		}
 		f.deliveryDue[pair] = struct{}{}
 	}

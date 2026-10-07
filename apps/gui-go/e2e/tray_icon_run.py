@@ -281,7 +281,7 @@ def main():
             if len(later) >= 2:
                 break
             time.sleep(2)
-        check('4b the pair is read again by the existing 10 s tick, twice in 40 s (no extra timer)', len(later) >= 2 and len({x['entry'] for x in reads}) == 1, {'reads': len(reads), 'afterTheEvents': len(later)})
+        check('4b the pair is read again by the existing 10 s tick, twice in 40 s and never more often (one source of work, no extra timer)', 2 <= len(later) <= 6 and len({x['entry'] for x in reads}) == 1, {'reads': len(reads), 'afterTheEvents': len(later)})
         recs = gui.ctl(f'tray-icon-frames:{t_d}', 'tray-icon-frames')['detail']
         check('4b a failing read never plays the "sent" motion or changes the base state', not [x for x in recs if x['kind'] == 'animation'] and d1['base'] == 'synced', {'animations': [x for x in recs if x['kind'] == 'animation']})
 

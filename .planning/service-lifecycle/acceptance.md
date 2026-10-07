@@ -3,7 +3,7 @@
 2026-10-07 在 main 的 Go/Wails 宿主退役改动上重新构建并验收。
 
 - main 基线：`8306fde45f150842b75706125b31b029a0a9ae25`（PR #1912）。
-- 受验代码提交：`5e887757b3319ed0d49a8e2d9629e187842d62ca`。
+- 受验代码提交：`8adab21d6d6124ec654df67bb9ee8a03d86dbcb5`。
 - Engine 依赖沿用该 main 的固定 revision `e86f94cebcec46c1b3a6f49f88cce7a833777640`，本 PR 不改引擎版本。
 - uniclip SHA-256：`e046acbf292a121673134d5526284ae632b110192a9897fb43da7e043aaf4d25`。
 - uniclipd SHA-256：`c7c448d8953cc8934826e1dea6eab498eafbcb83b9e660943c4a3539feca6624`。
@@ -21,6 +21,7 @@ macOS arm64，真实 daemon 和 GUI 用户域 launchd；隔离 HOME 含空格，
 - 旧 start 仍为兼容后台启动并给弃用警告，后台冷启动/停止通过。
 - 退出码夹具返回 37 且标准错误可见；这是进程边界验收，不冒充真实 daemon 崩溃。
 - 清理后 launchd job 未加载、服务定义移除、前台进程全部退出；独立 ps 检查确认四个本次服务/后台 PID 均退出。
+- 原生管理器清理调用均限时 30 秒。另以进程夹具注入管理器调用超时：报告错误并移除定义、退出所有本次前台进程；独立 launchctl 查询确认唯一测试 job 未加载。该异常验收不冒充真实管理器故障。
 
 复现：
 

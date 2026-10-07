@@ -97,12 +97,20 @@ def open_menu(gui, pid, how, label, out):
         sampler = subprocess.Popen(['sample', str(pid), '3', '5', '-file', str(out / f'ax-open-{label}-sample.txt')], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         time.sleep(1)
         if how == 'peekaboo':
-            # Same target (this pid's status item centre from its AX frame), different event delivery: Peekaboo's right click (it has the Event
-            # Synthesizing permission), global coordinates, synthesized input. Recorded with the tool's own output.
+            # Locate THIS app's status item through Peekaboo's own menu-bar listing (owner bundle id of the e2e build), cross-check it with the AX
+            # frame of this pid, and only then send a right click there (menubar click is left-click only, which runs the app's own click handler).
+            # Only our own entry is recorded; the listing also holds other applications' items.
+            listing = subprocess.run(['peekaboo', 'list', 'menubar', '--json', '--include-raw-debug'], capture_output=True, text=True, timeout=60)
+            try:
+                entries = json.loads(listing.stdout)['data']['menu_bar_items']
+            except (ValueError, KeyError):
+                entries = []
+            mine = [e for e in entries if e.get('bundleIdentifier') == 'app.uniclipboard.desktop.e2e']
             frame = ((ax('describe', str(pid)).get('items') or [{}])[0]).get('frame') or {}
             cx, cy = int(frame.get('x', 0) + frame.get('w', 0) / 2), int(frame.get('y', 0) + frame.get('h', 0) / 2)
-            p = subprocess.run(['peekaboo', 'click', '--coords', f'{cx},{cy}', '--global-coords', '--right', '--input-strategy', 'synthOnly', '--pid', str(pid)], capture_output=True, text=True, timeout=60)
-            opened = {'ok': p.returncode == 0, 'tool': 'peekaboo click --right', 'target': {'x': cx, 'y': cy}, 'stdout': p.stdout[-300:], 'stderr': p.stderr[-300:]}
+            p = subprocess.run(['peekaboo', 'click', '--coords', f'{cx},{cy}', '--global-coords', '--right', '--input-strategy', 'synthOnly', '--no-auto-focus'], capture_output=True, text=True, timeout=60)
+            opened = {'ok': p.returncode == 0, 'tool': 'peekaboo click --right --input-strategy synthOnly --no-auto-focus', 'target': {'x': cx, 'y': cy}, 'peekabooItem': mine,
+                      'axFrame': frame, 'stdout': p.stdout[-300:], 'stderr': p.stderr[-300:]}
         elif how == 'rightclick':
             opened = ax('rightclick', str(pid))
         else:

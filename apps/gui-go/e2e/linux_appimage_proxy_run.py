@@ -1,18 +1,22 @@
 #!/usr/bin/env python3
 """System-proxy E2E of the self-contained AppImage (slice 17c12, docs/architecture/gui-go-linux-appimage-system-proxy.md).
 
-  linux_appimage_proxy_run.py --out DIR --appimage X.AppImage --manifest package-manifest.json [--scenarios a,b,...]
+  linux_appimage_proxy_run.py --out DIR --appimage X.AppImage --manifest package-manifest.json [--nonportable] [--require] [--scenarios a,b,...]
 
 Real AppImage, real WebView of the shared frontend, real release daemon, a REAL forward proxy (tinyproxy, access log) and a controlled HTTPS target that is NOT on
 loopback (`target.test` -> the container's own interface address; its CA is installed through the container's own trust mechanism). Inside an `--internal` container
-network nothing can leave. Each scenario starts the GUI once with its own proxy configuration; the four routes of one request are told apart by the TWO logs:
-  direct   the target saw the request, the proxy log has no line for it
-  proxied  the proxy log has the CONNECT/request line (and, when the proxy forwards, the target saw it too)
-  refused  the proxy answered 403 (deny mode), the target saw nothing
-  failed   neither log has it
-Every verdict about the WebView is paired with a causal control: `curl` (a client known to honour the proxy variables) with the same environment must show up in
-the proxy log, otherwise the proxy/log chain is invalid and the WebView verdict is void. The loopback claim (daemon HTTP/WebSocket and the report channel never
-reach the proxy) is paired with a curl that targets the loopback address under the same environment: it MUST appear in the deny log (detection power).
+network nothing can leave. Each scenario starts the GUI once with its own proxy configuration. The route of one request is read from TWO logs, one hostname and one
+log window per client (a CONNECT line names its host only; dev2 lost this and attributed curl's CONNECT to the WebView):
+  direct    the target saw the request, the proxy never named the host
+  proxied   the proxy named the host and the target saw the request through it
+  refused   the proxy answered 403 (deny mode), the target saw nothing
+  failed    neither log has it (a dead proxy: the request neither escaped to the target nor reached the proxy)
+Two separate results are written, never merged:
+  passed            the CONTROLS and observations hold (the fixture is valid: curl with the same configuration reaches/is refused by the proxy, the loopback detection
+                    control is seen, the daemon connection of the WebView is on loopback). A baseline run has passed=true and records how the WebView actually routed.
+  functionalPassed  the REQUIREMENTS hold: with the proxy configured the real WebView goes through the proxy (allow), is refused by it (deny), FAILS without escaping
+                    to the target when the proxy is unreachable (dead), and the local daemon stays usable on loopback. Only evaluated with --require.
+Modes: portable (default; no Secret Service) or --nonportable (the release way: real HOME, user session bus + unlocked Secret Service in the same container).
 Nothing here talks to a production service; the proxy never forwards anything but the controlled target.
 """
 import argparse
@@ -35,17 +39,20 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 from linux_appimage_portable_run import UserRun, USER, as_user, environ_of, stop, wait_daemon  # noqa: E402
-from linux_appimage_run import DISPLAY, PASSPHRASE, pid_alive, procs, sha256, start_xvfb, wait_panel_ready  # noqa: E402
+from linux_appimage_run import DISPLAY, PASSPHRASE, maps_of, pid_alive, sha256, start_xvfb, wait_panel_ready  # noqa: E402
 from linux_appimage_tls_run import Reports, StopScenario, install_trust, run_cmd, wait_new_daemon  # noqa: E402
 
 TARGET_NAME = 'target.test'
-WV_HOST, CURL_HOST = 'webview-probe.test', 'curl-probe.test'  # one hostname per client: a CONNECT line names its host only, so the clients can never be confused (dev2 lost this)
+WV_HOST, CURL_HOST = 'webview-probe.test', 'curl-probe.test'  # one hostname per client
 HOSTS = (TARGET_NAME, WV_HOST, CURL_HOST)
 LOOPBACK = re.compile(r'(127\.\d+\.\d+\.\d+|localhost|\[?::1\]?)')
+REQ = re.compile(r'Request \(file descriptor \d+\): (\w+) (\S+)')
+BUS_DIR = Path('/bus')
+PROXY_MODULES = re.compile(r'(libgiognomeproxy|libgiolibproxy|libdconfsettings|libproxy|libpxbackend|libduktape)')
 
 
 def make_target_cert(workdir):
-    """Throwaway CA + a leaf for target.test and the container address (openssl CLI)."""
+    """Throwaway CA + a leaf for the probe hostnames (openssl CLI)."""
     d = workdir / 'target-pki'
     d.mkdir()
     ca_key, ca_crt, key, csr, crt = (d / x for x in ('ca.key', 'ca.crt', 'leaf.key', 'leaf.csr', 'leaf.crt'))
@@ -55,7 +62,7 @@ def make_target_cert(workdir):
         r = run_cmd(s)
         if r.returncode:
             raise RuntimeError(f'openssl failed: {s[:3]} {r.stderr}')
-    (d / 'ext.cnf').write_text('subjectAltName=' + ','.join(f'DNS:{h}' for h in HOSTS) + '\n' + f'basicConstraints=CA:FALSE\nextendedKeyUsage=serverAuth\nkeyUsage=digitalSignature,keyEncipherment\n')
+    (d / 'ext.cnf').write_text('subjectAltName=' + ','.join(f'DNS:{h}' for h in HOSTS) + '\nbasicConstraints=CA:FALSE\nextendedKeyUsage=serverAuth\nkeyUsage=digitalSignature,keyEncipherment\n')
     r = run_cmd(['openssl', 'x509', '-req', '-in', str(csr), '-CA', str(ca_crt), '-CAkey', str(ca_key), '-CAcreateserial', '-out', str(crt), '-days', '2', '-extfile', str(d / 'ext.cnf')])
     if r.returncode:
         raise RuntimeError('openssl x509 failed: ' + r.stderr)
@@ -106,19 +113,24 @@ class Target:
         return [r for r in self.requests if nonce in r['path']]
 
 
+def free_port():
+    with socket.socket() as s:
+        s.bind(('127.0.0.1', 0))
+        return s.getsockname()[1]
+
+
 class Proxy:
     """tinyproxy (the distribution's package). mode 'allow' forwards; 'deny' refuses everything (default-deny filter, 403) and still logs the request."""
 
-    def __init__(self, workdir, tag, mode, port=None):
-        self.tag, self.mode = tag, mode
-        self.port = port or free_port()
+    def __init__(self, tag, mode):
+        self.tag, self.mode, self.port = tag, mode, free_port()
         # tinyproxy drops to `nobody`: its directory must be traversable by it (the sandbox is the GUI user's 0700 directory: the first run logged nothing, dev1)
         self.dir = Path(tempfile.mkdtemp(prefix=f'uc-proxy-{tag}-', dir='/var/tmp'))
         self.dir.chmod(0o755)
         self.log = self.dir / 'tinyproxy.log'
         self.log.write_text('')
         self.log.chmod(0o666)
-        conf = [f'User nobody', 'Group nogroup', f'Port {self.port}', 'Listen 127.0.0.1', f'LogFile "{self.log}"', 'LogLevel Info', 'Timeout 600', 'MaxClients 100',
+        conf = ['User nobody', 'Group nogroup', f'Port {self.port}', 'Listen 127.0.0.1', f'LogFile "{self.log}"', 'LogLevel Info', 'Timeout 600', 'MaxClients 100',
                 'ConnectPort 443', 'ConnectPort 80', 'DisableViaHeader No']
         if mode == 'deny':
             empty = self.dir / 'filter'
@@ -135,17 +147,9 @@ class Proxy:
                 time.sleep(.2)
         else:
             raise RuntimeError(f'tinyproxy {tag} did not start: ' + (self.dir / 'stdout.log').read_text())
-        self.mark = 0
 
     def lines(self):
         return [l for l in self.log.read_text(errors='replace').splitlines() if l.strip()]
-
-    def mark_now(self):
-        return len(self.lines())
-
-    def request_lines(self):
-        """The lines that name a request target (CONNECT host:port / GET http://...) or a refusal; the rest of tinyproxy's log is bookkeeping."""
-        return [l for l in self.lines() if re.search(r'Request \(file descriptor \d+\):|refused on filtered domain|CONNECT|Proxying refused', l)]
 
     def stop(self):
         if self.proc.poll() is None:
@@ -156,62 +160,13 @@ class Proxy:
                 self.proc.kill()
 
 
-def free_port():
-    with socket.socket() as s:
-        s.bind(('127.0.0.1', 0))
-        return s.getsockname()[1]
-
-
-def write_dconf_proxy(account, port):
-    """The user's dconf database (what GNOME Settings writes): manual proxy, default ignore-hosts. Compiled with the distribution's own `dconf compile`, no bus needed."""
-    home = Path(account.pw_dir)
-    kdir = Path(tempfile.mkdtemp(prefix='dconf-keyfile-'))
-    (kdir / 'proxy.key').write_text(f"[system/proxy]\nmode='manual'\n\n[system/proxy/http]\nhost='127.0.0.1'\nport={port}\n\n[system/proxy/https]\nhost='127.0.0.1'\nport={port}\n")
-    (home / '.config' / 'dconf').mkdir(parents=True, exist_ok=True)
-    db = home / '.config' / 'dconf' / 'user'
-    c = run_cmd(['dconf', 'compile', str(db), str(kdir)])
-    for d in (home / '.config', home / '.config' / 'dconf'):
-        os.chown(d, account.pw_uid, account.pw_gid)
-    os.chown(db, account.pw_uid, account.pw_gid)
-    host_view = as_user(['gsettings', 'get', 'org.gnome.system.proxy', 'mode'], dict(os.environ, HOME=account.pw_dir), timeout=20)
-    # libproxy 0.5 chooses its configuration backend from the desktop environment: a GNOME session always has XDG_CURRENT_DESKTOP=GNOME (the first baseline,
-    # `baseline-a2a001ac`, ran without it: gsettings said 'manual' while `proxy` printed direct://)
-    ctl = as_user(['proxy', f'https://{WV_HOST}/'], dict(os.environ, HOME=account.pw_dir, XDG_CURRENT_DESKTOP='GNOME'), timeout=30)
-    return {'hostProxyCli': {'rc': ctl.returncode, 'out': ctl.stdout.strip(), 'err': ctl.stderr.strip()[-200:], 'expected': f'http://127.0.0.1:{port}'},
-            'compileRc': c.returncode, 'compileErr': c.stderr[-200:], 'hostGsettingsMode': host_view.stdout.strip(), 'hostGsettingsErr': host_view.stderr.strip()[-200:]}
-
-
-def sockets_of(names):
-    """(process name, pid, local, peer) of every established TCP socket owned by a process whose name starts with one of `names` (root: `ss -p`)."""
-    out = run_cmd(['ss', '-tnpH', 'state', 'established']).stdout
-    rows = []
-    for l in out.splitlines():
-        m = re.match(r'\s*\d+\s+\d+\s+(\S+)\s+(\S+)\s+users:\(\("([^"]+)",pid=(\d+)', l)
-        if m and any(m.group(3).startswith(n) for n in names):
-            rows.append({'proc': m.group(3), 'pid': int(m.group(4)), 'local': m.group(1), 'peer': m.group(2)})
-    return rows
-
-
-def curl_as_user(env, url, extra=()):
-    r = as_user(['curl', '-sS', '-o', '/dev/null', '-w', '%{http_code}', '--max-time', '20', *extra, url], env, timeout=40)
-    return {'rc': r.returncode, 'code': r.stdout.strip(), 'err': r.stderr.strip()[-200:]}
-
-
-REQ = re.compile(r'Request \(file descriptor \d+\): (\w+) (\S+)')
-
-
 def request_targets(lines):
-    """(method, target) of the proxy's request lines in `lines`; only these name where a client wanted to go (a `Connect (file descriptor N): 127.0.0.1` line is the CLIENT's address)."""
+    """(method, target) of the proxy's request lines; only these name where a client wanted to go (`Connect (file descriptor N): 127.0.0.1` is the CLIENT's address)."""
     return [m.groups() for m in (REQ.search(l) for l in lines) if m]
 
 
 def classify(host, nonce, window, target):
-    """Route of ONE client's request: `window` is the proxy log produced while only that client ran, `host` its own hostname (see the module docstring).
-    refused  the proxy named the host and refused it, the target saw nothing
-    proxied  the proxy named the host (CONNECT host:443 / GET https://host...) and the target saw the request through it
-    direct   the target saw the request and the proxy never named the host
-    failed   neither
-    proxied-no-delivery: the proxy named the host but the target saw nothing (e.g. refused without the refusal line)"""
+    """Route of ONE client's request, from its own proxy-log window and its own hostname (see the module docstring)."""
     named = [l for l in window if REQ.search(l) and host in REQ.search(l).group(2)]
     refusals = [l for l in window if 'refused' in l.lower() and f'"{host}"' in l]
     saw = target.saw(nonce)
@@ -228,24 +183,87 @@ def classify(host, nonce, window, target):
     return {'host': host, 'targetSaw': len(saw), 'proxyLinesNamingHost': named, 'proxyRefusals': refusals, 'route': route}
 
 
-SCENARIOS = {
-    # name: (proxy mode or None, environment of the GUI, curl environment equals the GUI environment)
-    'none': (None, {}),
-    'env-allow': ('allow', 'ENV'),
-    'env-deny': ('deny', 'ENV'),
-    'env-dead': ('dead', 'ENV'),
-    # the host's own system configuration (GNOME manual proxy in the user's dconf database; the GUI gets NO proxy variable)
-    'gsettings-allow': ('allow', 'GSETTINGS'),
-    'gsettings-deny': ('deny', 'GSETTINGS'),
-}
+def sockets_of(names):
+    """(process name, pid, local, peer) of every established TCP socket owned by a process whose name starts with one of `names` (root: `ss -p`)."""
+    out = run_cmd(['ss', '-tnpH', 'state', 'established']).stdout
+    rows = []
+    for l in out.splitlines():
+        m = re.match(r'\s*\d+\s+\d+\s+(\S+)\s+(\S+)\s+users:\(\("([^"]+)",pid=(\d+)', l)
+        if m and any(m.group(3).startswith(n) for n in names):
+            rows.append({'proc': m.group(3), 'pid': int(m.group(4)), 'local': m.group(1), 'peer': m.group(2)})
+    return rows
 
 
-def proxy_env(port, no_proxy=None):
+def curl_as_user(env, url):
+    r = as_user(['curl', '-sS', '-o', '/dev/null', '-w', '%{http_code}', '--max-time', '20', url], env, timeout=40)
+    return {'rc': r.returncode, 'code': r.stdout.strip(), 'err': r.stderr.strip()[-200:]}
+
+
+def write_dconf_proxy(port, where, target_app, nonportable):
+    """GNOME's proxy settings (manual proxy, default ignore-hosts), compiled with the distribution's own `dconf compile` (no bus needed).
+      user   the user's database ~/.config/dconf/user under the REAL home (what GNOME Settings writes). In portable mode the AppImage's HOME is redirected to
+             <AppImage>.home and cannot see it (F7): that is an observation there; in --nonportable it is the real user scenario.
+      ph     CAUSAL CONTROL (portable only): the same database inside the portable HOME. Tells "the resolver does not work" from "the config is not visible".
+      sys    an administrator's system database /etc/dconf/db/local + /etc/dconf/profile/user (visible to every HOME): independent causal control.
+    The host-side control is the distribution's own libproxy CLI `proxy`, run with the HOME the GUI will have."""
+    account = pwd.getpwnam(USER)
+    real = Path(account.pw_dir)
+    portable_home = Path(str(target_app) + '.home')
+    db_home = portable_home if where == 'ph' else real
+    gui_home = real if nonportable else portable_home  # the HOME the GUI process (and the AppImage's runtime) really has
+    kdir = Path(tempfile.mkdtemp(prefix='dconf-keyfile-'))
+    body = f"[system/proxy]\nmode='manual'\n\n[system/proxy/http]\nhost='127.0.0.1'\nport={port}\n\n[system/proxy/https]\nhost='127.0.0.1'\nport={port}\n"
+    if where == 'sys':
+        d = Path('/etc/dconf/db/local.d')
+        d.mkdir(parents=True, exist_ok=True)
+        (d / '00-proxy').write_text(body)
+        Path('/etc/dconf/profile').mkdir(parents=True, exist_ok=True)
+        Path('/etc/dconf/profile/user').write_text('user-db:user\nsystem-db:local\n')
+        c = run_cmd(['dconf', 'update'])
+    else:
+        (kdir / 'proxy.key').write_text(body)
+        (db_home / '.config' / 'dconf').mkdir(parents=True, exist_ok=True)
+        db = db_home / '.config' / 'dconf' / 'user'
+        c = run_cmd(['dconf', 'compile', str(db), str(kdir)])
+        for d in (db_home / '.config', db_home / '.config' / 'dconf'):
+            os.chown(d, account.pw_uid, account.pw_gid)
+        os.chown(db, account.pw_uid, account.pw_gid)
+    # libproxy 0.5 chooses its configuration backend from the desktop environment: a GNOME session always has XDG_CURRENT_DESKTOP=GNOME (the first baseline,
+    # `baseline-a2a001ac`, ran without it: gsettings said 'manual' while `proxy` printed direct://)
+    def host_view(home):
+        cenv = dict(os.environ, HOME=str(home), XDG_CURRENT_DESKTOP='GNOME')
+        p = as_user(['proxy', f'https://{WV_HOST}/'], cenv, timeout=30)
+        g = as_user(['gsettings', 'get', 'org.gnome.system.proxy', 'mode'], cenv, timeout=20)
+        return {'home': str(home), 'proxyCli': p.stdout.strip(), 'proxyCliRc': p.returncode, 'proxyCliErr': p.stderr.strip()[-200:], 'gsettingsMode': g.stdout.strip(), 'gsettingsErr': g.stderr.strip()[-200:]}
+    return {'where': where, 'dbHome': str(db_home), 'guiHome': str(gui_home), 'expected': f'http://127.0.0.1:{port}', 'compileRc': c.returncode, 'compileErr': c.stderr[-200:],
+            'hostViewWithGuiHome': host_view(gui_home), 'hostViewWithRealHome': host_view(real)}
+
+
+def clean_dconf(target_app):
+    real = Path(pwd.getpwnam(USER).pw_dir)
+    for f in (real / '.config/dconf/user', Path(str(target_app) + '.home') / '.config/dconf/user', Path('/etc/dconf/db/local.d/00-proxy'), Path('/etc/dconf/db/local'),
+              Path('/etc/dconf/profile/user')):
+        f.unlink(missing_ok=True)
+
+
+def proxy_env(port):
     url = f'http://127.0.0.1:{port}'
-    e = {'http_proxy': url, 'https_proxy': url, 'all_proxy': url, 'HTTP_PROXY': url, 'HTTPS_PROXY': url, 'ALL_PROXY': url}
-    if no_proxy:
-        e.update(no_proxy=no_proxy, NO_PROXY=no_proxy)
-    return e
+    return {'http_proxy': url, 'https_proxy': url, 'all_proxy': url, 'HTTP_PROXY': url, 'HTTPS_PROXY': url, 'ALL_PROXY': url}
+
+
+def scenarios():
+    """name -> (proxy mode allow|deny|dead|None, configuration kind env|gs-user|gs-ph|gs-sys|None)"""
+    s = {'none': (None, None)}
+    for m in ('allow', 'deny', 'dead'):
+        s[f'env-{m}'] = (m, 'env')
+    for where in ('user', 'sys', 'ph'):
+        for m in ('allow', 'deny', 'dead'):
+            s[f'gs-{where}-{m}'] = (m, f'gs-{where}')
+    return s
+
+
+def modules_loaded(pid):
+    return sorted({p.rsplit('/', 1)[-1] for p in maps_of(pid) if PROXY_MODULES.search(p.rsplit('/', 1)[-1])})
 
 
 def main():
@@ -253,42 +271,54 @@ def main():
     parser.add_argument('--out', type=Path, required=True)
     parser.add_argument('--appimage', type=Path, required=True)
     parser.add_argument('--manifest', type=Path)
-    parser.add_argument('--scenarios', default=','.join(SCENARIOS))
+    parser.add_argument('--nonportable', action='store_true')
+    parser.add_argument('--require', action='store_true', help='evaluate the functional requirements (exit status 3 when only they fail)')
+    parser.add_argument('--require-env', action='store_true', help='also require the environment-variable scenarios to be honoured by the WebView')
+    parser.add_argument('--scenarios', default='')
     args = parser.parse_args()
+    table = scenarios()
+    chosen = [s for s in args.scenarios.split(',') if s] or list(table)
     out = args.out.resolve()
     out.mkdir(parents=True, exist_ok=True)
     out.chmod(0o777)
     subprocess.run(['useradd', '-m', '-d', f'/home/{USER}', '-u', '1500', '-s', '/bin/bash', USER], check=True)
     account = pwd.getpwnam(USER)
+    home = Path(account.pw_dir)
     sandbox = Path(tempfile.mkdtemp(prefix='uc-proxy-'))
-    for p in (sandbox,):
-        os.chown(p, account.pw_uid, account.pw_gid)
-    runtime_dir = sandbox / 'run'
-    runtime_dir.mkdir()
-    os.chown(runtime_dir, account.pw_uid, account.pw_gid)
+    os.chown(sandbox, account.pw_uid, account.pw_gid)
+    runtime_dir, install = sandbox / 'run', sandbox / 'install'
+    for d in (runtime_dir, install) + ((BUS_DIR,) if args.nonportable else ()):
+        d.mkdir(exist_ok=True)
+        os.chown(d, account.pw_uid, account.pw_gid)
     runtime_dir.chmod(0o700)
-    install = sandbox / 'install'
-    install.mkdir()
-    os.chown(install, account.pw_uid, account.pw_gid)
     target_app = install / 'UniClipboard.AppImage'
     shutil.copy2(args.appimage, target_app)
     os.chown(target_app, account.pw_uid, account.pw_gid)
     env = dict(os.environ, HOME=account.pw_dir, XDG_RUNTIME_DIR=str(runtime_dir), DISPLAY=DISPLAY, UC_DISABLE_SYSTEM_CLIPBOARD='1', NO_COLOR='1',
                XDG_SESSION_TYPE='x11', UC_GUI_GO_EXIT_MODE='full', UC_GUI_GO_E2E_PHASE='wake', UC_GUI_GO_E2E_VISIBLE='1', UC_GUI_GO_E2E_SECRET=PASSPHRASE,
                USER=USER, LOGNAME=USER)
-    for key in ('WAYLAND_DISPLAY', 'UC_PROFILE', 'UC_PORTABLE', 'UNICLIPBOARD_ENV', 'APPIMAGE', 'APPDIR', 'GDK_BACKEND', 'XDG_CONFIG_HOME', 'DBUS_SESSION_BUS_ADDRESS',
-                'UC_E2E_BUS', 'SSL_CERT_FILE', 'SSL_CERT_DIR', 'GIO_USE_TLS', 'GIO_MODULE_DIR', 'GIO_EXTRA_MODULES', 'http_proxy', 'https_proxy', 'all_proxy', 'no_proxy',
-                'HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'NO_PROXY'):
+    if args.nonportable:
+        env['DBUS_SESSION_BUS_ADDRESS'] = f'unix:path={BUS_DIR}/bus'
+    for key in ('WAYLAND_DISPLAY', 'UC_PROFILE', 'UC_PORTABLE', 'UNICLIPBOARD_ENV', 'APPIMAGE', 'APPDIR', 'GDK_BACKEND', 'XDG_CONFIG_HOME',
+                *(() if args.nonportable else ('DBUS_SESSION_BUS_ADDRESS',)), 'UC_E2E_BUS', 'SSL_CERT_FILE', 'SSL_CERT_DIR', 'GIO_USE_TLS', 'GIO_MODULE_DIR', 'GIO_EXTRA_MODULES',
+                'XDG_CURRENT_DESKTOP', 'http_proxy', 'https_proxy', 'all_proxy', 'no_proxy', 'HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'NO_PROXY'):
         env.pop(key, None)
     run = UserRun(out, target_app, env)
     r = run.results
     osrel = dict(l.split('=', 1) for l in Path('/etc/os-release').read_text().splitlines() if '=' in l)
-    r.update({'mode': 'system-proxy', 'appimageSha256': sha256(target_app), 'sandbox': str(sandbox), 'user': USER, 'distribution': osrel.get('PRETTY_NAME', '').strip('"'),
-              'kernelMachine': os.uname().machine,
-              'scope': 'container (--internal network), unprivileged user, Xvfb, no GTK/WebKitGTK on the host (host proxy-configuration stack present), portable mode; '
-                       'no desktop, GPU, Wayland, native amd64'})
+    r.update({'mode': 'system-proxy-' + ('nonportable' if args.nonportable else 'portable'), 'appimageSha256': sha256(target_app), 'sandbox': str(sandbox), 'user': USER,
+              'distribution': osrel.get('PRETTY_NAME', '').strip('"'), 'kernelMachine': os.uname().machine, 'require': args.require, 'requireEnv': args.require_env,
+              'scope': 'container (--internal network), unprivileged user, Xvfb, no GTK/WebKitGTK on the host (host proxy-configuration stack present), '
+                       + ('NON-portable real HOME with a user session bus and unlocked Secret Service' if args.nonportable else 'portable mode') + '; no desktop, GPU, Wayland, native amd64'})
+    r['requirements'] = []
+
+    def req(name, ok, detail=None):
+        r['requirements'].append({'check': name, 'ok': bool(ok), 'detail': detail})
+        print(('REQ-PASS ' if ok else 'REQ-FAIL ') + name, flush=True)
+
     xvfb = start_xvfb(out)
-    launches, proxies, servers = [], [], []
+    launches, proxies, servers, bus = [], [], [], None
+    root = home if args.nonportable else sandbox  # where daemon.conn appears
     try:
         route = subprocess.run('ip route show default; [ -n "$(ip route show default)" ] || ip route add default dev eth0; ip route show default', shell=True, capture_output=True, text=True)
         r['defaultRoute'] = route.stdout
@@ -305,35 +335,49 @@ def main():
         servers.append(target)
         reports = Reports()
         loop_url = f'http://127.0.0.1:{reports.port}/loopctl'
-        # the host-side facts of the proxy configuration stack, for the report
         r['hostGioModules'] = sorted(p.name for p in Path('/usr/lib').glob('*/gio/modules/*.so'))
-        made = as_user([str(target_app), '--appimage-portable-home'], run.env, timeout=60)
-        run.check('T1 portable home created by the AppImage runtime', made.returncode == 0 and Path(str(target_app) + '.home').is_dir(), {'rc': made.returncode, 'err': made.stderr[-300:]})
+        if args.nonportable:
+            bus = subprocess.Popen(['sh', '/work/apps/gui-go/e2e/linux/keyring_service.sh'], env=dict(env, PATH=os.environ['PATH']), user=USER, group=USER, extra_groups=[],
+                                   stdout=(out / 'keyring-service.log').open('w'), stderr=subprocess.STDOUT)
+            for _ in range(150):
+                if (BUS_DIR / 'ready').exists():
+                    break
+                time.sleep(.2)
+            run.check('T1 user session bus and unlocked Secret Service are ready (store and lookup through the Secret Service API)', (BUS_DIR / 'ready').exists(), None)
+            if not (BUS_DIR / 'ready').exists():
+                raise StopScenario()
+            (BUS_DIR / 'bus').chmod(0o777)
+        else:
+            made = as_user([str(target_app), '--appimage-portable-home'], run.env, timeout=60)
+            run.check('T1 portable home created by the AppImage runtime', made.returncode == 0 and Path(str(target_app) + '.home').is_dir(), {'rc': made.returncode, 'err': made.stderr[-300:]})
         r['scenarios'] = {}
         old_pid = None
-        for name in [s for s in args.scenarios.split(',') if s]:
-            mode, kind = SCENARIOS[name]
-            sc = r['scenarios'][name] = {'mode': mode}
-            proxy = None
-            penv = {}
+        for name in chosen:
+            mode, kind = table[name]
+            sc = r['scenarios'][name] = {'mode': mode, 'kind': kind}
+            where = kind.split('-', 1)[1] if kind and kind.startswith('gs-') else None
+            if where == 'ph' and args.nonportable:
+                sc['skipped'] = 'the portable-HOME causal control only exists in portable mode'
+                continue
+            proxy, penv, curl_env = None, {}, {}
             if mode in ('allow', 'deny'):
-                proxy = Proxy(sandbox, name, mode)
+                proxy = Proxy(name, mode)
                 proxies.append(proxy)
-                penv = proxy_env(proxy.port)
-            elif mode == 'dead':
-                penv = proxy_env(free_port())  # nothing listens
-            if kind == 'GSETTINGS':
-                sc['dconf'] = write_dconf_proxy(account, proxy.port)
-                penv = {'XDG_CURRENT_DESKTOP': 'GNOME'}  # a GNOME session; NO proxy variable. curl cannot read gsettings: its control environment comes from the host's own `proxy` CLI (below)
-            sc['proxyPort'] = proxy.port if proxy else (int(penv['http_proxy'].rsplit(':', 1)[1]) if penv else None)
-            sc['guiEnvironment'] = penv
-            curl_env = dict(penv)
-            if kind == 'GSETTINGS':
-                cli_out = sc['dconf']['hostProxyCli']['out']
-                curl_env = {'https_proxy': cli_out, 'http_proxy': cli_out} if cli_out.startswith('http') else {}
+                port = proxy.port
+            else:
+                port = free_port() if mode == 'dead' else None  # dead: nothing listens
+            if kind == 'env':
+                penv = proxy_env(port)
+                curl_env = dict(penv)
+            elif where:
+                sc['dconf'] = write_dconf_proxy(port, where, target_app, args.nonportable)
+                penv = {'XDG_CURRENT_DESKTOP': 'GNOME'}  # a GNOME session; NO proxy variable
+                cli_out = sc['dconf']['hostViewWithRealHome']['proxyCli'] if where == 'user' else sc['dconf']['hostViewWithGuiHome']['proxyCli']
+                curl_env = {'https_proxy': cli_out, 'http_proxy': cli_out} if cli_out.startswith('http') else {}  # curl cannot read gsettings: it gets the host libproxy CLI's answer
+            sc['proxyPort'], sc['guiEnvironment'] = port, penv
             gui = run.launch(f'gui-{name}', extra_env=penv)
             launches.append(gui)
-            conn_path, conn = wait_new_daemon(sandbox, old_pid) if old_pid else wait_daemon(sandbox)
+            conn_path, conn = wait_new_daemon(root, old_pid) if old_pid else wait_daemon(root)
             run.check(f'[{name}] the real bundled daemon started', conn is not None, str(conn_path))
             if conn is None:
                 raise StopScenario()
@@ -342,67 +386,88 @@ def main():
             state = wait_panel_ready(gui, name, 90)
             run.check(f'[{name}] the real WebView loaded the frontend (quick panel page ready)', state.get('panelReady') is True, state)
             time.sleep(3)  # let the page open its daemon connections
+            if args.nonportable:  # 17c11 G7: the host has GTK in this image; the package must still map its own
+                def mapped(pid, lib):
+                    return [p for p in maps_of(pid) if p.rsplit('/', 1)[-1].startswith(lib)]
+                net_pids = [s['pid'] for s in sockets_of(('WebKitNetwork',))]
+                want = {'gui': (gui.proc.pid, ('libgtk-3', 'libwebkit2gtk-4.1', 'libglib-2.0', 'libgio-2.0')), 'webkitNetwork': (net_pids[0] if net_pids else -1, ('libglib-2.0', 'libgio-2.0', 'libsoup-3.0'))}
+                bad = {}
+                for who, (pid, libs) in want.items():
+                    for lib in libs:
+                        paths = mapped(pid, lib)
+                        if not paths or any(not p.startswith('/tmp/.mount_') for p in paths):
+                            bad[f'{who}:{lib}'] = paths
+                sc['mappedFromMount'] = {'checked': {k: v[1] for k, v in want.items()}, 'violations': bad}
+                run.check(f'[{name}] G7 the GUI and WebKitNetworkProcess map GTK/WebKitGTK/GLib/GIO/libsoup only from the AppImage mount (the host has GTK in this image)', not bad, bad)
             daemon_port = conn['port']
             socks = sockets_of(('WebKit', 'uniclipboard', 'uniclipd'))
-            sc['sockets'] = socks
-            sc['daemonPort'] = daemon_port
+            sc['sockets'], sc['daemonPort'] = socks, daemon_port
             web_to_daemon = [s for s in socks if s['proc'].startswith('WebKitNetwork') and s['peer'].endswith(f':{daemon_port}')]
             go_to_daemon = [s for s in socks if s['proc'] == 'uniclipboard' and s['peer'].endswith(f':{daemon_port}')]
             sc['owners'] = {'webkitNetworkProcessToDaemon': len(web_to_daemon), 'goHostToDaemon': len(go_to_daemon)}
-            web_to_proxy = [s for s in socks if s['proc'].startswith('WebKit') and sc['proxyPort'] and s['peer'].endswith(f":{sc['proxyPort']}")]
-            run.check(f'[{name}] P1 WebKitNetworkProcess (the WebView itself, not the Go host) holds established loopback TCP connections to the daemon (HTTP vs WebSocket is not distinguished by sockets)', len(web_to_daemon) >= 1, web_to_daemon)
-            run.check(f'[{name}] P1 no WebKit process has a connection to the proxy port', not web_to_proxy, web_to_proxy)
-            # P5: what the GUI hands the daemon (observation: the product does not rewrite proxy variables)
+            run.check(f'[{name}] P1 WebKitNetworkProcess (the WebView itself, not the Go host) holds established loopback TCP connections to the daemon (HTTP vs WebSocket is not distinguished by sockets)',
+                      len(web_to_daemon) >= 1, web_to_daemon)
+            web_to_proxy = [s for s in socks if s['proc'].startswith('WebKit') and port and s['peer'].endswith(f':{port}')]
+            run.check(f'[{name}] P1 no WebKit process holds a connection to the proxy port while the page is idle (no loopback traffic is sent to the proxy)', not web_to_proxy, web_to_proxy)
             sc['daemonProxyEnvironment'] = {k: v for k, v in environ_of(conn['pid']).items() if k.lower() in ('http_proxy', 'https_proxy', 'all_proxy', 'no_proxy')}
-            sc['guiProxyEnvironment'] = {k: v for k, v in environ_of(gui.proc.pid).items() if k.lower() in ('http_proxy', 'https_proxy', 'all_proxy', 'no_proxy')}
+            sc['guiEnvironmentSeen'] = {k: v for k, v in environ_of(gui.proc.pid).items() if k.lower() in ('http_proxy', 'https_proxy', 'all_proxy', 'no_proxy', 'home', 'xdg_current_desktop')}
             sc['gioModuleDir'] = environ_of(gui.proc.pid).get('GIO_MODULE_DIR')
-            # P3: the same external request from the WebView and from the control client, each with its OWN hostname and its OWN log window (WebView first,
-            # the proxy log position is saved before and after each client; dev2 attributed curl's CONNECT to the WebView)
+            # P3: WebView first (own hostname, own log window), then curl (own hostname, own window)
             nonce_w, nonce_c = secrets.token_hex(6), secrets.token_hex(6)
             url_w, url_c = f'https://{WV_HOST}/webview-{nonce_w}', f'https://{CURL_HOST}/curl-{nonce_c}'
-            n0 = proxy.mark_now() if proxy else 0
+            n0 = len(proxy.lines()) if proxy else 0
             gui.ctl(f'panel-js ext-{name} {reports.script("ext-" + name, url_w)}', f'panel-js-ext-{name}')
-            ev = reports.wait(f'ext-{name}-ok', 40) or reports.wait(f'ext-{name}-err', 20)
+            ev = reports.wait(f'ext-{name}-ok', 40) or reports.wait(f'ext-{name}-err', 25)
             time.sleep(1)
-            n1 = proxy.mark_now() if proxy else 0
+            n1 = len(proxy.lines()) if proxy else 0
             win_w = proxy.lines()[n0:n1] if proxy else []
             ctl = curl_as_user(dict(run.env, **curl_env), url_c)
             time.sleep(1)
-            n2 = proxy.mark_now() if proxy else 0
+            n2 = len(proxy.lines()) if proxy else 0
             win_c = proxy.lines()[n1:n2] if proxy else []
             loop = curl_as_user(dict(run.env, **curl_env), loop_url)
             time.sleep(1)
             sc['webview'] = {'report': ev, 'window': win_w, **classify(WV_HOST, nonce_w, win_w, target)}
             sc['curlControl'] = {'result': ctl, 'window': win_c, **classify(CURL_HOST, nonce_c, win_c, target)}
             sc['curlLoopbackControl'] = loop
+            sc['proxyModulesLoadedByWebKitNetworkProcess'] = {str(s['pid']): modules_loaded(s['pid']) for s in {x['pid']: x for x in web_to_daemon}.values()}
+            sc['proxyModulesLoadedByGui'] = modules_loaded(gui.proc.pid)
+            leaked = []
             if proxy:
-                owners = sockets_of(('WebKit', 'uniclipboard', 'uniclipd'))
-                sc['owners']['toProxyPortByProcess'] = sorted({o['proc'] for o in owners if o['peer'].endswith(f':{proxy.port}')})
                 reqs = request_targets(proxy.lines())
                 sc['proxyRequestTargets'] = [f'{m} {t}' for m, t in reqs]
-                probe_hosts = (WV_HOST, CURL_HOST)
                 loop_reqs = [t for m, t in reqs if LOOPBACK.search(t)]
                 sc['proxyLoopbackTargets'] = loop_reqs
-                sc['proxyEngineTargets'] = sorted({t for m, t in reqs if not LOOPBACK.search(t) and not any(h in t for h in probe_hosts)})
-                run.check(f'[{name}] control: curl (same environment, its own hostname) was named by the proxy: the proxy/log chain is valid',
+                sc['proxyEngineTargets'] = sorted({t for m, t in reqs if not LOOPBACK.search(t) and not any(h in t for h in (WV_HOST, CURL_HOST))})
+                run.check(f'[{name}] control: curl (same configuration, its own hostname) was named by the proxy: the proxy/log chain is valid',
                           sc['curlControl']['route'] in ('proxied', 'refused'), sc['curlControl'])
-                run.check(f'[{name}] control: curl targeting the loopback report port with the same environment IS in the proxy log (detection power for the loopback claim)',
+                run.check(f'[{name}] control: curl targeting the loopback report port with the same configuration IS in the proxy log (detection power for the loopback claim)',
                           any(f':{reports.port}/loopctl' in t for t in loop_reqs), {'curl': loop, 'targets': loop_reqs})
                 leaked = [t for t in loop_reqs if f':{daemon_port}' in t or (f':{reports.port}' in t and '/loopctl' not in t)]
                 run.check(f'[{name}] P1 the proxy log names no loopback target of the product (not the daemon port, not the page\'s report channel)', not leaked, leaked)
+            elif mode == 'dead':
+                run.check(f'[{name}] control: curl honours the dead proxy configuration (fails to connect, the target saw nothing)', ctl['rc'] != 0 and sc['curlControl']['targetSaw'] == 0, sc['curlControl'])
             else:
-                if mode == 'dead':
-                    run.check(f'[{name}] control: curl honours the dead proxy variables (fails to connect, the target saw nothing)',
-                              ctl['rc'] != 0 and sc['curlControl']['targetSaw'] == 0, sc['curlControl'])
-                else:
-                    run.check(f'[{name}] control: curl reaches the target directly without a proxy', sc['curlControl']['targetSaw'] == 1, sc['curlControl'])
-            # the WebView's route is data at this stage (baseline), not a pass/fail: the contract decides per scenario after the baseline
+                run.check(f'[{name}] control: curl reaches the target directly without a proxy', sc['curlControl']['targetSaw'] == 1, sc['curlControl'])
             sc['webviewRoute'] = sc['webview']['route']
+            # ---- functional requirements (evaluated only with --require; recorded either way)
+            visible = not (where == 'user' and not args.nonportable)  # portable HOME hides the real user's dconf (F7): an observation there, not a requirement
+            sc['configurationVisibleToGui'] = visible
+            applies = kind is not None and visible and (kind != 'env' or args.require_env)
+            sc['requirementApplies'] = applies
+            if applies:
+                expected = {'allow': 'proxied', 'deny': 'refused', 'dead': 'failed'}[mode]
+                req(f'[{name}] REQUIRE the real WebView request is {expected} (route observed: {sc["webviewRoute"]})', sc['webviewRoute'] == expected, sc['webview'])
+                if mode in ('deny', 'dead'):
+                    req(f'[{name}] REQUIRE no silent direct escape: the target saw no request from the WebView', sc['webview']['targetSaw'] == 0, sc['webview'])
+                req(f'[{name}] REQUIRE the local daemon stays usable: the WebView holds loopback connections to the daemon and the proxy log names no loopback target of the product',
+                    len(web_to_daemon) >= 1 and not leaked, {'webkitToDaemon': len(web_to_daemon), 'leaked': leaked})
             stop(gui, conn)
             launches.clear()
+            if where:
+                clean_dconf(target_app)
             if proxy:
                 proxy.stop()
-        r['passed'] = all(c['ok'] for c in r['checks'])
     except StopScenario:
         pass
     except Exception as e:
@@ -414,13 +479,15 @@ def main():
         for lc in launches:
             if lc.proc.poll() is None:
                 lc.proc.terminate()
-        for conn in sandbox.rglob('daemon.conn'):
+        for conn in root.rglob('daemon.conn'):
             try:
                 pid = json.loads(conn.read_text())['pid']
                 if pid_alive(pid):
                     os.kill(pid, 15)
             except (OSError, ValueError, KeyError):
                 pass
+        if bus:
+            bus.terminate()
         for p in proxies:
             p.stop()
             for f in ('tinyproxy.log', 'tinyproxy.conf', 'stdout.log'):
@@ -433,9 +500,10 @@ def main():
         r['targetRequests'] = servers[0].requests if servers else []
         r['targetHandshakeFailures'] = servers[0].handshake_failures if servers else []
         r['passed'] = bool(r['checks']) and all(c['ok'] for c in r['checks']) and 'error' not in r
+        r['functionalPassed'] = (bool(r['requirements']) and all(c['ok'] for c in r['requirements'])) if args.require else None
         (out / 'appimage-assertions.json').write_text(json.dumps(r, indent=2, default=str) + '\n')
-    print(json.dumps({'passed': r['passed'], 'mode': r['mode']}))
-    sys.exit(0 if r['passed'] else 1)
+    print(json.dumps({'passed': r['passed'], 'functionalPassed': r['functionalPassed'], 'mode': r['mode']}))
+    sys.exit(0 if r['passed'] and (not args.require or r['functionalPassed']) else (3 if r['passed'] else 1))
 
 
 if __name__ == '__main__':

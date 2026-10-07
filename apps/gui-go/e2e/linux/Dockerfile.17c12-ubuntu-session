@@ -1,0 +1,7 @@
+# 17c12 NON-portable variant: the proxy image plus the user session bus and an unlocked Secret Service (gnome-keyring, libsecret-tools, dbus) in the SAME container (17c11).
+# gnome-keyring pulls GTK onto the HOST, so the "no GTK on the host" check of the base image does not apply here: the non-portable run therefore asserts that the GUI and
+# the WebKit processes still map GTK / WebKitGTK / GLib / GIO from the AppImage mount (17c11 G7), otherwise the host GTK could make the package pass by accident.
+FROM uc-gui-go-linux-proxy:17c12-ubuntu
+RUN apt_install.sh gnome-keyring libsecret-tools dbus-daemon dbus-bin dbus-x11
+COPY verify_image_17c12_session.sh /usr/local/bin/
+RUN verify_image_17c12_session.sh

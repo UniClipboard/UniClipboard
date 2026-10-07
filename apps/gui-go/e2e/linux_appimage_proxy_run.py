@@ -39,14 +39,16 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 from linux_appimage_portable_run import UserRun, USER, as_user, environ_of, stop, wait_daemon  # noqa: E402
-from linux_appimage_run import DISPLAY, PASSPHRASE, maps_of, pid_alive, procs, sha256, start_xvfb, wait_panel_ready  # noqa: E402
+from linux_appimage_run import DISPLAY, PASSPHRASE, PLATFORM_KEY, VERSION, maps_of, pid_alive, procs, sha256, start_xvfb, wait_panel_ready  # noqa: E402
 from linux_appimage_tls_run import Reports, StopScenario, install_trust, run_cmd, wait_new_daemon  # noqa: E402
 
 TARGET_NAME = 'target.test'
 WV_HOST, CURL_HOST = 'webview-probe.test', 'curl-probe.test'  # one hostname per client
 RENDEZVOUS_HOST = 'rendezvous.uniclipboard.app'  # Engine d4dd324a (uc-engine 1.1.0-rc.22, the packaged daemon's lock entry): uc-infra-p2p RENDEZVOUS_BASE_URL
 # In this INTERNAL network the rendezvous name is pointed (/etc/hosts, additional control) at the controlled target: a direct connection of the daemon is then visible there.
-HOSTS = (TARGET_NAME, WV_HOST, CURL_HOST, RENDEZVOUS_HOST)
+UPDATE_HOST = 'update-feed.test'  # P5: the Go updater's own hostname (its feed), distinct from the WebView's and curl's
+UPDATE_PATH = '/feed-p5.json'
+HOSTS = (TARGET_NAME, WV_HOST, CURL_HOST, RENDEZVOUS_HOST, UPDATE_HOST)
 LOOPBACK = re.compile(r'(127\.\d+\.\d+\.\d+|localhost|\[?::1\]?)')
 REQ = re.compile(r'Request \(file descriptor \d+\): (\w+) (\S+)')
 BUS_DIR = Path('/bus')
@@ -82,7 +84,12 @@ class Target:
 
         class Handler(http.server.BaseHTTPRequestHandler):
             def do_GET(self):
-                self.answer(200, b'target-ok')
+                if self.path == UPDATE_PATH:  # a Tauri-format feed that announces a newer version; a check never downloads (the download is the P9 isolated flow)
+                    feed = {'version': '9999.0.0', 'notes': 'P5 feed probe', 'pub_date': '2026-10-06T00:00:00Z',
+                            'platforms': {PLATFORM_KEY[os.uname().machine]: {'url': f'https://{UPDATE_HOST}/never-downloaded.tar.gz', 'signature': 'cDVwcm9iZQ=='}}}
+                    self.answer(200, json.dumps(feed).encode())
+                else:
+                    self.answer(200, b'target-ok')
 
             def do_POST(self):
                 self.rfile.read(int(self.headers.get('Content-Length') or 0))
@@ -302,14 +309,24 @@ P8_VARIANTS = {  # name -> (proxy mode, kind); the environment is built by varia
     'rv-none': (None, 'rv-none'),                   # P6: Engine rendezvous redeem, no proxy variables: the proxy never sees it (control)
     'rv-deny': ('deny', 'rv-deny'),                 # P6: deny-only proxy: the redeem's rendezvous CONNECT must reach the proxy and be refused (never forwarded)
     'rv-bypass': ('deny', 'rv-bypass'),             # P6: NO_PROXY names the rendezvous host: the proxy must not see that CONNECT
+    'up-none': (None, 'up-none'),                   # P5: the REAL Go updater check (control command `check`), no proxy variables: direct
+    'up-allow': ('allow', 'up-allow'),              # env proxy, allowing: the updater's request goes through it
+    'up-deny': ('deny', 'up-deny'),                 # env proxy, refusing: the check fails, the feed target never sees it
+    'up-dead': ('dead', 'up-dead'),                 # env proxy that nothing listens on: the check fails, no escape
+    'up-bypass': ('allow', 'up-bypass'),            # NO_PROXY names the feed host: direct although a proxy is set
     'env-bypass-other': ('allow', 'env-bypass-other'),  # NO_PROXY names an unrelated host: the WebView is still proxied
 }
-REQUIRED_VARIANTS = {'rv-none': 'direct', 'rv-deny': 'refused', 'rv-bypass': 'refused', 'env-recover': 'proxied', 'env-bypass': 'direct', 'env-bypass-other': 'proxied'}  # the others are recorded observations (precedence is the resolver library's)
+REQUIRED_VARIANTS = {'up-none': 'direct', 'up-allow': 'proxied', 'up-deny': 'refused', 'up-dead': 'failed', 'up-bypass': 'proxied', 'rv-none': 'direct', 'rv-deny': 'refused', 'rv-bypass': 'refused', 'env-recover': 'proxied', 'env-bypass': 'direct', 'env-bypass-other': 'proxied'}  # the others are recorded observations (precedence is the resolver library's)
 
 
 def variant_env(kind, port):
     url = f'http://127.0.0.1:{port}'
     dead = f'http://127.0.0.1:{free_port()}'
+    if kind.startswith('up-'):
+        feed = {'UC_UPDATE_ENDPOINT': f'https://{UPDATE_HOST}{UPDATE_PATH}'}
+        if kind == 'up-none':
+            return feed
+        return dict(proxy_env(port), **feed, **({'no_proxy': UPDATE_HOST, 'NO_PROXY': UPDATE_HOST} if kind == 'up-bypass' else {}))
     if kind == 'rv-none':
         return {}
     if kind == 'rv-deny':
@@ -615,6 +632,29 @@ def main():
                     req(f'[{name}] REQUIRE while the proxy is down the WebView request FAILS and never reaches the target directly', out_phase['route'] == 'failed' and out_phase['targetSaw'] == 0, out_phase)
                     req(f'[{name}] REQUIRE after the proxy is back on the same port the same GUI process is proxied again', back_phase['route'] == 'proxied', back_phase)
                     req(f'[{name}] REQUIRE the local daemon is still usable after the outage (page HTTP fetch and WebSocket frame)', bool(sc['p7']['pageAfter']['http']) and bool(sc['p7']['pageAfter']['wsframe']), sc['p7']['pageAfter'])
+            if name.startswith('up-'):
+                # P5: the Go updater (update.NewHTTPClient: ProxyFromEnvironment, environment only) through the REAL control command `check` (the manual check's code path), own hostname, own log window.
+                class _Saw:
+                    def __init__(self, rows):
+                        self.rows = rows
+
+                    def saw(self, _):
+                        return self.rows
+                t0, n_before = time.time(), (len(proxy.lines()) if proxy else 0)
+                row = gui.ctl('check', 'control-check', 90)
+                time.sleep(2)
+                win = proxy.lines()[n_before:] if proxy else []
+                at_feed = [x for x in target.requests if x['t'] >= t0 and (x.get('host') or '').split(':')[0] == UPDATE_HOST and x['path'] == UPDATE_PATH]
+                cls = classify(UPDATE_HOST, '', win, _Saw(at_feed))
+                sc['p5'] = {'checkRow': row, 'window': win, **cls, 'feedRequestsAtTarget': at_feed}
+                run.check(f'[{name}] P5 the updater check ran through the real control command (a step was reported)', row is not None, sc['p5'])
+                if args.require and args.require_env:
+                    want = {'up-none': 'direct', 'up-allow': 'proxied', 'up-deny': 'refused', 'up-dead': 'failed', 'up-bypass': 'direct'}[name]  # the UPDATER's route (the WebView's is REQUIRED_VARIANTS)
+                    req(f'[{name}] REQUIRE the Go updater request is {want} (route observed: {cls["route"]}); its own hostname, its own proxy-log window', cls['route'] == want, sc['p5'])
+                    if want in ('proxied', 'direct'):
+                        req(f'[{name}] REQUIRE the check succeeded and found the announced version', row['ok'] is True and (row.get('detail') or {}).get('found') is True, row)
+                    else:
+                        req(f'[{name}] REQUIRE the check failed and the feed target never saw the request (no silent direct escape)', row['ok'] is not True and not at_feed, row)
             if name.startswith('rv-'):
                 # P6: ONE real redeem of a synthetic invalid invitation against the isolated throwaway daemon (its temp profile). The deny-only proxy records the CONNECT and refuses it.
                 import urllib.request, urllib.error

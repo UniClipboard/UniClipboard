@@ -1,8 +1,8 @@
 // Native NSMenu observer for the macOS tray (17c15). It talks to the real status item of ONE process through the
 // Accessibility API: it opens the tracked NSMenu, reads it while it is open (titles, enabled, check marks, submenus),
-// presses items and cancels the menu. Most commands are AX-only; the exceptions that DO act on the real session are `clickat`/`rightclick`
+// presses items and cancels the menu. Most commands are AX-only; the exceptions that DO act on the real session are `clickat`
 // (synthesized mouse events: the pointer moves and is put back; `clickat` re-verifies the element under the point itself and refuses on a
-// mismatch), `hover` (pointer move) and `escape` (one global key press, refused unless this pid's pop-up menu window is on screen).
+// mismatch; the old unverified `rightclick` command was removed), `hover` (pointer move, the caller verifies; diagnostic probes only) and `escape` (one global key press, refused unless this pid's pop-up menu window is on screen).
 // Build: swiftc -O apps/gui-go/e2e/tray_ax.swift -o <dir>/tray_ax (tray_tracking_run.py builds and hashes it itself).
 //
 //   swift tray_ax.swift display 0                        main display asleep/active/online (a sleeping display makes screenshots black and may stop menu tracking)
@@ -12,6 +12,10 @@
 //   swift tray_ax.swift read   <pid>                      the open menu tree as JSON (fails if no menu is open)
 //   swift tray_ax.swift press  <pid> <title> [<title>..]  AXPress the item at the title path (submenu entries first)
 //   swift tray_ax.swift cancel <pid>                      AXCancel on the open menu
+//   swift tray_ax.swift elementat <pid> <x> <y>           the AX element under a screen point, its owner pid and `mine` (read-only)
+//   swift tray_ax.swift windows <pid>                     every window of the pid with bounds/layer/on-screen (the pop-up observable)
+//   swift tray_ax.swift clickat <pid> <x> <y> left|right owner|overflow:<desc>:<ownerPid>   verified synthesized click (see the case)
+//   swift tray_ax.swift escape <pid>                      one Escape, refused unless the pid's pop-up menu window is on screen
 //   swift tray_ax.swift watch  <pid> <seconds> <ms>       read the open menu every <ms> ms for <seconds>, one JSON line per read (with a monotonic wall clock in ns)
 //
 // Every attribute call has a 5 s AX timeout, so a hung target shows up as an error line instead of hanging the observer.
@@ -242,19 +246,27 @@ case "hover":
     print(json(["ok": true, "target": ["x": px, "y": py], "ns": now(), "popupWindows": popupWindows(pid)]))
     CGWarpMouseCursorPosition(saved)
 case "clickat":
-    // clickat <pid> <x> <y> left|right owner|<description text>: an ordinary synthesized click. The element under the point is re-verified HERE,
-    // in the same call, right before the events. `owner`: the element must be owned by <pid> (this run's GUI; the app's own status item).
-    // Any other word is the explicit overflow step: the element's description must contain it (the system's "show hidden menu bar items" button).
-    // Otherwise nothing is clicked. Moves onto the point, holds the button, releases, and puts the pointer back.
-    guard argv.count >= 7, let px = Double(argv[3]), let py = Double(argv[4]) else { fail("clickat <pid> <x> <y> left|right owner|<description>") }
+    // clickat <pid> <x> <y> left|right owner | overflow:<description>:<ownerPid>: an ordinary synthesized click. The element under the point is
+    // re-verified HERE, in the same call, right before the events. `owner`: owned by <pid> (this run's GUI) and a menu-bar item (AXMenuBarItem or
+    // AXMenuExtra): the app's own status item. `overflow:...`: the explicit overflow step: role AXButton, description containing <description>,
+    // owned by <ownerPid> (the owner the runner read in its own verification) and NOT by <pid>. Otherwise nothing is clicked. Moves onto the
+    // point, holds the button, releases, and puts the pointer back.
+    guard argv.count >= 7, let px = Double(argv[3]), let py = Double(argv[4]) else { fail("clickat <pid> <x> <y> left|right owner|overflow:<description>:<ownerPid>") }
     var hitEl: AXUIElement?
     let hr = AXUIElementCopyElementAtPosition(AXUIElementCreateSystemWide(), Float(px), Float(py), &hitEl)
     var hitOwner: pid_t = 0
     if let h = hitEl { AXUIElementGetPid(h, &hitOwner) }
     let hitDesc = hitEl.map { str($0, kAXDescriptionAttribute) } ?? ""
-    let accepted = argv[6] == "owner" ? (hitOwner == pid) : (hitOwner != pid && hitDesc.contains(argv[6]))
+    let hitRole = hitEl.map { str($0, kAXRoleAttribute) } ?? ""
+    var accepted = false
+    if argv[6] == "owner" {
+        accepted = hitOwner == pid && (hitRole == "AXMenuBarItem" || hitRole == "AXMenuExtra")
+    } else if argv[6].hasPrefix("overflow:") {
+        let parts = argv[6].split(separator: ":", omittingEmptySubsequences: false).map(String.init)
+        accepted = parts.count == 3 && hitRole == "AXButton" && hitDesc.contains(parts[1]) && Int32(parts[2]) == hitOwner && hitOwner != pid
+    }
     if hr != .success || !accepted {
-        print(json(["ok": false, "refused": "element under the point is not the expected target; nothing clicked", "ownerPid": hitOwner, "description": hitDesc, "ns": now()])); exit(0)
+        print(json(["ok": false, "refused": "element under the point is not the expected target; nothing clicked", "ownerPid": hitOwner, "role": hitRole, "description": hitDesc, "ns": now()])); exit(0)
     }
     let right = argv[5] == "right"
     let target = CGPoint(x: px, y: py)
@@ -267,26 +279,6 @@ case "clickat":
     Thread.sleep(forTimeInterval: 0.3)
     CGWarpMouseCursorPosition(saved)
     print(json(["ok": true, "target": ["x": px, "y": py], "button": argv[5], "ns": now()]))
-case "rightclick":
-    // A real right mouse click at the centre of the status item: Wails' pre-click monitor routes it into native menu tracking (the left
-    // button runs the app's own click handler instead). It moves the real pointer for a moment and puts it back.
-    guard let item = statusItems(pid).first, let pv = attr(item, kAXPositionAttribute), let sv = attr(item, kAXSizeAttribute) else { fail("no status item frame") }
-    var p = CGPoint.zero, sz = CGSize.zero
-    AXValueGetValue(pv as! AXValue, .cgPoint, &p)
-    AXValueGetValue(sv as! AXValue, .cgSize, &sz)
-    let target = CGPoint(x: p.x + sz.width / 2, y: p.y + sz.height / 2)
-    let saved = CGEvent(source: nil)?.location ?? target
-    let down = CGEvent(mouseEventSource: nil, mouseType: .rightMouseDown, mouseCursorPosition: target, mouseButton: .right)
-    let up = CGEvent(mouseEventSource: nil, mouseType: .rightMouseUp, mouseCursorPosition: target, mouseButton: .right)
-    // Move onto the item first (a pointer that never entered the status window is not what a user's click looks like), hold the button, release.
-    CGEvent(mouseEventSource: nil, mouseType: .mouseMoved, mouseCursorPosition: target, mouseButton: .left)?.post(tap: .cghidEventTap)
-    Thread.sleep(forTimeInterval: 0.25)
-    down?.post(tap: .cghidEventTap)
-    Thread.sleep(forTimeInterval: 0.15)
-    up?.post(tap: .cghidEventTap)
-    Thread.sleep(forTimeInterval: 0.3)
-    CGWarpMouseCursorPosition(saved)
-    print(json(["ok": true, "target": ["x": target.x, "y": target.y], "restored": ["x": saved.x, "y": saved.y], "ns": now()]))
 case "open":
     guard let item = statusItems(pid).first else { fail("no status item") }
     let r = AXUIElementPerformAction(item, "AXShowMenu" as CFString)

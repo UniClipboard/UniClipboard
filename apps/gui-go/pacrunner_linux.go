@@ -71,9 +71,27 @@ func superviseBundledPacRunner(helper string, settled chan<- struct{}) {
 	settle := func() { once.Do(func() { close(settled) }) }
 	defer settle()
 
-	ctx, cancel := context.WithTimeout(context.Background(), pacBudget)
-	conn, err := dbus.ConnectSessionBus(dbus.WithContext(ctx))
-	cancel()
+	// godbus ties the connection's lifetime to the context given to the dial (cancelling it closes the connection), so the dial gets a
+	// context that lives as long as the supervisor and the budget is enforced around it: past pacBudget the dial is cancelled.
+	connCtx, closeConn := context.WithCancel(context.Background())
+	defer closeConn()
+	type dialResult struct {
+		conn *dbus.Conn
+		err  error
+	}
+	dialed := make(chan dialResult, 1)
+	go func() {
+		c, err := dbus.ConnectSessionBus(dbus.WithContext(connCtx))
+		dialed <- dialResult{c, err}
+	}()
+	var conn *dbus.Conn
+	var err error
+	select {
+	case d := <-dialed:
+		conn, err = d.conn, d.err
+	case <-time.After(pacBudget):
+		err = fmt.Errorf("the session bus did not answer within %v", pacBudget)
+	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "pacrunner: no session bus, PAC configurations cannot be evaluated:", err)
 		return
@@ -81,7 +99,7 @@ func superviseBundledPacRunner(helper string, settled chan<- struct{}) {
 	defer conn.Close()
 
 	var activatable []string
-	ctx, cancel = context.WithTimeout(context.Background(), pacBudget)
+	ctx, cancel := context.WithTimeout(context.Background(), pacBudget)
 	err = conn.BusObject().CallWithContext(ctx, "org.freedesktop.DBus.ListActivatableNames", 0).Store(&activatable)
 	cancel()
 	hostService := err == nil && slices.Contains(activatable, pacRunnerName)
@@ -93,7 +111,6 @@ func superviseBundledPacRunner(helper string, settled chan<- struct{}) {
 		fmt.Fprintln(os.Stderr, "pacrunner: cannot watch the name owner:", err)
 	}
 
-	var child *exec.Cmd
 	exited := make(chan struct{}, 1)
 	var starts []time.Time
 	owned := func() bool {
@@ -136,7 +153,6 @@ func superviseBundledPacRunner(helper string, settled chan<- struct{}) {
 			fmt.Fprintln(os.Stderr, "pacrunner: cannot start the bundled helper:", err)
 			return
 		}
-		child = cmd
 		go func() {
 			_ = cmd.Wait()
 			select {
@@ -160,7 +176,6 @@ func superviseBundledPacRunner(helper string, settled chan<- struct{}) {
 				}
 			}
 		case <-exited:
-			child = nil
 			ensure()
 		}
 	}

@@ -132,7 +132,7 @@ Menu.Update -> macosMenu.update -> InvokeSync(main thread):
 
 ### 静态复审（`db05c4b9f`，不是 E2E）后的进一步修正
 
-只读静态复审（原文 `review-792dc721a/static-review-db05c4b9f-raw.md`）指出，上一轮修正仍有以下缺口，已改代码；**同样只经过编译与格式门禁，真实菜单验证仍 PENDING**：
+只读静态复审（原文 `review-792dc721a/static-review-db05c4b9f-raw.md`）指出，上一轮修正仍有以下缺口，已改代码（当时只经过编译与格式门禁；这些修正之后的真实菜单验收见“最终验收”一节）：
 
 - **3c 配对**：原先“加入新行的 publish”只靠采样时间挑选，可能在双 publish 或采样时间偏移时选错、并在子菜单已收起时通过。现在：每个样本记录读取的开始与结束时间；“之前”只取已经结束于该 publish 开始之前的最近一次读取，并要求它距 publish 开始不超过 0.6 秒；加入新行的 publish 必须是“新行出现的读取窗口”（上一次不含新行的读取开始，到首次含新行的读取结束）内 **恰好一次** 的 publish，出现零次或多次都判为不明确而失败，不猜；子菜单没有收起时，publish 之后的状态取该 publish 结束后的第一次展开样本。
 - **按压门禁**：每次按压前立即读取，没有本 pid 的弹出窗口就记录失败并中止；重开菜单前要求不存在弹出窗口，重开后要求出现弹出窗口，不满足即中止，不再继续按压陈旧的 AX 子树（包括 Quit）。
@@ -159,7 +159,7 @@ Menu.Update -> macosMenu.update -> InvokeSync(main thread):
 
 ## 结果
 
-以下先列探索性中间记录，随后是冻结二进制的最终运行。
+以下先列探索性中间记录，随后是 partial 的 `final3` 与最终验收 `final6-accept`。
 
 ### 子菜单展开期间的刷新（中间工件 `final2/full`、`final2/full2`、`final2/full3`）
 
@@ -169,9 +169,26 @@ Menu.Update -> macosMenu.update -> InvokeSync(main thread):
 
 - `final2/full3`（逐次 publish 判定，探索性中间运行，非冻结最终）：36 秒内 3 次自然 publish（每次 6–8 ms 返回）。其中 **2 次开始前最后一次采样为展开状态**（采样年龄 0.12 秒、0.04 秒），之后第一次收起采样分别在 publish 开始后 0.03 秒、0.12 秒，重新展开分别在 0.08 秒、0.17 秒，重新展开后行为 `tray-peer-b`、根菜单为英文。第 3 次开始时已处于收起状态，不计入展开期间的 publish。该时序与“重建后子菜单收起”一致，但仍只是时序证据；采样与 AX 按压都是外部观测，不独立证明机制。
 
+### 最终验收（`final6` 冻结来源 `ce8649967`，运行目录 `final6-accept`）
+
+会话解锁后（只读确认 `CGSSessionCopyCurrentDictionary` 不含 `CGSSessionScreenIsLocked`、显示器未休眠），先在同一冻结构建上做一次探索运行（`final7-explore/full1`：rc=0，34 项通过，没有失败，所以没有任何源码修改），再顺序运行四轮，每轮 `assertions.json` 都是 `passed=true`、`acceptanceEligible=true`（使用 `--manifest`、真实右键、`stateMutated=false`），GUI 退出码 0，三个 profile 的 daemon 在清理后均无遗留，没有 `cleanupErrors`：
+
+| 运行 | 场景 | 结果 |
+| --- | --- | --- |
+| `final6-accept/full1` | full | 34 项通过，rc=0 |
+| `final6-accept/light1` | lightweight | 11 项通过，rc=0 |
+| `final6-accept/full2` | full | 34 项通过，rc=0 |
+| `final6-accept/light2` | lightweight | 11 项通过，rc=0 |
+
+- 构建与身份：来源 `ce8649967` 干净，Engine `d4dd324a` 与 Cargo.lock 一致且无路径覆盖，28 条 ld 警告保留在 `final6/build.log`；每轮检查运行中 daemon 的可执行文件哈希等于构建出的 `uniclipd`，GUI 包可执行文件、daemon、CLI 的哈希等于 `final6/build-manifest.json`；`tray_ax` 与 `daemonget` 由运行器从仓库源码构建并记录哈希。
+- 点击目标：每次右键都经过“目标元素属主等于本次运行 GUI pid 且角色为菜单栏项目”的运行器校验和 Swift 同调用复核；按压前立即读取并要求本 pid 的弹出窗口存在。
+- M3（设备子菜单真实展开且发生 row-adding publish）：`full1` 与 `full2` 里 3b 的 4 次自然 publish 全部在子菜单展开状态下开始（读取距 publish 不超过 0.13 秒，无中间 publish），其后 0.02–0.13 秒内第一次采样到收起，重新展开后行为 `tray-peer-b`、根菜单为英文；3c 中第二个对端配对后，加入新行的那次 publish 是新行读取窗口内唯一的一次 publish，开始时子菜单处于展开状态（读取年龄 0.01/0.02 秒）且尚无新行，之后 0.08–0.09 秒内收起，重新展开后两行 `tray-peer-b`、`tray-peer-c` 都在，根菜单为英文，daemon 的 `member list` 也列出两个对端。
+- 轻量模式（M5b）：真实菜单按压“轻量模式”后精确的 GUI pid 退出码为 0，同一个 daemon pid 存活（锁文件持有者、HTTP `GET /settings` 正常），通知到达记录器，之后 CLI 停止结束的是同一个 daemon pid，锁无持有者。
+- 局限（不扩大结论）：子菜单在 publish 之后很快收起，这与“重建 NSMenu 使子菜单收起”一致，但仍只是时序证据，机制没有独立证明；这是 macOS 27.0 的一台主机，目标布局依赖本机的菜单栏溢出状态；对象按 macOS 27.0 编译、按 11.0 链接，更老的 macOS 的兼容性 **未证明**；Windows 真实托盘仍是 OPEN；整个迁移的 OPEN 清单不变。
+
 ### 冻结二进制的运行（`final3`，**partial evidence，不是最终验收**）
 
-独立评审（`792dc721a`）指出这四轮运行所用的运行器有缺陷：3c 实际没有观察到“展开期间的结构变化”（新行出现时子菜单已被前一次 publish 收起），第 3、4、5 步重开菜单后没有断言弹出窗口存在，目标身份校验接受了 bundle 名，等等（见上一节的失败模型和 `review-792dc721a/fix-map.md`）。因此下表只证明：在当时的运行器口径下通过。其中 3a、3b 的逐次 publish、语言变更、设备按压、同步开关、Quit 和轻量模式的结果不依赖有缺陷的那几处，但 3c 的结论 **不成立**，也不能据此声称“展开期间的结构变化已验证”。修正后的运行器已提交（`307ac2b49`），**真实菜单验收待宿主会话解锁后重跑（PENDING）**；该 partial 工件保留，不覆盖。
+独立评审（`792dc721a`）指出这四轮运行所用的运行器有缺陷：3c 实际没有观察到“展开期间的结构变化”（新行出现时子菜单已被前一次 publish 收起），第 3、4、5 步重开菜单后没有断言弹出窗口存在，目标身份校验接受了 bundle 名，等等（见上一节的失败模型和 `review-792dc721a/fix-map.md`）。因此下表只证明：在当时的运行器口径下通过。其中 3a、3b 的逐次 publish、语言变更、设备按压、同步开关、Quit 和轻量模式的结果不依赖有缺陷的那几处，但 3c 的结论 **不成立**，也不能据此声称“展开期间的结构变化已验证”。修正后的运行器随后经独立评审和静态复核，并已在解锁的会话上完成真实菜单验收（见上一节）；该 partial 工件保留，不覆盖。
 
 
 来源 `71c455d2f`（干净），Engine `d4dd324a` 与 Cargo.lock 一致且无路径覆盖，manifest 见 `final3/build-manifest.json`，构建日志保留 28 条 ld 警告（对象按 macOS 27.0 编译、按 11.0 链接；更老 macOS 的兼容性 **未证明**）。顺序运行四轮，provenance 的 `stateMutated` 均为 false（菜单由真实右键经 AppKit 跟踪打开，未使用反射填充的开启方式）：
@@ -195,5 +212,5 @@ Menu.Update -> macosMenu.update -> InvokeSync(main thread):
 
 ### 覆盖边界
 
-- 3c（结构变化）在 `final3` 中 **没有** 覆盖展开期间的变化（见上）；修正后的运行器要求加入新行的那次 publish 开始时子菜单处于展开状态，该验收 PENDING。3b MANUAL（语言）以变更前一次采样确认展开，同样 PENDING。
+- 3c（结构变化）在 `final3` 中 **没有** 覆盖展开期间的变化（见上）；修正后的运行器要求加入新行的那次 publish 开始时子菜单处于展开状态，该验收已在 `final6-accept` 完成（见上）。3b MANUAL（语言）以变更前一次采样确认展开，同样已通过。
 - Windows 真实托盘仍是 OPEN；整个迁移 OPEN 清单（见全迁移计划与交接文件）不因本切片减少。

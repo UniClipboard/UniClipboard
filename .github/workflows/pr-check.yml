@@ -271,6 +271,17 @@ jobs:
       - name: Build daemon
         run: cargo build -p uc-daemon --features uc-daemon/e2e-rendezvous
 
+      - name: Run native clipboard startup recovery E2E
+        env:
+          CLIPBOARD_E2E_TOOLS: ${{ runner.temp }}/clipboard-startup-tools
+          CLIPBOARD_E2E_ARTIFACTS: ${{ runner.temp }}/e2e-evidence/clipboard-startup
+        shell: bash
+        run: |
+          mkdir -p "$CLIPBOARD_E2E_TOOLS"
+          clang -fobjc-arc -framework AppKit -DPRIVATE_PASTEBOARD_TOOL scripts/e2e/clipboard-startup/private-pasteboard.m -o "$CLIPBOARD_E2E_TOOLS/private-pasteboard"
+          clang -fobjc-arc -dynamiclib -framework AppKit scripts/e2e/clipboard-startup/private-pasteboard.m -o "$CLIPBOARD_E2E_TOOLS/private-pasteboard.dylib"
+          python3 scripts/e2e/clipboard-startup/real-daemon-clipboard-e2e.py --daemon target/debug/uniclipd --tools "$CLIPBOARD_E2E_TOOLS" --artifacts "$CLIPBOARD_E2E_ARTIFACTS"
+
       - name: Set up Go
         uses: actions/setup-go@v6
         with:

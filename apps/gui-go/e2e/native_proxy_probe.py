@@ -282,7 +282,12 @@ def main():
             every = {pid: e for pid, (e, _) in table2.items() if e.endswith('glib-pacrunner')}
             # only helpers THIS test owns count: the child of the task-owned private bus (host service activation) or of the GUI (the bundled helper). A glib-pacrunner that was
             # already running on the host (the user's own session) is recorded as foreign and never judged, never touched.
-            helpers = {pid: e for pid, e in every.items() if ppid_of(pid) in (private_bus.pid, proc.pid)}
+            def started_by_our_bus(pid):  # a bus-activated service is not a child of the bus (the launcher forks): dbus-daemon puts its address into the service's environment
+                try:
+                    return f'unix:path={out}/bus.sock' in Path(f'/proc/{pid}/environ').read_bytes().decode(errors='replace')
+                except OSError:
+                    return False
+            helpers = {pid: e for pid, e in every.items() if ppid_of(pid) in (private_bus.pid, proc.pid) or started_by_our_bus(pid)}
             foreign = {pid: {'exe': e, 'ppid': ppid_of(pid)} for pid, e in every.items() if pid not in helpers}
             result['pacHelpers'] = {str(k): {'exe': v, 'ppid': ppid_of(k)} for k, v in helpers.items()}
             result['pacHelpersForeign'] = {str(k): v for k, v in foreign.items()}

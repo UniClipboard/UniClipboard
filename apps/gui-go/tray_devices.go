@@ -70,12 +70,7 @@ func (d *deviceMenu) requestRefresh() {
 
 func (d *deviceMenu) setLanguage(language string) {
 	d.mu.Lock()
-	d.applyLanguage(language)
-	d.mu.Unlock()
-	d.publishMenu()
-}
-
-func (d *deviceMenu) applyLanguage(language string) {
+	defer d.mu.Unlock()
 	d.language = language
 	labels := deviceSyncLabels[language]
 	d.sub.SetLabel(labels[0])
@@ -85,9 +80,13 @@ func (d *deviceMenu) applyLanguage(language string) {
 	if d.placeholder != nil {
 		d.placeholder.SetLabel(d.placeholderText())
 	}
+	d.publishMenu()
 }
 
-// publishMenu is called without d.mu held: on Linux it hands the menu to the main thread.
+// publishMenu runs with d.mu held, so no goroutine of this file edits the menu while the platform reads it (on
+// Linux that read happens on the main thread). Nothing on the main thread takes d.mu: Wails runs menu callbacks
+// on their own goroutines, so waiting for the main thread here cannot deadlock. The lock order is d.mu, then the
+// tray's mu (inside publish); trayMenu.setLanguage releases its mu before it calls in here.
 func (d *deviceMenu) publishMenu() {
 	if d.publish != nil {
 		d.publish()
@@ -172,12 +171,7 @@ func (h *HostService) memberSyncPreferences(ctx context.Context, id string) (mem
 // devices changed; otherwise items are updated in place so an open menu does not flicker.
 func (d *deviceMenu) render(rows []deviceRow, completed ...string) {
 	d.mu.Lock()
-	d.renderLocked(rows, completed)
-	d.mu.Unlock()
-	d.publishMenu()
-}
-
-func (d *deviceMenu) renderLocked(rows []deviceRow, completed []string) {
+	defer d.mu.Unlock()
 	for _, id := range completed {
 		delete(d.pending, id)
 	}
@@ -209,6 +203,7 @@ func (d *deviceMenu) renderLocked(rows []deviceRow, completed []string) {
 		}
 	}
 	d.rows = rows
+	d.publishMenu()
 }
 
 // click handles a device item. The platform flips the check mark itself, so it is put back to the stored

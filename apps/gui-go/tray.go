@@ -56,7 +56,13 @@ func (h *HostService) initTray() {
 	t.tray.SetTemplateIcon(trayIcon)
 	t.tray.SetTooltip("UniClipboard")
 	t.tray.SetMenu(menu)
-	t.devices.publish = func() { republishTrayMenu(t.tray, menu) }
+	// Set before the refresh goroutine and the event handlers below exist, so every render sees it. t.mu keeps the
+	// root items (labels, sync state) still while the platform reads the menu.
+	t.devices.publish = func() {
+		t.mu.Lock()
+		defer t.mu.Unlock()
+		republishTrayMenu(t.tray, menu)
+	}
 	t.tray.OnClick(h.showMainWindow)
 
 	// Keep the toggle label in step with settings changed from any window.
@@ -110,10 +116,11 @@ func (t *trayMenu) syncLabel() string {
 
 func (t *trayMenu) setLanguage(tag string) {
 	t.mu.Lock()
-	defer t.mu.Unlock()
 	t.language = normalizeTrayLanguage(tag)
 	t.applyLabels()
-	t.devices.setLanguage(t.language)
+	language := t.language
+	t.mu.Unlock() // the device menu takes its own lock and then t.mu again to publish
+	t.devices.setLanguage(language)
 }
 
 func (t *trayMenu) setSyncEnabled(enabled bool) {

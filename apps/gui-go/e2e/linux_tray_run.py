@@ -122,8 +122,26 @@ def main():
         check('4 an invitation code was obtained from the production rendezvous service', bool(code))
         assert code, buf[:300]
         t_join = time.time()
-        run_cli(cli_b, env_b, 'space', 'join', '--code', code, '--passphrase', PASSPHRASE, '--device-name', 'tray-peer-b', timeout=120)
+        join = run_cli(cli_b, env_b, 'space', 'join', '--code', code, '--passphrase', PASSPHRASE, '--device-name', 'tray-peer-b', timeout=120, check=False)
+        results['join'] = {'rc': join.returncode, 'stderr': join.stderr[-300:]}
+        # Pairing is verified on the daemons themselves, independent of the tray: both sides must list two members.
+        members = {'a': [], 'b': []}
+        for _ in range(45):
+            for k, (cli, env) in {'a': (cli_a, env_a), 'b': (cli_b, env_b)}.items():
+                try:
+                    members[k] = json.loads(run_cli(cli, env, '--json', 'member', 'list', check=False).stdout or '[]')
+                except ValueError:
+                    members[k] = []
+            if len(members['a']) >= 2 and len(members['b']) >= 2:
+                break
+            time.sleep(2)
         invite.send_signal(signal.SIGINT)
+        paired = len(members['a']) >= 2 and len(members['b']) >= 2
+        check('4b the real peer is paired on both daemons (member list, independent of the tray)', paired,
+              {'a': [m.get('deviceName') for m in members['a']], 'b': [m.get('deviceName') for m in members['b']], 'join': results['join']})
+        if not paired:
+            results['inconclusive'] = 'pairing did not complete; the device checks below are not attributable to the tray'
+            raise RuntimeError(results['inconclusive'])
         lay = host.wait(lambda l: [n['label'] for n in submenu(l, 'Device Sync')] == ['tray-peer-b'], 60, 'peer row')
         row = submenu(lay, 'Device Sync')[0] if lay else None
         check('5 the periodic refresh publishes the paired peer into the device submenu seen by the host (checked, enabled)',
@@ -145,6 +163,15 @@ def main():
         lay = host.wait(lambda l: labels(l)[0] == sync0, 30, 'sync restores')
         check('7 and flips back', lay is not None, labels(lay)[0] if lay else None)
 
+        ZH = ['设备同步', '-', '打开', '设置', '检查更新…', '-', '重启', '轻量模式（后台同步）', '退出']
+        r = gui.invoke('lang-zh', 'set_tray_language', {'language': 'zh-CN'})
+        lay = host.wait(lambda l: labels(l)[1:] == ZH, 30, 'zh labels')
+        check('7b set_tray_language(zh-CN) relabels the whole menu in the host, including the device submenu title and keeping the peer row',
+              r['ok'] and lay is not None and [n['label'] for n in submenu(lay, '设备同步')] == ['tray-peer-b'], [r, labels(lay) if lay else None])
+        r = gui.invoke('lang-en', 'set_tray_language', {'language': 'en'})
+        lay = host.wait(lambda l: labels(l)[1:] == ROOT_ORDER, 30, 'en labels')
+        check('7b and back to English', r['ok'] and lay is not None, labels(lay) if lay else None)
+
         time.sleep(max(0, 35 - (time.time() - host.t0 - 10)))  # make sure >= 3 full refresh periods elapsed since the tray existed
         log = (out / 'gui1.log').read_text(errors='replace')
         crit = [l for l in log.splitlines() if 'CRITICAL' in l]
@@ -160,8 +187,12 @@ def main():
         except subprocess.TimeoutExpired:
             rc = None
         check('9 the Quit item exits the GUI with 0', rc == 0, {'rc': rc, 'seconds': round(time.time() - t_quit, 1)})
-        time.sleep(1)
-        check('9 the daemon is stopped by the tray quit (full exit)', daemon_pid is not None and not pid_alive(daemon_pid), daemon_pid)
+        t_dead = time.time()
+        while pid_alive(daemon_pid) and time.time() - t_dead < 30:
+            time.sleep(.5)
+        check('9 the daemon is stopped by the tray quit (full exit)', daemon_pid is not None and not pid_alive(daemon_pid),
+              {'pid': daemon_pid, 'seconds_after_gui_exit': round(time.time() - t_dead, 1)})
+        check('9 the tray item is gone from the host after exit', host.layout() is None or 'error' in (host.layout() or {}))
         results['passed'] = all(c['ok'] for c in checks)
     finally:
         if gui and gui.proc.poll() is None:

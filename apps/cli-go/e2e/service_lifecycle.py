@@ -229,12 +229,13 @@ def main():
             try:
                 if macos:
                     target = f'gui/{os.getuid()}/{service_name}'
-                    subprocess.run(['/bin/launchctl', 'enable', target], capture_output=True)
-                    check = subprocess.run(['/bin/launchctl', 'print', target], capture_output=True, text=True)
+                    subprocess.run(['/bin/launchctl', 'enable', target], capture_output=True, timeout=30)
+                    check = subprocess.run(['/bin/launchctl', 'print', target],
+                                           capture_output=True, text=True, timeout=30)
                     loaded = check.returncode == 0
                 else:
                     check = subprocess.run(['systemctl', '--user', 'is-active', service_name + '.service'],
-                                           env=env, capture_output=True, text=True)
+                                           env=env, capture_output=True, text=True, timeout=30)
                     loaded = check.returncode == 0
                     record('cleanup-systemd-state', exit=check.returncode,
                            stdout=check.stdout, stderr=check.stderr)
@@ -247,7 +248,7 @@ def main():
                     path.unlink(missing_ok=True)
                     if not macos:
                         reload = subprocess.run(['systemctl', '--user', 'daemon-reload'],
-                                                env=env, capture_output=True, text=True)
+                                                env=env, capture_output=True, text=True, timeout=30)
                         if reload.returncode != 0:
                             cleanup_errors.append(f'daemon-reload: {reload.stderr}')
                 except Exception as error:

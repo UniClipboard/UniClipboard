@@ -242,17 +242,19 @@ case "hover":
     print(json(["ok": true, "target": ["x": px, "y": py], "ns": now(), "popupWindows": popupWindows(pid)]))
     CGWarpMouseCursorPosition(saved)
 case "clickat":
-    // clickat <pid> <x> <y> left|right <expect>: an ordinary synthesized click. The element under the point is re-verified HERE, in the same
-    // call, right before the events: it must be owned by <pid> or its title/description/identifier must contain <expect>; otherwise nothing is
-    // clicked. Moves onto the point, holds the button, releases, and puts the pointer back.
-    guard argv.count >= 7, let px = Double(argv[3]), let py = Double(argv[4]) else { fail("clickat <pid> <x> <y> left|right <expect>") }
+    // clickat <pid> <x> <y> left|right owner|<description text>: an ordinary synthesized click. The element under the point is re-verified HERE,
+    // in the same call, right before the events. `owner`: the element must be owned by <pid> (this run's GUI; the app's own status item).
+    // Any other word is the explicit overflow step: the element's description must contain it (the system's "show hidden menu bar items" button).
+    // Otherwise nothing is clicked. Moves onto the point, holds the button, releases, and puts the pointer back.
+    guard argv.count >= 7, let px = Double(argv[3]), let py = Double(argv[4]) else { fail("clickat <pid> <x> <y> left|right owner|<description>") }
     var hitEl: AXUIElement?
     let hr = AXUIElementCopyElementAtPosition(AXUIElementCreateSystemWide(), Float(px), Float(py), &hitEl)
     var hitOwner: pid_t = 0
     if let h = hitEl { AXUIElementGetPid(h, &hitOwner) }
-    let hitBlob = hitEl.map { str($0, kAXTitleAttribute) + "|" + str($0, kAXDescriptionAttribute) + "|" + str($0, "AXIdentifier") } ?? ""
-    if hr != .success || !(hitOwner == pid || hitBlob.contains(argv[6])) {
-        print(json(["ok": false, "refused": "element under the point is not the expected target; nothing clicked", "ownerPid": hitOwner, "blob": hitBlob, "ns": now()])); exit(0)
+    let hitDesc = hitEl.map { str($0, kAXDescriptionAttribute) } ?? ""
+    let accepted = argv[6] == "owner" ? (hitOwner == pid) : (hitOwner != pid && hitDesc.contains(argv[6]))
+    if hr != .success || !accepted {
+        print(json(["ok": false, "refused": "element under the point is not the expected target; nothing clicked", "ownerPid": hitOwner, "description": hitDesc, "ns": now()])); exit(0)
     }
     let right = argv[5] == "right"
     let target = CGPoint(x: px, y: py)

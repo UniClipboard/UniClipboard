@@ -116,23 +116,11 @@ def shot_near_status_item(pid, dest, below=420):
         tmp.rmdir()
 
 
-OUR_BUNDLE = 'app.uniclipboard.desktop.e2e'
-
-
-def other_instances(pid):
-    """Other processes running the same E2E executable as `pid` (exact executable path, not a name pattern)."""
-    mine = subprocess.run(['ps', '-p', str(pid), '-o', 'command='], capture_output=True, text=True).stdout.split(' ')[0].strip()
-    rows = subprocess.run(['ps', '-axo', 'pid=,command='], capture_output=True, text=True).stdout.splitlines()
-    return [int(r.split(None, 1)[0]) for r in rows if mine and r.split(None, 1)[1:] and r.split(None, 1)[1].split(' ')[0] == mine and int(r.split(None, 1)[0]) != pid]
-
-
 def is_ours(hit, pid):
-    """The element at a point is this app's status item: owned by this pid, or (the menu-bar agent hosts items on this macOS) named for this
-    E2E bundle AND no other process runs the same E2E executable (otherwise the bundle name does not identify THIS pid)."""
-    if hit.get('mine'):
-        return True
-    named = OUR_BUNDLE in (hit.get('identifier', '') + hit.get('description', '') + hit.get('title', ''))
-    return named and not other_instances(pid)
+    """The element at a point is this run's GUI status item: its owner is EXACTLY this run's GUI pid and it is a menu-bar item. A bundle name,
+    an identifier or the absence of other instances never identifies the target (those are diagnostics only; the system's overflow button is a
+    separate, explicitly verified step in verified_right_click)."""
+    return bool(hit.get('mine')) and hit.get('ownerPid') == pid and hit.get('role') in ('AXMenuBarItem', 'AXMenuExtra')
 
 
 def status_item_center(pid):
@@ -174,11 +162,11 @@ def verified_right_click(pid, out, label, watcher, sampler):
         watcher.terminate()
         sampler.terminate()
         raise TargetNotVerified(f'after the transient overflow expansion={expanded} the element at ({cx},{cy}) is still not this app\'s item: {hit}; no right click was sent')
-    result = ax('clickat', str(pid), str(cx), str(cy), 'right', OUR_BUNDLE)
+    result = ax('clickat', str(pid), str(cx), str(cy), 'right', 'owner')
     if not result.get('ok'):
         watcher.terminate()
         sampler.terminate()
-        raise TargetNotVerified(f'the observer refused the right click (re-verification inside the same call failed): {result}')
+        raise TargetNotVerified(f'the observer refused the right click (the owner re-check inside the same call failed): {result}')
     result['expandedOverflow'] = expanded
     return result
 

@@ -315,6 +315,30 @@ Wails 的 GTK 插件把 `GDK_BACKEND` 设为 `x11`，所以在 Wayland 会话上
 
 **动态设置（专用驱动 `linux_appimage_proxy_dynamic_run.py`，`stage7/dynamic`，退出码 0，8/8）。** 同一个运行中的 GUI 不重启，通过会话总线执行 `gsettings set` 依次切换：none → manual P1（proxied，经 P1）→ manual P2（proxied，经 P2，P1 无新增）→ none（direct）→ manual 拒绝型代理（refused）→ manual P1 且目标主机在 ignore-hosts（direct）→ 默认 ignore-hosts（proxied，经 P1），每一步第一次尝试即达到预期路由，没有任何代理看到 daemon 的回环端口。`manual-deny` 一步的「settled after 41.3s」是被拒绝的网络请求等待页面上报超时的耗时，不是设置传播延迟，也与 PAC 初始化预算无关。
 
+### SOCKS（真实 Dante 1.4.3，`stage7/socks-v2`，退出码 0，4/4）
+
+镜像 `uc-gui-go-linux-proxy:17c12-ubuntu-session-socks`（`Dockerfile.17c12-ubuntu-session-socks`，在非便携会话镜像上加 `dante-server`）。同一个运行中的 GUI 通过 `gsettings` 把 SOCKS 主机设为 Dante：`socks-pass` → WebView 请求 proxied（Dante 日志命名了目标，目标收到 1 个请求）；`socks-block`（Dante 对所有 connect 返回 block）→ refused，目标 0 个请求；SOCKS 且目标主机在 ignore-hosts → direct；没有任何 SOCKS 服务器看到 daemon 的回环端口。首轮 `socks-v1-config-syntax-error`（rc 1）是夹具缺陷：Dante 1.4 不接受单行 `socks pass { … }`，已改为多行；该目录保留。Dante 前台运行（无 `-D`），冒烟检查中误以为挂起的容器 `9a02f0fbd5fc` 只是 `sh` 在等 `danted`，已核实后只停止了这个任务自有容器（`stage7/socks-smoke/`）。
+
+### PAC 错误：404、语法错误、永不应答、无法连接（`stage7/pac-errors-nonportable-v2/-v3`）
+
+这些是 **上游解析器链的行为观测**，路由本身不是产品要求；要求是：回环边界仍然成立、取消可用、其余功能不受影响。链路（`glib-networking 2.80.0-1build1`）：GNOME 解析器（`proxy/gnome/gproxyresolvergnome.c`）把 PAC 查询交给 `org.gtk.GLib.PACRunner`，助手（`proxy/libproxy/glibpacrunner.c`）调用 libproxy `px_proxy_factory_get_proxies`，`pac+<url>` 配置由 libproxy 下载并求值。
+
+GLib 默认解析器本身对同一组 PAC 的回答（`stage6/auth-semantics/pac-errors.log`，同一发行版版本，不经产品）：
+
+| PAC 状态 | GIO 默认解析器 | libproxy 命令行 0.5 | WebView（v2） |
+| --- | --- | --- | --- |
+| 正常 | `http://127.0.0.1:3128` | 同 | proxied |
+| HTTP 404 | `direct://` | `direct://` | direct |
+| 语法错误 | `direct://`（`px_manager_expand_pac: Unable to set PAC` 只写 g_warning） | `direct://` | direct |
+| 永不应答 | 阻塞直到 libproxy 的下载超时 | 超时（探针 20 s 被截断） | failed |
+| 端口无人监听 | `direct://`（`Unable to download PAC`） | `direct://` | failed |
+
+结论（有证据的部分）：404 与语法错误时，**解析器返回的是 `direct://`，而不是错误**；GIO 的 `g_proxy_resolver_lookup` 与 libproxy 命令行都看不到差别，成熟 API（`px_proxy_factory_get_proxies`）没有「PAC 失败」的错误通道，所以位于解析器之上的 loopback guard 无法区分「用户配置了直连」与「PAC 失败」。要变成 fail-closed，产品只能自己下载并求值 PAC（等于自写 PAC 引擎，违反「库优先」）或自己预检 PAC URL（同样是自写判断），因此 **目前没有发现不自写解析器的做法**；这条边界保留，需要产品决定，不是永久排除：选项是（a）接受上游语义并在用户文档中写明，（b）等待/推动 libproxy 或 glib-networking 提供错误通道，（c）由产品决定是否承担预检。WebView 在「无法连接」与「永不应答」两种情况下 failed 而不是 direct，与独立的 GIO 查询里的 `direct://` 不一致，原因尚未解释（可能是 WebKit 的请求超时先于解析结果），只记录。
+
+对照旧 Tauri 包：旧包的 GIO 模块目录只有 `libgiognutls.so`，没有 GNOME/libproxy 解析器，所以它 **从不使用系统代理**，PAC 与手动代理都被忽略（总是直连）；当前 Go 包对 PAC 失败的「直连」没有比旧包更宽，但也不承诺全局 fail-closed。
+
+控制与取消：错误 PAC 场景的 curl 控制改用独立的显式代理（同一个 tinyproxy），证明代理/日志链和回环检测能力有效（`v1` 的 404/语法场景控制失败是因为控制沿用了 libproxy 命令行，它在 PAC 失败时回答 direct，前提不适用；`v1`（rc 1）还暴露了永不应答 PAC 使该命令行 30 s 超时而使运行器崩溃——夹具缺陷，已改成被记录的主机视图；原目录保留）。`gs-sys-pac-hang` 另外验证了真实 WebView 取消：页面的 `AbortController` 在 3 s 取消等待 PAC 下载的请求，随后 WebView 仍保持到 daemon 的回环连接，PAC 服务器恢复后的下一次请求路由作为观测记录。需要含此场景的新运行作为证据（见最终矩阵）。
+
 ### 仍未完成（OPEN，逐项增量补做）
 
 两个 GUI 同总线、监督器预算观测（hook，需要包含 hook 的新包）、动态设置、SOCKS、Fedora 容器与原生主机的外部目标/PAC/认证场景、同一最终干净包上的 17c7/17c5/17c10/17c11/内容检查回归。

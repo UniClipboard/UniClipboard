@@ -490,9 +490,10 @@ jobs:
           VITE_SENTRY_DSN: ${{ secrets.VITE_SENTRY_DSN }}
           # Frontend source map upload (apps/gui-go/vite.config.ts): the plugin runs inside the vite
           # build only when both the token and the project are present, and deletes the maps after.
-          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          # Test-mode bundles are not releases: no upload under the real release version.
+          SENTRY_AUTH_TOKEN: ${{ inputs.build_mode != 'test' && secrets.SENTRY_AUTH_TOKEN || '' }}
           SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
-          VITE_SENTRY_PROJECT: ${{ secrets.VITE_SENTRY_PROJECT }}
+          VITE_SENTRY_PROJECT: ${{ inputs.build_mode != 'test' && secrets.VITE_SENTRY_PROJECT || '' }}
         run: |
           python3 apps/gui-go/packaging/macos/package.py bundle \
             --target "${{ matrix.target }}" --variant shipping --out target/macos-gui

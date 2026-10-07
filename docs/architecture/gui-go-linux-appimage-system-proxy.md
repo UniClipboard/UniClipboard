@@ -280,7 +280,7 @@ RED（保留）：`stage4/pac-nohelper-portable` 与 `stage4/pac-nohelper-nonpor
 
 主机：`ssh fedora`（本地 VM，Fedora 44 Workstation aarch64，niri，Wayland 会话）与 `ssh omarchy`（真机，Arch Linux ARM，Hyprland，Wayland 会话）。都是 arm64，**不能作为原生 amd64 的证明**。只读识别：两台都有 `org.gnome.system.proxy` schema、GNOME 与 libproxy GIO 模块、会话总线、XWayland；Fedora 无 docker 有 podman，Omarchy 的 docker 对当前用户无权限；两台都没有 tinyproxy 与免密 sudo，也都没有已安装的 UniClipboard。
 
-Wails 的 GTK 插件把 `GDK_BACKEND` 设为 `x11`，所以在 Wayland 会话上 GUI 走 **XWayland（X11 后端）**，不是原生 Wayland 后端。下面的原生结果因此只证明「Wayland 会话里经 XWayland 运行的 GUI」；**不能称为原生 Wayland 后端已通过**。若某个 Wayland 合成器没有 XWayland，这是真实的兼容缺口，保留在迁移范围内，不要求用户改全局环境或安装服务来掩盖。快捷键、粘贴等依赖原生 Wayland 的能力同样不在本节的证明范围。
+AppImage 的 AppRun 钩子（Wails 模块内嵌的 linuxdeploy GTK 插件脚本，源自上游 `linuxdeploy-plugin-gtk`）把 `GDK_BACKEND` 设为 `x11`（17c13 更正：此前写成「Wails 强制」不准确，Wails 自身只在 `XDG_SESSION_TYPE` 为空、`unspecified` 或 `x11` 时才设，见 `gui-go-linux-appimage-native-wayland.md`），所以在 Wayland 会话上 GUI 走 **XWayland（X11 后端）**，不是原生 Wayland 后端。下面的原生结果因此只证明「Wayland 会话里经 XWayland 运行的 GUI」；**不能称为原生 Wayland 后端已通过**。若某个 Wayland 合成器没有 XWayland，这是真实的兼容缺口，保留在迁移范围内，不要求用户改全局环境或安装服务来掩盖。快捷键、粘贴等依赖原生 Wayland 的能力同样不在本节的证明范围。
 
 原生探针 `apps/gui-go/e2e/native_proxy_probe.py`（只在任务专用目录 `~/uc-17c12-native` 内工作：复制 AppImage、便携 HOME 使 dconf/钥匙串/应用数据与用户真实数据隔离、sink 代理只记录不转发）：
 

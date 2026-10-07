@@ -207,6 +207,12 @@ stage3 同一个包上的两个矩阵。页面自身的 HTTP 取数与 WebSocket
 3. `gs-user-dynamic`（非便携，真实会话总线与 `dconf-service`）：同一 GUI 进程内，请求 1 proxied → `gsettings set … mode 'none'` → 请求 2 direct → 设回 `manual` → 请求 3 proxied；记录是否需要重启；系统数据库（`dconf update`）的变更传播另做一次观测。
 4. Fedora：基底镜像 `uc-gui-go-linux-runtime-fedora:17c7` + tinyproxy、dconf、`libproxy-bin`、iproute（`Dockerfile.17c12-fedora` / `-fedora-session`，Fedora 44 的 libproxy 0.5.12 与 glib-networking 2.80.1，与 Ubuntu 的 0.5.4 不同；AppImage 自带模块，宿主版本只是对照）；runner 里 tinyproxy 的 `Group nogroup` 在 Fedora 上要改为 `nobody`。
 
+### 运行器的完整性判定（修改前写下的失败方式）
+
+触发：`stage4/p5b-*` 因为配置生成错误在第二个场景中途抛出异常，结果却是 `passed=false`、`functionalPassed=true`——只有 `up-none` 的要求被评估，其余场景没有执行，被当成「没有失败」。`functionalPassed` 必须表示「所选场景全部执行完且没有错误，并且所有要求成立」。
+
+这个判定自身可能的失败方式：(1) 把合法跳过的场景（非便携模式下 `gs-ph-*`）算成未完成，导致永远不通过——跳过必须有记录的原因并按「已处理」算；(2) 提前停止（`StopScenario`，如 T0 夹具失败）没有留下未完成标记，仍被判成功；(3) 场景在要求评估之后、清理之前抛错，要求全真但场景不完整；(4) 选了场景但一个要求都没有（`--require` 下为空集）被判成功。判定：每个场景末尾写 `completed=true`；`functionalPassed = 有要求 ∧ 要求全真 ∧ 无 error ∧ 所选场景都 completed 或带跳过原因`。真实负控制：缺少 `feed-inputs` 时 `up-*` 在 T0 直接停止，结果必须是 `functionalPassed=false`；正控制是完整重跑。不写事后单元测试。
+
 ### 仍未完成（OPEN，逐项增量补做）
 
 GNOME `ignore-hosts` 遗漏回环时本地 daemon 的行为、PAC / 认证 / 动态设置、Fedora、同一最终干净包上的 17c7/17c5/17c10/17c11/内容检查回归。

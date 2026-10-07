@@ -53,6 +53,8 @@
 
 ## 结果
 
+本节状态：**PARTIAL**，直到在冻结的最终源码上补齐两轮 full 验收为止。
+
 ### 实现
 
 `apps/gui-go/tray.go` 的发布闭包在持有 `trayMenu.mu` 与 `deviceMenu.mu` 时读取根菜单与设备子菜单所有条目的当前标签、勾选、可用状态，与上一次实际发布时的同一份状态比较（`slices.Equal`，无哈希），相同则跳过。`deviceMenu.render` 对空设备列表改为原地更新占位条目（此前每个 tick 都 `Clear` 后重建）。独立只读评审指出：Linux 上 `click` 修改条目但不发布，保存后恢复原状会被跳过逻辑当作无变化，因此 `click` 现在在置为禁用后发布一次。E2E 构建新增两条证据：`tray-refresh`（原因 `timer`、`event`、`save`、`initial`）与 `tray-publish-skipped`。
@@ -93,3 +95,27 @@
 ### PR 前检查
 
 按任务顺序：先 `pr-context-audit`，后 `branch-name-guard`，结果在 PR 描述中记录。
+
+### full 第 1 轮 3b 菜单消失的调查（`accept2/full1`，失败工件原样保留）
+
+失败模型，三个候选，按证据区分：
+
+- **P 产品**：菜单被本修复的发布或重建关掉。预期特征：消失前后有 `tray-publish`。
+- **R runner**：runner 的点击或按压关掉。预期特征：消失前有 `press`/`clickat`/`escape`/`cancel`，或 `expansions` 非空。
+- **H 宿主**：宿主上其他应用或输入事件结束了菜单跟踪。预期特征：系统日志里出现菜单跟踪结束，且前面有非本 runner 的激活点击或焦点转移。
+
+证据（时间已按 `gui.jsonl` 与统一日志的同一秒对齐，对齐误差约 ±0.3 秒）：
+
+1. P：消失前 20 秒内 0 次 `tray-publish`，只有 `tray-publish-skipped`（最近的定时刷新在消失前约 2 秒，被跳过）。**不支持 P。**
+2. R：3b 窗口内 `expansions=[]`，runner 只做只读 AX 读取；没有 `press`/`clickat`/`escape`。**不支持 R。**
+3. H：统一日志（`investigation-full1-3b/unified-log-menu-end.txt`、`keydown-destinations-after.txt`）在同一秒显示：
+   - 25.238 WindowManager 记录对窗口 `1483f` 的 "activation ordering click"，随后 25.243 键盘焦点转给 pid 29724（用户的 SunBrowser），不是本 GUI；
+   - 25.375 MenuBarAgent 里 gui-go 状态项场景由 Active 变为 None（菜单跟踪结束），25.479 gui-go 记录 `_menuDidEndTracking`，25.5 两个菜单弹出窗口被 WindowServer 下线；
+   - 26.779 与 26.960 有 `kCGSEventKeyDown` 投递给 SunBrowser；
+   - 该次运行启动时 `hostIdleSeconds=0.066`，即当时有真实输入。
+   这些 **与宿主侧的外部激活点击一致，且点击不来自本 runner**。它不证明点击由用户发出，所以结论是：**原因归为宿主交互干扰，证据为上述日志；不是产品、也不是 runner 动作。** 同一类事件在被中断的 `full3`（用户动了鼠标）中再次出现。
+4. 对照：同一冻结构建上的 stable ×2、lightweight ×2、full2 在无此外部激活时全部通过，所以本修复在未被外部结束的菜单中行为稳定。
+
+防止"只标 flaky"的补强（runner，不改产品）：菜单在无 runner 动作时消失，runner 立即抓取并保存前台应用、HID 空闲时间、该 pid 的窗口和最近 8 秒的统一日志相关行（`menuVanishCaptures`）。再次出现时可直接区分，而不是事后推断。
+
+处理：产品与 M3 标准都不改。为拿到有效的验收，在冻结源码上补齐两轮 full，运行期间不得使用这台机器；若再出现无 runner 动作的消失，按上述抓取归因，不当作通过。

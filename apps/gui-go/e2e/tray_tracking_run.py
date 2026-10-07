@@ -458,6 +458,19 @@ def main():
             time.sleep(1)
         return last
 
+    def capture_vanish(tag, where):
+        """The open menu was found gone WITHOUT the runner closing it. Capture, at that moment and only once per tag, what can place the cause:
+        the system's frontmost application, the HID idle time (seconds since the last real keyboard/mouse input), the pid's windows, and
+        the unified-log lines of the last 8 s that name a menu end or an activation click. The runner never sends a click or press in these windows."""
+        if any(c['tag'] == tag for c in results.setdefault('menuVanishCaptures', [])):
+            return
+        idle = next((int(l.split('=')[-1].strip()) / 1e9 for l in subprocess.run(['ioreg', '-c', 'IOHIDSystem'], capture_output=True, text=True).stdout.splitlines() if 'HIDIdleTime' in l), None)
+        logs = subprocess.run(['/usr/bin/log', 'show', '--last', '8s', '--style', 'compact', '--info', '--predicate',
+                               'eventMessage CONTAINS "activation ordering click" OR eventMessage CONTAINS "_menuDidEndTracking" OR eventMessage CONTAINS "kCGSEventKeyDown" OR eventMessage CONTAINS "status-items"'], capture_output=True, text=True, timeout=120).stdout
+        results['menuVanishCaptures'].append({'tag': tag, 'where': where, 'atNs': time.time_ns(), 'frontmost': subprocess.run(['lsappinfo', 'front'], capture_output=True, text=True).stdout.strip(),
+                                               'hidIdleSecondsNow': idle, 'windows': ax('windows', str(proc.pid)),
+                                               'unifiedLog8s': [l[:260] for l in logs.splitlines() if 'Timestamp' not in l][-60:]})
+
     proc = None
     gui = None
     wake = None
@@ -601,6 +614,8 @@ def main():
                 ts = time.time()
                 st, _ = _submenu_state(proc.pid)
                 samples.append({'t': ts, 't1': time.time(), 'popups': st['popups'], 'expanded': bool(st['submenu'])})
+                if not st['popups']:
+                    capture_vanish('stable-hold', 'stable hold')
                 time.sleep(.2)
             rows_hold = gui.rows()[n_hold:]
             win0, win1 = samples[0]['t'], samples[-1]['t1']
@@ -634,6 +649,8 @@ def main():
                 while time.time() < end:
                     last, rd = menu_rows()
                     trace.append([round(time.time(), 2), bool(rd.get('ok')), rd.get('popupWindows'), rd.get('error')])
+                    if not rd.get('popupWindows'):
+                        capture_vanish(name or 'wait-menu', 'wait_menu')
                     if last is not None and pred(last):
                         break
                     time.sleep(.5)
@@ -755,6 +772,8 @@ def main():
         reads = [json.loads(l) for l in watch_file.read_text().splitlines() if l.strip()]
         ok_reads = [r for r in reads if r.get('ok') and r.get('popupWindows')]  # readable AND a pop-up menu window on screen (a stale AX subtree is not 'open')
         check(f'1 the menu stayed open and readable for the whole {args.hold} s hold (every read: pop-up menu window on screen and readable)', len(reads) > 0 and len(ok_reads) == len(reads), {'reads': len(reads), 'ok': len(ok_reads), 'popupZero': sum(1 for r in reads if not r.get('popupWindows'))})
+        if len(ok_reads) != len(reads):
+            capture_vanish('hold-1', 'hold watch (captured after the hold ended)')
         publishes = [r['detail'] for r in gui.rows()[n_before:] if r['step'] == 'tray-publish']
         win0, win1 = (min(r['ns'] for r in ok_reads), max(r['ns'] for r in ok_reads)) if ok_reads else (0, 0)  # first/last read with a pop-up menu window on screen
         inside = [p for p in publishes if win0 <= p['startNs'] <= win1]
@@ -826,6 +845,8 @@ def main():
                 rd = ax('read', str(proc.pid))
                 rows_b = [d['title'] for d in (device_items(rd['menu']) or [])] if rd.get('ok') else None
                 samples.append({'t': ts, 't1': time.time(), 'popups': rd.get('popupWindows'), 'rows': rows_b, 'root': titles(rd['menu']) if rd.get('ok') else None})
+                if (rd.get('popupWindows') or 0) == 0:
+                    capture_vanish(tag, 'track')
                 if rd.get('ok') and (rd.get('popupWindows') or 0) == 1:
                     tp = time.time()
                     ex, att = ensure_expanded(tag)

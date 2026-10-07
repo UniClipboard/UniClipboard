@@ -133,8 +133,11 @@ case "rightclick":
     let saved = CGEvent(source: nil)?.location ?? target
     let down = CGEvent(mouseEventSource: nil, mouseType: .rightMouseDown, mouseCursorPosition: target, mouseButton: .right)
     let up = CGEvent(mouseEventSource: nil, mouseType: .rightMouseUp, mouseCursorPosition: target, mouseButton: .right)
+    // Move onto the item first (a pointer that never entered the status window is not what a user's click looks like), hold the button, release.
+    CGEvent(mouseEventSource: nil, mouseType: .mouseMoved, mouseCursorPosition: target, mouseButton: .left)?.post(tap: .cghidEventTap)
+    Thread.sleep(forTimeInterval: 0.25)
     down?.post(tap: .cghidEventTap)
-    Thread.sleep(forTimeInterval: 0.08)
+    Thread.sleep(forTimeInterval: 0.15)
     up?.post(tap: .cghidEventTap)
     Thread.sleep(forTimeInterval: 0.3)
     CGWarpMouseCursorPosition(saved)

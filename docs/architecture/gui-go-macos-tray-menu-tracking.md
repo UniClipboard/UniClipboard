@@ -84,6 +84,9 @@ Menu.Update -> macosMenu.update -> InvokeSync(main thread):
 
 - **min8-rightclick / min9-control（保留；显示器已唤醒）与最窄假设 H1**：真实右键（本轮自己 GUI 的 AX 位置，`target` 在状态栏项中心）与 `OpenMenu` 控制两条路径都没有被 AX 读到菜单（322/0、min9 同）。min9 的 `sample` 窗口（3 秒，5 ms，**先于** 打开请求开始并覆盖它）显示主线程 434 次采样中 428 次空闲在 RunLoop、5 次在服务我们自己的 AX 查询，**没有** `showMenu`/`mouseDown`/菜单跟踪帧。这只说明窗口内主线程没有进入跟踪，不说明入口没被调用。**H1（待证实）**：Wails 的 `macosSystemTray.nsMenu`（或 `nsStatusItem`）在运行时为空，于是 `openMenu`（及 pre-click 回调中的 `systemTray.nsMenu == nil` 判断）直接返回，菜单无论由控制、右键都不会打开。若 H1 成立，这是产品缺陷（托盘菜单在 Go GUI 的 macOS 上打不开），需窄修；若不成立，改查 H2（`showMenu` 执行但跟踪未开始，如合成事件被忽略）。检验：E2E 构建在打开前后用只读反射记录该托盘的 `impl/menu/clickHandler/rightClickHandler/nsStatusItem/nsMenu` 是否为空，不改产品行为。
 
+- **min10-control 结果（保留）：H1 被否定，`OpenMenu` 控制路径无效**：打开前后（只读反射）`impl`、`nsStatusItem`、`nsMenu` 均 **非空**（H1 不成立）；但 Wails 的 `SystemTray.menu`（Go 层字段）为 **空**，`clickHandler` 非空，`rightClickHandler` 为空。固定 Wails 源码：`SystemTray.OpenMenu()` 开头 `if s.menu == nil { return }`，所以 **`OpenMenu()` 在这里是空操作**，此前用它的 min1–min4、min7、min9、min10 的“打开”从未真正请求过菜单，**这条打开路径不能用于验收**。原因（源码）：`SystemTray.SetMenu` 在托盘已运行（`impl != nil`）时只调用 `impl.setMenu`，不设置 `SystemTray.menu`；因此 `applySmartDefaults` 的 `hasMenu` 为假，右键处理器保持为空，**生产右键因此走 pre-click 监视器返回 1、用缓存的 `nsMenu` 进入原生跟踪**（`systrayPreClickCallback`：右键且 `rightClickHandler == nil`）。即上文“真实右键调用 `ShowMenu`”的推断被源码与运行态读数 **更正**：生产右键不经 `ShowMenu`/`OpenMenu`。**唯一有效的打开方式是真实右键事件**，且此前对旧 `OpenMenu` 路径的“两条路径覆盖差别”表述作废。min5/min6/min8 的真实右键仍未读到菜单，尚无结论（见下一轮）。
+- **注**：`OpenMenu` 的空操作是 Wails 在“托盘运行后再 `SetMenu`”场景下的行为；不影响用户右键，也不是本项目的产品缺陷；本项目没有调用 `OpenMenu`。
+
 ## 验收契约
 
 必须保留 17c14 的行为：设备子菜单随 10 秒刷新与 `devices://sync-changed` 更新、条目动作、同步开关标签、托盘生命周期。不得：隐藏日志、删除刷新、删除托盘功能、降低锁保证、用 compile/vet 或脚本直接调用代替原生证据。

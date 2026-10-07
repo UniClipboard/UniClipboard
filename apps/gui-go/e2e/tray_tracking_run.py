@@ -171,7 +171,7 @@ def main():
     parser.add_argument('--hold', type=int, default=32, help='seconds the first menu stays open (>= 3 natural 10 s refreshes)')
     parser.add_argument('--skip-quit', action='store_true')
     parser.add_argument('--minimal', action='store_true', help='open, read, cancel only')
-    parser.add_argument('--open-with', choices=('control', 'rightclick'), default='control', help='control: SystemTray.OpenMenu through the control file (no pointer); rightclick: a real right click on the status item (moves the pointer briefly)')
+    parser.add_argument('--open-with', choices=('control', 'rightclick'), default='rightclick', help='rightclick (default, the only valid path): a real right click on this pid\'s status item (moves the pointer briefly); control: SystemTray.OpenMenu, a NO-OP here (SystemTray.menu is nil, 17c15 min10), kept only to reproduce that')
     args = parser.parse_args()
     out = args.out.resolve()
     out.mkdir(parents=True, exist_ok=True)

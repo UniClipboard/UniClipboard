@@ -128,6 +128,7 @@ func (t *trayMenu) setLanguage(tag string) {
 	t.applyLabels()
 	language := t.language
 	t.mu.Unlock() // the device menu takes its own lock and then t.mu again to publish
+	e2eTrayLanguageGap()
 	t.devices.setLanguage(language)
 }
 

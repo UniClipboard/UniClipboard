@@ -10,6 +10,7 @@ import (
 	"github.com/UniClipboard/UniClipboard/apps/gui-go/internal/update"
 	"os"
 	"strconv"
+	"sync/atomic"
 	"sync"
 	"time"
 
@@ -277,4 +278,14 @@ func e2eBootstrapped(h *HostService, replayed bool) {
 // settings effect), so a label that did not change can be attributed from the evidence.
 func e2eTrayLanguage(language string) {
 	_ = evidenceWriter.write(Step{Window: "tray", Step: "tray-language-call", OK: true, Detail: language})
+}
+
+// trayLanguageGap is a ONE-SHOT pause (milliseconds) that the next tray language change takes between its two steps. It exists only
+// so the E2E can arrange an overlap deterministically (an ARTIFICIAL schedule, not a natural one); it is 0 unless a control sets it.
+var trayLanguageGap atomic.Int64
+
+func e2eTrayLanguageGap() {
+	if ms := trayLanguageGap.Swap(0); ms > 0 {
+		time.Sleep(time.Duration(ms) * time.Millisecond)
+	}
 }

@@ -235,6 +235,13 @@ def main():
         results['languageRace'] = race
         check('7c five rounds of 8 concurrent set_tray_language calls always leave root labels and device title in one language, the last recorded one',
               all(r['consistent'] for r in race), race)
+        # ARTIFICIAL schedule (E2E-only, one-shot gap between the two steps of call A while call B starts): not a natural race. Serialized, the
+        # menu ends entirely in B's language; unserialized, A's device-menu step lands after B's and the menu is mixed.
+        row = gui.ctl('tray-language-gap g0 600', 'tray-language-gap-g0', 60)
+        lay = host.wait(lambda l: labels(l)[1:] == ROOT_ORDER, 20, 'gap schedule')
+        results['languageGapSchedule'] = {'final': (row.get('detail') or {}).get('final'), 'rootLabels': labels(host.layout()) if host.layout() and 'error' not in host.layout() else None}
+        check('7d [artificial E2E schedule] two overlapping language changes (zh-CN paused between its steps, en started meanwhile) leave the whole menu in en',
+              lay is not None and (row.get('detail') or {}).get('final') == 'en', results['languageGapSchedule'])
         gui.invoke('lang-en2', 'set_tray_language', {'language': 'en'})
         host.wait(lambda l: labels(l)[1:] == ROOT_ORDER, 20, 'en after race')
         r = gui.invoke('lang-en', 'set_tray_language', {'language': 'en'})

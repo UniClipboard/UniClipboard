@@ -27,6 +27,11 @@ mkdir -p /src/before && cp -a /src/after/apps /src/after/packages /src/before/
 for f in tray.go tray_devices.go; do git -C /work show $BEFORE:apps/gui-go/$f > /src/before/apps/gui-go/$f; done
 rm -f /src/before/apps/gui-go/tray_publish_*.go
 build before /src/before
+# nolock: the current tree with the language serialization removed: the control for the ARTIFICIAL-schedule check
+mkdir -p /src/nolock && cp -a /src/after/apps /src/after/packages /src/nolock/
+sed -i "/t.languageMu.Lock()/d;/defer t.languageMu.Unlock()/d" /src/nolock/apps/gui-go/tray.go
+grep -c languageMu /src/nolock/apps/gui-go/tray.go > /out/nolock-languageMu-count.txt
+build nolock /src/nolock; cp /cache/out/uniclipd /cache/out/uniclip /out/bin/nolock/; sha256sum /out/bin/nolock/* > /out/bin/nolock/SHA256SUMS.txt
 # prefix: the current tree with tray.go of commit $PREFIX (before the language/publish-assignment fixes): the control for the concurrent-language check
 if [ -n "${PREFIX:-}" ]; then
   mkdir -p /src/prefix && cp -a /src/after/apps /src/after/packages /src/prefix/

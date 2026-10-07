@@ -112,6 +112,22 @@ func (s *EvidenceService) runControlCommand(line string) {
 		final := h.tray.language
 		h.tray.mu.Unlock()
 		_ = s.write(Step{Window: "tray", Step: "tray-language-race-" + label, OK: true, Detail: map[string]any{"calls": n, "final": final}})
+	case "tray-language-gap":
+		// tray-language-gap <label> <ms>: an ARTIFICIAL schedule. Call A (zh-CN) pauses ms between its two steps; call B (en) starts
+		// during that pause. Serialized, B waits for A; unserialized, A's second step lands after B's and the menu is mixed.
+		label, ms, _ := strings.Cut(arg, " ")
+		gap, _ := strconv.Atoi(ms)
+		trayLanguageGap.Store(int64(gap))
+		var wg sync.WaitGroup
+		wg.Add(1)
+		go func() { defer wg.Done(); h.tray.setLanguage("zh-CN") }()
+		time.Sleep(time.Duration(gap/3) * time.Millisecond)
+		h.tray.setLanguage("en")
+		wg.Wait()
+		h.tray.mu.Lock()
+		final := h.tray.language
+		h.tray.mu.Unlock()
+		_ = s.write(Step{Window: "tray", Step: "tray-language-gap-" + label, OK: true, Detail: map[string]any{"gapMs": gap, "final": final}})
 	case "setting":
 		key, value, _ := strings.Cut(arg, " ")
 		allowed := key == "usageAnalyticsEnabled" || key == "autoCheckUpdate" || key == "autoDownloadUpdate"

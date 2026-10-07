@@ -43,6 +43,7 @@
 | W7 | 不支持 `wlr-layer-shell` 的合成器（GNOME）上崩溃 | 本片没有 GNOME 主机：容器里的缺库对照与已有的「无协议」分支只能间接覆盖，并明确标为间接，不声称 GNOME 通过 |
 | W8 | 去掉强制后，宿主辅助程序继承到的环境变化（`GDK_BACKEND` 不再被设为 `x11`） | 17c10/17c11 的辅助程序回归必须在新包上重跑 |
 | W9 | 打包的 `libgtk-layer-shell` 来源不明或与包内 GTK 的 ABI 不匹配 | 清单记录 dpkg 所属包、版本、SHA-256、NEEDED 闭包；包内内容检查把它纳入固定集合 |
+| W10 | 会话类型未知（`XDG_SESSION_TYPE` 为空或 `unspecified`）但存在可用的 Wayland socket，且用户没有设置 `GDK_BACKEND`：Wails 的 `init` 把 `GDK_BACKEND` 设为 `x11`，GUI 仍经 XWayland，Layer Shell 不会激活（final-1 的 `--no-session-type` 两台主机各一次实际复现，原始失败保留） | 同一包、同一主机：不导出 `XDG_SESSION_TYPE` 启动，GUI 必须连接 Wayland socket、无 X11 连接、面板为 layer surface；显式 `GDK_BACKEND=x11`（含空会话类型）、`XDG_SESSION_TYPE=x11`、没有 Wayland socket 的情形必须保持 X11 |
 
 ## 范围与边界
 

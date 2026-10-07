@@ -84,6 +84,7 @@ jobs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
       cli-matrix: ${{ steps.select-cli-targets.outputs.matrix }}
       macos-matrix: ${{ steps.select-macos-targets.outputs.matrix }}
+      macos-smoke-matrix: ${{ steps.select-macos-targets.outputs.smoke }}
       windows-runner: ${{ steps.select-windows-runner.outputs.runner }}
       windows-runner-source: ${{ steps.select-windows-runner.outputs.source }}
     steps:
@@ -156,6 +157,14 @@ jobs:
             const all = JSON.parse(process.env.MATRIX)
             const keep = all.filter(e => e.platform === "macos-latest")
             console.log("matrix=" + JSON.stringify(keep))
+            // Each shipped architecture is smoke-tested on a host of that architecture: Apple Silicon on
+            // macos-latest, Intel on the native Intel runner (not Rosetta).
+            const hosts = {
+              "aarch64-apple-darwin": { arch: "arm64", runner: "macos-latest" },
+              "x86_64-apple-darwin": { arch: "x86_64", runner: "macos-15-intel" },
+            }
+            const smoke = keep.map(e => ({ target: e.target, ...hosts[e.target] }))
+            console.log("smoke=" + JSON.stringify(smoke))
           ' >> "$GITHUB_OUTPUT"
 
   # The shipped `uniclipd` daemon is built once per target, first. The desktop
@@ -606,9 +615,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - { arch: arm64, target: aarch64-apple-darwin, runner: macos-latest }
-          - { arch: x86_64, target: x86_64-apple-darwin, runner: macos-15-intel }
+        include: ${{ fromJSON(needs.setup-matrix.outputs.macos-smoke-matrix) }}
     steps:
       - uses: actions/checkout@v6
         with:

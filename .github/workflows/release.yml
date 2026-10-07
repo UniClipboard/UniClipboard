@@ -59,6 +59,18 @@ jobs:
       is_prerelease: ${{ steps.set-outputs.outputs.is_prerelease }}
       channel: ${{ steps.set-outputs.outputs.channel }}
     steps:
+      # Fail closed before anything is bumped, committed, tagged or published: the Tauri
+      # build, signing and updater pipeline that produced the desktop installers was retired
+      # with the Tauri host, and the Go/Wails host (apps/gui-go) has no signed release
+      # pipeline yet (macOS Developer ID signing and notarization, the updater signature
+      # signer, installers per platform). Releasing now would publish CLI archives without
+      # the desktop app. Remove this step when the Go release pipeline lands; the open work
+      # is listed in docs/architecture/gui-go-tauri-retirement.md.
+      - name: Desktop release pipeline is not available
+        run: |
+          echo "::error title=Release blocked::The Go/Wails desktop host has no release pipeline yet (signed packaging, updater signatures, installers). See docs/architecture/gui-go-tauri-retirement.md."
+          exit 1
+
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
@@ -117,7 +129,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add package.json apps/gui/src-tauri/tauri.conf.json apps/gui/src-tauri/Cargo.toml Cargo.toml Cargo.lock
+          git add package.json apps/gui-go/app.json Cargo.toml Cargo.lock
           git commit -m "chore: bump version to ${{ steps.set-outputs.outputs.version }}"
           git push origin ${{ inputs.branch }}
 

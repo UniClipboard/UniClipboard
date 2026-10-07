@@ -86,7 +86,7 @@ describe('shipped uniclipd builds', () => {
       'e.platform === "macos-latest" || e.target === "x86_64-pc-windows-msvc"'
     )
     expect(step(cli, 'package CLI binary')).toContain(
-      '"apps/gui/src-tauri/binaries/uniclipd-${{ matrix.target }}$EXE"'
+      '"target/sidecar-staging/uniclipd-${{ matrix.target }}$EXE"'
     )
     // The CLI must reuse the sidecar, never rebuild the daemon in the app job.
     expect(build.match(/-p uc-daemon/g) ?? []).toHaveLength(0)
@@ -102,7 +102,6 @@ describe('shipped uniclipd builds', () => {
 
 describe('build job graph', () => {
   it.each([
-    ['build.yml', 'build-gui'],
     ['build.yml', 'build-cli'],
     ['build-cli.yml', 'build-cli'],
   ])('%s builds the sidecar first, then runs %s after it', (file, job) => {
@@ -111,19 +110,11 @@ describe('build job graph', () => {
     expect(needsOf(all[job])).toContain('build-sidecar')
   })
 
-  it('runs the GUI build and the Go CLI build in parallel', () => {
-    const all = jobs(read('build.yml'))
-    expect(needsOf(all['build-gui'])).not.toContain('build-cli')
-    expect(needsOf(all['build-cli'])).not.toContain('build-gui')
-  })
-
   it('builds the daemon only in the sidecar job', () => {
     const build = jobs(read('build.yml'))
-    expect(build['build-sidecar']).toContain('run: node scripts/prepare-sidecars.mjs')
-    for (const job of ['build-gui', 'build-cli']) {
-      expect(build[job]).not.toContain('run: node scripts/prepare-sidecars.mjs')
-      expect(build[job]).not.toContain('cargo build')
-    }
+    expect(build['build-sidecar']).toContain('run: node scripts/stage-daemon.mjs')
+    expect(build['build-cli']).not.toContain('run: node scripts/stage-daemon.mjs')
+    expect(build['build-cli']).not.toContain('cargo build')
     const cliWorkflow = jobs(read('build-cli.yml'))
     expect(cliWorkflow['build-sidecar']).toContain('--bin uniclipd')
     expect(cliWorkflow['build-cli']).not.toContain('cargo ')
@@ -166,10 +157,9 @@ describe('Rust development CLI stays out of production builds', () => {
     '.github/workflows/build.yml',
     '.github/workflows/build-cli.yml',
     '.github/workflows/release.yml',
-    '.github/workflows/alpha-build.yml',
     '.github/workflows/build-server-image.yml',
     'deploy/vps/Dockerfile',
-    'scripts/prepare-sidecars.mjs',
+    'scripts/stage-daemon.mjs',
     'scripts/build-npm-packages.mjs',
     'scripts/ci/package-cli.sh',
     'scripts/ci/build-go-cli.sh',

@@ -155,7 +155,7 @@ jobs:
           VERSION="${{ steps.version.outputs.version }}"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add package.json apps/gui/src-tauri/tauri.conf.json apps/gui/src-tauri/Cargo.toml Cargo.toml Cargo.lock docs/changelog/
+          git add package.json apps/gui-go/app.json Cargo.toml Cargo.lock docs/changelog/
           git commit -m "chore: bump version to ${VERSION}"
 
       - name: Render Codex changelog prompt
@@ -237,7 +237,7 @@ jobs:
           This PR prepares the release of v${VERSION} (base: \`${BASE_BRANCH}\`).
 
           ### Changes
-          - Version bumped to ${VERSION} in package.json, tauri.conf.json, Cargo.toml, Cargo.lock
+          - Version bumped to ${VERSION} in package.json, apps/gui-go/app.json, Cargo.toml, Cargo.lock
           - Changelog generated at docs/changelog/${VERSION}.md
 
           ### What happens when this PR is merged

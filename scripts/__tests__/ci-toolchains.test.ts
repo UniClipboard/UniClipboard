@@ -68,8 +68,8 @@ describe('hosted build toolchain isolation', () => {
           job.indexOf('name: Cache Rust dependencies')
         )
       }
-      // The sidecar job and, in build.yml, the GUI job.
-      expect(rustJobs).toBeGreaterThanOrEqual(file === 'build.yml' ? 2 : 1)
+      // The sidecar job.
+      expect(rustJobs).toBeGreaterThanOrEqual(1)
     }
   })
 })

@@ -56,8 +56,6 @@ jobs:
         run: cargo update -p uc-engine --precise "$ENGINE_COMMIT"
 
       - name: Check the desktop workspace
-        env:
-          TAURI_CONFIG: '{"bundle":{"externalBin":[]}}'
         run: cargo check --workspace --locked
 
       - name: Verify Engine repository boundaries

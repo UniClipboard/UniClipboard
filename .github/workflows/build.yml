@@ -1,4 +1,4 @@
-name: 'Build Tauri App'
+name: 'Build Desktop'
 run-name: "build-${{ inputs.platform || 'all' }}${{ inputs.build_mode == 'test' && '-test' || '' }}-${{ github.run_number }}"
 on:
   workflow_dispatch:
@@ -143,9 +143,10 @@ jobs:
             console.log("matrix=" + JSON.stringify(keep))
           ' >> "$GITHUB_OUTPUT"
 
-  # The shipped `uniclipd` daemon is built once per target, first. The GUI
-  # bundles it as a Tauri sidecar and the CLI archive ships it next to the
-  # CLI, so both of those jobs wait for this one and then run in parallel.
+  # The shipped `uniclipd` daemon is built once per target, first. The desktop
+  # packagers ship it next to the GUI executable and the CLI archive ships it
+  # next to the CLI, so those jobs wait for this one. The Go/Wails GUI packaging
+  # is not part of this workflow yet (see docs/architecture/gui-go-tauri-retirement.md).
   build-sidecar:
     name: Build sidecar ${{ matrix.target }}
     needs: setup-matrix
@@ -307,20 +308,17 @@ jobs:
         run: node scripts/ci/resolve-app-env.mjs
 
       - name: prepare uniclipd sidecar
-        # ADR-008 D13: the standalone `uniclipd` daemon ships *inside* the GUI
-        # installer as a Tauri sidecar (externalBin), so the GUI can spawn it as
-        # a sibling of its own executable (uc-daemon-local spawn.rs). `tauri
-        # build` verifies `apps/gui/src-tauri/binaries/uniclipd-<triple>` exists, so this
-        # must run first. We forward the same `${{ matrix.args }}` (`--target
-        # <triple>` or empty) the GUI build uses, so the staged sidecar name is
-        # exactly what tauri-cli looks up. The daemon shares the GUI's
-        # dependency graph, so any target the GUI cross-builds here, it builds.
+        # ADR-008 D13: the standalone `uniclipd` daemon ships next to the GUI
+        # executable so the GUI can spawn it as a sibling (uc-daemon-local
+        # spawn.rs). scripts/stage-daemon.mjs builds it and stages it as
+        # `target/sidecar-staging/uniclipd-<triple>`; `${{ matrix.args }}` is
+        # either `--target <triple>` or empty.
         shell: bash
         env:
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           POSTHOG_PROJECT_KEY: ${{ secrets.POSTHOG_PROJECT_KEY }}
           APP_ENV: ${{ steps.resolve-env.outputs.app_env }}
-        run: node scripts/prepare-sidecars.mjs ${{ matrix.args }} --timings
+        run: node scripts/stage-daemon.mjs ${{ matrix.args }} --timings
 
       - name: Upload Sentry debug symbols
         # Test bundles are not released and should not upload symbols under the release version.
@@ -367,7 +365,7 @@ jobs:
         # upload drops them) and keeps `uniclipd-*.exe` out of the release
         # workflow's `*.exe` asset collection.
         shell: bash
-        run: tar -cf sidecar.tar -C apps/gui/src-tauri/binaries .
+        run: tar -cf sidecar.tar -C target/sidecar-staging .
 
       - name: upload sidecar artifact
         uses: actions/upload-artifact@v7
@@ -377,423 +375,8 @@ jobs:
           if-no-files-found: error
           retention-days: 3
 
-  # GUI build: needs the staged sidecar (`tauri build` hard-fails without
-  # apps/gui/src-tauri/binaries/uniclipd-<triple>) but never builds the daemon.
-  build-gui:
-    name: Build GUI ${{ matrix.target }}
-    needs: [setup-matrix, build-sidecar]
-    runs-on: ${{ matrix.runner || matrix.platform }}
-    # matrix.container 仅 Linux 条目设置,其他 platform 该字段缺失 → null →
-    # GitHub Actions 跳过容器,直接在 host runner 上执行。
-    container: ${{ matrix.container || null }}
-    # sccache R2, all targets (grew out of the aarch64-apple-darwin-only pilot,
-    # t-0160): binds every matrix job to an environment so the sccache step
-    # below can read BUILD_CACHE_R2_* secrets. github.ref is the trigger ref
-    # (release tags included), not the branch actually checked out via
-    # inputs.branch, matching the writer environment's own main-only
-    # deployment restriction.
-    environment: ${{ github.ref == 'refs/heads/main' && 'desktop-build-cache-writer' || 'desktop-build-cache-reader' }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include: ${{ fromJSON(needs.setup-matrix.outputs.matrix) }}
-
-    steps:
-      # Linux 容器走预构建镜像 (.github/docker/build-bookworm.Dockerfile),
-      # apt-get 已经在镜像里跑过,这里直接 checkout。镜像由 build-base-image.yml
-      # 维护:Dockerfile 变更即重推 :latest,multi-arch (amd64/arm64) manifest。
-
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ inputs.branch || github.ref }}
-          submodules: recursive
-          persist-credentials: false
-
-      - name: setup node
-        uses: actions/setup-node@v6
-        with:
-          node-version: lts/*
-
-      - name: install Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-
-      - name: Configure package build mode
-        id: build-mode
-        env:
-          UC_BUILD_MODE: ${{ inputs.build_mode || 'release' }}
-        run: node scripts/ci/configure-build-mode.mjs
-
-      - name: resolve pinned Rust channel
-        id: rust-channel
-        # Single source of truth: rust-toolchain.toml (repo root). CI installs
-        # that SAME pinned channel below instead of a floating `@stable`, so
-        # Swatinem/rust-cache's rust-environment-hash key stays stable between
-        # the weekly cache-warmup run and this release/tag build. A floating
-        # stable drifts (e.g. 1.96.0 -> 1.96.1 between a Monday warmup and a
-        # midweek release) and silently invalidates every Rust cache key,
-        # forcing a full cold rebuild.
-        shell: bash
-        run: |
-          channel=$(grep -oE 'channel[[:space:]]*=[[:space:]]*"[^"]+"' rust-toolchain.toml | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
-          echo "pinned Rust channel: $channel"
-          echo "channel=$channel" >> "$GITHUB_OUTPUT"
-
-      - name: install Rust toolchain
-        uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: ${{ steps.rust-channel.outputs.channel }}
-          # Cross-compile targets are installed straight onto the pinned
-          # toolchain that cargo actually uses (rust-toolchain.toml override),
-          # so no separate `rustup target add` step is needed. Missing targets
-          # here were the real cause of `Target ... is not installed`
-          # (25960898069 / 25961183688, dtolnay/rust-toolchain#75), which only
-          # happened because CI used to install `@stable` — a different
-          # toolchain than the pinned channel cargo runs.
-          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || matrix.target == 'aarch64-pc-windows-msvc' && 'aarch64-pc-windows-msvc' || '' }}
-
-      # sccache R2, all targets (grew out of the aarch64-apple-darwin-only
-      # pilot, t-0160; modeled on Engine's ADR-029 shared bucket
-      # `uniclipboard-build-cache`). Per-target object prefix keeps each
-      # target's cache entries independent inside the shared bucket.
-      - name: install sccache
-        uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
-        with:
-          version: v0.18.0
-
-      - name: configure sccache for R2
-        id: sccache-config
-        env:
-          TARGET: ${{ matrix.target }}
-          BUILD_CACHE_R2_ENDPOINT: ${{ secrets.BUILD_CACHE_R2_ENDPOINT }}
-          BUILD_CACHE_R2_ACCESS_KEY_ID: ${{ secrets.BUILD_CACHE_R2_ACCESS_KEY_ID }}
-          BUILD_CACHE_R2_SECRET_ACCESS_KEY: ${{ secrets.BUILD_CACHE_R2_SECRET_ACCESS_KEY }}
-        shell: bash
-        run: |
-          if [[ -z "$BUILD_CACHE_R2_ENDPOINT" || -z "$BUILD_CACHE_R2_ACCESS_KEY_ID" || -z "$BUILD_CACHE_R2_SECRET_ACCESS_KEY" ]]; then
-            echo "::warning title=sccache::R2 secrets not available in this run (e.g. fork PR); sccache stays off, falling back to the existing rust-cache target/ cache."
-            echo "enabled=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          case "$TARGET" in
-            aarch64-apple-darwin) os_arch=darwin-arm64 ;;
-            x86_64-apple-darwin) os_arch=darwin-x64 ;;
-            x86_64-unknown-linux-gnu) os_arch=linux-x64 ;;
-            aarch64-unknown-linux-gnu) os_arch=linux-arm64 ;;
-            x86_64-pc-windows-msvc) os_arch=windows-x64 ;;
-            aarch64-pc-windows-msvc) os_arch=windows-arm64 ;;
-            *)
-              echo "::warning title=sccache::unrecognized target '$TARGET', sccache stays off, falling back to the existing rust-cache target/ cache."
-              echo "enabled=false" >> "$GITHUB_OUTPUT"
-              exit 0
-              ;;
-          esac
-          {
-            echo "RUSTC_WRAPPER=sccache"
-            echo "SCCACHE_BUCKET=uniclipboard-build-cache"
-            echo "SCCACHE_ENDPOINT=$BUILD_CACHE_R2_ENDPOINT"
-            echo "SCCACHE_REGION=auto"
-            echo "SCCACHE_S3_KEY_PREFIX=desktop/sccache/v1/$os_arch"
-            echo "AWS_ACCESS_KEY_ID=$BUILD_CACHE_R2_ACCESS_KEY_ID"
-            echo "AWS_SECRET_ACCESS_KEY=$BUILD_CACHE_R2_SECRET_ACCESS_KEY"
-          } >> "$GITHUB_ENV"
-          echo "enabled=true" >> "$GITHUB_OUTPUT"
-
-      - name: Prepend cargo bin to PATH
-        # macos-15-arm64 runner image 20260511+ 预装了 Homebrew rustup
-        # formula,把 rustup-init multicall 软链到 /opt/homebrew/bin/cargo,
-        # 导致 `cargo metadata` 命中错误 binary 并吐 rustup-init 用法。
-        # dtolnay/rust-toolchain 检测到 rustup 已存在就跳过了 PATH 写入,
-        # 这里强制把 rustup 真 proxy 所在目录前置,覆盖 brew 那条。
-        shell: bash
-        run: echo "${CARGO_HOME:-$HOME/.cargo}/bin" >> "$GITHUB_PATH"
-
-      - name: Isolate pinned build toolchain
-        if: runner.environment == 'github-hosted'
-        env:
-          UC_PINNED_RUST: ${{ steps.rust-channel.outputs.channel }}
-        run: node scripts/ci/isolate-build-toolchain.mjs
-
-      - name: Cache Rust dependencies
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: ". -> target"
-          shared-key: ${{ matrix.target }}${{ steps.build-mode.outputs.suffix }}
-          # The measured workspace-cache experiment still rebuilt every application crate.
-          cache-workspace-crates: false
-          # Compiled output is sccache/R2's job once sccache actually got R2
-          # credentials; without them (e.g. fork PR, unrecognized target) this
-          # falls back to caching target/ here instead of going fully cold on
-          # both caches.
-          cache-targets: ${{ steps.sccache-config.outputs.enabled != 'true' }}
-          # 只在 main 写缓存,其他分支(含 tag 触发的 release)只读。
-          # Windows Post Cache Rust 上传单次 ~2m43s (25682907543),tag run
-          # 通常基于刚合入 main 的代码,命中已存的 main cache 即可,不必再
-          # 写一份等价的进 GHA cache (10GB 上限)。
-          save-if: ${{ inputs.save_cache || github.ref == 'refs/heads/main' }}
-
-      - name: Restore Bun dependencies
-        id: bun-cache
-        # Windows NTFS 上压缩 ~/.bun/install/cache 的小文件极慢:
-        # 25682907543 run 实测 Post Cache 步骤 7m37s,而 bun install 本身只
-        # 1m12s — 缓存反成负优化。Linux/macOS post-cache ~20-30s,保留。
-        if: runner.os != 'Windows'
-        uses: actions/cache/restore@v5
-        with:
-          path: ~/.bun/install/cache
-          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-bun-
-
-      - name: install frontend dependencies
-        run: bun install
-
-      - name: Save Bun dependencies
-        # 只有 main 或显式 save_cache 的 warmup 写 Bun cache。tag release
-        # 默认只读取,避免在 10GB GHA cache 配额里挤掉主线预热结果。
-        if: runner.os != 'Windows' && (inputs.save_cache || github.ref == 'refs/heads/main') && steps.bun-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v5
-        with:
-          path: ~/.bun/install/cache
-          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lock') }}
-
-      - name: resolve app version
-        id: app-version
-        shell: bash
-        run: |
-          version="$(node -p "require('./package.json').version")"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-
-      - name: resolve APP_ENV from channel
-        # Sentry/OTLP environment 标签来源:
-        #   stable  → "production" (Sentry 默认值,符合大多数 dashboard 习惯)
-        #   alpha/beta/rc → 同名,作为独立 environment
-        # 该值同时注入给 Rust 后端 (APP_ENV, option_env! 编译期读取) 和前端
-        # (VITE_APP_ENV, Vite 在 build 时内联),保证前后端 environment 一致。
-        id: resolve-env
-        env:
-          UC_CHANNEL: ${{ inputs.channel || 'stable' }}
-        run: node scripts/ci/resolve-app-env.mjs
-
-      - name: download uniclipd sidecar
-        uses: actions/download-artifact@v6
-        with:
-          name: sidecar-${{ matrix.target }}${{ steps.build-mode.outputs.suffix }}
-          path: sidecar-artifact
-
-      - name: stage uniclipd sidecar
-        # `tauri build` looks up apps/gui/src-tauri/binaries/uniclipd-<triple>
-        # (and the macOS quick panel helper) exactly as prepare-sidecars.mjs
-        # staged them in build-sidecar.
-        shell: bash
-        run: |
-          mkdir -p apps/gui/src-tauri/binaries
-          tar -xf sidecar-artifact/sidecar.tar -C apps/gui/src-tauri/binaries
-          ls -la apps/gui/src-tauri/binaries
-
-      - name: build Tauri app (macOS signed)
-        if: matrix.platform == 'macos-latest'
-        uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          VITE_APP_VERSION: ${{ steps.app-version.outputs.version }}
-          VITE_SENTRY_DSN: ${{ secrets.VITE_SENTRY_DSN }}
-          VITE_APP_ENV: ${{ steps.resolve-env.outputs.app_env }}
-          # Backend Sentry DSN — independent Rust project DSN, baked into the
-          # binary at compile time via option_env! in uc-bootstrap/src/tracing.rs.
-          # MUST be a separate Sentry project from VITE_SENTRY_DSN (front-end);
-          # see "阶段 2" decision in the dependency-prune branch discussion.
-          # Empty secret = backend Sentry disabled.
-          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
-          POSTHOG_PROJECT_KEY: ${{ secrets.POSTHOG_PROJECT_KEY }}
-          APP_ENV: ${{ steps.resolve-env.outputs.app_env }}
-          # Frontend sourcemap upload via @sentry/vite-plugin during vite build.
-          # VITE_SENTRY_PROJECT is the front-end Sentry project slug — MUST be
-          # different from SENTRY_PROJECT (back-end). Plugin no-ops when token
-          # or project is missing.
-          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
-          VITE_SENTRY_PROJECT: ${{ secrets.VITE_SENTRY_PROJECT }}
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        with:
-          projectPath: apps/gui
-          tauriScript: bun run tauri
-          args: ${{ matrix.args }} -- --timings
-
-      # Keep builds working while the updated base image is being published.
-      - name: Install Linux dynamically loaded runtime
-        if: contains(matrix.target, 'linux')
-        shell: bash
-        run: |
-          if ! dpkg-query -W -f='${Status}' libgtk-layer-shell0 2>/dev/null | grep -q "install ok installed" || ! command -v python3 >/dev/null; then
-            apt-get update
-            apt-get install -y --no-install-recommends libgtk-layer-shell0 python3
-          fi
-
-      - name: build Tauri app (non-macOS)
-        if: matrix.platform != 'macos-latest'
-        shell: bash
-        env:
-          # Linux AppImage 打包用的 linuxdeploy / linuxdeploy-plugin-appimage
-          # 本身是 AppImage,运行时默认靠 FUSE 把自己挂载起来。GitHub Actions
-          # 的 container job 跑在非特权容器里,没有 /dev/fuse,linuxdeploy 起
-          # 不来,只吐一句笼统的 `failed to run linuxdeploy`。设这个变量让
-          # AppImage runtime 改成自解压到临时目录再执行,绕开 FUSE。Windows
-          # 构建忽略此变量,无副作用。
-          APPIMAGE_EXTRACT_AND_RUN: "1"
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          VITE_APP_VERSION: ${{ steps.app-version.outputs.version }}
-          VITE_SENTRY_DSN: ${{ secrets.VITE_SENTRY_DSN }}
-          VITE_APP_ENV: ${{ steps.resolve-env.outputs.app_env }}
-          # Backend Sentry DSN — independent Rust project DSN.
-          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
-          POSTHOG_PROJECT_KEY: ${{ secrets.POSTHOG_PROJECT_KEY }}
-          APP_ENV: ${{ steps.resolve-env.outputs.app_env }}
-          # Frontend sourcemap upload via @sentry/vite-plugin during vite build.
-          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
-          VITE_SENTRY_PROJECT: ${{ secrets.VITE_SENTRY_PROJECT }}
-        run: |
-          if [ "${{ matrix.platform }}" = "windows-latest" ]; then
-            bun run tauri build ${{ matrix.args }} --bundles nsis -- --timings
-          else
-            bun run tauri build ${{ matrix.args }} -- --timings
-          fi
-
-      - name: Verify Linux bundle runtime dependencies
-        if: contains(matrix.target, 'linux')
-        shell: bash
-        run: |
-          python3 -m unittest discover -s scripts/tests -p test_check_linux_bundles.py
-          python3 scripts/check-linux-bundles.py target/release/bundle
-
-      - name: package Windows portable zip
-        # Portable ("green") build: the standalone exe + the `uniclipd` daemon +
-        # a `portable.dat` marker that flips both binaries into portable mode at
-        # runtime (data stored next to the exe, no install, no system traces).
-        # The NSIS installer does NOT ship the marker, so the same compiled exe
-        # serves both forms. Written under bundle/ so the existing artifact
-        # upload glob picks it up.
-        #
-        # The daemon MUST ship in the zip: the GUI is a pure external-daemon
-        # client (ADR-008 P3-3) and resolves `uniclipd.exe` as a sibling of its
-        # own exe — the NSIS bundle gets it via tauri's externalBin, but this
-        # hand-rolled zip has to copy it explicitly (v0.14.0 shipped without it
-        # and the portable build could not start).
-        if: matrix.platform == 'windows-latest'
-        shell: bash
-        env:
-          BUILD_SUFFIX: ${{ steps.build-mode.outputs.suffix }}
-        run: |
-          set -euo pipefail
-          VERSION="${{ steps.app-version.outputs.version }}"
-          case "${{ matrix.target }}" in
-            aarch64-pc-windows-msvc) ARCH="arm64" ;;
-            *) ARCH="x64" ;;
-          esac
-
-          # x64 builds with the host default target (args=""), landing in
-          # target/release; arm64 cross-builds with --target into target/<triple>.
-          if [ -n "${{ matrix.args }}" ]; then
-            RELEASE_DIR="target/${{ matrix.target }}/release"
-          else
-            RELEASE_DIR="target/release"
-          fi
-
-          # Tauri may rename the cargo binary (uniclipboard.exe) to the
-          # productName (UniClipboard.exe); accept either, ship as UniClipboard.exe.
-          EXE=""
-          for cand in "UniClipboard.exe" "uniclipboard.exe"; do
-            if [ -f "$RELEASE_DIR/$cand" ]; then EXE="$RELEASE_DIR/$cand"; break; fi
-          done
-          if [ -z "$EXE" ]; then
-            echo "::error::portable exe not found under $RELEASE_DIR"
-            ls -la "$RELEASE_DIR" || true
-            exit 1
-          fi
-
-          # Daemon sidecar: staged from the build-sidecar artifact into
-          # apps/gui/src-tauri/binaries before `tauri build`. Hard-fail if
-          # missing — a portable zip without the daemon cannot start at all.
-          DAEMON="apps/gui/src-tauri/binaries/uniclipd-${{ matrix.target }}.exe"
-          if [ ! -f "$DAEMON" ]; then
-            echo "::error::$DAEMON not found — portable zip would be unusable"
-            ls -la apps/gui/src-tauri/binaries || true
-            exit 1
-          fi
-
-          STAGE="portable-stage"
-          OUT_DIR="$RELEASE_DIR/bundle/portable"
-          rm -rf "$STAGE"
-          mkdir -p "$STAGE" "$OUT_DIR"
-          cp "$EXE" "$STAGE/UniClipboard.exe"
-          cp "$DAEMON" "$STAGE/uniclipd.exe"
-          # Marker file: presence next to the exe enables portable mode.
-          : > "$STAGE/portable.dat"
-          cp packaging/windows/portable/README.txt "$STAGE/README.txt"
-
-          ZIP="$OUT_DIR/UniClipboard_${VERSION}_${ARCH}${BUILD_SUFFIX}-portable.zip"
-          powershell -Command "Compress-Archive -Path '$STAGE/*' -DestinationPath '$ZIP' -Force"
-          echo "Built portable zip:"
-          ls -la "$OUT_DIR"
-
-      - name: Upload Sentry debug symbols
-        # Test bundles are not released and should not upload symbols under the release version.
-        if: inputs.build_mode != 'test'
-        # 把 release 编译出的 .dSYM (macOS) / .pdb (Windows) / DWARF (Linux)
-        # 上传给 Sentry,后续 panic 上报时 Sentry 用 build-id 把地址翻译回
-        # 函数名 + 文件 + 行号(配合 --include-sources 还会嵌源码片段)。
-        # 没配 SENTRY_AUTH_TOKEN / SENTRY_PROJECT 时整个 step 跳过,不阻断构建。
-        shell: bash
-        env:
-          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
-          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
-        run: |
-          if [ -z "$SENTRY_AUTH_TOKEN" ] || [ -z "$SENTRY_PROJECT" ]; then
-            echo "::warning::SENTRY_AUTH_TOKEN/SENTRY_PROJECT not configured — skipping debug-files upload"
-            exit 0
-          fi
-          npm install -g @sentry/cli
-          # macOS 用 --target,产物在 target/<triple>/release/;
-          # Linux/Windows args 为空,产物在 target/release/。
-          if [ -d "target/${{ matrix.target }}/release" ]; then
-            TARGET_DIR="target/${{ matrix.target }}/release"
-          elif [ -d "target/release" ]; then
-            TARGET_DIR="target/release"
-          else
-            echo "::warning::No release directory found — skipping"
-            exit 0
-          fi
-          echo "Uploading debug files from $TARGET_DIR"
-          sentry-cli debug-files upload --include-sources "$TARGET_DIR"
-
-      - name: Upload Cargo timing reports
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: cargo-timings-app-${{ matrix.target }}${{ steps.build-mode.outputs.suffix }}
-          path: target/cargo-timings/*.html
-          if-no-files-found: ignore
-          retention-days: 14
-
-      - name: upload artifacts
-        uses: actions/upload-artifact@v7
-        with:
-          name: uniclipboard-${{ matrix.target }}${{ steps.build-mode.outputs.suffix }}
-          path: target/**/release/bundle/**
-
-  # User-facing CLI (Go, apps/cli-go). Independent of the GUI build: both only
-  # need the sidecar from build-sidecar. It never builds or links the Rust
-  # development CLI.
+  # User-facing CLI (Go, apps/cli-go). It only needs the daemon staged by
+  # build-sidecar and never builds or links the Rust development CLI.
   build-cli:
     name: Build CLI ${{ matrix.target }}
     needs: [setup-matrix, build-sidecar]
@@ -832,8 +415,8 @@ jobs:
       - name: stage uniclipd sidecar
         shell: bash
         run: |
-          mkdir -p apps/gui/src-tauri/binaries
-          tar -xf sidecar-artifact/sidecar.tar -C apps/gui/src-tauri/binaries
+          mkdir -p target/sidecar-staging
+          tar -xf sidecar-artifact/sidecar.tar -C target/sidecar-staging
 
       - name: build Go CLI
         shell: bash
@@ -856,7 +439,7 @@ jobs:
           case "${{ matrix.target }}" in *windows*) EXE=".exe" ;; esac
           bash scripts/ci/package-cli.sh "${{ matrix.target }}" \
             "target/go-cli/uniclip$EXE" \
-            "apps/gui/src-tauri/binaries/uniclipd-${{ matrix.target }}$EXE"
+            "target/sidecar-staging/uniclipd-${{ matrix.target }}$EXE"
 
       - name: upload CLI artifact
         uses: actions/upload-artifact@v7

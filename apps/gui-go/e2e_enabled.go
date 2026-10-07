@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/wailsapp/wails/v3/pkg/mac"
 )
 
 // EvidenceService is the e2e-only control plane. It exists solely in builds

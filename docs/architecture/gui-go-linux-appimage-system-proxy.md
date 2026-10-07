@@ -333,7 +333,7 @@ GLib 默认解析器本身对同一组 PAC 的回答（`stage6/auth-semantics/pa
 | 永不应答 | 阻塞直到 libproxy 的下载超时 | 超时（探针 20 s 被截断） | failed |
 | 端口无人监听 | `direct://`（`Unable to download PAC`） | `direct://` | failed |
 
-结论（有证据的部分）：404 与语法错误时，**解析器返回的是 `direct://`，而不是错误**；GIO 的 `g_proxy_resolver_lookup` 与 libproxy 命令行都看不到差别，成熟 API（`px_proxy_factory_get_proxies`）没有「PAC 失败」的错误通道，所以位于解析器之上的 loopback guard 无法区分「用户配置了直连」与「PAC 失败」。要变成 fail-closed，产品只能自己下载并求值 PAC（等于自写 PAC 引擎，违反「库优先」）或自己预检 PAC URL（同样是自写判断），因此 **目前没有发现不自写解析器的做法**；这条边界保留，需要产品决定，不是永久排除：选项是（a）接受上游语义并在用户文档中写明，（b）等待/推动 libproxy 或 glib-networking 提供错误通道，（c）由产品决定是否承担预检。WebView 在「无法连接」与「永不应答」两种情况下 failed 而不是 direct，与独立的 GIO 查询里的 `direct://` 不一致，原因尚未解释（可能是 WebKit 的请求超时先于解析结果），只记录。
+结论（有证据的部分）：404 与语法错误时，**所选集成返回的是 `direct://`，而不是错误**；GIO 的 `g_proxy_resolver_lookup` 与 libproxy 命令行都看不到差别，所选集成（glib-networking GNOME 解析器 → `glib-pacrunner` → libproxy `px_proxy_factory_get_proxies`）没有「PAC 失败」的错误通道，所以位于解析器之上的 loopback guard 无法区分「用户配置了直连」与「PAC 失败」。这只描述已调查的集成，不推出别的集成也做不到；未调查 libproxy 的其他 API、发行版补丁与 WebKit 的其他代理路径。要在该集成上变成 fail-closed，产品需要自己下载并评估 PAC 或预检 PAC URL（与「库优先」冲突），因此这是待产品决定的开放项，不是永久排除：（a）接受上游语义并在用户文档中写明，（b）跟进上游提供错误通道，（c）评估其他现有库方案或承担预检。WebView 在「无法连接」与「永不应答」两种情况下 failed 而不是 direct，与独立 GIO 查询里的 `direct://` 不一致，原因尚未解释，只记录。
 
 对照旧 Tauri 包：旧包的 GIO 模块目录只有 `libgiognutls.so`，没有 GNOME/libproxy 解析器，所以它 **从不使用系统代理**，PAC 与手动代理都被忽略（总是直连）；当前 Go 包对 PAC 失败的「直连」没有比旧包更宽，但也不承诺全局 fail-closed。
 
@@ -342,3 +342,51 @@ GLib 默认解析器本身对同一组 PAC 的回答（`stage6/auth-semantics/pa
 ### 仍未完成（OPEN，逐项增量补做）
 
 两个 GUI 同总线、监督器预算观测（hook，需要包含 hook 的新包）、动态设置、SOCKS、Fedora 容器与原生主机的外部目标/PAC/认证场景、同一最终干净包上的 17c7/17c5/17c10/17c11/内容检查回归。
+
+### 最终验证（同一个不可变包 `3669e047…`，`final-2`）
+
+**来源与边界（产品包来源与后续仅测试源码提交分开）。**
+
+- 包构建 HEAD `f6b9280ae043bd6c74fc723c59b97d99848e5abe`，`status` 为空、`dirty.diff` 为 0 字节，`build.rc`/`package.rc`/`content.rc` 均为 0；包 SHA-256 `3669e04700515a27c8b6ebba1dcd393fd573d57b25b8483de8c5af1b9099735f`，`package-manifest.json` SHA-256 `dfd4071b…34bb`；daemon SHA-256 `ea0f0bcb53e949ba94fc71e97748103e4f7136b4a354924991d686cc4d29f6c6`（固定的官方 Engine daemon，未改）。
+- 主矩阵 `final-2/inputs/matrix.txt` 的 48 个任务由运行器自己的场景表生成（Ubuntu 26、Fedora 22；Ubuntu 多出的 4 个是专用驱动 two-normal/two-kill/dynamic/socks），镜像 id 记录在 `final-2/inputs/image-*.id`。
+- 此后追加的补测（`extra/`）使用 **冻结的测试源码快照**（基于同一个 HEAD `f6b9280ae`，补丁与差异见 `extra/snapshot-vs-head.diff`），读取 **同一个包副本**（`extra/package-used.sha256`）。这些补测的测试源码已合入仓库（提交 `e9145e40f`，只改 `apps/gui-go/e2e` 下五个文件，**不改变包**）；产品源码自包构建之后没有修改。
+
+**主矩阵（48 个任务，`final-2`）：46 个 rc 0，2 个保留的原始跳过（rc 3）；`final-2` 整体 rc 1（见下，另有 `e2e-portable` 回归步骤失败）。** 下面「更新门禁」一节记录该失败的归因与复验；`final-2` 的 rc 1 不被改写，原驱动不是全绿。每个任务的每个所选场景都核对了「已完成或带原因跳过」、要求非空且适用（`final-2/coverage.json`，由 `summarize_final.py` 生成），没有把顶层 `functionalPassed` 当作场景判定。Ubuntu 与 Fedora 各 22 个运行器任务，各 487 条要求，0 失败；非便携默认任务按设计只跳过 `gs-ph-*` 三个仅便携场景。
+
+- 两个 **保留的原始跳过**：`ubuntu-portable-pac-gs-sys-pac-owned` 与 `fedora-portable-pac-gs-sys-pac-owned`（rc 3，0 条要求）：便携模式下会话总线由 AppImage 运行时自动启动，运行器不知道地址，场景按设计跳过。它们 **没有被判为通过**，该缺口由下面的独立补测覆盖。
+- `matrix jobs listed=48 recorded=44` 是汇总计数缺陷（正则不匹配含数字的 `*-p8` 四个任务），已按名称集合核实全部 48 个任务都有 rc 与结果，原行保留，说明见 `final-2/COUNT-NOTE.txt`。
+
+**补测（同一个包，隔离端口/进程/日志）。**
+
+| 项 | Ubuntu | Fedora |
+| --- | --- | --- |
+| 便携 GUI + 已知总线 + 已存在的非激活所有者（尊重所有者 / 杀死后接管 / 退出后无残留） | `extra/runs/ubuntu-owned-portable`，5/5 | `extra/runs/fedora-owned-portable`，5/5 |
+| 两个 GUI 同一会话总线（所有者正常退出 / SIGKILL，幸存者接管） | 主矩阵 `ubuntu-two-normal`/`two-kill`，各 6/6 | `extra/runs/fedora-two-normal`/`two-kill`，各 6/6 |
+| 动态设置（同一 GUI 内 `gsettings` 切换 7 个状态） | `ubuntu-dynamic`，8/8 | `extra/runs/fedora-dynamic`，8/8 |
+| SOCKS（真实 Dante：pass / block / ignore-hosts / 回环无泄漏） | `ubuntu-socks`，4/4（Dante 1.4.3） | `extra/runs/fedora-socks`，4/4（Dante 1.4.4，镜像 `…-fedora-session-socks`，id `2564fc9d…`） |
+| guard 下游缺失（无下游 → direct 且回环可用；仅 libproxy → 经环境代理） | `extra/runs/ubuntu-guard-downstream`，6/6 | `extra/runs/fedora-guard-downstream`，6/6 |
+| 页面取消 + 同 GUI 新的认证 HTTP/WS + 持有释放后恢复 | `extra/runs/ubuntu-hang-recovery`，9/9 | `extra/runs/fedora-hang-recovery`，9/9 |
+
+**取消与恢复的各边界必须分开表述。** （1）页面 `AbortController` 在约 3 s 取消等待 PAC 下载的请求（`AbortError:3002`）；（2）取消后同一 GUI 完成 **新的** 会话交换、认证 `GET /settings` 与 WebSocket `status:status.snapshot` 帧——不是旧连接；（3）PAC 服务器持有下载期间外部请求 `failed`（GDBus 25 s 超时错误，不是 direct）；（4）服务器释放连接后同一 GUI 的外部请求在约 1.2–1.4 s 内重新 proxied；（5）**页面取消没有终止底层下载**：观测是，取消之后 PAC 服务器仍持有的连接结束前，新查询没有恢复；GUI 无关的时间线（`stage6/auth-semantics/pac-recovery.log`，GLib 默认解析器，无产品代码）里，持有期间每次新查询约 25–26 s 后以 `Timeout was reached` 失败，在持有的连接于约 300 s 结束后才返回代理，**杀死助手不是恢复的必要条件**（第 6 次查询之前已恢复）。这里只记录了「300 s 持有」这一次观测：**没有观测过永久持有**，不能由它推出「永久」或「全部查询」；永久不释放只是下面源码支持的 **长期占用风险**。
+
+**来源推断（与上面的观测分开；精确版本与位置）。** 以下是对 libproxy 上游标签 `0.5.4`（Ubuntu 包 `libproxy1v5 0.5.4-4build1`，发行版补丁未核对）和 glib-networking 标签 `2.80.0`（`2.80.0-1build1`）源码的阅读，不是运行观测：
+- `src/backend/px-manager.c:641` `px_manager_get_proxies_sync` 在整个函数里持有 `self->mutex`（`:98` 声明，`:649`、`:680` 释放）；PAC 下载 `px_manager_expand_pac`（`:579`，下载调用在 `:602`）→ `px_manager_pac_download`（`:378`，`curl_easy_perform` 在 `:427`）发生在持有该互斥锁期间，所以同一 `PxManager` 上的其他查询会排在卡住的下载后面。
+- `:406` 只设置 `CURLOPT_CONNECTTIMEOUT 30`，`:386–427` 没有设置总超时或低速限制，因此「已连接但服务器不应答」不受 libproxy 自己的超时约束（curl 默认没有总超时）。
+- `:605` 下载失败只写 `g_warning`，`:672` 起「没有找到代理就假定直连」→ `direct://`，这是 404、无法连接时答复 `direct://` 的来源。
+- glib-networking `proxy/libproxy/glibproxyresolver.c:206`（`g_task_run_in_thread`）说明每个查询跑在 GTask 工作线程里，**助手不是单线程**；`proxy/libproxy/glibpacrunner.c:41、168–169` 是 `GMainLoop`、`:87` 的 `g_proxy_resolver_lookup_async`。早先写的「glib-pacrunner 单线程」是错误推断，已更正：串行化来自 libproxy 的 `PxManager` 互斥锁，不是助手的主循环。
+- 25 s 是 GDBus 方法调用的默认超时（GIO 文档），本观测与之一致，但我没有单独隔离验证过这一因果。
+
+**原生主机（aarch64，Fedora 44 niri 虚拟机、Arch Linux ARM Hyprland 真机，各 6 个场景，共 12 个）。** 同一个包：每次运行自己的 `UniClipboard.AppImage` 副本 SHA-256 均为 `3669e047…`（`native/collect-final-2/*/package-copy-hashes.txt`），探针 SHA-256 `8cc838f5…`，便携 HOME 与任务私有总线，用户自己的会话与钥匙串不动，两台主机上用户自己的 `glib-pacrunner`（pid 4161 / 1978837）前后一致。场景：`none`、`env`、`gnome-empty`、`gnome-ignore`、`gnome-pac-host`（私有总线按发行版服务文件激活宿主助手）、`gnome-pac-bundled`（私有总线无服务目录，只有随包助手）。全部 `passed`。**`none` 只证明代理 sink 为 0（目标是 `.invalid`，本来就无法送达），不证明外部内容被直连送达。** GUI 环境 `GDK_BACKEND=x11`，所以这是 Wayland 会话里经 XWayland 运行的结果（由环境推断，不是 socket 观测），**不是原生 Wayland 后端的通过**，也不是原生 amd64 的证明。两次原生收集：`collect-final`（`extract rc=1`，tar 操作数重复，保留为失败的首次门禁）与 `collect-final-2`（全部 rc 0、错误输出为空，逐文件重新 hash 0 缺失 0 差异）。
+
+**上游语义，不是产品承诺（已用 GIO、libproxy 命令行与源码核对）。** （a）PAC 返回 404 或语法错误：解析器答复 `direct://`，GIO 与 libproxy 命令行都分不出是配置直连还是失败，当前所选集成（glib-networking 的 GNOME 解析器 → `glib-pacrunner` → libproxy `px_proxy_factory_get_proxies`，`libproxy 0.5.4`）没有错误通道，所以 GIO 层（包括 loopback guard）**区分不出「PAC 失败」与「配置直连」**；这只说明所选集成的限制，**不推出所有成熟集成都做不到**。调查过的现有库方案：GIO 默认解析器、libproxy 0.5 命令行（同样答复 `direct://`）、GNOME 解析器直接调用 PAC 助手（失败路径同上）；没有调查 libproxy 的其他 API（例如较新的 manager 接口是否暴露下载错误）、其他发行版补丁或 WebKit 自带的其他代理路径。这条策略（PAC 失败时 fail-closed）**尚未满足**，是待产品决定的开放项：选项包括接受上游语义并在用户文档中写明、跟进上游提供错误通道、或评估其他现有库方案；旧 Tauri 包不带任何系统代理解析器，永远直连，所以这不比旧包更宽。（b）GNOME 凭据只写进 HTTP 代理 URI，显式 https 主机时 https 请求不带凭据（`gs-sys-auth-https` 作为必须 fail-closed 的边界保留）。（c）PAC 服务器持有下载期间，新查询观测到 25 s 超时错误（失败而非 direct），页面取消不终止底层下载；永久持有的长期占用只是来源支持的风险，未观测。
+
+**失败与修正的来源（原目录均保留，见各目录 `ATTRIBUTION.txt`）。** stage3 的 GNOME 空 `ignore-hosts` RED → stage4 loopback guard GREEN；认证 `auth` → `auth2` → `auth3`；Fedora 非便携整轮失败 → 宿主服务残留（夹具）；首轮 `final`（`xargs` 过长，0 个任务，中止）→ `final-2`；原生 `n1`（缺 `DISPLAY`）→ `n2` → `n3`/`n4`（探针误把用户自己的助手算进来）→ `nf-*`；guard 下游 v1–v3（解压目录、缺少导入、未恢复模块）→ v4；PAC 错误 v1（libproxy 命令行超时使运行器崩溃）→ v2/v3。每个失败都是先归因（夹具、探针、产品）再修，没有放宽断言。
+
+**仍然开放（不由本切片声称完成）。** 原生 Wayland 后端、原生 amd64、deb/rpm、真实桌面快捷键与粘贴、macOS 与 Windows 代理对等、Tauri 退役；PAC 失败时 fail-open（404/语法）与永久持有的产品决定；更新器读取 GNOME 设置（目前只读环境变量，与 Tauri 更新器一致）。
+
+### 更新门禁（`e2e-portable`）：`final-2` 失败的归因与复验
+
+- **原失败（保留，`final-2/e2e-portable`，rc 1，`passed=false`）**：`timeout waiting for update-relaunched`。`update-good.jsonl` 共 36 个状态全部 `installed=false`，进程与挂载点不断变化。
+- **因果（对照观测，非推测）**：`run_17c12.sh` 当时用 v1 包的 tar.gz 作为更新源（SHA-256 `c4b3355c…`，v1 清单 `updateMarker=false`），没有构建带标记的 v2。更新装入的 AppImage 与正在运行的相同，运行器等待一个不可能出现的标记。复验用 `package-appimage --update-marker v2-installed` 构建 v2（清单 `updateMarker=true`，AppImage `db69f769…`，tar.gz `b0eedaf7…`），更新源由它生成；**被测的运行包仍是同一个 v1 `3669e047…`**，产品源码未变。归因文件：`final-2-portable-gate/ATTRIBUTION.txt`。
+- **复验结果**：`package-v2`、`feed`、`e2e-portable` 各自 rc 0；`appimage-assertions.json` `passed=true`，64 项检查全部为真，其中包括可信更新后的新进程带标记、旧 daemon 退出、同一便携 HOME、加密内容与设置保留。判定依据是各步骤 rc 与断言文件，不是 `done.marker` 或包装脚本末尾的 `0`。
+- **驱动修正（`e9145e40f`）**：`run_17c12.sh` 现在先构建带标记的 v2 再生成更新源；任务计数改为按名称（旧正则漏掉含数字的 `*-p8`）；便携 `gs-sys-pac-owned` 不再被调度为 0 要求的跳过，而由专用 `--owned` 任务覆盖。**这个修正后的调度没有被完整重跑**。已做的验证：用修正后的矩阵生成器得到 54 个任务（46 个原通过任务 + 每个发行版的 `owned-portable`、`guard-downstream`，以及 Fedora 的 `two-normal`、`two-kill`、`dynamic`、`socks`），与 `final-2` 的 48 个任务按名称对照，只多不少，去掉的恰是两个保留的跳过（`final-2-portable-gate/new-matrix-dryrun.txt`）；计数逻辑在 `final-2` 真实数据上回放得 48/48；两个 `--owned` 任务用仓库里修正后的 `run.sh` 与矩阵行真实执行（同一个 v1 包），Ubuntu 与 Fedora 均 rc 0、`functionalPassed=true`、0 项失败（`final-2-portable-gate/driver-verify/`）。

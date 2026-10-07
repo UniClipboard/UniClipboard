@@ -70,7 +70,11 @@ run_job() { # name|image|runner|args|feed
 }
 export -f run_job; export out R V1 M1
 echo "== proxy matrix ($(wc -l < "$out/inputs/matrix.txt") jobs, $JOBS parallel)" | tee -a "$out/steps.txt"
-grep -v '^$' "$out/inputs/matrix.txt" | xargs -P "$JOBS" -I{} bash -c 'run_job "$1"' _ {}
+# NUL-separated, one argument per job (BSD xargs -I limits the replacement string to 255 bytes: the first attempt ran zero jobs)
+grep -v '^$' "$out/inputs/matrix.txt" | tr '\n' '\0' | xargs -0 -n1 -P "$JOBS" bash -c 'run_job "$1"' _
+njobs=$(grep -vc '^$' "$out/inputs/matrix.txt"); ran=$(grep -c ' rc=' "$out/steps.txt" || true)
+echo "matrix jobs listed=$njobs recorded=$(grep -cE '^[a-z]+-[a-z-]+ rc=' "$out/steps.txt")" | tee -a "$out/steps.txt"
+
 
 # ---- regressions on the SAME package
 step feed "$R" appimage-feed "$out/feed" "$(dirname "$V1")/E2E-UniClipboard_1.1.1_arm64.AppImage.tar.gz" || true

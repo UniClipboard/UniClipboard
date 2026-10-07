@@ -34,9 +34,9 @@ def main():
     args = parser.parse_args()
     out = ROOT / 'target/gui-go' / f'windows-{args.mode}{"-crosscheck" if args.cross_check_only else ""}'
     out.mkdir(parents=True, exist_ok=True)
-    conf = json.loads((ROOT / 'apps/gui/src-tauri/tauri.conf.json').read_text())
+    conf = json.loads((ROOT / 'apps/gui-go/app.json').read_text())
     bundle_id = conf['identifier'] + ('.e2e' if args.mode == 'e2e' else '')
-    pubkey = '' if args.mode == 'e2e' else conf['plugins']['updater']['pubkey']
+    pubkey = '' if args.mode == 'e2e' else conf['updater']['pubkey']
     env = dict(os.environ, GOOS='windows', GOARCH='amd64', CGO_ENABLED='0') if args.cross_check_only else dict(os.environ, CGO_ENABLED='0')
     if not args.cross_check_only:
         run(['cargo', 'build', '--locked', '-p', 'uc-daemon'])

@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
 """Production updater key path: what the release build trusts, proven without touching any real release source.
 
-The trust anchor of a release build is the minisign key that `build.sh` injects from the Tauri updater config via
+The trust anchor of a release build is the minisign key that `build.sh` injects from apps/gui-go/app.json via
 `-X main.updaterPublicKey=...`. This script shows, end to end:
-  1. the production-tagged binary built by `build.sh manual` carries exactly the Tauri config key, has no e2e control
+  1. the production-tagged binary built by `build.sh manual` carries exactly the app.json key, has no e2e control
      plane and no environment override strings (supply-chain contract of the artifact);
-  2. the Tauri config key parses with the app's own `update.ParsePublicKey` (the Tauri value format);
-  3. the Go default feed URLs match the Rust shell's production endpoints (the shipped Tauri code ignores the
-     `endpoints` of tauri.conf.json and uses `default_updater_endpoints`);
-  4. behavior of the real updater code in e2e-tagged builds linked with different keys, against a LOCAL feed only
+  2. the app.json key parses with the app's own `update.ParsePublicKey` (the minisign value format);
+  3. behavior of the real updater code in e2e-tagged builds linked with different keys, against a LOCAL feed only
      (nothing here contacts the release hosts, and the production binary is never run):
        - the production key rejects an artifact signed by another key (download fails with a signature error);
        - an empty key disables updates and no request reaches the feed (fail closed);
@@ -36,7 +34,7 @@ from run import ROOT, isolated_env, read_steps  # noqa: E402
 
 GUI = ROOT / 'apps/gui-go'
 VERSION = '99.0.0-e2e'
-TAURI_CONF = ROOT / 'apps/gui/src-tauri/tauri.conf.json'
+APP_CONF = ROOT / 'apps/gui-go/app.json'
 
 
 class Feed:
@@ -70,21 +68,12 @@ def production_binary_checks(conf_key):
     info = run(['go', 'version', '-m', str(binary)])
     flags = re.search(r'-ldflags=(.*)', info).group(1)
     tags = re.search(r'-tags=(\S+)', info).group(1)
-    assert f'-X main.updaterPublicKey={conf_key}' in flags, 'the production binary was not linked with the Tauri config key'
+    assert f'-X main.updaterPublicKey={conf_key}' in flags, 'the production binary was not linked with the app.json key'
     assert tags == 'production', tags
     blob = binary.read_bytes()
     forbidden = [m for m in (b'EvidenceService', b'UC_UPDATE_ENDPOINT', b'UC_UPDATE_PUBKEY', b'UC_GUI_GO_E2E', b'update-verify') if m in blob]
     assert not forbidden, f'test or override strings in the production binary: {forbidden}'
-    return {'tags': tags, 'linkedKeyEqualsTauriConfig': True, 'forbiddenStringsFound': forbidden}
-
-
-def endpoint_contract():
-    rust = (ROOT / 'crates/uc-tauri/src/commands/updater.rs').read_text()
-    go = (GUI / 'internal/update/update.go').read_text()
-    rust_urls = re.findall(r'format!\("(https://[^"]*?)\{channel_str\}\.json"\)', rust)
-    go_urls = re.findall(r'fmt\.Sprintf\("(https://[^"]*?)%s\.json", channel\)', go)
-    assert rust_urls and rust_urls == go_urls, (rust_urls, go_urls)
-    return {'rust': rust_urls, 'go': go_urls}
+    return {'tags': tags, 'linkedKeyEqualsAppConfig': True, 'forbiddenStringsFound': forbidden}
 
 
 def build_variant(work, name, key):
@@ -132,17 +121,16 @@ def main():
     args = parser.parse_args()
     out = args.out.resolve()
     out.mkdir(parents=True, exist_ok=True)
-    conf_key = json.load(open(TAURI_CONF))['plugins']['updater']['pubkey']
-    assert conf_key, 'the Tauri updater public key is not configured'
-    results = {'passed': False, 'tauriConfigKeyConfigured': True}
+    conf_key = json.load(open(APP_CONF))['updater']['pubkey']
+    assert conf_key, 'the updater public key is not configured in apps/gui-go/app.json'
+    results = {'passed': False, 'appConfigKeyConfigured': True}
     work = Path(tempfile.mkdtemp(prefix='uc-gui-go-updater-key-'))
     feed_dir = work / 'feed'
     feed_dir.mkdir()
     try:
         comment = base64.b64decode(conf_key).decode().splitlines()[0]
         parsed = run(['go', 'run', './e2e/updatetool', 'parsekey', conf_key], cwd=GUI).strip()
-        results['tauriConfigKey'] = {'comment': comment, 'parsedKeyID': parsed}
-        results['endpointContract'] = endpoint_contract()
+        results['appConfigKey'] = {'comment': comment, 'parsedKeyID': parsed}
         # Local feed signed by a throwaway key; the artifact content is irrelevant, only its signature matters.
         (work / 'artifact.tar.gz').write_bytes(b'not a real bundle: verification fails or passes before any install')
         shutil.copy(work / 'artifact.tar.gz', feed_dir / 'update.app.tar.gz')

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Runs INSIDE the uc-gui-go-linux-build image (repository at /work, cache volume at /cache).
-# Builds the SHIPPED daemon the way scripts/prepare-sidecars.mjs does: `cargo build --release -p uc-daemon --bin uniclipd`
+# Builds the SHIPPED daemon the way scripts/stage-daemon.mjs does: `cargo build --release -p uc-daemon --bin uniclipd`
 # with the repository's [profile.release] (thin LTO, opt-level z) and the locked dependency graph, so the Engine comes
 # from the immutable git revision recorded in Cargo.lock. Writes the binary and an evidence file to /cache/out-release.
 set -euo pipefail

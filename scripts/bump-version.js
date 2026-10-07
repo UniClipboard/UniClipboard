@@ -63,8 +63,8 @@ export function updatePackageJson(newVersion, dryRun) {
   return { path: pkgPath, old: oldVersion, new: newVersion }
 }
 
-export function updateTauriConfig(newVersion, dryRun) {
-  const configPath = path.join(process.cwd(), 'apps', 'gui', 'src-tauri', 'tauri.conf.json')
+export function updateAppConfig(newVersion, dryRun) {
+  const configPath = path.join(process.cwd(), 'apps', 'gui-go', 'app.json')
   const config = JSON.parse(fs.readFileSync(configPath, 'utf8'))
   const oldVersion = config.version
 
@@ -80,8 +80,8 @@ export function updateTauriConfig(newVersion, dryRun) {
 export function updateCargoToml(
   newVersion,
   dryRun,
-  relativePath = path.join('apps', 'gui', 'src-tauri', 'Cargo.toml'),
-  section = 'package'
+  relativePath = 'Cargo.toml',
+  section = 'workspace.package'
 ) {
   const cargoPath = path.join(process.cwd(), relativePath)
   const content = fs.readFileSync(cargoPath, 'utf8')
@@ -121,48 +121,6 @@ export function updateCargoToml(
   }
 
   return { path: cargoPath, old: oldVersion, new: newVersion }
-}
-
-export function updateCargoLock(newVersion, dryRun) {
-  // The cargo workspace lives at the repo root, so Cargo.lock does too; the
-  // `uniclipboard` package manifest lives in apps/gui/src-tauri/Cargo.toml.
-  const cargoTomlPath = path.join(process.cwd(), 'apps', 'gui', 'src-tauri', 'Cargo.toml')
-  const cargoLockPath = path.join(process.cwd(), 'Cargo.lock')
-
-  if (!fs.existsSync(cargoLockPath)) {
-    return { path: cargoLockPath, skipped: true, reason: 'Cargo.lock not found' }
-  }
-
-  const cargoToml = fs.readFileSync(cargoTomlPath, 'utf8')
-  const nameMatch = cargoToml.match(/^name\s*=\s*"([^"]+)"/m)
-  if (!nameMatch) {
-    throw new Error('Could not find package name in Cargo.toml')
-  }
-
-  const packageName = nameMatch[1]
-  const escapedPackageName = packageName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  const content = fs.readFileSync(cargoLockPath, 'utf8')
-  const packageRegex = new RegExp(
-    `(\\[\\[package\\]\\]\\nname = "${escapedPackageName}"\\nversion = "([^"]+)")`,
-    'm'
-  )
-  const match = content.match(packageRegex)
-
-  if (!match) {
-    throw new Error(`Could not find package '${packageName}' in Cargo.lock`)
-  }
-
-  const oldVersion = match[2]
-  const newContent = content.replace(
-    packageRegex,
-    `[[package]]\nname = "${packageName}"\nversion = "${newVersion}"`
-  )
-
-  if (!dryRun) {
-    fs.writeFileSync(cargoLockPath, newContent, 'utf8')
-  }
-
-  return { path: cargoLockPath, old: oldVersion, new: newVersion, skipped: false }
 }
 
 export function run(options = parseArgs()) {
@@ -222,34 +180,16 @@ export function run(options = parseArgs()) {
   console.log(`${options.dryRun ? '[DRY RUN]' : '✓'} ${packageResult.path}`)
   console.log(`  ${packageResult.old} → ${packageResult.new}`)
 
-  const tauriResult = updateTauriConfig(newVersion, options.dryRun)
-  console.log(`${options.dryRun ? '[DRY RUN]' : '✓'} ${tauriResult.path}`)
-  console.log(`  ${tauriResult.old} → ${tauriResult.new}`)
+  const appConfigResult = updateAppConfig(newVersion, options.dryRun)
+  console.log(`${options.dryRun ? '[DRY RUN]' : '✓'} ${appConfigResult.path}`)
+  console.log(`  ${appConfigResult.old} → ${appConfigResult.new}`)
 
-  // Root workspace manifest: [workspace.package] version, inherited by all
-  // workspace member crates via `version.workspace = true`.
-  const rootCargoResult = updateCargoToml(
-    newVersion,
-    options.dryRun,
-    'Cargo.toml',
-    'workspace.package'
-  )
+  // Root workspace manifest: [workspace.package] version, inherited by all workspace
+  // member crates via `version.workspace = true`. Cargo.lock is refreshed by the release
+  // workflows with `cargo update --workspace`.
+  const rootCargoResult = updateCargoToml(newVersion, options.dryRun)
   console.log(`${options.dryRun ? '[DRY RUN]' : '✓'} ${rootCargoResult.path}`)
   console.log(`  ${rootCargoResult.old} → ${rootCargoResult.new}`)
-
-  // Tauri bin package manifest: [package] version of `uniclipboard`.
-  const cargoResult = updateCargoToml(newVersion, options.dryRun)
-  console.log(`${options.dryRun ? '[DRY RUN]' : '✓'} ${cargoResult.path}`)
-  console.log(`  ${cargoResult.old} → ${cargoResult.new}`)
-
-  const cargoLockResult = updateCargoLock(newVersion, options.dryRun)
-  if (cargoLockResult.skipped) {
-    console.log(`${options.dryRun ? '[DRY RUN]' : '-'} ${cargoLockResult.path}`)
-    console.log(`  skipped: ${cargoLockResult.reason}`)
-  } else {
-    console.log(`${options.dryRun ? '[DRY RUN]' : '✓'} ${cargoLockResult.path}`)
-    console.log(`  ${cargoLockResult.old} → ${cargoLockResult.new}`)
-  }
 
   if (!options.dryRun) {
     console.log('\n✨ Version bump complete!\n')

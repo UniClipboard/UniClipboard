@@ -19,7 +19,7 @@
 ;
 ; Parity with the Tauri template: version comparison with `nsis_tauri_utils::SemverCompare` (the same plugin, fetched and
 ; hash-checked by package_windows.py) and refusal of a downgrade; the "delete app data" uninstall option.
-; Deliberately not implemented, with the reason: WiX migration (tauri.conf.json bundles `nsis` only, no MSI was ever
+; Deliberately not implemented, with the reason: WiX migration (the retired Tauri configuration bundled `nsis` only, no MSI was ever
 ; shipped), the language selector (`displayLanguageSelector` is not set, English only), per-machine install mode
 ; (`installMode` is not set: current user). The Tauri template's interactive "reinstall / uninstall first" page is
 ; replaced by overwriting in place (same registry identity, same files).

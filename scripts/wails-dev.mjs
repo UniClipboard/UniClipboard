@@ -1,4 +1,4 @@
-// Development launcher for the Go GUI (Wails), the counterpart of `bun tauri:dev`.
+// Development launcher for the Go GUI (Wails).
 //
 //   bun wails:dev                      profile `dev`
 //   bun wails:dev:profile <profile>    any other development profile
@@ -11,7 +11,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
-import { availableDevPort, devServerPortForProfile, PROFILE_PATTERN } from './tauri-dev-profile.mjs'
+import { availableDevPort, devServerPortForProfile, PROFILE_PATTERN } from './dev-profile.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const gui = path.join(root, 'apps/gui-go')
@@ -35,7 +35,7 @@ function run(command, args, options = {}) {
 // `.dev` identifier, so it never shares notification or login-item state with an installed app. It is still started as a plain
 // child process, so stdio, the exit code and SIGTERM keep working.
 export function makeDevBundle(binary) {
-  const tauri = JSON.parse(fs.readFileSync(path.join(root, 'apps/gui/src-tauri/tauri.conf.json'), 'utf8'))
+  const app = JSON.parse(fs.readFileSync(path.join(root, 'apps/gui-go/app.json'), 'utf8'))
   const contents = path.join(path.dirname(binary), 'UniClipboardGoDev.app/Contents')
   fs.mkdirSync(path.join(contents, 'MacOS'), { recursive: true })
   const executable = path.join(contents, 'MacOS/gui-go')
@@ -44,9 +44,9 @@ export function makeDevBundle(binary) {
   fs.copyFileSync(path.join(gui, 'Info.plist'), plist)
   run('/usr/libexec/PlistBuddy', [
     '-c',
-    `Set :CFBundleIdentifier ${tauri.identifier}.dev`,
+    `Set :CFBundleIdentifier ${app.identifier}.dev`,
     '-c',
-    `Set :CFBundleName ${tauri.productName} Dev`,
+    `Set :CFBundleName ${app.productName} Dev`,
     plist,
   ])
   run('codesign', ['--force', '--deep', '--sign', '-', path.join(contents, '..')])
@@ -92,7 +92,7 @@ export async function main(argv, env = process.env) {
     return 1
   }
 
-  // An occupied profile port is replaced for this launch, as `tauri:dev:profile` does.
+  // An occupied profile port is replaced for this launch.
   const preferred = devServerPortForProfile(profile)
   let port
   try {
@@ -109,7 +109,7 @@ export async function main(argv, env = process.env) {
   fs.mkdirSync(out, { recursive: true })
   fs.mkdirSync(path.join(gui, 'assets'), { recursive: true })
   fs.copyFileSync(
-    path.join(root, 'apps/gui/src-tauri/icons/tray-icon@2x.png'),
+    path.join(root, 'apps/gui-go/icons/tray-icon@2x.png'),
     path.join(gui, 'assets/tray-icon@2x.png')
   )
   // The binary embeds frontend/dist; in dev the assets come from Vite, so an empty dist is enough.

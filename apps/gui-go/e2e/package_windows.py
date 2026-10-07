@@ -116,9 +116,9 @@ def main():
     if out.exists() and any(out.iterdir()):
         sys.exit(f'{out} is not empty: pick a new directory, earlier artifacts are not overwritten')
     out.mkdir(parents=True, exist_ok=True)
-    conf = json.loads((ROOT / 'apps/gui/src-tauri/tauri.conf.json').read_text())
+    conf = json.loads((ROOT / 'apps/gui-go/app.json').read_text())
     product, version, ident = conf['productName'], conf['version'], conf['identifier']
-    pubkey = conf['plugins']['updater']['pubkey']
+    pubkey = conf['updater']['pubkey']
     arch = ARCH_NAMES[args.arch]
     # Tauri's default publisher is the second element of the identifier (tauri-utils config.rs `publisher`).
     manufacturer = ident.split('.')[1]
@@ -139,14 +139,14 @@ def main():
     tmpl = (manifest / 'internal/commands/updatable_build_assets/windows/wails.exe.manifest.tmpl').read_text()
     (res / 'app.manifest').write_text(tmpl.replace('{{.ProductIdentifier}}', ident).replace('{{.ProductVersion}}', version + '.0'))
     syso = GUI / f'wails_windows_{args.arch}.syso'
-    run([str(wails3), 'generate', 'syso', '-arch', args.arch, '-icon', str(ROOT / 'apps/gui/src-tauri/icons/icon.ico'),
+    run([str(wails3), 'generate', 'syso', '-arch', args.arch, '-icon', str(ROOT / 'apps/gui-go/icons/icon.ico'),
          '-manifest', str(res / 'app.manifest'), '-info', str(res / 'info.json'), '-out', str(syso)])
 
     exe = out / 'UniClipboard.exe'
     try:
         run(['go', 'generate', './buildinfo'], cwd=ROOT / 'packages/desktop-host-go')
         (GUI / 'assets').mkdir(exist_ok=True)
-        shutil.copy2(ROOT / 'apps/gui/src-tauri/icons/tray-icon@2x.png', GUI / 'assets/tray-icon@2x.png')
+        shutil.copy2(ROOT / 'apps/gui-go/icons/tray-icon@2x.png', GUI / 'assets/tray-icon@2x.png')
         run(['bun', '--bun', 'run', '--cwd', 'apps/gui-go', 'build'], env=dict(os.environ, VITE_GUI_GO_E2E='0'))
         ldflags = f'-w -s -H windowsgui -X main.updaterPublicKey={pubkey} -X main.productName={product} -X main.bundleID={ident}'
         run(['go', 'build', '-tags', 'production,release', '-trimpath', '-buildvcs=false', '-ldflags', ldflags, '-o', str(exe), '.'],
@@ -158,8 +158,8 @@ def main():
     setup = out / f'{prefix}{product}_{version}_{arch}-setup.exe'
     run(['makensis', '-V2', f'-DPRODUCTNAME={product}', f'-DVERSION={version}', f'-DVERSIONWITHBUILD={version}.0',
          f'-DMANUFACTURER={manufacturer}', f'-DBUNDLEID={ident}', f'-DMAINBINARYNAME={product}.exe', f'-DSRC_MAIN={exe}',
-         f'-DSRC_DAEMON={args.daemon.resolve()}', f'-DICON={ROOT / "apps/gui/src-tauri/icons/icon.ico"}', f'-DOUTFILE={setup}',
-         f'-DHOOKS={ROOT / "apps/gui/src-tauri/windows/installer-hooks.nsh"}', f'-DPLUGINDIR={plugins}', str(GUI / 'windows/installer.nsi')])
+         f'-DSRC_DAEMON={args.daemon.resolve()}', f'-DICON={ROOT / "apps/gui-go/icons/icon.ico"}', f'-DOUTFILE={setup}',
+         f'-DHOOKS={ROOT / "apps/gui-go/windows/installer-hooks.nsh"}', f'-DPLUGINDIR={plugins}', str(GUI / 'windows/installer.nsi')])
 
     portable = out / f'{prefix}{product}_{version}_{arch}-portable.zip'
     with zipfile.ZipFile(portable, 'w', zipfile.ZIP_DEFLATED) as z:

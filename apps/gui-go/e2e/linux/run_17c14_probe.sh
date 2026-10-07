@@ -15,7 +15,7 @@ python3 /work/apps/gui-go/e2e/linux/tray_probe/sni_host.py --log /out/host_$MODE
   --click "Probe action@5" --click "Probe quit@13" &
 HOST=$!
 sleep 1
-/out/tray_probe_$MODE -icon /work/apps/gui/src-tauri/icons/tray-icon@2x.png -refresh "$MODE" >/out/app_$MODE.log 2>&1 &
+/out/tray_probe_$MODE -icon /work/apps/gui-go/icons/tray-icon@2x.png -refresh "$MODE" >/out/app_$MODE.log 2>&1 &
 APP=$!
 wait $APP; echo "app-exit=$?" >/out/app_exit_$MODE.txt
 wait $HOST || true

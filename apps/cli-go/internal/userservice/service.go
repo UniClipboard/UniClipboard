@@ -193,6 +193,10 @@ func stableExecutable(path string) (string, error) {
 		return absolute, nil
 	}
 	temp := filepath.Clean(os.TempDir())
+	temp, err = filepath.EvalSymlinks(temp)
+	if err != nil {
+		return "", fmt.Errorf("could not resolve temporary directory: %w", err)
+	}
 	if strings.HasPrefix(absolute, temp+string(os.PathSeparator)) || strings.HasPrefix(absolute, "/private/tmp/") || strings.HasPrefix(absolute, "/tmp/") {
 		return "", errors.New("production service cannot reference a temporary binary; install a release first")
 	}
@@ -213,7 +217,7 @@ func xmlString(value string) string {
 	return "<string>" + b.String() + "</string>"
 }
 
-// systemd uses C-style quoting, percent specifiers, and dollar expansion in ExecStart.
+// systemd uses C-style quoting and percent specifiers; the ExecStart ':' prefix disables dollar expansion.
 func unitQuote(value string) string { return strconv.Quote(strings.ReplaceAll(value, "%", "%%")) }
 
 func (s *Service) render(server bool) ([]byte, error) {

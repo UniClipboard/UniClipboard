@@ -13,6 +13,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 import uuid
 
@@ -179,6 +180,25 @@ def main():
         run('legacy-background-stop', ['stop'])
         production = dict(env, UNICLIPBOARD_ENV='production')
         run('reject-production-worktree', ['service', 'start', '--server'], expected=1, selected_env=production)
+        # A process fixture prevents production keychain access even if path rejection regresses.
+        with tempfile.TemporaryDirectory(prefix='uniclip-service-path-') as temporary:
+            temp_path = Path(temporary)
+            shutil.copy2(binary, temp_path / 'uniclip')
+            shim = temp_path / 'uniclipd'
+            shim.write_text('#!/bin/sh\nexit 37\n')
+            shim.chmod(0o755)
+            alias = out / 'temporary directory alias'
+            alias.symlink_to(temp_path, target_is_directory=True)
+            try:
+                result = subprocess.run([str(alias / 'uniclip'), 'service', 'start', '--server'],
+                                        env=dict(production, TMPDIR=str(alias)),
+                                        capture_output=True, text=True, timeout=100)
+                record('reject-symlinked-temporary-binary', exit=result.returncode,
+                       stdout=result.stdout, stderr=result.stderr,
+                       temporary=str(temp_path.resolve()), alias=str(alias))
+                assert result.returncode == 1 and 'temporary binary' in result.stderr
+            finally:
+                alias.unlink()
         record('acceptance', status='passed')
     finally:
         original_error = sys.exc_info()[0] is not None

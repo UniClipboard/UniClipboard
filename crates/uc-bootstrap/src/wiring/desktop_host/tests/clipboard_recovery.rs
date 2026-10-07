@@ -186,6 +186,9 @@ async fn desktop_clipboard_recovery_child() {
                     use std::os::unix::fs::PermissionsExt;
                     std::fs::set_permissions(&source, std::fs::Permissions::from_mode(0o000))
                         .unwrap();
+                    let error = std::fs::File::open(&source)
+                        .expect_err("permission fixture must be unreadable");
+                    assert_eq!(error.kind(), std::io::ErrorKind::PermissionDenied);
                 }
             }
             _ => unreachable!(),

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Exercise a real macOS daemon on a private named pasteboard and isolated profile."""
-import argparse, hashlib, json, os, shutil, signal, sqlite3, subprocess, time, tomllib, urllib.request, uuid, zipfile
+import argparse, hashlib, json, os, shutil, signal, sqlite3, subprocess, sys, time, tomllib, urllib.request, uuid, zipfile
 from pathlib import Path
 
 parser = argparse.ArgumentParser()
@@ -168,11 +168,37 @@ except BaseException as error:
     print(json.dumps({'passed':False,'artifact_directory':str(root)}))
     raise
 finally:
+    primary_failed = sys.exc_info()[0] is not None
+    cleanup_errors = []
     if process:
-        process.terminate()
-        try: process.wait(timeout=20)
-        except subprocess.TimeoutExpired: process.kill(); process.wait()
-    board('release')
-    source.chmod(0o600)
-    # Discard only this run's generated profile, keys and history.
-    shutil.rmtree(bin_dir/'data', ignore_errors=False) if (bin_dir/'data').exists() else None
+        try:
+            process.terminate()
+            try:
+                process.wait(timeout=20)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=20)
+            processes[-1]['exit_code'] = process.returncode
+        except Exception as cleanup_error:
+            cleanup_errors.append({'step': 'daemon', 'error_type': type(cleanup_error).__name__})
+    for step, action in [
+        ('pasteboard', lambda: board('release')),
+        ('source_permissions', lambda: source.chmod(0o600)),
+        # Discard only this run's generated profile, keys and history.
+        ('profile', lambda: shutil.rmtree(bin_dir/'data') if (bin_dir/'data').exists() else None),
+    ]:
+        try:
+            action()
+        except Exception as cleanup_error:
+            cleanup_errors.append({'step': step, 'error_type': type(cleanup_error).__name__})
+    try:
+        (root/'cleanup.json').write_text(json.dumps({'passed': not cleanup_errors, 'errors': cleanup_errors, 'processes': processes}, indent=2))
+    except Exception as cleanup_error:
+        cleanup_errors.append({'step': 'cleanup_evidence', 'error_type': type(cleanup_error).__name__})
+    if cleanup_errors:
+        print(json.dumps({'cleanup_errors': cleanup_errors}))
+        if not primary_failed:
+            result = json.loads((root/'result.json').read_text())
+            result.update({'passed': False, 'failure_type': 'CleanupError'})
+            (root/'result.json').write_text(json.dumps(result, indent=2))
+            raise RuntimeError('test resource cleanup failed; inspect cleanup.json')

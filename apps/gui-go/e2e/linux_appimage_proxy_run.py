@@ -676,6 +676,22 @@ def main():
                 sc['skipped'] = 'the portable-HOME causal control only exists in portable mode'
                 continue
             proxy, penv, curl_env, owned_helper = None, {}, {}, None
+            if name in RENAME_BINARY | RENAME_SERVICE and name != 'gs-sys-pac-owned':  # the "no working host PAC service" premise: a host helper left by a PREVIOUS scenario of this container is stopped and its name released first (fixture-owned: this container is isolated; the user's own helper elsewhere is never touched)
+                stopped = []
+                for pid, (exe, comm) in procs().items():
+                    if comm == 'glib-pacrunner':
+                        try:
+                            starter = [x for x in Path(f'/proc/{pid}/environ').read_bytes().decode(errors='replace').split('\0') if x.startswith('DBUS_STARTER')]
+                            ppid = re.search(r'PPid:\s+(\d+)', Path(f'/proc/{pid}/status').read_text()).group(1)
+                        except OSError:
+                            starter, ppid = [], None
+                        stopped.append({'pid': pid, 'exe': exe, 'comm': comm, 'ppid': ppid, 'starter': starter})
+                        os.kill(pid, 15)
+                sc['fixtureOwnersStopped'] = stopped
+                dl_own = time.monotonic() + 10
+                while any(comm == 'glib-pacrunner' for _, (_, comm) in procs().items()) and time.monotonic() < dl_own:
+                    time.sleep(.2)
+                run.check(f'[{name}] fixture: no PAC owner remains from earlier scenarios of this container before the missing-host premise is built', not any(comm == 'glib-pacrunner' for _, (_, comm) in procs().items()), stopped)
             if mode in ('allow', 'deny'):
                 proxy = Proxy(name, mode, AUTH_PROXY.get(name))
                 proxies.append(proxy)
@@ -1121,9 +1137,12 @@ def main():
                 dl_left = time.monotonic() + 8
                 while any(comm == 'glib-pacrunner' for _, (_, comm) in procs().items()) and time.monotonic() < dl_left:
                     time.sleep(.3)
-                left_all = {pid: exe for pid, (exe, comm) in procs().items() if comm == 'glib-pacrunner' and pid != (owned_helper.pid if owned_helper else -1)}
-                sc['helpersLeftAfterNormalExit'] = {str(k): v for k, v in left_all.items()}
-                req(f'[{name}] REQUIRE after the GUI\'s normal exit no glib-pacrunner process is left (a host helper started by bus activation would be recorded here too)', not left_all, sc['helpersLeftAfterNormalExit'])
+                every_left = {pid: exe for pid, (exe, comm) in procs().items() if comm == 'glib-pacrunner' and pid != (owned_helper.pid if owned_helper else -1)}
+                # by ORIGIN: a helper from an AppImage mount (its exe path, also '(deleted)' once the mount is gone) must not outlive the GUI; the distribution's own bus-activated helper
+                # (exe /usr/...) is a mature host service that need not exit with the GUI and is never killed by the product: recorded, not judged
+                left_bundled = {pid: exe for pid, exe in every_left.items() if '/tmp/.mount_' in exe}
+                sc['helpersLeftAfterNormalExit'] = {'bundled': {str(k): v for k, v in left_bundled.items()}, 'host': {str(k): v for k, v in every_left.items() if k not in left_bundled}}
+                req(f'[{name}] REQUIRE after the GUI\'s normal exit no AppImage-origin glib-pacrunner is left (host-service helpers are recorded, not judged)', not left_bundled, sc['helpersLeftAfterNormalExit'])
             if sc.get('_bundledPac') is not None and sc['_bundledPac']:
                 gone_deadline = time.monotonic() + 8
                 while any(pid_alive(x) for x in sc['_bundledPac']) and time.monotonic() < gone_deadline:

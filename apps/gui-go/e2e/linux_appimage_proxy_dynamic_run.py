@@ -10,6 +10,7 @@ Each state is retried for up to 12 s (GSettings notifications reach the network 
 route are recorded. A state that never reaches its expected route fails. Reuses the components of linux_appimage_proxy_run.py.
 """
 import argparse
+import socket
 import json
 import os
 import pwd
@@ -35,11 +36,46 @@ from linux_appimage_tls_run import Reports, StopScenario, install_trust, run_cmd
 SCHEMA = 'org.gnome.system.proxy'
 
 
+class Dante:
+    """A real SOCKS5 server (Dante `danted`) with an access log; `block` makes it refuse every connect (and log it)."""
+
+    def __init__(self, tag, block=False):
+        self.tag, self.port = tag, base.free_port()
+        self.dir = Path(tempfile.mkdtemp(prefix=f'uc-dante-{tag}-', dir='/var/tmp'))
+        self.dir.chmod(0o755)
+        self.log = self.dir / 'danted.log'
+        self.log.touch()
+        self.log.chmod(0o666)
+        verdict = 'block' if block else 'pass'
+        conf = [f'logoutput: {self.log}', f'internal: 127.0.0.1 port = {self.port}', 'external: eth0', 'socksmethod: none', 'clientmethod: none', 'user.privileged: root', 'user.unprivileged: nobody',
+                'client pass { from: 0.0.0.0/0 to: 0.0.0.0/0 log: connect error }', f'socks {verdict} {{ from: 0.0.0.0/0 to: 0.0.0.0/0 command: connect log: connect error }}']
+        (self.dir / 'danted.conf').write_text('\n'.join(conf) + '\n')
+        self.proc = subprocess.Popen(['danted', '-f', str(self.dir / 'danted.conf')], stdout=(self.dir / 'stdout.log').open('w'), stderr=subprocess.STDOUT)
+        for _ in range(50):
+            try:
+                socket.create_connection(('127.0.0.1', self.port), timeout=1).close()
+                return
+            except OSError:
+                time.sleep(.2)
+        raise RuntimeError('danted did not start: ' + (self.dir / 'stdout.log').read_text())
+
+    def lines(self):
+        return self.log.read_text(errors='replace').splitlines()
+
+    def stop(self):
+        self.proc.terminate()
+        try:
+            self.proc.wait(10)
+        except subprocess.TimeoutExpired:
+            self.proc.kill()
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--out', type=Path, required=True)
     ap.add_argument('--appimage', type=Path, required=True)
     ap.add_argument('--manifest', type=Path)
+    ap.add_argument('--socks', action='store_true', help='SOCKS states with a real Dante server (needs the -socks image)')
     args = ap.parse_args()
     out = args.out.resolve()
     out.mkdir(parents=True, exist_ok=True)
@@ -77,6 +113,7 @@ def main():
     launches, servers, proxies, bus = [], [], [], None
     sc = r['states'] = []
     done = False
+    socks_servers = []
     try:
         subprocess.run('[ -n "$(ip route show default)" ] || ip route add default dev eth0', shell=True)
         addr = run_cmd(['sh', '-c', "ip -4 -o addr show eth0 | awk '{print $4}' | cut -d/ -f1"]).stdout.strip()
@@ -116,6 +153,11 @@ def main():
             gs('ignore-hosts', ignore or "['localhost', '127.0.0.0/8', '::1']")
             gs('mode', "'manual'")
 
+        socks_ok, socks_block = None, None
+        if args.socks:
+            socks_ok, socks_block = Dante('ok'), Dante('block', block=True)
+            socks_servers.extend([socks_ok, socks_block])
+            r['danted'] = subprocess.run(['danted', '-v'], capture_output=True, text=True).stdout.strip()
         gui = run.launch('gui', extra_env={'XDG_CURRENT_DESKTOP': 'GNOME'})
         launches.append(gui)
         _, conn = wait_daemon(home)
@@ -154,6 +196,40 @@ def main():
             sc.append({'state': label, 'expected': expected, 'via': via, 'attempts': attempts})
             req(f'REQUIRE state {label}: the running GUI\'s next external request is {expected}' + (f' via {via}' if via else '') + f' (first attempt {attempts[0]["route"]}/{attempts[0]["via"]}, settled after {attempts[-1]["seconds"]}s, {len(attempts)} attempt(s))', ok, attempts)
 
+        def socks_request(tag, srv):
+            nonce = secrets.token_hex(6)
+            n0 = len(srv.lines())
+            gui.ctl(f'panel-js dyn-{tag} {reports.script(f"ext-dyn-{tag}", f"https://{base.WV_HOST}/webview-{tag}-{nonce}")}', f'panel-js-dyn-{tag}')
+            reports.wait(f'ext-dyn-{tag}-ok', 40) or reports.wait(f'ext-dyn-{tag}-err', 25)
+            time.sleep(1)
+            window = srv.lines()[n0:]
+            to_target = [l for l in window if f'{addr}.443' in l or f'{addr}:443' in l]
+            saw = target.saw(nonce)
+            route = 'proxied' if to_target and saw and not any('block' in l for l in to_target) else 'refused' if any('block' in l for l in to_target) and not saw else 'direct' if saw else 'failed'
+            return {'route': route, 'targetSaw': len(saw), 'socksLines': to_target[:4]}
+
+        def socks_check(label, apply, expected, srv):
+            apply()
+            res = socks_request(label, srv)
+            sc.append({'state': label, 'expected': expected, 'result': res})
+            req(f'REQUIRE SOCKS state {label}: the WebView request is {expected} (observed {res["route"]}, SOCKS server named the target {len(res["socksLines"])}x, target saw {res["targetSaw"]})', res['route'] == expected, res)
+
+        def socks_manual(port, ignore=None):
+            for scheme in ('http', 'https'):
+                gs(f'{scheme}.host', "''")
+            gs('socks.host', "'127.0.0.1'")
+            gs('socks.port', str(port))
+            gs('ignore-hosts', ignore or "['localhost', '127.0.0.0/8', '::1']")
+            gs('mode', "'manual'")
+
+        if args.socks:
+            socks_check('socks-pass', lambda: socks_manual(socks_ok.port), 'proxied', socks_ok)
+            socks_check('socks-block', lambda: socks_manual(socks_block.port), 'refused', socks_block)
+            socks_check('socks-ignore-target', lambda: socks_manual(socks_ok.port, f"['localhost', '127.0.0.0/8', '::1', '{base.WV_HOST}']"), 'direct', socks_ok)
+            leaked = [l for srv in socks_servers for l in srv.lines() if f'.{conn["port"]} ' in l or f':{conn["port"]}' in l.split('->')[-1]]
+            req('REQUIRE no SOCKS server ever saw a connection to the daemon\'s loopback port', not leaked, leaked[:3])
+            done = True
+            raise StopScenario()
         state_check('none-initial', lambda: gs('mode', "'none'"), 'direct', None)
         state_check('manual-p1', lambda: manual(p1.port), 'proxied', 'dyn1')
         state_check('manual-p2', lambda: manual(p2.port), 'proxied', 'dyn2')
@@ -181,6 +257,13 @@ def main():
                 pass
         if bus:
             bus.terminate()
+        for srv in socks_servers:
+            srv.stop()
+            for f in ('danted.log', 'danted.conf', 'stdout.log'):
+                try:
+                    shutil.copy2(srv.dir / f, out / f'socks-{srv.tag}-{f}')
+                except OSError:
+                    pass
         for p in proxies:
             p.stop()
             for f in ('tinyproxy.log', 'tinyproxy.conf', 'stdout.log'):

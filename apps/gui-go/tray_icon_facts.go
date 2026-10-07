@@ -18,7 +18,9 @@ type iconFeed struct {
 	h    *HostService
 	icon *trayIcon
 
-	deliverySlots chan struct{} // capacity maxDeliveryChecks: a token is held for the duration of one delivery read
+	deliveryMu   sync.Mutex
+	deliveryDue  map[[2]string]struct{} // (entry, target) pairs whose delivery view must be read; repeats within a burst merge
+	deliveryWake chan struct{}          // capacity 1: wakes deliveryWorker
 
 	refreshReq chan struct{} // capacity 1: snapshot reads run one at a time on run's goroutine, so an old answer cannot overwrite a newer one
 
@@ -37,8 +39,6 @@ const (
 	transferStale = 15 * time.Second
 	// transferTombstone is how long an ended transfer's id is remembered, so a progress event that overtakes its terminal event is not a new transfer.
 	transferTombstone = 30 * time.Second
-	// maxDeliveryChecks bounds the delivery reads in flight; further events are dropped because the next event or snapshot covers them.
-	maxDeliveryChecks = 4
 	// reconnectDelay is the pause before the event stream is opened again.
 	reconnectDelay = 3 * time.Second
 )
@@ -47,7 +47,7 @@ const (
 var iconTopics = []string{"file-transfer", "clipboard", "peers", "device-trust", "content-lock", "paired-devices"}
 
 func newIconFeed(h *HostService, icon *trayIcon) *iconFeed {
-	return &iconFeed{h: h, icon: icon, transfers: map[string]time.Time{}, ended: map[string]time.Time{}, deliverySlots: make(chan struct{}, maxDeliveryChecks), refreshReq: make(chan struct{}, 1)}
+	return &iconFeed{h: h, icon: icon, transfers: map[string]time.Time{}, ended: map[string]time.Time{}, deliveryDue: map[[2]string]struct{}{}, deliveryWake: make(chan struct{}, 1), refreshReq: make(chan struct{}, 1)}
 }
 
 // requestRefresh asks run for a snapshot read soon; requests that arrive while one is pending merge into it.
@@ -61,6 +61,7 @@ func (f *iconFeed) requestRefresh() {
 // run reads the snapshot facts and follows the event stream until ctx ends.
 func (f *iconFeed) run(ctx context.Context) {
 	go f.stream(ctx)
+	go f.deliveryWorker(ctx)
 	f.refresh(ctx)
 	ticker := time.NewTicker(refreshEvery)
 	defer ticker.Stop()
@@ -199,8 +200,10 @@ func (f *iconFeed) handle(ctx context.Context, e daemonclient.Event) {
 			Origin string `json:"origin"`
 		}
 		if json.Unmarshal(e.Payload, &p) == nil && p.Origin == "remote" {
-			f.icon.update(func(facts *iconFacts) { facts.newContent = true })
-			f.icon.animate(animNewContent)
+			if !f.userWatching() { // a focused window already shows the content
+				f.icon.update(func(facts *iconFacts) { facts.newContent = true })
+				f.icon.animate(animNewContent)
+			}
 		}
 	case "file-transfer.progress":
 		var p struct {
@@ -223,7 +226,7 @@ func (f *iconFeed) handle(ctx context.Context, e daemonclient.Event) {
 			TargetDeviceID string `json:"targetDeviceId"`
 		}
 		if json.Unmarshal(e.Payload, &p) == nil {
-			go f.deliveryChanged(ctx, p.EntryID, p.TargetDeviceID)
+			f.queueDelivery(p.EntryID, p.TargetDeviceID)
 		}
 	case "content_lock.changed", "device-trust.changed", "peers.changed", "peers.connectionChanged", "paired-devices.changed", "paired-devices.snapshot", "peers.snapshot":
 		f.requestRefresh()
@@ -243,6 +246,41 @@ func (f *iconFeed) raiseAttention(set func(*iconFacts)) {
 	before, after := f.icon.update(set)
 	if before.base() != baseAttention && after.base() == baseAttention {
 		f.icon.animate(animAttention)
+	}
+}
+
+// queueDelivery asks for a delivery read. Reads run one at a time on deliveryWorker and a pair already waiting is not queued twice,
+// so a burst of events costs a bounded number of requests and none is lost.
+func (f *iconFeed) queueDelivery(entryID, targetID string) {
+	if entryID == "" {
+		return
+	}
+	f.deliveryMu.Lock()
+	f.deliveryDue[[2]string{entryID, targetID}] = struct{}{}
+	f.deliveryMu.Unlock()
+	select {
+	case f.deliveryWake <- struct{}{}:
+	default:
+	}
+}
+
+func (f *iconFeed) deliveryWorker(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-f.deliveryWake:
+		}
+		f.deliveryMu.Lock()
+		due := f.deliveryDue
+		f.deliveryDue = map[[2]string]struct{}{}
+		f.deliveryMu.Unlock()
+		for pair := range due {
+			if ctx.Err() != nil {
+				return
+			}
+			f.deliveryChanged(ctx, pair[0], pair[1])
+		}
 	}
 }
 
@@ -328,6 +366,11 @@ func (f *iconFeed) transferLongEnough() {
 	f.mu.Unlock()
 	if !before.transferring && after.transferring {
 		f.icon.animate(animTransferring)
+		f.mu.Lock() // the transfer may have ended while the animation was being started
+		if len(f.transfers) == 0 {
+			f.icon.stopAnimation(animTransferring)
+		}
+		f.mu.Unlock()
 	}
 }
 

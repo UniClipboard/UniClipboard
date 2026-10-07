@@ -40,3 +40,6 @@ func watchSystemTheme(*application.App, func()) {}
 
 // systemReducesMotion reports System Settings > Accessibility > Display > Reduce motion.
 func systemReducesMotion() bool { return C.reduceMotionEnabled() != 0 }
+
+// prepareTrayPlatform has nothing to do here.
+func prepareTrayPlatform() {}

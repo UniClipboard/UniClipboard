@@ -68,3 +68,6 @@ func gsetting(schema, key string) string {
 	}
 	return strings.TrimSpace(string(out))
 }
+
+// prepareTrayPlatform reads the colour scheme before the painter holds the icon lock: asking the desktop may take up to a second.
+func prepareTrayPlatform() { linuxIconPalette() }

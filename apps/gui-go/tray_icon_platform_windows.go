@@ -62,3 +62,6 @@ func systemReducesMotion() bool {
 	}
 	return enabled == 0
 }
+
+// prepareTrayPlatform has nothing to do here.
+func prepareTrayPlatform() {}

@@ -31,18 +31,18 @@
 - “内容被拦截”（设计里“需要处理”的第三种触发）没有 daemon 事实，未实现。
 - 发送失败只认投递视图的 `failed`；接收端文件传输失败的事件不带方向，不算“发送失败”。
 - 宿主新增了一条只读的 daemon WebSocket 连接（`iconFeed.follow`），订阅 `file-transfer`、`clipboard`、`peers`、`device-trust`、`content-lock`、`paired-devices`，断线后每 3 秒重连。没有可复用的现有事件连接：Go 宿主进程里除它之外没有任何 WebSocket 消费者（`DialWS` 只有这一处调用），WebView 的事件连接在前端 JS 里，静默启动时甚至不存在，也无法跨进程共享。daemon 没有不持租约的事件通道，每条已认证的控制 WebSocket 在 `crates/uc-webserver/src/api/ws.rs` 里获得一个控制租约；加一个不持租约的通道需要改 daemon 协议，不在本任务范围。
-  对现有契约的实际影响（逐条读源码核对，不是“未见消费者”）：租约的消费者只有 `apps/daemon/src/daemon/oneshot.rs` 的 Oneshot 自终止监督器（`host.rs` 只在 `DaemonResidency::Oneshot` 时启动它）、受控重启的排空，以及 WebSocket 接入门禁 `ensure_not_quiescing`（只在受控重启排空期间拒绝新连接）。受控重启 `POST /lifecycle/restart` 在非 Oneshot daemon 上一律返回 `NotPromotable`，所以 `quiescing` 永远不会被置位。GUI 拉起或复用的 daemon 都是常驻的：`apps/gui-go/main.go` 的 `bootstrap` 冷启动时用 `SpawnDetachedDaemon("gui")` 起常驻 daemon，遇到已存在的 Oneshot daemon 则直接 `log.Fatal` 拒绝复用。因此 GUI 运行期间这条连接不会让任何 daemon 失去自终止或排空的机会；Oneshot 只由 `apps/cli-go` 的 `uniclip` 命令拉起，并通过 `/lifecycle/restart` 升级为常驻，那条路径上没有 GUI。轻量模式与退出：GUI 进程退出时连接随进程关闭，常驻 daemon 不受影响（轻量模式保留 daemon，完整退出则停止它）。这个结论依赖“GUI 不附着 Oneshot daemon”这条现有启动约束；若以后放开它，托盘连接必须在 `/health` 报告 `oneshot` 时不建立（只靠 10 秒的 HTTP 快照），或在排空开始时让出租约，那属于 L8d 的工作。
+  对现有契约的实际影响（逐条读源码核对，不是“未见消费者”）：租约的消费者只有 `apps/daemon/src/daemon/oneshot.rs` 的 Oneshot 自终止监督器（`host.rs` 只在 `DaemonResidency::Oneshot` 时启动它）、受控重启的排空，以及受控重启排空期间的接入门禁 `ensure_not_quiescing`（拒绝新的控制 WebSocket，也拒绝 `crates/uc-webserver/src/api/clipboard.rs` 里的剪贴板分发与重发）。受控重启 `POST /lifecycle/restart` 在非 Oneshot daemon 上一律返回 `NotPromotable`，所以 `quiescing` 永远不会被置位。GUI 拉起或复用的 daemon 都是常驻的：`apps/gui-go/main.go` 的 `bootstrap` 冷启动时用 `SpawnDetachedDaemon("gui")` 起常驻 daemon，遇到已存在的 Oneshot daemon 则直接 `log.Fatal` 拒绝复用。因此 GUI 运行期间这条连接不会让任何 daemon 失去自终止或排空的机会；Oneshot 只由 `apps/cli-go` 的 `uniclip` 命令拉起，并通过 `/lifecycle/restart` 升级为常驻，那条路径上没有 GUI。轻量模式与退出：GUI 进程退出时连接随进程关闭，常驻 daemon 不受影响（轻量模式保留 daemon，完整退出则停止它）。这个结论依赖“GUI 不附着 Oneshot daemon”这条现有启动约束；若以后放开它，托盘连接必须在 `/health` 报告 `oneshot` 时不建立（只靠 10 秒的 HTTP 快照），或在排空开始时让出租约，那属于 L8d 的工作。
 - 刚启动、连接尚未建立的几秒里，已配对设备都未连接，图标会短暂显示“离线”；这是 daemon 当时报告的事实，没有额外抑制。
 - Linux 的图标颜色按桌面配色方案选择（`org.gnome.desktop.interface color-scheme`，进程内只读一次），不能知道状态栏自己的底色，配色方案之后变化需要重启才生效。
 - Windows 不使用 Wails 的“亮/暗两份图标”（`SetIcon` + `SetDarkModeIcon`）：读源码可知，运行期调用时只要两个模式共用一个句柄，后设置的图标就会同时替换两个模式，两份图标无法保持分开。这里按当前任务栏主题（`SystemUsesLightTheme`）画一份，并在 Wails 的 `SystemThemeChanged` 应用事件上重画。设计写的是“4 帧 ICO 序列”，这里用的是同一份时间线的插值帧（约每 40 ms 一帧），不使用 ICO。以上只做了源码核对与交叉编译，没有 Windows 运行证据。图标尺寸取系统小图标尺寸（`SM_CXSMICON`，系统 DPI），不随任务栏所在显示器的 DPI 变化重画，这是已知边界。
 
 ## 状态与事实来源
 
-图标显示的基础状态按下表优先级取第一个成立的（这个顺序是我自定的规则，设计没有给出，未经产品批准）；“新内容”圆点叠加在任意状态上。
+图标显示的基础状态按下表优先级取第一个成立的（这个顺序是实现选择：设计把 9 个状态画成互相独立的图标，没有说明几个事实同时成立时显示哪一个；实现按“先要用户处理，再是同步停了，最后是提示”排序，改动只需改 `iconFacts.base`）；“新内容”圆点叠加在任意状态上。
 
 | 状态 | 事实 | 来源（daemon） | 清除条件 |
 | --- | --- | --- | --- |
-| 需要处理 | 有待用户决定的设备信任变更或待接纳的设备；或投递读到 `failed` | `GET /member/device-group-choices`（`deviceTrust.currentChange`、`inboundPairings` 状态 `awaiting_confirmation` / `needs_attention`），事件 `device-trust.changed`；`clipboard.delivery_status_changed` 后读 `GET /clipboard/entries/{id}/delivery` | 待决定项消失；发送失败在用户打开或聚焦窗口后 |
+| 需要处理 | 有待用户决定的设备信任变更或待接纳的设备；或投递读到 `failed` | `GET /member/device-group-choices`（`deviceTrust.currentChange`、`inboundPairings` 状态 `awaiting_confirmation` / `needs_attention`），事件 `device-trust.changed`；`clipboard.delivery_status_changed` 后读 `GET /clipboard/entries/{id}/delivery` | 待决定项消失；发送失败在用户打开或聚焦主窗口（含托盘、快捷面板、窗口获得焦点事件）后 |
 | 已锁定 | 内容锁已开且空间已建立 | `GET /content-lock`（`unlocked`）与 `GET /v2/setup/state`（`hasCompleted`），事件 `content_lock.changed` | 解锁 |
 | 已暂停 | 同步开关关闭 | `GET /settings`（`sync.syncEnabled`） | 重新开启 |
 | 离线 | 已配对设备都不可达 | `GET /paired-devices`（`connected`），事件 `paired-devices.*`、`peers.*` | 任一设备可达或没有配对设备 |
@@ -51,6 +51,15 @@
 | 仅局域网 | 关闭了中继回退 | `GET /settings`（`network.allowRelayFallback` 为 false） | 重新开启 |
 | 同步完成 | 以上都不成立 | — | — |
 | 新内容圆点 | 收到来源为 remote 的新内容，且主窗口当时没有聚焦 | 事件 `clipboard.new_content` | 用户打开主窗口或快捷面板 |
+
+同时成立、只能显示一个的具体冲突，以及实现选择的理由：
+
+- 已锁定与已暂停：同步开关关闭且内容锁已开。显示“已锁定”，因为锁定时历史不可读、用户先要解锁；“已暂停”是用户自己的可逆选择。若产品希望“暂停”优先，只需交换这两个分支。
+- 离线与仅局域网：关闭了中继回退，且没有设备可达。显示“离线”，因为没有设备可达是当下的结果，“仅局域网”是配置。
+- 需要处理与已锁定：有待决定的设备信任变更，同时内容已锁。显示“需要处理”，因为这是 daemon 持有的待决定项，用户之后一定要处理。
+- 传输中与离线：有传输在进行，同时 `/paired-devices` 报告没有设备可达（例如传输刚对端断开）。显示“离线”；传输 15 秒无进展会被清掉。
+
+这些选择没有改变任何事实本身，只是显示哪一个；没有产品文档要求别的顺序，所以按上述实现，不因此停下。
 
 快照每 10 秒读一次，相关事件到达时立即读；读失败时保留原值，不把“读不到”当成证据。窗口已聚焦时不点亮圆点、不提升发送失败，因为用户已经在看。
 
@@ -88,7 +97,7 @@
 
 与设计的差异：
 
-- 状态之间的优先级（需要处理 > 已锁定 > 已暂停 > 离线 > 暂不记录 > 传输中 > 仅局域网 > 同步完成）是我自定的规则，设计没有给出，也没有经过产品批准，待产品确认；改动它只需改 `iconFacts.base`。
+- 状态之间的优先级（需要处理 > 已锁定 > 已暂停 > 离线 > 暂不记录 > 传输中 > 仅局域网 > 同步完成）是实现选择，设计没有给出；同时成立的冲突例子与理由见“状态与事实来源”一节，改动它只需改 `iconFacts.base`。
 - “需要处理”直到 daemon 的待决定项消失才清除，而不是“到用户查看为止”；发送失败则在用户打开窗口后清除。
 - 动画帧是同一时间线的插值帧（约每 40 ms），不是 Windows 的 4 帧 ICO。
 - “需要处理”动画：关键帧条只画出两个峰值，CSS 演示为 280 ms 周期；这里沿用 280 ms 周期并在 700 ms 收尾。

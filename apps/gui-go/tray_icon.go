@@ -89,6 +89,7 @@ type iconView struct {
 }
 
 func newTrayIcon(tray *application.SystemTray) *trayIcon {
+	prepareTrayPlatform()
 	return &trayIcon{tray: tray, frames: map[frameKey][]byte{}, reduced: systemReducesMotion, paint: make(chan struct{}, 1), done: make(chan struct{})}
 }
 

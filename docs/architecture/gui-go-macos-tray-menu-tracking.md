@@ -182,8 +182,15 @@ Menu.Update -> macosMenu.update -> InvokeSync(main thread):
 
 - 构建与身份：来源 `ce8649967` 干净，Engine `d4dd324a` 与 Cargo.lock 一致且无路径覆盖，28 条 ld 警告保留在 `final6/build.log`；每轮检查运行中 daemon 的可执行文件哈希等于构建出的 `uniclipd`，GUI 包可执行文件、daemon、CLI 的哈希等于 `final6/build-manifest.json`；`tray_ax` 与 `daemonget` 由运行器从仓库源码构建并记录哈希。
 - 点击目标：每次右键都经过“目标元素属主等于本次运行 GUI pid 且角色为菜单栏项目”的运行器校验和 Swift 同调用复核；按压前立即读取并要求本 pid 的弹出窗口存在。
-- M3（设备子菜单真实展开且发生 row-adding publish）：`full1` 与 `full2` 里 3b 的 4 次自然 publish 全部在子菜单展开状态下开始（读取距 publish 不超过 0.13 秒，无中间 publish），其后 0.02–0.13 秒内第一次采样到收起，重新展开后行为 `tray-peer-b`、根菜单为英文；3c 中第二个对端配对后，加入新行的那次 publish 是新行读取窗口内唯一的一次 publish，开始时子菜单处于展开状态（读取年龄 0.01/0.02 秒）且尚无新行，之后 0.08–0.09 秒内收起，重新展开后两行 `tray-peer-b`、`tray-peer-c` 都在，根菜单为英文，daemon 的 `member list` 也列出两个对端。
+- M3（设备子菜单真实展开且发生 row-adding publish）：`full1` 与 `full2` 里 3b 的 4 次自然 publish 全部在子菜单展开状态下开始（最近一次读取距 publish 不超过 0.14 秒，年龄从读取结束算起，真实观察年龄略大；publish 之前另有 2–3 次读取都是展开状态；无中间 publish），其后 0.02–0.13 秒内第一次采样到收起，重新展开后行为 `tray-peer-b`、根菜单为英文；3c 中第二个对端配对后，加入新行的那次 publish 是新行读取窗口内唯一的一次 publish，开始时子菜单处于展开状态（读取年龄 0.01/0.02 秒）且尚无新行，之后 0.08–0.09 秒内收起，重新展开后两行 `tray-peer-b`、`tray-peer-c` 都在，根菜单为英文，daemon 的 `member list` 也列出两个对端。
 - 轻量模式（M5b）：真实菜单按压“轻量模式”后精确的 GUI pid 退出码为 0，同一个 daemon pid 存活（锁文件持有者、HTTP `GET /settings` 正常），通知到达记录器，之后 CLI 停止结束的是同一个 daemon pid，锁无持有者。
+- 评审补充（独立评审原文 `review-792dc721a/e2e-evidence-review-final6-raw.md`，结论：接受，仅 minor，无 blocker/major）：
+  - 3c 中加入新行的 publish 是 10 秒定时刷新触发的，不是设备事件（`devices://sync-changed`）触发；事件驱动路径没有被这次证据覆盖，仍是 OPEN。
+  - 12 次 publish 全部在 0.02–0.13 秒内收起了展开的子菜单，而 publish 之间（共 229/228/79/77 个样本）没有任何未解释的收起，所以“publish 重建 NSMenu 导致收起”的时序证据较强，但机制没有独立证明。这意味着用户把鼠标停在子菜单上时，子菜单会每 10 秒被收起一次；真实指针没有测过。这是已知的产品局限（可能的方向：内容没有变化时跳过 `Menu.Update`），本切片不做产品改动，列入 OPEN。
+  - 点击的“同调用复核”由 Swift 代码保证，工件里保存的是运行器点击前的读取（属主等于 GUI pid、角色为菜单栏项目、点位 (386,15)）；四轮的 `overflowAtEnd` 都是 `-25211`，验收没有走过溢出按钮路径（状态项直接位于 (386,15)）。
+  - 轻量模式的 daemon 存活只在 GUI 退出后立即检查一次（同一 pid、`/settings` 正常、锁持有者存活），没有等待后再看，`cli stop` 的返回值也没有保存；“CLI 停止结束同一 pid”的检查成立。
+  - M1 的保持阶段内容相同，不能区分“重建”与“陈旧”；重建到达被跟踪的 NSMenu 由 zh-CN 重新标注检查证明。
+  - 门禁：linux 交叉 vet 在所有代次都是 rc=1（Wails 的 cgo，不是原生 Linux 门禁）；`final/run1`、`final/run2`、`final2/light1`、`final5` 目录保留（早期运行、构建代次）。
 - 局限（不扩大结论）：子菜单在 publish 之后很快收起，这与“重建 NSMenu 使子菜单收起”一致，但仍只是时序证据，机制没有独立证明；这是 macOS 27.0 的一台主机，目标布局依赖本机的菜单栏溢出状态；对象按 macOS 27.0 编译、按 11.0 链接，更老的 macOS 的兼容性 **未证明**；Windows 真实托盘仍是 OPEN；整个迁移的 OPEN 清单不变。
 
 ### 冻结二进制的运行（`final3`，**partial evidence，不是最终验收**）

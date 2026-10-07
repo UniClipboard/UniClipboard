@@ -71,3 +71,19 @@ PAC（`autoconfig_url`）、代理认证、系统设置动态变更、SOCKS：�
   4. 打包后的体积、许可证、依赖闭包与内容检查（`appimage_content_check.py`、`runtime_pin`）一并更新，并复跑 17c7 TLS、17c5 便携、17c10/17c11 helper 回归。
 - 若出现框架或发行版边界使某一模式无法完成（例如 PAC 运行时没有可再分发的许可，或 WebKitGTK 不随 GSettings 变化刷新），**写出实际证据并保持 OPEN，继续做其余可实现部分**；不因缺少模块、没有测试或没有产品文档而把整项排除。
 - P6 不变：Engine 的 rendezvous 路径只是 Engine 出站的一种，iroh 单独结论。
+
+### R2：基线实测（未改动的 17c11 包）与对表 F 的更正
+
+基线运行 `baseline-a2a001ac-v2`（AppImage SHA-256 `a2a001ac…`，即 17c11 的包，产品代码未变）。早先的运行全部保留：`dev1`（tinyproxy 以 `nobody` 身份进不了沙箱目录，代理日志为空；`ss` 进程名被截断为 15 个字符，`WebKitNetworkPro` 永远匹配不上）、`dev2`（误把 curl 的 `CONNECT` 记到 WebView 上，判成 proxied；WebView 与 curl 共用主机名与日志窗口）、`dev3`（修正后的版本，没有 gsettings 场景）、`baseline-a2a001ac`（宿主 libproxy 未设 `XDG_CURRENT_DESKTOP`，gsettings 为 `manual` 而 `proxy` 输出 `direct://`）。修正方式：WebView 与 curl 使用不同主机名并各自保存代理日志窗口，回环判断只看 `Request` 行的目标（`Connect (file descriptor N): 127.0.0.1` 是客户端地址）。
+
+观测结果（`passed` 表示夹具与对照成立，**不是** 系统代理功能完成）：
+
+| 配置 | WebView 外部 HTTPS | curl 对照 | 回环 |
+| --- | --- | --- | --- |
+| 无代理 | direct | direct | 无泄漏 |
+| 环境变量，代理放行 / 拒绝 / 不可达 | direct / direct / direct | proxied / refused / failed | 代理日志没有 daemon 端口与页面上报通道 |
+| 宿主 GNOME 手动代理（用户 dconf），放行 / 拒绝 | direct / direct | 经宿主 `proxy` 命令行取得的 `http://127.0.0.1:<port>`：proxied / refused | 同上 |
+
+- **缺口已证实**：AppImage 内的 WebView 对环境变量和 GNOME 设置都不使用代理（direct，目标看到了请求），而宿主的 libproxy 命令行能读到同一份 dconf 设置。代理被拒绝或不可达时请求直接逃逸到目标，这正是 R1 要求避免的静默直连。
+- WebKitNetworkProcess（WebView 自身）持有 4 个到 daemon 回环端口的 TCP 连接；Go 宿主（`uniclipboard` 进程，`daemonclient` 的 `Proxy=nil`）另有 3 个。两者按真实进程名分别记录，不混写。
+- **对表 F 的更正**：表 F 写「Engine 没有调用 `proxy_from_env`/`proxy_url`，所以没有代理」是源码检索结论，**被运行证据推翻**。设置了环境代理后，daemon 经代理发出 `CONNECT dns.iroh.link:443`、`CONNECT <region>.relay.n0.iroh.link.:443`、`CONNECT 1.1.1.1:443`、`CONNECT 8.8.8.8:443` 与 `GET http://use1-1.relay.n0.iroh.link./generate_204`；没有代理变量，或只配置 gsettings 时没有这些请求。已核实的源码事实：`iroh 1.3.0` 的网络探测与地址解析使用 `reqwest`（`net_report/reportgen.rs`、`address_lookup/pkarr.rs`），reqwest 0.12 默认读取环境代理；iroh 端点自己的 `proxy_url` 只在显式设置时才有。中继 `CONNECT` 具体由哪个组件发出 **没有做源码归因**，保持 OPEN。Engine 的出站只认环境变量，不读取 GNOME 设置（与 reqwest 的 Linux 分支一致）。这些结论只是观测到的行为，Engine 在本仓只读，不外推到其他版本。

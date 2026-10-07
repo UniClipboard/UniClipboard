@@ -77,6 +77,16 @@ case "items":
     let items = statusItems(pid)
     print(json(["ok": !items.isEmpty, "count": items.count, "ns": now(),
                 "items": items.map { ["role": str($0, kAXRoleAttribute), "title": str($0, kAXTitleAttribute), "help": str($0, kAXHelpAttribute)] }]))
+case "elementat":
+    // The accessibility element the system reports under a screen point, and the pid that owns it: the hit test that works for status items
+    // (on this macOS they are not windows of the app, so the window server's frontmost window at the point is the menu bar, not the item).
+    guard argv.count >= 5, let px = Float(argv[3]), let py = Float(argv[4]) else { fail("elementat <pid> <x> <y>") }
+    var el: AXUIElement?
+    let r = AXUIElementCopyElementAtPosition(AXUIElementCreateSystemWide(), px, py, &el)
+    guard r == .success, let e = el else { print(json(["ok": false, "axError": r.rawValue, "ns": now()])); exit(0) }
+    var owner: pid_t = 0
+    AXUIElementGetPid(e, &owner)
+    print(json(["ok": true, "ownerPid": owner, "mine": owner == pid, "role": str(e, kAXRoleAttribute), "subrole": str(e, kAXSubroleAttribute), "ns": now()]))
 case "windows":
     // The window server's view of this pid's windows (status item window, menu windows): layer, bounds, on screen, alpha.
     let all = (CGWindowListCopyWindowInfo([.optionAll], kCGNullWindowID) as? [[String: Any]]) ?? []

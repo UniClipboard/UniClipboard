@@ -99,16 +99,16 @@ def open_menu(gui, pid, how, label, out):
         if False:
             pass
         elif how == 'rightclick':
-            # No click at an unverified target: this pid's status window must be on screen and be the frontmost window at the point.
+            # No click at an unverified target: the accessibility element the system reports at the point must belong to this pid (the window server's frontmost window cannot tell: on this macOS the menu bar owns it).
             frame = ((ax('describe', str(pid)).get('items') or [{}])[0]).get('frame') or {}
             cx, cy = frame.get('x', 0) + frame.get('w', 0) / 2, frame.get('y', 0) + frame.get('h', 0) / 2
-            hit = ax('hittest', str(pid), str(cx), str(cy))
+            hit = ax('elementat', str(pid), str(cx), str(cy))
             wins = ax('windows', str(pid))
             (out / f'ax-open-{label}-target.json').write_text(json.dumps({'axFrame': frame, 'point': [cx, cy], 'hit': hit, 'windows': wins}, indent=1))
-            if not (hit.get('top') or {}).get('mine'):
+            if not hit.get('mine'):
                 watcher.terminate()
                 sampler.terminate()
-                raise TargetNotVerified(f'the frontmost window at ({cx},{cy}) is not this pid\'s: {hit.get("top")}; no click was sent')
+                raise TargetNotVerified(f'the accessibility element at ({cx},{cy}) is not this pid\'s: {hit}; no click was sent')
             opened = ax('rightclick', str(pid))
         else:
             opened = gui.ctl(f'tray-open-menu {label}', f'tray-open-menu-{label}')

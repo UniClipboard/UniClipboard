@@ -254,7 +254,7 @@ def proxy_env(port):
 def page_probe_script(prefix, report_port, base, daemon_token, gui_pid):
     """What the shared frontend does against the daemon, run by the real WebView: session exchange (POST /auth/connect with the bearer secret), one authenticated data fetch
     (GET /settings), then a WebSocket to /ws?auth=Session <token> (apps/gui/src/lib/daemon-ws.ts puts the token in the query because browsers cannot set the header), a topic
-    subscription and the first event frame. Every step reports to the loopback report channel. The control file of a run therefore contains the throwaway daemon's bearer token;
+    subscription to topics that answer with a snapshot (`clipboard` only emits when something is copied: a silent topic proves nothing) and the first decoded event frame (`topic:type`, payload dropped). Every step reports to the loopback report channel. The control file of a run therefore contains the throwaway daemon's bearer token;
     that daemon and its data live only in the run's container."""
     return ("(function(){var P=%s,rp=%d,base=%s,bearer=%s;function rep(k,v){try{fetch('http://127.0.0.1:'+rp+'/'+P+k+'?v='+encodeURIComponent(v),{mode:'no-cors'})}catch(e){}}"
             "fetch(base+'/auth/connect',{method:'POST',headers:{'Authorization':'Bearer '+bearer,'Content-Type':'application/json'},body:JSON.stringify({pid:%d,clientType:'gui'})})"
@@ -263,8 +263,8 @@ def page_probe_script(prefix, report_port, base, daemon_token, gui_pid):
             "return fetch(base+'/settings',{headers:{'Authorization':'Session '+st}}).then(function(r){return r.json().then(function(j){return [r.status,j,st]})})})"
             ".then(function(a){rep('http',JSON.stringify({status:a[0],hasGeneral:!!(a[1].data&&a[1].data.general)}));var st=a[2];"
             "var ws=new WebSocket(base.replace('http://','ws://')+'/ws?auth='+encodeURIComponent('Session '+st));"
-            "ws.onopen=function(){rep('wsopen','1');ws.send(JSON.stringify({action:'subscribe',topics:['clipboard']}))};"
-            "ws.onmessage=function(e){rep('wsframe',String(e.data).slice(0,160));ws.close()};ws.onerror=function(){rep('wserr','1')};})"
+            "ws.onopen=function(){rep('wsopen','1');ws.send(JSON.stringify({action:'subscribe',topics:['status','peers','paired-devices'],nonce:Math.random().toString(36).slice(2)}))};"
+            "ws.onmessage=function(e){var m;try{m=JSON.parse(e.data)}catch(x){m=null}if(m&&m.type){rep('wsframe',(m.topic||'')+':'+m.type);ws.close()}};ws.onerror=function(){rep('wserr','1')};})"
             ".catch(function(e){rep('err',String(e))})})()") % (json.dumps(prefix), report_port, json.dumps(base), json.dumps(daemon_token), gui_pid)
 
 
@@ -562,6 +562,11 @@ def main():
         r['passed'] = bool(r['checks']) and all(c['ok'] for c in r['checks']) and 'error' not in r
         r['functionalPassed'] = (bool(r['requirements']) and all(c['ok'] for c in r['requirements'])) if args.require else None
         (out / 'appimage-assertions.json').write_text(json.dumps(r, indent=2, default=str) + '\n')
+        for f in out.glob('*.control'):  # the page probe handed the throwaway daemon's bearer secret to the WebView: do not keep it in the shared artifacts
+            try:
+                f.write_text(re.sub(r'bearer="[^"]*"', 'bearer="<redacted>"', f.read_text(errors='replace')))
+            except OSError:
+                pass
     print(json.dumps({'passed': r['passed'], 'functionalPassed': r['functionalPassed'], 'mode': r['mode']}))
     sys.exit(0 if r['passed'] and (not args.require or r['functionalPassed']) else (3 if r['passed'] else 1))
 

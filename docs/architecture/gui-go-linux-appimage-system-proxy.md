@@ -193,6 +193,20 @@ stage3 同一个包上的两个矩阵。页面自身的 HTTP 取数与 WebSocket
 
 证据边界（精确未验）：同步路径之外，异步、取消令牌与错误传播没有专门注入；「无下游解析器」的回退没有运行；IPv6 `::1`、`127.0.0.0/8` 非 `127.0.0.1` 成员与 `localhost` 的 E2E 由随后的 `loopback boundary` 增量与 live maps（网络进程已映射该模块）补充，结果见下一节；宿主 helper 进程没有带出该模块由 17c10/17c11 helper 回归检查（环境清理规则）。最小 GREEN 不等于完整代理支持。
 
+### PAC / 认证 / 动态设置：源码调查与下一步最小场景（尚未实测）
+
+调查（glib-networking 2.80.0 `proxy/gnome/gproxyresolvergnome.c`，官方源码）：
+- **PAC（`mode='auto'`，`autoconfig-url`）**：GNOME 解析器不在进程内求值，而是经 **用户会话总线** 调用 `org.gtk.GLib.PACRunner`（`/org/gtk/GLib/PACRunner`）；服务不可用时只发 `g_warning ("Could not start proxy autoconfiguration helper … Proxy autoconfiguration will not work")`，解析器继续工作。含义：PAC 依赖宿主的 PACRunner D-Bus 服务（总线激活，随 glib-networking 的服务组件安装）和一个会话总线，二者都不在 AppImage 里；便携模式的验证容器没有会话总线。这是已知的潜在缺口，不是已证实的缺陷，需要实测。
+- **认证**：`use-authentication` 为真时，从 `org.gnome.system.proxy.http` 读 `authentication-user` / `authentication-password`，URI 转义后拼进 `http://user:password@host:port`；认证由 libsoup/WebKit 以该 URI 的凭据发出。
+- **动态变更**：解析器连接 `GSettings::changed`，置 `need_update`，下一次查询前懒更新；因此运行中的进程理论上随设置变化，而不需要重启（dconf 的变更传播另受后端影响，需实测）。
+- libproxy（`libgiolibproxy`，优先级 10）经 `libpxbackend` 评估 PAC（duktape）并读取环境变量与 GNOME 配置，不需要 PACRunner；选择哪个解析器由优先级与 `GIO_USE_PROXY_RESOLVER` 决定。
+
+下一步最小场景（各自是一个独立增量，沿用现有 runner，不新建框架；失败原因先归因再决定产品改动）：
+1. `gs-sys-pac`：系统 dconf `mode='auto'`、`autoconfig-url` 指向受控 PAC（对 WebView 主机返回 `PROXY 127.0.0.1:<port>`，其余 `DIRECT`），便携与非便携各一次；观测外部请求路径。预期风险：便携模式无会话总线、PACRunner 不存在 → PAC 不生效。若证实，候选成熟方案：随包带 `glib-pacrunner` 并在 AppRun 中以应用自己的会话总线启动，或在检测到 `auto` 时让 libproxy 解析器接管（`GIO_USE_PROXY_RESOLVER`/优先级），二者都不自写 PAC 引擎，选择依据实测与依赖成本。
+2. `gs-sys-auth` 与 `env-auth-*`：tinyproxy `BasicAuth`；正确凭据 → proxied，错误凭据或缺失 → 不得直连（refused/failed）；GNOME 的 `authentication-*` 键与环境变量 URL 内凭据各一组；Go 更新器同样检查（Go 的 `ProxyFromEnvironment` 读取 URL 内凭据）。
+3. `gs-user-dynamic`（非便携，真实会话总线与 `dconf-service`）：同一 GUI 进程内，请求 1 proxied → `gsettings set … mode 'none'` → 请求 2 direct → 设回 `manual` → 请求 3 proxied；记录是否需要重启；系统数据库（`dconf update`）的变更传播另做一次观测。
+4. Fedora：基底镜像 `uc-gui-go-linux-runtime-fedora:17c7` + tinyproxy、dconf、`libproxy-bin`、iproute（`Dockerfile.17c12-fedora` / `-fedora-session`，Fedora 44 的 libproxy 0.5.12 与 glib-networking 2.80.1，与 Ubuntu 的 0.5.4 不同；AppImage 自带模块，宿主版本只是对照）；runner 里 tinyproxy 的 `Group nogroup` 在 Fedora 上要改为 `nobody`。
+
 ### 仍未完成（OPEN，逐项增量补做）
 
 GNOME `ignore-hosts` 遗漏回环时本地 daemon 的行为、PAC / 认证 / 动态设置、Fedora、同一最终干净包上的 17c7/17c5/17c10/17c11/内容检查回归。

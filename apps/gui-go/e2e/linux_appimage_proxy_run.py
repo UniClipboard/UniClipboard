@@ -358,6 +358,7 @@ def variant_env(kind, port):
 GNOME_VARIANTS = {  # GNOME `ignore-hosts` (system dconf database), allow proxy
     'gs-sys-ignore': ('allow', 'gs-sys'),   # ignore-hosts = default + the WebView probe host: the WebView goes direct, curl's host stays proxied
     'gs-sys-pac': ('allow', 'gs-sys'),      # mode 'auto' + autoconfig-url: a PAC that proxies every URI; external proxied, loopback still direct (guard)
+    'gs-sys-pac-nohelper': ('allow', 'gs-sys'),  # the same PAC on a host WITHOUT glib-pacrunner (renamed for this scenario only, inside the container): does the package bring its own PAC runtime?
     'gs-sys-empty': ('allow', 'gs-sys'),    # ignore-hosts = @as []: GNOME then has NO loopback bypass; the local daemon must still work (judged like every other scenario)
 }
 GNOME_IGNORE = {'gs-sys-ignore': ['localhost', '127.0.0.0/8', '::1', WV_HOST], 'gs-sys-empty': []}
@@ -365,8 +366,11 @@ OBSERVED_ONLY = set()  # (kept for scenarios that cannot be judged; none now)
 REQUIRED_VARIANTS['gs-sys-ignore'] = 'direct'
 REQUIRED_VARIANTS['gs-sys-empty'] = 'proxied'
 REQUIRED_VARIANTS['gs-sys-pac'] = 'proxied'
+REQUIRED_VARIANTS['gs-sys-pac-nohelper'] = 'proxied'
+PAC_SCENARIOS = {'gs-sys-pac', 'gs-sys-pac-nohelper'}
+HOST_PACRUNNER = Path('/usr/libexec/glib-pacrunner')
 LOOKALIKE_CHECKED = {'gs-sys-empty'}
-LOOPBACK_BOUNDARY = {'gs-sys-allow', 'gs-sys-empty', 'gs-sys-pac'}
+LOOPBACK_BOUNDARY = {'gs-sys-allow', 'gs-sys-empty', 'gs-sys-pac', 'gs-sys-pac-nohelper'}
 
 
 def scenarios():
@@ -600,7 +604,9 @@ def main():
                 penv = variant_env(kind, port)
                 curl_env = {k: v for k, v in penv.items() if k.islower()} or dict(penv)
             elif where:
-                pac = PacServer(port) if name == 'gs-sys-pac' else None
+                pac = PacServer(port) if name in PAC_SCENARIOS else None
+                if name == 'gs-sys-pac-nohelper' and HOST_PACRUNNER.exists():
+                    HOST_PACRUNNER.rename(HOST_PACRUNNER.with_name('glib-pacrunner.off'))  # restored in the finally block
                 if pac:
                     pacs.append(pac)
                 sc['dconf'] = write_dconf_proxy(port, where, target_app, args.nonportable, GNOME_IGNORE.get(name), f'http://127.0.0.1:{pac.port}/proxy.pac' if pac else None)
@@ -869,7 +875,9 @@ def main():
                     else:
                         req(f'[{name}] REQUIRE the daemon reached the rendezvous host DIRECTLY (the controlled internal target saw its request or its TLS handshake) and the proxy never named it',
                             (bool(at_target) or bool(hs_failed)) and not named, sc['p6'])
-            if name == 'gs-sys-pac':
+            if name in PAC_SCENARIOS:
+                sc['pacrunnerProcesses'] = [{'pid': pid, 'exe': exe} for pid, (exe, comm) in procs().items() if exe.endswith('glib-pacrunner')]
+            if name in PAC_SCENARIOS:
                 sc['pacFetches'] = len(pacs[-1].fetches)
                 chk(f'[{name}] the PAC script was fetched from the controlled server (the configuration was read)', len(pacs[-1].fetches) >= 1, pacs[-1].fetches)
             sc['completed'] = True  # every probe and requirement of this scenario ran (an exception before this line leaves it unset)
@@ -899,6 +907,9 @@ def main():
                 pass
         if bus:
             bus.terminate()
+        off = HOST_PACRUNNER.with_name('glib-pacrunner.off')
+        if off.exists():
+            off.rename(HOST_PACRUNNER)
         for rp in resets + pacs:
             rp.stop()
         for p in proxies:

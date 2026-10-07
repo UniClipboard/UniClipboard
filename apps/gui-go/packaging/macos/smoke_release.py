@@ -109,7 +109,9 @@ def main():
 
         env = {"HOME": str(Path.home()), "PATH": MINIMAL_PATH, "USER": os.environ.get("USER", "")}
         assert shutil.which("uniclipd", path=MINIMAL_PATH) is None
-        sh("open", APP)  # LaunchServices, like a double click
+        # LaunchServices, like a double click. The app must not inherit our pipes, or reading them would
+        # wait for the app to exit.
+        subprocess.run(["open", str(APP)], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True, timeout=60)
         deadline = time.monotonic() + 120
         conn = None
         while time.monotonic() < deadline:

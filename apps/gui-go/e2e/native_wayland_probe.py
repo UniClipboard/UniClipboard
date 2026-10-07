@@ -8,6 +8,7 @@ Modes (the SAME package, only the user's environment differs, except x11-hook wh
   native     GDK_BACKEND unset: GTK must choose the Wayland backend; the quick panel must become a wlr-layer-shell surface.
   x11-env    GDK_BACKEND=x11 set by the user (must be honoured): XWayland, ordinary panel window, no Layer Shell.
   x11-hook   the X11HOOK- control package (hook still forces x11): XWayland, as 17c4-17c12 shipped.
+  x11-session   XDG_SESSION_TYPE=x11 with a live Wayland socket and no GDK_BACKEND (W10): the session type must win, XWayland, no Layer Shell.
   native-no-layer-protocol   a Wayland compositor WITHOUT wlr-layer-shell (the Weston container control, --compositor-kind generic): native Wayland backend, Layer
              Shell reported unsupported, the panel stays an ordinary window, no crash.
   native-missing-library     the NOLAYER- control package (libgtk-layer-shell not carried) in a container whose host has no such library either, on a compositor that HAS the
@@ -189,7 +190,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--appimage', type=Path, required=True)
     ap.add_argument('--out', type=Path, required=True)
-    ap.add_argument('--mode', choices=('native', 'x11-env', 'x11-hook', 'native-no-layer-protocol', 'native-missing-library'), required=True)
+    ap.add_argument('--mode', choices=('native', 'x11-env', 'x11-hook', 'native-no-layer-protocol', 'native-missing-library', 'x11-session'), required=True)
     ap.add_argument('--compositor-kind', choices=('auto', 'generic'), default='auto', help='generic: a compositor without a CLI to list windows/layers (the Weston container control); those listings are then UNKNOWN')
     ap.add_argument('--no-session-type', action='store_true', help='observation scenario: leave XDG_SESSION_TYPE unset (what an SSH shell has); records what GTK/Wails then choose')
     ap.add_argument('--gdk-backend', help='native mode: export this GDK_BACKEND like the user session does (Omarchy exports `wayland,x11,*` for every app); default: unset')
@@ -219,7 +220,7 @@ def main():
     if wayland:
         env['WAYLAND_DISPLAY'] = wayland
         if not args.no_session_type:
-            env['XDG_SESSION_TYPE'] = 'wayland'  # what the graphical session exports; an SSH shell lacks it (the scenario --no-session-type observes that case)
+            env['XDG_SESSION_TYPE'] = 'x11' if args.mode == 'x11-session' else 'wayland'  # what the graphical session exports; an SSH shell lacks it (the scenario --no-session-type observes that case)
     x11 = sorted(p.name for p in Path('/tmp/.X11-unix').glob('X[0-9]*'))
     if x11:
         env['DISPLAY'] = ':' + x11[0][1:]  # the session's XWayland, needed by the x11 modes

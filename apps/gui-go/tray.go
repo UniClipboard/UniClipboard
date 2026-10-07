@@ -115,6 +115,7 @@ func (t *trayMenu) syncLabel() string {
 }
 
 func (t *trayMenu) setLanguage(tag string) {
+	e2eTrayLanguage(tag)
 	t.mu.Lock()
 	t.language = normalizeTrayLanguage(tag)
 	t.applyLabels()

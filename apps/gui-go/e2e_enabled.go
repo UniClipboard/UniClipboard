@@ -272,3 +272,9 @@ func e2eBootstrapped(h *HostService, replayed bool) {
 	_ = evidenceWriter.write(Step{Window: "app", Step: "bootstrapped", OK: true, Detail: map[string]any{
 		"pid": os.Getpid(), "replayedHeldShow": replayed, "mainExists": mainExists}})
 }
+
+// e2eTrayLanguage records every tray language call, whoever made it (the test driver or the frontend's own
+// settings effect), so a label that did not change can be attributed from the evidence.
+func e2eTrayLanguage(language string) {
+	_ = evidenceWriter.write(Step{Window: "tray", Step: "tray-language-call", OK: true, Detail: language})
+}

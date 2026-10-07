@@ -27,7 +27,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE / 'linux' / 'tray_probe'))
 from sni_host import SniHost, flat  # noqa: E402
-from linux_xvfb_run import Gui, pid_alive, PASSPHRASE  # noqa: E402
+from linux_xvfb_run import Gui, pid_alive, PASSPHRASE, read_steps  # noqa: E402
 
 ROOT_ORDER = ['Device Sync', '-', 'Open', 'Settings', 'Check for Updates…', '-', 'Restart', 'Lightweight Mode (Background Sync)', 'Quit']
 MENU_CRITICAL = re.compile(r'(gtk_container_foreach|gtk_menu_shell_insert|gtk_menu_item_set_submenu|gtk_menu_|GtkMenu|GTK_IS_MENU)')
@@ -209,10 +209,20 @@ def main():
         check('7 and the label returns', lay is not None, labels(lay)[0] if lay else None)
 
         ZH = ['设备同步', '-', '打开', '设置', '检查更新…', '-', '重启', '轻量模式（后台同步）', '退出']
+        def lang_calls():
+            return [r['detail'] for r in read_steps(gui.evidence) if r['step'] == 'tray-language-call']
+        # The frontend's own settings effect also calls set_tray_language (once, when its settings load); our change must come after it.
+        t_wait = time.time()
+        while not lang_calls() and time.time() - t_wait < 60:
+            time.sleep(.5)
+        results['languageCallsBefore'] = lang_calls()
+        check('7b precondition: the frontend\'s own initial tray-language call was seen before the test changes the language (ordering)', bool(lang_calls()), lang_calls())
         r = gui.invoke('lang-zh', 'set_tray_language', {'language': 'zh-CN'})
         lay = host.wait(lambda l: labels(l)[1:] == ZH, 30, 'zh labels')
         check('7b set_tray_language(zh-CN) relabels the whole menu in the host, including the device submenu title and keeping the peer row',
               r['ok'] and lay is not None and [n['label'] for n in submenu(lay, '设备同步')] == ['tray-peer-b'], [r, labels(lay) if lay else None])
+        results['languageCallsAfterZh'] = lang_calls()
+        check('7b no later call overwrote zh-CN (the last recorded tray-language call is the test\'s)', lang_calls()[-1:] == ['zh-CN'], lang_calls())
         r = gui.invoke('lang-en', 'set_tray_language', {'language': 'en'})
         lay = host.wait(lambda l: labels(l)[1:] == ROOT_ORDER, 30, 'en labels')
         check('7b and back to English', r['ok'] and lay is not None, labels(lay) if lay else None)

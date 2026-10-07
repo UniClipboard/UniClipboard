@@ -32,6 +32,7 @@ class SniHost:
         self.registered = threading.Event()
         self.items_registered = 0
         self.bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+        self.bus.set_exit_on_close(False)  # GDBus otherwise raises SIGTERM in this process when the bus goes away (seen in 17c14 nat2-nat4)
         node = Gio.DBusNodeInfo.new_for_xml(XML)
         self.bus.register_object("/StatusNotifierWatcher", node.interfaces[0], self._call, self._prop, None)
         Gio.bus_own_name_on_connection(self.bus, "org.kde.StatusNotifierWatcher", Gio.BusNameOwnerFlags.NONE, None, None)

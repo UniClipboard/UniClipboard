@@ -26,3 +26,6 @@ func scriptedKeyState() bool { return false }
 func modifierKeyStateFactory() func() (modifierKeyState, error) { return newPlatformKeyState }
 
 func e2eModifierTriggered() {}
+
+// e2eTrayLanguage records tray language calls in the e2e build only.
+func e2eTrayLanguage(string) {}

@@ -85,7 +85,7 @@ def main():
     from sni_host import SniHost  # imported after the bus address is set
     from linux_tray_run import labels, submenu  # noqa: E402
     host = SniHost(str(out / 'host.jsonl'))
-    proc = subprocess.Popen([str(app)], env=env, cwd=str(out), stdout=(out / 'gui.log').open('w'), stderr=subprocess.STDOUT)
+    proc = subprocess.Popen([str(app)], env=env, cwd=str(out), stdout=(out / 'gui.log').open('w'), stderr=subprocess.STDOUT, start_new_session=True)  # own session: nothing the app signals reaches this script
     seq = [0]
 
     def step(name, timeout=60):
@@ -102,6 +102,17 @@ def main():
                 return None
             time.sleep(.2)
         return None
+
+    def lang_calls():
+        rows = []
+        for ln in (out / 'gui.jsonl').read_text().splitlines():
+            try:
+                r = json.loads(ln)
+            except ValueError:
+                continue
+            if r.get('step') == 'tray-language-call':
+                rows.append(r.get('detail'))
+        return rows
 
     def invoke(command, arg):
         seq[0] += 1
@@ -128,9 +139,17 @@ def main():
             host.click(flip[sync0])
             l2 = host.wait(lambda l: labels(l)[0] == sync0, 30, 'sync restores')
             check('4 and flips back', l2 is not None, labels(l2)[0] if l2 else None)
+        # The frontend's own settings effect also calls set_tray_language (once, when its settings load); our change must come after it.
+        t_wait = time.time()
+        while not lang_calls() and time.time() - t_wait < 60:
+            time.sleep(.5)
+        result['languageCallsBefore'] = lang_calls()
+        check('5 precondition: the frontend\'s own initial tray-language call was seen before the test changes the language (ordering)', bool(lang_calls()), lang_calls())
         r = invoke('set_tray_language', {'language': 'zh-CN'})
         l2 = host.wait(lambda l: labels(l)[1:] == ZH, 30, 'zh')
         check('5 set_tray_language(zh-CN) relabels the whole menu in the host', bool(r.get('ok')) and l2 is not None, labels(l2) if l2 else None)
+        result['languageCallsAfterZh'] = lang_calls()
+        check('5 no later call overwrote zh-CN (the last recorded tray-language call is the test\'s)', lang_calls()[-1:] == ['zh-CN'], lang_calls())
         r = invoke('set_tray_language', {'language': 'en'})
         l2 = host.wait(lambda l: labels(l)[1:] == ROOT_ORDER, 30, 'en')
         check('5 and back to English', bool(r.get('ok')) and l2 is not None, labels(l2) if l2 else None)
@@ -149,6 +168,13 @@ def main():
         menu_crit = [ln for ln in crit if MENU_CRITICAL.search(ln)]
         check('7 no menu-related Gtk-CRITICAL across the refresh periods', not menu_crit, menu_crit[:5])
         result['criticalOther'] = [ln for ln in crit if ln not in menu_crit]
+        conns = []  # the daemon pid(s) of this run, read BEFORE the quit (the daemon removes daemon.conn when it stops)
+        for c2 in home.rglob('daemon.conn'):
+            try:
+                conns.append(json.loads(c2.read_text())['pid'])
+            except (OSError, ValueError, KeyError):
+                pass
+        check('8 precondition: the daemon of this run is alive and its pid is known before the quit', bool(conns) and all(Path(f'/proc/{p}').exists() for p in conns), conns)
         t_quit = time.time()
         host.click('Quit')
         try:
@@ -158,12 +184,6 @@ def main():
         check('8 the Quit item exits the GUI with 0', rc == 0, {'rc': rc, 'seconds': round(time.time() - t_quit, 1)})
         lay_after = host.layout()
         check('8 the tray item is gone from the host after exit', lay_after is None or 'error' in lay_after, lay_after)
-        conns = []
-        for c2 in home.rglob('daemon.conn'):
-            try:
-                conns.append(json.loads(c2.read_text())['pid'])
-            except (OSError, ValueError, KeyError):
-                pass
         deadline = time.time() + 30
         alive = [p for p in conns if Path(f'/proc/{p}').exists()]
         while alive and time.time() < deadline:

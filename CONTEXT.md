@@ -303,6 +303,10 @@ _Avoid_: relay-only、server mode
 寄存器值对象（`snapshot_hash`、`entry_id`、`activated_at_ms`、`activated_by`），随
 观测自动收敛。它表达「当前选中」，区别于逐次复制的 **ClipboardEvent** 与用户可见
 的 **ClipboardEntry**。
+
+启动核对时，若无法读取系统剪贴板或其文件源，Engine 清除无法确认的持久活跃指针后
+继续启动，不改写系统剪贴板、不删除历史；后续正常复制仍可捕获和同步。读取或清除
+寄存器本身失败仍阻止启动，避免把存储故障误判为可恢复的剪贴板读取故障。
 _Avoid_: clipboard state、current clip、selection、LWW key
 
 **snapshot_hash**：

@@ -750,9 +750,10 @@ def main():
         publishes = [r['detail'] for r in gui.rows()[n_before:] if r['step'] == 'tray-publish']
         win0, win1 = (min(r['ns'] for r in ok_reads), max(r['ns'] for r in ok_reads)) if ok_reads else (0, 0)  # first/last read with a pop-up menu window on screen
         inside = [p for p in publishes if win0 <= p['startNs'] <= win1]
-        check('1 the hook fired: at least 2 natural publishes ran WHILE the menu was open (timed refresh, not a manual call)', len(inside) >= 2, {'publishes': inside})
+        timer_ticks = [r['detail'] for r in gui.rows()[n_before:] if r['step'] == 'tray-refresh' and (r['detail'] or {}).get('cause') == 'timer' and win0 <= r['detail']['startNs'] <= win1]
+        check('1 the hook fired: at least 2 natural timer refreshes ran WHILE the menu was open (17c16: with nothing changed they are skipped, not published; a publish in the window would be a recorded real change)', len(timer_ticks) >= 2, {'timerTicks': len(timer_ticks), 'publishesInWindow': len(inside)})
         gaps = [round((b['startNs'] - a['startNs']) / 1e9, 2) for a, b in zip(inside, inside[1:])]
-        check('1 each publish returned promptly while the menu was tracked (durMs < 2000: the main-thread wait was served)', inside and max(p['durMs'] for p in inside) < 2000, {'durMs': [p['durMs'] for p in inside], 'gapsSeconds': gaps})
+        check('1 every publish that did run while the menu was tracked returned promptly (durMs < 2000: the main-thread wait was served; none is required here, the publishes of the change steps 2, 2b, 3b and 3c carry the lock evidence)', all(p['durMs'] < 2000 for p in inside), {'durMs': [p['durMs'] for p in inside], 'gapsSeconds': gaps})
         sample = [titles(r['menu']) for r in ok_reads]
         calls_after = [r['detail'] for r in gui.rows() if r['step'] == 'tray-language-call']
         check('1 every read during the hold had the full root menu of the last language call (no empty or half-built menu after the rebuilds; no language call during the hold)', calls_after == lang_calls and all(s[1:] == expected_root for s in sample), {'distinct': sorted({json.dumps(s, ensure_ascii=False) for s in sample})[:3]})
@@ -855,10 +856,11 @@ def main():
         per_pub = per_publish(samples, expansions, publishes_since(row_i0), t0, ['tray-peer-b'])
         (out / 'ax-3b-timeline.json').write_text(json.dumps({'samples': [[round(x['t'] - t0, 2), x['popups'], x['rows']] for x in samples], 'perPublish': per_pub, 'expansions': expansions}, ensure_ascii=False, indent=1))
         exp_pubs = [x for x in per_pub if x['expandedBefore']]
-        check('3b natural refresh PER PUBLISH: >= 2 publishes started with the submenu expanded (real state before each), the menu never vanished, rows stayed [tray-peer-b], and after each such publish the re-expanded submenu showed the same rows and the English root',
-              len(exp_pubs) >= 2 and all(x['popups'] for x in samples) and all(x['rows'] == ['tray-peer-b'] for x in samples)
+        ticks_3b = [r for r in gui.rows()[row_i0:] if r['step'] == 'tray-refresh' and (r['detail'] or {}).get('cause') == 'timer']
+        check('3b natural refresh with nothing changed (17c16): >= 3 timer refreshes ran in the window, the menu never vanished, rows stayed [tray-peer-b], and any publish that did run (none expected) left the same rows and the English root',
+              len(ticks_3b) >= 3 and all(x['popups'] for x in samples) and all(x['rows'] == ['tray-peer-b'] for x in samples)
               and all(x['postState'] and x['postState']['rows'] == ['tray-peer-b'] and x['postState']['rootEnglish'] for x in exp_pubs),
-              {'publishes': len(per_pub), 'publishesStartedExpanded': len(exp_pubs), 'perPublish': per_pub, 'samples': len(samples)})
+              {'timerTicks': len(ticks_3b), 'publishes': len(per_pub), 'publishesStartedExpanded': len(exp_pubs), 'perPublish': per_pub, 'samples': len(samples)})
 
         # 3b' MANUAL language change; the expanded state is sampled IMMEDIATELY before the invoke and must hold there
         ok_exp, det_l = ensure_expanded('3b-lang')

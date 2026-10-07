@@ -631,8 +631,6 @@ def main():
         tags = f"prebuilt (--gui-binary): tags={info['tags']}, built at head={info['head']}, sha256={sha256(binary)}"
     else:
         run(['go', 'generate', './buildinfo'], cwd=ROOT / 'packages/desktop-host-go')
-        (GUI / 'assets').mkdir(exist_ok=True)
-        shutil.copy2(ROOT / 'apps/gui-go/icons/tray-icon@2x.png', GUI / 'assets/tray-icon@2x.png')
         binary, tags = out / 'uniclipboard', 'gtk3,production,release'
         ldflags = f'-w -s -X main.updaterPublicKey={pubkey} -X main.productName={product} -X main.bundleID={ident}'
         run(['go', 'build', '-tags', tags, '-trimpath', '-buildvcs=false', '-ldflags', ldflags, '-o', str(binary), '.'],

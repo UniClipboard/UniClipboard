@@ -145,8 +145,6 @@ def main():
     exe = out / 'UniClipboard.exe'
     try:
         run(['go', 'generate', './buildinfo'], cwd=ROOT / 'packages/desktop-host-go')
-        (GUI / 'assets').mkdir(exist_ok=True)
-        shutil.copy2(ROOT / 'apps/gui-go/icons/tray-icon@2x.png', GUI / 'assets/tray-icon@2x.png')
         run(['bun', '--bun', 'run', '--cwd', 'apps/gui-go', 'build'], env=dict(os.environ, VITE_GUI_GO_E2E='0'))
         ldflags = f'-w -s -H windowsgui -X main.updaterPublicKey={pubkey} -X main.productName={product} -X main.bundleID={ident}'
         run(['go', 'build', '-tags', 'production,release', '-trimpath', '-buildvcs=false', '-ldflags', ldflags, '-o', str(exe), '.'],

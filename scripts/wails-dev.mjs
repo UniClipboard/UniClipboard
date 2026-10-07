@@ -107,11 +107,6 @@ export async function main(argv, env = process.env) {
   run('cargo', ['build', '-p', 'uc-daemon'])
   run('go', ['generate', './buildinfo'], { cwd: path.join(root, 'packages/desktop-host-go') })
   fs.mkdirSync(out, { recursive: true })
-  fs.mkdirSync(path.join(gui, 'assets'), { recursive: true })
-  fs.copyFileSync(
-    path.join(root, 'apps/gui-go/icons/tray-icon@2x.png'),
-    path.join(gui, 'assets/tray-icon@2x.png')
-  )
   // The binary embeds frontend/dist; in dev the assets come from Vite, so an empty dist is enough.
   fs.mkdirSync(path.join(gui, 'frontend/dist'), { recursive: true })
   fs.writeFileSync(path.join(gui, 'frontend/dist/.gitkeep'), '')

@@ -1,0 +1,343 @@
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"log"
+	"net/url"
+	"sync"
+	"time"
+
+	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/daemonclient"
+)
+
+// iconFeed turns daemon state into the tray icon's facts. Every fact is read from the daemon, either as a snapshot over HTTP (every
+// refreshEvery, and straight away after an event that can change it) or from the daemon's own WebSocket events; nothing is assumed.
+// The state-to-source table is in docs/architecture/gui-go-tray-icon.md.
+type iconFeed struct {
+	h    *HostService
+	icon *trayIcon
+
+	refreshReq chan struct{} // capacity 1: snapshot reads run one at a time on run's goroutine, so an old answer cannot overwrite a newer one
+
+	mu        sync.Mutex
+	transfers map[string]time.Time // transfer id -> last progress seen
+	timer     *time.Timer          // fires when the oldest running transfer has lasted transferringAfter
+	closed    bool
+}
+
+const (
+	refreshEvery = 10 * time.Second
+	// transferringAfter is the design's trigger for the transfer state: "a transfer in progress for more than 1 second".
+	transferringAfter = time.Second
+	// A running transfer that has been silent this long is treated as over; the daemon's terminal event was missed.
+	transferStale = 15 * time.Second
+	// reconnectDelay is the pause before the event stream is opened again.
+	reconnectDelay = 3 * time.Second
+)
+
+// iconTopics are the event streams the icon follows.
+var iconTopics = []string{"file-transfer", "clipboard", "peers", "device-trust", "content-lock", "paired-devices"}
+
+func newIconFeed(h *HostService, icon *trayIcon) *iconFeed {
+	return &iconFeed{h: h, icon: icon, transfers: map[string]time.Time{}, refreshReq: make(chan struct{}, 1)}
+}
+
+// requestRefresh asks run for a snapshot read soon; requests that arrive while one is pending merge into it.
+func (f *iconFeed) requestRefresh() {
+	select {
+	case f.refreshReq <- struct{}{}:
+	default:
+	}
+}
+
+// run reads the snapshot facts and follows the event stream until ctx ends.
+func (f *iconFeed) run(ctx context.Context) {
+	go f.stream(ctx)
+	f.refresh(ctx)
+	ticker := time.NewTicker(refreshEvery)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			f.stop()
+			return
+		case <-ticker.C:
+			f.refresh(ctx)
+			f.sweepTransfers()
+		case <-f.refreshReq:
+			f.refresh(ctx)
+		}
+	}
+}
+
+func (f *iconFeed) stop() {
+	f.mu.Lock()
+	f.closed = true
+	if f.timer != nil {
+		f.timer.Stop()
+	}
+	f.mu.Unlock()
+	f.icon.close()
+}
+
+// refresh reads the facts that are state rather than events: sync switch, LAN-only, content lock, device reachability.
+func (f *iconFeed) refresh(ctx context.Context) {
+	cctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	var settings struct {
+		Sync struct {
+			SyncEnabled bool `json:"syncEnabled"`
+		} `json:"sync"`
+		Network struct {
+			AllowRelayFallback bool `json:"allowRelayFallback"`
+		} `json:"network"`
+	}
+	settingsErr := f.h.client.Get(cctx, "/settings", &settings)
+
+	var lock struct {
+		Unlocked bool `json:"unlocked"`
+	}
+	lockErr := f.h.client.Get(cctx, "/content-lock", &lock)
+	var setup struct {
+		HasCompleted bool `json:"hasCompleted"`
+	}
+	setupErr := f.h.client.Get(cctx, "/v2/setup/state", &setup)
+
+	var devices []struct {
+		Connected bool `json:"connected"`
+	}
+	devicesErr := f.h.client.Get(cctx, "/paired-devices", &devices)
+
+	// What the user has to decide, as the device page reads it: a trust change to confirm, or a device waiting to be let in.
+	var choices struct {
+		DeviceTrust struct {
+			CurrentChange   json.RawMessage `json:"currentChange"`
+			InboundPairings []struct {
+				Status string `json:"status"`
+			} `json:"inboundPairings"`
+		} `json:"deviceTrust"`
+	}
+	trustErr := f.h.client.Get(cctx, "/member/device-group-choices", &choices)
+
+	before, after := f.icon.update(func(facts *iconFacts) {
+		// A read that failed leaves its fact as it was: an unreachable daemon is not evidence of any state.
+		if settingsErr == nil {
+			facts.syncPaused = !settings.Sync.SyncEnabled
+			facts.lanOnly = !settings.Network.AllowRelayFallback
+		}
+		if lockErr == nil && setupErr == nil {
+			// Before the first space exists nothing is locked away: the lock only protects an existing history.
+			facts.locked = setup.HasCompleted && !lock.Unlocked
+		}
+		if devicesErr == nil {
+			reachable := false
+			for _, d := range devices {
+				reachable = reachable || d.Connected
+			}
+			facts.offline = len(devices) > 0 && !reachable
+		}
+		if trustErr == nil {
+			pending := len(choices.DeviceTrust.CurrentChange) > 0 && string(choices.DeviceTrust.CurrentChange) != "null"
+			for _, p := range choices.DeviceTrust.InboundPairings {
+				pending = pending || p.Status == "awaiting_confirmation" || p.Status == "needs_attention"
+			}
+			facts.decisionPending = pending
+		}
+	})
+	if before.base() != baseAttention && after.base() == baseAttention {
+		f.icon.animate(animAttention)
+	}
+}
+
+// stream follows the daemon's WebSocket until ctx ends, reconnecting after a failure.
+func (f *iconFeed) stream(ctx context.Context) {
+	for ctx.Err() == nil {
+		if err := f.follow(ctx); err != nil && ctx.Err() == nil {
+			log.Printf("tray icon: event stream: %v", err)
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(reconnectDelay):
+		}
+	}
+}
+
+func (f *iconFeed) follow(ctx context.Context) error {
+	ws, err := f.h.client.DialWS(ctx)
+	if err != nil {
+		return err
+	}
+	defer ws.Close()
+	if err := ws.Subscribe(ctx, iconTopics...); err != nil {
+		return err
+	}
+	// The snapshot facts may have changed while no stream was open.
+	f.requestRefresh()
+	for event := range ws.Events(ctx) {
+		f.handle(ctx, event)
+	}
+	return nil
+}
+
+// handle maps one daemon event to the icon. The event names and payloads are the daemon's (crates/uc-daemon-contract constants).
+// daemonclientEvent names the daemon event type for the e2e controls.
+type daemonclientEvent = daemonclient.Event
+
+func (f *iconFeed) handle(ctx context.Context, e daemonclient.Event) {
+	switch e.Type {
+	case "clipboard.new_content":
+		var p struct {
+			Origin string `json:"origin"`
+		}
+		if json.Unmarshal(e.Payload, &p) == nil && p.Origin == "remote" {
+			f.icon.update(func(facts *iconFacts) { facts.newContent = true })
+			f.icon.animate(animNewContent)
+		}
+	case "file-transfer.progress":
+		var p struct {
+			TransferID string `json:"transferId"`
+		}
+		if json.Unmarshal(e.Payload, &p) == nil && p.TransferID != "" {
+			f.transferSeen(p.TransferID)
+		}
+	case "file-transfer.status_changed":
+		var p struct {
+			TransferID string `json:"transferId"`
+			Status     string `json:"status"`
+		}
+		if json.Unmarshal(e.Payload, &p) == nil && transferEnded(p.Status) {
+			f.transferEnded(p.TransferID)
+		}
+	case "clipboard.delivery_status_changed":
+		var p struct {
+			EntryID        string `json:"entryId"`
+			TargetDeviceID string `json:"targetDeviceId"`
+		}
+		if json.Unmarshal(e.Payload, &p) == nil {
+			go f.deliveryChanged(ctx, p.EntryID, p.TargetDeviceID)
+		}
+	case "content_lock.changed", "device-trust.changed", "peers.changed", "peers.connectionChanged", "paired-devices.changed", "paired-devices.snapshot", "peers.snapshot":
+		f.requestRefresh()
+	}
+}
+
+func transferEnded(status string) bool {
+	switch status {
+	case "completed", "failed", "cancelled", "canceled":
+		return true
+	}
+	return false
+}
+
+// raiseAttention sets an attention fact and plays the attention shake when it was not showing yet.
+func (f *iconFeed) raiseAttention(set func(*iconFacts)) {
+	before, after := f.icon.update(set)
+	if before.base() != baseAttention && after.base() == baseAttention {
+		f.icon.animate(animAttention)
+	}
+}
+
+// deliveryChanged reads what happened to one entry's delivery to one device; the event only says that something did.
+func (f *iconFeed) deliveryChanged(ctx context.Context, entryID, targetID string) {
+	if entryID == "" {
+		return
+	}
+	cctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	var view struct {
+		Deliveries []struct {
+			TargetDeviceID string `json:"targetDeviceId"`
+			Status         struct {
+				Tag string `json:"tag"`
+			} `json:"status"`
+		} `json:"deliveries"`
+	}
+	if err := f.h.client.Get(cctx, "/clipboard/entries/"+url.PathEscape(entryID)+"/delivery", &view); err != nil {
+		return
+	}
+	for _, d := range view.Deliveries {
+		if targetID != "" && d.TargetDeviceID != targetID {
+			continue
+		}
+		switch d.Status.Tag {
+		case "delivered":
+			f.icon.animate(animSent)
+			return
+		case "failed":
+			f.raiseAttention(func(facts *iconFacts) { facts.sendFailed = true })
+			return
+		}
+	}
+}
+
+// userLooked is the user opening a window or the quick panel: what asked for their attention has been seen.
+func (f *iconFeed) userLooked() {
+	f.icon.update(func(facts *iconFacts) {
+		facts.newContent = false
+		facts.sendFailed = false
+	})
+}
+
+// transferSeen records progress. The transfer state starts only when one transfer has run for transferringAfter.
+func (f *iconFeed) transferSeen(id string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.closed {
+		return
+	}
+	_, known := f.transfers[id]
+	f.transfers[id] = time.Now()
+	if !known && f.timer == nil {
+		f.timer = time.AfterFunc(transferringAfter, f.transferLongEnough)
+	}
+}
+
+func (f *iconFeed) transferLongEnough() {
+	f.mu.Lock()
+	f.timer = nil
+	active := !f.closed && len(f.transfers) > 0
+	f.mu.Unlock()
+	if !active {
+		return
+	}
+	before, after := f.icon.update(func(facts *iconFacts) { facts.transferring = true })
+	if !before.transferring && after.transferring {
+		f.icon.animate(animTransferring)
+	}
+}
+
+func (f *iconFeed) transferEnded(id string) {
+	f.mu.Lock()
+	delete(f.transfers, id)
+	none := len(f.transfers) == 0
+	if none && f.timer != nil {
+		f.timer.Stop()
+		f.timer = nil
+	}
+	f.mu.Unlock()
+	if none {
+		f.clearTransferring()
+	}
+}
+
+// sweepTransfers drops transfers that went silent without a terminal event.
+func (f *iconFeed) sweepTransfers() {
+	f.mu.Lock()
+	for id, seen := range f.transfers {
+		if time.Since(seen) > transferStale {
+			delete(f.transfers, id)
+		}
+	}
+	none := len(f.transfers) == 0
+	f.mu.Unlock()
+	if none {
+		f.clearTransferring()
+	}
+}
+
+func (f *iconFeed) clearTransferring() {
+	f.icon.update(func(facts *iconFacts) { facts.transferring = false })
+	f.icon.stopAnimation(animTransferring)
+}

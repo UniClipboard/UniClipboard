@@ -2,7 +2,11 @@
 
 package main
 
-import "github.com/wailsapp/wails/v3/pkg/application"
+import (
+	"time"
+
+	"github.com/wailsapp/wails/v3/pkg/application"
+)
 
 func e2eServices(*HostService) []application.Service { return nil }
 
@@ -43,3 +47,9 @@ func e2eTrayPublishSkipped() {}
 
 // e2eInvoke marks the entry and return of selected host commands in the e2e build; it returns a no-op here.
 func e2eInvoke(string) func() { return func() {} }
+
+// e2eTrayIconFrame records each tray icon frame in the e2e build only.
+func e2eTrayIconFrame(iconView) {}
+
+// e2eTrayIconAnimation records when an animation starts, in the e2e build only.
+func e2eTrayIconAnimation(animKind, time.Time) {}

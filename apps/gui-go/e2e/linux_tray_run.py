@@ -40,6 +40,25 @@ def run_cli(binary, env, *args, timeout=120, check=True):
     return p
 
 
+def daemon_get(binary, env, path):
+    """The daemon's own answer (JSON) for an enveloped GET, read with the GUI's client; None when it cannot be read."""
+    p = subprocess.run([str(binary), path], env=env, capture_output=True, text=True, timeout=60)
+    try:
+        return json.loads(p.stdout) if p.returncode == 0 else None
+    except ValueError:
+        return None
+
+
+def wait_daemon(binary, env, path, predicate, timeout=40):
+    deadline, last = time.time() + timeout, None
+    while time.time() < deadline:
+        last = daemon_get(binary, env, path)
+        if last is not None and predicate(last):
+            return last
+        time.sleep(1)
+    return last
+
+
 def labels(layout):
     return [('-' if n['type'] == 'separator' else n['label']) for n in layout['children']]
 
@@ -59,7 +78,7 @@ def main():
     sandbox = Path(tempfile.mkdtemp(prefix='uc-gui-go-'))
     peer = Path(tempfile.mkdtemp(prefix='uc-gui-go-peer-'))
     profile, pprofile = 'gui-go-' + sandbox.name, 'gui-go-' + peer.name
-    for name in ('gui-go', 'uniclipd', 'uniclip'):
+    for name in ('gui-go', 'uniclipd', 'uniclip', 'daemonget'):
         shutil.copy2(args.binaries / name, sandbox / name)
         shutil.copy2(args.binaries / name, peer / name)
     envs = []
@@ -76,6 +95,7 @@ def main():
     env_a, env_b = envs
     # The peer's daemon and CLI live in its own runtime dir but share the private session bus; the GUI only needs A.
     cli_a, cli_b = sandbox / 'uniclip', peer / 'uniclip'
+    dget = sandbox / 'daemonget'
     results = {'tag': args.tag, 'sandbox': str(sandbox), 'checks': [], 'passed': False,
                'scope': 'Xvfb + private D-Bus session in a container; tray HOST is the sni_host.py observer, not a desktop shell'}
     checks = results['checks']
@@ -124,44 +144,69 @@ def main():
         t_join = time.time()
         join = run_cli(cli_b, env_b, 'space', 'join', '--code', code, '--passphrase', PASSPHRASE, '--device-name', 'tray-peer-b', timeout=120, check=False)
         results['join'] = {'rc': join.returncode, 'stderr': join.stderr[-300:]}
-        # Pairing is verified on the daemons themselves, independent of the tray: both sides must list two members.
-        members = {'a': [], 'b': []}
+        # Pairing is verified on the daemons themselves, independent of the tray: each side lists itself (is_local) and the other,
+        # and the device ids cross-match (A's remote member id == B's local id and the reverse).
+        roster = {'a': [], 'b': []}
+        paired = False
         for _ in range(45):
             for k, (cli, env) in {'a': (cli_a, env_a), 'b': (cli_b, env_b)}.items():
                 try:
-                    members[k] = json.loads(run_cli(cli, env, '--json', 'member', 'list', check=False).stdout or '[]')
+                    roster[k] = json.loads(run_cli(cli, env, '--json', 'member', 'list', check=False).stdout or '[]')
                 except ValueError:
-                    members[k] = []
-            if len(members['a']) >= 2 and len(members['b']) >= 2:
+                    roster[k] = []
+            loc = {k: [m for m in v if m.get('is_local')] for k, v in roster.items()}
+            rem = {k: [m for m in v if not m.get('is_local')] for k, v in roster.items()}
+            paired = all(len(loc[k]) == 1 and len(rem[k]) == 1 for k in 'ab') and \
+                loc['a'][0]['device_name'] == 'tray-a' and loc['b'][0]['device_name'] == 'tray-peer-b' and \
+                rem['a'][0]['device_id'] == loc['b'][0]['device_id'] and rem['b'][0]['device_id'] == loc['a'][0]['device_id'] and \
+                rem['a'][0]['device_name'] == 'tray-peer-b' and rem['b'][0]['device_name'] == 'tray-a'
+            if paired:
                 break
             time.sleep(2)
         invite.send_signal(signal.SIGINT)
-        paired = len(members['a']) >= 2 and len(members['b']) >= 2
-        check('4b the real peer is paired on both daemons (member list, independent of the tray)', paired,
-              {'a': [m.get('deviceName') for m in members['a']], 'b': [m.get('deviceName') for m in members['b']], 'join': results['join']})
+        results['roster'] = roster
+        check('4b A and B are paired with each other on their own daemons (member list --json: names, is_local, device ids cross-match)', paired,
+              {'a': roster['a'], 'b': roster['b'], 'join': results['join']})
         if not paired:
             results['inconclusive'] = 'pairing did not complete; the device checks below are not attributable to the tray'
             raise RuntimeError(results['inconclusive'])
+        peer_id = [m for m in roster['a'] if not m.get('is_local')][0]['device_id']
+        prefs_path = '/member/' + peer_id + '/sync-preferences'
+        sync_path = '/settings'
+        prefs0 = daemon_get(dget, env_a, prefs_path)
+        settings0 = daemon_get(dget, env_a, sync_path)
+        results['daemonBefore'] = {'prefs': prefs0, 'syncEnabled': ((settings0 or {}).get('sync') or {}).get('syncEnabled')}
         lay = host.wait(lambda l: [n['label'] for n in submenu(l, 'Device Sync')] == ['tray-peer-b'], 60, 'peer row')
         row = submenu(lay, 'Device Sync')[0] if lay else None
         check('5 the periodic refresh publishes the paired peer into the device submenu seen by the host (checked, enabled)',
               bool(row) and row['toggle'] == 1 and row['enabled'] is True, {'row': row, 'seconds_after_join': round(time.time() - t_join, 1)})
 
+        check('5b the daemon\'s own state before the click: send and receive are on for the peer', bool(prefs0) and prefs0.get('sendEnabled') is True and prefs0.get('receiveEnabled') is True, prefs0)
         host.click('tray-peer-b')
+        d_off = wait_daemon(dget, env_a, prefs_path, lambda p: p.get('sendEnabled') is False and p.get('receiveEnabled') is False)
+        check('6 after the dbusmenu click the DAEMON reports send=false and receive=false for that peer (authoritative read, not the menu)',
+              bool(d_off) and d_off.get('sendEnabled') is False and d_off.get('receiveEnabled') is False, d_off)
         lay = host.wait(lambda l: (submenu(l, 'Device Sync') or [{}])[0].get('toggle') == 0 and submenu(l, 'Device Sync')[0]['enabled'], 40, 'peer off')
-        check('6 a dbusmenu click on the peer item saves through the daemon: the check state follows, and the item is enabled again', lay is not None,
-              submenu(lay, 'Device Sync') if lay else None)
+        check('6 and the menu follows: unchecked and enabled again', lay is not None, submenu(lay, 'Device Sync') if lay else None)
         host.click('tray-peer-b')
+        d_on = wait_daemon(dget, env_a, prefs_path, lambda p: p.get('sendEnabled') is True and p.get('receiveEnabled') is True)
+        check('6 the second click restores send=true and receive=true in the daemon', bool(d_on) and d_on.get('sendEnabled') is True and d_on.get('receiveEnabled') is True, d_on)
         lay = host.wait(lambda l: (submenu(l, 'Device Sync') or [{}])[0].get('toggle') == 1 and submenu(l, 'Device Sync')[0]['enabled'], 40, 'peer on')
-        check('6 clicking again restores it', lay is not None, submenu(lay, 'Device Sync') if lay else None)
+        check('6 and the menu shows it checked again', lay is not None, submenu(lay, 'Device Sync') if lay else None)
 
         flip = {'Enable Sync': 'Disable Sync', 'Disable Sync': 'Enable Sync'}
+        en0 = ((settings0 or {}).get('sync') or {}).get('syncEnabled')
+        check('7a the daemon\'s global sync switch agrees with the initial label', en0 is not None and sync0 == ('Disable Sync' if en0 else 'Enable Sync'), {'syncEnabled': en0, 'label': sync0})
         host.click(sync0)
+        s1 = wait_daemon(dget, env_a, sync_path, lambda x: ((x.get('sync') or {}).get('syncEnabled')) is (not en0))
+        check('7 the sync item click flips syncEnabled in the DAEMON (authoritative read)', ((s1 or {}).get('sync') or {}).get('syncEnabled') is (not en0), ((s1 or {}).get('sync') or {}))
         lay = host.wait(lambda l: labels(l)[0] == flip[sync0], 30, 'sync flips')
-        check('7 the sync item click flips its label (connection-state refresh through the daemon)', lay is not None, labels(lay)[0] if lay else None)
+        check('7 and the label follows', lay is not None, labels(lay)[0] if lay else None)
         host.click(flip[sync0])
+        s2 = wait_daemon(dget, env_a, sync_path, lambda x: ((x.get('sync') or {}).get('syncEnabled')) is en0)
+        check('7 the second click restores syncEnabled in the daemon', ((s2 or {}).get('sync') or {}).get('syncEnabled') is en0, ((s2 or {}).get('sync') or {}))
         lay = host.wait(lambda l: labels(l)[0] == sync0, 30, 'sync restores')
-        check('7 and flips back', lay is not None, labels(lay)[0] if lay else None)
+        check('7 and the label returns', lay is not None, labels(lay)[0] if lay else None)
 
         ZH = ['设备同步', '-', '打开', '设置', '检查更新…', '-', '重启', '轻量模式（后台同步）', '退出']
         r = gui.invoke('lang-zh', 'set_tray_language', {'language': 'zh-CN'})

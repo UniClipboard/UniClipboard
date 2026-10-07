@@ -82,3 +82,14 @@ CodeRabbit 在本 PR 上是 `Review skipped`（基线不是默认分支），**�
 - 锁序、`InvokeSync` 与主线程互等：未发现缺陷。Linux 托盘菜单点击由 `gtkDispatch(item.handleClick)` 分发，回调再在 `go` 中执行，主线程不会取 `deviceMenu.mu`/`trayMenu.mu`；`setMenu` 只取 Wails 的 `itemMapLock`。（此前文档说点击经 `menuItemClicked` 通道，对 SNI 路径不准确，已改正；结论不变。）退出时若有发布正卡在 `InvokeSync`，它持有两把锁，但 `shutdown` 不取这两把锁，退出不会因此挂起。
 - 发现并修复：`setLanguage` 并发调用时根菜单与设备子菜单可能停在不同语言（新的 `languageMu`）；`publish` 字段赋值未在 `deviceMenu.mu` 下进行（已加锁）；运行器“≥3 个刷新周期”的睡眠公式与断言不相称（容器运行改为以托盘注册时刻起算；原生运行改为统计宿主实际收到的结构性重发布次数 ≥3）；本文档对 `nat2`–`nat4` 的描述不准确（已改正）。
 - 未验证或仍存在：macOS 上 `NSMenu` 正在跟踪时 `InvokeSync` 是否被及时服务（若阻塞，`deviceMenu.click` 会在 `deviceMenu.mu` 上等到菜单关闭）；Windows 的 Win32 线程亲和；E2E 控制 `e2e_controls.go` 读取菜单不加锁（仅 E2E 构建）；Wails 内部 `handleClick`/`item.impl`/`checked` 的无同步读写依旧存在，但本项目内的写入现在都与 `SetMenu` 串行，且 `deviceMenu.click` 会恢复已存状态、下一次渲染 10 秒内纠正。
+
+## 契约补充：独立审查后的新增失败模型与验收（落盘先后如实记录）
+
+**先后**：独立审查（对 reviewed HEAD `7d996b169`，工件 `review-7d996b1/`，只读子代理，非 CodeRabbit、非人工）完成后，提交 `3fbe2c2bf` **先** 修了 `setLanguage` 串行化、`publish` 赋值加锁、运行器的周期观察，**之后** 才写下本节。因此本节晚于这些修复；其中真实产品 E2E 的并发语言验证与对照构建在本节之后才加入。
+
+新增失败模型：
+- F-A `setLanguage` 并发交错：A、B 同时调用，根标签取后者、设备子菜单标题取前者，最终两处语言不一致。预期：并发调用结束后，宿主读到的根菜单与设备子菜单标题语言一致，且等于某一次调用的语言，`trayMenu.language` 与之相同。
+- F-B `publish` 赋值与首次渲染的先后：预期首次渲染的发布必然可见，即第一次结构性重发布在宿主观察到的布局里有设备子菜单的更新；回调字段的读写都在 `deviceMenu.mu` 下。
+- F-C 周期证据：不得仅凭睡眠时长推断“跑过 ≥3 个周期”。预期：原生运行统计宿主实际收到的结构性重发布次数；容器运行在对端行不变时无法按布局计数，改为要求设备行真实出现（刷新路径被走通）与睡眠自托盘注册起算，并把这一限制写明。
+
+验收（真实产品 E2E，不写单元测试）：E2E 构建新增控制动作并发触发多次 `set_tray_language`，再由宿主读取 dbusmenu；并以去掉 `languageMu` 的对照构建检验该检查能否发现 F-A（若对照构建在 N 次迭代内未复现，如实记为“检查未能区分”，不据此宣称检查有效）。

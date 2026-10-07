@@ -16,7 +16,7 @@
 | 固定工具版本 | 否：下载 `linuxdeploy/continuous` 与 `AppImageKit/continuous` 的 AppRun，均不固定 | 缺口：库策略要求固定 `linuxdeploy-07333c6`（排除 `libwayland-client`）；`generateAppImage` 会先 `RMDIR` AppDir，无法预置固定的 AppRun |
 | 两个可执行文件 | 否：只处理一个 `Binary` | 缺口：daemon `uniclipd` 必须与 GUI 同在 `usr/bin`（`spawn.rs` 先找兄弟路径） |
 | WebKit 辅助进程重定位 | 否：只复制文件，不改 `libwebkit2gtk` 里硬编码的 `/usr/lib/<triple>/webkit2gtk-4.1`（已用 `strings` 在 Ubuntu 24.04 的 2.52.6 上确认存在该字符串） | 缺口：宿主没有 WebKitGTK 时辅助进程找不到；Tauri 的 bundler 用同长度的字符串替换解决，见下 |
-| GDK 后端 | 插件脚本导出 `GDK_BACKEND=x11`（与 Tauri 一致） | 采用，并作为 **明确兼容选择** 记录：AppImage 内的窗口始终经 X server（Wayland 下是 Xwayland），GDK 原生 Wayland 后端与 Layer Shell（`libgtk-layer-shell` 需要 Wayland 后端的 GTK 窗口）在 AppImage 内 **不工作**，不得称 AppImage 覆盖 Wayland 面板。deb/rpm 没有该限制 |
+| GDK 后端 | 插件脚本导出 `GDK_BACKEND=x11`（与 Tauri 一致） | **17c13 起不再采用**：17c4–17c12 把它作为兼容选择记录（AppImage 经 X server），17c13 删除该行并自带 `libgtk-layer-shell`，AppImage 在真实 Wayland 会话里使用原生 GDK 后端与 Layer Shell（`gui-go-linux-appimage-native-wayland.md`）；用户显式的 `GDK_BACKEND` 仍被遵守 |
 | 自启动 | `app.Autostart`（XDG） | 已采用；AppImage 内 `os.Executable()` 指向临时挂载，已有最小适配（`autostart_linux.go`，`Exec=$APPIMAGE`）；本片只做真实 AppImage 验证，不新增机制 |
 | 更新安装 | 无 | 业务语义（`internal/update/appimage.go`），17c3 已有 |
 
@@ -70,7 +70,7 @@
 - **原生桌面**：容器内只有 Xvfb，无 GNOME/KDE/Hyprland、无 portal、无托盘宿主、无通知守护进程；GPU 加速、真实 Wayland 会话不在范围。
 - **amd64**：见「验证结果」；没有原生 x86_64 Linux 主机时，只有能真实构建并运行的部分才记为已证明。
 - **release 标签 AppImage 的 UI 行为**：release 构建没有测试控制面，只有冒烟级证据。
-- **AppImage 内的 Wayland / Layer Shell**：由 `GDK_BACKEND=x11` 排除，是兼容选择而非已验证能力。
+- **AppImage 内的 Wayland / Layer Shell**（17c13 更新）：钩子行已删除，两台原生主机验证，范围与未验证项见 `gui-go-linux-appimage-native-wayland.md`；17c4–17c12 的「由 `GDK_BACKEND=x11` 排除」不再成立。
 
 ## 验证结果
 

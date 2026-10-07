@@ -312,7 +312,7 @@ apps/gui-go/e2e/linux/run.sh package <dir>  # 容器内：生产前端包 + pack
 
 | 项 | 性质 | 去向 |
 | --- | --- | --- |
-| L5 Wayland Layer Shell 面板；L6 Hyprland 光标定位与可用区域上限 | **已实现，容器内真实 sway 验证**（17c2） | 真实 Hyprland/GNOME/KDE、真实 GPU 与桌面输入栈仍未验证；AppImage 的 `AppRun` 强制 `GDK_BACKEND=x11`，打包产物里 Layer Shell 不会激活，要在 17c4 的 AppImage 切片里处理（并随包带上 `libgtk-layer-shell.so.0`，Tauri 即如此） |
+| L5 Wayland Layer Shell 面板；L6 Hyprland 光标定位与可用区域上限 | **已实现，容器内真实 sway 验证**（17c2） | 真实 Hyprland/GNOME/KDE、真实 GPU 与桌面输入栈仍未验证；（17c13 更新：AppImage 不再强制 `GDK_BACKEND=x11`，并自带 `libgtk-layer-shell.so.0`，Layer Shell 在 Hyprland 与 niri 两台原生主机上激活，见「AppImage 原生 Wayland 与 Layer Shell（第 17c13 片）」） |
 | L19 更新清单把所有 Linux AppImage 归到 `linux-x86_64` | 既有缺陷，生成器未改 | 必做独立切片 17c3：修 `scripts/assemble-update-manifest.js`，用隔离 fixture 清单验证，不触发正式发布、不改生产源 |
 | L20 AppImage 自包含与真实 daemon 来源、真实 AppImage 启动与更新（arm64）；rpm 的 `.build-id` 清理 | **已完成（17c4，容器内干净宿主；见“自包含 Linux AppImage（第 17c4 片）”）** | **仍 OPEN**：amd64 构建与运行、原生桌面、deb/rpm 实装、真实注销/登录自启动与更新后条目有效性、官方签名发布验证 |
 | L21 AppImage portable 模式（数据根落在只读挂载） | **已完成（17c5，容器内非 root 用户、无 Secret Service；见“AppImage portable 模式（第 17c5 片）”）** | **仍 OPEN**：真实登录会话读取自启动条目、更新后自启动、Windows/macOS 路径的重新运行、`--appimage-extract-and-run`、amd64、原生桌面 |
@@ -368,7 +368,7 @@ apps/gui-go/e2e/linux/run.sh package <dir>  # 容器内：生产前端包 + pack
 
 - **能证明**：`zwlr_layer_shell_v1` 的协议角色、overlay 层、键盘模式、多输出背板、点击关闭、按输出定位与比例上限、显示/隐藏循环、回退路径（Xvfb/缺库）。
 - **不能证明**：Hyprland 本身（Hyprland 不在 Ubuntu 仓库；光标与活动窗口继续用脚本化 socket，与真实 sway 并存）、GNOME（不实现 wlr-layer-shell，走回退）、KDE、真实 GPU 渲染、真实桌面的输入栈。
-- AppImage：Tauri 的 `AppRun` 钩子强制 `GDK_BACKEND=x11`（`docs/architecture/linux-appimage-library-policy.md`），因此在打包产物里 Layer Shell 路径不会激活；17c4 的 Go AppImage 沿用同一选择（Wails GTK 插件钩子强制 `GDK_BACKEND=x11`），不声称 AppImage 覆盖 Wayland。
+- AppImage（17c13 更新）：Tauri 的 AppImage 仍由钩子强制 `GDK_BACKEND=x11`；Go 的 AppImage 在 17c4–17c12 沿用同一选择，17c13 删除了钩子里的这一行（强制来自 linuxdeploy GTK 插件钩子，不是 Wails：Wails 只在会话类型为空/`x11` 时设置）并自带 `libgtk-layer-shell`，AppImage 在原生 Wayland 上使用 Layer Shell。
 
 ### 17c2 结果
 
@@ -545,7 +545,7 @@ python3 -I apps/gui-go/e2e/update_manifest_run.py --generator <dir>/baseline.js 
 
 - **amd64**：没有 amd64 构建、打包与运行证据。本机 Docker 只有 QEMU 用户态模拟；`amd64-probe/run.log` 显示固定版 x86_64 linuxdeploy 在模拟下无法执行（`./ld: ELFAI: not found`），与 17c 记录一致。真实 amd64 的 release daemon、linuxdeploy 打包与启动需要原生 x86_64 Linux 主机或 CI。x86_64 工具的 SHA-256 固定值已写入（linuxdeploy 与 `scripts/linux-appimage-tools.mjs` 共用，appimagetool 在 `package_linux.py`），但没有运行过。
 - **原生桌面**：只有 Xvfb（无 GNOME/KDE/Hyprland、无 GPU 加速、无 portal、无托盘宿主、无通知服务）。`DRI3`/`Gtk-CRITICAL`（托盘菜单）警告在包内运行里同样出现，根因未追查。
-- **AppImage 内 Wayland/Layer Shell**：插件钩子强制 `GDK_BACKEND=x11`，是兼容选择，不是已验证能力。包内没有 `libgtk-layer-shell`（Tauri 的 AppImage 带了它）。
+- **AppImage 内 Wayland/Layer Shell**（17c4–17c12 的状态；17c13 已改变）：当时插件钩子强制 `GDK_BACKEND=x11`、包内没有 `libgtk-layer-shell`。现状见「AppImage 原生 Wayland 与 Layer Shell（第 17c13 片）」。
 - **deb/rpm**：只核对元数据（依赖、文件表无 build-id），没有在真实发行版里安装、卸载或升级。
 - **自启动**：只证明了注册（条目内容、旧条目替换、禁用删除）；没有真实注销/登录后的启动，也没有在 **更新之后** 重新启用或检查条目（E2E 在更新前已禁用条目；条目指向的是更新原位替换的同一个文件，该路径在更新后仍有效没有被单独验证）。
 - **签名**：更新用隔离的 fixture 私钥验证，不等于官方签名发布验证；没有真实 feed 服务端、FlareRelease、真实发布。包未签名。
@@ -727,6 +727,10 @@ apps/gui-go/e2e/linux/run_17c8.sh build <新标签> <新目录>
 apps/gui-go/e2e/linux/run_17c8.sh run <标签> <新目录>
 apps/gui-go/e2e/linux/run_17c8.sh wayland <标签> <新目录>   # 既有 sway 场景，影响面核对
 ```
+
+## AppImage 原生 Wayland 与 Layer Shell（第 17c13 片）
+
+契约、实现、两台原生主机（Omarchy Hyprland 真机、Fedora niri 虚拟机，aarch64）与容器对照（Weston 无协议、sway 缺库）的结果、更正记录和未验证项：`docs/architecture/gui-go-linux-appimage-native-wayland.md`。要点：删除 AppImage 钩子对 `GDK_BACKEND=x11` 的无条件导出，自带 `libgtk-layer-shell`（带来源与闭包记录），会话类型未知但有 Wayland socket 时撤销 Wails 的 X11 默认；用户显式 `GDK_BACKEND` 与 X11 会话保持 X11。未验证：Fedora 面板矩形与实际按键、多屏、GNOME/KDE、amd64、登录自启、suspend、portal、渲染正确性。
 
 ## 验收边界
 

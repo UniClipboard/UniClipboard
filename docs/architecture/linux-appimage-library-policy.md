@@ -61,7 +61,7 @@ WAYLAND_DISPLAY=/run/user/$UID/wayland-1 scripts/linux-appimage-smoke.sh --secon
 scripts/linux-appimage-smoke.sh --display xvfb --artifacts runs/xvfb UniClipboard_x.y.z_amd64.AppImage
 ```
 
-AppRun 钩子强制 `GDK_BACKEND=x11`，因此窗口始终经由 X server（嵌套 Hyprland 下是 Xwayland），GDK 原生 Wayland 后端不在覆盖范围内。`--session wayland|x11` 的区别只是应用能否看到 `WAYLAND_DISPLAY`，它影响守护进程的剪贴板协议选择和 Mesa 的平台探测。
+**（Tauri 的 AppImage；Go 的 AppImage 自 17c13 起不再如此，见 `gui-go-linux-appimage-native-wayland.md`）** AppRun 钩子强制 `GDK_BACKEND=x11`，因此窗口始终经由 X server（嵌套 Hyprland 下是 Xwayland），GDK 原生 Wayland 后端不在覆盖范围内。`--session wayland|x11` 的区别只是应用能否看到 `WAYLAND_DISPLAY`，它影响守护进程的剪贴板协议选择和 Mesa 的平台探测。
 
 ### 对照材料的来源
 

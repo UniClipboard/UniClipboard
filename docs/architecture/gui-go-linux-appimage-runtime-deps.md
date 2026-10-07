@@ -26,7 +26,7 @@
 | 其他 GIO 模块 | gvfs、dconf、libproxy、gnome-proxy | 不使用 | 17c4 已证实宿主副本会崩溃；本片不带 libproxy / gnome-proxy（系统代理发现不在范围，见「明确不证明」） |
 | GPU 驱动栈 | libEGL、libGL、libGLX、libOpenGL、libGLESv1_CM、libGLESv2、Mesa 驱动、libdrm、libgbm | 宿主 | 自带会遮蔽宿主驱动（库策略第 1 条根因） |
 | 其他 `dlopen` 可选项 | `libcap.so`、`libcryptsetup`、`libdebuginfod`、`libsepol`、`libnss_mdns*` | 不加载即可 | 静态审计 `audit_dlopen.py` 只显示它们在字符串里出现，所属库（libmount、libdw、libselinux、libavahi-client）对缺失已有降级路径；是否有行为后果以运行结果为准，不据此加包 |
-| `libgtk-layer-shell.so.0` | 由 GUI 自己 `dlopen` | 宿主（deb/rpm 声明依赖；AppImage 内无 Wayland 后端） | 17c2 已有缺失时的降级 |
+| `libgtk-layer-shell.so.0` | 由 GUI 自己 `dlopen` | 17c13 起 AppImage 自带（来源与闭包见 `gui-go-linux-appimage-native-wayland.md`）；deb/rpm 声明依赖 | 17c2 已有缺失时的降级，17c13 的容器缺库对照再次验证 |
 | CA 信任存储 | 系统 CA 文件 | 宿主 | 用户必须能用自己的信任设置；不得打包 CA，不得关闭校验 |
 
 ## 失败方式（先于实现）

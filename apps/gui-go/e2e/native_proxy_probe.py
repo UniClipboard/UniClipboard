@@ -178,6 +178,12 @@ def main():
         web_to_daemon = [l for l in socks.splitlines() if 'WebKitNetwork' in l and f":{conn['port']}" in l]
         result['webkitToDaemonSockets'] = len(web_to_daemon)
         check('the WebView holds established loopback connections to the daemon (it did not go to the proxy)', len(web_to_daemon) >= 1, web_to_daemon[:3])
+        before = len(sink.lines)  # detection power: curl, told to use the sink, asking for the daemon's loopback port, MUST appear in the sink
+        subprocess.run(['curl', '-s', '-m', '5', '-o', '/dev/null', '--proxy', f'http://127.0.0.1:{sink.port}', f"http://127.0.0.1:{conn['port']}/control-curl"], capture_output=True)
+        time.sleep(.5)
+        control = [l for l in sink.lines[before:] if 'control-curl' in l]
+        check('control: a curl told to use the sink IS recorded with its loopback target (the sink can see a leak)', bool(control), control)
+        sink.lines = [l for l in sink.lines if 'control-curl' not in l]
         loop = [l for l in sink.lines if re.search(r'127\.\d+\.\d+\.\d+|localhost|\[?::1\]?', l)]
         result['sinkLines'] = sink.lines
         check('the sink proxy saw NO loopback target of the product', not loop, loop[:5])

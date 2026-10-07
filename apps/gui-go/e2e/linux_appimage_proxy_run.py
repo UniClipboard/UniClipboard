@@ -234,7 +234,7 @@ def curl_as_user(env, url):
     return {'rc': r.returncode, 'code': r.stdout.strip(), 'err': r.stderr.strip()[-200:]}
 
 
-def write_dconf_proxy(port, where, target_app, nonportable):
+def write_dconf_proxy(port, where, target_app, nonportable, ignore_hosts=None):
     """GNOME's proxy settings (manual proxy, default ignore-hosts), compiled with the distribution's own `dconf compile` (no bus needed).
       user   the user's database ~/.config/dconf/user under the REAL home (what GNOME Settings writes). In portable mode the AppImage's HOME is redirected to
              <AppImage>.home and cannot see it (F7): that is an observation there; in --nonportable it is the real user scenario.
@@ -247,7 +247,8 @@ def write_dconf_proxy(port, where, target_app, nonportable):
     db_home = portable_home if where == 'ph' else real
     gui_home = real if nonportable else portable_home  # the HOME the GUI process (and the AppImage's runtime) really has
     kdir = Path(tempfile.mkdtemp(prefix='dconf-keyfile-'))
-    body = f"[system/proxy]\nmode='manual'\n\n[system/proxy/http]\nhost='127.0.0.1'\nport={port}\n\n[system/proxy/https]\nhost='127.0.0.1'\nport={port}\n"
+    ignore = '' if ignore_hosts is None else 'ignore-hosts=[' + ','.join(f"'{h}'" for h in ignore_hosts) + ']\n'  # None: the schema default (localhost, 127.0.0.0/8, ::1)
+    body = f"[system/proxy]\nmode='manual'\n{ignore}\n[system/proxy/http]\nhost='127.0.0.1'\nport={port}\n\n[system/proxy/https]\nhost='127.0.0.1'\nport={port}\n"
     if where == 'sys':
         d = Path('/etc/dconf/db/local.d')
         d.mkdir(parents=True, exist_ok=True)
@@ -267,7 +268,7 @@ def write_dconf_proxy(port, where, target_app, nonportable):
     # `baseline-a2a001ac`, ran without it: gsettings said 'manual' while `proxy` printed direct://)
     def host_view(home):
         cenv = dict(os.environ, HOME=str(home), XDG_CURRENT_DESKTOP='GNOME')
-        p = as_user(['proxy', f'https://{WV_HOST}/'], cenv, timeout=30)
+        p = as_user(['proxy', f'https://{CURL_HOST}/'], cenv, timeout=30)
         g = as_user(['gsettings', 'get', 'org.gnome.system.proxy', 'mode'], cenv, timeout=20)
         return {'home': str(home), 'proxyCli': p.stdout.strip(), 'proxyCliRc': p.returncode, 'proxyCliErr': p.stderr.strip()[-200:], 'gsettingsMode': g.stdout.strip(), 'gsettingsErr': g.stderr.strip()[-200:]}
     return {'where': where, 'dbHome': str(db_home), 'guiHome': str(gui_home), 'expected': f'http://127.0.0.1:{port}', 'compileRc': c.returncode, 'compileErr': c.stderr[-200:],
@@ -349,6 +350,15 @@ def variant_env(kind, port):
     raise KeyError(kind)
 
 
+GNOME_VARIANTS = {  # GNOME `ignore-hosts` (system dconf database), allow proxy
+    'gs-sys-ignore': ('allow', 'gs-sys'),   # ignore-hosts = default + the WebView probe host: the WebView goes direct, curl's host stays proxied
+    'gs-sys-empty': ('allow', 'gs-sys'),    # ignore-hosts = []: GNOME then has NO loopback bypass; what the local daemon connections do is OBSERVED (parity with any WebKitGTK app), not required
+}
+GNOME_IGNORE = {'gs-sys-ignore': ['localhost', '127.0.0.0/8', '::1', WV_HOST], 'gs-sys-empty': []}
+OBSERVED_ONLY = {'gs-sys-empty'}
+REQUIRED_VARIANTS['gs-sys-ignore'] = 'direct'
+
+
 def scenarios():
     """name -> (proxy mode allow|deny|dead|None, configuration kind env|gs-user|gs-ph|gs-sys|None)"""
     s = {'none': (None, None)}
@@ -358,6 +368,7 @@ def scenarios():
         for m in ('allow', 'deny', 'dead'):
             s[f'gs-{where}-{m}'] = (m, f'gs-{where}')
     s.update(P8_VARIANTS)
+    s.update(GNOME_VARIANTS)
     return s
 
 
@@ -390,7 +401,7 @@ def main():
     parser.add_argument('--scenarios', default='')
     args = parser.parse_args()
     table = scenarios()
-    chosen = [s for s in args.scenarios.split(',') if s] or [n for n in table if n not in P8_VARIANTS]  # P8 variants run only when named
+    chosen = [s for s in args.scenarios.split(',') if s] or [n for n in table if n not in P8_VARIANTS and n not in GNOME_VARIANTS]  # P8 variants run only when named
     out = args.out.resolve()
     out.mkdir(parents=True, exist_ok=True)
     out.chmod(0o777)
@@ -486,7 +497,7 @@ def main():
                 penv = variant_env(kind, port)
                 curl_env = {k: v for k, v in penv.items() if k.islower()} or dict(penv)
             elif where:
-                sc['dconf'] = write_dconf_proxy(port, where, target_app, args.nonportable)
+                sc['dconf'] = write_dconf_proxy(port, where, target_app, args.nonportable, GNOME_IGNORE.get(name))
                 penv = {'XDG_CURRENT_DESKTOP': 'GNOME'}  # a GNOME session; NO proxy variable
                 cli_out = sc['dconf']['hostViewWithRealHome']['proxyCli'] if where == 'user' else sc['dconf']['hostViewWithGuiHome']['proxyCli']
                 curl_env = {'https_proxy': cli_out, 'http_proxy': cli_out} if cli_out.startswith('http') else {}  # curl cannot read gsettings: it gets the host libproxy CLI's answer
@@ -529,15 +540,23 @@ def main():
                 run.check(f'[{name}] G7 the GUI and WebKitNetworkProcess map GTK/WebKitGTK/GLib/GIO/libsoup only from the AppImage mount (host GTK present): no violation and nothing unverified',
                           not bad and not unverified, {'violations': bad, 'unverified': unverified})
             daemon_port = conn['port']
+            OBS = name in OBSERVED_ONLY  # GNOME without a loopback bypass: record, do not judge
+
+            def chk(label, ok, detail=None):
+                if OBS:
+                    sc.setdefault('observations', {})[label] = {'ok': bool(ok), 'detail': detail}
+                    print('OBSERVED ' + ('yes ' if ok else 'no  ') + label, flush=True)
+                else:
+                    run.check(label, ok, detail)
             socks = sockets_of(('WebKit', 'uniclipboard', 'uniclipd'))
             sc['sockets'], sc['daemonPort'] = socks, daemon_port
             web_to_daemon = [s for s in socks if s['proc'].startswith('WebKitNetwork') and s['peer'].endswith(f':{daemon_port}')]
             go_to_daemon = [s for s in socks if s['proc'] == 'uniclipboard' and s['peer'].endswith(f':{daemon_port}')]
             sc['owners'] = {'webkitNetworkProcessToDaemon': len(web_to_daemon), 'goHostToDaemon': len(go_to_daemon)}
-            run.check(f'[{name}] P1 WebKitNetworkProcess (the WebView itself, not the Go host) holds established loopback TCP connections to the daemon (HTTP vs WebSocket is not distinguished by sockets)',
+            chk(f'[{name}] P1 WebKitNetworkProcess (the WebView itself, not the Go host) holds established loopback TCP connections to the daemon (HTTP vs WebSocket is not distinguished by sockets)',
                       len(web_to_daemon) >= 1, web_to_daemon)
             web_to_proxy = [s for s in socks if s['proc'].startswith('WebKit') and port and s['peer'].endswith(f':{port}')]
-            run.check(f'[{name}] P1 no WebKit process holds a connection to the proxy port while the page is idle (no loopback traffic is sent to the proxy)', not web_to_proxy, web_to_proxy)
+            chk(f'[{name}] P1 no WebKit process holds a connection to the proxy port while the page is idle (no loopback traffic is sent to the proxy)', not web_to_proxy, web_to_proxy)
             sc['daemonProxyEnvironment'] = {k: v for k, v in environ_of(conn['pid']).items() if k.lower() in ('http_proxy', 'https_proxy', 'all_proxy', 'no_proxy')}
             sc['guiEnvironmentSeen'] = {k: v for k, v in environ_of(gui.proc.pid).items() if k.lower() in ('http_proxy', 'https_proxy', 'all_proxy', 'no_proxy', 'home', 'xdg_current_desktop')}
             sc['gioModuleDir'] = environ_of(gui.proc.pid).get('GIO_MODULE_DIR')
@@ -555,7 +574,7 @@ def main():
                 page_http_ok = False
             page_ws_ok = bool(page['wsopen']) and bool(page['wsframe'])
             sc['pageProbe'] = {'report': page, 'httpOk': page_http_ok, 'wsOk': page_ws_ok}
-            run.check(f'[{name}] P1 the real WebView itself completes the daemon session exchange, an authenticated HTTP fetch (GET /settings), opens the daemon WebSocket and receives an event frame', page_http_ok and page_ws_ok, page)
+            chk(f'[{name}] P1 the real WebView itself completes the daemon session exchange, an authenticated HTTP fetch (GET /settings), opens the daemon WebSocket and receives an event frame', page_http_ok and page_ws_ok, page)
             # P3: WebView first (own hostname, own log window), then curl (own hostname, own window)
             nonce_w, nonce_c = secrets.token_hex(6), secrets.token_hex(6)
             url_w, url_c = f'https://{WV_HOST}/webview-{nonce_w}', f'https://{CURL_HOST}/curl-{nonce_c}'
@@ -588,7 +607,7 @@ def main():
                 run.check(f'[{name}] control: curl targeting the loopback report port with the same configuration IS in the proxy log (detection power for the loopback claim)',
                           any(f':{reports.port}/loopctl' in t for t in loop_reqs), {'curl': loop, 'targets': loop_reqs})
                 leaked = [t for t in loop_reqs if f':{daemon_port}' in t or (f':{reports.port}' in t and '/loopctl' not in t)]
-                run.check(f'[{name}] P1 the proxy log names no loopback target of the product (not the daemon port, not the page\'s report channel)', not leaked, leaked)
+                chk(f'[{name}] P1 the proxy log names no loopback target of the product (not the daemon port, not the page\'s report channel)', not leaked, leaked)
             elif mode == 'dead':
                 run.check(f'[{name}] control: curl honours the dead proxy configuration (fails to connect, the target saw nothing)', ctl['rc'] != 0 and sc['curlControl']['targetSaw'] == 0, sc['curlControl'])
             else:
@@ -597,7 +616,7 @@ def main():
             # ---- functional requirements (evaluated only with --require; recorded either way)
             visible = not (where == 'user' and not args.nonportable)  # portable HOME hides the real user's dconf (F7): an observation there, not a requirement
             sc['configurationVisibleToGui'] = visible
-            applies = kind is not None and visible and (not kind.startswith('env') or args.require_env) and (name not in P8_VARIANTS or name in REQUIRED_VARIANTS)
+            applies = kind is not None and visible and (not kind.startswith('env') or args.require_env) and (name not in P8_VARIANTS or name in REQUIRED_VARIANTS) and not OBS
             sc['requirementApplies'] = applies
             if applies:
                 expected = REQUIRED_VARIANTS.get(name) or {'allow': 'proxied', 'deny': 'refused', 'dead': 'failed'}[mode]

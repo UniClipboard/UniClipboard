@@ -9,6 +9,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/daemonclient"
@@ -83,6 +84,34 @@ func (s *EvidenceService) runControlCommand(line string) {
 	case "tray-check":
 		h.checkUpdateFromTray()
 		_ = s.write(Step{Window: "update", Step: "control-tray-check", OK: true})
+	case "tray-language-race":
+		// tray-language-race <label> <n>: n concurrent tray language changes released together, alternating zh-CN and en. The
+		// menu (root labels and the device submenu title) must end in one language, the one the tray recorded last.
+		label, count, _ := strings.Cut(arg, " ")
+		n, _ := strconv.Atoi(count)
+		if n < 2 {
+			n = 2
+		}
+		start := make(chan struct{})
+		var wg sync.WaitGroup
+		for i := 0; i < n; i++ {
+			language := "zh-CN"
+			if i%2 == 1 {
+				language = "en"
+			}
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				<-start
+				h.tray.setLanguage(language)
+			}()
+		}
+		close(start)
+		wg.Wait()
+		h.tray.mu.Lock()
+		final := h.tray.language
+		h.tray.mu.Unlock()
+		_ = s.write(Step{Window: "tray", Step: "tray-language-race-" + label, OK: true, Detail: map[string]any{"calls": n, "final": final}})
 	case "setting":
 		key, value, _ := strings.Cut(arg, " ")
 		allowed := key == "usageAnalyticsEnabled" || key == "autoCheckUpdate" || key == "autoDownloadUpdate"

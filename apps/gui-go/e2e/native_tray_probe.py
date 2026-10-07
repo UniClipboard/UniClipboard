@@ -150,6 +150,21 @@ def main():
         check('5 set_tray_language(zh-CN) relabels the whole menu in the host', bool(r.get('ok')) and l2 is not None, labels(l2) if l2 else None)
         result['languageCallsAfterZh'] = lang_calls()
         check('5 no later call overwrote zh-CN (the last recorded tray-language call is the test\'s)', lang_calls()[-1:] == ['zh-CN'], lang_calls())
+        # Concurrent language changes (F-A): see linux_tray_run.py; here the device submenu holds the placeholder, whose language must match too.
+        race = []
+        for k in range(5):
+            with (out / 'gui.control').open('a') as f:
+                f.write(f'tray-language-race r{k} 8\n')
+            row = step(f'tray-language-race-r{k}', 60) or {}
+            final = (row.get('detail') or {}).get('final')
+            want, ph = (ZH, '暂无已配对设备') if final == 'zh-CN' else (ROOT_ORDER, 'No paired devices')
+            lay = host.wait(lambda l: labels(l)[1:] == want and [n['label'] for n in submenu(l, want[0])] == [ph], 20, f'race {k}')
+            race.append({'final': final, 'rootLabels': labels(lay) if lay else None, 'consistent': lay is not None})
+        result['languageRace'] = race
+        check('5c five rounds of 8 concurrent set_tray_language calls always leave root labels, device title and placeholder in one language, the last recorded one',
+              all(r['consistent'] for r in race), race)
+        invoke('set_tray_language', {'language': 'en'})
+        host.wait(lambda l: labels(l)[1:] == ROOT_ORDER, 20, 'en after race')
         r = invoke('set_tray_language', {'language': 'en'})
         l2 = host.wait(lambda l: labels(l)[1:] == ROOT_ORDER, 30, 'en')
         check('5 and back to English', bool(r.get('ok')) and l2 is not None, labels(l2) if l2 else None)

@@ -13,7 +13,7 @@ git -C "$ROOT" rev-parse HEAD > "$out/head.txt"; git -C "$ROOT" status --porcela
 git -C "$ROOT" rev-parse "$BEFORE" > "$out/before-commit.txt"
 GITCOMMON="$(cd "$ROOT" && cd "$(git rev-parse --git-common-dir)" && pwd -P)"
 docker run --rm --platform linux/arm64 -v "$ROOT:/work:ro" --mount "type=bind,src=$GITCOMMON,dst=$GITCOMMON,readonly" -e GIT_OPTIONAL_LOCKS=0 \
-  -v uc-gui-go-linux-cache:/cache -v "$out:/out" -e RUNS="${RUNS:-before after}" -e BEFORE="$(cat "$out/before-commit.txt")" uc-gui-go-linux-build:17c9-wm bash -c '
+  -v uc-gui-go-linux-cache:/cache -v "$out:/out" -e RUNS="${RUNS:-before after}" -e PREFIX="${PREFIX:-}" -e BEFORE="$(cat "$out/before-commit.txt")" uc-gui-go-linux-build:17c9-wm bash -c '
 set -uo pipefail
 export GOPATH=/cache/gopath GOFLAGS=-mod=mod CGO_ENABLED=1
 git config --global --add safe.directory /work
@@ -27,6 +27,13 @@ mkdir -p /src/before && cp -a /src/after/apps /src/after/packages /src/before/
 for f in tray.go tray_devices.go; do git -C /work show $BEFORE:apps/gui-go/$f > /src/before/apps/gui-go/$f; done
 rm -f /src/before/apps/gui-go/tray_publish_*.go
 build before /src/before
+# prefix: the current tree with tray.go of commit $PREFIX (before the language/publish-assignment fixes): the control for the concurrent-language check
+if [ -n "${PREFIX:-}" ]; then
+  mkdir -p /src/prefix && cp -a /src/after/apps /src/after/packages /src/prefix/
+  git -C /work show $PREFIX:apps/gui-go/tray.go > /src/prefix/apps/gui-go/tray.go
+  build prefix /src/prefix
+  cp /cache/out/uniclipd /cache/out/uniclip /out/bin/prefix/; sha256sum /out/bin/prefix/* > /out/bin/prefix/SHA256SUMS.txt
+fi
 for n in before after; do
   cp /cache/out/uniclipd /cache/out/uniclip /out/bin/$n/
   sha256sum /out/bin/$n/* > /out/bin/$n/SHA256SUMS.txt

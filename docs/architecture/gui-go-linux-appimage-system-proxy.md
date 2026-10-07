@@ -211,6 +211,23 @@ stage3 同一个包上的两个矩阵。页面自身的 HTTP 取数与 WebSocket
 
 `stage4/p5c-portable`（退出码 0，53 项观测，38/38 要求）与 `stage4/p5c-nonportable`（退出码 0，59 项观测，38/38 要求）：`up-none` direct、`up-allow` proxied、`up-deny` refused（代理点名并拒绝，目标 0 次）、`up-bypass` direct；`up-reset`（代理接受连接后立即关闭）更新器失败、目标 0 次、代理收到更新器的 1 个连接，证明尝试而不是被禁用；每个场景都证明更新器已启用（端点与非空公钥在环境里，`up-none`/`up-allow` 成功证明密钥有效）。此前的 `stage4/full-*`（7 项 up-* 失败，缺 `feed-inputs` 的夹具错误）、`p5-*`（缺尝试证明）与 `p5b-*`（runner 配置生成缺陷）保留并带 ATTRIBUTION.txt；这些汇总早于完整性判定，最终整体验收用新判定重跑。
 
+### PAC 的自包含：随包的 `glib-pacrunner`（RED 与设计契约，写于实现之前）
+
+RED（保留）：`stage4/pac-nohelper-portable` 与 `stage4/pac-nohelper-nonportable`（退出码都是 3，`passed=true`、`functionalPassed=false`）：宿主没有 `glib-pacrunner`（仅在该场景的容器内把它改名）时 `gs-sys-pac` 的外部 WebView 请求是 `failed`（目标 0 次，没有直连逃逸，回环仍直连，页面 HTTP/WS 正常），GUI 日志：`Could not start proxy autoconfiguration helper: Error calling StartServiceByName for org.gtk.GLib.PACRunner … Proxy autoconfiguration will not work`。同一包在宿主有该服务时（`stage4/pac-*`，退出码 0）PAC 通过，但这只是依赖宿主组件的绿，**不能外推为自包含支持**；不能要求用户安装宿主依赖，也不能记为不适用。这是 R1 的打包/集成缺口。
+
+选择：随包 glib-networking 自己的 `glib-pacrunner`（构建镜像里 `glib-networking-services` 2.80.0，依赖 `libproxy.so.1` 已随包）；由 Go 宿主在 Linux 启动早期管理它。成熟性：这是 GNOME 解析器官方使用的同一个 PAC 助手，PAC 求值仍由 libproxy（duktape）完成，不自写 PAC 引擎，不改解析器。
+
+运行环境与行为契约（官方源码 `glibpacrunner.c`：`g_bus_own_name(G_BUS_TYPE_SESSION, "org.gtk.GLib.PACRunner", NONE)`，丢失名字则退出，没有空闲超时）：
+- 使用现有会话总线（`DBUS_SESSION_BUS_ADDRESS`，或 godbus 的标准回退/自动启动），**不创建、不抢占真实用户的总线，也不改变宿主服务**：先问总线 `ListActivatableNames` 与 `NameHasOwner`：宿主已提供可激活服务时，什么都不启动（由总线激活宿主的那个）；只有没有宿主服务时才启动随包的助手。
+- 没有会话总线（`SessionBus` 失败）：不启动，记录原因；PAC 照旧不可用并明确失败，不会静默直连。
+- 多实例：每个 GUI 实例各自启动一个助手；总线名字用默认标志排队，后到者排队等待，先到者退出后接任；助手随各自的 GUI 退出。
+- 退出与清理：子进程设 `Pdeathsig=SIGTERM`（GUI 崩溃也会结束它），GUI 正常退出时显式终止；不留孤儿，不写任何持久化数据。
+- 竞态：在创建 WebView 之前同步启动，并等到总线上有人拥有该名字（上限 2 秒）；超时只记录，不阻塞启动。
+- 异步/取消/错误边界：助手的 D-Bus 调用由 GNOME 解析器（glib-networking）发出并处理取消与错误；本次不改它们，也不在 Go 里复制。解析器在助手不可用时已经表现为请求失败而不是直连（RED 里已观察到）；助手中途退出的恢复（解析器是否重连）**未验证**，列入后续验收，不在本片之后留成无期限的 OPEN：本片最终矩阵内增加「助手被杀后新请求」观测并按结果处理。
+- 打包：`usr/libexec/glib-pacrunner` 由 `glib-networking-services` 复制，`dpkg -S` 校验归属，NEEDED 闭包检查，清单记录 SHA-256；内容检查加入。
+
+失败方式与验收：(1) 宿主有服务时我们误启动 → 抢占；验收：宿主有助手的运行里随包助手进程数为 0；(2) 无服务无总线 → 不启动且不崩溃；(3) 无宿主助手、有会话总线（便携自动启动与非便携）→ `gs-sys-pac-nohelper` 外部 proxied；(4) 回环仍直连（PAC 把回环也指向代理）；(5) GUI 退出后无 `glib-pacrunner` 残留；(6) 宿主 helper 子进程（17c10/11）不带出助手的环境。
+
 ### 回环边界与 live maps（`stage4/boundary-portable`，退出码 0，仅便携，分项结果）
 
 场景 `gs-sys-allow`、`gs-sys-ignore`、`gs-sys-empty`，28 项观测，15/15 要求。`gs-sys-allow`（GNOME 默认 ignore-hosts）与 `gs-sys-empty`（空 ignore-hosts）里，真实 WebView 访问三个各自独立的真实监听器：`127.0.0.2`（`127.0.0.0/8` 中不是 `127.0.0.1` 的成员）、`localhost`、`::1`，监听器都直接收到请求（各 1 次），代理日志没有点名；同一场景里外部请求仍 proxied，伪装主机 `localhost.webview-probe.test` 在 `gs-sys-empty` 里 proxied；`/proc` maps 证明 WebKitNetworkProcess 已映射 `libgiouniclipboardloopback.so`。边界：这是便携模式的分项，不是完整矩阵，也没有非便携和 Fedora；宿主 helper 没有带出该模块、异步/取消/错误传播、无下游解析器的回退仍未验证。

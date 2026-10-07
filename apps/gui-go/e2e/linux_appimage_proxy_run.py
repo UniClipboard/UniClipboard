@@ -511,6 +511,11 @@ def main():
             made = as_user([str(target_app), '--appimage-portable-home'], run.env, timeout=60)
             run.check('T1 portable home created by the AppImage runtime', made.returncode == 0 and Path(str(target_app) + '.home').is_dir(), {'rc': made.returncode, 'err': made.stderr[-300:]})
         r['scenarios'] = {}
+        if any(n.startswith('up-') for n in chosen):  # the E2E build ships an empty updater key: without the feed inputs the updater is disabled before any HTTP and every up-* result would be an artifact
+            have = (FEED_INPUTS / 'pubkey.b64').is_file() and (FEED_INPUTS / 'good.sig.b64').is_file()
+            run.check('T0 fixture: <out>/feed-inputs/{pubkey.b64,good.sig.b64} exist (needed by the up-* scenarios)', have, str(FEED_INPUTS))
+            if not have:
+                raise StopScenario()
         old_pid = None
         for name in chosen:
             mode, kind = table[name]

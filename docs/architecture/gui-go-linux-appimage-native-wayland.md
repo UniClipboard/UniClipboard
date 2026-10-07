@@ -74,7 +74,7 @@ Wails 优先复查（固定版本 `v3.0.0-beta.28`）：Wails 没有 Layer Shell
 
 ## 验证结果
 
-来源：最终包由干净提交 `dbd9ea238` 构建（`final-2`，清单 `dirty=false`、`immutable=true`；之后只有测试运行器与文档提交）。`final-1`（提交 `0aee9c966`，不含 W10 修复）保留，其结果不转记到 final-2。daemon 仍是官方固定 SHA-256 `ea0f0bcb…`（构建前核对）。
+来源：最终包由干净提交 `dbd9ea238` 构建（`final-2`，清单 `dirty=false`、`immutable=true`；之后只有测试运行器与文档提交）。运行器：final-2 的原生主机场景（除 `x11session-b`）用提交 `dbd9ea238` 的 `native_wayland_probe.py`（SHA-256 `62af4146…`），`x11session-b` 用 `72a276228` 的版本（`94d1c57c…`，只改 `x11-session` 的环境断言）；final-2 容器步骤读取的是当时的工作树（同样是这两个提交之一，改动不涉及 weston/sway 的模式）。`final-1`（提交 `0aee9c966`，不含 W10 修复）保留，其结果不转记到 final-2。daemon 仍是官方固定 SHA-256 `ea0f0bcb…`（构建前核对）。
 
 | 包 | SHA-256 | 来源 |
 | --- | --- | --- |
@@ -127,4 +127,3 @@ UC_FEED_INPUTS=<目录：pubkey.b64 与 good.sig.b64> apps/gui-go/e2e/linux/run_
 # 原生主机（在目标主机上，任务自有目录；最终包作为 --appimage）
 python3 apps/gui-go/e2e/native_wayland_probe.py --appimage <AppImage> --out <新目录> --mode native|x11-env|x11-session|x11-hook [--no-session-type] [--gdk-backend=<值>]
 ```
-

@@ -432,8 +432,8 @@ def main():
             w = subprocess.Popen([AX, 'watch', str(proc.pid), str(args.hold), '500'], stdout=wf, stderr=subprocess.STDOUT)
             w.wait(timeout=args.hold + 60)
         reads = [json.loads(l) for l in watch_file.read_text().splitlines() if l.strip()]
-        ok_reads = [r for r in reads if r.get('ok')]
-        check(f'1 the menu stayed open and readable for the whole {args.hold} s hold (no "no open menu" read)', len(reads) > 0 and len(ok_reads) == len(reads), {'reads': len(reads), 'ok': len(ok_reads)})
+        ok_reads = [r for r in reads if r.get('ok') and r.get('popupWindows')]  # readable AND a pop-up menu window on screen (a stale AX subtree is not 'open')
+        check(f'1 the menu stayed open and readable for the whole {args.hold} s hold (every read: pop-up menu window on screen and readable)', len(reads) > 0 and len(ok_reads) == len(reads), {'reads': len(reads), 'ok': len(ok_reads), 'popupZero': sum(1 for r in reads if not r.get('popupWindows'))})
         publishes = [r['detail'] for r in gui.rows()[n_before:] if r['step'] == 'tray-publish']
         inside = [p for p in publishes if t_open * 1e9 <= p['startNs'] <= (t_open + args.hold + 5) * 1e9]
         check('1 the hook fired: at least 2 natural publishes ran WHILE the menu was open (timed refresh, not a manual call)', len(inside) >= 2, {'publishes': inside})
@@ -543,6 +543,8 @@ def main():
             cli(env, '--json', 'stop', check=False, timeout=80)
         results['wakeReturncode'] = wake.returncode if wake else None
         results['displayAtEnd'] = ax('display', '0')
+        # The overflow expansion was a transient navigation: at the end the system's overflow button must again be what sits at the old position.
+        results['overflowAtEnd'] = ax('elementat', '0', '714', '15')
         results['daemonPidsAfterCleanup'] = {'a': daemon_pids(prof_a), 'b': daemon_pids(prof_b)}
         (out / 'assertions.json').write_text(json.dumps(results, indent=2, ensure_ascii=False) + '\n')
     print(json.dumps({k: v for k, v in results.items() if k != 'checks'}, indent=2, ensure_ascii=False))

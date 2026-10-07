@@ -225,12 +225,17 @@ def sha(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
-def daemon_pids(profile):
-    """Exact pids of daemons whose own environment carries the profile (no command-line pattern matching)."""
+def daemon_pids(home, profile):
+    """Exact pids of the daemon of this profile: the holders of its `.uniclipd.lock` (profile data dir under the task-owned HOME), each checked
+    against the executable path. (The earlier lookup through the process environment found nothing on macOS, 17c15 full1: an empty set proved
+    nothing.) Returns [{'pid', 'exe'}]."""
+    lock = Path(home) / 'Library' / 'Application Support' / f'app.uniclipboard.desktop-{profile}' / '.uniclipd.lock'
+    if not lock.exists():
+        return []
     out = []
-    for line in subprocess.run(['ps', '-axeww', '-o', 'pid=,command='], capture_output=True, text=True).stdout.splitlines():
-        if f'UC_PROFILE={profile}' in line and 'uniclipd' in line.split(' UC_', 1)[0]:
-            out.append(int(line.split()[0]))
+    for pid in subprocess.run(['lsof', '-t', str(lock)], capture_output=True, text=True).stdout.split():
+        exe = subprocess.run(['ps', '-p', pid, '-o', 'comm='], capture_output=True, text=True).stdout.strip()
+        out.append({'pid': int(pid), 'exe': exe})
     return out
 
 
@@ -342,7 +347,8 @@ def main():
         roster = json.loads(cli(env_a, '--json', 'member', 'list').stdout)
         peer_id = ([m for m in roster if not m.get('is_local')] or [{'device_id': 'none'}])[0]['device_id']
         prefs_path, settings_path = f'/member/{peer_id}/sync-preferences', '/settings'
-        results['daemonPidsAtStart'] = daemon_pids(prof_a)
+        results['daemonPidsAtStart'] = daemon_pids(home_a, prof_a)
+        assert results['daemonPidsAtStart'], 'no daemon holds the profile lock after pairing: the daemon identity chain is broken'
         proc = subprocess.Popen([str(binary)], env=gui_env, stdout=(out / 'gui.log').open('w'), stderr=subprocess.STDOUT)
         gui = Gui(proc, evidence, control)
         gui.wait_step('bootstrapped', 120)
@@ -381,10 +387,18 @@ def main():
             results['passed'] = True
             raise Done()
         quiet = gui.ctl('tray-language-quiet q0 5000', 'tray-language-quiet-q0', 90)
-        pin = gui.ctl('invoke en0 set_tray_language {"language":"en","trace":null}', 'invoke-en0')
-        calls = [r['detail'] for r in gui.rows() if r['step'] == 'tray-language-call']
-        check('0 precondition: the frontend startup language calls went quiet, then the test pinned English (last language call is the test\'s)',
-              quiet['ok'] and pin['ok'] and calls[-1:] == ['en'], {'calls': calls})
+        # The frontend's startup calls can come later than any fixed quiet window (17c15 full1: a second call 5.5 s after the first, 0.4 s after
+        # the pin). Pin, wait for a longer quiet, and pin again if the frontend overwrote it; every call is kept as evidence.
+        pins = []
+        for attempt in range(4):
+            pins.append(gui.ctl(f'invoke en{attempt} set_tray_language {{"language":"en","trace":null}}', f'invoke-en{attempt}')['ok'])
+            gui.ctl(f'tray-language-quiet qq{attempt} 8000', f'tray-language-quiet-qq{attempt}', 90)
+            calls = [r['detail'] for r in gui.rows() if r['step'] == 'tray-language-call']
+            if calls[-1:] == ['en']:
+                break
+        results['trayLanguageCalls'] = calls
+        check('0 precondition: after the frontend\'s startup calls (re-pinned if they came late) the last language call is the test\'s English and nothing followed it for 8 s',
+              quiet['ok'] and all(pins) and calls[-1:] == ['en'], {'calls': calls, 'pinAttempts': len(pins)})
         # Wait until the peer row has been published at least once (the periodic refresh), checked in the daemon too.
         prefs0 = wait_daemon(env_a, prefs_path, lambda x: 'sendEnabled' in x)
         settings0 = dget(env_a, settings_path)
@@ -426,7 +440,9 @@ def main():
             results['passed'] = all(c['ok'] for c in results['checks'])
             raise Done()
         sync_label = root[0]['title']
-        check('1 root menu is the expected English menu (first item is the sync toggle)', sync_label in ('Enable Sync', 'Disable Sync') and titles(root)[1:] == EN, titles(root))
+        lang_calls = [r['detail'] for r in gui.rows() if r['step'] == 'tray-language-call']
+        expected_root, sync_labels = (ZH, ('开启同步', '关闭同步')) if lang_calls and lang_calls[-1].startswith('zh') else (EN, ('Enable Sync', 'Disable Sync'))
+        check('1 root menu is the menu of the LAST language call (product contract: last call wins), first item the sync toggle', sync_label in sync_labels and titles(root)[1:] == expected_root, {'lastCall': lang_calls[-1:], 'root': titles(root)})
         watch_file = out / 'ax-1-watch.jsonl'
         with watch_file.open('w') as wf:
             w = subprocess.Popen([AX, 'watch', str(proc.pid), str(args.hold), '500'], stdout=wf, stderr=subprocess.STDOUT)
@@ -440,7 +456,8 @@ def main():
         gaps = [round((b['startNs'] - a['startNs']) / 1e9, 2) for a, b in zip(inside, inside[1:])]
         check('1 each publish returned promptly while the menu was tracked (durMs < 2000: the main-thread wait was served)', inside and max(p['durMs'] for p in inside) < 2000, {'durMs': [p['durMs'] for p in inside], 'gapsSeconds': gaps})
         sample = [titles(r['menu']) for r in ok_reads]
-        check('1 every read during the hold had the full root menu (no empty or half-built menu after the rebuilds)', all(s[1:] == EN for s in sample), {'distinct': sorted({json.dumps(s, ensure_ascii=False) for s in sample})[:3]})
+        calls_after = [r['detail'] for r in gui.rows() if r['step'] == 'tray-language-call']
+        check('1 every read during the hold had the full root menu of the last language call (no empty or half-built menu after the rebuilds; no language call during the hold)', calls_after == lang_calls and all(s[1:] == expected_root for s in sample), {'distinct': sorted({json.dumps(s, ensure_ascii=False) for s in sample})[:3]})
 
         def device_items(menu):
             for it in menu:
@@ -506,7 +523,7 @@ def main():
 
         # 5. quit from the real menu
         if not args.skip_quit:
-            daemons = daemon_pids(prof_a)
+            daemons = daemon_pids(home_a, prof_a)  # taken BEFORE Quit: the exact process that must go away
             time.sleep(1)
             open_menu(gui, proc.pid, args.open_with, 'o5', out)
             q = ax('press', str(proc.pid), 'Quit')
@@ -516,9 +533,10 @@ def main():
                 rc = None
             check('5 pressing Quit in the real menu made the exact GUI pid exit with 0', q.get('ok') and rc == 0, {'press': q, 'rc': rc})
             end = time.time() + 30
-            while time.time() < end and any(_alive(p) for p in daemons):
+            while time.time() < end and any(_alive(d['pid']) for d in daemons):
                 time.sleep(1)
-            check('5 the exact daemon pid(s) of this profile are gone (full exit)', bool(daemons) and not any(_alive(p) for p in daemons), {'daemons': daemons})
+            check('5 the exact daemon pid(s) of this profile (lock-file holders, executable checked) were running before Quit and are gone after it (full exit)',
+                  bool(daemons) and all(d['exe'].endswith('uniclipd') for d in daemons) and not any(_alive(d['pid']) for d in daemons), {'daemons': daemons, 'goneAfterQuit': [not _alive(d['pid']) for d in daemons]})
         results['passed'] = all(c['ok'] for c in results['checks'])
     except Done:
         pass
@@ -545,7 +563,7 @@ def main():
         results['displayAtEnd'] = ax('display', '0')
         # The overflow expansion was a transient navigation: at the end the system's overflow button must again be what sits at the old position.
         results['overflowAtEnd'] = ax('elementat', '0', '714', '15')
-        results['daemonPidsAfterCleanup'] = {'a': daemon_pids(prof_a), 'b': daemon_pids(prof_b)}
+        results['daemonPidsAfterCleanup'] = {'a': daemon_pids(home_a, prof_a), 'b': daemon_pids(home_b, prof_b)}
         (out / 'assertions.json').write_text(json.dumps(results, indent=2, ensure_ascii=False) + '\n')
     print(json.dumps({k: v for k, v in results.items() if k != 'checks'}, indent=2, ensure_ascii=False))
     sys.exit(0 if results['passed'] else 1)

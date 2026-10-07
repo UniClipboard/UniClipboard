@@ -34,6 +34,11 @@ const RETIRED_TOOLING = [
   'tauri-cli',
   'prepare-sidecars',
   'prepare-linux-bundle',
+  'tauri:dev',
+  'tauri:build',
+  'bun tauri',
+  'tauri-action',
+  'alpha-build',
 ]
 
 // Names of the retired host crates, directory and config. Source files (Go, Rust, TypeScript) may

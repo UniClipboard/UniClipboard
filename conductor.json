@@ -1,6 +1,6 @@
 {
   "scripts": {
     "setup": "bun install",
-    "run": "bun tauri dev"
+    "run": "bun wails:dev"
   }
 }

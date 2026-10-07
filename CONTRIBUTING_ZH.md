@@ -137,7 +137,7 @@ Release 构建可以通过 `option_env!` 在编译期把 telemetry 凭证烤进 
 
 | Secret                | 通道                                       | 编译期读取                                          | CI workflow 注入位置                            |
 | --------------------- | ------------------------------------------ | --------------------------------------------------- | ----------------------------------------------- |
-| `SENTRY_DSN`          | 后端 Sentry（错误 / breadcrumb）           | `uc-bootstrap/src/tracing.rs` — `option_env!`        | `.github/workflows/{build,alpha-build}.yml`     |
+| `SENTRY_DSN`          | 后端 Sentry（错误 / breadcrumb）           | `uc-bootstrap/src/tracing.rs` — `option_env!`        | `.github/workflows/build.yml`     |
 | `VITE_SENTRY_DSN`     | 前端 Sentry（必须是独立 Sentry 项目）      | `import.meta.env.VITE_SENTRY_DSN`（Vite 构建期）     | 同上                                            |
 | `POSTHOG_PROJECT_KEY` | 产品 analytics（PostHog Cloud，US region） | `uc-bootstrap/src/analytics.rs` — `option_env!`      | 同上（issue #549 落地时同位添加）               |
 

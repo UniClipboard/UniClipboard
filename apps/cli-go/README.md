@@ -95,7 +95,7 @@ Rust 的 `dev-tools` 特性（release 构建不包含）提供以下隐藏命令
 
 用户端 `uniclip` 的发布构建已改为本 Go 实现；Rust CLI 已重命名为 `uc-dev-cli`，不再进入任何生产构建。
 
-- `build.yml`（桌面端与 macOS / Windows x64 的 CLI 压缩包）：`build-sidecar` 先构建并以单个 tar 上传 `uniclipd`，随后 `build-gui` 与 `build-cli`（Go）并行，二者都只依赖沙车产物。
+- `build.yml`（桌面端与 macOS / Windows x64 的 CLI 压缩包）：`build-sidecar` 先构建并以单个 tar 上传 `uniclipd`，随后 `build-cli`（Go）只依赖沙车产物。
 - `build-cli.yml`（Linux musl 静态 CLI，以及手动全平台）：同样先构建 `uniclipd`，再由 Go 作业打包。
 - `deploy/vps/Dockerfile`：Rust 阶段只构建 `uniclipd`，独立的 Go 阶段构建 `uniclip`。
 - 产物名与压缩包内容（`uniclip` + `uniclipd` 同目录）保持不变，`release.yml`、npm 打包与签名公证流程无需改动。

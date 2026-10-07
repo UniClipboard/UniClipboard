@@ -252,7 +252,7 @@ Follow the [0.19 → 1.0 upgrade guide](https://docs.uniclipboard.app/migration/
 
 ### Build from Source
 
-Prerequisites: the Rust toolchain (pinned by `rust-toolchain.toml`), [Bun](https://bun.sh), and the [Tauri prerequisites](https://tauri.app/start/prerequisites/) for your OS.
+Prerequisites: the Rust toolchain (pinned by `rust-toolchain.toml`), [Bun](https://bun.sh), [Go](https://go.dev) (version in `apps/gui-go/go.mod`), and the [Wails v3 prerequisites](https://v3alpha.wails.io/getting-started/installation/) for your OS. The Go GUI currently runs on macOS only from source.
 
 ```bash
 git clone https://github.com/UniClipboard/UniClipboard.git
@@ -262,13 +262,13 @@ cd UniClipboard
 bun install
 
 # Start development mode (isolated `dev` profile, so it doesn't touch an installed app's data)
-bun tauri:dev
+bun wails:dev
 
-# Build release bundles (builds the uniclipd daemon sidecar first)
-bun run tauri:build
+# Build a local macOS app bundle
+apps/gui-go/build.sh
 ```
 
-Bundles land in `target/release/bundle/`. See [CONTRIBUTING.md](./CONTRIBUTING.md) for multi-peer development, tests, and project conventions.
+The bundle layout is described in `apps/gui-go/README.md`. See [CONTRIBUTING.md](./CONTRIBUTING.md) for multi-peer development, tests, and project conventions.
 
 ## Usage
 
@@ -438,7 +438,7 @@ This project is licensed under the AGPL-3.0 License - see the [LICENSE](./LICENS
 
 ## Acknowledgments
 
-- [Tauri](https://tauri.app) - Cross-platform application framework
+- [Wails](https://wails.io) - Cross-platform application framework
 - [React](https://react.dev) - Frontend UI development framework
 - [Rust](https://www.rust-lang.org) - Safe and efficient backend implementation language
 - [iroh](https://www.iroh.computer) - QUIC-based P2P networking that powers cross-network direct connections and blob transfer

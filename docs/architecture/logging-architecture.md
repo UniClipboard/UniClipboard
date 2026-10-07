@@ -187,16 +187,16 @@ All profiles include common noise filters:
 
 ```bash
 # Use debug_clipboard profile for clipboard debugging
-UC_LOG_PROFILE=debug_clipboard bun run tauri:dev
+UC_LOG_PROFILE=debug_clipboard bun wails:dev
 
 # Use prod profile in development for testing production behavior
-UC_LOG_PROFILE=prod bun run tauri:dev
+UC_LOG_PROFILE=prod bun wails:dev
 
 # Override profile with RUST_LOG (takes precedence)
-RUST_LOG=uc_platform::clipboard=trace bun run tauri:dev
+RUST_LOG=uc_platform::clipboard=trace bun wails:dev
 
 # Enable all debug logs
-RUST_LOG=debug bun run tauri:dev
+RUST_LOG=debug bun wails:dev
 ```
 
 ## Dual Output
@@ -564,7 +564,7 @@ count = 42
 **Terminal (tracing output - console + JSON)**:
 
 ```bash
-bun run tauri:dev
+bun wails:dev
 # tracing::* macros appear in terminal (pretty format)
 # JSON file written to platform log directory simultaneously
 ```
@@ -631,7 +631,7 @@ cargo test --package uc-observability
 
 ### Manual Testing
 
-1. **Development**: Run `bun run tauri:dev` and check:
+1. **Development**: Run `bun wails:dev` and check:
    - Terminal for `tracing::*` console output (pretty)
    - JSON file created in platform log directory
    - Browser DevTools for `log::*` output
@@ -872,7 +872,7 @@ When a message arrives without correlation headers (older peer running a pre-mig
 1. Confirm the DSN is set at build time: `bun run build` should not log a `Sentry DSN missing` warning.
 2. Confirm the user has telemetry enabled in **Settings → General**. The default is off.
 3. Confirm the build environment matches the project: backend events go to the project keyed by `SENTRY_DSN`, frontend events to `VITE_SENTRY_DSN`. They must be different projects.
-4. Backend only: `RUST_LOG=sentry=debug bun run tauri:dev` exposes the SDK's transport diagnostics.
+4. Backend only: `RUST_LOG=sentry=debug bun wails:dev` exposes the SDK's transport diagnostics.
 
 **Symbols are missing in stack traces:**
 

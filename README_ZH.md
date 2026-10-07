@@ -249,7 +249,7 @@ GUI 和 CLI 互不冲突，需要的话两个都装即可。
 
 ### 从源码构建
 
-前置条件：Rust 工具链（版本由 `rust-toolchain.toml` 固定）、[Bun](https://bun.sh)，以及对应系统的 [Tauri 前置依赖](https://tauri.app/start/prerequisites/)。
+前置条件：Rust 工具链（版本由 `rust-toolchain.toml` 固定）、[Bun](https://bun.sh)，以及对应系统的 [Go](https://go.dev)（版本见 `apps/gui-go/go.mod`）以及对应系统的 [Wails v3 前置依赖](https://v3alpha.wails.io/getting-started/installation/)；从源码运行的 Go GUI 目前仅支持 macOS。
 
 ```bash
 git clone https://github.com/UniClipboard/UniClipboard.git
@@ -259,10 +259,10 @@ cd UniClipboard
 bun install
 
 # 开发模式启动（使用独立的 dev profile，不会影响已安装应用的数据）
-bun tauri:dev
+bun wails:dev
 
 # 构建发布安装包（会先构建 uniclipd 守护进程 sidecar）
-bun run tauri:build
+apps/gui-go/build.sh
 ```
 
 安装包输出在 `target/release/bundle/`。多实例联调、测试与项目约定见 [CONTRIBUTING_ZH.md](./CONTRIBUTING_ZH.md)。
@@ -434,7 +434,7 @@ uniclip start / stop                        # 守护进程生命周期
 
 ## 鸣谢
 
-- [Tauri](https://tauri.app) - 提供跨平台应用框架
+- [Wails](https://wails.io) - 提供跨平台应用框架
 - [React](https://react.dev) - 前端界面开发框架
 - [Rust](https://www.rust-lang.org) - 安全高效的后端实现语言
 - [iroh](https://www.iroh.computer) - 基于 QUIC 的 P2P 网络栈，支撑跨网络直连与块传输

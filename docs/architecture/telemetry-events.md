@@ -972,9 +972,8 @@ v1 **不挂** 进程退出 flush 钩子。理由：
 
 `POSTHOG_PROJECT_KEY` 与 `SENTRY_DSN` / `VITE_SENTRY_DSN` 同属 release
 build 时间注入的 secret 列表。CI 注入位置（计划）：
-`.github/workflows/build.yml` 与 `.github/workflows/alpha-build.yml`
-的 `tauri-action` + `bun run tauri build` 两段 `env:` 块同位添加，
-镜像 `SENTRY_DSN` 已有写法。空 secret 等价"未设置"，自动走降级路径。
+Go 宿主的发布流水线落地后（见 #1895 至 #1899），在其构建步骤的 `env:`
+块同位添加，镜像 `SENTRY_DSN` 已有写法。空 secret 等价"未设置"，自动走降级路径。
 
 ## 11. 验收检查项
 

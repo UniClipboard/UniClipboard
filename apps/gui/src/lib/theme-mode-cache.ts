@@ -4,7 +4,7 @@ export type ThemeMode = 'light' | 'dark'
 
 /**
  * The last resolved light/dark mode, kept so the first paint can match it before settings or
- * desktop-theme IPC are available. `apps/gui/index.html` reads the same key inline.
+ * desktop-theme IPC are available. `apps/gui-go/frontend/index.html` reads the same key inline.
  */
 export function readCachedThemeMode(): ThemeMode {
   try {

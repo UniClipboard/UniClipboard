@@ -3,7 +3,7 @@
 //! SocketAddr 立刻可在新进程上 rebind 成功。
 //!
 //! 方案 C (2026-05-11) 后所有"需要重启"设置走进程级 `app.restart()`
-//! (Tauri spawn 新进程 + exit 当前进程)。`uc-tauri/src/commands/restart.rs`
+//! (Tauri spawn 新进程 + exit 当前进程)。`the retired uc-tauri restart command`
 //! 在 `app.restart()` 之前主动跑 graceful daemon shutdown,目的是让旧
 //! daemon listener drop → 端口释放 → 新进程在同地址 bind 不撞
 //! `WSAEADDRINUSE` (Windows os error 10048)。本测试钉死这条契约: 同进程

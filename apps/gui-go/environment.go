@@ -20,7 +20,7 @@ var profilePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`)
 //     used by the end-to-end tests, so nothing outside that sandbox is touched
 //     (see validateIsolation for what the sandbox is on each platform);
 //   - development profile: the developer's own HOME with an explicit UC_PROFILE,
-//     like `bun tauri:dev`; the profile keeps data, keychain entries and the
+//     like `bun wails:dev`; the profile keeps data, keychain entries and the
 //     daemon separate from the production app.
 //
 // Both require UNICLIPBOARD_ENV=development; production data is never reachable. The `release` build tag is the one

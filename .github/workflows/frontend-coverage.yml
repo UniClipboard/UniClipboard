@@ -9,12 +9,16 @@ on:
     branches: [main]
     paths:
       - 'apps/gui/**'
+      - 'apps/gui-go/frontend/**'
+      - 'apps/gui-go/vite.config.ts'
       - 'package.json'
       - 'bun.lock'
       - '.github/workflows/frontend-coverage.yml'
   pull_request:
     paths:
       - 'apps/gui/**'
+      - 'apps/gui-go/frontend/**'
+      - 'apps/gui-go/vite.config.ts'
       - 'package.json'
       - 'bun.lock'
       - '.github/workflows/frontend-coverage.yml'

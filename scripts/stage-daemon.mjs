@@ -9,7 +9,7 @@
 // (apps/gui-go/e2e/package_*.py, apps/gui-go/build.sh) and the CLI archive job consume the
 // staged files and place them next to the executable.
 //
-// It is invoked by CI (build.yml / alpha-build.yml), passing the same `--target <triple>` the
+// It is invoked by CI (build.yml), passing the same `--target <triple>` the
 // packaging job uses (matrix.args), and locally for a native build.
 //
 // Usage:

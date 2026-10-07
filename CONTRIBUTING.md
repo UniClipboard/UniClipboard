@@ -131,7 +131,7 @@ sink and the app boots normally.
 
 | Secret                  | Channel                                     | Compile-time read                                  | CI workflow source                              |
 | ----------------------- | ------------------------------------------- | -------------------------------------------------- | ----------------------------------------------- |
-| `SENTRY_DSN`            | Backend Sentry (errors / breadcrumbs)       | `uc-bootstrap/src/tracing.rs` — `option_env!`      | `.github/workflows/{build,alpha-build}.yml`     |
+| `SENTRY_DSN`            | Backend Sentry (errors / breadcrumbs)       | `uc-bootstrap/src/tracing.rs` — `option_env!`      | `.github/workflows/build.yml`     |
 | `VITE_SENTRY_DSN`       | Frontend Sentry (must be a separate project) | `import.meta.env.VITE_SENTRY_DSN` (Vite at build)  | same workflows                                  |
 | `POSTHOG_PROJECT_KEY`   | Product analytics (PostHog Cloud, US)       | `uc-bootstrap/src/analytics.rs` — `option_env!`    | same workflows (added as part of issue #549)    |
 

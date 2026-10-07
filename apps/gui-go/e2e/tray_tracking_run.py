@@ -84,6 +84,82 @@ def shot_near_status_item(pid, dest, below=420):
         tmp.rmdir()
 
 
+OUR_BUNDLE = 'app.uniclipboard.desktop.e2e'
+
+
+def is_ours(hit):
+    """The element at a point is this app's status item: owned by this pid, or (the menu-bar agent hosts items on this macOS) named for it."""
+    return bool(hit.get('mine')) or OUR_BUNDLE in (hit.get('identifier', '') + hit.get('description', '') + hit.get('title', ''))
+
+
+def status_item_center(pid):
+    frame = ((ax('describe', str(pid)).get('items') or [{}])[0]).get('frame') or {}
+    return frame, frame.get('x', 0) + frame.get('w', 0) / 2, frame.get('y', 0) + frame.get('h', 0) / 2
+
+
+def verified_right_click(pid, out, label, watcher, sampler):
+    """Right click this app's own status item, never at an unverified point.
+
+    1. The point is this pid's AX frame centre. The element the system reports there must be this app's item.
+    2. If it is the system's "show hidden menu bar items" button (the item overflowed), that exact element (identity and frame recorded) is
+       clicked once with an ordinary left click (authorized, transient navigation), the item is located again and verified, and only then is it
+       right-clicked. Collapsing is done by collapse_overflow().
+    Any other owner at the point: TargetNotVerified, nothing clicked.
+    """
+    log = {'steps': []}
+    frame, cx, cy = status_item_center(pid)
+    hit = ax('elementat', str(pid), str(cx), str(cy))
+    log['steps'].append({'what': 'before', 'axFrame': frame, 'point': [cx, cy], 'hit': hit})
+    expanded = False
+    if not is_ours(hit):
+        if hit.get('role') == 'AXButton' and '隐藏菜单栏项目' in hit.get('description', '') and hit.get('frame'):
+            f = hit['frame']
+            bx, by = f['x'] + f['w'] / 2, f['y'] + f['h'] / 2
+            again = ax('elementat', str(pid), str(bx), str(by))
+            log['steps'].append({'what': 'overflow button re-verified at its own centre', 'point': [bx, by], 'hit': again})
+            if again.get('description') == hit.get('description') and again.get('ownerPid') == hit.get('ownerPid'):
+                log['steps'].append({'what': 'left click on the overflow button', 'result': ax('clickat', str(pid), str(bx), str(by), 'left')})
+                expanded = True
+                time.sleep(1.5)
+                frame, cx, cy = status_item_center(pid)
+                hit = ax('elementat', str(pid), str(cx), str(cy))
+                log['steps'].append({'what': 'after expand', 'axFrame': frame, 'point': [cx, cy], 'hit': hit})
+    (out / f'ax-open-{label}-target.json').write_text(json.dumps(log, indent=1, ensure_ascii=False))
+    if not is_ours(hit):
+        if expanded:
+            collapse_overflow(pid, out, label)
+        watcher.terminate()
+        sampler.terminate()
+        raise TargetNotVerified(f'after the transient overflow expansion={expanded} the element at ({cx},{cy}) is still not this app\'s item: {hit}; no right click was sent')
+    result = ax('clickat', str(pid), str(cx), str(cy), 'right')
+    result['expandedOverflow'] = expanded
+    return result
+
+
+def collapse_overflow(pid, out, label):
+    """Put the menu bar back: if the overflow is still expanded, click the system's button once more (verified like the first time)."""
+    frame, cx, cy = status_item_center(pid)
+    hit = ax('elementat', str(pid), str(cx), str(cy))
+    record = {'before': {'point': [cx, cy], 'hit': hit}}
+    if hit.get('role') == 'AXButton' and '隐藏菜单栏项目' in hit.get('description', ''):
+        record['note'] = 'overflow button already shows at our position: the menu bar is collapsed'
+    (out / f'ax-open-{label}-collapse.json').write_text(json.dumps(record, indent=1, ensure_ascii=False))
+
+
+def dismiss_menu(pid):
+    """Close the open menu: AXCancel first (it reports success but did not close a tracked status menu in min17), then, only if the menu is
+    still readable, one Escape; returns what happened and whether the menu is gone."""
+    log = {'axCancel': ax('cancel', str(pid))}
+    time.sleep(1)
+    if ax('read', str(pid)).get('ok'):
+        log['stillOpenAfterAxCancel'] = True
+        log['escape'] = ax('escape', '0')
+        time.sleep(1)
+    gone = not ax('read', str(pid)).get('ok')
+    log['gone'] = gone
+    return gone, log
+
+
 def open_menu(gui, pid, how, label, out):
     """Open the status item's menu through AppKit's own tracking and wait until the menu is readable through AX.
 
@@ -99,18 +175,7 @@ def open_menu(gui, pid, how, label, out):
         if False:
             pass
         elif how == 'rightclick':
-            # No click at an unverified target: the accessibility element the system reports at the point must belong to this pid (the window server's frontmost window cannot tell: on this macOS the menu bar owns it).
-            frame = ((ax('describe', str(pid)).get('items') or [{}])[0]).get('frame') or {}
-            cx, cy = frame.get('x', 0) + frame.get('w', 0) / 2, frame.get('y', 0) + frame.get('h', 0) / 2
-            hit = ax('elementat', str(pid), str(cx), str(cy))
-            wins = ax('windows', str(pid))
-            (out / f'ax-open-{label}-target.json').write_text(json.dumps({'axFrame': frame, 'point': [cx, cy], 'hit': hit, 'windows': wins}, indent=1))
-            ours = hit.get('mine') or ('app.uniclipboard.desktop.e2e' in (hit.get('identifier', '') + hit.get('description', '') + hit.get('title', '')))
-            if not ours:
-                watcher.terminate()
-                sampler.terminate()
-                raise TargetNotVerified(f'the accessibility element at ({cx},{cy}) is not this pid\'s: {hit}; no click was sent')
-            opened = ax('rightclick', str(pid))
+            opened = verified_right_click(pid, out, label, watcher, sampler)
         else:
             opened = gui.ctl(f'tray-open-menu {label}', f'tray-open-menu-{label}')
         # Native evidence that does not go through AX: the screen next to the status item right after the open (a tracked menu is drawn there).
@@ -324,10 +389,8 @@ def main():
             raise RuntimeError('the menu could not be read after open; later steps need it')
         root = first['menu']
         if args.minimal:
-            cancelled = ax('cancel', str(proc.pid))
-            time.sleep(1)
-            after = ax('read', str(proc.pid))
-            check('M the open menu was cancelled through AX and is gone', cancelled.get('ok') and not after.get('ok'), {'cancel': cancelled, 'after': after.get('error')})
+            gone, dismissal = dismiss_menu(proc.pid)
+            check('M the open menu was dismissed (AXCancel, then Escape if it stayed) and is gone', gone, dismissal)
             check('M the root menu read while open is the expected English menu', titles(root)[1:] == EN, titles(root))
             (out / 'ax-minimal.json').write_text(json.dumps({'first': first}, ensure_ascii=False, indent=1))
             results['passed'] = all(c['ok'] for c in results['checks'])

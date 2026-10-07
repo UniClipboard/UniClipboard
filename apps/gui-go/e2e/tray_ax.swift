@@ -88,6 +88,11 @@ case "elementat":
     AXUIElementGetPid(e, &owner)
     print(json(["ok": true, "ownerPid": owner, "mine": owner == pid, "role": str(e, kAXRoleAttribute), "subrole": str(e, kAXSubroleAttribute),
                 "title": str(e, kAXTitleAttribute), "description": str(e, kAXDescriptionAttribute), "identifier": str(e, "AXIdentifier"), "help": str(e, kAXHelpAttribute),
+                "frame": { () -> [String: Double] in
+                    guard let pv = attr(e, kAXPositionAttribute), let sv = attr(e, kAXSizeAttribute) else { return [:] }
+                    var pp = CGPoint.zero, ss = CGSize.zero
+                    AXValueGetValue(pv as! AXValue, .cgPoint, &pp); AXValueGetValue(sv as! AXValue, .cgSize, &ss)
+                    return ["x": Double(pp.x), "y": Double(pp.y), "w": Double(ss.width), "h": Double(ss.height)] }(),
                 "attributes": { var a: CFArray?; _ = AXUIElementCopyAttributeNames(e, &a); return (a as? [String]) ?? [] }(), "ns": now()]))
 case "agent":
     // Read-only walk of a menu-bar agent process (pid argument = the agent's pid): counts, and only the entries that name this test app or the
@@ -193,6 +198,25 @@ case "describe":
         return o
     }
     print(json(["ok": true, "ns": now(), "items": statusItems(pid).map { d($0, 2) }]))
+case "escape":
+    // One Escape key press (the native way to dismiss a tracked menu). The caller reads the menu immediately before: a menu in tracking owns the keyboard.
+    for down in [true, false] { CGEvent(keyboardEventSource: nil, virtualKey: 53, keyDown: down)?.post(tap: .cghidEventTap); Thread.sleep(forTimeInterval: 0.05) }
+    print(json(["ok": true, "key": "escape", "ns": now()]))
+case "clickat":
+    // clickat <pid> <x> <y> left|right: an ordinary synthesized click at a point the CALLER has verified (the runner checks the element under the
+    // point first). Moves onto the point, holds the button, releases, and puts the pointer back.
+    guard argv.count >= 6, let px = Double(argv[3]), let py = Double(argv[4]) else { fail("clickat <pid> <x> <y> left|right") }
+    let right = argv[5] == "right"
+    let target = CGPoint(x: px, y: py)
+    let saved = CGEvent(source: nil)?.location ?? target
+    CGEvent(mouseEventSource: nil, mouseType: .mouseMoved, mouseCursorPosition: target, mouseButton: .left)?.post(tap: .cghidEventTap)
+    Thread.sleep(forTimeInterval: 0.25)
+    CGEvent(mouseEventSource: nil, mouseType: right ? .rightMouseDown : .leftMouseDown, mouseCursorPosition: target, mouseButton: right ? .right : .left)?.post(tap: .cghidEventTap)
+    Thread.sleep(forTimeInterval: 0.15)
+    CGEvent(mouseEventSource: nil, mouseType: right ? .rightMouseUp : .leftMouseUp, mouseCursorPosition: target, mouseButton: right ? .right : .left)?.post(tap: .cghidEventTap)
+    Thread.sleep(forTimeInterval: 0.3)
+    CGWarpMouseCursorPosition(saved)
+    print(json(["ok": true, "target": ["x": px, "y": py], "button": argv[5], "ns": now()]))
 case "rightclick":
     // A real right mouse click at the centre of the status item: Wails' pre-click monitor routes it into native menu tracking (the left
     // button runs the app's own click handler instead). It moves the real pointer for a moment and puts it back.

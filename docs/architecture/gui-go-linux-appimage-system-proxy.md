@@ -87,3 +87,28 @@ PAC（`autoconfig_url`）、代理认证、系统设置动态变更、SOCKS：�
 - **缺口已证实**：AppImage 内的 WebView 对环境变量和 GNOME 设置都不使用代理（direct，目标看到了请求），而宿主的 libproxy 命令行能读到同一份 dconf 设置。代理被拒绝或不可达时请求直接逃逸到目标，这正是 R1 要求避免的静默直连。
 - WebKitNetworkProcess（WebView 自身）持有 4 个到 daemon 回环端口的 TCP 连接；Go 宿主（`uniclipboard` 进程，`daemonclient` 的 `Proxy=nil`）另有 3 个。两者按真实进程名分别记录，不混写。
 - **对表 F 的更正**：表 F 写「Engine 没有调用 `proxy_from_env`/`proxy_url`，所以没有代理」是源码检索结论，**被运行证据推翻**。设置了环境代理后，daemon 经代理发出 `CONNECT dns.iroh.link:443`、`CONNECT <region>.relay.n0.iroh.link.:443`、`CONNECT 1.1.1.1:443`、`CONNECT 8.8.8.8:443` 与 `GET http://use1-1.relay.n0.iroh.link./generate_204`；没有代理变量，或只配置 gsettings 时没有这些请求。已核实的源码事实：`iroh 1.3.0` 的网络探测与地址解析使用 `reqwest`（`net_report/reportgen.rs`、`address_lookup/pkarr.rs`），reqwest 0.12 默认读取环境代理；iroh 端点自己的 `proxy_url` 只在显式设置时才有。中继 `CONNECT` 具体由哪个组件发出 **没有做源码归因**，保持 OPEN。Engine 的出站只认环境变量，不读取 GNOME 设置（与 reqwest 的 Linux 分支一致）。这些结论只是观测到的行为，Engine 在本仓只读，不外推到其他版本。
+
+## 阶段结果（固定的 stage3 包，进行中）
+
+产品修复链（缺口 → 修复 → 复测）：
+
+1. **stage1**（包 `970a9830…`）：AppImage 随附 GNOME 代理解析器（`libgiognomeproxy`）、libproxy 解析器（`libgiolibproxy`，环境变量、PAC）、dconf GSettings 后端及其依赖闭包（约 8 MB：libcurl-gnutls、libssh、libldap/liblber、libsasl2、librtmp、libduktape、libcrypto，均经 `dpkg -S` 溯源并检查 NEEDED 闭包）。GNOME 手动代理的 WebView 路径变为 proxied / refused / failed，没有静默直连。
+2. **stage2**（包 `202485c5…`）：环境变量路径开通，但 libproxy 没有回环绕过，daemon 的回环连接被送到代理（红色，证据保留）。
+3. **stage3**（包 `8c9881b0…`，产品提交 `e649e7057`）：`apps/gui-go/proxy_env_linux.go` 在进程初始化时把 `localhost,127.0.0.1,::1` 合并进 `NO_PROXY`/`no_proxy`（与 Tauri 的 `process_environment.rs` 同一约定，保留用户条目，`*` 优先），早于 WebKitGTK 创建和 daemon 启动。
+
+stage3 同一个包上的两个矩阵（每个场景都含页面自身的 HTTP 取数与 WebSocket 帧）：
+
+| 矩阵 | 运行目录 | 退出码 | 观测 | 要求 |
+| --- | --- | --- | --- | --- |
+| 便携 | `stage3/proxy-portable` | 0 | 85 项，`passed=true` | 24/24，`functionalPassed=true` |
+| 非便携（真实 HOME、会话总线、Secret Service） | `stage3/proxy-nonportable-v2` | 0 | 86 项，`passed=true` | 24/24，`functionalPassed=true`，G7 无违规且无 unverified |
+
+路由：无配置 direct；放行 proxied；拒绝 refused；不可达 failed（目标从未看到请求）；守护进程回环不经代理。便携模式下真实用户 dconf 不可见是 F7，**仍是 OPEN 的产品决策**，运行器只把它记为观测，不静默更改语义。
+
+### 页面探测协议修正
+
+首次页面探测运行 `smoke-pageprobe` 失败（保留，见其 `ATTRIBUTION.txt`）：原版本等待 `clipboard` 主题的事件，而该主题在没有复制动作时本就静默，不是连接故障。修正（提交 `16155f180`）：订阅快照主题 `status`、`peers`、`paired-devices` 并带 nonce，以收到的真实快照帧（`status:status.snapshot`）为准；`smoke-pageprobe-v2` 通过。会话令牌不写入共享报告，运行后从 `*.control` 中脱敏。
+
+### 仍未完成（OPEN，逐项增量补做）
+
+P5 真实 Go 更新器、P6 受控 Engine rendezvous（仅拒绝型 CONNECT，不转发）、P7 代理中断恢复、P8 大小写与 `NO_PROXY` 优先级、GNOME `ignore-hosts` 遗漏回环时本地 daemon 的行为、PAC / 认证 / 动态设置、Fedora、同一最终干净包上的 17c7/17c5/17c10/17c11/内容检查回归。

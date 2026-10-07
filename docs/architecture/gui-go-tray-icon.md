@@ -30,7 +30,8 @@
 
 - “内容被拦截”（设计里“需要处理”的第三种触发）没有 daemon 事实，未实现。
 - 发送失败只认投递视图的 `failed`；接收端文件传输失败的事件不带方向，不算“发送失败”。
-- 宿主新增了一条只读的 daemon WebSocket 连接，订阅 `file-transfer`、`clipboard`、`peers`、`device-trust`、`content-lock`、`paired-devices`，断线后每 3 秒重连。每条已认证的控制 WebSocket 在 daemon 里持有一个控制租约（`crates/uc-webserver/src/api/control_lease.rs`）。主窗口关闭只是隐藏、WebView 的连接随窗口一直存在，轻量模式则退出整个 GUI 进程（托盘一起消失），所以托盘连接新增租约的情形只有：GUI 在运行但还没有创建过窗口（静默启动）。目前没有生产路径消费租约数量：`apps/daemon/src/daemon/oneshot.rs` 的自终止与受控重启排空只对 `Oneshot` 常驻模式生效，而代码注释写明在 L8d 之前生产环境没有 `Oneshot` daemon。若以后 GUI 拉起的 daemon 变成 `Oneshot`，这条常驻连接要随受控重启的排空一起让出租约；这是留给 L8d 的约束，不是现在的行为变化。
+- 宿主新增了一条只读的 daemon WebSocket 连接（`iconFeed.follow`），订阅 `file-transfer`、`clipboard`、`peers`、`device-trust`、`content-lock`、`paired-devices`，断线后每 3 秒重连。没有可复用的现有事件连接：Go 宿主进程里除它之外没有任何 WebSocket 消费者（`DialWS` 只有这一处调用），WebView 的事件连接在前端 JS 里，静默启动时甚至不存在，也无法跨进程共享。daemon 没有不持租约的事件通道，每条已认证的控制 WebSocket 在 `crates/uc-webserver/src/api/ws.rs` 里获得一个控制租约；加一个不持租约的通道需要改 daemon 协议，不在本任务范围。
+  对现有契约的实际影响（逐条读源码核对，不是“未见消费者”）：租约的消费者只有 `apps/daemon/src/daemon/oneshot.rs` 的 Oneshot 自终止监督器（`host.rs` 只在 `DaemonResidency::Oneshot` 时启动它）、受控重启的排空，以及 WebSocket 接入门禁 `ensure_not_quiescing`（只在受控重启排空期间拒绝新连接）。受控重启 `POST /lifecycle/restart` 在非 Oneshot daemon 上一律返回 `NotPromotable`，所以 `quiescing` 永远不会被置位。GUI 拉起或复用的 daemon 都是常驻的：`apps/gui-go/main.go` 的 `bootstrap` 冷启动时用 `SpawnDetachedDaemon("gui")` 起常驻 daemon，遇到已存在的 Oneshot daemon 则直接 `log.Fatal` 拒绝复用。因此 GUI 运行期间这条连接不会让任何 daemon 失去自终止或排空的机会；Oneshot 只由 `apps/cli-go` 的 `uniclip` 命令拉起，并通过 `/lifecycle/restart` 升级为常驻，那条路径上没有 GUI。轻量模式与退出：GUI 进程退出时连接随进程关闭，常驻 daemon 不受影响（轻量模式保留 daemon，完整退出则停止它）。这个结论依赖“GUI 不附着 Oneshot daemon”这条现有启动约束；若以后放开它，托盘连接必须在 `/health` 报告 `oneshot` 时不建立（只靠 10 秒的 HTTP 快照），或在排空开始时让出租约，那属于 L8d 的工作。
 - 刚启动、连接尚未建立的几秒里，已配对设备都未连接，图标会短暂显示“离线”；这是 daemon 当时报告的事实，没有额外抑制。
 - Linux 的图标颜色按桌面配色方案选择（`org.gnome.desktop.interface color-scheme`，进程内只读一次），不能知道状态栏自己的底色，配色方案之后变化需要重启才生效。
 - Windows 不使用 Wails 的“亮/暗两份图标”（`SetIcon` + `SetDarkModeIcon`）：读源码可知，运行期调用时只要两个模式共用一个句柄，后设置的图标就会同时替换两个模式，两份图标无法保持分开。这里按当前任务栏主题（`SystemUsesLightTheme`）画一份，并在 Wails 的 `SystemThemeChanged` 应用事件上重画。设计写的是“4 帧 ICO 序列”，这里用的是同一份时间线的插值帧（约每 40 ms 一帧），不使用 ICO。以上只做了源码核对与交叉编译，没有 Windows 运行证据。
@@ -59,7 +60,7 @@
 已通过（宿主层，同一真实 daemon + 独立 profile）：
 
 - 渲染与设计对齐：9 个状态与独立栅格化的设计画板逐像素比对，30% 容差下差异不超过 21 / 1936 像素；模板图眼睛与角标外圈 alpha 为 0。
-- 初始状态为“同步完成”；人工强制的 9 个状态（标注为 MANUAL）逐一保持。
+- 初始状态为“同步完成”；人工强制的 9 个状态（标注为 MANUAL）逐一保持；这些是 e2e 人工夹具，不代表对应状态在产品里会被 daemon 事实触发（只有“已暂停”“仅局域网”经 daemon 驱动链验证）。
 - 4 种动画的角度时间线与关键帧一致（角度误差不超过 5°，帧间隔不超过 100 ms，结束回到静止）；动画期间菜单发布次数为 0；结束后无 timer；idle CPU 安静。
 - 由 daemon 驱动的状态链（不点击）：从外部改 `sync.syncEnabled` 后图标变为“已暂停”、改 `allowRelayFallback` 后变为“仅局域网”，恢复后回到“同步完成”。
 
@@ -69,7 +70,7 @@
 
 与设计的差异：
 
-- 状态之间的优先级（需要处理 > 已锁定 > 已暂停 > 离线 > 暂不记录 > 传输中 > 仅局域网 > 同步完成）是产品规则，设计未给出。
+- 状态之间的优先级（需要处理 > 已锁定 > 已暂停 > 离线 > 暂不记录 > 传输中 > 仅局域网 > 同步完成）是我自定的规则，设计没有给出，也没有经过产品批准，待产品确认；改动它只需改 `iconFacts.base`。
 - “需要处理”直到 daemon 的待决定项消失才清除，而不是“到用户查看为止”；发送失败则在用户打开窗口后清除。
 - 动画帧是同一时间线的插值帧（约每 40 ms），不是 Windows 的 4 帧 ICO。
 - “需要处理”动画：关键帧条只画出两个峰值，CSS 演示为 280 ms 周期；这里沿用 280 ms 周期并在 700 ms 收尾。

@@ -96,22 +96,19 @@ def open_menu(gui, pid, how, label, out):
         # showMenu block) is caught in the act; the native stack is evidence that does not depend on the AX tree.
         sampler = subprocess.Popen(['sample', str(pid), '3', '5', '-file', str(out / f'ax-open-{label}-sample.txt')], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         time.sleep(1)
-        if how == 'peekaboo':
-            # Locate THIS app's status item through Peekaboo's own menu-bar listing (owner bundle id of the e2e build), cross-check it with the AX
-            # frame of this pid, and only then send a right click there (menubar click is left-click only, which runs the app's own click handler).
-            # Only our own entry is recorded; the listing also holds other applications' items.
-            listing = subprocess.run(['peekaboo', 'list', 'menubar', '--json', '--include-raw-debug'], capture_output=True, text=True, timeout=60)
-            try:
-                entries = json.loads(listing.stdout)['data']['menu_bar_items']
-            except (ValueError, KeyError):
-                entries = []
-            mine = [e for e in entries if e.get('bundleIdentifier') == 'app.uniclipboard.desktop.e2e']
-            frame = ((ax('describe', str(pid)).get('items') or [{}])[0]).get('frame') or {}
-            cx, cy = int(frame.get('x', 0) + frame.get('w', 0) / 2), int(frame.get('y', 0) + frame.get('h', 0) / 2)
-            p = subprocess.run(['peekaboo', 'click', '--coords', f'{cx},{cy}', '--global-coords', '--right', '--input-strategy', 'synthOnly', '--no-auto-focus'], capture_output=True, text=True, timeout=60)
-            opened = {'ok': p.returncode == 0, 'tool': 'peekaboo click --right --input-strategy synthOnly --no-auto-focus', 'target': {'x': cx, 'y': cy}, 'peekabooItem': mine,
-                      'axFrame': frame, 'stdout': p.stdout[-300:], 'stderr': p.stderr[-300:]}
+        if False:
+            pass
         elif how == 'rightclick':
+            # No click at an unverified target: this pid's status window must be on screen and be the frontmost window at the point.
+            frame = ((ax('describe', str(pid)).get('items') or [{}])[0]).get('frame') or {}
+            cx, cy = frame.get('x', 0) + frame.get('w', 0) / 2, frame.get('y', 0) + frame.get('h', 0) / 2
+            hit = ax('hittest', str(pid), str(cx), str(cy))
+            wins = ax('windows', str(pid))
+            (out / f'ax-open-{label}-target.json').write_text(json.dumps({'axFrame': frame, 'point': [cx, cy], 'hit': hit, 'windows': wins}, indent=1))
+            if not (hit.get('top') or {}).get('mine'):
+                watcher.terminate()
+                sampler.terminate()
+                raise TargetNotVerified(f'the frontmost window at ({cx},{cy}) is not this pid\'s: {hit.get("top")}; no click was sent')
             opened = ax('rightclick', str(pid))
         else:
             opened = gui.ctl(f'tray-open-menu {label}', f'tray-open-menu-{label}')
@@ -132,6 +129,10 @@ def open_menu(gui, pid, how, label, out):
     ok_seen = [r['ns'] for r in seen if r.get('ok')]
     opened = dict(opened, screenshot=shot_info, openedSeenByWatch={'reads': len(seen), 'okReads': len(ok_seen), 'firstOkNs': ok_seen[0] if ok_seen else None, 'lastOkNs': ok_seen[-1] if ok_seen else None})
     return opened, first
+
+
+class TargetNotVerified(Exception):
+    """The click point does not belong to this pid's status window; nothing was clicked."""
 
 
 class Done(Exception):
@@ -186,7 +187,7 @@ def main():
     parser.add_argument('--hold', type=int, default=32, help='seconds the first menu stays open (>= 3 natural 10 s refreshes)')
     parser.add_argument('--skip-quit', action='store_true')
     parser.add_argument('--minimal', action='store_true', help='open, read, cancel only')
-    parser.add_argument('--open-with', choices=('control', 'rightclick', 'peekaboo'), default='rightclick', help='rightclick (default, the only valid path): a real right click on this pid\'s status item (moves the pointer briefly); control: SystemTray.OpenMenu, a NO-OP here (SystemTray.menu is nil, 17c15 min10), kept only to reproduce that')
+    parser.add_argument('--open-with', choices=('control', 'rightclick'), default='rightclick', help='rightclick (default, the only valid path): a real right click on this pid\'s status item (moves the pointer briefly); control: SystemTray.OpenMenu, a NO-OP here (SystemTray.menu is nil, 17c15 min10), kept only to reproduce that')
     args = parser.parse_args()
     out = args.out.resolve()
     out.mkdir(parents=True, exist_ok=True)

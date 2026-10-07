@@ -87,6 +87,9 @@ Menu.Update -> macosMenu.update -> InvokeSync(main thread):
 - **min10-control 结果（保留）：H1 被否定，`OpenMenu` 控制路径无效**：打开前后（只读反射）`impl`、`nsStatusItem`、`nsMenu` 均 **非空**（H1 不成立）；但 Wails 的 `SystemTray.menu`（Go 层字段）为 **空**，`clickHandler` 非空，`rightClickHandler` 为空。固定 Wails 源码：`SystemTray.OpenMenu()` 开头 `if s.menu == nil { return }`，所以 **`OpenMenu()` 在这里是空操作**，此前用它的 min1–min4、min7、min9、min10 的“打开”从未真正请求过菜单，**这条打开路径不能用于验收**。原因（源码）：`SystemTray.SetMenu` 在托盘已运行（`impl != nil`）时只调用 `impl.setMenu`，不设置 `SystemTray.menu`；因此 `applySmartDefaults` 的 `hasMenu` 为假，右键处理器保持为空，**生产右键因此走 pre-click 监视器返回 1、用缓存的 `nsMenu` 进入原生跟踪**（`systrayPreClickCallback`：右键且 `rightClickHandler == nil`）。即上文“真实右键调用 `ShowMenu`”的推断被源码与运行态读数 **更正**：生产右键不经 `ShowMenu`/`OpenMenu`。**唯一有效的打开方式是真实右键事件**，且此前对旧 `OpenMenu` 路径的“两条路径覆盖差别”表述作废。min5/min6/min8 的真实右键仍未读到菜单，尚无结论（见下一轮）。
 - **注**：`OpenMenu` 的空操作是 Wails 在“托盘运行后再 `SetMenu`”场景下的行为；不影响用户右键，也不是本项目的产品缺陷；本项目没有调用 `OpenMenu`。
 
+- **目标验证缺口（min5、min6、min8、min11、min13，保留）**：这几轮的真实右键/Peekaboo 点击都是对 AX 报告的状态项中心坐标的 **盲点击**——点击前没有验证该点的最上层窗口属于本进程。因此它们“没读到菜单”**不能** 归因于产品或菜单锁，只是“目标未验证”的无效对照；同时这些点击可能落在了别的应用的控件上（min13 的 Peekaboo 输出为 `App: Google Chrome`、`Mode: foreground`、`Coordinate space: global`，工具的 App 字段表示前台应用而非命中，不能据此推断应用收到了事件；它的 `peekabooItem: []` 是我自己的调用写错——`list menubar` 不支持 `--include-raw-debug`，列表请求失败——不是“我们的项不存在”的证据）。`Click successful` 只表示工具发出了事件，不表示应用回调收到。
+- **一个需要核实的现象**：min7 的有效截图（已删除）在 AX 报告的状态项位置附近 **没有看到本应用的托盘图标**（图标为黑色猫剪影，`assets/tray-icon@2x.png`），这台机器是刘海屏且菜单栏很满，macOS 会隐藏放不下的状态项；这是候选解释，**未证实**。新增原生核对：窗口服务器对本 pid 的窗口列表（`windows`：层级、边界、是否在屏幕上、alpha）与点击点的命中测试（`hittest`：最上层窗口是否属于本 pid）。**新规则：命中测试不是本 pid 时不点击，立即失败并只读诊断**（`TargetNotVerified`）；Peekaboo 点击路径已从运行器中移除。
+
 ## 验收契约
 
 必须保留 17c14 的行为：设备子菜单随 10 秒刷新与 `devices://sync-changed` 更新、条目动作、同步开关标签、托盘生命周期。不得：隐藏日志、删除刷新、删除托盘功能、降低锁保证、用 compile/vet 或脚本直接调用代替原生证据。

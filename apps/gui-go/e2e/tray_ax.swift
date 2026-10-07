@@ -77,6 +77,28 @@ case "items":
     let items = statusItems(pid)
     print(json(["ok": !items.isEmpty, "count": items.count, "ns": now(),
                 "items": items.map { ["role": str($0, kAXRoleAttribute), "title": str($0, kAXTitleAttribute), "help": str($0, kAXHelpAttribute)] }]))
+case "windows":
+    // The window server's view of this pid's windows (status item window, menu windows): layer, bounds, on screen, alpha.
+    let all = (CGWindowListCopyWindowInfo([.optionAll], kCGNullWindowID) as? [[String: Any]]) ?? []
+    let mine = all.filter { ($0[kCGWindowOwnerPID as String] as? Int32) == pid }.map { w -> [String: Any] in
+        ["layer": w[kCGWindowLayer as String] ?? -1, "onscreen": w[kCGWindowIsOnscreen as String] ?? false, "alpha": w[kCGWindowAlpha as String] ?? -1,
+         "bounds": w[kCGWindowBounds as String] ?? [:], "name": w[kCGWindowName as String] ?? ""]
+    }
+    print(json(["ok": true, "ns": now(), "windows": mine]))
+case "hittest":
+    // The frontmost on-screen window at a point (front to back as the window server orders them): its owner pid and layer. Foreign owners are
+    // reported by pid and layer only.
+    guard argv.count >= 5, let px = Double(argv[3]), let py = Double(argv[4]) else { fail("hittest <pid> <x> <y>") }
+    let list = (CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]]) ?? []
+    var top: [String: Any] = ["ownerPid": -1]
+    for w in list {
+        guard let b = w[kCGWindowBounds as String] as? [String: Any], let bx = b["X"] as? Double, let by = b["Y"] as? Double, let bw = b["Width"] as? Double, let bh = b["Height"] as? Double else { continue }
+        if px >= bx && px < bx + bw && py >= by && py < by + bh && ((w[kCGWindowAlpha as String] as? Double) ?? 1) > 0 {
+            top = ["ownerPid": (w[kCGWindowOwnerPID as String] as? Int32) ?? -1, "layer": w[kCGWindowLayer as String] ?? -1, "mine": ((w[kCGWindowOwnerPID as String] as? Int32) ?? -1) == pid]
+            break
+        }
+    }
+    print(json(["ok": true, "ns": now(), "top": top]))
 case "display":
     let main = CGMainDisplayID()
     print(json(["ok": true, "asleep": CGDisplayIsAsleep(main) != 0, "active": CGDisplayIsActive(main) != 0, "online": CGDisplayIsOnline(main) != 0, "ns": now()]))

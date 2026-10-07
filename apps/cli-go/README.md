@@ -104,6 +104,7 @@ CLI 不更改该系统设置。手动删除服务：先 `service stop`，再删�
 | 场景 | Rust | Go | 处理 |
 | --- | --- | --- | --- |
 | daemon 生命周期命令 | `start` 默认后台 | 新增 `run` 和 `service`；`start` 保留旧行为但向标准错误输出弃用提示 | 有意变更，根 help 和 `start` help 也随之更新 |
+| 文件发送仅返回后台继续处理的目标 | 忽略 `totalPending`，误报失败 | 显示 pending 数量并返回成功；JSON 在非零时包含 `totalPending`，明确后台继续处理，不声称传输完成 | 沿用 resend 的已接受后台继续处理语义；最终结果由 daemon 的 delivery 记录决定 |
 | 交互式口令或文本输入时连续按键 | 只有第一个按键在 raw 模式下读取，其余按键由终端回显，口令会以明文出现在屏幕上 | 全程 raw 模式，只显示掩码 | Rust 的行为是口令泄露缺陷，Go 不复制 |
 | 非终端环境下的口令提示 | 忙等，直到外部超时 | 立即报错 `password input failed: IO error: not a terminal` | 不复制挂起 |
 | `/health` 返回非法 JSON（只有端口被非 uniclipd 进程占用时才会出现） | 显示 serde_json 的解析错误细节 | 显示 Go `encoding/json` 的解析错误细节 | 退出码与前缀一致，细节文本不同 |

@@ -39,6 +39,7 @@ def labels(items):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--out', type=Path, required=True)
+    parser.add_argument('--visible', action='store_true', help='UC_GUI_GO_E2E_VISIBLE=1 (17c15 visibility control)')
     args = parser.parse_args()
     out = args.out.resolve()
     out.mkdir(parents=True, exist_ok=True)
@@ -52,7 +53,8 @@ def main():
     env_b = isolated_env(home_b, prof_b, {'PATH': path})
     gui_env = isolated_env(home_a, prof_a, {'PATH': path, 'UC_GPUI_QUICK_PANEL': '0', 'UC_GUI_GO_ISOLATED': '1',
                                            'UC_GUI_GO_EVIDENCE': str(evidence), 'UC_GUI_GO_E2E_PHASE': 'tray-devices',
-                                           'UC_GUI_GO_EXIT_MODE': 'full', 'UC_GUI_GO_E2E_NOTIFY_LOG': str(notify_log)})
+                                           'UC_GUI_GO_EXIT_MODE': 'full', 'UC_GUI_GO_E2E_NOTIFY_LOG': str(notify_log), 'UC_GUI_GO_E2E_NATIVE_STATE': '1',
+                                           **({'UC_GUI_GO_E2E_VISIBLE': '1'} if args.visible else {})})
     results = {'profileA': prof_a, 'profileB': prof_b, 'passed': False}
     proc = None
     try:

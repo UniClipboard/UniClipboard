@@ -198,6 +198,9 @@ func (s *EvidenceService) ServiceStartup(context.Context, application.ServiceOpt
 	if path := os.Getenv("UC_GUI_GO_E2E_CONTROL_FILE"); path != "" {
 		go s.watchControlFile(path)
 	}
+	if os.Getenv("UC_GUI_GO_E2E_NATIVE_STATE") == "1" {
+		go s.recordNativeWindowState()
+	}
 	seconds, err := strconv.Atoi(os.Getenv("UC_GUI_GO_E2E_OBSERVE"))
 	if err != nil || seconds <= 0 {
 		return nil
@@ -328,4 +331,17 @@ func e2eInvoke(name string) func() {
 	}
 	_ = evidenceWriter.write(Step{Window: "tray", Step: "invoke-enter", OK: true, Detail: name})
 	return func() { _ = evidenceWriter.write(Step{Window: "tray", Step: "invoke-return", OK: true, Detail: name}) }
+}
+
+// recordNativeWindowState writes the main window's native state every 2 s (existence, visible, minimised, focused, as Wails reports them), so
+// a stalled WebView driver can be placed against what the window system said at the time. It reads state only.
+func (s *EvidenceService) recordNativeWindowState() {
+	for ; ; time.Sleep(2 * time.Second) {
+		w, ok := s.host.app.Window.GetByName("main")
+		detail := map[string]any{"mainExists": ok, "ns": time.Now().UnixNano()}
+		if ok {
+			detail["visible"], detail["minimised"], detail["focused"] = w.IsVisible(), w.IsMinimised(), w.IsFocused()
+		}
+		_ = s.write(Step{Window: "main", Step: "native-window-state", OK: true, Detail: detail})
+	}
 }

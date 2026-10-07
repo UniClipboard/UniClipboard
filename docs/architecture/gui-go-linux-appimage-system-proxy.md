@@ -122,6 +122,10 @@ stage3 同一个包上的两个矩阵（每个场景都含页面自身的 HTTP �
 
 路由（便携与非便携一致）：仅大写变量与小写变量一样被 WebView 采用（proxied）；小写与大写冲突时跟随小写（proxied，没有走不可达端口，只作观测，优先级由解析器库决定）；`NO_PROXY` 命中探测主机时 WebView 直连（direct）而 curl 对照仍经代理，`NO_PROXY` 只含无关主机时仍经代理；用户 `NO_PROXY` 项被保留，回环名加在末尾，daemon 回环不经代理，页面 HTTP 与 WebSocket 帧都通过。
 
+### P7：代理中断与恢复（`stage3/p7-portable`，退出码 0）
+
+场景 `env-recover`，同一个 GUI 进程：代理在线时 WebView 经代理（proxied）；停止 tinyproxy 后请求失败（`TypeError: Load failed`），代理日志无该主机、目标没有收到请求，不直连；在同一端口重新启动 tinyproxy 后，同一进程再次经代理（proxied，目标收到 1 次）；中断后页面再次取 daemon 的 HTTP 与 WebSocket 帧（`status:status.snapshot`）仍然成功。13 项观测，6/6 要求。只跑了便携模式；非便携模式在最终同包矩阵里复跑。
+
 ### 仍未完成（OPEN，逐项增量补做）
 
-P5 真实 Go 更新器、P6 受控 Engine rendezvous（仅拒绝型 CONNECT，不转发）、P7 代理中断恢复、GNOME `ignore-hosts` 遗漏回环时本地 daemon 的行为、PAC / 认证 / 动态设置、Fedora、同一最终干净包上的 17c7/17c5/17c10/17c11/内容检查回归。
+P5 真实 Go 更新器、P6 受控 Engine rendezvous（仅拒绝型 CONNECT，不转发）、GNOME `ignore-hosts` 遗漏回环时本地 daemon 的行为、PAC / 认证 / 动态设置、Fedora、同一最终干净包上的 17c7/17c5/17c10/17c11/内容检查回归。

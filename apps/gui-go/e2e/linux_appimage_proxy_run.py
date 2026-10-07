@@ -238,6 +238,10 @@ def curl_as_user(env, url):
     return {'rc': r.returncode, 'code': r.stdout.strip(), 'err': r.stderr.strip()[-200:]}
 
 
+GIO_LOOKUP = ('import ctypes,sys;g=ctypes.CDLL("libgio-2.0.so.0");g.g_proxy_resolver_get_default.restype=ctypes.c_void_p;g.g_proxy_resolver_lookup.restype=ctypes.POINTER(ctypes.c_char_p);'
+              'r=g.g_proxy_resolver_get_default();a=g.g_proxy_resolver_lookup(ctypes.c_void_p(r),sys.argv[1].encode(),None,None);print(a[0].decode() if a else "error")')
+
+
 def write_dconf_proxy(port, where, target_app, nonportable, ignore_hosts=None, pac_url=None, auth=None, https_host=True):
     """GNOME's proxy settings (manual proxy, default ignore-hosts), compiled with the distribution's own `dconf compile` (no bus needed).
       user   the user's database ~/.config/dconf/user under the REAL home (what GNOME Settings writes). In portable mode the AppImage's HOME is redirected to
@@ -278,7 +282,8 @@ def write_dconf_proxy(port, where, target_app, nonportable, ignore_hosts=None, p
         cenv = dict(os.environ, HOME=str(home), XDG_CURRENT_DESKTOP='GNOME')
         p = as_user(['proxy', f'https://{CURL_HOST}/'], cenv, timeout=30)
         g = as_user(['gsettings', 'get', 'org.gnome.system.proxy', 'mode'], cenv, timeout=20)
-        return {'home': str(home), 'proxyCli': p.stdout.strip(), 'proxyCliRc': p.returncode, 'proxyCliErr': p.stderr.strip()[-200:], 'gsettingsMode': g.stdout.strip(), 'gsettingsErr': g.stderr.strip()[-200:]}
+        gio = as_user(['python3', '-c', GIO_LOOKUP, f'https://{CURL_HOST}/'], cenv, timeout=30)  # what GLib's own default resolver answers (the one WebKit's network process asks); libproxy's CLI is a different resolver
+        return {'home': str(home), 'gioLookup': gio.stdout.strip(), 'gioLookupErr': gio.stderr.strip()[-200:], 'proxyCli': p.stdout.strip(), 'proxyCliRc': p.returncode, 'proxyCliErr': p.stderr.strip()[-200:], 'gsettingsMode': g.stdout.strip(), 'gsettingsErr': g.stderr.strip()[-200:]}
     return {'where': where, 'dbHome': str(db_home), 'guiHome': str(gui_home), 'expected': f'http://127.0.0.1:{port}', 'compileRc': c.returncode, 'compileErr': c.stderr[-200:],
             'hostViewWithGuiHome': host_view(gui_home), 'hostViewWithRealHome': host_view(real)}
 
@@ -337,7 +342,7 @@ AUTH_PROXY = {n: (AUTH_USER, AUTH_PASS) for n in ('env-auth-ok', 'env-auth-bad',
 # glib-networking 2.80 (proxy/gnome/gproxyresolvergnome.c) puts the credentials only into the HTTP proxy URI; an https proxy host that is set explicitly gets a URI WITHOUT them, the https URIs reuse the http one only when the https host is empty
 HTTPS_UNSET = {'gs-sys-auth', 'gs-sys-auth-bad'}
 AUTH_BAD = {'env-auth-bad', 'up-auth-bad', 'gs-sys-auth-bad'}
-REQUIRED_VARIANTS = {'env-auth-ok': 'proxied', 'env-auth-bad': 'authfail', 'up-auth': 'proxied', 'up-auth-bad': 'authfail', 'gs-sys-auth': 'proxied', 'gs-sys-auth-bad': 'authfail', 'up-reset': 'failed', 'up-none': 'direct', 'up-allow': 'proxied', 'up-deny': 'refused', 'up-dead': 'failed', 'up-bypass': 'proxied', 'rv-none': 'direct', 'rv-deny': 'refused', 'rv-bypass': 'refused', 'env-recover': 'proxied', 'env-bypass': 'direct', 'env-bypass-other': 'proxied'}  # the others are recorded observations (precedence is the resolver library's)
+REQUIRED_VARIANTS = {'env-auth-ok': 'proxied', 'env-auth-bad': 'authfail', 'up-auth': 'proxied', 'up-auth-bad': 'authfail', 'gs-sys-auth': 'proxied', 'gs-sys-auth-bad': 'authfail', 'gs-sys-auth-https': 'authfail', 'up-reset': 'failed', 'up-none': 'direct', 'up-allow': 'proxied', 'up-deny': 'refused', 'up-dead': 'failed', 'up-bypass': 'proxied', 'rv-none': 'direct', 'rv-deny': 'refused', 'rv-bypass': 'refused', 'env-recover': 'proxied', 'env-bypass': 'direct', 'env-bypass-other': 'proxied'}  # the others are recorded observations (precedence is the resolver library's)
 
 
 def variant_env(kind, port):
@@ -686,6 +691,8 @@ def main():
                     pacs.append(hung)
                     penv['UC_E2E_PAC_BUS_ADDRESS'] = f'unix:path={hung.path}'
                 cli_out = sc['dconf']['hostViewWithRealHome']['proxyCli'] if where == 'user' else sc['dconf']['hostViewWithGuiHome']['proxyCli']
+                if name in HTTPS_UNSET:  # libproxy's CLI answers direct:// when the https host is empty; the resolver WebKit uses is GLib's, so the control follows it
+                    cli_out = sc['dconf']['hostViewWithRealHome' if where == 'user' else 'hostViewWithGuiHome']['gioLookup']
                 curl_env = {'https_proxy': cli_out, 'http_proxy': cli_out} if cli_out.startswith('http') else {}  # curl cannot read gsettings: it gets the host libproxy CLI's answer
             sc['proxyPort'], sc['guiEnvironment'] = port, penv
             t_launch = time.monotonic()

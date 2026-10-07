@@ -124,7 +124,7 @@ stage3 同一个包上的两个矩阵（每个场景都含页面自身的 HTTP �
 
 ### P7：代理中断与恢复（`stage3/p7-portable`，退出码 0）
 
-场景 `env-recover`，同一个 GUI 进程：代理在线时 WebView 经代理（proxied）；停止 tinyproxy 后请求失败（`TypeError: Load failed`），代理日志无该主机、目标没有收到请求，不直连；在同一端口重新启动 tinyproxy 后，同一进程再次经代理（proxied，目标收到 1 次）；中断后页面再次取 daemon 的 HTTP 与 WebSocket 帧（`status:status.snapshot`）仍然成功。13 项观测，6/6 要求。只跑了便携模式；非便携模式在最终同包矩阵里复跑。
+场景 `env-recover`，同一个 GUI 进程：代理在线时 WebView 经代理（proxied）；停止 tinyproxy 后请求失败（`TypeError: Load failed`），代理日志无该主机、目标没有收到请求，不直连；在同一端口重新启动 tinyproxy 后，同一进程再次经代理（proxied，目标收到 1 次）；中断后页面再次取 daemon 的 HTTP 与 WebSocket 帧（`status:status.snapshot`）仍然成功。13 项观测，6/6 要求。只跑了便携模式，且只用环境变量代理：**不证明** GNOME 设置在运行中变化（动态配置）、非便携模式或其他平台下的中断恢复；这些保留在本切片待完成，非便携在最终同包矩阵复跑，GNOME 动态场景单独做。运行证据：`stage3/p7-portable/appimage-assertions.json`、`run.log`、`done-p7-portable.rc`（0）。
 
 ### 仍未完成（OPEN，逐项增量补做）
 

@@ -142,7 +142,7 @@ def free_port():
 class Proxy:
     """tinyproxy (the distribution's package). mode 'allow' forwards; 'deny' refuses everything (default-deny filter, 403) and still logs the request."""
 
-    def __init__(self, tag, mode):
+    def __init__(self, tag, mode, auth=None):
         self.tag, self.mode, self.port = tag, mode, free_port()
         # tinyproxy drops to `nobody`: its directory must be traversable by it (the sandbox is the GUI user's 0700 directory: the first run logged nothing, dev1)
         self.dir = Path(tempfile.mkdtemp(prefix=f'uc-proxy-{tag}-', dir='/var/tmp'))
@@ -153,6 +153,8 @@ class Proxy:
         # Group: Debian-family nogroup, Fedora nobody
         conf = ['User nobody', 'Group ' + ('nogroup' if subprocess.run(['getent', 'group', 'nogroup'], capture_output=True).returncode == 0 else 'nobody'), f'Port {self.port}', 'Listen 127.0.0.1', f'LogFile "{self.log}"', 'LogLevel Info', 'Timeout 600', 'MaxClients 100',
                 'ConnectPort 443', 'ConnectPort 80', 'DisableViaHeader No']
+        if auth:  # HTTP Basic proxy authentication (407 without or with wrong credentials)
+            conf += [f'BasicAuth {auth[0]} {auth[1]}']
         if mode == 'deny':
             empty = self.dir / 'filter'
             empty.write_text('')
@@ -236,7 +238,7 @@ def curl_as_user(env, url):
     return {'rc': r.returncode, 'code': r.stdout.strip(), 'err': r.stderr.strip()[-200:]}
 
 
-def write_dconf_proxy(port, where, target_app, nonportable, ignore_hosts=None, pac_url=None):
+def write_dconf_proxy(port, where, target_app, nonportable, ignore_hosts=None, pac_url=None, auth=None):
     """GNOME's proxy settings (manual proxy, default ignore-hosts), compiled with the distribution's own `dconf compile` (no bus needed).
       user   the user's database ~/.config/dconf/user under the REAL home (what GNOME Settings writes). In portable mode the AppImage's HOME is redirected to
              <AppImage>.home and cannot see it (F7): that is an observation there; in --nonportable it is the real user scenario.
@@ -251,6 +253,8 @@ def write_dconf_proxy(port, where, target_app, nonportable, ignore_hosts=None, p
     kdir = Path(tempfile.mkdtemp(prefix='dconf-keyfile-'))
     ignore = '' if ignore_hosts is None else ('ignore-hosts=' + ('[' + ','.join(f"'{h}'" for h in ignore_hosts) + ']' if ignore_hosts else '@as []') + '\n')  # None: the schema default (localhost, 127.0.0.0/8, ::1)
     body = f"[system/proxy]\nmode='manual'\n{ignore}\n[system/proxy/http]\nhost='127.0.0.1'\nport={port}\n\n[system/proxy/https]\nhost='127.0.0.1'\nport={port}\n"
+    if auth:  # GNOME stores the credentials next to the HTTP proxy; glib-networking puts them into the proxy URI (gproxyresolvergnome.c)
+        body = body.replace("[system/proxy/http]\n", f"[system/proxy/http]\nuse-authentication=true\nauthentication-user='{auth[0]}'\nauthentication-password='{auth[1]}'\n")
     if pac_url:  # automatic configuration: GNOME's resolver hands the script to its PAC helper (org.gtk.GLib.PACRunner on the session bus)
         body = f"[system/proxy]\nmode='auto'\nautoconfig-url='{pac_url}'\n"
     if where == 'sys':
@@ -313,6 +317,10 @@ P8_VARIANTS = {  # name -> (proxy mode, kind); the environment is built by varia
     'env-conflict': ('allow', 'env-conflict'),      # lower case -> allow proxy, upper case -> a dead port: which one does the resolver follow?
     'env-bypass': ('allow', 'env-bypass'),          # NO_PROXY names the WebView probe host: it must go direct
     'env-recover': ('allow', 'env-recover'),        # P7: proxied, then the proxy goes away (must FAIL, never go direct), then comes back on the same port (proxied again), same GUI process
+    'env-auth-ok': ('allow', 'env-auth-ok'),        # credentials inside the proxy URL: proxied
+    'env-auth-bad': ('allow', 'env-auth-bad'),      # wrong credentials: rejected by the proxy (407), never direct
+    'up-auth': ('allow', 'up-auth'),                # the Go updater with credentials in the proxy URL
+    'up-auth-bad': ('allow', 'up-auth-bad'),        # the Go updater with wrong credentials: the check fails, never direct
     'rv-none': (None, 'rv-none'),                   # P6: Engine rendezvous redeem, no proxy variables: the proxy never sees it (control)
     'rv-deny': ('deny', 'rv-deny'),                 # P6: deny-only proxy: the redeem's rendezvous CONNECT must reach the proxy and be refused (never forwarded)
     'rv-bypass': ('deny', 'rv-bypass'),             # P6: NO_PROXY names the rendezvous host: the proxy must not see that CONNECT
@@ -324,12 +332,20 @@ P8_VARIANTS = {  # name -> (proxy mode, kind); the environment is built by varia
     'up-bypass': ('allow', 'up-bypass'),            # NO_PROXY names the feed host: direct although a proxy is set
     'env-bypass-other': ('allow', 'env-bypass-other'),  # NO_PROXY names an unrelated host: the WebView is still proxied
 }
-REQUIRED_VARIANTS = {'up-reset': 'failed', 'up-none': 'direct', 'up-allow': 'proxied', 'up-deny': 'refused', 'up-dead': 'failed', 'up-bypass': 'proxied', 'rv-none': 'direct', 'rv-deny': 'refused', 'rv-bypass': 'refused', 'env-recover': 'proxied', 'env-bypass': 'direct', 'env-bypass-other': 'proxied'}  # the others are recorded observations (precedence is the resolver library's)
+AUTH_USER, AUTH_PASS, AUTH_WRONG = 'uc', 's3cret', 'wrong'  # synthetic fixture credentials
+AUTH_PROXY = {n: (AUTH_USER, AUTH_PASS) for n in ('env-auth-ok', 'env-auth-bad', 'up-auth', 'up-auth-bad', 'gs-sys-auth', 'gs-sys-auth-bad')}
+AUTH_BAD = {'env-auth-bad', 'up-auth-bad', 'gs-sys-auth-bad'}
+REQUIRED_VARIANTS = {'env-auth-ok': 'proxied', 'env-auth-bad': 'authfail', 'up-auth': 'proxied', 'up-auth-bad': 'authfail', 'gs-sys-auth': 'proxied', 'gs-sys-auth-bad': 'authfail', 'up-reset': 'failed', 'up-none': 'direct', 'up-allow': 'proxied', 'up-deny': 'refused', 'up-dead': 'failed', 'up-bypass': 'proxied', 'rv-none': 'direct', 'rv-deny': 'refused', 'rv-bypass': 'refused', 'env-recover': 'proxied', 'env-bypass': 'direct', 'env-bypass-other': 'proxied'}  # the others are recorded observations (precedence is the resolver library's)
 
 
 def variant_env(kind, port):
     url = f'http://127.0.0.1:{port}'
     dead = f'http://127.0.0.1:{free_port()}'
+    if kind in ('env-auth-ok', 'env-auth-bad', 'up-auth', 'up-auth-bad'):
+        pw = AUTH_WRONG if kind.endswith('bad') else AUTH_PASS
+        url = f'http://{AUTH_USER}:{pw}@127.0.0.1:{port}'
+        env = {'http_proxy': url, 'https_proxy': url, 'all_proxy': url, 'HTTP_PROXY': url, 'HTTPS_PROXY': url, 'ALL_PROXY': url}
+        return dict(env, UC_UPDATE_ENDPOINT=f'https://{UPDATE_HOST}{UPDATE_PATH}', UC_UPDATE_PUBKEY=(FEED_INPUTS / 'pubkey.b64').read_text().strip()) if kind.startswith('up-') else env
     if kind.startswith('up-'):
         pub = (FEED_INPUTS / 'pubkey.b64').read_text().strip() if (FEED_INPUTS / 'pubkey.b64').exists() else ''
         feed = {'UC_UPDATE_ENDPOINT': f'https://{UPDATE_HOST}{UPDATE_PATH}', 'UC_UPDATE_PUBKEY': pub}
@@ -357,6 +373,8 @@ def variant_env(kind, port):
 
 GNOME_VARIANTS = {  # GNOME `ignore-hosts` (system dconf database), allow proxy
     'gs-sys-ignore': ('allow', 'gs-sys'),   # ignore-hosts = default + the WebView probe host: the WebView goes direct, curl's host stays proxied
+    'gs-sys-auth': ('allow', 'gs-sys'),     # GNOME use-authentication + authentication-user/-password
+    'gs-sys-auth-bad': ('allow', 'gs-sys'), # wrong stored password: rejected, never direct
     'gs-sys-pac': ('allow', 'gs-sys'),      # mode 'auto' + autoconfig-url: a PAC that proxies every URI; external proxied, loopback still direct (guard)
     'gs-sys-pac-nohelper': ('allow', 'gs-sys'),  # the same PAC on a host WITHOUT glib-pacrunner (renamed for this scenario only, inside the container): does the package bring its own PAC runtime?
     'gs-sys-empty': ('allow', 'gs-sys'),    # ignore-hosts = @as []: GNOME then has NO loopback bypass; the local daemon must still work (judged like every other scenario)
@@ -588,7 +606,7 @@ def main():
                 continue
             proxy, penv, curl_env = None, {}, {}
             if mode in ('allow', 'deny'):
-                proxy = Proxy(name, mode)
+                proxy = Proxy(name, mode, AUTH_PROXY.get(name))
                 proxies.append(proxy)
                 port = proxy.port
             elif mode == 'reset':
@@ -609,7 +627,8 @@ def main():
                     HOST_PACRUNNER.rename(HOST_PACRUNNER.with_name('glib-pacrunner.off'))  # restored in the finally block
                 if pac:
                     pacs.append(pac)
-                sc['dconf'] = write_dconf_proxy(port, where, target_app, args.nonportable, GNOME_IGNORE.get(name), f'http://127.0.0.1:{pac.port}/proxy.pac' if pac else None)
+                sc['dconf'] = write_dconf_proxy(port, where, target_app, args.nonportable, GNOME_IGNORE.get(name), f'http://127.0.0.1:{pac.port}/proxy.pac' if pac else None,
+                                              (AUTH_USER, AUTH_WRONG if name in AUTH_BAD else AUTH_PASS) if name in AUTH_PROXY else None)
                 penv = {'XDG_CURRENT_DESKTOP': 'GNOME'}  # a GNOME session; NO proxy variable
                 cli_out = sc['dconf']['hostViewWithRealHome']['proxyCli'] if where == 'user' else sc['dconf']['hostViewWithGuiHome']['proxyCli']
                 curl_env = {'https_proxy': cli_out, 'http_proxy': cli_out} if cli_out.startswith('http') else {}  # curl cannot read gsettings: it gets the host libproxy CLI's answer
@@ -715,7 +734,7 @@ def main():
                 sc['proxyLoopbackTargets'] = loop_reqs
                 sc['proxyEngineTargets'] = sorted({t for m, t in reqs if not LOOPBACK.search(t) and not any(h in t for h in (WV_HOST, CURL_HOST))})
                 run.check(f'[{name}] control: curl (same configuration, its own hostname) was named by the proxy: the proxy/log chain is valid',
-                          sc['curlControl']['route'] in ('proxied', 'refused'), sc['curlControl'])
+                          sc['curlControl']['route'] in ('proxied', 'refused') or (name in AUTH_BAD and sc['curlControl']['route'] == 'proxied-no-delivery'), sc['curlControl'])
                 run.check(f'[{name}] control: curl targeting the loopback report port with the same configuration IS in the proxy log (detection power for the loopback claim)',
                           any(f':{reports.port}/loopctl' in t for t in loop_reqs), {'curl': loop, 'targets': loop_reqs})
                 leaked = [t for t in loop_reqs if f':{daemon_port}' in t or (f':{reports.port}' in t and '/loopctl' not in t)]
@@ -732,7 +751,10 @@ def main():
             sc['requirementApplies'] = applies
             if applies:
                 expected = REQUIRED_VARIANTS.get(name) or {'allow': 'proxied', 'deny': 'refused', 'dead': 'failed'}[mode]
-                req(f'[{name}] REQUIRE the real WebView request is {expected} (route observed: {sc["webviewRoute"]})', sc['webviewRoute'] == expected, sc['webview'])
+                route_ok = sc['webviewRoute'] == expected or (expected == 'authfail' and sc['webviewRoute'] in ('proxied-no-delivery', 'refused'))  # authfail: the proxy named it and the target never saw it
+                req(f'[{name}] REQUIRE the real WebView request is {expected} (route observed: {sc["webviewRoute"]})', route_ok, sc['webview'])
+                if expected == 'authfail':
+                    req(f'[{name}] REQUIRE no silent direct escape with wrong credentials: the target saw no request from the WebView', sc['webview']['targetSaw'] == 0, sc['webview'])
                 if name in P8_VARIANTS:
                     # /proc/<gui>/environ is the environment the GUI was EXEC'd with: the Go init() changes the runtime's copy, which only a child (the daemon) inherits
                     seen = sc['daemonProxyEnvironment']
@@ -822,8 +844,9 @@ def main():
                     sc['updaterEnabled'] = {'endpoint': genv.get('UC_UPDATE_ENDPOINT'), 'publicKeyPresent': bool(genv.get('UC_UPDATE_PUBKEY')), 'publicKeyLength': len(genv.get('UC_UPDATE_PUBKEY', ''))}
                     req(f'[{name}] REQUIRE the updater is enabled in this launch (endpoint and a non-empty trusted key are in its environment; its validity is proven by the up-none/up-allow positive controls of the same package, whose check parses the key before any HTTP)',
                         bool(genv.get('UC_UPDATE_ENDPOINT')) and bool(genv.get('UC_UPDATE_PUBKEY')), sc['updaterEnabled'])
-                    want = {'up-none': 'direct', 'up-allow': 'proxied', 'up-deny': 'refused', 'up-dead': 'failed', 'up-reset': 'failed', 'up-bypass': 'direct'}[name]  # the UPDATER's route (the WebView's is REQUIRED_VARIANTS)
-                    req(f'[{name}] REQUIRE the Go updater request is {want} (route observed: {cls["route"]}); its own hostname, its own proxy-log window', cls['route'] == want, sc['p5'])
+                    want = {'up-none': 'direct', 'up-allow': 'proxied', 'up-deny': 'refused', 'up-dead': 'failed', 'up-reset': 'failed', 'up-bypass': 'direct', 'up-auth': 'proxied', 'up-auth-bad': 'authfail'}[name]  # the UPDATER's route (the WebView's is REQUIRED_VARIANTS)
+                    req(f'[{name}] REQUIRE the Go updater request is {want} (route observed: {cls["route"]}); its own hostname, its own proxy-log window',
+                        cls['route'] == want or (want == 'authfail' and cls['route'] in ('proxied-no-delivery', 'refused')), sc['p5'])
                     if want in ('proxied', 'direct'):
                         req(f'[{name}] REQUIRE the check succeeded and found the announced version', row['ok'] is True and (row.get('detail') or {}).get('found') is True, row)
                     else:

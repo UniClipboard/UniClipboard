@@ -247,7 +247,7 @@ def write_dconf_proxy(port, where, target_app, nonportable, ignore_hosts=None):
     db_home = portable_home if where == 'ph' else real
     gui_home = real if nonportable else portable_home  # the HOME the GUI process (and the AppImage's runtime) really has
     kdir = Path(tempfile.mkdtemp(prefix='dconf-keyfile-'))
-    ignore = '' if ignore_hosts is None else 'ignore-hosts=[' + ','.join(f"'{h}'" for h in ignore_hosts) + ']\n'  # None: the schema default (localhost, 127.0.0.0/8, ::1)
+    ignore = '' if ignore_hosts is None else ('ignore-hosts=' + ('[' + ','.join(f"'{h}'" for h in ignore_hosts) + ']' if ignore_hosts else '@as []') + '\n')  # None: the schema default (localhost, 127.0.0.0/8, ::1)
     body = f"[system/proxy]\nmode='manual'\n{ignore}\n[system/proxy/http]\nhost='127.0.0.1'\nport={port}\n\n[system/proxy/https]\nhost='127.0.0.1'\nport={port}\n"
     if where == 'sys':
         d = Path('/etc/dconf/db/local.d')
@@ -352,11 +352,12 @@ def variant_env(kind, port):
 
 GNOME_VARIANTS = {  # GNOME `ignore-hosts` (system dconf database), allow proxy
     'gs-sys-ignore': ('allow', 'gs-sys'),   # ignore-hosts = default + the WebView probe host: the WebView goes direct, curl's host stays proxied
-    'gs-sys-empty': ('allow', 'gs-sys'),    # ignore-hosts = []: GNOME then has NO loopback bypass; what the local daemon connections do is OBSERVED (parity with any WebKitGTK app), not required
+    'gs-sys-empty': ('allow', 'gs-sys'),    # ignore-hosts = @as []: GNOME then has NO loopback bypass; the local daemon must still work (judged like every other scenario)
 }
 GNOME_IGNORE = {'gs-sys-ignore': ['localhost', '127.0.0.0/8', '::1', WV_HOST], 'gs-sys-empty': []}
-OBSERVED_ONLY = {'gs-sys-empty'}
+OBSERVED_ONLY = set()  # (kept for scenarios that cannot be judged; none now)
 REQUIRED_VARIANTS['gs-sys-ignore'] = 'direct'
+REQUIRED_VARIANTS['gs-sys-empty'] = 'proxied'
 
 
 def scenarios():

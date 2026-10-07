@@ -210,3 +210,7 @@ fn pending_platform_snapshot_is_consumed_before_a_fresh_clipboard_read() {
     assert_eq!(first, b"event snapshot");
     assert_eq!(second, b"fresh snapshot");
 }
+
+#[cfg(unix)]
+#[path = "tests/clipboard_recovery.rs"]
+mod clipboard_recovery;

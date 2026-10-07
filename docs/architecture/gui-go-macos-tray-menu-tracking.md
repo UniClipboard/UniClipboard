@@ -52,6 +52,10 @@ Menu.Update -> macosMenu.update -> InvokeSync(main thread):
 - **R4（候选，未证实）：窗口可见性/App Nap/页面节流**。这只是候选解释：宿主已返回且 3 秒定时器记录缺失，不能单独证明 JS 定时器全部停转，也不能排除其他响应问题；`e2e_timer_probe.go` 与 `app_nap_run.py` 的既有结论是“没有无特权 API 能报告进程是否处于 App Nap”，本片同样不声称能。对照实验（同一调用链：配对、静默控制、`set_tray_language("en")`）：条件 A 为默认（E2E 默认的安静模式），条件 B 为 `UC_GUI_GO_E2E_VISIBLE=1`（复用既有开关，其含义是不扭曲真实指针，不等于窗口前置）。两种条件都记录：宿主每 2 秒的主窗口原生状态（存在/可见/最小化/聚焦，来自 Wails 窗口 API）、驱动每秒一次的 JS 心跳（序号、`performance.now()`、`document.visibilityState`、`hasFocus`）、宿主入口与返回钩子、调用返回记录。判读规则预先写明：心跳持续而调用不返回 → 传输/响应问题；心跳中断且宿主返回正常 → JS 被节流或挂起（仍只是与 App Nap/可见性相符，不是证明）；两条件结果相同 → 该因素不是区分变量。不改全局 App Nap 设置，不用永久禁用产品省电换取通过。
 - **两个结论分开**：(1) 隐藏 WebView 驱动的基线条件（本节：测试驱动是否在无焦点/隐藏时停滞）；(2) 托盘菜单锁与主线程等待在真实 NSMenu 跟踪下的行为（M1–M5）。(1) 不改变 (2) 的验收要求，(2) 不因 (1) 的任何结果而降低。
 
+- **ctlA-hidden（保留，终态 `passed=false`）**：原生状态全程 `visible=false/focused=false/minimised=false`；驱动心跳 `n=1..4`（JS 时间 3.1–6.7 秒，间隔约 1.17–1.2 秒，`visibilityState=hidden`），这 4 次心跳都发生在 `tray-language-quiet` 控制调用挂起期间——即长阻塞的宿主调用没有挡住 JS 计时器和 `record` 传输（R3 的“长阻塞调用”解释因此被削弱，但不排除其他原因）；`n=5` 及之后没有，`call-start` 之后的 `set_tray_language("en")` 没有进入宿主。观察窗口：驱动启动后约 7 秒内。
+- **ctlB-visible（保留，条件无效）**：`UC_GUI_GO_E2E_VISIBLE=1` 已传入 GUI 进程环境（以进程环境核实），但该开关在代码中只控制 `quiet()`（不扭曲真实指针），**不控制窗口显示**；26 条原生状态没有一次 `visible=true`，心跳 `visibilityState` 全为 `hidden`。因此 B **不是** 可见条件，不能据此归因或排除 App Nap/页面节流；它只证明“该开关不是可见性控制”。
+- **修正（失败模型 R4 的测试控制）**：可见条件改为运行器经 E2E 控制文件触发窗口显示（只 `Show`，不 `Focus`），并要求原生状态实际出现 `visible=true` 才算条件成立；同时记录触发前后系统最前台应用，核对是否抢占了前台。条件未成立（无 `visible=true`）则对照作废，原样保留日志。
+
 ## 验收契约
 
 必须保留 17c14 的行为：设备子菜单随 10 秒刷新与 `devices://sync-changed` 更新、条目动作、同步开关标签、托盘生命周期。不得：隐藏日志、删除刷新、删除托盘功能、降低锁保证、用 compile/vet 或脚本直接调用代替原生证据。

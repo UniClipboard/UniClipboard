@@ -84,6 +84,14 @@ func (s *EvidenceService) runControlCommand(line string) {
 	case "tray-check":
 		h.checkUpdateFromTray()
 		_ = s.write(Step{Window: "update", Step: "control-tray-check", OK: true})
+	case "show-main":
+		// show-main <label>: Show the main window WITHOUT Focus, for the 17c15 visibility control (the window starts hidden in the e2e build).
+		w, ok := h.app.Window.GetByName("main")
+		if ok {
+			w.Show()
+		}
+		time.Sleep(500 * time.Millisecond)
+		_ = s.write(Step{Window: "main", Step: "show-main-" + arg, OK: ok && w.IsVisible(), Detail: map[string]any{"mainExists": ok, "visible": ok && w.IsVisible(), "focused": ok && w.IsFocused()}})
 	case "tray-language-quiet":
 		// tray-language-quiet <label> <ms>: wait until no tray language call arrived for ms (the frontend's startup calls come in a burst).
 		label, ms, _ := strings.Cut(arg, " ")

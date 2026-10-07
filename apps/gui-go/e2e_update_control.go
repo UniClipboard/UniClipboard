@@ -84,6 +84,12 @@ func (s *EvidenceService) runControlCommand(line string) {
 	case "tray-check":
 		h.checkUpdateFromTray()
 		_ = s.write(Step{Window: "update", Step: "control-tray-check", OK: true})
+	case "tray-open-menu":
+		// tray-open-menu <label>: SystemTray.OpenMenu, Wails' own path into native NSMenu tracking (a synthesized mouse-down on the status item
+		// button; it blocks the main thread inside the tracking loop until the menu is dismissed). No menu callback or snapshot is involved.
+		start := time.Now().UnixNano()
+		h.tray.tray.OpenMenu()
+		_ = s.write(Step{Window: "tray", Step: "tray-open-menu-" + arg, OK: h.tray.menu != nil, Detail: map[string]any{"startNs": start}})
 	case "show-main":
 		// show-main <label>: Show the main window WITHOUT Focus, for the 17c15 visibility control (the window starts hidden in the e2e build).
 		w, ok := h.app.Window.GetByName("main")

@@ -3,6 +3,7 @@
 // presses items and cancels the menu. It never moves the pointer and sends no key events.
 //
 //   swift tray_ax.swift items  <pid>                      status items (AXExtrasMenuBar) of the process
+//   swift tray_ax.swift describe <pid>                   roles, actions, attributes and frames of the status items (diagnostic)
 //   swift tray_ax.swift open   <pid>                      AXShowMenu on its first status item
 //   swift tray_ax.swift read   <pid>                      the open menu tree as JSON (fails if no menu is open)
 //   swift tray_ax.swift press  <pid> <title> [<title>..]  AXPress the item at the title path (submenu entries first)
@@ -75,6 +76,47 @@ case "items":
     let items = statusItems(pid)
     print(json(["ok": !items.isEmpty, "count": items.count, "ns": now(),
                 "items": items.map { ["role": str($0, kAXRoleAttribute), "title": str($0, kAXTitleAttribute), "help": str($0, kAXHelpAttribute)] }]))
+case "describe":
+    func actions(_ e: AXUIElement) -> [String] {
+        var a: CFArray?
+        return AXUIElementCopyActionNames(e, &a) == .success ? (a as? [String] ?? []) : []
+    }
+    func names(_ e: AXUIElement) -> [String] {
+        var a: CFArray?
+        return AXUIElementCopyAttributeNames(e, &a) == .success ? (a as? [String] ?? []) : []
+    }
+    func pos(_ e: AXUIElement) -> [String: Double]? {
+        var p = CGPoint.zero, s = CGSize.zero
+        guard let pv = attr(e, kAXPositionAttribute), let sv = attr(e, kAXSizeAttribute) else { return nil }
+        AXValueGetValue(pv as! AXValue, .cgPoint, &p)
+        AXValueGetValue(sv as! AXValue, .cgSize, &s)
+        return ["x": Double(p.x), "y": Double(p.y), "w": Double(s.width), "h": Double(s.height)]
+    }
+    func d(_ e: AXUIElement, _ depth: Int) -> [String: Any] {
+        var o: [String: Any] = ["role": str(e, kAXRoleAttribute), "subrole": str(e, kAXSubroleAttribute), "title": str(e, kAXTitleAttribute),
+                                "actions": actions(e), "attributes": names(e)]
+        if let p = pos(e) { o["frame"] = p }
+        if depth > 0 { o["children"] = kids(e).map { d($0, depth - 1) } }
+        return o
+    }
+    print(json(["ok": true, "ns": now(), "items": statusItems(pid).map { d($0, 2) }]))
+case "rightclick":
+    // A real right mouse click at the centre of the status item: Wails' pre-click monitor routes it into native menu tracking (the left
+    // button runs the app's own click handler instead). It moves the real pointer for a moment and puts it back.
+    guard let item = statusItems(pid).first, let pv = attr(item, kAXPositionAttribute), let sv = attr(item, kAXSizeAttribute) else { fail("no status item frame") }
+    var p = CGPoint.zero, sz = CGSize.zero
+    AXValueGetValue(pv as! AXValue, .cgPoint, &p)
+    AXValueGetValue(sv as! AXValue, .cgSize, &sz)
+    let target = CGPoint(x: p.x + sz.width / 2, y: p.y + sz.height / 2)
+    let saved = CGEvent(source: nil)?.location ?? target
+    let down = CGEvent(mouseEventSource: nil, mouseType: .rightMouseDown, mouseCursorPosition: target, mouseButton: .right)
+    let up = CGEvent(mouseEventSource: nil, mouseType: .rightMouseUp, mouseCursorPosition: target, mouseButton: .right)
+    down?.post(tap: .cghidEventTap)
+    Thread.sleep(forTimeInterval: 0.08)
+    up?.post(tap: .cghidEventTap)
+    Thread.sleep(forTimeInterval: 0.3)
+    CGWarpMouseCursorPosition(saved)
+    print(json(["ok": true, "target": ["x": target.x, "y": target.y], "restored": ["x": saved.x, "y": saved.y], "ns": now()]))
 case "open":
     guard let item = statusItems(pid).first else { fail("no status item") }
     let r = AXUIElementPerformAction(item, "AXShowMenu" as CFString)

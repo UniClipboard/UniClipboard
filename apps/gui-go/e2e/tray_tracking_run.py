@@ -54,6 +54,26 @@ def ax(*args, check=False):
     return row
 
 
+def open_menu(gui, pid, how, label):
+    """Open the status item's menu through AppKit's own tracking and wait until the menu is readable through AX."""
+    if how == 'rightclick':
+        opened = ax('rightclick', str(pid))
+    else:
+        opened = gui.ctl(f'tray-open-menu {label}', f'tray-open-menu-{label}')
+    first = {'ok': False}
+    end = time.time() + 15
+    while time.time() < end:
+        first = ax('read', str(pid))
+        if first.get('ok'):
+            break
+        time.sleep(.3)
+    return opened, first
+
+
+class Done(Exception):
+    """The minimal mode ends after open/read/cancel."""
+
+
 def sha(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
@@ -97,6 +117,8 @@ def main():
     parser.add_argument('--out', type=Path, required=True)
     parser.add_argument('--hold', type=int, default=32, help='seconds the first menu stays open (>= 3 natural 10 s refreshes)')
     parser.add_argument('--skip-quit', action='store_true')
+    parser.add_argument('--minimal', action='store_true', help='open, read, cancel only')
+    parser.add_argument('--open-with', choices=('control', 'rightclick'), default='control', help='control: SystemTray.OpenMenu through the control file (no pointer); rightclick: a real right click on the status item (moves the pointer briefly)')
     args = parser.parse_args()
     out = args.out.resolve()
     out.mkdir(parents=True, exist_ok=True)
@@ -169,13 +191,22 @@ def main():
         # 1. open + hold across natural refreshes
         n_before = len(gui.rows())
         t_open = time.time()
-        opened = ax('open', str(proc.pid))
-        first = ax('read', str(proc.pid))
+        opened, first = open_menu(gui, proc.pid, args.open_with, 'o1')
+        (out / 'ax-1-describe.json').write_text(json.dumps(ax('describe', str(proc.pid)), ensure_ascii=False, indent=1))
         (out / 'ax-1-open.json').write_text(json.dumps({'open': opened, 'first': first}, ensure_ascii=False, indent=1))
-        check('1 AXShowMenu opened the real status-item menu and it is readable', opened.get('ok') and first.get('ok'), {'open': opened, 'first_ok': first.get('ok'), 'error': first.get('error')})
+        check('1 the real status-item menu was opened through AppKit tracking (' + args.open_with + ') and is readable through AX', opened.get('ok') and first.get('ok'), {'open': opened, 'first_ok': first.get('ok'), 'error': first.get('error')})
         if not first.get('ok'):
             raise RuntimeError('the menu could not be read after open; later steps need it')
         root = first['menu']
+        if args.minimal:
+            cancelled = ax('cancel', str(proc.pid))
+            time.sleep(1)
+            after = ax('read', str(proc.pid))
+            check('M the open menu was cancelled through AX and is gone', cancelled.get('ok') and not after.get('ok'), {'cancel': cancelled, 'after': after.get('error')})
+            check('M the root menu read while open is the expected English menu', titles(root)[1:] == EN, titles(root))
+            (out / 'ax-minimal.json').write_text(json.dumps({'first': first}, ensure_ascii=False, indent=1))
+            results['passed'] = all(c['ok'] for c in results['checks'])
+            raise Done()
         sync_label = root[0]['title']
         check('1 root menu is the expected English menu (first item is the sync toggle)', sync_label in ('Enable Sync', 'Disable Sync') and titles(root)[1:] == EN, titles(root))
         watch_file = out / 'ax-1-watch.jsonl'
@@ -228,7 +259,7 @@ def main():
         off = wait_daemon(env_a, prefs_path, lambda x: x.get('sendEnabled') is False and x.get('receiveEnabled') is False)
         check('3 the DAEMON\'s own sync preferences flipped to off (authoritative read)', off and off.get('sendEnabled') is False and off.get('receiveEnabled') is False, off)
         time.sleep(1)
-        ax('open', str(proc.pid))
+        open_menu(gui, proc.pid, args.open_with, 'o2')
         time.sleep(11)  # one refresh, so the menu states the stored value
         r4 = ax('read', str(proc.pid))
         sub4 = device_items(r4['menu']) if r4.get('ok') else None
@@ -240,14 +271,14 @@ def main():
 
         # 4. sync switch
         time.sleep(1)
-        ax('open', str(proc.pid))
+        open_menu(gui, proc.pid, args.open_with, 'o3')
         r5 = ax('read', str(proc.pid))
         label0 = r5['menu'][0]['title'] if r5.get('ok') else None
         press = ax('press', str(proc.pid), label0)
         s1 = wait_daemon(env_a, settings_path, lambda x: ((x.get('sync') or {}).get('syncEnabled')) is (not sync0))
         check('4 pressing the sync item in the real menu flips syncEnabled in the DAEMON', press.get('ok') and ((s1 or {}).get('sync') or {}).get('syncEnabled') is (not sync0), {'label': label0, 'daemon': ((s1 or {}).get('sync') or {})})
         time.sleep(1)
-        ax('open', str(proc.pid))
+        open_menu(gui, proc.pid, args.open_with, 'o4')
         r6 = ax('read', str(proc.pid))
         label1 = r6['menu'][0]['title'] if r6.get('ok') else None
         check('4 the reopened menu label follows the daemon', label1 == ('Disable Sync' if not sync0 else 'Enable Sync') and label1 != label0, {'before': label0, 'after': label1})
@@ -259,7 +290,7 @@ def main():
         if not args.skip_quit:
             daemons = daemon_pids(prof_a)
             time.sleep(1)
-            ax('open', str(proc.pid))
+            open_menu(gui, proc.pid, args.open_with, 'o5')
             q = ax('press', str(proc.pid), 'Quit')
             try:
                 rc = proc.wait(timeout=40)
@@ -271,6 +302,8 @@ def main():
                 time.sleep(1)
             check('5 the exact daemon pid(s) of this profile are gone (full exit)', bool(daemons) and not any(_alive(p) for p in daemons), {'daemons': daemons})
         results['passed'] = all(c['ok'] for c in results['checks'])
+    except Done:
+        pass
     except Exception as exc:  # keep the evidence of a failing run
         results['error'] = f'{type(exc).__name__}: {exc}'
         print('ERROR', results['error'], flush=True)

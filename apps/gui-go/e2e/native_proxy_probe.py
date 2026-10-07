@@ -81,6 +81,13 @@ def procs():
     return rows
 
 
+def ppid_of(pid):
+    try:
+        return int(re.search(r'PPid:\s+(\d+)', Path(f'/proc/{pid}/status').read_text()).group(1))
+    except (OSError, AttributeError):
+        return None
+
+
 def ppid_is_gone(pid):
     """A helper of the task-owned private bus: it has no parent GUI any more and its bus is gone, so it must have exited; it still being here is a leak."""
     return True
@@ -143,6 +150,7 @@ def main():
     home = Path(str(app) + '.home')
     check('portable home created next to the task-owned copy', made.returncode == 0 and home.is_dir(), {'rc': made.returncode, 'err': made.stderr[-200:]})
     pac_server = private_bus = None
+    ours_pids = []
     if args.scenario.startswith('gnome-pac'):
         # a TASK-OWNED session bus (never the user's): a bus-activated PAC helper would otherwise outlive the GUI on the user's real bus. 'host': the distribution's own
         # service files are visible (the host helper activates); 'bundled': no service directories, so only the AppImage's helper can serve.
@@ -271,13 +279,19 @@ def main():
         check('the page ran the external request (control acknowledged)', step is not None, step)
         if pac_server:
             table2 = procs()
-            helpers = {pid: e for pid, (e, _) in table2.items() if e.endswith('glib-pacrunner')}
-            result['pacHelpers'] = {str(k): v for k, v in helpers.items()}
+            every = {pid: e for pid, (e, _) in table2.items() if e.endswith('glib-pacrunner')}
+            # only helpers THIS test owns count: the child of the task-owned private bus (host service activation) or of the GUI (the bundled helper). A glib-pacrunner that was
+            # already running on the host (the user's own session) is recorded as foreign and never judged, never touched.
+            helpers = {pid: e for pid, e in every.items() if ppid_of(pid) in (private_bus.pid, proc.pid)}
+            foreign = {pid: {'exe': e, 'ppid': ppid_of(pid)} for pid, e in every.items() if pid not in helpers}
+            result['pacHelpers'] = {str(k): {'exe': v, 'ppid': ppid_of(k)} for k, v in helpers.items()}
+            result['pacHelpersForeign'] = {str(k): v for k, v in foreign.items()}
+            ours_pids.extend(helpers)
             bundled = [pid for pid, e in helpers.items() if mount and e.startswith(mount)]
             if args.scenario.endswith('bundled'):
                 check('only the AppImage\'s own glib-pacrunner serves PAC (no service directories on the private bus)', len(bundled) == 1 and len(helpers) == 1, result['pacHelpers'])
             else:
-                check('the host\'s glib-pacrunner (bus-activated from the distribution\'s service file) serves PAC; the bundled one is NOT started', len(helpers) == 1 and not bundled, result['pacHelpers'])
+                check('the host\'s glib-pacrunner (bus-activated from the distribution\'s service file by the private bus) serves PAC; the bundled one is NOT started', len(helpers) == 1 and not bundled, result['pacHelpers'])
             check('the PAC script was fetched from the controlled server', len(result['pacFetches']) >= 1, result['pacFetches'])
         expect_proxied = args.scenario != 'none'
         check(f'the external request of the WebView {"went to" if expect_proxied else "did NOT go to"} the configured proxy (sink CONNECT/GET names the host)', bool(seen) == expect_proxied, seen)
@@ -294,7 +308,7 @@ def main():
         private_bus.terminate()
         private_bus.wait(10)
         time.sleep(1)
-    left = [pid for pid, (e, _) in procs().items() if str(out) in e or (conn and pid == conn['pid']) or (private_bus and e.endswith('glib-pacrunner') and ppid_is_gone(pid))]
+    left = [pid for pid, (e, _) in procs().items() if str(out) in e or (conn and pid == conn['pid']) or pid in ours_pids]
     check('no task-owned process is left after the exit', not left, left)
     result['passed'] = all(c['ok'] for c in result['checks'])
     (out / 'native-result.json').write_text(json.dumps(result, indent=2) + '\n')

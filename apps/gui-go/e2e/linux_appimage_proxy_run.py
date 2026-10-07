@@ -545,10 +545,11 @@ def main():
                 expected = REQUIRED_VARIANTS.get(name) or {'allow': 'proxied', 'deny': 'refused', 'dead': 'failed'}[mode]
                 req(f'[{name}] REQUIRE the real WebView request is {expected} (route observed: {sc["webviewRoute"]})', sc['webviewRoute'] == expected, sc['webview'])
                 if name in P8_VARIANTS:
-                    seen = sc['guiEnvironmentSeen']
+                    # /proc/<gui>/environ is the environment the GUI was EXEC'd with: the Go init() changes the runtime's copy, which only a child (the daemon) inherits
+                    seen = sc['daemonProxyEnvironment']
                     user_np = [e for e in penv.get('NO_PROXY', '').split(',') if e]
                     got = seen.get('NO_PROXY', '') + ',' + seen.get('no_proxy', '')
-                    req(f'[{name}] REQUIRE the GUI process environment keeps the user NO_PROXY entries and gains the loopback names', all(x in got for x in user_np + ['127.0.0.1', 'localhost', '::1']), seen)
+                    req(f'[{name}] REQUIRE the environment the GUI hands to its child (the daemon) keeps the user NO_PROXY entries and gains the loopback names', all(x in got for x in user_np + ['127.0.0.1', 'localhost', '::1']), seen)
                 if mode in ('deny', 'dead') and name not in P8_VARIANTS:
                     req(f'[{name}] REQUIRE no silent direct escape: the target saw no request from the WebView', sc['webview']['targetSaw'] == 0, sc['webview'])
                 req(f'[{name}] REQUIRE the local daemon stays usable: the WebView holds loopback connections to the daemon, the proxy log names no loopback target of the product, and the page itself '

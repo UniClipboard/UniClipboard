@@ -208,9 +208,14 @@ CI：在分支上手动触发 `build.yml`（`platform=macos-aarch64` 或 `macos-
 状态以本节为准，随 CI 证据更新；没有证据的项目不写成已完成。
 
 - 本机 arm64：失败基线（现有 `build.sh manual` 产物对契约 17/37 项红灯）、静态契约、release 版 daemon 与 helper 的 hardened runtime 验收包真实进程 E2E（PATH 不含 `uniclipd`，运行的 daemon 与 helper 均为包内可执行文件，退出后均停止）、release 标签拒绝项（`UC_PROFILE`、`UNICLIPBOARD_ENV=development`、`UC_PORTABLE`）。
-- CI 证据与 Developer ID、公证、stapling、Gatekeeper、DMG、原生 Intel 运行、干净机器上的剪贴板捕获：见 PR 描述中的运行编号；未出现在那里的项目视为 **未验证**。
+- CI（`build.yml` 手动触发，test 构建方式，分支 `feat/gui-go-macos-release-bundle`；arm64 run 37638284857、x86_64 run 37638290509，HEAD 之前的提交各有若干次重跑，最终成功的作业用的是当前脚本）：
+  - Developer ID 签名（仓库已有 `APPLE_*` secrets，临时钥匙串）、公证 `Accepted`（应用与 DMG 各一次提交，提交 JSON 与日志保存）、stapling，两个架构均已完成；下载的产物在本机独立复验：`codesign --verify --deep --strict`、`spctl -a -vv` 显示 `Notarized Developer ID`、`stapler validate`、hardened runtime、单一 team identifier；三个可执行文件均为单架构（arm64 / x86_64）。
+  - 干净 runner 冒烟（`smoke_release.py`，release 标签、无 profile、真实数据根）：arm64 在 macos-latest（VirtualMac2,1，macOS 26），x86_64 在 macos-15-intel（Macmini6,2，macOS 15.7，`uname -m` 为 x86_64，非 Rosetta）。两者都通过：`spctl` 接受 DMG 与安装后的应用、stapler 通过、运行的 daemon 是 `/Applications/UniClipboard.app/Contents/MacOS/uniclipd`、`/health` 为 ok、快捷面板 helper 从包内启动、剪贴板中的标记经 `uniclip search` 在历史中找到（首次变更偶尔漏掉，第二次稳定捕获）。
+- 冒烟里“正常退出”只记录不断言：无头 runner 不能按 Cmd-Q，Apple Event 退出与 SIGTERM 之后 daemon 与 helper 已停止、GUI 进程仍可见（疑为未回收的子进程，未深究）；完整退出契约由本机包 E2E 断言。
 - 永远不在本机验证：release 形态完整启动（真实钥匙串与数据根）。
 - 未包含：更新签名 `.sig` 与清单（#1896）；首次从浏览器下载后的“已下载应用，是否打开”确认框是 GUI 交互，不在自动验收内。
+- 未验证：release（非 test）构建方式的 CI 运行——它会把 daemon 调试符号与前端 source map 上传到生产 Sentry 项目的 1.1.1 版本，需要所有者确认后再跑；因此遥测变量注入与 source map 上传在 CI 里 **未被实际执行**（test 模式有意跳过）。release 优化档位的 `uniclipd` 与 helper 已在本机验收包中使用。
+- 未验证：首次运行下载应用时 Gatekeeper 的“是否打开”确认框（GUI 交互）、托盘菜单（#1906）。
 - 另见：`main` 上 `-tags e2e` 的构建此前就是坏的（遗留的 `e2e_quick_panel.go`），已在本 PR 修复。
 - 本机默认驱动在原生 helper 接管面板时会在 WebView 面板场景停住（与本任务无关），因此包 E2E 只要求到首屏，再经控制文件退出。
 

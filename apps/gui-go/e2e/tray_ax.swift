@@ -263,7 +263,7 @@ case "clickat":
         accepted = hitOwner == pid && (hitRole == "AXMenuBarItem" || hitRole == "AXMenuExtra")
     } else if argv[6].hasPrefix("overflow:") {
         let parts = argv[6].split(separator: ":", omittingEmptySubsequences: false).map(String.init)
-        accepted = parts.count == 3 && hitRole == "AXButton" && hitDesc.contains(parts[1]) && Int32(parts[2]) == hitOwner && hitOwner != pid
+        accepted = parts.count == 3 && !parts[1].isEmpty && hitRole == "AXButton" && hitDesc.contains(parts[1]) && Int32(parts[2]) == hitOwner && hitOwner != pid
     }
     if hr != .success || !accepted {
         print(json(["ok": false, "refused": "element under the point is not the expected target; nothing clicked", "ownerPid": hitOwner, "role": hitRole, "description": hitDesc, "ns": now()])); exit(0)

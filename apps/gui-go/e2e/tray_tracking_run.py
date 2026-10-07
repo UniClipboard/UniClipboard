@@ -399,6 +399,18 @@ def main():
         print(('PASS ' if ok else 'FAIL ') + name, flush=True)
         return ok
 
+    def press_checked(what, *path):
+        """A press only on an open menu: a read immediately before it must show this pid's pop-up window, otherwise the run is aborted
+        (a stale AX subtree stays readable after the menu closed, and a press on it would be a press on nothing). A missing item title aborts too."""
+        if any(x is None for x in path):
+            check(f'{what}: the item to press was read from the menu', False, {'path': list(path)})
+            raise Done()
+        rd = ax('read', str(proc.pid))
+        if not (rd.get('ok') and rd.get('popupWindows')):
+            check(f'{what}: the menu is open (pop-up window) immediately before the press', False, {'read': {k: rd.get(k) for k in ('ok', 'popupWindows', 'error')}})
+            raise Done()
+        return ax('press', str(proc.pid), *path)
+
     def dget(env, p):
         r = subprocess.run([DAEMONGET, p], env=env, capture_output=True, text=True, timeout=60)
         return json.loads(r.stdout) if r.returncode == 0 else None
@@ -503,9 +515,12 @@ def main():
             daemons0 = daemon_pids(home_a, prof_a)
             check('5b the profile\'s daemon is identified before the lightweight press (lock-file holder, executable path)', bool(daemons0) and all(d['exe'].endswith('uniclipd') for d in daemons0), daemons0)
             opened, first = open_menu(gui, proc.pid, args.open_with, 'o1', out)
+            if popups_of(opened.get('windowsBefore')):
+                check('5b no pop-up menu window existed before the open click', False, {'windowsBefore': opened.get('windowsBefore')})
+                raise Done()
             check('5b the real menu was opened through AppKit tracking before the lightweight press', opened.get('ok') and first.get('ok') and bool(first.get('popupWindows')), {'popupWindows': first.get('popupWindows')})
             gui_title = 'Lightweight Mode (Background Sync)'
-            press = ax('press', str(proc.pid), gui_title)
+            press = press_checked('5b', gui_title)
             try:
                 rc = proc.wait(timeout=40)
             except subprocess.TimeoutExpired:
@@ -717,8 +732,10 @@ def main():
                 reexp = next((x for x in expansions if x['t'] >= s_), None)
                 post = next((x for x in samples if x['t'] >= e_ and (x['popups'] or 0) >= 2 and (reexp is None or x['t'] >= reexp['t'])), None)
                 age = round(s_ - before[-1]['t1'], 2) if before else None
+                # another publish that started shortly before that read ended may already have collapsed the submenu without the read showing it yet
+                intervening = bool(before) and any(o != (s_, e_) and before[-1]['t1'] - 0.3 <= o[0] < s_ for o in pubs)
                 out_rows.append({'startRel': round(s_ - t0, 2), 'durMs': round((e_ - s_) * 1000, 1), 'startNs': int(s_ * 1e9),
-                                 'expandedBefore': bool(before) and (before[-1]['popups'] or 0) >= 2 and age <= 0.6,
+                                 'expandedBefore': bool(before) and (before[-1]['popups'] or 0) >= 2 and age <= 0.6 and not intervening, 'interveningPublish': intervening,
                                  'rowsBefore': before[-1]['rows'] if before else None, 'lastReadBeforeAgeS': age,
                                  'firstCollapsedSampleAfterS': round(coll['t'] - s_, 2) if coll else None,
                                  'reExpandedAfterS': round(reexp['t'] - s_, 2) if reexp and reexp['ok'] else None,
@@ -798,15 +815,6 @@ def main():
               pair_result.get('ok') and names == both and adding is not None and not ambiguous and adding['expandedBefore'] and adding['rowsBefore'] == ['tray-peer-b']
               and adding['postState'] is not None and adding['postState']['rows'] == both and adding['postState']['rootEnglish'] and all(x['popups'] for x in samples_c),
               {'pair': pair_result, 'daemonPeers': names, 'rowAddingPublish': adding, 'exactlyOnePublishInTheRowWindow': ambiguous is False, 'publishes': len(per_pub_c), 'samples': len(samples_c)})
-
-        def press_checked(what, *path):
-            """A press only on an open menu: a read immediately before it must show this pid's pop-up window, otherwise the run is aborted
-            (a stale AX subtree stays readable after the menu closed, and a press on it would be a press on nothing)."""
-            rd = ax('read', str(proc.pid))
-            if not (rd.get('ok') and rd.get('popupWindows')):
-                check(f'{what}: the menu is open (pop-up window) immediately before the press', False, {'read': {k: rd.get(k) for k in ('ok', 'popupWindows', 'error')}})
-                raise Done()
-            return ax('press', str(proc.pid), *path)
 
         def reopen(label, what):
             opened_x, first_x = open_menu(gui, proc.pid, args.open_with, label, out)

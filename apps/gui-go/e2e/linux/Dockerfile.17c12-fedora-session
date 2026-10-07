@@ -1,0 +1,7 @@
+# 17c12 NON-portable variant on Fedora: the proxy image plus the user session bus and an unlocked Secret Service (gnome-keyring, libsecret's secret-tool, dbus) in the SAME container.
+# gnome-keyring pulls GTK onto the HOST, so the non-portable run asserts (17c11 G7) that the GUI and WebKit processes still map GTK/WebKitGTK/GLib/GIO from the AppImage mount.
+FROM uc-gui-go-linux-proxy:17c12-fedora
+RUN dnf -y --setopt=install_weak_deps=False install gnome-keyring libsecret dbus-daemon dbus-tools dbus-x11 \
+    && dnf clean all
+COPY verify_image_17c12_session.sh /usr/local/bin/
+RUN verify_image_17c12_session.sh

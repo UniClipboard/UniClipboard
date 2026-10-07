@@ -1,0 +1,9 @@
+# 17c12 system-proxy image, Fedora 44: the 17c7 Fedora runtime image (NO GTK/WebKitGTK/libsoup on the host, Fedora's own GLib and glib-networking) plus the real forward proxy
+# (tinyproxy), the control client (curl), iproute (default route) and the distribution's own proxy configuration stack as a user would have it: dconf + gsettings-desktop-schemas
+# (org.gnome.system.proxy) and libproxy's `proxy` command line (libproxy-bin; Fedora 44 ships libproxy 0.5.12, Ubuntu 24.04 0.5.4). These are HOST modules/tools: the AppImage never
+# loads them (it carries its own set from the Ubuntu build image), they make "the host has a system proxy configuration" a real fixture.
+FROM uc-gui-go-linux-runtime-fedora:17c7
+RUN dnf -y --setopt=install_weak_deps=False install tinyproxy curl iproute dconf gsettings-desktop-schemas libproxy-bin glib2 \
+    && dnf clean all
+COPY verify_image_17c12_fedora.sh /usr/local/bin/
+RUN verify_image_17c12_fedora.sh

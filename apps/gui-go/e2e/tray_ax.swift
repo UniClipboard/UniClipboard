@@ -2,6 +2,7 @@
 // Accessibility API: it opens the tracked NSMenu, reads it while it is open (titles, enabled, check marks, submenus),
 // presses items and cancels the menu. It never moves the pointer and sends no key events.
 //
+//   swift tray_ax.swift display 0                        main display asleep/active/online (a sleeping display makes screenshots black and may stop menu tracking)
 //   swift tray_ax.swift items  <pid>                      status items (AXExtrasMenuBar) of the process
 //   swift tray_ax.swift describe <pid>                   roles, actions, attributes and frames of the status items (diagnostic)
 //   swift tray_ax.swift open   <pid>                      AXShowMenu on its first status item
@@ -76,6 +77,9 @@ case "items":
     let items = statusItems(pid)
     print(json(["ok": !items.isEmpty, "count": items.count, "ns": now(),
                 "items": items.map { ["role": str($0, kAXRoleAttribute), "title": str($0, kAXTitleAttribute), "help": str($0, kAXHelpAttribute)] }]))
+case "display":
+    let main = CGMainDisplayID()
+    print(json(["ok": true, "asleep": CGDisplayIsAsleep(main) != 0, "active": CGDisplayIsActive(main) != 0, "online": CGDisplayIsOnline(main) != 0, "ns": now()]))
 case "scan":
     // Every AXMenu / AXMenuItem / AXWindow reachable from the application element (a diagnostic for where an open menu hangs in the tree).
     var found: [[String: Any]] = []

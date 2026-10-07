@@ -71,7 +71,13 @@ def shot_near_status_item(pid, dest, below=420):
         if subprocess.run(['screencapture', '-x', str(full)], capture_output=True, timeout=30).returncode != 0 or not full.exists():
             return {'ok': False, 'error': 'screencapture failed'}
         p = subprocess.run(['sips', '-c', str(h * scale), str(w * scale), '--cropOffset', str(y0 * scale), str(x0 * scale), str(full), '--out', str(dest)], capture_output=True, text=True, timeout=30)
-        return {'ok': p.returncode == 0 and Path(dest).exists(), 'frame': frame, 'region': {'x': x0, 'y': y0, 'w': w, 'h': h, 'scale': scale}}
+        made = p.returncode == 0 and Path(dest).exists()
+        # The area below the status item is whatever window lies under the menu: it can hold unrelated applications' content (17c15 min7 did).
+        # The image is therefore NOT kept unless TRAY_KEEP_SHOTS=1 is set deliberately; only the fact that a capture was made is recorded.
+        kept = made and os.environ.get('TRAY_KEEP_SHOTS') == '1'
+        if made and not kept:
+            Path(dest).unlink()
+        return {'ok': made, 'kept': kept, 'frame': frame, 'region': {'x': x0, 'y': y0, 'w': w, 'h': h, 'scale': scale}}
     finally:
         for f in tmp.iterdir():
             f.unlink()
@@ -209,7 +215,19 @@ def main():
 
     proc = None
     gui = None
+    wake = None
     try:
+        # Authorized by the user (17c15): declare ONE transient user activity so a sleeping display wakes for the run. `caffeinate -u -t` is a
+        # task-owned process that ends on its own timeout and in cleanup; no persistent setting, lock or permission is touched.
+        results['displayBefore'] = ax('display', '0')
+        wake = subprocess.Popen(['caffeinate', '-u', '-t', '300'])
+        for _ in range(30):
+            if not ax('display', '0').get('asleep'):
+                break
+            time.sleep(1)
+        results['displayAfterWake'] = ax('display', '0')
+        if not check('0 the display is awake for the run (native menu tracking and screenshots need it)', not results['displayAfterWake'].get('asleep'), results['displayAfterWake']):
+            raise RuntimeError('display still asleep: native NSMenu tracking cannot be accepted on this session')
         pair(env_a, env_b, 'tray-a', 'tray-peer-b')
         roster = json.loads(cli(env_a, '--json', 'member', 'list').stdout)
         peer = [m for m in roster if not m.get('is_local')][0]
@@ -377,8 +395,13 @@ def main():
                 proc.wait(timeout=20)
         if proc:
             results['guiReturncode'] = proc.returncode  # negative: ended by that signal (cleanup terminate gives -15)
+        if wake and wake.poll() is None:
+            wake.terminate()
+            wake.wait(timeout=10)
         for env in (env_a, env_b):
             cli(env, '--json', 'stop', check=False, timeout=80)
+        results['wakeReturncode'] = wake.returncode if wake else None
+        results['displayAtEnd'] = ax('display', '0')
         results['daemonPidsAfterCleanup'] = {'a': daemon_pids(prof_a), 'b': daemon_pids(prof_b)}
         (out / 'assertions.json').write_text(json.dumps(results, indent=2, ensure_ascii=False) + '\n')
     print(json.dumps({k: v for k, v in results.items() if k != 'checks'}, indent=2, ensure_ascii=False))

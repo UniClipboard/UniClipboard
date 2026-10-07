@@ -316,11 +316,12 @@ P8_VARIANTS = {  # name -> (proxy mode, kind); the environment is built by varia
     'up-none': (None, 'up-none'),                   # P5: the REAL Go updater check (control command `check`), no proxy variables: direct
     'up-allow': ('allow', 'up-allow'),              # env proxy, allowing: the updater's request goes through it
     'up-deny': ('deny', 'up-deny'),                 # env proxy, refusing: the check fails, the feed target never sees it
+    'up-reset': ('reset', 'up-reset'),              # env proxy that accepts and closes every connection: the check fails AND the attempt is proven (a dead port proves nothing by itself)
     'up-dead': ('dead', 'up-dead'),                 # env proxy that nothing listens on: the check fails, no escape
     'up-bypass': ('allow', 'up-bypass'),            # NO_PROXY names the feed host: direct although a proxy is set
     'env-bypass-other': ('allow', 'env-bypass-other'),  # NO_PROXY names an unrelated host: the WebView is still proxied
 }
-REQUIRED_VARIANTS = {'up-none': 'direct', 'up-allow': 'proxied', 'up-deny': 'refused', 'up-dead': 'failed', 'up-bypass': 'proxied', 'rv-none': 'direct', 'rv-deny': 'refused', 'rv-bypass': 'refused', 'env-recover': 'proxied', 'env-bypass': 'direct', 'env-bypass-other': 'proxied'}  # the others are recorded observations (precedence is the resolver library's)
+REQUIRED_VARIANTS = {'up-reset': 'failed', 'up-none': 'direct', 'up-allow': 'proxied', 'up-deny': 'refused', 'up-dead': 'failed', 'up-bypass': 'proxied', 'rv-none': 'direct', 'rv-deny': 'refused', 'rv-bypass': 'refused', 'env-recover': 'proxied', 'env-bypass': 'direct', 'env-bypass-other': 'proxied'}  # the others are recorded observations (precedence is the resolver library's)
 
 
 def variant_env(kind, port):
@@ -388,6 +389,30 @@ def read_maps(pid):
         if len(parts) == 6 and '.so' in parts[5]:
             libs.add(parts[5].replace(' (deleted)', ''))
     return 'ok', libs
+
+
+class ResetProxy:
+    """A 'proxy' that accepts every TCP connection and closes it at once, counting them: unlike a port nobody listens on it PROVES a client tried to use the proxy (up-reset)."""
+
+    def __init__(self):
+        self.port, self.connections = free_port(), []
+        self.sock = socket.socket()
+        self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.sock.bind(('127.0.0.1', self.port))
+        self.sock.listen(64)
+        threading.Thread(target=self.serve, daemon=True).start()
+
+    def serve(self):
+        while True:
+            try:
+                c, addr = self.sock.accept()
+            except OSError:
+                return
+            self.connections.append({'t': time.time(), 'peer': addr[1]})
+            c.close()
+
+    def stop(self):
+        self.sock.close()
 
 
 class LoopbackListener:
@@ -477,7 +502,7 @@ def main():
         print(('REQ-PASS ' if ok else 'REQ-FAIL ') + name, flush=True)
 
     xvfb = start_xvfb(out)
-    launches, proxies, servers, bus = [], [], [], None
+    launches, proxies, servers, bus, resets = [], [], [], None, []
     root = home if args.nonportable else sandbox  # where daemon.conn appears
     try:
         route = subprocess.run('ip route show default; [ -n "$(ip route show default)" ] || ip route add default dev eth0; ip route show default', shell=True, capture_output=True, text=True)
@@ -529,6 +554,10 @@ def main():
                 proxy = Proxy(name, mode)
                 proxies.append(proxy)
                 port = proxy.port
+            elif mode == 'reset':
+                reset_proxy = ResetProxy()
+                resets.append(reset_proxy)
+                port = reset_proxy.port
             else:
                 port = free_port() if mode == 'dead' else None  # dead: nothing listens
             if kind == 'env':
@@ -649,7 +678,7 @@ def main():
                           any(f':{reports.port}/loopctl' in t for t in loop_reqs), {'curl': loop, 'targets': loop_reqs})
                 leaked = [t for t in loop_reqs if f':{daemon_port}' in t or (f':{reports.port}' in t and '/loopctl' not in t)]
                 chk(f'[{name}] P1 the proxy log names no loopback target of the product (not the daemon port, not the page\'s report channel)', not leaked, leaked)
-            elif mode == 'dead':
+            elif mode in ('dead', 'reset'):
                 run.check(f'[{name}] control: curl honours the dead proxy configuration (fails to connect, the target saw nothing)', ctl['rc'] != 0 and sc['curlControl']['targetSaw'] == 0, sc['curlControl'])
             else:
                 run.check(f'[{name}] control: curl reaches the target directly without a proxy', sc['curlControl']['targetSaw'] == 1, sc['curlControl'])
@@ -747,12 +776,22 @@ def main():
                 sc['p5'] = {'checkRow': row, 'window': win, **cls, 'feedRequestsAtTarget': at_feed}
                 run.check(f'[{name}] P5 the updater check ran through the real control command (a step was reported)', row is not None, sc['p5'])
                 if args.require and args.require_env:
-                    want = {'up-none': 'direct', 'up-allow': 'proxied', 'up-deny': 'refused', 'up-dead': 'failed', 'up-bypass': 'direct'}[name]  # the UPDATER's route (the WebView's is REQUIRED_VARIANTS)
+                    genv = environ_of(gui.proc.pid)
+                    sc['updaterEnabled'] = {'endpoint': genv.get('UC_UPDATE_ENDPOINT'), 'publicKeyPresent': bool(genv.get('UC_UPDATE_PUBKEY')), 'publicKeyLength': len(genv.get('UC_UPDATE_PUBKEY', ''))}
+                    req(f'[{name}] REQUIRE the updater is enabled in this launch (endpoint and a non-empty trusted key are in its environment; its validity is proven by the up-none/up-allow positive controls of the same package, whose check parses the key before any HTTP)',
+                        bool(genv.get('UC_UPDATE_ENDPOINT')) and bool(genv.get('UC_UPDATE_PUBKEY')), sc['updaterEnabled'])
+                    want = {'up-none': 'direct', 'up-allow': 'proxied', 'up-deny': 'refused', 'up-dead': 'failed', 'up-reset': 'failed', 'up-bypass': 'direct'}[name]  # the UPDATER's route (the WebView's is REQUIRED_VARIANTS)
                     req(f'[{name}] REQUIRE the Go updater request is {want} (route observed: {cls["route"]}); its own hostname, its own proxy-log window', cls['route'] == want, sc['p5'])
                     if want in ('proxied', 'direct'):
                         req(f'[{name}] REQUIRE the check succeeded and found the announced version', row['ok'] is True and (row.get('detail') or {}).get('found') is True, row)
                     else:
                         req(f'[{name}] REQUIRE the check failed and the feed target never saw the request (no silent direct escape)', row['ok'] is not True and not at_feed, row)
+                    if name == 'up-deny':
+                        req(f'[{name}] REQUIRE the attempt is proven: the proxy named {UPDATE_HOST} and refused it', bool(cls['proxyLinesNamingHost']) and bool(cls['proxyRefusals']), cls)
+                    if name == 'up-reset':
+                        tries = [c_ for c_ in reset_proxy.connections if c_['t'] >= t0]
+                        sc['p5']['resetProxyConnections'] = len(tries)
+                        req(f'[{name}] REQUIRE the attempt is proven: the updater connected to the configured proxy (which closed it) and nothing reached the feed', len(tries) >= 1 and not at_feed, sc['p5'])
             if name.startswith('rv-'):
                 # P6: ONE real redeem of a synthetic invalid invitation against the isolated throwaway daemon (its temp profile). The deny-only proxy records the CONNECT and refuses it.
                 import urllib.request, urllib.error
@@ -820,6 +859,8 @@ def main():
                 pass
         if bus:
             bus.terminate()
+        for rp in resets:
+            rp.stop()
         for p in proxies:
             p.stop()
             for f in ('tinyproxy.log', 'tinyproxy.conf', 'stdout.log'):

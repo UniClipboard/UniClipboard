@@ -180,6 +180,19 @@ stage3 同一个包上的两个矩阵。页面自身的 HTTP 取数与 WebSocket
 
 验收（stage4）：同一组 `gs-sys-allow`、`gs-sys-ignore`、`gs-sys-empty`，`gs-sys-empty` 外部 proxied，WebKit 到 daemon 的回环连接 ≥1，代理日志没有回环行，页面 HTTP 与 WebSocket 帧成功；再在同一个 stage4 包上完整复跑全部环境变量、P5–P8、便携与非便携矩阵及 TLS/便携/helper/内容/更新回归（stage3 的绿色不转移）。
 
+### stage4：loopback guard 的 RED → GREEN（同一场景，不同包）
+
+| | stage3（RED，保留） | stage4（GREEN） |
+| --- | --- | --- |
+| 包 | `8c9881b025457aa8…ea75`，产品 `e649e7057` | `45932fc7b6f6463c9ec1cfef7793b3aed1e50693404ef74f0a65c3db815373cf`，来源 HEAD `679bf0082a82d2eda0d1270d74a396dff7abffb1`，`dirty.diff` 为空，`build.rc`/`package.rc`/`content.rc` 均为 0，daemon `ea0f0bcb…` 未变 |
+| 运行 | `stage3/gnome-ignore-portable-v2`（退出码 1） | `stage4/gnome-ignore-portable`（退出码 0，28 项观测，7/7 要求） |
+| `gs-sys-empty` | 外部 proxied；WebKit→daemon 回环连接 0；代理日志含 daemon 的 `/auth/connect`、`/settings`、`ws://…`；页面 WebSocket 失败 | 外部 proxied；WebKit→daemon 回环连接 4；代理日志里只有回环探测对照 `/loopctl`；页面 HTTP 与 WebSocket 帧成功；伪装主机 `localhost.webview-probe.test` proxied |
+| `gs-sys-allow` / `gs-sys-ignore` | 通过 | 通过（proxied / direct，daemon 可用） |
+
+包内 GIO 模块现为 5 个（新增 `libgiouniclipboardloopback.so`，源码 SHA-256 与 `gcc -Wall -Wextra -Werror` 命令在清单里）；内容检查 26 项通过。
+
+证据边界（精确未验）：同步路径之外，异步、取消令牌与错误传播没有专门注入；「无下游解析器」的回退没有运行；IPv6 `::1`、`127.0.0.0/8` 非 `127.0.0.1` 成员与 `localhost` 的 E2E 由随后的 `loopback boundary` 增量与 live maps（网络进程已映射该模块）补充，结果见下一节；宿主 helper 进程没有带出该模块由 17c10/17c11 helper 回归检查（环境清理规则）。最小 GREEN 不等于完整代理支持。
+
 ### 仍未完成（OPEN，逐项增量补做）
 
 GNOME `ignore-hosts` 遗漏回环时本地 daemon 的行为、PAC / 认证 / 动态设置、Fedora、同一最终干净包上的 17c7/17c5/17c10/17c11/内容检查回归。

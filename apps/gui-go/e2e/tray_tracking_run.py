@@ -21,6 +21,7 @@ import argparse
 import hashlib
 import json
 import os
+import signal
 import subprocess
 import sys
 import tempfile
@@ -31,6 +32,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 from file_preview_run import cli  # noqa: E402
 from peers import pair  # noqa: E402
+from file_preview_run import PASSPHRASE  # noqa: E402
 from run import ROOT, isolated_env, read_steps  # noqa: E402
 
 AX = os.environ.get('TRAY_AX_BIN', '/private/tmp/claude-501/axbin/tray_ax')
@@ -213,6 +215,31 @@ def open_menu(gui, pid, how, label, out):
     return opened, first
 
 
+def popups_of(windows):
+    return [w for w in (windows or {}).get('windows', []) if w.get('onscreen') and w.get('layer', 0) >= 101]
+
+
+def join_peer(env_a, env_new, name_new):
+    """Pair one more device into A's space through the production rendezvous (the same steps as peers.pair, without re-initialising A)."""
+    invite = subprocess.Popen([str(ROOT / 'target/gui-go/uniclip'), 'space', 'invite'], env=env_a, stdout=subprocess.PIPE)
+    try:
+        os.set_blocking(invite.stdout.fileno(), False)
+        code, buf, deadline = None, '', time.time() + 90
+        while code is None and time.time() < deadline:
+            try:
+                buf += os.read(invite.stdout.fileno(), 4096).decode(errors='replace')
+            except BlockingIOError:
+                pass
+            for line in buf.splitlines():
+                if line.startswith('INVITATION_CODE='):
+                    code = line.split('=', 1)[1].strip()
+            time.sleep(.3)
+        assert code, 'no invitation code: ' + buf
+        cli(env_new, 'space', 'join', '--code', code, '--passphrase', PASSPHRASE, '--device-name', name_new, timeout=120)
+    finally:
+        invite.send_signal(signal.SIGINT)
+
+
 class TargetNotVerified(Exception):
     """The click point does not belong to this pid's status window; nothing was clicked."""
 
@@ -275,6 +302,7 @@ def main():
     parser.add_argument('--skip-quit', action='store_true')
     parser.add_argument('--minimal', action='store_true', help='open, read, cancel only')
     parser.add_argument('--expand-overflow', action='store_true', help='with --probe-bar: press the system menu bar overflow button once (authorized, transient), record before/after, press again to collapse')
+    parser.add_argument('--scenario', choices=('full', 'lightweight'), default='full', help='lightweight: the tray\'s lightweight-mode item through the real menu (GUI exits, daemon stays, orchestrator stops it by exact pid)')
     parser.add_argument('--probe-bar', action='store_true', help='no pairing; start the GUI and record where the system menu bar put its status item (read-only), then exit')
     parser.add_argument('--open-with', choices=('control', 'rightclick'), default='control', help='rightclick (default, the only valid path): a real right click on this pid\'s status item (moves the pointer briefly); control: SystemTray.OpenMenu, a NO-OP here (SystemTray.menu is nil, 17c15 min10), kept only to reproduce that')
     args = parser.parse_args()
@@ -282,16 +310,19 @@ def main():
     out.mkdir(parents=True, exist_ok=True)
     home_a, home_b = tempfile.mkdtemp(prefix='uc-gui-go-'), tempfile.mkdtemp(prefix='uc-gui-go-peer-')
     prof_a, prof_b = 'gui-go-' + os.path.basename(home_a), 'gui-go-' + os.path.basename(home_b)
+    home_c = tempfile.mkdtemp(prefix='uc-gui-go-peer-')
+    prof_c = 'gui-go-' + os.path.basename(home_c)
     evidence, control = out / 'gui.jsonl', out / 'gui.control'
     evidence.write_text('')
     control.write_text('')
     path = str(ROOT / 'target/debug') + ':' + os.environ['PATH']
     env_a = isolated_env(home_a, prof_a, {'PATH': path})
     env_b = isolated_env(home_b, prof_b, {'PATH': path})
+    env_c = isolated_env(home_c, prof_c, {'PATH': path})
     gui_env = isolated_env(home_a, prof_a, {'PATH': path, 'UC_GPUI_QUICK_PANEL': '0', 'UC_GUI_GO_ISOLATED': '1', 'UC_DISABLE_SYSTEM_CLIPBOARD': '1',
                                            'UC_GUI_GO_EVIDENCE': str(evidence), 'UC_GUI_GO_E2E_PHASE': 'wake', 'UC_GUI_GO_EXIT_MODE': 'full',
                                            'UC_GUI_GO_E2E_CONTROL_FILE': str(control), 'UC_GUI_GO_E2E_NATIVE_STATE': '1',
-                                           'UC_GUI_GO_E2E_SECRET': 'tray-tracking-17c15'})
+                                           'UC_GUI_GO_E2E_SECRET': 'tray-tracking-17c15', 'UC_GUI_GO_E2E_NOTIFY_LOG': str(out / 'notifications.log')})
     binary = ROOT / 'target/gui-go/UniClipboardGoE2E.app/Contents/MacOS/gui-go'
     results = {'profileA': prof_a, 'profileB': prof_b, 'checks': [], 'passed': False,
                'scope': 'real GUI + real daemon + real paired peer; menu driven through the macOS Accessibility API on the status item NSMenu; manual scheduling labelled MANUAL'}
@@ -399,6 +430,34 @@ def main():
         results['trayLanguageCalls'] = calls
         check('0 precondition: after the frontend\'s startup calls (re-pinned if they came late) the last language call is the test\'s English and nothing followed it for 8 s',
               quiet['ok'] and all(pins) and calls[-1:] == ['en'], {'calls': calls, 'pinAttempts': len(pins)})
+        if args.scenario == 'lightweight':
+            # M5b: the tray's lightweight-mode item through the real menu. The GUI must exit with 0 and the daemon must stay (exact pid held by the
+            # profile's lock file, executable checked, HTTP healthy); the orchestrator then stops it through the CLI and the SAME pid must go.
+            daemons0 = daemon_pids(home_a, prof_a)
+            check('5b the profile\'s daemon is identified before the lightweight press (lock-file holder, executable path)', bool(daemons0) and all(d['exe'].endswith('uniclipd') for d in daemons0), daemons0)
+            opened, first = open_menu(gui, proc.pid, args.open_with, 'o1', out)
+            check('5b the real menu was opened through AppKit tracking before the lightweight press', opened.get('ok') and first.get('ok') and bool(first.get('popupWindows')), {'popupWindows': first.get('popupWindows')})
+            gui_title = 'Lightweight Mode (Background Sync)'
+            press = ax('press', str(proc.pid), gui_title)
+            try:
+                rc = proc.wait(timeout=40)
+            except subprocess.TimeoutExpired:
+                rc = None
+            check('5b pressing the lightweight item in the real menu made the exact GUI pid exit with 0', press.get('ok') and rc == 0, {'press': press, 'rc': rc})
+            daemons1 = daemon_pids(home_a, prof_a)
+            health = dget(env_a, '/settings')
+            check('5b the daemon survived the GUI exit: same exact pid(s) alive, lock still held, HTTP healthy (GET /settings answered)',
+                  bool(daemons1) and [d['pid'] for d in daemons1] == [d['pid'] for d in daemons0] and all(_alive(d['pid']) for d in daemons1) and health is not None,
+                  {'before': daemons0, 'after': daemons1, 'settingsAnswered': health is not None})
+            notes = (out / 'notifications.log').read_text() if (out / 'notifications.log').exists() else ''
+            check('5b the bilingual "still running in the background" notice reached the notification recorder (recorder, not the OS)', 'Still running in the background' in notes and 'UniClipboard' in notes, {'log': notes[-300:]})
+            cli(env_a, '--json', 'stop', check=False, timeout=80)
+            end = time.time() + 30
+            while time.time() < end and any(_alive(d['pid']) for d in daemons0):
+                time.sleep(1)
+            check('5b the orchestrator\'s stop ended the SAME exact daemon pid(s) and the lock has no holder', not any(_alive(d['pid']) for d in daemons0) and not daemon_pids(home_a, prof_a), {'pids': [d['pid'] for d in daemons0]})
+            results['passed'] = all(c['ok'] for c in results['checks'])
+            raise Done()
         # Wait until the peer row has been published at least once (the periodic refresh), checked in the daemon too.
         prefs0 = wait_daemon(env_a, prefs_path, lambda x: 'sendEnabled' in x)
         settings0 = dget(env_a, settings_path)
@@ -495,6 +554,81 @@ def main():
               gap['ok'] and (gap['detail'] or {}).get('gapConsumed') is True and r3b.get('ok') and r3b.get('popupWindows') and titles(r3b['menu'])[1:] == EN and sub3b is not None and [d['title'] for d in sub3b] == ['tray-peer-b'],
               {'gap': gap['detail'], 'root': titles(r3b['menu']) if r3b.get('ok') else r3b, 'popupWindows': r3b.get('popupWindows')})
 
+        # 3a-c. the device SUBMENU really expanded while the menu is tracked (an AX press on its item), then the changes that matter happen while it is
+        # expanded. "Expanded" = a second, submenu-sized pop-up window beside the root menu window (the AX tree lists the children either way).
+        def expand_submenu(tag):
+            w_before = ax('windows', str(proc.pid))
+            press_s = ax('press', str(proc.pid), 'Device Sync')
+            time.sleep(1.2)
+            w_after = ax('windows', str(proc.pid))
+            pb, pa = popups_of(w_before), popups_of(w_after)
+            root_w = pb[0] if pb else None
+            extra = [w for w in pa if root_w and w not in pb and w['bounds'].get('Width', 0) > 50 and w['bounds'].get('Height', 0) > 20
+                     and w['bounds'].get('X', 0) >= root_w['bounds'].get('X', 0) + root_w['bounds'].get('Width', 0) - 40]
+            (out / f'ax-3a-{tag}-windows.json').write_text(json.dumps({'before': w_before, 'after': w_after, 'press': press_s}, ensure_ascii=False, indent=1))
+            return bool(press_s.get('ok') and len(pa) >= len(pb) + 1 and extra), {'press': press_s, 'popupsBefore': len(pb), 'popupsAfter': len(pa), 'submenuWindow': extra[:1], 'rootWindow': root_w}
+        ok_exp, det = expand_submenu('first')
+        check('3a the device submenu was really expanded in the tracked menu (AX press on Device Sync: a second submenu-sized pop-up window beside the root window)', ok_exp, det)
+
+        # 3b natural refresh while expanded (rows unchanged: the submenu is updated in place, not rebuilt)
+        n_pub0 = len([x for x in gui.rows() if x['step'] == 'tray-publish'])
+        timeline, t_start = [], time.time()
+        while time.time() - t_start < 24:
+            rd = ax('read', str(proc.pid))
+            sub_rows = [d['title'] for d in (device_items(rd['menu']) or [])] if rd.get('ok') else None
+            timeline.append([round(time.time() - t_start, 1), rd.get('popupWindows'), sub_rows])
+            time.sleep(.5)
+        pubs = [x['detail'] for x in gui.rows() if x['step'] == 'tray-publish'][n_pub0:]
+        (out / 'ax-3b-timeline.json').write_text(json.dumps({'timeline': timeline, 'publishes': pubs}, ensure_ascii=False, indent=1))
+        check('3b natural refreshes ran while the submenu was expanded (>= 2 publishes), the menu never vanished, the rows stayed [tray-peer-b]; whether the submenu stayed expanded is recorded',
+              len(pubs) >= 2 and all(t[1] for t in timeline) and all(t[2] == ['tray-peer-b'] for t in timeline),
+              {'publishes': len(pubs), 'maxDurMs': max((x['durMs'] for x in pubs), default=None), 'minPopupWindows': min(t[1] or 0 for t in timeline), 'readsWithSubmenuWindow': sum(1 for t in timeline if (t[1] or 0) >= 2), 'reads': len(timeline)})
+
+        # 3b' MANUAL language change while the submenu is expanded
+        if popups_of(ax('windows', str(proc.pid))).__len__() < 2:
+            expand_submenu('again-lang')
+        gui.ctl('invoke zh3 set_tray_language {"language":"zh-CN","trace":null}', 'invoke-zh3')
+        time.sleep(1.5)
+        rz = ax('read', str(proc.pid))
+        subz = device_items(rz['menu']) if rz.get('ok') else None
+        check('3b MANUAL: language change while the submenu was expanded: the open menu and its submenu relabelled together, menu still tracked',
+              rz.get('ok') and bool(rz.get('popupWindows')) and titles(rz['menu'])[1:] == ZH and subz is not None and [d['title'] for d in subz] == ['tray-peer-b'],
+              {'root': titles(rz['menu']) if rz.get('ok') else rz, 'sub': subz, 'popupWindows': rz.get('popupWindows')})
+        gui.ctl('invoke en3 set_tray_language {"language":"en","trace":null}', 'invoke-en3')
+        time.sleep(1.5)
+
+        # 3c a device-structure change while the submenu is expanded: a second peer is paired into the space through the production rendezvous
+        if popups_of(ax('windows', str(proc.pid))).__len__() < 2:
+            expand_submenu('again-struct')
+        popups_at_start = len(popups_of(ax('windows', str(proc.pid))))
+        pair_result = {}
+
+        def pair_c():
+            try:
+                join_peer(env_a, env_c, 'tray-peer-c')
+                pair_result['ok'] = True
+            except Exception as exc:  # noqa: BLE001 - recorded
+                pair_result['error'] = f'{type(exc).__name__}: {exc}'
+        import threading
+        th = threading.Thread(target=pair_c)
+        th.start()
+        t_pair, struct_timeline, appeared = time.time(), [], None
+        while time.time() - t_pair < 150 and (th.is_alive() or appeared is None):
+            rd = ax('read', str(proc.pid))
+            rows = [d['title'] for d in (device_items(rd['menu']) or [])] if rd.get('ok') else None
+            struct_timeline.append([round(time.time() - t_pair, 1), rd.get('popupWindows'), rows])
+            if appeared is None and rows == ['tray-peer-b', 'tray-peer-c']:
+                appeared = struct_timeline[-1]
+            time.sleep(.7)
+        th.join(timeout=5)
+        (out / 'ax-3c-timeline.json').write_text(json.dumps({'timeline': struct_timeline, 'pair': pair_result, 'popupsAtStart': popups_at_start}, ensure_ascii=False, indent=1))
+        roster2 = json.loads(cli(env_a, '--json', 'member', 'list').stdout)
+        names = sorted(m.get('device_name') or m.get('name') or '' for m in roster2 if not m.get('is_local'))
+        check('3c a second peer paired while the menu was tracked: the daemon lists it, and the open menu\'s device submenu gained the row without a stall (menu never vanished)',
+              pair_result.get('ok') and names == ['tray-peer-b', 'tray-peer-c'] and appeared is not None and all(t[1] for t in struct_timeline),
+              {'pair': pair_result, 'daemonPeers': names, 'rowAppearedAt': appeared, 'popupsAtStart': popups_at_start, 'minPopupWindows': min((t[1] or 0) for t in struct_timeline) if struct_timeline else None,
+               'samples': len(struct_timeline)})
+
         # 3. device item pressed in the real menu
         sub = device_items(r3['menu']) if r3.get('ok') else None
         before_mark = sub[0].get('mark') if sub else None
@@ -566,13 +700,13 @@ def main():
         if wake and wake.poll() is None:
             wake.terminate()
             wake.wait(timeout=10)
-        for env in (env_a, env_b):
+        for env in (env_a, env_b, env_c):
             cli(env, '--json', 'stop', check=False, timeout=80)
         results['wakeReturncode'] = wake.returncode if wake else None
         results['displayAtEnd'] = ax('display', '0')
         # The overflow expansion was a transient navigation: at the end the system's overflow button must again be what sits at the old position.
         results['overflowAtEnd'] = ax('elementat', '0', '714', '15')
-        results['daemonPidsAfterCleanup'] = {'a': daemon_pids(home_a, prof_a), 'b': daemon_pids(home_b, prof_b)}
+        results['daemonPidsAfterCleanup'] = {'a': daemon_pids(home_a, prof_a), 'b': daemon_pids(home_b, prof_b), 'c': daemon_pids(home_c, prof_c)}
         (out / 'assertions.json').write_text(json.dumps(results, indent=2, ensure_ascii=False) + '\n')
     print(json.dumps({k: v for k, v in results.items() if k != 'checks'}, indent=2, ensure_ascii=False))
     sys.exit(0 if results['passed'] else 1)

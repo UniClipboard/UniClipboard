@@ -289,14 +289,24 @@ P8_VARIANTS = {  # name -> (proxy mode, kind); the environment is built by varia
     'env-conflict': ('allow', 'env-conflict'),      # lower case -> allow proxy, upper case -> a dead port: which one does the resolver follow?
     'env-bypass': ('allow', 'env-bypass'),          # NO_PROXY names the WebView probe host: it must go direct
     'env-recover': ('allow', 'env-recover'),        # P7: proxied, then the proxy goes away (must FAIL, never go direct), then comes back on the same port (proxied again), same GUI process
+    'rv-none': (None, 'rv-none'),                   # P6: Engine rendezvous redeem, no proxy variables: the proxy never sees it (control)
+    'rv-deny': ('deny', 'rv-deny'),                 # P6: deny-only proxy: the redeem's rendezvous CONNECT must reach the proxy and be refused (never forwarded)
+    'rv-bypass': ('deny', 'rv-bypass'),             # P6: NO_PROXY names the rendezvous host: the proxy must not see that CONNECT
     'env-bypass-other': ('allow', 'env-bypass-other'),  # NO_PROXY names an unrelated host: the WebView is still proxied
 }
-REQUIRED_VARIANTS = {'env-recover': 'proxied', 'env-bypass': 'direct', 'env-bypass-other': 'proxied'}  # the others are recorded observations (precedence is the resolver library's)
+RENDEZVOUS_HOST = 'rendezvous.uniclipboard.app'  # Engine d4dd324a (uc-engine 1.1.0-rc.22, the packaged daemon's lock entry): uc-infra-p2p RENDEZVOUS_BASE_URL
+REQUIRED_VARIANTS = {'rv-none': 'direct', 'rv-deny': 'refused', 'rv-bypass': 'refused', 'env-recover': 'proxied', 'env-bypass': 'direct', 'env-bypass-other': 'proxied'}  # the others are recorded observations (precedence is the resolver library's)
 
 
 def variant_env(kind, port):
     url = f'http://127.0.0.1:{port}'
     dead = f'http://127.0.0.1:{free_port()}'
+    if kind == 'rv-none':
+        return {}
+    if kind == 'rv-deny':
+        return proxy_env(port)
+    if kind == 'rv-bypass':
+        return dict(proxy_env(port), no_proxy=RENDEZVOUS_HOST, NO_PROXY=RENDEZVOUS_HOST)
     if kind == 'env-recover':
         return proxy_env(port)
     if kind == 'env-upper':
@@ -596,6 +606,39 @@ def main():
                     req(f'[{name}] REQUIRE while the proxy is down the WebView request FAILS and never reaches the target directly', out_phase['route'] == 'failed' and out_phase['targetSaw'] == 0, out_phase)
                     req(f'[{name}] REQUIRE after the proxy is back on the same port the same GUI process is proxied again', back_phase['route'] == 'proxied', back_phase)
                     req(f'[{name}] REQUIRE the local daemon is still usable after the outage (page HTTP fetch and WebSocket frame)', bool(sc['p7']['pageAfter']['http']) and bool(sc['p7']['pageAfter']['wsframe']), sc['p7']['pageAfter'])
+            if name.startswith('rv-'):
+                # P6: ONE real redeem of a synthetic invalid invitation against the isolated throwaway daemon (its temp profile). The deny-only proxy records the CONNECT and refuses it.
+                import urllib.request, urllib.error
+                api = f'http://{conn["host"]}:{daemon_port}'
+                direct_opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))  # the runner talks to the daemon directly
+                def call(path, body, auth):
+                    rq = urllib.request.Request(api + path, data=json.dumps(body).encode(), method='POST', headers={'Authorization': auth, 'Content-Type': 'application/json'})
+                    try:
+                        with direct_opener.open(rq, timeout=90) as rs:
+                            return rs.status, json.loads(rs.read() or b'{}')
+                    except urllib.error.HTTPError as e:
+                        return e.code, json.loads(e.read() or b'{}')
+                st, body = call('/auth/connect', {'pid': os.getpid(), 'clientType': 'gui'}, 'Bearer ' + conn['token'])
+                session = ((body or {}).get('data') or {}).get('sessionToken')
+                n_before = len(proxy.lines()) if proxy else 0
+                t0 = time.monotonic()
+                code = 'uc17c12-synthetic-' + secrets.token_hex(4)
+                rst, rbody = call('/v2/setup/redeem', {'code': code, 'passphrase': 'synthetic-' + secrets.token_hex(4)}, 'Session ' + (session or ''))
+                elapsed = round(time.monotonic() - t0, 2)
+                time.sleep(2)
+                win = proxy.lines()[n_before:] if proxy else []
+                named = [l for l in win if REQ.search(l) and RENDEZVOUS_HOST in REQ.search(l).group(2)]
+                refusals = [l for l in win if 'refused' in l.lower() and RENDEZVOUS_HOST in l]
+                sc['p6'] = {'sessionStatus': st, 'redeemStatus': rst, 'redeemBody': {k: v for k, v in (rbody or {}).items() if k != 'data'}, 'elapsedSeconds': elapsed,
+                            'proxyWindowNamingRendezvous': named, 'proxyRefusals': refusals, 'proxyWindow': win, 'forwardedToTarget': len(target.requests)}
+                run.check(f'[{name}] P6 the synthetic redeem was answered with an error status (never a success)', rst >= 400, sc['p6'])
+                if args.require and args.require_env:
+                    if name == 'rv-deny':
+                        req(f'[{name}] REQUIRE the daemon\'s rendezvous request went through the proxy (CONNECT {RENDEZVOUS_HOST}) and was refused; nothing was forwarded', bool(named) and bool(refusals), sc['p6'])
+                    elif name == 'rv-bypass':
+                        req(f'[{name}] REQUIRE NO_PROXY naming the rendezvous host keeps the daemon\'s request off the proxy', not named, sc['p6'])
+                    else:
+                        req(f'[{name}] REQUIRE without proxy variables the redeem is an error and no proxy is involved', rst >= 400 and not named, sc['p6'])
             stop(gui, conn)
             launches.clear()
             if where:

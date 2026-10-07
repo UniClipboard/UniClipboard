@@ -1046,6 +1046,29 @@ def main():
                     sc['afterTakeover'] = pac_wv('after-takeover')
                     req(f'[{name}] REQUIRE PAC works again after the takeover (proxied)', sc['afterTakeover']['route'] == 'proxied', sc['afterTakeover'])
                     bundled_pac = bundled_now()
+                if name == 'gs-sys-pac-hang':  # real WebView cancellation of a request that waits for a hanging PAC download, then recovery of the same GUI
+                    t_abort = secrets.token_hex(4)
+                    url_abort = f'https://{WV_HOST}/webview-abort-{t_abort}'
+                    js_abort = ("(function(){var rp=%d;function rep(k,v){fetch('http://127.0.0.1:'+rp+'/'+k+'?v='+encodeURIComponent(v),{mode:'no-cors'})}"
+                                "var c=new AbortController(),t0=Date.now();setTimeout(function(){c.abort()},3000);"
+                                "fetch('%s',{mode:'cors',cache:'no-store',signal:c.signal}).then(function(r){return r.text()}).then(function(t){rep('abort-ok',t)})"
+                                ".catch(function(e){rep('abort-err',e.name+':'+(Date.now()-t0))})})()") % (reports.port, url_abort)
+                    gui.ctl(f'panel-js abort {js_abort}', 'panel-js-abort')
+                    ev_abort = reports.wait('abort-err', 30) or reports.wait('abort-ok', 5)
+                    sc['cancel'] = {'report': ev_abort}
+                    took = None
+                    try:
+                        took = int(str((ev_abort or {}).get('value', '')).split(':')[1])
+                    except (IndexError, ValueError):
+                        pass
+                    req(f'[{name}] REQUIRE a WebView request waiting for the hanging PAC download is cancelled by the page (AbortController) within ~3 s (reported {(ev_abort or {}).get("value")})',
+                        bool(ev_abort) and str(ev_abort.get('value', '')).startswith('AbortError') and took is not None and took < 8000, sc['cancel'])
+                    socks2 = sockets_of(('WebKit', 'uniclipboard', 'uniclipd'))
+                    still = [x for x in socks2 if x['proc'].startswith('WebKitNetwork') and x['peer'].endswith(f':{daemon_port}')]
+                    req(f'[{name}] REQUIRE after the cancel the WebView still holds its loopback connections to the daemon (the cancelled lookup did not take the page down)', len(still) >= 1, still)
+                    pac.mode = 'ok'  # the PAC server recovers: an OBSERVATION of the resolver's own behaviour after a cancelled/failed download
+                    sc['afterRecovery'] = pac_wv('after-recovery')
+                    chk(f'[{name}] after the PAC server recovered the next request is {sc["afterRecovery"]["route"]} (libproxy may keep its failed-download state; recorded)', True, sc['afterRecovery'])
                 if args.require and name == 'gs-sys-pac-kill':
                     victims = bundled_now()
                     for v in victims:

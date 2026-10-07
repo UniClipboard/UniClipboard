@@ -43,6 +43,11 @@ func e2eTrayIconAnimation(kind animKind, at time.Time) {
 	trayIconRecord(map[string]any{"kind": "animation", "animation": int(kind), "ns": at.UnixNano()})
 }
 
+// e2eTrayIconDeliveryRead records each delivery view read of the feed.
+func e2eTrayIconDeliveryRead(entryID, targetID string) {
+	trayIconRecord(map[string]any{"kind": "delivery-read", "entry": entryID, "target": targetID, "ns": time.Now().UnixNano()})
+}
+
 // controlTrayIcon handles the tray icon controls. Everything below that sets a state or sends an event is MANUAL control for visual
 // coverage and is recorded as such; the authoritative path is the feed reading the real daemon, which the pause scenario uses.
 func (s *EvidenceService) controlTrayIcon(action string) (bool, error) {
@@ -61,6 +66,9 @@ func (s *EvidenceService) controlTrayIcon(action string) (bool, error) {
 			"left": icon.pose.left, "right": icon.pose.right, "animating": icon.play != nil, "timer": icon.timer != nil, "cachedFrames": len(icon.frames),
 			"reducedMotion": icon.reduced()}
 		icon.mu.Unlock()
+		feed.deliveryMu.Lock()
+		detail["deliveryUnresolved"], detail["deliveryDue"] = len(feed.deliveryUnresolved), len(feed.deliveryDue)
+		feed.deliveryMu.Unlock()
 		return true, s.write(Step{Window: "tray", Step: "tray-icon-state", OK: true, Detail: detail})
 	case strings.HasPrefix(action, "tray-icon-manual:"):
 		// tray-icon-manual:<state>[+dot]: MANUAL facts, not daemon state. "none" clears every manual fact.
@@ -98,6 +106,8 @@ func (s *EvidenceService) controlTrayIcon(action string) (bool, error) {
 			"clipboard.new_content":        `{"origin":"remote"}`,
 			"file-transfer.progress":       `{"transferId":"e2e-manual"}`,
 			"file-transfer.status_changed": `{"transferId":"e2e-manual","status":"completed"}`,
+			// The read of this entry's delivery view goes to the real daemon, which has no such entry, so it fails (F7).
+			"clipboard.delivery_status_changed": `{"entryId":"e2e-missing-entry","targetDeviceId":"e2e-target"}`,
 		}
 		typ := strings.TrimPrefix(action, "tray-icon-event:")
 		payload, ok := payloads[typ]

@@ -51,5 +51,8 @@ func e2eInvoke(string) func() { return func() {} }
 // e2eTrayIconFrame records each tray icon frame in the e2e build only.
 func e2eTrayIconFrame(iconView) {}
 
+// e2eTrayIconDeliveryRead records each delivery view read, in the e2e build only.
+func e2eTrayIconDeliveryRead(string, string) {}
+
 // e2eTrayIconAnimation records when an animation starts, in the e2e build only.
 func e2eTrayIconAnimation(animKind, time.Time) {}

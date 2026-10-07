@@ -263,6 +263,29 @@ def main():
         check('4 idle: no animation, no timer, and CPU use over 10 s stays small', not idle['animating'] and not idle['timer'] and (c1 - c0) / 10 < 0.05, {'cpuSecondsPer10s': c1 - c0, 'state': idle})
 
 
+        # 4b. F7: a delivery view that cannot be read is kept as unresolved and read again on the existing 10 s tick, once per pair, with no
+        # replay of the "sent" motion. The entry does not exist in the daemon, so every read fails.
+        t_d = time.time_ns()
+        gui.ctl('tray-icon-event:clipboard.delivery_status_changed', 'tray-icon-event')
+        gui.ctl('tray-icon-event:clipboard.delivery_status_changed', 'tray-icon-event')
+        time.sleep(2)
+        d1 = gui.ctl('tray-icon-state', 'tray-icon-state')['detail']
+        check('4b an unreadable delivery view is kept once as unresolved, however many events named it', d1.get('deliveryUnresolved') == 1, {'deliveryUnresolved': d1.get('deliveryUnresolved'), 'deliveryDue': d1.get('deliveryDue')})
+        deadline = time.time() + 40
+        reads = []
+        later = []
+        while time.time() < deadline:
+            recs = gui.ctl(f'tray-icon-frames:{t_d}', 'tray-icon-frames')['detail']
+            reads = [x for x in recs if x['kind'] == 'delivery-read']
+            later = [x for x in reads if x['ns'] > t_d + 3_000_000_000]
+            if len(later) >= 2:
+                break
+            time.sleep(2)
+        check('4b the pair is read again by the existing 10 s tick, twice in 40 s (no extra timer)', len(later) >= 2 and len({x['entry'] for x in reads}) == 1, {'reads': len(reads), 'afterTheEvents': len(later)})
+        recs = gui.ctl(f'tray-icon-frames:{t_d}', 'tray-icon-frames')['detail']
+        check('4b a failing read never plays the "sent" motion or changes the base state', not [x for x in recs if x['kind'] == 'animation'] and d1['base'] == 'synced', {'animations': [x for x in recs if x['kind'] == 'animation']})
+
+
         # 5a. daemon-driven chain, no clicks: the daemon's own settings are changed from outside the GUI (daemonpatch, the GUI's daemon client); the icon can
         # only follow because the host read the daemon. The poll period is 10 s, so each change must show within 15 s.
         def patch(path, body):

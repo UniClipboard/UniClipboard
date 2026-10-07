@@ -18,9 +18,12 @@ type iconFeed struct {
 	h    *HostService
 	icon *trayIcon
 
-	deliveryMu   sync.Mutex
-	deliveryDue  map[[2]string]struct{} // (entry, target) pairs whose delivery view must be read; repeats within a burst merge
-	deliveryWake chan struct{}          // capacity 1: wakes deliveryWorker
+	deliveryMu  sync.Mutex
+	deliveryDue map[[2]string]struct{} // (entry, target) pairs whose delivery view must be read; repeats within a burst merge
+	// deliveryUnresolved holds the pairs whose last read failed, with the time of the first failure. The refresh tick and a stream reconnect
+	// put them back into deliveryDue until a read succeeds or deliveryGiveUp has passed, so a failed delivery is not lost to one bad read.
+	deliveryUnresolved map[[2]string]time.Time
+	deliveryWake       chan struct{} // capacity 1: wakes deliveryWorker
 
 	refreshReq chan struct{} // capacity 1: snapshot reads run one at a time on run's goroutine, so an old answer cannot overwrite a newer one
 
@@ -39,8 +42,9 @@ const (
 	transferStale = 15 * time.Second
 	// transferTombstone is how long an ended transfer's id is remembered, so a progress event that overtakes its terminal event is not a new transfer.
 	transferTombstone = 30 * time.Second
-	// deliveryReadAttempts is how many times one delivery view is tried before it is given up.
-	deliveryReadAttempts = 3
+	// deliveryGiveUp is how long an unreadable delivery view is retried; maxUnresolvedDeliveries bounds how many are kept.
+	deliveryGiveUp          = 5 * time.Minute
+	maxUnresolvedDeliveries = 32
 	// reconnectDelay is the pause before the event stream is opened again.
 	reconnectDelay = 3 * time.Second
 )
@@ -49,7 +53,7 @@ const (
 var iconTopics = []string{"file-transfer", "clipboard", "peers", "device-trust", "content-lock", "paired-devices"}
 
 func newIconFeed(h *HostService, icon *trayIcon) *iconFeed {
-	return &iconFeed{h: h, icon: icon, transfers: map[string]time.Time{}, ended: map[string]time.Time{}, deliveryDue: map[[2]string]struct{}{}, deliveryWake: make(chan struct{}, 1), refreshReq: make(chan struct{}, 1)}
+	return &iconFeed{h: h, icon: icon, transfers: map[string]time.Time{}, ended: map[string]time.Time{}, deliveryDue: map[[2]string]struct{}{}, deliveryUnresolved: map[[2]string]time.Time{}, deliveryWake: make(chan struct{}, 1), refreshReq: make(chan struct{}, 1)}
 }
 
 // requestRefresh asks run for a snapshot read soon; requests that arrive while one is pending merge into it.
@@ -74,6 +78,7 @@ func (f *iconFeed) run(ctx context.Context) {
 			return
 		case <-ticker.C:
 			f.refresh(ctx)
+			f.requeueUnresolved()
 			f.sweepTransfers()
 		case <-f.refreshReq:
 			f.refresh(ctx)
@@ -185,6 +190,7 @@ func (f *iconFeed) follow(ctx context.Context) error {
 	}
 	// The snapshot facts may have changed while no stream was open.
 	f.requestRefresh()
+	f.requeueUnresolved()
 	for event := range ws.Events(ctx) {
 		f.handle(ctx, event)
 	}
@@ -264,7 +270,6 @@ func (f *iconFeed) queueDelivery(entryID, targetID string) {
 }
 
 func (f *iconFeed) deliveryWorker(ctx context.Context) {
-	attempts := map[[2]string]int{} // failed reads per pair; a read that fails is retried, so a failure event is not lost to one timeout
 	for {
 		select {
 		case <-ctx.Done():
@@ -279,17 +284,51 @@ func (f *iconFeed) deliveryWorker(ctx context.Context) {
 			if ctx.Err() != nil {
 				return
 			}
-			if err := f.deliveryChanged(ctx, pair[0], pair[1]); err != nil {
-				if attempts[pair]++; attempts[pair] < deliveryReadAttempts {
-					pair := pair
-					time.AfterFunc(time.Duration(attempts[pair])*reconnectDelay, func() { f.queueDelivery(pair[0], pair[1]) })
-				} else {
-					delete(attempts, pair)
-					log.Printf("tray icon: delivery view of entry %s unreadable: %v", pair[0], err)
-				}
-				continue
+			err := f.deliveryChanged(ctx, pair[0], pair[1])
+			f.deliveryMu.Lock()
+			if err == nil {
+				delete(f.deliveryUnresolved, pair)
+			} else if _, known := f.deliveryUnresolved[pair]; !known {
+				f.markUnresolvedLocked(pair)
+				log.Printf("tray icon: delivery view of entry %s unreadable, will retry: %v", pair[0], err)
 			}
-			delete(attempts, pair)
+			f.deliveryMu.Unlock()
+		}
+	}
+}
+
+// markUnresolvedLocked records the first failure of a pair; when the set is full the oldest pair is dropped. The caller holds deliveryMu.
+func (f *iconFeed) markUnresolvedLocked(pair [2]string) {
+	if len(f.deliveryUnresolved) >= maxUnresolvedDeliveries {
+		var oldest [2]string
+		var oldestAt time.Time
+		for p, at := range f.deliveryUnresolved {
+			if oldestAt.IsZero() || at.Before(oldestAt) {
+				oldest, oldestAt = p, at
+			}
+		}
+		delete(f.deliveryUnresolved, oldest)
+	}
+	f.deliveryUnresolved[pair] = time.Now()
+}
+
+// requeueUnresolved puts every pair whose read failed back into the work set, dropping those that have been failing for deliveryGiveUp.
+// It runs on the refresh tick and after a stream reconnect, so there is no timer of its own and a pair is never queued twice.
+func (f *iconFeed) requeueUnresolved() {
+	f.deliveryMu.Lock()
+	for pair, since := range f.deliveryUnresolved {
+		if time.Since(since) > deliveryGiveUp {
+			delete(f.deliveryUnresolved, pair)
+			continue
+		}
+		f.deliveryDue[pair] = struct{}{}
+	}
+	pending := len(f.deliveryDue) > 0
+	f.deliveryMu.Unlock()
+	if pending {
+		select {
+		case f.deliveryWake <- struct{}{}:
+		default:
 		}
 	}
 }
@@ -299,6 +338,7 @@ func (f *iconFeed) deliveryChanged(ctx context.Context, entryID, targetID string
 	if entryID == "" {
 		return nil
 	}
+	e2eTrayIconDeliveryRead(entryID, targetID)
 	cctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	var view struct {

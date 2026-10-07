@@ -96,7 +96,7 @@ PAC（`autoconfig_url`）、代理认证、系统设置动态变更、SOCKS：�
 2. **stage2**（包 `202485c5…`）：环境变量路径开通，但 libproxy 没有回环绕过，daemon 的回环连接被送到代理（红色，证据保留）。
 3. **stage3**（包 `8c9881b0…`，产品提交 `e649e7057`）：`apps/gui-go/proxy_env_linux.go` 在进程初始化时把 `localhost,127.0.0.1,::1` 合并进 `NO_PROXY`/`no_proxy`（与 Tauri 的 `process_environment.rs` 同一约定，保留用户条目，`*` 优先），早于 WebKitGTK 创建和 daemon 启动。
 
-stage3 同一个包上的两个矩阵（每个场景都含页面自身的 HTTP 取数与 WebSocket 帧）：
+stage3 同一个包上的两个矩阵。页面自身的 HTTP 取数与 WebSocket 帧只存在于非便携矩阵（`proxy-nonportable-v2`，页面探测 runner `16155f180`）；便携矩阵 `proxy-portable` 是页面探测之前的 runner 跑的（只有 socket 与代理日志），**没有** 页面 HTTP/WS 覆盖，便携的页面证据来自 `smoke-pageprobe-v2`、`p8-portable-v2`、`p7-portable`，最终仍须在最终包上用当前 runner 跑完整便携矩阵：
 
 | 矩阵 | 运行目录 | 退出码 | 观测 | 要求 |
 | --- | --- | --- | --- | --- |

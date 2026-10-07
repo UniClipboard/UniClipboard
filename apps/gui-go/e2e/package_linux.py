@@ -79,6 +79,10 @@ HOST_ONLY_LIBS = ('libwayland-client.so', 'libEGL.so', 'libGL.so', 'libGLX.so', 
 #  libgiolibproxy.so    GProxyResolver over libproxy: environment variables (http_proxy ...), PAC, KDE/sysconfig configuration                     (17c12)
 GIO_MODULES = {'libgiognutls.so': 'glib-networking', 'libgiognomeproxy.so': 'glib-networking', 'libdconfsettings.so': 'dconf-gsettings-backend',
                'libgiolibproxy.so': 'glib-networking'}
+# Built from source in the build image, not copied from a distribution package: GProxyResolver that answers direct:// for loopback and delegates everything else to the
+# resolver GLib would have picked (docs/architecture/gui-go-linux-appimage-system-proxy.md, "Loopback guard"). Priority 100 puts it in front of "gnome" (80) and "libproxy" (10).
+GUARD_SOURCE = ROOT / 'apps/gui-go/packaging/linux/gio-loopback-guard/uc_loopback_guard.c'
+GUARD_MODULE = 'libgiouniclipboardloopback.so'
 # The libraries libgiolibproxy.so needs that the AppImage does not already carry (computed from the build image's own dependency closure, then frozen here: a new
 # entry is a decision, not an accident). libproxy 0.5's backend hard-links the PAC runtime (duktape) and the PAC downloader (libcurl-gnutls), whose own closure
 # (libssh, libldap/liblber, libsasl2, librtmp, OpenSSL's libcrypto) comes with it; this is the distribution's own dependency set for libproxy, not a choice of ours.
@@ -357,6 +361,17 @@ def deploy_gio_modules(appdir):
         if missing:
             sys.exit(f'{name} needs libraries that are neither in the AppDir nor libc-family: {missing}')
         rows.append({'module': name, 'source': str(src), 'package': package, 'packageVersion': version, 'sha256': sha256(dest), 'needed': needed})
+    cflags = run(['pkg-config', '--cflags', 'gio-2.0'], capture=True).split()
+    libs = run(['pkg-config', '--libs', 'gio-2.0'], capture=True).split()
+    dest = appdir / 'usr/lib/gio/modules' / GUARD_MODULE
+    command = ['gcc', '-Wall', '-Wextra', '-Werror', '-O2', '-shared', '-fPIC', *cflags, str(GUARD_SOURCE), '-o', str(dest), *libs]
+    run(command)
+    needed = re.findall(r'\(NEEDED\)\s+Shared library: \[(.+?)\]', run(['readelf', '-d', str(dest)], capture=True))
+    missing = sorted(n for n in needed if n not in shipped and not libc_family.match(n))
+    if missing:
+        sys.exit(f'{GUARD_MODULE} needs libraries that are neither in the AppDir nor libc-family: {missing}')
+    rows.append({'module': GUARD_MODULE, 'package': 'uniclipboard (built from source in the build image)', 'source': str(GUARD_SOURCE.relative_to(ROOT)), 'sourceSha256': sha256(GUARD_SOURCE),
+                 'compiler': run(['gcc', '--version'], capture=True).splitlines()[0], 'compileCommand': ' '.join(command), 'sha256': sha256(dest), 'needed': needed})
     glib_version = run(['dpkg-query', '-W', '-f', '${Version}', 'libglib2.0-0t64'], capture=True)
     return {'modules': rows, 'supportLibraries': support_rows, 'bundledGLibPackageVersion': glib_version}
 
@@ -454,8 +469,9 @@ def build_appimage(stage, out, arch, name, tools, daemon, relocate=True, marker=
         problems.append(f"host driver libraries bundled: {ins['hostOnlyLibrariesFound']}")
     if not ins['gioModuleDirs']:
         problems.append('no bundled GIO module directory for GIO_MODULE_DIR')
-    if ins['gioModules'] != (sorted(GIO_MODULES) if tls_module else []):
-        problems.append(f"bundled GIO modules are {ins['gioModules']}, expected exactly {sorted(GIO_MODULES) if tls_module else []}")
+    expected_modules = sorted([*GIO_MODULES, GUARD_MODULE]) if tls_module else []
+    if ins['gioModules'] != expected_modules:
+        problems.append(f"bundled GIO modules are {ins['gioModules']}, expected exactly {expected_modules}")
     if problems:
         sys.exit('AppDir inspection failed: ' + '; '.join(problems))
     image = out / name

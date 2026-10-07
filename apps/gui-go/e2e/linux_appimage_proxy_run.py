@@ -46,11 +46,12 @@ TARGET_NAME = 'target.test'
 WV_HOST, CURL_HOST = 'webview-probe.test', 'curl-probe.test'  # one hostname per client
 RENDEZVOUS_HOST = 'rendezvous.uniclipboard.app'  # Engine d4dd324a (uc-engine 1.1.0-rc.22, the packaged daemon's lock entry): uc-infra-p2p RENDEZVOUS_BASE_URL
 # In this INTERNAL network the rendezvous name is pointed (/etc/hosts, additional control) at the controlled target: a direct connection of the daemon is then visible there.
+LOOKALIKE_HOST = 'localhost.webview-probe.test'  # a NON-loopback name that starts like one: the loopback guard must not treat it as loopback
 UPDATE_HOST = 'update-feed.test'  # P5: the Go updater's own hostname (its feed), distinct from the WebView's and curl's
 UPDATE_PATH = '/feed-p5.json'
 FEED_INPUTS = Path('/out/feed-inputs')  # pubkey.b64 + good.sig.b64 of the 17c5 update feed, copied next to the output before the run (the E2E build ships an EMPTY updater key: -X main.updaterPublicKey=)
 FEED_SIGNATURE = (FEED_INPUTS / 'good.sig.b64').read_text().strip() if (FEED_INPUTS / 'good.sig.b64').exists() else 'missing-feed-inputs'
-HOSTS = (TARGET_NAME, WV_HOST, CURL_HOST, RENDEZVOUS_HOST, UPDATE_HOST)
+HOSTS = (TARGET_NAME, WV_HOST, CURL_HOST, RENDEZVOUS_HOST, UPDATE_HOST, LOOKALIKE_HOST)
 LOOPBACK = re.compile(r'(127\.\d+\.\d+\.\d+|localhost|\[?::1\]?)')
 REQ = re.compile(r'Request \(file descriptor \d+\): (\w+) (\S+)')
 BUS_DIR = Path('/bus')
@@ -358,6 +359,7 @@ GNOME_IGNORE = {'gs-sys-ignore': ['localhost', '127.0.0.0/8', '::1', WV_HOST], '
 OBSERVED_ONLY = set()  # (kept for scenarios that cannot be judged; none now)
 REQUIRED_VARIANTS['gs-sys-ignore'] = 'direct'
 REQUIRED_VARIANTS['gs-sys-empty'] = 'proxied'
+LOOKALIKE_CHECKED = {'gs-sys-empty'}
 
 
 def scenarios():
@@ -655,6 +657,15 @@ def main():
                     req(f'[{name}] REQUIRE while the proxy is down the WebView request FAILS and never reaches the target directly', out_phase['route'] == 'failed' and out_phase['targetSaw'] == 0, out_phase)
                     req(f'[{name}] REQUIRE after the proxy is back on the same port the same GUI process is proxied again', back_phase['route'] == 'proxied', back_phase)
                     req(f'[{name}] REQUIRE the local daemon is still usable after the outage (page HTTP fetch and WebSocket frame)', bool(sc['p7']['pageAfter']['http']) and bool(sc['p7']['pageAfter']['wsframe']), sc['p7']['pageAfter'])
+            if name in LOOKALIKE_CHECKED:
+                nonce_l = secrets.token_hex(6)
+                n_l = len(proxy.lines())
+                gui.ctl(f'panel-js {name}-lookalike {reports.script(f"ext-{name}-lookalike", f"https://{LOOKALIKE_HOST}/webview-lookalike-{nonce_l}")}', f'panel-js-{name}-lookalike')
+                reports.wait(f'ext-{name}-lookalike-ok', 40) or reports.wait(f'ext-{name}-lookalike-err', 25)
+                time.sleep(1)
+                sc['lookalike'] = classify(LOOKALIKE_HOST, nonce_l, proxy.lines()[n_l:], target)
+                if args.require:
+                    req(f'[{name}] REQUIRE a non-loopback name that starts like a loopback one ({LOOKALIKE_HOST}) is NOT treated as loopback: proxied', sc['lookalike']['route'] == 'proxied', sc['lookalike'])
             if name.startswith('up-'):
                 # P5: the Go updater (update.NewHTTPClient: ProxyFromEnvironment, environment only) through the REAL control command `check` (the manual check's code path), own hostname, own log window.
                 class _Saw:

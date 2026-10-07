@@ -34,7 +34,8 @@ if no_tls:
     check('C1 negative control: the bundled GIO module directory exists and is EMPTY', present == [], present)
 else:
     EXPECTED = {'libgiognutls.so': 'glib-networking', 'libgiognomeproxy.so': 'glib-networking', 'libdconfsettings.so': 'dconf-gsettings-backend',
-                'libgiolibproxy.so': 'glib-networking'}  # keep in step with package_linux.GIO_MODULES
+                'libgiolibproxy.so': 'glib-networking',
+                'libgiouniclipboardloopback.so': 'uniclipboard (built from source in the build image)'}  # keep in step with package_linux.GIO_MODULES + GUARD_MODULE
     check(f'C1 the bundled GIO module directory holds exactly {sorted(EXPECTED)}', present == sorted(EXPECTED), present)
     recs = {m['module']: m for m in (gio['modules'] if isinstance(gio, dict) else [])}
     libc_family = re.compile(r'^(libc|libm|libdl|libpthread|librt|ld-linux.*)\.so(\.\d+)*$')

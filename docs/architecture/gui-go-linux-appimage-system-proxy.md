@@ -154,6 +154,32 @@ stage3 同一个包上的两个矩阵。页面自身的 HTTP 取数与 WebSocket
 
 45 项观测，25/25 要求。更新器只读环境变量（与 Tauri 更新器同为仅环境变量的对等行为），本轮没有测试它是否读取 GNOME 设置；改为通过 GIO 读取系统代理是 OPEN 的产品决策，没有实现。首轮 `p5-portable`（rc 3）是 fixture 缺陷：E2E 包构建时 `-X main.updaterPublicKey=` 为空，`updateClient()` 在任何 HTTP 之前返回“updates are disabled”，我只设了 `UC_UPDATE_ENDPOINT` 没设 `UC_UPDATE_PUBKEY`；原目录与 `ATTRIBUTION.txt` 保留，v2 提供了 17c5 feed 的公钥与真实签名串。只跑便携模式。
 
+### GNOME `ignore-hosts` 为空时的回环缺陷（stage3 RED）与 loopback guard
+
+证据（RED，保留）：`stage3/gnome-ignore-portable-v2`（退出码 1，`dconf update` 退出码 0，curl 控制与回环探测控制有效）：`gs-sys-empty` 中外部 WebView 请求 proxied，但 WebView 到 daemon 的回环连接为 0，代理日志出现 `GET http://127.0.0.1:<daemon>/auth/connect`、`/settings` 与 `ws://127.0.0.1:<daemon>/ws?auth=Session …`（会话令牌随 URL 发给了代理），页面 HTTP 取数经代理得到 200，但 WebSocket 失败。这是产品缺陷：GNOME 解析器只绕过用户 `ignore-hosts` 列出的主机，空列表时本地 daemon 的连接被送给用户的代理。注意：Tauri 的 AppImage 从未携带 GNOME 解析器（17c11 基线只有 `libgiognutls`），所以不曾走到这一边界；这是 R1 打包解析器的后果，不是相对 Tauri 的回归，也不声称与 Tauri 行为对等。
+
+来源（官方，逐条核对）：
+- WebKitGTK 2.52.6（构建镜像实际版本）`Source/WebCore/platform/network/soup/SoupNetworkSession.cpp`：默认模式使用 `g_proxy_resolver_get_default()`；自定义模式用 `g_simple_proxy_resolver_new` 重新构造（只有默认代理、`ignore_hosts`、按 URI 的映射）；无代理模式把解析器置空；没有任何回环特判。
+- glib-networking 2.80.0：`gnome` 解析器优先级 80，`ignore-hosts` 交给 `GSimpleProxyResolver`，无回环特判，PAC 经 D-Bus 的 PACRunner；`libproxy` 解析器优先级 10。
+- GLib 2.80.0 `gio/giomodule.c`：扩展点按优先级从高到低选第一个可用实现（`GIO_USE_PROXY_RESOLVER` 可按名字指定）。
+- Wails v3.0.0-beta.28：没有代理 API（见前文调查）。
+
+为什么不用现成的 WebKit/Wails 会话 API：`webkit_network_session_set_proxy_settings` 的 `CUSTOM` 模式用静态 `GSimpleProxyResolver` 替换系统解析器，会丢掉 GNOME 设置、PAC、认证与动态变更；`DEFAULT` 是全有或全无。解析发生在 `WebKitNetworkProcess`，不是 Go 进程，所以进程内注册解析器无效；该进程唯一可被应用控制的入口是它加载的 GIO 模块目录（AppRun 已把 `GIO_MODULE_DIR` 指向随包目录）。
+
+选择：随包一个很薄的 GIO 扩展模块 `libgiouniclipboardloopback.so`（源码 `apps/gui-go/packaging/linux/gio-loopback-guard/uc_loopback_guard.c`，随包时在构建镜像内用 `gcc` 对 `gio-2.0` 编译，清单记录源码 SHA-256、编译器与命令），优先级 100，高于 `gnome`(80) 与 `libproxy`(10)。它只做一件事：URI 主机属于 `localhost`、`127.0.0.0/8`、`::1`（用 GLib 自己的 `GSimpleProxyResolver` 匹配器判断，不自写匹配）时返回 `direct://`；其余 URI 全部委托给「没有它时 GLib 本会选择的那个解析器」（按优先级列举扩展点实现，跳过优先级 ≥100 的自身，取第一个 `is_supported` 的实例并缓存），所以 GNOME 手动代理、`ignore-hosts`、PAC、认证与动态变更仍由原解析器处理，不复制任何配置解析。产品里保留的 `NO_PROXY` 合并是另一道保护：它保护 Rust daemon（reqwest 没有自动回环绕过）和环境变量路径；本模块保护 WebKit 的 GNOME 路径，二者不重复。
+
+最小故障契约（**写于代码与两次临时烟测之后、真实 AppImage E2E 之前**：先写了 C 源码并用构建镜像做过两次未入库的临时命令行烟测——仅 libproxy 环境变量后端，同步查询：回环 URI 返回 `direct://`、外部 URI 返回环境代理；GNOME 后端未被烟测选中（keyfile 后端没有选到 gnome 解析器），异步、取消、错误路径未做烟测；这些不当作验证，也不补写单元测试，验证只来自下面的 E2E）：
+
+| 失败方式 | 契约 | 验证 |
+| --- | --- | --- |
+| 初始化时选到自身造成递归 | 不调用 `g_proxy_resolver_get_default()`；列举扩展点并跳过优先级 ≥100 | 模块加载进真实网络进程后外部请求仍按系统解析器（proxied/refused/failed）而不是挂起 |
+| 没有可用的下游解析器 | 非回环 URI 返回 `direct://`（与 GLib 无解析器时一致） | 仅记录；本包总有 libproxy，未做 E2E，边界如实写明 |
+| 同步 / 异步 / 取消 / 错误 | 回环：同步与异步都立即得到 `direct://`；非回环：取消令牌与错误原样交给下游；`lookup_finish` 用 `g_task_is_valid` 区分自己的与下游的结果 | libsoup 3 走异步路径：WebView 的外部 HTTPS、本地 HTTP 与 WebSocket 都经过它；取消与错误路径没有专门注入，边界如实写明 |
+| URI 解析：`localhost`、IPv4 回环段、`::1`；伪装成回环的非回环主机 | 回环名与地址直连；`localhost.<域>` 等伪装主机不得直连 | `gs-sys-empty` 中增加伪装主机 `localhost.webview-probe.test` 的 WebView 请求，必须 proxied；IPv6 `::1` 没有专门 E2E，边界如实写明 |
+| 进程与模块路径、helper 隔离 | 模块只在随包的 `GIO_MODULE_DIR` 里；宿主的 GIO 模块不被加载；helper 子进程的环境清理沿用 17c10/17c11 的规则 | 内容检查（模块集合与字节）、G7 映射检查、非便携矩阵 |
+
+验收（stage4）：同一组 `gs-sys-allow`、`gs-sys-ignore`、`gs-sys-empty`，`gs-sys-empty` 外部 proxied，WebKit 到 daemon 的回环连接 ≥1，代理日志没有回环行，页面 HTTP 与 WebSocket 帧成功；再在同一个 stage4 包上完整复跑全部环境变量、P5–P8、便携与非便携矩阵及 TLS/便携/helper/内容/更新回归（stage3 的绿色不转移）。
+
 ### 仍未完成（OPEN，逐项增量补做）
 
 GNOME `ignore-hosts` 遗漏回环时本地 daemon 的行为、PAC / 认证 / 动态设置、Fedora、同一最终干净包上的 17c7/17c5/17c10/17c11/内容检查回归。

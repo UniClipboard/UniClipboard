@@ -4,6 +4,7 @@ package main
 
 import (
 	"reflect"
+	"unsafe"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
@@ -38,4 +39,17 @@ func trayNativeState(tray *application.SystemTray) map[string]any {
 		}
 	}
 	return state
+}
+
+// trayEnableOpenMenu makes Wails' own SystemTray.OpenMenu usable in the e2e build. OpenMenu starts with `if s.menu == nil { return }`, and
+// SystemTray.SetMenu does not set that field once the tray runs (it only updates the implementation's menu), so after initTray the call is a
+// no-op. This fills the private field with the Menu the tray already shows (the same *Menu the implementation holds), e2e build only. It
+// reports whether it had to. Production code is untouched; production right click does not use OpenMenu (see the tracking document).
+func trayEnableOpenMenu(tray *application.SystemTray, menu *application.Menu) bool {
+	f := reflect.ValueOf(tray).Elem().FieldByName("menu")
+	if !f.IsValid() || !f.IsNil() {
+		return false
+	}
+	reflect.NewAt(f.Type(), unsafe.Pointer(f.UnsafeAddr())).Elem().Set(reflect.ValueOf(menu))
+	return true
 }

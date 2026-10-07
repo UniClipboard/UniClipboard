@@ -86,7 +86,46 @@ case "elementat":
     guard r == .success, let e = el else { print(json(["ok": false, "axError": r.rawValue, "ns": now()])); exit(0) }
     var owner: pid_t = 0
     AXUIElementGetPid(e, &owner)
-    print(json(["ok": true, "ownerPid": owner, "mine": owner == pid, "role": str(e, kAXRoleAttribute), "subrole": str(e, kAXSubroleAttribute), "ns": now()]))
+    print(json(["ok": true, "ownerPid": owner, "mine": owner == pid, "role": str(e, kAXRoleAttribute), "subrole": str(e, kAXSubroleAttribute),
+                "title": str(e, kAXTitleAttribute), "description": str(e, kAXDescriptionAttribute), "identifier": str(e, "AXIdentifier"), "help": str(e, kAXHelpAttribute),
+                "attributes": { var a: CFArray?; _ = AXUIElementCopyAttributeNames(e, &a); return (a as? [String]) ?? [] }(), "ns": now()]))
+case "agent":
+    // Read-only walk of a menu-bar agent process (pid argument = the agent's pid): counts, and only the entries that name this test app or the
+    // hidden-items button (other applications' entries are counted, not listed).
+    var total = 0
+    var hits: [[String: Any]] = []
+    func walk2(_ e: AXUIElement, _ depth: Int) {
+        total += 1
+        let blob = (str(e, kAXTitleAttribute) + "|" + str(e, kAXDescriptionAttribute) + "|" + str(e, "AXIdentifier") + "|" + str(e, kAXHelpAttribute))
+        if blob.lowercased().contains("uniclip") || blob.contains("隐藏") || blob.lowercased().contains("hidden") {
+            var f: [String: Double]?
+            if let pv = attr(e, kAXPositionAttribute), let sv = attr(e, kAXSizeAttribute) {
+                var pp = CGPoint.zero, ss = CGSize.zero
+                AXValueGetValue(pv as! AXValue, .cgPoint, &pp); AXValueGetValue(sv as! AXValue, .cgSize, &ss)
+                f = ["x": Double(pp.x), "y": Double(pp.y), "w": Double(ss.width), "h": Double(ss.height)]
+            }
+            hits.append(["role": str(e, kAXRoleAttribute), "description": str(e, kAXDescriptionAttribute), "title": str(e, kAXTitleAttribute), "identifier": str(e, "AXIdentifier"), "frame": f ?? [:]])
+        }
+        if depth > 0 { for c in kids(e) { walk2(c, depth - 1) } }
+    }
+    walk2(app(pid), 8)
+    print(json(["ok": true, "total": total, "hits": hits, "ns": now()]))
+case "overflow":
+    // The system menu bar's "show hidden menu bar items" button (owned by the menu-bar agent pid): `overflow <agentPid> actions` lists its AX
+    // actions, `overflow <agentPid> press` performs AXPress on it (the same as a user clicking it; a second press collapses it).
+    func findBtn(_ e: AXUIElement, _ depth: Int) -> AXUIElement? {
+        if str(e, kAXRoleAttribute) == "AXButton" && str(e, kAXDescriptionAttribute).contains("隐藏菜单栏项目") { return e }
+        if depth > 0 { for c in kids(e) { if let f = findBtn(c, depth - 1) { return f } } }
+        return nil
+    }
+    guard argv.count >= 4, let btn = findBtn(app(pid), 8) else { fail("overflow button not found") }
+    var names: CFArray?
+    _ = AXUIElementCopyActionNames(btn, &names)
+    if argv[3] == "actions" { print(json(["ok": true, "actions": (names as? [String]) ?? [], "description": str(btn, kAXDescriptionAttribute), "ns": now()])) }
+    else {
+        let r = AXUIElementPerformAction(btn, kAXPressAction as CFString)
+        print(json(["ok": r == .success, "axError": r.rawValue, "ns": now()]))
+    }
 case "windows":
     // The window server's view of this pid's windows (status item window, menu windows): layer, bounds, on screen, alpha.
     let all = (CGWindowListCopyWindowInfo([.optionAll], kCGNullWindowID) as? [[String: Any]]) ?? []

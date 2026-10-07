@@ -105,7 +105,8 @@ def open_menu(gui, pid, how, label, out):
             hit = ax('elementat', str(pid), str(cx), str(cy))
             wins = ax('windows', str(pid))
             (out / f'ax-open-{label}-target.json').write_text(json.dumps({'axFrame': frame, 'point': [cx, cy], 'hit': hit, 'windows': wins}, indent=1))
-            if not hit.get('mine'):
+            ours = hit.get('mine') or ('app.uniclipboard.desktop.e2e' in (hit.get('identifier', '') + hit.get('description', '') + hit.get('title', '')))
+            if not ours:
                 watcher.terminate()
                 sampler.terminate()
                 raise TargetNotVerified(f'the accessibility element at ({cx},{cy}) is not this pid\'s: {hit}; no click was sent')
@@ -187,7 +188,9 @@ def main():
     parser.add_argument('--hold', type=int, default=32, help='seconds the first menu stays open (>= 3 natural 10 s refreshes)')
     parser.add_argument('--skip-quit', action='store_true')
     parser.add_argument('--minimal', action='store_true', help='open, read, cancel only')
-    parser.add_argument('--open-with', choices=('control', 'rightclick'), default='rightclick', help='rightclick (default, the only valid path): a real right click on this pid\'s status item (moves the pointer briefly); control: SystemTray.OpenMenu, a NO-OP here (SystemTray.menu is nil, 17c15 min10), kept only to reproduce that')
+    parser.add_argument('--expand-overflow', action='store_true', help='with --probe-bar: press the system menu bar overflow button once (authorized, transient), record before/after, press again to collapse')
+    parser.add_argument('--probe-bar', action='store_true', help='no pairing; start the GUI and record where the system menu bar put its status item (read-only), then exit')
+    parser.add_argument('--open-with', choices=('control', 'rightclick'), default='control', help='rightclick (default, the only valid path): a real right click on this pid\'s status item (moves the pointer briefly); control: SystemTray.OpenMenu, a NO-OP here (SystemTray.menu is nil, 17c15 min10), kept only to reproduce that')
     args = parser.parse_args()
     out = args.out.resolve()
     out.mkdir(parents=True, exist_ok=True)
@@ -248,10 +251,13 @@ def main():
         results['displayAfterWake'] = ax('display', '0')
         if not check('0 the display is awake for the run (native menu tracking and screenshots need it)', not results['displayAfterWake'].get('asleep'), results['displayAfterWake']):
             raise RuntimeError('display still asleep: native NSMenu tracking cannot be accepted on this session')
-        pair(env_a, env_b, 'tray-a', 'tray-peer-b')
+        if not args.probe_bar:
+            pair(env_a, env_b, 'tray-a', 'tray-peer-b')
+        else:
+            cli(env_a, 'space', 'init', '--passphrase', 'probe-bar-17c15', '--device-name', 'probe-a')
+            cli(env_a, 'start', check=False)
         roster = json.loads(cli(env_a, '--json', 'member', 'list').stdout)
-        peer = [m for m in roster if not m.get('is_local')][0]
-        peer_id = peer['device_id']
+        peer_id = ([m for m in roster if not m.get('is_local')] or [{'device_id': 'none'}])[0]['device_id']
         prefs_path, settings_path = f'/member/{peer_id}/sync-preferences', '/settings'
         results['daemonPidsAtStart'] = daemon_pids(prof_a)
         proc = subprocess.Popen([str(binary)], env=gui_env, stdout=(out / 'gui.log').open('w'), stderr=subprocess.STDOUT)
@@ -269,6 +275,28 @@ def main():
             shot_near_status_item(proc.pid, out / 'diag-menubar.png', below=60)
             subprocess.run(['sample', str(proc.pid), '2', '-file', str(out / 'diag-sample.txt')], capture_output=True, timeout=60)
             raise RuntimeError('no status item for this pid: nothing further can be attributed to the tray (see diag-*)')
+        if args.probe_bar:
+            frame = ((ax('describe', str(proc.pid)).get('items') or [{}])[0]).get('frame') or {}
+            cx, cy = frame.get('x', 0) + frame.get('w', 0) / 2, frame.get('y', 0) + frame.get('h', 0) / 2
+            agent_pid = next((int(l.split()[0]) for l in subprocess.run(['ps', '-axo', 'pid=,comm='], capture_output=True, text=True).stdout.splitlines() if l.strip().endswith('MenuBarAgent')), 0)
+            (out / 'probe-bar.json').write_text(json.dumps({'axFrame': frame, 'elementAtCentre': ax('elementat', str(proc.pid), str(cx), str(cy)),
+                                                            'agentPid': agent_pid, 'agentTree': ax('agent', str(agent_pid)), 'ourWindows': ax('windows', str(proc.pid))}, ensure_ascii=False, indent=1))
+            if args.expand_overflow and agent_pid:
+                def our_state(tag):
+                    d = ax('describe', str(proc.pid))
+                    fr = ((d.get('items') or [{}])[0]).get('frame') or {}
+                    c = (fr.get('x', 0) + fr.get('w', 0) / 2, fr.get('y', 0) + fr.get('h', 0) / 2)
+                    return {'tag': tag, 'ourAxFrame': fr, 'elementAtOurCentre': ax('elementat', str(proc.pid), str(c[0]), str(c[1])), 'agentTotal': ax('agent', str(agent_pid)).get('total')}
+                expansion = {'actions': ax('overflow', str(agent_pid), 'actions'), 'before': our_state('before')}
+                expansion['press'] = ax('overflow', str(agent_pid), 'press')
+                time.sleep(1.5)
+                expansion['after'] = our_state('after-expand')
+                expansion['collapse'] = ax('overflow', str(agent_pid), 'press')
+                time.sleep(1.5)
+                expansion['afterCollapse'] = our_state('after-collapse')
+                (out / 'probe-bar-expand.json').write_text(json.dumps(expansion, ensure_ascii=False, indent=1))
+            results['passed'] = True
+            raise Done()
         quiet = gui.ctl('tray-language-quiet q0 5000', 'tray-language-quiet-q0', 90)
         pin = gui.ctl('invoke en0 set_tray_language {"language":"en","trace":null}', 'invoke-en0')
         calls = [r['detail'] for r in gui.rows() if r['step'] == 'tray-language-call']

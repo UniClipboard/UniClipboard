@@ -625,13 +625,21 @@ def main():
                 sub_items = next((it['items'] for it in rd['menu'] if it.get('items') is not None and it['title'] in ('Device Sync', '设备同步')), [])
                 return {d['title']: bool(d.get('mark')) for d in sub_items}, rd
 
-            def wait_menu(pred, timeout=40):
-                end, last = time.time() + timeout, None
+            wait_traces = results.setdefault('menuWaitTraces', {})
+
+            def wait_menu(pred, timeout=40, name=None):
+                """Read the open menu until pred holds. Every read is kept in the trace (time, ok, pop-up windows, error): a menu that closed
+                during the wait (system or user interference) is then told from one that stayed open and had the wrong content."""
+                end, last, trace = time.time() + timeout, None, []
                 while time.time() < end:
-                    last, _ = menu_rows()
+                    last, rd = menu_rows()
+                    trace.append([round(time.time(), 2), bool(rd.get('ok')), rd.get('popupWindows'), rd.get('error')])
                     if last is not None and pred(last):
-                        return last
+                        break
                     time.sleep(.5)
+                if name:
+                    idle = next((int(l.split('=')[-1].strip()) / 1e9 for l in subprocess.run(['ioreg', '-c', 'IOHIDSystem'], capture_output=True, text=True).stdout.splitlines() if 'HIDIdleTime' in l), None)
+                    wait_traces[name] = {'reads': len(trace), 'firstReadNotOpen': next((t for t in trace if not t[2]), None), 'last': trace[-1] if trace else None, 'hostIdleSecondsAtEnd': idle, 'trace': trace[:6] + trace[-6:]}
                 return last
 
             def causes_since(i):
@@ -651,16 +659,16 @@ def main():
             i = len(gui.rows())
             cli(env_a, 'member', 'sync', 'set', peer_id, '--send', 'off', '--receive', 'off')
             off = wait_daemon(env_a, prefs_path, lambda x: x.get('sendEnabled') is False and x.get('receiveEnabled') is False)
-            m_off = wait_menu(lambda r: r.get('tray-peer-b') is False)
+            m_off = wait_menu(lambda r: r.get('tray-peer-b') is False, name='c2-off')
             check('C2 device preference off set through the CLI: the DAEMON says off and the open menu unchecks the row (trigger recorded)', bool(off) and off.get('sendEnabled') is False and m_off is not None and m_off.get('tray-peer-b') is False, {'daemon': off, 'menu': m_off, 'refreshCauses': causes_since(i)})
             cli(env_a, 'member', 'sync', 'set', peer_id, '--send', 'on', '--receive', 'on')
             on = wait_daemon(env_a, prefs_path, lambda x: x.get('sendEnabled') is True and x.get('receiveEnabled') is True)
-            m_on = wait_menu(lambda r: r.get('tray-peer-b') is True)
+            m_on = wait_menu(lambda r: r.get('tray-peer-b') is True, name='c2-on')
             check('C2 preference restored on through the CLI: the daemon and the open menu agree', bool(on) and on.get('sendEnabled') is True and m_on is not None and m_on.get('tray-peer-b') is True, {'daemon': on, 'menu': m_on})
             # C3 member added (production rendezvous) while the menu is open
             i = len(gui.rows())
             join_peer(env_a, env_c, 'tray-peer-c')
-            both = wait_menu(lambda r: set(r) == {'tray-peer-b', 'tray-peer-c'}, 60)
+            both = wait_menu(lambda r: set(r) == {'tray-peer-b', 'tray-peer-c'}, 60, name='c3-add')
             roster_c = json.loads(cli(env_a, '--json', 'member', 'list').stdout)
             names_c = sorted(m.get('device_name') or '' for m in roster_c if not m.get('is_local'))
             check('C3 member added: the daemon roster lists both peers and the open menu shows both rows (trigger recorded; the system collapse state is recorded)', names_c == ['tray-peer-b', 'tray-peer-c'] and both is not None and set(both) == {'tray-peer-b', 'tray-peer-c'}, {'daemon': names_c, 'menu': both, 'refreshCauses': causes_since(i), 'submenuExpandedAfter': bool(_submenu_state(proc.pid)[0]['submenu'])})
@@ -669,7 +677,7 @@ def main():
             peer_c_id = next((m['device_id'] for m in roster_c if m.get('device_name') == 'tray-peer-c'), None)
             cli(env_a, '--json', 'member', 'remove', peer_c_id, check=False)
             daemon_names = sorted(d.get('deviceName') for d in (dget(env_a, '/paired-devices') or []))
-            gone = wait_menu(lambda r: sorted(r) == sorted(d.get('deviceName') for d in (dget(env_a, '/paired-devices') or [])), 60)
+            gone = wait_menu(lambda r: sorted(r) == sorted(d.get('deviceName') for d in (dget(env_a, '/paired-devices') or [])), 60, name='c4-remove')
             daemon_names2 = sorted(d.get('deviceName') for d in (dget(env_a, '/paired-devices') or []))
             check('C4 member removal: the open menu rows equal the DAEMON\'s /paired-devices (whatever the daemon reports after the removal intent)', gone is not None and sorted(gone) == daemon_names2, {'daemonBefore': daemon_names, 'daemonAfter': daemon_names2, 'menu': gone, 'refreshCauses': causes_since(i)})
             gone_ok, dismissal = dismiss_menu(proc.pid, out, 'stable')

@@ -251,6 +251,9 @@ func (d *deviceMenu) click(id string) {
 	}
 	item.SetEnabled(false)
 	d.pending[id] = true
+	// Linux hosts re-read the layout only after a publish, and the restore above plus the later re-enable would otherwise look
+	// unchanged to the skip in publishMenu, so show the disabled in-flight item now.
+	d.publishMenu()
 	d.mu.Unlock()
 	go d.save(id, !enabled)
 }

@@ -986,6 +986,16 @@ def main():
                         seen = sc.get('supervisorLogSeenAfterSeconds')
                         lo, hi = (2.5, 12.0) if name.endswith('hungbus') else (0.0, 12.0)
                         req(f'[{name}] REQUIRE the supervisor gave up within its budget: its log line appeared {seen}s after the launch (expected {lo}..{hi}s; the budget is 3s)', seen is not None and lo <= seen <= hi, seen)
+                        glog = (out / f'gui-{name}.log').read_text(errors='replace')
+                        m = re.search(r'supervisor gave up after (\S+) at', glog)
+                        started = re.search(r'supervisor started at (\S+)', glog)
+                        dur = None
+                        if m:
+                            v = m.group(1)
+                            dur = float(v[:-2]) / 1000 if v.endswith('ms') and not v.endswith('\u00b5s') else float(v[:-1]) if v.endswith('s') and not v.endswith('ms') else None
+                        sc['supervisorOwnBudget'] = {'gaveUpAfterSeconds': dur, 'startedAt': started.group(1) if started else None, 'raw': m.group(1) if m else None}
+                        lo2, hi2 = (2.9, 3.6) if name.endswith('hungbus') else (0.0, 1.0)
+                        req(f'[{name}] REQUIRE the supervisor\'s OWN budget: it gave up {dur}s after its own start (expected {lo2}..{hi2}s; independent of the GUI start-up included in the launch-to-log figure)', dur is not None and lo2 <= dur <= hi2, sc['supervisorOwnBudget'])
                         req(f'[{name}] REQUIRE start-up was not blocked: the daemon was up {sc.get("launchToDaemonSeconds")}s after the launch (limit 30s)', sc.get('launchToDaemonSeconds', 999) <= 30, sc.get('launchToDaemonSeconds'))
                     if name in ('gs-sys-pac-owned', 'gs-sys-pac-nobus', 'gs-sys-pac-hungbus'):
                         req(f'[{name}] REQUIRE the bundled glib-pacrunner is NOT started ({"an owner exists" if name.endswith("owned") else "there is no usable session bus"})', not bundled_pac, sc['pacrunnerProcesses'])

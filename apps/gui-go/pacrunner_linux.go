@@ -93,6 +93,8 @@ func superviseBundledPacRunner(helper string, settled chan<- struct{}) {
 	// Pdeathsig is delivered when the THREAD that created the child exits, not when the process does. Every child is created by this
 	// goroutine, which keeps its OS thread for its whole life (never unlocked, never returning while the process runs).
 	runtime.LockOSThread()
+	started := time.Now()
+	fmt.Fprintln(os.Stderr, "pacrunner: supervisor started at", started.Format(time.RFC3339Nano))
 	var once sync.Once
 	settle := func() { once.Do(func() { close(settled) }) }
 	defer settle()
@@ -119,7 +121,7 @@ func superviseBundledPacRunner(helper string, settled chan<- struct{}) {
 		err = fmt.Errorf("the session bus did not answer within %v", pacBudget)
 	}
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "pacrunner: no session bus, PAC configurations cannot be evaluated:", err)
+		fmt.Fprintln(os.Stderr, "pacrunner: no session bus, PAC configurations cannot be evaluated:", err, "(supervisor gave up after", time.Since(started).Round(time.Millisecond), "at", time.Now().Format(time.RFC3339Nano)+")")
 		return
 	}
 	defer conn.Close()

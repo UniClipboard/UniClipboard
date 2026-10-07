@@ -148,6 +148,22 @@ class Proxy:
         else:
             raise RuntimeError(f'tinyproxy {tag} did not start: ' + (self.dir / 'stdout.log').read_text())
 
+    def outage(self):
+        """P7: the proxy process goes away (connections refused on its port)."""
+        self.stop()
+
+    def resume(self):
+        """P7: a new tinyproxy on the SAME port and configuration (the log keeps growing)."""
+        self.proc = subprocess.Popen(['tinyproxy', '-d', '-c', str(self.dir / 'tinyproxy.conf')], stdout=(self.dir / 'stdout.log').open('a'), stderr=subprocess.STDOUT)
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            try:
+                socket.create_connection(('127.0.0.1', self.port), timeout=1).close()
+                return
+            except OSError:
+                time.sleep(.2)
+        raise RuntimeError('tinyproxy did not resume: ' + (self.dir / 'stdout.log').read_text())
+
     def lines(self):
         return [l for l in self.log.read_text(errors='replace').splitlines() if l.strip()]
 
@@ -272,14 +288,17 @@ P8_VARIANTS = {  # name -> (proxy mode, kind); the environment is built by varia
     'env-upper': ('allow', 'env-upper'),            # only HTTP_PROXY/HTTPS_PROXY/ALL_PROXY (upper case)
     'env-conflict': ('allow', 'env-conflict'),      # lower case -> allow proxy, upper case -> a dead port: which one does the resolver follow?
     'env-bypass': ('allow', 'env-bypass'),          # NO_PROXY names the WebView probe host: it must go direct
+    'env-recover': ('allow', 'env-recover'),        # P7: proxied, then the proxy goes away (must FAIL, never go direct), then comes back on the same port (proxied again), same GUI process
     'env-bypass-other': ('allow', 'env-bypass-other'),  # NO_PROXY names an unrelated host: the WebView is still proxied
 }
-REQUIRED_VARIANTS = {'env-bypass': 'direct', 'env-bypass-other': 'proxied'}  # the others are recorded observations (precedence is the resolver library's)
+REQUIRED_VARIANTS = {'env-recover': 'proxied', 'env-bypass': 'direct', 'env-bypass-other': 'proxied'}  # the others are recorded observations (precedence is the resolver library's)
 
 
 def variant_env(kind, port):
     url = f'http://127.0.0.1:{port}'
     dead = f'http://127.0.0.1:{free_port()}'
+    if kind == 'env-recover':
+        return proxy_env(port)
     if kind == 'env-upper':
         return {'HTTP_PROXY': url, 'HTTPS_PROXY': url, 'ALL_PROXY': url}
     if kind == 'env-conflict':
@@ -555,6 +574,28 @@ def main():
                 req(f'[{name}] REQUIRE the local daemon stays usable: the WebView holds loopback connections to the daemon, the proxy log names no loopback target of the product, and the page itself '
                     f'fetched the daemon over HTTP and received a WebSocket frame', len(web_to_daemon) >= 1 and not leaked and page_http_ok and page_ws_ok,
                     {'webkitToDaemon': len(web_to_daemon), 'leaked': leaked, 'pageProbe': sc['pageProbe']})
+            if name == 'env-recover' and proxy:
+                def wv_phase(tag):
+                    nonce = secrets.token_hex(6)
+                    n_a = len(proxy.lines())
+                    gui.ctl(f'panel-js ext-{name}-{tag} {reports.script(f"ext-{name}-{tag}", f"https://{WV_HOST}/webview-{tag}-{nonce}")}', f'panel-js-ext-{name}-{tag}')
+                    ev_ = reports.wait(f'ext-{name}-{tag}-ok', 40) or reports.wait(f'ext-{name}-{tag}-err', 25)
+                    time.sleep(1)
+                    return {'report': ev_, **classify(WV_HOST, nonce, proxy.lines()[n_a:], target)}
+                proxy.outage()
+                out_phase = wv_phase('outage')
+                proxy.resume()
+                time.sleep(1)
+                back_phase = wv_phase('recovered')
+                pfx2 = f'pp-{name}-after-'
+                gui.ctl(f'panel-js pagepp-{name}-after {page_probe_script(pfx2, reports.port, base_url, conn["token"], gui.proc.pid)}', f'panel-js-pagepp-{name}-after')
+                got2 = {k: reports.wait(pfx2 + k, 25) for k in ('connect', 'http', 'wsopen', 'wsframe')}
+                sc['p7'] = {'outage': out_phase, 'recovered': back_phase, 'guiPidStable': pid_alive(gui.proc.pid), 'pageAfter': {k: (v or {}).get('value') for k, v in got2.items()}}
+                run.check(f'[{name}] P7 phases recorded (outage: {out_phase["route"]}, recovered: {back_phase["route"]})', True, sc['p7'])
+                if args.require and args.require_env:
+                    req(f'[{name}] REQUIRE while the proxy is down the WebView request FAILS and never reaches the target directly', out_phase['route'] == 'failed' and out_phase['targetSaw'] == 0, out_phase)
+                    req(f'[{name}] REQUIRE after the proxy is back on the same port the same GUI process is proxied again', back_phase['route'] == 'proxied', back_phase)
+                    req(f'[{name}] REQUIRE the local daemon is still usable after the outage (page HTTP fetch and WebSocket frame)', bool(sc['p7']['pageAfter']['http']) and bool(sc['p7']['pageAfter']['wsframe']), sc['p7']['pageAfter'])
             stop(gui, conn)
             launches.clear()
             if where:

@@ -68,7 +68,7 @@ def codesign_info(path):
 
 def entitlements_of(path):
     code, out = run("codesign", "-d", "--entitlements", ":-", str(path))
-    return out.strip() if code == 0 else None
+    return out.strip() if code == 0 else "codesign-failed"
 
 
 def main():
@@ -122,6 +122,10 @@ def main():
         if p.is_file():
             code, out = run("lipo", "-archs", str(p))
             r.add(f"{name} is a single-arch {args.arch} Mach-O", code == 0 and out.split() == [args.arch], out.strip())
+            _, vt = run("vtool", "-show-build", str(p))
+            m = re.search(r"minos (\d+)\.(\d+)", vt)
+            ok = bool(m) and (int(m.group(1)), int(m.group(2))) <= tuple(int(x) for x in cfg["minimumSystemVersion"].split("."))
+            r.add(f"{name} minimum macOS <= {cfg['minimumSystemVersion']}", ok, m.group(0) if m else vt[-120:])
     extra = sorted(x.name for x in macos.iterdir()) if macos.is_dir() else []
     r.add("Contents/MacOS holds exactly the three executables", extra == sorted([GUI, DAEMON, HELPER]), str(extra))
 
@@ -162,14 +166,14 @@ def main():
             ent = entitlements_of(path)
             # Minimal entitlements: the Tauri host that shipped before this one carried none, and the
             # hardened-runtime acceptance run (e2e/macos_bundle_run.py) needs none.
-            r.add(f"{name}: no entitlements", ent in ("", None) or "<dict/>" in ent or "<key>" not in ent, str(ent)[:200])
+            r.add(f"{name}: no entitlements", ent != "codesign-failed" and ("<key>" not in ent), str(ent)[:200])
         if args.signature == "developer-id":
             r.add("one team identifier across all code", len(teams) == 1 and None not in teams, str(teams))
             if args.expect_team:
                 r.add("team identifier is the expected one", teams == {args.expect_team}, str(teams))
         # Nested code must be signed by the same identity as the bundle (sealed resources cover it).
         code, out = run("codesign", "-d", "-r-", str(app))
-        r.add("designated requirement printed", code == 0)
+        r.add("designated requirement (identifier for Developer ID, cdhash for ad-hoc)", code == 0 and (f'identifier "{bundle_id}"' in out if args.signature == "developer-id" else "cdhash" in out), out.strip()[-200:])
 
     if args.notarized:
         code, out = run("xcrun", "stapler", "validate", str(app))

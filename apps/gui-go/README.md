@@ -172,7 +172,7 @@ analytics 沿用 daemon 的 `POST /analytics/capture`（daemon 是唯一发送�
 - 身份、版本、最低系统版本与更新公钥只来自 `app.json`，图标只来自 `icons/icon.icns`；`Info.plist` 由 `packaging/macos/package.py bundle` 在模板上写入这些值（`CFBundleIconFile`、`LSMinimumSystemVersion`、`CFBundleShortVersionString` 等）。
 - 分架构各出一个包，不做 universal：Homebrew cask 与 `release.yml` 的资产重命名都按架构区分。`aarch64-apple-darwin` 与 `x86_64-apple-darwin` 都在 arm64 runner 上交叉编译（Go 用 `GOARCH` + `CGO_ENABLED=1` + `MACOSX_DEPLOYMENT_TARGET=12.5`，Rust 由 `build-sidecar` 用 `--target` 构建），x86_64 包在原生 Intel runner（`macos-15-intel`）上运行验收。
 - daemon 与 helper 不在本作业里重建：直接使用 `build-sidecar` 经 `scripts/stage-daemon.mjs` 产出的 `uniclipd-<triple>` 与 `uniclip-quick-panel-<triple>`，遥测环境变量（`SENTRY_DSN`、`POSTHOG_PROJECT_KEY`、`APP_ENV`）因此只在那一处注入。前端的 `VITE_APP_ENV`、`VITE_SENTRY_DSN` 与 source map 上传（`vite.config.ts` 的 Sentry 插件，需要 `SENTRY_AUTH_TOKEN` 与 `VITE_SENTRY_PROJECT`，上传后删除 map）在 `package-macos-gui` 的构建步骤注入；test 模式不上传。`package.py bundle` 会拒绝任何仍含 `.map` 的内嵌前端。
-- 签名顺序由内到外且不用 `--deep`：先签 `uniclipd`、`uniclip-quick-panel`（各自的 identifier `<identifier>.uniclipd`、`<identifier>.quick-panel`），最后签 bundle（identifier = `app.json` 的 `identifier`）。全部带 `--options runtime`，Developer ID 构建带 `--timestamp`。没有 entitlements：退役前的 Tauri 外壳同样没有，hardened runtime 下本机实测不需要（见下）。
+- 签名顺序由内到外且不用 `--deep`：先签 `uniclipd`、`uniclip-quick-panel`（各自的 identifier `<identifier>.uniclipd`、`<identifier>.quick-panel`），最后签 bundle（identifier = `app.json` 的 `identifier`）。全部带 `--options runtime`，Developer ID 构建带 `--timestamp`。没有 entitlements：退役前的 Tauri 外壳同样没有，hardened runtime 下本机实测不需要（见「已验证与未验证」）。
 - 公证用 `xcrun notarytool submit --wait`（Apple ID + 应用专用密码 + Team ID，与 `scripts/ci/package-cli.sh` 签 CLI 用的是同一组 secrets 与同一种导入证书方式），保存提交 JSON 与 `notarytool log`，`Accepted` 之后才 `stapler staple`。DMG 另行签名、公证并 stapling。
 - 更新归档：`COPYFILE_DISABLE=1 tar -czf`，顶层只有一个 `UniClipboard.app`（`internal/update/install_darwin.go` 的 `Install` 要求恰好一个 `*.app`），在已 stapling 的 bundle 上生成。归档里 **没有** 也 **不会** 有 `.sig`：签名由 #1896 负责，归档存在不代表更新链路已交付。
 - 发布入口：`release` 构建标签现在允许 darwin（`environment_release.go`）。无 profile、真实数据根 `~/Library/Application Support/app.uniclipboard.desktop`，沿用的拒绝项（`UC_PROFILE`、daemon 覆盖、`UNICLIPBOARD_ENV=development`、隔离模式）不变；macOS 额外拒绝便携模式，因为签名 bundle 内放标记文件会破坏封印。数据与钥匙串身份的升级连续性不在本任务内（#1900）。
@@ -202,6 +202,17 @@ python3 apps/gui-go/e2e/macos_bundle_run.py --app "target/macos-gui-acceptance/U
 ```
 
 CI：在分支上手动触发 `build.yml`（`platform=macos-aarch64` 或 `macos-x86_64`，`build_mode=release`）。`package-macos-gui` 完成构建、签名、验证、公证、DMG 与归档，只上传具名产物 `macos-gui-<target>`；`smoke-macos-gui` 在对应架构的一次性 runner 上从 DMG 安装并运行。没有 Apple secrets 时（fork PR）作业降级为 ad-hoc 签名并明确标注为不可分发；`workflow_call`（发布）在这种情况下直接失败。
+
+### 已验证与未验证
+
+状态以本节为准，随 CI 证据更新；没有证据的项目不写成已完成。
+
+- 本机 arm64：失败基线（现有 `build.sh manual` 产物对契约 17/37 项红灯）、静态契约、release 版 daemon 与 helper 的 hardened runtime 验收包真实进程 E2E（PATH 不含 `uniclipd`，运行的 daemon 与 helper 均为包内可执行文件，退出后均停止）、release 标签拒绝项（`UC_PROFILE`、`UNICLIPBOARD_ENV=development`、`UC_PORTABLE`）。
+- CI 证据与 Developer ID、公证、stapling、Gatekeeper、DMG、原生 Intel 运行、干净机器上的剪贴板捕获：见 PR 描述中的运行编号；未出现在那里的项目视为 **未验证**。
+- 永远不在本机验证：release 形态完整启动（真实钥匙串与数据根）。
+- 未包含：更新签名 `.sig` 与清单（#1896）；首次从浏览器下载后的“已下载应用，是否打开”确认框是 GUI 交互，不在自动验收内。
+- 另见：`main` 上 `-tags e2e` 的构建此前就是坏的（遗留的 `e2e_quick_panel.go`），已在本 PR 修复。
+- 本机默认驱动在原生 helper 接管面板时会在 WebView 面板场景停住（与本任务无关），因此包 E2E 只要求到首屏，再经控制文件退出。
 
 ## Windows（第 17 片，分段交付）
 

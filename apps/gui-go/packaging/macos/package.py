@@ -56,7 +56,10 @@ def run(cmd, *, cwd=None, env=None, capture=False, check=True, secret=()):
                        stdout=subprocess.PIPE if capture else None, stderr=subprocess.STDOUT if capture else None)
     if check and p.returncode != 0:
         if capture and p.stdout:
-            print(p.stdout.replace(secret[0], "***") if secret else p.stdout, file=sys.stderr)
+            text = p.stdout
+            for sec in secret:
+                text = text.replace(sec, "***")
+            print(text, file=sys.stderr)
         sys.exit(f"command failed ({p.returncode}): {shown}")
     return p
 
@@ -171,7 +174,7 @@ def cmd_bundle(a):
         "host": {"machine": host, "macOS": platform.mac_ver()[0],
                  "nativeForTarget": host == t["lipo"] or (host == "arm64" and t["lipo"] == "arm64")},
         "toolchain": {
-            "rustc": out(["rustc", "-Vv"], cwd=REPO), "cargo": out(["cargo", "-V"], cwd=REPO),
+            "rustc": out(["rustc", "-Vv"], cwd=REPO, check=False), "cargo": out(["cargo", "-V"], cwd=REPO, check=False),
             "goInModule": out(["go", "version"], cwd=GUI_DIR), "GOTOOLCHAIN": os.environ.get("GOTOOLCHAIN", ""),
             "bun": out(["bun", "--version"]), "xcode": out(["xcodebuild", "-version"], check=False) if shutil.which("xcodebuild") else "",
             "sdk": out(["xcrun", "--show-sdk-version"], check=False),
@@ -235,7 +238,7 @@ def notarize_path(path, evidence_dir, staple_target=None):
         run(["ditto", "-c", "-k", "--keepParent", path, tmp])
         submit = tmp
     secrets = (os.environ["APPLE_PASSWORD"], os.environ["APPLE_ID"]) if os.environ.get("APPLE_PASSWORD") else ()
-    p = run(["xcrun", "notarytool", "submit", submit, *notary_args(), "--wait", "--output-format", "json"],
+    p = run(["xcrun", "notarytool", "submit", submit, *notary_args(), "--wait", "--timeout", "60m", "--output-format", "json"],
             capture=True, check=False, secret=secrets)
     text = p.stdout or ""
     for s in secrets:
@@ -307,6 +310,8 @@ def cmd_keychain(a):
     if a.action == "delete":
         run(["security", "delete-keychain", a.path], check=False)
         return
+    if os.environ.get("GITHUB_ACTIONS") != "true" and not os.environ.get("UC_ALLOW_KEYCHAIN_LOCAL"):
+        sys.exit("refusing to change the keychain search list outside CI")
     for k in ("APPLE_CERTIFICATE", "APPLE_CERTIFICATE_PASSWORD"):
         if not os.environ.get(k):
             sys.exit(f"{k} is not set")
@@ -316,7 +321,7 @@ def cmd_keychain(a):
     p12.write_bytes(base64.b64decode(os.environ["APPLE_CERTIFICATE"]))
     p12.chmod(0o600)
     try:
-        run(["security", "create-keychain", "-p", password, a.path])
+        run(["security", "create-keychain", "-p", password, a.path], secret=(password,))
         run(["security", "set-keychain-settings", "-lut", "21600", a.path])
         run(["security", "unlock-keychain", "-p", password, a.path], secret=(password,))
         # The same import and partition list as scripts/ci/package-cli.sh, which already signs the CLI with

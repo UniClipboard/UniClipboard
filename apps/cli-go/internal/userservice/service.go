@@ -39,6 +39,9 @@ func New() (*Service, error) {
 	if os.Getuid() == 0 {
 		return nil, errors.New("run service commands as your login user, without sudo")
 	}
+	if err := apppaths.PortableError(); err != nil {
+		return nil, err
+	}
 	if apppaths.IsPortable() {
 		return nil, errors.New("user services do not support portable installations; install uniclip and uniclipd in a stable directory")
 	}

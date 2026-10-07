@@ -336,7 +336,7 @@ flowchart LR
 - **Storage**: Local history, previews, and the search index are encrypted at rest.
 - **Resilience**: Connections recover automatically after network changes, sleep/wake, or brief disconnects, and you can refresh a device's connection from the Devices page.
 
-**Components.** The desktop app has three parts: the GUI (Tauri + React), the background daemon `uniclipd` that syncs and stores your clipboard, and the `uniclip` CLI. The GUI and CLI talk to the same local daemon over a loopback HTTP / WebSocket API, so they always show the same state. Sync, encryption, and storage are implemented in the separate [UniClipboard Engine](https://github.com/UniClipboard/Engine) repository, which this repository pins to a fixed revision in `Cargo.toml`.
+**Components.** The desktop app has three parts: the GUI (Go/Wails + React), the background daemon `uniclipd` that syncs and stores your clipboard, and the `uniclip` CLI. The GUI and CLI talk to the same local daemon over a loopback HTTP / WebSocket API, so they always show the same state. Sync, encryption, and storage are implemented in the separate [UniClipboard Engine](https://github.com/UniClipboard/Engine) repository, which this repository pins to a fixed revision in `Cargo.toml`.
 
 ### Command-line Tool
 

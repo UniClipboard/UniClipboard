@@ -87,6 +87,12 @@ def main():
                          for name in ('uniclip', 'uniclipd')}, home=str(home), profile=profile)
         run('run-help', ['run', '--help'])
         run('service-help', ['service', '--help'])
+        portable = dict(env, UC_PORTABLE='1')
+        run('reject-portable-service', ['service', 'start'], expected=1, selected_env=portable)
+        invalid_portable = dict(portable, APPDIR=str(bindir), APPIMAGE=str(out / 'missing.AppImage'))
+        invalid = run('reject-invalid-portable-request', ['service', 'start'],
+                      expected=1, selected_env=invalid_portable)
+        assert 'without a valid $APPIMAGE' in invalid.stderr
         initial = run('not-installed', ['--json', 'service', 'status'], expected=1)
         service_name = json.loads(initial.stdout)['name']
         assert not json.loads(initial.stdout)['installed']

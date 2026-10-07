@@ -236,7 +236,7 @@ def curl_as_user(env, url):
     return {'rc': r.returncode, 'code': r.stdout.strip(), 'err': r.stderr.strip()[-200:]}
 
 
-def write_dconf_proxy(port, where, target_app, nonportable, ignore_hosts=None):
+def write_dconf_proxy(port, where, target_app, nonportable, ignore_hosts=None, pac_url=None):
     """GNOME's proxy settings (manual proxy, default ignore-hosts), compiled with the distribution's own `dconf compile` (no bus needed).
       user   the user's database ~/.config/dconf/user under the REAL home (what GNOME Settings writes). In portable mode the AppImage's HOME is redirected to
              <AppImage>.home and cannot see it (F7): that is an observation there; in --nonportable it is the real user scenario.
@@ -251,6 +251,8 @@ def write_dconf_proxy(port, where, target_app, nonportable, ignore_hosts=None):
     kdir = Path(tempfile.mkdtemp(prefix='dconf-keyfile-'))
     ignore = '' if ignore_hosts is None else ('ignore-hosts=' + ('[' + ','.join(f"'{h}'" for h in ignore_hosts) + ']' if ignore_hosts else '@as []') + '\n')  # None: the schema default (localhost, 127.0.0.0/8, ::1)
     body = f"[system/proxy]\nmode='manual'\n{ignore}\n[system/proxy/http]\nhost='127.0.0.1'\nport={port}\n\n[system/proxy/https]\nhost='127.0.0.1'\nport={port}\n"
+    if pac_url:  # automatic configuration: GNOME's resolver hands the script to its PAC helper (org.gtk.GLib.PACRunner on the session bus)
+        body = f"[system/proxy]\nmode='auto'\nautoconfig-url='{pac_url}'\n"
     if where == 'sys':
         d = Path('/etc/dconf/db/local.d')
         d.mkdir(parents=True, exist_ok=True)
@@ -355,14 +357,16 @@ def variant_env(kind, port):
 
 GNOME_VARIANTS = {  # GNOME `ignore-hosts` (system dconf database), allow proxy
     'gs-sys-ignore': ('allow', 'gs-sys'),   # ignore-hosts = default + the WebView probe host: the WebView goes direct, curl's host stays proxied
+    'gs-sys-pac': ('allow', 'gs-sys'),      # mode 'auto' + autoconfig-url: a PAC that proxies every URI; external proxied, loopback still direct (guard)
     'gs-sys-empty': ('allow', 'gs-sys'),    # ignore-hosts = @as []: GNOME then has NO loopback bypass; the local daemon must still work (judged like every other scenario)
 }
 GNOME_IGNORE = {'gs-sys-ignore': ['localhost', '127.0.0.0/8', '::1', WV_HOST], 'gs-sys-empty': []}
 OBSERVED_ONLY = set()  # (kept for scenarios that cannot be judged; none now)
 REQUIRED_VARIANTS['gs-sys-ignore'] = 'direct'
 REQUIRED_VARIANTS['gs-sys-empty'] = 'proxied'
+REQUIRED_VARIANTS['gs-sys-pac'] = 'proxied'
 LOOKALIKE_CHECKED = {'gs-sys-empty'}
-LOOPBACK_BOUNDARY = {'gs-sys-allow', 'gs-sys-empty'}
+LOOPBACK_BOUNDARY = {'gs-sys-allow', 'gs-sys-empty', 'gs-sys-pac'}
 
 
 def scenarios():
@@ -390,6 +394,34 @@ def read_maps(pid):
         if len(parts) == 6 and '.so' in parts[5]:
             libs.add(parts[5].replace(' (deleted)', ''))
     return 'ok', libs
+
+
+class PacServer:
+    """Serves a PAC script on loopback that sends EVERY URI (the daemon's loopback ones included) to the proxy: the loopback guard must still keep loopback direct. Records each fetch of the script."""
+
+    def __init__(self, proxy_port):
+        outer = self
+        self.fetches = []
+        script = ('function FindProxyForURL(url, host) { return "PROXY 127.0.0.1:%d"; }\n' % proxy_port).encode()
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                outer.fetches.append({'t': time.time(), 'path': self.path})
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/x-ns-proxy-autoconfig')
+                self.send_header('Content-Length', str(len(script)))
+                self.end_headers()
+                self.wfile.write(script)
+
+            def log_message(self, *a):
+                pass
+
+        self.server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+        self.port = self.server.server_address[1]
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+
+    def stop(self):
+        self.server.shutdown()
 
 
 class ResetProxy:
@@ -503,7 +535,7 @@ def main():
         print(('REQ-PASS ' if ok else 'REQ-FAIL ') + name, flush=True)
 
     xvfb = start_xvfb(out)
-    launches, proxies, servers, bus, resets = [], [], [], None, []
+    launches, proxies, servers, bus, resets, pacs = [], [], [], None, [], []
     root = home if args.nonportable else sandbox  # where daemon.conn appears
     try:
         route = subprocess.run('ip route show default; [ -n "$(ip route show default)" ] || ip route add default dev eth0; ip route show default', shell=True, capture_output=True, text=True)
@@ -568,7 +600,10 @@ def main():
                 penv = variant_env(kind, port)
                 curl_env = {k: v for k, v in penv.items() if k.islower()} or dict(penv)
             elif where:
-                sc['dconf'] = write_dconf_proxy(port, where, target_app, args.nonportable, GNOME_IGNORE.get(name))
+                pac = PacServer(port) if name == 'gs-sys-pac' else None
+                if pac:
+                    pacs.append(pac)
+                sc['dconf'] = write_dconf_proxy(port, where, target_app, args.nonportable, GNOME_IGNORE.get(name), f'http://127.0.0.1:{pac.port}/proxy.pac' if pac else None)
                 penv = {'XDG_CURRENT_DESKTOP': 'GNOME'}  # a GNOME session; NO proxy variable
                 cli_out = sc['dconf']['hostViewWithRealHome']['proxyCli'] if where == 'user' else sc['dconf']['hostViewWithGuiHome']['proxyCli']
                 curl_env = {'https_proxy': cli_out, 'http_proxy': cli_out} if cli_out.startswith('http') else {}  # curl cannot read gsettings: it gets the host libproxy CLI's answer
@@ -834,6 +869,9 @@ def main():
                     else:
                         req(f'[{name}] REQUIRE the daemon reached the rendezvous host DIRECTLY (the controlled internal target saw its request or its TLS handshake) and the proxy never named it',
                             (bool(at_target) or bool(hs_failed)) and not named, sc['p6'])
+            if name == 'gs-sys-pac':
+                sc['pacFetches'] = len(pacs[-1].fetches)
+                chk(f'[{name}] the PAC script was fetched from the controlled server (the configuration was read)', len(pacs[-1].fetches) >= 1, pacs[-1].fetches)
             sc['completed'] = True  # every probe and requirement of this scenario ran (an exception before this line leaves it unset)
             stop(gui, conn)
             launches.clear()
@@ -861,7 +899,7 @@ def main():
                 pass
         if bus:
             bus.terminate()
-        for rp in resets:
+        for rp in resets + pacs:
             rp.stop()
         for p in proxies:
             p.stop()

@@ -44,7 +44,9 @@ from linux_appimage_tls_run import Reports, StopScenario, install_trust, run_cmd
 
 TARGET_NAME = 'target.test'
 WV_HOST, CURL_HOST = 'webview-probe.test', 'curl-probe.test'  # one hostname per client
-HOSTS = (TARGET_NAME, WV_HOST, CURL_HOST)
+RENDEZVOUS_HOST = 'rendezvous.uniclipboard.app'  # Engine d4dd324a (uc-engine 1.1.0-rc.22, the packaged daemon's lock entry): uc-infra-p2p RENDEZVOUS_BASE_URL
+# In this INTERNAL network the rendezvous name is pointed (/etc/hosts, additional control) at the controlled target: a direct connection of the daemon is then visible there.
+HOSTS = (TARGET_NAME, WV_HOST, CURL_HOST, RENDEZVOUS_HOST)
 LOOPBACK = re.compile(r'(127\.\d+\.\d+\.\d+|localhost|\[?::1\]?)')
 REQ = re.compile(r'Request \(file descriptor \d+\): (\w+) (\S+)')
 BUS_DIR = Path('/bus')
@@ -80,10 +82,18 @@ class Target:
 
         class Handler(http.server.BaseHTTPRequestHandler):
             def do_GET(self):
-                outer.requests.append({'t': time.time(), 'path': self.path, 'peer': self.client_address[0], 'host': self.headers.get('Host'), 'ua': self.headers.get('User-Agent', ''),
-                                       'origin': self.headers.get('Origin')})
-                body = b'target-ok'
-                self.send_response(200)
+                self.answer(200, b'target-ok')
+
+            def do_POST(self):
+                self.rfile.read(int(self.headers.get('Content-Length') or 0))
+                self.answer(404, b'{"error":"not_found"}')  # a rendezvous-style API call: answered so the daemon does not hang
+
+            do_PUT = do_POST
+
+            def answer(self, code, body):
+                outer.requests.append({'t': time.time(), 'method': self.command, 'path': self.path, 'peer': self.client_address[0], 'host': self.headers.get('Host'),
+                                       'ua': self.headers.get('User-Agent', ''), 'origin': self.headers.get('Origin')})
+                self.send_response(code)
                 self.send_header('Content-Type', 'text/plain')
                 self.send_header('Access-Control-Allow-Origin', '*')
                 self.send_header('Content-Length', str(len(body)))
@@ -294,7 +304,6 @@ P8_VARIANTS = {  # name -> (proxy mode, kind); the environment is built by varia
     'rv-bypass': ('deny', 'rv-bypass'),             # P6: NO_PROXY names the rendezvous host: the proxy must not see that CONNECT
     'env-bypass-other': ('allow', 'env-bypass-other'),  # NO_PROXY names an unrelated host: the WebView is still proxied
 }
-RENDEZVOUS_HOST = 'rendezvous.uniclipboard.app'  # Engine d4dd324a (uc-engine 1.1.0-rc.22, the packaged daemon's lock entry): uc-infra-p2p RENDEZVOUS_BASE_URL
 REQUIRED_VARIANTS = {'rv-none': 'direct', 'rv-deny': 'refused', 'rv-bypass': 'refused', 'env-recover': 'proxied', 'env-bypass': 'direct', 'env-bypass-other': 'proxied'}  # the others are recorded observations (precedence is the resolver library's)
 
 
@@ -618,7 +627,8 @@ def main():
                             return rs.status, json.loads(rs.read() or b'{}')
                     except urllib.error.HTTPError as e:
                         return e.code, json.loads(e.read() or b'{}')
-                st, body = call('/auth/connect', {'pid': os.getpid(), 'clientType': 'gui'}, 'Bearer ' + conn['token'])
+                hf0, tr0 = len(target.handshake_failures), len(target.requests)
+                st, body = call('/auth/connect', {'pid': gui.proc.pid, 'clientType': 'gui'}, 'Bearer ' + conn['token'])
                 session = ((body or {}).get('data') or {}).get('sessionToken')
                 n_before = len(proxy.lines()) if proxy else 0
                 t0 = time.monotonic()
@@ -629,16 +639,23 @@ def main():
                 win = proxy.lines()[n_before:] if proxy else []
                 named = [l for l in win if REQ.search(l) and RENDEZVOUS_HOST in REQ.search(l).group(2)]
                 refusals = [l for l in win if 'refused' in l.lower() and RENDEZVOUS_HOST in l]
-                sc['p6'] = {'sessionStatus': st, 'redeemStatus': rst, 'redeemBody': {k: v for k, v in (rbody or {}).items() if k != 'data'}, 'elapsedSeconds': elapsed,
-                            'proxyWindowNamingRendezvous': named, 'proxyRefusals': refusals, 'proxyWindow': win, 'forwardedToTarget': len(target.requests)}
-                run.check(f'[{name}] P6 the synthetic redeem was answered with an error status (never a success)', rst >= 400, sc['p6'])
+                data = (rbody or {}).get('data') or {}
+                join_status, join_reason = data.get('status'), data.get('reason')  # the redeem is an HTTP-200 envelope whose data.status is the join outcome (JoinSpaceResponse); no secret in either
+                at_target = [r_ for r_ in target.requests[tr0:] if (r_.get('host') or '').split(':')[0] == RENDEZVOUS_HOST]
+                hs_failed = target.handshake_failures[hf0:]
+                sc['p6'] = {'sessionStatus': st, 'redeemHttpStatus': rst, 'envelopeKeys': sorted((rbody or {}).keys()), 'joinStatus': join_status, 'joinReason': join_reason,
+                            'errorCode': (rbody or {}).get('code') or ((rbody or {}).get('error') or {}).get('code') if isinstance(rbody, dict) else None, 'elapsedSeconds': elapsed,
+                            'proxyWindowNamingRendezvous': named, 'proxyRefusals': refusals, 'proxyWindow': win, 'targetRequestsForRendezvousHost': at_target,
+                            'targetHandshakeFailuresDuringRedeem': hs_failed}
+                run.check(f'[{name}] P6 session exchange succeeded and the redeem got an HTTP answer whose join status is not active (a synthetic invitation never joins)',
+                          st == 200 and rst in (200, 400, 404, 409, 503) and join_status != 'active', sc['p6'])
                 if args.require and args.require_env:
                     if name == 'rv-deny':
-                        req(f'[{name}] REQUIRE the daemon\'s rendezvous request went through the proxy (CONNECT {RENDEZVOUS_HOST}) and was refused; nothing was forwarded', bool(named) and bool(refusals), sc['p6'])
-                    elif name == 'rv-bypass':
-                        req(f'[{name}] REQUIRE NO_PROXY naming the rendezvous host keeps the daemon\'s request off the proxy', not named, sc['p6'])
+                        req(f'[{name}] REQUIRE the daemon\'s rendezvous request went through the proxy (CONNECT {RENDEZVOUS_HOST}) and was refused; the controlled target saw nothing (nothing forwarded)',
+                            bool(named) and bool(refusals) and not at_target and not hs_failed, sc['p6'])
                     else:
-                        req(f'[{name}] REQUIRE without proxy variables the redeem is an error and no proxy is involved', rst >= 400 and not named, sc['p6'])
+                        req(f'[{name}] REQUIRE the daemon reached the rendezvous host DIRECTLY (the controlled internal target saw its request or its TLS handshake) and the proxy never named it',
+                            (bool(at_target) or bool(hs_failed)) and not named, sc['p6'])
             stop(gui, conn)
             launches.clear()
             if where:

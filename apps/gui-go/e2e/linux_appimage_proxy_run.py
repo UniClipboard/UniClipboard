@@ -55,7 +55,7 @@ HOSTS = (TARGET_NAME, WV_HOST, CURL_HOST, RENDEZVOUS_HOST, UPDATE_HOST, LOOKALIK
 LOOPBACK = re.compile(r'(127\.\d+\.\d+\.\d+|localhost|\[?::1\]?)')
 REQ = re.compile(r'Request \(file descriptor \d+\): (\w+) (\S+)')
 BUS_DIR = Path('/bus')
-PROXY_MODULES = re.compile(r'(libgiognomeproxy|libgiolibproxy|libdconfsettings|libproxy|libpxbackend|libduktape)')
+PROXY_MODULES = re.compile(r'(libgiouniclipboardloopback|libgiognomeproxy|libgiolibproxy|libdconfsettings|libproxy|libpxbackend|libduktape)')
 
 
 def make_target_cert(workdir):
@@ -360,6 +360,7 @@ OBSERVED_ONLY = set()  # (kept for scenarios that cannot be judged; none now)
 REQUIRED_VARIANTS['gs-sys-ignore'] = 'direct'
 REQUIRED_VARIANTS['gs-sys-empty'] = 'proxied'
 LOOKALIKE_CHECKED = {'gs-sys-empty'}
+LOOPBACK_BOUNDARY = {'gs-sys-allow', 'gs-sys-empty'}
 
 
 def scenarios():
@@ -387,6 +388,38 @@ def read_maps(pid):
         if len(parts) == 6 and '.so' in parts[5]:
             libs.add(parts[5].replace(' (deleted)', ''))
     return 'ok', libs
+
+
+class LoopbackListener:
+    """A plain HTTP listener on one loopback address (IPv4 127.0.0.0/8 member, ::1, or localhost's address) that records every request: whether a WebView request to it arrived there directly is the
+    proof of the loopback boundary (the proxy log is the other half)."""
+
+    def __init__(self, address, family):
+        outer = self
+        self.requests = []
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                outer.requests.append({'path': self.path, 'host': self.headers.get('Host')})
+                body = b'loopback-ok'
+                self.send_response(200)
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.send_header('Content-Length', str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *a):
+                pass
+
+        class Server(http.server.ThreadingHTTPServer):
+            address_family = family
+
+        self.server = Server((address, 0), Handler)
+        self.port = self.server.server_address[1]
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+
+    def stop(self):
+        self.server.shutdown()
 
 
 def modules_loaded(pid):
@@ -657,6 +690,32 @@ def main():
                     req(f'[{name}] REQUIRE while the proxy is down the WebView request FAILS and never reaches the target directly', out_phase['route'] == 'failed' and out_phase['targetSaw'] == 0, out_phase)
                     req(f'[{name}] REQUIRE after the proxy is back on the same port the same GUI process is proxied again', back_phase['route'] == 'proxied', back_phase)
                     req(f'[{name}] REQUIRE the local daemon is still usable after the outage (page HTTP fetch and WebSocket frame)', bool(sc['p7']['pageAfter']['http']) and bool(sc['p7']['pageAfter']['wsframe']), sc['p7']['pageAfter'])
+            if name in LOOPBACK_BOUNDARY:
+                # the loopback boundary through the real WebView: IPv4 127.0.0.0/8 (a member that is not 127.0.0.1), ::1 and the name localhost; each target is a listener of its own
+                listeners = {'127.0.0.2': LoopbackListener('127.0.0.2', socket.AF_INET), 'localhost': LoopbackListener('127.0.0.1', socket.AF_INET)}
+                try:
+                    listeners['::1'] = LoopbackListener('::1', socket.AF_INET6)
+                except OSError as e:
+                    sc['ipv6LoopbackUnavailable'] = str(e)  # no IPv6 loopback in this container: recorded, the ::1 requirement is then not evaluated
+                bound = {}
+                for label, lst in listeners.items():
+                    url_host = f'[{label}]' if label == '::1' else label
+                    nonce_b = secrets.token_hex(6)
+                    n_b = len(proxy.lines())
+                    gui.ctl(f'panel-js {name}-lb-{label.strip(":")} {reports.script(f"lb-{name}-{label.strip(":")}", f"http://{url_host}:{lst.port}/webview-lb-{nonce_b}")}', f'panel-js-{name}-lb-{label.strip(":")}')
+                    reports.wait(f'lb-{name}-{label.strip(":")}-ok', 30) or reports.wait(f'lb-{name}-{label.strip(":")}-err', 10)
+                    time.sleep(1)
+                    named_b = [l_ for l_ in proxy.lines()[n_b:] if REQ.search(l_) and f':{lst.port}' in REQ.search(l_).group(2)]
+                    arrived = [r_ for r_ in lst.requests if nonce_b in r_['path']]
+                    bound[label] = {'url': f'http://{url_host}:{lst.port}/', 'arrivedDirectly': len(arrived), 'proxyNamedIt': named_b}
+                    lst.stop()
+                sc['loopbackBoundary'] = bound
+                if args.require:
+                    for label, b in bound.items():
+                        req(f'[{name}] REQUIRE the WebView reaches loopback {label} directly (the listener saw it) and the proxy never named it', b['arrivedDirectly'] >= 1 and not b['proxyNamedIt'], b)
+                loaded = sorted({m for pids in sc['proxyModulesLoadedByWebKitNetworkProcess'].values() for m in pids})
+                sc['guardLoaded'] = 'libgiouniclipboardloopback.so' in loaded
+                req(f'[{name}] REQUIRE the loopback guard module is mapped in WebKitNetworkProcess (live /proc maps)', sc['guardLoaded'], loaded) if args.require else None
             if name in LOOKALIKE_CHECKED:
                 nonce_l = secrets.token_hex(6)
                 n_l = len(proxy.lines())

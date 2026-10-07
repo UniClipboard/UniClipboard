@@ -1003,6 +1003,13 @@ def main():
                 mount_p = gui_exe_p.split('/usr/bin/')[0] if '/usr/bin/' in gui_exe_p else None
                 sc['pacrunnerProcesses'] = [{'pid': pid, 'exe': exe, 'bundled': bool(mount_p and exe.startswith(mount_p))} for pid, (exe, comm) in procs().items() if exe.endswith('glib-pacrunner')]
                 bundled_pac = [x['pid'] for x in sc['pacrunnerProcesses'] if x['bundled']]
+                if args.nonportable:  # who owns the PAC name on the session bus right now, and since which process
+                    def gd(*cmd):
+                        c = as_user(['gdbus', 'call', '--session', '--dest', 'org.freedesktop.DBus', '--object-path', '/org/freedesktop/DBus', '--method', *cmd], dict(run.env), timeout=20)
+                        return (c.stdout.strip() or c.stderr.strip())[:300]
+                    owner = gd('org.freedesktop.DBus.GetNameOwner', 'org.gtk.GLib.PACRunner')
+                    sc['pacBusOwner'] = {'owner': owner, 'pid': gd('org.freedesktop.DBus.GetConnectionUnixProcessID', re.sub(r"[^:.\d]", '', owner)) if ':' in owner else None,
+                                         'activatable': [n for n in gd('org.freedesktop.DBus.ListActivatableNames').split("'") if 'PACRunner' in n]}
                 if args.require:
                     if name == 'gs-sys-pac':
                         req(f'[{name}] REQUIRE the host provides the PAC service: the bundled glib-pacrunner is NOT started (it never replaces a host service)', not bundled_pac, sc['pacrunnerProcesses'])

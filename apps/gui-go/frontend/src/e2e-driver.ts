@@ -808,7 +808,11 @@ async function runAutostartScenario(phase: string) {
 // lightweight-mode exit.
 async function runTrayDevicesScenario() {
   await waitFor('app root content', () => document.getElementById('root')?.children.length)
-  // The app sets the tray language from its UI language at startup; pin English before reading labels.
+  // The app sets the tray language from its UI language at startup (once or more, and later on a host whose language is not English);
+  // wait until those calls went quiet, otherwise the English pin below is overwritten (17c15 base1: the menu read Chinese on a zh-Hans host).
+  await record('tray-driver-progress', true, 'before-quiet')
+  await control('tray-language-quiet:5000')
+  await record('tray-driver-progress', true, 'after-quiet')
   const english = await commands.setTrayLanguage('en', null)
   await record('tray-language-en', english.status === 'ok')
   await control('tray-menu:initial')

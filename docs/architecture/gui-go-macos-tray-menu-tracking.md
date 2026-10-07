@@ -36,6 +36,13 @@ Menu.Update -> macosMenu.update -> InvokeSync(main thread):
 - **M4 动作与 daemon 权威状态**：通过真实 AX 按压菜单里的设备复选项后，**daemon 自己的** `member/<id>/sync-preferences` 翻转；菜单勾选状态在刷新后与 daemon 一致；再按压恢复。全局同步开关同样以 daemon 的 `syncEnabled` 核对。
 - **M5 退出**：真实按压 `退出` 项（以及轻量模式项）后，GUI 进程按预期退出；完整退出时 daemon 也停止，轻量退出时 daemon 保留（由编排器随后停止）。
 
+## 运行器失败记录与新增模型（落盘先于诊断改动）
+
+- **base1**（保留，`passed=false`）：`tray_devices_run.py` 的英文断言失败，根菜单为中文。证据：驱动调用序列 `en`（驱动）→ `zh-CN`（前端），本机语言为 `zh-Hans-CN`。契约是：前端在 `SettingContext` 的语言副作用里于启动与设置加载时调用 `set_tray_language`，驱动的英文固定值只有在前端静默之后才不会被覆盖；旧运行器没有这个前置条件。这是 **运行器前置条件缺陷（语言/时序），不是产品缺陷**；来源核实仍为：Rust daemon 与 `target/debug/uniclipd` 为共享缓存路径产物，base1 的来源标为“探索，未核实”。
+- 修复（测试侧）：驱动在固定英文前等待前端静默（`tray-language-quiet`，E2E 控制），运行器按证据行顺序断言“英文固定值是读菜单前最后一次语言调用”。
+- **base2**（保留，`passed=false`）：静默步骤已记录、`tray-publish` 钩子每 10 秒触发一次（钩子确实触发，`durMs`≈0），但驱动此后没有产生 `tray-language-call en`，也没有 `driver-error`；运行器在截止时间后失败于 `GUI did not exit cleanly`。`set_tray_language` 的第一行即 e2e 钩子，所以调用没有到达宿主。
+- **R1（待证实）**：静默控制返回后，驱动 JS 或其对宿主的调用被卡住。候选：(a) WebView 脚本在窗口不可见时被节流；(b) `Control` 调用的响应没有回到 JS；(c) 调用已发出但在宿主入口前阻塞。区分办法：驱动在每个 await 前后写进度记录（E2E 驱动代码），不改产品。
+
 ## 验收契约
 
 必须保留 17c14 的行为：设备子菜单随 10 秒刷新与 `devices://sync-changed` 更新、条目动作、同步开关标签、托盘生命周期。不得：隐藏日志、删除刷新、删除托盘功能、降低锁保证、用 compile/vet 或脚本直接调用代替原生证据。

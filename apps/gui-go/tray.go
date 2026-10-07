@@ -63,6 +63,7 @@ func (h *HostService) initTray() {
 	// root items (labels, sync state) still while the platform reads the menu.
 	t.devices.mu.Lock() // publishMenu reads the field under this lock
 	t.devices.publish = func() {
+		defer e2eTrayPublish()() // e2e builds record when each publish started and ended; a no-op otherwise
 		t.mu.Lock()
 		defer t.mu.Unlock()
 		republishTrayMenu(t.tray, menu)

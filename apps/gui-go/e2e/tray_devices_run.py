@@ -29,7 +29,7 @@ from file_preview_run import cli  # noqa: E402
 from peers import pair  # noqa: E402
 from run import ROOT, isolated_env, read_steps  # noqa: E402
 
-STEPS = ['tray-menu-initial', 'tray-device-listed', 'tray-device-toggled', 'tray-language-set', 'tray-menu-zh', 'notification-bridge']
+STEPS = ['tray-language-quiet', 'tray-menu-initial', 'tray-device-listed', 'tray-device-toggled', 'tray-language-set', 'tray-menu-zh', 'notification-bridge']
 
 
 def labels(items):
@@ -71,6 +71,15 @@ def main():
         for step in STEPS:
             assert seen.get(step, {}).get('ok'), f'{step}: {seen.get(step)}'
 
+        # Precondition (17c15): the English pin came after the frontend's own startup tray-language calls, so it was not overwritten.
+        # The host language decides what the frontend sends, so it is recorded, not assumed.
+        calls = [r['detail'] for r in rows if r['step'] == 'tray-language-call']
+        results['trayLanguageCalls'] = calls
+        results['hostLanguages'] = subprocess.run(['defaults', 'read', '-g', 'AppleLanguages'], capture_output=True, text=True).stdout.split()
+        order = [r['step'] if r['step'] != 'tray-language-call' else 'call:' + r['detail'] for r in rows]
+        quiet_at, initial_at = order.index('tray-language-quiet'), order.index('tray-menu-initial')
+        pinned = [i for i, name in enumerate(order) if name == 'call:en' and quiet_at < i < initial_at]
+        assert pinned and not [n for n in order[pinned[0] + 1:initial_at] if n.startswith('call:')], f'the English pin was not the last language call before the menu was read: {order}'
         menu = seen['tray-menu-initial']['detail']
         assert labels(menu)[0] in ('Enable Sync', 'Disable Sync'), labels(menu)
         assert seen['tray-language-en']['ok']

@@ -84,6 +84,11 @@ func (s *EvidenceService) runControlCommand(line string) {
 	case "tray-check":
 		h.checkUpdateFromTray()
 		_ = s.write(Step{Window: "update", Step: "control-tray-check", OK: true})
+	case "tray-language-quiet":
+		// tray-language-quiet <label> <ms>: wait until no tray language call arrived for ms (the frontend's startup calls come in a burst).
+		label, ms, _ := strings.Cut(arg, " ")
+		quiet, _ := strconv.Atoi(ms)
+		_ = s.write(Step{Window: "tray", Step: "tray-language-quiet-" + label, OK: waitTrayLanguageQuiet(quiet), Detail: map[string]any{"quietMs": quiet}})
 	case "tray-language-race":
 		// tray-language-race <label> <n>: n concurrent tray language changes released together, alternating zh-CN and en. The
 		// menu (root labels and the device submenu title) must end in one language, the one the tray recorded last.

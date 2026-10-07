@@ -6,6 +6,7 @@ import (
 	"context"
 	"math"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -65,6 +66,10 @@ func (s *EvidenceService) controlQuickPanel(action string) (bool, error) {
 			}
 		}
 		return true, s.write(Step{Window: "main", Step: "autostart-" + label, OK: err == nil && policyErr == nil && statusErr == nil, Detail: detail})
+	case strings.HasPrefix(action, "tray-language-quiet:"):
+		// tray-language-quiet:<ms>: the precondition of every language pin (see waitTrayLanguageQuiet).
+		quiet, _ := strconv.Atoi(strings.TrimPrefix(action, "tray-language-quiet:"))
+		return true, s.write(Step{Window: "tray", Step: "tray-language-quiet", OK: waitTrayLanguageQuiet(quiet), Detail: map[string]any{"quietMs": quiet}})
 	case action == "tray-menu" || strings.HasPrefix(action, "tray-menu:"):
 		// The tray menu as the user would read it: labels in order, "-" for separators, submenus nested.
 		var walk func(m *application.Menu) []any

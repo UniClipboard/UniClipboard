@@ -1,0 +1,104 @@
+// Native NSMenu observer for the macOS tray (17c15). It talks to the real status item of ONE process through the
+// Accessibility API: it opens the tracked NSMenu, reads it while it is open (titles, enabled, check marks, submenus),
+// presses items and cancels the menu. It never moves the pointer and sends no key events.
+//
+//   swift tray_ax.swift items  <pid>                      status items (AXExtrasMenuBar) of the process
+//   swift tray_ax.swift open   <pid>                      AXShowMenu on its first status item
+//   swift tray_ax.swift read   <pid>                      the open menu tree as JSON (fails if no menu is open)
+//   swift tray_ax.swift press  <pid> <title> [<title>..]  AXPress the item at the title path (submenu entries first)
+//   swift tray_ax.swift cancel <pid>                      AXCancel on the open menu
+//   swift tray_ax.swift watch  <pid> <seconds> <ms>       read the open menu every <ms> ms for <seconds>, one JSON line per read (with a monotonic wall clock in ns)
+//
+// Every attribute call has a 5 s AX timeout, so a hung target shows up as an error line instead of hanging the observer.
+import ApplicationServices
+import Foundation
+
+func attr(_ e: AXUIElement, _ name: String) -> AnyObject? {
+    var v: CFTypeRef?
+    return AXUIElementCopyAttributeValue(e, name as CFString, &v) == .success ? (v as AnyObject?) : nil
+}
+func err(_ e: AXUIElement, _ name: String) -> AXError {
+    var v: CFTypeRef?
+    return AXUIElementCopyAttributeValue(e, name as CFString, &v)
+}
+func kids(_ e: AXUIElement) -> [AXUIElement] { (attr(e, kAXChildrenAttribute) as? [AXUIElement]) ?? [] }
+func str(_ e: AXUIElement, _ name: String) -> String { (attr(e, name) as? String) ?? "" }
+
+func app(_ pid: pid_t) -> AXUIElement {
+    let a = AXUIElementCreateApplication(pid)
+    AXUIElementSetMessagingTimeout(a, 5)
+    return a
+}
+func statusItems(_ pid: pid_t) -> [AXUIElement] {
+    guard let bar = attr(app(pid), "AXExtrasMenuBar") else { return [] }
+    return kids(bar as! AXUIElement)
+}
+/// The open NSMenu hangs below the status item (AXMenu child) while it is tracked.
+func openMenu(_ pid: pid_t) -> AXUIElement? {
+    for item in statusItems(pid) {
+        if let m = kids(item).first(where: { str($0, kAXRoleAttribute) == "AXMenu" }) { return m }
+    }
+    return nil
+}
+func tree(_ menu: AXUIElement) -> [[String: Any]] {
+    kids(menu).map { it in
+        var d: [String: Any] = ["role": str(it, kAXRoleAttribute), "title": str(it, kAXTitleAttribute),
+                                "enabled": (attr(it, kAXEnabledAttribute) as? Bool) ?? true]
+        let mark = str(it, "AXMenuItemMarkChar")
+        if !mark.isEmpty { d["mark"] = mark }
+        if let sub = kids(it).first(where: { str($0, kAXRoleAttribute) == "AXMenu" }) { d["items"] = tree(sub) }
+        return d
+    }
+}
+func find(_ menu: AXUIElement, _ path: [String]) -> AXUIElement? {
+    guard let head = path.first else { return nil }
+    guard let item = kids(menu).first(where: { str($0, kAXTitleAttribute) == head }) else { return nil }
+    if path.count == 1 { return item }
+    guard let sub = kids(item).first(where: { str($0, kAXRoleAttribute) == "AXMenu" }) else { return nil }
+    return find(sub, Array(path.dropFirst()))
+}
+func now() -> UInt64 { UInt64(Date().timeIntervalSince1970 * 1e9) }
+func json(_ o: Any) -> String {
+    String(data: try! JSONSerialization.data(withJSONObject: o, options: [.sortedKeys]), encoding: .utf8)!
+}
+func fail(_ msg: String) -> Never {
+    print(json(["ok": false, "error": msg, "ns": now()]))
+    exit(1)
+}
+
+let argv = CommandLine.arguments
+guard argv.count >= 3, let pidNum = Int32(argv[2]) else { fail("usage: tray_ax.swift <cmd> <pid> ...") }
+guard AXIsProcessTrusted() else { fail("this process is not trusted for Accessibility") }
+let pid = pidNum
+switch argv[1] {
+case "items":
+    let items = statusItems(pid)
+    print(json(["ok": !items.isEmpty, "count": items.count, "ns": now(),
+                "items": items.map { ["role": str($0, kAXRoleAttribute), "title": str($0, kAXTitleAttribute), "help": str($0, kAXHelpAttribute)] }]))
+case "open":
+    guard let item = statusItems(pid).first else { fail("no status item") }
+    let r = AXUIElementPerformAction(item, "AXShowMenu" as CFString)
+    print(json(["ok": r == .success, "axError": r.rawValue, "action": "AXShowMenu", "ns": now()]))
+case "read":
+    guard let m = openMenu(pid) else { fail("no open menu") }
+    print(json(["ok": true, "ns": now(), "menu": tree(m)]))
+case "press":
+    guard let m = openMenu(pid) else { fail("no open menu") }
+    guard let it = find(m, Array(argv.dropFirst(3))) else { fail("no item at path \(argv.dropFirst(3))") }
+    let r = AXUIElementPerformAction(it, kAXPressAction as CFString)
+    print(json(["ok": r == .success, "axError": r.rawValue, "ns": now()]))
+case "cancel":
+    guard let m = openMenu(pid) else { fail("no open menu") }
+    let r = AXUIElementPerformAction(m, kAXCancelAction as CFString)
+    print(json(["ok": r == .success, "axError": r.rawValue, "ns": now()]))
+case "watch":
+    guard argv.count >= 5, let seconds = Double(argv[3]), let ms = Double(argv[4]) else { fail("watch <pid> <seconds> <ms>") }
+    let end = Date().addingTimeInterval(seconds)
+    while Date() < end {
+        if let m = openMenu(pid) { print(json(["ok": true, "ns": now(), "menu": tree(m)])) } else { print(json(["ok": false, "ns": now(), "error": "no open menu"])) }
+        fflush(stdout)
+        Thread.sleep(forTimeInterval: ms / 1000)
+    }
+default:
+    fail("unknown command \(argv[1])")
+}

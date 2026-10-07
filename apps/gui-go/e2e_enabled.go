@@ -3,15 +3,14 @@
 package main
 
 import (
-
 	"context"
 	"encoding/json"
 	"fmt"
 	"github.com/UniClipboard/UniClipboard/apps/gui-go/internal/update"
 	"os"
 	"strconv"
-	"sync/atomic"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -277,6 +276,7 @@ func e2eBootstrapped(h *HostService, replayed bool) {
 // e2eTrayLanguage records every tray language call, whoever made it (the test driver or the frontend's own
 // settings effect), so a label that did not change can be attributed from the evidence.
 func e2eTrayLanguage(language string) {
+	trayLanguageLastCall.Store(time.Now().UnixNano())
 	_ = evidenceWriter.write(Step{Window: "tray", Step: "tray-language-call", OK: true, Detail: language})
 }
 
@@ -288,4 +288,34 @@ func e2eTrayLanguageGap() {
 	if ms := trayLanguageGap.Swap(0); ms > 0 {
 		time.Sleep(time.Duration(ms) * time.Millisecond)
 	}
+}
+
+// trayLanguageLastCall is when the last tray language call arrived; the e2e waits for quiet before it pins a language.
+var trayLanguageLastCall atomic.Int64
+
+var trayPublishCount atomic.Int64
+
+// e2eTrayPublish records one tray menu publish (the call that runs Menu.Update or SystemTray.SetMenu with the tray locks held):
+// its sequence number and its start and end in Unix nanoseconds, so a native menu observation can be placed against it.
+// The returned function ends the record.
+func e2eTrayPublish() func() {
+	n := trayPublishCount.Add(1)
+	start := time.Now()
+	return func() {
+		end := time.Now()
+		_ = evidenceWriter.write(Step{Window: "tray", Step: "tray-publish", OK: true, Detail: map[string]any{
+			"n": n, "startNs": start.UnixNano(), "endNs": end.UnixNano(), "durMs": end.Sub(start).Milliseconds()}})
+	}
+}
+
+// waitTrayLanguageQuiet blocks until no tray language call arrived for quietMs (at most 60 s). The frontend sets the tray language
+// from its settings effect at startup, possibly more than once; a test that pins a language earlier is overwritten by it.
+func waitTrayLanguageQuiet(quietMs int) bool {
+	quiet := time.Duration(quietMs) * time.Millisecond
+	for deadline := time.Now().Add(60 * time.Second); time.Now().Before(deadline); time.Sleep(100 * time.Millisecond) {
+		if last := trayLanguageLastCall.Load(); last != 0 && time.Since(time.Unix(0, last)) >= quiet {
+			return true
+		}
+	}
+	return false
 }

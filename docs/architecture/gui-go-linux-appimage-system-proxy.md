@@ -207,6 +207,10 @@ stage3 同一个包上的两个矩阵。页面自身的 HTTP 取数与 WebSocket
 3. `gs-user-dynamic`（非便携，真实会话总线与 `dconf-service`）：同一 GUI 进程内，请求 1 proxied → `gsettings set … mode 'none'` → 请求 2 direct → 设回 `manual` → 请求 3 proxied；记录是否需要重启；系统数据库（`dconf update`）的变更传播另做一次观测。
 4. Fedora：基底镜像 `uc-gui-go-linux-runtime-fedora:17c7` + tinyproxy、dconf、`libproxy-bin`、iproute（`Dockerfile.17c12-fedora` / `-fedora-session`，Fedora 44 的 libproxy 0.5.12 与 glib-networking 2.80.1，与 Ubuntu 的 0.5.4 不同；AppImage 自带模块，宿主版本只是对照）；runner 里 tinyproxy 的 `Group nogroup` 在 Fedora 上要改为 `nobody`。
 
+### P5 在 stage4 包上的结果（带尝试证明）
+
+`stage4/p5c-portable`（退出码 0，53 项观测，38/38 要求）与 `stage4/p5c-nonportable`（退出码 0，59 项观测，38/38 要求）：`up-none` direct、`up-allow` proxied、`up-deny` refused（代理点名并拒绝，目标 0 次）、`up-bypass` direct；`up-reset`（代理接受连接后立即关闭）更新器失败、目标 0 次、代理收到更新器的 1 个连接，证明尝试而不是被禁用；每个场景都证明更新器已启用（端点与非空公钥在环境里，`up-none`/`up-allow` 成功证明密钥有效）。此前的 `stage4/full-*`（7 项 up-* 失败，缺 `feed-inputs` 的夹具错误）、`p5-*`（缺尝试证明）与 `p5b-*`（runner 配置生成缺陷）保留并带 ATTRIBUTION.txt；这些汇总早于完整性判定，最终整体验收用新判定重跑。
+
 ### 回环边界与 live maps（`stage4/boundary-portable`，退出码 0，仅便携，分项结果）
 
 场景 `gs-sys-allow`、`gs-sys-ignore`、`gs-sys-empty`，28 项观测，15/15 要求。`gs-sys-allow`（GNOME 默认 ignore-hosts）与 `gs-sys-empty`（空 ignore-hosts）里，真实 WebView 访问三个各自独立的真实监听器：`127.0.0.2`（`127.0.0.0/8` 中不是 `127.0.0.1` 的成员）、`localhost`、`::1`，监听器都直接收到请求（各 1 次），代理日志没有点名；同一场景里外部请求仍 proxied，伪装主机 `localhost.webview-probe.test` 在 `gs-sys-empty` 里 proxied；`/proc` maps 证明 WebKitNetworkProcess 已映射 `libgiouniclipboardloopback.so`。边界：这是便携模式的分项，不是完整矩阵，也没有非便携和 Fedora；宿主 helper 没有带出该模块、异步/取消/错误传播、无下游解析器的回退仍未验证。

@@ -37,7 +37,7 @@ def main():
     ap.add_argument('--appimage', type=Path, required=True)
     ap.add_argument('--out', type=Path, required=True)
     ap.add_argument('--mode', choices=('native', 'x11-env'), required=True)
-    ap.add_argument('--seconds', type=int, default=40)
+    ap.add_argument('--seconds', type=int, default=45)
     args = ap.parse_args()
     out = args.out.resolve()
     out.mkdir(parents=True, exist_ok=True)
@@ -186,17 +186,25 @@ def main():
         check('5 and back to English', bool(r.get('ok')) and l2 is not None, labels(l2) if l2 else None)
         # Observe the layout for the window: with no peer the placeholder is rebuilt (new item ids) every 10 s period, so the number of
         # distinct layouts seen is the number of structural republishes the host actually received.
+        # Observation window: no click, language call or other action happens inside it (all earlier actions have returned and the
+        # frontend's language calls were quiet before they started), so every republish seen here comes from the timed refresh.
+        calls_before_window = len(lang_calls())
+
         def valid_layouts():
             rows = []
             for ln in (out / 'host.jsonl').read_text().splitlines():
                 r = json.loads(ln)
                 if r['kind'] == 'layout' and 'error' not in r['layout']:
-                    rows.append(r['layout'])
+                    rows.append(r)
             return rows
         n_before = len(valid_layouts())
         host.wait(lambda l: False, args.seconds, 'observe refresh periods')
-        n_after = len(valid_layouts()) - 1  # wait() always emits the first layout it reads; that one is not a republish
-        check('6a at least 3 structural republishes reached the host during the observation window (the refresh really ran)', n_after - n_before >= 3, {'republishes': n_after - n_before, 'seconds': args.seconds})
+        window = valid_layouts()[n_before + 1:]  # wait() always emits the first layout it reads; that one is not a republish
+        gaps = [round(b['t'] - a['t'], 1) for a, b in zip(window, window[1:])]
+        spaced = len(window) >= 3 and all(6 <= g <= 14 for g in gaps)
+        quiet = len(lang_calls()) == calls_before_window
+        n_after = n_before + len(window)
+        check('6a the timed refresh republished the menu structure at least 3 times during an action-free window, about 10 s apart', spaced and quiet, {'republishes': len(window), 'gapsSeconds': gaps, 'noLanguageCallsInWindow': quiet, 'seconds': args.seconds})
         table = procs()
         classes = socket_classes([proc.pid])
         c = classes.get(str(proc.pid)) or {}

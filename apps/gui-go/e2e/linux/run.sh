@@ -173,7 +173,7 @@ case "$mode" in
     net="uc17c12-internal-$$"; docker network create --internal "$net" >/dev/null
     docker run --rm --init --platform linux/arm64 --network "$net" --device /dev/fuse --cap-add SYS_ADMIN --cap-add SYS_PTRACE --cap-add NET_ADMIN --security-opt apparmor:unconfined \
       -v "$ROOT:/work:ro" -v "$out:/out" -v "$image:/in/appimage.AppImage:ro" -v "$manifest:/in/package-manifest.json:ro" \
-      "${UC_PROXY_IMAGE:-uc-gui-go-linux-proxy:17c12-ubuntu}" python3 /work/apps/gui-go/e2e/linux_appimage_proxy_run.py --out /out --appimage /in/appimage.AppImage \
+      "${UC_PROXY_IMAGE:-uc-gui-go-linux-proxy:17c12-ubuntu}" python3 /work/apps/gui-go/e2e/${UC_PROXY_RUNNER:-linux_appimage_proxy_run.py} --out /out --appimage /in/appimage.AppImage \
       --manifest /in/package-manifest.json ${UC_PROXY_ARGS:-} > "$out/run.log" 2>&1
     code=$?
     docker network rm "$net" >/dev/null

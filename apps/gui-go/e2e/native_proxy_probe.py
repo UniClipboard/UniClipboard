@@ -118,6 +118,14 @@ def main():
                UC_GUI_GO_E2E_SECRET='native-probe-secret-17c12', UC_GUI_GO_EVIDENCE=str(out / 'gui.jsonl'), UC_GUI_GO_E2E_CONTROL_FILE=str(out / 'gui.control'))
     if wayland:
         env['WAYLAND_DISPLAY'] = wayland
+    x11 = sorted(p.name for p in Path('/tmp/.X11-unix').glob('X[0-9]*'))  # the Wails GTK plugin forces GDK_BACKEND=x11 (XWayland on a Wayland session), so the GUI needs the session's DISPLAY
+    result['x11Sockets'] = x11
+    if x11:
+        env['DISPLAY'] = ':' + x11[0][1:]
+    bus = runtime / 'bus'
+    result['sessionBusSocket'] = bus.exists()
+    if bus.exists():  # the user's real session bus: the GUI in portable mode never stores secrets there; the PAC supervisor only talks to it
+        env['DBUS_SESSION_BUS_ADDRESS'] = f'unix:path={bus}'
     fuse = any(Path(d).glob('libfuse.so.2') for d in ('/usr/lib', '/usr/lib64', '/usr/lib/aarch64-linux-gnu', '/lib64'))
     result['fuse2'] = fuse
     if not fuse:  # no FUSE 2 on this host: the AppImage runtime extracts itself instead of mounting (recorded; the mount path differs)

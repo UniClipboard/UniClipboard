@@ -29,6 +29,7 @@
 已知缺口与取舍：
 
 - “内容被拦截”（设计里“需要处理”的第三种触发）没有 daemon 事实，未实现。
+- 读投递视图连续失败 3 次（间隔 3 秒、6 秒）后，这条 `failed` 不会再被补读，红色提示不出现；快照不读投递视图，没有补救路径。
 - 发送失败只认投递视图的 `failed`；接收端文件传输失败的事件不带方向，不算“发送失败”。
 - 宿主新增了一条只读的 daemon WebSocket 连接（`iconFeed.follow`），订阅 `file-transfer`、`clipboard`、`peers`、`device-trust`、`content-lock`、`paired-devices`，断线后每 3 秒重连。没有可复用的现有事件连接：Go 宿主进程里除它之外没有任何 WebSocket 消费者（`DialWS` 只有这一处调用），WebView 的事件连接在前端 JS 里，静默启动时甚至不存在，也无法跨进程共享。daemon 没有不持租约的事件通道，每条已认证的控制 WebSocket 在 `crates/uc-webserver/src/api/ws.rs` 里获得一个控制租约；加一个不持租约的通道需要改 daemon 协议，不在本任务范围。
   对现有契约的实际影响（逐条读源码核对，不是“未见消费者”）：租约的消费者只有 `apps/daemon/src/daemon/oneshot.rs` 的 Oneshot 自终止监督器（`host.rs` 只在 `DaemonResidency::Oneshot` 时启动它）、受控重启的排空，以及受控重启排空期间的接入门禁 `ensure_not_quiescing`（拒绝新的控制 WebSocket，也拒绝 `crates/uc-webserver/src/api/clipboard.rs` 里的剪贴板分发与重发）。受控重启 `POST /lifecycle/restart` 在非 Oneshot daemon 上一律返回 `NotPromotable`，所以 `quiescing` 永远不会被置位。GUI 拉起或复用的 daemon 都是常驻的：`apps/gui-go/main.go` 的 `bootstrap` 冷启动时用 `SpawnDetachedDaemon("gui")` 起常驻 daemon，遇到已存在的 Oneshot daemon 则直接 `log.Fatal` 拒绝复用。因此 GUI 运行期间这条连接不会让任何 daemon 失去自终止或排空的机会；Oneshot 只由 `apps/cli-go` 的 `uniclip` 命令拉起，并通过 `/lifecycle/restart` 升级为常驻，那条路径上没有 GUI。轻量模式与退出：GUI 进程退出时连接随进程关闭，常驻 daemon 不受影响（轻量模式保留 daemon，完整退出则停止它）。这个结论依赖“GUI 不附着 Oneshot daemon”这条现有启动约束；若以后放开它，托盘连接必须在 `/health` 报告 `oneshot` 时不建立（只靠 10 秒的 HTTP 快照），或在排空开始时让出租约，那属于 L8d 的工作。
@@ -82,7 +83,7 @@
 
 ## 结果
 
-证据目录在任务库（`library/run4/`，含 `provenance.json`：Engine 固定版本 `e86f94ce…`、`cargo build --locked -p uc-daemon` 产出的 debug `uniclipd`、Go 工具链版本与产物哈希）。运行器为 `apps/gui-go/e2e/tray_icon_run.py`。
+证据目录在任务库（最新一次宿主层运行 `library/run5/`，源码为干净的 `f66fdd618`；更早的 `run4/` 对应旧源码 `53cfd9794`，只能说明当时的状态，不作为当前代码的验收；每次运行的 `provenance.json` 记录：Engine 固定版本 `e86f94ce…`、`cargo build --locked -p uc-daemon` 产出的 debug `uniclipd`、Go 工具链版本与产物哈希）。运行器为 `apps/gui-go/e2e/tray_icon_run.py`。
 
 已通过（宿主层，同一真实 daemon + 独立 profile）：
 

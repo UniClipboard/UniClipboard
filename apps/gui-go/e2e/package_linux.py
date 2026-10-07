@@ -71,10 +71,12 @@ HOST_ONLY_LIBS = ('libwayland-client.so', 'libEGL.so', 'libGL.so', 'libGLX.so', 
                 'libGLESv1_CM.so', 'libGLESv2.so', 'libOpenGL.so',
                 # 17c7: the host's dbus-launch/daemon helpers load libdbus through AppRun's LD_LIBRARY_PATH (found on Fedora)
                 'libdbus-1.so')
-# The GIO modules the AppImage carries: the TLS backend of GLib (libsoup 3 and so WebKitGTK reach HTTPS through it). Nothing else: gvfs, dconf,
-# libproxy and gnome-proxy are host-ABI or out of scope (docs/architecture/gui-go-linux-appimage-runtime-deps.md).
-GIO_MODULES = ('libgiognutls.so',)
-GIO_MODULE_PACKAGE = 'glib-networking'
+# The GIO modules the AppImage carries, each with the distribution package that owns it. They are copied from the build image, i.e. built against the SAME
+# GLib as the bundled one (the 17c4 crash was a HOST module against the bundled GLib). gvfs stays out (docs/architecture/gui-go-linux-appimage-runtime-deps.md).
+#  libgiognutls.so      the TLS backend of GLib (libsoup 3 and so WebKitGTK reach HTTPS through it)                       (17c7)
+#  libgiognomeproxy.so  GProxyResolver reading the GNOME proxy settings (org.gnome.system.proxy: manual, ignore-hosts)    (17c12)
+#  libdconfsettings.so  the GSettings backend that reads the user's and the system's dconf databases                      (17c12)
+GIO_MODULES = {'libgiognutls.so': 'glib-networking', 'libgiognomeproxy.so': 'glib-networking', 'libdconfsettings.so': 'dconf-gsettings-backend'}
 WEBKIT_HELPERS = ('WebKitWebProcess', 'WebKitNetworkProcess', 'WebKitGPUProcess')
 APPRUN = GUI / 'e2e/linux/appimage/AppRun'
 ICONS = {'32x32': '32x32.png', '128x128': '128x128.png', '256x256': '128x128@2x.png'}
@@ -302,21 +304,21 @@ def deploy_gio_modules(appdir):
     shipped = {p.name for p in (appdir / 'usr/lib').rglob('*.so*') if p.is_file() or p.is_symlink()}
     libc_family = re.compile(r'^(libc|libm|libdl|libpthread|librt|ld-linux.*)\.so(\.\d+)*$')
     rows = []
-    for name in GIO_MODULES:
+    for name, package in GIO_MODULES.items():
         src = moddir / name
         if not src.is_file():
-            sys.exit(f'{src} is missing in the build image: install {GIO_MODULE_PACKAGE} (the GIO TLS backend)')
+            sys.exit(f'{src} is missing in the build image: install {package}')
         owner = run(['dpkg', '-S', str(src)], capture=True)
-        if not owner.startswith(GIO_MODULE_PACKAGE):
-            sys.exit(f'{src} is not owned by {GIO_MODULE_PACKAGE}: {owner}')
-        version = run(['dpkg-query', '-W', '-f', '${Version}', GIO_MODULE_PACKAGE], capture=True)
+        if not owner.startswith(package):
+            sys.exit(f'{src} is not owned by {package}: {owner}')
+        version = run(['dpkg-query', '-W', '-f', '${Version}', package], capture=True)
         dest = appdir / 'usr/lib/gio/modules' / name
         shutil.copy2(src, dest)
         needed = re.findall(r'\(NEEDED\)\s+Shared library: \[(.+?)\]', run(['readelf', '-d', str(dest)], capture=True))
         missing = sorted(n for n in needed if n not in shipped and not libc_family.match(n))
         if missing:
             sys.exit(f'{name} needs libraries that are neither in the AppDir nor libc-family: {missing}')
-        rows.append({'module': name, 'source': str(src), 'package': GIO_MODULE_PACKAGE, 'packageVersion': version, 'sha256': sha256(dest), 'needed': needed})
+        rows.append({'module': name, 'source': str(src), 'package': package, 'packageVersion': version, 'sha256': sha256(dest), 'needed': needed})
     glib_version = run(['dpkg-query', '-W', '-f', '${Version}', 'libglib2.0-0t64'], capture=True)
     return {'modules': rows, 'bundledGLibPackageVersion': glib_version}
 

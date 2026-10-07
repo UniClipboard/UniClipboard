@@ -834,6 +834,7 @@ def main():
                     else:
                         req(f'[{name}] REQUIRE the daemon reached the rendezvous host DIRECTLY (the controlled internal target saw its request or its TLS handshake) and the proxy never named it',
                             (bool(at_target) or bool(hs_failed)) and not named, sc['p6'])
+            sc['completed'] = True  # every probe and requirement of this scenario ran (an exception before this line leaves it unset)
             stop(gui, conn)
             launches.clear()
             if where:
@@ -874,7 +875,10 @@ def main():
         r['targetRequests'] = servers[0].requests if servers else []
         r['targetHandshakeFailures'] = servers[0].handshake_failures if servers else []
         r['passed'] = bool(r['checks']) and all(c['ok'] for c in r['checks']) and 'error' not in r
-        r['functionalPassed'] = (bool(r['requirements']) and all(c['ok'] for c in r['requirements'])) if args.require else None
+        unfinished = [n for n in chosen if not r.get('scenarios', {}).get(n, {}).get('completed') and not r.get('scenarios', {}).get(n, {}).get('skipped')]
+        r['scenariosUnfinished'] = unfinished
+        # functionalPassed means: the requirements hold AND every selected scenario ran to its end without an error (a run that stopped early must never look functional)
+        r['functionalPassed'] = (bool(r['requirements']) and all(c['ok'] for c in r['requirements']) and 'error' not in r and not unfinished) if args.require else None
         (out / 'appimage-assertions.json').write_text(json.dumps(r, indent=2, default=str) + '\n')
         for f in list(out.glob('proxy-*-tinyproxy.log')) + [out / 'appimage-assertions.json']:  # a loopback URL that reached a proxy carries the daemon session token: never keep it
             try:

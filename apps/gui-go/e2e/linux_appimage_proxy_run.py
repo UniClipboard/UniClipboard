@@ -898,13 +898,32 @@ def main():
                     else:
                         req(f'[{name}] REQUIRE the daemon reached the rendezvous host DIRECTLY (the controlled internal target saw its request or its TLS handshake) and the proxy never named it',
                             (bool(at_target) or bool(hs_failed)) and not named, sc['p6'])
+            bundled_pac = []
             if name in PAC_SCENARIOS:
-                sc['pacrunnerProcesses'] = [{'pid': pid, 'exe': exe} for pid, (exe, comm) in procs().items() if exe.endswith('glib-pacrunner')]
+                gui_exe_p = procs().get(gui.proc.pid, ('', ''))[0]
+                mount_p = gui_exe_p.split('/usr/bin/')[0] if '/usr/bin/' in gui_exe_p else None
+                sc['pacrunnerProcesses'] = [{'pid': pid, 'exe': exe, 'bundled': bool(mount_p and exe.startswith(mount_p))} for pid, (exe, comm) in procs().items() if exe.endswith('glib-pacrunner')]
+                bundled_pac = [x['pid'] for x in sc['pacrunnerProcesses'] if x['bundled']]
+                if args.require:
+                    if name == 'gs-sys-pac':
+                        req(f'[{name}] REQUIRE the host provides the PAC service: the bundled glib-pacrunner is NOT started (it never replaces a host service)', not bundled_pac, sc['pacrunnerProcesses'])
+                    elif name == 'gs-sys-pac-nohelper':
+                        req(f'[{name}] REQUIRE without a host PAC service the bundled glib-pacrunner (from the AppImage mount) is running', len(bundled_pac) >= 1, sc['pacrunnerProcesses'])
             if name in PAC_SCENARIOS:
                 sc['pacFetches'] = len(pacs[-1].fetches)
                 chk(f'[{name}] the PAC script was fetched from the controlled server (the configuration was read)', len(pacs[-1].fetches) >= 1, pacs[-1].fetches)
+            sc['_bundledPac'] = bundled_pac
             sc['completed'] = True  # every probe and requirement of this scenario ran (an exception before this line leaves it unset)
             stop(gui, conn)
+            if sc.get('_bundledPac') is not None and sc['_bundledPac']:
+                gone_deadline = time.monotonic() + 8
+                while any(pid_alive(x) for x in sc['_bundledPac']) and time.monotonic() < gone_deadline:
+                    time.sleep(.3)
+                left = [x for x in sc['_bundledPac'] if pid_alive(x)]
+                sc['bundledPacLeftover'] = left
+                if args.require:
+                    req(f'[{name}] REQUIRE no bundled glib-pacrunner outlives the GUI (Pdeathsig + exit)', not left, left)
+            sc.pop('_bundledPac', None)
             launches.clear()
             if where:
                 clean_dconf(target_app)

@@ -56,6 +56,14 @@ else:
         check(f'C2b {name}: the bytes equal the package manifest (package {package}, recorded SHA-256)', sha is not None and sha == rec.get('sha256') and rec.get('package') == package,
               {'sha256': sha, 'manifest': {k: rec.get(k) for k in ('package', 'packageVersion', 'source', 'sha256')}})
     check('C4 the TLS library the module needs is shipped (libgnutls.so.30) and libsoup 3 is the HTTP stack', 'libgnutls.so.30' in names and 'libsoup-3.0.so.0' in names, None)
+    pac = gio.get('pacRunner', {}) if isinstance(gio, dict) else {}
+    pac_file = root / 'usr/libexec/glib-pacrunner'
+    pac_sha = hashlib.sha256(pac_file.read_bytes()).hexdigest() if pac_file.is_file() else None
+    check('C9 the PAC helper glib-pacrunner is bundled and its bytes equal the package manifest (glib-networking-services)', pac_sha is not None and pac_sha == pac.get('sha256') and pac.get('package') == 'glib-networking-services',
+          {'sha256': pac_sha, 'manifest': {k: pac.get(k) for k in ('package', 'packageVersion', 'source', 'sha256')}})
+    pac_needed = re.findall(r'\(NEEDED\)\s+Shared library: \[(.+?)\]', subprocess.run(['readelf', '-d', '-W', str(pac_file)], capture_output=True, text=True, check=True).stdout) if pac_file.is_file() else []
+    pac_missing = [n for n in pac_needed if n not in names and not libc_family.match(n)]
+    check('C9b glib-pacrunner: every library it needs (libproxy, GLib, GIO) is in the AppDir or libc-family', bool(pac_needed) and not pac_missing, {'needed': pac_needed, 'missing': pac_missing})
 host_owned = re.compile(r'^(libEGL|libGL|libGLX|libGLdispatch|libOpenGL|libGLESv1_CM|libGLESv2|libdrm|libgbm|libwayland-client|libdbus-1|libvulkan)\.so')
 found = sorted(n for n in names if host_owned.match(n))
 check('C5 no host-owned library (GL/EGL/GLES entry points, libdrm, libgbm, libwayland-client, libdbus-1) is inside the AppDir', not found, found)

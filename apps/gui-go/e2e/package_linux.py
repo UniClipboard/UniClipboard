@@ -83,6 +83,9 @@ GIO_MODULES = {'libgiognutls.so': 'glib-networking', 'libgiognomeproxy.so': 'gli
 # resolver GLib would have picked (docs/architecture/gui-go-linux-appimage-system-proxy.md, "Loopback guard"). Priority 100 puts it in front of "gnome" (80) and "libproxy" (10).
 GUARD_SOURCE = ROOT / 'apps/gui-go/packaging/linux/gio-loopback-guard/uc_loopback_guard.c'
 GUARD_MODULE = 'libgiouniclipboardloopback.so'
+# The PAC helper glib-networking's GNOME resolver talks to over the session bus (org.gtk.GLib.PACRunner). The Go host starts this copy only when no service can be activated on the bus
+# (pacrunner_linux.go), so a package without it would depend on a host component for PAC.
+PACRUNNER = ('/usr/libexec/glib-pacrunner', 'glib-networking-services', 'usr/libexec/glib-pacrunner')
 # The libraries libgiolibproxy.so needs that the AppImage does not already carry (computed from the build image's own dependency closure, then frozen here: a new
 # entry is a decision, not an accident). libproxy 0.5's backend hard-links the PAC runtime (duktape) and the PAC downloader (libcurl-gnutls), whose own closure
 # (libssh, libldap/liblber, libsasl2, librtmp, OpenSSL's libcrypto) comes with it; this is the distribution's own dependency set for libproxy, not a choice of ours.
@@ -372,8 +375,22 @@ def deploy_gio_modules(appdir):
         sys.exit(f'{GUARD_MODULE} needs libraries that are neither in the AppDir nor libc-family: {missing}')
     rows.append({'module': GUARD_MODULE, 'package': 'uniclipboard (built from source in the build image)', 'source': str(GUARD_SOURCE.relative_to(ROOT)), 'sourceSha256': sha256(GUARD_SOURCE),
                  'compiler': run(['gcc', '--version'], capture=True).splitlines()[0], 'compileCommand': ' '.join(command), 'sha256': sha256(dest), 'needed': needed})
+    src, package, rel = Path(PACRUNNER[0]), PACRUNNER[1], PACRUNNER[2]
+    if not src.is_file():
+        sys.exit(f'{src} is missing in the build image: install {package}')
+    owner = run(['dpkg', '-S', str(src)], capture=True)
+    if not owner.startswith(package):
+        sys.exit(f'{src} is not owned by {package}: {owner}')
+    pac_dest = appdir / rel
+    pac_dest.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(src, pac_dest)
+    pac_needed = re.findall(r'\(NEEDED\)\s+Shared library: \[(.+?)\]', run(['readelf', '-d', str(pac_dest)], capture=True))
+    pac_missing = sorted(n for n in pac_needed if n not in shipped and not libc_family.match(n))
+    if pac_missing:
+        sys.exit(f'glib-pacrunner needs libraries that are neither in the AppDir nor libc-family: {pac_missing}')
+    pac_row = {'path': rel, 'source': str(src), 'package': package, 'packageVersion': run(['dpkg-query', '-W', '-f', '${Version}', package], capture=True), 'sha256': sha256(pac_dest), 'needed': pac_needed}
     glib_version = run(['dpkg-query', '-W', '-f', '${Version}', 'libglib2.0-0t64'], capture=True)
-    return {'modules': rows, 'supportLibraries': support_rows, 'bundledGLibPackageVersion': glib_version}
+    return {'pacRunner': pac_row, 'modules': rows, 'supportLibraries': support_rows, 'bundledGLibPackageVersion': glib_version}
 
 
 def build_appimage(stage, out, arch, name, tools, daemon, relocate=True, marker=None, tls_module=True):

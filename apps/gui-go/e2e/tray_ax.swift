@@ -76,6 +76,24 @@ case "items":
     let items = statusItems(pid)
     print(json(["ok": !items.isEmpty, "count": items.count, "ns": now(),
                 "items": items.map { ["role": str($0, kAXRoleAttribute), "title": str($0, kAXTitleAttribute), "help": str($0, kAXHelpAttribute)] }]))
+case "scan":
+    // Every AXMenu / AXMenuItem / AXWindow reachable from the application element (a diagnostic for where an open menu hangs in the tree).
+    var found: [[String: Any]] = []
+    func walk(_ e: AXUIElement, _ path: String, _ depth: Int) {
+        let role = str(e, kAXRoleAttribute)
+        if ["AXMenu", "AXMenuItem", "AXWindow", "AXMenuBar", "AXMenuBarItem"].contains(role) { found.append(["path": path, "role": role, "title": str(e, kAXTitleAttribute)]) }
+        if depth == 0 { return }
+        for (i, c) in kids(e).enumerated() { walk(c, path + "/" + String(i), depth - 1) }
+    }
+    let root = app(pid)
+    walk(root, "app", 6)
+    for key in ["AXMenuBar", "AXExtrasMenuBar", "AXWindows", "AXFocusedUIElement", "AXFocusedWindow"] {
+        if let v = attr(root, key) {
+            if let el = v as? [AXUIElement] { for (i, c) in el.enumerated() { walk(c, key + "[" + String(i) + "]", 6) } }
+            else if CFGetTypeID(v) == AXUIElementGetTypeID() { walk(v as! AXUIElement, key, 6) }
+        }
+    }
+    print(json(["ok": true, "ns": now(), "found": found]))
 case "describe":
     func actions(_ e: AXUIElement) -> [String] {
         var a: CFArray?

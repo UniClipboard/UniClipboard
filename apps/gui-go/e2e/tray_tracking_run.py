@@ -54,19 +54,31 @@ def ax(*args, check=False):
     return row
 
 
-def open_menu(gui, pid, how, label):
-    """Open the status item's menu through AppKit's own tracking and wait until the menu is readable through AX."""
-    if how == 'rightclick':
-        opened = ax('rightclick', str(pid))
-    else:
-        opened = gui.ctl(f'tray-open-menu {label}', f'tray-open-menu-{label}')
-    first = {'ok': False}
-    end = time.time() + 15
-    while time.time() < end:
-        first = ax('read', str(pid))
-        if first.get('ok'):
-            break
-        time.sleep(.3)
+def open_menu(gui, pid, how, label, out):
+    """Open the status item's menu through AppKit's own tracking and wait until the menu is readable through AX.
+
+    A 40 ms AX watch runs from before the open, so a menu that appears and closes again within a poll interval is still seen (and timed).
+    """
+    watch_path = out / f'ax-open-{label}-watch.jsonl'
+    with watch_path.open('w') as wf:
+        watcher = subprocess.Popen([AX, 'watch', str(pid), '14', '40'], stdout=wf, stderr=subprocess.STDOUT)
+        time.sleep(1)
+        if how == 'rightclick':
+            opened = ax('rightclick', str(pid))
+        else:
+            opened = gui.ctl(f'tray-open-menu {label}', f'tray-open-menu-{label}')
+        first = {'ok': False}
+        end = time.time() + 12
+        while time.time() < end:
+            first = ax('read', str(pid))
+            if first.get('ok'):
+                break
+            time.sleep(.3)
+        if not first.get('ok'):
+            watcher.wait(timeout=60)
+    seen = [json.loads(l) for l in watch_path.read_text().splitlines() if l.strip()]
+    ok_seen = [r['ns'] for r in seen if r.get('ok')]
+    opened = dict(opened, openedSeenByWatch={'reads': len(seen), 'okReads': len(ok_seen), 'firstOkNs': ok_seen[0] if ok_seen else None, 'lastOkNs': ok_seen[-1] if ok_seen else None})
     return opened, first
 
 
@@ -103,6 +115,10 @@ class Gui:
             if self.proc.poll() is not None:
                 raise RuntimeError(f'GUI exited ({self.proc.returncode}) before {name}')
             time.sleep(.2)
+        # Take the scene before anything is torn down: the main thread's state and the AX view of this pid.
+        stamp = int(time.time())
+        subprocess.run(['sample', str(self.proc.pid), '2', '-file', str(self.evidence.parent / f'diag-timeout-{name}-{stamp}-sample.txt')], capture_output=True, timeout=60)
+        (self.evidence.parent / f'diag-timeout-{name}-{stamp}-ax.json').write_text(json.dumps(ax('describe', str(self.proc.pid)), ensure_ascii=False, indent=1))
         raise RuntimeError(f'timeout waiting for {name}')
 
     def ctl(self, line, label, timeout=60):
@@ -142,6 +158,8 @@ def main():
         'dirty': bool(subprocess.run(['git', 'status', '--porcelain'], cwd=ROOT, capture_output=True, text=True).stdout.strip()),
         'guiBinarySha256': sha(binary), 'trayAxSha256': sha(AX), 'daemongetSha256': sha(DAEMONGET),
         'daemonSha256': sha(ROOT / 'target/debug/uniclipd'), 'cliSha256': sha(ROOT / 'target/gui-go/uniclip'),
+        'hostIdleSeconds': next((int(l.split('=')[-1].strip()) / 1e9 for l in subprocess.run(['ioreg', '-c', 'IOHIDSystem'], capture_output=True, text=True).stdout.splitlines() if 'HIDIdleTime' in l), None),
+        'pmsetSleep': [l.strip() for l in subprocess.run(['pmset', '-g'], capture_output=True, text=True).stdout.splitlines() if 'sleep' in l.lower()],
         'daemonOrigin': 'target/debug/uniclipd of this worktree (cargo build --locked -p uc-daemon, debug); not independently attested'}, indent=2) + '\n')
 
     def check(name, ok, detail=None):
@@ -174,8 +192,18 @@ def main():
         proc = subprocess.Popen([str(binary)], env=gui_env, stdout=(out / 'gui.log').open('w'), stderr=subprocess.STDOUT)
         gui = Gui(proc, evidence, control)
         gui.wait_step('bootstrapped', 120)
-        items = ax('items', str(proc.pid))
-        check('0 the status item of THIS pid is readable through AX', items.get('ok') and items.get('count') == 1, items)
+        items = {'ok': False}
+        for _ in range(30):  # the status item is created on the main thread shortly after bootstrap
+            items = ax('items', str(proc.pid))
+            if items.get('ok') and items.get('count') == 1:
+                break
+            time.sleep(1)
+        if not check('0 the status item of THIS pid is readable through AX', items.get('ok') and items.get('count') == 1, items):
+            (out / 'diag-ax-describe.json').write_text(json.dumps(ax('describe', str(proc.pid)), ensure_ascii=False, indent=1))
+            (out / 'diag-ax-scan.json').write_text(json.dumps(ax('scan', str(proc.pid)), ensure_ascii=False, indent=1))
+            subprocess.run(['screencapture', '-x', '-R0,0,1500,60', str(out / 'diag-menubar.png')], capture_output=True, timeout=30)
+            subprocess.run(['sample', str(proc.pid), '2', '-file', str(out / 'diag-sample.txt')], capture_output=True, timeout=60)
+            raise RuntimeError('no status item for this pid: nothing further can be attributed to the tray (see diag-*)')
         quiet = gui.ctl('tray-language-quiet q0 5000', 'tray-language-quiet-q0', 90)
         pin = gui.ctl('invoke en0 set_tray_language {"language":"en","trace":null}', 'invoke-en0')
         calls = [r['detail'] for r in gui.rows() if r['step'] == 'tray-language-call']
@@ -191,11 +219,16 @@ def main():
         # 1. open + hold across natural refreshes
         n_before = len(gui.rows())
         t_open = time.time()
-        opened, first = open_menu(gui, proc.pid, args.open_with, 'o1')
+        opened, first = open_menu(gui, proc.pid, args.open_with, 'o1', out)
         (out / 'ax-1-describe.json').write_text(json.dumps(ax('describe', str(proc.pid)), ensure_ascii=False, indent=1))
         (out / 'ax-1-open.json').write_text(json.dumps({'open': opened, 'first': first}, ensure_ascii=False, indent=1))
         check('1 the real status-item menu was opened through AppKit tracking (' + args.open_with + ') and is readable through AX', opened.get('ok') and first.get('ok'), {'open': opened, 'first_ok': first.get('ok'), 'error': first.get('error')})
         if not first.get('ok'):
+            # Native evidence that does not depend on the AX tree: the app's own threads (is the main thread inside menu tracking?), the screen
+            # next to the status item, and every menu-like AX node reachable from the application element.
+            (out / 'diag-ax-scan.json').write_text(json.dumps(ax('scan', str(proc.pid)), ensure_ascii=False, indent=1))
+            subprocess.run(['sample', str(proc.pid), '2', '-file', str(out / 'diag-sample.txt')], capture_output=True, timeout=60)
+            subprocess.run(['screencapture', '-x', '-R0,0,1500,420', str(out / 'diag-menubar.png')], capture_output=True, timeout=30)
             raise RuntimeError('the menu could not be read after open; later steps need it')
         root = first['menu']
         if args.minimal:
@@ -259,7 +292,7 @@ def main():
         off = wait_daemon(env_a, prefs_path, lambda x: x.get('sendEnabled') is False and x.get('receiveEnabled') is False)
         check('3 the DAEMON\'s own sync preferences flipped to off (authoritative read)', off and off.get('sendEnabled') is False and off.get('receiveEnabled') is False, off)
         time.sleep(1)
-        open_menu(gui, proc.pid, args.open_with, 'o2')
+        open_menu(gui, proc.pid, args.open_with, 'o2', out)
         time.sleep(11)  # one refresh, so the menu states the stored value
         r4 = ax('read', str(proc.pid))
         sub4 = device_items(r4['menu']) if r4.get('ok') else None
@@ -271,14 +304,14 @@ def main():
 
         # 4. sync switch
         time.sleep(1)
-        open_menu(gui, proc.pid, args.open_with, 'o3')
+        open_menu(gui, proc.pid, args.open_with, 'o3', out)
         r5 = ax('read', str(proc.pid))
         label0 = r5['menu'][0]['title'] if r5.get('ok') else None
         press = ax('press', str(proc.pid), label0)
         s1 = wait_daemon(env_a, settings_path, lambda x: ((x.get('sync') or {}).get('syncEnabled')) is (not sync0))
         check('4 pressing the sync item in the real menu flips syncEnabled in the DAEMON', press.get('ok') and ((s1 or {}).get('sync') or {}).get('syncEnabled') is (not sync0), {'label': label0, 'daemon': ((s1 or {}).get('sync') or {})})
         time.sleep(1)
-        open_menu(gui, proc.pid, args.open_with, 'o4')
+        open_menu(gui, proc.pid, args.open_with, 'o4', out)
         r6 = ax('read', str(proc.pid))
         label1 = r6['menu'][0]['title'] if r6.get('ok') else None
         check('4 the reopened menu label follows the daemon', label1 == ('Disable Sync' if not sync0 else 'Enable Sync') and label1 != label0, {'before': label0, 'after': label1})
@@ -290,7 +323,7 @@ def main():
         if not args.skip_quit:
             daemons = daemon_pids(prof_a)
             time.sleep(1)
-            open_menu(gui, proc.pid, args.open_with, 'o5')
+            open_menu(gui, proc.pid, args.open_with, 'o5', out)
             q = ax('press', str(proc.pid), 'Quit')
             try:
                 rc = proc.wait(timeout=40)
@@ -315,6 +348,9 @@ def main():
                 proc.wait(timeout=20)
             except subprocess.TimeoutExpired:
                 proc.kill()
+                proc.wait(timeout=20)
+        if proc:
+            results['guiReturncode'] = proc.returncode  # negative: ended by that signal (cleanup terminate gives -15)
         for env in (env_a, env_b):
             cli(env, '--json', 'stop', check=False, timeout=80)
         results['daemonPidsAfterCleanup'] = {'a': daemon_pids(prof_a), 'b': daemon_pids(prof_b)}

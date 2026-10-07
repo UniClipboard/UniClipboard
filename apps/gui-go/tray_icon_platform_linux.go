@@ -42,8 +42,22 @@ func watchSystemTheme(*application.App, func()) {}
 
 // systemReducesMotion reads GNOME's enable-animations; other desktops have no common setting, so motion stays on there.
 func systemReducesMotion() bool {
-	return gsetting("org.gnome.desktop.interface", "enable-animations") == "false"
+	motionMu.Lock()
+	defer motionMu.Unlock()
+	if time.Since(motionRead) > motionCacheFor {
+		motionOff, motionRead = gsetting("org.gnome.desktop.interface", "enable-animations") == "false", time.Now()
+	}
+	return motionOff
 }
+
+// The setting is cached for a few seconds so a burst of events does not start a gsettings process each.
+const motionCacheFor = 5 * time.Second
+
+var (
+	motionMu   sync.Mutex
+	motionOff  bool
+	motionRead time.Time
+)
 
 func gsetting(schema, key string) string {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)

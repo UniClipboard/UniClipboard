@@ -18,10 +18,13 @@ type iconFeed struct {
 	h    *HostService
 	icon *trayIcon
 
+	deliverySlots chan struct{} // capacity maxDeliveryChecks: a token is held for the duration of one delivery read
+
 	refreshReq chan struct{} // capacity 1: snapshot reads run one at a time on run's goroutine, so an old answer cannot overwrite a newer one
 
 	mu        sync.Mutex
 	transfers map[string]time.Time // transfer id -> last progress seen
+	ended     map[string]time.Time // transfer id -> when it ended; late progress for it is ignored for transferTombstone
 	timer     *time.Timer          // fires when the oldest running transfer has lasted transferringAfter
 	closed    bool
 }
@@ -32,6 +35,10 @@ const (
 	transferringAfter = time.Second
 	// A running transfer that has been silent this long is treated as over; the daemon's terminal event was missed.
 	transferStale = 15 * time.Second
+	// transferTombstone is how long an ended transfer's id is remembered, so a progress event that overtakes its terminal event is not a new transfer.
+	transferTombstone = 30 * time.Second
+	// maxDeliveryChecks bounds the delivery reads in flight; further events are dropped because the next event or snapshot covers them.
+	maxDeliveryChecks = 4
 	// reconnectDelay is the pause before the event stream is opened again.
 	reconnectDelay = 3 * time.Second
 )
@@ -40,7 +47,7 @@ const (
 var iconTopics = []string{"file-transfer", "clipboard", "peers", "device-trust", "content-lock", "paired-devices"}
 
 func newIconFeed(h *HostService, icon *trayIcon) *iconFeed {
-	return &iconFeed{h: h, icon: icon, transfers: map[string]time.Time{}, refreshReq: make(chan struct{}, 1)}
+	return &iconFeed{h: h, icon: icon, transfers: map[string]time.Time{}, ended: map[string]time.Time{}, deliverySlots: make(chan struct{}, maxDeliveryChecks), refreshReq: make(chan struct{}, 1)}
 }
 
 // requestRefresh asks run for a snapshot read soon; requests that arrive while one is pending merge into it.
@@ -257,19 +264,30 @@ func (f *iconFeed) deliveryChanged(ctx context.Context, entryID, targetID string
 	if err := f.h.client.Get(cctx, "/clipboard/entries/"+url.PathEscape(entryID)+"/delivery", &view); err != nil {
 		return
 	}
+	delivered := false
 	for _, d := range view.Deliveries {
 		if targetID != "" && d.TargetDeviceID != targetID {
 			continue
 		}
 		switch d.Status.Tag {
+		case "failed": // a failure anywhere outranks a delivery to another device
+			if !f.userWatching() {
+				f.raiseAttention(func(facts *iconFacts) { facts.sendFailed = true })
+			}
+			return
 		case "delivered":
-			f.icon.animate(animSent)
-			return
-		case "failed":
-			f.raiseAttention(func(facts *iconFacts) { facts.sendFailed = true })
-			return
+			delivered = true
 		}
 	}
+	if delivered {
+		f.icon.animate(animSent)
+	}
+}
+
+// userWatching reports that the main window has the focus: the user sees new content and delivery results themselves.
+func (f *iconFeed) userWatching() bool {
+	w, ok := f.h.app.Window.GetByName("main")
+	return ok && w.IsVisible() && w.IsFocused()
 }
 
 // userLooked is the user opening a window or the quick panel: what asked for their attention has been seen.
@@ -287,6 +305,9 @@ func (f *iconFeed) transferSeen(id string) {
 	if f.closed {
 		return
 	}
+	if at, gone := f.ended[id]; gone && time.Since(at) < transferTombstone {
+		return // progress that arrived after the terminal event
+	}
 	_, known := f.transfers[id]
 	f.transfers[id] = time.Now()
 	if !known && f.timer == nil {
@@ -294,15 +315,17 @@ func (f *iconFeed) transferSeen(id string) {
 	}
 }
 
+// transferLongEnough runs under f.mu through the whole decision, so a transfer that ends meanwhile cannot be followed by a stale "transferring".
+// f.mu is always taken before the icon's lock, never the other way round.
 func (f *iconFeed) transferLongEnough() {
 	f.mu.Lock()
 	f.timer = nil
-	active := !f.closed && len(f.transfers) > 0
-	f.mu.Unlock()
-	if !active {
+	if f.closed || len(f.transfers) == 0 {
+		f.mu.Unlock()
 		return
 	}
 	before, after := f.icon.update(func(facts *iconFacts) { facts.transferring = true })
+	f.mu.Unlock()
 	if !before.transferring && after.transferring {
 		f.icon.animate(animTransferring)
 	}
@@ -310,34 +333,41 @@ func (f *iconFeed) transferLongEnough() {
 
 func (f *iconFeed) transferEnded(id string) {
 	f.mu.Lock()
+	if id != "" {
+		f.ended[id] = time.Now()
+	}
 	delete(f.transfers, id)
-	none := len(f.transfers) == 0
-	if none && f.timer != nil {
-		f.timer.Stop()
-		f.timer = nil
+	if len(f.transfers) == 0 {
+		f.clearTransferringLocked()
 	}
 	f.mu.Unlock()
-	if none {
-		f.clearTransferring()
-	}
 }
 
-// sweepTransfers drops transfers that went silent without a terminal event.
+// sweepTransfers drops transfers that went silent without a terminal event, and forgets old tombstones.
 func (f *iconFeed) sweepTransfers() {
 	f.mu.Lock()
+	defer f.mu.Unlock()
 	for id, seen := range f.transfers {
 		if time.Since(seen) > transferStale {
 			delete(f.transfers, id)
 		}
 	}
-	none := len(f.transfers) == 0
-	f.mu.Unlock()
-	if none {
-		f.clearTransferring()
+	for id, at := range f.ended {
+		if time.Since(at) > transferTombstone {
+			delete(f.ended, id)
+		}
+	}
+	if len(f.transfers) == 0 {
+		f.clearTransferringLocked()
 	}
 }
 
-func (f *iconFeed) clearTransferring() {
+// clearTransferringLocked ends the transfer state; the caller holds f.mu.
+func (f *iconFeed) clearTransferringLocked() {
+	if f.timer != nil {
+		f.timer.Stop()
+		f.timer = nil
+	}
 	f.icon.update(func(facts *iconFacts) { facts.transferring = false })
 	f.icon.stopAnimation(animTransferring)
 }

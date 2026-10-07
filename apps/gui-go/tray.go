@@ -179,8 +179,8 @@ func (t *trayMenu) setSyncEnabled(enabled bool) {
 	t.syncEnabled = enabled
 	t.sync.SetLabel(t.syncLabel())
 	t.mu.Unlock()
-	if t.icon != nil { // the daemon's own answer to the toggle: the cat sleeps while sync is off
-		t.icon.update(func(f *iconFacts) { f.syncPaused = !enabled })
+	if t.feed != nil { // the icon follows the daemon's settings through one reader, so an older snapshot cannot overwrite a newer answer
+		t.feed.requestRefresh()
 	}
 }
 

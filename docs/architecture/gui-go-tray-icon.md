@@ -1,6 +1,6 @@
 # Go GUI 托盘图标：实心猫（B solid cat）状态与耳朵动效
 
-状态：失败模型与验收契约（先于实现落盘）。实现、状态映射与证据边界在文末「结果」节随证据补写。
+状态：已实现；失败模型与验收契约先于实现落盘，证据与边界见文末「结果」节。
 
 ## 设计来源（可验证快照）
 
@@ -34,7 +34,25 @@
   对现有契约的实际影响（逐条读源码核对，不是“未见消费者”）：租约的消费者只有 `apps/daemon/src/daemon/oneshot.rs` 的 Oneshot 自终止监督器（`host.rs` 只在 `DaemonResidency::Oneshot` 时启动它）、受控重启的排空，以及 WebSocket 接入门禁 `ensure_not_quiescing`（只在受控重启排空期间拒绝新连接）。受控重启 `POST /lifecycle/restart` 在非 Oneshot daemon 上一律返回 `NotPromotable`，所以 `quiescing` 永远不会被置位。GUI 拉起或复用的 daemon 都是常驻的：`apps/gui-go/main.go` 的 `bootstrap` 冷启动时用 `SpawnDetachedDaemon("gui")` 起常驻 daemon，遇到已存在的 Oneshot daemon 则直接 `log.Fatal` 拒绝复用。因此 GUI 运行期间这条连接不会让任何 daemon 失去自终止或排空的机会；Oneshot 只由 `apps/cli-go` 的 `uniclip` 命令拉起，并通过 `/lifecycle/restart` 升级为常驻，那条路径上没有 GUI。轻量模式与退出：GUI 进程退出时连接随进程关闭，常驻 daemon 不受影响（轻量模式保留 daemon，完整退出则停止它）。这个结论依赖“GUI 不附着 Oneshot daemon”这条现有启动约束；若以后放开它，托盘连接必须在 `/health` 报告 `oneshot` 时不建立（只靠 10 秒的 HTTP 快照），或在排空开始时让出租约，那属于 L8d 的工作。
 - 刚启动、连接尚未建立的几秒里，已配对设备都未连接，图标会短暂显示“离线”；这是 daemon 当时报告的事实，没有额外抑制。
 - Linux 的图标颜色按桌面配色方案选择（`org.gnome.desktop.interface color-scheme`，进程内只读一次），不能知道状态栏自己的底色，配色方案之后变化需要重启才生效。
-- Windows 不使用 Wails 的“亮/暗两份图标”（`SetIcon` + `SetDarkModeIcon`）：读源码可知，运行期调用时只要两个模式共用一个句柄，后设置的图标就会同时替换两个模式，两份图标无法保持分开。这里按当前任务栏主题（`SystemUsesLightTheme`）画一份，并在 Wails 的 `SystemThemeChanged` 应用事件上重画。设计写的是“4 帧 ICO 序列”，这里用的是同一份时间线的插值帧（约每 40 ms 一帧），不使用 ICO。以上只做了源码核对与交叉编译，没有 Windows 运行证据。
+- Windows 不使用 Wails 的“亮/暗两份图标”（`SetIcon` + `SetDarkModeIcon`）：读源码可知，运行期调用时只要两个模式共用一个句柄，后设置的图标就会同时替换两个模式，两份图标无法保持分开。这里按当前任务栏主题（`SystemUsesLightTheme`）画一份，并在 Wails 的 `SystemThemeChanged` 应用事件上重画。设计写的是“4 帧 ICO 序列”，这里用的是同一份时间线的插值帧（约每 40 ms 一帧），不使用 ICO。以上只做了源码核对与交叉编译，没有 Windows 运行证据。图标尺寸取系统小图标尺寸（`SM_CXSMICON`，系统 DPI），不随任务栏所在显示器的 DPI 变化重画，这是已知边界。
+
+## 状态与事实来源
+
+图标显示的基础状态按下表优先级取第一个成立的（这个顺序是我自定的规则，设计没有给出，未经产品批准）；“新内容”圆点叠加在任意状态上。
+
+| 状态 | 事实 | 来源（daemon） | 清除条件 |
+| --- | --- | --- | --- |
+| 需要处理 | 有待用户决定的设备信任变更或待接纳的设备；或投递读到 `failed` | `GET /member/device-group-choices`（`deviceTrust.currentChange`、`inboundPairings` 状态 `awaiting_confirmation` / `needs_attention`），事件 `device-trust.changed`；`clipboard.delivery_status_changed` 后读 `GET /clipboard/entries/{id}/delivery` | 待决定项消失；发送失败在用户打开或聚焦窗口后 |
+| 已锁定 | 内容锁已开且空间已建立 | `GET /content-lock`（`unlocked`）与 `GET /v2/setup/state`（`hasCompleted`），事件 `content_lock.changed` | 解锁 |
+| 已暂停 | 同步开关关闭 | `GET /settings`（`sync.syncEnabled`） | 重新开启 |
+| 离线 | 已配对设备都不可达 | `GET /paired-devices`（`connected`），事件 `paired-devices.*`、`peers.*` | 任一设备可达或没有配对设备 |
+| 暂不记录 | 无来源（只有 e2e 能强制） | — | — |
+| 传输中 | 有传输持续超过 1 秒 | 事件 `file-transfer.progress` / `.status_changed`；15 秒无进展视为结束；已结束的传输 id 记 30 秒，其后到达的进度不算 | 全部传输结束 |
+| 仅局域网 | 关闭了中继回退 | `GET /settings`（`network.allowRelayFallback` 为 false） | 重新开启 |
+| 同步完成 | 以上都不成立 | — | — |
+| 新内容圆点 | 收到来源为 remote 的新内容，且主窗口当时没有聚焦 | 事件 `clipboard.new_content` | 用户打开主窗口或快捷面板 |
+
+快照每 10 秒读一次，相关事件到达时立即读；读失败时保留原值，不把“读不到”当成证据。窗口已聚焦时不点亮圆点、不提升发送失败，因为用户已经在看。
 
 ## 失败模型
 

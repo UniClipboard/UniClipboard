@@ -239,6 +239,19 @@ RED（保留）：`stage4/pac-nohelper-portable` 与 `stage4/pac-nohelper-nonpor
 4. **`Pdeathsig` 绑定的是创建子进程的线程，不是进程**：首版注释「init 跑在主线程，主线程与进程同寿」是假设。修订：所有子进程都由一个 `runtime.LockOSThread()` 且永不解锁、永不退出的监视 goroutine 创建，让创建线程的寿命等于进程寿命；注释据此改写。验证：GUI 正常退出（`exit`）与强制终止（`SIGKILL`）后，随包助手进程都在 8 秒内消失；这是实测，不是源码推断。
 5. **没有会话总线**：连接失败 → 记录并放弃，PAC 明确失败（外部请求 failed，不直连，GUI 其余功能不受影响）。这不是「自包含的 PAC 支持」：GNOME 的 PAC 路径本身需要会话总线，真实桌面总有；无总线时不支持，并按此记录。
 
+#### stage6 的 PAC 结果（包 `84b8449fd0c219d2b348dc3de75f0ccfb2bc000ac7e863b2864584c67a764a85`，来源 HEAD `eba9221d0962`，`dirty.diff` 为空，`build.rc`/`package.rc`/`content.rc` 均为 0；每个场景一个独立容器，目录 `stage6/pac-<场景>-<模式>`）
+
+| 场景 | 便携 | 非便携 | 观测 |
+| --- | --- | --- | --- |
+| `gs-sys-pac`（宿主有可用 PAC 服务） | rc 0（7/7） | rc 0（7/7） | 外部 proxied；随包助手进程数 0（不替代宿主服务）；回环直连 |
+| `gs-sys-pac-nohelper`（服务未安装：二进制与服务文件都改名） | rc 0（8/8） | rc 0（8/8） | 随包助手在跑，外部 proxied；GUI 正常退出后无残留 |
+| `gs-sys-pac-brokenservice`（服务名在、程序缺失） | rc 0（8/8） | rc 0（8/8） | 真实 `StartServiceByName` 失败后随包助手接任，外部 proxied；退出后无残留 |
+| `gs-sys-pac-kill`（助手被 `kill -9`，随后 GUI 被 `SIGKILL`） | rc 0（10/10） | rc 0（10/10） | 助手以新 pid 被拉起，之后的新请求 proxied；GUI 被 SIGKILL 后无助手残留 |
+| `gs-sys-pac-owned`（已有所有者且不可激活） | 跳过（便携总线地址 runner 不可知） | rc 0（11/11） | 不多起进程、不抢占；所有者被杀后随包助手接任，PAC 恢复 |
+| `gs-sys-pac-nobus`（总线地址指向不存在的路径） | rc 1 | rc 1 | **没有评估任何要求**：`the real bundled daemon started` 失败，GUI 只记录了监督器的 `no session bus` 一行；应用本身在无可用总线时无法启动（17c7 已记录），不能当作「PAC 明确失败」或「启动有界」的证据，保留失败；对照见下 |
+
+这些都是单 GUI 的结果。**尚未覆盖**：两个 GUI 实例共享同一会话总线的冷启动竞态与任一实例正常/强制退出；可连接但永不应答的总线（`gs-sys-pac-hungbus`，与 stage4 做差分）；无总线时 PAC 的明确失败只能在应用本身能启动的前提下验证，目前没有这样的构造；异步/取消/错误传播仍然是未验证边界。
+
 ### 回环边界与 live maps（`stage4/boundary-portable`，退出码 0，仅便携，分项结果）
 
 场景 `gs-sys-allow`、`gs-sys-ignore`、`gs-sys-empty`，28 项观测，15/15 要求。`gs-sys-allow`（GNOME 默认 ignore-hosts）与 `gs-sys-empty`（空 ignore-hosts）里，真实 WebView 访问三个各自独立的真实监听器：`127.0.0.2`（`127.0.0.0/8` 中不是 `127.0.0.1` 的成员）、`localhost`、`::1`，监听器都直接收到请求（各 1 次），代理日志没有点名；同一场景里外部请求仍 proxied，伪装主机 `localhost.webview-probe.test` 在 `gs-sys-empty` 里 proxied；`/proc` maps 证明 WebKitNetworkProcess 已映射 `libgiouniclipboardloopback.so`。边界：这是便携模式的分项，不是完整矩阵，也没有非便携和 Fedora；宿主 helper 没有带出该模块、异步/取消/错误传播、无下游解析器的回退仍未验证。

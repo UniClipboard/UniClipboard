@@ -127,7 +127,10 @@ func (s *EvidenceService) runControlCommand(line string) {
 		h.tray.mu.Lock()
 		final := h.tray.language
 		h.tray.mu.Unlock()
-		_ = s.write(Step{Window: "tray", Step: "tray-language-gap-" + label, OK: true, Detail: map[string]any{"gapMs": gap, "final": final}})
+		// A one-shot that is still armed was not consumed by call A (something else took it, or the call never ran): the overlap did not happen.
+		consumed := trayLanguageGap.Load() == 0
+		trayLanguageGap.Store(0)
+		_ = s.write(Step{Window: "tray", Step: "tray-language-gap-" + label, OK: consumed, Detail: map[string]any{"gapMs": gap, "final": final, "gapConsumed": consumed}})
 	case "setting":
 		key, value, _ := strings.Cut(arg, " ")
 		allowed := key == "usageAnalyticsEnabled" || key == "autoCheckUpdate" || key == "autoDownloadUpdate"

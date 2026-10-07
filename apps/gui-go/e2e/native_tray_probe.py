@@ -171,12 +171,14 @@ def main():
         check('5c five rounds of 8 concurrent set_tray_language calls always leave root labels, device title and placeholder in one language, the last recorded one',
               all(r['consistent'] for r in race), race)
         # ARTIFICIAL schedule (E2E-only one-shot gap), see linux_tray_run.py: not a natural race.
+        invoke('set_tray_language', {'language': 'zh-CN'})  # known starting state (zh)
+        host.wait(lambda l: labels(l)[1:] == ZH, 20, 'zh before gap')
         with (out / 'gui.control').open('a') as f:
             f.write('tray-language-gap g0 600\n')
         row = step('tray-language-gap-g0', 60) or {}
         lay = host.wait(lambda l: labels(l)[1:] == ROOT_ORDER and [n['label'] for n in submenu(l, 'Device Sync')] == ['No paired devices'], 20, 'gap schedule')
-        result['languageGapSchedule'] = {'final': (row.get('detail') or {}).get('final'), 'rootLabels': labels(host.layout()) if host.layout() and 'error' not in host.layout() else None}
-        check('5d [artificial E2E schedule] two overlapping language changes leave root labels, device title and placeholder all in en', lay is not None and (row.get('detail') or {}).get('final') == 'en', result['languageGapSchedule'])
+        result['languageGapSchedule'] = {'final': (row.get('detail') or {}).get('final'), 'gapConsumed': (row.get('detail') or {}).get('gapConsumed'), 'rootLabels': labels(host.layout()) if host.layout() and 'error' not in host.layout() else None}
+        check('5d [artificial E2E schedule] two overlapping language changes leave root labels, device title and placeholder all in en', lay is not None and (row.get('detail') or {}).get('final') == 'en' and (row.get('detail') or {}).get('gapConsumed') is True, result['languageGapSchedule'])
         invoke('set_tray_language', {'language': 'en'})
         host.wait(lambda l: labels(l)[1:] == ROOT_ORDER, 20, 'en after race')
         r = invoke('set_tray_language', {'language': 'en'})
@@ -184,10 +186,17 @@ def main():
         check('5 and back to English', bool(r.get('ok')) and l2 is not None, labels(l2) if l2 else None)
         # Observe the layout for the window: with no peer the placeholder is rebuilt (new item ids) every 10 s period, so the number of
         # distinct layouts seen is the number of structural republishes the host actually received.
-        n_before = sum(1 for ln in (out / 'host.jsonl').read_text().splitlines() if '"kind": "layout"' in ln)
+        def valid_layouts():
+            rows = []
+            for ln in (out / 'host.jsonl').read_text().splitlines():
+                r = json.loads(ln)
+                if r['kind'] == 'layout' and 'error' not in r['layout']:
+                    rows.append(r['layout'])
+            return rows
+        n_before = len(valid_layouts())
         host.wait(lambda l: False, args.seconds, 'observe refresh periods')
-        n_after = sum(1 for ln in (out / 'host.jsonl').read_text().splitlines() if '"kind": "layout"' in ln)
-        check('6a at least 3 structural republishes reached the host during the observation window (the refresh really ran)', n_after - n_before >= 3, {'layouts': n_after - n_before, 'seconds': args.seconds})
+        n_after = len(valid_layouts()) - 1  # wait() always emits the first layout it reads; that one is not a republish
+        check('6a at least 3 structural republishes reached the host during the observation window (the refresh really ran)', n_after - n_before >= 3, {'republishes': n_after - n_before, 'seconds': args.seconds})
         table = procs()
         classes = socket_classes([proc.pid])
         c = classes.get(str(proc.pid)) or {}

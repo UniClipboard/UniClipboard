@@ -245,11 +245,13 @@ def main():
               all(r['consistent'] for r in race), race)
         # ARTIFICIAL schedule (E2E-only, one-shot gap between the two steps of call A while call B starts): not a natural race. Serialized, the
         # menu ends entirely in B's language; unserialized, A's device-menu step lands after B's and the menu is mixed.
+        gui.invoke('lang-zh-pre', 'set_tray_language', {'language': 'zh-CN'})  # known starting state (zh), so the schedule cannot pass by starting in en
+        host.wait(lambda l: labels(l)[1:] == ZH, 20, 'zh before gap')
         row = gui.ctl('tray-language-gap g0 600', 'tray-language-gap-g0', 60)
         lay = host.wait(lambda l: labels(l)[1:] == ROOT_ORDER, 20, 'gap schedule')
-        results['languageGapSchedule'] = {'final': (row.get('detail') or {}).get('final'), 'rootLabels': labels(host.layout()) if host.layout() and 'error' not in host.layout() else None}
+        results['languageGapSchedule'] = {'final': (row.get('detail') or {}).get('final'), 'gapConsumed': (row.get('detail') or {}).get('gapConsumed'), 'rootLabels': labels(host.layout()) if host.layout() and 'error' not in host.layout() else None}
         check('7d [artificial E2E schedule] two overlapping language changes (zh-CN paused between its steps, en started meanwhile) leave the whole menu in en',
-              lay is not None and (row.get('detail') or {}).get('final') == 'en', results['languageGapSchedule'])
+              lay is not None and (row.get('detail') or {}).get('final') == 'en' and (row.get('detail') or {}).get('gapConsumed') is True, results['languageGapSchedule'])
         gui.invoke('lang-en2', 'set_tray_language', {'language': 'en'})
         host.wait(lambda l: labels(l)[1:] == ROOT_ORDER, 20, 'en after race')
         r = gui.invoke('lang-en', 'set_tray_language', {'language': 'en'})

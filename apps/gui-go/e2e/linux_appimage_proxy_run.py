@@ -1001,7 +1001,7 @@ def main():
             if name in PAC_SCENARIOS:
                 gui_exe_p = procs().get(gui.proc.pid, ('', ''))[0]
                 mount_p = gui_exe_p.split('/usr/bin/')[0] if '/usr/bin/' in gui_exe_p else None
-                sc['pacrunnerProcesses'] = [{'pid': pid, 'exe': exe, 'bundled': bool(mount_p and exe.startswith(mount_p))} for pid, (exe, comm) in procs().items() if exe.endswith('glib-pacrunner')]
+                sc['pacrunnerProcesses'] = [{'pid': pid, 'exe': exe, 'bundled': bool(mount_p and exe.startswith(mount_p))} for pid, (exe, comm) in procs().items() if comm == 'glib-pacrunner']
                 bundled_pac = [x['pid'] for x in sc['pacrunnerProcesses'] if x['bundled']]
                 if args.nonportable:  # who owns the PAC name on the session bus right now, and since which process
                     def gd(*cmd):
@@ -1033,7 +1033,7 @@ def main():
                     if name in ('gs-sys-pac-owned', 'gs-sys-pac-nobus', 'gs-sys-pac-hungbus'):
                         req(f'[{name}] REQUIRE the bundled glib-pacrunner is NOT started ({"an owner exists" if name.endswith("owned") else "there is no usable session bus"})', not bundled_pac, sc['pacrunnerProcesses'])
                 def bundled_now():
-                    return [pid for pid, (exe, comm) in procs().items() if exe.endswith('glib-pacrunner') and mount_p and exe.startswith(mount_p)]
+                    return [pid for pid, (exe, comm) in procs().items() if comm == 'glib-pacrunner' and mount_p and exe.startswith(mount_p)]
 
                 def pac_wv(tag):
                     nonce_t = secrets.token_hex(6)
@@ -1117,6 +1117,13 @@ def main():
                     proxy.stop()
                 continue
             stop(gui, conn)
+            if args.require:  # every scenario: after the GUI's normal exit no glib-pacrunner started by this GUI may remain (a leftover owns the PAC name for the NEXT GUI)
+                dl_left = time.monotonic() + 8
+                while any(comm == 'glib-pacrunner' for _, (_, comm) in procs().items()) and time.monotonic() < dl_left:
+                    time.sleep(.3)
+                left_all = {pid: exe for pid, (exe, comm) in procs().items() if comm == 'glib-pacrunner' and pid != (owned_helper.pid if owned_helper else -1)}
+                sc['helpersLeftAfterNormalExit'] = {str(k): v for k, v in left_all.items()}
+                req(f'[{name}] REQUIRE after the GUI\'s normal exit no glib-pacrunner process is left (a host helper started by bus activation would be recorded here too)', not left_all, sc['helpersLeftAfterNormalExit'])
             if sc.get('_bundledPac') is not None and sc['_bundledPac']:
                 gone_deadline = time.monotonic() + 8
                 while any(pid_alive(x) for x in sc['_bundledPac']) and time.monotonic() < gone_deadline:

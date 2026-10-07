@@ -36,7 +36,7 @@ from linux_appimage_tls_run import Reports, StopScenario, install_trust, run_cmd
 
 def helpers():
     """Bundled glib-pacrunner processes (executables below any AppImage mount)."""
-    return {pid: exe for pid, (exe, _) in procs().items() if exe.endswith('glib-pacrunner') and '/tmp/.mount_' in exe}
+    return {pid: exe for pid, (exe, comm) in procs().items() if comm == 'glib-pacrunner'}
 
 
 def ppid_of(pid):

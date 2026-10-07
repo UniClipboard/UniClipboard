@@ -192,6 +192,7 @@ def main():
     ap.add_argument('--mode', choices=('native', 'x11-env', 'x11-hook', 'native-no-layer-protocol', 'native-missing-library'), required=True)
     ap.add_argument('--compositor-kind', choices=('auto', 'generic'), default='auto', help='generic: a compositor without a CLI to list windows/layers (the Weston container control); those listings are then UNKNOWN')
     ap.add_argument('--no-session-type', action='store_true', help='observation scenario: leave XDG_SESSION_TYPE unset (what an SSH shell has); records what GTK/Wails then choose')
+    ap.add_argument('--gdk-backend', help='native mode: export this GDK_BACKEND like the user session does (Omarchy exports `wayland,x11,*` for every app); default: unset')
     ap.add_argument('--seconds', type=int, default=20)
     args = ap.parse_args()
     out = args.out.resolve()
@@ -224,6 +225,9 @@ def main():
         env['DISPLAY'] = ':' + x11[0][1:]  # the session's XWayland, needed by the x11 modes
     if args.mode == 'x11-env':
         env['GDK_BACKEND'] = 'x11'
+    elif args.gdk_backend:
+        env['GDK_BACKEND'] = args.gdk_backend
+    result['gdkBackendSuppliedByProbe'] = env.get('GDK_BACKEND')
     comp = Compositor(runtime, env, args.compositor_kind)
     result['compositor'] = {'kind': comp.kind, 'version': comp.version(), 'monitors': comp.monitors()}
     check('a Wayland socket and a known compositor exist on this host', bool(wayland) and comp.kind, result['compositor'])
@@ -345,7 +349,7 @@ def main():
     result['layerState'] = layer
     if args.mode in ('native', 'native-no-layer-protocol', 'native-missing-library'):
         check('W1 the GUI process holds a connection to the Wayland compositor socket and none to an X11 server', wl >= 1 and xs == 0, {'gui': classes.get(str(proc.pid))})
-        check('W1 the GUI environment does NOT carry GDK_BACKEND (nothing forced it)', gui_env.get('GDK_BACKEND') is None, gui_env.get('GDK_BACKEND'))
+        check('W1 the GUI environment carries no GDK_BACKEND other than the one the user session supplied (nothing forced x11)', gui_env.get('GDK_BACKEND') == (args.gdk_backend or None), {'gui': gui_env.get('GDK_BACKEND'), 'suppliedByProbe': args.gdk_backend})
         if comp.kind == 'generic':
             unknown('generic compositor: no window list; the socket classes are the evidence of the backend')
         else:
@@ -424,6 +428,16 @@ def main():
             check('W5 the panel rectangle lies inside its output (compositor-reported, logical px)', inside, {'layer': {k: sl.get(k) for k in ('x', 'y', 'w', 'h', 'output')}, 'monitor': mon})
         else:
             unknown(f'{comp.kind}: the layer listing has no geometry; panel placement is not verified on this host')
+        placement = d.get('placement') or {}
+        if shown and shown[0].get('w') is not None and comp.kind == 'hyprland' and placement and not placement.get('haveCursor'):
+            sl = shown[0]
+            mon = next((m for m in mons if m['name'] == sl['output']), None)
+            if mon:
+                lw, lh = mon['w'] / mon['scale'], mon['h'] / mon['scale']
+                check('W5 the default position centres the panel in the output (compositor-reported rectangle vs output logical size, 2 px)',
+                      abs(sl['x'] - (lw - sl['w']) / 2) <= 2 and abs(sl['y'] - (lh - sl['h']) / 2) <= 2, {'layer': {k: sl[k] for k in ('x', 'y', 'w', 'h')}, 'outputLogical': [lw, lh]})
+        else:
+            unknown(f'{comp.kind}: panel centring / cursor-follow placement not verified here (no geometry, or follow-cursor needs the real pointer which is not moved)')
         km = st.get('KeyboardMode', st.get('keyboardMode'))
         check('W5 keyboard interactivity is exclusive while shown (client-side state; gtk-layer-shell enum NONE=0 EXCLUSIVE=1 ON_DEMAND=2)', km == 1, {'keyboardMode': km})
         if comp.kind == 'niri':

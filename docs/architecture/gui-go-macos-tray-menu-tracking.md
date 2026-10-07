@@ -113,6 +113,23 @@ Menu.Update -> macosMenu.update -> InvokeSync(main thread):
 - **M3c 跟踪期间、子菜单展开时的变化**（三种，均在跟踪中发生并记录窗口数时间线，**不预设结果**）：(1) 自然 10 秒刷新发布（`Menu.Update` 清空并重建同一个 NSMenu）：记录子菜单窗口是否保持、条目是否完整；(2) 人工调度：语言变更到 zh-CN 再回 en：根与子菜单标题/条目是否同语言；(3) 设备结构变化：在菜单打开且子菜单展开时，用生产 rendezvous 把第二个对端配对进同一空间，子菜单在下一次刷新或设备变化事件后应出现第二行（`tray-peer-b`、`tray-peer-c`）；由 `member list` 与 daemon 权威状态核对对端存在，菜单布局只作菜单证据。重建可能使子菜单收起（可接受的 AppKit 行为，需如实记录），但不能出现空菜单、崩溃、主线程停滞或与 daemon 不一致。
 - **M5b 轻量模式生命周期（独立 profile）**：真实右键打开（同样先验证目标）→ AX 按压 `Lightweight Mode (Background Sync)` → 精确 GUI pid 以 0 退出；**锁文件持有的 daemon 精确 pid 仍活着**（可执行文件路径核对）、daemon HTTP 健康（`daemonget /settings` 成功）；随后由编排器经 `uniclip stop` 停止，同一精确 pid 消失、锁文件无持有者。完整 Quit（full2）与轻量退出是两条不同生命周期，分别记录。
 
+## 独立评审后的失败模型（落盘先于对应改动）
+
+独立只读评审（原文：`t-0188-artifacts/macos-17c15/review-792dc721a/review-raw.md`）对 `792dc721a` 提出的问题，按“本轮发现的失败方式”记录，随后才改运行器和探针；原四轮（`final3`）保留为 **partial evidence**，不覆盖、不删除。
+
+- **F1（3c 与 M3 范围不符）**：`final3` 的 3c 只要求“配对开始时子菜单已展开”。工件显示配对期间的 publish 在 0.2/0.6 秒收起了子菜单，新行在约 10 秒的下一次 publish 时出现，此时子菜单是收起的。所以“设备结构变化发生在子菜单展开期间”**没有** 被观察到，原 3c 的措辞和覆盖范围说明过强。处理方式不是把文档弱化到“收起”就结束：运行器要在整个配对与等待期间沿用 3b 的做法（采样并在发现收起时按真实状态重新展开），并把“加入新行的那次 publish”与它开始前的展开采样配对；该 publish 开始前没有展开采样，则 3c 失败；重新展开后要复验两行。
+- **F2（默认开启方式无效）**：`--open-with` 默认是 `control`（反射填充私有字段，`stateMutated=true`），裸跑会得到无效运行。默认改为 `rightclick`，`control` 运行无论检查如何都不得 `passed=true`。
+- **F3（重开菜单没有断言）**：第 3、4、5 步的 `open_menu` 返回值被丢弃，已关闭菜单的 AX 子树仍可读，所以“在真实菜单里按压”没有被强制。`open_menu` 改为等到出现弹出窗口，调用方对每次重开都断言有弹出窗口，之后才按压。
+- **F4（点击目标身份）**：目标校验接受“标识符包含 bundle id”，另一个 E2E 实例会通过。点击前要求没有其他进程运行同一个 E2E 可执行文件。
+- **F5（collapse_overflow 名不副实）**：该函数不点击，只记录；`overflowAtEnd` 是写死的本机坐标。改名为只记录状态，文档不再声称“收起”。
+- **F6（安全声明与代码不符）**：头部写“不移动指针、不发按键”，但 `clickat`、`rightclick`、`hover`、`escape` 会。头部更正；`escape` 之前立即重新确认本 pid 的弹出窗口仍在。
+- **F7**：`clickat` 在 Swift 内部用同一次调用重新做 `AXUIElementCopyElementAtPosition` 的属主与身份校验，不匹配就拒绝点击。
+- **F14**：清理的每一步各自防护（`ax()` 超时返回错误行而非抛异常），一步卡住不能遗留 GUI、daemon 或 caffeinate。
+- **F16**：`tray_ax.swift` 与 `e2e/daemonget` 的源码在仓库内；运行器从源码构建（命令与源码/二进制哈希写入 provenance），二进制缺失或不是该源码构建的则失败，不再依赖 `/private/tmp` 下的预置文件。
+- **F17**：`stateMutated` 由实际日志（`tray-open-menu-*` 记录里的 `menuFieldFilledByE2E`）推导，不再取自命令行参数。
+- **F18**：运行中 daemon 进程的可执行文件哈希与本次构建的 `uniclipd` 哈希核对，不一致则失败。
+- **其他较小问题**（2 的 `popupWindows`、publish 窗口按首次/末次出现弹出窗口界定、3b MANUAL 前的展开采样、按标题选行、死代码、watcher 收尾、`_alive` 的 `PermissionError`）按条修复；决定保留的条目在评审映射表里逐条写明原因。
+
 ## 验收契约
 
 必须保留 17c14 的行为：设备子菜单随 10 秒刷新与 `devices://sync-changed` 更新、条目动作、同步开关标签、托盘生命周期。不得：隐藏日志、删除刷新、删除托盘功能、降低锁保证、用 compile/vet 或脚本直接调用代替原生证据。

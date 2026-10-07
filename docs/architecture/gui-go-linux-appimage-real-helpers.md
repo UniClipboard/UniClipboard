@@ -1,6 +1,6 @@
 # Go GUI 的 Linux AppImage 真实宿主应用链路（切片 17c11）
 
-本文是 17c11 的契约，**先于** 运行器和镜像之外的任何实现写成（提交顺序见 git 历史）。17c10（[gui-go-linux-appimage-host-helpers.md](gui-go-linux-appimage-host-helpers.md)）用 `sh` 记录脚本证明了 `xdg-open`/`gio` 的环境；本片把处理程序换成发行版真实维护的浏览器、文件管理器和图片查看器，并在 **非便携模式**（真实 `HOME`，用户自己的默认应用）下验证。
+本文是 17c11 的契约，**先于** 运行器与驱动写成（提交顺序见 git 历史：契约与 Ubuntu 镜像 → 运行器 → 驱动 → 契约修订）。契约写成之后在运行中发现的偏差记录在「契约修订」一节，没有改写原条款。17c10（[gui-go-linux-appimage-host-helpers.md](gui-go-linux-appimage-host-helpers.md)）用 `sh` 记录脚本证明了 `xdg-open`/`gio` 的环境；本片把处理程序换成发行版真实维护的浏览器、文件管理器和图片查看器，并在 **非便携模式**（真实 `HOME`，用户自己的默认应用）下验证。
 
 ## 范围与前提变化
 
@@ -54,3 +54,33 @@
 ## F7：产品语义（待协调者决策，不在本片改）
 
 便携 AppImage 运行时把 `HOME` 改为 `<AppImage>.home` 并作用于整个进程树，原始 `HOME` 不导出（仅可经 `getpwuid` 恢复）。行为后果：宿主辅助程序看不到用户 `~/.config/mimeapps.list`、主题、浏览器配置。成熟产品的便携模式通常只重定向自己的数据目录，不改子进程可见的用户环境。本片在真实应用上重现并记录该后果；不静默更改产品。
+
+## 验证结果
+
+范围（原样）：容器内，arm64 Docker，Xvfb，非 root 用户 `uc`，**非便携模式**（真实 `HOME`，发布形态数据根），私有会话总线与解锁的 Secret Service 与应用在同一容器；发行版自己的浏览器、文件管理器、图片查看器；真实 17c5 发布守护进程（SHA-256 `ea0f0bcb…f6c6`，运行前核对，非桩）；`--internal` 网络（无出口）。不是真实桌面会话、不是 portal、不是 Wayland、没有 GPU、不是原生 amd64。
+
+最终运行 `final-a0ac923cb`（干净检出 `a0ac923cb7c587163ccaaf24104937212411ba69`，`inputs/dirty.diff` 为空；本次构建的 AppImage SHA-256 `a2a001ac…acd3`，所有运行用同一文件；两个新镜像在构建前删除了旧标签，构建完整输出、退出码、`docker image inspect` 与 ID 在 `logs/`、`images/`）。证据目录 `t-0188-artifacts/linux-17c11/`（约 1.1 GB 最终运行加开发运行，库内只有索引）。
+
+| 运行 | 结果 |
+| --- | --- |
+| 真实应用 E2E：Ubuntu 24.04（Epiphany 46.5 / Nautilus 46.4 / Loupe 46.2）× generic、GNOME | 30/30、31/31 |
+| 真实应用 E2E：Fedora 44（Firefox 157 / Nautilus 50.3.1 / Loupe 50.0）× generic、GNOME | 30/30、31/31 |
+| 控制组：17c10 修复 **之前** 的 AppImage（`baseline-03d304fb5`），同一 E2E，Fedora GNOME | **7 项失败（预期）**：`open_logs_directory`、`open_data_directory` 没有窗口，默认 Loupe 没有打开，应用进程映射/环境含挂载库与变量，GUI 启动的 xdg-open 带挂载变量。`reveal_path` 与 URL 在该包上通过（不是所有行为都失败）|
+| 17c10 回归（`sh` 记录脚本）Ubuntu/Fedora × generic/GNOME | 各 33/33 |
+| 回归：WebView HTTPS（17c7，无 GTK 镜像）Ubuntu/Fedora | 各 rc 0 |
+| 回归：便携模式 E2E（17c5） | rc 0 |
+| 静态内容检查 | rc 0 |
+
+每个真实应用运行断言的内容：宿主对照（无 GUI，宿主环境）能打开真实文件管理器、浏览器（受控 HTTP 服务器收到恰好一次请求，窗口标题是页面标题）、图片查看器；GUI 链路：`reveal_path`（窗口标题 = 父目录）、`open_logs_directory`、`open_data_directory`、`open_image_externally`（包默认应用 Loupe）、**用户默认应用**（用户用宿主 `xdg-mime default` 在真实 `~/.config/mimeapps.list` 写入后产品打开的是浏览器；删除后回到 Loupe）、URL（共享前端 `openUrl` → host 命令 `open_url` → 真实浏览器 → 受控服务器：一次请求、浏览器 UA、页面标题、没有其他请求）；GUI 与 WebKit 辅助进程仍从挂载映射 GTK/WebKitGTK/JavaScriptCore/GLib/GIO（宿主有 GTK 时 G7）；所有存活的真实应用进程（Epiphany 及其 WebKit 进程、Firefox、Nautilus、Loupe）逐个读取 exe/environ/maps：没有挂载内的库、没有指向挂载的变量，读不到的存活进程判失败（本次 0 个）；GUI 启动的每个 `xdg-open` 的 strace envp 无挂载变量、无 `LD_LIBRARY_PATH`，退出 0 或是仍在前台等待存活应用的 generic 分发。
+
+### 观察（记录，不是修复）
+
+- **F7 用真实应用重现（四组一致，只记录）**：便携模式下（`HOME` = `<AppImage>.home`）用户写入真实 `HOME` 的默认应用（PNG → 浏览器）对 `xdg-open` 不可见，由包默认的 Loupe 打开。保持 OPEN，产品语义待决，未改。
+- **`GDK_BACKEND=x11` 与 `GTK_THEME=Adwaita:light` 泄漏给真实浏览器**：Epiphany（及其 WebKit 进程）和 Firefox 的环境里有这两个变量（AppRun 的 GTK 钩子设置）；Nautilus/Loupe 是 D-Bus 激活的服务，环境来自总线，没有。应用均正常工作，没有新失败，所以按约定 **没有修**；用户可见后果（浏览器被强制浅色主题、在 Wayland 会话里被强制 X11）在真实桌面上未验证，保持 OPEN。
+- **generic 分发的回退**：未注册类型在 generic 分发下回退到浏览器（`x-www-browser` → Epiphany），在 GNOME 分发下由 `gio` 原生拒绝（见 R4）。
+- **Engine 在没有默认路由的主机上启动失败（`engine error 1101`，p2p 绑定）**：`engine-default-route/` 四种网络对照（bridge 通过、内部网络无默认路由失败、内部网络加默认路由通过、`--network none` 失败），原始守护进程日志在各子目录。**这是夹具要求（运行器加默认路由），不是本片修复的产品问题**；离线（无默认路由）启动失败是否可接受是 Engine/守护进程的 OPEN 问题。
+- 真实 Nautilus 在 generic 分发下的 `GLib-GIO-CRITICAL`（`g_app_info_get_commandline`）出现在无 GUI 的宿主对照里，是宿主应用自己的输出。
+
+### 保留的失败与过程
+
+`dev1`（`--network none` 下守护进程启动失败；Epiphany 的 bwrap `pivot_root` 被拒）、`dev2`（bwrap 无法挂载 `/proc`）、`dev3`（`xdg-open` 经管道阻塞：真实应用继承描述符，`subprocess.run` 超时）、`dev4`（内部网络无默认路由，守护进程失败；Epiphany UA 断言错误）、`dev5`–`dev14`（通过的路径与观察器修订）、`dev7-fedora-baseline-appimage`（旧包控制组的第一次）、`final-b3aca3d11`（首个最终运行：generic 两组因宿主对照 `subprocess` 等待前台 `xdg-open` 而失败，其余通过）、`xdg-open-generic-diag-ubuntu`（变量传递错误，两组都是 generic）。诊断脚本 `diag_engine_default_route.sh` 的第一次在 Bash 3.2 下因空数组失败，其目录只有一个 `network-create.txt`，我随后删除了该目录并重跑（同名目录的失败原始输出只存在于终端，已无法恢复；遗留的 Docker 内部网络 `uc17c11-diag-12219` 已用精确名称移除）。

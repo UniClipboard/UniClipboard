@@ -23,6 +23,32 @@ import (
 // unique connection, so a restarted helper is picked up without any reconnect.
 const pacRunnerName = "org.gtk.GLib.PACRunner"
 
+// pacBusAddress is the bus address the supervisor dials; empty means the user's session bus. Only the E2E build sets it
+// (pacrunner_e2e_linux.go), so an end-to-end run can make the supervisor's own bus unusable (silent, missing) while the rest
+// of the application keeps its normal bus. The application itself cannot start on such a bus, which is why the supervisor's
+// budget cannot be isolated any other way.
+var pacBusAddress = func() string { return "" }
+
+func dialPacBus(ctx context.Context) (*dbus.Conn, error) {
+	addr := pacBusAddress()
+	if addr == "" {
+		return dbus.ConnectSessionBus(dbus.WithContext(ctx))
+	}
+	conn, err := dbus.Dial(addr, dbus.WithContext(ctx))
+	if err != nil {
+		return nil, err
+	}
+	if err := conn.Auth(nil); err != nil {
+		conn.Close()
+		return nil, err
+	}
+	if err := conn.Hello(); err != nil {
+		conn.Close()
+		return nil, err
+	}
+	return conn, nil
+}
+
 const (
 	// pacBudget bounds every step of the start path (bus connection, each bus call, the wait for the helper to own the name) and
 	// is also how long init waits in total: a stuck bus can delay the launch by at most this long.
@@ -81,7 +107,7 @@ func superviseBundledPacRunner(helper string, settled chan<- struct{}) {
 	}
 	dialed := make(chan dialResult, 1)
 	go func() {
-		c, err := dbus.ConnectSessionBus(dbus.WithContext(connCtx))
+		c, err := dialPacBus(connCtx)
 		dialed <- dialResult{c, err}
 	}()
 	var conn *dbus.Conn

@@ -380,8 +380,8 @@ GNOME_VARIANTS = {  # GNOME `ignore-hosts` (system dconf database), allow proxy
     'gs-sys-pac-brokenservice': ('allow', 'gs-sys'),  # the service name IS listed but its program is missing (only the binary renamed): activation fails, the bundled helper must take over
     'gs-sys-pac-kill': ('allow', 'gs-sys'),  # no host service; the bundled helper is killed mid-run and must come back; the GUI is finally killed with SIGKILL and must leave no helper
     'gs-sys-pac-owned': ('allow', 'gs-sys'),  # non-portable: a host helper already owns the name (service file not activatable): nothing is started or replaced; when the owner is killed the bundled helper takes over
-    'gs-sys-pac-hungbus': ('allow', 'gs-sys'),  # the session bus socket accepts and never answers: the supervisor's dial must give up within its budget (differential against the stage-4 package, which has no supervisor)
-    'gs-sys-pac-nobus': ('allow', 'gs-sys'),  # the session bus address points nowhere: PAC fails explicitly (never direct), start-up stays bounded, nothing is started
+    'gs-sys-pac-hungbus': ('allow', 'gs-sys'),  # the SUPERVISOR's bus accepts and never answers (the application keeps its own working bus): the dial gives up at its budget, nothing is started, the GUI starts normally and the host PAC service still serves
+    'gs-sys-pac-nobus': ('allow', 'gs-sys'),  # the SUPERVISOR's bus address points nowhere: it logs and returns at once, nothing is started, the GUI starts normally
     'gs-sys-empty': ('allow', 'gs-sys'),    # ignore-hosts = @as []: GNOME then has NO loopback bypass; the local daemon must still work (judged like every other scenario)
 }
 GNOME_IGNORE = {'gs-sys-ignore': ['localhost', '127.0.0.0/8', '::1', WV_HOST], 'gs-sys-empty': []}
@@ -390,7 +390,7 @@ REQUIRED_VARIANTS['gs-sys-ignore'] = 'direct'
 REQUIRED_VARIANTS['gs-sys-empty'] = 'proxied'
 REQUIRED_VARIANTS['gs-sys-pac'] = 'proxied'
 REQUIRED_VARIANTS['gs-sys-pac-nohelper'] = 'proxied'
-REQUIRED_VARIANTS.update({'gs-sys-pac-brokenservice': 'proxied', 'gs-sys-pac-kill': 'proxied', 'gs-sys-pac-owned': 'proxied', 'gs-sys-pac-nobus': 'failed', 'gs-sys-pac-hungbus': 'failed'})
+REQUIRED_VARIANTS.update({'gs-sys-pac-brokenservice': 'proxied', 'gs-sys-pac-kill': 'proxied', 'gs-sys-pac-owned': 'proxied', 'gs-sys-pac-nobus': 'proxied', 'gs-sys-pac-hungbus': 'proxied'})
 PAC_SCENARIOS = {'gs-sys-pac', 'gs-sys-pac-nohelper', 'gs-sys-pac-brokenservice', 'gs-sys-pac-kill', 'gs-sys-pac-owned', 'gs-sys-pac-nobus', 'gs-sys-pac-hungbus'}
 HOST_PACRUNNER = Path('/usr/libexec/glib-pacrunner')
 HOST_PACSERVICE = Path('/usr/share/dbus-1/services/org.gtk.GLib.PACRunner.service')
@@ -677,11 +677,11 @@ def main():
                                               (AUTH_USER, AUTH_WRONG if name in AUTH_BAD else AUTH_PASS) if name in AUTH_PROXY else None)
                 penv = {'XDG_CURRENT_DESKTOP': 'GNOME'}  # a GNOME session; NO proxy variable
                 if name == 'gs-sys-pac-nobus':
-                    penv['DBUS_SESSION_BUS_ADDRESS'] = 'unix:path=/nonexistent/uc-no-session-bus'
+                    penv['UC_E2E_PAC_BUS_ADDRESS'] = 'unix:path=/nonexistent/uc-no-session-bus'  # the SUPERVISOR's bus only (E2E build hook): the application keeps its normal bus, it cannot start without one
                 if name == 'gs-sys-pac-hungbus':
                     hung = HungBus()
                     pacs.append(hung)
-                    penv['DBUS_SESSION_BUS_ADDRESS'] = f'unix:path={hung.path}'
+                    penv['UC_E2E_PAC_BUS_ADDRESS'] = f'unix:path={hung.path}'
                 cli_out = sc['dconf']['hostViewWithRealHome']['proxyCli'] if where == 'user' else sc['dconf']['hostViewWithGuiHome']['proxyCli']
                 curl_env = {'https_proxy': cli_out, 'http_proxy': cli_out} if cli_out.startswith('http') else {}  # curl cannot read gsettings: it gets the host libproxy CLI's answer
             sc['proxyPort'], sc['guiEnvironment'] = port, penv
@@ -689,6 +689,15 @@ def main():
             gui = run.launch(f'gui-{name}', extra_env=penv)
             launches.append(gui)
             conn_path, conn = wait_new_daemon(root, old_pid) if old_pid else wait_daemon(root)
+            if name in ('gs-sys-pac-nobus', 'gs-sys-pac-hungbus'):
+                needle = 'did not answer within' if name.endswith('hungbus') else 'no session bus'
+                seen_at, log_path = None, out / f'gui-{name}.log'
+                while seen_at is None and time.monotonic() - t_launch < 30:
+                    if log_path.exists() and needle in log_path.read_text(errors='replace'):
+                        seen_at = round(time.monotonic() - t_launch, 2)
+                    else:
+                        time.sleep(.2)
+                sc['supervisorLogSeenAfterSeconds'] = seen_at
             sc['launchToDaemonSeconds'] = round(time.monotonic() - t_launch, 2)  # start-up latency, recorded for the dial-budget differential (stage 4 has no supervisor)
             run.check(f'[{name}] the real bundled daemon started', conn is not None, str(conn_path))
             if conn is None:
@@ -963,7 +972,12 @@ def main():
                         req(f'[{name}] REQUIRE the host provides the PAC service: the bundled glib-pacrunner is NOT started (it never replaces a host service)', not bundled_pac, sc['pacrunnerProcesses'])
                     elif name in ('gs-sys-pac-nohelper', 'gs-sys-pac-brokenservice', 'gs-sys-pac-kill'):
                         req(f'[{name}] REQUIRE without a working host PAC service the bundled glib-pacrunner (from the AppImage mount) is running', len(bundled_pac) >= 1, sc['pacrunnerProcesses'])
-                    elif name in ('gs-sys-pac-owned', 'gs-sys-pac-nobus', 'gs-sys-pac-hungbus'):
+                    if name in ('gs-sys-pac-nobus', 'gs-sys-pac-hungbus'):
+                        seen = sc.get('supervisorLogSeenAfterSeconds')
+                        lo, hi = (2.5, 12.0) if name.endswith('hungbus') else (0.0, 12.0)
+                        req(f'[{name}] REQUIRE the supervisor gave up within its budget: its log line appeared {seen}s after the launch (expected {lo}..{hi}s; the budget is 3s)', seen is not None and lo <= seen <= hi, seen)
+                        req(f'[{name}] REQUIRE start-up was not blocked: the daemon was up {sc.get("launchToDaemonSeconds")}s after the launch (limit 30s)', sc.get('launchToDaemonSeconds', 999) <= 30, sc.get('launchToDaemonSeconds'))
+                    if name in ('gs-sys-pac-owned', 'gs-sys-pac-nobus', 'gs-sys-pac-hungbus'):
                         req(f'[{name}] REQUIRE the bundled glib-pacrunner is NOT started ({"an owner exists" if name.endswith("owned") else "there is no usable session bus"})', not bundled_pac, sc['pacrunnerProcesses'])
                 def bundled_now():
                     return [pid for pid, (exe, comm) in procs().items() if exe.endswith('glib-pacrunner') and mount_p and exe.startswith(mount_p)]

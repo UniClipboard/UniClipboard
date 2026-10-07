@@ -36,7 +36,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-from run import ROOT, isolated_env, read_steps  # noqa: E402
+from run import ROOT, isolated_env  # noqa: E402
 import tray_tracking_run as tt  # noqa: E402
 
 DESIGN = HERE / 'tray-icon-design'
@@ -333,9 +333,9 @@ def main():
             shot = capture_item(proc.pid, out / 'shots' / 'authoritative-paused.png', scale)
             check('5 the icon is "paused" because the host read the daemon\'s answer', paused['base'] == ('paused' if sync0 else 'synced'), {'state': paused, 'shot': shot})
             time.sleep(1)
-            opened, rd = open_and_read('m2')
+            _, rd = open_and_read('m2')
             label1 = rd['menu'][0]['title'] if rd.get('ok') else None
-            p = press(label1)
+            press(label1)
             s2 = wait_daemon(lambda x: ((x.get('sync') or {}).get('syncEnabled')) is sync0)
             check('5 the second press restores syncEnabled in the daemon', ((s2 or {}).get('sync') or {}).get('syncEnabled') is sync0, (s2 or {}).get('sync'))
             time.sleep(1.5)
@@ -345,7 +345,7 @@ def main():
 
             daemons = tt.daemon_pids(home, profile)
             time.sleep(1)
-            opened, rd = open_and_read('m3')
+            open_and_read('m3')
             q = press('Quit')
             try:
                 rc = proc.wait(timeout=40)

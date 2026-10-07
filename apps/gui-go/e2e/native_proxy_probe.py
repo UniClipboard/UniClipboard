@@ -14,6 +14,7 @@ Not covered here (recorded, not claimed): requests to an external target through
 probe is a later increment), PAC, authentication, dynamic settings. Results are written to DIR/native-result.json; nothing outside DIR is changed.
 """
 import argparse
+import http.server
 import json
 import os
 import re
@@ -80,6 +81,11 @@ def procs():
     return rows
 
 
+def ppid_is_gone(pid):
+    """A helper of the task-owned private bus: it has no parent GUI any more and its bus is gone, so it must have exited; it still being here is a leak."""
+    return True
+
+
 def write_gnome(home, port, ignore):
     """GNOME proxy settings in the PORTABLE home's own dconf database (the user's real database is not touched)."""
     k = home / 'keyfile'
@@ -95,8 +101,9 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--appimage', type=Path, required=True)
     ap.add_argument('--out', type=Path, required=True)
-    ap.add_argument('--scenario', default='gnome-empty', choices=('env', 'gnome-empty', 'gnome-ignore', 'none'))
+    ap.add_argument('--scenario', default='gnome-empty', choices=('env', 'gnome-empty', 'gnome-ignore', 'none', 'gnome-pac-host', 'gnome-pac-bundled'))
     ap.add_argument('--seconds', type=int, default=25)
+
     args = ap.parse_args()
     out = args.out.resolve()
     out.mkdir(parents=True, exist_ok=True)
@@ -135,7 +142,44 @@ def main():
     made = subprocess.run([str(app), '--appimage-portable-home'], env=env, capture_output=True, text=True, timeout=60)
     home = Path(str(app) + '.home')
     check('portable home created next to the task-owned copy', made.returncode == 0 and home.is_dir(), {'rc': made.returncode, 'err': made.stderr[-200:]})
-    if args.scenario == 'none':
+    pac_server = private_bus = None
+    if args.scenario.startswith('gnome-pac'):
+        # a TASK-OWNED session bus (never the user's): a bus-activated PAC helper would otherwise outlive the GUI on the user's real bus. 'host': the distribution's own
+        # service files are visible (the host helper activates); 'bundled': no service directories, so only the AppImage's helper can serve.
+        cfg = out / 'private-bus.conf'
+        cfg.write_text('<!DOCTYPE busconfig PUBLIC "-//freedesktop//DTD D-Bus Bus Configuration 1.0//EN" "http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd">\n<busconfig><type>session</type>'
+                       f'<listen>unix:path={out}/bus.sock</listen><auth>EXTERNAL</auth>' + ('<standard_session_servicedirs/>' if args.scenario.endswith('host') else '') +
+                       '<policy context="default"><allow send_destination="*" eavesdrop="true"/><allow eavesdrop="true"/><allow own="*"/></policy></busconfig>\n')
+        private_bus = subprocess.Popen(['dbus-daemon', '--config-file', str(cfg), '--nofork'], stdout=(out / 'private-bus.log').open('w'), stderr=subprocess.STDOUT)
+        for _ in range(50):
+            if (out / 'bus.sock').exists():
+                break
+            time.sleep(.1)
+        env['DBUS_SESSION_BUS_ADDRESS'] = f'unix:path={out}/bus.sock'
+        script = ('function FindProxyForURL(url, host) { return "PROXY 127.0.0.1:%d"; }\n' % sink.port).encode()
+        fetches = result['pacFetches'] = []
+
+        class H(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                fetches.append(self.path)
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/x-ns-proxy-autoconfig')
+                self.send_header('Content-Length', str(len(script)))
+                self.end_headers()
+                self.wfile.write(script)
+
+            def log_message(self, *a):
+                pass
+        pac_server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), H)
+        threading.Thread(target=pac_server.serve_forever, daemon=True).start()
+        k = home / 'keyfile'
+        k.mkdir(parents=True, exist_ok=True)
+        (k / 'proxy.key').write_text(f"[system/proxy]\nmode='auto'\nautoconfig-url='http://127.0.0.1:{pac_server.server_address[1]}/proxy.pac'\n")
+        (home / '.config' / 'dconf').mkdir(parents=True, exist_ok=True)
+        rc, err = subprocess.run(['dconf', 'compile', str(home / '.config' / 'dconf' / 'user'), str(k)], capture_output=True, text=True).returncode, ''
+        check('GNOME automatic configuration (PAC URL) compiled into the portable HOME', rc == 0, err)
+        env['XDG_CURRENT_DESKTOP'] = 'GNOME'
+    elif args.scenario == 'none':
         pass  # control: no proxy configured anywhere
     elif args.scenario == 'env':
         for k in ('http_proxy', 'https_proxy', 'HTTP_PROXY', 'HTTPS_PROXY'):
@@ -225,8 +269,20 @@ def main():
         seen = [l for l in sink.lines if host in l]
         result['externalRequest'] = {'host': host, 'controlAck': step is not None, 'sinkLines': seen}
         check('the page ran the external request (control acknowledged)', step is not None, step)
+        if pac_server:
+            table2 = procs()
+            helpers = {pid: e for pid, (e, _) in table2.items() if e.endswith('glib-pacrunner')}
+            result['pacHelpers'] = {str(k): v for k, v in helpers.items()}
+            bundled = [pid for pid, e in helpers.items() if mount and e.startswith(mount)]
+            if args.scenario.endswith('bundled'):
+                check('only the AppImage\'s own glib-pacrunner serves PAC (no service directories on the private bus)', len(bundled) == 1 and len(helpers) == 1, result['pacHelpers'])
+            else:
+                check('the host\'s glib-pacrunner (bus-activated from the distribution\'s service file) serves PAC; the bundled one is NOT started', len(helpers) == 1 and not bundled, result['pacHelpers'])
+            check('the PAC script was fetched from the controlled server', len(result['pacFetches']) >= 1, result['pacFetches'])
         expect_proxied = args.scenario != 'none'
         check(f'the external request of the WebView {"went to" if expect_proxied else "did NOT go to"} the configured proxy (sink CONNECT/GET names the host)', bool(seen) == expect_proxied, seen)
+    if pac_server:
+        pac_server.shutdown()
     # normal exit through SIGTERM to the task-owned GUI only
     proc.terminate()
     try:
@@ -234,7 +290,11 @@ def main():
     except subprocess.TimeoutExpired:
         proc.kill()
     time.sleep(3)
-    left = [pid for pid, (e, _) in procs().items() if str(out) in e or (conn and pid == conn['pid'])]
+    if private_bus:
+        private_bus.terminate()
+        private_bus.wait(10)
+        time.sleep(1)
+    left = [pid for pid, (e, _) in procs().items() if str(out) in e or (conn and pid == conn['pid']) or (private_bus and e.endswith('glib-pacrunner') and ppid_is_gone(pid))]
     check('no task-owned process is left after the exit', not left, left)
     result['passed'] = all(c['ok'] for c in result['checks'])
     (out / 'native-result.json').write_text(json.dumps(result, indent=2) + '\n')

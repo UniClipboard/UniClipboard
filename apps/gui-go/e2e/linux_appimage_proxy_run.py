@@ -717,7 +717,9 @@ def main():
                 cli_out = sc['dconf']['hostViewWithRealHome']['proxyCli'] if where == 'user' else sc['dconf']['hostViewWithGuiHome']['proxyCli']
                 if name in HTTPS_UNSET:  # libproxy's CLI answers direct:// when the https host is empty; the resolver WebKit uses is GLib's, so the control follows it
                     cli_out = sc['dconf']['hostViewWithRealHome' if where == 'user' else 'hostViewWithGuiHome']['gioLookup']
-                curl_env = {'https_proxy': cli_out, 'http_proxy': cli_out} if cli_out.startswith('http') else {}  # curl cannot read gsettings: it gets the host libproxy CLI's answer
+                curl_env = {'https_proxy': cli_out, 'http_proxy': cli_out} if cli_out.startswith('http') else {}
+                if name in PAC_ERROR_MODES:  # the PAC cannot be evaluated here, so the controls use an independent EXPLICIT proxy (same tinyproxy): they prove the proxy/log chain and the loopback detection power, not the PAC
+                    curl_env = {'https_proxy': f'http://127.0.0.1:{port}', 'http_proxy': f'http://127.0.0.1:{port}'}  # curl cannot read gsettings: it gets the host libproxy CLI's answer
             sc['proxyPort'], sc['guiEnvironment'] = port, penv
             t_launch = time.monotonic()
             gui = run.launch(f'gui-{name}', extra_env=penv)
@@ -830,9 +832,9 @@ def main():
                 loop_reqs = [t for m, t in reqs if LOOPBACK.search(t)]
                 sc['proxyLoopbackTargets'] = loop_reqs
                 sc['proxyEngineTargets'] = sorted({t for m, t in reqs if not LOOPBACK.search(t) and not any(h in t for h in (WV_HOST, CURL_HOST))})
-                chk(f'[{name}] control: curl (same configuration, its own hostname) was named by the proxy: the proxy/log chain is valid',
+                run.check(f'[{name}] control: curl (same configuration, its own hostname) was named by the proxy: the proxy/log chain is valid',
                           sc['curlControl']['route'] in ('proxied', 'refused') or (name in AUTH_BAD and sc['curlControl']['route'] == 'proxied-no-delivery'), sc['curlControl'])
-                chk(f'[{name}] control: curl targeting the loopback report port with the same configuration IS in the proxy log (detection power for the loopback claim)',
+                run.check(f'[{name}] control: curl targeting the loopback report port with the same configuration IS in the proxy log (detection power for the loopback claim)',
                           any(f':{reports.port}/loopctl' in t for t in loop_reqs), {'curl': loop, 'targets': loop_reqs})
                 leaked = [t for t in loop_reqs if f':{daemon_port}' in t or (f':{reports.port}' in t and '/loopctl' not in t)]
                 chk(f'[{name}] P1 the proxy log names no loopback target of the product (not the daemon port, not the page\'s report channel)', not leaked, leaked)

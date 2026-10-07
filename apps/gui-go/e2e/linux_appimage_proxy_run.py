@@ -388,24 +388,29 @@ GNOME_VARIANTS = {  # GNOME `ignore-hosts` (system dconf database), allow proxy
     'gs-sys-pac-brokenservice': ('allow', 'gs-sys'),  # the service name IS listed but its program is missing (only the binary renamed): activation fails, the bundled helper must take over
     'gs-sys-pac-kill': ('allow', 'gs-sys'),  # no host service; the bundled helper is killed mid-run and must come back; the GUI is finally killed with SIGKILL and must leave no helper
     'gs-sys-pac-owned': ('allow', 'gs-sys'),  # non-portable: a host helper already owns the name (service file not activatable): nothing is started or replaced; when the owner is killed the bundled helper takes over
+    'gs-sys-pac-404': ('allow', 'gs-sys'),  # PAC error handling, recorded as an OBSERVATION of the upstream resolver (the host service evaluates): the script URL answers 404
+    'gs-sys-pac-syntax': ('allow', 'gs-sys'),  # the script is not valid JavaScript
+    'gs-sys-pac-hang': ('allow', 'gs-sys'),  # the script server accepts and never answers
+    'gs-sys-pac-deadurl': ('allow', 'gs-sys'),  # nothing listens at the script URL
     'gs-sys-pac-hungbus': ('allow', 'gs-sys'),  # the SUPERVISOR's bus accepts and never answers (the application keeps its own working bus): the dial gives up at its budget, nothing is started, the GUI starts normally and the host PAC service still serves
     'gs-sys-pac-nobus': ('allow', 'gs-sys'),  # the SUPERVISOR's bus address points nowhere: it logs and returns at once, nothing is started, the GUI starts normally
     'gs-sys-empty': ('allow', 'gs-sys'),    # ignore-hosts = @as []: GNOME then has NO loopback bypass; the local daemon must still work (judged like every other scenario)
 }
 GNOME_IGNORE = {'gs-sys-ignore': ['localhost', '127.0.0.0/8', '::1', WV_HOST], 'gs-sys-empty': []}
-OBSERVED_ONLY = set()  # (kept for scenarios that cannot be judged; none now)
+PAC_ERROR_MODES = {'gs-sys-pac-404': 'http404', 'gs-sys-pac-syntax': 'syntax', 'gs-sys-pac-hang': 'hang', 'gs-sys-pac-deadurl': 'dead'}
+OBSERVED_ONLY = set(PAC_ERROR_MODES)  # the route of a failing PAC is the upstream resolver's behaviour: recorded and documented, the loopback boundary of the same scenarios is still required
 REQUIRED_VARIANTS['gs-sys-ignore'] = 'direct'
 REQUIRED_VARIANTS['gs-sys-empty'] = 'proxied'
 REQUIRED_VARIANTS['gs-sys-pac'] = 'proxied'
 REQUIRED_VARIANTS['gs-sys-pac-nohelper'] = 'proxied'
 REQUIRED_VARIANTS.update({'gs-sys-pac-brokenservice': 'proxied', 'gs-sys-pac-kill': 'proxied', 'gs-sys-pac-owned': 'proxied', 'gs-sys-pac-nobus': 'proxied', 'gs-sys-pac-hungbus': 'proxied'})
-PAC_SCENARIOS = {'gs-sys-pac', 'gs-sys-pac-nohelper', 'gs-sys-pac-brokenservice', 'gs-sys-pac-kill', 'gs-sys-pac-owned', 'gs-sys-pac-nobus', 'gs-sys-pac-hungbus'}
+PAC_SCENARIOS = {'gs-sys-pac-404', 'gs-sys-pac-syntax', 'gs-sys-pac-hang', 'gs-sys-pac-deadurl', 'gs-sys-pac', 'gs-sys-pac-nohelper', 'gs-sys-pac-brokenservice', 'gs-sys-pac-kill', 'gs-sys-pac-owned', 'gs-sys-pac-nobus', 'gs-sys-pac-hungbus'}
 HOST_PACRUNNER = Path('/usr/libexec/glib-pacrunner')
 HOST_PACSERVICE = Path('/usr/share/dbus-1/services/org.gtk.GLib.PACRunner.service')
 RENAME_BINARY = {'gs-sys-pac-nohelper', 'gs-sys-pac-brokenservice', 'gs-sys-pac-kill'}
 RENAME_SERVICE = {'gs-sys-pac-nohelper', 'gs-sys-pac-kill', 'gs-sys-pac-owned'}
 LOOKALIKE_CHECKED = {'gs-sys-empty'}
-LOOPBACK_BOUNDARY = {'gs-sys-allow', 'gs-sys-empty', 'gs-sys-pac', 'gs-sys-pac-nohelper', 'gs-sys-pac-brokenservice', 'gs-sys-pac-kill', 'gs-sys-pac-owned', 'gs-sys-pac-nobus'}
+LOOPBACK_BOUNDARY = {'gs-sys-pac-404', 'gs-sys-pac-syntax', 'gs-sys-pac-hang', 'gs-sys-pac-deadurl', 'gs-sys-allow', 'gs-sys-empty', 'gs-sys-pac', 'gs-sys-pac-nohelper', 'gs-sys-pac-brokenservice', 'gs-sys-pac-kill', 'gs-sys-pac-owned', 'gs-sys-pac-nobus'}
 
 
 def scenarios():
@@ -466,19 +471,29 @@ class HungBus:
 class PacServer:
     """Serves a PAC script on loopback that sends EVERY URI (the daemon's loopback ones included) to the proxy: the loopback guard must still keep loopback direct. Records each fetch of the script."""
 
-    def __init__(self, proxy_port):
+    def __init__(self, proxy_port, mode='ok'):
         outer = self
         self.fetches = []
+        self.mode = mode
         script = ('function FindProxyForURL(url, host) { return "PROXY 127.0.0.1:%d"; }\n' % proxy_port).encode()
 
         class Handler(http.server.BaseHTTPRequestHandler):
             def do_GET(self):
                 outer.fetches.append({'t': time.time(), 'path': self.path})
+                if outer.mode == 'http404':
+                    self.send_response(404)
+                    self.send_header('Content-Length', '0')
+                    self.end_headers()
+                    return
+                if outer.mode == 'hang':  # accepts and never answers (until the server is stopped)
+                    time.sleep(120)
+                    return
+                body = b'this is not a PAC script {{{\n' if outer.mode == 'syntax' else script
                 self.send_response(200)
                 self.send_header('Content-Type', 'application/x-ns-proxy-autoconfig')
-                self.send_header('Content-Length', str(len(script)))
+                self.send_header('Content-Length', str(len(body)))
                 self.end_headers()
-                self.wfile.write(script)
+                self.wfile.write(body)
 
             def log_message(self, *a):
                 pass
@@ -670,7 +685,8 @@ def main():
                 penv = variant_env(kind, port)
                 curl_env = {k: v for k, v in penv.items() if k.islower()} or dict(penv)
             elif where:
-                pac = PacServer(port) if name in PAC_SCENARIOS else None
+                pac = PacServer(port, PAC_ERROR_MODES.get(name, 'ok')) if name in PAC_SCENARIOS and PAC_ERROR_MODES.get(name) != 'dead' else None
+                dead_pac_port = free_port() if PAC_ERROR_MODES.get(name) == 'dead' else None
                 if name in RENAME_BINARY and HOST_PACRUNNER.exists():
                     HOST_PACRUNNER.rename(HOST_PACRUNNER.with_name('glib-pacrunner.off'))  # restored in the finally block
                 if name in RENAME_SERVICE and HOST_PACSERVICE.exists():
@@ -681,7 +697,7 @@ def main():
                     time.sleep(2)
                 if pac:
                     pacs.append(pac)
-                sc['dconf'] = write_dconf_proxy(port, where, target_app, args.nonportable, GNOME_IGNORE.get(name), f'http://127.0.0.1:{pac.port}/proxy.pac' if pac else None,
+                sc['dconf'] = write_dconf_proxy(port, where, target_app, args.nonportable, GNOME_IGNORE.get(name), f'http://127.0.0.1:{pac.port if pac else dead_pac_port}/proxy.pac' if (pac or dead_pac_port) else None,
                                               (AUTH_USER, AUTH_WRONG if name in AUTH_BAD else AUTH_PASS) if name in AUTH_PROXY else None, name not in HTTPS_UNSET)
                 penv = {'XDG_CURRENT_DESKTOP': 'GNOME'}  # a GNOME session; NO proxy variable
                 if name == 'gs-sys-pac-nobus':
@@ -1033,9 +1049,9 @@ def main():
                     req(f'[{name}] REQUIRE PAC works after the helper was killed (proxied)', sc['afterKill']['route'] == 'proxied', sc['afterKill'])
                     bundled_pac = bundled_now()
             if name in PAC_SCENARIOS:
-                pac_srv = [x for x in pacs if isinstance(x, PacServer)][-1]
+                pac_srv = pac if pac else type('NoServer', (), {'fetches': []})()  # this scenario's own server (deadurl has none)
                 sc['pacFetches'] = len(pac_srv.fetches)
-                chk(f'[{name}] the PAC script was fetched from the controlled server (the configuration was read)', len(pac_srv.fetches) >= 1 or name in ('gs-sys-pac-nobus', 'gs-sys-pac-hungbus'), pac_srv.fetches)
+                chk(f'[{name}] the PAC script was fetched from the controlled server (the configuration was read)', len(pac_srv.fetches) >= 1 or name in ('gs-sys-pac-nobus', 'gs-sys-pac-hungbus', 'gs-sys-pac-deadurl'), pac_srv.fetches)
             sc['_bundledPac'] = bundled_pac
             sc['completed'] = True  # every probe and requirement of this scenario ran (an exception before this line leaves it unset)
             if name == 'gs-sys-pac-kill':  # forced termination of the GUI itself: no graceful exit path, the helper must still go

@@ -36,11 +36,11 @@
 | --- | --- | --- |
 | W1 | 钩子仍强制 `x11`：GUI 经 XWayland 运行，Layer Shell 不会激活 | 真实主机上 GUI 进程自身报告的 GDK 显示类型（`GdkWaylandDisplay`），GUI 与 WebKitWebProcess 持有到合成器 Wayland socket 的连接，且 GUI 进程没有到 `.X11-unix` 的连接 |
 | W2 | 去掉强制后，包内的 GTK3/WebKitGTK 在原生 Wayland 下崩溃、空白或无法渲染（钩子注释所称的 crash） | 窗口真实出现（合成器侧列出窗口且 `xwayland` 为假），前端经真实 daemon 的 HTTP 与 WebSocket 就绪，持续运行，退出码与 stderr 记录 |
-| W3 | 包内没有 `libgtk-layer-shell`：面板静默退化为普通窗口 | 合成器侧 layer 列表中必须出现命名空间 `uniclipboard-quick-panel`；缺库的负对照（临时目录里的包副本去掉该库）必须显示回退为普通窗口而不是崩溃 |
+| W3 | 包内没有或没有加载 `libgtk-layer-shell`：面板退化为普通窗口，或「成功」其实用的是宿主副本（不是自带包的证明） | 真实进程映射（`/proc/<pid>/maps`）显示被加载的 `libgtk-layer-shell.so.0` 来自 AppImage 挂载内，且 GTK 闭包（libgtk-3、libgdk-3、libglib/libgio）也来自挂载；合成器 layer 列表中出现命名空间 `uniclipboard-quick-panel`。**缺库负对照不在这两台主机上做**：它们都装有宿主副本，删除或改名用户的库不在授权内，装软件也不允许；缺库回退由任务自有的受控环境（17c2 的容器 sway，`run.sh wayland-nolib` 在抛弃式容器里真的移除库）覆盖，并明确标为容器证据，不作原生主机结果 |
 | W4 | `libgtk-layer-shell` 与 `libwayland-client` 的加载顺序（库文档要求它先于后者）导致初始化失败 | `gtk_layer_is_layer_window` 在真实窗口上为真，合成器侧确认 layer 类型；失败则记录库自己的错误并选择成熟的补救（链接/预加载），不自写协议 |
 | W5 | layer surface 的类型、位置、键盘焦点与隐藏、退出不符合 Tauri 原合同 | 合成器侧：layer 为 `overlay`、锚点与边距落在所选输出的可用区域内、键盘交互在显示时为独占、隐藏后 layer 消失、退出后无残留；输入通过合成器自己的 IPC 或 `wtype` 在任务自有窗口上做，不用全局键位绑定 |
 | W6 | X11 / XWayland 既有路径退化：X11 会话、`GDK_BACKEND=x11` 由用户设置、无 `WAYLAND_DISPLAY` | 在同一不可变包上，Xvfb 与 XWayland 强制场景仍通过 17c8/17c9 的既有 X11 面板检查；用户显式设置的 `GDK_BACKEND` 必须被尊重（含 `x11`） |
-| W7 | 不支持 `wlr-layer-shell` 的合成器（GNOME）上崩溃 | 本片没有 GNOME 主机：只能用缺协议的合成器或缺库的负对照间接覆盖，并明确标为间接，不声称 GNOME 通过 |
+| W7 | 不支持 `wlr-layer-shell` 的合成器（GNOME）上崩溃 | 本片没有 GNOME 主机：容器里的缺库对照与已有的「无协议」分支只能间接覆盖，并明确标为间接，不声称 GNOME 通过 |
 | W8 | 去掉强制后，宿主辅助程序继承到的环境变化（`GDK_BACKEND` 不再被设为 `x11`） | 17c10/17c11 的辅助程序回归必须在新包上重跑 |
 | W9 | 打包的 `libgtk-layer-shell` 来源不明或与包内 GTK 的 ABI 不匹配 | 清单记录 dpkg 所属包、版本、SHA-256、NEEDED 闭包；包内内容检查把它纳入固定集合 |
 

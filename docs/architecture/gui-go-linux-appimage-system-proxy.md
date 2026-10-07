@@ -286,6 +286,35 @@ Wails 的 GTK 插件把 `GDK_BACKEND` 设为 `x11`，所以在 Wayland 会话上
 
 - `n1-gnome-empty`（首次，保留）：两台均在「真实 daemon 已发布 daemon.conn」失败，GUI 日志 `Gtk-WARNING: cannot open display:`——探针没有给 GUI 提供会话的 `DISPLAY`（ssh 非交互环境没有），夹具问题，不是产品问题；v2 起探针从 `/tmp/.X11-unix` 取 `DISPLAY`，并提供用户会话总线地址。
 
+### stage7（中间开发验证）：包含 E2E 总线 hook 的新包
+
+来源与边界：`stage7` 是中间开发验证，不是交付包。构建开始时的 `head.txt` 为 `6bd2886f720e529239957de6e0f328af8715967c`（已含 hook 提交 `66ae78fd5`），`dirty.diff` 为空，`build.rc`/`package.rc`/`content.rc` 均为 0，包 SHA-256 `95463af7738f49ad6428dc109708db2b0b815cf808ca2667c12e01f82ea24d58`（二进制中可见 `UC_E2E_PAC_BUS_ADDRESS`）。构建期间又进入了一个只改测试探针的提交，`head.txt` 保持原值，不替换成更新的提交，说明见 `stage7/ATTRIBUTION.txt`。最终交付包必须由一个干净且不可变的 HEAD 重新构建，并使用同一个包跑完整矩阵。
+
+**监督器总线预算（`stage7/budget-*`，四个目录均 `functionalPassed=true`）。** E2E 专用 hook `UC_E2E_PAC_BUS_ADDRESS` 只改变 PAC 监督器连接的总线，GUI 与 daemon 仍使用正常总线，所以真实 daemon、HTTP、WebSocket 与 PAC 都照常成立。这 **不等同于整机没有会话总线**：整机总线缺失时应用本身无法启动（stage4 与 stage6 的 `nobus`/`hungbus` 对照目录保留，原因是 daemon 的启动前置条件，不是 PAC 预算）。
+
+| 场景 | 便携 | 非便携 | 说明 |
+| --- | --- | --- | --- |
+| `gs-sys-pac-nobus` | 日志出现于启动后 2.77 s | 3.06 s | 监督器立即放弃，不启动任何助手 |
+| `gs-sys-pac-hungbus` | 日志出现于启动后 7.39 s | 6.69 s | 总线可连接但永不应答 |
+
+这些数字是「GUI 启动 → 日志行」，包含 GUI 自身约 3 s 的启动时间，**不能单独证明监督器自己的 3 s 预算**。因此监督器现在记录自己的启动时刻和「放弃用了多久」（`pacrunner: supervisor started at …` 与 `supervisor gave up after … at …`），运行器对它单独断言（`hungbus` 2.9–3.6 s，`nobus` 小于 1 s）；需要含该日志的新包，由最终干净包验证，不在 stage7 上声称。
+
+**两个 GUI 共享同一会话总线（专用驱动 `linux_appimage_pac_two_run.py`，复用主运行器的组件）。** 同一个容器、同一个用户会话总线；GUI A 为非便携（真实 HOME），GUI B 为同一 AppImage 的便携副本（自己的 HOME 与数据根，因此有自己的 daemon）；GNOME 设置指向 PAC，宿主 PAC 服务被改名移除，随包助手是唯一提供者；两个 GUI 背靠背启动（相隔约 20 ms）。包为上述 `95463af7…`。
+
+| 项目 | `two-normal`（所有者正常退出） | `two-kill`（所有者被 SIGKILL） |
+| --- | --- | --- |
+| 退出码 / 要求 | 0，6/6 | 0，6/6 |
+| GUI pid（A / B） | 978 / 984 | 977 / 983 |
+| 稳态助手 | 一个，pid 1031，父进程 978（A） | 一个，pid 1032，父进程 977（A） |
+| 两个 WebView | 都 proxied | 都 proxied |
+| 所有者退出后 | A 的助手消失，B 的监督器启动了自己的助手（pid 1496，父进程 984） | 助手消失，B 的监督器启动了自己的助手（pid 1500，父进程 983） |
+| 幸存 GUI 的 WebView | proxied | proxied |
+| 幸存 GUI 被 SIGKILL 之后 | 没有任何随包助手 | 没有任何随包助手 |
+
+这不是「任意竞态都已覆盖」：两个实例的启动间隔只有一个，没有对竞态重复多轮取样；它证明了同一总线上两个 profile 的冷启动、所有者正常退出与被杀之后的接管，以及全部退出后的无残留。
+
+**动态设置（专用驱动 `linux_appimage_proxy_dynamic_run.py`，`stage7/dynamic`，退出码 0，8/8）。** 同一个运行中的 GUI 不重启，通过会话总线执行 `gsettings set` 依次切换：none → manual P1（proxied，经 P1）→ manual P2（proxied，经 P2，P1 无新增）→ none（direct）→ manual 拒绝型代理（refused）→ manual P1 且目标主机在 ignore-hosts（direct）→ 默认 ignore-hosts（proxied，经 P1），每一步第一次尝试即达到预期路由，没有任何代理看到 daemon 的回环端口。`manual-deny` 一步的「settled after 41.3s」是被拒绝的网络请求等待页面上报超时的耗时，不是设置传播延迟，也与 PAC 初始化预算无关。
+
 ### 仍未完成（OPEN，逐项增量补做）
 
 两个 GUI 同总线、监督器预算观测（hook，需要包含 hook 的新包）、动态设置、SOCKS、Fedora 容器与原生主机的外部目标/PAC/认证场景、同一最终干净包上的 17c7/17c5/17c10/17c11/内容检查回归。

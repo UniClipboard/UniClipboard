@@ -48,8 +48,10 @@
 
 - 主机：`ssh fedora`（niri，虚拟机，aarch64）与 `ssh omarchy`（Hyprland，真机，aarch64）。只做任务自有目录、独立 profile（便携 HOME）、独立端口和私有总线；不改会话全局代理、默认应用、按键绑定、自启动、钥匙串，不碰真实 profile、space、密钥、历史与通用剪贴板，不停止用户的真实 GUI 与辅助进程。
 - 测试在 **最终不可变包** 上做；记录源码 HEAD 与是否干净、daemon SHA-256、包 SHA-256、依赖来源、主机与进程。旧包（17c12 的 `3669e047…`）的绿色结果不迁移到新包。
-- 没有 amd64、GNOME、KDE、真实 GPU 多屏 / HiDPI、登录注销、suspend 的主机或授权：这些保持 OPEN，不写成通过。
+- 没有 amd64、GNOME、KDE 的主机：保持 OPEN，不写成通过。Omarchy 是已授权真机：GPU、输出（显示器）数量与现有缩放比例的只读识别在授权范围内，是否具备多屏 / HiDPI 的可验证条件要先查（只读，不改分辨率、缩放或桌面配置）再判定，结果写入「契约修订」；登录注销与 suspend 另有授权边界，本片不做，仍 OPEN。
 
 ## 契约修订
 
-（运行中补充。）
+1. **更正（只读复查）：两台原生主机 *都有* `libgtk-layer-shell`**（Omarchy `gtk-layer-shell 0.10.1`，Fedora `gtk-layer-shell-0.10.0-1.fc44`）。上文「源码调查」表里「两台原生主机没有安装」是我第一次只读识别时 `ls` 的 zsh 通配符报错造成的误读，不是事实。所以 W3 在这两台主机上不会因缺库而退化；包内自带该库的理由改为：GNOME/Ubuntu 一类桌面默认不装它，AppImage 不应依赖宿主；并且与 Tauri 的 AppImage 一致。自带副本优先于宿主副本（`LD_LIBRARY_PATH` 以 `$APPDIR/usr/lib` 开头），因此最终验收要用进程映射证明加载的是包内副本；宿主副本只用于对照。包内是 Ubuntu 24.04 的 0.8.2，宿主是 0.10.x，也是一次跨版本的真实检验。
+2. **预实验 exp1（探索性，不是产品证据）**：17c12 不可变包解压后，仅在副本里去掉钩子那一行，在两台主机上各跑 25 秒：原生 Wayland 下 GUI 与 daemon 启动、不崩溃、没有 EGL/协议错误，合成器侧 `xwayland=0`（Hyprland）/Wayland app id（niri）；保留钩子则是 X11 套接字与 `xwayland=1`。前端就绪、HTTP/WebSocket、layer surface 与面板行为在 exp1 中 **未探测**，由最终包的 E2E 回答。摘要 `exp1-summary.json` 与完整日志在工件目录 `linux-17c13/exp1/`。
+3. **多屏 / HiDPI 条件（只读识别）**：Omarchy 只有 1 个输出（`eDP-1`，3024x1964@120，scale 2），Fedora 虚拟机只有 1 个输出（`Virtual-1`，3360x1890@75，scale 2）。两台都有 HiDPI scale 2，可以验证缩放；**都没有第二个输出**，多屏验收需要改变会话输出配置，不在授权范围内，保持 OPEN。

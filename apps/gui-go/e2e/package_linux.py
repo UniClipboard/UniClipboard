@@ -94,6 +94,14 @@ GIO_SUPPORT_LIBS = {'libproxy.so.1': 'libproxy1v5', 'libpxbackend-1.0.so': 'libp
                     'libcrypto.so.3': 'libssl3t64'}
 # Libraries every Linux host has and that the 17c7 classification (linux_appimage_tls_run.HOST_OK) already leaves to the host.
 GIO_SUPPORT_HOST_OK = ('libz.so.1', 'libgmp.so.10', 'libcom_err.so.2', 'libresolv.so.2')
+# 17c13: the Wayland Layer Shell library the quick panel loads with dlopen (internal/layershell). It is carried so that the panel does not depend on the host having it
+# (GNOME and Ubuntu-based desktops do not ship it by default); it is the distribution's own build, not ours. Its one host-provided dependency is libwayland-client, which
+# the AppImage keeps out on purpose (docs/architecture/linux-appimage-library-policy.md).
+LAYER_SHELL = ('libgtk-layer-shell.so.0', 'libgtk-layer-shell0')
+LAYER_SHELL_HOST_OK = ('libwayland-client.so.0',)
+# 17c13: the linuxdeploy GTK plugin's AppRun hook exports this line unconditionally (module internal/commands/linuxdeploy-plugin-gtk.sh, line 246). It is the only reason the
+# AppImage ran through XWayland; docs/architecture/gui-go-linux-appimage-native-wayland.md records the upstream history and why it is removed here.
+GDK_BACKEND_HOOK_LINE = re.compile(r'^export GDK_BACKEND=x11[ \t]*(#.*)?$', re.M)
 WEBKIT_HELPERS = ('WebKitWebProcess', 'WebKitNetworkProcess', 'WebKitGPUProcess')
 APPRUN = GUI / 'e2e/linux/appimage/AppRun'
 ICONS = {'32x32': '32x32.png', '128x128': '128x128.png', '256x256': '128x128@2x.png'}
@@ -393,7 +401,47 @@ def deploy_gio_modules(appdir):
     return {'pacRunner': pac_row, 'modules': rows, 'supportLibraries': support_rows, 'bundledGLibPackageVersion': glib_version}
 
 
-def build_appimage(stage, out, arch, name, tools, daemon, relocate=True, marker=None, tls_module=True):
+def deploy_layer_shell(appdir):
+    """Copy libgtk-layer-shell from the build image into usr/lib with its provenance (owning package, version, SHA-256) and prove its dependency closure: every NEEDED
+    library is in the AppDir, libc-family or the one deliberately host-provided libwayland-client."""
+    soname, package = LAYER_SHELL
+    loader = run(['ldconfig', '-p'], capture=True)
+    found = next((m.group(2) for m in (re.match(r'\s*(\S+) \(.*\) => (\S+)', l) for l in loader.splitlines()) if m and m.group(1) == soname), None)
+    if not found:
+        sys.exit(f'{soname} is missing in the build image: install {package}')
+    real = Path(found).resolve()
+    owner = run(['dpkg', '-S', str(real)], capture=True)
+    if not owner.startswith(package):
+        sys.exit(f'{real} is not owned by {package}: {owner}')
+    dest = appdir / 'usr/lib' / real.name
+    shutil.copy2(real, dest)
+    if real.name != soname:
+        (appdir / 'usr/lib' / soname).symlink_to(real.name)
+    shipped = {p.name for p in (appdir / 'usr/lib').rglob('*.so*') if p.is_file() or p.is_symlink()}
+    libc_family = re.compile(r'^(libc|libm|libdl|libpthread|librt|ld-linux.*)\.so(\.\d+)*$')
+    needed = re.findall(r'\(NEEDED\)\s+Shared library: \[(.+?)\]', run(['readelf', '-d', str(dest)], capture=True))
+    missing = sorted(n for n in needed if n not in shipped and not libc_family.match(n) and n not in LAYER_SHELL_HOST_OK)
+    if missing:
+        sys.exit(f'{soname} needs libraries that are neither in the AppDir, libc-family nor host-provided: {missing}')
+    return {'soname': soname, 'file': dest.name, 'source': str(real), 'package': package, 'packageVersion': run(['dpkg-query', '-W', '-f', '${Version}', package], capture=True),
+            'sha256': sha256(dest), 'needed': needed, 'hostProvided': sorted(n for n in needed if n in LAYER_SHELL_HOST_OK)}
+
+
+def release_gdk_backend(appdir):
+    """Remove the unconditional `export GDK_BACKEND=x11` from the generated GTK hook, so GTK chooses its own backend (Wayland when the session offers it, else X11) and an
+    explicit GDK_BACKEND from the user is respected. Exactly one such line must exist: a changed plugin is a decision, not an accident."""
+    hook = appdir / 'apprun-hooks/linuxdeploy-plugin-gtk.sh'
+    text = hook.read_text()
+    lines = GDK_BACKEND_HOOK_LINE.findall(text)
+    if len(GDK_BACKEND_HOOK_LINE.findall(text)) != 1:
+        sys.exit(f'{hook} must contain exactly one `export GDK_BACKEND=x11` line, found {len(lines)}')
+    before = sha256(hook)
+    new = GDK_BACKEND_HOOK_LINE.sub('# GDK_BACKEND is not forced here (17c13): GTK picks Wayland or X11 itself; a GDK_BACKEND set by the user is honoured.', text)
+    hook.write_text(new)
+    return {'hook': str(hook.relative_to(appdir)), 'removedLine': GDK_BACKEND_HOOK_LINE.search(text).group(0), 'hookSha256Before': before, 'hookSha256After': sha256(hook)}
+
+
+def build_appimage(stage, out, arch, name, tools, daemon, relocate=True, marker=None, tls_module=True, force_x11_hook=False):
     tools.mkdir(exist_ok=True)
     tool_url, tool_pin = APPIMAGETOOL[arch]
     appimagetool = fetch_verified(tool_url, tool_pin, tools / 'appimagetool')
@@ -448,6 +496,9 @@ def build_appimage(stage, out, arch, name, tools, daemon, relocate=True, marker=
     # linuxdeploy just bundled (same distribution release), which is why it can be loaded where the host's gvfs/dconf modules cannot.
     gio_modules_info = deploy_gio_modules(appdir) if tls_module else 'DISABLED (negative control: the bundled GIO module directory stays empty)'
 
+    layer_shell_info = deploy_layer_shell(appdir)
+    gdk_hook_info = 'KEPT (differential control: the hook still forces GDK_BACKEND=x11)' if force_x11_hook else release_gdk_backend(appdir)
+
     # libdbus-1 is the host's. linuxdeploy's exclude list does not name it, and its `--exclude-library` option is honoured by the main run but not by the
     # GTK plugin's own deployment pass (the log shows "Skipping ... blacklisted libdbus" and then the plugin deploying it anyway). A bundled copy shadows
     # the host's for every host helper the GUI starts through AppRun's LD_LIBRARY_PATH: observed 17c7 on Fedora, whose dbus-launch (libdbus 1.16.2)
@@ -473,7 +524,8 @@ def build_appimage(stage, out, arch, name, tools, daemon, relocate=True, marker=
     info = {'linuxdeploy': {'release': release, 'sha256': pin}, 'daemonRestoredAfterLinuxdeploy': True, 'daemonHashChain': daemon_chain, 'appimagetoolSha256': tool_pin,
             'gtkPlugin': {'source': str(plugin_source), 'wailsModuleDir': str(wails_dir), 'sha256': sha256(plugin)},
             'webkitHelperDirectory': str(helper_dir), 'updateMarker': bool(marker),
-            'sharedMimeCache': {'source': str(mime_cache), 'sha256': sha256(mime_cache)}, 'gioModules': gio_modules_info, 'libdbusRemoved': removed_dbus}
+            'sharedMimeCache': {'source': str(mime_cache), 'sha256': sha256(mime_cache)}, 'gioModules': gio_modules_info, 'libdbusRemoved': removed_dbus,
+            'layerShell': layer_shell_info, 'gdkBackendHook': gdk_hook_info}
     info['relocation'] = relocate_webkit(appdir, helper_dir) if relocate else 'DISABLED (negative control)'
     info['inspection'] = inspect_appdir(appdir, helper_dir)
     ins = info['inspection']
@@ -534,6 +586,8 @@ def main():
                         help='NEGATIVE CONTROL (17c7): leave the bundled GIO module directory empty (what 17c4-17c6 shipped); HTTPS in the WebView must fail; prefixed NEGTLS-')
     parser.add_argument('--negative-control-no-relocation', action='store_true',
                         help='NEGATIVE CONTROL: skip the WebKit helper relocation; the result must not start without a host WebKitGTK; prefixed NEGCONTROL-')
+    parser.add_argument('--negative-control-keep-x11-hook', action='store_true',
+                        help='DIFFERENTIAL CONTROL (17c13): keep the GTK hook\'s unconditional GDK_BACKEND=x11 (what 17c4-17c12 shipped); prefixed X11HOOK-')
     parser.add_argument('--tools-dir', type=Path, help='keep the downloaded, SHA-256-verified tools here (default: a throwaway directory in --out)')
     args = parser.parse_args()
     if sys.platform != 'linux':
@@ -551,10 +605,10 @@ def main():
         if not args.daemon_evidence:
             sys.exit('--daemon-evidence is required: a daemon of unverified origin is not packaged (use --packaging-check-fixture for a marked check build)')
         evidence = read_daemon_evidence(args.daemon_evidence, args.daemon)
-    if args.negative_control_no_relocation and args.negative_control_no_tls_module:
+    if sum([args.negative_control_no_relocation, args.negative_control_no_tls_module, args.negative_control_keep_x11_hook]) > 1:
         sys.exit('pick one negative control')
     prefix = ('FIXTURE-' if fixture else 'NEGCONTROL-' if args.negative_control_no_relocation else 'NEGTLS-' if args.negative_control_no_tls_module
-              else 'E2E-' if args.gui_binary else '')
+              else 'X11HOOK-' if args.negative_control_keep_x11_hook else 'E2E-' if args.gui_binary else '')
     out = args.out.resolve()
     if out.exists() and any(out.iterdir()):
         sys.exit(f'{out} is not empty: pick a new directory, earlier artifacts are not overwritten')
@@ -596,7 +650,7 @@ def main():
     tools.mkdir(parents=True, exist_ok=True)
     image, appimage = build_appimage(stage, out, args.arch, f'{prefix}{product}_{version}_{deb_name}.AppImage', tools, args.daemon,
                                      relocate=not args.negative_control_no_relocation, marker=args.update_marker,
-                                     tls_module=not args.negative_control_no_tls_module)
+                                     tls_module=not args.negative_control_no_tls_module, force_x11_hook=args.negative_control_keep_x11_hook)
     archive = out / f'{image.name}.tar.gz'
     with tarfile.open(archive, 'w:gz') as tar:
         tar.add(image, arcname=image.name)
@@ -612,7 +666,7 @@ def main():
         daemon['note'] = 'placeholder daemon'
     (out / 'package-manifest.json').write_text(json.dumps({
         'source': prov, 'arch': args.arch, 'version': version, 'tags': tags, 'go': run(['go', 'version'], capture=True),
-        'purpose': 'packaging-check' if fixture else ('negative-control' if (args.negative_control_no_relocation or args.negative_control_no_tls_module) else ('e2e-package' if args.gui_binary else 'package')),
+        'purpose': 'packaging-check' if fixture else ('negative-control' if (args.negative_control_no_relocation or args.negative_control_no_tls_module or args.negative_control_keep_x11_hook) else ('e2e-package' if args.gui_binary else 'package')),
         'productionUsable': False, 'daemon': daemon, 'appimage': appimage, 'extra': extra,
         'sha256': {p.name: sha256(p) for p in outputs},
         'signed': False, 'nativeDesktopVerified': False, 'appImageRunProven': False,

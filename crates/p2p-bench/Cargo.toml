@@ -50,7 +50,7 @@ noq-proto = { version = "1.3", optional = true }
 futures-lite = { version = "2", optional = true }
 time = { version = "0.3", features = ["formatting", "macros"], optional = true }
 
-# http_blob_bench deps (all already in src-tauri/Cargo.lock — no new downloads/lock churn)
+# http_blob_bench deps (all already in the workspace Cargo.lock — no new downloads/lock churn)
 axum = { version = "0.7", default-features = false, features = [
   "tokio",
   "http1",

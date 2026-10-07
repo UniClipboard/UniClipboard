@@ -9,10 +9,10 @@
     <authors>UniClipboard</authors>
     <projectUrl>https://uniclipboard.app/</projectUrl>
     <!-- Points at @main, not a version tag: the icon's path has already moved
-         once during a repo restructure (src-tauri/icons -> apps/gui/src-tauri/icons),
+         twice during repo restructures,
          and a tag-pinned URL silently 404s on the next move unless the publish
          workflow is also updated. @main stays correct without CI changes. -->
-    <iconUrl>https://cdn.jsdelivr.net/gh/UniClipboard/UniClipboard@main/apps/gui/src-tauri/icons/icon.png</iconUrl>
+    <iconUrl>https://cdn.jsdelivr.net/gh/UniClipboard/UniClipboard@main/apps/gui-go/icons/icon.png</iconUrl>
     <copyright>UniClipboard</copyright>
     <licenseUrl>https://github.com/UniClipboard/UniClipboard/blob/main/LICENSE</licenseUrl>
     <requireLicenseAcceptance>false</requireLicenseAcceptance>

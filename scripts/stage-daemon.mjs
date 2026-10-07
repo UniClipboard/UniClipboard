@@ -1,31 +1,19 @@
 #!/usr/bin/env node
-// Prepare the `uniclipd` daemon as a Tauri sidecar (externalBin). On macOS it also stages the
-// native quick panel helper `uniclip-quick-panel` the same way (see apps/gui/src-tauri/tauri.macos.conf.json).
+// Build the `uniclipd` daemon for a target triple and stage it, under the name
+// `uniclipd-<target-triple>`, in `target/sidecar-staging/`. On macOS it also stages the native
+// quick panel helper `uniclip-quick-panel` the same way.
 //
-// ADR-008 D13 bundles `uniclipd` into the GUI installer so the GUI (and CLI)
-// can spawn it as a *sibling* of the app executable — see
-// `uc-daemon-local` `spawn.rs::resolve_daemon_exe_path`, whose first strategy
-// is "look for `uniclipd` next to the current exe". Tauri's externalBin
-// mechanism copies `apps/gui/src-tauri/binaries/uniclipd-<target-triple>` into the
-// bundle next to the main binary (Contents/MacOS on macOS, usr/bin on Linux,
-// install dir on Windows) with the triple suffix stripped, which lands exactly
-// where the sibling lookup expects it.
+// ADR-008 D13 ships `uniclipd` inside the GUI installer so the GUI (and the CLI) can spawn it as
+// a *sibling* of the app executable — see `uc-daemon-local` `spawn.rs::resolve_daemon_exe_path`,
+// whose first strategy is "look for `uniclipd` next to the current exe". The packagers
+// (apps/gui-go/e2e/package_*.py, apps/gui-go/build.sh) and the CLI archive job consume the
+// staged files and place them next to the executable.
 //
-// This script builds the daemon for a given target and stages it under that
-// exact name. It is invoked:
-//   - by CI (build.yml / alpha-build.yml) right before `tauri build`, passing
-//     the same `--target <triple>` the GUI build uses (matrix.args) so the
-//     staged sidecar name matches what tauri-cli looks up;
-//   - by `bun run daemon:dev` (debug) and local `tauri:build:dev` (release)
-//     for a native build.
-//
-// `tauri build`/`tauri dev` hard-fail if the expected sidecar file is missing,
-// so this must complete before either runs. snap/AUR packaging bypasses
-// tauri-cli (plain `cargo build`) and therefore installs `uniclipd` directly
-// instead of going through this script.
+// It is invoked by CI (build.yml / alpha-build.yml), passing the same `--target <triple>` the
+// packaging job uses (matrix.args), and locally for a native build.
 //
 // Usage:
-//   node scripts/prepare-sidecars.mjs [--target <triple>] [--debug] [--timings]
+//   node scripts/stage-daemon.mjs [--target <triple>] [--debug] [--timings]
 
 import { execFileSync } from 'node:child_process'
 import { chmodSync, copyFileSync, mkdirSync } from 'node:fs'
@@ -33,7 +21,7 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const srcTauri = join(repoRoot, 'apps', 'gui', 'src-tauri')
+const stagingDir = join(repoRoot, 'target', 'sidecar-staging')
 
 function parseArgs(argv) {
   let target = ''
@@ -52,9 +40,8 @@ function parseArgs(argv) {
     } else if (arg === '--timings') {
       timings = true
     }
-    // Unknown args are ignored on purpose so callers can forward the GUI
-    // build's `${{ matrix.args }}` verbatim (it is either `--target <triple>`
-    // or empty).
+    // Unknown args are ignored on purpose so callers can forward the packaging
+    // job's `${{ matrix.args }}` verbatim (it is either `--target <triple>` or empty).
   }
   return { target, release, timings }
 }
@@ -101,8 +88,8 @@ const builtPath = target
   ? join(repoRoot, 'target', triple, profile, `uniclipd${exeSuffix}`)
   : join(repoRoot, 'target', profile, `uniclipd${exeSuffix}`)
 
-// 3) Stage it under the Tauri sidecar name `uniclipd-<triple>`.
-const binariesDir = join(srcTauri, 'binaries')
+// 3) Stage it as `uniclipd-<triple>`.
+const binariesDir = stagingDir
 mkdirSync(binariesDir, { recursive: true })
 const sidecarPath = join(binariesDir, `uniclipd-${triple}${exeSuffix}`)
 copyFileSync(builtPath, sidecarPath)

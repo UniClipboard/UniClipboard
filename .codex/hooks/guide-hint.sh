@@ -16,9 +16,9 @@ session_id=$(printf '%s' "$input" | jq -r '.session_id // "nosession"')
 
 kind=
 message=
-if printf '%s\n' "$payload" | grep -qE '(^|[/ :])(crates|apps|src-tauri)/[^[:space:]]+\.rs([[:space:]]|$)'; then
+if printf '%s\n' "$payload" | grep -qE '(^|[/ :])(crates|apps)/[^[:space:]]+\.rs([[:space:]]|$)'; then
   kind=rust
-  message='[hook] First Rust edit this session. Read docs/agent/rust-tauri-rules.md if needed, plus docs/agent/architecture-rules.md for boundary changes.'
+  message='[hook] First Rust edit this session. Read docs/agent/rust-rules.md if needed, plus docs/agent/architecture-rules.md for boundary changes.'
 elif printf '%s\n' "$payload" | grep -qE '(^|[/ :])src/[^[:space:]]+\.(ts|tsx|css)([[:space:]]|$)'; then
   kind=frontend
   message='[hook] First frontend edit this session. Read docs/agent/frontend-ui-rules.md if needed.'

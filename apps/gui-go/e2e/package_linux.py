@@ -51,7 +51,7 @@ APPIMAGETOOL = {  # a fixed release tag, SHA-256 verified after the download
 # The AppImage runtime that appimagetool embeds in front of the SquashFS. Without --runtime-file appimagetool downloads the
 # CURRENT `continuous` runtime at pack time (an unpinned input; a network blip also fails the package). The runtime provides the
 # `<AppImage>.home` and `$APPIMAGE` semantics the portable mode relies on, so it is pinned here, next to appimagetool, the one consumer
-# (scripts/linux-appimage-tools.mjs only serves the Tauri bundle, which cannot pass --runtime-file).
+# (the retired Tauri bundler could not pass --runtime-file).
 # Source: type2-runtime revision 8f39b89 (the build that carries "Create directories for extraction with mode 0700"; the dated tag
 # 20251108 = dd6cebe lacks it). The `continuous` URL is mutable: when it moves on, the SHA-256 check fails closed and the pin must
 # be updated deliberately (docs/architecture/gui-go-linux-appimage-runtime-pin.md). The SHA-256 values are the GitHub asset digests,
@@ -62,8 +62,14 @@ RUNTIME = {  # go arch -> (asset, SHA-256, ELF e_machine)
     'amd64': ('runtime-x86_64', '156f4bdbde9c52d01814600013e0a273f0118dc2de98975f3c8c63427ec79074', 62),
     'arm64': ('runtime-aarch64', 'b4ff0030242d0c3bb12ce40541828303cf167493f4793456f0436edd6255c39d', 183),
 }
-# The linuxdeploy pin has one source of truth, shared with the Tauri bundle: scripts/linux-appimage-tools.mjs.
-LINUXDEPLOY_PIN_FILE = ROOT / 'scripts/linux-appimage-tools.mjs'
+# The linuxdeploy build the AppImage is assembled with, pinned by release and SHA-256 (a mismatch fails closed). Its exclude list
+# keeps libwayland-client.so.0 out of the bundle (docs/architecture/linux-appimage-library-policy.md); the unpinned 2024-era build
+# that Tauri's bundler used to download copies the build host's copy in and breaks EGL on hosts with a newer Mesa.
+LINUXDEPLOY_RELEASE = 'linuxdeploy-07333c6'
+LINUXDEPLOY_SHA256 = {
+    'x86_64': '36a2d7e274d12e1050d0e9ecfe11d339ed54720b2bec464c286d53f8b07f5c62',
+    'aarch64': '556ab80baa98e600aa80f0dcedfb70bca0e1ce7e9f147fb345be3fcc3e91b2b1',
+}
 LINUXDEPLOY_BASE = 'https://github.com/tauri-apps/binary-releases/releases/download'
 # Libraries that belong to the host's driver stack and must never be inside the AppImage (policy document).
 HOST_ONLY_LIBS = ('libwayland-client.so', 'libEGL.so', 'libGL.so', 'libGLX.so', 'libGLdispatch.so', 'libdrm.so', 'libgbm.so', 'libvulkan.so',
@@ -153,7 +159,7 @@ def stage_tree(root, binary, daemon):
     for size, name in ICONS.items():
         d = root / f'usr/share/icons/hicolor/{size}/apps'
         d.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(ROOT / 'apps/gui/src-tauri/icons' / name, d / 'uniclipboard.png')
+        shutil.copy2(ROOT / 'apps/gui-go/icons' / name, d / 'uniclipboard.png')
 
 
 def build_deb(stage, out, version, arch, name):
@@ -266,12 +272,7 @@ def verify_embedded_runtime(image, runtime, arch):
 
 
 def linuxdeploy_pin(arch):
-    text = LINUXDEPLOY_PIN_FILE.read_text()
-    release = re.search(r"release:\s*'([^']+)'", text)
-    sha = re.search(r"%s:\s*'([0-9a-f]{64})'" % ARCH[arch][1], text)
-    if not release or not sha:
-        sys.exit(f'cannot read the linuxdeploy pin for {ARCH[arch][1]} from {LINUXDEPLOY_PIN_FILE}')
-    return release.group(1), sha.group(1)
+    return LINUXDEPLOY_RELEASE, LINUXDEPLOY_SHA256[ARCH[arch][1]]
 
 
 def webkit_helper_dir():
@@ -615,9 +616,9 @@ def main():
     if out.exists() and any(out.iterdir()):
         sys.exit(f'{out} is not empty: pick a new directory, earlier artifacts are not overwritten')
     out.mkdir(parents=True, exist_ok=True)
-    conf = json.loads((ROOT / 'apps/gui/src-tauri/tauri.conf.json').read_text())
+    conf = json.loads((ROOT / 'apps/gui-go/app.json').read_text())
     product, version, ident = conf['productName'], conf['version'], conf['identifier']
-    pubkey = conf['plugins']['updater']['pubkey']
+    pubkey = conf['updater']['pubkey']
     prov = provenance()
 
     if args.gui_binary:
@@ -631,7 +632,7 @@ def main():
     else:
         run(['go', 'generate', './buildinfo'], cwd=ROOT / 'packages/desktop-host-go')
         (GUI / 'assets').mkdir(exist_ok=True)
-        shutil.copy2(ROOT / 'apps/gui/src-tauri/icons/tray-icon@2x.png', GUI / 'assets/tray-icon@2x.png')
+        shutil.copy2(ROOT / 'apps/gui-go/icons/tray-icon@2x.png', GUI / 'assets/tray-icon@2x.png')
         binary, tags = out / 'uniclipboard', 'gtk3,production,release'
         ldflags = f'-w -s -X main.updaterPublicKey={pubkey} -X main.productName={product} -X main.bundleID={ident}'
         run(['go', 'build', '-tags', tags, '-trimpath', '-buildvcs=false', '-ldflags', ldflags, '-o', str(binary), '.'],

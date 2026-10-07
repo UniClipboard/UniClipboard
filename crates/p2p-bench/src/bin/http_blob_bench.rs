@@ -1,4 +1,4 @@
-// src-tauri/crates/p2p-bench/src/bin/http_blob_bench.rs
+// crates/p2p-bench/src/bin/http_blob_bench.rs
 //
 // Throwaway perf spike for ADR-008 OQ-perf-gate.
 // Reproduces the production full-buffer blob endpoint

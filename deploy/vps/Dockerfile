@@ -31,9 +31,8 @@ RUN echo 'Acquire::Retries "5";' > /etc/apt/apt.conf.d/80-retries \
 
 WORKDIR /build
 
-# The Rust workspace lives at the repo root. The Tauri packages are workspace
-# members under apps/gui/src-tauri/ and arrive with apps/; only manifests are
-# parsed, the GUI is not compiled here.
+# The Rust workspace lives at the repo root. Every workspace member arrives with
+# crates/ and apps/; only manifests are parsed for the members this image does not build.
 COPY Cargo.toml Cargo.lock rust-toolchain.toml clippy.toml ./
 COPY .cargo/ ./.cargo/
 COPY crates/ ./crates/

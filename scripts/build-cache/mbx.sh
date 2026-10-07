@@ -54,7 +54,7 @@ install_mbx() {
 }
 
 if [[ "${1:-}" == "--help" || "${1:-}" == "-h" || $# -eq 0 ]]; then
-  printf 'Usage: bun mbx:exec -- <command...>\nExample: bun mbx:exec -- bun tauri:dev:profile a\n'
+  printf 'Usage: bun mbx:exec -- <command...>\nExample: bun mbx:exec -- bun wails:dev:profile a\n'
   exit 0
 fi
 [[ "${1:-}" == "--exec" ]] || fail "expected --exec"
@@ -75,21 +75,6 @@ export MBX_TARGET_VIEWS=0 MBX_TARGET_SEED=0 MBX_LEARNED_INCREMENTAL=0
 export MBX_GC_MAX_SIZE="${MBX_GC_MAX_SIZE:-20GiB}"
 export MBX_DISPLAY="${MBX_DISPLAY:-plain}" MBX_SUMMARY=full
 export PATH="$MBX_SHIM:$PATH"
-
-# Prebuild before Tauri starts its 180-second Vite wait. The normal
-# beforeDevCommand still checks and stages the current sidecar afterward.
-dev_script=
-if [[ "${1:-}" == "bun" ]]; then
-  dev_script="${2:-}"
-  if [[ "$dev_script" == "run" ]]; then
-    dev_script="${3:-}"
-  fi
-fi
-case "$dev_script" in
-  tauri:dev | tauri:dev:profile)
-    printf 'mbx: preparing debug daemon sidecar before Tauri dev\n'
-    bun run daemon:dev ;;
-esac
 
 set +e
 "$@"

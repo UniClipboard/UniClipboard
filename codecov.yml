@@ -16,7 +16,6 @@ coverage:
 
 # Exclude generated code, tests, and migrations
 ignore:
-  - 'src-tauri/migrations/**'
   - '**/tests/**'
   - '**/*_test.rs'
   - '**/integration_test.rs'

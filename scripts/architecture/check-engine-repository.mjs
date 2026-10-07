@@ -65,8 +65,8 @@ function cargoMetadata() {
   }
 }
 
-// The GUI package is resolved on its own (not with workspace feature
-// unification), exactly as `tauri build` compiles it.
+// The only Rust GUI left is the native quick panel helper. Its package is resolved on its
+// own (not with workspace feature unification), exactly as it is built for release.
 function guiProductionGraph() {
   return execFileSync(
     'cargo',
@@ -74,9 +74,7 @@ function guiProductionGraph() {
       'tree',
       '--locked',
       '--package',
-      'uniclipboard',
-      '--features',
-      'uniclipboard/custom-protocol',
+      'quick-panel',
       '--target',
       'all',
       '--edges',
@@ -299,13 +297,13 @@ function checkLanIsolation(metadata, sources) {
   return problems
 }
 
-// The GUI is a pure daemon client and must not link the Engine. Match by source
+// The GUI (the quick panel helper; the Go host is not a Rust graph) is a pure daemon client and must not link the Engine. Match by source
 // and by name: a local Engine override replaces the Git source with a path but
 // keeps the package names.
 function checkGuiGraph(guiGraph) {
   const problems = []
   const lines = guiGraph.split('\n')
-  if (!lines.some(line => line.startsWith('uc-tauri '))) {
+  if (!lines.some(line => line.startsWith('quick-panel '))) {
     addProblem(problems, 'gui boundary', 'cargo tree did not resolve the GUI graph')
   }
   const enginePackages = new Set(

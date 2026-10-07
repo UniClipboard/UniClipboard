@@ -46,16 +46,11 @@
     "**/target/debug/.fingerprint/",
     "**/target/debug/incremental/",
     "**/uniclipboard.db",
-    "apps/gui/src-tauri/uniclipboard.db",
-    "apps/gui/src-tauri/.app_data/",
-    "apps/gui/src-tauri/.app_data_a/",
-    "apps/gui/src-tauri/.app_data_b/",
     "apps/gui/public/splashscreen.html",
     "**/.worktrees/",
     "**/.env",
     "**/.seq-api-key",
     "**/target",
-    "apps/gui/src-tauri/binaries/",
     ".gsd/activity/",
     ".gsd/runtime/",
     ".gsd/worktrees/",
@@ -102,7 +97,6 @@
     "**/.vercel",
     "**/.env*.local",
     "**/p2p-bench-store/",
-    "apps/gui/src-tauri/p2p-bench-store/",
     "task_plan.md",
     "progress.md",
     "findings.md",
@@ -112,7 +106,6 @@
     ".claude",
     "dist",
     "node_modules",
-    "apps/gui/src-tauri/target",
     "docs-site/",
     "apps/gui/src/lib/ipc-bindings.generated.ts",
     "apps/gui/src/lib/error-severity.generated.ts",
@@ -245,7 +238,6 @@
         "SuppressedError": "readonly"
       },
       "env": {
-        "mocha": true,
         "node": true
       }
     }

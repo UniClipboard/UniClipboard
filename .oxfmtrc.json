@@ -21,7 +21,6 @@
     "dist-ssr",
     "*.local",
     "docs-site/",
-    "apps/gui/src-tauri/target",
     "**/*.toml",
     "apps/gui/src/lib/ipc-bindings.generated.ts",
     "apps/gui/src/lib/error-severity.generated.ts",

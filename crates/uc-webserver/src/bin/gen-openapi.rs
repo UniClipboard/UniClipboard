@@ -16,7 +16,7 @@
 //! excluded so the committed artifact is build-profile-independent.
 //!
 //! Path resolution is ROBUST: the repo root is derived from `CARGO_MANIFEST_DIR`
-//! (= .../src-tauri/crates/uc-webserver), NOT the current working directory, so
+//! (= .../crates/uc-webserver), NOT the current working directory, so
 //! it works no matter where `cargo` is invoked from.
 //!
 //! Run: `cargo run -p uc-webserver --bin gen-openapi`

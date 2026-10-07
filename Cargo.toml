@@ -5,9 +5,8 @@
 #            the user-facing CLI `uniclip` is the Go module apps/cli-go
 # - tools/   development-only crates (uc-dev-cli); never part of a production build
 # - crates/  desktop host, platform, observability, and daemon libraries
-# - apps/gui/  desktop GUI app: React frontend (package.json, src/) plus the
-#               Tauri packaging shell apps/gui/src-tauri (the `uniclipboard` bin
-#               package); its adapter crate lives in crates/uc-tauri
+# - apps/gui/  shared React frontend (package.json, src/); the desktop shell that
+#               hosts it is the Go/Wails module apps/gui-go
 
 [workspace]
 members = [
@@ -27,8 +26,6 @@ members = [
   "apps/daemon",
   "crates/quick-panel-core",
   "apps/quick-panel",
-  "apps/gui/src-tauri",
-  "crates/uc-tauri",
 ]
 # Production packages only. The development tools (the Rust development CLI and
 # its proc-macro helper) are workspace members, so `--workspace` and `-p` still
@@ -50,13 +47,11 @@ default-members = [
   "apps/daemon",
   "crates/quick-panel-core",
   "apps/quick-panel",
-  "apps/gui/src-tauri",
-  "crates/uc-tauri",
 ]
 # `tests/e2e` is the CLI E2E test crate. It's excluded from the workspace
 # so `cargo check --workspace` doesn't pull reqwest/libc/assert_cmd into
 # every PR check. Build it explicitly: `cargo test --manifest-path tests/e2e/Cargo.toml`
-exclude = ["tests/e2e", "third_party/tao"]
+exclude = ["tests/e2e"]
 resolver = "2"
 
 [workspace.package]
@@ -75,33 +70,16 @@ print_stdout = "warn"
 print_stderr = "warn"
 dbg_macro = "warn"
 
-# Shared dependencies for the pinned Engine revision and Tauri plugins.
+# Shared dependencies for the pinned Engine revision.
 [workspace.dependencies]
 # All desktop consumers use one immutable Engine revision. Features remain
 # opt-in at each host boundary so LAN compatibility cannot become a default.
 uc-engine = { git = "https://github.com/UniClipboard/Engine.git", rev = "e86f94cebcec46c1b3a6f49f88cce7a833777640" }
 
-# tauri 2.11 是 specta rc.25 兼容的最低版本 —— 2.10.x 及之前在
-# `tauri/src/ipc/channel.rs` 用了 `#[specta(remote=..., rename="...")]`
-# 容器级 rename，rc.25 已移除该属性会编译失败。tauri-specta rc.25 通过
-# Cargo unification 强制把 specta 升到 rc.25，所以 tauri 也必须 ≥ 2.11。
-tauri = { version = "2.11", features = [
-  "tray-icon",
-  "macos-private-api",
-  "image-png",
-  "protocol-asset",
-] }
-tauri-plugin-autostart = "2"
-
 # dev profile:用 line-tables-only 替代完整 dwarf,大幅缩短 link 阶段。
 # 实测 inner-loop 11s → 4s(-65%),target 体积 46GB → 4.4GB(-91%)。
 # 保留行号信息,panic backtrace / 断点 by line / #[track_caller] 全部正常;
 # 牺牲的是 lldb 里看变量值时的类型详细信息(平时调试一般不依赖)。
-# tao 0.35.3 + tauri-apps/tao#1207 (macOS webview stays synced during window zoom).
-# See third_party/README.md; remove once the fix ships in a tao release.
-[patch.crates-io]
-tao = { path = "third_party/tao" }
-
 [profile.dev]
 debug = "line-tables-only"
 split-debuginfo = "unpacked"

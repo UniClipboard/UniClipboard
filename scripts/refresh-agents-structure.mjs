@@ -45,7 +45,6 @@ const KNOWN_DESCRIPTIONS = {
   'uc-daemon-local': 'Local process coordination: auth token, socket discovery, health polling',
   'uc-daemon-client': 'Daemon HTTP + WS client (used by GUI + CLI)',
   'uc-desktop': 'Desktop host: runtime, daemon probe, background tasks (GUI-framework-agnostic)',
-  'uc-tauri': 'Tauri adapter: commands (via tauri-specta), tray, quick panel, run loop',
   'quick-panel': 'GPUI quick panel app (`uniclip-quick-panel`, macOS default)',
   'quick-panel-core':
     'Platform-independent logic of the GPUI quick panel: query model, state machine, ports',
@@ -53,8 +52,6 @@ const KNOWN_DESCRIPTIONS = {
     '`uc-dev-cli` development and diagnostics CLI (user-facing `uniclip` is apps/cli-go)',
   'uc-cli-macros': 'Proc-macros for uc-dev-cli (internal)',
   'p2p-bench': 'Throwaway perf-spike bins (not shipped; publish = false)',
-  uniclipboard:
-    'Desktop GUI bin: Tauri packaging shell of apps/gui (frontend: apps/gui/src); hands off to uc-tauri',
 }
 
 function getDescription(cratePath) {
@@ -91,7 +88,7 @@ const LAYER_ORDER = [
   },
   {
     comment: 'Shells / entrypoints',
-    members: ['uc-desktop', 'uc-tauri', 'uc-cli', 'uc-cli-macros', 'p2p-bench'],
+    members: ['uc-desktop', 'uc-cli', 'uc-cli-macros', 'p2p-bench'],
   },
 ]
 

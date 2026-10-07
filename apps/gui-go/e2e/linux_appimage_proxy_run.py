@@ -1,0 +1,442 @@
+#!/usr/bin/env python3
+"""System-proxy E2E of the self-contained AppImage (slice 17c12, docs/architecture/gui-go-linux-appimage-system-proxy.md).
+
+  linux_appimage_proxy_run.py --out DIR --appimage X.AppImage --manifest package-manifest.json [--scenarios a,b,...]
+
+Real AppImage, real WebView of the shared frontend, real release daemon, a REAL forward proxy (tinyproxy, access log) and a controlled HTTPS target that is NOT on
+loopback (`target.test` -> the container's own interface address; its CA is installed through the container's own trust mechanism). Inside an `--internal` container
+network nothing can leave. Each scenario starts the GUI once with its own proxy configuration; the four routes of one request are told apart by the TWO logs:
+  direct   the target saw the request, the proxy log has no line for it
+  proxied  the proxy log has the CONNECT/request line (and, when the proxy forwards, the target saw it too)
+  refused  the proxy answered 403 (deny mode), the target saw nothing
+  failed   neither log has it
+Every verdict about the WebView is paired with a causal control: `curl` (a client known to honour the proxy variables) with the same environment must show up in
+the proxy log, otherwise the proxy/log chain is invalid and the WebView verdict is void. The loopback claim (daemon HTTP/WebSocket and the report channel never
+reach the proxy) is paired with a curl that targets the loopback address under the same environment: it MUST appear in the deny log (detection power).
+Nothing here talks to a production service; the proxy never forwards anything but the controlled target.
+"""
+import argparse
+import http.server
+import json
+import os
+import pwd
+import re
+import secrets
+import shutil
+import socket
+import ssl
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+from linux_appimage_portable_run import UserRun, USER, as_user, environ_of, stop, wait_daemon  # noqa: E402
+from linux_appimage_run import DISPLAY, PASSPHRASE, pid_alive, procs, sha256, start_xvfb, wait_panel_ready  # noqa: E402
+from linux_appimage_tls_run import Reports, StopScenario, install_trust, run_cmd, wait_new_daemon  # noqa: E402
+
+TARGET_NAME = 'target.test'
+WV_HOST, CURL_HOST = 'webview-probe.test', 'curl-probe.test'  # one hostname per client: a CONNECT line names its host only, so the clients can never be confused (dev2 lost this)
+HOSTS = (TARGET_NAME, WV_HOST, CURL_HOST)
+LOOPBACK = re.compile(r'(127\.\d+\.\d+\.\d+|localhost|\[?::1\]?)')
+
+
+def make_target_cert(workdir):
+    """Throwaway CA + a leaf for target.test and the container address (openssl CLI)."""
+    d = workdir / 'target-pki'
+    d.mkdir()
+    ca_key, ca_crt, key, csr, crt = (d / x for x in ('ca.key', 'ca.crt', 'leaf.key', 'leaf.csr', 'leaf.crt'))
+    for s in (['openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', str(ca_key), '-out', str(ca_crt), '-days', '2', '-subj', '/CN=uc-17c12-test-ca',
+               '-addext', 'basicConstraints=critical,CA:TRUE', '-addext', 'keyUsage=critical,keyCertSign,cRLSign'],
+              ['openssl', 'req', '-newkey', 'rsa:2048', '-nodes', '-keyout', str(key), '-out', str(csr), '-subj', f'/CN={TARGET_NAME}']):
+        r = run_cmd(s)
+        if r.returncode:
+            raise RuntimeError(f'openssl failed: {s[:3]} {r.stderr}')
+    (d / 'ext.cnf').write_text('subjectAltName=' + ','.join(f'DNS:{h}' for h in HOSTS) + '\n' + f'basicConstraints=CA:FALSE\nextendedKeyUsage=serverAuth\nkeyUsage=digitalSignature,keyEncipherment\n')
+    r = run_cmd(['openssl', 'x509', '-req', '-in', str(csr), '-CA', str(ca_crt), '-CAkey', str(ca_key), '-CAcreateserial', '-out', str(crt), '-days', '2', '-extfile', str(d / 'ext.cnf')])
+    if r.returncode:
+        raise RuntimeError('openssl x509 failed: ' + r.stderr)
+    return {'ca': ca_crt, 'cert': crt, 'key': key}
+
+
+class Target:
+    """HTTPS target bound to the container's interface address (never loopback), port 443. Records every request line, the peer address and failed handshakes."""
+
+    def __init__(self, material, address):
+        self.requests, self.handshake_failures, self.address = [], [], address
+        outer = self
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        ctx.load_cert_chain(str(material['cert']), str(material['key']))
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                outer.requests.append({'t': time.time(), 'path': self.path, 'peer': self.client_address[0], 'host': self.headers.get('Host'), 'ua': self.headers.get('User-Agent', ''),
+                                       'origin': self.headers.get('Origin')})
+                body = b'target-ok'
+                self.send_response(200)
+                self.send_header('Content-Type', 'text/plain')
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.send_header('Content-Length', str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *a):
+                pass
+
+        class Server(http.server.ThreadingHTTPServer):
+            def get_request(self):
+                sock, addr = self.socket.accept()
+                try:
+                    return ctx.wrap_socket(sock, server_side=True), addr
+                except (ssl.SSLError, OSError) as e:
+                    outer.handshake_failures.append(str(e))
+                    sock.close()
+                    raise OSError('handshake failed') from e
+
+            def handle_error(self, request, client_address):
+                pass
+
+        self.server = Server((address, 443), Handler)
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+
+    def saw(self, nonce):
+        return [r for r in self.requests if nonce in r['path']]
+
+
+class Proxy:
+    """tinyproxy (the distribution's package). mode 'allow' forwards; 'deny' refuses everything (default-deny filter, 403) and still logs the request."""
+
+    def __init__(self, workdir, tag, mode, port=None):
+        self.tag, self.mode = tag, mode
+        self.port = port or free_port()
+        # tinyproxy drops to `nobody`: its directory must be traversable by it (the sandbox is the GUI user's 0700 directory: the first run logged nothing, dev1)
+        self.dir = Path(tempfile.mkdtemp(prefix=f'uc-proxy-{tag}-', dir='/var/tmp'))
+        self.dir.chmod(0o755)
+        self.log = self.dir / 'tinyproxy.log'
+        self.log.write_text('')
+        self.log.chmod(0o666)
+        conf = [f'User nobody', 'Group nogroup', f'Port {self.port}', 'Listen 127.0.0.1', f'LogFile "{self.log}"', 'LogLevel Info', 'Timeout 600', 'MaxClients 100',
+                'ConnectPort 443', 'ConnectPort 80', 'DisableViaHeader No']
+        if mode == 'deny':
+            empty = self.dir / 'filter'
+            empty.write_text('')
+            conf += [f'Filter "{empty}"', 'FilterDefaultDeny Yes']
+        (self.dir / 'tinyproxy.conf').write_text('\n'.join(conf) + '\n')
+        self.proc = subprocess.Popen(['tinyproxy', '-d', '-c', str(self.dir / 'tinyproxy.conf')], stdout=(self.dir / 'stdout.log').open('w'), stderr=subprocess.STDOUT)
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            try:
+                socket.create_connection(('127.0.0.1', self.port), timeout=1).close()
+                break
+            except OSError:
+                time.sleep(.2)
+        else:
+            raise RuntimeError(f'tinyproxy {tag} did not start: ' + (self.dir / 'stdout.log').read_text())
+        self.mark = 0
+
+    def lines(self):
+        return [l for l in self.log.read_text(errors='replace').splitlines() if l.strip()]
+
+    def mark_now(self):
+        return len(self.lines())
+
+    def request_lines(self):
+        """The lines that name a request target (CONNECT host:port / GET http://...) or a refusal; the rest of tinyproxy's log is bookkeeping."""
+        return [l for l in self.lines() if re.search(r'Request \(file descriptor \d+\):|refused on filtered domain|CONNECT|Proxying refused', l)]
+
+    def stop(self):
+        if self.proc.poll() is None:
+            self.proc.terminate()
+            try:
+                self.proc.wait(10)
+            except subprocess.TimeoutExpired:
+                self.proc.kill()
+
+
+def free_port():
+    with socket.socket() as s:
+        s.bind(('127.0.0.1', 0))
+        return s.getsockname()[1]
+
+
+def write_dconf_proxy(account, port):
+    """The user's dconf database (what GNOME Settings writes): manual proxy, default ignore-hosts. Compiled with the distribution's own `dconf compile`, no bus needed."""
+    home = Path(account.pw_dir)
+    kdir = Path(tempfile.mkdtemp(prefix='dconf-keyfile-'))
+    (kdir / 'proxy.key').write_text(f"[system/proxy]\nmode='manual'\n\n[system/proxy/http]\nhost='127.0.0.1'\nport={port}\n\n[system/proxy/https]\nhost='127.0.0.1'\nport={port}\n")
+    (home / '.config' / 'dconf').mkdir(parents=True, exist_ok=True)
+    db = home / '.config' / 'dconf' / 'user'
+    c = run_cmd(['dconf', 'compile', str(db), str(kdir)])
+    for d in (home / '.config', home / '.config' / 'dconf'):
+        os.chown(d, account.pw_uid, account.pw_gid)
+    os.chown(db, account.pw_uid, account.pw_gid)
+    host_view = as_user(['gsettings', 'get', 'org.gnome.system.proxy', 'mode'], dict(os.environ, HOME=account.pw_dir), timeout=20)
+    # libproxy 0.5 chooses its configuration backend from the desktop environment: a GNOME session always has XDG_CURRENT_DESKTOP=GNOME (the first baseline,
+    # `baseline-a2a001ac`, ran without it: gsettings said 'manual' while `proxy` printed direct://)
+    ctl = as_user(['proxy', f'https://{WV_HOST}/'], dict(os.environ, HOME=account.pw_dir, XDG_CURRENT_DESKTOP='GNOME'), timeout=30)
+    return {'hostProxyCli': {'rc': ctl.returncode, 'out': ctl.stdout.strip(), 'err': ctl.stderr.strip()[-200:], 'expected': f'http://127.0.0.1:{port}'},
+            'compileRc': c.returncode, 'compileErr': c.stderr[-200:], 'hostGsettingsMode': host_view.stdout.strip(), 'hostGsettingsErr': host_view.stderr.strip()[-200:]}
+
+
+def sockets_of(names):
+    """(process name, pid, local, peer) of every established TCP socket owned by a process whose name starts with one of `names` (root: `ss -p`)."""
+    out = run_cmd(['ss', '-tnpH', 'state', 'established']).stdout
+    rows = []
+    for l in out.splitlines():
+        m = re.match(r'\s*\d+\s+\d+\s+(\S+)\s+(\S+)\s+users:\(\("([^"]+)",pid=(\d+)', l)
+        if m and any(m.group(3).startswith(n) for n in names):
+            rows.append({'proc': m.group(3), 'pid': int(m.group(4)), 'local': m.group(1), 'peer': m.group(2)})
+    return rows
+
+
+def curl_as_user(env, url, extra=()):
+    r = as_user(['curl', '-sS', '-o', '/dev/null', '-w', '%{http_code}', '--max-time', '20', *extra, url], env, timeout=40)
+    return {'rc': r.returncode, 'code': r.stdout.strip(), 'err': r.stderr.strip()[-200:]}
+
+
+REQ = re.compile(r'Request \(file descriptor \d+\): (\w+) (\S+)')
+
+
+def request_targets(lines):
+    """(method, target) of the proxy's request lines in `lines`; only these name where a client wanted to go (a `Connect (file descriptor N): 127.0.0.1` line is the CLIENT's address)."""
+    return [m.groups() for m in (REQ.search(l) for l in lines) if m]
+
+
+def classify(host, nonce, window, target):
+    """Route of ONE client's request: `window` is the proxy log produced while only that client ran, `host` its own hostname (see the module docstring).
+    refused  the proxy named the host and refused it, the target saw nothing
+    proxied  the proxy named the host (CONNECT host:443 / GET https://host...) and the target saw the request through it
+    direct   the target saw the request and the proxy never named the host
+    failed   neither
+    proxied-no-delivery: the proxy named the host but the target saw nothing (e.g. refused without the refusal line)"""
+    named = [l for l in window if REQ.search(l) and host in REQ.search(l).group(2)]
+    refusals = [l for l in window if 'refused' in l.lower() and f'"{host}"' in l]
+    saw = target.saw(nonce)
+    if refusals and not saw:
+        route = 'refused'
+    elif named and saw:
+        route = 'proxied'
+    elif named:
+        route = 'proxied-no-delivery'
+    elif saw:
+        route = 'direct'
+    else:
+        route = 'failed'
+    return {'host': host, 'targetSaw': len(saw), 'proxyLinesNamingHost': named, 'proxyRefusals': refusals, 'route': route}
+
+
+SCENARIOS = {
+    # name: (proxy mode or None, environment of the GUI, curl environment equals the GUI environment)
+    'none': (None, {}),
+    'env-allow': ('allow', 'ENV'),
+    'env-deny': ('deny', 'ENV'),
+    'env-dead': ('dead', 'ENV'),
+    # the host's own system configuration (GNOME manual proxy in the user's dconf database; the GUI gets NO proxy variable)
+    'gsettings-allow': ('allow', 'GSETTINGS'),
+    'gsettings-deny': ('deny', 'GSETTINGS'),
+}
+
+
+def proxy_env(port, no_proxy=None):
+    url = f'http://127.0.0.1:{port}'
+    e = {'http_proxy': url, 'https_proxy': url, 'all_proxy': url, 'HTTP_PROXY': url, 'HTTPS_PROXY': url, 'ALL_PROXY': url}
+    if no_proxy:
+        e.update(no_proxy=no_proxy, NO_PROXY=no_proxy)
+    return e
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--out', type=Path, required=True)
+    parser.add_argument('--appimage', type=Path, required=True)
+    parser.add_argument('--manifest', type=Path)
+    parser.add_argument('--scenarios', default=','.join(SCENARIOS))
+    args = parser.parse_args()
+    out = args.out.resolve()
+    out.mkdir(parents=True, exist_ok=True)
+    out.chmod(0o777)
+    subprocess.run(['useradd', '-m', '-d', f'/home/{USER}', '-u', '1500', '-s', '/bin/bash', USER], check=True)
+    account = pwd.getpwnam(USER)
+    sandbox = Path(tempfile.mkdtemp(prefix='uc-proxy-'))
+    for p in (sandbox,):
+        os.chown(p, account.pw_uid, account.pw_gid)
+    runtime_dir = sandbox / 'run'
+    runtime_dir.mkdir()
+    os.chown(runtime_dir, account.pw_uid, account.pw_gid)
+    runtime_dir.chmod(0o700)
+    install = sandbox / 'install'
+    install.mkdir()
+    os.chown(install, account.pw_uid, account.pw_gid)
+    target_app = install / 'UniClipboard.AppImage'
+    shutil.copy2(args.appimage, target_app)
+    os.chown(target_app, account.pw_uid, account.pw_gid)
+    env = dict(os.environ, HOME=account.pw_dir, XDG_RUNTIME_DIR=str(runtime_dir), DISPLAY=DISPLAY, UC_DISABLE_SYSTEM_CLIPBOARD='1', NO_COLOR='1',
+               XDG_SESSION_TYPE='x11', UC_GUI_GO_EXIT_MODE='full', UC_GUI_GO_E2E_PHASE='wake', UC_GUI_GO_E2E_VISIBLE='1', UC_GUI_GO_E2E_SECRET=PASSPHRASE,
+               USER=USER, LOGNAME=USER)
+    for key in ('WAYLAND_DISPLAY', 'UC_PROFILE', 'UC_PORTABLE', 'UNICLIPBOARD_ENV', 'APPIMAGE', 'APPDIR', 'GDK_BACKEND', 'XDG_CONFIG_HOME', 'DBUS_SESSION_BUS_ADDRESS',
+                'UC_E2E_BUS', 'SSL_CERT_FILE', 'SSL_CERT_DIR', 'GIO_USE_TLS', 'GIO_MODULE_DIR', 'GIO_EXTRA_MODULES', 'http_proxy', 'https_proxy', 'all_proxy', 'no_proxy',
+                'HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'NO_PROXY'):
+        env.pop(key, None)
+    run = UserRun(out, target_app, env)
+    r = run.results
+    osrel = dict(l.split('=', 1) for l in Path('/etc/os-release').read_text().splitlines() if '=' in l)
+    r.update({'mode': 'system-proxy', 'appimageSha256': sha256(target_app), 'sandbox': str(sandbox), 'user': USER, 'distribution': osrel.get('PRETTY_NAME', '').strip('"'),
+              'kernelMachine': os.uname().machine,
+              'scope': 'container (--internal network), unprivileged user, Xvfb, no GTK/WebKitGTK on the host (host proxy-configuration stack present), portable mode; '
+                       'no desktop, GPU, Wayland, native amd64'})
+    xvfb = start_xvfb(out)
+    launches, proxies, servers = [], [], []
+    try:
+        route = subprocess.run('ip route show default; [ -n "$(ip route show default)" ] || ip route add default dev eth0; ip route show default', shell=True, capture_output=True, text=True)
+        r['defaultRoute'] = route.stdout
+        run.check('T0 fixture: default route present (the Engine fails its p2p bind without one, 17c11 R1); the network is internal (no route out)', 'default' in route.stdout, r['defaultRoute'])
+        addr = run_cmd(['sh', '-c', "ip -4 -o addr show eth0 | awk '{print $4}' | cut -d/ -f1"]).stdout.strip()
+        run.check('T0 fixture: the container has a non-loopback address for the target', bool(addr) and not addr.startswith('127.'), addr)
+        with open('/etc/hosts', 'a') as f:
+            f.write(''.join(f'{addr} {h}\n' for h in HOSTS))
+        r['hosts'] = Path('/etc/hosts').read_text()
+        material = make_target_cert(sandbox)
+        r['trustInstall'] = install_trust(material['ca'], 'proxy-target')
+        run.check('T0 the target CA is installed through the container\'s own trust mechanism', r['trustInstall']['rc'] == 0, r['trustInstall'])
+        target = Target(material, addr)
+        servers.append(target)
+        reports = Reports()
+        loop_url = f'http://127.0.0.1:{reports.port}/loopctl'
+        # the host-side facts of the proxy configuration stack, for the report
+        r['hostGioModules'] = sorted(p.name for p in Path('/usr/lib').glob('*/gio/modules/*.so'))
+        made = as_user([str(target_app), '--appimage-portable-home'], run.env, timeout=60)
+        run.check('T1 portable home created by the AppImage runtime', made.returncode == 0 and Path(str(target_app) + '.home').is_dir(), {'rc': made.returncode, 'err': made.stderr[-300:]})
+        r['scenarios'] = {}
+        old_pid = None
+        for name in [s for s in args.scenarios.split(',') if s]:
+            mode, kind = SCENARIOS[name]
+            sc = r['scenarios'][name] = {'mode': mode}
+            proxy = None
+            penv = {}
+            if mode in ('allow', 'deny'):
+                proxy = Proxy(sandbox, name, mode)
+                proxies.append(proxy)
+                penv = proxy_env(proxy.port)
+            elif mode == 'dead':
+                penv = proxy_env(free_port())  # nothing listens
+            if kind == 'GSETTINGS':
+                sc['dconf'] = write_dconf_proxy(account, proxy.port)
+                penv = {'XDG_CURRENT_DESKTOP': 'GNOME'}  # a GNOME session; NO proxy variable. curl cannot read gsettings: its control environment comes from the host's own `proxy` CLI (below)
+            sc['proxyPort'] = proxy.port if proxy else (int(penv['http_proxy'].rsplit(':', 1)[1]) if penv else None)
+            sc['guiEnvironment'] = penv
+            curl_env = dict(penv)
+            if kind == 'GSETTINGS':
+                cli_out = sc['dconf']['hostProxyCli']['out']
+                curl_env = {'https_proxy': cli_out, 'http_proxy': cli_out} if cli_out.startswith('http') else {}
+            gui = run.launch(f'gui-{name}', extra_env=penv)
+            launches.append(gui)
+            conn_path, conn = wait_new_daemon(sandbox, old_pid) if old_pid else wait_daemon(sandbox)
+            run.check(f'[{name}] the real bundled daemon started', conn is not None, str(conn_path))
+            if conn is None:
+                raise StopScenario()
+            old_pid = conn['pid']
+            gui.step('bootstrapped', 90)
+            state = wait_panel_ready(gui, name, 90)
+            run.check(f'[{name}] the real WebView loaded the frontend (quick panel page ready)', state.get('panelReady') is True, state)
+            time.sleep(3)  # let the page open its daemon connections
+            daemon_port = conn['port']
+            socks = sockets_of(('WebKit', 'uniclipboard', 'uniclipd'))
+            sc['sockets'] = socks
+            sc['daemonPort'] = daemon_port
+            web_to_daemon = [s for s in socks if s['proc'].startswith('WebKitNetwork') and s['peer'].endswith(f':{daemon_port}')]
+            go_to_daemon = [s for s in socks if s['proc'] == 'uniclipboard' and s['peer'].endswith(f':{daemon_port}')]
+            sc['owners'] = {'webkitNetworkProcessToDaemon': len(web_to_daemon), 'goHostToDaemon': len(go_to_daemon)}
+            web_to_proxy = [s for s in socks if s['proc'].startswith('WebKit') and sc['proxyPort'] and s['peer'].endswith(f":{sc['proxyPort']}")]
+            run.check(f'[{name}] P1 WebKitNetworkProcess (the WebView itself, not the Go host) holds established loopback TCP connections to the daemon (HTTP vs WebSocket is not distinguished by sockets)', len(web_to_daemon) >= 1, web_to_daemon)
+            run.check(f'[{name}] P1 no WebKit process has a connection to the proxy port', not web_to_proxy, web_to_proxy)
+            # P5: what the GUI hands the daemon (observation: the product does not rewrite proxy variables)
+            sc['daemonProxyEnvironment'] = {k: v for k, v in environ_of(conn['pid']).items() if k.lower() in ('http_proxy', 'https_proxy', 'all_proxy', 'no_proxy')}
+            sc['guiProxyEnvironment'] = {k: v for k, v in environ_of(gui.proc.pid).items() if k.lower() in ('http_proxy', 'https_proxy', 'all_proxy', 'no_proxy')}
+            sc['gioModuleDir'] = environ_of(gui.proc.pid).get('GIO_MODULE_DIR')
+            # P3: the same external request from the WebView and from the control client, each with its OWN hostname and its OWN log window (WebView first,
+            # the proxy log position is saved before and after each client; dev2 attributed curl's CONNECT to the WebView)
+            nonce_w, nonce_c = secrets.token_hex(6), secrets.token_hex(6)
+            url_w, url_c = f'https://{WV_HOST}/webview-{nonce_w}', f'https://{CURL_HOST}/curl-{nonce_c}'
+            n0 = proxy.mark_now() if proxy else 0
+            gui.ctl(f'panel-js ext-{name} {reports.script("ext-" + name, url_w)}', f'panel-js-ext-{name}')
+            ev = reports.wait(f'ext-{name}-ok', 40) or reports.wait(f'ext-{name}-err', 20)
+            time.sleep(1)
+            n1 = proxy.mark_now() if proxy else 0
+            win_w = proxy.lines()[n0:n1] if proxy else []
+            ctl = curl_as_user(dict(run.env, **curl_env), url_c)
+            time.sleep(1)
+            n2 = proxy.mark_now() if proxy else 0
+            win_c = proxy.lines()[n1:n2] if proxy else []
+            loop = curl_as_user(dict(run.env, **curl_env), loop_url)
+            time.sleep(1)
+            sc['webview'] = {'report': ev, 'window': win_w, **classify(WV_HOST, nonce_w, win_w, target)}
+            sc['curlControl'] = {'result': ctl, 'window': win_c, **classify(CURL_HOST, nonce_c, win_c, target)}
+            sc['curlLoopbackControl'] = loop
+            if proxy:
+                owners = sockets_of(('WebKit', 'uniclipboard', 'uniclipd'))
+                sc['owners']['toProxyPortByProcess'] = sorted({o['proc'] for o in owners if o['peer'].endswith(f':{proxy.port}')})
+                reqs = request_targets(proxy.lines())
+                sc['proxyRequestTargets'] = [f'{m} {t}' for m, t in reqs]
+                probe_hosts = (WV_HOST, CURL_HOST)
+                loop_reqs = [t for m, t in reqs if LOOPBACK.search(t)]
+                sc['proxyLoopbackTargets'] = loop_reqs
+                sc['proxyEngineTargets'] = sorted({t for m, t in reqs if not LOOPBACK.search(t) and not any(h in t for h in probe_hosts)})
+                run.check(f'[{name}] control: curl (same environment, its own hostname) was named by the proxy: the proxy/log chain is valid',
+                          sc['curlControl']['route'] in ('proxied', 'refused'), sc['curlControl'])
+                run.check(f'[{name}] control: curl targeting the loopback report port with the same environment IS in the proxy log (detection power for the loopback claim)',
+                          any(f':{reports.port}/loopctl' in t for t in loop_reqs), {'curl': loop, 'targets': loop_reqs})
+                leaked = [t for t in loop_reqs if f':{daemon_port}' in t or (f':{reports.port}' in t and '/loopctl' not in t)]
+                run.check(f'[{name}] P1 the proxy log names no loopback target of the product (not the daemon port, not the page\'s report channel)', not leaked, leaked)
+            else:
+                if mode == 'dead':
+                    run.check(f'[{name}] control: curl honours the dead proxy variables (fails to connect, the target saw nothing)',
+                              ctl['rc'] != 0 and sc['curlControl']['targetSaw'] == 0, sc['curlControl'])
+                else:
+                    run.check(f'[{name}] control: curl reaches the target directly without a proxy', sc['curlControl']['targetSaw'] == 1, sc['curlControl'])
+            # the WebView's route is data at this stage (baseline), not a pass/fail: the contract decides per scenario after the baseline
+            sc['webviewRoute'] = sc['webview']['route']
+            stop(gui, conn)
+            launches.clear()
+            if proxy:
+                proxy.stop()
+        r['passed'] = all(c['ok'] for c in r['checks'])
+    except StopScenario:
+        pass
+    except Exception as e:
+        r['error'] = repr(e)
+        import traceback
+        r['traceback'] = traceback.format_exc()
+        print('ERROR', repr(e), flush=True)
+    finally:
+        for lc in launches:
+            if lc.proc.poll() is None:
+                lc.proc.terminate()
+        for conn in sandbox.rglob('daemon.conn'):
+            try:
+                pid = json.loads(conn.read_text())['pid']
+                if pid_alive(pid):
+                    os.kill(pid, 15)
+            except (OSError, ValueError, KeyError):
+                pass
+        for p in proxies:
+            p.stop()
+            for f in ('tinyproxy.log', 'tinyproxy.conf', 'stdout.log'):
+                try:
+                    shutil.copy2(p.dir / f, out / f'proxy-{p.tag}-{f}')
+                except OSError:
+                    pass
+        time.sleep(1)
+        xvfb.terminate()
+        r['targetRequests'] = servers[0].requests if servers else []
+        r['targetHandshakeFailures'] = servers[0].handshake_failures if servers else []
+        r['passed'] = bool(r['checks']) and all(c['ok'] for c in r['checks']) and 'error' not in r
+        (out / 'appimage-assertions.json').write_text(json.dumps(r, indent=2, default=str) + '\n')
+    print(json.dumps({'passed': r['passed'], 'mode': r['mode']}))
+    sys.exit(0 if r['passed'] else 1)
+
+
+if __name__ == '__main__':
+    main()

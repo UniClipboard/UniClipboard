@@ -164,6 +164,20 @@ case "$mode" in
     code=$?
     docker network rm "$net" >/dev/null
     exit "$code" ;;
+  appimage-proxy-e2e)  # 17c12: system proxy (real tinyproxy + controlled HTTPS target, internal network). UC_PROXY_IMAGE selects the image; UC_PROXY_ARGS passes runner options (--scenarios ...)
+    out="$(mkdir -p "${2:?outdir}" && cd "$2" && pwd)"
+    image="$(cd "$(dirname "${3:?AppImage}")" && pwd)/$(basename "$3")"
+    manifest="$(cd "$(dirname "${4:?package-manifest.json}")" && pwd)/$(basename "$4")"
+    set +e
+    # --internal: no route out (nothing can leave the container); NET_ADMIN lets the runner add the default route the Engine needs (17c11 R1)
+    net="uc17c12-internal-$$"; docker network create --internal "$net" >/dev/null
+    docker run --rm --init --platform linux/arm64 --network "$net" --device /dev/fuse --cap-add SYS_ADMIN --cap-add SYS_PTRACE --cap-add NET_ADMIN --security-opt apparmor:unconfined \
+      -v "$ROOT:/work:ro" -v "$out:/out" -v "$image:/in/appimage.AppImage:ro" -v "$manifest:/in/package-manifest.json:ro" \
+      "${UC_PROXY_IMAGE:-uc-gui-go-linux-proxy:17c12-ubuntu}" python3 /work/apps/gui-go/e2e/linux_appimage_proxy_run.py --out /out --appimage /in/appimage.AppImage \
+      --manifest /in/package-manifest.json ${UC_PROXY_ARGS:-} > "$out/run.log" 2>&1
+    code=$?
+    docker network rm "$net" >/dev/null
+    exit "$code" ;;
   appimage-content-check)  # 17c7: extract the AppImage (kept in <outdir>/squashfs-root) and run the mechanical content assertions + the static dlopen audit
     out="$(mkdir -p "${2:?outdir}" && cd "$2" && pwd)"
     image="$(cd "$(dirname "${3:?AppImage}")" && pwd)/$(basename "$3")"

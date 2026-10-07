@@ -126,6 +126,20 @@ stage3 同一个包上的两个矩阵。页面自身的 HTTP 取数与 WebSocket
 
 场景 `env-recover`，同一个 GUI 进程：代理在线时 WebView 经代理（proxied）；停止 tinyproxy 后请求失败（`TypeError: Load failed`），代理日志无该主机、目标没有收到请求，不直连；在同一端口重新启动 tinyproxy 后，同一进程再次经代理（proxied，目标收到 1 次）；中断后页面再次取 daemon 的 HTTP 与 WebSocket 帧（`status:status.snapshot`）仍然成功。13 项观测，6/6 要求。只跑了便携模式，且只用环境变量代理：**不证明** GNOME 设置在运行中变化（动态配置）、非便携模式或其他平台下的中断恢复；这些保留在本切片待完成，非便携在最终同包矩阵复跑，GNOME 动态场景单独做。运行证据：`stage3/p7-portable/appimage-assertions.json`、`run.log`、`done-p7-portable.rc`（0）。
 
+### P6：Engine rendezvous 出站（受控、仅拒绝，`stage3/p6-portable-v2`，退出码 0）
+
+源码对齐：打包的 daemon SHA `ea0f0bcb…`，构建证据 Desktop `be709456e27c…`、`uc-engine 1.1.0-rc.22`、Engine rev `d4dd324a1a88…`；rendezvous 基址 `https://rendezvous.uniclipboard.app`（`uc-infra-p2p`，默认配置的 `reqwest::Client`，读取环境代理）。
+
+探针：对隔离的真实 daemon 临时 profile 经真实协议（`/auth/connect` 的 Bearer 换会话）发一次 `POST /v2/setup/redeem`，邀请码与口令都是合成的；响应是 HTTP 200 封装，join 结果在 `data.status`（本探针看到 `pending`，没有等待最终结局）。网络是 `--internal`，代理只有拒绝型（记录 CONNECT 后 403，从不转发），rendezvous 名在 `/etc/hosts` 与证书 SAN 中指向受控内部目标作为附加控制。
+
+| 场景 | 观测 |
+| --- | --- |
+| `rv-deny`（环境代理） | 代理日志 `CONNECT rendezvous.uniclipboard.app:443` 并 `Proxying refused on filtered domain`；目标未见请求或握手：daemon 的 rendezvous 请求走了环境代理且没有转发 |
+| `rv-none`（无代理变量） | 代理日志无该主机；受控目标收到 daemon 的 TLS 握手（`tlsv1 alert unknown ca`，daemon 不信任测试 CA）：直连被观测到 |
+| `rv-bypass`（`NO_PROXY` 含该主机） | 同上：代理未点名，目标收到握手：`NO_PROXY` 绕过有效 |
+
+边界：握手以 `unknown ca` 结束，只证明到达 TLS 握手阶段，不证明请求完成或代理成功；只证明 rendezvous 这一条 Engine 出站，iroh 其他出站另有结论，不外推。首轮 `p6-portable`（rc 1，探针把 HTTP 200 封装当错误）保留并有 `ATTRIBUTION.txt`。
+
 ### 仍未完成（OPEN，逐项增量补做）
 
-P5 真实 Go 更新器、P6 受控 Engine rendezvous（仅拒绝型 CONNECT，不转发）、GNOME `ignore-hosts` 遗漏回环时本地 daemon 的行为、PAC / 认证 / 动态设置、Fedora、同一最终干净包上的 17c7/17c5/17c10/17c11/内容检查回归。
+P5 真实 Go 更新器、GNOME `ignore-hosts` 遗漏回环时本地 daemon 的行为、PAC / 认证 / 动态设置、Fedora、同一最终干净包上的 17c7/17c5/17c10/17c11/内容检查回归。

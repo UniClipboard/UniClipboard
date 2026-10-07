@@ -759,6 +759,11 @@ def main():
         r['passed'] = bool(r['checks']) and all(c['ok'] for c in r['checks']) and 'error' not in r
         r['functionalPassed'] = (bool(r['requirements']) and all(c['ok'] for c in r['requirements'])) if args.require else None
         (out / 'appimage-assertions.json').write_text(json.dumps(r, indent=2, default=str) + '\n')
+        for f in list(out.glob('proxy-*-tinyproxy.log')) + [out / 'appimage-assertions.json']:  # a loopback URL that reached a proxy carries the daemon session token: never keep it
+            try:
+                f.write_text(re.sub(r'Session(%20| )eyJ[A-Za-z0-9._-]+', r'Session\1<redacted>', f.read_text(errors='replace')))
+            except OSError:
+                pass
         for f in out.glob('*.control'):  # the page probe handed the throwaway daemon's bearer secret to the WebView: do not keep it in the shared artifacts
             try:
                 f.write_text(re.sub(r'bearer="[^"]*"', 'bearer="<redacted>"', f.read_text(errors='replace')))

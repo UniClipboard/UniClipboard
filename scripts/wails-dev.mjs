@@ -35,7 +35,9 @@ function run(command, args, options = {}) {
 // `.dev` identifier, so it never shares notification or login-item state with an installed app. It is still started as a plain
 // child process, so stdio, the exit code and SIGTERM keep working.
 export function makeDevBundle(binary) {
-  const tauri = JSON.parse(fs.readFileSync(path.join(root, 'apps/gui/src-tauri/tauri.conf.json'), 'utf8'))
+  const tauri = JSON.parse(
+    fs.readFileSync(path.join(root, 'apps/gui/src-tauri/tauri.conf.json'), 'utf8')
+  )
   const contents = path.join(path.dirname(binary), 'UniClipboardGoDev.app/Contents')
   fs.mkdirSync(path.join(contents, 'MacOS'), { recursive: true })
   const executable = path.join(contents, 'MacOS/gui-go')

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """macOS 真 daemon + 原生私有命名剪贴板；不读取/写入用户 generalPasteboard。"""
-import argparse, hashlib, json, os, shutil, signal, sqlite3, subprocess, time, urllib.request, uuid, zipfile
+import argparse, hashlib, json, os, shutil, signal, sqlite3, subprocess, time, tomllib, urllib.request, uuid, zipfile
 from pathlib import Path
 
 parser = argparse.ArgumentParser()
@@ -31,11 +31,13 @@ endpoint = None
 cases = []
 processes = []
 repository = Path(__file__).resolve().parents[3]
+engine_revision = tomllib.loads((repository / 'Cargo.toml').read_text())['workspace']['dependencies']['uc-engine']['rev']
 source_paths = ['Cargo.toml', 'Cargo.lock', 'crates/uc-bootstrap/src/wiring/desktop_host.rs',
                 'crates/uc-platform/src/clipboard/common.rs',
                 'scripts/e2e/clipboard-startup/private-pasteboard.m',
                 'scripts/e2e/clipboard-startup/real-daemon-clipboard-e2e.py']
 provenance = {
+    'engine_revision': engine_revision,
     'daemon_sha256': hashlib.sha256(binary.read_bytes()).hexdigest(),
     'source_sha256': {name: hashlib.sha256((repository / name).read_bytes()).hexdigest() for name in source_paths},
     'tools_sha256': {name: hashlib.sha256((args.tools / name).read_bytes()).hexdigest() for name in ['private-pasteboard', 'private-pasteboard.dylib']},
@@ -89,6 +91,7 @@ def stop():
         processes[-1]['exit_code']=rc
         process=None; session=None
         return rc
+    return None
 
 
 def register_count():
@@ -149,6 +152,8 @@ try:
     for kind, code in [('PermissionDenied', 13), ('NotFound', 2), ('Uncategorized', 5)]:
         assert any(kind in str(record.get('error.chain')) and 'os_code='+str(code) in str(record.get('error.chain')) for record in reads), 'source classification/code missing: '+kind
     assert all(record.get('capture_mode')=='standard' for record in reads)
+    assert {record['source_commit'] for record in records if 'source_commit' in record} == {engine_revision}, 'runtime Engine revision differs from product pin'
+    assert all(record.get('source_state')=='clean' for record in records if 'source_commit' in record), 'runtime Engine source is dirty'
     assert any('os_code=5' in str(record.get('error.chain')) for record in reads), 'middle-read source missing'
     assert any(name.startswith('logs/engine.') for name in bundle.namelist()), 'Engine logs missing'
     assert any(name.startswith('logs/uniclipboard-daemon.') for name in bundle.namelist()), 'host logs missing'

@@ -262,6 +262,30 @@ RED（保留）：`stage4/pac-nohelper-portable` 与 `stage4/pac-nohelper-nonpor
 
 这个判定自身可能的失败方式：(1) 把合法跳过的场景（非便携模式下 `gs-ph-*`）算成未完成，导致永远不通过——跳过必须有记录的原因并按「已处理」算；(2) 提前停止（`StopScenario`，如 T0 夹具失败）没有留下未完成标记，仍被判成功；(3) 场景在要求评估之后、清理之前抛错，要求全真但场景不完整；(4) 选了场景但一个要求都没有（`--require` 下为空集）被判成功。判定：每个场景末尾写 `completed=true`；`functionalPassed = 有要求 ∧ 要求全真 ∧ 无 error ∧ 所选场景都 completed 或带跳过原因`。真实负控制：缺少 `feed-inputs` 时 `up-*` 在 T0 直接停止，结果必须是 `functionalPassed=false`；正控制是完整重跑。不写事后单元测试。
 
+### 认证（stage6 包，`stage6/auth3-{portable,nonportable}`，退出码 0，functionalPassed=true）
+
+范围：HTTP 基本认证代理（tinyproxy `BasicAuth`），环境变量、更新器与 GNOME 设置三条来源，WebView 请求的路由由代理日志与目标日志共同判定（`proxied` / `proxied-no-delivery`）。
+
+- 环境变量（`env-auth-ok` / `env-auth-bad`）与更新器（`up-auth` / `up-auth-bad`）：正确凭据 proxied，错误凭据 `proxied-no-delivery` 且目标收到 0 个请求（失败，不直连）。
+- GNOME 设置（`gs-sys-auth` / `gs-sys-auth-bad`）：**仅当 https 主机为空时**，凭据才对 HTTPS 目标生效。原因（随包版本 glib-networking `2.80.0-1build1`，源码 `proxy/gnome/gproxyresolvergnome.c`）：凭据只写进 HTTP 代理 URI；显式设置了 https 主机时，https URI 使用不带凭据的 `http://host:port`。
+- **显式 https 主机 + 正确凭据（`gs-sys-auth-https`）不能认证，是上游解析器的凭据作用域，不是产品的认证成功。** 该场景保留为必须「失败但不直连」的边界（`proxied-no-delivery`，目标 0 个请求），两种模式均通过。这一边界不能被表述为「正确凭据在所有 GNOME 配置下都工作」。GNOME 设置面板本身不提供认证字段（认证键只能由 `gsettings` / `dconf-editor` 写入），所以用面板配置的用户不受影响；需要在 https 上使用认证的用户应清空 https 主机，或使用环境变量 / libproxy 路径（`env-auth-ok` 已证明可用）。产品不改写解析器的凭据语义（不自写解析器）。
+
+证据与归因（原目录都保留）：
+
+- `stage6/auth-{portable,nonportable}`（退出码 3）：唯一失败的要求是 `gs-sys-auth`，原因见上：夹具同时设置了显式 https 主机。`stage6/auth-semantics/run.log` 用 GLib 自身的默认解析器（`g_proxy_resolver_get_default`，同一发行版版本 `2.80.0-1build1`，`XDG_CURRENT_DESKTOP=GNOME`）对同一设置给出答案：显式 https 主机时 `https://… -> http://127.0.0.1:3128`（无凭据），https 主机为空时 `https://… -> http://uc-user:<password>@127.0.0.1:3128`；`run-v1-no-desktop-env.log` 是遗漏 `XDG_CURRENT_DESKTOP` 时 GLib 选中 libproxy 解析器的首次探针，保留。
+- `stage6/auth2-*`（`passed=false`）：`gs-sys-auth` 要求通过，但 curl 对照用了 libproxy 命令行（https 主机为空时它回答 `direct://`，与 WebKit 使用的 GLib 解析器不同），对照无效；auth3 的对照改为 GLib 自身解析器的答案。
+- 结论范围：认证在已测的来源与配置上被证实；不是「认证全部支持」。更新器只读环境变量（与 Tauri 更新器同为仅环境变量）。
+
+### 原生主机：Fedora 44 niri 与 Omarchy Hyprland（ARM64，与 Docker/Xvfb 结果分开记录）
+
+主机：`ssh fedora`（本地 VM，Fedora 44 Workstation aarch64，niri，Wayland 会话）与 `ssh omarchy`（真机，Arch Linux ARM，Hyprland，Wayland 会话）。都是 arm64，**不能作为原生 amd64 的证明**。只读识别：两台都有 `org.gnome.system.proxy` schema、GNOME 与 libproxy GIO 模块、会话总线、XWayland；Fedora 无 docker 有 podman，Omarchy 的 docker 对当前用户无权限；两台都没有 tinyproxy 与免密 sudo，也都没有已安装的 UniClipboard。
+
+Wails 的 GTK 插件把 `GDK_BACKEND` 设为 `x11`，所以在 Wayland 会话上 GUI 走 **XWayland（X11 后端）**，不是原生 Wayland 后端。下面的原生结果因此只证明「Wayland 会话里经 XWayland 运行的 GUI」；**不能称为原生 Wayland 后端已通过**。若某个 Wayland 合成器没有 XWayland，这是真实的兼容缺口，保留在迁移范围内，不要求用户改全局环境或安装服务来掩盖。快捷键、粘贴等依赖原生 Wayland 的能力同样不在本节的证明范围。
+
+原生探针 `apps/gui-go/e2e/native_proxy_probe.py`（只在任务专用目录 `~/uc-17c12-native` 内工作：复制 AppImage、便携 HOME 使 dconf/钥匙串/应用数据与用户真实数据隔离、sink 代理只记录不转发）：
+
+- `n1-gnome-empty`（首次，保留）：两台均在「真实 daemon 已发布 daemon.conn」失败，GUI 日志 `Gtk-WARNING: cannot open display:`——探针没有给 GUI 提供会话的 `DISPLAY`（ssh 非交互环境没有），夹具问题，不是产品问题；v2 起探针从 `/tmp/.X11-unix` 取 `DISPLAY`，并提供用户会话总线地址。
+
 ### 仍未完成（OPEN，逐项增量补做）
 
-GNOME `ignore-hosts` 遗漏回环时本地 daemon 的行为、PAC / 认证 / 动态设置、Fedora、同一最终干净包上的 17c7/17c5/17c10/17c11/内容检查回归。
+两个 GUI 同总线、监督器预算观测（hook，需要包含 hook 的新包）、动态设置、SOCKS、Fedora 容器与原生主机的外部目标/PAC/认证场景、同一最终干净包上的 17c7/17c5/17c10/17c11/内容检查回归。

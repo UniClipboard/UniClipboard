@@ -82,6 +82,8 @@ Menu.Update -> macosMenu.update -> InvokeSync(main thread):
 
 - **min7-control（保留；显示器已唤醒）**：授权的瞬时唤醒生效（`displayBefore.asleep=true` → `displayAfterWake.asleep=false`，会话未锁定：无 `CGSSessionScreenIsLocked`，在控制台，登录完成；唤醒进程在清理时被终止，返回码 -15）。控制路径 `OpenMenu` 之后，40 ms 间隔 AX 观察 323 次、0 次读到菜单；运行器当场裁剪的截图（图像有效、非黑）显示状态栏项正下方 **没有画出菜单**（仅作观察记录，见下）。**该截图同时拍到了无关应用的内容（浏览器页面等），已立即删除，不作存档证据**；此后截图默认不留存（只记录“已捕获”），除非显式设置 `TRAY_KEEP_SHOTS=1`。对旧失败的边界：min4–min6 发生在显示器休眠期间，其结论仍受该因素限制；min7 是第一次在唤醒显示器上的对照，**只对 `OpenMenu` 控制路径成立**，对真实右键路径还没有结果。
 
+- **min8-rightclick / min9-control（保留；显示器已唤醒）与最窄假设 H1**：真实右键（本轮自己 GUI 的 AX 位置，`target` 在状态栏项中心）与 `OpenMenu` 控制两条路径都没有被 AX 读到菜单（322/0、min9 同）。min9 的 `sample` 窗口（3 秒，5 ms，**先于** 打开请求开始并覆盖它）显示主线程 434 次采样中 428 次空闲在 RunLoop、5 次在服务我们自己的 AX 查询，**没有** `showMenu`/`mouseDown`/菜单跟踪帧。这只说明窗口内主线程没有进入跟踪，不说明入口没被调用。**H1（待证实）**：Wails 的 `macosSystemTray.nsMenu`（或 `nsStatusItem`）在运行时为空，于是 `openMenu`（及 pre-click 回调中的 `systemTray.nsMenu == nil` 判断）直接返回，菜单无论由控制、右键都不会打开。若 H1 成立，这是产品缺陷（托盘菜单在 Go GUI 的 macOS 上打不开），需窄修；若不成立，改查 H2（`showMenu` 执行但跟踪未开始，如合成事件被忽略）。检验：E2E 构建在打开前后用只读反射记录该托盘的 `impl/menu/clickHandler/rightClickHandler/nsStatusItem/nsMenu` 是否为空，不改产品行为。
+
 ## 验收契约
 
 必须保留 17c14 的行为：设备子菜单随 10 秒刷新与 `devices://sync-changed` 更新、条目动作、同步开关标签、托盘生命周期。不得：隐藏日志、删除刷新、删除托盘功能、降低锁保证、用 compile/vet 或脚本直接调用代替原生证据。

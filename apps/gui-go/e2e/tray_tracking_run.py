@@ -92,6 +92,9 @@ def open_menu(gui, pid, how, label, out):
     watch_path = out / f'ax-open-{label}-watch.jsonl'
     with watch_path.open('w') as wf:
         watcher = subprocess.Popen([AX, 'watch', str(pid), '14', '40'], stdout=wf, stderr=subprocess.STDOUT)
+        # The sample window (3 s, 5 ms) is opened BEFORE the open request and covers it, so a main thread that enters menu tracking (or the
+        # showMenu block) is caught in the act; the native stack is evidence that does not depend on the AX tree.
+        sampler = subprocess.Popen(['sample', str(pid), '3', '5', '-file', str(out / f'ax-open-{label}-sample.txt')], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         time.sleep(1)
         if how == 'rightclick':
             opened = ax('rightclick', str(pid))
@@ -109,6 +112,7 @@ def open_menu(gui, pid, how, label, out):
             time.sleep(.3)
         if not first.get('ok'):
             watcher.wait(timeout=60)
+    sampler.wait(timeout=60)
     seen = [json.loads(l) for l in watch_path.read_text().splitlines() if l.strip()]
     ok_seen = [r['ns'] for r in seen if r.get('ok')]
     opened = dict(opened, screenshot=shot_info, openedSeenByWatch={'reads': len(seen), 'okReads': len(ok_seen), 'firstOkNs': ok_seen[0] if ok_seen else None, 'lastOkNs': ok_seen[-1] if ok_seen else None})

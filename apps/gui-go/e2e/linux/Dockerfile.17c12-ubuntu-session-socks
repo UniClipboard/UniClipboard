@@ -1,0 +1,4 @@
+# 17c12 SOCKS variant: the NON-portable session image plus a real SOCKS5 server (Dante, `danted`) with an access log, so SOCKS proxies are exercised by a mature server.
+FROM uc-gui-go-linux-proxy:17c12-ubuntu-session
+RUN apt_install.sh dante-server
+RUN command -v danted >/dev/null && danted -v 2>&1 | head -1

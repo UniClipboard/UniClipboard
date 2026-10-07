@@ -301,6 +301,7 @@ def main():
     parser.add_argument('--hold', type=int, default=32, help='seconds the first menu stays open (>= 3 natural 10 s refreshes)')
     parser.add_argument('--skip-quit', action='store_true')
     parser.add_argument('--minimal', action='store_true', help='open, read, cancel only')
+    parser.add_argument('--probe-submenu', action='store_true', help='with --minimal: before the dismissal, find what really expands the device submenu (actions of the item, each tried and verified by the pop-up window count, then a verified hover)')
     parser.add_argument('--expand-overflow', action='store_true', help='with --probe-bar: press the system menu bar overflow button once (authorized, transient), record before/after, press again to collapse')
     parser.add_argument('--scenario', choices=('full', 'lightweight'), default='full', help='lightweight: the tray\'s lightweight-mode item through the real menu (GUI exits, daemon stays, orchestrator stops it by exact pid)')
     parser.add_argument('--probe-bar', action='store_true', help='no pairing; start the GUI and record where the system menu bar put its status item (read-only), then exit')
@@ -479,6 +480,29 @@ def main():
             subprocess.run(['sample', str(proc.pid), '2', '-file', str(out / 'diag-sample.txt')], capture_output=True, timeout=60)
             raise RuntimeError('the menu could not be read after open; later steps need it')
         root = first['menu']
+        if args.minimal and args.probe_submenu:
+            probe = {'actions': ax('actions', str(proc.pid), 'Device Sync'), 'steps': []}
+            sub_item = next((i for i in first['menu'] if i['title'] == 'Device Sync'), {})
+            probe['itemFrame'] = sub_item.get('frame')
+
+            def count():
+                return len(popups_of(ax('windows', str(proc.pid))))
+            probe['popupsAtStart'] = count()
+            for act in [a for a in probe['actions'].get('actions', []) if a != 'AXCancel']:  # AXCancel would close the menu under test
+                res = ax('perform', str(proc.pid), act, 'Device Sync')
+                time.sleep(1.0)
+                probe['steps'].append({'action': act, 'result': res, 'popupsAfter': count()})
+                if probe['steps'][-1]['popupsAfter'] > probe['popupsAtStart']:
+                    break
+            if probe['steps'] and probe['steps'][-1]['popupsAfter'] <= probe['popupsAtStart'] and sub_item.get('frame'):
+                f = sub_item['frame']
+                hx, hy = f['x'] + f['w'] / 2, f['y'] + f['h'] / 2
+                under = ax('elementat', str(proc.pid), str(hx), str(hy))
+                probe['hoverTargetElement'] = {k: under.get(k) for k in ('ownerPid', 'mine', 'role', 'title', 'description')}
+                if under.get('mine'):
+                    probe['hover'] = ax('hover', str(proc.pid), str(hx), str(hy))
+                    probe['popupsAfterHover'] = count()
+            (out / 'ax-submenu-probe.json').write_text(json.dumps(probe, ensure_ascii=False, indent=1))
         if args.minimal:
             gone, dismissal = dismiss_menu(proc.pid, out, 'minimal')
             check('M the open menu was dismissed (AXCancel, then Escape if it stayed) and is gone', gone, dismissal)
@@ -556,51 +580,82 @@ def main():
 
         # 3a-c. the device SUBMENU really expanded while the menu is tracked (an AX press on its item), then the changes that matter happen while it is
         # expanded. "Expanded" = a second, submenu-sized pop-up window beside the root menu window (the AX tree lists the children either way).
-        def expand_submenu(tag):
-            w_before = ax('windows', str(proc.pid))
-            press_s = ax('press', str(proc.pid), 'Device Sync')
-            time.sleep(1.2)
-            w_after = ax('windows', str(proc.pid))
-            pb, pa = popups_of(w_before), popups_of(w_after)
-            root_w = pb[0] if pb else None
-            extra = [w for w in pa if root_w and w not in pb and w['bounds'].get('Width', 0) > 50 and w['bounds'].get('Height', 0) > 20
-                     and w['bounds'].get('X', 0) >= root_w['bounds'].get('X', 0) + root_w['bounds'].get('Width', 0) - 40]
-            (out / f'ax-3a-{tag}-windows.json').write_text(json.dumps({'before': w_before, 'after': w_after, 'press': press_s}, ensure_ascii=False, indent=1))
-            return bool(press_s.get('ok') and len(pa) >= len(pb) + 1 and extra), {'press': press_s, 'popupsBefore': len(pb), 'popupsAfter': len(pa), 'submenuWindow': extra[:1], 'rootWindow': root_w}
-        ok_exp, det = expand_submenu('first')
+        # Every publish (timed refresh, language change, device change) rebuilds the whole NSMenu with Menu.Update, which is expected to close an open
+        # submenu: collapses are recorded against the publish times, never hidden, and every check that says "while expanded" REQUIRES the expanded
+        # precondition at its start (a failed precondition fails the check).
+        def submenu_state():
+            w = ax('windows', str(proc.pid))
+            pops = popups_of(w)
+            root_w = min(pops, key=lambda x: x['bounds'].get('X', 0)) if pops else None
+            extra = [x for x in pops if root_w and x is not root_w and x['bounds'].get('Width', 0) > 50 and x['bounds'].get('Height', 0) > 20
+                     and x['bounds'].get('X', 0) >= root_w['bounds'].get('X', 0) + root_w['bounds'].get('Width', 0) - 40]
+            return {'popups': len(pops), 'root': root_w, 'submenu': extra[:1]}, w
+
+        def ensure_expanded(tag):
+            attempts = []
+            for attempt in range(3):
+                state, _ = submenu_state()
+                if state['submenu']:
+                    attempts.append({'already': True, 'state': state})
+                    return True, attempts
+                if not state['popups']:
+                    attempts.append({'menuGone': True})
+                    return False, attempts
+                press_s = ax('press', str(proc.pid), 'Device Sync')
+                seen = []
+                for _ in range(15):  # 100 ms samples for 1.5 s
+                    time.sleep(.1)
+                    st, wnd = submenu_state()
+                    seen.append(st['popups'])
+                    if st['submenu']:
+                        (out / f'ax-3a-{tag}-windows.json').write_text(json.dumps({'windows': wnd, 'press': press_s}, ensure_ascii=False, indent=1))
+                        attempts.append({'press': press_s, 'popupSamples': seen, 'expanded': True, 'state': st})
+                        return True, attempts
+                attempts.append({'press': press_s, 'popupSamples': seen, 'expanded': False})
+            return False, attempts
+
+        def pub_times(since_index):
+            return [x['detail']['startNs'] / 1e9 for x in gui.rows()[since_index:] if x['step'] == 'tray-publish']
+
+        ok_exp, det = ensure_expanded('first')
         check('3a the device submenu was really expanded in the tracked menu (AX press on Device Sync: a second submenu-sized pop-up window beside the root window)', ok_exp, det)
 
-        # 3b natural refresh while expanded (rows unchanged: the submenu is updated in place, not rebuilt)
-        n_pub0 = len([x for x in gui.rows() if x['step'] == 'tray-publish'])
-        timeline, t_start = [], time.time()
-        while time.time() - t_start < 24:
+        # 3b natural refresh with the submenu expanded at the start (rows unchanged: the submenu is updated in place, then the whole menu republished)
+        ok_exp, det_b = ensure_expanded('3b')
+        row_i0 = len(gui.rows())
+        t0 = time.time()
+        timeline = []
+        while time.time() - t0 < 24:
             rd = ax('read', str(proc.pid))
-            sub_rows = [d['title'] for d in (device_items(rd['menu']) or [])] if rd.get('ok') else None
-            timeline.append([round(time.time() - t_start, 1), rd.get('popupWindows'), sub_rows])
-            time.sleep(.5)
-        pubs = [x['detail'] for x in gui.rows() if x['step'] == 'tray-publish'][n_pub0:]
-        (out / 'ax-3b-timeline.json').write_text(json.dumps({'timeline': timeline, 'publishes': pubs}, ensure_ascii=False, indent=1))
-        check('3b natural refreshes ran while the submenu was expanded (>= 2 publishes), the menu never vanished, the rows stayed [tray-peer-b]; whether the submenu stayed expanded is recorded',
-              len(pubs) >= 2 and all(t[1] for t in timeline) and all(t[2] == ['tray-peer-b'] for t in timeline),
-              {'publishes': len(pubs), 'maxDurMs': max((x['durMs'] for x in pubs), default=None), 'minPopupWindows': min(t[1] or 0 for t in timeline), 'readsWithSubmenuWindow': sum(1 for t in timeline if (t[1] or 0) >= 2), 'reads': len(timeline)})
+            rows_b = [d['title'] for d in (device_items(rd['menu']) or [])] if rd.get('ok') else None
+            timeline.append([round(time.time() - t0, 2), rd.get('popupWindows'), rows_b])
+            time.sleep(.25)
+        pubs_rel = [round(t - t0, 2) for t in pub_times(row_i0)]
+        collapses = [timeline[i][0] for i in range(1, len(timeline)) if (timeline[i - 1][1] or 0) >= 2 and (timeline[i][1] or 0) < 2]
+        near = [min((abs(c - p) for p in pubs_rel), default=None) for c in collapses]
+        (out / 'ax-3b-timeline.json').write_text(json.dumps({'timeline': timeline, 'publishRelSeconds': pubs_rel, 'collapseRelSeconds': collapses, 'collapseToNearestPublishSeconds': near}, ensure_ascii=False, indent=1))
+        check('3b PRECONDITION expanded at the start; natural refreshes (>= 2 publishes) ran, the menu never vanished, rows stayed [tray-peer-b]; every collapse of the submenu lies within 1.5 s of a publish (a rebuild), none unexplained',
+              ok_exp and len(pubs_rel) >= 2 and all(t[1] for t in timeline) and all(t[2] == ['tray-peer-b'] for t in timeline) and all(n is not None and n <= 1.5 for n in near),
+              {'expandedAtStart': ok_exp, 'publishes': pubs_rel, 'collapses': collapses, 'collapseToNearestPublishSeconds': near, 'reads': len(timeline), 'readsWithSubmenuWindow': sum(1 for t in timeline if (t[1] or 0) >= 2)})
 
-        # 3b' MANUAL language change while the submenu is expanded
-        if popups_of(ax('windows', str(proc.pid))).__len__() < 2:
-            expand_submenu('again-lang')
+        # 3b' MANUAL language change with the submenu expanded at the start
+        ok_exp, det_l = ensure_expanded('3b-lang')
         gui.ctl('invoke zh3 set_tray_language {"language":"zh-CN","trace":null}', 'invoke-zh3')
-        time.sleep(1.5)
+        time.sleep(.3)
+        st_soon, _ = submenu_state()
+        time.sleep(1.2)
         rz = ax('read', str(proc.pid))
         subz = device_items(rz['menu']) if rz.get('ok') else None
-        check('3b MANUAL: language change while the submenu was expanded: the open menu and its submenu relabelled together, menu still tracked',
-              rz.get('ok') and bool(rz.get('popupWindows')) and titles(rz['menu'])[1:] == ZH and subz is not None and [d['title'] for d in subz] == ['tray-peer-b'],
-              {'root': titles(rz['menu']) if rz.get('ok') else rz, 'sub': subz, 'popupWindows': rz.get('popupWindows')})
+        st_late, _ = submenu_state()
+        check('3b MANUAL PRECONDITION expanded at the start; language change to zh-CN: the open menu and its submenu relabelled together, menu still tracked (whether the submenu stayed expanded is recorded)',
+              ok_exp and rz.get('ok') and bool(rz.get('popupWindows')) and titles(rz['menu'])[1:] == ZH and subz is not None and [d['title'] for d in subz] == ['tray-peer-b'],
+              {'expandedAtStart': ok_exp, 'root': titles(rz['menu']) if rz.get('ok') else rz, 'sub': subz, 'popupsSoon': st_soon['popups'], 'popupsLate': st_late['popups'], 'submenuWindowSoon': bool(st_soon['submenu'])})
         gui.ctl('invoke en3 set_tray_language {"language":"en","trace":null}', 'invoke-en3')
         time.sleep(1.5)
 
-        # 3c a device-structure change while the submenu is expanded: a second peer is paired into the space through the production rendezvous
-        if popups_of(ax('windows', str(proc.pid))).__len__() < 2:
-            expand_submenu('again-struct')
-        popups_at_start = len(popups_of(ax('windows', str(proc.pid))))
+        # 3c a device-structure change with the submenu expanded at the start: a second peer is paired through the production rendezvous
+        ok_exp, det_c = ensure_expanded('3c')
+        row_i1 = len(gui.rows())
         pair_result = {}
 
         def pair_c():
@@ -619,15 +674,18 @@ def main():
             struct_timeline.append([round(time.time() - t_pair, 1), rd.get('popupWindows'), rows])
             if appeared is None and rows == ['tray-peer-b', 'tray-peer-c']:
                 appeared = struct_timeline[-1]
-            time.sleep(.7)
+            time.sleep(.5)
         th.join(timeout=5)
-        (out / 'ax-3c-timeline.json').write_text(json.dumps({'timeline': struct_timeline, 'pair': pair_result, 'popupsAtStart': popups_at_start}, ensure_ascii=False, indent=1))
+        ok_after, det_after = ensure_expanded('3c-after')
+        rd_after = ax('read', str(proc.pid))
+        rows_after = [d['title'] for d in (device_items(rd_after['menu']) or [])] if rd_after.get('ok') else None
+        (out / 'ax-3c-timeline.json').write_text(json.dumps({'timeline': struct_timeline, 'pair': pair_result, 'expandedAtStart': det_c, 'reExpandedAfter': det_after,
+                                                              'publishRelSeconds': [round(t - t_pair, 1) for t in pub_times(row_i1)]}, ensure_ascii=False, indent=1))
         roster2 = json.loads(cli(env_a, '--json', 'member', 'list').stdout)
-        names = sorted(m.get('device_name') or m.get('name') or '' for m in roster2 if not m.get('is_local'))
-        check('3c a second peer paired while the menu was tracked: the daemon lists it, and the open menu\'s device submenu gained the row without a stall (menu never vanished)',
-              pair_result.get('ok') and names == ['tray-peer-b', 'tray-peer-c'] and appeared is not None and all(t[1] for t in struct_timeline),
-              {'pair': pair_result, 'daemonPeers': names, 'rowAppearedAt': appeared, 'popupsAtStart': popups_at_start, 'minPopupWindows': min((t[1] or 0) for t in struct_timeline) if struct_timeline else None,
-               'samples': len(struct_timeline)})
+        names = sorted(m.get('device_name') or '' for m in roster2 if not m.get('is_local'))
+        check('3c PRECONDITION expanded at the start; a second peer paired while the menu was tracked: the daemon lists it, the open menu gained the row, the menu never vanished, and the RE-EXPANDED submenu shows both rows',
+              ok_exp and pair_result.get('ok') and names == ['tray-peer-b', 'tray-peer-c'] and appeared is not None and all(t[1] for t in struct_timeline) and ok_after and rows_after == ['tray-peer-b', 'tray-peer-c'],
+              {'expandedAtStart': ok_exp, 'pair': pair_result, 'daemonPeers': names, 'rowAppearedAt': appeared, 'reExpandedAfter': ok_after, 'rowsAfter': rows_after, 'samples': len(struct_timeline)})
 
         # 3. device item pressed in the real menu
         sub = device_items(r3['menu']) if r3.get('ok') else None

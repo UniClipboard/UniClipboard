@@ -48,6 +48,11 @@ func tree(_ menu: AXUIElement) -> [[String: Any]] {
                                 "enabled": (attr(it, kAXEnabledAttribute) as? Bool) ?? true]
         let mark = str(it, "AXMenuItemMarkChar")
         if !mark.isEmpty { d["mark"] = mark }
+        if let pv = attr(it, kAXPositionAttribute), let sv = attr(it, kAXSizeAttribute) {
+            var pp = CGPoint.zero, ss = CGSize.zero
+            AXValueGetValue(pv as! AXValue, .cgPoint, &pp); AXValueGetValue(sv as! AXValue, .cgSize, &ss)
+            d["frame"] = ["x": Double(pp.x), "y": Double(pp.y), "w": Double(ss.width), "h": Double(ss.height)]
+        }
         if let sub = kids(it).first(where: { str($0, kAXRoleAttribute) == "AXMenu" }) { d["items"] = tree(sub) }
         return d
     }
@@ -208,6 +213,28 @@ case "escape":
     // One Escape key press (the native way to dismiss a tracked menu). The caller reads the menu immediately before: a menu in tracking owns the keyboard.
     for down in [true, false] { CGEvent(keyboardEventSource: nil, virtualKey: 53, keyDown: down)?.post(tap: .cghidEventTap); Thread.sleep(forTimeInterval: 0.05) }
     print(json(["ok": true, "key": "escape", "ns": now()]))
+case "actions":
+    // actions <pid> <title> [<title>..]: the AX action names of the menu item at the title path.
+    guard let m = openMenu(pid), let it = find(m, Array(argv.dropFirst(3))) else { fail("no item at path \(argv.dropFirst(3))") }
+    var names: CFArray?
+    _ = AXUIElementCopyActionNames(it, &names)
+    print(json(["ok": true, "actions": (names as? [String]) ?? [], "role": str(it, kAXRoleAttribute), "ns": now()]))
+case "perform":
+    // perform <pid> <action> <title> [<title>..]: one named AX action on the menu item at the title path.
+    guard argv.count >= 5, let m = openMenu(pid), let it = find(m, Array(argv.dropFirst(4))) else { fail("no item at that path") }
+    let r = AXUIElementPerformAction(it, argv[3] as CFString)
+    print(json(["ok": r == .success, "axError": r.rawValue, "action": argv[3], "ns": now()]))
+case "hover":
+    // hover <pid> <x> <y>: move the pointer onto a point the CALLER verified (no click) and put it back after 1.5 s.
+    guard argv.count >= 5, let px = Double(argv[3]), let py = Double(argv[4]) else { fail("hover <pid> <x> <y>") }
+    let saved = CGEvent(source: nil)?.location ?? CGPoint(x: px, y: py)
+    for (dx, dy) in [(-6.0, 0.0), (-2.0, 0.0), (0.0, 0.0)] {
+        CGEvent(mouseEventSource: nil, mouseType: .mouseMoved, mouseCursorPosition: CGPoint(x: px + dx, y: py + dy), mouseButton: .left)?.post(tap: .cghidEventTap)
+        Thread.sleep(forTimeInterval: 0.12)
+    }
+    Thread.sleep(forTimeInterval: 1.0)
+    print(json(["ok": true, "target": ["x": px, "y": py], "ns": now(), "popupWindows": popupWindows(pid)]))
+    CGWarpMouseCursorPosition(saved)
 case "clickat":
     // clickat <pid> <x> <y> left|right: an ordinary synthesized click at a point the CALLER has verified (the runner checks the element under the
     // point first). Moves onto the point, holds the button, releases, and puts the pointer back.

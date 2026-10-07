@@ -321,9 +321,9 @@ def deploy_gio_modules(appdir):
             libdir_of.setdefault(m.group(1), m.group(2))
     support_rows = []
     for name, package in GIO_SUPPORT_LIBS.items():
-        src = Path(libdir_of.get(name) or (moddir.parent / 'libproxy' / name))
+        src = Path(libdir_of.get(name) or (moddir.parent.parent / 'libproxy' / name))
         if name == 'libpxbackend-1.0.so':
-            src = moddir.parent / 'libproxy' / name
+            src = moddir.parent.parent / 'libproxy' / name
         if not src.is_file():
             sys.exit(f'{name} is missing in the build image: install {package}')
         real = src.resolve()

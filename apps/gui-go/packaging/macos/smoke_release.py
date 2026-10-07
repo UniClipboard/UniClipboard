@@ -157,16 +157,25 @@ def main():
                 return p
             init = run_cli("space", "init", "--passphrase", "smoke-passphrase-1895", "--device-name", "smoke")
             assert init.returncode == 0, "uniclip space init failed (see cliTrace)"
-            marker = f"smokecapture{int(time.time())}"  # search is exact-token: one alphanumeric token
-            subprocess.run(["pbcopy"], input=marker, text=True, check=True)
+            # The pasteboard watcher can miss the first change right after start-up, so the marker is put on the
+            # pasteboard again (a new token each time, because search is exact-token) until one shows up.
             found = False
-            for _ in range(20):
-                p = run_cli("search", marker)
-                if marker in (p.stdout + p.stderr):
-                    found = True
+            marker = ""
+            for attempt in range(8):
+                marker = f"smokecapture{int(time.time())}x{attempt}"
+                subprocess.run(["pbcopy"], input=marker, text=True, check=True)
+                changes = sh("osascript", "-e", "the clipboard as text", check=False).stdout.strip()
+                for _ in range(4):
+                    time.sleep(1)
+                    p = run_cli("search", marker)
+                    if marker in (p.stdout + p.stderr):
+                        found = True
+                        break
+                trace.append({"args": ["attempt", attempt], "rc": 0, "out": f"pasteboard now reads: {changes!r}; found={found}"})
+                if found:
                     break
-                time.sleep(1)
-            del trace[3:-3]  # keep the first few and the last few attempts
+            checks["clipboardMarker"] = marker
+            del trace[6:-8]
             checks["clipboardCaptureFindsMarker"] = found
             assert found, "the marker put on the pasteboard never appeared in history"
         else:

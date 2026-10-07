@@ -110,9 +110,11 @@ def main():
 
         env = {"HOME": str(Path.home()), "PATH": MINIMAL_PATH, "USER": os.environ.get("USER", "")}
         assert shutil.which("uniclipd", path=MINIMAL_PATH) is None
-        # LaunchServices, like a double click. `open` is not waited for: on a runner it can stay blocked after the
-        # app is already running (observed on macos-latest), and the app must not inherit our pipes.
-        opener = subprocess.Popen(["open", str(APP)], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        # Direct execution with the output captured: on a runner `open` can stay blocked and leaves no log, which
+        # made a failed start undiagnosable. Gatekeeper has already assessed the installed bundle above.
+        applog = (out / "app.log").open("w")
+        opener = subprocess.Popen([str(MACOS / "gui-go")], env=env, stdin=subprocess.DEVNULL, stdout=applog, stderr=subprocess.STDOUT,
+                                  start_new_session=True)
         deadline = time.monotonic() + 120
         conn = None
         while time.monotonic() < deadline:
@@ -132,7 +134,7 @@ def main():
             checks["health"] = json.load(resp)["data"]["status"]
         assert checks["health"] == "ok"
 
-        checks["openReturned"] = opener.poll()
+        checks["guiExitedEarly"] = opener.poll()
         gui = sh("pgrep", "-f", str(MACOS / "gui-go"), check=False).stdout.split()
         assert gui, "the GUI process is not running"
         gui_pid = int(gui[0])
@@ -171,6 +173,15 @@ def main():
         r["passed"] = True
     except AssertionError as e:
         r["error"] = str(e)
+        diag = out / "diagnostics.txt"
+        with diag.open("w") as f:
+            for cmd in (["ps", "-axo", "pid,ppid,comm"], ["launchctl", "managername"], ["id"],
+                        ["log", "show", "--last", "5m", "--style", "compact", "--predicate", 'process == "gui-go" OR process == "uniclipd" OR process == "syspolicyd" OR process == "amfid"']):
+                f.write("$ " + " ".join(cmd) + "\n")
+                f.write(subprocess.run(cmd, capture_output=True, text=True).stdout[-20000:] + "\n")
+        reports = Path.home() / "Library/Logs/DiagnosticReports"
+        if reports.is_dir():
+            shutil.copytree(reports, out / "DiagnosticReports", dirs_exist_ok=True)
     finally:
         if opener is not None:
             opener.kill()

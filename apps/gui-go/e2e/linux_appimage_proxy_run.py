@@ -150,7 +150,8 @@ class Proxy:
         self.log = self.dir / 'tinyproxy.log'
         self.log.write_text('')
         self.log.chmod(0o666)
-        conf = ['User nobody', 'Group ' + ('nogroup' if subprocess.run(['getent', 'group', 'nogroup'], capture_output=True).returncode == 0 else 'nobody'),  # Debian-family: nogroup; Fedora: nobody f'Port {self.port}', 'Listen 127.0.0.1', f'LogFile "{self.log}"', 'LogLevel Info', 'Timeout 600', 'MaxClients 100',
+        # Group: Debian-family nogroup, Fedora nobody
+        conf = ['User nobody', 'Group ' + ('nogroup' if subprocess.run(['getent', 'group', 'nogroup'], capture_output=True).returncode == 0 else 'nobody'), f'Port {self.port}', 'Listen 127.0.0.1', f'LogFile "{self.log}"', 'LogLevel Info', 'Timeout 600', 'MaxClients 100',
                 'ConnectPort 443', 'ConnectPort 80', 'DisableViaHeader No']
         if mode == 'deny':
             empty = self.dir / 'filter'

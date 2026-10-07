@@ -1,0 +1,6 @@
+# 17c13: a Wayland compositor WITHOUT wlr-layer-shell (Weston 13, headless backend), to observe what the self-contained AppImage does where Layer Shell is absent (the situation
+# of GNOME, which has no GNOME host in this slice). The base image is the 17c12 proxy image: it has no GTK/WebKitGTK on the host, so the AppImage's own libraries are what runs.
+FROM uc-gui-go-linux-proxy:17c12-ubuntu
+RUN apt_install.sh weston wayland-utils libwayland-client0 procps iproute2 libfuse2t64 libgl1-mesa-dri libegl1
+COPY verify_image_17c13_weston.sh /usr/local/bin/
+RUN verify_image_17c13_weston.sh

@@ -164,6 +164,20 @@ case "$mode" in
     code=$?
     docker network rm "$net" >/dev/null
     exit "$code" ;;
+  appimage-native-wayland-e2e)  # 17c13: <outdir> <AppImage> <weston|sway> <probe mode>: a headless compositor in a container (weston: no wlr-layer-shell; sway-nolib: protocol present, host library removed)
+    out="$(mkdir -p "${2:?outdir}" && cd "$2" && pwd)"
+    image="$(cd "$(dirname "${3:?AppImage}")" && pwd)/$(basename "$3")"
+    comp="${4:?weston|sway}"; pmode="${5:?probe mode}"
+    case "$comp" in weston) cimage=uc-gui-go-linux-weston:17c13-b ;; sway) cimage=uc-gui-go-linux-sway-nolib:17c13 ;; *) echo "bad compositor" >&2; exit 2 ;; esac
+    set +e
+    net="uc17c13-internal-$$"; docker network create --internal "$net" >/dev/null
+    docker run --rm --init --platform linux/arm64 --network "$net" --shm-size 1g --device /dev/fuse --cap-add SYS_ADMIN --cap-add SYS_PTRACE --cap-add NET_ADMIN --security-opt apparmor:unconfined \
+      --security-opt seccomp:unconfined --security-opt systempaths=unconfined \
+      -v "$ROOT:/work:ro" -v "$out:/out" -v "$image:/in/appimage.AppImage:ro" \
+      "$cimage" bash /work/apps/gui-go/e2e/linux/native_wayland_container.sh "$comp" "$pmode" /out/run > "$out/run.log" 2>&1
+    code=$?
+    docker network rm "$net" >/dev/null
+    exit "$code" ;;
   appimage-proxy-e2e)  # 17c12: system proxy (real tinyproxy + controlled HTTPS target, internal network). UC_PROXY_IMAGE selects the image; UC_PROXY_ARGS passes runner options (--scenarios ...)
     out="$(mkdir -p "${2:?outdir}" && cd "$2" && pwd)"
     image="$(cd "$(dirname "${3:?AppImage}")" && pwd)/$(basename "$3")"

@@ -441,7 +441,7 @@ def release_gdk_backend(appdir):
     return {'hook': str(hook.relative_to(appdir)), 'removedLine': GDK_BACKEND_HOOK_LINE.search(text).group(0), 'hookSha256Before': before, 'hookSha256After': sha256(hook)}
 
 
-def build_appimage(stage, out, arch, name, tools, daemon, relocate=True, marker=None, tls_module=True, force_x11_hook=False):
+def build_appimage(stage, out, arch, name, tools, daemon, relocate=True, marker=None, tls_module=True, force_x11_hook=False, layer_shell=True):
     tools.mkdir(exist_ok=True)
     tool_url, tool_pin = APPIMAGETOOL[arch]
     appimagetool = fetch_verified(tool_url, tool_pin, tools / 'appimagetool')
@@ -496,7 +496,7 @@ def build_appimage(stage, out, arch, name, tools, daemon, relocate=True, marker=
     # linuxdeploy just bundled (same distribution release), which is why it can be loaded where the host's gvfs/dconf modules cannot.
     gio_modules_info = deploy_gio_modules(appdir) if tls_module else 'DISABLED (negative control: the bundled GIO module directory stays empty)'
 
-    layer_shell_info = deploy_layer_shell(appdir)
+    layer_shell_info = deploy_layer_shell(appdir) if layer_shell else 'DISABLED (negative control: libgtk-layer-shell is not in the AppDir)'
     gdk_hook_info = 'KEPT (differential control: the hook still forces GDK_BACKEND=x11)' if force_x11_hook else release_gdk_backend(appdir)
 
     # libdbus-1 is the host's. linuxdeploy's exclude list does not name it, and its `--exclude-library` option is honoured by the main run but not by the
@@ -588,6 +588,8 @@ def main():
                         help='NEGATIVE CONTROL: skip the WebKit helper relocation; the result must not start without a host WebKitGTK; prefixed NEGCONTROL-')
     parser.add_argument('--negative-control-keep-x11-hook', action='store_true',
                         help='DIFFERENTIAL CONTROL (17c13): keep the GTK hook\'s unconditional GDK_BACKEND=x11 (what 17c4-17c12 shipped); prefixed X11HOOK-')
+    parser.add_argument('--negative-control-no-layer-shell', action='store_true',
+                        help='NEGATIVE CONTROL (17c13): do not carry libgtk-layer-shell (what 17c4-17c12 shipped); on a host without it the panel must fall back to an ordinary window; prefixed NOLAYER-')
     parser.add_argument('--tools-dir', type=Path, help='keep the downloaded, SHA-256-verified tools here (default: a throwaway directory in --out)')
     args = parser.parse_args()
     if sys.platform != 'linux':
@@ -605,10 +607,10 @@ def main():
         if not args.daemon_evidence:
             sys.exit('--daemon-evidence is required: a daemon of unverified origin is not packaged (use --packaging-check-fixture for a marked check build)')
         evidence = read_daemon_evidence(args.daemon_evidence, args.daemon)
-    if sum([args.negative_control_no_relocation, args.negative_control_no_tls_module, args.negative_control_keep_x11_hook]) > 1:
+    if sum([args.negative_control_no_relocation, args.negative_control_no_tls_module, args.negative_control_keep_x11_hook, args.negative_control_no_layer_shell]) > 1:
         sys.exit('pick one negative control')
     prefix = ('FIXTURE-' if fixture else 'NEGCONTROL-' if args.negative_control_no_relocation else 'NEGTLS-' if args.negative_control_no_tls_module
-              else 'X11HOOK-' if args.negative_control_keep_x11_hook else 'E2E-' if args.gui_binary else '')
+              else 'X11HOOK-' if args.negative_control_keep_x11_hook else 'NOLAYER-' if args.negative_control_no_layer_shell else 'E2E-' if args.gui_binary else '')
     out = args.out.resolve()
     if out.exists() and any(out.iterdir()):
         sys.exit(f'{out} is not empty: pick a new directory, earlier artifacts are not overwritten')
@@ -650,7 +652,7 @@ def main():
     tools.mkdir(parents=True, exist_ok=True)
     image, appimage = build_appimage(stage, out, args.arch, f'{prefix}{product}_{version}_{deb_name}.AppImage', tools, args.daemon,
                                      relocate=not args.negative_control_no_relocation, marker=args.update_marker,
-                                     tls_module=not args.negative_control_no_tls_module, force_x11_hook=args.negative_control_keep_x11_hook)
+                                     tls_module=not args.negative_control_no_tls_module, force_x11_hook=args.negative_control_keep_x11_hook, layer_shell=not args.negative_control_no_layer_shell)
     archive = out / f'{image.name}.tar.gz'
     with tarfile.open(archive, 'w:gz') as tar:
         tar.add(image, arcname=image.name)
@@ -666,7 +668,7 @@ def main():
         daemon['note'] = 'placeholder daemon'
     (out / 'package-manifest.json').write_text(json.dumps({
         'source': prov, 'arch': args.arch, 'version': version, 'tags': tags, 'go': run(['go', 'version'], capture=True),
-        'purpose': 'packaging-check' if fixture else ('negative-control' if (args.negative_control_no_relocation or args.negative_control_no_tls_module or args.negative_control_keep_x11_hook) else ('e2e-package' if args.gui_binary else 'package')),
+        'purpose': 'packaging-check' if fixture else ('negative-control' if (args.negative_control_no_relocation or args.negative_control_no_tls_module or args.negative_control_keep_x11_hook or args.negative_control_no_layer_shell) else ('e2e-package' if args.gui_binary else 'package')),
         'productionUsable': False, 'daemon': daemon, 'appimage': appimage, 'extra': extra,
         'sha256': {p.name: sha256(p) for p in outputs},
         'signed': False, 'nativeDesktopVerified': False, 'appImageRunProven': False,

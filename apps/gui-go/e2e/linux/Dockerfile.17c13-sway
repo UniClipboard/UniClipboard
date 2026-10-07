@@ -1,0 +1,6 @@
+# 17c13 missing-library control: sway (HAS wlr-layer-shell) in a container whose host has NO libgtk-layer-shell, to observe a package without the library on a compositor that
+# supports the protocol. Built on the 17c2 image (sway, grim, wtype, wayland-info) plus `ss`; the host library is removed and the removal is asserted.
+FROM uc-gui-go-linux-build:17c2
+RUN apt_install.sh iproute2 libfuse2t64 && dpkg -r --force-depends libgtk-layer-shell0 && ldconfig
+COPY verify_image_17c13_sway.sh /usr/local/bin/
+RUN verify_image_17c13_sway.sh

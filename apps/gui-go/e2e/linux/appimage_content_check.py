@@ -16,6 +16,7 @@ from pathlib import Path
 
 root, manifest_path, out = Path(sys.argv[1]), Path(sys.argv[2]), Path(sys.argv[3])
 no_tls = '--expect-no-tls-module' in sys.argv
+no_layer = '--expect-no-layer-shell' in sys.argv  # the NOLAYER- negative control omits the library
 x11_hook = '--expect-x11-hook' in sys.argv  # the differential control package (17c13) keeps the hook line
 manifest = json.loads(manifest_path.read_text())
 gio = manifest['appimage'].get('gioModules')
@@ -73,14 +74,15 @@ apprun = (root / 'AppRun.wrapped').read_text() if (root / 'AppRun.wrapped').is_f
 check('C7 AppRun points GIO_MODULE_DIR at the bundled directory', 'GIO_MODULE_DIR' in apprun and 'gio/modules' in apprun, None)
 check('C8 the manifest records the libdbus removal for this package', bool(manifest['appimage'].get('libdbusRemoved')), manifest['appimage'].get('libdbusRemoved'))
 # 17c13: native Wayland and Layer Shell. The library is carried (the quick panel dlopens it) and the GTK hook no longer forces the X11 backend.
-ls = manifest['appimage'].get('layerShell') or {}
+ls = manifest['appimage'].get('layerShell') if isinstance(manifest['appimage'].get('layerShell'), dict) else {}
 ls_file = root / 'usr/lib' / ls.get('file', 'libgtk-layer-shell.so.0')
 ls_sha = hashlib.sha256(ls_file.read_bytes()).hexdigest() if ls_file.is_file() else None
-check('C10 libgtk-layer-shell.so.0 is bundled, its bytes equal the package manifest (package libgtk-layer-shell0) and its soname resolves', ls_sha is not None and ls_sha == ls.get('sha256') and ls.get('package') == 'libgtk-layer-shell0'
+check('C10 CONTROL: no libgtk-layer-shell file is in the AppDir', not [n for n in names if n.startswith('libgtk-layer-shell')], sorted(n for n in names if n.startswith('libgtk-layer-shell'))) if no_layer else check('C10 libgtk-layer-shell.so.0 is bundled, its bytes equal the package manifest (package libgtk-layer-shell0) and its soname resolves', ls_sha is not None and ls_sha == ls.get('sha256') and ls.get('package') == 'libgtk-layer-shell0'
       and (root / 'usr/lib/libgtk-layer-shell.so.0').exists(), {'sha256': ls_sha, 'manifest': {k: ls.get(k) for k in ('package', 'packageVersion', 'source', 'sha256', 'hostProvided')}})
 ls_needed = re.findall(r'\(NEEDED\)\s+Shared library: \[(.+?)\]', subprocess.run(['readelf', '-d', '-W', str(ls_file)], capture_output=True, text=True, check=True).stdout) if ls_file.is_file() else []
 ls_missing = [n for n in ls_needed if n not in names and not re.match(r'^(libc|libm|libdl|libpthread|librt|ld-linux.*)\.so(\.\d+)*$', n) and n != 'libwayland-client.so.0']
-check('C10b libgtk-layer-shell needs only AppDir libraries, libc-family and the host libwayland-client', bool(ls_needed) and not ls_missing, {'needed': ls_needed, 'missing': ls_missing})
+if not no_layer:
+    check('C10b libgtk-layer-shell needs only AppDir libraries, libc-family and the host libwayland-client', bool(ls_needed) and not ls_missing, {'needed': ls_needed, 'missing': ls_missing})
 hooks = [p for p in (root / 'apprun-hooks').glob('*.sh')] if (root / 'apprun-hooks').is_dir() else []
 forced = [p.name for p in hooks if re.search(r'^\s*export GDK_BACKEND=', p.read_text(), re.M)]
 check('C11 ' + ('CONTROL: the GTK hook still forces GDK_BACKEND (differential package)' if x11_hook else 'no AppRun hook exports GDK_BACKEND (GTK chooses; a user value is honoured)'),

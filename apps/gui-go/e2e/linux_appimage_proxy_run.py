@@ -238,7 +238,7 @@ def curl_as_user(env, url):
     return {'rc': r.returncode, 'code': r.stdout.strip(), 'err': r.stderr.strip()[-200:]}
 
 
-def write_dconf_proxy(port, where, target_app, nonportable, ignore_hosts=None, pac_url=None, auth=None):
+def write_dconf_proxy(port, where, target_app, nonportable, ignore_hosts=None, pac_url=None, auth=None, https_host=True):
     """GNOME's proxy settings (manual proxy, default ignore-hosts), compiled with the distribution's own `dconf compile` (no bus needed).
       user   the user's database ~/.config/dconf/user under the REAL home (what GNOME Settings writes). In portable mode the AppImage's HOME is redirected to
              <AppImage>.home and cannot see it (F7): that is an observation there; in --nonportable it is the real user scenario.
@@ -252,7 +252,7 @@ def write_dconf_proxy(port, where, target_app, nonportable, ignore_hosts=None, p
     gui_home = real if nonportable else portable_home  # the HOME the GUI process (and the AppImage's runtime) really has
     kdir = Path(tempfile.mkdtemp(prefix='dconf-keyfile-'))
     ignore = '' if ignore_hosts is None else ('ignore-hosts=' + ('[' + ','.join(f"'{h}'" for h in ignore_hosts) + ']' if ignore_hosts else '@as []') + '\n')  # None: the schema default (localhost, 127.0.0.0/8, ::1)
-    body = f"[system/proxy]\nmode='manual'\n{ignore}\n[system/proxy/http]\nhost='127.0.0.1'\nport={port}\n\n[system/proxy/https]\nhost='127.0.0.1'\nport={port}\n"
+    body = f"[system/proxy]\nmode='manual'\n{ignore}\n[system/proxy/http]\nhost='127.0.0.1'\nport={port}\n\n" + (f"[system/proxy/https]\nhost='127.0.0.1'\nport={port}\n" if https_host else '')
     if auth:  # GNOME stores the credentials next to the HTTP proxy; glib-networking puts them into the proxy URI (gproxyresolvergnome.c)
         body = body.replace("[system/proxy/http]\n", f"[system/proxy/http]\nuse-authentication=true\nauthentication-user='{auth[0]}'\nauthentication-password='{auth[1]}'\n")
     if pac_url:  # automatic configuration: GNOME's resolver hands the script to its PAC helper (org.gtk.GLib.PACRunner on the session bus)
@@ -333,7 +333,9 @@ P8_VARIANTS = {  # name -> (proxy mode, kind); the environment is built by varia
     'env-bypass-other': ('allow', 'env-bypass-other'),  # NO_PROXY names an unrelated host: the WebView is still proxied
 }
 AUTH_USER, AUTH_PASS, AUTH_WRONG = 'uc', 's3cret', 'wrong'  # synthetic fixture credentials
-AUTH_PROXY = {n: (AUTH_USER, AUTH_PASS) for n in ('env-auth-ok', 'env-auth-bad', 'up-auth', 'up-auth-bad', 'gs-sys-auth', 'gs-sys-auth-bad')}
+AUTH_PROXY = {n: (AUTH_USER, AUTH_PASS) for n in ('env-auth-ok', 'env-auth-bad', 'up-auth', 'up-auth-bad', 'gs-sys-auth', 'gs-sys-auth-bad', 'gs-sys-auth-https')}
+# glib-networking 2.80 (proxy/gnome/gproxyresolvergnome.c) puts the credentials only into the HTTP proxy URI; an https proxy host that is set explicitly gets a URI WITHOUT them, the https URIs reuse the http one only when the https host is empty
+HTTPS_UNSET = {'gs-sys-auth', 'gs-sys-auth-bad'}
 AUTH_BAD = {'env-auth-bad', 'up-auth-bad', 'gs-sys-auth-bad'}
 REQUIRED_VARIANTS = {'env-auth-ok': 'proxied', 'env-auth-bad': 'authfail', 'up-auth': 'proxied', 'up-auth-bad': 'authfail', 'gs-sys-auth': 'proxied', 'gs-sys-auth-bad': 'authfail', 'up-reset': 'failed', 'up-none': 'direct', 'up-allow': 'proxied', 'up-deny': 'refused', 'up-dead': 'failed', 'up-bypass': 'proxied', 'rv-none': 'direct', 'rv-deny': 'refused', 'rv-bypass': 'refused', 'env-recover': 'proxied', 'env-bypass': 'direct', 'env-bypass-other': 'proxied'}  # the others are recorded observations (precedence is the resolver library's)
 
@@ -375,6 +377,7 @@ GNOME_VARIANTS = {  # GNOME `ignore-hosts` (system dconf database), allow proxy
     'gs-sys-ignore': ('allow', 'gs-sys'),   # ignore-hosts = default + the WebView probe host: the WebView goes direct, curl's host stays proxied
     'gs-sys-auth': ('allow', 'gs-sys'),     # GNOME use-authentication + authentication-user/-password
     'gs-sys-auth-bad': ('allow', 'gs-sys'), # wrong stored password: rejected, never direct
+    'gs-sys-auth-https': ('allow', 'gs-sys'),  # RECORDED OBSERVATION of the upstream resolver: GNOME settings with an explicit https host (what the Settings panel writes) and stored credentials; the https proxy URI carries none
     'gs-sys-pac': ('allow', 'gs-sys'),      # mode 'auto' + autoconfig-url: a PAC that proxies every URI; external proxied, loopback still direct (guard)
     'gs-sys-pac-nohelper': ('allow', 'gs-sys'),  # the same PAC on a host where the PAC service is NOT INSTALLED (binary and D-Bus service file renamed for this scenario only, inside the container)
     'gs-sys-pac-brokenservice': ('allow', 'gs-sys'),  # the service name IS listed but its program is missing (only the binary renamed): activation fails, the bundled helper must take over
@@ -674,7 +677,7 @@ def main():
                 if pac:
                     pacs.append(pac)
                 sc['dconf'] = write_dconf_proxy(port, where, target_app, args.nonportable, GNOME_IGNORE.get(name), f'http://127.0.0.1:{pac.port}/proxy.pac' if pac else None,
-                                              (AUTH_USER, AUTH_WRONG if name in AUTH_BAD else AUTH_PASS) if name in AUTH_PROXY else None)
+                                              (AUTH_USER, AUTH_WRONG if name in AUTH_BAD else AUTH_PASS) if name in AUTH_PROXY else None, name not in HTTPS_UNSET)
                 penv = {'XDG_CURRENT_DESKTOP': 'GNOME'}  # a GNOME session; NO proxy variable
                 if name == 'gs-sys-pac-nobus':
                     penv['UC_E2E_PAC_BUS_ADDRESS'] = 'unix:path=/nonexistent/uc-no-session-bus'  # the SUPERVISOR's bus only (E2E build hook): the application keeps its normal bus, it cannot start without one

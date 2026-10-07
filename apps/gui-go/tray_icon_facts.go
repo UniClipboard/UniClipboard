@@ -39,6 +39,8 @@ const (
 	transferStale = 15 * time.Second
 	// transferTombstone is how long an ended transfer's id is remembered, so a progress event that overtakes its terminal event is not a new transfer.
 	transferTombstone = 30 * time.Second
+	// deliveryReadAttempts is how many times one delivery view is tried before it is given up.
+	deliveryReadAttempts = 3
 	// reconnectDelay is the pause before the event stream is opened again.
 	reconnectDelay = 3 * time.Second
 )
@@ -190,9 +192,6 @@ func (f *iconFeed) follow(ctx context.Context) error {
 }
 
 // handle maps one daemon event to the icon. The event names and payloads are the daemon's (crates/uc-daemon-contract constants).
-// daemonclientEvent names the daemon event type for the e2e controls.
-type daemonclientEvent = daemonclient.Event
-
 func (f *iconFeed) handle(ctx context.Context, e daemonclient.Event) {
 	switch e.Type {
 	case "clipboard.new_content":
@@ -265,6 +264,7 @@ func (f *iconFeed) queueDelivery(entryID, targetID string) {
 }
 
 func (f *iconFeed) deliveryWorker(ctx context.Context) {
+	attempts := map[[2]string]int{} // failed reads per pair; a read that fails is retried, so a failure event is not lost to one timeout
 	for {
 		select {
 		case <-ctx.Done():
@@ -279,15 +279,25 @@ func (f *iconFeed) deliveryWorker(ctx context.Context) {
 			if ctx.Err() != nil {
 				return
 			}
-			f.deliveryChanged(ctx, pair[0], pair[1])
+			if err := f.deliveryChanged(ctx, pair[0], pair[1]); err != nil {
+				if attempts[pair]++; attempts[pair] < deliveryReadAttempts {
+					pair := pair
+					time.AfterFunc(time.Duration(attempts[pair])*reconnectDelay, func() { f.queueDelivery(pair[0], pair[1]) })
+				} else {
+					delete(attempts, pair)
+					log.Printf("tray icon: delivery view of entry %s unreadable: %v", pair[0], err)
+				}
+				continue
+			}
+			delete(attempts, pair)
 		}
 	}
 }
 
 // deliveryChanged reads what happened to one entry's delivery to one device; the event only says that something did.
-func (f *iconFeed) deliveryChanged(ctx context.Context, entryID, targetID string) {
+func (f *iconFeed) deliveryChanged(ctx context.Context, entryID, targetID string) error {
 	if entryID == "" {
-		return
+		return nil
 	}
 	cctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
@@ -300,7 +310,7 @@ func (f *iconFeed) deliveryChanged(ctx context.Context, entryID, targetID string
 		} `json:"deliveries"`
 	}
 	if err := f.h.client.Get(cctx, "/clipboard/entries/"+url.PathEscape(entryID)+"/delivery", &view); err != nil {
-		return
+		return err
 	}
 	delivered := false
 	for _, d := range view.Deliveries {
@@ -312,7 +322,7 @@ func (f *iconFeed) deliveryChanged(ctx context.Context, entryID, targetID string
 			if !f.userWatching() {
 				f.raiseAttention(func(facts *iconFacts) { facts.sendFailed = true })
 			}
-			return
+			return nil
 		case "delivered":
 			delivered = true
 		}
@@ -320,6 +330,7 @@ func (f *iconFeed) deliveryChanged(ctx context.Context, entryID, targetID string
 	if delivered {
 		f.icon.animate(animSent)
 	}
+	return nil
 }
 
 // userWatching reports that the main window has the focus: the user sees new content and delivery results themselves.

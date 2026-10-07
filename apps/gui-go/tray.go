@@ -79,6 +79,7 @@ func (h *HostService) initTray() {
 	t.tray.OnClick(h.showMainWindow)
 	t.icon = newTrayIcon(t.tray)
 	t.feed = newIconFeed(h, t.icon)
+	h.iconFeed.Store(t.feed)
 	t.icon.start()
 	watchSystemTheme(h.app, t.icon.requestPaint)
 
@@ -115,8 +116,8 @@ func (t *trayMenu) view() []menuEntry {
 
 // noteUserLooked tells the tray icon that the user opened a window: a new-content dot and an attention state have been seen.
 func (h *HostService) noteUserLooked() {
-	if t := h.tray; t != nil && t.feed != nil {
-		t.feed.userLooked()
+	if feed := h.iconFeed.Load(); feed != nil {
+		feed.userLooked()
 	}
 }
 

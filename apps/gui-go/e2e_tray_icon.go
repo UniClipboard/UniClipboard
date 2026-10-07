@@ -15,6 +15,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/daemonclient"
 )
 
 // Frames and animation starts are kept in memory and read back through the `tray-icon-frames` control: a write to the evidence file
@@ -154,8 +156,8 @@ func (s *EvidenceService) controlTrayIcon(action string) (bool, error) {
 	return false, nil
 }
 
-func daemonEvent(typ, payload string) daemonclientEvent {
-	var e daemonclientEvent
+func daemonEvent(typ, payload string) daemonclient.Event {
+	var e daemonclient.Event
 	e.Type = typ
 	e.Payload = json.RawMessage(payload)
 	return e

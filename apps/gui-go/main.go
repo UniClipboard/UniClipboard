@@ -24,6 +24,7 @@ import (
 var assets embed.FS
 
 type HostService struct {
+	iconFeed         atomic.Pointer[iconFeed] // published once the tray exists; window events may fire before that
 	app              *application.App
 	client           *daemonclient.Client
 	effects          *visualEffects

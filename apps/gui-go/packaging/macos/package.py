@@ -88,7 +88,7 @@ def git_state():
     head = out(["git", "rev-parse", "HEAD"], cwd=REPO)
     status = out(["git", "status", "--porcelain"], cwd=REPO)
     diff = subprocess.run(["git", "diff", "HEAD"], cwd=REPO, capture_output=True).stdout
-    return {"head": head, "dirty": bool(status), "diffSha256": hashlib.sha256(diff).hexdigest() if status else None}
+    return {"head": head, "dirty": bool(status), "porcelain": status.splitlines(), "diffSha256": hashlib.sha256(diff).hexdigest() if status else None}
 
 
 def engine_pin():

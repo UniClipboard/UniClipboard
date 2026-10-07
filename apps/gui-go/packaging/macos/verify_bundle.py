@@ -123,7 +123,7 @@ def main():
             code, out = run("lipo", "-archs", str(p))
             r.add(f"{name} is a single-arch {args.arch} Mach-O", code == 0 and out.split() == [args.arch], out.strip())
             _, vt = run("vtool", "-show-build", str(p))
-            m = re.search(r"minos (\d+)\.(\d+)", vt)
+            m = re.search(r"(?:minos|version) (\d+)\.(\d+)", vt)
             ok = bool(m) and (int(m.group(1)), int(m.group(2))) <= tuple(int(x) for x in cfg["minimumSystemVersion"].split("."))
             r.add(f"{name} minimum macOS <= {cfg['minimumSystemVersion']}", ok, m.group(0) if m else vt[-120:])
     extra = sorted(x.name for x in macos.iterdir()) if macos.is_dir() else []

@@ -63,6 +63,8 @@ def main():
     ap.add_argument("--cli", type=Path)
     ap.add_argument("--out", required=True, type=Path)
     args = ap.parse_args()
+    if not args.dmg.is_file():
+        sys.exit(f"--dmg {args.dmg!r} is not a file")
     if os.environ.get("GITHUB_ACTIONS") != "true" or os.environ.get("RUNNER_ENVIRONMENT") != "github-hosted":
         sys.exit("refusing to run: the shipping app uses the real profile and keychain; use a disposable GitHub-hosted runner")
     out = args.out.resolve()

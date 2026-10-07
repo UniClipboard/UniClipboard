@@ -184,7 +184,8 @@ async fn desktop_clipboard_recovery_child() {
                 #[cfg(unix)]
                 {
                     use std::os::unix::fs::PermissionsExt;
-                    std::fs::set_permissions(&source, std::fs::Permissions::from_mode(0)).unwrap();
+                    std::fs::set_permissions(&source, std::fs::Permissions::from_mode(0o000))
+                        .unwrap();
                 }
             }
             _ => unreachable!(),

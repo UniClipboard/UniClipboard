@@ -64,6 +64,7 @@ func register(table map[string]commandFunc) {
 
 // Invoke executes one host command on behalf of the shared React frontend.
 func (h *HostService) Invoke(name string, args map[string]json.RawMessage) InvokeResult {
+	defer e2eInvoke(name)() // e2e builds record when the tray language command enters and leaves; a no-op otherwise
 	fn, ok := commands[name]
 	if !ok {
 		return InvokeResult{Error: commandError{Code: "InternalError", Message: fmt.Sprintf("command %s is not available in the Go host", name)}}

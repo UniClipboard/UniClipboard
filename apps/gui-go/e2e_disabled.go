@@ -35,3 +35,6 @@ func e2eTrayLanguageGap() {}
 
 // e2eTrayPublish times a tray menu publish in the e2e build; it returns a no-op here.
 func e2eTrayPublish() func() { return func() {} }
+
+// e2eInvoke marks the entry and return of selected host commands in the e2e build; it returns a no-op here.
+func e2eInvoke(string) func() { return func() {} }

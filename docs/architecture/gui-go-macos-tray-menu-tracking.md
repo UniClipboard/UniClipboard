@@ -43,6 +43,9 @@ Menu.Update -> macosMenu.update -> InvokeSync(main thread):
 - **base2**（保留，`passed=false`）：静默步骤已记录、`tray-publish` 钩子每 10 秒触发一次（钩子确实触发，`durMs`≈0），但驱动此后没有产生 `tray-language-call en`，也没有 `driver-error`；运行器在截止时间后失败于 `GUI did not exit cleanly`。`set_tray_language` 的第一行即 e2e 钩子，所以调用没有到达宿主。
 - **R1（待证实）**：静默控制返回后，驱动 JS 或其对宿主的调用被卡住。候选：(a) WebView 脚本在窗口不可见时被节流；(b) `Control` 调用的响应没有回到 JS；(c) 调用已发出但在宿主入口前阻塞。区分办法：驱动在每个 await 前后写进度记录（E2E 驱动代码），不改产品。
 
+- **base3**（进行中时的观察，运行器终态另记）：驱动进度记录 `before-quiet`、`after-quiet` 均写出，静默控制 `ok=true`，此后仍没有 `tray-language-call en`，定时发布继续（约 10 秒）。一次只读 `sample`（采样时 3 秒）看到主线程停在 RunLoop 的 `mach_msg`，**只能说明采样时未观察到主线程被锁住；不能排除间歇阻塞或其他 goroutine 在等待，也不能证明这是卡点的唯一原因**。
+- **R2（待证实，R1 的细化）**：`after-quiet` 之后驱动对 `main.HostService.Invoke("set_tray_language")` 的调用在到达 `set_tray_language` 处理器之前停住（处理器首行即 e2e 钩子，未触发）。候选：(a) JS 调用没有发出；(b) 调用发出但 Wails 绑定调用分发/传输未到宿主；(c) 宿主 `Invoke` 入口前被阻塞。区分办法（E2E 专用，不改产品行为）：驱动在调用前后写进度记录并在 3 秒后记录“仍挂起”；宿主 `Invoke` 入口的 E2E 钩子记录 `set_tray_language` 的进入与返回。三者组合即可区分 (a)(b)(c)。未证实之前不下结论，也不据此改产品代码。
+
 ## 验收契约
 
 必须保留 17c14 的行为：设备子菜单随 10 秒刷新与 `devices://sync-changed` 更新、条目动作、同步开关标签、托盘生命周期。不得：隐藏日志、删除刷新、删除托盘功能、降低锁保证、用 compile/vet 或脚本直接调用代替原生证据。

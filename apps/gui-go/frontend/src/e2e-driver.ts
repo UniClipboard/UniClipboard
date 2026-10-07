@@ -813,7 +813,11 @@ async function runTrayDevicesScenario() {
   await record('tray-driver-progress', true, 'before-quiet')
   await control('tray-language-quiet:5000')
   await record('tray-driver-progress', true, 'after-quiet')
-  const english = await commands.setTrayLanguage('en', null)
+  await record('tray-driver-progress', true, 'call-start')
+  const pending = commands.setTrayLanguage('en', null)
+  void sleep(3000).then(() => record('tray-driver-progress', true, 'call-pending-after-3s'))
+  const english = await pending
+  await record('tray-driver-progress', true, 'call-returned')
   await record('tray-language-en', english.status === 'ok')
   await control('tray-menu:initial')
   await control('tray-devices-wait:tray-peer-b')

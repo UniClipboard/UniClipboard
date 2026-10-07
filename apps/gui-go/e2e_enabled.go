@@ -319,3 +319,13 @@ func waitTrayLanguageQuiet(quietMs int) bool {
 	}
 	return false
 }
+
+// e2eInvoke records the entry and return of the host command the tray language scenario depends on, so a call that never arrives
+// can be told from one that arrived and did not return.
+func e2eInvoke(name string) func() {
+	if name != "set_tray_language" {
+		return func() {}
+	}
+	_ = evidenceWriter.write(Step{Window: "tray", Step: "invoke-enter", OK: true, Detail: name})
+	return func() { _ = evidenceWriter.write(Step{Window: "tray", Step: "invoke-return", OK: true, Detail: name}) }
+}

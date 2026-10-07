@@ -1,6 +1,9 @@
 // Native NSMenu observer for the macOS tray (17c15). It talks to the real status item of ONE process through the
 // Accessibility API: it opens the tracked NSMenu, reads it while it is open (titles, enabled, check marks, submenus),
-// presses items and cancels the menu. It never moves the pointer and sends no key events.
+// presses items and cancels the menu. Most commands are AX-only; the exceptions that DO act on the real session are `clickat`/`rightclick`
+// (synthesized mouse events: the pointer moves and is put back; `clickat` re-verifies the element under the point itself and refuses on a
+// mismatch), `hover` (pointer move) and `escape` (one global key press, refused unless this pid's pop-up menu window is on screen).
+// Build: swiftc -O apps/gui-go/e2e/tray_ax.swift -o <dir>/tray_ax (tray_tracking_run.py builds and hashes it itself).
 //
 //   swift tray_ax.swift display 0                        main display asleep/active/online (a sleeping display makes screenshots black and may stop menu tracking)
 //   swift tray_ax.swift items  <pid>                      status items (AXExtrasMenuBar) of the process
@@ -210,7 +213,10 @@ case "describe":
     }
     print(json(["ok": true, "ns": now(), "items": statusItems(pid).map { d($0, 2) }]))
 case "escape":
-    // One Escape key press (the native way to dismiss a tracked menu). The caller reads the menu immediately before: a menu in tracking owns the keyboard.
+    // escape <pid>: one Escape key press (the native way to dismiss a tracked menu). It is a global HID event, so it is sent only if THIS pid's
+    // pop-up menu window is on screen at this very moment (a menu in tracking owns the keyboard); otherwise nothing is sent.
+    guard argv.count >= 3 else { fail("escape <pid>") }
+    if popupWindows(pid) < 1 { print(json(["ok": false, "refused": "no pop-up menu window of this pid is on screen; no key sent", "ns": now()])); exit(0) }
     for down in [true, false] { CGEvent(keyboardEventSource: nil, virtualKey: 53, keyDown: down)?.post(tap: .cghidEventTap); Thread.sleep(forTimeInterval: 0.05) }
     print(json(["ok": true, "key": "escape", "ns": now()]))
 case "actions":
@@ -236,9 +242,18 @@ case "hover":
     print(json(["ok": true, "target": ["x": px, "y": py], "ns": now(), "popupWindows": popupWindows(pid)]))
     CGWarpMouseCursorPosition(saved)
 case "clickat":
-    // clickat <pid> <x> <y> left|right: an ordinary synthesized click at a point the CALLER has verified (the runner checks the element under the
-    // point first). Moves onto the point, holds the button, releases, and puts the pointer back.
-    guard argv.count >= 6, let px = Double(argv[3]), let py = Double(argv[4]) else { fail("clickat <pid> <x> <y> left|right") }
+    // clickat <pid> <x> <y> left|right <expect>: an ordinary synthesized click. The element under the point is re-verified HERE, in the same
+    // call, right before the events: it must be owned by <pid> or its title/description/identifier must contain <expect>; otherwise nothing is
+    // clicked. Moves onto the point, holds the button, releases, and puts the pointer back.
+    guard argv.count >= 7, let px = Double(argv[3]), let py = Double(argv[4]) else { fail("clickat <pid> <x> <y> left|right <expect>") }
+    var hitEl: AXUIElement?
+    let hr = AXUIElementCopyElementAtPosition(AXUIElementCreateSystemWide(), Float(px), Float(py), &hitEl)
+    var hitOwner: pid_t = 0
+    if let h = hitEl { AXUIElementGetPid(h, &hitOwner) }
+    let hitBlob = hitEl.map { str($0, kAXTitleAttribute) + "|" + str($0, kAXDescriptionAttribute) + "|" + str($0, "AXIdentifier") } ?? ""
+    if hr != .success || !(hitOwner == pid || hitBlob.contains(argv[6])) {
+        print(json(["ok": false, "refused": "element under the point is not the expected target; nothing clicked", "ownerPid": hitOwner, "blob": hitBlob, "ns": now()])); exit(0)
+    }
     let right = argv[5] == "right"
     let target = CGPoint(x: px, y: py)
     let saved = CGEvent(source: nil)?.location ?? target

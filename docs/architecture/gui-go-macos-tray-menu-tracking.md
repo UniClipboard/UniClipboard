@@ -125,7 +125,7 @@ Menu.Update -> macosMenu.update -> InvokeSync(main thread):
 - **F6（安全声明与代码不符）**：头部写“不移动指针、不发按键”，但 `clickat`、`rightclick`、`hover`、`escape` 会。头部更正；`escape` 之前立即重新确认本 pid 的弹出窗口仍在。
 - **F7**：`clickat` 在 Swift 内部用同一次调用重新做 `AXUIElementCopyElementAtPosition` 的属主与身份校验，不匹配就拒绝点击。
 - **F14**：清理的每一步各自防护（`ax()` 超时返回错误行而非抛异常），一步卡住不能遗留 GUI、daemon 或 caffeinate。
-- **F16**：`tray_ax.swift` 与 `e2e/daemonget` 的源码在仓库内；运行器从源码构建（命令与源码/二进制哈希写入 provenance），二进制缺失或不是该源码构建的则失败，不再依赖 `/private/tmp` 下的预置文件。
+- **F16**：`tray_ax.swift` 与 `e2e/linux/daemonget` 的源码在仓库内；运行器从源码构建（命令与源码/二进制哈希写入 provenance），二进制缺失或不是该源码构建的则失败，不再依赖 `/private/tmp` 下的预置文件。
 - **F17**：`stateMutated` 由实际日志（`tray-open-menu-*` 记录里的 `menuFieldFilledByE2E`）推导，不再取自命令行参数。
 - **F18**：运行中 daemon 进程的可执行文件哈希与本次构建的 `uniclipd` 哈希核对，不一致则失败。
 - **其他较小问题**（2 的 `popupWindows`、publish 窗口按首次/末次出现弹出窗口界定、3b MANUAL 前的展开采样、按标题选行、死代码、watcher 收尾、`_alive` 的 `PermissionError`）按条修复；决定保留的条目在评审映射表里逐条写明原因。
@@ -172,6 +172,12 @@ Menu.Update -> macosMenu.update -> InvokeSync(main thread):
 逐次 publish（3b）：`full1` 4 次 publish 全部开始时子菜单展开，其后第一次收起采样在 0.04–0.12 秒内，重新展开在 0.09–0.17 秒；`full2` 4 次中 3 次开始时展开（收起采样 0.03–0.05 秒、重新展开 0.08–0.11 秒），第 4 次开始时已收起、不计入。每次重新展开后行均为 `tray-peer-b`、根菜单为英文。publish 返回均远小于 2 秒，主线程等待在跟踪期间得到服务。这仍是时序证据；子菜单收起的机制未独立证明，也没有声明“持续展开”。
 
 这些运行 **没有** 证明：Windows 真实托盘；更老的 macOS；其他主机的菜单栏溢出布局；右键路由之外的左键行为（左键执行应用的 `OnClick`）。
+
+### 评审后修正的运行记录（`final4-explore`，探索性，非冻结验收）
+
+- `final4-explore/full`：**失败，保留**。运行器的 `daemonget` 源码路径写错（`e2e/daemonget` 不存在，实际在 `e2e/linux/daemonget`），工具构建在启动 GUI 之前失败，目录里只有 `run.log`（当时启动失败路径还不写 assertions）。已改为从仓库源码构建并修正路径；没有退回 `/private/tmp` 下的预置二进制。
+- `final4-explore/startup-failure`：对启动失败路径的真实注入（去掉 `go`、让 `daemonget` 需要重建）：写出 `assertions.json`（`passed=false`、`phase=tools-build`），没有启动任何 GUI、daemon 或 caffeinate，没有遗留进程。
+- `final4-explore/full2`：**目标验证拒绝点击（安全拒绝，保留）**。状态项的 AX 位置 (391, 15) 上的元素是系统「登录」窗口（pid 630），`CGSessionCopyCurrentDictionary` 的 `CGSSessionScreenIsLocked` 为 1：宿主会话已锁屏。运行器没有发出任何点击；清理干净（GUI 与三个 daemon 均无遗留，无 `cleanupErrors`）。这是宿主条件，不是产品结论；按约束不解锁、不输入凭据，等会话解锁后再验收。
 
 ### 覆盖边界
 

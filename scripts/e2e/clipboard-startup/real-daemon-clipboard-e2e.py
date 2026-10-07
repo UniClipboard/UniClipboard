@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""macOS 真 daemon + 原生私有命名剪贴板；不读取/写入用户 generalPasteboard。"""
+"""Exercise a real macOS daemon on a private named pasteboard and isolated profile."""
 import argparse, hashlib, json, os, shutil, signal, sqlite3, subprocess, time, tomllib, urllib.request, uuid, zipfile
 from pathlib import Path
 
@@ -129,7 +129,7 @@ try:
         source.chmod(0o600)
         activate_text()
         rc=stop(); assert rc==0
-        cases.append({'case':fault,'pid':ready['pid'],'exit_code':rc,'register_cleared':True,'subsequent_text_sync':True,'no_failed_imports':True,'first_recovery_pid':first_pid,'same_fault_restart':True})
+        cases.append({'case':fault,'pid':ready['pid'],'exit_code':rc,'register_cleared':True,'subsequent_text_capture':True,'no_failed_imports':True,'first_recovery_pid':first_pid,'same_fault_restart':True})
     ready=start()
     assert register_count()==1, 'matching text register not retained on restart'
     # Capture a real host file with fresh contents to avoid snapshot deduplication.

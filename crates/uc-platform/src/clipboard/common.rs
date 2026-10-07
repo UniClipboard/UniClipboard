@@ -264,7 +264,6 @@ where
             Ok(stat) if stat.is_dir => Some(path),
             Ok(stat) if stat.len == 0 => {
                 debug!(
-                    path = %path.display(),
                     "Skipping zero-byte file in clipboard files rep (likely third-party clipboard-sync tool)"
                 );
                 None
@@ -272,8 +271,8 @@ where
             Ok(_) => Some(path),
             Err(err) => {
                 warn!(
-                    error = %err,
-                    path = %path.display(),
+                    io_error_kind = ?err.kind(),
+                    os_code = err.raw_os_error(),
                     "Failed to stat clipboard file, skipping"
                 );
                 None
@@ -699,8 +698,8 @@ impl CommonClipboardImpl {
                     Ok(m) => m,
                     Err(err) => {
                         warn!(
-                            error = %err,
-                            path = %path.display(),
+                            io_error_kind = ?err.kind(),
+                            os_code = err.raw_os_error(),
                             "Failed to stat clipboard image file"
                         );
                         continue;
@@ -708,7 +707,6 @@ impl CommonClipboardImpl {
                 };
                 if meta.len() == 0 || meta.len() > MAX_IMAGE_FILE_BYTES {
                     debug!(
-                        path = %path.display(),
                         size_bytes = meta.len(),
                         threshold = MAX_IMAGE_FILE_BYTES,
                         "Skipping clipboard image file (size out of safe range)"
@@ -716,7 +714,6 @@ impl CommonClipboardImpl {
                     continue;
                 }
                 debug!(
-                    path = %path.display(),
                     size_bytes = meta.len(),
                     mime = mime,
                     "Captured image-from-file rep as LocalFile source (no inline read; blob ingest happens during normalize)"

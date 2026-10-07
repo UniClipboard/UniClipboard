@@ -157,7 +157,7 @@ def main():
                 return p
             init = run_cli("space", "init", "--passphrase", "smoke-passphrase-1895", "--device-name", "smoke")
             assert init.returncode == 0, "uniclip space init failed (see cliTrace)"
-            marker = f"smoke-capture-{int(time.time())}"
+            marker = f"smokecapture{int(time.time())}"  # search is exact-token: one alphanumeric token
             subprocess.run(["pbcopy"], input=marker, text=True, check=True)
             found = False
             for _ in range(20):

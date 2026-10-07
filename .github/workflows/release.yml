@@ -68,7 +68,7 @@ jobs:
       # is listed in docs/architecture/gui-go-tauri-retirement.md.
       - name: Desktop release pipeline is not available
         run: |
-          echo "::error title=Release blocked::The Go/Wails desktop host has no release pipeline yet (signed packaging, updater signatures, installers). See docs/architecture/gui-go-tauri-retirement.md."
+          echo "::error title=Release blocked::The Go/Wails desktop host has no release pipeline yet (signed packaging, updater signatures, installers). Tracked in #1895 to #1899; see docs/architecture/gui-go-tauri-retirement.md."
           exit 1
 
       - name: Checkout repository

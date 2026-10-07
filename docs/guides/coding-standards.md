@@ -253,100 +253,12 @@ function DeviceList() {
 
 ## Backend (Rust)
 
-### Tauri State Management
+### Transport Layer Architecture
 
-**CRITICAL**: All state accessed via `tauri::State<'_, T>` in commands MUST be registered with `.manage()` before the app starts.
+**CRITICAL**: Transport entry points (daemon HTTP/WS handlers and the host command handlers in `apps/gui-go`) are thin adapters. All business logic MUST be in the Use Cases layer; the adapters only parse input, call a use case or facade, and serialize the result. Never reach into Ports directly from the transport layer.
 
-**Common Error**: `state not managed for field 'X' on command 'Y'. You must call .manage() before using this command`
+The former Tauri command layer (state registration with `.manage()`, `runtime.usecases()` accessor, `map_err`) was retired together with the Tauri host; see [gui-go-tauri-retirement](../architecture/gui-go-tauri-retirement.md).
 
-**Root Cause**: When a Tauri command uses `state: tauri::State<'_, MyType>` to access shared state, `MyType` must be registered in the Builder setup using `.manage()`.
-
-**Correct Pattern**:
-
-```rust
-// ❌ WRONG - AppRuntimeHandle created internally, never managed
-// main.rs
-fn run_app(setting: Setting) {
-    Builder::default()
-        .setup(|app| {
-            // AppRuntime creates its own channels internally
-            let runtime = AppRuntime::new(...).await?;
-            // No .manage() call - commands will fail!
-            Ok(())
-        })
-}
-
-// ✅ CORRECT - Create channels before setup, manage the handle
-// main.rs
-fn run_app(setting: Setting) {
-    // Create channels FIRST
-    let (clipboard_cmd_tx, clipboard_cmd_rx) = mpsc::channel(100);
-    let (p2p_cmd_tx, p2p_cmd_rx) = mpsc::channel(100);
-
-    // Create handle with senders
-    let handle = AppRuntimeHandle::new(clipboard_cmd_tx, p2p_cmd_tx, Arc::new(setting));
-
-    Builder::default()
-        .manage(handle)  // Register BEFORE setup
-        .setup(move |app| {
-            // Pass receivers to runtime
-            AppRuntime::new_with_channels(..., clipboard_cmd_rx, p2p_cmd_rx).await
-        })
-}
-```
-
-**Key Rules**:
-
-1. **Create channels before Builder** - Senders and receivers must be created outside `.setup()`
-2. **Register with .manage()** - Any type accessed via `tauri::State` must be managed
-3. **Clone senders, move receivers** - Senders can be cloned for the handle, receivers move to the runtime
-4. **Use Arc for shared immutable data** - Config and other read-only data should use `Arc<T>`
-
-**Rationale**: Tauri's state system requires explicit registration to ensure thread safety and proper lifetime management. Commands can only access state that was registered before the app started.
-
-### Commands Layer Architecture
-
-**CRITICAL**: The Commands Layer (`uc-tauri/src/commands/`) MUST follow hexagonal architecture rules. All business logic MUST be in Use Cases layer.
-
-**Mandatory Rules**:
-
-1. **Always use UseCases accessor** - Commands MUST call `runtime.usecases().xxx()` to get use case instances
-2. **Never access Ports directly** - Commands MUST NOT call `runtime.deps.xxx` ports
-3. **Use map_err for errors** - All error conversion must use the `map_err` utility
-4. **Convert parameters** - Frontend types → domain models before passing to use cases
-5. **Convert results** - Domain models → DTOs before returning to frontend
-
-```rust
-// ✅ CORRECT - Through UseCases accessor
-use uc_core::security::model::Passphrase;
-use crate::commands::map_err;
-
-#[tauri::command]
-pub async fn initialize_encryption(
-    runtime: State<'_, AppRuntime>,
-    passphrase: String,
-) -> Result<(), String> {
-    let uc = runtime.usecases().initialize_encryption();
-    uc.execute(Passphrase(passphrase))
-        .await
-        .map_err(map_err)?;
-    Ok(())
-}
-
-// ❌ FORBIDDEN - Direct Port access
-#[tauri::command]
-pub async fn initialize_encryption(
-    runtime: State<'_, AppRuntime>,
-    passphrase: String,
-) -> Result<(), String> {
-    // Directly calling ports - VIOLATES ARCHITECTURE
-    runtime.deps.encryption.derive_kek(...).await?;
-    runtime.deps.key_material.store_keyslot(...).await?;
-    Ok(())
-}
-```
-
-**Key Rule**: Commands Layer is a thin adapter layer. It MUST NOT contain business logic. All business logic belongs in Use Cases. See [Commands Layer Specification](../architecture/commands-layer-specification.md) for complete details.
 
 ## General Development Principles
 
@@ -373,8 +285,7 @@ pub async fn initialize_encryption(
 - ☐ Event handlers use `match` instead of `if let` for error cases
 - ☐ Fixed pixel values replaced with Tailwind utilities
 - ☐ Components tested in both light and dark themes
-- ☐ Tauri state registered with `.manage()`
-- ☐ Commands use UseCases accessor (not direct Port access)
+- ☐ Transport handlers call use cases (no direct Port access)
 - ☐ Problem analyzed at root cause level, not symptom level
 - ☐ No over-engineering or premature abstractions
 
@@ -383,8 +294,7 @@ pub async fn initialize_encryption(
 - ☐ Does this code handle all error cases?
 - ☐ Are event failures logged and emitted?
 - ☐ Are cross-platform concerns addressed?
-- ☐ Is state properly registered with Tauri?
-- ☐ Do commands follow hexagonal architecture (UseCases accessor)?
+- ☐ Do transport handlers follow hexagonal architecture (call use cases, no direct Port access)?
 - ☐ Does this fix the root cause, not symptoms?
 - ☐ Is this the minimum solution, or over-engineered?
 

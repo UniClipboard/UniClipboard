@@ -24,11 +24,11 @@
 
 ## 打包设计
 
-1. 工具链：`linuxdeploy-07333c6`（SHA-256 常量与 `scripts/linux-appimage-tools.mjs` 同源，脚本从该文件解析，不另存一份）；GTK 插件为固定版 Wails 内嵌脚本；成品封装继续使用已固定标签的 `appimagetool 1.9.0`，并校验其 SHA-256。
+1. 工具链：`linuxdeploy-07333c6`（固定值现在写在 `e2e/package_linux.py` 的 `LINUXDEPLOY_RELEASE` / `LINUXDEPLOY_SHA256`；原先共用的 `scripts/linux-appimage-tools.mjs` 已随 Tauri 打包器移除）；GTK 插件为固定版 Wails 内嵌脚本；成品封装继续使用已固定标签的 `appimagetool 1.9.0`，并校验其 SHA-256。
 2. `linuxdeploy --appdir … -e usr/bin/uniclipboard -e usr/bin/uniclipd --plugin gtk`，不使用 `--output appimage`。
 3. WebKit：复制三件辅助文件（`WebKitWebProcess`、`WebKitNetworkProcess`、`WebKitGPUProcess`，若存在）与 injected bundle 目录；对 AppDir 内的 `libwebkit2gtk-4.1.so.*` 做 `/usr` → `././` 的等长替换。`AppRun` 在导出环境后 `cd "$APPDIR"`，使相对路径可解析。这是 Tauri bundler 的既有做法，不是新发明；副作用见失败方式 F6。
 4. `AppRun`：自有的极短脚本，依次 source `apprun-hooks/*.sh`、设置 `GIO_MODULE_DIR`（取代 Tauri 路径里 `process_environment.rs` 做的事；插件只设置追加语义的 `GIO_EXTRA_MODULES`，见策略文档「GIO 模块 ABI 混用」）、导出 `UC_APPIMAGE_ORIGINAL_CWD`、`exec usr/bin/uniclipboard "$@"`。
-5. daemon 来自 `cargo build --locked --release -p uc-daemon --bin uniclipd`（与 `scripts/prepare-sidecars.mjs` 相同的命令与 `[profile.release]`），Engine 来自 `Cargo.lock` 记录的不可变 git 修订。构建证据写入 `build-evidence.txt`：仓库 HEAD、daemon 相关源码是否有未提交改动、Engine 修订与 `Cargo.lock` 条目、`rustc -Vv`、产物 SHA-256。
+5. daemon 来自 `cargo build --locked --release -p uc-daemon --bin uniclipd`（与旧 Tauri 外壳的 sidecar 准备脚本、现在的 `scripts/stage-daemon.mjs` 相同的命令与 `[profile.release]`），Engine 来自 `Cargo.lock` 记录的不可变 git 修订。构建证据写入 `build-evidence.txt`：仓库 HEAD、daemon 相关源码是否有未提交改动、Engine 修订与 `Cargo.lock` 条目、`rustc -Vv`、产物 SHA-256。
 
 ## 失败方式（先于实现列出）
 

@@ -2,6 +2,8 @@
 
 本文档说明如何使用项目的版本管理和发布系统。
 
+> **当前状态：发布被阻塞。** 旧 Tauri 宿主已退役，Go/Wails 宿主的发布流水线（macOS 签名、公证与 dmg、更新签名 `.sig` 签署器、各平台安装包）尚未建立，`release.yml` 被有意阻塞。下文关于安装包、签名与渠道的描述是旧流水线的设计记录，在新流水线落地前不能据此发布。权威记录见 [`docs/architecture/gui-go-tauri-retirement.md`](architecture/gui-go-tauri-retirement.md)。版本号脚本仍然可用。
+
 ## 版本管理脚本
 
 项目提供了自动化的版本管理脚本 `scripts/bump-version.js`，用于统一管理版本号。
@@ -39,8 +41,9 @@ bun run version:bump --type patch --channel alpha --dry-run
 该脚本会自动更新以下文件中的版本号：
 
 - `package.json`
-- `apps/gui/src-tauri/tauri.conf.json`
-- `apps/gui/src-tauri/Cargo.toml`
+- `apps/gui-go/app.json`
+- `Cargo.toml`
+- `Cargo.lock`
 
 参数说明：
 
@@ -159,7 +162,7 @@ R2 始终是安装包的权威来源。已登记到 FlareRelease 的 Desktop 安
 - **stable / beta / rc**：这些渠道的 Release 先以 `draft: true` 创建，需要维护者在 GitHub UI 上手动点击发布，这才是真正的 `release.published` 事件（人工操作，会正常级联触发其他 workflow）。`mirror-desktop-gitcode.yml` 新增了 `on: release: types: [published]` 入口，由一个不声明 `environment` 的小 job（`redispatch-from-release`）接住这个事件，从 tag_name 推导 version/channel 后，同样用 `gh api .../dispatches -f ref=main` 重新发起一次独立 run。这同时解决了"引用的 ref 不是 main"和"draft 还没发布就去镜像"两个问题——只有真正发布后才会触发，且触发时的 job ref 已经是 main。
 - 两条路径最终都落到同一个 `mirror` job（`environment: mirror`），该 job 本身只接受 `workflow_dispatch`/`workflow_call` 的显式 `inputs`（`if: github.event_name != 'release'`，避免被 `release` 事件直接选中）；镜像的制品始终是 `inputs.tag_name` 指向的、已发布的那个不可变 Release，不是 main 分支当前内容。两个自动入口都不传 `non_blocking`（沿用默认值 `false`）：它们各自都是独立的 workflow run，不会影响 `release.yml` 自身的结论，也不影响其他渠道，所以没有理由再把真实的镜像失败在它自己的 run 里也用 `continue-on-error` 悄悄降级成 `::warning`——一次真正的镜像失败现在会让那次 dispatch 出来的 run 本身失败，可见。`non_blocking: true` 仍然保留给手动 `workflow_dispatch` 的人工重跑场景按需使用。
 - 该工作流也支持直接 `workflow_dispatch` 手动重跑或补镜像旧 tag（ref 必须选 `main`）——此时它会从 GitHub Release 重新下载安装包，并用仓库里相同的两个脚本重新计算登记 payload，再通过同一条 SSH 中转路径执行。`mirror` job 在实际下载/镜像之前会先校验这次要镜像的 Release 确实已发布（非 draft）、且 `tag_name`/`version`/`channel` 三者互相一致、`channel` 是 `stable`/`alpha`/`beta`/`rc` 之一——这层校验对自动入口和手动入口一视同仁，手动填错参数或指向一个还在 draft 的 release 会在这一步被直接拒绝，不会走到下载/上传。
-- **GitHub 官方文档没有说明 `release` 事件具体用哪个版本的 workflow 文件**（只明确写了该事件的 `GITHUB_SHA`/`GITHUB_REF` 指向被打标签的那个 commit，不是 main；不能照抄其他没有天然关联 ref 的事件小节"文件必须在默认分支"这条规则去类比，那条规则的前提对 `release` 不成立）。因此不能假设"把这次修复合并到 main 之后，所有未来 tag 的 `release.published` 都自动用新版 workflow"——稳妥的假设是**新 tag 自己的提交要已经包含这次修复**（先合并到 main，再从 main 切新 tag）。给一个历史 tag（提交本身不包含修复）补做任何依赖新逻辑的操作，唯一确定路径是显式 `workflow_dispatch`（ref=main）；不要移动或重打那个历史 tag。
+- **GitHub 官方文档没有说明 `release` 事件具体用哪个版本的 workflow 文件**（只明确写了该事件的 `GITHUB_SHA`/`GITHUB_REF` 指向被打标签的那个 commit，不是 main；不能照抄其他没有天然关联 ref 的事件小节"文件必须在默认分支"这条规则去类比，那条规则的前提对 `release` 不成立）。因此不能假设"把这次修复合并到 main 之后，所有未来 tag 的 `release.published` 都自动用新版 workflow"——稳妥的假设是 **新 tag 自己的提交要已经包含这次修复**（先合并到 main，再从 main 切新 tag）。给一个历史 tag（提交本身不包含修复）补做任何依赖新逻辑的操作，唯一确定路径是显式 `workflow_dispatch`（ref=main）；不要移动或重打那个历史 tag。
 
 **前置条件**：FlareRelease 的登记 payload 必须包含每个制品的 `sha256`（`scripts/build-flare-release-registration.js` 已经计算并发送）；`PUT /api/mirrors` 要求制品的已登记 `sha256` 非空且与镜像上传的字节一致，否则拒绝（`Mirror sha256 does not match the artifact`）。
 

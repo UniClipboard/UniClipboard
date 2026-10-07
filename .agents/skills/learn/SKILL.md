@@ -81,7 +81,7 @@ Do NOT commit automatically — let the user decide when to commit.
 |----------------|--------|
 | `VISION.md` | Architectural principles, locked decisions, product direction |
 | `docs/agent/architecture-rules.md` | Cross-crate dependency rules, commit structure |
-| `docs/agent/rust-tauri-rules.md` | Detailed Rust/Tauri coding patterns |
+| `docs/agent/rust-rules.md` | Detailed Rust coding patterns |
 | Codex memory | User preferences and cross-session context that are not repository rules |
 | ADR docs | Decision rationale with full context |
 

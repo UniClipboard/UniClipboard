@@ -1,6 +1,6 @@
 # Project Overview
 
-**UniClipboard Desktop** is a privacy-first, cross-device clipboard synchronization tool. It combines a React/Tauri desktop UI with a modular Rust backend and daemon so devices can pair, sync clipboard content, and manage encrypted local history.
+**UniClipboard Desktop** is a privacy-first, cross-device clipboard synchronization tool. It combines a React desktop UI hosted by a Go/Wails shell with a modular Rust backend and daemon so devices can pair, sync clipboard content, and manage encrypted local history.
 
 ## Technology Stack
 
@@ -9,7 +9,7 @@
 | **Frontend**         | React 19 + TypeScript + Vite  | UI and user interaction              |
 | **State Management** | Redux Toolkit + RTK Query     | Client state and API caching         |
 | **UI Components**    | Tailwind CSS + Shadcn/ui      | Responsive, accessible components    |
-| **Desktop Shell**    | Rust + Tauri 2                | GUI 壳适配（commands, tray, panel）  |
+| **Desktop Shell**    | Go + Wails v3 (`apps/gui-go`) | 桌面宿主（窗口、托盘、更新、打包）   |
 | **Daemon**           | Rust (axum + tokio)           | 后台常驻服务，承载全部业务逻辑       |
 | **Database**         | SQLite + Diesel ORM           | Local clipboard history storage      |
 | **Realtime / IPC**   | Daemon HTTP + WebSocket       | GUI/CLI 通过 127.0.0.1 与 daemon 通信 |
@@ -35,7 +35,7 @@ UniClipboard 采用 **六边形架构（Ports & Adapters）**，运行时分为�
 
 ```
 ┌─────────────────────────────────────┐     ┌────────────────────┐
-│         GUI (Tauri + React)         │     │   CLI (uniclip)    │
+│         GUI (Go/Wails + React)       │     │   CLI (uniclip)    │
 │  - Quick Panel / Tray / Settings    │     │  - copy/paste/list │
 │  - 不打开 SQLite、不运行 iroh       │     │  - search/status   │
 └──────────────────┬──────────────────┘     └─────────┬──────────┘
@@ -65,7 +65,7 @@ UniClipboard 采用 **六边形架构（Ports & Adapters）**，运行时分为�
 ## Crate Structure
 
 ```
-src-tauri/crates/
+crates/
 # ── 领域核心层（零外部依赖）──
 ├── uc-core/              # 纯领域模型 + Port trait 定义
 ├── uc-observability/     # 双输出 tracing、profile 过滤、分析门控
@@ -86,7 +86,6 @@ src-tauri/crates/
 ├── uc-daemon-client/     # Daemon HTTP/WS 客户端（GUI + CLI 共用）
 # ── GUI 桌面层 ──
 ├── uc-desktop/           # 桌面宿主逻辑（GUI 框架无关）
-├── uc-tauri/             # Tauri 壳适配（commands, tray, panel）
 # ── CLI ──
 ├── uc-cli/               # uniclip 命令行工具
 ├── uc-cli-macros/        # CLI proc-macro 辅助
@@ -150,7 +149,7 @@ Remote-origin events avoid re-capture loops via origin tracking
 - **Bun** (package manager): `curl -fsSL https://bun.sh/install | bash`
 - **Rust**: install via `rustup`
 - **Node.js** (via nvm or system package manager)
-- **Tauri CLI**: `cargo install tauri-cli`
+- **Go**: version declared in `apps/gui-go/go.mod` (the desktop host is a Go/Wails module)
 
 ### Quick Start
 
@@ -161,32 +160,33 @@ bun install
 # Frontend-only dev server
 bun run dev
 
-# Full Tauri app with Rust backend
-bun run tauri:dev
+# Full desktop app (Go/Wails host + daemon)
+bun wails:dev
 
 # Frontend tests
 bun run test
 
 # Rust tests
-(cd apps/gui/src-tauri && cargo test --workspace)
+cargo test --workspace
 
-# Build for production
-bun run tauri build
+# Local macOS build and package
+apps/gui-go/build.sh
 ```
 
 ### Directory Navigation
 
 ```
 uniclipboard-desktop/
-├── apps/gui/                 # Desktop GUI (Tauri + React)
+├── apps/gui/                 # Shared React frontend sources of the desktop GUI
 │   ├── src/                 # Frontend (React + TypeScript)
 │   │   ├── pages/           # Route pages (Dashboard, Devices, Settings)
 │   │   ├── components/      # Reusable UI components
 │   │   ├── store/           # Redux slices
-│   │   └── api/             # Tauri command invocations
-│   └── src-tauri/           # Tauri shell: bin entrypoint, tauri.conf.json, icons
+│   │   └── api/             # Host command invocations (frozen contract)
 │
-├── crates/                  # Rust library crates (see above), incl. uc-tauri (Tauri adapter)
+├── apps/gui-go/             # Go/Wails desktop host: app.json (identity, version, updater key), icons, packaging
+│
+├── crates/                  # Rust library crates (see above)
 │
 ├── docs/                    # Documentation (this file)
 └── CLAUDE.md                # Instructions for Claude Code
@@ -209,15 +209,15 @@ uniclipboard-desktop/
 - Swap implementations (e.g., PostgreSQL → SQLite) without changing use cases
 - Clear separation of concerns enforced by Rust module system
 
-### Why Tauri 2?
+### Why a Go/Wails host?
 
-**Problem**: Electron is resource-heavy and has limited native access.
+**Problem**: Electron is resource-heavy, and the former Tauri host (retired, see [gui-go-tauri-retirement](architecture/gui-go-tauri-retirement.md)) tied the GUI process to the Rust workspace.
 
-**Solution**: Tauri 2 uses Rust backend + Web frontend:
+**Solution**: the desktop shell is a Go/Wails v3 module that uses the system WebView and talks to the Rust daemon over loopback HTTP/WebSocket:
 
-- **Smaller bundle size**: ~3MB vs ~200MB (Electron)
-- **Better performance**: Native Rust code for heavy operations
-- **System access**: Rust crates for clipboard, file system, networking
+- **Small footprint**: system WebView instead of a bundled browser
+- **Clear process boundary**: all business logic stays in the daemon
+- **Native integration**: Wails services plus a native GPUI quick panel on macOS
 
 ### Why iroh for P2P?
 
@@ -314,17 +314,17 @@ Large clipboard items (images, rich text) stored separately:
 
 ```bash
 # Run all Rust tests
-cd apps/gui/src-tauri && cargo test --workspace
+cargo test --workspace
 
 # Run specific crate tests
-cd apps/gui/src-tauri && cargo test -p uc-core
-cd apps/gui/src-tauri && cargo test -p uc-app
+cargo test -p uc-core
+cargo test -p uc-app
 
 # Run integration tests
-cd apps/gui/src-tauri && cargo test --test '*_integration_test' -- --ignored
+cargo test --test '*_integration_test' -- --ignored
 
 # Run with logging
-cd apps/gui/src-tauri && RUST_LOG=debug cargo test --workspace
+RUST_LOG=debug cargo test --workspace
 ```
 
 ## Further Reading

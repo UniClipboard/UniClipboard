@@ -1,5 +1,7 @@
 # 设备组选择的本机多配置测试
 
+> **历史文档（已退役）**：本文描述的 Tauri 宿主（Tauri 适配 crate 与 `src-tauri` 打包壳）已被 Go/Wails 宿主取代，内容仅供追溯，不再随代码更新。当前桌面宿主见 `apps/gui-go/README.md`，退役记录见 `docs/architecture/gui-go-tauri-retirement.md`。
+
 ## 范围
 
 本工具在 macOS 同时运行四或五个真实 Tauri 窗口及对应后台。使用真实 Engine 和加密资料；没有 Windows 或移动设备验收。

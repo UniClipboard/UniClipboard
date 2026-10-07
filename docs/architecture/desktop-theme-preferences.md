@@ -1,5 +1,7 @@
 # desktop 本地主题偏好
 
+> **历史文档（已退役）**：本文描述的 Tauri 宿主（Tauri 适配 crate 与 `src-tauri` 打包壳）已被 Go/Wails 宿主取代，内容仅供追溯，不再随代码更新。当前桌面宿主见 `apps/gui-go/README.md`，退役记录见 `docs/architecture/gui-go-tauri-retirement.md`。
+
 Omarchy 主题开关由 desktop 的 `uc-tauri::desktop_theme` 模块持有。它不属于 Engine，不进入 daemon 设置接口，也不参与设备间同步。
 
 ## 存储与所有权

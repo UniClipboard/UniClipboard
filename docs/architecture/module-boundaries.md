@@ -21,7 +21,7 @@ This document defines the **responsibilities and boundaries** for each crate in 
 | `uc-daemon`        | Daemon runtime + `uniclipd` binary      | `uc-bootstrap` + webserver + all      | ❌ GUI frameworks (Tauri/AppKit)   |
 | `uc-daemon-client` | HTTP/WS client to daemon                | contract + process                    | ❌ iroh, diesel, sqlite            |
 | `uc-desktop`       | Desktop host logic (GUI-framework-agnostic) | daemon-client + contract + process | ❌ Tauri, AppKit, egui             |
-| `uc-tauri`         | Tauri shell adapter (commands, tray)    | `uc-desktop` + daemon-client + contract | ❌ `uc-application` directly     |
+| 桌面宿主（Go/Wails，非 crate） | Desktop shell adapter (windows, tray) | `uc-desktop` + daemon-client + contract | ❌ `uc-application` directly     |
 | `uc-cli`           | CLI `uniclip` binary                    | daemon-client + contract + process    | ❌ iroh, diesel (release builds)   |
 
 ## uc-core (Domain Layer)
@@ -409,7 +409,9 @@ When reviewing `uc-platform` code:
 - ☐ Is this platform-specific? (should be yes)
 - ☐ Does this implement a Port trait? (should be yes)
 
-## uc-tauri (GUI Shell Layer)
+## GUI Shell Layer (formerly the Tauri shell crate)
+
+> The Tauri shell crate was retired; the desktop host is now the Go/Wails module `apps/gui-go` (see `docs/architecture/gui-go-tauri-retirement.md`). The rules below describe the shell layer's boundary and still apply to any GUI shell.
 
 ### Purpose
 
@@ -486,7 +488,7 @@ pub fn load_config() -> Result<AppConfig, ConfigError> {
 
 ### Code Review Checklist
 
-When reviewing `uc-tauri` code:
+When reviewing GUI shell code:
 
 - ☐ Is business logic in `bootstrap/`? (should be no)
 - ☐ Does `config.rs` only return facts? (should be yes)
@@ -526,7 +528,7 @@ When reviewing `uc-tauri` code:
                 ↑ consumed by
 ┌───────────────┼──────────────────┬──────────────────────┐
 │               │                  │                      │
-│  uc-daemon    │    uc-tauri      │      uc-cli          │
+│  uc-daemon    │    GUI shell     │      uc-cli          │
 │  (uniclipd)  │  (GUI shell)     │  (uniclip CLI)       │
 └───────────────┘──────────────────┘──────────────────────┘
 ```

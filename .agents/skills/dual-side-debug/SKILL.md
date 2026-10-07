@@ -7,7 +7,7 @@ description: Inspect uniclipboard logs from BOTH the macOS host and the mounted 
 
 Inspect logs from the macOS host and the Windows peer in a single, time-aligned view.
 
-This project is a Tauri desktop app where two peers (macOS + Windows) sync clipboard / files over an iroh-based network. The Windows machine's `AppData/Local` is exposed to the Mac via SMB and mounted at `/tmp/win-local/`, so both sides' JSONL logs are reachable from this host.
+This project is a Go/Wails desktop app where two peers (macOS + Windows) sync clipboard / files over an iroh-based network. The Windows machine's `AppData/Local` is exposed to the Mac via SMB and mounted at `/tmp/win-local/`, so both sides' JSONL logs are reachable from this host.
 
 The helper script lives at `.agents/skills/dual-side-debug/dual-logs.sh`. It is the **only** thing you should need to invoke for log work — do not hand-roll `ls`/`tail`/`jq` pipelines unless the script can't express what you need.
 
@@ -17,7 +17,7 @@ The helper script lives at `.agents/skills/dual-side-debug/dual-logs.sh`. It is 
   — Apple convention (`~/Library/Logs/<app>`); the profile dir **is** the log dir, there is **no `logs/` subdir** on macOS.
 * **Windows logs (mounted)**: `/tmp/win-local/app.uniclipboard.desktop[-<WIN_PROFILE>]/logs/uniclipboard-{gui,daemon,cli}.json.YYYY-MM-DD`
   — Windows keeps the `logs/` subdir under the data-local app root.
-* **Per-role files** (since the platform-log-dir split): each process writes its own family — `gui` (Tauri host), `daemon` (`uniclipd`), `cli` (`uniclip`) — daily rotation, 7-day retention. `dual-logs.sh` picks the **newest by mtime** per side, i.e. the busiest process (usually the daemon for sync/pairing/transfer). The legacy single-file name `uniclipboard.json.YYYY-MM-DD` is still matched for old logs. For per-role single-host digging, use the **`local-log-debug`** skill instead.
+* **Per-role files** (since the platform-log-dir split): each process writes its own family — `gui` (Go/Wails host), `daemon` (`uniclipd`), `cli` (`uniclip`) — daily rotation, 7-day retention. `dual-logs.sh` picks the **newest by mtime** per side, i.e. the busiest process (usually the daemon for sync/pairing/transfer). The legacy single-file name `uniclipboard.json.YYYY-MM-DD` is still matched for old logs. For per-role single-host digging, use the **`local-log-debug`** skill instead.
 * Format: **JSON Lines**. Each line has at least `timestamp` (UTC, ISO-8601 with `Z`, always the first field), `level`, `target`, `message`, `span`, `device_id`, plus structured fields.
 * The date in the filename is **UTC**, not local time. A file named `...2026-04-25` can be the live file while it is still 2026-04-24 in PDT.
 
@@ -74,7 +74,7 @@ Mac and Windows each have their own active profile, and they are **not always th
 
 ### Mac profile
 
-Default is **`dev`** (`package.json`'s `tauri:dev` script sets `UC_PROFILE=dev`). Treat `dev` as the assumed Mac profile unless the user said otherwise. The user sometimes runs other profiles (`a`, `b` for `tauri:dev:peerA`/`peerB`, or ad-hoc names like `abc`). Override with `--profile <name>`.
+Default is **`dev`** (`package.json`'s `wails:dev` script sets `UC_PROFILE=dev`). Treat `dev` as the assumed Mac profile unless the user said otherwise. The user sometimes runs other profiles (`a`, `b` for `wails:dev:profile a`/`b`, or ad-hoc names like `abc`). Override with `--profile <name>`.
 
 ### Windows profile
 

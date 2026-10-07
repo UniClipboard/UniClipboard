@@ -72,6 +72,13 @@ const HISTORY_EXCLUDES = [
   'docs/security-audit.md',
   ':(glob)docs/architecture/adr-*.md',
   'docs/architecture/gui-go-tauri-retirement.md',
+  // Whole-file historical records of the retired host; each carries a banner saying so.
+  'docs/guides/github-releases-updater.md',
+  'docs/guides/device-group-gui-testing.md',
+  'docs/architecture/commands-layer-specification.md',
+  'docs/architecture/commands-status.md',
+  'docs/architecture/bootstrap.md',
+  'docs/architecture/desktop-theme-preferences.md',
   'scripts/architecture/check-tauri-retired.mjs',
 ]
 

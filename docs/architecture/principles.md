@@ -255,7 +255,7 @@ Each crate has a specific responsibility:
 | `uc-bootstrap`     | Composition root (DI wiring)       | All core/app/infra/platform    | ❌ Business decisions           |
 | `uc-daemon`        | Daemon runtime + `uniclipd` binary | `uc-bootstrap` + webserver     | ❌ GUI frameworks               |
 | `uc-desktop`       | Desktop host logic                 | daemon-client/contract/process | ❌ Tauri/AppKit/egui            |
-| `uc-tauri`         | Tauri shell adapter                | `uc-desktop` + daemon-client   | ❌ `uc-application` directly    |
+| GUI shell (Go/Wails host) | Desktop shell adapter       | `uc-desktop` + daemon-client   | ❌ `uc-application` directly    |
 | `uc-daemon-client` | HTTP/WS client to daemon           | contract + process             | ❌ iroh, diesel, sqlite         |
 | `uc-cli`           | CLI (`uniclip`)                    | daemon-client + contract       | ❌ iroh, diesel (in release)    |
 
@@ -263,7 +263,7 @@ See [Module Boundaries](module-boundaries.md) for detailed rules.
 
 ## Commands Layer (Driving Adapter)
 
-The **Commands Layer** (`uc-tauri/src/commands/`) is a **Driving Adapter** that translates external requests into use case executions.
+The **Commands Layer** (host command handlers; formerly the retired Tauri shell crate) is a **Driving Adapter** that translates external requests into use case executions.
 
 Since ADR-008, most commands delegate to the daemon via HTTP (`uc-daemon-client`). Only a small set of system-level operations (window management, tray, autostart) remain as direct Tauri commands.
 
@@ -324,7 +324,7 @@ pub async fn initialize_encryption(
 
 ## How Bootstrap Works
 
-**Bootstrap** is the "wiring operator" that assembles everything. It lives in `uc-bootstrap` (not `uc-tauri`):
+**Bootstrap** is the "wiring operator" that assembles everything. It lives in `uc-bootstrap` (not in a GUI shell):
 
 ```rust
 // uc-bootstrap/src/assembly.rs
@@ -742,7 +742,7 @@ pub type InitializeEncryptionUseCase = InitializeEncryption<
 #### UseCases Accessor
 
 ```rust
-// uc-tauri/src/bootstrap/runtime.rs
+// retired Tauri shell: bootstrap/runtime.rs
 impl UseCases<'_> {
     pub fn initialize_encryption(&self) -> InitializeEncryptionUseCase {
         InitializeEncryptionUseCase::new(

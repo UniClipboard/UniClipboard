@@ -39,7 +39,7 @@ AppImage 文件 = type2 runtime（一个静态 ELF）+ SquashFS。runtime 提供
 | arm64 | `runtime-aarch64` | `b4ff0030242d0c3bb12ce40541828303cf167493f4793456f0436edd6255c39d` | 936456 | 183（AArch64） |
 | amd64 | `runtime-x86_64` | `156f4bdbde9c52d01814600013e0a273f0118dc2de98975f3c8c63427ec79074` | 944632 | 62（x86-64） |
 
-pin 的位置：`apps/gui-go/e2e/package_linux.py` 中 `APPIMAGETOOL` 旁边的 `RUNTIME*`。不放进 `scripts/linux-appimage-tools.mjs`：那个文件只服务 Tauri 的 AppImage 打包，Tauri 不能传 `--runtime-file`，放进去只会是没人读取的 pin。
+pin 的位置：`apps/gui-go/e2e/package_linux.py` 中 `APPIMAGETOOL` 旁边的 `RUNTIME*`。不放进旧的 `scripts/linux-appimage-tools.mjs`（已随 Tauri 打包器移除）：那个文件只服务 Tauri 的 AppImage 打包，Tauri 不能传 `--runtime-file`。
 
 可变 URL 的边界：`continuous` 在下一次上游构建后会换成别的字节。此后：
 

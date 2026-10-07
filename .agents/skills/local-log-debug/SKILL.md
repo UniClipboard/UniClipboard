@@ -38,7 +38,7 @@ are written **per role** so co-resident processes never share a file.
   * **Windows**: `%LOCALAPPDATA%\<app>\logs\`
   * **portable build**: `<exe>/data/logs/`
 * Per-role files, daily rotation, **7-day retention** (older pruned on start):
-  * `uniclipboard-gui.json.<UTC-date>` — the Tauri GUI host (`uniclipboard`)
+  * `uniclipboard-gui.json.<UTC-date>` — the GUI host (Go/Wails)
   * `uniclipboard-daemon.json.<UTC-date>` — the detached `uniclipd` daemon
   * `uniclipboard-cli.json.<UTC-date>` — the `uniclip` CLI
 * Format: **JSON Lines**. Every line has `timestamp` (UTC ISO-8601, ends `Z`, and
@@ -54,7 +54,7 @@ are written **per role** so co-resident processes never share a file.
 ### Profile resolution
 
 The app dir gets a `-<profile>` suffix from `UC_PROFILE`. The local dev default
-is **`dev`** (`package.json`'s `tauri:dev` sets `UC_PROFILE=dev`), so the script
+is **`dev`** (`package.json`'s `wails:dev` sets `UC_PROFILE=dev`), so the script
 assumes `dev`. Override with `--profile <name>`, or `--profile default` for the
 no-suffix `app.uniclipboard.desktop` dir.
 

@@ -1,5 +1,7 @@
 # Bootstrap System
 
+> **历史文档（已退役）**：本文描述的 Tauri 宿主（Tauri 适配 crate 与 `src-tauri` 打包壳）已被 Go/Wails 宿主取代，内容仅供追溯，不再随代码更新。当前桌面宿主见 `apps/gui-go/README.md`，退役记录见 `docs/architecture/gui-go-tauri-retirement.md`。
+
 The **Bootstrap module** is the "wiring operator" that assembles all infrastructure and platform implementations into the application layer. It is the **only place** in the codebase allowed to depend on all implementation layers simultaneously.
 
 ## Core Principles

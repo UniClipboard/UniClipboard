@@ -156,7 +156,7 @@ When cloning from a reference app or screenshot:
 - Use elevation for depth instead of shadows
 - Bottom sheet: use `@gorhom/bottom-sheet` with proper Android styling
 
-#### React (Tauri desktop)
+#### React (desktop)
 - Tailwind spacing scale: 0.5=2px, 1=4px, 1.5=6px, 2=8px, 3=12px, 4=16px, 5=20px, 6=24px, 8=32px
 - Use CSS variables from the project's theme
 - Check both light and dark mode after changes

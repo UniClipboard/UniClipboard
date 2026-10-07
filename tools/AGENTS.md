@@ -11,7 +11,7 @@
 
 - 工具 crate 必须是叶子：任何生产包都不得依赖 `tools/` 下的 crate（`scripts/architecture/check-engine-repository.mjs` 检查）。
 - 工具 crate 设 `publish = false`，并且不在根 `Cargo.toml` 的 `default-members` 中；`default-members` 必须等于 `members` 去掉工具 crate（`scripts/__tests__/cli-packaging.test.ts` 检查）。
-- 发布、打包与镜像构建（`build.yml`、`build-cli.yml`、`release.yml`、`deploy/vps/Dockerfile`、`scripts/prepare-sidecars.mjs`）不得引用工具 crate。
+- 发布、打包与镜像构建（`build.yml`、`build-cli.yml`、`release.yml`、`deploy/vps/Dockerfile`、`scripts/stage-daemon.mjs`）不得引用工具 crate。
 - 用户端终端客户端 `uniclip` 是 Go 模块 `apps/cli-go`，不是这里的 crate。
 
 新增工具 crate：路径依赖指向 `../../crates/uc-*`，在根 `Cargo.toml` 的 `members` 中注册，并 **不要** 加入 `default-members`，再补一行本表。

@@ -16,7 +16,7 @@
 | F. daemon（Engine）：iroh 中继/端点 | `iroh 1.3.0`、`iroh-relay 1.3.0` | 代理只在端点构建器显式调用 `proxy_url(..)` 或 `proxy_from_env()` 时才有（`iroh-1.3.0/src/endpoint.rs:700-715`，仅 `HTTP_PROXY/HTTPS_PROXY` 两个变量）。对 Engine `crates/` 与 `compatibility/` 全文检索，**没有任何调用** | n/a |
 | G. daemon 的遥测（OTLP） | `reqwest 0.13.3`，`default-features=false`，没有 `system-proxy` 特性 | 本片不触发，不下结论 | n/a |
 
-旧 Tauri 外壳的做法（`crates/uc-tauri/src/process_environment.rs`）：进程入口把 `localhost,127.0.0.1,::1` 合并进 `NO_PROXY`/`no_proxy`，使得 libproxy/GIO、reqwest 等读取环境的代码都不经代理访问回环；AppImage 里同时用 `GIO_MODULE_DIR` 限定 GIO 模块目录。Go/Wails 外壳 **没有** 对应的 `NO_PROXY` 合并（对 `apps/gui-go` 检索 `NO_PROXY`/`HTTP_PROXY` 无命中）。这是否构成回归，由下面的实测决定，不靠推断。
+旧 Tauri 外壳的做法（进程入口的环境初始化模块）：进程入口把 `localhost,127.0.0.1,::1` 合并进 `NO_PROXY`/`no_proxy`，使得 libproxy/GIO、reqwest 等读取环境的代码都不经代理访问回环；AppImage 里同时用 `GIO_MODULE_DIR` 限定 GIO 模块目录。Go/Wails 外壳 **没有** 对应的 `NO_PROXY` 合并（对 `apps/gui-go` 检索 `NO_PROXY`/`HTTP_PROXY` 无命中）。这是否构成回归，由下面的实测决定，不靠推断。
 
 AppImage 的 GIO 模块：只带 `libgiognutls.so`（17c7），不带 libproxy、gnome-proxy、dconf（`gui-go-linux-appimage-runtime-deps.md`）。因此路径 A/B 的解析器在 AppImage 内是否存在、是否读取宿主设置，需要 **运行时证据**；假设：AppImage 内没有代理解析器，WebView 不使用任何代理（OPEN，待实测，不当事实）。
 

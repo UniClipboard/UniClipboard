@@ -1,7 +1,7 @@
 # UniClipboard Tracing & Span 规范（v1）
 
 **状态**：Active
-**适用范围**：UniClipboard Desktop（Rust / Tauri / Hexagonal Architecture）
+**适用范围**：UniClipboard Desktop（Rust / Go host / Hexagonal Architecture）
 **最后更新**：v1
 
 ---
@@ -142,7 +142,7 @@ info!(
 
 ---
 
-### 3.4 Tauri / Command 层（`uc-tauri`）
+### 3.4 传输适配层（daemon HTTP/WS 处理器与宿主命令处理器；旧 Tauri Command 层已退役）
 
 **不创建业务 Span**
 
@@ -269,7 +269,7 @@ result?;
 
 ## 10. 执行与约束
 
-- 新增 Use Case **必须**创建 span
+- 新增 Use Case **必须** 创建 span
 - Code Review 必查：
   - 是否越层创建 span
   - 是否记录高基数字段

@@ -1,5 +1,7 @@
 # Commands Layer Architecture Specification
 
+> **历史文档（已退役）**：本文描述的 Tauri 宿主（Tauri 适配 crate 与 `src-tauri` 打包壳）已被 Go/Wails 宿主取代，内容仅供追溯，不再随代码更新。当前桌面宿主见 `apps/gui-go/README.md`，退役记录见 `docs/architecture/gui-go-tauri-retirement.md`。
+
 This document defines the mandatory architecture rules for the **Commands Layer** (`uc-tauri/src/commands/`) in UniClipboard's hexagonal architecture.
 
 ## Overview

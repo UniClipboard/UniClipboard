@@ -1,6 +1,6 @@
-# Go GUI 原型规则
+# Go GUI 宿主规则
 
-- 遵循根 AGENTS.md；当前为隔离原型，不加入生产发布。
+- 遵循根 AGENTS.md；本模块是目前唯一的桌面宿主（旧 Tauri 宿主已退役，记录见 `docs/architecture/gui-go-tauri-retirement.md`）；发布流水线尚未重建，当前 release 工作流被有意阻塞。
 - daemon 权威业务继续归 Rust；Go 只负责外壳、进程协调与 native 认证。
 - 复用 packages/desktop-host-go，不复制 CLI 的路径/PID/认证实现。
 - 日常开发用 `bun wails:dev` / `bun wails:dev:profile <profile>`（开发 profile，需 UNICLIPBOARD_ENV=development）；E2E 与自动化必须使用独立沙箱、唯一 gui-go-* UC_PROFILE、UC_GUI_GO_ISOLATED=1、UC_DISABLE_SYSTEM_CLIPBOARD=1；沙箱在 macOS 是临时 HOME，在 Windows 是 `uc-gui-go-*` 便携目录（`UC_PORTABLE=1`，因为 Windows 不读 HOME，且 daemon 默认写真实 Credential Manager）。会发送真实按键、改变前台窗口或覆盖剪贴板的脚本只能在专用测试主机运行。

@@ -70,7 +70,7 @@ For every changed file/module, classify it into one of these buckets:
 | **CLI command added/modified** | ✅ Yes — primary target | New subcommand, changed output format, new flag |
 | **Daemon API endpoint added/modified** | ✅ Yes — via CLI or direct HTTP | New route, changed response shape |
 | **Core business logic change** | ⚠️ Maybe — only if it surfaces through CLI output or behavior | Encryption change that affects `init` flow |
-| **GUI-only change** | ❌ No — needs browser/Tauri test | React component, Tauri command handler |
+| **GUI-only change** | ❌ No — needs browser/host test | React component, host command handler |
 | **Build/CI/docs change** | ❌ No | Cargo.toml deps, CI yaml, markdown |
 | **Internal refactor (same behavior)** | ⚠️ Regression only — existing tests should still pass | Renamed internal module, changed data structure |
 
@@ -155,7 +155,7 @@ Do NOT write test code until the user confirms.
 ## Decision Criteria: When NOT to Propose E2E Tests
 
 Skip proposing e2e tests when:
-- The change is purely GUI (React/Tauri commands) with no CLI surface
+- The change is purely GUI (React/host commands) with no CLI surface
 - The change is a docs/CI/build-only change
 - The change is an internal refactor where existing tests provide regression coverage
 - The CLI binary doesn't expose the changed behavior (e.g., internal daemon-to-daemon protocol change with no CLI observability)

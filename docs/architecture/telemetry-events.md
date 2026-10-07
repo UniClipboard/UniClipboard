@@ -740,7 +740,7 @@ pub enum InstallKind {
 
 ## 9. 类型定义落地位置（建议）
 
-```/home/wuy6/myprojects/UniClipboard/src-tauri/crates/uc-observability/src/analytics/
+```crates/uc-observability/src/analytics/
 mod.rs        // pub use 与 sink trait
 context.rs    // EventContext 与构造工厂
 events.rs     // TelemetryEvent 枚举或 newtype 包装

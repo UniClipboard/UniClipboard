@@ -1,12 +1,12 @@
 # Wayland 快捷面板
 
-快捷面板继续使用 React 与 Tauri WebView。在支持 Layer Shell 的 Wayland 合成器中，GTK 窗口使用原生 Layer Shell surface；X11 和不支持该协议的桌面使用普通窗口。
+快捷面板使用 React 与 Go/Wails 宿主提供的 WebView（旧 Tauri WebView 实现已退役）。在支持 Layer Shell 的 Wayland 合成器中，GTK 窗口使用原生 Layer Shell surface；X11 和不支持该协议的桌面使用普通窗口。
 
 ## 窗口生命周期
 
-`crates/uc-tauri/src/quick_panel/linux.rs` 在快捷面板同步创建期间注册 GTK `Application::window-added` 信号，先初始化 Layer Shell，再由 Tauri 完成窗口和 WebView 创建。钩子只处理第一个窗口，创建结束后立即断开，并校验它与 Tauri 返回的窗口相同。不得在已经实现底层资源的 GTK 窗口上初始化 Layer Shell，也不得把 WebView 移入不受 Tauri 管理的窗口。
+Go 宿主在 `apps/gui-go/panel_layer_linux.go` 与 `apps/gui-go/internal/layershell` 中实现该窗口后端：隐藏的面板在 GTK 窗口 realize 之前附加 Layer Shell，不在已经实现底层资源的 GTK 窗口上初始化 Layer Shell。实现依据与逐项核对见 `apps/gui-go/README.md` 的 Linux 章节。旧 Tauri 实现在窗口创建期间通过 GTK `Application::window-added` 信号完成同样的事，该实现已随 Tauri 宿主退役。
 
-初始化完成后允许 GTK 内部调整大小：否则不可调整大小的 GTK 窗口会保留 WebKit 的自然尺寸，使小屏高度上限失效。Layer Shell surface 不具备普通桌面窗口的交互缩放边框，实际大小仍由本模块的尺寸请求控制。
+初始化完成后允许 GTK 内部调整大小：否则不可调整大小的 GTK 窗口会保留 WebKit 的自然尺寸，使小屏高度上限失效。Layer Shell surface 不具备普通桌面窗口的交互缩放边框，实际大小仍由宿主的尺寸请求控制。
 
 面板使用 overlay 层，不预留桌面工作区；显示期间保持独占键盘交互。每个输出上的透明 GTK 背景窗口位于面板下方，只接收外部点击，不承载 WebView，也不获取键盘焦点。点击背景会关闭面板及全部背景窗口；首次点击仅用于关闭，不透传到其他应用。背景窗口由面板拥有，隐藏、销毁和创建失败时均释放。
 
@@ -18,9 +18,7 @@ Linux 面板打开即同时显示左侧历史和右侧预览，默认尺寸为 8
 
 GTK3 运行库 `libgtk-layer-shell.so.0` 按需加载。库不可用时会记录能力降级事件；GTK 已安装的回调要求库在进程生命周期内保持加载。GTK4 的同名用途库不能替代 GTK3 版本。
 
-Deb、RPM、AUR 和 Nix 包装声明了此运行时依赖，Snap 通过 `stage-packages` 携带 GTK3 Layer Shell。AppImage 在 Tauri 的 `beforeBundleCommand` 中运行 `scripts/prepare-linux-bundle.mjs`，按目标架构检查系统库并暂存到 `apps/gui/src-tauri/binaries/linux/`，再通过 `bundle.linux.appimage.files` 放入包内的 `usr/lib/`；缺库或架构不匹配时打包失败，不能依赖 ELF 自动扫描发现动态加载的库。
-
-Linux 发布工作流在上传前运行 `scripts/check-linux-bundles.py`，检查实际 Deb、RPM 的强制依赖及 AppImage 内库的架构、SONAME 和入口符号。直接运行开发二进制仍需自行安装该运行库，并重新启动 GUI。
+Deb、RPM、AUR 和 Nix 包装声明了此运行时依赖，Snap 通过 `stage-packages` 携带 GTK3 Layer Shell。Go 宿主的 AppImage 由 `apps/gui-go/e2e/package_linux.py` 自带 `libgtk-layer-shell`，细节见 `apps/gui-go/README.md` 与 [Linux AppImage 库策略](linux-appimage-library-policy.md)。旧 Tauri 打包器的库检查脚本已随其移除。直接运行开发二进制仍需自行安装该运行库，并重新启动 GUI。
 
 ## Omarchy 配置
 
@@ -46,7 +44,7 @@ o.bind("SUPER + SHIFT + V", "UniClipboard", "uniclipboard --quick-panel")
 
 在 Omarchy 会话中，外观设置的“跟随 Omarchy 主题”默认开启，由桌面统一控制主窗口、快捷面板和更新窗口的深浅模式与配色，同时禁用手动主题选择、预设配色和自定义颜色。关闭后恢复原有应用主题设置。偏好由 desktop 本地保存，不经过 Engine 或 daemon 设置接口，详见 [desktop 本地主题偏好](desktop-theme-preferences.md)。主题切换无需重启，隐藏的快捷面板也保持订阅。初始主题快照在读取本地偏好后提供，避免关闭开关后启动时短暂应用 Omarchy 配色；daemon 就绪后读取原有应用主题设置，进入历史页面时不重建主题订阅。
 
-该适配仅由 GUI 的 `crates/uc-tauri/src/desktop_theme/` 管理：检查会话的 `OMARCHY_PATH` 与当前主题目录，从用户主目录下的 `.local/state/omarchy/current/theme/colors.toml` 读取调色板。只安装 Omarchy 包、未进入 Omarchy 会话时不开启；其他系统不提供配色覆盖。此入口针对使用上述状态目录的 Omarchy 版本。
+该适配在旧 Tauri 宿主（已退役）中由 `desktop_theme` 模块管理，Go 宿主目前未实现 Omarchy 配色跟随（相关命令返回不可用状态）：检查会话的 `OMARCHY_PATH` 与当前主题目录，从用户主目录下的 `.local/state/omarchy/current/theme/colors.toml` 读取调色板。只安装 Omarchy 包、未进入 Omarchy 会话时不开启；其他系统不提供配色覆盖。此入口针对使用上述状态目录的 Omarchy 版本。
 
 Omarchy 会整体替换主题目录，因此监听其稳定父目录并合并文件事件。读取失败或主题内容无效时保留最近一次有效配色；后续文件变化会重新读取。调色板仅驻留内存，不写入业务设置，不修改系统 GTK 配置，不安装主题钩子。
 
@@ -64,18 +62,17 @@ Hyprland 后端在显示前记录原窗口身份，选择条目后先恢复系�
 
 ```bash
 cargo test -p uc-desktop hyprland
-cargo test -p uc-tauri quick_panel
-cargo test -p uc-tauri --test specta_export
-cargo run -p uc-tauri --example layer_shell_smoke
 ```
 
-冒烟程序使用合成测试页面与独立按键接收窗口，不启动 daemon、不读取用户历史、不写入系统剪贴板；依次检查显示、键盘焦点、布局更新、自动粘贴按键送达、再次显示，以及通过 GTK 信号触发的关闭回调和背景窗口清理。应在支持 Layer Shell 的 Hyprland 会话内运行，且测试期间不要主动切换焦点。
+旧 Tauri 宿主的面板测试与 `layer_shell_smoke` 冒烟示例已随其退役；Go 宿主的 Layer Shell 验证见 `apps/gui-go/README.md` 与 `docs/architecture/gui-go-linux-appimage-native-wayland.md`。
 
-上述流程已在 Hyprland 0.56.1、Tauri 2.11.5 / Tao 0.35.3 下通过。GTK 信号验证不等同于合成器的实际鼠标事件验证：当前虚拟鼠标测试工具在独立普通 GTK 窗口中也未产生点击回调，因此真实点击关闭、输入法及多屏组合仍需交互验收。
+旧冒烟程序使用合成测试页面与独立按键接收窗口，不启动 daemon、不读取用户历史、不写入系统剪贴板；依次检查显示、键盘焦点、布局更新、自动粘贴按键送达、再次显示，以及通过 GTK 信号触发的关闭回调和背景窗口清理。应在支持 Layer Shell 的 Hyprland 会话内运行，且测试期间不要主动切换焦点。
+
+上述流程当时在 Hyprland 0.56.1、Tauri 2.11.5 / Tao 0.35.3 下通过（旧 Tauri 宿主，已退役）。GTK 信号验证不等同于合成器的实际鼠标事件验证：当前虚拟鼠标测试工具在独立普通 GTK 窗口中也未产生点击回调，因此真实点击关闭、输入法及多屏组合仍需交互验收。
 
 ## 桌面圆角
 
-Layer Shell 面板由应用裁切圆角。GTK 与 WebView 使用透明背景，前端统一表面保留不透明底色，四角按桌面主题快照中的 `windowCornerRadius` 裁切。`desktop_theme/rounding.rs` 通过有超时与响应长度上限的 Hyprland IPC 每 2 秒读取有效的 `decoration:rounding`，仅值变化时广播，与 Omarchy 配色共享版本化快照但不依赖配色或深浅色偏好。读取失败保留上次有效值；非 Hyprland 会话默认直角。
+Layer Shell 面板由应用裁切圆角。GTK 与 WebView 使用透明背景，前端统一表面保留不透明底色，四角按桌面主题快照中的 `windowCornerRadius` 裁切。旧 Tauri 宿主的 `desktop_theme/rounding.rs` 通过有超时与响应长度上限的 Hyprland IPC 每 2 秒读取有效的 `decoration:rounding`，仅值变化时广播，与 Omarchy 配色共享版本化快照但不依赖配色或深浅色偏好。读取失败保留上次有效值；非 Hyprland 会话默认直角。
 
 ## 窗口尺寸记忆
 

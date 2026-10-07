@@ -174,7 +174,7 @@ If `SKIP_TRACING`, say so in one line and go to Step 6.
 **Source of truth is the `tracing-best-practices` skill** (which itself encodes `docs/guides/tracing.md`). Don't restate its full checklist here — invoke/follow it against the diff's Rust files so the rules can't drift out of sync with this skill. The handful of checks that catch the most regressions on *this* repo:
 
 - **New use case with no span** — the use-case layer (`uc-application`) must wrap execution in one `usecase.<name>.execute` span via `.instrument(span)`. A new use case missing it is the most common gap.
-- **Span in the wrong layer** — a span created in `uc-core` (domain is zero-span), infra, or a Tauri command is a violation, not a gap.
+- **Span in the wrong layer** — a span created in `uc-core` (domain is zero-span), infra, or a host command handler is a violation, not a gap.
 - **Wrong log level** — `info!` = use-case start/success + key business transition; `debug!` = infra detail; `warn!` = recoverable / user-input error; `error!` = unrecoverable / corruption. Flag clear mismatches only.
 - **Privacy / cardinality leak** — clipboard content, full settings, raw paths, blob contents, or gratuitous UUIDs in any span/log field. This is a bug, flag it high-confidence.
 - **New `Err(...)` branch or state transition with no breadcrumb** — flag *only* genuinely new failure/transition paths, mark `confidence: low`, and don't add speculative "might-need-it-later" logs (the spec forbids those).

@@ -1,6 +1,6 @@
 # Frontend and UI Rules
 
-Use this document when editing React, TypeScript, Tailwind, UX flows, or frontend-facing daemon/Tauri integration.
+Use this document when editing React, TypeScript, Tailwind, UX flows, or frontend-facing daemon/host integration.
 
 ## Frontend Layout Rules
 
@@ -56,28 +56,32 @@ Examples:
 - Avoid parallel state sources for the same domain (local cache + Redux for the same truth).
 - Match TypeScript DTO field names to actual Rust serde output. Do not assume global snake_case or camelCase consistency.
 
-## Calling Tauri commands (issue #698)
+## Calling host commands
 
-All `#[tauri::command]` definitions are exported as a typed `commands` object via
-`tauri-specta`. Frontend code MUST go through the wrapper in `apps/gui/src/lib/ipc.ts`
-rather than calling `invoke()` / `invokeWithTrace()` with a stringly-typed
-command name.
+Frontend code MUST call host commands through the typed `commands` object exported by
+`apps/gui/src/lib/ipc.ts` rather than calling `invoke()` / `invokeWithTrace()` with a
+stringly-typed command name.
 
 ```ts
 // ❌ Wrong — stringly-typed, no compile-time safety
 await invokeWithTrace('update_mobile_sync_settings', patch)
 
-// ✅ Correct — typed, fail-build on Rust signature drift
+// ✅ Correct — typed against the frozen host command contract
 import { commands } from '@/lib/ipc'
 await commands.updateMobileSyncSettings(patch)
 ```
 
-The wrapper preserves trace_id injection, Sentry breadcrumbs, and arg
-redaction. The generated bindings live in `apps/gui/src/lib/ipc-bindings.generated.ts`
-(git-tracked, do not hand-edit). When you change a Rust command/DTO, regenerate
-with `cargo test -p uc-tauri --test specta_export` and commit the diff — see
-`docs/agent/rust-tauri-rules.md` ("tauri-specta IPC bindings") for the Rust
-side of the contract.
+The wrapper preserves trace_id injection, Sentry breadcrumbs, and arg redaction.
+`apps/gui/src/lib/ipc-bindings.generated.ts` and `error-severity.generated.ts` are no longer
+generated: they are the frozen host command/error contract and are maintained by hand together
+with the Go host handlers in `apps/gui-go` (`apps/gui-go/e2e/command-coverage.sh` lists the
+commands the Go host does not implement yet). When you add or change a command, edit the contract
+file and the Go handler in the same change.
+
+The Wails adapters live in `apps/gui-go/frontend/src/host`. The `@tauri-apps/*` package ids that
+the shared frontend imports are an import boundary only: `apps/gui-go/vite.config.ts` aliases each
+one to a Wails-backed adapter, and the retired Tauri host is not a dependency
+(`bun run check:tauri-retired` guards this).
 
 ## Test Execution Note
 
@@ -156,9 +160,8 @@ For frontend unit tests involving Vitest mocks, fake timers, or jsdom, prefer `n
 - **删除 dependency 时检查 `radix-ui` umbrella 是否传递引入**,frontend 只用 umbrella 即可。
 - **保留这些"看起来没用"的 devDep**(react-doctor 误报):
   - `react-doctor`、`react-grab`、`@react-grab/mcp` — 通过 npm 脚本 / 工具调用，不在 import 里。
-  - `@wdio/local-runner`、`@wdio/mocha-framework`、`@wdio/spec-reporter` — 通过 `apps/gui/e2e/wdio.conf.mjs` 的 `runner` / `framework` / `reporters` 配置字符串引用，scanner 看不到。
   - `autocorrect-node` — `lint-staged` 配置里调 binary。
-- **Tauri JS 插件**(`@tauri-apps/plugin-*`):只在前端真的 import 时才装。仅 Rust 侧用的 (autostart / global-shortcut / updater) 不需要 JS 包。
+- **`@tauri-apps/*` 包 id**:只在前端真的 import 时才保留；它们是被 `apps/gui-go/vite.config.ts` 别名到 Wails 适配的导入边界，不代表依赖 Tauri 宿主。
 
 ### shadcn UI 文件
 

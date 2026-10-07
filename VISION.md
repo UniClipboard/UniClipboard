@@ -9,7 +9,7 @@
 - 产品定位：「多台设备服务一个人」——不是协作工具，不是消息队列
 - 支持 macOS、Windows、Linux、iOS、Android、HarmonyOS；所有平台都是同一 Space 中的完整 P2P 对等节点
 - 同步内容涵盖文本、图片、文件、链接、富文本、代码片段
-- 交付形态：GUI 桌面应用（Tauri + React）、原生移动应用、CLI 工具（uniclip）、桌面后台 daemon（uniclipd）
+- 交付形态：GUI 桌面应用（Go/Wails + React）、原生移动应用、CLI 工具（uniclip）、桌面后台 daemon（uniclipd）
 - 核心交互入口：Quick Panel（Spotlight 式全局快捷面板，搜索历史、即时粘贴）
 
 ## 核心目标
@@ -26,7 +26,7 @@
 - **六边形架构（Ports & Adapters）**：uc-core 定义纯领域模型和 Port trait，零基础设施依赖；uc-infra/uc-platform 提供具体实现
 - **uc-core 禁区**：不得出现数据库（SQLite/Diesel）、网络框架（iroh/HTTP）、OS API、加密算法实现（Argon2/ChaCha20）——只允许领域概念
 - **GUI 与 daemon 分离**：GUI 进程通过 HTTP/WS 连接外部 daemon，绝不内嵌 AppFacade 或打开数据库；daemon 绝不依赖任何 GUI 框架
-- **uc-desktop GUI 框架无关**：该 crate 禁止依赖 Tauri/AppKit/egui 等，由 uc-tauri 负责 GUI 壳适配
+- **uc-desktop GUI 框架无关**：该 crate 禁止依赖任何 GUI 框架（webview 窗口框架、AppKit、egui 等），GUI 壳适配由各宿主自行负责（目前是 Go/Wails 宿主）
 - **薄中间层隔离重依赖**：uc-daemon-contract/uc-daemon-client/uc-daemon-process 作为叶子 crate，不携带 iroh/diesel/sqlite，使 CLI 和 GUI release 二进制免于链接重型依赖
 - **统一 P2P 核心**：桌面与移动宿主都通过同一核心入口运行完整节点；平台差异只存在于剪贴板、安全存储、文件句柄和生命周期接入，不得分叉协议、加密或内容能力。移动产品可额外提供用户显式选择的 LAN HTTP 兼容通道；它独立于 P2P 核心，不得自动回退或替代完整节点能力
 - **可测试性**：76+ async trait Port 均为 Send + Sync，通过 Arc&lt;dyn Port&gt; 注入，应用层测试使用 mockall/手写 fake，永不触碰真实基础设施
@@ -71,7 +71,7 @@
 - **禁止中心化存储剪贴板内容**：不建 relay blob store、不建 store-and-forward 邮箱、不建云同步
 - **禁止自动重发历史/最终一致性**：离线 = 预期状态；不得建立队列、补送多条历史或把同步变成最终一致。自动同步开启时，既有设备恢复在线时仅补送该设备最新一条未送达内容一次。
 - **禁止用户账号体系（v1）**：Space 是本地密钥信任组，不是云账户；无登录、无注册、无中心认证
-- **禁止 daemon 依赖 GUI 框架**：daemon 是纯后台服务，编译结果不可包含 Tauri/GTK/AppKit UI 组件
+- **禁止 daemon 依赖 GUI 框架**：daemon 是纯后台服务，编译结果不可包含任何 GUI 框架（webview/GTK/AppKit）UI 组件
 - **禁止 GUI 内嵌业务栈**：GUI 进程不打开 SQLite、不实例化 AppFacade、不运行 blob worker
 - **禁止 release 二进制暴露 dev 路由**：daemon dev-token 端点 #[cfg(debug_assertions)] 硬门控，CLI dev 命令 feature-gate 隔离
 - **禁止遥测关联真实身份**：analytics_device_id 不得从 DeviceId 派生，不得存入业务持久层，$geoip_disable 强制为 true

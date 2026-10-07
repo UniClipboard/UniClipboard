@@ -153,8 +153,9 @@ After editing the template:
 
 1. In the Shortcuts editor: **Share → iCloud Link**. iCloud assigns a stable URL the
    first time and **reuses** it on subsequent shares as long as you re-share from the
-   same shortcut record. If iCloud issues a new link, the desktop constant
-   `SYNC_CLIPBOARD_EX_INSTALL_URL` (in `src-tauri/.../register_device.rs`) must be
+   same shortcut record. If iCloud issues a new link, the install URL that the daemon
+   returns as `install_url` (`crates/uc-daemon-contract/src/api/dto/mobile_sync.rs`; it was the
+   `SYNC_CLIPBOARD_EX_INSTALL_URL` constant in the retired Tauri shell) must be
    updated and shipped in a desktop release.
 2. Run the template once on a clean iPhone (Settings → Shortcuts → Reset → Re-install)
    and confirm both branches still work:

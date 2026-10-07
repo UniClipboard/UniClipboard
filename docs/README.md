@@ -1,6 +1,6 @@
 # UniClipboard Documentation
 
-UniClipboard Desktop is a privacy-first, cross-device clipboard synchronization tool built with Tauri 2, React, and a modular Rust workspace.
+UniClipboard Desktop is a privacy-first, cross-device clipboard synchronization tool built with a Go/Wails desktop host, React, and a modular Rust workspace.
 
 This documentation set is a mix of:
 
@@ -54,7 +54,7 @@ When documentation conflicts with code, treat the code as the source of truth an
 
 ```
 ┌───────────────────────────────────────┐   ┌──────────────────┐
-│       GUI (uc-tauri + React)          │   │  CLI (uc-cli)    │
+│       GUI (Go/Wails + React)           │   │  CLI (uc-cli)    │
 │  Quick Panel / Tray / Settings        │   │  uniclip 命令行  │
 └──────────────────┬────────────────────┘   └────────┬─────────┘
                    │  HTTP + WebSocket (127.0.0.1)    │
@@ -86,7 +86,7 @@ When documentation conflicts with code, treat the code as the source of truth an
 The codebase is already organized around a modular Rust workspace and hexagonal boundaries, but the migration is still ongoing in practice.
 
 - Core domain, application use cases, infrastructure adapters, and platform adapters all exist as first-class crates
-- The Tauri entrypoint still carries important integration logic for bootstrap, daemon supervision, resource resolution, and window management
+- The Go/Wails host (`apps/gui-go`) is the only desktop host; the retired Tauri host is recorded in [gui-go-tauri-retirement](architecture/gui-go-tauri-retirement.md)
 - Historical migration notes may still refer to removed legacy paths or earlier architecture phases
 - Avoid relying on old completion percentages; prefer current code and current docs
 
@@ -106,31 +106,30 @@ bun install
 # Start frontend-only dev server
 bun run dev
 
-# Start full Tauri app in development
-bun run tauri:dev
+# Start the full desktop app in development (Go/Wails host)
+bun wails:dev
 
 # Run frontend tests
 bun run test
 
 # Run Rust workspace tests
-(cd apps/gui/src-tauri && cargo test --workspace)
+cargo test --workspace
 
-# Build for production
-bun run tauri build
+# Local macOS build and package
+apps/gui-go/build.sh
 ```
 
 ### 可选的 mbx 开发缓存
 
-新建 worktree 时，可让 daemon 侧车及 Tauri 内部的 Cargo 构建共用 mbx 编译缓存：
+新建 worktree 时，可让 daemon 及宿主开发脚本触发的 Cargo 构建共用 mbx 编译缓存：
 
 ```bash
-bun mbx:exec -- bun tauri:dev
-bun mbx:exec -- bun tauri:dev:profile a
+bun mbx:exec -- bun wails:dev
+bun mbx:exec -- bun wails:dev:profile a
 ```
 
 入口固定 mbx 1.18.0 并校验下载包的 SHA-256；仅对子命令移除
-`RUSTC_WRAPPER=sccache`，不修改全局环境。首次启动前会先准备 debug daemon 侧车，
-避免其构建占用 Tauri 等待 Vite 的 180 秒。
+`RUSTC_WRAPPER=sccache`，不修改全局环境。
 
 mbx 缓存由 `MBX_CACHE_DIR` 指定，未指定时采用 mbx 平台默认目录；多个 worktree
 可共用此缓存，`uni-build-storage` 仍为每个 worktree 管理独立 target。入口默认将
@@ -138,7 +137,6 @@ mbx 缓存容量上限设为 20 GiB，Cargo 构建时输出命中摘要，命令
 一个 worktree 尽量始终使用同一条构建路线，切换普通 Cargo 与 mbx 可能触发重编译。
 
 固定下载包目前覆盖 macOS arm64、Linux x86_64 和 Linux arm64；Windows 尚未接入此入口。
-原有 `bun tauri:dev` 入口保持可用。
 
 ## Documentation Guide
 

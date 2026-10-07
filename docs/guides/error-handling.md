@@ -109,13 +109,12 @@ impl SyncClipboardUseCase {
 - ✅ Log errors at appropriate level
 - ❌ Don't expose internal details to UI
 
-### Tauri Commands (uc-tauri)
+### Transport Handlers (formerly Tauri commands)
 
-**Responsibility**: Convert application errors to user-friendly messages.
+**Responsibility**: Convert application errors to user-friendly messages. The examples below were written for the retired Tauri command layer (see [gui-go-tauri-retirement](../architecture/gui-go-tauri-retirement.md)); the pattern applies unchanged to daemon HTTP handlers and host command handlers.
 
 ```rust
-// uc-tauri/src/commands/clipboard.rs
-#[tauri::command]
+// transport handler (illustrative)
 pub async fn get_clipboard_items(
     state: tauri::State<'_, AppRuntime>,
 ) -> Result<Vec<ClipboardItem>, String> {
@@ -172,7 +171,6 @@ fn execute(&self, content: ClipboardContent) -> Result<(), UseCaseError> {
 Handle different error cases appropriately:
 
 ```rust
-#[tauri::command]
 pub async fn sync_clipboard(
     state: tauri::State<'_, AppRuntime>,
     content: ClipboardContent,
@@ -353,7 +351,6 @@ self.network.broadcast(content)
 
 ```rust
 // ❌ WRONG: Exposes internal paths and stack traces
-#[tauri::command]
 pub fn get_items() -> Result<Vec<Item>, String> {
     repo.find_all()
         .map_err(|e| format!("Database error at {}: {:?}", std::file!(), e))
@@ -364,7 +361,6 @@ pub fn get_items() -> Result<Vec<Item>, String> {
 
 ```rust
 // ✅ CORRECT: User-friendly message
-#[tauri::command]
 pub fn get_items() -> Result<Vec<Item>, String> {
     repo.find_all()
         .map_err(|e| {

@@ -13,13 +13,13 @@
 
 - 业务规则归 `uc-core` / `uc-application`
 - 桌面环境的「外壳」与「胶水」归 `uc-desktop`
-- 具体 GUI 框架（Tauri webview、AppKit、未来其他）归各自的 **shell crate**
+- 具体 GUI 框架（Go/Wails 宿主、AppKit、未来其他）归各自的 **shell crate**
 
 ## ⚠️ 硬约束：GUI-framework agnostic
 
 `uc-desktop` **禁止依赖任何 GUI / UI 框架**：
 
-- ❌ `tauri` / `tauri-*` 任何插件
+- ❌ `tauri` / `wry` / `tao` 等 webview 窗口框架及其插件
 - ❌ `iced` / `egui` / `dioxus` / `slint`
 - ❌ `objc2-app-kit` / `cocoa` / `core-graphics`（UI 层面）
 - ❌ Win32 UI（`Win32_UI_*`）
@@ -37,7 +37,7 @@
 
 | Shell crate | GUI 框架 | 进程模型 |
 |---|---|---|
-| `uc-tauri` | Tauri webview | GUI 进程 |
+| `apps/gui-go`（Go 模块，非 crate） | Go/Wails webview | GUI 进程（通过本机 HTTP/WS 与 daemon 交互） |
 | `uc-macos-native`（规划） | AppKit / SwiftUI | GUI 进程 |
 | `uc-daemon` | 无 GUI | 后台 sidecar 进程 |
 
@@ -66,15 +66,15 @@
 - 设备/用户身份的核心模型
 
 业务能力必须留在 `uc-application` 或 `uc-core`。GUI 框架特定能力必须留在
-shell crate。如果在 desktop 里需要写 `if cfg!(feature = "tauri")` 或
-`use tauri::*`，**那是错的**——应该把抽象提取到 trait，shell 各自实现。
+shell crate。如果在 desktop 里需要写 按 GUI 框架分支的 `cfg!(feature = ...)` 或
+直接引用某个 GUI 框架的类型，**那是错的**——应该把抽象提取到 trait，shell 各自实现。
 
 ## 边界规则
 
 - 外部业务调用只走 `uc_application::facade::AppFacade`。
 - 不要在 HTTP handler、daemon worker 里重新拼业务流程；这些入口只做
-  参数解析、鉴权外壳、转调 facade、序列化结果。**Tauri command 等
-  GUI 框架入口在 shell crate 里，desktop 不直接拥有它们**。
+  参数解析、鉴权外壳、转调 facade、序列化结果。**宿主命令处理器等
+  GUI 框架入口在 shell 里，desktop 不直接拥有它们**。
 - 事件源只负责监听桌面事件，并把事件 **原样** 交给应用层入口；不在
   desktop 层做内容判断或路由决策。
 - 后台任务的 **运行时调度**（什么时候触发、跑在哪个线程）可以在这里，
@@ -96,8 +96,7 @@ shell crate。如果在 desktop 里需要写 `if cfg!(feature = "tauri")` 或
   本 crate `src/daemon/` 不再是 `uc-daemon` 的 re-export shim：ADR-008 依赖边
   清理已移除对 `uc-daemon` 的 path 依赖，`src/daemon/` 仅保留 GUI 内存状态类型
   `DaemonOwnership`（`uc_desktop::daemon::DaemonOwnership` /
-  `uc_desktop::DaemonOwnership`，唯一消费者是 `daemon_probe` 与 `uc-tauri`
-  run loop）。此前为了 re-export 这个 ~40 行类型而 path-依赖整个 `uc-daemon`，
+  `uc_desktop::DaemonOwnership`，唯一消费者是 `daemon_probe` 与桌面宿主）。此前为了 re-export 这个 ~40 行类型而 path-依赖整个 `uc-daemon`，
   会迫使 GUI 构建编译整棵 daemon runtime 依赖树——断边后不再发生。`uc-cli`
   也不依赖本 crate（P2 Slice 2d）。
 - `uc-webserver` 暂时保持独立 crate，由 `uc-desktop` 作为宿主调用；不要为了
@@ -111,10 +110,9 @@ shell crate。如果在 desktop 里需要写 `if cfg!(feature = "tauri")` 或
   调 `uc_daemon_local::spawn::spawn_detached_daemon` detached 拉起 `uniclipd`
   外部进程 (GUI 与 CLI 共用同一 spawn 原语),再 poll `/health`。不再有
   in-process daemon。
-- `uc-tauri` 是 desktop 的 **Tauri shell 适配器**，不是 desktop 的子集，
-  也不是与 desktop 平级的层。它消费 `uc-desktop` 的能力，提供 Tauri 框架
-  特定的 builder / commands / tray / quick_panel。新增 Tauri-only 能力放
-  这里，新增"未来 native shell 也会用到的"能力放 `uc-desktop`。
+- 桌面 shell（目前是 Go/Wails 宿主 `apps/gui-go`，旧 Tauri 宿主已退役）不是 desktop 的子集，
+  也不是与 desktop 平级的层。它消费 `uc-desktop` 的能力，提供框架特定的窗口 / 托盘 / 快捷面板。
+  新增 shell 专属能力放在 shell 里，新增"多个 shell 都会用到的"能力放 `uc-desktop`。
 - `uc-daemon`（[ADR-008](../../../docs/architecture/adr-008-uniclipd-split-gui-as-client.md) P1+P2 已落地）：
     承载 **GUI-agnostic daemon runtime 全部构件**（run_mode、后台 worker / 服务、
     装配链、main loop、startup recovery、process bootstrap、host entry points）+

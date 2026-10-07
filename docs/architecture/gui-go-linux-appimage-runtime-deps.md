@@ -12,7 +12,7 @@
 | --- | --- | --- | --- | --- | --- |
 | GTK/GDK-pixbuf/GSettings 路径 | Wails beta.28 内嵌 `linuxdeploy-plugin-gtk.sh` | 已采用（17c4） | 无 | 无 | 既有 |
 | GIO 模块（TLS） | 该插件只复制 `libgio` 库，不复制 `giomoduledir` 下任何模块（脚本里只有 `gio_libdir`） | 部分：库在，模块不在 | `usr/lib/gio/modules` 为空，HTTPS 无后端 | 把构建镜像里与捆绑 GLib 同源的 `glib-networking` 模块 `libgiognutls.so` 复制进已存在的模块目录，并生成 `giomodule.cache` | 17c7 主 E2E |
-| 同类先例 | 仓内 Tauri 路径 `crates/uc-tauri/src/process_environment.rs` 校验的就是挂载内的 `gio/modules` 目录，该目录在 Tauri 包里有内容 | 参照 | 无 | 无 | 无 |
+| 同类先例 | 旧 Tauri 外壳（已退役）的进程环境初始化校验的就是挂载内的 `gio/modules` 目录，该目录在 Tauri 包里有内容 | 参照 | 无 | 无 | 无 |
 | GL/EGL 驱动栈 | linuxdeploy 排除列表（libEGL、libGL、libdrm、libgbm、libwayland-client 等） | 宿主提供 | `libGLESv2`、`libGLESv1_CM`、`libGLX`、`libOpenGL` 不在排除列表，但同属 libglvnd，包内不得带；此前只靠一次失败发现 | 打包检查的禁止列表显式加入这四个，运行时映射断言要求它们来自宿主 | 映射断言 |
 | 信任链（CA） | GnuTLS 的编译期默认信任文件 | 取决于宿主 | 见 F3 | 不打包 CA，不改验证；只记录事实 | 第二发行版 |
 | 自启动、对话框、更新、runtime 固定 | `app.Autostart`、`app.Dialog`、17c6 | 不变 | 无 | 无 | 回归 |

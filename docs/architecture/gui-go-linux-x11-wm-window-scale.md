@@ -8,7 +8,7 @@
 
 | 编号 | 契约 | 来源 |
 | --- | --- | --- |
-| W1 | `windowScale` 是快捷面板自己的前端状态（`localStorage` 键 `uniclipboard.quickPanel.windowScale`），不是 daemon 设置；步长 0.1，范围 0.8–1.5，前端与 Rust 两侧都钳制；只在 Linux Tauri 面板生效。它与显示器 DPI/GTK scale factor 无关（逻辑像素，由 toolkit 换算）。 | `apps/gui/src/quick-panel/window-layout.ts`（`normalizeScale`、`adjustQuickPanelScale`、`isLinuxPanel`）、`crates/uc-tauri/src/quick_panel/mod.rs`（`MIN/MAX_WINDOW_SCALE`、`resized_panel_dimensions`） |
+| W1 | `windowScale` 是快捷面板自己的前端状态（`localStorage` 键 `uniclipboard.quickPanel.windowScale`），不是 daemon 设置；步长 0.1，范围 0.8–1.5，前端与 Rust 两侧都钳制；只在 Linux Tauri 面板生效。它与显示器 DPI/GTK scale factor 无关（逻辑像素，由 toolkit 换算）。 | `apps/gui/src/quick-panel/window-layout.ts`（`normalizeScale`、`adjustQuickPanelScale`、`isLinuxPanel`）、旧 Tauri 外壳的快捷面板模块（已退役；`MIN/MAX_WINDOW_SCALE`、`resized_panel_dimensions`） |
 | W2 | 用户通过面板里的真实快捷键调整：`ctrl+=` 放大、`ctrl+-` 缩小（`quickPanel.windowIncrease/Decrease`）。越界按键不再改变（钳制）。 | `apps/gui/src/shortcuts/definitions.ts`（`QUICK_PANEL_SCALE_SHORTCUTS`）、`useQuickPanelScaleShortcuts.ts` |
 | W3 | 尺寸 = 800x560 逻辑像素 × 钳制后的缩放，四舍五入；0.8 → 640x448，1.1 → 880x616，1.5 → 1200x840。 | `quick_panel/mod.rs`：`LINUX_PANEL_WIDTH/HEIGHT`、`resized_panel_dimensions` |
 | W4 | 每次显示：宿主先按基础尺寸准备，前端在 `prepare-show` 之后、`finalize_quick_panel_show` 之前用已保存的缩放调用 `set_quick_panel_layout`，所以窗口映射时已是缩放后的尺寸。面板已显示时用户改缩放，窗口立即改变尺寸（Tauri 的 `set_size` 对已映射窗口生效）。 | `quick_panel/mod.rs`：`show`、`set_layout`；`apps/gui/src/quick-panel/QuickPanelApp.tsx`：`finalizeShow` |

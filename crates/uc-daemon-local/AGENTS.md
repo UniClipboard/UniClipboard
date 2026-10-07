@@ -24,7 +24,7 @@
 - ❌ 不引入 webview / window / tray API
 - ✅ 允许 `tokio` / `tracing` / 文件系统 / 进程操作
 
-整个 crate 的默认编译路径已经是纯 GUI-agnostic 的了——历史上为 Tauri
+整个 crate 的默认编译路径已经是纯 GUI-agnostic 的了——历史上为旧 Tauri 宿主（已退役）
 sidecar 拉起编排准备的 `sidecar-lifecycle` feature 已经在 in-process
 化迁移完成后删除。
 
@@ -72,8 +72,7 @@ detached spawn 原语从 `uc-cli` 下沉到此处由 CLI 与 GUI shell 共用。
 ## 与其他 crate 的关系
 
 ```
-uc-tauri            ─── consume ───┐
-uc-macos-native     ─── consume ───┤
+uc-macos-native     ─── consume ───┐
 （未来其他 GUI shell）─── consume ───┼──→ uc-daemon-local
 uc-desktop          ─── consume ───┤
 uc-daemon (bin)     ─── consume ───┤

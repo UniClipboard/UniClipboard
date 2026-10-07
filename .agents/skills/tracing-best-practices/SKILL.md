@@ -44,7 +44,7 @@ tracing records three types of structured data — NOT print text:
 
 ### 2.1 Entry Layer (MUST have top-level span)
 
-Applies to: Tauri commands, CLI handlers, HTTP/IPC handlers, background task entries, scheduled task entries.
+Applies to: host command handlers, CLI handlers, HTTP/IPC handlers, background task entries, scheduled task entries.
 
 ```rust
 #[instrument(

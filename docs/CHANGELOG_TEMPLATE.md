@@ -36,7 +36,7 @@
 8. **每条末尾标注 PR 编号**，格式为 `(#123)`；PR 编号来自 squash commit 信息（`feat: xxx (#123)`）
 9. **一个 PR 一条记录**：同一个 PR 内的多条改动必须合并为一条用户视角的总结，**不要** 让同一个 `(#PR)` 在同一分类里出现多次；如果一个 PR 的改动确实跨分类（如同时含 feature 与 fix），可以分类各保留一条
 10. **每条一句话**，短、清楚、自然；英文版与中文版都遵循同一结构
-11. **版本号** 取自 `package.json` / `Cargo.toml` / `tauri.conf.json`
+11. **版本号** 取自 `package.json` / `Cargo.toml` / `apps/gui-go/app.json`
 12. **日期** 使用发布当天，格式 `YYYY-MM-DD`
 13. **贡献者** 不在条目里标注；GitHub Release 会单独生成 New Contributors 区域，无需在 changelog 里重复
 

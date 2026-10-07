@@ -383,11 +383,10 @@ When errors cascade across workspace crates:
 
 When both `cargo check` and `bun run build` fail:
 
-1. Fix Rust errors first (they often regenerate TypeScript bindings)
+1. Fix Rust errors first (they often regenerate TypeScript API clients)
 2. After Rust fixes, re-run code generation:
    ```bash
    bun run gen:openapi
-   cargo test -p uc-tauri --test specta_export
    bun run gen:client
    ```
 3. Then fix remaining TypeScript errors (many will have been resolved by codegen)

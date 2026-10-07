@@ -33,7 +33,7 @@ Verify each entry in the `## WHERE TO LOOK` table still points to an existing fi
 ```
 
 For each row in the table:
-1. Check if the file path still exists (e.g., `crates/uc-tauri/src/run.rs`)
+1. Check if the file path still exists (e.g., `crates/uc-desktop/src/runtime.rs`)
 2. If moved/renamed, update the Location column
 3. If deleted with no replacement, remove the row
 4. If a new major entry point was added (e.g., new daemon binary, new CLI subcommand), add a row

@@ -62,12 +62,11 @@ From the file list, classify what changed into categories:
 |----------|-------------------|
 | `rust` | `*.rs`, `Cargo.toml`, `Cargo.lock` |
 | `frontend` | `src/**/*.{ts,tsx,js,jsx,css}`, `package.json`, `bun.lockb` |
-| `api-endpoints` | `*.rs` files containing `#[utoipa::path]` or `#[tauri::command]` changes |
-| `tauri-ipc` | changes in `src-tauri/src/`, DTO structs used by Tauri commands |
+| `api-endpoints` | `*.rs` files containing `#[utoipa::path]` changes |
 | `openapi` | `schema/openapi.json`, files with `#[utoipa::path]` |
 | `docs-site` | `docs-site/**` |
 | `markdown` | `*.md` (outside docs-site) |
-| `generated` | `apps/gui/src/api/generated/**`, `apps/gui/src/lib/ipc-bindings.generated.ts` |
+| `generated` | `apps/gui/src/api/generated/**` |
 
 Store the categories in state as `change_categories`.
 
@@ -106,13 +105,7 @@ git diff --exit-code schema/openapi.json
 # If diff: stage it
 git add schema/openapi.json
 
-# 2. IPC bindings (if tauri-ipc changed)
-cargo test -p uc-tauri --test specta_export 2>&1
-git diff --exit-code apps/gui/src/lib/ipc-bindings.generated.ts
-# If diff: stage it
-git add apps/gui/src/lib/ipc-bindings.generated.ts
-
-# 3. API client (if openapi.json changed in step 1 or was already changed)
+# 2. API client (if openapi.json changed in step 1 or was already changed)
 bun run gen:client 2>&1
 git diff --exit-code apps/gui/src/api/generated/
 # If diff: stage it

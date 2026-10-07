@@ -36,7 +36,7 @@ This architecture improves list loading performance by avoiding expensive blob r
 
 ### Storage Layer (Materializer)
 
-**File**: `src-tauri/crates/uc-infra/src/clipboard/materializer.rs`
+**File**: `uc-infra/src/clipboard/materializer.rs` (now in the `UniClipboard/Engine` repository)
 
 The `ClipboardMaterializer` handles preview/detail separation during clipboard content materialization:
 
@@ -83,7 +83,7 @@ impl ClipboardMaterializer {
 
 ### Application Layer (UseCases)
 
-**File**: `src-tauri/crates/uc-app/src/usecases/clipboard/get_entry_resource.rs`
+**File**: `uc-app/src/usecases/clipboard/get_entry_resource.rs` (historical path; use cases now live in the `UniClipboard/Engine` repository)
 
 ```rust
 pub struct GetEntryResourceUseCase<R: ClipboardEntryRepository> {
@@ -113,7 +113,7 @@ impl<R: ClipboardEntryRepository> GetEntryResourceUseCase<R> {
 
 ### API Layer (Tauri Commands)
 
-**File**: `crates/uc-tauri/src/commands/clipboard.rs`
+**File**: the retired Tauri shell's `commands/clipboard.rs` (historical)
 
 ```rust
 /// Get clipboard history entries (preview only)
@@ -284,7 +284,7 @@ toast.error(t('clipboard.errors.loadDetailFailed'), {
 
 ### Unit Tests (Backend)
 
-**File**: `src-tauri/crates/uc-infra/src/clipboard/materializer_test.rs`
+**File**: `uc-infra/src/clipboard/materializer_test.rs` (now in the `UniClipboard/Engine` repository)
 
 ```rust
 #[tokio::test]
@@ -347,6 +347,6 @@ Existing entries in database:
 
 ## References
 
-- Backend: `src-tauri/crates/uc-infra/src/clipboard/materializer.rs`
+- Backend: `uc-infra/src/clipboard/materializer.rs` (now in the `UniClipboard/Engine` repository)
 - Frontend API: `apps/gui/src/api/clipboardItems.ts`
 - UI Component: `apps/gui/src/components/clipboard/ClipboardItem.tsx`

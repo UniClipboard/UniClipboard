@@ -42,7 +42,7 @@
 
 ## 3. 真实外部契约（权威清单 — 重构不可破坏）
 
-来源：全仓 `use uc_bootstrap::` 实际 import 语句（非同名 fork、非注释）。**uc-desktop / uc-tauri 确认零引用**（它们的 GUI 装配自带于 `uc-desktop`）。
+来源：全仓 `use uc_bootstrap::` 实际 import 语句（非同名 fork、非注释）。**uc-desktop 与旧 Tauri 适配 crate（已退役）确认零引用**（它们的 GUI 装配自带于 `uc-desktop`）。
 
 ### apps/daemon（19 符号）
 
@@ -179,7 +179,7 @@ uc-bootstrap/src/
 ### Phase 1 — 契约边界稳定化（`refactor:`）✅ 已完成 2026-06-25（commit 4bdc2a4a2）
 - 把 daemon 的 6 处 ⚠️ 子模块路径 import 改走顶层 `uc_bootstrap::X`（lib.rs 顶层补全 `FileTransferLifecycle` / `install_panic_logging_hook` re-export）。
 - 目的：让 `lib.rs` 成为 **唯一** 对外契约面，后续内部重组对 daemon/cli 完全透明。
-- DoD：✅ `rg 'uc_bootstrap::(assembly|tracing|builders|file_transfer_lifecycle)::'` 在 apps/ + src-tauri/ 清零；✅ `cargo check --workspace` 绿；✅ `cargo test -p uc-bootstrap -p uc-daemon` 绿。
+- DoD：✅ `rg 'uc_bootstrap::(assembly|tracing|builders|file_transfer_lifecycle)::'` 在 apps/ 与旧 Tauri 打包壳（已退役）中清零；✅ `cargo check --workspace` 绿；✅ `cargo test -p uc-bootstrap -p uc-daemon` 绿。
 - 残留（不阻塞，随后续 Phase 模块搬迁更新）：`tests/config_migration_round_trip_e2e.rs` 用 `pending_import::apply_pending_import`（非契约 helper，Phase 3b 随模块移动更新）；`uc-platform/src/clipboard/noop.rs` doc-comment 链接 `assembly::create_platform_layer`（Phase 4 拆 assembly 时顺手修）。
 
 ### Phase 2 — `space_setup` → `sync_engine` 改名（`refactor:`）✅ 已完成 2026-06-25（commit 13f7d11de）

@@ -60,7 +60,7 @@ tracing::info_span!("command.clipboard.capture", device_id = %id);
 
 #### 1. Observability Crate
 
-**Location**: `src-tauri/crates/uc-observability/`
+**Location**: `crates/uc-observability/`
 
 ```
 uc-observability/
@@ -87,7 +87,7 @@ Provides:
 
 #### 2. Bootstrap Configuration
 
-**Location**: `crates/uc-tauri/src/bootstrap/`
+**Location**: the retired Tauri shell's `bootstrap/` module (historical; the daemon and the Go host initialize tracing through `uc-observability` directly)
 
 ```
 bootstrap/
@@ -99,7 +99,7 @@ bootstrap/
 
 ```
 main.rs
-  ├─> init_tracing_subscriber()         // uc-tauri/bootstrap/tracing.rs
+  ├─> init_tracing_subscriber()         // retired Tauri shell: bootstrap/tracing.rs
   │    ├─> LogProfile::from_env()       // Select profile
   │    ├─> sentry::init()               // Optional Sentry (if SENTRY_DSN set)
   │    │     - logs feature enabled (sentry 0.48+)
@@ -125,7 +125,7 @@ Each architectural layer has specific span naming conventions:
 - Naming: `clipboard.{operation}`
 - Example: `clipboard.flow` (root), `clipboard.normalize`, `clipboard.cache_representations`
 
-**Command Layer** (`uc-tauri/src/commands/`):
+**Command Layer** (retired Tauri shell `commands/`; historical):
 
 - Root spans for Tauri commands
 - Naming: `command.{module}.{action}`
@@ -626,10 +626,7 @@ The tracing and observability modules include tests:
 
 ```bash
 # Run uc-observability tests (profile, format, init)
-cd apps/gui/src-tauri && cargo test --package uc-observability
-
-# Run uc-tauri tracing bootstrap tests
-cd apps/gui/src-tauri && cargo test --package uc-tauri -- bootstrap::tracing
+cargo test --package uc-observability
 ```
 
 ### Manual Testing
@@ -895,9 +892,8 @@ The pre-migration Seq signal files have been moved to `docs/_archive/seq/signals
 - [Sentry Logs feature](https://docs.sentry.io/product/explore/logs/)
 - [Sentry distributed tracing — sentry-trace + baggage](https://docs.sentry.io/concepts/key-terms/tracing/distributed-tracing/)
 - Source:
-  - `src-tauri/crates/uc-observability/` (profile, format, init, redact, telemetry_gate)
-  - `crates/uc-tauri/src/bootstrap/tracing.rs` (Sentry + uc-observability composition)
-  - `crates/uc-tauri/src/bootstrap/logging.rs` (legacy log plugin, Webview + stdout)
+  - `crates/uc-observability/` (profile, format, init, redact, telemetry_gate)
+  - retired Tauri shell: `bootstrap/tracing.rs` (Sentry + uc-observability composition) and `bootstrap/logging.rs` (legacy log plugin)
   - `apps/gui/src/observability/sentry.ts` (frontend Sentry init + redaction hooks)
   - `apps/gui/src/lib/logger.ts` (pino → Sentry.logger bridge)
 - Archive:

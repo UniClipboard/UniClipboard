@@ -17,7 +17,7 @@ AppImage 自带 GTK、WebKitGTK 与 GLib，但与宿主 GPU 驱动栈（Mesa、l
 
 ### 1. 自带的 `libwayland-client` 遮蔽宿主副本
 
-1. Tauri CLI 2.11.x 的 AppImage 打包器在构建时下载未固定版本的 `linuxdeploy`（`tauri-apps/binary-releases` 的 `linuxdeploy` 发布，提交 `4b24a49`，2024-07）。它的排除列表不含 `libwayland-client.so.0`，于是把构建镜像（Debian bookworm，libwayland 1.21）里的副本打进 `usr/lib/`。较新的 linuxdeploy（`07333c6`，Tauri 开发分支已采用）把该库列入排除列表。
+1. 旧 Tauri 宿主（已退役）所用 Tauri CLI 2.11.x 的 AppImage 打包器在构建时下载未固定版本的 `linuxdeploy`（`tauri-apps/binary-releases` 的 `linuxdeploy` 发布，提交 `4b24a49`，2024-07）。它的排除列表不含 `libwayland-client.so.0`，于是把构建镜像（Debian bookworm，libwayland 1.21）里的副本打进 `usr/lib/`。较新的 linuxdeploy（`07333c6`，Tauri 开发分支已采用）把该库列入排除列表。
 2. `AppRun.wrapped` 把 `$APPDIR/usr/lib` 放在 `LD_LIBRARY_PATH` 最前，GTK 与 WebKit 的所有进程都绑定到自带副本。
 3. 宿主 Mesa 26 的 `libEGL_mesa.so.0` 需要 `wl_fixes_interface`、`wl_display_create_queue_with_name`、`wl_display_dispatch_queue_timeout`，自带的 1.21 没有这些符号，libglvnd 加载该厂商库失败，WebKit 的 EGL 初始化失败。
 
@@ -31,9 +31,9 @@ linuxdeploy 的 GTK 插件只设置 `GIO_EXTRA_MODULES`，它是追加语义，�
 
 | 改动 | 位置 |
 | --- | --- |
-| 打包前把 linuxdeploy 固定为 `linuxdeploy-07333c6`，校验 SHA-256 后放入 Tauri 工具缓存，使其排除 `libwayland-client` | `scripts/linux-appimage-tools.mjs`，由 `scripts/prepare-linux-bundle.mjs`（`beforeBundleCommand`）调用 |
-| 发布产物检查：AppImage 内不得出现 `libwayland-client.so*` | `scripts/check-linux-bundles.py` |
-| AppImage 启动时把 `GIO_MODULE_DIR` 设为包内已校验的模块目录，取代编译时的宿主目录 | `crates/uc-tauri/src/process_environment.rs` |
+| 打包前把 linuxdeploy 固定为 `linuxdeploy-07333c6`，校验 SHA-256，使其排除 `libwayland-client` | 旧 Tauri 路径：`scripts/linux-appimage-tools.mjs` 等脚本，已随 Tauri 打包器移除；现在的固定值在 `apps/gui-go/e2e/package_linux.py`（`LINUXDEPLOY_RELEASE` / `LINUXDEPLOY_SHA256`） |
+| 发布产物检查：AppImage 内不得出现 `libwayland-client.so*` | 旧 Tauri 路径的产物检查脚本，已随 Tauri 打包器移除 |
+| AppImage 启动时把 `GIO_MODULE_DIR` 设为包内已校验的模块目录，取代编译时的宿主目录 | 旧 Tauri 外壳的进程环境初始化（已退役）；Go 宿主的决定见 [gui-go-linux-appimage-runtime-deps.md](gui-go-linux-appimage-runtime-deps.md) |
 
 `libwayland-cursor`、`libwayland-egl`、`libwayland-server` 不在排除列表中，继续自带；它们只依赖 `libwayland-client` 的稳定接口，缺少宿主 `libwayland-client` 时 GTK 本身无法加载，这是所有 AppImage 沿用的排除列表假设。
 
@@ -43,7 +43,7 @@ linuxdeploy 的 GTK 插件只设置 `GIO_EXTRA_MODULES`，它是追加语义，�
 
 ### 移除计划
 
-Tauri CLI 升级到默认使用不早于 `07333c6` 的 linuxdeploy 后，删除 `scripts/linux-appimage-tools.mjs` 及其调用与测试；`check-linux-bundles.py` 中的断言保留。
+该计划已随 Tauri 打包器的移除完成：相关脚本与测试已删除，linuxdeploy 的固定值现在只在 `apps/gui-go/e2e/package_linux.py`。
 
 ### Go GUI 的补充（17c7）
 
@@ -65,7 +65,7 @@ scripts/linux-appimage-smoke.sh --display xvfb --artifacts runs/xvfb UniClipboar
 
 ### 对照材料的来源
 
-红绿对照包由真实的 tauri-cli 2.11.1 打包器（`tauri bundle --bundles appimage`）在 `ghcr.io/uniclipboard/build-bookworm` 容器里生成，二进制取自官方 v1.0.1 发布包，只改变 linuxdeploy 这一项。这是 **混合包**：文件名带 1.1.0-alpha.2，内部是 v1.0.1 的 `uniclipboard` 与 `uniclipd`，仅用于验证打包机制，不是 main 的产品构建。aarch64 上，未固定时得到的 AppImage 与官方 v1.0.1 发布版大小一致（118667784 字节）；固定后与之相比只少了 `libwayland-client.so.0` 及其版权文件。
+红绿对照包由当时真实的 Tauri CLI 2.11.1 打包器（`tauri bundle --bundles appimage`，已退役）在 `ghcr.io/uniclipboard/build-bookworm` 容器里生成，二进制取自官方 v1.0.1 发布包，只改变 linuxdeploy 这一项。这是 **混合包**：文件名带 1.1.0-alpha.2，内部是 v1.0.1 的 `uniclipboard` 与 `uniclipd`，仅用于验证打包机制，不是 main 的产品构建。aarch64 上，未固定时得到的 AppImage 与官方 v1.0.1 发布版大小一致（118667784 字节）；固定后与之相比只少了 `libwayland-client.so.0` 及其版权文件。
 
 ### 结果
 
@@ -76,14 +76,14 @@ scripts/linux-appimage-smoke.sh --display xvfb --artifacts runs/xvfb UniClipboar
 | Debian sid amd64（QEMU 用户态模拟），Mesa 26.2.4，GLib 2.90，gvfs 1.62，Xvfb | 官方 v1.0.1 | 失败：GIO 符号错误与 EGL 中止同时出现，前端就绪超时 |
 | 同上 | 仅删除 `libwayland-client` | EGL 错误消失，前端就绪；GIO 错误仍在 |
 | 同上 | 删除 `libwayland-client` 并设置 `GIO_MODULE_DIR` | 无致命日志，前端就绪。截图是白色窗口，模拟环境下不能据此确认界面已渲染 |
-| 测试 | | `scripts/tests/test_check_linux_bundles.py`、`scripts/__tests__/linux-appimage-tools.test.ts`、`cargo test -p uc-tauri --lib process_environment`（aarch64 Linux） |
+| 测试 | | 旧 Tauri 路径的脚本测试与进程环境单元测试（aarch64 Linux），均已随 Tauri 宿主移除 |
 
 直接证据：在上述两个主机上，用包内 `libwayland-client` 加载宿主 `libEGL_mesa.so.0` 都得到 `undefined symbol: wl_fixes_interface`，用宿主副本则加载成功。
 
 ### 未验证
 
 - PikaOS 4 实机（x86_64，glibc 2.44，GLib 2.89.3）：没有该环境，Debian sid 容器是最接近的替代。PikaOS 上的段错误是否就是同一加载失败，只是推断。
-- x86_64 的固定版 linuxdeploy 实际打包：本地没有原生 x86_64 Linux 主机，QEMU 用户态无法运行 linuxdeploy AppImage。已核对固定校验和，并确认该二进制的排除列表含 `libwayland-client.so.0`（未固定的旧版不含）。实际打包由 CI 的 x86_64 构建完成，`check-linux-bundles.py` 会在发布流程里拒绝仍含该库的产物。
+- x86_64 的固定版 linuxdeploy 实际打包：本地没有原生 x86_64 Linux 主机，QEMU 用户态无法运行 linuxdeploy AppImage。已核对固定校验和，并确认该二进制的排除列表含 `libwayland-client.so.0`（未固定的旧版不含）。实际打包由 CI 的 x86_64 构建完成，旧发布流程中的产物检查会拒绝仍含该库的产物（该检查已随 Tauri 打包器移除）。
 - 固定版 AppImage 在真实 X server（Xvfb）上运行：只测了等价内容的删库变体。
 - 带 GIO 修复的 Rust 二进制在 AppImage 内的端到端运行：`GIO_MODULE_DIR` 的推导由单元测试覆盖，机制由手动设置同一变量验证，同一代码已在 0.19.3 的 PikaOS 实机上确认有效；完整构建未在本地执行。
 - 模拟环境里的 amd64 守护进程 WebSocket 未就绪：QEMU 用户态下守护进程已监听，但 PID 存活检查失败，属于模拟器限制。

@@ -82,7 +82,8 @@
 
 - **Rust**：稳定版工具链（推荐使用 `rustup`）。如果仓库中存在 `rust-toolchain.toml`，会以其为准。
 - **Bun**：JavaScript 包管理器与运行时。可从 [bun.sh](https://bun.sh) 下载。
-- **Tauri 构建依赖**：参考 Tauri 官方 [前置依赖文档](https://tauri.app/start/prerequisites/)，按系统准备好相应组件（Windows 的 WebView2、Linux 的 `webkit2gtk` 等、macOS 的 Xcode CLT）。
+- **Go**：桌面宿主 `apps/gui-go` 是 Go/Wails 模块，版本以 `apps/gui-go/go.mod` 为准。
+- **Wails 构建依赖**：按系统准备好 Wails v3 宿主所需组件（Windows 的 WebView2、Linux 的 GTK3 与 `webkit2gtk-4.1`、macOS 的 Xcode CLT），详见 `apps/gui-go/README.md`。
 
 可选但有用：
 
@@ -105,47 +106,29 @@ bun install
 
 ```bash
 # 单实例，dev profile（数据目录在 app.uniclipboard.desktop-dev 下）
-bun tauri:dev
+bun wails:dev
 ```
 
 React Grab 默认关闭，避免组件检查工具影响滚动性能。需要选取界面元素并复制组件位置时，在启动开发服务前显式启用：
 
 ```bash
-VITE_REACT_GRAB=1 bun tauri:dev
+VITE_REACT_GRAB=1 bun wails:dev
 ```
 
 也可以在本地 `.env.local` 中设置 `VITE_REACT_GRAB=1` 后重启开发服务。性能排查时应关闭；发行包始终不加载该工具。
 
-如果要在本机调试 P2P 同步，可以同时运行两个相互隔离的实例：
+如果要在本机调试 P2P 同步，可以同时运行两个相互隔离的实例，各用一个终端、指定不同的 profile：
 
 ```bash
-# 并行运行两个 peer，peerA 是完整剪贴板模式，peerB 是被动模式
-bun tauri:dev:dual
-
-# 或者分别启动，便于挂调试器
-bun tauri:dev:peerA
-bun tauri:dev:peerB
+bun wails:dev:profile peerA
+bun wails:dev:profile peerB
 ```
 
-两个 peer 使用不同的 `UC_PROFILE`，所以它们的数据、密钥库、日志互不冲突。
-
-需要单独启动其他开发实例时，可以指定 profile：
-
-```bash
-bun tauri:dev:profile a
-bun tauri:dev:profile b
-```
-
-每个 profile 会使用独立的前端开发服务，数据、前端缓存和热更新互不影响。
+两个 peer 使用不同的 `UC_PROFILE`，所以它们的数据、密钥库、日志互不冲突；每个 profile 会使用独立的前端开发服务，前端缓存和热更新互不影响。
 
 ### 构建发行包
 
-```bash
-# 先构建 `uniclipd` 守护进程 sidecar，再执行 `tauri build`
-bun run tauri:build
-```
-
-产物会出现在 `target/release/bundle/`。
+Go/Wails 宿主的发布流水线尚未重建，release 工作流目前被有意阻塞（见 [`docs/architecture/gui-go-tauri-retirement.md`](./docs/architecture/gui-go-tauri-retirement.md)）。本地 macOS 构建与打包用 `apps/gui-go/build.sh`；Linux 与 Windows 的打包脚本是 `apps/gui-go/e2e/package_linux.py` 与 `apps/gui-go/e2e/package_windows.py`；打包脚本所需的 daemon 二进制用 `node scripts/stage-daemon.mjs` 暂存。
 
 ### 发布期 Telemetry Secrets
 
@@ -171,7 +154,7 @@ issue / PR 正文。**
 
 ```text
 .
-├── apps/gui/           # 桌面 GUI：React + TypeScript 前端（src/）与 Tauri 打包壳（src-tauri/）
+├── apps/gui/           # 桌面 GUI：React + TypeScript 前端（src/）；Go/Wails 宿主壳在 `apps/gui-go/`
 ├── apps/、crates/      # Rust 工作区成员（daemon、CLI、快捷面板、宿主与平台 crate）
 ├── workers/            # Cloudflare Worker，加密中继
 ├── docs/               # 架构、agent 规则、发布流程、UAT 等
@@ -181,7 +164,7 @@ issue / PR 正文。**
 └── README.md           # 面向用户的项目介绍
 ```
 
-`AGENTS.md` 是仓库约定的入口文档。在某个具体方向工作时，按它的指引读对应的专题文档（前端、Rust/Tauri、架构、工作流、项目记忆），不要把所有文档一次性全读一遍。
+`AGENTS.md` 是仓库约定的入口文档。在某个具体方向工作时，按它的指引读对应的专题文档（前端、Rust/daemon、架构、工作流、项目记忆），不要把所有文档一次性全读一遍。
 
 ## 开发流程
 
@@ -266,7 +249,7 @@ bun run format        # oxfmt --write .
 bun run format:check  # oxfmt --check .
 ```
 
-Rust（在 `src-tauri/` 目录下执行）：
+Rust（在仓库根目录下执行）：
 
 ```bash
 cargo fmt --all
@@ -282,15 +265,15 @@ cargo clippy --workspace --all-targets -- -D warnings
 - 仓库内文件 **不得包含机器特定的绝对路径**，统一使用相对仓库根的路径。
 - Markdown 代码围栏 **必须带语言标识**（`bash`、`rust`、`ts`、`text` 等）。
 - **前端代码** 遵循 [`docs/agent/frontend-ui-rules.md`](./docs/agent/frontend-ui-rules.md)。
-- **Rust/Tauri 代码** 遵循 [`docs/agent/rust-tauri-rules.md`](./docs/agent/rust-tauri-rules.md)。
+- **Rust 代码** 遵循 [`docs/agent/rust-rules.md`](./docs/agent/rust-rules.md)。
 
 ## 测试
 
 ### 前端
 
 ```bash
-bun test           # vitest，watch 模式
-bun test --run     # 单次运行，CI 中适用
+bun run test       # vitest，共享前端（apps/gui）
+bun run typecheck  # 共享前端类型检查
 ```
 
 测试基于 Vitest 与 `@testing-library/react`。请把测试与被测代码放在同一目录（如 `Component.test.tsx`）。
@@ -298,14 +281,13 @@ bun test --run     # 单次运行，CI 中适用
 ### Rust
 
 ```bash
-cd apps/gui/src-tauri
 cargo test --workspace
 ```
 
 覆盖率报告：
 
 ```bash
-bun run test:coverage   # 在 src-tauri/target/llvm-cov 下生成 HTML 报告
+bun run test:coverage   # 在 target/llvm-cov 下生成 HTML 报告
 ```
 
 ### 手动 / UAT 验证
@@ -349,7 +331,7 @@ CI 会在每个改动到 lockfile 的 PR/push 上运行自动化依赖审计（`
 ### 提 PR 之前
 
 - 先 rebase 到最新的 `main`。
-- 本地确认 `bun run lint`、`bun run format`、`bun test`、`cargo test`（涉及时）都能通过。
+- 本地确认 `bun run lint`、`bun run format`、`bun run test`、`cargo test`（涉及时）都能通过。
 - 保持 diff 聚焦。互不相关的改动请拆成独立 PR。
 
 ### PR 描述

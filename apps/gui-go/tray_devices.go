@@ -46,6 +46,9 @@ type deviceMenu struct {
 	pending     map[string]bool
 
 	refresh chan struct{}
+
+	// publish makes a structural change visible to the platform tray; it is set once the tray exists.
+	publish func()
 }
 
 func newDeviceMenu(h *HostService, root *application.Menu, language string) *deviceMenu {
@@ -67,7 +70,12 @@ func (d *deviceMenu) requestRefresh() {
 
 func (d *deviceMenu) setLanguage(language string) {
 	d.mu.Lock()
-	defer d.mu.Unlock()
+	d.applyLanguage(language)
+	d.mu.Unlock()
+	d.publishMenu()
+}
+
+func (d *deviceMenu) applyLanguage(language string) {
 	d.language = language
 	labels := deviceSyncLabels[language]
 	d.sub.SetLabel(labels[0])
@@ -77,7 +85,13 @@ func (d *deviceMenu) setLanguage(language string) {
 	if d.placeholder != nil {
 		d.placeholder.SetLabel(d.placeholderText())
 	}
-	d.root.Update()
+}
+
+// publishMenu is called without d.mu held: on Linux it hands the menu to the main thread.
+func (d *deviceMenu) publishMenu() {
+	if d.publish != nil {
+		d.publish()
+	}
 }
 
 func (d *deviceMenu) placeholderText() string {
@@ -158,7 +172,12 @@ func (h *HostService) memberSyncPreferences(ctx context.Context, id string) (mem
 // devices changed; otherwise items are updated in place so an open menu does not flicker.
 func (d *deviceMenu) render(rows []deviceRow, completed ...string) {
 	d.mu.Lock()
-	defer d.mu.Unlock()
+	d.renderLocked(rows, completed)
+	d.mu.Unlock()
+	d.publishMenu()
+}
+
+func (d *deviceMenu) renderLocked(rows []deviceRow, completed []string) {
 	for _, id := range completed {
 		delete(d.pending, id)
 	}
@@ -190,7 +209,6 @@ func (d *deviceMenu) render(rows []deviceRow, completed ...string) {
 		}
 	}
 	d.rows = rows
-	d.root.Update()
 }
 
 // click handles a device item. The platform flips the check mark itself, so it is put back to the stored

@@ -1,0 +1,178 @@
+#!/usr/bin/env python3
+"""Linux tray lifecycle / menu / action E2E (17c14). RUNS INSIDE the build container under Xvfb + a private D-Bus session.
+
+  docker run ... uc-gui-go-linux-build:17c9-wm  (see linux/run_17c14.sh)
+
+The real gui-go E2E binary and the real Rust daemon run in a throwaway portable sandbox. The StatusNotifierWatcher and
+the dbusmenu reader are the observer in linux/tray_probe/sni_host.py (a tray HOST: the container has no desktop shell,
+so this is NOT a native tray). Real peer B joins through the production rendezvous service (needs network).
+
+Checks: the item registers; the root menu order; the device submenu shows the paired peer through the periodic refresh
+(the path that logged Gtk-CRITICAL on Linux); a dbusmenu click on the peer item saves through the daemon and the check
+state follows; the sync item click flips its label; no Gtk-CRITICAL from the menu code across >= 3 refresh periods; the
+Quit item exits the GUI with 0, stops the daemon and removes the item.
+"""
+import argparse
+import json
+import os
+import re
+import shutil
+import signal
+import subprocess
+import sys
+import tempfile
+import time
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE / 'linux' / 'tray_probe'))
+from sni_host import SniHost, flat  # noqa: E402
+from linux_xvfb_run import Gui, pid_alive, PASSPHRASE  # noqa: E402
+
+ROOT_ORDER = ['Device Sync', '-', 'Open', 'Settings', 'Check for Updates…', '-', 'Restart', 'Lightweight Mode (Background Sync)', 'Quit']
+MENU_CRITICAL = re.compile(r'(gtk_container_foreach|gtk_menu_shell_insert|gtk_menu_item_set_submenu|gtk_menu_|GtkMenu|GTK_IS_MENU)')
+
+
+def run_cli(binary, env, *args, timeout=120, check=True):
+    p = subprocess.run([str(binary), *args], env=env, capture_output=True, text=True, timeout=timeout)
+    if check and p.returncode != 0:
+        raise RuntimeError(f'uniclip {" ".join(args)} failed: {p.returncode} {p.stderr[:300]}')
+    return p
+
+
+def labels(layout):
+    return [('-' if n['type'] == 'separator' else n['label']) for n in layout['children']]
+
+
+def submenu(layout, name):
+    return [n for n in layout['children'] if n['label'] == name][0]['children']
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument('--out', type=Path, required=True)
+    ap.add_argument('--binaries', type=Path, required=True)
+    ap.add_argument('--tag', default='tray')
+    args = ap.parse_args()
+    out = args.out.resolve()
+    out.mkdir(parents=True, exist_ok=True)
+    sandbox = Path(tempfile.mkdtemp(prefix='uc-gui-go-'))
+    peer = Path(tempfile.mkdtemp(prefix='uc-gui-go-peer-'))
+    profile, pprofile = 'gui-go-' + sandbox.name, 'gui-go-' + peer.name
+    for name in ('gui-go', 'uniclipd', 'uniclip'):
+        shutil.copy2(args.binaries / name, sandbox / name)
+        shutil.copy2(args.binaries / name, peer / name)
+    envs = []
+    for base, prof in ((sandbox, profile), (peer, pprofile)):
+        home, rt = base / 'home', base / 'run'
+        home.mkdir(mode=0o700)
+        rt.mkdir(mode=0o700)
+        env = dict(os.environ, HOME=str(home), XDG_CONFIG_HOME=str(home / '.config'), UC_PORTABLE='1', UC_PROFILE=prof,
+                   UNICLIPBOARD_ENV='development', UC_DISABLE_SYSTEM_CLIPBOARD='1', NO_COLOR='1', GDK_BACKEND=os.environ.get('GDK_BACKEND', 'x11'))
+        env['XDG_RUNTIME_DIR'] = str(rt)
+        for k in ('HYPRLAND_INSTANCE_SIGNATURE', 'APPIMAGE'):
+            env.pop(k, None)
+        envs.append(env)
+    env_a, env_b = envs
+    # The peer's daemon and CLI live in its own runtime dir but share the private session bus; the GUI only needs A.
+    cli_a, cli_b = sandbox / 'uniclip', peer / 'uniclip'
+    results = {'tag': args.tag, 'sandbox': str(sandbox), 'checks': [], 'passed': False,
+               'scope': 'Xvfb + private D-Bus session in a container; tray HOST is the sni_host.py observer, not a desktop shell'}
+    checks = results['checks']
+
+    def check(name, ok, detail=None):
+        checks.append({'check': name, 'ok': bool(ok), 'detail': detail})
+        print(('PASS ' if ok else 'FAIL ') + name, flush=True)
+        return bool(ok)
+
+    host = SniHost(str(out / 'host.jsonl'))
+    gui = None
+    daemon_pid = None
+    try:
+        run_cli(cli_a, env_a, 'space', 'init', '--passphrase', PASSPHRASE, '--device-name', 'tray-a')
+        run_cli(cli_a, env_a, 'start')
+        gui_env = dict(env_a, UC_GUI_GO_ISOLATED='1', UC_GUI_GO_E2E_PHASE='wake', UC_GUI_GO_EXIT_MODE='full', UC_GPUI_QUICK_PANEL='0',
+                       XDG_SESSION_TYPE=os.environ.get('XDG_SESSION_TYPE', 'x11'))
+        gui = Gui(sandbox, gui_env, out, 'gui1')
+        gui.step('bootstrapped', 120)
+        conn = next(sandbox.rglob('daemon.conn'))
+        daemon_pid = json.loads(conn.read_text())['pid']
+        check('1 the tray item registers with the StatusNotifierWatcher', host.registered.wait(40), host.item)
+        lay = host.wait(lambda l: len(l['children']) >= 9, 30, 'root menu')
+        check('2 the root menu order and the localized labels reach the host through dbusmenu',
+              lay is not None and labels(lay)[1:] == ROOT_ORDER and labels(lay)[0] in ('Enable Sync', 'Disable Sync'), labels(lay) if lay else None)
+        sync0 = labels(lay)[0] if lay else None
+        sub0 = [n['label'] for n in submenu(lay, 'Device Sync')] if lay else None
+        check('3 before pairing the device submenu holds only a disabled placeholder', sub0 in (['No paired devices'], ['Devices unavailable']), sub0)
+
+        # Pair peer B through the production rendezvous service; the periodic refresh must bring the row to the host.
+        invite = subprocess.Popen([str(cli_a), 'space', 'invite'], env=env_a, stdout=subprocess.PIPE, text=True)
+        code, deadline = None, time.time() + 90
+        os.set_blocking(invite.stdout.fileno(), False)
+        buf = ''
+        while code is None and time.time() < deadline:
+            try:
+                buf += os.read(invite.stdout.fileno(), 4096).decode(errors='replace')
+            except BlockingIOError:
+                pass
+            for line in buf.splitlines():
+                if line.startswith('INVITATION_CODE='):
+                    code = line.split('=', 1)[1].strip()
+            time.sleep(.3)
+        check('4 an invitation code was obtained from the production rendezvous service', bool(code))
+        assert code, buf[:300]
+        t_join = time.time()
+        run_cli(cli_b, env_b, 'space', 'join', '--code', code, '--passphrase', PASSPHRASE, '--device-name', 'tray-peer-b', timeout=120)
+        invite.send_signal(signal.SIGINT)
+        lay = host.wait(lambda l: [n['label'] for n in submenu(l, 'Device Sync')] == ['tray-peer-b'], 60, 'peer row')
+        row = submenu(lay, 'Device Sync')[0] if lay else None
+        check('5 the periodic refresh publishes the paired peer into the device submenu seen by the host (checked, enabled)',
+              bool(row) and row['toggle'] == 1 and row['enabled'] is True, {'row': row, 'seconds_after_join': round(time.time() - t_join, 1)})
+
+        host.click('tray-peer-b')
+        lay = host.wait(lambda l: (submenu(l, 'Device Sync') or [{}])[0].get('toggle') == 0 and submenu(l, 'Device Sync')[0]['enabled'], 40, 'peer off')
+        check('6 a dbusmenu click on the peer item saves through the daemon: the check state follows, and the item is enabled again', lay is not None,
+              submenu(lay, 'Device Sync') if lay else None)
+        host.click('tray-peer-b')
+        lay = host.wait(lambda l: (submenu(l, 'Device Sync') or [{}])[0].get('toggle') == 1 and submenu(l, 'Device Sync')[0]['enabled'], 40, 'peer on')
+        check('6 clicking again restores it', lay is not None, submenu(lay, 'Device Sync') if lay else None)
+
+        flip = {'Enable Sync': 'Disable Sync', 'Disable Sync': 'Enable Sync'}
+        host.click(sync0)
+        lay = host.wait(lambda l: labels(l)[0] == flip[sync0], 30, 'sync flips')
+        check('7 the sync item click flips its label (connection-state refresh through the daemon)', lay is not None, labels(lay)[0] if lay else None)
+        host.click(flip[sync0])
+        lay = host.wait(lambda l: labels(l)[0] == sync0, 30, 'sync restores')
+        check('7 and flips back', lay is not None, labels(lay)[0] if lay else None)
+
+        time.sleep(max(0, 35 - (time.time() - host.t0 - 10)))  # make sure >= 3 full refresh periods elapsed since the tray existed
+        log = (out / 'gui1.log').read_text(errors='replace')
+        crit = [l for l in log.splitlines() if 'CRITICAL' in l]
+        menu_crit = [l for l in crit if MENU_CRITICAL.search(l)]
+        results['criticalLines'] = crit
+        check('8 no menu-related Gtk-CRITICAL in the GUI log across the refresh periods', not menu_crit, menu_crit[:5])
+        results['criticalOther'] = [l for l in crit if l not in menu_crit]
+
+        t_quit = time.time()
+        host.click('Quit')
+        try:
+            rc = gui.proc.wait(timeout=40)
+        except subprocess.TimeoutExpired:
+            rc = None
+        check('9 the Quit item exits the GUI with 0', rc == 0, {'rc': rc, 'seconds': round(time.time() - t_quit, 1)})
+        time.sleep(1)
+        check('9 the daemon is stopped by the tray quit (full exit)', daemon_pid is not None and not pid_alive(daemon_pid), daemon_pid)
+        results['passed'] = all(c['ok'] for c in checks)
+    finally:
+        if gui and gui.proc.poll() is None:
+            gui.proc.terminate()
+        for cli, env in ((cli_a, env_a), (cli_b, env_b)):
+            run_cli(cli, env, '--json', 'stop', check=False, timeout=80)
+        host.emit('host-exit')
+        (out / 'tray-assertions.json').write_text(json.dumps(results, indent=2, ensure_ascii=False) + '\n')
+    print(json.dumps({k: results[k] for k in ('passed',)}, indent=2))
+    sys.exit(0 if results['passed'] else 1)
+
+
+if __name__ == '__main__':
+    main()

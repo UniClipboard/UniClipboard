@@ -56,6 +56,7 @@ func (h *HostService) initTray() {
 	t.tray.SetTemplateIcon(trayIcon)
 	t.tray.SetTooltip("UniClipboard")
 	t.tray.SetMenu(menu)
+	t.devices.publish = func() { republishTrayMenu(t.tray, menu) }
 	t.tray.OnClick(h.showMainWindow)
 
 	// Keep the toggle label in step with settings changed from any window.

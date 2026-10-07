@@ -149,16 +149,24 @@ def main():
 
         if args.cli:
             cli = [str(args.cli.resolve())]
-            sh(*cli, "space", "init", "--passphrase", "smoke-passphrase-1895", "--device-name", "smoke", env=env)
+            trace = r.setdefault("cliTrace", [])
+
+            def run_cli(*a):
+                p = sh(*cli, *a, check=False, env=env)
+                trace.append({"args": [x for x in a if x != "smoke-passphrase-1895"], "rc": p.returncode, "out": (p.stdout + p.stderr)[-500:]})
+                return p
+            init = run_cli("space", "init", "--passphrase", "smoke-passphrase-1895", "--device-name", "smoke")
+            assert init.returncode == 0, "uniclip space init failed (see cliTrace)"
             marker = f"smoke-capture-{int(time.time())}"
             subprocess.run(["pbcopy"], input=marker, text=True, check=True)
             found = False
             for _ in range(20):
-                p = sh(*cli, "search", marker, check=False, env=env)
+                p = run_cli("search", marker)
                 if marker in (p.stdout + p.stderr):
                     found = True
                     break
                 time.sleep(1)
+            del trace[3:-3]  # keep the first few and the last few attempts
             checks["clipboardCaptureFindsMarker"] = found
             assert found, "the marker put on the pasteboard never appeared in history"
         else:

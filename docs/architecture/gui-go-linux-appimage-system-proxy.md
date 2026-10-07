@@ -140,6 +140,20 @@ stage3 同一个包上的两个矩阵。页面自身的 HTTP 取数与 WebSocket
 
 边界：握手以 `unknown ca` 结束，只证明到达 TLS 握手阶段，不证明请求完成或代理成功；只证明 rendezvous 这一条 Engine 出站，iroh 其他出站另有结论，不外推。首轮 `p6-portable`（rc 1，探针把 HTTP 200 封装当错误）保留并有 `ATTRIBUTION.txt`。
 
+### P5：Go 更新器（`stage3/p5-portable-v2`，退出码 0）
+
+入口是真实的 `check` 控制命令（手动检查的同一条代码路径，`update.NewHTTPClient()` = `ProxyFromEnvironment`），feed 是受控内部 HTTPS 目标 `update-feed.test`（Tauri 格式，宣告 `9999.0.0`，只检查不下载，下载与签名回归留在最终 P9 的隔离流程）。更新器使用自己的主机名和自己的代理日志窗口，不以 curl 或 WebView 替代。
+
+| 场景 | 更新器路由 | 检查结果 | 目标看到 | 同场景 WebView |
+| --- | --- | --- | --- | --- |
+| `up-none` | direct | found | 1 | direct |
+| `up-allow` | proxied（CONNECT 点名 feed 主机） | found | 1 | proxied |
+| `up-deny` | refused | 失败 | 0 | refused |
+| `up-dead` | failed | 失败 | 0 | failed |
+| `up-bypass`（`NO_PROXY` 含 feed 主机） | direct | found | 1 | proxied |
+
+45 项观测，25/25 要求。更新器只读环境变量（与 Tauri 更新器同为仅环境变量的对等行为），本轮没有测试它是否读取 GNOME 设置；改为通过 GIO 读取系统代理是 OPEN 的产品决策，没有实现。首轮 `p5-portable`（rc 3）是 fixture 缺陷：E2E 包构建时 `-X main.updaterPublicKey=` 为空，`updateClient()` 在任何 HTTP 之前返回“updates are disabled”，我只设了 `UC_UPDATE_ENDPOINT` 没设 `UC_UPDATE_PUBKEY`；原目录与 `ATTRIBUTION.txt` 保留，v2 提供了 17c5 feed 的公钥与真实签名串。只跑便携模式。
+
 ### 仍未完成（OPEN，逐项增量补做）
 
-P5 真实 Go 更新器、GNOME `ignore-hosts` 遗漏回环时本地 daemon 的行为、PAC / 认证 / 动态设置、Fedora、同一最终干净包上的 17c7/17c5/17c10/17c11/内容检查回归。
+GNOME `ignore-hosts` 遗漏回环时本地 daemon 的行为、PAC / 认证 / 动态设置、Fedora、同一最终干净包上的 17c7/17c5/17c10/17c11/内容检查回归。

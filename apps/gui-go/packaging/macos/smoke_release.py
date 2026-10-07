@@ -181,10 +181,20 @@ def main():
         else:
             checks["clipboardCaptureFindsMarker"] = "not run (no --cli)"
 
+        def settled(seconds):
+            end = time.monotonic() + seconds
+            while time.monotonic() < end:
+                if not (alive(gui_pid) or alive(daemon_pid) or alive(helper_pid)):
+                    return True
+                time.sleep(0.5)
+            return False
+        # The way a user quits (Cmd-Q / tray Quit) is an Apple Event to the app; the app was started by direct
+        # execution, so it may not be known to LaunchServices, and SIGTERM is the fallback. Both are recorded.
         sh("osascript", "-e", 'tell application id "app.uniclipboard.desktop" to quit', check=False)
-        deadline = time.monotonic() + 40
-        while (alive(gui_pid) or alive(daemon_pid) or alive(helper_pid)) and time.monotonic() < deadline:
-            time.sleep(0.5)
+        checks["quitByAppleEvent"] = settled(15)
+        if not checks["quitByAppleEvent"]:
+            os.kill(gui_pid, 15)
+            checks["quitBySigterm"] = settled(30)
         checks["quitStoppedAll"] = not (alive(gui_pid) or alive(daemon_pid) or alive(helper_pid))
         assert checks["quitStoppedAll"], "a normal quit left the GUI, daemon or helper running"
         r["passed"] = True

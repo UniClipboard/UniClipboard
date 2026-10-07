@@ -191,7 +191,7 @@ stage3 同一个包上的两个矩阵。页面自身的 HTTP 取数与 WebSocket
 
 包内 GIO 模块现为 5 个（新增 `libgiouniclipboardloopback.so`，源码 SHA-256 与 `gcc -Wall -Wextra -Werror` 命令在清单里）；内容检查 26 项通过。
 
-证据边界（精确未验）：同步路径之外，异步、取消令牌与错误传播没有专门注入；「无下游解析器」的回退没有运行；IPv6 `::1`、`127.0.0.0/8` 非 `127.0.0.1` 成员与 `localhost` 的 E2E 由随后的 `loopback boundary` 增量与 live maps（网络进程已映射该模块）补充，结果见下一节；宿主 helper 进程没有带出该模块由 17c10/17c11 helper 回归检查（环境清理规则）。最小 GREEN 不等于完整代理支持。
+证据边界（精确未验，`boundary-portable` 结果见下表之后）：同步路径之外，异步、取消令牌与错误传播没有专门注入；「无下游解析器」的回退没有运行；IPv6 `::1`、`127.0.0.0/8` 非 `127.0.0.1` 成员与 `localhost` 的 E2E 由随后的 `loopback boundary` 增量与 live maps（网络进程已映射该模块）补充，结果见下一节；宿主 helper 进程没有带出该模块由 17c10/17c11 helper 回归检查（环境清理规则）。最小 GREEN 不等于完整代理支持。
 
 ### PAC / 认证 / 动态设置：源码调查与下一步最小场景（尚未实测）
 
@@ -206,6 +206,10 @@ stage3 同一个包上的两个矩阵。页面自身的 HTTP 取数与 WebSocket
 2. `gs-sys-auth` 与 `env-auth-*`：tinyproxy `BasicAuth`；正确凭据 → proxied，错误凭据或缺失 → 不得直连（refused/failed）；GNOME 的 `authentication-*` 键与环境变量 URL 内凭据各一组；Go 更新器同样检查（Go 的 `ProxyFromEnvironment` 读取 URL 内凭据）。
 3. `gs-user-dynamic`（非便携，真实会话总线与 `dconf-service`）：同一 GUI 进程内，请求 1 proxied → `gsettings set … mode 'none'` → 请求 2 direct → 设回 `manual` → 请求 3 proxied；记录是否需要重启；系统数据库（`dconf update`）的变更传播另做一次观测。
 4. Fedora：基底镜像 `uc-gui-go-linux-runtime-fedora:17c7` + tinyproxy、dconf、`libproxy-bin`、iproute（`Dockerfile.17c12-fedora` / `-fedora-session`，Fedora 44 的 libproxy 0.5.12 与 glib-networking 2.80.1，与 Ubuntu 的 0.5.4 不同；AppImage 自带模块，宿主版本只是对照）；runner 里 tinyproxy 的 `Group nogroup` 在 Fedora 上要改为 `nobody`。
+
+### 回环边界与 live maps（`stage4/boundary-portable`，退出码 0，仅便携，分项结果）
+
+场景 `gs-sys-allow`、`gs-sys-ignore`、`gs-sys-empty`，28 项观测，15/15 要求。`gs-sys-allow`（GNOME 默认 ignore-hosts）与 `gs-sys-empty`（空 ignore-hosts）里，真实 WebView 访问三个各自独立的真实监听器：`127.0.0.2`（`127.0.0.0/8` 中不是 `127.0.0.1` 的成员）、`localhost`、`::1`，监听器都直接收到请求（各 1 次），代理日志没有点名；同一场景里外部请求仍 proxied，伪装主机 `localhost.webview-probe.test` 在 `gs-sys-empty` 里 proxied；`/proc` maps 证明 WebKitNetworkProcess 已映射 `libgiouniclipboardloopback.so`。边界：这是便携模式的分项，不是完整矩阵，也没有非便携和 Fedora；宿主 helper 没有带出该模块、异步/取消/错误传播、无下游解析器的回退仍未验证。
 
 ### 运行器的完整性判定（修改前写下的失败方式）
 

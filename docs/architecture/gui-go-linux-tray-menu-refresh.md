@@ -6,7 +6,7 @@
 
 1. 先读 `handoff.md`/日志，阅读 Wails 与 `tray_devices.go` 源码，形成候选根因（仅在对话中，未落盘）。
 2. 运行最小探针 `probe1`（`G_DEBUG=fatal-criticals`，`update` 模式）取得真实栈。**此时本契约尚未落盘。**
-3. 用户指出契约缺失后，才写下本文件。因此本契约晚于 `probe1`，但早于 `probe2` 之后的所有生产代码改动与 `probe2` 结论的使用；`probe1` 的原始崩溃证据保留，不覆盖。
+3. 协调者指出契约缺失后，才写下本文件。因此本契约晚于 `probe1`；`probe2` 与此后的所有生产代码改动都在契约之后；`probe1` 的原始崩溃证据保留，不覆盖。
 
 ## 现象
 
@@ -39,7 +39,7 @@
 ## 实现
 
 - `apps/gui-go/tray_publish_linux.go`：Linux 上结构变化通过 `SystemTray.SetMenu`（Wails 固定版本 `v3.0.0-beta.28`）发布，由其在主线程重建 dbusmenu 布局并发出 `LayoutUpdated`。
-- `apps/gui-go/tray_publish_other.go`：macOS/Windows 保持 `Menu.Update`，行为不变。
+- `apps/gui-go/tray_publish_other.go`：macOS/Windows 仍调用 `Menu.Update`，但发布回调现在在 `deviceMenu.mu` 与 `trayMenu.mu` 持有期间执行，且 `trayMenu.setLanguage` 的加锁方式有改动；这是对这两个平台托盘路径的真实改动，**本片只做了 `vet`/编译，没有重跑 macOS/Windows 托盘 E2E**。
 - `apps/gui-go/tray_devices.go`、`tray.go`：发布回调在持有 `deviceMenu.mu` 与 `trayMenu.mu` 时调用，保证本项目内没有 goroutine 在平台读取菜单期间修改它；锁序固定为 `deviceMenu.mu` → `trayMenu.mu`，`trayMenu.setLanguage` 先释放自己的锁再进入设备菜单。
 - 并发契约（固定源码已核对）：Wails 的菜单点击经 `menuItemClicked` 通道到独立 goroutine，再 `go m.callback`，主线程不会取这两把锁，因此持锁等待 `InvokeSync` 不会与主线程互等。`publish` 在 `initTray` 中先于刷新 goroutine 与事件处理注册赋值，首次渲染必然看到它。
 - 残余（Wails 内部，非本项目可控）：`MenuItem.handleClick` 对复选项的自动翻转与 `SetMenu` 的读取之间没有同步；点击后 `deviceMenu.click` 本就把状态恢复为已存状态。
@@ -67,4 +67,10 @@
 
 ## 未验
 
-桌面外壳（quickshell 等）里托盘的真实绘制与点击；GNOME/KDE 托盘宿主；真实设备行在主机上的呈现；多输出/其他缩放；非 aarch64；Windows、macOS 的托盘行为（本片仅保证其编译与调用路径未变，`vet` 通过）。
+桌面外壳（quickshell 等）里托盘的真实绘制与点击；GNOME/KDE 托盘宿主；真实设备行在主机上的呈现；多输出/其他缩放；非 aarch64；Windows、macOS 的托盘行为与上述加锁改动的回归（仅 `vet`/编译通过；macOS 既有 `tray_devices_run.py` 未重跑，持锁等待主线程的互等分析只对 Linux 做了源码核对）。
+
+## 包与来源标识
+
+- 最终包源提交 `aaa1417bcce1097d1eae366e0b1b95e9da5ede4d`（manifest `dirty=false`、`immutable=true`），AppImage SHA-256 `ed3f389dd86b2a47d8fc57fb2c48d6fff5641a0a5b97b58a60068a61cf04c734`，E2E 前缀包（`productionUsable=false`），内置 pinned release daemon `ea0f0bcb…`（与 manifest 一致）。此后的提交只含文档，不改变该包。
+- 容器 `e2e4` 使用的 daemon 与 CLI 是 `/cache/out` 中较早构建的 debug 版（来源提交记录在工件 `e2e4/daemon-cli-built-from.txt`），不是 pinned release daemon；主机运行使用包内 release daemon。
+- PR 上下文审计由本会话的 `general-purpose` 只读子代理按审计提示词逐字执行（本会话没有 `context-update-reviewer` 类型），结论 `NO_UPDATE`；分支守卫 `OK_MEANINGFUL`。

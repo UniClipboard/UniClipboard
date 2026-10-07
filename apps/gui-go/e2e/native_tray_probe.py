@@ -140,11 +140,18 @@ def main():
             l2 = host.wait(lambda l: labels(l)[0] == sync0, 30, 'sync restores')
             check('4 and flips back', l2 is not None, labels(l2)[0] if l2 else None)
         # The frontend's own settings effect also calls set_tray_language (once, when its settings load); our change must come after it.
-        t_wait = time.time()
-        while not lang_calls() and time.time() - t_wait < 60:
+        # See linux_tray_run.py: the frontend sends tray-language calls during startup (f3-n2: a second one landed after ours); wait until quiet for 5 s.
+        t_wait, seen, t_change = time.time(), 0, time.time()
+        while time.time() - t_wait < 90:
+            n = len(lang_calls())
+            if n != seen:
+                seen, t_change = n, time.time()
+            if n >= 1 and time.time() - t_change >= 5:
+                break
             time.sleep(.5)
         result['languageCallsBefore'] = lang_calls()
-        check('5 precondition: the frontend\'s own initial tray-language call was seen before the test changes the language (ordering)', bool(lang_calls()), lang_calls())
+        check('5 precondition: the frontend\'s own startup tray-language calls were seen and then quiet for 5 s before the test changes the language (ordering)',
+              bool(lang_calls()) and time.time() - t_change >= 5, lang_calls())
         r = invoke('set_tray_language', {'language': 'zh-CN'})
         l2 = host.wait(lambda l: labels(l)[1:] == ZH, 30, 'zh')
         check('5 set_tray_language(zh-CN) relabels the whole menu in the host', bool(r.get('ok')) and l2 is not None, labels(l2) if l2 else None)

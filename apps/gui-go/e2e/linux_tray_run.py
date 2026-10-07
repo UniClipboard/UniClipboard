@@ -212,11 +212,19 @@ def main():
         def lang_calls():
             return [r['detail'] for r in read_steps(gui.evidence) if r['step'] == 'tray-language-call']
         # The frontend's own settings effect also calls set_tray_language (once, when its settings load); our change must come after it.
-        t_wait = time.time()
-        while not lang_calls() and time.time() - t_wait < 60:
+        # The frontend sends tray-language calls during startup (17c14 f3-n2: en-US at +0 ms, our zh-CN at +243 ms, a SECOND frontend en-US at +392 ms
+        # overwrote it), so waiting for the first call is not enough: wait until calls have been quiet for 5 s.
+        t_wait, seen, t_change = time.time(), 0, time.time()
+        while time.time() - t_wait < 90:
+            n = len(lang_calls())
+            if n != seen:
+                seen, t_change = n, time.time()
+            if n >= 1 and time.time() - t_change >= 5:
+                break
             time.sleep(.5)
         results['languageCallsBefore'] = lang_calls()
-        check('7b precondition: the frontend\'s own initial tray-language call was seen before the test changes the language (ordering)', bool(lang_calls()), lang_calls())
+        check('7b precondition: the frontend\'s own startup tray-language calls were seen and then quiet for 5 s before the test changes the language (ordering)',
+              bool(lang_calls()) and time.time() - t_change >= 5, lang_calls())
         r = gui.invoke('lang-zh', 'set_tray_language', {'language': 'zh-CN'})
         lay = host.wait(lambda l: labels(l)[1:] == ZH, 30, 'zh labels')
         check('7b set_tray_language(zh-CN) relabels the whole menu in the host, including the device submenu title and keeping the peer row',

@@ -50,3 +50,46 @@
 ## 证据分级
 
 源码推断、编译、模拟、真实证据分别标注。Linux/Windows 共享逻辑（`tray.go`、`tray_devices.go`）改变，按平台可用门禁（本机 `go vet`、macOS 构建、Linux/Windows 交叉 vet 的真实退出码）与原生回归覆盖记录；macOS 上 Linux 交叉 vet 因 Wails cgo 失败不得说成通过。
+
+## 结果
+
+### 实现
+
+`apps/gui-go/tray.go` 的发布闭包在持有 `trayMenu.mu` 与 `deviceMenu.mu` 时读取根菜单与设备子菜单所有条目的当前标签、勾选、可用状态，与上一次实际发布时的同一份状态比较（`slices.Equal`，无哈希），相同则跳过。`deviceMenu.render` 对空设备列表改为原地更新占位条目（此前每个 tick 都 `Clear` 后重建）。独立只读评审指出：Linux 上 `click` 修改条目但不发布，保存后恢复原状会被跳过逻辑当作无变化，因此 `click` 现在在置为禁用后发布一次。E2E 构建新增两条证据：`tray-refresh`（原因 `timer`、`event`、`save`、`initial`）与 `tray-publish-skipped`。
+
+### 证据分级
+
+- **源码推断**：Wails beta.28 的条目 setter 在 macOS 与 Windows 立即作用于原生条目，只有结构变化需要重建；Linux 任何可见变化都要经 `SetMenu`。上文「源码事实」。
+- **编译**：darwin、darwin+e2e、windows、windows+e2e `go vet` 与 `gofmt` 均 rc=0（`final2/gates/`）。Linux 交叉 `go vet` 在 macOS 上因 Wails cgo 失败（rc=1），**不是** 通过，也不是原生 Linux 门禁。Linux/Windows 共享逻辑没有在 Linux 与 Windows 真实托盘上运行。
+- **真实证据（macOS，真实生产状态项，精确 GUI PID 与 role 复核的右键，`stateMutated=false`）**：见下。
+
+### 父版本对照（失败证据，保留）
+
+`parent-control/stable1`：`final6` 二进制（源码 `ce8649967`，清单哈希匹配）。第一个定时刷新（第 8.24 秒）后子菜单收起，144 个被动样本中 113 个未展开，3 次定时发布；S3 两项失败。
+
+### 修复构建 `final2`（源码 `4fd8d19a5`，清单 `final2/build-manifest.json`）
+
+| 场景 | 第 1 轮 | 第 2 轮 |
+| --- | --- | --- |
+| stable（17 项） | 通过 | 通过 |
+| lightweight（11 项） | 通过 | 通过 |
+| full（34 项） | **失败（3b）** | 通过 |
+
+- stable：子菜单只展开一次，之后只被动读取，跨 4 个自然定时刷新（`tray-refresh` 原因 `timer`）全程保持展开；窗口内 0 次发布，4 次 `tray-publish-skipped`。没有任何自动重开。
+- 变化路径（stable 内，触发均为定时器路径，**不是事件路径**）：语言变化（手动调用）、通过 CLI 改设备偏好（daemon 权威读取）、成员添加、成员移除，菜单内容均与 daemon 一致。**真实变化后系统收起子菜单**：语言变化与成员添加后子菜单不再展开，这是 `Menu.Update` 的实际边界，没有隐藏。
+- full：M1–M5（锁、设备动作、同步开关、退出）沿用 17c15 的完整检查，第 2 轮 34/34；daemon 权威状态直接核实。
+- lightweight：同一 daemon pid 在 GUI 退出后存活（等待 4 秒后检查），`stop` 返回码 0、状态 `stopped` 且停止的是同一 pid。
+- **full 第 1 轮失败**：3b 中菜单在窗口第 20.33 秒消失，该窗口内 0 次发布，所以不是本修复的重建所致。菜单为何消失 **没有证据**，没有断言为干扰。按用户决定不再复跑，失败结果原样保留。
+- `final1`（源码 `f9579d18a`，被评审指出的缺口之前）：stable1、lightweight1、full1 通过，stable2 与 full2 失败，菜单在运行中消失；用户当时动了鼠标，但无法据此证明因果。`final1` 不作为验收，全部保留。
+
+### 未覆盖与边界
+
+- 真实指针悬停：`tray_ax.swift hover` 是真实 `CGEvent` 指针移动，但属诊断用途且会移动用户鼠标，本片未作为验收路径运行；子菜单展开用 AX 按压，这是 17c15 的同一方式。
+- 事件路径（`devices://sync-changed`）：宿主已能记录 `event` 与 `save` 原因，但本片的变化步骤都由定时器触发，事件路径未单独验收。
+- Windows 与 Linux 真实托盘：未运行；跳过逻辑对它们的影响只有源码推断与编译证据。
+- 轻量模式的 daemon 存活只在一次 4 秒等待后检查，不是持续观察。
+- 28 条 `ld` 警告保留（older macOS 兼容性未证明）。
+
+### PR 前检查
+
+按任务顺序：先 `pr-context-audit`，后 `branch-name-guard`，结果在 PR 描述中记录。

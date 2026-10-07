@@ -39,7 +39,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 from linux_appimage_portable_run import UserRun, USER, as_user, environ_of, stop, wait_daemon  # noqa: E402
-from linux_appimage_run import DISPLAY, PASSPHRASE, maps_of, pid_alive, sha256, start_xvfb, wait_panel_ready  # noqa: E402
+from linux_appimage_run import DISPLAY, PASSPHRASE, maps_of, pid_alive, procs, sha256, start_xvfb, wait_panel_ready  # noqa: E402
 from linux_appimage_tls_run import Reports, StopScenario, install_trust, run_cmd, wait_new_daemon  # noqa: E402
 
 TARGET_NAME = 'target.test'
@@ -251,6 +251,23 @@ def proxy_env(port):
     return {'http_proxy': url, 'https_proxy': url, 'all_proxy': url, 'HTTP_PROXY': url, 'HTTPS_PROXY': url, 'ALL_PROXY': url}
 
 
+def page_probe_script(prefix, report_port, base, daemon_token, gui_pid):
+    """What the shared frontend does against the daemon, run by the real WebView: session exchange (POST /auth/connect with the bearer secret), one authenticated data fetch
+    (GET /settings), then a WebSocket to /ws?auth=Session <token> (apps/gui/src/lib/daemon-ws.ts puts the token in the query because browsers cannot set the header), a topic
+    subscription and the first event frame. Every step reports to the loopback report channel. The control file of a run therefore contains the throwaway daemon's bearer token;
+    that daemon and its data live only in the run's container."""
+    return ("(function(){var P=%s,rp=%d,base=%s,bearer=%s;function rep(k,v){try{fetch('http://127.0.0.1:'+rp+'/'+P+k+'?v='+encodeURIComponent(v),{mode:'no-cors'})}catch(e){}}"
+            "fetch(base+'/auth/connect',{method:'POST',headers:{'Authorization':'Bearer '+bearer,'Content-Type':'application/json'},body:JSON.stringify({pid:%d,clientType:'gui'})})"
+            ".then(function(r){return r.json().then(function(j){return [r.status,j]})})"
+            ".then(function(a){if(a[0]!==200||!a[1].data){throw new Error('connect '+a[0])}rep('connect','ok');var st=a[1].data.sessionToken;"
+            "return fetch(base+'/settings',{headers:{'Authorization':'Session '+st}}).then(function(r){return r.json().then(function(j){return [r.status,j,st]})})})"
+            ".then(function(a){rep('http',JSON.stringify({status:a[0],hasGeneral:!!(a[1].data&&a[1].data.general)}));var st=a[2];"
+            "var ws=new WebSocket(base.replace('http://','ws://')+'/ws?auth='+encodeURIComponent('Session '+st));"
+            "ws.onopen=function(){rep('wsopen','1');ws.send(JSON.stringify({action:'subscribe',topics:['clipboard']}))};"
+            "ws.onmessage=function(e){rep('wsframe',String(e.data).slice(0,160));ws.close()};ws.onerror=function(){rep('wserr','1')};})"
+            ".catch(function(e){rep('err',String(e))})})()") % (json.dumps(prefix), report_port, json.dumps(base), json.dumps(daemon_token), gui_pid)
+
+
 def scenarios():
     """name -> (proxy mode allow|deny|dead|None, configuration kind env|gs-user|gs-ph|gs-sys|None)"""
     s = {'none': (None, None)}
@@ -260,6 +277,20 @@ def scenarios():
         for m in ('allow', 'deny', 'dead'):
             s[f'gs-{where}-{m}'] = (m, f'gs-{where}')
     return s
+
+
+def read_maps(pid):
+    """(status, libraries): status is 'ok' or 'unreadable: <error>'. The shared maps_of() swallows read errors, so it cannot tell an unreadable process from an empty one."""
+    libs = set()
+    try:
+        text = Path(f'/proc/{pid}/maps').read_text()
+    except OSError as e:
+        return f'unreadable: {e}', libs
+    for line in text.splitlines():
+        parts = line.split(None, 5)
+        if len(parts) == 6 and '.so' in parts[5]:
+            libs.add(parts[5].replace(' (deleted)', ''))
+    return 'ok', libs
 
 
 def modules_loaded(pid):
@@ -387,18 +418,31 @@ def main():
             run.check(f'[{name}] the real WebView loaded the frontend (quick panel page ready)', state.get('panelReady') is True, state)
             time.sleep(3)  # let the page open its daemon connections
             if args.nonportable:  # 17c11 G7: the host has GTK in this image; the package must still map its own
-                def mapped(pid, lib):
-                    return [p for p in maps_of(pid) if p.rsplit('/', 1)[-1].startswith(lib)]
-                net_pids = [s['pid'] for s in sockets_of(('WebKitNetwork',))]
-                want = {'gui': (gui.proc.pid, ('libgtk-3', 'libwebkit2gtk-4.1', 'libglib-2.0', 'libgio-2.0')), 'webkitNetwork': (net_pids[0] if net_pids else -1, ('libglib-2.0', 'libgio-2.0', 'libsoup-3.0'))}
-                bad = {}
-                for who, (pid, libs) in want.items():
+                # The WebKit network process is found through the process table (exe below THIS GUI's mount), not through its sockets: with loopback traffic proxied it holds none
+                # (stage 2, dev: pid -1 and empty path lists were read as "violations"). A process that is missing or whose maps are unreadable is UNVERIFIED, which is neither a
+                # pass nor evidence of host contamination.
+                gui_exe = procs().get(gui.proc.pid, ('', ''))[0]
+                mount = gui_exe.split('/usr/bin/')[0] if '/usr/bin/' in gui_exe else None
+                net_pids = [pid for pid, (exe, comm) in procs().items() if mount and exe.startswith(mount) and exe.endswith('/WebKitNetworkProcess')]
+                want = {'gui': ([gui.proc.pid], ('libgtk-3', 'libwebkit2gtk-4.1', 'libglib-2.0', 'libgio-2.0')), 'webkitNetwork': (net_pids, ('libglib-2.0', 'libgio-2.0', 'libsoup-3.0'))}
+                bad, unverified = {}, []
+                for who, (pids, libs) in want.items():
+                    if not pids:
+                        unverified.append(f'{who}: process not found in the process table')
+                        continue
+                    status, mapped = read_maps(pids[0])
+                    if status != 'ok':
+                        unverified.append(f'{who} pid {pids[0]}: {status}')
+                        continue
                     for lib in libs:
-                        paths = mapped(pid, lib)
-                        if not paths or any(not p.startswith('/tmp/.mount_') for p in paths):
+                        paths = sorted(p for p in mapped if p.rsplit('/', 1)[-1].startswith(lib))
+                        if not paths:
+                            unverified.append(f'{who} pid {pids[0]}: {lib} is not mapped at all')
+                        elif any(not p.startswith('/tmp/.mount_') for p in paths):
                             bad[f'{who}:{lib}'] = paths
-                sc['mappedFromMount'] = {'checked': {k: v[1] for k, v in want.items()}, 'violations': bad}
-                run.check(f'[{name}] G7 the GUI and WebKitNetworkProcess map GTK/WebKitGTK/GLib/GIO/libsoup only from the AppImage mount (the host has GTK in this image)', not bad, bad)
+                sc['mappedFromMount'] = {'processes': {'guiExe': gui_exe, 'mount': mount, 'webkitNetworkPids': net_pids}, 'violations': bad, 'unverified': unverified}
+                run.check(f'[{name}] G7 the GUI and WebKitNetworkProcess map GTK/WebKitGTK/GLib/GIO/libsoup only from the AppImage mount (host GTK present): no violation and nothing unverified',
+                          not bad and not unverified, {'violations': bad, 'unverified': unverified})
             daemon_port = conn['port']
             socks = sockets_of(('WebKit', 'uniclipboard', 'uniclipd'))
             sc['sockets'], sc['daemonPort'] = socks, daemon_port
@@ -412,6 +456,21 @@ def main():
             sc['daemonProxyEnvironment'] = {k: v for k, v in environ_of(conn['pid']).items() if k.lower() in ('http_proxy', 'https_proxy', 'all_proxy', 'no_proxy')}
             sc['guiEnvironmentSeen'] = {k: v for k, v in environ_of(gui.proc.pid).items() if k.lower() in ('http_proxy', 'https_proxy', 'all_proxy', 'no_proxy', 'home', 'xdg_current_desktop')}
             sc['gioModuleDir'] = environ_of(gui.proc.pid).get('GIO_MODULE_DIR')
+            # the page's own HTTP fetch and WebSocket against the daemon, under this proxy configuration (the WebView's network stack, not just its sockets)
+            base_url, pfx = f'http://{conn["host"]}:{daemon_port}', f'pp-{name}-'
+            gui.ctl(f'panel-js pagepp-{name} {page_probe_script(pfx, reports.port, base_url, conn["token"], gui.proc.pid)}', f'panel-js-pagepp-{name}')
+            got = {k: reports.wait(pfx + k, 25) for k in ('connect', 'http', 'wsopen', 'wsframe')}
+            time.sleep(1)
+            page = {k: (v or {}).get('value') for k, v in got.items()}
+            page['err'], page['wserr'] = (reports.wait(pfx + 'err', .1) or {}).get('value'), (reports.wait(pfx + 'wserr', .1) or {}).get('value')
+            try:
+                h = json.loads(page['http'] or '{}')
+                page_http_ok = h.get('status') == 200 and h.get('hasGeneral') is True
+            except ValueError:
+                page_http_ok = False
+            page_ws_ok = bool(page['wsopen']) and bool(page['wsframe'])
+            sc['pageProbe'] = {'report': page, 'httpOk': page_http_ok, 'wsOk': page_ws_ok}
+            run.check(f'[{name}] P1 the real WebView itself completes the daemon session exchange, an authenticated HTTP fetch (GET /settings), opens the daemon WebSocket and receives an event frame', page_http_ok and page_ws_ok, page)
             # P3: WebView first (own hostname, own log window), then curl (own hostname, own window)
             nonce_w, nonce_c = secrets.token_hex(6), secrets.token_hex(6)
             url_w, url_c = f'https://{WV_HOST}/webview-{nonce_w}', f'https://{CURL_HOST}/curl-{nonce_c}'
@@ -460,8 +519,9 @@ def main():
                 req(f'[{name}] REQUIRE the real WebView request is {expected} (route observed: {sc["webviewRoute"]})', sc['webviewRoute'] == expected, sc['webview'])
                 if mode in ('deny', 'dead'):
                     req(f'[{name}] REQUIRE no silent direct escape: the target saw no request from the WebView', sc['webview']['targetSaw'] == 0, sc['webview'])
-                req(f'[{name}] REQUIRE the local daemon stays usable: the WebView holds loopback connections to the daemon and the proxy log names no loopback target of the product',
-                    len(web_to_daemon) >= 1 and not leaked, {'webkitToDaemon': len(web_to_daemon), 'leaked': leaked})
+                req(f'[{name}] REQUIRE the local daemon stays usable: the WebView holds loopback connections to the daemon, the proxy log names no loopback target of the product, and the page itself '
+                    f'fetched the daemon over HTTP and received a WebSocket frame', len(web_to_daemon) >= 1 and not leaked and page_http_ok and page_ws_ok,
+                    {'webkitToDaemon': len(web_to_daemon), 'leaked': leaked, 'pageProbe': sc['pageProbe']})
             stop(gui, conn)
             launches.clear()
             if where:

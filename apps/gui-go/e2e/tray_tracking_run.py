@@ -150,9 +150,10 @@ def dismiss_menu(pid, out=None, tag='d'):
     """Close the open menu: AXCancel first (it reports success but did not close a tracked status menu in min17/min18), then, only if the menu
     is still readable AND this pid's menu is the one open, one Escape. Records a 6 s timeline of AX reads after the Escape, the system's frontmost
     application when it was sent, and a main-thread sample around it (is the main thread still inside NSMenuTrackingSession?)."""
-    log = {'axCancel': ax('cancel', str(pid))}
+    pre = ax('read', str(pid))
+    log = {'popupWindowsBefore': pre.get('popupWindows'), 'axCancel': ax('cancel', str(pid))}
     time.sleep(1)
-    if ax('read', str(pid)).get('ok'):
+    if ax('read', str(pid)).get('popupWindows'):
         log['stillOpenAfterAxCancel'] = True
         log['frontmostBeforeEscape'] = subprocess.run(['lsappinfo', 'front'], capture_output=True, text=True).stdout.strip()
         sampler = subprocess.Popen(['sample', str(pid), '3', '10', '-file', str((out or Path('.')) / f'dismiss-{tag}-sample.txt')], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -160,12 +161,15 @@ def dismiss_menu(pid, out=None, tag='d'):
         log['escape'] = ax('escape', '0')
         timeline, t0 = [], time.time()
         while time.time() - t0 < 6:
-            timeline.append([round(time.time() - t0, 2), bool(ax('read', str(pid)).get('ok'))])
+            rd = ax('read', str(pid))
+            timeline.append([round(time.time() - t0, 2), bool(rd.get('ok')), rd.get('popupWindows')])
             time.sleep(.25)
         sampler.wait(timeout=30)
         log['readableTimelineAfterEscape'] = timeline
-    gone = not ax('read', str(pid)).get('ok')
+    last = ax('read', str(pid))
+    gone = not last.get('popupWindows')  # the pop-up menu window is gone; a stale AX subtree can remain
     log['gone'] = gone
+    log['lastRead'] = {'axOk': last.get('ok'), 'popupWindows': last.get('popupWindows')}
     return gone, log
 
 
@@ -181,6 +185,7 @@ def open_menu(gui, pid, how, label, out):
         # showMenu block) is caught in the act; the native stack is evidence that does not depend on the AX tree.
         sampler = subprocess.Popen(['sample', str(pid), '3', '5', '-file', str(out / f'ax-open-{label}-sample.txt')], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         time.sleep(1)
+        windows_before = ax('windows', str(pid))
         if False:
             pass
         elif how == 'rightclick':
@@ -191,10 +196,12 @@ def open_menu(gui, pid, how, label, out):
         time.sleep(.4)
         shot_info = shot_near_status_item(pid, out / f'ax-open-{label}-screen.png')
         first = {'ok': False}
+        windows_during = None
         end = time.time() + 12
         while time.time() < end:
             first = ax('read', str(pid))
             if first.get('ok'):
+                windows_during = ax('windows', str(pid))
                 break
             time.sleep(.3)
         if not first.get('ok'):
@@ -202,7 +209,7 @@ def open_menu(gui, pid, how, label, out):
     sampler.wait(timeout=60)
     seen = [json.loads(l) for l in watch_path.read_text().splitlines() if l.strip()]
     ok_seen = [r['ns'] for r in seen if r.get('ok')]
-    opened = dict(opened, screenshot=shot_info, openedSeenByWatch={'reads': len(seen), 'okReads': len(ok_seen), 'firstOkNs': ok_seen[0] if ok_seen else None, 'lastOkNs': ok_seen[-1] if ok_seen else None})
+    opened = dict(opened, windowsBefore=windows_before, windowsDuring=windows_during, screenshot=shot_info, openedSeenByWatch={'reads': len(seen), 'okReads': len(ok_seen), 'firstOkNs': ok_seen[0] if ok_seen else None, 'lastOkNs': ok_seen[-1] if ok_seen else None})
     return opened, first
 
 
@@ -402,6 +409,18 @@ def main():
         if args.minimal:
             gone, dismissal = dismiss_menu(proc.pid, out, 'minimal')
             check('M the open menu was dismissed (AXCancel, then Escape if it stayed) and is gone', gone, dismissal)
+            windows_after = ax('windows', str(proc.pid))
+
+            def popups(w):
+                return [x for x in (w or {}).get('windows', []) if x.get('onscreen') and x.get('layer', 0) >= 101]
+            sample_text = (out / 'ax-open-o1-sample.txt').read_text() if (out / 'ax-open-o1-sample.txt').exists() else ''
+            tracking_frames = sample_text.count('NSMenuTrackingSession')
+            before_p, during_p, after_p = popups(opened.get('windowsBefore')), popups(opened.get('windowsDuring')), popups(windows_after)
+            menu_sized = [p for p in during_p if p['bounds'].get('Width', 0) > 50 and p['bounds'].get('Height', 0) > 100]
+            check('M the pop-up-window observable discriminates: none before the open, a menu-sized one during tracking, none after the dismissal, and the open-time sample holds NSMenuTracking frames',
+                  not before_p and bool(menu_sized) and not after_p and tracking_frames > 0,
+                  {'before': before_p, 'during': during_p, 'after': after_p, 'nsMenuTrackingSessionFramesInOpenSample': tracking_frames,
+                   'otherOwnWindows': 'every window of this pid is listed in the artifacts (windowsBefore/During in ax-1-open.json); a layer>=101 on-screen window other than the menu would show here'})
             check('M the root menu read while open is the expected English menu', titles(root)[1:] == EN, titles(root))
             (out / 'ax-minimal.json').write_text(json.dumps({'first': first}, ensure_ascii=False, indent=1))
             results['passed'] = all(c['ok'] for c in results['checks'])

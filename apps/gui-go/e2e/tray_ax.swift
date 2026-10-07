@@ -59,6 +59,12 @@ func find(_ menu: AXUIElement, _ path: [String]) -> AXUIElement? {
     guard let sub = kids(item).first(where: { str($0, kAXRoleAttribute) == "AXMenu" }) else { return nil }
     return find(sub, Array(path.dropFirst()))
 }
+/// On-screen windows of the pid at the pop-up menu level or above (>= 101): a menu in AppKit tracking is drawn in such a window. The AX tree can keep a
+/// stale AXMenu after tracking ended (17c15 min19), so openness is decided with this count, not with the AX read alone.
+func popupWindows(_ pid: pid_t) -> Int {
+    let all = (CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]]) ?? []
+    return all.filter { ($0[kCGWindowOwnerPID as String] as? Int32) == pid && (($0[kCGWindowLayer as String] as? Int) ?? 0) >= 101 }.count
+}
 func now() -> UInt64 { UInt64(Date().timeIntervalSince1970 * 1e9) }
 func json(_ o: Any) -> String {
     String(data: try! JSONSerialization.data(withJSONObject: o, options: [.sortedKeys]), encoding: .utf8)!
@@ -243,7 +249,7 @@ case "open":
     print(json(["ok": r == .success, "axError": r.rawValue, "action": "AXShowMenu", "ns": now()]))
 case "read":
     guard let m = openMenu(pid) else { fail("no open menu") }
-    print(json(["ok": true, "ns": now(), "menu": tree(m)]))
+    print(json(["ok": true, "ns": now(), "popupWindows": popupWindows(pid), "menu": tree(m)]))
 case "press":
     guard let m = openMenu(pid) else { fail("no open menu") }
     guard let it = find(m, Array(argv.dropFirst(3))) else { fail("no item at path \(argv.dropFirst(3))") }
@@ -257,7 +263,7 @@ case "watch":
     guard argv.count >= 5, let seconds = Double(argv[3]), let ms = Double(argv[4]) else { fail("watch <pid> <seconds> <ms>") }
     let end = Date().addingTimeInterval(seconds)
     while Date() < end {
-        if let m = openMenu(pid) { print(json(["ok": true, "ns": now(), "menu": tree(m)])) } else { print(json(["ok": false, "ns": now(), "error": "no open menu"])) }
+        if let m = openMenu(pid) { print(json(["ok": true, "ns": now(), "popupWindows": popupWindows(pid), "menu": tree(m)])) } else { print(json(["ok": false, "ns": now(), "popupWindows": popupWindows(pid), "error": "no open menu"])) }
         fflush(stdout)
         Thread.sleep(forTimeInterval: ms / 1000)
     }

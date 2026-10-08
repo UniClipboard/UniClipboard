@@ -861,6 +861,10 @@ jobs:
           Export-Certificate -Cert $cert -FilePath $cer | Out-Null
           Import-Certificate -FilePath $cer -CertStoreLocation Cert:\LocalMachine\Root | Out-Null
           Import-Certificate -FilePath $cer -CertStoreLocation Cert:\LocalMachine\TrustedPublisher | Out-Null
+          # The public certificate travels with the acceptance inputs so the (separate, disposable) smoke runner
+          # can trust it for the signature checks of the installed files.
+          New-Item -ItemType Directory -Force target/windows-gui/inputs | Out-Null
+          Copy-Item $cer target/windows-gui/inputs/selftest.cer
           Remove-Item "Cert:\CurrentUser\My\$($cert.Thumbprint)"
           "::add-mask::$pw"
           "SIGN_BACKEND=pfx" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
@@ -1006,6 +1010,14 @@ jobs:
           name: windows-gui-evidence-${{ matrix.target }}${{ steps.build-mode.outputs.suffix }}${{ steps.sfx.outputs.sfx }}
           path: package-evidence
 
+      - name: trust the throwaway self-test certificate (signing self-test only)
+        if: steps.sfx.outputs.sfx == '-signing-selftest'
+        shell: pwsh
+        run: |
+          # Disposable runner only; proves signing mechanics, not a publisher identity.
+          Import-Certificate -FilePath inputs/selftest.cer -CertStoreLocation Cert:\LocalMachine\Root | Out-Null
+          Import-Certificate -FilePath inputs/selftest.cer -CertStoreLocation Cert:\LocalMachine\TrustedPublisher | Out-Null
+
       - name: install, run, update and uninstall the packages
         shell: bash
         run: |
@@ -1015,7 +1027,7 @@ jobs:
             SIGNED_ARGS="--expect-signed --sign-verifier apps/gui-go/packaging/windows/sign.py"
           fi
           MANIFEST=$(find package-evidence -path '*shipped/package-manifest.json' | head -1)
-          DAEMON_SHA=$(python -c "import json,sys;print(json.load(open(sys.argv[1]))['daemon']['sha256'])" "$MANIFEST")
+          DAEMON_SHA=$(python -c "import json,sys;d=json.load(open(sys.argv[1]))['daemon'];print(d.get('shippedSha256') or d['sha256'])" "$MANIFEST")
           python apps/gui-go/e2e/windows_package_acceptance.py --arch ${{ matrix.arch }} \
             --setup "$(ls shipped/UniClipboard_*-setup.exe)" --portable "$(ls shipped/UniClipboard_*-portable.zip)" \
             --newer-setup "$(ls inputs/ACCEPTANCE-*-setup.exe)" --uniclip inputs/uniclip.exe \

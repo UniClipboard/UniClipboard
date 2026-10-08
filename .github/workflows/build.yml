@@ -388,7 +388,7 @@ jobs:
           root, cfg = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
           out = ['\n[patch."https://github.com/UniClipboard/Engine.git"]']
           for toml in sorted(root.glob('**/Cargo.toml')):
-              m = re.search(r'^\[package\][^\[]*?^name\s*=\s*"([^"]+)"', toml.read_text(), re.M | re.S)
+              m = re.search(r'^\[package\][^\[]*?^name\s*=\s*"([^"]+)"', toml.read_text(encoding='utf-8'), re.M | re.S)
               if m and 'target' not in toml.relative_to(root).parts:
                   out.append(f'{m.group(1)} = {{ path = "{toml.parent.as_posix()}" }}')
           cfg.parent.mkdir(parents=True, exist_ok=True)
@@ -756,6 +756,9 @@ jobs:
     # Always a hosted runner: the packaging is deterministic and needs nothing from the self-hosted VM.
     runs-on: windows-latest
     timeout-minutes: 60
+    env:
+      # The Windows default code page is not UTF-8; the packaging and acceptance scripts read UTF-8 files.
+      PYTHONUTF8: '1'
     strategy:
       fail-fast: false
       matrix:
@@ -915,6 +918,9 @@ jobs:
     if: needs.package-windows-gui.result == 'success'
     runs-on: ${{ matrix.smoke }}
     timeout-minutes: 60
+    env:
+      # The Windows default code page is not UTF-8; the packaging and acceptance scripts read UTF-8 files.
+      PYTHONUTF8: '1'
     strategy:
       fail-fast: false
       matrix:

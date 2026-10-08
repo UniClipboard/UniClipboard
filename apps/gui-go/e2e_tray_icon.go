@@ -8,6 +8,7 @@ import (
 	"image/png"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
@@ -91,7 +92,26 @@ func compareTrayIconToDesign(dir string) (map[string]any, bool) {
 	samples := map[string]any{"eyeAlpha": alphaAt(9, 13.8), "faceAlpha": alphaAt(12, 17.5)}
 	templateOK := samples["eyeAlpha"] == uint8(0) && samples["faceAlpha"] == uint8(255)
 	results["templateAlpha"] = map[string]any{"samples": samples, "pass": templateOK}
-	return results, pass && templateOK
+	// Production size: the image the tray really receives must not clip the cat, and on macOS the cat must fill 17 to 19 pt of width (a size
+	// that matches neighbouring status items; the design's own 18 pt grid showed only 14 pt).
+	prod := renderIcon(trayIconSpec())
+	size := prod.Bounds().Dx()
+	x0, y0, x1, y1 := size, size, -1, -1
+	for y := 0; y < size; y++ {
+		for x := 0; x < size; x++ {
+			if prod.NRGBAAt(x, y).A > 20 {
+				x0, y0, x1, y1 = min(x0, x), min(y0, y), max(x1, x), max(y1, y)
+			}
+		}
+	}
+	widthPx, heightPx := x1-x0+1, y1-y0+1
+	clipped := x0 == 0 || y0 == 0 || x1 == size-1 || y1 == size-1
+	sizeOK := !clipped && x1 >= 0
+	if runtime.GOOS == "darwin" {
+		sizeOK = sizeOK && widthPx >= 34 && widthPx <= 38 // 17 to 19 pt at 2x
+	}
+	results["productionSize"] = map[string]any{"imagePx": size, "catWidthPx": widthPx, "catHeightPx": heightPx, "clipped": clipped, "pass": sizeOK}
+	return results, pass && templateOK && sizeOK
 }
 
 func abs(v int) int {

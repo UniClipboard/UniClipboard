@@ -109,7 +109,7 @@ CLI 压缩包 package-cli.sh 以已签 uniclip.exe/uniclipd.exe 为输入（REQU
 
 ### 测试证书的边界
 
-- test-signing 证书不是受信发行者：测试证书的链在隔离的验收机器上不受信，验证器只在以下条件同时满足时放宽链信任（`sign.py verify --allow-untrusted-root`）：已固定指纹（`--expect-thumbprint`，变量 `SIGNPATH_TEST_CERT_THUMBPRINT`）、设置了 `SIGNING_TEST_CERT=1`、摘要完整、有时间戳。NotSigned、HashMismatch、其他证书一律拒绝。正式门禁从不传该参数。
+- test-signing 证书不是受信发行者：测试证书的链在隔离的验收机器上不受信，验证器只在以下条件同时满足时放宽链信任（`sign.py verify --allow-untrusted-root`）：已固定指纹（`--expect-thumbprint`，默认固定为 `F953D990B94677A558EE83B04D0196652A74F873`，同名仓库变量可覆盖）、设置了 `SIGNING_TEST_CERT=1`、摘要完整、有时间戳。NotSigned、HashMismatch、其他证书一律拒绝。正式门禁从不传该参数。
 - 测试证书不能证明机器信任，也不能证明杀毒软件或 SmartScreen 不拦截；签名不保证没有误报。真实 Defender/SmartScreen 观测需要在真实 Windows 机器上单独进行并单独记录；本流程不使用排除项，也不关闭安全软件。
 
 ### 失败模型（SignPath）
@@ -128,7 +128,7 @@ CLI 压缩包 package-cli.sh 以已签 uniclip.exe/uniclipd.exe 为输入（REQU
 1. GitHub 仓库建立 Environment `signpath-test`，在其中添加 secret `SIGNPATH_API_TOKEN`（只通过 Environment secret 提供）。
 2. SignPath 项目 `UniClipboard` 已关联 GitHub 受信构建系统（OSS 要求托管 runner），策略 `test-signing` 允许来自该仓库该分支的请求。
 3. 在 SignPath 中确认 artifact configuration `initial` 与下面的候选目录结构兼容；如不兼容，使用下面的候选配置另建一份（不要修改现有策略）。
-4. 从 SignPath 证书页读取 test 证书 SHA-1 指纹，设置仓库变量 `SIGNPATH_TEST_CERT_THUMBPRINT`。
+4. test 证书指纹已固定在工作流中（`F953D990…F873`）；如证书更换，设置同名仓库变量覆盖（不要用 secret，值会被掩码）。
 5. 组织 ID `080cee5f-8b26-476f-9e04-dd6571b926bd` 不是机密，写在 `build.yml` 作业环境中。
 
 阶段 1 的 zip 根目录：`shipped/`、`newer/`（各含 `UniClipboard.exe`、`uniclipd.exe`、`uninstall.exe`）与 `cli/`（`uniclip.exe`、`uniclipd.exe`）。阶段 2 的 zip 根目录：两个 `*-setup.exe`。

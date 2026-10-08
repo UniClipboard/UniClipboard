@@ -904,9 +904,10 @@ jobs:
         env:
           MODE: ${{ steps.sign.outputs.mode }}
           SELFTEST_THUMBPRINT: ${{ steps.selftest-cert.outputs.thumbprint }}
-          # Repository variable (not a secret): the SHA-1 thumbprint of the SignPath test-signing certificate, read once from
-          # the certificate page of the SignPath project.
-          SIGNPATH_THUMBPRINT: ${{ vars.SIGNPATH_TEST_CERT_THUMBPRINT }}
+          # SHA-1 thumbprint of the SignPath test-signing certificate (test_certificate_2026.cer, public information, valid
+          # 2026-10-08 to 2029-10-08). A repository variable of the same name overrides it (for example after a renewal).
+          # The repository SECRET of that name is deliberately not used: a masked value would hide the identity in the evidence.
+          SIGNPATH_THUMBPRINT: ${{ vars.SIGNPATH_TEST_CERT_THUMBPRINT || 'F953D990B94677A558EE83B04D0196652A74F873' }}
         run: |
           set -euo pipefail
           THUMB=""; UNTRUSTED=false

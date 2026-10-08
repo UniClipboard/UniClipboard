@@ -45,9 +45,10 @@ ARCH = {  # go arch -> (deb, rpm/ARCH for the AppImage tools)
 # The AppImage file name uses its own architecture word, the one the released Tauri assets and scripts/collect-release-assets.py
 # accept: amd64 and aarch64 (NOT the deb's arm64). A name the collector does not accept would be silently left out of the release.
 APPIMAGE_NAME_ARCH = {'amd64': 'amd64', 'arm64': 'aarch64'}
-# The package name of the released Tauri deb and rpm (v1.0.1, v1.1.1: `uni-clipboard`; the file names are a different thing). A package of another name that ships the
-# same /usr/bin files is not an upgrade: dpkg and rpm refuse the overwrite, and the old package stays installed. Keeping the name makes `dpkg -i` / `rpm -U` replace it.
-PACKAGE_NAME = 'uni-clipboard'
+# Keep the released Tauri/Go identity as a versioned dependency alias and replace it in one package-manager transaction.
+# Executable paths, application ID, user data and login items retain their existing identities.
+PACKAGE_NAME = 'uniclipboard'
+LEGACY_PACKAGE_NAME = 'uni-clipboard'
 APPIMAGETOOL = {  # a fixed release tag, SHA-256 verified after the download
     'amd64': ('https://github.com/AppImage/appimagetool/releases/download/1.9.0/appimagetool-x86_64.AppImage',
               '46fdd785094c7f6e545b61afcfb0f3d98d8eab243f644b4b17698c01d06083d1'),
@@ -194,7 +195,12 @@ def stage_tree(root, binary, daemon):
         shutil.copy2(ROOT / 'apps/gui-go/icons' / name, d / 'uniclipboard.png')
 
 
-def build_deb(stage, out, version, arch, name):
+def build_deb(stage, out, version, arch, name, *, package_name=PACKAGE_NAME):
+    # The legacy name is used only by the CI regression fixture; shipped calls use the default identity.
+    assert package_name in (PACKAGE_NAME, LEGACY_PACKAGE_NAME)
+    relationships = (f'Conflicts: {LEGACY_PACKAGE_NAME} (<= {version})\n'
+        f'Replaces: {LEGACY_PACKAGE_NAME} (<= {version})\n'
+        f'Provides: {LEGACY_PACKAGE_NAME} (= {version})\n') if package_name == PACKAGE_NAME else ''
     d = out / 'deb-root'
     shutil.copytree(stage, d, symlinks=True)
     size_kib = sum(f.stat().st_size for f in d.rglob('*') if f.is_file()) // 1024
@@ -203,7 +209,8 @@ def build_deb(stage, out, version, arch, name):
     # and falls back to the ordinary window when it is absent, but the package still pulls it in for the Wayland panel).
     # The Tauri deb's libayatana-appindicator3 is not needed: Wails' tray is StatusNotifierItem over D-Bus.
     (d / 'DEBIAN/control').write_text(
-        f'Package: {PACKAGE_NAME}\nVersion: {version}\nArchitecture: {ARCH[arch][0]}\nSection: utils\nPriority: optional\n'
+        f'Package: {package_name}\nVersion: {version}\nArchitecture: {ARCH[arch][0]}\nSection: utils\nPriority: optional\n'
+        + relationships +
         f'Installed-Size: {size_kib}\nMaintainer: UniClipboard <support@uniclipboard.app>\n'
         'Depends: libgtk-3-0, libwebkit2gtk-4.1-0, libx11-6, libgtk-layer-shell0\n'
         'Description: Encrypted peer-to-peer clipboard sync between your devices\n')
@@ -212,18 +219,23 @@ def build_deb(stage, out, version, arch, name):
     return deb
 
 
-def build_rpm(stage, out, version, arch, name):
+def build_rpm(stage, out, version, arch, name, *, package_name=PACKAGE_NAME):
+    assert package_name in (PACKAGE_NAME, LEGACY_PACKAGE_NAME)
+    relationships = (f'Provides: {LEGACY_PACKAGE_NAME} = %%{{version}}-%%{{release}}\n'
+        f'Provides: {LEGACY_PACKAGE_NAME}%%{{?_isa}} = %%{{version}}-%%{{release}}\n'
+        f'Obsoletes: {LEGACY_PACKAGE_NAME} <= %%{{version}}-%%{{release}}\n') if package_name == PACKAGE_NAME else ''
     top = out / 'rpmbuild'
     for sub in ('BUILD', 'RPMS', 'SPECS'):
         (top / sub).mkdir(parents=True)
     files = sorted(str('/' / p.relative_to(stage)) for p in stage.rglob('*') if p.is_file())
     spec = top / 'SPECS/uniclipboard.spec'
-    spec.write_text(
-        'Name: ' + PACKAGE_NAME + '\nVersion: %s\nRelease: 1\nSummary: Encrypted peer-to-peer clipboard sync between your devices\n'
+    spec.write_text((
+        'Name: ' + package_name + '\nVersion: %s\nRelease: 1\nSummary: Encrypted peer-to-peer clipboard sync between your devices\n'
+        + relationships +
         'License: Proprietary\nRequires: gtk3, webkit2gtk4.1, gtk-layer-shell\nAutoReqProv: no\n%%global _build_id_links none\n'
         '# rpmbuild would strip and rewrite the ELF files after installation, so the daemon in the rpm would no longer be the one the build evidence describes.\n%%global __os_install_post %%{nil}\n%%global debug_package %%{nil}\n\n%%description\n'
         'Encrypted peer-to-peer clipboard sync between your devices.\n\n%%install\ncp -a %s/. %%{buildroot}/\n\n%%files\n%s\n'
-        % (version, stage, '\n'.join(files)))
+        ) % (version, stage, '\n'.join(files)))
     run(['rpmbuild', '-bb', '--define', f'_topdir {top}', '--define', f'_rpmfilename {name}', '--target', ARCH[arch][1] + '-linux', str(spec)])
     produced = next((top / 'RPMS').rglob('*.rpm'))
     rpm = out / name

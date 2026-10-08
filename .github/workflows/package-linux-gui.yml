@@ -171,6 +171,21 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      - name: Build a legacy-name Go transaction fixture
+        # Current payload, previous package identity. Historical artifacts are tested separately; this fixture keeps the transaction regression reproducible.
+        run: apps/gui-go/e2e/linux/run.sh legacy-go-fixture "$RUNNER_TEMP/legacy-go" "$RUNNER_TEMP/upload"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: linux-gui-legacy-go-${{ matrix.arch }}
+          path: |
+            ${{ runner.temp }}/legacy-go/deb/legacy-go.deb
+            ${{ runner.temp }}/legacy-go/deb/fixture.json
+            ${{ runner.temp }}/legacy-go/rpm/legacy-go.rpm
+            ${{ runner.temp }}/legacy-go/rpm/fixture.json
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Gather the build evidence
         if: always()
         run: |
@@ -281,6 +296,11 @@ jobs:
           name: linux-gui-evidence-${{ matrix.arch }}
           path: evidence
 
+      - uses: actions/download-artifact@v6
+        with:
+          name: linux-gui-legacy-go-${{ matrix.arch }}
+          path: legacy-go
+
       - name: Fetch the released Tauri packages (the previous version of an upgrade)
         env:
           GH_TOKEN: ${{ github.token }}
@@ -301,8 +321,10 @@ jobs:
             old="released/UniClipboard-1.0.1-1.${{ matrix.rpm }}.rpm"
           fi
           rc=0
-          for scenario in upgrade fresh; do
-            apps/gui-go/e2e/linux/package_install_check.sh "${{ matrix.kind }}" "${{ matrix.image }}" "$scenario" "$PWD/$new" "$PWD/$old" "$sha" "$PWD/install-$scenario" || rc=1
+          for scenario in upgrade fresh upgrade-go; do
+            previous="$old"; mode="$scenario"
+            if [ "$scenario" = upgrade-go ]; then previous="legacy-go/${{ matrix.kind }}/legacy-go.${{ matrix.kind }}"; mode=upgrade; fi
+            apps/gui-go/e2e/linux/package_install_check.sh "${{ matrix.kind }}" "${{ matrix.image }}" "$mode" "$PWD/$new" "$PWD/$previous" "$sha" "$PWD/install-$scenario" || rc=1
           done
           exit $rc
 
@@ -314,6 +336,7 @@ jobs:
           path: |
             install-upgrade
             install-fresh
+            install-upgrade-go
           if-no-files-found: warn
           retention-days: 14
 

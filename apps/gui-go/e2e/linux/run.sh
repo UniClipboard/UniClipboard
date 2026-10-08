@@ -206,6 +206,14 @@ case "$mode" in
       set -e; cd /out; cp /in/appimage.AppImage ./x.AppImage; chmod +x ./x.AppImage; ./x.AppImage --appimage-extract > extract.log 2>&1
       python3 -I /work/apps/gui-go/e2e/linux/audit_dlopen.py /out/squashfs-root /out/dlopen-audit.json
       python3 -I /work/apps/gui-go/e2e/linux/appimage_content_check.py /out/squashfs-root /in/package-manifest.json /out/content-check.json ${UC_CONTENT_CHECK_ARGS:-}' ;;
+  legacy-go-fixture)
+    out="$(mkdir -p "${2:?outdir}" && cd "$2" && pwd)"
+    packages="$(cd "${3:?candidate directory}" && pwd)"
+    docker run "${common[@]}" -v "$packages:/in:ro" -v "$out:/out" "$IMAGE" bash -c '
+      set -e
+      git config --global --add safe.directory /work
+      python3 apps/gui-go/e2e/linux/legacy_go_package_fixture.py --arch "$ARCH" --kind deb --package "$(ls /in/UniClipboard_*.deb)" --out /out/deb
+      python3 apps/gui-go/e2e/linux/legacy_go_package_fixture.py --arch "$ARCH" --kind rpm --package "$(ls /in/UniClipboard-*.rpm)" --out /out/rpm' ;;
   verify-packages)  # <packages dir> <new upload dir> <report.json>: acceptance contract of one architecture's package set (verify_package_set.py); UC_EXPECT_HEAD = the commit the set must come from
     packages="$(cd "${2:?package_linux.py output dir}" && pwd)"; mkdir -p "$(dirname "${3:?upload dir}")"; upload_parent="$(cd "$(dirname "$3")" && pwd)"; upload_name="$(basename "$3")"
     docker run "${common[@]}" -v "$packages:/in:ro" -v "$upload_parent:/up" -e UC_EXPECT_HEAD="${UC_EXPECT_HEAD:?UC_EXPECT_HEAD}" -e UC_MAX_GLIBC "$IMAGE" bash -c '

@@ -17,8 +17,12 @@ if [ "${1:-}" != "--inner" ]; then
   case "$kind:$scenario" in deb:fresh|deb:upgrade|rpm:fresh|rpm:upgrade) ;; *) exit 2 ;; esac
   mkdir -p "$out"; out="$(cd "$out" && pwd)"
   here="$(cd "$(dirname "$0")" && pwd)"
+  # Freeze the harness before running; a shared checkout may change during a long package-manager transaction.
+  mkdir "$out/source"
+  cp "$here/package_install_check.sh" "$here/package_profile_check.py" "$out/source/"
+  shasum -a 256 "$out/source/"* > "$out/harness.sha256"
   platform="${UC_DOCKER_PLATFORM:?UC_DOCKER_PLATFORM}"
-  docker run --rm --init --cap-add IPC_LOCK --platform "$platform" -v "$here/package_install_check.sh:/check.sh:ro" -v "$here/package_profile_check.py:/profile.py:ro" -v "$new:/in/new.$kind:ro" -v "$old:/in/old.$kind:ro" -v "$out:/out" \
+  docker run --rm --init --cap-add IPC_LOCK --platform "$platform" -v "$out/source/package_install_check.sh:/check.sh:ro" -v "$out/source/package_profile_check.py:/profile.py:ro" -v "$new:/in/new.$kind:ro" -v "$old:/in/old.$kind:ro" -v "$out:/out" \
     "$image" bash /check.sh --inner "$kind" "$scenario" "$sha" > "$out/run.log" 2>&1
   rc=$?
   tail -n 40 "$out/results.tsv" 2>/dev/null; exit "$rc"

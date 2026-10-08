@@ -37,6 +37,8 @@ def main():
     ap.add_argument('--out', type=Path)
     ap.add_argument('--require-signed', action='store_true', help='also run sign.py verify (signtool verify /pa) on the setup and the unpacked exe/daemon')
     ap.add_argument('--signature-out', type=Path)
+    ap.add_argument('--sign-expect-thumbprint', help='test certificates only: the thumbprint the signer must have')
+    ap.add_argument('--sign-untrusted-root', action='store_true', help='test certificates only (needs SIGNING_TEST_CERT=1): waive only the chain trust')
     args = ap.parse_args()
     manifest = json.loads((args.package / 'package-manifest.json').read_text())
     daemon = manifest['daemon']
@@ -74,7 +76,9 @@ def main():
                 print('FAIL ' + result['checks'][-1]['check'], flush=True)
                 targets.remove(uninstaller)
             sign_py = Path(__file__).resolve().parents[1] / 'packaging/windows/sign.py'
-            cmd = [sys.executable, str(sign_py), 'verify', *([] if not args.signature_out else ['--out', str(args.signature_out)]), *map(str, targets)]
+            cmd = [sys.executable, str(sign_py), 'verify', *([] if not args.signature_out else ['--out', str(args.signature_out)]),
+                   *(['--expect-thumbprint', args.sign_expect_thumbprint] if args.sign_expect_thumbprint else []),
+                   *(['--allow-untrusted-root'] if args.sign_untrusted_root else []), *map(str, targets)]
             ok = subprocess.run(cmd).returncode == 0
             result['checks'].append({'check': 'Authenticode: setup, uninstaller and the unpacked GUI exe and daemon verify (signtool verify /pa)', 'ok': ok})
             print(('PASS ' if ok else 'FAIL ') + result['checks'][-1]['check'], flush=True)

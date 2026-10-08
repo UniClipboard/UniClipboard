@@ -26,7 +26,13 @@
 ; replaced by overwriting in place (same registry identity, same files).
 ;
 ; Required defines (package_windows.py): PRODUCTNAME VERSION VERSIONWITHBUILD MANUFACTURER BUNDLEID MAINBINARYNAME
-; SRC_MAIN SRC_DAEMON ICON OUTFILE HOOKS PLUGINDIR
+; SRC_MAIN SRC_DAEMON ICON OUTFILE HOOKS PLUGINDIR, and SRC_UNINSTALLER (the installer proper only)
+;
+; The script is compiled twice (package_windows.py), the "signing an uninstaller externally" pattern of NSIS:
+;   -DBUILD_UNINSTALLER   a generator whose only job is to write uninstall.exe next to itself (it holds the uninstall pages
+;                         and sections). The uninstaller can then be signed like any other file;
+;   (without the define)  the installer proper, which carries that finished (signed) uninstall.exe as a plain file and
+;                         has no uninstall code of its own.
 
 Unicode true
 ManifestDPIAware true
@@ -71,6 +77,7 @@ VIAddVersionKey "LegalCopyright" "${MANUFACTURER}"
 !define MUI_FINISHPAGE_RUN_FUNCTION RunMainBinary
 !define MUI_PAGE_CUSTOMFUNCTION_PRE SkipIfPassive
 !insertmacro MUI_PAGE_FINISH
+!ifdef BUILD_UNINSTALLER
 ; "Delete app data" check box on the uninstall confirmation page (Tauri template, adapted).
 Var DeleteAppDataCheckbox
 Var DeleteAppDataCheckboxState
@@ -79,6 +86,7 @@ Var DeleteAppDataCheckboxState
 !define MUI_PAGE_CUSTOMFUNCTION_PRE un.SkipIfPassive
 !insertmacro MUI_UNPAGE_CONFIRM
 !insertmacro MUI_UNPAGE_INSTFILES
+!endif
 !insertmacro MUI_LANGUAGE "English"
 
 Function SkipIfPassive
@@ -109,6 +117,11 @@ Function RestorePreviousInstallLocation
 FunctionEnd
 
 Function .onInit
+!ifdef BUILD_UNINSTALLER
+  ; Generator: write the uninstaller and stop, nothing is installed.
+  WriteUninstaller "$EXEDIR\uninstall.exe"
+  Quit
+!endif
   ${GetOptions} $CMDLINE "/P" $PassiveMode
   ${IfNot} ${Errors}
     StrCpy $PassiveMode 1
@@ -176,7 +189,11 @@ Section "Install"
   !insertmacro NSIS_HOOK_PREINSTALL
   File "/oname=${MAINBINARYNAME}" "${SRC_MAIN}"
   File "/oname=uniclipd.exe" "${SRC_DAEMON}"
+!ifdef BUILD_UNINSTALLER
   WriteUninstaller "$INSTDIR\uninstall.exe"
+!else
+  File "/oname=uninstall.exe" "${SRC_UNINSTALLER}"
+!endif
 
   WriteRegStr HKCU "${MANUPRODUCTKEY}" "" $INSTDIR
   WriteRegStr HKCU "${UNINSTKEY}" "MainBinaryName" "${MAINBINARYNAME}"
@@ -212,6 +229,7 @@ Function .onInstSuccess
   ${EndIf}
 FunctionEnd
 
+!ifdef BUILD_UNINSTALLER
 Function un.SkipIfPassive
   ${IfThen} $PassiveMode = 1 ${|} Abort ${|}
 FunctionEnd
@@ -282,3 +300,4 @@ Section "Uninstall"
     SetAutoClose true
   ${EndIf}
 SectionEnd
+!endif

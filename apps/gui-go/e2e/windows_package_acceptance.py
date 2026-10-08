@@ -297,7 +297,7 @@ def scenario_a(a, s):
         (ctl / 'tampered.exe').write_bytes(bytes(data))
         (ctl / 'unsigned.exe').write_bytes(b'not a signed executable')
         names = ['tampered.exe', 'unsigned.exe']
-        if a.sign_selftest_cert:  # a pinned signer identity exists only in the self-test
+        if a.sign_expect_thumbprint:  # a pinned signer identity exists only with a test certificate
             shutil.copy2(sys.executable, ctl / 'other-signer.exe')
             names.append('other-signer.exe')
         for name in names:
@@ -496,8 +496,8 @@ def scenario_h(a, s):
 def signature_flags(a):
     """Verifier flags: the fixture certificate thumbprint when given; the chain trust is waived only on request."""
     flags = []
-    if a.sign_selftest_cert:
-        flags += ['--expect-thumbprint', hashlib.sha1(a.sign_selftest_cert.read_bytes()).hexdigest()]
+    if a.sign_expect_thumbprint:
+        flags += ['--expect-thumbprint', a.sign_expect_thumbprint]
         if a.sign_untrusted_root:
             flags += ['--allow-untrusted-root']
     return flags
@@ -514,8 +514,8 @@ def main():
     ap.add_argument('--daemon-sha256', required=True)
     ap.add_argument('--newer-daemon-sha256', help='SHA-256 of the daemon inside the newer package when it differs from --daemon-sha256 (signed packages)')
     ap.add_argument('--expect-signed', action='store_true', help='the packages are Authenticode signed: verify the installed files too')
-    ap.add_argument('--sign-selftest-cert', type=Path, help='public throwaway certificate (DER) of the signing self-test: its thumbprint must be the signer')
-    ap.add_argument('--sign-untrusted-root', action='store_true', help='signing self-test only, with --sign-selftest-cert: the runner cannot trust the throwaway certificate, so only the chain trust is waived')
+    ap.add_argument('--sign-expect-thumbprint', help='thumbprint of the test certificate (signing self-test or SignPath test-signing) that must be the signer')
+    ap.add_argument('--sign-untrusted-root', action='store_true', help='test certificates only, with --sign-expect-thumbprint (and SIGNING_TEST_CERT=1): the runner cannot trust the certificate, so only the chain trust is waived')
     ap.add_argument('--sign-verifier', type=Path, help='apps/gui-go/packaging/windows/sign.py')
     ap.add_argument('--out', type=Path, required=True)
     a = ap.parse_args()

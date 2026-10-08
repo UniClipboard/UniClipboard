@@ -2,7 +2,11 @@
 """Authenticode signing and verification for the Windows packages (issue #1897).
 
   sign.py sign <file>...                      sign in place with the backend named by SIGN_BACKEND (azure | pfx)
-  sign.py verify [--out evidence.json] [--expect-subject TEXT] [--allow-untrusted-root] <file>...
+  sign.py verify [--out evidence.json] [--expect-subject TEXT] [--expect-thumbprint SHA1] [--allow-untrusted-root] <file>...
+  sign.py matches <submitted> <signed>        the signed file is the submitted one plus a signature (nothing else changed)
+
+The `azure` and `pfx` backends sign locally. SignPath signs remotely (a GitHub Actions step submits the files, see
+.github/workflows/build.yml); this file then only verifies and compares what comes back.
 
 Signing needs a certificate or service the project does not have yet (see docs/architecture/gui-go-windows-packaging.md);
 this file only holds the mechanics so that the choice is a matter of secrets, not code. Backends:
@@ -21,6 +25,7 @@ self-test certificate trusted on a disposable runner passes only because that ru
 """
 import argparse
 import glob
+import hashlib
 import json
 import os
 import subprocess
@@ -81,16 +86,62 @@ def sign(files):
             sys.exit(f'signtool sign failed for {f}: {(r.stdout + r.stderr)[-600:]}')
 
 
+def _u32(data, off):
+    return int.from_bytes(data[off:off + 4], 'little')
+
+
+def pe_content(data, name):
+    """The part of a PE file a signature does not change: (bytes without the certificate table and with the checksum and the
+    certificate-table entry zeroed, size of the certificate table). Raises ValueError for anything that is not a PE file."""
+    if data[:2] != b'MZ' or len(data) < 0x40:
+        raise ValueError(f'{name} is not a PE file')
+    pe = _u32(data, 0x3C)
+    if data[pe:pe + 4] != b'PE\0\0':
+        raise ValueError(f'{name} has no PE header')
+    opt = pe + 24
+    magic = int.from_bytes(data[opt:opt + 2], 'little')
+    if magic not in (0x10B, 0x20B):
+        raise ValueError(f'{name} has an unknown optional header magic {magic:#x}')
+    checksum = opt + 64
+    entry = opt + (96 if magic == 0x10B else 112) + 4 * 8  # data directory 4: the Authenticode certificate table
+    cert_off, cert_size = _u32(data, entry), _u32(data, entry + 4)
+    body = bytearray(data[:cert_off] if cert_size else data)
+    if cert_size and (cert_off < 0x40 or cert_off + cert_size > len(data)):
+        raise ValueError(f'{name} has a corrupt certificate table entry')
+    body[checksum:checksum + 4] = b'\0\0\0\0'
+    body[entry:entry + 8] = b'\0' * 8
+    return bytes(body), cert_size
+
+
+def check_signed_matches(submitted, returned, label, require_certificate=True):
+    """The returned file is the submitted one plus a signature, and not another file, a truncated one or an unsigned one."""
+    try:
+        want, want_cert = pe_content(Path(submitted).read_bytes(), f'submitted {label}')
+        got, got_cert = pe_content(Path(returned).read_bytes(), f'returned {label}')
+    except ValueError as e:
+        sys.exit(str(e))
+    problems = []
+    if want_cert:
+        problems.append('the submitted file already carried a certificate')
+    if require_certificate and not got_cert:
+        problems.append('it carries no Authenticode certificate table (it was not signed)')
+    n = len(want)
+    if got[:n] != want or len(got) - n >= 8 or any(got[n:]):
+        problems.append('its content differs from the file that was submitted for signing (wrong, truncated or modified file)')
+    if problems:
+        sys.exit(f'{label}: ' + '; '.join(problems))
+
+
 # Statuses Get-AuthenticodeSignature reports when the signature and digest are fine but the chain does not end in a trusted
 # root. Everything else (NotSigned, HashMismatch, NotSupportedFileFormat, ...) is a failure in every mode.
 UNTRUSTED_CHAIN_STATUSES = ('UnknownError', 'NotTrusted')
 
 
 def verify(files, expect_subject, allow_untrusted_root, out, expect_thumbprint=None):
-    """Product mode (the default) requires a trusted chain. `allow_untrusted_root` is for the signing self-test only: it needs
-    SIGNING_SELFTEST=1 and the thumbprint of the throwaway certificate, so a signature by any other certificate is still refused."""
-    if allow_untrusted_root and (not expect_thumbprint or os.environ.get('SIGNING_SELFTEST') != '1'):
-        sys.exit('--allow-untrusted-root is only for the signing self-test: it needs --expect-thumbprint and SIGNING_SELFTEST=1')
+    """Product mode (the default) requires a trusted chain. `allow_untrusted_root` is for TEST certificates only (the signing self-test or SignPath test-signing): it needs
+    SIGNING_TEST_CERT=1 and the thumbprint of the test certificate, so a signature by any other certificate is still refused."""
+    if allow_untrusted_root and (not expect_thumbprint or os.environ.get('SIGNING_TEST_CERT') != '1'):
+        sys.exit('--allow-untrusted-root is only for test certificates: it needs --expect-thumbprint and SIGNING_TEST_CERT=1')
     tool = signtool(required=False)  # the arm64 hosted image may carry no SDK: then only Get-AuthenticodeSignature judges
     report, ok_all = [], True
     for f in files:
@@ -106,7 +157,9 @@ def verify(files, expect_subject, allow_untrusted_root, out, expect_thumbprint=N
         ok = chain_trusted and identity_ok
         if allow_untrusted_root and not ok:
             ok = identity_ok and bool(info.get('Timestamp')) and info.get('Status') in UNTRUSTED_CHAIN_STATUSES
-        report.append({'file': str(f), 'ok': ok, 'chainTrusted': ok and chain_trusted, 'signtoolVerifyPa': pa.returncode == 0 if tool else None,
+        # `signtool verify /pa /v` prints the signing time of an RFC 3161 timestamp ("The signature is timestamped: <date>").
+        stamped = next((l.split(':', 1)[1].strip() for l in (pa.stdout or '').splitlines() if 'signature is timestamped' in l.lower()), None)
+        report.append({'file': str(f), 'sha256': hashlib.sha256(Path(f).read_bytes()).hexdigest(), 'signedAt': stamped, 'ok': ok, 'chainTrusted': ok and chain_trusted, 'signtoolVerifyPa': pa.returncode == 0 if tool else None,
                        'signature': info, 'signtoolTail': (pa.stdout + pa.stderr)[-400:]})
         ok_all &= ok
         print(('PASS ' if ok else 'FAIL ') + str(f), info.get('Status'), info.get('Subject'), 'chain-trusted' if report[-1]['chainTrusted'] else 'chain-NOT-verified', flush=True)
@@ -126,8 +179,14 @@ def main():
     v.add_argument('--out')
     v.add_argument('--expect-subject')
     v.add_argument('--expect-thumbprint', help='SHA-1 thumbprint the signer certificate must have')
-    v.add_argument('--allow-untrusted-root', action='store_true', help='signing self-test only (needs SIGNING_SELFTEST=1 and --expect-thumbprint): waive only the chain trust; the signer thumbprint, a timestamp and an intact digest are still required')
+    v.add_argument('--allow-untrusted-root', action='store_true', help='test certificates only (needs SIGNING_TEST_CERT=1 and --expect-thumbprint): waive only the chain trust; the signer thumbprint, a timestamp and an intact digest are still required')
+    m = sub.add_parser('matches', help='exit non-zero unless SIGNED is SUBMITTED plus an Authenticode signature (same content, certificate table present)')
+    m.add_argument('submitted', type=Path)
+    m.add_argument('signed', type=Path)
     a = ap.parse_args()
+    if a.cmd == 'matches':  # a pure byte comparison: also runs off Windows
+        check_signed_matches(a.submitted, a.signed, a.signed.name)
+        return
     if os.name != 'nt':
         sys.exit('signing runs on Windows only')
     if a.cmd == 'sign':

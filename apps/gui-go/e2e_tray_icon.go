@@ -47,12 +47,12 @@ func (s *EvidenceService) controlTrayIcon(action string) (bool, error) {
 }
 
 // glyphReference is the design board rasterized independently (e2e/tray-icon-design). The samples are in design units on the production
-// frame: a point that must be transparent (the inside of the front card) and one that must be opaque (the centre line of its top edge).
+// frame: a point that must be transparent (the inside of the front card) and one that must be opaque (the centre line of its left edge, which stays whole pixels at 16 px as well).
 const glyphReference = "glyph.png"
 
 var (
 	glyphClearAt = [2]float64{13.5, 10.5}
-	glyphSolidAt = [2]float64{13.5, 3}
+	glyphSolidAt = [2]float64{7, 10.5}
 )
 
 // compareTrayIconToDesign checks the glyph twice. First its shape: rendered with the design's macOS-light colours on the design's 44 px / 36 px

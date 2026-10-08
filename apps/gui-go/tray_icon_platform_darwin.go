@@ -13,7 +13,7 @@ import (
 // neighbouring status items (the design's own 18 pt grid would make it 13.5 x 15 pt).
 const (
 	macTrayImagePx = 44
-	macTrayArtPx   = 44 // 22 pt at 2x: the cards fill 18 x 20 of the 24 grid units, so the glyph is about 16.5 x 18.3 pt
+	macTrayArtPx   = 44 // 22 pt at 2x
 )
 
 func trayIconSpec() iconSpec {

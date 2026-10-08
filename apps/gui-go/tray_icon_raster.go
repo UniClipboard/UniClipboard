@@ -13,7 +13,7 @@ import (
 )
 
 // The tray glyph is drawn from the design's own SVG path data, so the artwork has one source (tray_icon_design.go) and every
-// platform receives pixels from the same renderer. Only what the design uses is implemented: M L H V C S Q A Z (absolute and
+// platform receives pixels from the same renderer. Only what the design uses is implemented: M L H V A Z (absolute and
 // relative), round-capped strokes.
 
 // point is a position in design units (the 24 x 24 grid).
@@ -31,8 +31,7 @@ func parsePath(d string) ([]subpath, error) {
 	p := &pathParser{s: d}
 	var out []subpath
 	var cur *subpath
-	var pos, start, lastC, lastQ point
-	var prev byte
+	var pos, start point
 	finish := func() {
 		if cur != nil && len(cur.pts) > 1 {
 			out = append(out, *cur)
@@ -64,7 +63,6 @@ func parsePath(d string) ([]subpath, error) {
 				finish()
 				cur = &subpath{pts: []point{start}}
 			}
-			prev = 'Z'
 			continue
 		}
 		first := true
@@ -113,37 +111,6 @@ func parsePath(d string) ([]subpath, error) {
 					pos.y = n[0]
 				}
 				cur.pts = append(cur.pts, pos)
-			case 'C', 'S':
-				var c1, c2, e point
-				if upper == 'C' {
-					n, err := p.nums(6)
-					if err != nil {
-						return nil, err
-					}
-					c1, c2, e = abs(n[0], n[1]), abs(n[2], n[3]), abs(n[4], n[5])
-				} else {
-					n, err := p.nums(4)
-					if err != nil {
-						return nil, err
-					}
-					c1 = pos
-					if prev == 'C' || prev == 'S' {
-						c1 = point{2*pos.x - lastC.x, 2*pos.y - lastC.y}
-					}
-					c2, e = abs(n[0], n[1]), abs(n[2], n[3])
-				}
-				cur.pts = appendCubic(cur.pts, pos, c1, c2, e)
-				lastC, pos = c2, e
-			case 'Q':
-				n, err := p.nums(4)
-				if err != nil {
-					return nil, err
-				}
-				c, e := abs(n[0], n[1]), abs(n[2], n[3])
-				c1 := point{pos.x + 2.0/3*(c.x-pos.x), pos.y + 2.0/3*(c.y-pos.y)}
-				c2 := point{e.x + 2.0/3*(c.x-e.x), e.y + 2.0/3*(c.y-e.y)}
-				cur.pts = appendCubic(cur.pts, pos, c1, c2, e)
-				lastQ, pos = c, e
 			case 'A':
 				n, err := p.nums(3)
 				if err != nil {
@@ -167,8 +134,6 @@ func parsePath(d string) ([]subpath, error) {
 			default:
 				return nil, fmt.Errorf("unsupported path command %q", cmd)
 			}
-			prev = upper
-			_ = lastQ
 		}
 	}
 	finish()
@@ -258,18 +223,6 @@ func (p *pathParser) flag() (bool, error) {
 
 const curveSteps = 24
 
-func appendCubic(pts []point, p0, c1, c2, p3 point) []point {
-	for i := 1; i <= curveSteps; i++ {
-		t := float64(i) / curveSteps
-		u := 1 - t
-		pts = append(pts, point{
-			u*u*u*p0.x + 3*u*u*t*c1.x + 3*u*t*t*c2.x + t*t*t*p3.x,
-			u*u*u*p0.y + 3*u*u*t*c1.y + 3*u*t*t*c2.y + t*t*t*p3.y,
-		})
-	}
-	return pts
-}
-
 // appendArc implements the SVG endpoint-to-centre arc conversion (SVG 1.1 appendix F.6).
 func appendArc(pts []point, from point, rx, ry, rotDeg float64, large, sweep bool, to point) []point {
 	if from == to {
@@ -324,7 +277,7 @@ func appendArc(pts []point, from point, rx, ry, rotDeg float64, large, sweep boo
 	return pts
 }
 
-// canvas is a premultiplied float RGBA surface; painting blends over, erasing removes coverage (destination-out).
+// canvas is a premultiplied float RGBA surface; painting blends over.
 type canvas struct {
 	w, h int
 	pix  []float32 // r, g, b, a premultiplied, 4 per pixel
@@ -419,17 +372,17 @@ func (c *canvas) strokeCoverage(polys [][]point) []uint8 {
 }
 
 // paintStroke paints polygons that came from strokePolys.
-func (c *canvas) paintStroke(polys [][]point, col color.NRGBA, opacity float64) {
-	c.paintMask(c.strokeCoverage(polys), col, opacity)
+func (c *canvas) paintStroke(polys [][]point, col color.NRGBA) {
+	c.paintMask(c.strokeCoverage(polys), col)
 }
 
-func (c *canvas) paintMask(mask []uint8, col color.NRGBA, opacity float64) {
+func (c *canvas) paintMask(mask []uint8, col color.NRGBA) {
 	r, g, b := float32(col.R)/255, float32(col.G)/255, float32(col.B)/255
 	for i, m := range mask {
 		if m == 0 {
 			continue
 		}
-		a := float32(m) / 255 * float32(opacity) * float32(col.A) / 255
+		a := float32(m) / 255 * float32(col.A) / 255
 		px := c.pix[i*4 : i*4+4]
 		inv := 1 - a
 		px[0] = r*a + px[0]*inv

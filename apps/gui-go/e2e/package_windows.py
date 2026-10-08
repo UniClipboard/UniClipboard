@@ -218,7 +218,11 @@ def stage_prepare(args, out):
     gen.mkdir()
     run(['makensis', *nsis_defines(st, plugins, gen / 'uninstaller-generator.exe', ['-DBUILD_UNINSTALLER']), f'-DSRC_MAIN={exe}',
          f'-DSRC_DAEMON={args.daemon}', str(GUI / 'windows/installer.nsi')])
-    run([str(gen / 'uninstaller-generator.exe'), '/S'])
+    # `Quit` in .onInit makes the installer exit with code 2 ("aborted by script", NSIS wiki "Signing an Uninstaller externally"):
+    # that is the generator's success exit code. Any other code, or a missing uninstall.exe, is a failure.
+    r = subprocess.run([str(gen / 'uninstaller-generator.exe'), '/S'], cwd=gen, text=True, capture_output=True)
+    if r.returncode != 2:
+        sys.exit(f'the uninstaller generator exited with {r.returncode}, expected 2: {(r.stdout + r.stderr)[-400:]}')
     if not (gen / 'uninstall.exe').is_file():
         sys.exit('the uninstaller generator did not write uninstall.exe')
 

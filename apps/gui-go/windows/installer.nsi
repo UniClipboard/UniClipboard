@@ -13,6 +13,7 @@
 ;   /R        start the new version when done (passive or silent only)
 ;   /ARGS ... the arguments the running application had; passed to the restarted application
 ;   /D=<dir>  install directory (NSIS built-in)
+;   /DELETEAPPDATA  uninstaller only: delete the application data, like the check box (scripted and silent uninstalls)
 ;
 ; Same registry identity as the Tauri installer (per-user): Software\Microsoft\Windows\CurrentVersion\Uninstall\<product>
 ; with InstallLocation / UninstallString, so Add/Remove Programs, the uninstaller and the next update keep working.
@@ -241,6 +242,11 @@ Function un.onInit
   ${GetOptions} $CMDLINE "/P" $PassiveMode
   ${IfNot} ${Errors}
     StrCpy $PassiveMode 1
+  ${EndIf}
+  ; /DELETEAPPDATA is the scripted form of the check box (a silent uninstall shows no page): same effect, never on /UPDATE.
+  ${GetOptions} $CMDLINE "/DELETEAPPDATA" $R0
+  ${IfNot} ${Errors}
+    StrCpy $DeleteAppDataCheckboxState 1
   ${EndIf}
   ${GetOptions} $CMDLINE "/UPDATE" $UpdateMode
   ${IfNot} ${Errors}

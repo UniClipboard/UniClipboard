@@ -107,6 +107,7 @@ jobs:
       cli-matrix: ${{ steps.select-cli-targets.outputs.matrix }}
       macos-matrix: ${{ steps.select-macos-targets.outputs.matrix }}
       macos-smoke-matrix: ${{ steps.select-macos-targets.outputs.smoke }}
+      windows-gui-matrix: ${{ steps.select-windows-gui-targets.outputs.matrix }}
       windows-runner: ${{ steps.select-windows-runner.outputs.runner }}
       windows-runner-source: ${{ steps.select-windows-runner.outputs.source }}
     steps:
@@ -187,6 +188,24 @@ jobs:
             }
             const smoke = keep.map(e => ({ target: e.target, ...hosts[e.target] }))
             console.log("smoke=" + JSON.stringify(smoke))
+          ' >> "$GITHUB_OUTPUT"
+
+      - name: Select Windows GUI targets
+        id: select-windows-gui-targets
+        # The Windows packages are assembled on an x64 hosted runner for both architectures (Go and the
+        # Rust sidecar cross-compile). Each is accepted on a disposable hosted runner of its own
+        # architecture: x64 on windows-latest, arm64 on the native windows-11-arm runner (never emulated).
+        env:
+          MATRIX: ${{ steps.set-matrix.outputs.matrix }}
+        run: |
+          node -e '
+            const all = JSON.parse(process.env.MATRIX)
+            const hosts = {
+              "x86_64-pc-windows-msvc": { arch: "amd64", smoke: "windows-latest" },
+              "aarch64-pc-windows-msvc": { arch: "arm64", smoke: "windows-11-arm" },
+            }
+            const keep = all.filter(e => hosts[e.target]).map(e => ({ target: e.target, ...hosts[e.target] }))
+            console.log("matrix=" + JSON.stringify(keep))
           ' >> "$GITHUB_OUTPUT"
 
   # The shipped `uniclipd` daemon is built once per target, first. The desktop
@@ -365,6 +384,12 @@ jobs:
           POSTHOG_PROJECT_KEY: ${{ secrets.POSTHOG_PROJECT_KEY }}
           APP_ENV: ${{ steps.resolve-env.outputs.app_env }}
         run: node scripts/stage-daemon.mjs ${{ matrix.args }} --timings
+
+      - name: record sidecar provenance
+        # Build evidence written by the job that built the binaries (source commit, hashes, toolchain).
+        # The Windows packager verifies the daemon it ships against it.
+        shell: bash
+        run: node scripts/ci/write-sidecar-provenance.mjs --target "${{ matrix.target }}" --build-mode "${{ inputs.build_mode || 'release' }}"
 
       - name: Upload Sentry debug symbols
         # Test bundles are not released and should not upload symbols under the release version.
@@ -694,6 +719,235 @@ jobs:
           path: smoke-evidence
           if-no-files-found: warn
           retention-days: 7
+
+  # Go/Wails Windows packages (issue #1897): the NSIS installer and the portable zip around the release
+  # uniclipd from build-sidecar. The daemon in the packages is verified against build-sidecar's record
+  # (apps/gui-go/e2e/package_windows.py) and again inside the finished files
+  # (windows_package_verify.py). There is no Authenticode signing yet (no product decision): a release
+  # caller (workflow_call) fails instead of publishing unsigned installers.
+  package-windows-gui:
+    name: Package Windows ${{ matrix.arch }}
+    needs: [setup-matrix, build-sidecar]
+    if: needs.setup-matrix.outputs.windows-gui-matrix != '[]'
+    # Always a hosted runner: the packaging is deterministic and needs nothing from the self-hosted VM.
+    runs-on: windows-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.setup-matrix.outputs.windows-gui-matrix) }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.branch || github.ref }}
+          persist-credentials: false
+
+      - name: Windows installers are not signed
+        if: inputs.require_signing == true
+        shell: bash
+        run: |
+          echo "::error::The Windows installer, executable and daemon are not Authenticode signed and no signing decision exists; refusing to package unsigned Windows installers for a release."
+          exit 1
+
+      - name: setup node
+        uses: actions/setup-node@v6
+        with:
+          node-version: lts/*
+
+      - name: setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: apps/gui-go/go.mod
+          cache-dependency-path: |
+            apps/gui-go/go.sum
+            packages/desktop-host-go/go.sum
+
+      - name: setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install frontend dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Configure package build mode
+        id: build-mode
+        shell: bash
+        env:
+          UC_BUILD_MODE: ${{ inputs.build_mode || 'release' }}
+        run: node scripts/ci/configure-build-mode.mjs
+
+      - name: resolve APP_ENV from channel
+        id: resolve-env
+        shell: bash
+        env:
+          UC_CHANNEL: ${{ inputs.channel || 'stable' }}
+        run: node scripts/ci/resolve-app-env.mjs
+
+      - name: install NSIS and locate 7-Zip
+        shell: pwsh
+        run: |
+          if (-not (Get-Command makensis -ErrorAction SilentlyContinue)) {
+            choco install nsis --version=3.10 -y --no-progress
+          }
+          "C:\Program Files (x86)\NSIS" | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
+          "C:\Program Files\7-Zip" | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
+
+      - name: download uniclipd sidecar
+        uses: actions/download-artifact@v6
+        with:
+          name: sidecar-${{ matrix.target }}${{ steps.build-mode.outputs.suffix }}
+          path: sidecar-artifact
+
+      - name: stage sidecar
+        shell: bash
+        run: |
+          mkdir -p target/sidecar-staging
+          tar -xf sidecar-artifact/sidecar.tar -C target/sidecar-staging
+          ls -la target/sidecar-staging
+
+      - name: build the packages
+        id: package
+        shell: bash
+        env:
+          VITE_APP_ENV: ${{ steps.resolve-env.outputs.app_env }}
+          VITE_SENTRY_DSN: ${{ inputs.build_mode != 'test' && secrets.VITE_SENTRY_DSN || '' }}
+          # Frontend source map upload (apps/gui-go/vite.config.ts), same gate as the macOS app: test-mode
+          # packages are not releases and never upload under the real release version.
+          SENTRY_AUTH_TOKEN: ${{ inputs.build_mode != 'test' && secrets.SENTRY_AUTH_TOKEN || '' }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          VITE_SENTRY_PROJECT: ${{ inputs.build_mode != 'test' && secrets.VITE_SENTRY_PROJECT || '' }}
+        run: |
+          set -euo pipefail
+          S=target/sidecar-staging
+          python apps/gui-go/e2e/package_windows.py --arch ${{ matrix.arch }} \
+            --daemon "$S/uniclipd-${{ matrix.target }}.exe" --daemon-provenance "$S/sidecar-provenance.json" \
+            --out target/windows-gui/shipped
+          # Acceptance-only package with a higher version, so the update and downgrade scenarios have a
+          # newer build of the same sources. Never uploaded as a product.
+          python apps/gui-go/e2e/package_windows.py --arch ${{ matrix.arch }} --acceptance-version 999.0.0 \
+            --daemon "$S/uniclipd-${{ matrix.target }}.exe" --daemon-provenance "$S/sidecar-provenance.json" \
+            --out target/windows-gui/newer
+
+      - name: prove the daemon inside the finished files is the CI-built one
+        shell: bash
+        run: |
+          python apps/gui-go/e2e/windows_package_verify.py --package target/windows-gui/shipped --out target/windows-gui/payload-verification.json
+          python apps/gui-go/e2e/windows_package_verify.py --package target/windows-gui/newer --out target/windows-gui/payload-verification-newer.json
+
+      - name: build the CLI used to read history back
+        shell: bash
+        run: |
+          mkdir -p target/windows-gui/inputs
+          scripts/ci/build-go-cli.sh "${{ matrix.target }}" target/windows-gui/inputs/uniclip.exe
+          cp target/windows-gui/newer/ACCEPTANCE-*-setup.exe target/windows-gui/inputs/
+
+      - name: hashes of the shipped files
+        shell: bash
+        run: |
+          cd target/windows-gui/shipped
+          sha256sum *-setup.exe *-portable.zip | tee ../SHA256SUMS.txt
+
+      - name: upload Windows packages
+        # Only the named installer and portable zip: no bare exe, manifest or evidence, so the release asset
+        # collection can never pick up anything else.
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-gui-${{ matrix.target }}${{ steps.build-mode.outputs.suffix }}
+          path: |
+            target/windows-gui/shipped/UniClipboard_*-setup.exe
+            target/windows-gui/shipped/UniClipboard_*-portable.zip
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: upload acceptance inputs
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-gui-acceptance-inputs-${{ matrix.target }}${{ steps.build-mode.outputs.suffix }}
+          path: target/windows-gui/inputs
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: upload packaging evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-gui-evidence-${{ matrix.target }}${{ steps.build-mode.outputs.suffix }}
+          path: |
+            target/windows-gui/SHA256SUMS.txt
+            target/windows-gui/payload-verification*.json
+            target/windows-gui/shipped/package-manifest.json
+            target/windows-gui/newer/package-manifest.json
+            target/sidecar-staging/sidecar-provenance.json
+          if-no-files-found: warn
+          retention-days: 14
+
+  # Clean-machine acceptance of the shipped Windows packages. The shipping form has no profile, so it uses the
+  # real data root and Credential Manager of the machine: it only ever runs on a disposable GitHub-hosted runner
+  # (windows_package_acceptance.py refuses anything else). arm64 runs on the native windows-11-arm runner.
+  smoke-windows-gui:
+    name: Smoke Windows ${{ matrix.arch }}
+    needs: [setup-matrix, package-windows-gui]
+    if: needs.package-windows-gui.result == 'success'
+    runs-on: ${{ matrix.smoke }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.setup-matrix.outputs.windows-gui-matrix) }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.branch || github.ref }}
+          persist-credentials: false
+
+      - name: Configure package build mode
+        id: build-mode
+        shell: bash
+        env:
+          UC_BUILD_MODE: ${{ inputs.build_mode || 'release' }}
+        run: node scripts/ci/configure-build-mode.mjs
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: download the shipped files
+        uses: actions/download-artifact@v6
+        with:
+          name: windows-gui-${{ matrix.target }}${{ steps.build-mode.outputs.suffix }}
+          path: shipped
+
+      - name: download the acceptance inputs
+        uses: actions/download-artifact@v6
+        with:
+          name: windows-gui-acceptance-inputs-${{ matrix.target }}${{ steps.build-mode.outputs.suffix }}
+          path: inputs
+
+      - name: download the packaging evidence
+        uses: actions/download-artifact@v6
+        with:
+          name: windows-gui-evidence-${{ matrix.target }}${{ steps.build-mode.outputs.suffix }}
+          path: package-evidence
+
+      - name: install, run, update and uninstall the packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          DAEMON_SHA=$(python -c "import json;print(json.load(open('package-evidence/target/windows-gui/shipped/package-manifest.json'))['daemon']['sha256'])")
+          python apps/gui-go/e2e/windows_package_acceptance.py --arch ${{ matrix.arch }} \
+            --setup "$(ls shipped/UniClipboard_*-setup.exe)" --portable "$(ls shipped/UniClipboard_*-portable.zip)" \
+            --newer-setup "$(ls inputs/ACCEPTANCE-*-setup.exe)" --uniclip inputs/uniclip.exe \
+            --daemon-sha256 "$DAEMON_SHA" --out smoke-evidence
+
+      - name: upload smoke evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-gui-smoke-${{ matrix.arch }}${{ steps.build-mode.outputs.suffix }}
+          path: smoke-evidence
+          if-no-files-found: warn
+          retention-days: 14
 
   # User-facing CLI (Go, apps/cli-go). It only needs the daemon staged by
   # build-sidecar and never builds or links the Rust development CLI.

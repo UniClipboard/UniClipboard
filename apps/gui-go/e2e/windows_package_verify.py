@@ -1,0 +1,78 @@
+#!/usr/bin/env python3
+"""Prove that the daemon inside the shipped Windows packages is the CI-built one.
+
+  python apps/gui-go/e2e/windows_package_verify.py --package <package_windows.py output dir> [--out evidence.json]
+
+Unpacks the files that would be uploaded (the NSIS installer with 7-Zip, the portable zip with zipfile), finds
+`uniclipd.exe` in each payload and compares its SHA-256 with the build-sidecar record that package_windows.py copied
+into package-manifest.json. Works on any host with `7z` on PATH. A mismatch or a missing file exits non-zero.
+"""
+import argparse
+import hashlib
+import json
+import shutil
+import subprocess
+import sys
+import tempfile
+import zipfile
+from pathlib import Path
+
+
+def sha256(path):
+    h = hashlib.sha256()
+    with open(path, 'rb') as f:
+        for chunk in iter(lambda: f.read(1 << 20), b''):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def find(root, name):
+    hits = [p for p in root.rglob('*') if p.is_file() and p.name.lower() == name.lower()]
+    return hits[0] if len(hits) == 1 else None
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument('--package', type=Path, required=True)
+    ap.add_argument('--out', type=Path)
+    args = ap.parse_args()
+    manifest = json.loads((args.package / 'package-manifest.json').read_text())
+    daemon = manifest['daemon']
+    if daemon['kind'] != 'ci-built-rust-daemon' or not daemon['identityVerified']:
+        sys.exit(f"the package manifest does not claim a CI-built daemon (kind={daemon['kind']})")
+    expected = daemon['buildEvidence']['sha256']
+    setup = next(args.package.glob('*-setup.exe'))
+    portable = next(args.package.glob('*-portable.zip'))
+    seven = shutil.which('7z') or shutil.which('7za') or sys.exit('7z not found on PATH')
+    result = {'expectedDaemonSha256': expected, 'checks': []}
+    work = Path(tempfile.mkdtemp(prefix='uc-pkg-verify-'))
+    try:
+        sx = work / 'setup'
+        subprocess.run([seven, 'x', '-y', f'-o{sx}', str(setup)], check=True, capture_output=True)
+        pz = work / 'portable'
+        with zipfile.ZipFile(portable) as z:
+            z.extractall(pz)
+        for label, root, exe in (('setup payload', sx, 'uniclipd.exe'), ('portable zip', pz, 'uniclipd.exe')):
+            f = find(root, exe)
+            got = sha256(f) if f else None
+            ok = got == expected
+            result['checks'].append({'check': f'{label}: uniclipd.exe equals the CI-built daemon', 'ok': ok, 'sha256': got})
+            print(('PASS ' if ok else 'FAIL ') + result['checks'][-1]['check'], flush=True)
+        for label, root, exe in (('setup payload', sx, 'UniClipboard.exe'), ('portable zip', pz, 'UniClipboard.exe')):
+            f = find(root, exe)
+            result['checks'].append({'check': f'{label}: {exe} present', 'ok': f is not None, 'sha256': sha256(f) if f else None})
+            print(('PASS ' if f else 'FAIL ') + result['checks'][-1]['check'], flush=True)
+        same = [c['sha256'] for c in result['checks'] if 'UniClipboard.exe' in c['check']]
+        result['checks'].append({'check': 'GUI exe is identical in the installer and the portable zip', 'ok': len(set(same)) == 1 and None not in same})
+        print(('PASS ' if result['checks'][-1]['ok'] else 'FAIL ') + result['checks'][-1]['check'], flush=True)
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+    result['passed'] = all(c['ok'] for c in result['checks'])
+    result['files'] = {p.name: {'sha256': sha256(p), 'bytes': p.stat().st_size} for p in (setup, portable)}
+    if args.out:
+        args.out.write_text(json.dumps(result, indent=2) + '\n')
+    sys.exit(0 if result['passed'] else 1)
+
+
+if __name__ == '__main__':
+    main()

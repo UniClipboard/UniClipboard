@@ -284,7 +284,7 @@ def scenario_a(a, s):
     check('A3 the installed daemon is the shipped (CI-built) one (SHA-256)', sha256(INSTDIR / 'uniclipd.exe') == a.daemon_sha256)
     s['installed_exe_old'] = sha256(INSTDIR / f'{PRODUCT}.exe')
     if a.expect_signed:
-        v = subprocess.run([sys.executable, str(a.sign_verifier), 'verify', '--out', str(OUT / 'signatures-installed.json'),
+        v = subprocess.run([sys.executable, str(a.sign_verifier), 'verify', '--out', str(OUT / 'signatures-installed.json'), *(['--allow-untrusted-root', '--expect-subject', a.sign_untrusted_subject] if a.sign_untrusted_subject else []),
                             *[str(INSTDIR / n) for n in (f'{PRODUCT}.exe', 'uniclipd.exe', 'uninstall.exe')]], capture_output=True, text=True)
         check('A3s the installed exe, daemon and uninstaller carry a valid Authenticode signature', v.returncode == 0, v.stdout[-1500:])
     k = reg_values(UNINST) or {}
@@ -487,6 +487,7 @@ def main():
     ap.add_argument('--daemon-sha256', required=True)
     ap.add_argument('--newer-daemon-sha256', help='SHA-256 of the daemon inside the newer package when it differs from --daemon-sha256 (signed packages)')
     ap.add_argument('--expect-signed', action='store_true', help='the packages are Authenticode signed: verify the installed files too')
+    ap.add_argument('--sign-untrusted-subject', help='signing self-test on a runner that cannot trust the throwaway certificate: accept an untrusted chain for this signer subject only')
     ap.add_argument('--sign-verifier', type=Path, help='apps/gui-go/packaging/windows/sign.py')
     ap.add_argument('--out', type=Path, required=True)
     a = ap.parse_args()

@@ -92,6 +92,12 @@ def verify(files, expect_subject, allow_untrusted_root, out):
                  " Issuer=$s.SignerCertificate.Issuer; Timestamp=if($s.TimeStamperCertificate){$s.TimeStamperCertificate.Subject}else{$null}} | ConvertTo-Json -Compress")
         info = json.loads(sig.stdout) if sig.stdout.strip() else {}
         ok = pa.returncode == 0 and info.get('Status') == 'Valid' and bool(info.get('Timestamp'))
+        if allow_untrusted_root and not ok:
+            # Throwaway self-test certificate on a runner that cannot trust it (not elevated: adding a root to the user store
+            # needs an interactive confirmation). The signature must still be present, carry the expected subject and a timestamp;
+            # only the chain trust is waived, and the report says so.
+            ok = bool(expect_subject) and bool(info.get('Subject')) and expect_subject in info['Subject'] and bool(info.get('Timestamp')) \
+                and info.get('Status') not in ('NotSigned', 'HashMismatch')
         if expect_subject and expect_subject not in (info.get('Subject') or ''):
             ok = False
         report.append({'file': str(f), 'ok': ok, 'signtoolVerifyPa': pa.returncode == 0 if tool else None, 'signature': info, 'signtoolTail': (pa.stdout + pa.stderr)[-400:]})
@@ -112,7 +118,7 @@ def main():
     v.add_argument('files', nargs='+', type=Path)
     v.add_argument('--out')
     v.add_argument('--expect-subject')
-    v.add_argument('--allow-untrusted-root', action='store_true', help='record only: the runner trusts a throwaway self-test certificate')
+    v.add_argument('--allow-untrusted-root', action='store_true', help='signing self-test on a runner that cannot trust the throwaway certificate: waive only the chain trust, still require --expect-subject, a timestamp and an intact hash')
     a = ap.parse_args()
     if os.name != 'nt':
         sys.exit('signing runs on Windows only')

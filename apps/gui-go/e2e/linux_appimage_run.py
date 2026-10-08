@@ -240,11 +240,25 @@ def main():
         time.sleep(1)
         for sub in ('.local/state', '.local/share'):
             for logs in (home / sub).glob('app.uniclipboard.desktop*'):
-                shutil.copytree(logs, out / 'home-copy' / sub.replace('/', '_') / logs.name, dirs_exist_ok=True, ignore=shutil.ignore_patterns('*.sock', '*.lock'))
+                copy_logs(logs, out / 'home-copy' / sub.replace('/', '_') / logs.name)
         xvfb.terminate()
         (out / 'appimage-assertions.json').write_text(json.dumps(r, indent=2, default=str) + '\n')
     print(json.dumps({'passed': r['passed'], 'mode': args.mode}))
     sys.exit(0 if r['passed'] else 1)
+
+
+def copy_logs(root, dest):
+    """Copy only the log files of a sandbox profile: never the databases, identity, keys or connection files. A file that vanishes while the
+    daemon shuts down is skipped, so evidence collection cannot fail the run after its assertions were made."""
+    for f in sorted(Path(root).rglob('*')):
+        if not f.is_file() or f.is_symlink() or not (f.name.endswith(('.log', '.jsonl')) or '.json.' in f.name or f.name.endswith('.json') and f.parent.name == 'logs'):
+            continue
+        target = Path(dest) / f.relative_to(root)
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(f, target)
+        except OSError:
+            pass
 
 
 def wait_daemon(home, timeout=90):

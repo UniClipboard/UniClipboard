@@ -32,7 +32,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 from linux_appimage_portable_run import USER, as_user, environ_of, wait_daemon  # noqa: E402
-from linux_appimage_run import DISPLAY, PASSPHRASE, Launch, Run, maps_of, pid_alive, procs, sha256, start_xvfb, wait_panel_ready  # noqa: E402
+from linux_appimage_run import DISPLAY, PASSPHRASE, Launch, copy_logs, Run, maps_of, pid_alive, procs, sha256, start_xvfb, wait_panel_ready  # noqa: E402
 from linux_appimage_tls_run import Reports, StopScenario  # noqa: E402
 from linux_appimage_helpers_run import png_bytes, parse_trace, tree_of  # noqa: E402
 
@@ -569,7 +569,7 @@ def main():
         kill_apps(account.pw_uid)
         for sub in ('.local/state', '.local/share'):
             for logs in (home / sub).glob('app.uniclipboard.desktop*'):
-                shutil.copytree(logs, out / 'home-copy' / sub.replace('/', '_') / logs.name, dirs_exist_ok=True, ignore=shutil.ignore_patterns('*.sock', '*.lock'))
+                copy_logs(logs, out / 'home-copy' / sub.replace('/', '_') / logs.name)
         if bus:
             bus.terminate()
         time.sleep(1)

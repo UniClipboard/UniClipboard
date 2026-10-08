@@ -243,7 +243,7 @@ def main():
                 pass
         time.sleep(1)
         for home in sandbox.rglob('*.AppImage.home'):
-            shutil.copytree(home, out / 'home-copy' / home.name, dirs_exist_ok=True, ignore=shutil.ignore_patterns('*.sock', '*.lock', 'WebKit*', 'webkitgtk'))
+            base.copy_logs(home, out / 'home-copy' / home.name)
         xvfb.terminate()
         (out / 'appimage-assertions.json').write_text(json.dumps(r, indent=2, default=str) + '\n')
     print(json.dumps({'passed': r['passed'], 'mode': 'portable'}))

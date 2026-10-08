@@ -30,7 +30,7 @@ ARCH="${PLATFORM#linux/}"  # amd64 | arm64: the package_linux.py --arch value
 # The clean-host image the AppImage runs in (no GTK/WebKitGTK) and the Secret Service image next to it; CI selects the distribution per run.
 RUNTIME_IMAGE="${UC_RUNTIME_IMAGE:-uc-gui-go-linux-runtime:17c4}"
 KEYRING_IMAGE="${UC_KEYRING_IMAGE:-uc-gui-go-linux-keyring:17c4}"
-VOLUME=uc-gui-go-linux-cache
+VOLUME="${UC_LINUX_CACHE_VOLUME:-uc-gui-go-linux-cache}"
 mode="${1:?usage: run.sh build|xvfb|package [outdir]}"
 docker image inspect "$IMAGE" >/dev/null
 # A git worktree's .git file points at the main repository's metadata by absolute path: mount that read-only at the same
@@ -106,7 +106,7 @@ case "$mode" in
     for _ in $(seq 60); do docker run --rm -v "$bus:/bus" "$RUNTIME_IMAGE" test -f /bus/ready && break; sleep 1; done
     set +e
     docker run --rm --init --platform "$PLATFORM" --device /dev/fuse --cap-add SYS_ADMIN --security-opt apparmor:unconfined \
-      -e UC_E2E_BUS=unix:path=/bus/bus -v "$bus:/bus" -v "$ROOT:/work:ro" -v "uc-gui-go-linux-cache:/cache:ro" -v "$out:/out" "${mounts[@]}" \
+      -e UC_E2E_BUS=unix:path=/bus/bus -v "$bus:/bus" -v "$ROOT:/work:ro" -v "$VOLUME:/cache:ro" -v "$out:/out" "${mounts[@]}" \
       "$RUNTIME_IMAGE" python3 /work/apps/gui-go/e2e/linux_appimage_run.py "${runargs[@]}" --uniclip /cache/out/uniclip > "$out/run.log" 2>&1
     code=$?
     docker logs "$keyring" > "$out/keyring-container.log" 2>&1
@@ -125,7 +125,7 @@ case "$mode" in
     manifest="$(cd "$(dirname "${5:?package-manifest.json}")" && pwd)/$(basename "$5")"
     set +e
     docker run --rm --init --platform "$PLATFORM" --device /dev/fuse --cap-add SYS_ADMIN --cap-add SYS_PTRACE --security-opt apparmor:unconfined \
-      -v "$ROOT:/work:ro" -v "uc-gui-go-linux-cache:/cache:ro" -v "$out:/out" -v "$image:/in/appimage.AppImage:ro" -v "$feed:/in/feed" \
+      -v "$ROOT:/work:ro" -v "$VOLUME:/cache:ro" -v "$out:/out" -v "$image:/in/appimage.AppImage:ro" -v "$feed:/in/feed" \
       -v "$manifest:/in/package-manifest.json:ro" \
       uc-gui-go-linux-runtime:17c4 python3 /work/apps/gui-go/e2e/linux_appimage_portable_run.py --out /out --appimage /in/appimage.AppImage \
       --uniclip /cache/out/uniclip --feed /in/feed --manifest /in/package-manifest.json ${UC_PORTABLE_E2E_ARGS:-} > "$out/run.log" 2>&1

@@ -53,3 +53,8 @@
 - `go vet`（默认与 `-tags=e2e`）在 macOS 通过。`GOOS=windows go vet` 在 main 上已有的 `validateIsolation` 重复定义处中止，所以 Windows 的图标文件没有被类型检查到；这不是通过。
 
 未验证：macOS 浅色菜单栏的外观（`run15` 的菜单栏是深色外观）；Windows 运行时（任务栏主题切换、小图标尺寸，16 px 时字形线条是否清晰，以及不同显示器 DPI 不重画这个已知边界）；Linux 运行时，以及精简后的源码在 Linux 上的构建（测试主机当时不可达）。
+
+合并 `origin/main` 之后（普通 merge，源码 `7f71d7bbc`）：
+
+- 原生（`run17`，屏幕未锁）：同样 8/8 通过，最终源码上有了原生运行。
+- macOS 打包：`package.py` 原本还复制已删除的托盘 PNG，已删掉那两行；用现有隔离入口（`stage-daemon.mjs`、`package.py bundle --variant acceptance`、ad-hoc `sign`、`macos_bundle_run.py`）验证，37/37 通过，公证检查跳过，没有遥测密钥输入。

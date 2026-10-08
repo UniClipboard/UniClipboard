@@ -99,7 +99,7 @@ PR #1920（Windows 打包）修改 `build.yml` 的：`workflow_dispatch`/`workfl
 - AppImage 验收在 Debian 12（下限）与 Ubuntu 24.04（较新）上：full、negative、smoke 全部通过（启动、daemon、WebView、HTTPS、受信任 fixture 密钥的原位更新、不受信任签名被拒、自启动、数据目录）。
 - 六个安装 job（deb：Debian 12、Ubuntu 24.04；rpm：Fedora latest；各 amd64、arm64）：安装、对已发布 Tauri 包的升级、启动、移除均通过。
 - `telemetry-injection-contract` 通过；验收在上报关闭下运行，没有生产 Sentry 写入与 source map 上传。
-- 软件包名为 `uni-clipboard`，与已发布 Tauri 包一致，升级才成立。
+- 当时软件包名为 `uni-clipboard`，与已发布 Tauri 包一致；后续改名关系见下文。
 
 ### 验收脚本修正（C 类：验收脚本，非产品缺陷）
 
@@ -125,3 +125,56 @@ PR #1920（Windows 打包）修改 `build.yml` 的：`workflow_dispatch`/`workfl
 
 - Fedora 代理矩阵；Arch、openSUSE、sid、Alpine。
 - 真实主机（`ssh fedora`、`ssh omarchy` 当时不可达）；真实 GNOME、KDE、Wayland 桌面；真实登录自启动；`--appimage-extract-and-run`；真实只读挂载。
+
+## 已安装包的更新提示补充验收
+
+`apps/gui-go/e2e/linux/package_update_check.sh` 在一次性 Ubuntu / Fedora 容器安装
+带 `gtk3,production,release,e2e` 控制面的真实 deb / rpm，通过原生 WebView 完成初始化、
+关闭遥测提示、进入设置并点击检查更新。它要求宿主查询返回 `deb` / `rpm`，前端提示的
+apt / dnf 命令使用真实包名 `uniclipboard`，并记录截图、包数据库归属、工件及已安装
+可执行文件的哈希、GUI 和 daemon 日志。通知通过 GUI 发起并由私有 D-Bus 接收器记录；
+这不证明真实桌面通知的展示。运行依赖现有真实应用镜像与 Secret Service 镜像。
+
+更新 feed 只监听容器 loopback，公钥使用 E2E 更新工具产生的公开夹具；不下载或安装系统包更新。
+普通发布包没有测试控制面，不能用于这项自动化。可先用现有 `package_linux.py --gui-binary`
+将 E2E 宿主和来源可验证的 release daemon 打成测试包。
+
+```bash
+apps/gui-go/e2e/linux/package_update_check.sh \
+  deb /absolute/path/E2E-UniClipboard_version_arm64.deb \
+  /absolute/path/fixture-pubkey.b64 /absolute/path/new-evidence
+```
+
+当前补充脚本固定使用原生 arm64 Docker 平台，Ubuntu / Fedora 容器不等于物理 rpm 宿主。
+AppImage 完整验收则在原位更新前保持自启动启用，替换后核对条目和执行 `Exec`；
+手动执行该命令不等于真实登录管理器读取自启动条目。
+
+## 手动 deb/rpm 包身份迁移
+
+包名统一为 `uniclipboard`。已发布的 Tauri 与此前 Go 包名 `uni-clipboard` 是兼容来源，
+不是第二套安装。deb 使用版本化 `Conflicts` + `Replaces` + `Provides`；rpm 使用
+`Obsoletes: uni-clipboard <= %{version}-%{release}` 与版本化普通及 `%{?_isa}` 架构能力 `Provides`。
+等号覆盖同版本 Go 包改名，旧名保留为依赖能力；包数据库唯一安装身份和卸载命令使用新名。
+
+采用 [Debian Policy 7.6.2](https://www.debian.org/doc/debian-policy/ch-relationships.html#replacing-whole-packages-forcing-their-removal)
+和 [RPM Obsoletes](https://rpm.org/docs/latest/manual/dependencies.html#obsoletes) 的整包替换机制。
+不添加手动删除文件的维护脚本、第二个过渡包或资料搬迁。现有 `dpkg-deb` / `rpmbuild` 足够。
+更高版本旧名与异架构包不属于这个候选的升级范围，不能用忽略依赖或强制覆盖绕过。
+历史最高发布版本为 1.1.1；正常向前发布时替换关系持续覆盖全部已发布旧名版本。
+
+手动安装使用 `apt install ./新包.deb` 或 `dnf install ./新包.rpm` 执行一次改名事务。
+`apt/dnf upgrade` 的包名提示不能代替发行仓库：没有新包仓库时它不会自动发现下载文件。
+COPR 的独立维护和发布不属于此改名。应用 ID、可执行路径、数据/日志路径、Secret Service
+属性和 XDG 自启动文件不改名。卸载保留用户资料及自启动偏好，清空资料必须另行明确操作。
+
+`package_install_check.sh` 使用真实包管理器覆盖新装和旧包迁移，再安装和明确 reinstall，
+确认旧身份消失、文件唯一归属、退役文件移除、GUI/WebKit/daemon 启动和卸载。
+事务前初始化真实加密 profile，保存 enabled entry；停止进程后比较资料及 entry 摘要，
+升级后执行 `/usr/bin/uniclipboard --autostart`，通过真实 daemon API 核验设备身份、初始化状态、
+加密会话与设置，并读取隔离 Secret Service 中的夹具。输出命令日志、输入 SHA、摘要和断言。
+Tauri 场景使用新 daemon 生成有效资料夹具，证明包事务保留资料，不证明全部历史 schema 转换。
+这属于 Xvfb 容器验收，不是桌面登录管理器或真实登录验收。
+
+CI 在原生 amd64/arm64 上增加 `legacy-go-fixture`：以候选的实际 Go/daemon payload 及旧包
+元数据生成事务回归夹具，其清单明确标识为生成夹具，不能冒充已发布历史包。旧 Tauri 使用
+已发布 v1.0.1 与仓库固定 SHA。历史 Go 的真实工件另行验收，来源与 CI 生成夹具分开记录。

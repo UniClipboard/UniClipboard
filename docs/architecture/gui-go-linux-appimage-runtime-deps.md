@@ -121,3 +121,24 @@ apps/gui-go/e2e/linux/run_17c7_supplement.sh <最终运行目录> <新目录>
 - 真实桌面、GPU 驱动、Wayland、portal、托盘、通知、休眠、焦点；deb/rpm 原生安装。
 - `AppRun` 的 `LD_LIBRARY_PATH` 仍会进入 GUI 启动的所有宿主助手进程（`xdg-open`、`notify-send` 等）；libdbus 是这一类问题里已证实的一例，其他助手没有逐个审计。
 - 真实登录会话的自启动、注销后登录与更新后条目；官方签名发布；Windows/macOS 全部事项。
+
+## 动态观测库存的内容断言
+
+`appimage_content_check.py` 的 `--runtime-inventory <json>` 接收真实运行时收集的库存。
+检查器首先要求库存的 `imageSha256` 与当前打包清单中的 AppImage 哈希一致，再逐项验证：
+
+- `bundled`：`bundleRelativePath` 指向 AppDir 内的文件，字节等于观测记录的 `sha256`。
+- `host-owned` / `host-staged`：观测文件名和 ELF `soname` 都没有重复捆绑。
+- 未知分类、空库存或缺少覆盖说明均失败。
+
+输入的顶层字段为 `imageSha256`、`scope`、`libraries`；每项至少包含 `name`、
+`classification`、`soname`，捆绑项另含 `bundleRelativePath` 与 `sha256`。
+`scope` 必须说明实际执行的场景及未覆盖的加载路径。
+库存来自 GUI、WebKit 与 daemon 的 `/proc/<pid>/maps` 或加载器跟踪；静态扫描不能替代它。
+有限运行只证明已观测的加载，不证明全部潜在 `dlopen`、媒体插件或 GPU 组合均已覆盖。
+
+```bash
+python3 apps/gui-go/e2e/linux/appimage_content_check.py \
+  squashfs-root package-manifest.json content-check.json \
+  --runtime-inventory runtime-inventory.json
+```

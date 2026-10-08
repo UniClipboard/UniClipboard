@@ -67,6 +67,7 @@ if [ "$scenario" = reject-newer ]; then
   rpm -qa --qf '%{NAME} %{VERSION}-%{RELEASE}\n' | sort > /out/packages-before.txt
   sha256sum /usr/bin/uniclipboard /usr/bin/uniclipd > /out/payload-before.sha256
   if dnf -y -q install /in/new.rpm > /out/rejected-transaction.log 2>&1; then bad "newer legacy prevents coinstallation"; else ok "newer legacy prevents coinstallation"; fi
+  check "rejection reports the legacy version conflict" grep -F "conflicts with uni-clipboard >" /out/rejected-transaction.log
   rpm -qa --qf '%{NAME} %{VERSION}-%{RELEASE}\n' | sort > /out/packages-after.txt
   check "rejection leaves package database unchanged" cmp /out/packages-before.txt /out/packages-after.txt
   check "rejection leaves payload unchanged" sha256sum -c /out/payload-before.sha256

@@ -837,6 +837,7 @@ jobs:
         id: package
         shell: bash
         env:
+          TEMP_DIAGNOSTIC_ALLOW_DIRTY_DAEMON: '1'  # TEMP diagnostic (patched Engine dirties Cargo.lock), remove
           VITE_APP_ENV: ${{ steps.resolve-env.outputs.app_env }}
           VITE_SENTRY_DSN: ${{ inputs.build_mode != 'test' && secrets.VITE_SENTRY_DSN || '' }}
           # Frontend source map upload (apps/gui-go/vite.config.ts), same gate as the macOS app: test-mode

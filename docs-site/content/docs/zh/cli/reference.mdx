@@ -6,6 +6,30 @@ description: uniclip 发布版中的空间、成员、内容、搜索、诊断�
 本页只介绍发布版中由 `uniclip --help` 展示的公开命令。第一次使用 CLI，请先看
 [快速上手](./getting-started)。开发专用和隐藏命令留在仓库开发文档中，不混入用户指南。
 
+## 守护进程生命周期
+
+使用 `run` 和 `service` 控制生命周期；[快速上手](./getting-started#管理守护进程)
+列出了命令。`run` 前台运行并拒绝已有 daemon；未初始化空间时也可运行，然后从另一终端
+初始化或加入空间。`start` 在弃用兼容期内保留旧的后台默认。
+
+`service` 只管理自己创建的 profile 用户服务，不使用 sudo。macOS 要求 GUI 登录域，
+Linux 要求可连接用户 systemd 管理器。`service start` 幂等；修改运行中服务的选项时，
+先停止，再以期望选项启动。`restart` 使用已保存选项。服务没有自动崩溃重启策略。
+
+`service status --json` 返回 `installed`、`loaded`、`running`、`pid`、`http_health`
+和可选 `health_details`。PID 存在不代表健康；服务未运行、HTTP 不可达或不兼容、
+端点属于其他 daemon 时返回非零。`recovery_required` 表示 daemon 可达，但仍需要恢复。
+`start` 和 `restart` 等待 HTTP 健康，失败时返回非零并保留服务供诊断。
+
+服务保留所选 profile、HOME 和数据/日志上下文，不保存口令或 daemon 令牌。登录钥匙串
+仍可能被锁定。macOS 控制台日志位于 profile 日志目录的 `service.stdout.log` 和
+`service.stderr.log`；Linux 使用 `journalctl --user -u <name>.service`，name 来自状态输出。
+daemon 的轮转日志保持原行为。
+
+删除服务定义时，先 `service stop`，再删除 `~/Library/LaunchAgents` 下对应 plist，
+或 `$XDG_CONFIG_HOME/systemd/user`（默认 `~/.config/systemd/user`）下对应 unit。
+Linux 删除后执行 `systemctl --user daemon-reload`。CLI 不配置登录前启动所需的 linger。
+
 ## 空间
 
 | 命令                        | 作用                                                                               |

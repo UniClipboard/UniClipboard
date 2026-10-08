@@ -146,21 +146,38 @@ file contents. Blank lines are ignored, paths are validated before sending, and
 duplicate paths are sent once. Use repeatable `--peer` flags to restrict the
 targets; Ctrl-C cancels the wait.
 
-## Manage the background service
+## Manage the daemon
 
-Most commands start the service when needed. Use these commands when you want
-explicit lifecycle control:
+Most commands connect to the current profile's daemon or start one when needed.
+For explicit lifecycle control:
 
-| Command                      | Effect                                                                 |
-| ---------------------------- | ---------------------------------------------------------------------- |
-| `uniclip start`              | Start `uniclipd` in the background.                                    |
-| `uniclip start --foreground` | Keep it in the terminal and show its logs.                             |
-| `uniclip start --server`     | Start a headless node without reading or writing the system clipboard. |
-| `uniclip stop`               | Stop the service for the active profile.                               |
-| `uniclip space status`       | Show service, space, network, and trust status.                        |
+| Command | Effect |
+| --- | --- |
+| `uniclip run` | Run in the foreground, preserving signals, logs and the daemon exit code. |
+| `uniclip run --server` | Run a foreground headless node without the system clipboard. |
+| `uniclip service start` | Install if needed and start a user service, enabled at login. |
+| `uniclip service status` | Report registration, running state and HTTP health separately. |
+| `uniclip service restart` | Restart with saved options and restore login startup. |
+| `uniclip service stop` | Stop and disable login startup, retaining the service definition. |
+| `uniclip stop` | Stop a standalone daemon for the active profile. |
+| `uniclip space status` | Show space, network and trust status. |
 
-The desktop app and CLI reuse the same service when they use the same profile.
-You should not launch `uniclipd` directly.
+User services support Linux systemd and macOS launchd; Windows service commands
+report unsupported. `service start --server` selects headless operation.
+Install matching `uniclip` and `uniclipd` in a stable directory before creating
+a production service. Temporary builds, Git worktrees and portable installs
+cannot be used for production services.
+
+`run` refuses an existing daemon, including one owned by the desktop app;
+stop its owner explicitly or use another `--profile`. Use `service stop` for
+a service-managed daemon. Services start when the user's login manager starts;
+this does not promise startup before login. See [CLI reference](./reference)
+for health failures and service requirements.
+
+`uniclip start` is deprecated. During compatibility it still defaults to
+background operation and prints a migration warning; `--foreground` and
+`--server` retain their previous behavior. New scripts should use `run` or
+`service start`.
 
 ## Use the CLI in scripts
 

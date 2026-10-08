@@ -179,6 +179,13 @@ pub async fn acquire_with_deadline(
         Err(other) => return Err(other),
     };
 
+    // Foreground/user-service callers must never evict another profile owner.
+    // Check this only after failing the atomic lock acquisition, closing the
+    // preflight-to-spawn race without changing GUI/update arbitration.
+    if std::env::var(uc_daemon_process::spawn_contract::NO_TAKEOVER_ENV).as_deref() == Ok("1") {
+        return Err(InstanceLockError::AlreadyRunning { lock_path });
+    }
+
     // Single-instance arbitration (the "evicted after update" fix): before
     // patiently waiting out the holder, decide whether THIS daemon out-ranks it
     // (`should_evict_holder`). A strictly-older or stuck/orphaned holder is

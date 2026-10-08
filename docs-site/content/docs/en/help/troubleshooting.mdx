@@ -33,9 +33,9 @@ If the problem began after upgrading from 0.19, start with [Upgrade from 0.19 to
 
 ## Daemon
 
-Every CLI sync command depends on the daemon. Use `uniclip start` to
-launch, `uniclip stop` to shut it down, and `uniclip space status` to inspect
-health.
+Every CLI sync command depends on the daemon. Use `uniclip run` for a foreground daemon, or `uniclip service start`
+for a user service. Use `uniclip service status` to inspect service and HTTP
+health, and `uniclip service stop` to stop the user service.
 
 ```bash
 uniclip space status            # summary
@@ -55,11 +55,11 @@ Key fields:
 - `membership_convergence` — whether the active space is fully connected:
   `complete`, `converging`, `waiting_for_upgrade`, or `blocked`.
 
-If `daemon.running = false` but `uniclip start` exits immediately, run
+If `daemon.running = false` but `uniclip service start` fails, run
 it in the foreground to capture the trace:
 
 ```bash
-uniclip start --foreground -v
+uniclip run -v
 ```
 
 Read the error printed by the foreground process. If it cannot find or start
@@ -263,7 +263,8 @@ File-class payloads use a chunked blob protocol (see
 which resumes after disconnects and wake-from-sleep. If a single big
 file has been creeping along for **hours** at near-zero rate, a chunk
 is probably stuck without retrying. On the sender,
-`uniclip stop && uniclip start` usually unsticks it.
+`uniclip service restart` can help when the sending daemon is a user service;
+otherwise stop its existing owner and run `uniclip run`.
 
 ## Clipboard permissions
 
@@ -457,7 +458,7 @@ Reproduce while capturing — much better than digging through old logs:
 ```bash
 # Run the daemon in foreground with debug-level output piped to the terminal
 uniclip stop
-uniclip start --foreground -v
+uniclip run -v
 ```
 
 When filing an issue, please attach:

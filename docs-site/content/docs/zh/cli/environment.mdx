@@ -26,14 +26,14 @@ profile。
 不应访问系统剪贴板的服务器，请使用公开命令：
 
 ```bash
-uniclip start --server
+uniclip run --server
 ```
 
 Linux 环境中没有 `DISPLAY` 和 `WAYLAND_DISPLAY` 时，也会自动关闭剪贴板访问。
 如果要在图形会话中强制使用相同行为，可以设置：
 
 ```bash
-UC_DISABLE_SYSTEM_CLIPBOARD=1 uniclip start
+UC_DISABLE_SYSTEM_CLIPBOARD=1 uniclip run
 ```
 
 ## 直连网络
@@ -60,7 +60,7 @@ uniclip debug off
 只有支持人员或开发者要求指定过滤条件时，才应短时间使用 `RUST_LOG`：
 
 ```bash
-RUST_LOG=debug uniclip start --foreground
+RUST_LOG=debug uniclip run
 ```
 
 详细日志仍会受到强制隐私限制。不要长时间保留范围很宽的日志设置。

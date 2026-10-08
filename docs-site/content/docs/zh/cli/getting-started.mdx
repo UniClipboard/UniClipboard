@@ -135,20 +135,31 @@ uniclip get --wait --out ./inbox
 空行会被忽略，所有路径会在发送前完成校验，重复路径只发送一次。可以重复使用
 `--peer` 限制目标，按 Ctrl-C 可取消等待。
 
-## 管理后台服务
+## 管理守护进程
 
-大多数命令会在需要时自动启动服务。需要明确控制生命周期时，可以使用：
+大多数命令会连接当前 profile 的 daemon，或在需要时自动启动一个实例。明确控制生命周期时可以使用：
 
-| 命令                         | 作用                                           |
-| ---------------------------- | ---------------------------------------------- |
-| `uniclip start`              | 在后台启动 `uniclipd`。                        |
-| `uniclip start --foreground` | 让服务留在终端中运行并显示日志。               |
-| `uniclip start --server`     | 启动无头节点，不读写系统剪贴板。               |
-| `uniclip stop`               | 停止当前 profile 的后台服务。                  |
-| `uniclip space status`       | 查看服务、空间、网络和信任状态。               |
+| 命令 | 作用 |
+| --- | --- |
+| `uniclip run` | 前台运行，保留信号、日志与 daemon 退出码。 |
+| `uniclip run --server` | 前台运行无头节点，不读写系统剪贴板。 |
+| `uniclip service start` | 需要时安装并启动用户服务，开启登录启动。 |
+| `uniclip service status` | 分别报告注册、运行与 HTTP 健康状态。 |
+| `uniclip service restart` | 使用已保存选项重启，并恢复登录启动。 |
+| `uniclip service stop` | 停止并关闭登录启动，保留服务定义。 |
+| `uniclip stop` | 停止当前 profile 的独立 daemon。 |
+| `uniclip space status` | 查看空间、网络和信任状态。 |
 
-桌面应用和 CLI 使用同一个 profile 时会复用同一个后台服务。不要直接启动
-`uniclipd`。
+用户服务支持 Linux systemd 和 macOS launchd；Windows 服务命令会明确报未支持。
+`service start --server` 选择无头模式。生产服务要求将匹配的 `uniclip` 和 `uniclipd`
+安装到稳定的同一目录，拒绝临时构建、Git 工作树和便携安装。
+
+`run` 拒绝已有 daemon，包括桌面应用拥有的实例；应显式停止原所有者，或使用其他
+`--profile`。服务管理的 daemon 用 `service stop` 停止。服务在用户登录管理器启动时
+启动，不承诺登录前运行。健康失败与服务要求见[命令参考](./reference)。
+
+`uniclip start` 已弃用。兼容期内仍默认后台运行并输出迁移提示，`--foreground` 和
+`--server` 保留旧行为；新脚本应使用 `run` 或 `service start`。
 
 ## 在脚本中使用
 

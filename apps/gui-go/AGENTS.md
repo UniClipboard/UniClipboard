@@ -1,6 +1,7 @@
 # Go GUI 宿主规则
 
-- 遵循根 AGENTS.md；本模块是目前唯一的桌面宿主（旧 Tauri 宿主已退役，记录见 `docs/architecture/gui-go-tauri-retirement.md`）；发布流水线尚未重建，当前 release 工作流被有意阻塞。
+- 遵循根 AGENTS.md；本模块是目前唯一的桌面宿主（旧 Tauri 宿主已退役，记录见 `docs/architecture/gui-go-tauri-retirement.md`）；发布流水线尚未完整重建：macOS 应用包的构建、签名、公证、DMG 与更新归档已在 `.github/workflows/build.yml` 的 `package-macos-gui` 作业中实现（`packaging/macos/`，见 `README.md`「macOS 发布构建」），但更新签名、Windows 与 Linux 安装包尚未落地，`release.yml` 仍被有意阻塞。
+- macOS 发布形态（`release` 标签）无 profile、使用真实数据根与登录钥匙串：只能在一次性机器（GitHub 托管 runner）上运行，本机验收一律用 `packaging/macos/package.py bundle --variant acceptance`（独立标识、独立 HOME 与 profile、文件密钥库）。
 - daemon 权威业务继续归 Rust；Go 只负责外壳、进程协调与 native 认证。
 - 复用 packages/desktop-host-go，不复制 CLI 的路径/PID/认证实现。
 - 日常开发用 `bun wails:dev` / `bun wails:dev:profile <profile>`（开发 profile，需 UNICLIPBOARD_ENV=development）；E2E 与自动化必须使用独立沙箱、唯一 gui-go-* UC_PROFILE、UC_GUI_GO_ISOLATED=1、UC_DISABLE_SYSTEM_CLIPBOARD=1；沙箱在 macOS 是临时 HOME，在 Windows 是 `uc-gui-go-*` 便携目录（`UC_PORTABLE=1`，因为 Windows 不读 HOME，且 daemon 默认写真实 Credential Manager）。会发送真实按键、改变前台窗口或覆盖剪贴板的脚本只能在专用测试主机运行。

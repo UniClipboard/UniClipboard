@@ -8,6 +8,37 @@ This page covers the commands included in release builds and shown by
 Development-only and hidden commands are documented in the repository, not in
 the user guide.
 
+## Daemon lifecycle
+
+Use `run` and `service` for lifecycle control; [Getting started](./getting-started#manage-the-daemon)
+lists their commands. `run` keeps the daemon in the foreground and refuses an
+existing daemon. It can run before space setup; initialize or join from another
+terminal. `start` retains its old background default during deprecation.
+
+`service` manages only its own profile-scoped user service, without sudo.
+macOS requires a GUI login domain; Linux requires a running user systemd manager.
+`service start` is idempotent. To change options on a running service, stop it
+first and start with the desired options. `restart` uses saved options.
+There is no automatic crash-restart policy.
+
+`service status --json` reports `installed`, `loaded`, `running`, `pid`,
+`http_health` and optional `health_details`. A running PID does not prove health.
+A stopped service, unreachable or incompatible HTTP endpoint, or an endpoint
+owned by another daemon returns nonzero. `recovery_required` means the daemon
+is reachable but recovery is still required. `start` and `restart` wait for HTTP
+health and return nonzero on failure, leaving the service available for diagnosis.
+
+The service preserves the selected profile, HOME and data/log context; it does
+not persist passwords or daemon tokens. The login keychain may still be locked.
+macOS console logs are `service.stdout.log` and `service.stderr.log` in the
+profile log directory; Linux uses `journalctl --user -u <name>.service`, with
+`name` from status. Daemon rotating logs continue unchanged.
+
+To remove a definition, run `service stop`, then remove its named plist from
+`~/Library/LaunchAgents` or unit from `$XDG_CONFIG_HOME/systemd/user`
+(default `~/.config/systemd/user`). On Linux, run `systemctl --user daemon-reload`
+after removal. The CLI does not configure Linux linger for startup before login.
+
 ## Space
 
 | Command                     | Effect                                                                                                         |

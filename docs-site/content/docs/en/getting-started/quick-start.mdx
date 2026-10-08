@@ -133,8 +133,11 @@ uniclip space join --code <code>
 uniclip member list
 ```
 
-The daemon starts automatically. Use `uniclip space status` to inspect it, or
-`uniclip start` / `uniclip stop` to control it explicitly.
+The daemon starts automatically. Use `uniclip space status` to inspect it.
+Before switching from an automatically started standalone daemon to foreground
+operation (`uniclip run`) or a macOS/Linux user service (`uniclip service start`),
+stop that daemon with `uniclip stop`. Use `uniclip service stop` to stop a managed
+user service.
 
 </Tab>
 

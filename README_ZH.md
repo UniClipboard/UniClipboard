@@ -333,7 +333,7 @@ flowchart LR
 - **存储**：本地历史、预览与搜索索引都加密存盘。
 - **可恢复**：网络切换、睡眠唤醒或短暂断网后连接会自动恢复，也可以在设备页手动刷新某台设备的连接。
 
-**组成部分**：桌面应用由三部分组成 —— GUI（Tauri + React）、负责同步与存储的后台守护进程 `uniclipd`，以及 `uniclip` 命令行工具。GUI 与 CLI 通过本机回环地址上的 HTTP / WebSocket API 访问同一个守护进程，因此两者看到的状态始终一致。同步、加密与存储由独立的 [UniClipboard Engine](https://github.com/UniClipboard/Engine) 仓库实现，本仓库在 `Cargo.toml` 中固定其版本。
+**组成部分**：桌面应用由三部分组成 —— GUI（Go/Wails + React）、负责同步与存储的后台守护进程 `uniclipd`，以及 `uniclip` 命令行工具。GUI 与 CLI 通过本机回环地址上的 HTTP / WebSocket API 访问同一个守护进程，因此两者看到的状态始终一致。同步、加密与存储由独立的 [UniClipboard Engine](https://github.com/UniClipboard/Engine) 仓库实现，本仓库在 `Cargo.toml` 中固定其版本。
 
 ### 命令行工具
 
@@ -354,7 +354,8 @@ uniclip get                                 # 获取最新一条内容
 uniclip get --wait                          # 等待下一条同步过来的内容
 uniclip get --copy                          # 把最新一条内容复制到本机剪贴板
 uniclip search "invoice"                    # 搜索剪贴板历史
-uniclip start / stop                        # 守护进程生命周期
+uniclip run                                # 前台运行守护进程
+uniclip service start / restart / status / stop # 用户服务生命周期
 ```
 
 完整命令见 `uniclip --help` 或 [CLI 参考](https://docs.uniclipboard.app/zh/cli/reference)。

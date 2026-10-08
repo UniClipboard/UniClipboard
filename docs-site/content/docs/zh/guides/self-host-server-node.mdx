@@ -173,7 +173,7 @@ docker compose up -d
 
 会拉起两个容器：
 
-- **`app`** —— 无头守护进程（`uniclip start --server`）。通过 iroh 加入
+- **`app`** —— 无头守护进程（`uniclip run --server`）。通过 iroh 加入
   空间并提供 mobile-sync 网关。iroh UDP 端口发布到宿主；明文网关端口
   **只**在 Docker 内网。
 - **`caddy`** —— 在 `443` 终结 TLS，自动给 `UC_DOMAIN` 签证书，反代到 app

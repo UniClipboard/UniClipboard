@@ -7,7 +7,7 @@
 //         <out>/uniclipboard/          — main package with the JS launcher
 //
 // Platform packages MUST ship `uniclip` and `uniclipd` side by side in bin/:
-// `uniclip start` resolves the daemon as a sibling of current_exe()
+// `uniclip run` resolves the daemon as a sibling of current_exe()
 // (ADR-008 D13). The main package pins platform packages to the exact same
 // version so a partially-upgraded install can never mix versions.
 //

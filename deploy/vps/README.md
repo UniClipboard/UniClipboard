@@ -15,7 +15,7 @@ This stack is the implementation of
                   │  iroh direct (UDP, RelayMode=Disabled)
                   ▼
    ┌─────────────────────────────────────────────┐  VPS
-   │  app container (uniclip start --server)       │
+   │  app container (uniclip run --server)       │
    │   • iroh member  → published UDP :42999/udp   │◀── public internet
    │   • mobile_lan   → expose :42720 (internal)   │
    │   • HOME=/data   → volume `uniclip-state`     │
@@ -133,7 +133,7 @@ UniClipboard mobile client. Repeat for each phone.
 docker compose up -d
 ```
 
-`app` runs `uniclip start --server --foreground` as its main process (headless,
+`app` runs `uniclip run --server` as its main process (headless,
 no system clipboard). Caddy starts once `app` reports healthy, issues the
 certificate for `UC_DOMAIN`, and begins proxying.
 

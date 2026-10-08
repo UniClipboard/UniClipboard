@@ -68,6 +68,11 @@ on:
         required: false
         type: boolean
         default: false
+      require_signing:
+        description: 'Fail the macOS app packaging when the Apple signing secrets are missing instead of ad-hoc signing'
+        required: false
+        type: boolean
+        default: true
       package_cli:
         description: >-
           Also package the CLI archive for macOS and Windows x64 from this
@@ -83,6 +88,8 @@ jobs:
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
       cli-matrix: ${{ steps.select-cli-targets.outputs.matrix }}
+      macos-matrix: ${{ steps.select-macos-targets.outputs.matrix }}
+      macos-smoke-matrix: ${{ steps.select-macos-targets.outputs.smoke }}
       windows-runner: ${{ steps.select-windows-runner.outputs.runner }}
       windows-runner-source: ${{ steps.select-windows-runner.outputs.source }}
     steps:
@@ -141,6 +148,28 @@ jobs:
             const all = JSON.parse(process.env.MATRIX)
             const keep = all.filter(e => e.platform === "macos-latest" || e.target === "x86_64-pc-windows-msvc")
             console.log("matrix=" + JSON.stringify(keep))
+          ' >> "$GITHUB_OUTPUT"
+
+      - name: Select macOS GUI targets
+        id: select-macos-targets
+        # The macOS app is assembled on an arm64 runner for both architectures (Go and the Rust
+        # sidecar cross-compile; the x86_64 bundle is exercised on a native Intel runner by the
+        # smoke job), and from the same uniclipd/helper sidecar build-sidecar produced.
+        env:
+          MATRIX: ${{ steps.set-matrix.outputs.matrix }}
+        run: |
+          node -e '
+            const all = JSON.parse(process.env.MATRIX)
+            const keep = all.filter(e => e.platform === "macos-latest")
+            console.log("matrix=" + JSON.stringify(keep))
+            // Each shipped architecture is smoke-tested on a host of that architecture: Apple Silicon on
+            // macos-latest, Intel on the native Intel runner (not Rosetta).
+            const hosts = {
+              "aarch64-apple-darwin": { arch: "arm64", runner: "macos-latest" },
+              "x86_64-apple-darwin": { arch: "x86_64", runner: "macos-15-intel" },
+            }
+            const smoke = keep.map(e => ({ target: e.target, ...hosts[e.target] }))
+            console.log("smoke=" + JSON.stringify(smoke))
           ' >> "$GITHUB_OUTPUT"
 
   # The shipped `uniclipd` daemon is built once per target, first. The desktop
@@ -374,6 +403,280 @@ jobs:
           path: sidecar.tar
           if-no-files-found: error
           retention-days: 3
+
+  # Go/Wails macOS app (issue #1895): UniClipboard.app around the release uniclipd and quick panel
+  # helper from build-sidecar, Developer ID signed (inside-out, hardened runtime), notarized and
+  # stapled, then the DMG and the updater archive. All steps are apps/gui-go/packaging/macos/package.py.
+  # Without the Apple secrets (fork PRs) the bundle is only ad-hoc signed and labelled unsigned; a
+  # release caller (workflow_call) fails instead of publishing that.
+  package-macos-gui:
+    name: Package macOS app ${{ matrix.target }}
+    needs: [setup-matrix, build-sidecar]
+    if: needs.setup-matrix.outputs.macos-matrix != '[]'
+    runs-on: ${{ matrix.platform }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.setup-matrix.outputs.macos-matrix) }}
+    outputs:
+      signed: ${{ steps.mode.outputs.signed }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.branch || github.ref }}
+          persist-credentials: false
+
+      - name: setup node
+        uses: actions/setup-node@v6
+        with:
+          node-version: lts/*
+
+      - name: setup Go
+        uses: actions/setup-go@v6
+        with:
+          # The module pins its Go version and toolchain.
+          go-version-file: apps/gui-go/go.mod
+          cache-dependency-path: |
+            apps/gui-go/go.sum
+            packages/desktop-host-go/go.sum
+
+      - name: setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install frontend dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Configure package build mode
+        id: build-mode
+        env:
+          UC_BUILD_MODE: ${{ inputs.build_mode || 'release' }}
+        run: node scripts/ci/configure-build-mode.mjs
+
+      - name: resolve APP_ENV from channel
+        id: resolve-env
+        env:
+          UC_CHANNEL: ${{ inputs.channel || 'stable' }}
+        run: node scripts/ci/resolve-app-env.mjs
+
+      - name: Decide signing mode
+        id: mode
+        env:
+          HAVE_CERT: ${{ secrets.APPLE_CERTIFICATE != '' && secrets.APPLE_ID != '' && secrets.APPLE_PASSWORD != '' && secrets.APPLE_TEAM_ID != '' }}
+          IS_CALL: ${{ inputs.require_signing == true }}
+        run: |
+          if [ "$HAVE_CERT" = "true" ]; then
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+          elif [ "$IS_CALL" = "true" ]; then
+            echo "::error::The Apple signing secrets are not available; refusing to package an unsigned macOS app for a release."
+            exit 1
+          else
+            echo "::warning::The Apple signing secrets are not available; the app is only ad-hoc signed and is NOT a distributable build."
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: download uniclipd sidecar
+        uses: actions/download-artifact@v6
+        with:
+          name: sidecar-${{ matrix.target }}${{ steps.build-mode.outputs.suffix }}
+          path: sidecar-artifact
+
+      - name: stage sidecar
+        run: |
+          mkdir -p target/sidecar-staging
+          tar -xf sidecar-artifact/sidecar.tar -C target/sidecar-staging
+          ls -la target/sidecar-staging
+
+      - name: build and assemble UniClipboard.app
+        id: bundle
+        env:
+          VITE_APP_ENV: ${{ steps.resolve-env.outputs.app_env }}
+          VITE_SENTRY_DSN: ${{ secrets.VITE_SENTRY_DSN }}
+          # Frontend source map upload (apps/gui-go/vite.config.ts): the plugin runs inside the vite
+          # build only when both the token and the project are present, and deletes the maps after.
+          # Test-mode bundles are not releases: no upload under the real release version.
+          SENTRY_AUTH_TOKEN: ${{ inputs.build_mode != 'test' && secrets.SENTRY_AUTH_TOKEN || '' }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          VITE_SENTRY_PROJECT: ${{ inputs.build_mode != 'test' && secrets.VITE_SENTRY_PROJECT || '' }}
+        run: |
+          python3 apps/gui-go/packaging/macos/package.py bundle \
+            --target "${{ matrix.target }}" --variant shipping --out target/macos-gui
+          echo "app=$PWD/target/macos-gui/UniClipboard.app" >> "$GITHUB_OUTPUT"
+
+      - name: import Developer ID certificate into a temporary keychain
+        if: steps.mode.outputs.signed == 'true'
+        id: keychain
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          KC="$RUNNER_TEMP/gui-signing.keychain-db"
+          IDENTITY=$(python3 apps/gui-go/packaging/macos/package.py keychain create --path "$KC" | tail -1)
+          echo "keychain=$KC" >> "$GITHUB_OUTPUT"
+          echo "identity=$IDENTITY" >> "$GITHUB_OUTPUT"
+
+      - name: sign (nested executables first, then the bundle)
+        run: |
+          if [ "${{ steps.mode.outputs.signed }}" = "true" ]; then
+            python3 apps/gui-go/packaging/macos/package.py sign --app "${{ steps.bundle.outputs.app }}" \
+              --identity "${{ steps.keychain.outputs.identity }}" --keychain "${{ steps.keychain.outputs.keychain }}"
+          else
+            python3 apps/gui-go/packaging/macos/package.py sign --app "${{ steps.bundle.outputs.app }}"
+          fi
+
+      - name: verify the signed bundle
+        run: |
+          python3 apps/gui-go/packaging/macos/verify_bundle.py --app "${{ steps.bundle.outputs.app }}" \
+            --arch ${{ endsWith(matrix.target, 'aarch64-apple-darwin') && 'arm64' || 'x86_64' }} \
+            --signature ${{ steps.mode.outputs.signed == 'true' && 'developer-id' || 'adhoc' }} --hardened \
+            --expect-team "${{ secrets.APPLE_TEAM_ID }}" --out target/macos-gui/contract-signed.json
+
+      - name: notarize and staple the bundle
+        if: steps.mode.outputs.signed == 'true'
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          python3 apps/gui-go/packaging/macos/package.py notarize --app "${{ steps.bundle.outputs.app }}" \
+            --evidence target/macos-gui/notary
+
+      - name: updater archive from the finished bundle
+        run: |
+          mkdir -p target/macos-gui/dist
+          python3 apps/gui-go/packaging/macos/package.py archive --app "${{ steps.bundle.outputs.app }}" \
+            --out target/macos-gui/dist/UniClipboard.app.tar.gz
+
+      - name: DMG
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          if [ "${{ steps.mode.outputs.signed }}" = "true" ]; then
+            python3 apps/gui-go/packaging/macos/package.py dmg --app "${{ steps.bundle.outputs.app }}" \
+              --target "${{ matrix.target }}" --out target/macos-gui/dist \
+              --identity "${{ steps.keychain.outputs.identity }}" --keychain "${{ steps.keychain.outputs.keychain }}" \
+              --notarize --evidence target/macos-gui/notary
+          else
+            python3 apps/gui-go/packaging/macos/package.py dmg --app "${{ steps.bundle.outputs.app }}" \
+              --target "${{ matrix.target }}" --out target/macos-gui/dist
+          fi
+
+      - name: verify the distributed archive and DMG contents
+        # Verification runs on copies unpacked from the shipped files, not on the build directory.
+        run: |
+          set -euo pipefail
+          ARCH=${{ endsWith(matrix.target, 'aarch64-apple-darwin') && 'arm64' || 'x86_64' }}
+          SIG=${{ steps.mode.outputs.signed == 'true' && 'developer-id' || 'adhoc' }}
+          NOTARIZED=${{ steps.mode.outputs.signed == 'true' && '--notarized' || '' }}
+          rm -rf "$RUNNER_TEMP/from-tar" "$RUNNER_TEMP/from-dmg" && mkdir -p "$RUNNER_TEMP/from-tar" "$RUNNER_TEMP/from-dmg"
+          tar -xzf target/macos-gui/dist/UniClipboard.app.tar.gz -C "$RUNNER_TEMP/from-tar"
+          python3 apps/gui-go/packaging/macos/verify_bundle.py --app "$RUNNER_TEMP/from-tar/UniClipboard.app" --arch "$ARCH" \
+            --signature "$SIG" --hardened $NOTARIZED --expect-team "${{ secrets.APPLE_TEAM_ID }}" --out target/macos-gui/contract-from-tar.json
+          DMG=$(ls target/macos-gui/dist/UniClipboard_*.dmg)
+          hdiutil attach -nobrowse -readonly -mountpoint "$RUNNER_TEMP/dmg-mount" "$DMG"
+          ditto "$RUNNER_TEMP/dmg-mount/UniClipboard.app" "$RUNNER_TEMP/from-dmg/UniClipboard.app"
+          test -L "$RUNNER_TEMP/dmg-mount/Applications"
+          hdiutil detach "$RUNNER_TEMP/dmg-mount"
+          python3 apps/gui-go/packaging/macos/verify_bundle.py --app "$RUNNER_TEMP/from-dmg/UniClipboard.app" --arch "$ARCH" \
+            --signature "$SIG" --hardened $NOTARIZED --expect-team "${{ secrets.APPLE_TEAM_ID }}" --out target/macos-gui/contract-from-dmg.json
+          if [ "$SIG" = "developer-id" ]; then
+            codesign --verify --strict --verbose=2 "$DMG"
+            xcrun stapler validate "$DMG"
+            spctl -a -vv -t open --context context:primary-signature "$DMG"
+          fi
+          shasum -a 256 target/macos-gui/dist/* | tee target/macos-gui/dist/SHA256SUMS.txt
+
+      - name: remove the temporary keychain
+        if: always() && steps.mode.outputs.signed == 'true'
+        run: python3 apps/gui-go/packaging/macos/package.py keychain delete --path "$RUNNER_TEMP/gui-signing.keychain-db"
+
+      - name: upload macOS app artifacts
+        # The directory name carries the target triple: release.yml derives the per-target asset
+        # name of the updater archive from it. Only the shipped files are in this artifact; the
+        # evidence JSON goes to a separate artifact so the release asset collection never sees it.
+        uses: actions/upload-artifact@v7
+        with:
+          name: macos-gui-${{ matrix.target }}${{ steps.build-mode.outputs.suffix }}
+          path: |
+            target/macos-gui/dist/UniClipboard_*.dmg
+            target/macos-gui/dist/UniClipboard.app.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: upload macOS packaging evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: macos-gui-evidence-${{ matrix.target }}${{ steps.build-mode.outputs.suffix }}
+          path: |
+            target/macos-gui/dist/SHA256SUMS.txt
+            target/macos-gui/provenance.json
+            target/macos-gui/contract-*.json
+            target/macos-gui/notary/*.json
+          if-no-files-found: warn
+          retention-days: 14
+
+  # Clean-machine acceptance of the shipped DMG. The shipping app has no profile, so it uses the real
+  # data root and the real login keychain of the machine it runs on: this only ever runs on a disposable
+  # GitHub-hosted runner (smoke_release.py refuses anything else). Apple Silicon runs on macos-latest,
+  # Intel on the native macos-15-intel runner (x86_64 does not run under Rosetta here: the host is x86_64).
+  smoke-macos-gui:
+    name: Smoke macOS app ${{ matrix.arch }}
+    needs: [setup-matrix, package-macos-gui]
+    if: needs.package-macos-gui.result == 'success'
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.setup-matrix.outputs.macos-smoke-matrix) }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.branch || github.ref }}
+          persist-credentials: false
+
+      - name: Configure package build mode
+        id: build-mode
+        env:
+          UC_BUILD_MODE: ${{ inputs.build_mode || 'release' }}
+        run: node scripts/ci/configure-build-mode.mjs
+
+      - name: download the shipped files
+        uses: actions/download-artifact@v6
+        with:
+          name: macos-gui-${{ matrix.target }}${{ steps.build-mode.outputs.suffix }}
+          path: shipped
+
+      - name: setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: apps/cli-go/go.mod
+          cache-dependency-path: apps/cli-go/go.sum
+
+      - name: build the CLI used to read history back
+        run: |
+          mkdir -p target/go-cli
+          scripts/ci/build-go-cli.sh "${{ matrix.target }}" target/go-cli/uniclip
+
+      - name: install the DMG and run the app
+        run: |
+          python3 apps/gui-go/packaging/macos/smoke_release.py --dmg "$(find shipped -name 'UniClipboard_*.dmg' | head -1)" \
+            --arch ${{ matrix.arch }} --signed ${{ needs.package-macos-gui.outputs.signed }} \
+            --cli target/go-cli/uniclip --out smoke-evidence
+
+      - name: upload smoke evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: macos-gui-smoke-${{ matrix.arch }}${{ steps.build-mode.outputs.suffix }}
+          path: smoke-evidence
+          if-no-files-found: warn
+          retention-days: 7
 
   # User-facing CLI (Go, apps/cli-go). It only needs the daemon staged by
   # build-sidecar and never builds or links the Rust development CLI.

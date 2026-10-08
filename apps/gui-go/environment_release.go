@@ -19,11 +19,12 @@ const releaseBuild = true
 // validateRelease guards the shipped form. The product is single-profile (the Tauri shell made the same decision),
 // so every development and test knob is refused rather than silently honoured: a profile, a daemon override, the
 // development environment marker and the isolated test mode. Portable mode is allowed (`portable.dat` next to the
-// executable, or UC_PORTABLE). Only Windows and Linux ship in this form so far; on other platforms the tag is refused, so a
-// release-tagged binary can never be launched against a real data root by accident.
+// executable, or UC_PORTABLE) on Windows and Linux; macOS ships only as the signed .app bundle, whose seal a marker
+// file inside it would break, so portable mode is refused there. Windows, Linux and macOS ship in this form; on any
+// other platform the tag is refused, so a release-tagged binary can never be launched against a real data root by accident.
 func validateRelease() error {
-	if runtime.GOOS != "windows" && runtime.GOOS != "linux" {
-		return fmt.Errorf("the release form is only available on Windows and Linux so far")
+	if runtime.GOOS != "windows" && runtime.GOOS != "linux" && runtime.GOOS != "darwin" {
+		return fmt.Errorf("the release form is only available on Windows, Linux and macOS")
 	}
 	for _, key := range []string{"UC_PROFILE", "UC_GUI_GO_ISOLATED", "UNICLIPBOARD_DAEMON_BASE_URL", "UNICLIPBOARD_DAEMON_TOKEN_PATH", "UC_DAEMON_RUN_MODE"} {
 		if os.Getenv(key) != "" {
@@ -32,6 +33,12 @@ func validateRelease() error {
 	}
 	if os.Getenv("UNICLIPBOARD_ENV") == "development" {
 		return fmt.Errorf("the release build refuses UNICLIPBOARD_ENV=development")
+	}
+	if runtime.GOOS == "darwin" {
+		if os.Getenv("UC_PORTABLE") != "" || apppaths.IsPortable() {
+			return fmt.Errorf("the release build refuses portable mode on macOS: the data root is ~/Library/Application Support")
+		}
+		return nil
 	}
 	return validatePortableDataRoot()
 }

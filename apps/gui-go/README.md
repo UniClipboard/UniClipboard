@@ -163,6 +163,62 @@ analytics 沿用 daemon 的 `POST /analytics/capture`（daemon 是唯一发送�
 
 审计规则：以后每个新宿主能力在实现前，先在本表补一行并写出源码证据；已完成的切片按此表回头审计，发现重复实现就列为替换切片，不因“已经写过”而保留。
 
+## macOS 发布构建（#1895）
+
+范围：release 模式构建 macOS 应用包（GUI + release `uniclipd` + 原生快捷面板 helper + `.icns`）、嵌套签名（Developer ID + hardened runtime）、公证与 stapling、DMG、更新归档 `UniClipboard.app.tar.gz`。**不包含** 更新签名 `.sig` 与更新清单（#1896）、分发渠道（#1899）、从 Tauri 版升级的身份与数据连续性（#1900）。本节写的是实现与证据的当前状态，未验证的部分单独列出。
+
+### 设计
+
+- 身份、版本、最低系统版本与更新公钥只来自 `app.json`，图标只来自 `icons/icon.icns`；`Info.plist` 由 `packaging/macos/package.py bundle` 在模板上写入这些值（`CFBundleIconFile`、`LSMinimumSystemVersion`、`CFBundleShortVersionString` 等）。
+- 分架构各出一个包，不做 universal：Homebrew cask 与 `release.yml` 的资产重命名都按架构区分。`aarch64-apple-darwin` 与 `x86_64-apple-darwin` 都在 arm64 runner 上交叉编译（Go 用 `GOARCH` + `CGO_ENABLED=1` + `MACOSX_DEPLOYMENT_TARGET=12.5`，Rust 由 `build-sidecar` 用 `--target` 构建），x86_64 包在原生 Intel runner（`macos-15-intel`）上运行验收。
+- daemon 与 helper 不在本作业里重建：直接使用 `build-sidecar` 经 `scripts/stage-daemon.mjs` 产出的 `uniclipd-<triple>` 与 `uniclip-quick-panel-<triple>`，遥测环境变量（`SENTRY_DSN`、`POSTHOG_PROJECT_KEY`、`APP_ENV`）因此只在那一处注入。前端的 `VITE_APP_ENV`、`VITE_SENTRY_DSN` 与 source map 上传（`vite.config.ts` 的 Sentry 插件，需要 `SENTRY_AUTH_TOKEN` 与 `VITE_SENTRY_PROJECT`，上传后删除 map）在 `package-macos-gui` 的构建步骤注入；test 模式不上传。`package.py bundle` 会拒绝任何仍含 `.map` 的内嵌前端。
+- 签名顺序由内到外且不用 `--deep`：先签 `uniclipd`、`uniclip-quick-panel`（各自的 identifier `<identifier>.uniclipd`、`<identifier>.quick-panel`），最后签 bundle（identifier = `app.json` 的 `identifier`）。全部带 `--options runtime`，Developer ID 构建带 `--timestamp`。没有 entitlements：退役前的 Tauri 外壳同样没有，hardened runtime 下本机实测不需要（见「已验证与未验证」）。
+- 公证用 `xcrun notarytool submit --wait`（Apple ID + 应用专用密码 + Team ID，与 `scripts/ci/package-cli.sh` 签 CLI 用的是同一组 secrets 与同一种导入证书方式），保存提交 JSON 与 `notarytool log`，`Accepted` 之后才 `stapler staple`。DMG 另行签名、公证并 stapling。
+- 更新归档：`COPYFILE_DISABLE=1 tar -czf`，顶层只有一个 `UniClipboard.app`（`internal/update/install_darwin.go` 的 `Install` 要求恰好一个 `*.app`），在已 stapling 的 bundle 上生成。归档里 **没有** 也 **不会** 有 `.sig`：签名由 #1896 负责，归档存在不代表更新链路已交付。
+- 发布入口：`release` 构建标签现在允许 darwin（`environment_release.go`）。无 profile、真实数据根 `~/Library/Application Support/app.uniclipboard.desktop`，沿用的拒绝项（`UC_PROFILE`、daemon 覆盖、`UNICLIPBOARD_ENV=development`、隔离模式）不变；macOS 额外拒绝便携模式，因为签名 bundle 内放标记文件会破坏封印。数据与钥匙串身份的升级连续性不在本任务内（#1900）。
+- 测试变体（`--variant acceptance`）：同一布局、同一 release 版 daemon 与 helper、同样的 hardened runtime 签名标志，但是 `e2e` 标签构建、标识 `<identifier>.e2e`。release 形态无 profile，会写真实钥匙串与数据根，所以只允许在一次性 GitHub 托管 runner 上运行（`smoke_release.py` 会拒绝其他环境）；本机验收只用测试变体。
+
+### Wails 能力审计（固定版 `v3.0.0-beta.28`，模块源码）
+
+| 能力 | Wails 提供 | 结论 |
+| --- | --- | --- |
+| 图标 | `wails3 tool icons` 生成 `.icns` | 仓库已有 `icons/icon.icns`，作为唯一来源直接拷入，不重新生成 |
+| `.app` 组装 | `build/darwin/Taskfile.yml` 的 `create:app:bundle`（模板，依赖 `wails3 task` 与 `build/` 目录布局，仅 `cp` 一个可执行文件，`MACOSX_DEPLOYMENT_TARGET` 写死 12.0） | 不适用：本项目没有 Wails 工程布局，需要同时放入 daemon 与 helper，最低版本取自 `app.json`（12.5）。Go 构建本身仍是 Wails 的 `go build` + `production` 标签（保留 Wails 的 `-trimpath -buildvcs=false`） |
+| 签名 | `wails3 tool sign`（`internal/commands/sign.go`）：对整个 bundle 执行 `codesign --force --deep --sign <id> [--entitlements] [--options runtime]` | 与契约不兼容：`--deep` 用同一个 identifier 与同一份 entitlements 签所有嵌套代码，无法给 daemon/helper 设自己的 identifier，也无法定顺序；也没有传 `--timestamp`；Apple 不推荐用 `--deep` 做分发签名 |
+| 公证 | 同一命令的 `--notarize`：只支持 `--keychain-profile`（凭据必须预先存入钥匙串），`ditto` 打 zip → `notarytool submit --wait` → `stapler staple` | 不保存提交 JSON 与 `notarytool log`，失败时无法归因；CI 使用临时钥匙串与环境变量凭据，所以自己调用 `notarytool` |
+| DMG | `wails3 tool package --format dmg`（`internal/commands/dmg`）：`hdiutil create -srcfolder -format UDZO -volname`，不放 `/Applications` 链接，不签名、不公证 | 与分发契约不兼容：Homebrew 需要 `UniClipboard_<version>_<aarch64|x64>.dmg`，且 DMG 本身要签名、公证、stapling |
+| 更新归档 | 无 | `tar` 即可（见上） |
+
+### 复跑
+
+本机（无需任何凭据，所有进程都在临时 HOME 内）：
+
+```bash
+node scripts/stage-daemon.mjs --target aarch64-apple-darwin            # release uniclipd + helper -> target/sidecar-staging
+python3 apps/gui-go/packaging/macos/package.py bundle --target aarch64-apple-darwin --variant acceptance --out target/macos-gui-acceptance
+python3 apps/gui-go/packaging/macos/package.py sign --app "target/macos-gui-acceptance/UniClipboard E2E Test Build.app" --variant acceptance   # ad-hoc + hardened runtime
+python3 apps/gui-go/packaging/macos/verify_bundle.py --app "target/macos-gui-acceptance/UniClipboard E2E Test Build.app" --arch arm64 --signature adhoc --hardened --identity-suffix .e2e
+python3 apps/gui-go/e2e/macos_bundle_run.py --app "target/macos-gui-acceptance/UniClipboard E2E Test Build.app" --arch arm64 --out <dir>
+```
+
+CI：在分支上手动触发 `build.yml`（`platform=macos-aarch64` 或 `macos-x86_64`，`build_mode=release`）。`package-macos-gui` 完成构建、签名、验证、公证、DMG 与归档，只上传具名产物 `macos-gui-<target>`；`smoke-macos-gui` 在对应架构的一次性 runner 上从 DMG 安装并运行。没有 Apple secrets 时（fork PR）作业降级为 ad-hoc 签名并明确标注为不可分发；`workflow_call`（发布）在这种情况下直接失败。
+
+### 已验证与未验证
+
+状态以本节为准，随 CI 证据更新；没有证据的项目不写成已完成。
+
+- 本机 arm64：失败基线（现有 `build.sh manual` 产物对契约 17/37 项红灯）、静态契约、release 版 daemon 与 helper 的 hardened runtime 验收包真实进程 E2E（PATH 不含 `uniclipd`，运行的 daemon 与 helper 均为包内可执行文件，退出后均停止）、release 标签拒绝项（`UC_PROFILE`、`UNICLIPBOARD_ENV=development`、`UC_PORTABLE`）。
+- CI（`build.yml` 手动触发，test 构建方式，分支 `feat/gui-go-macos-release-bundle`；arm64 run 37638284857、x86_64 run 37638290509，HEAD 之前的提交各有若干次重跑，最终成功的作业用的是当前脚本）：
+  - Developer ID 签名（仓库已有 `APPLE_*` secrets，临时钥匙串）、公证 `Accepted`（应用与 DMG 各一次提交，提交 JSON 与日志保存）、stapling，两个架构均已完成；下载的产物在本机独立复验：`codesign --verify --deep --strict`、`spctl -a -vv` 显示 `Notarized Developer ID`、`stapler validate`、hardened runtime、单一 team identifier；三个可执行文件均为单架构（arm64 / x86_64）。
+  - 干净 runner 冒烟（`smoke_release.py`，release 标签、无 profile、真实数据根）：arm64 在 macos-latest（VirtualMac2,1，macOS 26），x86_64 在 macos-15-intel（Macmini6,2，macOS 15.7，`uname -m` 为 x86_64，非 Rosetta）。两者都通过：`spctl` 接受 DMG 与安装后的应用、stapler 通过、运行的 daemon 是 `/Applications/UniClipboard.app/Contents/MacOS/uniclipd`、`/health` 为 ok、快捷面板 helper 从包内启动、剪贴板中的标记经 `uniclip search` 在历史中找到（首次变更偶尔漏掉，第二次稳定捕获）。
+- 冒烟里“正常退出”只记录不断言：无头 runner 不能按 Cmd-Q，Apple Event 退出与 SIGTERM 之后 daemon 与 helper 已停止、GUI 进程仍可见（疑为未回收的子进程，未深究）；完整退出契约由本机包 E2E 断言。
+- 永远不在本机验证：release 形态完整启动（真实钥匙串与数据根）。
+- 未包含：更新签名 `.sig` 与清单（#1896）；首次从浏览器下载后的“已下载应用，是否打开”确认框是 GUI 交互，不在自动验收内。
+- 未验证：release（非 test）构建方式的 CI 运行——它会把 daemon 调试符号与前端 source map 上传到生产 Sentry 项目的 1.1.1 版本，需要所有者确认后再跑；因此遥测变量注入与 source map 上传在 CI 里 **未被实际执行**（test 模式有意跳过）。release 优化档位的 `uniclipd` 与 helper 已在本机验收包中使用。
+- 未验证：首次运行下载应用时 Gatekeeper 的“是否打开”确认框（GUI 交互）、托盘菜单（#1906）。
+- 另见：`main` 上 `-tags e2e` 的构建此前就是坏的（遗留的 `e2e_quick_panel.go`），已在本 PR 修复。
+- 本机默认驱动在原生 helper 接管面板时会在 WebView 面板场景停住（与本任务无关），因此包 E2E 只要求到首屏，再经控制文件退出。
+
 ## Windows（第 17 片，分段交付）
 
 第 17 片按可独立验收的段交付，整体目标不缩减：**17a**（本片）Windows 开发 profile 的 GUI 最小路径、WebView 快捷面板、全局快捷键、粘贴到前一个应用的代码与可复跑工件；**17b** Windows 生产形态（NSIS 安装与原位更新、`--autostart` 与旧 Tauri 登录项迁移、重启/单实例的 Windows 实测、daemon 在 Windows 上的停止方式、双击修饰键需要低层键盘钩子、生产入口与签名）；**17c** Linux（AppImage/deb/rpm/便携包、X11/Wayland 快捷键、托盘与面板）。三段之后仍需全目标原生审计。
@@ -186,7 +242,7 @@ analytics 沿用 daemon 的 `POST /analytics/capture`（daemon 是唯一发送�
 
 | 需求 | Tauri 契约 / 固定版 Wails 核查 | 实现 | 证据与未验证 |
 | --- | --- | --- | --- |
-| 生产入口（R1） | 产品为单 profile（`run.rs` 的 P4-7 决策），便携模式靠 `portable.dat`。Wails 无此概念 | 新构建标签 `release`（`environment_release.go`）：不要求 `UNICLIPBOARD_ENV=development`、不接受 `UC_PROFILE`/daemon 覆盖/隔离测试开关、允许便携；**非 Windows 直接拒绝启动**。`production` 标签保持原意（macOS 手动构建仍是开发构建）。空 profile 的消费者已核对：单实例 ID、登录项名（= `UniClipboard`，与 Tauri 的 Run 值名一致）、`Connection.Profile`、更新测试覆盖（e2e 标签才可达） | macOS 上带 `release` 标签的二进制启动即以 1 退出（`library/e2e-windows-17b/release-tag-refusal/`）；**从未在 Windows 运行**，真实数据根/身份/daemon 路径未验证 |
+| 生产入口（R1） | 产品为单 profile（`run.rs` 的 P4-7 决策），便携模式靠 `portable.dat`。Wails 无此概念 | 新构建标签 `release`（`environment_release.go`）：不要求 `UNICLIPBOARD_ENV=development`、不接受 `UC_PROFILE`/daemon 覆盖/隔离测试开关、允许便携；**Windows、Linux、macOS 以外的平台直接拒绝启动**（macOS 自 #1895 起放行，见「macOS 发布构建」）。`production` 标签保持原意（macOS 手动构建仍是开发构建）。空 profile 的消费者已核对：单实例 ID、登录项名（= `UniClipboard`，与 Tauri 的 Run 值名一致）、`Connection.Profile`、更新测试覆盖（e2e 标签才可达） | 当时 macOS 上带 `release` 标签的二进制启动即以 1 退出（`library/e2e-windows-17b/release-tag-refusal/`；#1895 已取消这一拒绝）；**从未在 Windows 运行**，真实数据根/身份/daemon 路径未验证 |
 | daemon 停止（R2） | Rust：`TerminateProcess` + 等待进程句柄（`win_process.rs`）；更新前 Windows 上停不掉就中止安装 | `daemonproc.Terminate` 改为 Win32 `TerminateProcess`；新增 `TerminateAndWait`（Windows 等句柄，Unix 仅发 SIGTERM，与 Rust 一致）；`stopDaemon` 读 `.daemon-pid`，陈旧或 in-process 不动，存活则返回错误 | **这是强制终止，不是优雅关闭**：daemon 无机会自行收尾，与 Tauri 行为相同；终止瞬间的写入一致性依赖 daemon 自身的持久化事务，本片未做数据一致性验证。仅编译与 `go vet`；未运行 |
 | 原位更新（R3） | `tauri-plugin-updater` 2.10.1：默认 passive，`ShellExecuteW(setup.exe, "/P /R /UPDATE /ARGS <转义参数>")` 后退出；载荷可为 `-setup.exe` 或 `.nsis.zip`；便携版不自更新 | `internal/update/nsis.go`（参数与转义、载荷提取）、`install_windows.go`（临时目录 + `ShellExecute`）、`host_install_*.go`（Windows：便携拒绝 → 停 daemon（失败则中止）→ 安装 → 仅退出，安装器 `/R` 负责重启；macOS 行为不变） | `e2e/installer_contract`：Tauri 自带转义用例表 + 参数串 + exe/zip/非法载荷共 21 项离线通过（`library/e2e-windows-17b/installer-contract-assertions.json`）。真实 `ShellExecute`、安装器重启应用、单实例交接均未运行 |
 | 旧登录项（R4） | Tauri（auto-launch）写 `HKCU\…\Run\UniClipboard`；Wails 的 `find` 按可执行路径匹配，值名取 `Identifier` | 同路径原位升级：Wails 识别旧项，无需处理。路径不同：`legacy_run_windows.go` 在对账时只删 **本登录项同名** 且指向其他 exe 的 Run 值（具名 profile 不碰主项） | 仅编译；`StartupApproved\Run`（任务管理器禁用状态）Wails 与本实现都不处理，是已知限制；多 profile 策略与注销登录后的真实启动仍 OPEN |

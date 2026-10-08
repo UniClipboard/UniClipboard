@@ -336,7 +336,7 @@ flowchart LR
 - **Storage**: Local history, previews, and the search index are encrypted at rest.
 - **Resilience**: Connections recover automatically after network changes, sleep/wake, or brief disconnects, and you can refresh a device's connection from the Devices page.
 
-**Components.** The desktop app has three parts: the GUI (Tauri + React), the background daemon `uniclipd` that syncs and stores your clipboard, and the `uniclip` CLI. The GUI and CLI talk to the same local daemon over a loopback HTTP / WebSocket API, so they always show the same state. Sync, encryption, and storage are implemented in the separate [UniClipboard Engine](https://github.com/UniClipboard/Engine) repository, which this repository pins to a fixed revision in `Cargo.toml`.
+**Components.** The desktop app has three parts: the GUI (Go/Wails + React), the background daemon `uniclipd` that syncs and stores your clipboard, and the `uniclip` CLI. The GUI and CLI talk to the same local daemon over a loopback HTTP / WebSocket API, so they always show the same state. Sync, encryption, and storage are implemented in the separate [UniClipboard Engine](https://github.com/UniClipboard/Engine) repository, which this repository pins to a fixed revision in `Cargo.toml`.
 
 ### Command-line Tool
 
@@ -358,7 +358,8 @@ uniclip get                                 # Fetch the latest entry
 uniclip get --wait                          # Wait for the next synced entry
 uniclip get --copy                          # Copy the latest entry to this computer's clipboard
 uniclip search "invoice"                    # Search clipboard history
-uniclip start / stop                        # Daemon lifecycle
+uniclip run                                # Foreground daemon lifecycle
+uniclip service start / restart / status / stop # User service lifecycle
 ```
 
 Run `uniclip --help` for the full list, or see the [CLI reference](https://docs.uniclipboard.app/cli/reference).

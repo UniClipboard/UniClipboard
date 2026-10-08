@@ -265,6 +265,7 @@ assert_contains "NotFound message" "404" "$OUT"
 # ── Step 7: daemon-running 拒绝 ──────────────────────────────────────────
 
 step "Step 7 — start daemon then debug command must refuse"
+# This diagnostic uses uc-dev-cli: retain its background start contract.
 "$CLI" "${COMMON[@]}" start >/dev/null 2>&1
 sleep 2
 set +e

@@ -14,7 +14,7 @@ Rust 开发 CLI `tools/uc-dev-cli`（原 `apps/cli`）并存。用户端 `unicli
 - 业务动作一律经 `uniclipd` 的 HTTP / WebSocket 接口（与 `crates/uc-daemon-client` 相同的路由与 DTO）完成；不得在 Go 中复制 Engine 的业务、持久化、加密、配对或同步规则。
 - 不得调用 Rust `uniclip` 进程来"实现"命令。
 - daemon 接口缺失时，先在 daemon 侧做最窄的权威 API 扩展（同步更新 `uc-daemon-contract`），不要在 CLI 绕行。
-- `start` / `stop` 负责本机 daemon 生命周期，与 Rust CLI 共享同一套 `daemon.conn`、`.daemon-pid`、交接记录与环境变量约定（见 `packages/desktop-host-go/daemonproc`）。
+- `run` / `service` / 兼容 `start` / `stop` 负责本机 daemon 生命周期，与 Rust CLI 共享同一套 `daemon.conn`、`.daemon-pid`、交接记录与环境变量约定（见 `packages/desktop-host-go/daemonproc`）。
 - CLI 不写系统剪贴板。Rust 版隐藏的 `dev-tools` 命令（`probe`、`blob`、`dev`、`mobile debug`）依赖进程内 Engine 或平台剪贴板，没有 daemon 接口，Go 版未提供，处置见 `README.md`。
 
 ## 兼容约定

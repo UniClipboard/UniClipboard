@@ -65,6 +65,7 @@ type sendFileOutcome struct {
 	TotalDuplicate int                `json:"totalDuplicate"`
 	TotalOffline   int                `json:"totalOffline"`
 	TotalErrored   int                `json:"totalErrored"`
+	TotalPending   int                `json:"totalPending,omitempty"`
 	PerTarget      []perTargetOutcome `json:"perTarget"`
 	Deliveries     []deliveryTarget   `json:"deliveries"`
 }
@@ -141,8 +142,12 @@ func runSendFileViaDaemon(client *daemonclient.Client, path string, peers []stri
 		spinner.FinishError("File send failed: " + err.Error())
 		return failed
 	}
-	spinner.FinishSuccess(fmt.Sprintf("%d accepted, %d duplicate, %d offline, %d error(s)",
-		outcome.TotalAccepted, outcome.TotalDuplicate, outcome.TotalOffline, outcome.TotalErrored))
+	summary := fmt.Sprintf("%d accepted, %d duplicate, %d offline, %d error(s)",
+		outcome.TotalAccepted, outcome.TotalDuplicate, outcome.TotalOffline, outcome.TotalErrored)
+	if outcome.TotalPending > 0 {
+		summary += fmt.Sprintf(", %d pending", outcome.TotalPending)
+	}
+	spinner.FinishSuccess(summary)
 
 	accepted := map[string]bool{}
 	related := map[string]bool{}
@@ -181,6 +186,7 @@ func runSendFileViaDaemon(client *daemonclient.Client, path string, peers []stri
 		TotalDuplicate: outcome.TotalDuplicate,
 		TotalOffline:   outcome.TotalOffline,
 		TotalErrored:   outcome.TotalErrored,
+		TotalPending:   outcome.TotalPending,
 		PerTarget:      outcome.PerTarget,
 		Deliveries:     []deliveryTarget{},
 	}
@@ -213,10 +219,14 @@ func runSendFileViaDaemon(client *daemonclient.Client, path string, peers []stri
 			}
 		}
 		ui.Bar()
-		ui.End("File send finished")
+		if result.TotalPending > 0 {
+			ui.End("File dispatch continues in background")
+		} else {
+			ui.End("File send finished")
+		}
 	}
 	code := exitcode.Success
-	if result.TotalAccepted == 0 && result.TotalDuplicate == 0 {
+	if result.TotalAccepted == 0 && result.TotalDuplicate == 0 && result.TotalPending == 0 {
 		code = exitcode.Error
 	} else {
 		for i := range result.Deliveries {

@@ -30,7 +30,10 @@ const buildMode = arg('--build-mode')
 const files = {}
 for (const name of readdirSync(stagingDir).sort()) {
   if (name === 'sidecar-provenance.json') continue
-  files[name] = { sha256: sha256(join(stagingDir, name)), bytes: statSync(join(stagingDir, name)).size }
+  files[name] = {
+    sha256: sha256(join(stagingDir, name)),
+    bytes: statSync(join(stagingDir, name)).size,
+  }
 }
 if (Object.keys(files).length === 0) throw new Error(`${stagingDir} holds no staged binaries`)
 
@@ -56,5 +59,8 @@ const provenance = {
     : null,
   files,
 }
-writeFileSync(join(stagingDir, 'sidecar-provenance.json'), JSON.stringify(provenance, null, 2) + '\n')
+writeFileSync(
+  join(stagingDir, 'sidecar-provenance.json'),
+  JSON.stringify(provenance, null, 2) + '\n'
+)
 console.log(`[sidecar] provenance for ${Object.keys(files).join(', ')} at ${provenance.sourceHead}`)

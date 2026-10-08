@@ -91,4 +91,37 @@ PR #1920（Windows 打包）修改 `build.yml` 的：`workflow_dispatch`/`workfl
 
 ## 验证结果
 
-（实现与运行后补录。）
+以下均为容器或 GitHub 托管 runner 证据，不是真实桌面证据。工件位于 `~/.herdr-projects/uni/t-0203-artifacts/`（不入库）。
+
+### 原生 CI（run 37755610047，源 `ab8e5b5ae`）
+
+- amd64（`ubuntu-24.04`）与 arm64（`ubuntu-24.04-arm`）的 `Package` 均成功：构建证据 `head` 等于固定 SHA、`daemon_source_dirty=false`、`build_mode=release`；验证器无问题；glibc 下限 AppImage 2.36、deb 2.34；只上传四个命名文件。
+- AppImage 验收在 Debian 12（下限）与 Ubuntu 24.04（较新）上：full、negative、smoke 全部通过（启动、daemon、WebView、HTTPS、受信任 fixture 密钥的原位更新、不受信任签名被拒、自启动、数据目录）。
+- 六个安装 job（deb：Debian 12、Ubuntu 24.04；rpm：Fedora latest；各 amd64、arm64）：安装、对已发布 Tauri 包的升级、启动、移除均通过。
+- `telemetry-injection-contract` 通过；验收在上报关闭下运行，没有生产 Sentry 写入与 source map 上传。
+- 软件包名为 `uni-clipboard`，与已发布 Tauri 包一致，升级才成立。
+
+### 验收脚本修正（C 类：验收脚本，非产品缺陷）
+
+- `2 the mount is gone after exit`：FUSE 卸载在进程退出后异步完成，原先只采样一次；改为最多轮询 20 秒，断言不变。
+- `7 persisted user data files survived the update`：缺失文件只有 `*.sqlite-wal`、`*.sqlite-shm`；SQLite 干净关闭并 checkpoint 后会删除这些副本，不属于持久数据；仅按后缀排除，数据库文件本身仍参与比较。
+- 证据导出：容器以 root 写入 0600 文件；导出改为 sudo 读取加白名单（日志、jsonl、断言 JSON、清单、哈希），不含 profile、身份、密钥、home 副本与原始二进制。harness 只跳过消失的文件，其他复制错误使验收失败。
+
+### 代理与 PAC 回归（Debian 12 构建，Ubuntu 24.04 主机，arm64 容器，完整 27 场景）
+
+| 产物 | 结果 |
+| --- | --- |
+| 无 PAC 插件的旧产物 | 14/27 失败（libproxy 0.4 无 PAC 运行时，PAC 走直连），作为阴性对照 |
+| 带 `libproxy1-plugin-webkit` | 24/27；3 个 portable 场景失败：自动拉起的会话总线继承了 `LD_LIBRARY_PATH`，宿主 `glib-pacrunner` 加载捆绑的旧 GLib，`undefined symbol: g_once_init_enter_pointer`（状态 127） |
+| 插件加 AppRun 提前启动自动拉起的总线（`52d3cb08e`） | 27/27 通过 |
+
+- 体积：插件使压缩后增加约 9.0 MB（7.6%），解包后增加约 31.6 MB。
+- 版本：`libproxy1-plugin-webkit` 与 `libproxy1v5` 0.4.18-1.2，`libjavascriptcoregtk-4.0-18` 2.50.6-1~deb12u2。
+- 许可证：随 Debian 版权文件分发（libproxy：LGPL-2.1+，含 Netscape PAC 工具文件；JavaScriptCore：LGPL 与 MPL、Expat 混合）；未做法务复核。
+- 失败语义：构建镜像缺少插件时打包直接失败并给出安装指令；模块路径错误时 libproxy 静默直连（即阴性对照现象）。
+- 日志隐私：产品 GUI 与 daemon 日志不含 PAC URL 与凭据；仅测试 harness 的断言 JSON 含回环夹具的 PAC URL 与一次性代理凭据；`_PX_DEBUG` 从未设置；这些文件不上传。
+
+### 未运行（not-run）
+
+- Fedora 代理矩阵；Arch、openSUSE、sid、Alpine。
+- 真实主机（`ssh fedora`、`ssh omarchy` 当时不可达）；真实 GNOME、KDE、Wayland 桌面；真实登录自启动；`--appimage-extract-and-run`；真实只读挂载。

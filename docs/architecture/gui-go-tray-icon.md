@@ -45,4 +45,19 @@
 
 ## 结果
 
-（实现与验收后补写。）
+对应源码 `e1cddb957` 加上随后删除 `e2e/linux/build_in_container.sh` 里一行旧 PNG 拷贝的提交；证据在任务库 `library/run9/`（`provenance.json` 记录源码提交、产物哈希与工具）。
+
+已通过：
+
+- 渲染对照：静止猫与独立栅格化的设计画板 `synced.png` 一致，模板图眼睛 alpha 为 0、脸 alpha 为 255（`tray-icon-compare`，运行 `run9`）。
+- 平台图像与参照图都能导出（`tray-icon-export`）。
+- `go vet`（默认与 `-tags=e2e`）在 macOS 通过；`GOOS=windows go vet` 只剩 main 上已有的 `validateIsolation` 重复定义。
+- 独立评审（只读）覆盖了这次精简，发现的一处 Linux e2e 构建脚本遗留已修。
+
+未通过 / 受阻：测试 Mac 一直处于锁屏、显示器休眠，状态项不可达，所以原生状态项截图和真实右键菜单（同步开关、Quit）没有验收，运行器的 `preflight` 把它们报告为受阻，没有绕过。
+
+未验证：
+
+- macOS 浅色 / 深色菜单栏的原生外观。
+- Windows 运行时（任务栏主题切换、小图标尺寸，以及不同显示器 DPI 不重画这个已知边界）。
+- Linux 运行时（StatusNotifierItem 像素图）。精简前的较大版本在 Linux arm64 上做过 `go vet` 与 `go build`（`a16a466e7`）；精简后的源码没有重新在 Linux 上构建，因为测试主机当时不可达。

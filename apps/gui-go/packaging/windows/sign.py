@@ -50,7 +50,9 @@ def timestamp_url():
 
 
 def import_pfx():
-    path, password = os.environ['SIGN_PFX_PATH'], os.environ['SIGN_PFX_PASSWORD']
+    for name in ('SIGN_PFX_PATH', 'SIGN_PFX_PASSWORD'):  # read by the PowerShell below from the environment, never from a command line
+        if not os.environ.get(name):
+            sys.exit(f'{name} is required for the pfx backend')
     r = ps("$p = ConvertTo-SecureString -String $env:SIGN_PFX_PASSWORD -AsPlainText -Force;"
            "(Import-PfxCertificate -FilePath $env:SIGN_PFX_PATH -CertStoreLocation Cert:\\CurrentUser\\My -Password $p).Thumbprint")
     thumb = r.stdout.strip().splitlines()[-1] if r.stdout.strip() else ''

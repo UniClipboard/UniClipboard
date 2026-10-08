@@ -5809,7 +5809,7 @@ dependencies = [
 [[package]]
 name = "iroh-mdns-address-lookup"
 version = "0.6.0"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=18415aa83a47bd3870c2a1f114b268fc3ed0495a#18415aa83a47bd3870c2a1f114b268fc3ed0495a"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=7de428fd4600b1f3af2b662a6302eab6efa3b49b#7de428fd4600b1f3af2b662a6302eab6efa3b49b"
 dependencies = [
  "data-encoding",
  "derive_more 2.1.1",
@@ -11821,7 +11821,7 @@ dependencies = [
 [[package]]
 name = "swarm-discovery"
 version = "0.6.3"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=18415aa83a47bd3870c2a1f114b268fc3ed0495a#18415aa83a47bd3870c2a1f114b268fc3ed0495a"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=7de428fd4600b1f3af2b662a6302eab6efa3b49b#7de428fd4600b1f3af2b662a6302eab6efa3b49b"
 dependencies = [
  "acto",
  "hickory-proto",
@@ -13414,7 +13414,7 @@ dependencies = [
 [[package]]
 name = "uc-application"
 version = "1.1.0-rc.22"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=18415aa83a47bd3870c2a1f114b268fc3ed0495a#18415aa83a47bd3870c2a1f114b268fc3ed0495a"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=7de428fd4600b1f3af2b662a6302eab6efa3b49b#7de428fd4600b1f3af2b662a6302eab6efa3b49b"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -13506,7 +13506,7 @@ dependencies = [
 [[package]]
 name = "uc-content-hash"
 version = "1.1.0-rc.22"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=18415aa83a47bd3870c2a1f114b268fc3ed0495a#18415aa83a47bd3870c2a1f114b268fc3ed0495a"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=7de428fd4600b1f3af2b662a6302eab6efa3b49b#7de428fd4600b1f3af2b662a6302eab6efa3b49b"
 dependencies = [
  "blake3",
  "hex",
@@ -13515,7 +13515,7 @@ dependencies = [
 [[package]]
 name = "uc-core"
 version = "1.1.0-rc.22"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=18415aa83a47bd3870c2a1f114b268fc3ed0495a#18415aa83a47bd3870c2a1f114b268fc3ed0495a"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=7de428fd4600b1f3af2b662a6302eab6efa3b49b#7de428fd4600b1f3af2b662a6302eab6efa3b49b"
 dependencies = [
  "anyhow",
  "arrayvec",
@@ -13668,7 +13668,7 @@ dependencies = [
 [[package]]
 name = "uc-engine"
 version = "1.1.0-rc.22"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=18415aa83a47bd3870c2a1f114b268fc3ed0495a#18415aa83a47bd3870c2a1f114b268fc3ed0495a"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=7de428fd4600b1f3af2b662a6302eab6efa3b49b#7de428fd4600b1f3af2b662a6302eab6efa3b49b"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -13694,7 +13694,7 @@ dependencies = [
 [[package]]
 name = "uc-infra"
 version = "1.1.0-rc.22"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=18415aa83a47bd3870c2a1f114b268fc3ed0495a#18415aa83a47bd3870c2a1f114b268fc3ed0495a"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=7de428fd4600b1f3af2b662a6302eab6efa3b49b#7de428fd4600b1f3af2b662a6302eab6efa3b49b"
 dependencies = [
  "anyhow",
  "argon2",
@@ -13764,7 +13764,7 @@ dependencies = [
 [[package]]
 name = "uc-mobile-lan"
 version = "1.1.0-rc.22"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=18415aa83a47bd3870c2a1f114b268fc3ed0495a#18415aa83a47bd3870c2a1f114b268fc3ed0495a"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=7de428fd4600b1f3af2b662a6302eab6efa3b49b#7de428fd4600b1f3af2b662a6302eab6efa3b49b"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -13786,7 +13786,7 @@ dependencies = [
 [[package]]
 name = "uc-mobile-proto"
 version = "1.1.0-rc.22"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=18415aa83a47bd3870c2a1f114b268fc3ed0495a#18415aa83a47bd3870c2a1f114b268fc3ed0495a"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=7de428fd4600b1f3af2b662a6302eab6efa3b49b#7de428fd4600b1f3af2b662a6302eab6efa3b49b"
 dependencies = [
  "base64 0.22.1",
  "chrono",
@@ -13821,7 +13821,7 @@ dependencies = [
 [[package]]
 name = "uc-observability-contract"
 version = "1.1.0-rc.22"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=18415aa83a47bd3870c2a1f114b268fc3ed0495a#18415aa83a47bd3870c2a1f114b268fc3ed0495a"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=7de428fd4600b1f3af2b662a6302eab6efa3b49b#7de428fd4600b1f3af2b662a6302eab6efa3b49b"
 dependencies = [
  "anyhow",
  "chrono",
@@ -13838,7 +13838,7 @@ dependencies = [
 [[package]]
 name = "uc-observability-runtime"
 version = "1.1.0-rc.22"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=18415aa83a47bd3870c2a1f114b268fc3ed0495a#18415aa83a47bd3870c2a1f114b268fc3ed0495a"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=7de428fd4600b1f3af2b662a6302eab6efa3b49b#7de428fd4600b1f3af2b662a6302eab6efa3b49b"
 dependencies = [
  "cc",
  "chrono",
@@ -13905,7 +13905,7 @@ dependencies = [
 [[package]]
 name = "uc-sync-protocol"
 version = "1.1.0-rc.22"
-source = "git+https://github.com/UniClipboard/Engine.git?rev=18415aa83a47bd3870c2a1f114b268fc3ed0495a#18415aa83a47bd3870c2a1f114b268fc3ed0495a"
+source = "git+https://github.com/UniClipboard/Engine.git?rev=7de428fd4600b1f3af2b662a6302eab6efa3b49b#7de428fd4600b1f3af2b662a6302eab6efa3b49b"
 dependencies = [
  "anyhow",
  "bytes",

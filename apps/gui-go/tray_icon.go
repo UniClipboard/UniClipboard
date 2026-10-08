@@ -9,7 +9,7 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
-// trayIcon puts the tray's one image on the system tray: the "B solid cat" in the platform's colours and size
+// trayIcon puts the tray's one image on the system tray: the "one glyph" in the platform's colours and size
 // (docs/architecture/gui-go-tray-icon.md). The image does not depend on any daemon state. It only changes when the platform's own look does
 // (the taskbar theme on Windows), and then only the icon call is made, never the menu's publish path, so an open menu is not closed (t-0188).
 type trayIcon struct {

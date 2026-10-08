@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Tray icon (B solid cat) acceptance on macOS: docs/architecture/gui-go-tray-icon.md.
+"""Tray icon (one glyph) acceptance on macOS: docs/architecture/gui-go-tray-icon.md.
 
 The real GUI (e2e build) runs against its own real daemon in a task-owned HOME and profile. The tray shows one static image, so what is checked:
 
-  1  design alignment: the renderer's resting cat against the design board rasterized independently (e2e/tray-icon-design/synced.png), and
-     the macOS template rule that the eyes are transparent knock-outs (control `tray-icon-compare`); the platform image is exported
+  1  design alignment: the renderer's glyph against the design board rasterized independently (e2e/tray-icon-design/glyph.png), and on the
+     image the tray really receives the template alpha rule, no clipping and the macOS visible size (control `tray-icon-compare`); the
+     platform image is exported
   0  the status item of this pid is reachable on an unlocked, awake screen; if not, the native checks are reported as blocked
   2  the REAL status item is captured as a tight crop of the menu bar around this pid's status item
   3  the menu does not regress: right click opens it with the unchanged labels; the sync item flips syncEnabled in the daemon and back;
@@ -78,7 +79,6 @@ def preflight(pid):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--out', type=Path, required=True)
-    parser.add_argument('--design', choices=['cat', 'glyph'], default='glyph', help='which tray design the GUI runs (UC_TRAY_ICON)')
     parser.add_argument('--skip-menu', action='store_true', help='skip the real-menu scenario (3)')
     args = parser.parse_args()
     out = args.out.resolve()
@@ -95,7 +95,7 @@ def main():
     gui_env = isolated_env(home, profile, {'PATH': path, 'UC_GPUI_QUICK_PANEL': '0', 'UC_GUI_GO_ISOLATED': '1', 'UC_DISABLE_SYSTEM_CLIPBOARD': '1',
                                           'UC_GUI_GO_EVIDENCE': str(evidence), 'UC_GUI_GO_E2E_PHASE': 'wake', 'UC_GUI_GO_EXIT_MODE': 'full',
                                           'UC_GUI_GO_E2E_CONTROL_FILE': str(control), 'UC_GUI_GO_E2E_NATIVE_STATE': '1',
-                                          'UC_GUI_GO_E2E_SECRET': 'tray-icon', 'UC_TRAY_ICON': args.design, 'UC_GUI_GO_E2E_NOTIFY_LOG': str(out / 'notifications.log')})
+                                          'UC_GUI_GO_E2E_SECRET': 'tray-icon', 'UC_GUI_GO_E2E_NOTIFY_LOG': str(out / 'notifications.log')})
     binary = ROOT / 'target/gui-go/UniClipboardGoE2E.app/Contents/MacOS/gui-go'
     results = {'profile': profile, 'checks': [], 'passed': False, 'note': 'the tray shows one static image; no state or animation is checked'}
 

@@ -12,9 +12,9 @@ import (
 	"golang.org/x/image/vector"
 )
 
-// The tray cat is drawn from the design's own SVG path data, so the artwork has one source (tray_icon_design.go) and every
+// The tray glyph is drawn from the design's own SVG path data, so the artwork has one source (tray_icon_design.go) and every
 // platform receives pixels from the same renderer. Only what the design uses is implemented: M L H V C S Q A Z (absolute and
-// relative), solid fills, round-capped strokes and knock-outs (destination-out).
+// relative), round-capped strokes.
 
 // point is a position in design units (the 24 x 24 grid).
 type point struct{ x, y float64 }
@@ -361,66 +361,11 @@ func (c *canvas) coverage(polys [][]point) []uint8 {
 	return mask.Pix
 }
 
-func fillPolys(paths []subpath) [][]point {
-	polys := make([][]point, 0, len(paths))
-	for _, sp := range paths {
-		polys = append(polys, sp.pts)
-	}
-	return polys
-}
-
-// strokePolys turns each segment into a rectangle. With round true every vertex also gets a disc (round joins and caps); otherwise
-// the ends of an open path keep a butt cap and corners get a miter join (SVG's defaults, miter limit 4). All pieces wind the same
-// way, so their coverage adds instead of cancelling.
-func strokePolys(paths []subpath, width float64, round bool) [][]point {
+// strokePolys turns each segment of the paths into a rectangle and every vertex into a disc (round caps and joins, as the design strokes
+// are). All pieces wind the same way, so their coverage adds instead of cancelling.
+func strokePolys(paths []subpath, width float64) [][]point {
 	half := width / 2
 	var polys [][]point
-	disc := func(c point) {
-		const n = 20
-		poly := make([]point, n)
-		for i := range poly {
-			a := -2 * math.Pi * float64(i) / n // the same winding as the segment rectangles, so overlaps add up
-			poly[i] = point{c.x + half*math.Cos(a), c.y + half*math.Sin(a)}
-		}
-		polys = append(polys, poly)
-	}
-	dir := func(a, b point) (point, bool) {
-		dx, dy := b.x-a.x, b.y-a.y
-		l := math.Hypot(dx, dy)
-		if l == 0 {
-			return point{}, false
-		}
-		return point{dx / l, dy / l}, true
-	}
-	miter := func(prev, v, next point) {
-		d0, ok0 := dir(prev, v)
-		d1, ok1 := dir(v, next)
-		if !ok0 || !ok1 {
-			return
-		}
-		cross := d0.x*d1.y - d0.y*d1.x
-		if math.Abs(cross) < 1e-9 {
-			return // straight on (or a full reversal): nothing to join
-		}
-		side := 1.0
-		if cross > 0 {
-			side = -1 // the outer side of a clockwise turn is the left of the direction of travel
-		}
-		n0 := point{-d0.y * half * side, d0.x * half * side}
-		n1 := point{-d1.y * half * side, d1.x * half * side}
-		a, b := point{v.x + n0.x, v.y + n0.y}, point{v.x + n1.x, v.y + n1.y}
-		dot := d0.x*d1.x + d0.y*d1.y
-		poly := []point{v, a}
-		if ratio := math.Sqrt(2 / (1 + dot)); 1+dot > 1e-9 && ratio <= 4 { // 1 / sin(theta / 2) against the miter limit
-			k := 1 / (1 + dot)
-			poly = append(poly, point{v.x + (n0.x+n1.x)*k, v.y + (n0.y+n1.y)*k})
-		}
-		poly = append(poly, b)
-		if side > 0 { // keep the winding of the segment rectangles
-			poly[1], poly[len(poly)-1] = poly[len(poly)-1], poly[1]
-		}
-		polys = append(polys, poly)
-	}
 	for _, sp := range paths {
 		pts := sp.pts
 		if sp.closed && len(pts) > 1 && pts[0] != pts[len(pts)-1] {
@@ -428,22 +373,22 @@ func strokePolys(paths []subpath, width float64, round bool) [][]point {
 		}
 		for i := 0; i+1 < len(pts); i++ {
 			a, b := pts[i], pts[i+1]
-			d, ok := dir(a, b)
-			if !ok {
+			dx, dy := b.x-a.x, b.y-a.y
+			l := math.Hypot(dx, dy)
+			if l == 0 {
 				continue
 			}
-			nx, ny := -d.y*half, d.x*half
+			nx, ny := -dy/l*half, dx/l*half
 			polys = append(polys, []point{{a.x + nx, a.y + ny}, {b.x + nx, b.y + ny}, {b.x - nx, b.y - ny}, {a.x - nx, a.y - ny}})
 		}
-		for i, pt := range pts {
-			switch {
-			case round:
-				disc(pt)
-			case i > 0 && i < len(pts)-1:
-				miter(pts[i-1], pt, pts[i+1])
-			case sp.closed && len(pts) > 2 && i == 0:
-				miter(pts[len(pts)-2], pt, pts[1])
+		for _, c := range pts {
+			const n = 20
+			poly := make([]point, n)
+			for i := range poly {
+				a := -2 * math.Pi * float64(i) / n // the same winding as the segment rectangles
+				poly[i] = point{c.x + half*math.Cos(a), c.y + half*math.Sin(a)}
 			}
+			polys = append(polys, poly)
 		}
 	}
 	return polys
@@ -473,12 +418,7 @@ func (c *canvas) strokeCoverage(polys [][]point) []uint8 {
 	return out
 }
 
-// paint blends the colour with the given opacity over the surface where the polygons cover it.
-func (c *canvas) paint(polys [][]point, col color.NRGBA, opacity float64) {
-	c.paintMask(c.coverage(polys), col, opacity)
-}
-
-// paintStroke is paint for polygons that came from strokePolys.
+// paintStroke paints polygons that came from strokePolys.
 func (c *canvas) paintStroke(polys [][]point, col color.NRGBA, opacity float64) {
 	c.paintMask(c.strokeCoverage(polys), col, opacity)
 }
@@ -496,21 +436,6 @@ func (c *canvas) paintMask(mask []uint8, col color.NRGBA, opacity float64) {
 		px[1] = g*a + px[1]*inv
 		px[2] = b*a + px[2]*inv
 		px[3] = a + px[3]*inv
-	}
-}
-
-// erase removes the surface where the polygons cover it (a transparent knock-out).
-func (c *canvas) erase(polys [][]point) {
-	mask := c.coverage(polys)
-	for i, m := range mask {
-		if m == 0 {
-			continue
-		}
-		keep := 1 - float32(m)/255
-		px := c.pix[i*4 : i*4+4]
-		for k := range px {
-			px[k] *= keep
-		}
 	}
 }
 
@@ -540,12 +465,6 @@ func clamp8(v float32) uint8 {
 		return 255
 	}
 	return uint8(v)
-}
-
-// circlePath and ellipsePath build the arc path data for the shapes the design draws as SVG elements.
-func ellipsePath(cx, cy, rx, ry float64) string {
-	f := func(v float64) string { return strconv.FormatFloat(v, 'f', -1, 64) }
-	return strings.Join([]string{"M", f(cx - rx), " ", f(cy), "a", f(rx), " ", f(ry), " 0 1 0 ", f(2 * rx), " 0a", f(rx), " ", f(ry), " 0 1 0 ", f(-2 * rx), " 0z"}, "")
 }
 
 func roundRectPath(x, y, w, h, r float64) string {

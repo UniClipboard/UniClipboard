@@ -20,14 +20,12 @@ var (
 	linuxDarkIcon  = iconPalette{fg: color.NRGBA{0x1B, 0x1B, 0x1B, 255}}
 )
 
-func trayIconSpec() iconSpec { return trayIconSpecFor(designFromEnv()) }
-
-func trayIconSpecFor(d trayDesign) iconSpec {
+func trayIconSpec() iconSpec {
 	pal := linuxLightIcon
 	if gsetting("org.gnome.desktop.interface", "color-scheme") == "'prefer-light'" {
 		pal = linuxDarkIcon
 	}
-	return iconSpec{design: d, size: linuxTrayPx, art: linuxTrayPx, pal: pal}
+	return iconSpec{size: linuxTrayPx, art: linuxTrayPx, pal: pal}
 }
 
 func applyTrayIcon(tray *application.SystemTray, data []byte) { tray.SetIcon(data) }

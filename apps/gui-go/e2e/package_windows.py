@@ -226,7 +226,7 @@ def main():
 
     plugins = fetch_tauri_utils(out / 'plugins')
     setup = out / f'{prefix}{product}_{version}_{arch}-setup.exe'
-    nsis_sign = [f"-X!uninstfinalize '{nsis_sign_cmd(sign_tpl)}' =0", f"-X!finalize '{nsis_sign_cmd(sign_tpl)}' =0"] if sign_tpl else []
+    nsis_sign = [f"-X!uninstfinalize '{nsis_sign_cmd(sign_tpl)}'", f"-X!finalize '{nsis_sign_cmd(sign_tpl)}'"] if sign_tpl else []
     run(['makensis', '-V2', *nsis_sign, f'-DPRODUCTNAME={product}', f'-DVERSION={version}', f'-DVERSIONWITHBUILD={version}.0',
          f'-DMANUFACTURER={manufacturer}', f'-DBUNDLEID={ident}', f'-DMAINBINARYNAME={product}.exe', f'-DSRC_MAIN={exe}',
          f'-DSRC_DAEMON={daemon_ship.resolve()}', f'-DICON={ROOT / "apps/gui-go/icons/icon.ico"}', f'-DOUTFILE={setup}',

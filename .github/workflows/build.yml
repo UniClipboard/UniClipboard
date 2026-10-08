@@ -1015,8 +1015,20 @@ jobs:
         shell: pwsh
         run: |
           # Disposable runner only; proves signing mechanics, not a publisher identity.
-          Import-Certificate -FilePath inputs/selftest.cer -CertStoreLocation Cert:\LocalMachine\Root | Out-Null
-          Import-Certificate -FilePath inputs/selftest.cer -CertStoreLocation Cert:\LocalMachine\TrustedPublisher | Out-Null
+          # The hosted arm64 runner is not elevated, so the machine stores are denied there; fall back to the
+          # runner user's own stores (still only this disposable runner).
+          $cer = (Resolve-Path inputs/selftest.cer).Path
+          try {
+            Import-Certificate -FilePath $cer -CertStoreLocation Cert:\LocalMachine\Root -ErrorAction Stop | Out-Null
+            Import-Certificate -FilePath $cer -CertStoreLocation Cert:\LocalMachine\TrustedPublisher -ErrorAction Stop | Out-Null
+            'trusted in LocalMachine stores'
+          } catch {
+            "LocalMachine stores unavailable ($($_.Exception.Message)); using CurrentUser stores"
+            certutil -user -f -addstore Root $cer
+            if ($LASTEXITCODE -ne 0) { throw 'certutil Root failed' }
+            certutil -user -f -addstore TrustedPublisher $cer
+            if ($LASTEXITCODE -ne 0) { throw 'certutil TrustedPublisher failed' }
+          }
 
       - name: install, run, update and uninstall the packages
         shell: bash

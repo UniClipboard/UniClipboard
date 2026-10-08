@@ -1,0 +1,70 @@
+# Go 宿主 Windows 安装包、便携包与验收合同
+
+适用于 issue #1897。macOS 对应文档见 `apps/gui-go/README.md`「macOS 发布构建」；更新签名见 `docs/architecture/gui-go-updater-signatures.md`。
+
+## 产物与流水线
+
+`.github/workflows/build.yml` 中三个作业串联（`workflow_dispatch` 选择 `windows-latest`、`windows-x86_64` 或 `windows-arm64`）：
+
+| 作业 | 运行位置 | 内容 |
+| --- | --- | --- |
+| `build-sidecar` | 现有矩阵 | 构建真实 Rust `uniclipd.exe`，并由 `scripts/ci/write-sidecar-provenance.mjs` 写入 `sidecar-provenance.json`（源码提交、SHA-256、rustc、`Cargo.lock` 哈希、run 链接） |
+| `package-windows-gui` | 托管 `windows-latest`（两个架构都在 x64 上交叉编译 Go） | `e2e/package_windows.py` 生成 setup 与 portable；`e2e/windows_package_verify.py` 解包成品复核 |
+| `smoke-windows-gui` | 托管一次性 runner：x64 用 `windows-latest`，arm64 用原生 `windows-11-arm` | `e2e/windows_package_acceptance.py` 真实安装、运行、更新、卸载 |
+
+上传内容：只有 `UniClipboard_<版本>_<x64|arm64>-setup.exe` 与 `..._portable.zip`（artifact `windows-gui-<triple>`）。清单、哈希、验收输入（更高版本的 `ACCEPTANCE-` 安装包、`uniclip.exe`）和证据分别放在另外三个 artifact 中，发布流程的资产收集不会碰到它们。
+
+## 失败模型
+
+1. 打包进去的不是 CI 构建的 daemon（夹具、旧文件、其他提交）。
+2. 安装包或便携包内的 daemon 与打包输入不是同一个文件。
+3. 在真实用户机器上跑发布形态，污染真实数据根、凭据管理器与会话。
+4. 更新时强制结束 daemon（`TerminateProcess`）后数据库不可用。
+5. 降级覆盖、更新后出现两个实例、卸载残留登录项或快捷方式。
+6. 便携包把数据写到目录之外，或在只读目录静默改写到系统目录。
+7. 未签名安装包被当成可发布产物。
+
+## 状态不变量
+
+- 安装包与便携包中的 `uniclipd.exe` 的 SHA-256 等于 `sidecar-provenance.json` 中该 target 的记录，且记录的源码提交等于打包提交、树干净、target 匹配（`package_windows.py` 不满足即退出）。
+- `windows_package_verify.py` 用 7-Zip 解开 setup、用 zipfile 解开 portable，逐一复核同一哈希；安装后 `windows_package_acceptance.py` 再复核安装目录里落盘的文件。
+- `productionUsable` 恒为 false，直到有 Authenticode 决定；`workflow_call`（`require_signing == true`）调用时 `package-windows-gui` 直接失败。`release.yml` 的首个步骤不变，仍然失败关闭。
+- 发布形态验收只在一次性托管 runner 上运行（脚本检查 `GITHUB_ACTIONS` 与 `RUNNER_ENVIRONMENT`）。
+
+## 验收合同
+
+`windows_package_acceptance.py` 的场景（结果写入 `acceptance.json`，每项为 PASS/FAIL 加细节）：
+
+| 场景 | 覆盖 |
+| --- | --- |
+| A | 静默安装；卸载键、快捷方式、daemon 哈希；首次启动，daemon 来自安装目录且 `/health` 正常；space init 与剪贴板捕获；写入自启偏好后重启，Run 值指向安装的 exe 并带 `--autostart`；强制结束 GUI 与 daemon 后重启，历史可读 |
+| B | `/P /R /UPDATE` 更新（更高版本，剪贴板写入进行中）：版本、GUI 替换、重启、单实例、旧进程消失、历史可读、Run 值保留 |
+| C | 降级拒绝（`/S` 与 `/P`）：非零退出且不改动 |
+| D | 保留数据卸载：文件、卸载键、快捷方式、Run 值移除，数据保留 |
+| E | 在保留的数据上重装：旧历史仍可读 |
+| F | `/DELETEAPPDATA` 卸载：两个数据根被删除 |
+| G | 可写目录便携运行：数据在目录内；强制结束后重启历史可读；目录外无以应用命名的新文件、注册表项、凭据 |
+| H | 只读目录便携运行：记录行为（不断言） |
+
+安装器新增 `/DELETEAPPDATA` 命令行开关，等同卸载页的复选框，使静默卸载也能删除数据。
+
+### 明确未覆盖
+
+- 真实注销再登录：只检查 Run 值及其命令行；真实登录启动需要在专用测试主机的真实会话中人工完成。
+- 交互式安装向导（自动化的是 `/P` 与 `/S`）。
+- 真实 Tauri 写入的旧 Run 值：需要安装公开 Tauri 版本并手动开启自启；`windows_production_run.py` 只用种子值验证清理逻辑。
+- 托管 runner 是 Windows Server，不是 Windows 10/11 客户端版本。
+- 签名后的 `signtool verify` 与签名版本的更新流程。
+
+遥测：验收在首次启动前写入关闭遥测的偏好文件，避免 CI 向生产 Sentry/PostHog 上报。Sentry 调试符号上传沿用 `build-sidecar` 现有逻辑（`build_mode=test` 不上传）；前端 source map 上传与 macOS 相同，仅在非 test 且有密钥时执行。
+
+## Authenticode 决定（待用户）
+
+仓库与组织密钥中没有任何 Windows 签名证书、签名服务配置或 `signtool` 步骤，Tauri 时期也从未签名。需要产品决定：
+
+1. **Azure Artifact Signing（原 Trusted Signing）**：云端托管、无需自管证书文件，CI 通过 OIDC 调用；需要 Azure 订阅与身份验证（组织验证周期）。成本低，适合 GitHub Actions，是 Microsoft 当前推荐的方案；新证书的 SmartScreen 信誉仍需积累。
+2. **云 HSM 托管的 OV/EV 证书**（如 DigiCert KeyLocker、SSL.com eSigner）：EV 可更快建立 SmartScreen 信誉，费用最高，需要确定证书持有人。
+3. **SignPath 等第三方签名服务**：对开源项目有免费方案，审批与流程由对方管理。
+4. **暂不签名发布**：必须在发布说明中写明 SmartScreen 警告、杀毒软件误报风险，且更新通道无法依赖 Authenticode；本任务不会默认允许。
+
+任一签名方案落地时需要对 setup、`UniClipboard.exe`、`uniclipd.exe` 都签名，在打包前签内部可执行文件，之后签安装包，再重算哈希与 `sidecar` 校验，并用 `signtool verify /pa` 验证、重跑本验收。

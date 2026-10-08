@@ -69,7 +69,7 @@ check "the new desktop entry is installed" test -e "$new_desktop"
 
 # Shipped form: no profile, the real data root of this throwaway root user, the Secret Service of an unlocked throwaway keyring.
 launch() {
-  export HOME=/root; rm -rf /root/.local/share /root/.config /root/.cache
+  export HOME=/root; rm -rf /root/.local/share /root/.config /root/.cache; mkdir -p /root/.local/share /root/.config /root/.cache  # gnome-keyring needs ~/.cache for its sockets
   dbus-run-session -- bash -c '
     set -u
     printf "uc-throwaway" | gnome-keyring-daemon --foreground --unlock --components=secrets > /tmp/keyring.env 2> /tmp/keyring.err &
@@ -105,6 +105,6 @@ check "the package removes" remove_pkg
 check "the executables are gone after removal" bash -c '! test -e /usr/bin/uniclipboard && ! test -e /usr/bin/uniclipd'
 check "the desktop entry is gone after removal" bash -c "! test -e $new_desktop"
 ! is_installed && ok "the package manager reports it as not installed" || bad "the package manager reports it as not installed" "$(installed)"
-check "user data survives a plain removal" test -d /root/.local/share
+check "user data survives a plain removal" test -d /root/.local/share/app.uniclipboard.desktop
 echo "failures=$failures" | tee -a "$results"
 exit "$failures"

@@ -49,8 +49,11 @@ else:
         needed = re.findall(r'\(NEEDED\)\s+Shared library: \[(.+?)\]', subprocess.run(['readelf', '-d', '-W', str(mod)], capture_output=True, text=True, check=True).stdout)
         missing = [n for n in needed if n not in names and not libc_family.match(n)]
         check(f'C3 {name}: every library the module needs is in the AppDir or libc-family', not missing, {'needed': needed, 'missing': missing})
-    SUPPORT = {'libproxy.so.1': 'libproxy1v5', 'libpxbackend-1.0.so': 'libproxy1v5', 'libduktape.so.207': 'libduktape207', 'libcurl-gnutls.so.4': 'libcurl3t64-gnutls', 'libssh.so.4': 'libssh-4',
-               'libldap.so.2': 'libldap2', 'liblber.so.2': 'libldap2', 'libsasl2.so.2': 'libsasl2-2', 'librtmp.so.1': 'librtmp1', 'libcrypto.so.3': 'libssl3t64'}  # keep in step with package_linux.GIO_SUPPORT_LIBS
+    # The support set follows the libproxy generation of the build image (package_linux.gio_support_libs): 0.5 on Ubuntu 24.04, 0.4 on Debian 12. The manifest says which one this package was built with.
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from package_linux import GIO_SUPPORT_LIBS_V4, GIO_SUPPORT_LIBS_V5
+    recorded = {m['library'] for m in (gio.get('supportLibraries', []) if isinstance(gio, dict) else [])}
+    SUPPORT = GIO_SUPPORT_LIBS_V5 if 'libpxbackend-1.0.so' in recorded else GIO_SUPPORT_LIBS_V4
     support = {m['library']: m for m in (gio.get('supportLibraries', []) if isinstance(gio, dict) else [])}
     for name, package in sorted(SUPPORT.items()):
         f, rec = root / 'usr/lib' / name, support.get(name, {})

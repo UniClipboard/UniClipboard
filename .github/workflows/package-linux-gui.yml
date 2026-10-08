@@ -95,10 +95,12 @@ jobs:
           persist-credentials: false
 
       - name: Assert a native runner
-        # Emulation or cross-building must never be recorded as native evidence (C7).
+        # Emulation or cross-building must never be recorded as native evidence (C7). Everything this job writes for itself lives under
+        # $RUNNER_TEMP: a file in the workspace would make the "checkout is still clean" gate and the package provenance fail.
         run: |
+          mkdir -p "$RUNNER_TEMP/meta"
           test "$(uname -m)" = "${{ matrix.machine }}"
-          { uname -a; cat /etc/os-release; docker version --format '{{.Server.Os}}/{{.Server.Arch}}'; } | tee host.txt
+          { uname -a; cat /etc/os-release; docker version --format '{{.Server.Os}}/{{.Server.Arch}}'; } | tee "$RUNNER_TEMP/meta/host.txt"
           test "$(docker version --format '{{.Server.Arch}}')" = "${{ matrix.arch }}"
 
       - uses: oven-sh/setup-bun@v2
@@ -116,9 +118,9 @@ jobs:
         run: |
           docker build --platform "${{ matrix.platform }}" --build-arg BASE_IMAGE="$BUILD_IMAGE" --build-arg TARGETARCH="${{ matrix.arch }}" \
             -f apps/gui-go/e2e/linux/Dockerfile.package-build -t "$UC_LINUX_IMAGE" apps/gui-go/e2e/linux
-          docker image inspect "$UC_LINUX_IMAGE" --format '{{.Id}}' | tee image-id.txt
-          echo "UC_BUILD_IMAGE=$BUILD_IMAGE (packaging image $(cat image-id.txt))" >> "$GITHUB_ENV"
-          docker run --rm "$UC_LINUX_IMAGE" verify_package_build_image.sh | tee image-versions.txt
+          docker image inspect "$UC_LINUX_IMAGE" --format '{{.Id}}' | tee "$RUNNER_TEMP/meta/image-id.txt"
+          echo "UC_BUILD_IMAGE=$BUILD_IMAGE (packaging image $(cat "$RUNNER_TEMP/meta/image-id.txt"))" >> "$GITHUB_ENV"
+          docker run --rm "$UC_LINUX_IMAGE" verify_package_build_image.sh | tee "$RUNNER_TEMP/meta/image-versions.txt"
 
       - name: Restore the Rust cache
         uses: actions/cache@v4
@@ -153,8 +155,8 @@ jobs:
       - name: Assert the checkout is still clean
         # The build steps (bun install, go generate, the frontend build) must not have edited a tracked file (C10).
         run: |
-          git status --porcelain | tee dirty.txt
-          test ! -s dirty.txt
+          git status --porcelain | tee "$RUNNER_TEMP/meta/dirty.txt"
+          test ! -s "$RUNNER_TEMP/meta/dirty.txt"
 
       - name: Verify the package set
         run: apps/gui-go/e2e/linux/run.sh verify-packages "$RUNNER_TEMP/out/packages" "$RUNNER_TEMP/upload"
@@ -172,19 +174,19 @@ jobs:
       - name: Gather the build evidence
         if: always()
         run: |
-          mkdir -p evidence
-          cp host.txt image-id.txt image-versions.txt dirty.txt evidence/ 2>/dev/null || true
-          cp "$RUNNER_TEMP"/out/packages/package-manifest.json evidence/ 2>/dev/null || true
-          docker run --rm -v "$UC_LINUX_CACHE_VOLUME:/cache:ro" -v "$PWD/evidence:/out" debian:bookworm cp /cache/out-release/build-evidence.txt /out/ 2>/dev/null || true
-          cp "$RUNNER_TEMP"/upload.report.json evidence/verify.json 2>/dev/null || true
-          (cd "$RUNNER_TEMP/upload" 2>/dev/null && sha256sum ./* > "$GITHUB_WORKSPACE/evidence/upload.sha256") || true
+          ev="$RUNNER_TEMP/evidence"; mkdir -p "$ev"
+          cp "$RUNNER_TEMP"/meta/* "$ev"/ 2>/dev/null || true
+          cp "$RUNNER_TEMP"/out/packages/package-manifest.json "$ev"/ 2>/dev/null || true
+          docker run --rm -v "$UC_LINUX_CACHE_VOLUME:/cache:ro" -v "$ev:/out" debian:bookworm cp /cache/out-release/build-evidence.txt /out/ 2>/dev/null || true
+          cp "$RUNNER_TEMP"/upload.report.json "$ev"/verify.json 2>/dev/null || true
+          (cd "$RUNNER_TEMP/upload" 2>/dev/null && sha256sum ./* > "$ev/upload.sha256") || true
 
       - name: Upload the build evidence
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: linux-gui-evidence-${{ matrix.arch }}
-          path: evidence
+          path: ${{ runner.temp }}/evidence
           if-no-files-found: warn
           retention-days: 14
 
@@ -210,9 +212,9 @@ jobs:
       - name: Gather the acceptance results
         if: always()
         run: |
-          mkdir -p acceptance
+          mkdir -p "$RUNNER_TEMP/acceptance"
           if [ -d "$RUNNER_TEMP/accept" ]; then
-            rsync -a --exclude='*.AppImage' --exclude='*.tar.gz' --exclude='squashfs-root' "$RUNNER_TEMP/accept/" acceptance/
+            rsync -a --exclude='*.AppImage' --exclude='*.tar.gz' --exclude='squashfs-root' "$RUNNER_TEMP/accept/" "$RUNNER_TEMP/acceptance/"
           fi
 
       - name: Upload the acceptance results
@@ -220,7 +222,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: linux-gui-acceptance-${{ matrix.arch }}
-          path: acceptance
+          path: ${{ runner.temp }}/acceptance
           if-no-files-found: warn
           retention-days: 14
 

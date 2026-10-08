@@ -3,7 +3,8 @@
 #  - the distribution's own proxy configuration stack as a user would have it: glib-networking (libgiolibproxy / libgiognomeproxy / libgiognutls), libproxy,
 #    dconf + gsettings-desktop-schemas (org.gnome.system.proxy). These are HOST modules; the AppImage must never load them (17c4), they exist so that
 #    "the host has a system proxy configuration" is a real fixture and the host-side control client can read it.
-FROM uc-gui-go-linux-runtime:17c7
+ARG BASE_IMAGE=uc-gui-go-linux-runtime:17c7
+FROM ${BASE_IMAGE}
 RUN apt_install.sh tinyproxy curl iproute2 dconf-cli dconf-gsettings-backend gsettings-desktop-schemas glib-networking libglib2.0-bin libproxy-tools
 COPY verify_image_17c12.sh /usr/local/bin/
 RUN verify_image_17c12.sh

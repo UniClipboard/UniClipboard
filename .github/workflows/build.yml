@@ -718,36 +718,6 @@ jobs:
           go-version-file: apps/cli-go/go.mod
           cache-dependency-path: apps/cli-go/go.sum
 
-      - name: negative check - a failing or ineffective signature must stop the packaging (signing self-test only)
-        if: steps.sign.outputs.mode == 'selftest'
-        shell: bash
-        run: |
-          # The real signer is wrapped so that only the temporary NSIS uninstaller is mishandled: `fail` makes the
-          # signing command exit non-zero (NSIS ignores that), `skip` exits 0 without signing. Neither may yield a
-          # package that passes the same gates the shipped packages pass.
-          S=target/sidecar-staging
-          mkdir -p target/windows-gui/negative
-          for mode in fail skip; do
-            OUT=target/windows-gui/negative-$mode
-            LOG=target/windows-gui/negative/$mode.log
-            rc=0
-            python apps/gui-go/e2e/package_windows.py --arch ${{ matrix.arch }} \
-              --sign-command "python apps/gui-go/e2e/testdata/signer_fault.py $mode $(pwd -W)/$OUT sign {file}" \
-              --daemon "$S/uniclipd-${{ matrix.target }}.exe" --daemon-provenance "$S/sidecar-provenance.json" \
-              --out "$OUT" > "$LOG" 2>&1 || rc=$?
-            if [ "$rc" = 0 ]; then
-              # Packaging finished: the verify gate must refuse it.
-              python apps/gui-go/e2e/windows_package_verify.py --package "$OUT" --require-signed \
-                --signature-out target/windows-gui/negative/$mode-signatures.json --out target/windows-gui/negative/$mode-verification.json >> "$LOG" 2>&1 && vrc=0 || vrc=$?
-              echo "negative $mode: packaging exit 0, verify exit $vrc" | tee -a "$LOG"
-              [ "$vrc" != 0 ] || { echo "::error::negative check '$mode': an unsigned uninstaller passed both packaging and verification"; exit 1; }
-            else
-              echo "negative $mode: packaging exit $rc" | tee -a "$LOG"
-              grep -q "did not sign the uninstaller" "$LOG" || { echo "::error::negative check '$mode': packaging failed for another reason"; tail -20 "$LOG"; exit 1; }
-            fi
-            rm -rf "$OUT"
-          done
-
       - name: build the CLI used to read history back
         run: |
           mkdir -p target/go-cli
@@ -935,6 +905,36 @@ jobs:
           if [ "${{ steps.sign.outputs.mode }}" != "unsigned" ]; then REQ=(--require-signed); fi
           python apps/gui-go/e2e/windows_package_verify.py --package target/windows-gui/shipped "${REQ[@]}" --signature-out target/windows-gui/signatures.json --out target/windows-gui/payload-verification.json
           python apps/gui-go/e2e/windows_package_verify.py --package target/windows-gui/newer "${REQ[@]}" --signature-out target/windows-gui/signatures-newer.json --out target/windows-gui/payload-verification-newer.json
+
+      - name: negative check - a failing or ineffective signature must stop the packaging (signing self-test only)
+        if: steps.sign.outputs.mode == 'selftest'
+        shell: bash
+        run: |
+          # The real signer is wrapped so that only the temporary NSIS uninstaller is mishandled: `fail` makes the
+          # signing command exit non-zero (NSIS ignores that), `skip` exits 0 without signing. Neither may yield a
+          # package that passes the same gates the shipped packages pass.
+          S=target/sidecar-staging
+          mkdir -p target/windows-gui/negative
+          for mode in fail skip; do
+            OUT=target/windows-gui/negative-$mode
+            LOG=target/windows-gui/negative/$mode.log
+            rc=0
+            python apps/gui-go/e2e/package_windows.py --arch ${{ matrix.arch }} \
+              --sign-command "python apps/gui-go/e2e/testdata/signer_fault.py $mode $(pwd -W)/$OUT sign {file}" \
+              --daemon "$S/uniclipd-${{ matrix.target }}.exe" --daemon-provenance "$S/sidecar-provenance.json" \
+              --out "$OUT" > "$LOG" 2>&1 || rc=$?
+            if [ "$rc" = 0 ]; then
+              # Packaging finished: the verify gate must refuse it.
+              python apps/gui-go/e2e/windows_package_verify.py --package "$OUT" --require-signed \
+                --signature-out target/windows-gui/negative/$mode-signatures.json --out target/windows-gui/negative/$mode-verification.json >> "$LOG" 2>&1 && vrc=0 || vrc=$?
+              echo "negative $mode: packaging exit 0, verify exit $vrc" | tee -a "$LOG"
+              [ "$vrc" != 0 ] || { echo "::error::negative check '$mode': an unsigned uninstaller passed both packaging and verification"; exit 1; }
+            else
+              echo "negative $mode: packaging exit $rc" | tee -a "$LOG"
+              grep -q "did not sign the uninstaller" "$LOG" || { echo "::error::negative check '$mode': packaging failed for another reason"; tail -20 "$LOG"; exit 1; }
+            fi
+            rm -rf "$OUT"
+          done
 
       - name: build the CLI used to read history back
         shell: bash

@@ -243,7 +243,8 @@ def main():
                 pass
         time.sleep(1)
         for home in sandbox.rglob('*.AppImage.home'):
-            base.copy_logs(home, out / 'home-copy' / home.name)
+            for e in base.copy_logs(home, out / 'home-copy' / home.name):
+                print('evidence copy error:', e, file=sys.stderr)
         xvfb.terminate()
         (out / 'appimage-assertions.json').write_text(json.dumps(r, indent=2, default=str) + '\n')
     print(json.dumps({'passed': r['passed'], 'mode': 'portable'}))

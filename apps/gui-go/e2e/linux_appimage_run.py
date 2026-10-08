@@ -238,9 +238,14 @@ def main():
             except (OSError, ValueError, KeyError):
                 pass
         time.sleep(1)
+        evidence_errors = []
         for sub in ('.local/state', '.local/share'):
             for logs in (home / sub).glob('app.uniclipboard.desktop*'):
-                copy_logs(logs, out / 'home-copy' / sub.replace('/', '_') / logs.name)
+                evidence_errors += copy_logs(logs, out / 'home-copy' / sub.replace('/', '_') / logs.name)
+        if evidence_errors:  # the assertions stand, but an acceptance whose evidence could not be kept does not pass
+            r['evidenceCopyErrors'] = evidence_errors
+            r['passed'] = False
+            print('evidence copy errors:', *evidence_errors, sep='\n  ', file=sys.stderr)
         xvfb.terminate()
         (out / 'appimage-assertions.json').write_text(json.dumps(r, indent=2, default=str) + '\n')
     print(json.dumps({'passed': r['passed'], 'mode': args.mode}))
@@ -249,7 +254,8 @@ def main():
 
 def copy_logs(root, dest):
     """Copy only the log files of a sandbox profile: never the databases, identity, keys or connection files. A file that vanishes while the
-    daemon shuts down is skipped, so evidence collection cannot fail the run after its assertions were made."""
+    daemon shuts down is skipped (its absence is the expected race, not a failure); every other error is returned to the caller, which reports it."""
+    errors = []
     for f in sorted(Path(root).rglob('*')):
         if not f.is_file() or f.is_symlink() or not (f.name.endswith(('.log', '.jsonl')) or '.json.' in f.name or f.name.endswith('.json') and f.parent.name == 'logs'):
             continue
@@ -257,8 +263,11 @@ def copy_logs(root, dest):
         try:
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(f, target)
-        except OSError:
-            pass
+        except FileNotFoundError:
+            continue  # the daemon removed a transient file between listing and copying
+        except OSError as exc:
+            errors.append(f'{f}: {exc}')
+    return errors
 
 
 def wait_daemon(home, timeout=90):

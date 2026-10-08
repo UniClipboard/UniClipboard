@@ -569,7 +569,8 @@ def main():
         kill_apps(account.pw_uid)
         for sub in ('.local/state', '.local/share'):
             for logs in (home / sub).glob('app.uniclipboard.desktop*'):
-                copy_logs(logs, out / 'home-copy' / sub.replace('/', '_') / logs.name)
+                for e in copy_logs(logs, out / 'home-copy' / sub.replace('/', '_') / logs.name):
+                    print('evidence copy error:', e, file=sys.stderr)
         if bus:
             bus.terminate()
         time.sleep(1)

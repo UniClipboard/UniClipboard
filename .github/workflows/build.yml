@@ -1040,10 +1040,12 @@ jobs:
           fi
           MANIFEST=$(find package-evidence -path '*shipped/package-manifest.json' | head -1)
           DAEMON_SHA=$(python -c "import json,sys;d=json.load(open(sys.argv[1]))['daemon'];print(d.get('shippedSha256') or d['sha256'])" "$MANIFEST")
+          NEWER_MANIFEST=$(find package-evidence -path '*newer/package-manifest.json' | head -1)
+          NEWER_SHA=$(python -c "import json,sys;d=json.load(open(sys.argv[1]))['daemon'];print(d.get('shippedSha256') or d['sha256'])" "$NEWER_MANIFEST")
           python apps/gui-go/e2e/windows_package_acceptance.py --arch ${{ matrix.arch }} \
             --setup "$(ls shipped/UniClipboard_*-setup.exe)" --portable "$(ls shipped/UniClipboard_*-portable.zip)" \
             --newer-setup "$(ls inputs/ACCEPTANCE-*-setup.exe)" --uniclip inputs/uniclip.exe \
-            --daemon-sha256 "$DAEMON_SHA" --out smoke-evidence $SIGNED_ARGS
+            --daemon-sha256 "$DAEMON_SHA" --newer-daemon-sha256 "$NEWER_SHA" --out smoke-evidence $SIGNED_ARGS
 
       - name: upload smoke evidence
         if: always()

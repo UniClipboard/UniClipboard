@@ -87,8 +87,16 @@ def sign_cmd(template, file):
 
 
 def nsis_sign_cmd(template):
-    """The command NSIS runs (through cmd) on the file it passes as %1."""
-    return template.replace('{file}', '\"%1\"')
+    """The command NSIS runs (through cmd) on the file it passes as %1.
+
+    makensis runs it from the directory of the .nsi script, so repository-relative paths in the template are made
+    absolute; otherwise the command fails there and NSIS carries on with an unsigned uninstaller.
+    """
+    words = []
+    for word in template.split(' '):
+        candidate = ROOT / word
+        words.append(str(candidate) if word != '{file}' and ('/' in word or '\\' in word) and candidate.exists() else word)
+    return ' '.join(words).replace('{file}', '\"%1\"')
 
 
 def verify_daemon_provenance(daemon, arch, provenance_path, source):

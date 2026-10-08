@@ -286,7 +286,7 @@ def scenario_a(a, s):
     if a.expect_signed:
         v = subprocess.run([sys.executable, str(a.sign_verifier), 'verify', '--out', str(OUT / 'signatures-installed.json'),
                             *[str(INSTDIR / n) for n in (f'{PRODUCT}.exe', 'uniclipd.exe', 'uninstall.exe')]], capture_output=True, text=True)
-        check('A3s the installed exe, daemon and uninstaller carry a valid Authenticode signature', v.returncode == 0, v.stdout[-400:])
+        check('A3s the installed exe, daemon and uninstaller carry a valid Authenticode signature', v.returncode == 0, v.stdout[-1500:])
     k = reg_values(UNINST) or {}
     check('A4 uninstall key: DisplayVersion, Publisher, InstallLocation, UninstallString',
           k.get('DisplayVersion') == s['old'] and norm(k.get('InstallLocation', '').strip('"')) == norm(str(INSTDIR))
@@ -349,7 +349,8 @@ def scenario_b(a, s):
     k = reg_values(UNINST) or {}
     check('B2 DisplayVersion is the newer version', k.get('DisplayVersion') == s['new'], k.get('DisplayVersion'))
     check('B3 the installed GUI exe was replaced', sha256(INSTDIR / f'{PRODUCT}.exe') != s['installed_exe_old'])
-    check('B4 the daemon file is still the CI-built one', sha256(INSTDIR / 'uniclipd.exe') == a.daemon_sha256)
+    # Signing the same CI-built daemon again yields different bytes, so the updated install is compared with the newer package.
+    check('B4 the daemon file is the one shipped in the newer package', sha256(INSTDIR / 'uniclipd.exe') == (a.newer_daemon_sha256 or a.daemon_sha256))
     restarted = wait_daemon(DATA_ROOTS, 120, not_pid=old_daemon)
     check('B5 /R restarted the application: a new daemon is up', restarted)
     gui = [p for p in processes(f'{PRODUCT}.exe') if norm(p['ExecutablePath']) == norm(str(INSTDIR / f'{PRODUCT}.exe'))]
@@ -484,6 +485,7 @@ def main():
     ap.add_argument('--newer-setup', type=Path, required=True)
     ap.add_argument('--uniclip', type=Path, required=True)
     ap.add_argument('--daemon-sha256', required=True)
+    ap.add_argument('--newer-daemon-sha256', help='SHA-256 of the daemon inside the newer package when it differs from --daemon-sha256 (signed packages)')
     ap.add_argument('--expect-signed', action='store_true', help='the packages are Authenticode signed: verify the installed files too')
     ap.add_argument('--sign-verifier', type=Path, help='apps/gui-go/packaging/windows/sign.py')
     ap.add_argument('--out', type=Path, required=True)

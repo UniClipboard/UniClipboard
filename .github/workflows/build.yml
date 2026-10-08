@@ -12,6 +12,7 @@ on:
           - 'macos-x86_64'
           - 'ubuntu-22.04'
           - 'ubuntu-22.04-arm'
+          - 'linux-gui'
           - 'windows-latest'
           - 'windows-x86_64'
           - 'windows-arm64'
@@ -141,6 +142,9 @@ jobs:
             echo 'matrix=[{"platform":"ubuntu-22.04","target":"x86_64-unknown-linux-gnu","args":"","container":"ghcr.io/uniclipboard/build-bookworm:latest"}]' >> "$GITHUB_OUTPUT"
           elif [ "$PLATFORM" == "ubuntu-22.04-arm" ]; then
             echo 'matrix=[{"platform":"ubuntu-22.04-arm","target":"aarch64-unknown-linux-gnu","args":"","container":"ghcr.io/uniclipboard/build-bookworm:latest"}]' >> "$GITHUB_OUTPUT"
+          elif [ "$PLATFORM" == "linux-gui" ]; then
+            # The Linux GUI packages are built by package-linux-gui.yml on native runners and need no sidecar matrix.
+            echo 'matrix=[]' >> "$GITHUB_OUTPUT"
           elif [ "$PLATFORM" == "windows-latest" ]; then
             echo "matrix=[{\"platform\":\"windows-latest\",\"runner\":\"$WINDOWS_RUNNER\",\"target\":\"x86_64-pc-windows-msvc\",\"args\":\"\"},{\"platform\":\"windows-latest\",\"runner\":\"$WINDOWS_RUNNER\",\"target\":\"aarch64-pc-windows-msvc\",\"args\":\"--target aarch64-pc-windows-msvc\"}]" >> "$GITHUB_OUTPUT"
           elif [ "$PLATFORM" == "windows-x86_64" ]; then
@@ -148,7 +152,7 @@ jobs:
           elif [ "$PLATFORM" == "windows-arm64" ]; then
             echo "matrix=[{\"platform\":\"windows-latest\",\"runner\":\"$WINDOWS_RUNNER\",\"target\":\"aarch64-pc-windows-msvc\",\"args\":\"--target aarch64-pc-windows-msvc\"}]" >> "$GITHUB_OUTPUT"
           else
-            echo "Error: Unknown platform '$PLATFORM'. Valid options: all, macos-aarch64, macos-x86_64, ubuntu-22.04, ubuntu-22.04-arm, windows-latest, windows-x86_64, windows-arm64"
+            echo "Error: Unknown platform '$PLATFORM'. Valid options: all, macos-aarch64, macos-x86_64, ubuntu-22.04, ubuntu-22.04-arm, linux-gui, windows-latest, windows-x86_64, windows-arm64"
             exit 1
           fi
 
@@ -196,6 +200,7 @@ jobs:
   build-sidecar:
     name: Build sidecar ${{ matrix.target }}
     needs: setup-matrix
+    if: needs.setup-matrix.outputs.matrix != '[]'
     runs-on: ${{ matrix.runner || matrix.platform }}
     # matrix.container 仅 Linux 条目设置,其他 platform 该字段缺失 → null →
     # GitHub Actions 跳过容器,直接在 host runner 上执行。
@@ -641,6 +646,19 @@ jobs:
   # data root and the real login keychain of the machine it runs on: this only ever runs on a disposable
   # GitHub-hosted runner (smoke_release.py refuses anything else). Apple Silicon runs on macos-latest,
   # Intel on the native macos-15-intel runner (x86_64 does not run under Rosetta here: the host is x86_64).
+  # Go/Wails Linux packages (issue #1898): deb, rpm, AppImage and the updater archive on native amd64 and arm64 runners, with their own
+  # daemon build and evidence (docs/architecture/gui-go-linux-ci-packaging.md). It does not use build-sidecar's Linux output, which has no
+  # consumer. Always an optimised release build: a `test` build mode would not produce accepted evidence, so `all` runs it only for release.
+  package-linux-gui:
+    name: Package Linux GUI
+    needs: setup-matrix
+    if: inputs.platform == 'linux-gui' || (inputs.platform == 'all' && inputs.build_mode == 'release')
+    permissions:
+      contents: read
+    uses: ./.github/workflows/package-linux-gui.yml
+    with:
+      ref: ${{ inputs.branch || github.ref }}
+
   smoke-macos-gui:
     name: Smoke macOS app ${{ matrix.arch }}
     needs: [setup-matrix, package-macos-gui]

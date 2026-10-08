@@ -16,7 +16,7 @@ if [ "${1:-}" != "--inner" ]; then
   mkdir -p "$out"; out="$(cd "$out" && pwd)"
   here="$(cd "$(dirname "$0")" && pwd)"
   platform="${UC_DOCKER_PLATFORM:?UC_DOCKER_PLATFORM}"
-  docker run --rm --init --platform "$platform" -v "$here/package_install_check.sh:/check.sh:ro" -v "$new:/in/new.$kind:ro" -v "$old:/in/old.$kind:ro" -v "$out:/out" \
+  docker run --rm --init --cap-add IPC_LOCK --platform "$platform" -v "$here/package_install_check.sh:/check.sh:ro" -v "$new:/in/new.$kind:ro" -v "$old:/in/old.$kind:ro" -v "$out:/out" \
     "$image" bash /check.sh --inner "$kind" "$scenario" "$sha" > "$out/run.log" 2>&1
   rc=$?
   tail -n 40 "$out/results.tsv" 2>/dev/null; exit "$rc"
@@ -33,7 +33,8 @@ if [ "$kind" = deb ]; then
   export DEBIAN_FRONTEND=noninteractive
   apt-get update -qq && apt-get install -y -qq --no-install-recommends ca-certificates >/dev/null
   tools=(xvfb xauth dbus dbus-x11 gnome-keyring libsecret-tools procps)
-  install_pkg() { apt-get install -y -qq --no-install-recommends "$1"; }
+  # The distribution mirrors drop requests now and then; a retry of the package manager is not a retry of the assertion.
+  install_pkg() { for a in 1 2 3; do apt-get install -y -qq --no-install-recommends -o Acquire::Retries=5 "$1" && return 0; sleep 5; apt-get update -qq; done; return 1; }
   remove_pkg()  { apt-get remove -y -qq uni-clipboard; }
   installed()   { dpkg-query -W -f '${Status} ${Version}\n' uni-clipboard 2>/dev/null; }
   is_installed() { dpkg-query -W -f '${db:Status-Abbrev}' uni-clipboard 2>/dev/null | grep -q '^ii'; }
@@ -42,7 +43,7 @@ if [ "$kind" = deb ]; then
   apt-get install -y -qq --no-install-recommends "${tools[@]}" >/dev/null
 else
   dnf -y -q install xorg-x11-server-Xvfb xauth dbus-x11 gnome-keyring libsecret procps-ng >/dev/null
-  install_pkg() { dnf -y -q install "$1"; }
+  install_pkg() { for a in 1 2 3; do dnf -y -q --setopt=retries=10 install "$1" && return 0; sleep 5; done; return 1; }
   remove_pkg()  { dnf -y -q remove uni-clipboard; }
   installed()   { rpm -q --qf '%{NAME} %{VERSION}-%{RELEASE}\n' uni-clipboard 2>/dev/null; }
   is_installed() { rpm -q uni-clipboard >/dev/null 2>&1; }
@@ -93,6 +94,7 @@ launch() {
 }
 launch > /out/launch-stdout.txt 2>&1
 . /tmp/launch.txt 2>/dev/null
+grep -q '^keyring-ready$' /out/launch-stdout.txt && ok "the Secret Service of the harness is ready" || bad "the Secret Service of the harness is ready" "$(grep -i -m1 'keyring\|secrets' /out/launch-stdout.txt)"
 [ "${gui_exe:-}" = /usr/bin/uniclipboard ] && ok "GUI runs from the installed path" || bad "GUI runs from the installed path" "exe=${gui_exe:-none}"
 [ "${daemon_exe:-}" = /usr/bin/uniclipd ] && ok "daemon runs from the installed path" || bad "daemon runs from the installed path" "exe=${daemon_exe:-none}"
 case "${webkit_exe:-}" in /usr/lib/*/webkit2gtk-4.1/WebKitWebProcess|/usr/lib64/webkit2gtk-4.1/WebKitWebProcess|/usr/libexec/webkit2gtk-4.1/WebKitWebProcess) ok "WebView process runs from the installed WebKitGTK" "$webkit_exe" ;; *) bad "WebView process runs from the installed WebKitGTK" "exe=${webkit_exe:-none}" ;; esac

@@ -159,6 +159,35 @@ jobs:
       - name: Verify the package set
         run: apps/gui-go/e2e/linux/run.sh verify-packages "$RUNNER_TEMP/out/packages" "$RUNNER_TEMP/upload"
 
+      - name: Upload the named release candidates
+        # Verified (naming, manifest, evidence, glibc floor), not yet accepted: the deb/rpm lifecycle runs on these files in `install-check`, the
+        # AppImage acceptance below decides this job's status. The directory holds exactly the four files verify_package_set.py checked.
+        uses: actions/upload-artifact@v7
+        with:
+          name: linux-gui-${{ matrix.arch }}
+          path: ${{ runner.temp }}/upload/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Gather the build evidence
+        if: always()
+        run: |
+          mkdir -p evidence
+          cp host.txt image-id.txt image-versions.txt dirty.txt evidence/ 2>/dev/null || true
+          cp "$RUNNER_TEMP"/out/packages/package-manifest.json evidence/ 2>/dev/null || true
+          docker run --rm -v "$UC_LINUX_CACHE_VOLUME:/cache:ro" -v "$PWD/evidence:/out" debian:bookworm cp /cache/out-release/build-evidence.txt /out/ 2>/dev/null || true
+          cp "$RUNNER_TEMP"/upload.report.json evidence/verify.json 2>/dev/null || true
+          (cd "$RUNNER_TEMP/upload" 2>/dev/null && sha256sum ./* > "$GITHUB_WORKSPACE/evidence/upload.sha256") || true
+
+      - name: Upload the build evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: linux-gui-evidence-${{ matrix.arch }}
+          path: evidence
+          if-no-files-found: warn
+          retention-days: 14
+
       - name: Build the clean-host and Secret Service images
         run: |
           cd apps/gui-go/e2e/linux
@@ -178,35 +207,21 @@ jobs:
           apps/gui-go/e2e/linux/package_acceptance.sh "$RUNNER_TEMP/accept" \
             --release-appimage "$(ls "$RUNNER_TEMP"/upload/UniClipboard_*.AppImage)" --release-manifest "$RUNNER_TEMP/out/packages/package-manifest.json"
 
-      - name: Gather the evidence
+      - name: Gather the acceptance results
         if: always()
         run: |
-          mkdir -p evidence
-          cp -r host.txt image-id.txt image-versions.txt dirty.txt evidence/ 2>/dev/null || true
-          cp "$RUNNER_TEMP"/out/packages/package-manifest.json evidence/ 2>/dev/null || true
-          docker run --rm -v "$UC_LINUX_CACHE_VOLUME:/cache:ro" -v "$PWD/evidence:/out" debian:bookworm cp /cache/out-release/build-evidence.txt /out/ 2>/dev/null || true
-          cp "$RUNNER_TEMP"/upload.report.json evidence/verify.json 2>/dev/null || true
+          mkdir -p acceptance
           if [ -d "$RUNNER_TEMP/accept" ]; then
-            rsync -a --exclude='*.AppImage' --exclude='*.tar.gz' --exclude='squashfs-root' "$RUNNER_TEMP/accept/" evidence/appimage-acceptance/
+            rsync -a --exclude='*.AppImage' --exclude='*.tar.gz' --exclude='squashfs-root' "$RUNNER_TEMP/accept/" acceptance/
           fi
-          (cd "$RUNNER_TEMP/upload" 2>/dev/null && sha256sum ./* > "$GITHUB_WORKSPACE/evidence/upload.sha256") || true
 
-      - name: Upload the evidence
+      - name: Upload the acceptance results
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: linux-gui-evidence-${{ matrix.arch }}
-          path: evidence
+          name: linux-gui-acceptance-${{ matrix.arch }}
+          path: acceptance
           if-no-files-found: warn
-          retention-days: 14
-
-      - name: Upload the named release candidates
-        # Reached only after verification and acceptance passed. The directory holds exactly the four files verify_package_set.py checked.
-        uses: actions/upload-artifact@v7
-        with:
-          name: linux-gui-${{ matrix.arch }}
-          path: ${{ runner.temp }}/upload/
-          if-no-files-found: error
           retention-days: 14
 
       - name: Save the Rust cache
@@ -219,6 +234,8 @@ jobs:
   install-check:
     name: ${{ matrix.kind }} on ${{ matrix.image }} (${{ matrix.arch }})
     needs: [resolve, package]
+    # The packages are uploaded once verified, before the AppImage acceptance finishes; a failed acceptance must not hide the deb/rpm result.
+    if: ${{ !cancelled() && needs.resolve.result == 'success' }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
     strategy:

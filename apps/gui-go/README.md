@@ -340,6 +340,19 @@ apps/gui-go/e2e/linux/run.sh xvfb <dir>     # 容器内：Xvfb + dbus-run-sessio
 apps/gui-go/e2e/linux/run.sh package <dir>  # 容器内：生产前端包 + package_linux.py
 ```
 
+### CI 打包与验收（#1898）
+
+`.github/workflows/package-linux-gui.yml`（可被 `build.yml` 的 `linux-gui` 平台调用，pull request 改动相关文件时也会运行）在原生 amd64 与 arm64 runner 上用 Debian 12 构建镜像（glibc 2.36）构建 release `uniclipd` 与证据、打包、核对、在下限与较新发行版的干净宿主上验收 AppImage，并在 Debian、Ubuntu、Fedora 容器里安装、从已发布的 Tauri 包升级、启动、移除 deb 与 rpm。契约、构建镜像与 glibc 下限的决定依据、失败模型和结果见 [docs/architecture/gui-go-linux-ci-packaging.md](../../docs/architecture/gui-go-linux-ci-packaging.md)。它不发布、不签名、不上传 Sentry。
+
+```sh
+# 任意 Linux 主机或 Docker 主机，原生平台（UC_DOCKER_PLATFORM=linux/amd64 或 linux/arm64）
+docker build --build-arg BASE_IMAGE=debian:bookworm --build-arg TARGETARCH=arm64 -f apps/gui-go/e2e/linux/Dockerfile.package-build -t uc-package-build:ci apps/gui-go/e2e/linux
+UC_LINUX_IMAGE=uc-package-build:ci apps/gui-go/e2e/linux/run.sh daemon-release            # daemon 与 build-evidence.txt
+bun --bun run --cwd apps/gui-go build                                                      # 生产前端包
+UC_LINUX_IMAGE=uc-package-build:ci apps/gui-go/e2e/linux/run.sh package-release <outdir>   # 四个命名包与 package-manifest.json
+UC_EXPECT_HEAD=$(git rev-parse HEAD) UC_LINUX_IMAGE=uc-package-build:ci apps/gui-go/e2e/linux/run.sh verify-packages <outdir>/packages <uploaddir>
+```
+
 ### Linux 17c 结果
 
 工件在 `.herdr-project/uni-t-0188/library/e2e-linux-17c/`（仓库外的本地库，含原始日志）。`package-run1` 的包二进制（约 400 MB）曾被我误删（误以为复制上限要求删除），**已无法恢复**；只剩清单、SHA-256 与检查记录，且构建树是脏的，不能凭哈希按位复现，只算早期打包结构检查。提交后用干净源码重建的可审阅包保存在仓库与 worktree 之外（路径与哈希见 `report.md`）。构建时源码树 HEAD 为 `13fdd8548`，**有未提交改动**（清单里 `dirty=true`），因此这些二进制不能仅凭该 HEAD 复现。

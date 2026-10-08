@@ -35,12 +35,15 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--package', type=Path, required=True)
     ap.add_argument('--out', type=Path)
+    ap.add_argument('--require-signed', action='store_true', help='also run sign.py verify (signtool verify /pa) on the setup and the unpacked exe/daemon')
+    ap.add_argument('--signature-out', type=Path)
     args = ap.parse_args()
     manifest = json.loads((args.package / 'package-manifest.json').read_text())
     daemon = manifest['daemon']
     if daemon['kind'] != 'ci-built-rust-daemon' or not daemon['identityVerified']:
         sys.exit(f"the package manifest does not claim a CI-built daemon (kind={daemon['kind']})")
-    expected = daemon['buildEvidence']['sha256']
+    # The daemon identity is the build-sidecar hash; with Authenticode signing the shipped file is that file plus a signature.
+    expected = daemon.get('shippedSha256') or daemon['buildEvidence']['sha256']
     setup = next(args.package.glob('*-setup.exe'))
     portable = next(args.package.glob('*-portable.zip'))
     seven = shutil.which('7z') or shutil.which('7za') or sys.exit('7z not found on PATH')
@@ -62,6 +65,13 @@ def main():
             f = find(root, exe)
             result['checks'].append({'check': f'{label}: {exe} present', 'ok': f is not None, 'sha256': sha256(f) if f else None})
             print(('PASS ' if f else 'FAIL ') + result['checks'][-1]['check'], flush=True)
+        if args.require_signed:
+            targets = [setup] + [find(r, n) for r in (sx, pz) for n in ('UniClipboard.exe', 'uniclipd.exe')]
+            sign_py = Path(__file__).resolve().parents[1] / 'packaging/windows/sign.py'
+            cmd = [sys.executable, str(sign_py), 'verify', *([] if not args.signature_out else ['--out', str(args.signature_out)]), *map(str, targets)]
+            ok = subprocess.run(cmd).returncode == 0
+            result['checks'].append({'check': 'Authenticode: setup and the unpacked GUI exe and daemon verify (signtool verify /pa)', 'ok': ok})
+            print(('PASS ' if ok else 'FAIL ') + result['checks'][-1]['check'], flush=True)
         same = [c['sha256'] for c in result['checks'] if 'UniClipboard.exe' in c['check']]
         result['checks'].append({'check': 'GUI exe is identical in the installer and the portable zip', 'ok': len(set(same)) == 1 and None not in same})
         print(('PASS ' if result['checks'][-1]['ok'] else 'FAIL ') + result['checks'][-1]['check'], flush=True)

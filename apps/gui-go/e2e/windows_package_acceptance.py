@@ -281,8 +281,12 @@ def scenario_a(a, s):
     check('A1 silent install exits 0', rc == 0, rc)
     files = {n: (INSTDIR / n).is_file() for n in (f'{PRODUCT}.exe', 'uniclipd.exe', 'uninstall.exe')}
     check('A2 the installer wrote the exe, the daemon and the uninstaller', all(files.values()), files)
-    check('A3 the installed daemon is the CI-built one (SHA-256)', sha256(INSTDIR / 'uniclipd.exe') == a.daemon_sha256)
+    check('A3 the installed daemon is the shipped (CI-built) one (SHA-256)', sha256(INSTDIR / 'uniclipd.exe') == a.daemon_sha256)
     s['installed_exe_old'] = sha256(INSTDIR / f'{PRODUCT}.exe')
+    if a.expect_signed:
+        v = subprocess.run([sys.executable, str(a.sign_verifier), 'verify', '--out', str(OUT / 'signatures-installed.json'),
+                            *[str(INSTDIR / n) for n in (f'{PRODUCT}.exe', 'uniclipd.exe', 'uninstall.exe')]], capture_output=True, text=True)
+        check('A3s the installed exe, daemon and uninstaller carry a valid Authenticode signature', v.returncode == 0, v.stdout[-400:])
     k = reg_values(UNINST) or {}
     check('A4 uninstall key: DisplayVersion, Publisher, InstallLocation, UninstallString',
           k.get('DisplayVersion') == s['old'] and norm(k.get('InstallLocation', '').strip('"')) == norm(str(INSTDIR))
@@ -479,6 +483,8 @@ def main():
     ap.add_argument('--newer-setup', type=Path, required=True)
     ap.add_argument('--uniclip', type=Path, required=True)
     ap.add_argument('--daemon-sha256', required=True)
+    ap.add_argument('--expect-signed', action='store_true', help='the packages are Authenticode signed: verify the installed files too')
+    ap.add_argument('--sign-verifier', type=Path, help='apps/gui-go/packaging/windows/sign.py')
     ap.add_argument('--out', type=Path, required=True)
     a = ap.parse_args()
     if os.environ.get('GITHUB_ACTIONS') != 'true' or os.environ.get('RUNNER_ENVIRONMENT') != 'github-hosted':

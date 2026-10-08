@@ -81,6 +81,16 @@ def check_daemon(path, arch):
 TRIPLES = {'amd64': 'x86_64-pc-windows-msvc', 'arm64': 'aarch64-pc-windows-msvc'}
 
 
+def sign_cmd(template, file):
+    import shlex
+    return shlex.split(template.replace('{file}', str(file)), posix=False)
+
+
+def nsis_sign_cmd(template):
+    """The command NSIS runs (through cmd) on the file it passes as %1."""
+    return template.replace('{file}', '\"%1\"')
+
+
 def verify_daemon_provenance(daemon, arch, provenance_path, source):
     """Refuse a daemon that is not the one build-sidecar recorded for this commit and target. Returns the evidence to keep."""
     rec = json.loads(Path(provenance_path).read_text())
@@ -134,6 +144,10 @@ def main():
     parser.add_argument('--daemon-provenance', type=Path,
                         help='sidecar-provenance.json written by build-sidecar next to the daemon (required unless --packaging-check-fixture)')
     parser.add_argument('--out', type=Path, required=True)
+    parser.add_argument('--sign-command', metavar='TEMPLATE',
+                        help='Authenticode: a command with {file}, run on the GUI exe, a copy of the daemon, the uninstaller (NSIS !uninstfinalize) '
+                             'and the installer (NSIS !finalize), e.g. "python apps/gui-go/packaging/windows/sign.py sign {file}". The daemon is '
+                             'signed AFTER its build-sidecar identity check, so the manifest keeps both the unsigned and the shipped hash')
     parser.add_argument('--acceptance-version', metavar='X.Y.Z',
                         help='ACCEPTANCE ONLY: build the package with this version instead of app.json\'s, so the install/update/downgrade '
                              'acceptance has a newer package. Outputs are prefixed ACCEPTANCE- and are never uploaded or released')
@@ -198,17 +212,30 @@ def main():
     finally:
         syso.unlink(missing_ok=True)
 
+    daemon_ship = args.daemon
+    sign_tpl = args.sign_command
+    if sign_tpl:
+        if os.name != 'nt':
+            sys.exit('--sign-command runs on Windows only (NSIS has to execute the uninstaller to sign it)')
+        signed_dir = out / 'signed-inputs'
+        signed_dir.mkdir()
+        daemon_ship = signed_dir / 'uniclipd.exe'
+        shutil.copy2(args.daemon, daemon_ship)
+        for f in (exe, daemon_ship):
+            run(sign_cmd(sign_tpl, f))
+
     plugins = fetch_tauri_utils(out / 'plugins')
     setup = out / f'{prefix}{product}_{version}_{arch}-setup.exe'
-    run(['makensis', '-V2', f'-DPRODUCTNAME={product}', f'-DVERSION={version}', f'-DVERSIONWITHBUILD={version}.0',
+    nsis_sign = [f"-X!uninstfinalize '{nsis_sign_cmd(sign_tpl)}' =0", f"-X!finalize '{nsis_sign_cmd(sign_tpl)}' =0"] if sign_tpl else []
+    run(['makensis', '-V2', *nsis_sign, f'-DPRODUCTNAME={product}', f'-DVERSION={version}', f'-DVERSIONWITHBUILD={version}.0',
          f'-DMANUFACTURER={manufacturer}', f'-DBUNDLEID={ident}', f'-DMAINBINARYNAME={product}.exe', f'-DSRC_MAIN={exe}',
-         f'-DSRC_DAEMON={args.daemon.resolve()}', f'-DICON={ROOT / "apps/gui-go/icons/icon.ico"}', f'-DOUTFILE={setup}',
+         f'-DSRC_DAEMON={daemon_ship.resolve()}', f'-DICON={ROOT / "apps/gui-go/icons/icon.ico"}', f'-DOUTFILE={setup}',
          f'-DHOOKS={ROOT / "apps/gui-go/windows/installer-hooks.nsh"}', f'-DPLUGINDIR={plugins}', str(GUI / 'windows/installer.nsi')])
 
     portable = out / f'{prefix}{product}_{version}_{arch}-portable.zip'
     with zipfile.ZipFile(portable, 'w', zipfile.ZIP_DEFLATED) as z:
         z.write(exe, f'{product}.exe')
-        z.write(args.daemon, 'uniclipd.exe')
+        z.write(daemon_ship, 'uniclipd.exe')
         z.writestr('portable.dat', '')  # the marker that enables portable mode; the installer does not ship it
         z.write(ROOT / 'packaging/windows/portable/README.txt', 'README.txt')
 
@@ -219,11 +246,14 @@ def main():
         'purpose': 'packaging-check' if fixture else 'acceptance-newer-version' if args.acceptance_version else 'package',
         'productionUsable': False,  # never claimed here: unsigned, and no Authenticode decision exists
         'daemon': {'kind': 'fixture' if fixture else 'ci-built-rust-daemon', 'bytes': args.daemon.stat().st_size, 'sha256': sha256(args.daemon),
-                   'peValid': daemon_ok, 'peCheck': daemon_reason, 'path': str(args.daemon), 'identityVerified': daemon_prov is not None,
+                   'peValid': daemon_ok, 'peCheck': daemon_reason, 'path': str(args.daemon), 'identityVerified': daemon_prov is not None, 'shippedSha256': sha256(daemon_ship),
                    'buildEvidence': daemon_prov, 'runsVerified': False,
                    'note': 'Fixture: PE structure only, not a product.' if fixture else
                            'Identity: SHA-256, source commit and target equal the build-sidecar record. Whether it runs is shown by windows_package_acceptance.py.'},
-        'signed': False, 'windowsRuntimeVerified': False,
+        'signed': bool(sign_tpl), 'signing': {'command': sign_tpl, 'signedParts': ['UniClipboard.exe', 'uniclipd.exe', 'uninstall.exe', 'setup'],
+                                              'verifiedBy': 'apps/gui-go/packaging/windows/sign.py verify (signtool verify /pa), run by the workflow'} if sign_tpl else None,
+        'shipped': {'UniClipboard.exe': sha256(exe), 'uniclipd.exe': sha256(daemon_ship)},
+        'windowsRuntimeVerified': False,
         'note': ('FIXTURE (--packaging-check-fixture): only proves the exe builds and the installer script compiles. ' if fixture else '') + 'Built and compiled only; running it is shown by windows_package_acceptance.py. Not signed. If source.dirty is true the artifacts contain uncommitted changes and are not reproducible from `head`.'}, indent=2) + '\n')
     shutil.rmtree(tools)
     print('built', *[p.name for p in outputs])

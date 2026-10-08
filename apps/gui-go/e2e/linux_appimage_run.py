@@ -379,6 +379,10 @@ def full(run, launches, args, sandbox, home, target, original_sha):
     status = daemon_status(home, daemon_pid)
     run.check('2 GUI exit 0 and the bundled daemon stopped by the GUI (no running process state, health endpoint not answering)',
               code == 0 and not status['running'], {'exit': code, 'daemon': status})
+    # The runtime unmounts after the child exits; the FUSE teardown is asynchronous, so wait for it instead of sampling once.
+    deadline = time.monotonic() + 20
+    while mount is not None and Path(mount).exists() and time.monotonic() < deadline:
+        time.sleep(.3)
     run.check('2 the mount is gone after exit', mount is None or not Path(mount).exists(), mount)
 
     if not args.feed:
@@ -413,7 +417,8 @@ def full(run, launches, args, sandbox, home, target, original_sha):
         run.check('7 the first process runs the v1 image (no update marker)', first['detail']['installed'] is False, first)
         conn, old_daemon = wait_daemon(home)
         data_before = sorted(str(p.relative_to(home / '.local/share')) for p in (home / '.local/share/app.uniclipboard.desktop').rglob('*') if p.is_file()
-                             and p.name not in RUNTIME_STATE_FILES)
+                             and p.name not in RUNTIME_STATE_FILES
+                             and not p.name.endswith(('-wal', '-shm')))  # SQLite sidecars vanish at a clean close after the checkpoint; the database file stays compared
         # The first process hands over to the replaced file and exits, so from here the evidence file is read without it.
         good.step('update-relaunched', 240, allow_exit=True)
         states = [x for x in read_steps(good.evidence) if x['step'] == 'update-state']

@@ -183,6 +183,8 @@ jobs:
             ${{ runner.temp }}/legacy-go/deb/fixture.json
             ${{ runner.temp }}/legacy-go/rpm/legacy-go.rpm
             ${{ runner.temp }}/legacy-go/rpm/fixture.json
+            ${{ runner.temp }}/legacy-go/rpm-newer/legacy-go.rpm
+            ${{ runner.temp }}/legacy-go/rpm-newer/fixture.json
           if-no-files-found: error
           retention-days: 14
 
@@ -326,6 +328,9 @@ jobs:
             if [ "$scenario" = upgrade-go ]; then previous="legacy-go/${{ matrix.kind }}/legacy-go.${{ matrix.kind }}"; mode=upgrade; fi
             apps/gui-go/e2e/linux/package_install_check.sh "${{ matrix.kind }}" "${{ matrix.image }}" "$mode" "$PWD/$new" "$PWD/$previous" "$sha" "$PWD/install-$scenario" || rc=1
           done
+          if [ "${{ matrix.kind }}" = rpm ]; then
+            apps/gui-go/e2e/linux/package_install_check.sh rpm "${{ matrix.image }}" reject-newer "$PWD/$new" "$PWD/legacy-go/rpm-newer/legacy-go.rpm" "$sha" "$PWD/install-reject-newer" || rc=1
+          fi
           exit $rc
 
       - name: Upload the results
@@ -337,6 +342,7 @@ jobs:
             install-upgrade
             install-fresh
             install-upgrade-go
+            install-reject-newer
           if-no-files-found: warn
           retention-days: 14
 

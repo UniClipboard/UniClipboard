@@ -213,7 +213,8 @@ case "$mode" in
       set -e
       git config --global --add safe.directory /work
       python3 apps/gui-go/e2e/linux/legacy_go_package_fixture.py --arch "$ARCH" --kind deb --package "$(ls /in/UniClipboard_*.deb)" --out /out/deb
-      python3 apps/gui-go/e2e/linux/legacy_go_package_fixture.py --arch "$ARCH" --kind rpm --package "$(ls /in/UniClipboard-*.rpm)" --out /out/rpm' ;;
+      python3 apps/gui-go/e2e/linux/legacy_go_package_fixture.py --arch "$ARCH" --kind rpm --package "$(ls /in/UniClipboard-*.rpm)" --out /out/rpm
+      python3 apps/gui-go/e2e/linux/legacy_go_package_fixture.py --arch "$ARCH" --kind rpm --version 9999.0.0 --package "$(ls /in/UniClipboard-*.rpm)" --out /out/rpm-newer' ;;
   verify-packages)  # <packages dir> <new upload dir> <report.json>: acceptance contract of one architecture's package set (verify_package_set.py); UC_EXPECT_HEAD = the commit the set must come from
     packages="$(cd "${2:?package_linux.py output dir}" && pwd)"; mkdir -p "$(dirname "${3:?upload dir}")"; upload_parent="$(cd "$(dirname "$3")" && pwd)"; upload_name="$(basename "$3")"
     docker run "${common[@]}" -v "$packages:/in:ro" -v "$upload_parent:/up" -e UC_EXPECT_HEAD="${UC_EXPECT_HEAD:?UC_EXPECT_HEAD}" -e UC_MAX_GLIBC "$IMAGE" bash -c '

@@ -2,19 +2,20 @@
 # Real package-manager lifecycle of the deb or rpm in a throwaway container of the distribution under test
 # (docs/architecture/gui-go-linux-ci-packaging.md, C11/C14).
 #
-#   package_install_check.sh <deb|rpm> <image> <fresh|upgrade> <new package> <old package> <expected daemon sha256> <outdir>
+#   package_install_check.sh <deb|rpm> <image> <fresh|upgrade|reject-newer> <new package> <old package> <expected daemon sha256> <outdir>
 #
 # fresh:   install the new package -> launch the shipped form -> remove.
 # upgrade: install the legacy-name Tauri or Go package -> install the new package over it with the package manager the user
 #          would use -> launch -> remove. The old package's files that the new one does not ship must be gone, and exactly one package
 #          may own /usr/bin/uniclipboard afterwards.
+# reject-newer (rpm): reject a lower-version renamed candidate without changing the installed legacy package.
 # Every assertion is a line in <outdir>/results.tsv (PASS|FAIL<TAB>name<TAB>detail); the exit status is the number of failures.
 # Container evidence only: headless Xvfb, an unlocked throwaway gnome-keyring as the Secret Service, no desktop environment, no login session.
 set -uo pipefail
 if [ "${1:-}" != "--inner" ]; then
   kind="${1:?deb|rpm}"; image="${2:?image}"; scenario="${3:?fresh|upgrade}"; new="${4:?new package}"; old="${5:?old package}"; sha="${6:?daemon sha256}"; out="${7:?outdir}"
   [ ! -e "$out" ] || { echo "output already exists: $out" >&2; exit 2; }
-  case "$kind:$scenario" in deb:fresh|deb:upgrade|rpm:fresh|rpm:upgrade) ;; *) exit 2 ;; esac
+  case "$kind:$scenario" in deb:fresh|deb:upgrade|rpm:fresh|rpm:upgrade|rpm:reject-newer) ;; *) exit 2 ;; esac
   mkdir -p "$out"; out="$(cd "$out" && pwd)"
   here="$(cd "$(dirname "$0")" && pwd)"
   # Freeze the harness before running; a shared checkout may change during a long package-manager transaction.
@@ -58,6 +59,19 @@ else
   list_files()  { rpm -ql uniclipboard; }
   owners()      { rpm -qf --qf '%{NAME}\n' "${1:-/usr/bin/uniclipboard}" 2>/dev/null | sort -u | tr '\n' ' '; }
   verify_files() { rpm -V uniclipboard; }
+fi
+
+# Identical payloads can be co-owned by RPM; the version conflict must reject the transaction before that happens.
+if [ "$scenario" = reject-newer ]; then
+  check "newer legacy package installs" install_pkg /in/old.rpm
+  rpm -qa --qf '%{NAME} %{VERSION}-%{RELEASE}\n' | sort > /out/packages-before.txt
+  sha256sum /usr/bin/uniclipboard /usr/bin/uniclipd > /out/payload-before.sha256
+  if dnf -y -q install /in/new.rpm > /out/rejected-transaction.log 2>&1; then bad "newer legacy prevents coinstallation"; else ok "newer legacy prevents coinstallation"; fi
+  rpm -qa --qf '%{NAME} %{VERSION}-%{RELEASE}\n' | sort > /out/packages-after.txt
+  check "rejection leaves package database unchanged" cmp /out/packages-before.txt /out/packages-after.txt
+  check "rejection leaves payload unchanged" sha256sum -c /out/payload-before.sha256
+  check "legacy remains sole file owner" bash -c '[ "$(rpm -qf --qf "%{NAME}\n" /usr/bin/uniclipboard)" = uni-clipboard ]'
+  exit "$failures"
 fi
 
 old_desktop=/usr/share/applications/UniClipboard.desktop; new_desktop=/usr/share/applications/uniclipboard.desktop

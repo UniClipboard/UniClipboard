@@ -17,6 +17,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--kind", choices=["deb", "rpm"], required=True)
 parser.add_argument("--arch", choices=["amd64", "arm64"], required=True)
 parser.add_argument("--package", type=Path, required=True)
+parser.add_argument("--version", help="Override the fixture version for transaction boundary checks")
 parser.add_argument("--out", type=Path, required=True)
 a = parser.parse_args()
 a.out.mkdir(parents=True, exist_ok=False)
@@ -28,7 +29,7 @@ if a.kind == "deb":
     built = package.build_deb(
         stage,
         a.out,
-        version,
+        a.version or version,
         a.arch,
         "legacy-go.deb",
         package_name=package.LEGACY_PACKAGE_NAME,
@@ -46,7 +47,7 @@ else:
     built = package.build_rpm(
         stage,
         a.out,
-        version,
+        a.version or version,
         a.arch,
         "legacy-go.rpm",
         package_name=package.LEGACY_PACKAGE_NAME,
@@ -56,6 +57,7 @@ else:
         {
             "scope": __doc__,
             "source": package.provenance(),
+            "version": a.version or version,
             "inputSha256": package.sha256(a.package),
             "fixtureSha256": package.sha256(built),
             "guiSha256": package.sha256(stage / "usr/bin/uniclipboard"),

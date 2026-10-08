@@ -153,7 +153,9 @@ AppImage 完整验收则在原位更新前保持自启动启用，替换后核�
 
 包名统一为 `uniclipboard`。已发布的 Tauri 与此前 Go 包名 `uni-clipboard` 是兼容来源，
 不是第二套安装。deb 使用版本化 `Conflicts` + `Replaces` + `Provides`；rpm 使用
-`Obsoletes: uni-clipboard <= %{version}-%{release}` 与版本化普通及 `%{?_isa}` 架构能力 `Provides`。
+`Obsoletes: uni-clipboard <= %{version}-%{release}` 与版本化普通及 `%{?_isa}` 架构能力 `Provides`，并用
+`Conflicts: uni-clipboard > %{version}-%{release}` 拒绝较高版本旧包共存。
+RPM 会允许完全相同的文件被两个包共同拥有，不能只依靠文件冲突兜底；CI 用相同 payload 的较高版本旧包验证拒绝事务且包数据库、文件均不变。
 等号覆盖同版本 Go 包改名，旧名保留为依赖能力；包数据库唯一安装身份和卸载命令使用新名。
 
 采用 [Debian Policy 7.6.2](https://www.debian.org/doc/debian-policy/ch-relationships.html#replacing-whole-packages-forcing-their-removal)

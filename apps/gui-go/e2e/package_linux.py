@@ -223,7 +223,8 @@ def build_rpm(stage, out, version, arch, name, *, package_name=PACKAGE_NAME):
     assert package_name in (PACKAGE_NAME, LEGACY_PACKAGE_NAME)
     relationships = (f'Provides: {LEGACY_PACKAGE_NAME} = %%{{version}}-%%{{release}}\n'
         f'Provides: {LEGACY_PACKAGE_NAME}%%{{?_isa}} = %%{{version}}-%%{{release}}\n'
-        f'Obsoletes: {LEGACY_PACKAGE_NAME} <= %%{{version}}-%%{{release}}\n') if package_name == PACKAGE_NAME else ''
+        f'Obsoletes: {LEGACY_PACKAGE_NAME} <= %%{{version}}-%%{{release}}\n'
+        f'Conflicts: {LEGACY_PACKAGE_NAME} > %%{{version}}-%%{{release}}\n') if package_name == PACKAGE_NAME else ''
     top = out / 'rpmbuild'
     for sub in ('BUILD', 'RPMS', 'SPECS'):
         (top / sub).mkdir(parents=True)

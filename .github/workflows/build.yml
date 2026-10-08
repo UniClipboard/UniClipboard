@@ -46,6 +46,10 @@ on:
         description: 'Windows 签名机制自测:用一次性自签证书(仅在一次性 runner 上受信任)走完签名、验证、安装、更新流程;产物名带 -signing-selftest,不是可发布的签名'
         type: boolean
         default: false
+      signpath_test_signing:
+        description: 'Windows 包经 SignPath test-signing 策略签名(仅 workflow_dispatch;GitHub 托管 runner;测试证书不是可发布的签名;需要 Environment signpath-test 中的 secret SIGNPATH_API_TOKEN);产物名带 -signpath-test'
+        type: boolean
+        default: false
       upload_symbols:
         description: '上传 Sentry 调试符号与前端 source map(仅 release 构建方式生效;关闭用于不产生生产副作用的优化构建验收)'
         type: boolean
@@ -750,11 +754,23 @@ jobs:
     # Always a hosted runner: the packaging is deterministic and needs nothing from the self-hosted VM.
     runs-on: windows-latest
     timeout-minutes: 60
+    # Only a SignPath run attaches the Environment that holds the SignPath API token; every other run has no environment.
+    environment: ${{ inputs.signpath_test_signing == true && 'signpath-test' || '' }}
     outputs:
       signed: ${{ steps.sign.outputs.mode != 'unsigned' }}
+      sfx: ${{ steps.sign.outputs.sfx }}
+      mode: ${{ steps.sign.outputs.mode }}
+      thumbprint: ${{ steps.identity.outputs.thumbprint }}
+      untrusted_root: ${{ steps.identity.outputs.untrusted_root }}
     env:
       # The Windows default code page is not UTF-8; the packaging and acceptance scripts read UTF-8 files.
       PYTHONUTF8: '1'
+      # SignPath (test-signing, Go/Wails Windows packages only). Identifiers, not secrets; the API token is the Environment
+      # secret SIGNPATH_API_TOKEN and is read only by the two SignPath steps below.
+      SIGNPATH_ORGANIZATION_ID: 080cee5f-8b26-476f-9e04-dd6571b926bd
+      SIGNPATH_PROJECT_SLUG: UniClipboard
+      SIGNPATH_SIGNING_POLICY_SLUG: test-signing
+      SIGNPATH_ARTIFACT_CONFIGURATION_SLUG: initial
     strategy:
       fail-fast: false
       matrix:
@@ -769,25 +785,32 @@ jobs:
         id: sign
         shell: bash
         env:
-          # No Windows signing service or certificate is configured yet (docs/architecture/gui-go-windows-packaging.md).
-          # SIGN_BACKEND is azure | pfx; its credentials are separate secrets read by apps/gui-go/packaging/windows/sign.py.
+          # SIGN_BACKEND is azure | pfx (a configured production signer; its credentials are separate secrets read by
+          # apps/gui-go/packaging/windows/sign.py).
           SIGN_BACKEND: ${{ secrets.WINDOWS_SIGN_BACKEND }}
           SELF_TEST: ${{ inputs.signing_self_test == true }}
+          SIGNPATH_TEST: ${{ inputs.signpath_test_signing == true }}
           IS_CALL: ${{ inputs.require_signing == true }}
         run: |
+          # unsigned | selftest (throwaway certificate) | signpath-test (SignPath test-signing) | signed (a production backend)
+          if [ "$SELF_TEST" = "true" ] && [ "$SIGNPATH_TEST" = "true" ]; then
+            echo "::error::signing_self_test and signpath_test_signing are exclusive"; exit 1
+          fi
+          if [ "$IS_CALL" = "true" ] && { [ "$SELF_TEST" = "true" ] || [ "$SIGNPATH_TEST" = "true" ]; }; then
+            echo "::error::A release build must not use a test certificate (self-test or SignPath test-signing)."; exit 1
+          fi
           if [ "$SELF_TEST" = "true" ]; then
-            echo "mode=selftest" >> "$GITHUB_OUTPUT"
-            echo "sfx=-signing-selftest" >> "$GITHUB_OUTPUT"
+            echo "mode=selftest" >> "$GITHUB_OUTPUT"; echo "sfx=-signing-selftest" >> "$GITHUB_OUTPUT"
+          elif [ "$SIGNPATH_TEST" = "true" ]; then
+            echo "mode=signpath-test" >> "$GITHUB_OUTPUT"; echo "sfx=-signpath-test" >> "$GITHUB_OUTPUT"
           elif [ -n "$SIGN_BACKEND" ]; then
-            echo "mode=signed" >> "$GITHUB_OUTPUT"
-            echo "sfx=" >> "$GITHUB_OUTPUT"
+            echo "mode=signed" >> "$GITHUB_OUTPUT"; echo "sfx=" >> "$GITHUB_OUTPUT"
           elif [ "$IS_CALL" = "true" ]; then
             echo "::error::No Windows code-signing backend is configured (WINDOWS_SIGN_BACKEND); refusing to package unsigned Windows installers for a release."
             exit 1
           else
             echo "::warning::No Windows code-signing backend is configured; the packages are NOT signed and are not distributable."
-            echo "mode=unsigned" >> "$GITHUB_OUTPUT"
-            echo "sfx=" >> "$GITHUB_OUTPUT"
+            echo "mode=unsigned" >> "$GITHUB_OUTPUT"; echo "sfx=" >> "$GITHUB_OUTPUT"
           fi
 
       - name: setup node
@@ -848,6 +871,7 @@ jobs:
           ls -la target/sidecar-staging
 
       - name: throwaway self-signed certificate (signing self-test only)
+        id: selftest-cert
         if: steps.sign.outputs.mode == 'selftest'
         shell: pwsh
         run: |
@@ -867,12 +891,66 @@ jobs:
           Copy-Item $cer target/windows-gui/inputs/selftest.cer
           Remove-Item "Cert:\CurrentUser\My\$($cert.Thumbprint)"
           "::add-mask::$pw"
+          "thumbprint=$($cert.Thumbprint)" | Out-File -Append -Encoding utf8 $env:GITHUB_OUTPUT
           "SIGN_BACKEND=pfx" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
           "SIGN_PFX_PATH=$pfx" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
           "SIGN_PFX_PASSWORD=$pw" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
 
-      - name: build the packages
-        id: package
+      - name: Pin the expected test-certificate identity
+        id: identity
+        shell: bash
+        env:
+          MODE: ${{ steps.sign.outputs.mode }}
+          SELFTEST_THUMBPRINT: ${{ steps.selftest-cert.outputs.thumbprint }}
+          # Repository variable (not a secret): the SHA-1 thumbprint of the SignPath test-signing certificate, read once from
+          # the certificate page of the SignPath project.
+          SIGNPATH_THUMBPRINT: ${{ vars.SIGNPATH_TEST_CERT_THUMBPRINT }}
+        run: |
+          set -euo pipefail
+          THUMB=""; UNTRUSTED=false
+          case "$MODE" in
+            selftest) THUMB="$SELFTEST_THUMBPRINT" ;;
+            signpath-test)
+              THUMB="$SIGNPATH_THUMBPRINT"; UNTRUSTED=true
+              if ! printf '%s' "$THUMB" | grep -Eq '^[0-9A-Fa-f]{40}$'; then
+                echo "::error::The repository variable SIGNPATH_TEST_CERT_THUMBPRINT (40 hex digits) is required to pin the SignPath test certificate; refusing to accept any signer."
+                exit 1
+              fi ;;
+          esac
+          echo "thumbprint=$THUMB" >> "$GITHUB_OUTPUT"
+          echo "untrusted_root=$UNTRUSTED" >> "$GITHUB_OUTPUT"
+          if [ -n "$THUMB" ]; then
+            # Every verifier below pins the signer. SIGNING_TEST_CERT is the marker that lets sign.py waive the chain trust of a
+            # TEST certificate; it is never set for a production backend, and the release gate rejects test modes outright.
+            echo "SIGNING_TEST_CERT=1" >> "$GITHUB_ENV"
+            VERIFY="--expect-thumbprint $THUMB"; PKGVERIFY="--sign-expect-thumbprint $THUMB"
+            if [ "$UNTRUSTED" = true ]; then VERIFY="$VERIFY --allow-untrusted-root"; PKGVERIFY="$PKGVERIFY --sign-untrusted-root"; fi
+            echo "SIGN_VERIFY_ARGS=$VERIFY" >> "$GITHUB_ENV"
+            echo "PKG_VERIFY_ARGS=$PKGVERIFY" >> "$GITHUB_ENV"
+          fi
+
+      - name: SignPath preconditions
+        if: steps.sign.outputs.mode == 'signpath-test'
+        shell: bash
+        env:
+          # Only the presence of the Environment secret is tested; its value is never printed or written anywhere.
+          HAS_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN != '' }}
+        run: |
+          set -euo pipefail
+          [ "$RUNNER_ENVIRONMENT" = "github-hosted" ] || { echo "::error::SignPath OSS signing requires a GitHub-hosted runner"; exit 1; }
+          [ "$HAS_TOKEN" = "true" ] || { echo "::error::The secret SIGNPATH_API_TOKEN is not available in the signpath-test Environment"; exit 1; }
+          printf '%s' "$SIGNPATH_ORGANIZATION_ID" | grep -Eq '^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$' || { echo "::error::SIGNPATH_ORGANIZATION_ID is not a UUID"; exit 1; }
+
+      - name: build the Go CLI to sign
+        shell: bash
+        run: |
+          mkdir -p target/sign/stage1/cli
+          scripts/ci/build-go-cli.sh "${{ matrix.target }}" target/sign/stage1/cli/uniclip.exe
+          # The CLI archive carries its own copy of the daemon next to uniclip.exe (scripts/ci/package-cli.sh).
+          cp "target/sidecar-staging/uniclipd-${{ matrix.target }}.exe" target/sign/stage1/cli/uniclipd.exe
+
+      - name: prepare the unsigned GUI exe, daemon and uninstaller (shipped and acceptance-newer packages)
+        id: prepare
         shell: bash
         env:
           VITE_APP_ENV: ${{ steps.resolve-env.outputs.app_env }}
@@ -885,62 +963,204 @@ jobs:
         run: |
           set -euo pipefail
           S=target/sidecar-staging
-          SIGN=()
-          if [ "${{ steps.sign.outputs.mode }}" != "unsigned" ]; then
-            SIGN=(--sign-command "python apps/gui-go/packaging/windows/sign.py sign {file}")
-          fi
-          python apps/gui-go/e2e/package_windows.py --arch ${{ matrix.arch }} "${SIGN[@]}" \
+          python apps/gui-go/e2e/package_windows.py --stage prepare --arch ${{ matrix.arch }} \
             --daemon "$S/uniclipd-${{ matrix.target }}.exe" --daemon-provenance "$S/sidecar-provenance.json" \
             --out target/windows-gui/shipped
           # Acceptance-only package with a higher version, so the update and downgrade scenarios have a
           # newer build of the same sources. Never uploaded as a product.
-          python apps/gui-go/e2e/package_windows.py --arch ${{ matrix.arch }} "${SIGN[@]}" --acceptance-version 999.0.0 \
+          python apps/gui-go/e2e/package_windows.py --stage prepare --arch ${{ matrix.arch }} --acceptance-version 999.0.0 \
             --daemon "$S/uniclipd-${{ matrix.target }}.exe" --daemon-provenance "$S/sidecar-provenance.json" \
             --out target/windows-gui/newer
+          # Stage 1 = every self-built executable that goes into a package or archive: GUI exe, daemon, NSIS uninstaller
+          # (for both packages) and the two executables of the CLI archive. The setup programs are signed in stage 2.
+          for v in shipped newer; do
+            mkdir -p target/sign/stage1/$v
+            for n in UniClipboard.exe uniclipd.exe uninstall.exe; do cp target/windows-gui/$v/to-sign/$n target/sign/stage1/$v/; done
+          done
+          find target/sign/stage1 -type f | sort
+
+      - name: sign stage 1 locally (self-test certificate or a production backend)
+        if: steps.sign.outputs.mode == 'selftest' || steps.sign.outputs.mode == 'signed'
+        shell: bash
+        env:
+          AZURE_SIGN_ENDPOINT: ${{ secrets.AZURE_SIGN_ENDPOINT }}
+          AZURE_SIGN_ACCOUNT: ${{ secrets.AZURE_SIGN_ACCOUNT }}
+          AZURE_SIGN_PROFILE: ${{ secrets.AZURE_SIGN_PROFILE }}
+          AZURE_SIGN_DLIB: ${{ secrets.AZURE_SIGN_DLIB }}
+        run: |
+          set -euo pipefail
+          cp -r target/sign/stage1 target/sign/stage1-signed
+          python apps/gui-go/packaging/windows/sign.py sign $(find target/sign/stage1-signed -name '*.exe')
+          echo '{"provider":"${{ steps.sign.outputs.mode }}"}' > target/sign/signing-evidence.json
+
+      - name: upload stage 1 for SignPath
+        id: signpath-up1
+        if: steps.sign.outputs.mode == 'signpath-test'
+        uses: actions/upload-artifact@v7
+        with:
+          name: signpath-stage1-${{ matrix.arch }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: target/sign/stage1
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: SignPath test-signing request 1 (GUI exe, daemon, uninstaller, CLI executables)
+        id: signpath-req1
+        if: steps.sign.outputs.mode == 'signpath-test'
+        uses: signpath/github-action-submit-signing-request@f6d04783b4569d051e0c80105fe66e82819d0092 # v3.0
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ env.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ env.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ env.SIGNPATH_SIGNING_POLICY_SLUG }}
+          artifact-configuration-slug: ${{ env.SIGNPATH_ARTIFACT_CONFIGURATION_SLUG }}
+          github-artifact-id: ${{ steps.signpath-up1.outputs.artifact-id }}
+          github-token: ${{ github.token }}
+          wait-for-completion: true
+          output-artifact-directory: target/sign/stage1-signed
+
+      - name: verify the signed stage 1 files (fail closed)
+        if: steps.sign.outputs.mode != 'unsigned'
+        shell: bash
+        run: |
+          set -euo pipefail
+          IN=target/sign/stage1; OUT=target/sign/stage1-signed
+          # The set that came back is exactly the set that was sent: nothing missing, nothing extra.
+          diff <(cd $IN && find . -type f | sort) <(cd $OUT && find . -type f | sort)
+          while read -r f; do
+            python apps/gui-go/packaging/windows/sign.py matches "$IN/$f" "$OUT/$f"
+          done < <(cd $IN && find . -type f | sort)
+          mkdir -p target/windows-gui
+          python apps/gui-go/packaging/windows/sign.py verify --out target/windows-gui/signatures-stage1.json ${SIGN_VERIFY_ARGS:-} $(find $OUT -type f -name '*.exe')
+
+      - name: fault injection - what the signing service could hand back wrongly must stop the assemble stage
+        if: steps.sign.outputs.mode != 'unsigned'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python apps/gui-go/e2e/signing_faults.py --package target/windows-gui/shipped --signed target/sign/stage1-signed/shipped --log-dir target/windows-gui/faults
+
+      - name: assemble the installers around the signed files
+        shell: bash
+        run: |
+          set -euo pipefail
+          for v in shipped newer; do
+            if [ "${{ steps.sign.outputs.mode }}" = "unsigned" ]; then
+              python apps/gui-go/e2e/package_windows.py --stage assemble --unsigned --out target/windows-gui/$v
+            else
+              python apps/gui-go/e2e/package_windows.py --stage assemble --signed-dir target/sign/stage1-signed/$v --out target/windows-gui/$v
+            fi
+          done
+          mkdir -p target/sign/stage2
+          for v in shipped newer; do cp target/windows-gui/$v/to-sign-setup/*-setup.exe target/sign/stage2/; done
+          ls -l target/sign/stage2
+
+      - name: upload stage 2 for SignPath
+        id: signpath-up2
+        if: steps.sign.outputs.mode == 'signpath-test'
+        uses: actions/upload-artifact@v7
+        with:
+          name: signpath-stage2-${{ matrix.arch }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: target/sign/stage2
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: SignPath test-signing request 2 (the setup programs)
+        id: signpath-req2
+        if: steps.sign.outputs.mode == 'signpath-test'
+        uses: signpath/github-action-submit-signing-request@f6d04783b4569d051e0c80105fe66e82819d0092 # v3.0
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ env.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ env.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ env.SIGNPATH_SIGNING_POLICY_SLUG }}
+          artifact-configuration-slug: ${{ env.SIGNPATH_ARTIFACT_CONFIGURATION_SLUG }}
+          github-artifact-id: ${{ steps.signpath-up2.outputs.artifact-id }}
+          github-token: ${{ github.token }}
+          wait-for-completion: true
+          output-artifact-directory: target/sign/stage2-signed
+
+      - name: sign stage 2 locally (self-test certificate or a production backend)
+        if: steps.sign.outputs.mode == 'selftest' || steps.sign.outputs.mode == 'signed'
+        shell: bash
+        env:
+          AZURE_SIGN_ENDPOINT: ${{ secrets.AZURE_SIGN_ENDPOINT }}
+          AZURE_SIGN_ACCOUNT: ${{ secrets.AZURE_SIGN_ACCOUNT }}
+          AZURE_SIGN_PROFILE: ${{ secrets.AZURE_SIGN_PROFILE }}
+          AZURE_SIGN_DLIB: ${{ secrets.AZURE_SIGN_DLIB }}
+        run: |
+          set -euo pipefail
+          cp -r target/sign/stage2 target/sign/stage2-signed
+          python apps/gui-go/packaging/windows/sign.py sign target/sign/stage2-signed/*-setup.exe
+
+      - name: verify the signed setup programs, then write the final packages (fail closed)
+        shell: bash
+        env:
+          REQUEST_1: ${{ steps.signpath-req1.outputs.signing-request-web-url }}
+          REQUEST_2: ${{ steps.signpath-req2.outputs.signing-request-web-url }}
+          REQUEST_1_ID: ${{ steps.signpath-req1.outputs.signing-request-id }}
+          REQUEST_2_ID: ${{ steps.signpath-req2.outputs.signing-request-id }}
+        run: |
+          set -euo pipefail
+          export MODE="${{ steps.sign.outputs.mode }}"
+          if [ "$MODE" = "unsigned" ]; then
+            for v in shipped newer; do python apps/gui-go/e2e/package_windows.py --stage finalize --unsigned --out target/windows-gui/$v; done
+            exit 0
+          fi
+          IN=target/sign/stage2; OUT=target/sign/stage2-signed
+          diff <(cd $IN && ls) <(cd $OUT && ls)
+          for f in $(cd $IN && ls); do python apps/gui-go/packaging/windows/sign.py matches "$IN/$f" "$OUT/$f"; done
+          python apps/gui-go/packaging/windows/sign.py verify --out target/windows-gui/signatures-stage2.json ${SIGN_VERIFY_ARGS:-} $OUT/*-setup.exe
+          # Fault: an unsigned setup handed back as if it were signed must not become a package.
+          if python apps/gui-go/e2e/package_windows.py --stage finalize --signed-setup "$(ls target/windows-gui/shipped/to-sign-setup/*-setup.exe)" --out target/windows-gui/shipped > target/windows-gui/faults/unsigned-setup.log 2>&1; then
+            echo "::error::an unsigned setup program was accepted as the signed one"; exit 1
+          fi
+          grep -q "was not signed" target/windows-gui/faults/unsigned-setup.log
+          THUMBPRINT="${{ steps.identity.outputs.thumbprint }}" python - <<'PY'
+          import json, os
+          e, mode = os.environ, os.environ['MODE']
+          ev = {'provider': mode, 'testCertificate': mode != 'signed', 'pinnedThumbprint': e.get('THUMBPRINT') or None, 'requests': []}
+          if mode == 'signpath-test':
+              ev.update(organizationId=e['SIGNPATH_ORGANIZATION_ID'], project=e['SIGNPATH_PROJECT_SLUG'], policy=e['SIGNPATH_SIGNING_POLICY_SLUG'],
+                        artifactConfiguration=e['SIGNPATH_ARTIFACT_CONFIGURATION_SLUG'],
+                        requests=[{'stage': n, 'id': e[f'REQUEST_{n}_ID'], 'url': e[f'REQUEST_{n}']} for n in (1, 2)])
+          json.dump(ev, open('target/sign/signing-evidence.json', 'w'), indent=2)
+          PY
+          for v in shipped newer; do
+            python apps/gui-go/e2e/package_windows.py --stage finalize --signing-provider "$MODE" --signing-evidence target/sign/signing-evidence.json \
+              --signed-setup "$OUT/$(cd target/windows-gui/$v/to-sign-setup && ls)" --out target/windows-gui/$v
+          done
 
       - name: prove the daemon inside the finished files is the CI-built one
         shell: bash
         run: |
           REQ=()
-          if [ "${{ steps.sign.outputs.mode }}" != "unsigned" ]; then REQ=(--require-signed); fi
+          if [ "${{ steps.sign.outputs.mode }}" != "unsigned" ]; then REQ=(--require-signed ${PKG_VERIFY_ARGS:-}); fi
           python apps/gui-go/e2e/windows_package_verify.py --package target/windows-gui/shipped "${REQ[@]}" --signature-out target/windows-gui/signatures.json --out target/windows-gui/payload-verification.json
           python apps/gui-go/e2e/windows_package_verify.py --package target/windows-gui/newer "${REQ[@]}" --signature-out target/windows-gui/signatures-newer.json --out target/windows-gui/payload-verification-newer.json
 
-      - name: negative check - a failing or ineffective signature must stop the packaging (signing self-test only)
-        if: steps.sign.outputs.mode == 'selftest'
+      - name: build the CLI archive through the shipping script (signed inputs) and verify the unpacked files
         shell: bash
         run: |
-          # The real signer is wrapped so that only the temporary NSIS uninstaller is mishandled: `fail` makes the
-          # signing command exit non-zero (NSIS ignores that), `skip` exits 0 without signing. Neither may yield a
-          # package that passes the same gates the shipped packages pass.
-          S=target/sidecar-staging
-          mkdir -p target/windows-gui/negative
-          for mode in fail skip; do
-            OUT=target/windows-gui/negative-$mode
-            LOG=target/windows-gui/negative/$mode.log
-            rc=0
-            python apps/gui-go/e2e/package_windows.py --arch ${{ matrix.arch }} \
-              --sign-command "python apps/gui-go/e2e/testdata/signer_fault.py $mode $(pwd -W)/$OUT sign {file}" \
-              --daemon "$S/uniclipd-${{ matrix.target }}.exe" --daemon-provenance "$S/sidecar-provenance.json" \
-              --out "$OUT" > "$LOG" 2>&1 || rc=$?
-            if [ "$rc" = 0 ]; then
-              # Packaging finished: the verify gate must refuse it.
-              python apps/gui-go/e2e/windows_package_verify.py --package "$OUT" --require-signed \
-                --signature-out target/windows-gui/negative/$mode-signatures.json --out target/windows-gui/negative/$mode-verification.json >> "$LOG" 2>&1 && vrc=0 || vrc=$?
-              echo "negative $mode: packaging exit 0, verify exit $vrc" | tee -a "$LOG"
-              [ "$vrc" != 0 ] || { echo "::error::negative check '$mode': an unsigned uninstaller passed both packaging and verification"; exit 1; }
-            else
-              echo "negative $mode: packaging exit $rc" | tee -a "$LOG"
-              grep -q "did not sign the uninstaller" "$LOG" || { echo "::error::negative check '$mode': packaging failed for another reason"; tail -20 "$LOG"; exit 1; }
+          set -euo pipefail
+          mkdir -p target/windows-gui/inputs target/windows-gui/cli-package
+          if [ "${{ steps.sign.outputs.mode }}" = "unsigned" ]; then
+            cp target/sign/stage1/cli/uniclip.exe target/windows-gui/inputs/uniclip.exe
+          else
+            cp target/sign/stage1-signed/cli/uniclip.exe target/windows-gui/inputs/uniclip.exe
+            # Fault: unsigned CLI executables handed to the packaging script must stop it.
+            if WINDOWS_SIGNED_DIR=target/sign/stage1/cli REQUIRE_WINDOWS_SIGNED=1 bash scripts/ci/package-cli.sh "${{ matrix.target }}" \
+                 target/sign/stage1/cli/uniclip.exe target/sign/stage1/cli/uniclipd.exe > target/windows-gui/faults/unsigned-cli.log 2>&1; then
+              echo "::error::package-cli.sh accepted unsigned CLI executables as signed"; exit 1
             fi
-            rm -rf "$OUT"
-          done
-
-      - name: build the CLI used to read history back
-        shell: bash
-        run: |
-          mkdir -p target/windows-gui/inputs
-          scripts/ci/build-go-cli.sh "${{ matrix.target }}" target/windows-gui/inputs/uniclip.exe
+            grep -q "was not signed" target/windows-gui/faults/unsigned-cli.log
+            WINDOWS_SIGNED_DIR=target/sign/stage1-signed/cli REQUIRE_WINDOWS_SIGNED=1 bash scripts/ci/package-cli.sh "${{ matrix.target }}" \
+              target/sign/stage1/cli/uniclip.exe target/sign/stage1/cli/uniclipd.exe
+            mv uniclipboard-cli-*.zip cli-signatures.json target/windows-gui/cli-package/
+            mkdir -p target/sign/cli-unpacked
+            7z x -y -otarget/sign/cli-unpacked target/windows-gui/cli-package/uniclipboard-cli-*.zip
+            python apps/gui-go/packaging/windows/sign.py verify --out target/windows-gui/signatures-cli.json ${SIGN_VERIFY_ARGS:-} \
+              target/sign/cli-unpacked/uniclip.exe target/sign/cli-unpacked/uniclipd.exe
+          fi
           cp target/windows-gui/newer/ACCEPTANCE-*-setup.exe target/windows-gui/inputs/
 
       - name: hashes of the shipped files
@@ -977,7 +1197,9 @@ jobs:
           path: |
             target/windows-gui/SHA256SUMS.txt
             target/windows-gui/payload-verification*.json
-            target/windows-gui/negative/
+            target/windows-gui/faults/
+            target/windows-gui/cli-package/
+            target/sign/signing-evidence.json
             target/windows-gui/signatures*.json
             target/windows-gui/shipped/package-manifest.json
             target/windows-gui/newer/package-manifest.json
@@ -1017,7 +1239,7 @@ jobs:
       - name: artifact suffix
         id: sfx
         shell: bash
-        run: echo "sfx=${{ inputs.signing_self_test == true && '-signing-selftest' || '' }}" >> "$GITHUB_OUTPUT"
+        run: echo "sfx=${{ needs.package-windows-gui.outputs.sfx }}" >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-python@v6
         with:
@@ -1041,36 +1263,44 @@ jobs:
           name: windows-gui-evidence-${{ matrix.target }}${{ steps.build-mode.outputs.suffix }}${{ steps.sfx.outputs.sfx }}
           path: package-evidence
 
-      - name: trust the throwaway self-test certificate (signing self-test only)
-        if: steps.sfx.outputs.sfx == '-signing-selftest'
+      - name: trust the test certificate on this disposable runner (test-certificate runs only)
+        if: needs.package-windows-gui.outputs.thumbprint != ''
         shell: pwsh
+        env:
+          MODE: ${{ needs.package-windows-gui.outputs.mode }}
         run: |
-          # Disposable runner only; proves signing mechanics, not a publisher identity.
-          # An elevated runner (windows-latest) trusts the certificate machine-wide. The hosted arm64 runner is not
-          # elevated and a root added to the user store needs an interactive confirmation that hangs the job, so
-          # there only the chain trust is waived: the verifier still requires the self-test signer subject, a
-          # timestamp and an intact hash.
-          $cer = (Resolve-Path inputs/selftest.cer).Path
-          try {
-            Import-Certificate -FilePath $cer -CertStoreLocation Cert:\LocalMachine\Root -ErrorAction Stop | Out-Null
-            Import-Certificate -FilePath $cer -CertStoreLocation Cert:\LocalMachine\TrustedPublisher -ErrorAction Stop | Out-Null
-            'trusted in LocalMachine stores'
-          } catch {
-            "LocalMachine stores unavailable ($($_.Exception.Message)); the chain trust is waived for the signer subject only"
-            'SELFTEST_UNTRUSTED_ROOT=1' | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+          # A test certificate proves signing mechanics only: not a publisher identity, not machine trust, and nothing about
+          # antivirus or SmartScreen. The verifier pins the signer thumbprint, a timestamp and an intact digest in every case.
+          # The self-test certificate is trusted machine-wide where the runner is elevated (windows-latest). The hosted arm64
+          # runner is not elevated and a root added to the user store needs an interactive confirmation that hangs the job.
+          # The SignPath test certificate chains to a test root this job does not install: its chain trust is always waived.
+          if ($env:MODE -eq 'selftest') {
+            $cer = (Resolve-Path inputs/selftest.cer).Path
+            try {
+              Import-Certificate -FilePath $cer -CertStoreLocation Cert:\LocalMachine\Root -ErrorAction Stop | Out-Null
+              Import-Certificate -FilePath $cer -CertStoreLocation Cert:\LocalMachine\TrustedPublisher -ErrorAction Stop | Out-Null
+              'trusted in LocalMachine stores'
+            } catch {
+              "LocalMachine stores unavailable ($($_.Exception.Message)); the chain trust is waived for the pinned signer only"
+              'TEST_CERT_UNTRUSTED_ROOT=1' | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+            }
+          } else {
+            'TEST_CERT_UNTRUSTED_ROOT=1' | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
           }
-          # sign.py refuses to waive the chain trust without this marker; it exists only in this self-test mode.
-          'SIGNING_SELFTEST=1' | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+          # sign.py refuses to waive the chain trust without this marker; it exists only for test certificates.
+          'SIGNING_TEST_CERT=1' | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
 
       - name: install, run, update and uninstall the packages
         shell: bash
+        env:
+          PINNED_THUMBPRINT: ${{ needs.package-windows-gui.outputs.thumbprint }}
         run: |
           set -euo pipefail
           SIGNED_ARGS=""
           if [ "${{ needs.package-windows-gui.outputs.signed }}" = "true" ]; then
             SIGNED_ARGS="--expect-signed --sign-verifier apps/gui-go/packaging/windows/sign.py"
-            if [ "${SIGNING_SELFTEST:-}" = "1" ]; then SIGNED_ARGS="$SIGNED_ARGS --sign-selftest-cert inputs/selftest.cer"; fi
-            if [ "${SELFTEST_UNTRUSTED_ROOT:-}" = "1" ]; then SIGNED_ARGS="$SIGNED_ARGS --sign-untrusted-root"; fi
+            if [ -n "${PINNED_THUMBPRINT}" ]; then SIGNED_ARGS="$SIGNED_ARGS --sign-expect-thumbprint ${PINNED_THUMBPRINT}"; fi
+            if [ "${TEST_CERT_UNTRUSTED_ROOT:-}" = "1" ]; then SIGNED_ARGS="$SIGNED_ARGS --sign-untrusted-root"; fi
           fi
           MANIFEST=$(find package-evidence -path '*shipped/package-manifest.json' | head -1)
           DAEMON_SHA=$(python -c "import json,sys;d=json.load(open(sys.argv[1]))['daemon'];print(d.get('shippedSha256') or d['sha256'])" "$MANIFEST")
@@ -1149,6 +1379,14 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # Windows: uniclip.exe and uniclipd.exe are signed one by one (package-cli.sh). A release must not ship them
+          # unsigned; the GUI installer's signature covers nothing in this archive. Test certificates are never used here.
+          REQUIRE_WINDOWS_SIGNED: ${{ inputs.require_signing == true && '1' || '' }}
+          SIGN_BACKEND: ${{ secrets.WINDOWS_SIGN_BACKEND }}
+          AZURE_SIGN_ENDPOINT: ${{ secrets.AZURE_SIGN_ENDPOINT }}
+          AZURE_SIGN_ACCOUNT: ${{ secrets.AZURE_SIGN_ACCOUNT }}
+          AZURE_SIGN_PROFILE: ${{ secrets.AZURE_SIGN_PROFILE }}
+          AZURE_SIGN_DLIB: ${{ secrets.AZURE_SIGN_DLIB }}
         run: |
           EXE=""
           case "${{ matrix.target }}" in *windows*) EXE=".exe" ;; esac

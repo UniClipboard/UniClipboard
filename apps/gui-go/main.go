@@ -24,7 +24,6 @@ import (
 var assets embed.FS
 
 type HostService struct {
-	iconFeed         atomic.Pointer[iconFeed] // published once the tray exists; window events may fire before that
 	app              *application.App
 	client           *daemonclient.Client
 	effects          *visualEffects
@@ -105,7 +104,6 @@ func (h *HostService) openMainWindow() {
 		Name: "main", Title: "UniClipboard", URL: "/", Width: 1100, Height: 720, MinWidth: 900, MinHeight: 600,
 		Mac: application.MacWindow{TitleBar: application.MacTitleBarHiddenInset},
 	}))
-	w.OnWindowEvent(events.Common.WindowFocus, func(*application.WindowEvent) { h.noteUserLooked() }) // the user is looking at it
 	w.RegisterHook(events.Common.WindowClosing, func(e *application.WindowEvent) {
 		if h.quitting.Load() {
 			return

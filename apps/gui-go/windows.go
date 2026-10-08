@@ -166,7 +166,6 @@ func (h *HostService) showQuickPanel() {
 	if !ok {
 		return
 	}
-	h.noteUserLooked()
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	prefs, err := h.loadQuickPanelSettings(ctx)
 	cancel()

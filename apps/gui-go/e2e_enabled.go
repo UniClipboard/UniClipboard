@@ -60,9 +60,6 @@ func (s *EvidenceService) Control(action string) error {
 	if handled, err := s.controlQuickPanel(action); handled {
 		return err
 	}
-	if handled, err := s.controlTrayIcon(action); handled {
-		return err
-	}
 	h := s.host
 	main, ok := h.app.Window.GetByName("main")
 	switch action {

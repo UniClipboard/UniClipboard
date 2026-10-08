@@ -30,10 +30,9 @@ type trayMenu struct {
 	published   []menuEntry // what the platform menu last showed, so an unchanged menu is not republished
 
 	tray                                                    *application.SystemTray
-	icon                                                    *trayIcon
-	feed                                                    *iconFeed
 	menu                                                    *application.Menu
 	devices                                                 *deviceMenu
+	icon                                                    *trayIcon
 	sync, open, settings, checkUpdate, restart, lightweight *application.MenuItem
 	quit                                                    *application.MenuItem
 }
@@ -56,6 +55,9 @@ func (h *HostService) initTray() {
 	t.menu = menu
 
 	t.tray = h.app.SystemTray.New()
+	t.icon = newTrayIcon(t.tray)
+	t.icon.show()
+	watchSystemTheme(h.app, func() { go t.icon.show() }) // an event handler may run on the main thread, which the icon call waits for
 	t.tray.SetTooltip("UniClipboard")
 	t.tray.SetMenu(menu)
 	// Set before the refresh goroutine and the event handlers below exist, so every render sees it. t.mu keeps the
@@ -77,20 +79,14 @@ func (h *HostService) initTray() {
 	}
 	t.devices.mu.Unlock()
 	t.tray.OnClick(h.showMainWindow)
-	t.icon = newTrayIcon(t.tray)
-	t.feed = newIconFeed(h, t.icon)
-	h.iconFeed.Store(t.feed)
-	t.icon.start()
-	watchSystemTheme(h.app, t.icon.requestPaint)
 
 	// Keep the toggle label in step with settings changed from any window.
-	h.app.Event.On(settingsChangedEvent, func(e *application.CustomEvent) { h.refreshTraySync(e.Data); t.feed.requestRefresh() })
+	h.app.Event.On(settingsChangedEvent, func(e *application.CustomEvent) { h.refreshTraySync(e.Data) })
 	h.app.Event.On(devicesChangedEvent, func(*application.CustomEvent) { t.devices.requestRefresh() })
 	go h.syncTrayFromDaemon()
 	trayCtx, stopTray := context.WithCancel(context.Background())
 	h.stopTray = stopTray
 	go t.devices.run(trayCtx)
-	go t.feed.run(trayCtx)
 }
 
 // menuEntry is the part of a menu item the user can see.
@@ -114,15 +110,7 @@ func (t *trayMenu) view() []menuEntry {
 	return append(view, t.devices.entries()...)
 }
 
-// noteUserLooked tells the tray icon that the user opened a window: a new-content dot and an attention state have been seen.
-func (h *HostService) noteUserLooked() {
-	if feed := h.iconFeed.Load(); feed != nil {
-		feed.userLooked()
-	}
-}
-
 func (h *HostService) showMainWindow() {
-	h.noteUserLooked()
 	h.mainMu.Lock()
 	defer h.mainMu.Unlock() // two callers must not both create the window
 	w, ok := h.app.Window.GetByName("main")
@@ -177,12 +165,9 @@ func (t *trayMenu) setLanguage(tag string) {
 
 func (t *trayMenu) setSyncEnabled(enabled bool) {
 	t.mu.Lock()
+	defer t.mu.Unlock()
 	t.syncEnabled = enabled
 	t.sync.SetLabel(t.syncLabel())
-	t.mu.Unlock()
-	if t.feed != nil { // the icon follows the daemon's settings through one reader, so an older snapshot cannot overwrite a newer answer
-		t.feed.requestRefresh()
-	}
 }
 
 // reserveSync serializes tray sync toggles; it reports false when one is running.

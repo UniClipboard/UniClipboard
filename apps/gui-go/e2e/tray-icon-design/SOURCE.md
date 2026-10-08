@@ -9,4 +9,4 @@
   - `TrayBMotion.dc.html` `0596ea1900fab75c8aeae9c3376d576f35ef109ac046e693c9ea898d651b0538`
 - `*.svg`：由 `TrayBStates` 的“macOS 浅色”列图标原样截取（每状态一个），外加 44 px 画布（18 pt 画稿居中于 22 pt）与浅色菜单栏底色 `#E9E9EC`；`new` 是“同步完成”加新内容圆点。
 - `*.png`：用 `@resvg/resvg-js` 2.6.2 对上面的 SVG 独立栅格化（`rasterize.mjs`，输入为画板源文件路径和输出目录），与 Go 渲染器无共享代码。
-- 对比由 e2e 构建的 `tray-icon-compare` 控制命令完成（`e2e/tray_icon_run.py`）。
+- 对比由 e2e 构建的 `tray-icon-compare` 控制命令完成（`e2e/tray_icon_run.py`）。当前托盘只显示一个静态图标，验收只用 `synced.svg` / `synced.png`；其余状态的文件保留作设计参照，供以后恢复状态时使用。

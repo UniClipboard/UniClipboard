@@ -5,7 +5,6 @@ import (
 	"image/color"
 	"os/exec"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -21,43 +20,18 @@ var (
 	linuxDarkIcon  = iconPalette{fg: color.NRGBA{0x1B, 0x1B, 0x1B, 255}}
 )
 
-// linuxIconPalette is chosen once per process: asking the desktop starts a process, which must not happen for every animation frame.
-var linuxIconPalette = sync.OnceValue(func() iconPalette {
+func trayIconSpec() iconSpec {
+	pal := linuxLightIcon
 	if gsetting("org.gnome.desktop.interface", "color-scheme") == "'prefer-light'" {
-		return linuxDarkIcon
+		pal = linuxDarkIcon
 	}
-	return linuxLightIcon
-})
-
-func renderTrayFrame(v iconView) ([]byte, error) {
-	return encodeIcon(iconSpec{base: v.base, dot: v.dot, earL: v.pose.left, earR: v.pose.right, size: linuxTrayPx, art: linuxTrayPx, pal: linuxIconPalette()})
+	return iconSpec{size: linuxTrayPx, art: linuxTrayPx, pal: pal}
 }
-
-func trayFrameVariant() string { return "" }
 
 func applyTrayIcon(tray *application.SystemTray, data []byte) { tray.SetIcon(data) }
 
-// watchSystemTheme: the colour scheme is read once at the first frame; a later change needs a restart (a boundary, see the document).
+// watchSystemTheme: the colour scheme is read when the icon is shown; a later change needs a restart (a boundary, see the document).
 func watchSystemTheme(*application.App, func()) {}
-
-// systemReducesMotion reads GNOME's enable-animations; other desktops have no common setting, so motion stays on there.
-func systemReducesMotion() bool {
-	motionMu.Lock()
-	defer motionMu.Unlock()
-	if time.Since(motionRead) > motionCacheFor {
-		motionOff, motionRead = gsetting("org.gnome.desktop.interface", "enable-animations") == "false", time.Now()
-	}
-	return motionOff
-}
-
-// The setting is cached for a few seconds so a burst of events does not start a gsettings process each.
-const motionCacheFor = 5 * time.Second
-
-var (
-	motionMu   sync.Mutex
-	motionOff  bool
-	motionRead time.Time
-)
 
 func gsetting(schema, key string) string {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
@@ -68,6 +42,3 @@ func gsetting(schema, key string) string {
 	}
 	return strings.TrimSpace(string(out))
 }
-
-// prepareTrayPlatform reads the colour scheme before the painter holds the icon lock: asking the desktop may take up to a second.
-func prepareTrayPlatform() { linuxIconPalette() }

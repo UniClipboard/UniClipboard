@@ -211,10 +211,19 @@ jobs:
 
       - name: Gather the acceptance results
         if: always()
+        # The acceptance containers write as root with 0600 state files, so the export reads with sudo, but only an allowlist of report, log,
+        # evidence-line and hash files leaves the scratch tree: no profile, identity or key material, no home copy, no raw GUI binary, no
+        # AppImage. The exported copy is handed to the runner user; the permissions of the product profile are not touched.
         run: |
+          set -euo pipefail
           mkdir -p "$RUNNER_TEMP/acceptance"
           if [ -d "$RUNNER_TEMP/accept" ]; then
-            rsync -a --exclude='*.AppImage' --exclude='*.tar.gz' --exclude='squashfs-root' "$RUNNER_TEMP/accept/" "$RUNNER_TEMP/acceptance/"
+            cd "$RUNNER_TEMP/accept"
+            sudo find . -type f \( -name '*.log' -o -name '*.jsonl' -o -name '*.control' -o -name 'appimage-assertions.json' -o -name 'package-manifest.json' \
+              -o -name 'steps.txt' -o -name 'HEAD.txt' -o -name 'host-machine.txt' -o -name 'SHA256SUMS.txt' -o -name '*.sha256' -o -name 'good.json' -o -name 'bad.json' \) \
+              -not -path '*/home-copy/*' -not -path '*/squashfs-root/*' -print0 > "$RUNNER_TEMP/acceptance.list"
+            sudo rsync -a --from0 --files-from="$RUNNER_TEMP/acceptance.list" ./ "$RUNNER_TEMP/acceptance/"
+            sudo chown -R "$(id -u):$(id -g)" "$RUNNER_TEMP/acceptance"
           fi
 
       - name: Upload the acceptance results

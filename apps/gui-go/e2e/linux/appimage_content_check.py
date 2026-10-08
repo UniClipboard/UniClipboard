@@ -90,5 +90,29 @@ hooks = [p for p in (root / 'apprun-hooks').glob('*.sh')] if (root / 'apprun-hoo
 forced = [p.name for p in hooks if re.search(r'^\s*export GDK_BACKEND=', p.read_text(), re.M)]
 check('C11 ' + ('CONTROL: the GTK hook still forces GDK_BACKEND (differential package)' if x11_hook else 'no AppRun hook exports GDK_BACKEND (GTK chooses; a user value is honoured)'),
       bool(forced) if x11_hook else (bool(hooks) and not forced), {'hooks': [p.name for p in hooks], 'forcing': forced, 'manifest': manifest['appimage'].get('gdkBackendHook')})
+# Runtime observations are supplied by a real execution of this exact artifact.
+# They extend the content assertions without claiming coverage of unexecuted dlopen paths.
+if '--runtime-inventory' in sys.argv:
+    inventory_path = Path(sys.argv[sys.argv.index('--runtime-inventory') + 1])
+    inventory = json.loads(inventory_path.read_text())
+    image_hashes = {value for name, value in manifest['sha256'].items() if name.endswith('.AppImage')}
+    check('R1 the runtime inventory belongs to this exact AppImage',
+          inventory.get('imageSha256') in image_hashes, inventory.get('imageSha256'))
+    rows = inventory['libraries']
+    check('R2 the runtime inventory is nonempty and records its coverage boundary',
+          bool(rows) and bool(inventory.get('scope')), inventory.get('scope'))
+    for row in rows:
+        name, ownership = row['name'], row['classification']
+        if ownership == 'bundled':
+            relative = Path(row['bundleRelativePath'])
+            valid_path = not relative.is_absolute() and '..' not in relative.parts
+            file = root / relative
+            digest = hashlib.sha256(file.read_bytes()).hexdigest() if valid_path and file.is_file() else None
+            check(f'R3 {name}: the observed bundled file is present with identical bytes',
+                  digest is not None and digest == row['sha256'], {'path': str(relative), 'sha256': digest})
+        elif ownership in ('host-owned', 'host-staged'):
+            check(f'R4 {name}: the observed {ownership} library is absent from the bundle', name not in names and row['soname'] not in names, {'file': name, 'soname': row['soname']})
+        else:
+            check(f'R5 {name}: the observation has a recognised ownership class', False, ownership)
 out.write_text(json.dumps({'passed': all(c['ok'] for c in checks), 'checks': checks}, indent=2) + '\n')
 sys.exit(0 if all(c['ok'] for c in checks) else 1)

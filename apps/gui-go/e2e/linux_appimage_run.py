@@ -28,6 +28,7 @@ import json
 import os
 import re
 import shutil
+import shlex
 import signal
 import subprocess
 import sys
@@ -126,12 +127,12 @@ class Run:
         print(('PASS ' if ok else 'FAIL ') + name, flush=True)
         return ok
 
-    def launch(self, tag, extra_env=None):
+    def launch(self, tag, extra_env=None, args=()):
         evidence, control = self.out / f'{tag}.jsonl', self.out / f'{tag}.control'
         for f in (evidence, control):
             f.write_text('')
         env = dict(self.env, UC_GUI_GO_EVIDENCE=str(evidence), UC_GUI_GO_E2E_CONTROL_FILE=str(control), **(extra_env or {}))
-        proc = subprocess.Popen([str(self.appimage)], env=env, cwd=str(self.appimage.parent), stdout=(self.out / f'{tag}.log').open('w'),
+        proc = subprocess.Popen([str(self.appimage), *args], env=env, cwd=str(self.appimage.parent), stdout=(self.out / f'{tag}.log').open('w'),
                                 stderr=subprocess.STDOUT)
         return Launch(proc, evidence, control, self.out / f'{tag}.log')
 
@@ -394,6 +395,10 @@ def full(run, launches, args, sandbox, home, target, original_sha):
               res.get('ok') and str(target) in exec_line and '--autostart' in exec_line and '.mount_' not in body and 'legacy' not in body, [res, body])
     res = gui.invoke('as-off', 'update_autostart', {'enabled': False})
     run.check('5 disabling autostart removes the entry', res.get('ok') and not entry.exists(), res)
+    on = gui.invoke('update-autostart-on', 'update_autostart', {'enabled': True})
+    enabled_before = entry.read_text() if entry.exists() else ''
+    run.check('9 autostart is enabled before launching either update scenario',
+              on.get('ok') and str(target) in enabled_before and '--autostart' in enabled_before, [on, enabled_before])
     gui.ctl('exit', 'control-exit')
     code = gui.proc.wait(timeout=60)
     deadline = time.monotonic() + 20
@@ -463,7 +468,15 @@ def full(run, launches, args, sandbox, home, target, original_sha):
         run.check('7 persisted user data files survived the update (lifecycle state files excluded: they are rewritten at daemon start)',
                   set(data_before) <= set(data_after), sorted(set(data_before) - set(data_after)))
         # A fresh launch of the replaced AppImage: same profile, new daemon, user data readable through the real API.
-        post = run.launch('post-update')
+        enabled_after = entry.read_text() if entry.exists() else ''
+        exec_line = next((line[5:] for line in enabled_after.splitlines() if line.startswith('Exec=')), '')
+        exec_args = shlex.split(exec_line)
+        entry_valid = enabled_after == enabled_before and exec_args == [str(target), '--autostart'] and target.is_file() and os.access(target, os.X_OK)
+        run.check('9 the enabled entry survives the byte replacement unchanged and Exec resolves to the new executable',
+                  entry_valid, {'before': enabled_before, 'after': enabled_after, 'exec': exec_args})
+        if not entry_valid:
+            raise RuntimeError('autostart Exec is invalid after the update')
+        post = run.launch('post-update', args=exec_args[1:])
         launches.append(post)
         pconn, pdaemon = wait_daemon(home)
         run.check('8 the replaced AppImage starts a daemon on the existing data root', pconn is not None and pdaemon not in (None, old_daemon), [str(pconn), pdaemon, old_daemon])
@@ -472,6 +485,9 @@ def full(run, launches, args, sandbox, home, target, original_sha):
         run.check('8 the v2 page reached the daemon (panel ready)', pstate.get('panelReady') is True, pstate)
         pmount = inspect_processes(run, '8', post.proc.pid, daemon_sha, pdaemon)
         run.check('8 the running image is v2 (marker file in its mount)', pmount is not None and (Path(pmount) / 'usr/share/uniclipboard/update-marker.txt').exists(), pmount)
+        state_after = post.ctl('autostart-state updated', 'autostart-updated')['detail']
+        run.check('9 executing the updated entry bootstraps WebView and reports autostart enabled',
+                  state_after.get('setting') is True and state_after.get('enabled') is True and state_after.get('path') == str(entry), state_after)
         after = post.invoke('ad2', 'get_auto_download_update')
         run.check('8 the user setting written before the update reads back through the new daemon', after['data'] == flipped, after)
         space_after = cli(run, args, 'space', 'status')

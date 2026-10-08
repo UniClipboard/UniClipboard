@@ -151,7 +151,10 @@ fn describe(label: &str, status: &Value) {
 /// last used by an older product version. Returns the live (stopped) handle so
 /// the profile is not cleaned up early, plus the profile name.
 async fn upgrade_ready_profile(label: &str) -> (TestDaemon, String) {
-    let name = format!("dev-upgrade-retry-{label}-{}", uuid::Uuid::new_v4().as_simple());
+    // Keep the profile name short: Engine nests long hashed directories below it
+    // and Windows paths beyond MAX_PATH fail with ERROR_PATH_NOT_FOUND.
+    let unique = uuid::Uuid::new_v4().simple().to_string();
+    let name = format!("dev-up-{label}-{}", &unique[..8]);
     let profile = TestProfile::for_upgrade_fixture(&name).expect("create isolated profile");
     let mut daemon = TestDaemon::start_clean_with(profile, &NodeBinarySet::current(), None)
         .await

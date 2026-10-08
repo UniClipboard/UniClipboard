@@ -56,6 +56,8 @@
 - 托管 runner 是 Windows Server，不是 Windows 10/11 客户端版本。
 - 签名后的 `signtool verify` 与签名版本的更新流程。
 
+前端遥测的平台差异（有意为之）：Windows 作业在 `build_mode=test` 时清空 `VITE_SENTRY_DSN`，而 macOS 作业不清空。原因是 Windows 验收在一次性 runner 上真实启动 GUI，不应让前端向生产 Sentry 上报；两者的差异不是遗漏，改动任一侧时需同步评估另一侧。
+
 遥测：验收在首次启动前写入关闭遥测的偏好文件，避免 CI 向生产 Sentry/PostHog 上报。Sentry 调试符号上传沿用 `build-sidecar` 现有逻辑（`build_mode=test` 不上传）；前端 source map 上传与 macOS 相同，仅在非 test 且有密钥时执行。
 
 ## Authenticode 决定（待用户）
@@ -77,3 +79,12 @@
 - 只读目录的便携包：GUI 进程运行，但 daemon 不启动，也没有在目录之外写入以应用命名的数据（对应已有问题 #1259：daemon 启动失败时 GUI 不报错）。
 - 该运行使用 `test` 构建方式（优化级别较低），不是发布构建；未签名；托管 runner 不是 Windows 10/11 客户端版本（arm64 例外，为 Windows 11）。
 - 发现并修复的两个阻塞问题：`apps/gui-go/environment_windows.go` 与 `environment_portable.go` 重复定义 `validateIsolation`（#1875 之后 Windows 版 GUI 无法编译）；固定的 Engine `e86f94ce` 在 Windows 上无法编译（`uc-infra-storage` 使用未声明的 `windows-sys`，由 Engine PR #163 修复）。
+
+## 无生产副作用的优化构建（release 构建方式）
+
+`build.yml` 新增 `upload_symbols` 输入（默认 true，保持原行为）。设为 false 时，`build_mode=release` 仍使用完整优化构建，但不上传 Sentry 调试符号，也不上传前端 source map。用于在不产生生产副作用的前提下验收发布形态的构建；它不代表允许打 tag、发布或写更新源，`release.yml` 的失败关闭守卫没有改动。发布形态的 daemon 编译进了生产遥测密钥，因此验收在首次启动前写入关闭遥测的偏好。
+
+## 本 PR 的 CI 基线
+
+- `cargo audit`：RUSTSEC-2026-0330 与 RUSTSEC-2026-0331（`libcrux-kem 0.0.9`）。`main` 的 `Cargo.lock` 中版本相同，已有跟踪问题 #1918、#1919；本 PR 的 `Cargo.lock` 相对 `main` 只改动 Engine 固定版本与一条 `windows-sys` 依赖边，没有改动 `libcrux-kem`。升级加密库不在本任务范围，未增加忽略项。
+- `bun audit (docs-site)`：9 项（Next.js、sharp、source-map-js、KaTeX），`main` 上同样失败；本 PR 未触及 `docs-site` 与任何 lockfile 的 JS 部分。未增加忽略项。

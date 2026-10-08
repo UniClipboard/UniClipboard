@@ -293,7 +293,8 @@ def scenario_a(a, s):
           and norm(k.get('UninstallString', '').strip('"')) == norm(str(INSTDIR / 'uninstall.exe')), k)
     check('A5 Start menu and desktop shortcuts exist',
           (Path(os.environ['APPDATA']) / 'Microsoft/Windows/Start Menu/Programs/UniClipboard.lnk').is_file()
-          and (Path.home() / 'Desktop/UniClipboard.lnk').is_file() or (Path(os.environ.get('PUBLIC', 'C:/Users/Public')) / 'Desktop/UniClipboard.lnk').is_file())
+          and ((Path.home() / 'Desktop/UniClipboard.lnk').is_file()
+               or (Path(os.environ.get('PUBLIC', 'C:/Users/Public')) / 'Desktop/UniClipboard.lnk').is_file()))
     check('A6 clean machine: nothing was running or stored before the first launch', not any(r.exists() for r in DATA_ROOTS))
     # The shipped daemon has the production telemetry keys compiled in. The acceptance must never report to
     # production Sentry/PostHog, so the user's telemetry preference file is written as "off" before the first

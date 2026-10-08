@@ -226,11 +226,15 @@ def main():
 
     plugins = fetch_tauri_utils(out / 'plugins')
     setup = out / f'{prefix}{product}_{version}_{arch}-setup.exe'
-    nsis_sign = [f"-X!uninstfinalize '{nsis_sign_cmd(sign_tpl)}'", f"-X!finalize '{nsis_sign_cmd(sign_tpl)}'"] if sign_tpl else []
+    # NSIS signs the generated uninstaller it embeds; the finished installer is signed right after (a `!finalize` did not sign it).
+    nsis_sign = [f"-X!uninstfinalize '{nsis_sign_cmd(sign_tpl)}'"] if sign_tpl else []
     run(['makensis', '-V2', *nsis_sign, f'-DPRODUCTNAME={product}', f'-DVERSION={version}', f'-DVERSIONWITHBUILD={version}.0',
          f'-DMANUFACTURER={manufacturer}', f'-DBUNDLEID={ident}', f'-DMAINBINARYNAME={product}.exe', f'-DSRC_MAIN={exe}',
          f'-DSRC_DAEMON={daemon_ship.resolve()}', f'-DICON={ROOT / "apps/gui-go/icons/icon.ico"}', f'-DOUTFILE={setup}',
          f'-DHOOKS={ROOT / "apps/gui-go/windows/installer-hooks.nsh"}', f'-DPLUGINDIR={plugins}', str(GUI / 'windows/installer.nsi')])
+
+    if sign_tpl:
+        run(sign_cmd(sign_tpl, setup))
 
     portable = out / f'{prefix}{product}_{version}_{arch}-portable.zip'
     with zipfile.ZipFile(portable, 'w', zipfile.ZIP_DEFLATED) as z:

@@ -78,6 +78,7 @@ def preflight(pid):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--out', type=Path, required=True)
+    parser.add_argument('--design', choices=['cat', 'glyph'], default='cat', help='which tray design the GUI runs (UC_TRAY_ICON)')
     parser.add_argument('--skip-menu', action='store_true', help='skip the real-menu scenario (3)')
     args = parser.parse_args()
     out = args.out.resolve()
@@ -94,7 +95,7 @@ def main():
     gui_env = isolated_env(home, profile, {'PATH': path, 'UC_GPUI_QUICK_PANEL': '0', 'UC_GUI_GO_ISOLATED': '1', 'UC_DISABLE_SYSTEM_CLIPBOARD': '1',
                                           'UC_GUI_GO_EVIDENCE': str(evidence), 'UC_GUI_GO_E2E_PHASE': 'wake', 'UC_GUI_GO_EXIT_MODE': 'full',
                                           'UC_GUI_GO_E2E_CONTROL_FILE': str(control), 'UC_GUI_GO_E2E_NATIVE_STATE': '1',
-                                          'UC_GUI_GO_E2E_SECRET': 'tray-icon', 'UC_GUI_GO_E2E_NOTIFY_LOG': str(out / 'notifications.log')})
+                                          'UC_GUI_GO_E2E_SECRET': 'tray-icon', 'UC_TRAY_ICON': args.design, 'UC_GUI_GO_E2E_NOTIFY_LOG': str(out / 'notifications.log')})
     binary = ROOT / 'target/gui-go/UniClipboardGoE2E.app/Contents/MacOS/gui-go'
     results = {'profile': profile, 'checks': [], 'passed': False, 'note': 'the tray shows one static image; no state or animation is checked'}
 
@@ -126,7 +127,7 @@ def main():
         res = gui.ctl(f'tray-icon-compare:{DESIGN}', 'tray-icon-compare')
         check('1 renderer image matches the independently rasterized design board and the template alpha rule holds', res['ok'], res['detail'])
         exp = gui.ctl(f'tray-icon-export:{out / "frames"}', 'tray-icon-export')
-        check('1 the platform image and the reference image export', exp['ok'], exp['detail'])
+        check('1 the platform image and the reference images export', exp['ok'], exp['detail'])
 
         pre = preflight(proc.pid)
         results['preflight'] = pre

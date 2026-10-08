@@ -14,7 +14,7 @@ import (
 
 // The tray cat is drawn from the design's own SVG path data, so the artwork has one source (tray_icon_design.go) and every
 // platform receives pixels from the same renderer. Only what the design uses is implemented: M L H V C S Q A Z (absolute and
-// relative), solid fills and knock-outs (destination-out).
+// relative), solid fills, round-capped strokes and knock-outs (destination-out).
 
 // point is a position in design units (the 24 x 24 grid).
 type point struct{ x, y float64 }
@@ -369,6 +369,86 @@ func fillPolys(paths []subpath) [][]point {
 	return polys
 }
 
+// strokePolys turns each segment into a rectangle. With round true every vertex also gets a disc (round joins and caps); otherwise
+// the ends of an open path keep a butt cap and corners get a miter join (SVG's defaults, miter limit 4). All pieces wind the same
+// way, so their coverage adds instead of cancelling.
+func strokePolys(paths []subpath, width float64, round bool) [][]point {
+	half := width / 2
+	var polys [][]point
+	disc := func(c point) {
+		const n = 20
+		poly := make([]point, n)
+		for i := range poly {
+			a := -2 * math.Pi * float64(i) / n // the same winding as the segment rectangles, so overlaps add up
+			poly[i] = point{c.x + half*math.Cos(a), c.y + half*math.Sin(a)}
+		}
+		polys = append(polys, poly)
+	}
+	dir := func(a, b point) (point, bool) {
+		dx, dy := b.x-a.x, b.y-a.y
+		l := math.Hypot(dx, dy)
+		if l == 0 {
+			return point{}, false
+		}
+		return point{dx / l, dy / l}, true
+	}
+	miter := func(prev, v, next point) {
+		d0, ok0 := dir(prev, v)
+		d1, ok1 := dir(v, next)
+		if !ok0 || !ok1 {
+			return
+		}
+		cross := d0.x*d1.y - d0.y*d1.x
+		if math.Abs(cross) < 1e-9 {
+			return // straight on (or a full reversal): nothing to join
+		}
+		side := 1.0
+		if cross > 0 {
+			side = -1 // the outer side of a clockwise turn is the left of the direction of travel
+		}
+		n0 := point{-d0.y * half * side, d0.x * half * side}
+		n1 := point{-d1.y * half * side, d1.x * half * side}
+		a, b := point{v.x + n0.x, v.y + n0.y}, point{v.x + n1.x, v.y + n1.y}
+		dot := d0.x*d1.x + d0.y*d1.y
+		poly := []point{v, a}
+		if ratio := math.Sqrt(2 / (1 + dot)); 1+dot > 1e-9 && ratio <= 4 { // 1 / sin(theta / 2) against the miter limit
+			k := 1 / (1 + dot)
+			poly = append(poly, point{v.x + (n0.x+n1.x)*k, v.y + (n0.y+n1.y)*k})
+		}
+		poly = append(poly, b)
+		if side > 0 { // keep the winding of the segment rectangles
+			poly[1], poly[len(poly)-1] = poly[len(poly)-1], poly[1]
+		}
+		polys = append(polys, poly)
+	}
+	for _, sp := range paths {
+		pts := sp.pts
+		if sp.closed && len(pts) > 1 && pts[0] != pts[len(pts)-1] {
+			pts = append(append([]point{}, pts...), pts[0])
+		}
+		for i := 0; i+1 < len(pts); i++ {
+			a, b := pts[i], pts[i+1]
+			d, ok := dir(a, b)
+			if !ok {
+				continue
+			}
+			nx, ny := -d.y*half, d.x*half
+			polys = append(polys, []point{{a.x + nx, a.y + ny}, {b.x + nx, b.y + ny}, {b.x - nx, b.y - ny}, {a.x - nx, a.y - ny}})
+		}
+		for i, pt := range pts {
+			switch {
+			case round:
+				disc(pt)
+			case i > 0 && i < len(pts)-1:
+				miter(pts[i-1], pt, pts[i+1])
+			case sp.closed && len(pts) > 2 && i == 0:
+				miter(pts[len(pts)-2], pt, pts[1])
+			}
+		}
+	}
+	return polys
+}
+
 // paint blends the colour with the given opacity over the surface where the polygons cover it.
 func (c *canvas) paint(polys [][]point, col color.NRGBA, opacity float64) {
 	mask := c.coverage(polys)
@@ -434,4 +514,13 @@ func clamp8(v float32) uint8 {
 func ellipsePath(cx, cy, rx, ry float64) string {
 	f := func(v float64) string { return strconv.FormatFloat(v, 'f', -1, 64) }
 	return strings.Join([]string{"M", f(cx - rx), " ", f(cy), "a", f(rx), " ", f(ry), " 0 1 0 ", f(2 * rx), " 0a", f(rx), " ", f(ry), " 0 1 0 ", f(-2 * rx), " 0z"}, "")
+}
+
+func roundRectPath(x, y, w, h, r float64) string {
+	f := func(v float64) string { return strconv.FormatFloat(v, 'f', -1, 64) }
+	return strings.Join([]string{
+		"M", f(x + r), " ", f(y), "h", f(w - 2*r), "a", f(r), " ", f(r), " 0 0 1 ", f(r), " ", f(r),
+		"v", f(h - 2*r), "a", f(r), " ", f(r), " 0 0 1 ", f(-r), " ", f(r),
+		"h", f(-(w - 2*r)), "a", f(r), " ", f(r), " 0 0 1 ", f(-r), " ", f(-r),
+		"v", f(-(h - 2*r)), "a", f(r), " ", f(r), " 0 0 1 ", f(r), " ", f(-r), "z"}, "")
 }

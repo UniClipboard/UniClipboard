@@ -17,7 +17,9 @@ var (
 	winDark  = iconPalette{fg: color.NRGBA{0xFF, 0xFF, 0xFF, 255}}
 )
 
-func trayIconSpec() iconSpec {
+func trayIconSpec() iconSpec { return trayIconSpecFor(designFromEnv()) }
+
+func trayIconSpecFor(d trayDesign) iconSpec {
 	size := 16
 	if px := w32.GetSystemMetrics(w32.SM_CXSMICON); px > 0 {
 		size = px
@@ -26,7 +28,7 @@ func trayIconSpec() iconSpec {
 	if w32.IsSystemCurrentlyDarkMode() {
 		pal = winDark
 	}
-	return iconSpec{size: size, art: float64(size), pal: pal}
+	return iconSpec{design: d, size: size, art: float64(size), pal: pal}
 }
 
 func applyTrayIcon(tray *application.SystemTray, data []byte) { tray.SetIcon(data) }

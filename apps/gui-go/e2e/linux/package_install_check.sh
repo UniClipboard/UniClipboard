@@ -79,7 +79,7 @@ launch() {
     /usr/bin/uniclipboard > /tmp/gui.log 2>&1 & gui=$!
     daemon=""; webkit=""
     for i in $(seq 90); do
-      daemon=$(pgrep -x uniclipd | head -1); webkit=$(pgrep -f WebKitWebProcess | head -1)
+      daemon=$(pgrep -x uniclipd | head -1); webkit=$(pgrep -f "[W]ebKitWebProcess" | head -1)
       [ -n "$daemon" ] && [ -n "$webkit" ] && break; sleep 1
     done
     sleep 10

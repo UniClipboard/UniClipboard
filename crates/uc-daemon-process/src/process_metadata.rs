@@ -648,9 +648,11 @@ mod tests {
             let temp = TempDir::new().unwrap();
             let executable = temp.path().join(name);
             fs::copy("/bin/sleep", &executable).unwrap();
-            // `fs::copy` leaves no writable descriptor open here, but a concurrent test thread that forks
-            // between the copy and the exec can still hold a duplicate of it: Linux then answers ETXTBSY
-            // until that child execs. Retry that one error; anything else is a real failure.
+            // Waiting strategy for ETXTBSY (errno 26, "Text file busy"): CI once failed at this spawn right after
+            // the copy. `fs::copy` closes its write descriptor before returning, so the cause is NOT established;
+            // a descriptor duplicated by a concurrent fork in another test thread is only a hypothesis (a
+            // 25 s Python reproduction with 6 forking threads produced no ETXTBSY in 3179 spawns). Retry that
+            // one errno briefly and fail loudly on anything else.
             let mut child = {
                 let mut attempts = 0;
                 loop {

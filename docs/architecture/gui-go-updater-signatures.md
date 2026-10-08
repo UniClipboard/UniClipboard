@@ -64,3 +64,18 @@ python3 scripts/sync-update-pages.py check --directory <snapshot> \
 当前服务源码未提供 staging 配置或只读注册验证入口。未经批准不得向生产注册试验版本，也不得为了验收修改服务 credentials/保护规则。待 Windows/Linux 生产打包接入及发布授权后，需验证真实六平台注册（含 linux-aarch64）、渠道提升、Pages 一致性和各 OS 真实下载安装。当前 `?from=` 仍不由客户端发送；这项实现没有改变其分析/路由语义。
 
 客户端也定义 beta/rc，但当前 FlareRelease 不提供这两个 Desktop 路由，publisher 不伪造它们，也不修改相关文件。新增渠道需要先由服务明确提供对应路由及渠道权威来源。
+
+## 已记录的隔离验收（2026-10-08）
+
+[生产密钥验收 run 37713328581](https://github.com/UniClipboard/UniClipboard/actions/runs/37713328581) 在源码 `049c6b1aa62aaf5f0cfa44abd415ba65e2bcdad9` 上完成，工具为 Go 1.27.1（linux/amd64）。现有加密 updater secret 被成功解密；两个真实 Go macOS 归档的签名由不变的 app.json 公钥、`Client.Verify` 和本地 HTTP `Client.Check/Download` 正向验证，篡改字节被拒绝。其他构建 job 全部跳过。
+
+| 输入架构 | 真实归档 SHA256 | `.sig` 文件 SHA256 |
+| --- | --- | --- |
+| aarch64 | `c80397a0d249d91037642dccf556b1809efbf2f327251448772462ec4cebd7b7` | `6120d0a56f898d7ec5a1b733cfc24c987c9d3e5121b0d4c3d4f3097ce2ea379c` |
+| x86_64 | `dc56eb0ec998c079500b260ca7981f4f970db519548ce2f3f6e875b78fe602f9` | `4bce2dd035a67243e0a676bc482c97c35991456bef844bff21831a58af04fcf8` |
+
+输入分别来自 [run 37638284857](https://github.com/UniClipboard/UniClipboard/actions/runs/37638284857) 和 [run 37638290509](https://github.com/UniClipboard/UniClipboard/actions/runs/37638290509) 的 test-mode 包。包装 provenance 的源码为 `32b9346810a83705c24a68435a91daef52148ef2`；workflow/sidecar 来源为 `368a27b3e2b34e9b8a0f717c82a5395b8de0b39d`。它们不是本次重新完成的优化 release 构建，也没有在本次验收中被安装或启动。
+
+最初 run `37713132288` 是启动失败，未执行任何 job；GitHub annotation 指出 reusable workflow 调用方只允许 `actions: none`。修复仅为隔离调用 job 赋予 `contents: read`、`actions: read`；随后新 run 才构成有效证据。
+
+FlareRelease 的不可变源码 `c5d4581dcb239862643cade8931e60799b7ede36` 在任务专用本地 Worker/D1/R2 环境中接受了六个平台的合成注册载荷，状态为 Ready，随后读回六条 artifact（含 linux-aarch64）。此结果仅证明本地服务合同；没有执行远端 staging/生产注册。

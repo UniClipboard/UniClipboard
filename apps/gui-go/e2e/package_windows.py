@@ -235,13 +235,19 @@ def main():
     plugins = fetch_tauri_utils(out / 'plugins')
     setup = out / f'{prefix}{product}_{version}_{arch}-setup.exe'
     # NSIS signs the generated uninstaller it embeds; the finished installer is signed right after (a `!finalize` did not sign it).
-    nsis_sign = [f"-X!uninstfinalize '{nsis_sign_cmd(sign_tpl)}'"] if sign_tpl else []
+    # NSIS ignores a failing !uninstfinalize command, so the signed uninstaller is copied out only when signing
+    # succeeded; a missing copy fails the packaging below and the copy is verified with the other signed files.
+    uninstaller_copy = out / 'uninstaller-signed.exe'
+    uninstaller_copy.unlink(missing_ok=True)
+    nsis_sign = [f"-X!uninstfinalize '{nsis_sign_cmd(sign_tpl)} && copy /Y \"%1\" \"{uninstaller_copy}\"'"] if sign_tpl else []
     run(['makensis', '-V2', *nsis_sign, f'-DPRODUCTNAME={product}', f'-DVERSION={version}', f'-DVERSIONWITHBUILD={version}.0',
          f'-DMANUFACTURER={manufacturer}', f'-DBUNDLEID={ident}', f'-DMAINBINARYNAME={product}.exe', f'-DSRC_MAIN={exe}',
          f'-DSRC_DAEMON={daemon_ship.resolve()}', f'-DICON={ROOT / "apps/gui-go/icons/icon.ico"}', f'-DOUTFILE={setup}',
          f'-DHOOKS={ROOT / "apps/gui-go/windows/installer-hooks.nsh"}', f'-DPLUGINDIR={plugins}', str(GUI / 'windows/installer.nsi')])
 
     if sign_tpl:
+        if not uninstaller_copy.exists():
+            sys.exit('signing was requested but NSIS did not sign the uninstaller (the !uninstfinalize command failed or did not run)')
         run(sign_cmd(sign_tpl, setup))
 
     portable = out / f'{prefix}{product}_{version}_{arch}-portable.zip'

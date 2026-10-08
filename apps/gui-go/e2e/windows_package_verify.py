@@ -66,11 +66,17 @@ def main():
             result['checks'].append({'check': f'{label}: {exe} present', 'ok': f is not None, 'sha256': sha256(f) if f else None})
             print(('PASS ' if f else 'FAIL ') + result['checks'][-1]['check'], flush=True)
         if args.require_signed:
-            targets = [setup] + [find(r, n) for r in (sx, pz) for n in ('UniClipboard.exe', 'uniclipd.exe')]
+            # The uninstaller is generated at install time; package_windows.py keeps the signed copy NSIS embeds.
+            uninstaller = args.package / 'uninstaller-signed.exe'
+            targets = [setup, uninstaller] + [find(r, n) for r in (sx, pz) for n in ('UniClipboard.exe', 'uniclipd.exe')]
+            if not uninstaller.exists():
+                result['checks'].append({'check': 'Authenticode: the signed uninstaller copy exists', 'ok': False})
+                print('FAIL ' + result['checks'][-1]['check'], flush=True)
+                targets.remove(uninstaller)
             sign_py = Path(__file__).resolve().parents[1] / 'packaging/windows/sign.py'
             cmd = [sys.executable, str(sign_py), 'verify', *([] if not args.signature_out else ['--out', str(args.signature_out)]), *map(str, targets)]
             ok = subprocess.run(cmd).returncode == 0
-            result['checks'].append({'check': 'Authenticode: setup and the unpacked GUI exe and daemon verify (signtool verify /pa)', 'ok': ok})
+            result['checks'].append({'check': 'Authenticode: setup, uninstaller and the unpacked GUI exe and daemon verify (signtool verify /pa)', 'ok': ok})
             print(('PASS ' if ok else 'FAIL ') + result['checks'][-1]['check'], flush=True)
         same = [c['sha256'] for c in result['checks'] if 'UniClipboard.exe' in c['check']]
         result['checks'].append({'check': 'GUI exe is identical in the installer and the portable zip', 'ok': len(set(same)) == 1 and None not in same})

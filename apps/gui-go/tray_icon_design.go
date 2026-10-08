@@ -43,17 +43,17 @@ var (
 type trayDesign int
 
 const (
-	designCat   trayDesign = iota // the "B solid cat"
-	designGlyph                   // the "one glyph, nine states" cards
+	designGlyph trayDesign = iota // the "one glyph, nine states" cards
+	designCat                     // the "B solid cat"
 )
 
-// designFromEnv picks the design for the running process: UC_TRAY_ICON=glyph selects the cards, anything else the cat. It exists so the two
-// can be compared on a real menu bar until one is chosen.
+// designFromEnv picks the design for the running process: the cards by default, UC_TRAY_ICON=cat selects the cat. It exists so the two can
+// be compared on a real menu bar until one is chosen.
 func designFromEnv() trayDesign {
-	if os.Getenv("UC_TRAY_ICON") == "glyph" {
-		return designGlyph
+	if os.Getenv("UC_TRAY_ICON") == "cat" {
+		return designCat
 	}
-	return designCat
+	return designGlyph
 }
 
 // iconPalette is the foreground colour a platform draws the cat with.

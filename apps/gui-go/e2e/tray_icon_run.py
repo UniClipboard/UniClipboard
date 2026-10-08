@@ -78,7 +78,7 @@ def preflight(pid):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--out', type=Path, required=True)
-    parser.add_argument('--design', choices=['cat', 'glyph'], default='cat', help='which tray design the GUI runs (UC_TRAY_ICON)')
+    parser.add_argument('--design', choices=['cat', 'glyph'], default='glyph', help='which tray design the GUI runs (UC_TRAY_ICON)')
     parser.add_argument('--skip-menu', action='store_true', help='skip the real-menu scenario (3)')
     args = parser.parse_args()
     out = args.out.resolve()

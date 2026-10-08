@@ -71,6 +71,90 @@
 
 任一签名方案落地时需要对 setup、`UniClipboard.exe`、`uniclipd.exe` 都签名，在打包前签内部可执行文件，之后签安装包，再重算哈希与 `sidecar` 校验，并用 `signtool verify /pa` 验证、重跑本验收。
 
+## SignPath test-signing 接入（仅 Go/Wails Windows 包；测试证书，不可发布）
+
+范围：`workflow_dispatch` 输入 `signpath_test_signing`。Tauri 1.1.2 与 t-0189 不在范围内。`release.yml`（`workflow_call` 且 `require_signing == true`）拒绝任何测试证书模式（自测或 SignPath test-signing），仍然失败关闭。
+
+### 我们自建的 Windows 可执行文件清单
+
+| 文件 | 所在交付物 | 来源 | 签名阶段 |
+| --- | --- | --- | --- |
+| `UniClipboard.exe` | setup、portable zip | `package_windows.py --stage prepare`（`apps/gui-go`） | 阶段 1 |
+| `uniclipd.exe` | setup、portable zip | `build-sidecar` 产物（来源由 `sidecar-provenance.json` 校验） | 阶段 1 |
+| `uninstall.exe` | setup（安装时落盘） | NSIS 生成器 `installer.nsi -DBUILD_UNINSTALLER` | 阶段 1，随后嵌入 setup |
+| `UniClipboard_<版本>_<架构>-setup.exe` | 安装包 | `--stage assemble` | 阶段 2 |
+| `uniclip.exe` | 独立 CLI 压缩包 `uniclipboard-cli-<版本>-x86_64-pc-windows-msvc.zip` | `scripts/ci/build-go-cli.sh`（`apps/cli-go/cmd/uniclip`），由 `scripts/ci/package-cli.sh` 打包 | 阶段 1 |
+| `uniclipd.exe`（CLI 压缩包内的副本） | 同上 | 与 GUI 使用同一个 sidecar | 阶段 1 |
+
+规则：setup 的签名不覆盖其内部的 exe，压缩包没有签名；每个 exe 都要有自己的签名并被逐个验证。第三方文件（WebView2 引导程序、`nsis_tauri_utils.dll`）不是我们构建的，不重签。发布用 CLI 压缩包由 `build.yml` 的 `build-cli` 作业生成（`require_signing` 时 `package-cli.sh` 在签名无效时拒绝打包）；独立工作流 `build-cli.yml` 的 Windows 压缩包不进入发布，目前未签名。
+
+### 流程
+
+```text
+prepare   构建 GUI exe、生成 uninstall.exe；为 shipped/newer 两个包以及 CLI 备好阶段 1 文件
+阶段 1    提交 SignPath：UniClipboard.exe、uniclipd.exe、uninstall.exe（两个包）、uniclip.exe、uniclipd.exe（CLI）
+验证 1    文件集合一致；每个返回文件 = 提交文件 + 签名（sign.py matches）；签名身份、有效性、时间戳（sign.py verify）
+故障注入  signing_faults.py：缺失、多余、被篡改、被替换、被截断、未签名的返回都必须被 assemble 拒绝
+assemble  makensis 把已签 uninstall.exe 嵌入 setup，已签 exe 作为载荷
+阶段 2    提交 SignPath：两个 setup
+验证 2    同验证 1；finalize 写出最终包、portable zip（复用已签载荷）与 package-manifest.json（含 SignPath 请求 ID 与链接、未签名哈希）
+CLI 压缩包 package-cli.sh 以已签 uniclip.exe/uniclipd.exe 为输入（REQUIRE_WINDOWS_SIGNED=1），解压后逐个验证
+```
+
+安装、运行、更新、卸载验收（`windows_package_acceptance.py`）仍然在隔离的托管 runner 上执行，并在安装后的 `UniClipboard.exe`、`uniclipd.exe`、`uninstall.exe` 上重新验证签名。
+
+### 逐文件记录
+
+`signatures-stage1.json`、`signatures-stage2.json`、`signatures.json`、`signatures-cli.json` 对每个文件记录：SHA-256、证书主体与指纹、签发者、时间戳证书、`signtool verify /pa` 输出中的签名时间、状态与链是否受信。
+
+### 测试证书的边界
+
+- test-signing 证书不是受信发行者：测试证书的链在隔离的验收机器上不受信，验证器只在以下条件同时满足时放宽链信任（`sign.py verify --allow-untrusted-root`）：已固定指纹（`--expect-thumbprint`，变量 `SIGNPATH_TEST_CERT_THUMBPRINT`）、设置了 `SIGNING_TEST_CERT=1`、摘要完整、有时间戳。NotSigned、HashMismatch、其他证书一律拒绝。正式门禁从不传该参数。
+- 测试证书不能证明机器信任，也不能证明杀毒软件或 SmartScreen 不拦截；签名不保证没有误报。真实 Defender/SmartScreen 观测需要在真实 Windows 机器上单独进行并单独记录；本流程不使用排除项，也不关闭安全软件。
+
+### 失败模型（SignPath）
+
+| 失败 | 结果 |
+| --- | --- |
+| 缺少 `SIGNPATH_API_TOKEN`、非托管 runner、组织 ID 不是 UUID、缺少指纹变量 | 在发出请求前失败 |
+| 签名请求失败、被拒绝或超时 | action 失败，不产出包 |
+| 返回文件缺失/多余/被篡改/被替换/被截断/未签名 | 验证 1 或 assemble 失败 |
+| 签名者指纹不是固定指纹 | 验证失败 |
+| 未签名的 setup 被当成已签 | finalize 失败 |
+| CLI 可执行文件未签名 | `package-cli.sh` 失败 |
+
+### 需要用户完成的配置清单
+
+1. GitHub 仓库建立 Environment `signpath-test`，在其中添加 secret `SIGNPATH_API_TOKEN`（只通过 Environment secret 提供）。
+2. SignPath 项目 `UniClipboard` 已关联 GitHub 受信构建系统（OSS 要求托管 runner），策略 `test-signing` 允许来自该仓库该分支的请求。
+3. 在 SignPath 中确认 artifact configuration `initial` 与下面的候选目录结构兼容；如不兼容，使用下面的候选配置另建一份（不要修改现有策略）。
+4. 从 SignPath 证书页读取 test 证书 SHA-1 指纹，设置仓库变量 `SIGNPATH_TEST_CERT_THUMBPRINT`。
+5. 组织 ID `080cee5f-8b26-476f-9e04-dd6571b926bd` 不是机密，写在 `build.yml` 作业环境中。
+
+阶段 1 的 zip 根目录：`shipped/`、`newer/`（各含 `UniClipboard.exe`、`uniclipd.exe`、`uninstall.exe`）与 `cli/`（`uniclip.exe`、`uniclipd.exe`）。阶段 2 的 zip 根目录：两个 `*-setup.exe`。
+
+```xml
+<!-- candidate artifact configuration for stage 1 (the zip root is the artifact) -->
+<artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+  <zip-file>
+    <directory path="shipped"><pe-file-set><include path="*.exe" /><authenticode-sign /></pe-file-set></directory>
+    <directory path="newer"><pe-file-set><include path="*.exe" /><authenticode-sign /></pe-file-set></directory>
+    <directory path="cli"><pe-file-set><include path="*.exe" /><authenticode-sign /></pe-file-set></directory>
+  </zip-file>
+</artifact-configuration>
+```
+
+```xml
+<!-- candidate artifact configuration for stage 2 -->
+<artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+  <zip-file>
+    <pe-file path="*-setup.exe"><authenticode-sign /></pe-file>
+  </zip-file>
+</artifact-configuration>
+```
+
+同一个 `initial` 配置通常无法同时适配两个不同结构；工作流用环境变量 `SIGNPATH_ARTIFACT_CONFIGURATION_SLUG` 指定阶段 1，阶段 2 请求使用环境变量 `SIGNPATH_SETUP_ARTIFACT_CONFIGURATION_SLUG`（默认等于前者），用户确认配置后再填写。
+
 ## 验收状态（已执行）
 
 运行 37728413411（`build.yml`，`workflow_dispatch`，`build_mode=test`，源码提交 `ea1b0137b43264c7a417f51d76de5ed31e9f1cae`，Engine 固定为已合并的 `0e25f4189301efd68c21c8ffdd51a2f9fbfd4204`）：

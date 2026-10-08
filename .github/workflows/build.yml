@@ -771,6 +771,8 @@ jobs:
       SIGNPATH_PROJECT_SLUG: UniClipboard
       SIGNPATH_SIGNING_POLICY_SLUG: test-signing
       SIGNPATH_ARTIFACT_CONFIGURATION_SLUG: initial
+      # Stage 2 submits only the setup programs; it needs its own artifact configuration unless `initial` also fits that layout.
+      SIGNPATH_SETUP_ARTIFACT_CONFIGURATION_SLUG: initial
     strategy:
       fail-fast: false
       matrix:
@@ -1073,7 +1075,7 @@ jobs:
           organization-id: ${{ env.SIGNPATH_ORGANIZATION_ID }}
           project-slug: ${{ env.SIGNPATH_PROJECT_SLUG }}
           signing-policy-slug: ${{ env.SIGNPATH_SIGNING_POLICY_SLUG }}
-          artifact-configuration-slug: ${{ env.SIGNPATH_ARTIFACT_CONFIGURATION_SLUG }}
+          artifact-configuration-slug: ${{ env.SIGNPATH_SETUP_ARTIFACT_CONFIGURATION_SLUG }}
           github-artifact-id: ${{ steps.signpath-up2.outputs.artifact-id }}
           github-token: ${{ github.token }}
           wait-for-completion: true

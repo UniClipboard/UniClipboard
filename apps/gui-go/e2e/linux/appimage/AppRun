@@ -14,6 +14,17 @@
 # directory loses nothing.
 HERE="$(dirname "$(readlink -f "$0")")"
 export APPDIR="${APPDIR:-$HERE}"
+# Without a session bus, libdbus/GDBus/godbus start one on demand by running `dbus-launch --autolaunch` as a child of the process that first needs it, and
+# that bus hands its environment to every service it activates. From inside the AppImage that environment carries LD_LIBRARY_PATH, so the host's own
+# glib-pacrunner would load the bundled (possibly older) GLib and die with "undefined symbol" before it can serve PAC. Start (or find) that same
+# autolaunched bus here, before the library path is exported; DBUS_SESSION_BUS_ADDRESS then makes every client use it. Hosts with a session bus
+# (the normal desktop case) and sessions without X are untouched.
+if [ -z "${DBUS_SESSION_BUS_ADDRESS:-}" ] && [ ! -S "${XDG_RUNTIME_DIR:-/nonexistent}/bus" ] && [ -n "${DISPLAY:-}" ] && command -v dbus-launch >/dev/null 2>&1; then
+  machine_id="$(cat /var/lib/dbus/machine-id /etc/machine-id 2>/dev/null | head -n 1)"
+  if [ -n "$machine_id" ]; then
+    bus_env="$(dbus-launch --autolaunch="$machine_id" --sh-syntax --close-stderr 2>/dev/null)" && eval "$bus_env"
+  fi
+fi
 export LD_LIBRARY_PATH="$APPDIR/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 for dir in "$APPDIR"/usr/lib/gio/modules "$APPDIR"/usr/lib/*/gio/modules; do
   if [ -d "$dir" ]; then GIO_MODULE_DIR="$dir"; export GIO_MODULE_DIR; break; fi

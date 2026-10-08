@@ -181,6 +181,7 @@ def wait_daemon(roots, timeout=120, not_pid=None):
         conn, root = data_conn(roots)
         if conn and conn['pid'] != not_pid and any(str(conn['pid']) == str(p['ProcessId']) for p in processes('uniclipd.exe')):
             return conn, root
+        return None
     return wait_for(probe, timeout, 1)
 
 

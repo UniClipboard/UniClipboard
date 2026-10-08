@@ -8,6 +8,15 @@
 # outputs (and the Tauri sidecar staged from the same daemon) stay untouched.
 # macOS requires APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD, APPLE_ID,
 # APPLE_PASSWORD and APPLE_TEAM_ID. Writes `archive=<file>` to GITHUB_OUTPUT.
+#
+# Windows: `uniclip.exe` and `uniclipd.exe` are two separate executables in the zip, and each needs its own Authenticode
+# signature (a signature on any other file, such as a setup program, covers nothing in this archive). Inputs:
+#   WINDOWS_SIGNED_DIR       directory with already signed uniclip.exe and uniclipd.exe (for example a SignPath result);
+#                            each must be the staged file plus a signature, otherwise the script stops
+#   SIGN_BACKEND             azure | pfx: sign the staged files here through apps/gui-go/packaging/windows/sign.py
+#   REQUIRE_WINDOWS_SIGNED=1 refuse to build the zip unless both files verify (signtool /pa chain, timestamp, intact digest);
+#                            SIGN_VERIFY_ARGS adds sign.py verify flags (test certificates only)
+# The per-file verification report is written to cli-signatures.json next to the archive.
 set -euo pipefail
 
 TARGET=$1
@@ -69,7 +78,21 @@ if [[ "$TARGET" == *-apple-darwin ]]; then
 fi
 
 WORKDIR="$(pwd)"
+SIGN_PY="$WORKDIR/apps/gui-go/packaging/windows/sign.py"
 if [ -n "$EXE" ]; then
+  if [ -n "${WINDOWS_SIGNED_DIR:-}" ]; then
+    for BIN_NAME in uniclip uniclipd; do
+      python "$SIGN_PY" matches "$STAGE/$BIN_NAME.exe" "$WINDOWS_SIGNED_DIR/$BIN_NAME.exe"
+      cp "$WINDOWS_SIGNED_DIR/$BIN_NAME.exe" "$STAGE/$BIN_NAME.exe"
+    done
+  elif [ -n "${SIGN_BACKEND:-}" ]; then
+    python "$SIGN_PY" sign "$STAGE/uniclip.exe" "$STAGE/uniclipd.exe"
+  fi
+  if [ "${REQUIRE_WINDOWS_SIGNED:-}" = "1" ]; then
+    # shellcheck disable=SC2086
+    python "$SIGN_PY" verify --out "$WORKDIR/cli-signatures.json" ${SIGN_VERIFY_ARGS:-} "$STAGE/uniclip.exe" "$STAGE/uniclipd.exe" \
+      || { echo "ERROR: the Windows CLI executables are not validly signed; refusing to package them"; exit 1; }
+  fi
   ARCHIVE="uniclipboard-cli-${VERSION}-${TARGET}.zip"
   # 7z stores paths as given, so add the exes from inside the staging
   # directory to keep the archive root flat (matching the tar.gz layout).

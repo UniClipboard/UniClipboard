@@ -1,0 +1,110 @@
+name: 'Pre-upgrade backup E2E'
+run-name: "pre-upgrade-backup-e2e-${{ github.run_number }}"
+
+# Real-daemon acceptance of the pre-upgrade backup retry matrix on the hosted
+# macOS and Windows runners. The `candidate` job must pass; the `shipped` job
+# builds the shipped 1.1.1 daemon and must reproduce the stuck state, which
+# proves the cells discriminate. Profiles are random isolated ones.
+
+on:
+  push:
+    branches: [release/v1.1.2]
+    paths:
+      - 'crates/**'
+      - 'apps/**'
+      - 'tests/e2e/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/pre-upgrade-backup-e2e.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  candidate:
+    name: "candidate / ${{ matrix.name }}"
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: macOS, runner: macos-latest }
+          - { name: Windows, runner: windows-latest }
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Install pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.95.0
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: '. -> target'
+          shared-key: pre-upgrade-backup-e2e-${{ runner.os }}
+          save-if: ${{ github.ref == 'refs/heads/release/v1.1.2' }}
+
+      - name: Build the daemon
+        run: cargo build -p uc-daemon
+
+      - name: Run the backup retry matrix
+        shell: bash
+        env:
+          UC_E2E_RUST_LOG: info
+        run: >-
+          cargo test --manifest-path tests/e2e/Cargo.toml
+          --test pre_upgrade_backup_retry_portable
+          -- --ignored --test-threads=1 --nocapture
+
+  shipped:
+    name: "shipped 1.1.1 stays stuck / ${{ matrix.name }}"
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: macOS, runner: macos-latest }
+          - { name: Windows, runner: windows-latest }
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Restore the shipped 1.1.1 manifests
+        shell: bash
+        run: >-
+          git checkout 31a5727d01129d53e1150eabf047faa9fb87f07f --
+          Cargo.toml Cargo.lock apps/gui/src-tauri/Cargo.toml package.json
+
+      - name: Install pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.95.0
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: '. -> target'
+          shared-key: pre-upgrade-backup-e2e-shipped-${{ runner.os }}
+          save-if: ${{ github.ref == 'refs/heads/release/v1.1.2' }}
+
+      - name: Build the shipped daemon
+        run: cargo build -p uc-daemon
+
+      - name: Expect the stuck state
+        shell: bash
+        env:
+          UC_E2E_EXPECT_SHIPPED_DEFECT: '1'
+          UC_E2E_RUST_LOG: info
+        run: >-
+          cargo test --manifest-path tests/e2e/Cargo.toml
+          --test pre_upgrade_backup_retry_portable
+          -- --ignored --test-threads=1 --nocapture

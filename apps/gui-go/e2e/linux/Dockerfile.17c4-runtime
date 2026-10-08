@@ -8,10 +8,13 @@
 ARG BASE_IMAGE=ubuntu:24.04
 FROM ${BASE_IMAGE}
 ARG FUSE_PACKAGE=libfuse2t64
+# Host libraries that only some build images' AppImages need: a Debian 12 build bundles libflite (WebKitGTK speech), whose libasound.so.2 stays with the host
+# (linuxdeploy's exclude list), exactly as in the released Tauri AppImage; every desktop has it through its audio stack, a bare container does not.
+ARG HOST_EXTRA_PACKAGES=""
 ENV DEBIAN_FRONTEND=noninteractive
 COPY apt_install.sh verify_image_17c4_runtime.sh /usr/local/bin/
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
 RUN apt_install.sh xvfb xauth dbus dbus-x11 xdotool x11-utils python3 libgl1 libegl1 libgl1-mesa-dri libx11-6 libwayland-client0 \
       fonts-dejavu-core ${FUSE_PACKAGE} fuse3 procps file \
-      libexpat1 libfontconfig1 libfreetype6 libfribidi0 libgbm1 libgmp10 libgpg-error0 libharfbuzz0b libxcb1 libx11-xcb1 zlib1g libcom-err2 libstdc++6 libdrm2 libgles2
+      libexpat1 libfontconfig1 libfreetype6 libfribidi0 libgbm1 libgmp10 libgpg-error0 libharfbuzz0b libxcb1 libx11-xcb1 zlib1g libcom-err2 libstdc++6 libdrm2 libgles2 ${HOST_EXTRA_PACKAGES}
 RUN verify_image_17c4_runtime.sh

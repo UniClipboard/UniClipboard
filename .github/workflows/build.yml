@@ -90,6 +90,9 @@ on:
 
 jobs:
   accept-updater-signatures:
+    permissions:
+      contents: read
+      actions: read
     if: github.event_name == 'workflow_dispatch' && inputs.platform == 'updater-signatures'
     uses: ./.github/workflows/updater-signatures.yml
     with:

@@ -36,7 +36,7 @@ docker image inspect "$IMAGE" >/dev/null
 # A git worktree's .git file points at the main repository's metadata by absolute path: mount that read-only at the same
 # path so git works inside the container (provenance in the manifests), without letting the container write to it.
 GITCOMMON="$(cd "$ROOT" && cd "$(git rev-parse --git-common-dir)" && pwd -P)"
-common=(-e UC_OUT_DIR="${UC_OUT_DIR:-}" -e UC_WAYLAND_RUN_ARGS="${UC_WAYLAND_RUN_ARGS:-}" --rm --platform "$PLATFORM" -v "$ROOT:/work" --mount "type=bind,src=$GITCOMMON,dst=$GITCOMMON,readonly" -e GIT_OPTIONAL_LOCKS=0 -v "$VOLUME:/cache" -w /work)
+common=(-e ARCH="$ARCH" -e UC_OUT_DIR="${UC_OUT_DIR:-}" -e UC_WAYLAND_RUN_ARGS="${UC_WAYLAND_RUN_ARGS:-}" --rm --platform "$PLATFORM" -v "$ROOT:/work" --mount "type=bind,src=$GITCOMMON,dst=$GITCOMMON,readonly" -e GIT_OPTIONAL_LOCKS=0 -v "$VOLUME:/cache" -w /work)
 case "$mode" in
   build)
     docker run "${common[@]}" -e SKIP_DAEMON="${SKIP_DAEMON:-0}" "$IMAGE" bash apps/gui-go/e2e/linux/build_in_container.sh ;;

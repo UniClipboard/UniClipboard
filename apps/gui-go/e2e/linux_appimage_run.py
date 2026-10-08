@@ -127,12 +127,13 @@ class Run:
         print(('PASS ' if ok else 'FAIL ') + name, flush=True)
         return ok
 
-    def launch(self, tag, extra_env=None, args=()):
+    def launch(self, tag, extra_env=None, appimage=None, args=()):
         evidence, control = self.out / f'{tag}.jsonl', self.out / f'{tag}.control'
         for f in (evidence, control):
             f.write_text('')
         env = dict(self.env, UC_GUI_GO_EVIDENCE=str(evidence), UC_GUI_GO_E2E_CONTROL_FILE=str(control), **(extra_env or {}))
-        proc = subprocess.Popen([str(self.appimage), *args], env=env, cwd=str(self.appimage.parent), stdout=(self.out / f'{tag}.log').open('w'),
+        executable = Path(appimage or self.appimage)
+        proc = subprocess.Popen([str(executable), *args], env=env, cwd=str(executable.parent), stdout=(self.out / f'{tag}.log').open('w'),
                                 stderr=subprocess.STDOUT)
         return Launch(proc, evidence, control, self.out / f'{tag}.log')
 

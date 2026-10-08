@@ -161,17 +161,24 @@ finally:
     if gui and gui.proc.poll() is None:
         gui.proc.terminate()
         gui.proc.wait(timeout=15)
+    cleanup_errors = []
     for conn in home.rglob("daemon.conn"):
         try:
             pid = json.loads(conn.read_text())["pid"]
             if os.readlink(f"/proc/{pid}/exe") == "/usr/bin/uniclipd":
                 os.kill(pid, 15)
-        except (OSError, ValueError, KeyError):
-            pass
+        except (FileNotFoundError, ProcessLookupError):
+            # Full GUI exit may remove the connection or stop the recorded daemon first.
+            continue
+        except (OSError, ValueError, KeyError) as exc:
+            cleanup_errors.append(f"{conn.name}: {type(exc).__name__}")
     for proc in [receiver, xvfb, server]:
         if proc.poll() is None:
             proc.terminate()
         proc.wait(timeout=10)
+    result["cleanupErrors"] = cleanup_errors
+    if cleanup_errors:
+        result["passed"] = False
     errors = []
     for d in (home / ".local/state").glob("app.uniclipboard.desktop*"):
         errors += copy_logs(d, out / "logs" / d.name)

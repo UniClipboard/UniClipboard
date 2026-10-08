@@ -141,6 +141,7 @@ def main():
                         help='PACKAGING CHECK ONLY: accept a placeholder daemon so the installer script can be compiled; outputs are '
                              'marked fixture, prefixed FIXTURE- and are not a product')
     args = parser.parse_args()
+    args.daemon = args.daemon.resolve()  # the PE check runs in another working directory
     if not args.daemon.is_file():
         sys.exit(f'{args.daemon} not found: a package without the daemon cannot start')
     daemon_ok, daemon_reason = check_daemon(args.daemon, args.arch)

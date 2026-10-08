@@ -814,3 +814,7 @@ apps/gui-go/e2e/linux/run_17c8.sh wayland <标签> <新目录>   # 既有 sway �
 - analytics：只验证到 daemon 的 debug 日志汇，未向生产分析服务发送任何测试事件；release 汇（PostHog）端点硬编码，未在隔离环境运行。
 - `scheduler_run.py` 的“更新窗口可见”断言依赖显示器处于唤醒状态：显示器休眠时窗口 `IsVisible` 为假，同一状态下未触碰的 `quick_panel_settings_run.py` 也同样失败，属环境因素，需在显示器唤醒时重跑。
 - quiet 模式不证明真实窗口聚焦、视觉位置与真实全局快捷键；这些仍需可见模式的人工或原生验收。
+
+### 更新归档签名与渠道发布
+
+签名工具、CI 隔离验收、六平台发布前检查及 Pages fallback 所有权见 [更新签名与渠道发布](../../docs/architecture/gui-go-updater-signatures.md)。生产信任锚保持 `app.json` 的现有公钥；合成 E2E、真实归档签名、本地 feed、真实服务和各 OS 安装证明分别记录。`release.yml` 的全平台阻断仍保留。

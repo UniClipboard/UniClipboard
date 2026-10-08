@@ -16,6 +16,7 @@ on:
           - 'windows-x86_64'
           - 'windows-arm64'
           - 'all'
+          - 'updater-signatures'
         default: 'all'
       channel:
         description: '发布渠道(决定 Sentry/OTLP environment 标签)'
@@ -41,6 +42,11 @@ on:
         description: '同时用本次 sidecar 打包 macOS / Windows x64 CLI(仅 release 构建方式)'
         type: boolean
         default: false
+      updater_artifact_runs:
+        description: 'For updater-signatures only: comma-separated successful Build Desktop run IDs'
+        type: string
+        required: false
+        default: ''
   workflow_call:
     inputs:
       build_mode:
@@ -83,7 +89,15 @@ on:
         default: false
 
 jobs:
+  accept-updater-signatures:
+    if: github.event_name == 'workflow_dispatch' && inputs.platform == 'updater-signatures'
+    uses: ./.github/workflows/updater-signatures.yml
+    with:
+      artifact_runs: ${{ inputs.updater_artifact_runs }}
+    secrets: inherit
+
   setup-matrix:
+    if: inputs.platform != 'updater-signatures'
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}

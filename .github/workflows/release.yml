@@ -62,9 +62,9 @@ jobs:
       # Fail closed before anything is bumped, committed, tagged or published: the Tauri
       # build, signing and updater pipeline that produced the desktop installers was retired
       # with the Tauri host, and the Go/Wails host (apps/gui-go) has no signed release
-      # pipeline yet (the updater signature signer, the Windows and Linux installers). The macOS
+      # pipeline yet (the Windows and Linux installers). The updater signer is wired below; the macOS
       # app, DMG and updater archive are built, signed and notarized by build.yml
-      # (package-macos-gui, #1895), but without the updater signature and the other platforms a
+      # (package-macos-gui, #1895), but without the other platforms a
       # release would still publish an incomplete desktop set. Remove this step when the Go release
       # pipeline lands; the open work is listed in docs/architecture/gui-go-tauri-retirement.md.
       - name: Desktop release pipeline is not available
@@ -227,73 +227,53 @@ jobs:
       - name: Display artifact structure
         run: ls -R artifacts
 
-      - name: Prepare release assets
-        id: prepare-assets
+      - name: Prepare named release assets
+        run: python3 scripts/collect-release-assets.py --source artifacts --destination release-assets
+
+      - name: Setup Go for updater signer
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: apps/gui-go/go.mod
+          cache: false
+
+      - name: Sign updater artifacts and verify the production public key
+        working-directory: apps/gui-go
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: go run ./cmd/updater-sign --artifacts-dir ../../release-assets --evidence ../../flare-signatures.json
+
+      - name: Assemble FlareRelease registration
         run: |
-          mkdir -p release-assets
+          VERSION="${{ needs.validate.outputs.version }}"
+          CHANNEL="${{ needs.validate.outputs.channel }}"
+          PUBLIC_URL="${{ vars.UPDATE_SERVER_URL }}"
 
-          # Collect release bundles. For macOS updater archives, keep target in filename
-          # so aarch64/x86_64 artifacts won't overwrite each other during flattening.
-          while IFS= read -r src; do
-            filename="$(basename "$src")"
-            target=""
+          node scripts/assemble-update-manifest.js \
+            --require-all-platforms \
+            --version "$VERSION" \
+            --artifacts-dir release-assets \
+            --output "flare-release/manifest.json" \
+            --base-url "${PUBLIC_URL}/artifacts/v${VERSION}" \
+            --notes-file "docs/changelog/${VERSION}.md" \
+            --zh-notes-file "docs/changelog/${VERSION}.zh.md"
 
-            case "$src" in
-              *aarch64-apple-darwin*) target="aarch64-apple-darwin" ;;
-              *x86_64-apple-darwin*) target="x86_64-apple-darwin" ;;
-            esac
+          node scripts/build-flare-release-registration.js \
+            --version "$VERSION" \
+            --channel "$CHANNEL" \
+            --manifest "flare-release/manifest.json" \
+            --artifacts-dir release-assets \
+            --source "github-actions:${{ github.repository }}:${{ github.run_id }}" \
+            --output "flare-release/registration.json"
 
-            dest="$filename"
-            if [ -n "$target" ] && [ "$filename" = "UniClipboard.app.tar.gz" ]; then
-              dest="UniClipboard_${target}.app.tar.gz"
-            elif [ -n "$target" ] && [ "$filename" = "UniClipboard.app.tar.gz.sig" ]; then
-              dest="UniClipboard_${target}.app.tar.gz.sig"
-            fi
-
-            if [ -e "release-assets/$dest" ]; then
-              if [ -n "$target" ]; then
-                dest="${target}__${dest}"
-              else
-                safe_suffix="$(echo "$src" | tr '/\\' '_' | tr -cd '[:alnum:]_.-' | cut -c1-80)"
-                base="$dest"
-                ext=""
-                if [[ "$dest" == *.* ]]; then
-                  ext=".${dest##*.}"
-                  base="${dest%.*}"
-                fi
-                dest="${base}__${safe_suffix}${ext}"
-              fi
-            fi
-
-            cp "$src" "release-assets/$dest"
-          done < <(find artifacts -type f \( \
-            -name "*.dmg" -o \
-            -name "*.app.tar.gz" -o \
-            -name "*.deb" -o \
-            -name "*.rpm" -o \
-            -name "*.AppImage" -o \
-            -name "*.msi" -o \
-            -name "*.exe" -o \
-            -name "*-portable.zip" -o \
-            -name "*.sig" -o \
-            -name "*.json" \
-          \) | sort)
-
-          # Collect CLI binary archives (uniquely named, no collision handling needed)
-          while IFS= read -r src; do
-            filename="$(basename "$src")"
-            cp "$src" "release-assets/$filename"
-          done < <(find artifacts -type f \( \
-            -name "uniclipboard-cli-*.tar.gz" -o \
-            -name "uniclipboard-cli-*.zip" \
-          \) | sort)
-
-          # Verify CLI archives are present
-          echo "CLI archives in release-assets/:"
-          ls -la release-assets/uniclipboard-cli-* 2>/dev/null || echo "WARNING: No CLI archives found"
-
-          echo "Release assets:"
-          ls -lh release-assets
+      - name: Archive updater verification evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: updater-verification
+          path: |
+            flare-signatures.json
+            flare-release/*.json
+          if-no-files-found: error
 
       - name: Sign release assets (SHA256SUMS + minisign)
         env:
@@ -446,28 +426,6 @@ jobs:
               --file "$file" \
               --remote
           done
-
-      - name: Assemble FlareRelease registration
-        run: |
-          VERSION="${{ needs.validate.outputs.version }}"
-          CHANNEL="${{ needs.validate.outputs.channel }}"
-          PUBLIC_URL="${{ vars.UPDATE_SERVER_URL }}"
-
-          node scripts/assemble-update-manifest.js \
-            --version "$VERSION" \
-            --artifacts-dir release-assets \
-            --output "flare-release/manifest.json" \
-            --base-url "${PUBLIC_URL}/artifacts/v${VERSION}" \
-            --notes-file "docs/changelog/${VERSION}.md" \
-            --zh-notes-file "docs/changelog/${VERSION}.zh.md"
-
-          node scripts/build-flare-release-registration.js \
-            --version "$VERSION" \
-            --channel "$CHANNEL" \
-            --manifest "flare-release/manifest.json" \
-            --artifacts-dir release-assets \
-            --source "github-actions:${{ github.repository }}:${{ github.run_id }}" \
-            --output "flare-release/registration.json"
 
       - name: Register release with FlareRelease
         env:

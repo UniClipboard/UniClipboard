@@ -1,0 +1,67 @@
+name: Updater signature acceptance
+on:
+  workflow_call:
+    inputs:
+      artifact_runs:
+        type: string
+        required: true
+permissions:
+  contents: read
+  actions: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: apps/gui-go/go.mod
+          cache: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+      - name: Record immutable source and tools
+        run: |
+          mkdir evidence
+          git rev-parse HEAD > evidence/source-sha.txt
+          go version > evidence/go-version.txt
+          node --version > evidence/node-version.txt
+          sha256sum apps/gui-go/go.sum apps/gui-go/app.json > evidence/source-hashes.txt
+      - name: Fetch named real GUI inputs (read-only)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_RUNS: ${{ inputs.artifact_runs }}
+        run: |
+          python3 scripts/ci/download-updater-inputs.py
+          cp updater-source.json evidence/
+          find updater-inputs -name '*.json' -exec cp --parents '{}' evidence/ \;
+          python3 scripts/collect-release-assets.py --source updater-inputs --destination release-assets
+      - name: Build signer without secrets
+        working-directory: apps/gui-go
+        run: go build -o ../../updater-sign ./cmd/updater-sign
+      - name: Sign real archives with production updater secrets
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: ./updater-sign --app-config apps/gui-go/app.json --artifacts-dir release-assets --evidence evidence/production-signatures.json
+      - name: Consume signed real artifacts over local HTTP
+        run: python3 -I apps/gui-go/e2e/signed_artifacts_run.py --assets release-assets --out evidence/local-feed
+      - name: Archive signatures and evidence only
+        if: always()
+        run: |
+          mkdir -p evidence/signatures
+          find release-assets -name '*.sig' -exec cp '{}' evidence/signatures/ \; 2>/dev/null || true
+          find evidence -type f ! -name probe ! -name SHA256SUMS.txt -exec sha256sum '{}' \; > evidence/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: updater-production-key-evidence
+          path: |
+            evidence/
+            !evidence/local-feed/probe
+          if-no-files-found: error
+          retention-days: 30

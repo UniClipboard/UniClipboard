@@ -15,6 +15,7 @@
  *   --artifacts-dir <path>    Directory containing .sig files (required)
  *   --output <path>           Output JSON file path (required)
  *   --base-url <url>          GitHub release download base URL (required)
+ *   --require-all-platforms   Reject an incomplete six-platform release before publication
  *   --test                    Dry-run with mock data, output to stdout
  *   --notes-file <path>       Changelog file to include as release notes
  *   --zh-notes-file <path>    Chinese changelog file to include as release notes
@@ -62,6 +63,8 @@ function parseArgs() {
     } else if (args[i] === '--zh-notes-file' && args[i + 1]) {
       options.zhNotesFile = args[i + 1]
       i++
+    } else if (args[i] === '--require-all-platforms') {
+      options.requireAllPlatforms = true
     } else if (args[i] === '--test') {
       options.test = true
     }
@@ -208,7 +211,7 @@ function scanArtifacts(artifactsDir, baseUrl, silent = false) {
     const existing = selectedByPlatform[platform]
     // Two equal-priority Linux candidates for one key are duplicate assets; whichever sorted last used to win
     // silently. Refuse instead of publishing an arbitrary pick.
-    if (existing && existing.priority === priority && platform.startsWith('linux-')) {
+    if (existing && existing.priority === priority) {
       throw new Error(
         `Conflicting ${platform} candidates with the same priority: ${existing.sigFile} and ${sigFile}`
       )
@@ -376,6 +379,25 @@ function run() {
   if (Object.keys(platforms).length === 0) {
     process.stderr.write('Error: No recognized platform artifacts found.\n')
     process.exit(1)
+  }
+
+  if (options.requireAllPlatforms) {
+    const required = [
+      'darwin-aarch64',
+      'darwin-x86_64',
+      'linux-aarch64',
+      'linux-x86_64',
+      'windows-aarch64',
+      'windows-x86_64',
+    ]
+    const missing = required.filter(platform => !platforms[platform])
+    if (missing.length) throw new Error(`Incomplete release platform set: ${missing.join(', ')}`)
+    for (const entry of Object.values(platforms)) {
+      const filename = decodeURIComponent(new URL(entry.url).pathname.split('/').at(-1))
+      if (!fs.statSync(path.join(artifactsDir, filename)).isFile()) {
+        throw new Error(`Selected update artifact is not a file: ${filename}`)
+      }
+    }
   }
 
   const manifest = assembleManifest(options.version, platforms, notes, zhNotes)

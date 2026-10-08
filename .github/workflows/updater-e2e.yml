@@ -1,0 +1,44 @@
+name: Updater pipeline E2E
+on:
+  pull_request:
+    paths:
+      - 'apps/gui-go/cmd/updater-sign/**'
+      - 'apps/gui-go/internal/update/**'
+      - 'apps/gui-go/e2e/*signatures*'
+      - 'apps/gui-go/e2e/signatureprobe/**'
+      - 'apps/gui-go/e2e/update_pages_run.py'
+      - 'scripts/collect-release-assets.py'
+      - 'scripts/sync-update-pages.py'
+      - 'scripts/assemble-update-manifest.js'
+      - 'scripts/build-flare-release-registration.js'
+      - '.github/workflows/updater-*.yml'
+      - '.github/workflows/publish-update-pages.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: apps/gui-go/go.mod
+          cache: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+      - name: Disposable encrypted key, six synthetic artifacts and real HTTP consumer
+        run: python3 -I apps/gui-go/e2e/updater_signatures_run.py --out evidence/signatures
+      - name: Real HTTP primary/fallback consistency and withdrawal
+        run: python3 -I apps/gui-go/e2e/update_pages_run.py --out evidence/pages
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: updater-synthetic-e2e
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 30

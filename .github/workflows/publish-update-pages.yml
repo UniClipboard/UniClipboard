@@ -1,0 +1,75 @@
+name: Publish authoritative update fallback
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '*/15 * * * *'
+  release:
+    types: [published]
+permissions:
+  contents: read
+concurrency:
+  group: update-pages-primary
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: github.repository == 'UniClipboard/UniClipboard' && (github.ref == 'refs/heads/main' || github.event_name == 'release')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Snapshot promoted primary channels
+        run: python3 scripts/sync-update-pages.py snapshot --directory pages-snapshot
+      - name: Require the existing Pages publisher token
+        env:
+          PAGES_TOKEN: ${{ secrets.REPO_BOT_TOKEN }}
+        run: test -n "$PAGES_TOKEN"
+      - uses: actions/checkout@v6
+        with:
+          ref: gh-pages
+          path: pages-site
+          token: ${{ secrets.REPO_BOT_TOKEN }}
+      - name: Copy only channel files; remove withdrawn channels
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          import shutil
+          source, dest = Path('pages-snapshot'), Path('pages-site')
+          for channel, state in json.loads((source / 'snapshot.json').read_text()).items():
+              target = dest / (channel + '.json')
+              if state['status'] in (204, 404):
+                  target.unlink(missing_ok=True)
+              else:
+                  shutil.copyfile(source / target.name, target)
+          PY
+      - name: Recheck primary and commit the snapshot
+        working-directory: pages-site
+        run: |
+          python3 ../scripts/sync-update-pages.py check --directory ../pages-snapshot
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add --all -- .
+          if ! git diff --cached --quiet; then
+            git commit -m 'deploy: synchronize authoritative update channels'
+            git push origin HEAD:gh-pages
+          fi
+      - name: Verify deployed Pages equals the primary snapshot
+        run: |
+          for attempt in $(seq 1 30); do
+            if python3 scripts/sync-update-pages.py check --directory pages-snapshot \
+              --fallback https://uniclipboard.github.io/UniClipboard; then
+              exit 0
+            fi
+            sleep 20
+          done
+          echo '::error::Pages did not converge to the primary snapshot.'
+          exit 1
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: pages-channel-snapshot
+          path: pages-snapshot/
+          retention-days: 30

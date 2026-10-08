@@ -81,7 +81,16 @@ def sign(files):
             sys.exit(f'signtool sign failed for {f}: {(r.stdout + r.stderr)[-600:]}')
 
 
-def verify(files, expect_subject, allow_untrusted_root, out):
+# Statuses Get-AuthenticodeSignature reports when the signature and digest are fine but the chain does not end in a trusted
+# root. Everything else (NotSigned, HashMismatch, NotSupportedFileFormat, ...) is a failure in every mode.
+UNTRUSTED_CHAIN_STATUSES = ('UnknownError', 'NotTrusted')
+
+
+def verify(files, expect_subject, allow_untrusted_root, out, expect_thumbprint=None):
+    """Product mode (the default) requires a trusted chain. `allow_untrusted_root` is for the signing self-test only: it needs
+    SIGNING_SELFTEST=1 and the thumbprint of the throwaway certificate, so a signature by any other certificate is still refused."""
+    if allow_untrusted_root and (not expect_thumbprint or os.environ.get('SIGNING_SELFTEST') != '1'):
+        sys.exit('--allow-untrusted-root is only for the signing self-test: it needs --expect-thumbprint and SIGNING_SELFTEST=1')
     tool = signtool(required=False)  # the arm64 hosted image may carry no SDK: then only Get-AuthenticodeSignature judges
     report, ok_all = [], True
     for f in files:
@@ -91,19 +100,17 @@ def verify(files, expect_subject, allow_untrusted_root, out):
                  "[pscustomobject]@{Status=[string]$s.Status; Subject=$s.SignerCertificate.Subject; Thumbprint=$s.SignerCertificate.Thumbprint;"
                  " Issuer=$s.SignerCertificate.Issuer; Timestamp=if($s.TimeStamperCertificate){$s.TimeStamperCertificate.Subject}else{$null}} | ConvertTo-Json -Compress")
         info = json.loads(sig.stdout) if sig.stdout.strip() else {}
-        ok = pa.returncode == 0 and info.get('Status') == 'Valid' and bool(info.get('Timestamp'))
+        identity_ok = (not expect_subject or expect_subject in (info.get('Subject') or '')) and \
+            (not expect_thumbprint or (info.get('Thumbprint') or '').lower() == expect_thumbprint.lower())
+        chain_trusted = pa.returncode == 0 and info.get('Status') == 'Valid' and bool(info.get('Timestamp'))
+        ok = chain_trusted and identity_ok
         if allow_untrusted_root and not ok:
-            # Throwaway self-test certificate on a runner that cannot trust it (not elevated: adding a root to the user store
-            # needs an interactive confirmation). The signature must still be present, carry the expected subject and a timestamp;
-            # only the chain trust is waived, and the report says so.
-            ok = bool(expect_subject) and bool(info.get('Subject')) and expect_subject in info['Subject'] and bool(info.get('Timestamp')) \
-                and info.get('Status') not in ('NotSigned', 'HashMismatch')
-        if expect_subject and expect_subject not in (info.get('Subject') or ''):
-            ok = False
-        report.append({'file': str(f), 'ok': ok, 'signtoolVerifyPa': pa.returncode == 0 if tool else None, 'signature': info, 'signtoolTail': (pa.stdout + pa.stderr)[-400:]})
+            ok = identity_ok and bool(info.get('Timestamp')) and info.get('Status') in UNTRUSTED_CHAIN_STATUSES
+        report.append({'file': str(f), 'ok': ok, 'chainTrusted': ok and chain_trusted, 'signtoolVerifyPa': pa.returncode == 0 if tool else None,
+                       'signature': info, 'signtoolTail': (pa.stdout + pa.stderr)[-400:]})
         ok_all &= ok
-        print(('PASS ' if ok else 'FAIL ') + str(f), info.get('Status'), info.get('Subject'), flush=True)
-    result = {'allowUntrustedRoot': allow_untrusted_root, 'passed': ok_all, 'files': report}
+        print(('PASS ' if ok else 'FAIL ') + str(f), info.get('Status'), info.get('Subject'), 'chain-trusted' if report[-1]['chainTrusted'] else 'chain-NOT-verified', flush=True)
+    result = {'allowUntrustedRoot': allow_untrusted_root, 'expectThumbprint': expect_thumbprint, 'passed': ok_all, 'files': report}
     if out:
         Path(out).write_text(json.dumps(result, indent=2) + '\n')
     return ok_all
@@ -118,14 +125,15 @@ def main():
     v.add_argument('files', nargs='+', type=Path)
     v.add_argument('--out')
     v.add_argument('--expect-subject')
-    v.add_argument('--allow-untrusted-root', action='store_true', help='signing self-test on a runner that cannot trust the throwaway certificate: waive only the chain trust, still require --expect-subject, a timestamp and an intact hash')
+    v.add_argument('--expect-thumbprint', help='SHA-1 thumbprint the signer certificate must have')
+    v.add_argument('--allow-untrusted-root', action='store_true', help='signing self-test only (needs SIGNING_SELFTEST=1 and --expect-thumbprint): waive only the chain trust; the signer thumbprint, a timestamp and an intact digest are still required')
     a = ap.parse_args()
     if os.name != 'nt':
         sys.exit('signing runs on Windows only')
     if a.cmd == 'sign':
         sign(a.files)
     else:
-        sys.exit(0 if verify(a.files, a.expect_subject, a.allow_untrusted_root, a.out) else 1)
+        sys.exit(0 if verify(a.files, a.expect_subject, a.allow_untrusted_root, a.out, a.expect_thumbprint) else 1)
 
 
 if __name__ == '__main__':

@@ -284,9 +284,26 @@ def scenario_a(a, s):
     check('A3 the installed daemon is the shipped (CI-built) one (SHA-256)', sha256(INSTDIR / 'uniclipd.exe') == a.daemon_sha256)
     s['installed_exe_old'] = sha256(INSTDIR / f'{PRODUCT}.exe')
     if a.expect_signed:
-        v = subprocess.run([sys.executable, str(a.sign_verifier), 'verify', '--out', str(OUT / 'signatures-installed.json'), *(['--allow-untrusted-root', '--expect-subject', a.sign_untrusted_subject] if a.sign_untrusted_subject else []),
+        vflags = signature_flags(a)
+        v = subprocess.run([sys.executable, str(a.sign_verifier), 'verify', '--out', str(OUT / 'signatures-installed.json'), *vflags,
                             *[str(INSTDIR / n) for n in (f'{PRODUCT}.exe', 'uniclipd.exe', 'uninstall.exe')]], capture_output=True, text=True)
         check('A3s the installed exe, daemon and uninstaller carry a valid Authenticode signature', v.returncode == 0, v.stdout[-1500:])
+        # Negative controls with the very same verifier flags: a tampered signed file, a file signed by someone else (or not at
+        # all) and a non-PE file must all be refused, also when the chain trust is waived for the fixture.
+        ctl = OUT / 'sign-controls'
+        ctl.mkdir(parents=True, exist_ok=True)
+        data = bytearray((INSTDIR / f'{PRODUCT}.exe').read_bytes())
+        data[len(data) // 3] ^= 0xFF
+        (ctl / 'tampered.exe').write_bytes(bytes(data))
+        (ctl / 'unsigned.exe').write_bytes(b'not a signed executable')
+        names = ['tampered.exe', 'unsigned.exe']
+        if a.sign_selftest_cert:  # a pinned signer identity exists only in the self-test
+            shutil.copy2(sys.executable, ctl / 'other-signer.exe')
+            names.append('other-signer.exe')
+        for name in names:
+            r = subprocess.run([sys.executable, str(a.sign_verifier), 'verify', '--out', str(ctl / f'{name}.json'), *vflags, str(ctl / name)],
+                               capture_output=True, text=True)
+            check(f'A3n the verifier refuses {name}', r.returncode != 0, r.stdout[-400:])
     k = reg_values(UNINST) or {}
     check('A4 uninstall key: DisplayVersion, Publisher, InstallLocation, UninstallString',
           k.get('DisplayVersion') == s['old'] and norm(k.get('InstallLocation', '').strip('"')) == norm(str(INSTDIR))
@@ -476,6 +493,16 @@ def scenario_h(a, s):
     shutil.rmtree(work, ignore_errors=True)
 
 
+def signature_flags(a):
+    """Verifier flags: the fixture certificate thumbprint when given; the chain trust is waived only on request."""
+    flags = []
+    if a.sign_selftest_cert:
+        flags += ['--expect-thumbprint', hashlib.sha1(a.sign_selftest_cert.read_bytes()).hexdigest()]
+        if a.sign_untrusted_root:
+            flags += ['--allow-untrusted-root']
+    return flags
+
+
 def main():
     global OUT
     ap = argparse.ArgumentParser()
@@ -487,7 +514,8 @@ def main():
     ap.add_argument('--daemon-sha256', required=True)
     ap.add_argument('--newer-daemon-sha256', help='SHA-256 of the daemon inside the newer package when it differs from --daemon-sha256 (signed packages)')
     ap.add_argument('--expect-signed', action='store_true', help='the packages are Authenticode signed: verify the installed files too')
-    ap.add_argument('--sign-untrusted-subject', help='signing self-test on a runner that cannot trust the throwaway certificate: accept an untrusted chain for this signer subject only')
+    ap.add_argument('--sign-selftest-cert', type=Path, help='public throwaway certificate (DER) of the signing self-test: its thumbprint must be the signer')
+    ap.add_argument('--sign-untrusted-root', action='store_true', help='signing self-test only, with --sign-selftest-cert: the runner cannot trust the throwaway certificate, so only the chain trust is waived')
     ap.add_argument('--sign-verifier', type=Path, help='apps/gui-go/packaging/windows/sign.py')
     ap.add_argument('--out', type=Path, required=True)
     a = ap.parse_args()

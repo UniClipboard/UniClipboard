@@ -1059,6 +1059,8 @@ jobs:
             "LocalMachine stores unavailable ($($_.Exception.Message)); the chain trust is waived for the signer subject only"
             'SELFTEST_UNTRUSTED_ROOT=1' | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
           }
+          # sign.py refuses to waive the chain trust without this marker; it exists only in this self-test mode.
+          'SIGNING_SELFTEST=1' | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
 
       - name: install, run, update and uninstall the packages
         shell: bash
@@ -1067,7 +1069,8 @@ jobs:
           SIGNED_ARGS=""
           if [ "${{ needs.package-windows-gui.outputs.signed }}" = "true" ]; then
             SIGNED_ARGS="--expect-signed --sign-verifier apps/gui-go/packaging/windows/sign.py"
-            if [ "${SELFTEST_UNTRUSTED_ROOT:-}" = "1" ]; then SIGNED_ARGS="$SIGNED_ARGS --sign-untrusted-subject CN=UniClipboard"; fi
+            if [ "${SIGNING_SELFTEST:-}" = "1" ]; then SIGNED_ARGS="$SIGNED_ARGS --sign-selftest-cert inputs/selftest.cer"; fi
+            if [ "${SELFTEST_UNTRUSTED_ROOT:-}" = "1" ]; then SIGNED_ARGS="$SIGNED_ARGS --sign-untrusted-root"; fi
           fi
           MANIFEST=$(find package-evidence -path '*shipped/package-manifest.json' | head -1)
           DAEMON_SHA=$(python -c "import json,sys;d=json.load(open(sys.argv[1]))['daemon'];print(d.get('shippedSha256') or d['sha256'])" "$MANIFEST")

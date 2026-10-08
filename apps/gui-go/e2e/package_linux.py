@@ -574,7 +574,7 @@ ENGINE_REV = re.compile(r'uc-engine\s*=\s*\{[^}]*\brev\s*=\s*"([0-9a-f]{40})"')
 def read_daemon_evidence(path, daemon, arch):
     """Parse linux/build_daemon_release.sh's build-evidence.txt and check it describes THIS file, built for THIS architecture from THIS checkout."""
     lines = path.read_text().splitlines()
-    fields = dict(l.split('=', 1) for l in lines if re.match(r'^[a-z_]+=', l))
+    fields = dict(l.split('=', 1) for l in lines if re.match(r'^[a-z0-9_]+=', l))
     digest = next((l.split()[0] for l in lines if re.match(r'^[0-9a-f]{64}\s', l)), None)
     engine = [l for l in lines if l.startswith('name = "uc-engine"') or l.startswith('version = ') or l.startswith('source = ')]
     if digest != sha256(daemon):

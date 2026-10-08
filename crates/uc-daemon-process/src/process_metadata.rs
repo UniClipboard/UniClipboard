@@ -648,10 +648,25 @@ mod tests {
             let temp = TempDir::new().unwrap();
             let executable = temp.path().join(name);
             fs::copy("/bin/sleep", &executable).unwrap();
-            let mut child = std::process::Command::new(&executable)
-                .arg("30")
-                .spawn()
-                .unwrap();
+            // `fs::copy` leaves no writable descriptor open here, but a concurrent test thread that forks
+            // between the copy and the exec can still hold a duplicate of it: Linux then answers ETXTBSY
+            // until that child execs. Retry that one error; anything else is a real failure.
+            let mut child = {
+                let mut attempts = 0;
+                loop {
+                    match std::process::Command::new(&executable).arg("30").spawn() {
+                        Ok(child) => break child,
+                        Err(error)
+                            if error.kind() == std::io::ErrorKind::ExecutableFileBusy
+                                && attempts < 50 =>
+                        {
+                            attempts += 1;
+                            std::thread::sleep(std::time::Duration::from_millis(20));
+                        }
+                        Err(error) => panic!("spawn {name}: {error}"),
+                    }
+                }
+            };
             if unlink {
                 fs::remove_file(&executable).unwrap();
             }

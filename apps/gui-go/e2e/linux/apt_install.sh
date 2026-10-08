@@ -5,13 +5,15 @@
 # (that is how the third build produced a layer with unconfigured libwebkit2gtk-4.1-0).
 # usage: apt_install.sh <package>...        (APT_OPTS may add transport options; see the Dockerfile)
 set -eu
-# Transport: the official Ubuntu sources over HTTPS. Plain HTTP through this host's network path returned 502 and
+# Transport: the official distribution sources over HTTPS. Plain HTTP through this host's network path returned 502 and
 # connection failures under load (build logs docker-build2/3; isolated measurement: HTTP default rc=100 in 406 s with
 # 4 errors, HTTPS default rc=0 in 21 s with 0 errors, one run each). That is a measurement of one path at one time, not
 # a proven root cause or a promise of stability, which is why the failure checks below stay in place. Needs the CA
-# bundle, installed by the first image layer; APT_HTTPS=0 keeps the original scheme.
-if [ "${APT_HTTPS:-1}" = 1 ] && [ -e /etc/ssl/certs/ca-certificates.crt ] && [ -e /etc/apt/sources.list.d/ubuntu.sources ]; then
-  sed -i 's#http://\(ports\|archive\|security\)\.ubuntu\.com#https://\1.ubuntu.com#g' /etc/apt/sources.list.d/ubuntu.sources
+# bundle, installed by the first image layer; APT_HTTPS=0 keeps the original scheme. Ubuntu keeps its sources in
+# ubuntu.sources, Debian 12 in debian.sources.
+if [ "${APT_HTTPS:-1}" = 1 ] && [ -e /etc/ssl/certs/ca-certificates.crt ]; then
+  [ ! -e /etc/apt/sources.list.d/ubuntu.sources ] || sed -i 's#http://\(ports\|archive\|security\)\.ubuntu\.com#https://\1.ubuntu.com#g' /etc/apt/sources.list.d/ubuntu.sources
+  [ ! -e /etc/apt/sources.list.d/debian.sources ] || sed -i 's#http://\(deb\|security\)\.debian\.org#https://\1.debian.org#g' /etc/apt/sources.list.d/debian.sources
 fi
 ok=0
 for attempt in 1 2 3 4 5 6 7 8; do

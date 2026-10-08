@@ -37,7 +37,7 @@ grep -rl "__ucE2eOpenUrl" "$ROOT/apps/gui-go/frontend/dist/assets" > "$out/input
 (cd "$ROOT/apps/gui-go/frontend/dist" && find . -type f | LC_ALL=C sort | xargs shasum -a 256 > "$out/inputs/dist.sha256")
 step build-gui "$R" release-e2e-build || exit 1
 step package-v1 "$R" package-appimage "$out/v1" || exit 1
-V1="$out/v1/pkg/E2E-UniClipboard_1.1.1_arm64.AppImage"; M1="$out/v1/pkg/package-manifest.json"
+V1="$out/v1/pkg/E2E-UniClipboard_1.1.1_aarch64.AppImage"; M1="$out/v1/pkg/package-manifest.json"
 cp "$V1" "$out/inputs/appimage-as-run.AppImage"; shasum -a 256 "$V1" "$out/inputs/appimage-as-run.AppImage" > "$out/inputs/appimage.sha256"
 rcs=""
 for combo in ubuntu-generic ubuntu-gnome fedora-generic fedora-gnome; do
@@ -47,7 +47,7 @@ done
 echo "helpers:$rcs" | tee -a "$out/steps.txt"
 if [ "$kind" = final ]; then
   step package-v2 "$R" package-appimage "$out/v2" --update-marker v2-installed || exit 1
-  step feed "$R" appimage-feed "$out/feed" "$out/v2/pkg/E2E-UniClipboard_1.1.1_arm64.AppImage.tar.gz" || exit 1
+  step feed "$R" appimage-feed "$out/feed" "$out/v2/pkg/E2E-UniClipboard_1.1.1_aarch64.AppImage.tar.gz" || exit 1
   step content-v1 "$R" appimage-content-check "$out/content-v1" "$V1" "$M1"; content=$?
   step tls-ubuntu env UC_TLS_IMAGE=uc-gui-go-linux-runtime:17c7 "$R" appimage-tls-e2e "$out/tls-ubuntu" "$V1" "$M1"; tlsu=$?
   step tls-fedora env UC_TLS_IMAGE=uc-gui-go-linux-runtime-fedora:17c7 "$R" appimage-tls-e2e "$out/tls-fedora" "$V1" "$M1"; tlsf=$?

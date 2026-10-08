@@ -24,13 +24,19 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../../../.." && pwd)"
 IMAGE="${UC_LINUX_IMAGE:-uc-gui-go-linux-build:17c}"
+# Native platform of the Docker host's containers: arm64 (the original macOS host) unless the caller says otherwise (CI runs amd64 and arm64 natively).
+PLATFORM="${UC_DOCKER_PLATFORM:-linux/arm64}"
+ARCH="${PLATFORM#linux/}"  # amd64 | arm64: the package_linux.py --arch value
+# The clean-host image the AppImage runs in (no GTK/WebKitGTK) and the Secret Service image next to it; CI selects the distribution per run.
+RUNTIME_IMAGE="${UC_RUNTIME_IMAGE:-uc-gui-go-linux-runtime:17c4}"
+KEYRING_IMAGE="${UC_KEYRING_IMAGE:-uc-gui-go-linux-keyring:17c4}"
 VOLUME=uc-gui-go-linux-cache
 mode="${1:?usage: run.sh build|xvfb|package [outdir]}"
 docker image inspect "$IMAGE" >/dev/null
 # A git worktree's .git file points at the main repository's metadata by absolute path: mount that read-only at the same
 # path so git works inside the container (provenance in the manifests), without letting the container write to it.
 GITCOMMON="$(cd "$ROOT" && cd "$(git rev-parse --git-common-dir)" && pwd -P)"
-common=(-e UC_OUT_DIR="${UC_OUT_DIR:-}" -e UC_WAYLAND_RUN_ARGS="${UC_WAYLAND_RUN_ARGS:-}" --rm --platform linux/arm64 -v "$ROOT:/work" --mount "type=bind,src=$GITCOMMON,dst=$GITCOMMON,readonly" -e GIT_OPTIONAL_LOCKS=0 -v "$VOLUME:/cache" -w /work)
+common=(-e UC_OUT_DIR="${UC_OUT_DIR:-}" -e UC_WAYLAND_RUN_ARGS="${UC_WAYLAND_RUN_ARGS:-}" --rm --platform "$PLATFORM" -v "$ROOT:/work" --mount "type=bind,src=$GITCOMMON,dst=$GITCOMMON,readonly" -e GIT_OPTIONAL_LOCKS=0 -v "$VOLUME:/cache" -w /work)
 case "$mode" in
   build)
     docker run "${common[@]}" -e SKIP_DAEMON="${SKIP_DAEMON:-0}" "$IMAGE" bash apps/gui-go/e2e/linux/build_in_container.sh ;;
@@ -61,7 +67,7 @@ case "$mode" in
     out="$(mkdir -p "${2:?outdir}" && cd "$2" && pwd)"
     docker run "${common[@]}" -v "$out:/out" "$IMAGE" bash -c '
       git config --global --add safe.directory /work
-      python3 apps/gui-go/e2e/package_linux.py --arch arm64 --daemon /cache/out/uniclipd --out /out/packages' ;;
+      python3 apps/gui-go/e2e/package_linux.py --arch "$ARCH" --daemon /cache/out/uniclipd --out /out/packages' ;;
   daemon-release)
     docker run "${common[@]}" "$IMAGE" bash apps/gui-go/e2e/linux/build_daemon_release.sh ;;
   release-e2e-build)
@@ -70,7 +76,7 @@ case "$mode" in
     out="$(mkdir -p "${2:?outdir}" && cd "$2" && pwd)"
     docker run "${common[@]}" -v "$out:/out" "$IMAGE" bash -c '
       git config --global --add safe.directory /work; export GOPATH=/cache/gopath GOFLAGS=-mod=mod
-      python3 apps/gui-go/e2e/package_linux.py --arch arm64 --daemon /cache/out-release/uniclipd --daemon-evidence /cache/out-release/build-evidence.txt --tools-dir /cache/tools --out /out/packages' ;;
+      python3 apps/gui-go/e2e/package_linux.py --arch "$ARCH" --daemon /cache/out-release/uniclipd --daemon-evidence /cache/out-release/build-evidence.txt --tools-dir /cache/tools --out /out/packages' ;;
   package-appimage)
     # UC_PACKAGE_DOCKER_ARGS adds docker options for this container only (17c6: `--network none` proves the pack needs no download);
     # UC_PACKAGE_TOOLS is a host directory used as the tools directory instead of the cache volume's /cache/tools (negative cases).
@@ -79,7 +85,7 @@ case "$mode" in
     docker run "${common[@]}" ${UC_PACKAGE_DOCKER_ARGS:-} ${extra[@]+"${extra[@]}"} -v "$out:/out" "$IMAGE" bash -c '
       git config --global --add safe.directory /work; export GOPATH=/cache/gopath GOFLAGS=-mod=mod
       tools=/cache/tools; [ ! -d /tools ] || tools=/tools
-      python3 apps/gui-go/e2e/package_linux.py --arch arm64 --daemon /cache/out-release/uniclipd --daemon-evidence /cache/out-release/build-evidence.txt --gui-binary /cache/out-release/gui-go-release-e2e --appimage-only --tools-dir "$tools" --out /out/pkg "$@"' _ "$@" ;;
+      python3 apps/gui-go/e2e/package_linux.py --arch "$ARCH" --daemon /cache/out-release/uniclipd --daemon-evidence /cache/out-release/build-evidence.txt --gui-binary /cache/out-release/gui-go-release-e2e --appimage-only --tools-dir "$tools" --out /out/pkg "$@"' _ "$@" ;;
   appimage-feed)
     out="$(mkdir -p "${2:?outdir}" && cd "$2" && pwd)"; archive="$(cd "$(dirname "${3:?v2 AppImage.tar.gz}")" && pwd)/$(basename "$3")"
     docker run "${common[@]}" -v "$out:/out" -v "$archive:/in/update.AppImage.tar.gz:ro" "$IMAGE" bash -c '
@@ -96,12 +102,12 @@ case "$mode" in
     if [ -n "${5:-}" ]; then mounts+=(-v "$(cd "$5" && pwd):/in/feed"); runargs+=(--feed /in/feed); fi
     if [ -n "${6:-}" ]; then mounts+=(-v "$(cd "$(dirname "$6")" && pwd)/$(basename "$6"):/in/package-manifest.json:ro"); runargs+=(--manifest /in/package-manifest.json); fi
     docker volume create "$bus" >/dev/null
-    docker run -d --name "$keyring" --platform linux/arm64 -v "$bus:/bus" uc-gui-go-linux-keyring:17c4 /usr/local/bin/keyring_service.sh >/dev/null
-    for _ in $(seq 60); do docker run --rm -v "$bus:/bus" uc-gui-go-linux-runtime:17c4 test -f /bus/ready && break; sleep 1; done
+    docker run -d --name "$keyring" --platform "$PLATFORM" -v "$bus:/bus" "$KEYRING_IMAGE" /usr/local/bin/keyring_service.sh >/dev/null
+    for _ in $(seq 60); do docker run --rm -v "$bus:/bus" "$RUNTIME_IMAGE" test -f /bus/ready && break; sleep 1; done
     set +e
-    docker run --rm --init --platform linux/arm64 --device /dev/fuse --cap-add SYS_ADMIN --security-opt apparmor:unconfined \
+    docker run --rm --init --platform "$PLATFORM" --device /dev/fuse --cap-add SYS_ADMIN --security-opt apparmor:unconfined \
       -e UC_E2E_BUS=unix:path=/bus/bus -v "$bus:/bus" -v "$ROOT:/work:ro" -v "uc-gui-go-linux-cache:/cache:ro" -v "$out:/out" "${mounts[@]}" \
-      uc-gui-go-linux-runtime:17c4 python3 /work/apps/gui-go/e2e/linux_appimage_run.py "${runargs[@]}" --uniclip /cache/out/uniclip > "$out/run.log" 2>&1
+      "$RUNTIME_IMAGE" python3 /work/apps/gui-go/e2e/linux_appimage_run.py "${runargs[@]}" --uniclip /cache/out/uniclip > "$out/run.log" 2>&1
     code=$?
     docker logs "$keyring" > "$out/keyring-container.log" 2>&1
     # A bus-activated (locked) keyring or a prompt request means the Secret Service did not behave like an unlocked desktop keyring:
@@ -118,7 +124,7 @@ case "$mode" in
     feed="$(cd "${4:?feed dir}" && pwd)"
     manifest="$(cd "$(dirname "${5:?package-manifest.json}")" && pwd)/$(basename "$5")"
     set +e
-    docker run --rm --init --platform linux/arm64 --device /dev/fuse --cap-add SYS_ADMIN --cap-add SYS_PTRACE --security-opt apparmor:unconfined \
+    docker run --rm --init --platform "$PLATFORM" --device /dev/fuse --cap-add SYS_ADMIN --cap-add SYS_PTRACE --security-opt apparmor:unconfined \
       -v "$ROOT:/work:ro" -v "uc-gui-go-linux-cache:/cache:ro" -v "$out:/out" -v "$image:/in/appimage.AppImage:ro" -v "$feed:/in/feed" \
       -v "$manifest:/in/package-manifest.json:ro" \
       uc-gui-go-linux-runtime:17c4 python3 /work/apps/gui-go/e2e/linux_appimage_portable_run.py --out /out --appimage /in/appimage.AppImage \
@@ -130,7 +136,7 @@ case "$mode" in
     image="$(cd "$(dirname "${3:?AppImage}")" && pwd)/$(basename "$3")"
     manifest="$(cd "$(dirname "${4:?package-manifest.json}")" && pwd)/$(basename "$4")"
     set +e
-    docker run --rm --init --platform linux/arm64 --device /dev/fuse --cap-add SYS_ADMIN --cap-add SYS_PTRACE --security-opt apparmor:unconfined \
+    docker run --rm --init --platform "$PLATFORM" --device /dev/fuse --cap-add SYS_ADMIN --cap-add SYS_PTRACE --security-opt apparmor:unconfined \
       -v "$ROOT:/work:ro" -v "$out:/out" -v "$image:/in/appimage.AppImage:ro" -v "$manifest:/in/package-manifest.json:ro" \
       "${UC_TLS_IMAGE:-uc-gui-go-linux-runtime:17c7}" python3 /work/apps/gui-go/e2e/linux_appimage_tls_run.py --out /out --appimage /in/appimage.AppImage \
       --manifest /in/package-manifest.json ${UC_TLS_E2E_ARGS:-} > "$out/run.log" 2>&1
@@ -141,7 +147,7 @@ case "$mode" in
     image="$(cd "$(dirname "${3:?AppImage}")" && pwd)/$(basename "$3")"
     manifest="$(cd "$(dirname "${4:?package-manifest.json}")" && pwd)/$(basename "$4")"
     set +e
-    docker run --rm --init --platform linux/arm64 --device /dev/fuse --cap-add SYS_ADMIN --cap-add SYS_PTRACE --security-opt apparmor:unconfined \
+    docker run --rm --init --platform "$PLATFORM" --device /dev/fuse --cap-add SYS_ADMIN --cap-add SYS_PTRACE --security-opt apparmor:unconfined \
       -v "$ROOT:/work:ro" -v "$out:/out" -v "$image:/in/appimage.AppImage:ro" -v "$manifest:/in/package-manifest.json:ro" \
       "${UC_HELPERS_IMAGE:?UC_HELPERS_IMAGE}" python3 /work/apps/gui-go/e2e/linux_appimage_helpers_run.py --out /out --appimage /in/appimage.AppImage \
       --manifest /in/package-manifest.json --desktop "${UC_HELPERS_DESKTOP:?UC_HELPERS_DESKTOP}" ${UC_HELPERS_E2E_ARGS:-} > "$out/run.log" 2>&1
@@ -156,7 +162,7 @@ case "$mode" in
     # route out, so the browser cannot reach anything but the controlled loopback target. The Engine also fails its p2p bind when the host has no default route (dev4: `engine error 1101`,
     # reproduced in a bare container), so the runner adds `default dev eth0` (NET_ADMIN) inside this internal network: a fixture requirement, recorded as an open Engine observation. bwrap (WebKit's sandbox in Epiphany) needs seccomp and systempaths unconfined.
     net="uc17c11-internal-$$"; docker network create --internal "$net" >/dev/null
-    docker run --rm --init --platform linux/arm64 --network "$net" --shm-size 1g --device /dev/fuse --cap-add SYS_ADMIN --cap-add SYS_PTRACE --cap-add NET_ADMIN --security-opt apparmor:unconfined \
+    docker run --rm --init --platform "$PLATFORM" --network "$net" --shm-size 1g --device /dev/fuse --cap-add SYS_ADMIN --cap-add SYS_PTRACE --cap-add NET_ADMIN --security-opt apparmor:unconfined \
       --security-opt seccomp:unconfined --security-opt systempaths=unconfined \
       -v "$ROOT:/work:ro" -v "$out:/out" -v "$image:/in/appimage.AppImage:ro" -v "$manifest:/in/package-manifest.json:ro" \
       "${UC_REAL_IMAGE:?UC_REAL_IMAGE}" python3 /work/apps/gui-go/e2e/linux_appimage_real_helpers_run.py --out /out --appimage /in/appimage.AppImage \
@@ -171,7 +177,7 @@ case "$mode" in
     case "$comp" in weston) cimage=uc-gui-go-linux-weston:17c13-b ;; sway) cimage=uc-gui-go-linux-sway-nolib:17c13 ;; *) echo "bad compositor" >&2; exit 2 ;; esac
     set +e
     net="uc17c13-internal-$$"; docker network create --internal "$net" >/dev/null
-    docker run --rm --init --platform linux/arm64 --network "$net" --shm-size 1g --device /dev/fuse --cap-add SYS_ADMIN --cap-add SYS_PTRACE --cap-add NET_ADMIN --security-opt apparmor:unconfined \
+    docker run --rm --init --platform "$PLATFORM" --network "$net" --shm-size 1g --device /dev/fuse --cap-add SYS_ADMIN --cap-add SYS_PTRACE --cap-add NET_ADMIN --security-opt apparmor:unconfined \
       --security-opt seccomp:unconfined --security-opt systempaths=unconfined \
       -v "$ROOT:/work:ro" -v "$out:/out" -v "$image:/in/appimage.AppImage:ro" \
       "$cimage" bash /work/apps/gui-go/e2e/linux/native_wayland_container.sh "$comp" "$pmode" /out/run > "$out/run.log" 2>&1
@@ -185,7 +191,7 @@ case "$mode" in
     set +e
     # --internal: no route out (nothing can leave the container); NET_ADMIN lets the runner add the default route the Engine needs (17c11 R1)
     net="uc17c12-internal-$$"; docker network create --internal "$net" >/dev/null
-    docker run --rm --init --platform linux/arm64 --network "$net" --device /dev/fuse --cap-add SYS_ADMIN --cap-add SYS_PTRACE --cap-add NET_ADMIN --security-opt apparmor:unconfined \
+    docker run --rm --init --platform "$PLATFORM" --network "$net" --device /dev/fuse --cap-add SYS_ADMIN --cap-add SYS_PTRACE --cap-add NET_ADMIN --security-opt apparmor:unconfined \
       -v "$ROOT:/work:ro" -v "$out:/out" -v "$image:/in/appimage.AppImage:ro" -v "$manifest:/in/package-manifest.json:ro" \
       "${UC_PROXY_IMAGE:-uc-gui-go-linux-proxy:17c12-ubuntu}" python3 /work/apps/gui-go/e2e/${UC_PROXY_RUNNER:-linux_appimage_proxy_run.py} --out /out --appimage /in/appimage.AppImage \
       --manifest /in/package-manifest.json ${UC_PROXY_ARGS:-} > "$out/run.log" 2>&1
@@ -196,7 +202,7 @@ case "$mode" in
     out="$(mkdir -p "${2:?outdir}" && cd "$2" && pwd)"
     image="$(cd "$(dirname "${3:?AppImage}")" && pwd)/$(basename "$3")"
     manifest="$(cd "$(dirname "${4:?package-manifest.json}")" && pwd)/$(basename "$4")"
-    docker run --rm --platform linux/arm64 -e UC_CONTENT_CHECK_ARGS="${UC_CONTENT_CHECK_ARGS:-}" -v "$ROOT:/work:ro" -v "$out:/out" -v "$image:/in/appimage.AppImage:ro" -v "$manifest:/in/package-manifest.json:ro" "$IMAGE" bash -c '
+    docker run --rm --platform "$PLATFORM" -e UC_CONTENT_CHECK_ARGS="${UC_CONTENT_CHECK_ARGS:-}" -v "$ROOT:/work:ro" -v "$out:/out" -v "$image:/in/appimage.AppImage:ro" -v "$manifest:/in/package-manifest.json:ro" "$IMAGE" bash -c '
       set -e; cd /out; cp /in/appimage.AppImage ./x.AppImage; chmod +x ./x.AppImage; ./x.AppImage --appimage-extract > extract.log 2>&1
       python3 -I /work/apps/gui-go/e2e/linux/audit_dlopen.py /out/squashfs-root /out/dlopen-audit.json
       python3 -I /work/apps/gui-go/e2e/linux/appimage_content_check.py /out/squashfs-root /in/package-manifest.json /out/content-check.json ${UC_CONTENT_CHECK_ARGS:-}' ;;

@@ -29,7 +29,7 @@ done
 step frontend-e2e bash -c "cd '$ROOT' && VITE_GUI_GO_E2E=1 bun --bun run --cwd apps/gui-go build" || exit 1
 step build-gui "$R" release-e2e-build || exit 1
 step package-v1 "$R" package-appimage "$out/v1" || exit 1
-V1="$out/v1/pkg/E2E-UniClipboard_1.1.1_arm64.AppImage"; M1="$out/v1/pkg/package-manifest.json"
+V1="$out/v1/pkg/E2E-UniClipboard_1.1.1_aarch64.AppImage"; M1="$out/v1/pkg/package-manifest.json"
 shasum -a 256 "$V1" "$M1" | tee "$out/inputs/package.sha256"
 step content-v1 "$R" appimage-content-check "$out/content-v1" "$V1" "$M1"; content=$?
 
@@ -79,7 +79,7 @@ echo "matrix jobs listed=$njobs recorded=$recorded" | tee -a "$out/steps.txt"  #
 
 # ---- regressions on the SAME package
 step package-v2 "$R" package-appimage "$out/v2" --update-marker v2-installed || exit 1
-V2="$out/v2/pkg/E2E-UniClipboard_1.1.1_arm64.AppImage"; shasum -a 256 "$V1" "$V2" "$V2.tar.gz" | tee "$out/inputs/update-packages.sha256"
+V2="$out/v2/pkg/E2E-UniClipboard_1.1.1_aarch64.AppImage"; shasum -a 256 "$V1" "$V2" "$V2.tar.gz" | tee "$out/inputs/update-packages.sha256"
 step feed "$R" appimage-feed "$out/feed" "$V2.tar.gz" || exit 1
 rcs=""
 for combo in ubuntu-generic ubuntu-gnome fedora-generic fedora-gnome; do

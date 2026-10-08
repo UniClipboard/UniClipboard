@@ -38,10 +38,13 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 GUI = ROOT / 'apps/gui-go'
-ARCH = {  # go arch -> (deb, rpm/AppImage)
+ARCH = {  # go arch -> (deb, rpm/ARCH for the AppImage tools)
     'amd64': ('amd64', 'x86_64'),
     'arm64': ('arm64', 'aarch64'),
 }
+# The AppImage file name uses its own architecture word, the one the released Tauri assets and scripts/collect-release-assets.py
+# accept: amd64 and aarch64 (NOT the deb's arm64). A name the collector does not accept would be silently left out of the release.
+APPIMAGE_NAME_ARCH = {'amd64': 'amd64', 'arm64': 'aarch64'}
 APPIMAGETOOL = {  # a fixed release tag, SHA-256 verified after the download
     'amd64': ('https://github.com/AppImage/appimagetool/releases/download/1.9.0/appimagetool-x86_64.AppImage',
               '46fdd785094c7f6e545b61afcfb0f3d98d8eab243f644b4b17698c01d06083d1'),
@@ -95,11 +98,22 @@ PACRUNNER = ('/usr/libexec/glib-pacrunner', 'glib-networking-services', 'usr/lib
 # The libraries libgiolibproxy.so needs that the AppImage does not already carry (computed from the build image's own dependency closure, then frozen here: a new
 # entry is a decision, not an accident). libproxy 0.5's backend hard-links the PAC runtime (duktape) and the PAC downloader (libcurl-gnutls), whose own closure
 # (libssh, libldap/liblber, libsasl2, librtmp, OpenSSL's libcrypto) comes with it; this is the distribution's own dependency set for libproxy, not a choice of ours.
-GIO_SUPPORT_LIBS = {'libproxy.so.1': 'libproxy1v5', 'libpxbackend-1.0.so': 'libproxy1v5', 'libduktape.so.207': 'libduktape207', 'libcurl-gnutls.so.4': 'libcurl3t64-gnutls',
-                    'libssh.so.4': 'libssh-4', 'libldap.so.2': 'libldap2', 'liblber.so.2': 'libldap2', 'libsasl2.so.2': 'libsasl2-2', 'librtmp.so.1': 'librtmp1',
-                    'libcrypto.so.3': 'libssl3t64'}
+GIO_SUPPORT_LIBS_V5 = {'libproxy.so.1': 'libproxy1v5', 'libpxbackend-1.0.so': 'libproxy1v5', 'libduktape.so.207': 'libduktape207', 'libcurl-gnutls.so.4': 'libcurl3t64-gnutls',
+                       'libssh.so.4': 'libssh-4', 'libldap.so.2': 'libldap2', 'liblber.so.2': 'libldap2', 'libsasl2.so.2': 'libsasl2-2', 'librtmp.so.1': 'librtmp1',
+                       'libcrypto.so.3': 'libssl3t64'}
+# libproxy 0.4 (Debian 12): one self-contained library; PAC evaluation is an optional plugin package that is not installed, so a resolver chain that reaches libproxy has no PAC
+# there (the GNOME resolver still has PAC through the bundled glib-pacrunner). Which table applies follows from the library the build image provides, not from a flag.
+GIO_SUPPORT_LIBS_V4 = {'libproxy.so.1': 'libproxy1v5'}
+
+
+def gio_support_libs():
+    """The libproxy support set of the build image: 0.5 ships libpxbackend-1.0.so next to the GIO modules' directory, 0.4 does not."""
+    moddir = Path(run(['pkg-config', '--variable=giomoduledir', 'gio-2.0'], capture=True))
+    return GIO_SUPPORT_LIBS_V5 if (moddir.parent.parent / 'libproxy' / 'libpxbackend-1.0.so').is_file() else GIO_SUPPORT_LIBS_V4
+
+
 # Libraries every Linux host has and that the 17c7 classification (linux_appimage_tls_run.HOST_OK) already leaves to the host.
-GIO_SUPPORT_HOST_OK = ('libz.so.1', 'libgmp.so.10', 'libcom_err.so.2', 'libresolv.so.2')
+GIO_SUPPORT_HOST_OK = ('libz.so.1', 'libgmp.so.10', 'libcom_err.so.2', 'libresolv.so.2', 'libstdc++.so.6', 'libgcc_s.so.1')
 # 17c13: the Wayland Layer Shell library the quick panel loads with dlopen (internal/layershell). It is carried so that the panel does not depend on the host having it
 # (GNOME and Ubuntu-based desktops do not ship it by default); it is the distribution's own build, not ours. Its one host-provided dependency is libwayland-client, which
 # the AppImage keeps out on purpose (docs/architecture/linux-appimage-library-policy.md).
@@ -336,7 +350,7 @@ def deploy_gio_modules(appdir):
         if m:
             libdir_of.setdefault(m.group(1), m.group(2))
     support_rows = []
-    for name, package in GIO_SUPPORT_LIBS.items():
+    for name, package in gio_support_libs().items():
         src = Path(libdir_of.get(name) or (moddir.parent.parent / 'libproxy' / name))
         if name == 'libpxbackend-1.0.so':
             src = moddir.parent.parent / 'libproxy' / name
@@ -398,7 +412,9 @@ def deploy_gio_modules(appdir):
     if pac_missing:
         sys.exit(f'glib-pacrunner needs libraries that are neither in the AppDir nor libc-family: {pac_missing}')
     pac_row = {'path': rel, 'source': str(src), 'package': package, 'packageVersion': run(['dpkg-query', '-W', '-f', '${Version}', package], capture=True), 'sha256': sha256(pac_dest), 'needed': pac_needed}
-    glib_version = run(['dpkg-query', '-W', '-f', '${Version}', 'libglib2.0-0t64'], capture=True)
+    glib_real = Path(libdir_of['libglib-2.0.so.0']).resolve()
+    glib_package = run(['dpkg', '-S', str(glib_real)], capture=True).split(':')[0]
+    glib_version = run(['dpkg-query', '-W', '-f', '${Version}', glib_package], capture=True)
     return {'pacRunner': pac_row, 'modules': rows, 'supportLibraries': support_rows, 'bundledGLibPackageVersion': glib_version}
 
 
@@ -551,8 +567,12 @@ def build_appimage(stage, out, arch, name, tools, daemon, relocate=True, marker=
     return image, info
 
 
-def read_daemon_evidence(path, daemon):
-    """Parse linux/build_daemon_release.sh's build-evidence.txt and check it describes THIS file."""
+TARGET_TRIPLE = {'amd64': ('x86_64-unknown-linux-gnu', 'x86_64'), 'arm64': ('aarch64-unknown-linux-gnu', 'aarch64')}
+ENGINE_REV = re.compile(r'uc-engine\s*=\s*\{[^}]*\brev\s*=\s*"([0-9a-f]{40})"')
+
+
+def read_daemon_evidence(path, daemon, arch):
+    """Parse linux/build_daemon_release.sh's build-evidence.txt and check it describes THIS file, built for THIS architecture from THIS checkout."""
     lines = path.read_text().splitlines()
     fields = dict(l.split('=', 1) for l in lines if re.match(r'^[a-z_]+=', l))
     digest = next((l.split()[0] for l in lines if re.match(r'^[0-9a-f]{64}\s', l)), None)
@@ -561,14 +581,26 @@ def read_daemon_evidence(path, daemon):
         sys.exit(f'{path} describes a different binary (evidence {digest}, file {sha256(daemon)})')
     if fields.get('daemon_source_dirty') != 'false':
         sys.exit(f'{path}: the daemon was built from a dirty tree; an immutable build is required')
-    if 'release' not in fields.get('build_mode', ''):
-        sys.exit(f'{path}: not a release build')
+    if fields.get('build_mode') != 'release':
+        sys.exit(f"{path}: build_mode is {fields.get('build_mode')!r}; only an unmodified release profile is packaged")
+    triple, machine = TARGET_TRIPLE[arch]
+    if fields.get('target') != triple or fields.get('build_host_machine') != machine:
+        sys.exit(f"{path}: built for {fields.get('target')} on {fields.get('build_host_machine')}, expected {triple} on {machine} (a daemon is never cross-built or emulated here)")
+    if fields.get('cargo_lock_sha256') != sha256(ROOT / 'Cargo.lock'):
+        sys.exit(f'{path}: Cargo.lock differs from the one the daemon was built with')
+    pinned = ENGINE_REV.search((ROOT / 'Cargo.toml').read_text())
+    lock_source = next((l for l in engine if l.startswith('source = ')), '')
+    if not pinned or f'rev={pinned.group(1)}#{pinned.group(1)}' not in lock_source:
+        sys.exit(f"{path}: the Engine entry in the evidence ({lock_source!r}) is not this checkout's pinned revision ({pinned.group(1) if pinned else 'unknown'})")
     # The daemon was built at fields['head']; the packaging commit may be later. Every input of the daemon build must be unchanged.
     changed = subprocess.run(['git', 'diff', '--name-only', fields.get('head', ''), 'HEAD', '--', 'Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml', 'crates', 'apps/daemon'],
                              cwd=ROOT, capture_output=True, text=True)
     if changed.returncode != 0 or changed.stdout.strip():
         sys.exit(f'daemon sources changed between the build evidence head and HEAD (or the head is unknown): {changed.stdout.strip() or changed.stderr.strip()}')
     return {'head': fields.get('head'), 'daemonInputsUnchangedUntilHead': True, 'buildMode': fields.get('build_mode'), 'command': fields.get('command'),
+            'target': fields.get('target'), 'buildHostMachine': fields.get('build_host_machine'), 'buildHostOs': fields.get('build_host_os'),
+            'buildHostGlibc': fields.get('build_host_glibc'), 'buildImage': fields.get('build_image'), 'cargoLockSha256': fields.get('cargo_lock_sha256'),
+            'engineRev': pinned.group(1), 'telemetry': {k: fields.get(k) for k in ('telemetry_sentry_dsn_injected', 'telemetry_posthog_key_injected', 'telemetry_app_env')},
             'engineLockEntry': engine[:3], 'evidenceFile': str(path), 'evidenceSha256': sha256(path)}
 
 
@@ -607,7 +639,7 @@ def main():
     if not fixture:
         if not args.daemon_evidence:
             sys.exit('--daemon-evidence is required: a daemon of unverified origin is not packaged (use --packaging-check-fixture for a marked check build)')
-        evidence = read_daemon_evidence(args.daemon_evidence, args.daemon)
+        evidence = read_daemon_evidence(args.daemon_evidence, args.daemon, args.arch)
     if sum([args.negative_control_no_relocation, args.negative_control_no_tls_module, args.negative_control_keep_x11_hook, args.negative_control_no_layer_shell]) > 1:
         sys.exit('pick one negative control')
     prefix = ('FIXTURE-' if fixture else 'NEGCONTROL-' if args.negative_control_no_relocation else 'NEGTLS-' if args.negative_control_no_tls_module
@@ -649,7 +681,7 @@ def main():
         extra['rpmFiles'] = run(['rpm', '-qpl', str(rpm)], capture=True)
     tools = args.tools_dir.resolve() if args.tools_dir else out / 'tools'
     tools.mkdir(parents=True, exist_ok=True)
-    image, appimage = build_appimage(stage, out, args.arch, f'{prefix}{product}_{version}_{deb_name}.AppImage', tools, args.daemon,
+    image, appimage = build_appimage(stage, out, args.arch, f'{prefix}{product}_{version}_{APPIMAGE_NAME_ARCH[args.arch]}.AppImage', tools, args.daemon,
                                      relocate=not args.negative_control_no_relocation, marker=args.update_marker,
                                      tls_module=not args.negative_control_no_tls_module, force_x11_hook=args.negative_control_keep_x11_hook, layer_shell=not args.negative_control_no_layer_shell)
     archive = out / f'{image.name}.tar.gz'

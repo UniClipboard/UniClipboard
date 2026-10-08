@@ -17,12 +17,12 @@ step build-gui "$R" release-e2e-build || exit 1
 step package-v1 "$R" package-appimage "$out/v1" || exit 1
 step package-v2 "$R" package-appimage "$out/v2" --update-marker v2-installed || exit 1
 step package-negative "$R" package-appimage "$out/negative" --negative-control-no-relocation || exit 1
-step feed "$R" appimage-feed "$out/feed" "$out/v2/pkg/E2E-UniClipboard_1.1.1_arm64.AppImage.tar.gz" || exit 1
-step e2e-full "$R" appimage-e2e "$out/e2e-full" full "$out/v1/pkg/E2E-UniClipboard_1.1.1_arm64.AppImage" "$out/feed" "$out/v1/pkg/package-manifest.json"; full=$?
-step e2e-negative "$R" appimage-e2e "$out/e2e-negative" negative "$out/negative/pkg/NEGCONTROL-UniClipboard_1.1.1_arm64.AppImage"; neg=$?
+step feed "$R" appimage-feed "$out/feed" "$out/v2/pkg/E2E-UniClipboard_1.1.1_aarch64.AppImage.tar.gz" || exit 1
+step e2e-full "$R" appimage-e2e "$out/e2e-full" full "$out/v1/pkg/E2E-UniClipboard_1.1.1_aarch64.AppImage" "$out/feed" "$out/v1/pkg/package-manifest.json"; full=$?
+step e2e-negative "$R" appimage-e2e "$out/e2e-negative" negative "$out/negative/pkg/NEGCONTROL-UniClipboard_1.1.1_aarch64.AppImage"; neg=$?
 step frontend-release bash -c "cd '$ROOT' && VITE_GUI_GO_E2E=0 bun --bun run --cwd apps/gui-go build" || exit 1
 step package-release "$R" package-release "$out/release" || exit 1
-step e2e-smoke "$R" appimage-e2e "$out/e2e-smoke" smoke "$out/release/packages/UniClipboard_1.1.1_arm64.AppImage"; smoke=$?
+step e2e-smoke "$R" appimage-e2e "$out/e2e-smoke" smoke "$out/release/packages/UniClipboard_1.1.1_aarch64.AppImage"; smoke=$?
 echo "full=$full negative=$neg smoke=$smoke" | tee -a "$out/steps.txt"
 ( cd "$out" && find . -type f \( -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' -o -name '*.tar.gz' -o -name 'package-manifest.json' -o -name 'appimage-assertions.json' -o -name 'uniclipboard' \) -print0 | sort -z | xargs -0 shasum -a 256 > SHA256SUMS.txt )
 [ "$full" = 0 ] && [ "$neg" = 0 ] && [ "$smoke" = 0 ]

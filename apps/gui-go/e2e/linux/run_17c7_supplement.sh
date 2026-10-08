@@ -13,8 +13,8 @@ git -C "$ROOT" rev-parse HEAD > "$out/HEAD.txt"; cp "$base/HEAD.txt" "$out/origi
 step() { local name="$1"; shift; echo "== $name" | tee -a "$out/steps.txt"; "$@" > "$out/logs/$name.log" 2>&1; local rc=$?; echo "   rc=$rc" | tee -a "$out/steps.txt"; return $rc; }
 ( cd "$base" && shasum -a 256 -c SHA256SUMS.txt > "$out/logs/original-sha256-verify.log" 2>&1 ); sums=$?
 echo "original packages unchanged (shasum -c SHA256SUMS.txt): rc=$sums" | tee -a "$out/steps.txt"
-V1="$base/v1/pkg/E2E-UniClipboard_1.1.1_arm64.AppImage"; M1="$base/v1/pkg/package-manifest.json"
-NT="$base/negtls/pkg/NEGTLS-UniClipboard_1.1.1_arm64.AppImage"; MN="$base/negtls/pkg/package-manifest.json"
+V1="$base/v1/pkg/E2E-UniClipboard_1.1.1_aarch64.AppImage"; M1="$base/v1/pkg/package-manifest.json"
+NT="$base/negtls/pkg/NEGTLS-UniClipboard_1.1.1_aarch64.AppImage"; MN="$base/negtls/pkg/package-manifest.json"
 OLD="${UC_OLD_PKG_DIR:-/Users/mark/.herdr-projects/uni/t-0188-artifacts/linux-17c6/final-3ed97b642/v1/pkg}"
 step content-v1 "$R" appimage-content-check "$out/content-v1" "$V1" "$M1"; content=$?
 step content-negtls env UC_CONTENT_CHECK_ARGS=--expect-no-tls-module "$R" appimage-content-check "$out/content-negtls" "$NT" "$MN"; contentneg=$?
@@ -22,8 +22,8 @@ step tls-ubuntu "$R" appimage-tls-e2e "$out/tls-ubuntu" "$V1" "$M1"; tlsu=$?
 step tls-fedora env UC_TLS_IMAGE=uc-gui-go-linux-runtime-fedora:17c7 "$R" appimage-tls-e2e "$out/tls-fedora" "$V1" "$M1"; tlsf=$?
 step control-negtls-ubuntu env UC_TLS_E2E_ARGS="--expect-tls absent" "$R" appimage-tls-e2e "$out/control-negtls-ubuntu" "$NT" "$MN"; cnu=$?
 step control-negtls-fedora env UC_TLS_IMAGE=uc-gui-go-linux-runtime-fedora:17c7 UC_TLS_E2E_ARGS="--expect-tls absent" "$R" appimage-tls-e2e "$out/control-negtls-fedora" "$NT" "$MN"; cnf=$?
-step control-17c6-ubuntu env UC_TLS_E2E_ARGS="--expect-tls absent" "$R" appimage-tls-e2e "$out/control-17c6-ubuntu" "$OLD/E2E-UniClipboard_1.1.1_arm64.AppImage" "$OLD/package-manifest.json"; c6u=$?
-step control-17c6-fedora env UC_TLS_IMAGE=uc-gui-go-linux-runtime-fedora:17c7 UC_TLS_E2E_ARGS="--expect-tls absent" "$R" appimage-tls-e2e "$out/control-17c6-fedora" "$OLD/E2E-UniClipboard_1.1.1_arm64.AppImage" "$OLD/package-manifest.json"; c6f=$?
+step control-17c6-ubuntu env UC_TLS_E2E_ARGS="--expect-tls absent" "$R" appimage-tls-e2e "$out/control-17c6-ubuntu" "$OLD/E2E-UniClipboard_1.1.1_aarch64.AppImage" "$OLD/package-manifest.json"; c6u=$?
+step control-17c6-fedora env UC_TLS_IMAGE=uc-gui-go-linux-runtime-fedora:17c7 UC_TLS_E2E_ARGS="--expect-tls absent" "$R" appimage-tls-e2e "$out/control-17c6-fedora" "$OLD/E2E-UniClipboard_1.1.1_aarch64.AppImage" "$OLD/package-manifest.json"; c6f=$?
 c6f_ok=1; python3 -I - "$out/control-17c6-fedora/appimage-assertions.json" <<'PY' && c6f_ok=0
 import json, sys
 r = json.load(open(sys.argv[1]))

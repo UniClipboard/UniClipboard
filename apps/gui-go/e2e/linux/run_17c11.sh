@@ -45,7 +45,7 @@ grep -rl "__ucE2eOpenUrl" "$ROOT/apps/gui-go/frontend/dist/assets" > "$out/input
 (cd "$ROOT/apps/gui-go/frontend/dist" && find . -type f | LC_ALL=C sort | xargs shasum -a 256 > "$out/inputs/dist.sha256")
 step build-gui "$R" release-e2e-build || exit 1
 step package-v1 "$R" package-appimage "$out/v1" || exit 1
-V1="$out/v1/pkg/E2E-UniClipboard_1.1.1_arm64.AppImage"; M1="$out/v1/pkg/package-manifest.json"
+V1="$out/v1/pkg/E2E-UniClipboard_1.1.1_aarch64.AppImage"; M1="$out/v1/pkg/package-manifest.json"
 cp "$V1" "$out/inputs/appimage-as-run.AppImage"; shasum -a 256 "$V1" "$out/inputs/appimage-as-run.AppImage" > "$out/inputs/appimage.sha256"
 FIREFOX_ARGS="--browser-exe firefox --browser-ua Firefox/ --browser-desktop org.mozilla.firefox.desktop"
 rcs=""
@@ -61,7 +61,7 @@ step engine-default-route "$E2E/diag_engine_default_route.sh" "$out/engine-defau
 step xdg-open-dispatch-ubuntu "$E2E/diag_xdg_open_generic.sh" "$out/xdg-open-dispatch-ubuntu" uc-gui-go-linux-real-apps:17c11-ubuntu
 step xdg-open-dispatch-fedora "$E2E/diag_xdg_open_generic.sh" "$out/xdg-open-dispatch-fedora" uc-gui-go-linux-real-apps:17c11-fedora
 step package-v2 "$R" package-appimage "$out/v2" --update-marker v2-installed || exit 1
-step feed "$R" appimage-feed "$out/feed" "$out/v2/pkg/E2E-UniClipboard_1.1.1_arm64.AppImage.tar.gz" || exit 1
+step feed "$R" appimage-feed "$out/feed" "$out/v2/pkg/E2E-UniClipboard_1.1.1_aarch64.AppImage.tar.gz" || exit 1
 for combo in ubuntu-generic ubuntu-gnome fedora-generic fedora-gnome; do
   d="${combo%-*}"; m="${combo#*-}"
   step "helpers-$combo" env UC_HELPERS_IMAGE="uc-gui-go-linux-runtime-helpers:17c10-$d" UC_HELPERS_DESKTOP="$m" "$R" appimage-helpers-e2e "$out/helpers-$combo" "$V1" "$M1"; rcs="$rcs helpers-$combo=$?"

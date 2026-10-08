@@ -5,6 +5,8 @@
 # override that the AppImage E2E needs. The frontend bundle must be built with VITE_GUI_GO_E2E=1 (the image has no bun).
 set -euo pipefail
 cd /work
+# The checkout belongs to the CI runner user, not to root in this container: git refuses it without this (rc=128 in run 37746587732).
+git config --global --add safe.directory /work
 export GOPATH=/cache/gopath GOFLAGS=-mod=mod
 OUT=/cache/out-release; mkdir -p "$OUT"
 (cd packages/desktop-host-go && go generate ./buildinfo)

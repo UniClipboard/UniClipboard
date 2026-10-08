@@ -202,7 +202,8 @@ def build_rpm(stage, out, version, arch, name):
     spec = top / 'SPECS/uniclipboard.spec'
     spec.write_text(
         'Name: uniclipboard\nVersion: %s\nRelease: 1\nSummary: Encrypted peer-to-peer clipboard sync between your devices\n'
-        'License: Proprietary\nRequires: gtk3, webkit2gtk4.1, gtk-layer-shell\nAutoReqProv: no\n%%global _build_id_links none\n\n%%description\n'
+        'License: Proprietary\nRequires: gtk3, webkit2gtk4.1, gtk-layer-shell\nAutoReqProv: no\n%%global _build_id_links none\n'
+        '# rpmbuild would strip and rewrite the ELF files after installation, so the daemon in the rpm would no longer be the one the build evidence describes.\n%%global __os_install_post %%{nil}\n%%global debug_package %%{nil}\n\n%%description\n'
         'Encrypted peer-to-peer clipboard sync between your devices.\n\n%%install\ncp -a %s/. %%{buildroot}/\n\n%%files\n%s\n'
         % (version, stage, '\n'.join(files)))
     run(['rpmbuild', '-bb', '--define', f'_topdir {top}', '--define', f'_rpmfilename {name}', '--target', ARCH[arch][1] + '-linux', str(spec)])

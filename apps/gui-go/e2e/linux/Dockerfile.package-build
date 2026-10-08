@@ -17,6 +17,8 @@ RUN apt_install.sh \
       libglib2.0-bin libgdk-pixbuf2.0-bin libgtk-3-bin shared-mime-info \
       glib-networking glib-networking-services dconf-gsettings-backend libgtk-layer-shell0 \
  && rm -rf /var/lib/apt/lists/*
+# libproxy 0.4 (Debian 12) needs its PAC plugin to evaluate PAC scripts; libproxy 0.5 (Ubuntu 24.04) has the runtime built in and the package does not exist there.
+RUN if apt-cache show libproxy1-plugin-webkit >/dev/null 2>&1; then apt_install.sh libproxy1-plugin-webkit && rm -rf /var/lib/apt/lists/*; fi
 RUN curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-${TARGETARCH}.tar.gz" | tar -C /usr/local -xz
 ENV PATH=/usr/local/go/bin:$PATH GOFLAGS=-mod=mod GOTOOLCHAIN=local
 RUN verify_package_build_image.sh

@@ -109,6 +109,21 @@ GIO_SUPPORT_LIBS_V5 = {'libproxy.so.1': 'libproxy1v5', 'libpxbackend-1.0.so': 'l
 GIO_SUPPORT_LIBS_V4 = {'libproxy.so.1': 'libproxy1v5'}
 
 
+LIBPROXY_PLUGIN = ('pacrunner_webkit.so', 'libproxy1-plugin-webkit')
+
+
+def libproxy_plugin():
+    """libproxy 0.4 evaluates PAC scripts in a plugin (the PAC runtime is not in libproxy.so.1): without it every PAC resolves to direct:// (measured 2026-10-08 on the Debian 12
+    build: 14 of 27 proxy scenarios, all of them PAC ones, went direct). Returns the plugin file of the build image, None for libproxy 0.5 (PAC runtime linked in).
+    A 0.4 image without the plugin is an error: PAC support would be lost silently."""
+    if gio_support_libs() is not GIO_SUPPORT_LIBS_V4:
+        return None
+    found = sorted(Path('/usr').glob(f'lib*/**/libproxy/*/modules/{LIBPROXY_PLUGIN[0]}'))
+    if not found:
+        sys.exit(f'{LIBPROXY_PLUGIN[0]} is missing in the build image: install {LIBPROXY_PLUGIN[1]} (libproxy 0.4 has no PAC runtime without it)')
+    return found[0]
+
+
 def gio_support_libs():
     """The libproxy support set of the build image: 0.5 ships libpxbackend-1.0.so next to the GIO modules' directory, 0.4 does not."""
     moddir = Path(run(['pkg-config', '--variable=giomoduledir', 'gio-2.0'], capture=True))
@@ -510,6 +525,9 @@ def build_appimage(stage, out, arch, name, tools, daemon, relocate=True, marker=
            '-d', str(appdir / 'usr/share/applications/uniclipboard.desktop'), '-i', str(appdir / 'usr/share/icons/hicolor/128x128/apps/uniclipboard.png')]
     for e in execs:
         cmd += ['-e', str(e)]
+    plugin_so = libproxy_plugin()
+    if plugin_so:
+        cmd += ['-l', str(plugin_so)]  # linuxdeploy deploys the plugin's own dependencies (JavaScriptCore 4.0) with it
     # NO_STRIP: the bundled strip cannot process the .relr.dyn sections of current distributions' GTK libraries (Wails does the same).
     run(cmd, env=dict(os.environ, DEPLOY_GTK_VERSION='3', NO_STRIP='1', ARCH=ARCH[arch][1], PATH=f'{tools}:{os.environ["PATH"]}'))
 
@@ -517,6 +535,21 @@ def build_appimage(stage, out, arch, name, tools, daemon, relocate=True, marker=
     # linuxdeploy just bundled (same distribution release), which is why it can be loaded where the host's gvfs/dconf modules cannot.
     gio_modules_info = deploy_gio_modules(appdir) if tls_module else 'DISABLED (negative control: the bundled GIO module directory stays empty)'
 
+    if plugin_so:
+        moddir = appdir / 'usr/lib/libproxy/modules'
+        moddir.mkdir(parents=True)
+        shutil.move(str(appdir / 'usr/lib' / LIBPROXY_PLUGIN[0]), str(moddir / LIBPROXY_PLUGIN[0]))
+        owner = run(['dpkg', '-S', str(plugin_so.resolve())], capture=True)
+        if not owner.startswith(LIBPROXY_PLUGIN[1]):
+            sys.exit(f'{plugin_so} is not owned by {LIBPROXY_PLUGIN[1]}: {owner}')
+        needed = re.findall(r'\(NEEDED\)\s+Shared library: \[(.+?)\]', run(['readelf', '-d', str(moddir / LIBPROXY_PLUGIN[0])], capture=True))
+        shipped_now = {p.name for p in (appdir / 'usr/lib').rglob('*.so*') if p.is_file() or p.is_symlink()}
+        lost = sorted(n for n in needed if n not in shipped_now and not re.match(r'^(libc|libm|libdl|libpthread|librt|ld-linux.*)\.so(\.\d+)*$', n) and n not in GIO_SUPPORT_HOST_OK)
+        if lost:
+            sys.exit(f'{LIBPROXY_PLUGIN[0]} needs libraries that are not in the AppDir: {lost}')
+        if isinstance(gio_modules_info, dict):
+            gio_modules_info['libproxyPlugin'] = {'path': f'usr/lib/libproxy/modules/{LIBPROXY_PLUGIN[0]}', 'source': str(plugin_so), 'package': LIBPROXY_PLUGIN[1],
+                'packageVersion': run(['dpkg-query', '-W', '-f', '${Version}', LIBPROXY_PLUGIN[1]], capture=True), 'sha256': sha256(moddir / LIBPROXY_PLUGIN[0]), 'needed': needed}
     layer_shell_info = deploy_layer_shell(appdir) if layer_shell else 'DISABLED (negative control: libgtk-layer-shell is not in the AppDir)'
     gdk_hook_info = 'KEPT (differential control: the hook still forces GDK_BACKEND=x11)' if force_x11_hook else release_gdk_backend(appdir)
 

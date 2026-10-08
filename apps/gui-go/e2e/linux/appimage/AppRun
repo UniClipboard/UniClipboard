@@ -18,5 +18,7 @@ export LD_LIBRARY_PATH="$APPDIR/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 for dir in "$APPDIR"/usr/lib/gio/modules "$APPDIR"/usr/lib/*/gio/modules; do
   if [ -d "$dir" ]; then GIO_MODULE_DIR="$dir"; export GIO_MODULE_DIR; break; fi
 done
+# libproxy 0.4 (Debian 12 builds) finds its PAC runtime plugin through this directory; libproxy 0.5 ignores it. Only set when the package carries the plugin.
+if [ -d "$APPDIR/usr/lib/libproxy/modules" ]; then PX_MODULE_PATH="$APPDIR/usr/lib/libproxy/modules"; export PX_MODULE_PATH; fi
 cd "$APPDIR/usr" || exit 1
 exec "$APPDIR/usr/bin/uniclipboard" "$@"

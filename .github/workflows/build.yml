@@ -1267,7 +1267,7 @@ jobs:
           path: package-evidence
 
       - name: trust the test certificate on this disposable runner (test-certificate runs only)
-        if: needs.package-windows-gui.outputs.thumbprint != ''
+        if: needs.package-windows-gui.outputs.mode == 'selftest' || needs.package-windows-gui.outputs.mode == 'signpath-test'
         shell: pwsh
         env:
           MODE: ${{ needs.package-windows-gui.outputs.mode }}
@@ -1296,9 +1296,16 @@ jobs:
       - name: install, run, update and uninstall the packages
         shell: bash
         env:
-          PINNED_THUMBPRINT: ${{ needs.package-windows-gui.outputs.thumbprint }}
+          # A matrix job exposes ONE value per output (the last leg to finish wins), so the per-architecture self-test
+          # thumbprint cannot come from the job output: it is read from this architecture's own certificate file.
+          # The SignPath test certificate is the same for both architectures, so its output value is safe.
+          PINNED_THUMBPRINT: ${{ needs.package-windows-gui.outputs.mode == 'signpath-test' && needs.package-windows-gui.outputs.thumbprint || '' }}
+          PACKAGE_MODE: ${{ needs.package-windows-gui.outputs.mode }}
         run: |
           set -euo pipefail
+          if [ "$PACKAGE_MODE" = "selftest" ]; then
+            PINNED_THUMBPRINT=$(python -c "import hashlib,sys;print(hashlib.sha1(open(sys.argv[1],'rb').read()).hexdigest())" inputs/selftest.cer)
+          fi
           SIGNED_ARGS=""
           if [ "${{ needs.package-windows-gui.outputs.signed }}" = "true" ]; then
             SIGNED_ARGS="--expect-signed --sign-verifier apps/gui-go/packaging/windows/sign.py"

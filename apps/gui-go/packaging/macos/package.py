@@ -128,8 +128,6 @@ def cmd_bundle(a):
         sys.exit(f"source maps survived into the embedded frontend: {maps[:3]}")
 
     run(["go", "generate", "./buildinfo"], cwd=REPO / "packages/desktop-host-go")
-    (GUI_DIR / "assets").mkdir(exist_ok=True)
-    shutil.copy(GUI_DIR / "icons/tray-icon@2x.png", GUI_DIR / "assets/tray-icon@2x.png")
 
     pubkey = CFG["updater"]["pubkey"] if a.variant == "shipping" else ""
     minos = CFG["minimumSystemVersion"]

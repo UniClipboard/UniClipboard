@@ -28,6 +28,8 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[4]
+sys.path.insert(0, str(ROOT / 'apps/gui-go/e2e'))
+from package_linux import PACKAGE_NAME  # noqa: E402  (the one definition of the package identity)
 ARCH = {'amd64': {'deb': 'amd64', 'rpm': 'x86_64', 'appimage': 'amd64', 'machine': 62, 'uname': 'x86_64'},
         'arm64': {'deb': 'arm64', 'rpm': 'aarch64', 'appimage': 'aarch64', 'machine': 183, 'uname': 'aarch64'}}
 
@@ -113,7 +115,7 @@ def main():
     if deb.is_file():
         control = sh(['dpkg-deb', '-f', str(deb), 'Package', 'Version', 'Architecture'])
         report['debControl'] = control
-        if f'Architecture: {a["deb"]}' not in control or f'Version: {version}' not in control:
+        if f'Package: {PACKAGE_NAME}\n' not in control + '\n' or f'Architecture: {a["deb"]}' not in control or f'Version: {version}' not in control:
             problems.append(f'deb control does not match {a["deb"]} {version}: {control}')
         sh(['dpkg-deb', '-x', str(deb), str(work / 'deb')])
         for exe in ('usr/bin/uniclipboard', 'usr/bin/uniclipd'):
@@ -125,7 +127,7 @@ def main():
     if rpm.is_file():
         header = sh(['rpm', '-qp', '--qf', '%{NAME} %{VERSION} %{RELEASE} %{ARCH}', str(rpm)])
         report['rpmHeader'] = header
-        if header != f'uniclipboard {version} 1 {a["rpm"]}':
+        if header != f'{PACKAGE_NAME} {version} 1 {a["rpm"]}':
             problems.append(f'rpm header {header!r} does not match {a["rpm"]} {version}')
         (work / 'rpm').mkdir()
         subprocess.run(f'rpm2cpio {rpm} | cpio -idm --quiet', shell=True, cwd=work / 'rpm', check=True)

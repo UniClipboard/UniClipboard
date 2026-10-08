@@ -45,6 +45,9 @@ ARCH = {  # go arch -> (deb, rpm/ARCH for the AppImage tools)
 # The AppImage file name uses its own architecture word, the one the released Tauri assets and scripts/collect-release-assets.py
 # accept: amd64 and aarch64 (NOT the deb's arm64). A name the collector does not accept would be silently left out of the release.
 APPIMAGE_NAME_ARCH = {'amd64': 'amd64', 'arm64': 'aarch64'}
+# The package name of the released Tauri deb and rpm (v1.0.1, v1.1.1: `uni-clipboard`; the file names are a different thing). A package of another name that ships the
+# same /usr/bin files is not an upgrade: dpkg and rpm refuse the overwrite, and the old package stays installed. Keeping the name makes `dpkg -i` / `rpm -U` replace it.
+PACKAGE_NAME = 'uni-clipboard'
 APPIMAGETOOL = {  # a fixed release tag, SHA-256 verified after the download
     'amd64': ('https://github.com/AppImage/appimagetool/releases/download/1.9.0/appimagetool-x86_64.AppImage',
               '46fdd785094c7f6e545b61afcfb0f3d98d8eab243f644b4b17698c01d06083d1'),
@@ -185,7 +188,7 @@ def build_deb(stage, out, version, arch, name):
     # and falls back to the ordinary window when it is absent, but the package still pulls it in for the Wayland panel).
     # The Tauri deb's libayatana-appindicator3 is not needed: Wails' tray is StatusNotifierItem over D-Bus.
     (d / 'DEBIAN/control').write_text(
-        f'Package: uniclipboard\nVersion: {version}\nArchitecture: {ARCH[arch][0]}\nSection: utils\nPriority: optional\n'
+        f'Package: {PACKAGE_NAME}\nVersion: {version}\nArchitecture: {ARCH[arch][0]}\nSection: utils\nPriority: optional\n'
         f'Installed-Size: {size_kib}\nMaintainer: UniClipboard <support@uniclipboard.app>\n'
         'Depends: libgtk-3-0, libwebkit2gtk-4.1-0, libx11-6, libgtk-layer-shell0\n'
         'Description: Encrypted peer-to-peer clipboard sync between your devices\n')
@@ -201,7 +204,7 @@ def build_rpm(stage, out, version, arch, name):
     files = sorted(str('/' / p.relative_to(stage)) for p in stage.rglob('*') if p.is_file())
     spec = top / 'SPECS/uniclipboard.spec'
     spec.write_text(
-        'Name: uniclipboard\nVersion: %s\nRelease: 1\nSummary: Encrypted peer-to-peer clipboard sync between your devices\n'
+        'Name: ' + PACKAGE_NAME + '\nVersion: %s\nRelease: 1\nSummary: Encrypted peer-to-peer clipboard sync between your devices\n'
         'License: Proprietary\nRequires: gtk3, webkit2gtk4.1, gtk-layer-shell\nAutoReqProv: no\n%%global _build_id_links none\n'
         '# rpmbuild would strip and rewrite the ELF files after installation, so the daemon in the rpm would no longer be the one the build evidence describes.\n%%global __os_install_post %%{nil}\n%%global debug_package %%{nil}\n\n%%description\n'
         'Encrypted peer-to-peer clipboard sync between your devices.\n\n%%install\ncp -a %s/. %%{buildroot}/\n\n%%files\n%s\n'

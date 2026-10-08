@@ -991,19 +991,19 @@ jobs:
       - name: download the shipped files
         uses: actions/download-artifact@v6
         with:
-          name: windows-gui-${{ matrix.target }}${{ steps.build-mode.outputs.suffix }}${{ steps.sign.outputs.sfx }}
+          name: windows-gui-${{ matrix.target }}${{ steps.build-mode.outputs.suffix }}${{ steps.sfx.outputs.sfx }}
           path: shipped
 
       - name: download the acceptance inputs
         uses: actions/download-artifact@v6
         with:
-          name: windows-gui-acceptance-inputs-${{ matrix.target }}${{ steps.build-mode.outputs.suffix }}${{ steps.sign.outputs.sfx }}
+          name: windows-gui-acceptance-inputs-${{ matrix.target }}${{ steps.build-mode.outputs.suffix }}${{ steps.sfx.outputs.sfx }}
           path: inputs
 
       - name: download the packaging evidence
         uses: actions/download-artifact@v6
         with:
-          name: windows-gui-evidence-${{ matrix.target }}${{ steps.build-mode.outputs.suffix }}${{ steps.sign.outputs.sfx }}
+          name: windows-gui-evidence-${{ matrix.target }}${{ steps.build-mode.outputs.suffix }}${{ steps.sfx.outputs.sfx }}
           path: package-evidence
 
       - name: install, run, update and uninstall the packages

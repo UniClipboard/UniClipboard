@@ -56,10 +56,29 @@ jobs:
         shell: bash
         env:
           UC_E2E_RUST_LOG: info
+          UC_E2E_KEEP_PROFILES: '1'
         run: >-
           cargo test --manifest-path tests/e2e/Cargo.toml
           --test pre_upgrade_backup_retry_portable
           -- --ignored --test-threads=1 --nocapture
+
+      - name: Show isolated daemon logs
+        if: failure()
+        shell: bash
+        run: |
+          shopt -s nullglob
+          count=0
+          for dir in "$LOCALAPPDATA"/app.uniclipboard.desktop-dev-upgrade-retry-* "$HOME/Library/Application Support"/app.uniclipboard.desktop-dev-upgrade-retry-*; do
+            [ -d "$dir" ] || continue
+            case "$dir" in *-upgrade-backups) continue ;; esac
+            count=$((count + 1)); [ "$count" -le 2 ] || break
+            echo "=== $dir"
+            ls -la "$dir" | head -40
+            for f in "$dir"/e2e-daemon-process.log "$dir"/logs/*; do
+              [ -f "$f" ] || continue
+              echo "--- $f"; tail -n 40 "$f" | cut -c1-400
+            done
+          done
 
   shipped:
     name: "shipped 1.1.1 stays stuck / ${{ matrix.name }}"
@@ -104,7 +123,26 @@ jobs:
         env:
           UC_E2E_EXPECT_SHIPPED_DEFECT: '1'
           UC_E2E_RUST_LOG: info
+          UC_E2E_KEEP_PROFILES: '1'
         run: >-
           cargo test --manifest-path tests/e2e/Cargo.toml
           --test pre_upgrade_backup_retry_portable
           -- --ignored --test-threads=1 --nocapture
+
+      - name: Show isolated daemon logs
+        if: failure()
+        shell: bash
+        run: |
+          shopt -s nullglob
+          count=0
+          for dir in "$LOCALAPPDATA"/app.uniclipboard.desktop-dev-upgrade-retry-* "$HOME/Library/Application Support"/app.uniclipboard.desktop-dev-upgrade-retry-*; do
+            [ -d "$dir" ] || continue
+            case "$dir" in *-upgrade-backups) continue ;; esac
+            count=$((count + 1)); [ "$count" -le 2 ] || break
+            echo "=== $dir"
+            ls -la "$dir" | head -40
+            for f in "$dir"/e2e-daemon-process.log "$dir"/logs/*; do
+              [ -f "$f" ] || continue
+              echo "--- $f"; tail -n 40 "$f" | cut -c1-400
+            done
+          done

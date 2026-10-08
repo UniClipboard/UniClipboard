@@ -167,8 +167,11 @@ def main():
             sync0 = ((dget(settings_path) or {}).get('sync') or {}).get('syncEnabled')
             _, rd = open_and_read('m1')
             titles = [i['title'] for i in rd.get('menu', [])]
-            check('3 right click on this pid\'s status item opens the real menu with the unchanged labels',
-                  rd.get('ok') and titles[0] in ('Disable Sync', 'Enable Sync') and 'Device Sync' in titles and 'Quit' in titles, {'titles': titles})
+            # The labels follow the session language, so the structure is checked rather than the words: sync, device sync, separator, open,
+            # settings, check for updates, separator, restart, lightweight mode, quit.
+            shape = [bool(t) for t in titles]
+            check('3 right click on this pid\'s status item opens the real menu with its ten entries (eight items, two separators)',
+                  rd.get('ok') and shape == [True, True, False, True, True, True, False, True, True, True], {'titles': titles})
             label0 = titles[0] if titles else None
             p = press(label0)
             s1 = wait_daemon(lambda x: ((x.get('sync') or {}).get('syncEnabled')) is (not sync0))
@@ -182,8 +185,9 @@ def main():
 
             daemons = tt.daemon_pids(home, profile)
             time.sleep(1)
-            open_and_read('m3')
-            q = press('Quit')
+            _, rd3 = open_and_read('m3')
+            quit_title = rd3['menu'][-1]['title'] if rd3.get('ok') and rd3.get('menu') else 'Quit'  # the last entry, whatever the language
+            q = press(quit_title)
             try:
                 rc = proc.wait(timeout=40)
             except subprocess.TimeoutExpired:

@@ -940,7 +940,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          DAEMON_SHA=$(python -c "import json;print(json.load(open('package-evidence/target/windows-gui/shipped/package-manifest.json'))['daemon']['sha256'])")
+          MANIFEST=$(find package-evidence -path '*shipped/package-manifest.json' | head -1)
+          DAEMON_SHA=$(python -c "import json,sys;print(json.load(open(sys.argv[1]))['daemon']['sha256'])" "$MANIFEST")
           python apps/gui-go/e2e/windows_package_acceptance.py --arch ${{ matrix.arch }} \
             --setup "$(ls shipped/UniClipboard_*-setup.exe)" --portable "$(ls shipped/UniClipboard_*-portable.zip)" \
             --newer-setup "$(ls inputs/ACCEPTANCE-*-setup.exe)" --uniclip inputs/uniclip.exe \

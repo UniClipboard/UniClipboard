@@ -383,8 +383,18 @@ jobs:
           git clone -q https://github.com/UniClipboard/Engine.git "$RUNNER_TEMP/engine"
           git -C "$RUNNER_TEMP/engine" checkout -q "$REV"
           printf '\n[target.'"'"'cfg(windows)'"'"'.dependencies]\nwindows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Storage_FileSystem"] }\n' >> "$RUNNER_TEMP/engine/crates/uc-infra-storage/Cargo.toml"
-          mkdir -p "${CARGO_HOME:-$HOME/.cargo}"
-          printf '\n[patch."https://github.com/UniClipboard/Engine.git"]\nuc-infra-storage = { path = "%s/crates/uc-infra-storage" }\n' "$(cygpath -m "$RUNNER_TEMP/engine")" >> "${CARGO_HOME:-$HOME/.cargo}/config.toml"
+          python - "$RUNNER_TEMP/engine" "${CARGO_HOME:-$HOME/.cargo}/config.toml" <<'PY'
+          import re, sys, pathlib
+          root, cfg = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
+          out = ['\n[patch."https://github.com/UniClipboard/Engine.git"]']
+          for toml in sorted(root.glob('**/Cargo.toml')):
+              m = re.search(r'^\[package\][^\[]*?^name\s*=\s*"([^"]+)"', toml.read_text(), re.M | re.S)
+              if m and 'target' not in toml.relative_to(root).parts:
+                  out.append(f'{m.group(1)} = {{ path = "{toml.parent.as_posix()}" }}')
+          cfg.parent.mkdir(parents=True, exist_ok=True)
+          with cfg.open('a') as f:
+              f.write('\n'.join(out) + '\n')
+          PY
 
       - name: prepare uniclipd sidecar
         # ADR-008 D13: the standalone `uniclipd` daemon ships next to the GUI

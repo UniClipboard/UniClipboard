@@ -1,0 +1,7 @@
+# SHA-256 of the published Tauri v1.0.1 Linux packages (Release assets of tag v1.0.1, package name `uni-clipboard`).
+# package_install_check.sh installs them as the "previous package" before the new one, because that is the upgrade a user of the released
+# product performs. A mismatch means the asset changed after publication and the upgrade evidence would be about something else.
+a565e46c84aa25d1beba6078ace7663c9452469452c9c9f0e9c635a8464a199f  UniClipboard_1.0.1_arm64.deb
+7f68f0e0693f2570ddc3f8e498d6f8acec70b5e4f18f9d674e17046b95db1630  UniClipboard_1.0.1_amd64.deb
+20a857466449f0bfd78a67bc8a8d1b183a44f7eb8d6cc00118df3ca337dac205  UniClipboard-1.0.1-1.aarch64.rpm
+625e7a386c722c230e30c2635aca715f4256085f7fd24135333e28044c1951ea  UniClipboard-1.0.1-1.x86_64.rpm

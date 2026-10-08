@@ -36,7 +36,7 @@ docker image inspect "$IMAGE" >/dev/null
 # A git worktree's .git file points at the main repository's metadata by absolute path: mount that read-only at the same
 # path so git works inside the container (provenance in the manifests), without letting the container write to it.
 GITCOMMON="$(cd "$ROOT" && cd "$(git rev-parse --git-common-dir)" && pwd -P)"
-common=(-e ARCH="$ARCH" -e UC_OUT_DIR="${UC_OUT_DIR:-}" -e UC_WAYLAND_RUN_ARGS="${UC_WAYLAND_RUN_ARGS:-}" --rm --platform "$PLATFORM" -v "$ROOT:/work" --mount "type=bind,src=$GITCOMMON,dst=$GITCOMMON,readonly" -e GIT_OPTIONAL_LOCKS=0 -v "$VOLUME:/cache" -w /work)
+common=(-e ARCH="$ARCH" -e SENTRY_DSN -e POSTHOG_PROJECT_KEY -e APP_ENV -e UC_BUILD_IMAGE -e CARGO_PROFILE_RELEASE_OPT_LEVEL -e CARGO_PROFILE_RELEASE_LTO -e CARGO_PROFILE_RELEASE_CODEGEN_UNITS -e UC_OUT_DIR="${UC_OUT_DIR:-}" -e UC_WAYLAND_RUN_ARGS="${UC_WAYLAND_RUN_ARGS:-}" --rm --platform "$PLATFORM" -v "$ROOT:/work" --mount "type=bind,src=$GITCOMMON,dst=$GITCOMMON,readonly" -e GIT_OPTIONAL_LOCKS=0 -v "$VOLUME:/cache" -w /work)
 case "$mode" in
   build)
     docker run "${common[@]}" -e SKIP_DAEMON="${SKIP_DAEMON:-0}" "$IMAGE" bash apps/gui-go/e2e/linux/build_in_container.sh ;;
@@ -206,5 +206,10 @@ case "$mode" in
       set -e; cd /out; cp /in/appimage.AppImage ./x.AppImage; chmod +x ./x.AppImage; ./x.AppImage --appimage-extract > extract.log 2>&1
       python3 -I /work/apps/gui-go/e2e/linux/audit_dlopen.py /out/squashfs-root /out/dlopen-audit.json
       python3 -I /work/apps/gui-go/e2e/linux/appimage_content_check.py /out/squashfs-root /in/package-manifest.json /out/content-check.json ${UC_CONTENT_CHECK_ARGS:-}' ;;
+  verify-packages)  # <packages dir> <new upload dir> <report.json>: acceptance contract of one architecture's package set (verify_package_set.py); UC_EXPECT_HEAD = the commit the set must come from
+    packages="$(cd "${2:?package_linux.py output dir}" && pwd)"; mkdir -p "$(dirname "${3:?upload dir}")"; upload_parent="$(cd "$(dirname "$3")" && pwd)"; upload_name="$(basename "$3")"
+    docker run "${common[@]}" -v "$packages:/in:ro" -v "$upload_parent:/up" -e UC_EXPECT_HEAD="${UC_EXPECT_HEAD:?UC_EXPECT_HEAD}" -e UC_MAX_GLIBC "$IMAGE" bash -c '
+      python3 apps/gui-go/e2e/linux/verify_package_set.py --arch "$ARCH" --packages /in --daemon-evidence /cache/out-release/build-evidence.txt \
+        --expect-head "$UC_EXPECT_HEAD" --max-glibc "${UC_MAX_GLIBC:-2.36}" --upload-dir "/up/'"$upload_name"'" --report "/up/'"$upload_name"'.report.json"' ;;
   *) echo "usage: run.sh build|xvfb|package|daemon-release|release-e2e-build|package-release|package-appimage [outdir]" >&2; exit 2 ;;
 esac

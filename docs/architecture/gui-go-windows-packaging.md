@@ -68,3 +68,12 @@
 4. **暂不签名发布**：必须在发布说明中写明 SmartScreen 警告、杀毒软件误报风险，且更新通道无法依赖 Authenticode；本任务不会默认允许。
 
 任一签名方案落地时需要对 setup、`UniClipboard.exe`、`uniclipd.exe` 都签名，在打包前签内部可执行文件，之后签安装包，再重算哈希与 `sidecar` 校验，并用 `signtool verify /pa` 验证、重跑本验收。
+
+## 验收状态（已执行）
+
+运行 37728413411（`build.yml`，`workflow_dispatch`，`build_mode=test`，源码提交 `ea1b0137b43264c7a417f51d76de5ed31e9f1cae`，Engine 固定为已合并的 `0e25f4189301efd68c21c8ffdd51a2f9fbfd4204`）：
+
+- 两个架构的 `package-windows-gui` 与 `smoke-windows-gui` 全部成功，`acceptance.json` 中 amd64（Windows Server 2025，原生 x64）与 arm64（Windows 11 Enterprise，原生 ARM64，`Win32_Processor.Architecture=12`）各场景 A–G 的断言全部通过；H 为记录项。
+- 只读目录的便携包：GUI 进程运行，但 daemon 不启动，也没有在目录之外写入以应用命名的数据（对应已有问题 #1259：daemon 启动失败时 GUI 不报错）。
+- 该运行使用 `test` 构建方式（优化级别较低），不是发布构建；未签名；托管 runner 不是 Windows 10/11 客户端版本（arm64 例外，为 Windows 11）。
+- 发现并修复的两个阻塞问题：`apps/gui-go/environment_windows.go` 与 `environment_portable.go` 重复定义 `validateIsolation`（#1875 之后 Windows 版 GUI 无法编译）；固定的 Engine `e86f94ce` 在 Windows 上无法编译（`uc-infra-storage` 使用未声明的 `windows-sys`，由 Engine PR #163 修复）。

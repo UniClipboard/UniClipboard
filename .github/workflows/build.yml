@@ -42,6 +42,10 @@ on:
         description: '同时用本次 sidecar 打包 macOS / Windows x64 CLI(仅 release 构建方式)'
         type: boolean
         default: false
+      upload_symbols:
+        description: '上传 Sentry 调试符号与前端 source map(仅 release 构建方式生效;关闭用于不产生生产副作用的优化构建验收)'
+        type: boolean
+        default: true
       updater_artifact_runs:
         description: 'For updater-signatures only: comma-separated successful Build Desktop run IDs'
         type: string
@@ -76,6 +80,11 @@ on:
         default: false
       require_signing:
         description: 'Fail the macOS app packaging when the Apple signing secrets are missing instead of ad-hoc signing'
+        required: false
+        type: boolean
+        default: true
+      upload_symbols:
+        description: 'Upload Sentry debug symbols and frontend source maps (release build mode only)'
         required: false
         type: boolean
         default: true
@@ -393,7 +402,7 @@ jobs:
 
       - name: Upload Sentry debug symbols
         # Test bundles are not released and should not upload symbols under the release version.
-        if: inputs.build_mode != 'test'
+        if: inputs.build_mode != 'test' && inputs.upload_symbols != false
         # 把 release 编译出的 .dSYM (macOS) / .pdb (Windows) / DWARF (Linux)
         # 上传给 Sentry,后续 panic 上报时 Sentry 用 build-id 把地址翻译回
         # 函数名 + 文件 + 行号(配合 --include-sources 还会嵌源码片段)。
@@ -539,9 +548,9 @@ jobs:
           # Frontend source map upload (apps/gui-go/vite.config.ts): the plugin runs inside the vite
           # build only when both the token and the project are present, and deletes the maps after.
           # Test-mode bundles are not releases: no upload under the real release version.
-          SENTRY_AUTH_TOKEN: ${{ inputs.build_mode != 'test' && secrets.SENTRY_AUTH_TOKEN || '' }}
+          SENTRY_AUTH_TOKEN: ${{ inputs.build_mode != 'test' && inputs.upload_symbols != false && secrets.SENTRY_AUTH_TOKEN || '' }}
           SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
-          VITE_SENTRY_PROJECT: ${{ inputs.build_mode != 'test' && secrets.VITE_SENTRY_PROJECT || '' }}
+          VITE_SENTRY_PROJECT: ${{ inputs.build_mode != 'test' && inputs.upload_symbols != false && secrets.VITE_SENTRY_PROJECT || '' }}
         run: |
           python3 apps/gui-go/packaging/macos/package.py bundle \
             --target "${{ matrix.target }}" --variant shipping --out target/macos-gui
@@ -817,9 +826,9 @@ jobs:
           VITE_SENTRY_DSN: ${{ inputs.build_mode != 'test' && secrets.VITE_SENTRY_DSN || '' }}
           # Frontend source map upload (apps/gui-go/vite.config.ts), same gate as the macOS app: test-mode
           # packages are not releases and never upload under the real release version.
-          SENTRY_AUTH_TOKEN: ${{ inputs.build_mode != 'test' && secrets.SENTRY_AUTH_TOKEN || '' }}
+          SENTRY_AUTH_TOKEN: ${{ inputs.build_mode != 'test' && inputs.upload_symbols != false && secrets.SENTRY_AUTH_TOKEN || '' }}
           SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
-          VITE_SENTRY_PROJECT: ${{ inputs.build_mode != 'test' && secrets.VITE_SENTRY_PROJECT || '' }}
+          VITE_SENTRY_PROJECT: ${{ inputs.build_mode != 'test' && inputs.upload_symbols != false && secrets.VITE_SENTRY_PROJECT || '' }}
         run: |
           set -euo pipefail
           S=target/sidecar-staging

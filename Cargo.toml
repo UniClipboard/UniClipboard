@@ -74,7 +74,7 @@ dbg_macro = "warn"
 [workspace.dependencies]
 # All desktop consumers use one immutable Engine revision. Features remain
 # opt-in at each host boundary so LAN compatibility cannot become a default.
-uc-engine = { git = "https://github.com/UniClipboard/Engine.git", rev = "e86f94cebcec46c1b3a6f49f88cce7a833777640" }
+uc-engine = { git = "https://github.com/UniClipboard/Engine.git", rev = "0e25f4189301efd68c21c8ffdd51a2f9fbfd4204" }
 
 # dev profile:用 line-tables-only 替代完整 dwarf,大幅缩短 link 阶段。
 # 实测 inner-loop 11s → 4s(-65%),target 体积 46GB → 4.4GB(-91%)。

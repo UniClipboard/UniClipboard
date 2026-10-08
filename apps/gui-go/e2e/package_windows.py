@@ -96,7 +96,7 @@ def verify_daemon_provenance(daemon, arch, provenance_path, source):
         problems.append(f'provenance has no entry for {name}')
     elif entry['sha256'] != sha256(daemon):
         problems.append(f"{daemon} has SHA-256 {sha256(daemon)}, build-sidecar recorded {entry['sha256']}")
-    if rec.get('sourceDirty') and not os.environ.get('TEMP_DIAGNOSTIC_ALLOW_DIRTY_DAEMON'):  # TEMP diagnostic, remove
+    if rec.get('sourceDirty'):
         problems.append('the daemon was built from a dirty tree')
     if rec.get('sourceHead') != source['head']:
         problems.append(f"the daemon was built from {rec.get('sourceHead')}, this package is built from {source['head']}")

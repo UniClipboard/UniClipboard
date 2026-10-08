@@ -372,30 +372,6 @@ jobs:
           UC_CHANNEL: ${{ inputs.channel || 'stable' }}
         run: node scripts/ci/resolve-app-env.mjs
 
-      - name: TEMP diagnostic - patch the pinned Engine for the missing windows-sys dependency
-        # DIAGNOSTIC ONLY (not for merge): Engine e86f94ce uses windows_sys in uc-infra-storage without declaring it,
-        # so the Windows daemon cannot compile. This clones the pinned revision, declares the dependency and patches
-        # only that crate, to let the rest of the Windows pipeline run before the Engine fix exists.
-        if: contains(matrix.target, 'windows')
-        shell: bash
-        run: |
-          REV=$(grep -oE 'Engine.git\?rev=[0-9a-f]{40}' Cargo.lock | head -1 | sed 's/.*rev=//')
-          git clone -q https://github.com/UniClipboard/Engine.git "$RUNNER_TEMP/engine"
-          git -C "$RUNNER_TEMP/engine" checkout -q "$REV"
-          printf '\n[target.'"'"'cfg(windows)'"'"'.dependencies]\nwindows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Storage_FileSystem"] }\n' >> "$RUNNER_TEMP/engine/crates/uc-infra-storage/Cargo.toml"
-          python - "$RUNNER_TEMP/engine" "${CARGO_HOME:-$HOME/.cargo}/config.toml" <<'PY'
-          import re, sys, pathlib
-          root, cfg = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
-          out = ['\n[patch."https://github.com/UniClipboard/Engine.git"]']
-          for toml in sorted(root.glob('**/Cargo.toml')):
-              m = re.search(r'^\[package\][^\[]*?^name\s*=\s*"([^"]+)"', toml.read_text(encoding='utf-8'), re.M | re.S)
-              if m and 'target' not in toml.relative_to(root).parts:
-                  out.append(f'{m.group(1)} = {{ path = "{toml.parent.as_posix()}" }}')
-          cfg.parent.mkdir(parents=True, exist_ok=True)
-          with cfg.open('a') as f:
-              f.write('\n'.join(out) + '\n')
-          PY
-
       - name: prepare uniclipd sidecar
         # ADR-008 D13: the standalone `uniclipd` daemon ships next to the GUI
         # executable so the GUI can spawn it as a sibling (uc-daemon-local
@@ -837,7 +813,6 @@ jobs:
         id: package
         shell: bash
         env:
-          TEMP_DIAGNOSTIC_ALLOW_DIRTY_DAEMON: '1'  # TEMP diagnostic (patched Engine dirties Cargo.lock), remove
           VITE_APP_ENV: ${{ steps.resolve-env.outputs.app_env }}
           VITE_SENTRY_DSN: ${{ inputs.build_mode != 'test' && secrets.VITE_SENTRY_DSN || '' }}
           # Frontend source map upload (apps/gui-go/vite.config.ts), same gate as the macOS app: test-mode

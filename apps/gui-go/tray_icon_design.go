@@ -78,8 +78,8 @@ func mustPath(d string) []subpath {
 func renderIcon(s iconSpec) *image.NRGBA {
 	c := newCanvas(s.size, s.art)
 	if s.design == designGlyph {
-		c.paint(strokePolys(glyphFront, glyphStrokeWidth, true), s.pal.fg, 1)
-		c.paint(strokePolys(glyphBack, glyphStrokeWidth, true), s.pal.fg, 1)
+		c.paintStroke(strokePolys(glyphFront, glyphStrokeWidth, true), s.pal.fg, 1)
+		c.paintStroke(strokePolys(glyphBack, glyphStrokeWidth, true), s.pal.fg, 1)
 		return c.image()
 	}
 	c.paint(fillPolys(catEarL), s.pal.fg, 1)

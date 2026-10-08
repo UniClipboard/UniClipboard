@@ -449,9 +449,41 @@ func strokePolys(paths []subpath, width float64, round bool) [][]point {
 	return polys
 }
 
+// supersample is the factor strokes are rasterized at before being averaged down. A stroke is the union of many overlapping pieces, and a
+// single-pass rasterizer adds the partial coverage of overlapping pieces on an edge pixel; at this factor the over-count is confined to
+// sub-pixels that are then averaged.
+const supersample = 4
+
+// strokeCoverage rasterizes the polygons at supersample times the resolution and averages each block down to one pixel.
+func (c *canvas) strokeCoverage(polys [][]point) []uint8 {
+	big := &canvas{w: c.w * supersample, h: c.h * supersample, scale: c.scale * supersample, ox: c.ox * supersample, oy: c.oy * supersample}
+	hi := big.coverage(polys)
+	out := make([]uint8, c.w*c.h)
+	for y := 0; y < c.h; y++ {
+		for x := 0; x < c.w; x++ {
+			sum := 0
+			for dy := 0; dy < supersample; dy++ {
+				for dx := 0; dx < supersample; dx++ {
+					sum += int(hi[(y*supersample+dy)*big.w+x*supersample+dx])
+				}
+			}
+			out[y*c.w+x] = uint8(sum / (supersample * supersample))
+		}
+	}
+	return out
+}
+
 // paint blends the colour with the given opacity over the surface where the polygons cover it.
 func (c *canvas) paint(polys [][]point, col color.NRGBA, opacity float64) {
-	mask := c.coverage(polys)
+	c.paintMask(c.coverage(polys), col, opacity)
+}
+
+// paintStroke is paint for polygons that came from strokePolys.
+func (c *canvas) paintStroke(polys [][]point, col color.NRGBA, opacity float64) {
+	c.paintMask(c.strokeCoverage(polys), col, opacity)
+}
+
+func (c *canvas) paintMask(mask []uint8, col color.NRGBA, opacity float64) {
 	r, g, b := float32(col.R)/255, float32(col.G)/255, float32(col.B)/255
 	for i, m := range mask {
 		if m == 0 {

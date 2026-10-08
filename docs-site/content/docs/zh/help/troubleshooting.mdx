@@ -378,6 +378,8 @@ rm -rf ~/.local/share/app.uniclipboard.desktop
 
 </Tabs>
 
+手动 .deb/.rpm 包名现统一为 `uniclipboard`。旧版本包名是 `uni-clipboard`；下载新包后用 `sudo apt install ./package.deb` 或 `sudo dnf install ./package.rpm`，由包管理器在一次事务中替换。应用资料、密钥和可执行路径保持不变。尚未迁移时，旧包应使用 `sudo apt remove uni-clipboard` 或 `sudo dnf remove uni-clipboard` 卸载。COPR 包遵循独立维护的发布。
+
 <Callout type="warn">
   其它设备上的历史不受本机重置影响。如果是想让一台设备从空间里
   **消失**，请在另一台还在线的设备上吊销它，而不是只在本机删数据 —— 仅删本机不会撤销 node ID

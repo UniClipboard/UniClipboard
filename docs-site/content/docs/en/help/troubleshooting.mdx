@@ -538,6 +538,8 @@ keyring's KEK entry will be overwritten by the next `space init`.
 
 </Tabs>
 
+Manual .deb/.rpm packages now use `uniclipboard`. Older releases used `uni-clipboard`; install the new downloaded package with `sudo apt install ./package.deb` or `sudo dnf install ./package.rpm` to replace it in one transaction. The application data, keys, and executable paths stay the same. If you have not migrated, uninstall the older package with `sudo apt remove uni-clipboard` or `sudo dnf remove uni-clipboard`. COPR packages follow their separately maintained release.
+
 <Callout type="warn">
   Resetting one device does not revoke it on the other devices in the space. To make a device
   disappear from the space, **revoke** it from another online device — clearing local data alone

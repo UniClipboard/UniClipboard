@@ -38,6 +38,8 @@ for name, runner, args in (('two-normal', 'linux_appimage_pac_two_run.py', ''), 
     print(f'{dist}-{name}|{sess}|{runner}|{args}|')
 print(f'{dist}-socks|{sess}-socks|linux_appimage_proxy_dynamic_run.py|--socks|')
 PY
+# UC_MATRIX_FILTER (an extended regex on the job line) runs a subset, e.g. 'pac' for the PAC scenarios only; the full matrix is the default.
+[ -z "${UC_MATRIX_FILTER:-}" ] || { grep -E "$UC_MATRIX_FILTER" "$out/inputs/matrix.txt" > "$out/inputs/matrix.filtered.txt" && mv "$out/inputs/matrix.filtered.txt" "$out/inputs/matrix.txt"; }
 run_job() {
   IFS='|' read -r name image runner args feed <<< "$1"
   local d="$out/$name"; mkdir -p "$d"

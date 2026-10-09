@@ -33,7 +33,8 @@ NON_WORKSPACE_LOCK_VERSIONS = {'0.0.0', '0.1.0'}
 TEST_ARTIFACT = re.compile(r'(?:^|-)(?:signing-selftest|signpath-test|test)(?:-|$)')
 # The collector never reads these, so they are not rejected here either.
 INTERMEDIATE_ARTIFACT = re.compile(r'signpath-stage[0-9]-.*')
-PRODUCTION_WINDOWS_PROVIDER = 'signed'
+# `signed`: azure | pfx through sign.py. `signpath`: SignPath production policy. Test modes (selftest, signpath-test, unsigned) are never listed.
+PRODUCTION_WINDOWS_PROVIDERS = ('signed', 'signpath')
 EVIDENCE_ARTIFACT = re.compile(r'(macos|linux|windows)-gui-evidence-')
 
 
@@ -77,11 +78,29 @@ def fail(problems):
 
 
 def cmd_prerequisites(args):
+    """Exactly one production Windows backend must be configured, or the release stops here.
+
+    `azure` / `pfx` are the local backends of apps/gui-go/packaging/windows/sign.py (WINDOWS_SIGN_BACKEND). SignPath production is
+    selected by a production policy slug and a pinned certificate thumbprint (repository variables, no defaults); its API token
+    lives in the Environment `signpath-production`, which this job cannot read, so the build job re-checks it and fails closed.
+    """
     problems = []
     backend = os.environ.get('WINDOWS_SIGN_BACKEND', '')
-    if backend not in ('azure', 'pfx'):
-        problems.append('WINDOWS_SIGN_BACKEND is not azure or pfx: no production Windows code-signing backend is configured. '
+    policy = os.environ.get('SIGNPATH_PRODUCTION_POLICY_SLUG', '')
+    thumbprint = os.environ.get('SIGNPATH_PRODUCTION_CERT_THUMBPRINT', '')
+    if backend and backend not in ('azure', 'pfx'):
+        problems.append(f'WINDOWS_SIGN_BACKEND must be azure or pfx (or unset when SignPath production is configured), not {backend!r}.')
+    if backend and policy:
+        problems.append('Both WINDOWS_SIGN_BACKEND and a SignPath production policy are configured; a release uses exactly one production backend.')
+    if not backend and not policy:
+        problems.append('No production Windows code-signing backend is configured: set WINDOWS_SIGN_BACKEND (azure | pfx) or the SignPath '
+                        'production variables SIGNPATH_PRODUCTION_POLICY_SLUG and SIGNPATH_PRODUCTION_CERT_THUMBPRINT. '
                         'Test signing (self-test, SignPath test-signing) never satisfies a release.')
+    if policy:
+        if policy == 'test-signing':
+            problems.append('SIGNPATH_PRODUCTION_POLICY_SLUG names the test-signing policy, which is not a production policy.')
+        if not re.fullmatch(r'[0-9A-Fa-f]{40}', thumbprint):
+            problems.append('SIGNPATH_PRODUCTION_CERT_THUMBPRINT (40 hex digits) is required to pin the SignPath production certificate.')
     if not os.environ.get('TAURI_SIGNING_PRIVATE_KEY'):
         problems.append('TAURI_SIGNING_PRIVATE_KEY (the updater signing key) is not available to this run.')
     if problems:
@@ -167,6 +186,70 @@ def evidence_source(doc):
     return src if isinstance(src, dict) else None
 
 
+def artifact_name_problems(artifacts):
+    """Mixed-run guard: a test-mode or test-signed artifact must not be present, whether or not it contributed a file."""
+    problems = []
+    for top in sorted(p.name for p in artifacts.iterdir() if p.is_dir()):
+        if INTERMEDIATE_ARTIFACT.fullmatch(top):
+            continue
+        if TEST_ARTIFACT.search(top):
+            problems.append(f'artifact {top!r} is a test-mode or test-signed build and must not take part in a release')
+    return problems
+
+
+def check_evidence(artifacts, v, sha):
+    """Every package record belongs to the pinned commit and version, and Windows is signed by a production backend."""
+    problems = []
+    seen = {'macos': 0, 'linux': 0, 'windows': 0}
+    for f, doc in evidence_docs(artifacts):
+        rel = f.relative_to(artifacts)
+        if doc is None:
+            problems.append(f'{rel} is not valid JSON')
+            continue
+        # Only the packaging-evidence artifacts speak for the release. Acceptance, install and legacy-upgrade artifacts carry
+        # their own package manifests (other purposes, other versions) and are not release inputs.
+        kind = EVIDENCE_ARTIFACT.match(rel.parts[0])
+        if not kind:
+            continue
+        platform = kind.group(1)
+        if doc.get('purpose') == 'acceptance-newer-version' or 'newer' in rel.parts:
+            continue  # the upgrade-acceptance package carries a deliberately different version
+        seen[platform] += 1
+        src = evidence_source(doc)
+        if src is None:
+            problems.append(f'{rel} records no source commit')
+            continue
+        if src.get('head') != sha:
+            problems.append(f'{rel} was built from {src.get("head")}, not the pinned source {sha}')
+        if src.get('dirty'):
+            problems.append(f'{rel} was built from a dirty checkout')
+        if doc.get('version') != v:
+            problems.append(f'{rel} is version {doc.get("version")!r}, not {v}')
+        if platform == 'windows':
+            signing = doc.get('signing') or {}
+            provider, proof = signing.get('provider'), signing.get('evidence') or {}
+            if not doc.get('signed') or provider not in PRODUCTION_WINDOWS_PROVIDERS:
+                problems.append(f'{rel}: Windows signing provider is {provider!r}; a release requires a production signature '
+                                f'({" or ".join(PRODUCTION_WINDOWS_PROVIDERS)}). Self-test, SignPath test-signing and unsigned packages never satisfy it.')
+            elif proof.get('testCertificate') is not False:
+                problems.append(f'{rel}: the signing evidence does not state that a production certificate signed this package')
+            elif provider == 'signpath' and (not proof.get('policy') or proof.get('policy') == 'test-signing'
+                                             or not re.fullmatch(r'[0-9A-Fa-f]{40}', proof.get('pinnedThumbprint') or '')):
+                problems.append(f'{rel}: SignPath evidence lacks a production policy or a pinned certificate thumbprint')
+    for platform, count in seen.items():
+        if not count:
+            problems.append(f'no package evidence from {platform} was found in the artifacts')
+    return problems, seen
+
+
+def cmd_evidence(args):
+    problems, seen = check_evidence(Path(args.artifacts), args.version, args.source_sha)
+    problems = artifact_name_problems(Path(args.artifacts)) + problems
+    if problems:
+        fail(problems)
+    print(f'package evidence accepted: {seen}')
+
+
 def cmd_assets(args):
     artifacts, assets = Path(args.artifacts), Path(args.assets)
     v, sha = args.version, args.source_sha
@@ -174,12 +257,7 @@ def cmd_assets(args):
     if not SEMVER.match(v):
         problems.append(f'release version {v!r} is not X.Y.Z or X.Y.Z-channel.N')
 
-    # Mixed-run guard: a test-mode or test-signed artifact must not be present, whether or not it contributed a file.
-    for top in sorted(p.name for p in artifacts.iterdir() if p.is_dir()):
-        if INTERMEDIATE_ARTIFACT.fullmatch(top):
-            continue
-        if TEST_ARTIFACT.search(top):
-            problems.append(f'artifact {top!r} is a test-mode or test-signed build and must not take part in a release')
+    problems += artifact_name_problems(artifacts)
 
     required = required_assets(v)
     present = {f.name for f in assets.iterdir() if f.is_file()}
@@ -223,41 +301,8 @@ def cmd_assets(args):
         index.append({'name': f.name, 'sha256': digest, 'bytes': f.stat().st_size,
                       'sourceArtifacts': sorted({o.parts[0] for o in origins})})
 
-    # Evidence: every package record belongs to the pinned commit and version, and Windows is signed by a production backend.
-    seen = {'macos': 0, 'linux': 0, 'windows': 0}
-    for f, doc in evidence_docs(artifacts):
-        rel = f.relative_to(artifacts)
-        if doc is None:
-            problems.append(f'{rel} is not valid JSON')
-            continue
-        # Only the packaging-evidence artifacts speak for the release. Acceptance, install and legacy-upgrade artifacts carry
-        # their own package manifests (other purposes, other versions) and are not release inputs.
-        kind = EVIDENCE_ARTIFACT.match(rel.parts[0])
-        if not kind:
-            continue
-        platform = kind.group(1)
-        if doc.get('purpose') == 'acceptance-newer-version' or 'newer' in rel.parts:
-            continue  # the upgrade-acceptance package carries a deliberately different version
-        seen[platform] += 1
-        src = evidence_source(doc)
-        if src is None:
-            problems.append(f'{rel} records no source commit')
-            continue
-        if src.get('head') != sha:
-            problems.append(f'{rel} was built from {src.get("head")}, not the pinned source {sha}')
-        if src.get('dirty'):
-            problems.append(f'{rel} was built from a dirty checkout')
-        if doc.get('version') != v:
-            problems.append(f'{rel} is version {doc.get("version")!r}, not {v}')
-        if platform == 'windows':
-            provider = (doc.get('signing') or {}).get('provider')
-            expected = PRODUCTION_WINDOWS_PROVIDER
-            if not doc.get('signed') or provider != expected:
-                problems.append(f'{rel}: Windows signing provider is {provider!r}; a release requires a production signature ({expected!r}). '
-                                'Self-test, SignPath test-signing and unsigned packages never satisfy it.')
-    for platform, count in seen.items():
-        if not count:
-            problems.append(f'no package evidence from {platform} was found in the artifacts')
+    evidence_problems, seen = check_evidence(artifacts, v, sha)
+    problems += evidence_problems
 
     if problems:
         fail(problems)
@@ -278,6 +323,11 @@ def main():
     s.add_argument('--mode', choices=['release', 'fixture'], default='release')
     s.add_argument('--out', required=True)
     s.set_defaults(func=cmd_source)
+    e = sub.add_parser('evidence', help='only the package-evidence checks of `assets`, for inputs that are not a complete release')
+    e.add_argument('--version', required=True)
+    e.add_argument('--source-sha', required=True)
+    e.add_argument('--artifacts', required=True)
+    e.set_defaults(func=cmd_evidence)
     a = sub.add_parser('assets')
     a.add_argument('--version', required=True)
     a.add_argument('--source-sha', required=True)

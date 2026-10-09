@@ -94,7 +94,8 @@ def build_tree(tree, version, sha, *, windows_provider='signed'):
         evidence = tree / f'windows-gui-evidence-{arch}-{RUN_ID}/windows-gui'
         write(evidence / 'shipped/package-manifest.json', json.dumps(
             {'version': version, 'source': {'head': sha, 'dirty': False}, 'arch': arch, 'signed': True,
-             'signing': {'provider': windows_provider}, 'fixtureRecord': 'a labelled fixture, not an Authenticode signature'}))
+             'signing': {'provider': windows_provider, 'evidence': {'provider': windows_provider, 'testCertificate': False}},
+             'fixtureRecord': 'a labelled fixture, not an Authenticode signature'}))
         # The upgrade-acceptance package deliberately has another version and must not be judged as the release.
         write(evidence / 'newer/package-manifest.json', json.dumps(
             {'purpose': 'acceptance-newer-version', 'version': '99.0.0-acceptance', 'source': {'head': sha, 'dirty': False},
@@ -248,11 +249,24 @@ def main():
                 contains='test-mode or test-signed build')
         variant('test-mode-build-artifact', lambda t: write(t / f'macos-gui-evidence-aarch64-apple-darwin-test/provenance.json', '{}'),
                 contains='test-mode or test-signed build')
+        def windows_manifest(provider, **evidence):
+            ev = dict({'provider': provider, 'testCertificate': provider not in ('signed', 'signpath')}, **evidence)
+            return lambda t: write(t / f'windows-gui-evidence-amd64-{RUN_ID}/windows-gui/shipped/package-manifest.json',
+                                   json.dumps({'version': version, 'source': {'head': head, 'dirty': False}, 'signed': provider != 'unsigned',
+                                               'signing': {'provider': provider, 'evidence': ev}}))
         for provider in ('signpath-test', 'selftest', 'unsigned', 'unspecified'):
-            variant(f'windows-provider-{provider}', lambda t, p=provider: write(
-                t / f'windows-gui-evidence-amd64-{RUN_ID}/windows-gui/shipped/package-manifest.json',
-                json.dumps({'version': version, 'source': {'head': head, 'dirty': False}, 'signed': provider != 'unsigned',
-                            'signing': {'provider': p}})), contains='requires a production signature')
+            variant(f'windows-provider-{provider}', windows_manifest(provider), contains='requires a production signature')
+        variant('windows-signed-but-evidence-says-test-certificate', windows_manifest('signed', testCertificate=True),
+                contains='does not state that a production certificate')
+        variant('windows-signpath-with-test-policy', windows_manifest('signpath', policy='test-signing', pinnedThumbprint='A' * 40),
+                contains='lacks a production policy')
+        variant('windows-signpath-without-pinned-thumbprint', windows_manifest('signpath', policy='fixture-production-policy'),
+                contains='lacks a production policy')
+        # SignPath production evidence with a policy and a pinned thumbprint is accepted by the same chain (structure only).
+        sp_tree = base / 'signpath-structure-artifacts'
+        build_tree(sp_tree, version, head)
+        windows_manifest('signpath', policy='fixture-production-policy', pinnedThumbprint='B' * 40)(sp_tree)
+        assemble('signpath-production-evidence-structure-accepted', sp_tree, base / 'signpath-structure')
         variant('source-record-for-another-sha', lambda t: None, contains='does not describe', sha=other)
 
         # ---- the source gate on a pinned commit ----
@@ -373,6 +387,14 @@ def main():
         pre('prerequisites-selftest-backend', {'WINDOWS_SIGN_BACKEND': 'selftest', 'TAURI_SIGNING_PRIVATE_KEY': 'k'}, False, 'WINDOWS_SIGN_BACKEND')
         pre('prerequisites-no-updater-key', {'WINDOWS_SIGN_BACKEND': 'azure'}, False, 'TAURI_SIGNING_PRIVATE_KEY')
         pre('prerequisites-presence-only-passes', {'WINDOWS_SIGN_BACKEND': 'azure', 'TAURI_SIGNING_PRIVATE_KEY': 'k'}, True)
+        pre('prerequisites-pfx-passes', {'WINDOWS_SIGN_BACKEND': 'pfx', 'TAURI_SIGNING_PRIVATE_KEY': 'k'}, True)
+        sp = {'TAURI_SIGNING_PRIVATE_KEY': 'k', 'SIGNPATH_PRODUCTION_POLICY_SLUG': 'fixture-production-policy', 'SIGNPATH_PRODUCTION_CERT_THUMBPRINT': 'C' * 40}
+        pre('prerequisites-signpath-production-structure-passes', sp, True)
+        pre('prerequisites-signpath-without-thumbprint', dict(sp, SIGNPATH_PRODUCTION_CERT_THUMBPRINT=''), False, 'SIGNPATH_PRODUCTION_CERT_THUMBPRINT')
+        pre('prerequisites-signpath-short-thumbprint', dict(sp, SIGNPATH_PRODUCTION_CERT_THUMBPRINT='C' * 39), False, 'SIGNPATH_PRODUCTION_CERT_THUMBPRINT')
+        pre('prerequisites-signpath-test-policy-as-production', dict(sp, SIGNPATH_PRODUCTION_POLICY_SLUG='test-signing'), False, 'test-signing policy')
+        pre('prerequisites-two-production-backends', dict(sp, WINDOWS_SIGN_BACKEND='azure'), False, 'exactly one production backend')
+        pre('prerequisites-signpath-name-in-backend-secret', {'WINDOWS_SIGN_BACKEND': 'signpath', 'TAURI_SIGNING_PRIVATE_KEY': 'k'}, False, 'must be azure or pfx')
 
         # ---- scope, provenance and index ----
         for f in out.rglob('*'):

@@ -187,10 +187,14 @@ jobs:
         # build-cli.yml.
         env:
           MATRIX: ${{ steps.set-matrix.outputs.matrix }}
+          # With a SignPath production policy a release signs the Windows CLI executables in the Windows GUI job (stage 1) and that
+          # job publishes the Windows CLI archive; the sign.py-only build-cli leg would refuse it for lack of WINDOWS_SIGN_BACKEND.
+          SIGNPATH_PRODUCTION: ${{ inputs.require_signing == true && vars.SIGNPATH_PRODUCTION_POLICY_SLUG != '' }}
         run: |
           node -e '
             const all = JSON.parse(process.env.MATRIX)
-            const keep = all.filter(e => e.platform === "macos-latest" || e.target === "x86_64-pc-windows-msvc")
+            const skipWindows = process.env.SIGNPATH_PRODUCTION === "true"
+            const keep = all.filter(e => e.platform === "macos-latest" || (e.target === "x86_64-pc-windows-msvc" && !skipWindows))
             console.log("matrix=" + JSON.stringify(keep))
           ' >> "$GITHUB_OUTPUT"
 
@@ -773,7 +777,8 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 60
     # Only a SignPath run attaches the Environment that holds the SignPath API token; every other run has no environment.
-    environment: ${{ inputs.signpath_test_signing == true && 'signpath-test' || '' }}
+    # A release call (require_signing) with a configured production policy uses the production Environment; there is no default.
+    environment: ${{ inputs.signpath_test_signing == true && 'signpath-test' || (inputs.require_signing == true && vars.SIGNPATH_PRODUCTION_POLICY_SLUG != '' && 'signpath-production') || '' }}
     outputs:
       signed: ${{ steps.sign.outputs.mode != 'unsigned' }}
       sfx: ${{ steps.sign.outputs.sfx }}
@@ -788,6 +793,11 @@ jobs:
       SIGNPATH_ORGANIZATION_ID: 080cee5f-8b26-476f-9e04-dd6571b926bd
       SIGNPATH_PROJECT_SLUG: UniClipboard
       SIGNPATH_SIGNING_POLICY_SLUG: test-signing
+      # SignPath production (release calls only). Both are repository variables with no default: the policy and the certificate
+      # are decided and created by the maintainer in SignPath; nothing here assumes they exist. The API token is the secret
+      # SIGNPATH_API_TOKEN of the Environment `signpath-production`.
+      SIGNPATH_PRODUCTION_POLICY_SLUG: ${{ vars.SIGNPATH_PRODUCTION_POLICY_SLUG }}
+      SIGNPATH_PRODUCTION_CERT_THUMBPRINT: ${{ vars.SIGNPATH_PRODUCTION_CERT_THUMBPRINT }}
       SIGNPATH_ARTIFACT_CONFIGURATION_SLUG: go-stage1
       # Stage 2 submits only the setup programs; it needs its own artifact configuration unless `initial` also fits that layout.
       SIGNPATH_SETUP_ARTIFACT_CONFIGURATION_SLUG: go-stage2-setup
@@ -811,8 +821,10 @@ jobs:
           SELF_TEST: ${{ inputs.signing_self_test == true }}
           SIGNPATH_TEST: ${{ inputs.signpath_test_signing == true }}
           IS_CALL: ${{ inputs.require_signing == true }}
+          SIGNPATH_PRODUCTION_POLICY: ${{ vars.SIGNPATH_PRODUCTION_POLICY_SLUG }}
         run: |
-          # unsigned | selftest (throwaway certificate) | signpath-test (SignPath test-signing) | signed (a production backend)
+          # unsigned | selftest (throwaway certificate) | signpath-test (SignPath test-signing) | signed (azure | pfx through sign.py)
+          # | signpath (SignPath production policy, release calls only)
           if [ "$SELF_TEST" = "true" ] && [ "$SIGNPATH_TEST" = "true" ]; then
             echo "::error::signing_self_test and signpath_test_signing are exclusive"; exit 1
           fi
@@ -823,6 +835,11 @@ jobs:
             echo "mode=selftest" >> "$GITHUB_OUTPUT"; echo "sfx=-signing-selftest" >> "$GITHUB_OUTPUT"
           elif [ "$SIGNPATH_TEST" = "true" ]; then
             echo "mode=signpath-test" >> "$GITHUB_OUTPUT"; echo "sfx=-signpath-test" >> "$GITHUB_OUTPUT"
+          elif [ "$IS_CALL" = "true" ] && [ -n "$SIGNPATH_PRODUCTION_POLICY" ] && [ -n "$SIGN_BACKEND" ]; then
+            echo "::error::Both a SignPath production policy and WINDOWS_SIGN_BACKEND are configured; a release uses exactly one production signing backend."
+            exit 1
+          elif [ "$IS_CALL" = "true" ] && [ -n "$SIGNPATH_PRODUCTION_POLICY" ]; then
+            echo "mode=signpath" >> "$GITHUB_OUTPUT"; echo "sfx=" >> "$GITHUB_OUTPUT"
           elif [ -n "$SIGN_BACKEND" ]; then
             echo "mode=signed" >> "$GITHUB_OUTPUT"; echo "sfx=" >> "$GITHUB_OUTPUT"
           elif [ "$IS_CALL" = "true" ]; then
@@ -937,6 +954,14 @@ jobs:
           THUMB=""; UNTRUSTED=false
           case "$MODE" in
             selftest) THUMB="$SELFTEST_THUMBPRINT" ;;
+            signpath)
+              # Production: the signer is pinned to the certificate the maintainer created in SignPath, and the chain must be
+              # trusted (no --allow-untrusted-root, no SIGNING_TEST_CERT). No default exists for this thumbprint.
+              THUMB="${SIGNPATH_PRODUCTION_CERT_THUMBPRINT:-}"
+              if ! printf '%s' "$THUMB" | grep -Eq '^[0-9A-Fa-f]{40}$'; then
+                echo "::error::The repository variable SIGNPATH_PRODUCTION_CERT_THUMBPRINT (40 hex digits) is required to pin the SignPath production certificate."
+                exit 1
+              fi ;;
             signpath-test)
               THUMB="$SIGNPATH_THUMBPRINT"; UNTRUSTED=true
               if ! printf '%s' "$THUMB" | grep -Eq '^[0-9A-Fa-f]{40}$'; then
@@ -949,7 +974,7 @@ jobs:
           if [ -n "$THUMB" ]; then
             # Every verifier below pins the signer. SIGNING_TEST_CERT is the marker that lets sign.py waive the chain trust of a
             # TEST certificate; it is never set for a production backend, and the release gate rejects test modes outright.
-            echo "SIGNING_TEST_CERT=1" >> "$GITHUB_ENV"
+            if [ "$MODE" != "signpath" ]; then echo "SIGNING_TEST_CERT=1" >> "$GITHUB_ENV"; fi
             VERIFY="--expect-thumbprint $THUMB"; PKGVERIFY="--sign-expect-thumbprint $THUMB"
             if [ "$UNTRUSTED" = true ]; then VERIFY="$VERIFY --allow-untrusted-root"; PKGVERIFY="$PKGVERIFY --sign-untrusted-root"; fi
             echo "SIGN_VERIFY_ARGS=$VERIFY" >> "$GITHUB_ENV"
@@ -957,7 +982,7 @@ jobs:
           fi
 
       - name: SignPath preconditions
-        if: steps.sign.outputs.mode == 'signpath-test'
+        if: startsWith(steps.sign.outputs.mode, 'signpath')
         shell: bash
         env:
           # Only the presence of the Environment secret is tested; its value is never printed or written anywhere.
@@ -965,7 +990,7 @@ jobs:
         run: |
           set -euo pipefail
           [ "$RUNNER_ENVIRONMENT" = "github-hosted" ] || { echo "::error::SignPath OSS signing requires a GitHub-hosted runner"; exit 1; }
-          [ "$HAS_TOKEN" = "true" ] || { echo "::error::The secret SIGNPATH_API_TOKEN is not available in the signpath-test Environment"; exit 1; }
+          [ "$HAS_TOKEN" = "true" ] || { echo "::error::The secret SIGNPATH_API_TOKEN is not available in the ${{ steps.sign.outputs.mode == 'signpath' && 'signpath-production' || 'signpath-test' }} Environment"; exit 1; }
           printf '%s' "$SIGNPATH_ORGANIZATION_ID" | grep -Eq '^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$' || { echo "::error::SIGNPATH_ORGANIZATION_ID is not a UUID"; exit 1; }
 
       - name: build the Go CLI to sign
@@ -1022,7 +1047,7 @@ jobs:
 
       - name: upload stage 1 for SignPath
         id: signpath-up1
-        if: steps.sign.outputs.mode == 'signpath-test'
+        if: startsWith(steps.sign.outputs.mode, 'signpath')
         uses: actions/upload-artifact@v7
         with:
           name: signpath-stage1-${{ matrix.arch }}-${{ github.run_id }}-${{ github.run_attempt }}
@@ -1030,15 +1055,15 @@ jobs:
           if-no-files-found: error
           retention-days: 3
 
-      - name: SignPath test-signing request 1 (GUI exe, daemon, uninstaller, CLI executables)
+      - name: SignPath signing request 1 (GUI exe, daemon, uninstaller, CLI executables)
         id: signpath-req1
-        if: steps.sign.outputs.mode == 'signpath-test'
+        if: startsWith(steps.sign.outputs.mode, 'signpath')
         uses: signpath/github-action-submit-signing-request@f6d04783b4569d051e0c80105fe66e82819d0092 # v3.0
         with:
           api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
           organization-id: ${{ env.SIGNPATH_ORGANIZATION_ID }}
           project-slug: ${{ env.SIGNPATH_PROJECT_SLUG }}
-          signing-policy-slug: ${{ env.SIGNPATH_SIGNING_POLICY_SLUG }}
+          signing-policy-slug: ${{ steps.sign.outputs.mode == 'signpath' && env.SIGNPATH_PRODUCTION_POLICY_SLUG || env.SIGNPATH_SIGNING_POLICY_SLUG }}
           artifact-configuration-slug: ${{ env.SIGNPATH_ARTIFACT_CONFIGURATION_SLUG }}
           github-artifact-id: ${{ steps.signpath-up1.outputs.artifact-id }}
           github-token: ${{ github.token }}
@@ -1083,7 +1108,7 @@ jobs:
 
       - name: upload stage 2 for SignPath
         id: signpath-up2
-        if: steps.sign.outputs.mode == 'signpath-test'
+        if: startsWith(steps.sign.outputs.mode, 'signpath')
         uses: actions/upload-artifact@v7
         with:
           name: signpath-stage2-${{ matrix.arch }}-${{ github.run_id }}-${{ github.run_attempt }}
@@ -1091,15 +1116,15 @@ jobs:
           if-no-files-found: error
           retention-days: 3
 
-      - name: SignPath test-signing request 2 (the setup programs)
+      - name: SignPath signing request 2 (the setup programs)
         id: signpath-req2
-        if: steps.sign.outputs.mode == 'signpath-test'
+        if: startsWith(steps.sign.outputs.mode, 'signpath')
         uses: signpath/github-action-submit-signing-request@f6d04783b4569d051e0c80105fe66e82819d0092 # v3.0
         with:
           api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
           organization-id: ${{ env.SIGNPATH_ORGANIZATION_ID }}
           project-slug: ${{ env.SIGNPATH_PROJECT_SLUG }}
-          signing-policy-slug: ${{ env.SIGNPATH_SIGNING_POLICY_SLUG }}
+          signing-policy-slug: ${{ steps.sign.outputs.mode == 'signpath' && env.SIGNPATH_PRODUCTION_POLICY_SLUG || env.SIGNPATH_SIGNING_POLICY_SLUG }}
           artifact-configuration-slug: ${{ env.SIGNPATH_SETUP_ARTIFACT_CONFIGURATION_SLUG }}
           github-artifact-id: ${{ steps.signpath-up2.outputs.artifact-id }}
           github-token: ${{ github.token }}
@@ -1145,9 +1170,10 @@ jobs:
           THUMBPRINT="${{ steps.identity.outputs.thumbprint }}" python - <<'PY'
           import json, os
           e, mode = os.environ, os.environ['MODE']
-          ev = {'provider': mode, 'testCertificate': mode != 'signed', 'pinnedThumbprint': e.get('THUMBPRINT') or None, 'requests': []}
-          if mode == 'signpath-test':
-              ev.update(organizationId=e['SIGNPATH_ORGANIZATION_ID'], project=e['SIGNPATH_PROJECT_SLUG'], policy=e['SIGNPATH_SIGNING_POLICY_SLUG'],
+          ev = {'provider': mode, 'testCertificate': mode not in ('signed', 'signpath'), 'pinnedThumbprint': e.get('THUMBPRINT') or None, 'requests': []}
+          if mode.startswith('signpath'):
+              policy = e['SIGNPATH_PRODUCTION_POLICY_SLUG'] if mode == 'signpath' else e['SIGNPATH_SIGNING_POLICY_SLUG']
+              ev.update(organizationId=e['SIGNPATH_ORGANIZATION_ID'], project=e['SIGNPATH_PROJECT_SLUG'], policy=policy,
                         artifactConfiguration=e['SIGNPATH_ARTIFACT_CONFIGURATION_SLUG'],
                         requests=[{'stage': n, 'id': e[f'REQUEST_{n}_ID'], 'url': e[f'REQUEST_{n}']} for n in (1, 2)])
           json.dump(ev, open('target/sign/signing-evidence.json', 'w'), indent=2)
@@ -1195,6 +1221,17 @@ jobs:
         run: |
           cd target/windows-gui/shipped
           sha256sum *-setup.exe *-portable.zip | tee ../SHA256SUMS.txt
+
+      - name: upload the signed CLI archive (SignPath production)
+        # Production SignPath signs the CLI executables in stage 1 together with the GUI files, so this job owns the Windows CLI
+        # archive; build-cli (sign.py backends only) skips Windows in that configuration. Same artifact name the collector reads.
+        if: steps.sign.outputs.mode == 'signpath' && matrix.target == 'x86_64-pc-windows-msvc'
+        uses: actions/upload-artifact@v7
+        with:
+          name: cli-${{ matrix.target }}
+          path: target/windows-gui/cli-package/uniclipboard-cli-*.zip
+          if-no-files-found: error
+          retention-days: 7
 
       - name: upload Windows packages
         # Only the named installer and portable zip: no bare exe, manifest or evidence, so the release asset
@@ -1323,7 +1360,7 @@ jobs:
           # A matrix job exposes ONE value per output (the last leg to finish wins), so the per-architecture self-test
           # thumbprint cannot come from the job output: it is read from this architecture's own certificate file.
           # The SignPath test certificate is the same for both architectures, so its output value is safe.
-          PINNED_THUMBPRINT: ${{ needs.package-windows-gui.outputs.mode == 'signpath-test' && needs.package-windows-gui.outputs.thumbprint || '' }}
+          PINNED_THUMBPRINT: ${{ startsWith(needs.package-windows-gui.outputs.mode, 'signpath') && needs.package-windows-gui.outputs.thumbprint || '' }}
           PACKAGE_MODE: ${{ needs.package-windows-gui.outputs.mode }}
         run: |
           set -euo pipefail

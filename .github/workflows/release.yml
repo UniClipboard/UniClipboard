@@ -74,6 +74,8 @@ jobs:
       - name: Release prerequisites (production signing)
         env:
           WINDOWS_SIGN_BACKEND: ${{ secrets.WINDOWS_SIGN_BACKEND }}
+          SIGNPATH_PRODUCTION_POLICY_SLUG: ${{ vars.SIGNPATH_PRODUCTION_POLICY_SLUG }}
+          SIGNPATH_PRODUCTION_CERT_THUMBPRINT: ${{ vars.SIGNPATH_PRODUCTION_CERT_THUMBPRINT }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         run: python3 scripts/ci/release_gate.py prerequisites
 

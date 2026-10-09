@@ -195,3 +195,12 @@ rpm 关闭了自动依赖生成（`AutoReqProv: no`），`Requires` 是依赖的
 这是依赖解析与文件级安装的验证，openSUSE 上已安装 rpm 的 GUI 启动、升级与卸载没有跑（同一 AppImage 在该发行版的启动与库存结果见
 [gui-go-linux-appimage-runtime-deps.md](gui-go-linux-appimage-runtime-deps.md) 的「运行时库存结果」）。
 `packaging/uniclipboard.spec`（COPR，Fedora 系）是另一份独立的 `Requires` 声明，仍用包名 `webkit2gtk4.1`、`gtk-layer-shell`，因 COPR 只面向 Fedora 系而保留；两处并存，不是同一事实来源。
+
+### openSUSE 上已安装 rpm 的生命周期（issue #1903）
+
+`package_install_check.sh` 增加了 zypper 分支（工具包名按 openSUSE 取）。在 openSUSE Tumbleweed（固定摘要，arm64 容器、Xvfb、一次性 gnome-keyring，不是桌面会话）上，
+用与 CI 相同的载荷重建的 rpm 依次执行：旧身份 `uni-clipboard` 安装并播种加密 profile 与 enabled 自启条目 → `zypper install` 新身份（`Obsoletes` 迁移）→ 重复安装 → `--force` 重装 → 重启后校验 → 移除。
+33 项断言中 32 项通过：文件唯一归属、`rpm -V`、无缺失库、profile 与自启条目字节不变、daemon 与 GUI 从安装路径运行、移除后文件消失而用户数据保留。
+**唯一失败**：`WebView process runs from the installed WebKitGTK`——GUI 与 daemon 都在运行，窗口存在，`WebKitNetworkProcess` 在运行，但 `WebKitWebProcess` 始终没有启动
+（同一容器里最小的 WebKit2 客户端能正常起 `WebKitWebProcess` 并完成加载；换 `WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS`、放宽 seccomp、`GDK_BACKEND=x11`、关闭合成都不改变；在 `strace -f` 下它会启动）。
+该现象未定位根因，保留为未决缺陷，不用「容器环境」带过。校验路径的白名单已加入 openSUSE 的 `/usr/libexec/libwebkit2gtk-4_1-0/`。

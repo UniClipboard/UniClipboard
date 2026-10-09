@@ -137,9 +137,9 @@ CLI 压缩包 package-cli.sh 以已签 uniclip.exe/uniclipd.exe 为输入（REQU
 <!-- candidate artifact configuration for stage 1 (the zip root is the artifact) -->
 <artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
   <zip-file>
-    <directory path="shipped"><pe-file-set><include path="*.exe" /><authenticode-sign /></pe-file-set></directory>
-    <directory path="newer"><pe-file-set><include path="*.exe" /><authenticode-sign /></pe-file-set></directory>
-    <directory path="cli"><pe-file-set><include path="*.exe" /><authenticode-sign /></pe-file-set></directory>
+    <directory path="shipped"><pe-file-set><include path="*.exe" /><for-each><authenticode-sign /></for-each></pe-file-set></directory>
+    <directory path="newer"><pe-file-set><include path="*.exe" /><for-each><authenticode-sign /></for-each></pe-file-set></directory>
+    <directory path="cli"><pe-file-set><include path="*.exe" /><for-each><authenticode-sign /></for-each></pe-file-set></directory>
   </zip-file>
 </artifact-configuration>
 ```

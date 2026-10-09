@@ -51,7 +51,14 @@
 
 Windows CLI 归档：`build-cli` 作业只会用 `sign.py` 本地后端签名。SignPath 生产下 Windows GUI 作业已在阶段 1 签名并打包 CLI（`cli-package`），因此该作业把已签名的 CLI zip 上传为 `cli-x86_64-pc-windows-msvc`（收集器读取的同名工件），`setup-matrix` 在该配置下把 Windows 从 `build-cli` 矩阵剔除。
 
-发布门禁 `release_gate.py assets`（及只做证据检查的 `release_gate.py evidence`）接受 `signing.provider` 为 `signed`（本地后端）或 `signpath`（要求证据里 `testCertificate` 为 false、策略不是 `test-signing`、有 40 位固定指纹）；其余 provider 一律拒绝。
+发布门禁 `release_gate.py assets`（及只做证据检查的 `release_gate.py evidence`）的 Windows 规则：
+
+- `signing.provider` 只是分类标签，**不是证明**。可接受值为 `signed`（本地后端）或 `signpath`（要求证据里 `testCertificate` 为 false、策略不是 `test-signing`、`SIGNPATH_PRODUCTION_CERT_THUMBPRINT` 已传给门禁）；其余 provider 一律拒绝。
+- 标签之外，同一证据 artifact 里必须有 Windows 作业用 `sign.py verify`（即既有的 `signtool verify /pa`、证书链、时间戳、固定签名者）写出的回执：`signatures.json`、`signatures-stage1.json`、`signatures-stage2.json`，SignPath 下还有 `signatures-cli.json`。回执必须严格：`passed` 为 true、`allowUntrustedRoot` 为 false、每个文件 `ok`、`chainTrusted`、`signtoolVerifyPa` 为 true、`Status` 为 `Valid`、有时间戳和 SHA-256，所有文件同一签名者；若回执记录了固定指纹，或发布配置了生产指纹，签名者必须与之相同。
+- 回执与将要发布的字节绑定：发布的 setup 的 SHA-256 必须在 `signatures.json` 里；便携 zip 内的 `UniClipboard.exe`、`uniclipd.exe` 必须等于包记录里的 `shipped` 哈希并出现在回执里；`SHA256SUMS.txt` 必须列出发布的 setup 与便携 zip 的真实哈希；SignPath 下发布的 CLI 压缩包里的可执行文件必须是 CLI 回执验证过的那两个。
+- 伪造 `signed`/`signpath` 标签但没有回执、回执对应别的字节、回执放宽了证书链信任（测试证书）、状态不是 `Valid`、没有时间戳、签名者不一致或不是配置的生产证书，都会被拒绝。
+
+**信任边界（务必按此理解）**：release gate 运行在 Linux 上，不能运行 signtool，也不能独立评估 Windows 证书链，所以它**不独立证明** Windows 证书受信。它证明的是：可信 CI 步骤（Windows 作业里的 `sign.py verify`）为这些字节留下了严格的回执，并且回执与要发布的文件逐字节绑定。能修改工作流或其 artifact 的人可以伪造回执；该门禁防的是误用和混源，不是这类攻击。对 `azure`/`pfx`，现有工作流不固定签名者身份，所以只检查“同一个受信签名者”；Azure/pfx 下 Windows CLI 归档来自 `build-cli`，其回执不在这个证据 artifact 里，没有绑定（已知缺口）。真实的 Windows 生产验签只有在生产证书与策略存在后才可能发生，目前 blocked。
 
 **状态：结构已写好，从未与真实 SignPath 生产策略运行过；策略、证书、Environment 与 token 都未配置（只读核对见 `production-blocked` 证据）。生产签名验收 blocked，未配置时仍失败关闭。**
 
@@ -70,6 +77,7 @@ Windows CLI 归档：`build-cli` 作业只会用 `sign.py` 本地后端签名。
 | 版本载体漂移 | 陈旧的 `buildinfo.go`；`Cargo.lock` 的 Engine 版本漂移；单个载体版本不同；错误的版本或 SHA |
 | 签名后篡改 | 篡改字节后复验与真实消费者均拒绝；互换两个 `.sig` 被拒绝 |
 | 绕过生产公钥 | release 模式用一次性私钥签名，被 `app.json` 的生产公钥拒绝，且没有任何 `.sig` 写出 |
+| 伪造 signed 标签 | 没有任何回执；缺最终回执；回执对应别的 setup 字节；便携 zip 里的可执行文件被替换；`SHA256SUMS.txt` 哈希不符；回执放宽链信任、链不受信、状态非 `Valid`、`verify /pa` 失败、无时间戳、签名者混杂、`passed` 为 false；CLI 压缩包被替换；SignPath 的 CLI 无回执；回执签名者不是配置的生产证书；未给门禁生产指纹 |
 | 缺少生产前提 | 无前提、后端为 `signpath-test`/`selftest`、缺更新私钥，均失败；只有两者都存在才通过（仅验证存在性） |
 
 预发布拼写 `1.3.0-alpha.1` 另在一份载体副本上整条链路重跑（`prerelease-*` 用例），因为仓库当前载体的版本由 prepare-release 决定。
@@ -82,7 +90,7 @@ deb 排序验证：`python3 -I apps/gui-go/e2e/linux/deb_version_order_run.py --
 
 交付物分三类，互不替代：
 
-1. **真实输入**（`release_real_inputs_run.py`、`verify_package_set_prerelease_run.py`）：用早先真实 CI run 的打包证据 artifact（Linux run 37894007183、Windows run 37875320922、macOS run 37638284857，均为只读下载）核对门禁：真实布局被识别；真实测试模式/测试签名 artifact 因正确原因被拒绝；换成别的提交或版本被拒绝。另用真实 arm64 Linux 包的载荷、以随包的 `build_deb`/`build_rpm` 重建成 `1.3.0-alpha.1`（派生集，已标注），验证 `verify_package_set.py` 接受 `~` 的 deb Version 并拒绝保留 `-` 的 deb。
+1. **真实输入**（`release_real_inputs_run.py`（含：在真实的测试签名回执旁边伪造 `signpath` 生产标签，仍被拒绝）、`verify_package_set_prerelease_run.py`）：用早先真实 CI run 的打包证据 artifact（Linux run 37894007183、Windows run 37875320922、macOS run 37638284857，均为只读下载）核对门禁：真实布局被识别；真实测试模式/测试签名 artifact 因正确原因被拒绝；换成别的提交或版本被拒绝。另用真实 arm64 Linux 包的载荷、以随包的 `build_deb`/`build_rpm` 重建成 `1.3.0-alpha.1`（派生集，已标注），验证 `verify_package_set.py` 接受 `~` 的 deb Version 并拒绝保留 `-` 的 deb。
 2. **合成夹具**（`release_assembly_run.py`、`deb_version_order_run.py`）：机制验证，包是合成的，更新密钥一次性。
 3. **生产阻塞**（`release_production_blocked_run.py`）：只读记录当前仓库没有生产签名配置，`prerequisites` 失败关闭，并列出需要维护者提供的内容。
 

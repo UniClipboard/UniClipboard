@@ -257,6 +257,8 @@ jobs:
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # The gate pins the Windows Authenticode receipts to this certificate when SignPath production is the backend.
+          SIGNPATH_PRODUCTION_CERT_THUMBPRINT: ${{ vars.SIGNPATH_PRODUCTION_CERT_THUMBPRINT }}
         run: |
           VERSION="${{ needs.validate.outputs.version }}"
           python3 scripts/ci/assemble_release_assets.py \

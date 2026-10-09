@@ -48,7 +48,7 @@ def main():
     inputs = json.loads((args.inputs / 'inputs.json').read_text())
     results, count = [], 0
 
-    def case(label, platform, rename_to, sha, version, *, expect_in, expect_absent=(), derived_clean=False):
+    def case(label, platform, rename_to, sha, version, *, expect_in, expect_absent=(), derived_clean=False, forge_label=False, thumbprint=None):
         nonlocal count
         info = inputs[platform]
         with tempfile.TemporaryDirectory(prefix='uc-real-inputs-') as tmp:
@@ -62,7 +62,18 @@ def main():
                         d = json.loads(f.read_text())
                         (d['source'] if isinstance(d.get('source'), dict) else d['git'])['dirty'] = False
                         f.write_text(json.dumps(d))
-            r = subprocess.run([sys.executable, '-I', str(GATE), 'evidence', '--version', version, '--source-sha', sha, '--artifacts', str(tree)],
+            if forge_label:
+                # FORGED LABEL on a real artifact: the package record is edited to claim a production SignPath signature (clean checkout,
+                # production policy, pinned thumbprint). The real receipts next to it are left untouched and say what really happened.
+                f = next((tree / (rename_to or info['artifact'])).rglob('shipped/package-manifest.json'))
+                d = json.loads(f.read_text())
+                d['source']['dirty'] = False
+                d['signed'] = True
+                d['signing'] = {'provider': 'signpath', 'evidence': {'provider': 'signpath', 'testCertificate': False, 'policy': 'forged-production-policy',
+                                                                      'pinnedThumbprint': thumbprint}}
+                f.write_text(json.dumps(d))
+            extra_args = ['--windows-thumbprint', thumbprint] if thumbprint else []
+            r = subprocess.run([sys.executable, '-I', str(GATE), 'evidence', '--version', version, '--source-sha', sha, '--artifacts', str(tree), *extra_args],
                                capture_output=True, text=True)
         lines = [l.removeprefix('error: ') for l in r.stderr.splitlines() if l.startswith('error: ')]
         (out / f'{label}.log').write_text(f'exit {r.returncode}\n{r.stdout}{r.stderr}')
@@ -98,6 +109,10 @@ def main():
                  expect_in=['requires a production signature', 'dirty checkout'], expect_absent=['test-mode or test-signed', 'not the pinned source', 'is version', 'records no source'])
             case('windows-renamed-derived-clean-only-provider-remains', platform, clean_name, head, version, derived_clean=True,
                  expect_in=['requires a production signature'], expect_absent=['dirty', 'test-mode or test-signed', 'not the pinned source', 'is version', 'records no source'])
+            real_thumbprint = json.loads((art / 'windows-gui/signatures.json').read_text())['expectThumbprint']
+            case('windows-forged-signpath-label-over-real-test-receipts', platform, clean_name, head, version, derived_clean=True, forge_label=True,
+                 thumbprint=real_thumbprint, expect_in=['waived chain trust', 'not verified as a valid, trusted Authenticode signature'],
+                 expect_absent=['requires a production signature', 'dirty', 'alone proves nothing'])
         elif platform == 'macos':
             case('macos-test-mode-artifact-as-is', platform, None, head, version, expect_in=['test-mode or test-signed build'])
             case('macos-renamed-real-record-is-dirty', platform, clean_name, head, version, expect_in=['dirty checkout'],

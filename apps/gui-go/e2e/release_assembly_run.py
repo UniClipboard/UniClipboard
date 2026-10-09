@@ -35,6 +35,7 @@ ASSEMBLE = ROOT / 'scripts/ci/assemble_release_assets.py'
 RUN_ID = '1000000000'
 
 
+
 def sha256(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
@@ -71,7 +72,26 @@ def write(path, data):
     path.write_bytes(data if isinstance(data, bytes) else data.encode())
 
 
-def build_tree(tree, version, sha, *, windows_provider='signed'):
+def zip_bytes(members):
+    import io
+    import zipfile
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, 'w') as z:
+        for name, data in members.items():
+            z.writestr(zipfile.ZipInfo(name, (2026, 10, 9, 0, 0, 0)), data)
+    return buf.getvalue()
+
+
+def receipt(files, thumbprint, *, pinned=None, **overrides):
+    """A `sign.py verify` receipt as the Windows job writes it, with trusted-chain values. Fixture-written, not from signtool."""
+    entries = [{'file': f'target\\windows-gui\\{name}', 'sha256': digest, 'signedAt': 'Fri Oct 09 03:00:57 2026', 'ok': True,
+                'chainTrusted': True, 'signtoolVerifyPa': True,
+                'signature': {'Status': 'Valid', 'Subject': "CN=Fixture publisher", 'Thumbprint': thumbprint, 'Issuer': 'CN=Fixture CA',
+                              'Timestamp': 'CN=Fixture TSA'}} for name, digest in files.items()]
+    return dict({'allowUntrustedRoot': False, 'expectThumbprint': pinned, 'passed': True, 'files': entries}, **overrides)
+
+
+def build_tree(tree, version, sha, *, windows_provider='signed', thumbprint='A' * 40):
     """A synthetic `download-artifact` tree. Every payload says it is synthetic and differs per file."""
     def payload(name):
         return f'SYNTHETIC release-assembly fixture, not a build: {name}\n'.encode()
@@ -89,21 +109,35 @@ def build_tree(tree, version, sha, *, windows_provider='signed'):
         write(tree / f'linux-gui-evidence-{deb}/package-manifest.json',
               json.dumps({'version': version, 'source': {'head': sha, 'dirty': False}, 'arch': deb}))
     for arch, win in (('amd64', 'x64'), ('arm64', 'arm64')):
-        write(tree / f'windows-gui-{arch}-{RUN_ID}/UniClipboard_{version}_{win}-setup.exe', payload('setup ' + win))
-        write(tree / f'windows-gui-{arch}-{RUN_ID}/UniClipboard_{version}_{win}-portable.zip', payload('portable ' + win))
+        setup_bytes = payload('setup ' + win)
+        exes = {n: payload(f'{n} {win}') for n in ('UniClipboard.exe', 'uniclipd.exe')}
+        portable = zip_bytes(dict(exes, **{'portable.dat': b''}))
+        write(tree / f'windows-gui-{arch}-{RUN_ID}/UniClipboard_{version}_{win}-setup.exe', setup_bytes)
+        write(tree / f'windows-gui-{arch}-{RUN_ID}/UniClipboard_{version}_{win}-portable.zip', portable)
         evidence = tree / f'windows-gui-evidence-{arch}-{RUN_ID}/windows-gui'
+        h = lambda b: hashlib.sha256(b).hexdigest()
+        shipped = {n: h(b) for n, b in exes.items()}
         write(evidence / 'shipped/package-manifest.json', json.dumps(
-            {'version': version, 'source': {'head': sha, 'dirty': False}, 'arch': arch, 'signed': True,
+            {'version': version, 'source': {'head': sha, 'dirty': False}, 'arch': arch, 'signed': True, 'shipped': shipped,
              'signing': {'provider': windows_provider, 'evidence': {'provider': windows_provider, 'testCertificate': False}},
              'fixtureRecord': 'a labelled fixture, not an Authenticode signature'}))
+        # Fixture receipts in the shape `sign.py verify` writes. They are written here by the fixture, not by signtool.
+        uninstall = h(payload('uninstall ' + win))
+        write(evidence / 'signatures-stage1.json', json.dumps(receipt({**shipped, 'uninstall.exe': uninstall}, thumbprint)))
+        write(evidence / 'signatures-stage2.json', json.dumps(receipt({f'UniClipboard_{version}_{win}-setup.exe': h(setup_bytes)}, thumbprint)))
+        write(evidence / 'signatures.json', json.dumps(receipt({f'UniClipboard_{version}_{win}-setup.exe': h(setup_bytes), **shipped}, thumbprint)))
+        write(evidence / 'SHA256SUMS.txt', f'{h(setup_bytes)} *UniClipboard_{version}_{win}-setup.exe\n{h(portable)} *UniClipboard_{version}_{win}-portable.zip\n')
         # The upgrade-acceptance package deliberately has another version and must not be judged as the release.
         write(evidence / 'newer/package-manifest.json', json.dumps(
             {'purpose': 'acceptance-newer-version', 'version': '99.0.0-acceptance', 'source': {'head': sha, 'dirty': False},
              'signed': True, 'signing': {'provider': 'selftest'}}))
-        # The evidence artifact also carries a copy of the CLI archive (a real quirk the collector must ignore).
-        write(evidence / 'cli-package/uniclipboard-cli-{}-x86_64-pc-windows-msvc.zip'.format(version), payload('evidence copy of cli'))
-    write(tree / 'cli-x86_64-pc-windows-msvc' / f'uniclipboard-cli-{version}-x86_64-pc-windows-msvc.zip', payload('cli windows'))
-    write(tree / f'cli-x86_64-unknown-linux-musl' / f'uniclipboard-cli-{version}-x86_64-unknown-linux-musl.tar.gz', payload('cli linux'))
+        if arch == 'amd64':
+            cli_exes = {n: payload(f'cli {n}') for n in ('uniclip.exe', 'uniclipd.exe')}
+            cli_zip = zip_bytes(cli_exes)
+            write(tree / 'cli-x86_64-pc-windows-msvc' / f'uniclipboard-cli-{version}-x86_64-pc-windows-msvc.zip', cli_zip)
+            write(evidence / 'signatures-cli.json', json.dumps(receipt({n: h(b) for n, b in cli_exes.items()}, thumbprint)))
+            # The evidence artifact also carries a copy of the CLI archive (a real quirk the collector must ignore).
+            write(evidence / 'cli-package/uniclipboard-cli-{}-x86_64-pc-windows-msvc.zip'.format(version), payload('evidence copy of cli'))
     # Acceptance, install and legacy-upgrade artifacts of the real Linux run (names from CI run 37894007183) hold package manifests of
     # other purposes and versions; they are not release inputs and must not be judged as such.
     write(tree / 'linux-gui-acceptance-amd64/v1/pkg/package-manifest.json',
@@ -249,11 +283,26 @@ def main():
                 contains='test-mode or test-signed build')
         variant('test-mode-build-artifact', lambda t: write(t / f'macos-gui-evidence-aarch64-apple-darwin-test/provenance.json', '{}'),
                 contains='test-mode or test-signed build')
+        wdir = lambda t, arch='amd64': t / f'windows-gui-evidence-{arch}-{RUN_ID}/windows-gui'
+
         def windows_manifest(provider, **evidence):
-            ev = dict({'provider': provider, 'testCertificate': provider not in ('signed', 'signpath')}, **evidence)
-            return lambda t: write(t / f'windows-gui-evidence-amd64-{RUN_ID}/windows-gui/shipped/package-manifest.json',
-                                   json.dumps({'version': version, 'source': {'head': head, 'dirty': False}, 'signed': provider != 'unsigned',
-                                               'signing': {'provider': provider, 'evidence': ev}}))
+            """Change only what the package record SAYS about its signing; receipts and bytes stay as they were."""
+            def mutate(t):
+                f = wdir(t) / 'shipped/package-manifest.json'
+                doc = json.loads(f.read_text())
+                ev = dict({'provider': provider, 'testCertificate': provider not in ('signed', 'signpath')}, **evidence)
+                doc.update(signed=provider != 'unsigned', signing={'provider': provider, 'evidence': ev})
+                f.write_text(json.dumps(doc))
+            return mutate
+
+        def edit_json(rel, fn):
+            def mutate(t):
+                f = wdir(t) / rel
+                doc = json.loads(f.read_text())
+                fn(doc)
+                f.write_text(json.dumps(doc))
+            return mutate
+
         for provider in ('signpath-test', 'selftest', 'unsigned', 'unspecified'):
             variant(f'windows-provider-{provider}', windows_manifest(provider), contains='requires a production signature')
         variant('windows-signed-but-evidence-says-test-certificate', windows_manifest('signed', testCertificate=True),
@@ -262,11 +311,51 @@ def main():
                 contains='lacks a production policy')
         variant('windows-signpath-without-pinned-thumbprint', windows_manifest('signpath', policy='fixture-production-policy'),
                 contains='lacks a production policy')
-        # SignPath production evidence with a policy and a pinned thumbprint is accepted by the same chain (structure only).
+
+        # ---- a "signed" label is not a verification: the receipt of the actual Authenticode check must exist and bind the bytes ----
+        def drop(*names):
+            return lambda t: [(wdir(t) / n).unlink() for n in names]
+        variant('forged-signed-label-without-any-receipt', drop('signatures.json', 'signatures-stage1.json', 'signatures-stage2.json'),
+                contains='alone proves nothing')
+        variant('forged-signed-label-without-final-receipt', drop('signatures.json'), contains='signatures.json is missing')
+        variant('receipt-for-other-setup-bytes', lambda t: write(t / f'windows-gui-amd64-{RUN_ID}/UniClipboard_{version}_x64-setup.exe', b'a different installer'),
+                contains='SHA-256 does not match')
+        variant('portable-zip-with-other-executable', lambda t: write(
+            t / f'windows-gui-amd64-{RUN_ID}/UniClipboard_{version}_x64-portable.zip',
+            zip_bytes({'UniClipboard.exe': b'swapped', 'uniclipd.exe': b'swapped too', 'portable.dat': b''})),
+            contains='is not the executable the package record shipped')
+        variant('sha256sums-lists-other-bytes', lambda t: write(wdir(t) / 'SHA256SUMS.txt', f'{"0" * 64} *UniClipboard_{version}_x64-setup.exe\n'),
+                contains='SHA256SUMS.txt does not list')
+        variant('receipt-waived-chain-trust', edit_json('signatures.json', lambda d: d.update(allowUntrustedRoot=True)), contains='waived chain trust')
+        variant('receipt-chain-not-trusted', edit_json('signatures.json', lambda d: d['files'][0].update(chainTrusted=False)),
+                contains='not verified as a valid, trusted Authenticode signature')
+        variant('receipt-status-not-valid', edit_json('signatures.json', lambda d: d['files'][0]['signature'].update(Status='UnknownError')),
+                contains='not verified as a valid, trusted Authenticode signature')
+        variant('receipt-verify-pa-failed', edit_json('signatures-stage1.json', lambda d: d['files'][0].update(signtoolVerifyPa=False)),
+                contains='not verified as a valid, trusted Authenticode signature')
+        variant('receipt-without-timestamp', edit_json('signatures.json', lambda d: d['files'][0]['signature'].update(Timestamp='')), contains='no signature timestamp')
+        variant('receipt-mixed-signers', edit_json('signatures.json', lambda d: d['files'][0]['signature'].update(Thumbprint='D' * 40)),
+                contains='different certificates')
+        variant('receipt-not-passed', edit_json('signatures-stage2.json', lambda d: d.update(passed=False)), contains='does not say passed')
+        variant('cli-archive-with-other-executables', lambda t: write(
+            t / 'cli-x86_64-pc-windows-msvc' / f'uniclipboard-cli-{version}-x86_64-pc-windows-msvc.zip', zip_bytes({'uniclip.exe': b'x', 'uniclipd.exe': b'y'})),
+            contains='not the ones the CLI receipt verified')
+
+        # ---- SignPath production structure: the receipt must carry the configured production thumbprint ----
         sp_tree = base / 'signpath-structure-artifacts'
-        build_tree(sp_tree, version, head)
+        build_tree(sp_tree, version, head, thumbprint='B' * 40)
         windows_manifest('signpath', policy='fixture-production-policy', pinnedThumbprint='B' * 40)(sp_tree)
-        assemble('signpath-production-evidence-structure-accepted', sp_tree, base / 'signpath-structure')
+        sp_env = dict(sign_env, SIGNPATH_PRODUCTION_CERT_THUMBPRINT='B' * 40)
+        assemble('signpath-production-structure-accepted-with-receipts', sp_tree, base / 'signpath-structure', env_=sp_env)
+        assemble('negative-signpath-thumbprint-not-given-to-the-gate', sp_tree, base / 'signpath-no-thumbprint', want_ok=False, contains='was not given to the gate')
+        assemble('negative-signpath-receipt-signed-by-another-certificate', sp_tree, base / 'signpath-other-cert', want_ok=False,
+                 env_=dict(sign_env, SIGNPATH_PRODUCTION_CERT_THUMBPRINT='C' * 40), contains='not the production certificate configured')
+        sp_noclip = base / 'signpath-no-cli-receipt-artifacts'
+        build_tree(sp_noclip, version, head, thumbprint='B' * 40)
+        windows_manifest('signpath', policy='fixture-production-policy', pinnedThumbprint='B' * 40)(sp_noclip)
+        (wdir(sp_noclip) / 'signatures-cli.json').unlink()
+        assemble('negative-signpath-cli-archive-without-receipt', sp_noclip, base / 'signpath-no-cli-receipt', want_ok=False, env_=sp_env,
+                 contains='has no Authenticode receipt')
         variant('source-record-for-another-sha', lambda t: None, contains='does not describe', sha=other)
 
         # ---- the source gate on a pinned commit ----

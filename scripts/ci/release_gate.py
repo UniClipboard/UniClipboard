@@ -11,6 +11,14 @@ Subcommands
   assets         The collected asset set is exactly the expected one for the version, comes from the pinned commit,
                  and no test-signed, unsigned or intermediate artifact took part. Writes the asset index.
 
+Trust boundary of the Windows check. This gate runs on Linux and cannot run signtool or evaluate a certificate chain. It does NOT
+independently prove Windows certificate trust. It requires that the trusted CI step that did (`sign.py verify` on the Windows
+runner: `signtool verify /pa`, chain, timestamp, pinned signer) left a strict receipt in the same workflow's evidence artifact, and
+it binds that receipt to the bytes that will be released (setup SHA-256, executables inside the portable zip and the CLI archive,
+SHA256SUMS). A `signing.provider` label on its own, or a receipt that does not match the released files, is rejected. Anyone who can
+alter the workflow or its artifacts can forge a receipt; the gate defends against mistakes and mixed inputs, not against that.
+For `azure`/`pfx` the existing workflow pins no signer identity, so only "one consistent, trusted signer" is checked.
+
 `--mode fixture` is for the non-publishing acceptance run only: it allows a dirty checkout and stamps the output so it
 can never be mistaken for a release record. It relaxes nothing about versions, SHAs, coverage or signing providers.
 The release workflow never passes it.
@@ -186,6 +194,115 @@ def evidence_source(doc):
     return src if isinstance(src, dict) else None
 
 
+HEX40, HEX64 = re.compile(r'[0-9A-Fa-f]{40}'), re.compile(r'[0-9a-f]{64}')
+
+
+def receipt_problems(receipt, label, expect_thumbprint=None):
+    """A `sign.py verify` receipt written by the Windows job: strict means a trusted chain, a valid Authenticode status,
+    `signtool verify /pa`, a timestamp and one pinned signer for every file. It is a record, not a proof (see the module docstring)."""
+    problems = []
+    if not isinstance(receipt, dict) or receipt.get('passed') is not True:
+        return [f'{label}: the receipt does not say passed']
+    if receipt.get('allowUntrustedRoot') is not False:
+        problems.append(f'{label}: the receipt waived chain trust (allowUntrustedRoot is not false): a test certificate')
+    files = receipt.get('files') or []
+    if not files:
+        problems.append(f'{label}: the receipt lists no files')
+    thumbprints = set()
+    for f in files:
+        name, sig = f.get('file', '?'), f.get('signature') or {}
+        thumbprints.add((sig.get('Thumbprint') or '').lower())
+        if f.get('ok') is not True or f.get('chainTrusted') is not True or f.get('signtoolVerifyPa') is not True or sig.get('Status') != 'Valid':
+            problems.append(f'{label}: {name} was not verified as a valid, trusted Authenticode signature '
+                            f'(ok={f.get("ok")}, chainTrusted={f.get("chainTrusted")}, verify /pa={f.get("signtoolVerifyPa")}, status={sig.get("Status")})')
+        if not sig.get('Timestamp') or not f.get('signedAt'):
+            problems.append(f'{label}: {name} has no signature timestamp')
+        if not HEX64.fullmatch(f.get('sha256') or ''):
+            problems.append(f'{label}: {name} has no SHA-256')
+        if not HEX40.fullmatch(sig.get('Thumbprint') or ''):
+            problems.append(f'{label}: {name} has no signer thumbprint')
+    if len(thumbprints) > 1:
+        problems.append(f'{label}: the files were signed by different certificates: {sorted(thumbprints)}')
+    pinned = receipt.get('expectThumbprint')
+    if pinned and thumbprints and thumbprints != {pinned.lower()}:
+        problems.append(f'{label}: the signer is not the pinned thumbprint {pinned}')
+    if expect_thumbprint and thumbprints != {expect_thumbprint.lower()}:
+        problems.append(f'{label}: the signer is not the production certificate configured for this release ({expect_thumbprint})')
+    return problems
+
+
+def zip_member_hashes(path, names):
+    import zipfile
+    out = {}
+    with zipfile.ZipFile(path) as z:
+        members = {Path(n).name: n for n in z.namelist()}
+        for name in names:
+            if name in members:
+                out[name] = hashlib.sha256(z.read(members[name])).hexdigest()
+    return out
+
+
+def windows_binding_problems(artifacts, assets, version, top, doc, provider, expect_thumbprint):
+    """Bind the receipts of one Windows evidence artifact to the files that will be released."""
+    problems = []
+    base = artifacts / top / 'windows-gui'
+    manifest_path = next(iter(sorted(base.rglob('shipped/package-manifest.json'))), None)
+    arch = {'amd64': 'x64', 'x86_64': 'x64', 'arm64': 'arm64', 'aarch64': 'arm64'}.get(doc.get('arch'))
+    if arch is None:
+        return [f'{top}: the package record names no known architecture ({doc.get("arch")!r})']
+    receipts = {}
+    for name in ('signatures.json', 'signatures-stage1.json', 'signatures-stage2.json'):
+        f = base / name
+        if not f.is_file():
+            problems.append(f'{top}: the Authenticode verification receipt {name} is missing; a "{provider}" label alone proves nothing')
+            continue
+        try:
+            receipts[name] = json.loads(f.read_text())
+        except ValueError:
+            problems.append(f'{top}: {name} is not valid JSON')
+            continue
+        problems += receipt_problems(receipts[name], f'{top}/{name}', expect_thumbprint)
+    if problems or assets is None:
+        return problems
+    receipt_hashes = {name: {f.get('sha256') for f in r.get('files', [])} for name, r in receipts.items()}
+    setup, portable = assets / f'UniClipboard_{version}_{arch}-setup.exe', assets / f'UniClipboard_{version}_{arch}-portable.zip'
+    if not setup.is_file() or sha256(setup) not in receipt_hashes['signatures.json']:
+        problems.append(f'{top}: the released {setup.name} is not one of the files the Authenticode receipt verified (SHA-256 does not match)')
+    shipped = doc.get('shipped') or {}
+    if portable.is_file():
+        inside = zip_member_hashes(portable, ['UniClipboard.exe', 'uniclipd.exe'])
+        for exe, digest in inside.items():
+            if shipped.get(exe) != digest:
+                problems.append(f'{top}: {exe} inside the released {portable.name} is not the executable the package record shipped')
+            if digest not in receipt_hashes['signatures-stage1.json'] | receipt_hashes['signatures.json']:
+                problems.append(f'{top}: {exe} inside the released {portable.name} was never verified by the Authenticode receipts')
+        if set(inside) != {'UniClipboard.exe', 'uniclipd.exe'}:
+            problems.append(f'{top}: the released {portable.name} lacks UniClipboard.exe or uniclipd.exe')
+    sums = base / 'SHA256SUMS.txt'
+    listed = {}
+    if sums.is_file():
+        for line in sums.read_text().splitlines():
+            parts = line.split()
+            if len(parts) == 2:
+                listed[parts[1].lstrip('*')] = parts[0]
+    for released in (setup, portable):
+        if released.is_file() and listed.get(released.name) != sha256(released):
+            problems.append(f'{top}: SHA256SUMS.txt does not list the released {released.name} with its SHA-256')
+    cli = assets / f'uniclipboard-cli-{version}-x86_64-pc-windows-msvc.zip'
+    cli_receipt = base / 'signatures-cli.json'
+    if arch == 'x64' and cli.is_file():
+        if cli_receipt.is_file():
+            r = json.loads(cli_receipt.read_text())
+            problems += receipt_problems(r, f'{top}/signatures-cli.json', expect_thumbprint)
+            hashes = zip_member_hashes(cli, ['uniclip.exe', 'uniclipd.exe'])
+            if set(hashes) != {'uniclip.exe', 'uniclipd.exe'} or not set(hashes.values()) <= {f.get('sha256') for f in r.get('files', [])}:
+                problems.append(f'{top}: the executables in the released CLI archive are not the ones the CLI receipt verified')
+        elif provider == 'signpath':
+            problems.append(f'{top}: the Windows CLI archive has no Authenticode receipt (signatures-cli.json)')
+        # azure | pfx: the CLI archive comes from build-cli, whose receipt is not part of this evidence artifact (documented limitation)
+    return problems
+
+
 def artifact_name_problems(artifacts):
     """Mixed-run guard: a test-mode or test-signed artifact must not be present, whether or not it contributed a file."""
     problems = []
@@ -197,7 +314,7 @@ def artifact_name_problems(artifacts):
     return problems
 
 
-def check_evidence(artifacts, v, sha):
+def check_evidence(artifacts, v, sha, assets=None, expect_thumbprint=None):
     """Every package record belongs to the pinned commit and version, and Windows is signed by a production backend."""
     problems = []
     seen = {'macos': 0, 'linux': 0, 'windows': 0}
@@ -236,6 +353,10 @@ def check_evidence(artifacts, v, sha):
             elif provider == 'signpath' and (not proof.get('policy') or proof.get('policy') == 'test-signing'
                                              or not re.fullmatch(r'[0-9A-Fa-f]{40}', proof.get('pinnedThumbprint') or '')):
                 problems.append(f'{rel}: SignPath evidence lacks a production policy or a pinned certificate thumbprint')
+            elif provider == 'signpath' and not expect_thumbprint:
+                problems.append(f'{rel}: the production certificate thumbprint (SIGNPATH_PRODUCTION_CERT_THUMBPRINT) was not given to the gate')
+            else:
+                problems += windows_binding_problems(artifacts, assets, v, rel.parts[0], doc, provider, expect_thumbprint)
     for platform, count in seen.items():
         if not count:
             problems.append(f'no package evidence from {platform} was found in the artifacts')
@@ -243,7 +364,7 @@ def check_evidence(artifacts, v, sha):
 
 
 def cmd_evidence(args):
-    problems, seen = check_evidence(Path(args.artifacts), args.version, args.source_sha)
+    problems, seen = check_evidence(Path(args.artifacts), args.version, args.source_sha, Path(args.assets) if args.assets else None, args.windows_thumbprint)
     problems = artifact_name_problems(Path(args.artifacts)) + problems
     if problems:
         fail(problems)
@@ -301,7 +422,7 @@ def cmd_assets(args):
         index.append({'name': f.name, 'sha256': digest, 'bytes': f.stat().st_size,
                       'sourceArtifacts': sorted({o.parts[0] for o in origins})})
 
-    evidence_problems, seen = check_evidence(artifacts, v, sha)
+    evidence_problems, seen = check_evidence(artifacts, v, sha, assets, args.windows_thumbprint)
     problems += evidence_problems
 
     if problems:
@@ -327,6 +448,8 @@ def main():
     e.add_argument('--version', required=True)
     e.add_argument('--source-sha', required=True)
     e.add_argument('--artifacts', required=True)
+    e.add_argument('--assets', help='released files; when given, the Windows receipts are bound to their bytes')
+    e.add_argument('--windows-thumbprint', default=os.environ.get('SIGNPATH_PRODUCTION_CERT_THUMBPRINT') or None)
     e.set_defaults(func=cmd_evidence)
     a = sub.add_parser('assets')
     a.add_argument('--version', required=True)
@@ -334,6 +457,8 @@ def main():
     a.add_argument('--artifacts', required=True)
     a.add_argument('--assets', required=True)
     a.add_argument('--mode', choices=['release', 'fixture'], default='release')
+    a.add_argument('--windows-thumbprint', default=os.environ.get('SIGNPATH_PRODUCTION_CERT_THUMBPRINT') or None,
+                   help='the production certificate configured for this release (SignPath); defaults to $SIGNPATH_PRODUCTION_CERT_THUMBPRINT')
     a.add_argument('--out', required=True)
     a.set_defaults(func=cmd_assets)
     args = p.parse_args()

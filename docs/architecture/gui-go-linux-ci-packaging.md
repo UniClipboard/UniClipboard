@@ -201,6 +201,13 @@ rpm 关闭了自动依赖生成（`AutoReqProv: no`），`Requires` 是依赖的
 `package_install_check.sh` 增加了 zypper 分支（工具包名按 openSUSE 取）。在 openSUSE Tumbleweed（固定摘要，arm64 容器、Xvfb、一次性 gnome-keyring，不是桌面会话）上，
 用与 CI 相同的载荷重建的 rpm 依次执行：旧身份 `uni-clipboard` 安装并播种加密 profile 与 enabled 自启条目 → `zypper install` 新身份（`Obsoletes` 迁移）→ 重复安装 → `--force` 重装 → 重启后校验 → 移除。
 33 项断言中 32 项通过：文件唯一归属、`rpm -V`、无缺失库、profile 与自启条目字节不变、daemon 与 GUI 从安装路径运行、移除后文件消失而用户数据保留。
-**唯一失败**：`WebView process runs from the installed WebKitGTK`——GUI 与 daemon 都在运行，窗口存在，`WebKitNetworkProcess` 在运行，但 `WebKitWebProcess` 始终没有启动
-（同一容器里最小的 WebKit2 客户端能正常起 `WebKitWebProcess` 并完成加载；换 `WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS`、放宽 seccomp、`GDK_BACKEND=x11`、关闭合成都不改变；在 `strace -f` 下它会启动）。
-该现象未定位根因，保留为未决缺陷，不用「容器环境」带过。校验路径的白名单已加入 openSUSE 的 `/usr/libexec/libwebkit2gtk-4_1-0/`。
+**唯一失败**：`WebView process runs from the installed WebKitGTK`——GUI 与 daemon 都在运行，窗口存在，`WebKitNetworkProcess` 在运行，但 `WebKitWebProcess` 在启动约 0.1 秒后被 `SIGILL` 杀死。
+**根因已定位，不在 UniClipboard**：崩溃点在发行版的 `libjavascriptcoregtk-4.1.so.0`（Tumbleweed 的 WebKitGTK 2.52.6）内，该库带 BTI / PAC / GCS 标记，页面脚本进入 `JSC::evaluate` 后经间接调用落到一个函数入口
+（`stp x29, x30, [sp, #-16]!`，不是 `bti` 着陆点），所在映射的 `VmFlags` 含 `bt`，内核按 BTI 规则发出 `SIGILL`（`si_code=ILL_ILLOPC`）。
+不含任何 UniClipboard 代码的最小 WebKit2 客户端（只加载一段循环加正则的脚本）在同一容器里同样得到 `web-process-terminated`（崩溃），只含一行赋值的脚本则正常；
+同一个脚本在 Fedora 44（WebKitGTK 2.54.1）上、同一台 Docker Desktop 虚拟机和内核上正常。因此这是 Tumbleweed 该版 JavaScriptCore 在带 BTI 的 aarch64 内核上的发行版缺陷，只在实际执行较热的脚本时出现，
+不是包依赖问题，也不是 AppImage 的问题（AppImage 自带 WebKit，在同一宿主上通过）。
+`JSC_useJIT=false` 等 JIT 开关、关沙箱、放宽 seccomp、`GDK_BACKEND=x11` 均不能规避；`GLIBC_TUNABLES=glibc.cpu.aarch64_bti=0` 也无效（它的默认值已是 0，BTI 由 ELF 标记和内核决定）。
+没有在不带 BTI 的 aarch64 或 x86_64 的 Tumbleweed 上对照，所以不断言它影响所有 Tumbleweed 用户，只断言带 BTI 的 aarch64。
+这一缺陷让 openSUSE Tumbleweed 的 aarch64 rpm 在这类硬件上无法显示界面，除非发行版修复 JavaScriptCore；产品是否在支持声明里排除该组合由产品决定。
+校验路径的白名单已加入 openSUSE 的 `/usr/libexec/libwebkit2gtk-4_1-0/`。

@@ -40,7 +40,7 @@ function Menu-Root() {
 }
 switch ($Action) {
   'list' {
-    foreach ($e in Kids $root) { try { $n = $e.Current.Name; if ($n -and -not $e.Current.IsOffscreen -and $e.Current.ClassName -match 'TrayWnd|Overflow|NotifyIcon|TaskListThumb|Xaml|SystemTray' -or $n -like '*Uni*' -or $n -like '*隐藏*' -or $n -like '*hidden*') { "$($e.Current.ControlType.ProgrammaticName)|$($e.Current.ClassName)|$n|$($e.Current.AutomationId)" } } catch {} }
+    foreach ($e in Kids $root) { try { $n = $e.Current.Name; if ($n -and -not $e.Current.IsOffscreen -and $e.Current.ClassName -match 'TrayWnd|Overflow|NotifyIcon|TaskListThumb|Xaml|SystemTray' -or $n -like "*$Match*" -or $n -like '*隐藏*' -or $n -like '*hidden*') { "$($e.Current.ControlType.ProgrammaticName)|$($e.Current.ClassName)|$n|$($e.Current.AutomationId)" } } catch {} }
   }
   'icon' {
     $icon = Find-Icon $Match
@@ -53,6 +53,11 @@ switch ($Action) {
     $r = $icon.Current.BoundingRectangle
     [Mouse]::Click([int]($r.X + $r.Width / 2), [int]($r.Y + $r.Height / 2), ($Button -eq 'right'))
     Write-Output "CLICKED $($icon.Current.Name) at $([int]$r.X),$([int]$r.Y) $([int]$r.Width)x$([int]$r.Height)"
+  }
+  'toast' {
+    # click the toast whose text contains -Match (a notification banner or its Action Center entry)
+    foreach ($e in Kids $root) { try { $n = $e.Current.Name; if ($n -and $n -like "*$Match*" -and -not $e.Current.IsOffscreen) { $r = $e.Current.BoundingRectangle; if ($r.Width -gt 0) { [Mouse]::Click([int]($r.X + $r.Width / 2), [int]($r.Y + $r.Height / 2), $false); Write-Output "TOAST_CLICKED $n"; exit 0 } } } catch {} }
+    Write-Output 'TOAST_NOT_FOUND'; exit 2
   }
   'menu' {
     Start-Sleep -Milliseconds 500

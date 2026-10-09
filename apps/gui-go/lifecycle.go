@@ -129,7 +129,9 @@ func restartDaemon() error {
 // fullRestart replaces the daemon first, then the GUI. A failed daemon restart
 // does not stop the GUI restart: the new GUI's bootstrap retries recovery.
 func (h *HostService) fullRestart() {
-	_ = restartDaemon()
+	if err := restartDaemon(); err != nil {
+		log.Printf("daemon restart failed, restarting the GUI anyway: %v", err)
+	}
 	if err := h.restartGUI(); err != nil {
 		h.app.Dialog.Error().SetTitle("UniClipboard").SetMessage(err.Error()).Show()
 	}

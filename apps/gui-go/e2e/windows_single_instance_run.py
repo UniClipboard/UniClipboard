@@ -143,8 +143,12 @@ def main():
         procs = processes_in(sandbox)
         state2 = None
         if new_pid:
-            gui.ctl('state r1', 'control-state')  # answered by whichever process reads the shared control file
-            state2 = steps(ev, 'control-state')[-1]['detail']
+            # the shared control file is read by whichever process polls it, so ask until the new process answers
+            def _ask():
+                gui.ctl('state r1', 'control-state')
+                mine = [r for r in steps(ev, 'control-state') if r['detail'].get('pid') == new_pid]
+                return mine[-1]['detail'] if mine else None
+            state2 = wait_until(_ask, 30, 1.5)
         check('R1 restart: a new GUI process bootstrapped, the old one exited, exactly one GUI process remains',
               bool(new_pid) and bool(old_gone) and procs == [new_pid], {'old': gui_pid, 'new': new_pid, 'processes': procs})
         check('R2 restart replaced the daemon and the new daemon is healthy', bool(state2) and state2.get('daemonPid') not in (None, daemon_pid) and pid_alive(state2['daemonPid']),

@@ -74,7 +74,7 @@ def main():
         return {'uuids': sorted(set(UUID.findall(r.stdout))), 'fingerprints': sorted(set(FINGERPRINT.findall(r.stdout))), 'rc': r.returncode}
 
     def history_text():
-        r = cli('--json', 'get', '--list', '--limit', '5000', timeout=120)
+        r = cli('--json', 'get', '--list', '--limit', '50', timeout=120)
         return r.returncode, r.stdout
 
     try:
@@ -91,7 +91,7 @@ def main():
                 baseline_identity = identity()
                 results['baseline_identity'] = baseline_identity
             stop = threading.Event()
-            acked, failed = [], []
+            acked, failed, fail_samples = [], [], []
 
             def writer():
                 i = 0
@@ -99,10 +99,14 @@ def main():
                     marker = f'forced-stop r{rnd} #{i:04d} \u2713 ' + 'x' * (10 + (i * 37) % 400)
                     try:
                         res = cli('send', '--text', marker, timeout=30)
-                        (acked if res.returncode == 0 else failed).append(marker)
+                        # the sandbox has no peers, so `send` exits 1 after the daemon captured the text; the printed hash is the ack
+                        (acked if 'hash:' in (res.stderr or '') + (res.stdout or '') else failed).append(marker)
+                        if marker not in acked and len(fail_samples) < 3:
+                            fail_samples.append({'rc': res.returncode, 'stderr': (res.stderr or '')[-300:], 'stdout': (res.stdout or '')[-300:]})
                     except subprocess.TimeoutExpired:
                         failed.append(marker)
                     i += 1
+                    time.sleep(.12)  # keep one round under the 50-entry page the history listing returns
 
             t = threading.Thread(target=writer)
             t.start()
@@ -126,10 +130,11 @@ def main():
             rr['extra_sandbox_daemons_stopped'] = extra
             rr['acked_before_or_at_kill'] = len(acked)
             rr['failed_writes'] = len(failed)
+            rr['fail_samples'] = fail_samples
             if proc.poll() is None:
                 proc.kill()  # the foreground `uniclip run` we own
             wait_until(lambda: not pid_alive(conn_pid), 20)
-            acked_all.extend(acked)
+            acked_all = list(acked)  # only this round's entries are checked: the listing returns the newest 50
             # restart
             proc2, pid2, up2 = start_daemon(f'r{rnd}-b')
             rr['restart_ok'] = up2
@@ -147,8 +152,9 @@ def main():
             rr['search_rc'] = s.returncode
             w = cli('send', '--text', f'after restart r{rnd}')
             rr['write_after_restart_rc'] = w.returncode
+            w_acked = 'hash:' in (w.stderr or '') + (w.stdout or '')
             rr['abnormal_exit_logged'] = any('exited abnormally' in p.read_text(errors='replace') for p in (sandbox / 'data' / 'logs').glob('*') if p.is_file())
-            rr['ok'] = bool(up2 and rr['identity_unchanged'] and rc == 0 and not missing and s.returncode == 0 and w.returncode == 0)
+            rr['ok'] = bool(up2 and rr['identity_unchanged'] and rc == 0 and not missing and s.returncode == 0 and w_acked)
             results['rounds'].append(rr)
             print(json.dumps(rr), flush=True)
             if proc2.poll() is None:

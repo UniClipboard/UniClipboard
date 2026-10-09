@@ -48,9 +48,9 @@ def uia(*args, timeout=60):
 # coordinates on a scaled display and its clicks land beside the item.
 try:
     ctypes.windll.user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))  # per-monitor v2
-except (AttributeError, OSError):
+except (AttributeError, OSError) as dpi_error:
     # not on Windows, or an older Windows: the process keeps its default DPI behavior
-    pass
+    print(f'per-monitor DPI awareness unavailable: {dpi_error}', file=sys.stderr)
 
 MN_GETHMENU = 0x01E1
 MF_BYPOSITION = 0x400

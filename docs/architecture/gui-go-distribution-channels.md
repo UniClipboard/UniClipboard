@@ -57,7 +57,7 @@ PR 门禁没有在 GitHub 上运行过（未 push）。设为必需检查、在�
 | snap | 移植：源码构建 Go 宿主 + Rust daemon；`grade: devel`；默认不推送 | `snapcraft.yaml`、`snap.yml`（PR 触发，仅构建；`release` 输入默认 false） | Ubuntu 22.04 arm64 容器里按配方的 Go/前端步骤编译成功（WebKitGTK 2.50.4、GTK 3.24.33） | 没有运行 `snapcraft`（容器里没有 snapd/LXD）；strict 限制下的启动、托盘、通知、自启动、全局快捷键完全未验证，不声称支持；Rust daemon 步骤未在 core22 里执行 |
 | AUR | 移植：源码构建；发布只能由 main 上的 `workflow_dispatch(publish=true)` | `PKGBUILD`、`aur.yml`、`build-aur-package.sh`、`check-arch-package.sh` | 干净 `archlinux:base-devel`（amd64，模拟）里 `makepkg` 成功并在全新容器里安装、启动通过，见下 | 原生 amd64/aarch64 构建；真实桌面；合入后需要有权限的人 dispatch 一次才会更新 AUR；`namcap` 警告（无 PIE/RELRO、`uniclipd` 含 `$srcdir` 引用）未处理 |
 | COPR | 保持重打包 Go rpm | spec、`copr.yml`（`run_ids` 取 `linux-gui-*`，`dry_run`）、`build-copr-srpm.sh` | Fedora 44 arm64 容器里 SRPM → 重建 → 与上游 rpm 对比 → 安装启动，见下 | 真实 COPR 提交；amd64；EPEL；Fedora 之外的发行版 |
-| Flathub | 保持重打包 deb | 注释与 README | 仅静态核对：deb 布局与 manifest 的 `install` 命令一致 | `flatpak-builder` 未运行；GNOME 46 运行时已 EOL，新运行时是否带 webkit2gtk-4.1 未查实；沙箱内托盘/剪贴板/快捷键；`libgtk-layer-shell` 不在运行时里，快捷面板回退为普通窗口 |
+| Flathub | 保持重打包 deb | 注释与 README | 仅静态核对：deb 布局与 manifest 的 `install` 命令一致 | `flatpak-builder` 未运行；沙箱内托盘/剪贴板/快捷键。已核实（只读，上游 gnome-build-meta 源码）：GNOME 46 运行时 2025-04-17 起 EOL，必须升级 `runtime-version` 才能提交；`elements/sdk-platform.bst` 在 gnome-46、gnome-49、gnome-50 分支都列有 `sdk/webkit2gtk-4.1.bst`，所以升级后仍有 Go 宿主链接的 WebKitGTK 4.1 API；Platform 里没有 gtk-layer-shell，快捷面板回退为普通窗口。manifest 尚未改到新版本，因为没有构建就不改 |
 | nix | 保持包装 AppImage | 注释与 README | 在 1.1.1 的 Go AppImage 里核对了根目录 `uniclipboard.desktop`（`Exec=uniclipboard %U`）与 `usr/share/icons`，与 `package.nix` 一致 | `nix-build` 未运行；FHS 环境里能否启动未知 |
 | Homebrew cask | 保持 | 无 | 静态：dmg 名、`UniClipboard.app`、zap 路径（`Application Support`/`Caches`/`Logs` 下 `app.uniclipboard.desktop`）与 Go 宿主一致；`:monterey` 无法表达最低 12.5 | 没有 `brew install`（不在个人 macOS 上运行发布形态） |
 | Chocolatey | 保持包装 NSIS 安装器 | 一行注释 | 静态：`/S` 静默、用户级（`RequestExecutionLevel user`，HKCU 卸载项）、卸载项名 `UniClipboard` 与 `softwareName` 匹配 | 没有 `choco install`（Windows 只在一次性托管 runner 上运行发布形态）；Authenticode 未做 |
@@ -84,6 +84,12 @@ PR 门禁没有在 GitHub 上运行过（未 push）。设为必需检查、在�
 - 重打包 rpm（`uniclipboard-1.1.1-1.fc44.aarch64.rpm` sha256 `6d9a5409…`）：`Requires` 相同；`Provides`/`Obsoletes`/`Conflicts` 只多了 `.fc44` 发行版后缀；两个可执行文件与上游逐字节相同；文件列表相同；License 为 `AGPL-3.0-only`（上游为 `Proprietary`）。
 - 该 rpm 通过既有的 `package_install_check.sh rpm fedora:latest fresh`：安装、启动、重装、卸载共 30 项全部 PASS。
 
+### rpm 预发版本（本分支修复后，arm64，Fedora 容器，真实 CI deb 的 payload 重新打 rpm）
+
+- 1.1.1、1.2.0-alpha.1、1.2.0-alpha.2、1.2.0 的 rpm 头：Version 分别为 `1.1.1`、`1.2.0~alpha.1`、`1.2.0~alpha.2`、`1.2.0`，License 均为 `AGPL-3.0-only`。
+- `rpm.vercmp`：alpha.1 < alpha.2 < 1.2.0，1.1.1 < 1.2.0~alpha.1。`dnf upgrade` 链 1.1.1 → alpha.1 → alpha.2 → 1.2.0 依次成功，随后再 upgrade 到 alpha.2 为 Nothing to do（稳定版不会被预发版降级）。
+- 这是从真实 payload 直接调用 `build_rpm` 的验证，没有重跑完整的 `package_linux.py`（AppImage 未重建）。
+
 ### snap
 
 - Ubuntu 22.04 arm64 容器按配方编译 Go 宿主成功，二进制 sha256 `4ed42194…`。第一次尝试暴露配方缺 C 编译器，已加入 `build-essential`。
@@ -96,9 +102,10 @@ PR 门禁没有在 GitHub 上运行过（未 push）。设为必需检查、在�
 - PR 门禁在 GitHub 上的运行，以及它被设为必需检查之后对不触及这些路径的 PR 的影响（workflow 级 `paths` 过滤会让必需检查一直 pending；本作业放在已有的 `changes` 过滤器之后，但整个 `pr-check.yml` 仍有 `paths`）。
 - `aur.yml`、`snap.yml`、`copr.yml` 的新工作流只做了 YAML 解析，没有在 Actions 上运行。
 
-## 发现但未处理
+## 发现
 
-- `package_linux.py` 的 rpm：`Version` 含 `-`（预发版本）时 rpmbuild 报 `Illegal char '-'`，alpha 版本打不出 rpm；`License: Proprietary` 与 AGPL-3.0-only 不符。
+- 已修复：`package_linux.py` 的 rpm `Version` 含 `-`（预发版本）时 rpmbuild 报 `Illegal char '-'`；`License: Proprietary` 与 AGPL-3.0-only 不符。现在 rpm 的 `Version` 把预发分隔符换成 `~`（与 `copr.yml` 的既有约定一致，文件名保持 `UniClipboard-<版本>-1.<arch>.rpm`），`License: AGPL-3.0-only`。deb、AppImage 的版本不变。
+- 未处理：deb 版本 `1.2.0-alpha.1` 在 dpkg 里把 `alpha.1` 当作 Debian 修订号，排序 **晚于** `1.2.0`（已用 `dpkg --compare-versions` 复现；改用 `~` 才是预发在前）。这是 deb 版本语义问题，按要求保持其余 Linux 格式版本不变，只记录。
 - `release.yml` 的 alpha 路径会以 `release=true` 触发 `snap.yml`；解除失败关闭时要重新决定。
 
 ## 解除 `release.yml` 失败关闭的条件（不在本次做）

@@ -11,8 +11,12 @@
 # (apps/gui-go/e2e/package_linux.py stage_tree). It links GTK 3, WebKitGTK 4.1
 # and libsoup 3 from the runtime below; libgtk-layer-shell is not in the GNOME
 # runtime, so the Wayland quick panel falls back to an ordinary window.
-# Unverified: flatpak-builder has never run on this manifest, and GNOME 46 is
-# end of life; check that the runtime you move to still ships webkit2gtk-4.1.
+# GNOME 46 reached end of life on 2025-04-17 (Flathub rejects EOL runtimes), so
+# runtime-version must move before submission. The Platform stack of
+# gnome-build-meta (elements/sdk-platform.bst) lists sdk/webkit2gtk-4.1.bst on
+# gnome-46, gnome-49 and gnome-50, so the move keeps the WebKitGTK 4.1 API that
+# the Go host links; the Platform stack does not list gtk-layer-shell.
+# Unverified: flatpak-builder has never run on this manifest.
 app-id: app.uniclipboard.desktop
 runtime: org.gnome.Platform
 runtime-version: '46'

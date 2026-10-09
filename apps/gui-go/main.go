@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"embed"
+	"errors"
 	"fmt"
 	"io/fs"
 	"log"
@@ -11,6 +12,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/buildinfo"
 	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/daemonclient"
 	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/daemonlife"
 	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/daemonproc"
@@ -159,33 +161,58 @@ func main() {
 	}
 }
 
+// fatal ends the process when the shell cannot get a usable daemon. A launcher or a login item has no terminal, so the release form
+// tells the user in a dialog first (exactly like failStartup does before the event loop runs); other forms keep the log line and the
+// immediate exit that scripts and E2E runs rely on. It does not return: the dialog's OK button ends the process.
+func (h *HostService) fatal(err error) {
+	log.Print(err)
+	if !releaseBuild {
+		os.Exit(1)
+	}
+	dialog := h.app.Dialog.Error().SetTitle("UniClipboard").SetMessage(err.Error())
+	dialog.AddButton("OK").OnClick(func() { os.Exit(1) })
+	dialog.Show()
+	select {}
+}
+
+// incompatibleDaemonError is the message for a daemon of another version still serving this profile. The usual cause is an in-place
+// upgrade while the previous build was running: its processes survive the file replacement, and the new build refuses to act against them.
+func incompatibleDaemonError(outcome daemonlife.Outcome) error {
+	observed := "of another version"
+	if outcome.ObservedVersion != nil {
+		observed = *outcome.ObservedVersion
+	}
+	return fmt.Errorf("UniClipboard %s cannot start because UniClipboard %s is still running. Quit it completely from its tray menu, or log out and back in, then start UniClipboard again.", buildinfo.PackageVersion, observed)
+}
+
 // bootstrap attaches to (or starts) the daemon and builds the shell around it: windows, tray, quick panel, login item
 // reconcile, the cold-launch sequence and the update scheduler.
 func (h *HostService) bootstrap() {
 	spawnedDaemon := false // whether this launch started the daemon (a cold start) or attached to one
 	outcome, err := daemonlife.ProbeForReuse(daemonlife.StartupTimeout)
 	if err != nil {
-		log.Fatal(err)
+		h.fatal(err)
 	}
 	switch outcome.Kind {
 	case daemonlife.Incompatible:
-		log.Fatal(daemonlife.IncompatibleError(outcome))
+		log.Print(daemonlife.IncompatibleError(outcome))
+		h.fatal(incompatibleDaemonError(outcome))
 	case daemonlife.Absent:
 		spawnedDaemon = true
 		if err := daemonproc.SpawnDetachedDaemon("gui"); err != nil {
-			log.Fatal(err)
+			h.fatal(err)
 		}
 		if err := daemonlife.WaitHealthy(daemonlife.StartupTimeout, ""); err != nil {
-			log.Fatal(err)
+			h.fatal(err)
 		}
 	case daemonlife.Compatible:
 		if outcome.Health.Residency == daemonlife.ResidencyOneshot {
-			log.Fatal("PoC requires a persistent daemon; refusing to replace an existing oneshot daemon")
+			h.fatal(errors.New("PoC requires a persistent daemon; refusing to replace an existing oneshot daemon"))
 		}
 	}
 	client, err := daemonclient.FromEnv()
 	if err != nil {
-		log.Fatal(err)
+		h.fatal(err)
 	}
 	h.client = client
 	startup, _ := h.loadStartupSettings()

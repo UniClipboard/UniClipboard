@@ -211,7 +211,7 @@ def make_sandbox():
     if len(str(sandbox)) > 30:
         shutil.rmtree(sandbox, ignore_errors=True)
         sys.exit(f'sandbox path {sandbox} is too long for the Engine data tree (MAX_PATH): set UC_GUI_GO_E2E_SANDBOX_ROOT to a short directory such as D:\\w')
-    return sandbox, 'g' + sandbox.name[-8:], Path(root) if root else Path(tempfile.gettempdir())
+    return sandbox, 'gui-go-' + sandbox.name[-6:], Path(root) if root else Path(tempfile.gettempdir())
 
 
 def main():

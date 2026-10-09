@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"embed"
-	"errors"
 	"fmt"
 	"io/fs"
 	"log"
@@ -207,7 +206,12 @@ func (h *HostService) bootstrap() {
 		}
 	case daemonlife.Compatible:
 		if outcome.Health.Residency == daemonlife.ResidencyOneshot {
-			h.fatal(errors.New("PoC requires a persistent daemon; refusing to replace an existing oneshot daemon"))
+			// A command-line `space init` (or another one-shot client) is still winding down: promote it to the
+			// persistent daemon this shell needs, like `uniclip start` does.
+			spawnedDaemon = true
+			if err := daemonlife.PromoteOneshot(daemonlife.ResidencyStandalone, "gui"); err != nil {
+				h.fatal(err)
+			}
 		}
 	}
 	client, err := daemonclient.FromEnv()

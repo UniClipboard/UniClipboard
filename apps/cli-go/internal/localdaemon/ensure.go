@@ -1,13 +1,10 @@
 package localdaemon
 
 import (
-	"context"
-	"net/http"
 	"os"
 	"time"
 
 	"github.com/UniClipboard/UniClipboard/apps/cli-go/internal/ui"
-	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/daemonclient"
 	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/daemonlife"
 	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/daemonproc"
 )
@@ -79,28 +76,8 @@ func EnsureOrPromote(target string) (Session, error) {
 
 func promote(target string) (Session, error) {
 	spinner := ui.NewSpinner("Promoting daemon…")
-	client, err := daemonclient.FromEnv()
-	if err != nil {
-		spinner.FinishError("Failed to reach local daemon for promotion")
-		return Session{}, &daemonlife.Error{Kind: daemonlife.ErrPromoteRestart, Err: err}
-	}
-	err = client.Enveloped(context.Background(), daemonclient.Request{
-		Method: http.MethodPost, Path: "/lifecycle/restart", JSON: map[string]string{"targetMode": target},
-	}, nil)
-	if err != nil {
-		spinner.FinishError("Daemon rejected the promotion request")
-		return Session{}, &daemonlife.Error{Kind: daemonlife.ErrPromoteRestart, Err: err}
-	}
-	if err := daemonlife.WaitAbsent(daemonlife.PromoteDrainTimeout); err != nil {
-		spinner.FinishError("Daemon did not drain for promotion")
-		return Session{}, err
-	}
-	if err := daemonproc.SpawnDetachedDaemon("cli"); err != nil {
-		spinner.FinishError("Failed to spawn promoted daemon")
-		return Session{}, &daemonlife.Error{Kind: daemonlife.ErrSpawn, Err: err}
-	}
-	if err := daemonlife.WaitHealthy(daemonlife.StartupTimeout, target); err != nil {
-		spinner.FinishError("Promoted daemon failed to start")
+	if err := daemonlife.PromoteOneshot(target, "cli"); err != nil {
+		spinner.FinishError("Failed to promote the daemon")
 		return Session{}, err
 	}
 	spinner.FinishSuccess("Daemon promoted")

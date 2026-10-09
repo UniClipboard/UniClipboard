@@ -96,8 +96,8 @@ Tauri 1.1.2 → Go 1.1.3，每行都是独立的容器运行，FAIL 为 0：
 5. **自启动条目**：Tauri 的条目（`Name=UniClipboard`、`Exec=/usr/bin/uniclipboard --autostart`，AppImage 为 `Exec=<AppImage 路径> --autostart`）在 deb/rpm 与 AppImage 同路径覆盖后原样有效，Go 宿主启动后字节不变；AppImage 换文件名后条目先指向已删除的文件，用户启动新 AppImage 后 Go 把它改写为新路径，仍只有 1 个条目。
 6. **发布流程会留下过期的构建信息（已修复，`02a8b9a0f`）**：`packages/desktop-host-go/buildinfo/buildinfo.go` 是由 `go generate ./buildinfo` 从 `Cargo.toml` 生成并提交的文件，`scripts/ci/check-gui-go.sh` 与 `build-go-cli.sh` 在副本过期时失败。`prepare-release.yml` 运行 `bump-version.js` 后没有重新生成它，也没有把它加入版本提升提交，因此按流程发布的第一个版本，其发布分支上的 CI 门禁会失败。工作流现在在 `cargo update --workspace` 之后安装 Go、重新生成该文件并把它加入提交。这一步没有在真实的 GitHub Actions 上运行过（本任务不允许推送），只在本地用同样的命令验证。
 7. **Tauri 仍在运行时，Go 宿主无声退出（已修复，`fe736b3f4`）**：升级时 Tauri 的 GUI 与 daemon 可能仍在运行（运行 51、53 的场景：包管理器替换了磁盘上的文件，旧进程继续从已删除的 inode 运行）。此时新 GUI 发现 daemon 版本不兼容并 `log.Fatal`，发布形态下没有控制台，用户只看到“点击图标没有任何反应”。修复前的复现见 `runs/62-*`，修复后见 `runs/63-*`：GUI 弹出对话框“UniClipboard 1.1.3 cannot start because UniClipboard 1.1.2 is still running. Quit it completely from its tray menu, or log out and back in, then start UniClipboard again.”，确认后以状态 1 退出。非发布形态保持原来的立即退出。这只是失败路径的测试，不是数据连续性的测试：在这一场景里用户必须先退出旧进程。
-8. **被拒绝的安装不留残余（运行 65）**：在版本倒退被 `dpkg` 拒绝之后，`dpkg --audit` 为空，`uni-clipboard 1.1.2` 仍是 `ii`，原有文件完好。
-9. **daemon 常驻检查（运行 60）**：升级后启动的 daemon 是新包里的二进制（`uniclipd` 的 `/proc/<pid>/exe` 指向新路径，字节与包内 SHA 相同），数据根没有被重写成其他布局。
+8. **被拒绝的安装不留残余（运行 65）**：在版本倒退被 `dpkg` 拒绝之后，`dpkg --audit`、`dpkg --verify uni-clipboard`、`apt-get check` 都返回 0，`uni-clipboard 1.1.2` 仍是 `ii`，`uniclipboard` 为 `not-installed`。
+9. **daemon 在 GUI 退出后是否常驻（未得结论）**：运行 60 的脚本已写好，但没有留下输出，不作为证据；该问题列入未验证。
 
 ## “登录恢复”的具体定义
 
@@ -127,8 +127,8 @@ Tauri 1.1.2 → Go 1.1.3，每行都是独立的容器运行，FAIL 为 0：
 | Linux arm64 deb（Debian 12 容器） | 官方 Tauri 1.1.2 与 1.0.1 → Go 1.1.3；Tauri 已退出与仍在运行；版本倒退被拒绝且无残余 | 真实桌面登录、amd64 实机、真实 apt 源 |
 | Linux arm64 rpm（Fedora 容器） | 官方 Tauri 1.1.2 → Go 1.1.3；Tauri 已退出与仍在运行；版本倒退被拒绝 | 真实 Fedora 桌面、amd64、真实 dnf 源 |
 | Linux arm64 AppImage | 同路径覆盖与新文件名，`APPIMAGE_EXTRACT_AND_RUN=1` | FUSE 挂载、Tauri 内置更新器用生产签名下载并替换、`AppImageLauncher` 一类集成 |
-| macOS | 静态：Tauri 与 Go 的 `CFBundleIdentifier` 相同，Tauri 2.11.5 的 `restart_macos_app` 会重新读取 `CFBundleExecutable`；两个宿主的登录项实现读过源码 | 原生升级、Keychain 条目访问、TCC 权限、登录项实机行为 |
-| Windows | 静态：官方 Tauri 安装包已解包，检查了安装位置、注册表键与卸载项的名字 | 原生安装/升级、`Run` 项、SmartScreen、数据根权限 |
+| macOS | 静态：读过 Tauri 2.11.5 的 `restart_macos_app`（更新后重新读取 `CFBundleExecutable`）与 Go 宿主的登录项源码；解包的应用保存在制品目录 `static/` | 原生升级、Keychain 条目访问、TCC 权限、登录项实机行为 |
+| Windows | 静态：官方 Tauri 安装包已解包保存在制品目录 `static/`，只读检查，未安装 | 原生安装/升级、`Run` 项、SmartScreen、数据根权限 |
 
 没有运行的项目：真实登录与登出、Tauri 内置更新器对生产更新源的使用、Fedora 虚拟机（t0210 占用）、Windows 主机租约（t0092）、macOS 和 Windows 的原生升级、WebView 界面偏好的实际界面操作、amd64 实机。容器、Xvfb、一次性 gnome-keyring 都是替身，不能当作真实原生系统的证据。
 

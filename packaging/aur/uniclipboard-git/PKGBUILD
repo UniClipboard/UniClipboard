@@ -1,43 +1,47 @@
 # Maintainer: UniClipboard <aur@uniclipboard.app>
 #
-# 源代码版本的 -git 包：直接从 main 分支 clone 并 cargo build。
-# 与 czyt 维护的 `uniclipboard-bin`（重打 .deb）互斥安装。
+# Source package that tracks main: it clones the repository and builds the Go/Wails desktop host
+# (apps/gui-go) plus the Rust daemon (uniclipd). It conflicts with the `uniclipboard-bin` package that
+# repackages the .deb.
 #
-# 同步规则：本仓库内的 PKGBUILD 是 source of truth；CI（.github/workflows/aur.yml）
-# 在 main 推送或手动 dispatch 时把这份文件 + 重算后的 pkgver 推到 AUR。
-# 修改这个文件后 commit 即可，不要手动改 AUR 上的副本，否则会被 CI 覆盖。
+# Sync rules: this file is the source of truth. .github/workflows/aur.yml builds it in a clean Arch
+# container on every change (pull request and main) and pushes it to the AUR only from a manual dispatch
+# with `publish` set. Do not edit the AUR copy by hand; it is overwritten by the next publish.
 
 pkgname=uniclipboard-git
 _pkgname=uniclipboard
-# pkgver 是 AUR web 上展示用的 snapshot；makepkg 实际编译时调用下方 pkgver() 重算。
-# CI 在 push 前会用 git describe 的当前值 sed 替换，保持 web 视图不过期。
+# Snapshot shown on the AUR web page; makepkg recomputes it with pkgver() below. The publish step
+# replaces this line with the current `git describe` value.
 pkgver=0.10.1.alpha.2.r0.g0000000
 pkgrel=1
 pkgdesc="Real-time clipboard sync across macOS, Windows and Linux — local-first, peer-to-peer, and end-to-end encrypted"
 arch=('x86_64' 'aarch64')
 url="https://www.uniclipboard.app"
 license=('AGPL-3.0-only')
-# Tauri 2 + webkit2gtk-4.1 运行链 + 系统托盘需要的 appindicator + 桌面通知。
-# tauri.conf.json 的 .deb depends 只列了 appindicator，是因为 .deb 工具会自动
-# 从 ELF 反查共享库依赖；PKGBUILD 不会，所以必须显式列全。
-depends=('webkit2gtk-4.1' 'gtk3' 'gtk-layer-shell' 'libayatana-appindicator' 'libnotify')
-# Arch no longer ships a concrete `bun` package. Both `bun-bin` and `bun-git`
-# provide that virtual name, but bun-git itself needs bun to build and creates
-# a self-dependency when selected by an AUR helper. Pin the bootstrap-safe
-# binary provider so installation is deterministic.
-makedepends=('git' 'rust' 'nodejs' 'bun-bin' 'pkgconf')
+# The GUI links GTK 3, WebKitGTK 4.1 (with libsoup 3 and JavaScriptCore) and Xlib; gtk-layer-shell is
+# loaded at run time for the quick panel on Wayland. The tray and notifications use D-Bus directly, so
+# no appindicator or libnotify is needed.
+depends=('gtk3' 'webkit2gtk-4.1' 'gtk-layer-shell' 'libx11' 'libsoup3')
+# `bun` builds the shared frontend (extra/bun). `jq` reads the app identity from apps/gui-go/app.json, the
+# single source of it. The `go` in extra satisfies the toolchain line of apps/gui-go/go.mod, so no
+# toolchain is downloaded during the build.
+makedepends=('git' 'rust' 'go' 'bun' 'jq' 'pkgconf')
 provides=("$_pkgname" "$_pkgname=$pkgver")
-# 三个 AUR 包共享同一个可执行文件路径，互斥安装。-bin 由 czyt 维护，-git/源码版由 upstream 维护。
+# Packages share one executable path, so they cannot be installed together.
 conflicts=("$_pkgname" "${_pkgname}-bin")
 source=("$_pkgname::git+https://github.com/UniClipboard/UniClipboard.git")
 sha256sums=('SKIP')
+# The Rust release profile already uses thin LTO; makepkg's global LTO flags would only fight it, and
+# Go and Cargo do not use CFLAGS for their own code. Both executables are stripped at link time, so there is
+# nothing for a separate -debug package to split off.
+options=('!lto' '!debug')
 
 pkgver() {
   cd "$_pkgname"
-  # 把 v0.10.1-alpha.2-3-g1234567 形如 → 0.10.1.alpha.2.r3.g1234567
-  # 1) sed 's/^v//'             去 v 前缀
-  # 2) 's/\([^-]*-g\)/r\1/'     把最后一段 "<count>-g<hash>" 前面补个 r
-  # 3) 's/-/./g'                所有 - 替换 . 满足 pacman 版本格式
+  # v0.10.1-alpha.2-3-g1234567 -> 0.10.1.alpha.2.r3.g1234567
+  # 1) sed 's/^v//'             drop the v prefix
+  # 2) 's/\([^-]*-g\)/r\1/'     put an r before the trailing "<count>-g<hash>"
+  # 3) 's/-/./g'                every - becomes . to satisfy the pacman version format
   ( git describe --long --tags --abbrev=7 2>/dev/null \
       | sed 's/^v//; s/\([^-]*-g\)/r\1/; s/-/./g' ) \
     || printf "0.0.0.r%s.g%s" \
@@ -47,43 +51,56 @@ pkgver() {
 
 prepare() {
   cd "$_pkgname"
-  # frozen-lockfile：lockfile 与 package.json 必须一致，否则 fail。
-  # 这能在用户机器上立即发现 main 分支推送了不一致的依赖（避免静默升级）。
+  export CARGO_HOME="$srcdir/cargo-home" GOPATH="$srcdir/gopath"
+  # --frozen-lockfile fails when the lockfile and package.json disagree, so a main commit with
+  # inconsistent dependencies is caught here instead of silently upgrading.
   bun install --frozen-lockfile
+  # Fetch every module now so build() needs no network. The dependency set is the locked one
+  # (Cargo.lock, go.sum); -modcacherw keeps the module cache removable by makepkg.
+  cargo fetch --locked --target "$(rustc -vV | sed -n 's/^host: //p')"
+  (cd apps/gui-go && go mod download -modcacherw)
 }
 
 build() {
   cd "$_pkgname"
-  # ADR-008 D13: build + stage the standalone `uniclipd` daemon as a Tauri
-  # sidecar before `tauri build`, so package() can ship it next to the GUI and
-  # the GUI spawns it as a sibling (uc-daemon-local spawn.rs). This also
-  # satisfies the externalBin reference declared in tauri.conf.json. uniclipd
-  # shares the GUI's crate graph, so no extra makedepends beyond the GUI's.
-  bun run daemon:sidecar
-  # --no-bundle 跳过 .deb/.rpm/.AppImage 生成，PKGBUILD 自己负责安装路径。
-  # 这样不需要 dpkg/rpm-build/appimagetool 这些额外 makedepends。
-  bun run tauri build --no-bundle
+  export CARGO_HOME="$srcdir/cargo-home" GOPATH="$srcdir/gopath"
+  export CGO_ENABLED=1 CARGO_TARGET_DIR="$PWD/target"
+
+  # The daemon the GUI starts as its sibling ($pkgdir/usr/bin/uniclipd).
+  cargo build --frozen --release -p uc-daemon --bin uniclipd
+
+  # The shipped frontend bundle is embedded into the GUI executable.
+  (cd packages/desktop-host-go && go generate ./buildinfo)
+  bun --bun run --cwd apps/gui-go build
+
+  # Product name, identifier and updater key come from app.json. The identifier keys the
+  # single-instance scope, login item and notifications, so it must match the other packages. The
+  # update key is baked in like in every build, but a package-manager install never replaces itself.
+  local root="$PWD" product identifier pubkey
+  product="$(jq -r .productName apps/gui-go/app.json)"
+  identifier="$(jq -r .identifier apps/gui-go/app.json)"
+  pubkey="$(jq -r .updater.pubkey apps/gui-go/app.json)"
+  (cd apps/gui-go && go build -tags gtk3,production,release \
+      -trimpath -buildvcs=false -mod=readonly -modcacherw \
+      -ldflags "-w -s -X main.updaterPublicKey=$pubkey -X main.productName=$product -X main.bundleID=$identifier" \
+      -o "$root/target/release/$_pkgname" .)
 }
 
 package() {
   cd "$_pkgname"
 
-  install -Dm755 "target/release/$_pkgname" \
-                 "$pkgdir/usr/bin/$_pkgname"
-
-  # ADR-008 D13: ship the daemon next to the GUI so it spawns as a sibling.
-  install -Dm755 "target/release/uniclipd" \
-                 "$pkgdir/usr/bin/uniclipd"
+  install -Dm755 "target/release/$_pkgname" "$pkgdir/usr/bin/$_pkgname"
+  install -Dm755 "target/release/uniclipd"  "$pkgdir/usr/bin/uniclipd"
 
   install -Dm644 "packaging/linux/$_pkgname.desktop" \
                  "$pkgdir/usr/share/applications/$_pkgname.desktop"
 
-  # Hicolor 图标，从 Tauri 的 size-named 源文件重命名到标准 apps/ 路径。
-  # 128@2x 当成 256x256（@2x 是 macOS Retina 概念，Linux 用尺寸而非 DPI 区分）。
-  install -Dm644 "apps/gui/src-tauri/icons/32x32.png"       "$pkgdir/usr/share/icons/hicolor/32x32/apps/$_pkgname.png"
-  install -Dm644 "apps/gui/src-tauri/icons/64x64.png"       "$pkgdir/usr/share/icons/hicolor/64x64/apps/$_pkgname.png"
-  install -Dm644 "apps/gui/src-tauri/icons/128x128.png"     "$pkgdir/usr/share/icons/hicolor/128x128/apps/$_pkgname.png"
-  install -Dm644 "apps/gui/src-tauri/icons/128x128@2x.png"  "$pkgdir/usr/share/icons/hicolor/256x256/apps/$_pkgname.png"
+  # hicolor icons, renamed from the size-named sources. The @2x file is 256x256 pixels: Linux
+  # selects by size, not by Retina scale. Same set as the deb, rpm and AppImage
+  # (apps/gui-go/e2e/package_linux.py ICONS).
+  install -Dm644 "apps/gui-go/icons/32x32.png"      "$pkgdir/usr/share/icons/hicolor/32x32/apps/$_pkgname.png"
+  install -Dm644 "apps/gui-go/icons/128x128.png"    "$pkgdir/usr/share/icons/hicolor/128x128/apps/$_pkgname.png"
+  install -Dm644 "apps/gui-go/icons/128x128@2x.png" "$pkgdir/usr/share/icons/hicolor/256x256/apps/$_pkgname.png"
 
   install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
 }

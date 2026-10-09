@@ -1,7 +1,7 @@
 # AUR Packaging Plan for UniClipboard (Desktop)
 
 > Status:
-> - `uniclipboard-git` — **implemented** (2026-05-19). PKGBUILD lives at `packaging/aur/uniclipboard-git/PKGBUILD`; CI at `.github/workflows/aur.yml` syncs it to AUR on every relevant push.
+> - `uniclipboard-git` — **implemented**, and since 2026-10-09 built from the Go/Wails host (`apps/gui-go`) instead of the retired Tauri host. PKGBUILD lives at `packaging/aur/uniclipboard-git/PKGBUILD`; `.github/workflows/aur.yml` builds it with `makepkg` in a clean Arch container on every relevant change and pushes it to the AUR only from a manual `publish` dispatch on `main`. The channel decisions and the evidence are in `docs/architecture/gui-go-distribution-channels.md`.
 > - `uniclipboard` (stable source) — still planning, blocked on `v0.10.1` stable tag (§5).
 > - `uniclipboard-bin` — co-maintainer outreach to czyt (§10), no upstream-controlled PKGBUILD yet.
 >
@@ -46,27 +46,27 @@ Execute in this order:
 These were collected by scanning the repo on 2026-05-19. The PKGBUILDs in §6/§7 already consume these values. Re-check anything marked **HUMAN** before pushing.
 
 ### Build & runtime
-- [x] **Tech stack:** Tauri 2.11 + React 19 + TypeScript + Tailwind 4 (`apps/gui/src-tauri/Cargo.toml:136`, `package.json:92,113`).
-- [x] **Build command:** `bun run tauri build` (`.github/workflows/build.yml:268-269`).
-- [x] **Package manager:** **bun** (not pnpm). Lockfile is `bun.lock`. Arch no longer ships a concrete `bun` package, so the PKGBUILD uses the AUR `bun-bin` provider.
-- [x] **`makedepends`:** `git rust nodejs bun-bin pkgconf`. Pinning `bun-bin` avoids the self-referential build dependency exposed when an AUR helper selects `bun-git` as the virtual `bun` provider. No `openssl-sys`/`libsqlite3-sys`-style sys crates spotted in workspace deps.
-- [x] **`depends`:** `webkit2gtk-4.1 gtk3 libayatana-appindicator libnotify` (mapped from `apps/gui/src-tauri/tauri.conf.json:48-54` .deb runtime deps).
-- [x] **Arches:** `x86_64 aarch64`. CI builds both for Linux (`.github/workflows/build.yml:71-86`).
+- [x] **Tech stack:** Go/Wails desktop host (`apps/gui-go`, cgo against GTK 3 and WebKitGTK 4.1) + the shared React frontend, plus the Rust daemon `uniclipd` (`crates/uc-daemon`).
+- [x] **Build commands:** `cargo build --release -p uc-daemon --bin uniclipd`, `bun --bun run --cwd apps/gui-go build` (frontend bundle, embedded by the host) and `go build -tags gtk3,production,release` in `apps/gui-go`. The same tags the deb, rpm and AppImage use (`apps/gui-go/e2e/package_linux.py`).
+- [x] **Package manager:** **bun** (not pnpm). Lockfile is `bun.lock`. `extra/bun` exists in the official Arch repositories (checked 2026-10-09 in a clean container), so no AUR provider is needed.
+- [x] **`makedepends`:** `git rust go bun jq pkgconf`. `go` in `extra` satisfies the `toolchain` line of `apps/gui-go/go.mod`; no toolchain download happens during the build. `jq` reads the app identity from `apps/gui-go/app.json`.
+- [x] **`depends`:** `gtk3 webkit2gtk-4.1 gtk-layer-shell libx11 libsoup3`. The GUI links GTK 3, WebKitGTK 4.1, libsoup 3 and Xlib; `gtk-layer-shell` is loaded at run time; tray and notifications use D-Bus directly, so there is no appindicator or libnotify dependency. `namcap` output of the real build is the check.
+- [x] **Arches:** `x86_64 aarch64`.
 - [ ] **Minimum glibc:** **HUMAN** — CI builds in `debian:bookworm` (glibc 2.36) but no documented floor. Arch ships glibc ≥ 2.39, so practically a non-issue.
 
 ### Distribution
-- [x] **License:** `AGPL-3.0-only` (`LICENSE` header; `apps/gui/src-tauri/Cargo.toml:4`). **Note:** the initial skeleton placeholder said MIT — that was wrong; §6/§7 are now corrected.
+- [x] **License:** `AGPL-3.0-only` (`LICENSE` header; workspace `Cargo.toml`). **Note:** the initial skeleton placeholder said MIT — that was wrong; §6/§7 are now corrected.
 - [x] **Release artifacts:** `.deb`, `.rpm`, `.AppImage` (Linux); `.dmg` (macOS); `.msi`/`.exe` (Windows). No upstream source tarball published — the `uniclipboard` AUR package pulls GitHub's auto-generated `archive/refs/tags/v$VER.tar.gz`.
-- [x] **Signatures:** Tauri **updater** already signs payloads with minisign (pubkey embedded at `apps/gui/src-tauri/tauri.conf.json:64`). **But** that key signs the in-app update bundle, not the release tarball or .deb — §11 (release-artifact signing) is still required for PKGBUILD-side verification.
+- [x] **Signatures:** the in-app **updater** signs payloads with minisign (pubkey in `apps/gui-go/app.json`). **But** that key signs the in-app update bundle, not the release tarball or .deb — §11 (release-artifact signing) is still required for PKGBUILD-side verification.
 - [x] **Tag format:** `v$VERSION` (e.g. `v0.10.0`, `v0.10.1-alpha.1`). v-prefixed.
 - [x] **systemd user service:** none. App runs as a normal GUI process started by the user.
-- [x] **Desktop integration:** generic `.desktop` file lives at `packaging/linux/uniclipboard.desktop` (created 2026-05-19, content forked from `snap/local/uniclipboard.desktop`). Icons come from `apps/gui/src-tauri/icons/` (32/64/128/128@2x); PKGBUILD renames them into hicolor `apps/uniclipboard.png` at install. Note there are now three desktop sources: this AUR file, `snap/local/uniclipboard.desktop`, and the Handlebars template `packaging/linux/uniclipboard.desktop.hbs` consumed by the Tauri bundler for deb/rpm/appimage (wired via `bundle.linux.deb.desktopTemplate` + `rpm.desktopTemplate` in `apps/gui/src-tauri/tauri.conf.json`; the path is resolved relative to `src-tauri/` since `tauri build` chdirs there). All three must keep `Categories=Network;Utility;` in sync — consolidate later if any drifts.
-- [x] **Config / data paths (Linux):** `$XDG_DATA_HOME/app.uniclipboard.desktop/` + `$XDG_CACHE_HOME/app.uniclipboard.desktop/` (`src-tauri/crates/uc-platform/src/app_dirs.rs:92-99`). Note the unusual `app.uniclipboard.desktop` dir name — matters for any future uninstall hook.
+- [x] **Desktop integration:** generic `.desktop` file lives at `packaging/linux/uniclipboard.desktop` (created 2026-05-19, content forked from `snap/local/uniclipboard.desktop`). Icons come from `apps/gui-go/icons/` (32, 128 and 128@2x = 256 pixels); the PKGBUILD renames them into hicolor `apps/uniclipboard.png` at install, the same set as the deb, rpm and AppImage. The same `packaging/linux/uniclipboard.desktop` is installed by `package_linux.py` for deb, rpm and AppImage; `snap/local/uniclipboard.desktop` differs only in its `${SNAP}` icon path. `packaging/linux/uniclipboard.desktop.hbs` is a leftover template of the retired bundler.
+- [x] **Config / data paths (Linux):** `$XDG_DATA_HOME/app.uniclipboard.desktop/` + `$XDG_CACHE_HOME/app.uniclipboard.desktop/` (`crates/uc-platform/src/app_dirs.rs`). Note the unusual `app.uniclipboard.desktop` dir name — matters for any future uninstall hook.
 
 ### Project metadata
 - [x] **Homepage:** `https://www.uniclipboard.app` (confirmed in README).
 - [x] **Bug tracker:** `https://github.com/UniClipboard/UniClipboard/issues`.
-- [x] **Binary name:** `uniclipboard` (`apps/gui/src-tauri/Cargo.toml:2`). Product name `UniClipboard` is display-only.
+- [x] **Binary name:** `uniclipboard` (the Go host) and `uniclipd` (the daemon it starts as a sibling). Product name `UniClipboard` is display-only.
 - [x] **AUR account:** **`uniclipboard`** — `aur@uniclipboard.app` (registered 2026-05-19). Org-owned, not tied to a personal AUR identity, so continuity survives maintainer turnover.
 
 ### Version target for the `uniclipboard` (stable) AUR package
@@ -77,15 +77,12 @@ These were collected by scanning the repo on 2026-05-19. The PKGBUILDs in §6/§
 ## 6. PKGBUILD — `uniclipboard-git` (implemented)
 
 **Source of truth:** `packaging/aur/uniclipboard-git/PKGBUILD` (+ `.SRCINFO`).
-**Sync mechanism:** `.github/workflows/aur.yml` — runs on push to `main` that touches `packaging/aur/uniclipboard-git/**` or the workflow file itself, plus `workflow_dispatch` (with optional `dry_run`).
+**Sync mechanism:** `.github/workflows/aur.yml`.
 
-How the sync works:
-1. Job runs in `archlinux:base-devel` container.
-2. Checks out this repo, computes `pkgver` from `git describe` (same algorithm as the in-PKGBUILD `pkgver()` function — keeps the AUR web snapshot in sync with current `main`).
-3. Clones `ssh://aur@aur.archlinux.org/uniclipboard-git.git` using the `AUR_SSH_PRIVATE_KEY` repo secret.
-4. Renders PKGBUILD, regenerates `.SRCINFO` via `makepkg --printsrcinfo` as a non-root `builder` user.
-5. Diffs against AUR HEAD — pushes only if something changed (no empty commits).
-6. Concurrency group `aur-uniclipboard-git` serializes pushes so two CI runs never race on the same remote.
+- On a pull request or a push to `main` that touches `packaging/aur/uniclipboard-git/**`, `scripts/ci/build-aur-package.sh` or the workflow, the `build` job builds the package with `makepkg` in `archlinux:base-devel` against the exact commit under test. Nothing is published, no secret is read.
+- `workflow_dispatch` with `publish` set, and only on `main`, additionally runs the `publish` job after a successful build of the same commit: it computes `pkgver` from `git describe`, clones `ssh://aur@aur.archlinux.org/uniclipboard-git.git` with the `AUR_SSH_PRIVATE_KEY` secret, renders the PKGBUILD, regenerates `.SRCINFO` as a non-root `builder` user, diffs against AUR HEAD and pushes only if something changed.
+- Before 2026-10-09 every push to `main` published straight to the AUR. That is why a PKGBUILD that no longer built could go live; publishing is now a separate, deliberate step. After a PKGBUILD change merges, someone with the right to publish dispatches the workflow once.
+- The concurrency group serializes runs per ref, so two publishes never race on the same remote.
 
 Required secret:
 - `AUR_SSH_PRIVATE_KEY` — ed25519 private key. Generate via `ssh-keygen -t ed25519 -C aur-uniclipboard -f aur`, upload `aur.pub` at `https://aur.archlinux.org/account/<user>/edit/`, paste the private key (`aur`) into repo secrets.
@@ -93,71 +90,11 @@ Required secret:
 Recommended repo variable (defense-in-depth against MITM on `ssh-keyscan`):
 - `AUR_HOST_FINGERPRINTS` — comma-separated list of pinned `SHA256:...` fingerprints for `aur.archlinux.org` host keys. Configure via `gh variable set AUR_HOST_FINGERPRINTS --body 'SHA256:...,SHA256:...'`. Source from `https://wiki.archlinux.org/title/AUR_submission_guidelines` (out-of-band verification — that's the whole point). When set, the workflow `ssh-keyscan`s and then verifies at least one scanned key matches a pinned fingerprint; mismatch → fail-fast. When unset, falls back to TOFU keyscan with a warning so first-time setup still works.
 
-Reference skeleton (kept here for documentation; the live file may have drifted):
-
-```bash
-# Maintainer: UniClipboard <aur@uniclipboard.app>
-
-pkgname=uniclipboard-git
-_pkgname=uniclipboard
-pkgver=0.10.1.alpha.1.r0.g0000000
-pkgrel=1
-pkgdesc="Real-time clipboard sync across macOS, Windows and Linux — local-first, peer-to-peer, and end-to-end encrypted"
-arch=('x86_64' 'aarch64')
-url="https://www.uniclipboard.app"
-license=('AGPL-3.0-only')
-depends=('webkit2gtk-4.1' 'gtk3' 'libayatana-appindicator' 'libnotify')
-makedepends=('git' 'rust' 'nodejs' 'bun-bin' 'pkgconf')
-provides=("$_pkgname" "$_pkgname=$pkgver")
-conflicts=("$_pkgname")
-source=("$_pkgname::git+https://github.com/UniClipboard/UniClipboard.git")
-sha256sums=('SKIP')
-
-pkgver() {
-  cd "$_pkgname"
-  git describe --long --tags --abbrev=7 2>/dev/null \
-    | sed 's/^v//; s/\([^-]*-g\)/r\1/; s/-/./g' \
-    || printf "0.0.0.r%s.g%s" \
-         "$(git rev-list --count HEAD)" \
-         "$(git rev-parse --short=7 HEAD)"
-}
-
-prepare() {
-  cd "$_pkgname"
-  bun install --frozen-lockfile
-}
-
-build() {
-  cd "$_pkgname"
-  # --no-bundle skips .deb/.rpm/.AppImage generation; we only need the binary.
-  bun run tauri build --no-bundle
-}
-
-package() {
-  cd "$_pkgname"
-
-  install -Dm755 "target/release/uniclipboard" \
-                 "$pkgdir/usr/bin/uniclipboard"
-
-  install -Dm755 "target/release/uniclipd" \
-                 "$pkgdir/usr/bin/uniclipd"
-
-  install -Dm644 "packaging/linux/uniclipboard.desktop" \
-                 "$pkgdir/usr/share/applications/uniclipboard.desktop"
-
-  # Hicolor icons, renamed from Tauri's size-named source files.
-  install -Dm644 "apps/gui/src-tauri/icons/32x32.png"       "$pkgdir/usr/share/icons/hicolor/32x32/apps/uniclipboard.png"
-  install -Dm644 "apps/gui/src-tauri/icons/64x64.png"       "$pkgdir/usr/share/icons/hicolor/64x64/apps/uniclipboard.png"
-  install -Dm644 "apps/gui/src-tauri/icons/128x128.png"     "$pkgdir/usr/share/icons/hicolor/128x128/apps/uniclipboard.png"
-  install -Dm644 "apps/gui/src-tauri/icons/128x128@2x.png"  "$pkgdir/usr/share/icons/hicolor/256x256/apps/uniclipboard.png"
-
-  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
-}
-```
+The live PKGBUILD is the reference; this document no longer carries a copy that could drift.
 
 ## 7. PKGBUILD Skeleton — `uniclipboard` (release source)
 
-Same as `-git` with these differences:
+Same as `-git` (`packaging/aur/uniclipboard-git/PKGBUILD`) with these differences; `cd "$_pkgname"` and the Go, Cargo and bun steps stay as they are:
 
 ```bash
 pkgname=uniclipboard
@@ -180,8 +117,9 @@ GitHub's auto-generated tarball extracts to `UniClipboard-$pkgver/` (matches the
 namcap PKGBUILD
 namcap *.pkg.tar.zst
 
-# Clean-room build — catches missing makedepends/depends
-# Requires the 'devtools' package; this runs inside a fresh chroot.
+# Clean-room build — catches missing makedepends/depends.
+# CI runs scripts/ci/build-aur-package.sh in archlinux:base-devel; locally, with the 'devtools' package,
+# a fresh chroot does the same:
 extra-x86_64-build
 
 # Final smoke test
@@ -243,7 +181,7 @@ Send to czyt (AUR profile email, or via GitHub @czyt). Replace placeholders befo
 
 Out of scope for the initial AUR push, but plan for:
 
-- **Heads-up — there's already a minisign key in `apps/gui/src-tauri/tauri.conf.json:64`.** That key signs the Tauri **updater** payload (the in-app auto-update bundle), not the GitHub release tarball or .deb. For AUR verification we need a **separate** signing step over the release artifacts (or, debatably, repurpose the existing key — but mixing the two roles makes key rotation harder, so prefer a second key).
+- **Heads-up — there's already a minisign key in `apps/gui-go/app.json` (`updater.pubkey`).** That key signs the **updater** payload (the in-app auto-update bundle), not the GitHub release tarball or .deb. For AUR verification we need a **separate** signing step over the release artifacts (or, debatably, repurpose the existing key — but mixing the two roles makes key rotation harder, so prefer a second key).
 - Add `minisign -S` to the GitHub Actions release workflow. Generate a dedicated release-artifact key (`minisign -G`), store the secret key encrypted in repo secrets, publish public key in `SECURITY.md`.
 - Update `uniclipboard` PKGBUILD to download `.sig` alongside tarball and verify in `prepare()`.
 - Coordinate the same change into `uniclipboard-bin` with czyt (he can verify the `.deb`'s `.sig` before extraction).

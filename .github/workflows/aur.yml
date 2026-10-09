@@ -1,41 +1,127 @@
 name: 'Publish to AUR (uniclipboard-git)'
 run-name: "aur-git-${{ github.run_number }}"
 
-# 触发场景：
-#   1. push to main 且影响 PKGBUILD 模板或本 workflow —— 这是主路径，确保
-#      AUR 上的 PKGBUILD 与仓库内 source of truth 同步。
-#   2. workflow_dispatch —— 手动重跑（比如想用某个分支的 PKGBUILD 验证 .SRCINFO
-#      生成、或在 AUR_SSH_PRIVATE_KEY rotated 后立即触发一次推送）。
+# Triggers:
+#   1. pull_request touching the PKGBUILD, this workflow or the build script: build the package in a clean Arch
+#      container and nothing else (no secrets, no AUR access).
+#   2. push to main with the same paths: the same build. It never publishes.
+#   3. workflow_dispatch: the same build and, only when `publish` is set and the run is on main, the push to the AUR.
 #
-# 不绑 release published：-git 包按定义追踪 main HEAD，pkgver 由 makepkg 在
-# 用户机器上从 git describe 重算，release 事件并不是它的"心跳"信号。强行绑
-# release 反而会在每个 alpha tag 引入无意义的空 commit（PKGBUILD 没变 + pkgver
-# 由 sed 替换后可能也没变）。
+# History: a push to main used to publish the PKGBUILD to the AUR directly, so a PKGBUILD that could not build was
+# live within minutes of a merge. Publishing is now a deliberate dispatch that runs behind a successful build of
+# exactly the commit being published.
+#
+# Not bound to release.published: a -git package tracks main, and pkgver is recomputed by makepkg on the user's
+# machine, so releases are not its heartbeat. The AUR copy only needs to change when the PKGBUILD does.
 on:
+  pull_request:
+    paths:
+      - 'packaging/aur/uniclipboard-git/**'
+      - 'scripts/ci/build-aur-package.sh'
+      - '.github/workflows/aur.yml'
   push:
     branches: [main]
     paths:
       - 'packaging/aur/uniclipboard-git/**'
+      - 'scripts/ci/build-aur-package.sh'
       - '.github/workflows/aur.yml'
   workflow_dispatch:
     inputs:
-      dry_run:
-        description: '只生成 PKGBUILD/.SRCINFO 作为 artifact，不 push 到 AUR'
+      publish:
+        description: 'Push the built PKGBUILD and .SRCINFO to the AUR (main only). Off = build and render only'
         required: false
         type: boolean
         default: false
 
-# AUR 是单分支 git remote，并发 push 会互踩。串行执行；cancel-in-progress=false
-# 让前一次跑完再排队，避免半道丢失 commit。
+# The AUR is a single-branch git remote and concurrent pushes trample each other. Runs are serialized;
+# cancel-in-progress=false lets a running publish finish instead of being cut off half way.
 concurrency:
-  group: aur-uniclipboard-git
+  group: aur-uniclipboard-git-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: false
 
+permissions:
+  contents: read
+
 jobs:
+  build:
+    name: Build the package in a clean Arch container
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    # The official Arch image: the same distribution users build on, with the toolchain makepkg expects.
+    container: archlinux:base-devel
+    outputs:
+      commit: ${{ steps.build.outputs.commit }}
+    steps:
+      - name: Install git
+        run: pacman -Sy --noconfirm --needed git
+
+      - uses: actions/checkout@v4
+        with:
+          path: src
+          # Full history and tags: pkgver() runs `git describe`, which needs them.
+          fetch-depth: 0
+
+      - name: Build with makepkg
+        id: build
+        shell: bash
+        run: |
+          # The workspace is owned by another user inside the container; the script clones from it as the build user.
+          git config --global --add safe.directory "$GITHUB_WORKSPACE/src"
+          commit="$(git -C src rev-parse HEAD)"
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+          src/scripts/ci/build-aur-package.sh "$GITHUB_WORKSPACE/src" "$commit" "$GITHUB_WORKSPACE/aur-build-evidence"
+
+      - name: Upload the package and its evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aur-uniclipboard-git-build-${{ github.run_id }}-${{ github.run_attempt }}
+          path: aur-build-evidence
+          retention-days: 14
+          if-no-files-found: warn
+
+  install:
+    name: Install and launch in a clean Arch container
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # A fresh container that did not build the package: its declared dependencies are the only runtime libraries present.
+    container:
+      image: archlinux:base-devel
+      options: --init --cap-add IPC_LOCK
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: src
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: aur-uniclipboard-git-build-${{ github.run_id }}-${{ github.run_attempt }}
+          path: built
+
+      - name: Install the package and launch the shipped form
+        shell: bash
+        run: |
+          pkg="$(ls built/*.pkg.tar.zst)"
+          src/scripts/ci/check-arch-package.sh "$pkg" "$GITHUB_WORKSPACE/aur-install-evidence"
+
+      - name: Upload install evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aur-uniclipboard-git-install-${{ github.run_id }}-${{ github.run_attempt }}
+          path: aur-install-evidence
+          retention-days: 14
+          if-no-files-found: warn
+
   publish:
     name: Sync PKGBUILD to AUR
+    needs: [build, install]
+    # Only a deliberate dispatch on main publishes. A pull request or a push never reaches this job, so a PKGBUILD that
+    # has not been built cannot be pushed, and a branch cannot publish its own PKGBUILD.
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish == true && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
-    # base-devel 已含 makepkg、namcap 依赖的 pacman 工具链。git/openssh 需要单装。
+    # base-devel already has makepkg; git and openssh are installed below.
     container: archlinux:base-devel
     permissions:
       contents: read
@@ -43,17 +129,12 @@ jobs:
       - name: Install runtime tools
         shell: bash
         run: |
-          # --needed 避免 base-devel 镜像里已有的包重装；-Sy 刷一次 db 即可，
-          # 不要 -Syu —— Arch partial upgrade 官方不支持，容器跑一次 full upgrade
-          # 在 GH runner 上要 2-3 min 且大概率因为 keyring 不同步报错。
           pacman -Sy --noconfirm --needed git openssh sudo namcap
 
       - name: Configure non-root builder user
         shell: bash
         run: |
-          # makepkg 拒绝 root 运行（保护 user，不让构建脚本以 root 写满文件系统）。
-          # 必须建一个普通用户跑 makepkg --printsrcinfo。NOPASSWD sudo 仅在 CI
-          # 一次性容器内有效，不会泄漏到 host。
+          # makepkg refuses to run as root. NOPASSWD sudo exists only inside this one-off container.
           useradd -m -G wheel -s /bin/bash builder
           echo 'builder ALL=(ALL) NOPASSWD: ALL' >> /etc/sudoers.d/builder
           chmod 440 /etc/sudoers.d/builder
@@ -61,21 +142,15 @@ jobs:
       - uses: actions/checkout@v4
         with:
           path: src
-          # fetch-depth: 0 拉完整历史和所有 tags。默认 shallow (depth=1) 下
-          # `git describe --tags` 没有任何 tag 可参考会 fail，导致 pkgver
-          # 走 fallback `printf "0.0.0.r%s.g%s" $(rev-list --count) $(short hash)`
-          # 又因为 shallow 只能数到 1 commit → 推到 AUR 的 pkgver 变成
-          # `0.0.0.r1.gHASH`，web 上看着像个未发版项目。
           fetch-depth: 0
 
-      - name: Validate PKGBUILD with namcap
+      - name: Check that the published commit is the one that was built
         shell: bash
+        env:
+          BUILT: ${{ needs.build.outputs.commit }}
         run: |
-          # 静态 lint：未声明的 depends、SPDX license 不规范、字段拼写错误等。
-          # namcap 对 PKGBUILD 阶段只能给 warning（看不到实际产物），但 fail-fast
-          # 抓 typo 还是值得的。这里不 fail on warning —— 有些条目（比如
-          # AGPL-3.0-only SPDX）namcap 老版本会误报。
-          namcap src/packaging/aur/uniclipboard-git/PKGBUILD || true
+          git config --global --add safe.directory "$GITHUB_WORKSPACE/src"
+          test "$(git -C src rev-parse HEAD)" = "$BUILT"
 
       - name: Setup SSH for AUR
         env:
@@ -198,7 +273,7 @@ jobs:
           fi
 
       - name: Push to AUR
-        if: ${{ steps.diff.outputs.changed == 'true' && inputs.dry_run != true }}
+        if: ${{ steps.diff.outputs.changed == 'true' }}
         shell: bash
         run: |
           cd /home/builder/aur
@@ -206,7 +281,7 @@ jobs:
           sudo -u builder git push origin HEAD:master
 
       - name: Upload rendered artifacts
-        # 不管推没推都上传，方便人工 review / dry_run 时下载。
+        # 不管推没推都上传，方便人工 review 时下载。
         uses: actions/upload-artifact@v4
         with:
           name: aur-uniclipboard-git
@@ -225,7 +300,7 @@ jobs:
             echo "- **pkgver**: \`${PKGVER}\`"
             echo "- **Source commit**: \`${GITHUB_SHA::7}\`"
             echo "- **Changed**: ${{ steps.diff.outputs.changed }}"
-            echo "- **Pushed**: ${{ steps.diff.outputs.changed == 'true' && inputs.dry_run != true }}"
+            echo "- **Pushed**: ${{ steps.diff.outputs.changed == 'true' }}"
             echo ""
             echo "AUR page: https://aur.archlinux.org/packages/uniclipboard-git"
           } >> "$GITHUB_STEP_SUMMARY"

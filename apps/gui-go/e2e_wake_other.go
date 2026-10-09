@@ -1,4 +1,4 @@
-//go:build e2e && !darwin
+//go:build e2e && !darwin && !windows
 
 package main
 

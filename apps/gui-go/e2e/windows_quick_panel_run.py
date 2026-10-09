@@ -56,13 +56,14 @@ kernel32 = ctypes.WinDLL('kernel32', use_last_error=True) if os.name == 'nt' els
 
 TARGET_PS1 = r'''
 Add-Type -AssemblyName System.Windows.Forms
+$outPath = $args[0]
 $form = New-Object System.Windows.Forms.Form
 $form.Text = "uc-gui-go-paste-target"
 $form.Width = 520; $form.Height = 300
 $box = New-Object System.Windows.Forms.TextBox
 $box.Multiline = $true; $box.Dock = "Fill"
 $form.Controls.Add($box)
-$box.Add_TextChanged({ [System.IO.File]::WriteAllText($args[0], $box.Text, [System.Text.Encoding]::UTF8) }.GetNewClosure())
+$box.Add_TextChanged({ [System.IO.File]::WriteAllText($outPath, $box.Text, [System.Text.Encoding]::UTF8) }.GetNewClosure())
 $form.Add_Shown({ $form.Activate(); $box.Focus() })
 [System.Windows.Forms.Application]::Run($form)
 '''

@@ -10,7 +10,11 @@ root="$(cd "$(dirname "$0")/../../../.." && pwd)"
 [ ! -e "$out" ] || { echo "$out exists" >&2; exit 2; }
 mkdir -p "$out"; out="$(cd "$out" && pwd)"
 appimage="$(cd "$(dirname "$appimage")" && pwd)/$(basename "$appimage")"; manifest="$(cd "$(dirname "$manifest")" && pwd)/$(basename "$manifest")"
+# Failure model C7: an emulated container reports the emulated architecture in uname, so compare the engine's own architecture with the image's.
+engine_arch="$(docker version --format '{{.Server.Arch}}')"; image_arch="$(docker image inspect "$image" --format '{{.Architecture}}')"
+[ "$engine_arch" = "$image_arch" ] || { echo "image $image is $image_arch but the engine is $engine_arch: that would run under emulation" >&2; exit 3; }
 docker image inspect "$image" --format '{{.Id}} {{.Architecture}}' > "$out/host-image.txt"
+echo "docker-engine-arch: $engine_arch (native: same as the image)" >> "$out/host-image.txt"
 docker run --rm --init --device /dev/fuse --cap-add SYS_ADMIN --security-opt apparmor=unconfined \
   -v "$root:/work:ro" -v "$appimage:/in/app.AppImage:ro" -v "$out:/out" "$image" bash -c '
 set -euo pipefail

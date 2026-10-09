@@ -5,6 +5,7 @@
 #   tauri_upgrade_continuity.sh <stopped|running> <image> <new go deb|rpm> <expected daemon sha256> <outdir>
 #   tauri_upgrade_continuity.sh <samepath|newpath> <image> <new go AppImage> <expected daemon sha256> <outdir> <old Tauri AppImage>
 #
+# UC_TAURI_VERSION (default 1.1.2) names the released Tauri version the image carries; the AppImage variant is fixed to 1.1.2.
 # deb/rpm: the image already has the official Tauri package installed (see the Dockerfile recipe in the document), so the "before" state is
 # produced by the released GUI and the released daemon, not by the candidate. AppImage: the image has no Tauri package; the official Tauri
 # AppImage is copied to a user directory and run from there. samepath replaces that file with the Go AppImage (what the Tauri updater does
@@ -35,7 +36,7 @@ if [ "${1:-}" != "--inner" ]; then
   (cd "$out/source" && shasum -a 256 ./* > "$out/harness.sha256")
   docker image inspect "$image" --format '{{.Id}}' > "$out/image-id.txt"
   shasum -a 256 "$new" ${old:+"$old"} > "$out/package-inputs.sha256"
-  docker run --rm --init --cap-add IPC_LOCK --platform "${UC_DOCKER_PLATFORM:-linux/arm64}" -v "$out/source:/w:ro" -v "$new:/in/new.$kind:ro" ${old_mount[@]+"${old_mount[@]}"} -v "$out:/out" \
+  docker run --rm --init --cap-add IPC_LOCK --platform "${UC_DOCKER_PLATFORM:-linux/arm64}" -v "$out/source:/w:ro" -v "$new:/in/new.$kind:ro" ${old_mount[@]+"${old_mount[@]}"} -v "$out:/out" -e UC_TAURI_VERSION="${UC_TAURI_VERSION:-1.1.2}" \
     "$image" bash /w/tauri_upgrade_continuity.sh --inner "$scenario" "$sha" "$kind" "$old_sha" > "$out/run.log" 2>&1
   rc=$?
   tail -n 60 "$out/results.tsv" 2>/dev/null; exit "$rc"
@@ -119,6 +120,9 @@ for base, dirs, files in os.walk(root):
 json.dump(out, open(sys.argv[1], "w"), indent=2, sort_keys=True)
 PY
 }
+home_tree() {  # directories and per-directory file counts under the home directory (names only), to show where each build keeps state
+  (cd /root && find . -maxdepth 5 -type d ! -path './.cache*' ! -path './Apps*' ! -path './.local/share/keyrings*' | sort | while read -r d; do printf '%s\t%s\n' "$d" "$(find "$d" -maxdepth 1 -type f | wc -l)"; done)
+}
 png() { python3 -c "
 import struct, sys, zlib
 w = h = 64
@@ -128,7 +132,7 @@ sys.stdout.buffer.write(b'\\x89PNG\\r\\n\\x1a\\n' + chunk(b'IHDR', struct.pack('
 "; }
 
 # ---- phase 1: the released Tauri build creates the profile ----
-check "the installed package is the released Tauri build" test "$(pm_old_version)" = 1.1.2
+check "the installed package is the released Tauri build ${UC_TAURI_VERSION:-1.1.2}" test "$(pm_old_version)" = "${UC_TAURI_VERSION:-1.1.2}"
 { pm_state; [ "$kind" = AppImage ] || sha256sum /usr/bin/uniclipboard /usr/bin/uniclipd; } > /out/tauri-installed.txt
 $OLD_BIN > /tmp/tauri-gui-1.log 2>&1 &
 check "Tauri GUI, daemon and WebView start" wait_ready
@@ -157,6 +161,7 @@ sleep 3
 python3 /w/tauri_continuity_probe.py capture /out/before/capture.json
 python3 /w/keyring_inventory.py /out/before/keyring.json /tmp/keyring-salt
 python3 /w/localstorage_inventory.py /out/before/localstorage.json
+home_tree > /out/before/home-tree.tsv
 entries=$(python3 -c "import json;d=json.load(open('/out/before/capture.json'));print(len(d['entries']['body']['data']))")
 [ "$entries" = 3 ] && ok "the Tauri build captured text and image history" "entries=$entries" || bad "the Tauri build captured text and image history" "entries=$entries"
 cp /tmp/tauri-gui-2.log /out/
@@ -230,6 +235,8 @@ fi
 python3 /w/tauri_continuity_probe.py capture /out/after/capture.json
 python3 /w/keyring_inventory.py /out/after/keyring.json /tmp/keyring-salt
 python3 /w/localstorage_inventory.py /out/after/localstorage.json
+home_tree > /out/after/home-tree.tsv
+info "directories added under the home directory by the Go host" "$(diff <(cut -f1 /out/before/home-tree.tsv) <(cut -f1 /out/after/home-tree.tsv) | grep '^>' | cut -c3- | tr '\n' ' ')"
 cp /tmp/go-gui-1.log /out/
 stop_all && ok "the Go host exits cleanly" || bad "the Go host exits cleanly" "processes had to be killed"
 datafiles /out/after/datafiles.json

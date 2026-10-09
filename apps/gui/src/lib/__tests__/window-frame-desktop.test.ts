@@ -30,7 +30,6 @@ it('hides both frames on a tiling desktop before setup', () => {
   expect(resolveWindowFrameMode(linux, 'auto', true)).toMatchObject({
     hasCustomTitleBar: false,
     hasCustomWindowControls: false,
-    searchInTitleBar: false,
     useSystemWindowFrame: false,
   })
 })

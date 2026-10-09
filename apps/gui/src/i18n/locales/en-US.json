@@ -182,26 +182,8 @@
   },
   "nav": {
     "dashboard": "Dashboard",
-    "history": "History",
-    "devices": "Devices",
     "settings": "Settings",
-    "updateAvailable": "Update available",
-    "updateDownloading": "Downloading update...",
-    "updateDownloadingWithProgress": "Downloading update... {{percent}}%",
-    "updateInstalling": "Installing update...",
-    "updateReady": "Update ready to install",
-    "back": "Back",
-    "feedback": "Feedback",
-    "collapseSidebar": "Collapse sidebar",
-    "expandSidebar": "Expand sidebar"
-  },
-  "debugBadge": {
-    "title": "Debug mode is on",
-    "description": "Local logs are more detailed and can grow faster.",
-    "restartHint": "Turn it off and restart the app or daemon to fully return to normal logging.",
-    "disable": "Turn off Debug mode",
-    "disabledToast": "Debug mode turned off. Restart to fully return to normal logging.",
-    "disableFailed": "Failed to turn off Debug mode"
+    "back": "Back"
   },
   "update": {
     "title": "Update available",
@@ -219,7 +201,6 @@
     "noUpdate": "You're already on the latest version.",
     "checkFailed": "Failed to check for updates.",
     "installFailed": "Update failed. Please try again.",
-    "downloadFailed": "Background download failed. Please try again.",
     "downloading": "Downloading...",
     "installing": "Installing...",
     "packageManager": {
@@ -1148,7 +1129,6 @@
         "time": "Time",
         "extension": "Extension"
       },
-      "noMatches": "No matches",
       "header": {
         "startingWith": "{{dimension}} starting with “{{partial}}”",
         "all": "{{dimension}}",
@@ -1173,7 +1153,6 @@
       "moreFilters": "Show {{count}} more filters",
       "clearAll": "Clear all",
       "close": "Close search panel",
-      "filterCategories": "Filter categories",
       "results_one": "{{count}} result",
       "results_other": "{{count}} results",
       "done": "Done"
@@ -1425,8 +1404,6 @@
     "actionBar": {
       "title": "Clipboard History",
       "copy": "Copy",
-      "favorite": "Favorite",
-      "unfavorite": "Unfavorite",
       "delete": "Delete"
     },
     "notification": {
@@ -2283,24 +2260,6 @@
       "accept": "Accept",
       "close": "Close",
       "retry": "Retry"
-    }
-  },
-  "feedback": {
-    "modal": {
-      "title": "Send Feedback",
-      "description": "Your feedback helps us improve UniClipboard. Please describe your issue or suggestion below.",
-      "label": {
-        "content": "Feedback Content",
-        "email": "Email Address (Optional)"
-      },
-      "placeholder": {
-        "content": "Please enter your feedback here...",
-        "email": "your@email.com"
-      },
-      "submit": "Submit Feedback",
-      "useSavedEmail": "Use saved email",
-      "success": "Feedback sent successfully. Thank you!",
-      "error": "Failed to send feedback. Please try again later."
     }
   },
   "lifecycle": {

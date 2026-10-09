@@ -18,7 +18,6 @@ try {
     'unlock',
     'startup',
     'failure',
-    'feedback',
     'release',
     'invitation',
     'setup',
@@ -147,16 +146,10 @@ try {
   const details = page.locator('details summary').first()
   await details.click()
   assert.equal(await page.locator('details').first().getAttribute('open'), '')
-  await page.goto(`${base}/?view=feedback&language=en-US`)
-  await page.getByRole('dialog').waitFor()
-  await page.getByRole('textbox').first().fill('Typography verification only')
-  assert.equal(await page.getByRole('textbox').first().inputValue(), 'Typography verification only')
-  await page.keyboard.press('Escape')
-  await page.getByRole('dialog').waitFor({ state: 'hidden' })
   assert.deepEqual(errors, [])
   await writeFile(path.join(output, 'results.json'), JSON.stringify(results, null, 2))
   console.log(
-    `PASS: ${results.length} typography cases; history selection/menu, aligned code lines, device details, feedback input/dismissal`
+    `PASS: ${results.length} typography cases; history selection/menu, aligned code lines, device details`
   )
 } finally {
   await browser.close()

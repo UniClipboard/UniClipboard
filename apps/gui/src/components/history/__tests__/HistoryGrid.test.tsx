@@ -10,14 +10,6 @@ vi.mock('react-i18next', () => ({
   }),
 }))
 
-vi.mock('@/components/history/HistoryCard', async () => {
-  const React = await import('react')
-  return {
-    default: ({ item }: { item: DisplayClipboardItem }) =>
-      React.createElement('div', { 'data-testid': `history-row-${item.id}` }, item.id),
-  }
-})
-
 vi.mock('@/components/history/HistoryGridRow', async () => {
   const React = await import('react')
   return {
@@ -121,7 +113,7 @@ function renderGrid({
 }
 
 describe('HistoryGrid', () => {
-  it('opens a day header only on the first row of each calendar day in the list layout', () => {
+  it('opens a day header only on the first row of each calendar day', () => {
     const day = (d: number, h: number) => new Date(2026, 8, d, h).getTime()
     const items = [day(28, 9), day(28, 8), day(27, 22)].map((activeTime, index) => ({
       ...makeItem(index),
@@ -130,7 +122,6 @@ describe('HistoryGrid', () => {
     render(
       <HistoryGrid
         items={items}
-        layout="list"
         seenIds={new Set<string>()}
         selectedId={null}
         isSearchActive={false}

@@ -25,7 +25,6 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { useSidebarSlot } from '@/contexts/sidebar-slot-context'
 import { useDevicesPage } from '@/hooks/useDevicesPage'
 import { useTagCatalog } from '@/hooks/useTagCatalog'
 import { createLogger } from '@/lib/logger'
@@ -56,7 +55,6 @@ function DevicesLibrarySidebar() {
 
 const DevicesPage: React.FC = () => {
   const page = useDevicesPage()
-  const { libraryOwnsNavigation } = useSidebarSlot()
   const {
     t,
     dispatch,
@@ -92,12 +90,12 @@ const DevicesPage: React.FC = () => {
   } = page
   return (
     <div className="flex h-full min-w-0">
-      {libraryOwnsNavigation && <DevicesLibrarySidebar />}
+      <DevicesLibrarySidebar />
       {/* ── list column ───────────────────────────────────────── */}
       <DeviceList page={page} />
 
       {/* ── detail pane ───────────────────────────────────────── */}
-      <main className="min-w-0 flex-1 bg-muted/20">
+      <main className="min-w-0 flex-1 bg-muted/20 pt-[var(--window-controls-inset-y,0rem)]">
         <ScrollArea
           key={
             effectiveSelection.kind === 'local'

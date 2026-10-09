@@ -4,7 +4,6 @@ import { MemoryRouter } from 'react-router'
 import { describe, expect, it, vi } from 'vitest'
 import { Filter } from '@/api/clipboardItems'
 import { type LibraryChrome, LibraryChromeContext } from '@/contexts/library-chrome-context'
-import { SidebarSlotContext } from '@/contexts/sidebar-slot-context'
 import type { SearchTagOption } from '@/lib/search-tags'
 import HistorySidebar from '../HistorySidebar'
 
@@ -20,7 +19,11 @@ vi.mock('@/hooks/useWindowDragging', () => ({ useWindowDragging: () => ({}) }))
 const libraryCounts = vi.hoisted(() => ({ value: null as { all: number; pinned: number } | null }))
 vi.mock('@/hooks/useLibraryCounts', () => ({ useLibraryCounts: () => libraryCounts.value }))
 vi.mock('@/components/motion/theme-mode-switch', () => ({ ThemeModeSwitch: () => null }))
-vi.mock('@/components/motion/theme-toggle', () => ({ ThemeToggle: () => null }))
+vi.mock('@/components/DevProfileIndicator', () => ({ default: () => null }))
+const platform = vi.hoisted(() => ({ isMac: true }))
+vi.mock('@/hooks/usePlatform', () => ({
+  usePlatform: () => ({ isMac: platform.isMac, isWindows: false, isLinux: false, isTauri: true }),
+}))
 
 function chrome(overrides: Partial<LibraryChrome> = {}): LibraryChrome {
   return {
@@ -39,7 +42,6 @@ function tag(id: string, count: number, isBuiltin = false): SearchTagOption {
 }
 
 function renderSidebar(
-  libraryOwnsNavigation: boolean,
   value: LibraryChrome = chrome(),
   {
     tags = [],
@@ -59,31 +61,29 @@ function renderSidebar(
   const onSelectTag = vi.fn()
   const view = render(
     <MemoryRouter>
-      <SidebarSlotContext value={{ contentToolbarHost: null, libraryOwnsNavigation }}>
-        <LibraryChromeContext value={value}>
-          <HistorySidebar
-            context="history"
-            activeFilter={activeFilter}
-            onSelectLibrary={onSelectLibrary}
-            tags={tags}
-            sidebarTagIds={sidebarTagIds}
-            activeTag={activeTag}
-            onSelectTag={onSelectTag}
-            tagLibrary={tagLibrary}
-            countsRevision={null}
-          />
-        </LibraryChromeContext>
-      </SidebarSlotContext>
+      <LibraryChromeContext value={value}>
+        <HistorySidebar
+          context="history"
+          activeFilter={activeFilter}
+          onSelectLibrary={onSelectLibrary}
+          tags={tags}
+          sidebarTagIds={sidebarTagIds}
+          activeTag={activeTag}
+          onSelectTag={onSelectTag}
+          tagLibrary={tagLibrary}
+          countsRevision={null}
+        />
+      </LibraryChromeContext>
     </MemoryRouter>
   )
   return { onSelectLibrary, onSelectTag, ...view }
 }
 
-describe('HistorySidebar show/hide (macOS)', () => {
+describe('HistorySidebar show/hide', () => {
   it('shows inline with a Hide sidebar toggle in the traffic-light strip', async () => {
     const user = userEvent.setup()
     const value = chrome()
-    renderSidebar(true, value)
+    renderSidebar(value)
 
     expect(screen.getByRole('navigation')).toBeInTheDocument()
     expect(document.querySelector('[data-library-drawer]')).toBeNull()
@@ -95,7 +95,7 @@ describe('HistorySidebar show/hide (macOS)', () => {
   it('collapses to the icon column, led by the Show sidebar toggle', async () => {
     const user = userEvent.setup()
     const value = chrome({ hidden: true })
-    const { onSelectLibrary } = renderSidebar(true, value)
+    const { onSelectLibrary } = renderSidebar(value)
 
     expect(document.querySelector('aside')?.dataset.sidebar).toBe('rail')
     expect(screen.getByRole('button', { name: 'history.sidebar.allItems' })).toHaveAttribute(
@@ -121,7 +121,7 @@ describe('HistorySidebar show/hide (macOS)', () => {
   it('peeks the full sidebar while the collapsed toggle is hovered', async () => {
     const user = userEvent.setup()
     const value = chrome({ hidden: true })
-    renderSidebar(true, value)
+    renderSidebar(value)
 
     const rail = document.querySelector<HTMLElement>('[data-sidebar="rail"]')!
     await user.hover(within(rail).getByRole('button', { name: 'history.sidebar.show' }))
@@ -146,7 +146,7 @@ describe('HistorySidebar show/hide (macOS)', () => {
   it('opens as a drawer in the compact tier and closes on Escape or a selection', async () => {
     const user = userEvent.setup()
     const value = chrome({ hidden: true, drawer: true, drawerOpen: true })
-    const { onSelectLibrary } = renderSidebar(true, value)
+    const { onSelectLibrary } = renderSidebar(value)
 
     // The drawer opens over the icon column, which stays in place.
     expect(document.querySelector('[data-library-drawer]')).not.toBeNull()
@@ -160,17 +160,25 @@ describe('HistorySidebar show/hide (macOS)', () => {
     expect(onSelectLibrary).toHaveBeenCalledWith(Filter.Favorited)
   })
 
-  it('keeps the plain Library panel on Windows and Linux', () => {
-    renderSidebar(false, chrome({ hidden: true }))
+  it('reserves the traffic-light strip only on macOS', () => {
+    const strip = () => screen.getByRole('button', { name: 'history.sidebar.hide' }).parentElement
 
-    expect(screen.getByRole('navigation')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'history.sidebar.hide' })).toBeNull()
+    platform.isMac = true
+    const mac = renderSidebar()
+    expect(strip()).toHaveClass('pl-20')
+    mac.unmount()
+
+    platform.isMac = false
+    renderSidebar()
+    expect(strip()).toHaveClass('pl-3')
+    expect(strip()).not.toHaveClass('pl-20')
+    platform.isMac = true
   })
 })
 
 describe('HistorySidebar tags', () => {
   it('lists the layout sidebar tags in its order, at most six', () => {
-    renderSidebar(true, chrome(), {
+    renderSidebar(chrome(), {
       tags: [tag('link', 3, true), tag('code', 0, true), tag('docker', 38), tag('work', 57)],
       sidebarTagIds: ['docker', 'link', 'code', 'image', 'directory', 'work', 'extra'],
     })
@@ -187,14 +195,14 @@ describe('HistorySidebar tags', () => {
   })
 
   it('shows a hint when the sidebar holds no tag', () => {
-    renderSidebar(true, chrome(), { tags: [tag('work', 5)], sidebarTagIds: [] })
+    renderSidebar(chrome(), { tags: [tag('work', 5)], sidebarTagIds: [] })
 
     expect(screen.queryAllByRole('button', { name: /^#/ })).toEqual([])
     expect(screen.getByText('history.tags.sidebarEmpty')).toBeInTheDocument()
   })
 
   it('shows neither rows nor the hint while the layout is unknown', () => {
-    renderSidebar(true, chrome(), { tags: [tag('work', 5)], sidebarTagIds: null })
+    renderSidebar(chrome(), { tags: [tag('work', 5)], sidebarTagIds: null })
 
     expect(screen.queryAllByRole('button', { name: /^#/ })).toEqual([])
     expect(screen.queryByText('history.tags.sidebarEmpty')).toBeNull()
@@ -203,7 +211,7 @@ describe('HistorySidebar tags', () => {
   it('opens the tag Library from the + icon and from All tags', async () => {
     const user = userEvent.setup()
     const open = vi.fn()
-    renderSidebar(true, chrome(), {
+    renderSidebar(chrome(), {
       tags: [tag('work', 57)],
       sidebarTagIds: ['work'],
       tagLibrary: { total: 12, open },
@@ -217,7 +225,7 @@ describe('HistorySidebar tags', () => {
   it('asks for focus back on close only when the Library was opened by keyboard', async () => {
     const user = userEvent.setup()
     const open = vi.fn()
-    renderSidebar(true, chrome(), {
+    renderSidebar(chrome(), {
       tags: [tag('work', 57)],
       sidebarTagIds: ['work'],
       tagLibrary: { total: 12, open },
@@ -232,7 +240,7 @@ describe('HistorySidebar tags', () => {
   })
 
   it('offers no Library entry while local tags are unavailable', () => {
-    renderSidebar(true, chrome(), { tags: [tag('work', 57)] })
+    renderSidebar(chrome(), { tags: [tag('work', 57)] })
 
     expect(screen.queryByRole('button', { name: 'history.tags.manage' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'history.tags.allTags' })).toBeNull()
@@ -241,7 +249,7 @@ describe('HistorySidebar tags', () => {
   it('filters by a tag and clears it when picked again', async () => {
     const user = userEvent.setup()
     const tags = [tag('work', 57), tag('docker', 38)]
-    const { onSelectTag, rerender } = renderSidebar(true, chrome(), {
+    const { onSelectTag, rerender } = renderSidebar(chrome(), {
       tags,
       sidebarTagIds: ['work', 'docker'],
     })
@@ -251,20 +259,18 @@ describe('HistorySidebar tags', () => {
 
     rerender(
       <MemoryRouter>
-        <SidebarSlotContext value={{ contentToolbarHost: null, libraryOwnsNavigation: true }}>
-          <LibraryChromeContext value={chrome()}>
-            <HistorySidebar
-              context="history"
-              activeFilter={Filter.All}
-              onSelectLibrary={vi.fn()}
-              tags={tags}
-              sidebarTagIds={['work', 'docker']}
-              activeTag="docker"
-              onSelectTag={onSelectTag}
-              countsRevision={null}
-            />
-          </LibraryChromeContext>
-        </SidebarSlotContext>
+        <LibraryChromeContext value={chrome()}>
+          <HistorySidebar
+            context="history"
+            activeFilter={Filter.All}
+            onSelectLibrary={vi.fn()}
+            tags={tags}
+            sidebarTagIds={['work', 'docker']}
+            activeTag="docker"
+            onSelectTag={onSelectTag}
+            countsRevision={null}
+          />
+        </LibraryChromeContext>
       </MemoryRouter>
     )
     const active = screen.getByRole('button', { name: /#docker/ })
@@ -277,7 +283,7 @@ describe('HistorySidebar tags', () => {
 describe('HistorySidebar library counts', () => {
   it('shows the All items and Pinned counts once loaded', () => {
     libraryCounts.value = { all: 12408, pinned: 24 }
-    renderSidebar(true)
+    renderSidebar()
 
     expect(screen.getByRole('button', { name: /history.sidebar.allItems/ })).toHaveTextContent(
       '12,408'

@@ -182,26 +182,8 @@
   },
   "nav": {
     "dashboard": "Painel",
-    "history": "Histórico",
-    "devices": "Dispositivos",
     "settings": "Configurações",
-    "updateAvailable": "Atualização disponível",
-    "updateDownloading": "Baixando atualização...",
-    "updateDownloadingWithProgress": "Baixando atualização... {{percent}}%",
-    "updateInstalling": "Instalando atualização...",
-    "updateReady": "Atualização pronta para instalar",
-    "back": "Voltar",
-    "feedback": "Feedback",
-    "collapseSidebar": "Recolher barra lateral",
-    "expandSidebar": "Expandir barra lateral"
-  },
-  "debugBadge": {
-    "title": "O modo de depuração está ativado",
-    "description": "Os logs locais ficam mais detalhados e podem crescer mais rápido.",
-    "restartHint": "Desative-o e reinicie o aplicativo ou o daemon para voltar totalmente ao registro de logs normal.",
-    "disable": "Desativar o modo de depuração",
-    "disabledToast": "Modo de depuração desativado. Reinicie para voltar totalmente ao registro de logs normal.",
-    "disableFailed": "Falha ao desativar o modo de depuração"
+    "back": "Voltar"
   },
   "update": {
     "title": "Atualização disponível",
@@ -219,7 +201,6 @@
     "noUpdate": "Você já está na versão mais recente.",
     "checkFailed": "Falha ao verificar atualizações.",
     "installFailed": "Falha na atualização. Tente novamente.",
-    "downloadFailed": "Falha no download em segundo plano. Tente novamente.",
     "downloading": "Baixando...",
     "installing": "Instalando...",
     "packageManager": {
@@ -1150,7 +1131,6 @@
         "time": "Período",
         "extension": "Extensão"
       },
-      "noMatches": "Nenhum resultado",
       "header": {
         "startingWith": "{{dimension}} começando com “{{partial}}”",
         "all": "{{dimension}}",
@@ -1177,7 +1157,6 @@
       "moreFilters": "Mostrar mais {{count}} filtros",
       "clearAll": "Limpar tudo",
       "close": "Fechar painel de pesquisa",
-      "filterCategories": "Categorias de filtro",
       "results_one": "{{count}} resultado",
       "results_many": "{{count}} resultados",
       "results_other": "{{count}} resultados",
@@ -1430,8 +1409,6 @@
     "actionBar": {
       "title": "Histórico da área de transferência",
       "copy": "Copiar",
-      "favorite": "Favoritar",
-      "unfavorite": "Desfavoritar",
       "delete": "Excluir"
     },
     "notification": {
@@ -2293,24 +2270,6 @@
       "accept": "Aceitar",
       "close": "Fechar",
       "retry": "Tentar novamente"
-    }
-  },
-  "feedback": {
-    "modal": {
-      "title": "Enviar feedback",
-      "description": "Seu feedback nos ajuda a melhorar o UniClipboard. Descreva abaixo seu problema ou sugestão.",
-      "label": {
-        "content": "Conteúdo do feedback",
-        "email": "Endereço de e-mail (opcional)"
-      },
-      "placeholder": {
-        "content": "Digite seu feedback aqui...",
-        "email": "seu@email.com"
-      },
-      "submit": "Enviar feedback",
-      "useSavedEmail": "Usar e-mail salvo",
-      "success": "Feedback enviado com sucesso. Obrigado!",
-      "error": "Falha ao enviar o feedback. Tente novamente mais tarde."
     }
   },
   "lifecycle": {

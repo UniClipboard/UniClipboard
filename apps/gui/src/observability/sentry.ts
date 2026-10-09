@@ -14,7 +14,6 @@ import type {
   DiagnosticBreadcrumb,
   DiagnosticDeviceContext,
   DiagnosticExceptionContext,
-  DiagnosticFeedback,
   DiagnosticLogLevel,
   DiagnosticTrace,
 } from './types'
@@ -258,11 +257,6 @@ export function writeDiagnosticLog(
   attributes?: Record<string, unknown>
 ): void {
   Sentry.logger[level](message, attributes)
-}
-
-export async function submitDiagnosticFeedback(feedback: DiagnosticFeedback): Promise<void> {
-  const associatedEventId = Sentry.captureMessage('User Feedback')
-  Sentry.captureFeedback({ ...feedback, name: 'User', associatedEventId })
 }
 
 export function startDiagnosticTrace(operation: string): DiagnosticTrace {

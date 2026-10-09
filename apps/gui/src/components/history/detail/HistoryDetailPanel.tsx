@@ -202,7 +202,8 @@ const HistoryDetailPanel: React.FC<HistoryDetailPanelProps> = ({
     >
       <header
         data-tauri-drag-region="deep"
-        className="flex h-15 shrink-0 items-center gap-2.5 pl-6 pr-5"
+        // The right padding also clears the window controls overlay, when shown.
+        className="flex h-15 shrink-0 items-center gap-2.5 pl-6 pr-[calc(1.25rem+var(--window-controls-inset-x,0rem))]"
       >
         <span
           className={cn(

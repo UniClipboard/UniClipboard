@@ -18,7 +18,6 @@ export interface WindowFrameMode {
   canChooseSystemFrame: boolean
   hasCustomTitleBar: boolean
   hasCustomWindowControls: boolean
-  searchInTitleBar: boolean
 }
 
 const getStorage = (): Storage | null => {
@@ -99,6 +98,5 @@ export const resolveWindowFrameMode = (
     canChooseSystemFrame,
     hasCustomTitleBar,
     hasCustomWindowControls: usesSelectableCustomFrame,
-    searchInTitleBar: platform.isMac || usesSelectableCustomFrame,
   }
 }

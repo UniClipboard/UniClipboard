@@ -32,7 +32,6 @@ describe('window frame preference', () => {
       canChooseSystemFrame: true,
       hasCustomTitleBar: true,
       hasCustomWindowControls: true,
-      searchInTitleBar: true,
     })
   })
 
@@ -49,7 +48,6 @@ describe('window frame preference', () => {
       canChooseSystemFrame: true,
       hasCustomTitleBar: false,
       hasCustomWindowControls: false,
-      searchInTitleBar: false,
     })
   })
 
@@ -85,7 +83,6 @@ describe('window frame preference', () => {
       canChooseSystemFrame: false,
       hasCustomTitleBar: true,
       hasCustomWindowControls: false,
-      searchInTitleBar: true,
     })
   })
 })

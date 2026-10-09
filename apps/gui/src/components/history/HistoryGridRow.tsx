@@ -1,7 +1,6 @@
 import { m } from 'framer-motion'
 import React, { useEffect } from 'react'
 import { HISTORY_ENTRY_ANIMATION } from '@/components/history/history-entry-animation'
-import HistoryCard from '@/components/history/HistoryCard'
 import HistoryCardContextMenu from '@/components/history/HistoryCardContextMenu'
 import HistoryDayHeader from '@/components/history/list/HistoryDayHeader'
 import HistoryListRow from '@/components/history/list/HistoryListRow'
@@ -10,25 +9,21 @@ import { cn } from '@/lib/utils'
 
 const noop = () => {}
 
-/** `card`: the tall card (Windows, Linux); `list`: the HList.dc.html row (macOS). */
-export type HistoryRowLayout = 'card' | 'list'
-
 interface HistoryGridRowProps {
   item: DisplayClipboardItem
-  layout: HistoryRowLayout
-  /** List layout: the row's timestamp when it opens a new calendar day. */
+  /** The row's timestamp when it opens a new calendar day. */
   dayStart?: number
-  /** List layout: how many loaded rows share `dayStart`'s day. */
+  /** How many loaded rows share `dayStart`'s day. */
   dayCount?: number
-  /** List layout: the origin device's name, when known. */
+  /** The origin device's name, when known. */
   deviceName?: string
-  /** List layout: local tag id -> name, for the row's tag chips. */
+  /** Local tag id -> name, for the row's tag chips. */
   tagNames?: ReadonlyMap<string, string | null>
-  /** List layout: bulk selection state and toggle. */
+  /** Bulk selection state and toggle. */
   checked?: boolean
   anyChecked?: boolean
   onToggleChecked?: (id: string) => void
-  /** List layout: the row above / below is also checked and in the same day,
+  /** The row above / below is also checked and in the same day,
    * so the shared edge drops its rounding and the run reads as one block. */
   joinsPrevious?: boolean
   joinsNext?: boolean
@@ -37,7 +32,6 @@ interface HistoryGridRowProps {
   isActive: boolean
   copySuccess: boolean
   isDeleting: boolean
-  showDivider: boolean
   onCopy: (id: string) => void
   onFilePathsAction: (id: string) => void
   onDelete: (id: string) => void
@@ -49,7 +43,6 @@ interface HistoryGridRowProps {
 const HistoryGridRow: React.FC<HistoryGridRowProps> = React.memo(
   ({
     item,
-    layout,
     dayStart,
     dayCount = 0,
     deviceName,
@@ -63,7 +56,6 @@ const HistoryGridRow: React.FC<HistoryGridRowProps> = React.memo(
     isActive,
     copySuccess,
     isDeleting,
-    showDivider,
     onCopy,
     onFilePathsAction,
     onDelete,
@@ -85,11 +77,10 @@ const HistoryGridRow: React.FC<HistoryGridRowProps> = React.memo(
         transition={HISTORY_ENTRY_ANIMATION.transition}
         className={cn(
           'relative overflow-hidden transition-colors',
-          // List rows are inset rounded blocks; selection is their fill.
-          layout === 'list' && 'mx-2 rounded-[0.625rem]',
+          // Rows are inset rounded blocks; selection is their fill.
+          'mx-2 rounded-[0.625rem]',
           joinsPrevious && 'rounded-t-none',
           joinsNext && 'rounded-b-none',
-          showDivider && 'border-b border-border/40',
           isActive && 'bg-(--history-selection-background)'
         )}
       >
@@ -100,31 +91,18 @@ const HistoryGridRow: React.FC<HistoryGridRowProps> = React.memo(
           onToggleFavorite={onToggleFavorite}
           onDelete={onDelete}
         >
-          {layout === 'list' ? (
-            <HistoryListRow
-              item={item}
-              deviceName={deviceName}
-              tagNames={tagNames}
-              checked={checked}
-              anyChecked={anyChecked}
-              onToggleChecked={onToggleChecked ?? noop}
-              copySuccess={copySuccess}
-              isDeleting={isDeleting}
-              onClick={onClick}
-              onHoverChange={onHoverChange}
-            />
-          ) : (
-            <HistoryCard
-              item={item}
-              copySuccess={copySuccess}
-              isDeleting={isDeleting}
-              onCopy={onCopy}
-              onDelete={onDelete}
-              onToggleFavorite={onToggleFavorite}
-              onClick={onClick}
-              onHoverChange={onHoverChange}
-            />
-          )}
+          <HistoryListRow
+            item={item}
+            deviceName={deviceName}
+            tagNames={tagNames}
+            checked={checked}
+            anyChecked={anyChecked}
+            onToggleChecked={onToggleChecked ?? noop}
+            copySuccess={copySuccess}
+            isDeleting={isDeleting}
+            onClick={onClick}
+            onHoverChange={onHoverChange}
+          />
         </HistoryCardContextMenu>
       </m.div>
     )

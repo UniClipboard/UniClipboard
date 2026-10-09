@@ -13,7 +13,7 @@ description: |
   on one device — text, images, or files — is automatically available
   on the others.
 
-  Currently distributed as alpha. A bundled background daemon handles sync.
+  A bundled background daemon handles sync.
 
 license: AGPL-3.0-only
 website: https://uniclipboard.app
@@ -26,7 +26,12 @@ contact: https://github.com/UniClipboard/UniClipboard/issues
 # stack。snap 跑在 mount namespace 里,binary 看到的 /lib 是 snap 内部的,
 # 跟 host 完全解耦 —— Ubuntu 20.04 / RHEL 9 / openSUSE Leap 这些老
 # distro 上 host 没有 webkit2gtk-4.1 也无所谓。
-grade: stable
+#
+# grade: devel 是有意的:Snap Store 不允许把 devel 的 snap 发布到 stable / candidate。
+# Go 宿主(apps/gui-go)在 strict 限制下的启动、托盘、通知、自启动和全局快捷键
+# 没有在真实 snapd 上验证过(见 docs/architecture/gui-go-distribution-channels.md),
+# 验证并记录之后才能改成 stable。
+grade: devel
 confinement: strict
 
 architectures:
@@ -73,109 +78,83 @@ parts:
     plugin: nil
     source: .
     source-type: local
-    # core22 build env = Ubuntu 22.04 仓库,libwebkit2gtk-4.1 等 dev 包都
+    # core22 build env = Ubuntu 22.04 仓库,libwebkit2gtk-4.1-dev 等 dev 包都
     # 在 main / universe 里。runtime 阶段这些 .so 由 gnome extension 提供,
-    # stage-packages 只 stage 几个 extension 没覆盖到的辅助库 (例如
-    # libayatana-appindicator3 系统托盘绘制)。
+    # stage-packages 只 stage extension 没覆盖到的 libgtk-layer-shell0
+    # (Wayland 快捷面板在运行时加载它)。托盘和通知由 Go 宿主直接走 D-Bus,
+    # 不链接 appindicator / libnotify。
+    #
+    # 构建链:Rust 守护进程(cargo,工具链由仓库的 rust-toolchain.toml 决定)、
+    # 共享前端(bun)、Go 宿主(cgo 链接 GTK3 + WebKitGTK 4.1)。Go 1.27.1 是
+    # apps/gui-go/go.mod 的 toolchain 行;core22 的 apt 里没有这么新的 Go,所以
+    # 下载官方压缩包并校验 SHA-256(与 e2e/linux/Dockerfile.package-build 同一版本)。
     build-packages:
       - libwebkit2gtk-4.1-dev
-      - libsoup-3.0-dev
       - libgtk-3-dev
-      - libayatana-appindicator3-dev
-      - librsvg2-dev
       - libssl-dev
-      - patchelf
       - cmake
       - clang
       - pkg-config
       - curl
-      - file
-      - desktop-file-utils
-      - xdg-utils
       - jq
       - unzip
       - ca-certificates
     stage-packages:
       - libgtk-layer-shell0
-      - libayatana-appindicator3-1
-      - librsvg2-2
     build-environment:
       # NOTE: build-environment 的值会被 craft-parts 用双引号包裹后注入构建
-      # 脚本(export KEY="VALUE"),且不转义值里的内层字符。所以两类值都不能
-      # 放这里,必须改在 override-build 内用 export 设:
-      #   1) 含 $VAR 的(如 PATH 的 $HOME)—— 会被 shell 提前展开成错误的值;
-      #   2) 含双引号的(如 TAURI_CONFIG 的 JSON)—— 内层 " 会被 shell 吃掉,
-      #      {"bundle":{"externalBin":[]}} 塌成 {bundle:{externalBin:[]}},
-      #      tauri build.rs 解析报 "key must be a string at line 1 column 2"。
+      # 脚本(export KEY="VALUE"),且不转义值里的内层字符。含 $VAR 的值(如
+      # PATH 的 $HOME)会被 shell 提前展开成错误的值,所以只放纯字面量,PATH 之类
+      # 在 override-build 内用 export 设。
       - CARGO_TERM_COLOR: never
       - SNAP_BUILD: '1'
     override-pull: |
       craftctl default
-      # snap 版本号 = package.json.version + "-snap" 后缀,snap store
-      # 需要 SemVer-like 字符串。snap 跟 .deb 是同一份代码,但产物
-      # 标识不同,加 suffix 区分上传记录。
+      # snap 版本号 = package.json.version(与 apps/gui-go/app.json 同步)。
       VERSION="$(jq -r .version "${CRAFT_PART_SRC}/package.json")"
       craftctl set version="${VERSION}"
     override-build: |
       set -euo pipefail
 
-      # 装 Bun (前端 bundler) 和 Rust stable —— 跟 alpha-build.yml 对齐。
-      # core22 自带 nodejs/npm 但不带 bun,bun-version 在 GHA 那边用
-      # latest,这里也 latest 保持一致。
+      case "$(dpkg --print-architecture)" in
+        amd64) GO_ARCH=amd64; GO_SHA256=63d339f0da5ab53635a56f2490a7984dfe12dfcff22ad749f63edaf590168445 ;;
+        arm64) GO_ARCH=arm64; GO_SHA256=3450b45a3f9ee8568792736a5c5e70a1f2e9b36c35a8f74958c03e51d7d92bec ;;
+        *) echo "unsupported architecture" >&2; exit 1 ;;
+      esac
+      GO_ROOT="${CRAFT_PART_BUILD}/go-toolchain"
+      mkdir -p "${GO_ROOT}"
+      curl -fsSL -o "${GO_ROOT}/go.tar.gz" "https://go.dev/dl/go1.27.1.linux-${GO_ARCH}.tar.gz"
+      echo "${GO_SHA256}  ${GO_ROOT}/go.tar.gz" | sha256sum -c -
+      tar -C "${GO_ROOT}" -xzf "${GO_ROOT}/go.tar.gz"
+
+      # Bun (frontend bundler) and the Rust toolchain pinned by rust-toolchain.toml.
+      # core22 ships nodejs/npm but no bun.
       curl -fsSL https://bun.sh/install | bash
       curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
-        | sh -s -- -y --profile minimal --default-toolchain stable
-      export PATH="$HOME/.bun/bin:$HOME/.cargo/bin:$PATH"
+        | sh -s -- -y --profile minimal --default-toolchain none
+      export PATH="${GO_ROOT}/go/bin:$HOME/.bun/bin:$HOME/.cargo/bin:$PATH" GOTOOLCHAIN=local
 
-      # 1) 前端构建 —— vite 把 apps/gui/src/ 编到 apps/gui/dist/,Tauri 的 build.rs (调
-      # tauri_build::build()) 在 cargo build 时把 apps/gui/dist/ 嵌进 binary。
-      bun install --frozen-lockfile
-      bun run build
-
-      # 2) 后端构建 —— 直接 cargo build,绕过 tauri-cli (不需要 .deb /
-      # AppImage / updater signing 这些 snap 用不到的逻辑)。binary 名字
-      # 由 apps/gui/src-tauri/Cargo.toml 的 [package].name 决定 = "uniclipboard"。
-      #
-      # `--features custom-protocol` 必传：开了 Tauri 才走 `tauri://localhost`
-      # 协议从嵌入的 frontendDist 加载 webview;不开的话 release binary 仍
-      # 尝试 devUrl (http://localhost:1420) → 用户看到 "Could not connect
-      # to localhost: Connection refused"。`bun run tauri build` 默认会开
-      # 它,我们绕过 tauri-cli 所以必须手动加。
-      #
-      # ADR-008 D13 给 tauri.conf.json 加了 externalBin: ["binaries/uniclipd"],
-      # build.rs 里的 tauri_build::build() 会在编 GUI 时强制要求
-      # apps/gui/src-tauri/binaries/uniclipd-<triple> 存在并把它拷进 bundle。但 snap 用
-      # 纯 cargo build(不走 tauri-cli bundling),且下面把 uniclipd 从
-      # target/release 直接 install 到 usr/bin —— 根本不依赖 Tauri 的 sidecar
-      # 暂存机制。用 TAURI_CONFIG 作 JSON Merge Patch 把 externalBin 清空(空数组
-      # 替换整个列表),让 build script 既不要求也不拷贝它。与 coverage.yml /
-      # pr-check.yml 同款,但**必须**在这里用单引号 export —— 放进
-      # build-environment 会被 craft-parts 的双引号注入吞掉内层引号(详见上面
-      # build-environment 的 NOTE)。
-      export TAURI_CONFIG='{"bundle":{"externalBin":[]}}'
-      cargo build --release --locked -p uniclipboard --bin uniclipboard --features custom-protocol
-      # ADR-008 D13: also build the standalone `uniclipd` daemon, installed next
-      # to the GUI below so the GUI spawns it as a sibling ($SNAP/usr/bin/uniclipd).
-      # It needs no custom-protocol (no webview) and shares the GUI crate graph,
-      # so this build is mostly incremental. build-packages already has cmake +
-      # clang for aws-lc-sys, which uniclipd pulls via iroh just like the GUI.
-      #
-      # `-p uc-daemon` is REQUIRED: the `uniclipd` bin lives in the uc-daemon
-      # workspace member, not in the `uniclipboard` package built above.
-      # Without it cargo errors "no bin target named `uniclipd` in default-run
-      # packages". Matches scripts/prepare-sidecars.mjs (`cargo build -p
-      # uc-daemon --bin uniclipd`), the same invocation CI uses for the sidecar.
+      # 1) The daemon the GUI starts as its sibling ($SNAP/usr/bin/uniclipd). `-p uc-daemon` is
+      # required: the `uniclipd` bin lives in that workspace member.
       cargo build --release --locked -p uc-daemon --bin uniclipd
 
-      # 3) 安装到 snap install 目录。strict snap 启动时 mount 这个目录
-      # 到 /usr,所以路径必须以 usr/ 开头。
-      # NOTE: artifacts land in the workspace-root target/ (#1041 moved the
-      # cargo workspace root to the repo root, so there is no nested target/ under
-      # the GUI package). We are at the repo root, so the release binaries are at
-      # target/release/.
+      # 2) The shared frontend bundle, which the Go host embeds (apps/gui-go/main.go).
+      (cd packages/desktop-host-go && go generate ./buildinfo)
+      bun install --frozen-lockfile
+      bun --bun run --cwd apps/gui-go build
+
+      # 3) The Go host, with the shipped tags and the identity from apps/gui-go/app.json (the
+      # single source: the identifier keys the single-instance scope and notifications).
+      PRODUCT="$(jq -r .productName apps/gui-go/app.json)"
+      IDENTIFIER="$(jq -r .identifier apps/gui-go/app.json)"
+      PUBKEY="$(jq -r .updater.pubkey apps/gui-go/app.json)"
+      (cd apps/gui-go && CGO_ENABLED=1 go build -tags gtk3,production,release -trimpath -buildvcs=false \
+        -ldflags "-w -s -X main.updaterPublicKey=${PUBKEY} -X main.productName=${PRODUCT} -X main.bundleID=${IDENTIFIER}" \
+        -o ../../target/release/uniclipboard .)
+
+      # 4) Install into the snap. A strict snap mounts this tree at /usr, so paths start with usr/.
       install -Dm755 target/release/uniclipboard \
         "${CRAFT_PART_INSTALL}/usr/bin/uniclipboard"
-      # ADR-008 D13: ship the daemon next to the GUI so it spawns as a sibling.
       install -Dm755 target/release/uniclipd \
         "${CRAFT_PART_INSTALL}/usr/bin/uniclipd"
       # The desktop entry names its icon by explicit ${SNAP} path. A bare theme
@@ -185,7 +164,7 @@ parts:
       # Each icon must sit in the hicolor directory matching its pixel size.
       install -Dm644 snap/local/uniclipboard.desktop \
         "${CRAFT_PART_INSTALL}/usr/share/applications/uniclipboard.desktop"
-      install -Dm644 apps/gui/src-tauri/icons/icon.png \
+      install -Dm644 apps/gui-go/icons/icon.png \
         "${CRAFT_PART_INSTALL}/usr/share/icons/hicolor/512x512/apps/uniclipboard.png"
-      install -Dm644 apps/gui/src-tauri/icons/128x128.png \
+      install -Dm644 apps/gui-go/icons/128x128.png \
         "${CRAFT_PART_INSTALL}/usr/share/icons/hicolor/128x128/apps/uniclipboard.png"

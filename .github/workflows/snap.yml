@@ -6,11 +6,22 @@ run-name: "snap-${{ inputs.channel || github.event.release.tag_name || 'edge' }}
 # bundle 了 webkit/glibc/GTK 完整 stack,跟 host 解耦)。这是 .deb 覆盖不了
 # 的用户群,详见 snap/snapcraft.yaml 顶部说明。
 #
+# 默认只构建:pull request(改了 snap 配方时)和 release.published 都只产
+# workflow artifact,不推送商店。Go 宿主在 strict 限制下的行为还没有在真实
+# snapd 上验证(docs/architecture/gui-go-distribution-channels.md),所以推送只能
+# 由人显式 workflow_dispatch 并勾选 release;snapcraft.yaml 的 grade: devel
+# 另外让商店拒绝 candidate / stable。
+#
 # 推送到 snap store 需要 SNAPCRAFT_STORE_CREDENTIALS secret(`snapcraft
 # export-login --snaps=uniclipboard --acls package_upload --expires <date>`
 # 生成,详见 README/CONTRIBUTING)。secret 缺失时 publish 步骤跳过,只产
 # workflow artifact。
 on:
+  pull_request:
+    paths:
+      - 'snap/**'
+      - '.github/workflows/snap.yml'
+      - 'scripts/check-snap-desktop-icons.py'
   release:
     types: [published]
   workflow_dispatch:
@@ -29,7 +40,7 @@ on:
         description: 'Push to snap store after build (off = artifact only)'
         required: false
         type: boolean
-        default: true
+        default: false
       branch:
         description: 'Branch to build'
         required: false
@@ -46,7 +57,7 @@ on:
         description: 'Push to snap store after build (false = artifact only)'
         required: false
         type: boolean
-        default: true
+        default: false
       branch:
         description: 'Branch / ref to build'
         required: false
@@ -106,7 +117,8 @@ jobs:
             esac
           fi
 
-          RELEASE="${INPUT_RELEASE:-true}"
+          # Publishing needs an explicit input; the pull_request and release events only build.
+          RELEASE="${INPUT_RELEASE:-false}"
 
           echo "ref=$REF" >> "$GITHUB_OUTPUT"
           echo "channel=$CHANNEL" >> "$GITHUB_OUTPUT"

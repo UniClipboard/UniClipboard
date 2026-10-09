@@ -9,7 +9,7 @@
 //! crashes and OOM kills) because the OS reclaims advisory locks on
 //! file-descriptor close.
 
-use std::fs::{self, File};
+use std::fs::{self, File, OpenOptions};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
@@ -99,7 +99,7 @@ impl DaemonInstanceLock {
             });
         }
 
-        let file = File::create(&lock_path).map_err(InstanceLockError::Io)?;
+        let file = open_lock_file(&lock_path).map_err(InstanceLockError::Io)?;
 
         #[cfg(unix)]
         repair_lock_permissions(&lock_path);
@@ -126,7 +126,7 @@ impl DaemonInstanceLock {
     /// by the `try_acquire` fast path before this runs.
     fn acquire_blocking(data_dir: &Path) -> Result<Self, InstanceLockError> {
         let lock_path = data_dir.join(".uniclipd.lock");
-        let file = File::create(&lock_path).map_err(InstanceLockError::Io)?;
+        let file = open_lock_file(&lock_path).map_err(InstanceLockError::Io)?;
 
         #[cfg(unix)]
         repair_lock_permissions(&lock_path);
@@ -376,8 +376,23 @@ fn now_ms() -> u64 {
 
 fn is_would_block(error: &std::io::Error) -> bool {
     // fs2 returns WouldBlock when the lock is held by another process.
-    // On some platforms it may also surface as a raw OS error.
-    error.kind() == std::io::ErrorKind::WouldBlock || error.raw_os_error() == Some(libc_eagain())
+    // On some platforms it may also surface as a raw OS error, and on Windows only as
+    // ERROR_LOCK_VIOLATION, which is not classified as WouldBlock.
+    error.kind() == std::io::ErrorKind::WouldBlock
+        || error.raw_os_error() == Some(libc_eagain())
+        || error.raw_os_error() == fs2::lock_contended_error().raw_os_error()
+}
+
+/// Open (creating if needed) the lock file WITHOUT truncating it. `File::create` truncates, and on Windows
+/// truncating a file whose region another process has locked fails with ERROR_LOCK_VIOLATION (os error 33)
+/// before any lock is attempted, so a replacement daemon could neither be told "already running" nor wait for
+/// the predecessor to release the lock.
+fn open_lock_file(path: &Path) -> std::io::Result<File> {
+    OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(false)
+        .open(path)
 }
 
 #[cfg(unix)]

@@ -10,11 +10,18 @@ import re
 import shutil
 
 
+# Workflow artifacts that only carry evidence or intermediate files. The Windows evidence holds a copy of the CLI archive and
+# the SignPath stage-2 input holds the installers before their final signature; neither is a release source.
+NON_SOURCE_ARTIFACT = re.compile(r'.*-gui-(?:evidence|acceptance-inputs)-.*|signpath-stage[0-9]-.*')
+
+
 def collect(source, destination):
     destination.mkdir(parents=True, exist_ok=False)
     records = []
     for file in sorted(source.rglob('*')):
         if not file.is_file() or file.is_symlink():
+            continue
+        if NON_SOURCE_ARTIFACT.fullmatch(file.relative_to(source).parts[0]):
             continue
         name = file.name
         if name == 'UniClipboard.app.tar.gz':

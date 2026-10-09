@@ -87,7 +87,7 @@ FlareRelease 的不可变源码 `c5d4581dcb239862643cade8931e60799b7ede36` 在�
 
 输入由修正后的 `download-updater-inputs.py` 对下列四个 run 实际下载得到（`updater_real_inputs_run.py --inputs updater-inputs`）：Linux 来自 [package-linux-gui run 37768856110](https://github.com/UniClipboard/UniClipboard/actions/runs/37768856110)（源码 `d960d3480`，amd64 与 arm64 原生 runner），Windows 来自 [Build Desktop run 37875320922](https://github.com/UniClipboard/UniClipboard/actions/runs/37875320922)（SignPath 测试 Authenticode 签名模式），macOS 来自上文两个 test-mode run。
 
-`updater_real_inputs_run.py` 全部通过：收集到 16 个命名分发物，其中 6 个更新归档获得 `.sig` 并由生产 `Client.Verify` 验证；`--require-all-platforms` 生成含 darwin/linux/windows × aarch64/x86_64 的 feed；注册载荷含六个平台（含 linux-aarch64）；本地 HTTP 下载六个平台各自归档并通过验签，篡改字节被拒。Linux 的裸 `.AppImage` 与 `.deb`、`.rpm`、便携包、`.dmg` 不产生 `.sig`，不进入 feed。
+`updater_real_inputs_run.py` 全部通过：收集到 16 个命名分发物，其中 6 个更新归档获得 `.sig` 并由产品的 `update.Client.Verify` 实现使用一次性测试公钥验证（不是生产公钥）；`--require-all-platforms` 生成含 darwin/linux/windows × aarch64/x86_64 的 feed；注册载荷含六个平台（含 linux-aarch64）；本地 HTTP 下客户端按显式 target 选择逐个下载六个平台各自归档并通过验签，篡改字节被拒（只有客户端 target 选择与下载验证，没有 native 安装）。Linux 的裸 `.AppImage` 与 `.deb`、`.rpm`、便携包、`.dmg` 不产生 `.sig`，不进入 feed。
 
 | 平台键 | 归档 | SHA256 |
 | --- | --- | --- |
@@ -100,4 +100,6 @@ FlareRelease 的不可变源码 `c5d4581dcb239862643cade8931e60799b7ede36` 在�
 
 边界：签名密钥是一次性的，**不是**生产密钥；Windows 安装包上的 SignPath 测试 Authenticode 签名与 updater 的 minisign 签名是两件事，互不替代（minisign 对最终 Authenticode 签名后的字节签名）；没有安装、没有向 FlareRelease 写入、没有原生 OS 覆盖。此前下载脚本只匹配 `linux-gui-<arch>-unknown-linux-gnu`（真实 artifact 名是 `linux-gui-amd64|arm64`）且拒绝 Windows 的 `-signpath-test` 后缀，生产密钥验收因此无法取到真实 Linux 包，也会漏掉 Windows 包，本次已修正选择规则。
 
-`release.yml` 的遗留风险（未修改，需要发布负责人决定）：它用 `download-artifact` 下载全部 artifact 再整体交给收集器。签名模式下 Windows 的 `windows-gui-evidence-*` 含 `cli-package/uniclipboard-cli-<version>-<target>-pc-windows-msvc.zip`，而构建流程另有 `cli-<target>` artifact 产出同名 CLI 归档；两者同时存在时收集器按设计以「duplicate release asset」拒绝。解除阻断前需决定哪一份是发布用 CLI 归档，并让 `release.yml` 只下载该份，或不下载证据 artifact。
+发布资产收集边界：`release.yml` 用 `download-artifact` 把所有 artifact 下载到 `artifacts/<名称>/` 再交给 `collect-release-assets.py`。既定来源（`gui-go-windows-packaging.md`）是：发布用 CLI 归档来自 `build.yml` 的 `build-cli` 作业（artifact `cli-<target>`，`require_signing` 时 `package-cli.sh` 拒绝未签名输入），安装包来自 `windows-gui-<target>` 等 GUI 包 artifact。`*-gui-evidence-*`（含 GUI 作业为验收重打的已签名 CLI 副本）、`*-gui-acceptance-inputs-*` 和 `signpath-stage<N>-*`（含最终签名前的 `UniClipboard_<版本>_x64-setup.exe`）只是证据或中间物。收集器现在按 artifact 顶层目录名跳过它们，不改变重名即拒绝的规则，也不改变签名策略。
+
+复现（真实 artifact 布局，`scripts/ci/release_asset_collection_run.py`）：修复前的收集器因 `duplicate release asset: uniclipboard-cli-…zip` 失败；修复后成功，CLI 取自 `cli-<target>`、安装包取自最终 `windows-gui-<target>`，没有 `ACCEPTANCE-` 包。`cli-<target>` 在该输入 run 中不存在（`package_cli` 未开），E2E 用明确标注的合成字节代替，只证明来源选择，不证明 CLI 本身已签名。

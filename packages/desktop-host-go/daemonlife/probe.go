@@ -394,7 +394,11 @@ func PromoteOneshot(target, origin string) error {
 		Method: http.MethodPost, Path: "/lifecycle/restart", JSON: map[string]string{"targetMode": target},
 	}, nil)
 	if err != nil {
-		return &Error{Kind: ErrPromoteRestart, Err: err}
+		// A oneshot daemon that is winding down stops answering between the probe that found it and this request.
+		// If it is gone by now there is nothing to restart and the replacement can be spawned.
+		if outcome, probeErr := Probe(); probeErr != nil || outcome.Kind != Absent {
+			return &Error{Kind: ErrPromoteRestart, Err: err}
+		}
 	}
 	if err := WaitAbsent(PromoteDrainTimeout); err != nil {
 		return err

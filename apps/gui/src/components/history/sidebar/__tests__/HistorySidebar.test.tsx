@@ -20,6 +20,7 @@ const libraryCounts = vi.hoisted(() => ({ value: null as { all: number; pinned: 
 vi.mock('@/hooks/useLibraryCounts', () => ({ useLibraryCounts: () => libraryCounts.value }))
 vi.mock('@/components/motion/theme-mode-switch', () => ({ ThemeModeSwitch: () => null }))
 vi.mock('@/components/DevProfileIndicator', () => ({ default: () => null }))
+vi.mock('../SidebarStatusActions', () => ({ default: () => null }))
 const platform = vi.hoisted(() => ({ isMac: true }))
 vi.mock('@/hooks/usePlatform', () => ({
   usePlatform: () => ({ isMac: platform.isMac, isWindows: false, isLinux: false, isTauri: true }),

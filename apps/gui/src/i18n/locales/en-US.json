@@ -183,7 +183,20 @@
   "nav": {
     "dashboard": "Dashboard",
     "settings": "Settings",
+    "updateAvailable": "Update available",
+    "updateDownloading": "Downloading update...",
+    "updateDownloadingWithProgress": "Downloading update... {{percent}}%",
+    "updateInstalling": "Installing update...",
+    "updateReady": "Update ready to install",
     "back": "Back"
+  },
+  "debugBadge": {
+    "title": "Debug mode is on",
+    "description": "Local logs are more detailed and can grow faster.",
+    "restartHint": "Turn it off and restart the app or daemon to fully return to normal logging.",
+    "disable": "Turn off Debug mode",
+    "disabledToast": "Debug mode turned off. Restart to fully return to normal logging.",
+    "disableFailed": "Failed to turn off Debug mode"
   },
   "update": {
     "title": "Update available",
@@ -201,6 +214,7 @@
     "noUpdate": "You're already on the latest version.",
     "checkFailed": "Failed to check for updates.",
     "installFailed": "Update failed. Please try again.",
+    "downloadFailed": "Background download failed. Please try again.",
     "downloading": "Downloading...",
     "installing": "Installing...",
     "packageManager": {

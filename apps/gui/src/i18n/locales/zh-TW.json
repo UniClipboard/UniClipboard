@@ -183,7 +183,20 @@
   "nav": {
     "dashboard": "儀表板",
     "settings": "設定",
+    "updateAvailable": "有新版本",
+    "updateDownloading": "正在下載更新...",
+    "updateDownloadingWithProgress": "正在下載更新... {{percent}}%",
+    "updateInstalling": "正在安裝更新...",
+    "updateReady": "更新已就緒，可安裝",
     "back": "返回"
+  },
+  "debugBadge": {
+    "title": "Debug 模式已開啓",
+    "description": "本地日誌更詳細，日誌檔案增長也會更快。",
+    "restartHint": "關閉後請重新啟動應用程式或 daemon，才能完全恢復普通日誌級別。",
+    "disable": "關閉 Debug 模式",
+    "disabledToast": "Debug 模式已關閉。請重新啟動以完全恢復普通日誌級別。",
+    "disableFailed": "關閉 Debug 模式失敗"
   },
   "update": {
     "title": "發現新版本",
@@ -201,6 +214,7 @@
     "noUpdate": "目前已是最新版本。",
     "checkFailed": "檢查更新失敗",
     "installFailed": "更新失敗，請稍後重試",
+    "downloadFailed": "背景下載失敗，請稍後重試",
     "downloading": "正在下載...",
     "installing": "正在安裝...",
     "packageManager": {

@@ -36,6 +36,7 @@ import HistorySidebarNavItem from './HistorySidebarNavItem'
 import HistorySidebarRail from './HistorySidebarRail'
 import HistorySidebarSection from './HistorySidebarSection'
 import { LibraryToggleButton } from './LibraryToggle'
+import SidebarStatusActions from './SidebarStatusActions'
 
 /** Shared Library sidebar of the History and Devices top-level pages
  * (HSidebar.dc.html). It is the window's left edge and its top-level
@@ -326,6 +327,9 @@ function HistorySidebar(props: HistorySidebarProps) {
         </nav>
       </ScrollArea>
 
+      <div className="flex items-center gap-1 px-2.5 pt-2 empty:hidden">
+        <SidebarStatusActions />
+      </div>
       <div className="flex items-center justify-between gap-2 px-2.5 py-2">
         <NavLink
           to="/settings"

@@ -183,7 +183,20 @@
   "nav": {
     "dashboard": "Painel",
     "settings": "Configurações",
+    "updateAvailable": "Atualização disponível",
+    "updateDownloading": "Baixando atualização...",
+    "updateDownloadingWithProgress": "Baixando atualização... {{percent}}%",
+    "updateInstalling": "Instalando atualização...",
+    "updateReady": "Atualização pronta para instalar",
     "back": "Voltar"
+  },
+  "debugBadge": {
+    "title": "O modo de depuração está ativado",
+    "description": "Os logs locais ficam mais detalhados e podem crescer mais rápido.",
+    "restartHint": "Desative-o e reinicie o aplicativo ou o daemon para voltar totalmente ao registro de logs normal.",
+    "disable": "Desativar o modo de depuração",
+    "disabledToast": "Modo de depuração desativado. Reinicie para voltar totalmente ao registro de logs normal.",
+    "disableFailed": "Falha ao desativar o modo de depuração"
   },
   "update": {
     "title": "Atualização disponível",
@@ -201,6 +214,7 @@
     "noUpdate": "Você já está na versão mais recente.",
     "checkFailed": "Falha ao verificar atualizações.",
     "installFailed": "Falha na atualização. Tente novamente.",
+    "downloadFailed": "Falha no download em segundo plano. Tente novamente.",
     "downloading": "Baixando...",
     "installing": "Instalando...",
     "packageManager": {

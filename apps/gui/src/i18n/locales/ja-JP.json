@@ -183,7 +183,20 @@
   "nav": {
     "dashboard": "ダッシュボード",
     "settings": "設定",
+    "updateAvailable": "利用可能なアップデート",
+    "updateDownloading": "アップデートをダウンロード中...",
+    "updateDownloadingWithProgress": "アップデートをダウンロード中... {{percent}}%",
+    "updateInstalling": "更新をインストール中...",
+    "updateReady": "更新をインストールする準備ができました",
     "back": "戻る"
+  },
+  "debugBadge": {
+    "title": "デバッグ モードがオンになっています。",
+    "description": "ローカル ログはより詳細になり、より速く増加する可能性があります。",
+    "restartHint": "通常のログに完全に戻るには、デバッグ モードをオフにしてアプリまたはデーモンを再起動します。",
+    "disable": "デバッグ モードをオフにします",
+    "disabledToast": "デバッグ モードがオフになりました。再起動して通常のログに完全に戻ります。",
+    "disableFailed": "デバッグ モードをオフにできませんでした"
   },
   "update": {
     "title": "利用可能なアップデート",
@@ -201,6 +214,7 @@
     "noUpdate": "すでに最新バージョンを使用しています。",
     "checkFailed": "アップデートの確認に失敗しました。",
     "installFailed": "アップデートに失敗しました。もう一度お試しください。",
+    "downloadFailed": "バックグラウンドでのダウンロードに失敗しました。もう一度お試しください。",
     "downloading": "ダウンロード中...",
     "installing": "インストール中...",
     "packageManager": {

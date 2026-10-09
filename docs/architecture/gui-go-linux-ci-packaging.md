@@ -162,7 +162,7 @@ RPM 会允许完全相同的文件被两个包共同拥有，不能只依靠文�
 和 [RPM Obsoletes](https://rpm.org/docs/latest/manual/dependencies.html#obsoletes) 的整包替换机制。
 不添加手动删除文件的维护脚本、第二个过渡包或资料搬迁。现有 `dpkg-deb` / `rpmbuild` 足够。
 更高版本旧名与异架构包不属于这个候选的升级范围，不能用忽略依赖或强制覆盖绕过。
-历史最高发布版本为 1.1.1；正常向前发布时替换关系持续覆盖全部已发布旧名版本。
+已发布的最高版本是 Tauri v1.1.2（2026-10-09，从未合回主线的 `release/v1.1.2` 分支发布），而主线 `apps/gui-go/app.json` 仍是 1.1.1。替换关系只覆盖不高于新包版本的旧名包，因此 Go 的第一个发布版本必须高于 1.1.2，否则包管理器会拒绝升级（实测记录见 [gui-go-tauri-upgrade-continuity.md](gui-go-tauri-upgrade-continuity.md)）。
 
 手动安装使用 `apt install ./新包.deb` 或 `dnf install ./新包.rpm` 执行一次改名事务。
 `apt/dnf upgrade` 的包名提示不能代替发行仓库：没有新包仓库时它不会自动发现下载文件。

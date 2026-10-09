@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"time"
 
 	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/errctx"
 )
@@ -68,6 +69,7 @@ type handoverRecord struct {
 // inheriting this process's environment, and applies a pending handover's
 // run mode exactly like the Rust spawn contract.
 func SpawnDetachedDaemon(origin string) error {
+	waitRecordedDaemonExit(previousDaemonExitWait)
 	exe, err := ResolveDaemonExe()
 	if err != nil {
 		return err
@@ -87,4 +89,22 @@ func SpawnDetachedDaemon(origin string) error {
 		return &SpawnError{Err: errctx.Wrap(fmt.Sprintf("failed to spawn daemon via `%s`", exe), err)}
 	}
 	return cmd.Process.Release()
+}
+
+// previousDaemonExitWait bounds how long a spawn waits for a daemon that has already withdrawn from the network to
+// leave the process table.
+const previousDaemonExitWait = 10 * time.Second
+
+// waitRecordedDaemonExit waits for the daemon recorded in the pid file to exit. A daemon removes `daemon.conn` and
+// stops answering `/health` while it is still shutting down, but it holds the instance lock until the process ends;
+// a daemon spawned in that window fails with "failed to acquire daemon instance lock" (os error 33 on Windows).
+func waitRecordedDaemonExit(timeout time.Duration) {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		meta, err := ReadPidMetadata()
+		if err != nil || meta == nil || meta.Mode == "in_process" || !IsActiveDaemon(meta.PID) {
+			return
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
 }

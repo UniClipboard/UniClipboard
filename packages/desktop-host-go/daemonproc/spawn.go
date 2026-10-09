@@ -95,21 +95,14 @@ func SpawnDetachedDaemon(origin string) error {
 // leave the process table.
 const previousDaemonExitWait = 10 * time.Second
 
-// waitRecordedDaemonExit waits for a draining daemon to exit. A daemon removes `daemon.conn` and stops answering
-// `/health` while it is still shutting down, but it holds the instance lock until the process ends; a daemon spawned
-// in that window fails with "failed to acquire daemon instance lock" (os error 33 on Windows).
-//
-// It waits only when `.daemon-pid` names a process that is verifiably that daemon (see recordedProcessIsDaemon) and
-// `daemon.conn` no longer advertises it. A published daemon is left to the caller's reuse logic, a stale or reused
-// pid is not waited for, and nothing is ever terminated here.
+// waitRecordedDaemonExit waits for the daemon recorded in the pid file to exit. A daemon removes `daemon.conn` and
+// stops answering `/health` while it is still shutting down, but it holds the instance lock until the process ends;
+// a daemon spawned in that window fails with "failed to acquire daemon instance lock" (os error 33 on Windows).
 func waitRecordedDaemonExit(timeout time.Duration) {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		meta, err := ReadPidMetadata()
-		if err != nil || meta == nil || meta.Mode == "in_process" || !recordedProcessIsDaemon(*meta) {
-			return
-		}
-		if conn, err := ReadConnFile(); err != nil || (conn != nil && conn.PID == meta.PID) {
+		if err != nil || meta == nil || meta.Mode == "in_process" || !IsActiveDaemon(meta.PID) {
 			return
 		}
 		time.Sleep(100 * time.Millisecond)

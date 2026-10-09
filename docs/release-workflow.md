@@ -2,7 +2,7 @@
 
 本文档说明如何使用项目的版本管理和发布系统。
 
-> **当前状态：发布被阻塞。** 旧 Tauri 宿主已退役，Go/Wails 宿主的发布流水线（macOS 签名、公证与 dmg、更新签名 `.sig` 签署器、各平台安装包）尚未建立，`release.yml` 被有意阻塞。下文关于安装包、签名与渠道的描述是旧流水线的设计记录，在新流水线落地前不能据此发布。权威记录见 [`docs/architecture/gui-go-tauri-retirement.md`](architecture/gui-go-tauri-retirement.md)。版本号脚本仍然可用。
+> **当前状态：** 标准流程是手动 `prepare-release` → release PR → 合并 → `tag-on-merge` 推送版本 tag → `release.yml`。`release.yml` 现在在对外写入前执行生产签名前提、固定源提交、版本一致性与资产门禁；缺少生产 Windows 签名后端时它失败关闭。Go/Wails 宿主的流水线、门禁和离线验收见 [`docs/architecture/gui-go-release-pipeline.md`](architecture/gui-go-release-pipeline.md)。下文关于安装包、签名与渠道的部分仍是旧流水线的设计记录，以前述文档为准。版本号脚本仍然可用。
 
 ## 版本管理脚本
 

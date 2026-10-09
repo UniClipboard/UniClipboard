@@ -11,6 +11,12 @@ on:
       - 'scripts/sync-update-pages.py'
       - 'scripts/assemble-update-manifest.js'
       - 'scripts/build-flare-release-registration.js'
+      - 'scripts/ci/release_gate.py'
+      - 'scripts/ci/assemble_release_assets.py'
+      - 'apps/gui-go/e2e/release_assembly_run.py'
+      - 'apps/gui-go/e2e/package_linux.py'
+      - 'apps/gui-go/e2e/linux/deb_version_order_run.py'
+      - '.github/workflows/release.yml'
       - '.github/workflows/updater-*.yml'
       - '.github/workflows/publish-update-pages.yml'
   workflow_dispatch:
@@ -35,6 +41,10 @@ jobs:
         run: python3 -I apps/gui-go/e2e/updater_signatures_run.py --out evidence/signatures
       - name: Real HTTP primary/fallback consistency and withdrawal
         run: python3 -I apps/gui-go/e2e/update_pages_run.py --out evidence/pages
+      - name: Release assembly (offline; the same scripts release.yml runs, fixture mode, no external write)
+        run: python3 -I apps/gui-go/e2e/release_assembly_run.py --out evidence/release-assembly
+      - name: Pre-release deb ordering under real dpkg
+        run: python3 -I apps/gui-go/e2e/linux/deb_version_order_run.py --out evidence/deb-order
       - uses: actions/upload-artifact@v7
         if: always()
         with:

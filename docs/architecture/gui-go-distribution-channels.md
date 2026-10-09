@@ -118,8 +118,8 @@ PR 门禁没有在 GitHub 上运行过（未 push）；在草稿 PR 里演示故
 ## 发现
 
 - 已修复：`package_linux.py` 的 rpm `Version` 含 `-`（预发版本）时 rpmbuild 报 `Illegal char '-'`；`License: Proprietary` 与 AGPL-3.0-only 不符。现在 rpm 的 `Version` 把预发分隔符换成 `~`（与 `copr.yml` 的既有约定一致，文件名保持 `UniClipboard-<版本>-1.<arch>.rpm`），`License: AGPL-3.0-only`。deb、AppImage 的版本不变。
-- 未处理：deb 版本 `1.2.0-alpha.1` 在 dpkg 里把 `alpha.1` 当作 Debian 修订号，排序 **晚于** `1.2.0`（已用 `dpkg --compare-versions` 复现；改用 `~` 才是预发在前）。这是 deb 版本语义问题，按要求保持其余 Linux 格式版本不变，只记录。
-- `release.yml` 的 alpha 路径会以 `release=true` 触发 `snap.yml`；解除失败关闭时要重新决定。
+- 已修复（见 [gui-go-release-pipeline.md](gui-go-release-pipeline.md)）：deb 版本 `1.2.0-alpha.1` 在 dpkg 里把 `alpha.1` 当作 Debian 修订号，排序 **晚于** `1.2.0`。现在包内 `Version` 使用 `~`，文件名保持不变，并用真实 dpkg 验证了升级序列。
+- 已处理：`release.yml` 的 alpha 路径现在以 `release=false` 触发 `snap.yml`（只产 artifact），COPR 以 `dry_run=true` 触发；见 [gui-go-release-pipeline.md](gui-go-release-pipeline.md)。
 
 ## 解除 `release.yml` 失败关闭的条件（不在本次做）
 

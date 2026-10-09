@@ -198,9 +198,12 @@ def stage_tree(root, binary, daemon):
 def build_deb(stage, out, version, arch, name, *, package_name=PACKAGE_NAME):
     # The legacy name is used only by the CI regression fixture; shipped calls use the default identity.
     assert package_name in (PACKAGE_NAME, LEGACY_PACKAGE_NAME)
-    relationships = (f'Conflicts: {LEGACY_PACKAGE_NAME} (<= {version})\n'
-        f'Replaces: {LEGACY_PACKAGE_NAME} (<= {version})\n'
-        f'Provides: {LEGACY_PACKAGE_NAME} (= {version})\n') if package_name == PACKAGE_NAME else ''
+    # In dpkg 1.2.0-alpha.1 is upstream 1.2.0 with revision alpha.1 and sorts AFTER 1.2.0. A "~" sorts before everything, so
+    # 1.2.0~alpha.1 < 1.2.0~alpha.2 < 1.2.0 (same convention as the rpm below). The file name keeps the release version.
+    deb_version = version.replace('-', '~', 1)
+    relationships = (f'Conflicts: {LEGACY_PACKAGE_NAME} (<= {deb_version})\n'
+        f'Replaces: {LEGACY_PACKAGE_NAME} (<= {deb_version})\n'
+        f'Provides: {LEGACY_PACKAGE_NAME} (= {deb_version})\n') if package_name == PACKAGE_NAME else ''
     d = out / 'deb-root'
     shutil.copytree(stage, d, symlinks=True)
     size_kib = sum(f.stat().st_size for f in d.rglob('*') if f.is_file()) // 1024
@@ -209,7 +212,7 @@ def build_deb(stage, out, version, arch, name, *, package_name=PACKAGE_NAME):
     # and falls back to the ordinary window when it is absent, but the package still pulls it in for the Wayland panel).
     # The Tauri deb's libayatana-appindicator3 is not needed: Wails' tray is StatusNotifierItem over D-Bus.
     (d / 'DEBIAN/control').write_text(
-        f'Package: {package_name}\nVersion: {version}\nArchitecture: {ARCH[arch][0]}\nSection: utils\nPriority: optional\n'
+        f'Package: {package_name}\nVersion: {deb_version}\nArchitecture: {ARCH[arch][0]}\nSection: utils\nPriority: optional\n'
         + relationships +
         f'Installed-Size: {size_kib}\nMaintainer: UniClipboard <support@uniclipboard.app>\n'
         'Depends: libgtk-3-0, libwebkit2gtk-4.1-0, libx11-6, libgtk-layer-shell0\n'

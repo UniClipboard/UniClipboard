@@ -103,6 +103,12 @@ def build_tree(tree, version, sha, *, windows_provider='signed'):
         write(evidence / 'cli-package/uniclipboard-cli-{}-x86_64-pc-windows-msvc.zip'.format(version), payload('evidence copy of cli'))
     write(tree / 'cli-x86_64-pc-windows-msvc' / f'uniclipboard-cli-{version}-x86_64-pc-windows-msvc.zip', payload('cli windows'))
     write(tree / f'cli-x86_64-unknown-linux-musl' / f'uniclipboard-cli-{version}-x86_64-unknown-linux-musl.tar.gz', payload('cli linux'))
+    # Acceptance, install and legacy-upgrade artifacts of the real Linux run (names from CI run 37894007183) hold package manifests of
+    # other purposes and versions; they are not release inputs and must not be judged as such.
+    write(tree / 'linux-gui-acceptance-amd64/v1/pkg/package-manifest.json',
+          json.dumps({'purpose': 'e2e-package', 'version': '0.0.1-acceptance', 'source': {'head': '1' * 40, 'dirty': True}}))
+    write(tree / 'linux-gui-legacy-go-amd64/deb/legacy-go.deb', payload('legacy go deb'))
+    write(tree / 'linux-gui-legacy-go-amd64/rpm-newer/legacy-go.rpm', payload('legacy go rpm'))
     # An intermediate SignPath input: same installer names before their final signature; never a release source.
     write(tree / f'signpath-stage2-amd64-{RUN_ID}/UniClipboard_{version}_x64-setup.exe', payload('UNSIGNED stage 2 input'))
 
@@ -309,6 +315,15 @@ def main():
         pre_record = out / 'source-record-prerelease.json'
         run.exec('prerelease-source-gate', ['python3', '-I', GATE, 'source', '--version', pre_version, '--root', pre_repo, '--expect-sha', pre_sha,
                                             '--mode', 'fixture', '--out', pre_record])
+        # In release mode a dirty checkout is refused: files the workflow itself writes (artifacts/) make it dirty, so the
+        # workflow runs this gate right after checkout, before install and download.
+        run.exec('release-mode-source-gate-clean-checkout', ['python3', '-I', GATE, 'source', '--version', pre_version, '--root', pre_repo,
+                                                             '--expect-sha', pre_sha, '--out', out / 'release-mode-clean.json'])
+        write(pre_repo / 'artifacts/linux-gui-amd64/x', b'downloaded after the gate')
+        run.exec('release-mode-source-gate-refuses-untracked-download', ['python3', '-I', GATE, 'source', '--version', pre_version, '--root', pre_repo,
+                                                                         '--expect-sha', pre_sha, '--out', out / 'x.json'], want_ok=False,
+                 contains='uncommitted changes')
+        shutil.rmtree(pre_repo / 'artifacts')
         pre_tree = base / 'prerelease-artifacts'
         build_tree(pre_tree, pre_version, pre_sha)
         pre_root = base / 'prerelease'

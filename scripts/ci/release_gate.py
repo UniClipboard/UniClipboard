@@ -34,6 +34,7 @@ TEST_ARTIFACT = re.compile(r'(?:^|-)(?:signing-selftest|signpath-test|test)(?:-|
 # The collector never reads these, so they are not rejected here either.
 INTERMEDIATE_ARTIFACT = re.compile(r'signpath-stage[0-9]-.*')
 PRODUCTION_WINDOWS_PROVIDER = 'signed'
+EVIDENCE_ARTIFACT = re.compile(r'(macos|linux|windows)-gui-evidence-')
 
 
 def sha256(path):
@@ -229,8 +230,15 @@ def cmd_assets(args):
         if doc is None:
             problems.append(f'{rel} is not valid JSON')
             continue
+        # Only the packaging-evidence artifacts speak for the release. Acceptance, install and legacy-upgrade artifacts carry
+        # their own package manifests (other purposes, other versions) and are not release inputs.
+        kind = EVIDENCE_ARTIFACT.match(rel.parts[0])
+        if not kind:
+            continue
+        platform = kind.group(1)
         if doc.get('purpose') == 'acceptance-newer-version' or 'newer' in rel.parts:
             continue  # the upgrade-acceptance package carries a deliberately different version
+        seen[platform] += 1
         src = evidence_source(doc)
         if src is None:
             problems.append(f'{rel} records no source commit')
@@ -241,10 +249,6 @@ def cmd_assets(args):
             problems.append(f'{rel} was built from a dirty checkout')
         if doc.get('version') != v:
             problems.append(f'{rel} is version {doc.get("version")!r}, not {v}')
-        top = rel.parts[0]
-        platform = 'macos' if top.startswith('macos-gui') else 'windows' if top.startswith('windows-gui') else 'linux' if top.startswith('linux-gui') else None
-        if platform:
-            seen[platform] += 1
         if platform == 'windows':
             provider = (doc.get('signing') or {}).get('provider')
             expected = PRODUCTION_WINDOWS_PROVIDER

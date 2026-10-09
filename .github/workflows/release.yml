@@ -211,6 +211,15 @@ jobs:
         with:
           ref: ${{ needs.validate.outputs.source_sha }}
 
+      # Before anything is installed or downloaded: the source gate refuses a dirty checkout, and `artifacts/` and
+      # `node_modules/` are not ignored by git.
+      - name: Verify the pinned source and version carriers
+        run: |
+          python3 scripts/ci/release_gate.py source \
+            --version "${{ needs.validate.outputs.version }}" \
+            --expect-sha "${{ needs.validate.outputs.source_sha }}" \
+            --out release-source.json
+
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
@@ -238,13 +247,6 @@ jobs:
         with:
           go-version-file: apps/gui-go/go.mod
           cache: false
-
-      - name: Verify the pinned source and version carriers
-        run: |
-          python3 scripts/ci/release_gate.py source \
-            --version "${{ needs.validate.outputs.version }}" \
-            --expect-sha "${{ needs.validate.outputs.source_sha }}" \
-            --out release-source.json
 
       # Collect, gate (six-platform coverage, versions, source SHA, production Windows signature, no test artifacts), updater
       # signatures with the production key and public-key check, secret-free re-verification, manifest and registration. The

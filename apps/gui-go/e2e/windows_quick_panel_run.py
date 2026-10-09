@@ -76,8 +76,12 @@ def foreground_pid():
     return pid.value
 
 
-def send_chord(*names):
-    """Press the keys in order, release in reverse: a real keyboard event stream via SendInput."""
+def send_chord(*names, hold=0.0):
+    """Press the keys in order, release in reverse: a real keyboard event stream via SendInput.
+
+    With hold > 0 the presses and releases are separate SendInput calls with the keys down in between, like a finger
+    on a key; one batch (hold=0) releases within microseconds, which a key-state poll can never observe.
+    """
     class KI(ctypes.Structure):
         _fields_ = [('vk', wt.WORD), ('scan', wt.WORD), ('flags', wt.DWORD), ('time', wt.DWORD), ('extra', ctypes.c_size_t)]
 
@@ -86,9 +90,14 @@ def send_chord(*names):
             _fields_ = [('ki', KI), ('pad', ctypes.c_byte * 32)]
         _anonymous_ = ('u',)
         _fields_ = [('type', wt.DWORD), ('u', U)]
-    events = [IN(1, IN.U(ki=KI(VK[n], 0, 0, 0, 0))) for n in names] + [IN(1, IN.U(ki=KI(VK[n], 0, 2, 0, 0))) for n in reversed(names)]
-    arr = (IN * len(events))(*events)
-    assert user32.SendInput(len(events), arr, ctypes.sizeof(IN)) == len(events), 'SendInput failed'
+    downs = [IN(1, IN.U(ki=KI(VK[n], 0, 0, 0, 0))) for n in names]
+    ups = [IN(1, IN.U(ki=KI(VK[n], 0, 2, 0, 0))) for n in reversed(names)]
+    batches = [downs, ups] if hold else [downs + ups]
+    for i, events in enumerate(batches):
+        if i:
+            time.sleep(hold)
+        arr = (IN * len(events))(*events)
+        assert user32.SendInput(len(events), arr, ctypes.sizeof(IN)) == len(events), 'SendInput failed'
 
 
 def hold_hotkey(spec):

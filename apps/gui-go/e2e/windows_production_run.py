@@ -82,9 +82,8 @@ class Gui(q.Gui):
         return self.ctl(f'modifier-state {label}', f'modifier-state-{label}')['detail']
 
 
-def tap(key='alt', hold=0.04):
-    q.send_chord(key)
-    time.sleep(hold)
+def tap(key='alt', hold=0.06):
+    q.send_chord(key, hold=hold)
 
 
 def main():
@@ -179,7 +178,7 @@ def main():
         tap(); time.sleep(.6); tap(); time.sleep(.6)
         slow = gui.modifier_state('b3')['triggers']
         check('B3 a second tap after 600 ms does not trigger', slow == one, [one, slow])
-        q.send_chord('alt', 'x'); time.sleep(.12); tap(); time.sleep(.6)
+        q.send_chord('alt', 'x', hold=.06); time.sleep(.12); tap(); time.sleep(.6)
         other = gui.modifier_state('b4')['triggers']
         check('B4 Alt+X then a tap does not trigger', other == slow, [slow, other])
 

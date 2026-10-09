@@ -1,0 +1,14 @@
+# A clean openSUSE Tumbleweed host for the AppImage: what the AppImage convention leaves to the host (X server, Mesa/libglvnd, libX11,
+# libwayland-client, ALSA, FUSE 2, fonts, a D-Bus session), and no GTK3, WebKitGTK or libsoup. Counterpart of Dockerfile.17c4-runtime
+# for rpm-based hosts; the base is pinned by digest so that a rebuild gives the same glibc/GLib/Mesa generation (glibc 2.44, GLib 2.88, Mesa 26.2).
+# Build for the native architecture only:  docker build --platform linux/arm64 -f Dockerfile.runtime-opensuse -t <tag> .
+FROM opensuse/tumbleweed@sha256:cb0b66ea9245993c2119bd2c8b8fc78f22ae1fd97cf846c9ab7e824c9108e1a3
+RUN zypper --non-interactive refresh && zypper --non-interactive install --no-recommends \
+    python3 dbus-1 dbus-1-daemon xorg-x11-server-Xvfb xauth \
+    Mesa-libGL1 Mesa-libEGL1 Mesa-dri libgbm1 libdrm2 libwayland-client0 \
+    libX11-6 libX11-xcb1 libxcb1 'libGLESv2.so.2()(64bit)' libfuse2 fuse libasound2 \
+    libexpat1 libfontconfig1 libfreetype6 libfribidi0 libharfbuzz0 libgmp10 \
+    libgpg-error0 libcom_err2 libstdc++6 libz1 glib2-tools dejavu-fonts \
+    procps binutils shadow util-linux tar gzip ca-certificates
+# The base image ships an empty /etc/machine-id, which dbus-uuidgen refuses to keep.
+RUN rm -f /etc/machine-id && dbus-uuidgen --ensure=/etc/machine-id && useradd --create-home --uid 1500 uc

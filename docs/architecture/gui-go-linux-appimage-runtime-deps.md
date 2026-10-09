@@ -142,3 +142,20 @@ python3 apps/gui-go/e2e/linux/appimage_content_check.py \
   squashfs-root package-manifest.json content-check.json \
   --runtime-inventory runtime-inventory.json
 ```
+
+库存由 `apps/gui-go/e2e/linux/runtime_library_inventory.py` 生成，只依赖 Python 标准库、Xvfb 与 dbus-daemon，需以非 root 用户在干净宿主上运行：
+
+```bash
+# 每个场景一次：FUSE 挂载与 extract-and-run
+runtime_library_inventory.py observe ./UniClipboard.AppImage out/mounted
+runtime_library_inventory.py observe ./UniClipboard.AppImage out/extracted --extract
+# 对同一 AppImage 解包后的目录分类
+./UniClipboard.AppImage --appimage-extract
+runtime_library_inventory.py merge squashfs-root runtime-inventory.json out/mounted/observation.json out/extracted/observation.json
+```
+
+`observe` 以 `LD_DEBUG=libs,files` 启动，等待 daemon `/health` 返回 200 且出现 WebKit 网页进程后，对可执行文件位于 AppDir 内的进程
+（GUI、`WebKitWebProcess`、`WebKitNetworkProcess`、daemon）记录 `/proc/<pid>/maps` 与加载器跟踪。`merge` 的输出在检查器所需字段之外，
+每个库另记录是哪些进程角色加载的；`failedLoads` 记录 `dlopen` 失败（`maps` 看不到查找失败的库，`libGLESv2.so.2` 当年只能靠崩溃发现）；
+`webkitSandbox` 记录各 WebKit 进程是否位于 `bwrap` 之下。检查项 `R6`：若失败的 `dlopen` 目标正是包内自带的库，说明加载器没有在包内查找它，判失败；
+包内没有的库，其失败只记录不判定（可选探测是正常的）。`bwrap` 在容器里常因缺少用户命名空间权限而不生效，容器结果不能推及真实桌面。

@@ -114,5 +114,9 @@ if '--runtime-inventory' in sys.argv:
             check(f'R4 {name}: the observed {ownership} library is absent from the bundle', name not in names and row['soname'] not in names, {'file': name, 'soname': row['soname']})
         else:
             check(f'R5 {name}: the observation has a recognised ownership class', False, ownership)
+    # A dlopen that failed although the bundle ships a library of that name means the loader never searched the bundle for it.
+    # Failures for libraries the bundle does not ship are recorded in the inventory, not judged here (optional probes are normal).
+    for load in inventory.get('failedLoads', []):
+        check(f"R6 {load['target']}: a failed dlopen is not for a library the bundle ships", not load['shippedInBundle'] and Path(load['target']).name not in names, load)
 out.write_text(json.dumps({'passed': all(c['ok'] for c in checks), 'checks': checks}, indent=2) + '\n')
 sys.exit(0 if all(c['ok'] for c in checks) else 1)

@@ -10,7 +10,7 @@ Repology 抓取 nixpkgs 的 6 个 stable channel + unstable。**一次合并的 
 
 ## 方案：从 AppImage 二进制重打包
 
-本 derivation **不从源码编译**，而是用 `appimageTools.wrapType2` 包装官方发布的 AppImage。原因：UniClipboard 是 Tauri 应用（Rust workspace + bun 前端 + 固定的 `iroh-blobs` fork（git 依赖） + sidecar `uniclipd`），在 Nix 沙箱里从源码构建需要 fixed-output 的 bun 依赖、带 git 源的 `cargoLock`、双二进制产物，落地和维护成本都很高。二进制重打包是 nixpkgs 对这类应用的常见、被接受的做法。
+本 derivation **不从源码编译**，而是用 `appimageTools.wrapType2` 包装官方发布的 AppImage。原因：UniClipboard 的桌面宿主是 Go/Wails（`apps/gui-go`，cgo 链接 GTK3 与 WebKitGTK），守护进程 `uniclipd` 是带 git 依赖的 Rust 程序，前端由 bun 构建；在 Nix 沙箱里从源码构建需要 fixed-output 的 bun 依赖、Go vendor hash、带 git 源的 `cargoLock`、双二进制产物，落地和维护成本都很高。二进制重打包是 nixpkgs 对这类应用的常见、被接受的做法。
 
 代价：部分 reviewer 偏好源码构建。若被要求，迁移路径见文末「迁移到源码构建」。
 

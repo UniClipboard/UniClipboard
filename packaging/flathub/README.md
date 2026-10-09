@@ -2,7 +2,7 @@
 
 本目录是提交到 [Flathub](https://github.com/flathub) 的 Flatpak 包源：
 
-- `app.uniclipboard.desktop.yml` — Flatpak manifest（app-id = Tauri identifier）
+- `app.uniclipboard.desktop.yml` — Flatpak manifest（app-id = `apps/gui-go/app.json` 的 identifier）
 - `app.uniclipboard.desktop.metainfo.xml` — AppStream 元数据（Flathub 强制要求）
 
 ## 重要：Flathub 不进 Repology
@@ -17,7 +17,7 @@ flatpak install flathub app.uniclipboard.desktop
 不像 nixpkgs/Scoop 能较快落地，Flathub 首次提交通常需要明显的现场调试。已知卡点：
 
 1. **WebKitGTK 版本匹配**：deb 二进制链接系统 `webkit2gtk-4.1`（GTK3）。需确认所选 `org.gnome.Platform` 版本提供同一 ABI；若不匹配，要换 runtime 版本或把 webkitgtk 作为 extension/bundle。`runtime-version: '46'` 是起点，按构建报错调整。
-2. **剪贴板权限**：Tauri 在 Wayland 沙箱里读系统剪贴板依赖 `wlr-data-control` 协议，flatpak 默认可能受限。装好后务必实测复制/粘贴是否真的跨设备同步，必要时调 `finish-args` 或走 portal。
+2. **剪贴板权限**：后台 daemon（`uniclipd`）在 Wayland 沙箱里读系统剪贴板依赖 `wlr-data-control` 协议，flatpak 默认可能受限。装好后务必实测复制/粘贴是否真的跨设备同步，必要时调 `finish-args` 或走 portal。
 3. **AppStream 截图**：`metainfo.xml` 里截图 URL 是占位，**必须** 换成真实可访问的图片（提交一张到仓库 `assets/` 再引用），否则 Flathub CI 的 `appstream-util validate` 不过。
 4. **release date**：`metainfo.xml` 里 0.15.0 的 `date` 按实际发布日核对。
 

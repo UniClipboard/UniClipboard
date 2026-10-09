@@ -57,6 +57,6 @@ wingetcreate update UniClipboard.UniClipboard `
 
 ## 待确认
 
-- **`Scope: user`**：依据 Tauri NSIS 默认 `currentUser` 安装模式。若实际打的是 perMachine 安装器，改成 `machine`。
+- **`Scope: user`**：依据 Go 宿主的 NSIS 安装器（`apps/gui-go/windows/installer.nsi`，`RequestExecutionLevel user`，卸载项写在 HKCU）。若实际打的是 perMachine 安装器，改成 `machine`。
 - **升级匹配**：若 winget 升级检测不到已装版本，按 validation 提示补 `AppsAndFeaturesEntries`（DisplayName / ProductCode）。
 - **未在 Windows 实测**：manifest 经事实校对（URL、installer 类型、locale 元数据），安装需你在 Windows 上验证。

@@ -1,11 +1,11 @@
 # nixpkgs derivation for UniClipboard — binary repackage of the upstream AppImage.
 #
 # Why a binary repackage instead of a source build:
-#   UniClipboard is a Tauri app (Rust workspace + bun-built frontend + a pinned
-#   iroh-blobs fork git dependency + a sidecar `uniclipd` daemon). A from-source build
-#   under the Nix sandbox would need a fixed-output bun/node_modules derivation, a
-#   cargoLock entry for the git sources, and two separate binaries — hard
-#   to land and to keep green. Wrapping the official AppImage is an accepted
+#   UniClipboard is a Go/Wails desktop host (apps/gui-go, cgo against GTK 3 and
+#   WebKitGTK) plus a Rust `uniclipd` daemon with git dependencies and a bun-built
+#   frontend. A from-source build under the Nix sandbox would need a fixed-output
+#   bun/node_modules derivation, a Go vendor hash, a cargoLock entry for the git
+#   sources, and two separate binaries — hard to land and to keep green. Wrapping the official AppImage is an accepted
 #   nixpkgs pattern for this class of app and is far easier to maintain. If a
 #   reviewer asks for a source build, see ./README.md for the migration path.
 #
@@ -43,9 +43,11 @@ appimageTools.wrapType2 {
   extraPkgs = pkgs: with pkgs; [ gtk-layer-shell ];
 
   extraInstallCommands = ''
-    # Desktop entry + icons taken from the AppImage payload. File names follow
-    # Tauri's AppImage layout (main binary name = "uniclipboard"). If the first
-    # build fails here, run `ls ${appimageContents}` and adjust the paths.
+    # Desktop entry + icons taken from the AppImage payload. The Go AppImage
+    # (apps/gui-go/e2e/package_linux.py) carries uniclipboard.desktop at the AppDir
+    # root with `Exec=uniclipboard %U` and hicolor icons named "uniclipboard"
+    # under usr/share/icons (checked on the 1.1.1 AppImage, not by a nix build).
+    # If the first build fails here, run `ls ${appimageContents}` and adjust the paths.
     install -Dm444 ${appimageContents}/uniclipboard.desktop \
       $out/share/applications/uniclipboard.desktop
     substituteInPlace $out/share/applications/uniclipboard.desktop \

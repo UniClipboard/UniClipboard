@@ -51,16 +51,6 @@ const SOURCE_COMMENT_GLOBS = ['*.go', '*.rs', '*.ts', '*.tsx']
 // shared frontend imports by name stay: apps/gui-go/vite.config.ts aliases each to a Wails adapter).
 const RETIRED_NPM = [/^@tauri-apps\/cli$/, /^@wdio\/tauri-/]
 
-// Packaging channels that still build the retired Tauri host from source. Their port to the Go
-// host needs the packaging work tracked in docs/architecture/gui-go-tauri-retirement.md and
-// cannot be verified without those channels, so they are listed here until that work lands.
-// aur.yml publishes packaging/aur/** to the AUR on every push to main, so it is not edited blind.
-const PENDING_PORT = [
-  'snap/snapcraft.yaml',
-  'packaging/aur/uniclipboard-git/PKGBUILD',
-  'docs/packaging/AUR.md',
-]
-
 // Tracked paths that may keep a historical mention: research notes, retired plans, release
 // history, decision records and dated notes under docs/, the retirement record, and this guard.
 const HISTORY_EXCLUDES = [
@@ -146,7 +136,7 @@ function checkReferences(problems) {
     path.startsWith(':(glob)') ? path.slice(7) : `${path}/**`
   )
   const files = HISTORY_EXCLUDES.filter(path => !path.startsWith(':(glob)') && path.includes('.'))
-  const excludes = [...history, ...files, ...PENDING_PORT]
+  const excludes = [...history, ...files]
   for (const reference of RETIRED_TOOLING) scan(reference, excludes, problems)
   const sourceExcludes = [...excludes, ...SOURCE_COMMENT_GLOBS.map(glob => `**/${glob}`)]
   for (const reference of RETIRED_NAMES) scan(reference, sourceExcludes, problems)

@@ -1,10 +1,18 @@
-# Flatpak manifest for Flathub. App-id intentionally matches the Tauri
-# bundle identifier (app.uniclipboard.desktop).
+# Flatpak manifest for Flathub. App-id intentionally matches the application
+# identifier in apps/gui-go/app.json (app.uniclipboard.desktop).
 #
 # Build strategy: repackage the official .deb (same rationale as the nixpkgs
-# AppImage wrap — a from-source Tauri build inside the offline flatpak-builder
-# sandbox would need vendored cargo + bun deps and is impractical). Flathub
-# accepts deb repackaging for this class of app.
+# AppImage wrap — a from-source build inside the offline flatpak-builder
+# sandbox would need vendored cargo, Go and bun dependencies and is
+# impractical). Flathub accepts deb repackaging for this class of app.
+#
+# The deb is the Go/Wails host: /usr/bin/uniclipboard, the sibling daemon
+# /usr/bin/uniclipd, the desktop entry and hicolor icons named "uniclipboard"
+# (apps/gui-go/e2e/package_linux.py stage_tree). It links GTK 3, WebKitGTK 4.1
+# and libsoup 3 from the runtime below; libgtk-layer-shell is not in the GNOME
+# runtime, so the Wayland quick panel falls back to an ordinary window.
+# Unverified: flatpak-builder has never run on this manifest, and GNOME 46 is
+# end of life; check that the runtime you move to still ships webkit2gtk-4.1.
 app-id: app.uniclipboard.desktop
 runtime: org.gnome.Platform
 runtime-version: '46'
@@ -19,7 +27,7 @@ finish-args:
   - --device=dri
   # LAN peer-to-peer sync.
   - --share=network
-  # System tray (libayatana-appindicator -> StatusNotifier).
+  # System tray (StatusNotifierItem over D-Bus, no appindicator library).
   - --talk-name=org.kde.StatusNotifierWatcher
   - --talk-name=org.freedesktop.Notifications
   # KEK lives in the OS keyring (secret-service); mirrors the snap

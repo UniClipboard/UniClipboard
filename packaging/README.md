@@ -8,9 +8,9 @@
 
 | 渠道 | 目录 | Repology | 状态 |
 | --- | --- | --- | --- |
-| AUR (`uniclipboard-git`) | `packaging/aur/` | ✅ 抓 | CI 自动同步（`aur.yml`） |
-| COPR (Fedora/RHEL) | `packaging/uniclipboard.spec` | ❌ 不抓 | CI 自动发布（`copr.yml`） |
-| Snap Store | `snap/snapcraft.yaml` | ❌ 不抓 | CI 自动发布（`snap.yml`） |
+| AUR (`uniclipboard-git`) | `packaging/aur/` | ✅ 抓 | 源码构建 Go 宿主；PR/main 上 `makepkg` 构建门禁，发布仅手动（`aur.yml`） |
+| COPR (Fedora/RHEL) | `packaging/uniclipboard.spec` | ❌ 不抓 | 重打包 Go 宿主 rpm，CI 发布（`copr.yml`，支持 `dry_run`） |
+| Snap Store | `snap/snapcraft.yaml` | ❌ 不抓 | 源码构建 Go 宿主；PR 只构建，发布仅手动，strict 未验证（`snap.yml`） |
 | Homebrew tap（自建） | 外部 `UniClipboard/homebrew-tap` | ❌ 不抓 | CI 自动更新（`homebrew-tap.yml`） |
 | npm CLI | `npm/` | ❌ 不抓 | CI 自动发布（`npm-publish.yml`） |
 | **nixpkgs** | `packaging/nix/` | ✅ 抓（+7 行） | **本次新增，待提交** |
@@ -19,6 +19,8 @@
 | **Chocolatey** | `packaging/chocolatey/` | ✅ 抓 | **本次新增**，首版手动 → 后续 CI 自动（`choco-publish.yml`） |
 | **winget** | `packaging/winget/` | ❌ 不抓 | **本次新增**，首版手动 → 后续 CI 自动（`winget-publish.yml`） |
 | **Flathub** | `packaging/flathub/` | ❌ 不抓 | **本次新增，待提交** |
+
+每个渠道的去留决定、实测证据与未验证项见 [`docs/architecture/gui-go-distribution-channels.md`](../docs/architecture/gui-go-distribution-channels.md)。
 
 ## 铺开优先级
 

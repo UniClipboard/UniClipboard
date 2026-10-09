@@ -6,7 +6,7 @@ $version = $env:ChocolateyPackageVersion
 $packageArgs = @{
   packageName    = 'uniclipboard'
   fileType       = 'exe'
-  # Tauri NSIS installer. ARM64 Windows runs the x64 build under emulation, so a
+  # NSIS installer of the Go/Wails host (apps/gui-go/windows/installer.nsi). ARM64 Windows runs the x64 build under emulation, so a
   # single x64 installer covers both; add url/checksum for arm64 if you want a
   # native ARM64 install path.
   url64bit       = "https://github.com/UniClipboard/UniClipboard/releases/download/v$version/UniClipboard_${version}_x64-setup.exe"

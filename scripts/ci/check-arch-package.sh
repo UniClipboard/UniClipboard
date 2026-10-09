@@ -48,7 +48,10 @@ dbus-run-session -- bash -c '
     [ -n "$daemon" ] && [ -n "$webkit" ] && break; sleep 1
   done
   sleep 15
-  { echo "gui_exe=$(readlink /proc/$gui/exe 2>/dev/null)"; echo "daemon_exe=$(readlink /proc/$daemon/exe 2>/dev/null)"; echo "webkit_exe=$(readlink /proc/$webkit/exe 2>/dev/null)"
+  # Under user-mode emulation (an amd64 container on an arm64 host) /proc/PID/exe is the emulator and its command line is
+  # "emulator program args", so the program is argument 2. On a native run the two agree.
+  exe_of() { local e; e=$(readlink /proc/$1/exe 2>/dev/null); case "$e" in */qemu-*) e=$(tr "\\0" "\\n" </proc/$1/cmdline | sed -n 2p);; esac; echo "$e"; }
+  { echo "gui_exe=$(exe_of $gui)"; echo "daemon_exe=$(exe_of $daemon)"; echo "webkit_exe=$(exe_of $webkit)"
     echo "gui_alive=$(kill -0 $gui 2>/dev/null && echo yes || echo no)"; echo "daemon_alive=$([ -n "$daemon" ] && kill -0 $daemon 2>/dev/null && echo yes || echo no)"
     echo "daemon_conn=$(ls /root/.local/share/*/daemon.conn /root/.local/share/*/*/daemon.conn 2>/dev/null | head -1)"; } >/tmp/launch.txt
   ps -eo pid,ppid,etime,args | grep -E "uniclip|WebKit" | grep -v grep >/tmp/launch-ps.txt

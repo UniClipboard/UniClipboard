@@ -180,13 +180,17 @@ def main():
         if lang:
             check('T1b the menu has the sync toggle and the device submenu', any(n in SYNC[lang] for n in names) and DEVICES[lang] in names, names)
         if lang:
-            # open the device submenu (click the entry) and read its placeholder
+            # open the device submenu (click the entry) and read its placeholder from the newly opened popup window
+            root_ws = set(popup_windows())
             choose(items1, DEVICES[lang])
-            time.sleep(.8)
-            ws = popup_windows()
             sub_labels = []
-            for w in ws:
-                sub_labels += [i['label'] for i in read_menu(w) if i['label']]
+            for _ in range(15):
+                time.sleep(.3)
+                for w in popup_windows():
+                    if w not in root_ws:
+                        sub_labels += [i['label'] for i in read_menu(w) if i['label']]
+                if sub_labels:
+                    break
             (out / 'menu-1-submenu.json').write_text(json.dumps(sub_labels, ensure_ascii=False), encoding='utf-8')
             check('T1c the device submenu opens and shows its (empty) placeholder', 'No paired devices' in sub_labels or '暂无已配对设备' in sub_labels, sub_labels)
         dismiss_menu()
@@ -200,6 +204,21 @@ def main():
         (out / 'menu-2.json').write_text(json.dumps(items2, ensure_ascii=False, indent=1), encoding='utf-8')
         check('T2 after set_tray_language the menu shows the other language', rc == 0 and all(x in names2 for x in LABELS[target]) and DEVICES[target] in names2, {'target': target, 'items': names2})
         dismiss_menu()
+
+        # T5 the sync toggle in the menu flips its own label
+        uia('-Action', 'icon', '-Match', 'UniClipboard', '-Button', 'right')
+        n5, i5 = menu_names()
+        first = next((n for n in n5 if n in SYNC['zh-CN'] + SYNC['en']), None)
+        if first:
+            choose(i5, first)
+            time.sleep(2)
+            uia('-Action', 'icon', '-Match', 'UniClipboard', '-Button', 'right')
+            n6, _ = menu_names()
+            flipped = next((n for n in n6 if n in SYNC['zh-CN'] + SYNC['en']), None)
+            check('T5 clicking the sync toggle changes its label (daemon state is reflected in the menu)', flipped is not None and flipped != first, {'before': first, 'after': flipped})
+            dismiss_menu()
+        else:
+            check('T5 sync toggle present', False, n5)
 
         # T3 left click shows the main window
         before = gui.ctl('state t3a', 'control-state')['detail']

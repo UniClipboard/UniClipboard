@@ -18,7 +18,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import windows_quick_panel_run as q  # noqa: E402
-from windows_single_instance_run import processes_in, steps, wait_until  # noqa: E402
+from windows_single_instance_run import processes_in, wait_until  # noqa: E402
 
 
 def main():

@@ -57,7 +57,11 @@ def one_round(n, binaries, out, delay):
             res['bootstrap_seconds'] = round(time.monotonic() - t0, 2)
         conn = sandbox / 'data' / f'app.uniclipboard.desktop-{profile}' / 'daemon.conn'
         if conn.is_file():
-            daemon_pid = json.loads(conn.read_text())['pid']
+            try:
+                daemon_pid = json.loads(conn.read_text())['pid']
+            except (ValueError, KeyError):
+                daemon_pid = None  # a half-written or foreign file: report the round as failed instead of aborting the run
+                res['ok'] = False
         if res['ok']:
             t1 = time.monotonic()
             gui.ctl('exit', 'control-exit')

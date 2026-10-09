@@ -229,6 +229,9 @@ def main():
                 checks.append({'check': 'E *', 'ok': None, 'skipped': 'an installation or a UniClipboard process already exists on this host'})
             else:
                 setups = list(args.package.glob('*-setup.exe'))
+                check('E0 the package has one setup exe', len(setups) == 1, [str(x) for x in setups])
+                if len(setups) != 1:
+                    raise SystemExit('cannot run the installer checks without exactly one setup exe')
                 inst = Path(tempfile.mkdtemp(prefix='uc-gui-go-inst-')) / 'app'
                 cleanup_dirs.append(inst.parent)
                 cleanup_run_values.append('UniClipboard')

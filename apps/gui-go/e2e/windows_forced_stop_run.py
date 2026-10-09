@@ -112,8 +112,11 @@ def main():
             t.start()
             time.sleep(1.5 + rnd * 0.7)  # a different moment in the write stream each round
             # identity gate: the pid in daemon.conn must be an uniclipd.exe from this sandbox, and the one we started
-            conn_pid = json.loads((data / 'daemon.conn').read_text())['pid']
-            inside = conn_pid in processes_in(sandbox, 'uniclipd.exe')
+            try:
+                conn_pid = json.loads((data / 'daemon.conn').read_text())['pid']
+            except (OSError, ValueError, KeyError):
+                conn_pid = None
+            inside = conn_pid is not None and conn_pid in processes_in(sandbox, 'uniclipd.exe')
             rr['kill_target'] = {'pid': conn_pid, 'inside_sandbox': inside, 'recorded_at_start': pid}
             if not inside:
                 rr['error'] = 'refusing to stop a process that is not this sandbox\'s uniclipd.exe'

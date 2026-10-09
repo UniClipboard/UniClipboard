@@ -95,7 +95,7 @@ def main():
         # A: first instance
         gui = q.Gui(sandbox, genv, out)
         owned.append(gui.proc)
-        boot = gui.step('bootstrapped', 120)
+        gui.step('bootstrapped', 120)
         ev = out / 'native.jsonl'
         state0 = gui.ctl('state a0', 'control-state')['detail']
         gui_pid, daemon_pid = state0['pid'], state0.get('daemonPid')
@@ -137,8 +137,6 @@ def main():
         gui.ctl('restart', 'control-restart')
         nb = wait_until(lambda: [r for r in steps(ev, 'bootstrapped') if r['detail']['pid'] != gui_pid], 120)
         new_pid = nb[-1]['detail']['pid'] if nb else None
-        if new_pid:
-            owned_pids = [new_pid]
         old_gone = wait_until(lambda: not pid_alive(gui_pid), 30)
         procs = processes_in(sandbox)
         state2 = None

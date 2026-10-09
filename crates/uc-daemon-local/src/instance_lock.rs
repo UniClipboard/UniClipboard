@@ -380,7 +380,10 @@ fn is_would_block(error: &std::io::Error) -> bool {
     // ERROR_LOCK_VIOLATION, which is not classified as WouldBlock.
     error.kind() == std::io::ErrorKind::WouldBlock
         || error.raw_os_error() == Some(libc_eagain())
-        || error.raw_os_error() == fs2::lock_contended_error().raw_os_error()
+        || matches!(
+            (error.raw_os_error(), fs2::lock_contended_error().raw_os_error()),
+            (Some(a), Some(b)) if a == b
+        )
 }
 
 /// Open (creating if needed) the lock file WITHOUT truncating it. `File::create` truncates, and on Windows

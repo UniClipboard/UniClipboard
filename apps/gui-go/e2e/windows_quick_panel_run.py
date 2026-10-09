@@ -356,7 +356,10 @@ def main():
             set_clipboard_text(saved_clip)
         (out / 'windows-assertions.json').write_text(json.dumps(results, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
         if not results['passed']:  # keep the daemon/host logs and data layout of a failed run as evidence
-            shutil.copytree(sandbox, out / 'sandbox-failed', ignore=shutil.ignore_patterns('*.exe'), dirs_exist_ok=True)
+            try:
+                shutil.copytree(sandbox, out / 'sandbox-failed', ignore=shutil.ignore_patterns('*.exe'), dirs_exist_ok=True)
+            except OSError as e:  # a file still held by the host must not hide the original failure
+                print(f'could not keep the failed sandbox: {e}', file=sys.stderr)
         if sandbox.name.startswith('uc-gui-go-') and sandbox.parent == sandbox_root:
             shutil.rmtree(sandbox, ignore_errors=True)
     print(json.dumps({'passed': results['passed']}))

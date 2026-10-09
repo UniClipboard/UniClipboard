@@ -9,7 +9,7 @@ UC_GUI_GO_E2E_NOTIFY_LOG recorder); the click callback is evidenced by the host'
   T1  the tray icon exists and its menu shows the root labels of the current language (and the device submenu)
   T2  a language switch (the host command the settings page uses) re-labels the open menu in the new language
   T3  a left click on the icon shows the main window
-  T4  the menu's Quit item exits the GUI (exit code 0), stops the daemon and removes the icon
+  T4  the menu's Quit item exits the GUI (exit code 0), and stops the daemon
   N1  a native notification is shown (toast text found in the shell)
   N2  clicking the toast reaches the host's response callback
 Evidence: the UIA element listings and menu dumps are written next to the results.
@@ -49,7 +49,7 @@ def uia(*args, timeout=60):
 try:
     ctypes.windll.user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))  # per-monitor v2
 except (AttributeError, OSError):
-    pass
+    pass  # not on Windows, or an older Windows: the process keeps its default DPI behavior
 
 MN_GETHMENU = 0x01E1
 MF_BYPOSITION = 0x400
@@ -260,7 +260,6 @@ def main():
         except subprocess.TimeoutExpired:
             code = 'TIMEOUT'
         gone = wait_until(lambda: not (daemon_pid and pid_alive(daemon_pid)), 20)
-        rc2, _ = uia('-Action', 'icon', '-Match', 'UniClipboard', '-Button', 'left') if False else (0, '')
         check('T4 Quit in the tray menu exits the GUI with 0 and stops its daemon', rc == 0 and code == 0 and bool(gone), {'choose': chose, 'exit': code, 'daemonPid': daemon_pid})
         results['passed'] = all(c['ok'] is not False and c['ok'] is not None for c in checks)
     finally:

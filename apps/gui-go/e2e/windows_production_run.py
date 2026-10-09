@@ -230,23 +230,22 @@ def main():
             else:
                 setups = list(args.package.glob('*-setup.exe'))
                 check('E0 the package has one setup exe', len(setups) == 1, [str(x) for x in setups])
-                if len(setups) != 1:
-                    raise SystemExit('cannot run the installer checks without exactly one setup exe')
-                inst = Path(tempfile.mkdtemp(prefix='uc-gui-go-inst-')) / 'app'
-                cleanup_dirs.append(inst.parent)
-                cleanup_run_values.append('UniClipboard')
-                r = subprocess.run([str(setups[0]), '/S', f'/D={inst}'], timeout=300)
-                loc = reg_query(UNINST, 'InstallLocation') or ''
-                check('E1 silent install: files, InstallLocation (quoted), UninstallString',
-                      r.returncode == 0 and (inst / 'UniClipboard.exe').is_file() and (inst / 'uniclipd.exe').is_file() and (inst / 'uninstall.exe').is_file()
-                      and str(inst).lower() in loc.lower() and reg_query(UNINST, 'UninstallString') is not None, [r.returncode, loc])
-                check('E2 no portable.dat is installed (installed form uses the user data root)', not (inst / 'portable.dat').exists())
-                r = subprocess.run([str(setups[0]), '/S', '/UPDATE', '/ARGS', '--autostart', f'/D={inst}'], timeout=300)
-                check('E3 a second run with /UPDATE /ARGS over the same directory succeeds and keeps the install', r.returncode == 0 and (inst / 'UniClipboard.exe').is_file(), r.returncode)
-                r = subprocess.run([str(inst / 'uninstall.exe'), '/S', f'_?={inst}'], timeout=300)
-                time.sleep(1)
-                check('E4 silent uninstall removes the exe, the daemon and the registry identity',
-                      r.returncode == 0 and not (inst / 'UniClipboard.exe').exists() and not (inst / 'uniclipd.exe').exists() and reg_query(UNINST) is None, r.returncode)
+                if len(setups) == 1:
+                    inst = Path(tempfile.mkdtemp(prefix='uc-gui-go-inst-')) / 'app'
+                    cleanup_dirs.append(inst.parent)
+                    cleanup_run_values.append('UniClipboard')
+                    r = subprocess.run([str(setups[0]), '/S', f'/D={inst}'], timeout=300)
+                    loc = reg_query(UNINST, 'InstallLocation') or ''
+                    check('E1 silent install: files, InstallLocation (quoted), UninstallString',
+                          r.returncode == 0 and (inst / 'UniClipboard.exe').is_file() and (inst / 'uniclipd.exe').is_file() and (inst / 'uninstall.exe').is_file()
+                          and str(inst).lower() in loc.lower() and reg_query(UNINST, 'UninstallString') is not None, [r.returncode, loc])
+                    check('E2 no portable.dat is installed (installed form uses the user data root)', not (inst / 'portable.dat').exists())
+                    r = subprocess.run([str(setups[0]), '/S', '/UPDATE', '/ARGS', '--autostart', f'/D={inst}'], timeout=300)
+                    check('E3 a second run with /UPDATE /ARGS over the same directory succeeds and keeps the install', r.returncode == 0 and (inst / 'UniClipboard.exe').is_file(), r.returncode)
+                    r = subprocess.run([str(inst / 'uninstall.exe'), '/S', f'_?={inst}'], timeout=300)
+                    time.sleep(1)
+                    check('E4 silent uninstall removes the exe, the daemon and the registry identity',
+                          r.returncode == 0 and not (inst / 'UniClipboard.exe').exists() and not (inst / 'uniclipd.exe').exists() and reg_query(UNINST) is None, r.returncode)
         results['passed'] = all(c['ok'] is not False for c in checks) and not any(c['ok'] is None for c in checks)
     finally:
         for p in started:

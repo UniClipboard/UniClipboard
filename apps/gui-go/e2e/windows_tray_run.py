@@ -49,7 +49,8 @@ def uia(*args, timeout=60):
 try:
     ctypes.windll.user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))  # per-monitor v2
 except (AttributeError, OSError):
-    pass  # not on Windows, or an older Windows: the process keeps its default DPI behavior
+    # not on Windows, or an older Windows: the process keeps its default DPI behavior
+    pass
 
 MN_GETHMENU = 0x01E1
 MF_BYPOSITION = 0x400

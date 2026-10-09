@@ -6,13 +6,13 @@
 
 ## 整体方案
 
-- **打包模式**：binary repackage。COPR 不重新编译 Tauri，而是把 GitHub Release 上 `release.yml` 已经产出的 binary RPM 当作 Source0，在 COPR mock chroot 里 `rpm2cpio` 解包后重新装配。
-  - 优点：构建时间从 30 min（重新跑 Tauri）压到 1 min；二进制与 Releases 页严格一致；不需要把 webkit2gtk-devel 等重型依赖塞进 COPR chroot。
+- **打包模式**：binary repackage。COPR 不重新编译 Go/Wails 宿主与 Rust daemon，而是把 GitHub Release 上已经产出的 binary RPM（`apps/gui-go/e2e/package_linux.py` 构建，`UniClipboard-<版本>-1.<x86_64|aarch64>.rpm`）当作 Source0，在 COPR mock chroot 里 `rpm2cpio` 解包后重新装配。
+  - 优点：构建时间从 30 min（重新编译）压到 1 min；二进制与 Releases 页严格一致；不需要把 webkit2gtk-devel 等重型依赖塞进 COPR chroot。
   - 缺点：违反 Fedora "build from source" 原则 — 因此不能进 Fedora 官方仓库，只能走 COPR 第三方渠道。这是有意取舍。
 - **渠道映射**：
   - `mkdir700/uniclipboard` → 正式版（无 prerelease 后缀的 tag）
   - `mkdir700/uniclipboard-alpha` → alpha/beta/rc 预发版
-- **触发**：`Release` workflow 成功后自动触发；也支持 `workflow_dispatch` 手动重发某个版本。
+- **触发**：`Release` workflow 成功后自动触发；也支持 `workflow_dispatch` 手动重发某个版本。`dry_run` 只构建 SRPM 并作为 workflow artifact 上传，不读取 COPR 凭据、不提交。`run_ids` 取各构建 run 的 `linux-gui-amd64`、`linux-gui-arm64` 两个 artifact（只取其中的 `UniClipboard-*.rpm`），版本必须与 `version` 输入一致。
 
 ## 一次性准备
 
@@ -137,5 +137,15 @@ Requires: webkit2gtk4.1
 
 - [ ] COPR token 到期前更新 `COPR_TOKEN` secret
 - [ ] 新增 Fedora 版本（如 fedora-42）时去 COPR 项目 Settings 勾上对应 chroot
-- [ ] Tauri 升级导致依赖名变化（如 webkit2gtk-4.1 → 4.2）时同步改 spec 的 `Requires`
+- [ ] WebKitGTK 依赖名变化（如 webkit2gtk-4.1 → 4.2）时，同步改 spec 的 `Requires` 以及 `package_linux.py` 的 deb/rpm 依赖；重打包只带走文件，`Requires`、`Provides`、`Obsoletes`、`Conflicts` 必须与上游 rpm 一致（见「重打包与上游 rpm 的一致性」）
 - [ ] 当 release.yml 改动 RPM 文件名规范时（例如 `UniClipboard-` → `uniclipboard-`），同步修改 spec 的 `Source0` 和 workflow 的 `download` 步骤
+
+## 重打包与上游 rpm 的一致性
+
+spec 只带走上游 rpm 的文件，不带走它的头部，因此以下关系在 `packaging/uniclipboard.spec` 里重新声明，来源是 `apps/gui-go/e2e/package_linux.py` 的 `build_rpm`：
+
+- `Requires: gtk3, webkit2gtk4.1, gtk-layer-shell`（托盘与通知走 D-Bus，没有 appindicator 依赖）。
+- `Provides: uni-clipboard`、`Obsoletes: uni-clipboard <=`、`Conflicts: uni-clipboard >`：包名从 `uni-clipboard` 改为 `uniclipboard` 的整包替换关系。
+- `AutoReqProv: no` 与 `__os_install_post` 置空：与上游一致，且保证 `/usr/bin/uniclipd` 与 Releases 页上的是同一个文件。
+
+SRPM 由 `scripts/ci/build-copr-srpm.sh` 生成（工作流与本地复现共用）。预发版本里的 `-` 在 rpm 的 Version 字段里换成 `~`，文件名保持上游的写法。

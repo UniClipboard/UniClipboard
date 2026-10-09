@@ -4,11 +4,13 @@
 # 但 EPEL 上直接 abort 整个 spec 解析,Name/Version 字段全部丢失),所以
 # 注释里提及 macro 名字时要先 % 转义为 %% — 见下方 %%install / %%{_arch}。
 #
-# 该 spec 不从源码编译，而是把 GitHub Release 上 Tauri 直接产出的 binary RPM
-# 当作 Source0,在 %%install 阶段用 rpm2cpio 解出来重新打包。这样 COPR mock
-# chroot 不需要 Rust/Node/webkit2gtk-devel 等重型 BuildRequires,构建时间从
-# 30 min 压到 1 min 以内,并保留 upstream binary 一致性(同一个二进制在
-# Releases 页和 dnf copr 渠道里发出去)。
+# 该 spec 不从源码编译，而是把 GitHub Release 上 Go/Wails 宿主的 binary RPM
+# (apps/gui-go/e2e/package_linux.py 产出)当作 Source0,在 %%install 阶段用
+# rpm2cpio 解出来重新打包。这样 COPR mock chroot 不需要 Rust/Go/Node/
+# webkit2gtk-devel 等重型 BuildRequires,构建时间从 30 min 压到 1 min 以内,并保留
+# upstream binary 一致性(同一个二进制在 Releases 页和 dnf copr 渠道里发出去)。
+# 重打包只带走文件内容,不带走 rpm 头:Requires / Provides / Obsoletes /
+# Conflicts 必须在下面重新声明,并与 package_linux.py 的 build_rpm 保持一致。
 #
 # 版本号规范:
 #   - %%{version}      RPM-合法版本,prerelease 后缀用 ~ 替换 -,例如 0.7.0~alpha.7
@@ -33,12 +35,12 @@
 Name:           uniclipboard
 Version:        %{?_version}%{!?_version:@VERSION@}
 Release:        1%{?dist}
-Summary:        Privacy-first end-to-end encrypted cross-device clipboard sync
+Summary:        Encrypted peer-to-peer clipboard sync between your devices
 
 License:        AGPL-3.0-only
 URL:            https://github.com/UniClipboard/UniClipboard
 
-# Tauri 在 release.yml 中输出的 binary RPM 命名 = UniClipboard-<tag>-1.<arch>.rpm
+# 上游 binary RPM 命名 = UniClipboard-<tag>-1.<arch>.rpm
 # 同时声明两个 arch 的 Source — SRPM 里把两个 binary RPM 都打包进来,
 # COPR mock chroot 在不同 arch 二次 build 时用 %%ifarch 选对应 Source。
 # 不能用 %%{_arch} 嵌入文件名搭配 `rpmbuild -bs --target` 多次出 SRPM:
@@ -48,18 +50,30 @@ Source1:        https://github.com/UniClipboard/UniClipboard/releases/download/v
 
 ExclusiveArch:  x86_64 aarch64
 
-# 运行时依赖 — 与 Tauri v2 + webkit2gtk-4.1 栈一致。
+# 运行时依赖 — 与上游 rpm 相同(GTK3 + WebKitGTK 4.1;gtk-layer-shell 由 Wayland
+# 快捷面板在运行时加载)。托盘与通知由 Go 宿主直接走 D-Bus,不需要 appindicator。
 # 包名在 Fedora 与 RHEL/openSUSE 系略有差异,这里用 Fedora 主线名;COPR
 # 默认 chroot 都是 Fedora/EPEL,后续要扩展到 openSUSE 再加 conditional。
-Requires:       webkit2gtk4.1
 Requires:       gtk3
+Requires:       webkit2gtk4.1
 Requires:       gtk-layer-shell
-Requires:       libappindicator-gtk3
-Requires:       librsvg2
+
+# 包名从 uni-clipboard 改为 uniclipboard 的整包替换关系,同上游 rpm。
+Provides:       uni-clipboard = %{version}-%{release}
+Provides:       uni-clipboard%{?_isa} = %{version}-%{release}
+Obsoletes:      uni-clipboard <= %{version}-%{release}
+Conflicts:      uni-clipboard > %{version}-%{release}
+
+# 上游 rpm 关闭了自动依赖,且不允许 rpmbuild 在安装后重写 ELF(strip 等):
+# 否则这里打出的 daemon 就不再是 Releases 页上的那个文件。
+AutoReqProv:    no
+%global _build_id_links none
+%global __os_install_post %{nil}
 
 %description
 UniClipboard is a privacy-first, end-to-end encrypted, cross-device clipboard
-sync tool built with Rust and Tauri.
+sync tool. The desktop host is built with Go and Wails; the sync engine runs in a
+bundled background daemon written in Rust.
 
 This package repackages the upstream binary RPM published on GitHub Releases.
 The binary is byte-identical to what users would download from the Releases
@@ -96,3 +110,5 @@ find %{buildroot} \( -type f -o -type l \) -printf '/%%P\n' | sort > %{_builddir
 # changelog 由 CI 在 build 时通过 `--define` 注入或追加;此处保留占位。
 * Sat May 09 2026 mkdir700 <release@uniclipboard.app> - 0.7.0~alpha.7-1
 - Initial COPR packaging — binary repackage of upstream GitHub release
+* Fri Oct 09 2026 mkdir700 <release@uniclipboard.app> - 1.1.1-1
+- Repackage the Go/Wails host: requirements and package-rename relationships follow the upstream rpm

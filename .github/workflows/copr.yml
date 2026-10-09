@@ -33,6 +33,11 @@ on:
         required: false
         type: string
         default: ''
+      dry_run:
+        description: 'Build the SRPM and upload it as a workflow artifact; do not touch COPR (no credentials are read)'
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   build-srpm-and-publish:
@@ -51,7 +56,7 @@ jobs:
       - name: Install build tooling
         run: |
           dnf -y install --setopt=install_weak_deps=False \
-            git curl rpm-build rpmdevtools python3-pip jq unzip
+            git curl rpm-build python3-pip jq unzip
           # copr-cli 通过 pip 装 — Fedora 仓库里也有 dnf install copr-cli,
           # 但 pip 版本更新更稳定,接 API token 也更直接。
           # 显式带上 rich:copr-cli 新版 main.py 里 `from rich.text import Text`,
@@ -109,42 +114,26 @@ jobs:
           echo "name=$PROJECT" >> "$GITHUB_OUTPUT"
           echo "Selected COPR project: $PROJECT"
 
-      - name: Setup rpmbuild tree
-        shell: bash
-        env:
-          RPM_VERSION: ${{ steps.ver.outputs.rpm_version }}
-          UPSTREAM_TAG: ${{ steps.ver.outputs.upstream_tag }}
-        run: |
-          rpmdev-setuptree
-          cp packaging/uniclipboard.spec ~/rpmbuild/SPECS/
-          # 把 spec 里的占位符替换成实际版本号。为什么不能只靠 rpmbuild --define:
-          # --define 只在当前 GH runner 上 `rpmbuild -bs` 那次生效;SRPM 进入
-          # COPR mock chroot 二次 build 时,chroot 里没有 --define,会走 spec
-          # 的 fallback。物理替换后 SRPM 里 spec 已固化版本,chroot 走对。
-          sed -i \
-            -e "s/@VERSION@/${RPM_VERSION}/g" \
-            -e "s/@UPSTREAM_TAG@/${UPSTREAM_TAG}/g" \
-            ~/rpmbuild/SPECS/uniclipboard.spec
-
-      # 两条互斥路径,按 inputs.run_id 选其一:
-      #   - 给了 run_id  → 从 build run 的 artifact 拉 RPM(免去先发 release 的循环)
-      #   - 没给 run_id  → 从 GitHub Release 的 asset 拉 RPM(自动 workflow_run 模式默认走这条)
-      - name: Download RPMs from build run artifact (run_ids mode)
+      # Two mutually exclusive sources for the upstream binary rpms, selected by inputs.run_ids:
+      #   - run_ids given  -> take them from the `linux-gui-<arch>` artifacts of those build runs
+      #                       (no need to publish a release first)
+      #   - run_ids empty  -> download them from the GitHub Release assets
+      - name: Download RPMs from build run artifacts (run_ids mode)
         if: github.event_name == 'workflow_dispatch' && inputs.run_ids != ''
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RUN_IDS: ${{ inputs.run_ids }}
+          UPSTREAM_TAG: ${{ steps.ver.outputs.upstream_tag }}
         run: |
-          # RUN_IDS 形如 "25618035983,25618036765" — 多 run 场景常见于
-          # build.yml 按架构分别 dispatch 时(每个 run 只产一个架构 artifact)。
-          # 遍历每个 run,用 GitHub REST API 列其下 artifact,过滤 name 后缀
-          # linux-gnu (匹配 build.yml 上传名 `uniclipboard-<arch>-unknown-linux-gnu`),
-          # 拉 zip 到 /tmp,unzip -j 把内层 *.rpm 平铺到 SOURCES。
-          mkdir -p ~/rpmbuild/SOURCES /tmp/copr-art
+          # RUN_IDS looks like "25618035983,25618036765". The Linux packaging workflow uploads one artifact per
+          # architecture, named linux-gui-amd64 and linux-gui-arm64, each holding exactly the named release candidates.
+          # The evidence artifacts (linux-gui-evidence-*, linux-gui-acceptance-*) are never matched: they can hold
+          # fixture packages that are not release candidates.
+          mkdir -p "$RUNNER_TEMP/upstream-rpms" /tmp/copr-art
           IFS=',' read -ra RUNS <<< "${RUN_IDS}"
           for RUN_ID in "${RUNS[@]}"; do
-            RUN_ID="${RUN_ID// /}"  # 去掉用户 input 里可能的空格
+            RUN_ID="${RUN_ID// /}"  # drop spaces a user may have typed
             [ -z "$RUN_ID" ] && continue
             echo "::group::Run ${RUN_ID} — list artifacts"
             API="https://api.github.com/repos/UniClipboard/UniClipboard/actions/runs/${RUN_ID}/artifacts"
@@ -154,7 +143,7 @@ jobs:
               "${API}" > "/tmp/copr-art/list-${RUN_ID}.json"
             echo "::endgroup::"
 
-            jq -r '.artifacts[] | select(.name | test("linux-gnu$")) | "\(.id)\t\(.name)"' \
+            jq -r '.artifacts[] | select(.name | test("^linux-gui-(amd64|arm64)$")) | "\(.id)\t\(.name)"' \
               "/tmp/copr-art/list-${RUN_ID}.json" | while IFS=$'\t' read -r id name; do
               [ -z "$id" ] && continue
               echo "::group::Fetch artifact ${name} (id=${id}, run=${RUN_ID})"
@@ -163,23 +152,20 @@ jobs:
                 -H "Accept: application/vnd.github+json" \
                 "https://api.github.com/repos/UniClipboard/UniClipboard/actions/artifacts/${id}/zip" \
                 -o "/tmp/copr-art/${name}.zip"
-              # zip 内层路径形如 release/bundle/rpm/UniClipboard-...rpm,
-              # -j 平铺剥目录,只匹配 *.rpm(不要 *.rpm.sig — 那是 Tauri updater 用的,
-              # COPR 重打的 RPM 会自己签 COPR GPG key)。
-              unzip -j -o -d ~/rpmbuild/SOURCES/ "/tmp/copr-art/${name}.zip" '*/rpm/*.rpm'
+              # Only the rpm; the deb, AppImage and updater archive in the same artifact are not COPR inputs.
+              unzip -j -o -d "$RUNNER_TEMP/upstream-rpms/" "/tmp/copr-art/${name}.zip" 'UniClipboard-*.rpm'
               rm "/tmp/copr-art/${name}.zip"
               echo "::endgroup::"
             done
           done
 
-          echo "--- SOURCES contents ---"
-          ls -lh ~/rpmbuild/SOURCES/
-
-          # 健全性检查:必须同时有 x86_64 和 aarch64 两个 RPM,缺一个就 fail-fast
-          # 避免后续 SRPM build 阶段报模糊错误。
+          echo "--- upstream rpms ---"
+          ls -lh "$RUNNER_TEMP/upstream-rpms/"
+          # Both architectures, built for the version being published: the script below fails on a missing or
+          # differently versioned file, but say it here with the likely cause.
           for arch in x86_64 aarch64; do
-            if ! ls ~/rpmbuild/SOURCES/UniClipboard-*"${arch}".rpm >/dev/null 2>&1; then
-              echo "::error::Missing ${arch} RPM in artifacts. Did you pass both run_ids?"
+            if [ ! -f "$RUNNER_TEMP/upstream-rpms/UniClipboard-${UPSTREAM_TAG}-1.${arch}.rpm" ]; then
+              echo "::error::UniClipboard-${UPSTREAM_TAG}-1.${arch}.rpm is not in the artifacts. Pass both run_ids, and a version that matches the build."
               exit 1
             fi
           done
@@ -190,41 +176,33 @@ jobs:
         env:
           UPSTREAM_TAG: ${{ steps.ver.outputs.upstream_tag }}
         run: |
-          # spec 的 Source0 在 SRPM 构建阶段会被嵌入 .src.rpm,COPR mock chroot
-          # 拿到 SRPM 后不需要联网。这里 GH runner 上 curl 拉到 SOURCES/ 即可。
-          mkdir -p ~/rpmbuild/SOURCES
+          mkdir -p "$RUNNER_TEMP/upstream-rpms"
           BASE_URL="https://github.com/UniClipboard/UniClipboard/releases/download/v${UPSTREAM_TAG}"
           for ARCH in x86_64 aarch64; do
             FILE="UniClipboard-${UPSTREAM_TAG}-1.${ARCH}.rpm"
             echo "Fetching ${FILE}..."
             curl -fL --retry 3 --retry-delay 5 \
-              -o "$HOME/rpmbuild/SOURCES/${FILE}" \
+              -o "$RUNNER_TEMP/upstream-rpms/${FILE}" \
               "${BASE_URL}/${FILE}"
           done
-          ls -lh ~/rpmbuild/SOURCES/
+          ls -lh "$RUNNER_TEMP/upstream-rpms/"
 
       - name: Build SRPM
         shell: bash
         env:
-          RPM_VERSION: ${{ steps.ver.outputs.rpm_version }}
           UPSTREAM_TAG: ${{ steps.ver.outputs.upstream_tag }}
-        run: |
-          # 单次 rpmbuild -bs 出 1 个 SRPM。spec 里 Source0/Source1 同时
-          # 声明了 x86_64 + aarch64 两个 binary RPM,COPR mock chroot 在不同
-          # arch 二次 build 时用 %ifarch 选对应那一个。版本号已经在 "Setup
-          # rpmbuild tree" 步骤里用 sed 固化到 spec,这里 --define 仅作冗余。
-          #
-          # 不能 per-arch build SRPM 再合:SRPM 文件名只由 N-V-R 决定、不带
-          # arch,循环 -bs 会同名覆盖,最终只剩最后那次 --target 对应的 SRPM。
-          mkdir -p out-srpm
-          rpmbuild -bs ~/rpmbuild/SPECS/uniclipboard.spec \
-            --define "_version ${RPM_VERSION}" \
-            --define "_upstream_tag ${UPSTREAM_TAG}" \
-            --define "_topdir $HOME/rpmbuild"
-          find ~/rpmbuild/SRPMS -name '*.src.rpm' -exec cp {} out-srpm/ \;
-          ls -lh out-srpm/
+        run: scripts/ci/build-copr-srpm.sh "$UPSTREAM_TAG" "$RUNNER_TEMP/upstream-rpms" out-srpm
+
+      - name: Upload SRPM
+        uses: actions/upload-artifact@v4
+        with:
+          name: copr-srpm-${{ steps.ver.outputs.rpm_version }}
+          path: out-srpm
+          retention-days: 14
+          if-no-files-found: error
 
       - name: Configure copr-cli
+        if: ${{ inputs.dry_run != true }}
         shell: bash
         env:
           COPR_LOGIN: ${{ secrets.COPR_LOGIN }}
@@ -247,6 +225,7 @@ jobs:
           chmod 600 ~/.config/copr
 
       - name: Submit build to COPR
+        if: ${{ inputs.dry_run != true }}
         shell: bash
         env:
           COPR_USERNAME: ${{ secrets.COPR_USERNAME }}
@@ -266,7 +245,11 @@ jobs:
         run: |
           PROJECT="${{ steps.project.outputs.name }}"
           USERNAME="${{ secrets.COPR_USERNAME }}"
-          echo "## COPR build submitted :package:" >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            echo "## COPR dry run: SRPM built, nothing submitted :package:" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "## COPR build submitted :package:" >> "$GITHUB_STEP_SUMMARY"
+          fi
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "- **Project**: \`${USERNAME}/${PROJECT}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- **Version**: ${{ steps.ver.outputs.rpm_version }}" >> "$GITHUB_STEP_SUMMARY"

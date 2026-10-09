@@ -57,21 +57,21 @@ q.VK.setdefault('x', 0x58)
 
 def reg_query(key, value=None):
     cmd = ['reg', 'query', key] + (['/v', value] if value else [])
-    r = subprocess.run(cmd, capture_output=True, text=True)
+    r = subprocess.run(cmd, capture_output=True, text=True, errors='replace')
     return r.stdout if r.returncode == 0 else None
 
 
 def process_running(image):
-    out = subprocess.run(['tasklist', '/FI', f'IMAGENAME eq {image}', '/NH'], capture_output=True, text=True).stdout
+    out = subprocess.run(['tasklist', '/FI', f'IMAGENAME eq {image}', '/NH'], capture_output=True, text=True, errors='replace').stdout
     return image.lower() in out.lower()
 
 
 def pid_alive(pid):
-    return str(pid) in subprocess.run(['tasklist', '/FI', f'PID eq {pid}', '/NH'], capture_output=True, text=True).stdout
+    return str(pid) in subprocess.run(['tasklist', '/FI', f'PID eq {pid}', '/NH'], capture_output=True, text=True, errors='replace').stdout
 
 
 def process_path(pid):
-    r = subprocess.run(['powershell', '-NoProfile', '-Command', f'(Get-Process -Id {pid}).Path'], capture_output=True, text=True)
+    r = subprocess.run(['powershell', '-NoProfile', '-Command', f'(Get-Process -Id {pid}).Path'], capture_output=True, text=True, errors='replace')
     return r.stdout.strip()
 
 

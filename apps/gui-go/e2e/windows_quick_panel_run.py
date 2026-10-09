@@ -327,7 +327,7 @@ def main():
         gui.ctl('exit', 'control-exit')
         code = gui.proc.wait(timeout=60)
         deadline = time.monotonic() + 20
-        alive = lambda pid: subprocess.run(['tasklist', '/FI', f'PID eq {pid}', '/NH'], capture_output=True, text=True).stdout.find(str(pid)) >= 0
+        alive = lambda pid: subprocess.run(['tasklist', '/FI', f'PID eq {pid}', '/NH'], capture_output=True, text=True, errors='replace').stdout.find(str(pid)) >= 0
         while alive(daemon_pid) and time.monotonic() < deadline:
             time.sleep(.3)
         check('7 GUI exit 0, daemon stopped by the GUI', code == 0 and not alive(daemon_pid), {'exit': code, 'daemonAlive': alive(daemon_pid)})

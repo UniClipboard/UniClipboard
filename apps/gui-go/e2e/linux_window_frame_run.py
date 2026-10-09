@@ -55,13 +55,31 @@ def main():
     cfg = out / 'private-bus.conf'
     cfg.write_text('<!DOCTYPE busconfig PUBLIC "-//freedesktop//DTD D-Bus Bus Configuration 1.0//EN" "http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd">\n<busconfig><type>session</type>'
                    f'<listen>unix:path={out}/bus.sock</listen><auth>EXTERNAL</auth><policy context="default"><allow send_destination="*" eavesdrop="true"/><allow eavesdrop="true"/><allow own="*"/></policy></busconfig>\n')
-    bus = subprocess.Popen(['dbus-daemon', '--config-file', str(cfg), '--nofork'], stdout=(out / 'private-bus.log').open('w'), stderr=subprocess.STDOUT)
+    with (out / 'private-bus.log').open('w') as bus_log:
+        bus = subprocess.Popen(['dbus-daemon', '--config-file', str(cfg), '--nofork'], stdout=bus_log, stderr=subprocess.STDOUT)
+
+    def stop_bus():
+        bus.terminate()
+        try:
+            bus.wait(10)
+        except subprocess.TimeoutExpired:
+            bus.kill()
+            bus.wait()
+
     for _ in range(50):
         if (out / 'bus.sock').exists():
             break
         time.sleep(.1)
+    else:
+        stop_bus()
+        sys.exit('the private session bus did not create its socket')
     env['DBUS_SESSION_BUS_ADDRESS'] = f'unix:path={out}/bus.sock'
-    proc = subprocess.Popen([str(app)], env=env, cwd=str(out), stdout=(out / 'gui.log').open('w'), stderr=subprocess.STDOUT)
+    try:
+        with (out / 'gui.log').open('w') as gui_log:
+            proc = subprocess.Popen([str(app)], env=env, cwd=str(out), stdout=gui_log, stderr=subprocess.STDOUT)
+    except OSError:
+        stop_bus()
+        raise
     checks, seq = [], [0]
 
     def step(name, timeout):
@@ -117,7 +135,7 @@ def main():
     finally:
         if proc.poll() is None:
             proc.kill()
-        bus.terminate()
+        stop_bus()
     f1 = next((c for c in checks if c['check'].startswith('F1')), {})
     ok = all(c['ok'] is True for c in checks) if args.expect == 'fixed' else f1.get('ok') is False
     (out / 'window-frame-result.json').write_text(json.dumps({'expect': args.expect, 'ok': ok, 'checks': checks, 'appimage': str(args.appimage)}, indent=2) + '\n')

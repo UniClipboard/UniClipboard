@@ -31,7 +31,7 @@ while :; do
   if [ "$toggle" != 0 ] && [ $((now-last_toggle)) -ge 300 ]; then
     last_toggle=$now
     for n in 1 2; do
-      env -u UC_DISABLE_SYSTEM_CLIPBOARD APPIMAGE_EXTRACT_AND_RUN=1 XDG_SESSION_TYPE=wayland "$app" --quick-panel >/dev/null 2>&1; echo "$now toggle-$n rc=$?" >> "$ev"
+      timeout 30 env -u UC_DISABLE_SYSTEM_CLIPBOARD APPIMAGE_EXTRACT_AND_RUN=1 XDG_SESSION_TYPE=wayland "$app" --quick-panel >/dev/null 2>&1; echo "$now toggle-$n rc=$?" >> "$ev"
       sleep 3
     done
   fi

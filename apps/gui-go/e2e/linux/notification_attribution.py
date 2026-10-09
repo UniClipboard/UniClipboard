@@ -40,7 +40,11 @@ def main():
     while time.monotonic() < deadline:
         time.sleep(1)
     mon.terminate()
-    mon.wait(5)
+    try:
+        mon.wait(5)
+    except subprocess.TimeoutExpired:
+        mon.kill()
+        mon.wait()
     notify, dconf_ids, actions = None, set(), []
     for line in raw.read_text().splitlines():
         try:

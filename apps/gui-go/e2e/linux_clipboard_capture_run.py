@@ -96,12 +96,13 @@ def main():
         return None
 
     def entries():
-        conn = next((json.loads(p.read_text()) for p in home.rglob('daemon.conn')), None)
+        conn = invoke('get_daemon_connection_info')  # the GUI's own view of the daemon endpoint, not a scan of the home
+        base = conn.get('baseUrl') if isinstance(conn, dict) else None
         session = invoke('get_daemon_session')  # the GUI's own session exchange; its token is used here and never printed
         token = session.get('sessionToken') if isinstance(session, dict) else None
-        if not conn or not token:
+        if not base or not token:
             return None
-        req = urllib.request.Request(f"http://{conn['host']}:{conn['port']}/clipboard/entries?limit=50", headers={'Authorization': 'Session ' + token})
+        req = urllib.request.Request(f"{base.rstrip('/')}/clipboard/entries?limit=50", headers={'Authorization': 'Session ' + token})
         try:
             with urllib.request.urlopen(req, timeout=10) as r:
                 return r.read().decode()

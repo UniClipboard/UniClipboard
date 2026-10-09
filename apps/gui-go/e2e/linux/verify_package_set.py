@@ -127,7 +127,8 @@ def main():
     if rpm.is_file():
         header = sh(['rpm', '-qp', '--qf', '%{NAME} %{VERSION} %{RELEASE} %{ARCH}', str(rpm)])
         report['rpmHeader'] = header
-        if header != f'{PACKAGE_NAME} {version} 1 {a["rpm"]}':
+        # A pre-release separator is "~" in the rpm Version tag (package_linux.py build_rpm); the file name keeps the release version.
+        if header != f'{PACKAGE_NAME} {version.replace("-", "~", 1)} 1 {a["rpm"]}':
             problems.append(f'rpm header {header!r} does not match {a["rpm"]} {version}')
         (work / 'rpm').mkdir()
         subprocess.run(f'rpm2cpio {rpm} | cpio -idm --quiet', shell=True, cwd=work / 'rpm', check=True)

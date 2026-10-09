@@ -225,6 +225,9 @@ def build_rpm(stage, out, version, arch, name, *, package_name=PACKAGE_NAME):
         f'Provides: {LEGACY_PACKAGE_NAME}%%{{?_isa}} = %%{{version}}-%%{{release}}\n'
         f'Obsoletes: {LEGACY_PACKAGE_NAME} <= %%{{version}}-%%{{release}}\n'
         f'Conflicts: {LEGACY_PACKAGE_NAME} > %%{{version}}-%%{{release}}\n') if package_name == PACKAGE_NAME else ''
+    # An rpm Version cannot contain "-". A pre-release separator becomes "~", which sorts below any character, so
+    # 1.2.0~alpha.1 is older than 1.2.0 (the convention of .github/workflows/copr.yml). The file name keeps the release version.
+    rpm_version = version.replace('-', '~', 1)
     top = out / 'rpmbuild'
     for sub in ('BUILD', 'RPMS', 'SPECS'):
         (top / sub).mkdir(parents=True)
@@ -233,10 +236,10 @@ def build_rpm(stage, out, version, arch, name, *, package_name=PACKAGE_NAME):
     spec.write_text((
         'Name: ' + package_name + '\nVersion: %s\nRelease: 1\nSummary: Encrypted peer-to-peer clipboard sync between your devices\n'
         + relationships +
-        'License: Proprietary\nRequires: gtk3, webkit2gtk4.1, gtk-layer-shell\nAutoReqProv: no\n%%global _build_id_links none\n'
+        'License: AGPL-3.0-only\nRequires: gtk3, webkit2gtk4.1, gtk-layer-shell\nAutoReqProv: no\n%%global _build_id_links none\n'
         '# rpmbuild would strip and rewrite the ELF files after installation, so the daemon in the rpm would no longer be the one the build evidence describes.\n%%global __os_install_post %%{nil}\n%%global debug_package %%{nil}\n\n%%description\n'
         'Encrypted peer-to-peer clipboard sync between your devices.\n\n%%install\ncp -a %s/. %%{buildroot}/\n\n%%files\n%s\n'
-        ) % (version, stage, '\n'.join(files)))
+        ) % (rpm_version, stage, '\n'.join(files)))
     run(['rpmbuild', '-bb', '--define', f'_topdir {top}', '--define', f'_rpmfilename {name}', '--target', ARCH[arch][1] + '-linux', str(spec)])
     produced = next((top / 'RPMS').rglob('*.rpm'))
     rpm = out / name

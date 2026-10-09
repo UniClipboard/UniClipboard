@@ -34,12 +34,15 @@ gh workflow run build.yml --ref <reviewed-branch> \
 
 验收保存 run ID/attempt、artifact ID/digest、输入与签名 SHA256、当前源码 SHA、工具版本与 app.json hash。签名后通过本地 HTTP feed 驱动生产 `Client.Check/Download/Verify`，同时拒绝篡改数据。只有签名与公共 JSON 证据上传，不上传私钥、密码或环境转储。
 
-若只有 macOS 包，验收明确只证明两种 macOS 输入，不会生成伪 Linux/Windows 输入来冒充真实六平台。合成六平台 E2E 使用临时加密密钥，证据单独保存：
+下载脚本按打包作业实际产出的 artifact 名选择输入：macOS `macos-gui-<target>[-test]`，Windows `windows-gui-<target>[-test][-signpath-test]`，Linux `linux-gui-<amd64|arm64>`（`package-linux-gui.yml` 也可单独触发，故其 run 同样可信），以及对应的 `*-gui-evidence-*`；证据保存在 `updater-evidence/`，不放进收集器扫描的 `updater-inputs/`，因为 Windows 证据里带有一份已签名的 CLI 归档（`cli-package/uniclipboard-cli-*.zip`），会被收集器当作第二份同名发布物。只有 macOS 包时，验收明确只证明两种 macOS 输入，不会生成伪 Linux/Windows 输入来冒充真实六平台。合成六平台 E2E 使用临时加密密钥，证据单独保存：
 
 ```bash
 python3 -I apps/gui-go/e2e/updater_signatures_run.py --out <new-evidence-directory>
 python3 -I apps/gui-go/e2e/update_pages_run.py --out <new-evidence-directory>
+python3 -I apps/gui-go/e2e/updater_real_inputs_run.py --inputs <downloaded-artifact-directories> --out <new-evidence-directory>
 ```
+
+`updater_real_inputs_run.py` 对真实 CI 包（六个更新归档加 dmg、deb、rpm、AppImage、便携包等同批命名分发物）依次执行收集、一次性密钥签名、无密钥重验、`--require-all-platforms` 生成 feed、注册载荷、本地 HTTP 下载六个平台并确认各平台取到各自归档、签名后篡改被拒。大体积包字节只留在临时目录，证据保存名称、大小、SHA256、签名、feed 与注册载荷。
 
 ## Pages fallback 的发布者
 
@@ -79,3 +82,22 @@ python3 scripts/sync-update-pages.py check --directory <snapshot> \
 最初 run `37713132288` 是启动失败，未执行任何 job；GitHub annotation 指出 reusable workflow 调用方只允许 `actions: none`。修复仅为隔离调用 job 赋予 `contents: read`、`actions: read`；随后新 run 才构成有效证据。
 
 FlareRelease 的不可变源码 `c5d4581dcb239862643cade8931e60799b7ede36` 在任务专用本地 Worker/D1/R2 环境中接受了六个平台的合成注册载荷，状态为 Ready，随后读回六条 artifact（含 linux-aarch64）。此结果仅证明本地服务合同；没有执行远端 staging/生产注册。
+
+## 真实六平台包的隔离验收（2026-10-08，一次性密钥）
+
+输入由修正后的 `download-updater-inputs.py` 对下列四个 run 实际下载得到（`updater_real_inputs_run.py --inputs updater-inputs`）：Linux 来自 [package-linux-gui run 37768856110](https://github.com/UniClipboard/UniClipboard/actions/runs/37768856110)（源码 `d960d3480`，amd64 与 arm64 原生 runner），Windows 来自 [Build Desktop run 37875320922](https://github.com/UniClipboard/UniClipboard/actions/runs/37875320922)（SignPath 测试 Authenticode 签名模式），macOS 来自上文两个 test-mode run。
+
+`updater_real_inputs_run.py` 全部通过：收集到 16 个命名分发物，其中 6 个更新归档获得 `.sig` 并由生产 `Client.Verify` 验证；`--require-all-platforms` 生成含 darwin/linux/windows × aarch64/x86_64 的 feed；注册载荷含六个平台（含 linux-aarch64）；本地 HTTP 下载六个平台各自归档并通过验签，篡改字节被拒。Linux 的裸 `.AppImage` 与 `.deb`、`.rpm`、便携包、`.dmg` 不产生 `.sig`，不进入 feed。
+
+| 平台键 | 归档 | SHA256 |
+| --- | --- | --- |
+| darwin-aarch64 | `UniClipboard_aarch64-apple-darwin.app.tar.gz` | `c80397a0d249d91037642dccf556b1809efbf2f327251448772462ec4cebd7b7` |
+| darwin-x86_64 | `UniClipboard_x86_64-apple-darwin.app.tar.gz` | `dc56eb0ec998c079500b260ca7981f4f970db519548ce2f3f6e875b78fe602f9` |
+| linux-aarch64 | `UniClipboard_1.1.1_aarch64.AppImage.tar.gz` | `d6b5a7869837305e50bca42e2de77394d4a95897ff661f76ac79a78c101d0cba` |
+| linux-x86_64 | `UniClipboard_1.1.1_amd64.AppImage.tar.gz` | `a3dcbb27d3188ce6dcdc271cc626913c23a1d858d65a631aa6c7f787d410d43b` |
+| windows-aarch64 | `UniClipboard_1.1.1_arm64-setup.exe` | `d49381ecda178f16a0b01575729c9a1c883a95e699bec28174aba85e4a8d86b4` |
+| windows-x86_64 | `UniClipboard_1.1.1_x64-setup.exe` | `5a030def68c7e1865484412c08b1bcfa4f67816142ea5df24cc63312d566efbc` |
+
+边界：签名密钥是一次性的，**不是**生产密钥；Windows 安装包上的 SignPath 测试 Authenticode 签名与 updater 的 minisign 签名是两件事，互不替代（minisign 对最终 Authenticode 签名后的字节签名）；没有安装、没有向 FlareRelease 写入、没有原生 OS 覆盖。此前下载脚本只匹配 `linux-gui-<arch>-unknown-linux-gnu`（真实 artifact 名是 `linux-gui-amd64|arm64`）且拒绝 Windows 的 `-signpath-test` 后缀，生产密钥验收因此无法取到真实 Linux 包，也会漏掉 Windows 包，本次已修正选择规则。
+
+`release.yml` 的遗留风险（未修改，需要发布负责人决定）：它用 `download-artifact` 下载全部 artifact 再整体交给收集器。签名模式下 Windows 的 `windows-gui-evidence-*` 含 `cli-package/uniclipboard-cli-<version>-<target>-pc-windows-msvc.zip`，而构建流程另有 `cli-<target>` artifact 产出同名 CLI 归档；两者同时存在时收集器按设计以「duplicate release asset」拒绝。解除阻断前需决定哪一份是发布用 CLI 归档，并让 `release.yml` 只下载该份，或不下载证据 artifact。

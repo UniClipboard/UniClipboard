@@ -38,7 +38,7 @@ jobs:
         run: |
           python3 scripts/ci/download-updater-inputs.py
           cp updater-source.json evidence/
-          find updater-inputs -name '*.json' -exec cp --parents '{}' evidence/ \;
+          find updater-evidence -name '*.json' -exec cp --parents '{}' evidence/ \;
           python3 scripts/collect-release-assets.py --source updater-inputs --destination release-assets
       - name: Build signer without secrets
         working-directory: apps/gui-go

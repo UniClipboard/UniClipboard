@@ -10,6 +10,7 @@ on:
       - 'crates/**'
       - 'apps/**'
       - 'tools/**'
+      - 'packages/**'
       - 'tests/e2e/**'
       - 'vendor/**'
       - 'Cargo.toml'
@@ -23,6 +24,7 @@ on:
       - '.github/docker/build-bookworm.Dockerfile'
       - '.github/workflows/pr-check.yml'
       - '.github/workflows/membership-e2e.yml'
+      - 'scripts/ci/check-gui-go.sh'
       - 'scripts/e2e/run-membership-matrix.sh'
       - 'scripts/architecture/**'
 
@@ -38,7 +40,8 @@ permissions:
 # - rust: cargo check --workspace --locked (不再带 --all-targets --all-features，
 #   PR 阶段不为 test/bench/全 feature 编译。test 在 coverage.yml 跑)
 # 桌面 GUI（Go/Wails，apps/gui-go）的打包、签名与公证不在 PR 阶段跑；见
-# docs/architecture/gui-go-tauri-retirement.md。
+# docs/architecture/gui-go-tauri-retirement.md。PR 阶段只做 gui-go job 的编译门禁
+# （Linux vet/link，Windows amd64/arm64 交叉编译，docs/architecture/gui-go-distribution-channels.md）。
 jobs:
   changes:
     name: Detect Changed Paths
@@ -46,6 +49,7 @@ jobs:
 
     outputs:
       rust: ${{ steps.filter.outputs.rust }}
+      gui_go: ${{ steps.filter.outputs.gui_go }}
 
     steps:
       - name: Detect Rust changes
@@ -53,6 +57,16 @@ jobs:
         uses: dorny/paths-filter@v4
         with:
           filters: |
+            gui_go:
+              - 'apps/gui-go/**'
+              - 'apps/gui/src/**'
+              - 'packages/**'
+              - 'Cargo.toml'
+              - 'package.json'
+              - 'bun.lock'
+              - 'crates/uc-daemon-contract/**'
+              - '.github/workflows/pr-check.yml'
+              - 'scripts/ci/check-gui-go.sh'
             rust:
               - 'crates/**'
               - 'apps/**'
@@ -145,6 +159,62 @@ jobs:
 
       - name: Run frontend tests
         run: bun run test -- --run
+
+  # Compile gate for the Go/Wails host: a regression in a Linux-only (cgo, GTK) or Windows-only file cannot be seen
+  # by the macOS developer build or by the frontend job. Same build image as the Rust job, which carries the GTK3 and
+  # WebKitGTK 4.1 development packages. Evidence (linked binaries, SHA256SUMS, source head) is uploaded; nothing is shipped.
+  gui-go:
+    name: Go Host Compile Check
+    needs: changes
+    if: ${{ needs.changes.outputs.gui_go == 'true' }}
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/uniclipboard/build-bookworm:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Restore Bun dependencies
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
+      - name: Install frontend dependencies
+        run: bun install --frozen-lockfile
+
+      # apps/gui-go/main.go embeds frontend/dist.
+      - name: Build shipped frontend
+        run: bun --bun run --cwd apps/gui-go build
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: apps/gui-go/go.mod
+          # PRs only read caches that the default branch wrote (see cache-warmup).
+          cache: false
+
+      - name: Vet and link the Go host (Linux, Windows amd64 and arm64)
+        run: scripts/ci/check-gui-go.sh all
+
+      - name: Upload compile evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: gui-go-compile-${{ github.run_id }}-${{ github.run_attempt }}
+          path: target/gui-go-gate
+          if-no-files-found: warn
+          retention-days: 14
 
   rust:
     name: Rust Check

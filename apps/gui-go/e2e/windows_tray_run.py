@@ -15,6 +15,8 @@ UC_GUI_GO_E2E_NOTIFY_LOG recorder); the click callback is evidenced by the host'
 Evidence: the UIA element listings and menu dumps are written next to the results.
 """
 import argparse
+import ctypes
+import ctypes.wintypes as wt
 import json
 import os
 import shutil
@@ -42,21 +44,96 @@ def uia(*args, timeout=60):
     return r.returncode, r.stdout.strip()
 
 
-def menu_names():
-    rc, out = uia('-Action', 'menu')
-    try:
-        items = json.loads(out) if out else []
-    except ValueError:
-        items = []
-    if isinstance(items, dict):
-        items = [items]
-    return [i['name'] for i in items], out
+MN_GETHMENU = 0x01E1
+MF_BYPOSITION = 0x400
+user32 = q.user32
+
+
+def _cls(h):
+    b = ctypes.create_unicode_buffer(64)
+    user32.GetClassNameW(h, b, 64)
+    return b.value
+
+
+def popup_windows():
+    """Visible popup menu windows (class #32768), the newest one first."""
+    found = []
+
+    @ctypes.WINFUNCTYPE(wt.BOOL, wt.HWND, wt.LPARAM)
+    def cb(h, _):
+        if _cls(h) == '#32768' and user32.IsWindowVisible(h):
+            found.append(h)
+        return True
+    user32.EnumWindows(cb, 0)
+    return found
+
+
+def read_menu(hwnd):
+    """Items of one popup menu through the real menu handle: label, disabled, has-submenu, screen rect."""
+    user32.SendMessageW.restype = ctypes.c_void_p
+    user32.SendMessageW.argtypes = [wt.HWND, wt.UINT, wt.WPARAM, wt.LPARAM]
+    hmenu = user32.SendMessageW(hwnd, MN_GETHMENU, 0, 0)
+    if not hmenu:
+        return []
+    hmenu = ctypes.c_void_p(hmenu)
+    user32.GetMenuItemCount.argtypes = [ctypes.c_void_p]
+    user32.GetMenuStringW.argtypes = [ctypes.c_void_p, wt.UINT, wt.LPWSTR, ctypes.c_int, wt.UINT]
+    user32.GetMenuState.argtypes = [ctypes.c_void_p, wt.UINT, wt.UINT]
+    user32.GetMenuItemRect.argtypes = [wt.HWND, ctypes.c_void_p, wt.UINT, ctypes.POINTER(wt.RECT)]
+    items = []
+    for i in range(max(user32.GetMenuItemCount(hmenu), 0)):
+        buf = ctypes.create_unicode_buffer(256)
+        user32.GetMenuStringW(hmenu, i, buf, 256, MF_BYPOSITION)
+        st = user32.GetMenuState(hmenu, i, MF_BYPOSITION)
+        rect = wt.RECT()
+        user32.GetMenuItemRect(None, hmenu, i, ctypes.byref(rect))
+        items.append({'label': buf.value, 'disabled': bool(st & 0x3), 'submenu': bool(st & 0x10), 'rect': [rect.left, rect.top, rect.right, rect.bottom]})
+    return items
+
+
+def menu_names(level=0):
+    """(labels without separators, items) of the open menu at nesting level (0 = root); waits briefly for it to appear."""
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        ws = popup_windows()
+        if len(ws) > level:
+            items = read_menu(sorted(ws, key=lambda h: _rect(h)[0])[level] if level else ws[-1] if len(ws) == 1 else sorted(ws, key=lambda h: _rect(h)[0])[0])
+            if items:
+                return [i['label'] for i in items if i['label']], items
+        time.sleep(.2)
+    return [], []
+
+
+def _rect(h):
+    r = wt.RECT()
+    user32.GetWindowRect(h, ctypes.byref(r))
+    return (r.left, r.top)
+
+
+def click_at(x, y):
+    user32.SetCursorPos(x, y)
+    time.sleep(.15)
+    user32.mouse_event(0x2, 0, 0, 0, 0)
+    time.sleep(.06)
+    user32.mouse_event(0x4, 0, 0, 0, 0)
+
+
+def choose(items, label):
+    for i in items:
+        if i['label'] == label and not i['disabled']:
+            l, t, r, b = i['rect']
+            click_at((l + r) // 2, (t + b) // 2)
+            return True
+    return False
 
 
 def dismiss_menu():
     q.VK.setdefault('esc', 0x1B)
-    q.send_chord('esc', hold=.05)
-    time.sleep(.4)
+    for _ in range(3):
+        if not popup_windows():
+            break
+        q.send_chord('esc', hold=.05)
+        time.sleep(.4)
 
 
 def main():
@@ -95,13 +172,23 @@ def main():
         # T1
         rc, clicked = uia('-Action', 'icon', '-Match', 'UniClipboard', '-Button', 'right')
         (out / 'uia-icon-click-1.txt').write_text(clicked, encoding='utf-8')
-        names, raw = menu_names()
-        (out / 'uia-menu-1.json').write_text(raw, encoding='utf-8')
+        names, items1 = menu_names()
+        (out / 'menu-1.json').write_text(json.dumps(items1, ensure_ascii=False, indent=1), encoding='utf-8')
         lang = next((l for l, v in LABELS.items() if all(x in names for x in v)), None)
         check('T1 tray icon found by tooltip and its right-click menu lists the root labels of one language',
               rc == 0 and lang is not None, {'click': clicked, 'items': names})
         if lang:
             check('T1b the menu has the sync toggle and the device submenu', any(n in SYNC[lang] for n in names) and DEVICES[lang] in names, names)
+        if lang:
+            # open the device submenu (click the entry) and read its placeholder
+            choose(items1, DEVICES[lang])
+            time.sleep(.8)
+            ws = popup_windows()
+            sub_labels = []
+            for w in ws:
+                sub_labels += [i['label'] for i in read_menu(w) if i['label']]
+            (out / 'menu-1-submenu.json').write_text(json.dumps(sub_labels, ensure_ascii=False), encoding='utf-8')
+            check('T1c the device submenu opens and shows its (empty) placeholder', 'No paired devices' in sub_labels or '暂无已配对设备' in sub_labels, sub_labels)
         dismiss_menu()
 
         # T2 language switch through the host command the settings page uses
@@ -109,8 +196,8 @@ def main():
         gui.invoke('lang', 'set_tray_language', {'language': target})
         time.sleep(.8)
         rc, clicked = uia('-Action', 'icon', '-Match', 'UniClipboard', '-Button', 'right')
-        names2, raw2 = menu_names()
-        (out / 'uia-menu-2.json').write_text(raw2, encoding='utf-8')
+        names2, items2 = menu_names()
+        (out / 'menu-2.json').write_text(json.dumps(items2, ensure_ascii=False, indent=1), encoding='utf-8')
         check('T2 after set_tray_language the menu shows the other language', rc == 0 and all(x in names2 for x in LABELS[target]) and DEVICES[target] in names2, {'target': target, 'items': names2})
         dismiss_menu()
 
@@ -140,7 +227,8 @@ def main():
         daemon_pid = json.loads(daemon_conn.read_text())['pid'] if daemon_conn.is_file() else None
         uia('-Action', 'icon', '-Match', 'UniClipboard', '-Button', 'right')
         quit_label = LABELS[target][-1]
-        rc, chose = uia('-Action', 'choose', '-Name', quit_label)
+        _, qitems = menu_names()
+        rc, chose = (0, quit_label) if choose(qitems, quit_label) else (2, 'ITEM_NOT_FOUND')
         try:
             code = gui.proc.wait(timeout=60)
         except subprocess.TimeoutExpired:

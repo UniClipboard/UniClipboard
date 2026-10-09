@@ -5,6 +5,8 @@ package main
 import (
 	"log"
 	"os"
+	"os/user"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -38,17 +40,50 @@ func inAppScope(cgroup string) bool {
 	return false
 }
 
-// desktopEntryID is the application id of the desktop entry the Linux packages ship (packaging/linux/uniclipboard.desktop,
-// also inside the AppImage). The portal and GNOME resolve the scope's app id through that entry, so an installed entry
-// with this name is what makes the shortcut bindable from a launch that did not come from the entry.
-const desktopEntryID = "uniclipboard"
+// desktopEntryIDs are the application ids the shipped desktop entries carry: the Linux packages install
+// packaging/linux/uniclipboard.desktop (also inside the AppImage) and scripts/install.sh writes
+// <bundle id>.desktop for an AppImage. The portal and GNOME resolve the scope's app id through an installed entry
+// of that name, so the host only names the scope after an entry that exists where the desktop looks for it; this
+// never creates or edits a desktop entry.
+func desktopEntryIDs() []string { return []string{"uniclipboard", bundleID} }
 
-// appScopeName builds the unit name the portal parses back into desktopEntryID.
-func appScopeName(pid int) string {
-	return "app-uniclipboard-" + escapeUnitName(desktopEntryID) + "-" + strconv.Itoa(pid) + ".scope"
+// installedDesktopEntryID returns the first shipped id whose entry sits in the user's or the system's applications
+// directories. The AppImage hook prepends its own AppDir to XDG_DATA_DIRS, which GNOME does not search, so entries
+// under APPDIR do not count. With none installed it falls back to the packaged id (the portal then refuses, as it
+// would without the scope).
+func installedDesktopEntryID() string {
+	var dirs []string
+	if home := os.Getenv("XDG_DATA_HOME"); home != "" {
+		dirs = append(dirs, home)
+	} else if account, err := user.Current(); err == nil {
+		// The account's home, not $HOME: a portable AppImage repoints HOME at its own data folder, which GNOME never reads.
+		dirs = append(dirs, filepath.Join(account.HomeDir, ".local/share"))
+	}
+	system := os.Getenv("XDG_DATA_DIRS")
+	if system == "" {
+		system = "/usr/local/share:/usr/share"
+	}
+	appDir := os.Getenv("APPDIR")
+	for _, dir := range strings.Split(system, ":") {
+		if dir != "" && (appDir == "" || (dir != appDir && !strings.HasPrefix(dir, appDir+"/"))) {
+			dirs = append(dirs, dir)
+		}
+	}
+	for _, id := range desktopEntryIDs() {
+		for _, dir := range dirs {
+			if _, err := os.Stat(filepath.Join(dir, "applications", id+".desktop")); err == nil {
+				return id
+			}
+		}
+	}
+	return desktopEntryIDs()[0]
 }
 
-// escapeUnitName escapes the characters systemd reserves in a unit name; an application id only needs "-".
+// appScopeName builds the unit name the portal parses back into the desktop entry id.
+func appScopeName(id string, pid int) string {
+	return "app-uniclipboard-" + escapeUnitName(id) + "-" + strconv.Itoa(pid) + ".scope"
+}
+
 func escapeUnitName(s string) string { return strings.ReplaceAll(s, "-", `\x2d`) }
 
 // ensureAppScope moves this process into a transient app scope when it was not launched into one. It only matters
@@ -67,6 +102,7 @@ func ensureAppScope() {
 	}
 	defer conn.Close()
 	pid := os.Getpid()
+	scopeName := appScopeName(installedDesktopEntryID(), pid)
 	properties := []struct {
 		Name  string
 		Value dbus.Variant
@@ -76,7 +112,7 @@ func ensureAppScope() {
 	}
 	var job dbus.ObjectPath
 	call := conn.Object(systemdService, systemdPath).Call(systemdManager+".StartTransientUnit", 0,
-		appScopeName(pid), "fail", properties, []struct {
+		scopeName, "fail", properties, []struct {
 			Name       string
 			Properties []struct {
 				Name  string
@@ -93,5 +129,5 @@ func ensureAppScope() {
 			return
 		}
 	}
-	log.Printf("app scope: the process did not enter %s in time", appScopeName(pid))
+	log.Printf("app scope: the process did not enter %s in time", scopeName)
 }

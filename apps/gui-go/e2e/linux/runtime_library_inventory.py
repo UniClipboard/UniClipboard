@@ -151,13 +151,17 @@ def observe(args):
                     continue
                 try:
                     exe = os.readlink(entry / 'exe')
-                    if os.getpgid(int(entry.name)) == proc.pid and Path(exe).name in ROLES and ('.mount_' in exe or 'appimage_extracted_' in exe or args.extract):
+                    if os.getpgid(int(entry.name)) == proc.pid and Path(exe).name in ROLES and ('.mount_' in exe or 'appimage_extracted_' in exe):
                         scoped[int(entry.name)] = exe
                 except OSError:
                     pass
             for conn in home.rglob('daemon.conn'):
                 try:
                     c = json.loads(conn.read_text())
+                    daemon_exe = os.readlink(f"/proc/{c['pid']}/exe")  # the daemon detaches from the GUI's process group
+                    if '.mount_' not in daemon_exe and 'appimage_extracted_' not in daemon_exe:
+                        raise ValueError(f'daemon executable outside the test image: {daemon_exe}')
+                    scoped[c['pid']] = daemon_exe
                     with urllib.request.urlopen(f"http://{c['host']}:{c['port']}/health", timeout=2) as r:
                         health = r.status
                 except (OSError, ValueError, KeyError):

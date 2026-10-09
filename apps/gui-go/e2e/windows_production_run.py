@@ -141,7 +141,6 @@ def main():
             check('C0 seeded a legacy Run value for this sandbox profile only', seeded and reg_query(RUN, item) is not None)
 
         subprocess.run([uniclip, 'space', 'init', '--passphrase', 'windows-production-pass', '--device-name', 'win-prod'], env=base_env, check=True, timeout=120)
-        subprocess.run([uniclip, 'start'], env=base_env, check=True, timeout=120)
         gui = Gui(sandbox, gui_env, out)
         started.append(gui.proc)
         gui.step('bootstrapped', 120)

@@ -246,7 +246,6 @@ def main():
     daemon_pid = None
     try:
         subprocess.run([uniclip, 'space', 'init', '--passphrase', PASSPHRASE, '--device-name', 'win-panel'], env=base_env, check=True, timeout=120)
-        subprocess.run([uniclip, 'start'], env=base_env, check=True, timeout=120)
         target_text = out / 'target-text.txt'
         ps1 = out / 'target.ps1'
         ps1.write_text(TARGET_PS1, encoding='utf-8')

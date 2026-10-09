@@ -1,10 +1,11 @@
-# UI Automation helper for the Windows notification area, used by windows_tray_run.py. It only reads the shell UI and
+﻿# UI Automation helper for the Windows notification area, used by windows_tray_run.py. It only reads the shell UI and
 # clicks the icon whose tooltip/name contains -Match (the sandboxed test host) or one menu item it was asked to.
 #   -Action list                      names of taskbar / overflow / menu elements (evidence)
 #   -Action icon -Match <text> -Button left|right   click the matching notification icon (opens the overflow first if needed)
 #   -Action menu                      JSON list of the open popup menu's items (name, enabled, has submenu)
 #   -Action choose -Name <text>       click the menu item with this exact name (or open the submenu)
 param([string]$Action, [string]$Match = 'UniClipboard', [string]$Button = 'right', [string]$Name = '')
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, System.Windows.Forms
 Add-Type @'
 using System; using System.Runtime.InteropServices;

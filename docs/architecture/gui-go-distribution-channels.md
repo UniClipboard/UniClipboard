@@ -48,7 +48,9 @@
 - 作业不缓存 Go 模块（PR 只读默认分支缓存），上传链接产物与 `SHA256SUMS` 作为证据，不发布任何东西。
 - macOS 的 `go vet`/链接已经在 macOS 打包作业里；Linux、Windows 的真实运行不在 PR 门禁内。
 
-PR 门禁没有在 GitHub 上运行过（未 push）。设为必需检查、在草稿 PR 里演示失败，需要另行授权。
+必需检查的终值：`pr-check.yml` 原来有 workflow 级 `paths`，不命中的 PR 根本不会出现该 workflow 的任何检查，设为必需后会一直 pending。现在去掉 workflow 级 `paths`，把原列表搬进 `changes` 作业的 `code` 过滤器；`frontend`、`frontend-tests` 用它、`gui-go` 用 `gui_go`、`rust`/`e2e` 用 `rust`，各作业按 `if` 跳过。被 `if` 跳过的作业显示为 Skipped，对必需检查算通过，所以每个目标为 main 的 PR 该检查都有明确终值：相关变更跑真实 gate，不相关的 PR 轻量 Skipped（只多一个 `changes` 作业）。建议的必需检查名称是 `Go Host Compile Check`（作业 `gui-go`）。仓库当前对 `main` 没有必需状态检查（规则集 `Protect main branch` 里没有 `required_status_checks`，只读核对），本任务不修改任何分支保护或规则集。
+
+PR 门禁没有在 GitHub 上运行过（未 push）；在草稿 PR 里演示故意红再修复变绿需要另行授权。
 
 ## 渠道决定
 
@@ -70,8 +72,13 @@ PR 门禁没有在 GitHub 上运行过（未 push）。设为必需检查、在�
 
 ### PR 门禁（arm64 原生容器，`build-bookworm`，Go 1.27.1）
 
-- 源码 `81c06b06f`，干净树，绿：Linux `uniclipboard` `2fbf0030…cb9`（三次运行相同）、`windows-amd64/gui-go.exe` `b9035ad4…`、`windows-arm64/gui-go.exe` `b7fc035f…`。
+- 最终 HEAD `0fc0a7e9355418acd7f4d8f6d3378fd10d2ba829`（clean 克隆，arm64 原生容器）重验：绿，Linux 二进制 `2fbf0030…`、windows-amd64 `b9035ad4…`、windows-arm64 `b7fc035f…`，与早先 `81c06b06f` 的结果逐字节相同（该提交之后 Go 源码与门禁脚本没有变化）；在该克隆里再注入 Windows 专有文件错误，同样变红。
+- 早先 `81c06b06f`，干净树，绿：Linux `uniclipboard` `2fbf0030…cb9`（三次运行相同）、`windows-amd64/gui-go.exe` `b9035ad4…`、`windows-arm64/gui-go.exe` `b7fc035f…`。
 - 红：在 `autostart_linux.go`、`host_install_windows.go`、`e2e_enabled.go` 各追加一个类型错误，门禁分别在 Linux vet、Windows vet、e2e 标签 vet 失败。macOS 宿主对 Linux 错误的 `go vet` 没有任何输出。
+
+### 重验范围
+
+最终 HEAD `0fc0a7e93` 重跑了 PR 门禁（绿与红）和 `check-tauri-retired`。AUR、COPR、snap 的相关文件在对应实测之后没有变化（`git diff` 为空），所以沿用其结果，没有重复长构建；rpm 版本修复是之后的改动，单独做了上面的验证。各来源提交：门禁 `81c06b06f`/`0fc0a7e93`；AUR 包 `c1aca2f70`；COPR 上游 rpm 来自 CI run 37894007183（源码 `4658ffeec`，不是本分支）；rpm 版本验证用同一 run 的 arm64 deb payload。
 
 ### AUR
 
@@ -93,6 +100,12 @@ PR 门禁没有在 GitHub 上运行过（未 push）。设为必需检查、在�
 ### snap
 
 - Ubuntu 22.04 arm64 容器按配方编译 Go 宿主成功，二进制 sha256 `4ed42194…`。第一次尝试暴露配方缺 C 编译器，已加入 `build-essential`。
+
+## 环境与证据的区别
+
+- Arch：amd64 **用户态/虚拟化模拟**（Apple silicon 上的 Docker），pacman 沙箱被关闭；不是原生 amd64。其余构建与安装检查是 arm64 **原生容器**（Debian 12、Ubuntu 22.04、Fedora 44）。
+- 安装和启动检查在 Xvfb、一次性 gnome-keyring 的容器里完成：没有真实桌面环境、登录会话，也不是真实渠道安装（没有经过 AUR、COPR、Snap Store、Flathub 等）。
+- 另有审计记录：为拉取本地已有镜像做过一次 `docker login ghcr.io`（账号与 Docker Hub 登录同为 `mkdir700`，只读核对了凭据助手列表，未读取任何令牌）。不确定之前是否已有该条目，因此不 logout，以免删除用户原有凭据。
 
 ## 未证明的边界
 

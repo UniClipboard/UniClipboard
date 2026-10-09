@@ -105,6 +105,7 @@ func (h *HostService) openMainWindow() {
 		Name: "main", Title: "UniClipboard", URL: "/", Width: 1100, Height: 720, MinWidth: 900, MinHeight: 600,
 		Mac: application.MacWindow{TitleBar: application.MacTitleBarHiddenInset},
 	}))
+	suppressKeyboardMenu(w)
 	w.RegisterHook(events.Common.WindowClosing, func(e *application.WindowEvent) {
 		if h.quitting.Load() {
 			return

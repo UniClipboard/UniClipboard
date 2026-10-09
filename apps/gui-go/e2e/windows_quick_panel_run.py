@@ -199,6 +199,21 @@ class Gui:
             time.sleep(.2)
 
 
+def make_sandbox():
+    """A throwaway directory and profile name short enough for the Engine data tree.
+
+    The deepest file below the data root is ~175 characters long and the profile name appears in its path; on a default
+    Windows temp path the daemon's storage upgrade fails (engine error 1101) once the sandbox path passes MAX_PATH.
+    UC_GUI_GO_E2E_SANDBOX_ROOT points the sandbox at a short directory.
+    """
+    root = os.environ.get('UC_GUI_GO_E2E_SANDBOX_ROOT')
+    sandbox = Path(tempfile.mkdtemp(prefix='uc-gui-go-', dir=root))
+    if len(str(sandbox)) > 30:
+        shutil.rmtree(sandbox, ignore_errors=True)
+        sys.exit(f'sandbox path {sandbox} is too long for the Engine data tree (MAX_PATH): set UC_GUI_GO_E2E_SANDBOX_ROOT to a short directory such as D:\\w')
+    return sandbox, 'g' + sandbox.name[-8:], Path(root) if root else Path(tempfile.gettempdir())
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--out', type=Path, required=True)
@@ -211,8 +226,7 @@ def main():
         sys.exit('refusing to send key events on a session that is not a dedicated test host (set UC_GUI_GO_E2E_DEDICATED_HOST=1)')
     out = args.out.resolve()
     out.mkdir(parents=True, exist_ok=True)
-    sandbox = Path(tempfile.mkdtemp(prefix='uc-gui-go-'))
-    profile = 'gui-go-' + sandbox.name
+    sandbox, profile, sandbox_root = make_sandbox()
     for name in ('gui-go.exe', 'uniclipd.exe', 'uniclip.exe'):
         shutil.copy2(args.binaries / name, sandbox / name)
     base_env = dict(os.environ, UC_PORTABLE='1', UC_PROFILE=profile, UNICLIPBOARD_ENV='development', UC_DISABLE_SYSTEM_CLIPBOARD='1', NO_COLOR='1')
@@ -334,7 +348,7 @@ def main():
         (out / 'windows-assertions.json').write_text(json.dumps(results, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
         if not results['passed']:  # keep the daemon/host logs and data layout of a failed run as evidence
             shutil.copytree(sandbox, out / 'sandbox-failed', ignore=shutil.ignore_patterns('*.exe'), dirs_exist_ok=True)
-        if sandbox.name.startswith('uc-gui-go-') and sandbox.parent == Path(tempfile.gettempdir()):
+        if sandbox.name.startswith('uc-gui-go-') and sandbox.parent == sandbox_root:
             shutil.rmtree(sandbox, ignore_errors=True)
     print(json.dumps({'passed': results['passed']}))
     sys.exit(0 if results['passed'] else 1)

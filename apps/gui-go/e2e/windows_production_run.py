@@ -123,9 +123,8 @@ def main():
     cleanup_dirs, cleanup_run_values = [], []
     try:
         # ---------------- parts A-C: e2e build in a portable sandbox ----------------
-        sandbox = Path(tempfile.mkdtemp(prefix='uc-gui-go-'))
+        sandbox, profile, _ = q.make_sandbox()
         cleanup_dirs.append(sandbox)
-        profile = 'gui-go-' + sandbox.name
         for name in ('gui-go.exe', 'uniclipd.exe', 'uniclip.exe'):
             shutil.copy2(args.binaries / name, sandbox / name)
         base_env = dict(os.environ, UC_PORTABLE='1', UC_PROFILE=profile, UNICLIPBOARD_ENV='development', UC_DISABLE_SYSTEM_CLIPBOARD='1', NO_COLOR='1')

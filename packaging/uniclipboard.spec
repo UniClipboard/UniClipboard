@@ -108,7 +108,7 @@ find %{buildroot} \( -type f -o -type l \) -printf '/%%P\n' | sort > %{_builddir
 
 %changelog
 # changelog 由 CI 在 build 时通过 `--define` 注入或追加;此处保留占位。
-* Sat May 09 2026 mkdir700 <release@uniclipboard.app> - 0.7.0~alpha.7-1
-- Initial COPR packaging — binary repackage of upstream GitHub release
 * Fri Oct 09 2026 mkdir700 <release@uniclipboard.app> - 1.1.1-1
 - Repackage the Go/Wails host: requirements and package-rename relationships follow the upstream rpm
+* Sat May 09 2026 mkdir700 <release@uniclipboard.app> - 0.7.0~alpha.7-1
+- Initial COPR packaging — binary repackage of upstream GitHub release

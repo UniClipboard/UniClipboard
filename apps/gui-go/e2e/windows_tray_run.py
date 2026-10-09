@@ -84,6 +84,7 @@ def main():
     gui = None
     try:
         subprocess.run([str(sandbox / 'uniclip.exe'), 'space', 'init', '--passphrase', 'tray-pass', '--device-name', 'tray'], env=env, check=True, timeout=120, capture_output=True)
+        time.sleep(6)  # let init's oneshot daemon withdraw: the start-right-after-init flow has its own harness (windows_daemon_start_run.py)
         gui = q.Gui(sandbox, genv, out)
         gui.step('bootstrapped', 120)
         ev = out / 'native.jsonl'

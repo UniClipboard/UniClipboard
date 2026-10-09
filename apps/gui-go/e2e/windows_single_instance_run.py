@@ -85,6 +85,7 @@ def main():
     owned = []
     try:
         subprocess.run([str(sandbox / 'uniclip.exe'), 'space', 'init', '--passphrase', 'single-instance-pass', '--device-name', 'single'], env=env, check=True, timeout=120, capture_output=True)
+        time.sleep(6)  # let init's oneshot daemon withdraw: the start-right-after-init flow has its own harness (windows_daemon_start_run.py)
         # N: no first instance
         t = time.monotonic()
         r = subprocess.run([exe, '--quick-panel'], env=genv, cwd=sandbox, capture_output=True, timeout=60)

@@ -697,6 +697,8 @@ fn is_allowed_cors_origin(origin: &str) -> bool {
         || origin.starts_with("wails://localhost:")
         || origin == "http://tauri.localhost"
         || origin == "https://tauri.localhost"
+        // Wails serves the bundled frontend on Windows (WebView2) from this origin.
+        || origin == "http://wails.localhost"
         || origin.starts_with("http://localhost:")
         || origin.starts_with("http://127.0.0.1:")
         || origin.starts_with("http://[::1]:")

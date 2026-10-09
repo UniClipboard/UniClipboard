@@ -9,6 +9,7 @@ import (
 	"github.com/UniClipboard/UniClipboard/apps/gui-go/internal/update"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -360,3 +361,7 @@ func (s *EvidenceService) recordNativeWindowState() {
 		_ = s.write(Step{Window: "main", Step: "native-window-state", OK: true, Detail: detail})
 	}
 }
+
+// e2eBrowserArgs lets a test run pass extra WebView2 arguments (for example a remote debugging port to read the page
+// state of a window that does not leave its startup screen). Only the e2e build reads it.
+func e2eBrowserArgs() []string { return strings.Fields(os.Getenv("UC_GUI_GO_E2E_BROWSER_ARGS")) }

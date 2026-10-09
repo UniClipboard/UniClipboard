@@ -45,3 +45,5 @@ func e2eTrayPublishSkipped() {}
 
 // e2eInvoke marks the entry and return of selected host commands in the e2e build; it returns a no-op here.
 func e2eInvoke(string) func() { return func() {} }
+
+func e2eBrowserArgs() []string { return nil }

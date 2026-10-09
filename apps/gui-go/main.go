@@ -138,7 +138,7 @@ func main() {
 	// application.New takes the single-instance lock before anything else touches shared state: a second GUI of the
 	// same scope hands its arguments to the first one and exits inside this call, so it never probes or spawns a
 	// daemon, starts the quick panel helper or reconciles the login item. The daemon client is attached afterwards.
-	app := application.New(application.Options{Name: "UniClipboard Go GUI", Services: services, Mac: application.MacOptions{ActivationPolicy: activationPolicy()}, Assets: application.AssetOptions{Handler: application.BundledAssetFileServer(content), Middleware: host.fileMiddleware},
+	app := application.New(application.Options{Name: "UniClipboard Go GUI", Services: services, Mac: application.MacOptions{ActivationPolicy: activationPolicy()}, Windows: application.WindowsOptions{AdditionalBrowserArgs: e2eBrowserArgs()}, Assets: application.AssetOptions{Handler: application.BundledAssetFileServer(content), Middleware: host.fileMiddleware},
 		SingleInstance: host.singleInstanceOptions(uniqueID),
 		ShouldQuit:     func() bool { host.quitting.Store(true); return true },
 		OnShutdown:     host.shutdown})

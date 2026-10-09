@@ -180,3 +180,17 @@ Tauri 场景使用新 daemon 生成有效资料夹具，证明包事务保留资
 CI 在原生 amd64/arm64 上增加 `legacy-go-fixture`：以候选的实际 Go/daemon payload 及旧包
 元数据生成事务回归夹具，其清单明确标识为生成夹具，不能冒充已发布历史包。旧 Tauri 使用
 已发布 v1.0.1 与仓库固定 SHA。历史 Go 的真实工件另行验收，来源与 CI 生成夹具分开记录。
+
+## rpm 的依赖声明（issue #1903）
+
+rpm 关闭了自动依赖生成（`AutoReqProv: no`），`Requires` 是依赖的全部声明。此前写的是 Fedora 的包名
+`gtk3, webkit2gtk4.1, gtk-layer-shell`。在 openSUSE Tumbleweed（固定摘要 `cb0b66ea…`，arm64）上用真实
+`zypper install` 安装 CI 产出的 rpm 失败：`nothing provides 'gtk-layer-shell'`；`webkit2gtk4.1` 在该发行版
+也没有同名提供者（openSUSE 的包名是 `libwebkit2gtk-4_1-0`、`libgtk-3-0`、`libgtk-layer-shell0`）。
+包名只在一个发行版族内成立，soname 在两个族里都成立，所以改为 soname 能力
+（`libgtk-3.so.0()(64bit)`、`libwebkit2gtk-4.1.so.0()(64bit)`、`libgtk-layer-shell.so.0()(64bit)`，常量 `RPM_REQUIRES`）。
+
+用同一份 CI 载荷经 `package_linux.build_rpm` 重建后：openSUSE `zypper install` 解析并安装 175 个包，
+`ldd` 无缺失库，`rpm -V` 干净；Fedora 44 `dnf install` 解析到 `gtk3`、`webkit2gtk4.1`、`gtk-layer-shell`，同样干净。
+这是依赖解析与文件级安装的验证，openSUSE 上已安装 rpm 的 GUI 启动、升级与卸载没有跑（同一 AppImage 在该发行版的启动见
+[gui-go-linux-appimage-runtime-deps.md](gui-go-linux-appimage-runtime-deps.md) 的运行时库存）。

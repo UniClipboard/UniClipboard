@@ -219,6 +219,12 @@ def build_deb(stage, out, version, arch, name, *, package_name=PACKAGE_NAME):
     return deb
 
 
+# Shared libraries the host must provide, as soname capabilities. Fedora names these packages gtk3, webkit2gtk4.1 and gtk-layer-shell,
+# openSUSE libgtk-3-0, libwebkit2gtk-4_1-0 and libgtk-layer-shell0: a package name resolves on only one of them, a soname on both.
+# AutoReqProv is off (see the spec), so this list is the whole dependency declaration.
+RPM_REQUIRES = ', '.join(f'{soname}()(64bit)' for soname in ('libgtk-3.so.0', 'libwebkit2gtk-4.1.so.0', 'libgtk-layer-shell.so.0'))
+
+
 def build_rpm(stage, out, version, arch, name, *, package_name=PACKAGE_NAME):
     assert package_name in (PACKAGE_NAME, LEGACY_PACKAGE_NAME)
     relationships = (f'Provides: {LEGACY_PACKAGE_NAME} = %%{{version}}-%%{{release}}\n'
@@ -236,10 +242,10 @@ def build_rpm(stage, out, version, arch, name, *, package_name=PACKAGE_NAME):
     spec.write_text((
         'Name: ' + package_name + '\nVersion: %s\nRelease: 1\nSummary: Encrypted peer-to-peer clipboard sync between your devices\n'
         + relationships +
-        'License: AGPL-3.0-only\nRequires: gtk3, webkit2gtk4.1, gtk-layer-shell\nAutoReqProv: no\n%%global _build_id_links none\n'
+        'License: AGPL-3.0-only\nRequires: %s\nAutoReqProv: no\n%%global _build_id_links none\n'
         '# rpmbuild would strip and rewrite the ELF files after installation, so the daemon in the rpm would no longer be the one the build evidence describes.\n%%global __os_install_post %%{nil}\n%%global debug_package %%{nil}\n\n%%description\n'
         'Encrypted peer-to-peer clipboard sync between your devices.\n\n%%install\ncp -a %s/. %%{buildroot}/\n\n%%files\n%s\n'
-        ) % (rpm_version, stage, '\n'.join(files)))
+        ) % (rpm_version, RPM_REQUIRES, stage, '\n'.join(files)))
     run(['rpmbuild', '-bb', '--define', f'_topdir {top}', '--define', f'_rpmfilename {name}', '--target', ARCH[arch][1] + '-linux', str(spec)])
     produced = next((top / 'RPMS').rglob('*.rpm'))
     rpm = out / name

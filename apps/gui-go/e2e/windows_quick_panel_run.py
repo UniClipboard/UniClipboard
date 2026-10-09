@@ -320,7 +320,7 @@ def main():
 
         before = gui.state('before-failed')['lastShown']
         r = gui.invoke('failed', 'type_file_paths_to_previous_app', {'request': {'filePaths': ['x']}})
-        after = gui.state('after-failed')
+        after = gui.wait_state('after-failed', lambda s: s['panelVisible'])  # phase two of the show is asynchronous
         check('6 a paste with no recorded window reports the error and shows the panel again',
               not r['ok'] and 'No previous foreground window' in str(r['error']) and after['lastShown'] != before and after['panelVisible'], [r, after])
 

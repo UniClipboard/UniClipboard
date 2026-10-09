@@ -1,7 +1,7 @@
 import { LazyMotion, domMax } from 'framer-motion'
 import { useCallback, useMemo, useState } from 'react'
 import { BrowserRouter as Router, useNavigate } from 'react-router'
-import { SidebarTitle, TitleBar } from '@/components'
+import { TitleBar } from '@/components'
 import { AppContent } from '@/components/app/AppContent'
 import VisualEffectsProvider from '@/components/motion/VisualEffectsProvider'
 import { SearchProvider } from '@/contexts/SearchContext'
@@ -61,10 +61,6 @@ export const AppContentWithBar = () => {
       ) : null,
     [hasCustomTitleBar, slotValue, rightSlot]
   )
-  const sidebarTitle = useMemo(
-    () => (hasCustomTitleBar ? <SidebarTitle rightSlot={rightSlot} /> : null),
-    [hasCustomTitleBar, rightSlot]
-  )
 
   return (
     <TitleBarSlotContext value={slotValue}>
@@ -74,7 +70,6 @@ export const AppContentWithBar = () => {
             fullTitleBar={titleBar}
             setupGate={setupGate}
             onSetupComplete={handleSetupComplete}
-            sidebarTitle={sidebarTitle}
           />
         </WindowShell>
       </ShortcutProvider>

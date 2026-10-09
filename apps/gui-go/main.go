@@ -123,6 +123,7 @@ func main() {
 		log.Fatal(err)
 	}
 	waitForRestartParent()
+	ensureAppScope()
 	content, err := fs.Sub(assets, "frontend/dist")
 	if err != nil {
 		log.Fatal(err)

@@ -11,7 +11,6 @@ export {
   captureDiagnosticException,
   recordDiagnosticBreadcrumb,
   writeDiagnosticLog,
-  submitDiagnosticFeedback,
   startDiagnosticTrace,
   createDiagnosticsEnhancer,
   DiagnosticsErrorBoundary,
@@ -22,7 +21,6 @@ export type {
   DiagnosticBreadcrumb,
   DiagnosticDeviceContext,
   DiagnosticExceptionContext,
-  DiagnosticFeedback,
   DiagnosticLogLevel,
   DiagnosticTrace,
 } from './types'

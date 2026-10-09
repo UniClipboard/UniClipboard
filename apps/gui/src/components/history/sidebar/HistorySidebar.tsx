@@ -4,14 +4,14 @@ import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { NavLink, useNavigate } from 'react-router'
 import { Filter } from '@/api/clipboardItems'
+import DevProfileIndicator from '@/components/DevProfileIndicator'
 import { useTagTints } from '@/components/history/tags/tag-colors-context'
 import { ThemeModeSwitch } from '@/components/motion/theme-mode-switch'
-import { ThemeToggle } from '@/components/motion/theme-toggle'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useLibraryChrome } from '@/contexts/library-chrome-context'
-import { useSidebarSlot } from '@/contexts/sidebar-slot-context'
 import { useLibraryCounts } from '@/hooks/useLibraryCounts'
 import { useMobileDeviceList } from '@/hooks/useMobileDeviceList'
+import { usePlatform } from '@/hooks/usePlatform'
 import { useWindowDragging } from '@/hooks/useWindowDragging'
 import { isMobileDeviceActive } from '@/lib/mobile-device-status'
 import { tagLabel } from '@/lib/search-tags'
@@ -36,10 +36,11 @@ import HistorySidebarNavItem from './HistorySidebarNavItem'
 import HistorySidebarRail from './HistorySidebarRail'
 import HistorySidebarSection from './HistorySidebarSection'
 import { LibraryToggleButton } from './LibraryToggle'
+import SidebarStatusActions from './SidebarStatusActions'
 
 /** Shared Library sidebar of the History and Devices top-level pages
- * (HSidebar.dc.html). On macOS it is the window's left edge: it owns the
- * traffic-light strip and replaces the icon rail as top-level navigation. It can
+ * (HSidebar.dc.html). It is the window's left edge and its top-level
+ * navigation; on macOS its top strip also clears the traffic lights. It can
  * collapse to an icon column under a top band (toggle, ⌃⌘S); hovering the
  * collapsed toggle peeks the full sidebar over the content. In the compact
  * window tier it is collapsed and the toggle pins that overlay as a drawer.
@@ -50,16 +51,14 @@ function HistorySidebar(props: HistorySidebarProps) {
   const { context } = props
   const { t } = useTranslation()
   const navigate = useNavigate()
-  // On macOS the sidebar is the window's left edge and top-level navigation;
-  // on Windows/Linux the icon rail is, and the sidebar stays a Library panel.
-  const { libraryOwnsNavigation } = useSidebarSlot()
+  const { isMac } = usePlatform()
   const windowDragging = useWindowDragging()
   const chrome = useLibraryChrome()
-  const hidden = libraryOwnsNavigation && chrome.hidden
+  const hidden = chrome.hidden
   const { closeDrawer, drawerOpen, setLightsInContent } = chrome
   // Smart Views are out of scope this round; restore with the section below.
-  // const [smartViewsOpen, setSmartViewsOpen] = useState(libraryOwnsNavigation)
-  const [tagsOpen, setTagsOpen] = useState(libraryOwnsNavigation)
+  // const [smartViewsOpen, setSmartViewsOpen] = useState(true)
+  const [tagsOpen, setTagsOpen] = useState(true)
   const [devicesOpen, setDevicesOpen] = useState(context === 'devices')
 
   const spaceMembers = useAppSelector(state => state.devices.spaceMembers)
@@ -94,11 +93,10 @@ function HistorySidebar(props: HistorySidebarProps) {
     )
 
   // A section's empty hint (Tags now, Smart Views once they return).
-  const emptyHintClass = libraryOwnsNavigation
-    ? 'mx-1.5 rounded-lg border border-dashed border-border p-2.5 text-ui-caption text-muted-foreground'
-    : 'px-2.5 py-1.5 text-ui-caption text-muted-foreground/70'
+  const emptyHintClass =
+    'mx-1.5 rounded-lg border border-dashed border-border p-2.5 text-ui-caption text-muted-foreground'
 
-  // Collapsed, the traffic lights drop into the top band, level with the
+  // Collapsed, the macOS traffic lights drop into the top band, level with the
   // content header; expanded, they sit over the sidebar.
   useEffect(() => {
     setLightsInContent(hidden)
@@ -184,36 +182,24 @@ function HistorySidebar(props: HistorySidebarProps) {
   // `inline`: the sidebar column itself. `overlay`: the same panel floating
   // over the content under the top band, its toggle exactly over the rail's.
   const renderPanel = (variant: 'inline' | 'overlay') => (
-    <aside
-      className={cn(
-        'flex h-full shrink-0 flex-col',
-        !libraryOwnsNavigation
-          ? 'w-56 border-r border-border bg-muted/15 xl:w-60'
-          : variant === 'inline'
-            ? 'w-55 text-sidebar-foreground'
-            : 'w-55 text-sidebar-foreground'
-      )}
-    >
-      {libraryOwnsNavigation &&
-        (variant === 'inline' ? (
-          // Traffic-light strip; the toggle follows the lights on their row.
-          <div
-            data-tauri-drag-region
-            {...windowDragging}
-            className="flex h-11 shrink-0 items-start pt-2.5 pl-20"
-          >
-            <LibraryToggleButton />
-          </div>
-        ) : (
-          <div className="mb-1 mt-2.75 flex h-8.5 shrink-0 items-center pl-3">
-            <LibraryToggleButton shared={false} />
-          </div>
-        ))}
-      <ScrollArea className="min-h-0 flex-1">
-        <nav
-          aria-label={t('history.sidebar.library')}
-          className={cn('flex flex-col pb-3', libraryOwnsNavigation ? 'px-2.5' : 'px-2 pt-2')}
+    <aside className="flex h-full w-55 shrink-0 flex-col text-sidebar-foreground">
+      {variant === 'inline' ? (
+        // Top strip, draggable. On macOS it clears the traffic lights and the
+        // toggle follows them on their row.
+        <div
+          data-tauri-drag-region
+          {...windowDragging}
+          className={cn('flex h-11 shrink-0 items-start pt-2.5', isMac ? 'pl-20' : 'pl-3')}
         >
+          <LibraryToggleButton />
+        </div>
+      ) : (
+        <div className="mb-1 mt-2.75 flex h-8.5 shrink-0 items-center pl-3">
+          <LibraryToggleButton shared={false} />
+        </div>
+      )}
+      <ScrollArea className="min-h-0 flex-1">
+        <nav aria-label={t('history.sidebar.library')} className="flex flex-col px-2.5 pb-3">
           <HistorySidebarNavItem
             icon={Inbox}
             label={t('history.sidebar.allItems')}
@@ -298,7 +284,7 @@ function HistorySidebar(props: HistorySidebarProps) {
             open={devicesOpen}
             onOpenChange={setDevicesOpen}
             trailing={
-              context === 'history' && libraryOwnsNavigation ? (
+              context === 'history' ? (
                 <NavLink
                   to="/devices"
                   className="shrink-0 text-ui-caption font-medium text-primary hover:underline"
@@ -341,34 +327,22 @@ function HistorySidebar(props: HistorySidebarProps) {
         </nav>
       </ScrollArea>
 
-      <div
-        className={cn(
-          'flex items-center justify-between gap-2 py-2',
-          libraryOwnsNavigation ? 'px-2.5' : 'border-t border-border/50 px-3'
-        )}
-      >
+      <div className="flex items-center gap-1 px-2.5 pt-2 empty:hidden">
+        <SidebarStatusActions />
+      </div>
+      <div className="flex items-center justify-between gap-2 px-2.5 py-2">
         <NavLink
           to="/settings"
-          className={cn(
-            'flex min-w-0 items-center gap-2 rounded-md py-1 text-ui-body text-muted-foreground hover:text-foreground',
-            libraryOwnsNavigation
-              ? 'h-7.5 flex-1 gap-2.5 px-2.5 text-sidebar-foreground hover:bg-foreground/5'
-              : 'px-1.5'
-          )}
+          className="flex h-7.5 min-w-0 flex-1 items-center gap-2.5 rounded-md px-2.5 py-1 text-ui-body text-sidebar-foreground hover:bg-foreground/5"
         >
           <Settings className="size-3.5 shrink-0" aria-hidden="true" />
           <span className="truncate">{t('history.sidebar.settings')}</span>
         </NavLink>
-        {libraryOwnsNavigation ? (
-          <ThemeModeSwitch className="shrink-0" />
-        ) : (
-          <ThemeToggle className="size-7 shrink-0 rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground" />
-        )}
+        <DevProfileIndicator compact />
+        <ThemeModeSwitch className="shrink-0" />
       </div>
     </aside>
   )
-
-  if (!libraryOwnsNavigation) return renderPanel('inline')
 
   // The inline column. Its width eases between the full sidebar and the icon
   // column in step with the toggle's glide. The surface (background and the

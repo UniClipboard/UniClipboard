@@ -1,9 +1,8 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter } from 'react-router'
 import { updateDebugMode } from '@/api/daemon/diagnostics'
 import type { UpdateMetadata } from '@/api/updater'
-import Sidebar from '@/components/layout/Sidebar'
+import SidebarStatusActions from '@/components/history/sidebar/SidebarStatusActions'
 import { SettingContext } from '@/contexts/setting-context'
 import { UpdateContext, type UpdateContextType, type UpdateState } from '@/contexts/update-context'
 import { makeBaseSettings } from '@/test/fixtures/settings'
@@ -70,7 +69,7 @@ function buildUpdateValue(state: UpdateState): UpdateContextType {
   }
 }
 
-function renderSidebar(state: UpdateState, setting: Settings = baseSetting) {
+function renderActions(state: UpdateState, setting: Settings = baseSetting) {
   const reloadSetting = vi.fn().mockResolvedValue(undefined)
   return render(
     <SettingContext.Provider
@@ -97,94 +96,15 @@ function renderSidebar(state: UpdateState, setting: Settings = baseSetting) {
       }}
     >
       <UpdateContext.Provider value={buildUpdateValue(state)}>
-        <MemoryRouter>
-          <Sidebar />
-        </MemoryRouter>
+        <SidebarStatusActions />
       </UpdateContext.Provider>
     </SettingContext.Provider>
   )
 }
 
-function renderSidebarAt(pathname: string) {
-  return render(
-    <SettingContext.Provider
-      value={{
-        setting: baseSetting,
-        loading: false,
-        error: null,
-        reloadSetting: vi.fn(),
-        updateSetting: vi.fn(),
-        updateGeneralSetting: vi.fn(),
-        updateAutostart: vi.fn(),
-        updateSyncSetting: vi.fn(),
-        updateSecuritySetting: vi.fn(),
-        updateRetentionPolicy: vi.fn(),
-        updateKeyboardShortcuts: vi.fn(),
-        updateFileSyncSetting: vi.fn(),
-        updateNetworkSetting: vi.fn().mockResolvedValue({ restartRequired: false }),
-        customRelays: [],
-        relayLoading: false,
-        relayError: null,
-        reloadCustomRelays: vi.fn(),
-        mutateCustomRelay: vi.fn().mockResolvedValue({ relays: [], restartRequired: false }),
-        updateQuickPanelSetting: vi.fn().mockResolvedValue({ restartRequired: false }),
-      }}
-    >
-      <UpdateContext.Provider
-        value={buildUpdateValue({
-          phase: 'idle',
-          info: null,
-          downloaded: 0,
-          total: null,
-        })}
-      >
-        <MemoryRouter initialEntries={[pathname]}>
-          <Sidebar />
-        </MemoryRouter>
-      </UpdateContext.Provider>
-    </SettingContext.Provider>
-  )
-}
-
-describe('Sidebar update indicator', () => {
-  it('keeps the primary navigation highlight inside the active item', () => {
-    renderSidebarAt('/devices')
-
-    const activeLink = document.querySelector('a[href="/devices"]')
-    const activeHighlight = activeLink?.querySelector(':scope > div[aria-hidden]')
-    expect(activeHighlight).toHaveClass('absolute', 'inset-0', 'rounded-lg', 'bg-primary/10')
-    expect(activeHighlight).not.toHaveClass('transition-transform', 'will-change-transform')
-  })
-
-  it('keeps inactive navigation hover backgrounds rounded without transparent clipping', () => {
-    renderSidebarAt('/devices')
-
-    expect(document.querySelector('aside')).toHaveClass('bg-transparent')
-
-    const historyLink = document.querySelector('a[href="/history"]')
-    expect(historyLink).toHaveClass('rounded-lg', 'hover:bg-muted')
-    expect(historyLink).not.toHaveClass('overflow-hidden', 'transition-colors')
-    expect(historyLink?.firstElementChild).not.toHaveClass('transition-colors')
-  })
-
-  it('keeps navigation tooltips inside the transparent sidebar layer', async () => {
-    const user = userEvent.setup()
-    renderSidebarAt('/devices')
-
-    const sidebar = document.querySelector('aside')
-    const historyLink = document.querySelector('a[href="/history"]')
-    expect(sidebar).toBeInTheDocument()
-    expect(historyLink).toBeInTheDocument()
-
-    await user.hover(historyLink!)
-
-    await waitFor(() => {
-      expect(sidebar?.querySelector('[data-slot="tooltip-content"]')).toBeInTheDocument()
-    })
-  })
-
+describe('SidebarStatusActions', () => {
   it('shows the amber "available" icon when an update is available', async () => {
-    renderSidebar({
+    renderActions({
       phase: 'available',
       info: updateInfo,
       downloaded: 0,
@@ -196,7 +116,7 @@ describe('Sidebar update indicator', () => {
   })
 
   it('hides the icon when there is no update', () => {
-    renderSidebar({ phase: 'idle', info: null, downloaded: 0, total: null })
+    renderActions({ phase: 'idle', info: null, downloaded: 0, total: null })
 
     expect(screen.queryByLabelText(/update available/i)).not.toBeInTheDocument()
     expect(screen.queryByLabelText(/downloading update/i)).not.toBeInTheDocument()
@@ -204,7 +124,7 @@ describe('Sidebar update indicator', () => {
   })
 
   it('shows the "downloading" indicator with progress text when downloading', async () => {
-    renderSidebar({
+    renderActions({
       phase: 'downloading',
       info: updateInfo,
       downloaded: 512,
@@ -216,7 +136,7 @@ describe('Sidebar update indicator', () => {
   })
 
   it('shows the "downloading" indicator without percent when total is unknown', async () => {
-    renderSidebar({
+    renderActions({
       phase: 'downloading',
       info: updateInfo,
       downloaded: 512,
@@ -229,7 +149,7 @@ describe('Sidebar update indicator', () => {
   })
 
   it('shows the emerald "ready" indicator when the update has been downloaded', async () => {
-    renderSidebar({
+    renderActions({
       phase: 'ready',
       info: updateInfo,
       downloaded: 1024,
@@ -250,7 +170,7 @@ describe('Sidebar update indicator', () => {
       general: { ...baseSetting.general, debugMode: true },
     }
 
-    renderSidebar({ phase: 'idle', info: null, downloaded: 0, total: null }, debugSetting)
+    renderActions({ phase: 'idle', info: null, downloaded: 0, total: null }, debugSetting)
 
     await userEvent.click(screen.getByRole('button', { name: 'Turn off Debug mode' }))
 

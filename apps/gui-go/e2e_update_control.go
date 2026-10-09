@@ -29,6 +29,7 @@ import (
 //	invoke <label> <command> [<json>]  a host command through Invoke, the path the WebView takes
 //	shortcut-press <label> single|leader <a> <b>|second <b>  injected presses (no keyboard event)
 //	panel-js <label> <js>   run a script in the quick panel page
+//	window-frame-state <label> [window]  GTK's decorated/active/visible/size of a window, default main (Linux)
 //	layer-state <label>     the Layer Shell panel's state as GTK/libgtk-layer-shell report it, and the last placement (Linux)
 //	shortcut-state <label>  the registered global shortcuts next to the stored setting and the panel state
 //	modifier-script <label> <ms:sel:other ...>  drive the scripted keyboard of the modifier double-tap monitor
@@ -180,6 +181,14 @@ func (s *EvidenceService) runControlCommand(line string) {
 			detail["helperRunning"] = h.helper.Running()
 		}
 		_ = s.write(Step{Window: "app", Step: "control-state", OK: true, Detail: detail})
+	case "window-frame-state":
+		// window-frame-state <label> [window]: GTK's decorated/active/visible/size claim for a window (default main), Linux
+		fields := append(strings.Fields(arg), "", "")
+		label, name := fields[0], fields[1]
+		if name == "" {
+			name = "main"
+		}
+		_ = s.write(Step{Window: name, Step: "window-frame-state-" + label, OK: true, Detail: windowFrameDetail(h, name)})
 	case "layer-state":
 		_ = s.write(Step{Window: quickPanelWindowName, Step: "layer-state-" + arg, OK: true, Detail: layerStateDetail(h)})
 	case "panel-js":

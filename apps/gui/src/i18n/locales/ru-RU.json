@@ -186,18 +186,13 @@
   },
   "nav": {
     "dashboard": "Обзор",
-    "history": "История",
-    "devices": "Устройства",
     "settings": "Настройки",
     "updateAvailable": "Доступно обновление",
     "updateDownloading": "Загрузка обновления...",
     "updateDownloadingWithProgress": "Загрузка обновления... {{percent}}%",
     "updateInstalling": "Установка обновления...",
     "updateReady": "Обновление готово к установке",
-    "back": "Назад",
-    "feedback": "Обратная связь",
-    "collapseSidebar": "Свернуть боковую панель",
-    "expandSidebar": "Развернуть боковую панель"
+    "back": "Назад"
   },
   "debugBadge": {
     "title": "Режим отладки включён",
@@ -1154,7 +1149,6 @@
         "time": "Время",
         "extension": "Расширение"
       },
-      "noMatches": "Совпадений нет",
       "header": {
         "startingWith": "{{dimension}}, начинающиеся с «{{partial}}»",
         "all": "{{dimension}}",
@@ -1183,7 +1177,6 @@
       "moreFilters": "Показать ещё фильтры ({{count}})",
       "clearAll": "Очистить всё",
       "close": "Закрыть панель поиска",
-      "filterCategories": "Категории фильтров",
       "results_one": "{{count}} результат",
       "results_few": "{{count}} результата",
       "results_many": "{{count}} результатов",
@@ -1439,8 +1432,6 @@
     "actionBar": {
       "title": "История буфера обмена",
       "copy": "Копировать",
-      "favorite": "В избранное",
-      "unfavorite": "Убрать из избранного",
       "delete": "Удалить"
     },
     "notification": {
@@ -2307,24 +2298,6 @@
       "accept": "Принять",
       "close": "Закрыть",
       "retry": "Повторить"
-    }
-  },
-  "feedback": {
-    "modal": {
-      "title": "Отправить отзыв",
-      "description": "Ваши отзывы помогают нам улучшать UniClipboard. Опишите ниже свою проблему или предложение.",
-      "label": {
-        "content": "Текст отзыва",
-        "email": "Адрес эл. почты (необязательно)"
-      },
-      "placeholder": {
-        "content": "Введите ваш отзыв здесь...",
-        "email": "your@email.com"
-      },
-      "submit": "Отправить отзыв",
-      "useSavedEmail": "Использовать сохранённый адрес",
-      "success": "Отзыв успешно отправлен. Спасибо!",
-      "error": "Не удалось отправить отзыв. Повторите попытку позже."
     }
   },
   "lifecycle": {

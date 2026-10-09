@@ -182,18 +182,13 @@
   },
   "nav": {
     "dashboard": "Painel",
-    "history": "Histórico",
-    "devices": "Dispositivos",
     "settings": "Configurações",
     "updateAvailable": "Atualização disponível",
     "updateDownloading": "Baixando atualização...",
     "updateDownloadingWithProgress": "Baixando atualização... {{percent}}%",
     "updateInstalling": "Instalando atualização...",
     "updateReady": "Atualização pronta para instalar",
-    "back": "Voltar",
-    "feedback": "Feedback",
-    "collapseSidebar": "Recolher barra lateral",
-    "expandSidebar": "Expandir barra lateral"
+    "back": "Voltar"
   },
   "debugBadge": {
     "title": "O modo de depuração está ativado",
@@ -1150,7 +1145,6 @@
         "time": "Período",
         "extension": "Extensão"
       },
-      "noMatches": "Nenhum resultado",
       "header": {
         "startingWith": "{{dimension}} começando com “{{partial}}”",
         "all": "{{dimension}}",
@@ -1177,7 +1171,6 @@
       "moreFilters": "Mostrar mais {{count}} filtros",
       "clearAll": "Limpar tudo",
       "close": "Fechar painel de pesquisa",
-      "filterCategories": "Categorias de filtro",
       "results_one": "{{count}} resultado",
       "results_many": "{{count}} resultados",
       "results_other": "{{count}} resultados",
@@ -1430,8 +1423,6 @@
     "actionBar": {
       "title": "Histórico da área de transferência",
       "copy": "Copiar",
-      "favorite": "Favoritar",
-      "unfavorite": "Desfavoritar",
       "delete": "Excluir"
     },
     "notification": {
@@ -2293,24 +2284,6 @@
       "accept": "Aceitar",
       "close": "Fechar",
       "retry": "Tentar novamente"
-    }
-  },
-  "feedback": {
-    "modal": {
-      "title": "Enviar feedback",
-      "description": "Seu feedback nos ajuda a melhorar o UniClipboard. Descreva abaixo seu problema ou sugestão.",
-      "label": {
-        "content": "Conteúdo do feedback",
-        "email": "Endereço de e-mail (opcional)"
-      },
-      "placeholder": {
-        "content": "Digite seu feedback aqui...",
-        "email": "seu@email.com"
-      },
-      "submit": "Enviar feedback",
-      "useSavedEmail": "Usar e-mail salvo",
-      "success": "Feedback enviado com sucesso. Obrigado!",
-      "error": "Falha ao enviar o feedback. Tente novamente mais tarde."
     }
   },
   "lifecycle": {

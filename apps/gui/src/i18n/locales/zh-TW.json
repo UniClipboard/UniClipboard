@@ -182,18 +182,13 @@
   },
   "nav": {
     "dashboard": "儀表板",
-    "history": "歷程記錄",
-    "devices": "裝置管理",
     "settings": "設定",
     "updateAvailable": "有新版本",
     "updateDownloading": "正在下載更新...",
     "updateDownloadingWithProgress": "正在下載更新... {{percent}}%",
     "updateInstalling": "正在安裝更新...",
     "updateReady": "更新已就緒，可安裝",
-    "back": "返回",
-    "feedback": "意見回饋",
-    "collapseSidebar": "收起側欄",
-    "expandSidebar": "展開側欄"
+    "back": "返回"
   },
   "debugBadge": {
     "title": "Debug 模式已開啓",
@@ -1147,7 +1142,6 @@
         "time": "時間",
         "extension": "擴展名"
       },
-      "noMatches": "無匹配項",
       "header": {
         "startingWith": "以「{{partial}}」開頭的{{dimension}}",
         "all": "{{dimension}}",
@@ -1170,7 +1164,6 @@
       "moreFilters": "展開其餘 {{count}} 個篩選",
       "clearAll": "清除全部",
       "close": "關閉搜尋面板",
-      "filterCategories": "篩選類別",
       "results_other": "{{count}} 條結果",
       "done": "完成"
     },
@@ -1421,8 +1414,6 @@
     "actionBar": {
       "title": "剪貼簿歷史",
       "copy": "複製",
-      "favorite": "我的最愛",
-      "unfavorite": "取消我的最愛",
       "delete": "刪除"
     },
     "notification": {
@@ -2278,24 +2269,6 @@
       "accept": "接受",
       "close": "關閉",
       "retry": "重試"
-    }
-  },
-  "feedback": {
-    "modal": {
-      "title": "發送意見回饋",
-      "description": "您的意見回饋將幫助我們改進 UniClipboard。請在下方描述您的問題或建議。",
-      "label": {
-        "content": "意見回饋內容",
-        "email": "電子郵箱（選填）"
-      },
-      "placeholder": {
-        "content": "請輸入您的意見回饋內容...",
-        "email": "your@email.com"
-      },
-      "submit": "提交意見回饋",
-      "useSavedEmail": "使用已儲存郵箱",
-      "success": "意見回饋發送成功，感謝您的支持！",
-      "error": "意見回饋發送失敗，請稍後重試。"
     }
   },
   "lifecycle": {

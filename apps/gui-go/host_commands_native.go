@@ -130,6 +130,21 @@ func init() {
 			h.tray.setLanguage(language)
 			return nil, nil
 		},
+		// The page owns the frame preference (custom controls drawn by the page, or the system frame) and reports it here
+		// as Tauri's set_decorations did. Without this the main window keeps the system frame next to the page's own controls.
+		"set_window_decorations": func(_ context.Context, h *HostService, args commandArgs) (any, error) {
+			var decorations bool
+			if err := args.decode("decorations", &decorations); err != nil {
+				return nil, err
+			}
+			if runtime.GOOS == "darwin" {
+				return nil, nil // macOS keeps its hidden-inset title bar
+			}
+			if w, ok := h.app.Window.GetByName("main"); ok {
+				w.SetFrameless(!decorations)
+			}
+			return nil, nil
+		},
 		"restart_app": func(_ context.Context, h *HostService, _ commandArgs) (any, error) {
 			go h.fullRestart()
 			return nil, nil

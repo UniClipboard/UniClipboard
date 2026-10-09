@@ -13,15 +13,9 @@ type AppContentProps = {
   fullTitleBar: ReactNode
   setupGate: SetupGate
   onSetupComplete: () => void
-  sidebarTitle: ReactNode
 }
 
-export function AppContent({
-  fullTitleBar,
-  setupGate,
-  onSetupComplete,
-  sidebarTitle,
-}: AppContentProps) {
+export function AppContent({ fullTitleBar, setupGate, onSetupComplete }: AppContentProps) {
   const bootstrap = useAppBootstrap(setupGate !== 'ready')
   const recovery = useProfileRecovery(bootstrap.daemonBootstrapReady)
   const contentLock = useContentUnlocked(
@@ -70,7 +64,6 @@ export function AppContent({
       hasStartupTask={appState.hasStartupTask}
       onSetupComplete={onSetupComplete}
       recovery={recovery}
-      sidebarTitle={sidebarTitle}
       view={view}
     />
   )

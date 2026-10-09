@@ -12,14 +12,14 @@ import HistoryPage from '@/pages/HistoryPage'
 import SettingsPage from '@/pages/SettingsPage'
 import { AuthenticatedLayout } from './AuthenticatedLayout'
 
-type AuthenticatedRoutesProps = { fullTitleBar: ReactNode; sidebarTitle: ReactNode }
+type AuthenticatedRoutesProps = { fullTitleBar: ReactNode }
 
-export function AuthenticatedRoutes({ fullTitleBar, sidebarTitle }: AuthenticatedRoutesProps) {
+export function AuthenticatedRoutes({ fullTitleBar }: AuthenticatedRoutesProps) {
   return (
     <DeviceTrustProvider enabled>
       <GlobalShortcuts />
       <DiagnosticsRoutes>
-        <Route element={<AuthenticatedLayout sidebarTitle={sidebarTitle} />}>
+        <Route element={<AuthenticatedLayout />}>
           <Route path="/" element={<Navigate to="/history" replace />} />
           <Route path="/history" element={<HistoryPage />} />
           <Route path="/devices" element={<DevicesPage />} />

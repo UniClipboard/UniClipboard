@@ -332,6 +332,8 @@ def main():
         if saved_clip is not None:
             set_clipboard_text(saved_clip)
         (out / 'windows-assertions.json').write_text(json.dumps(results, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
+        if not results['passed']:  # keep the daemon/host logs and data layout of a failed run as evidence
+            shutil.copytree(sandbox, out / 'sandbox-failed', ignore=shutil.ignore_patterns('*.exe'), dirs_exist_ok=True)
         if sandbox.name.startswith('uc-gui-go-') and sandbox.parent == Path(tempfile.gettempdir()):
             shutil.rmtree(sandbox, ignore_errors=True)
     print(json.dumps({'passed': results['passed']}))

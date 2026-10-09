@@ -6,33 +6,15 @@ on:
     branches:
       - main
     types: [opened, synchronize, reopened]
-    paths:
-      - 'crates/**'
-      - 'apps/**'
-      - 'tools/**'
-      - 'packages/**'
-      - 'tests/e2e/**'
-      - 'vendor/**'
-      - 'Cargo.toml'
-      - 'Cargo.lock'
-      - 'rust-toolchain.toml'
-      - 'clippy.toml'
-      - 'package.json'
-      - 'bun.lock'
-      - '.oxlintrc.json'
-      - '.oxfmtrc.json'
-      - '.github/docker/build-bookworm.Dockerfile'
-      - '.github/workflows/pr-check.yml'
-      - '.github/workflows/membership-e2e.yml'
-      - 'scripts/ci/check-gui-go.sh'
-      - 'scripts/e2e/run-membership-matrix.sh'
-      - 'scripts/architecture/**'
 
 permissions:
   contents: read
   packages: read
   pull-requests: read
 
+# 本 workflow 对每个目标为 main 的 PR 都运行（没有 workflow 级 paths）：workflow 级 paths 不命中时检查根本不会出现，
+# 若把某个作业设为必需检查，这样的 PR 会一直 pending。路径判断放在 changes 作业里，不相关的 PR 上各作业显示为 Skipped，
+# 这对必需检查算通过。建议的必需检查名称：「Go Host Compile Check」（job gui-go）。
 # 拆 frontend / frontend-tests / rust 三个 job：
 # - changes: 检测 PR 是否改到 Rust 相关路径，供 rust job 判断是否需要运行
 # - frontend: bun install + tsc + vite build (类型检查 + 产物构建)
@@ -50,6 +32,7 @@ jobs:
     outputs:
       rust: ${{ steps.filter.outputs.rust }}
       gui_go: ${{ steps.filter.outputs.gui_go }}
+      code: ${{ steps.filter.outputs.code }}
 
     steps:
       - name: Detect Rust changes
@@ -57,6 +40,27 @@ jobs:
         uses: dorny/paths-filter@v4
         with:
           filters: |
+            code:
+              - 'crates/**'
+              - 'apps/**'
+              - 'tools/**'
+              - 'packages/**'
+              - 'tests/e2e/**'
+              - 'vendor/**'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - 'rust-toolchain.toml'
+              - 'clippy.toml'
+              - 'package.json'
+              - 'bun.lock'
+              - '.oxlintrc.json'
+              - '.oxfmtrc.json'
+              - '.github/docker/build-bookworm.Dockerfile'
+              - '.github/workflows/pr-check.yml'
+              - '.github/workflows/membership-e2e.yml'
+              - 'scripts/ci/check-gui-go.sh'
+              - 'scripts/e2e/run-membership-matrix.sh'
+              - 'scripts/architecture/**'
             gui_go:
               - 'apps/gui-go/**'
               - 'apps/gui/src/**'
@@ -85,6 +89,8 @@ jobs:
 
   frontend:
     name: Frontend Type Check
+    needs: changes
+    if: ${{ needs.changes.outputs.code == 'true' }}
     runs-on: ubuntu-latest
 
     steps:
@@ -133,6 +139,8 @@ jobs:
 
   frontend-tests:
     name: Frontend Tests
+    needs: changes
+    if: ${{ needs.changes.outputs.code == 'true' }}
     runs-on: ubuntu-latest
 
     steps:

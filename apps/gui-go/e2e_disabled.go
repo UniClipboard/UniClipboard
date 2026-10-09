@@ -20,6 +20,8 @@ func e2eSecondInstance(*HostService, application.SecondInstanceData, secondLaunc
 
 func e2eBootstrapped(*HostService, bool) {}
 
+func e2eNotificationResponse(string) {}
+
 // scriptedKeyState: normal builds only read the real keyboard.
 func scriptedKeyState() bool { return false }
 

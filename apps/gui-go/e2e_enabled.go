@@ -275,6 +275,11 @@ func e2eBootstrapped(h *HostService, replayed bool) {
 		"pid": os.Getpid(), "replayedHeldShow": replayed, "mainExists": mainExists}})
 }
 
+// e2eNotificationResponse records the click callback of a native notification (the id the toast carried).
+func e2eNotificationResponse(id string) {
+	_ = evidenceWriter.write(Step{Window: "app", Step: "notification-click", OK: true, Detail: map[string]any{"pid": os.Getpid(), "id": id}})
+}
+
 // e2eTrayLanguage records every tray language call, whoever made it (the test driver or the frontend's own
 // settings effect), so a label that did not change can be attributed from the evidence.
 func e2eTrayLanguage(language string) {

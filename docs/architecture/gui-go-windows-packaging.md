@@ -127,36 +127,68 @@ CLI 压缩包 package-cli.sh 以已签 uniclip.exe/uniclipd.exe 为输入（REQU
 
 1. GitHub 仓库建立 Environment `signpath-test`，在其中添加 secret `SIGNPATH_API_TOKEN`（只通过 Environment secret 提供）。
 2. SignPath 项目 `UniClipboard` 已关联 GitHub 受信构建系统（OSS 要求托管 runner），策略 `test-signing` 允许来自该仓库该分支的请求。
-3. 在 SignPath 中确认 artifact configuration `initial` 与下面的候选目录结构兼容；如不兼容，使用下面的候选配置另建一份（不要修改现有策略）。
+3. `initial` 只含 `<pe-file><authenticode-sign /></pe-file>`（单个 PE 文件），与 zip 不兼容（运行 37870716620 的 SignPath 错误：The file does not correspond to the specified file type）。因此另建两份配置 `go-stage1` 与 `go-stage2-setup`（不修改 `initial` 和现有策略），内容见下。
 4. test 证书指纹已固定在工作流中（`F953D990…F873`）；如证书更换，设置同名仓库变量覆盖（不要用 secret，值会被掩码）。
 5. 组织 ID `080cee5f-8b26-476f-9e04-dd6571b926bd` 不是机密，写在 `build.yml` 作业环境中。
 
-阶段 1 的 zip 根目录：`shipped/`、`newer/`（各含 `UniClipboard.exe`、`uniclipd.exe`、`uninstall.exe`）与 `cli/`（`uniclip.exe`、`uniclipd.exe`）。阶段 2 的 zip 根目录：两个 `*-setup.exe`。
+阶段 1 的 zip 根目录：`shipped/`、`newer/`（各含 `UniClipboard.exe`、`uniclipd.exe`、`uninstall.exe`）与 `cli/`（`uniclip.exe`、`uniclipd.exe`）。阶段 2 的 zip 根目录：两个 setup，`UniClipboard_<版本>_<架构>-setup.exe` 与 `ACCEPTANCE-UniClipboard_999.0.0_<架构>-setup.exe`。
+
+配置依据官方语法参考 <https://docs.signpath.io/artifact-configuration/syntax>（2026-10-09 读取），以下是该页面明确写出的规则：
+
+- `<pe-file-set>` 含若干 `<include path="..."/>` 和一个 `<for-each>`，`<authenticode-sign/>` 放在 `<for-each>` 内；页面示例只在 `<include>` 上使用 `path` 属性。
+- 通配符：`max-matches`、`min-matches` 默认都是 1，“wildcard expressions without max-matches or min-matches must match exactly one file”。运行 37872996277 的错误 “Expected path to match exactly 1 item, but found 3” 与此一致（`<include path="*.exe"/>` 命中三个文件）。
+- 页面没有写明 `<include>` 是否接受 `min-matches`/`max-matches`，所以本文档**不使用**这两个属性，也不用 `*.exe` 之类放宽的通配符；官方只在带 `path` 的元素本身（例如 `<pe-file path="myapp.*" max-matches="unbounded">`）上给出了示例。
+- 采用精确文件名（默认基数 1）：缺少任何一个文件、或同名文件出现多个，SignPath 都会失败；这与流水线内的“发送集合 = 返回集合”检查互补，不会放宽匹配来掩盖缺失或多余的文件。
+
+`go-stage1`（阶段 1，zip 根目录为 artifact）：
 
 ```xml
-<!-- candidate artifact configuration for stage 1 (the zip root is the artifact) -->
+<?xml version="1.0" encoding="utf-8" ?>
 <artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
   <zip-file>
-    <directory path="shipped"><pe-file-set><include path="*.exe" min-matches="1" max-matches="unbounded" /><for-each><authenticode-sign /></for-each></pe-file-set></directory>
-    <directory path="newer"><pe-file-set><include path="*.exe" min-matches="1" max-matches="unbounded" /><for-each><authenticode-sign /></for-each></pe-file-set></directory>
-    <directory path="cli"><pe-file-set><include path="*.exe" min-matches="1" max-matches="unbounded" /><for-each><authenticode-sign /></for-each></pe-file-set></directory>
+    <directory path="shipped">
+      <pe-file-set>
+        <include path="UniClipboard.exe" />
+        <include path="uniclipd.exe" />
+        <include path="uninstall.exe" />
+        <for-each><authenticode-sign /></for-each>
+      </pe-file-set>
+    </directory>
+    <directory path="newer">
+      <pe-file-set>
+        <include path="UniClipboard.exe" />
+        <include path="uniclipd.exe" />
+        <include path="uninstall.exe" />
+        <for-each><authenticode-sign /></for-each>
+      </pe-file-set>
+    </directory>
+    <directory path="cli">
+      <pe-file-set>
+        <include path="uniclip.exe" />
+        <include path="uniclipd.exe" />
+        <for-each><authenticode-sign /></for-each>
+      </pe-file-set>
+    </directory>
   </zip-file>
 </artifact-configuration>
 ```
 
+`go-stage2-setup`（阶段 2）：两个 `include` 各自按默认基数 1 匹配，第一个模式以 `UniClipboard_` 开头，不会匹配带 `ACCEPTANCE-` 前缀的文件：
+
 ```xml
-<!-- candidate artifact configuration for stage 2 -->
+<?xml version="1.0" encoding="utf-8" ?>
 <artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
   <zip-file>
     <pe-file-set>
-      <include path="*-setup.exe" min-matches="2" max-matches="2" />
+      <include path="UniClipboard_*-setup.exe" />
+      <include path="ACCEPTANCE-UniClipboard_*-setup.exe" />
       <for-each><authenticode-sign /></for-each>
     </pe-file-set>
   </zip-file>
 </artifact-configuration>
 ```
 
-同一个 `initial` 配置通常无法同时适配两个不同结构；工作流用环境变量 `SIGNPATH_ARTIFACT_CONFIGURATION_SLUG` 指定阶段 1，阶段 2 请求使用环境变量 `SIGNPATH_SETUP_ARTIFACT_CONFIGURATION_SLUG`（默认等于前者），用户确认配置后再填写。
+工作流用 `SIGNPATH_ARTIFACT_CONFIGURATION_SLUG`（阶段 1，`go-stage1`）与 `SIGNPATH_SETUP_ARTIFACT_CONFIGURATION_SLUG`（阶段 2，`go-stage2-setup`）。这些 XML 仍需用户在 SignPath 中保存并确认；保存与运行结果之前，不视为已验证。
 
 ## 验收状态（已执行）
 

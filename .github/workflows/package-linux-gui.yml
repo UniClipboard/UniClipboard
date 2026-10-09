@@ -226,6 +226,31 @@ jobs:
           apps/gui-go/e2e/linux/package_acceptance.sh "$RUNNER_TEMP/accept" \
             --release-appimage "$(ls "$RUNNER_TEMP"/upload/UniClipboard_*.AppImage)" --release-manifest "$RUNNER_TEMP/out/packages/package-manifest.json"
 
+      - name: Observe the runtime library inventory on the floor and a newer distribution
+        # Starts the shipped AppImage on each clean host with LD_DEBUG, classifies every mapped library (GUI, WebKit processes, daemon) as bundled
+        # or host-owned and runs appimage_content_check.py --runtime-inventory against the extracted image. The packaging image only supplies python3 and readelf.
+        env:
+          UC_ANALYSIS_IMAGE: ${{ env.UC_LINUX_IMAGE }}
+        run: |
+          for host in floor newer; do
+            apps/gui-go/e2e/linux/run_runtime_inventory.sh "$RUNNER_TEMP/inventory-$host" "$(ls "$RUNNER_TEMP"/upload/UniClipboard_*.AppImage)" \
+              "$RUNNER_TEMP/out/packages/package-manifest.json" "uc-clean-host:$host"
+          done
+
+      - name: Upload the runtime library inventory
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: linux-gui-inventory-${{ matrix.arch }}
+          path: |
+            ${{ runner.temp }}/inventory-*/runtime-inventory.json
+            ${{ runner.temp }}/inventory-*/content-check.json
+            ${{ runner.temp }}/inventory-*/host.txt
+            ${{ runner.temp }}/inventory-*/*.log
+            ${{ runner.temp }}/inventory-*/*/observation.json
+          if-no-files-found: warn
+          retention-days: 14
+
       - name: Gather the acceptance results
         if: always()
         # The acceptance containers write as root with 0600 state files, so the export reads with sudo, but only an allowlist of report, log,

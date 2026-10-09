@@ -129,6 +129,16 @@ jobs:
       - name: Refresh Cargo.lock for workspace members
         run: cargo update --workspace
 
+      # The Go host compares its generated build info with the daemon's reported version and refuses to start against a daemon of another
+      # version, and `scripts/ci/check-gui-go.sh` fails on a stale copy. The generator derives it from Cargo.toml, so the bump must regenerate it.
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: packages/desktop-host-go/go.mod
+
+      - name: Regenerate the Go build info
+        run: (cd packages/desktop-host-go && go generate ./buildinfo)
+
       - name: Generate changelog skeleton
         run: |
           VERSION="${{ steps.version.outputs.version }}"
@@ -155,7 +165,7 @@ jobs:
           VERSION="${{ steps.version.outputs.version }}"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add package.json apps/gui-go/app.json Cargo.toml Cargo.lock docs/changelog/
+          git add package.json apps/gui-go/app.json Cargo.toml Cargo.lock packages/desktop-host-go/buildinfo/buildinfo.go docs/changelog/
           git commit -m "chore: bump version to ${VERSION}"
 
       - name: Render Codex changelog prompt
@@ -237,7 +247,7 @@ jobs:
           This PR prepares the release of v${VERSION} (base: \`${BASE_BRANCH}\`).
 
           ### Changes
-          - Version bumped to ${VERSION} in package.json, apps/gui-go/app.json, Cargo.toml, Cargo.lock
+          - Version bumped to ${VERSION} in package.json, apps/gui-go/app.json, Cargo.toml, Cargo.lock, packages/desktop-host-go/buildinfo/buildinfo.go
           - Changelog generated at docs/changelog/${VERSION}.md
 
           ### What happens when this PR is merged

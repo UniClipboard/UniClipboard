@@ -35,7 +35,8 @@ def serve(directory, stats):
 
         def copyfile(self, source, outputfile):
             if not self.path.endswith('update.app.tar.gz'):
-                return super().copyfile(source, outputfile)
+                super().copyfile(source, outputfile)
+                return
             stats['artifactRequests'] += 1
             slow = stats['artifactRequests'] == 1
             try:

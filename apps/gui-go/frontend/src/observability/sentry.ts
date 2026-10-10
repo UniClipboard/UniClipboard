@@ -9,6 +9,7 @@ import {
   useLocation,
   useNavigationType,
 } from 'react-router'
+import { detectPlatformInfo } from '@/lib/platform'
 import { redactSensitiveArgs } from '@/observability/redaction'
 import type {
   DiagnosticBreadcrumb,
@@ -119,18 +120,6 @@ function makeTelemetryGatedTransport(
   }
 }
 
-const getTauriPlatform = (): string => {
-  if (typeof window === 'undefined' || !('__TAURI__' in window)) {
-    return 'unknown'
-  }
-
-  const tauriWindow = window as typeof window & {
-    __TAURI__?: { platform?: string }
-  }
-
-  return tauriWindow.__TAURI__?.platform ?? 'unknown'
-}
-
 export function initSentry(): void {
   if (!sentryEnabled) {
     return
@@ -160,6 +149,7 @@ export function initSentry(): void {
     return breadcrumb
   }
 
+  const platform = detectPlatformInfo()
   Sentry.init({
     dsn: import.meta.env.VITE_SENTRY_DSN,
     transport: makeTelemetryGatedTransport,
@@ -207,7 +197,13 @@ export function initSentry(): void {
     },
     initialScope: {
       tags: {
-        platform: getTauriPlatform(),
+        platform: platform.isMac
+          ? 'macos'
+          : platform.isWindows
+            ? 'windows'
+            : platform.isLinux
+              ? 'linux'
+              : 'unknown',
       },
     },
   })

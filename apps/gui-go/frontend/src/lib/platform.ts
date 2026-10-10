@@ -8,7 +8,6 @@ export interface PlatformInfo {
 interface PlatformProbe {
   userAgent?: string
   platform?: string
-  tauriPlatform?: string
   isDesktopHost?: boolean
 }
 
@@ -19,10 +18,6 @@ const isDesktopHostEnv = (): boolean =>
   Boolean((window as unknown as { __UC_DESKTOP_HOST__?: unknown }).__UC_DESKTOP_HOST__)
 
 const readPlatformProbe = (): PlatformProbe => {
-  const tauriWindow =
-    typeof window === 'undefined'
-      ? undefined
-      : (window as unknown as { __TAURI__?: { platform?: string } })
   const nav =
     typeof navigator === 'undefined'
       ? undefined
@@ -31,7 +26,6 @@ const readPlatformProbe = (): PlatformProbe => {
   return {
     userAgent: nav?.userAgent,
     platform: nav?.userAgentData?.platform ?? nav?.platform,
-    tauriPlatform: tauriWindow?.__TAURI__?.platform,
     isDesktopHost: isDesktopHostEnv(),
   }
 }
@@ -39,21 +33,13 @@ const readPlatformProbe = (): PlatformProbe => {
 export const detectPlatformInfo = (probe: PlatformProbe = readPlatformProbe()): PlatformInfo => {
   const userAgent = normalize(probe.userAgent)
   const platform = normalize(probe.platform)
-  const tauriPlatform = normalize(probe.tauriPlatform)
   const isAndroid = userAgent.includes('android')
-  const isWindows =
-    userAgent.includes('windows') || platform.includes('win') || tauriPlatform === 'windows'
+  const isWindows = userAgent.includes('windows') || platform.includes('win')
   const isMac =
-    userAgent.includes('macintosh') ||
-    userAgent.includes('mac os') ||
-    platform.includes('mac') ||
-    tauriPlatform === 'macos'
+    userAgent.includes('macintosh') || userAgent.includes('mac os') || platform.includes('mac')
   const isLinux =
     !isAndroid &&
-    (userAgent.includes('linux') ||
-      platform.includes('linux') ||
-      platform.includes('x11') ||
-      tauriPlatform === 'linux')
+    (userAgent.includes('linux') || platform.includes('linux') || platform.includes('x11'))
 
   return {
     isWindows,

@@ -31,6 +31,8 @@ const RETIRED_TOOLING = [
   'third_party/tao',
   'tauri-build',
   '@tauri-apps/',
+  '__TAURI_INTERNALS__',
+  '__TAURI__',
   'tauri-cli',
   'prepare-sidecars',
   'prepare-linux-bundle',

@@ -246,7 +246,6 @@ impl LogProfile {
                 directives.push("uc_daemon_client=debug".to_string());
                 directives.push("uc_daemon_local=debug".to_string());
                 directives.push("uc_daemon_process=debug".to_string());
-                directives.push("uc_desktop=debug".to_string());
                 directives.push("uc_tauri=debug".to_string());
                 directives.push("uc_dev_cli=debug".to_string());
             }

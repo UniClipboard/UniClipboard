@@ -21,5 +21,12 @@ utoipa = { version = "4", features = ["uuid", "chrono", "url"] }
 # downgrade guard (ADR-008 P5-L L2). semver is a leaf pure-Rust dep — it does
 # NOT pull iroh/diesel, so it keeps this contract crate client-safe.
 semver = "1"
+
+[dev-dependencies]
+# Used by tests/consumer_dependency_firewall.rs, the workspace-wide guard that desktop consumers
+# depend on uc-engine instead of the core internals.
+cargo_metadata = "0.19.2"
+syn = { version = "2", features = ["full", "visit"] }
+
 [lints]
 workspace = true

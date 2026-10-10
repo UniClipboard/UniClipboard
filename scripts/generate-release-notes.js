@@ -414,7 +414,11 @@ export function generateReleaseNotes(options) {
         englishExists,
         chineseExists,
       }),
-      IS_PRERELEASE_WARNING: buildPrereleaseWarning(options.isPrerelease, options.channel, options.windowsUnsigned),
+      IS_PRERELEASE_WARNING: buildPrereleaseWarning(
+        options.isPrerelease,
+        options.channel,
+        options.windowsUnsigned
+      ),
       INSTALLER_TABLE: installerTable,
       CLI_INSTALLER_TABLE: cliInstallerTable,
       NEW_CONTRIBUTORS_SECTION: buildNewContributorsSection(options.generatedNotesFile),

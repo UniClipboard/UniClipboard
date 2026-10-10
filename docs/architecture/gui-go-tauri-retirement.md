@@ -165,8 +165,8 @@ React 前端的源码、资源、测试、浏览器夹具、`package.json`、Vit
   `build.sh` 以 `--debug` 调用并复制这次 staging 的两个文件到 app 同级。
   生产 packager 只消费指定架构的 release sidecar，并保留现有 provenance 校验。
   本地 debug bundle 不作为 release sidecar 验收；不从其他线程复制旧产物。
-- **宿主观测决策**：Go 宿主不引入独立 Sentry/OTLP SDK，也不恢复旧 OTLP 管线（Rust 当前
-  已改用 Sentry Logs）。Go 更新分析事件继续经 daemon `/analytics/capture` 发送，由 daemon
+- **宿主观测决策**：Go 宿主不引入独立 Sentry/OTLP SDK，也不恢复旧 Desktop OTLP 管线（`uc-bootstrap` 当前使用 Sentry Logs；Engine 依赖图仍
+  包含 OTLP，不能由 Go SDK 不存在推断 daemon 的所有导出行为）。Go 更新分析事件继续经 daemon `/analytics/capture` 发送，由 daemon
   使用情况统计同意开关控制；WebView Sentry 有 transport 级遥测同意门禁，启动默认关闭。
   Go `log.Printf` 和 panic 当前仍是 stderr，端到端脚本把它保存为 GUI 工件；这不是应用内的
   每日 `uniclipboard-gui.json.<date>` 持久日志，也不保证 Go 崩溃可在产品诊断 ZIP 取到。
@@ -196,7 +196,7 @@ React 前端的源码、资源、测试、浏览器夹具、`package.json`、Vit
 | `commands/startup.rs` | 4 | 部分替代 | `startup_run.py` 验证静默/轻量/正常启动；`single_instance_run.py` 验证启动中挂起显示；新版 daemon 拒绝分类与引导失败快照需额外故障注入。 |
 | `commands/storage.rs` | 1 | 部分替代 | `file_ops_run.py` 验证保存字节与安全文件名；恶意 basename 全矩阵未确认，不视作全覆盖。 |
 | `commands/updater.rs` | 11 | 部分替代 | `updater_signatures_run.py` 和 `update_manifest_run.py` 验证真实下载/签名与清单；`update_wake_run.py` 断言失败分类/事件顺序。旧 Rust DTO 编码 dropped，未知渠道/全部分类仍有缺口。 |
-| `desktop_theme/omarchy/tests.rs` | 6 | 部分替代 | `linux_xvfb_run.py` 与 `linux_wayland_run.py` 使用脚本化 Omarchy/Hyprland 环境；所有调色板语义、损坏内容脱敏、目录替换监听未逐项证实。 |
+| `desktop_theme/omarchy/tests.rs` | 6 | 缺口 | `host_contract_run.py` 只断言非 Omarchy 环境返回不可用；脚本化 Hyprland 不能证明 Omarchy 调色板。调色板语义、损坏内容脱敏和目录替换监听没有等价验收。 |
 | `desktop_theme/preferences.rs` | 2 | 缺口 | 没有证实持久化主题损坏与写入失败的端到端路径；不能以主题 API 存在替代。 |
 | `lightweight.rs` | 9 | 部分替代 | `startup_run.py` 断言轻量冷启 GUI 退出/daemon 保留与再开可见；`run.py` 两轮验证 keep/full 退出与 daemon 生命周期；全部旧退出真值表未覆盖。 |
 | `main_window.rs` | 16 | dropped/部分替代 | 旧 Tauri 的两阶段 frame/page readiness 与窗口代际测试随实现退役；Go 由宿主直接显示，`startup_run.py`/`single_instance_run.py` 验证可见性和早到请求。超时/销毁竞争无等价故障注入。 |

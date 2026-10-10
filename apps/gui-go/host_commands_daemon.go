@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/UniClipboard/UniClipboard/apps/gui-go/internal/hostapi"
 	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/buildinfo"
 	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/daemonclient"
 )
@@ -54,36 +55,12 @@ func init() {
 				"developmentMode": os.Getenv("UNICLIPBOARD_ENV") == "development",
 			}, nil
 		},
-		"get_content_unlocked": func(ctx context.Context, h *HostService, _ commandArgs) (any, error) {
-			var status struct {
-				Unlocked bool `json:"unlocked"`
-			}
-			if err := h.client.Get(ctx, "/content-lock", &status); err != nil {
-				return nil, internalError(err)
-			}
-			return status.Unlocked, nil
-		},
 		"get_profile_recovery": func(ctx context.Context, h *HostService, _ commandArgs) (any, error) {
 			var out json.RawMessage
 			if err := h.client.Get(ctx, "/encryption/recovery", &out); err != nil {
 				return nil, internalError(err)
 			}
 			return out, nil
-		},
-		"unlock_content": func(ctx context.Context, h *HostService, args commandArgs) (any, error) {
-			var request struct {
-				Passphrase string `json:"passphrase"`
-			}
-			if err := args.decode("request", &request); err != nil {
-				return nil, err
-			}
-			err := h.client.Enveloped(ctx, daemonclient.Request{Method: http.MethodPost, Path: "/content-lock/unlock", JSON: map[string]string{"passphrase": request.Passphrase}}, nil)
-			if err != nil {
-				// Only the stable code crosses this boundary; server text may contain private data.
-				return nil, codeError{Code: contentUnlockCode(daemonclient.ErrorCode(err))}
-			}
-			h.emit(contentLockChangedEvent, nil)
-			return nil, nil
 		},
 		"unlock_content_from_keyring": func(ctx context.Context, h *HostService, _ commandArgs) (any, error) {
 			if keyringUnlockDenied() {
@@ -103,19 +80,6 @@ func init() {
 	})
 }
 
-var contentUnlockCodes = map[string]bool{
-	"WRONG_PASSPHRASE": true, "CORRUPTED_KEY_MATERIAL": true, "SETUP_NOT_COMPLETED": true,
-	"SPACE_NOT_INITIALIZED": true, "PROFILE_RECOVERY_REQUIRED": true, "PROFILE_RECOVERY_PARTIAL": true,
-	"PROFILE_RECOVERY_UNSUPPORTED": true, "PROFILE_RECOVERY_PERSISTENCE_FAILED": true,
-}
-
-func contentUnlockCode(code string) string {
-	if contentUnlockCodes[code] {
-		return code
-	}
-	return "INTERNAL"
-}
-
 func (h *HostService) deviceID(ctx context.Context) (string, error) {
 	var me struct {
 		PeerID string `json:"peerId"`
@@ -124,4 +88,35 @@ func (h *HostService) deviceID(ctx context.Context) (string, error) {
 		return "", internalError(err)
 	}
 	return me.PeerID, nil
+}
+
+// GetContentUnlocked reports whether the daemon lets this GUI show content right now.
+func (h *HostService) GetContentUnlocked(ctx context.Context) (bool, error) {
+	ctx, cancel := commandContext(ctx, "get_content_unlocked")
+	defer cancel()
+	var status struct {
+		Unlocked bool `json:"unlocked"`
+	}
+	if err := h.client.Get(ctx, "/content-lock", &status); err != nil {
+		return false, hostapi.Internal(err)
+	}
+	return status.Unlocked, nil
+}
+
+// ContentUnlockRequest is the passphrase submitted to unlock content.
+type ContentUnlockRequest struct {
+	Passphrase string `json:"passphrase"`
+}
+
+// UnlockContent unlocks content with the user's passphrase. It rejects with a hostapi.UnlockError: only the stable
+// code crosses the bridge, because the daemon's text may contain private data.
+func (h *HostService) UnlockContent(ctx context.Context, request ContentUnlockRequest) error {
+	ctx, cancel := commandContext(ctx, "unlock_content")
+	defer cancel()
+	err := h.client.Enveloped(ctx, daemonclient.Request{Method: http.MethodPost, Path: "/content-lock/unlock", JSON: map[string]string{"passphrase": request.Passphrase}}, nil)
+	if err != nil {
+		return hostapi.UnlockError{Code: hostapi.UnlockFromDaemon(daemonclient.ErrorCode(err))}
+	}
+	h.emit(contentLockChangedEvent, nil)
+	return nil
 }

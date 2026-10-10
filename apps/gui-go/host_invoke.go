@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
-	"time"
 )
 
 // InvokeResult is the envelope returned to the WebView. The frontend adapter
@@ -109,13 +108,4 @@ func (a commandArgs) channel(key string) (func(*HostService, any), error) {
 		return nil, commandError{Code: "ValidationError", Message: "invalid channel argument " + key}
 	}
 	return func(h *HostService, message any) { h.emit("channel://"+ref.ID, message) }, nil
-}
-
-// commandTimeout gives long-running update commands room; others fail fast.
-func commandTimeout(name string) time.Duration {
-	switch name {
-	case "download_update", "install_update":
-		return 30 * time.Minute
-	}
-	return 30 * time.Second
 }

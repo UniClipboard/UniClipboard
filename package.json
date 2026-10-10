@@ -10,6 +10,8 @@
     "gen:openapi": "cargo run -p uc-webserver --bin gen-openapi",
     "gen:client": "bun run --cwd apps/gui gen:client",
     "gen:api": "bun run gen:openapi && bun run gen:client",
+    "gen:host-contract": "node scripts/gen-host-bindings.mjs",
+    "check:host-contract": "node scripts/gen-host-bindings.mjs --check",
     "mbx:exec": "bash scripts/build-cache/mbx.sh --exec",
     "wails:dev": "cross-env UNICLIPBOARD_ENV=development UC_PROFILE=dev node scripts/wails-dev.mjs",
     "wails:dev:profile": "node scripts/wails-dev.mjs --profile",

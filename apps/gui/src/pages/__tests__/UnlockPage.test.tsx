@@ -121,7 +121,7 @@ describe('UnlockPage', () => {
   it('successfully unlocks with a correct passphrase from the inline form', async () => {
     const onUnlockSucceeded = vi.fn()
     vi.mocked(verifyKeychainAccess).mockResolvedValue(false)
-    vi.mocked(commands.unlockContent).mockResolvedValue(null)
+    vi.mocked(commands.unlockContent).mockResolvedValue(undefined)
 
     render(<UnlockPage onUnlockSucceeded={onUnlockSucceeded} />)
 

@@ -19,11 +19,17 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 from config_package_run import launch  # noqa: E402
 from file_preview_run import PASSPHRASE, cli  # noqa: E402
+from receipt import write_receipt  # noqa: E402
 from run import ROOT, isolated_env  # noqa: E402
 
 MARKER = 'unlock-e2e-marker-entry'
-STEPS = ['locked-screen', 'wrong-passphrase-rejected',
-         'still-locked-after-wrong-passphrase', 'right-passphrase-unlocked']
+STEPS = ['locked-screen',
+         # the generated binding itself, before any UI interaction
+         'binding-wrong-passphrase-typed', 'wrapper-wrong-passphrase-user-facing',
+         'binding-malformed-call-is-system-error', 'binding-still-locked-after-probes',
+         # the shared pages on top of it
+         'wrong-passphrase-rejected', 'still-locked-after-wrong-passphrase', 'right-passphrase-unlocked',
+         'content-lock-changed-event']
 
 
 def main():
@@ -69,6 +75,13 @@ def main():
     finally:
         cli(cli_env, '--json', 'stop', check=False, timeout=80)
         (out / f'unlock-{args.mode}-assertions.json').write_text(json.dumps(results, indent=2) + '\n')
+        if results['passed']:
+            write_receipt(out, f'unlock-{args.mode}',
+                          scope={'commands': ['get_content_unlocked', 'unlock_content'], 'events': ['content-lock-changed'],
+                                 'layers': ['shared pages', 'ipc wrapper', 'generated binding', 'Go service', 'daemon']},
+                          binaries={'gui': ROOT / 'target/gui-go/UniClipboardGoE2E.app/Contents/MacOS/gui-go', 'daemon': ROOT / 'target/debug/uniclipd'},
+                          before={'locked': results['steps']['locked-screen']}, after={'steps': results['steps']},
+                          assertions=results)
     print(json.dumps(results, indent=2))
     assert results['passed']
 

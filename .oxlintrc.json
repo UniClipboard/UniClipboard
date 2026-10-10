@@ -108,7 +108,8 @@
     "node_modules",
     "docs-site/",
     "apps/gui/src/lib/ipc-bindings.generated.ts",
-    "apps/gui/src/lib/error-severity.generated.ts",
+    "apps/gui/src/lib/host-errors.generated.ts",
+    "apps/gui-go/frontend/bindings/",
     "apps/gui/src/api/generated/"
   ],
   "rules": {

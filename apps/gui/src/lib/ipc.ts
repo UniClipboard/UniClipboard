@@ -37,11 +37,12 @@
  * The wrapper transparently injects trace + redacts logs + bubbles errors.
  */
 
+import * as hostBindings from '@host/hostservice'
 import { captureDiagnosticException, recordDiagnosticBreadcrumb } from '@/observability/diagnostics'
 import { isExpectedCommandError, toReportableError } from '@/observability/errors'
 import { redactSensitiveArgs } from '@/observability/redaction'
 import { traceManager } from '@/observability/trace'
-import { commands as raw } from './ipc-bindings.generated'
+import { commands as legacyRaw } from './ipc-bindings.generated'
 
 /** Wire shape of the trace metadata Tauri commands accept. */
 type TraceArg = { trace_id: string; timestamp: number } | null
@@ -84,7 +85,24 @@ type Wrap<F> = F extends (...args: infer A) => infer R
  * each method drops the trailing `trace` arg and rejects with the typed
  * error directly instead of returning a discriminated union.
  */
-export type TypedCommands = { [K in keyof typeof raw]: Wrap<(typeof raw)[K]> }
+type HostBindings = typeof hostBindings
+
+/** Commands whose contract is the Go service signature (Wails generated bindings). */
+type GeneratedCommands = {
+  [
+    K in keyof HostBindings as K extends 'Invoke' | 'Connection' | 'Session'
+      ? never
+      : Uncapitalize<K & string>
+  ]: HostBindings[K] extends (...args: infer A) => Promise<infer R>
+    ? (...args: A) => Promise<R>
+    : never
+}
+
+type LegacyCommands = Omit<typeof legacyRaw, keyof GeneratedCommands>
+
+export type TypedCommands = {
+  [K in keyof LegacyCommands]: Wrap<LegacyCommands[K]>
+} & GeneratedCommands
 export type { DaemonStartupStatus } from './ipc-bindings.generated'
 
 /**
@@ -102,42 +120,107 @@ function isTypedErrorEnvelope(
   )
 }
 
+/**
+ * A rejection of a generated host binding. Wails rejects with a `RuntimeError` whose `cause` is the payload the
+ * host marshalled (`hostapi.Marshal`): the typed error object or string. Anything else (unknown method, wrong
+ * argument count, transport failure) has no payload and stays an `Error`, which counts as a system error.
+ */
+function hostRejection(error: unknown): unknown {
+  if (
+    error instanceof Error &&
+    error.name === 'RuntimeError' &&
+    'cause' in error &&
+    error.cause != null
+  ) {
+    return error.cause
+  }
+  return error
+}
+
+/** Breadcrumb, trace, Sentry reporting and error classification shared by every host command. */
+async function instrumented<T>(
+  name: string,
+  args: unknown[],
+  call: (trace: TraceArg) => Promise<T>
+): Promise<T> {
+  const trace = traceManager.startTrace(name)
+  const traceArg: TraceArg = {
+    trace_id: trace.traceId,
+    timestamp: trace.startTime,
+  }
+
+  // For Sentry breadcrumbs we redact the *named* arg bag if there's
+  // one, otherwise log positional values redacted shallowly. The
+  // functions take positional args, so we just attach the
+  // tuple — redactSensitiveArgs accepts an object/record only, so
+  // wrap the tuple as an object first.
+  const safeArgs = name.toLowerCase().includes('visualeffects')
+    ? {}
+    : redactSensitiveArgs(Object.fromEntries(args.map((value, index) => [`arg${index}`, value])))
+
+  recordDiagnosticBreadcrumb({
+    category: 'tauri_command',
+    message: name,
+    level: 'info',
+    data: { traceId: trace.traceId, args: safeArgs },
+  })
+
+  try {
+    return await call(traceArg)
+  } catch (error) {
+    // User/validation errors (bad input, wrong passphrase, name taken)
+    // are normal product flow handled by the UI — reporting them to
+    // Sentry buries real system-error alerts under input-validation
+    // noise. Only capture genuinely unexpected failures. The breadcrumb
+    // above still records the call for context on later real errors.
+    if (!isExpectedCommandError(error)) {
+      captureDiagnosticException(toReportableError(error, name), {
+        tags: { command: name, traceId: trace.traceId },
+        extra: { args: safeArgs },
+      })
+    }
+    throw error
+  } finally {
+    traceManager.endTrace(trace)
+  }
+}
+
+const generatedByName: Record<string, (...args: unknown[]) => Promise<unknown>> =
+  Object.fromEntries(
+    Object.entries(hostBindings)
+      .filter(
+        ([name, value]) =>
+          typeof value === 'function' && !['Invoke', 'Connection', 'Session'].includes(name)
+      )
+      .map(([name, value]) => [
+        name.charAt(0).toLowerCase() + name.slice(1),
+        value as (...args: unknown[]) => Promise<unknown>,
+      ])
+  )
+
 function buildProxy(): TypedCommands {
   return new Proxy(
     {},
     {
       get(_target, prop) {
         if (typeof prop !== 'string') return undefined
-        const generated = (raw as Record<string, unknown>)[prop]
-        if (typeof generated !== 'function') return generated
+        const generated = generatedByName[prop]
+        if (generated) {
+          return (...args: unknown[]) =>
+            instrumented(prop, args, async () => {
+              try {
+                return await generated(...args)
+              } catch (error) {
+                throw hostRejection(error)
+              }
+            })
+        }
+        const legacy = (legacyRaw as Record<string, unknown>)[prop]
+        if (typeof legacy !== 'function') return legacy
 
-        return async (...args: unknown[]) => {
-          const trace = traceManager.startTrace(prop)
-          const traceArg: TraceArg = {
-            trace_id: trace.traceId,
-            timestamp: trace.startTime,
-          }
-
-          // For Sentry breadcrumbs we redact the *named* arg bag if there's
-          // one, otherwise log positional values redacted shallowly. The
-          // generated functions take positional args, so we just attach the
-          // tuple — redactSensitiveArgs accepts an object/record only, so
-          // wrap the tuple as an object first.
-          const safeArgs = prop.toLowerCase().includes('visualeffects')
-            ? {}
-            : redactSensitiveArgs(
-                Object.fromEntries(args.map((value, index) => [`arg${index}`, value]))
-              )
-
-          recordDiagnosticBreadcrumb({
-            category: 'tauri_command',
-            message: prop,
-            level: 'info',
-            data: { traceId: trace.traceId, args: safeArgs },
-          })
-
-          try {
-            const result = await (generated as (...callArgs: unknown[]) => Promise<unknown>)(
+        return (...args: unknown[]) =>
+          instrumented(prop, args, async traceArg => {
+            const result = await (legacy as (...callArgs: unknown[]) => Promise<unknown>)(
               ...args,
               traceArg
             )
@@ -149,23 +232,7 @@ function buildProxy(): TypedCommands {
               throw result.error
             }
             return result
-          } catch (error) {
-            // User/validation errors (bad input, wrong passphrase, name taken)
-            // are normal product flow handled by the UI — reporting them to
-            // Sentry buries real system-error alerts under input-validation
-            // noise. Only capture genuinely unexpected failures. The breadcrumb
-            // above still records the call for context on later real errors.
-            if (!isExpectedCommandError(error)) {
-              captureDiagnosticException(toReportableError(error, prop), {
-                tags: { command: prop, traceId: trace.traceId },
-                extra: { args: safeArgs },
-              })
-            }
-            throw error
-          } finally {
-            traceManager.endTrace(trace)
-          }
-        }
+          })
       },
     }
   ) as TypedCommands

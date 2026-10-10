@@ -1,3 +1,4 @@
+import * as HostService from '@host/hostservice'
 import {
   isPermissionGranted,
   requestPermission,
@@ -6,13 +7,15 @@ import {
 // E2E-only scenario driver. It runs inside the real Wails WebView, interacts
 // with the shared React DOM and reports each assertion to the native test
 // service. It is bundled only when VITE_GUI_GO_E2E=1.
-import { Call } from '@wailsio/runtime'
+import { Call, Events } from '@wailsio/runtime'
 import { daemonClient } from '@/api/daemon/client'
 import { updateSettings } from '@/api/daemon/settings'
 import { setQuickPanelEnabled, setQuickPanelPosition } from '@/api/tauri-command/settings'
 import i18n from '@/i18n'
 import { daemonWs } from '@/lib/daemon-ws'
-import { commands } from '@/lib/ipc-bindings.generated'
+import { commands } from '@/lib/ipc'
+import { commands as legacyCommands } from '@/lib/ipc-bindings.generated'
+import { isExpectedCommandError } from '@/observability/errors'
 
 const windowName = 'main'
 // Keep recent console errors so a crashed UI reports its cause, not just a timeout.
@@ -292,13 +295,23 @@ async function runFilePreviewScenario() {
   await control('exit')
 }
 
-const contentUnlocked = async () =>
-  (
-    (await Call.ByName('main.HostService.Invoke', 'get_content_unlocked', {})) as {
-      ok: boolean
-      data?: boolean
+// The generated binding, called without the shared frontend's wrapper: what the Go service answers.
+const contentUnlocked = () => HostService.GetContentUnlocked()
+
+// A call settled into the shape the older scenarios assert on: `ok` with the data, or `error` with the
+// payload the host marshalled (Wails puts it in the RuntimeError's `cause`).
+async function settle<T>(call: Promise<T>) {
+  try {
+    return { status: 'ok' as const, data: await call }
+  } catch (error) {
+    const cause = (error as { cause?: unknown }).cause
+    return {
+      status: 'error' as const,
+      error: cause ?? error,
+      raw: { name: (error as Error).name, hasCause: cause != null },
     }
-  ).data
+  }
+}
 
 // Two ways a profile ends up asking for the passphrase, both through the shared pages: the profile
 // recovery page (the master key is gone) and the unlock page's passphrase form (the keyring unlock fails).
@@ -317,8 +330,11 @@ async function runUnlockWrongScenario() {
     $('[data-testid="unlock-content"]')!.click()
     await waitFor('passphrase form after the keyring attempt', () => $('#unlock-passphrase'))
   }
+  await probeUnlockContract(secret)
   const input = screen === 'recovery' ? '#recovery-passphrase' : '#unlock-passphrase'
   const submit = () => ($(input) as HTMLInputElement).form?.requestSubmit()
+  let lockEvents = 0
+  const offLock = Events.On('content-lock-changed', () => void lockEvents++)
   fill(input, `${secret}-wrong`)
   submit()
   const alert = await waitFor('wrong passphrase alert', () => $('[role="alert"]'))
@@ -335,8 +351,46 @@ async function runUnlockWrongScenario() {
   submit()
   await waitFor('unlocked', () => mainLayout())
   await record('right-passphrase-unlocked', (await contentUnlocked()) === true)
+  await waitFor('content-lock-changed event', () => lockEvents > 0)
+  offLock()
+  await record('content-lock-changed-event', lockEvents > 0, { events: lockEvents })
   await sleep(1500)
   await control('exit')
+}
+
+// The unlock command end to end through the generated binding, on a still locked profile: the typed business
+// rejection (the stable code, user-facing, never reported), the same call through the shared frontend wrapper, and
+// the two failures that are NOT business errors (a call the framework itself rejects, an unknown host failure).
+async function probeUnlockContract(secret: string) {
+  const wrong = `${secret}-probe-wrong`
+  const direct = await settle(HostService.UnlockContent({ passphrase: wrong }))
+  await record(
+    'binding-wrong-passphrase-typed',
+    direct.status === 'error' &&
+      (direct.error as { code?: string }).code === 'WRONG_PASSPHRASE' &&
+      direct.raw.name === 'RuntimeError' &&
+      direct.raw.hasCause &&
+      isExpectedCommandError(direct.error),
+    { observed: direct }
+  )
+  const viaWrapper = await settle(commands.unlockContent({ passphrase: wrong }))
+  await record(
+    'wrapper-wrong-passphrase-user-facing',
+    viaWrapper.status === 'error' &&
+      (viaWrapper.error as { code?: string }).code === 'WRONG_PASSPHRASE' &&
+      isExpectedCommandError(viaWrapper.error),
+    { observed: viaWrapper }
+  )
+  // Wrong argument count: the framework rejects before the method runs. No payload, so a system error.
+  const malformed = await settle((HostService.UnlockContent as unknown as () => Promise<void>)())
+  await record(
+    'binding-malformed-call-is-system-error',
+    malformed.status === 'error' &&
+      malformed.raw.name === 'TypeError' &&
+      !isExpectedCommandError(malformed.error),
+    { observed: malformed }
+  )
+  await record('binding-still-locked-after-probes', (await contentUnlocked()) === false)
 }
 
 // After a recovery the next launch must unlock through the keyring again (the recovered key was stored back)
@@ -532,7 +586,7 @@ async function runQuickPanelSettingsScenario() {
   await setQuickPanelEnabled(true)
   await show('reenabled')
   // The generated binding reports command failures as a result value rather than throwing.
-  const refused = await commands.setQuickPanelDoubleTapModifier('alt', null)
+  const refused = await legacyCommands.setQuickPanelDoubleTapModifier('alt', null)
   await record(
     'double-tap-unavailable-rejected',
     refused.status === 'error' && refused.error.code === 'Conflict',
@@ -540,7 +594,7 @@ async function runQuickPanelSettingsScenario() {
       result: refused,
     }
   )
-  const accepted = await commands.setQuickPanelDoubleTapModifier('disabled', null)
+  const accepted = await legacyCommands.setQuickPanelDoubleTapModifier('disabled', null)
   await record('double-tap-disabled-accepted', accepted.status === 'ok', {
     result: accepted,
   })
@@ -560,7 +614,7 @@ async function runNativePanelScenario() {
   await setQuickPanelEnabled(true)
   await sleep(4000)
   await record('act-shortcut', true)
-  const shortcut = await commands.updateKeyboardShortcuts(
+  const shortcut = await legacyCommands.updateKeyboardShortcuts(
     { 'global.toggleQuickPanel': 'Ctrl+Alt+Space' },
     null
   )
@@ -569,9 +623,9 @@ async function runNativePanelScenario() {
   })
   await sleep(4000)
   await record('act-double-tap', true)
-  const tap = await commands.setQuickPanelDoubleTapModifier('alt', null)
+  const tap = await legacyCommands.setQuickPanelDoubleTapModifier('alt', null)
   await record('double-tap-saved', tap.status === 'ok', { result: tap })
-  const availability = await commands.getQuickPanelDoubleTapAvailability(null)
+  const availability = await legacyCommands.getQuickPanelDoubleTapAvailability(null)
   await record('double-tap-availability', availability.status === 'ok', {
     result: availability,
   })
@@ -674,29 +728,32 @@ async function runFileOpsScenario() {
     await record(step, accept(r), { result: r })
   }
   const png = [137, 80, 78, 71, 13, 10, 26, 10, 0, 1, 2, 3]
-  const picked = await commands.pickDirectory(null)
+  const picked = await legacyCommands.pickDirectory(null)
   await record('pick-directory-chosen', picked.status === 'ok', {
     result: picked,
   })
-  await result('pick-directory-cancelled', commands.pickDirectory(null))
-  await result('save-image-cancelled', commands.saveImageAs('a.png', png, null))
-  await result('save-image-saved', commands.saveImageAs('../../x/shot.png', png, null))
-  await result('open-image-first', commands.openImageExternally('../../etc/first.png', png, null))
+  await result('pick-directory-cancelled', legacyCommands.pickDirectory(null))
+  await result('save-image-cancelled', legacyCommands.saveImageAs('a.png', png, null))
+  await result('save-image-saved', legacyCommands.saveImageAs('../../x/shot.png', png, null))
+  await result(
+    'open-image-first',
+    legacyCommands.openImageExternally('../../etc/first.png', png, null)
+  )
   await result(
     'open-image-second',
-    commands.openImageExternally('second.png', png.slice(0, 4), null)
+    legacyCommands.openImageExternally('second.png', png.slice(0, 4), null)
   )
-  await result('open-data-directory', commands.openDataDirectory(null))
-  await result('open-logs-directory', commands.openLogsDirectory(null))
+  await result('open-data-directory', legacyCommands.openDataDirectory(null))
+  await result('open-logs-directory', legacyCommands.openLogsDirectory(null))
   const existing = picked.status === 'ok' && picked.data ? picked.data : ''
-  await result('reveal-existing', commands.revealPath(existing, null))
+  await result('reveal-existing', legacyCommands.revealPath(existing, null))
   await result(
     'reveal-missing',
-    commands.revealPath('/definitely/not/here', null),
+    legacyCommands.revealPath('/definitely/not/here', null),
     r => r.status === 'error' && r.error.code === 'NotFound'
   )
-  await result('export-logs-cancelled', commands.exportStartupLogs(null))
-  await result('export-logs-saved', commands.exportStartupLogs(null))
+  await result('export-logs-cancelled', legacyCommands.exportStartupLogs(null))
+  await result('export-logs-saved', legacyCommands.exportStartupLogs(null))
   await control('exit')
 }
 
@@ -719,37 +776,41 @@ async function runConfigExportScenario() {
     setQuickPanelPosition('follow_cursor').then(() => ({ status: 'ok' })),
     r => r.status === 'ok'
   )
-  const exported = await step('export', commands.exportConfigPackage(null), r => r.status === 'ok')
+  const exported = await step(
+    'export',
+    legacyCommands.exportConfigPackage(null),
+    r => r.status === 'ok'
+  )
   const bundle = exported.data?.path as string
   await step(
     'export-cancelled',
-    commands.exportConfigPackage(null),
+    legacyCommands.exportConfigPackage(null),
     r => r.status === 'error' && r.error.kind === 'cancelled'
   )
   const picked = await step(
     'pick-bundle',
-    commands.pickConfigBundlePath(null),
+    legacyCommands.pickConfigBundlePath(null),
     r => r.status === 'ok' && r.data === bundle
   )
   await step(
     'pick-bundle-cancelled',
-    commands.pickConfigBundlePath(null),
+    legacyCommands.pickConfigBundlePath(null),
     r => r.status === 'ok' && r.data === null
   )
   await step(
     'preview-wrong-password',
-    commands.previewConfigImport('definitely-wrong', picked.data, null),
+    legacyCommands.previewConfigImport('definitely-wrong', picked.data, null),
     r => r.status === 'error' && r.error.kind === 'daemon'
   )
   await step(
     'preview',
-    commands.previewConfigImport(passphrase, bundle, null),
+    legacyCommands.previewConfigImport(passphrase, bundle, null),
     r => r.status === 'ok' && !!r.data.profileId && !!r.data.appVersion
   )
   await setQuickPanelPosition('center')
   await step(
     'import-staged',
-    commands.importConfigPackage(passphrase, bundle, null),
+    legacyCommands.importConfigPackage(passphrase, bundle, null),
     r => r.status === 'ok' && r.data.stagedOk === true
   )
   await control('exit')
@@ -760,12 +821,12 @@ async function runConfigExportScenario() {
 async function runAutostartScenario(phase: string) {
   await waitFor('app root content', () => document.getElementById('root')?.children.length)
   const set = async (step: string, enabled: boolean, accept: (r: any) => boolean) => {
-    const r = await commands.updateAutostart(enabled, null)
+    const r = await legacyCommands.updateAutostart(enabled, null)
     await record(step, accept(r), { result: r })
   }
   // Records the outcome either way: the orchestrator decides what the platform mechanism is allowed to say.
   const attempt = async (step: string, enabled: boolean) => {
-    const r = await commands.updateAutostart(enabled, null)
+    const r = await legacyCommands.updateAutostart(enabled, null)
     await record(step, true, { result: r })
   }
   if (phase === 'autostart' || phase === 'autostart-bundle') {
@@ -825,7 +886,7 @@ async function runTrayDevicesScenario() {
   await control('tray-language-quiet:5000')
   await record('tray-driver-progress', true, 'after-quiet')
   await record('tray-driver-progress', true, 'call-start')
-  const pending = commands.setTrayLanguage('en', null)
+  const pending = legacyCommands.setTrayLanguage('en', null)
   void sleep(3000).then(() => record('tray-driver-progress', true, 'call-pending-after-3s'))
   const english = await pending
   await record('tray-driver-progress', true, 'call-returned')
@@ -834,7 +895,7 @@ async function runTrayDevicesScenario() {
   await control('tray-devices-wait:tray-peer-b')
   await control('tray-device-click:tray-peer-b')
   await control('tray-device-click:tray-peer-b')
-  const language = await commands.setTrayLanguage('zh-CN', null)
+  const language = await legacyCommands.setTrayLanguage('zh-CN', null)
   await record('tray-language-set', language.status === 'ok')
   await control('tray-menu:zh')
   const granted = await isPermissionGranted()
@@ -914,7 +975,7 @@ async function runLinuxPackageUpdateScenario() {
     )!
     .click()
   await waitFor('telemetry notice dismissed', () => !consent.isConnected)
-  const kind = await commands.getInstallKind(null)
+  const kind = await legacyCommands.getInstallKind(null)
   await record('package-install-kind', kind.status === 'ok', kind)
   if (kind.status !== 'ok' || (kind.data !== 'deb' && kind.data !== 'rpm')) {
     throw new Error('expected an installed deb or rpm')

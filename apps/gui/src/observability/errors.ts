@@ -1,4 +1,4 @@
-import { USER_FACING_ERROR_CODES } from '@/lib/error-severity.generated'
+import { USER_FACING_ERROR_CODES, USER_FACING_ERROR_KINDS } from '@/lib/host-errors.generated'
 import { captureDiagnosticException, diagnosticsConfigured } from '@/observability/diagnostics'
 import { redactSensitiveArgs } from '@/observability/redaction'
 
@@ -34,18 +34,19 @@ export function toReportableError(error: unknown, command: string): unknown {
  * the user retries. They MUST NOT be reported to Sentry, or real system-error
  * alerts drown in input-validation noise.
  *
- * The taxonomy is owned by the Rust side (`commands/severity.rs`) and exported
- * to `USER_FACING_ERROR_CODES`; an unrecognized `code` (or a non-envelope
- * rejection) is treated as a *system* error and reported — failing safe toward
- * visibility rather than silently swallowing an unexpected failure.
+ * The taxonomy is owned by the Go host (`apps/gui-go/internal/hostapi`) and
+ * exported to `USER_FACING_ERROR_CODES` / `USER_FACING_ERROR_KINDS`; an
+ * unrecognized `code` (or a non-envelope rejection) is treated as a *system*
+ * error and reported — failing safe toward visibility rather than silently
+ * swallowing an unexpected failure.
  */
 export function isExpectedCommandError(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false
+  const { code, kind } = error as { code?: unknown; kind?: unknown }
+  // The config package commands reject with `{ kind: 'cancelled' | 'daemon' | 'internal', ... }`.
   return (
-    typeof error === 'object' &&
-    error !== null &&
-    'code' in error &&
-    typeof (error as { code: unknown }).code === 'string' &&
-    USER_FACING_ERROR_CODES.has((error as { code: string }).code)
+    (typeof code === 'string' && USER_FACING_ERROR_CODES.has(code)) ||
+    (typeof kind === 'string' && USER_FACING_ERROR_KINDS.has(kind))
   )
 }
 

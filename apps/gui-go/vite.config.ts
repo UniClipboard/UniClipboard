@@ -45,6 +45,11 @@ export default defineConfig({
       { find: '@tauri-apps/plugin-opener', replacement: host('opener') },
       { find: '@tauri-apps/plugin-log', replacement: host('log') },
       { find: '@tauri-apps/plugin-notification', replacement: host('notification') },
+      // Generated Wails bindings of the host commands (scripts/gen-host-bindings.mjs).
+      {
+        find: '@host',
+        replacement: path('./frontend/bindings/github.com/UniClipboard/UniClipboard/apps/gui-go'),
+      },
       { find: '@', replacement: path('../gui/src') },
       { find: /^pino$/, replacement: 'pino/browser' },
     ],

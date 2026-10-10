@@ -31,7 +31,7 @@ describe('ProfileRecoveryPage', () => {
     const recovered = vi.fn()
     vi.mocked(commands.unlockContent)
       .mockRejectedValueOnce({ code: 'WRONG_PASSPHRASE' })
-      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(undefined)
     render(<ProfileRecoveryPage status={status} onRecovered={recovered} onRestart={vi.fn()} />)
     const input = screen.getByLabelText(i18n.t('unlock.passphraseModal.passphraseLabel'))
     fireEvent.change(input, { target: { value: 'wrong' } })

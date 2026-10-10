@@ -130,7 +130,7 @@ func main() {
 	}
 	host := &HostService{effects: newVisualEffects(), notifier: notifications.New(), wake: make(chan string, 1)}
 	host.lastCheck.recordNow()
-	services := append([]application.Service{application.NewService(host)}, notifierServices(host)...)
+	services := append([]application.Service{hostService(host)}, notifierServices(host)...)
 	services = append(services, e2eServices(host)...)
 	uniqueID, err := singleInstanceID()
 	if err != nil {

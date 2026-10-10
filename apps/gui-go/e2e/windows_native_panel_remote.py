@@ -24,7 +24,6 @@ Exit status 0 only when every check passed. The assertions, screenshots and logs
 """
 import argparse
 import hashlib
-import os
 import subprocess
 import sys
 import tarfile
@@ -59,11 +58,10 @@ def scp(host, source, destination, to_remote=True):
 
 def remote_arch(host):
     value = ssh(host, 'echo %PROCESSOR_ARCHITECTURE%').upper()
-    if value == 'AMD64':
-        return 'amd64'
-    if value == 'ARM64':
-        return 'arm64'
-    sys.exit(f'unsupported processor architecture {value!r} on {host}')
+    arch = {'AMD64': 'amd64', 'ARM64': 'arm64'}.get(value)
+    if arch is None:
+        sys.exit(f'unsupported processor architecture {value!r} on {host}')
+    return arch
 
 
 def python_zip(arch):

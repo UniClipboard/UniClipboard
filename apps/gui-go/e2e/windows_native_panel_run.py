@@ -51,7 +51,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 from windows_quick_panel_run import (  # noqa: E402
-    KEY, PASSPHRASE, ROOT, TARGET_PS1, VK, Gui, foreground_pid, get_clipboard_text, hold_hotkey, hotkey_is_free,
+    KEY, PASSPHRASE, TARGET_PS1, VK, Gui, foreground_pid, get_clipboard_text, hold_hotkey, hotkey_is_free,
     kernel32, send_chord, set_clipboard_text, user32,
 )
 
@@ -480,7 +480,7 @@ def main():
         send_chord('ctrl', 'v', hold=0.06)
         time.sleep(1.0)
         check('6 a Ctrl chord (Ctrl+V twice) does not open the panel', not panel_windows(helper_pids()))
-        r = gui.invoke('double-tap-off', 'set_quick_panel_double_tap_modifier', {'modifier': 'disabled'})
+        gui.invoke('double-tap-off', 'set_quick_panel_double_tap_modifier', {'modifier': 'disabled'})
         wait_for(lambda: helper_pids(), 20)
 
         # 7: supervision.

@@ -11,15 +11,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/UniClipboard/UniClipboard/apps/gui-go/internal/hostapi"
 	"github.com/UniClipboard/UniClipboard/apps/gui-go/internal/update"
 	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/apppaths"
 	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/buildinfo"
 	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/daemonclient"
-)
-
-const (
-	updateAvailableEvent = "update-available"
-	updateProgressEvent  = "update-download-progress"
 )
 
 // updaterPublicKey is the base64 minisign public key of the release signer. It
@@ -48,12 +44,6 @@ type updater struct {
 	cancel     context.CancelFunc
 	skipMu     sync.Mutex
 }
-
-// stringError is a command error serialised as a plain string, the wire shape
-// of the `Result<_, String>` update commands.
-type stringError string
-
-func (e stringError) Error() string { return string(e) }
 
 func (h *HostService) updateClient() (*update.Client, error) {
 	endpoints, key := update.DefaultEndpoints, updaterPublicKey
@@ -104,18 +94,18 @@ func (u *updater) reset(phase updatePhase, rel *update.Release) {
 	u.phase, u.release, u.bytes, u.downloaded, u.total, u.cancel = phase, rel, nil, 0, nil, nil
 }
 
-func (u *updater) metadata() map[string]any {
+func (u *updater) metadata() *UpdateMetadata {
 	if u.release == nil {
 		return nil
 	}
-	return map[string]any{"version": u.release.Version, "currentVersion": u.release.CurrentVersion, "body": u.release.Body, "date": u.release.Date}
+	return &UpdateMetadata{Version: u.release.Version, CurrentVersion: u.release.CurrentVersion, Body: u.release.Body, Date: u.release.Date}
 }
 
 // lookupUpdate runs one lookup and broadcasts the outcome to every window. Every source (manual, tray,
 // scheduled) goes through it, so any finished check, successful or not, refreshes lastCheck like the Tauri
 // shell does. Callers report the analytics event themselves because the order against the notification and
 // the auto-download differs per source.
-func (h *HostService) lookupUpdate(ctx context.Context, channel *string) (any, error) {
+func (h *HostService) lookupUpdate(ctx context.Context, channel *string) (*UpdateMetadata, error) {
 	defer h.lastCheck.recordNow()
 	u := &h.updates
 	client, err := h.updateClient()
@@ -144,8 +134,9 @@ func (h *HostService) lookupUpdate(ctx context.Context, channel *string) (any, e
 	default:
 		u.reset(phaseAvailable, rel)
 	}
-	// An untyped nil, not a nil map: callers (and the tray, scheduler and analytics) test the interface for nil.
-	var meta any
+	// A nil pointer when there is no release: callers (and the tray, scheduler and analytics) test it for nil,
+	// and the page receives null on `update-available`.
+	var meta *UpdateMetadata
 	if rel != nil {
 		meta = u.metadata()
 	}
@@ -154,19 +145,19 @@ func (h *HostService) lookupUpdate(ctx context.Context, channel *string) (any, e
 	return meta, nil
 }
 
-// checkForUpdate is the `check_for_update` command: a manual check, reported as such.
-func (h *HostService) checkForUpdate(ctx context.Context, channel *string) (any, error) {
+// checkForUpdate is the `CheckForUpdate` command: a manual check, reported as such.
+func (h *HostService) checkForUpdate(ctx context.Context, channel *string) (*UpdateMetadata, error) {
 	meta, err := h.lookupUpdate(ctx, channel)
 	h.reportCheck(checkSourceManual, meta != nil, err)
 	if err != nil {
-		return nil, stringError(err.Error())
+		return nil, hostapi.TextError(err.Error())
 	}
 	return meta, nil
 }
 
 // errAlreadyDownloaded is the Tauri shell's "already downloaded" precondition: the release is verified and
 // waiting, nothing starts and nothing is reported.
-var errAlreadyDownloaded = preconditionError{"updater: already downloaded"}
+var errAlreadyDownloaded = preconditionError{hostapi.TextError("updater: already downloaded")}
 
 // downloadUpdate downloads the pending release. A refusal before anything started is a preconditionError and
 // a cancel is a cancelledError (both plain-string on the wire), so callers can report the outcome.
@@ -174,7 +165,7 @@ func (h *HostService) downloadUpdate(ctx context.Context) error {
 	u := &h.updates
 	client, err := h.updateClient()
 	if err != nil {
-		return preconditionError{stringError(err.Error())}
+		return preconditionError{hostapi.TextError(err.Error())}
 	}
 	u.mu.Lock()
 	switch u.phase {
@@ -184,10 +175,10 @@ func (h *HostService) downloadUpdate(ctx context.Context) error {
 		return errAlreadyDownloaded
 	case phaseDownloading:
 		u.mu.Unlock()
-		return preconditionError{"updater: a download is already running"}
+		return preconditionError{hostapi.TextError("updater: a download is already running")}
 	default:
 		u.mu.Unlock()
-		return preconditionError{"updater: no pending update"}
+		return preconditionError{hostapi.TextError("updater: no pending update")}
 	}
 	rel := u.release
 	dctx, cancel := context.WithCancel(context.Background())
@@ -205,27 +196,28 @@ func (h *HostService) downloadUpdate(ctx context.Context) error {
 		u.mu.Unlock()
 		if !started {
 			started = true
-			var content any
+			started := DownloadEvent{Event: DownloadEventStarted, Data: &DownloadEventData{}}
 			if total >= 0 {
-				content = total
+				started.Data.ContentLength = &total
 			}
-			h.emit(updateProgressEvent, map[string]any{"event": "Started", "data": map[string]any{"contentLength": content}})
+			h.emit(updateProgressEvent, started)
 		}
-		h.emit(updateProgressEvent, map[string]any{"event": "Progress", "data": map[string]any{"chunkLength": chunk}})
+		chunkLength := int64(chunk)
+		h.emit(updateProgressEvent, DownloadEvent{Event: DownloadEventProgress, Data: &DownloadEventData{ChunkLength: &chunkLength}})
 	})
 	u.mu.Lock()
 	defer u.mu.Unlock()
 	u.cancel = nil
 	if err != nil {
 		u.phase, u.downloaded, u.total = phaseAvailable, 0, nil
-		h.emit(updateProgressEvent, map[string]any{"event": "Failed", "data": map[string]any{"error": err.Error()}})
+		h.emit(updateProgressEvent, failedEvent(err))
 		if errors.Is(err, context.Canceled) {
-			return cancelledError{stringError(err.Error())}
+			return cancelledError{hostapi.TextError(err.Error())}
 		}
-		return stringError(err.Error())
+		return hostapi.TextError(err.Error())
 	}
 	u.phase, u.bytes = phaseReady, data
-	h.emit(updateProgressEvent, map[string]any{"event": "Finished"})
+	h.emit(updateProgressEvent, DownloadEvent{Event: DownloadEventFinished})
 	return nil
 }
 
@@ -246,48 +238,53 @@ func (h *HostService) cancelDownload() {
 	}
 }
 
-func (h *HostService) downloadProgress() map[string]any {
+func (h *HostService) downloadProgress() DownloadProgressSnapshot {
 	u := &h.updates
 	u.mu.Lock()
 	defer u.mu.Unlock()
-	snap := map[string]any{"phase": string(u.phase), "downloaded": u.downloaded, "total": u.total,
-		"version": nil, "currentVersion": buildinfo.PackageVersion, "body": nil, "date": nil}
+	snap := DownloadProgressSnapshot{Phase: DownloadPhase(u.phase), Downloaded: u.downloaded, Total: u.total, CurrentVersion: buildinfo.PackageVersion}
 	if u.phase == "" {
-		snap["phase"] = string(phaseIdle)
+		snap.Phase = DownloadPhaseIdle
 	}
 	if u.release != nil {
-		snap["version"], snap["currentVersion"], snap["body"], snap["date"] = u.release.Version, u.release.CurrentVersion, u.release.Body, u.release.Date
+		snap.Version, snap.CurrentVersion, snap.Body, snap.Date = &u.release.Version, u.release.CurrentVersion, u.release.Body, u.release.Date
 	}
 	if u.phase == phaseReady {
 		n := int64(len(u.bytes))
-		snap["downloaded"], snap["total"] = n, &n
+		snap.Downloaded, snap.Total = n, &n
 	}
 	return snap
 }
 
+func failedEvent(err error) DownloadEvent {
+	message := err.Error()
+	return DownloadEvent{Event: DownloadEventFailed, Data: &DownloadEventData{Error: &message}}
+}
+
 // installUpdate installs the downloaded release in place (per platform: swap the app bundle, or run the NSIS
-// installer) and then relaunches or quits as that platform's installer contract requires.
-func (h *HostService) installUpdate(ctx context.Context, send func(any)) error {
+// installer) and then relaunches or quits as that platform's installer contract requires. Progress goes to send.
+func (h *HostService) installUpdate(ctx context.Context, send func(DownloadEvent)) error {
 	u := &h.updates
 	u.mu.Lock()
 	if u.phase != phaseReady && u.phase != phaseAvailable {
 		phase := u.phase
 		u.mu.Unlock()
 		if phase == phaseDownloading {
-			return stringError("updater: download in progress; wait or cancel first")
+			return hostapi.TextError("updater: download in progress; wait or cancel first")
 		}
-		return stringError("updater: no pending update")
+		return hostapi.TextError("updater: no pending update")
 	}
 	u.mu.Unlock()
 	if err := h.downloadUpdate(ctx); err != nil && err != errAlreadyDownloaded {
-		send(map[string]any{"event": "Failed", "data": map[string]any{"error": err.Error()}})
-		return stringError(err.Error())
+		send(failedEvent(err))
+		return hostapi.TextError(err.Error())
 	}
 	u.mu.Lock()
 	data := u.bytes
 	u.mu.Unlock()
-	send(map[string]any{"event": "Started", "data": map[string]any{"contentLength": len(data)}})
-	send(map[string]any{"event": "Progress", "data": map[string]any{"chunkLength": len(data)}})
+	size := int64(len(data))
+	send(DownloadEvent{Event: DownloadEventStarted, Data: &DownloadEventData{ContentLength: &size}})
+	send(DownloadEvent{Event: DownloadEventProgress, Data: &DownloadEventData{ChunkLength: &size}})
 
 	u.mu.Lock()
 	version := ""
@@ -296,12 +293,12 @@ func (h *HostService) installUpdate(ctx context.Context, send func(any)) error {
 	}
 	u.mu.Unlock()
 	if err := h.installPayload(data, version); err != nil {
-		send(map[string]any{"event": "Failed", "data": map[string]any{"error": err.Error()}})
-		return stringError(err.Error())
+		send(failedEvent(err))
+		return hostapi.TextError(err.Error())
 	}
-	send(map[string]any{"event": "Finished"})
+	send(DownloadEvent{Event: DownloadEventFinished})
 	if err := h.relaunchAfterInstall(); err != nil {
-		return stringError(err.Error())
+		return hostapi.TextError(err.Error())
 	}
 	return nil
 }
@@ -319,7 +316,7 @@ func skippedVersionPath() (string, error) {
 func (h *HostService) skipVersion(ctx context.Context, version string) error {
 	path, err := skippedVersionPath()
 	if err != nil {
-		return stringError(err.Error())
+		return hostapi.TextError(err.Error())
 	}
 	u := &h.updates
 	u.skipMu.Lock()
@@ -331,22 +328,22 @@ func (h *HostService) skipVersion(ctx context.Context, version string) error {
 	entries[string(h.resolveChannel(ctx, nil))] = version
 	raw, err := json.Marshal(entries)
 	if err != nil {
-		return stringError(err.Error())
+		return hostapi.TextError(err.Error())
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return stringError(err.Error())
+		return hostapi.TextError(err.Error())
 	}
 	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, raw, 0o600); err != nil {
-		return stringError(err.Error())
+		return hostapi.TextError(err.Error())
 	}
-	return os.Rename(tmp, path)
+	return asTextError(os.Rename(tmp, path))
 }
 
 func (h *HostService) setAutoDownload(ctx context.Context, enabled bool) error {
 	patch := map[string]any{"general": map[string]any{"autoDownloadUpdate": enabled}}
 	if err := h.client.Enveloped(ctx, daemonclient.Request{Method: http.MethodPut, Path: "/settings", JSON: patch}, nil); err != nil {
-		return stringError("failed to save settings: " + err.Error())
+		return hostapi.TextError("failed to save settings: " + err.Error())
 	}
 	return nil
 }
@@ -358,7 +355,7 @@ func (h *HostService) autoDownload(ctx context.Context) (bool, error) {
 		} `json:"general"`
 	}
 	if err := h.client.Get(ctx, "/settings", &settings); err != nil {
-		return false, stringError("failed to load settings: " + err.Error())
+		return false, hostapi.TextError("failed to load settings: " + err.Error())
 	}
 	return settings.General.AutoDownloadUpdate, nil
 }
@@ -372,10 +369,8 @@ func (h *HostService) checkUpdateFromTray() {
 	defer cancel()
 	channel := h.resolveChannel(ctx, nil)
 	meta, err := h.lookupUpdate(ctx, nil)
-	if release, _ := meta.(map[string]any); release != nil {
-		if version, _ := release["version"].(string); version != "" && !h.notifyIfNew(channel, version, false) {
-			h.openUpdater(false)
-		}
+	if meta != nil && meta.Version != "" && !h.notifyIfNew(channel, meta.Version, false) {
+		h.openUpdater(false)
 	}
 	h.reportCheck(checkSourceManual, meta != nil, err)
 	switch {
@@ -386,51 +381,85 @@ func (h *HostService) checkUpdateFromTray() {
 	}
 }
 
-func init() {
-	register(map[string]commandFunc{
-		"check_for_update": func(ctx context.Context, h *HostService, args commandArgs) (any, error) {
-			var channel *string
-			if err := args.decode("channel", &channel); err != nil {
-				return nil, err
-			}
-			return h.checkForUpdate(ctx, channel)
-		},
-		"download_update": func(ctx context.Context, h *HostService, _ commandArgs) (any, error) {
-			if err := h.downloadUpdateReported(ctx); err != nil {
-				return nil, stringError(err.Error())
-			}
-			return nil, nil
-		},
-		"cancel_download": func(_ context.Context, h *HostService, _ commandArgs) (any, error) {
-			h.cancelDownload()
-			return nil, nil
-		},
-		"get_download_progress": func(_ context.Context, h *HostService, _ commandArgs) (any, error) {
-			return h.downloadProgress(), nil
-		},
-		"install_update": func(ctx context.Context, h *HostService, args commandArgs) (any, error) {
-			send, err := args.channel("onEvent")
-			if err != nil {
-				return nil, err
-			}
-			return nil, h.installUpdate(ctx, func(message any) { send(h, message) })
-		},
-		"skip_version": func(ctx context.Context, h *HostService, args commandArgs) (any, error) {
-			var version string
-			if err := args.decode("version", &version); err != nil {
-				return nil, err
-			}
-			return nil, h.skipVersion(ctx, version)
-		},
-		"get_auto_download_update": func(ctx context.Context, h *HostService, _ commandArgs) (any, error) {
-			return h.autoDownload(ctx)
-		},
-		"set_auto_download_update": func(ctx context.Context, h *HostService, args commandArgs) (any, error) {
-			var enabled bool
-			if err := args.decode("enabled", &enabled); err != nil {
-				return nil, err
-			}
-			return nil, h.setAutoDownload(ctx, enabled)
-		},
-	})
+// CheckForUpdate looks for a newer release on the given channel (null = the user's channel) and tells every window
+// through `update-available`. It resolves nil when the app is up to date.
+//
+//uc:errors text
+//uc:os all=real
+func (h *HostService) CheckForUpdate(ctx context.Context, channel *string) (*UpdateMetadata, error) {
+	ctx, cancel := commandContext(ctx, "check_for_update")
+	defer cancel()
+	return h.checkForUpdate(ctx, channel)
+}
+
+// DownloadUpdate downloads the pending release in the background; progress is broadcast on
+// `update-download-progress`. It resolves when the download finished and rejects on failure or cancellation.
+//
+//uc:errors text
+//uc:os all=real
+func (h *HostService) DownloadUpdate(ctx context.Context) error {
+	ctx, cancel := commandContext(ctx, "download_update")
+	defer cancel()
+	if err := h.downloadUpdateReported(ctx); err != nil {
+		return hostapi.TextError(err.Error())
+	}
+	return nil
+}
+
+// CancelDownload cancels a running download. It does nothing when none is active.
+//
+//uc:errors none
+//uc:os all=real
+func (h *HostService) CancelDownload() {
+	h.cancelDownload()
+}
+
+// GetDownloadProgress returns the pending update state, so a window that mounts mid-download can catch up before it
+// listens to the broadcast events.
+//
+//uc:errors none
+//uc:os all=real
+func (h *HostService) GetDownloadProgress() DownloadProgressSnapshot {
+	return h.downloadProgress()
+}
+
+// InstallUpdate downloads (if needed) and installs the pending release, then relaunches or quits as the platform's
+// installer requires. Its progress is sent on `update-install-progress`, which only this call produces.
+//
+//uc:errors text
+//uc:os all=real
+func (h *HostService) InstallUpdate(ctx context.Context) error {
+	ctx, cancel := commandContext(ctx, "install_update")
+	defer cancel()
+	return h.installUpdate(ctx, func(event DownloadEvent) { h.emit(updateInstallEvent, event) })
+}
+
+// SkipVersion remembers that the user does not want the given version on the current channel.
+//
+//uc:errors text
+//uc:os all=real
+func (h *HostService) SkipVersion(ctx context.Context, version string) error {
+	ctx, cancel := commandContext(ctx, "skip_version")
+	defer cancel()
+	return h.skipVersion(ctx, version)
+}
+
+// GetAutoDownloadUpdate reads the "download updates automatically" setting.
+//
+//uc:errors text
+//uc:os all=real
+func (h *HostService) GetAutoDownloadUpdate(ctx context.Context) (bool, error) {
+	ctx, cancel := commandContext(ctx, "get_auto_download_update")
+	defer cancel()
+	return h.autoDownload(ctx)
+}
+
+// SetAutoDownloadUpdate saves the "download updates automatically" setting.
+//
+//uc:errors text
+//uc:os all=real
+func (h *HostService) SetAutoDownloadUpdate(ctx context.Context, enabled bool) error {
+	ctx, cancel := commandContext(ctx, "set_auto_download_update")
+	defer cancel()
+	return h.setAutoDownload(ctx, enabled)
 }

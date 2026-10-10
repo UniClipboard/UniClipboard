@@ -62,6 +62,22 @@ func main() {
 	switch os.Args[1] {
 	case "errors-ts":
 		writeOrCheck(filepath.Join(root, errorsTSPath), renderErrorsTS(), check)
+	case "e2e-table":
+		commands, problems := scanCommands(root)
+		if len(problems) > 0 {
+			fatal(fmt.Errorf("run `hostcontract lint` first: %s", problems[0]))
+		}
+		writeOrCheck(filepath.Join(root, e2eTablePath), renderE2ETable(commands), check)
+	case "lint":
+		problems := lint(root)
+		for _, problem := range problems {
+			fmt.Fprintln(os.Stderr, "hostcontract:", problem)
+		}
+		if len(problems) > 0 {
+			os.Exit(1)
+		}
+		commands, _ := scanCommands(root)
+		fmt.Printf("host contract lint passed (%d commands)\n", len(commands))
 	default:
 		fatal(fmt.Errorf("unknown subcommand %q", os.Args[1]))
 	}

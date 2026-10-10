@@ -6,9 +6,11 @@ import (
 	"encoding/hex"
 	"runtime"
 	"sync"
+
+	"github.com/UniClipboard/UniClipboard/apps/gui-go/internal/hostapi"
 )
 
-const visualEffectsChangedEvent = "visual-effects://changed"
+// Native shell, appearance and lifecycle commands.
 
 func hostPlatform() string {
 	if runtime.GOOS == "darwin" {
@@ -23,137 +25,212 @@ type visualEffects struct {
 	mu           sync.Mutex
 	sessionID    string
 	revision     int
-	mode         string
-	systemMotion string
+	mode         EffectsMode
+	systemMotion SystemMotion
 }
 
 func newVisualEffects() *visualEffects {
 	id := make([]byte, 8)
 	_, _ = rand.Read(id)
-	return &visualEffects{sessionID: hex.EncodeToString(id), revision: 1, mode: "auto", systemMotion: "unknown"}
+	return &visualEffects{sessionID: hex.EncodeToString(id), revision: 1, mode: EffectsModeAuto, systemMotion: SystemMotionUnknown}
 }
 
-func (v *visualEffects) snapshot() map[string]any {
-	reduce := v.systemMotion == "reduce"
-	low := v.mode == "smooth" || reduce
-	reason := "platform_default"
+// snapshot reads the state; callers hold v.mu.
+func (v *visualEffects) snapshot() EffectsSnapshot {
+	reduce := v.systemMotion == SystemMotionReduce
+	reason := EffectsReasonPlatformDefault
 	switch {
-	case v.mode != "auto":
-		reason = "manual"
+	case v.mode != EffectsModeAuto:
+		reason = EffectsReasonManual
 	case reduce:
-		reason = "system"
+		reason = EffectsReasonSystem
 	}
-	return map[string]any{
-		"sessionId": v.sessionID, "revision": v.revision, "mode": v.mode,
-		"autoForSession": "effects", "nextAuto": nil, "systemMotion": v.systemMotion,
-		"reduceMotion": reduce, "lowEffects": low, "reason": reason, "persistence": "session_only",
+	return EffectsSnapshot{
+		SessionID: v.sessionID, Revision: v.revision, Mode: v.mode,
+		AutoForSession: AutoResultEffects, SystemMotion: v.systemMotion,
+		ReduceMotion: reduce, LowEffects: v.mode == EffectsModeSmooth || reduce,
+		Reason: reason, Persistence: EffectsPersistenceSessionOnly,
 	}
 }
 
-func init() {
-	register(map[string]commandFunc{
-		// The Omarchy theme source exists only on Linux hosts that ship it.
-		"get_desktop_theme": func(context.Context, *HostService, commandArgs) (any, error) {
-			return map[string]any{"revision": 0, "followOmarchyTheme": false, "omarchyAvailable": false, "theme": nil, "windowCornerRadius": nil}, nil
-		},
-		"set_follow_omarchy_theme": func(context.Context, *HostService, commandArgs) (any, error) {
-			return map[string]any{"revision": 0, "followOmarchyTheme": false, "omarchyAvailable": false, "theme": nil, "windowCornerRadius": nil}, nil
-		},
-		"get_visual_effects": func(_ context.Context, h *HostService, _ commandArgs) (any, error) {
-			h.effects.mu.Lock()
-			defer h.effects.mu.Unlock()
-			return h.effects.snapshot(), nil
-		},
-		"set_visual_effects_mode": func(_ context.Context, h *HostService, args commandArgs) (any, error) {
-			var mode string
-			if err := args.decode("mode", &mode); err != nil {
-				return nil, err
-			}
-			if mode != "auto" && mode != "effects" && mode != "smooth" {
-				return nil, commandError{Code: "ValidationError", Message: "unknown visual effects mode"}
-			}
-			h.effects.mu.Lock()
-			h.effects.mode = mode
-			h.effects.revision++
-			snap := h.effects.snapshot()
-			h.effects.mu.Unlock()
-			h.emit(visualEffectsChangedEvent, snap)
-			return snap, nil
-		},
-		"report_visual_effects_environment": func(_ context.Context, h *HostService, args commandArgs) (any, error) {
-			var motion string
-			if err := args.decode("systemMotion", &motion); err != nil {
-				return nil, err
-			}
-			if motion != "reduce" && motion != "allow" && motion != "unknown" {
-				return nil, commandError{Code: "ValidationError", Message: "unknown system motion"}
-			}
-			h.effects.mu.Lock()
-			defer h.effects.mu.Unlock()
-			if motion != h.effects.systemMotion {
-				h.effects.systemMotion = motion
-				h.effects.revision++
-			}
-			return h.effects.snapshot(), nil
-		},
-		// Frame sampling is not performed by this host, so no permit is ever granted.
-		"begin_visual_effects_sample": func(context.Context, *HostService, commandArgs) (any, error) { return nil, nil },
-		"report_visual_effects_sample": func(_ context.Context, h *HostService, _ commandArgs) (any, error) {
-			h.effects.mu.Lock()
-			defer h.effects.mu.Unlock()
-			return h.effects.snapshot(), nil
-		},
-		"take_pending_navigation": func(_ context.Context, h *HostService, _ commandArgs) (any, error) {
-			return h.takePendingNavigation(), nil
-		},
-		"main_window_presentation_ready": func(context.Context, *HostService, commandArgs) (any, error) { return nil, nil },
-		"mark_main_window_ready":         func(context.Context, *HostService, commandArgs) (any, error) { return nil, nil },
-		"set_traffic_light_position":     func(context.Context, *HostService, commandArgs) (any, error) { return nil, nil },
-		"get_install_kind":               func(context.Context, *HostService, commandArgs) (any, error) { return installKind(), nil },
-	})
+// unavailableTheme is the desktop theme of a host without an Omarchy theme source (every host today).
+func unavailableTheme() DesktopThemeSnapshot { return DesktopThemeSnapshot{} }
+
+// GetDesktopTheme reports the desktop theme. Only a Linux host with an Omarchy theme source could report one; this
+// host has none on any platform, so it always answers "unavailable" and `desktop-theme://changed` is never sent.
+//
+//uc:errors none
+//uc:os darwin=noop windows=noop linux=unsupported
+func (h *HostService) GetDesktopTheme() DesktopThemeSnapshot {
+	return unavailableTheme()
 }
 
-func installKind() string {
+// SetFollowOmarchyTheme would switch the page to the Omarchy theme. Unsupported: with no theme source the request
+// changes nothing and the answer stays "unavailable".
+//
+//uc:errors none
+//uc:os darwin=noop windows=noop linux=unsupported
+func (h *HostService) SetFollowOmarchyTheme(enabled bool) DesktopThemeSnapshot {
+	return unavailableTheme()
+}
+
+// GetVisualEffects returns the visual effects state of this session.
+//
+//uc:errors none
+//uc:os all=real
+func (h *HostService) GetVisualEffects() EffectsSnapshot {
+	h.effects.mu.Lock()
+	defer h.effects.mu.Unlock()
+	return h.effects.snapshot()
+}
+
+// SetVisualEffectsMode sets the visual effects preference and tells every window.
+//
+//uc:errors command ValidationError
+//uc:os all=real
+func (h *HostService) SetVisualEffectsMode(mode EffectsMode) (EffectsSnapshot, error) {
+	switch mode {
+	case EffectsModeAuto, EffectsModeEffects, EffectsModeSmooth:
+	default:
+		return EffectsSnapshot{}, hostapi.New(hostapi.CodeValidationError, "unknown visual effects mode")
+	}
+	h.effects.mu.Lock()
+	h.effects.mode = mode
+	h.effects.revision++
+	snap := h.effects.snapshot()
+	h.effects.mu.Unlock()
+	h.emit(visualEffectsChangedEvent, snap)
+	return snap, nil
+}
+
+// ReportVisualEffectsEnvironment records the system reduce-motion preference the page observed.
+//
+//uc:errors command ValidationError
+//uc:os all=real
+func (h *HostService) ReportVisualEffectsEnvironment(sessionID string, systemMotion SystemMotion) (EffectsSnapshot, error) {
+	switch systemMotion {
+	case SystemMotionReduce, SystemMotionAllow, SystemMotionUnknown:
+	default:
+		return EffectsSnapshot{}, hostapi.New(hostapi.CodeValidationError, "unknown system motion")
+	}
+	h.effects.mu.Lock()
+	defer h.effects.mu.Unlock()
+	if systemMotion != h.effects.systemMotion {
+		h.effects.systemMotion = systemMotion
+		h.effects.revision++
+	}
+	return h.effects.snapshot(), nil
+}
+
+// BeginVisualEffectsSample asks for permission to measure one sample. This host does not sample frames, so no
+// permit is ever granted (always nil).
+//
+//uc:errors none
+//uc:os all=noop
+func (h *HostService) BeginVisualEffectsSample(sessionID string) *SamplePermit {
+	return nil
+}
+
+// ReportVisualEffectsSample accepts a frame-timing sample. It is read and dropped: this host does not sample.
+//
+//uc:errors none
+//uc:os all=noop
+func (h *HostService) ReportVisualEffectsSample(sample EffectsSample) EffectsSnapshot {
+	h.effects.mu.Lock()
+	defer h.effects.mu.Unlock()
+	return h.effects.snapshot()
+}
+
+// TakePendingNavigation returns, once, the route a tray or second launch asked the page to open.
+//
+//uc:errors none
+//uc:os all=real
+func (h *HostService) TakePendingNavigation() *string {
+	h.navMu.Lock()
+	defer h.navMu.Unlock()
+	if h.pendingNavigation == "" {
+		return nil
+	}
+	route := h.pendingNavigation
+	h.pendingNavigation = ""
+	return &route
+}
+
+// MainWindowPresentationReady is the page's handshake that the main window finished its first paint. The Go host
+// shows the window itself and has a single window generation, so there is nothing to reconcile: it is inert.
+//
+//uc:errors none
+//uc:os all=noop
+func (h *HostService) MainWindowPresentationReady(generation string) {}
+
+// MarkMainWindowReady is the page's handshake that the main window is ready to be shown. Inert for the same reason.
+//
+//uc:errors none
+//uc:os all=noop
+func (h *HostService) MarkMainWindowReady(generation string) {}
+
+// SetTrafficLightPosition would place the macOS window buttons. Inert: Wails draws them with the hidden-inset title
+// bar at a fixed place, and the page's offset is not applied.
+//
+//uc:errors none
+//uc:os darwin=unsupported windows=noop linux=noop
+func (h *HostService) SetTrafficLightPosition(offsetX *float64, offsetY *float64) {}
+
+// GetInstallKind tells how this copy was installed, so the page can route package-managed copies to their package
+// manager instead of the in-app updater.
+//
+//uc:errors none
+//uc:os all=real
+func (h *HostService) GetInstallKind() InstallKind {
+	return installKind()
+}
+
+func installKind() InstallKind {
 	if runtime.GOOS == "darwin" {
-		return "macos"
+		return InstallKindMacOS
 	}
 	return platformInstallKind()
 }
 
-func init() {
-	register(map[string]commandFunc{
-		"set_tray_language": func(_ context.Context, h *HostService, args commandArgs) (any, error) {
-			var language string
-			if err := args.decode("language", &language); err != nil {
-				return nil, err
-			}
-			h.tray.setLanguage(language)
-			return nil, nil
-		},
-		// The page owns the frame preference (custom controls drawn by the page, or the system frame) and reports it here
-		// as Tauri's set_decorations did. Without this the main window keeps the system frame next to the page's own controls.
-		"set_window_decorations": func(_ context.Context, h *HostService, args commandArgs) (any, error) {
-			var decorations bool
-			if err := args.decode("decorations", &decorations); err != nil {
-				return nil, err
-			}
-			if runtime.GOOS == "darwin" {
-				return nil, nil // macOS keeps its hidden-inset title bar
-			}
-			if w, ok := h.app.Window.GetByName("main"); ok {
-				w.SetFrameless(!decorations)
-			}
-			return nil, nil
-		},
-		"restart_app": func(_ context.Context, h *HostService, _ commandArgs) (any, error) {
-			go h.fullRestart()
-			return nil, nil
-		},
-		"restart_daemon": func(_ context.Context, _ *HostService, _ commandArgs) (any, error) {
-			if err := restartDaemon(); err != nil {
-				return nil, internalError(err)
-			}
-			return nil, nil
-		},
-	})
+// SetTrayLanguage updates the tray menu labels to the UI language. It does not persist anything.
+//
+//uc:errors none
+//uc:os all=real
+func (h *HostService) SetTrayLanguage(language string) {
+	defer e2eInvoke("set_tray_language")() // e2e builds record when this command enters and leaves; a no-op otherwise
+	h.tray.setLanguage(language)
+}
+
+// SetWindowDecorations applies the page's frame preference (custom controls drawn by the page, or the system
+// frame) to the main window. macOS keeps its hidden-inset title bar either way.
+//
+//uc:errors none
+//uc:os all=real darwin=noop
+//uc:adapter @tauri-apps/api/window
+func (h *HostService) SetWindowDecorations(decorations bool) {
+	if runtime.GOOS == "darwin" {
+		return
+	}
+	if w, ok := h.app.Window.GetByName("main"); ok {
+		w.SetFrameless(!decorations)
+	}
+}
+
+// RestartApp restarts the daemon and then the GUI.
+//
+//uc:errors none
+//uc:os all=real
+func (h *HostService) RestartApp() {
+	go h.fullRestart()
+}
+
+// RestartDaemon replaces the daemon process; the page reconnects itself.
+//
+//uc:errors command InternalError
+//uc:os all=real
+func (h *HostService) RestartDaemon(ctx context.Context) error {
+	if err := restartDaemon(); err != nil {
+		return hostapi.Internal(err)
+	}
+	return nil
 }

@@ -1,5 +1,5 @@
-//go:build !linux
+//go:build !linux && !windows
 
 package main
 
-func platformInstallKind() string { return "unknown" }
+func platformInstallKind() InstallKind { return InstallKindUnknown }

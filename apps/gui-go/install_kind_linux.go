@@ -11,7 +11,7 @@ import (
 
 var (
 	installKindOnce  sync.Once
-	installKindValue string
+	installKindValue InstallKind
 )
 
 // platformInstallKind classifies the running installation like the Tauri shell's `get_install_kind`
@@ -19,18 +19,18 @@ var (
 // an executable under /usr, /opt, /bin or /sbin is asked of the package databases (`dpkg-query -S`, `rpm -qf`) and
 // is `deb`, `rpm`, or `unknown`; anything else (a portable or source tree) is `unknown`. The frontend sends deb
 // and rpm to a "update with your package manager" dialog, so only AppImage installs itself in place. Cached.
-func platformInstallKind() string {
+func platformInstallKind() InstallKind {
 	installKindOnce.Do(func() { installKindValue = detectLinuxInstallKind() })
 	return installKindValue
 }
 
-func detectLinuxInstallKind() string {
+func detectLinuxInstallKind() InstallKind {
 	if os.Getenv("APPIMAGE") != "" {
-		return "appimage"
+		return InstallKindAppImage
 	}
 	exe, err := os.Executable()
 	if err != nil {
-		return "unknown"
+		return InstallKindUnknown
 	}
 	managed := false
 	for _, prefix := range []string{"/usr/", "/opt/", "/bin/", "/sbin/"} {
@@ -39,13 +39,13 @@ func detectLinuxInstallKind() string {
 		}
 	}
 	if !managed {
-		return "unknown"
+		return InstallKindUnknown
 	}
 	if exec.Command("dpkg-query", "-S", exe).Run() == nil {
-		return "deb"
+		return InstallKindDeb
 	}
 	if exec.Command("rpm", "-qf", exe).Run() == nil {
-		return "rpm"
+		return InstallKindRPM
 	}
-	return "unknown"
+	return InstallKindUnknown
 }

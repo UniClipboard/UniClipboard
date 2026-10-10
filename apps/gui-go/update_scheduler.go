@@ -297,20 +297,18 @@ func (h *HostService) scheduledCheck(ctx context.Context) bool {
 		log.Printf("update scheduler: check failed: %v", err)
 	}
 	// Side effects first, the check event last: that is the order the Tauri scheduler reports them in.
-	if release, _ := meta.(map[string]any); release != nil {
-		if version, _ := release["version"].(string); version != "" {
-			opened := h.notifyIfNew(channel, version, true)
-			if settings.General.AutoDownloadUpdate {
-				// In-place install is supported on macOS, the only host this build targets.
-				// A refused download (already downloaded or running) neither reports nor re-opens the window.
-				switch err := h.downloadUpdateReported(ctx); {
-				case err == nil:
-					if !opened {
-						h.openReadyFallback(channel)
-					}
-				case classifyDownload(err) != downloadPrecondition:
-					log.Printf("update scheduler: auto-download failed: %v", err)
+	if meta != nil && meta.Version != "" {
+		opened := h.notifyIfNew(channel, meta.Version, true)
+		if settings.General.AutoDownloadUpdate {
+			// In-place install is supported on macOS, the only host this build targets.
+			// A refused download (already downloaded or running) neither reports nor re-opens the window.
+			switch err := h.downloadUpdateReported(ctx); {
+			case err == nil:
+				if !opened {
+					h.openReadyFallback(channel)
 				}
+			case classifyDownload(err) != downloadPrecondition:
+				log.Printf("update scheduler: auto-download failed: %v", err)
 			}
 		}
 	}

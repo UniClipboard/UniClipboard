@@ -32,9 +32,3 @@ func commandTimeout(name string) time.Duration {
 func commandContext(ctx context.Context, name string) (context.Context, context.CancelFunc) {
 	return context.WithTimeout(ctx, commandTimeout(name))
 }
-
-func init() {
-	// Events are registered here, in one place and with constant names, so the generator can see them
-	// (`application.RegisterEvent` through a wrapper is invisible to it) and the frontend gets typed listeners.
-	application.RegisterEvent[application.Void](contentLockChangedEvent)
-}

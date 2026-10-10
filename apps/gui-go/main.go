@@ -9,7 +9,6 @@ import (
 	"os"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/buildinfo"
 	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/daemonclient"
@@ -62,40 +61,6 @@ type HostService struct {
 
 // emit broadcasts an event to every window, matching Tauri's app-wide emit.
 func (h *HostService) emit(name string, payload any) { h.app.Event.Emit(name, payload) }
-
-func (h *HostService) takePendingNavigation() any {
-	h.navMu.Lock()
-	defer h.navMu.Unlock()
-	if h.pendingNavigation == "" {
-		return nil
-	}
-	route := h.pendingNavigation
-	h.pendingNavigation = ""
-	return route
-}
-
-type Connection struct {
-	BaseURL string `json:"baseUrl"`
-	WSURL   string `json:"wsUrl"`
-	Profile string `json:"profile"`
-	PID     uint32 `json:"pid"`
-}
-
-func (h *HostService) Connection() (Connection, error) {
-	c, err := daemonproc.ReadConnFile()
-	if err != nil {
-		return Connection{}, err
-	}
-	if c == nil {
-		return Connection{}, fmt.Errorf("daemon connection unavailable")
-	}
-	return Connection{h.client.BaseURL, h.client.WSURL, os.Getenv("UC_PROFILE"), c.PID}, nil
-}
-func (h *HostService) Session() (daemonclient.Session, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	return h.client.ExchangeSession(ctx, "gui")
-}
 
 // openMainWindow creates the main window. Closing it hides it so the process,
 // daemon connection and window state stay alive until an explicit quit; the

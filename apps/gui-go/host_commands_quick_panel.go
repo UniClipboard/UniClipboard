@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/UniClipboard/UniClipboard/apps/gui-go/internal/hostapi"
 	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/daemonclient"
 )
 
@@ -32,114 +33,133 @@ func (h *HostService) loadQuickPanelSettings(ctx context.Context) (quickPanelSet
 func (h *HostService) patchQuickPanel(ctx context.Context, patch map[string]any) error {
 	body := map[string]any{"quickPanel": patch}
 	if err := h.client.Enveloped(ctx, daemonclient.Request{Method: http.MethodPut, Path: "/settings", JSON: body}, nil); err != nil {
-		return internalError(err)
+		return hostapi.Internal(err)
 	}
 	return nil
 }
 
-func init() {
-	register(map[string]commandFunc{
-		"set_quick_panel_enabled": func(ctx context.Context, h *HostService, args commandArgs) (any, error) {
-			var enabled bool
-			if err := args.decode("enabled", &enabled); err != nil {
-				return nil, err
-			}
-			current, err := h.loadQuickPanelSettings(ctx)
-			if err != nil {
-				return nil, internalError(err)
-			}
-			if current.Enabled == enabled {
-				return nil, nil
-			}
-			if h.helper == nil {
-				return nil, h.setWebViewPanelEnabled(ctx, enabled)
-			}
-			if err := h.patchQuickPanel(ctx, map[string]any{"enabled": enabled}); err != nil {
-				return nil, err
-			}
-			h.panelEnabledChanged(enabled)
-			return nil, nil
-		},
-		"set_quick_panel_position": func(ctx context.Context, h *HostService, args commandArgs) (any, error) {
-			var position string
-			if err := args.decode("position", &position); err != nil {
-				return nil, err
-			}
-			if position != "center" && position != "follow_cursor" {
-				return nil, commandError{Code: "ValidationError", Message: "invalid argument position"}
-			}
-			return nil, h.patchQuickPanel(ctx, map[string]any{"position": position})
-		},
-		"get_quick_panel_double_tap_availability": func(_ context.Context, h *HostService, _ commandArgs) (any, error) {
-			switch {
-			case h.helper == nil && modifierDoubleTapSupported():
-				return "supported", nil // the WebView panel's own monitor (Windows)
-			case h.helper == nil || runtime.GOOS != "darwin":
-				return "unsupported_display_session", nil
-			case !accessibilityTrusted():
-				return "accessibility_permission_required", nil
-			}
-			return "supported", nil
-		},
-		"paste_to_previous_app": func(_ context.Context, h *HostService, _ commandArgs) (any, error) {
-			return nil, asStringError(h.pasteIntoPreviousApp(simulatePaste))
-		},
-		"type_file_paths_to_previous_app": func(_ context.Context, h *HostService, args commandArgs) (any, error) {
-			var request struct {
-				FilePaths []string `json:"filePaths"`
-			}
-			if err := args.decode("request", &request); err != nil {
-				return nil, err
-			}
-			if len(request.FilePaths) == 0 {
-				return nil, stringError("No valid file paths were provided")
-			}
-			for _, path := range request.FilePaths {
-				if path == "" {
-					return nil, stringError("No valid file paths were provided")
-				}
-			}
-			return nil, asStringError(h.pasteIntoPreviousApp(func() error { return simulateTextInput(strings.Join(request.FilePaths, "\n")) }))
-		},
-		"update_keyboard_shortcuts": func(ctx context.Context, h *HostService, args commandArgs) (any, error) {
-			var patch map[string]json.RawMessage // a null value clears the shortcut
-			if err := args.decode("shortcuts", &patch); err != nil {
-				return nil, err
-			}
-			return h.updateKeyboardShortcuts(ctx, patch)
-		},
-		"set_quick_panel_double_tap_modifier": func(ctx context.Context, h *HostService, args commandArgs) (any, error) {
-			var modifier string
-			if err := args.decode("modifier", &modifier); err != nil {
-				return nil, err
-			}
-			switch modifier {
-			case "disabled", "alt", "control", "meta":
-			default:
-				return nil, commandError{Code: "ValidationError", Message: "invalid argument modifier"}
-			}
-			if h.helper == nil {
-				return nil, h.setWebViewModifier(ctx, modifier)
-			}
-			// The native helper owns the trigger and implements it on macOS only (Tauri `supports_double_tap`):
-			// accepting the setting elsewhere would promise a trigger that never fires.
-			if modifier != "disabled" && runtime.GOOS != "darwin" {
-				return nil, commandError{Code: "Conflict", Message: "modifier double-tap is not available with the native quick panel on this platform yet"}
-			}
-			// The helper reads the trigger at startup: persist, then restart it.
-			current, err := h.loadQuickPanelSettings(ctx)
-			if err != nil {
-				return nil, internalError(err)
-			}
-			if current.DoubleTapModifier != modifier {
-				if err := h.patchQuickPanel(ctx, map[string]any{"doubleTapModifier": modifier}); err != nil {
-					return nil, err
-				}
-				h.restartPanelHelper()
-			}
-			return nil, nil
-		},
-	})
+// SetQuickPanelEnabled turns the quick panel and its global shortcut on or off.
+//
+//uc:errors command InternalError Conflict
+//uc:os all=real
+func (h *HostService) SetQuickPanelEnabled(ctx context.Context, enabled bool) error {
+	ctx, cancel := commandContext(ctx, "set_quick_panel_enabled")
+	defer cancel()
+	current, err := h.loadQuickPanelSettings(ctx)
+	if err != nil {
+		return hostapi.Internal(err)
+	}
+	if current.Enabled == enabled {
+		return nil
+	}
+	if h.helper == nil {
+		return h.setWebViewPanelEnabled(ctx, enabled)
+	}
+	if err := h.patchQuickPanel(ctx, map[string]any{"enabled": enabled}); err != nil {
+		return err
+	}
+	h.panelEnabledChanged(enabled)
+	return nil
+}
+
+// SetQuickPanelPosition saves where the quick panel appears.
+//
+//uc:errors command ValidationError InternalError
+//uc:os all=real
+func (h *HostService) SetQuickPanelPosition(ctx context.Context, position QuickPanelPosition) error {
+	ctx, cancel := commandContext(ctx, "set_quick_panel_position")
+	defer cancel()
+	if position != QuickPanelPositionCenter && position != QuickPanelPositionFollowCursor {
+		return hostapi.New(hostapi.CodeValidationError, "invalid argument position")
+	}
+	return h.patchQuickPanel(ctx, map[string]any{"position": position})
+}
+
+// GetQuickPanelDoubleTapAvailability tells whether the modifier double tap trigger can work in this session.
+//
+//uc:errors none
+//uc:os all=real
+func (h *HostService) GetQuickPanelDoubleTapAvailability() ModifierDoubleTapAvailability {
+	switch {
+	case h.helper == nil && modifierDoubleTapSupported():
+		return DoubleTapSupported // the WebView panel's own monitor (Windows)
+	case h.helper == nil || runtime.GOOS != "darwin":
+		return DoubleTapUnsupportedDisplaySession
+	case !accessibilityTrusted():
+		return DoubleTapAccessibilityPermissionNeeded
+	}
+	return DoubleTapSupported
+}
+
+// PasteToPreviousApp hides the panel, returns to the previously focused application and pastes. It rejects with a
+// plain string (hostapi.TextError); the panel is shown again on failure so the selection is not lost.
+//
+//uc:errors text
+//uc:os darwin=unsupported windows=real linux=real
+func (h *HostService) PasteToPreviousApp() error {
+	return asTextError(h.pasteIntoPreviousApp(simulatePaste))
+}
+
+// TypeFilePathsToPreviousApp types file paths, one per line, into the previously focused application.
+//
+//uc:errors text
+//uc:os darwin=unsupported windows=real linux=real
+func (h *HostService) TypeFilePathsToPreviousApp(request FilePathInputRequest) error {
+	if len(request.FilePaths) == 0 {
+		return hostapi.TextError("No valid file paths were provided")
+	}
+	for _, path := range request.FilePaths {
+		if path == "" {
+			return hostapi.TextError("No valid file paths were provided")
+		}
+	}
+	return asTextError(h.pasteIntoPreviousApp(func() error { return simulateTextInput(strings.Join(request.FilePaths, "\n")) }))
+}
+
+// UpdateKeyboardShortcuts merges a shortcut patch into the settings and re-binds the global shortcut. A null value
+// clears the shortcut; any other value is one accelerator string or a list of alternatives (opaque JSON here, see
+// UpdateKeyboardShortcutsResult).
+//
+//uc:errors command InternalError Conflict
+//uc:os all=real
+func (h *HostService) UpdateKeyboardShortcuts(ctx context.Context, shortcuts map[string]json.RawMessage) (UpdateKeyboardShortcutsResult, error) {
+	ctx, cancel := commandContext(ctx, "update_keyboard_shortcuts")
+	defer cancel()
+	return h.updateKeyboardShortcuts(ctx, shortcuts)
+}
+
+// SetQuickPanelDoubleTapModifier sets the modifier whose double tap opens the quick panel.
+//
+//uc:errors command ValidationError Conflict InternalError
+//uc:os all=real
+func (h *HostService) SetQuickPanelDoubleTapModifier(ctx context.Context, modifier QuickPanelDoubleTapModifier) error {
+	ctx, cancel := commandContext(ctx, "set_quick_panel_double_tap_modifier")
+	defer cancel()
+	switch modifier {
+	case DoubleTapModifierDisabled, DoubleTapModifierAlt, DoubleTapModifierControl, DoubleTapModifierMeta:
+	default:
+		return hostapi.New(hostapi.CodeValidationError, "invalid argument modifier")
+	}
+	if h.helper == nil {
+		return h.setWebViewModifier(ctx, string(modifier))
+	}
+	// The native helper owns the trigger and implements it on macOS only (Tauri `supports_double_tap`):
+	// accepting the setting elsewhere would promise a trigger that never fires.
+	if modifier != DoubleTapModifierDisabled && runtime.GOOS != "darwin" {
+		return hostapi.New(hostapi.CodeConflict, "modifier double-tap is not available with the native quick panel on this platform yet")
+	}
+	// The helper reads the trigger at startup: persist, then restart it.
+	current, err := h.loadQuickPanelSettings(ctx)
+	if err != nil {
+		return hostapi.Internal(err)
+	}
+	if current.DoubleTapModifier != string(modifier) {
+		if err := h.patchQuickPanel(ctx, map[string]any{"doubleTapModifier": modifier}); err != nil {
+			return err
+		}
+		h.restartPanelHelper()
+	}
+	return nil
 }
 
 // quickPanelShortcutKey is the setting id of the quick panel's global shortcut.
@@ -147,7 +167,7 @@ const quickPanelShortcutKey = "global.toggleQuickPanel"
 
 // updateKeyboardShortcuts merges a shortcut patch into the daemon settings. The native helper
 // registers its global shortcut at startup, so it is restarted when that shortcut changed.
-func (h *HostService) updateKeyboardShortcuts(ctx context.Context, patch map[string]json.RawMessage) (any, error) {
+func (h *HostService) updateKeyboardShortcuts(ctx context.Context, patch map[string]json.RawMessage) (UpdateKeyboardShortcutsResult, error) {
 	h.shortcutsMu.Lock()
 	defer h.shortcutsMu.Unlock()
 	var settings struct {
@@ -155,7 +175,7 @@ func (h *HostService) updateKeyboardShortcuts(ctx context.Context, patch map[str
 		QuickPanel        quickPanelSettings         `json:"quickPanel"`
 	}
 	if err := h.client.Get(ctx, "/settings", &settings); err != nil {
-		return nil, internalError(err)
+		return UpdateKeyboardShortcutsResult{}, hostapi.Internal(err)
 	}
 	next := map[string]json.RawMessage{}
 	for id, value := range settings.KeyboardShortcuts {
@@ -177,7 +197,7 @@ func (h *HostService) updateKeyboardShortcuts(ctx context.Context, patch map[str
 		target := panelShortcutTarget(settings.QuickPanel.Enabled, next)
 		if !sameShortcutSet(previousOS, target) {
 			if err := h.applyOSShortcuts(target); err != nil {
-				return nil, err
+				return UpdateKeyboardShortcutsResult{}, err
 			}
 			osChanged = true
 		}
@@ -189,12 +209,12 @@ func (h *HostService) updateKeyboardShortcuts(ctx context.Context, patch map[str
 				log.Printf("failed to roll the global shortcut back after the settings save failed: %v", rollbackErr)
 			}
 		}
-		return nil, internalError(err)
+		return UpdateKeyboardShortcutsResult{}, hostapi.Internal(err)
 	}
 	if !sameShortcut(settings.KeyboardShortcuts[quickPanelShortcutKey], next[quickPanelShortcutKey]) {
 		h.restartPanelHelper()
 	}
-	return map[string]any{"keyboardShortcuts": next}, nil
+	return UpdateKeyboardShortcutsResult{KeyboardShortcuts: next}, nil
 }
 
 func sameShortcut(a, b json.RawMessage) bool {
@@ -227,7 +247,7 @@ func (h *HostService) setWebViewPanelEnabled(ctx context.Context, enabled bool) 
 		QuickPanel        quickPanelSettings         `json:"quickPanel"`
 	}
 	if err := h.client.Get(ctx, "/settings", &settings); err != nil {
-		return internalError(err)
+		return hostapi.Internal(err)
 	}
 	previous := h.osShortcuts
 	if err := h.applyOSShortcuts(panelShortcutTarget(enabled, settings.KeyboardShortcuts)); err != nil {
@@ -237,7 +257,7 @@ func (h *HostService) setWebViewPanelEnabled(ctx context.Context, enabled bool) 
 	previousModifier := h.modifierMonitor().Current()
 	if err := h.modifierMonitor().Set(desiredLiveModifier(enabled, modifierDoubleTapSupported(), settings.QuickPanel.DoubleTapModifier)); err != nil {
 		h.rollbackPanelOS(previous, previousModifier)
-		return commandError{Code: "Conflict", Message: err.Error()}
+		return hostapi.New(hostapi.CodeConflict, err.Error())
 	}
 	if err := h.patchQuickPanel(ctx, map[string]any{"enabled": enabled}); err != nil {
 		h.rollbackPanelOS(previous, previousModifier)
@@ -268,14 +288,14 @@ func (h *HostService) setWebViewModifier(ctx context.Context, modifier string) e
 	defer h.shortcutsMu.Unlock()
 	current, err := h.loadQuickPanelSettings(ctx)
 	if err != nil {
-		return internalError(err)
+		return hostapi.Internal(err)
 	}
 	if current.Enabled && modifier != "disabled" && !modifierDoubleTapSupported() {
-		return commandError{Code: "Conflict", Message: "modifier double-tap is not available with this quick panel on this platform yet"}
+		return hostapi.New(hostapi.CodeConflict, "modifier double-tap is not available with this quick panel on this platform yet")
 	}
 	previous := h.modifierMonitor().Current()
 	if err := h.modifierMonitor().Set(desiredLiveModifier(current.Enabled, modifierDoubleTapSupported(), modifier)); err != nil {
-		return commandError{Code: "Conflict", Message: err.Error()}
+		return hostapi.New(hostapi.CodeConflict, err.Error())
 	}
 	if current.DoubleTapModifier == modifier {
 		return nil
@@ -333,9 +353,10 @@ func (h *HostService) initPanelShortcuts() {
 	}
 }
 
-func asStringError(err error) error {
+// asTextError turns a failure into the plain-string rejection of the quick panel commands.
+func asTextError(err error) error {
 	if err == nil {
 		return nil
 	}
-	return stringError(err.Error())
+	return hostapi.TextError(err.Error())
 }

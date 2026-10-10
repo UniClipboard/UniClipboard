@@ -11,8 +11,6 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
-const devicesChangedEvent = "devices://sync-changed"
-
 // deviceSyncLabels is the submenu title, the empty placeholder and the unavailable placeholder.
 var deviceSyncLabels = map[string][3]string{
 	"zh-CN": {"设备同步", "暂无已配对设备", "暂时无法读取设备"},

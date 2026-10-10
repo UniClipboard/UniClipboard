@@ -11,12 +11,6 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
-const (
-	settingsChangedEvent     = "settings://changed"
-	settingsSyncChangedEvent = "settings://sync-changed"
-	uiNavigateEvent          = "ui://navigate"
-)
-
 // trayMenu owns the system tray icon and its localized menu. It mirrors the
 // Tauri tray: sync toggle, open, settings, restart, lightweight mode and quit.
 type trayMenu struct {

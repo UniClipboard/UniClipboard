@@ -330,6 +330,7 @@ def main():
               {'foreground': foreground_pid(), 'target': target.pid})
 
         target_text.write_text('')
+        focus_target()  # the panel pastes into whatever window was in front when it opened
         send_chord('ctrl', 'alt', 'v', hold=0.15)
         wait_for(lambda: panel_windows(helper_pids()), 10)
         wait_for(lambda: foreground_pid() == panel_pid, 8)
@@ -347,6 +348,7 @@ def main():
               not panel_windows(helper_pids()) and foreground_pid() == target.pid, {'foreground': foreground_pid()})
 
         target_text.write_text('')
+        focus_target()
         send_chord('ctrl', 'alt', 'v', hold=0.15)
         wait_for(lambda: panel_windows(helper_pids()), 10)
         time.sleep(.5)

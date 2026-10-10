@@ -6,8 +6,9 @@
 // ADR-008 D13 ships `uniclipd` inside the GUI installer so the GUI (and the CLI) can spawn it as
 // a *sibling* of the app executable — see `uc-daemon-local` `spawn.rs::resolve_daemon_exe_path`,
 // whose first strategy is "look for `uniclipd` next to the current exe". The packagers
-// (apps/gui-go/e2e/package_*.py, apps/gui-go/build.sh) and the CLI archive job consume the
-// staged files and place them next to the executable.
+// (apps/gui-go/packaging/*, apps/gui-go/e2e/package_*.py) and the CLI archive job consume the
+// staged files and place them next to the executable. The local macOS build.sh also invokes
+// this owner with --debug and consumes that staging result.
 //
 // It is invoked by CI (build.yml), passing the same `--target <triple>` the
 // packaging job uses (matrix.args), and locally for a native build.
@@ -75,7 +76,7 @@ const exeSuffix = isWindows ? '.exe' : ''
 const profile = release ? 'release' : 'debug'
 
 // 1) Build the daemon binary for the requested target.
-const buildArgs = ['build', '-p', 'uc-daemon', '--bin', 'uniclipd']
+const buildArgs = ['build', '--locked', '-p', 'uc-daemon', '--bin', 'uniclipd']
 if (release) buildArgs.push('--release')
 if (target) buildArgs.push('--target', target)
 if (timings) buildArgs.push('--timings')
@@ -99,7 +100,7 @@ console.log(`[sidecar] staged ${builtPath} -> ${sidecarPath}`)
 // 4) macOS only: the native quick panel helper ships next to the app executable too, where
 //    `uc-desktop` `resolve_helper_exe_path` looks for it. Other platforms keep the WebView panel.
 if (triple.includes('apple-darwin')) {
-  const helperArgs = ['build', '-p', 'quick-panel', '--bin', 'uniclip-quick-panel']
+  const helperArgs = ['build', '--locked', '-p', 'quick-panel', '--bin', 'uniclip-quick-panel']
   if (release) helperArgs.push('--release')
   if (target) helperArgs.push('--target', target)
   if (timings) helperArgs.push('--timings')

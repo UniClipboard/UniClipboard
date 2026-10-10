@@ -574,7 +574,7 @@ jobs:
         id: bundle
         env:
           VITE_APP_ENV: ${{ steps.resolve-env.outputs.app_env }}
-          VITE_SENTRY_DSN: ${{ secrets.VITE_SENTRY_DSN }}
+          VITE_SENTRY_DSN: ${{ inputs.build_mode != 'test' && secrets.VITE_SENTRY_DSN || '' }}
           # Frontend source map upload (apps/gui-go/frontend/vite.config.ts): the plugin runs inside the vite
           # build only when both the token and the project are present, and deletes the maps after.
           # Test-mode bundles are not releases: no upload under the real release version.

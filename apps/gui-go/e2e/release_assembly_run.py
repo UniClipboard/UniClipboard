@@ -91,7 +91,7 @@ def receipt(files, thumbprint, *, pinned=None, **overrides):
     return dict({'allowUntrustedRoot': False, 'expectThumbprint': pinned, 'passed': True, 'files': entries}, **overrides)
 
 
-def build_tree(tree, version, sha, *, windows_provider='signed', thumbprint='A' * 40):
+def build_tree(tree, version, sha, *, windows_provider='signed', cli_receipt_in_evidence=False, thumbprint='A' * 40):
     """A synthetic `download-artifact` tree. Every payload says it is synthetic and differs per file."""
     def payload(name):
         return f'SYNTHETIC release-assembly fixture, not a build: {name}\n'.encode()
@@ -135,7 +135,13 @@ def build_tree(tree, version, sha, *, windows_provider='signed', thumbprint='A' 
             cli_exes = {n: payload(f'cli {n}') for n in ('uniclip.exe', 'uniclipd.exe')}
             cli_zip = zip_bytes(cli_exes)
             write(tree / 'cli-x86_64-pc-windows-msvc' / f'uniclipboard-cli-{version}-x86_64-pc-windows-msvc.zip', cli_zip)
-            write(evidence / 'signatures-cli.json', json.dumps(receipt({n: h(b) for n, b in cli_exes.items()}, thumbprint)))
+            # SignPath: the GUI job signed and verified the archive. azure | pfx: build-cli uploads its own receipt beside the archive.
+            cli_receipt_at = (evidence / 'signatures-cli.json' if cli_receipt_in_evidence
+                              else tree / 'cli-x86_64-pc-windows-msvc' / 'cli-signatures.json')
+            write(cli_receipt_at, json.dumps(receipt({n: h(b) for n, b in cli_exes.items()}, thumbprint)))
+            if not cli_receipt_in_evidence:
+                # The GUI job's receipt describes another copy of the CLI and must be ignored under azure | pfx.
+                write(evidence / 'signatures-cli.json', json.dumps(receipt({n: h(payload(f'gui job cli {n}')) for n in cli_exes}, thumbprint)))
             # The evidence artifact also carries a copy of the CLI archive (a real quirk the collector must ignore).
             write(evidence / 'cli-package/uniclipboard-cli-{}-x86_64-pc-windows-msvc.zip'.format(version), payload('evidence copy of cli'))
     # Acceptance, install and legacy-upgrade artifacts of the real Linux run (names from CI run 37894007183) hold package manifests of
@@ -337,15 +343,15 @@ def main():
         variant('receipt-mixed-signers', edit_json('signatures.json', lambda d: d['files'][0]['signature'].update(Thumbprint='D' * 40)),
                 contains='different certificates')
         variant('receipt-not-passed', edit_json('signatures-stage2.json', lambda d: d.update(passed=False)), contains='does not say passed')
-        # azure | pfx: the released CLI archive comes from build-cli and legitimately differs from the GUI job's CLI receipt.
-        signed_cli = base / 'signed-backend-cli-from-build-cli-artifacts'
-        build_tree(signed_cli, version, head)
-        write(signed_cli / 'cli-x86_64-pc-windows-msvc' / f'uniclipboard-cli-{version}-x86_64-pc-windows-msvc.zip', zip_bytes({'uniclip.exe': b'x', 'uniclipd.exe': b'y'}))
-        assemble('signed-backend-cli-archive-from-build-cli-is-not-compared-to-the-gui-job-receipt', signed_cli, base / 'signed-backend-cli-from-build-cli')
+        variant('cli-archive-with-other-executables', lambda t: write(
+            t / 'cli-x86_64-pc-windows-msvc' / f'uniclipboard-cli-{version}-x86_64-pc-windows-msvc.zip', zip_bytes({'uniclip.exe': b'x', 'uniclipd.exe': b'y'})),
+            contains='not the ones the CLI receipt verified')
+        variant('signed-backend-cli-archive-without-build-cli-receipt', lambda t: (t / 'cli-x86_64-pc-windows-msvc/cli-signatures.json').unlink(),
+                contains='has no Authenticode receipt (cli-signatures.json)')
 
         # ---- SignPath production structure: the receipt must carry the configured production thumbprint ----
         sp_tree = base / 'signpath-structure-artifacts'
-        build_tree(sp_tree, version, head, thumbprint='B' * 40)
+        build_tree(sp_tree, version, head, cli_receipt_in_evidence=True, thumbprint='B' * 40)
         windows_manifest('signpath', policy='fixture-production-policy', pinnedThumbprint='B' * 40)(sp_tree)
         sp_env = dict(sign_env, SIGNPATH_PRODUCTION_CERT_THUMBPRINT='B' * 40)
         assemble('signpath-production-structure-accepted-with-receipts', sp_tree, base / 'signpath-structure', env_=sp_env)
@@ -353,13 +359,13 @@ def main():
         assemble('negative-signpath-receipt-signed-by-another-certificate', sp_tree, base / 'signpath-other-cert', want_ok=False,
                  env_=dict(sign_env, SIGNPATH_PRODUCTION_CERT_THUMBPRINT='C' * 40), contains='not the production certificate configured')
         sp_otherexe = base / 'signpath-cli-other-executables-artifacts'
-        build_tree(sp_otherexe, version, head, thumbprint='B' * 40)
+        build_tree(sp_otherexe, version, head, cli_receipt_in_evidence=True, thumbprint='B' * 40)
         windows_manifest('signpath', policy='fixture-production-policy', pinnedThumbprint='B' * 40)(sp_otherexe)
         write(sp_otherexe / 'cli-x86_64-pc-windows-msvc' / f'uniclipboard-cli-{version}-x86_64-pc-windows-msvc.zip', zip_bytes({'uniclip.exe': b'x', 'uniclipd.exe': b'y'}))
         assemble('negative-signpath-cli-archive-with-other-executables', sp_otherexe, base / 'signpath-cli-other-exes', want_ok=False, env_=sp_env,
                  contains='not the ones the CLI receipt verified')
         sp_noclip = base / 'signpath-no-cli-receipt-artifacts'
-        build_tree(sp_noclip, version, head, thumbprint='B' * 40)
+        build_tree(sp_noclip, version, head, cli_receipt_in_evidence=True, thumbprint='B' * 40)
         windows_manifest('signpath', policy='fixture-production-policy', pinnedThumbprint='B' * 40)(sp_noclip)
         (wdir(sp_noclip) / 'signatures-cli.json').unlink()
         assemble('negative-signpath-cli-archive-without-receipt', sp_noclip, base / 'signpath-no-cli-receipt', want_ok=False, env_=sp_env,

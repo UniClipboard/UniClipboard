@@ -1481,5 +1481,9 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: cli-${{ matrix.target }}
-          path: uniclipboard-cli-*
+          # cli-signatures.json is the Authenticode verification receipt package-cli.sh writes for Windows targets; the release gate
+          # binds it to the archive when the Windows CLI comes from this job (azure | pfx).
+          path: |
+            uniclipboard-cli-*
+            cli-signatures.json
           if-no-files-found: error

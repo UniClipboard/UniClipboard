@@ -292,19 +292,23 @@ def windows_binding_problems(artifacts, assets, version, top, doc, provider, exp
         if released.is_file() and listed.get(released.name) != sha256(released):
             problems.append(f'{top}: SHA256SUMS.txt does not list the released {released.name} with its SHA-256')
     cli = assets / f'uniclipboard-cli-{version}-x86_64-pc-windows-msvc.zip'
-    cli_receipt = base / 'signatures-cli.json'
-    # Only under SignPath production is the released CLI archive the one the GUI job signed and verified. Under azure | pfx it comes
-    # from build-cli, which signs its own copy (different bytes, because Authenticode timestamps differ); the GUI job's
-    # signatures-cli.json describes another file, so it must not be compared (documented limitation).
-    if arch == 'x64' and cli.is_file() and provider == 'signpath':
+    # The receipt that describes the released CLI archive depends on who built it. SignPath production: the Windows GUI job signed and
+    # verified it (signatures-cli.json in the evidence artifact). azure | pfx: build-cli built it and uploads its own receipt
+    # (cli-signatures.json) beside the archive; the GUI job's signatures-cli.json describes a different, separately signed copy
+    # (Authenticode timestamps make the bytes differ) and is never compared.
+    if arch == 'x64' and cli.is_file():
+        if provider == 'signpath':
+            cli_receipt, receipt_name = base / 'signatures-cli.json', 'signatures-cli.json'
+        else:
+            cli_receipt, receipt_name = artifacts / 'cli-x86_64-pc-windows-msvc' / 'cli-signatures.json', 'cli-signatures.json'
         if cli_receipt.is_file():
             r = json.loads(cli_receipt.read_text())
-            problems += receipt_problems(r, f'{top}/signatures-cli.json', expect_thumbprint)
+            problems += receipt_problems(r, f'{top}/{receipt_name}', expect_thumbprint)
             hashes = zip_member_hashes(cli, ['uniclip.exe', 'uniclipd.exe'])
             if set(hashes) != {'uniclip.exe', 'uniclipd.exe'} or not set(hashes.values()) <= {f.get('sha256') for f in r.get('files', [])}:
                 problems.append(f'{top}: the executables in the released CLI archive are not the ones the CLI receipt verified')
         else:
-            problems.append(f'{top}: the Windows CLI archive has no Authenticode receipt (signatures-cli.json)')
+            problems.append(f'{top}: the Windows CLI archive has no Authenticode receipt ({receipt_name})')
     return problems
 
 

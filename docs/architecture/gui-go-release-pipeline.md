@@ -17,7 +17,7 @@
 
 | 位置 | 变更 |
 | --- | --- |
-| `release.yml` `validate` | 原无条件 `exit 1` 改为 `scripts/ci/release_gate.py prerequisites`：必须恰好配置一个生产 Windows 签名后端（`WINDOWS_SIGN_BACKEND` 为 `azure`/`pfx`，**或** SignPath 生产：变量 `SIGNPATH_PRODUCTION_POLICY_SLUG` 与 `SIGNPATH_PRODUCTION_CERT_THUMBPRINT`），且有更新签名私钥，否则失败。测试签名（self-test、SignPath test-signing）永远不满足；两个后端同时存在也失败。随后 `release_gate.py source` 固定 `source_sha`，并要求 tag 版本与 `package.json`、`apps/gui-go/app.json`、`Cargo.toml`、`buildinfo.go`、`Cargo.lock` 工作区成员一致，且 `Cargo.toml` 与 `Cargo.lock` 的 Engine 版本固定一致。 |
+| `release.yml` `validate` | 原无条件 `exit 1` 改为 `scripts/ci/release_gate.py prerequisites`：必须恰好配置一个生产 Windows 签名后端（唯一例外：仅 alpha 且仓库变量 `ALLOW_UNSIGNED_WINDOWS_ALPHA=true` 时可不配置，见下文“未签名 Windows alpha”；其余版本不可绕过，测试签名在任何情况下都不满足），即 `WINDOWS_SIGN_BACKEND` 为 `azure`/`pfx`，**或** SignPath 生产（变量 `SIGNPATH_PRODUCTION_POLICY_SLUG` 与 `SIGNPATH_PRODUCTION_CERT_THUMBPRINT`），且有更新签名私钥，否则失败。测试签名（self-test、SignPath test-signing）永远不满足；两个后端同时存在也失败。随后 `release_gate.py source` 固定 `source_sha`，并要求 tag 版本与 `package.json`、`apps/gui-go/app.json`、`Cargo.toml`、`buildinfo.go`、`Cargo.lock` 工作区成员一致，且 `Cargo.toml` 与 `Cargo.lock` 的 Engine 版本固定一致。 |
 | `release.yml` `build` / `build-cli` / `create-release` | 一律检出并构建 `needs.validate.outputs.source_sha`（完整提交 SHA），而不是移动的分支或 tag 名。 |
 | `release.yml` `create-release` | 收集、签名、清单、登记改为一次调用 `scripts/ci/assemble_release_assets.py`（见下），其后才是原有的 SHA256SUMS、tag（仅 dispatch）、Release、R2、FlareRelease。 |
 | `release.yml` 渠道分发 | Snap：alpha 仍异步触发，但 `release=false`，只产出 artifact；COPR：alpha 仍触发，但 `dry_run=true`，只产出 SRPM。推送商店与提交 COPR 需要人显式 `workflow_dispatch`。npm 与 GitCode 镜像入口不变（见下）。 |
@@ -55,10 +55,10 @@ Windows CLI 归档：`build-cli` 作业只会用 `sign.py` 本地后端签名。
 
 - `signing.provider` 只是分类标签，**不是证明**。可接受值为 `signed`（本地后端）或 `signpath`（要求证据里 `testCertificate` 为 false、策略不是 `test-signing`、`SIGNPATH_PRODUCTION_CERT_THUMBPRINT` 已传给门禁）；其余 provider 一律拒绝。
 - 标签之外，同一证据 artifact 里必须有 Windows 作业用 `sign.py verify`（即既有的 `signtool verify /pa`、证书链、时间戳、固定签名者）写出的回执：`signatures.json`、`signatures-stage1.json`、`signatures-stage2.json`，SignPath 下还有 `signatures-cli.json`。回执必须严格：`passed` 为 true、`allowUntrustedRoot` 为 false、每个文件 `ok`、`chainTrusted`、`signtoolVerifyPa` 为 true、`Status` 为 `Valid`、有时间戳和 SHA-256，所有文件同一签名者；若回执记录了固定指纹，或发布配置了生产指纹，签名者必须与之相同。
-- 回执与将要发布的字节绑定：发布的 setup 的 SHA-256 必须在 `signatures.json` 里；便携 zip 内的 `UniClipboard.exe`、`uniclipd.exe` 必须等于包记录里的 `shipped` 哈希并出现在回执里；`SHA256SUMS.txt` 必须列出发布的 setup 与便携 zip 的真实哈希；仅 SignPath 下，发布的 CLI 压缩包里的可执行文件必须是 CLI 回执验证过的那两个（azure/pfx 下该压缩包来自 `build-cli`，与 GUI 作业的 `signatures-cli.json` 是分别签名的两份文件，字节不同，因此不比较）。
+- 回执与将要发布的字节绑定：发布的 setup 的 SHA-256 必须在 `signatures.json` 里；便携 zip 内的 `UniClipboard.exe`、`uniclipd.exe` 必须等于包记录里的 `shipped` 哈希并出现在回执里；`SHA256SUMS.txt` 必须列出发布的 setup 与便携 zip 的真实哈希；发布的 CLI 压缩包里的可执行文件必须是 CLI 回执验证过的那两个：SignPath 下用证据 artifact 里的 `signatures-cli.json`；azure/pfx 下该压缩包来自 `build-cli`，用它随压缩包上传的 `cli-signatures.json`（GUI 作业的 `signatures-cli.json` 描述的是另一份单独签名的副本，字节不同，不参与比较）。
 - 伪造 `signed`/`signpath` 标签但没有回执、回执对应别的字节、回执放宽了证书链信任（测试证书）、状态不是 `Valid`、没有时间戳、签名者不一致或不是配置的生产证书，都会被拒绝。
 
-**信任边界（务必按此理解）**：release gate 运行在 Linux 上，不能运行 signtool，也不能独立评估 Windows 证书链，所以它 **不独立证明** Windows 证书受信。它证明的是：可信 CI 步骤（Windows 作业里的 `sign.py verify`）为这些字节留下了严格的回执，并且回执与要发布的文件逐字节绑定。能修改工作流或其 artifact 的人可以伪造回执；该门禁防的是误用和混源，不是这类攻击。对 `azure`/`pfx`，现有工作流不固定签名者身份，所以只检查“同一个受信签名者”；Azure/pfx 下 Windows CLI 归档来自 `build-cli`，其回执不在这个证据 artifact 里，没有绑定（已知缺口）。真实的 Windows 生产验签只有在生产证书与策略存在后才可能发生，目前 blocked。
+**信任边界（务必按此理解）**：release gate 运行在 Linux 上，不能运行 signtool，也不能独立评估 Windows 证书链，所以它 **不独立证明** Windows 证书受信。它证明的是：可信 CI 步骤（Windows 作业里的 `sign.py verify`）为这些字节留下了严格的回执，并且回执与要发布的文件逐字节绑定。能修改工作流或其 artifact 的人可以伪造回执；该门禁防的是误用和混源，不是这类攻击。对 `azure`/`pfx`，现有工作流不固定签名者身份，所以只检查“同一个受信签名者”。真实的 Windows 生产验签只有在生产证书与策略存在后才可能发生，目前 blocked。
 
 **状态：结构已写好，从未与真实 SignPath 生产策略运行过；策略、证书、Environment 与 token 都未配置（只读核对见 `production-blocked` 证据）。生产签名验收 blocked，未配置时仍失败关闭。**
 

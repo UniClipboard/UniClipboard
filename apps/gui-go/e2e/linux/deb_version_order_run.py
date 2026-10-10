@@ -68,6 +68,7 @@ def inside(out):
         check(f'dpkg -i {v} succeeds and installs {v.replace("-", "~", 1)}', r.returncode == 0 and installed == v.replace('-', '~', 1),
               installed)
         check(f'no downgrade warning on the step to {v}', 'downgrading' not in r.stderr)
+    install('1.3.0')  # the downgrade check must not depend on the order of VERSIONS
     r, installed = install('1.3.0-alpha.2')
     check('installing alpha.2 over stable is reported by dpkg as a downgrade', 'downgrading uniclipboard from 1.3.0 to 1.3.0~alpha.2' in r.stderr,
           next((l for l in r.stderr.splitlines() if 'downgrading' in l), r.stderr.strip()[:200]))

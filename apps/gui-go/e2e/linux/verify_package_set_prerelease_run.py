@@ -92,9 +92,10 @@ def inside(args):
     (out / 'derived.json').write_text(json.dumps(derived, indent=2) + '\n')
     verifier = scratch / 'apps/gui-go/e2e/linux/verify_package_set.py'
     head = real_manifest['source']['head']
-    cmd = [sys.executable, str(verifier), '--arch', arch, '--packages', str(packages), '--daemon-evidence', str(evid / 'build-evidence.txt'),
-           '--expect-head', head]
-    ok = sh(cmd + ['--upload-dir', str(out / 'upload-ok'), '--report', str(out / 'verify-report.json')])
+    def verify_cmd(pkgs):
+        return [sys.executable, str(verifier), '--arch', arch, '--packages', str(pkgs), '--daemon-evidence', str(evid / 'build-evidence.txt'),
+                '--expect-head', head]
+    ok = sh(verify_cmd(packages) + ['--upload-dir', str(out / 'upload-ok'), '--report', str(out / 'verify-report.json')])
     (out / 'verify.stdout.txt').write_text(ok.stdout + ok.stderr)
     # negative: the deb keeps the dash in its control Version
     bad_dir = out / 'packages-dash'
@@ -108,7 +109,7 @@ def inside(args):
     m = json.loads((bad_dir / 'package-manifest.json').read_text())
     m['sha256'][deb.name] = sha256(bad_dir / deb.name)
     (bad_dir / 'package-manifest.json').write_text(json.dumps(m))
-    bad = sh(cmd[:5] + [str(bad_dir)] + cmd[6:] + ['--upload-dir', str(out / 'upload-bad')])
+    bad = sh(verify_cmd(bad_dir) + ['--upload-dir', str(out / 'upload-bad')])
     (out / 'verify-dash.stdout.txt').write_text(bad.stdout + bad.stderr)
     result = {'verifyAcceptsTildeDeb': ok.returncode == 0, 'verifyRejectsDashDeb': bad.returncode != 0 and 'deb control does not match' in bad.stdout,
               'okExit': ok.returncode, 'dashExit': bad.returncode}

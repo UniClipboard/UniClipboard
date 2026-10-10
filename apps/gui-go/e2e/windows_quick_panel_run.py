@@ -53,6 +53,14 @@ MOD = {'alt': 0x1, 'ctrl': 0x2, 'shift': 0x4}
 
 user32 = ctypes.WinDLL('user32', use_last_error=True) if os.name == 'nt' else None
 kernel32 = ctypes.WinDLL('kernel32', use_last_error=True) if os.name == 'nt' else None
+if os.name == 'nt':
+    # Handles and pointers are 64-bit: without declared types ctypes truncates them to 32-bit ints.
+    user32.OpenClipboard.argtypes = [wt.HWND]
+    user32.GetClipboardData.argtypes, user32.GetClipboardData.restype = [wt.UINT], wt.HANDLE
+    user32.SetClipboardData.argtypes, user32.SetClipboardData.restype = [wt.UINT, wt.HANDLE], wt.HANDLE
+    kernel32.GlobalAlloc.argtypes, kernel32.GlobalAlloc.restype = [wt.UINT, ctypes.c_size_t], wt.HANDLE
+    kernel32.GlobalLock.argtypes, kernel32.GlobalLock.restype = [wt.HANDLE], ctypes.c_void_p
+    kernel32.GlobalUnlock.argtypes = [wt.HANDLE]
 
 TARGET_PS1 = r'''
 Add-Type -AssemblyName System.Windows.Forms
@@ -137,28 +145,25 @@ def get_clipboard_text():
         handle = user32.GetClipboardData(13)  # CF_UNICODETEXT
         if not handle:
             return None
-        kernel32.GlobalLock.restype = ctypes.c_void_p
-        ptr = kernel32.GlobalLock(ctypes.c_void_p(handle))
+        ptr = kernel32.GlobalLock(handle)
         try:
             return ctypes.wstring_at(ptr)
         finally:
-            kernel32.GlobalUnlock(ctypes.c_void_p(handle))
+            kernel32.GlobalUnlock(handle)
     finally:
         user32.CloseClipboard()
 
 
 def set_clipboard_text(text):
     data = (text + '\0').encode('utf-16-le')
-    kernel32.GlobalAlloc.restype = ctypes.c_void_p
     handle = kernel32.GlobalAlloc(0x2, len(data))  # GMEM_MOVEABLE
-    kernel32.GlobalLock.restype = ctypes.c_void_p
-    ptr = kernel32.GlobalLock(ctypes.c_void_p(handle))
+    ptr = kernel32.GlobalLock(handle)
     ctypes.memmove(ptr, data, len(data))
-    kernel32.GlobalUnlock(ctypes.c_void_p(handle))
+    kernel32.GlobalUnlock(handle)
     assert user32.OpenClipboard(None), 'clipboard busy'
     try:
         user32.EmptyClipboard()
-        user32.SetClipboardData(13, ctypes.c_void_p(handle))
+        user32.SetClipboardData(13, handle)
     finally:
         user32.CloseClipboard()
 

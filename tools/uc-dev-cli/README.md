@@ -1,219 +1,136 @@
-# uc-cli
+# uc-dev-cli
 
-`uc-cli` 是 UniClipboard 的终端入口 crate，构建出的二进制名是 `uniclip`。
+`uc-dev-cli` 是 UniClipboard 的开发与诊断命令行工具，Cargo 包名和二进制名均为
+`uc-dev-cli`，位于 `tools/uc-dev-cli`（原 `apps/cli`，原包名 `uc-cli`、二进制名
+`uniclip`）。它是 workspace 成员，不在 `default-members` 中，且 `publish = false`。
 
-它用于在终端里完成空间初始化、设备加入、配对查看、文本发送、入站监听、搜索诊断、blob 诊断，以及本机 daemon 的启动和停止。
+面向用户的 `uniclip` 由 [apps/cli-go](../../apps/cli-go/AGENTS.md) 维护并用于发布。
+用户命令的新功能和修复应在 Go CLI 中完成；本 crate 保留开发诊断、端到端测试的
+历史种子工具，以及现有命令作为兼容性对照，不再新增用户功能。
 
-## 运行方式
+## 运行方式与构建能力
 
-所有 Cargo 命令都从仓库根目录执行：
-
-```bash
-cargo run -p uc-cli -- --help
-cargo run -p uc-cli -- space status
-cargo run -p uc-cli -- --json space status
-```
-
-构建后可直接运行：
+所有命令都从仓库根目录执行。未启用 feature 时，本工具仍保留通过 daemon 执行的
+兼容命令，例如空间状态查询：
 
 ```bash
-cargo build -p uc-cli
-./target/debug/uniclip --help
+cargo run -p uc-dev-cli -- --help
+cargo run -p uc-dev-cli -- --profile dev-cli-check --json space status
 ```
 
-## 全局参数
-
-| 参数               | 说明                                                                   |
-| ------------------ | ---------------------------------------------------------------------- |
-| `--json`           | 用 JSON 输出结果，适合脚本调用。                                       |
-| `-v`, `--verbose`  | 打开更详细的诊断日志。                                                 |
-| `--profile <NAME>` | 使用独立 profile，隔离本地数据、密钥和网络身份；常用于单机模拟多设备。 |
-| `--dev`            | 开发模式下使用，避免依赖系统 keychain。                                |
-
-## 常用命令
-
-| 命令                                | 用途                                                                                                                                                                                                                                                     |
-| ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `uniclip start`                     | 启动本机 daemon。默认后台运行。                                                                                                                                                                                                                          |
-| `uniclip start --foreground`        | 前台启动 daemon，并把日志输出到终端。                                                                                                                                                                                                                    |
-| `uniclip stop`                      | 停止本机 daemon。                                                                                                                                                                                                                                        |
-| `uniclip space status`                    | 查看当前应用状态。                                                                                                                                                                                                                                       |
-| `uniclip space init`                      | 在当前 profile 创建新的加密空间。                                                                                                                                                                                                                        |
-| `uniclip space invite`                    | 作为 sponsor 发起配对邀请。                                                                                                                                                                                                                              |
-| `uniclip space join`                      | 用邀请码加入空间。默认走非破坏性的赎回 / 重新配对分支（首次加入，以及在「同一空间」单侧解除配对后重新配对——见 issue #1023）。加 `--switch` 才切换到「另一个」sponsor 的空间并重加密迁移本地历史（破坏性，会先确认，再加 `--yes` 在非交互场景跳过确认）。 |
-| `uniclip space join --no-wait`            | 发起加入后，如果请求仍在等待，只报告当前状态并立即返回。                                                                                                                                                                                                 |
-| `uniclip space join status`               | 查看 Engine 保存的当前加入状态。                                                                                                                                                                                                                         |
-| `uniclip space join cancel`               | 取消当前仍在等待的加入请求。                                                                                                                                                                                                                             |
-| `uniclip space change-passphrase`         | 修改已解锁、仅本机一个成员的空间口令；保留本机历史，作废未使用的邀请。可用 `--passphrase`，`--json` 模式必须提供。 |
-| `uniclip space reset --yes`               | 重建为只包含本机的新空间；保留本机历史、已完成文件、设置、设备身份和解锁能力，所有设备需要重新配对。                                                                                                                                                      |
-| `uniclip member list`               | 列出空间成员（本机 + 已配对设备）及在线状态；加 `--probe` 主动探测刷新状态。旧的 `members` 与 `devices` 已隐藏并弃用，但仍可调用。                                                                                                                       |
-| `uniclip member remove <PEER-ID>`   | 移除一个空间成员；即使对方离线也会立即记录并停止向它发送新内容。                                                                                                                                                                                         |
-| `uniclip member trust status`       | 查看当前设备组变化及两种选择的影响。                                                                                                                                                                                                                     |
-| `uniclip member trust choose`       | 选择当前设备组问题的一种处理方式；脚本调用必须指定问题和选择编号。                                                                                                                                                                                       |
-| `uniclip member sync show <DEVICE>` | 查看一个成员的发送、接收和内容类型设置。                                                                                                                                                                                                                 |
-| `uniclip member sync set <DEVICE>`  | 只修改明确给出的成员同步设置。                                                                                                                                                                                                                           |
-| `uniclip send [TEXT_OR_FILE]`       | 向在线配对设备发送文字或现有普通文件；省略参数时从 stdin 读取文字。`--text` 强制按文字发送；`-f/--file` 启用文件模式，有位置参数时发送该路径，否则从 stdin 逐行读取文件路径（读取的是路径，不是文件内容）。`--peer` 可限制目标设备。`--connect-timeout <秒>`（默认 15）是发送前的总等待期限，依次覆盖本地 daemon 就绪与目标设备连接；超时不发送任何内容，daemon 未就绪退出码为 5，设备未连接退出码为 1；`0` 表示恢复旧行为（沿用内置 45 秒 daemon 启动预算，且不等待设备）。                                                                                                          |
-| `uniclip watch`                     | 监听并打印收到的剪贴板 payload；不会写入系统剪贴板。                                                                                                                                                                                                     |
-| `uniclip get`                       | 立即读取最近一条已同步内容；加 `--wait` 则等待下一条同步后退出一次。                                                                                                                                                                                      |
-
-旧的顶层 `status`、`init`、`invite` 和 `join` 入口仍可使用，但会提示对应的
-`space` 命令。新脚本和文档应使用 `uniclip space ...`。
-
-脚本模式下，`uniclip --json space init --passphrase <PASSPHRASE>` 返回空间、设备和
-指纹标识；`uniclip --json space invite` 逐行输出邀请已签发及最终配对结果，让调用方
-在等待配对完成前就能读到邀请码。
-
-## 取回已同步内容（`get`）
-
-无头 / SSH 机器没有系统剪贴板，`Ctrl+V` 无法粘贴已同步的图片或文件。`get`
-默认从 daemon 历史里取出最近一条已同步内容并立即返回；加 `--wait` 时只处理命令启动后到达的下一条内容：
+开发诊断需要显式启用 `dev-tools`：
 
 ```bash
-uniclip get                      # 取最新一条可用条目
-uniclip get -c                   # 取回并复制到当前终端所在电脑的剪贴板
-uniclip get -w                   # 等待下一条同步内容，输出后退出
-uniclip get -w --type file       # 等待下一条文件，并在交互终端显示接收进度
-uniclip get -w --id <ENTRY-ID>   # 只等待命令启动后到达的指定条目
-uniclip get --copy --wait        # 等待下一条同步内容，复制后退出
-uniclip get --type image         # 取最新一张图片
-uniclip get --type file -o ~/in  # 取最新一个文件并落地到 ~/in
-uniclip get --id <ENTRY-ID>      # 取指定条目（id 来自 uniclip search）
-uniclip get --list -n 20         # 仅列出最近 20 条，不取回
+CARGO_TARGET_DIR=target/e2e-dev cargo build -p uc-dev-cli --features dev-tools
+./target/e2e-dev/debug/uc-dev-cli dev --help
+./target/e2e-dev/debug/uc-dev-cli blob --help
+./target/e2e-dev/debug/uc-dev-cli probe --help
+./target/e2e-dev/debug/uc-dev-cli mobile debug --help
 ```
 
-输出契约：
+Windows 二进制带 `.exe` 后缀。单独的 `target/e2e-dev` 构建目录与 CI 一致，避免把
+开发工具的 Engine feature 合并进 daemon 构建。
 
-- **文本 / 链接**：内容打到 **stdout**（可管道）；成功时不再附带状态提示。
-- **图片 / 文件**：字节写入 `--out` 目录（默认 per-user cache 目录），并把**绝对
-  路径**打到 stdout；`--out -` 则把原始字节直接写到 stdout。成功时不再附带
-  状态提示。
+| 构建方式 | 能力与依赖 |
+| --- | --- |
+| 不启用 `dev-tools` | 保留 daemon 客户端命令；使用 `uc-daemon-client`、`uc-daemon-contract`、`uc-daemon-process` 和 `uc-app-paths`。 |
+| 启用 `dev-tools` | 增加 `blob`、隐藏的 `dev`、`probe` 和 `mobile debug`；引入 `uc-engine`（含 `dev-tools`、`lan-compat`）、`uc-bootstrap`、`uc-platform` 和 `uc-observability`。 |
 
-加上 `-c` 或 `--copy` 后，文本和链接会复制内容，图片和文件会复制落盘后的完整
-路径。图片和文件不能同时使用 `--copy` 与 `--out -`，因为后者不会产生文件路径。
+`--dev` 是运行时开发模式，使用文件安全存储代替系统 keychain；它不能代替
+编译时的 `--features dev-tools`。`--profile <NAME>`（或 `UC_PROFILE`）选择隔离的数据、
+密钥和网络身份。`--json` 用于脚本输出，`-v` / `--verbose` 用于详细日志。
 
-等待提示只写入 stderr，实际内容或落盘路径仍只写入 stdout，因此
-`uniclip get --wait | other-command` 可以安全用于管道。等待期间按 Ctrl-C 会结束本次命令。
-交互终端接收文件时，已知总大小显示真实字节数、总量和百分比；未知总大小显示已接收
-字节数与活动状态。`--wait` 可与 `--type` 或 `--id` 组合，但仍只接受命令订阅建立后
-到达的内容，不会取用历史记录或已经完成的旧任务。当前 daemon 的入站 pending 事件只能
-在文件名非空时提前确认 `file` 类型，不能可靠区分 `image`、`text` 和 `link`；因此这些
-类型过滤会等最终条目可分类后再决定是否匹配，不会为了提前显示进度而误锁其他内容。
+## 与 daemon 和 Engine 的关系
 
-旧的 `uniclip recv [--out DIR]` 已隐藏并进入弃用期。它本次仍保持原有文件接收、落盘、
-stdout 和退出结果，并在 stderr 提醒改用 `uniclip get --wait`。新脚本不要再使用 `recv`；
-需要指定文件落盘目录时改用 `uniclip get --wait --out DIR`。
+现有空间、成员、发送、接收、搜索、移动端 LAN 配置等兼容命令通过 HTTP / WebSocket
+访问外部 `uniclipd`。连接辅助函数负责复用已有 daemon，或在缺席时启动临时 daemon，
+并通过控制租约保留命令期间的连接；初始化和加入有独立的连接入口，允许尚未完成
+设置的 profile。普通命令不会回退到进程内 Engine。
 
-退出码：`0` 成功；`6` 无条目匹配 selector；`7` 条目存在但 payload 不可用
-（`Lost` / 未下载——需在源设备重发）。
+`start` / `stop` 负责外部 daemon 的生命周期；本工具没有内嵌 daemon 子命令。
+需要启动 daemon 的入口使用 `uc-daemon-process` 的二进制发现与进程管理。
 
-典型的 agent 闭环（在 SSH 机器上把图片喂给工具）：
+`dev`、`blob`、`mobile debug` 的诊断路径使用
+`uc-bootstrap::build_cli_engine_runtime` 构造独立 Engine，会拒绝同一 profile 已有
+可探测 daemon 的情况。运行这些命令前停止测试 profile 的 daemon，或换用独立
+profile；不要绕过现有探测守卫。Engine 业务能力由 `UniClipboard/Engine` 维护，
+不要在 CLI 层复制业务规则。
+
+`probe` 直接调用平台剪贴板适配器；`probe restore` 会写本机系统剪贴板。
+兼容命令 `get --copy` 使用 OSC 52 向当前终端请求复制文本或文件路径，效果取决于
+终端支持；它与直接调用平台剪贴板 API 的诊断路径不同。
+
+## 开发诊断入口
+
+下列命令均需 `dev-tools`。`dev`、`probe`、`mobile debug` 是隐藏命令组，
+不会显示在顶层或所属父命令的常规帮助中，但可显式查看各自帮助。
 
 ```bash
-path=$(uniclip get --type image)   # 落地并拿到路径
-# 把 $path 交给读取文件的工具即可
+./target/e2e-dev/debug/uc-dev-cli --dev --profile dev-cli-check dev seed-clipboard --text "test text"
+./target/e2e-dev/debug/uc-dev-cli --dev --profile dev-cli-check --json dev dump-clipboard --limit 10
+./target/e2e-dev/debug/uc-dev-cli --dev --profile dev-cli-check --json dev capture-files --path ./sample-dir
+./target/e2e-dev/debug/uc-dev-cli --dev --profile dev-cli-check dev pairing addrs
+./target/e2e-dev/debug/uc-dev-cli --dev --profile dev-cli-check dev pairing issue --addr <IP>
+./target/e2e-dev/debug/uc-dev-cli --dev --profile dev-cli-check blob publish ./sample.bin
+./target/e2e-dev/debug/uc-dev-cli --dev --profile dev-cli-check blob fetch <TICKET> --entry-id <ENTRY_ID> --out ./restored.bin
+./target/e2e-dev/debug/uc-dev-cli probe capture --out snap.json
+./target/e2e-dev/debug/uc-dev-cli probe inspect --in snap.json
 ```
 
-## 搜索命令
+Engine 诊断需要先在测试 profile 初始化或加入空间。`seed-clipboard` 写入用当前
+MasterKey 加密的文本历史，不覆盖生产剪贴板捕获链路；`dump-clipboard` 输出解密预览。
+`capture-files` 经真实文件捕获链路处理文件或目录，可重复 `--path`；
+`--max-members` / `--max-bytes` 只覆盖本次捕获上限，不改 profile 设置。
+`mobile debug` 在进程内模拟 SyncClipboard 文本与文件操作，不证明真实手机或 HTTP
+网络链路正常。`blob publish` 输出 ticket 和 entry id，`fetch` 必须同时提供二者。
 
-```bash
-uniclip search "keyword"
-uniclip search status
-uniclip search rebuild
-```
+## 保留的兼容命令
 
-查询直接跟在 `search` 后面，支持内容类型、文件扩展名、来源设备、时间范围、分页和详细输出：
+这些入口供现有脚本与 Go CLI 行为对照使用，不代表 Rust 用户客户端仍是产品维护入口。
+具体参数以 `src/main.rs` 和各命令的 `--help` 为准。
 
-```bash
-uniclip search "report" --type text --ext md --limit 20 --detailed
-uniclip search "report" --from-ms 1710000000000 --to-ms 1710100000000
-uniclip search "report" --source-device "Laptop"
-```
+| 命令组 | 用途 |
+| --- | --- |
+| `start` / `stop` | 管理本机外部 daemon。 |
+| `space` | 状态、初始化、邀请、加入、切换、重建空间与修改口令。 |
+| `member` | 成员、信任选择及同步偏好。 |
+| `send` / `watch` / `get` | 发送、监听及取回内容。 |
+| `search` | 搜索、索引状态及重建。 |
+| `mobile` | SyncClipboard 兼容 LAN 通道配置。 |
+| `debug` / `upgrade` | daemon 日志诊断与升级管理；与隐藏的 `mobile debug` 不同。 |
 
-`--source-device` 接受设备名（大小写无关）或设备 id，可重复多次；运行 `uniclip member list` 查看可用设备名。
+旧的顶层 `status`、`init`、`invite`、`join`，以及 `members` / `devices`、`recv`、
+`mobile-sync` 仍保留为隐藏兼容入口。新增脚本使用对应的规范命令。
+终端可见输出保持英文，JSON 字段与退出码保留现有契约。
 
-`search rebuild` 是同步命令，完成后才返回。
+## 消费者与验证边界
 
-## Blob 诊断命令
+`.github/workflows/pr-check.yml` 单独以 `dev-tools` 构建本工具，并通过
+`UC_E2E_DEV_CLI` 提供给 `tests/e2e`。测试中的 `NodeBinarySet::current()` 默认使用
+Go `uniclip`；`current_dev_cli()` 显式选择 Rust 工具，供需要开发能力的测试使用，
+也可能覆盖整段兼容命令流程。
+空间切换、口令恢复、CLI / Engine 工作流与历史搜索测试仍消费这些能力。
+`scripts/e2e` 中的空间切换、剪贴板重发和移动 LAN 调试脚本也有消费者，不能把本工具
+当作无调用方的废弃产物。
 
-`blob` 命令用于发布或拉取加密的大 payload，主要服务于文件同步和传输诊断。
-
-```bash
-uniclip blob publish ./sample.bin
-uniclip blob fetch <TICKET> --entry-id <ENTRY_ID> --out ./restored.bin
-```
-
-发布会输出后续拉取需要的 ticket 和 entry id。拉取时必须同时提供这两个值。
-
-## 空间切换
-
-切换到另一个 sponsor 的空间已合并进 `uniclip space join`：在已加入空间的设备上运行 `uniclip space join --switch`，会走切换分支，重加密并迁移本地历史数据。无需单独的 `switch-space` 命令。不带 `--switch` 的 `space join` 始终走非破坏性的赎回 / 重新配对分支。
-
-## 重建空间
-
-`uniclip space reset --yes` 会创建一个只包含本机的新空间，并永久废弃与所有旧设备的
-配对、信任和同步关系。本机剪贴板历史、已完成文件、设置、设备身份和解锁能力都会保留；
-其他设备不会被删除，但必须重新配对后才能恢复同步。这不是恢复出厂设置，口令保持不变；
-要修改口令请用 `uniclip space change-passphrase`，`uniclip space init` 只适用于还没有空间的设备。
-
-## 隐藏的剪贴板诊断命令组（`probe`）
-
-`uniclip probe` 是隐藏子命令（不会出现在 `--help` 中），收编自原先的
-`clipboard-probe` 二进制，仅供开发与 E2E 调试。`probe restore` 是 CLI
-中唯一允许直接写系统剪贴板的入口，详见 `AGENTS.md` 的诊断例外条款。
-
-```bash
-uniclip probe watch                    # 监听剪贴板变化
-uniclip probe watch --max-events 10    # 最多观察 10 个事件
-uniclip probe capture --out snap.json  # 抓取当前剪贴板到文件
-uniclip probe inspect --in snap.json   # 解析快照文件
-uniclip probe restore --in snap.json   # 把快照写回系统剪贴板（诊断用）
-uniclip probe restore --in snap.json --select 0  # 多 representation 时选其一
-```
-
-## 隐藏的开发者命令组（`dev`）
-
-`uniclip dev` 是隐藏子命令（不会出现在 `--help` 中），仅供开发与 E2E
-调试，不属于用户接口。
-
-```bash
-uniclip dev seed-clipboard --text <TEXT>  # 写入一条加密文本记录（测试种子）
-uniclip dev dump-clipboard --limit <N>    # 打印最近的解密记录预览
-uniclip dev pairing addrs                 # 列出配对邀请候选地址
-uniclip dev pairing issue --addr <IP>     # 指定本机 IP 发起配对邀请
-uniclip --dev --json dev capture-files --path <PATH>  # 捕获文件或目录并输出持久化清单
-```
-
-`capture-files` 可重复传入 `--path`，也可用 `--max-members` 和
-`--max-bytes` 临时覆盖本次捕获的目录上限。临时上限不会写回 profile 设置。
-
-## 行为边界
-
-- CLI 是终端交互层，不拥有业务规则。
-- 业务命令必须通过应用层 facade 执行动作，不能直接绕过应用层访问底层实现。
-- 独立业务命令会构造自己的 CLI application session；同一个 profile 已有 daemon 运行时，应先停止 daemon 或换用 `--profile`。
-- `start` / `stop` 只负责本机 daemon 生命周期。
-- 隐藏的 `daemon` 子命令只供 `start` 内部启动后台进程，不作为用户命令记录或宣传。
-- CLI 的终端可见输出必须保持英文；项目文档和代码注释按仓库约定使用中文。
-
-## 验证命令
-
-修改本 crate 后，优先运行：
-
-```bash
-cargo test -p uc-cli
-cargo run -p uc-cli -- --help
-```
-
-目录捕获端到端测试需要先构建同目录下的 daemon，再显式运行忽略的真实进程测试：
+需要验证行为时，可复跑现有真实进程端到端测试。以下示例分别构建 daemon、Go CLI
+和 Rust 开发工具，再运行历史搜索测试；本次文档更新不执行构建或测试：
 
 ```bash
 cargo build -p uc-daemon
-cargo test -p uc-cli --features dev-tools --test directory_capture_e2e -- --ignored --nocapture
+bash scripts/e2e/build-cli.sh
+CARGO_TARGET_DIR=target/e2e-dev cargo build -p uc-dev-cli --features dev-tools
+UC_E2E_DEV_CLI="$(pwd)/target/e2e-dev/debug/uc-dev-cli" \
+  cargo test --manifest-path tests/e2e/Cargo.toml --test history_search_counts -- --ignored --nocapture
 ```
 
-如果改动涉及搜索或 blob 命令，也要查看对应帮助：
+该历史搜索测试全程选择 Rust 开发工具，不能替代 Go CLI 的行为验收。它使用独立
+临时 profile，默认产物目录为 `target/e2e-artifacts/history-search`，
+包含输入、请求响应与 daemon 日志，也可用 `UC_E2E_ARTIFACT_DIR` 指定目录。
+复跑时记录源码提交、Engine 来源、平台、二进制路径和结果；编译成功、帮助可显示或
+种子成功均不能替代端到端验证，也不能证明真实桌面、手机、安装发布或自启动行为。
 
-```bash
-cargo run -p uc-cli -- search --help
-cargo run -p uc-cli -- blob --help
-```
+`tools/uc-dev-cli/tests/directory_capture_e2e.rs` 仍引用旧的
+`CARGO_BIN_EXE_uniclip`，与当前二进制名不符；该遗留测试需要另行修复，不能当作当前
+可直接通过的验证入口。仅修改文档或注释时，核对路径、参数、feature 和消费者并执行
+`git diff --check` 即可，无需新增测试或重型构建。

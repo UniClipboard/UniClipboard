@@ -11,11 +11,11 @@ name = "uc-dev-cli"
 path = "src/main.rs"
 
 [features]
-# Enables in-process diagnostic commands (blob, dev, probe, seed-clipboard,
-# dump-clipboard, mobile-sync debug, file-send) that pull in the full
-# application + bootstrap + platform stack. Not needed for the thin
-# daemon-client CLI; release builds omit this feature to shed iroh/diesel/
-# libsqlite3-sys from the binary.
+# Adds blob, dev, probe, and mobile debug diagnostics. Engine-backed commands
+# use uc-bootstrap's independent CLI runtime; probe uses platform clipboard APIs.
+# Without this feature, retained compatibility commands remain daemon clients.
+# This crate is a development tool in either mode; the released uniclip is Go
+# (apps/cli-go). CI builds dev-tools separately for E2E history seeding.
 dev-tools = [
     "dep:uc-observability",
     "dep:uc-bootstrap",

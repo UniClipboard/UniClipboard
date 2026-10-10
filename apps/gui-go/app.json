@@ -2,7 +2,7 @@
   "$comment": "Single source of the desktop app identity. The identifier keys the login item, notifications, single-instance scope and the macOS permission (TCC) grants of installed users, so it must never change. The pubkey is the update trust anchor.",
   "productName": "UniClipboard",
   "identifier": "app.uniclipboard.desktop",
-  "version": "1.1.1",
+  "version": "1.2.0-alpha.1",
   "minimumSystemVersion": "12.5",
   "updater": {
     "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEIyNjgwODM2ODY1QzI3MzgKUldRNEoxeUdOZ2hvc3RZOXRMNTRiOHBWQ1d2RkljN2ViTzlpRDExSHZmMmZxY01ZZW1Zd3RJV2IK"

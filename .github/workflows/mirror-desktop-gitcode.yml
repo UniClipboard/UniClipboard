@@ -41,8 +41,9 @@
 #   environment mirror (only the main branch may use it, shared with Mobile's
 #                        own mirror workflow) holding:
 #   secret   GITCODE_MIRROR_ACTION_SSH_KEY         private key whose public half is bound to the
-#                                                  Action's forced command on the host (separate
-#                                                  from MIRROR_SSH_KEY, which Mobile still uses)
+#                                                  Action's forced command on the host (replaces
+#                                                  MIRROR_SSH_KEY, which is bound to the retired
+#                                                  Desktop-only relay script)
 #   variable GITCODE_MIRROR_ACTION_SSH_USER        the host account of that key (gitcode-mirror)
 #   variable MIRROR_SSH_HOST, MIRROR_SSH_KNOWN_HOSTS  the host and its public keys
 #   variable MIRROR_SSH_PORT (optional)            default 22
@@ -262,7 +263,8 @@ jobs:
       # SHA-256 FlareRelease has for it; the host refuses anything else.
       - name: Build the mirror sources
         id: sources
-        if: ${{ steps.config.outputs.configured == 'true' }}
+        if: ${{ steps.config.outputs.configured == 'true' && steps.registration.outcome == 'success' }}
+        continue-on-error: ${{ inputs.non_blocking == true }}
         env:
           RELEASE_TAG: ${{ inputs.tag_name }}
           PUBLIC_URL: ${{ vars.UPDATE_SERVER_URL }}
@@ -288,7 +290,7 @@ jobs:
 
       - name: Mirror the installers over the Shanghai host
         id: mirror
-        if: ${{ steps.config.outputs.configured == 'true' }}
+        if: ${{ steps.config.outputs.configured == 'true' && steps.registration.outcome == 'success' && steps.sources.outcome == 'success' }}
         continue-on-error: ${{ inputs.non_blocking == true }}
         # Shorter than the job timeout: a job timeout would fail the run even
         # though this step is non-blocking. The Action stops itself earlier still.
@@ -337,7 +339,7 @@ jobs:
           if-no-files-found: ignore
 
       - name: Warn that the mirror is incomplete
-        if: ${{ always() && (steps.registration.outcome == 'failure' || steps.mirror.outcome == 'failure' || steps.register.outcome == 'failure') }}
+        if: ${{ always() && (steps.registration.outcome == 'failure' || steps.sources.outcome == 'failure' || steps.mirror.outcome == 'failure' || steps.register.outcome == 'failure') }}
         env:
           RELEASE_TAG: ${{ inputs.tag_name }}
         run: |

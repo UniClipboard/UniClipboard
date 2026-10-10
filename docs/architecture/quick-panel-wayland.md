@@ -54,15 +54,13 @@ Omarchy 会整体替换主题目录，因此监听其稳定父目录并合并文
 
 Hyprland 后端在显示前记录原窗口身份，选择条目后先恢复系统剪贴板，再隐藏面板、释放键盘交互，并在工作线程中确认原窗口仍存在、恢复焦点、验证身份，最后向该窗口发送粘贴快捷键。整个流程不通过 shell 执行命令，不把正文或窗口标题放入命令及日志。常见终端使用 `Ctrl+Shift+V`，普通应用使用 `Ctrl+V`；用户自定义的粘贴按键可能不同。
 
-合成器 IPC 位于 `crates/uc-desktop/src/hyprland.rs`，不依赖 GUI 框架。当前输入适配使用 Hyprland Lua dispatcher（0.55 及以上）；其他支持 Layer Shell 的桌面可以显示面板，但自动粘贴尚不支持，可使用复制操作。文件路径直接键入功能未在 Linux 实现。
+合成器 IPC 位于 `apps/gui-go/internal/hyprland/hyprland.go`（沿用已删除的 `crates/uc-desktop/src/hyprland.rs` 的协议，见提交 `ed778b239f52c7da5c83532342e53b517e8e6bf9`）。当前输入适配使用 Hyprland Lua dispatcher（0.55 及以上）；其他支持 Layer Shell 的桌面可以显示面板，但自动粘贴尚不支持，可使用复制操作。文件路径直接键入功能未在 Linux 实现。
 
 多屏选择在 Hyprland 下根据鼠标位置进行；其他合成器缺少全局鼠标查询时使用默认输出。GTK 提供输出的逻辑尺寸，避免重复应用缩放系数。实际多屏、分数缩放、不同输入法及 XWayland 目标应用仍需分别验证。
 
 ## 验证
 
-```bash
-cargo test -p uc-desktop hyprland
-```
+Hyprland IPC 的 Rust 单元测试随 `crates/uc-desktop` 删除（可在提交 `ed778b239f52c7da5c83532342e53b517e8e6bf9` 中查看），Go 实现目前没有对应的单元测试，需在真实 Hyprland 会话中验证。
 
 旧 Tauri 宿主的面板测试与 `layer_shell_smoke` 冒烟示例已随其退役；Go 宿主的 Layer Shell 验证见 `apps/gui-go/README.md` 与 `docs/architecture/gui-go-linux-appimage-native-wayland.md`。
 

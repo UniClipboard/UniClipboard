@@ -97,7 +97,7 @@ if (!isWindows) chmodSync(sidecarPath, 0o755)
 console.log(`[sidecar] staged ${builtPath} -> ${sidecarPath}`)
 
 // 4) macOS only: the native quick panel helper ships next to the app executable too, where
-//    `uc-desktop` `resolve_helper_exe_path` looks for it. Other platforms keep the WebView panel.
+//    the Go host's `quickpanelhelper.ResolveExePath` looks for it. Other platforms keep the WebView panel.
 if (triple.includes('apple-darwin')) {
   const helperArgs = ['build', '-p', 'quick-panel', '--bin', 'uniclip-quick-panel']
   if (release) helperArgs.push('--release')

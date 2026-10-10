@@ -8,7 +8,7 @@
 
 | 编号 | 契约 | 来源 |
 | --- | --- | --- |
-| C1 | 新资料首次启动、设置里没有保存过快捷键时，快捷面板全局快捷键为 `ctrl+alt+v`（Linux / Windows），设置页显示同一值 | `crates/uc-desktop/src/shortcuts.rs`（`DEFAULT_QUICK_PANEL_SHORTCUT`）、共享前端 `apps/gui/src/shortcuts/definitions.ts`（`global.toggleQuickPanel`）、Go `defaultQuickPanelShortcut()` |
+| C1 | 新资料首次启动、设置里没有保存过快捷键时，快捷面板全局快捷键为 `ctrl+alt+v`（Linux / Windows），设置页显示同一值 | `crates/quick-panel-core/src/shortcuts.rs`（`DEFAULT_QUICK_PANEL_SHORTCUT`）、共享前端 `apps/gui/src/shortcuts/definitions.ts`（`global.toggleQuickPanel`）、Go `defaultQuickPanelShortcut()` |
 | C2 | 默认是否启用由 daemon 设置 `quickPanel.enabled` 的默认值决定，宿主不得替用户改动；启用时注册默认值，禁用时不注册任何全局快捷键 | `apps/gui-go/host_commands_quick_panel.go` 的 `panelShortcutTarget` |
 | C3 | 通过真实设置页（Settings > Quick panel 的快捷键录入弹层）改绑：先注销旧键、注册新键，失败回滚；新值落 daemon；重启后注册的是已保存值，不是默认值 | `updateKeyboardShortcuts`（对应 Tauri `update_shortcuts`） |
 | C4 | X11 快捷面板窗口尺寸固定 800x560 逻辑像素，不随内容缩放（`windowScale` 只在 0.8–1.5 内等比放缩），不沿用 macOS 的 360x420 加 16 像素边距 | 旧 Tauri 外壳（已退役）的快捷面板模块：`LINUX_PANEL_WIDTH/HEIGHT`、`panel_dimensions`、`resized_panel_dimensions` |

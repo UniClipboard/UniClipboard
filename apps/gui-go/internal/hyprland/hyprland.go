@@ -1,6 +1,6 @@
 // Package hyprland is a bounded client for the Hyprland IPC socket, used to remember the window that had the focus
 // before the quick panel opened and to paste into it. It follows the Tauri shell's `uc_desktop::hyprland`
-// (crates/uc-desktop/src/hyprland.rs): the same socket, the same commands, the same identity checks and deadlines.
+// (crates/uc-desktop/src/hyprland.rs at ed778b239f52c7da5c83532342e53b517e8e6bf9, since removed): the same socket, the same commands, the same identity checks and deadlines.
 // The package has no build tags so its protocol handling can be exercised on any host against a scripted socket.
 package hyprland
 

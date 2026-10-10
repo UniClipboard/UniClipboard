@@ -2,7 +2,7 @@
 
 ## 定位
 
-`uc-daemon-local` 是 **`uc-desktop` 桌面宿主层的"进程协调工具集"**——
+`uc-daemon-local` 是 **桌面宿主层的"进程协调工具集"**——
 逻辑上属于 desktop 范畴，因为需要被 GUI shell 与 daemon 二进制 **同时**
 消费而物理外置成独立 crate。
 
@@ -18,7 +18,7 @@
 
 ## ⚠️ 硬约束：GUI-framework agnostic
 
-与 `uc-desktop` 一致：
+与其他桌面侧 crate 一致：
 
 - ❌ **禁止依赖任何 GUI 框架**（`tauri` / `iced` / `egui` / `AppKit` 等）
 - ❌ 不引入 webview / window / tray API
@@ -63,7 +63,7 @@ detached spawn 原语从 `uc-cli` 下沉到此处由 CLI 与 GUI shell 共用。
 ## 不负责
 
 - ❌ 任何业务规则（pairing / sync / transfer 决策都在 `uc-application`）
-- ❌ daemon **业务** 逻辑（daemon 内部的 worker 在 `uc-desktop/src/daemon/`）
+- ❌ daemon **业务** 逻辑（daemon 内部的 worker 在 `apps/daemon/src/daemon/`）
 - ❌ spawn 的 **编排**（probe→spawn→等健康、spinner / 超时 UX）——那是各 shell
   / CLI 自己的事（如 `uc-cli/src/local_daemon.rs`）。本 crate 只提供 detached
   spawn **原语**（`spawn::spawn_detached_daemon`），不含编排。
@@ -74,7 +74,6 @@ detached spawn 原语从 `uc-cli` 下沉到此处由 CLI 与 GUI shell 共用。
 ```
 uc-macos-native     ─── consume ───┐
 （未来其他 GUI shell）─── consume ───┼──→ uc-daemon-local
-uc-desktop          ─── consume ───┤
 uc-daemon (bin)     ─── consume ───┤
 uc-cli              ─── consume ───┘
 ```
@@ -87,7 +86,7 @@ uc-cli              ─── consume ───┘
 
 - 新增功能前问：这事是不是"双进程模型的进程间协调"？
   - 是：放这里
-  - 不是、是 daemon 内部业务调度：放 `uc-desktop/src/daemon/`
+  - 不是、是 daemon 内部业务调度：放 `apps/daemon/src/daemon/`
   - 不是、是 GUI/CLI 框架特定的 spawn 实现：放对应的 shell / CLI crate
 - token / socket 路径策略改动要同时检查所有消费方（GUI shell、daemon bin、
   CLI 工具）

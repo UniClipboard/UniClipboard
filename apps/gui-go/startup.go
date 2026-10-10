@@ -69,7 +69,8 @@ func resolveWindowAction(spawnedThisLaunch, lightweight bool) startupWindowActio
 	return windowNone
 }
 
-// coldLaunch runs the daemon-dependent startup sequence of crates/uc-desktop/src/startup/actions.rs:
+// coldLaunch runs the daemon-dependent startup sequence of crates/uc-desktop/src/startup/actions.rs (as of
+// ed778b239f52c7da5c83532342e53b517e8e6bf9, the last commit that has it):
 // name the device if it has no name, and on a cold start (this launch spawned the daemon) recover the
 // encryption session and lifecycle, then restore the latest clipboard entry when enabled. A reopen skips
 // the recovery and the restore: they belong to the daemon's original start, and restoring again would

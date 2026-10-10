@@ -2,7 +2,8 @@
 // (`uniclip-quick-panel`) for desktop hosts. The helper owns the global shortcut, the
 // modifier double-tap trigger and the panel window; the host only starts, restarts and
 // stops it and carries out the few requests it prints on stdout. The supervision rules
-// (restart backoff, giving up, graceful stop) match crates/uc-desktop/src/quick_panel_helper.rs.
+// (restart backoff, giving up, graceful stop) were ported from crates/uc-desktop/src/quick_panel_helper.rs at
+// ed778b239f52c7da5c83532342e53b517e8e6bf9; this package is their only implementation now.
 package quickpanelhelper
 
 import (

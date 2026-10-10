@@ -15,8 +15,10 @@ import (
 // The WebView quick panel (every platform without the native panel helper) is toggled by a global shortcut
 // registered through Wails' app.GlobalShortcut (Win32 RegisterHotKey on Windows). Wails owns the OS binding,
 // conflict detection and the release on exit; this file only carries the Uni rules that sit on top of it and
-// that the Tauri shell implements in crates/uc-desktop/src/shortcuts.rs and
-// crates/uc-tauri/src/quick_panel/shortcut_registry.rs: the settings value and its default, the physical-key
+// that the Tauri shell implemented in crates/uc-desktop/src/shortcuts.rs and
+// crates/uc-tauri/src/quick_panel/shortcut_registry.rs (both removed; see ed778b239f52c7da5c83532342e53b517e8e6bf9 for the former and its
+// parent history for the latter). The settings value, default and normalization still live in
+// crates/quick-panel-core/src/shortcuts.rs for the native panel: the settings value and its default, the physical-key
 // normalization, two-step chords, and the unregister-old, register-new, roll-back-on-failure transition.
 
 // chordWindow is how long the second step of a chord may follow the first (matches the frontend's CHORD_WINDOW_MS).

@@ -45,7 +45,13 @@ function generatorPath() {
   // The analysis must use the toolchain the module builds with: a generator compiled by an older Go
   // reports warnings for newer standard library sources and may type them wrongly.
   if (toolchain) env.GOTOOLCHAIN = toolchain
-  run('go', ['install', `github.com/wailsapp/wails/v3/cmd/wails3@${wails}`], { cwd: tmpdir(), env })
+  // On Linux the generator links the Wails GTK backend through cgo; the host is built with the gtk3 tag (the
+  // build image carries GTK3, not the GTK4 default), so the generator must be too.
+  const tags = process.platform === 'linux' ? ['-tags', 'gtk3'] : []
+  run('go', ['install', ...tags, `github.com/wailsapp/wails/v3/cmd/wails3@${wails}`], {
+    cwd: tmpdir(),
+    env,
+  })
   generatorBinary = join(binDir, 'wails3')
   process.on('exit', () => rmSync(binDir, { recursive: true, force: true }))
   return generatorBinary

@@ -48,7 +48,7 @@ o.bind("SUPER + SHIFT + V", "UniClipboard", "uniclipboard --quick-panel")
 
 Omarchy 会整体替换主题目录，因此监听其稳定父目录并合并文件事件。读取失败或主题内容无效时保留最近一次有效配色；后续文件变化会重新读取。调色板仅驻留内存，不写入业务设置，不修改系统 GTK 配置，不安装主题钩子。
 
-前端通过 `apps/gui/src/lib/window-theme.ts` 统一选择最终主题，窗口只消费深浅模式与语义颜色变量。初始查询和实时事件带版本号，避免旧查询覆盖新主题；GUI 退出时取消文件监听。daemon、Engine 和其他平台不承担 Omarchy 适配逻辑。
+前端通过 `apps/gui-go/frontend/src/lib/window-theme.ts` 统一选择最终主题，窗口只消费深浅模式与语义颜色变量。初始查询和实时事件带版本号，避免旧查询覆盖新主题；GUI 退出时取消文件监听。daemon、Engine 和其他平台不承担 Omarchy 适配逻辑。
 
 ## 粘贴与能力边界
 

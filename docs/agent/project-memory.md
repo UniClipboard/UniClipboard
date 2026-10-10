@@ -45,7 +45,7 @@ Read these before structural work:
 
 ### Area-specific local guides
 
-- `apps/gui/src/AGENTS.md` — frontend-local map
+- `apps/gui-go/frontend/src/AGENTS.md` — frontend-local map
 - `crates/AGENTS.md` — Rust workspace knowledge base (crates/ + apps/)
 
 ## External Reference

@@ -8,10 +8,10 @@
 
 | 编号 | 契约 | 来源 |
 | --- | --- | --- |
-| W1 | `windowScale` 是快捷面板自己的前端状态（`localStorage` 键 `uniclipboard.quickPanel.windowScale`），不是 daemon 设置；步长 0.1，范围 0.8–1.5，前端与 Rust 两侧都钳制；只在 Linux Tauri 面板生效。它与显示器 DPI/GTK scale factor 无关（逻辑像素，由 toolkit 换算）。 | `apps/gui/src/quick-panel/window-layout.ts`（`normalizeScale`、`adjustQuickPanelScale`、`isLinuxPanel`）、旧 Tauri 外壳的快捷面板模块（已退役；`MIN/MAX_WINDOW_SCALE`、`resized_panel_dimensions`） |
-| W2 | 用户通过面板里的真实快捷键调整：`ctrl+=` 放大、`ctrl+-` 缩小（`quickPanel.windowIncrease/Decrease`）。越界按键不再改变（钳制）。 | `apps/gui/src/shortcuts/definitions.ts`（`QUICK_PANEL_SCALE_SHORTCUTS`）、`useQuickPanelScaleShortcuts.ts` |
+| W1 | `windowScale` 是快捷面板自己的前端状态（`localStorage` 键 `uniclipboard.quickPanel.windowScale`），不是 daemon 设置；步长 0.1，范围 0.8–1.5，前端与 Rust 两侧都钳制；只在 Linux Tauri 面板生效。它与显示器 DPI/GTK scale factor 无关（逻辑像素，由 toolkit 换算）。 | `apps/gui-go/frontend/src/quick-panel/window-layout.ts`（`normalizeScale`、`adjustQuickPanelScale`、`isLinuxPanel`）、旧 Tauri 外壳的快捷面板模块（已退役；`MIN/MAX_WINDOW_SCALE`、`resized_panel_dimensions`） |
+| W2 | 用户通过面板里的真实快捷键调整：`ctrl+=` 放大、`ctrl+-` 缩小（`quickPanel.windowIncrease/Decrease`）。越界按键不再改变（钳制）。 | `apps/gui-go/frontend/src/shortcuts/definitions.ts`（`QUICK_PANEL_SCALE_SHORTCUTS`）、`useQuickPanelScaleShortcuts.ts` |
 | W3 | 尺寸 = 800x560 逻辑像素 × 钳制后的缩放，四舍五入；0.8 → 640x448，1.1 → 880x616，1.5 → 1200x840。 | `quick_panel/mod.rs`：`LINUX_PANEL_WIDTH/HEIGHT`、`resized_panel_dimensions` |
-| W4 | 每次显示：宿主先按基础尺寸准备，前端在 `prepare-show` 之后、`finalize_quick_panel_show` 之前用已保存的缩放调用 `set_quick_panel_layout`，所以窗口映射时已是缩放后的尺寸。面板已显示时用户改缩放，窗口立即改变尺寸（Tauri 的 `set_size` 对已映射窗口生效）。 | `quick_panel/mod.rs`：`show`、`set_layout`；`apps/gui/src/quick-panel/QuickPanelApp.tsx`：`finalizeShow` |
+| W4 | 每次显示：宿主先按基础尺寸准备，前端在 `prepare-show` 之后、`finalize_quick_panel_show` 之前用已保存的缩放调用 `set_quick_panel_layout`，所以窗口映射时已是缩放后的尺寸。面板已显示时用户改缩放，窗口立即改变尺寸（Tauri 的 `set_size` 对已映射窗口生效）。 | `quick_panel/mod.rs`：`show`、`set_layout`；`apps/gui-go/frontend/src/quick-panel/QuickPanelApp.tsx`：`finalizeShow` |
 | W5 | 缩放值保存在面板的 `localStorage`，重启后第一次显示就使用已保存的缩放。 | `window-layout.ts`（`readWindowScale`） |
 | W6 | 工作区：Tauri 面板窗口设置了 `always_on_top`、`skip_taskbar`、无边框、不可缩放，**没有** 设置“所有工作区可见”（sticky）。所以契约只是“窗口管理器对一个普通 X11 窗口的默认行为”：用户在当前工作区按快捷键，面板应该出现在当前工作区并获得焦点。本片不添加 sticky，也不添加 Tauri 里没有的工作区行为。 | `quick_panel/mod.rs`：`pre_create` 的构建参数 |
 | W7 | 焦点：显示后调用 `set_focus`；失去焦点（非 Layer Shell 路径）在防抖后隐藏；Escape 关闭面板。 | `quick_panel/mod.rs`：`finalize_show`；`windows.go`：`WindowLostFocus` 钩子 |

@@ -154,7 +154,7 @@ issue / PR 正文。**
 
 ```text
 .
-├── apps/gui/           # 桌面 GUI：React + TypeScript 前端（src/）；Go/Wails 宿主壳在 `apps/gui-go/`
+├── apps/gui-go/        # 桌面 GUI：Go/Wails 宿主壳；React + TypeScript 前端在 `frontend/`（src/）
 ├── apps/、crates/      # Rust 工作区成员（daemon、CLI、快捷面板、宿主与平台 crate）
 ├── workers/            # Cloudflare Worker，加密中继
 ├── docs/               # 架构、agent 规则、发布流程、UAT 等
@@ -272,7 +272,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 ### 前端
 
 ```bash
-bun run test       # vitest，共享前端（apps/gui）
+bun run test       # vitest，前端（apps/gui-go/frontend）
 bun run typecheck  # 共享前端类型检查
 ```
 

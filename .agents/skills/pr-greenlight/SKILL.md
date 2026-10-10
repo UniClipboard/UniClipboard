@@ -66,7 +66,7 @@ From the file list, classify what changed into categories:
 | `openapi` | `schema/openapi.json`, files with `#[utoipa::path]` |
 | `docs-site` | `docs-site/**` |
 | `markdown` | `*.md` (outside docs-site) |
-| `generated` | `apps/gui/src/api/generated/**` |
+| `generated` | `apps/gui-go/frontend/src/api/generated/**` |
 
 Store the categories in state as `change_categories`.
 
@@ -107,9 +107,9 @@ git add schema/openapi.json
 
 # 2. API client (if openapi.json changed in step 1 or was already changed)
 bun run gen:client 2>&1
-git diff --exit-code apps/gui/src/api/generated/
+git diff --exit-code apps/gui-go/frontend/src/api/generated/
 # If diff: stage it
-git add apps/gui/src/api/generated/
+git add apps/gui-go/frontend/src/api/generated/
 ```
 
 ### 2c — Lint (scoped to changed files)

@@ -151,7 +151,7 @@ or to issue / PR text.
 
 ```text
 .
-├── apps/gui/           # Desktop GUI: React + TypeScript sources of the desktop UI (src/); the Go/Wails host shell is in `apps/gui-go/`
+├── apps/gui-go/        # Desktop GUI: Go/Wails host shell; its React + TypeScript UI is in `frontend/` (src/)
 ├── apps/, crates/      # Rust workspace members (daemon, CLI, quick panel, host and platform crates)
 ├── workers/            # Cloudflare Worker for the encrypted relay
 ├── docs/               # Architecture, agent rules, release workflow, UAT, etc.
@@ -267,8 +267,8 @@ Pre-commit hooks (via Husky and lint-staged) automatically run `oxlint`, `oxfmt`
 ### Frontend
 
 ```bash
-bun run test       # vitest, shared frontend in apps/gui
-bun run typecheck  # type check the shared frontend
+bun run test       # vitest, frontend in apps/gui-go/frontend
+bun run typecheck  # type check the frontend
 ```
 
 Tests use Vitest with `@testing-library/react`. Place colocated tests next to the code they cover (e.g. `Component.test.tsx`).

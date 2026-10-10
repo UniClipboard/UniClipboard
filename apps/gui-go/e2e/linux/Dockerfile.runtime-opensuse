@@ -1,6 +1,7 @@
 # A clean openSUSE Tumbleweed host for the AppImage: what the AppImage convention leaves to the host (X server, Mesa/libglvnd, libX11,
 # libwayland-client, ALSA, FUSE 2, fonts, a D-Bus session), and no GTK3, WebKitGTK or libsoup. Counterpart of Dockerfile.17c4-runtime
-# for rpm-based hosts; the base is pinned by digest so that a rebuild gives the same glibc/GLib/Mesa generation (glibc 2.44, GLib 2.88, Mesa 26.2).
+# for rpm-based hosts; the base is pinned by digest, but the packages come from the live Tumbleweed repositories, so a later rebuild can resolve newer
+# library versions (the 20261003 results: glibc 2.44, GLib 2.88, Mesa 26.2). Read the resolved versions from host.txt of each run.
 # Build for the native architecture only:  docker build --platform linux/arm64 -f Dockerfile.runtime-opensuse -t <tag> .
 FROM opensuse/tumbleweed@sha256:cb0b66ea9245993c2119bd2c8b8fc78f22ae1fd97cf846c9ab7e824c9108e1a3
 RUN zypper --non-interactive refresh && zypper --non-interactive install --no-recommends \

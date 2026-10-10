@@ -192,7 +192,7 @@ rpm 关闭了自动依赖生成（`AutoReqProv: no`），`Requires` 是依赖的
 
 用同一份 CI 载荷经 `package_linux.build_rpm` 重建后：openSUSE `zypper install` 解析并安装 175 个包，
 `ldd` 无缺失库，`rpm -V` 干净；Fedora 44 `dnf install` 解析到 `gtk3`、`webkit2gtk4.1`、`gtk-layer-shell`，同样干净。
-这是依赖解析与文件级安装的验证，openSUSE 上已安装 rpm 的 GUI 启动、升级与卸载没有跑（同一 AppImage 在该发行版的启动与库存结果见
+这一步只是依赖解析与文件级安装的验证；已安装 rpm 的 GUI 启动、升级与卸载在随后的「openSUSE 上已安装 rpm 的生命周期」一节另行运行过（其中 `WebKitWebProcess` 的失败见该节）。同一 AppImage 在该发行版的启动与库存结果见
 [gui-go-linux-appimage-runtime-deps.md](gui-go-linux-appimage-runtime-deps.md) 的「运行时库存结果」）。
 `packaging/uniclipboard.spec`（COPR，Fedora 系）是另一份独立的 `Requires` 声明，仍用包名 `webkit2gtk4.1`、`gtk-layer-shell`，因 COPR 只面向 Fedora 系而保留；两处并存，不是同一事实来源。
 

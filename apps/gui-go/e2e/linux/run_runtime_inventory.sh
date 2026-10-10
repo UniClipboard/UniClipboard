@@ -27,7 +27,7 @@ chown -R uc /out
 status=0
 su uc -c "python3 /work/apps/gui-go/e2e/linux/runtime_library_inventory.py observe /home/uc/mounted/app.AppImage /out/mounted" > /out/observe-mounted.log 2>&1 || status=1
 su uc -c "python3 /work/apps/gui-go/e2e/linux/runtime_library_inventory.py observe /home/uc/extracted/app.AppImage /out/extracted --extract" > /out/observe-extracted.log 2>&1 || status=1
-cd /home/uc/content && su uc -c "./app.AppImage --appimage-extract" > /out/extract-content.log 2>&1 && cp -a squashfs-root /out/squashfs-root
+(cd /home/uc/content && su uc -c "./app.AppImage --appimage-extract" > /out/extract-content.log 2>&1 && cp -a squashfs-root /out/squashfs-root) || status=1
 # Hand the files back to the calling user: a CI runner is not root and must be able to read, upload and remove them.
 chown -R "$UC_HOST_UID:$UC_HOST_GID" /out
 exit $status

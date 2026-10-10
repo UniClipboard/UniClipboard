@@ -232,10 +232,12 @@ jobs:
         env:
           UC_ANALYSIS_IMAGE: ${{ env.UC_LINUX_IMAGE }}
         run: |
+          rc=0
           for host in floor newer; do
             apps/gui-go/e2e/linux/run_runtime_inventory.sh "$RUNNER_TEMP/inventory-$host" "$(ls "$RUNNER_TEMP"/upload/UniClipboard_*.AppImage)" \
-              "$RUNNER_TEMP/out/packages/package-manifest.json" "uc-clean-host:$host"
+              "$RUNNER_TEMP/out/packages/package-manifest.json" "uc-clean-host:$host" || rc=1
           done
+          exit "$rc"  # both hosts always run, so one failure does not hide the other's inventory
 
       - name: Upload the runtime library inventory
         if: always()

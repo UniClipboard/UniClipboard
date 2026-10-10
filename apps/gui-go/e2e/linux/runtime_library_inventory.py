@@ -16,6 +16,7 @@ Coverage is the executed scenario only: GUI start, WebKit page load, daemon heal
 nothing else is ever dlopen'ed. Run it as a non-root user on a host that has Xvfb and dbus-daemon.
 """
 import argparse
+import contextlib
 import hashlib
 import json
 import os
@@ -31,6 +32,24 @@ from pathlib import Path
 ROLES = {'uniclipboard': 'gui', 'uniclipd': 'daemon', 'WebKitWebProcess': 'webkit-web', 'WebKitNetworkProcess': 'webkit-network', 'WebKitGPUProcess': 'webkit-gpu'}
 ENV_DROP = ('UC_PROFILE', 'UC_GUI_GO_ISOLATED', 'UNICLIPBOARD_ENV', 'APPIMAGE', 'APPDIR', 'WAYLAND_DISPLAY')
 DLOPEN = re.compile(r'^\s*(\d+):\s+file=(\S+) \[\d+\];\s+dynamically loaded by (\S+)')
+
+
+def read_line(proc, seconds, what):
+    """Read one complete line from a helper's stdout within one shared deadline; fail on EOF, an empty line or a timeout."""
+    deadline, buf = time.monotonic() + seconds, b''
+    with selectors.DefaultSelector() as sel:
+        sel.register(proc.stdout, selectors.EVENT_READ)
+        while not buf.endswith(b'\n'):
+            if not sel.select(max(0.0, deadline - time.monotonic())):
+                raise RuntimeError(f'{what} was not announced within {seconds} s')
+            chunk = os.read(proc.stdout.fileno(), 4096)
+            if not chunk:
+                raise RuntimeError(f'{what}: the helper closed its output before announcing it')
+            buf += chunk
+    line = buf.decode().strip()
+    if not line:
+        raise RuntimeError(f'{what} is empty')
+    return line
 
 
 def sha256(path):
@@ -130,16 +149,15 @@ def observe(args):
     helpers = []
     xvfb = subprocess.Popen(['Xvfb', '-displayfd', '1', '-screen', '0', '1280x800x24', '-nolisten', 'tcp'], stdout=subprocess.PIPE, stderr=(out / 'xvfb.log').open('w'), text=True)
     helpers.append(xvfb)
-    ready = selectors.DefaultSelector()
-    ready.register(xvfb.stdout, selectors.EVENT_READ)
-    if not ready.select(10):
-        xvfb.terminate()
-        sys.exit('Xvfb did not announce a display within 10 s')
-    env['DISPLAY'] = ':' + xvfb.stdout.readline().strip()
-    ready.close()
-    bus = subprocess.Popen(['dbus-daemon', '--session', '--nofork', '--print-address=1'], stdout=subprocess.PIPE, stderr=(out / 'bus.log').open('w'), text=True, env=env)
-    helpers.append(bus)
-    env['DBUS_SESSION_BUS_ADDRESS'] = bus.stdout.readline().strip()
+    try:
+        env['DISPLAY'] = ':' + read_line(xvfb, 10, 'Xvfb display number')
+        bus = subprocess.Popen(['dbus-daemon', '--session', '--nofork', '--print-address=1'], stdout=subprocess.PIPE, stderr=(out / 'bus.log').open('w'), text=True, env=env)
+        helpers.append(bus)
+        env['DBUS_SESSION_BUS_ADDRESS'] = read_line(bus, 10, 'D-Bus session address')
+    except RuntimeError as e:
+        for h in helpers:
+            h.terminate()
+        sys.exit(str(e))
     env.update(LD_DEBUG='libs,files', LD_DEBUG_OUTPUT=str(out / 'loader'))  # after the bus: the bus itself is not under test
     proc = subprocess.Popen([str(image)] + (['--appimage-extract-and-run'] if args.extract else []), env=env, stdout=(out / 'gui.log').open('w'), stderr=subprocess.STDOUT, start_new_session=True)
     scoped, health = {}, None
@@ -149,15 +167,12 @@ def observe(args):
             for entry in Path('/proc').iterdir():
                 if not entry.name.isdigit():
                     continue
-                try:
+                with contextlib.suppress(OSError):  # the process exited between listing /proc and reading it
                     exe = os.readlink(entry / 'exe')
                     if os.getpgid(int(entry.name)) == proc.pid and Path(exe).name in ROLES and ('.mount_' in exe or 'appimage_extracted_' in exe):
                         scoped[int(entry.name)] = exe
-                except OSError:
-                    # the process exited between listing /proc and reading it
-                    pass
             for conn in home.rglob('daemon.conn'):
-                try:
+                with contextlib.suppress(OSError, ValueError, KeyError):  # daemon.conn is stale or the daemon is not up yet; the next poll retries and the health check gates the result
                     c = json.loads(conn.read_text())
                     daemon_exe = os.readlink(f"/proc/{c['pid']}/exe")  # the daemon detaches from the GUI's process group
                     if '.mount_' not in daemon_exe and 'appimage_extracted_' not in daemon_exe:
@@ -165,9 +180,6 @@ def observe(args):
                     scoped[c['pid']] = daemon_exe
                     with urllib.request.urlopen(f"http://{c['host']}:{c['port']}/health", timeout=2) as r:
                         health = r.status
-                except (OSError, ValueError, KeyError):
-                    # daemon.conn is stale or the daemon is not up yet; the next poll retries and the health check gates the result
-                    pass
             if health == 200 and any(Path(e).name == 'WebKitWebProcess' for e in scoped.values()):
                 time.sleep(4)  # let the page load finish so late dlopen calls land in the trace
                 break
@@ -175,7 +187,7 @@ def observe(args):
                 break
             time.sleep(1)
         for pid, exe in sorted(scoped.items()):
-            try:
+            with contextlib.suppress(OSError):  # the process exited before its maps were read; the role coverage assertions catch a missing process
                 if os.readlink(f'/proc/{pid}/exe') != exe:
                     continue
                 libraries = mapped_libraries(pid)
@@ -183,18 +195,12 @@ def observe(args):
                 for path in libraries:
                     if Path(path).name != 'ld.so.cache' and path not in result['sonames']:
                         result['sonames'][path] = elf_soname(path)
-            except OSError:
-                # the process exited before its maps were read; the role coverage assertions catch a missing process
-                pass
         result.update(health=health, guiAlive=proc.poll() is None)
     finally:
         for pid, exe in scoped.items():
-            try:
+            with contextlib.suppress(OSError):  # already gone
                 if os.readlink(f'/proc/{pid}/exe') == exe:
                     os.kill(pid, signal.SIGTERM)
-            except OSError:
-                # already gone
-                pass
         if proc.poll() is None:
             proc.terminate()
         try:

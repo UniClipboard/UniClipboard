@@ -74,6 +74,30 @@ runner 架构、host 环境（OS、OpenSSH、Node）与 core SHA、测试 tag / 
 
 ## 已知限制
 
-- `workflow_dispatch` 只能触发已存在于默认分支的 workflow 文件；新文件若尚不在 `main`，
-  API 会拒绝，须先合并入口或借用已有入口。具体观察结果写入报告。
+- `workflow_dispatch` 只能触发已存在于默认分支的 workflow 文件。已在本分支实测：
+  `gh workflow run gitcode-release-mirror-smoke.yml --ref ci/gitcode-release-mirror-action-smoke`
+  返回 `HTTP 404: workflow … not found on the default branch`。因此 smoke workflow 必须先合并进 `main`
+  才能被 dispatch；合并只增加一个仅 `workflow_dispatch` 触发的文件，不改动任何生产流程。
+- 现有 `mirror` environment 仅允许 `main`，其 SSH key 绑定旧 Python wrapper，无法测试新 Action；
+  因此另建 `gitcode-mirror-smoke` environment 与专用 key，不复用也不修改旧的。
 - GitCode API 使用 `access_token` 查询参数，token 可能出现在 GitCode 服务端日志中，此点不受我们控制。
+
+## 解除阻塞后的执行步骤（每步均需维护者确认）
+
+1. 审阅并合并本 PR（仅新增 smoke workflow、合成资产、host 安装脚本、本文档）。
+2. 本地生成专用 key：`ssh-keygen -t ed25519 -N '' -f smoke_key`；创建 environment
+   `gitcode-mirror-smoke`（部署分支仅限 `main`），用 `gh secret set GITCODE_ACTION_SMOKE_SSH_KEY --env gitcode-mirror-smoke < smoke_key`
+   写入私钥后删除本地私钥文件；设置变量 `GITCODE_ACTION_SMOKE_SSH_USER=gitcode-smoke`。
+3. 在 host 上以 root 运行 `scripts/remote/install-gitcode-release-mirror-smoke-host.sh`，
+   参数为固定提交的 Action checkout、公钥文件、将要 dispatch 的 `main` 提交完整 SHA。
+   安装前后记录 `/opt/uniclip-mirror/*` 与 `/home/uniclip-mirror/.ssh/authorized_keys` 的 SHA-256，应保持不变。
+4. `gh workflow run gitcode-release-mirror-smoke.yml --ref main -f tag=test-action-smoke-<YYYYMMDD>-1`，
+   再用同一 tag 运行一次观察重复复用。
+5. 用 `gh run view --log` 对完整日志搜索 `access_token=`、`PRIVATE KEY`，并保存 receipt artifact。
+
+## 本地已验证（不等于真实 runner / GitCode 证明）
+
+- `actionlint` 与 `shellcheck` 通过；host 配置模板渲染后是合法 JSON，文件名正则只放行 `gitcode-action-smoke*.txt`。
+- 固定提交 `5055ef17…` 上 `npm ci && npm run check-dist` 通过（发布的 `dist/` 由该源码构建）。
+- 只读核对 host：CentOS 7、OpenSSH 7.4p1（支持 `restrict`）、已有 Node v22.22.1 可独立运行；
+  `sshd_config` 无 `AllowUsers`/`AllowGroups`；SELinux 为 Disabled。

@@ -30,6 +30,8 @@ def main():
     parser.add_argument('--cli', required=True, type=Path)
     parser.add_argument('--daemon', required=True, type=Path)
     args = parser.parse_args()
+    if sys.platform not in ('darwin', 'linux'):
+        parser.error('this isolated path runner supports macOS and Linux')
     out = args.out.resolve()
     out.mkdir(parents=True, exist_ok=False)
     sandbox = Path(tempfile.mkdtemp(prefix='uc-profile-layout-'))
@@ -73,14 +75,16 @@ def main():
                 run('space', 'init', '--passphrase', 'profile-layout-e2e-passphrase', '--device-name', 'layout-e2e')
                 run('start')
                 conn = json.loads((data / 'daemon.conn').read_text())
-                record['pid'] = conn['pid']
+                record['pids'] = [conn['pid']]
                 # Confirm the path Go discovered was written by this sandbox's Rust daemon.
-                executable = subprocess.check_output(['ps', '-p', str(conn['pid']), '-o', 'comm='], text=True).strip()
+                executable = (os.readlink(f'/proc/{conn["pid"]}/exe') if sys.platform == 'linux' else
+                              subprocess.check_output(['ps', '-p', str(conn['pid']), '-o', 'comm='], text=True).strip())
                 assert Path(executable).resolve() == daemon.resolve(), executable
                 first = json.loads(run('space', 'status').stdout)
                 assert first, 'empty space status'
                 run('stop')
                 run('start')
+                record['pids'].append(json.loads((data / 'daemon.conn').read_text())['pid'])
                 second = json.loads(run('space', 'status').stdout)
                 assert first == second, 'space state changed across daemon restart'
                 assert logs.is_dir() and list(logs.glob('uniclipboard-daemon.json.*')), 'missing per-role daemon log'
@@ -89,12 +93,22 @@ def main():
                 record.update({'statusBefore': first, 'statusAfter': second, 'passed': True})
             finally:
                 stopped = run('stop', check=False)
-                if 'pid' in record:
-                    p = subprocess.run(['ps', '-p', str(record['pid']), '-o', 'comm='], capture_output=True, text=True)
-                    record['daemonAliveAfterStop'] = p.stdout.strip() == str(daemon)
-                    if record['daemonAliveAfterStop']:
-                        record['passed'] = False
-                        raise RuntimeError('sandbox daemon remains after stop')
+                alive = []
+                for pid in record.get('pids', []):
+                    if sys.platform == 'linux':
+                        try:
+                            running = os.readlink(f'/proc/{pid}/exe')
+                        except FileNotFoundError:
+                            running = ''
+                    else:
+                        p = subprocess.run(['ps', '-p', str(pid), '-o', 'comm='], capture_output=True, text=True)
+                        running = p.stdout.strip()
+                    if running == str(daemon):
+                        alive.append(pid)
+                record['daemonPidsAliveAfterStop'] = alive
+                if alive:
+                    record['passed'] = False
+                    raise RuntimeError('sandbox daemon remains after stop')
                 record['cleanupExit'] = stopped.returncode
                 retained = out / case / 'logs'
                 retained.mkdir(parents=True)

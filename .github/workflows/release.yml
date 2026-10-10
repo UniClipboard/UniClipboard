@@ -190,6 +190,8 @@ jobs:
       branch: ${{ needs.validate.outputs.source_sha }}
       channel: ${{ needs.validate.outputs.channel }}
       package_cli: true
+      # Publication builds and verifies artifacts; full runtime acceptance belongs to PR/manual workflows.
+      run_acceptance: false
       allow_unsigned_windows: ${{ vars.ALLOW_UNSIGNED_WINDOWS_ALPHA == 'true' && needs.validate.outputs.channel == 'alpha' }}
       # A release tag can land while cache-warmup.yml is still writing a
       # freshly-bumped Cargo.lock's cache, so the read-only release build

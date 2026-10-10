@@ -211,3 +211,27 @@ rpm 关闭了自动依赖生成（`AutoReqProv: no`），`Requires` 是依赖的
 没有在不带 BTI 的 aarch64 或 x86_64 的 Tumbleweed 上对照，所以不断言它影响所有 Tumbleweed 用户，只断言带 BTI 的 aarch64。
 这一缺陷让 openSUSE Tumbleweed 的 aarch64 rpm 在这类硬件上无法显示界面，除非发行版修复 JavaScriptCore；产品是否在支持声明里排除该组合由产品决定。
 校验路径的白名单已加入 openSUSE 的 `/usr/libexec/libwebkit2gtk-4_1-0/`。
+
+## 发布与运行验收的边界
+
+`release.yml` 调用 `build.yml` 时固定 `run_acceptance: false`。Linux 的 `package`
+作业只构建与打包，保留四种命名产物、manifest、源码与 daemon 哈希、架构和 glibc
+下限的必要校验；不构建 E2E GUI、升级夹具或遥测测试 daemon。
+
+`linux-gui-acceptance.yml` 承担 AppImage 的 full / negative / smoke、运行时库库存、
+deb/rpm 安装升级卸载与遥测注入合同。`package-linux-gui.yml` 在相关 PR 与独立手动
+运行时默认调用它，使用同一次运行中的包和固定源码 SHA。验收从已验证 deb 提取真实
+release daemon，核对 manifest 哈希，再构建测试控制面的 GUI；它不重复编译生产 daemon。
+因此 Linux 构建作业的成功只表示打包和必要结构校验成功，完整运行验收有独立状态。
+
+macOS/Windows 的运行 smoke 作业也遵循同一个边界。Windows 签名故障注入属于独立
+验收；最终返回文件集合、签名前后内容一致性、证书与最终载荷验证始终保留。
+非 SignPath 发布仅构建 shipped 包。既有 SignPath 外部配置要求 newer 目录与第二个
+setup，所以该后端仍构建并签名这个夹具以满足精确签名输入合同，但发布不运行它的
+安装或更新验收。移除该签名输入需要先单独更新并验证外部 artifact configuration；
+本改动不修改配置、证书、secret 或 stable/beta/rc 的签名要求。
+
+标准发布顺序仍是手动 prepare-release、release PR、合并后创建 tag、tag 触发发布。
+旧 tag 的重跑使用旧工作流，不会获得 main 上的修复；恢复发布必须另行选择可审查的
+新发布提交与新 tag，或明确授权对旧发布流程进行恢复。不得用夹具或旧 SHA 的包冒充
+修复提交的发布证明。

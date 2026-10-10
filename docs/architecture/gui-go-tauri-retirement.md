@@ -175,7 +175,7 @@ React 前端的源码、资源、测试、浏览器夹具、`package.json`、Vit
 
 ### 删除测试的逐文件映射
 
-`python3 scripts/architecture/retired-host-test-inventory.py` 可从 `de8381d54` 重新提取完整测试名。
+`python3 .planning/retirement/retired-host-test-inventory.py` 可从 `de8381d54` 重新提取完整测试名。
 36 个文件共 **207** 个函数：204 个无参数属性加 3 个带参数 Tokio 属性；原 issue 的 204 少计后者。
 下表路径相对当时的 `crates/uc-tauri/src`；脚本名相对当前 `apps/gui-go/e2e`。
 “替代”表示检查了脚本的真实断言，**不表示本轮全部运行通过**。“缺口”不能标为功能 dropped；

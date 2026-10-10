@@ -59,24 +59,24 @@ Examples:
 ## Calling host commands
 
 Frontend code MUST call host commands through the typed `commands` object exported by
-`apps/gui/src/lib/ipc.ts` rather than calling `invoke()` / `invokeWithTrace()` with a
-stringly-typed command name.
+`apps/gui/src/lib/ipc.ts`. Never call the Wails runtime with a stringly-typed command name, and
+never import `@tauri-apps/api/core` `invoke()` for a host command.
 
 ```ts
-// ❌ Wrong — stringly-typed, no compile-time safety
-await invokeWithTrace('update_mobile_sync_settings', patch)
-
-// ✅ Correct — typed against the frozen host command contract
+// ✅ Correct — typed against the generated Wails bindings
 import { commands } from '@/lib/ipc'
 await commands.updateMobileSyncSettings(patch)
 ```
 
-The wrapper preserves trace_id injection, Sentry breadcrumbs, and arg redaction.
-`apps/gui/src/lib/ipc-bindings.generated.ts` and `error-severity.generated.ts` are no longer
-generated: they are the frozen host command/error contract and are maintained by hand together
-with the Go host handlers in `apps/gui-go` (`apps/gui-go/e2e/command-coverage.sh` lists the
-commands the Go host does not implement yet). When you add or change a command, edit the contract
-file and the Go handler in the same change.
+`commands` is the Wails-generated `HostService` module
+(`apps/gui-go/frontend/bindings/.../hostservice.ts`, alias `@host/hostservice`) re-keyed in camelCase
+and wrapped for trace_id injection, Sentry breadcrumbs, arg redaction and error classification. The
+Go method signatures and DTOs are the only contract source; the bindings, the error-severity
+tables (`apps/gui/src/lib/host-errors.generated.ts`) and the command table in
+`docs/architecture/gui-go-host-commands.md` are generated and checked in CI
+(`bun run check:host-contract`). When you add or change a command, change the Go method and
+regenerate (`bun run gen:host-contract`); do not hand-edit generated files. Host enums are
+TypeScript `enum`s, so use their members (`InstallKind.InstallKindDeb`), not string literals.
 
 The Wails adapters live in `apps/gui-go/frontend/src/host`. The `@tauri-apps/*` package ids that
 the shared frontend imports are an import boundary only: `apps/gui-go/vite.config.ts` aliases each

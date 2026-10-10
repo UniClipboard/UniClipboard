@@ -22,7 +22,7 @@ Wails v3 桌面宿主，保留 Rust daemon/Engine，复用现有 React 与 HTTP/
 ## 当前范围
 
 已验证：真实 daemon 启动与复用、认证、HTTP/WS、共享 React 主界面（设置、解锁、历史、设备、设置页）、
-主窗口关闭隐藏与重开。第二窗口：真实 updater（dev 预览）与 quick panel 页面经多页构建加载，Go 宿主负责窗口创建、两阶段显示、失焦隐藏与尺寸；WebView 面板由 `app.GlobalShortcut` 全局快捷键切换（Windows、无原生面板辅助进程时；见“Wails 能力审计”）。托盘与退出语义：托盘菜单（同步开关、打开、设置、检查更新、重启、轻量模式、退出，六种语言标签）；普通退出（托盘退出、Cmd-Q）停止 daemon，轻量模式与重启保留 daemon。更新服务（`internal/update`）：同一份 Tauri 更新清单格式、minisign 签名校验（含 trusted comment）、下载进度与取消、macOS 原位安装并重启；公钥构建时从 `app.json` 注入，E2E 构建才允许用本地清单与临时密钥覆盖。后台更新调度已实现（含系统唤醒补检查与 macOS App Nap 补检查，见“Wails 能力审计”）。Windows 生产形态（第 17b 片，仅编译与离线核对，无 Windows 运行证据）：生产入口、`TerminateProcess` 停止 daemon、NSIS 原位更新调用、旧 Tauri `Run` 项清理、双击修饰键监视器、NSIS 安装包与便携包脚本，见“Windows 生产形态（17b）”。Linux 第 17c 片（容器内 Xvfb + 私有 D-Bus 的证据，不是原生桌面；见“Linux（第 17c 片）”）：X11 快捷键、X11 修饰键双击、Hyprland 粘贴链路、AppImage 原位更新代码、安装类型检测、XDG 自启适配、deb/rpm/AppImage 容器内构建。Linux 第 17c4 片：自包含 AppImage（linuxdeploy + 固定 Wails GTK 插件）、真实 release daemon 与构建证据、干净宿主（无 GTK/WebKitGTK）上的真实 AppImage 启动、自启动注册与原位更新，见“自包含 Linux AppImage（第 17c4 片）”。尚未实现 / 未验证：Linux amd64 打包与运行、原生桌面、真实注销/登录自启动、deb/rpm 实装、官方签名发布验证；Windows 与 Linux 的原生验收（无主机）；macOS 真实聚焦/位置/粘贴/睡眠/登录与 App Nap 实际进入；多图 `/host-file` 真实界面；官方发布签名验证；Tauri/tao 退役时的完整契约审计（宿主已退役，命令覆盖见 `e2e/command-coverage.sh`）。（早先列在此处的设备同步子菜单、轻量模式通知、更新、通知、文件预览协议、原生粘贴与 GPUI 宿主均已在前面的切片实现。）
+主窗口关闭隐藏与重开。第二窗口：真实 updater（dev 预览）与 quick panel 页面经多页构建加载，Go 宿主负责窗口创建、两阶段显示、失焦隐藏与尺寸；WebView 面板由 `app.GlobalShortcut` 全局快捷键切换（Windows、无原生面板辅助进程时；见“Wails 能力审计”）。托盘与退出语义：托盘菜单（同步开关、打开、设置、检查更新、重启、轻量模式、退出，六种语言标签）；普通退出（托盘退出、Cmd-Q）停止 daemon，轻量模式与重启保留 daemon。更新服务（`internal/update`）：同一份 Tauri 更新清单格式、minisign 签名校验（含 trusted comment）、下载进度与取消、macOS 原位安装并重启；公钥构建时从 `app.json` 注入，E2E 构建才允许用本地清单与临时密钥覆盖。后台更新调度已实现（含系统唤醒补检查与 macOS App Nap 补检查，见“Wails 能力审计”）。Windows 生产形态（第 17b 片，仅编译与离线核对，无 Windows 运行证据）：生产入口、`TerminateProcess` 停止 daemon、NSIS 原位更新调用、旧 Tauri `Run` 项清理、双击修饰键监视器、NSIS 安装包与便携包脚本，见“Windows 生产形态（17b）”。Linux 第 17c 片（容器内 Xvfb + 私有 D-Bus 的证据，不是原生桌面；见“Linux（第 17c 片）”）：X11 快捷键、X11 修饰键双击、Hyprland 粘贴链路、AppImage 原位更新代码、安装类型检测、XDG 自启适配、deb/rpm/AppImage 容器内构建。Linux 第 17c4 片：自包含 AppImage（linuxdeploy + 固定 Wails GTK 插件）、真实 release daemon 与构建证据、干净宿主（无 GTK/WebKitGTK）上的真实 AppImage 启动、自启动注册与原位更新，见“自包含 Linux AppImage（第 17c4 片）”。尚未实现 / 未验证：Linux amd64 打包与运行、原生桌面、真实注销/登录自启动、deb/rpm 实装、官方签名发布验证；Windows 与 Linux 的原生验收（无主机）；macOS 真实聚焦/位置/粘贴/睡眠/登录与 App Nap 实际进入；多图 `/host-file` 真实界面；官方发布签名验证；Tauri/tao 退役时的完整契约审计（宿主已退役，命令契约见 `docs/architecture/gui-go-host-commands.md`）。（早先列在此处的设备同步子菜单、轻量模式通知、更新、通知、文件预览协议、原生粘贴与 GPUI 宿主均已在前面的切片实现。）
 
 ## 开发运行
 
@@ -82,12 +82,12 @@ apps/gui-go/e2e/run.sh target/gui-go/evidence
 `vite.config.ts` 的 `@` 直接指向 `apps/gui/src`，整个 React 应用（页面、状态、HTTP/WS 客户端、
 生成的 SDK、样式）原地复用，没有第二份源码。仅宿主边界被替换：8 个 `@tauri-apps/*` 模块别名到
 `frontend/src/host/` 的 Wails 适配（`invoke`、`listen/emit`、窗口、打开链接等）。
-命令统一经 Go `HostService.Invoke` 与显式命令表 `commands` 路由；未实现命令立即返回结构化错误。
-`apps/gui/src` 不含任何平台分支，`ipc.ts` 与生成绑定保持原样。
+宿主命令是 `*HostService` 的导出方法，Wails 官方生成器据此生成 TypeScript 调用与数据类型（`frontend/bindings/`，别名 `@host`），共享前端经 `apps/gui/src/lib/ipc.ts` 调用。契约、错误码、事件与各系统支持情况见 `docs/architecture/gui-go-host-commands.md`；重新生成用 `bun run gen:host-contract`。
+`apps/gui/src` 不含任何平台分支。
 `frontend/index.html` 仅是入口壳。路径别名无需 Git 软链接，普通 Windows 检出不受软链接权限影响；
 Go 只嵌入构建产物 `frontend/dist`，不嵌入源码。
 
-未实现命令清单：`apps/gui-go/e2e/command-coverage.sh`。
+命令总表与各系统支持情况：`docs/architecture/gui-go-host-commands.md`（由 `hostcontract docs` 生成）。
 
 更新 E2E：`apps/gui-go/e2e/update_run.py --out <dir>`（需先 `build.sh e2e`）在安装副本上运行：
 不可信签名必须被拒绝且包不变；可信签名则下载、校验、停止旧 daemon、替换自身包、重启，

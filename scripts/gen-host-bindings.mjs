@@ -35,10 +35,25 @@ function run(command, args, options = {}) {
   }
 }
 
-function generate(dir) {
-  const env = { ...process.env }
+// The generator is built for the machine it runs on, before GOOS is applied: GOOS/GOARCH only select which
+// source files of apps/gui-go it analyses.
+let generatorBinary
+function generatorPath() {
+  if (generatorBinary) return generatorBinary
+  const binDir = mkdtempSync(join(tmpdir(), 'uc-wails3-'))
+  const env = { ...process.env, GOBIN: binDir }
   // The analysis must use the toolchain the module builds with: a generator compiled by an older Go
   // reports warnings for newer standard library sources and may type them wrongly.
+  if (toolchain) env.GOTOOLCHAIN = toolchain
+  run('go', ['install', `github.com/wailsapp/wails/v3/cmd/wails3@${wails}`], { cwd: tmpdir(), env })
+  generatorBinary = join(binDir, 'wails3')
+  process.on('exit', () => rmSync(binDir, { recursive: true, force: true }))
+  return generatorBinary
+}
+
+function generate(dir) {
+  const bin = generatorPath()
+  const env = { ...process.env }
   if (toolchain) env.GOTOOLCHAIN = toolchain
   if (process.env.UC_BINDINGS_GOOS) {
     env.GOOS = process.env.UC_BINDINGS_GOOS
@@ -46,20 +61,10 @@ function generate(dir) {
   }
   // The directory is emptied here rather than by the generator's -clean, which moves the old output to the OS trash.
   rmSync(dir, { recursive: true, force: true })
-  const args = [
-    'run',
-    `github.com/wailsapp/wails/v3/cmd/wails3@${wails}`,
-    'generate',
-    'bindings',
-    '-ts',
-    '-i',
-    '-clean=false',
-    '-d',
-    dir,
-  ]
+  const args = ['generate', 'bindings', '-ts', '-i', '-clean=false', '-d', dir]
   if (process.env.UC_BINDINGS_TAGS) args.push('-f', `-tags ${process.env.UC_BINDINGS_TAGS}`)
   args.push('.')
-  run('go', args, { cwd: GUI_GO, env })
+  run(bin, args, { cwd: GUI_GO, env })
 }
 
 function listFiles(base, dir = base) {

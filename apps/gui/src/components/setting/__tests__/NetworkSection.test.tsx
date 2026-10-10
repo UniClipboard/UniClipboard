@@ -15,7 +15,7 @@ import type { NetworkSettings, SettingContextType, Settings } from '@/types/sett
 // Mock chain — 使 NetworkSection 完全脱离真实 daemon HTTP / Tauri runtime
 // ============================================================================
 // 实现已切到 typed `commands` proxy（`@/lib/ipc`，背后是 tauri-specta
-// 生成的 `ipc-bindings.generated.ts`）。这里只 mock 我们关心的命令
+// 生成的 Wails 绑定）。这里只 mock 我们关心的命令
 // `restartDaemon`，其它命令未 mock 时调用会抛 TypeError，等于 fail-fast
 // 防止误调用未 stub 的命令。
 vi.mock('@/lib/ipc', () => ({

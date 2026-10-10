@@ -3,7 +3,7 @@
 
 Real: the e2e GUI build with the WebView panel (UC_GPUI_QUICK_PANEL=0), a real daemon and settings API, and the real
 Wails `app.GlobalShortcut` registration (Carbon hot keys on macOS) of an unused combination. Checked through the same
-`Invoke` the WebView calls: default registration, rebinding, an unparsable shortcut being refused with the old binding
+the generated `HostService` bindings the WebView calls: default registration, rebinding, an unparsable shortcut being refused with the old binding
 kept (and the setting unchanged), a two-step chord, disabling and re-enabling the panel, `--quick-panel` from a real
 second process toggling the panel, and the paste commands refusing instead of pretending to succeed.
 

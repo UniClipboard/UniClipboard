@@ -15,6 +15,7 @@ declare module "@wailsio/runtime" {
             "app://daemon-connection-changed": void;
             "app://shutting-down": void;
             "content-lock-changed": void;
+            "desktop-theme://changed": main$0.DesktopThemeSnapshot;
             "devices://sync-changed": string;
             "notification://action": main$0.NotificationAction;
             "quick-panel://prepare-show": void;

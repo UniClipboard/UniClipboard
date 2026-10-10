@@ -494,9 +494,22 @@ def main():
         assemble('negative-unsigned-alpha-without-opt-in', un_tree, base / 'unsigned-alpha-no-flag', source_record_path=pre_record, sha=pre_sha,
                  ver=pre_version, want_ok=False, contains='requires a production signature')
         st_tree = base / 'unsigned-stable-artifacts'
-        build_tree(st_tree, version, head)
+        st_version = '1.3.0'
+        st_repo = secret / 'stable-carriers'
+        shutil.copytree(pre_repo, st_repo)
+        for rel in ('package.json', 'apps/gui-go/app.json', 'Cargo.toml', 'Cargo.lock', 'packages/desktop-host-go/buildinfo/buildinfo.go'):
+            f = st_repo / rel
+            f.write_text(f.read_text().replace(pre_version, st_version))
+        subprocess.run(['git', '-c', 'user.name=t', '-c', 'user.email=t@example.invalid', 'commit', '-qam',
+                        'prepared stable carriers (fixture copy)'], cwd=st_repo, check=True, capture_output=True)
+        st_sha = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=st_repo, check=True, capture_output=True, text=True).stdout.strip()
+        st_record = out / 'stable-source-record.json'
+        run.exec('stable-source-record', ['python3', '-I', GATE, 'source', '--version', st_version, '--root', st_repo,
+                                         '--expect-sha', st_sha, '--mode', 'fixture', '--out', st_record])
+        build_tree(st_tree, st_version, st_sha)
         make_unsigned(st_tree)
         assemble('negative-unsigned-for-a-non-alpha-version-even-with-opt-in', st_tree, base / 'unsigned-stable', want_ok=False,
+                 source_record_path=st_record, sha=st_sha, ver=st_version,
                  extra=['--allow-unsigned-windows-alpha'], contains='alpha releases only')
         for label, mutate, text in (
                 ('selftest-provider', lambda t: windows_manifest('selftest')(t), 'requires a production signature'),
@@ -544,6 +557,7 @@ def main():
         un = {'TAURI_SIGNING_PRIVATE_KEY': 'k', 'ALLOW_UNSIGNED_WINDOWS_ALPHA': 'true', 'RELEASE_REF': 'v1.2.0-alpha.1'}
         pre('prerequisites-unsigned-alpha-with-explicit-opt-in-passes', un, True)
         pre('prerequisites-unsigned-opt-in-refused-for-stable-tag', dict(un, RELEASE_REF='v1.2.0'), False, 'No production Windows code-signing backend')
+        pre('prerequisites-unsigned-opt-in-refused-for-beta-tag', dict(un, RELEASE_REF='v1.2.0-beta.1'), False, 'No production Windows code-signing backend')
         pre('prerequisites-unsigned-opt-in-refused-for-rc-tag', dict(un, RELEASE_REF='v1.2.0-rc.1'), False, 'No production Windows code-signing backend')
         pre('prerequisites-unsigned-alpha-without-opt-in-fails', dict(un, ALLOW_UNSIGNED_WINDOWS_ALPHA=''), False, 'No production Windows code-signing backend')
         pre('prerequisites-opt-in-still-needs-the-updater-key', dict(un, TAURI_SIGNING_PRIVATE_KEY=''), False, 'TAURI_SIGNING_PRIVATE_KEY')

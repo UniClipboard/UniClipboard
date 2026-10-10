@@ -179,6 +179,11 @@ jobs:
 
   build:
     needs: validate
+    # Reusable workflow permissions are validated even when a nested job is skipped.
+    # build.yml -> updater-signatures.yml requires read access to workflow artifacts.
+    permissions:
+      contents: read
+      actions: read
     uses: ./.github/workflows/build.yml
     with:
       platform: ${{ inputs.platform || 'all' }}

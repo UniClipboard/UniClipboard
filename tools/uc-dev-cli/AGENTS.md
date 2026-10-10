@@ -4,19 +4,17 @@
 
 `uc-dev-cli` 是 UniClipboard 的开发与诊断命令行 crate，构建出的二进制名是 `uc-dev-cli`（原 `uc-cli` / `uniclip`），位于 `tools/uc-dev-cli`（原 `apps/cli`）。它是 workspace 成员但不在 `default-members` 中，`publish = false`。
 
-**面向用户的终端客户端 `uniclip` 已由 Go 实现 `apps/cli-go` 承担，发布产物也应使用它。** 本 crate 不再是用户终端客户端：它保留的意义是 `dev-tools` 命令（`probe`、`blob`、`dev`、`mobile debug`，依赖进程内 Engine 或平台剪贴板，daemon 没有对应接口）以及作为 Go 实现的兼容性对照基线。除非先在 `apps/cli-go` 中同步，不要在本 crate 新增用户命令。
-
-它只负责命令行参数、终端输出、交互输入、进程退出码，以及把用户动作转交给应用层。不要在 CLI 层重新实现业务规则。
+**面向用户的终端客户端 `uniclip` 由 Go 实现 `apps/cli-go` 承担，发布产物使用它。** 用户命令的新功能和修复应在 Go CLI 中完成，不在本 crate 新增用户功能。本 crate 保留 `dev-tools` 诊断能力、端到端测试的历史种子工具和现有命令作为兼容性对照；CI 与 `scripts/e2e` 仍有消费者，不是无调用方的废弃产物。
 
 ## 必守边界
 
-- 业务命令必须通过 `uc-application` 的 facade 表达用户动作；不要直接访问 core、infra、platform 的内部实现来完成业务流程。
-- 需要构造运行环境时，优先走 `uc-bootstrap` 提供的 CLI wiring，不要在命令文件里临时拼装依赖。
-- `start` / `stop` 可以处理本机 daemon 生命周期；隐藏的 `daemon` 子命令只供 `start` 内部拉起后台进程，不是公开用户接口。
-- 独立业务命令和 daemon 使用同一 profile 时可能冲突；保持现有的 daemon 探测和拒绝策略，不要为了方便绕开。
-- CLI 不写系统剪贴板；诊断命令可以观察、发送或打印 payload，但系统剪贴板写入属于 daemon / 应用流程职责。
-  - 唯一例外：隐藏的 `uniclip probe` 子命令组（替代旧的 `clipboard-probe` 二进制），仅供开发与 E2E 调试使用，`probe restore` 会直接写系统剪贴板。新增公开命令时不要引用这个例外作为理由。
-- 新增命令时先确认它是用户命令、诊断命令还是内部命令，并在 `README.md` 中放到对应区域。
+- 普通兼容命令通过 `uc-daemon-client` 的 `DaemonService` 或查询、控制客户端访问外部 daemon，不构造进程内 Engine，也不回退到进程内执行。
+- `start` / `stop` 通过 `uc-daemon-process` 管理外部 `uniclipd`；本 crate 没有内嵌 daemon 子命令。
+- `dev-tools` 是编译时 feature，启用 `blob`、`dev`、`probe`、`mobile debug` 及其 Engine / bootstrap / platform 依赖；运行时 `--dev` 只选择开发安全存储，不能替代它。
+- 进程内诊断使用 `uc-bootstrap::build_cli_engine_runtime` 和 Engine 的 `Operation` / `DevOperation`，不要在命令文件里拼装依赖或复制业务规则。Engine 内部包在 `UniClipboard/Engine` 维护。
+- `dev`、`blob`、`mobile debug` 的独立 Engine 与同 profile daemon 可能竞争；保持现有探测和拒绝策略，使用独立测试 profile，不绕开守卫。
+- `probe` 直接访问平台剪贴板，`probe restore` 是直接写本机系统剪贴板的诊断入口，仅供开发与 E2E 调试。普通 `get --copy` 使用 OSC 52 请求当前终端复制内容或文件路径，不调用平台剪贴板 API。
+- 调整诊断或兼容命令时，在现有 `README.md` 更新对应说明，不新增重复文档。
 
 ## 输出约定
 
@@ -69,16 +67,16 @@ dialoguer 的 `Confirm` / `Input` / `Password` 必须用 `ui::confirm` / `ui::in
 
 所有 Cargo 命令都从仓库根目录（cargo workspace 根）执行。
 
-改动本 crate 后，至少运行：
+仅修改文档或说明注释时，核对 Cargo 包名、二进制名、feature、命令入口和消费者，执行 `git diff --check`；不新增测试，不要求重型构建。
+
+行为改动优先复跑现有真实进程端到端测试，并保留可验证产物。`README.md` 提供分开构建 daemon、Go CLI 和 Rust 开发工具的历史搜索复跑入口与证明边界。CI 在 `target/e2e-dev` 单独构建本工具，并用 `UC_E2E_DEV_CLI` 供测试选择，避免开发工具 feature 合并进 daemon 构建。
+
+需要检查参数时可从仓库根目录运行：
 
 ```bash
-cargo test -p uc-dev-cli
 cargo run -p uc-dev-cli -- --help
+cargo run -p uc-dev-cli --features dev-tools -- dev --help
+cargo run -p uc-dev-cli --features dev-tools -- blob --help
 ```
 
-如果改了某个子命令，还要运行对应 help，例如：
-
-```bash
-cargo run -p uc-dev-cli -- search --help
-cargo run -p uc-dev-cli -- blob --help
-```
+目录内 `tests/directory_capture_e2e.rs` 仍引用旧的 `CARGO_BIN_EXE_uniclip`，不能将其当前状态当作可直接通过的端到端验证入口；修复属于另项行为维护。

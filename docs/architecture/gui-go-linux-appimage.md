@@ -81,7 +81,7 @@
 | 干净宿主 + 真实 AppImage，`gtk3,production,release,e2e`（F1–F5、F7–F9、数据根、持久数据） | 34/34 |
 | 无重定位对照包（F1/F2 的红灯） | 2/2，日志精确给出 `WebKitNetworkProcess (No such file or directory)` |
 | `gtk3,production,release` 真实 release 包的冒烟（F11，无控制面，不是前端握手） | 5/5 |
-| deb/rpm 重建（F10） | deb 依赖含 `libgtk-layer-shell0`；rpm `Requires` 含 `gtk-layer-shell`；文件表无 `.build-id` |
+| deb/rpm 重建（F10） | deb 依赖含 `libgtk-layer-shell0`；rpm `Requires` 含 `libgtk-layer-shell.so.0()(64bit)`（soname 能力，见 gui-go-linux-ci-packaging.md）；文件表无 `.build-id` |
 
 设计与实现中被事实修正的几处：
 

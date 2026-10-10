@@ -50,10 +50,18 @@ if [ "$kind" = deb ]; then
   owners()      { dpkg -S "${1:-/usr/bin/uniclipboard}" 2>/dev/null | cut -d: -f1 | sort -u | tr '\n' ' '; }
   verify_files() { dpkg --verify uniclipboard; }
   apt-get install -y -qq --no-install-recommends "${tools[@]}" >/dev/null
+elif command -v zypper >/dev/null; then
+  # openSUSE: zypper resolves the rpm's Requires against the distribution's own package names (issue #1903).
+  zypper -n --gpg-auto-import-keys refresh >/dev/null 2>&1
+  zypper -n install --no-recommends xorg-x11-server-Xvfb xauth dbus-1-daemon dbus-1-tools gnome-keyring libsecret-tools procps python3 cpio diffutils xdpyinfo >/dev/null
+  install_pkg() { for a in 1 2 3; do zypper -n install --allow-unsigned-rpm "$1" && return 0; sleep 5; done; return 1; }
+  remove_pkg()  { zypper -n remove uniclipboard; }
 else
   dnf -y -q install xorg-x11-server-Xvfb xauth dbus-x11 gnome-keyring libsecret procps-ng python3 cpio diffutils >/dev/null
   install_pkg() { for a in 1 2 3; do dnf -y -q --setopt=retries=10 install "$1" && return 0; sleep 5; done; return 1; }
   remove_pkg()  { dnf -y -q remove uniclipboard; }
+fi
+if [ "$kind" = rpm ]; then
   installed()   { rpm -q --qf '%{NAME} %{VERSION}-%{RELEASE}\n' uniclipboard 2>/dev/null; }
   is_installed() { rpm -q uniclipboard >/dev/null 2>&1; }
   list_files()  { rpm -ql uniclipboard; }
@@ -158,7 +166,7 @@ else
   ! rpm -qa --qf '%{NAME}\n' | grep -qx uni-clipboard && ok "legacy package identity is absent" || bad "legacy package identity is absent"
   legacy_isa="uni-clipboard$(rpm --eval '%{?_isa}')"
   check "legacy architecture dependency alias resolves to the new identity" bash -c 'test "$(rpm -q --whatprovides "$1" --qf "%{NAME}")" = uniclipboard' _ "$legacy_isa"
-  reinstall_pkg() { dnf -y -q reinstall /in/new.rpm; }
+  if command -v zypper >/dev/null; then reinstall_pkg() { zypper -n install --force --allow-unsigned-rpm /in/new.rpm; }; else reinstall_pkg() { dnf -y -q reinstall /in/new.rpm; }; fi
 fi
 if [ "$scenario" = upgrade ]; then
   snapshot /tmp/after.sha256
@@ -194,7 +202,7 @@ launch_rc=$?
 grep -q '^keyring-ready$' /out/launch-stdout.txt && ok "the Secret Service of the harness is ready" || bad "the Secret Service of the harness is ready" "$(grep -i -m1 'keyring\|secrets' /out/launch-stdout.txt)"
 [ "${gui_exe:-}" = /usr/bin/uniclipboard ] && ok "GUI runs from the installed path" || bad "GUI runs from the installed path" "exe=${gui_exe:-none}"
 [ "${daemon_exe:-}" = /usr/bin/uniclipd ] && ok "daemon runs from the installed path" || bad "daemon runs from the installed path" "exe=${daemon_exe:-none}"
-case "${webkit_exe:-}" in /usr/lib/*/webkit2gtk-4.1/WebKitWebProcess|/usr/lib64/webkit2gtk-4.1/WebKitWebProcess|/usr/libexec/webkit2gtk-4.1/WebKitWebProcess) ok "WebView process runs from the installed WebKitGTK" "$webkit_exe" ;; *) bad "WebView process runs from the installed WebKitGTK" "exe=${webkit_exe:-none}" ;; esac
+case "${webkit_exe:-}" in /usr/lib/*/webkit2gtk-4.1/WebKitWebProcess|/usr/lib64/webkit2gtk-4.1/WebKitWebProcess|/usr/libexec/webkit2gtk-4.1/WebKitWebProcess|/usr/libexec/libwebkit2gtk-4_1-0/WebKitWebProcess) ok "WebView process runs from the installed WebKitGTK" "$webkit_exe" ;; *) bad "WebView process runs from the installed WebKitGTK" "exe=${webkit_exe:-none}" ;; esac
 [ "${gui_alive:-}" = yes ] && [ "${daemon_alive:-}" = yes ] && ok "GUI and daemon are still alive 10 s after the WebView appeared" || bad "GUI and daemon are still alive 10 s after the WebView appeared" "gui=${gui_alive:-?} daemon=${daemon_alive:-?}"
 [ -n "${daemon_conn:-}" ] && ok "daemon published its connection file" "$daemon_conn" || bad "daemon published its connection file" "none under /root/.local/share"
 

@@ -142,3 +142,59 @@ python3 apps/gui-go/e2e/linux/appimage_content_check.py \
   squashfs-root package-manifest.json content-check.json \
   --runtime-inventory runtime-inventory.json
 ```
+
+库存由 `apps/gui-go/e2e/linux/runtime_library_inventory.py` 生成，只依赖 Python 标准库、Xvfb 与 dbus-daemon，需以非 root 用户在干净宿主上运行：
+
+```bash
+# 每个场景一次：FUSE 挂载与 extract-and-run
+runtime_library_inventory.py observe ./UniClipboard.AppImage out/mounted
+runtime_library_inventory.py observe ./UniClipboard.AppImage out/extracted --extract
+# 对同一 AppImage 解包后的目录分类
+./UniClipboard.AppImage --appimage-extract
+runtime_library_inventory.py merge squashfs-root runtime-inventory.json out/mounted/observation.json out/extracted/observation.json
+```
+
+`observe` 以 `LD_DEBUG=libs,files` 启动，等待 daemon `/health` 返回 200 且出现 WebKit 网页进程后，对可执行文件位于 AppDir 内的进程
+（GUI、`WebKitWebProcess`、`WebKitNetworkProcess`、daemon）记录 `/proc/<pid>/maps` 与加载器跟踪。`merge` 的输出在检查器所需字段之外，
+每个库另记录是哪些进程角色加载的；`failedLoads` 记录 `dlopen` 失败（`maps` 看不到查找失败的库，`libGLESv2.so.2` 当年只能靠崩溃发现）；
+`webkitSandbox` 记录各 WebKit 进程是否位于 `bwrap` 之下。检查项 `R6`：若失败的 `dlopen` 目标正是包内自带的库，说明加载器没有在包内查找它，判失败；
+包内没有的库，其失败只记录不判定（可选探测是正常的）。`webkitSandbox` 是观察项，没有经过对照验证（还没有任何一次运行里它为真）：Wails beta.28 与应用都没有调用 WebKit 的沙箱接口，所以容器里看到 WebKit 进程不在 `bwrap` 之下，不能推及启用了沙箱的真实桌面。
+
+### 运行时库存结果（issue #1903）
+
+来源：CI run `37948655877`，源码 `030e81fddc21c27bb99e10d1ae01184fea7a7716`（git tree 与 main `2bbc8ecf6` 相同，不是 `ac856f4`），
+Engine `0e25f4189301efd68c21c8ffdd51a2f9fbfd4204`，arm64 AppImage SHA-256 `0f8d1df626b6da1d0a3a0cc05208e226a022c9fd33a1fbc04ea2f60c42fef967`。
+在原生 arm64 容器里运行，每台宿主各做 FUSE 挂载与 `--appimage-extract-and-run` 两次启动；GUI、两个 `WebKitWebProcess`、
+`WebKitNetworkProcess`、daemon 都被观察，daemon `/health` 为 200，可有界退出，无残留进程。
+
+| 宿主 | glibc / GLib / Mesa | 内容断言 | bundled / host-owned |
+| --- | --- | --- | --- |
+| Debian 12（下限） | 2.36 / 2.74.6 / 22.3.6 | 220 项全过 | 143 / 50 |
+| Ubuntu 24.04 | 2.39 / 2.80.0 / 25.2.8 | 213 项全过 | 143 / 45 |
+| Debian 13.7 | 2.41 / 2.84.4 / 25.0.7 | 214 项全过 | 143 / 46 |
+| openSUSE Tumbleweed 20261003 | 2.44 / 2.88.3 / 26.2.4 | 212 项全过 | 140 / 47 |
+
+**bundled**：四台宿主的并集共 143 个 soname，由 `R3` 逐个核对字节与 SHA-256。
+
+**host-owned**：四台宿主的并集共 60 个，其中 41 个在四台上都出现：`ld-linux-aarch64.so.1`、`libc`/`libm`/`libdl`/`libpthread`/`libresolv`/`libgcc_s`/`libstdc++`
+（C 库族）、`libEGL`/`libEGL_mesa`/`libGL`/`libGLX`/`libGLX_mesa`/`libGLdispatch`/`libGLESv2`/`libgbm`/`libdrm`/`libdrm_amdgpu`/`libxshmfence`/`libxcb-dri3/glx/present/randr/sync/xfixes`/`libXxf86vm`
+（GL / Mesa 驱动栈）、`libX11`/`libX11-xcb`/`libxcb`/`libwayland-client`、`libdbus-1`、`libasound`、`libfontconfig`/`libfreetype`/`libharfbuzz`/`libfribidi`/`libexpat`/`libgpg-error`/`libcom_err`/`libtinfo`。
+其余 19 个随发行版的 Mesa 实现而变（`libgallium-*`、`libLLVM.so.*`、`libdrm_nouveau`/`libdrm_radeon`、`libglapi`、`libedit`、`libsensors`、`libz3`、`libSPIRV-Tools`、`libxml2.so.16`、`libbz2` 等）。
+其中 GL / Mesa 与 `libwayland-client` 属于 [linux-appimage-library-policy.md](linux-appimage-library-policy.md) 规定的宿主族，其余是 linuxdeploy 排除表留给宿主的库；`R4` 保证它们没有被重复打进包内。
+
+**`dlopen` 目标**（加载器轨迹中的请求，四台宿主合并后 12 个）：五个 GIO 模块（`libgiognutls`、`libgiognomeproxy`、`libgiolibproxy`、`libdconfsettings`、`libgiouniclipboardloopback`，全部来自包内）、
+WebKit 注入包 `libwebkit2gtkinjectedbundle.so`（包内，相对路径）、以及 Mesa 的 `libEGL_mesa.so.0`、`libGLX_mesa.so.0`、`libGLESv2.so.2`、`libGLX.so.1`（宿主）；
+仅 Debian 12 另有 `swrast_dri.so`（tls 路径）与 `libd3d12.so`。
+
+**失败加载**：`libGLX.so.1`（四台，libepoxy 的探测，实际 soname 是 `libGLX.so.0`，随后回退成功）、`swrast_dri.so` 的 tls 路径与 `libd3d12.so`（仅 Debian 12，Mesa 22.3 的 swrast 探测 / WSL 专用库）。
+三者都不是包内自带的库，只记录不判定，`R6` 不触发。
+
+**覆盖边界**：只覆盖启动、WebKit 页面加载、daemon health，在 Xvfb、X11 后端、合成便携 profile 下观察；
+不覆盖媒体、真实 GPU、原生 Wayland、PAC、通知、文件打开等路径，也不是真实桌面或登录会话。
+同一 `dlopen` 清单在 amd64 上没有运行（本地无原生 amd64；CI 补丁见线程交付，未应用）。
+原始轨迹与日志在线程的工作树外工件目录，不进仓库；复跑命令：
+
+```bash
+UC_ANALYSIS_IMAGE=<有 python3 与 binutils 的镜像> \
+  apps/gui-go/e2e/linux/run_runtime_inventory.sh <新目录> <AppImage> <package-manifest.json> <宿主镜像>
+```

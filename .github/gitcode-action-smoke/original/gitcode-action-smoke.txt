@@ -1,0 +1,3 @@
+UniClipboard GitCode release mirror smoke asset.
+Synthetic, non-sensitive, original variant.
+This file exists only to exercise the mirror Action.

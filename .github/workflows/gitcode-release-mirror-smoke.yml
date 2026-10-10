@@ -1,0 +1,409 @@
+# Integration smoke test for the published mkdir700/gitcode-release-mirror
+# Action. It runs the Action from a real GitHub runner through the Shanghai SSH
+# host to GitCode, with synthetic non-sensitive files, and checks the result
+# independently of the Action. Acceptance plan:
+# docs/ci/gitcode-release-mirror-action-smoke.md
+#
+# This is NOT part of any release. It only ever creates a GitCode pre-release
+# whose tag starts with `test-action-smoke-`, never overwrites or deletes
+# anything, never touches FlareRelease or R2, and is started by hand only.
+#
+# Configuration (nothing is created by this workflow):
+#   environment gitcode-mirror-smoke (deployment branches limited to the
+#                       branches allowed to run this smoke test) holding:
+#   secret   GITCODE_ACTION_SMOKE_SSH_KEY   private key dedicated to this
+#                                           smoke test; its public half is
+#                                           bound to the smoke forced command
+#                                           by scripts/remote/install-gitcode-release-mirror-smoke-host.sh
+#   secret   GITCODE_RELEASE_TOKEN          UniClipboard org secret, already used by the
+#                                           production mirror (selected repositories)
+#   variables MIRROR_SSH_HOST, MIRROR_SSH_KNOWN_HOSTS, GITCODE_OWNER, GITCODE_REPO
+#                                           same repository variables the production
+#                                           mirror uses
+#   variable GITCODE_ACTION_SMOKE_SSH_USER  the dedicated smoke account on the host
+#
+# `workflow_dispatch` only starts workflows whose file exists on the default
+# branch, so this file must be on main before it can be dispatched.
+
+name: gitcode-release-mirror-smoke
+
+permissions:
+  contents: read
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'GitCode test tag, test-action-smoke-<YYYYMMDD>-<n>. Run again with the same tag to observe reuse.'
+        required: true
+        type: string
+
+concurrency:
+  group: gitcode-release-mirror-smoke-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    name: Mirror synthetic assets to a GitCode test release
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: gitcode-mirror-smoke
+    env:
+      # Published Action: v1.0.0, annotated tag baa146b1... -> this commit.
+      ACTION_COMMIT: 5055ef17b7302e27ca53cbe5f6e44722f7e55f6b
+      # SHA-256 of mirror-core.mjs at that commit; the host must match it.
+      CORE_SHA256: b0fd51012e0f0330c72ef45d25a60a3ac91b19bb6d64d6ffaeca8181d22ee8d8
+      ORIGINAL_SHA256: eb6628cc2c5897abee021825f6835b47f83fd7596acd366760d1d22e35e6d82b
+      ORIGINAL_SIZE: '146'
+      CONFLICTING_SHA256: 698d72a0ae4d43c9904376c8e5a2b6c4d48bb6ddb6a9d7df8f101e2281671bc7
+      DIRECT_SHA256: 8c173d2ee269896ab5b560f9e8d57f6b17404ced5abe9319575f5e8280e1ecf4
+      SMOKE_TAG: ${{ inputs.tag }}
+      GITCODE_REPOSITORY: ${{ vars.GITCODE_OWNER }}/${{ vars.GITCODE_REPO }}
+      SMOKE_DIR: .github/gitcode-action-smoke
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Preflight
+        id: pre
+        env:
+          GITCODE_TOKEN: ${{ secrets.GITCODE_RELEASE_TOKEN }}
+          SMOKE_SSH_KEY: ${{ secrets.GITCODE_ACTION_SMOKE_SSH_KEY }}
+          SSH_HOST: ${{ vars.MIRROR_SSH_HOST }}
+          SSH_USER: ${{ vars.GITCODE_ACTION_SMOKE_SSH_USER }}
+          KNOWN_HOSTS: ${{ vars.MIRROR_SSH_KNOWN_HOSTS }}
+          GITCODE_OWNER: ${{ vars.GITCODE_OWNER }}
+          GITCODE_REPO: ${{ vars.GITCODE_REPO }}
+        run: |
+          set -euo pipefail
+          EVIDENCE_DIR="$RUNNER_TEMP/evidence"
+          echo "EVIDENCE_DIR=$EVIDENCE_DIR" >> "$GITHUB_ENV"
+          mkdir -p "$EVIDENCE_DIR"
+          missing=()
+          for name in GITCODE_TOKEN SMOKE_SSH_KEY SSH_HOST SSH_USER KNOWN_HOSTS GITCODE_OWNER GITCODE_REPO; do
+            [ -n "${!name}" ] || missing+=("$name")
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error::missing configuration: ${missing[*]}"
+            exit 1
+          fi
+          # Only this naming scheme may reach GitCode: never a release tag.
+          if ! [[ "$SMOKE_TAG" =~ ^test-action-smoke-[0-9]{8}-[0-9]{1,3}$ ]]; then
+            echo "::error::tag must look like test-action-smoke-YYYYMMDD-N"
+            exit 1
+          fi
+          # The checked-out bytes are exactly what the host will fetch by commit SHA.
+          check() { [ "$(sha256sum "$1" | cut -d' ' -f1)" = "$2" ] || { echo "::error::unexpected bytes in $1"; exit 1; }; }
+          check "$SMOKE_DIR/original/gitcode-action-smoke.txt" "$ORIGINAL_SHA256"
+          check "$SMOKE_DIR/conflicting/gitcode-action-smoke.txt" "$CONFLICTING_SHA256"
+          check "$SMOKE_DIR/direct/gitcode-action-smoke-direct.txt" "$DIRECT_SHA256"
+          [ "$(wc -c < "$SMOKE_DIR/original/gitcode-action-smoke.txt" | tr -d ' ')" = "$ORIGINAL_SIZE" ]
+
+          raw="https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/$SMOKE_DIR"
+          jq -nc --arg u "$raw/original/gitcode-action-smoke.txt" --arg h "$ORIGINAL_SHA256" \
+            '[{url:$u,sha256:$h}]' > "$EVIDENCE_DIR/sources-original.json"
+          jq -nc --arg u "$raw/conflicting/gitcode-action-smoke.txt" --arg h "$CONFLICTING_SHA256" \
+            '[{url:$u,sha256:$h}]' > "$EVIDENCE_DIR/sources-conflicting.json"
+          # F2: the digest is wrong on purpose.
+          jq -nc --arg u "$raw/original/gitcode-action-smoke.txt" \
+            '[{url:$u,sha256:"0000000000000000000000000000000000000000000000000000000000000000"}]' > "$EVIDENCE_DIR/sources-wrong-digest.json"
+          # F6: a URL the host's allow-list must refuse (another path of the same repository).
+          jq -nc --arg u "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/README.md" --arg h "$ORIGINAL_SHA256" \
+            '[{url:$u,sha256:$h}]' > "$EVIDENCE_DIR/sources-outside-allowlist.json"
+          {
+            echo "original=$(cat "$EVIDENCE_DIR/sources-original.json")"
+            echo "conflicting=$(cat "$EVIDENCE_DIR/sources-conflicting.json")"
+            echo "wrong_digest=$(cat "$EVIDENCE_DIR/sources-wrong-digest.json")"
+            echo "outside_allowlist=$(cat "$EVIDENCE_DIR/sources-outside-allowlist.json")"
+          } >> "$GITHUB_OUTPUT"
+
+          # F1 fixture: a syntactically valid host key that is not the host's.
+          ssh-keygen -q -t ed25519 -N '' -f "$EVIDENCE_DIR/unrelated_host_key" -C unrelated
+          printf '%s %s\n' "$SSH_HOST" "$(cut -d' ' -f1,2 "$EVIDENCE_DIR/unrelated_host_key.pub")" > "$EVIDENCE_DIR/unrelated-known-hosts"
+          rm -f "$EVIDENCE_DIR/unrelated_host_key" "$EVIDENCE_DIR/unrelated_host_key.pub"
+          {
+            echo "unrelated_known_hosts<<KH_EOF"
+            cat "$EVIDENCE_DIR/unrelated-known-hosts"
+            echo "KH_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+          source .github/gitcode-action-smoke/lib.sh
+          echo "assets-before=$(assets_canonical "$SMOKE_TAG")" > "$EVIDENCE_DIR/state-before.txt"
+
+      # F1: unknown host key must stop the run before the host is contacted.
+      - name: F1 unrelated host key
+        id: f1
+        continue-on-error: true
+        uses: mkdir700/gitcode-release-mirror@5055ef17b7302e27ca53cbe5f6e44722f7e55f6b # v1.0.0
+        with:
+          transport: ssh
+          repository: ${{ env.GITCODE_REPOSITORY }}
+          tag: ${{ inputs.tag }}
+          token: ${{ secrets.GITCODE_RELEASE_TOKEN }}
+          prerelease: 'true'
+          ssh-host: ${{ vars.MIRROR_SSH_HOST }}
+          ssh-user: ${{ vars.GITCODE_ACTION_SMOKE_SSH_USER }}
+          ssh-key: ${{ secrets.GITCODE_ACTION_SMOKE_SSH_KEY }}
+          ssh-known-hosts: ${{ steps.pre.outputs.unrelated_known_hosts }}
+          sources: ${{ steps.pre.outputs.original }}
+          deadline: '120'
+
+      - name: F1 expectation
+        if: ${{ !cancelled() }}
+        env:
+          OUTCOME: ${{ steps.f1.outcome }}
+          RECEIPT: ${{ steps.f1.outputs.receipt }}
+        run: |
+          set -euo pipefail
+          printf '%s\n' "$RECEIPT" > "$EVIDENCE_DIR/receipt-f1.json"
+          [ "$OUTCOME" = failure ] || { echo "::error::F1: expected the step to fail, got $OUTCOME"; exit 1; }
+          source .github/gitcode-action-smoke/lib.sh
+          [ "$(assets_canonical "$SMOKE_TAG")" = "$(sed 's/^assets-before=//' "$EVIDENCE_DIR/state-before.txt")" ] \
+            || { echo "::error::F1: GitCode state changed"; exit 1; }
+          echo "F1 ok: failed with an unrelated host key; GitCode state unchanged"
+
+      # F2: a wrong digest must never reach GitCode.
+      - name: F2 wrong digest
+        id: f2
+        continue-on-error: true
+        uses: mkdir700/gitcode-release-mirror@5055ef17b7302e27ca53cbe5f6e44722f7e55f6b # v1.0.0
+        with:
+          transport: ssh
+          repository: ${{ env.GITCODE_REPOSITORY }}
+          tag: ${{ inputs.tag }}
+          token: ${{ secrets.GITCODE_RELEASE_TOKEN }}
+          prerelease: 'true'
+          ssh-host: ${{ vars.MIRROR_SSH_HOST }}
+          ssh-user: ${{ vars.GITCODE_ACTION_SMOKE_SSH_USER }}
+          ssh-key: ${{ secrets.GITCODE_ACTION_SMOKE_SSH_KEY }}
+          ssh-known-hosts: ${{ vars.MIRROR_SSH_KNOWN_HOSTS }}
+          sources: ${{ steps.pre.outputs.wrong_digest }}
+          deadline: '180'
+
+      - name: F2 expectation
+        if: ${{ !cancelled() }}
+        env:
+          OUTCOME: ${{ steps.f2.outcome }}
+          RECEIPT: ${{ steps.f2.outputs.receipt }}
+          FAILED: ${{ steps.f2.outputs.failed-count }}
+        run: |
+          set -euo pipefail
+          printf '%s\n' "$RECEIPT" > "$EVIDENCE_DIR/receipt-f2.json"
+          [ "$OUTCOME" = failure ] && [ "$FAILED" = 1 ] || { echo "::error::F2: expected failure with failed-count 1, got $OUTCOME/$FAILED"; exit 1; }
+          source .github/gitcode-action-smoke/lib.sh
+          [ "$(assets_canonical "$SMOKE_TAG")" = "$(sed 's/^assets-before=//' "$EVIDENCE_DIR/state-before.txt")" ] \
+            || { echo "::error::F2: GitCode state changed"; exit 1; }
+          echo "F2 ok: wrong digest failed (stage $(jq -r '.files[0].stage // "n/a"' "$EVIDENCE_DIR/receipt-f2.json")); GitCode state unchanged"
+
+      # F6: a URL outside the host's allow-list must be refused.
+      - name: F6 source outside the allow-list
+        id: f6
+        continue-on-error: true
+        uses: mkdir700/gitcode-release-mirror@5055ef17b7302e27ca53cbe5f6e44722f7e55f6b # v1.0.0
+        with:
+          transport: ssh
+          repository: ${{ env.GITCODE_REPOSITORY }}
+          tag: ${{ inputs.tag }}
+          token: ${{ secrets.GITCODE_RELEASE_TOKEN }}
+          prerelease: 'true'
+          ssh-host: ${{ vars.MIRROR_SSH_HOST }}
+          ssh-user: ${{ vars.GITCODE_ACTION_SMOKE_SSH_USER }}
+          ssh-key: ${{ secrets.GITCODE_ACTION_SMOKE_SSH_KEY }}
+          ssh-known-hosts: ${{ vars.MIRROR_SSH_KNOWN_HOSTS }}
+          sources: ${{ steps.pre.outputs.outside_allowlist }}
+          deadline: '180'
+
+      - name: F6 expectation
+        if: ${{ !cancelled() }}
+        env:
+          OUTCOME: ${{ steps.f6.outcome }}
+          RECEIPT: ${{ steps.f6.outputs.receipt }}
+        run: |
+          set -euo pipefail
+          printf '%s\n' "$RECEIPT" > "$EVIDENCE_DIR/receipt-f6.json"
+          [ "$OUTCOME" = failure ] || { echo "::error::F6: expected the step to fail, got $OUTCOME"; exit 1; }
+          source .github/gitcode-action-smoke/lib.sh
+          [ "$(assets_canonical "$SMOKE_TAG")" = "$(sed 's/^assets-before=//' "$EVIDENCE_DIR/state-before.txt")" ] \
+            || { echo "::error::F6: GitCode state changed"; exit 1; }
+          echo "F6 ok: refused; GitCode state unchanged"
+
+      # P1: first mirror of the original asset (or P3 when the tag was already used).
+      - name: P1 mirror the original asset over SSH
+        id: p1
+        uses: mkdir700/gitcode-release-mirror@5055ef17b7302e27ca53cbe5f6e44722f7e55f6b # v1.0.0
+        with:
+          transport: ssh
+          repository: ${{ env.GITCODE_REPOSITORY }}
+          tag: ${{ inputs.tag }}
+          token: ${{ secrets.GITCODE_RELEASE_TOKEN }}
+          prerelease: 'true'
+          ssh-host: ${{ vars.MIRROR_SSH_HOST }}
+          ssh-user: ${{ vars.GITCODE_ACTION_SMOKE_SSH_USER }}
+          ssh-key: ${{ secrets.GITCODE_ACTION_SMOKE_SSH_KEY }}
+          ssh-known-hosts: ${{ vars.MIRROR_SSH_KNOWN_HOSTS }}
+          sources: ${{ steps.pre.outputs.original }}
+          deadline: '600'
+
+      - name: P1 independent readback
+        if: ${{ !cancelled() }}
+        env:
+          RECEIPT: ${{ steps.p1.outputs.receipt }}
+        run: |
+          set -euo pipefail
+          printf '%s\n' "$RECEIPT" > "$EVIDENCE_DIR/receipt-p1.json"
+          source .github/gitcode-action-smoke/lib.sh
+          status=$(jq -r '.files[0].status' "$EVIDENCE_DIR/receipt-p1.json")
+          url=$(jq -r '.files[0].downloadUrl' "$EVIDENCE_DIR/receipt-p1.json")
+          echo "P1 receipt status: $status"
+          case "$status" in mirrored|reused) ;; *) echo "::error::P1: unexpected status $status"; exit 1 ;; esac
+          got=$(readback "$url")
+          [ "$got" = "$ORIGINAL_SIZE $ORIGINAL_SHA256" ] || { echo "::error::P1: readback differs: $got"; exit 1; }
+          echo "P1 ok: independent anonymous readback matches size and SHA-256"
+          assets_canonical "$SMOKE_TAG" > "$EVIDENCE_DIR/assets-after-p1.json"
+          release_json "$SMOKE_TAG" > "$EVIDENCE_DIR/release-after-p1.json"
+
+      # P3: the same request again must be reused and change nothing.
+      - name: P3 repeat the same request
+        id: p3
+        uses: mkdir700/gitcode-release-mirror@5055ef17b7302e27ca53cbe5f6e44722f7e55f6b # v1.0.0
+        with:
+          transport: ssh
+          repository: ${{ env.GITCODE_REPOSITORY }}
+          tag: ${{ inputs.tag }}
+          token: ${{ secrets.GITCODE_RELEASE_TOKEN }}
+          prerelease: 'true'
+          ssh-host: ${{ vars.MIRROR_SSH_HOST }}
+          ssh-user: ${{ vars.GITCODE_ACTION_SMOKE_SSH_USER }}
+          ssh-key: ${{ secrets.GITCODE_ACTION_SMOKE_SSH_KEY }}
+          ssh-known-hosts: ${{ vars.MIRROR_SSH_KNOWN_HOSTS }}
+          sources: ${{ steps.pre.outputs.original }}
+          deadline: '600'
+
+      - name: P3 expectation
+        if: ${{ !cancelled() }}
+        env:
+          RECEIPT: ${{ steps.p3.outputs.receipt }}
+        run: |
+          set -euo pipefail
+          printf '%s\n' "$RECEIPT" > "$EVIDENCE_DIR/receipt-p3.json"
+          source .github/gitcode-action-smoke/lib.sh
+          status=$(jq -r '.files[0].status' "$EVIDENCE_DIR/receipt-p3.json")
+          [ "$status" = reused ] || { echo "::error::P3: expected reused, got $status"; exit 1; }
+          [ "$(assets_canonical "$SMOKE_TAG")" = "$(cat "$EVIDENCE_DIR/assets-after-p1.json")" ] \
+            || { echo "::error::P3: the asset list changed"; exit 1; }
+          echo "P3 ok: reused; asset list unchanged"
+
+      # F3: same name, different bytes. The Action must fail and leave the original alone.
+      - name: F3 same name, different bytes
+        id: f3
+        continue-on-error: true
+        uses: mkdir700/gitcode-release-mirror@5055ef17b7302e27ca53cbe5f6e44722f7e55f6b # v1.0.0
+        with:
+          transport: ssh
+          repository: ${{ env.GITCODE_REPOSITORY }}
+          tag: ${{ inputs.tag }}
+          token: ${{ secrets.GITCODE_RELEASE_TOKEN }}
+          prerelease: 'true'
+          ssh-host: ${{ vars.MIRROR_SSH_HOST }}
+          ssh-user: ${{ vars.GITCODE_ACTION_SMOKE_SSH_USER }}
+          ssh-key: ${{ secrets.GITCODE_ACTION_SMOKE_SSH_KEY }}
+          ssh-known-hosts: ${{ vars.MIRROR_SSH_KNOWN_HOSTS }}
+          sources: ${{ steps.pre.outputs.conflicting }}
+          deadline: '600'
+
+      - name: F3 and F4 expectation
+        if: ${{ !cancelled() }}
+        env:
+          OUTCOME: ${{ steps.f3.outcome }}
+          RECEIPT: ${{ steps.f3.outputs.receipt }}
+          FAILED: ${{ steps.f3.outputs.failed-count }}
+        run: |
+          set -euo pipefail
+          printf '%s\n' "$RECEIPT" > "$EVIDENCE_DIR/receipt-f3.json"
+          source .github/gitcode-action-smoke/lib.sh
+          [ "$OUTCOME" = failure ] && [ "$FAILED" = 1 ] || { echo "::error::F3: expected failure with failed-count 1, got $OUTCOME/$FAILED"; exit 1; }
+          stage=$(jq -r '.files[0].stage' "$EVIDENCE_DIR/receipt-f3.json")
+          [ "$stage" = conflict ] || { echo "::error::F3: expected stage conflict, got $stage"; exit 1; }
+          # F4: the original is untouched, checked without the Action.
+          [ "$(assets_canonical "$SMOKE_TAG")" = "$(cat "$EVIDENCE_DIR/assets-after-p1.json")" ] \
+            || { echo "::error::F4: the asset list changed after the conflict"; exit 1; }
+          url=$(jq -r '.files[0].downloadUrl' "$EVIDENCE_DIR/receipt-p1.json")
+          [ "$(readback "$url")" = "$ORIGINAL_SIZE $ORIGINAL_SHA256" ] || { echo "::error::F4: original bytes changed"; exit 1; }
+          echo "F3/F4 ok: conflict refused; original asset list and bytes unchanged"
+
+      # P4: direct transport as a control only (tiny file; says nothing about real installers).
+      - name: P4 direct transport control
+        id: p4
+        uses: mkdir700/gitcode-release-mirror@5055ef17b7302e27ca53cbe5f6e44722f7e55f6b # v1.0.0
+        with:
+          transport: direct
+          repository: ${{ env.GITCODE_REPOSITORY }}
+          tag: ${{ inputs.tag }}
+          token: ${{ secrets.GITCODE_RELEASE_TOKEN }}
+          prerelease: 'true'
+          files: .github/gitcode-action-smoke/direct/gitcode-action-smoke-direct.txt
+          deadline: '600'
+
+      - name: P4 independent readback
+        if: ${{ !cancelled() }}
+        env:
+          RECEIPT: ${{ steps.p4.outputs.receipt }}
+        run: |
+          set -euo pipefail
+          printf '%s\n' "$RECEIPT" > "$EVIDENCE_DIR/receipt-p4.json"
+          source .github/gitcode-action-smoke/lib.sh
+          url=$(jq -r '.files[0].downloadUrl' "$EVIDENCE_DIR/receipt-p4.json")
+          got=$(readback "$url")
+          [ "${got#* }" = "$DIRECT_SHA256" ] || { echo "::error::P4: readback differs: $got"; exit 1; }
+          release_json "$SMOKE_TAG" > "$EVIDENCE_DIR/release-final.json"
+          echo "P4 ok: direct control matches"
+
+      - name: F5 leak scan and evidence index
+        if: ${{ always() }}
+        env:
+          GITCODE_TOKEN: ${{ secrets.GITCODE_RELEASE_TOKEN }}
+          RUNNER_ARCH_NAME: ${{ runner.arch }}
+          RUNNER_OS_NAME: ${{ runner.os }}
+          SSH_HOST: ${{ vars.MIRROR_SSH_HOST }}
+          SSH_USER: ${{ vars.GITCODE_ACTION_SMOKE_SSH_USER }}
+          SERVER_URL: ${{ github.server_url }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          REPOSITORY: ${{ github.repository }}
+          REF_NAME: ${{ github.ref_name }}
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          source .github/gitcode-action-smoke/lib.sh
+          cd "$EVIDENCE_DIR"
+          rm -f unrelated-known-hosts state-before.txt
+          leak=0
+          for f in *.json; do scan_for_leaks "$f" || leak=1; done
+          {
+            echo "# GitCode release mirror smoke receipt"
+            echo
+            echo "- Action: mkdir700/gitcode-release-mirror v1.0.0, commit $ACTION_COMMIT"
+            echo "- Expected host core SHA-256: $CORE_SHA256"
+            echo "- Source: $REPOSITORY @ $REF_NAME, commit $SOURCE_SHA"
+            echo "- Run: $SERVER_URL/$REPOSITORY/actions/runs/$RUN_ID (attempt $RUN_ATTEMPT)"
+            echo "- Runner: $RUNNER_OS_NAME $RUNNER_ARCH_NAME"
+            echo "- Host: $SSH_USER@$SSH_HOST (host OS, OpenSSH and Node are recorded by the maintainer in the report)"
+            echo "- GitCode repository / test tag: $GITCODE_REPOSITORY / $SMOKE_TAG"
+            echo "- Leak scan of the receipts: $([ "$leak" = 0 ] && echo clean || echo FAILED)"
+            echo
+            echo "SHA-256 of every file below is in SHA256SUMS (verify with sha256sum -c)."
+          } > README.md
+          rm -f SHA256SUMS
+          sha256sum -- README.md ./*.json > SHA256SUMS
+          cp README.md "$GITHUB_STEP_SUMMARY"
+          [ "$leak" = 0 ] || { echo "::error::F5: credential-shaped text in the evidence"; exit 1; }
+
+      - name: Keep the receipts
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: gitcode-release-mirror-smoke-${{ inputs.tag }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/evidence
+          if-no-files-found: ignore

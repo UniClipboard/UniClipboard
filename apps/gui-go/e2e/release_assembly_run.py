@@ -110,7 +110,7 @@ def build_tree(tree, version, sha, *, windows_provider='signed', cli_receipt_in_
               json.dumps({'version': version, 'source': {'head': sha, 'dirty': False}, 'arch': deb}))
     for arch, win in (('amd64', 'x64'), ('arm64', 'arm64')):
         setup_bytes = payload('setup ' + win)
-        exes = {n: payload(f'{n} {win}') for n in ('UniClipboard.exe', 'uniclipd.exe')}
+        exes = {n: payload(f'{n} {win}') for n in ('UniClipboard.exe', 'uniclipd.exe', 'uniclip-quick-panel.exe')}
         portable = zip_bytes(dict(exes, **{'portable.dat': b''}))
         write(tree / f'windows-gui-{arch}-{RUN_ID}/UniClipboard_{version}_{win}-setup.exe', setup_bytes)
         write(tree / f'windows-gui-{arch}-{RUN_ID}/UniClipboard_{version}_{win}-portable.zip', portable)
@@ -328,7 +328,7 @@ def main():
                 contains='SHA-256 does not match')
         variant('portable-zip-with-other-executable', lambda t: write(
             t / f'windows-gui-amd64-{RUN_ID}/UniClipboard_{version}_x64-portable.zip',
-            zip_bytes({'UniClipboard.exe': b'swapped', 'uniclipd.exe': b'swapped too', 'portable.dat': b''})),
+            zip_bytes({'UniClipboard.exe': b'swapped', 'uniclipd.exe': b'swapped too', 'uniclip-quick-panel.exe': b'swapped helper', 'portable.dat': b''})),
             contains='is not the executable the package record shipped')
         variant('sha256sums-lists-other-bytes', lambda t: write(wdir(t) / 'SHA256SUMS.txt', f'{"0" * 64} *UniClipboard_{version}_x64-setup.exe\n'),
                 contains='SHA256SUMS.txt does not list')

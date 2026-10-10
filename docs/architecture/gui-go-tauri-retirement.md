@@ -145,7 +145,9 @@ React 前端的源码、资源、测试、浏览器夹具、`package.json`、Vit
   这是声明值的审计，不是所有目标能降级的证明；未进行编译器降级。
 - **Linux Rust 作业**：coverage/cache-warmup 仅构建 Rust 工作区，移除 GTK/WebKit、
   AppIndicator、rsvg、patchelf。`uc-platform → keyring → libdbus-sys` 使用 libdbus；
-  GPUI 的 Linux 后端使用 fontconfig、Wayland、X11/xcb、xkbcommon（测试链接 xkbcommon-x11）；
+  GPUI 的测试目标实际链接 FreeType、xcb、xkbcommon 与 xkbcommon-x11；
+  `libxkbcommon-x11-dev` 传递安装 xcb 开发包，明确安装 `libfreetype6-dev`。
+  Wayland 和 Fontconfig 的动态加载不要求这两个库的开发包；
   coverage 使用 Xvfb/xauth。当前 Linux clipboard 是原生 X11/Wayland，macOS/Windows 才使用
   clipboard-rs；锁文件没有 arboard。Wails 的 GTK/WebKit 和 Linux 打包工具仍由 Go GUI 作业安装，
   不可从产品构建统一删除。隔离 Debian arm64 容器验证与 Ubuntu 远端 CI、真实桌面是不同验收。

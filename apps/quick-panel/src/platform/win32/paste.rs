@@ -120,6 +120,10 @@ impl PasteTarget for ForegroundWindow {
     }
 
     fn type_text(&self, text: &str) -> Result<(), PlatformError> {
+        // An empty string produces no INPUT entries; sending an empty batch would be reported as a failure.
+        if text.is_empty() {
+            return Ok(());
+        }
         self.check()?;
         self.bring_front()?;
         let mut inputs = Vec::new();

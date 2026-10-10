@@ -151,9 +151,9 @@ R2 始终是安装包的权威来源。已登记到 FlareRelease 的 Desktop 安
 
 **覆盖范围**：FlareRelease 的 `PUT /api/mirrors` 只会在已登记的 `(product, version, filename)` 三元组上生效——Desktop 每个平台目前只登记一个更新用安装包（macOS `.app.tar.gz`、Linux `.AppImage(.tar.gz)`、Windows `.nsis.zip`/`.exe`，见 `scripts/assemble-update-manifest.js` 的平台选择规则）。`.dmg`、`.deb`、`.rpm` 以及 Windows 便携版 zip 仍然只上传到 R2 和 GitHub Release，**不会** 被镜像，因为 FlareRelease 目前没有为它们登记制品记录。如果要覆盖这些安装包，需要先扩展 Desktop 的 FlareRelease 登记（`scripts/build-flare-release-registration.js`）把它们也加入 `artifacts` 数组——FlareRelease 的登记 schema 本身已支持任意数量的制品，不需要改 FlareRelease 代码。
 
-**传输位置**：GitCode 的上传入口在中国大陆，GitHub 托管的 runner 出站到它只有几十 KiB/s（Mobile 验证过，APK 都传不完整），所以上传不在 CI 里直接做，而是复用 Mobile 已经在用的上海中转机：CI 通过 SSH 登录该机器（同一个 `uniclip-mirror` 无权限用户），`scripts/remote/gitcode-mirror-host-desktop.py`（SSH key 的强制命令）在机器上从 R2 下载每个安装包（国内到 R2 的线路快），校验 SHA-256 后用机器本地安装的 `mirror-desktop-installers-to-gitcode.mjs` 一次性上传整批安装包。SSH 会话里只传一行 JSON 请求和必要的环境变量，不传任何代码；机器上安装的脚本版本与 CI 期望的 SHA-256 不一致时会直接拒绝执行。桌面端与 Mobile 分别使用不同文件名部署在同一台 `/opt/uniclip-mirror/` 下（`gitcode-mirror-host-desktop.py`/`mirror-desktop-installers-to-gitcode.mjs` vs. Mobile 的 `gitcode-mirror-host.py`/`mirror-android-apk-to-gitcode.mjs`），互不覆盖。
+**传输位置**：GitCode 的上传入口在中国大陆，GitHub 托管的 runner 出站到它只有几十 KiB/s，所以上传不在 CI 里直接做，而是由已发布的第三方 Action `mkdir700/gitcode-release-mirror`（工作流里固定到完整提交 SHA，当前为 v1.0.0 的 `5055ef17b7302e27ca53cbe5f6e44722f7e55f6b`）通过 SSH 登录上海中转机（专用无权限账号 `gitcode-mirror`，严格校验 host key）。机器上该账号的强制命令（`/opt/gitcode-release-mirror-1.0.0-5055ef1/host.mjs`）只接受一行 JSON 请求，并按机器上由 root 维护的白名单配置（`/etc/gitcode-release-mirror/config.json`）执行：只允许从 `https://release.uniclipboard.app/artifacts/` 下载、只允许 5 类更新包文件名（`.app.tar.gz`、`.AppImage`、`.AppImage.tar.gz`、`.nsis.zip`、`.exe`）、最大 300 MiB、只允许上传到 `UniClipboard/UniClipboard`。机器上不保存任何凭据，GitCode token 只随请求进入单个进程的内存；Action 随请求发送核心文件的 SHA-256，机器上的核心文件不一致会直接拒绝。机器侧文件由维护者一次性安装，工作流不会创建或修改机器上的任何文件。Mobile 仍使用 `/opt/uniclip-mirror/` 下自己的旧入口，两者互不影响。
 
-**实现**：`scripts/mirror-desktop-installers-to-gitcode.mjs` 读取本机已经写好的 `registration.json`（由 host 脚本根据 SSH 请求现场生成，字段与 CI 侧 `flare-release/registration.json` 一致），对其中列出的每个安装包独立执行：计算本地字节的 SHA-256 → 确保 GitCode 上存在该 tag 的 Release → 已有同名文件则按字节比对决定复用或报错（**不覆盖、不删除**）→ 否则上传 → 匿名回读校验 size + SHA-256 → 调用 `PUT /api/mirrors` 登记。单个安装包失败不影响其余安装包继续镜像。超时、重试（默认 3 次，每次重新申请上传地址）、单次运行的总截止时间（默认 18 分钟）与 Mobile 的实现完全一致。
+**实现**：工作流用 `registration.json`（`scripts/build-flare-release-registration.js` 生成，含每个已登记安装包的 `sha256`）生成来源列表（R2 地址 + `sha256`）交给 Action。Action 对每个文件独立执行：主机从 R2 下载并校验 SHA-256（不一致则不接触 GitCode）→ 确保 GitCode 上存在该 tag 的 Release（只在不存在时创建，新建的预发布标为 prerelease）→ 已有同名文件则按字节比对决定复用或失败（**不覆盖、不删除**）→ 否则上传 → 匿名回读校验 size + SHA-256。单个文件失败不影响其余文件。Action 输出 `receipt`（每个文件 `mirrored`/`reused`/`failed`），随后 `scripts/register-flare-release-mirrors.mjs` 在 runner 上读取 receipt，对状态为 `mirrored`/`reused` 且摘要与登记一致的文件调用 `PUT /api/mirrors` 登记（FlareRelease 凭据不离开 GitHub），`failed` 的文件不登记。receipt 与登记结果作为 `gitcode-mirror-receipt-<tag>` artifact 保留。
 
 **触发方式**：`mirror` environment 的部署分支策略只允许 `main`（见下表），而 `release.yml` 的 job 运行在发布 tag 这个 ref 上——如果像早期实现那样用 `uses: ./.github/workflows/mirror-desktop-gitcode.yml` 内联调用，mirror job 会在任何 step 执行前就被 environment protection rule 拒绝（`Tag "vX.Y.Z" is not allowed to deploy to mirror due to environment protection rules`），`non_blocking: true` 对这一层完全不起作用——它只能处理 job 已经开始跑之后、某个 step 内部的失败。v1.1.1（#1835）上实际触发过这个拒绝。
 
@@ -172,15 +172,15 @@ R2 始终是安装包的权威来源。已登记到 FlareRelease 的 Desktop 安
 | --- | --- | --- | --- |
 | `GITCODE_RELEASE_TOKEN` | `UniClipboard` 组织 secret（selected repositories） | 已配置，已包含本仓库 | GitCode 机器人 token，与 Mobile 共用同一枚 token，分别用各自的 `GITCODE_OWNER`/`GITCODE_REPO` 指向不同镜像仓库 |
 | `GITCODE_OWNER` / `GITCODE_REPO` | repository variable | 已配置为 `UniClipboard` / `UniClipboard` | 镜像仓库，仓库默认分支需要至少一个 commit |
-| `GITCODE_API_BASE` | repository variable | 可选，未配置，使用默认值 | 默认 `https://api.gitcode.com/api/v5` |
-| `GITCODE_TARGET_COMMITISH` | repository variable | 可选，未配置，使用默认值 | 新建 Release 的目标分支，默认 `main` |
+| `GITCODE_API_BASE` | repository variable | 旧流程使用，当前工作流不读取 | 新流程使用 Action 的默认 `https://api.gitcode.com/api/v5` |
+| `GITCODE_TARGET_COMMITISH` | repository variable | 旧流程使用，当前工作流不读取 | 新流程使用 Action 的默认 `main` |
 | `FLARE_RELEASE_ACCESS_CLIENT_ID` / `_SECRET` | 已有的组织 secret | 已配置 | 与 Release 登记共用 |
 | `mirror` GitHub Environment | repository environment，限制只允许 `main` 分支使用 | 已配置（2026-10-03 创建，`deployment_branch_policy` 自定义为仅 `main` 这一个 branch 类型策略，已用 `gh api repos/.../environments/mirror` 核实） | Mobile 的 `mirror-android-gitcode.yml` 已在用同名 environment；这个 main-only 策略是本次修复要依赖、而不是放宽的既有规则 |
-| `MIRROR_SSH_KEY` | environment secret（在 `mirror` environment 下） | 已配置（`gh api .../environments/mirror/secrets` 核实存在，值不可读） | Mobile 已有同名 key 授权登录上海机器 |
-| `MIRROR_SSH_HOST` / `MIRROR_SSH_USER` / `MIRROR_SSH_KNOWN_HOSTS` | repository variable | 已配置（`gh api repos/.../actions/variables` 核实三者均存在） | 与 Mobile 完全相同的机器/用户 |
-| `scripts/remote/gitcode-mirror-host-desktop.py` + `mirror-desktop-installers-to-gitcode.mjs` 部署到机器 | 机器侧文件，由维护者用 `scripts/remote/deploy-gitcode-mirror-host-desktop.sh <ssh 别名>` 手动部署 | 未核实（无法从 CI 侧 API 确认机器上的文件状态） | 工作流本身不会创建或修改机器上的任何文件 |
+| `GITCODE_MIRROR_ACTION_SSH_KEY` | environment secret（在 `mirror` environment 下） | 已配置（2026-10-10，专用新 key，仅绑定 Action 的强制命令；值不可读） | 与 Mobile 仍在使用的 `MIRROR_SSH_KEY` 是两把不同的 key |
+| `MIRROR_SSH_HOST` / `MIRROR_SSH_KNOWN_HOSTS` / `GITCODE_MIRROR_ACTION_SSH_USER` | repository / environment variable | 已配置（`GITCODE_MIRROR_ACTION_SSH_USER=gitcode-mirror` 在 `mirror` environment 下） | 与 Mobile 相同的机器，不同的账号 |
+| 机器上的 Action 入口 | 机器侧文件（`/opt/gitcode-release-mirror-1.0.0-5055ef1`、`/etc/gitcode-release-mirror`、账号 `gitcode-mirror`），由维护者一次性安装 | 已安装并用新 key 验证强制命令（拒绝无效请求、任意命令、pty） | 升级 Action 版本需要同时更新工作流里的 SHA 与机器上的文件 |
 
-上面几项配置已经就位，所以 v1.1.1（#1835）的失败不是"缺少配置"分支（那条路径本应只产生 `::warning` 并继续），而是 environment protection rule 在任何 step 执行前就拒绝了整个 job——即本节上方描述的触发方式问题。机器侧文件是否已部署仍未核实，真实 GitCode 上传验证（镜像从未成功跑过一次）也仍然没有做过。
+上面几项配置已就位。v1.1.1（#1835）的失败不是"缺少配置"，而是 environment protection rule 在任何 step 执行前就拒绝了整个 job——即上方描述的触发方式问题。GitCode 目标仓库必须是普通仓库：它曾是"镜像仓库"类型，此时创建 Release 会返回 `HTTP 400 … repository is an image repository`（2026-10-10 在冒烟测试中观察到，关闭镜像后恢复）。新流程已用 `mkdir700/gitcode-release-mirror` 的冒烟测试（`.github/workflows/gitcode-release-mirror-smoke.yml`，见 `docs/ci/gitcode-release-mirror-action-smoke.md`）在真实 runner、真实机器、真实 GitCode 上验证；使用真实安装包大小的完整镜像仍需第一次真实运行确认。
 
 **已知限制**（与 Mobile 一致）：302 重定向发生后服务器无法补救，镜像失败时客户端若不自动回退需手动切换下载源；撤回或下架只会停止重定向，不能召回已分享出去的镜像链接；GitCode 附件的大小上限未知，Desktop 安装包可能比 Mobile 的 APK 更大，第一次真实上传才能验证是否可行；一次 SSH 会话要串行传输本次发布的全部已登记安装包（通常 5 个），单个会话的总耗时会明显长于 Mobile 的单文件会话，具体时长同样需要第一次真实运行才能确定。
 

@@ -154,6 +154,7 @@ def observe(args):
                     if os.getpgid(int(entry.name)) == proc.pid and Path(exe).name in ROLES and ('.mount_' in exe or 'appimage_extracted_' in exe):
                         scoped[int(entry.name)] = exe
                 except OSError:
+                    # the process exited between listing /proc and reading it
                     pass
             for conn in home.rglob('daemon.conn'):
                 try:
@@ -165,6 +166,7 @@ def observe(args):
                     with urllib.request.urlopen(f"http://{c['host']}:{c['port']}/health", timeout=2) as r:
                         health = r.status
                 except (OSError, ValueError, KeyError):
+                    # daemon.conn is stale or the daemon is not up yet; the next poll retries and the health check gates the result
                     pass
             if health == 200 and any(Path(e).name == 'WebKitWebProcess' for e in scoped.values()):
                 time.sleep(4)  # let the page load finish so late dlopen calls land in the trace
@@ -182,6 +184,7 @@ def observe(args):
                     if Path(path).name != 'ld.so.cache' and path not in result['sonames']:
                         result['sonames'][path] = elf_soname(path)
             except OSError:
+                # the process exited before its maps were read; the role coverage assertions catch a missing process
                 pass
         result.update(health=health, guiAlive=proc.poll() is None)
     finally:
@@ -190,6 +193,7 @@ def observe(args):
                 if os.readlink(f'/proc/{pid}/exe') == exe:
                     os.kill(pid, signal.SIGTERM)
             except OSError:
+                # already gone
                 pass
         if proc.poll() is None:
             proc.terminate()

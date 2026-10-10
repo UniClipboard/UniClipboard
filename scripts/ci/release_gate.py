@@ -250,7 +250,6 @@ def windows_binding_problems(artifacts, assets, version, top, doc, provider, exp
     """Bind the receipts of one Windows evidence artifact to the files that will be released."""
     problems = []
     base = artifacts / top / 'windows-gui'
-    manifest_path = next(iter(sorted(base.rglob('shipped/package-manifest.json'))), None)
     arch = {'amd64': 'x64', 'x86_64': 'x64', 'arm64': 'arm64', 'aarch64': 'arm64'}.get(doc.get('arch'))
     if arch is None:
         return [f'{top}: the package record names no known architecture ({doc.get("arch")!r})']

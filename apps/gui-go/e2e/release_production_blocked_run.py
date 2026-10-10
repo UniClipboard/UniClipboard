@@ -50,9 +50,9 @@ def main():
               'namesPresent': {k: sorted(set(WANTED[k]) & set(v or [])) for k, v in present.items()}, 'namesMissing': missing,
               'productionWindowsSigningAcceptance': 'blocked (not run)',
               'neededFromTheMaintainer': [
-                  'ONE production Windows backend: either WINDOWS_SIGN_BACKEND=azure|pfx with its AZURE_SIGN_* / SIGN_PFX_* secrets, '
-                  'or SignPath production: variables SIGNPATH_PRODUCTION_POLICY_SLUG and SIGNPATH_PRODUCTION_CERT_THUMBPRINT, Environment '
-                  '`signpath-production` holding the secret SIGNPATH_API_TOKEN, and the artifact configurations go-stage1 / go-stage2-setup '
+                  'ONE production Windows backend: either WINDOWS_SIGN_BACKEND=azure|pfx with its AZURE_SIGN_* / SIGN_PFX_* secrets, ' +
+                  'or SignPath production: variables SIGNPATH_PRODUCTION_POLICY_SLUG and SIGNPATH_PRODUCTION_CERT_THUMBPRINT, Environment ' +
+                  '`signpath-production` holding the secret SIGNPATH_API_TOKEN, and the artifact configurations go-stage1 / go-stage2-setup ' +
                   'saved in SignPath for that policy',
                   'TAURI_SIGNING_PRIVATE_KEY (and password) for the updater key whose public half is apps/gui-go/app.json',
                   'UPDATE_SERVER_URL variable and the R2 / FlareRelease credentials (not exercised here)']}

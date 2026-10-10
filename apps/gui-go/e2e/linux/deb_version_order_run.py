@@ -89,7 +89,7 @@ def main():
     a.out.mkdir(parents=True, exist_ok=False)
     extra = ['-v', f'{a.baseline.resolve()}:/b/1/2/3:ro', '-e', 'UC_PACKAGE_LINUX_DIR=/b/1/2/3'] if a.baseline else []
     r = subprocess.run(['docker', 'run', '--rm', '-v', f'{ROOT}:/repo:ro', '-v', f'{a.out.resolve()}:/out', *extra, a.image,
-                        'sh', '-c', 'command -v python3 >/dev/null || (apt-get update -qq && apt-get install -y -qq python3 >/dev/null); '
+                        'sh', '-c', 'command -v python3 >/dev/null || (apt-get update -qq && apt-get install -y -qq python3 >/dev/null); ' +
                                    'python3 -I /repo/apps/gui-go/e2e/linux/deb_version_order_run.py --inside --out /out/run'],
                        text=True)
     sys.exit(r.returncode)

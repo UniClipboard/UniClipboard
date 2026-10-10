@@ -49,7 +49,6 @@ def inside(args):
         (scratch / rel).parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(repo / rel, scratch / rel)
     app = json.loads((repo / 'apps/gui-go/app.json').read_text())
-    real_version = app['version']
     real_manifest = json.loads((evid / 'package-manifest.json').read_text())
     assert real_manifest['version'] != VERSION
     (scratch / 'apps/gui-go').mkdir(parents=True, exist_ok=True)

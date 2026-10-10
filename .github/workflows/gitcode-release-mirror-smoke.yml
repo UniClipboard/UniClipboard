@@ -1,0 +1,13 @@
+name: gitcode-release-mirror-smoke
+
+permissions:
+  contents: read
+
+on:
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "dispatch probe"

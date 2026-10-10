@@ -1,4 +1,4 @@
-import { isTauri } from '@/host/core'
+import { isDesktopHost } from '@/host/core'
 import { getCurrentWindow } from '@/host/window'
 import { subscribeDesktopTheme } from '@/lib/desktop-theme'
 import type { DesktopTheme } from '@/lib/desktop-theme'
@@ -77,7 +77,7 @@ export function createWindowThemeController(animate = false) {
       }
       // The window is opaque; paint it with the page background so any area the webview does
       // not cover (OS-driven resize, hidden-window restore) matches the page.
-      if (animate && isTauri()) {
+      if (animate && isDesktopHost()) {
         const win = getCurrentWindow()
         win.setTheme(external ? mode : manual ? preference : null).catch(() => {})
         const color = resolveCssColor(getComputedStyle(root).getPropertyValue('--background'))

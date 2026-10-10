@@ -3,7 +3,12 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { THEME_MODE_STORAGE_KEY } from '@/lib/theme-mode-cache'
 
 vi.mock('@/lib/platform', () => ({
-  detectPlatformInfo: () => ({ isLinux: false, isWindows: false, isMac: true, isTauri: true }),
+  detectPlatformInfo: () => ({
+    isLinux: false,
+    isWindows: false,
+    isMac: true,
+    isDesktopHost: true,
+  }),
 }))
 
 beforeEach(() => {

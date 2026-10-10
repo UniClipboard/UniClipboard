@@ -7,7 +7,7 @@ import type { DaemonStartupStatus } from '@/lib/ipc'
 import { WINDOW_FRAME_STORAGE_KEY } from '@/lib/window-frame'
 
 const state = vi.hoisted(() => ({
-  platform: { isWindows: true, isLinux: false, isMac: false, isTauri: true },
+  platform: { isWindows: true, isLinux: false, isMac: false, isDesktopHost: true },
   retrying: false,
   failed: true,
   connected: false,
@@ -173,7 +173,7 @@ beforeEach(() => {
     isWindows: true,
     isLinux: false,
     isMac: false,
-    isTauri: true,
+    isDesktopHost: true,
   }
 })
 afterEach(cleanup)
@@ -227,7 +227,7 @@ describe('startup window frame before setup hydration', () => {
       isWindows: false,
       isLinux: true,
       isMac: false,
-      isTauri: true,
+      isDesktopHost: true,
     }
     window.__UC_WINDOW_FRAME_DEFAULT__ = 'none'
     state.retrying = retrying
@@ -245,7 +245,7 @@ describe('startup window frame before setup hydration', () => {
       isWindows: false,
       isLinux: true,
       isMac: false,
-      isTauri: true,
+      isDesktopHost: true,
     }
     window.__UC_WINDOW_FRAME_DEFAULT__ = 'none'
     localStorage.setItem(WINDOW_FRAME_STORAGE_KEY, 'false')
@@ -315,7 +315,7 @@ describe('startup window frame before setup hydration', () => {
       isWindows: false,
       isLinux: false,
       isMac: true,
-      isTauri: true,
+      isDesktopHost: true,
     }
     const { container } = render(<AppContentWithBar />)
     expect(container.querySelector('[data-tauri-drag-region="true"]')).not.toBeNull()

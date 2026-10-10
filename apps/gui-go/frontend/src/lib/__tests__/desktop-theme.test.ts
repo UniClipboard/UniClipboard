@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { isTauri } from '@/host/core'
+import { isDesktopHost } from '@/host/core'
 import { listen } from '@/host/event'
 let subscribeDesktopTheme: typeof import('@/lib/desktop-theme').subscribeDesktopTheme
 import type { DesktopThemeSnapshot } from '@host/models'
 import { commands } from '@/lib/ipc'
 
-vi.mock('@/host/core', () => ({ isTauri: vi.fn() }))
+vi.mock('@/host/core', () => ({ isDesktopHost: vi.fn() }))
 vi.mock('@/host/event', () => ({ listen: vi.fn() }))
 vi.mock('@/lib/ipc', () => ({ commands: { getDesktopTheme: vi.fn() } }))
 
@@ -25,14 +25,14 @@ beforeEach(async () => {
 
 describe('desktop palette subscription', () => {
   it('does not access native APIs outside Tauri', () => {
-    vi.mocked(isTauri).mockReturnValue(false)
+    vi.mocked(isDesktopHost).mockReturnValue(false)
     subscribeDesktopTheme(vi.fn())()
     expect(listen).not.toHaveBeenCalled()
     expect(commands.getDesktopTheme).not.toHaveBeenCalled()
   })
 
   it('subscribes before reading and rejects a stale startup response', async () => {
-    vi.mocked(isTauri).mockReturnValue(true)
+    vi.mocked(isDesktopHost).mockReturnValue(true)
     let receive!: (event: { payload: DesktopThemeSnapshot }) => void
     const unlisten = vi.fn()
     vi.mocked(listen).mockImplementation(async (_event, callback) => {
@@ -62,7 +62,7 @@ describe('desktop palette subscription', () => {
   })
 
   it('unsubscribes if disposed while native listener registration is pending', async () => {
-    vi.mocked(isTauri).mockReturnValue(true)
+    vi.mocked(isDesktopHost).mockReturnValue(true)
     let resolveRegistration!: (value: () => void) => void
     const registration = new Promise<() => void>(resolve => {
       resolveRegistration = resolve
@@ -78,7 +78,7 @@ describe('desktop palette subscription', () => {
 })
 
 it('refreshes the latest palette when a suspended window becomes visible again', async () => {
-  vi.mocked(isTauri).mockReturnValue(true)
+  vi.mocked(isDesktopHost).mockReturnValue(true)
   vi.mocked(listen).mockResolvedValue(vi.fn())
   vi.mocked(commands.getDesktopTheme).mockResolvedValue(snapshot(1))
   const apply = vi.fn()
@@ -93,7 +93,7 @@ it('refreshes the latest palette when a suspended window becomes visible again',
 })
 
 it('replays the startup palette synchronously to the React theme owner', async () => {
-  vi.mocked(isTauri).mockReturnValue(true)
+  vi.mocked(isDesktopHost).mockReturnValue(true)
   vi.mocked(listen).mockResolvedValue(vi.fn())
   vi.mocked(commands.getDesktopTheme).mockResolvedValue(snapshot(3))
   const first = vi.fn()
@@ -107,7 +107,7 @@ it('replays the startup palette synchronously to the React theme owner', async (
 })
 
 it('settles startup without a desktop palette when querying fails', async () => {
-  vi.mocked(isTauri).mockReturnValue(true)
+  vi.mocked(isDesktopHost).mockReturnValue(true)
   vi.mocked(listen).mockResolvedValue(vi.fn())
   vi.mocked(commands.getDesktopTheme).mockRejectedValue(new Error('unavailable'))
   const apply = vi.fn()
@@ -117,7 +117,7 @@ it('settles startup without a desktop palette when querying fails', async () => 
 })
 
 it('still queries the initial palette when listener registration fails', async () => {
-  vi.mocked(isTauri).mockReturnValue(true)
+  vi.mocked(isDesktopHost).mockReturnValue(true)
   vi.mocked(listen).mockRejectedValue(new Error('unavailable'))
   vi.mocked(commands.getDesktopTheme).mockResolvedValue(snapshot(1))
   const apply = vi.fn()
@@ -127,7 +127,7 @@ it('still queries the initial palette when listener registration fails', async (
 })
 
 it('suppresses the palette when disabled or unavailable while retaining preference metadata', async () => {
-  vi.mocked(isTauri).mockReturnValue(true)
+  vi.mocked(isDesktopHost).mockReturnValue(true)
   let receive!: (event: { payload: DesktopThemeSnapshot }) => void
   vi.mocked(listen).mockImplementation(async (_event, callback) => {
     receive = callback as typeof receive

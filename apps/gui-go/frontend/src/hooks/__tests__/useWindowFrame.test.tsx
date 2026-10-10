@@ -4,7 +4,7 @@ import { useWindowFrame } from '@/hooks/useWindowFrame'
 import { WindowShell } from '@/layouts/WindowShell'
 
 const mocks = vi.hoisted(() => ({
-  platform: { isWindows: false, isMac: false, isLinux: true, isTauri: true },
+  platform: { isWindows: false, isMac: false, isLinux: true, isDesktopHost: true },
   setDecorations: vi.fn().mockResolvedValue(undefined),
 }))
 vi.mock('@/hooks/usePlatform', () => ({ usePlatform: () => mocks.platform }))

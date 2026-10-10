@@ -10,9 +10,9 @@ export type { PlatformInfo } from '@/lib/platform'
  *
  * @example
  * ```tsx
- * const { isWindows, isMac, isTauri } = usePlatform()
+ * const { isWindows, isMac, isDesktopHost } = usePlatform()
  *
- * if (isWindows && isTauri) {
+ * if (isWindows && isDesktopHost) {
  *   // Windows 特定逻辑
  * }
  * ```

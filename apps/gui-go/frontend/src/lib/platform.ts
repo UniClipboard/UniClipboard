@@ -2,21 +2,21 @@ export interface PlatformInfo {
   isWindows: boolean
   isMac: boolean
   isLinux: boolean
-  isTauri: boolean
+  isDesktopHost: boolean
 }
 
 interface PlatformProbe {
   userAgent?: string
   platform?: string
   tauriPlatform?: string
-  isTauri?: boolean
+  isDesktopHost?: boolean
 }
 
 const normalize = (value?: string): string => value?.toLowerCase() ?? ''
 
-const isTauriEnv = (): boolean =>
+const isDesktopHostEnv = (): boolean =>
   typeof window !== 'undefined' &&
-  Boolean((window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__)
+  Boolean((window as unknown as { __UC_DESKTOP_HOST__?: unknown }).__UC_DESKTOP_HOST__)
 
 const readPlatformProbe = (): PlatformProbe => {
   const tauriWindow =
@@ -32,7 +32,7 @@ const readPlatformProbe = (): PlatformProbe => {
     userAgent: nav?.userAgent,
     platform: nav?.userAgentData?.platform ?? nav?.platform,
     tauriPlatform: tauriWindow?.__TAURI__?.platform,
-    isTauri: isTauriEnv(),
+    isDesktopHost: isDesktopHostEnv(),
   }
 }
 
@@ -59,7 +59,7 @@ export const detectPlatformInfo = (probe: PlatformProbe = readPlatformProbe()): 
     isWindows,
     isMac,
     isLinux,
-    isTauri: probe.isTauri ?? false,
+    isDesktopHost: probe.isDesktopHost ?? false,
   }
 }
 

@@ -27,7 +27,7 @@ vi.mock('@/lib/platform', () => ({
     isLinux: true,
     isWindows: false,
     isMac: false,
-    isTauri: true,
+    isDesktopHost: true,
   }),
 }))
 vi.mock('@/lib/ipc', () => ({ commands: { markMainWindowReady: mocks.markReady } }))

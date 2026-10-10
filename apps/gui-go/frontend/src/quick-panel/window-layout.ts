@@ -27,8 +27,8 @@ function readWindowScale(): number {
 }
 
 function isLinuxPanel(): boolean {
-  const { isLinux, isTauri } = detectPlatformInfo()
-  return isLinux && isTauri
+  const { isLinux, isDesktopHost } = detectPlatformInfo()
+  return isLinux && isDesktopHost
 }
 
 export async function setQuickPanelLayout(scale: number, previewExpanded: boolean): Promise<void> {

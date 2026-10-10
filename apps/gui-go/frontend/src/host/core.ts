@@ -2,7 +2,7 @@
 // Wails-generated `HostService` bindings through `src/lib/ipc.ts`.
 
 // The shared frontend uses this flag for "running inside the desktop shell".
-export const isTauri = (): boolean => true
+export const isDesktopHost = (): boolean => true
 
 export const convertFileSrc = (path: string): string =>
   `/host-file?path=${encodeURIComponent(path)}`

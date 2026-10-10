@@ -125,8 +125,8 @@ const ClipboardHistoryPanelSession: React.FC<ClipboardHistoryPanelProps> = ({
 }) => {
   const { t } = useTranslation()
   const dispatch = useAppDispatch()
-  const { isLinux, isTauri } = usePlatform()
-  const isLinuxQuickPanel = isLinux && isTauri
+  const { isLinux, isDesktopHost } = usePlatform()
+  const isLinuxQuickPanel = isLinux && isDesktopHost
 
   // Refresh the paired-device list so the row context menu's "send to device"
   // submenu shows current names and connection state. The quick panel is a

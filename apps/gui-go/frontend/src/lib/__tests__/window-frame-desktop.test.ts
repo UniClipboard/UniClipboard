@@ -6,7 +6,7 @@ import {
   WINDOW_FRAME_STORAGE_KEY,
 } from '@/lib/window-frame'
 
-const linux = { isLinux: true, isMac: false, isWindows: false, isTauri: true }
+const linux = { isLinux: true, isMac: false, isWindows: false, isDesktopHost: true }
 afterEach(() => localStorage.clear())
 
 it('defaults to automatic before setup', () => {

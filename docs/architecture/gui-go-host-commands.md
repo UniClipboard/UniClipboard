@@ -172,7 +172,7 @@ Wails 版本与 Go 工具链只在 `apps/gui-go/go.mod` 中固定一处，生成
 | `window.onResized` | 真实 | 真实 | 真实 | 订阅 `common:WindowDidResize` |
 | `webview.setZoom` | 真实 | 真实 | 真实 | `lib/ui-scale.ts`，调用 Wails `Window.SetZoom` |
 | `set_traffic_light_position` 命令 | 不支持 | 有意空操作 | 有意空操作 | Wails 没有交通灯位置接口；调用方 `useMacTrafficLightPosition` 仅在 macOS 运行，位置固定为隐藏内嵌标题栏的默认值 |
-| `log.attachConsole` | - | - | - | 调用方被 `'__TAURI__' in window` 守卫，而 Go 宿主只设置 `__TAURI_INTERNALS__`，该分支从未执行；调用、适配器与别名已一并删除 |
+| `log.attachConsole` | - | - | - | 调用方被 `'__TAURI__' in window` 守卫，而 Go 宿主只设置 `__UC_DESKTOP_HOST__`，该分支从未执行；调用、适配器与别名已一并删除 |
 
 ## 迁移后检查清单
 

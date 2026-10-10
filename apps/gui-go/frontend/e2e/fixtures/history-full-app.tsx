@@ -46,7 +46,7 @@ const native: Record<string, (args: Record<string, unknown>) => unknown> = {
   'plugin:event|unlisten': () => null,
   'plugin:event|emit': () => null,
 }
-Object.defineProperty(window, '__TAURI_INTERNALS__', {
+Object.defineProperty(window, '__UC_DESKTOP_HOST__', {
   configurable: true,
   value: {
     metadata: { currentWindow: { label: 'main' }, currentWebview: { label: 'main' } },

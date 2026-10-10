@@ -6,7 +6,7 @@ describe('platform helpers', () => {
     const platform = detectPlatformInfo({
       userAgent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/605.1.15',
       platform: 'Linux x86_64',
-      isTauri: true,
+      isDesktopHost: true,
     })
 
     expect(platform.isLinux).toBe(true)
@@ -17,7 +17,7 @@ describe('platform helpers', () => {
       userAgent:
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Edg/120.0',
       platform: 'Win32',
-      isTauri: true,
+      isDesktopHost: true,
     })
 
     expect(platform.isWindows).toBe(true)
@@ -27,7 +27,7 @@ describe('platform helpers', () => {
     const platform = detectPlatformInfo({
       userAgent: 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36',
       platform: 'Linux armv8l',
-      isTauri: false,
+      isDesktopHost: false,
     })
 
     expect(platform.isLinux).toBe(false)
@@ -40,7 +40,7 @@ describe('platform helpers', () => {
       isWindows: false,
       isMac: false,
       isLinux: true,
-      isTauri: true,
+      isDesktopHost: true,
     })
 
     expect(root.dataset.ucPlatform).toBe('linux')

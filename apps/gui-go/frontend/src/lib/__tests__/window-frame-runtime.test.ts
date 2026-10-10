@@ -7,7 +7,7 @@ vi.mock('@/host/window', () => ({ getCurrentWindow: () => mocks }))
 vi.mock('@/lib/platform', () => ({
   detectPlatformInfo: () => ({
     isLinux: true,
-    isTauri: true,
+    isDesktopHost: true,
     isMac: false,
     isWindows: false,
   }),

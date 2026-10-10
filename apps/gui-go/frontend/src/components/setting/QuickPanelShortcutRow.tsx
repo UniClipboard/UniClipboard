@@ -8,11 +8,11 @@ import { ShortcutRow } from './ShortcutRow'
 const log = createLogger('quick-panel-shortcut-row')
 
 export function QuickPanelShortcutRow(props: ComponentProps<typeof ShortcutRow>) {
-  const { isLinux, isTauri } = usePlatform()
+  const { isLinux, isDesktopHost } = usePlatform()
   const { t } = useTranslation()
   const [compositorShortcuts, setCompositorShortcuts] = useState(false)
   useEffect(() => {
-    if (!isLinux || !isTauri) return
+    if (!isLinux || !isDesktopHost) return
     let cancelled = false
     void quickPanelUsesCompositorShortcuts()
       .then(value => {
@@ -22,7 +22,7 @@ export function QuickPanelShortcutRow(props: ComponentProps<typeof ShortcutRow>)
     return () => {
       cancelled = true
     }
-  }, [isLinux, isTauri])
+  }, [isLinux, isDesktopHost])
 
   return compositorShortcuts ? (
     <p className="text-ui-body text-muted-foreground">

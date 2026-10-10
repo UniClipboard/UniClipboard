@@ -32,8 +32,8 @@ function QuickPanelEffectsSampling({ active }: { active: boolean }) {
 
 const QuickPanelApp: React.FC = () => {
   const { t } = useTranslation(undefined, { keyPrefix: 'quickPanel' })
-  const { isLinux, isTauri } = usePlatform()
-  const layoutClassNames = getQuickPanelLayoutClassNames(isLinux && isTauri)
+  const { isLinux, isDesktopHost } = usePlatform()
+  const layoutClassNames = getQuickPanelLayoutClassNames(isLinux && isDesktopHost)
   const [daemonReady, setDaemonReady] = useState(daemonClient.initialized)
   const { unlocked: contentUnlocked } = useContentUnlocked(daemonReady)
   useThemeSync(daemonReady)
@@ -179,7 +179,7 @@ const QuickPanelApp: React.FC = () => {
           active={daemonReady && showRequestId > 0 && preparedRequestId === showRequestId}
         />
         {content}
-        {isLinux && isTauri && daemonReady && (
+        {isLinux && isDesktopHost && daemonReady && (
           <ShortcutProvider key={showRequestId}>
             <QuickPanelScaleIndicator />
           </ShortcutProvider>

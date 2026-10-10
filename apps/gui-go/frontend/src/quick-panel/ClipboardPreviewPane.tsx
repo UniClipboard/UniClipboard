@@ -15,10 +15,10 @@ interface ClipboardPreviewPaneProps {
 function ClipboardPreviewPane({ item }: ClipboardPreviewPaneProps) {
   const { t } = useTranslation(undefined, { keyPrefix: 'previewPanel' })
   const isMac = useMemo(() => navigator.platform.toUpperCase().includes('MAC'), [])
-  const { isLinux, isTauri } = usePlatform()
+  const { isLinux, isDesktopHost } = usePlatform()
 
   return (
-    <div className={getQuickPanelLayoutClassNames(isLinux && isTauri).previewCard}>
+    <div className={getQuickPanelLayoutClassNames(isLinux && isDesktopHost).previewCard}>
       <div className="min-h-0 flex-1" data-testid="quick-panel-preview-area">
         <ClipboardPreview item={item} />
       </div>

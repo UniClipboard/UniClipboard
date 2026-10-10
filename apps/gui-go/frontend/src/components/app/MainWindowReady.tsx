@@ -13,7 +13,7 @@ const log = createLogger('main-window-ready')
 
 export function MainWindowReady() {
   useEffect(() => {
-    if (!detectPlatformInfo().isTauri) return
+    if (!detectPlatformInfo().isDesktopHost) return
     const generation = window.__UC_MAIN_WINDOW_GENERATION__
     if (!generation) {
       log.error('Missing main window generation at startup')

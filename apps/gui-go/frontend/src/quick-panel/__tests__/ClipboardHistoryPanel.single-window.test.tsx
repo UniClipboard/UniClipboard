@@ -124,7 +124,7 @@ const defaultHistorySearchImplementation = vi.mocked(useHistorySearch).getMockIm
 beforeEach(() => {
   vi.mocked(usePlatform).mockReturnValue({
     isLinux: false,
-    isTauri: true,
+    isDesktopHost: true,
     isMac: true,
     isWindows: false,
   })
@@ -204,7 +204,7 @@ describe('ClipboardHistoryPanel single-window preview', () => {
   it('shows both Linux columns immediately and changes selection without resizing', () => {
     vi.mocked(usePlatform).mockReturnValue({
       isLinux: true,
-      isTauri: true,
+      isDesktopHost: true,
       isMac: false,
       isWindows: false,
     })
@@ -227,7 +227,7 @@ describe('ClipboardHistoryPanel single-window preview', () => {
   it('retains the Linux hover preview until another hover or keyboard selection', () => {
     vi.mocked(usePlatform).mockReturnValue({
       isLinux: true,
-      isTauri: true,
+      isDesktopHost: true,
       isMac: false,
       isWindows: false,
     })
@@ -260,7 +260,7 @@ describe('ClipboardHistoryPanel single-window preview', () => {
   it('keeps the Linux preview column visible when history is empty', () => {
     vi.mocked(usePlatform).mockReturnValue({
       isLinux: true,
-      isTauri: true,
+      isDesktopHost: true,
       isMac: false,
       isWindows: false,
     })
@@ -838,7 +838,7 @@ describe('ClipboardHistoryPanel hover rendering', () => {
       Element.prototype.scrollIntoView = vi.fn()
       vi.mocked(usePlatform).mockReturnValue({
         isLinux: true,
-        isTauri: true,
+        isDesktopHost: true,
         isMac: false,
         isWindows: false,
       })

@@ -11,11 +11,11 @@ const log = createLogger('traffic-lights')
  * (the system resets the buttons after unmaximize / fullscreen changes).
  */
 export function useMacTrafficLightPosition(offset: { x: number; y: number }) {
-  const { isMac, isTauri } = usePlatform()
+  const { isMac, isDesktopHost } = usePlatform()
   const { x, y } = offset
 
   useEffect(() => {
-    if (!isMac || !isTauri) return
+    if (!isMac || !isDesktopHost) return
     const sync = () => {
       commands.setTrafficLightPosition(x, y).catch(error => {
         log.error({ err: error }, 'Failed to set traffic light position')
@@ -26,5 +26,5 @@ export function useMacTrafficLightPosition(offset: { x: number; y: number }) {
     return () => {
       unlistenPromise.then(unlisten => unlisten())
     }
-  }, [isMac, isTauri, x, y])
+  }, [isMac, isDesktopHost, x, y])
 }

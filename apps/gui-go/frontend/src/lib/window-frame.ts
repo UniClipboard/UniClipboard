@@ -11,7 +11,7 @@ declare global {
   }
 }
 
-type WindowFramePlatform = Pick<PlatformInfo, 'isWindows' | 'isMac' | 'isLinux' | 'isTauri'>
+type WindowFramePlatform = Pick<PlatformInfo, 'isWindows' | 'isMac' | 'isLinux' | 'isDesktopHost'>
 
 export interface WindowFrameMode {
   useSystemWindowFrame: boolean
@@ -86,12 +86,12 @@ export const resolveWindowFrameMode = (
   preference: WindowFramePreference,
   prefersNoTitleBar = typeof window !== 'undefined' && window.__UC_WINDOW_FRAME_DEFAULT__ === 'none'
 ): WindowFrameMode => {
-  const canChooseSystemFrame = platform.isTauri && (platform.isWindows || platform.isLinux)
+  const canChooseSystemFrame = platform.isDesktopHost && (platform.isWindows || platform.isLinux)
   const selected =
     preference === 'auto' ? (platform.isLinux && prefersNoTitleBar ? 'none' : 'custom') : preference
   const useSystemWindowFrame = canChooseSystemFrame && selected === 'system'
   const usesSelectableCustomFrame = canChooseSystemFrame && selected === 'custom'
-  const hasCustomTitleBar = platform.isMac || !platform.isTauri || usesSelectableCustomFrame
+  const hasCustomTitleBar = platform.isMac || !platform.isDesktopHost || usesSelectableCustomFrame
 
   return {
     useSystemWindowFrame,

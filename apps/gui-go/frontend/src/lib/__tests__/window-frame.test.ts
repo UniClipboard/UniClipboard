@@ -10,7 +10,7 @@ const linuxPlatform = {
   isWindows: false,
   isMac: false,
   isLinux: true,
-  isTauri: true,
+  isDesktopHost: true,
 }
 
 describe('window frame preference', () => {

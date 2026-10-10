@@ -77,7 +77,7 @@ beforeEach(() => {
     isWindows: false,
     isMac: true,
     isLinux: false,
-    isTauri: true,
+    isDesktopHost: true,
   })
 })
 
@@ -88,7 +88,7 @@ it.each([QuickPanelSection, ShortcutsSection])(
       isWindows: false,
       isMac: false,
       isLinux: true,
-      isTauri: true,
+      isDesktopHost: true,
     })
     vi.mocked(quickPanelUsesCompositorShortcuts).mockResolvedValue(true)
     setup(Section)
@@ -143,7 +143,7 @@ describe('QuickPanelSection modifier double-tap trigger', () => {
       isWindows: false,
       isMac: false,
       isLinux: true,
-      isTauri: true,
+      isDesktopHost: true,
     })
     mockGetQuickPanelDoubleTapAvailability.mockResolvedValue('unsupported_display_session')
     setup()

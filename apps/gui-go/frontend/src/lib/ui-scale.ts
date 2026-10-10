@@ -27,7 +27,8 @@ const roundUiScale = (value: number): number => Math.round(value * 100) / 100
 export const clampUiScale = (value: number): number =>
   Math.min(MAX_UI_SCALE, Math.max(MIN_UI_SCALE, roundUiScale(value)))
 
-const isTauriEnv = (): boolean => typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
+const isDesktopHostEnv = (): boolean =>
+  typeof window !== 'undefined' && '__UC_DESKTOP_HOST__' in window
 
 const getStorage = (storage?: Storage | null): Storage | null => {
   if (storage !== undefined) {
@@ -94,7 +95,7 @@ export const readStoredUiScale = (storage?: Storage | null): number => {
 const applyUiScale = (scale: number): number => {
   const normalized = clampUiScale(scale)
 
-  if (isTauriEnv()) {
+  if (isDesktopHostEnv()) {
     import('@/host/webview')
       .then(({ getCurrentWebview }) => {
         log.debug({ normalized }, 'calling setZoom')

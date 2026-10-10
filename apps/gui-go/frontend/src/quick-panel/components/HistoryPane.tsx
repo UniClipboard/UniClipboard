@@ -114,7 +114,7 @@ const HistoryPane: React.FC<HistoryPaneProps> = React.memo(
   }) => {
     const { hasPointerMovedSinceShow, isKeyboardNav, isLocked, selectedIndex } = interaction
     const { t } = useTranslation(undefined, { keyPrefix: 'quickPanel.history' })
-    const { isLinux, isTauri } = usePlatform()
+    const { isLinux, isDesktopHost } = usePlatform()
     const aspectRatioEpoch = useQuickPanelImageAspectRatioEpoch()
 
     const showImageWall = activeFilter === Filter.Image
@@ -131,7 +131,7 @@ const HistoryPane: React.FC<HistoryPaneProps> = React.memo(
     }, [filteredItems, showImageWall, aspectRatioEpoch])
 
     return (
-      <div className={getQuickPanelLayoutClassNames(isLinux && isTauri).card}>
+      <div className={getQuickPanelLayoutClassNames(isLinux && isDesktopHost).card}>
         {isLocked && !loading ? (
           <>
             <div className="flex flex-1 flex-col items-center justify-center gap-4 px-6">

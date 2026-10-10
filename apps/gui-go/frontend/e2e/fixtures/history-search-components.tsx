@@ -27,7 +27,7 @@ window.addEventListener('unhandledrejection', e =>
 const params = new URLSearchParams(location.search)
 const baseUrl = params.get('daemon') ?? ''
 const sessionToken = params.get('token') ?? ''
-Object.defineProperty(window, '__TAURI_INTERNALS__', {
+Object.defineProperty(window, '__UC_DESKTOP_HOST__', {
   configurable: true,
   value: {
     metadata: { currentWindow: { label: 'main' }, currentWebview: { label: 'main' } },

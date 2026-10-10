@@ -20,7 +20,7 @@ vi.mock('@/hooks/usePlatform', () => ({
     isWindows: false,
     isMac: false,
     isLinux: true,
-    isTauri: true,
+    isDesktopHost: true,
     hasCustomWindowControls: true,
   }),
 }))

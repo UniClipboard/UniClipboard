@@ -10,7 +10,7 @@ const platformState = vi.hoisted(() => ({
     isWindows: false,
     isMac: false,
     isLinux: false,
-    isTauri: false,
+    isDesktopHost: false,
   },
 }))
 
@@ -52,10 +52,10 @@ const renderLayout = () =>
   )
 
 const PLATFORMS = {
-  windows: { isWindows: true, isMac: false, isLinux: false, isTauri: true },
-  linux: { isWindows: false, isMac: false, isLinux: true, isTauri: true },
-  mac: { isWindows: false, isMac: true, isLinux: false, isTauri: true },
-  browser: { isWindows: false, isMac: false, isLinux: false, isTauri: false },
+  windows: { isWindows: true, isMac: false, isLinux: false, isDesktopHost: true },
+  linux: { isWindows: false, isMac: false, isLinux: true, isDesktopHost: true },
+  mac: { isWindows: false, isMac: true, isLinux: false, isDesktopHost: true },
+  browser: { isWindows: false, isMac: false, isLinux: false, isDesktopHost: false },
 } as const
 
 const renderOn = (platform: keyof typeof PLATFORMS, frame?: 'custom' | 'system') => {

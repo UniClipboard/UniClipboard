@@ -113,7 +113,7 @@ vi.mock('@/components/history/detail/HistoryDetailPanel', async () => {
 vi.mock('@/components/history/tags/HistoryTagManager', () => ({ default: () => null }))
 
 vi.mock('@/hooks/usePlatform', () => ({
-  usePlatform: () => ({ isMac: false, isWindows: true, isLinux: false, isTauri: true }),
+  usePlatform: () => ({ isMac: false, isWindows: true, isLinux: false, isDesktopHost: true }),
 }))
 
 vi.mock('@/components/clipboard/DeleteConfirmDialog', async () => {

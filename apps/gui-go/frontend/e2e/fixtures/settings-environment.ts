@@ -44,7 +44,7 @@ export function installSettingsFixtureEnvironment() {
     restartCalls: 0,
     restartShouldFail: false,
   }
-  Object.defineProperty(window, '__TAURI_INTERNALS__', {
+  Object.defineProperty(window, '__UC_DESKTOP_HOST__', {
     configurable: true,
     value: {
       metadata: { currentWindow: { label: 'main' }, currentWebview: { label: 'main' } },

@@ -10,9 +10,9 @@ const log = createLogger('window-controls')
  * the maximized state that decides the maximize button's label.
  */
 export function useWindowControls() {
-  const { isTauri } = usePlatform()
+  const { isDesktopHost } = usePlatform()
   const [isMaximized, setIsMaximized] = useState(false)
-  const windowRef = useMemo(() => (isTauri ? getCurrentWindow() : null), [isTauri])
+  const windowRef = useMemo(() => (isDesktopHost ? getCurrentWindow() : null), [isDesktopHost])
 
   useEffect(() => {
     if (!windowRef) return

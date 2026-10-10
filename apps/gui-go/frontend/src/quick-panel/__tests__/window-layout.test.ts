@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const { setLayout, platform, adjustUiScale } = vi.hoisted(() => ({
   setLayout: vi.fn().mockResolvedValue(undefined),
   adjustUiScale: vi.fn().mockReturnValue(1.5),
-  platform: { isLinux: true, isTauri: true },
+  platform: { isLinux: true, isDesktopHost: true },
 }))
 vi.mock('@/lib/platform', () => ({ detectPlatformInfo: () => platform }))
 vi.mock('@/lib/ipc', () => ({ commands: { setQuickPanelLayout: setLayout } }))

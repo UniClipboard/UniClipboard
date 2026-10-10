@@ -23,7 +23,12 @@ vi.mock('@/components/DevProfileIndicator', () => ({ default: () => null }))
 vi.mock('../SidebarStatusActions', () => ({ default: () => null }))
 const platform = vi.hoisted(() => ({ isMac: true }))
 vi.mock('@/hooks/usePlatform', () => ({
-  usePlatform: () => ({ isMac: platform.isMac, isWindows: false, isLinux: false, isTauri: true }),
+  usePlatform: () => ({
+    isMac: platform.isMac,
+    isWindows: false,
+    isLinux: false,
+    isDesktopHost: true,
+  }),
 }))
 
 function chrome(overrides: Partial<LibraryChrome> = {}): LibraryChrome {

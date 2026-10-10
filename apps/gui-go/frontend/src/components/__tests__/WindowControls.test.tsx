@@ -16,7 +16,7 @@ vi.mock('@/host/window', () => ({
 }))
 
 vi.mock('@/hooks/usePlatform', () => ({
-  usePlatform: () => ({ isWindows: true, isMac: false, isLinux: false, isTauri: true }),
+  usePlatform: () => ({ isWindows: true, isMac: false, isLinux: false, isDesktopHost: true }),
 }))
 
 describe('WindowControls', () => {

@@ -20,16 +20,16 @@ async function focusMainWindow(): Promise<void> {
 }
 
 export function useDeviceTrustDesktopEffects(snapshot: DeviceTrustSnapshot | null): void {
-  const isTauri = detectPlatformInfo().isTauri
+  const isDesktopHost = detectPlatformInfo().isDesktopHost
 
   useEffect(() => {
     if (!snapshot) return
     void notifyDeviceTrustSnapshot(snapshot)
-    if (snapshot.currentChange && isTauri) void focusMainWindow()
-  }, [isTauri, snapshot])
+    if (snapshot.currentChange && isDesktopHost) void focusMainWindow()
+  }, [isDesktopHost, snapshot])
 
   useEffect(() => {
-    if (!isTauri) return
+    if (!isDesktopHost) return
     let disposed = false
     let unregister: (() => void) | null = null
     void onAction(notification => {
@@ -44,5 +44,5 @@ export function useDeviceTrustDesktopEffects(snapshot: DeviceTrustSnapshot | nul
       disposed = true
       unregister?.()
     }
-  }, [isTauri])
+  }, [isDesktopHost])
 }

@@ -7,7 +7,7 @@ use objc2_application_services::AXIsProcessTrusted;
 use objc2_core_graphics::{CGEventFlags, CGEventSource, CGEventSourceStateID};
 use uc_daemon_contract::api::dto::settings::QuickPanelDoubleTapModifierDto as QuickPanelDoubleTapModifier;
 
-use uc_desktop::modifier_double_tap_monitor::ModifierKeyState;
+use crate::app::double_tap::ModifierKeyState;
 
 const KEY_CODE_MAX: u16 = 0x7f;
 const MODIFIER_KEY_CODES: &[u16] = &[

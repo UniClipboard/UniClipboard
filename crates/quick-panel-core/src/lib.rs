@@ -5,6 +5,7 @@
 
 pub mod actions;
 pub mod content;
+pub mod double_tap;
 pub mod empty_page;
 pub mod geometry;
 pub mod grid;
@@ -12,5 +13,6 @@ pub mod language;
 pub mod ports;
 pub mod query;
 pub mod selection;
+pub mod shortcuts;
 pub mod state;
 pub mod text;

@@ -2,14 +2,13 @@
 //!
 //! The helper has no main window of its own. Unlocking, settings and the history page belong to the
 //! GUI, which reads one line of JSON per request from this process's standard output (see
-//! `uc_desktop::quick_panel_helper::HelperRequest`). Without a supervisor nobody reads them, so
-//! the requests are refused instead of printed to a terminal.
+//! [`wire_line`]). Without a supervisor nobody reads them, so the requests are refused instead of
+//! printed to a terminal.
 
 use std::io::Write;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use quick_panel_core::ports::{HostLink, HostRequest};
-use uc_desktop::quick_panel_helper::HelperRequest;
 
 #[derive(Default)]
 pub struct SupervisorLink {
@@ -23,16 +22,24 @@ impl SupervisorLink {
     }
 }
 
+/// The line the host reads for `request`, without the newline.
+///
+/// This is the protocol of the Go host (`ParseRequest` in `packages/desktop-host-go/quickpanelhelper`):
+/// one line of JSON on standard output, `{"request":"<name>"}`. The host ignores lines that are
+/// not known requests, so the two sides can be updated one at a time.
+fn wire_line(request: HostRequest) -> &'static str {
+    match request {
+        HostRequest::ShowMainWindow => r#"{"request":"show_main_window"}"#,
+        HostRequest::OpenSettings => r#"{"request":"open_settings"}"#,
+    }
+}
+
 impl HostLink for SupervisorLink {
     fn send(&self, request: HostRequest) -> Result<(), String> {
         if !self.supervised.load(Ordering::Relaxed) {
             return Err(quick_panel_core::text::t().needs_app.into());
         }
-        let line = match request {
-            HostRequest::ShowMainWindow => HelperRequest::ShowMainWindow,
-            HostRequest::OpenSettings => HelperRequest::OpenSettings,
-        }
-        .to_line();
+        let line = wire_line(request);
         let mut out = std::io::stdout().lock();
         writeln!(out, "{line}")
             .and_then(|()| out.flush())

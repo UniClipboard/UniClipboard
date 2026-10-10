@@ -8,8 +8,8 @@ import (
 )
 
 // The modifier double-tap trigger of the WebView quick panel: two standalone taps of Alt, Control or Meta open the
-// panel. It is the Go form of crates/uc-desktop/src/modifier_double_tap.rs (detector) and
-// modifier_double_tap_monitor.rs (worker), with the same constants. A global modifier-only gesture cannot be
+// panel. It is the Go form of crates/quick-panel-core/src/double_tap.rs (detector) and
+// apps/quick-panel/src/app/double_tap.rs (worker) of the native panel, with the same constants. A global modifier-only gesture cannot be
 // registered as a hot key, so it is detected by polling a keyboard snapshot; Wails has no API for it.
 
 const (

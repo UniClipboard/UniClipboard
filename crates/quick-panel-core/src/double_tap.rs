@@ -1,3 +1,5 @@
+//! Recognizes a double tap of a lone modifier key from keyboard snapshots.
+
 use std::time::{Duration, Instant};
 
 pub const DEFAULT_DOUBLE_TAP_WINDOW: Duration = Duration::from_millis(400);

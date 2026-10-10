@@ -1,6 +1,6 @@
 # PROJECT KNOWLEDGE BASE
 
-**最后刷新：** 2026-10-10（自动；16 个工作区 crate）
+**最后刷新：** 2026-10-10（自动；15 个工作区 crate）
 
 ## OVERVIEW
 
@@ -15,7 +15,7 @@
 |  |- quick-panel/         # GPUI quick panel app (`uniclip-quick-panel`, macOS default)
 |- tools/                # Development-only crates (never in production builds)
 |  |- uc-dev-cli/          # `uc-dev-cli` development and diagnostics CLI (user-facing `uniclip` is apps/cli-go)
-|- crates/               # Library crates (13)
+|- crates/               # Library crates (12)
 |  # -- Desktop host adapters --
 |  |- uc-platform/      # OS adapters: clipboard, secure storage, autostart
 |  |- uc-app-paths/     # Lightweight directory-layout authority (data/cache/tmp)
@@ -28,7 +28,6 @@
 |  |- uc-webserver/     # Daemon's 127.0.0.1 HTTP + WebSocket API (OpenAPI / ApiEnvelope)
 |  |- uc-daemon-client/ # Daemon HTTP + WS client (used by GUI + CLI)
 |  # -- Shells / entrypoints --
-|  |- uc-desktop/       # Desktop host: runtime, daemon probe, background tasks (GUI-framework-agnostic)
 |  |- uc-cli-macros/    # Proc-macros for uc-dev-cli (internal)
 |  |- p2p-bench/        # Throwaway perf-spike bins (not shipped; publish = false)
 |  # -- Other --
@@ -44,7 +43,6 @@
 | Host command contract     | `apps/gui-go/*.go` (`HostService`), `docs/architecture/gui-go-host-commands.md` | Go methods are the contract; Wails generates the TS bindings |
 | Engine 发布版本           | `Cargo.toml`                               | 所有使用方共享一个固定的 `UniClipboard/Engine` 发布标签                 |
 | Desktop host preparation  | `crates/uc-bootstrap/src/wiring/`          | Desktop paths, secure storage and clipboard selection                   |
-| Desktop runtime           | `crates/uc-desktop/src/runtime.rs`         | Framework-agnostic desktop runtime shared by host shells                |
 | Quick panel (GPUI)        | `apps/quick-panel/`, `crates/quick-panel-core/` | Native macOS quick panel hosted by the Go shell                    |
 | Platform adapters         | `crates/uc-platform/src/`                  | clipboard (linux X11/Wayland, windows, macos), secure storage, app dirs |
 | Daemon API surface        | `crates/uc-webserver/src/api/`             | HTTP + WS endpoints; ApiEnvelope normalization                          |

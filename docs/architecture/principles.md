@@ -254,8 +254,7 @@ Each crate has a specific responsibility:
 | `uc-platform`      | Platform adapters                  | `uc-core`                      | ❌ `uc-application`, biz logic  |
 | `uc-bootstrap`     | Composition root (DI wiring)       | All core/app/infra/platform    | ❌ Business decisions           |
 | `uc-daemon`        | Daemon runtime + `uniclipd` binary | `uc-bootstrap` + webserver     | ❌ GUI frameworks               |
-| `uc-desktop`       | Desktop host logic                 | daemon-client/contract/process | ❌ Tauri/AppKit/egui            |
-| GUI shell (Go/Wails host) | Desktop shell adapter       | `uc-desktop` + daemon-client   | ❌ `uc-application` directly    |
+| GUI shell (Go/Wails host) | Desktop shell adapter       | daemon-client + contract       | ❌ `uc-application` directly    |
 | `uc-daemon-client` | HTTP/WS client to daemon           | contract + process             | ❌ iroh, diesel, sqlite         |
 | `uc-cli`           | CLI (`uniclip`)                    | daemon-client + contract       | ❌ iroh, diesel (in release)    |
 

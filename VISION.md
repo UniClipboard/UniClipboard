@@ -26,7 +26,6 @@
 - **六边形架构（Ports & Adapters）**：uc-core 定义纯领域模型和 Port trait，零基础设施依赖；uc-infra/uc-platform 提供具体实现
 - **uc-core 禁区**：不得出现数据库（SQLite/Diesel）、网络框架（iroh/HTTP）、OS API、加密算法实现（Argon2/ChaCha20）——只允许领域概念
 - **GUI 与 daemon 分离**：GUI 进程通过 HTTP/WS 连接外部 daemon，绝不内嵌 AppFacade 或打开数据库；daemon 绝不依赖任何 GUI 框架
-- **uc-desktop GUI 框架无关**：该 crate 禁止依赖任何 GUI 框架（webview 窗口框架、AppKit、egui 等），GUI 壳适配由各宿主自行负责（目前是 Go/Wails 宿主）
 - **薄中间层隔离重依赖**：uc-daemon-contract/uc-daemon-client/uc-daemon-process 作为叶子 crate，不携带 iroh/diesel/sqlite，使 CLI 和 GUI release 二进制免于链接重型依赖
 - **统一 P2P 核心**：桌面与移动宿主都通过同一核心入口运行完整节点；平台差异只存在于剪贴板、安全存储、文件句柄和生命周期接入，不得分叉协议、加密或内容能力。移动产品可额外提供用户显式选择的 LAN HTTP 兼容通道；它独立于 P2P 核心，不得自动回退或替代完整节点能力
 - **可测试性**：76+ async trait Port 均为 Send + Sync，通过 Arc&lt;dyn Port&gt; 注入，应用层测试使用 mockall/手写 fake，永不触碰真实基础设施

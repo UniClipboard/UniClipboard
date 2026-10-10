@@ -44,7 +44,6 @@ const KNOWN_DESCRIPTIONS = {
   'uc-daemon': 'GUI-agnostic daemon runtime; hosts the `uniclipd` binary',
   'uc-daemon-local': 'Local process coordination: auth token, socket discovery, health polling',
   'uc-daemon-client': 'Daemon HTTP + WS client (used by GUI + CLI)',
-  'uc-desktop': 'Desktop host: runtime, daemon probe, background tasks (GUI-framework-agnostic)',
   'quick-panel': 'GPUI quick panel app (`uniclip-quick-panel`, macOS default)',
   'quick-panel-core':
     'Platform-independent logic of the GPUI quick panel: query model, state machine, ports',
@@ -88,7 +87,7 @@ const LAYER_ORDER = [
   },
   {
     comment: 'Shells / entrypoints',
-    members: ['uc-desktop', 'uc-cli', 'uc-cli-macros', 'p2p-bench'],
+    members: ['uc-cli', 'uc-cli-macros', 'p2p-bench'],
   },
 ]
 

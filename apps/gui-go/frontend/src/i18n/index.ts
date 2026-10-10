@@ -28,7 +28,7 @@ export function isSupportedLanguage(language: unknown): language is SupportedLan
  * pt-PT, since Brazilian copy serves a Portuguese speaker better than English.
  * Chinese distinguishes Traditional-script variants from Simplified Chinese.
  *
- * Keep in sync with `normalize_language` in `crates/uc-desktop/src/language.rs`.
+ * Keep in sync with `Language::for_locale` in `crates/quick-panel-core/src/language.rs`.
  */
 const LOCALE_BY_SUBTAG: Partial<Record<string, SupportedLanguage>> = {
   ja: 'ja-JP',

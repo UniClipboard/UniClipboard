@@ -8458,7 +8458,6 @@ dependencies = [
  "uc-app-paths",
  "uc-daemon-client",
  "uc-daemon-contract",
- "uc-desktop",
  "wiremock",
 ]
 
@@ -11662,6 +11661,7 @@ dependencies = [
 name = "uc-daemon-contract"
 version = "1.1.1"
 dependencies = [
+ "cargo_metadata",
  "chrono",
  "semver",
  "serde",
@@ -11669,6 +11669,7 @@ dependencies = [
  "serde_with",
  "specta",
  "specta-typescript",
+ "syn 2.0.119",
  "utoipa",
 ]
 
@@ -11707,36 +11708,6 @@ dependencies = [
  "uc-daemon-contract",
  "which 7.0.3",
  "windows-sys 0.59.0",
-]
-
-[[package]]
-name = "uc-desktop"
-version = "1.1.1"
-dependencies = [
- "anyhow",
- "async-trait",
- "cargo_metadata",
- "gethostname",
- "objc2-metal",
- "reqwest 0.12.28",
- "serde",
- "serde_json",
- "socket2 0.6.5",
- "syn 2.0.119",
- "sysinfo 0.38.4",
- "tempfile",
- "thiserror 1.0.69",
- "tokio",
- "tokio-util",
- "tracing",
- "uc-app-paths",
- "uc-daemon-client",
- "uc-daemon-contract",
- "uc-daemon-process",
- "url",
- "uuid",
- "windows 0.61.3",
- "wiremock",
 ]
 
 [[package]]

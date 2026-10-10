@@ -134,14 +134,14 @@ struct CtxData {
 
 /// Makes the language of the settings current, the way the main window picks its own: the
 /// configured language when there is one, the system language otherwise, both through
-/// `normalize_language`. Returns whether it changed.
+/// `Language::for_locale`. Returns whether it changed.
 pub fn apply_language(configured: Option<&str>) -> bool {
     let tag = configured
         .filter(|tag| !tag.trim().is_empty())
         .map(str::to_string)
         .or_else(platform::system_language)
         .unwrap_or_default();
-    let language = Language::for_locale(uc_desktop::language::normalize_language(&tag));
+    let language = Language::for_locale(&tag);
     let changed = language != Language::current();
     language.make_current();
     changed

@@ -22,9 +22,7 @@ pub fn run() -> anyhow::Result<()> {
         .with_writer(std::io::stderr)
         .init();
     let host = Arc::new(adapters::host::SupervisorLink::default());
-    if std::env::args()
-        .any(|argument| argument == uc_desktop::quick_panel_helper::EXIT_WHEN_STDIN_CLOSES)
-    {
+    if std::env::args().any(|argument| argument == lifecycle::EXIT_WHEN_STDIN_CLOSES) {
         host.mark_supervised();
         // Under test control standard input carries commands, and its reader exits on its end.
         if !test_control::enabled() {

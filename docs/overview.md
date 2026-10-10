@@ -84,8 +84,6 @@ crates/
 ├── uc-webserver/         # axum HTTP + WebSocket 服务端
 ├── uc-daemon/            # Daemon 运行时库 + uniclipd 二进制
 ├── uc-daemon-client/     # Daemon HTTP/WS 客户端（GUI + CLI 共用）
-# ── GUI 桌面层 ──
-├── uc-desktop/           # 桌面宿主逻辑（GUI 框架无关）
 # ── CLI ──
 ├── uc-cli/               # uniclip 命令行工具
 ├── uc-cli-macros/        # CLI proc-macro 辅助

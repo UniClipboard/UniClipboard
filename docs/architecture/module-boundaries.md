@@ -20,8 +20,7 @@ This document defines the **responsibilities and boundaries** for each crate in 
 | `uc-webserver`     | Daemon HTTP + WebSocket API (axum)      | `uc-application` + `uc-core` + contract | ❌ GUI frameworks               |
 | `uc-daemon`        | Daemon runtime + `uniclipd` binary      | `uc-bootstrap` + webserver + all      | ❌ GUI frameworks (Tauri/AppKit)   |
 | `uc-daemon-client` | HTTP/WS client to daemon                | contract + process                    | ❌ iroh, diesel, sqlite            |
-| `uc-desktop`       | Desktop host logic (GUI-framework-agnostic) | daemon-client + contract + process | ❌ Tauri, AppKit, egui             |
-| 桌面宿主（Go/Wails，非 crate） | Desktop shell adapter (windows, tray) | `uc-desktop` + daemon-client + contract | ❌ `uc-application` directly     |
+| 桌面宿主（Go/Wails，非 crate） | Desktop shell adapter (windows, tray) | daemon-client + contract                | ❌ `uc-application` directly     |
 | `uc-cli`           | CLI `uniclip` binary                    | daemon-client + contract + process    | ❌ iroh, diesel (release builds)   |
 
 ## uc-core (Domain Layer)

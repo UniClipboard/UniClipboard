@@ -103,7 +103,7 @@ daemon 历史条目（`GET /clipboard/entries` 的 `file://` 预览）里；历�
 
 ### 启动模式与 quiet E2E
 
-`startup.go` 复刻 `crates/uc-desktop/src/startup/actions.rs` 的冷启动序列：补全设备名；仅当本次启动拉起了 daemon
+`startup.go` 复刻 `crates/uc-desktop/src/startup/actions.rs`（已随 crate 删除，见提交 `ed778b239f52c7da5c83532342e53b517e8e6bf9`）的冷启动序列：补全设备名；仅当本次启动拉起了 daemon
 （冷启动）时才做加密会话恢复与“恢复最近一条剪贴板”；复用已有 daemon（重开）时跳过两者。静默（Silent）与轻量
 （Lightweight）模式启动时不创建主窗口（隐藏的 Wails 窗口从未运行过时 `Show()` 不生效，因此主窗口改为首次需要时
 懒创建）；静默模式发送一条原生通知；轻量模式冷启动进入后台运行，轻量重开则显示窗口。
@@ -295,7 +295,7 @@ beta.28 在 Linux 默认链接 GTK4 + `webkitgtk-6.0`；构建标签 `gtk3` 切�
 | L3 | Wayland：不注册，用户在合成器绑定 `uniclipboard --quick-panel`，界面给出说明 | `shortcut_registry.rs:26-31,90-94` | **有** portal 后端（`global_shortcut_linux_portal.go`），但 `register` 恒返回 nil，失败只走应用错误处理，**无法确认已绑定**，最终按键由合成器决定 | 仍交给 Wails portal 请求；`quick_panel_uses_compositor_shortcuts` 在 Wayland 下恒为 true（`compositor_linux.go`），界面显示绑定说明；`--quick-panel` 经单实例到达 | 模拟 Wayland 环境（`WAYLAND_DISPLAY`/`XDG_SESSION_TYPE=wayland`，无 portal）：compositor 标志为 true、GUI 不崩溃（`xvfb-run6/7/8` 检查 9）；`--quick-panel` 转发见 L12；**portal 真实绑定与 Wayland 会话未验证** |
 | L4 | WebView 面板：显示/隐藏、失焦隐藏、聚焦、定位 | `quick_panel/mod.rs` | 窗口与屏幕 API | 复用既有 WebView 面板；Linux 的 `panelFocus` 用普通聚焦（无前台锁） | Xvfb 只证明显示/隐藏状态；**无窗口管理器，真实聚焦、失焦隐藏与位置未验证** |
 | L5 | Wayland Layer Shell 面板（覆盖层、全屏点击关闭背板、独占键盘） | `layer_shell.rs`、`linux.rs` | **无**（beta.28 源码全文检索零命中；只提供 `NativeWindow()`） | `internal/layershell`（cgo，`dlopen("libgtk-layer-shell.so.0")`，与 Tauri 同一成熟库，不手写协议）+ `panel_layer_linux.go`；隐藏面板在 realize 之前 `Attach`；每个输出一张透明背板，背板输入区域挖掉面板矩形，点击以 **释放** 事件关闭；显示时键盘独占，任何隐藏路径都释放键盘并销毁背板 | 容器内真实无头 sway（wlroots）：协议角色、overlay 层、命名空间、独占键盘、Esc 经真实前端关闭、点击面板内/外、每输出背板；`wayland-run9/10/11/12` 31/31。**Hyprland、GNOME、KDE、真实 GPU/桌面未验证**；缺库回退只证明回退可用（不算 L5 完成） |
-| L6 | Hyprland 光标定位与按显示器的可用区域/比例上限（90% 宽、80% 高） | `uc_desktop::hyprland`、`linux.rs:prepare_show` | 无 | `internal/hyprland` 的 `Cursor()`（`j/cursorpos`）+ `layerLayout`：光标所在输出（否则主显示器、再退到第 0 个）、该输出的工作区、90%/80% 上限、`axisAnchored` 的向前/翻转/夹紧、`windowScale` [0.8,1.5] | 两个不同尺寸/缩放/位置的 sway 输出，从合成器截图差分量出面板矩形并与独立重写的期望比较（含 720×400 小输出上限）；光标来自 **脚本化 Hyprland socket**，不是真实 Hyprland |
+| L6 | Hyprland 光标定位与按显示器的可用区域/比例上限（90% 宽、80% 高） | `uc_desktop::hyprland`（`ed778b239f52c7da5c83532342e53b517e8e6bf9` 中的 `crates/uc-desktop/src/hyprland.rs`，已删除）、`linux.rs:prepare_show` | 无 | `internal/hyprland` 的 `Cursor()`（`j/cursorpos`）+ `layerLayout`：光标所在输出（否则主显示器、再退到第 0 个）、该输出的工作区、90%/80% 上限、`axisAnchored` 的向前/翻转/夹紧、`windowScale` [0.8,1.5] | 两个不同尺寸/缩放/位置的 sway 输出，从合成器截图差分量出面板矩形并与独立重写的期望比较（含 720×400 小输出上限）；光标来自 **脚本化 Hyprland socket**，不是真实 Hyprland |
 | L7 | 粘贴到前一个应用：仅 Hyprland（记录活动窗口、校验、聚焦、确认、`send_shortcut`，终端用 Ctrl+Shift+V）；其他环境明确报“不支持” | `hyprland.rs`、`linux.rs` | **无** | `internal/hyprland`（同协议、同校验、同期限）+ `previous_app_linux.go`；非 Hyprland 返回 Tauri 的原文错误并重新显示面板；`type_file_paths` 明确不支持 | 脚本化 socket 契约 29/29（`linux_contract`，`contract/`）；Xvfb 整链（显示时记录活动窗口 → 校验 → 聚焦 → 确认 → `CTRL SHIFT V` 发到该地址，对脚本化 socket）通过；非 Hyprland 环境的明确错误通过；**真实 Hyprland 未验证**（`hl.dsp.*` 语法随 Hyprland 版本） |
 | L8 | 双击修饰键：仅原生 X11；有 `WAYLAND_DISPLAY`（含 XWayland）或无 `DISPLAY` 报 `unsupported_display_session` | `modifier_double_tap_platform.rs` | **无** 键盘状态接口 | `modifier_keys_linux.go`：cgo `XQueryKeymap`，选中键与其他键的快照语义与 Tauri 一致，复用既有检测器 | Xvfb 真实 XTEST：两次 Alt 轻击打开面板，Alt+ 其他键不算轻击；模拟 Wayland 环境返回 `unsupported_display_session` 并拒绝设置。采样为 20 ms 轮询，极短的按键会落在两次采样之间（见结果小节 run4） |
 | L9 | 开机自启：XDG `.desktop`，参数 `--autostart`，单 profile | `adapters/autostart.rs` | **有**：`autostart_linux.go` | 直接用 `app.Autostart`；**缺口**：AppImage 内 `os.Executable()` 是镜像临时挂载路径（`resolvedExecutable`，无覆盖项），故 AppImage 下自写同格式条目，`Exec=$APPIMAGE`（`autostart_linux.go`）；旧 Tauri 同名条目（Exec 指向其他程序）在对账时清理 | Xvfb 隔离 `XDG_CONFIG_HOME`：启用写出 `UniClipboard-<profile>.desktop`（`Exec` 指向本可执行文件，带 `--autostart`），停用删除（走 Wails 路径）。**AppImage 自写条目与旧 Tauri 条目清理未运行**；Tauri `auto-launch` 的文件名为 **推断** 未核实 |
@@ -405,7 +405,7 @@ UC_EXPECT_HEAD=$(git rev-parse HEAD) UC_LINUX_IMAGE=uc-package-build:ci apps/gui
 | 能否拿到原生窗口 | `linuxWebviewWindow.nativeWindow()` 返回 `GtkWindow*`（`webview_window_linux.go`），经 `Window.NativeWindow()` 公开 | 可以，不需要 fork Wails |
 | 窗口何时 realize | `run()` 里 `windowNew` 用 `gtk_application_window_new`，只有 `windowShow` 调用 `gtk_widget_realize`；`Hidden: true` 的窗口创建后保持 **未 realize** | 在 realize 之前对原生句柄初始化 Layer Shell 是可行的（须由真实运行验证，见失败方式 F1） |
 | 协议实现 | 不手写 `zwlr_layer_shell_v1`；使用成熟库 `libgtk-layer-shell`（GTK3，Ubuntu 24.04 为 0.8.2）。Go 侧没有可复用的成熟绑定（`gotk3` 系绑定要求 gotk3 对象，不能接 Wails 的原始指针） | 与 Tauri 相同：运行时 `dlopen("libgtk-layer-shell.so.0")`，不链接、不增加硬依赖；缺库时回退到普通窗口 |
-| 光标与活动窗口 | 沿用 `internal/hyprland`（与 `uc_desktop::hyprland` 同协议）并补 `Cursor()`（`j/cursorpos`） | 复用 |
+| 光标与活动窗口 | 沿用 `internal/hyprland`（与已删除的 `uc_desktop::hyprland` 同协议，见提交 `ed778b239f52c7da5c83532342e53b517e8e6bf9`）并补 `Cursor()`（`j/cursorpos`） | 复用 |
 
 接口保持最小：新包 `internal/layershell`（cgo，仅 Linux）只暴露 `Available`、`Attach`、`Place`、`Show`、`Hide` 之类对 `GtkWindow*` 的操作，所有调用在 GTK 主线程（`application.InvokeSync`）执行；定位、尺寸上限与光标选屏的数学在 Go 中，与 Tauri `layout()` 一致。
 

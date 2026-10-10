@@ -5,13 +5,12 @@ use std::path::{Path, PathBuf};
 use cargo_metadata::{DependencyKind, MetadataCommand};
 use syn::visit::Visit;
 
-const CONSUMER_PACKAGES: [&str; 9] = [
+const CONSUMER_PACKAGES: [&str; 8] = [
     "uc-bootstrap",
     "uc-dev-cli",
     "uc-daemon",
     "uc-daemon-client",
     "uc-daemon-contract",
-    "uc-desktop",
     "uc-observability",
     "uc-platform",
     "uc-webserver",
@@ -25,13 +24,12 @@ const INTERNAL_PACKAGES: [&str; 5] = [
     "uc-observability-contract",
 ];
 
-const PRODUCTION_SOURCE_ROOTS: [&str; 8] = [
+const PRODUCTION_SOURCE_ROOTS: [&str; 7] = [
     "tools/uc-dev-cli/src",
     "apps/daemon/src",
     "crates/uc-bootstrap/src",
     "crates/uc-daemon-client/src",
     "crates/uc-daemon-contract/src",
-    "crates/uc-desktop/src",
     "crates/uc-platform/src",
     "crates/uc-webserver/src/api",
 ];

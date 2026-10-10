@@ -2,6 +2,13 @@
 
 use std::io::{ErrorKind, Read};
 
+/// Command line flag telling the helper to exit once its standard input is closed.
+///
+/// The supervisor keeps the write end open while it runs, so an unclean GUI exit (crash, kill)
+/// still ends the helper: the operating system closes the pipe. The Go host passes it as
+/// `ExitWhenStdinCloses` in `packages/desktop-host-go/quickpanelhelper`.
+pub const EXIT_WHEN_STDIN_CLOSES: &str = "--exit-when-stdin-closes";
+
 /// Calls `on_closed` once `input` reaches end of file or fails, on a background thread.
 ///
 /// The supervising GUI keeps the write end of this process's standard input open for as long as

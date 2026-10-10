@@ -5,6 +5,8 @@ Failure modes and scope are recorded in the GUI host retirement document.
 This does not launch the GUI, touch the system clipboard or register services.
 """
 import argparse
+import ctypes
+import errno
 import hashlib
 import json
 import os
@@ -24,6 +26,24 @@ def sha256(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def executable_path(pid):
+    if sys.platform == 'linux':
+        try:
+            return Path(os.readlink(f'/proc/{pid}/exe')).resolve()
+        except FileNotFoundError:
+            return None
+    libproc = ctypes.CDLL('/usr/lib/libproc.dylib', use_errno=True)
+    libproc.proc_pidpath.argtypes = [ctypes.c_int, ctypes.c_void_p, ctypes.c_uint32]
+    libproc.proc_pidpath.restype = ctypes.c_int
+    buffer = ctypes.create_string_buffer(4096)
+    if libproc.proc_pidpath(pid, buffer, len(buffer)) > 0:
+        return Path(os.fsdecode(buffer.value)).resolve()
+    code = ctypes.get_errno()
+    if code == errno.ESRCH:
+        return None
+    raise OSError(code, os.strerror(code))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--out', required=True, type=Path)
@@ -35,11 +55,12 @@ def main():
     out = args.out.resolve()
     out.mkdir(parents=True, exist_ok=False)
     sandbox = Path(tempfile.mkdtemp(prefix='uc-profile-layout-'))
-    result = {'passed': False, 'sandbox': str(sandbox), 'platform': platform.platform(),
-              'head': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
-              'diffSha256': hashlib.sha256(subprocess.check_output(['git', 'diff', 'HEAD'], cwd=ROOT)).hexdigest(),
-              'inputs': {'cli': sha256(args.cli), 'daemon': sha256(args.daemon)}, 'cases': []}
+    result = {'passed': False, 'sandbox': str(sandbox), 'platform': platform.platform(), 'cases': []}
     try:
+        result['head'] = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
+        result['diffSha256'] = hashlib.sha256(subprocess.check_output(
+            ['git', 'diff', '--no-ext-diff', '--no-textconv', 'HEAD'], cwd=ROOT, timeout=120)).hexdigest()
+        result['inputs'] = {'cli': sha256(args.cli), 'daemon': sha256(args.daemon)}
         for case, profile, portable in [('unset', None, False), ('empty', '', False),
                                         ('explicit', 'gui-go-profile-layout', False),
                                         ('portable', 'gui-go-profile-layout', True)]:
@@ -79,9 +100,8 @@ def main():
                 conn = json.loads((data / 'daemon.conn').read_text())
                 record['pids'] = [conn['pid']]
                 # Confirm the path Go discovered was written by this sandbox's Rust daemon.
-                executable = (os.readlink(f'/proc/{conn["pid"]}/exe') if sys.platform == 'linux' else
-                              subprocess.check_output(['ps', '-p', str(conn['pid']), '-o', 'comm='], text=True).strip())
-                assert Path(executable).resolve() == daemon.resolve(), executable
+                executable = executable_path(conn['pid'])
+                assert executable == daemon.resolve(), executable
                 first = json.loads(run('space', 'status').stdout)
                 assert first, 'empty space status'
                 run('stop')
@@ -94,31 +114,28 @@ def main():
                 assert (data / 'keyring').is_dir(), 'development did not use the file keystore'
                 record.update({'statusBefore': first, 'statusAfter': second, 'passed': True})
             finally:
+                behavior_passed = record['passed']
+                record['passed'] = False
                 stopped = run('stop', check=False)
+                record['cleanupExit'] = stopped.returncode
                 alive = []
                 for pid in record.get('pids', []):
-                    if sys.platform == 'linux':
-                        try:
-                            running = os.readlink(f'/proc/{pid}/exe')
-                        except FileNotFoundError:
-                            running = ''
-                    else:
-                        p = subprocess.run(['ps', '-p', str(pid), '-o', 'comm='], capture_output=True, text=True)
-                        running = p.stdout.strip()
-                    if running == str(daemon):
+                    if executable_path(pid) == daemon.resolve():
                         alive.append(pid)
                 record['daemonPidsAliveAfterStop'] = alive
-                if alive:
-                    record['passed'] = False
-                    raise RuntimeError('sandbox daemon remains after stop')
-                record['cleanupExit'] = stopped.returncode
                 retained = out / case / 'logs'
                 retained.mkdir(parents=True)
                 if logs.is_dir():
                     for path in logs.glob('uniclipboard-daemon.json.*'):
                         if path.is_file():
                             shutil.copy2(path, retained / path.name)
+                if stopped.returncode or alive:
+                    raise RuntimeError(f'sandbox cleanup failed: stop={stopped.returncode}, live PIDs={alive}')
+                record['passed'] = behavior_passed
         result['passed'] = all(row['passed'] for row in result['cases'])
+    except subprocess.TimeoutExpired as error:
+        result['error'] = {'kind': 'subprocess_timeout', 'command': error.cmd, 'timeout': error.timeout}
+        raise
     finally:
         (out / 'assertions.json').write_text(json.dumps(result, indent=2) + '\n')
     print(json.dumps({'passed': result['passed'], 'cases': len(result['cases'])}))

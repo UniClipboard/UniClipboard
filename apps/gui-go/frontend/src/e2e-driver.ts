@@ -381,14 +381,26 @@ async function probeUnlockContract(secret: string) {
       isExpectedCommandError(viaWrapper.error),
     { observed: viaWrapper }
   )
-  // Wrong argument count: the framework rejects before the method runs. No payload, so a system error.
-  const malformed = await settle((HostService.UnlockContent as unknown as () => Promise<void>)())
+  // Wrong argument count (a call that bypasses the generated function): the framework rejects before the
+  // method runs. No payload, so it stays a plain Error and counts as a system error.
+  const malformed = await settle(Call.ByName('main.HostService.UnlockContent'))
   await record(
     'binding-malformed-call-is-system-error',
     malformed.status === 'error' &&
       malformed.raw.name === 'TypeError' &&
       !isExpectedCommandError(malformed.error),
     { observed: malformed }
+  )
+  // `null` where a value type is expected is not an error for Wails: it decodes to the zero value and the method
+  // runs (here an empty passphrase, which the daemon refuses like any wrong one). The generated signature is what
+  // keeps `undefined` and `null` out; the contract document lists this for every required parameter.
+  const nullArg = await settle(
+    (HostService.UnlockContent as unknown as (v: null) => Promise<void>)(null)
+  )
+  await record(
+    'binding-null-argument-decodes-to-zero-value',
+    nullArg.status === 'error' && (nullArg.error as { code?: string }).code === 'WRONG_PASSPHRASE',
+    { observed: nullArg }
   )
   await record('binding-still-locked-after-probes', (await contentUnlocked()) === false)
 }

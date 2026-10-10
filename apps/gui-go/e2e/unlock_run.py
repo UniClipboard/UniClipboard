@@ -26,7 +26,8 @@ MARKER = 'unlock-e2e-marker-entry'
 STEPS = ['locked-screen',
          # the generated binding itself, before any UI interaction
          'binding-wrong-passphrase-typed', 'wrapper-wrong-passphrase-user-facing',
-         'binding-malformed-call-is-system-error', 'binding-still-locked-after-probes',
+         'binding-malformed-call-is-system-error', 'binding-null-argument-decodes-to-zero-value',
+         'binding-still-locked-after-probes',
          # the shared pages on top of it
          'wrong-passphrase-rejected', 'still-locked-after-wrong-passphrase', 'right-passphrase-unlocked',
          'content-lock-changed-event']

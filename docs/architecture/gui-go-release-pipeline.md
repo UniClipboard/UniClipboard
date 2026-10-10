@@ -62,6 +62,17 @@ Windows CLI 归档：`build-cli` 作业只会用 `sign.py` 本地后端签名。
 
 **状态：结构已写好，从未与真实 SignPath 生产策略运行过；策略、证书、Environment 与 token 都未配置（只读核对见 `production-blocked` 证据）。生产签名验收 blocked，未配置时仍失败关闭。**
 
+## 无生产签名的 Windows alpha（显式、仅 alpha 的选择加入）
+
+生产 Windows 签名未到位时，维护者可以只为 alpha 发布未签名的 Windows 包。这是 [gui-go-windows-packaging.md](gui-go-windows-packaging.md) 里“暂不签名发布”一项的决定，由维护者做出，默认关闭：
+
+- 开关：仓库变量 `ALLOW_UNSIGNED_WINDOWS_ALPHA=true`（不设置就是失败关闭，原行为不变）。本任务不设置它。
+- 范围：只对版本形如 `X.Y.Z-alpha.N` 的发布生效；stable、beta、rc 即使设置了变量也照旧失败（前提门禁按 tag 判断，资产门禁按版本判断）。
+- 行为：`validate` 前提门禁在没有任何生产后端时放行并打印提示；`build.yml` 的 release 调用在没有后端时把 Windows 安装包、便携包与 CLI 压缩包按未签名构建（已配置的生产后端永远优先）；`release_gate.py assets --allow-unsigned-windows-alpha` 接受“`signed=false` 且无 signing 块”的 Windows 证据，并在索引写 `windowsSigning: unsigned-alpha`；发布说明自动加上“Windows 包未做代码签名，SmartScreen/杀毒软件可能告警，请核对 `SHA256SUMS.txt(.minisig)`”的警告。
+- 不放宽：测试证书（selftest、SignPath test-signing）、伪造的 `signed`/`signpath` 标签（无回执）、测试模式 artifact 仍然被拒绝；更新密钥前提仍然要求；macOS 与 Linux 的检查不变。
+- 用户影响：Windows 应用内更新仍由更新签名（minisign）验证，不依赖 Authenticode；但首次手动安装会遇到 SmartScreen 警告。winget、Chocolatey、Scoop 等只对 stable 触发的渠道不受影响。
+- 退出：生产后端配置好之后，同一条流水线自动走签名路径；把变量删除即恢复失败关闭。
+
 ## 失败模型与验证
 
 离线验收：`python3 -I apps/gui-go/e2e/release_assembly_run.py --out <新的空目录>`。它在合成的 `download-artifact` 目录树上运行上述同一批脚本，再用真实 Go 消费者经本地 HTTP 下载并验证六个平台。进程环境移除所有令牌，代理指向无效端口。`scope.json` 明确声明：包是合成的、更新密钥是一次性的、生产 Windows 签名未运行。
@@ -78,6 +89,7 @@ Windows CLI 归档：`build-cli` 作业只会用 `sign.py` 本地后端签名。
 | 签名后篡改 | 篡改字节后复验与真实消费者均拒绝；互换两个 `.sig` 被拒绝 |
 | 绕过生产公钥 | release 模式用一次性私钥签名，被 `app.json` 的生产公钥拒绝，且没有任何 `.sig` 写出 |
 | 伪造 signed 标签 | 没有任何回执；缺最终回执；回执对应别的 setup 字节；便携 zip 里的可执行文件被替换；`SHA256SUMS.txt` 哈希不符；回执放宽链信任、链不受信、状态非 `Valid`、`verify /pa` 失败、无时间戳、签名者混杂、`passed` 为 false；CLI 压缩包被替换；SignPath 的 CLI 无回执；回执签名者不是配置的生产证书；未给门禁生产指纹 |
+| 未签名 alpha 的开关被滥用 | 无开关时仍失败；stable/rc 标签与 stable 版本即使有开关也失败；测试证书 provider、伪造 signed 标签、测试 artifact 名在开关打开时仍被拒；开关不绕过更新密钥前提与坏后端 |
 | 缺少生产前提 | 无前提、后端为 `signpath-test`/`selftest`、缺更新私钥，均失败；只有两者都存在才通过（仅验证存在性） |
 
 预发布拼写 `1.3.0-alpha.1` 另在一份载体副本上整条链路重跑（`prerelease-*` 用例），因为仓库当前载体的版本由 prepare-release 决定。

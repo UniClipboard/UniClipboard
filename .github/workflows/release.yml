@@ -77,6 +77,9 @@ jobs:
           SIGNPATH_PRODUCTION_POLICY_SLUG: ${{ vars.SIGNPATH_PRODUCTION_POLICY_SLUG }}
           SIGNPATH_PRODUCTION_CERT_THUMBPRINT: ${{ vars.SIGNPATH_PRODUCTION_CERT_THUMBPRINT }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          # Opt-in for alpha only (a repository variable the maintainer sets; unset = fail closed). See docs/architecture/gui-go-release-pipeline.md.
+          ALLOW_UNSIGNED_WINDOWS_ALPHA: ${{ vars.ALLOW_UNSIGNED_WINDOWS_ALPHA }}
+          RELEASE_REF: ${{ github.event_name == 'push' && github.ref_name || format('v0-{0}', inputs.channel) }}
         run: python3 scripts/ci/release_gate.py prerequisites
 
       - name: Setup Node.js
@@ -182,6 +185,7 @@ jobs:
       branch: ${{ needs.validate.outputs.source_sha }}
       channel: ${{ needs.validate.outputs.channel }}
       package_cli: true
+      allow_unsigned_windows: ${{ vars.ALLOW_UNSIGNED_WINDOWS_ALPHA == 'true' && needs.validate.outputs.channel == 'alpha' }}
       # A release tag can land while cache-warmup.yml is still writing a
       # freshly-bumped Cargo.lock's cache, so the read-only release build
       # races it and loses to GHA cache LRU eviction (see t-0159). Writing
@@ -271,10 +275,18 @@ jobs:
             --base-url "${{ vars.UPDATE_SERVER_URL }}/artifacts/v${VERSION}" \
             --notes-file "docs/changelog/${VERSION}.md" \
             --zh-notes-file "docs/changelog/${VERSION}.zh.md" \
-            --registration-source "github-actions:${{ github.repository }}:${{ github.run_id }}"
+            --registration-source "github-actions:${{ github.repository }}:${{ github.run_id }}" \
+            ${{ vars.ALLOW_UNSIGNED_WINDOWS_ALPHA == 'true' && needs.validate.outputs.channel == 'alpha' && '--allow-unsigned-windows-alpha' || '' }}
           mv assembly/release-assets release-assets
           mkdir flare-release
           cp assembly/evidence/manifest.json assembly/evidence/registration.json flare-release/
+
+      - name: Record how the Windows packages are signed
+        id: windows-signing
+        run: |
+          MODE="$(python3 -c "import json;print(json.load(open('assembly/evidence/assembly-index.json'))['windowsSigning'])")"
+          echo "mode=$MODE" >> "$GITHUB_OUTPUT"
+          if [ "$MODE" = "unsigned-alpha" ]; then echo "unsigned=true" >> "$GITHUB_OUTPUT"; echo "::warning::The Windows packages in this alpha are NOT code-signed (ALLOW_UNSIGNED_WINDOWS_ALPHA)."; fi
 
       - name: Archive updater verification evidence
         uses: actions/upload-artifact@v7
@@ -392,6 +404,7 @@ jobs:
             --artifacts-dir "release-assets" \
             --template ".github/release-notes/release.md.tmpl" \
             --generated-notes-file "generated-notes.md" \
+            ${{ steps.windows-signing.outputs.unsigned == 'true' && '--windows-unsigned true' || '' }} \
             --output "release-notes.md"
 
       - name: Create GitHub Release

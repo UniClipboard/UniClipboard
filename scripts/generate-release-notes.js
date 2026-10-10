@@ -11,6 +11,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     previousTag: null,
     channel: 'stable',
     isPrerelease: false,
+    windowsUnsigned: false,
     artifactsDir: null,
     template: null,
     output: null,
@@ -34,6 +35,9 @@ function parseArgs(argv = process.argv.slice(2)) {
       index += 1
     } else if (arg === '--channel' && next) {
       options.channel = next
+      index += 1
+    } else if (arg === '--windows-unsigned' && next) {
+      options.windowsUnsigned = next === 'true'
       index += 1
     } else if (arg === '--is-prerelease' && next) {
       options.isPrerelease = next === 'true'
@@ -342,12 +346,16 @@ function buildNewContributorsSection(generatedNotesFile) {
   return `\n## New Contributors\n\n${body}\n`
 }
 
-function buildPrereleaseWarning(isPrerelease, channel) {
+function buildPrereleaseWarning(isPrerelease, channel, windowsUnsigned = false) {
   if (!isPrerelease) {
     return ''
   }
 
-  return `\n## ⚠️ Prerelease Warning\n\nThis is a **${channel}** release and may contain bugs or incomplete features.\nNot recommended for production use. Please report issues on GitHub.\n`
+  const unsigned = windowsUnsigned
+    ? '\n## ⚠️ Windows packages are not code-signed\n\nThe Windows installer, portable zip and CLI archive in this release are **not code-signed**. Windows SmartScreen or antivirus software may warn about them. Verify the downloads against `SHA256SUMS.txt` (and `SHA256SUMS.txt.minisig`). In-app updates are still verified with the updater signature.\n'
+    : ''
+
+  return `\n## ⚠️ Prerelease Warning\n\nThis is a **${channel}** release and may contain bugs or incomplete features.\nNot recommended for production use. Please report issues on GitHub.\n${unsigned}`
 }
 
 function renderTemplate(template, replacements) {
@@ -406,7 +414,7 @@ export function generateReleaseNotes(options) {
         englishExists,
         chineseExists,
       }),
-      IS_PRERELEASE_WARNING: buildPrereleaseWarning(options.isPrerelease, options.channel),
+      IS_PRERELEASE_WARNING: buildPrereleaseWarning(options.isPrerelease, options.channel, options.windowsUnsigned),
       INSTALLER_TABLE: installerTable,
       CLI_INSTALLER_TABLE: cliInstallerTable,
       NEW_CONTRIBUTORS_SECTION: buildNewContributorsSection(options.generatedNotesFile),

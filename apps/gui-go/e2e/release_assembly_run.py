@@ -453,6 +453,52 @@ def main():
         assemble('negative-prerelease-evidence-from-another-commit', variant_tree, base / 'prerelease-wrong-sha', source_record_path=pre_record,
                  sha=pre_sha, ver=pre_version, want_ok=False, contains='not the pinned source')
 
+        # ---- unsigned Windows alpha: an explicit, alpha-only opt-in. It never weakens any other check. ----
+        def make_unsigned(t, windows_providers=None):
+            """Windows evidence as the unsigned path writes it: signed=false, no signing block, no receipts."""
+            for arch in ('amd64', 'arm64'):
+                d = t / f'windows-gui-evidence-{arch}-{RUN_ID}/windows-gui'
+                f = d / 'shipped/package-manifest.json'
+                doc = json.loads(f.read_text())
+                doc.update(signed=False, signing=None)
+                f.write_text(json.dumps(doc))
+                for n in ('signatures.json', 'signatures-stage1.json', 'signatures-stage2.json', 'signatures-cli.json'):
+                    (d / n).unlink(missing_ok=True)
+        un_tree = base / 'unsigned-alpha-artifacts'
+        build_tree(un_tree, pre_version, pre_sha)
+        make_unsigned(un_tree)
+        un_work = base / 'unsigned-alpha'
+        assemble('unsigned-alpha-accepted-with-explicit-opt-in', un_tree, un_work, source_record_path=pre_record, sha=pre_sha, ver=pre_version,
+                 extra=['--allow-unsigned-windows-alpha'])
+        un_index = json.loads((un_work / 'evidence/assembly-index.json').read_text())
+        run.assert_('the index records that the Windows packages are unsigned', un_index['windowsSigning'] == 'unsigned-alpha')
+        assemble('negative-unsigned-alpha-without-opt-in', un_tree, base / 'unsigned-alpha-no-flag', source_record_path=pre_record, sha=pre_sha,
+                 ver=pre_version, want_ok=False, contains='requires a production signature')
+        st_tree = base / 'unsigned-stable-artifacts'
+        build_tree(st_tree, version, head)
+        make_unsigned(st_tree)
+        assemble('negative-unsigned-for-a-non-alpha-version-even-with-opt-in', st_tree, base / 'unsigned-stable', want_ok=False,
+                 extra=['--allow-unsigned-windows-alpha'], contains='alpha releases only')
+        for label, mutate, text in (
+                ('selftest-provider', lambda t: windows_manifest('selftest')(t), 'requires a production signature'),
+                ('signpath-test-provider', lambda t: windows_manifest('signpath-test')(t), 'requires a production signature'),
+                ('forged-signed-label-without-receipts', lambda t: (make_unsigned(t), windows_manifest('signed')(t)), 'alone proves nothing'),
+                ('test-signed-artifact-name', lambda t: write(t / f'windows-gui-evidence-amd64-{RUN_ID}-signpath-test/x.json', '{}'), 'test-mode or test-signed')):
+            t = base / f'unsigned-opt-in-{label}-artifacts'
+            build_tree(t, pre_version, pre_sha)
+            mutate(t)
+            assemble(f'negative-opt-in-does-not-relax-{label}', t, base / f'unsigned-opt-in-{label}', source_record_path=pre_record, sha=pre_sha,
+                     ver=pre_version, extra=['--allow-unsigned-windows-alpha'], want_ok=False, contains=text)
+        # release notes: the unsigned state must be said to the users
+        notes_out = lambda name: out / 'cases' / name
+        for flag, name in (('true', 'notes-unsigned.md'), ('false', 'notes-signed.md')):
+            run.exec(f'release-notes-windows-unsigned-{flag}', ['node', ROOT / 'scripts/generate-release-notes.js', '--version', pre_version,
+                     '--repo', 'example/repo', '--previous-tag', 'v0.0.0', '--channel', 'alpha', '--is-prerelease', 'true',
+                     '--artifacts-dir', un_work / 'release-assets', '--template', ROOT / '.github/release-notes/release.md.tmpl',
+                     '--windows-unsigned', flag, '--mobile-android-release-url', 'https://example.invalid/mobile', '--output', notes_out(name)])
+        run.assert_('release notes say the Windows packages are not code-signed only when they are',
+                    'not code-signed' in notes_out('notes-unsigned.md').read_text() and 'not code-signed' not in notes_out('notes-signed.md').read_text())
+
         # ---- release mode keeps every strictness ----
         run.exec('release-mode-refuses-fixture-signer', ['python3', '-I', ASSEMBLE, '--artifacts', tree, '--work', base / 'rm1', '--version', version,
                  '--channel', 'alpha', '--source-sha', head, '--source-record', record, '--base-url', 'http://127.0.0.1:1', '--notes-file', notes,
@@ -476,6 +522,13 @@ def main():
         pre('prerequisites-selftest-backend', {'WINDOWS_SIGN_BACKEND': 'selftest', 'TAURI_SIGNING_PRIVATE_KEY': 'k'}, False, 'WINDOWS_SIGN_BACKEND')
         pre('prerequisites-no-updater-key', {'WINDOWS_SIGN_BACKEND': 'azure'}, False, 'TAURI_SIGNING_PRIVATE_KEY')
         pre('prerequisites-presence-only-passes', {'WINDOWS_SIGN_BACKEND': 'azure', 'TAURI_SIGNING_PRIVATE_KEY': 'k'}, True)
+        un = {'TAURI_SIGNING_PRIVATE_KEY': 'k', 'ALLOW_UNSIGNED_WINDOWS_ALPHA': 'true', 'RELEASE_REF': 'v1.2.0-alpha.1'}
+        pre('prerequisites-unsigned-alpha-with-explicit-opt-in-passes', un, True)
+        pre('prerequisites-unsigned-opt-in-refused-for-stable-tag', dict(un, RELEASE_REF='v1.2.0'), False, 'No production Windows code-signing backend')
+        pre('prerequisites-unsigned-opt-in-refused-for-rc-tag', dict(un, RELEASE_REF='v1.2.0-rc.1'), False, 'No production Windows code-signing backend')
+        pre('prerequisites-unsigned-alpha-without-opt-in-fails', dict(un, ALLOW_UNSIGNED_WINDOWS_ALPHA=''), False, 'No production Windows code-signing backend')
+        pre('prerequisites-opt-in-still-needs-the-updater-key', dict(un, TAURI_SIGNING_PRIVATE_KEY=''), False, 'TAURI_SIGNING_PRIVATE_KEY')
+        pre('prerequisites-opt-in-does-not-hide-a-bad-backend', dict(un, WINDOWS_SIGN_BACKEND='signpath-test'), False, 'must be azure or pfx')
         pre('prerequisites-pfx-passes', {'WINDOWS_SIGN_BACKEND': 'pfx', 'TAURI_SIGNING_PRIVATE_KEY': 'k'}, True)
         sp = {'TAURI_SIGNING_PRIVATE_KEY': 'k', 'SIGNPATH_PRODUCTION_POLICY_SLUG': 'fixture-production-policy', 'SIGNPATH_PRODUCTION_CERT_THUMBPRINT': 'C' * 40}
         pre('prerequisites-signpath-production-structure-passes', sp, True)

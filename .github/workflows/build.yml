@@ -102,6 +102,14 @@ on:
         required: false
         type: boolean
         default: true
+      allow_unsigned_windows:
+        description: >-
+          Alpha releases only, set by release.yml from the repository variable ALLOW_UNSIGNED_WINDOWS_ALPHA: when no production Windows
+          signing backend is configured, package the Windows installers, portable zips and CLI archive unsigned instead of failing.
+          A configured production backend always wins. Test certificates are still refused.
+        required: false
+        type: boolean
+        default: false
       package_cli:
         description: >-
           Also package the CLI archive for macOS and Windows x64 from this
@@ -822,6 +830,7 @@ jobs:
           SIGNPATH_TEST: ${{ inputs.signpath_test_signing == true }}
           IS_CALL: ${{ inputs.require_signing == true }}
           SIGNPATH_PRODUCTION_POLICY: ${{ vars.SIGNPATH_PRODUCTION_POLICY_SLUG }}
+          ALLOW_UNSIGNED: ${{ inputs.allow_unsigned_windows == true }}
         run: |
           # unsigned | selftest (throwaway certificate) | signpath-test (SignPath test-signing) | signed (azure | pfx through sign.py)
           # | signpath (SignPath production policy, release calls only)
@@ -842,6 +851,9 @@ jobs:
             echo "mode=signpath" >> "$GITHUB_OUTPUT"; echo "sfx=" >> "$GITHUB_OUTPUT"
           elif [ -n "$SIGN_BACKEND" ]; then
             echo "mode=signed" >> "$GITHUB_OUTPUT"; echo "sfx=" >> "$GITHUB_OUTPUT"
+          elif [ "$IS_CALL" = "true" ] && [ "$ALLOW_UNSIGNED" = "true" ]; then
+            echo "::warning::No production Windows code-signing backend is configured; packaging UNSIGNED Windows installers because this is an alpha release and ALLOW_UNSIGNED_WINDOWS_ALPHA is set."
+            echo "mode=unsigned" >> "$GITHUB_OUTPUT"; echo "sfx=" >> "$GITHUB_OUTPUT"
           elif [ "$IS_CALL" = "true" ]; then
             echo "::error::No Windows code-signing backend is configured (WINDOWS_SIGN_BACKEND); refusing to package unsigned Windows installers for a release."
             exit 1
@@ -1452,7 +1464,7 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           # Windows: uniclip.exe and uniclipd.exe are signed one by one (package-cli.sh). A release must not ship them
           # unsigned; the GUI installer's signature covers nothing in this archive. Test certificates are never used here.
-          REQUIRE_WINDOWS_SIGNED: ${{ inputs.require_signing == true && '1' || '' }}
+          REQUIRE_WINDOWS_SIGNED: ${{ inputs.require_signing == true && inputs.allow_unsigned_windows != true && '1' || '' }}
           SIGN_BACKEND: ${{ secrets.WINDOWS_SIGN_BACKEND }}
           AZURE_SIGN_ENDPOINT: ${{ secrets.AZURE_SIGN_ENDPOINT }}
           AZURE_SIGN_ACCOUNT: ${{ secrets.AZURE_SIGN_ACCOUNT }}

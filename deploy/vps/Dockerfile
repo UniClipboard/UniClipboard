@@ -68,8 +68,11 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 # toolchain; GOTOOLCHAIN=auto fetches the pinned toolchain when this image's Go
 # is older.
 FROM golang:1.26-alpine AS cli-builder
+ENV GOTOOLCHAIN=auto
 WORKDIR /src/apps/cli-go
 COPY apps/cli-go/ ./
+# Preserve the repo-relative replacement declared by apps/cli-go/go.mod.
+COPY packages/desktop-host-go/ /src/packages/desktop-host-go/
 RUN CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o /uniclip ./cmd/uniclip
 
 # ── runtime ──────────────────────────────────────────────────────────────────

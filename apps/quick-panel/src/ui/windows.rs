@@ -6,7 +6,7 @@ impl Panel {
     pub(super) fn hide_preview(&mut self, cx: &mut Context<Self>) {
         if let Some(handle) = self.preview_window {
             if handle
-                .update(cx, |_, window, _| platform::set_visible(window, false))
+                .update(cx, |_, window, cx| platform::set_visible(window, false, cx))
                 .is_err()
             {
                 tracing::warn!("Preview window is unavailable");

@@ -38,7 +38,7 @@ impl PasteTarget for NoPasteTarget {
     }
 }
 
-pub fn capture_paste_target() -> Rc<dyn PasteTarget> {
+pub fn capture_paste_target(_: &gpui::App) -> Rc<dyn PasteTarget> {
     Rc::new(NoPasteTarget)
 }
 
@@ -56,7 +56,11 @@ pub fn reveal_path(_: &str) -> Result<(), PlatformError> {
     Err(PlatformError::Unsupported)
 }
 
-pub fn set_visible(window: &gpui::Window, visible: bool) -> Result<(), PlatformError> {
+pub fn set_visible(
+    window: &gpui::Window,
+    visible: bool,
+    _: &gpui::App,
+) -> Result<(), PlatformError> {
     if visible {
         window.activate_window();
         Ok(())
@@ -65,8 +69,8 @@ pub fn set_visible(window: &gpui::Window, visible: bool) -> Result<(), PlatformE
     }
 }
 
-pub fn show_without_focus(window: &gpui::Window) -> Result<(), PlatformError> {
-    set_visible(window, true)
+pub fn show_without_focus(window: &gpui::Window, cx: &gpui::App) -> Result<(), PlatformError> {
+    set_visible(window, true, cx)
 }
 
 pub fn set_frame(

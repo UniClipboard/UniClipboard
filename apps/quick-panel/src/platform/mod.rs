@@ -9,9 +9,14 @@ mod macos;
 #[cfg(target_os = "macos")]
 use macos as imp;
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "windows")]
+mod win32;
+#[cfg(target_os = "windows")]
+use win32 as imp;
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 mod fallback;
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 use fallback as imp;
 
 pub use imp::{

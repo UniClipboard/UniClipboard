@@ -18,7 +18,7 @@ pub fn open_panel(
     host: Arc<dyn HostLink>,
     message: Option<String>,
 ) -> anyhow::Result<(gpui::AnyWindowHandle, gpui::Entity<Panel>)> {
-    let target = platform::capture_paste_target();
+    let target = platform::capture_paste_target(cx);
     let bounds = Bounds::centered(
         None,
         size(px(PANEL_WIDTH as f32), px(PANEL_HEIGHT as f32)),

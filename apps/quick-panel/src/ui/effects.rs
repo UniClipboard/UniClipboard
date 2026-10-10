@@ -53,26 +53,26 @@ impl Panel {
         match effect {
             Effect::Reposition => self.position(window, cx),
             Effect::Layout => self.layout(window, cx),
-            Effect::CaptureTarget => self.target = platform::capture_paste_target(),
+            Effect::CaptureTarget => self.target = platform::capture_paste_target(cx),
             Effect::ApplyTheme => {
                 if crate::ui::appearance::apply(self.general.as_ref(), window, cx).is_err() {
                     tracing::warn!("Could not apply quick panel theme settings");
                 }
             }
             Effect::ShowWindow => {
-                if let Err(error) = platform::set_visible(window, true) {
+                if let Err(error) = platform::set_visible(window, true, cx) {
                     return self.feed(Event::WindowFailed(error), window, cx);
                 }
             }
             Effect::HideWindow => {
-                let event = match platform::set_visible(window, false) {
+                let event = match platform::set_visible(window, false, cx) {
                     Ok(()) => Event::WindowHidden,
                     Err(error) => Event::WindowFailed(error),
                 };
                 return self.feed(event, window, cx);
             }
             Effect::RaiseWindow => {
-                let _ = platform::set_visible(window, true);
+                let _ = platform::set_visible(window, true, cx);
             }
             Effect::ReturnFocus => self.target.return_focus(),
             Effect::ShowPreviewWindow => self.show_preview(window, cx),
@@ -213,7 +213,10 @@ impl Panel {
                 self.tasks.paste = Some(cx.spawn_in(window, async move |this, cx| {
                     cx.background_executor().timer(delay).await;
                     let event = match target.paste() {
-                        Err(error) => Event::PasteFailed(error),
+                        Err(error) => {
+                            tracing::warn!("Quick panel paste failed: {error:?}");
+                            Event::PasteFailed(error)
+                        }
                         Ok(()) => {
                             if keep_open {
                                 cx.background_executor().timer(timing::RAISE_DELAY).await;
@@ -229,6 +232,7 @@ impl Panel {
                 self.tasks.paste = Some(cx.spawn_in(window, async move |this, cx| {
                     cx.background_executor().timer(delay).await;
                     if let Err(error) = target.type_text(&text) {
+                        tracing::warn!("Quick panel typing failed: {error:?}");
                         let _ = this.update_in(cx, |this, window, cx| {
                             this.deliver(Event::PasteFailed(error), window, cx);
                         });

@@ -8458,6 +8458,7 @@ dependencies = [
  "uc-app-paths",
  "uc-daemon-client",
  "uc-daemon-contract",
+ "windows 0.61.3",
  "wiremock",
 ]
 

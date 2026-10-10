@@ -1,4 +1,5 @@
 import * as HostService from '@host/hostservice'
+import { InstallKind, QuickPanelDoubleTapModifier } from '@host/models'
 import {
   isPermissionGranted,
   requestPermission,
@@ -14,7 +15,6 @@ import { setQuickPanelEnabled, setQuickPanelPosition } from '@/api/tauri-command
 import i18n from '@/i18n'
 import { daemonWs } from '@/lib/daemon-ws'
 import { commands } from '@/lib/ipc'
-import { commands as legacyCommands } from '@/lib/ipc-bindings.generated'
 import { isExpectedCommandError } from '@/observability/errors'
 
 const windowName = 'main'
@@ -199,8 +199,8 @@ async function run() {
   await control('close-main')
   await control('reopen-main')
   // The WebView survived the hide/show cycle with its React state and host bindings intact.
-  const pid = await Call.ByName('main.HostService.Invoke', 'get_tauri_pid', {})
-  await record('webview-alive-after-reopen', !!(pid as { ok: boolean }).ok && !!link('/settings'))
+  const alive = await settle(HostService.GetDeviceMeta())
+  await record('webview-alive-after-reopen', alive.status === 'ok' && !!link('/settings'))
   // Second windows: the real updater (dev preview) and quick panel pages.
   await control('open-updater')
   await sleep(3000)
@@ -598,15 +598,21 @@ async function runQuickPanelSettingsScenario() {
   await setQuickPanelEnabled(true)
   await show('reenabled')
   // The generated binding reports command failures as a result value rather than throwing.
-  const refused = await legacyCommands.setQuickPanelDoubleTapModifier('alt', null)
+  const refused = await settle(
+    HostService.SetQuickPanelDoubleTapModifier(QuickPanelDoubleTapModifier.DoubleTapModifierAlt)
+  )
   await record(
     'double-tap-unavailable-rejected',
-    refused.status === 'error' && refused.error.code === 'Conflict',
+    refused.status === 'error' && (refused.error as { code?: string }).code === 'Conflict',
     {
       result: refused,
     }
   )
-  const accepted = await legacyCommands.setQuickPanelDoubleTapModifier('disabled', null)
+  const accepted = await settle(
+    HostService.SetQuickPanelDoubleTapModifier(
+      QuickPanelDoubleTapModifier.DoubleTapModifierDisabled
+    )
+  )
   await record('double-tap-disabled-accepted', accepted.status === 'ok', {
     result: accepted,
   })
@@ -626,18 +632,19 @@ async function runNativePanelScenario() {
   await setQuickPanelEnabled(true)
   await sleep(4000)
   await record('act-shortcut', true)
-  const shortcut = await legacyCommands.updateKeyboardShortcuts(
-    { 'global.toggleQuickPanel': 'Ctrl+Alt+Space' },
-    null
+  const shortcut = await settle(
+    HostService.UpdateKeyboardShortcuts({ 'global.toggleQuickPanel': 'Ctrl+Alt+Space' })
   )
   await record('shortcut-saved', shortcut.status === 'ok', {
     result: shortcut,
   })
   await sleep(4000)
   await record('act-double-tap', true)
-  const tap = await legacyCommands.setQuickPanelDoubleTapModifier('alt', null)
+  const tap = await settle(
+    HostService.SetQuickPanelDoubleTapModifier(QuickPanelDoubleTapModifier.DoubleTapModifierAlt)
+  )
   await record('double-tap-saved', tap.status === 'ok', { result: tap })
-  const availability = await legacyCommands.getQuickPanelDoubleTapAvailability(null)
+  const availability = await settle(HostService.GetQuickPanelDoubleTapAvailability())
   await record('double-tap-availability', availability.status === 'ok', {
     result: availability,
   })
@@ -739,33 +746,33 @@ async function runFileOpsScenario() {
     const r = await call
     await record(step, accept(r), { result: r })
   }
-  const png = [137, 80, 78, 71, 13, 10, 26, 10, 0, 1, 2, 3]
-  const picked = await legacyCommands.pickDirectory(null)
+  const pngBytes = [137, 80, 78, 71, 13, 10, 26, 10, 0, 1, 2, 3]
+  // Go `[]byte` crosses the bridge as base64.
+  const png = btoa(String.fromCharCode(...pngBytes))
+  const pngHead = btoa(String.fromCharCode(...pngBytes.slice(0, 4)))
+  const picked = await settle(HostService.PickDirectory())
   await record('pick-directory-chosen', picked.status === 'ok', {
     result: picked,
   })
-  await result('pick-directory-cancelled', legacyCommands.pickDirectory(null))
-  await result('save-image-cancelled', legacyCommands.saveImageAs('a.png', png, null))
-  await result('save-image-saved', legacyCommands.saveImageAs('../../x/shot.png', png, null))
+  await result('pick-directory-cancelled', settle(HostService.PickDirectory()))
+  await result('save-image-cancelled', settle(HostService.SaveImageAs('a.png', png)))
+  await result('save-image-saved', settle(HostService.SaveImageAs('../../x/shot.png', png)))
   await result(
     'open-image-first',
-    legacyCommands.openImageExternally('../../etc/first.png', png, null)
+    settle(HostService.OpenImageExternally('../../etc/first.png', png))
   )
-  await result(
-    'open-image-second',
-    legacyCommands.openImageExternally('second.png', png.slice(0, 4), null)
-  )
-  await result('open-data-directory', legacyCommands.openDataDirectory(null))
-  await result('open-logs-directory', legacyCommands.openLogsDirectory(null))
+  await result('open-image-second', settle(HostService.OpenImageExternally('second.png', pngHead)))
+  await result('open-data-directory', settle(HostService.OpenDataDirectory()))
+  await result('open-logs-directory', settle(HostService.OpenLogsDirectory()))
   const existing = picked.status === 'ok' && picked.data ? picked.data : ''
-  await result('reveal-existing', legacyCommands.revealPath(existing, null))
+  await result('reveal-existing', settle(HostService.RevealPath(existing)))
   await result(
     'reveal-missing',
-    legacyCommands.revealPath('/definitely/not/here', null),
+    settle(HostService.RevealPath('/definitely/not/here')),
     r => r.status === 'error' && r.error.code === 'NotFound'
   )
-  await result('export-logs-cancelled', legacyCommands.exportStartupLogs(null))
-  await result('export-logs-saved', legacyCommands.exportStartupLogs(null))
+  await result('export-logs-cancelled', settle(HostService.ExportStartupLogs()))
+  await result('export-logs-saved', settle(HostService.ExportStartupLogs()))
   await control('exit')
 }
 
@@ -790,39 +797,39 @@ async function runConfigExportScenario() {
   )
   const exported = await step(
     'export',
-    legacyCommands.exportConfigPackage(null),
+    settle(HostService.ExportConfigPackage()),
     r => r.status === 'ok'
   )
   const bundle = exported.data?.path as string
   await step(
     'export-cancelled',
-    legacyCommands.exportConfigPackage(null),
+    settle(HostService.ExportConfigPackage()),
     r => r.status === 'error' && r.error.kind === 'cancelled'
   )
   const picked = await step(
     'pick-bundle',
-    legacyCommands.pickConfigBundlePath(null),
+    settle(HostService.PickConfigBundlePath()),
     r => r.status === 'ok' && r.data === bundle
   )
   await step(
     'pick-bundle-cancelled',
-    legacyCommands.pickConfigBundlePath(null),
+    settle(HostService.PickConfigBundlePath()),
     r => r.status === 'ok' && r.data === null
   )
   await step(
     'preview-wrong-password',
-    legacyCommands.previewConfigImport('definitely-wrong', picked.data, null),
+    settle(HostService.PreviewConfigImport('definitely-wrong', picked.data)),
     r => r.status === 'error' && r.error.kind === 'daemon'
   )
   await step(
     'preview',
-    legacyCommands.previewConfigImport(passphrase, bundle, null),
+    settle(HostService.PreviewConfigImport(passphrase, bundle)),
     r => r.status === 'ok' && !!r.data.profileId && !!r.data.appVersion
   )
   await setQuickPanelPosition('center')
   await step(
     'import-staged',
-    legacyCommands.importConfigPackage(passphrase, bundle, null),
+    settle(HostService.ImportConfigPackage(passphrase, bundle)),
     r => r.status === 'ok' && r.data.stagedOk === true
   )
   await control('exit')
@@ -833,12 +840,12 @@ async function runConfigExportScenario() {
 async function runAutostartScenario(phase: string) {
   await waitFor('app root content', () => document.getElementById('root')?.children.length)
   const set = async (step: string, enabled: boolean, accept: (r: any) => boolean) => {
-    const r = await legacyCommands.updateAutostart(enabled, null)
+    const r = await settle(HostService.UpdateAutostart(enabled))
     await record(step, accept(r), { result: r })
   }
   // Records the outcome either way: the orchestrator decides what the platform mechanism is allowed to say.
   const attempt = async (step: string, enabled: boolean) => {
-    const r = await legacyCommands.updateAutostart(enabled, null)
+    const r = await settle(HostService.UpdateAutostart(enabled))
     await record(step, true, { result: r })
   }
   if (phase === 'autostart' || phase === 'autostart-bundle') {
@@ -898,7 +905,7 @@ async function runTrayDevicesScenario() {
   await control('tray-language-quiet:5000')
   await record('tray-driver-progress', true, 'after-quiet')
   await record('tray-driver-progress', true, 'call-start')
-  const pending = legacyCommands.setTrayLanguage('en', null)
+  const pending = settle(HostService.SetTrayLanguage('en'))
   void sleep(3000).then(() => record('tray-driver-progress', true, 'call-pending-after-3s'))
   const english = await pending
   await record('tray-driver-progress', true, 'call-returned')
@@ -907,7 +914,7 @@ async function runTrayDevicesScenario() {
   await control('tray-devices-wait:tray-peer-b')
   await control('tray-device-click:tray-peer-b')
   await control('tray-device-click:tray-peer-b')
-  const language = await legacyCommands.setTrayLanguage('zh-CN', null)
+  const language = await settle(HostService.SetTrayLanguage('zh-CN'))
   await record('tray-language-set', language.status === 'ok')
   await control('tray-menu:zh')
   const granted = await isPermissionGranted()
@@ -987,9 +994,12 @@ async function runLinuxPackageUpdateScenario() {
     )!
     .click()
   await waitFor('telemetry notice dismissed', () => !consent.isConnected)
-  const kind = await legacyCommands.getInstallKind(null)
+  const kind = await settle(HostService.GetInstallKind())
   await record('package-install-kind', kind.status === 'ok', kind)
-  if (kind.status !== 'ok' || (kind.data !== 'deb' && kind.data !== 'rpm')) {
+  if (
+    kind.status !== 'ok' ||
+    (kind.data !== InstallKind.InstallKindDeb && kind.data !== InstallKind.InstallKindRPM)
+  ) {
     throw new Error('expected an installed deb or rpm')
   }
   await navigate(

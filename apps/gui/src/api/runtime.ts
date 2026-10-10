@@ -1,8 +1,8 @@
 import { commands } from '@/lib/ipc'
 import type { DeviceMeta as GeneratedDeviceMeta } from '@/lib/ipc'
 
-export async function getDeviceId(): Promise<string> {
-  return await commands.getDeviceId()
+export async function getDeviceID(): Promise<string> {
+  return await commands.getDeviceID()
 }
 
 /**

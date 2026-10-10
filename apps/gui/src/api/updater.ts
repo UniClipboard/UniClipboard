@@ -1,12 +1,13 @@
-import { Channel } from '@tauri-apps/api/core'
+import {
+  DownloadEventKind,
+  DownloadPhase as HostDownloadPhase,
+  type DownloadEvent as HostDownloadEvent,
+  type DownloadProgressSnapshot as HostDownloadProgressSnapshot,
+} from '@host/models'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
+import type { UiInstallKind } from '@/api/generated/types.gen'
 import { commands } from '@/lib/ipc'
-import type {
-  DownloadEvent as GeneratedDownloadEvent,
-  DownloadProgressSnapshot as GeneratedDownloadProgressSnapshot,
-  InstallKind as GeneratedInstallKind,
-  UpdateMetadata as GeneratedUpdateMetadata,
-} from '@/lib/ipc'
+import type { UpdateMetadata as GeneratedUpdateMetadata } from '@/lib/ipc'
 import { createLogger } from '@/lib/logger'
 import type { UpdateChannel } from '@/types/setting'
 
@@ -16,6 +17,9 @@ const log = createLogger('updater')
  * Host event name for background download progress, emitted by the desktop host updater.
  */
 export const UPDATE_PROGRESS_EVENT = 'update-download-progress'
+
+/** Host event name carrying the progress of one `install_update` call. */
+export const UPDATE_INSTALL_EVENT = 'update-install-progress'
 
 /**
  * Host event name carrying the result of an update check, emitted by the desktop host updater.
@@ -28,11 +32,52 @@ export const UPDATE_AVAILABLE_EVENT = 'update-available'
 // sites don't have to follow a rename. Generated types are the source of
 // truth (see `src/lib/ipc.ts`).
 export type UpdateMetadata = GeneratedUpdateMetadata
-export type DownloadEvent = GeneratedDownloadEvent
-export type DownloadProgressSnapshot = GeneratedDownloadProgressSnapshot
-export type InstallKind = GeneratedInstallKind
+export type InstallKind = UiInstallKind
 
 export type DownloadPhase = 'idle' | 'available' | 'downloading' | 'ready' | 'installing'
+
+/**
+ * One step of a download or install, in the shape the UI switches on. The host sends a flat optional payload
+ * (`HostDownloadEvent`, Wails has no tagged unions); `toDownloadEvent` narrows it once so no consumer re-checks it.
+ */
+export type DownloadEvent =
+  | { event: 'Started'; data: { contentLength: number | null } }
+  | { event: 'Progress'; data: { chunkLength: number } }
+  | { event: 'Finished' }
+  | { event: 'Failed'; data: { error: string } }
+
+/** The queryable download state, with the phase as the UI's string union. */
+export type DownloadProgressSnapshot = Omit<HostDownloadProgressSnapshot, 'phase'> & {
+  phase: DownloadPhase
+}
+
+function toDownloadEvent(raw: HostDownloadEvent): DownloadEvent | null {
+  switch (raw.event) {
+    case DownloadEventKind.DownloadEventStarted:
+      return { event: 'Started', data: { contentLength: raw.data?.contentLength ?? null } }
+    case DownloadEventKind.DownloadEventProgress:
+      return { event: 'Progress', data: { chunkLength: raw.data?.chunkLength ?? 0 } }
+    case DownloadEventKind.DownloadEventFinished:
+      return { event: 'Finished' }
+    case DownloadEventKind.DownloadEventFailed:
+      return { event: 'Failed', data: { error: raw.data?.error ?? '' } }
+    default:
+      return null
+  }
+}
+
+function toDownloadPhase(phase: HostDownloadPhase): DownloadPhase {
+  switch (phase) {
+    case HostDownloadPhase.DownloadPhaseAvailable:
+      return 'available'
+    case HostDownloadPhase.DownloadPhaseDownloading:
+      return 'downloading'
+    case HostDownloadPhase.DownloadPhaseReady:
+      return 'ready'
+    default:
+      return 'idle'
+  }
+}
 
 export interface DownloadProgress {
   downloaded: number
@@ -105,7 +150,8 @@ export async function openUpdaterWindow(): Promise<void> {
  */
 export async function getDownloadProgress(): Promise<DownloadProgressSnapshot> {
   try {
-    return await commands.getDownloadProgress()
+    const snapshot = await commands.getDownloadProgress()
+    return { ...snapshot, phase: toDownloadPhase(snapshot.phase) }
   } catch (error) {
     log.error({ err: error }, '获取下载进度失败')
     throw error
@@ -119,8 +165,9 @@ export async function getDownloadProgress(): Promise<DownloadProgressSnapshot> {
 export async function subscribeUpdateProgress(
   onEvent: (event: DownloadEvent) => void
 ): Promise<UnlistenFn> {
-  return listen<DownloadEvent>(UPDATE_PROGRESS_EVENT, message => {
-    onEvent(message.payload)
+  return listen<HostDownloadEvent>(UPDATE_PROGRESS_EVENT, message => {
+    const event = toDownloadEvent(message.payload)
+    if (event) onEvent(event)
   })
 }
 
@@ -150,34 +197,38 @@ export async function subscribeUpdateAvailable(
 export async function installUpdate(
   onProgress?: (progress: DownloadProgress) => void
 ): Promise<void> {
-  const onEvent = new Channel<DownloadEvent>()
   let downloaded = 0
   let total: number | null = null
 
-  onEvent.onmessage = message => {
-    switch (message.event) {
+  // The host reports install progress on a typed event that only `install_update` produces. Listen before the call
+  // so the first event cannot be missed, and detach whether the call resolves or rejects.
+  const unlisten = await listen<HostDownloadEvent>(UPDATE_INSTALL_EVENT, message => {
+    const event = toDownloadEvent(message.payload)
+    switch (event?.event) {
       case 'Started':
-        total = message.data.contentLength
+        total = event.data.contentLength
         onProgress?.({ downloaded: 0, total, phase: 'downloading' })
         break
       case 'Progress':
-        downloaded += message.data.chunkLength
+        downloaded += event.data.chunkLength
         onProgress?.({ downloaded, total, phase: 'downloading' })
         break
       case 'Finished':
         onProgress?.({ downloaded, total, phase: 'installing' })
         break
       case 'Failed':
-        // Surface as thrown error from invoke below; no progress mutation.
+        // Surfaces as the rejection of the call below; no progress mutation.
         break
     }
-  }
+  })
 
   try {
-    await commands.installUpdate(onEvent)
+    await commands.installUpdate()
   } catch (error) {
     log.error({ err: error }, '安装更新失败')
     throw error
+  } finally {
+    unlisten()
   }
 }
 
@@ -190,7 +241,7 @@ export async function installUpdate(
  */
 export async function getInstallKind(): Promise<InstallKind> {
   try {
-    return await commands.getInstallKind()
+    return toInstallKind(await commands.getInstallKind())
   } catch (error) {
     log.error({ err: error }, '获取安装类型失败')
     throw error
@@ -221,5 +272,19 @@ export async function setAutoDownloadUpdate(enabled: boolean): Promise<void> {
   } catch (error) {
     log.error({ err: error }, '设置自动下载失败')
     throw error
+  }
+}
+
+function toInstallKind(kind: string): InstallKind {
+  switch (kind) {
+    case 'macos':
+    case 'windows':
+    case 'windowsportable':
+    case 'appimage':
+    case 'deb':
+    case 'rpm':
+      return kind
+    default:
+      return 'unknown'
   }
 }

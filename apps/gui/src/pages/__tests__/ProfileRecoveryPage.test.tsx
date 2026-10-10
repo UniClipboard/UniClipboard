@@ -1,9 +1,9 @@
 import { fireEvent, render, screen, waitFor, cleanup } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { ProfileRecoveryResponse } from '@/api/generated/types.gen'
 import { exportStartupLogs } from '@/api/startup-support'
 import i18n from '@/i18n'
 import { commands } from '@/lib/ipc'
-import type { ProfileRecoveryResponse } from '@/lib/ipc-bindings.generated'
 import ProfileRecoveryPage from '@/pages/ProfileRecoveryPage'
 
 vi.mock('@/lib/ipc', () => ({ commands: { unlockContent: vi.fn() } }))

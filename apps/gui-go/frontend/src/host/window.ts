@@ -1,13 +1,13 @@
+import * as HostService from '@host/hostservice'
 // Host adapter for `@tauri-apps/api/window`.
 import { Window } from '@wailsio/runtime'
-import { invoke } from './core'
 import { listen, type UnlistenFn } from './event'
 
 const RESIZED_EVENT = 'common:WindowDidResize'
 
 class HostWindow {
   setDecorations = (decorations: boolean): Promise<void> =>
-    invoke('set_window_decorations', { decorations })
+    HostService.SetWindowDecorations(decorations)
   // Wails has no runtime per-window theme switch; the page background is painted instead.
   setTheme = async (_theme: 'light' | 'dark' | null): Promise<void> => undefined
   setBackgroundColor = (color: [number, number, number, number]): Promise<void> =>

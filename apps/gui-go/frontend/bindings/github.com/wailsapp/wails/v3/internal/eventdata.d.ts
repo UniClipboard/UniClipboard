@@ -5,10 +5,26 @@
 // @ts-ignore: Unused imports
 import type { Events } from "@wailsio/runtime";
 
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import type * as main$0 from "../../../../UniClipboard/UniClipboard/apps/gui-go/models.js";
+
 declare module "@wailsio/runtime" {
     namespace Events {
         interface CustomEvents {
+            "app://daemon-connection-changed": void;
+            "app://shutting-down": void;
             "content-lock-changed": void;
+            "devices://sync-changed": string;
+            "notification://action": main$0.NotificationAction;
+            "quick-panel://prepare-show": void;
+            "settings://changed": main$0.SettingsChanged;
+            "settings://sync-changed": void;
+            "ui://navigate": string;
+            "update-available": main$0.UpdateMetadata | null;
+            "update-download-progress": main$0.DownloadEvent;
+            "update-install-progress": main$0.DownloadEvent;
+            "visual-effects://changed": main$0.EffectsSnapshot;
         }
     }
 }

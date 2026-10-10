@@ -1,3 +1,4 @@
+import { EffectsMode } from '@host/models'
 import { describe, expect, it, vi } from 'vitest'
 vi.mock('@/api/visual-effects', () => ({ visualEffectsApi: {} }))
 vi.mock('@/lib/visual-effects-motion', () => ({ applyMotionPreference: vi.fn() }))
@@ -20,7 +21,7 @@ describe('visual effects snapshots', () => {
       ...INITIAL_EFFECTS,
       sessionId: 'gui',
       revision: 4,
-      mode: 'effects',
+      mode: EffectsMode.EffectsModeEffects,
       reduceMotion: false,
     })
     resolve({ ...INITIAL_EFFECTS, sessionId: 'gui', revision: 2 })
@@ -36,10 +37,10 @@ describe('visual effects snapshots', () => {
         .mockResolvedValue({ ...INITIAL_EFFECTS, sessionId: 'gui', revision: 1, mode: 'effects' }),
     } as unknown as typeof visualEffectsApi
     const store = createVisualEffectsStore(api, vi.fn())
-    await store.setMode('effects')
+    await store.setMode(EffectsMode.EffectsModeEffects)
     expect(store.getSnapshot().persistence).toBe('session_only')
     vi.mocked(api.setMode).mockRejectedValue(new Error('offline'))
-    await expect(store.setMode('smooth')).rejects.toThrow()
+    await expect(store.setMode(EffectsMode.EffectsModeSmooth)).rejects.toThrow()
     expect(store.getSnapshot().mode).toBe('effects')
     expect(store.isUnavailable()).toBe(true)
   })

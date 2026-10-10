@@ -5,18 +5,25 @@
  *
  * 这层只做"前端 diff → 三态 patch → 把结果摊平回 Record"的薄壳，
  * 真实的命令调用走 `commands.updateKeyboardShortcuts`（来自
- * `ipc-bindings.generated.ts`，宿主命令契约文件）。
+ * `lib/ipc.ts`，由 Go 宿主服务生成的绑定）。
  */
 
+import type {
+  QuickPanelDoubleTapModifier as HostDoubleTapModifier,
+  QuickPanelPosition as HostQuickPanelPosition,
+} from '@host/models'
 import type {
   QuickPanelDoubleTapModifier,
   QuickPanelPosition,
   ShortcutKey,
 } from '@/api/daemon/settings'
 import { commands } from '@/lib/ipc'
-import type { ModifierDoubleTapAvailability } from '@/lib/ipc-bindings.generated'
 
-export type { ModifierDoubleTapAvailability }
+/** Whether the standalone modifier double-tap trigger can work in this session. */
+export type ModifierDoubleTapAvailability =
+  | 'supported'
+  | 'accessibility_permission_required'
+  | 'unsupported_display_session'
 
 export type KeyboardShortcutsPatch = Record<string, ShortcutKey | null>
 
@@ -78,12 +85,12 @@ export async function setQuickPanelEnabled(enabled: boolean): Promise<void> {
  * Backend: `commands::quick_panel::set_quick_panel_position`.
  */
 export async function setQuickPanelPosition(position: QuickPanelPosition): Promise<void> {
-  await commands.setQuickPanelPosition(position)
+  await commands.setQuickPanelPosition(position as HostQuickPanelPosition)
 }
 
 /** Return the current platform capability for global modifier observation. */
 export async function getQuickPanelDoubleTapAvailability(): Promise<ModifierDoubleTapAvailability> {
-  return commands.getQuickPanelDoubleTapAvailability()
+  return (await commands.getQuickPanelDoubleTapAvailability()) as ModifierDoubleTapAvailability
 }
 
 export async function quickPanelUsesCompositorShortcuts(): Promise<boolean> {
@@ -94,7 +101,7 @@ export async function quickPanelUsesCompositorShortcuts(): Promise<boolean> {
 export async function setQuickPanelDoubleTapModifier(
   modifier: QuickPanelDoubleTapModifier
 ): Promise<void> {
-  await commands.setQuickPanelDoubleTapModifier(modifier)
+  await commands.setQuickPanelDoubleTapModifier(modifier as HostDoubleTapModifier)
 }
 
 /**

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { StartupStepDto } from '@/lib/ipc-bindings.generated'
+import type { StartupStepDto } from '@/lib/daemon-startup-types'
 import {
   isUpgradeRequired,
   pendingStartupSnapshot,

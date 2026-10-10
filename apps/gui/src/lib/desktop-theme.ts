@@ -1,10 +1,10 @@
+import type { DesktopTheme, DesktopThemeSnapshot } from '@host/models'
 import { isTauri } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { commands } from '@/lib/ipc'
-import type { DesktopTheme, DesktopThemeSnapshot } from '@/lib/ipc-bindings.generated'
 import { createLogger } from '@/lib/logger'
 
-export type { DesktopTheme, DesktopThemeSnapshot } from '@/lib/ipc-bindings.generated'
+export type { DesktopTheme, DesktopThemeSnapshot } from '@host/models'
 const log = createLogger('desktop-theme')
 // Retain only in memory so the React owner can reuse the palette applied before mounting.
 let latestSnapshot: DesktopThemeSnapshot | undefined

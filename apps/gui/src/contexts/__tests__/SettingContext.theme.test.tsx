@@ -7,7 +7,6 @@ import { DEFAULT_THEME_COLOR } from '@/constants/theme'
 import { SettingProvider } from '@/contexts/SettingContext'
 import { useSetting } from '@/hooks/useSetting'
 import { connectDaemonWs } from '@/lib/daemon-ws-bootstrap'
-import { invokeWithTrace } from '@/lib/tauri-command'
 import { makeBaseSettings } from '@/test/fixtures/settings'
 
 vi.mock('@/api/daemon', () => ({
@@ -23,9 +22,6 @@ vi.mock('@/lib/daemon-ws-bootstrap', () => ({
   connectDaemonWs: vi.fn(),
 }))
 
-vi.mock('@/lib/tauri-command', () => ({
-  invokeWithTrace: vi.fn(),
-}))
 vi.mock('@/lib/settings-events', () => ({
   emitSettingsChanged: vi.fn().mockResolvedValue(undefined),
 }))
@@ -45,7 +41,6 @@ vi.mock('@/i18n', () => ({
 
 const mockGetSettings = vi.mocked(getSettings)
 const mockConnectDaemonWs = vi.mocked(connectDaemonWs)
-const mockInvokeWithTrace = vi.mocked(invokeWithTrace)
 
 const baseSetting: Settings = makeBaseSettings({
   general: { theme: 'light', themeColor: DEFAULT_THEME_COLOR },
@@ -62,7 +57,6 @@ describe('SettingProvider theme integration', () => {
     vi.clearAllMocks()
     prefersDark = false
     mockConnectDaemonWs.mockResolvedValue(undefined)
-    mockInvokeWithTrace.mockResolvedValue(undefined)
     mockGetSettings.mockResolvedValue(baseSetting)
 
     Object.defineProperty(window, 'matchMedia', {

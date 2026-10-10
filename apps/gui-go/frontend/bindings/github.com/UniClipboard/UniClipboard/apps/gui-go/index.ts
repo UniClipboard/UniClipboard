@@ -6,8 +6,44 @@ export {
     HostService
 };
 
+export {
+    AutoResult,
+    DaemonBootstrapFailureKind,
+    DownloadEventKind,
+    DownloadPhase,
+    EffectsMode,
+    EffectsPersistence,
+    EffectsReason,
+    InstallKind,
+    ModifierDoubleTapAvailability,
+    NotificationPermission,
+    QuickPanelDoubleTapModifier,
+    QuickPanelExpandSide,
+    QuickPanelPosition,
+    SystemMotion
+} from "./models.js";
+
 export type {
-    Connection,
+    ConfigImportPreview,
     ContentUnlockRequest,
-    InvokeResult
+    DaemonBootstrapFailure,
+    DaemonConnection,
+    DaemonSession,
+    DesktopTheme,
+    DesktopThemeSnapshot,
+    DeviceMeta,
+    DownloadEvent,
+    DownloadEventData,
+    DownloadProgressSnapshot,
+    EffectsSample,
+    EffectsSnapshot,
+    ExportConfigResult,
+    FilePathInputRequest,
+    HostNotification,
+    ImportConfigStageResult,
+    NotificationAction,
+    SamplePermit,
+    SettingsChanged,
+    UpdateKeyboardShortcutsResult,
+    UpdateMetadata
 } from "./models.js";

@@ -38,7 +38,7 @@ describe.each([
     for (const next of [palette('#2d353b'), palette('#1e1e2e'), palette('#ffffff', false)]) {
       receive(next)
       expect(document.documentElement.style.getPropertyValue('--background')).toBe(
-        next.variables['--background']
+        next.variables?.['--background']
       )
       expect(document.documentElement.classList.contains(next.dark ? 'dark' : 'light')).toBe(true)
       expect(document.documentElement.dataset.theme).toBe('desktop')

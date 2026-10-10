@@ -1,3 +1,4 @@
+import { ModifierDoubleTapAvailability } from '@host/models'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   buildKeyboardShortcutsPatch,
@@ -48,7 +49,7 @@ describe('Tauri settings command wrapper — keyboard shortcuts', () => {
 
   it('读取当前桌面会话的双击修饰键能力', async () => {
     mockGetQuickPanelDoubleTapAvailability.mockResolvedValueOnce(
-      'accessibility_permission_required'
+      ModifierDoubleTapAvailability.DoubleTapAccessibilityPermissionNeeded
     )
 
     await expect(getQuickPanelDoubleTapAvailability()).resolves.toBe(
@@ -57,7 +58,7 @@ describe('Tauri settings command wrapper — keyboard shortcuts', () => {
   })
 
   it('通过 typed command 保存并应用双击修饰键', async () => {
-    mockSetQuickPanelDoubleTapModifier.mockResolvedValueOnce(null)
+    mockSetQuickPanelDoubleTapModifier.mockResolvedValueOnce(undefined)
 
     await setQuickPanelDoubleTapModifier('meta')
 

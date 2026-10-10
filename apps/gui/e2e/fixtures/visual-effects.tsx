@@ -1,3 +1,4 @@
+import type { EffectsMode, EffectsSnapshot, SystemMotion } from '@host/models'
 // Browser-only component fixture. The native policy is tested separately in Rust.
 import { LazyMotion, domMax, m } from 'framer-motion'
 import { useState } from 'react'
@@ -7,7 +8,6 @@ import VisualEffectsProvider from '@/components/motion/VisualEffectsProvider'
 import SmoothModeSetting from '@/components/setting/SmoothModeSetting'
 import { Dialog, DialogContent, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Switch } from '@/components/ui/switch'
-import type { EffectsMode, EffectsSnapshot, SystemMotion } from '@/lib/ipc-bindings.generated'
 import { initializeVisualEffects, INITIAL_EFFECTS } from '@/lib/visual-effects-store'
 import '@/i18n'
 import '@/styles/globals.css'

@@ -1,3 +1,4 @@
+import { DaemonBootstrapFailureKind } from '@host/models'
 import { describe, expect, it } from 'vitest'
 import { appBootstrapReducer, initialAppBootstrapState } from '@/lib/app-bootstrap-state'
 
@@ -28,7 +29,7 @@ describe('appBootstrapReducer', () => {
 
   it('records the failure detail reported by the native bootstrap check', () => {
     const failure = {
-      kind: 'versionTooOld' as const,
+      kind: DaemonBootstrapFailureKind.BootstrapFailureVersionTooOld as const,
       detail: 'Expected a newer app version',
       observedVersion: '2.0.0',
       expectedVersion: '2.1.0',

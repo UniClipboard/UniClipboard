@@ -35,7 +35,9 @@
 # - Run by hand (workflow_dispatch) to retry or to mirror an older tag. It
 #   downloads installers' registration inputs from the GitHub Release at that
 #   tag and rebuilds the registration payload with the current (default-branch)
-#   scripts and changelog files, not whatever existed at that historical tag.
+#   scripts, not whatever existed at that historical tag. The release notes
+#   come from the release tag itself, because a release cut from a release/*
+#   branch may never have merged its docs/changelog files back to main.
 #
 # Configuration (nothing is created by this workflow):
 #   environment mirror (only the main branch may use it, shared with Mobile's
@@ -167,11 +169,21 @@ jobs:
       # (a tag cut before this mirror feature existed has no sha256 field in
       # its own copy of build-flare-release-registration.js, so backfilling
       # it would always fail "every registered artifact must have a sha256").
-      # Changelog notes for past versions stay on the default branch, so this
-      # still finds the right docs/changelog/<version>(.zh).md files.
       - name: Checkout
         uses: actions/checkout@v6
         with:
+          persist-credentials: false
+
+      # Only the release notes are read from the tag: the default branch does
+      # not necessarily have docs/changelog/<version>(.zh).md for a release cut
+      # from a release/* branch (v1.1.2 was not merged back), and the notes of a
+      # release must be the ones it was published with.
+      - name: Checkout the release notes from the release tag
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.tag_name }}
+          path: release-tag
+          sparse-checkout: docs/changelog
           persist-credentials: false
 
       - name: Setup Node.js
@@ -211,13 +223,20 @@ jobs:
           CHANNEL: ${{ inputs.channel }}
           PUBLIC_URL: ${{ vars.UPDATE_SERVER_URL }}
         run: |
+          for notes in "release-tag/docs/changelog/${VERSION}.md" "release-tag/docs/changelog/${VERSION}.zh.md"; do
+            if [ ! -f "$notes" ]; then
+              echo "::error::${notes#release-tag/} does not exist at tag ${{ inputs.tag_name }}"
+              exit 1
+            fi
+          done
+
           node scripts/assemble-update-manifest.js \
             --version "$VERSION" \
             --artifacts-dir release-assets \
             --output "flare-release/manifest.json" \
             --base-url "${PUBLIC_URL}/artifacts/v${VERSION}" \
-            --notes-file "docs/changelog/${VERSION}.md" \
-            --zh-notes-file "docs/changelog/${VERSION}.zh.md"
+            --notes-file "release-tag/docs/changelog/${VERSION}.md" \
+            --zh-notes-file "release-tag/docs/changelog/${VERSION}.zh.md"
 
           node scripts/build-flare-release-registration.js \
             --version "$VERSION" \

@@ -11,6 +11,7 @@ import ZeroResultRelaxations from '@/components/history/composite-search/ZeroRes
 import { buildLiveSearchModel, liveModelToSearchParams } from '@/hooks/liveSearchModel'
 import '@/i18n'
 import '@/styles/globals.css'
+import { installFakeHost } from './fake-host'
 
 // Component-level check, NOT the History page: only the search box and the
 // zero-result relaxations, wired like HistoryPage (same hook, same count
@@ -27,19 +28,8 @@ window.addEventListener('unhandledrejection', e =>
 const params = new URLSearchParams(location.search)
 const baseUrl = params.get('daemon') ?? ''
 const sessionToken = params.get('token') ?? ''
-Object.defineProperty(window, '__UC_DESKTOP_HOST__', {
-  configurable: true,
-  value: {
-    metadata: { currentWindow: { label: 'main' }, currentWebview: { label: 'main' } },
-    transformCallback: () => 0,
-    unregisterCallback: () => {},
-    invoke: async (command: string) => {
-      if (command === 'get_daemon_session') {
-        return { sessionToken, expiresInSecs: 300, refreshAtSecs: 240 }
-      }
-      throw new Error(`fixture: native command ${command} is not available`)
-    },
-  },
+installFakeHost({
+  GetDaemonSession: () => ({ sessionToken, expiresInSecs: 300, refreshAtSecs: 240 }),
 })
 daemonClient.initialize({ baseUrl, wsUrl: `${baseUrl.replace(/^http/, 'ws')}/ws` })
 

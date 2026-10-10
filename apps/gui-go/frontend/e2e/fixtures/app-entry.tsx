@@ -25,38 +25,24 @@ import {
 } from '@/pages/setup/screens'
 import UnlockPage from '@/pages/UnlockPage'
 import { store } from '@/store'
+import { HostRejection, installFakeHost } from './fake-host'
 import './typography.css'
 
 // Real startup, unlock and setup components with synthetic native responses.
 // Nothing here reaches a daemon, keyring or the user's profile.
 const CORRECT_PASSPHRASE = 'fixture-passphrase'
-let callbackId = 0
-Object.defineProperty(window, '__UC_DESKTOP_HOST__', {
-  configurable: true,
-  value: {
-    metadata: { currentWindow: { label: 'main' }, currentWebview: { label: 'main' } },
-    transformCallback: () => ++callbackId,
-    unregisterCallback: () => {},
-    invoke: async (command: string, args?: { request?: { passphrase?: string } }) => {
-      if (command === 'unlock_content_from_keyring') {
-        await new Promise(resolve => setTimeout(resolve, 400))
-        return false
-      }
-      if (command === 'unlock_content') {
-        await new Promise(resolve => setTimeout(resolve, 200))
-        if (args?.request?.passphrase === CORRECT_PASSPHRASE) {
-          document.body.dataset.unlocked = 'true'
-          return null
-        }
-        throw { code: 'WRONG_PASSPHRASE', message: 'fixture' }
-      }
-      if (command === 'plugin:window|is_maximized') return false
-      if (command.startsWith('plugin:window|') || command === 'set_traffic_light_position')
-        return null
-      if (command === 'plugin:event|listen') return callbackId
-      if (command === 'plugin:event|unlisten') return null
-      throw new Error(`No fixture for native command: ${command}`)
-    },
+installFakeHost({
+  UnlockContentFromKeyring: async () => {
+    await new Promise(resolve => setTimeout(resolve, 400))
+    return false
+  },
+  UnlockContent: async (request: unknown) => {
+    await new Promise(resolve => setTimeout(resolve, 200))
+    if ((request as { passphrase?: string })?.passphrase === CORRECT_PASSPHRASE) {
+      document.body.dataset.unlocked = 'true'
+      return null
+    }
+    throw new HostRejection({ code: 'WRONG_PASSPHRASE', message: 'fixture' })
   },
 })
 window.fetch = async () => {

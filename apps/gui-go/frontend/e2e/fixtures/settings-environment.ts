@@ -1,6 +1,7 @@
 import { daemonClient } from '@/api/daemon/client'
 import { visualEffectsApi } from '@/api/visual-effects'
 import { INITIAL_EFFECTS, initializeVisualEffects } from '@/lib/visual-effects-store'
+import { HostRejection, installFakeHost } from './fake-host'
 
 const BUILT_IN_RELAYS = [
   ['na-east', 'https://use1-1.relay.n0.iroh.link./'],
@@ -39,34 +40,20 @@ declare global {
 
 /** Isolate visual checks from the user's daemon, credentials and external services. */
 export function installSettingsFixtureEnvironment() {
-  let callbackId = 0
   window.__settingsFixtureNative = {
     restartCalls: 0,
     restartShouldFail: false,
   }
-  Object.defineProperty(window, '__UC_DESKTOP_HOST__', {
-    configurable: true,
-    value: {
-      metadata: { currentWindow: { label: 'main' }, currentWebview: { label: 'main' } },
-      transformCallback: () => ++callbackId,
-      unregisterCallback: () => {},
-      invoke: async (command: string) => {
-        if (command === 'plugin:app|version') return '1.0.0'
-        if (command === 'get_daemon_session')
-          return { sessionToken: 'visual-fixture', expiresInSecs: 3600 }
-        if (command === 'get_quick_panel_double_tap_availability') return 'supported'
-        if (command === 'restart_daemon') {
-          const native = window.__settingsFixtureNative!
-          native.restartCalls += 1
-          return native.restartShouldFail
-            ? { status: 'error', error: { code: 'restart_failed', message: 'fixture failure' } }
-            : { status: 'ok', data: null }
-        }
-        if (command === 'plugin:event|listen') return callbackId
-        if (command === 'plugin:event|unlisten' || command === 'plugin:webview|set_webview_zoom')
-          return null
-        throw new Error(`No fixture for native command: ${command}`)
-      },
+  installFakeHost({
+    GetDeviceMeta: () => ({ appVersion: '1.0.0' }),
+    GetDaemonSession: () => ({ sessionToken: 'visual-fixture', expiresInSecs: 3600 }),
+    GetQuickPanelDoubleTapAvailability: () => 'supported',
+    RestartDaemon: () => {
+      const native = window.__settingsFixtureNative!
+      native.restartCalls += 1
+      if (native.restartShouldFail)
+        throw new HostRejection({ code: 'restart_failed', message: 'fixture failure' })
+      return null
     },
   })
   window.__relayOverviewFixture = { response: builtInOverview(true), calls: 0 }

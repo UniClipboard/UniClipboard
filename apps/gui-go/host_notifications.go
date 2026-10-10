@@ -54,6 +54,7 @@ func (h *HostService) enterLightweightMode() {
 
 func (h *HostService) watchNotificationClicks() {
 	h.notifier.OnNotificationResponse(func(result notifications.NotificationResult) {
+		e2eNotificationResponse(result.Response.ID)
 		payload := map[string]any{}
 		if id, err := strconv.Atoi(result.Response.ID); err == nil {
 			payload["id"] = id

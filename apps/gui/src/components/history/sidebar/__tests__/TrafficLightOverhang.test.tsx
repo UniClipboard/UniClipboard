@@ -1,12 +1,14 @@
 import { render } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { type LibraryChrome, LibraryChromeContext } from '@/contexts/library-chrome-context'
-import { SidebarSlotContext } from '@/contexts/sidebar-slot-context'
 import TrafficLightOverhang from '../TrafficLightOverhang'
 
 vi.mock('@/hooks/useWindowDragging', () => ({ useWindowDragging: () => ({}) }))
+const platform = vi.hoisted(() => ({ isMac: true }))
+vi.mock('@/hooks/usePlatform', () => ({ usePlatform: () => ({ isMac: platform.isMac }) }))
 
-function renderOverhang(libraryOwnsNavigation: boolean, hidden: boolean) {
+function renderOverhang(isMac: boolean, hidden: boolean) {
+  platform.isMac = isMac
   const chrome: LibraryChrome = {
     hidden,
     drawer: false,
@@ -16,11 +18,9 @@ function renderOverhang(libraryOwnsNavigation: boolean, hidden: boolean) {
     setLightsInContent: vi.fn(),
   }
   return render(
-    <SidebarSlotContext value={{ contentToolbarHost: null, libraryOwnsNavigation }}>
-      <LibraryChromeContext value={chrome}>
-        <TrafficLightOverhang className="w-3.5" />
-      </LibraryChromeContext>
-    </SidebarSlotContext>
+    <LibraryChromeContext value={chrome}>
+      <TrafficLightOverhang className="w-3.5" />
+    </LibraryChromeContext>
   )
 }
 

@@ -9,7 +9,7 @@ import {
 } from './history-layout'
 
 /**
- * Sizing of the macOS list column across window tiers: per-tier constraints,
+ * Sizing of the list column across window tiers: per-tier constraints,
  * the user's remembered width per tier, and a double-click reset (via
  * `defaultSize`) to the tier default.
  *

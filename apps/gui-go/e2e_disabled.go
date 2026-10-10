@@ -20,6 +20,8 @@ func e2eSecondInstance(*HostService, application.SecondInstanceData, secondLaunc
 
 func e2eBootstrapped(*HostService, bool) {}
 
+func e2eNotificationResponse(string) {}
+
 // scriptedKeyState: normal builds only read the real keyboard.
 func scriptedKeyState() bool { return false }
 
@@ -43,3 +45,5 @@ func e2eTrayPublishSkipped() {}
 
 // e2eInvoke marks the entry and return of selected host commands in the e2e build; it returns a no-op here.
 func e2eInvoke(string) func() { return func() {} }
+
+func e2eBrowserArgs() []string { return nil }

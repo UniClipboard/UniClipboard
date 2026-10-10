@@ -1,5 +1,5 @@
 import { useLibraryChrome } from '@/contexts/library-chrome-context'
-import { useSidebarSlot } from '@/contexts/sidebar-slot-context'
+import { usePlatform } from '@/hooks/usePlatform'
 import { useWindowDragging } from '@/hooks/useWindowDragging'
 import { cn } from '@/lib/utils'
 
@@ -11,10 +11,10 @@ import { cn } from '@/lib/utils'
  * sidebar is shown.
  */
 function TrafficLightOverhang({ className }: { className: string }) {
-  const { libraryOwnsNavigation } = useSidebarSlot()
+  const { isMac } = usePlatform()
   const { hidden } = useLibraryChrome()
   const windowDragging = useWindowDragging()
-  if (!libraryOwnsNavigation || !hidden) return null
+  if (!isMac || !hidden) return null
   return <div data-tauri-drag-region {...windowDragging} className={cn('shrink-0', className)} />
 }
 

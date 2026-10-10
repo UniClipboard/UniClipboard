@@ -11,11 +11,6 @@ export interface DiagnosticBreadcrumb {
   data?: Record<string, unknown>
 }
 
-export interface DiagnosticFeedback {
-  message: string
-  email?: string
-}
-
 export interface DiagnosticTrace {
   traceId: string
   finish(): void

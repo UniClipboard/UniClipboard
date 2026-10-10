@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"embed"
-	"errors"
 	"fmt"
 	"io/fs"
 	"log"
@@ -106,6 +105,7 @@ func (h *HostService) openMainWindow() {
 		Name: "main", Title: "UniClipboard", URL: "/", Width: 1100, Height: 720, MinWidth: 900, MinHeight: 600,
 		Mac: application.MacWindow{TitleBar: application.MacTitleBarHiddenInset},
 	}))
+	suppressKeyboardMenu(w)
 	w.RegisterHook(events.Common.WindowClosing, func(e *application.WindowEvent) {
 		if h.quitting.Load() {
 			return
@@ -123,6 +123,7 @@ func main() {
 		log.Fatal(err)
 	}
 	waitForRestartParent()
+	ensureAppScope()
 	content, err := fs.Sub(assets, "frontend/dist")
 	if err != nil {
 		log.Fatal(err)
@@ -139,7 +140,7 @@ func main() {
 	// application.New takes the single-instance lock before anything else touches shared state: a second GUI of the
 	// same scope hands its arguments to the first one and exits inside this call, so it never probes or spawns a
 	// daemon, starts the quick panel helper or reconciles the login item. The daemon client is attached afterwards.
-	app := application.New(application.Options{Name: "UniClipboard Go GUI", Services: services, Mac: application.MacOptions{ActivationPolicy: activationPolicy()}, Assets: application.AssetOptions{Handler: application.BundledAssetFileServer(content), Middleware: host.fileMiddleware},
+	app := application.New(application.Options{Name: "UniClipboard Go GUI", Services: services, Mac: application.MacOptions{ActivationPolicy: activationPolicy()}, Windows: application.WindowsOptions{AdditionalBrowserArgs: e2eBrowserArgs()}, Assets: application.AssetOptions{Handler: application.BundledAssetFileServer(content), Middleware: host.fileMiddleware},
 		SingleInstance: host.singleInstanceOptions(uniqueID),
 		ShouldQuit:     func() bool { host.quitting.Store(true); return true },
 		OnShutdown:     host.shutdown})
@@ -207,7 +208,12 @@ func (h *HostService) bootstrap() {
 		}
 	case daemonlife.Compatible:
 		if outcome.Health.Residency == daemonlife.ResidencyOneshot {
-			h.fatal(errors.New("PoC requires a persistent daemon; refusing to replace an existing oneshot daemon"))
+			// A command-line `space init` (or another one-shot client) is still winding down: promote it to the
+			// persistent daemon this shell needs, like `uniclip start` does.
+			spawnedDaemon = true
+			if err := daemonlife.PromoteOneshot(daemonlife.ResidencyStandalone, "gui"); err != nil {
+				h.fatal(err)
+			}
 		}
 	}
 	client, err := daemonclient.FromEnv()

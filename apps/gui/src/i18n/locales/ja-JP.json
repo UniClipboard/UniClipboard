@@ -182,18 +182,13 @@
   },
   "nav": {
     "dashboard": "ダッシュボード",
-    "history": "履歴",
-    "devices": "デバイス",
     "settings": "設定",
     "updateAvailable": "利用可能なアップデート",
     "updateDownloading": "アップデートをダウンロード中...",
     "updateDownloadingWithProgress": "アップデートをダウンロード中... {{percent}}%",
     "updateInstalling": "更新をインストール中...",
     "updateReady": "更新をインストールする準備ができました",
-    "back": "戻る",
-    "feedback": "フィードバック",
-    "collapseSidebar": "サイドバーを折りたたむ",
-    "expandSidebar": "サイドバーを展開"
+    "back": "戻る"
   },
   "debugBadge": {
     "title": "デバッグ モードがオンになっています。",
@@ -1148,7 +1143,6 @@
         "time": "時間",
         "extension": "拡張子"
       },
-      "noMatches": "一致しません",
       "header": {
         "startingWith": "「{{partial}}」で始まる{{dimension}}",
         "all": "{{dimension}}",
@@ -1173,7 +1167,6 @@
       "moreFilters": "さらに {{count}} 個のフィルタを表示",
       "clearAll": "すべてクリア",
       "close": "検索パネルを閉じる",
-      "filterCategories": "フィルタカテゴリ",
       "results_other": "{{count}} 件の結果",
       "done": "完了"
     },
@@ -1424,8 +1417,6 @@
     "actionBar": {
       "title": "クリップボード履歴",
       "copy": "コピー",
-      "favorite": "お気に入り",
-      "unfavorite": "お気に入り解除",
       "delete": "削除"
     },
     "notification": {
@@ -2281,24 +2272,6 @@
       "accept": "承諾",
       "close": "閉じる",
       "retry": "再試行"
-    }
-  },
-  "feedback": {
-    "modal": {
-      "title": "フィードバックの送信",
-      "description": "あなたのフィードバックは UniClipboard の改善に役立ちます。以下に問題または提案について説明してください。",
-      "label": {
-        "content": "フィードバックの内容",
-        "email": "メール アドレス (オプション)"
-      },
-      "placeholder": {
-        "content": "ここにフィードバックを入力してください...",
-        "email": "your@email.com"
-      },
-      "submit": "送信フィードバック",
-      "useSavedEmail": "保存されたメールを使用する",
-      "success": "フィードバックは正常に送信されました。ありがとうございます。",
-      "error": "フィードバックを送信できませんでした。後でもう一度お試しください。"
     }
   },
   "lifecycle": {

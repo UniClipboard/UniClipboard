@@ -56,13 +56,14 @@ kernel32 = ctypes.WinDLL('kernel32', use_last_error=True) if os.name == 'nt' els
 
 TARGET_PS1 = r'''
 Add-Type -AssemblyName System.Windows.Forms
+$outPath = $args[0]
 $form = New-Object System.Windows.Forms.Form
 $form.Text = "uc-gui-go-paste-target"
 $form.Width = 520; $form.Height = 300
 $box = New-Object System.Windows.Forms.TextBox
 $box.Multiline = $true; $box.Dock = "Fill"
 $form.Controls.Add($box)
-$box.Add_TextChanged({ [System.IO.File]::WriteAllText($args[0], $box.Text, [System.Text.Encoding]::UTF8) }.GetNewClosure())
+$box.Add_TextChanged({ [System.IO.File]::WriteAllText($outPath, $box.Text, [System.Text.Encoding]::UTF8) }.GetNewClosure())
 $form.Add_Shown({ $form.Activate(); $box.Focus() })
 [System.Windows.Forms.Application]::Run($form)
 '''
@@ -75,8 +76,12 @@ def foreground_pid():
     return pid.value
 
 
-def send_chord(*names):
-    """Press the keys in order, release in reverse: a real keyboard event stream via SendInput."""
+def send_chord(*names, hold=0.0):
+    """Press the keys in order, release in reverse: a real keyboard event stream via SendInput.
+
+    With hold > 0 the presses and releases are separate SendInput calls with the keys down in between, like a finger
+    on a key; one batch (hold=0) releases within microseconds, which a key-state poll can never observe.
+    """
     class KI(ctypes.Structure):
         _fields_ = [('vk', wt.WORD), ('scan', wt.WORD), ('flags', wt.DWORD), ('time', wt.DWORD), ('extra', ctypes.c_size_t)]
 
@@ -85,9 +90,14 @@ def send_chord(*names):
             _fields_ = [('ki', KI), ('pad', ctypes.c_byte * 32)]
         _anonymous_ = ('u',)
         _fields_ = [('type', wt.DWORD), ('u', U)]
-    events = [IN(1, IN.U(ki=KI(VK[n], 0, 0, 0, 0))) for n in names] + [IN(1, IN.U(ki=KI(VK[n], 0, 2, 0, 0))) for n in reversed(names)]
-    arr = (IN * len(events))(*events)
-    assert user32.SendInput(len(events), arr, ctypes.sizeof(IN)) == len(events), 'SendInput failed'
+    downs = [IN(1, IN.U(ki=KI(VK[n], 0, 0, 0, 0))) for n in names]
+    ups = [IN(1, IN.U(ki=KI(VK[n], 0, 2, 0, 0))) for n in reversed(names)]
+    batches = [downs, ups] if hold else [downs + ups]
+    for i, events in enumerate(batches):
+        if i:
+            time.sleep(hold)
+        arr = (IN * len(events))(*events)
+        assert user32.SendInput(len(events), arr, ctypes.sizeof(IN)) == len(events), 'SendInput failed'
 
 
 def hold_hotkey(spec):
@@ -199,6 +209,21 @@ class Gui:
             time.sleep(.2)
 
 
+def make_sandbox():
+    """A throwaway directory and profile name short enough for the Engine data tree.
+
+    The deepest file below the data root is ~175 characters long and the profile name appears in its path; on a default
+    Windows temp path the daemon's storage upgrade fails (engine error 1101) once the sandbox path passes MAX_PATH.
+    UC_GUI_GO_E2E_SANDBOX_ROOT points the sandbox at a short directory.
+    """
+    root = os.environ.get('UC_GUI_GO_E2E_SANDBOX_ROOT')
+    sandbox = Path(tempfile.mkdtemp(prefix='uc-gui-go-', dir=root))
+    if len(str(sandbox)) > 30:
+        shutil.rmtree(sandbox, ignore_errors=True)
+        sys.exit(f'sandbox path {sandbox} is too long for the Engine data tree (MAX_PATH): set UC_GUI_GO_E2E_SANDBOX_ROOT to a short directory such as D:\\w')
+    return sandbox, 'gui-go-' + sandbox.name[-6:], Path(root) if root else Path(tempfile.gettempdir())
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--out', type=Path, required=True)
@@ -211,8 +236,7 @@ def main():
         sys.exit('refusing to send key events on a session that is not a dedicated test host (set UC_GUI_GO_E2E_DEDICATED_HOST=1)')
     out = args.out.resolve()
     out.mkdir(parents=True, exist_ok=True)
-    sandbox = Path(tempfile.mkdtemp(prefix='uc-gui-go-'))
-    profile = 'gui-go-' + sandbox.name
+    sandbox, profile, sandbox_root = make_sandbox()
     for name in ('gui-go.exe', 'uniclipd.exe', 'uniclip.exe'):
         shutil.copy2(args.binaries / name, sandbox / name)
     base_env = dict(os.environ, UC_PORTABLE='1', UC_PROFILE=profile, UNICLIPBOARD_ENV='development', UC_DISABLE_SYSTEM_CLIPBOARD='1', NO_COLOR='1')
@@ -232,7 +256,6 @@ def main():
     daemon_pid = None
     try:
         subprocess.run([uniclip, 'space', 'init', '--passphrase', PASSPHRASE, '--device-name', 'win-panel'], env=base_env, check=True, timeout=120)
-        subprocess.run([uniclip, 'start'], env=base_env, check=True, timeout=120)
         target_text = out / 'target-text.txt'
         ps1 = out / 'target.ps1'
         ps1.write_text(TARGET_PS1, encoding='utf-8')
@@ -306,14 +329,14 @@ def main():
 
         before = gui.state('before-failed')['lastShown']
         r = gui.invoke('failed', 'type_file_paths_to_previous_app', {'request': {'filePaths': ['x']}})
-        after = gui.state('after-failed')
+        after = gui.wait_state('after-failed', lambda s: s['panelVisible'])  # phase two of the show is asynchronous
         check('6 a paste with no recorded window reports the error and shows the panel again',
               not r['ok'] and 'No previous foreground window' in str(r['error']) and after['lastShown'] != before and after['panelVisible'], [r, after])
 
         gui.ctl('exit', 'control-exit')
         code = gui.proc.wait(timeout=60)
         deadline = time.monotonic() + 20
-        alive = lambda pid: subprocess.run(['tasklist', '/FI', f'PID eq {pid}', '/NH'], capture_output=True, text=True).stdout.find(str(pid)) >= 0
+        alive = lambda pid: subprocess.run(['tasklist', '/FI', f'PID eq {pid}', '/NH'], capture_output=True, text=True, errors='replace').stdout.find(str(pid)) >= 0
         while alive(daemon_pid) and time.monotonic() < deadline:
             time.sleep(.3)
         check('7 GUI exit 0, daemon stopped by the GUI', code == 0 and not alive(daemon_pid), {'exit': code, 'daemonAlive': alive(daemon_pid)})
@@ -332,7 +355,12 @@ def main():
         if saved_clip is not None:
             set_clipboard_text(saved_clip)
         (out / 'windows-assertions.json').write_text(json.dumps(results, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
-        if sandbox.name.startswith('uc-gui-go-') and sandbox.parent == Path(tempfile.gettempdir()):
+        if not results['passed']:  # keep the daemon/host logs and data layout of a failed run as evidence
+            try:
+                shutil.copytree(sandbox, out / 'sandbox-failed', ignore=shutil.ignore_patterns('*.exe'), dirs_exist_ok=True)
+            except OSError as e:  # a file still held by the host must not hide the original failure
+                print(f'could not keep the failed sandbox: {e}', file=sys.stderr)
+        if sandbox.name.startswith('uc-gui-go-') and sandbox.parent == sandbox_root:
             shutil.rmtree(sandbox, ignore_errors=True)
     print(json.dumps({'passed': results['passed']}))
     sys.exit(0 if results['passed'] else 1)

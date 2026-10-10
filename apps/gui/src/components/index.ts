@@ -1,7 +1,4 @@
 // 导出所有组件
-// Layout 组件
-export * from './layout'
-
 // 设备管理组件
 export * from './device'
 

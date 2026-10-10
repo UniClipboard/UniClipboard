@@ -3,11 +3,13 @@
 package daemonlife
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -378,4 +380,31 @@ func WaitAbsent(timeout time.Duration) error {
 		}
 		time.Sleep(pollInterval)
 	}
+}
+
+// PromoteOneshot replaces a running oneshot daemon with a persistent one of the given residency: it asks the
+// daemon to restart, waits for it to withdraw, spawns the replacement and waits until that is healthy. origin
+// names the spawner ("cli", "gui") for the daemon's spawn-origin record.
+func PromoteOneshot(target, origin string) error {
+	client, err := daemonclient.FromEnv()
+	if err != nil {
+		return &Error{Kind: ErrPromoteRestart, Err: err}
+	}
+	err = client.Enveloped(context.Background(), daemonclient.Request{
+		Method: http.MethodPost, Path: "/lifecycle/restart", JSON: map[string]string{"targetMode": target},
+	}, nil)
+	if err != nil {
+		// A oneshot daemon that is winding down stops answering between the probe that found it and this request.
+		// If it is gone by now there is nothing to restart and the replacement can be spawned.
+		if outcome, probeErr := Probe(); probeErr != nil || outcome.Kind != Absent {
+			return &Error{Kind: ErrPromoteRestart, Err: err}
+		}
+	}
+	if err := WaitAbsent(PromoteDrainTimeout); err != nil {
+		return err
+	}
+	if err := daemonproc.SpawnDetachedDaemon(origin); err != nil {
+		return &Error{Kind: ErrSpawn, Err: err}
+	}
+	return WaitHealthy(StartupTimeout, target)
 }

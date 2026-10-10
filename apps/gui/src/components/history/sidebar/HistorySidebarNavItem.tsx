@@ -1,5 +1,4 @@
 import type { LucideIcon } from 'lucide-react'
-import { useSidebarSlot } from '@/contexts/sidebar-slot-context'
 import { cn } from '@/lib/utils'
 
 type HistorySidebarNavItemProps = (
@@ -23,9 +22,6 @@ function HistorySidebarNavItem({
   trailing,
   onClick,
 }: HistorySidebarNavItemProps) {
-  // macOS window-edge sidebar (HSidebar.dc.html): 30px rows, full-contrast
-  // labels, accent background for the current row.
-  const { libraryOwnsNavigation: windowEdge } = useSidebarSlot()
   return (
     <button
       type="button"
@@ -35,21 +31,15 @@ function HistorySidebarNavItem({
       className={cn(
         // An inset ring: an outer one would spill past the sidebar's edge.
         'flex w-full items-center text-ui-body transition-colors outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/50',
-        windowEdge
-          ? cn(
-              'h-7.5 gap-2.5 rounded-lg px-2.5 text-sidebar-foreground',
-              active ? 'bg-foreground/8 font-medium' : !disabled && 'hover:bg-foreground/5'
-            )
-          : cn(
-              'h-8 gap-2 rounded-md px-2.5',
-              active ? 'bg-muted text-foreground font-medium' : 'text-muted-foreground',
-              !disabled && !active && 'hover:bg-muted/60 hover:text-foreground'
-            ),
+        // Window-edge sidebar (HSidebar.dc.html): 30px rows, full-contrast
+        // labels, accent background for the current row.
+        'h-7.5 gap-2.5 rounded-lg px-2.5 text-sidebar-foreground',
+        active ? 'bg-foreground/8 font-medium' : !disabled && 'hover:bg-foreground/5',
         disabled && 'cursor-default opacity-60'
       )}
     >
       {Icon ? (
-        <Icon className={cn('size-3.5 shrink-0', windowEdge && 'opacity-75')} aria-hidden="true" />
+        <Icon className="size-3.5 shrink-0 opacity-75" aria-hidden="true" />
       ) : (
         <span aria-hidden="true" className="flex size-3.5 shrink-0 items-center justify-center">
           {leading}

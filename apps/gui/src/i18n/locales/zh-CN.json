@@ -182,18 +182,13 @@
   },
   "nav": {
     "dashboard": "仪表板",
-    "history": "历史记录",
-    "devices": "设备管理",
     "settings": "设置",
     "updateAvailable": "有新版本",
     "updateDownloading": "正在下载更新...",
     "updateDownloadingWithProgress": "正在下载更新... {{percent}}%",
     "updateInstalling": "正在安装更新...",
     "updateReady": "更新已就绪，可安装",
-    "back": "返回",
-    "feedback": "反馈",
-    "collapseSidebar": "收起侧栏",
-    "expandSidebar": "展开侧栏"
+    "back": "返回"
   },
   "debugBadge": {
     "title": "Debug 模式已开启",
@@ -1147,7 +1142,6 @@
         "time": "时间",
         "extension": "扩展名"
       },
-      "noMatches": "无匹配项",
       "header": {
         "startingWith": "以“{{partial}}”开头的{{dimension}}",
         "all": "{{dimension}}",
@@ -1170,7 +1164,6 @@
       "moreFilters": "展开其余 {{count}} 个筛选",
       "clearAll": "清除全部",
       "close": "关闭搜索面板",
-      "filterCategories": "筛选类别",
       "results_other": "{{count}} 条结果",
       "done": "完成"
     },
@@ -1421,8 +1414,6 @@
     "actionBar": {
       "title": "剪贴板历史",
       "copy": "复制",
-      "favorite": "收藏",
-      "unfavorite": "取消收藏",
       "delete": "删除"
     },
     "notification": {
@@ -2278,24 +2269,6 @@
       "accept": "接受",
       "close": "关闭",
       "retry": "重试"
-    }
-  },
-  "feedback": {
-    "modal": {
-      "title": "发送反馈",
-      "description": "您的反馈将帮助我们改进 UniClipboard。请在下方描述您的问题或建议。",
-      "label": {
-        "content": "反馈内容",
-        "email": "电子邮箱（选填）"
-      },
-      "placeholder": {
-        "content": "请输入您的反馈内容...",
-        "email": "your@email.com"
-      },
-      "submit": "提交反馈",
-      "useSavedEmail": "使用已保存邮箱",
-      "success": "反馈发送成功，感谢您的支持！",
-      "error": "反馈发送失败，请稍后重试。"
     }
   },
   "lifecycle": {

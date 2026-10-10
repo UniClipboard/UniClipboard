@@ -1,19 +1,18 @@
 import { AnimatePresence, m } from 'framer-motion'
-import type { ReactNode } from 'react'
 import { useLocation, useOutlet } from 'react-router'
 import { useReducedMotion } from '@/hooks/useVisualEffects'
-import { MainLayout } from '@/layouts'
+import { LibraryMainLayout } from '@/layouts'
 
 const PAGE_TRANSITION = { duration: 0.16, ease: [0.22, 1, 0.36, 1] } as const
 
-export function AuthenticatedLayout({ sidebarTitle }: { sidebarTitle: ReactNode }) {
+export function AuthenticatedLayout() {
   const routerLocation = useLocation()
   const outlet = useOutlet()
   const reduceMotion = useReducedMotion()
   const pageTransitionsDisabled = reduceMotion || import.meta.env.VITE_E2E === '1'
 
   return (
-    <MainLayout sidebarTitle={sidebarTitle}>
+    <LibraryMainLayout>
       <div className="relative h-full overflow-hidden">
         <AnimatePresence initial={false} mode="sync">
           <m.div
@@ -28,6 +27,6 @@ export function AuthenticatedLayout({ sidebarTitle }: { sidebarTitle: ReactNode 
           </m.div>
         </AnimatePresence>
       </div>
-    </MainLayout>
+    </LibraryMainLayout>
   )
 }

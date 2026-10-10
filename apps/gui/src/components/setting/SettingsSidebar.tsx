@@ -19,17 +19,9 @@ import {
 interface SettingsSidebarProps {
   activeCategory: string
   onCategoryChange: (category: string) => void
-  /**
-   * Linux/Tauri 下设置页改用扁平布局，侧栏需要显式边框来代替原本由 InsetSurface 提供的视觉分隔。
-   */
-  flat?: boolean
 }
 
-const SettingsSidebar: FC<SettingsSidebarProps> = ({
-  activeCategory,
-  onCategoryChange,
-  flat = false,
-}) => {
+const SettingsSidebar: FC<SettingsSidebarProps> = ({ activeCategory, onCategoryChange }) => {
   const selectionId = useId()
   const { t } = useTranslation()
   const navigate = useNavigate()
@@ -43,15 +35,8 @@ const SettingsSidebar: FC<SettingsSidebarProps> = ({
   }
 
   return (
-    <Sidebar
-      collapsible="none"
-      className={
-        flat
-          ? 'border-r border-border/40 bg-background/80 dark:bg-background/60'
-          : 'bg-transparent border-none'
-      }
-    >
-      <SidebarContent className={flat ? '' : 'bg-transparent'}>
+    <Sidebar collapsible="none" className="bg-transparent border-none">
+      <SidebarContent className="bg-transparent">
         <LayoutGroup id={selectionId}>
           <SidebarGroup>
             <SidebarGroupContent>

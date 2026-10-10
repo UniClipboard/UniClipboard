@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { Virtuoso, type StateSnapshot, type VirtuosoHandle } from 'react-virtuoso'
 import { deviceLabel } from '@/components/clipboard/entry-delivery-labels'
 import { HistoryScroller, HistoryList } from '@/components/history/history-scroll-components'
-import HistoryGridRow, { type HistoryRowLayout } from '@/components/history/HistoryGridRow'
+import HistoryGridRow from '@/components/history/HistoryGridRow'
 import { dayKey } from '@/components/history/list/history-list-format'
 import type { DisplayClipboardItem } from '@/lib/clipboard-entry'
 import { cn } from '@/lib/utils'
@@ -16,14 +16,12 @@ const historyScrollComponents = {
 
 interface HistoryGridProps {
   items: DisplayClipboardItem[]
-  /** Row presentation; `list` also groups rows under day headers. */
-  layout?: HistoryRowLayout
-  /** List layout: origin device id -> name, for the rows' meta line. */
+  /** Origin device id -> name, for the rows' meta line. */
   sourceDeviceNames?: Record<string, string>
-  /** List layout: local tag id -> name, for the rows' tag chips; absent while
+  /** Local tag id -> name, for the rows' tag chips; absent while
    * local tags are unavailable. */
   tagNames?: ReadonlyMap<string, string | null>
-  /** List layout: the bulk-selected ids and their toggle. */
+  /** The bulk-selected ids and their toggle. */
   checkedIds?: ReadonlySet<string>
   onToggleChecked?: (id: string) => void
   /** Ids already rendered once; gates the one-shot entrance animation. */
@@ -53,13 +51,12 @@ interface HistoryGridProps {
 }
 
 /**
- * Scrollable card grid for the history view, including its loading and empty
- * states. The virtualized list keeps the row card behavior unchanged while
- * limiting mounted cards to the visible window plus a small buffer.
+ * Scrollable list of history rows grouped under day headers, including its
+ * loading and empty states. The list is virtualized, limiting mounted rows to
+ * the visible window plus a small buffer.
  */
 const HistoryGrid: React.FC<HistoryGridProps> = ({
   items,
-  layout = 'card',
   sourceDeviceNames,
   tagNames,
   checkedIds,
@@ -86,16 +83,15 @@ const HistoryGrid: React.FC<HistoryGridProps> = ({
   emptyStateText,
 }) => {
   const { t } = useTranslation()
-  // List layout: loaded rows per calendar day, for the day headers.
+  // Loaded rows per calendar day, for the day headers.
   const dayCounts = React.useMemo(() => {
     const counts = new Map<number, number>()
-    if (layout !== 'list') return counts
     for (const item of items) {
       const key = dayKey(item.activeTime)
       counts.set(key, (counts.get(key) ?? 0) + 1)
     }
     return counts
-  }, [items, layout])
+  }, [items])
 
   return (
     <div className="@container flex-1 min-h-0 overflow-hidden">
@@ -153,15 +149,13 @@ const HistoryGrid: React.FC<HistoryGridProps> = ({
           }}
           itemContent={(index, item) => {
             const opensDay =
-              layout === 'list' &&
-              (index === 0 || dayKey(items[index - 1].activeTime) !== dayKey(item.activeTime))
+              index === 0 || dayKey(items[index - 1].activeTime) !== dayKey(item.activeTime)
             const next = items[index + 1] as DisplayClipboardItem | undefined
             const isChecked = (id: string) => checkedIds?.has(id) ?? false
             const checked = isChecked(item.id)
             return (
               <HistoryGridRow
                 item={item}
-                layout={layout}
                 dayStart={opensDay ? item.activeTime : undefined}
                 // Consecutive checked rows of one day read as one block.
                 joinsPrevious={checked && !opensDay && index > 0 && isChecked(items[index - 1].id)}
@@ -173,11 +167,11 @@ const HistoryGrid: React.FC<HistoryGridProps> = ({
                 }
                 dayCount={dayCounts.get(dayKey(item.activeTime))}
                 deviceName={
-                  layout === 'list' && item.sourceDeviceId
+                  item.sourceDeviceId
                     ? deviceLabel(sourceDeviceNames?.[item.sourceDeviceId], item.sourceDeviceId)
                     : undefined
                 }
-                tagNames={layout === 'list' ? tagNames : undefined}
+                tagNames={tagNames}
                 seenIds={seenIds}
                 isActive={item.id === selectedId}
                 copySuccess={copySuccessId === item.id}
@@ -185,9 +179,6 @@ const HistoryGrid: React.FC<HistoryGridProps> = ({
                 anyChecked={(checkedIds?.size ?? 0) > 0}
                 onToggleChecked={onToggleChecked}
                 isDeleting={deletingIds.has(item.id)}
-                // List rows are separated by spacing alone (HList.dc.html); cards
-                // rule all but the last.
-                showDivider={layout === 'card' && index < items.length - 1}
                 onCopy={onCopy}
                 onFilePathsAction={onFilePathsAction}
                 onDelete={onDelete}

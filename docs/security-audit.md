@@ -17,7 +17,6 @@
 | `apps/gui/src/lib/daemon-ws.ts` | WebSocket auth token passed via URL query param (`?auth=Session%20TOKEN`) at connection time only — ephemeral, not persisted. |
 
 **grep results** (non-test files):
-- `apps/gui/src/components/feedback/FeedbackDialog.tsx`: `localStorage` used only for user email (not tokens) ✅
 - `apps/gui/src/components/clipboard/ClipboardContent.tsx`: `localStorage` used only for panel layout preferences ✅
 - `apps/gui/src/i18n/index.ts`: `localStorage` used only for language preference ✅
 

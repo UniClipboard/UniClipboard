@@ -119,6 +119,7 @@ func (h *HostService) openUpdater(dev bool) {
 		Name: updaterWindowName, Title: "Software Update", URL: url,
 		Width: updaterWidth, Height: updaterHeight, DisableResize: true,
 	}))
+	suppressKeyboardMenu(w)
 	centerWindow(w)
 }
 
@@ -133,6 +134,7 @@ func (h *HostService) preCreateQuickPanel() {
 		Mac:            application.MacWindow{DisableShadow: true},
 	}
 	w := h.app.Window.NewWithOptions(quietOptions(options))
+	suppressKeyboardMenu(w)
 	attachLayerPanel(w) // Wayland Layer Shell: must happen while the hidden window is still unrealized
 	if runtime.GOOS == "linux" && !layerPanelActive() {
 		// The ordinary X11/XWayland window: fixed size by geometry hints instead of the GTK flag (see setPanelSize). The

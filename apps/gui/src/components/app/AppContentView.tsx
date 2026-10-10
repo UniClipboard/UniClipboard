@@ -22,7 +22,6 @@ type Props = {
   hasStartupTask: boolean
   onSetupComplete: () => void
   recovery: ReturnType<typeof useProfileRecovery>
-  sidebarTitle: ReactNode
   view: View
 }
 
@@ -33,7 +32,6 @@ export function AppContentView({
   hasStartupTask,
   onSetupComplete,
   recovery,
-  sidebarTitle,
   view,
 }: Props) {
   let content: ReactNode
@@ -114,7 +112,7 @@ export function AppContentView({
       </AppStateFrame>
     )
   } else {
-    content = <AuthenticatedRoutes fullTitleBar={fullTitleBar} sidebarTitle={sidebarTitle} />
+    content = <AuthenticatedRoutes fullTitleBar={fullTitleBar} />
   }
 
   return <AppViewTransition viewKey={view}>{content}</AppViewTransition>

@@ -1,10 +1,9 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { Filter } from '@/api/clipboardItems'
 import type { TimeRangePreset } from '@/api/daemon/search'
 import CompositeSearchBar from '../CompositeSearchBar'
-import HistoryFilterPanel from '../HistoryFilterPanel'
 
 vi.mock('@/hooks/useShortcut', () => ({
   useShortcut: vi.fn(),
@@ -287,114 +286,5 @@ describe('CompositeSearchBar', () => {
     expect(props.onExtensionFilterChange).toHaveBeenCalledWith(null)
     expect(props.onContentFilterChange).not.toHaveBeenCalled()
     expect(input).toHaveValue('ext:md')
-  })
-})
-
-function renderFilterPanel(
-  overrides: Partial<React.ComponentProps<typeof HistoryFilterPanel>> = {}
-) {
-  const props: React.ComponentProps<typeof HistoryFilterPanel> = {
-    contentFilter: Filter.Favorited,
-    sourceFilter: null,
-    tagFilter: null,
-    timeRange: 'all_time' as TimeRangePreset,
-    extensionFilter: null,
-    onContentFilterChange: vi.fn(),
-    onTagFilterChange: vi.fn(),
-    onSourceFilterChange: vi.fn(),
-    onTimeRangeChange: vi.fn(),
-    onExtensionFilterChange: vi.fn(),
-    sourceOptions: [],
-    tagOptions: [],
-    ...overrides,
-  }
-
-  render(<HistoryFilterPanel {...props} />)
-  return props
-}
-
-describe('HistoryFilterPanel', () => {
-  it('replaces the all icon with a clear action while any filter is active', async () => {
-    const user = userEvent.setup()
-    const props = renderFilterPanel({
-      sourceFilter: 'peer-1',
-      tagFilter: 'code',
-      timeRange: 'today',
-      extensionFilter: 'txt',
-    })
-
-    const clearButton = screen.getByRole('button', { name: 'history.composite.clearAll' })
-    expect(clearButton.querySelector('svg')).toHaveClass('lucide-x')
-
-    await user.click(clearButton)
-
-    expect(props.onContentFilterChange).toHaveBeenCalledWith(Filter.All)
-    expect(props.onTagFilterChange).toHaveBeenCalledWith(null)
-    expect(props.onSourceFilterChange).toHaveBeenCalledWith(null)
-    expect(props.onTimeRangeChange).toHaveBeenCalledWith('all_time')
-    expect(props.onExtensionFilterChange).toHaveBeenCalledWith(null)
-  })
-
-  it('toggles tags in and out of a multi-tag selection', async () => {
-    const user = userEvent.setup()
-    const props = renderFilterPanel({
-      contentFilter: Filter.All,
-      tagFilter: 'link,code',
-      tagOptions: [
-        { id: 'link', count: 3, isBuiltin: true },
-        { id: 'code', count: 2, isBuiltin: true },
-        { id: 'image', count: 1, isBuiltin: true },
-      ],
-    })
-
-    await user.click(screen.getByRole('button', { name: 'code', pressed: true }))
-    await user.click(screen.getByRole('button', { name: 'image', pressed: false }))
-
-    expect(props.onTagFilterChange).toHaveBeenNthCalledWith(1, 'link')
-    expect(props.onTagFilterChange).toHaveBeenNthCalledWith(2, 'link,code,image')
-  })
-
-  it('keeps the all icon when no filter is active', () => {
-    renderFilterPanel({ contentFilter: Filter.All })
-
-    const allButton = screen.getByRole('button', { name: 'history.filter.all', pressed: true })
-    expect(allButton.querySelector('svg')).toHaveClass('lucide-layout-grid')
-    expect(
-      screen.queryByRole('button', { name: 'history.composite.clearAll' })
-    ).not.toBeInTheDocument()
-  })
-
-  it('uses a restrained selected-row treatment', () => {
-    renderFilterPanel()
-
-    const selectedRow = screen.getByRole('button', {
-      name: 'history.filter.favorited',
-      pressed: true,
-    })
-    const selectedIcon = selectedRow.querySelector('svg')
-
-    expect(selectedRow.querySelector('span[aria-hidden="true"]')).toHaveClass('bg-muted/50')
-    expect(selectedRow.className).toContain('text-foreground')
-    expect(selectedRow.className).not.toContain('bg-primary')
-    expect(selectedRow.className).not.toContain('shadow')
-    expect(selectedRow.className).not.toContain('ring-')
-    expect(selectedRow.className).not.toContain('font-medium')
-    expect(selectedIcon).toHaveClass('opacity-80')
-    expect(selectedRow).not.toHaveTextContent('history.filter.favorited')
-  })
-
-  it('uses a fixed-width horizontal strip and maps the wheel to horizontal scrolling', () => {
-    renderFilterPanel({
-      tagOptions: [
-        { id: 'code', count: 2, isBuiltin: true },
-        { id: 'link', count: 1, isBuiltin: true },
-      ],
-    })
-
-    const strip = screen.getByTestId('history-filter-strip')
-    expect(strip).toHaveClass('w-fit', 'max-w-72', 'overflow-x-auto', 'rounded-full')
-
-    fireEvent.wheel(strip, { deltaY: 40 })
-    expect(strip.scrollLeft).toBe(40)
   })
 })

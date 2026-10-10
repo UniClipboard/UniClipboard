@@ -11,10 +11,8 @@ import TextPreview from '@/components/clipboard/preview-renderers/TextPreview'
 import { AddDeviceInvitation } from '@/components/device/AddDeviceInvitation'
 import DeviceListItem from '@/components/device/DeviceListItem'
 import LocalDevicePanel from '@/components/device/LocalDevicePanel'
-import { FeedbackDialog } from '@/components/feedback/FeedbackDialog'
 import HistoryGridRow from '@/components/history/HistoryGridRow'
 import VisualEffectsProvider from '@/components/motion/VisualEffectsProvider'
-import { Button } from '@/components/ui/button'
 import { ReleaseNotes } from '@/components/update/ReleaseNotes'
 import { SettingContext } from '@/contexts/setting-context'
 import { makeUpgradePreview } from '@/dev/upgrade-preview-model'
@@ -131,7 +129,6 @@ if (params.get('transfer') === '1') {
 export default function TypographyFixture() {
   const view = params.get('view') || 'history'
   const [selected, setSelected] = useState('text')
-  const [feedback, setFeedback] = useState(view === 'feedback')
   const [step, setStep] = useState(view)
   const [copied, setCopied] = useState<string | null>(null)
   let content
@@ -227,13 +224,6 @@ export default function TypographyFixture() {
         detail="The local service could not be started. Please try again."
         onRetry={noop}
       />
-    )
-  else if (view === 'feedback')
-    content = (
-      <>
-        <Button onClick={() => setFeedback(true)}>Feedback</Button>
-        <FeedbackDialog open={feedback} onOpenChange={setFeedback} />
-      </>
     )
   else if (view === 'release')
     content = (

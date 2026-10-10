@@ -67,6 +67,8 @@ jobs:
           docker volume create "$UC_LINUX_CACHE_VOLUME"
       - name: Recover the exact packaged daemon and its evidence
         run: |
+          # Artifact downloads restore files as 0644; the runtime scenarios execute the AppImage.
+          chmod +x "$RUNNER_TEMP"/upload/UniClipboard_*.AppImage
           expected_sha="$(python3 -c 'import json,os; m=json.load(open(os.environ["RUNNER_TEMP"]+"/evidence/package-manifest.json")); print(m["daemon"]["sha256"])')"
           docker run --rm --platform "${{ matrix.platform }}" -v "$UC_LINUX_CACHE_VOLUME:/cache" \
             -v "$RUNNER_TEMP/upload:/in:ro" -v "$RUNNER_TEMP/evidence:/evidence:ro" -e EXPECTED_SHA="$expected_sha" "$UC_LINUX_IMAGE" bash -c '

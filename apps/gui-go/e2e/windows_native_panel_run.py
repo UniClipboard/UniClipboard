@@ -25,8 +25,11 @@ What is checked (each recorded in native-assertions.json):
   1  the host starts exactly one helper, as its own child, from the sandbox, and a hidden panel is not on screen
   2  the default shortcut (Ctrl+Alt+V, real SendInput events) shows the panel, which takes the foreground, and the same
      shortcut hides it again and gives the foreground back to the window that had it
+  3a with an empty query, Down twice and Enter paste the third (oldest) entry into the previous window
   3  typing a digit query and Enter pastes the matching history entry into the previous window, and the panel is gone
   4  Esc closes the panel without pasting and returns the foreground
+  4b Ctrl+Shift+O in the panel (the `show_main_window` request) brings the minimized main window back to the foreground
+  4c Ctrl+, in the panel (the `open_settings` request) does the same (the settings route itself is not machine-checked)
   5  a shortcut owned by another process is refused as Conflict and the old binding stays; after the other process lets
      go the same change succeeds, the helper is restarted, the old shortcut is dead and the new one opens the panel
   6  the modifier double tap (Ctrl, twice, alone) opens the panel after the setting is saved; a Ctrl chord does not
@@ -62,12 +65,13 @@ if user32 is not None:
     user32.BringWindowToTop.argtypes = [wt.HWND]
     user32.SetForegroundWindow.argtypes = [wt.HWND]
     user32.IsWindowVisible.argtypes = [wt.HWND]
+    user32.IsIconic.argtypes = [wt.HWND]
     user32.GetWindowTextW.argtypes = [wt.HWND, wt.LPWSTR, ctypes.c_int]
     user32.GetWindowRect.argtypes = [wt.HWND, ctypes.POINTER(wt.RECT)]
     user32.EnumWindows.argtypes = [ctypes.c_void_p, wt.LPARAM]
     kernel32.GetCurrentThreadId.restype = wt.DWORD
 
-VK.update({'v': 0x56, 'enter': 0x0D, 'esc': 0x1B, 'f13': 0x7C, 'f14': 0x7D, 'shift': 0x10})
+VK.update({'v': 0x56, 'enter': 0x0D, 'esc': 0x1B, 'f13': 0x7C, 'f14': 0x7D, 'shift': 0x10, 'down': 0x28, 'o': 0x4F, 'comma': 0xBC, 'back': 0x08})
 HELPER = 'uniclip-quick-panel.exe'
 PANEL_TITLE = 'UniClipboard History'
 DEFAULT_SHORTCUT = 'ctrl+alt+v'
@@ -119,6 +123,24 @@ def panel_windows(pids):
                 rect = wt.RECT()
                 user32.GetWindowRect(hwnd, ctypes.byref(rect))
                 found.append({'hwnd': hwnd, 'rect': [rect.left, rect.top, rect.right, rect.bottom]})
+        return True
+    user32.EnumWindows(proc_type(visit), 0)
+    return found
+
+
+def windows_of(pid):
+    """Top-level windows of one process: hwnd, title, visible, minimized."""
+    found = []
+    proc_type = ctypes.WINFUNCTYPE(wt.BOOL, wt.HWND, wt.LPARAM)
+
+    def visit(hwnd, _):
+        owner = wt.DWORD()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(owner))
+        if owner.value == pid:
+            buffer = ctypes.create_unicode_buffer(256)
+            user32.GetWindowTextW(hwnd, buffer, 256)
+            found.append({'hwnd': hwnd, 'title': buffer.value, 'visible': bool(user32.IsWindowVisible(hwnd)),
+                          'minimized': bool(user32.IsIconic(hwnd))})
         return True
     user32.EnumWindows(proc_type(visit), 0)
     return found
@@ -273,17 +295,26 @@ def main():
         # `space init` leaves a one-shot daemon that exits on its own; let a persistent one take over before the host starts, as
         # native_panel_run.py does on macOS, so the host reuses a settled daemon instead of racing the exiting one.
         for _ in range(3):
-            if run_quiet([uniclip, 'start'], env=base_env, capture_output=True, timeout=120).returncode == 0:
+            started = run_quiet([uniclip, 'start'], env=base_env, capture_output=True, text=True, errors='replace', timeout=120)
+            if started.returncode == 0:
                 break
             time.sleep(3)
         else:
-            raise RuntimeError('daemon start failed three times')
+            raise RuntimeError(f'daemon start failed three times (exit {started.returncode}): {(started.stdout + started.stderr)[-600:]}')
         target_text = out / 'target-text.txt'
         ps1 = out / 'target.ps1'
         ps1.write_text(TARGET_PS1, encoding='utf-8')
         target = subprocess.Popen(['powershell', '-NoProfile', '-STA', '-ExecutionPolicy', 'Bypass', '-File', str(ps1), str(target_text)])
         time.sleep(4)
         focus_target = lambda: focus_window('uc-gui-go-paste-target')
+
+        def clear_editor():
+            """Focus the editor and empty it (the file the editor writes follows its text)."""
+            focus_target()
+            # A multiline WinForms text box has no Ctrl+A; the longest text this run puts in it is two entries.
+            for _ in range(80):
+                send_chord('back')
+            wait_for(lambda: (target_text.read_text(encoding='utf-8-sig') if target_text.exists() else '') == '', 5)
         held = [vk for vk in range(0x07, 0xFF) if user32.GetAsyncKeyState(vk) & 0x8000]
         check('precondition: no key is held down (a stuck key would also disable the modifier double tap)', not held, {'held': held})
         focus_target()
@@ -329,8 +360,22 @@ def main():
         check('2 the same shortcut hides it and the previous window is the foreground again', hidden and foreground_pid() == target.pid,
               {'foreground': foreground_pid(), 'target': target.pid})
 
-        target_text.write_text('')
-        focus_target()  # the panel pastes into whatever window was in front when it opened
+        # 3a: the history is newest first (gamma, beta, alpha), so two Downs from the first row reach alpha.
+        clear_editor()  # the panel pastes into whatever window was in front when it opened
+        send_chord('ctrl', 'alt', 'v', hold=0.15)
+        wait_for(lambda: panel_windows(helper_pids()), 10)
+        wait_for(lambda: foreground_pid() == panel_pid, 8)
+        time.sleep(1.5)  # the first search result has to be there before the selection moves
+        for _ in range(2):
+            send_chord('down', hold=0.05)
+            time.sleep(0.3)
+        screenshot(out / 'panel-arrows.png')
+        send_chord('enter', hold=0.1)
+        typed = wait_for(lambda: (target_text.read_text(encoding='utf-8-sig') if target_text.exists() else '') or None, 8) or ''
+        check('3a Down twice and Enter paste the third entry into the previous window', typed == MARKERS[0], {'typed': typed})
+        wait_for(lambda: not panel_windows(helper_pids()) and foreground_pid() == target.pid, 8)
+
+        clear_editor()  # the panel pastes into whatever window was in front when it opened
         send_chord('ctrl', 'alt', 'v', hold=0.15)
         wait_for(lambda: panel_windows(helper_pids()), 10)
         wait_for(lambda: foreground_pid() == panel_pid, 8)
@@ -347,8 +392,7 @@ def main():
         check('3 the panel is gone and the previous window is the foreground',
               not panel_windows(helper_pids()) and foreground_pid() == target.pid, {'foreground': foreground_pid()})
 
-        target_text.write_text('')
-        focus_target()
+        clear_editor()
         send_chord('ctrl', 'alt', 'v', hold=0.15)
         wait_for(lambda: panel_windows(helper_pids()), 10)
         time.sleep(.5)
@@ -358,6 +402,35 @@ def main():
         check('4 Esc closes the panel without pasting and returns the foreground',
               gone and foreground_pid() == target.pid and (not target_text.exists() or target_text.read_text(encoding='utf-8-sig') == ''),
               {'foreground': foreground_pid()})
+
+        # 4b / 4c: the panel's requests to the host. The main window is minimized first, so that showing it is visible.
+        def main_window():
+            return next((w for w in windows_of(gui.proc.pid) if w['title'] == 'UniClipboard'), None)
+
+        for label, keys in (('4b Ctrl+Shift+O (show_main_window)', ('ctrl', 'shift', 'o')), ('4c Ctrl+, (open_settings)', ('ctrl', 'comma'))):
+            main = main_window()
+            if not main:
+                check(f'{label}: the host has a main window', False, {'windows': windows_of(gui.proc.pid)})
+                continue
+            user32.ShowWindow(main['hwnd'], 6)  # SW_MINIMIZE
+            wait_for(lambda: user32.IsIconic(main['hwnd']), 5)
+            focus_target()
+            send_chord('ctrl', 'alt', 'v', hold=0.15)
+            wait_for(lambda: panel_windows(helper_pids()), 10)
+            wait_for(lambda: foreground_pid() == panel_pid, 8)
+            time.sleep(1.0)
+            send_chord(*keys, hold=0.1)
+            shown_main = wait_for(lambda: not user32.IsIconic(main['hwnd']) and user32.IsWindowVisible(main['hwnd']) and foreground_pid() == gui.proc.pid, 10)
+            time.sleep(1.0)
+            screenshot(out / f'{label[:2]}-main-window.png')
+            check(f'{label} brings the main window to the foreground', bool(shown_main),
+                  {'main': main_window(), 'foreground': foreground_pid(), 'host': gui.proc.pid})
+            if panel_windows(helper_pids()):
+                send_chord('esc', hold=0.1)
+                wait_for(lambda: not panel_windows(helper_pids()), 5)
+            user32.ShowWindow(main['hwnd'], 6)
+            wait_for(lambda: user32.IsIconic(main['hwnd']), 5)
+            focus_target()
 
         # 5: a conflicting shortcut is refused before it is saved; once free it is accepted and the helper restarts.
         release = hold_hotkey(NEW_SHORTCUT)

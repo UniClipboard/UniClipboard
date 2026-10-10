@@ -50,7 +50,7 @@ func (h *HostService) chooseBundleToOpen() (string, bool, error) {
 }
 
 func (h *HostService) configPost(ctx context.Context, route string, body, out any) error {
-	return wrapConfigError(h.client.Enveloped(ctx, daemonclient.Request{Method: http.MethodPost, Path: route, JSON: body}, out))
+	return wrapConfigError(h.daemon().Enveloped(ctx, daemonclient.Request{Method: http.MethodPost, Path: route, JSON: body}, out))
 }
 
 // ExportConfigPackage asks where to save, then has the daemon write the configuration bundle there.

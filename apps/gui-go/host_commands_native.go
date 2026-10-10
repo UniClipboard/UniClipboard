@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/UniClipboard/UniClipboard/apps/gui-go/internal/hostapi"
+	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/daemonclient"
 )
 
 // Native shell, appearance and lifecycle commands.
@@ -229,8 +230,16 @@ func (h *HostService) RestartApp() {
 //uc:errors command InternalError
 //uc:os all=real
 func (h *HostService) RestartDaemon(ctx context.Context) error {
+	h.announceDaemonStop()
 	if err := restartDaemon(); err != nil {
 		return hostapi.Internal(err)
 	}
+	// The new process has its own connection file and token: re-read them, then tell the pages to reconnect.
+	client, err := daemonclient.FromEnv()
+	if err != nil {
+		return hostapi.Internal(err)
+	}
+	h.client.Store(client)
+	h.emit(daemonConnectionChanged, nil)
 	return nil
 }

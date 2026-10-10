@@ -47,11 +47,22 @@ func (h *HostService) shutdown() {
 	h.stopDaemonOnExit()
 }
 
+// pageDisconnectGrace is how long the page gets to close its daemon WebSocket after `app://shutting-down`.
+const pageDisconnectGrace = 300 * time.Millisecond
+
+// announceDaemonStop tells the pages to close their daemon WebSocket before the daemon stops. A WebView that is
+// destroyed sends no close frame, so the daemon would otherwise wait for its heartbeat timeout before it exits.
+func (h *HostService) announceDaemonStop() {
+	h.emit(appShuttingDownEvent, nil)
+	time.Sleep(pageDisconnectGrace)
+}
+
 // stopDaemonOnExit terminates the connected daemon and waits for it to exit.
 func (h *HostService) stopDaemonOnExit() {
 	if h.exit.keepDaemon.Load() {
 		return
 	}
+	h.announceDaemonStop()
 	if err := stopDaemon(); err != nil {
 		log.Printf("failed to stop the daemon on exit: %v", err)
 	}

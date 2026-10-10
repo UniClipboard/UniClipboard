@@ -47,7 +47,7 @@ func (h *HostService) captureUpdateEvent(event map[string]any) {
 			for event := range q.events {
 				ctx, cancel := context.WithTimeout(context.Background(), analyticsTimeout)
 				began := time.Now()
-				err := h.client.Enveloped(ctx, daemonclient.Request{Method: http.MethodPost, Path: "/analytics/capture", JSON: event}, nil)
+				err := h.daemon().Enveloped(ctx, daemonclient.Request{Method: http.MethodPost, Path: "/analytics/capture", JSON: event}, nil)
 				cancel()
 				if err != nil {
 					log.Printf("update analytics: capture %v failed after %s: %v", event["kind"], time.Since(began).Round(time.Millisecond), err)

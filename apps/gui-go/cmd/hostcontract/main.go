@@ -3,6 +3,8 @@
 // types (`wails3 generate bindings`); see scripts/gen-host-bindings.mjs for that step.
 //
 //	go run ./cmd/hostcontract errors-ts [-check]   # frontend form of the error catalog
+//	go run ./cmd/hostcontract e2e-table [-check]   # control-file invoke table (e2e builds)
+//	go run ./cmd/hostcontract docs [-check]        # generated block of docs/architecture/gui-go-host-commands.md
 //	go run ./cmd/hostcontract lint                 # static rules on the Go sources
 //
 // Paths are resolved from the repository root (two levels above apps/gui-go).
@@ -55,7 +57,7 @@ func writeOrCheck(path, content string, check bool) {
 
 func main() {
 	if len(os.Args) < 2 {
-		fatal(fmt.Errorf("usage: hostcontract errors-ts|lint [-check]"))
+		fatal(fmt.Errorf("usage: hostcontract errors-ts|e2e-table|docs|lint [-check]"))
 	}
 	root := repoRoot()
 	check := len(os.Args) > 2 && os.Args[2] == "-check"
@@ -68,6 +70,12 @@ func main() {
 			fatal(fmt.Errorf("run `hostcontract lint` first: %s", problems[0]))
 		}
 		writeOrCheck(filepath.Join(root, e2eTablePath), renderE2ETable(commands), check)
+	case "docs":
+		commands, problems := scanCommands(root)
+		if len(problems) > 0 {
+			fatal(fmt.Errorf("run `hostcontract lint` first: %s", problems[0]))
+		}
+		writeOrCheck(filepath.Join(root, docsPath), renderDocs(root, commands, scanEvents(root)), check)
 	case "lint":
 		problems := lint(root)
 		for _, problem := range problems {

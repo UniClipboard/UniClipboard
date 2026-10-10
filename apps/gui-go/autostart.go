@@ -183,7 +183,7 @@ func applyAutoStart(store autoStartStore, policy loginItemPolicy, login osAutost
 }
 
 func (h *HostService) autoStartSetting(ctx context.Context) (bool, error) {
-	return daemonAutoStartStore{ctx: ctx, client: h.client}.get()
+	return daemonAutoStartStore{ctx: ctx, client: h.daemon()}.get()
 }
 
 func (h *HostService) updateAutoStart(ctx context.Context, enabled bool) error {
@@ -191,7 +191,7 @@ func (h *HostService) updateAutoStart(ctx context.Context, enabled bool) error {
 	if err != nil {
 		return hostapi.Internal(err)
 	}
-	return applyAutoStart(daemonAutoStartStore{ctx: ctx, client: h.client}, policy, h.loginItem(), enabled)
+	return applyAutoStart(daemonAutoStartStore{ctx: ctx, client: h.daemon()}, policy, h.loginItem(), enabled)
 }
 
 // reconcileAutoStart makes the OS registration follow the stored preference at startup. When enabled it

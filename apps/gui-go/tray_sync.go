@@ -22,7 +22,7 @@ func parseSyncEnabled(raw []byte) (bool, bool) {
 
 func (h *HostService) readSyncEnabled(ctx context.Context) (bool, error) {
 	var raw json.RawMessage
-	if err := h.client.Get(ctx, "/settings", &raw); err != nil {
+	if err := h.daemon().Get(ctx, "/settings", &raw); err != nil {
 		return false, err
 	}
 	enabled, ok := parseSyncEnabled(raw)

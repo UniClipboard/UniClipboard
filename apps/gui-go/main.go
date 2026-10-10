@@ -25,7 +25,7 @@ var assets embed.FS
 
 type HostService struct {
 	app              *application.App
-	client           *daemonclient.Client
+	client           atomic.Pointer[daemonclient.Client] // replaced when the daemon is restarted; read through daemon()
 	effects          *visualEffects
 	panel            panelState
 	exit             exitIntent
@@ -60,6 +60,10 @@ type HostService struct {
 }
 
 // emit broadcasts an event to every window, matching Tauri's app-wide emit.
+// daemon returns the client of the current daemon. A restart replaces it (the new process has a new token), so
+// callers fetch it per use instead of keeping it.
+func (h *HostService) daemon() *daemonclient.Client { return h.client.Load() }
+
 func (h *HostService) emit(name string, payload any) { h.app.Event.Emit(name, payload) }
 
 // openMainWindow creates the main window. Closing it hides it so the process,
@@ -185,7 +189,7 @@ func (h *HostService) bootstrap() {
 	if err != nil {
 		h.fatal(err)
 	}
-	h.client = client
+	h.client.Store(client)
 	startup, _ := h.loadStartupSettings()
 	// A Silent or Lightweight launch does not build the window at boot (and so never pays the WebView
 	// cost); it is created the first time something asks to show it.

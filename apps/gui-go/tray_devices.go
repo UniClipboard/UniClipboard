@@ -140,7 +140,7 @@ func (d *deviceMenu) loadRows(ctx context.Context) []deviceRow {
 		PeerID     string `json:"peerId"`
 		DeviceName string `json:"deviceName"`
 	}
-	if err := d.h.client.Get(cctx, "/paired-devices", &devices); err != nil {
+	if err := d.h.daemon().Get(cctx, "/paired-devices", &devices); err != nil {
 		return nil
 	}
 	rows := make([]deviceRow, 0, len(devices))
@@ -180,7 +180,7 @@ func (h *HostService) memberSyncPreferences(ctx context.Context, id string) (mem
 	if err != nil {
 		return prefs, err
 	}
-	return prefs, h.client.Get(ctx, path, &prefs)
+	return prefs, h.daemon().Get(ctx, path, &prefs)
 }
 
 // render shows rows (nil means the daemon could not be read). The submenu is rebuilt only when the set of
@@ -278,7 +278,7 @@ func (d *deviceMenu) saveDeviceSync(ctx context.Context, id string, enabled bool
 		Success bool `json:"success"`
 	}
 	patch := map[string]any{"sendEnabled": enabled, "receiveEnabled": enabled}
-	if err := d.h.client.Enveloped(ctx, daemonclient.Request{Method: http.MethodPatch, Path: path, JSON: patch}, &result); err != nil {
+	if err := d.h.daemon().Enveloped(ctx, daemonclient.Request{Method: http.MethodPatch, Path: path, JSON: patch}, &result); err != nil {
 		return err
 	}
 	if !result.Success {

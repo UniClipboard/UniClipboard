@@ -181,7 +181,7 @@ func (h *HostService) setupComplete(ctx context.Context) (bool, error) {
 	var state struct {
 		HasCompleted bool `json:"hasCompleted"`
 	}
-	if err := h.client.Get(ctx, "/v2/setup/state", &state); err != nil {
+	if err := h.daemon().Get(ctx, "/v2/setup/state", &state); err != nil {
 		return false, err
 	}
 	return state.HasCompleted, nil
@@ -282,7 +282,7 @@ func (h *HostService) scheduledCheck(ctx context.Context) bool {
 			AutoDownloadUpdate bool `json:"autoDownloadUpdate"`
 		} `json:"general"`
 	}
-	if err := h.client.Get(ctx, "/settings", &settings); err != nil {
+	if err := h.daemon().Get(ctx, "/settings", &settings); err != nil {
 		log.Printf("update scheduler: load settings: %v", err)
 		return false
 	}

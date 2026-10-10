@@ -101,7 +101,7 @@ func (h *HostService) chooseSaveFile(name string, filterName, pattern string) (s
 func (h *HostService) startupStatusForDiagnostics() []byte {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	status, err := h.client.StartupStatus(ctx)
+	status, err := h.daemon().StartupStatus(ctx)
 	if err != nil {
 		return nil // the daemon may be offline or past startup; the logs are still worth exporting
 	}

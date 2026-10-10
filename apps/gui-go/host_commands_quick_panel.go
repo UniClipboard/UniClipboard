@@ -26,13 +26,13 @@ func (h *HostService) loadQuickPanelSettings(ctx context.Context) (quickPanelSet
 	var settings struct {
 		QuickPanel quickPanelSettings `json:"quickPanel"`
 	}
-	err := h.client.Get(ctx, "/settings", &settings)
+	err := h.daemon().Get(ctx, "/settings", &settings)
 	return settings.QuickPanel, err
 }
 
 func (h *HostService) patchQuickPanel(ctx context.Context, patch map[string]any) error {
 	body := map[string]any{"quickPanel": patch}
-	if err := h.client.Enveloped(ctx, daemonclient.Request{Method: http.MethodPut, Path: "/settings", JSON: body}, nil); err != nil {
+	if err := h.daemon().Enveloped(ctx, daemonclient.Request{Method: http.MethodPut, Path: "/settings", JSON: body}, nil); err != nil {
 		return hostapi.Internal(err)
 	}
 	return nil
@@ -174,7 +174,7 @@ func (h *HostService) updateKeyboardShortcuts(ctx context.Context, patch map[str
 		KeyboardShortcuts map[string]json.RawMessage `json:"keyboardShortcuts"`
 		QuickPanel        quickPanelSettings         `json:"quickPanel"`
 	}
-	if err := h.client.Get(ctx, "/settings", &settings); err != nil {
+	if err := h.daemon().Get(ctx, "/settings", &settings); err != nil {
 		return UpdateKeyboardShortcutsResult{}, hostapi.Internal(err)
 	}
 	next := map[string]json.RawMessage{}
@@ -203,7 +203,7 @@ func (h *HostService) updateKeyboardShortcuts(ctx context.Context, patch map[str
 		}
 	}
 	body := map[string]any{"keyboardShortcuts": map[string]any{"shortcuts": patch}}
-	if err := h.client.Enveloped(ctx, daemonclient.Request{Method: http.MethodPut, Path: "/settings", JSON: body}, nil); err != nil {
+	if err := h.daemon().Enveloped(ctx, daemonclient.Request{Method: http.MethodPut, Path: "/settings", JSON: body}, nil); err != nil {
 		if osChanged {
 			if rollbackErr := h.applyOSShortcuts(previousOS); rollbackErr != nil {
 				log.Printf("failed to roll the global shortcut back after the settings save failed: %v", rollbackErr)
@@ -246,7 +246,7 @@ func (h *HostService) setWebViewPanelEnabled(ctx context.Context, enabled bool) 
 		KeyboardShortcuts map[string]json.RawMessage `json:"keyboardShortcuts"`
 		QuickPanel        quickPanelSettings         `json:"quickPanel"`
 	}
-	if err := h.client.Get(ctx, "/settings", &settings); err != nil {
+	if err := h.daemon().Get(ctx, "/settings", &settings); err != nil {
 		return hostapi.Internal(err)
 	}
 	previous := h.osShortcuts
@@ -335,7 +335,7 @@ func (h *HostService) initPanelShortcuts() {
 		QuickPanel        quickPanelSettings         `json:"quickPanel"`
 	}
 	enabled := true // the setting's default when it cannot be read
-	if err := h.client.Get(ctx, "/settings", &settings); err == nil {
+	if err := h.daemon().Get(ctx, "/settings", &settings); err == nil {
 		enabled = settings.QuickPanel.Enabled
 	} else {
 		log.Printf("quick panel shortcut: settings unreadable, using the defaults: %v", err)

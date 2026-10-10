@@ -83,7 +83,7 @@ func (h *HostService) resolveChannel(ctx context.Context, explicit *string) upda
 			UpdateChannel *string `json:"updateChannel"`
 		} `json:"general"`
 	}
-	if err := h.client.Get(ctx, "/settings", &settings); err == nil && settings.General.UpdateChannel != nil {
+	if err := h.daemon().Get(ctx, "/settings", &settings); err == nil && settings.General.UpdateChannel != nil {
 		return update.ParseChannel(*settings.General.UpdateChannel)
 	}
 	return update.DetectChannel(buildinfo.PackageVersion)
@@ -342,7 +342,7 @@ func (h *HostService) skipVersion(ctx context.Context, version string) error {
 
 func (h *HostService) setAutoDownload(ctx context.Context, enabled bool) error {
 	patch := map[string]any{"general": map[string]any{"autoDownloadUpdate": enabled}}
-	if err := h.client.Enveloped(ctx, daemonclient.Request{Method: http.MethodPut, Path: "/settings", JSON: patch}, nil); err != nil {
+	if err := h.daemon().Enveloped(ctx, daemonclient.Request{Method: http.MethodPut, Path: "/settings", JSON: patch}, nil); err != nil {
 		return hostapi.TextError("failed to save settings: " + err.Error())
 	}
 	return nil
@@ -354,7 +354,7 @@ func (h *HostService) autoDownload(ctx context.Context) (bool, error) {
 			AutoDownloadUpdate bool `json:"autoDownloadUpdate"`
 		} `json:"general"`
 	}
-	if err := h.client.Get(ctx, "/settings", &settings); err != nil {
+	if err := h.daemon().Get(ctx, "/settings", &settings); err != nil {
 		return false, hostapi.TextError("failed to load settings: " + err.Error())
 	}
 	return settings.General.AutoDownloadUpdate, nil

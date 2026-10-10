@@ -160,7 +160,7 @@ func (s *EvidenceService) runControlCommand(line string) {
 		var err error
 		if allowed {
 			patch := map[string]any{"general": map[string]any{key: value == "on"}}
-			err = h.client.Enveloped(ctx, daemonclient.Request{Method: http.MethodPut, Path: "/settings", JSON: patch}, nil)
+			err = h.daemon().Enveloped(ctx, daemonclient.Request{Method: http.MethodPut, Path: "/settings", JSON: patch}, nil)
 		}
 		_ = s.write(Step{Window: "update", Step: "control-setting", OK: allowed && err == nil, Detail: map[string]any{"key": key, "enabled": value == "on"}})
 	case "close-updater":
@@ -251,7 +251,7 @@ func (s *EvidenceService) runControlCommand(line string) {
 			KeyboardShortcuts map[string]json.RawMessage `json:"keyboardShortcuts"`
 			QuickPanel        quickPanelSettings         `json:"quickPanel"`
 		}
-		err := h.client.Get(ctx, "/settings", &stored)
+		err := h.daemon().Get(ctx, "/settings", &stored)
 		visible := false
 		if w, ok := h.app.Window.GetByName(quickPanelWindowName); ok {
 			visible = w.IsVisible()

@@ -18,10 +18,10 @@ import (
 //uc:errors none
 //uc:os all=real
 func (h *HostService) GetDaemonConnectionInfo() *DaemonConnection {
-	if h.client == nil {
+	if h.daemon() == nil {
 		return nil
 	}
-	return &DaemonConnection{BaseURL: h.client.BaseURL, WSURL: h.client.WSURL}
+	return &DaemonConnection{BaseURL: h.daemon().BaseURL, WSURL: h.daemon().WSURL}
 }
 
 // GetDaemonSession exchanges a short-lived daemon session for the page. It is nil until the daemon bootstrap
@@ -30,12 +30,12 @@ func (h *HostService) GetDaemonConnectionInfo() *DaemonConnection {
 //uc:errors command InternalError
 //uc:os all=real
 func (h *HostService) GetDaemonSession(ctx context.Context) (*DaemonSession, error) {
-	if h.client == nil {
+	if h.daemon() == nil {
 		return nil, nil
 	}
 	ctx, cancel := commandContext(ctx, "get_daemon_session")
 	defer cancel()
-	session, err := h.client.ExchangeSession(ctx, "gui")
+	session, err := h.daemon().ExchangeSession(ctx, "gui")
 	if err != nil {
 		return nil, hostapi.Internal(err)
 	}
@@ -60,7 +60,7 @@ func (h *HostService) GetDaemonBootstrapFailure() *DaemonBootstrapFailure {
 func (h *HostService) GetDaemonStartupStatus(ctx context.Context) (json.RawMessage, error) {
 	ctx, cancel := commandContext(ctx, "get_daemon_startup_status")
 	defer cancel()
-	raw, err := h.client.StartupStatus(ctx)
+	raw, err := h.daemon().StartupStatus(ctx)
 	if err != nil {
 		return nil, hostapi.Internal(err)
 	}
@@ -103,7 +103,7 @@ func (h *HostService) deviceID(ctx context.Context) (string, error) {
 	var me struct {
 		PeerID string `json:"peerId"`
 	}
-	if err := h.client.Get(ctx, "/device/me", &me); err != nil {
+	if err := h.daemon().Get(ctx, "/device/me", &me); err != nil {
 		return "", hostapi.Internal(err)
 	}
 	return me.PeerID, nil
@@ -119,7 +119,7 @@ func (h *HostService) GetContentUnlocked(ctx context.Context) (bool, error) {
 	var status struct {
 		Unlocked bool `json:"unlocked"`
 	}
-	if err := h.client.Get(ctx, "/content-lock", &status); err != nil {
+	if err := h.daemon().Get(ctx, "/content-lock", &status); err != nil {
 		return false, hostapi.Internal(err)
 	}
 	return status.Unlocked, nil
@@ -134,7 +134,7 @@ func (h *HostService) GetProfileRecovery(ctx context.Context) (json.RawMessage, 
 	ctx, cancel := commandContext(ctx, "get_profile_recovery")
 	defer cancel()
 	var out json.RawMessage
-	if err := h.client.Get(ctx, "/encryption/recovery", &out); err != nil {
+	if err := h.daemon().Get(ctx, "/encryption/recovery", &out); err != nil {
 		return nil, hostapi.Internal(err)
 	}
 	return out, nil
@@ -153,7 +153,7 @@ type ContentUnlockRequest struct {
 func (h *HostService) UnlockContent(ctx context.Context, request ContentUnlockRequest) error {
 	ctx, cancel := commandContext(ctx, "unlock_content")
 	defer cancel()
-	err := h.client.Enveloped(ctx, daemonclient.Request{Method: http.MethodPost, Path: "/content-lock/unlock", JSON: map[string]string{"passphrase": request.Passphrase}}, nil)
+	err := h.daemon().Enveloped(ctx, daemonclient.Request{Method: http.MethodPost, Path: "/content-lock/unlock", JSON: map[string]string{"passphrase": request.Passphrase}}, nil)
 	if err != nil {
 		return hostapi.UnlockError{Code: hostapi.UnlockFromDaemon(daemonclient.ErrorCode(err))}
 	}
@@ -175,7 +175,7 @@ func (h *HostService) UnlockContentFromKeyring(ctx context.Context) (bool, error
 	var status struct {
 		Unlocked bool `json:"unlocked"`
 	}
-	if err := h.client.Enveloped(ctx, daemonclient.Request{Method: http.MethodPost, Path: "/content-lock/unlock-keyring"}, &status); err != nil {
+	if err := h.daemon().Enveloped(ctx, daemonclient.Request{Method: http.MethodPost, Path: "/content-lock/unlock-keyring"}, &status); err != nil {
 		return false, hostapi.Internal(err)
 	}
 	if status.Unlocked {

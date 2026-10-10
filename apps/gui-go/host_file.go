@@ -73,7 +73,7 @@ func (h *HostService) loadHistoryFilePaths(ctx context.Context) (map[string]stru
 			Preview string `json:"preview"`
 		}
 		query := "/clipboard/entries?limit=" + strconv.Itoa(historyPageSize) + "&offset=" + strconv.Itoa(page*historyPageSize)
-		if err := h.client.Get(ctx, query, &entries); err != nil {
+		if err := h.daemon().Get(ctx, query, &entries); err != nil {
 			return nil, err
 		}
 		for _, entry := range entries {

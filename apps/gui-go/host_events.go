@@ -21,6 +21,7 @@ const (
 	quickPanelPrepareShow     = "quick-panel://prepare-show"      // host -> page, no payload: clear state before showing
 	appShuttingDownEvent      = "app://shutting-down"             // host -> page, no payload: close the daemon WebSocket before the daemon stops
 	daemonConnectionChanged   = "app://daemon-connection-changed" // host -> page, no payload: the daemon was replaced, reconnect
+	desktopThemeChangedEvent  = "desktop-theme://changed"         // host -> page, DesktopThemeSnapshot: the desktop theme changed. Declared for the page's listener; no host emits it (Omarchy theming is not implemented in the Go host)
 	settingsChangedEvent      = "settings://changed"              // page -> host, SettingsChanged: settings were saved
 	devicesChangedEvent       = "devices://sync-changed"          // both ways, string device id: a device's sync switch changed
 )
@@ -43,6 +44,7 @@ func init() {
 	application.RegisterEvent[application.Void](quickPanelPrepareShow)
 	application.RegisterEvent[application.Void](appShuttingDownEvent)
 	application.RegisterEvent[application.Void](daemonConnectionChanged)
+	application.RegisterEvent[DesktopThemeSnapshot](desktopThemeChangedEvent)
 	application.RegisterEvent[SettingsChanged](settingsChangedEvent)
 	application.RegisterEvent[string](devicesChangedEvent)
 }

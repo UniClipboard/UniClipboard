@@ -293,16 +293,18 @@ def windows_binding_problems(artifacts, assets, version, top, doc, provider, exp
             problems.append(f'{top}: SHA256SUMS.txt does not list the released {released.name} with its SHA-256')
     cli = assets / f'uniclipboard-cli-{version}-x86_64-pc-windows-msvc.zip'
     cli_receipt = base / 'signatures-cli.json'
-    if arch == 'x64' and cli.is_file():
+    # Only under SignPath production is the released CLI archive the one the GUI job signed and verified. Under azure | pfx it comes
+    # from build-cli, which signs its own copy (different bytes, because Authenticode timestamps differ); the GUI job's
+    # signatures-cli.json describes another file, so it must not be compared (documented limitation).
+    if arch == 'x64' and cli.is_file() and provider == 'signpath':
         if cli_receipt.is_file():
             r = json.loads(cli_receipt.read_text())
             problems += receipt_problems(r, f'{top}/signatures-cli.json', expect_thumbprint)
             hashes = zip_member_hashes(cli, ['uniclip.exe', 'uniclipd.exe'])
             if set(hashes) != {'uniclip.exe', 'uniclipd.exe'} or not set(hashes.values()) <= {f.get('sha256') for f in r.get('files', [])}:
                 problems.append(f'{top}: the executables in the released CLI archive are not the ones the CLI receipt verified')
-        elif provider == 'signpath':
+        else:
             problems.append(f'{top}: the Windows CLI archive has no Authenticode receipt (signatures-cli.json)')
-        # azure | pfx: the CLI archive comes from build-cli, whose receipt is not part of this evidence artifact (documented limitation)
     return problems
 
 

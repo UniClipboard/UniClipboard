@@ -34,7 +34,7 @@
 - 必需文件集合（版本 `V`）：两个 macOS 更新归档、两个 dmg、两个 deb、两个 rpm、两个 AppImage 更新归档、两个 setup 与两个 portable，即六个平台；至少一个 CLI 归档。缺失、带有其他版本、出现未知文件都失败。
 - 下载的 workflow artifact 中出现测试模式或测试签名构建（名称含 `-test`、`-signing-selftest`、`-signpath-test`）即失败，无论它是否贡献了文件。
 - 每个发布文件的字节必须等于某个 workflow artifact 内的文件，索引里记录来源 artifact 名。
-- 每个平台的打包证据（`package-manifest.json`、`provenance.json`）必须来自固定的 `source_sha`、非脏检出、版本等于 `V`；Windows 证据还必须是 `signing.provider == "signed"`（生产后端）。升级验收用的 `newer` 包刻意使用另一版本，被跳过。
+- 每个平台的打包证据（`package-manifest.json`、`provenance.json`）必须来自固定的 `source_sha`、非脏检出、版本等于 `V`；Windows 证据的 `signing.provider` 必须是 `signed`（azure/pfx）或 `signpath`（生产策略），并有与发布字节绑定的严格回执（见下文）；仅 alpha 在显式开关下接受 `signed=false` 且无 signing 块。升级验收用的 `newer` 包刻意使用另一版本，被跳过。
 
 ## Windows 生产签名：SignPath 接线
 
@@ -43,8 +43,8 @@
 | 名称 | 类型 | 作用 |
 | --- | --- | --- |
 | `SIGNPATH_PRODUCTION_POLICY_SLUG` | 仓库变量 | 生产签名策略名。`build.yml` 在 release 调用（`require_signing`）且该变量非空时进入 `signpath` 模式并使用 Environment `signpath-production`；值为 `test-signing` 被拒绝。 |
-| `SIGNPATH_PRODUCTION_CERT_THUMBPRINT` | 仓库变量 | 生产证书的 40 位 SHA-1 指纹。所有验证器 `--expect-thumbprint` 固定该签名者；**不**设置 `SIGNING_TEST_CERT`，也**不**放宽证书链信任。 |
-| `SIGNPATH_API_TOKEN` | Environment `signpath-production` 的 secret | 提交签名请求。`validate` 作业读不到 Environment 密钥，所以由 `package-windows-gui` 作业的 “SignPath preconditions” 步骤再次检查并失败关闭。 |
+| `SIGNPATH_PRODUCTION_CERT_THUMBPRINT` | 仓库变量 | 生产证书的 40 位 SHA-1 指纹。所有验证器 `--expect-thumbprint` 固定该签名者；**不** 设置 `SIGNING_TEST_CERT`，也 **不** 放宽证书链信任。 |
+| `SIGNPATH_API_TOKEN` | Environment `signpath-production` 的 secret | 提交签名请求。`validate` 作业读不到 Environment 密钥，所以由 `package-windows-gui` 作业的“SignPath preconditions”步骤再次检查并失败关闭。 |
 | 构件配置（artifact configuration）`go-stage1`、`go-stage2-setup` | SignPath 内 | 与 test-signing 相同的两阶段配置；需要维护者在 SignPath 中为生产策略保存并确认。 |
 
 接线内容（`build.yml`）：新模式 `signpath`（与 `unsigned`/`selftest`/`signpath-test`/`signed` 并列）；阶段 1（GUI exe、daemon、卸载器、CLI 可执行文件）与阶段 2（setup）的提交步骤在 `signpath` 与 `signpath-test` 下共用，策略名在生产模式取自上述变量；证据记录 `testCertificate: false`、策略与固定指纹；冒烟作业同样固定指纹。同时配置 `WINDOWS_SIGN_BACKEND` 与生产策略视为错误。release 调用拒绝任何测试模式的规则不变。
@@ -55,10 +55,10 @@ Windows CLI 归档：`build-cli` 作业只会用 `sign.py` 本地后端签名。
 
 - `signing.provider` 只是分类标签，**不是证明**。可接受值为 `signed`（本地后端）或 `signpath`（要求证据里 `testCertificate` 为 false、策略不是 `test-signing`、`SIGNPATH_PRODUCTION_CERT_THUMBPRINT` 已传给门禁）；其余 provider 一律拒绝。
 - 标签之外，同一证据 artifact 里必须有 Windows 作业用 `sign.py verify`（即既有的 `signtool verify /pa`、证书链、时间戳、固定签名者）写出的回执：`signatures.json`、`signatures-stage1.json`、`signatures-stage2.json`，SignPath 下还有 `signatures-cli.json`。回执必须严格：`passed` 为 true、`allowUntrustedRoot` 为 false、每个文件 `ok`、`chainTrusted`、`signtoolVerifyPa` 为 true、`Status` 为 `Valid`、有时间戳和 SHA-256，所有文件同一签名者；若回执记录了固定指纹，或发布配置了生产指纹，签名者必须与之相同。
-- 回执与将要发布的字节绑定：发布的 setup 的 SHA-256 必须在 `signatures.json` 里；便携 zip 内的 `UniClipboard.exe`、`uniclipd.exe` 必须等于包记录里的 `shipped` 哈希并出现在回执里；`SHA256SUMS.txt` 必须列出发布的 setup 与便携 zip 的真实哈希；SignPath 下发布的 CLI 压缩包里的可执行文件必须是 CLI 回执验证过的那两个。
+- 回执与将要发布的字节绑定：发布的 setup 的 SHA-256 必须在 `signatures.json` 里；便携 zip 内的 `UniClipboard.exe`、`uniclipd.exe` 必须等于包记录里的 `shipped` 哈希并出现在回执里；`SHA256SUMS.txt` 必须列出发布的 setup 与便携 zip 的真实哈希；仅 SignPath 下，发布的 CLI 压缩包里的可执行文件必须是 CLI 回执验证过的那两个（azure/pfx 下该压缩包来自 `build-cli`，与 GUI 作业的 `signatures-cli.json` 是分别签名的两份文件，字节不同，因此不比较）。
 - 伪造 `signed`/`signpath` 标签但没有回执、回执对应别的字节、回执放宽了证书链信任（测试证书）、状态不是 `Valid`、没有时间戳、签名者不一致或不是配置的生产证书，都会被拒绝。
 
-**信任边界（务必按此理解）**：release gate 运行在 Linux 上，不能运行 signtool，也不能独立评估 Windows 证书链，所以它**不独立证明** Windows 证书受信。它证明的是：可信 CI 步骤（Windows 作业里的 `sign.py verify`）为这些字节留下了严格的回执，并且回执与要发布的文件逐字节绑定。能修改工作流或其 artifact 的人可以伪造回执；该门禁防的是误用和混源，不是这类攻击。对 `azure`/`pfx`，现有工作流不固定签名者身份，所以只检查“同一个受信签名者”；Azure/pfx 下 Windows CLI 归档来自 `build-cli`，其回执不在这个证据 artifact 里，没有绑定（已知缺口）。真实的 Windows 生产验签只有在生产证书与策略存在后才可能发生，目前 blocked。
+**信任边界（务必按此理解）**：release gate 运行在 Linux 上，不能运行 signtool，也不能独立评估 Windows 证书链，所以它 **不独立证明** Windows 证书受信。它证明的是：可信 CI 步骤（Windows 作业里的 `sign.py verify`）为这些字节留下了严格的回执，并且回执与要发布的文件逐字节绑定。能修改工作流或其 artifact 的人可以伪造回执；该门禁防的是误用和混源，不是这类攻击。对 `azure`/`pfx`，现有工作流不固定签名者身份，所以只检查“同一个受信签名者”；Azure/pfx 下 Windows CLI 归档来自 `build-cli`，其回执不在这个证据 artifact 里，没有绑定（已知缺口）。真实的 Windows 生产验签只有在生产证书与策略存在后才可能发生，目前 blocked。
 
 **状态：结构已写好，从未与真实 SignPath 生产策略运行过；策略、证书、Environment 与 token 都未配置（只读核对见 `production-blocked` 证据）。生产签名验收 blocked，未配置时仍失败关闭。**
 

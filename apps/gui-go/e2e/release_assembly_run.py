@@ -337,9 +337,11 @@ def main():
         variant('receipt-mixed-signers', edit_json('signatures.json', lambda d: d['files'][0]['signature'].update(Thumbprint='D' * 40)),
                 contains='different certificates')
         variant('receipt-not-passed', edit_json('signatures-stage2.json', lambda d: d.update(passed=False)), contains='does not say passed')
-        variant('cli-archive-with-other-executables', lambda t: write(
-            t / 'cli-x86_64-pc-windows-msvc' / f'uniclipboard-cli-{version}-x86_64-pc-windows-msvc.zip', zip_bytes({'uniclip.exe': b'x', 'uniclipd.exe': b'y'})),
-            contains='not the ones the CLI receipt verified')
+        # azure | pfx: the released CLI archive comes from build-cli and legitimately differs from the GUI job's CLI receipt.
+        signed_cli = base / 'signed-backend-cli-from-build-cli-artifacts'
+        build_tree(signed_cli, version, head)
+        write(signed_cli / 'cli-x86_64-pc-windows-msvc' / f'uniclipboard-cli-{version}-x86_64-pc-windows-msvc.zip', zip_bytes({'uniclip.exe': b'x', 'uniclipd.exe': b'y'}))
+        assemble('signed-backend-cli-archive-from-build-cli-is-not-compared-to-the-gui-job-receipt', signed_cli, base / 'signed-backend-cli-from-build-cli')
 
         # ---- SignPath production structure: the receipt must carry the configured production thumbprint ----
         sp_tree = base / 'signpath-structure-artifacts'
@@ -350,6 +352,12 @@ def main():
         assemble('negative-signpath-thumbprint-not-given-to-the-gate', sp_tree, base / 'signpath-no-thumbprint', want_ok=False, contains='was not given to the gate')
         assemble('negative-signpath-receipt-signed-by-another-certificate', sp_tree, base / 'signpath-other-cert', want_ok=False,
                  env_=dict(sign_env, SIGNPATH_PRODUCTION_CERT_THUMBPRINT='C' * 40), contains='not the production certificate configured')
+        sp_otherexe = base / 'signpath-cli-other-executables-artifacts'
+        build_tree(sp_otherexe, version, head, thumbprint='B' * 40)
+        windows_manifest('signpath', policy='fixture-production-policy', pinnedThumbprint='B' * 40)(sp_otherexe)
+        write(sp_otherexe / 'cli-x86_64-pc-windows-msvc' / f'uniclipboard-cli-{version}-x86_64-pc-windows-msvc.zip', zip_bytes({'uniclip.exe': b'x', 'uniclipd.exe': b'y'}))
+        assemble('negative-signpath-cli-archive-with-other-executables', sp_otherexe, base / 'signpath-cli-other-exes', want_ok=False, env_=sp_env,
+                 contains='not the ones the CLI receipt verified')
         sp_noclip = base / 'signpath-no-cli-receipt-artifacts'
         build_tree(sp_noclip, version, head, thumbprint='B' * 40)
         windows_manifest('signpath', policy='fixture-production-policy', pinnedThumbprint='B' * 40)(sp_noclip)

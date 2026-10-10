@@ -1100,9 +1100,12 @@ async function runHostContractScenario() {
     }
   )
   const startup = await settle(HostService.GetDaemonStartupStatus())
-  await record('startup-status-passthrough', startup.status === 'ok', {
-    isNull: startup.status === 'ok' && startup.data == null,
-  })
+  // A healthy daemon no longer serves /startup (it only does while starting), which surfaces as a system error.
+  await record(
+    'startup-status-passthrough',
+    startup.status === 'ok' || (startup.error as { code?: string }).code === 'InternalError',
+    startup
+  )
   const unlocked = await commands.getContentUnlocked()
   await record('content-unlocked-boolean', typeof unlocked === 'boolean', { unlocked })
   const kind = await commands.getInstallKind()

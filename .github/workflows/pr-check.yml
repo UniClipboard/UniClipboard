@@ -216,14 +216,16 @@ jobs:
           cache: false
 
       # The Go HostService methods are the host command contract: Wails regenerates the
-      # TypeScript bindings and the diff must be empty (analysed with the Linux build tags,
-      # so a platform file that changes the exported method set fails here). The other
+      # TypeScript bindings and the diff must be empty. The analysis runs as GOOS=windows
+      # (no cgo, so no GTK needed; output verified byte-identical to darwin), and
+      # `hostcontract lint` scans every platform's sources, so a platform file that changes
+      # the exported method set still fails. The other
       # checks cross-check events, @tauri-apps aliases, the //uc: directives and the
       # generated command document. Local fix: `bun run gen:host-contract`, then
       # `go run ./cmd/hostcontract docs` and `e2e-table` in apps/gui-go.
       - name: Verify the host command contract
         env:
-          UC_BINDINGS_TAGS: gtk3,production
+          UC_BINDINGS_GOOS: windows
         run: |
           bun run check:host-contract
           bun run check:host-boundary

@@ -29,7 +29,7 @@ NODE_SOURCE=${NODE_SOURCE:-/home/uniclip-mirror/node/bin/node}   # read-only use
 [ $# -ge 3 ] || { echo "usage: $0 <action-checkout> <ci-public-key-file> <source-commit-sha>..." >&2; exit 2; }
 checkout=$1; pubkey=$2; shift 2
 
-head=$(git -C "$checkout" rev-parse HEAD)
+head=$(cd "$checkout" && git rev-parse HEAD)
 [ "$head" = "$PINNED_ACTION_COMMIT" ] || { echo "checkout is $head, expected $PINNED_ACTION_COMMIT" >&2; exit 1; }
 core=$(sha256sum "$checkout/lib/mirror-core.mjs" | cut -d' ' -f1)
 [ "$core" = "$PINNED_CORE_SHA256" ] || { echo "mirror-core.mjs is $core, expected $PINNED_CORE_SHA256" >&2; exit 1; }

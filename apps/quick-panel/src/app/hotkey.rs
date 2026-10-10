@@ -25,8 +25,15 @@ impl Shortcuts {
         if super::test_control::enabled() {
             return Ok(host);
         }
-        host.replace(vec![std::env::var("UC_GPUI_SHORTCUT")
-            .unwrap_or_else(|_| DEFAULT_QUICK_PANEL_SHORTCUT.into())])?;
+        // Another program may already hold the shortcut (common on Windows). That must not end
+        // the process: the supervising GUI would restart it until it gave up, leaving no panel at
+        // all. The settings arrive after the panel opens and register the configured shortcut
+        // again, and the panel then reports a shortcut that is still taken.
+        if let Err(error) = host.replace(vec![std::env::var("UC_GPUI_SHORTCUT")
+            .unwrap_or_else(|_| DEFAULT_QUICK_PANEL_SHORTCUT.into())])
+        {
+            tracing::warn!("Could not register the quick panel shortcut: {error}");
+        }
         Ok(host)
     }
 

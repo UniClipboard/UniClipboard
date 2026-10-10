@@ -151,7 +151,7 @@ impl PreviewWindow {
     fn apply_layout(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(anchor) = self.snapshot.anchor else {
             if self.shown {
-                if platform::set_visible(window, false).is_err() {
+                if platform::set_visible(window, false, cx).is_err() {
                     tracing::warn!("Could not hide detached preview");
                 }
                 self.shown = false;
@@ -207,7 +207,7 @@ impl PreviewWindow {
             cx.notify();
         }
         if !self.shown {
-            if platform::show_without_focus(window).is_err() {
+            if platform::show_without_focus(window, cx).is_err() {
                 tracing::warn!("Could not show item preview");
                 return;
             }

@@ -83,13 +83,17 @@ func (h *HostService) GetQuickPanelDoubleTapAvailability() ModifierDoubleTapAvai
 	switch {
 	case h.helper == nil && modifierDoubleTapSupported():
 		return DoubleTapSupported // the WebView panel's own monitor (Windows)
-	case h.helper == nil || runtime.GOOS != "darwin":
+	case h.helper == nil || !helperSupportsDoubleTap():
 		return DoubleTapUnsupportedDisplaySession
-	case !accessibilityTrusted():
+	case runtime.GOOS == "darwin" && !accessibilityTrusted():
 		return DoubleTapAccessibilityPermissionNeeded
 	}
 	return DoubleTapSupported
 }
+
+// helperSupportsDoubleTap reports whether the native helper implements the modifier double tap on this platform
+// (macOS through Core Graphics, Windows through GetAsyncKeyState; Linux has no such reader).
+func helperSupportsDoubleTap() bool { return runtime.GOOS == "darwin" || runtime.GOOS == "windows" }
 
 // PasteToPreviousApp hides the panel, returns to the previously focused application and pastes. It rejects with a
 // plain string (hostapi.TextError); the panel is shown again on failure so the selection is not lost.
@@ -143,9 +147,9 @@ func (h *HostService) SetQuickPanelDoubleTapModifier(ctx context.Context, modifi
 	if h.helper == nil {
 		return h.setWebViewModifier(ctx, string(modifier))
 	}
-	// The native helper owns the trigger and implements it on macOS only (Tauri `supports_double_tap`):
-	// accepting the setting elsewhere would promise a trigger that never fires.
-	if modifier != DoubleTapModifierDisabled && runtime.GOOS != "darwin" {
+	// The native helper owns the trigger and implements it on macOS and Windows: accepting the setting elsewhere
+	// would promise a trigger that never fires.
+	if modifier != DoubleTapModifierDisabled && !helperSupportsDoubleTap() {
 		return hostapi.New(hostapi.CodeConflict, "modifier double-tap is not available with the native quick panel on this platform yet")
 	}
 	// The helper reads the trigger at startup: persist, then restart it.
@@ -201,6 +205,8 @@ func (h *HostService) updateKeyboardShortcuts(ctx context.Context, patch map[str
 			}
 			osChanged = true
 		}
+	} else if err := h.probeHelperShortcuts(settings.KeyboardShortcuts, next, settings.QuickPanel.Enabled); err != nil {
+		return UpdateKeyboardShortcutsResult{}, err
 	}
 	body := map[string]any{"keyboardShortcuts": map[string]any{"shortcuts": patch}}
 	if err := h.daemon().Enveloped(ctx, daemonclient.Request{Method: http.MethodPut, Path: "/settings", JSON: body}, nil); err != nil {

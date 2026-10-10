@@ -16,7 +16,7 @@ import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-STAGE_FILES = ('UniClipboard.exe', 'uniclipd.exe', 'uninstall.exe')
+STAGE_FILES = ('UniClipboard.exe', 'uniclipd.exe', 'uniclip-quick-panel.exe', 'uninstall.exe')
 
 
 def faults(signed, unsigned, work):
@@ -42,6 +42,10 @@ def faults(signed, unsigned, work):
     d = fresh('swapped-daemon')
     shutil.copy2(signed / 'UniClipboard.exe', d / 'uniclipd.exe')
     yield 'swapped-daemon', d, 'content differs'
+
+    d = fresh('swapped-quick-panel')
+    shutil.copy2(signed / 'UniClipboard.exe', d / 'uniclip-quick-panel.exe')
+    yield 'swapped-quick-panel', d, 'content differs'
 
     d = fresh('truncated-uninstaller')
     (d / 'uninstall.exe').write_bytes((d / 'uninstall.exe').read_bytes()[:-64])

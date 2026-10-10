@@ -1052,20 +1052,22 @@ jobs:
           set -euo pipefail
           S=target/sidecar-staging
           python apps/gui-go/e2e/package_windows.py --stage prepare --arch ${{ matrix.arch }} \
-            --daemon "$S/uniclipd-${{ matrix.target }}.exe" --daemon-provenance "$S/sidecar-provenance.json" \
+            --daemon "$S/uniclipd-${{ matrix.target }}.exe" --helper "$S/uniclip-quick-panel-${{ matrix.target }}.exe" \
+            --daemon-provenance "$S/sidecar-provenance.json" \
             --out target/windows-gui/shipped
           # Acceptance-only package with a higher version, so the update and downgrade scenarios have a
           # newer build of the same sources. Never uploaded as a product.
           if [[ " $WINDOWS_PACKAGE_VARIANTS " == *" newer "* ]]; then
             python apps/gui-go/e2e/package_windows.py --stage prepare --arch ${{ matrix.arch }} --acceptance-version 999.0.0 \
-              --daemon "$S/uniclipd-${{ matrix.target }}.exe" --daemon-provenance "$S/sidecar-provenance.json" \
+              --daemon "$S/uniclipd-${{ matrix.target }}.exe" --helper "$S/uniclip-quick-panel-${{ matrix.target }}.exe" \
+              --daemon-provenance "$S/sidecar-provenance.json" \
               --out target/windows-gui/newer
           fi
-          # Stage 1 = every self-built executable that goes into a package or archive: GUI exe, daemon, NSIS uninstaller
+          # Stage 1 = every self-built executable that goes into a package or archive: GUI exe, daemon, quick panel, NSIS uninstaller
           # (for both packages) and the two executables of the CLI archive. The setup programs are signed in stage 2.
           for v in $WINDOWS_PACKAGE_VARIANTS; do
             mkdir -p target/sign/stage1/$v
-            for n in UniClipboard.exe uniclipd.exe uninstall.exe; do cp target/windows-gui/$v/to-sign/$n target/sign/stage1/$v/; done
+            for n in UniClipboard.exe uniclipd.exe uniclip-quick-panel.exe uninstall.exe; do cp target/windows-gui/$v/to-sign/$n target/sign/stage1/$v/; done
           done
           find target/sign/stage1 -type f | sort
 
@@ -1093,7 +1095,7 @@ jobs:
           if-no-files-found: error
           retention-days: 3
 
-      - name: SignPath signing request 1 (GUI exe, daemon, uninstaller, CLI executables)
+      - name: SignPath signing request 1 (GUI exe, daemon, quick panel, uninstaller, CLI executables)
         id: signpath-req1
         if: startsWith(steps.sign.outputs.mode, 'signpath')
         uses: signpath/github-action-submit-signing-request@f6d04783b4569d051e0c80105fe66e82819d0092 # v3.0

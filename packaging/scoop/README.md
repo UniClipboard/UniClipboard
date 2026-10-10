@@ -12,7 +12,7 @@ scoop install uniclipboard
 
 ## manifest 要点
 
-- **portable 模式**：用 `*-portable.zip`（内含 `UniClipboard.exe` + 必需的后台服务 `uniclipd.exe` + `portable.dat` 标记 + README）。zip 用 `Compress-Archive '$STAGE/*'` 打包，文件在根目录，因此 **不需要 `extract_dir`**。
+- **portable 模式**：用 `*-portable.zip`（内含 `UniClipboard.exe` + 必需的后台服务 `uniclipd.exe` + 快捷面板 `uniclip-quick-panel.exe` + `portable.dat` 标记 + README）。zip 用 `Compress-Archive '$STAGE/*'` 打包，文件在根目录，因此 **不需要 `extract_dir`**。
 - **`"persist": "data"`**：`portable.dat` 让应用把加密数据写到 exe 同目录的 `data/`。Scoop 把它持久化到 `~/scoop/persist/uniclipboard/data`，升级换版本目录时数据不丢。
 - **`checkver` + `autoupdate`**：已配置跟随 GitHub Release。后续版本由 Extras 的 excavator bot 自动开升级 PR，无需手动维护。
 

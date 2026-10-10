@@ -109,7 +109,7 @@ def norm(p):
 
 
 def kill_all():
-    for image in (f'{PRODUCT}.exe', 'uniclipd.exe', 'uniclip.exe'):
+    for image in (f'{PRODUCT}.exe', 'uniclipd.exe', 'uniclip-quick-panel.exe', 'uniclip.exe'):
         subprocess.run(['taskkill', '/F', '/T', '/IM', image], capture_output=True)
     wait_for(lambda: not processes(f'{PRODUCT}.exe') and not processes('uniclipd.exe'), 20)
 
@@ -279,15 +279,15 @@ def version_of(path):
 def scenario_a(a, s):
     rc = run_setup(a.setup, '/S')
     check('A1 silent install exits 0', rc == 0, rc)
-    files = {n: (INSTDIR / n).is_file() for n in (f'{PRODUCT}.exe', 'uniclipd.exe', 'uninstall.exe')}
-    check('A2 the installer wrote the exe, the daemon and the uninstaller', all(files.values()), files)
+    files = {n: (INSTDIR / n).is_file() for n in (f'{PRODUCT}.exe', 'uniclipd.exe', 'uniclip-quick-panel.exe', 'uninstall.exe')}
+    check('A2 the installer wrote the exe, the daemon, the quick panel and the uninstaller', all(files.values()), files)
     check('A3 the installed daemon is the shipped (CI-built) one (SHA-256)', sha256(INSTDIR / 'uniclipd.exe') == a.daemon_sha256)
     s['installed_exe_old'] = sha256(INSTDIR / f'{PRODUCT}.exe')
     if a.expect_signed:
         vflags = signature_flags(a)
         v = subprocess.run([sys.executable, str(a.sign_verifier), 'verify', '--out', str(OUT / 'signatures-installed.json'), *vflags,
-                            *[str(INSTDIR / n) for n in (f'{PRODUCT}.exe', 'uniclipd.exe', 'uninstall.exe')]], capture_output=True, text=True)
-        check('A3s the installed exe, daemon and uninstaller carry a valid Authenticode signature', v.returncode == 0, v.stdout[-1500:])
+                            *[str(INSTDIR / n) for n in (f'{PRODUCT}.exe', 'uniclipd.exe', 'uniclip-quick-panel.exe', 'uninstall.exe')]], capture_output=True, text=True)
+        check('A3s the installed exe, daemon, quick panel and uninstaller carry a valid Authenticode signature', v.returncode == 0, v.stdout[-1500:])
         # Negative controls with the very same verifier flags: a tampered signed file, a file signed by someone else (or not at
         # all) and a non-PE file must all be refused, also when the chain trust is waived for the fixture.
         ctl = OUT / 'sign-controls'
@@ -398,7 +398,7 @@ def scenario_c(a, s):
 def scenario_d(a, s):
     gone = uninstall('/S')
     check('D1 the uninstaller removed the key and the install directory', gone, sorted(p.name for p in INSTDIR.glob('*')) if INSTDIR.exists() else None)
-    check('D2 no application process is left', not processes(f'{PRODUCT}.exe') and not processes('uniclipd.exe'))
+    check('D2 no application process is left', not processes(f'{PRODUCT}.exe') and not processes('uniclipd.exe') and not processes('uniclip-quick-panel.exe'))
     check('D3 the Run value is removed', run_value() is None, run_value())
     check('D4 shortcuts are removed', not (Path(os.environ['APPDATA']) / 'Microsoft/Windows/Start Menu/Programs/UniClipboard.lnk').exists())
     kept = [r for r in DATA_ROOTS if r.exists() and any(r.iterdir())]
@@ -439,7 +439,7 @@ def scenario_g(a, s):
     work = Path(tempfile.mkdtemp(prefix='uc-portable-'))
     p = extract(a.portable, work / 'app')
     shutil.copy2(a.uniclip, p / 'uniclip.exe')  # next to portable.dat the CLI resolves the same portable data root
-    check('G1 the zip carries portable.dat, the exe and the daemon', all((p / n).is_file() for n in ('portable.dat', f'{PRODUCT}.exe', 'uniclipd.exe')))
+    check('G1 the zip carries portable.dat, the exe, the daemon and the quick panel', all((p / n).is_file() for n in ('portable.dat', f'{PRODUCT}.exe', 'uniclipd.exe', 'uniclip-quick-panel.exe')))
     check('G2 the zip daemon is the CI-built one', sha256(p / 'uniclipd.exe') == a.daemon_sha256)
     before = env_snapshot()
     (p / 'data').mkdir(exist_ok=True)

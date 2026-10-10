@@ -10,9 +10,16 @@ import (
 	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/quickpanelhelper"
 )
 
-// nativePanelEnv selects the native quick panel (`1`) or the WebView one (`0`); macOS defaults
-// to native, as in the Tauri shell.
+// nativePanelEnv selects the native quick panel (`1`) or the WebView one (`0`); macOS and Windows
+// default to native, as in the Tauri shell. Linux keeps the WebView panel (layer-shell and X11 placement
+// live in the WebView window code).
 const nativePanelEnv = "UC_GPUI_QUICK_PANEL"
+
+// nativePanelDefault is whether the native panel is used when the environment does not choose. Without the
+// helper executable next to the app the WebView panel is used anyway.
+func nativePanelDefault() bool {
+	return runtime.GOOS == "darwin" || runtime.GOOS == "windows"
+}
 
 func nativePanelWanted(value string, defaultOn bool) bool {
 	switch value {
@@ -29,7 +36,7 @@ func nativePanelWanted(value string, defaultOn bool) bool {
 // modifier double-tap trigger and the window; otherwise the WebView panel is pre-created. A
 // missing helper executable falls back to the WebView panel so the user is never left without one.
 func (h *HostService) initQuickPanel() {
-	if nativePanelWanted(os.Getenv(nativePanelEnv), runtime.GOOS == "darwin") {
+	if nativePanelWanted(os.Getenv(nativePanelEnv), nativePanelDefault()) {
 		if exe, ok := helperExecutable(); ok {
 			log.Printf("using the native quick panel helper: %s", exe)
 			h.helper = quickpanelhelper.Start(quickpanelhelper.ForHelper(exe, h.handleHelperRequest))

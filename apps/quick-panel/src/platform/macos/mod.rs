@@ -27,7 +27,7 @@ pub const CAPABILITIES: Capabilities = Capabilities {
 };
 
 /// Captures the application in front, which the panel is about to cover.
-pub fn capture_paste_target() -> Rc<dyn PasteTarget> {
+pub fn capture_paste_target(_: &gpui::App) -> Rc<dyn PasteTarget> {
     Rc::new(paste::FrontApplication::capture())
 }
 

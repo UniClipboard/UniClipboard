@@ -273,14 +273,14 @@ def windows_binding_problems(artifacts, assets, version, top, doc, provider, exp
         problems.append(f'{top}: the released {setup.name} is not one of the files the Authenticode receipt verified (SHA-256 does not match)')
     shipped = doc.get('shipped') or {}
     if portable.is_file():
-        inside = zip_member_hashes(portable, ['UniClipboard.exe', 'uniclipd.exe'])
+        inside = zip_member_hashes(portable, ['UniClipboard.exe', 'uniclipd.exe', 'uniclip-quick-panel.exe'])
         for exe, digest in inside.items():
             if shipped.get(exe) != digest:
                 problems.append(f'{top}: {exe} inside the released {portable.name} is not the executable the package record shipped')
             if digest not in receipt_hashes['signatures-stage1.json'] | receipt_hashes['signatures.json']:
                 problems.append(f'{top}: {exe} inside the released {portable.name} was never verified by the Authenticode receipts')
-        if set(inside) != {'UniClipboard.exe', 'uniclipd.exe'}:
-            problems.append(f'{top}: the released {portable.name} lacks UniClipboard.exe or uniclipd.exe')
+        if set(inside) != {'UniClipboard.exe', 'uniclipd.exe', 'uniclip-quick-panel.exe'}:
+            problems.append(f'{top}: the released {portable.name} lacks UniClipboard.exe, uniclipd.exe or uniclip-quick-panel.exe')
     sums = base / 'SHA256SUMS.txt'
     listed = {}
     if sums.is_file():

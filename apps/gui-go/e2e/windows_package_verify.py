@@ -63,6 +63,15 @@ def main():
             ok = got == expected
             result['checks'].append({'check': f'{label}: uniclipd.exe equals the CI-built daemon', 'ok': ok, 'sha256': got})
             print(('PASS ' if ok else 'FAIL ') + result['checks'][-1]['check'], flush=True)
+        helper = manifest['helper']
+        if helper['kind'] != 'ci-built-rust-quick-panel' or not helper['identityVerified']:
+            sys.exit(f"the package manifest does not claim a CI-built quick panel (kind={helper['kind']})")
+        expected_helper = helper.get('shippedSha256') or helper['buildEvidence']['sha256']
+        for label, root in (('setup payload', sx), ('portable zip', pz)):
+            f = find(root, 'uniclip-quick-panel.exe')
+            got = sha256(f) if f else None
+            result['checks'].append({'check': f'{label}: uniclip-quick-panel.exe equals the CI-built quick panel', 'ok': got == expected_helper, 'sha256': got})
+            print(('PASS ' if got == expected_helper else 'FAIL ') + result['checks'][-1]['check'], flush=True)
         for label, root, exe in (('setup payload', sx, 'UniClipboard.exe'), ('portable zip', pz, 'UniClipboard.exe')):
             f = find(root, exe)
             result['checks'].append({'check': f'{label}: {exe} present', 'ok': f is not None, 'sha256': sha256(f) if f else None})
@@ -70,7 +79,7 @@ def main():
         if args.require_signed:
             # The uninstaller is generated at install time; package_windows.py keeps the signed copy NSIS embeds.
             uninstaller = args.package / 'uninstaller-signed.exe'
-            targets = [setup, uninstaller] + [find(r, n) for r in (sx, pz) for n in ('UniClipboard.exe', 'uniclipd.exe')]
+            targets = [setup, uninstaller] + [find(r, n) for r in (sx, pz) for n in ('UniClipboard.exe', 'uniclipd.exe', 'uniclip-quick-panel.exe')]
             if not uninstaller.exists():
                 result['checks'].append({'check': 'Authenticode: the signed uninstaller copy exists', 'ok': False})
                 print('FAIL ' + result['checks'][-1]['check'], flush=True)
@@ -80,7 +89,7 @@ def main():
                    *(['--expect-thumbprint', args.sign_expect_thumbprint] if args.sign_expect_thumbprint else []),
                    *(['--allow-untrusted-root'] if args.sign_untrusted_root else []), *map(str, targets)]
             ok = subprocess.run(cmd).returncode == 0
-            result['checks'].append({'check': 'Authenticode: setup, uninstaller and the unpacked GUI exe and daemon verify (signtool verify /pa)', 'ok': ok})
+            result['checks'].append({'check': 'Authenticode: setup, uninstaller and the unpacked GUI exe, daemon and quick panel verify (signtool verify /pa)', 'ok': ok})
             print(('PASS ' if ok else 'FAIL ') + result['checks'][-1]['check'], flush=True)
         same = [c['sha256'] for c in result['checks'] if 'UniClipboard.exe' in c['check']]
         result['checks'].append({'check': 'GUI exe is identical in the installer and the portable zip', 'ok': len(set(same)) == 1 and None not in same})

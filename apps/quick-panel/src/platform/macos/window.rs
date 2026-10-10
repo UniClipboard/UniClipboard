@@ -4,7 +4,11 @@ use quick_panel_core::ports::PlatformError;
 
 use super::app::activate_app;
 
-pub fn set_visible(window: &gpui::Window, visible: bool) -> Result<(), PlatformError> {
+pub fn set_visible(
+    window: &gpui::Window,
+    visible: bool,
+    _: &gpui::App,
+) -> Result<(), PlatformError> {
     use raw_window_handle::{HasWindowHandle, RawWindowHandle};
     let handle = HasWindowHandle::window_handle(window)
         .map_err(|_| PlatformError::PanelWindowInaccessible)?;
@@ -175,7 +179,7 @@ pub fn clip_preview_shape(
     Ok(())
 }
 
-pub fn show_without_focus(window: &gpui::Window) -> Result<(), PlatformError> {
+pub fn show_without_focus(window: &gpui::Window, _: &gpui::App) -> Result<(), PlatformError> {
     use raw_window_handle::{HasWindowHandle, RawWindowHandle};
     let handle = HasWindowHandle::window_handle(window)
         .map_err(|_| PlatformError::PreviewWindowInaccessible)?;

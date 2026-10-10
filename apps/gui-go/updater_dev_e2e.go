@@ -223,3 +223,10 @@ func shortcutDefaultOverride() (string, bool) {
 // shortcutBackendAllowed keeps scenarios that do not test shortcuts from binding a real system-wide shortcut: only a
 // launch that sets UC_GUI_GO_E2E_SHORTCUTS=1 reaches the OS; the others record the set without registering it.
 func shortcutBackendAllowed() bool { return os.Getenv("UC_GUI_GO_E2E_SHORTCUTS") == "1" }
+
+// realClipboardAllowed lets an isolated run use the real system clipboard, for the scenarios whose point is a paste into
+// another application (windows_native_panel_run.py). Both variables must be set: the clipboard is overwritten, so the host
+// has to be a dedicated test machine.
+func realClipboardAllowed() bool {
+	return os.Getenv("UC_GUI_GO_E2E_REAL_CLIPBOARD") == "1" && os.Getenv("UC_GUI_GO_E2E_DEDICATED_HOST") == "1"
+}

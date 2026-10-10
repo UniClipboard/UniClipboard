@@ -246,6 +246,7 @@ jobs:
             ${{ runner.temp }}/inventory-*/runtime-inventory.json
             ${{ runner.temp }}/inventory-*/content-check.json
             ${{ runner.temp }}/inventory-*/host.txt
+            ${{ runner.temp }}/inventory-*/host-image.txt
             ${{ runner.temp }}/inventory-*/*.log
             ${{ runner.temp }}/inventory-*/*/observation.json
           if-no-files-found: warn

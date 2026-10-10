@@ -7,7 +7,7 @@
 #
 # IMPORTANT: do NOT exclude `crates/` or `apps/` — the build needs their workspace manifests
 # and sources.
-# Only the GUI's frontend directories under apps/gui are irrelevant here.
+# Only the GUI's frontend directories under apps/gui-go/frontend are irrelevant here.
 
 .git
 .github
@@ -17,10 +17,10 @@ node_modules
 dist
 dist-ssr
 docs-site
-apps/gui/src
-apps/gui/e2e
-apps/gui/public
-apps/gui/dist
+apps/gui-go/frontend/src
+apps/gui-go/frontend/e2e
+apps/gui-go/frontend/public
+apps/gui-go/frontend/dist
 assets
 snap
 coverage

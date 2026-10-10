@@ -343,7 +343,7 @@ HTTP wire protocol is unchanged — see `crates/uc-webserver/src/mobile_lan/mod.
 ## 7. Golden test vector
 
 This vector is the **single source of truth** for cross-language byte equality between the
-Rust encoder/decoder (`uc-application`) and the TypeScript parser (`apps/gui/src/lib/`). Both test
+Rust encoder/decoder (`uc-application`) and the TypeScript parser (`apps/gui-go/frontend/src/lib/`). Both test
 suites MUST assert against the exact strings below.
 
 ### 7.1 Happy-path vector
@@ -517,10 +517,10 @@ must retire the affected flow rather than create a parallel future protocol here
 | Rust encoder/decoder       | `uc-application/src/usecases/mobile_sync/connect_uri.rs` (Engine repository) (added in Phase 1)         |
 | Use-case integration       | `uc-application/src/usecases/mobile_sync/register_device.rs` (now in the `UniClipboard/Engine` repository) (Phase 2)              |
 | Host DTO                   | `crates/uc-daemon-contract/src/api/dto/mobile_sync.rs` — `connectUri` field added (Phase 2; originally in the retired Tauri shell) |
-| TypeScript parser          | `apps/gui/src/lib/mobileSyncConnectUri.ts` (added in Phase 3)                                                 |
-| Credential modal           | `apps/gui/src/components/device/MobileSyncCredentialModal.tsx` — primary QR switches to connect URI (Phase 3) |
+| TypeScript parser          | `apps/gui-go/frontend/src/lib/mobileSyncConnectUri.ts` (added in Phase 3)                                                 |
+| Credential modal           | `apps/gui-go/frontend/src/components/device/MobileSyncCredentialModal.tsx` — primary QR switches to connect URI (Phase 3) |
 | Golden vector (Rust tests) | `connect_uri.rs::tests` — uses §7 vectors verbatim                                                   |
-| Golden vector (TS tests)   | `apps/gui/src/lib/__tests__/mobileSyncConnectUri.test.ts` — uses §7 vectors verbatim                          |
+| Golden vector (TS tests)   | `apps/gui-go/frontend/src/lib/__tests__/mobileSyncConnectUri.test.ts` — uses §7 vectors verbatim                          |
 | iOS App integration guide  | `docs/integrations/ios-app-connect-uri.md` (added in Phase 4 — primary client path)                  |
 | iOS Shortcut template doc  | `docs/integrations/ios-shortcut.md` (added in Phase 4 — fallback path)                               |
 

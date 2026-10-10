@@ -207,7 +207,7 @@ func (h *HostService) SetTrayLanguage(language string) {
 //
 //uc:errors none
 //uc:os all=real darwin=noop
-//uc:adapter @tauri-apps/api/window
+//uc:adapter @/host/window
 func (h *HostService) SetWindowDecorations(decorations bool) {
 	if runtime.GOOS == "darwin" {
 		return

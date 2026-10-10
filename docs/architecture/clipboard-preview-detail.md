@@ -146,7 +146,7 @@ fn register_uc_protocol() {
 
 ### Type Definitions
 
-**File**: `apps/gui/src/api/clipboardItems.ts`
+**File**: `apps/gui-go/frontend/src/api/clipboardItems.ts`
 
 ```typescript
 // Backend projection type
@@ -196,7 +196,7 @@ if (entry.has_detail) {
 
 ### UI Component Logic
 
-**File**: `apps/gui/src/components/clipboard/ClipboardItem.tsx`
+**File**: `apps/gui-go/frontend/src/components/clipboard/ClipboardItem.tsx`
 
 The component implements smart expand/collapse behavior:
 
@@ -348,5 +348,5 @@ Existing entries in database:
 ## References
 
 - Backend: `uc-infra/src/clipboard/materializer.rs` (now in the `UniClipboard/Engine` repository)
-- Frontend API: `apps/gui/src/api/clipboardItems.ts`
-- UI Component: `apps/gui/src/components/clipboard/ClipboardItem.tsx`
+- Frontend API: `apps/gui-go/frontend/src/api/clipboardItems.ts`
+- UI Component: `apps/gui-go/frontend/src/components/clipboard/ClipboardItem.tsx`

@@ -784,7 +784,7 @@ pub async fn get_entries(&self) -> Result<Vec<Entry>> {
 Three tracks share the same DSN-keyed project:
 
 - **Issues** — `tracing::error!` (backend) and `Sentry.captureException` (frontend) for actionable failures.
-- **Logs** — `tracing::warn!`/`error!` (backend) and the pino → `Sentry.logger` bridge in `apps/gui/src/lib/logger.ts` (frontend) for searchable structured logs.
+- **Logs** — `tracing::warn!`/`error!` (backend) and the pino → `Sentry.logger` bridge in `apps/gui-go/frontend/src/lib/logger.ts` (frontend) for searchable structured logs.
 - **Performance** — every `#[tracing::instrument]` span (backend) and every `traceManager.startTrace()` span (frontend) becomes a Sentry span; cross-process correlation is preserved by Sentry's `sentry-trace` + `baggage` headers.
 
 The previous OTLP→Seq pipeline was retired in commit `faa8eb8d` (backend) and issue #543 (frontend) because the upstream Seq instance hit disk-full and started returning 503s, which surfaced inside Sentry as a flood of `BatchLogProcessor.ExportError` issues. Routing logs directly to Sentry removed the second sink and the noise it generated.
@@ -793,7 +793,7 @@ The previous OTLP→Seq pipeline was retired in commit `faa8eb8d` (backend) and 
 
 后端与前端都遵守应用内的 **设置 → 通用 → 遥测** 开关（`general.telemetry_enabled`）。没有任何单一钩子能覆盖全部载荷，因此两端都在三个深度上设卡：
 
-| 深度                | 后端（`uc-bootstrap/src/observability/`）                            | 前端（`apps/gui/src/observability/sentry.ts`）                         |
+| 深度                | 后端（`uc-bootstrap/src/observability/`）                            | 前端（`apps/gui-go/frontend/src/observability/sentry.ts`）                         |
 | ------------------- | ------------------------------------------------------------------- | ------------------------------------------------------------- |
 | Transaction 采样器  | `traces_sampler` -> `sentry_gate::transaction_sample_rate` -> `0.0` | `tracesSampler` -> `0`                                        |
 | 载荷钩子            | `before_send` / `before_breadcrumb` / `before_send_log` -> `None`    | `beforeSend` / `beforeBreadcrumb` / `beforeSendLog` -> `null` |
@@ -805,7 +805,7 @@ transport 是最后一道边界，且与前面的钩子 **并不冗余**：它�
 
 前端的 gate 启动时默认 **关闭**，并把上次确认过的偏好镜像进 `localStorage`（`uc.telemetry_enabled`），这样在 SettingContext 从 daemon 拿到持久化值之前的启动早期窗口，关掉过遥测的用户依然受保护。后端的等价做法是 `tracing.rs` 同步读 `settings.json`，在 `sentry::init` 之前调用 `set_telemetry_enabled`。
 
-A shared field-name redaction blocklist (backend: `uc_observability::redact`, frontend: `apps/gui/src/observability/redaction.ts`) is applied to attributes regardless of the gate state, so secrets like `password`, `token`, `auth`, `api_key`, etc. never leave the process even if telemetry is enabled.
+A shared field-name redaction blocklist (backend: `uc_observability::redact`, frontend: `apps/gui-go/frontend/src/observability/redaction.ts`) is applied to attributes regardless of the gate state, so secrets like `password`, `token`, `auth`, `api_key`, etc. never leave the process even if telemetry is enabled.
 
 ### Configuration
 
@@ -834,7 +834,7 @@ The backend uses `sentry-tracing` 0.48+ with the `EventFilter` bitflags:
 
 ### Frontend → Sentry Mapping
 
-The frontend uses `@sentry/react` 10.36+ with `enableLogs: true`. The pino logger in `apps/gui/src/lib/logger.ts` forwards `info`+ records to `Sentry.logger.{info,warn,error,fatal}`; `debug` and `trace` stay client-side. React render errors are captured by `<Sentry.ErrorBoundary>` in `main.tsx`. Browser routing is instrumented by `reactRouterV7BrowserTracingIntegration` for parameterized navigation timing.
+The frontend uses `@sentry/react` 10.36+ with `enableLogs: true`. The pino logger in `apps/gui-go/frontend/src/lib/logger.ts` forwards `info`+ records to `Sentry.logger.{info,warn,error,fatal}`; `debug` and `trace` stay client-side. React render errors are captured by `<Sentry.ErrorBoundary>` in `main.tsx`. Browser routing is instrumented by `reactRouterV7BrowserTracingIntegration` for parameterized navigation timing.
 
 ### Querying Logs in Sentry
 
@@ -894,8 +894,8 @@ The pre-migration Seq signal files have been moved to `docs/_archive/seq/signals
 - Source:
   - `crates/uc-observability/` (profile, format, init, redact, telemetry_gate)
   - retired Tauri shell: `bootstrap/tracing.rs` (Sentry + uc-observability composition) and `bootstrap/logging.rs` (legacy log plugin)
-  - `apps/gui/src/observability/sentry.ts` (frontend Sentry init + redaction hooks)
-  - `apps/gui/src/lib/logger.ts` (pino → Sentry.logger bridge)
+  - `apps/gui-go/frontend/src/observability/sentry.ts` (frontend Sentry init + redaction hooks)
+  - `apps/gui-go/frontend/src/lib/logger.ts` (pino → Sentry.logger bridge)
 - Archive:
   - `docs/_archive/seq/signals/` (legacy Seq saved searches — not used)
 - Guides:

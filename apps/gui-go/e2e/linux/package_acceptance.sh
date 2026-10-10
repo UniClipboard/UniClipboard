@@ -39,7 +39,7 @@ step() { local name="$1"; shift; echo "== $name" | tee -a "$out/steps.txt"; "$@"
 fail=0
 must() { "$@" || { echo "step failed, stopping: $*" >&2; exit 1; }; }
 
-must step frontend-e2e bash -c "cd '$ROOT' && VITE_GUI_GO_E2E=1 bun --bun run --cwd apps/gui-go build"
+must step frontend-e2e bash -c "cd '$ROOT' && VITE_GUI_GO_E2E=1 bun --bun run --cwd apps/gui-go/frontend build"
 must step build-cli env SKIP_DAEMON=1 "$R" build
 must step build-gui "$R" release-e2e-build
 must step package-v1 "$R" package-appimage "$out/v1"

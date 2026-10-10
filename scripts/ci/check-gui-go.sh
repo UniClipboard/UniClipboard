@@ -8,7 +8,7 @@
 # windows: vet and link windows/amd64 and windows/arm64 with the shipped tags (production,release), CGO disabled. This
 #          proves the code compiles and links for Windows; it does not prove it runs.
 #
-# Needs apps/gui-go/frontend/dist (`bun --bun run --cwd apps/gui-go build`): main.go embeds it.
+# Needs apps/gui-go/frontend/dist (`bun --bun run --cwd apps/gui-go/frontend build`): main.go embeds it.
 # Writes the linked binaries, SHA256SUMS and manifest.txt to $UC_GATE_OUT (default target/gui-go-gate). Nothing is
 # published or signed, and the binaries are evidence of a successful link, not release candidates.
 set -euo pipefail
@@ -17,7 +17,7 @@ cd "$ROOT"
 MODE="${1:-all}"
 case "$MODE" in linux | windows | all) ;; *) echo "usage: $0 [linux|windows|all]" >&2; exit 2 ;; esac
 OUT="${UC_GATE_OUT:-$ROOT/target/gui-go-gate}"
-[[ -d apps/gui-go/frontend/dist ]] || { echo "apps/gui-go/frontend/dist is missing: run 'bun --bun run --cwd apps/gui-go build' first" >&2; exit 1; }
+[[ -d apps/gui-go/frontend/dist ]] || { echo "apps/gui-go/frontend/dist is missing: run 'bun --bun run --cwd apps/gui-go/frontend build' first" >&2; exit 1; }
 rm -rf "$OUT" && mkdir -p "$OUT"
 
 GIT=(git -c safe.directory='*')

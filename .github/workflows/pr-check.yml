@@ -63,7 +63,6 @@ jobs:
               - 'scripts/architecture/**'
             gui_go:
               - 'apps/gui-go/**'
-              - 'apps/gui/src/**'
               - 'packages/**'
               - 'Cargo.toml'
               - 'package.json'
@@ -121,22 +120,22 @@ jobs:
       - name: Type check shared frontend
         run: bun run typecheck
 
-      # The shipped frontend is the Wails host's bundle (apps/gui-go/vite.config.ts), which
+      # The shipped frontend is the Wails host's bundle (apps/gui-go/frontend/vite.config.ts), which
       # also runs the macOS 12.5 compatibility check over the built JavaScript.
       - name: Build shipped frontend
-        run: bun --bun run --cwd apps/gui-go build
+        run: bun --bun run --cwd apps/gui-go/frontend build
 
       # @hey-api generated client drift check (ADR-008 P5) —— `bun run gen:client`
-      # 从 committed 的 schema/openapi.json 重新生成 apps/gui/src/api/generated/。如果 schema
+      # 从 committed 的 schema/openapi.json 重新生成 apps/gui-go/frontend/src/api/generated/。如果 schema
       # 变了但没重新生成客户端，diff 会非零退出。本地修复: `bun run gen:client` 后
-      # git add apps/gui/src/api/generated/。
+      # git add apps/gui-go/frontend/src/api/generated/。
       - name: Verify generated API client is up to date
         run: |
-          cp -r apps/gui/src/api/generated /tmp/api-generated.committed
+          cp -r apps/gui-go/frontend/src/api/generated /tmp/api-generated.committed
           bun run gen:client
-          if ! diff -r -q /tmp/api-generated.committed apps/gui/src/api/generated; then
-            echo "::error::Generated API client drift detected. Run 'bun run gen:client' locally and commit apps/gui/src/api/generated/."
-            diff -r -u /tmp/api-generated.committed apps/gui/src/api/generated || true
+          if ! diff -r -q /tmp/api-generated.committed apps/gui-go/frontend/src/api/generated; then
+            echo "::error::Generated API client drift detected. Run 'bun run gen:client' locally and commit apps/gui-go/frontend/src/api/generated/."
+            diff -r -u /tmp/api-generated.committed apps/gui-go/frontend/src/api/generated || true
             exit 1
           fi
 
@@ -206,7 +205,7 @@ jobs:
 
       # apps/gui-go/main.go embeds frontend/dist.
       - name: Build shipped frontend
-        run: bun --bun run --cwd apps/gui-go build
+        run: bun --bun run --cwd apps/gui-go/frontend build
 
       - name: Set up Go
         uses: actions/setup-go@v6
@@ -220,7 +219,7 @@ jobs:
       # (no cgo, so no GTK needed; output verified byte-identical to darwin), and
       # `hostcontract lint` scans every platform's sources, so a platform file that changes
       # the exported method set still fails. The other
-      # checks cross-check events, @tauri-apps aliases, the //uc: directives and the
+      # checks cross-check events, the //uc: directives and the
       # generated command document. Local fix: `bun run gen:host-contract`, then
       # `go run ./cmd/hostcontract docs` and `e2e-table` in apps/gui-go.
       - name: Verify the host command contract

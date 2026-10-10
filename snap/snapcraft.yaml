@@ -143,7 +143,7 @@ parts:
       # 2) The shared frontend bundle, which the Go host embeds (apps/gui-go/main.go).
       (cd packages/desktop-host-go && go generate ./buildinfo)
       bun install --frozen-lockfile
-      bun --bun run --cwd apps/gui-go build
+      bun --bun run --cwd apps/gui-go/frontend build
 
       # 3) The Go host, with the shipped tags and the identity from apps/gui-go/app.json (the
       # single source: the identifier keys the single-instance scope and notifications).

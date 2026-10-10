@@ -10,7 +10,7 @@
 /// tags select `"zh-CN"`. Japanese, Russian, and Portuguese region variants
 /// collapse to their respective bundles. Anything without a bundle is `"en-US"`.
 ///
-/// Keep the supported set in sync with `SUPPORTED_LANGUAGES` in `apps/gui/src/i18n/index.ts`,
+/// Keep the supported set in sync with `SUPPORTED_LANGUAGES` in `apps/gui-go/frontend/src/i18n/index.ts`,
 /// including the frontend's subtag fallbacks in `normalizeLanguage()`.
 pub fn normalize_language(language: &str) -> &'static str {
     // Accept both separators: BCP-47 hands us "pt-BR", POSIX locale envs "pt_BR".

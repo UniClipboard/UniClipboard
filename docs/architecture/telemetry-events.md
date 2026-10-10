@@ -991,7 +991,7 @@ Go 宿主的发布流水线落地后（见 #1895 至 #1899），在其构建步�
 - [x] `AnalyticsPort` trait 定义，入参用本文件的事件类型。
 - [x] `analytics_gate` 模块实现（与 `telemetry_gate` 对称）。
 - [x] 配置目录中 `installation_id` / `analytics_device_id` 持久化逻辑落地（纯模块层，bootstrap 拼装在后续 slice）。
-- [x] settings UI 拆分两个开关并补齐文案（`apps/gui/src/components/setting/GeneralSection.tsx` 两个独立 toggle）。
+- [x] settings UI 拆分两个开关并补齐文案（`apps/gui-go/frontend/src/components/setting/GeneralSection.tsx` 两个独立 toggle）。
 - [x] dev 构建下事件 stdout 打印通路（`uc-bootstrap/src/analytics.rs`：`cfg!(debug_assertions)` 下接 `Gated(StdoutSink)`）。
 
 ## 12. 未来事件 roadmap（post-v1 实施计划）

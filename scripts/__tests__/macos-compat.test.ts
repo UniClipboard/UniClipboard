@@ -6,8 +6,8 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { findUnsupportedJavaScript } from '../check-macos-compat.mjs'
 
 const projectRoot = path.resolve(__dirname, '../..')
-const guiRoot = path.join(projectRoot, 'apps', 'gui')
 const hostRoot = path.join(projectRoot, 'apps', 'gui-go')
+const frontendRoot = path.join(hostRoot, 'frontend')
 
 function readProjectFile(filePath: string): string {
   try {
@@ -78,15 +78,11 @@ describe('macOS 12.5 compatibility guard', () => {
   })
 
   it('keeps the build and bundle configuration aligned with macOS 12.5', async () => {
-    const hostPackageJson = requireJsonObject(
-      parseProjectJson(path.join(hostRoot, 'package.json')),
-      'apps/gui-go/package.json'
-    )
-    const hostScripts = requireJsonObject(hostPackageJson.scripts, 'apps/gui-go scripts')
     const packageJson = requireJsonObject(
-      parseProjectJson(path.join(guiRoot, 'package.json')),
-      'apps/gui/package.json'
+      parseProjectJson(path.join(frontendRoot, 'package.json')),
+      'apps/gui-go/frontend/package.json'
     )
+    const frontendScripts = requireJsonObject(packageJson.scripts, 'apps/gui-go/frontend scripts')
     const packageDependencies = requireJsonObject(
       packageJson.dependencies,
       'package.json dependencies'
@@ -96,15 +92,15 @@ describe('macOS 12.5 compatibility guard', () => {
       'apps/gui-go/app.json'
     )
     const viteConfig = await resolveConfig(
-      { configFile: path.join(hostRoot, 'vite.config.ts') },
+      { configFile: path.join(frontendRoot, 'vite.config.ts') },
       'build',
       'production'
     )
     const releaseNotes = readProjectFile(
-      path.join(guiRoot, 'src', 'components', 'update', 'ReleaseNotes.tsx')
+      path.join(frontendRoot, 'src', 'components', 'update', 'ReleaseNotes.tsx')
     )
 
-    expect(hostScripts.build).toContain('scripts/check-macos-compat.mjs')
+    expect(frontendScripts.build).toContain('scripts/check-macos-compat.mjs')
     expect(packageDependencies).not.toHaveProperty('remark-gfm')
     expect(appConfig.minimumSystemVersion).toBe('12.5')
     expect(viteConfig.build.target).toBe('safari15.6')

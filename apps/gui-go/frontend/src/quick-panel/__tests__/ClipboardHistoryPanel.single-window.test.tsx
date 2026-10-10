@@ -1,0 +1,870 @@
+import { configureStore } from '@reduxjs/toolkit'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import type { ReactElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
+import { Provider } from 'react-redux'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { deleteClipboardEntry, restoreClipboardEntry } from '@/api/daemon'
+import { usePlatform } from '@/hooks/usePlatform'
+import { __resetResendActionStoreForTests } from '@/hooks/useResendAction'
+import i18n from '@/i18n'
+import { formatRelativeTime } from '@/lib/clipboard-utils'
+import { playUiSound } from '@/lib/ui-sound'
+import devicesReducer from '@/store/slices/devicesSlice'
+import ClipboardHistoryPanel from '../ClipboardHistoryPanel'
+import { useHistorySearch } from '../hooks/useHistorySearch'
+
+const invokeMock = vi.fn()
+vi.mock('@/hooks/usePlatform', () => ({ usePlatform: vi.fn() }))
+
+// The panel now primes the paired-device list (for the row context menu's
+// "send to device" submenu) and the reused `HistoryCardContextMenu` reads
+// `state.devices.spaceMembers`, so the panel needs a Redux Provider. Keep it
+// isolated: a minimal devices-only store plus a members API that returns none.
+vi.mock('@/api/daemon/members', () => ({
+  getPairedPeersWithStatus: vi.fn().mockResolvedValue([]),
+  getLocalDeviceInfo: vi.fn().mockResolvedValue(null),
+}))
+
+function renderPanel(ui: ReactElement = <ClipboardHistoryPanel />) {
+  const store = configureStore({ reducer: { devices: devicesReducer } })
+  return render(<Provider store={store}>{ui}</Provider>)
+}
+
+vi.mock('@host/hostservice', () => {
+  // Each generated binding reports its call to `invokeMock`, so the tests observe what crosses to the Go service.
+  const call =
+    (name: string) =>
+    (...args: unknown[]) =>
+      invokeMock(name, ...args)
+  return {
+    DismissQuickPanel: call('DismissQuickPanel'),
+    PasteToPreviousApp: call('PasteToPreviousApp'),
+    ResolveQuickPanelExpandSide: call('ResolveQuickPanelExpandSide'),
+    SetQuickPanelLayout: call('SetQuickPanelLayout'),
+    TypeFilePathsToPreviousApp: call('TypeFilePathsToPreviousApp'),
+  }
+})
+
+vi.mock('@/host/event', () => ({
+  listen: vi.fn(() => Promise.resolve(() => {})),
+}))
+
+vi.mock('@/hooks/useHistorySourceOptions', () => ({ useHistorySourceOptions: () => [] }))
+vi.mock('@/hooks/useShortcut', () => ({ useShortcut: vi.fn() }))
+vi.mock('@/lib/ui-sound', () => ({ playUiSound: vi.fn() }))
+
+// The panel now sources its list from the unified live browse/search hook; mock
+// it directly with the launcher's simplified DisplayItem shape (these tests
+// exercise the preview pane, not the data layer).
+vi.mock('../hooks/useHistorySearch', () => ({
+  useHistorySearch: vi.fn(() => ({
+    filteredItems: [
+      {
+        id: 'entry-1',
+        type: 'text',
+        preview: 'Preview title',
+        activeTime: Date.now(),
+        isUnavailable: false,
+      },
+      {
+        id: 'entry-2',
+        type: 'text',
+        preview: 'Second preview title',
+        activeTime: Date.now() - 1000,
+        isUnavailable: false,
+      },
+      {
+        id: 'entry-file',
+        type: 'file',
+        preview: 'File preview title',
+        activeTime: Date.now() - 2000,
+        isUnavailable: false,
+      },
+    ],
+    previewItems: [
+      {
+        id: 'entry-1',
+        type: 'text',
+        content: { display_text: 'Preview title', has_detail: false, size: 13 },
+        activeTime: Date.now(),
+        isUnavailable: false,
+      },
+      {
+        id: 'entry-2',
+        type: 'text',
+        content: { display_text: 'Second preview title', has_detail: false, size: 20 },
+        activeTime: Date.now() - 1000,
+        isUnavailable: false,
+      },
+      {
+        id: 'entry-file',
+        type: 'file',
+        content: {
+          file_names: ['report.pdf', 'missing.txt', '设计.txt'],
+          file_sizes: [10, 20, 30],
+          file_paths: ['/tmp/report.pdf', '/tmp/missing.txt', '/tmp/设计.txt'],
+          file_missing: [false, true, false],
+        },
+        activeTime: Date.now() - 2000,
+        isUnavailable: false,
+      },
+    ],
+    isSearching: false,
+    searchTotal: 2,
+    loading: false,
+    isLocked: false,
+    removeItem: vi.fn(),
+  })),
+}))
+
+const defaultHistorySearchImplementation = vi.mocked(useHistorySearch).getMockImplementation()
+
+beforeEach(() => {
+  vi.mocked(usePlatform).mockReturnValue({
+    isLinux: false,
+    isDesktopHost: true,
+    isMac: true,
+    isWindows: false,
+  })
+  if (defaultHistorySearchImplementation) {
+    vi.mocked(useHistorySearch).mockImplementation(defaultHistorySearchImplementation)
+  }
+})
+
+vi.mock('@/api/daemon', () => ({
+  restoreClipboardEntry: vi.fn(),
+  deleteClipboardEntry: vi.fn(),
+  getEncryptionState: vi.fn().mockResolvedValue({ initialized: false, sessionReady: false }),
+}))
+
+vi.mock('@/api/security', () => ({
+  unlockEncryptionSession: vi.fn(),
+}))
+
+vi.mock('@/api/daemon/clipboard', () => ({
+  getClipboardEntryResource: vi.fn().mockResolvedValue({
+    blobId: null,
+    mimeType: 'text/plain',
+    sizeBytes: 17,
+    url: null,
+    inlineData: btoa('Full preview text'),
+  }),
+  getClipboardEntryDetail: vi.fn().mockResolvedValue({
+    id: 'entry-1',
+    content: 'Full preview text',
+    sizeBytes: 17,
+    createdAtMs: 1710000000000,
+    activeTimeMs: 1710000000000,
+    mimeType: 'text/plain',
+  }),
+  // Backs favoriteClipboardItem/unfavoriteClipboardItem so the favorite toggle
+  // resolves and the optimistic star sticks.
+  toggleFavorite: vi.fn().mockResolvedValue(undefined),
+}))
+
+vi.mock('@/api/daemon/client', () => ({
+  daemonClient: {
+    fetchBlob: vi.fn(),
+    callSdk: vi.fn().mockResolvedValue({ data: [], ts: 1710000000000 }),
+  },
+}))
+
+vi.mock('../ClipboardPreviewPane', () => ({
+  default: ({ item }: { item: { id: string } | null }) =>
+    item ? <div>{`Preview for ${item.id}`}</div> : <div data-testid="preview-empty" />,
+}))
+
+// The preview opens on a PREVIEW_OPEN_DELAY_MS (500ms) timer, so anything that
+// asserts post-open layout has to wait for the state to land. Sleeping just past
+// the delay is not enough: the timer is rescheduled by the renders that follow
+// mount, which pushes the flip to ~520ms and leaves a loaded CI runner far too
+// little headroom. Wait on the condition with a timeout well clear of the delay.
+const PREVIEW_OPEN_TIMEOUT_MS = 3000
+
+function deferred() {
+  let resolve!: () => void
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<void>((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  return { promise, resolve, reject }
+}
+
+describe('ClipboardHistoryPanel single-window preview', () => {
+  beforeEach(() => {
+    vi.useRealTimers()
+    vi.clearAllMocks()
+    invokeMock.mockResolvedValue(undefined)
+    Element.prototype.scrollIntoView = vi.fn()
+  })
+
+  it('shows both Linux columns immediately and changes selection without resizing', () => {
+    vi.mocked(usePlatform).mockReturnValue({
+      isLinux: true,
+      isDesktopHost: true,
+      isMac: false,
+      isWindows: false,
+    })
+    const { container } = renderPanel()
+    const root = container.firstElementChild!
+    expect(screen.getByText('Preview for entry-1')).toBeInTheDocument()
+    expect(root.children[1]).toHaveAttribute('aria-hidden', 'false')
+    expect(root).not.toHaveClass('flex-row-reverse')
+    invokeMock.mockClear()
+    fireEvent.keyDown(screen.getByRole('combobox'), { key: 'ArrowDown' })
+    expect(screen.getByText('Preview for entry-2')).toBeInTheDocument()
+    expect(
+      invokeMock.mock.calls.some(
+        ([command]) =>
+          command === 'SetQuickPanelLayout' || command === 'ResolveQuickPanelExpandSide'
+      )
+    ).toBe(false)
+  })
+
+  it('retains the Linux hover preview until another hover or keyboard selection', () => {
+    vi.mocked(usePlatform).mockReturnValue({
+      isLinux: true,
+      isDesktopHost: true,
+      isMac: false,
+      isWindows: false,
+    })
+    const { container } = renderPanel()
+    expect(screen.getByText('Preview for entry-1')).toBeInTheDocument()
+    const secondRow = screen.getByText('Second preview title')
+
+    // Browsers deliver enter before move, including when resuming from keyboard navigation.
+    fireEvent.mouseEnter(secondRow)
+    expect(screen.getByText('Preview for entry-1')).toBeInTheDocument()
+    fireEvent.mouseMove(secondRow)
+    expect(screen.getByText('Preview for entry-2')).toBeInTheDocument()
+
+    fireEvent.mouseLeave(screen.getByRole('listbox'))
+    fireEvent.mouseEnter(container.firstElementChild!.children[1])
+    expect(screen.getByText('Preview for entry-2')).toBeInTheDocument()
+    expect(screen.queryByTestId('preview-empty')).not.toBeInTheDocument()
+
+    fireEvent.mouseMove(screen.getByText('File preview title'))
+    fireEvent.mouseLeave(screen.getByRole('listbox'))
+    expect(screen.getByText('Preview for entry-file')).toBeInTheDocument()
+
+    fireEvent.keyDown(screen.getByRole('combobox'), { key: 'ArrowDown' })
+    expect(screen.getByText('Preview for entry-2')).toBeInTheDocument()
+    fireEvent.mouseEnter(screen.getByText('Preview title'))
+    fireEvent.mouseMove(screen.getByText('Preview title'))
+    expect(screen.getByText('Preview for entry-1')).toBeInTheDocument()
+  })
+
+  it('keeps the Linux preview column visible when history is empty', () => {
+    vi.mocked(usePlatform).mockReturnValue({
+      isLinux: true,
+      isDesktopHost: true,
+      isMac: false,
+      isWindows: false,
+    })
+    vi.mocked(useHistorySearch).mockReturnValue({
+      ...defaultHistorySearchImplementation!({ searchQuery: '', activeFilter: 'all' } as Parameters<
+        typeof useHistorySearch
+      >[0]),
+      filteredItems: [],
+      previewItems: [],
+    })
+    const { container } = renderPanel()
+    expect(screen.getByTestId('preview-empty')).toBeInTheDocument()
+    expect(container.firstElementChild!.children[1]).toHaveAttribute('aria-hidden', 'false')
+    expect(container.firstElementChild!.children[0]).toHaveClass('flex-[42]', 'basis-0')
+    expect(container.firstElementChild!.children[1]).toHaveClass('flex-[58]', 'basis-0')
+  })
+
+  it('starts a shown session without a preview transition', () => {
+    const store = configureStore({ reducer: { devices: devicesReducer } })
+    const markup = renderToStaticMarkup(
+      <Provider store={store}>
+        <ClipboardHistoryPanel showRequestId={1} />
+      </Provider>
+    )
+
+    expect(markup).not.toContain('transition-[opacity,transform]')
+  })
+
+  it('renders preview content inside the same panel and requests expanded mode', async () => {
+    renderPanel()
+
+    await act(async () => {
+      await new Promise(resolve => setTimeout(resolve, 550))
+    })
+
+    expect(await screen.findByText('Preview for entry-1')).toBeInTheDocument()
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith('SetQuickPanelLayout', 1, true, expect.anything())
+    })
+    expect(invokeMock).not.toHaveBeenCalledWith('ShowPreviewPanel', expect.anything())
+  })
+
+  it('keeps type filters visible and replaces the shortcut hint with the tag bar', () => {
+    renderPanel()
+
+    expect(screen.getByRole('button', { name: i18n.t('history.filter.all') })).toBeInTheDocument()
+    expect(screen.getByTestId('quick-panel-tag-filter-list')).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: i18n.t('history.composite.openFilters') })
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByText(i18n.t('quickPanel.history.status.navigatePaste'))
+    ).not.toBeInTheDocument()
+  })
+
+  it('does not render a divider below the search area', () => {
+    renderPanel()
+
+    expect(screen.getByRole('combobox').closest('.border-b')).toBeNull()
+  })
+
+  it('keeps history and preview panes flexible when the inline preview opens', async () => {
+    const { container } = renderPanel()
+
+    expect(
+      await screen.findByText('Preview for entry-1', undefined, {
+        timeout: PREVIEW_OPEN_TIMEOUT_MS,
+      })
+    ).toBeInTheDocument()
+
+    const rootLayout = container.firstElementChild as HTMLDivElement | null
+    const historyWrapper = rootLayout?.children.item(0) as HTMLDivElement | null
+    const previewWrapper = rootLayout?.children.item(1) as HTMLDivElement | null
+
+    // The panes are briefly pinned while the resize is in flight; the flexible
+    // layout is the settled end state, so assert only once the expand lands.
+    await waitFor(() => expect(previewWrapper?.className).toContain('flex-1'), {
+      timeout: PREVIEW_OPEN_TIMEOUT_MS,
+    })
+
+    expect(historyWrapper?.className).toContain('basis-0')
+    expect(historyWrapper?.className).toContain('min-w-0')
+
+    expect(previewWrapper?.className).toContain('basis-0')
+    expect(previewWrapper?.className).toContain('flex-1')
+    expect(previewWrapper?.className).not.toContain('transition-all')
+    expect(previewWrapper?.firstElementChild?.className).toContain('transition-[opacity,transform]')
+  })
+
+  it('waits for the backend layout resize before expanding the preview column', async () => {
+    const pendingResize = deferred()
+    invokeMock.mockImplementation((command: string, _scale?: number, previewExpanded?: boolean) => {
+      if (command === 'SetQuickPanelLayout' && previewExpanded) {
+        return pendingResize.promise
+      }
+      return Promise.resolve(undefined)
+    })
+
+    const { container } = renderPanel()
+    const rootLayout = container.firstElementChild as HTMLDivElement | null
+    const historyWrapper = rootLayout?.children.item(0) as HTMLDivElement | null
+    historyWrapper!.getBoundingClientRect = vi.fn(() => ({
+      width: 360,
+      height: 420,
+      top: 0,
+      right: 360,
+      bottom: 420,
+      left: 0,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    }))
+
+    const previewWrapper = rootLayout?.children.item(1) as HTMLDivElement | null
+
+    // `pendingResize` never settles here, so the reserving state is stable once
+    // reached — waiting for it is safe, and does not race the open delay.
+    await waitFor(() => expect(historyWrapper?.className).toContain('shrink-0'), {
+      timeout: PREVIEW_OPEN_TIMEOUT_MS,
+    })
+
+    expect(previewWrapper?.getAttribute('aria-hidden')).toBe('true')
+    expect(historyWrapper?.style.width).toBe('360px')
+    expect(previewWrapper?.className).toContain('shrink-0')
+
+    await act(async () => {
+      pendingResize.resolve()
+      await Promise.resolve()
+    })
+
+    expect(previewWrapper?.getAttribute('aria-hidden')).toBe('false')
+    expect(historyWrapper?.className).toContain('flex-1')
+    expect(historyWrapper?.style.width).toBe('')
+    expect(previewWrapper?.className).toContain('flex-1')
+    expect(previewWrapper?.style.width).toBe('')
+  })
+
+  it('dismisses the quick window immediately when escape is pressed with preview open', async () => {
+    renderPanel()
+
+    await act(async () => {
+      await new Promise(resolve => setTimeout(resolve, 550))
+    })
+
+    expect(await screen.findByText('Preview for entry-1')).toBeInTheDocument()
+
+    invokeMock.mockClear()
+
+    fireEvent.keyDown(window, { key: 'Escape' })
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith('DismissQuickPanel')
+    })
+    expect(invokeMock).not.toHaveBeenCalledWith('SetQuickPanelLayout', 1, false, expect.anything())
+  })
+
+  it('keeps the hovered preview when moving from history into the preview pane', async () => {
+    const { container } = renderPanel()
+
+    await act(async () => {
+      await new Promise(resolve => setTimeout(resolve, 550))
+    })
+
+    const rootLayout = container.firstElementChild as HTMLDivElement | null
+    const previewWrapper = rootLayout?.children.item(1) as HTMLDivElement | null
+    const secondItem = screen.getByText('Second preview title')
+
+    fireEvent.mouseMove(secondItem)
+    fireEvent.mouseEnter(secondItem)
+
+    expect(await screen.findByText('Preview for entry-2')).toBeInTheDocument()
+
+    fireEvent.mouseLeave(secondItem)
+    fireEvent.mouseEnter(previewWrapper!)
+
+    expect(screen.getByText('Preview for entry-2')).toBeInTheDocument()
+    expect(screen.queryByText('Preview for entry-1')).not.toBeInTheDocument()
+  })
+
+  it('does not treat a stationary pointer as a hover when the panel first appears', async () => {
+    renderPanel()
+
+    const secondItem = await screen.findByText('Second preview title')
+
+    fireEvent.mouseEnter(secondItem)
+
+    // The selection preview (entry-1) still wins: a mouseEnter without a prior
+    // mouseMove is not a hover, so entry-2 never becomes the preview target.
+    expect(
+      await screen.findByText('Preview for entry-1', undefined, {
+        timeout: PREVIEW_OPEN_TIMEOUT_MS,
+      })
+    ).toBeInTheDocument()
+    expect(screen.queryByText('Preview for entry-2')).not.toBeInTheDocument()
+  })
+})
+
+describe('ClipboardHistoryPanel row context menu', () => {
+  beforeEach(() => {
+    vi.useRealTimers()
+    vi.clearAllMocks()
+    invokeMock.mockResolvedValue(undefined)
+    Element.prototype.scrollIntoView = vi.fn()
+    // Shared module-level in-flight store — reset so the "Send" trigger renders
+    // enabled and state doesn't leak between cases.
+    __resetResendActionStoreForTests()
+  })
+
+  // The shared ContextMenu listens for the native contextmenu event; fire it
+  // directly (userEvent right-click is flaky under jsdom).
+  function openRowMenu(rowText: string) {
+    fireEvent.contextMenu(screen.getByText(rowText))
+  }
+
+  it('selects the right-clicked row so the highlight tracks the menu target', async () => {
+    renderPanel()
+
+    const firstRow = screen.getByText('Preview title').closest('[role="option"]')
+    const secondRow = screen.getByText('Second preview title').closest('[role="option"]')
+    // Panel opens with the first row selected.
+    expect(firstRow).toHaveAttribute('aria-selected', 'true')
+    expect(secondRow).toHaveAttribute('aria-selected', 'false')
+
+    // Right-clicking the second row moves the selection onto it.
+    openRowMenu('Second preview title')
+
+    await waitFor(() => {
+      expect(secondRow).toHaveAttribute('aria-selected', 'true')
+    })
+    expect(firstRow).toHaveAttribute('aria-selected', 'false')
+  })
+
+  it('opens the reused history menu on right-click', async () => {
+    renderPanel()
+    openRowMenu('Preview title')
+
+    expect(
+      await screen.findByRole('menuitem', {
+        name: new RegExp(i18n.t('clipboard.contextMenu.copy')),
+      })
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('menuitem', { name: new RegExp(i18n.t('clipboard.contextMenu.delete')) })
+    ).toBeInTheDocument()
+  })
+
+  it('copies the entry then dismisses the panel when Copy is clicked', async () => {
+    renderPanel()
+    openRowMenu('Preview title')
+
+    fireEvent.click(
+      await screen.findByRole('menuitem', {
+        name: new RegExp(i18n.t('clipboard.contextMenu.copy')),
+      })
+    )
+
+    await waitFor(() => {
+      expect(restoreClipboardEntry).toHaveBeenCalledWith('entry-1')
+      expect(playUiSound).toHaveBeenCalledWith('success')
+    })
+    // Copy is a terminal launcher action: the panel dismisses only on success.
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith('DismissQuickPanel')
+    })
+  })
+
+  it('pastes file paths from the file entry context menu', async () => {
+    renderPanel()
+    openRowMenu('File preview title')
+
+    fireEvent.click(
+      await screen.findByRole('menuitem', {
+        name: new RegExp(i18n.t('clipboard.contextMenu.pasteFilePaths')),
+      })
+    )
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith('TypeFilePathsToPreviousApp', {
+        filePaths: ['/tmp/report.pdf', '/tmp/设计.txt'],
+      })
+      expect(playUiSound).toHaveBeenCalledWith('success')
+    })
+    expect(restoreClipboardEntry).not.toHaveBeenCalled()
+    expect(invokeMock).not.toHaveBeenCalledWith('PasteToPreviousApp')
+  })
+
+  it('keeps copy failures silent', async () => {
+    vi.mocked(restoreClipboardEntry).mockRejectedValueOnce(new Error('copy failed'))
+    renderPanel()
+    openRowMenu('Preview title')
+
+    fireEvent.click(
+      await screen.findByRole('menuitem', {
+        name: new RegExp(i18n.t('clipboard.contextMenu.copy')),
+      })
+    )
+
+    await waitFor(() => {
+      expect(restoreClipboardEntry).toHaveBeenCalledWith('entry-1')
+    })
+    expect(playUiSound).not.toHaveBeenCalled()
+  })
+
+  it('shows a favorite star on the row after Favorite is clicked', async () => {
+    renderPanel()
+
+    const row = screen.getByText('Preview title').closest('[role="option"]') as HTMLElement
+    // No star before favoriting.
+    expect(row.querySelector('.lucide-star')).toBeNull()
+
+    openRowMenu('Preview title')
+    fireEvent.click(
+      await screen.findByRole('menuitem', {
+        name: new RegExp(i18n.t('clipboard.contextMenu.favorite')),
+      })
+    )
+
+    // Optimistic star appears immediately, giving the toggle visible feedback.
+    await waitFor(() => {
+      expect(row.querySelector('.lucide-star')).not.toBeNull()
+    })
+  })
+
+  it('deletes the entry immediately (no confirm) when Delete is clicked', async () => {
+    renderPanel()
+    openRowMenu('Preview title')
+
+    fireEvent.click(
+      await screen.findByRole('menuitem', {
+        name: new RegExp(i18n.t('clipboard.contextMenu.delete')),
+      })
+    )
+
+    await waitFor(() => {
+      expect(deleteClipboardEntry).toHaveBeenCalledWith('entry-1')
+    })
+    // Immediate delete does not route through a confirmation dialog.
+    expect(invokeMock).not.toHaveBeenCalledWith('DismissQuickPanel')
+  })
+})
+
+describe('ClipboardHistoryPanel hover/focus keyboard shortcuts', () => {
+  beforeEach(() => {
+    vi.useRealTimers()
+    vi.clearAllMocks()
+    invokeMock.mockResolvedValue(undefined)
+    Element.prototype.scrollIntoView = vi.fn()
+  })
+
+  function searchBox() {
+    return screen.getByRole('combobox') as HTMLInputElement
+  }
+
+  // The `searchQuery` the data layer was last asked for. Proxies "what the list
+  // is actually showing" without unmocking the data layer.
+  function lastHistoryQuery() {
+    const calls = vi.mocked(useHistorySearch).mock.calls
+    return calls.at(-1)?.[0]?.searchQuery
+  }
+
+  it('acts on the hovered row rather than the keyboard-selected row when both differ', async () => {
+    renderPanel()
+    // Panel opens with entry-1 selected by keyboard.
+    fireEvent.mouseMove(screen.getByText('Second preview title'))
+    fireEvent.mouseEnter(screen.getByText('Second preview title'))
+    await screen.findByText('Preview for entry-2')
+
+    fireEvent.keyDown(searchBox(), { key: 'c', metaKey: true })
+
+    await waitFor(() => {
+      expect(restoreClipboardEntry).toHaveBeenCalledWith('entry-2')
+    })
+  })
+
+  it('copies the active row to the clipboard and dismisses the panel on Ctrl/Cmd+C', async () => {
+    renderPanel()
+
+    fireEvent.keyDown(searchBox(), { key: 'c', metaKey: true })
+
+    await waitFor(() => {
+      expect(restoreClipboardEntry).toHaveBeenCalledWith('entry-1')
+    })
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith('DismissQuickPanel')
+    })
+  })
+
+  it('does not hijack Ctrl/Cmd+C when the search input has a text selection', async () => {
+    renderPanel()
+    const input = searchBox()
+    fireEvent.change(input, { target: { value: 'abc' } })
+    input.setSelectionRange(0, 3)
+
+    fireEvent.keyDown(input, { key: 'c', metaKey: true })
+
+    expect(restoreClipboardEntry).not.toHaveBeenCalled()
+  })
+
+  it('pastes the active row to the foreground app on Ctrl/Cmd+V, same as Enter', async () => {
+    renderPanel()
+
+    fireEvent.keyDown(searchBox(), { key: 'v', metaKey: true })
+
+    await waitFor(() => {
+      expect(restoreClipboardEntry).toHaveBeenCalledWith('entry-1', undefined)
+    })
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith('PasteToPreviousApp')
+    })
+  })
+
+  it('returns keyboard control to the results and resets selection after clicking a tag', async () => {
+    const user = userEvent.setup()
+    renderPanel()
+    const input = searchBox()
+    fireEvent.keyDown(input, { key: 'ArrowDown' })
+
+    await user.click(
+      within(screen.getByTestId('quick-panel-tag-filter-list')).getByRole('button', {
+        name: i18n.t('history.type.code'),
+      })
+    )
+
+    expect(input).toHaveFocus()
+    await user.keyboard('{Enter}')
+    await waitFor(() => {
+      expect(restoreClipboardEntry).toHaveBeenCalledWith('entry-1', undefined)
+    })
+  })
+
+  it('returns keyboard control to the results and resets selection after clicking a type', async () => {
+    const user = userEvent.setup()
+    renderPanel()
+    const input = searchBox()
+    fireEvent.keyDown(input, { key: 'ArrowDown' })
+
+    await user.click(screen.getByRole('button', { name: i18n.t('history.type.file') }))
+
+    expect(input).toHaveFocus()
+    await user.keyboard('{Enter}')
+    await waitFor(() => {
+      expect(restoreClipboardEntry).toHaveBeenCalledWith('entry-1', undefined)
+    })
+  })
+
+  it('does not expose or paste stale results while a filter is loading', () => {
+    vi.mocked(useHistorySearch).mockReturnValue({
+      filteredItems: [
+        {
+          id: 'stale-entry',
+          type: 'text',
+          preview: 'Stale preview title',
+          activeTime: Date.now(),
+          isUnavailable: false,
+        },
+      ],
+      previewItems: [],
+      isSearching: true,
+      searchTotal: null,
+      loading: false,
+      isLocked: false,
+      removeItem: vi.fn(),
+    })
+    renderPanel()
+
+    expect(screen.queryByText('Stale preview title')).not.toBeInTheDocument()
+    fireEvent.keyDown(searchBox(), { key: 'Enter' })
+
+    expect(restoreClipboardEntry).not.toHaveBeenCalled()
+  })
+
+  it('keeps native query copy available while a filter is loading', () => {
+    vi.mocked(useHistorySearch).mockReturnValue({
+      filteredItems: [],
+      previewItems: [],
+      isSearching: true,
+      searchTotal: null,
+      loading: false,
+      isLocked: false,
+      removeItem: vi.fn(),
+    })
+    renderPanel()
+    const input = searchBox()
+    fireEvent.change(input, { target: { value: 'abc' } })
+    input.setSelectionRange(0, 3)
+    const copyEvent = new KeyboardEvent('keydown', {
+      key: 'c',
+      metaKey: true,
+      bubbles: true,
+      cancelable: true,
+    })
+
+    fireEvent(input, copyEvent)
+
+    expect(copyEvent.defaultPrevented).toBe(false)
+    expect(restoreClipboardEntry).not.toHaveBeenCalled()
+  })
+
+  it('does not hijack Ctrl/Cmd+V once the search query is non-empty', async () => {
+    renderPanel()
+    const input = searchBox()
+    fireEvent.change(input, { target: { value: 'abc' } })
+
+    fireEvent.keyDown(input, { key: 'v', metaKey: true })
+
+    expect(restoreClipboardEntry).not.toHaveBeenCalled()
+  })
+
+  it('deletes the active row on Alt+Backspace', async () => {
+    renderPanel()
+
+    fireEvent.keyDown(searchBox(), { key: 'Backspace', altKey: true })
+
+    await waitFor(() => {
+      expect(deleteClipboardEntry).toHaveBeenCalledWith('entry-1')
+    })
+  })
+
+  it('remounts a fresh session on re-open so a settled prior query does not carry over', async () => {
+    // The outer shell keys the session on showRequestId: buffer, filters, and
+    // the live-search query all start empty instead of flashing the last show.
+    const store = configureStore({ reducer: { devices: devicesReducer } })
+    const { rerender } = render(
+      <Provider store={store}>
+        <ClipboardHistoryPanel showRequestId={1} />
+      </Provider>
+    )
+    // Let the first show settle into an active 'invoice' query (past the
+    // debounce), so the remount has a real prior query to discard.
+    fireEvent.change(searchBox(), { target: { value: 'invoice' } })
+    await waitFor(() => expect(lastHistoryQuery()).toBe('invoice'))
+    expect(searchBox()).toHaveValue('invoice')
+
+    rerender(
+      <Provider store={store}>
+        <ClipboardHistoryPanel showRequestId={2} />
+      </Provider>
+    )
+
+    // Both the box and the query the data layer sees reset to empty; the list
+    // never re-queries with the previous show's 'invoice'.
+    await waitFor(() => expect(searchBox()).toHaveValue(''))
+    expect(lastHistoryQuery()).toBe('')
+  })
+
+  it('debounces typing but sends the cleared query to the data layer immediately', async () => {
+    renderPanel()
+    const input = searchBox()
+
+    // Typing does not reach the data layer synchronously — it waits for the
+    // debounce, so the browse query stays empty until the timer fires.
+    fireEvent.change(input, { target: { value: 'abc' } })
+    expect(lastHistoryQuery()).toBe('')
+    await waitFor(() => expect(lastHistoryQuery()).toBe('abc'))
+
+    // Clearing bypasses the debounce: the empty browse query is applied on the
+    // next render, not ~300ms later, so the list stops matching 'abc' at once.
+    fireEvent.change(input, { target: { value: '' } })
+    expect(lastHistoryQuery()).toBe('')
+  })
+})
+
+vi.mock('@/lib/clipboard-utils', async importOriginal => {
+  const actual = await importOriginal<typeof import('@/lib/clipboard-utils')>()
+  return { ...actual, formatRelativeTime: vi.fn(actual.formatRelativeTime) }
+})
+
+describe('ClipboardHistoryPanel hover rendering', () => {
+  it.each(['list', 'image wall'])(
+    'does not render unchanged %s rows during hover',
+    async layout => {
+      vi.useRealTimers()
+      invokeMock.mockResolvedValue(undefined)
+      Element.prototype.scrollIntoView = vi.fn()
+      vi.mocked(usePlatform).mockReturnValue({
+        isLinux: true,
+        isDesktopHost: true,
+        isMac: false,
+        isWindows: false,
+      })
+      // Stable data isolates pointer updates from data subscription updates.
+      const stableData = defaultHistorySearchImplementation!({} as never)
+      vi.mocked(useHistorySearch).mockReturnValue(stableData)
+      renderPanel()
+      await act(async () => {
+        await Promise.resolve()
+      })
+      if (layout === 'image wall') {
+        fireEvent.click(screen.getAllByRole('button', { name: i18n.t('history.type.image') })[0])
+        await act(async () => {
+          await Promise.resolve()
+        })
+      }
+      const [first, second] = screen.getAllByRole('option')
+      fireEvent.mouseMove(first)
+      vi.mocked(formatRelativeTime).mockClear()
+      for (let i = 0; i < 5; i++) fireEvent.mouseMove(first)
+      expect(formatRelativeTime).not.toHaveBeenCalled()
+      fireEvent.mouseMove(second)
+      expect(screen.getByText('Preview for entry-2')).toBeInTheDocument()
+      expect(formatRelativeTime).not.toHaveBeenCalled()
+      fireEvent.keyDown(screen.getByRole('combobox'), { key: 'ArrowDown' })
+      expect(second.closest('[role="option"]')).toHaveAttribute('aria-selected', 'true')
+    }
+  )
+})

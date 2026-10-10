@@ -34,7 +34,7 @@ type command struct {
 	Errors   string   // //uc:errors family
 	Codes    []string // //uc:errors codes
 	OS       map[string]string
-	Adapter  string // //uc:adapter package id, empty for a command of the Tauri contract set
+	Adapter  string // //uc:adapter frontend host module (e.g. @/host/opener), empty for a command the pages call directly
 	BodyCode []string
 }
 
@@ -181,7 +181,7 @@ func (c *command) parseDirectives(fn *ast.FuncDecl, problems *[]string) {
 			}
 		case "adapter":
 			if len(fields) != 2 {
-				*problems = append(*problems, fmt.Sprintf("%s: //uc:adapter needs the package id", c.Method))
+				*problems = append(*problems, fmt.Sprintf("%s: //uc:adapter needs the frontend host module", c.Method))
 				continue
 			}
 			c.Adapter = fields[1]

@@ -198,7 +198,7 @@ def stage_prepare(args, out):
     exe = build / 'UniClipboard.exe'
     try:
         run(['go', 'generate', './buildinfo'], cwd=ROOT / 'packages/desktop-host-go')
-        run(['bun', '--bun', 'run', '--cwd', 'apps/gui-go', 'build'], env=dict(os.environ, VITE_GUI_GO_E2E='0'))
+        run(['bun', '--bun', 'run', '--cwd', 'apps/gui-go/frontend', 'build'], env=dict(os.environ, VITE_GUI_GO_E2E='0'))
         ldflags = f'-w -s -H windowsgui -X main.updaterPublicKey={pubkey} -X main.productName={product} -X main.bundleID={ident}'
         run(['go', 'build', '-tags', 'production,release', '-trimpath', '-buildvcs=false', '-ldflags', ldflags, '-o', str(exe), '.'],
             cwd=GUI, env=dict(os.environ, GOOS='windows', GOARCH=args.arch, CGO_ENABLED='0'))

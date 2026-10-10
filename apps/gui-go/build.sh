@@ -18,7 +18,7 @@ cargo build --locked -p uc-daemon
 cargo build --locked -p quick-panel --bin uniclip-quick-panel
 (cd packages/desktop-host-go && go generate ./buildinfo)
 (cd apps/cli-go && go build -o ../../target/gui-go/uniclip ./cmd/uniclip)
-VITE_GUI_GO_E2E="$E2E" bun --bun run --cwd apps/gui-go build
+VITE_GUI_GO_E2E="$E2E" bun --bun run --cwd apps/gui-go/frontend build
 # The release signer key comes from apps/gui-go/app.json, the single source of the app identity.
 # E2E builds leave it empty and use the local test feed override instead.
 PUBKEY=""

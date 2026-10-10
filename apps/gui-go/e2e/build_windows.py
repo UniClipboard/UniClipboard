@@ -42,10 +42,10 @@ def main():
         run(['cargo', 'build', '--locked', '-p', 'uc-daemon'])
         run(['go', 'generate', './buildinfo'], cwd=ROOT / 'packages/desktop-host-go')
         run(['go', 'build', '-o', str(out / 'uniclip.exe'), './cmd/uniclip'], cwd=ROOT / 'apps/cli-go', env=env)
-        run(['bun', '--bun', 'run', '--cwd', 'apps/gui-go', 'build'], env=dict(env, VITE_GUI_GO_E2E='1' if args.mode == 'e2e' else '0'))
+        run(['bun', '--bun', 'run', '--cwd', 'apps/gui-go/frontend', 'build'], env=dict(env, VITE_GUI_GO_E2E='1' if args.mode == 'e2e' else '0'))
         shutil.copy2(ROOT / 'target/debug/uniclipd.exe', out / 'uniclipd.exe')
     elif not (ROOT / 'apps/gui-go/frontend/dist').is_dir():
-        sys.exit('apps/gui-go/frontend/dist is missing: build the frontend once (bun --bun run --cwd apps/gui-go build)')
+        sys.exit('apps/gui-go/frontend/dist is missing: build the frontend once (bun --bun run --cwd apps/gui-go/frontend build)')
     ldflags = f'-X main.updaterPublicKey={pubkey} -X main.productName={conf["productName"]} -X main.bundleID={bundle_id}'
     # -H windowsgui: a GUI-subsystem executable, so no console window appears next to the app.
     run(['go', 'build', '-tags', TAGS[args.mode], '-ldflags', ldflags + ' -H windowsgui', '-o', str(out / 'gui-go.exe'), '.'], cwd=ROOT / 'apps/gui-go', env=env)

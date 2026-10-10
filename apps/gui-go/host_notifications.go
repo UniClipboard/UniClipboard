@@ -59,12 +59,12 @@ func (h *HostService) watchNotificationClicks() {
 	})
 }
 
-// HostNotificationPermission reports whether system notifications are allowed. It is an adapter command of the
-// page's notification plugin import (frontend/src/host/notification.ts), not part of the Tauri command set.
+// HostNotificationPermission reports whether system notifications are allowed. It is a command behind the
+// page's notification module (frontend/src/host/notification.ts).
 //
 //uc:errors none
 //uc:os all=real
-//uc:adapter @tauri-apps/plugin-notification
+//uc:adapter @/host/notification
 func (h *HostService) HostNotificationPermission() bool {
 	return h.notificationsGranted()
 }
@@ -73,7 +73,7 @@ func (h *HostService) HostNotificationPermission() bool {
 //
 //uc:errors none
 //uc:os all=real
-//uc:adapter @tauri-apps/plugin-notification
+//uc:adapter @/host/notification
 func (h *HostService) HostNotificationRequestPermission() NotificationPermission {
 	if h.requestNotificationPermission() {
 		return NotificationGranted
@@ -86,7 +86,7 @@ func (h *HostService) HostNotificationRequestPermission() NotificationPermission
 //
 //uc:errors command InternalError
 //uc:os all=real
-//uc:adapter @tauri-apps/plugin-notification
+//uc:adapter @/host/notification
 func (h *HostService) HostNotificationSend(options HostNotification) error {
 	id := "n-" + strconv.FormatInt(time.Now().UnixNano(), 10)
 	if options.ID != nil {

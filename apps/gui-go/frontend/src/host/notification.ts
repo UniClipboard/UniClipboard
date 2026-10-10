@@ -1,7 +1,6 @@
 import * as HostService from '@host/hostservice'
 import { NotificationPermission } from '@host/models'
-// Host adapter for `@tauri-apps/plugin-notification`: notifications go through the Go host's
-// system notification service.
+// System notifications go through the Go host's notification service.
 import { Events } from '@wailsio/runtime'
 
 interface NotificationOptions {

@@ -123,7 +123,7 @@ export async function main(argv, env = process.env) {
     // The host resolves the daemon next to itself or on PATH.
     PATH: `${path.join(root, 'target/debug')}${path.delimiter}${env.PATH ?? ''}`,
   }
-  const vite = spawn('bun', ['--bun', 'run', '--cwd', 'apps/gui-go', 'dev'], {
+  const vite = spawn('bun', ['--bun', 'run', '--cwd', 'apps/gui-go/frontend', 'dev'], {
     cwd: root,
     env: childEnv,
     stdio: 'inherit',

@@ -1,10 +1,10 @@
 # PROJECT KNOWLEDGE BASE
 
-**最后刷新：** 2026-10-07（自动；16 个工作区 crate）
+**最后刷新：** 2026-10-10（自动；16 个工作区 crate）
 
 ## OVERVIEW
 
-桌面 Rust 工作区以根目录 `Cargo.toml` 为入口：系统适配器和守护进程库位于 `crates/`，`uniclip` 与 `uniclipd` 位于 `apps/`，桌面 GUI 宿主（Go/Wails，唯一的桌面宿主）位于 `apps/gui-go/`，其共享 React 前端源码位于 `apps/gui/src`。可移植引擎由独立的 `UniClipboard/Engine` 仓库拥有，本仓通过一个固定发布标签使用它。GUI 和 CLI 都通过本机 HTTP 与 WebSocket 访问独立守护进程。
+桌面 Rust 工作区以根目录 `Cargo.toml` 为入口：系统适配器和守护进程库位于 `crates/`，`uniclip` 与 `uniclipd` 位于 `apps/`，桌面 GUI 宿主（Go/Wails，唯一的桌面宿主）位于 `apps/gui-go/`，其共享 React 前端源码位于 `apps/gui-go/frontend/src`。可移植引擎由独立的 `UniClipboard/Engine` 仓库拥有，本仓通过一个固定发布标签使用它。GUI 和 CLI 都通过本机 HTTP 与 WebSocket 访问独立守护进程。
 
 ## STRUCTURE
 

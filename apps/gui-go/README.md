@@ -79,12 +79,13 @@ apps/gui-go/e2e/run.sh target/gui-go/evidence
 
 ## 前端源码共享
 
-`vite.config.ts` 的 `@` 直接指向 `apps/gui/src`，整个 React 应用（页面、状态、HTTP/WS 客户端、
-生成的 SDK、样式）原地复用，没有第二份源码。仅宿主边界被替换：8 个 `@tauri-apps/*` 模块别名到
-`frontend/src/host/` 的 Wails 适配（`invoke`、`listen/emit`、窗口、打开链接等）。
-宿主命令是 `*HostService` 的导出方法，Wails 官方生成器据此生成 TypeScript 调用与数据类型（`frontend/bindings/`，别名 `@host`），共享前端经 `apps/gui/src/lib/ipc.ts` 调用。契约、错误码、事件与各系统支持情况见 `docs/architecture/gui-go-host-commands.md`；重新生成用 `bun run gen:host-contract`。
-`apps/gui/src` 不含任何平台分支。
-`frontend/index.html` 仅是入口壳。路径别名无需 Git 软链接，普通 Windows 检出不受软链接权限影响；
+整个 React 应用（页面、状态、HTTP/WS 客户端、生成的 SDK、样式、测试、浏览器夹具）位于 `frontend/`，
+自带 `package.json`、`vite.config.ts`（同时服务构建与 vitest）和 `tsconfig.json`，`@` 指向 `frontend/src`。
+通往原生外壳的边界是 `frontend/src/host/` 的 7 个宿主模块（`@/host/core`、`event`、`window`、`webview`、`app`、
+`opener`、`notification`），页面直接导入它们，没有包名别名。
+宿主命令是 `*HostService` 的导出方法，Wails 官方生成器据此生成 TypeScript 调用与数据类型（`frontend/bindings/`，别名 `@host`），共享前端经 `apps/gui-go/frontend/src/lib/ipc.ts` 调用。契约、错误码、事件与各系统支持情况见 `docs/architecture/gui-go-host-commands.md`；重新生成用 `bun run gen:host-contract`。
+`apps/gui-go/frontend/src` 不含任何平台分支。
+`frontend/index.html` 仅是入口壳，三个文档（主窗口、快捷面板、更新窗口）的入口在 `frontend/src/host/`。路径别名无需 Git 软链接，普通 Windows 检出不受软链接权限影响；
 Go 只嵌入构建产物 `frontend/dist`，不嵌入源码。
 
 命令总表与各系统支持情况：`docs/architecture/gui-go-host-commands.md`（由 `hostcontract docs` 生成）。
@@ -335,7 +336,7 @@ docker build --platform linux/arm64 -t uc-gui-go-linux-build:17c -f apps/gui-go/
 go run ./apps/gui-go/e2e/linux_contract <dir>      # 在 apps/gui-go 目录下执行
 
 # 宿主机：E2E 前端包（VITE_GUI_GO_E2E=1），然后在容器里构建 daemon/CLI/GUI 并跑 Xvfb 场景
-VITE_GUI_GO_E2E=1 bun --bun run --cwd apps/gui-go build
+VITE_GUI_GO_E2E=1 bun --bun run --cwd apps/gui-go/frontend build
 apps/gui-go/e2e/linux/run.sh build          # 容器内：cargo 构建 daemon、go 构建 CLI 与 GUI（gtk3,e2e）
 apps/gui-go/e2e/linux/run.sh xvfb <dir>     # 容器内：Xvfb + dbus-run-session + linux_xvfb_run.py
 apps/gui-go/e2e/linux/run.sh package <dir>  # 容器内：生产前端包 + package_linux.py
@@ -349,7 +350,7 @@ apps/gui-go/e2e/linux/run.sh package <dir>  # 容器内：生产前端包 + pack
 # 任意 Linux 主机或 Docker 主机，原生平台（UC_DOCKER_PLATFORM=linux/amd64 或 linux/arm64）
 docker build --build-arg BASE_IMAGE=debian:bookworm --build-arg TARGETARCH=arm64 -f apps/gui-go/e2e/linux/Dockerfile.package-build -t uc-package-build:ci apps/gui-go/e2e/linux
 UC_LINUX_IMAGE=uc-package-build:ci apps/gui-go/e2e/linux/run.sh daemon-release            # daemon 与 build-evidence.txt
-bun --bun run --cwd apps/gui-go build                                                      # 生产前端包
+bun --bun run --cwd apps/gui-go/frontend build                                                      # 生产前端包
 UC_LINUX_IMAGE=uc-package-build:ci apps/gui-go/e2e/linux/run.sh package-release <outdir>   # 四个命名包与 package-manifest.json
 UC_EXPECT_HEAD=$(git rev-parse HEAD) UC_LINUX_IMAGE=uc-package-build:ci apps/gui-go/e2e/linux/run.sh verify-packages <outdir>/packages <uploaddir>
 ```
@@ -477,7 +478,7 @@ UC_EXPECT_HEAD=$(git rev-parse HEAD) UC_LINUX_IMAGE=uc-package-build:ci apps/gui
 docker build --platform linux/arm64 -t uc-gui-go-linux-build:17c2 -f apps/gui-go/e2e/linux/Dockerfile.17c2 apps/gui-go/e2e/linux
 
 # 宿主机：E2E 前端包，然后在 :17c2 容器里构建 GUI（run.sh 默认镜像仍是 :17c，要用环境变量指定）
-VITE_GUI_GO_E2E=1 bun --bun run --cwd apps/gui-go build
+VITE_GUI_GO_E2E=1 bun --bun run --cwd apps/gui-go/frontend build
 UC_LINUX_IMAGE=uc-gui-go-linux-build:17c2 SKIP_DAEMON=1 apps/gui-go/e2e/linux/run.sh build
 
 # 无头 sway 场景（每次用新的输出目录；加 UC_WAYLAND_RUN_ARGS=--wayland-debug 会保存客户端协议轨迹，目录很大）

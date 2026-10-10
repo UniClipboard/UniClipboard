@@ -15,7 +15,7 @@ AppRun 把 `$APPDIR/usr/lib` 放进 `LD_LIBRARY_PATH`，linuxdeploy 的 GTK 钩�
 | 调用点 | 程序 | 触发 | 平台 |
 | --- | --- | --- | --- |
 | `host_commands_files.go` `openWithSystem` | `xdg-open <路径>`（打开数据目录、日志目录、「在文件管理器中显示」= 其所在目录、「用外部程序打开图片」） | host 命令 `open_data_directory` / `open_logs_directory` / `reveal_path` / `open_image_externally` | Linux（macOS `open`、Windows `explorer`/`start` 不在本片） |
-| 共享前端 `openUrl`（`@tauri-apps/plugin-opener`，适配器 `frontend/src/host/opener.ts`） | Wails `Browser.OpenURL` → `xdg-open <url>`（`internal/browser/browser_other.go`） | 发布说明链接、链接预览、更新窗口的发布页等 | Linux |
+| 前端 `openUrl`（`frontend/src/host/opener.ts`） | Wails `Browser.OpenURL` → `xdg-open <url>`（`internal/browser/browser_other.go`） | 发布说明链接、链接预览、更新窗口的发布页等 | Linux |
 | `install_kind_linux.go` | `dpkg-query -S`、`rpm -qf` | 仅当可执行文件在 `/usr`、`/opt` 等且 `APPIMAGE` 未设置 | deb/rpm 安装，**AppImage 不触发**，不在本片 |
 | `lifecycle.go`、`host_install_linux.go` | 本 AppImage / 本可执行文件自己（重启、更新后拉起） | 重启 | 必须保持完整环境，不是宿主辅助程序 |
 | `packages/desktop-host-go/daemonproc` | 随包 `uniclipd` | 启动 | 同上，依赖包内库 |

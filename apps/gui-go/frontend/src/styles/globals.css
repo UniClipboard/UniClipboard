@@ -1,0 +1,720 @@
+@import 'tailwindcss' source(none);
+@source "../**/*.{ts,tsx,html}";
+@source "../../*.html";
+@import './decorum.css';
+@import 'tw-animate-css';
+@import 'shadcn/tailwind.css';
+@import '@fontsource-variable/inter';
+@import '@fontsource/jetbrains-mono';
+@import '@fontsource-variable/noto-sans-sc';
+
+@custom-variant dark (&:is(.dark *));
+
+/* History selection has a theme-owned color, independent of window chrome. */
+:root {
+  --history-selection-background: color-mix(in oklab, var(--primary) 2.5%, transparent);
+}
+
+:root.dark {
+  --history-selection-background: color-mix(in oklab, var(--primary) 5%, transparent);
+}
+
+:root[data-theme='zinc'] {
+  --history-selection-background: oklch(0.92 0.006 286.478);
+}
+
+:root.dark[data-theme='zinc'] {
+  --history-selection-background: oklch(0.3 0.006 286.033);
+}
+
+/* History search accent (HList.dc.html): a fixed blue for the field's focus
+   ring, active facets, the highlighted suggestion and their count badges,
+   independent of the theme preset's primary. */
+:root {
+  --history-accent: #3e5fa8;
+  --history-accent-foreground: #ffffff;
+  --history-accent-soft: #f4f7fd;
+  --history-accent-line: #afc0e3;
+  --history-focus-ring: #e9eef8;
+}
+
+:root.dark {
+  --history-accent: #8fa8e6;
+  --history-accent-foreground: #0e0f12;
+  --history-accent-soft: color-mix(in oklab, #8fa8e6 12%, transparent);
+  --history-accent-line: color-mix(in oklab, #8fa8e6 45%, transparent);
+  --history-focus-ring: color-mix(in oklab, #8fa8e6 22%, transparent);
+}
+
+/* Tag colors (HDetail.dc.html / HList.dc.html palette): `--tag-<c>` is the
+   swatch and dot, `-soft` a filled chip's ground, `-ink` its text. */
+:root {
+  --tag-orange: #d8743a;
+  --tag-orange-soft: #fbe6d8;
+  --tag-orange-ink: #a94f1c;
+  --tag-blue: #3e5fa8;
+  --tag-blue-soft: #e9eef8;
+  --tag-blue-ink: #2e4c8f;
+  --tag-green: #2f9e6a;
+  --tag-green-soft: #e6f4ec;
+  --tag-green-ink: #2f7a55;
+  --tag-purple: #7a3e8f;
+  --tag-purple-soft: #f3e8f7;
+  --tag-purple-ink: #7a3e8f;
+  --tag-gray: #b4bac6;
+  --tag-gray-soft: #eceef2;
+  --tag-gray-ink: #3a3d44;
+}
+
+:root.dark {
+  --tag-orange: #e08a55;
+  --tag-orange-soft: color-mix(in oklab, #e08a55 18%, transparent);
+  --tag-orange-ink: #f0a77c;
+  --tag-blue: #7f9bd9;
+  --tag-blue-soft: color-mix(in oklab, #7f9bd9 18%, transparent);
+  --tag-blue-ink: #a9bceb;
+  --tag-green: #4cb884;
+  --tag-green-soft: color-mix(in oklab, #4cb884 18%, transparent);
+  --tag-green-ink: #8fd0ae;
+  --tag-purple: #a66bbb;
+  --tag-purple-soft: color-mix(in oklab, #a66bbb 18%, transparent);
+  --tag-purple-ink: #cda2dc;
+  --tag-gray: #8a909c;
+  --tag-gray-soft: color-mix(in oklab, #8a909c 18%, transparent);
+  --tag-gray-ink: #c9cdd4;
+}
+
+/* Shared text roles for every application-owned main-window surface. */
+@utility text-ui-caption {
+  font-size: var(--font-size-caption);
+  line-height: var(--line-height-caption);
+  letter-spacing: 0;
+}
+
+@utility text-ui-body {
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-body);
+  letter-spacing: 0;
+}
+
+@utility text-ui-section {
+  font-size: var(--font-size-section);
+  line-height: var(--line-height-section);
+  letter-spacing: 0;
+  font-weight: 600;
+}
+
+@utility text-ui-title {
+  font-size: var(--font-size-title);
+  line-height: var(--line-height-title);
+  letter-spacing: 0;
+  font-weight: 600;
+}
+
+@utility text-ui-caption-relaxed {
+  font-size: var(--font-size-caption);
+  line-height: var(--line-height-relaxed);
+  letter-spacing: 0;
+}
+
+@utility text-ui-body-relaxed {
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-relaxed);
+  letter-spacing: 0;
+}
+
+:root {
+  /* Font sizes */
+  --font-size-caption: 0.75rem; /* 12px */
+  --font-size-body: 0.875rem; /* 14px */
+  --font-size-section: 1rem; /* 16px */
+  --font-size-title: 1.5rem; /* 24px */
+
+  /* Line heights */
+  --line-height-caption: 1rem;
+  --line-height-body: 1.25rem;
+  --line-height-section: 1.5rem;
+  --line-height-title: 2rem;
+  --line-height-relaxed: 1.625;
+
+  --sidebar: oklch(0.985 0 0);
+
+  --sidebar-foreground: oklch(0.145 0 0);
+
+  --sidebar-primary: oklch(0.205 0 0);
+
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+
+  --sidebar-accent: oklch(0.97 0 0);
+
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+
+  --sidebar-border: oklch(0.922 0 0);
+
+  --sidebar-ring: oklch(0.708 0 0);
+
+  --background: oklch(1 0 0);
+
+  --foreground: oklch(0.145 0 0);
+
+  --card: oklch(1 0 0);
+
+  --card-foreground: oklch(0.145 0 0);
+
+  --popover: oklch(1 0 0);
+
+  --popover-foreground: oklch(0.145 0 0);
+
+  --primary: oklch(0.205 0 0);
+
+  --primary-foreground: oklch(0.985 0 0);
+
+  --secondary: oklch(0.97 0 0);
+
+  --secondary-foreground: oklch(0.205 0 0);
+
+  --muted: oklch(0.97 0 0);
+
+  --muted-foreground: oklch(0.556 0 0);
+
+  --accent: oklch(0.97 0 0);
+
+  --accent-foreground: oklch(0.205 0 0);
+
+  --destructive: oklch(0.58 0.22 27);
+
+  /* Semantic status tokens — global, do not switch with theme presets.
+     Override per preset with `[data-theme-preset=xxx] { --success: ... }`. */
+  --success: oklch(0.55 0.17 145);
+  --success-foreground: oklch(0.99 0 0);
+  --warning: oklch(0.72 0.17 75);
+  --warning-foreground: oklch(0.25 0.05 60);
+  --info: oklch(0.55 0.18 250);
+  --info-foreground: oklch(0.99 0 0);
+
+  --border: oklch(0.922 0 0);
+
+  --input: oklch(0.922 0 0);
+
+  --ring: oklch(0.708 0 0);
+
+  --chart-1: oklch(0.809 0.105 251.813);
+
+  --chart-2: oklch(0.623 0.214 259.815);
+
+  --chart-3: oklch(0.546 0.245 262.881);
+
+  --chart-4: oklch(0.488 0.243 264.376);
+
+  --chart-5: oklch(0.424 0.199 265.638);
+
+  /* Latin first, then OS-native CJK per platform (PingFang on macOS, YaHei on
+     Windows), with the bundled Noto Sans SC as the final CJK fallback for Linux
+     and any host missing both. Per-glyph fallback keeps Latin on Inter/Segoe
+     while CJK resolves to the crisp, hinted system font on each OS. */
+  --font-sans:
+    'Inter Variable', 'Segoe UI', 'PingFang SC', 'Microsoft YaHei UI', 'Microsoft YaHei',
+    'Noto Sans SC Variable', system-ui, sans-serif;
+  --font-serif: Georgia, serif;
+  /* Same CJK fallback chain as --font-sans so code/text preview cards render
+     CJK in the exact UI font (not the OS monospace SimSun/etc.); Latin/digits
+     stay monospace for code alignment. */
+  --font-mono:
+    'JetBrains Mono', 'Consolas', 'PingFang SC', 'Microsoft YaHei UI', 'Microsoft YaHei',
+    'Noto Sans SC Variable', monospace;
+  --font-chinese:
+    'PingFang SC', 'Microsoft YaHei UI', 'Microsoft YaHei', 'Noto Sans SC Variable', system-ui,
+    sans-serif;
+  --radius: 0.625rem;
+  --shadow-color: hsl(240 30% 25%);
+  --shadow-opacity: 0.12;
+  --shadow-blur: 6px;
+  --shadow-spread: 0px;
+  --shadow-offset-x: 0px;
+  --shadow-offset-y: 4px;
+  --letter-spacing: 0.01em;
+  --spacing: 0.25rem;
+  --shadow-2xs: 0px 4px 6px 0px hsl(240 30% 25% / 0.06);
+  --shadow-xs: 0px 4px 6px 0px hsl(240 30% 25% / 0.06);
+  --shadow-sm: 0px 4px 6px 0px hsl(240 30% 25% / 0.12), 0px 1px 2px -1px hsl(240 30% 25% / 0.12);
+  --shadow: 0px 4px 6px 0px hsl(240 30% 25% / 0.12), 0px 1px 2px -1px hsl(240 30% 25% / 0.12);
+  --shadow-md: 0px 4px 6px 0px hsl(240 30% 25% / 0.12), 0px 2px 4px -1px hsl(240 30% 25% / 0.12);
+  --shadow-lg: 0px 4px 6px 0px hsl(240 30% 25% / 0.12), 0px 4px 6px -1px hsl(240 30% 25% / 0.12);
+  --shadow-xl: 0px 4px 6px 0px hsl(240 30% 25% / 0.12), 0px 8px 10px -1px hsl(240 30% 25% / 0.12);
+  --shadow-2xl: 0px 4px 6px 0px hsl(240 30% 25% / 0.3);
+  --tracking-normal: 0em;
+  --scrollbar-size: 0.625rem;
+  --scrollbar-gutter: 0.1875rem;
+  --scrollbar-thumb: color-mix(in oklch, var(--muted-foreground) 38%, transparent);
+  --scrollbar-thumb-hover: color-mix(in oklch, var(--muted-foreground) 58%, transparent);
+  --scrollbar-thumb-active: color-mix(in oklch, var(--muted-foreground) 72%, transparent);
+}
+
+/* 文本截断 */
+@layer utilities {
+  .line-clamp-1 {
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 1;
+  }
+
+  .line-clamp-2 {
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
+  .line-clamp-3 {
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+  }
+
+  .line-clamp-4 {
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 4;
+  }
+}
+
+@theme inline {
+  --font-sans:
+    'Inter Variable', 'Segoe UI', 'PingFang SC', 'Microsoft YaHei UI', 'Microsoft YaHei',
+    'Noto Sans SC Variable', system-ui, sans-serif;
+  --font-mono:
+    'JetBrains Mono', 'Consolas', 'PingFang SC', 'Microsoft YaHei UI', 'Microsoft YaHei',
+    'Noto Sans SC Variable', monospace;
+  --font-serif: Georgia, serif;
+  --radius: 0.625rem;
+  --tracking-tighter: calc(var(--tracking-normal) - 0.05em);
+  --tracking-tight: calc(var(--tracking-normal) - 0.025em);
+  --tracking-wide: calc(var(--tracking-normal) + 0.025em);
+  --tracking-wider: calc(var(--tracking-normal) + 0.05em);
+  --tracking-widest: calc(var(--tracking-normal) + 0.1em);
+  --tracking-normal: var(--tracking-normal);
+  --shadow-2xl: var(--shadow-2xl);
+  --shadow-xl: var(--shadow-xl);
+  --shadow-lg: var(--shadow-lg);
+  --shadow-md: var(--shadow-md);
+  --shadow: var(--shadow);
+  --shadow-sm: var(--shadow-sm);
+  --shadow-xs: var(--shadow-xs);
+  --shadow-2xs: var(--shadow-2xs);
+  --spacing: var(--spacing);
+  --letter-spacing: var(--letter-spacing);
+  --shadow-offset-y: var(--shadow-offset-y);
+  --shadow-offset-x: var(--shadow-offset-x);
+  --shadow-spread: var(--shadow-spread);
+  --shadow-blur: var(--shadow-blur);
+  --shadow-opacity: var(--shadow-opacity);
+  --color-shadow-color: var(--shadow-color);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-destructive: var(--destructive);
+  --color-success-foreground: var(--success-foreground);
+  --color-success: var(--success);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-warning: var(--warning);
+  --color-history-accent: var(--history-accent);
+  --color-history-accent-foreground: var(--history-accent-foreground);
+  --color-history-accent-soft: var(--history-accent-soft);
+  --color-history-accent-line: var(--history-accent-line);
+  --color-history-focus-ring: var(--history-focus-ring);
+  --color-tag-orange: var(--tag-orange);
+  --color-tag-orange-soft: var(--tag-orange-soft);
+  --color-tag-orange-ink: var(--tag-orange-ink);
+  --color-tag-blue: var(--tag-blue);
+  --color-tag-blue-soft: var(--tag-blue-soft);
+  --color-tag-blue-ink: var(--tag-blue-ink);
+  --color-tag-green: var(--tag-green);
+  --color-tag-green-soft: var(--tag-green-soft);
+  --color-tag-green-ink: var(--tag-green-ink);
+  --color-tag-purple: var(--tag-purple);
+  --color-tag-purple-soft: var(--tag-purple-soft);
+  --color-tag-purple-ink: var(--tag-purple-ink);
+  --color-tag-gray: var(--tag-gray);
+  --color-tag-gray-soft: var(--tag-gray-soft);
+  --color-tag-gray-ink: var(--tag-gray-ink);
+  --color-info-foreground: var(--info-foreground);
+  --color-info: var(--info);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 12px);
+  --radius-4xl: calc(var(--radius) + 16px);
+}
+
+@plugin "@tailwindcss/typography";
+
+/* Setup 页面流光背景动画 */
+@keyframes aurora-drift-1 {
+  0%,
+  100% {
+    transform: translate(-30%, -30%) scale(1);
+    opacity: 0.4;
+  }
+  25% {
+    transform: translate(10%, -20%) scale(1.2);
+    opacity: 0.6;
+  }
+  50% {
+    transform: translate(20%, 10%) scale(0.9);
+    opacity: 0.35;
+  }
+  75% {
+    transform: translate(-10%, 20%) scale(1.1);
+    opacity: 0.55;
+  }
+}
+
+@keyframes aurora-drift-2 {
+  0%,
+  100% {
+    transform: translate(30%, 30%) scale(1);
+    opacity: 0.3;
+  }
+  25% {
+    transform: translate(-10%, 20%) scale(1.15);
+    opacity: 0.5;
+  }
+  50% {
+    transform: translate(-20%, -10%) scale(0.95);
+    opacity: 0.35;
+  }
+  75% {
+    transform: translate(15%, -15%) scale(1.1);
+    opacity: 0.45;
+  }
+}
+
+@keyframes aurora-drift-3 {
+  0%,
+  100% {
+    transform: translate(0%, -20%) scale(1.1);
+    opacity: 0.25;
+  }
+  33% {
+    transform: translate(-25%, 15%) scale(0.9);
+    opacity: 0.45;
+  }
+  66% {
+    transform: translate(20%, 5%) scale(1.15);
+    opacity: 0.3;
+  }
+}
+
+.aurora-drift-1 {
+  animation: aurora-drift-1 12s ease-in-out infinite;
+}
+.aurora-drift-2 {
+  animation: aurora-drift-2 15s ease-in-out infinite;
+}
+.aurora-drift-3 {
+  animation: aurora-drift-3 18s ease-in-out infinite;
+}
+
+@keyframes particle-float {
+  0% {
+    transform: translateY(0) translateX(0);
+    opacity: 0;
+  }
+  10% {
+    opacity: var(--particle-opacity, 0.2);
+  }
+  90% {
+    opacity: var(--particle-opacity, 0.2);
+  }
+  100% {
+    transform: translateY(-110vh) translateX(var(--particle-drift, 0px));
+    opacity: 0;
+  }
+}
+
+/* 玻璃态效果 */
+@layer utilities {
+  .glass-weak {
+    @apply bg-background/60 backdrop-blur-sm;
+  }
+
+  .glass {
+    @apply bg-background/70 backdrop-blur-md;
+  }
+
+  .glass-strong {
+    @apply bg-background/80 backdrop-blur-lg;
+  }
+}
+
+/* View Transition: circular reveal for theme switching */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+::view-transition-old(root) {
+  z-index: 1;
+}
+
+::view-transition-new(root) {
+  z-index: 9999;
+}
+
+/* Device-local effect policy, shared by all desktop windows. */
+.uc-menu-shadow {
+  filter: drop-shadow(0 1.125rem 1.75rem rgb(0 0 0 / 0.2));
+}
+
+html[data-uc-low-effects='true'] .uc-menu-shadow {
+  filter: none;
+}
+
+html[data-uc-low-effects='true'] .uc-effects-surface {
+  background-color: var(--background);
+}
+
+html[data-uc-low-effects='true'] {
+  --shadow-2xs: none;
+  --shadow-xs: none;
+  --shadow-sm: none;
+  --shadow: none;
+  --shadow-md: none;
+  --shadow-lg: none;
+  --shadow-xl: none;
+  --shadow-2xl: none;
+  --shadow-opacity: 0;
+  --shadow-blur: 0px;
+}
+
+html[data-uc-reduce-motion='true'] *,
+html[data-uc-reduce-motion='true'] *::before,
+html[data-uc-reduce-motion='true'] *::after {
+  animation: none !important;
+  transition-property: none !important;
+  transition-duration: 0s !important;
+  transition-delay: 0s !important;
+  scroll-behavior: auto !important;
+}
+
+html[data-uc-low-effects='true'] *,
+html[data-uc-low-effects='true'] *::before,
+html[data-uc-low-effects='true'] *::after {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+html[data-uc-low-effects='true'] [data-uc-decorative-effect='true'] {
+  display: none !important;
+}
+
+html[data-uc-low-effects='true'] .glass-weak,
+html[data-uc-low-effects='true'] .glass,
+html[data-uc-low-effects='true'] .glass-strong {
+  background-color: var(--background);
+}
+
+html[data-uc-reduce-motion='true']::view-transition-old(root),
+html[data-uc-reduce-motion='true']::view-transition-new(root) {
+  animation: none !important;
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+  }
+
+  *::-webkit-scrollbar {
+    width: var(--scrollbar-size);
+    height: var(--scrollbar-size);
+  }
+
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    min-width: 3rem;
+    min-height: 3rem;
+    border: var(--scrollbar-gutter) solid transparent;
+    border-radius: 9999px;
+    background-color: transparent;
+    background-clip: padding-box;
+    transition: background-color 200ms ease;
+  }
+
+  [data-scroll-active='true'] {
+    scrollbar-color: var(--scrollbar-thumb) transparent;
+  }
+
+  [data-scroll-active='true']::-webkit-scrollbar-thumb {
+    background-color: var(--scrollbar-thumb);
+  }
+
+  [data-scroll-active='true']::-webkit-scrollbar-thumb:hover {
+    background-color: var(--scrollbar-thumb-hover);
+  }
+
+  [data-scroll-active='true']::-webkit-scrollbar-thumb:active {
+    background-color: var(--scrollbar-thumb-active);
+  }
+
+  *::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+
+  /* 原生桌面应用约定:UI 文本默认不可框选,避免 WebKit 拖蓝选区暴露 webview。
+     输入控件、可编辑节点、显式标 .selectable 的剪贴板正文仍保留文本选择。 */
+  body {
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  input,
+  textarea,
+  [contenteditable='true'],
+  [contenteditable=''],
+  .selectable {
+    user-select: text;
+    -webkit-user-select: text;
+  }
+
+  /* Set default background based on system theme */
+  /* This prevents white flash on startup before React/Tailwind loads */
+  html {
+    background-color: white;
+    @apply font-sans;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    html {
+      background-color: #09090b; /* zinc-950 */
+    }
+  }
+
+  body {
+    background-color: transparent;
+    @apply bg-background text-foreground;
+    transition:
+      background-color 200ms ease,
+      color 200ms ease,
+      border-color 200ms ease;
+  }
+
+  html {
+    font-family: var(--font-sans);
+  }
+
+  body {
+    letter-spacing: 0;
+    font-size: var(--font-size-body);
+    line-height: var(--line-height-body);
+  }
+
+  code,
+  pre,
+  .font-mono {
+    font-feature-settings: 'tnum';
+  }
+  * {
+    @apply border-border outline-ring/50;
+  }
+}
+
+.dark {
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.556 0 0);
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.87 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.371 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --success: oklch(0.78 0.16 145);
+  --success-foreground: oklch(0.18 0.05 145);
+  --warning: oklch(0.83 0.16 80);
+  --warning-foreground: oklch(0.18 0.05 60);
+  --info: oklch(0.72 0.17 245);
+  --info-foreground: oklch(0.15 0.04 250);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+  --chart-1: oklch(0.809 0.105 251.813);
+  --chart-2: oklch(0.623 0.214 259.815);
+  --chart-3: oklch(0.546 0.245 262.881);
+  --chart-4: oklch(0.488 0.243 264.376);
+  --chart-5: oklch(0.424 0.199 265.638);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  input[type='password'] {
+    letter-spacing: 0.2em;
+  }
+  input[type='password']::placeholder {
+    letter-spacing: 0;
+  }
+}

@@ -1,4 +1,4 @@
-// Host adapter for `@tauri-apps/api/webview`.
+// WebView-level controls of the desktop host.
 import { Window } from '@wailsio/runtime'
 
 export const getCurrentWebview = () => ({

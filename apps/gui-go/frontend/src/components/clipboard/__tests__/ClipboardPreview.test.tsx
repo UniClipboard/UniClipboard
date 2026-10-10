@@ -1,0 +1,309 @@
+import { render, screen, waitFor } from '@testing-library/react'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import ClipboardPreview from '@/components/clipboard/ClipboardPreview'
+import type { DisplayClipboardItem } from '@/lib/clipboard-entry'
+import type { ClipboardPreviewData } from '@/lib/clipboard-preview-cache'
+
+vi.mock('@/host/core', () => ({
+  convertFileSrc: vi.fn((path: string) => `asset://localhost/${encodeURIComponent(path)}`),
+}))
+
+// Resolve daemon blob paths to a deterministic object URL so `<img src>` is
+// assertable without standing up the real fetch + URL.createObjectURL path.
+vi.mock('@/api/daemon/blob-image-cache', () => ({
+  getBlobImageObjectUrl: vi.fn(async (path: string) => `blob:mock-${path}`),
+}))
+
+const previewMock = vi.hoisted((): { value: ClipboardPreviewData | null } => ({
+  value: {
+    entryId: 'image-file-entry',
+    contentType: 'image',
+    sizeBytes: 2048,
+    imageBlobPath: '/clipboard/blobs/blob-image',
+  },
+}))
+
+vi.mock('@/hooks/useClipboardPreviewState', () => ({
+  useClipboardPreviewState: () => ({
+    effectiveStatus: 'completed',
+    entryStatus: undefined,
+    imageDimensions: null,
+    loading: false,
+    preview: previewMock.value,
+    setImageDimensions: vi.fn(),
+    transfer: undefined,
+  }),
+}))
+
+vi.mock('@/hooks/useEntryDelivery', () => ({
+  useEntryDelivery: () => ({ delivery: null, loading: false, error: null }),
+}))
+
+vi.mock('@/api/file_transfer', () => ({
+  cancelEntryReceive: vi.fn(),
+  cancelFileTransfer: vi.fn(),
+}))
+
+function createImageFileItem(
+  fileName = 'screenshot.png',
+  overrides: Partial<DisplayClipboardItem> = {}
+): DisplayClipboardItem {
+  return {
+    id: 'image-file-entry',
+    type: 'file',
+    activeTime: 1710000000000,
+    content: {
+      file_names: [fileName],
+      file_sizes: [2048],
+    },
+    ...overrides,
+  }
+}
+
+function createPdfFileItem(): DisplayClipboardItem {
+  return {
+    id: 'pdf-file-entry',
+    type: 'file',
+    activeTime: 1710000000000,
+    content: {
+      file_names: ['report.pdf'],
+      file_sizes: [2048],
+    },
+  }
+}
+
+describe('ClipboardPreview', () => {
+  beforeEach(() => {
+    previewMock.value = {
+      entryId: 'image-file-entry',
+      contentType: 'image',
+      sizeBytes: 2048,
+      imageBlobPath: '/clipboard/blobs/blob-image',
+    }
+  })
+
+  it('omits the action bar when the caller supplies no actions', async () => {
+    render(<ClipboardPreview item={createImageFileItem()} />)
+
+    await screen.findByRole('img', { name: 'screenshot.png' })
+    expect(screen.queryByRole('button')).not.toBeInTheDocument()
+    expect(screen.getByTestId('clipboard-detail').querySelector('.bottom-4')).toBeNull()
+  })
+
+  it('renders caller actions using the current delivery information', async () => {
+    const actions = vi.fn(() => <button type="button">Caller action</button>)
+    render(<ClipboardPreview item={createImageFileItem()} actions={actions} />)
+
+    await screen.findByRole('img', { name: 'screenshot.png' })
+    expect(screen.getByRole('button', { name: 'Caller action' })).toBeInTheDocument()
+    expect(actions).toHaveBeenCalledWith(null)
+  })
+
+  it('renders a direct image preview with filename for image files', async () => {
+    render(<ClipboardPreview item={createImageFileItem()} />)
+
+    // The `<img>` resolves its object URL asynchronously via the cache hook.
+    const image = await screen.findByRole('img', { name: 'screenshot.png' })
+    await waitFor(() =>
+      expect(image).toHaveAttribute('src', 'blob:mock-/clipboard/blobs/blob-image')
+    )
+    expect(image.closest('.max-w-sm')).not.toBeInTheDocument()
+    expect(screen.getByText('screenshot.png')).toBeInTheDocument()
+  })
+
+  it('wraps long image file names instead of truncating them', () => {
+    const longName =
+      'very-long-screenshot-name-with-window-title-and-device-label-that-should-wrap.png'
+
+    render(<ClipboardPreview item={createImageFileItem(longName)} />)
+
+    const fileName = screen.getByText(longName)
+    expect(fileName).not.toHaveClass('truncate')
+    expect(fileName).toHaveClass('break-all')
+  })
+
+  it('renders multiple image files as an image grid with complete filenames', () => {
+    const longName =
+      'very-long-screenshot-name-with-window-title-and-device-label-that-should-wrap.png'
+    const item = createImageFileItem('unused.png', {
+      content: {
+        file_names: ['first.png', longName, 'third.webp'],
+        file_sizes: [2048, 4096, 8192],
+        file_paths: ['/tmp/first.png', '/tmp/second.png', '/tmp/third.webp'],
+      },
+    })
+
+    render(<ClipboardPreview item={item} />)
+
+    const grid = screen.getByRole('list', { name: 'Image files' })
+    expect(grid).toHaveClass('grid')
+    expect(screen.getByRole('img', { name: 'first.png' })).toHaveAttribute(
+      'src',
+      expect.any(String)
+    )
+    expect(screen.getByRole('img', { name: longName })).toHaveAttribute('src', expect.any(String))
+    expect(screen.getByRole('img', { name: 'third.webp' })).toHaveAttribute(
+      'src',
+      expect.any(String)
+    )
+    expect(screen.getByText('3 images')).toBeInTheDocument()
+    expect(screen.getAllByText('14.00 KB').length).toBeGreaterThan(0)
+
+    const fileName = screen.getByText(longName)
+    expect(fileName).not.toHaveClass('truncate')
+    expect(fileName).toHaveClass('break-all')
+  })
+
+  it('renders every image in a local image group through Tauri asset URLs', () => {
+    const firstPath = '/Users/mark/Downloads/ChatGPT Image 2026年5月3日 10_45_33.png'
+    const secondPath = '/Users/mark/Downloads/ChatGPT Image 2026年5月3日 10_45_39.png'
+    const item = createImageFileItem('unused.png', {
+      content: {
+        file_names: [
+          'ChatGPT Image 2026年5月3日 10_45_33.png',
+          'ChatGPT Image 2026年5月3日 10_45_39.png',
+        ],
+        file_sizes: [2048, 4096],
+        file_paths: [firstPath, secondPath],
+      },
+    })
+
+    render(<ClipboardPreview item={item} />)
+
+    const images = screen.getAllByRole('img')
+    expect(images).toHaveLength(2)
+    for (const image of images) {
+      const src = image.getAttribute('src') ?? ''
+      expect(src).toMatch(/^asset:\/\/localhost\//)
+      expect(src).not.toMatch(/^\/Users\//)
+    }
+  })
+
+  it('keeps mixed multi-file selections on the file list preview', () => {
+    const item = createImageFileItem('unused.png', {
+      content: {
+        file_names: ['first.png', 'report.pdf'],
+        file_sizes: [2048, 4096],
+      },
+    })
+
+    render(<ClipboardPreview item={item} />)
+
+    expect(screen.queryByRole('list', { name: 'Image files' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('img', { name: 'first.png' })).not.toBeInTheDocument()
+    expect(screen.getByText('first.png')).toBeInTheDocument()
+    expect(screen.getByText('report.pdf')).toBeInTheDocument()
+  })
+
+  it('keeps non-image files on the file card preview', () => {
+    render(<ClipboardPreview item={createPdfFileItem()} />)
+
+    expect(screen.queryByRole('img', { name: 'report.pdf' })).not.toBeInTheDocument()
+    expect(screen.getByText('report.pdf')).toBeInTheDocument()
+  })
+
+  it('wraps long URLs instead of truncating them', () => {
+    const longUrl =
+      'https://example.com/a/very/long/path/that/should/remain/fully/visible?query=complete-url-preview'
+
+    render(
+      <ClipboardPreview
+        item={{
+          id: 'link-entry',
+          type: 'text',
+          activeTime: 1710000000000,
+          contentTags: ['link'],
+          content: {
+            display_text: longUrl,
+            has_detail: false,
+            size: longUrl.length,
+            link_urls: [longUrl],
+            link_domains: ['example.com'],
+          },
+        }}
+      />
+    )
+
+    const url = screen.getByText(longUrl)
+    expect(url).not.toHaveClass('truncate')
+    expect(url).toHaveClass('break-all', 'whitespace-normal')
+  })
+
+  it('renders URLs as plain links instead of cards', () => {
+    const url = 'https://example.com/docs'
+
+    render(
+      <ClipboardPreview
+        item={{
+          id: 'link-entry',
+          type: 'text',
+          activeTime: 1710000000000,
+          contentTags: ['link'],
+          content: {
+            display_text: url,
+            has_detail: false,
+            size: url.length,
+            link_urls: [url],
+            link_domains: ['example.com'],
+          },
+        }}
+      />
+    )
+
+    const link = screen.getByRole('button', { name: url })
+    expect(link).not.toHaveClass('rounded-xl', 'border', 'bg-muted/10', 'p-4')
+    expect(screen.queryByText('example.com')).not.toBeInTheDocument()
+  })
+
+  it('renders an unavailable message when a text result has no content', () => {
+    render(
+      <ClipboardPreview
+        item={{
+          id: 'lost-text-entry',
+          type: 'text',
+          activeTime: 1710000000000,
+          content: null,
+          isUnavailable: true,
+        }}
+      />
+    )
+
+    expect(screen.getByText('Content unavailable')).toBeInTheDocument()
+  })
+
+  it('renders code as a full-bleed scrollable canvas without a nested card', () => {
+    const code = 'const first = 1\nconst second = 2'
+    previewMock.value = {
+      entryId: 'code-entry',
+      contentType: 'text',
+      sizeBytes: code.length,
+      textContent: code,
+    }
+
+    render(
+      <ClipboardPreview
+        item={{
+          id: 'code-entry',
+          type: 'text',
+          activeTime: 1710000000000,
+          contentTags: ['code'],
+          content: {
+            display_text: code,
+            has_detail: false,
+            size: code.length,
+            char_count: code.length,
+          },
+        }}
+      />
+    )
+
+    const codePreview = screen.getByTestId('code-preview')
+    const detail = screen.getByTestId('clipboard-detail')
+    expect(codePreview).toHaveClass('h-full', 'overflow-auto')
+    expect(codePreview).not.toHaveClass('p-6')
+    expect(codePreview.querySelector('.rounded-xl')).not.toBeInTheDocument()
+    expect(detail).toHaveClass('bg-muted/15')
+    expect(codePreview).toHaveClass('bg-card', 'text-foreground/85')
+    expect(codePreview.className).not.toContain('bg-[#0d1117]')
+  })
+})

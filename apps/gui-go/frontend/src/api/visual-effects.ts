@@ -1,5 +1,5 @@
 import type { EffectsSnapshot } from '@host/models'
-import { listen } from '@tauri-apps/api/event'
+import { listen } from '@/host/event'
 import { commands } from '@/lib/ipc'
 
 export const visualEffectsApi = {

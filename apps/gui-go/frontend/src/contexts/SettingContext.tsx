@@ -1,4 +1,3 @@
-import { listen } from '@tauri-apps/api/event'
 import React, { useCallback, useEffect, useState, type ReactNode } from 'react'
 import {
   CustomRelayMutationError,
@@ -15,6 +14,7 @@ import {
   updateAutostart as persistAutostart,
 } from '@/api/tauri-command'
 import { useWindowTheme } from '@/hooks/useWindowTheme'
+import { listen } from '@/host/event'
 import i18n, { normalizeLanguage, persistLanguage } from '@/i18n'
 import { connectDaemonWs } from '@/lib/daemon-ws-bootstrap'
 import { commands } from '@/lib/ipc'

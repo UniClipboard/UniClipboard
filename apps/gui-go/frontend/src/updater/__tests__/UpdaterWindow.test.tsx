@@ -1,4 +1,3 @@
-import { openUrl } from '@tauri-apps/plugin-opener'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import {
@@ -11,15 +10,16 @@ import {
   subscribeUpdateAvailable,
   subscribeUpdateProgress,
 } from '@/api/updater'
+import { openUrl } from '@/host/opener'
 import UpdaterWindow from '@/updater/UpdaterWindow'
 
 const closeWindow = vi.fn().mockResolvedValue(undefined)
 
-vi.mock('@tauri-apps/api/window', () => ({
+vi.mock('@/host/window', () => ({
   getCurrentWindow: () => ({ close: closeWindow }),
 }))
 
-vi.mock('@tauri-apps/plugin-opener', () => ({
+vi.mock('@/host/opener', () => ({
   openUrl: vi.fn().mockResolvedValue(undefined),
 }))
 

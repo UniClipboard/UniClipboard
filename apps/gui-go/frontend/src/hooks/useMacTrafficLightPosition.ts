@@ -1,6 +1,6 @@
-import { getCurrentWindow } from '@tauri-apps/api/window'
 import { useEffect } from 'react'
 import { usePlatform } from '@/hooks/usePlatform'
+import { getCurrentWindow } from '@/host/window'
 import { commands } from '@/lib/ipc'
 import { createLogger } from '@/lib/logger'
 

@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => ({
   encryption: null as (() => void) | null,
 }))
 vi.mock('@/lib/ipc', () => ({ commands: { getContentUnlocked: mocks.query } }))
-vi.mock('@tauri-apps/api/event', () => ({
+vi.mock('@/host/event', () => ({
   listen: (event: string, handler: () => void) => {
     mocks.events.set(event, handler)
     return Promise.resolve(() => mocks.events.delete(event))

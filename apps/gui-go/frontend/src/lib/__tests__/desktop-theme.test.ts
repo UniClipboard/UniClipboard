@@ -1,12 +1,12 @@
-import { isTauri } from '@tauri-apps/api/core'
-import { listen } from '@tauri-apps/api/event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { isTauri } from '@/host/core'
+import { listen } from '@/host/event'
 let subscribeDesktopTheme: typeof import('@/lib/desktop-theme').subscribeDesktopTheme
 import type { DesktopThemeSnapshot } from '@host/models'
 import { commands } from '@/lib/ipc'
 
-vi.mock('@tauri-apps/api/core', () => ({ isTauri: vi.fn() }))
-vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn() }))
+vi.mock('@/host/core', () => ({ isTauri: vi.fn() }))
+vi.mock('@/host/event', () => ({ listen: vi.fn() }))
 vi.mock('@/lib/ipc', () => ({ commands: { getDesktopTheme: vi.fn() } }))
 
 const snapshot = (revision: number): DesktopThemeSnapshot => ({

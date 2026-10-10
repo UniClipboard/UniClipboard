@@ -1,9 +1,9 @@
-import { openUrl } from '@tauri-apps/plugin-opener'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ReleaseNotes } from '@/components/update/ReleaseNotes'
+import { openUrl } from '@/host/opener'
 
-vi.mock('@tauri-apps/plugin-opener', () => ({
+vi.mock('@/host/opener', () => ({
   openUrl: vi.fn().mockResolvedValue(undefined),
 }))
 

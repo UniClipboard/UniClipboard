@@ -4,7 +4,7 @@ import ClipboardPreview from '@/components/clipboard/ClipboardPreview'
 import type { DisplayClipboardItem } from '@/lib/clipboard-entry'
 import type { ClipboardPreviewData } from '@/lib/clipboard-preview-cache'
 
-vi.mock('@tauri-apps/api/core', () => ({
+vi.mock('@/host/core', () => ({
   convertFileSrc: vi.fn((path: string) => `asset://localhost/${encodeURIComponent(path)}`),
 }))
 

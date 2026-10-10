@@ -7,7 +7,7 @@ import i18n from '@/i18n'
 
 const native = vi.hoisted(() => ({ exportStartupLogs: vi.fn(), openUrl: vi.fn() }))
 vi.mock('@/lib/ipc', () => ({ commands: native }))
-vi.mock('@tauri-apps/plugin-opener', () => ({ openUrl: native.openUrl }))
+vi.mock('@/host/opener', () => ({ openUrl: native.openUrl }))
 vi.mock('@/api/updater', () => ({ checkForUpdate: vi.fn(), openUpdaterWindow: vi.fn() }))
 
 beforeEach(async () => {

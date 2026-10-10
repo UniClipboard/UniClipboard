@@ -3,7 +3,7 @@ import { WINDOW_FRAME_STORAGE_KEY } from '@/lib/window-frame'
 import { initializeWindowFrame } from '@/lib/window-frame-runtime'
 
 const mocks = vi.hoisted(() => ({ setDecorations: vi.fn().mockResolvedValue(undefined) }))
-vi.mock('@tauri-apps/api/window', () => ({ getCurrentWindow: () => mocks }))
+vi.mock('@/host/window', () => ({ getCurrentWindow: () => mocks }))
 vi.mock('@/lib/platform', () => ({
   detectPlatformInfo: () => ({
     isLinux: true,

@@ -1,3 +1,4 @@
+import { daemonClient } from '@/api/daemon/client'
 /**
  * Daemon WS Bootstrap — connects the frontend WebSocket client to the daemon.
  *
@@ -10,8 +11,7 @@
  * reconnect (exponential backoff, max 10 attempts). All `daemonWs.subscribe()`
  * calls in hooks will automatically receive events once connected.
  */
-import { listen, type UnlistenFn } from '@tauri-apps/api/event'
-import { daemonClient } from '@/api/daemon/client'
+import { listen, type UnlistenFn } from '@/host/event'
 import {
   invalidateDaemonConnectionInfo,
   waitForDaemonConnectionInfo,

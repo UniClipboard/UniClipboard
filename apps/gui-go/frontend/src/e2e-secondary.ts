@@ -1,7 +1,7 @@
+import { Call } from '@wailsio/runtime'
 // E2E-only reporter for the updater and quick-panel windows. Bundled only
 // when VITE_GUI_GO_E2E=1; the main window uses e2e-driver.ts.
-import { openUrl } from '@tauri-apps/plugin-opener'
-import { Call } from '@wailsio/runtime'
+import { openUrl } from '@/host/opener'
 
 // The page's own external-link call (the one the shared frontend uses) so a scenario can drive the real URL-open chain
 // with `panel-js`; the promise outcome goes to the scenario's loopback listener.

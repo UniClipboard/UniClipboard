@@ -4,8 +4,8 @@ import {
   type DownloadEvent as HostDownloadEvent,
   type DownloadProgressSnapshot as HostDownloadProgressSnapshot,
 } from '@host/models'
-import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import type { UiInstallKind } from '@/api/generated/types.gen'
+import { listen, type UnlistenFn } from '@/host/event'
 import { commands } from '@/lib/ipc'
 import type { UpdateMetadata as GeneratedUpdateMetadata } from '@/lib/ipc'
 import { createLogger } from '@/lib/logger'

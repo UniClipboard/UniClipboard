@@ -79,12 +79,13 @@ apps/gui-go/e2e/run.sh target/gui-go/evidence
 
 ## 前端源码共享
 
-`vite.config.ts` 的 `@` 直接指向 `apps/gui/src`，整个 React 应用（页面、状态、HTTP/WS 客户端、
-生成的 SDK、样式）原地复用，没有第二份源码。仅宿主边界被替换：8 个 `@tauri-apps/*` 模块别名到
-`frontend/src/host/` 的 Wails 适配（`invoke`、`listen/emit`、窗口、打开链接等）。
-宿主命令是 `*HostService` 的导出方法，Wails 官方生成器据此生成 TypeScript 调用与数据类型（`frontend/bindings/`，别名 `@host`），共享前端经 `apps/gui/src/lib/ipc.ts` 调用。契约、错误码、事件与各系统支持情况见 `docs/architecture/gui-go-host-commands.md`；重新生成用 `bun run gen:host-contract`。
-`apps/gui/src` 不含任何平台分支。
-`frontend/index.html` 仅是入口壳。路径别名无需 Git 软链接，普通 Windows 检出不受软链接权限影响；
+整个 React 应用（页面、状态、HTTP/WS 客户端、生成的 SDK、样式、测试、浏览器夹具）位于 `frontend/`，
+自带 `package.json`、`vite.config.ts`（同时服务构建与 vitest）和 `tsconfig.json`，`@` 指向 `frontend/src`。
+通往原生外壳的边界是 `frontend/src/host/` 的 7 个宿主模块（`@/host/core`、`event`、`window`、`webview`、`app`、
+`opener`、`notification`），页面直接导入它们，没有包名别名。
+宿主命令是 `*HostService` 的导出方法，Wails 官方生成器据此生成 TypeScript 调用与数据类型（`frontend/bindings/`，别名 `@host`），共享前端经 `apps/gui-go/frontend/src/lib/ipc.ts` 调用。契约、错误码、事件与各系统支持情况见 `docs/architecture/gui-go-host-commands.md`；重新生成用 `bun run gen:host-contract`。
+`apps/gui-go/frontend/src` 不含任何平台分支。
+`frontend/index.html` 仅是入口壳，三个文档（主窗口、快捷面板、更新窗口）的入口在 `frontend/src/host/`。路径别名无需 Git 软链接，普通 Windows 检出不受软链接权限影响；
 Go 只嵌入构建产物 `frontend/dist`，不嵌入源码。
 
 命令总表与各系统支持情况：`docs/architecture/gui-go-host-commands.md`（由 `hostcontract docs` 生成）。

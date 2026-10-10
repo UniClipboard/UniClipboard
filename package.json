@@ -12,7 +12,7 @@
     "gen:api": "bun run gen:openapi && bun run gen:client",
     "gen:host-contract": "node scripts/gen-host-bindings.mjs",
     "check:host-contract": "node scripts/gen-host-bindings.mjs --check",
-    "check:host-boundary": "node scripts/architecture/check-host-events.mjs && node scripts/architecture/check-tauri-aliases.mjs && tsc -p apps/gui-go/frontend/tsconfig.json && cd apps/gui-go && go run ./cmd/hostcontract lint && go run ./cmd/hostcontract e2e-table -check && go run ./cmd/hostcontract docs -check",
+    "check:host-boundary": "node scripts/architecture/check-host-events.mjs && tsc -p apps/gui-go/frontend/tsconfig.json && cd apps/gui-go && go run ./cmd/hostcontract lint && go run ./cmd/hostcontract e2e-table -check && go run ./cmd/hostcontract docs -check",
     "mbx:exec": "bash scripts/build-cache/mbx.sh --exec",
     "wails:dev": "cross-env UNICLIPBOARD_ENV=development UC_PROFILE=dev node scripts/wails-dev.mjs",
     "wails:dev:profile": "node scripts/wails-dev.mjs --profile",

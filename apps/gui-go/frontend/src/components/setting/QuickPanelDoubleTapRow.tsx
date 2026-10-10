@@ -1,4 +1,3 @@
-import { openUrl } from '@tauri-apps/plugin-opener'
 import { ExternalLink } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -17,6 +16,7 @@ import {
 import { toast } from '@/components/ui/toast'
 import { usePlatform } from '@/hooks/usePlatform'
 import { useSetting } from '@/hooks/useSetting'
+import { openUrl } from '@/host/opener'
 import { createLogger } from '@/lib/logger'
 import type { QuickPanelDoubleTapModifier } from '@/types/setting'
 import { SettingRow } from './SettingRow'

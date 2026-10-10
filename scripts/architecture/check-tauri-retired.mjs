@@ -2,9 +2,8 @@
 
 // Guards the retirement of the Tauri desktop host: the Go/Wails host in apps/gui-go
 // is the only desktop shell, so no Tauri host crate, config, build tooling or path
-// reference may come back. `@tauri-apps/*` npm package ids stay on purpose: the shared
-// React frontend imports them by name and apps/gui-go/vite.config.ts aliases each one
-// to a Wails-backed adapter, so they are an import boundary, not a dependency on Tauri.
+// reference may come back. The frontend reaches the shell only through the host modules in
+// apps/gui-go/frontend/src/host, so no `@tauri-apps/*` package id may be imported or depended on.
 
 import { execFileSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
@@ -31,6 +30,7 @@ const RETIRED_TOOLING = [
   'tauri.e2e.conf',
   'third_party/tao',
   'tauri-build',
+  '@tauri-apps/',
   'tauri-cli',
   'prepare-sidecars',
   'prepare-linux-bundle',
@@ -47,9 +47,8 @@ const RETIRED_TOOLING = [
 const RETIRED_NAMES = ['src-tauri', 'uc-tauri', 'uc_tauri', 'tauri.conf.json']
 const SOURCE_COMMENT_GLOBS = ['*.go', '*.rs', '*.ts', '*.tsx']
 
-// npm packages that only served the retired host (the `@tauri-apps/api` and plugin packages the
-// shared frontend imports by name stay: apps/gui-go/vite.config.ts aliases each to a Wails adapter).
-const RETIRED_NPM = [/^@tauri-apps\/cli$/, /^@wdio\/tauri-/]
+// npm packages that only served the retired host.
+const RETIRED_NPM = [/^@tauri-apps\//, /^@wdio\/tauri-/]
 
 // Tracked paths that may keep a historical mention: research notes, retired plans, release
 // history, decision records and dated notes under docs/, the retirement record, and this guard.

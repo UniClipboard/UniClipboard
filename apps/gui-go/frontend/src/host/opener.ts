@@ -1,4 +1,4 @@
-// Host adapter for `@tauri-apps/plugin-opener`.
+// Opens external URLs in the system browser.
 import * as HostService from '@host/hostservice'
 
 // Goes through the host so that it can start the browser helper without the AppImage's library environment on Linux (Wails' own call cannot).

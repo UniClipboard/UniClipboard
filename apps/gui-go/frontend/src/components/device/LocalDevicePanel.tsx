@@ -1,4 +1,3 @@
-import { getVersion } from '@tauri-apps/api/app'
 import { ChevronRight } from 'lucide-react'
 import React, { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -12,6 +11,7 @@ import RebuildSpaceDialog from '@/components/device/RebuildSpaceDialog'
 import StatusDot from '@/components/device/StatusDot'
 import { Button } from '@/components/ui/button'
 import { useSettingSelector } from '@/hooks/useSetting'
+import { getVersion } from '@/host/app'
 import { detectPlatformInfo } from '@/lib/platform'
 import { cn } from '@/lib/utils'
 

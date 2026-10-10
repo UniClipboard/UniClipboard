@@ -1,4 +1,3 @@
-import { convertFileSrc } from '@tauri-apps/api/core'
 import {
   AlertTriangle,
   CheckCircle2,
@@ -15,6 +14,7 @@ import {
 import React from 'react'
 import { useTranslation } from 'react-i18next'
 import { useBlobImageObjectUrl } from '@/hooks/useBlobImageObjectUrl'
+import { convertFileSrc } from '@/host/core'
 import type { DisplayClipboardItem } from '@/lib/clipboard-entry'
 import type { ClipboardPreviewData } from '@/lib/clipboard-preview-cache'
 import { isImageFileName } from '@/lib/clipboard-utils'

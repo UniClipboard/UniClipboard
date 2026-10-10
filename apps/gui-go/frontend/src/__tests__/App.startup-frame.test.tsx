@@ -31,7 +31,7 @@ const state = vi.hoisted(() => ({
     onResized: vi.fn().mockResolvedValue(() => {}),
   },
 }))
-vi.mock('@tauri-apps/api/window', () => ({
+vi.mock('@/host/window', () => ({
   getCurrentWindow: () => state.window,
 }))
 vi.mock('@/hooks/usePlatform', () => ({ usePlatform: () => state.platform }))

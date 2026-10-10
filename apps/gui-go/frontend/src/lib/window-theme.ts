@@ -1,5 +1,5 @@
-import { isTauri } from '@tauri-apps/api/core'
-import { getCurrentWindow } from '@tauri-apps/api/window'
+import { isTauri } from '@/host/core'
+import { getCurrentWindow } from '@/host/window'
 import { subscribeDesktopTheme } from '@/lib/desktop-theme'
 import type { DesktopTheme } from '@/lib/desktop-theme'
 import { applyThemeOverrides, applyThemePreset, DEFAULT_THEME_COLOR } from '@/lib/theme-engine'

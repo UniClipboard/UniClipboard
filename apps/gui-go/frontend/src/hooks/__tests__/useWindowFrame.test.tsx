@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => ({
   setDecorations: vi.fn().mockResolvedValue(undefined),
 }))
 vi.mock('@/hooks/usePlatform', () => ({ usePlatform: () => mocks.platform }))
-vi.mock('@tauri-apps/api/window', () => ({
+vi.mock('@/host/window', () => ({
   getCurrentWindow: () => ({ setDecorations: mocks.setDecorations }),
 }))
 

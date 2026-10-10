@@ -1,4 +1,3 @@
-import { listen } from '@tauri-apps/api/event'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { I18nextProvider } from 'react-i18next'
@@ -6,6 +5,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import type { MemberProtectionStatus, MemberSyncPreferences } from '@/api/daemon/member'
 import type { SpaceMember } from '@/api/daemon/members'
 import PeerDetailPanel from '@/components/device/PeerDetailPanel'
+import { listen } from '@/host/event'
 import i18n from '@/i18n'
 
 const mocks = vi.hoisted(() => ({
@@ -23,7 +23,7 @@ const mocks = vi.hoisted(() => ({
   toastError: vi.fn(),
 }))
 
-vi.mock('@tauri-apps/api/event', () => ({
+vi.mock('@/host/event', () => ({
   listen: vi.fn().mockResolvedValue(() => {}),
 }))
 

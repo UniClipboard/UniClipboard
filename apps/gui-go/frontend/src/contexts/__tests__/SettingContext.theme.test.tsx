@@ -1,4 +1,3 @@
-import { listen } from '@tauri-apps/api/event'
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { getSettings, updateSettings } from '@/api/daemon'
@@ -6,6 +5,7 @@ import type { Settings } from '@/api/daemon/settings'
 import { DEFAULT_THEME_COLOR } from '@/constants/theme'
 import { SettingProvider } from '@/contexts/SettingContext'
 import { useSetting } from '@/hooks/useSetting'
+import { listen } from '@/host/event'
 import { connectDaemonWs } from '@/lib/daemon-ws-bootstrap'
 import { makeBaseSettings } from '@/test/fixtures/settings'
 
@@ -14,7 +14,7 @@ vi.mock('@/api/daemon', () => ({
   updateSettings: vi.fn(),
 }))
 
-vi.mock('@tauri-apps/api/event', () => ({
+vi.mock('@/host/event', () => ({
   listen: vi.fn().mockResolvedValue(() => {}),
 }))
 

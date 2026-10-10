@@ -18,7 +18,7 @@ import { vi } from 'vitest'
 /** The shared registry — MUST be referenced from BOTH the mock and emitTauriEvent. */
 export const _tauriEventRegistry: Map<string, (payload: unknown) => void> = new Map()
 
-vi.mock('@tauri-apps/api/event', () => {
+vi.mock('@/host/event', () => {
   return {
     listen: vi.fn((eventName: string, handler: (event: { payload: unknown }) => void) => {
       _tauriEventRegistry.set(eventName, handler as (payload: unknown) => void)
@@ -29,7 +29,7 @@ vi.mock('@tauri-apps/api/event', () => {
 
 /**
  * Emit a Tauri event by name, invoking all registered handlers.
- * Uses the SAME _tauriEventRegistry that vi.mock('@tauri-apps/api/event') populates.
+ * Uses the SAME _tauriEventRegistry that vi.mock('@/host/event') populates.
  */
 export function emitTauriEvent<T>(eventName: string, payload: T): void {
   const handler = _tauriEventRegistry.get(eventName)

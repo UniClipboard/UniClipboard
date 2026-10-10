@@ -19,7 +19,7 @@ vi.mock('@/lib/settings-events', () => ({
 vi.mock('@/lib/ipc', () => ({
   commands: { setTrayLanguage: vi.fn().mockResolvedValue(undefined) },
 }))
-vi.mock('@tauri-apps/api/app', () => ({ getVersion: vi.fn().mockResolvedValue('1.0.0') }))
+vi.mock('@/host/app', () => ({ getVersion: vi.fn().mockResolvedValue('1.0.0') }))
 
 // Count commits below each real subscription boundary, without adding memoization in the probes.
 vi.mock('@/components/ui/switch', async () => {

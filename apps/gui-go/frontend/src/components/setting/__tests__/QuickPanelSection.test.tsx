@@ -1,4 +1,3 @@
-import { openUrl } from '@tauri-apps/plugin-opener'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ComponentType } from 'react'
@@ -10,10 +9,11 @@ import QuickPanelSection from '@/components/setting/QuickPanelSection'
 import ShortcutsSection from '@/components/setting/ShortcutsSection'
 import { usePlatform } from '@/hooks/usePlatform'
 import { useSetting } from '@/hooks/useSetting'
+import { openUrl } from '@/host/opener'
 import { makeBaseSettings } from '@/test/fixtures/settings'
 import type { SettingContextType } from '@/types/setting'
 
-vi.mock('@tauri-apps/plugin-opener', () => ({
+vi.mock('@/host/opener', () => ({
   openUrl: vi.fn().mockResolvedValue(undefined),
 }))
 

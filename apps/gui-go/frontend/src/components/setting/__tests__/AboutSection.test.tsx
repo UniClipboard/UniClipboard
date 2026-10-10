@@ -8,7 +8,7 @@ import type { UpdateContextType } from '@/contexts/update-context'
 import { makeBaseSettings } from '@/test/fixtures/settings'
 import type { SettingContextType, Settings } from '@/types/setting'
 
-vi.mock('@tauri-apps/api/app', () => ({
+vi.mock('@/host/app', () => ({
   getVersion: vi.fn().mockResolvedValue('0.4.0-alpha.6'),
 }))
 

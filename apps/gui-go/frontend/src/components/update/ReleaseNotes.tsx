@@ -1,7 +1,7 @@
-import { openUrl } from '@tauri-apps/plugin-opener'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import Markdown from 'react-markdown'
+import { openUrl } from '@/host/opener'
 import { createLogger } from '@/lib/logger'
 
 interface ReleaseNotesProps {

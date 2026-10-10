@@ -187,8 +187,8 @@ export function GetVisualEffects(): $CancellablePromise<$models.EffectsSnapshot>
 }
 
 /**
- * HostNotificationPermission reports whether system notifications are allowed. It is an adapter command of the
- * page's notification plugin import (frontend/src/host/notification.ts), not part of the Tauri command set.
+ * HostNotificationPermission reports whether system notifications are allowed. It is a command behind the
+ * page's notification module (frontend/src/host/notification.ts).
  */
 export function HostNotificationPermission(): $CancellablePromise<boolean> {
     return $Call.ByID(4161242273);
@@ -269,8 +269,8 @@ export function OpenLogsDirectory(): $CancellablePromise<void> {
 }
 
 /**
- * OpenURL opens a link in the default browser. It is an adapter command of the page's opener plugin import
- * (frontend/src/host/opener.ts), not part of the Tauri command set.
+ * OpenURL opens a link in the default browser. It is the command behind the page's opener module
+ * (frontend/src/host/opener.ts).
  */
 export function OpenURL(url: string): $CancellablePromise<void> {
     return $Call.ByID(796564632, url);

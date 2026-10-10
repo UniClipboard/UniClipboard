@@ -20,7 +20,6 @@
  * component only renders when `installQrCodePngBase64` is available.
  */
 
-import { openUrl } from '@tauri-apps/plugin-opener'
 import { ChevronDown, ChevronRight, ExternalLink, Smartphone } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import React, { useState } from 'react'
@@ -29,6 +28,7 @@ import { Button } from '@/components/ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { openUrl } from '@/host/opener'
 import { createLogger } from '@/lib/logger'
 
 const log = createLogger('mobile-sync-install-helper')

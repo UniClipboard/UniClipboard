@@ -1,6 +1,6 @@
 import type { DesktopTheme, DesktopThemeSnapshot } from '@host/models'
-import { isTauri } from '@tauri-apps/api/core'
-import { listen } from '@tauri-apps/api/event'
+import { isTauri } from '@/host/core'
+import { listen } from '@/host/event'
 import { commands } from '@/lib/ipc'
 import { createLogger } from '@/lib/logger'
 

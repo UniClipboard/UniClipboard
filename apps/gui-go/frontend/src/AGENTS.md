@@ -4,7 +4,7 @@ Follow root rules in `AGENTS.md`. This file adds frontend-only guidance.
 
 ## OVERVIEW
 
-React 19 + TypeScript + Vite UI layer for desktop app flows (setup, unlock, dashboard, devices, settings). Since ADR-008 the UI is primarily a client of the standalone `uniclipd` daemon over loopback HTTP + WebSocket (`src/api/daemon/`, generated SDK in `src/api/generated/`, realtime via `src/lib/daemon-ws.ts`); a shrinking set of native-only operations still go through Tauri `invoke` (`src/api/` + `src/lib/tauri-command.ts`).
+React 19 + TypeScript + Vite UI layer for desktop app flows (setup, unlock, dashboard, devices, settings). Since ADR-008 the UI is primarily a client of the standalone `uniclipd` daemon over loopback HTTP + WebSocket (`src/api/daemon/`, generated SDK in `src/api/generated/`, realtime via `src/lib/daemon-ws.ts`); a shrinking set of native-only operations go through the Wails `HostService` bindings (`src/lib/ipc.ts`, wrapped in `src/api/`), and the shell's window, event, opener and notification surface comes from `src/host/`.
 
 ## STRUCTURE
 
@@ -14,6 +14,7 @@ src/
 |- App.tsx             # router + providers + setup/encryption gating
 |- api/                # backend wrappers; api/daemon/ (HTTP) + api/generated/ (hey-api SDK) + host command wrappers
 |- lib/ipc.ts          # host `commands`: generated Wails HostService bindings plus trace/Sentry wrapper
+|- host/               # Wails host modules (@/host/*) and the per-document host entries; the only path to the native shell
 |- lib/daemon-ws.ts    # daemon WebSocket client (realtime events, snapshot, reconnect)
 |- store/              # Redux Toolkit + RTK Query
 |- pages/              # route pages + setup steps
@@ -53,7 +54,7 @@ src/
 
 ## ANTI-PATTERNS
 
-- Calling Tauri commands directly from deeply nested UI without API wrapper.
+- Calling host commands directly from deeply nested UI without API wrapper.
 - Introducing fixed px layout values when Tailwind utilities/rem are available.
 - Creating parallel state sources (local component cache + Redux) for same domain data.
 - Logging sensitive payloads before redaction in observability paths.

@@ -123,12 +123,12 @@ func (h *HostService) PickDirectory() (*string, error) {
 	return &path, nil
 }
 
-// OpenURL opens a link in the default browser. It is an adapter command of the page's opener plugin import
-// (frontend/src/host/opener.ts), not part of the Tauri command set.
+// OpenURL opens a link in the default browser. It is the command behind the page's opener module
+// (frontend/src/host/opener.ts).
 //
 //uc:errors command InternalError
 //uc:os all=real
-//uc:adapter @tauri-apps/plugin-opener
+//uc:adapter @/host/opener
 func (h *HostService) OpenURL(url string) error {
 	return hostapi.Internal(h.openURLExternally(url))
 }

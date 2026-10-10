@@ -1,5 +1,5 @@
-import { getCurrentWindow } from '@tauri-apps/api/window'
 import { useRef } from 'react'
+import { getCurrentWindow } from '@/host/window'
 
 /**
  * Pointer handlers that start a native window drag once the pointer moves a

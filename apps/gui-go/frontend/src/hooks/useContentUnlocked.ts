@@ -1,5 +1,5 @@
-import { listen } from '@tauri-apps/api/event'
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { listen } from '@/host/event'
 import { daemonWs } from '@/lib/daemon-ws'
 import { commands } from '@/lib/ipc'
 import { createLogger } from '@/lib/logger'

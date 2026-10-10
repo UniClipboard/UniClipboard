@@ -1,4 +1,4 @@
-import { getCurrentWindow } from '@tauri-apps/api/window'
+import { getCurrentWindow } from '@/host/window'
 import { createLogger } from '@/lib/logger'
 import { detectPlatformInfo } from '@/lib/platform'
 import { readWindowFramePreference, resolveWindowFrameMode } from '@/lib/window-frame'

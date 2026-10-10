@@ -1,4 +1,4 @@
-// Host adapter for `@tauri-apps/api/event` on top of the Wails event bus.
+// Page-side event bus of the desktop host, on top of the Wails event bus.
 import { Events } from '@wailsio/runtime'
 
 export interface Event<T> {
@@ -17,6 +17,6 @@ export async function listen<T>(name: string, handler: EventCallback<T>): Promis
   )
 }
 
-export async function emit(name: string, payload?: unknown): Promise<void> {
+export async function emit<T>(name: string, payload?: T): Promise<void> {
   await Events.Emit(name, payload)
 }

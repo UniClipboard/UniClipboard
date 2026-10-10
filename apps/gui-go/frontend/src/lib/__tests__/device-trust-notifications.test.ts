@@ -6,7 +6,7 @@ const { isPermissionGranted, sendNotification } = vi.hoisted(() => ({
   sendNotification: vi.fn(),
 }))
 
-vi.mock('@tauri-apps/plugin-notification', () => ({ isPermissionGranted, sendNotification }))
+vi.mock('@/host/notification', () => ({ isPermissionGranted, sendNotification }))
 
 const snapshot: DeviceTrustSnapshot = {
   revision: 1,

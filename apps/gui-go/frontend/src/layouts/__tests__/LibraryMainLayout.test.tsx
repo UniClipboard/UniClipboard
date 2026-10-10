@@ -23,7 +23,7 @@ const windowMocks = vi.hoisted(() => ({
   unmaximize: vi.fn().mockResolvedValue(undefined),
 }))
 
-vi.mock('@tauri-apps/api/window', () => ({
+vi.mock('@/host/window', () => ({
   getCurrentWindow: () => windowMocks,
 }))
 

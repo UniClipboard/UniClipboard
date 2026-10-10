@@ -5,7 +5,6 @@ import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vitest/config'
 
 const path = (relative: string) => fileURLToPath(new URL(relative, import.meta.url))
-const host = (name: string) => path(`./src/host/${name}.ts`)
 
 // Release builds upload source maps to Sentry so production stack traces resolve to the original
 // .tsx file and line. Without the token and project (local development, PR builds without secrets)
@@ -18,8 +17,6 @@ const appVersion = process.env.VITE_APP_VERSION
 
 // The whole frontend lives in this directory: the business sources are `src` (`@`), the Wails
 // host modules `src/host`. The same config builds the three documents and runs the vitest suite.
-// Only the module boundary toward the native shell is replaced: each Tauri
-// package id resolves to a Wails-backed adapter in `src/host`.
 export default defineConfig({
   plugins: [
     react(),
@@ -36,13 +33,6 @@ export default defineConfig({
   optimizeDeps: { include: ['cuelume'] },
   resolve: {
     alias: [
-      { find: '@tauri-apps/api/core', replacement: host('core') },
-      { find: '@tauri-apps/api/event', replacement: host('event') },
-      { find: '@tauri-apps/api/window', replacement: host('window') },
-      { find: '@tauri-apps/api/webview', replacement: host('webview') },
-      { find: '@tauri-apps/api/app', replacement: host('app') },
-      { find: '@tauri-apps/plugin-opener', replacement: host('opener') },
-      { find: '@tauri-apps/plugin-notification', replacement: host('notification') },
       // Generated Wails bindings of the host commands (scripts/gen-host-bindings.mjs).
       {
         find: '@host',

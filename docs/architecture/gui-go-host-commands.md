@@ -1,6 +1,6 @@
 # Go 宿主命令契约
 
-桌面宿主（`apps/gui-go`）向共享前端（`apps/gui/src`）暴露的全部命令与事件，其唯一契约来源是 Go 源码：`*HostService` 的导出方法签名、`apps/gui-go/host_types.go` 的 DTO 与 `apps/gui-go/host_events.go` 的事件注册。前端的调用函数和数据类型由 Wails 官方生成器产出，不存在第二份手写 schema。
+桌面宿主（`apps/gui-go`）向共享前端（`apps/gui-go/frontend/src`）暴露的全部命令与事件，其唯一契约来源是 Go 源码：`*HostService` 的导出方法签名、`apps/gui-go/host_types.go` 的 DTO 与 `apps/gui-go/host_events.go` 的事件注册。前端的调用函数和数据类型由 Wails 官方生成器产出，不存在第二份手写 schema。
 
 ```text
 Go 方法 / DTO / RegisterEvent
@@ -9,7 +9,7 @@ Go 方法 / DTO / RegisterEvent
 apps/gui-go/frontend/bindings/…/{hostservice,models,index}.ts   ← 已提交，CI 重新生成并 diff
         │
         ▼
-apps/gui/src/lib/ipc.ts  commands：按 camelCase 重新命名，并统一加 trace、面包屑、脱敏与 Sentry 分级
+apps/gui-go/frontend/src/lib/ipc.ts  commands：按 camelCase 重新命名，并统一加 trace、面包屑、脱敏与 Sentry 分级
 ```
 
 ## 生成与校验
@@ -21,7 +21,6 @@ apps/gui/src/lib/ipc.ts  commands：按 camelCase 重新命名，并统一加 tr
 | 校验 `//uc:` 指令、错误码目录、事件常量等源码规则 | `go run ./cmd/hostcontract lint`（在 `apps/gui-go` 下） |
 | 重新生成本文档的生成区块 / E2E 控制表 | `go run ./cmd/hostcontract docs`、`go run ./cmd/hostcontract e2e-table`（均支持 `-check`） |
 | 校验事件的监听方与发射方互相对应 | `node scripts/architecture/check-host-events.mjs` |
-| 校验前端导入的每个 `@tauri-apps/*` 包都已别名到适配器 | `node scripts/architecture/check-tauri-aliases.mjs` |
 
 Wails 版本与 Go 工具链只在 `apps/gui-go/go.mod` 中固定一处，生成脚本从中读取。这些检查是静态门禁：它们证明契约没有漂移，不证明运行时行为；运行时行为只由真实 E2E 证明（`apps/gui-go/e2e/`）。
 
@@ -30,14 +29,14 @@ Wails 版本与 Go 工具链只在 `apps/gui-go/go.mod` 中固定一处，生成
 - 参数按位置传递。参数个数不符时前端得到 `TypeError`；`undefined` 与 `null` 都会解码为非指针参数的零值，所以“缺失参数”与“空值”不可区分。必须区分的参数使用指针类型，并在方法内显式校验。
 - 方法首参为 `context.Context` 时由框架注入，前端取消调用即取消该 context；超时由 `commandContext` 补上（默认 30 秒，`download_update` 与 `install_update` 为 30 分钟）。
   `download_update` 是例外：下载在后台独立于调用的 context 运行（窗口关闭或重新挂载不应中断下载），显式取消用 `cancel_download`，被取消的调用以文本错误拒绝，待更新回到可下载状态，页面收到 `Failed` 事件。
-- 方法返回的 `error` 在前端表现为 `RuntimeError`，其 `.cause` 是 `hostapi.Marshal` 编码的 JSON；panic 被框架恢复为没有 `cause` 的 `RuntimeError`。`apps/gui/src/lib/ipc.ts` 的 `hostRejection` 负责把它还原为类型化错误对象。
+- 方法返回的 `error` 在前端表现为 `RuntimeError`，其 `.cause` 是 `hostapi.Marshal` 编码的 JSON；panic 被框架恢复为没有 `cause` 的 `RuntimeError`。`apps/gui-go/frontend/src/lib/ipc.ts` 的 `hostRejection` 负责把它还原为类型化错误对象。
 - Go 的 `[]byte` 在 JSON 中是 base64 字符串（`save_image_as`、`open_image_externally` 的 `data`），不再是数字数组。
 - 命名字符串常量生成为 TypeScript `enum`，成员名等于 Go 常量名（例如 `InstallKind.InstallKindDeb`）；Wails 不生成字面量联合。
 - `install_update` 原先通过 Channel 回传进度，现改为带类型的广播事件 `update-install-progress`：页面在调用前订阅，调用结束后取消订阅。该事件只由 `install_update` 产生。
 
 ## 错误契约与已知限制
 
-所有跨界的错误码都登记在 `apps/gui-go/internal/hostapi/errors.go` 的 `Catalog` 中，并带有严重度（用户可见的业务失败 / 系统失败）。`hostapi.Marshal` 是服务级 `MarshalError`：目录外的码降级为 `InternalError`，普通 `error` 包装为 `InternalError`。严重度表和错误联合类型由 `hostcontract errors-ts` 导出到 `apps/gui/src/lib/host-errors.generated.ts`。
+所有跨界的错误码都登记在 `apps/gui-go/internal/hostapi/errors.go` 的 `Catalog` 中，并带有严重度（用户可见的业务失败 / 系统失败）。`hostapi.Marshal` 是服务级 `MarshalError`：目录外的码降级为 `InternalError`，普通 `error` 包装为 `InternalError`。严重度表和错误联合类型由 `hostcontract errors-ts` 导出到 `apps/gui-go/frontend/src/lib/host-errors.generated.ts`。
 
 限制：Wails 绑定的方法只返回 `error`，框架无法为每个命令生成“可能的错误联合”。因此各命令声明的错误族与错误码写在方法注释的 `//uc:errors` 指令里，由 `hostcontract lint` 与方法体实际使用的 `hostapi` 常量对账，并展示在下表中；这是最小可行方案，不声称由框架生成。
 
@@ -76,9 +75,9 @@ Wails 版本与 Go 工具链只在 `apps/gui-go/go.mod` 中固定一处，生成
 | `get_profile_recovery` | `GetProfileRecovery` | - | `json.RawMessage` | command: InternalError | 真实 | 真实 | 真实 | 契约命令；GetProfileRecovery returns the daemon's profile recovery state (`GET /encryption/recovery`) untouched. |
 | `get_quick_panel_double_tap_availability` | `GetQuickPanelDoubleTapAvailability` | - | `ModifierDoubleTapAvailability` | none | 真实 | 真实 | 真实 | 契约命令；GetQuickPanelDoubleTapAvailability tells whether the modifier double tap trigger can work in this session. |
 | `get_visual_effects` | `GetVisualEffects` | - | `EffectsSnapshot` | none | 真实 | 真实 | 真实 | 契约命令；GetVisualEffects returns the visual effects state of this session. |
-| `host_notification_permission` | `HostNotificationPermission` | - | `bool` | none | 真实 | 真实 | 真实 | 适配器：`@tauri-apps/plugin-notification`；HostNotificationPermission reports whether system notifications are allowed. |
-| `host_notification_request_permission` | `HostNotificationRequestPermission` | - | `NotificationPermission` | none | 真实 | 真实 | 真实 | 适配器：`@tauri-apps/plugin-notification`；HostNotificationRequestPermission asks the system for notification permission (adapter command). |
-| `host_notification_send` | `HostNotificationSend` | `options HostNotification` | `-` | command: InternalError | 真实 | 真实 | 真实 | 适配器：`@tauri-apps/plugin-notification`；HostNotificationSend shows a system notification (adapter command). |
+| `host_notification_permission` | `HostNotificationPermission` | - | `bool` | none | 真实 | 真实 | 真实 | 适配器：`@/host/notification`；HostNotificationPermission reports whether system notifications are allowed. |
+| `host_notification_request_permission` | `HostNotificationRequestPermission` | - | `NotificationPermission` | none | 真实 | 真实 | 真实 | 适配器：`@/host/notification`；HostNotificationRequestPermission asks the system for notification permission (adapter command). |
+| `host_notification_send` | `HostNotificationSend` | `options HostNotification` | `-` | command: InternalError | 真实 | 真实 | 真实 | 适配器：`@/host/notification`；HostNotificationSend shows a system notification (adapter command). |
 | `import_config_package` | `ImportConfigPackage` | `password string, sourcePath string` | `ImportConfigStageResult` | config | 真实 | 真实 | 真实 | 契约命令；ImportConfigPackage validates a bundle and stages it to be applied at the next start. |
 | `install_update` | `InstallUpdate` | - | `-` | text | 真实 | 真实 | 真实 | 契约命令；InstallUpdate downloads (if needed) and installs the pending release, then relaunches or quits as the platform's installer requires. |
 | `main_window_presentation_ready` | `MainWindowPresentationReady` | `generation string` | `-` | none | 有意空操作 | 有意空操作 | 有意空操作 | 契约命令；MainWindowPresentationReady is the page's handshake that the main window finished its first paint. |
@@ -88,7 +87,7 @@ Wails 版本与 Go 工具链只在 `apps/gui-go/go.mod` 中固定一处，生成
 | `open_image_externally` | `OpenImageExternally` | `fileName string, data []byte` | `-` | command: InternalError | 真实 | 真实 | 真实 | 契约命令；OpenImageExternally hands image bytes to the system viewer through a single scratch file that is replaced on every call. |
 | `open_logs_directory` | `OpenLogsDirectory` | - | `-` | command: InternalError | 真实 | 真实 | 真实 | 契约命令；OpenLogsDirectory opens the log folder in the file manager, creating it first. |
 | `open_updater_window` | `OpenUpdaterWindow` | - | `-` | none | 真实 | 真实 | 真实 | 契约命令；OpenUpdaterWindow opens the software update window, or focuses it when it is already open. |
-| `open_url` | `OpenURL` | `url string` | `-` | command: InternalError | 真实 | 真实 | 真实 | 适配器：`@tauri-apps/plugin-opener`；OpenURL opens a link in the default browser. |
+| `open_url` | `OpenURL` | `url string` | `-` | command: InternalError | 真实 | 真实 | 真实 | 适配器：`@/host/opener`；OpenURL opens a link in the default browser. |
 | `paste_to_previous_app` | `PasteToPreviousApp` | - | `-` | text | 不支持 | 真实 | 真实 | 契约命令；PasteToPreviousApp hides the panel, returns to the previously focused application and pastes. |
 | `pick_config_bundle_path` | `PickConfigBundlePath` | - | `*string` | config | 真实 | 真实 | 真实 | 契约命令；PickConfigBundlePath shows the native open dialog for a configuration bundle. |
 | `pick_directory` | `PickDirectory` | - | `*string` | command: InternalError | 真实 | 真实 | 真实 | 契约命令；PickDirectory shows the native folder picker. |
@@ -110,7 +109,7 @@ Wails 版本与 Go 工具链只在 `apps/gui-go/go.mod` 中固定一处，生成
 | `set_traffic_light_position` | `SetTrafficLightPosition` | `offsetX *float64, offsetY *float64` | `-` | none | 不支持 | 有意空操作 | 有意空操作 | 契约命令；SetTrafficLightPosition would place the macOS window buttons. |
 | `set_tray_language` | `SetTrayLanguage` | `language string` | `-` | none | 真实 | 真实 | 真实 | 契约命令；SetTrayLanguage updates the tray menu labels to the UI language. |
 | `set_visual_effects_mode` | `SetVisualEffectsMode` | `mode EffectsMode` | `EffectsSnapshot` | command: ValidationError | 真实 | 真实 | 真实 | 契约命令；SetVisualEffectsMode sets the visual effects preference and tells every window. |
-| `set_window_decorations` | `SetWindowDecorations` | `decorations bool` | `-` | none | 有意空操作 | 真实 | 真实 | 适配器：`@tauri-apps/api/window`；SetWindowDecorations applies the page's frame preference (custom controls drawn by the page, or the system frame) to the main window. |
+| `set_window_decorations` | `SetWindowDecorations` | `decorations bool` | `-` | none | 有意空操作 | 真实 | 真实 | 适配器：`@/host/window`；SetWindowDecorations applies the page's frame preference (custom controls drawn by the page, or the system frame) to the main window. |
 | `show_content_unlock` | `ShowContentUnlock` | - | `-` | none | 真实 | 真实 | 真实 | 契约命令；ShowContentUnlock brings the main window forward so the user can unlock content. |
 | `skip_version` | `SkipVersion` | `version string` | `-` | text | 真实 | 真实 | 真实 | 契约命令；SkipVersion remembers that the user does not want the given version on the current channel. |
 | `take_pending_navigation` | `TakePendingNavigation` | - | `*string` | none | 真实 | 真实 | 真实 | 契约命令；TakePendingNavigation returns, once, the route a tray or second launch asked the page to open. |
@@ -145,8 +144,8 @@ Wails 版本与 Go 工具链只在 `apps/gui-go/go.mod` 中固定一处，生成
 
 宿主只负责原生能力与进程生命周期，不复制 daemon 的契约。`get_profile_recovery` 与 `get_daemon_startup_status` 把 daemon 的 JSON 原样透传（Go 侧为 `json.RawMessage`，Wails 生成 `any`）：
 
-- `ProfileRecoveryResponse`、`ShortcutKeyDto` 的类型来源是 OpenAPI 生成的 `apps/gui/src/api/generated/types.gen.ts`，`ipc.ts` 在边界处套用。
-- 启动进度 `/startup` 不在 OpenAPI 文档中，其 TypeScript 形态是手工镜像 `apps/gui/src/lib/daemon-startup-types.ts`（来源 `crates/uc-daemon-contract/src/startup.rs`）。该路由进入 OpenAPI 后应删除镜像。
+- `ProfileRecoveryResponse`、`ShortcutKeyDto` 的类型来源是 OpenAPI 生成的 `apps/gui-go/frontend/src/api/generated/types.gen.ts`，`ipc.ts` 在边界处套用。
+- 启动进度 `/startup` 不在 OpenAPI 文档中，其 TypeScript 形态是手工镜像 `apps/gui-go/frontend/src/lib/daemon-startup-types.ts`（来源 `crates/uc-daemon-contract/src/startup.rs`）。该路由进入 OpenAPI 后应删除镜像。
 - `update_keyboard_shortcuts` 的值既可以是字符串也可以是字符串数组，Wails 无法表达该联合，生成类型为 `any`，由 `ipc.ts` 按 `ShortcutKeyDto` 收窄。
 
 ## 事件审计

@@ -1,6 +1,6 @@
-import { getCurrentWindow } from '@tauri-apps/api/window'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { usePlatform } from '@/hooks/usePlatform'
+import { getCurrentWindow } from '@/host/window'
 import { createLogger } from '@/lib/logger'
 
 const log = createLogger('window-controls')

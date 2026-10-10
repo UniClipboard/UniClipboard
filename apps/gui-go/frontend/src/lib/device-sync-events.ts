@@ -1,4 +1,4 @@
-import { emit, listen } from '@tauri-apps/api/event'
+import { emit, listen } from '@/host/event'
 import { createLogger } from '@/lib/logger'
 
 export const DEVICE_SYNC_CHANGED_EVENT = 'devices://sync-changed'

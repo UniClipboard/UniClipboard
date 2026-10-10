@@ -1,7 +1,7 @@
-import { getCurrentWindow } from '@tauri-apps/api/window'
-import { onAction } from '@tauri-apps/plugin-notification'
 import { useEffect } from 'react'
 import type { DeviceTrustSnapshot } from '@/api/daemon/device-trust'
+import { onAction } from '@/host/notification'
+import { getCurrentWindow } from '@/host/window'
 import {
   DEVICE_TRUST_NOTIFICATION_ID,
   notifyDeviceTrustSnapshot,

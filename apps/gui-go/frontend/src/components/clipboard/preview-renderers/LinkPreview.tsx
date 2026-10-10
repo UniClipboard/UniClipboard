@@ -1,6 +1,6 @@
-import { openUrl } from '@tauri-apps/plugin-opener'
 import { ExternalLink } from 'lucide-react'
 import React from 'react'
+import { openUrl } from '@/host/opener'
 import type { ClipboardLinkItem } from '@/lib/clipboard-entry'
 import { createLogger } from '@/lib/logger'
 

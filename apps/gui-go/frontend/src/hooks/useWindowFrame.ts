@@ -1,6 +1,6 @@
-import { getCurrentWindow } from '@tauri-apps/api/window'
 import { useCallback, useMemo, useSyncExternalStore } from 'react'
 import { usePlatform } from '@/hooks/usePlatform'
+import { getCurrentWindow } from '@/host/window'
 import {
   readWindowFramePreference,
   resolveWindowFrameMode,

@@ -95,7 +95,7 @@ const applyUiScale = (scale: number): number => {
   const normalized = clampUiScale(scale)
 
   if (isTauriEnv()) {
-    import('@tauri-apps/api/webview')
+    import('@/host/webview')
       .then(({ getCurrentWebview }) => {
         log.debug({ normalized }, 'calling setZoom')
         getCurrentWebview()

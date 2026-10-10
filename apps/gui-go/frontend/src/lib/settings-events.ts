@@ -1,4 +1,4 @@
-import { emit } from '@tauri-apps/api/event'
+import { emit } from '@/host/event'
 import { createLogger } from '@/lib/logger'
 import type { SettingChangedEvent } from '@/types/events'
 import type { Settings } from '@/types/setting'

@@ -12,7 +12,6 @@
 //! update dialog. For deb/rpm it surfaces the exact upgrade command; for the
 //! portable zip it points the user at the release page to grab a fresh zip.
 
-import { openUrl } from '@tauri-apps/plugin-opener'
 import { Check, Copy } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -28,6 +27,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { toast } from '@/components/ui/toast'
+import { openUrl } from '@/host/opener'
 import { createLogger } from '@/lib/logger'
 
 const log = createLogger('package-manager-update-dialog')

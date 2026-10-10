@@ -1,4 +1,4 @@
-import { openUrl } from '@tauri-apps/plugin-opener'
+import { openUrl } from '@/host/opener'
 import { commands } from '@/lib/ipc'
 import { STARTUP_SUPPORT_URL } from './startup-support-url'
 

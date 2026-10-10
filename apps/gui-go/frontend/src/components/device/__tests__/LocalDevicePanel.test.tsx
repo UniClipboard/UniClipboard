@@ -19,7 +19,7 @@ vi.mock('@/api/security', () => ({
   isFactoryResetError: (error: { code?: string }) => Boolean(error.code),
 }))
 vi.mock('@/store/setupRealtimeStore', () => ({ refreshSetupState: vi.fn() }))
-vi.mock('@tauri-apps/api/app', () => ({ getVersion: async () => '1.0.0' }))
+vi.mock('@/host/app', () => ({ getVersion: async () => '1.0.0' }))
 vi.mock('@/hooks/useSetting', () => ({
   useSettingSelector: (selector: (context: typeof mocks) => unknown) => selector(mocks),
 }))

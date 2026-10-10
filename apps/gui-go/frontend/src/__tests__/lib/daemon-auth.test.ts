@@ -19,7 +19,7 @@ import { resetDaemonConnectionInfoPollingForTests } from '@/lib/daemon-connectio
 const mockInvoke = vi.fn()
 const mockInvokeWithTrace = vi.fn()
 
-vi.mock('@tauri-apps/api/core', () => ({
+vi.mock('@/host/core', () => ({
   invoke: (...args: unknown[]) => mockInvoke(...args),
 }))
 

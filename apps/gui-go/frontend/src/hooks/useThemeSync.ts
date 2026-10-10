@@ -1,6 +1,6 @@
-import { listen } from '@tauri-apps/api/event'
 import { useEffect, useLayoutEffect, useRef } from 'react'
 import { getSettings } from '@/api/daemon'
+import { listen } from '@/host/event'
 import { createLogger } from '@/lib/logger'
 import { parseSettingsChangedPayload, SETTINGS_CHANGED_EVENT } from '@/lib/settings-events'
 import { createWindowThemeController } from '@/lib/window-theme'

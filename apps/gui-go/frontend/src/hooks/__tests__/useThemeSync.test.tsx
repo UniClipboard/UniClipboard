@@ -1,11 +1,11 @@
-import { listen } from '@tauri-apps/api/event'
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { getSettings } from '@/api/daemon'
+import { listen } from '@/host/event'
 import { applyThemePreset } from '@/lib/theme-engine'
 import { useThemeSync } from '../useThemeSync'
 
-vi.mock('@tauri-apps/api/event', () => ({
+vi.mock('@/host/event', () => ({
   listen: vi.fn(),
 }))
 

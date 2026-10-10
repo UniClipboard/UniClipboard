@@ -7,7 +7,7 @@ const { load, listen, dispose } = vi.hoisted(() => ({
   dispose: vi.fn(),
 }))
 vi.mock('@/api/daemon', () => ({ getSettings: load }))
-vi.mock('@tauri-apps/api/event', () => ({ listen, emit: vi.fn() }))
+vi.mock('@/host/event', () => ({ listen, emit: vi.fn() }))
 beforeEach(() => {
   listen.mockReset().mockResolvedValue(dispose)
   load.mockReset()

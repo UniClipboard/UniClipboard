@@ -1,10 +1,6 @@
-import {
-  isPermissionGranted,
-  requestPermission,
-  sendNotification,
-} from '@tauri-apps/plugin-notification'
 import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
+import { isPermissionGranted, requestPermission, sendNotification } from '@/host/notification'
 import { useAppSelector } from '@/store/hooks'
 import type { TransferProgressInfo } from '@/store/slices/fileTransferSlice'
 

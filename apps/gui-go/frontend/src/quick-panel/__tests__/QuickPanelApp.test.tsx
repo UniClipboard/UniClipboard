@@ -43,7 +43,7 @@ vi.mock('@host/hostservice', () => {
   }
 })
 
-vi.mock('@tauri-apps/api/event', () => ({
+vi.mock('@/host/event', () => ({
   listen: vi.fn((event: string, handler: () => void) => {
     eventHandlers[event] = handler
     return Promise.resolve(() => {

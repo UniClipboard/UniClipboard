@@ -1,5 +1,5 @@
-import { isPermissionGranted, sendNotification } from '@tauri-apps/plugin-notification'
 import type { DeviceTrustSnapshot } from '@/api/daemon/device-trust'
+import { isPermissionGranted, sendNotification } from '@/host/notification'
 import i18n from '@/i18n'
 
 const notified = new Set<string>()

@@ -1,0 +1,296 @@
+name: 'Linux GUI acceptance'
+
+# Runtime-only acceptance of the packages produced in this workflow run. No publication or production telemetry.
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: 'Exact source SHA of the packages in this run'
+        required: true
+        type: string
+      build_image:
+        required: false
+        type: string
+        default: 'debian:bookworm'
+
+permissions:
+  contents: read
+
+env:
+  BUILD_IMAGE: ${{ inputs.build_image }}
+
+jobs:
+  appimage:
+    name: AppImage ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: amd64, runner: ubuntu-24.04, platform: linux/amd64, machine: x86_64 }
+          - { arch: arm64, runner: ubuntu-24.04-arm, platform: linux/arm64, machine: aarch64 }
+    env:
+      UC_DOCKER_PLATFORM: ${{ matrix.platform }}
+      UC_LINUX_IMAGE: uc-package-build:ci
+      UC_LINUX_CACHE_VOLUME: uc-linux-gui-acceptance-cache
+      UC_KEYRING_IMAGE: uc-gui-go-linux-keyring:ci
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+      - name: Assert a native runner
+        run: |
+          test "$(uname -m)" = "${{ matrix.machine }}"
+          test "$(docker version --format '{{.Server.Arch}}')" = "${{ matrix.arch }}"
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - uses: actions/setup-node@v6
+        with:
+          node-version: lts/*
+      - name: Install frontend dependencies
+        run: bun install --frozen-lockfile
+      - uses: actions/download-artifact@v6
+        with:
+          name: linux-gui-${{ matrix.arch }}
+          path: ${{ runner.temp }}/upload
+      - uses: actions/download-artifact@v6
+        with:
+          name: linux-gui-evidence-${{ matrix.arch }}
+          path: ${{ runner.temp }}/evidence
+      - name: Build the acceptance packaging image
+        run: |
+          docker build --platform "${{ matrix.platform }}" --build-arg BASE_IMAGE="$BUILD_IMAGE" --build-arg TARGETARCH="${{ matrix.arch }}" \
+            -f apps/gui-go/e2e/linux/Dockerfile.package-build -t "$UC_LINUX_IMAGE" apps/gui-go/e2e/linux
+          docker volume create "$UC_LINUX_CACHE_VOLUME"
+      - name: Recover the exact packaged daemon and its evidence
+        run: |
+          # Artifact downloads restore files as 0644; the runtime scenarios execute the AppImage.
+          chmod +x "$RUNNER_TEMP"/upload/UniClipboard_*.AppImage
+          expected_sha="$(python3 -c 'import json,os; m=json.load(open(os.environ["RUNNER_TEMP"]+"/evidence/package-manifest.json")); print(m["daemon"]["sha256"])')"
+          docker run --rm --platform "${{ matrix.platform }}" -v "$UC_LINUX_CACHE_VOLUME:/cache" \
+            -v "$RUNNER_TEMP/upload:/in:ro" -v "$RUNNER_TEMP/evidence:/evidence:ro" -e EXPECTED_SHA="$expected_sha" "$UC_LINUX_IMAGE" bash -c '
+              set -euo pipefail
+              dpkg-deb -x /in/*.deb /tmp/payload
+              mkdir -p /cache/out-release
+              cp /tmp/payload/usr/bin/uniclipd /cache/out-release/uniclipd
+              cp /evidence/build-evidence.txt /cache/out-release/build-evidence.txt
+              echo "$EXPECTED_SHA  /cache/out-release/uniclipd" | sha256sum -c -'
+          mkdir -p "$RUNNER_TEMP/out/packages"
+          cp "$RUNNER_TEMP/evidence/package-manifest.json" "$RUNNER_TEMP/out/packages/"
+
+      - name: Build a legacy-name Go transaction fixture
+        # Current payload, previous package identity. Historical artifacts are tested separately; this fixture keeps the transaction regression reproducible.
+        run: apps/gui-go/e2e/linux/run.sh legacy-go-fixture "$RUNNER_TEMP/legacy-go" "$RUNNER_TEMP/upload"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: linux-gui-legacy-go-${{ matrix.arch }}
+          path: |
+            ${{ runner.temp }}/legacy-go/deb/legacy-go.deb
+            ${{ runner.temp }}/legacy-go/deb/fixture.json
+            ${{ runner.temp }}/legacy-go/rpm/legacy-go.rpm
+            ${{ runner.temp }}/legacy-go/rpm/fixture.json
+            ${{ runner.temp }}/legacy-go/rpm-newer/legacy-go.rpm
+            ${{ runner.temp }}/legacy-go/rpm-newer/fixture.json
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Build the clean-host and Secret Service images
+        run: |
+          cd apps/gui-go/e2e/linux
+          if [ "$BUILD_IMAGE" = "debian:bookworm" ]; then
+            floor_args=(--build-arg BASE_IMAGE=debian:bookworm --build-arg FUSE_PACKAGE=libfuse2 --build-arg HOST_EXTRA_PACKAGES=libasound2)
+          else
+            floor_args=(--build-arg BASE_IMAGE="$BUILD_IMAGE" --build-arg HOST_EXTRA_PACKAGES=libasound2t64)
+          fi
+          docker build --platform "${{ matrix.platform }}" "${floor_args[@]}" -f Dockerfile.17c4-runtime -t uc-clean-host:floor .
+          docker build --platform "${{ matrix.platform }}" --build-arg BASE_IMAGE=ubuntu:24.04 --build-arg HOST_EXTRA_PACKAGES=libasound2t64 -f Dockerfile.17c4-runtime -t uc-clean-host:newer .
+          docker build --platform "${{ matrix.platform }}" -f Dockerfile.17c4-keyring -t "$UC_KEYRING_IMAGE" .
+
+      - name: Accept the AppImage on the floor and a newer distribution
+        env:
+          UC_RUNTIME_IMAGES: uc-clean-host:floor uc-clean-host:newer
+        run: |
+          apps/gui-go/e2e/linux/package_acceptance.sh "$RUNNER_TEMP/accept" \
+            --release-appimage "$(ls "$RUNNER_TEMP"/upload/UniClipboard_*.AppImage)" --release-manifest "$RUNNER_TEMP/out/packages/package-manifest.json"
+
+      - name: Observe the runtime library inventory on the floor and a newer distribution
+        # Starts the shipped AppImage on each clean host with LD_DEBUG, classifies every mapped library (GUI, WebKit processes, daemon) as bundled
+        # or host-owned and runs appimage_content_check.py --runtime-inventory against the extracted image. The packaging image only supplies python3 and readelf.
+        env:
+          UC_ANALYSIS_IMAGE: ${{ env.UC_LINUX_IMAGE }}
+        run: |
+          rc=0
+          for host in floor newer; do
+            apps/gui-go/e2e/linux/run_runtime_inventory.sh "$RUNNER_TEMP/inventory-$host" "$(ls "$RUNNER_TEMP"/upload/UniClipboard_*.AppImage)" \
+              "$RUNNER_TEMP/out/packages/package-manifest.json" "uc-clean-host:$host" || rc=1
+          done
+          exit "$rc"  # both hosts always run, so one failure does not hide the other's inventory
+
+      - name: Upload the runtime library inventory
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: linux-gui-inventory-${{ matrix.arch }}
+          path: |
+            ${{ runner.temp }}/inventory-*/runtime-inventory.json
+            ${{ runner.temp }}/inventory-*/content-check.json
+            ${{ runner.temp }}/inventory-*/host.txt
+            ${{ runner.temp }}/inventory-*/host-image.txt
+            ${{ runner.temp }}/inventory-*/*.log
+            ${{ runner.temp }}/inventory-*/*/observation.json
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Gather the acceptance results
+        if: always()
+        # The acceptance containers write as root with 0600 state files, so the export reads with sudo, but only an allowlist of report, log,
+        # evidence-line and hash files leaves the scratch tree: no profile, identity or key material, no home copy, no raw GUI binary, no
+        # AppImage. The exported copy is handed to the runner user; the permissions of the product profile are not touched.
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/acceptance"
+          if [ -d "$RUNNER_TEMP/accept" ]; then
+            cd "$RUNNER_TEMP/accept"
+            sudo find . -type f \( -name '*.log' -o -name '*.jsonl' -o -name '*.control' -o -name 'appimage-assertions.json' -o -name 'package-manifest.json' \
+              -o -name 'steps.txt' -o -name 'HEAD.txt' -o -name 'host-machine.txt' -o -name 'SHA256SUMS.txt' -o -name '*.sha256' -o -name 'good.json' -o -name 'bad.json' \) \
+              -not -path '*/home-copy/*' -not -path '*/squashfs-root/*' -print0 > "$RUNNER_TEMP/acceptance.list"
+            sudo rsync -a --from0 --files-from="$RUNNER_TEMP/acceptance.list" ./ "$RUNNER_TEMP/acceptance/"
+            sudo chown -R "$(id -u):$(id -g)" "$RUNNER_TEMP/acceptance"
+          fi
+
+      - name: Upload the acceptance results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: linux-gui-acceptance-${{ matrix.arch }}
+          path: ${{ runner.temp }}/acceptance
+          if-no-files-found: warn
+          retention-days: 14
+
+  install-check:
+    name: ${{ matrix.kind }} on ${{ matrix.image }} (${{ matrix.arch }})
+    needs: appimage
+    # The legacy fixtures are uploaded before AppImage E2E; its failure must not hide lifecycle results.
+    if: ${{ !cancelled() }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64]
+        image: ['debian:bookworm', 'ubuntu:24.04', 'fedora:latest']
+        include:
+          - { arch: amd64, runner: ubuntu-24.04, platform: linux/amd64, deb: amd64, rpm: x86_64 }
+          - { arch: arm64, runner: ubuntu-24.04-arm, platform: linux/arm64, deb: arm64, rpm: aarch64 }
+          - { image: 'debian:bookworm', kind: deb }
+          - { image: 'ubuntu:24.04', kind: deb }
+          - { image: 'fedora:latest', kind: rpm }
+    env:
+      UC_DOCKER_PLATFORM: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+
+      - name: Assert a native runner
+        run: test "$(docker version --format '{{.Server.Arch}}')" = "${{ matrix.arch }}"
+
+      - uses: actions/download-artifact@v6
+        with:
+          name: linux-gui-${{ matrix.arch }}
+          path: candidates
+
+      - uses: actions/download-artifact@v6
+        with:
+          name: linux-gui-evidence-${{ matrix.arch }}
+          path: evidence
+
+      - uses: actions/download-artifact@v6
+        with:
+          name: linux-gui-legacy-go-${{ matrix.arch }}
+          path: legacy-go
+
+      - name: Fetch the released Tauri packages (the previous version of an upgrade)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p released
+          gh release download v1.0.1 --repo "$GITHUB_REPOSITORY" --dir released \
+            -p 'UniClipboard_1.0.1_${{ matrix.deb }}.deb' -p 'UniClipboard-1.0.1-1.${{ matrix.rpm }}.rpm'
+          (cd released && grep -F -f <(ls) ../apps/gui-go/e2e/linux/released-packages.sha256 | sha256sum -c -)
+
+      - name: Install, upgrade, launch and remove
+        run: |
+          sha="$(python3 -c "import json;print(json.load(open('evidence/package-manifest.json'))['daemon']['sha256'])")"
+          if [ "${{ matrix.kind }}" = deb ]; then
+            new="candidates/UniClipboard_$(python3 -c "import json;print(json.load(open('apps/gui-go/app.json'))['version'])")_${{ matrix.deb }}.deb"
+            old="released/UniClipboard_1.0.1_${{ matrix.deb }}.deb"
+          else
+            new="candidates/UniClipboard-$(python3 -c "import json;print(json.load(open('apps/gui-go/app.json'))['version'])")-1.${{ matrix.rpm }}.rpm"
+            old="released/UniClipboard-1.0.1-1.${{ matrix.rpm }}.rpm"
+          fi
+          rc=0
+          for scenario in upgrade fresh upgrade-go; do
+            previous="$old"; mode="$scenario"
+            if [ "$scenario" = upgrade-go ]; then previous="legacy-go/${{ matrix.kind }}/legacy-go.${{ matrix.kind }}"; mode=upgrade; fi
+            apps/gui-go/e2e/linux/package_install_check.sh "${{ matrix.kind }}" "${{ matrix.image }}" "$mode" "$PWD/$new" "$PWD/$previous" "$sha" "$PWD/install-$scenario" || rc=1
+          done
+          if [ "${{ matrix.kind }}" = rpm ]; then
+            apps/gui-go/e2e/linux/package_install_check.sh rpm "${{ matrix.image }}" reject-newer "$PWD/$new" "$PWD/legacy-go/rpm-newer/legacy-go.rpm" "$sha" "$PWD/install-reject-newer" || rc=1
+          fi
+          exit $rc
+
+      - name: Upload the results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: linux-gui-install-${{ matrix.arch }}-${{ matrix.kind }}-${{ strategy.job-index }}
+          path: |
+            install-upgrade
+            install-fresh
+            install-upgrade-go
+            install-reject-newer
+          if-no-files-found: warn
+          retention-days: 14
+
+  telemetry-injection-contract:
+    # The compile-time telemetry injection of stage-daemon (SENTRY_DSN, POSTHOG_PROJECT_KEY, APP_ENV through option_env!) is exercised with throwaway
+    # values that point nowhere (.invalid), in a fast test-mode build whose evidence says so and which is never packaged. The packaged daemons
+    # above are built without any of these values in pull request runs (their evidence records `false`).
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      UC_DOCKER_PLATFORM: linux/amd64
+      UC_LINUX_IMAGE: uc-package-build:ci
+      UC_LINUX_CACHE_VOLUME: uc-telemetry-contract-cache
+      CARGO_PROFILE_RELEASE_OPT_LEVEL: '1'
+      CARGO_PROFILE_RELEASE_LTO: 'off'
+      CARGO_PROFILE_RELEASE_CODEGEN_UNITS: '16'
+      SENTRY_DSN: https://contractkey@telemetry-contract.invalid/1
+      POSTHOG_PROJECT_KEY: phc_telemetry_contract_key
+      APP_ENV: telemetry-contract
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+      - name: Build the image and the test-mode daemon
+        run: |
+          docker build --build-arg BASE_IMAGE="$BUILD_IMAGE" --build-arg TARGETARCH=amd64 -f apps/gui-go/e2e/linux/Dockerfile.package-build -t "$UC_LINUX_IMAGE" apps/gui-go/e2e/linux
+          UC_BUILD_IMAGE="telemetry contract" apps/gui-go/e2e/linux/run.sh daemon-release
+      - name: Assert the injection
+        run: |
+          docker run --rm -v "$UC_LINUX_CACHE_VOLUME:/cache:ro" debian:bookworm bash -c '
+            set -e; cd /cache/out-release
+            grep -q "^build_mode=test" build-evidence.txt
+            grep -q "^telemetry_sentry_dsn_injected=true" build-evidence.txt
+            grep -q "^telemetry_posthog_key_injected=true" build-evidence.txt
+            grep -q "^telemetry_app_env=telemetry-contract" build-evidence.txt
+            grep -aq "telemetry-contract.invalid" uniclipd
+            grep -aq "phc_telemetry_contract_key" uniclipd
+            echo "compile-time injection reached the binary; build_mode=test, so package_linux.py would refuse this daemon"'

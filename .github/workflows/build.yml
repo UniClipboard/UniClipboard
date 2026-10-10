@@ -3,6 +3,11 @@ run-name: "build-${{ inputs.platform || 'all' }}${{ inputs.build_mode == 'test' 
 on:
   workflow_dispatch:
     inputs:
+      run_acceptance:
+        description: 'Run isolated package lifecycle and functional acceptance; publishing disables this'
+        required: false
+        type: boolean
+        default: true
       platform:
         description: '选择构建平台'
         required: true
@@ -62,6 +67,11 @@ on:
         default: ''
   workflow_call:
     inputs:
+      run_acceptance:
+        description: 'Run isolated package lifecycle and functional acceptance; publishing disables this'
+        required: false
+        type: boolean
+        default: true
       build_mode:
         description: 'Build optimization mode; publishing workflows keep release by default'
         required: false
@@ -163,8 +173,9 @@ jobs:
           # aarch64 走 native arm runner (ubuntu-22.04-arm),避免在 x86 容器里
           # cross-compile webkit/gtk 栈;x86_64 仍在 ubuntu-22.04。
           PLATFORM="${{ inputs.platform || 'all' }}"
+          # Linux GUI owns its daemon build; Linux CLI uses musl in build-cli.yml. No GNU sidecar consumer exists in all.
           if [ "$PLATFORM" == "all" ]; then
-            echo "matrix=[{\"platform\":\"macos-latest\",\"target\":\"aarch64-apple-darwin\",\"args\":\"--target aarch64-apple-darwin\"},{\"platform\":\"macos-latest\",\"target\":\"x86_64-apple-darwin\",\"args\":\"--target x86_64-apple-darwin\"},{\"platform\":\"ubuntu-22.04\",\"target\":\"x86_64-unknown-linux-gnu\",\"args\":\"\",\"container\":\"ghcr.io/uniclipboard/build-bookworm:latest\"},{\"platform\":\"ubuntu-22.04-arm\",\"target\":\"aarch64-unknown-linux-gnu\",\"args\":\"\",\"container\":\"ghcr.io/uniclipboard/build-bookworm:latest\"},{\"platform\":\"windows-latest\",\"runner\":\"$WINDOWS_RUNNER\",\"target\":\"x86_64-pc-windows-msvc\",\"args\":\"\"},{\"platform\":\"windows-latest\",\"runner\":\"$WINDOWS_RUNNER\",\"target\":\"aarch64-pc-windows-msvc\",\"args\":\"--target aarch64-pc-windows-msvc\"}]" >> "$GITHUB_OUTPUT"
+            echo "matrix=[{\"platform\":\"macos-latest\",\"target\":\"aarch64-apple-darwin\",\"args\":\"--target aarch64-apple-darwin\"},{\"platform\":\"macos-latest\",\"target\":\"x86_64-apple-darwin\",\"args\":\"--target x86_64-apple-darwin\"},{\"platform\":\"windows-latest\",\"runner\":\"$WINDOWS_RUNNER\",\"target\":\"x86_64-pc-windows-msvc\",\"args\":\"\"},{\"platform\":\"windows-latest\",\"runner\":\"$WINDOWS_RUNNER\",\"target\":\"aarch64-pc-windows-msvc\",\"args\":\"--target aarch64-pc-windows-msvc\"}]" >> "$GITHUB_OUTPUT"
           elif [ "$PLATFORM" == "macos-aarch64" ]; then
             echo 'matrix=[{"platform":"macos-latest","target":"aarch64-apple-darwin","args":"--target aarch64-apple-darwin"}]' >> "$GITHUB_OUTPUT"
           elif [ "$PLATFORM" == "macos-x86_64" ]; then
@@ -717,11 +728,12 @@ jobs:
     uses: ./.github/workflows/package-linux-gui.yml
     with:
       ref: ${{ inputs.branch || github.ref }}
+      run_acceptance: ${{ inputs.run_acceptance != false }}
 
   smoke-macos-gui:
     name: Smoke macOS app ${{ matrix.arch }}
     needs: [setup-matrix, package-macos-gui]
-    if: needs.package-macos-gui.result == 'success'
+    if: inputs.run_acceptance != false && needs.package-macos-gui.result == 'success'
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     strategy:
@@ -1013,6 +1025,18 @@ jobs:
           # The CLI archive carries its own copy of the daemon next to uniclip.exe (scripts/ci/package-cli.sh).
           cp "target/sidecar-staging/uniclipd-${{ matrix.target }}.exe" target/sign/stage1/cli/uniclipd.exe
 
+      - name: Select Windows package inputs
+        shell: bash
+        run: |
+          variants=shipped
+          # Existing SignPath artifact configurations require both package directories/setups (see packaging docs).
+          # Until that external contract changes, signing also includes the fixture, but never runs acceptance on release.
+          mode="${{ steps.sign.outputs.mode }}"
+          if [ "${{ inputs.run_acceptance != false }}" = true ] || [[ "$mode" == signpath* ]]; then
+            variants="shipped newer"
+          fi
+          echo "WINDOWS_PACKAGE_VARIANTS=$variants" >> "$GITHUB_ENV"
+
       - name: prepare the unsigned GUI exe, daemon and uninstaller (shipped and acceptance-newer packages)
         id: prepare
         shell: bash
@@ -1032,12 +1056,14 @@ jobs:
             --out target/windows-gui/shipped
           # Acceptance-only package with a higher version, so the update and downgrade scenarios have a
           # newer build of the same sources. Never uploaded as a product.
-          python apps/gui-go/e2e/package_windows.py --stage prepare --arch ${{ matrix.arch }} --acceptance-version 999.0.0 \
-            --daemon "$S/uniclipd-${{ matrix.target }}.exe" --daemon-provenance "$S/sidecar-provenance.json" \
-            --out target/windows-gui/newer
+          if [[ " $WINDOWS_PACKAGE_VARIANTS " == *" newer "* ]]; then
+            python apps/gui-go/e2e/package_windows.py --stage prepare --arch ${{ matrix.arch }} --acceptance-version 999.0.0 \
+              --daemon "$S/uniclipd-${{ matrix.target }}.exe" --daemon-provenance "$S/sidecar-provenance.json" \
+              --out target/windows-gui/newer
+          fi
           # Stage 1 = every self-built executable that goes into a package or archive: GUI exe, daemon, NSIS uninstaller
           # (for both packages) and the two executables of the CLI archive. The setup programs are signed in stage 2.
-          for v in shipped newer; do
+          for v in $WINDOWS_PACKAGE_VARIANTS; do
             mkdir -p target/sign/stage1/$v
             for n in UniClipboard.exe uniclipd.exe uninstall.exe; do cp target/windows-gui/$v/to-sign/$n target/sign/stage1/$v/; done
           done
@@ -1097,7 +1123,7 @@ jobs:
           python apps/gui-go/packaging/windows/sign.py verify --out target/windows-gui/signatures-stage1.json ${SIGN_VERIFY_ARGS:-} $(find $OUT -type f -name '*.exe')
 
       - name: fault injection - what the signing service could hand back wrongly must stop the assemble stage
-        if: steps.sign.outputs.mode != 'unsigned'
+        if: inputs.run_acceptance != false && steps.sign.outputs.mode != 'unsigned'
         shell: bash
         run: |
           set -euo pipefail
@@ -1107,7 +1133,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for v in shipped newer; do
+          for v in $WINDOWS_PACKAGE_VARIANTS; do
             if [ "${{ steps.sign.outputs.mode }}" = "unsigned" ]; then
               python apps/gui-go/e2e/package_windows.py --stage assemble --unsigned --out target/windows-gui/$v
             else
@@ -1115,7 +1141,7 @@ jobs:
             fi
           done
           mkdir -p target/sign/stage2
-          for v in shipped newer; do cp target/windows-gui/$v/to-sign-setup/*-setup.exe target/sign/stage2/; done
+          for v in $WINDOWS_PACKAGE_VARIANTS; do cp target/windows-gui/$v/to-sign-setup/*-setup.exe target/sign/stage2/; done
           ls -l target/sign/stage2
 
       - name: upload stage 2 for SignPath
@@ -1167,18 +1193,20 @@ jobs:
           set -euo pipefail
           export MODE="${{ steps.sign.outputs.mode }}"
           if [ "$MODE" = "unsigned" ]; then
-            for v in shipped newer; do python apps/gui-go/e2e/package_windows.py --stage finalize --unsigned --out target/windows-gui/$v; done
+            for v in $WINDOWS_PACKAGE_VARIANTS; do python apps/gui-go/e2e/package_windows.py --stage finalize --unsigned --out target/windows-gui/$v; done
             exit 0
           fi
           IN=target/sign/stage2; OUT=target/sign/stage2-signed
           diff <(cd $IN && ls) <(cd $OUT && ls)
           for f in $(cd $IN && ls); do python apps/gui-go/packaging/windows/sign.py matches "$IN/$f" "$OUT/$f"; done
           python apps/gui-go/packaging/windows/sign.py verify --out target/windows-gui/signatures-stage2.json ${SIGN_VERIFY_ARGS:-} $OUT/*-setup.exe
-          # Fault: an unsigned setup handed back as if it were signed must not become a package.
-          if python apps/gui-go/e2e/package_windows.py --stage finalize --signed-setup "$(ls target/windows-gui/shipped/to-sign-setup/*-setup.exe)" --out target/windows-gui/shipped > target/windows-gui/faults/unsigned-setup.log 2>&1; then
-            echo "::error::an unsigned setup program was accepted as the signed one"; exit 1
+          if [ "${{ inputs.run_acceptance != false }}" = true ]; then
+            # Fault: an unsigned setup handed back as if it were signed must not become a package.
+            if python apps/gui-go/e2e/package_windows.py --stage finalize --signed-setup "$(ls target/windows-gui/shipped/to-sign-setup/*-setup.exe)" --out target/windows-gui/shipped > target/windows-gui/faults/unsigned-setup.log 2>&1; then
+              echo "::error::an unsigned setup program was accepted as the signed one"; exit 1
+            fi
+            grep -q "was not signed" target/windows-gui/faults/unsigned-setup.log
           fi
-          grep -q "was not signed" target/windows-gui/faults/unsigned-setup.log
           THUMBPRINT="${{ steps.identity.outputs.thumbprint }}" python - <<'PY'
           import json, os
           e, mode = os.environ, os.environ['MODE']
@@ -1190,7 +1218,7 @@ jobs:
                         requests=[{'stage': n, 'id': e[f'REQUEST_{n}_ID'], 'url': e[f'REQUEST_{n}']} for n in (1, 2)])
           json.dump(ev, open('target/sign/signing-evidence.json', 'w'), indent=2)
           PY
-          for v in shipped newer; do
+          for v in $WINDOWS_PACKAGE_VARIANTS; do
             python apps/gui-go/e2e/package_windows.py --stage finalize --signing-provider "$MODE" --signing-evidence target/sign/signing-evidence.json \
               --signed-setup "$OUT/$(cd target/windows-gui/$v/to-sign-setup && ls)" --out target/windows-gui/$v
           done
@@ -1201,7 +1229,9 @@ jobs:
           REQ=()
           if [ "${{ steps.sign.outputs.mode }}" != "unsigned" ]; then REQ=(--require-signed ${PKG_VERIFY_ARGS:-}); fi
           python apps/gui-go/e2e/windows_package_verify.py --package target/windows-gui/shipped "${REQ[@]}" --signature-out target/windows-gui/signatures.json --out target/windows-gui/payload-verification.json
-          python apps/gui-go/e2e/windows_package_verify.py --package target/windows-gui/newer "${REQ[@]}" --signature-out target/windows-gui/signatures-newer.json --out target/windows-gui/payload-verification-newer.json
+          if [[ " $WINDOWS_PACKAGE_VARIANTS " == *" newer "* ]]; then
+            python apps/gui-go/e2e/windows_package_verify.py --package target/windows-gui/newer "${REQ[@]}" --signature-out target/windows-gui/signatures-newer.json --out target/windows-gui/payload-verification-newer.json
+          fi
 
       - name: build the CLI archive through the shipping script (signed inputs) and verify the unpacked files
         shell: bash
@@ -1212,12 +1242,14 @@ jobs:
             cp target/sign/stage1/cli/uniclip.exe target/windows-gui/inputs/uniclip.exe
           else
             cp target/sign/stage1-signed/cli/uniclip.exe target/windows-gui/inputs/uniclip.exe
-            # Fault: unsigned CLI executables handed to the packaging script must stop it.
-            if WINDOWS_SIGNED_DIR=target/sign/stage1/cli REQUIRE_WINDOWS_SIGNED=1 bash scripts/ci/package-cli.sh "${{ matrix.target }}" \
-                 target/sign/stage1/cli/uniclip.exe target/sign/stage1/cli/uniclipd.exe > target/windows-gui/faults/unsigned-cli.log 2>&1; then
-              echo "::error::package-cli.sh accepted unsigned CLI executables as signed"; exit 1
+            if [ "${{ inputs.run_acceptance != false }}" = true ]; then
+              # Fault: unsigned CLI executables handed to the packaging script must stop it.
+              if WINDOWS_SIGNED_DIR=target/sign/stage1/cli REQUIRE_WINDOWS_SIGNED=1 bash scripts/ci/package-cli.sh "${{ matrix.target }}" \
+                   target/sign/stage1/cli/uniclip.exe target/sign/stage1/cli/uniclipd.exe > target/windows-gui/faults/unsigned-cli.log 2>&1; then
+                echo "::error::package-cli.sh accepted unsigned CLI executables as signed"; exit 1
+              fi
+              grep -q "was not signed" target/windows-gui/faults/unsigned-cli.log
             fi
-            grep -q "was not signed" target/windows-gui/faults/unsigned-cli.log
             WINDOWS_SIGNED_DIR=target/sign/stage1-signed/cli REQUIRE_WINDOWS_SIGNED=1 bash scripts/ci/package-cli.sh "${{ matrix.target }}" \
               target/sign/stage1/cli/uniclip.exe target/sign/stage1/cli/uniclipd.exe
             mv uniclipboard-cli-*.zip cli-signatures.json target/windows-gui/cli-package/
@@ -1226,7 +1258,9 @@ jobs:
             python apps/gui-go/packaging/windows/sign.py verify --out target/windows-gui/signatures-cli.json ${SIGN_VERIFY_ARGS:-} \
               target/sign/cli-unpacked/uniclip.exe target/sign/cli-unpacked/uniclipd.exe
           fi
-          cp target/windows-gui/newer/ACCEPTANCE-*-setup.exe target/windows-gui/inputs/
+          if [ "${{ inputs.run_acceptance != false }}" = true ]; then
+            cp target/windows-gui/newer/ACCEPTANCE-*-setup.exe target/windows-gui/inputs/
+          fi
 
       - name: hashes of the shipped files
         shell: bash
@@ -1258,6 +1292,7 @@ jobs:
           retention-days: 7
 
       - name: upload acceptance inputs
+        if: inputs.run_acceptance != false
         uses: actions/upload-artifact@v7
         with:
           name: windows-gui-acceptance-inputs-${{ matrix.target }}${{ steps.build-mode.outputs.suffix }}${{ steps.sign.outputs.sfx }}
@@ -1289,7 +1324,7 @@ jobs:
   smoke-windows-gui:
     name: Smoke Windows ${{ matrix.arch }}
     needs: [setup-matrix, package-windows-gui]
-    if: needs.package-windows-gui.result == 'success'
+    if: inputs.run_acceptance != false && needs.package-windows-gui.result == 'success'
     runs-on: ${{ matrix.smoke }}
     timeout-minutes: 60
     env:

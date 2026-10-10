@@ -51,7 +51,9 @@ func e2eInvokeCommand(h *HostService, command string, args map[string]json.RawMe
 	out := method.Call(in)
 	result := map[string]any{"command": command, "ok": true}
 	for _, value := range out {
-		if err, isErr := value.Interface().(error); isErr && value.Type() == reflect.TypeFor[error]() {
+		if value.Type() == reflect.TypeFor[error]() {
+			// A nil error has no dynamic type; classify the declared return type before inspecting its value.
+			err, _ := value.Interface().(error)
 			if err != nil {
 				result["ok"] = false
 				var wire any

@@ -1,5 +1,13 @@
 import * as HostService from '@host/hostservice'
-import { InstallKind, QuickPanelDoubleTapModifier } from '@host/models'
+import {
+  DownloadEventKind,
+  DownloadPhase,
+  EffectsMode,
+  InstallKind,
+  QuickPanelDoubleTapModifier,
+  type DownloadEvent,
+  type EffectsSnapshot,
+} from '@host/models'
 import {
   isPermissionGranted,
   requestPermission,
@@ -91,6 +99,8 @@ async function navigate(
 async function run() {
   const phase = (await Call.ByName('main.EvidenceService.Phase')) as string
   if (phase === 'linux-package-update') return runLinuxPackageUpdateScenario()
+  if (phase === 'host-contract') return runHostContractScenario()
+  if (phase === 'download-cancel') return runDownloadCancelScenario()
   if (phase.startsWith('update')) return runUpdateScenario(phase)
   if (phase === 'file-preview') return runFilePreviewScenario()
   if (phase === 'key-path-verify') {
@@ -1042,5 +1052,232 @@ async function runLinuxPackageUpdateScenario() {
   sendNotification({ title: 'Linux acceptance', body: 'Isolated package notification fixture' })
   await record('package-notification-requested', true)
   await sleep(4000)
+  await control('exit')
+}
+
+// The generated host contract, called from the real WebView through the same wrapper the pages use: connection and
+// identity, typed errors and their severity, argument handling, typed events, and a real daemon restart.
+async function runHostContractScenario() {
+  await waitFor('app root content', () => document.getElementById('root')?.children.length)
+  const expected = (error: unknown) => isExpectedCommandError(error)
+
+  // ---- connection and identity (results the daemon owns pass through untouched)
+  const info = await settle(HostService.GetDaemonConnectionInfo())
+  await record(
+    'connection-info',
+    info.status === 'ok' &&
+      !!info.data &&
+      /^http:\/\/127\.0\.0\.1:\d+$/.test(info.data.baseUrl) &&
+      info.data.wsUrl.startsWith('ws://'),
+    { baseUrl: info.status === 'ok' ? info.data?.baseUrl : null }
+  )
+  const session = await settle(HostService.GetDaemonSession())
+  await record(
+    'daemon-session',
+    session.status === 'ok' &&
+      !!session.data &&
+      session.data.sessionToken.length > 0 &&
+      session.data.expiresInSecs > 0,
+    { tokenLength: session.status === 'ok' ? session.data?.sessionToken.length : null }
+  )
+  const id = await commands.getDeviceID()
+  const meta = await commands.getDeviceMeta()
+  await record(
+    'device-identity',
+    id.length > 0 && meta.deviceId === id && meta.platform === 'macos',
+    {
+      platform: meta.platform,
+      appChannel: meta.appChannel,
+      runtimeProfile: meta.runtimeProfile,
+    }
+  )
+  const recovery = await settle(HostService.GetProfileRecovery())
+  await record(
+    'profile-recovery-passthrough',
+    recovery.status === 'ok' && typeof recovery.data === 'object',
+    {
+      keys: recovery.status === 'ok' && recovery.data ? Object.keys(recovery.data).sort() : null,
+    }
+  )
+  const startup = await settle(HostService.GetDaemonStartupStatus())
+  await record('startup-status-passthrough', startup.status === 'ok', {
+    isNull: startup.status === 'ok' && startup.data == null,
+  })
+  const unlocked = await commands.getContentUnlocked()
+  await record('content-unlocked-boolean', typeof unlocked === 'boolean', { unlocked })
+  const kind = await commands.getInstallKind()
+  await record('install-kind-enum', Object.values(InstallKind).includes(kind), { kind })
+  await record('bootstrap-failure-null', (await commands.getDaemonBootstrapFailure()) === null)
+
+  // ---- typed event: the host emits a snapshot, the page receives the generated payload type
+  const seen: EffectsSnapshot[] = []
+  const offEffects = Events.On(
+    'visual-effects://changed',
+    event => void seen.push(event.data as EffectsSnapshot)
+  )
+  const snapshot = await commands.setVisualEffectsMode(EffectsMode.EffectsModeSmooth)
+  await waitFor('visual-effects event', () => seen.length > 0)
+  offEffects()
+  await record(
+    'visual-effects-typed-event',
+    seen[0].mode === EffectsMode.EffectsModeSmooth &&
+      seen[0].revision === snapshot.revision &&
+      seen[0].sessionId === snapshot.sessionId,
+    { revision: seen[0].revision, mode: seen[0].mode }
+  )
+  const theme = await commands.setFollowOmarchyTheme(true)
+  await record(
+    'desktop-theme-unavailable',
+    theme.omarchyAvailable === false &&
+      (await commands.getDesktopTheme()).omarchyAvailable === false
+  )
+
+  // ---- errors: business failures are user-facing, system failures are not
+  const bogusMode = await settle(HostService.SetVisualEffectsMode('bogus' as EffectsMode))
+  await record(
+    'error-validation-user-facing',
+    bogusMode.status === 'error' &&
+      (bogusMode.error as { code?: string }).code === 'ValidationError' &&
+      expected(bogusMode.error),
+    bogusMode
+  )
+  const missing = await settle(commands.revealPath('/definitely/not/here'))
+  await record(
+    'error-not-found-user-facing',
+    missing.status === 'error' &&
+      (missing.error as { code?: string }).code === 'NotFound' &&
+      expected(missing.error),
+    missing
+  )
+  const nullPath = await settle(HostService.RevealPath(null as unknown as string))
+  await record(
+    'null-argument-is-zero-value',
+    nullPath.status === 'error' && (nullPath.error as { code?: string }).code === 'NotFound',
+    nullPath
+  )
+  const noPending = await settle(commands.installUpdate())
+  await record(
+    'error-text-is-system',
+    noPending.status === 'error' &&
+      typeof noPending.error === 'string' &&
+      !expected(noPending.error),
+    noPending
+  )
+  const arity = await settle(Call.ByName('main.HostService.RevealPath'))
+  await record(
+    'error-wrong-arity-is-system',
+    arity.status === 'error' && !arity.raw.hasCause && !expected(arity.error),
+    arity.raw
+  )
+  const unknownMethod = await settle(Call.ByName('main.HostService.NoSuchCommand'))
+  await record(
+    'error-unknown-method-is-system',
+    unknownMethod.status === 'error' && !expected(unknownMethod.error),
+    unknownMethod.raw
+  )
+  const badBytes = await settle(HostService.SaveImageAs('a.png', 'not*base64'))
+  await record(
+    'error-bad-base64-is-system',
+    badBytes.status === 'error' && !expected(badBytes.error),
+    badBytes.raw
+  )
+
+  // ---- a real daemon restart: events in order, and the replaced client reaches the new process
+  const shuttingDown: number[] = []
+  const reconnect: number[] = []
+  const offDown = Events.On('app://shutting-down', () => void shuttingDown.push(Date.now()))
+  const offChanged = Events.On(
+    'app://daemon-connection-changed',
+    () => void reconnect.push(Date.now())
+  )
+  await record('restart-daemon-start', true, { deviceId: id })
+  const restart = await settle(HostService.RestartDaemon())
+  await record('restart-daemon-result', restart.status === 'ok', restart)
+  await waitFor('restart events', () => shuttingDown.length > 0 && reconnect.length > 0, 20000)
+  offDown()
+  offChanged()
+  await record(
+    'restart-daemon-events',
+    shuttingDown.length === 1 && reconnect.length === 1 && shuttingDown[0] <= reconnect[0],
+    {
+      shuttingDown: shuttingDown.length,
+      reconnect: reconnect.length,
+    }
+  )
+  const afterId = await settle(HostService.GetDeviceID())
+  await record(
+    'restart-daemon-client-replaced',
+    afterId.status === 'ok' && afterId.data === id,
+    afterId
+  )
+  const afterSession = await settle(HostService.GetDaemonSession())
+  await record(
+    'restart-daemon-new-session',
+    afterSession.status === 'ok' && (afterSession.data?.sessionToken.length ?? 0) > 0
+  )
+  await control('exit')
+}
+
+// Cancelling a running download: the progress events arrive in order, the call rejects, the pending update is
+// available again, and a second download completes. (Cancelling the Wails call itself does not stop the
+// download by design: it continues in the background and `cancel_download` is the explicit cancel.)
+async function runDownloadCancelScenario() {
+  await waitFor('app root content', () => document.getElementById('root')?.children.length)
+  const events: DownloadEvent[] = []
+  const off = Events.On(
+    'update-download-progress',
+    event => void events.push(event.data as DownloadEvent)
+  )
+  const found = await settle(HostService.CheckForUpdate(null))
+  await record('cancel-check-found-update', found.status === 'ok' && !!found.data?.version, found)
+  const first = settle(HostService.DownloadUpdate())
+  await waitFor(
+    'first progress event',
+    () => events.some(e => e.event === DownloadEventKind.DownloadEventProgress),
+    60000
+  )
+  await record(
+    'cancel-progress-started',
+    events[0]?.event === DownloadEventKind.DownloadEventStarted,
+    { first: events[0] }
+  )
+  const mid = await HostService.GetDownloadProgress()
+  await record(
+    'cancel-phase-downloading',
+    mid.phase === DownloadPhase.DownloadPhaseDownloading,
+    mid
+  )
+  await HostService.CancelDownload()
+  const cancelled = await first
+  await record(
+    'cancel-call-rejected',
+    cancelled.status === 'error' && typeof cancelled.error === 'string',
+    cancelled
+  )
+  await waitFor(
+    'failed event',
+    () => events.some(e => e.event === DownloadEventKind.DownloadEventFailed),
+    10000
+  )
+  const after = await HostService.GetDownloadProgress()
+  await record(
+    'cancel-phase-available-again',
+    after.phase === DownloadPhase.DownloadPhaseAvailable,
+    after
+  )
+  const second = await settle(HostService.DownloadUpdate())
+  await record('cancel-second-download-completes', second.status === 'ok', second)
+  const finished = await HostService.GetDownloadProgress()
+  const sequence = events.map(e => e.event)
+  off()
+  await record('cancel-phase-ready', finished.phase === DownloadPhase.DownloadPhaseReady, finished)
+  await record(
+    'cancel-event-order',
+    sequence[0] === DownloadEventKind.DownloadEventStarted &&
+      sequence.includes(DownloadEventKind.DownloadEventFailed),
+    {
+      kinds: [...new Set(sequence)],
+    }
+  )
   await control('exit')
 }

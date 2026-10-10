@@ -3,7 +3,7 @@
 // Cross-checks the host event contract from its real sources, so no list is kept by hand:
 //   - Go side: apps/gui-go/host_events.go declares each event as a constant (name, direction comment) and registers
 //     it with application.RegisterEvent; apps/gui-go/*.go emit or listen through those constants.
-//   - Page side: apps/gui/src and apps/gui-go/frontend/src call listen(...) / Events.On(...).
+//   - Page side: apps/gui-go/frontend/src calls listen(...) / Events.On(...).
 // Failures: a page listener for an event the host never declares; a declared event nobody emits (unless it is in
 // UNEMITTED with the reason); a declared host->page event no page listens to; a declared event that is not
 // registered with RegisterEvent (so Wails would not type it); an emit of a literal name instead of the constant.
@@ -15,7 +15,7 @@ import { fileURLToPath } from 'node:url'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const GO_DIR = join(ROOT, 'apps/gui-go')
-const PAGE_DIRS = [join(ROOT, 'apps/gui/src'), join(ROOT, 'apps/gui-go/frontend/src')]
+const PAGE_DIRS = [join(ROOT, 'apps/gui-go/frontend/src')]
 
 // Declared events that have a page listener but no host emitter, with the reason. Adding to this list is a product
 // decision, not a way to silence the check.

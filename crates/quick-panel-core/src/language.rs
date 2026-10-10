@@ -39,7 +39,7 @@ impl Language {
     /// Portuguese region variants collapse onto their bundle. Anything without a bundle is
     /// [`Self::EnUs`].
     ///
-    /// Keep the supported set in sync with `SUPPORTED_LANGUAGES` in `apps/gui/src/i18n/index.ts`,
+    /// Keep the supported set in sync with `SUPPORTED_LANGUAGES` in `apps/gui-go/frontend/src/i18n/index.ts`,
     /// including the frontend's subtag fallbacks in `normalizeLanguage()`.
     pub fn for_locale(locale: &str) -> Self {
         let mut subtags = locale.split(['-', '_']);

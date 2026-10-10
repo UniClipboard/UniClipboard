@@ -20,7 +20,7 @@ case "$mode" in
   build)
     mkdir -p "$dir/inputs"
     (cd "$ROOT" && git rev-parse HEAD > "$dir/inputs/head.txt" && git status --porcelain > "$dir/inputs/status.txt" && git diff HEAD > "$dir/inputs/dirty.diff")
-    (cd "$ROOT" && VITE_GUI_GO_E2E=1 bun --bun run --cwd apps/gui-go build > "$dir/inputs/frontend-build.log" 2>&1)
+    (cd "$ROOT" && VITE_GUI_GO_E2E=1 bun --bun run --cwd apps/gui-go/frontend build > "$dir/inputs/frontend-build.log" 2>&1)
     # The bundle must be the E2E one and must contain THIS source's scenario (a release-mode dist has neither).
     grep -rl "linux-shortcut-ui" "$ROOT/apps/gui-go/frontend/dist/assets" > "$dir/inputs/dist-contains-driver.txt" || { echo "dist lacks the 17c8 driver: wrong or stale frontend build" >&2; exit 1; }
     (cd "$ROOT/apps/gui-go/frontend/dist" && find . -type f | LC_ALL=C sort | xargs shasum -a 256 > "$dir/inputs/dist.sha256" && shasum -a 256 "$dir/inputs/dist.sha256" > "$dir/inputs/dist-tree.sha256")

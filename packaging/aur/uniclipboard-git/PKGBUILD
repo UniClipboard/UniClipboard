@@ -71,7 +71,7 @@ build() {
 
   # The shipped frontend bundle is embedded into the GUI executable.
   (cd packages/desktop-host-go && go generate ./buildinfo)
-  bun --bun run --cwd apps/gui-go build
+  bun --bun run --cwd apps/gui-go/frontend build
 
   # Product name, identifier and updater key come from app.json. The identifier keys the
   # single-instance scope, login item and notifications, so it must match the other packages. The

@@ -40,9 +40,8 @@ Go/Wails 宿主（`apps/gui-go`）现在是唯一的桌面宿主。本文记录�
 
 | 保留 | 原因 |
 | --- | --- |
-| `@tauri-apps/*` npm 包名 | 共享前端按名字导入，`apps/gui-go/vite.config.ts` 把它们别名到 Wails 适配层；这是导入边界，不是对 Tauri 的依赖 |
 | 宿主命令契约 | 已由 Go `HostService` 方法签名与 Wails 生成的绑定取代，冻结的 `ipc-bindings.generated.ts`、`error-severity.generated.ts` 已删除，见 `docs/architecture/gui-go-host-commands.md` |
-| 共享 React 前端 `apps/gui/src` | 唯一前端 |
+| React 前端（退役时在 `apps/gui/src`，后已并入 `apps/gui-go/frontend/src`） | 唯一前端 |
 | Rust Engine、Iroh、加密存储、`uniclipd` | 与宿主无关 |
 | `apps/quick-panel`、`crates/quick-panel-core`（GPUI） | macOS 原生快捷面板；已确认 GPUI 不依赖 tao |
 | `dev-profile` 特性（`uc-platform`、`uc-bootstrap`） | 当前无人启用，已记录为清理项（见 #1911），不在本 PR 内处理 |
@@ -124,3 +123,7 @@ Go/Wails 宿主（`apps/gui-go`）现在是唯一的桌面宿主。本文记录�
 | 退役遗留项（含 `dev-profile`、Sentry source map 等） | #1911 |
 
 无法放置的项：旧文本中含义不明的“macOS main”（见上），以及“Swift 同次调用 owner/role 保存”（在 #1906 中标注为含义不清）。
+
+## 后续更新：前端并入 Go 宿主目录
+
+React 前端的源码、资源、测试、浏览器夹具、`package.json`、Vite/Vitest 与 TypeScript 配置已从 `apps/gui` 迁入 `apps/gui-go/frontend`，`apps/gui` 目录不再存在（守卫把 `apps/gui` 列为退役路径）。同时移除了 `@tauri-apps/*` 的包名别名与三个 npm 依赖：页面直接导入 `apps/gui-go/frontend/src/host` 下的宿主模块（`@/host/event`、`@/host/window` 等），`check:tauri-retired` 拒绝任何 `@tauri-apps/` 引用或依赖。上文正文保留退役当时的路径与做法，仅作历史记录。

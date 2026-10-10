@@ -26,7 +26,7 @@ grep -q ea0f0bcb53e949ba94fc71e97748103e4f7136b4a354924991d686cc4d29f6c6 "$out/l
 for img in uc-gui-go-linux-proxy:17c12-ubuntu uc-gui-go-linux-proxy:17c12-ubuntu-session uc-gui-go-linux-proxy:17c12-ubuntu-session-socks uc-gui-go-linux-proxy:17c12-fedora uc-gui-go-linux-proxy:17c12-fedora-session uc-gui-go-linux-proxy:17c12-fedora-session-socks; do
   docker image inspect "$img" --format '{{.Id}}' > "$out/inputs/image-$(echo "$img" | tr ':/' '__').id" || { echo "missing image $img" >&2; exit 1; }
 done
-step frontend-e2e bash -c "cd '$ROOT' && VITE_GUI_GO_E2E=1 bun --bun run --cwd apps/gui-go build" || exit 1
+step frontend-e2e bash -c "cd '$ROOT' && VITE_GUI_GO_E2E=1 bun --bun run --cwd apps/gui-go/frontend build" || exit 1
 step build-gui "$R" release-e2e-build || exit 1
 step package-v1 "$R" package-appimage "$out/v1" || exit 1
 V1="$out/v1/pkg/E2E-UniClipboard_1.1.1_aarch64.AppImage"; M1="$out/v1/pkg/package-manifest.json"

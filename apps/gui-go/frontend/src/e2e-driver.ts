@@ -8,11 +8,6 @@ import {
   type DownloadEvent,
   type EffectsSnapshot,
 } from '@host/models'
-import {
-  isPermissionGranted,
-  requestPermission,
-  sendNotification,
-} from '@tauri-apps/plugin-notification'
 // E2E-only scenario driver. It runs inside the real Wails WebView, interacts
 // with the shared React DOM and reports each assertion to the native test
 // service. It is bundled only when VITE_GUI_GO_E2E=1.
@@ -20,6 +15,7 @@ import { Call, Events } from '@wailsio/runtime'
 import { daemonClient } from '@/api/daemon/client'
 import { updateSettings } from '@/api/daemon/settings'
 import { setQuickPanelEnabled, setQuickPanelPosition } from '@/api/tauri-command/settings'
+import { isPermissionGranted, requestPermission, sendNotification } from '@/host/notification'
 import i18n from '@/i18n'
 import { daemonWs } from '@/lib/daemon-ws'
 import { commands } from '@/lib/ipc'

@@ -96,7 +96,7 @@ Read: `docs/agent/project-memory.md`
 Then selectively read:
 - `docs/README.md` and linked docs for current-state guidance
 - `.planning/` for roadmap, milestones, and spike research notes
-- `apps/gui/src/AGENTS.md` for frontend-local navigation
+- `apps/gui-go/frontend/src/AGENTS.md` for frontend-local navigation
 - `crates/AGENTS.md` for Rust-workspace navigation (crates/ + apps/)
 - `apps/gui-go/AGENTS.md` for the Go/Wails desktop host (the only desktop host) and its packaging
 - `tools/AGENTS.md` for development-only crates, `tools/uc-dev-cli/AGENTS.md` for the Rust development CLI
@@ -126,7 +126,7 @@ Use when:
 ### Frontend task
 1. `AGENTS.md`
 2. `docs/agent/frontend-ui-rules.md`
-3. `apps/gui/src/AGENTS.md`
+3. `apps/gui-go/frontend/src/AGENTS.md`
 4. relevant code/docs only
 
 ### Rust/daemon task

@@ -310,7 +310,7 @@ def proxy_env(port):
 
 def page_probe_script(prefix, report_port, base, daemon_token, gui_pid):
     """What the shared frontend does against the daemon, run by the real WebView: session exchange (POST /auth/connect with the bearer secret), one authenticated data fetch
-    (GET /settings), then a WebSocket to /ws?auth=Session <token> (apps/gui/src/lib/daemon-ws.ts puts the token in the query because browsers cannot set the header), a topic
+    (GET /settings), then a WebSocket to /ws?auth=Session <token> (apps/gui-go/frontend/src/lib/daemon-ws.ts puts the token in the query because browsers cannot set the header), a topic
     subscription to topics that answer with a snapshot (`clipboard` only emits when something is copied: a silent topic proves nothing) and the first decoded event frame (`topic:type`, payload dropped). Every step reports to the loopback report channel. The control file of a run therefore contains the throwaway daemon's bearer token;
     that daemon and its data live only in the run's container."""
     return ("(function(){var P=%s,rp=%d,base=%s,bearer=%s;function rep(k,v){try{fetch('http://127.0.0.1:'+rp+'/'+P+k+'?v='+encodeURIComponent(v),{mode:'no-cors'})}catch(e){}}"

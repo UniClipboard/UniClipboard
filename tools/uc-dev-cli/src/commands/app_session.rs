@@ -1,7 +1,9 @@
-//! CLI session helpers: daemon probe, in-process wiring, and dual-dispatch.
+//! Daemon-client connections and independent dev-tools Engine sessions.
 //!
-//! Business commands either build a self-contained `CliAppSession` (no
-//! daemon) or delegate to a running daemon via `DaemonService`.
+//! Retained compatibility commands delegate to the external daemon. Only
+//! Engine-backed diagnostics build a `CliAppSession` via uc-bootstrap; they
+//! refuse a detected daemon on the same profile and never provide a fallback
+//! for daemon-client commands.
 
 use crate::exit_codes;
 use crate::local_daemon::{probe_running, probe_running_for_reuse, probe_running_for_reuse_within};
@@ -14,7 +16,7 @@ use uc_daemon_contract::probe::{ProbeOutcome, DEGRADED_HEALTH_INCOMPATIBILITY_DE
 
 // ── In-process session (dev-tools only) ────────────────────────────────
 
-/// [`build_app_session`] 返回的 CLI 会话。
+/// Independent Engine session returned by [`build_app_session`] for diagnostics.
 #[cfg(feature = "dev-tools")]
 pub struct CliAppSession {
     pub runtime: uc_bootstrap::CliEngineRuntime,
@@ -52,11 +54,10 @@ impl CliAppSession {
     }
 }
 
-/// 当同 profile 已有 daemon 运行时拒绝执行业务命令。
-///
-/// 在 IPC 转发落地前,同一个 profile 的两个进程会用同一个 Ed25519
-/// secret 绑定两个 iroh endpoint,并且 daemon 自己的流程会和 CLI 竞争。
-/// 因此独立 CLI 业务命令要求用户先 `stop` daemon。
+/// Reject an independent diagnostic session when a daemon is detected on the
+/// same profile. The two runtimes would otherwise compete for profile storage
+/// and bind separate iroh endpoints with the same device identity.
+/// Stop the test profile's daemon first or select a different profile.
 #[cfg(feature = "dev-tools")]
 pub async fn refuse_if_daemon_running() -> Result<(), i32> {
     match probe_running().await {
@@ -84,16 +85,14 @@ pub async fn refuse_if_daemon_running() -> Result<(), i32> {
     }
 }
 
-/// 为 CLI 业务命令构造独立 application session。
+/// Build the independent Engine runtime used by dev-tools diagnostics.
 ///
-/// 默认使用 `Cli` 日志 profile;`verbose` 打开时切到 `Dev`,方便调试
-/// 单机双进程 pairing。
-///
-/// wiring 前设置 `UC_DISABLE_SYSTEM_CLIPBOARD=1`,避免独立 CLI 命令提前触碰
-/// 系统剪贴板适配器。
+/// Use the Cli logging profile, or Dev when verbose output is enabled.
+/// Disable the system clipboard before bootstrap wiring; clipboard probing
+/// uses its own platform adapter instead of this runtime.
 #[cfg(feature = "dev-tools")]
 pub async fn build_app_session(verbose: bool) -> Result<CliAppSession, i32> {
-    // 必须在 bootstrap wiring 前设置,避免 CLI 进程触碰系统剪贴板适配器。
+    // Disable the system clipboard before constructing the diagnostic runtime.
     std::env::set_var("UC_DISABLE_SYSTEM_CLIPBOARD", "1");
 
     let log_profile = if verbose {
@@ -114,8 +113,8 @@ pub async fn build_app_session(verbose: bool) -> Result<CliAppSession, i32> {
 
 /// ADR-008 P5-1a: connect to a running compatible daemon, or spawn a transient
 /// Oneshot daemon when none is present, and return a `DaemonService` client.
-/// Business commands (send/watch) use this instead of `resolve_execution_mode`
-/// — they NEVER fall back to an in-process session.
+/// Daemon-client commands (including send/watch) use this connection path and
+/// never fall back to an independent Engine session.
 ///
 /// * Compatible(any residency) → reuse it.
 /// * Incompatible              → clear error (no silent attach).

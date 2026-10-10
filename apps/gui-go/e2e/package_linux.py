@@ -6,7 +6,7 @@
 Runs on a Linux host (the Dockerfile in e2e/linux provides one): the GUI links GTK3 and WebKitGTK through cgo, so it
 cannot be cross-compiled from macOS. The daemon is NOT built here: `uniclipd` for the same architecture must be
 supplied; a missing or malformed file is a hard error. The frontend bundle (apps/gui-go/frontend/dist) must exist
-(`bun --bun run --cwd apps/gui-go build`).
+(`bun --bun run --cwd apps/gui-go/frontend build`).
 
 Outputs in <dir> (names follow the Tauri bundler, which the release workflow and updater feed already expect):
   uniclipboard                                       release build (tags gtk3,production,release)
@@ -690,7 +690,7 @@ def main():
     if sys.platform != 'linux':
         sys.exit('package_linux.py must run on Linux (cgo against GTK3/WebKitGTK); use e2e/linux/Dockerfile')
     if not args.gui_binary and not (GUI / 'frontend/dist').is_dir():
-        sys.exit('apps/gui-go/frontend/dist is missing: build the frontend once (bun --bun run --cwd apps/gui-go build)')
+        sys.exit('apps/gui-go/frontend/dist is missing: build the frontend once (bun --bun run --cwd apps/gui-go/frontend build)')
     if not args.daemon.is_file():
         sys.exit(f'{args.daemon} not found: a package without the daemon cannot start')
     ok, reason = check_daemon(args.daemon, args.arch)

@@ -17,7 +17,7 @@ import (
 	"path/filepath"
 )
 
-const errorsTSPath = "apps/gui/src/lib/host-errors.generated.ts"
+const errorsTSPath = "apps/gui-go/frontend/src/lib/host-errors.generated.ts"
 
 func repoRoot() string {
 	dir, err := os.Getwd()

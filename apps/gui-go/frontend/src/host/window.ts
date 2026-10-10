@@ -1,5 +1,5 @@
 import * as HostService from '@host/hostservice'
-// Host adapter for `@tauri-apps/api/window`.
+// Window controls of the desktop host.
 import { Window } from '@wailsio/runtime'
 import { listen, type UnlistenFn } from './event'
 

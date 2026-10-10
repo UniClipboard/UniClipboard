@@ -5,8 +5,8 @@
 #            the user-facing CLI `uniclip` is the Go module apps/cli-go
 # - tools/   development-only crates (uc-dev-cli); never part of a production build
 # - crates/  desktop host, platform, observability, and daemon libraries
-# - apps/gui/  shared React frontend (package.json, src/); the desktop shell that
-#               hosts it is the Go/Wails module apps/gui-go
+# - apps/gui-go/frontend/  React frontend (package.json, src/) of the desktop GUI, inside the
+#               Go/Wails module apps/gui-go that hosts it
 
 [workspace]
 members = [

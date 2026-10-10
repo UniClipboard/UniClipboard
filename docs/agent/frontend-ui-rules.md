@@ -4,11 +4,11 @@ Use this document when editing React, TypeScript, Tailwind, UX flows, or fronten
 
 ## Frontend Layout Rules
 
-- 主窗口所有页面与弹层的文字遵循 [DESIGN.md 第 5 节](../../apps/gui/DESIGN.md#5-文字规格)，只使用统一语义文字样式或继承共享控件角色，不在页面单独设置字号、行高、字距，也不覆盖控件的文字角色。修改后运行 `apps/gui/src/styles/__tests__/typography.test.ts`；增加文字用途时先更新规范。
+- 主窗口所有页面与弹层的文字遵循 [DESIGN.md 第 5 节](../../apps/gui-go/frontend/DESIGN.md#5-文字规格)，只使用统一语义文字样式或继承共享控件角色，不在页面单独设置字号、行高、字距，也不覆盖控件的文字角色。修改后运行 `apps/gui-go/frontend/src/styles/__tests__/typography.test.ts`；增加文字用途时先更新规范。
 
-- 设置页内容区遵循 [DESIGN.md](../../apps/gui/DESIGN.md) 中的详细规范，复用统一页头、`SettingGroup` 与 `SettingRow`。窗口、侧栏和外层容器不因设置页视觉统一而改造。
+- 设置页内容区遵循 [DESIGN.md](../../apps/gui-go/frontend/DESIGN.md) 中的详细规范，复用统一页头、`SettingGroup` 与 `SettingRow`。窗口、侧栏和外层容器不因设置页视觉统一而改造。
 
-- 操作菜单（点击、右键及子菜单）统一使用 `apps/gui/src/components/motion/context-menu/`。下拉选项保留 `Select` 的选值语义，并与操作菜单共同复用 `apps/gui/src/components/motion/menu/` 的面板、展开动画和高亮；不得另建平行的菜单展示实现。快捷键录入、颜色编辑、二维码和详情说明保留内容浮层的交互语义；通用 `PopoverContent` 同样复用上述面板与展开动画，不使用菜单的方向键导航接管录入或表单。
+- 操作菜单（点击、右键及子菜单）统一使用 `apps/gui-go/frontend/src/components/motion/context-menu/`。下拉选项保留 `Select` 的选值语义，并与操作菜单共同复用 `apps/gui-go/frontend/src/components/motion/menu/` 的面板、展开动画和高亮；不得另建平行的菜单展示实现。快捷键录入、颜色编辑、二维码和详情说明保留内容浮层的交互语义；通用 `PopoverContent` 同样复用上述面板与展开动画，不使用菜单的方向键导航接管录入或表单。
 
 - **No fixed-pixel layouts.**
   - Use **Tailwind utilities** or **rem** units.
@@ -51,7 +51,7 @@ Examples:
 - 保存状态由发起操作的控件持有，避免禁用或刷新无关的设置行。`SettingProvider` 继续负责保存排队与权威值更新，控件不另存业务设置副本。
 - 设置上下文使用 `use-context-selector`，不要通过 React 的 `use()` 直接读取 `SettingContext`。主题应用仅依赖外观配置，修改同步等其他配置不应重新写入整页主题。
 
-- Prefer API wrappers in `apps/gui/src/api/*` and shared helpers over direct `invoke()` in components.
+- Prefer API wrappers in `apps/gui-go/frontend/src/api/*` and shared helpers over direct `invoke()` in components.
 - Keep route gating in `App.tsx` or layout-level logic, not duplicated in leaf components.
 - Avoid parallel state sources for the same domain (local cache + Redux for the same truth).
 - Match TypeScript DTO field names to actual Rust serde output. Do not assume global snake_case or camelCase consistency.
@@ -59,8 +59,8 @@ Examples:
 ## Calling host commands
 
 Frontend code MUST call host commands through the typed `commands` object exported by
-`apps/gui/src/lib/ipc.ts`. Never call the Wails runtime with a stringly-typed command name, and
-never import `@tauri-apps/api/core` `invoke()` for a host command.
+`apps/gui-go/frontend/src/lib/ipc.ts`. Never call the Wails runtime with a stringly-typed command name, and
+never add a second invoke path for a host command.
 
 ```ts
 // ✅ Correct — typed against the generated Wails bindings
@@ -72,15 +72,15 @@ await commands.updateMobileSyncSettings(patch)
 (`apps/gui-go/frontend/bindings/.../hostservice.ts`, alias `@host/hostservice`) re-keyed in camelCase
 and wrapped for trace_id injection, Sentry breadcrumbs, arg redaction and error classification. The
 Go method signatures and DTOs are the only contract source; the bindings, the error-severity
-tables (`apps/gui/src/lib/host-errors.generated.ts`) and the command table in
+tables (`apps/gui-go/frontend/src/lib/host-errors.generated.ts`) and the command table in
 `docs/architecture/gui-go-host-commands.md` are generated and checked in CI
 (`bun run check:host-contract`). When you add or change a command, change the Go method and
 regenerate (`bun run gen:host-contract`); do not hand-edit generated files. Host enums are
 TypeScript `enum`s, so use their members (`InstallKind.InstallKindDeb`), not string literals.
 
-The Wails adapters live in `apps/gui-go/frontend/src/host`. The `@tauri-apps/*` package ids that
-the shared frontend imports are an import boundary only: `apps/gui-go/vite.config.ts` aliases each
-one to a Wails-backed adapter, and the retired Tauri host is not a dependency
+The host modules live in `apps/gui-go/frontend/src/host` (`@/host/event`, `@/host/window`, `@/host/opener`,
+`@/host/notification`, ...) and are the only way a page reaches the native shell. The retired Tauri host
+is not a dependency, and no Tauri npm package may be imported or declared
 (`bun run check:tauri-retired` guards this).
 
 ## Test Execution Note
@@ -95,7 +95,7 @@ For frontend unit tests involving Vitest mocks, fake timers, or jsdom, prefer `n
 
 - **不要用 `forwardRef`**。React 19 把 `ref` 当普通 prop。新组件直接 `function C({ ref, ...props }: Props & { ref?: React.Ref<T> })`,不要包 `forwardRef`。
 - **不要用 `useContext`**,改用 `use(Context)`。`use()` 可条件调用，适用范围更广。
-- **不要用 `flushSync`** 触发非紧急更新，用 `startTransition`。`document.startViewTransition()` 与 React 的 `<ViewTransition>` 不兼容 (react-doctor 会标 `no-document-start-view-transition`),除非有特殊需求 (如 `apps/gui/src/lib/theme-transition.ts` 的 circular reveal) 否则避免。
+- **不要用 `flushSync`** 触发非紧急更新，用 `startTransition`。`document.startViewTransition()` 与 React 的 `<ViewTransition>` 不兼容 (react-doctor 会标 `no-document-start-view-transition`),除非有特殊需求 (如 `apps/gui-go/frontend/src/lib/theme-transition.ts` 的 circular reveal) 否则避免。
 - **不要用 `React.MutableRefObject`**(已废弃),用 `React.RefObject<T | null>`。
 
 ### useEffect 卫生
@@ -161,7 +161,7 @@ For frontend unit tests involving Vitest mocks, fake timers, or jsdom, prefer `n
 - **保留这些"看起来没用"的 devDep**(react-doctor 误报):
   - `react-doctor`、`react-grab`、`@react-grab/mcp` — 通过 npm 脚本 / 工具调用，不在 import 里。
   - `autocorrect-node` — `lint-staged` 配置里调 binary。
-- **`@tauri-apps/*` 包 id**:只在前端真的 import 时才保留；它们是被 `apps/gui-go/vite.config.ts` 别名到 Wails 适配的导入边界，不代表依赖 Tauri 宿主。
+- **不要引入 Tauri 的 npm 包**:宿主能力一律走 `apps/gui-go/frontend/src/host` 的模块，`bun run check:tauri-retired` 会拒绝这些包。
 
 ### shadcn UI 文件
 

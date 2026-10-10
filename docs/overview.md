@@ -175,7 +175,7 @@ apps/gui-go/build.sh
 
 ```
 uniclipboard-desktop/
-├── apps/gui/                 # Shared React frontend sources of the desktop GUI
+├── apps/gui-go/frontend/                 # Shared React frontend sources of the desktop GUI
 │   ├── src/                 # Frontend (React + TypeScript)
 │   │   ├── pages/           # Route pages (Dashboard, Devices, Settings)
 │   │   ├── components/      # Reusable UI components

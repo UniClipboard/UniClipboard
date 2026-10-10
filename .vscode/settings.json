@@ -1,7 +1,7 @@
 {
     "i18n-ally.localesPaths": [
-        "apps/gui/src/i18n",
-        "apps/gui/src/i18n/locales"
+        "apps/gui-go/frontend/src/i18n",
+        "apps/gui-go/frontend/src/i18n/locales"
     ],
     "i18n-ally.sourceLanguage": "zh-CN",
 }

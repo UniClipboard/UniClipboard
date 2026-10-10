@@ -47,7 +47,7 @@ These were collected by scanning the repo on 2026-05-19. The PKGBUILDs in §6/§
 
 ### Build & runtime
 - [x] **Tech stack:** Go/Wails desktop host (`apps/gui-go`, cgo against GTK 3 and WebKitGTK 4.1) + the shared React frontend, plus the Rust daemon `uniclipd` (`crates/uc-daemon`).
-- [x] **Build commands:** `cargo build --release -p uc-daemon --bin uniclipd`, `bun --bun run --cwd apps/gui-go build` (frontend bundle, embedded by the host) and `go build -tags gtk3,production,release` in `apps/gui-go`. The same tags the deb, rpm and AppImage use (`apps/gui-go/e2e/package_linux.py`).
+- [x] **Build commands:** `cargo build --release -p uc-daemon --bin uniclipd`, `bun --bun run --cwd apps/gui-go/frontend build` (frontend bundle, embedded by the host) and `go build -tags gtk3,production,release` in `apps/gui-go`. The same tags the deb, rpm and AppImage use (`apps/gui-go/e2e/package_linux.py`).
 - [x] **Package manager:** **bun** (not pnpm). Lockfile is `bun.lock`. `extra/bun` exists in the official Arch repositories (checked 2026-10-09 in a clean container), so no AUR provider is needed.
 - [x] **`makedepends`:** `git rust go bun jq pkgconf`. `go` in `extra` satisfies the `toolchain` line of `apps/gui-go/go.mod`; no toolchain download happens during the build. `jq` reads the app identity from `apps/gui-go/app.json`.
 - [x] **`depends`:** `gtk3 webkit2gtk-4.1 gtk-layer-shell libx11 libsoup3`. The GUI links GTK 3, WebKitGTK 4.1, libsoup 3 and Xlib; `gtk-layer-shell` is loaded at run time; tray and notifications use D-Bus directly, so there is no appindicator or libnotify dependency. `namcap` output of the real build is the check.

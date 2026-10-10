@@ -26,8 +26,8 @@ import { dirname, resolve, join, sep } from 'node:path'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 
-// The GUI app (package.json, src/) lives in apps/gui.
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'apps', 'gui')
+// The GUI frontend (package.json, src/) lives in apps/gui-go/frontend.
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'apps', 'gui-go', 'frontend')
 const SRC = join(ROOT, 'src')
 const REGISTRY = 'https://beui.dev/r'
 

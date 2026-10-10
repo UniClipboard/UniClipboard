@@ -8458,7 +8458,6 @@ dependencies = [
  "uc-app-paths",
  "uc-daemon-client",
  "uc-daemon-contract",
- "uc-desktop",
  "wiremock",
 ]
 

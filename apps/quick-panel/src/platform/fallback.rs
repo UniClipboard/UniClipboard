@@ -5,9 +5,9 @@
 
 use std::rc::Rc;
 
+use crate::app::double_tap::ModifierKeyState;
 use quick_panel_core::geometry::window_pair::PreviewPlacement;
 use quick_panel_core::ports::{Capabilities, PasteTarget, PlatformError};
-use uc_desktop::modifier_double_tap_monitor::ModifierKeyState;
 
 pub const CAPABILITIES: Capabilities = Capabilities {
     auto_paste: false,

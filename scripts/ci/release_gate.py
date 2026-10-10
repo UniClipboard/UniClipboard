@@ -27,7 +27,7 @@ import argparse
 import hashlib
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 import re
 import subprocess
 import sys
@@ -304,8 +304,17 @@ def windows_binding_problems(artifacts, assets, version, top, doc, provider, exp
         if cli_receipt.is_file():
             r = json.loads(cli_receipt.read_text())
             problems += receipt_problems(r, f'{top}/{receipt_name}', expect_thumbprint)
+            # Bind each archive member to the receipt entry of the same file name (receipt paths are Windows paths).
+            by_name, duplicates = {}, set()
+            for f in r.get('files', []):
+                leaf = PureWindowsPath(str(f.get('file', ''))).name
+                if leaf in by_name:
+                    duplicates.add(leaf)
+                by_name[leaf] = f.get('sha256')
+            if duplicates:
+                problems.append(f'{top}: the CLI receipt lists {sorted(duplicates)} more than once')
             hashes = zip_member_hashes(cli, ['uniclip.exe', 'uniclipd.exe'])
-            if set(hashes) != {'uniclip.exe', 'uniclipd.exe'} or not set(hashes.values()) <= {f.get('sha256') for f in r.get('files', [])}:
+            if set(hashes) != {'uniclip.exe', 'uniclipd.exe'} or any(hashes[n] != by_name.get(n) for n in hashes):
                 problems.append(f'{top}: the executables in the released CLI archive are not the ones the CLI receipt verified')
         else:
             problems.append(f'{top}: the Windows CLI archive has no Authenticode receipt ({receipt_name})')

@@ -346,6 +346,11 @@ def main():
         variant('cli-archive-with-other-executables', lambda t: write(
             t / 'cli-x86_64-pc-windows-msvc' / f'uniclipboard-cli-{version}-x86_64-pc-windows-msvc.zip', zip_bytes({'uniclip.exe': b'x', 'uniclipd.exe': b'y'})),
             contains='not the ones the CLI receipt verified')
+        def swap_cli_executables(t):
+            z = t / 'cli-x86_64-pc-windows-msvc' / f'uniclipboard-cli-{version}-x86_64-pc-windows-msvc.zip'
+            write(z, zip_bytes({n: f'SYNTHETIC release-assembly fixture, not a build: cli {m}\n'.encode()
+                                 for n, m in (('uniclip.exe', 'uniclipd.exe'), ('uniclipd.exe', 'uniclip.exe'))}))
+        variant('cli-archive-with-swapped-executables', swap_cli_executables, contains='not the ones the CLI receipt verified')
         variant('signed-backend-cli-archive-without-build-cli-receipt', lambda t: (t / 'cli-x86_64-pc-windows-msvc/cli-signatures.json').unlink(),
                 contains='has no Authenticode receipt (cli-signatures.json)')
 

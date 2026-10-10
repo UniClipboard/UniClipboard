@@ -16,7 +16,7 @@ engine_arch="$(docker version --format '{{.Server.Arch}}')"; image_arch="$(docke
 docker image inspect "$image" --format '{{.Id}} {{.Architecture}}' > "$out/host-image.txt"
 echo "docker-engine-arch: $engine_arch (native: same as the image)" >> "$out/host-image.txt"
 docker run --rm --init --device /dev/fuse --cap-add SYS_ADMIN --security-opt apparmor=unconfined \
-  -v "$root:/work:ro" -v "$appimage:/in/app.AppImage:ro" -v "$out:/out" "$image" bash -c '
+  -e UC_HOST_UID="$(id -u)" -e UC_HOST_GID="$(id -g)" -v "$root:/work:ro" -v "$appimage:/in/app.AppImage:ro" -v "$out:/out" "$image" bash -c '
 set -euo pipefail
 id uc >/dev/null 2>&1 || useradd --create-home --uid 1500 uc
 { cat /etc/os-release; uname -m; ldd --version 2>&1 | sed -n 1p; ldconfig -p | grep -E "libglib-2.0.so|libGL.so.1|libEGL.so.1|libgbm.so|libwayland-client.so"
@@ -28,16 +28,19 @@ status=0
 su uc -c "python3 /work/apps/gui-go/e2e/linux/runtime_library_inventory.py observe /home/uc/mounted/app.AppImage /out/mounted" > /out/observe-mounted.log 2>&1 || status=1
 su uc -c "python3 /work/apps/gui-go/e2e/linux/runtime_library_inventory.py observe /home/uc/extracted/app.AppImage /out/extracted --extract" > /out/observe-extracted.log 2>&1 || status=1
 cd /home/uc/content && su uc -c "./app.AppImage --appimage-extract" > /out/extract-content.log 2>&1 && cp -a squashfs-root /out/squashfs-root
+# Hand the files back to the calling user: a CI runner is not root and must be able to read, upload and remove them.
+chown -R "$UC_HOST_UID:$UC_HOST_GID" /out
 exit $status
 ' > "$out/run.log" 2>&1 && rc=0 || rc=$?
 # Classification and assertions only read files and run readelf: any image with python3 and binutils will do (the clean host need not have them).
 analysis="${UC_ANALYSIS_IMAGE:-$image}"
-docker run --rm -v "$root:/work:ro" -v "$manifest:/in/package-manifest.json:ro" -v "$out:/out" "$analysis" bash -c '
+docker run --rm -e UC_HOST_UID="$(id -u)" -e UC_HOST_GID="$(id -g)" -v "$root:/work:ro" -v "$manifest:/in/package-manifest.json:ro" -v "$out:/out" "$analysis" bash -c '
 set -uo pipefail
 status=0
 python3 -B /work/apps/gui-go/e2e/linux/runtime_library_inventory.py merge /out/squashfs-root /out/runtime-inventory.json /out/mounted/observation.json /out/extracted/observation.json > /out/merge.log 2>&1 || status=1
 python3 -B /work/apps/gui-go/e2e/linux/appimage_content_check.py /out/squashfs-root /in/package-manifest.json /out/content-check.json --runtime-inventory /out/runtime-inventory.json > /out/content-check.log 2>&1 || status=1
 rm -rf /out/squashfs-root  # reproducible from the AppImage; its hashes are in runtime-inventory.json
+chown -R "$UC_HOST_UID:$UC_HOST_GID" /out
 exit $status
 ' >> "$out/run.log" 2>&1 && true || rc=$?
 echo "analysis-image: $analysis" >> "$out/host-image.txt"

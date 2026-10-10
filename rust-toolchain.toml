@@ -1,8 +1,8 @@
 [toolchain]
-# 钉死到 1.95.0，使 CI 与本地开发使用同一份 toolchain（缓存键也依赖它）。
-# 该版本最初因 `tauri-specta` 的依赖链需要 stable Rust 1.94+ 而选定；Tauri 宿主退役后
-# 不再有这个约束，降级需单独评估。CI macOS / windows runner 走 rustup 装下面这个
-# channel 即可；本地开发首次 `cargo` 调用 rustup 会自动安装。
+# 固定 1.95.0 作为已建立的本地/CI 构建基线，缓存键也依赖此版本。
+# Tauri 退役后不再由 tauri-specta 决定：当前 Cargo.lock 的依赖声明最高 MSRV 为
+# 1.91（iroh 1.3.0、openmls 0.9.0 等）。声明 MSRV 不代表所有目标实际可用，
+# 未完成各平台降级验收，因此保留现有 pin；不是宣称依赖必须使用 1.95。
 channel = "1.95.0"
 profile = "minimal"
 components = ["rustfmt", "clippy"]

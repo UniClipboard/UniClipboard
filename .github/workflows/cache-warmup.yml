@@ -87,11 +87,13 @@ jobs:
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
 
+      # Rust workspace only: uc-platform uses libdbus; GPUI links FreeType, xcb and xkbcommon (xcb comes with libxkbcommon-x11-dev).
+      # Wails GTK/WebKit and Linux packaging tools belong to the separate Go GUI build jobs.
       - name: Install system dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+            libdbus-1-dev libfreetype6-dev libxkbcommon-x11-dev
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
@@ -158,11 +160,13 @@ jobs:
           shared-key: coverage
           save-if: true
 
+      # Rust workspace only: uc-platform uses libdbus; GPUI links FreeType, xcb and xkbcommon (xcb comes with libxkbcommon-x11-dev).
+      # Wails GTK/WebKit and Linux packaging tools belong to the separate Go GUI build jobs.
       - name: Install system dependencies
         run: |
           sudo apt-get update
           # Same list as coverage.yml; libxkbcommon-x11-dev is linked by the GPUI quick panel's test binary.
-          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf xvfb libxkbcommon-x11-dev
+          sudo apt-get install -y --no-install-recommends libdbus-1-dev libfreetype6-dev libxkbcommon-x11-dev xvfb xauth
 
       - name: Generate coverage report
         run: |

@@ -13,12 +13,12 @@ case "$MODE" in
   *) echo "Usage: apps/gui-go/build.sh [manual|e2e]" >&2; exit 2 ;;
 esac
 mkdir -p target/gui-go
-cargo build --locked -p uc-daemon
-# The native quick panel helper ships next to the GUI executable.
-cargo build --locked -p quick-panel --bin uniclip-quick-panel
+TRIPLE="$(rustc --print host-tuple)"
+# stage-daemon owns the daemon and native helper build and staging for this invocation.
+node scripts/stage-daemon.mjs --debug
 (cd packages/desktop-host-go && go generate ./buildinfo)
 (cd apps/cli-go && go build -o ../../target/gui-go/uniclip ./cmd/uniclip)
-VITE_GUI_GO_E2E="$E2E" bun --bun run --cwd apps/gui-go/frontend build
+VITE_APP_VERSION="$(python3 -c 'import json;print(json.load(open("apps/gui-go/app.json"))["version"])')" VITE_GUI_GO_E2E="$E2E" bun --bun run --cwd apps/gui-go/frontend build
 # The release signer key comes from apps/gui-go/app.json, the single source of the app identity.
 # E2E builds leave it empty and use the local test feed override instead.
 PUBKEY=""
@@ -34,7 +34,8 @@ if [[ "$MODE" == e2e ]]; then GO_BUNDLE_ID="$BUNDLE_ID.e2e"; fi
 BUNDLE="$ROOT/target/gui-go/$APP.app"
 mkdir -p "$BUNDLE/Contents/MacOS"
 cp "target/gui-go/$APP-binary" "$BUNDLE/Contents/MacOS/gui-go"
-cp target/debug/uniclip-quick-panel "$BUNDLE/Contents/MacOS/uniclip-quick-panel"
+cp "target/sidecar-staging/uniclip-quick-panel-$TRIPLE" "$BUNDLE/Contents/MacOS/uniclip-quick-panel"
+cp "target/sidecar-staging/uniclipd-$TRIPLE" "$BUNDLE/Contents/MacOS/uniclipd"
 cp apps/gui-go/Info.plist "$BUNDLE/Contents/Info.plist"
 PLIST="$BUNDLE/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $BUNDLE_ID" -c "Set :CFBundleName $PRODUCT" "$PLIST"

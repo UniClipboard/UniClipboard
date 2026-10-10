@@ -27,9 +27,7 @@ user-data dirs" change happens in exactly one place.
 
 ## What stays out
 
-This crate owns the *raw computation*, not the abstraction. The
-`AppDirs` / `AppDirsPort` / `AppDirsError` types stay in `uc-core` /
-`uc-platform`. The `dev-profile` compile-time feature stays in `uc-platform`
-and is threaded in here via the `compile_default` parameter. This crate has no
-features and makes no error-mapping decisions: each consumer maps `None` to its
-own error type.
+本 crate 负责路径计算，`AppDirs` / `AppDirsPort` / `AppDirsError` 类型留在
+`uc-platform`。开发宿主通过运行时 `UC_PROFILE` 选择配置；可选的调用者默认值
+通过 `compile_default` 参数传入。本 crate 没有特性开关，不决定错误映射，各调用者
+自行把 `None` 转换为自己的错误类型。

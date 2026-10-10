@@ -28,8 +28,8 @@
 //!
 //! This crate owns the *raw computation*, not the abstraction. The
 //! `AppDirs` / `AppDirsPort` / `AppDirsError` types stay in `uc-core` /
-//! `uc-platform`; the `dev-profile` compile-time feature stays in `uc-platform`
-//! (passed in here as the `compile_default` parameter). This crate has no
+//! `uc-platform`. Optional caller defaults are passed through the
+//! `compile_default` parameter. This crate has no
 //! features and makes no error-mapping decisions — each consumer maps `None`
 //! to its own error type.
 
@@ -57,7 +57,7 @@ const PORTABLE_DATA_SUBDIR: &str = "data";
 /// Returns `None` when neither is set.
 ///
 /// `compile_default` lets the caller thread in a compile-time fallback (for
-/// example `uc-platform`'s `dev-profile` feature → `Some("dev")`); callers with
+/// example a host-specific profile); callers with
 /// no such fallback pass `None`.
 pub fn resolve_profile(compile_default: Option<&str>) -> Option<String> {
     if let Ok(profile) = std::env::var("UC_PROFILE") {
@@ -284,7 +284,7 @@ pub fn base_cache_dir() -> Option<PathBuf> {
 /// so the profile suffix comes purely from runtime `UC_PROFILE`. Returns `None`
 /// when the base data-local directory is unavailable; the caller maps that to
 /// its own error type. Consumers that carry a compile-time default (for example
-/// `uc-platform` under `dev-profile`) must compose via [`base_data_local_dir`] +
+/// a host using an explicit fallback) must compose via [`base_data_local_dir`] +
 /// [`resolved_app_dir_name`] instead so the suffix is preserved.
 pub fn app_data_root() -> Option<PathBuf> {
     Some(base_data_local_dir()?.join(resolved_app_dir_name(None)))

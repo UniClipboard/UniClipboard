@@ -4,13 +4,10 @@ use crate::ports::{AppDirs, AppDirsError, AppDirsProvider};
 
 /// Constructs the application directory name, appending a profile suffix when a profile is resolved.
 ///
-/// Delegates the raw computation to [`uc_app_paths::resolved_app_dir_name`],
-/// threading in `uc-platform`'s compile-time [`crate::default_profile`] (the
-/// `dev-profile` feature) as the fallback. The result is
-/// `app.uniclipboard.desktop` followed by `-<profile>` when a profile resolves,
-/// otherwise the bare app directory name.
+/// Delegates to the directory-layout authority with the runtime `UC_PROFILE`.
+/// The base name remains `app.uniclipboard.desktop`.
 fn resolved_app_dir_name() -> String {
-    uc_app_paths::resolved_app_dir_name(crate::default_profile())
+    uc_app_paths::resolved_app_dir_name(None)
 }
 
 pub struct DirsAppDirsAdapter {
@@ -96,8 +93,8 @@ impl AppDirsProvider for DirsAppDirsAdapter {
     /// `AppDirs` with `app_data_root` set to the base local data directory joined with the
     /// value captured from `resolved_app_dir_name()` when this adapter is created.
     ///
-    /// Depending on `UC_PROFILE`, `resolved_app_dir_name()` resolves to `"uniclipboard"`
-    /// or `"uniclipboard-{profile}"`.
+    /// Depending on `UC_PROFILE`, `resolved_app_dir_name()` resolves to `"app.uniclipboard.desktop"`
+    /// or `"app.uniclipboard.desktop-{profile}"`.
     ///
     /// # Examples
     ///

@@ -14,6 +14,9 @@ const sentryAuthToken = process.env.SENTRY_AUTH_TOKEN
 const sentryProject = process.env.VITE_SENTRY_PROJECT
 const sentryEnabled = Boolean(sentryAuthToken && sentryProject)
 const appVersion = process.env.VITE_APP_VERSION
+if (sentryEnabled && !appVersion) {
+  throw new Error('VITE_APP_VERSION is required when uploading Sentry source maps')
+}
 
 // The whole frontend lives in this directory: the business sources are `src` (`@`), the Wails
 // host modules `src/host`. The same config builds the three documents and runs the vitest suite.

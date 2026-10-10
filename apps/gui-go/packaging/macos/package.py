@@ -121,7 +121,7 @@ def cmd_bundle(a):
     env["VITE_GUI_GO_E2E"] = v["e2e"]
     env["VITE_APP_VERSION"] = CFG["version"]
     log("frontend build")
-    run(["bun", "--bun", "run", "--cwd", "apps/gui-go", "build"], cwd=REPO, env=env)
+    run(["bun", "--bun", "run", "--cwd", "apps/gui-go/frontend", "build"], cwd=REPO, env=env)
     dist = GUI_DIR / "frontend/dist"
     maps = sorted(str(p.relative_to(dist)) for p in dist.rglob("*.map"))
     if maps:

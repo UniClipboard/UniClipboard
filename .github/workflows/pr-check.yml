@@ -319,6 +319,40 @@ jobs:
             exit 1
           fi
 
+  # The native quick panel has a Windows platform layer (apps/quick-panel/src/platform/win32). Ubuntu and macOS never
+  # compile it, so it is compiled here on both Windows architectures. Running it needs a desktop session and is the
+  # job of apps/gui-go/e2e/windows_native_panel_run.py, not of this check.
+  quick-panel-windows:
+    name: Quick panel (${{ matrix.name }})
+    needs: changes
+    if: ${{ needs.changes.outputs.rust == 'true' }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: Windows x64, runner: windows-latest }
+          - { name: Windows ARM64, runner: windows-11-arm }
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: '. -> target'
+          shared-key: pr-check-quick-panel-${{ matrix.runner }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Check the quick panel
+        run: cargo check -p quick-panel --locked
+
   e2e:
     name: CLI E2E Tests
     needs: changes

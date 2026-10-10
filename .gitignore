@@ -102,3 +102,7 @@ p2p-bench-store/
 /p5l_plan.md
 /*_plan.md
 apps/cli-go/dist/
+
+# CI scratch: the sidecar workflow artifact downloaded into the checkout by build.yml; untracked files would make the packaging
+# provenance of the macOS and Windows packages say `dirty` (seen in real runs 37638284857 and 37875320922), which the release gate rejects.
+/sidecar-artifact/

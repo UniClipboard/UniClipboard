@@ -58,26 +58,29 @@ jobs:
       previous_tag: ${{ steps.get-previous-tag.outputs.previous_tag }}
       is_prerelease: ${{ steps.set-outputs.outputs.is_prerelease }}
       channel: ${{ steps.set-outputs.outputs.channel }}
+      source_sha: ${{ steps.pin-source.outputs.source_sha }}
     steps:
-      # Fail closed before anything is bumped, committed, tagged or published: the Tauri
-      # build, signing and updater pipeline that produced the desktop installers was retired
-      # with the Tauri host, and the Go/Wails host (apps/gui-go) has no signed release
-      # pipeline yet (the Windows and Linux installers). The updater signer is wired below; the macOS
-      # app, DMG and updater archive are built, signed and notarized by build.yml
-      # (package-macos-gui, #1895), but without the other platforms a
-      # release would still publish an incomplete desktop set. Remove this step when the Go release
-      # pipeline lands; the open work is listed in docs/architecture/gui-go-tauri-retirement.md.
-      - name: Desktop release pipeline is not available
-        run: |
-          echo "::error title=Release blocked::The Go/Wails desktop host has no release pipeline yet (signed packaging, updater signatures, installers). Tracked in #1896 to #1899 (macOS packaging: #1895); see docs/architecture/gui-go-tauri-retirement.md."
-          exit 1
-
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
           ref: ${{ github.event_name == 'push' && github.ref || inputs.branch }}
           token: ${{ secrets.GITHUB_TOKEN }}
           submodules: recursive
+
+      # Release prerequisites (fail closed). The standard path is: prepare-release -> release PR -> merge -> tag-on-merge pushes
+      # the version tag -> this workflow. The tag may exist without a production Windows signing backend; the release then
+      # fails here, before any build time is spent and before any tag, Release, R2, FlareRelease or channel write. Test signing
+      # (self-test, SignPath test-signing) never satisfies it: build.yml refuses those for a workflow_call build as well.
+      - name: Release prerequisites (production signing)
+        env:
+          WINDOWS_SIGN_BACKEND: ${{ secrets.WINDOWS_SIGN_BACKEND }}
+          SIGNPATH_PRODUCTION_POLICY_SLUG: ${{ vars.SIGNPATH_PRODUCTION_POLICY_SLUG }}
+          SIGNPATH_PRODUCTION_CERT_THUMBPRINT: ${{ vars.SIGNPATH_PRODUCTION_CERT_THUMBPRINT }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          # Opt-in for alpha only (a repository variable the maintainer sets; unset = fail closed). See docs/architecture/gui-go-release-pipeline.md.
+          ALLOW_UNSIGNED_WINDOWS_ALPHA: ${{ vars.ALLOW_UNSIGNED_WINDOWS_ALPHA }}
+          RELEASE_REF: ${{ github.event_name == 'push' && github.ref_name || format('v0-{0}', inputs.channel) }}
+        run: python3 scripts/ci/release_gate.py prerequisites
 
       - name: Setup Node.js
         if: github.event_name == 'workflow_dispatch'
@@ -134,6 +137,14 @@ jobs:
           git commit -m "chore: bump version to ${{ steps.set-outputs.outputs.version }}"
           git push origin ${{ inputs.branch }}
 
+      # Every later job builds, signs and collects exactly this commit (never a moving branch or tag name) and checks that
+      # every version carrier agrees with the version of the tag. The version itself comes from prepare-release.
+      - name: Pin source commit and verify version carriers
+        id: pin-source
+        run: |
+          python3 scripts/ci/release_gate.py source --version "${{ steps.set-outputs.outputs.version }}" --out release-source.json
+          echo "source_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
       - name: Check if tag exists
         if: github.event_name == 'workflow_dispatch'
         run: |
@@ -171,9 +182,10 @@ jobs:
     uses: ./.github/workflows/build.yml
     with:
       platform: ${{ inputs.platform || 'all' }}
-      branch: ${{ inputs.branch || '' }}
+      branch: ${{ needs.validate.outputs.source_sha }}
       channel: ${{ needs.validate.outputs.channel }}
       package_cli: true
+      allow_unsigned_windows: ${{ vars.ALLOW_UNSIGNED_WINDOWS_ALPHA == 'true' && needs.validate.outputs.channel == 'alpha' }}
       # A release tag can land while cache-warmup.yml is still writing a
       # freshly-bumped Cargo.lock's cache, so the read-only release build
       # races it and loses to GHA cache LRU eviction (see t-0159). Writing
@@ -187,7 +199,7 @@ jobs:
     uses: ./.github/workflows/build-cli.yml
     with:
       platform: ${{ inputs.platform || 'all' }}
-      branch: ${{ inputs.branch || '' }}
+      branch: ${{ needs.validate.outputs.source_sha }}
       channel: ${{ needs.validate.outputs.channel }}
       # macOS and Windows x64 CLI archives come from the build job above.
       linux_only: true
@@ -203,7 +215,16 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
-          ref: ${{ github.event_name == 'push' && github.ref || inputs.branch }}
+          ref: ${{ needs.validate.outputs.source_sha }}
+
+      # Before anything is installed or downloaded: the source gate refuses a dirty checkout, and `artifacts/` and
+      # `node_modules/` are not ignored by git.
+      - name: Verify the pinned source and version carriers
+        run: |
+          python3 scripts/ci/release_gate.py source \
+            --version "${{ needs.validate.outputs.version }}" \
+            --expect-sha "${{ needs.validate.outputs.source_sha }}" \
+            --out release-source.json
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -227,52 +248,51 @@ jobs:
       - name: Display artifact structure
         run: ls -R artifacts
 
-      - name: Prepare named release assets
-        run: python3 scripts/collect-release-assets.py --source artifacts --destination release-assets
-
       - name: Setup Go for updater signer
         uses: actions/setup-go@v6
         with:
           go-version-file: apps/gui-go/go.mod
           cache: false
 
-      - name: Sign updater artifacts and verify the production public key
-        working-directory: apps/gui-go
+      # Collect, gate (six-platform coverage, versions, source SHA, production Windows signature, no test artifacts), updater
+      # signatures with the production key and public-key check, secret-free re-verification, manifest and registration. The
+      # same script runs in the offline acceptance (apps/gui-go/e2e/release_assembly_run.py); it performs no external write.
+      - name: Assemble and verify release assets
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        run: go run ./cmd/updater-sign --artifacts-dir ../../release-assets --evidence ../../flare-signatures.json
-
-      - name: Assemble FlareRelease registration
+          # The gate pins the Windows Authenticode receipts to this certificate when SignPath production is the backend.
+          SIGNPATH_PRODUCTION_CERT_THUMBPRINT: ${{ vars.SIGNPATH_PRODUCTION_CERT_THUMBPRINT }}
         run: |
           VERSION="${{ needs.validate.outputs.version }}"
-          CHANNEL="${{ needs.validate.outputs.channel }}"
-          PUBLIC_URL="${{ vars.UPDATE_SERVER_URL }}"
-
-          node scripts/assemble-update-manifest.js \
-            --require-all-platforms \
+          python3 scripts/ci/assemble_release_assets.py \
+            --artifacts artifacts \
+            --work assembly \
             --version "$VERSION" \
-            --artifacts-dir release-assets \
-            --output "flare-release/manifest.json" \
-            --base-url "${PUBLIC_URL}/artifacts/v${VERSION}" \
+            --channel "${{ needs.validate.outputs.channel }}" \
+            --source-sha "${{ needs.validate.outputs.source_sha }}" \
+            --source-record release-source.json \
+            --base-url "${{ vars.UPDATE_SERVER_URL }}/artifacts/v${VERSION}" \
             --notes-file "docs/changelog/${VERSION}.md" \
-            --zh-notes-file "docs/changelog/${VERSION}.zh.md"
+            --zh-notes-file "docs/changelog/${VERSION}.zh.md" \
+            --registration-source "github-actions:${{ github.repository }}:${{ github.run_id }}" \
+            ${{ vars.ALLOW_UNSIGNED_WINDOWS_ALPHA == 'true' && needs.validate.outputs.channel == 'alpha' && '--allow-unsigned-windows-alpha' || '' }}
+          mv assembly/release-assets release-assets
+          mkdir flare-release
+          cp assembly/evidence/manifest.json assembly/evidence/registration.json flare-release/
 
-          node scripts/build-flare-release-registration.js \
-            --version "$VERSION" \
-            --channel "$CHANNEL" \
-            --manifest "flare-release/manifest.json" \
-            --artifacts-dir release-assets \
-            --source "github-actions:${{ github.repository }}:${{ github.run_id }}" \
-            --output "flare-release/registration.json"
+      - name: Record how the Windows packages are signed
+        id: windows-signing
+        run: |
+          MODE="$(python3 -c "import json;print(json.load(open('assembly/evidence/assembly-index.json'))['windowsSigning'])")"
+          echo "mode=$MODE" >> "$GITHUB_OUTPUT"
+          if [ "$MODE" = "unsigned-alpha" ]; then echo "unsigned=true" >> "$GITHUB_OUTPUT"; echo "::warning::The Windows packages in this alpha are NOT code-signed (ALLOW_UNSIGNED_WINDOWS_ALPHA)."; fi
 
       - name: Archive updater verification evidence
         uses: actions/upload-artifact@v7
         with:
           name: updater-verification
-          path: |
-            flare-signatures.json
-            flare-release/*.json
+          path: assembly/evidence/
           if-no-files-found: error
 
       - name: Sign release assets (SHA256SUMS + minisign)
@@ -384,6 +404,7 @@ jobs:
             --artifacts-dir "release-assets" \
             --template ".github/release-notes/release.md.tmpl" \
             --generated-notes-file "generated-notes.md" \
+            ${{ steps.windows-signing.outputs.unsigned == 'true' && '--windows-unsigned true' || '' }} \
             --output "release-notes.md"
 
       - name: Create GitHub Release
@@ -459,7 +480,7 @@ jobs:
           echo "### Next Steps" >> $GITHUB_STEP_SUMMARY
           echo "1. Go to [Releases](https://github.com/${{ github.repository }}/releases)" >> $GITHUB_STEP_SUMMARY
           if [ "${{ needs.validate.outputs.channel }}" = "alpha" ]; then
-            echo "2. Alpha release已自动发布，无需手动 publish" >> $GITHUB_STEP_SUMMARY
+            echo "2. Alpha release 已自动发布；Snap 与 COPR 只产出 artifact，需要人工 dispatch 才会写入商店/COPR" >> $GITHUB_STEP_SUMMARY
           else
             echo "2. Review the generated draft release notes" >> $GITHUB_STEP_SUMMARY
             echo "3. Publish the release when ready" >> $GITHUB_STEP_SUMMARY
@@ -506,6 +527,9 @@ jobs:
     # 这里仅异步触发独立的 snap.yml,让主发布流程在常规产物完成后尽快结束。
     #
     # 渠道映射:alpha→edge,beta→beta,rc→candidate,stable→stable。
+    # 只构建 artifact(release=false):Go 宿主在 snap strict 下的行为尚未验收
+    # (docs/architecture/gui-go-distribution-channels.md),推送商店必须由人显式
+    # workflow_dispatch 并勾选 release。
     # beta / rc / stable 仍由人工发布 GitHub Release 后触发 snap.yml。
     # snap.yml 保留手动入口,触发失败或 Snap Store 临时问题时可单独补跑。
     name: Dispatch snap workflow
@@ -527,15 +551,17 @@ jobs:
             "repos/${{ github.repository }}/actions/workflows/snap.yml/dispatches" \
             -f ref="v${VERSION}" \
             -f inputs[channel]="${SNAP_CHANNEL}" \
-            -f inputs[release]="true" \
+            -f inputs[release]="false" \
             -f inputs[branch]=""
 
-          echo "Dispatched snap.yml for v${VERSION} (${SNAP_CHANNEL})." >> "$GITHUB_STEP_SUMMARY"
+          echo "Dispatched snap.yml for v${VERSION} (${SNAP_CHANNEL}), artifact only (release=false)." >> "$GITHUB_STEP_SUMMARY"
 
   dispatch-copr-alpha:
     # alpha release 由本 workflow 自动发布,不会稳定触发 copr.yml 的
     # release.published 入口。这里异步触发 COPR,避免漏发,同时不等待 COPR 完成。
     #
+    # 只做 dry run(只产 SRPM artifact,不读 COPR 凭据、不提交构建):Go rpm 尚未经过
+    # 真实 COPR 提交验证。真实提交由人显式 workflow_dispatch(dry_run=false)。
     # stable / beta / rc 仍由人工发布 GitHub Release 后触发 copr.yml,
     # 避免 draft 还没确认就进入外部分发渠道。
     name: Dispatch COPR workflow for alpha
@@ -557,9 +583,9 @@ jobs:
             -f ref="v${VERSION}" \
             -f inputs[version]="${VERSION}" \
             -f inputs[project]="uniclipboard-alpha" \
-            -f inputs[run_ids]=""
-
-          echo "Dispatched copr.yml for v${VERSION} (uniclipboard-alpha)." >> "$GITHUB_STEP_SUMMARY"
+            -f inputs[run_ids]="" \
+            -f inputs[dry_run]="true"
+          echo "Dispatched copr.yml for v${VERSION} (uniclipboard-alpha), dry run: SRPM artifact only, nothing is submitted to COPR." >> "$GITHUB_STEP_SUMMARY"
 
   dispatch-npm-alpha:
     # alpha release 由本 workflow 用 GITHUB_TOKEN 自动发布,不会触发

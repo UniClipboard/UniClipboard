@@ -113,9 +113,11 @@ def main():
     image = args.upload_dir / f'UniClipboard_{version}_{a["appimage"]}.AppImage'
     archive = args.upload_dir / f'{image.name}.tar.gz'
     if deb.is_file():
+        # Same convention as the rpm below: the control Version spells the pre-release separator "~" (dpkg sorts it before the stable
+        # release); the file name keeps the release version.
         control = sh(['dpkg-deb', '-f', str(deb), 'Package', 'Version', 'Architecture'])
         report['debControl'] = control
-        if f'Package: {PACKAGE_NAME}\n' not in control + '\n' or f'Architecture: {a["deb"]}' not in control or f'Version: {version}' not in control:
+        if f'Package: {PACKAGE_NAME}\n' not in control + '\n' or f'Architecture: {a["deb"]}' not in control or f'Version: {version.replace("-", "~", 1)}' not in control:
             problems.append(f'deb control does not match {a["deb"]} {version}: {control}')
         sh(['dpkg-deb', '-x', str(deb), str(work / 'deb')])
         for exe in ('usr/bin/uniclipboard', 'usr/bin/uniclipd'):

@@ -83,7 +83,7 @@ describe('shipped uniclipd builds', () => {
     )
     // Only the targets that share a triple with the app reuse its sidecar.
     expect(step(build, 'Select CLI targets')).toContain(
-      'e.platform === "macos-latest" || e.target === "x86_64-pc-windows-msvc"'
+      'e.platform === "macos-latest" || (e.target === "x86_64-pc-windows-msvc" && !skipWindows)'
     )
     expect(step(cli, 'package CLI binary')).toContain(
       '"target/sidecar-staging/uniclipd-${{ matrix.target }}$EXE"'

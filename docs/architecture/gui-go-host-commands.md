@@ -29,6 +29,7 @@ Wails 版本与 Go 工具链只在 `apps/gui-go/go.mod` 中固定一处，生成
 
 - 参数按位置传递。参数个数不符时前端得到 `TypeError`；`undefined` 与 `null` 都会解码为非指针参数的零值，所以“缺失参数”与“空值”不可区分。必须区分的参数使用指针类型，并在方法内显式校验。
 - 方法首参为 `context.Context` 时由框架注入，前端取消调用即取消该 context；超时由 `commandContext` 补上（默认 30 秒，`download_update` 与 `install_update` 为 30 分钟）。
+  `download_update` 是例外：下载在后台独立于调用的 context 运行（窗口关闭或重新挂载不应中断下载），显式取消用 `cancel_download`，被取消的调用以文本错误拒绝，待更新回到可下载状态，页面收到 `Failed` 事件。
 - 方法返回的 `error` 在前端表现为 `RuntimeError`，其 `.cause` 是 `hostapi.Marshal` 编码的 JSON；panic 被框架恢复为没有 `cause` 的 `RuntimeError`。`apps/gui/src/lib/ipc.ts` 的 `hostRejection` 负责把它还原为类型化错误对象。
 - Go 的 `[]byte` 在 JSON 中是 base64 字符串（`save_image_as`、`open_image_externally` 的 `data`），不再是数字数组。
 - 命名字符串常量生成为 TypeScript `enum`，成员名等于 Go 常量名（例如 `InstallKind.InstallKindDeb`）；Wails 不生成字面量联合。

@@ -1,6 +1,8 @@
 ; NSIS installer hooks for UniClipboard (Tauri `bundle.windows.nsis.installerHooks`).
 ;
 ; Why this exists:
+;   The native quick panel `uniclip-quick-panel.exe` is a child of the GUI like the daemon and is
+;   stopped and waited for the same way.
 ;   Since ADR-008 the clipboard engine ships as a standalone `uniclipd.exe`
 ;   sidecar (bundled via `externalBin`). The GUI (`UniClipboard.exe`) spawns it
 ;   as a detached process. A manual `setup.exe` run over a live install must
@@ -32,8 +34,10 @@
   ;    covers an exe named uniclipboard.exe).
   nsExec::Exec 'taskkill /F /T /IM UniClipboard.exe'
   Pop $0
-  ; 2) Daemon.
+  ; 2) Daemon and the native quick panel (the GUI supervises it and restarts it, so it goes after the GUI too).
   nsExec::Exec 'taskkill /F /T /IM uniclipd.exe'
+  Pop $0
+  nsExec::Exec 'taskkill /F /T /IM uniclip-quick-panel.exe'
   Pop $0
 
   ; 3) Wait until the existing daemon binary is unlocked. Skip on a fresh
@@ -54,6 +58,20 @@
     ; 20 * 500ms = ~10s ceiling, then fall through and let NSIS try the write.
     IntCmp $R0 20 uc_unlock_done_${UNIQ} uc_wait_unlock_${UNIQ} uc_unlock_done_${UNIQ}
   uc_unlock_done_${UNIQ}:
+  ; Same wait for the quick panel's image.
+  IfFileExists "$INSTDIR\uniclip-quick-panel.exe" 0 uc_helper_done_${UNIQ}
+  StrCpy $R0 0
+  uc_wait_helper_${UNIQ}:
+    ClearErrors
+    FileOpen $0 "$INSTDIR\uniclip-quick-panel.exe" a
+    IfErrors uc_helper_locked_${UNIQ}
+    FileClose $0
+    Goto uc_helper_done_${UNIQ}
+  uc_helper_locked_${UNIQ}:
+    Sleep 500
+    IntOp $R0 $R0 + 1
+    IntCmp $R0 20 uc_helper_done_${UNIQ} uc_wait_helper_${UNIQ} uc_helper_done_${UNIQ}
+  uc_helper_done_${UNIQ}:
   Pop $R0
   Pop $0
 !macroend

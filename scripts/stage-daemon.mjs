@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Build the `uniclipd` daemon for a target triple and stage it, under the name
-// `uniclipd-<target-triple>`, in `target/sidecar-staging/`. On macOS it also stages the native
+// `uniclipd-<target-triple>`, in `target/sidecar-staging/`. On macOS and Windows it also stages the native
 // quick panel helper `uniclip-quick-panel` the same way.
 //
 // ADR-008 D13 ships `uniclipd` inside the GUI installer so the GUI (and the CLI) can spawn it as
@@ -97,9 +97,9 @@ copyFileSync(builtPath, sidecarPath)
 if (!isWindows) chmodSync(sidecarPath, 0o755)
 console.log(`[sidecar] staged ${builtPath} -> ${sidecarPath}`)
 
-// 4) macOS only: the native quick panel helper ships next to the app executable too, where
-//    the Go host's `quickpanelhelper.ResolveExePath` looks for it. Other platforms keep the WebView panel.
-if (triple.includes('apple-darwin')) {
+// 4) macOS and Windows: the native quick panel helper ships next to the app executable too, where
+//    the Go host's `quickpanelhelper.ResolveExePath` looks for it. Linux keeps the WebView panel.
+if (triple.includes('apple-darwin') || isWindows) {
   const helperArgs = ['build', '--locked', '-p', 'quick-panel', '--bin', 'uniclip-quick-panel']
   if (release) helperArgs.push('--release')
   if (target) helperArgs.push('--target', target)
@@ -107,10 +107,10 @@ if (triple.includes('apple-darwin')) {
   console.log(`[sidecar] cargo ${helperArgs.join(' ')}`)
   execFileSync('cargo', helperArgs, { cwd: repoRoot, stdio: 'inherit' })
   const helperBuilt = target
-    ? join(repoRoot, 'target', triple, profile, 'uniclip-quick-panel')
-    : join(repoRoot, 'target', profile, 'uniclip-quick-panel')
-  const helperPath = join(binariesDir, `uniclip-quick-panel-${triple}`)
+    ? join(repoRoot, 'target', triple, profile, `uniclip-quick-panel${exeSuffix}`)
+    : join(repoRoot, 'target', profile, `uniclip-quick-panel${exeSuffix}`)
+  const helperPath = join(binariesDir, `uniclip-quick-panel-${triple}${exeSuffix}`)
   copyFileSync(helperBuilt, helperPath)
-  chmodSync(helperPath, 0o755)
+  if (!isWindows) chmodSync(helperPath, 0o755)
   console.log(`[sidecar] staged ${helperBuilt} -> ${helperPath}`)
 }

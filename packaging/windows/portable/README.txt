@@ -8,15 +8,16 @@ This is the portable build of UniClipboard. It needs no installation and keeps
 all of your data next to the executable.
 
 How to use:
-  1. Keep UniClipboard.exe, uniclipd.exe and portable.dat together in the
-     same folder. uniclipd.exe is the background sync service — the app
-     cannot start without it.
+  1. Keep UniClipboard.exe, uniclipd.exe, uniclip-quick-panel.exe and
+     portable.dat together in the same folder. uniclipd.exe is the background
+     sync service — the app cannot start without it. uniclip-quick-panel.exe
+     is the quick panel; without it the app falls back to the older panel.
   2. Double-click UniClipboard.exe to run.
 
 Where your data lives:
   All data (encrypted database, keys, search index, logs) is stored in a
   "data" folder created next to UniClipboard.exe. Delete that folder to reset
-  the app. Move the whole folder (both exes + portable.dat + data) to carry
+  the app. Move the whole folder (all exes + portable.dat + data) to carry
   your setup to another machine or a USB stick.
 
 The "portable.dat" marker is what enables portable mode. If you remove it, the
@@ -25,8 +26,8 @@ like the installed version.
 
 Updates:
   The portable build does NOT update itself. To upgrade, download the newer
-  "*-portable.zip" from the Releases page and replace UniClipboard.exe and
-  uniclipd.exe. Your "data" folder is preserved across upgrades.
+  "*-portable.zip" from the Releases page and replace UniClipboard.exe,
+  uniclipd.exe and uniclip-quick-panel.exe. Your "data" folder is preserved across upgrades.
   Releases: https://github.com/UniClipboard/UniClipboard/releases
 
 Requirements:
@@ -46,14 +47,16 @@ Known limitation:
 这是 UniClipboard 的便携版（绿色版），免安装，所有数据都放在程序旁边。
 
 使用方法：
-  1. 让 UniClipboard.exe、uniclipd.exe 与 portable.dat 保持在同一个文件夹
-     内。uniclipd.exe 是后台同步服务，缺少它应用将无法启动。
+  1. 让 UniClipboard.exe、uniclipd.exe、uniclip-quick-panel.exe 与
+     portable.dat 保持在同一个文件夹内。uniclipd.exe 是后台同步服务，缺少它
+     应用将无法启动；uniclip-quick-panel.exe 是快捷面板，缺少它时应用退回
+     旧版面板。
   2. 双击 UniClipboard.exe 运行。
 
 数据存放位置：
   所有数据（加密数据库、密钥、搜索索引、日志）都保存在 UniClipboard.exe
   同目录下自动创建的 “data” 文件夹中。删除该文件夹即可重置应用。把整个
-  文件夹（两个 exe + portable.dat + data）一起拷走，即可迁移到其它电脑或
+  文件夹（所有 exe + portable.dat + data）一起拷走，即可迁移到其它电脑或
   U 盘。
 
 “portable.dat” 标记文件用于开启便携模式。删除它后，应用会和安装版一样把
@@ -61,7 +64,7 @@ Known limitation:
 
 更新：
   便携版不会自更新。升级时请从 Releases 页面下载新的 “*-portable.zip” 并
-  替换 UniClipboard.exe 与 uniclipd.exe，升级过程中 “data” 文件夹会被保留。
+  替换 UniClipboard.exe、uniclipd.exe 与 uniclip-quick-panel.exe，升级过程中 “data” 文件夹会被保留。
   Releases: https://github.com/UniClipboard/UniClipboard/releases
 
 运行要求：

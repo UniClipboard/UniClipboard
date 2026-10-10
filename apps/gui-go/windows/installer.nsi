@@ -26,7 +26,7 @@
 ; replaced by overwriting in place (same registry identity, same files).
 ;
 ; Required defines (package_windows.py): PRODUCTNAME VERSION VERSIONWITHBUILD MANUFACTURER BUNDLEID MAINBINARYNAME
-; SRC_MAIN SRC_DAEMON ICON OUTFILE HOOKS PLUGINDIR, and SRC_UNINSTALLER (the installer proper only)
+; SRC_MAIN SRC_DAEMON SRC_HELPER ICON OUTFILE HOOKS PLUGINDIR, and SRC_UNINSTALLER (the installer proper only)
 ;
 ; The script is compiled twice (package_windows.py), the "signing an uninstaller externally" pattern of NSIS:
 ;   -DBUILD_UNINSTALLER   a generator whose only job is to write uninstall.exe next to itself (it holds the uninstall pages
@@ -189,6 +189,8 @@ Section "Install"
   !insertmacro NSIS_HOOK_PREINSTALL
   File "/oname=${MAINBINARYNAME}" "${SRC_MAIN}"
   File "/oname=uniclipd.exe" "${SRC_DAEMON}"
+  ; The native quick panel: the app starts it as a sibling process.
+  File "/oname=uniclip-quick-panel.exe" "${SRC_HELPER}"
 !ifdef BUILD_UNINSTALLER
   WriteUninstaller "$INSTDIR\uninstall.exe"
 !else
@@ -276,6 +278,7 @@ Section "Uninstall"
   !insertmacro NSIS_HOOK_PREUNINSTALL
   Delete "$INSTDIR\${MAINBINARYNAME}"
   Delete "$INSTDIR\uniclipd.exe"
+  Delete "$INSTDIR\uniclip-quick-panel.exe"
   Delete "$INSTDIR\uninstall.exe"
   RMDir "$INSTDIR"
   ${If} $UpdateMode <> 1

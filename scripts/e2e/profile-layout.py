@@ -73,6 +73,8 @@ def main():
 
             try:
                 run('space', 'init', '--passphrase', 'profile-layout-e2e-passphrase', '--device-name', 'layout-e2e')
+                # Finish the initialization's oneshot residency before exercising standalone startup.
+                run('stop')
                 run('start')
                 conn = json.loads((data / 'daemon.conn').read_text())
                 record['pids'] = [conn['pid']]

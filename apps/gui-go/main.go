@@ -9,7 +9,6 @@ import (
 	"os"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/buildinfo"
 	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/daemonclient"
@@ -26,7 +25,7 @@ var assets embed.FS
 
 type HostService struct {
 	app              *application.App
-	client           *daemonclient.Client
+	client           atomic.Pointer[daemonclient.Client] // replaced when the daemon is restarted; read through daemon()
 	effects          *visualEffects
 	panel            panelState
 	exit             exitIntent
@@ -61,41 +60,11 @@ type HostService struct {
 }
 
 // emit broadcasts an event to every window, matching Tauri's app-wide emit.
+// daemon returns the client of the current daemon. A restart replaces it (the new process has a new token), so
+// callers fetch it per use instead of keeping it.
+func (h *HostService) daemon() *daemonclient.Client { return h.client.Load() }
+
 func (h *HostService) emit(name string, payload any) { h.app.Event.Emit(name, payload) }
-
-func (h *HostService) takePendingNavigation() any {
-	h.navMu.Lock()
-	defer h.navMu.Unlock()
-	if h.pendingNavigation == "" {
-		return nil
-	}
-	route := h.pendingNavigation
-	h.pendingNavigation = ""
-	return route
-}
-
-type Connection struct {
-	BaseURL string `json:"baseUrl"`
-	WSURL   string `json:"wsUrl"`
-	Profile string `json:"profile"`
-	PID     uint32 `json:"pid"`
-}
-
-func (h *HostService) Connection() (Connection, error) {
-	c, err := daemonproc.ReadConnFile()
-	if err != nil {
-		return Connection{}, err
-	}
-	if c == nil {
-		return Connection{}, fmt.Errorf("daemon connection unavailable")
-	}
-	return Connection{h.client.BaseURL, h.client.WSURL, os.Getenv("UC_PROFILE"), c.PID}, nil
-}
-func (h *HostService) Session() (daemonclient.Session, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	return h.client.ExchangeSession(ctx, "gui")
-}
 
 // openMainWindow creates the main window. Closing it hides it so the process,
 // daemon connection and window state stay alive until an explicit quit; the
@@ -130,7 +99,7 @@ func main() {
 	}
 	host := &HostService{effects: newVisualEffects(), notifier: notifications.New(), wake: make(chan string, 1)}
 	host.lastCheck.recordNow()
-	services := append([]application.Service{application.NewService(host)}, notifierServices(host)...)
+	services := append([]application.Service{hostService(host)}, notifierServices(host)...)
 	services = append(services, e2eServices(host)...)
 	uniqueID, err := singleInstanceID()
 	if err != nil {
@@ -220,7 +189,7 @@ func (h *HostService) bootstrap() {
 	if err != nil {
 		h.fatal(err)
 	}
-	h.client = client
+	h.client.Store(client)
 	startup, _ := h.loadStartupSettings()
 	// A Silent or Lightweight launch does not build the window at boot (and so never pays the WebView
 	// cost); it is created the first time something asks to show it.

@@ -1,3 +1,4 @@
+import { DaemonBootstrapFailureKind } from '@host/models'
 import { fireEvent, render, screen, waitFor, cleanup } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { openUpdaterWindow, checkForUpdate } from '@/api/updater'
@@ -54,7 +55,7 @@ describe('startup recovery screen', () => {
       <AppStatusScreen
         detail="version mismatch"
         failure={{
-          kind: 'versionTooOld',
+          kind: DaemonBootstrapFailureKind.BootstrapFailureVersionTooOld,
           detail: 'version mismatch',
           observedVersion: '2.0.0',
           expectedVersion: '1.0.0',

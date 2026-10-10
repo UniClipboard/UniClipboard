@@ -2,8 +2,8 @@ import { isTauri } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 let subscribeDesktopTheme: typeof import('@/lib/desktop-theme').subscribeDesktopTheme
+import type { DesktopThemeSnapshot } from '@host/models'
 import { commands } from '@/lib/ipc'
-import type { DesktopThemeSnapshot } from '@/lib/ipc-bindings.generated'
 
 vi.mock('@tauri-apps/api/core', () => ({ isTauri: vi.fn() }))
 vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn() }))

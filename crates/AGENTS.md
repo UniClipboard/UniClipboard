@@ -41,7 +41,7 @@
 | Task                      | Location                                   | Notes                                                                   |
 | ------------------------- | ------------------------------------------ | ----------------------------------------------------------------------- |
 | Desktop host (Go/Wails)   | `apps/gui-go/`                             | Window/tray/updater/packaging; talks to the daemon over loopback HTTP/WS |
-| Host command contract     | `apps/gui/src/lib/ipc-bindings.generated.ts` | Frozen host command contract, hand-maintained with the Go handlers     |
+| Host command contract     | `apps/gui-go/*.go` (`HostService`), `docs/architecture/gui-go-host-commands.md` | Go methods are the contract; Wails generates the TS bindings |
 | Engine 发布版本           | `Cargo.toml`                               | 所有使用方共享一个固定的 `UniClipboard/Engine` 发布标签                 |
 | Desktop host preparation  | `crates/uc-bootstrap/src/wiring/`          | Desktop paths, secure storage and clipboard selection                   |
 | Desktop runtime           | `crates/uc-desktop/src/runtime.rs`         | Framework-agnostic desktop runtime shared by host shells                |

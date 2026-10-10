@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/UniClipboard/UniClipboard/apps/gui-go/internal/hostapi"
 	"github.com/UniClipboard/UniClipboard/apps/gui-go/internal/update"
 	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/daemonclient"
 )
@@ -46,7 +47,7 @@ func (h *HostService) captureUpdateEvent(event map[string]any) {
 			for event := range q.events {
 				ctx, cancel := context.WithTimeout(context.Background(), analyticsTimeout)
 				began := time.Now()
-				err := h.client.Enveloped(ctx, daemonclient.Request{Method: http.MethodPost, Path: "/analytics/capture", JSON: event}, nil)
+				err := h.daemon().Enveloped(ctx, daemonclient.Request{Method: http.MethodPost, Path: "/analytics/capture", JSON: event}, nil)
 				cancel()
 				if err != nil {
 					log.Printf("update analytics: capture %v failed after %s: %v", event["kind"], time.Since(began).Round(time.Millisecond), err)
@@ -93,9 +94,9 @@ const (
 )
 
 // preconditionError marks a download refused before it began and cancelledError one the user cancelled; both
-// read as plain strings, but only commands convert them (`stringError(err.Error())`) before they cross the wire.
-type preconditionError struct{ stringError }
-type cancelledError struct{ stringError }
+// read as plain strings, but only commands convert them (`hostapi.TextError(err.Error())`) before they cross the wire.
+type preconditionError struct{ hostapi.TextError }
+type cancelledError struct{ hostapi.TextError }
 
 func classifyDownload(err error) downloadFailure {
 	var pre preconditionError

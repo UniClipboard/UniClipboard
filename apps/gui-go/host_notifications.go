@@ -1,11 +1,11 @@
 package main
 
 import (
-	"context"
 	"log"
 	"strconv"
 	"time"
 
+	"github.com/UniClipboard/UniClipboard/apps/gui-go/internal/hostapi"
 	"github.com/wailsapp/wails/v3/pkg/services/notifications"
 )
 
@@ -13,10 +13,6 @@ import (
 // background daemon (issue #1129: without it the GUI process exiting looks like a crash).
 const backgroundNotice = "UniClipboard 仍在后台运行，点应用图标可重新打开窗口。\n" +
 	"Still running in the background — open it from the app icon to show the window again."
-
-// notificationAction is delivered to the frontend when the user clicks a notification, in the shape the
-// Tauri plugin's `onAction` handler receives.
-const notificationActionEvent = "notification://action"
 
 func (h *HostService) notificationsGranted() bool {
 	if granted, handled := notifyPermissionOverride(); handled {
@@ -55,39 +51,46 @@ func (h *HostService) enterLightweightMode() {
 func (h *HostService) watchNotificationClicks() {
 	h.notifier.OnNotificationResponse(func(result notifications.NotificationResult) {
 		e2eNotificationResponse(result.Response.ID)
-		payload := map[string]any{}
+		var payload NotificationAction
 		if id, err := strconv.Atoi(result.Response.ID); err == nil {
-			payload["id"] = id
+			payload.ID = &id
 		}
 		h.emit(notificationActionEvent, payload)
 	})
 }
 
-func init() {
-	register(map[string]commandFunc{
-		"host_notification_permission": func(_ context.Context, h *HostService, _ commandArgs) (any, error) {
-			return h.notificationsGranted(), nil
-		},
-		"host_notification_request_permission": func(_ context.Context, h *HostService, _ commandArgs) (any, error) {
-			if h.requestNotificationPermission() {
-				return "granted", nil
-			}
-			return "denied", nil
-		},
-		"host_notification_send": func(_ context.Context, h *HostService, args commandArgs) (any, error) {
-			var options struct {
-				ID    *int   `json:"id"`
-				Title string `json:"title"`
-				Body  string `json:"body"`
-			}
-			if err := args.decode("options", &options); err != nil {
-				return nil, err
-			}
-			id := "n-" + strconv.FormatInt(time.Now().UnixNano(), 10)
-			if options.ID != nil {
-				id = strconv.Itoa(*options.ID) // a stable id replaces an earlier notification of the same kind
-			}
-			return nil, wrapInternal(h.notify(id, options.Title, options.Body))
-		},
-	})
+// HostNotificationPermission reports whether system notifications are allowed. It is an adapter command of the
+// page's notification plugin import (frontend/src/host/notification.ts), not part of the Tauri command set.
+//
+//uc:errors none
+//uc:os all=real
+//uc:adapter @tauri-apps/plugin-notification
+func (h *HostService) HostNotificationPermission() bool {
+	return h.notificationsGranted()
+}
+
+// HostNotificationRequestPermission asks the system for notification permission (adapter command).
+//
+//uc:errors none
+//uc:os all=real
+//uc:adapter @tauri-apps/plugin-notification
+func (h *HostService) HostNotificationRequestPermission() NotificationPermission {
+	if h.requestNotificationPermission() {
+		return NotificationGranted
+	}
+	return NotificationDenied
+}
+
+// HostNotificationSend shows a system notification (adapter command). A stable ID replaces an earlier
+// notification of the same kind.
+//
+//uc:errors command InternalError
+//uc:os all=real
+//uc:adapter @tauri-apps/plugin-notification
+func (h *HostService) HostNotificationSend(options HostNotification) error {
+	id := "n-" + strconv.FormatInt(time.Now().UnixNano(), 10)
+	if options.ID != nil {
+		id = strconv.Itoa(*options.ID)
+	}
+	return hostapi.Internal(h.notify(id, options.Title, options.Body))
 }

@@ -1,18 +1,25 @@
+import {
+  AutoResult,
+  EffectsMode,
+  EffectsPersistence,
+  EffectsReason,
+  SystemMotion,
+  type EffectsSnapshot,
+} from '@host/models'
 import { visualEffectsApi } from '@/api/visual-effects'
-import type { EffectsMode, EffectsSnapshot, SystemMotion } from '@/lib/ipc-bindings.generated'
 import { applyMotionPreference } from '@/lib/visual-effects-motion'
 
 export const INITIAL_EFFECTS: EffectsSnapshot = {
   sessionId: '',
   revision: 0,
-  mode: 'auto',
-  autoForSession: 'smooth',
+  mode: EffectsMode.EffectsModeAuto,
+  autoForSession: AutoResult.AutoResultSmooth,
   nextAuto: null,
-  systemMotion: 'unknown',
+  systemMotion: SystemMotion.SystemMotionUnknown,
   reduceMotion: true,
   lowEffects: true,
-  reason: 'unknown',
-  persistence: 'session_only',
+  reason: EffectsReason.EffectsReasonUnknown,
+  persistence: EffectsPersistence.EffectsPersistenceSessionOnly,
 }
 
 export function createVisualEffectsStore(
@@ -96,7 +103,11 @@ export function initializeVisualEffects(): () => void {
     /* Unknown stays conservative. */
   }
   const systemMotion = (): SystemMotion =>
-    media ? (media.matches ? 'reduce' : 'allow') : 'unknown'
+    media
+      ? media.matches
+        ? SystemMotion.SystemMotionReduce
+        : SystemMotion.SystemMotionAllow
+      : SystemMotion.SystemMotionUnknown
   const sync = async () => {
     if (syncing) {
       syncAgain = true

@@ -23,7 +23,8 @@
 
     /* Path Aliases */
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@host/*": ["../gui-go/frontend/bindings/github.com/UniClipboard/UniClipboard/apps/gui-go/*"]
     }
   },
   "include": ["src"],

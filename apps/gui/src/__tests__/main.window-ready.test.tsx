@@ -22,7 +22,6 @@ vi.mock('react-dom/client', async importOriginal => {
   }
 })
 vi.mock('@tauri-apps/api/window', () => ({ getCurrentWindow: () => mocks }))
-vi.mock('@tauri-apps/plugin-log', () => ({ attachConsole: vi.fn() }))
 vi.mock('@/lib/platform', () => ({
   detectPlatformInfo: () => ({
     isLinux: true,

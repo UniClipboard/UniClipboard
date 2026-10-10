@@ -6,122 +6,188 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/UniClipboard/UniClipboard/apps/gui-go/internal/hostapi"
 	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/buildinfo"
 	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/daemonclient"
 )
 
-const contentLockChangedEvent = "content-lock-changed"
+// Daemon connection, identity and content lock commands.
 
-func init() {
-	register(map[string]commandFunc{
-		"get_daemon_connection_info": func(_ context.Context, h *HostService, _ commandArgs) (any, error) {
-			return map[string]string{"baseUrl": h.client.BaseURL, "wsUrl": h.client.WSURL}, nil
-		},
-		"get_daemon_session": func(ctx context.Context, h *HostService, _ commandArgs) (any, error) {
-			session, err := h.client.ExchangeSession(ctx, "gui")
-			if err != nil {
-				return nil, internalError(err)
-			}
-			return session, nil
-		},
-		"get_daemon_bootstrap_failure": func(context.Context, *HostService, commandArgs) (any, error) { return nil, nil },
-		"get_daemon_startup_status": func(ctx context.Context, h *HostService, _ commandArgs) (any, error) {
-			raw, err := h.client.StartupStatus(ctx)
-			if err != nil {
-				return nil, internalError(err)
-			}
-			if raw == nil {
-				return nil, nil
-			}
-			return raw, nil
-		},
-		"get_tauri_pid": func(context.Context, *HostService, commandArgs) (any, error) { return os.Getpid(), nil },
-		"get_device_id": func(ctx context.Context, h *HostService, _ commandArgs) (any, error) {
-			return h.deviceID(ctx)
-		},
-		"get_device_meta": func(ctx context.Context, h *HostService, _ commandArgs) (any, error) {
-			id, err := h.deviceID(ctx)
-			if err != nil {
-				return nil, err
-			}
-			return map[string]any{
-				"deviceId":        id,
-				"deviceRole":      "gui-host",
-				"platform":        hostPlatform(),
-				"appVersion":      buildinfo.PackageVersion,
-				"appChannel":      "dev",
-				"runtimeProfile":  os.Getenv("UC_PROFILE"),
-				"developmentMode": os.Getenv("UNICLIPBOARD_ENV") == "development",
-			}, nil
-		},
-		"get_content_unlocked": func(ctx context.Context, h *HostService, _ commandArgs) (any, error) {
-			var status struct {
-				Unlocked bool `json:"unlocked"`
-			}
-			if err := h.client.Get(ctx, "/content-lock", &status); err != nil {
-				return nil, internalError(err)
-			}
-			return status.Unlocked, nil
-		},
-		"get_profile_recovery": func(ctx context.Context, h *HostService, _ commandArgs) (any, error) {
-			var out json.RawMessage
-			if err := h.client.Get(ctx, "/encryption/recovery", &out); err != nil {
-				return nil, internalError(err)
-			}
-			return out, nil
-		},
-		"unlock_content": func(ctx context.Context, h *HostService, args commandArgs) (any, error) {
-			var request struct {
-				Passphrase string `json:"passphrase"`
-			}
-			if err := args.decode("request", &request); err != nil {
-				return nil, err
-			}
-			err := h.client.Enveloped(ctx, daemonclient.Request{Method: http.MethodPost, Path: "/content-lock/unlock", JSON: map[string]string{"passphrase": request.Passphrase}}, nil)
-			if err != nil {
-				// Only the stable code crosses this boundary; server text may contain private data.
-				return nil, codeError{Code: contentUnlockCode(daemonclient.ErrorCode(err))}
-			}
-			h.emit(contentLockChangedEvent, nil)
-			return nil, nil
-		},
-		"unlock_content_from_keyring": func(ctx context.Context, h *HostService, _ commandArgs) (any, error) {
-			if keyringUnlockDenied() {
-				return false, nil // the user refused the keychain prompt: the page falls back to the passphrase form
-			}
-			var status struct {
-				Unlocked bool `json:"unlocked"`
-			}
-			if err := h.client.Enveloped(ctx, daemonclient.Request{Method: http.MethodPost, Path: "/content-lock/unlock-keyring"}, &status); err != nil {
-				return nil, internalError(err)
-			}
-			if status.Unlocked {
-				h.emit(contentLockChangedEvent, nil)
-			}
-			return status.Unlocked, nil
-		},
-	})
-}
-
-var contentUnlockCodes = map[string]bool{
-	"WRONG_PASSPHRASE": true, "CORRUPTED_KEY_MATERIAL": true, "SETUP_NOT_COMPLETED": true,
-	"SPACE_NOT_INITIALIZED": true, "PROFILE_RECOVERY_REQUIRED": true, "PROFILE_RECOVERY_PARTIAL": true,
-	"PROFILE_RECOVERY_UNSUPPORTED": true, "PROFILE_RECOVERY_PERSISTENCE_FAILED": true,
-}
-
-func contentUnlockCode(code string) string {
-	if contentUnlockCodes[code] {
-		return code
+// GetDaemonConnectionInfo tells the page where the daemon listens. It is nil until the daemon bootstrap finished.
+//
+//uc:errors none
+//uc:os all=real
+func (h *HostService) GetDaemonConnectionInfo() *DaemonConnection {
+	if h.daemon() == nil {
+		return nil
 	}
-	return "INTERNAL"
+	return &DaemonConnection{BaseURL: h.daemon().BaseURL, WSURL: h.daemon().WSURL}
+}
+
+// GetDaemonSession exchanges a short-lived daemon session for the page. It is nil until the daemon bootstrap
+// finished.
+//
+//uc:errors command InternalError
+//uc:os all=real
+func (h *HostService) GetDaemonSession(ctx context.Context) (*DaemonSession, error) {
+	if h.daemon() == nil {
+		return nil, nil
+	}
+	ctx, cancel := commandContext(ctx, "get_daemon_session")
+	defer cancel()
+	session, err := h.daemon().ExchangeSession(ctx, "gui")
+	if err != nil {
+		return nil, hostapi.Internal(err)
+	}
+	return &DaemonSession{SessionToken: session.SessionToken, ExpiresInSecs: session.ExpiresInSecs, RefreshAtSecs: session.RefreshAtSecs}, nil
+}
+
+// GetDaemonBootstrapFailure reports why the daemon bootstrap failed. It is always nil in this host: a bootstrap
+// failure ends the process with a native dialog (see HostService.fatal), so no page is left to ask.
+//
+//uc:errors none
+//uc:os all=noop
+func (h *HostService) GetDaemonBootstrapFailure() *DaemonBootstrapFailure {
+	return nil
+}
+
+// GetDaemonStartupStatus returns the daemon's startup progress (`GET /startup`) as the daemon sent it: nil while
+// the daemon is not reachable yet. The payload is owned by the daemon contract (crates/uc-daemon-contract startup.rs),
+// which the OpenAPI document does not export, so the host passes it through untouched and the page declares its shape.
+//
+//uc:errors command InternalError
+//uc:os all=real
+func (h *HostService) GetDaemonStartupStatus(ctx context.Context) (json.RawMessage, error) {
+	ctx, cancel := commandContext(ctx, "get_daemon_startup_status")
+	defer cancel()
+	raw, err := h.daemon().StartupStatus(ctx)
+	if err != nil {
+		return nil, hostapi.Internal(err)
+	}
+	return raw, nil
+}
+
+// GetDeviceID returns this device's peer id.
+//
+//uc:errors command InternalError
+//uc:os all=real
+func (h *HostService) GetDeviceID(ctx context.Context) (string, error) {
+	ctx, cancel := commandContext(ctx, "get_device_id")
+	defer cancel()
+	return h.deviceID(ctx)
+}
+
+// GetDeviceMeta returns the host's device and application metadata for the page's Sentry scope.
+//
+//uc:errors command InternalError
+//uc:os all=real
+func (h *HostService) GetDeviceMeta(ctx context.Context) (DeviceMeta, error) {
+	ctx, cancel := commandContext(ctx, "get_device_meta")
+	defer cancel()
+	id, err := h.deviceID(ctx)
+	if err != nil {
+		return DeviceMeta{}, err
+	}
+	return DeviceMeta{
+		DeviceID:        id,
+		DeviceRole:      "gui-host",
+		Platform:        hostPlatform(),
+		AppVersion:      buildinfo.PackageVersion,
+		AppChannel:      "dev",
+		RuntimeProfile:  os.Getenv("UC_PROFILE"),
+		DevelopmentMode: os.Getenv("UNICLIPBOARD_ENV") == "development",
+	}, nil
 }
 
 func (h *HostService) deviceID(ctx context.Context) (string, error) {
 	var me struct {
 		PeerID string `json:"peerId"`
 	}
-	if err := h.client.Get(ctx, "/device/me", &me); err != nil {
-		return "", internalError(err)
+	if err := h.daemon().Get(ctx, "/device/me", &me); err != nil {
+		return "", hostapi.Internal(err)
 	}
 	return me.PeerID, nil
+}
+
+// GetContentUnlocked reports whether the daemon lets this GUI show content right now.
+//
+//uc:errors command InternalError
+//uc:os all=real
+func (h *HostService) GetContentUnlocked(ctx context.Context) (bool, error) {
+	ctx, cancel := commandContext(ctx, "get_content_unlocked")
+	defer cancel()
+	var status struct {
+		Unlocked bool `json:"unlocked"`
+	}
+	if err := h.daemon().Get(ctx, "/content-lock", &status); err != nil {
+		return false, hostapi.Internal(err)
+	}
+	return status.Unlocked, nil
+}
+
+// GetProfileRecovery returns the daemon's profile recovery state (`GET /encryption/recovery`) untouched. Its shape
+// is the daemon's `ProfileRecoveryResponse`, which the page takes from the generated OpenAPI client.
+//
+//uc:errors command InternalError
+//uc:os all=real
+func (h *HostService) GetProfileRecovery(ctx context.Context) (json.RawMessage, error) {
+	ctx, cancel := commandContext(ctx, "get_profile_recovery")
+	defer cancel()
+	var out json.RawMessage
+	if err := h.daemon().Get(ctx, "/encryption/recovery", &out); err != nil {
+		return nil, hostapi.Internal(err)
+	}
+	return out, nil
+}
+
+// ContentUnlockRequest is the passphrase submitted to unlock content.
+type ContentUnlockRequest struct {
+	Passphrase string `json:"passphrase"`
+}
+
+// UnlockContent unlocks content with the user's passphrase. It rejects with a hostapi.UnlockError: only the stable
+// code crosses the bridge, because the daemon's text may contain private data.
+//
+//uc:errors unlock
+//uc:os all=real
+func (h *HostService) UnlockContent(ctx context.Context, request ContentUnlockRequest) error {
+	ctx, cancel := commandContext(ctx, "unlock_content")
+	defer cancel()
+	err := h.daemon().Enveloped(ctx, daemonclient.Request{Method: http.MethodPost, Path: "/content-lock/unlock", JSON: map[string]string{"passphrase": request.Passphrase}}, nil)
+	if err != nil {
+		return hostapi.UnlockError{Code: hostapi.UnlockFromDaemon(daemonclient.ErrorCode(err))}
+	}
+	h.emit(contentLockChangedEvent, nil)
+	return nil
+}
+
+// UnlockContentFromKeyring unlocks content with the key kept in the system keychain. It resolves false when the
+// user refused the keychain prompt or the keychain had no usable key: the page then shows the passphrase form.
+//
+//uc:errors command InternalError
+//uc:os all=real
+func (h *HostService) UnlockContentFromKeyring(ctx context.Context) (bool, error) {
+	if keyringUnlockDenied() {
+		return false, nil
+	}
+	ctx, cancel := commandContext(ctx, "unlock_content_from_keyring")
+	defer cancel()
+	var status struct {
+		Unlocked bool `json:"unlocked"`
+	}
+	if err := h.daemon().Enveloped(ctx, daemonclient.Request{Method: http.MethodPost, Path: "/content-lock/unlock-keyring"}, &status); err != nil {
+		return false, hostapi.Internal(err)
+	}
+	if status.Unlocked {
+		h.emit(contentLockChangedEvent, nil)
+	}
+	return status.Unlocked, nil
+}
+
+// ShowContentUnlock brings the main window forward so the user can unlock content.
+//
+//uc:errors none
+//uc:os all=real
+func (h *HostService) ShowContentUnlock() {
+	h.showMainWindow()
 }

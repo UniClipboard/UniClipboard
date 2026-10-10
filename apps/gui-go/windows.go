@@ -14,9 +14,8 @@ import (
 )
 
 const (
-	updaterWindowName     = "updater"
-	quickPanelWindowName  = "quick-panel"
-	quickPanelPrepareShow = "quick-panel://prepare-show"
+	updaterWindowName    = "updater"
+	quickPanelWindowName = "quick-panel"
 
 	updaterWidth, updaterHeight = 520, 420
 
@@ -251,64 +250,81 @@ func (h *HostService) pasteIntoPreviousApp(send func() error) error {
 	return err
 }
 
-func init() {
-	register(map[string]commandFunc{
-		"open_updater_window": func(_ context.Context, h *HostService, _ commandArgs) (any, error) {
-			h.openUpdater(false)
-			return nil, nil
-		},
-		"dev_open_updater_window": func(_ context.Context, h *HostService, _ commandArgs) (any, error) {
-			h.openUpdater(true)
-			return nil, nil
-		},
-		"show_content_unlock": func(_ context.Context, h *HostService, _ commandArgs) (any, error) {
-			h.showMainWindow()
-			return nil, nil
-		},
-		"dismiss_quick_panel": func(_ context.Context, h *HostService, _ commandArgs) (any, error) {
-			h.dismissQuickPanel()
-			return nil, nil
-		},
-		"set_quick_panel_layout": func(_ context.Context, h *HostService, args commandArgs) (any, error) {
-			var scale *float64
-			var expanded bool
-			var windowScale *float64
-			if err := args.decode("scale", &scale); err != nil {
-				return nil, err
-			}
-			if err := args.decode("previewExpanded", &expanded); err != nil {
-				return nil, err
-			}
-			if _, present := args["windowScale"]; present {
-				if err := args.decode("windowScale", &windowScale); err != nil {
-					return nil, err
-				}
-			}
-			if w, ok := h.app.Window.GetByName(quickPanelWindowName); ok {
-				if !layerSetLayout(w, windowScaleOrOne(windowScale)) {
-					width, height := panelSize(scale, expanded, windowScaleOrOne(windowScale))
-					setPanelSize(w, width, height)
-				}
-			}
-			return nil, nil
-		},
-		"finalize_quick_panel_show": func(_ context.Context, h *HostService, _ commandArgs) (any, error) {
-			if w, ok := h.app.Window.GetByName(quickPanelWindowName); ok {
-				if layerShow(w) {
-					return nil, nil // the exclusive keyboard mode already gives it the focus
-				}
-				w.Show()
-				panelFocus(w)
-			}
-			return nil, nil
-		},
-		"mark_quick_panel_ready": func(_ context.Context, h *HostService, _ commandArgs) (any, error) {
-			if h.panel.toggle.markReady() {
-				h.toggleQuickPanel()
-			}
-			return nil, nil
-		},
-		"quick_panel_uses_compositor_shortcuts": func(context.Context, *HostService, commandArgs) (any, error) { return usesCompositorShortcuts(), nil },
-		"resolve_quick_panel_expand_side":       func(context.Context, *HostService, commandArgs) (any, error) { return "right", nil },
-	})
+// OpenUpdaterWindow opens the software update window, or focuses it when it is already open.
+//
+//uc:errors none
+//uc:os all=real
+func (h *HostService) OpenUpdaterWindow() {
+	h.openUpdater(false)
+}
+
+// DevOpenUpdaterWindow opens the update window in preview mode (`?dev=1`), which shows a sample release. It is a
+// development aid of the settings page; the window itself decides what the flag shows.
+//
+//uc:errors none
+//uc:os all=real
+func (h *HostService) DevOpenUpdaterWindow() {
+	h.openUpdater(true)
+}
+
+// DismissQuickPanel hides the quick panel and gives the focus back to the application that had it.
+//
+//uc:errors none
+//uc:os all=real
+func (h *HostService) DismissQuickPanel() {
+	h.dismissQuickPanel()
+}
+
+// SetQuickPanelLayout sizes the quick panel for the page's content scale, the preview pane and (Linux) the window
+// scale. A null scale means 1.
+//
+//uc:errors none
+//uc:os all=real
+func (h *HostService) SetQuickPanelLayout(scale *float64, previewExpanded bool, windowScale *float64) {
+	if w, ok := h.app.Window.GetByName(quickPanelWindowName); ok {
+		if !layerSetLayout(w, windowScaleOrOne(windowScale)) {
+			width, height := panelSize(scale, previewExpanded, windowScaleOrOne(windowScale))
+			setPanelSize(w, width, height)
+		}
+	}
+}
+
+// FinalizeQuickPanelShow is the second phase of showing the panel, after the page cleared its stale state.
+//
+//uc:errors none
+//uc:os all=real
+func (h *HostService) FinalizeQuickPanelShow() {
+	if w, ok := h.app.Window.GetByName(quickPanelWindowName); ok {
+		if layerShow(w) {
+			return // the exclusive keyboard mode already gives it the focus
+		}
+		w.Show()
+		panelFocus(w)
+	}
+}
+
+// MarkQuickPanelReady tells the host the panel page finished loading; a toggle requested earlier then takes effect.
+//
+//uc:errors none
+//uc:os all=real
+func (h *HostService) MarkQuickPanelReady() {
+	if h.panel.toggle.markReady() {
+		h.toggleQuickPanel()
+	}
+}
+
+// QuickPanelUsesCompositorShortcuts reports whether the shortcut is bound by the Wayland compositor instead of the app.
+//
+//uc:errors none
+//uc:os all=real
+func (h *HostService) QuickPanelUsesCompositorShortcuts() bool {
+	return usesCompositorShortcuts()
+}
+
+// ResolveQuickPanelExpandSide tells which side the inline preview opens toward. This host always opens to the right.
+//
+//uc:errors none
+//uc:os all=noop
+func (h *HostService) ResolveQuickPanelExpandSide(scale *float64) QuickPanelExpandSide {
+	return ExpandSideRight
 }

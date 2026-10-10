@@ -1,0 +1,11 @@
+{
+  "extends": "../../gui/tsconfig.json",
+  "compilerOptions": {
+    "paths": {
+      "@/*": ["../../gui/src/*"],
+      "@host/*": ["./bindings/github.com/UniClipboard/UniClipboard/apps/gui-go/*"]
+    }
+  },
+  "include": ["src", "../../gui/src/vite-env.d.ts"],
+  "references": []
+}

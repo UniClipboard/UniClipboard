@@ -10,7 +10,6 @@ import { SettingProvider } from '@/contexts/SettingContext'
 import { useSetting } from '@/hooks/useSetting'
 import { connectDaemonWs } from '@/lib/daemon-ws-bootstrap'
 import { emitSettingsChanged } from '@/lib/settings-events'
-import { invokeWithTrace } from '@/lib/tauri-command'
 import { makeBaseSettings } from '@/test/fixtures/settings'
 
 vi.mock('@/api/daemon', () => ({
@@ -34,10 +33,6 @@ vi.mock('@/lib/settings-events', () => ({
   emitSettingsChanged: vi.fn(),
 }))
 
-vi.mock('@/lib/tauri-command', () => ({
-  invokeWithTrace: vi.fn(),
-}))
-
 vi.mock('@/i18n', () => ({
   __esModule: true,
   default: {
@@ -54,7 +49,6 @@ const mockPersistQuickPanelDoubleTapModifier = vi.mocked(persistQuickPanelDouble
 const mockPersistKeyboardShortcuts = vi.mocked(persistKeyboardShortcuts)
 const mockConnectDaemonWs = vi.mocked(connectDaemonWs)
 const mockEmitSettingsChanged = vi.mocked(emitSettingsChanged)
-const mockInvokeWithTrace = vi.mocked(invokeWithTrace)
 
 const baseSetting: Settings = makeBaseSettings({
   general: { theme: 'light', themeColor: 'zinc' },
@@ -76,7 +70,6 @@ describe('SettingContext shortcuts — in-process apply path', () => {
       'global.toggleQuickPanel': 'meta+shift+v',
     })
     mockEmitSettingsChanged.mockResolvedValue(undefined)
-    mockInvokeWithTrace.mockResolvedValue(undefined)
 
     Object.defineProperty(window, 'matchMedia', {
       writable: true,

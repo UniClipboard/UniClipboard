@@ -11,12 +11,6 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
-const (
-	settingsChangedEvent     = "settings://changed"
-	settingsSyncChangedEvent = "settings://sync-changed"
-	uiNavigateEvent          = "ui://navigate"
-)
-
 // trayMenu owns the system tray icon and its localized menu. It mirrors the
 // Tauri tray: sync toggle, open, settings, restart, lightweight mode and quit.
 type trayMenu struct {
@@ -234,7 +228,7 @@ func (h *HostService) toggleSync() error {
 		Success bool `json:"success"`
 	}
 	patch := map[string]any{"sync": map[string]any{"syncEnabled": !current}}
-	if err := h.client.Enveloped(ctx, daemonclient.Request{Method: http.MethodPut, Path: "/settings", JSON: patch}, &result); err != nil {
+	if err := h.daemon().Enveloped(ctx, daemonclient.Request{Method: http.MethodPut, Path: "/settings", JSON: patch}, &result); err != nil {
 		return err
 	}
 	if !result.Success {

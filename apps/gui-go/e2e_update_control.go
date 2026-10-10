@@ -26,7 +26,7 @@ import (
 //	setting <key> on|off  set a general.* flag (usageAnalyticsEnabled, autoCheckUpdate, autoDownloadUpdate)
 //	                      through the daemon settings API, the way the settings page does
 //	close-updater       close the updater window the scheduler opened (its page makes a check of its own)
-//	invoke <label> <command> [<json>]  a host command through Invoke, the path the WebView takes
+//	invoke <label> <command> [<json>]  a host command by wire name with named arguments (the real HostService method, by reflection)
 //	shortcut-press <label> single|leader <a> <b>|second <b>  injected presses (no keyboard event)
 //	panel-js <label> <js>   run a script in the quick panel page
 //	window-frame-state <label> [window]  GTK's decorated/active/visible/size of a window, default main (Linux)
@@ -160,7 +160,7 @@ func (s *EvidenceService) runControlCommand(line string) {
 		var err error
 		if allowed {
 			patch := map[string]any{"general": map[string]any{key: value == "on"}}
-			err = h.client.Enveloped(ctx, daemonclient.Request{Method: http.MethodPut, Path: "/settings", JSON: patch}, nil)
+			err = h.daemon().Enveloped(ctx, daemonclient.Request{Method: http.MethodPut, Path: "/settings", JSON: patch}, nil)
 		}
 		_ = s.write(Step{Window: "update", Step: "control-setting", OK: allowed && err == nil, Detail: map[string]any{"key": key, "enabled": value == "on"}})
 	case "close-updater":
@@ -208,7 +208,8 @@ func (s *EvidenceService) runControlCommand(line string) {
 		_ = s.write(Step{Window: "app", Step: "control-restart", OK: true, Detail: map[string]any{"pid": os.Getpid()}})
 		go h.fullRestart()
 	case "invoke":
-		// invoke <label> <command> [<json args>]: a host command through the same Invoke the WebView calls.
+		// invoke <label> <command> [<json args>]: a host command by its wire name with named JSON arguments, called on the real
+		// HostService method (see e2e_invoke.go).
 		label, rest, _ := strings.Cut(arg, " ")
 		command, raw, _ := strings.Cut(rest, " ")
 		args := map[string]json.RawMessage{}
@@ -218,8 +219,8 @@ func (s *EvidenceService) runControlCommand(line string) {
 				return
 			}
 		}
-		result := h.Invoke(command, args)
-		_ = s.write(Step{Window: "app", Step: "invoke-" + label, OK: true, Detail: map[string]any{"command": command, "ok": result.Ok, "error": result.Error, "data": result.Data}})
+		result := e2eInvokeCommand(h, command, args)
+		_ = s.write(Step{Window: "app", Step: "invoke-" + label, OK: true, Detail: result})
 	case "shortcut-press":
 		// shortcut-press <label> single | leader <leader> <second> | second <second>: INJECTED key presses. They call the
 		// handlers the OS callback would call (no keyboard event is generated), so they cover the Uni toggle and chord
@@ -250,7 +251,7 @@ func (s *EvidenceService) runControlCommand(line string) {
 			KeyboardShortcuts map[string]json.RawMessage `json:"keyboardShortcuts"`
 			QuickPanel        quickPanelSettings         `json:"quickPanel"`
 		}
-		err := h.client.Get(ctx, "/settings", &stored)
+		err := h.daemon().Get(ctx, "/settings", &stored)
 		visible := false
 		if w, ok := h.app.Window.GetByName(quickPanelWindowName); ok {
 			visible = w.IsVisible()

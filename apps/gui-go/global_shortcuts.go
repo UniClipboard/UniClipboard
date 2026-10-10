@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/UniClipboard/UniClipboard/apps/gui-go/internal/hostapi"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
@@ -224,7 +225,7 @@ func (h *HostService) applyOSShortcuts(next []string) error {
 		return nil
 	}
 	if err := updateShortcuts(h.shortcutBinder(), h.osShortcuts, next); err != nil {
-		return commandError{Code: "Conflict", Message: err.Error()}
+		return hostapi.New(hostapi.CodeConflict, err.Error())
 	}
 	h.osShortcuts = next
 	return nil

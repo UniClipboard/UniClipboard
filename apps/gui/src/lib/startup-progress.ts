@@ -2,7 +2,7 @@ import type {
   DaemonStartupStatus,
   StartupSnapshotDto,
   StartupStepProgressDto,
-} from '@/lib/ipc-bindings.generated'
+} from '@/lib/daemon-startup-types'
 
 export type StartupSnapshot = StartupSnapshotDto
 export type StepProgress = StartupStepProgressDto

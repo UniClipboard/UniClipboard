@@ -121,7 +121,7 @@ describe('UnlockPage', () => {
   it('successfully unlocks with a correct passphrase from the inline form', async () => {
     const onUnlockSucceeded = vi.fn()
     vi.mocked(verifyKeychainAccess).mockResolvedValue(false)
-    vi.mocked(commands.unlockContent).mockResolvedValue(null)
+    vi.mocked(commands.unlockContent).mockResolvedValue(undefined)
 
     render(<UnlockPage onUnlockSucceeded={onUnlockSucceeded} />)
 
@@ -336,8 +336,8 @@ describe('UnlockPage', () => {
         code: 'RESTART_REQUIRED',
         message: 'engine could not restart',
       })
-      vi.mocked(commands.restartDaemon).mockResolvedValue(null)
-      vi.mocked(commands.restartApp).mockResolvedValue(null)
+      vi.mocked(commands.restartDaemon).mockResolvedValue(undefined)
+      vi.mocked(commands.restartApp).mockResolvedValue(undefined)
       render(<UnlockPage onResetSucceeded={onResetSucceeded} />)
 
       const resetLink = screen.getAllByRole('button', {

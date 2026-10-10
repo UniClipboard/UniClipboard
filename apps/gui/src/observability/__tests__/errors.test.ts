@@ -47,7 +47,7 @@ describe('isExpectedCommandError', () => {
   // The taxonomy now covers only `CommandError` — ADR-008 P3-1/P3-b moved the
   // unlock and mobile-sync command errors onto the daemon loopback API, so codes
   // like USERNAME_TAKEN / WRONG_PASSPHRASE are no longer in USER_FACING_ERROR_CODES
-  // (source of truth: `apps/gui/src/lib/error-severity.generated.ts`).
+  // (source of truth: the Go host catalog, `apps/gui-go/internal/hostapi`).
   it('recognizes user/validation error codes as expected', () => {
     expect(isExpectedCommandError({ code: 'ValidationError' })).toBe(true)
     expect(isExpectedCommandError({ code: 'Cancelled' })).toBe(true)

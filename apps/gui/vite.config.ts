@@ -9,6 +9,10 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: {
+      // Generated Wails bindings of the host commands (scripts/gen-host-bindings.mjs).
+      '@host': resolve(
+        '../gui-go/frontend/bindings/github.com/UniClipboard/UniClipboard/apps/gui-go'
+      ),
       '@': resolve('./src'),
       // Use the browser-specific pino build, as the shipped bundle does
       pino: 'pino/browser',

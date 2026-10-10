@@ -67,15 +67,25 @@ export async function revealPath(path: string): Promise<void> {
  */
 export async function saveImageAs(fileName: string, bytes: Uint8Array): Promise<string | null> {
   const { commands } = await import('@/lib/ipc')
-  return commands.saveImageAs(fileName, Array.from(bytes))
+  return commands.saveImageAs(fileName, toBase64(bytes))
 }
 
 /** Open an image in the system's default image viewer (Preview on macOS). */
 export async function openImageExternally(fileName: string, bytes: Uint8Array): Promise<void> {
   const { commands } = await import('@/lib/ipc')
-  await commands.openImageExternally(fileName, Array.from(bytes))
+  await commands.openImageExternally(fileName, toBase64(bytes))
 }
 
 // Re-export clipboard history clearance from daemon clipboard API.
 // This is used by StorageSection for the "clear all history" action.
 export { clearClipboardHistory as clearAllClipboardHistory } from './daemon/clipboard'
+
+/** The host takes image bytes as a base64 string (Go `[]byte` in JSON). */
+function toBase64(bytes: Uint8Array): string {
+  let binary = ''
+  const chunk = 0x8000
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk))
+  }
+  return btoa(binary)
+}

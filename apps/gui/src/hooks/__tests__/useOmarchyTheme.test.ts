@@ -1,9 +1,9 @@
+import type { DesktopThemeSnapshot } from '@host/models'
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { beforeEach, expect, it, vi } from 'vitest'
 import { useOmarchyTheme } from '@/hooks/useOmarchyTheme'
 import { subscribeDesktopTheme } from '@/lib/desktop-theme'
 import { commands } from '@/lib/ipc'
-import type { DesktopThemeSnapshot } from '@/lib/ipc-bindings.generated'
 
 vi.mock('@/lib/desktop-theme', () => ({ subscribeDesktopTheme: vi.fn() }))
 vi.mock('@/lib/ipc', () => ({ commands: { setFollowOmarchyTheme: vi.fn() } }))

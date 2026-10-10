@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import type { ProfileRecoveryResponse } from '@/api/generated/types.gen'
 import { daemonWs } from '@/lib/daemon-ws'
 import { commands } from '@/lib/ipc'
-import type { ProfileRecoveryResponse } from '@/lib/ipc-bindings.generated'
 import { createLogger } from '@/lib/logger'
 
 const log = createLogger('profile-recovery')

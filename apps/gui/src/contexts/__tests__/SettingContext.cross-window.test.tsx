@@ -6,7 +6,6 @@ import type { Settings } from '@/api/daemon/settings'
 import { SettingProvider } from '@/contexts/SettingContext'
 import { useSetting } from '@/hooks/useSetting'
 import { connectDaemonWs } from '@/lib/daemon-ws-bootstrap'
-import { invokeWithTrace } from '@/lib/tauri-command'
 import { makeBaseSettings } from '@/test/fixtures/settings'
 
 vi.mock('@tauri-apps/api/event', () => ({
@@ -23,10 +22,6 @@ vi.mock('@/lib/daemon-ws-bootstrap', () => ({
   connectDaemonWs: vi.fn(),
 }))
 
-vi.mock('@/lib/tauri-command', () => ({
-  invokeWithTrace: vi.fn(),
-}))
-
 vi.mock('@/i18n', () => ({
   __esModule: true,
   default: {
@@ -41,7 +36,6 @@ const mockEmit = vi.mocked(emit)
 const mockGetSettings = vi.mocked(getSettings)
 const mockUpdateSettings = vi.mocked(updateSettings)
 const mockConnectDaemonWs = vi.mocked(connectDaemonWs)
-const mockInvokeWithTrace = vi.mocked(invokeWithTrace)
 
 const baseSetting: Settings = makeBaseSettings({
   general: { theme: 'light', themeColor: 'zinc' },
@@ -57,7 +51,6 @@ describe('SettingProvider cross-window sync', () => {
     mockConnectDaemonWs.mockResolvedValue(undefined)
     mockGetSettings.mockResolvedValue(baseSetting)
     mockUpdateSettings.mockResolvedValue({ success: true, restartRequired: false })
-    mockInvokeWithTrace.mockResolvedValue(undefined)
 
     Object.defineProperty(window, 'matchMedia', {
       writable: true,

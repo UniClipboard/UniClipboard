@@ -1,13 +1,17 @@
+import { EffectsMode } from '@host/models'
 import { Info } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useVisualEffects, useVisualEffectsUnavailable } from '@/hooks/useVisualEffects'
-import type { EffectsMode } from '@/lib/ipc-bindings.generated'
 import { visualEffectsStore } from '@/lib/visual-effects-store'
 import '@/components/setting/appearance/appearance-layout.css'
 
-const MODES: EffectsMode[] = ['auto', 'effects', 'smooth']
+const MODES: EffectsMode[] = [
+  EffectsMode.EffectsModeAuto,
+  EffectsMode.EffectsModeEffects,
+  EffectsMode.EffectsModeSmooth,
+]
 
 export default function SmoothModeSetting() {
   const { t } = useTranslation()

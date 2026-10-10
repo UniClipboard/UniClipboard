@@ -41,7 +41,7 @@ func (h *HostService) loadStartupSettings() (startupSettings, bool) {
 	var settings struct {
 		General startupSettings `json:"general"`
 	}
-	if err := h.client.Get(ctx, "/settings", &settings); err != nil {
+	if err := h.daemon().Get(ctx, "/settings", &settings); err != nil {
 		log.Printf("failed to load settings for startup: %v; using defaults", err)
 		return startupSettings{StartupMode: startupNormal}, false
 	}
@@ -110,7 +110,7 @@ func (h *HostService) ensureDeviceName(settings startupSettings) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	patch := map[string]any{"general": map[string]any{"deviceName": name}}
-	if err := h.client.Enveloped(ctx, daemonclient.Request{Method: http.MethodPut, Path: "/settings", JSON: patch}, nil); err != nil {
+	if err := h.daemon().Enveloped(ctx, daemonclient.Request{Method: http.MethodPut, Path: "/settings", JSON: patch}, nil); err != nil {
 		log.Printf("failed to initialize the default device name: %v", err)
 	}
 }
@@ -123,7 +123,7 @@ func (h *HostService) recoverAfterColdLaunch() {
 	var unlocked struct {
 		Success *bool `json:"success"`
 	}
-	err := h.client.Enveloped(ctx, daemonclient.Request{Method: http.MethodPost, Path: "/encryption/unlock"}, &unlocked)
+	err := h.daemon().Enveloped(ctx, daemonclient.Request{Method: http.MethodPost, Path: "/encryption/unlock"}, &unlocked)
 	switch {
 	case err != nil:
 		log.Printf("daemon auto-unlock failed; the user will need to enter the passphrase: %v", err)
@@ -133,7 +133,7 @@ func (h *HostService) recoverAfterColdLaunch() {
 		return
 	}
 	log.Printf("encryption auto-unlocked via daemon")
-	if err := h.client.Empty(ctx, daemonclient.Request{Method: http.MethodPost, Path: "/lifecycle/retry"}); err != nil {
+	if err := h.daemon().Empty(ctx, daemonclient.Request{Method: http.MethodPost, Path: "/lifecycle/retry"}); err != nil {
 		log.Printf("daemon lifecycle retry failed: %v", err)
 		return
 	}
@@ -149,7 +149,7 @@ func (h *HostService) waitForEncryptionSession(timeout time.Duration) bool {
 			Initialized  bool `json:"initialized"`
 			SessionReady bool `json:"sessionReady"`
 		}
-		err := h.client.Get(ctx, "/encryption/state", &state)
+		err := h.daemon().Get(ctx, "/encryption/state", &state)
 		cancel()
 		switch {
 		case err == nil && state.SessionReady:
@@ -181,7 +181,7 @@ func (h *HostService) restoreLastEntry() {
 		} `json:"items"`
 	}
 	query := url.Values{"query": {""}, "limit": {"1"}, "offset": {"0"}}
-	if err := h.client.Enveloped(ctx, daemonclient.Request{Method: http.MethodGet, Path: "/search/query", Query: query}, &page); err != nil {
+	if err := h.daemon().Enveloped(ctx, daemonclient.Request{Method: http.MethodGet, Path: "/search/query", Query: query}, &page); err != nil {
 		log.Printf("failed to list clipboard entries for startup restore: %v", err)
 		return
 	}
@@ -189,12 +189,12 @@ func (h *HostService) restoreLastEntry() {
 		log.Printf("no clipboard history entry to restore")
 		return
 	}
-	if err := h.client.Empty(ctx, daemonclient.Request{Method: http.MethodPost, Path: "/clipboard/capture-current"}); err != nil {
+	if err := h.daemon().Empty(ctx, daemonclient.Request{Method: http.MethodPost, Path: "/clipboard/capture-current"}); err != nil {
 		log.Printf("failed to preserve the current clipboard content before startup restore: %v", err)
 	}
 	seg, err := daemonclient.PathSegment(page.Items[0].EntryID)
 	if err == nil {
-		err = h.client.Empty(ctx, daemonclient.Request{Method: http.MethodPost, Path: "/clipboard/restore/" + seg})
+		err = h.daemon().Empty(ctx, daemonclient.Request{Method: http.MethodPost, Path: "/clipboard/restore/" + seg})
 	}
 	if err != nil {
 		log.Printf("failed to restore the most recent clipboard entry: %v", err)

@@ -57,7 +57,7 @@ export function createWindowThemeController(animate = false) {
     const overrides =
       (mode === 'dark' ? general?.themeOverridesDark : general?.themeOverridesLight) ?? {}
     const signature = JSON.stringify(
-      external ? [mode, external.variables] : [mode, preset, overrides]
+      external ? [mode, external.variables ?? {}] : [mode, preset, overrides]
     )
     if (signature === previous) return
     const currentGeneration = ++generation
@@ -67,8 +67,9 @@ export function createWindowThemeController(animate = false) {
       root.classList.add(mode)
       writeCachedThemeMode(mode)
       if (external) {
-        for (const [key, value] of Object.entries(external.variables))
-          root.style.setProperty(key, value)
+        for (const [key, value] of Object.entries(external.variables ?? {})) {
+          if (value !== undefined) root.style.setProperty(key, value)
+        }
         root.setAttribute('data-theme', 'desktop')
       } else {
         applyThemePreset(preset, mode, root)

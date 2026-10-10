@@ -1,5 +1,4 @@
 import { getVersion } from '@tauri-apps/api/app'
-import { invoke } from '@tauri-apps/api/core'
 import { Loader2 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -28,6 +27,7 @@ import { UpdateDetails } from '@/components/update/UpdateDetails'
 import { useSetting } from '@/hooks/useSetting'
 import { useShortcutLayer } from '@/hooks/useShortcutLayer'
 import { useUpdate } from '@/hooks/useUpdate'
+import { commands } from '@/lib/ipc'
 import { createLogger } from '@/lib/logger'
 import appIcon from '@/updater/app-icon.png'
 import { SponsorsGroup } from './about/SponsorsGroup'
@@ -56,7 +56,7 @@ function getChannelLabel(channel: string): string {
 
 const handleOpenUpdaterWindowDev = async () => {
   try {
-    await invoke('dev_open_updater_window', { trace: null })
+    await commands.devOpenUpdaterWindow()
   } catch (error) {
     log.error({ err: error }, 'Dev open updater window failed')
     toast.error(String(error))

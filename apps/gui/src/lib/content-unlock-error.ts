@@ -1,4 +1,4 @@
-import type { ContentUnlockError } from './ipc-bindings.generated'
+import type { ContentUnlockError } from './host-errors.generated'
 
 const errorKeys: Record<ContentUnlockError['code'], string> = {
   WRONG_PASSPHRASE: 'unlock.errors.wrongPassphrase',

@@ -41,7 +41,7 @@ Go/Wails 宿主（`apps/gui-go`）现在是唯一的桌面宿主。本文记录�
 | 保留 | 原因 |
 | --- | --- |
 | `@tauri-apps/*` npm 包名 | 共享前端按名字导入，`apps/gui-go/vite.config.ts` 把它们别名到 Wails 适配层；这是导入边界，不是对 Tauri 的依赖 |
-| `ipc-bindings.generated.ts`、`error-severity.generated.ts` | 冻结的宿主契约，现为手工维护，头注释已说明 |
+| 宿主命令契约 | 已由 Go `HostService` 方法签名与 Wails 生成的绑定取代，冻结的 `ipc-bindings.generated.ts`、`error-severity.generated.ts` 已删除，见 `docs/architecture/gui-go-host-commands.md` |
 | 共享 React 前端 `apps/gui/src` | 唯一前端 |
 | Rust Engine、Iroh、加密存储、`uniclipd` | 与宿主无关 |
 | `apps/quick-panel`、`crates/quick-panel-core`（GPUI） | macOS 原生快捷面板；已确认 GPUI 不依赖 tao |

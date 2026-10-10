@@ -24,9 +24,24 @@ vi.mock('@/lib/daemon-ws-bootstrap', () => ({
   connectDaemonWs: (...args: unknown[]) => connectDaemonWsMock(...args),
 }))
 
-vi.mock('@tauri-apps/api/core', () => ({
-  invoke: (...args: unknown[]) => invokeMock(...args),
-}))
+vi.mock('@host/hostservice', () => {
+  // Each generated binding reports its call to `invokeMock`, so the tests observe what crosses to the Go service.
+  const call =
+    (name: string) =>
+    (...args: unknown[]) =>
+      invokeMock(name, ...args)
+  return {
+    BeginVisualEffectsSample: call('BeginVisualEffectsSample'),
+    FinalizeQuickPanelShow: call('FinalizeQuickPanelShow'),
+    GetVisualEffects: call('GetVisualEffects'),
+    MarkQuickPanelReady: call('MarkQuickPanelReady'),
+    ReportVisualEffectsEnvironment: call('ReportVisualEffectsEnvironment'),
+    ReportVisualEffectsSample: call('ReportVisualEffectsSample'),
+    SetQuickPanelLayout: call('SetQuickPanelLayout'),
+    SetVisualEffectsMode: call('SetVisualEffectsMode'),
+    ShowContentUnlock: call('ShowContentUnlock'),
+  }
+})
 
 vi.mock('@tauri-apps/api/event', () => ({
   listen: vi.fn((event: string, handler: () => void) => {
@@ -106,7 +121,7 @@ describe('QuickPanelApp', () => {
     contentAccess.unlocked = false
     connectDaemonWsMock.mockResolvedValue(undefined)
     invokeMock.mockImplementation((command: string) =>
-      command === 'show_content_unlock'
+      command === 'ShowContentUnlock'
         ? Promise.reject(new Error('window unavailable'))
         : Promise.resolve(undefined)
     )
@@ -165,10 +180,7 @@ describe('QuickPanelApp', () => {
     render(<QuickPanelApp />)
 
     await waitFor(() => {
-      expect(invokeMock).toHaveBeenCalledWith(
-        'mark_quick_panel_ready',
-        expect.objectContaining({ trace: expect.any(Object) })
-      )
+      expect(invokeMock).toHaveBeenCalledWith('MarkQuickPanelReady')
     })
   })
 
@@ -186,10 +198,7 @@ describe('QuickPanelApp', () => {
     })
 
     await waitFor(() => {
-      expect(invokeMock).toHaveBeenCalledWith(
-        'finalize_quick_panel_show',
-        expect.objectContaining({ trace: expect.any(Object) })
-      )
+      expect(invokeMock).toHaveBeenCalledWith('FinalizeQuickPanelShow')
     })
     expect(panelRenderMock).not.toHaveBeenCalled()
   })

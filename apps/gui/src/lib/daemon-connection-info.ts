@@ -2,7 +2,7 @@ import { refreshStartupSnapshot, startupFailed } from '@/lib/daemon-startup-prog
 import { commands } from '@/lib/ipc'
 import type {
   DaemonBootstrapFailure,
-  DaemonConnectionPayload as GeneratedDaemonConnectionPayload,
+  DaemonConnection as GeneratedDaemonConnectionPayload,
 } from '@/lib/ipc'
 
 const POLL_INTERVAL_MS = 500

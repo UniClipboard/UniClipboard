@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/UniClipboard/UniClipboard/apps/gui-go/internal/hostapi"
 	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/apppaths"
 	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/daemonclient"
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -167,30 +168,30 @@ func (s daemonAutoStartStore) set(enabled bool) error {
 func applyAutoStart(store autoStartStore, policy loginItemPolicy, login osAutostart, enabled bool) error {
 	previous, err := store.get()
 	if err != nil {
-		return internalError(err)
+		return hostapi.Internal(err)
 	}
 	if err := store.set(enabled); err != nil {
-		return internalError(err)
+		return hostapi.Internal(err)
 	}
 	if err := policy.apply(login, enabled, false); err != nil {
 		if rollback := store.set(previous); rollback != nil {
 			log.Printf("failed to roll back autoStart after the OS registration failed: %v", rollback)
 		}
-		return commandError{Code: "InternalError", Message: "Failed to apply OS autostart: " + err.Error()}
+		return hostapi.New(hostapi.CodeInternalError, "Failed to apply OS autostart: "+err.Error())
 	}
 	return nil
 }
 
 func (h *HostService) autoStartSetting(ctx context.Context) (bool, error) {
-	return daemonAutoStartStore{ctx: ctx, client: h.client}.get()
+	return daemonAutoStartStore{ctx: ctx, client: h.daemon()}.get()
 }
 
 func (h *HostService) updateAutoStart(ctx context.Context, enabled bool) error {
 	policy, err := currentLoginItemPolicy()
 	if err != nil {
-		return internalError(err)
+		return hostapi.Internal(err)
 	}
-	return applyAutoStart(daemonAutoStartStore{ctx: ctx, client: h.client}, policy, h.loginItem(), enabled)
+	return applyAutoStart(daemonAutoStartStore{ctx: ctx, client: h.daemon()}, policy, h.loginItem(), enabled)
 }
 
 // reconcileAutoStart makes the OS registration follow the stored preference at startup. When enabled it
@@ -216,16 +217,15 @@ func (h *HostService) reconcileAutoStart() {
 	}
 }
 
-func init() {
-	register(map[string]commandFunc{
-		"update_autostart": func(ctx context.Context, h *HostService, args commandArgs) (any, error) {
-			var enabled bool
-			if err := args.decode("enabled", &enabled); err != nil {
-				return nil, err
-			}
-			return nil, h.updateAutoStart(ctx, enabled)
-		},
-	})
+// UpdateAutostart registers or removes the login item and stores the preference. The preference is saved first and
+// put back if the operating system refuses the registration.
+//
+//uc:errors command InternalError
+//uc:os all=real
+func (h *HostService) UpdateAutostart(ctx context.Context, enabled bool) error {
+	ctx, cancel := commandContext(ctx, "update_autostart")
+	defer cancel()
+	return h.updateAutoStart(ctx, enabled)
 }
 
 // firstCommandToken is the executable of a Run value: the first token of the command line, honouring surrounding

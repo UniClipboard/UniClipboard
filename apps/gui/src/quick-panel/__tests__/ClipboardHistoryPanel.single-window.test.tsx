@@ -32,9 +32,20 @@ function renderPanel(ui: ReactElement = <ClipboardHistoryPanel />) {
   return render(<Provider store={store}>{ui}</Provider>)
 }
 
-vi.mock('@tauri-apps/api/core', () => ({
-  invoke: (...args: unknown[]) => invokeMock(...args),
-}))
+vi.mock('@host/hostservice', () => {
+  // Each generated binding reports its call to `invokeMock`, so the tests observe what crosses to the Go service.
+  const call =
+    (name: string) =>
+    (...args: unknown[]) =>
+      invokeMock(name, ...args)
+  return {
+    DismissQuickPanel: call('DismissQuickPanel'),
+    PasteToPreviousApp: call('PasteToPreviousApp'),
+    ResolveQuickPanelExpandSide: call('ResolveQuickPanelExpandSide'),
+    SetQuickPanelLayout: call('SetQuickPanelLayout'),
+    TypeFilePathsToPreviousApp: call('TypeFilePathsToPreviousApp'),
+  }
+})
 
 vi.mock('@tauri-apps/api/event', () => ({
   listen: vi.fn(() => Promise.resolve(() => {})),
@@ -208,7 +219,7 @@ describe('ClipboardHistoryPanel single-window preview', () => {
     expect(
       invokeMock.mock.calls.some(
         ([command]) =>
-          command === 'set_quick_panel_layout' || command === 'resolve_quick_panel_expand_side'
+          command === 'SetQuickPanelLayout' || command === 'ResolveQuickPanelExpandSide'
       )
     ).toBe(false)
   })
@@ -288,14 +299,9 @@ describe('ClipboardHistoryPanel single-window preview', () => {
     expect(await screen.findByText('Preview for entry-1')).toBeInTheDocument()
 
     await waitFor(() => {
-      // 现在走 typed `commands` proxy → generated bindings → 注入 trace 字段，
-      // 所以 invoke 收到的 payload 多一个 `trace`。用 objectContaining 匹配。
-      expect(invokeMock).toHaveBeenCalledWith(
-        'set_quick_panel_layout',
-        expect.objectContaining({ scale: 1, previewExpanded: true })
-      )
+      expect(invokeMock).toHaveBeenCalledWith('SetQuickPanelLayout', 1, true, expect.anything())
     })
-    expect(invokeMock).not.toHaveBeenCalledWith('show_preview_panel', expect.anything())
+    expect(invokeMock).not.toHaveBeenCalledWith('ShowPreviewPanel', expect.anything())
   })
 
   it('keeps type filters visible and replaces the shortcut hint with the tag bar', () => {
@@ -347,8 +353,8 @@ describe('ClipboardHistoryPanel single-window preview', () => {
 
   it('waits for the backend layout resize before expanding the preview column', async () => {
     const pendingResize = deferred()
-    invokeMock.mockImplementation((command: string, payload?: { previewExpanded?: boolean }) => {
-      if (command === 'set_quick_panel_layout' && payload?.previewExpanded) {
+    invokeMock.mockImplementation((command: string, _scale?: number, previewExpanded?: boolean) => {
+      if (command === 'SetQuickPanelLayout' && previewExpanded) {
         return pendingResize.promise
       }
       return Promise.resolve(undefined)
@@ -407,12 +413,9 @@ describe('ClipboardHistoryPanel single-window preview', () => {
     fireEvent.keyDown(window, { key: 'Escape' })
 
     await waitFor(() => {
-      expect(invokeMock).toHaveBeenCalledWith('dismiss_quick_panel', expect.any(Object))
+      expect(invokeMock).toHaveBeenCalledWith('DismissQuickPanel')
     })
-    expect(invokeMock).not.toHaveBeenCalledWith(
-      'set_quick_panel_layout',
-      expect.objectContaining({ scale: 1, previewExpanded: false })
-    )
+    expect(invokeMock).not.toHaveBeenCalledWith('SetQuickPanelLayout', 1, false, expect.anything())
   })
 
   it('keeps the hovered preview when moving from history into the preview pane', async () => {
@@ -521,7 +524,7 @@ describe('ClipboardHistoryPanel row context menu', () => {
     })
     // Copy is a terminal launcher action: the panel dismisses only on success.
     await waitFor(() => {
-      expect(invokeMock).toHaveBeenCalledWith('dismiss_quick_panel', expect.any(Object))
+      expect(invokeMock).toHaveBeenCalledWith('DismissQuickPanel')
     })
   })
 
@@ -536,14 +539,13 @@ describe('ClipboardHistoryPanel row context menu', () => {
     )
 
     await waitFor(() => {
-      expect(invokeMock).toHaveBeenCalledWith('type_file_paths_to_previous_app', {
-        request: { filePaths: ['/tmp/report.pdf', '/tmp/设计.txt'] },
-        trace: expect.any(Object),
+      expect(invokeMock).toHaveBeenCalledWith('TypeFilePathsToPreviousApp', {
+        filePaths: ['/tmp/report.pdf', '/tmp/设计.txt'],
       })
       expect(playUiSound).toHaveBeenCalledWith('success')
     })
     expect(restoreClipboardEntry).not.toHaveBeenCalled()
-    expect(invokeMock).not.toHaveBeenCalledWith('paste_to_previous_app', expect.any(Object))
+    expect(invokeMock).not.toHaveBeenCalledWith('PasteToPreviousApp')
   })
 
   it('keeps copy failures silent', async () => {
@@ -597,7 +599,7 @@ describe('ClipboardHistoryPanel row context menu', () => {
       expect(deleteClipboardEntry).toHaveBeenCalledWith('entry-1')
     })
     // Immediate delete does not route through a confirmation dialog.
-    expect(invokeMock).not.toHaveBeenCalledWith('dismiss_quick_panel', expect.any(Object))
+    expect(invokeMock).not.toHaveBeenCalledWith('DismissQuickPanel')
   })
 })
 
@@ -643,7 +645,7 @@ describe('ClipboardHistoryPanel hover/focus keyboard shortcuts', () => {
       expect(restoreClipboardEntry).toHaveBeenCalledWith('entry-1')
     })
     await waitFor(() => {
-      expect(invokeMock).toHaveBeenCalledWith('dismiss_quick_panel', expect.any(Object))
+      expect(invokeMock).toHaveBeenCalledWith('DismissQuickPanel')
     })
   })
 
@@ -667,7 +669,7 @@ describe('ClipboardHistoryPanel hover/focus keyboard shortcuts', () => {
       expect(restoreClipboardEntry).toHaveBeenCalledWith('entry-1', undefined)
     })
     await waitFor(() => {
-      expect(invokeMock).toHaveBeenCalledWith('paste_to_previous_app', expect.any(Object))
+      expect(invokeMock).toHaveBeenCalledWith('PasteToPreviousApp')
     })
   })
 

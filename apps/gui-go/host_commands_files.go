@@ -11,6 +11,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/UniClipboard/UniClipboard/apps/gui-go/internal/hostapi"
 	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/apppaths"
 	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/diaglogs"
 )
@@ -20,7 +21,7 @@ import (
 const imageHandoffDir = "uniclipboard-image-handoff"
 
 func notFound(format string, a ...any) error {
-	return commandError{Code: "NotFound", Message: fmt.Sprintf(format, a...)}
+	return hostapi.New(hostapi.CodeNotFound, fmt.Sprintf(format, a...))
 }
 
 // sanitizeImageFileName reduces a caller-supplied name to a safe basename: no directory parts, no
@@ -100,127 +101,135 @@ func (h *HostService) chooseSaveFile(name string, filterName, pattern string) (s
 func (h *HostService) startupStatusForDiagnostics() []byte {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	status, err := h.client.StartupStatus(ctx)
+	status, err := h.daemon().StartupStatus(ctx)
 	if err != nil {
 		return nil // the daemon may be offline or past startup; the logs are still worth exporting
 	}
 	return status
 }
 
-func init() {
-	register(map[string]commandFunc{
-		"pick_directory": func(_ context.Context, h *HostService, _ commandArgs) (any, error) {
-			path, ok, err := h.chooseDirectory()
-			if err != nil {
-				return nil, internalError(err)
-			}
-			if !ok {
-				return nil, nil
-			}
-			return path, nil
-		},
-		"open_url": func(_ context.Context, h *HostService, args commandArgs) (any, error) {
-			var url string
-			if err := args.decode("url", &url); err != nil {
-				return nil, err
-			}
-			return nil, wrapInternal(h.openURLExternally(url))
-		},
-		"open_data_directory": func(context.Context, *HostService, commandArgs) (any, error) {
-			dir, ok := apppaths.AppDataRoot()
-			if !ok {
-				return nil, internalError(errors.New("data root unavailable"))
-			}
-			if _, err := os.Stat(dir); err != nil {
-				return nil, notFound("Directory does not exist: %s", dir)
-			}
-			return nil, wrapInternal(openWithSystem(dir, false))
-		},
-		"open_logs_directory": func(context.Context, *HostService, commandArgs) (any, error) {
-			dir, ok := apppaths.AppLogDir()
-			if !ok {
-				return nil, internalError(errors.New("log directory unavailable"))
-			}
-			if err := os.MkdirAll(dir, 0o700); err != nil {
-				return nil, internalError(err)
-			}
-			return nil, wrapInternal(openWithSystem(dir, false))
-		},
-		"reveal_path": func(_ context.Context, _ *HostService, args commandArgs) (any, error) {
-			var path string
-			if err := args.decode("path", &path); err != nil {
-				return nil, err
-			}
-			if _, err := os.Stat(path); err != nil {
-				return nil, notFound("Path does not exist: %s", path)
-			}
-			return nil, wrapInternal(openWithSystem(path, true))
-		},
-		"save_image_as": func(_ context.Context, h *HostService, args commandArgs) (any, error) {
-			var name string
-			var data []byte
-			if err := args.decode("fileName", &name); err != nil {
-				return nil, err
-			}
-			if err := args.decode("data", &data); err != nil {
-				return nil, err
-			}
-			path, ok, err := h.chooseSaveFile(sanitizeImageFileName(name), "", "")
-			if err != nil {
-				return nil, internalError(err)
-			}
-			if !ok {
-				return nil, nil
-			}
-			if err := os.WriteFile(path, data, 0o644); err != nil {
-				return nil, internalError(err)
-			}
-			return path, nil
-		},
-		"open_image_externally": func(_ context.Context, _ *HostService, args commandArgs) (any, error) {
-			var name string
-			var data []byte
-			if err := args.decode("fileName", &name); err != nil {
-				return nil, err
-			}
-			if err := args.decode("data", &data); err != nil {
-				return nil, err
-			}
-			dir := filepath.Join(os.TempDir(), imageHandoffDir)
-			_ = os.RemoveAll(dir) // drop the previous hand-off; a missing directory is fine
-			if err := os.MkdirAll(dir, 0o700); err != nil {
-				return nil, internalError(err)
-			}
-			target := filepath.Join(dir, sanitizeImageFileName(name))
-			if err := os.WriteFile(target, data, 0o600); err != nil {
-				return nil, internalError(err)
-			}
-			return nil, wrapInternal(openWithSystem(target, false))
-		},
-		"export_startup_logs": func(_ context.Context, h *HostService, _ commandArgs) (any, error) {
-			logs, ok := apppaths.AppLogDir()
-			if !ok {
-				return nil, internalError(errors.New("log directory unavailable"))
-			}
-			name := "uniclipboard-logs-" + time.Now().UTC().Format("20060102-150405") + ".zip"
-			path, picked, err := h.chooseSaveFile(name, "ZIP archive", "*.zip")
-			if err != nil {
-				return nil, internalError(err)
-			}
-			if !picked {
-				return nil, nil
-			}
-			if err := diaglogs.ExportStartup(logs, path, h.startupStatusForDiagnostics()); err != nil {
-				return nil, internalError(err)
-			}
-			return path, nil
-		},
-	})
+// PickDirectory shows the native folder picker. It resolves nil when the user cancels.
+//
+//uc:errors command InternalError
+//uc:os all=real
+func (h *HostService) PickDirectory() (*string, error) {
+	path, ok, err := h.chooseDirectory()
+	if err != nil {
+		return nil, hostapi.Internal(err)
+	}
+	if !ok {
+		return nil, nil
+	}
+	return &path, nil
 }
 
-func wrapInternal(err error) error {
-	if err == nil {
-		return nil
+// OpenURL opens a link in the default browser. It is an adapter command of the page's opener plugin import
+// (frontend/src/host/opener.ts), not part of the Tauri command set.
+//
+//uc:errors command InternalError
+//uc:os all=real
+//uc:adapter @tauri-apps/plugin-opener
+func (h *HostService) OpenURL(url string) error {
+	return hostapi.Internal(h.openURLExternally(url))
+}
+
+// OpenDataDirectory reveals the application data folder in the file manager.
+//
+//uc:errors command InternalError NotFound
+//uc:os all=real
+func (h *HostService) OpenDataDirectory() error {
+	dir, ok := apppaths.AppDataRoot()
+	if !ok {
+		return hostapi.Internal(errors.New("data root unavailable"))
 	}
-	return internalError(err)
+	if _, err := os.Stat(dir); err != nil {
+		return notFound("Directory does not exist: %s", dir)
+	}
+	return hostapi.Internal(openWithSystem(dir, false))
+}
+
+// OpenLogsDirectory opens the log folder in the file manager, creating it first.
+//
+//uc:errors command InternalError
+//uc:os all=real
+func (h *HostService) OpenLogsDirectory() error {
+	dir, ok := apppaths.AppLogDir()
+	if !ok {
+		return hostapi.Internal(errors.New("log directory unavailable"))
+	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return hostapi.Internal(err)
+	}
+	return hostapi.Internal(openWithSystem(dir, false))
+}
+
+// RevealPath shows an existing file or folder in the file manager.
+//
+//uc:errors command InternalError NotFound
+//uc:os all=real
+func (h *HostService) RevealPath(path string) error {
+	if _, err := os.Stat(path); err != nil {
+		return notFound("Path does not exist: %s", path)
+	}
+	return hostapi.Internal(openWithSystem(path, true))
+}
+
+// SaveImageAs writes image bytes to a place the user picks. It resolves nil when the user cancels. The bytes cross
+// the bridge as a base64 string (Go []byte), not as a number array.
+//
+//uc:errors command InternalError
+//uc:os all=real
+func (h *HostService) SaveImageAs(fileName string, data []byte) (*string, error) {
+	path, ok, err := h.chooseSaveFile(sanitizeImageFileName(fileName), "", "")
+	if err != nil {
+		return nil, hostapi.Internal(err)
+	}
+	if !ok {
+		return nil, nil
+	}
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		return nil, hostapi.Internal(err)
+	}
+	return &path, nil
+}
+
+// OpenImageExternally hands image bytes to the system viewer through a single scratch file that is replaced on
+// every call. The bytes cross the bridge as a base64 string.
+//
+//uc:errors command InternalError
+//uc:os all=real
+func (h *HostService) OpenImageExternally(fileName string, data []byte) error {
+	dir := filepath.Join(os.TempDir(), imageHandoffDir)
+	_ = os.RemoveAll(dir) // drop the previous hand-off; a missing directory is fine
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return hostapi.Internal(err)
+	}
+	target := filepath.Join(dir, sanitizeImageFileName(fileName))
+	if err := os.WriteFile(target, data, 0o600); err != nil {
+		return hostapi.Internal(err)
+	}
+	return hostapi.Internal(openWithSystem(target, false))
+}
+
+// ExportStartupLogs zips the logs to a place the user picks. It resolves nil when the user cancels.
+//
+//uc:errors command InternalError
+//uc:os all=real
+func (h *HostService) ExportStartupLogs() (*string, error) {
+	logs, ok := apppaths.AppLogDir()
+	if !ok {
+		return nil, hostapi.Internal(errors.New("log directory unavailable"))
+	}
+	name := "uniclipboard-logs-" + time.Now().UTC().Format("20060102-150405") + ".zip"
+	path, picked, err := h.chooseSaveFile(name, "ZIP archive", "*.zip")
+	if err != nil {
+		return nil, hostapi.Internal(err)
+	}
+	if !picked {
+		return nil, nil
+	}
+	if err := diaglogs.ExportStartup(logs, path, h.startupStatusForDiagnostics()); err != nil {
+		return nil, hostapi.Internal(err)
+	}
+	return &path, nil
 }

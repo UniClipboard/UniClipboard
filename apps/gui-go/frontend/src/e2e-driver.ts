@@ -1,3 +1,13 @@
+import * as HostService from '@host/hostservice'
+import {
+  DownloadEventKind,
+  DownloadPhase,
+  EffectsMode,
+  InstallKind,
+  QuickPanelDoubleTapModifier,
+  type DownloadEvent,
+  type EffectsSnapshot,
+} from '@host/models'
 import {
   isPermissionGranted,
   requestPermission,
@@ -6,13 +16,14 @@ import {
 // E2E-only scenario driver. It runs inside the real Wails WebView, interacts
 // with the shared React DOM and reports each assertion to the native test
 // service. It is bundled only when VITE_GUI_GO_E2E=1.
-import { Call } from '@wailsio/runtime'
+import { Call, Events } from '@wailsio/runtime'
 import { daemonClient } from '@/api/daemon/client'
 import { updateSettings } from '@/api/daemon/settings'
 import { setQuickPanelEnabled, setQuickPanelPosition } from '@/api/tauri-command/settings'
 import i18n from '@/i18n'
 import { daemonWs } from '@/lib/daemon-ws'
-import { commands } from '@/lib/ipc-bindings.generated'
+import { commands } from '@/lib/ipc'
+import { isExpectedCommandError } from '@/observability/errors'
 
 const windowName = 'main'
 // Keep recent console errors so a crashed UI reports its cause, not just a timeout.
@@ -88,6 +99,8 @@ async function navigate(
 async function run() {
   const phase = (await Call.ByName('main.EvidenceService.Phase')) as string
   if (phase === 'linux-package-update') return runLinuxPackageUpdateScenario()
+  if (phase === 'host-contract') return runHostContractScenario()
+  if (phase === 'download-cancel') return runDownloadCancelScenario()
   if (phase.startsWith('update')) return runUpdateScenario(phase)
   if (phase === 'file-preview') return runFilePreviewScenario()
   if (phase === 'key-path-verify') {
@@ -196,8 +209,8 @@ async function run() {
   await control('close-main')
   await control('reopen-main')
   // The WebView survived the hide/show cycle with its React state and host bindings intact.
-  const pid = await Call.ByName('main.HostService.Invoke', 'get_tauri_pid', {})
-  await record('webview-alive-after-reopen', !!(pid as { ok: boolean }).ok && !!link('/settings'))
+  const alive = await settle(HostService.GetDeviceMeta())
+  await record('webview-alive-after-reopen', alive.status === 'ok' && !!link('/settings'))
   // Second windows: the real updater (dev preview) and quick panel pages.
   await control('open-updater')
   await sleep(3000)
@@ -292,13 +305,23 @@ async function runFilePreviewScenario() {
   await control('exit')
 }
 
-const contentUnlocked = async () =>
-  (
-    (await Call.ByName('main.HostService.Invoke', 'get_content_unlocked', {})) as {
-      ok: boolean
-      data?: boolean
+// The generated binding, called without the shared frontend's wrapper: what the Go service answers.
+const contentUnlocked = () => HostService.GetContentUnlocked()
+
+// A call settled into the shape the older scenarios assert on: `ok` with the data, or `error` with the
+// payload the host marshalled (Wails puts it in the RuntimeError's `cause`).
+async function settle<T>(call: Promise<T>) {
+  try {
+    return { status: 'ok' as const, data: await call }
+  } catch (error) {
+    const cause = (error as { cause?: unknown }).cause
+    return {
+      status: 'error' as const,
+      error: cause ?? error,
+      raw: { name: (error as Error).name, hasCause: cause != null },
     }
-  ).data
+  }
+}
 
 // Two ways a profile ends up asking for the passphrase, both through the shared pages: the profile
 // recovery page (the master key is gone) and the unlock page's passphrase form (the keyring unlock fails).
@@ -317,8 +340,11 @@ async function runUnlockWrongScenario() {
     $('[data-testid="unlock-content"]')!.click()
     await waitFor('passphrase form after the keyring attempt', () => $('#unlock-passphrase'))
   }
+  await probeUnlockContract(secret)
   const input = screen === 'recovery' ? '#recovery-passphrase' : '#unlock-passphrase'
   const submit = () => ($(input) as HTMLInputElement).form?.requestSubmit()
+  let lockEvents = 0
+  const offLock = Events.On('content-lock-changed', () => void lockEvents++)
   fill(input, `${secret}-wrong`)
   submit()
   const alert = await waitFor('wrong passphrase alert', () => $('[role="alert"]'))
@@ -335,8 +361,58 @@ async function runUnlockWrongScenario() {
   submit()
   await waitFor('unlocked', () => mainLayout())
   await record('right-passphrase-unlocked', (await contentUnlocked()) === true)
+  await waitFor('content-lock-changed event', () => lockEvents > 0)
+  offLock()
+  await record('content-lock-changed-event', lockEvents > 0, { events: lockEvents })
   await sleep(1500)
   await control('exit')
+}
+
+// The unlock command end to end through the generated binding, on a still locked profile: the typed business
+// rejection (the stable code, user-facing, never reported), the same call through the shared frontend wrapper, and
+// the two failures that are NOT business errors (a call the framework itself rejects, an unknown host failure).
+async function probeUnlockContract(secret: string) {
+  const wrong = `${secret}-probe-wrong`
+  const direct = await settle(HostService.UnlockContent({ passphrase: wrong }))
+  await record(
+    'binding-wrong-passphrase-typed',
+    direct.status === 'error' &&
+      (direct.error as { code?: string }).code === 'WRONG_PASSPHRASE' &&
+      direct.raw.name === 'RuntimeError' &&
+      direct.raw.hasCause &&
+      isExpectedCommandError(direct.error),
+    { observed: direct }
+  )
+  const viaWrapper = await settle(commands.unlockContent({ passphrase: wrong }))
+  await record(
+    'wrapper-wrong-passphrase-user-facing',
+    viaWrapper.status === 'error' &&
+      (viaWrapper.error as { code?: string }).code === 'WRONG_PASSPHRASE' &&
+      isExpectedCommandError(viaWrapper.error),
+    { observed: viaWrapper }
+  )
+  // Wrong argument count (a call that bypasses the generated function): the framework rejects before the
+  // method runs. No payload, so it stays a plain Error and counts as a system error.
+  const malformed = await settle(Call.ByName('main.HostService.UnlockContent'))
+  await record(
+    'binding-malformed-call-is-system-error',
+    malformed.status === 'error' &&
+      malformed.raw.name === 'TypeError' &&
+      !isExpectedCommandError(malformed.error),
+    { observed: malformed }
+  )
+  // `null` where a value type is expected is not an error for Wails: it decodes to the zero value and the method
+  // runs (here an empty passphrase, which the daemon refuses like any wrong one). The generated signature is what
+  // keeps `undefined` and `null` out; the contract document lists this for every required parameter.
+  const nullArg = await settle(
+    (HostService.UnlockContent as unknown as (v: null) => Promise<void>)(null)
+  )
+  await record(
+    'binding-null-argument-decodes-to-zero-value',
+    nullArg.status === 'error' && (nullArg.error as { code?: string }).code === 'WRONG_PASSPHRASE',
+    { observed: nullArg }
+  )
+  await record('binding-still-locked-after-probes', (await contentUnlocked()) === false)
 }
 
 // After a recovery the next launch must unlock through the keyring again (the recovered key was stored back)
@@ -532,15 +608,21 @@ async function runQuickPanelSettingsScenario() {
   await setQuickPanelEnabled(true)
   await show('reenabled')
   // The generated binding reports command failures as a result value rather than throwing.
-  const refused = await commands.setQuickPanelDoubleTapModifier('alt', null)
+  const refused = await settle(
+    HostService.SetQuickPanelDoubleTapModifier(QuickPanelDoubleTapModifier.DoubleTapModifierAlt)
+  )
   await record(
     'double-tap-unavailable-rejected',
-    refused.status === 'error' && refused.error.code === 'Conflict',
+    refused.status === 'error' && (refused.error as { code?: string }).code === 'Conflict',
     {
       result: refused,
     }
   )
-  const accepted = await commands.setQuickPanelDoubleTapModifier('disabled', null)
+  const accepted = await settle(
+    HostService.SetQuickPanelDoubleTapModifier(
+      QuickPanelDoubleTapModifier.DoubleTapModifierDisabled
+    )
+  )
   await record('double-tap-disabled-accepted', accepted.status === 'ok', {
     result: accepted,
   })
@@ -560,18 +642,19 @@ async function runNativePanelScenario() {
   await setQuickPanelEnabled(true)
   await sleep(4000)
   await record('act-shortcut', true)
-  const shortcut = await commands.updateKeyboardShortcuts(
-    { 'global.toggleQuickPanel': 'Ctrl+Alt+Space' },
-    null
+  const shortcut = await settle(
+    HostService.UpdateKeyboardShortcuts({ 'global.toggleQuickPanel': 'Ctrl+Alt+Space' })
   )
   await record('shortcut-saved', shortcut.status === 'ok', {
     result: shortcut,
   })
   await sleep(4000)
   await record('act-double-tap', true)
-  const tap = await commands.setQuickPanelDoubleTapModifier('alt', null)
+  const tap = await settle(
+    HostService.SetQuickPanelDoubleTapModifier(QuickPanelDoubleTapModifier.DoubleTapModifierAlt)
+  )
   await record('double-tap-saved', tap.status === 'ok', { result: tap })
-  const availability = await commands.getQuickPanelDoubleTapAvailability(null)
+  const availability = await settle(HostService.GetQuickPanelDoubleTapAvailability())
   await record('double-tap-availability', availability.status === 'ok', {
     result: availability,
   })
@@ -673,30 +756,33 @@ async function runFileOpsScenario() {
     const r = await call
     await record(step, accept(r), { result: r })
   }
-  const png = [137, 80, 78, 71, 13, 10, 26, 10, 0, 1, 2, 3]
-  const picked = await commands.pickDirectory(null)
+  const pngBytes = [137, 80, 78, 71, 13, 10, 26, 10, 0, 1, 2, 3]
+  // Go `[]byte` crosses the bridge as base64.
+  const png = btoa(String.fromCharCode(...pngBytes))
+  const pngHead = btoa(String.fromCharCode(...pngBytes.slice(0, 4)))
+  const picked = await settle(HostService.PickDirectory())
   await record('pick-directory-chosen', picked.status === 'ok', {
     result: picked,
   })
-  await result('pick-directory-cancelled', commands.pickDirectory(null))
-  await result('save-image-cancelled', commands.saveImageAs('a.png', png, null))
-  await result('save-image-saved', commands.saveImageAs('../../x/shot.png', png, null))
-  await result('open-image-first', commands.openImageExternally('../../etc/first.png', png, null))
+  await result('pick-directory-cancelled', settle(HostService.PickDirectory()))
+  await result('save-image-cancelled', settle(HostService.SaveImageAs('a.png', png)))
+  await result('save-image-saved', settle(HostService.SaveImageAs('../../x/shot.png', png)))
   await result(
-    'open-image-second',
-    commands.openImageExternally('second.png', png.slice(0, 4), null)
+    'open-image-first',
+    settle(HostService.OpenImageExternally('../../etc/first.png', png))
   )
-  await result('open-data-directory', commands.openDataDirectory(null))
-  await result('open-logs-directory', commands.openLogsDirectory(null))
+  await result('open-image-second', settle(HostService.OpenImageExternally('second.png', pngHead)))
+  await result('open-data-directory', settle(HostService.OpenDataDirectory()))
+  await result('open-logs-directory', settle(HostService.OpenLogsDirectory()))
   const existing = picked.status === 'ok' && picked.data ? picked.data : ''
-  await result('reveal-existing', commands.revealPath(existing, null))
+  await result('reveal-existing', settle(HostService.RevealPath(existing)))
   await result(
     'reveal-missing',
-    commands.revealPath('/definitely/not/here', null),
+    settle(HostService.RevealPath('/definitely/not/here')),
     r => r.status === 'error' && r.error.code === 'NotFound'
   )
-  await result('export-logs-cancelled', commands.exportStartupLogs(null))
-  await result('export-logs-saved', commands.exportStartupLogs(null))
+  await result('export-logs-cancelled', settle(HostService.ExportStartupLogs()))
+  await result('export-logs-saved', settle(HostService.ExportStartupLogs()))
   await control('exit')
 }
 
@@ -719,37 +805,41 @@ async function runConfigExportScenario() {
     setQuickPanelPosition('follow_cursor').then(() => ({ status: 'ok' })),
     r => r.status === 'ok'
   )
-  const exported = await step('export', commands.exportConfigPackage(null), r => r.status === 'ok')
+  const exported = await step(
+    'export',
+    settle(HostService.ExportConfigPackage()),
+    r => r.status === 'ok'
+  )
   const bundle = exported.data?.path as string
   await step(
     'export-cancelled',
-    commands.exportConfigPackage(null),
+    settle(HostService.ExportConfigPackage()),
     r => r.status === 'error' && r.error.kind === 'cancelled'
   )
   const picked = await step(
     'pick-bundle',
-    commands.pickConfigBundlePath(null),
+    settle(HostService.PickConfigBundlePath()),
     r => r.status === 'ok' && r.data === bundle
   )
   await step(
     'pick-bundle-cancelled',
-    commands.pickConfigBundlePath(null),
+    settle(HostService.PickConfigBundlePath()),
     r => r.status === 'ok' && r.data === null
   )
   await step(
     'preview-wrong-password',
-    commands.previewConfigImport('definitely-wrong', picked.data, null),
+    settle(HostService.PreviewConfigImport('definitely-wrong', picked.data)),
     r => r.status === 'error' && r.error.kind === 'daemon'
   )
   await step(
     'preview',
-    commands.previewConfigImport(passphrase, bundle, null),
+    settle(HostService.PreviewConfigImport(passphrase, bundle)),
     r => r.status === 'ok' && !!r.data.profileId && !!r.data.appVersion
   )
   await setQuickPanelPosition('center')
   await step(
     'import-staged',
-    commands.importConfigPackage(passphrase, bundle, null),
+    settle(HostService.ImportConfigPackage(passphrase, bundle)),
     r => r.status === 'ok' && r.data.stagedOk === true
   )
   await control('exit')
@@ -760,12 +850,12 @@ async function runConfigExportScenario() {
 async function runAutostartScenario(phase: string) {
   await waitFor('app root content', () => document.getElementById('root')?.children.length)
   const set = async (step: string, enabled: boolean, accept: (r: any) => boolean) => {
-    const r = await commands.updateAutostart(enabled, null)
+    const r = await settle(HostService.UpdateAutostart(enabled))
     await record(step, accept(r), { result: r })
   }
   // Records the outcome either way: the orchestrator decides what the platform mechanism is allowed to say.
   const attempt = async (step: string, enabled: boolean) => {
-    const r = await commands.updateAutostart(enabled, null)
+    const r = await settle(HostService.UpdateAutostart(enabled))
     await record(step, true, { result: r })
   }
   if (phase === 'autostart' || phase === 'autostart-bundle') {
@@ -825,7 +915,7 @@ async function runTrayDevicesScenario() {
   await control('tray-language-quiet:5000')
   await record('tray-driver-progress', true, 'after-quiet')
   await record('tray-driver-progress', true, 'call-start')
-  const pending = commands.setTrayLanguage('en', null)
+  const pending = settle(HostService.SetTrayLanguage('en'))
   void sleep(3000).then(() => record('tray-driver-progress', true, 'call-pending-after-3s'))
   const english = await pending
   await record('tray-driver-progress', true, 'call-returned')
@@ -834,7 +924,7 @@ async function runTrayDevicesScenario() {
   await control('tray-devices-wait:tray-peer-b')
   await control('tray-device-click:tray-peer-b')
   await control('tray-device-click:tray-peer-b')
-  const language = await commands.setTrayLanguage('zh-CN', null)
+  const language = await settle(HostService.SetTrayLanguage('zh-CN'))
   await record('tray-language-set', language.status === 'ok')
   await control('tray-menu:zh')
   const granted = await isPermissionGranted()
@@ -914,9 +1004,12 @@ async function runLinuxPackageUpdateScenario() {
     )!
     .click()
   await waitFor('telemetry notice dismissed', () => !consent.isConnected)
-  const kind = await commands.getInstallKind(null)
+  const kind = await settle(HostService.GetInstallKind())
   await record('package-install-kind', kind.status === 'ok', kind)
-  if (kind.status !== 'ok' || (kind.data !== 'deb' && kind.data !== 'rpm')) {
+  if (
+    kind.status !== 'ok' ||
+    (kind.data !== InstallKind.InstallKindDeb && kind.data !== InstallKind.InstallKindRPM)
+  ) {
     throw new Error('expected an installed deb or rpm')
   }
   await navigate(
@@ -959,5 +1052,235 @@ async function runLinuxPackageUpdateScenario() {
   sendNotification({ title: 'Linux acceptance', body: 'Isolated package notification fixture' })
   await record('package-notification-requested', true)
   await sleep(4000)
+  await control('exit')
+}
+
+// The generated host contract, called from the real WebView through the same wrapper the pages use: connection and
+// identity, typed errors and their severity, argument handling, typed events, and a real daemon restart.
+async function runHostContractScenario() {
+  await waitFor('app root content', () => document.getElementById('root')?.children.length)
+  const expected = (error: unknown) => isExpectedCommandError(error)
+
+  // ---- connection and identity (results the daemon owns pass through untouched)
+  const info = await settle(HostService.GetDaemonConnectionInfo())
+  await record(
+    'connection-info',
+    info.status === 'ok' &&
+      !!info.data &&
+      /^http:\/\/127\.0\.0\.1:\d+$/.test(info.data.baseUrl) &&
+      info.data.wsUrl.startsWith('ws://'),
+    { baseUrl: info.status === 'ok' ? info.data?.baseUrl : null }
+  )
+  const session = await settle(HostService.GetDaemonSession())
+  await record(
+    'daemon-session',
+    session.status === 'ok' &&
+      !!session.data &&
+      session.data.sessionToken.length > 0 &&
+      session.data.expiresInSecs > 0,
+    { tokenLength: session.status === 'ok' ? session.data?.sessionToken.length : null }
+  )
+  const id = await commands.getDeviceID()
+  const meta = await commands.getDeviceMeta()
+  await record(
+    'device-identity',
+    id.length > 0 && meta.deviceId === id && meta.platform === 'macos',
+    {
+      platform: meta.platform,
+      appChannel: meta.appChannel,
+      runtimeProfile: meta.runtimeProfile,
+    }
+  )
+  const recovery = await settle(HostService.GetProfileRecovery())
+  await record(
+    'profile-recovery-passthrough',
+    recovery.status === 'ok' && typeof recovery.data === 'object',
+    {
+      keys: recovery.status === 'ok' && recovery.data ? Object.keys(recovery.data).sort() : null,
+    }
+  )
+  const startup = await settle(HostService.GetDaemonStartupStatus())
+  // A healthy daemon no longer serves /startup (it only does while starting), which surfaces as a system error.
+  await record(
+    'startup-status-passthrough',
+    startup.status === 'ok' || (startup.error as { code?: string }).code === 'InternalError',
+    startup
+  )
+  const unlocked = await commands.getContentUnlocked()
+  await record('content-unlocked-boolean', typeof unlocked === 'boolean', { unlocked })
+  const kind = await commands.getInstallKind()
+  await record('install-kind-enum', Object.values(InstallKind).includes(kind), { kind })
+  await record('bootstrap-failure-null', (await commands.getDaemonBootstrapFailure()) === null)
+
+  // ---- typed event: the host emits a snapshot, the page receives the generated payload type
+  const seen: EffectsSnapshot[] = []
+  const offEffects = Events.On(
+    'visual-effects://changed',
+    event => void seen.push(event.data as EffectsSnapshot)
+  )
+  const snapshot = await commands.setVisualEffectsMode(EffectsMode.EffectsModeSmooth)
+  await waitFor('visual-effects event', () => seen.length > 0)
+  offEffects()
+  await record(
+    'visual-effects-typed-event',
+    seen[0].mode === EffectsMode.EffectsModeSmooth &&
+      seen[0].revision === snapshot.revision &&
+      seen[0].sessionId === snapshot.sessionId,
+    { revision: seen[0].revision, mode: seen[0].mode }
+  )
+  const theme = await commands.setFollowOmarchyTheme(true)
+  await record(
+    'desktop-theme-unavailable',
+    theme.omarchyAvailable === false &&
+      (await commands.getDesktopTheme()).omarchyAvailable === false
+  )
+
+  // ---- errors: business failures are user-facing, system failures are not
+  const bogusMode = await settle(HostService.SetVisualEffectsMode('bogus' as EffectsMode))
+  await record(
+    'error-validation-user-facing',
+    bogusMode.status === 'error' &&
+      (bogusMode.error as { code?: string }).code === 'ValidationError' &&
+      expected(bogusMode.error),
+    bogusMode
+  )
+  const missing = await settle(commands.revealPath('/definitely/not/here'))
+  await record(
+    'error-not-found-user-facing',
+    missing.status === 'error' &&
+      (missing.error as { code?: string }).code === 'NotFound' &&
+      expected(missing.error),
+    missing
+  )
+  const nullPath = await settle(HostService.RevealPath(null as unknown as string))
+  await record(
+    'null-argument-is-zero-value',
+    nullPath.status === 'error' && (nullPath.error as { code?: string }).code === 'NotFound',
+    nullPath
+  )
+  const noPending = await settle(commands.installUpdate())
+  await record(
+    'error-text-is-system',
+    noPending.status === 'error' &&
+      typeof noPending.error === 'string' &&
+      !expected(noPending.error),
+    noPending
+  )
+  const arity = await settle(Call.ByName('main.HostService.RevealPath'))
+  await record(
+    'error-wrong-arity-is-system',
+    arity.status === 'error' && !arity.raw.hasCause && !expected(arity.error),
+    arity.raw
+  )
+  const unknownMethod = await settle(Call.ByName('main.HostService.NoSuchCommand'))
+  await record(
+    'error-unknown-method-is-system',
+    unknownMethod.status === 'error' && !expected(unknownMethod.error),
+    unknownMethod.raw
+  )
+  const badBytes = await settle(HostService.SaveImageAs('a.png', 'not*base64'))
+  await record(
+    'error-bad-base64-is-system',
+    badBytes.status === 'error' && !expected(badBytes.error),
+    badBytes.raw
+  )
+
+  // ---- a real daemon restart: events in order, and the replaced client reaches the new process
+  const shuttingDown: number[] = []
+  const reconnect: number[] = []
+  const offDown = Events.On('app://shutting-down', () => void shuttingDown.push(Date.now()))
+  const offChanged = Events.On(
+    'app://daemon-connection-changed',
+    () => void reconnect.push(Date.now())
+  )
+  await record('restart-daemon-start', true, { deviceId: id })
+  const restart = await settle(HostService.RestartDaemon())
+  await record('restart-daemon-result', restart.status === 'ok', restart)
+  await waitFor('restart events', () => shuttingDown.length > 0 && reconnect.length > 0, 20000)
+  offDown()
+  offChanged()
+  await record(
+    'restart-daemon-events',
+    shuttingDown.length === 1 && reconnect.length === 1 && shuttingDown[0] <= reconnect[0],
+    {
+      shuttingDown: shuttingDown.length,
+      reconnect: reconnect.length,
+    }
+  )
+  const afterId = await settle(HostService.GetDeviceID())
+  await record(
+    'restart-daemon-client-replaced',
+    afterId.status === 'ok' && afterId.data === id,
+    afterId
+  )
+  const afterSession = await settle(HostService.GetDaemonSession())
+  await record(
+    'restart-daemon-new-session',
+    afterSession.status === 'ok' && (afterSession.data?.sessionToken.length ?? 0) > 0
+  )
+  await control('exit')
+}
+
+// Cancelling a running download: the progress events arrive in order, the call rejects, the pending update is
+// available again, and a second download completes. (Cancelling the Wails call itself does not stop the
+// download by design: it continues in the background and `cancel_download` is the explicit cancel.)
+async function runDownloadCancelScenario() {
+  await waitFor('app root content', () => document.getElementById('root')?.children.length)
+  const events: DownloadEvent[] = []
+  const off = Events.On(
+    'update-download-progress',
+    event => void events.push(event.data as DownloadEvent)
+  )
+  const found = await settle(HostService.CheckForUpdate(null))
+  await record('cancel-check-found-update', found.status === 'ok' && !!found.data?.version, found)
+  const first = settle(HostService.DownloadUpdate())
+  await waitFor(
+    'first progress event',
+    () => events.some(e => e.event === DownloadEventKind.DownloadEventProgress),
+    60000
+  )
+  await record(
+    'cancel-progress-started',
+    events[0]?.event === DownloadEventKind.DownloadEventStarted,
+    { first: events[0] }
+  )
+  const mid = await HostService.GetDownloadProgress()
+  await record(
+    'cancel-phase-downloading',
+    mid.phase === DownloadPhase.DownloadPhaseDownloading,
+    mid
+  )
+  await HostService.CancelDownload()
+  const cancelled = await first
+  await record(
+    'cancel-call-rejected',
+    cancelled.status === 'error' && typeof cancelled.error === 'string',
+    cancelled
+  )
+  await waitFor(
+    'failed event',
+    () => events.some(e => e.event === DownloadEventKind.DownloadEventFailed),
+    10000
+  )
+  const after = await HostService.GetDownloadProgress()
+  await record(
+    'cancel-phase-available-again',
+    after.phase === DownloadPhase.DownloadPhaseAvailable,
+    after
+  )
+  const second = await settle(HostService.DownloadUpdate())
+  await record('cancel-second-download-completes', second.status === 'ok', second)
+  const finished = await HostService.GetDownloadProgress()
+  const sequence = events.map(e => e.event)
+  off()
+  await record('cancel-phase-ready', finished.phase === DownloadPhase.DownloadPhaseReady, finished)
+  await record(
+    'cancel-event-order',
+    sequence[0] === DownloadEventKind.DownloadEventStarted &&
+      sequence.includes(DownloadEventKind.DownloadEventFailed),
+    {
+      kinds: [...new Set(sequence)],
+    }
+  )
   await control('exit')
 }

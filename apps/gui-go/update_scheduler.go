@@ -181,7 +181,7 @@ func (h *HostService) setupComplete(ctx context.Context) (bool, error) {
 	var state struct {
 		HasCompleted bool `json:"hasCompleted"`
 	}
-	if err := h.client.Get(ctx, "/v2/setup/state", &state); err != nil {
+	if err := h.daemon().Get(ctx, "/v2/setup/state", &state); err != nil {
 		return false, err
 	}
 	return state.HasCompleted, nil
@@ -282,7 +282,7 @@ func (h *HostService) scheduledCheck(ctx context.Context) bool {
 			AutoDownloadUpdate bool `json:"autoDownloadUpdate"`
 		} `json:"general"`
 	}
-	if err := h.client.Get(ctx, "/settings", &settings); err != nil {
+	if err := h.daemon().Get(ctx, "/settings", &settings); err != nil {
 		log.Printf("update scheduler: load settings: %v", err)
 		return false
 	}
@@ -297,20 +297,18 @@ func (h *HostService) scheduledCheck(ctx context.Context) bool {
 		log.Printf("update scheduler: check failed: %v", err)
 	}
 	// Side effects first, the check event last: that is the order the Tauri scheduler reports them in.
-	if release, _ := meta.(map[string]any); release != nil {
-		if version, _ := release["version"].(string); version != "" {
-			opened := h.notifyIfNew(channel, version, true)
-			if settings.General.AutoDownloadUpdate {
-				// In-place install is supported on macOS, the only host this build targets.
-				// A refused download (already downloaded or running) neither reports nor re-opens the window.
-				switch err := h.downloadUpdateReported(ctx); {
-				case err == nil:
-					if !opened {
-						h.openReadyFallback(channel)
-					}
-				case classifyDownload(err) != downloadPrecondition:
-					log.Printf("update scheduler: auto-download failed: %v", err)
+	if meta != nil && meta.Version != "" {
+		opened := h.notifyIfNew(channel, meta.Version, true)
+		if settings.General.AutoDownloadUpdate {
+			// In-place install is supported on macOS, the only host this build targets.
+			// A refused download (already downloaded or running) neither reports nor re-opens the window.
+			switch err := h.downloadUpdateReported(ctx); {
+			case err == nil:
+				if !opened {
+					h.openReadyFallback(channel)
 				}
+			case classifyDownload(err) != downloadPrecondition:
+				log.Printf("update scheduler: auto-download failed: %v", err)
 			}
 		}
 	}

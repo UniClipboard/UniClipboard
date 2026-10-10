@@ -46,7 +46,7 @@
     "**/target/debug/.fingerprint/",
     "**/target/debug/incremental/",
     "**/uniclipboard.db",
-    "apps/gui/public/splashscreen.html",
+    "apps/gui-go/frontend/public/splashscreen.html",
     "**/.worktrees/",
     "**/.env",
     "**/.seq-api-key",
@@ -107,10 +107,10 @@
     "dist",
     "node_modules",
     "docs-site/",
-    "apps/gui/src/lib/ipc-bindings.generated.ts",
-    "apps/gui/src/lib/host-errors.generated.ts",
+    "apps/gui-go/frontend/src/lib/ipc-bindings.generated.ts",
+    "apps/gui-go/frontend/src/lib/host-errors.generated.ts",
     "apps/gui-go/frontend/bindings/",
-    "apps/gui/src/api/generated/"
+    "apps/gui-go/frontend/src/api/generated/"
   ],
   "rules": {
     "constructor-super": "error",
@@ -232,7 +232,7 @@
       }
     },
     {
-      "files": ["apps/gui/e2e/**/*.js", "apps/gui/e2e/**/*.mjs"],
+      "files": ["apps/gui-go/frontend/e2e/**/*.js", "apps/gui-go/frontend/e2e/**/*.mjs"],
       "globals": {
         "AsyncDisposableStack": "readonly",
         "DisposableStack": "readonly",

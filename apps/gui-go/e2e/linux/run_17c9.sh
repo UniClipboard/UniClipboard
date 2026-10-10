@@ -27,7 +27,7 @@ case "$mode" in
     mkdir -p "$dir/inputs"
     (cd "$ROOT" && git rev-parse HEAD > "$dir/inputs/head.txt" && git status --porcelain > "$dir/inputs/status.txt" && git diff HEAD > "$dir/inputs/dirty.diff")
     docker image inspect "$IMAGE" --format '{{.Id}}' > "$dir/inputs/image-id.txt"
-    (cd "$ROOT" && VITE_GUI_GO_E2E=1 bun --bun run --cwd apps/gui-go build > "$dir/inputs/frontend-build.log" 2>&1)
+    (cd "$ROOT" && VITE_GUI_GO_E2E=1 bun --bun run --cwd apps/gui-go/frontend build > "$dir/inputs/frontend-build.log" 2>&1)
     grep -rl "linux-shortcut-ui" "$ROOT/apps/gui-go/frontend/dist/assets" > "$dir/inputs/dist-contains-driver.txt" || { echo "dist lacks the E2E driver: wrong or stale frontend build" >&2; exit 1; }
     (cd "$ROOT/apps/gui-go/frontend/dist" && find . -type f | LC_ALL=C sort | xargs shasum -a 256 > "$dir/inputs/dist.sha256" && shasum -a 256 "$dir/inputs/dist.sha256" > "$dir/inputs/dist-tree.sha256")
     "${docker_run[@]}" -e UC_OUT_DIR="$CACHE_DIR" -e SKIP_DAEMON=1 "$IMAGE" bash -c '

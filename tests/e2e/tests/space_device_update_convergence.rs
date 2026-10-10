@@ -180,7 +180,7 @@ async fn wait_for_phase(reader: &TrustReader, accept: impl Fn(&str) -> bool, wha
     }
 }
 
-/// A host view that follows `apps/gui/src/contexts/DeviceTrustContext.tsx`: it only
+/// A host view that follows `apps/gui-go/frontend/src/contexts/DeviceTrustContext.tsx`: it only
 /// re-reads after a daemon notification, skipping `device-trust.changed`
 /// whose revision it has already loaded.
 #[derive(Default)]

@@ -15,10 +15,10 @@
 //!
 //! The count queries below are the exact wire params the History page builds
 //! (`buildCandidateCountQueries` / `buildRelaxationQueries` in
-//! `apps/gui/src/components/history/composite-search/composite-search-model.ts`).
+//! `apps/gui-go/frontend/src/components/history/composite-search/composite-search-model.ts`).
 //!
 //! Optional browser step: set `UC_E2E_HISTORY_BROWSER=1` to run
-//! `apps/gui/e2e/history-search-browser.mjs` (the repo's webdriverio + the
+//! `apps/gui-go/frontend/e2e/history-search-browser.mjs` (the repo's webdriverio + the
 //! local Google Chrome, headless) against this daemon, in two separately
 //! reported phases: the search components alone, then the complete frontend
 //! on `/history` with only the Tauri native layer stubbed.
@@ -1004,7 +1004,7 @@ async fn history_search_counts_relaxations_and_content_lock() {
             )
             .await;
         assert_eq!(status, 200, "gui content unlock: {body}");
-        let gui_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../apps/gui");
+        let gui_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../apps/gui-go/frontend");
         let out = Command::new("node")
             .arg("e2e/history-search-browser.mjs")
             .current_dir(&gui_dir)

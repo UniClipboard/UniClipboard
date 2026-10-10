@@ -32,7 +32,7 @@ done
 for d in ubuntu fedora; do
   docker run --rm --platform linux/arm64 "uc-gui-go-linux-runtime-helpers:17c10-$d" sh -c 'cat /etc/os-release; echo ---; xdg-open --version; gio version; echo ---; (rpm -qa 2>/dev/null || dpkg-query -W) | sort' > "$out/images/helpers-$d.os-and-packages.txt" 2>&1 || exit 1
 done
-step frontend-e2e bash -c "cd '$ROOT' && VITE_GUI_GO_E2E=1 bun --bun run --cwd apps/gui-go build" || exit 1
+step frontend-e2e bash -c "cd '$ROOT' && VITE_GUI_GO_E2E=1 bun --bun run --cwd apps/gui-go/frontend build" || exit 1
 grep -rl "__ucE2eOpenUrl" "$ROOT/apps/gui-go/frontend/dist/assets" > "$out/inputs/dist-contains-openurl-hook.txt" || { echo "dist lacks the E2E open-URL hook: stale frontend build" >&2; exit 1; }
 (cd "$ROOT/apps/gui-go/frontend/dist" && find . -type f | LC_ALL=C sort | xargs shasum -a 256 > "$out/inputs/dist.sha256")
 step build-gui "$R" release-e2e-build || exit 1

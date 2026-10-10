@@ -2,7 +2,7 @@ import { defineConfig } from '@hey-api/openapi-ts'
 
 export default defineConfig({
   // Local spec produced by the gen-openapi cargo bin (offline, reproducible).
-  input: '../../schema/openapi.json',
+  input: '../../../schema/openapi.json',
   output: {
     path: 'src/api/generated',
   },

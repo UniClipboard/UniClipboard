@@ -142,12 +142,12 @@ jobs:
         run: apps/gui-go/e2e/linux/run.sh daemon-release
 
       - name: Build the frontend (release, no source map upload)
-        # SENTRY_AUTH_TOKEN and VITE_SENTRY_PROJECT stay unset: apps/gui-go/vite.config.ts uploads source maps only when both are present.
+        # SENTRY_AUTH_TOKEN and VITE_SENTRY_PROJECT stay unset: apps/gui-go/frontend/vite.config.ts uploads source maps only when both are present.
         env:
           VITE_GUI_GO_E2E: '0'
           SENTRY_AUTH_TOKEN: ''
           VITE_SENTRY_PROJECT: ''
-        run: bun --bun run --cwd apps/gui-go build
+        run: bun --bun run --cwd apps/gui-go/frontend build
 
       - name: Package
         run: apps/gui-go/e2e/linux/run.sh package-release "$RUNNER_TEMP/out"

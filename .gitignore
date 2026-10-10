@@ -37,7 +37,7 @@ dist-ssr
 **/target/debug/.fingerprint/
 **/target/debug/incremental/
 **/uniclipboard.db
-apps/gui/public/splashscreen.html
+apps/gui-go/frontend/public/splashscreen.html
 .worktrees/
 .env
 .seq-api-key

@@ -25,7 +25,7 @@ for img in uc-gui-go-linux-runtime:17c7 uc-gui-go-linux-runtime-fedora:17c7; do
   docker image inspect "$img" --format '{{.Id}}' > "$out/images/$n.id" || exit 1
   docker run --rm --platform linux/arm64 "$img" sh -c 'cat /etc/os-release; echo ---; test -s /etc/machine-id && echo "machine-id present"; command -v dbus-launch readelf; echo ---; (rpm -qa 2>/dev/null || dpkg-query -W) | sort' > "$out/images/$n.os-and-packages.txt" 2>&1 || exit 1
 done
-step frontend-e2e bash -c "cd '$ROOT' && VITE_GUI_GO_E2E=1 bun --bun run --cwd apps/gui-go build" || exit 1
+step frontend-e2e bash -c "cd '$ROOT' && VITE_GUI_GO_E2E=1 bun --bun run --cwd apps/gui-go/frontend build" || exit 1
 step build-gui "$R" release-e2e-build || exit 1
 step package-v1 "$R" package-appimage "$out/v1" || exit 1
 step package-v2 "$R" package-appimage "$out/v2" --update-marker v2-installed || exit 1
@@ -49,7 +49,7 @@ step control-17c6-fedora env UC_TLS_IMAGE=uc-gui-go-linux-runtime-fedora:17c7 UC
 step e2e-portable "$R" appimage-portable-e2e "$out/e2e-portable" "$V1" "$out/feed" "$M1"; portable=$?
 step e2e-full "$R" appimage-e2e "$out/e2e-full" full "$V1" "$out/feed" "$M1"; full=$?
 step e2e-negative "$R" appimage-e2e "$out/e2e-negative" negative "$out/negative/pkg/NEGCONTROL-UniClipboard_1.1.1_aarch64.AppImage"; neg=$?
-step frontend-release bash -c "cd '$ROOT' && VITE_GUI_GO_E2E=0 bun --bun run --cwd apps/gui-go build" || exit 1
+step frontend-release bash -c "cd '$ROOT' && VITE_GUI_GO_E2E=0 bun --bun run --cwd apps/gui-go/frontend build" || exit 1
 step package-release "$R" package-release "$out/release" || exit 1
 step e2e-smoke "$R" appimage-e2e "$out/e2e-smoke" smoke "$out/release/packages/UniClipboard_1.1.1_aarch64.AppImage"; smoke=$?
 step runtime-identity python3 -I "$ROOT/apps/gui-go/e2e/linux/runtime_pin_check.py" "$M1" "$out/v2/pkg/package-manifest.json" "$out/negative/pkg/package-manifest.json" "$out/release/packages/package-manifest.json"; ident=$?

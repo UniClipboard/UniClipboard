@@ -1,6 +1,6 @@
 @import 'tailwindcss' source(none);
 @source "../**/*.{ts,tsx,html}";
-@source "../../../gui-go/frontend/*.html";
+@source "../../*.html";
 @import './decorum.css';
 @import 'tw-animate-css';
 @import 'shadcn/tailwind.css';

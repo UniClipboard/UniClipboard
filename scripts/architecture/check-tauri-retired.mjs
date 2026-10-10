@@ -15,9 +15,9 @@ import { fileURLToPath } from 'node:url'
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 
 const RETIRED_PATHS = [
-  'apps/gui/src-tauri',
-  'apps/gui/e2e/run.mjs',
-  'apps/gui/e2e/specs',
+  'apps/gui', // the shared frontend moved into apps/gui-go/frontend
+  'apps/gui-go/frontend/e2e/run.mjs',
+  'apps/gui-go/frontend/e2e/specs',
   'crates/uc-tauri',
   'third_party/tao',
   'patches/tao-0.35.3-pr1207.diff',
@@ -116,7 +116,7 @@ function scan(reference, excludes, problems) {
 }
 
 function checkNpm(problems) {
-  for (const manifest of ['package.json', 'apps/gui/package.json', 'apps/gui-go/package.json']) {
+  for (const manifest of ['package.json', 'apps/gui-go/frontend/package.json']) {
     const content = JSON.parse(readFileSync(join(ROOT, manifest), 'utf8'))
     const dependencies = Object.keys({
       ...content.dependencies,

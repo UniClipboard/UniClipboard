@@ -4,7 +4,7 @@
 //! in the UI takes effect without a restart.
 //!
 //! - Frontend has its own gate (`setFrontendSentryEnabled` in
-//!   `apps/gui/src/observability/sentry.ts`) since the gate must live in the JS runtime.
+//!   `apps/gui-go/frontend/src/observability/sentry.ts`) since the gate must live in the JS runtime.
 //! - This module is the equivalent for the Rust side: `uc-bootstrap` consults
 //!   it from Sentry's transaction sampler, final transport, `before_send`,
 //!   `before_breadcrumb`, and `before_send_log` hooks. When the gate is off,

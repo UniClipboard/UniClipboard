@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-// Every `@tauri-apps/*` module the shared frontend imports must be aliased in apps/gui-go/vite.config.ts to a host
+// Every `@tauri-apps/*` module the shared frontend imports must be aliased in apps/gui-go/frontend/vite.config.ts to a host
 // adapter, and each alias must point at an existing adapter file. A package that is imported but not aliased would
 // be bundled from node_modules and call a Tauri runtime that does not exist; the failure would only show at runtime
 // on the first call. Test files are excluded: they mock these modules.
@@ -11,8 +11,8 @@ import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
-const SOURCES = [join(ROOT, 'apps/gui/src'), join(ROOT, 'apps/gui-go/frontend/src')]
-const VITE_CONFIG = join(ROOT, 'apps/gui-go/vite.config.ts')
+const SOURCES = [join(ROOT, 'apps/gui-go/frontend/src')]
+const VITE_CONFIG = join(ROOT, 'apps/gui-go/frontend/vite.config.ts')
 
 function walk(dir, out = []) {
   for (const name of readdirSync(dir)) {
@@ -45,7 +45,7 @@ for (const dir of SOURCES) {
 const problems = []
 for (const [id, file] of imported) {
   if (!aliases.has(id))
-    problems.push(`${file}: imports ${id}, which apps/gui-go/vite.config.ts does not alias`)
+    problems.push(`${file}: imports ${id}, which apps/gui-go/frontend/vite.config.ts does not alias`)
 }
 for (const [id, adapter] of aliases) {
   if (!existsSync(join(ROOT, 'apps/gui-go/frontend/src/host', `${adapter}.ts`))) {

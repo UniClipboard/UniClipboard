@@ -13,7 +13,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 BINDINGS = ROOT / 'apps/gui-go/frontend/bindings'
-CATALOG = ROOT / 'apps/gui/src/lib/host-errors.generated.ts'
+CATALOG = ROOT / 'apps/gui-go/frontend/src/lib/host-errors.generated.ts'
 
 # Platforms without an authorised host or VM in this work: cross-compiling is a build check, not a runtime check.
 NOT_RUN = [

@@ -55,3 +55,6 @@ func cursorOverride() (float64, float64, bool)                                  
 // platform's, and the global shortcut is always bound with the OS.
 func shortcutDefaultOverride() (string, bool) { return "", false }
 func shortcutBackendAllowed() bool            { return true }
+
+// realClipboardAllowed is always false in normal builds: an isolated run never touches the system clipboard.
+func realClipboardAllowed() bool { return false }

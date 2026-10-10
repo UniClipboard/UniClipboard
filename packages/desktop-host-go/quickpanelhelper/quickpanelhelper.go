@@ -126,6 +126,7 @@ func (c *processChild) Terminate() {
 // Launch implements Launcher.
 func (l *ProcessLauncher) Launch() (Child, error) {
 	cmd := exec.Command(l.Executable, l.Args...)
+	configureProcess(cmd)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return nil, err

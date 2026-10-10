@@ -28,8 +28,8 @@ func validateIsolation() error {
 	sandbox := filepath.Dir(exe)
 	if !strings.HasPrefix(filepath.Base(sandbox), "uc-gui-go-") ||
 		!strings.HasPrefix(os.Getenv("UC_PROFILE"), "gui-go-") ||
-		os.Getenv("UC_DISABLE_SYSTEM_CLIPBOARD") != "1" || os.Getenv("UC_PORTABLE") != "1" || !apppaths.IsPortable() {
-		return fmt.Errorf("isolated mode requires the executable in a uc-gui-go-* directory, UC_PORTABLE=1, a gui-go-* profile and UC_DISABLE_SYSTEM_CLIPBOARD=1")
+		(os.Getenv("UC_DISABLE_SYSTEM_CLIPBOARD") != "1" && !realClipboardAllowed()) || os.Getenv("UC_PORTABLE") != "1" || !apppaths.IsPortable() {
+		return fmt.Errorf("isolated mode requires the executable in a uc-gui-go-* directory, UC_PORTABLE=1, a gui-go-* profile and UC_DISABLE_SYSTEM_CLIPBOARD=1 (an e2e build on a dedicated host may opt out, see realClipboardAllowed)")
 	}
 	root, ok := apppaths.AppDataRoot()
 	if !ok {

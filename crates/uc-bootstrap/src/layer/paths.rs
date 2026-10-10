@@ -43,10 +43,9 @@ impl DesktopHostPaths {
 }
 
 pub(crate) fn resolve_desktop_host_paths() -> WiringResult<DesktopHostPaths> {
-    let upgrade_backups_dir = uc_app_paths::app_upgrade_backup_root(uc_platform::default_profile())
-        .ok_or_else(|| {
-            WiringError::ConfigInit("durable upgrade backup directory unavailable".into())
-        })?;
+    let upgrade_backups_dir = uc_app_paths::app_upgrade_backup_root(None).ok_or_else(|| {
+        WiringError::ConfigInit("durable upgrade backup directory unavailable".into())
+    })?;
     DirsAppDirsAdapter::new()
         .get_app_dirs()
         .map(|dirs| DesktopHostPaths::from_app_dirs(dirs, upgrade_backups_dir))

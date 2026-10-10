@@ -31,10 +31,10 @@ hold focus indefinitely.
 </Callout>
 
 <Callout type="info">
-  On macOS the Quick Panel is a native panel that ships with the app; see "macOS
-  native panel" below. **The key bindings, right-click menu, filter prefixes and
-  thumbnail wall described in the rest of this page are those of the Windows /
-  Linux panel** and differ from macOS.
+  On macOS and Windows the Quick Panel is a native panel that ships with the app;
+  see "macOS and Windows native panel" below. **The key bindings, right-click
+  menu, filter prefixes and thumbnail wall described in the rest of this page are
+  those of the Linux panel** and differ from the native panel.
 </Callout>
 
 On native Wayland sessions whose compositor cannot provide global hotkeys, bind this command in
@@ -65,9 +65,11 @@ hyprctl configerrors
 
 An empty result from the second command means the configuration is valid. `Super+Ctrl+V` now opens or closes the Quick Panel while the UniClipboard GUI is running. If the GUI is not running, the command exits with an error instead of starting it. Quick Panel must remain enabled in UniClipboard settings.
 
-## macOS native panel
+## macOS and Windows native panel
 
-The macOS installer includes a separate native panel process. It is used by default, and stays resident in the tray with very low usage after the main window is closed. To go back to the previous panel, set the environment variable `UC_GPUI_QUICK_PANEL=0` before starting the app. While content is locked (before you enter the passphrase in the main window) the panel shows a locked page and can read no history: the background refuses its requests, and the moment content gets locked the panel also drops every row, thumbnail and preview it was showing. Press `Enter` to open the main window and unlock; the panel refreshes by itself afterwards.
+The macOS and Windows installers include a separate native panel process. It is used by default, and stays resident in the tray with very low usage after the main window is closed. To go back to the previous panel, set the environment variable `UC_GPUI_QUICK_PANEL=0` before starting the app. While content is locked (before you enter the passphrase in the main window) the panel shows a locked page and can read no history: the background refuses its requests, and the moment content gets locked the panel also drops every row, thumbnail and preview it was showing. Press `Enter` to open the main window and unlock; the panel refreshes by itself afterwards.
+
+On Windows, read `Ctrl` for `Cmd` in the table below; the default shortcut is `Ctrl + Alt + V`. The panel pastes by simulating the system's paste keys into the previous window. If that window runs as administrator and UniClipboard does not, Windows drops the simulated keys and the panel reports a missing permission. The first time the background service starts, Windows Firewall may ask to allow network access; it waits for your answer.
 
 This lock covers the app interface only (the main window and the quick panel): the `uniclip` command-line tool and other clients are not affected. It is also not a defence against a malicious local process, because the client type is declared by the caller and the background trusts the same system user that holds the local connection token. Encryption of data at rest does not depend on this lock.
 

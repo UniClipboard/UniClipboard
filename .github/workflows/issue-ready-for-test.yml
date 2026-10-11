@@ -74,4 +74,3 @@ jobs:
                 body: `PR #${context.payload.pull_request.number} has merged. This issue is ready for release verification.`,
               });
             }
-

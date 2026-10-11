@@ -30,4 +30,3 @@ jobs:
                 `PR descriptions must not use GitHub closing keywords: ${closingReferences.join(', ')}. Use "Related to #123" or "Refs #123" instead.`
               );
             }
-

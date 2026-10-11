@@ -1649,3 +1649,14 @@
 .mac-root[data-native-material] {
   background: transparent;
 }
+
+/* With a native window material the page has no opaque backdrop: backdrop-filter in WKWebView only
+   samples web content, so a translucent popup would show the text behind it unblurred. Popups then
+   use the tinted glass colour at full opacity, which keeps them legible like AppKit menus. */
+:root[data-window-material^='native'] .mac-menu,
+:root[data-window-material^='native'] .mac-popover,
+:root[data-window-material^='native'] .mac-tooltip,
+:root[data-window-material^='native'] .mac-alert,
+:root[data-window-material^='native'] .mac-notification {
+  background: var(--popup-opaque);
+}

@@ -23,6 +23,8 @@
   --glass: rgba(255, 255, 255, 0.62);
   --glass-clear: rgba(255, 255, 255, 0.22);
   --glass-tinted: rgba(246, 246, 248, 0.92);
+  /* Not in the design: --glass-tinted at full opacity, for popups over a native window material. */
+  --popup-opaque: rgb(246, 246, 248);
   --glass-rim: rgba(255, 255, 255, 0.75);
   --blue: #007aff;
   --green: #28cd41;
@@ -81,6 +83,7 @@
   --glass: rgba(40, 40, 44, 0.6);
   --glass-clear: rgba(30, 30, 34, 0.22);
   --glass-tinted: rgba(36, 36, 40, 0.92);
+  --popup-opaque: rgb(36, 36, 40);
   --glass-rim: rgba(255, 255, 255, 0.16);
   --blue: #0a84ff;
   --green: #32d74b;

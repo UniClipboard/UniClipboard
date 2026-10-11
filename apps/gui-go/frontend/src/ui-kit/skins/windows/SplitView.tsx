@@ -139,6 +139,7 @@ export function SplitView({
   sidebarToggle,
   title,
   subtitle,
+  toolbarLeading,
   search,
   toolbar,
   children,
@@ -201,7 +202,10 @@ export function SplitView({
           </WithTooltip>
         </span>
         <div className={styles.search}>{search}</div>
-        <div className={styles.commands}>{toolbar}</div>
+        <div className={styles.commands}>
+          {toolbarLeading}
+          {toolbar}
+        </div>
       </div>
       <div className={styles.body}>
         {sidebarHidden || overlay ? (

@@ -1998,6 +1998,23 @@
   overflow: hidden;
 }
 
+/* The action bar's secondary commands are glass capsules (design MA2/ME1), not bordered push
+   buttons. */
+.mac-pane-actionbar .mac-btn[data-tint='none'] {
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(14px) saturate(1.8);
+  backdrop-filter: blur(14px) saturate(1.8);
+  box-shadow:
+    var(--glass-shadow),
+    inset 0 0.5px 0 var(--glass-rim),
+    inset 0 0 0 0.5px var(--glass-rim);
+}
+
+/* The hint keeps the design's 8 pt from the bar's end. */
+.mac-pane-actionbar .mac-actionbar-hint {
+  padding-right: 8px;
+}
+
 /* A narrow detail pane squeezes the commands instead of letting them spill out of the bar. */
 .mac-pane-actionbar > * {
   flex-shrink: 1;
@@ -2296,6 +2313,39 @@
 
 .mac-toolbar-capsule .mac-btn[data-icon-only][data-popup-open] {
   background: var(--fill-2);
+}
+
+/* The list / grid switch in the toolbar is a glass capsule too (design MA2): 34 pt items, the
+   chosen one on a fill instead of the raised segment of a window's segmented control. */
+.mac-split-toolbar .mac-segmented {
+  height: 32px;
+  padding: 3px;
+  border-radius: 16px;
+  flex-shrink: 0;
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(14px) saturate(1.8);
+  backdrop-filter: blur(14px) saturate(1.8);
+  box-shadow:
+    var(--glass-shadow),
+    inset 0 0.5px 0 var(--glass-rim),
+    inset 0 0 0 0.5px var(--glass-rim);
+}
+
+.mac-split-toolbar .mac-segment {
+  width: 34px;
+  padding: 0;
+  border-radius: 13px;
+  justify-content: center;
+}
+
+.mac-split-toolbar .mac-segment[data-checked] {
+  background: var(--fill-2);
+  box-shadow: none;
+  color: var(--label);
+}
+
+.mac-split-toolbar .mac-toolbar-capsule {
+  flex-shrink: 0;
 }
 
 /* The toolbar search field (design MA2): 300 pt, narrowing with the window. */
@@ -3169,4 +3219,56 @@
   flex: 1 1 auto;
   min-width: 0;
   box-shadow: inset -0.5px 0 0 var(--separator);
+}
+
+/* The card size slider in the toolbar (design ME2): a glass capsule between a small and a large
+   card glyph, a 90 pt track and a 16 pt knob. */
+.mac-split-toolbar .mac-slider {
+  box-sizing: border-box;
+  width: auto;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 16px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--label-2);
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(14px) saturate(1.8);
+  backdrop-filter: blur(14px) saturate(1.8);
+  box-shadow:
+    var(--glass-shadow),
+    inset 0 0.5px 0 var(--glass-rim),
+    inset 0 0 0 0.5px var(--glass-rim);
+}
+
+.mac-split-toolbar .mac-slider::before,
+.mac-split-toolbar .mac-slider::after {
+  content: '';
+  flex-shrink: 0;
+  border: 1.4px solid currentColor;
+}
+
+.mac-split-toolbar .mac-slider::before {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+}
+
+.mac-split-toolbar .mac-slider::after {
+  width: 13px;
+  height: 13px;
+  border-radius: 3px;
+}
+
+.mac-split-toolbar .mac-slider-control {
+  width: 90px;
+}
+
+.mac-split-toolbar .mac-slider-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }

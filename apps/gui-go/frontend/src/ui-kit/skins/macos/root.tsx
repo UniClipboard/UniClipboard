@@ -1,22 +1,17 @@
 import { Toolbar as BaseToolbar } from '@base-ui/react/toolbar'
 import { Tooltip } from '@base-ui/react/tooltip'
-import {
-  Children,
-  createContext,
-  Fragment,
-  isValidElement,
-  use,
-  useEffect,
-  useState,
-  useSyncExternalStore,
-  type ReactNode,
-} from 'react'
+import { createContext, use, useEffect, useState, useSyncExternalStore } from 'react'
 import { subscribeWindowMaterial, type WindowMaterial } from '@/host/window-material'
-import type { SurfaceProps, ToolbarButtonProps, ToolbarProps, UiRootProps } from '@/ui-kit/contract'
+import type {
+  SurfaceProps,
+  ToolbarButtonProps,
+  ToolbarGroupProps,
+  ToolbarProps,
+  UiRootProps,
+} from '@/ui-kit/contract'
 import { WithHelpTag } from './controls'
 import { glyph } from './glyph'
 import { Icon } from './icons'
-import { Menu } from './menus'
 import { PushButton } from './parts'
 import { PortalContainer } from './portal'
 import './tokens.css'
@@ -124,35 +119,21 @@ export function Surface({ region, children }: SurfaceProps) {
 }
 
 /** Icon-only toolbar items, which Tahoe groups into one glass capsule. */
-function isCapsuleItem(child: ReactNode) {
-  if (!isValidElement<{ children?: ReactNode; iconOnly?: boolean }>(child)) return false
-  if (child.type === ToolbarButton) return child.props.children == null
-  return child.type === Menu && child.props.iconOnly === true
-}
-
-/**
- * Tahoe toolbar: one tab stop, arrow keys move between items, controls float as glass capsules.
- * The items between two `ToolbarDivider`s share one capsule when they are all icon-only.
- */
+/** Tahoe toolbar: one tab stop, arrow keys move between items, controls float as glass capsules. */
 export function Toolbar({ label, children }: ToolbarProps) {
-  const runs: ReactNode[][] = [[]]
-  Children.forEach(children, child => {
-    if (isValidElement(child) && child.type === ToolbarDivider) runs.push([])
-    else runs[runs.length - 1].push(child)
-  })
   return (
     <BaseToolbar.Root className="mac-toolbar-bar" aria-label={label}>
-      {runs.map((run, index) =>
-        run.length > 0 && run.every(isCapsuleItem) ? (
-          // eslint-disable-next-line react/no-array-index-key -- runs are positional
-          <span key={index} className="mac-glass-group mac-glass mac-toolbar-capsule">
-            {run}
-          </span>
-        ) : (
-          <Fragment key={index}>{run}</Fragment>
-        )
-      )}
+      {children}
     </BaseToolbar.Root>
+  )
+}
+
+/** Items that belong together share one glass capsule (design MA2: Send, Pin, More). */
+export function ToolbarGroup({ children }: ToolbarGroupProps) {
+  return (
+    <BaseToolbar.Group className="mac-glass-group mac-glass mac-toolbar-capsule">
+      {children}
+    </BaseToolbar.Group>
   )
 }
 

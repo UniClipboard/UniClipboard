@@ -25,7 +25,7 @@ import { HistoryKitSearchField } from './HistoryKitSearchField'
 import { HistoryKitSelection } from './HistoryKitSelection'
 import { HistoryKitSidebar } from './HistoryKitSidebar'
 import { HistoryKitTagManager } from './HistoryKitTagManager'
-import { HistoryKitToolbar } from './HistoryKitToolbar'
+import { HistoryKitToolbar, HistoryKitViewSwitch } from './HistoryKitToolbar'
 
 const VIEW_KEY = 'uc.history.kit.view'
 const SIZE_KEY = 'uc.history.kit.gridSize'
@@ -257,13 +257,17 @@ export default function HistoryKitPage() {
               ? t('history.kit.selectedOf', { count: c.checkedItems.length, total: c.browseCount })
               : c.browseCount.toLocaleString()
           }
-          search={<HistoryKitSearchField search={search} inputRef={c.searchInputRef} />}
-          toolbar={
-            <HistoryKitToolbar
+          toolbarLeading={
+            <HistoryKitViewSwitch
               view={view}
               onViewChange={changeView}
               gridSize={gridSize}
               onGridSizeChange={changeGridSize}
+            />
+          }
+          search={<HistoryKitSearchField search={search} inputRef={c.searchInputRef} />}
+          toolbar={
+            <HistoryKitToolbar
               targetIds={selection}
               pinned={allPinned}
               onTogglePin={togglePin}

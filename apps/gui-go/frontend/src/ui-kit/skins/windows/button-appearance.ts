@@ -5,6 +5,8 @@ export const appearance = {
   primary: 'primary',
   standard: 'secondary',
   subtle: 'subtle',
+  // Win11 has no destructive push button (WinUI keeps destructive commands standard; the text carries the warning).
+  destructive: 'secondary',
 } as const satisfies Record<ButtonVariant, string>
 
 // Fluent buttons stop at `large` (40px), which is also the largest WinUI control height.

@@ -200,10 +200,15 @@ export function HistoryKitDetail({
         {delivery && <HistoryKitDelivery delivery={delivery} />}
       </div>
       <ActionBar
-        hint={t('history.kit.actionHint', {
-          copy: formatShortcutHint('enter'),
-          pin: formatShortcutHint('mod+p'),
-        })}
+        // The image bar (design ME1) has three commands and no hint.
+        hint={
+          isImage
+            ? undefined
+            : t('history.kit.actionHint', {
+                copy: formatShortcutHint('enter'),
+                pin: formatShortcutHint('mod+p'),
+              })
+        }
       >
         <Button
           variant="primary"

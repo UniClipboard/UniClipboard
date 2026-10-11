@@ -78,7 +78,7 @@ describe('LibraryMainLayout', () => {
       renderOn(platform, 'custom')
 
       const overlay = screen.getByRole('button', { name: '关闭' }).closest('.absolute')
-      expect(overlay).toHaveClass('right-0', 'top-0', 'z-50', 'h-10')
+      expect(overlay).toHaveClass('right-0', 'top-0', 'z-50', 'h-12')
       // The band stays draggable; only the buttons opt out.
       expect(overlay).toHaveAttribute('data-tauri-drag-region', 'true')
 
@@ -101,8 +101,8 @@ describe('LibraryMainLayout', () => {
     platform => {
       const custom = renderOn(platform, 'custom')
       const customMain = custom.container.querySelector('main') as HTMLElement
-      expect(customMain.style.getPropertyValue('--window-controls-inset-x')).toBe('9rem')
-      expect(customMain.style.getPropertyValue('--window-controls-inset-y')).toBe('2.5rem')
+      expect(customMain.style.getPropertyValue('--window-controls-inset-x')).toBe('8.625rem')
+      expect(customMain.style.getPropertyValue('--window-controls-inset-y')).toBe('3rem')
       custom.unmount()
 
       const system = renderOn(platform, 'system')

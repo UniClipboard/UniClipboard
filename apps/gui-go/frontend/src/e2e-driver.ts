@@ -541,6 +541,7 @@ async function runHistoryKitScenario() {
     code: string
     link: string
     texts: string[]
+    image: { dimensions: string }
     shotPauseMs: number
   }
   const shot = async (name: string, detail?: unknown) => {
@@ -815,7 +816,12 @@ async function runHistoryKitScenario() {
         c.textContent?.includes(chipText)
       ),
     30000
-  )
+  ).catch(error => {
+    const detail = $('[data-testid="clipboard-detail"]')
+    throw new Error(
+      `${error}; detail: ${detail?.innerText.slice(0, 300)}; tags: ${detail?.querySelector('[role="group"]')?.outerHTML.slice(0, 600)}`
+    )
+  })
   await record('kit-tag-created', true, { tag: chipText })
 
   // Command-click adds a second row: the detail becomes the selection summary.
@@ -1089,6 +1095,61 @@ async function runHistoryKitScenario() {
     .find(b => b.getAttribute('aria-label') === i18n.t('history.composite.clearAll'))!
     .click()
   await waitFor('search cleared again', () => historyRows().length >= 3, 30000)
+
+  // An image entry (design ME1/ME4): the orchestrator uploads a synthetic PNG through a loopback
+  // mobile device of this profile. The detail shows it with Fit / 100%, its facts, and Quick Look.
+  await record('kit-ready-for-image', true)
+  const imageRow = async () => {
+    const thumb = $('[role="option"][data-item-id] [data-kind="image"]')
+    return thumb?.closest<HTMLElement>('[role="option"]') ?? null
+  }
+  const imageEnd = Date.now() + 120000
+  for (;;) {
+    if (await imageRow()) break
+    if (Date.now() > imageEnd) throw new Error('timeout: image entry')
+    // Uploads are not always pushed to the page either: reload the list as above.
+    sidebarRow(i18n.t('history.sidebar.pinned'))?.click()
+    await sleep(500)
+    sidebarRow(i18n.t('history.sidebar.allItems'))?.click()
+    await sleep(1500)
+  }
+  openRow((await imageRow())!)
+  const preview = await waitFor(
+    'image preview',
+    () => $('[data-testid="clipboard-detail"] .mac-preview[data-kind="image"] img'),
+    60000
+  )
+  const facts = () =>
+    $('[data-testid="clipboard-detail"]')?.textContent?.includes(seeded.image.dimensions) ?? false
+  await waitFor('image facts', facts, 30000)
+  const zoom = (label: string) =>
+    Array.from(
+      document.querySelectorAll<HTMLElement>('[data-testid="clipboard-detail"] [role="radio"]')
+    ).find(b => b.textContent === label)
+  await record('kit-image-detail', true, {
+    naturalWidth: (preview as HTMLImageElement).naturalWidth,
+    fit: zoom(i18n.t('history.detail.imageFit'))?.getAttribute('aria-checked'),
+  })
+  await shot('image-detail')
+  zoom(i18n.t('history.detail.imageActual'))!.click()
+  await waitFor(
+    '100% zoom',
+    () => zoom(i18n.t('history.detail.imageActual'))?.getAttribute('aria-checked') === 'true'
+  )
+  await record('kit-image-actual-size', true)
+  zoom(i18n.t('history.detail.imageFit'))!.click()
+  Array.from(document.querySelectorAll<HTMLElement>('[data-testid="clipboard-detail"] button'))
+    .find(b => b.textContent?.startsWith(i18n.t('history.detail.quickLook')))!
+    .click()
+  const quickLook = await waitFor('quick look', () => $('.mac-quicklook img'), 30000)
+  await waitFor('quick look decoded', () => (quickLook as HTMLImageElement).naturalWidth > 0)
+  await record('kit-quick-look', true, {
+    title: $('.mac-quicklook-title')?.textContent,
+  })
+  await shot('quick-look')
+  key(document.activeElement ?? document.body, 'Escape')
+  await waitFor('quick look closed', () => !$('.mac-quicklook'))
+  await record('kit-quick-look-closed', true)
 
   // Light and dark themes: the material stays native only while the theme matches the system
   // appearance; otherwise the sidebar shows its CSS fallback (the glass would be drawn in the wrong

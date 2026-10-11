@@ -662,9 +662,13 @@ async function seededRun() {
   })
 
   await step('quick-look', async () => {
-    const target = rows().filter({ has: page.locator('img') }).first()
+    const target = rows()
+      .filter({ has: page.locator('img') })
+      .first()
     await target.click()
-    await detail().getByRole('button', { name: /Quick Look/ }).click()
+    await detail()
+      .getByRole('button', { name: /Quick Look/ })
+      .click()
     await page.waitForTimeout(500)
     await shot('quick-look')
     await page.keyboard.press('Escape')

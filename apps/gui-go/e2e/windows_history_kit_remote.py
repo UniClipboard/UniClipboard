@@ -230,8 +230,9 @@ def main():
     if inside:
         node, playwright = portable_node(machine, args.work, args.arch, out)
 
-    run_dir = f'{args.work}\\run-{stamp}'
-    app = f'{run_dir}\\app'
+    # Isolated mode requires the executables in a uc-gui-go-* directory (environment.go).
+    run_dir = f'{args.work}\\uc-gui-go-{stamp}'
+    app = run_dir
     profile = f'gui-go-kit-{stamp}'
     task = f'uc-history-kit-{stamp}'
     debug_port = 9300 + int(time.time()) % 500

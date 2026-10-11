@@ -252,10 +252,16 @@ export default function HistoryKitPage() {
             shortcutHint: formatShortcutHint('ctrl+meta+s'),
           }}
           title={c.viewLabel}
+          // A failed query has no count: showing 0 would claim an empty history.
           subtitle={
-            multi
-              ? t('history.kit.selectedOf', { count: c.checkedItems.length, total: c.browseCount })
-              : c.browseCount.toLocaleString()
+            c.queryFailure
+              ? undefined
+              : multi
+                ? t('history.kit.selectedOf', {
+                    count: c.checkedItems.length,
+                    total: c.browseCount,
+                  })
+                : c.browseCount.toLocaleString()
           }
           toolbarLeading={
             <HistoryKitViewSwitch
@@ -281,7 +287,7 @@ export default function HistoryKitPage() {
               <HistoryKitScopeBar
                 contentFilter={c.filter.activeFilter}
                 onContentFilterChange={c.filterActions.setContentFilter}
-                results={c.browseCount}
+                results={c.queryFailure ? null : c.browseCount}
                 loading={c.searchLoading}
                 onSeedOperator={search.seedDimension}
               />

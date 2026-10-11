@@ -65,7 +65,7 @@ export function Pane({ kind, label, children }: PaneProps) {
       data-pane={kind}
       aria-label={label}
     >
-      {kind === 'list' && heading ? (
+      {(kind === 'list' || kind === 'main') && heading ? (
         <div className={styles.header}>
           <h1 className={styles.title}>{heading.title}</h1>
           {heading.subtitle ? <span className={styles.subtitle}>{heading.subtitle}</span> : null}

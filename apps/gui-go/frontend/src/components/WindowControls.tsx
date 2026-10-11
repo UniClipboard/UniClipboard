@@ -25,7 +25,8 @@ function WindowControlButton({
       }}
       onDoubleClick={event => event.stopPropagation()}
       className={cn(
-        'flex h-full w-12 items-center justify-center transition-colors duration-150',
+        // Win11 caption buttons (board C2): 46 px wide, the full height of the title bar.
+        'flex h-full w-[2.875rem] items-center justify-center transition-colors duration-150',
         'text-muted-foreground hover:text-foreground',
         className
       )}
@@ -57,7 +58,8 @@ export function WindowControls({ className }: { className?: string }) {
       <WindowControlButton
         aria-label="关闭"
         onClick={close}
-        className="hover:bg-red-500/90 hover:text-white"
+        // Win11 close hover: SystemFillColorCritical #C42B1C with white glyph (board C2).
+        className="hover:bg-[#C42B1C] hover:text-white"
       >
         <X className="size-4" />
       </WindowControlButton>

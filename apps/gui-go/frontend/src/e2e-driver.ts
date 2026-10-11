@@ -1202,8 +1202,19 @@ async function runHistoryKitScenario() {
     await waitFor(`${theme} theme applied`, () => appliedScheme() === theme)
     await sleep(500)
     const state = materials()
-    const expected = theme === systemScheme() ? `native-${hostMaterial}` : 'css-fallback'
-    await record(`kit-material-${theme}`, state.sidebar === expected, { ...state, expected })
+    // Without a host material (no private_mac_apis, or an opaque webview) the sidebar always
+    // falls back and the page stays opaque.
+    const expected =
+      hostMaterial !== 'none' && theme === systemScheme()
+        ? `native-${hostMaterial}`
+        : 'css-fallback'
+    await record(
+      `kit-material-${theme}`,
+      state.sidebar === expected &&
+        state.content === 'solid' &&
+        (expected === 'css-fallback' ? state.document === null : state.document === expected),
+      { ...state, expected }
+    )
     await shot(`${theme}-default`, state)
   }
   await setTheme('system')

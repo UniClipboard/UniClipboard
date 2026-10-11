@@ -15,6 +15,7 @@ export const contractGlyphs = {
   edit: 'pencil',
   filter: 'filter',
   history: 'history',
+  info: 'info',
   moon: 'moon',
   more: 'more',
   pin: 'pin',

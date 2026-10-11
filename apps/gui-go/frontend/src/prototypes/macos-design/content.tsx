@@ -1,5 +1,5 @@
 import type { ComponentProps, ReactNode } from 'react'
-import { deliveries, type Clip, type SidebarItem } from '@/prototypes/macos-design/data'
+import { deliveries, tagColor, type Clip, type SidebarItem } from '@/prototypes/macos-design/data'
 import { Icon, type IconName } from '@/ui-kit/skins/macos/icons'
 import { Checkbox, PushButton, Tag } from '@/ui-kit/skins/macos/parts'
 
@@ -44,7 +44,7 @@ export function ClipRow({
           </span>
         )}
         {clip.tags.map(tag => (
-          <Tag key={tag} label={`#${tag}`} color={tag} />
+          <Tag key={tag} label={`#${tag}`} color={tagColor[tag]} />
         ))}
       </span>
     </div>
@@ -52,7 +52,7 @@ export function ClipRow({
 }
 
 const smartColor = { orange: 'var(--orange)', green: 'var(--green)' }
-const tagColor = { blue: 'var(--blue)', orange: 'var(--orange)' }
+const dotColor = { blue: 'var(--blue)', orange: 'var(--orange)' }
 
 export function SidebarRow({
   item,
@@ -67,7 +67,7 @@ export function SidebarRow({
           <span className="mac-dot-smart" style={{ background: smartColor[item.smart] }} />
         )}
         {'tagDot' in item && (
-          <span className="mac-dot-tag" style={{ background: tagColor[item.tagDot] }} />
+          <span className="mac-dot-tag" style={{ background: dotColor[item.tagDot] }} />
         )}
       </span>
       <span className="mac-side-label">{item.label}</span>

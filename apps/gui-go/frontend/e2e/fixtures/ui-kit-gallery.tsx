@@ -49,9 +49,9 @@ const clipActions: MenuEntry[] = [
 ]
 
 const smartViews: MenuEntry[] = [
-  { id: 'deploy', label: 'Deploy commands', swatch: 'deploy', count: '14' },
-  { id: 'iphone', label: 'From iPhone today', swatch: 'docker', count: '6' },
-  { id: 'invoices', label: 'Invoices', swatch: 'finance', count: '9' },
+  { id: 'deploy', label: 'Deploy commands', swatch: 'orange', count: '14' },
+  { id: 'iphone', label: 'From iPhone today', swatch: 'blue', count: '6' },
+  { id: 'invoices', label: 'Invoices', swatch: 'green', count: '9' },
   { id: 'sep', kind: 'separator' },
   { id: 'save', label: 'Save current search…', icon: 'add' },
 ]
@@ -69,16 +69,16 @@ const navSections: SidebarNavSection[] = [
     id: 'views',
     title: 'Smart views',
     items: [
-      { id: 'deploy', label: 'Deploy commands', swatch: 'deploy', count: '14' },
-      { id: 'invoices', label: 'Invoices', swatch: 'finance', count: '9' },
+      { id: 'deploy', label: 'Deploy commands', swatch: 'orange', count: '14' },
+      { id: 'invoices', label: 'Invoices', swatch: 'green', count: '9' },
     ],
   },
   {
     id: 'tags',
     title: 'Tags',
     items: [
-      { id: 'docker', label: '#docker', swatch: 'docker', count: '38' },
-      { id: 'tag-deploy', label: '#deploy', swatch: 'deploy', count: '14' },
+      { id: 'docker', label: '#docker', swatch: 'blue', count: '38' },
+      { id: 'tag-deploy', label: '#deploy', swatch: 'orange', count: '14' },
     ],
   },
 ]
@@ -94,7 +94,7 @@ const clips: ItemListItem[] = [
     subtitle: 'arch-desktop · Alacritty · 09:38:12',
     monospace: true,
     leading: <Kind>{'</>'}</Kind>,
-    trailing: <Tag name="#git" color="git" />,
+    trailing: <Tag name="#git" color="gray" />,
   },
   {
     id: 'url',
@@ -110,8 +110,8 @@ const clips: ItemListItem[] = [
     leading: <Kind>{'</>'}</Kind>,
     trailing: (
       <>
-        <Tag name="#deploy" color="deploy" />
-        <Tag name="#docker" color="docker" />
+        <Tag name="#deploy" color="orange" />
+        <Tag name="#docker" color="blue" />
       </>
     ),
   },
@@ -120,14 +120,14 @@ const clips: ItemListItem[] = [
     title: 'Q4 roadmap: ship LAN-only Mode, then per-device gates',
     subtitle: 'this PC · Obsidian · 09:26:51',
     leading: <Kind>TXT</Kind>,
-    trailing: <Tag name="#work" color="work" />,
+    trailing: <Tag name="#work" color="blue" />,
   },
   {
     id: 'invoice',
     title: 'invoice-0921.pdf',
     subtitle: 'Pixel 8 · Files · 08:40:19',
     leading: <Kind>PDF</Kind>,
-    trailing: <Tag name="#finance" color="finance" />,
+    trailing: <Tag name="#finance" color="green" />,
   },
 ]
 
@@ -270,10 +270,10 @@ function Board({ scheme }: { scheme: ColorScheme }) {
                   />
                 </ContextMenu>
                 <div className="ui-kit-gallery-row">
-                  <Tag name="#deploy" color="deploy" />
+                  <Tag name="#deploy" color="orange" />
                   <Tag
                     name="#finance"
-                    color="finance"
+                    color="green"
                     remove={{ label: 'Remove #finance', onClick: () => record('remove:#finance') }}
                   />
                   <SearchToken

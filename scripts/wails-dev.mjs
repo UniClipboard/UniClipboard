@@ -117,13 +117,18 @@ export async function main(argv, env = process.env) {
   // The binary embeds frontend/dist; in dev the assets come from Vite, so an empty dist is enough.
   fs.mkdirSync(path.join(gui, 'frontend/dist'), { recursive: true })
   fs.writeFileSync(path.join(gui, 'frontend/dist/.gitkeep'), '')
-  // No `production` tag: Wails then proxies assets to FRONTEND_DEVSERVER_URL.
+  // No `production` tag: Wails then proxies assets to FRONTEND_DEVSERVER_URL. On macOS the
+  // `private_mac_apis` tag lets the window material show through the page, as in the packaged app.
   const built = path.join(out, process.platform === 'win32' ? 'gui-go-dev.exe' : 'gui-go-dev')
-  run('go', ['build', '-o', built, '.'], { cwd: gui })
+  const tags = process.platform === 'darwin' ? ['-tags', 'private_mac_apis'] : []
+  run('go', ['build', ...tags, '-o', built, '.'], { cwd: gui })
   const binary = process.platform === 'darwin' ? makeDevBundle(built) : built
 
+  // A dev build targets the machine it runs on. Linux has no UI kit skin, so it sets no target.
+  const uiPlatform = { darwin: 'macos', win32: 'windows' }[process.platform]
   const childEnv = {
     ...env,
+    ...(uiPlatform ? { UC_UI_PLATFORM: uiPlatform } : {}),
     UNICLIPBOARD_ENV: 'development',
     UC_PROFILE: profile,
     UC_DEV_SERVER_PORT: String(port),

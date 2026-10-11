@@ -1,6 +1,17 @@
 // Synthetic content taken from the design canvas copy. No production data is read.
+import type { TagPaletteColor } from '@/ui-kit/contract'
 
 export type TagName = 'deploy' | 'docker' | 'git' | 'design' | 'finance' | 'work'
+
+/** The palette colour of each sample tag (design T1 tints). */
+export const tagColor = {
+  deploy: 'orange',
+  docker: 'blue',
+  git: 'gray',
+  design: 'purple',
+  finance: 'green',
+  work: 'blue',
+} as const satisfies Record<TagName, TagPaletteColor>
 
 export type ClipKind = 'code' | 'url' | 'text' | 'pdf' | 'image'
 

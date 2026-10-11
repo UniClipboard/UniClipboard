@@ -1,6 +1,6 @@
 import { createDarkTheme, createLightTheme } from '@fluentui/react-components'
 import type { BrandVariants, Theme } from '@fluentui/react-components'
-import type { ColorScheme, TagColor } from '@/ui-kit/contract'
+import type { ColorScheme, TagColor, TagPaletteColor } from '@/ui-kit/contract'
 
 // Windows 11 default accent ramp. Shade 80 is the light-theme accent fill (AccentFillColorDefault
 // #005FB8); 130 and 150 are the dark-theme accent fill and accent text (#60CDFF, #99EBFF).
@@ -103,20 +103,26 @@ const skinTokens: Record<ColorScheme, Record<string, string>> = {
     'w11-notice-success': '#DFF6DD',
     'w11-notice-warning': '#FFF4CE',
     'w11-notice-error': '#FDE7E9',
-    'w11-tag-deploy-bg': '#FBE6D8',
-    'w11-tag-deploy-ink': '#8A3F14',
-    'w11-tag-docker-bg': '#E1ECF8',
-    'w11-tag-docker-ink': '#1F4A8A',
-    'w11-tag-git-bg': '#EBEBEB',
-    'w11-tag-git-ink': '#3A3A3A',
-    'w11-tag-design-bg': '#F1E4F6',
-    'w11-tag-design-ink': '#6B2F80',
-    'w11-tag-finance-bg': '#DFF2E4',
-    'w11-tag-finance-ink': '#1D6B3A',
-    'w11-tag-work-bg': '#E1ECF8',
-    'w11-tag-work-ink': '#1F4A8A',
+    'w11-tag-orange-bg': '#FBE6D8',
+    'w11-tag-orange-ink': '#8A3F14',
+    'w11-tag-blue-bg': '#E1ECF8',
+    'w11-tag-blue-ink': '#1F4A8A',
+    'w11-tag-gray-bg': '#EBEBEB',
+    'w11-tag-gray-ink': '#3A3A3A',
+    'w11-tag-purple-bg': '#F1E4F6',
+    'w11-tag-purple-ink': '#6B2F80',
+    'w11-tag-green-bg': '#DFF2E4',
+    'w11-tag-green-ink': '#1D6B3A',
     'w11-tag-neutral-bg': '#EBEBEB',
     'w11-tag-neutral-ink': '#3A3A3A',
+    // The card layer flattened onto the base layer, for sticky content that must hide what scrolls under it.
+    'w11-card-solid': '#FBFBFB',
+    'w11-divider': 'rgba(0, 0, 0, 0.0803)',
+    // WinUI SystemFillColor{Success,Caution,Critical,Neutral}.
+    'w11-status-positive': '#0F7B0F',
+    'w11-status-warning': '#9D5D00',
+    'w11-status-critical': '#C42B1C',
+    'w11-status-neutral': 'rgba(0, 0, 0, 0.446)',
   },
   dark: {
     'w11-base': '#202020',
@@ -129,20 +135,24 @@ const skinTokens: Record<ColorScheme, Record<string, string>> = {
     'w11-notice-success': '#393D1B',
     'w11-notice-warning': '#433519',
     'w11-notice-error': '#442726',
-    'w11-tag-deploy-bg': '#4A2E1E',
-    'w11-tag-deploy-ink': '#FFB98C',
-    'w11-tag-docker-bg': '#1F3247',
-    'w11-tag-docker-ink': '#9CC8FF',
-    'w11-tag-git-bg': '#3A3A3A',
-    'w11-tag-git-ink': '#D6D6D6',
-    'w11-tag-design-bg': '#3B2745',
-    'w11-tag-design-ink': '#E3B5F2',
-    'w11-tag-finance-bg': '#1E3A28',
-    'w11-tag-finance-ink': '#8FDCA6',
-    'w11-tag-work-bg': '#1F3247',
-    'w11-tag-work-ink': '#9CC8FF',
+    'w11-tag-orange-bg': '#4A2E1E',
+    'w11-tag-orange-ink': '#FFB98C',
+    'w11-tag-blue-bg': '#1F3247',
+    'w11-tag-blue-ink': '#9CC8FF',
+    'w11-tag-gray-bg': '#3A3A3A',
+    'w11-tag-gray-ink': '#D6D6D6',
+    'w11-tag-purple-bg': '#3B2745',
+    'w11-tag-purple-ink': '#E3B5F2',
+    'w11-tag-green-bg': '#1E3A28',
+    'w11-tag-green-ink': '#8FDCA6',
     'w11-tag-neutral-bg': '#3A3A3A',
     'w11-tag-neutral-ink': '#D6D6D6',
+    'w11-card-solid': '#2B2B2B',
+    'w11-divider': 'rgba(255, 255, 255, 0.0837)',
+    'w11-status-positive': '#6CCB5F',
+    'w11-status-warning': '#FCE100',
+    'w11-status-critical': '#FF99A4',
+    'w11-status-neutral': 'rgba(255, 255, 255, 0.545)',
   },
 }
 
@@ -152,12 +162,14 @@ export const themes: Record<ColorScheme, Theme> = {
 }
 
 /** Solid colours for the dots and squares of smart views and tags; readable on both schemes. */
-export const swatches: Record<TagColor, string> = {
-  deploy: '#E0703A',
-  docker: '#3A7BD5',
-  git: '#8A8A8A',
-  design: '#A855C8',
-  finance: '#2E9E5B',
-  work: '#3A7BD5',
-  neutral: '#8A8A8A',
+const paletteSwatches: Record<TagPaletteColor, string> = {
+  orange: '#E0703A',
+  blue: '#3A7BD5',
+  gray: '#8A8A8A',
+  purple: '#A855C8',
+  green: '#2E9E5B',
 }
+
+/** A custom `#rrggbb` tag colour is its own swatch. */
+export const swatch = (color: TagColor): string =>
+  color.startsWith('#') ? color : paletteSwatches[color as TagPaletteColor]

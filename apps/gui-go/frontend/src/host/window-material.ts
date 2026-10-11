@@ -5,7 +5,7 @@
 // the window options it applied, and hands it to the page as the `window-material` launch parameter
 // of the window URL. A browser, or a host that applied no material, reports `none`.
 //
-// Only the macOS skin of `@/ui-kit` reads this; business code never does.
+// Only the macOS skin of `@/ui-kit` and the host window module read this; business code never does.
 export type WindowMaterial = 'liquid-glass' | 'visual-effect' | 'none'
 
 const reported = new URLSearchParams(window.location.search).get('window-material')

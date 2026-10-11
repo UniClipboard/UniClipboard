@@ -27,6 +27,16 @@ if (sentryEnabled && !appVersion) {
 // output, and the packaging scripts refuse a dist built for another target.
 const uiPlatforms = ['windows', 'macos']
 const uiPlatformMarker = '.ui-platform'
+// Main-window pages built on `@/ui-kit` replace the existing pages only for the targets listed here.
+// Every other build (Windows, and Linux, which has no skin and no target) keeps the existing page,
+// so a build without UC_UI_PLATFORM never reaches the kit.
+const kitPages: Record<string, { platforms: string[]; kit: string; existing: string }> = {
+  '@ui-history-page': {
+    platforms: ['macos'],
+    kit: './src/pages/history-kit/HistoryKitPage.tsx',
+    existing: './src/pages/HistoryPage.tsx',
+  },
+}
 function uiSkin(): Plugin {
   const platform = process.env.UC_UI_PLATFORM
   const required = `UC_UI_PLATFORM=${uiPlatforms.join('|')}`
@@ -37,6 +47,10 @@ function uiSkin(): Plugin {
       if (platform && !uiPlatforms.includes(platform)) this.error(`${required} (got "${platform}")`)
     },
     resolveId(source) {
+      const page = kitPages[source]
+      if (page) {
+        return path(platform && page.platforms.includes(platform) ? page.kit : page.existing)
+      }
       if (source !== '@ui-skin') return null
       if (!platform || !uiPlatforms.includes(platform)) {
         this.error(`@/ui-kit needs ${required} (got ${platform ? `"${platform}"` : 'nothing'})`)

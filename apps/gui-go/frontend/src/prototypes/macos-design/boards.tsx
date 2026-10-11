@@ -358,15 +358,15 @@ function ListPanel() {
       <Section title="Tag / 搜索 token" note="全部胶囊形">
         <div className="board-specimens">
           <Specimen caption="tag">
-            <Tag label="#deploy" color="deploy" />
+            <Tag label="#deploy" color="orange" />
           </Specimen>
           <Specimen caption="tag">
-            <Tag label="#docker" color="docker" />
+            <Tag label="#docker" color="blue" />
           </Specimen>
           <Specimen caption="可删除">
             <Tag
               label="#finance"
-              color="finance"
+              color="green"
               remove={{ label: 'Remove #finance', onClick: () => {} }}
             />
           </Specimen>

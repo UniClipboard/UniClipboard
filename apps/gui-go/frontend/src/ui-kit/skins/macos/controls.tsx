@@ -170,6 +170,8 @@ export function SearchField({
   placeholder,
   label,
   shortcutHint,
+  onSubmit,
+  inputRef,
 }: SearchFieldProps) {
   return (
     <parts.SearchField
@@ -178,7 +180,14 @@ export function SearchField({
       hint={shortcutHint ?? ''}
       value={value}
       defaultValue={defaultValue}
+      inputRef={inputRef}
       onValueChange={next => onValueChange?.(next)}
+      onKeyDown={event => {
+        if (event.key === 'Enter' && onSubmit) {
+          event.preventDefault()
+          onSubmit(event.currentTarget.value)
+        }
+      }}
     />
   )
 }
@@ -213,7 +222,7 @@ export function Badge({ count, label }: BadgeProps) {
   )
 }
 
-export function Tag({ name, color = 'neutral', remove }: TagProps) {
+export function Tag({ name, color, remove }: TagProps) {
   return <parts.Tag label={name} color={color} remove={remove} />
 }
 

@@ -119,6 +119,8 @@ const skinTokens: Record<ColorScheme, Record<string, string>> = {
     'w11-card-solid': '#FBFBFB',
     // The detail column of the content card: the card over a subtle fill (board WA2).
     'w11-detail': 'rgba(0, 0, 0, 0.0122)',
+    'w11-code-bg': '#1E1E1E',
+    'w11-checker': 'rgba(0, 0, 0, 0.06)',
     'w11-divider': 'rgba(0, 0, 0, 0.0803)',
     // WinUI SystemFillColor{Success,Caution,Critical,Neutral}.
     'w11-status-positive': '#0F7B0F',
@@ -151,6 +153,8 @@ const skinTokens: Record<ColorScheme, Record<string, string>> = {
     'w11-tag-neutral-ink': '#D6D6D6',
     'w11-card-solid': '#2B2B2B',
     'w11-detail': 'rgba(0, 0, 0, 0.08)',
+    'w11-code-bg': '#141414',
+    'w11-checker': 'rgba(255, 255, 255, 0.06)',
     'w11-divider': 'rgba(255, 255, 255, 0.0837)',
     'w11-status-positive': '#6CCB5F',
     'w11-status-warning': '#FCE100',

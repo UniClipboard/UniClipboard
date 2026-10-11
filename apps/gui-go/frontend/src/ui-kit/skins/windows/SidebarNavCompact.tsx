@@ -10,6 +10,7 @@ import {
   makeStyles,
   mergeClasses,
   tokens,
+  Tooltip,
   useArrowNavigationGroup,
 } from '@fluentui/react-components'
 import { createElement } from 'react'
@@ -102,7 +103,12 @@ export function SidebarNavCompact({
     return (
       <Menu key={section.id} positioning={{ position: 'after', align: 'top' }}>
         <MenuTrigger disableButtonEnhancement>
-          <WithTooltip content={section.title ?? section.id} relationship="inaccessible">
+          {/* Fluent's Tooltip forwards the trigger's props to the button; a wrapper component would not. */}
+          <Tooltip
+            content={section.title ?? section.id}
+            relationship="inaccessible"
+            withArrow={false}
+          >
             <FluentButton
               aria-label={section.title ?? section.id}
               appearance="subtle"
@@ -110,7 +116,7 @@ export function SidebarNavCompact({
               icon={createElement(iconFor(icon))}
               aria-current={active ? 'page' : undefined}
             />
-          </WithTooltip>
+          </Tooltip>
         </MenuTrigger>
         <MenuPopover className={menuStyles.popover}>
           <MenuList>

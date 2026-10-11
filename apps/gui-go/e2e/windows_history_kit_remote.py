@@ -160,16 +160,21 @@ def build_daemon(machine, work, head, arch, out):
     log = machine.ps(f"""
 if (-not (Test-Path '{src}\\Cargo.toml')) {{
   New-Item -ItemType Directory -Force '{src}' | Out-Null
-  tar -xf '{work}\\source-{head[:12]}.tar' -C '{src}'
+  # Windows tar cannot create the repository's symbolic links (e.g. CLAUDE.md -> AGENTS.md) and says so on
+  # stderr; the build does not need them. The message is kept as TAR= rather than mistaken for the result.
+  $tarOut = (tar -xf '{work}\\source-{head[:12]}.tar' -C '{src}' 2>&1 | Out-String).Trim()
+  if ($tarOut) {{ 'TAR=' + ($tarOut -replace '\\s+', ' ') }}
 }}
 $env:CARGO_TARGET_DIR='{work}\\target'
 if (Test-Path '{llvm}') {{ $env:PATH = '{llvm};' + $env:PATH }}
 Set-Location '{src}'
 cmd /c "cargo +{toolchain}-{triple} build --locked -j 3 -p uc-daemon --bin uniclipd > {work}\\cargo-{head[:12]}.log 2>&1"
 if ($LASTEXITCODE -ne 0) {{ Get-Content '{work}\\cargo-{head[:12]}.log' -Tail 30; exit 1 }}
-(Get-FileHash '{work}\\target\\debug\\uniclipd.exe' -Algorithm SHA256).Hash
+'SHA256=' + (Get-FileHash '{work}\\target\\debug\\uniclipd.exe' -Algorithm SHA256).Hash
 """, timeout=14400)
-    return f'{work}\\target\\debug\\uniclipd.exe', log.splitlines()[-1].strip().lower()
+    sha = next(line.split('=', 1)[1].strip().lower() for line in log.splitlines() if line.startswith('SHA256='))
+    tar_notes = [line[4:] for line in log.splitlines() if line.startswith('TAR=')]
+    return f'{work}\\target\\debug\\uniclipd.exe', sha, tar_notes
 
 
 def portable_node(machine, work, arch, out):
@@ -215,8 +220,9 @@ def main():
     go_out, manifest = build_go_half(args.arch)
     record['goHalf'] = manifest['sha256']
     record['unrelatedChanges'] = manifest['unrelatedChanges']
-    daemon_exe, daemon_sha = build_daemon(machine, args.work, head, args.arch, out)
+    daemon_exe, daemon_sha, tar_notes = build_daemon(machine, args.work, head, args.arch, out)
     record['uniclipdSha256'] = daemon_sha
+    record['sourceExtractNotes'] = tar_notes
     record['os'] = machine.ps("Get-CimInstance Win32_OperatingSystem | Select Caption,Version,OSArchitecture | ConvertTo-Json -Compress")
     record['cpuLoadBefore'] = machine.ps("(Get-CimInstance Win32_Processor | Measure-Object LoadPercentage -Average).Average")
     inside = machine.kind == 'parallels'

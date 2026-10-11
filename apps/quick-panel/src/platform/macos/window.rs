@@ -107,7 +107,7 @@ pub fn clip_preview_shape(
     use objc2_foundation::{NSPoint, NSRect, NSSize};
     use objc2_quartz_core::{CAShapeLayer, CATransaction};
     use quick_panel_core::geometry::window_pair::{
-        PreviewSide, POINTER_DEPTH, POINTER_HALF_HEIGHT, PREVIEW_CORNER_RADIUS,
+        PreviewSide, POINTER_DEPTH, POINTER_HALF_HEIGHT,
     };
     use raw_window_handle::{HasWindowHandle, RawWindowHandle};
     let handle = HasWindowHandle::window_handle(window)
@@ -137,8 +137,8 @@ pub fn clip_preview_shape(
             };
             let path = NSBezierPath::bezierPathWithRoundedRect_xRadius_yRadius(
                 NSRect::new(NSPoint::new(x, 0.), NSSize::new(width - depth, height)),
-                PREVIEW_CORNER_RADIUS * scale,
-                PREVIEW_CORNER_RADIUS * scale,
+                super::WINDOW_CORNER_RADIUS * scale,
+                super::WINDOW_CORNER_RADIUS * scale,
             );
             let (base, tip) = if placement.side == PreviewSide::Right {
                 (depth, 0.)

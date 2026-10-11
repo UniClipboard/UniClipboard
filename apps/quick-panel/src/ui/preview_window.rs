@@ -3,7 +3,7 @@ use gpui::{canvas, div, point, px, AnyWindowHandle, IntoElement, PathBuilder, Re
 use gpui_component::ActiveTheme;
 use quick_panel_core::geometry::window_pair::{
     preview_capacity, preview_placement, preview_placement_for_size, preview_placement_with_width,
-    PreviewPlacement, PreviewSide, ACTIONS_WIDTH, POINTER_DEPTH, POINTER_HALF_HEIGHT,
+    PreviewPlacement, PreviewSide, ACTIONS_WIDTH, POINTER_HALF_HEIGHT,
 };
 
 #[derive(Clone, Copy)]
@@ -232,7 +232,7 @@ impl Render for PreviewWindow {
             })
         });
         let side = placement.map(|p| p.side).unwrap_or(PreviewSide::Right);
-        let depth = px((POINTER_DEPTH * self.snapshot.scale) as f32);
+        let depth = px((platform::PREVIEW_POINTER_DEPTH * self.snapshot.scale) as f32);
         let pointer_y = px(placement.map(|p| p.pointer_y).unwrap_or(48.) as f32);
         let half = px((POINTER_HALF_HEIGHT * self.snapshot.scale) as f32);
         let surface = if self.snapshot.is_image() {
@@ -257,41 +257,43 @@ impl Render for PreviewWindow {
                     .when(side == PreviewSide::Left, |body| body.left_0().right(depth))
                     .child(preview),
             )
-            .child(
-                canvas(
-                    move |_, _, _| {},
-                    move |bounds, _, window, _| {
-                        let y = bounds.top() + pointer_y;
-                        let (base, tip) = if side == PreviewSide::Right {
-                            (bounds.left() + depth, bounds.left())
-                        } else {
-                            (bounds.right() - depth, bounds.right())
-                        };
-                        let seam = if side == PreviewSide::Right {
-                            px(1.)
-                        } else {
-                            px(-1.)
-                        };
-                        let mut fill = PathBuilder::fill();
-                        fill.move_to(point(base + seam, y - half));
-                        fill.line_to(point(tip, y));
-                        fill.line_to(point(base + seam, y + half));
-                        fill.close();
-                        if let Ok(path) = fill.build() {
-                            window.paint_path(path, surface);
-                        }
-                        let mut outline = PathBuilder::stroke(px(1.));
-                        outline.move_to(point(base, y - half));
-                        outline.line_to(point(tip, y));
-                        outline.line_to(point(base, y + half));
-                        if let Ok(path) = outline.build() {
-                            window.paint_path(path, border);
-                        }
-                    },
+            .when(platform::CAPABILITIES.shaped_preview, |view| {
+                view.child(
+                    canvas(
+                        move |_, _, _| {},
+                        move |bounds, _, window, _| {
+                            let y = bounds.top() + pointer_y;
+                            let (base, tip) = if side == PreviewSide::Right {
+                                (bounds.left() + depth, bounds.left())
+                            } else {
+                                (bounds.right() - depth, bounds.right())
+                            };
+                            let seam = if side == PreviewSide::Right {
+                                px(1.)
+                            } else {
+                                px(-1.)
+                            };
+                            let mut fill = PathBuilder::fill();
+                            fill.move_to(point(base + seam, y - half));
+                            fill.line_to(point(tip, y));
+                            fill.line_to(point(base + seam, y + half));
+                            fill.close();
+                            if let Ok(path) = fill.build() {
+                                window.paint_path(path, surface);
+                            }
+                            let mut outline = PathBuilder::stroke(px(1.));
+                            outline.move_to(point(base, y - half));
+                            outline.line_to(point(tip, y));
+                            outline.line_to(point(base, y + half));
+                            if let Ok(path) = outline.build() {
+                                window.paint_path(path, border);
+                            }
+                        },
+                    )
+                    .absolute()
+                    .size_full(),
                 )
-                .absolute()
-                .size_full(),
-            )
+            })
             .capture_key_down(move |event, _, cx| {
                 if event.keystroke.key == "escape" {
                     let panel = panel.clone();

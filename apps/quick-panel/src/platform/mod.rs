@@ -22,5 +22,12 @@ use fallback as imp;
 pub use imp::{
     capture_paste_target, clip_preview_shape, configure_shaped_preview, new_key_state, open_target,
     panel_anchor, reveal_path, run_as_background_app, set_frame, set_visible, show_without_focus,
-    system_language, CAPABILITIES,
+    system_language, CAPABILITIES, WINDOW_CORNER_RADIUS,
+};
+
+/// Only shaped native windows reserve space for a pointer outside the preview body.
+pub const PREVIEW_POINTER_DEPTH: f64 = if CAPABILITIES.shaped_preview {
+    quick_panel_core::geometry::window_pair::POINTER_DEPTH
+} else {
+    0.
 };

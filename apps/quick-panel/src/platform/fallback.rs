@@ -9,6 +9,8 @@ use crate::app::double_tap::ModifierKeyState;
 use quick_panel_core::geometry::window_pair::PreviewPlacement;
 use quick_panel_core::ports::{Capabilities, PasteTarget, PlatformError};
 
+pub const WINDOW_CORNER_RADIUS: f64 = 12.;
+
 pub const CAPABILITIES: Capabilities = Capabilities {
     auto_paste: false,
     cursor_anchor: false,

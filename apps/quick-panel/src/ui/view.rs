@@ -356,9 +356,7 @@ impl PreviewSnapshot {
             .flex_shrink_0()
             .flex()
             .flex_col()
-            .rounded(units(
-                quick_panel_core::geometry::window_pair::PREVIEW_CORNER_RADIUS as f32,
-            ))
+            .rounded(units(platform::WINDOW_CORNER_RADIUS as f32))
             .border_1()
             .border_color(border)
             .bg(cx.global::<crate::ui::appearance::Surfaces>().card)

@@ -49,7 +49,7 @@ impl Panel {
     pub(super) fn show_preview(&mut self, history: &mut Window, cx: &mut Context<Self>) {
         self.update_preview_anchor(history, cx);
         let width = (quick_panel_core::geometry::window_pair::PREVIEW_WIDTH
-            + quick_panel_core::geometry::window_pair::POINTER_DEPTH)
+            + platform::PREVIEW_POINTER_DEPTH)
             * self.scale;
         let height = quick_panel_core::geometry::window_pair::MIN_PREVIEW_HEIGHT * self.scale;
         if self.preview_window.is_none() {
@@ -137,6 +137,7 @@ impl Panel {
                     height: f64::from(screen.size.height),
                 },
                 scale: self.scale,
+                pointer_depth: platform::PREVIEW_POINTER_DEPTH,
             })
         })();
         if self.preview_anchor != next {

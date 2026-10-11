@@ -9,7 +9,6 @@ pub const ACTIONS_WIDTH: f64 = 380.;
 pub const WINDOW_GAP: f64 = 8.;
 pub const POINTER_DEPTH: f64 = 8.;
 pub const POINTER_HALF_HEIGHT: f64 = 7.;
-pub const PREVIEW_CORNER_RADIUS: f64 = 12.;
 pub const MIN_PREVIEW_HEIGHT: f64 = 96.;
 pub const MAX_PREVIEW_HEIGHT: f64 = 480.;
 const SCREEN_INSET: f64 = 8.;
@@ -46,6 +45,8 @@ pub struct PreviewAnchor {
     pub item: Rect,
     pub screen: Rect,
     pub scale: f64,
+    /// Unscaled pointer gutter; zero for a rectangular preview window.
+    pub pointer_depth: f64,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -75,7 +76,7 @@ pub fn preview_placement_with_width(
 }
 
 pub fn preview_capacity(anchor: PreviewAnchor) -> (f64, f64) {
-    let clearance = (WINDOW_GAP + POINTER_DEPTH) * anchor.scale;
+    let clearance = (WINDOW_GAP + anchor.pointer_depth) * anchor.scale;
     let left = anchor.history.x - anchor.screen.x - clearance;
     let right = anchor.screen.right() - anchor.history.right() - clearance;
     let inset = (SCREEN_INSET * anchor.scale).min(anchor.screen.height / 4.);
@@ -95,7 +96,7 @@ pub fn preview_placement_for_size(
     let height = body_height
         .max(1.)
         .min((anchor.screen.height - 2. * inset).max(1.));
-    let width = (body_width + POINTER_DEPTH * scale).min(anchor.screen.width);
+    let width = (body_width + anchor.pointer_depth * scale).min(anchor.screen.width);
     let right = anchor.history.right() + WINDOW_GAP * scale;
     let (side, x) = if right + width <= anchor.screen.right() {
         (PreviewSide::Right, right)
@@ -147,6 +148,7 @@ mod tests {
                 height: 1030.,
             },
             scale: 1.,
+            pointer_depth: POINTER_DEPTH,
         }
     }
     #[test]
@@ -228,5 +230,33 @@ mod tests {
         assert_eq!(preview.frame.width, PREVIEW_WIDTH + POINTER_DEPTH);
         assert_eq!(actions.frame.width, ACTIONS_WIDTH + POINTER_DEPTH);
         assert_eq!(actions.frame.height, preview.frame.height);
+    }
+
+    #[test]
+    fn rectangular_preview_has_no_pointer_gutter_at_any_scale() {
+        for scale in [0.8, 1., 1.5] {
+            let mut a = anchor(300.);
+            a.scale = scale;
+            a.pointer_depth = 0.;
+            let p = preview_placement(a, 140.);
+            assert_eq!(p.frame.width, PREVIEW_WIDTH * scale);
+            assert_eq!(p.frame.x, a.history.right() + WINDOW_GAP * scale);
+            a.history.x = 1500.;
+            let p = preview_placement(a, 140.);
+            assert_eq!(p.side, PreviewSide::Left);
+            assert_eq!(p.frame.right(), a.history.x - WINDOW_GAP * scale);
+        }
+    }
+
+    #[test]
+    fn rectangular_image_capacity_does_not_reserve_an_unused_pointer() {
+        let mut a = anchor(300.);
+        let shaped = preview_capacity(a);
+        a.pointer_depth = 0.;
+        let rectangular = preview_capacity(a);
+        assert_eq!(rectangular.0, shaped.0 + POINTER_DEPTH * a.scale);
+        assert_eq!(rectangular.1, shaped.1);
+        let p = preview_placement_for_size(a, rectangular.0, rectangular.1);
+        assert_eq!(p.frame.right(), a.screen.right());
     }
 }

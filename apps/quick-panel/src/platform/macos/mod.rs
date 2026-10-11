@@ -11,6 +11,9 @@ use std::rc::Rc;
 
 use quick_panel_core::ports::{Capabilities, PasteTarget};
 
+/// Shared by the panel, preview surfaces and the native preview mask, in logical pixels.
+pub const WINDOW_CORNER_RADIUS: f64 = 12.;
+
 pub use app::run_as_background_app;
 pub use modifier_state::new_key_state;
 pub use screen::panel_anchor;

@@ -237,9 +237,7 @@ impl Render for ImagePreview {
             .relative()
             .size_full()
             .overflow_hidden()
-            .rounded(gpui::rems(
-                quick_panel_core::geometry::window_pair::PREVIEW_CORNER_RADIUS as f32 / 16.,
-            ))
+            .rounded(gpui::rems(platform::WINDOW_CORNER_RADIUS as f32 / 16.))
             .bg(cx.theme().muted)
             .when(self.viewport.actual_size && can_zoom, |view| {
                 view.cursor_grab()
@@ -260,9 +258,12 @@ impl Render for ImagePreview {
                 .size_full(),
             )
             .when_some(checker, |view, checker| {
-                view.child(img(checker).absolute().size_full().rounded(gpui::rems(
-                    quick_panel_core::geometry::window_pair::PREVIEW_CORNER_RADIUS as f32 / 16.,
-                )))
+                view.child(
+                    img(checker)
+                        .absolute()
+                        .size_full()
+                        .rounded(gpui::rems(platform::WINDOW_CORNER_RADIUS as f32 / 16.)),
+                )
             })
             .when_some(image, |view, image| {
                 view.child(
@@ -399,9 +400,7 @@ impl Render for ImagePreview {
             div()
                 .absolute()
                 .inset_0()
-                .rounded(gpui::rems(
-                    quick_panel_core::geometry::window_pair::PREVIEW_CORNER_RADIUS as f32 / 16.,
-                ))
+                .rounded(gpui::rems(platform::WINDOW_CORNER_RADIUS as f32 / 16.))
                 .border_1()
                 .border_color(cx.theme().border.opacity(0.5)),
         )

@@ -5,6 +5,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use quick_panel_core::ports::PlatformError;
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use windows::Win32::Foundation::HWND;
+use windows::Win32::Graphics::Dwm::{
+    DwmSetWindowAttribute, DWMNCRP_DISABLED, DWMWA_NCRENDERING_POLICY,
+};
 use windows::Win32::UI::WindowsAndMessaging::{
     GetWindowLongPtrW, SetWindowLongPtrW, SetWindowPos, ShowWindow, GWL_EXSTYLE, HWND_TOPMOST,
     SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SWP_SHOWWINDOW, SW_HIDE,
@@ -26,6 +29,23 @@ fn hwnd_of(window: &gpui::Window, closed: PlatformError) -> Result<HWND, Platfor
     Ok(HWND(handle.hwnd.get() as *mut _))
 }
 
+/// GPUI owns the visible contour; DWM must not draw or clip a second rectangular frame.
+fn configure_content_contour(hwnd: HWND) {
+    // Disabling only the Windows 11 border color leaves the non-client top edge and shadow.
+    let policy = DWMNCRP_DISABLED;
+    let result = unsafe {
+        DwmSetWindowAttribute(
+            hwnd,
+            DWMWA_NCRENDERING_POLICY,
+            &policy as *const _ as *const _,
+            std::mem::size_of_val(&policy) as u32,
+        )
+    };
+    if let Err(error) = result {
+        tracing::warn!(error = %error, "Could not disable native panel frame");
+    }
+}
+
 /// Shows or hides the panel window.
 ///
 /// The native calls are made after the current GPUI update, not inside it. `ShowWindow` and
@@ -45,6 +65,7 @@ pub fn set_visible(
         .spawn(async move {
             unsafe {
                 if visible {
+                    configure_content_contour(hwnd);
                     // Topmost, so the panel stays above the window it was opened over.
                     let _ = SetWindowPos(
                         hwnd,
@@ -79,6 +100,7 @@ pub fn show_without_focus(window: &gpui::Window, cx: &gpui::App) -> Result<(), P
     }
     cx.foreground_executor()
         .spawn(async move {
+            configure_content_contour(hwnd);
             unsafe {
                 let style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
                 let wanted = style | (WS_EX_NOACTIVATE.0 | WS_EX_TOPMOST.0) as isize;

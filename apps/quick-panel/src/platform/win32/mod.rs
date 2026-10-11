@@ -12,6 +12,9 @@ use std::rc::Rc;
 
 use quick_panel_core::ports::{Capabilities, PasteTarget};
 
+/// Windows 11 top-level window radius, in logical pixels.
+pub const WINDOW_CORNER_RADIUS: f64 = 8.;
+
 pub use locale::system_language;
 pub use modifier_state::new_key_state;
 pub use screen::panel_anchor;

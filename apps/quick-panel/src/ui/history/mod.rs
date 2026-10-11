@@ -148,7 +148,7 @@ impl Panel {
             .flex_shrink_0()
             .flex()
             .flex_col()
-            .rounded(units(12.))
+            .rounded(units(platform::WINDOW_CORNER_RADIUS as f32))
             .border_1()
             .border_color(theme.border.opacity(0.6))
             .bg(cx.global::<crate::ui::appearance::Surfaces>().background)

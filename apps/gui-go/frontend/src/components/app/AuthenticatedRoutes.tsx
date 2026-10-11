@@ -1,3 +1,4 @@
+import HistoryPage from '@ui-history-page'
 import type { ReactNode } from 'react'
 import { Navigate, Route } from 'react-router'
 import { DeviceTrustDialogHost } from '@/components/device/DeviceTrustDialogHost'
@@ -8,7 +9,6 @@ import { DeviceTrustProvider } from '@/contexts/DeviceTrustContext'
 import { SettingsFullLayout } from '@/layouts'
 import { DiagnosticsRoutes } from '@/observability/diagnostics'
 import DevicesPage from '@/pages/DevicesPage'
-import HistoryPage from '@/pages/HistoryPage'
 import SettingsPage from '@/pages/SettingsPage'
 import { AuthenticatedLayout } from './AuthenticatedLayout'
 

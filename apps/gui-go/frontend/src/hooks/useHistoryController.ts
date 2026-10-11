@@ -250,6 +250,8 @@ export function useHistoryController() {
     })
   }, [])
   const clearChecked = useCallback(() => setCheckedState(new Set()), [])
+  /** Replaces the checked rows, for lists that select ranges or every row at once. */
+  const setChecked = useCallback((ids: readonly string[]) => setCheckedState(new Set(ids)), [])
   const checkedItems = useMemo(
     () => orderedItems.filter(item => checkedIds.has(item.id)),
     [orderedItems, checkedIds]
@@ -522,6 +524,7 @@ export function useHistoryController() {
     checkedItems,
     toggleChecked,
     clearChecked,
+    setChecked,
     pinChecked,
     deleteChecked,
 

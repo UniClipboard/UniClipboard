@@ -25,6 +25,7 @@
     "paths": {
       "@/*": ["./src/*"],
       "@ui-skin": ["./src/ui-kit/contract.ts"],
+      "@ui-history-page": ["./src/pages/HistoryPage.tsx"],
       "@host/*": ["./bindings/github.com/UniClipboard/UniClipboard/apps/gui-go/*"]
     }
   },

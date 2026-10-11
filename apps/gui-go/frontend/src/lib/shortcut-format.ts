@@ -37,6 +37,9 @@ function formatKeyPart(part: string): string {
       case 'equal':
       case 'add':
         return '+'
+      case 'enter':
+      case 'return':
+        return '\u21A9'
       default:
         return part.charAt(0).toUpperCase() + part.slice(1)
     }
@@ -99,4 +102,9 @@ export function formatShortcutChord(shortcut: string): string[][] {
     const trimmed = seg.trim()
     return trimmed ? [formatShortcutParts(trimmed)] : []
   })
+}
+
+/** One shortcut as a single hint string: `⌘,` on macOS, `Ctrl+,` elsewhere. */
+export function formatShortcutHint(shortcut: string): string {
+  return formatShortcutParts(shortcut).join(isMac ? '' : '+')
 }

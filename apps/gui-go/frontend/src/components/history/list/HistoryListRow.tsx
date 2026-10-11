@@ -2,21 +2,11 @@ import { Pin } from 'lucide-react'
 import React, { useCallback, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import InlineTextSummary from '@/components/clipboard/InlineTextSummary'
-import {
-  fileNameFromPreview,
-  imageTitle,
-} from '@/components/history/history-card/history-card-utils'
 import HistoryCardTransferProgress from '@/components/history/history-card/HistoryCardTransferProgress'
 import { useResourceImageUrl } from '@/components/history/history-card/useResourceImageUrl'
 import { useTagTints } from '@/components/history/tags/tag-colors-context'
 import { Checkbox } from '@/components/ui/checkbox'
-import type {
-  ClipboardFileItem,
-  ClipboardImageItem,
-  ClipboardTextItem,
-  DisplayClipboardItem,
-} from '@/lib/clipboard-entry'
-import { linkItemFromTextContent } from '@/lib/clipboard-utils'
+import type { DisplayClipboardItem } from '@/lib/clipboard-entry'
 import { tagLabel } from '@/lib/search-tags'
 import { cn } from '@/lib/utils'
 import { useAppSelector } from '@/store/hooks'
@@ -27,6 +17,7 @@ import {
 } from '@/store/slices/fileTransferSlice'
 import { formatClockTime } from './history-list-format'
 import { historyKind, KIND_GLYPH, KIND_TINT, rowChips, type HistoryKind } from './history-list-kind'
+import { rowTitle } from './history-row-title'
 
 interface HistoryListRowProps {
   item: DisplayClipboardItem
@@ -43,26 +34,6 @@ interface HistoryListRowProps {
   onHoverChange: (id: string, hovered: boolean) => void
   /** Local tag id -> name; absent while local tags are unavailable. */
   tagNames?: ReadonlyMap<string, string | null>
-}
-
-/** One-line title for a row: the text itself, the link, the file name, or the
- * image label with its dimensions. */
-function rowTitle(item: DisplayClipboardItem, kind: HistoryKind, imageLabel: string): string {
-  if (kind === 'image') return imageTitle(imageLabel, null, item.content as ClipboardImageItem)
-  if (kind === 'file') {
-    const file = item.content as ClipboardFileItem | null
-    if (file?.file_names.length) {
-      const extra = file.file_names.length - 1
-      return extra > 0 ? `${file.file_names[0]} +${extra}` : file.file_names[0]
-    }
-    return item.textPreview ? fileNameFromPreview(item.textPreview) : ''
-  }
-  const text = item.content as ClipboardTextItem | null
-  if (kind === 'link' && text) {
-    const link = linkItemFromTextContent(text)
-    if (link?.urls[0]) return link.urls[0]
-  }
-  return text?.display_text ?? item.textPreview ?? ''
 }
 
 function KindBadge({ item, kind }: { item: DisplayClipboardItem; kind: HistoryKind }) {

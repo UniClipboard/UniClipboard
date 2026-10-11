@@ -399,6 +399,8 @@ async function seededRun() {
     const empty = await rowCountBecomes(0)
     await shot('search-no-results')
     await field.fill('')
+    // The focused field keeps its suggestion flyout open over the list pane; Escape closes it.
+    await page.keyboard.press('Escape')
     await row('Paging entry').waitFor()
     return { matches, noResultRows: empty }
   })
@@ -596,7 +598,8 @@ async function seededRun() {
   })
 
   await step('error-feedback-no-false-success', async () => {
-    const target = row('Paging entry 120')
+    // Any rendered paging entry: a short native window renders fewer rows.
+    const target = row('Paging entry')
     await target.click()
     const id = await target.getAttribute('data-item-id')
     // Injected failure (not a real daemon fault): the favorite request answers 500.

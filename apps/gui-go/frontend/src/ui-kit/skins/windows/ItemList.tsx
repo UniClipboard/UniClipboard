@@ -1,0 +1,72 @@
+import { List, ListItem, mergeClasses } from '@fluentui/react-components'
+import { useState } from 'react'
+import type { KeyboardEvent } from 'react'
+import type { ItemListProps } from '@/ui-kit/contract'
+import { useListStyles } from './list-styles'
+
+/**
+ * WinUI ListView on Fluent List. Fluent provides the listbox roles, arrow-key movement, Space to
+ * toggle and the selection checkboxes; Windows "Multiple" selection mode toggles rows on click.
+ * Enter and double click activate instead of toggling, Delete reports the selection.
+ */
+export function ItemList({
+  label,
+  items,
+  selection,
+  defaultSelection = [],
+  onSelectionChange,
+  multiSelect,
+  onActivate,
+  onDelete,
+}: ItemListProps) {
+  const styles = useListStyles()
+  const [ownSelection, setOwnSelection] = useState(defaultSelection)
+  const selected = selection ?? ownSelection
+  const handleKeyDown = (event: KeyboardEvent) => {
+    if (event.key === 'Delete' && onDelete && selected.length > 0) {
+      event.preventDefault()
+      onDelete(selected)
+    }
+  }
+  return (
+    <List
+      aria-label={label}
+      className={styles.list}
+      selectionMode={multiSelect ? 'multiselect' : 'single'}
+      selectedItems={selected}
+      onSelectionChange={(_, data) => {
+        const ids = data.selectedItems.map(String)
+        if (selection === undefined) setOwnSelection(ids)
+        onSelectionChange?.(ids)
+      }}
+      onKeyDown={handleKeyDown}
+    >
+      {items.map(item => (
+        <ListItem
+          key={item.id}
+          value={item.id}
+          aria-label={item.title}
+          checkmark={multiSelect ? undefined : null}
+          className={mergeClasses(styles.row, multiSelect && styles.multi)}
+          onAction={(_, data) => {
+            const action = data.event
+            if (action instanceof CustomEvent && action.detail.originalEvent.type === 'keydown') {
+              action.preventDefault()
+              onActivate?.(item.id)
+            }
+          }}
+          onDoubleClick={() => onActivate?.(item.id)}
+        >
+          {item.leading}
+          <span className={styles.text}>
+            <span className={mergeClasses(styles.title, item.monospace && styles.mono)}>
+              {item.title}
+            </span>
+            {item.subtitle ? <span className={styles.subtitle}>{item.subtitle}</span> : null}
+          </span>
+          {item.trailing ? <span className={styles.trailing}>{item.trailing}</span> : null}
+        </ListItem>
+      ))}
+    </List>
+  )
+}

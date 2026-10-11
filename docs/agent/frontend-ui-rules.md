@@ -10,6 +10,8 @@ Use this document when editing React, TypeScript, Tailwind, UX flows, or fronten
 
 - 操作菜单（点击、右键及子菜单）统一使用 `apps/gui-go/frontend/src/components/motion/context-menu/`。下拉选项保留 `Select` 的选值语义，并与操作菜单共同复用 `apps/gui-go/frontend/src/components/motion/menu/` 的面板、展开动画和高亮；不得另建平行的菜单展示实现。快捷键录入、颜色编辑、二维码和详情说明保留内容浮层的交互语义；通用 `PopoverContent` 同样复用上述面板与展开动画，不使用菜单的方向键导航接管录入或表单。
 
+- 平台组件库 `@/ui-kit`（`apps/gui-go/frontend/src/ui-kit/`）：业务代码只从 `@/ui-kit` 导入组件，契约（组件名、props、只带值的回调、键盘语义）以 `src/ui-kit/contract.ts` 为唯一来源。皮肤在构建期由 `UC_UI_PLATFORM=windows|macos` 选择（`vite.config.ts` 只在解析 `@ui-skin` 时映射到 `src/ui-kit/skins/<platform>/index.ts`，缺失或未知值直接报错，不按宿主系统推断）；每个皮肤用 `conformance.ts` 由 tsc 证明导出与契约一致。业务代码不得按平台分支，不得直接导入 `@ui-skin`、`src/ui-kit/skins/*` 或 `@fluentui/*`（`.oxlintrc.json` 的 `no-restricted-imports` 会拦截）。打包脚本按目标平台显式传入该变量（`apps/gui-go/build.sh`、`apps/gui-go/packaging/macos/package.py` 为 `macos`，`apps/gui-go/e2e/build_windows.py`、`apps/gui-go/e2e/package_windows.py` 为 `windows`）。窗口外框、标题栏拖拽、窗口材质、系统菜单与系统通知属于原生外壳，不进组件库。浏览器验收：`e2e/fixtures/ui-kit-gallery.tsx`、`e2e/ui-kit-browser.mjs`、`e2e/ui-kit-bundle-check.mjs`。
+
 - **No fixed-pixel layouts.**
   - Use **Tailwind utilities** or **rem** units.
 

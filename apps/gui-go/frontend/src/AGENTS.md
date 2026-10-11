@@ -37,6 +37,7 @@ src/
 | Global state                | `src/store/`                                   | `store/api.ts` + slices + hooks              |
 | Setup flow UI               | `src/pages/SetupPage.tsx` + `src/pages/setup/` | multi-step onboarding/join flows             |
 | Shared UI primitives        | `src/components/ui/`                           | Radix/shadcn-style components                |
+| Platform UI kit             | `src/ui-kit/`                                  | `@/ui-kit`; contract in `contract.ts`, skins chosen by `UC_UI_PLATFORM` at build time |
 | Error/trace redaction       | `src/observability/`                           | breadcrumbs, tracing, sensitive arg masking  |
 
 ## CONVENTIONS

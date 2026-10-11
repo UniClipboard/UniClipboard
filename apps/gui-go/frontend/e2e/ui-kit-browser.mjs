@@ -22,12 +22,16 @@ const output = process.env.UI_KIT_TEST_OUTPUT || '/tmp/uc-ui-kit-verification'
 await mkdir(output, { recursive: true })
 const browser = await chromium.launch({ headless: true, channel: process.env.PLAYWRIGHT_CHANNEL })
 const results = []
+// Closes whatever a failed check left open (a modal menu or dialog hides the rest of the page from
+// the accessibility tree), so one failure does not cascade into every later check.
+let closeOverlays = async () => {}
 const check = async (name, run) => {
   try {
     await run()
     results.push({ name, ok: true })
   } catch (error) {
     results.push({ name, ok: false, error: error.message.replace(/\s+/g, ' ').slice(0, 400) })
+    await closeOverlays().catch(() => {})
   }
 }
 
@@ -37,6 +41,11 @@ try {
     reducedMotion: 'reduce',
   })
   page.setDefaultTimeout(5000)
+  closeOverlays = async () => {
+    for (let i = 0; i < 3; i++) await page.keyboard.press('Escape')
+    const cancel = page.getByRole('alertdialog').getByRole('button', { name: 'Cancel' })
+    if (await cancel.count()) await cancel.click()
+  }
   const errors = []
   page.on('pageerror', error => errors.push(error.message))
   // React and the component libraries report misuse (controlled/uncontrolled switches, duplicate
@@ -64,6 +73,17 @@ try {
       const el = document.activeElement
       return el?.getAttribute('aria-label') || el?.textContent?.trim() || el?.tagName
     })
+  // Libraries may move focus one frame after the event that opens a popup or wraps a focus trap;
+  // a user's next key press is far later than that, so wait briefly instead of reading at once.
+  const expectFocus = async (matches, timeout = 1000) => {
+    const deadline = Date.now() + timeout
+    let name = await focusedName()
+    while (!matches(name) && Date.now() < deadline) {
+      await page.waitForTimeout(25)
+      name = await focusedName()
+    }
+    assert.ok(matches(name), `focus is on "${name}"`)
+  }
 
   await check('button click reports no event object', async () => {
     await board.getByRole('button', { name: 'Copy', exact: true }).first().click()
@@ -140,9 +160,9 @@ try {
       await menu.evaluate(el => Boolean(el.closest('[data-testid="board-light"]'))),
       false
     )
-    assert.equal(await focusedName().then(name => name.startsWith('Copy')), true)
+    await expectFocus(name => name.startsWith('Copy'))
     await page.keyboard.press('ArrowDown')
-    assert.equal((await focusedName()).startsWith('Send to'), true)
+    await expectFocus(name => name.startsWith('Send to'))
     await page.screenshot({ path: path.join(output, `${skin}-menu-open.png`) })
     await page.keyboard.press('Escape')
     await menu.waitFor({ state: 'hidden' })
@@ -162,10 +182,12 @@ try {
     const row = board
       .getByRole('listbox', { name: 'Today' })
       .getByRole('option', { name: 'invoice-0921.pdf' })
+    // A modal context menu hides the page from the accessibility tree, so measure the row first.
+    const rowBox = await row.boundingBox()
     await row.click({ button: 'right' })
     const menu = page.getByRole('menu')
     await menu.waitFor()
-    const [rowBox, menuBox] = [await row.boundingBox(), await menu.boundingBox()]
+    const menuBox = await menu.boundingBox()
     assert.ok(Math.abs(menuBox.y - (rowBox.y + rowBox.height / 2)) < rowBox.height * 2)
     await page.getByRole('menuitem', { name: /^Pin/ }).click()
     await expectLog('context:pin')
@@ -270,10 +292,13 @@ try {
       false
     )
     // Destructive confirmation: initial focus is on Cancel, so Enter does not destroy data.
-    assert.equal(await focusedName(), 'Cancel')
+    await expectFocus(name => name === 'Cancel')
+    const dialogElement = await dialog.elementHandle()
     for (let i = 0; i < 4; i++) {
       await page.keyboard.press('Tab')
-      assert.equal(await dialog.evaluate(el => el.contains(document.activeElement)), true)
+      await page.waitForFunction(el => el.contains(document.activeElement), dialogElement, {
+        timeout: 1000,
+      })
     }
     await page.screenshot({ path: path.join(output, `${skin}-dialog-open.png`) })
     await dialog.getByRole('button', { name: 'Delete' }).click()
@@ -285,6 +310,7 @@ try {
     const row = board
       .getByRole('listbox', { name: 'Today' })
       .getByRole('option', { name: 'git rebase -i HEAD~3' })
+    const rowElement = await row.elementHandle()
     await row.click({ button: 'right' })
     await page.getByRole('menuitem', { name: /^Delete from all devices/ }).click()
     const dialog = page.getByRole('alertdialog', { name: 'Delete from all devices?' })
@@ -295,7 +321,7 @@ try {
       await dialog.getByRole('button', { name: 'Cancel' }).click()
       await dialog.waitFor({ state: 'hidden' })
     })
-    assert.equal(await row.evaluate(el => el === document.activeElement), true)
+    await page.waitForFunction(el => el === document.activeElement, rowElement, { timeout: 1000 })
   })
   await check('browser rendering never claims a native window material', async () => {
     const materials = await page

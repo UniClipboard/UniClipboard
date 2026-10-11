@@ -1298,6 +1298,7 @@
       "allOfKind": "все: {{kind}}",
       "anyTag": "Любая метка",
       "anyType": "Любой тип",
+      "cardSize": "Размер карточек",
       "copyAndClose": "Скопировать и закрыть",
       "copyImage": "Скопировать изображение",
       "deleteCount_few": "Удалить {{count}} элемента",
@@ -1368,7 +1369,10 @@
       "tagFieldHint": "↑↓ выбор · ↩ добавить · ⇥ цвет · esc закрыть",
       "tagOnSome": "{{on}} из {{total}}",
       "toolbar": "Панель инструментов",
-      "unpinAll": "Открепить все"
+      "unpinAll": "Открепить все",
+      "view": "Вид",
+      "viewGrid": "Сетка",
+      "viewList": "Список"
     }
   },
   "dashboard": {

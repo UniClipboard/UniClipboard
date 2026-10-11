@@ -1282,6 +1282,7 @@
       "allOfKind": "all {{kind}}",
       "anyTag": "Any Tag",
       "anyType": "Any Type",
+      "cardSize": "Card size",
       "copyAndClose": "Copy and Close",
       "copyImage": "Copy Image",
       "deleteCount_one": "Delete {{count}} Item",
@@ -1342,7 +1343,10 @@
       "tagFieldHint": "↑↓ choose · ↩ add · ⇥ color · esc close",
       "tagOnSome": "{{on}} of {{total}}",
       "toolbar": "Toolbar",
-      "unpinAll": "Unpin All"
+      "unpinAll": "Unpin All",
+      "view": "View",
+      "viewGrid": "Grid",
+      "viewList": "List"
     }
   },
   "dashboard": {

@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { countSearch } from '@/api/daemon/search'
 import { useCompositeSearchBar } from '@/components/history/composite-search/useCompositeSearchBar'
@@ -15,6 +16,7 @@ import { HistoryKitDeleteAlert } from './HistoryKitDeleteAlert'
 import { HistoryKitDetail } from './HistoryKitDetail'
 import { HistoryKitFilters } from './HistoryKitFilters'
 import { HistoryKitFirstLaunch } from './HistoryKitFirstLaunch'
+import { HistoryKitGrid } from './HistoryKitGrid'
 import { HistoryKitList } from './HistoryKitList'
 import { HistoryKitNoResults } from './HistoryKitNoResults'
 import { HistoryKitQueryFailed } from './HistoryKitQueryFailed'
@@ -24,6 +26,25 @@ import { HistoryKitSelection } from './HistoryKitSelection'
 import { HistoryKitSidebar } from './HistoryKitSidebar'
 import { HistoryKitTagManager } from './HistoryKitTagManager'
 import { HistoryKitToolbar } from './HistoryKitToolbar'
+
+const VIEW_KEY = 'uc.history.kit.view'
+const SIZE_KEY = 'uc.history.kit.gridSize'
+
+function readPreference(key: string): string | null {
+  try {
+    return localStorage.getItem(key)
+  } catch {
+    return null
+  }
+}
+
+function writePreference(key: string, value: string) {
+  try {
+    localStorage.setItem(key, value)
+  } catch {
+    // A preference that cannot be stored just does not survive a restart.
+  }
+}
 
 const COPY = 'copy'
 const PIN = 'pin'
@@ -88,6 +109,26 @@ export default function HistoryKitPage() {
         : undefined,
   }
 
+  // List or grid (design ME2) and the grid's card size are per-viewer conveniences.
+  const [view, setView] = useState<'list' | 'grid'>(() =>
+    readPreference(VIEW_KEY) === 'grid' ? 'grid' : 'list'
+  )
+  const [gridSize, setGridSize] = useState(() => {
+    const stored = Number(readPreference(SIZE_KEY))
+    return Number.isFinite(stored) && stored >= 0 && stored <= 1 ? stored : 0.4
+  })
+  // In the grid the detail is an inspector: double click or the shortcut opens it.
+  const [inspector, setInspector] = useState(false)
+  const changeView = (next: 'list' | 'grid') => {
+    setView(next)
+    writePreference(VIEW_KEY, next)
+  }
+  const changeGridSize = (next: number) => {
+    setGridSize(next)
+    writePreference(SIZE_KEY, String(next))
+  }
+  const showDetail = view === 'list' || inspector
+
   const multi = c.checkedItems.length > 1
   const selection = multi ? c.checkedItems.map(item => item.id) : c.selectedId ? [c.selectedId] : []
   const selectedItems = multi ? c.checkedItems : c.selectedItem ? [c.selectedItem] : []
@@ -115,6 +156,12 @@ export default function HistoryKitPage() {
     scope: 'clipboard',
     handler: () => c.searchInputRef.current?.focus(),
     enableOnFormTags: true,
+  })
+  useShortcut({
+    key: 'alt+mod+i',
+    scope: 'clipboard',
+    enabled: view === 'grid',
+    handler: () => setInspector(open => !open),
   })
   useShortcut({
     key: 'mod+p',
@@ -213,6 +260,10 @@ export default function HistoryKitPage() {
           search={<HistoryKitSearchField search={search} inputRef={c.searchInputRef} />}
           toolbar={
             <HistoryKitToolbar
+              view={view}
+              onViewChange={changeView}
+              gridSize={gridSize}
+              onGridSizeChange={changeGridSize}
               targetIds={selection}
               pinned={allPinned}
               onTogglePin={togglePin}
@@ -221,7 +272,7 @@ export default function HistoryKitPage() {
             />
           }
         >
-          <Pane kind="list" label={t('history.kit.listLabel')}>
+          <Pane kind={showDetail ? 'list' : 'main'} label={t('history.kit.listLabel')}>
             {c.isSearchActive ? (
               <HistoryKitScopeBar
                 contentFilter={c.filter.activeFilter}
@@ -261,6 +312,22 @@ export default function HistoryKitPage() {
                 relaxations={relaxations}
                 onRemove={search.resetDimension}
               />
+            ) : view === 'grid' ? (
+              <HistoryKitGrid
+                items={c.items}
+                sourceDeviceNames={c.sourceDeviceNames}
+                size={gridSize}
+                selection={selection}
+                onSelectionChange={select}
+                onOpen={id => {
+                  select([id])
+                  setInspector(true)
+                }}
+                onDelete={ids => c.requestDelete(ids)}
+                hasMore={c.hasMore}
+                onLoadMore={c.handleLoadMore}
+                contextMenu={contextMenu}
+              />
             ) : (
               <HistoryKitList
                 items={c.items}
@@ -278,42 +345,44 @@ export default function HistoryKitPage() {
               />
             )}
           </Pane>
-          <Pane kind="detail" label={t('history.detail.aria')}>
-            {multi ? (
-              <HistoryKitSelection
-                ids={selection}
-                summary={selectionSummary(c.checkedItems, t)}
-                tagging={
-                  c.historyTags.available
-                    ? {
-                        tags: c.historyTags.tags,
-                        summary: c.selectionTagSummary,
-                        editorOpen: c.selectionTagEditorOpen,
-                        onEditorOpenChange: c.setSelectionTagEditorOpen,
-                        onAddToAll: tagId => c.addTagToItems(tagId, selection),
-                        onCreateForAll: (name, color) => c.tagItemsByName(name, selection, color),
-                        onRemoveFromAll: tagId => c.removeTagFromItems(tagId, selection),
-                      }
-                    : null
-                }
-                allPinned={allPinned}
-                onPinAll={c.pinChecked}
-                onDeleteAll={c.deleteChecked}
-                onDeselect={c.clearChecked}
-              />
-            ) : (
-              <HistoryKitDetail
-                item={c.selectedItem}
-                emptyHistory={emptyHistory}
-                imageNeighbors={imageNeighbors}
-                tagging={tagging}
-                copySuccess={c.copySuccessId !== null && c.copySuccessId === c.selectedId}
-                onCopy={() => c.selectedId && void c.handleCopy(c.selectedId)}
-                onTogglePin={togglePin}
-                onDelete={deleteSelection}
-              />
-            )}
-          </Pane>
+          {showDetail && (
+            <Pane kind="detail" label={t('history.detail.aria')}>
+              {multi ? (
+                <HistoryKitSelection
+                  ids={selection}
+                  summary={selectionSummary(c.checkedItems, t)}
+                  tagging={
+                    c.historyTags.available
+                      ? {
+                          tags: c.historyTags.tags,
+                          summary: c.selectionTagSummary,
+                          editorOpen: c.selectionTagEditorOpen,
+                          onEditorOpenChange: c.setSelectionTagEditorOpen,
+                          onAddToAll: tagId => c.addTagToItems(tagId, selection),
+                          onCreateForAll: (name, color) => c.tagItemsByName(name, selection, color),
+                          onRemoveFromAll: tagId => c.removeTagFromItems(tagId, selection),
+                        }
+                      : null
+                  }
+                  allPinned={allPinned}
+                  onPinAll={c.pinChecked}
+                  onDeleteAll={c.deleteChecked}
+                  onDeselect={c.clearChecked}
+                />
+              ) : (
+                <HistoryKitDetail
+                  item={c.selectedItem}
+                  emptyHistory={emptyHistory}
+                  imageNeighbors={imageNeighbors}
+                  tagging={tagging}
+                  copySuccess={c.copySuccessId !== null && c.copySuccessId === c.selectedId}
+                  onCopy={() => c.selectedId && void c.handleCopy(c.selectedId)}
+                  onTogglePin={togglePin}
+                  onDelete={deleteSelection}
+                />
+              )}
+            </Pane>
+          )}
         </SplitView>
         <HistoryKitTagManager
           open={c.tagManagerOpen && c.historyTags.available}

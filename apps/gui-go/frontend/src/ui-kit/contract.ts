@@ -34,8 +34,10 @@ export type IconName =
   | 'dismiss'
   | 'edit'
   | 'filter'
+  | 'grid'
   | 'history'
   | 'info'
+  | 'list'
   | 'moon'
   | 'more'
   | 'pin'
@@ -487,11 +489,12 @@ export interface SplitViewProps {
 }
 
 /**
- * A column of the content region below the toolbar band. `list` is the browsing column (the
- * history list); `detail` fills the remaining width.
+ * A column of the content region below the toolbar band. `list` is the browsing column beside a
+ * detail (the history list); `detail` fills the remaining width; `main` is a browsing column that
+ * fills the width by itself (the grid without its inspector).
  */
 export interface PaneProps {
-  kind: 'list' | 'detail'
+  kind: 'list' | 'detail' | 'main'
   label: string
   children: ReactNode
 }
@@ -630,6 +633,51 @@ export interface QuickLookProps {
 export interface ColorDotProps {
   color?: TagColor
   label?: string
+}
+
+export interface GridItem {
+  id: string
+  title: string
+  subtitle?: string
+  /** What the card body draws: an image (from `media`), a dark code snippet, a link or text. */
+  kind: ContentKind
+  /** Text shown in the card body (code, link or text). */
+  text?: string
+  /** The card body for an image, e.g. its thumbnail element. */
+  media?: ReactNode
+  /** Small marks over the card, e.g. the pin. */
+  badges?: ReactNode
+}
+
+/**
+ * A lazily loaded grid of selectable cards in groups (Finder icon view, design ME2). As in
+ * `GroupedList` the grid is one tab stop naming the current card with `aria-activedescendant`,
+ * each card element carries `data-item-id`, and selection, activation, delete and the context menu
+ * work the same; the arrow keys move in two dimensions.
+ */
+export interface GroupedGridProps {
+  label: string
+  groups: ListGroup[]
+  items: GridItem[]
+  /** Card size from the toolbar slider: 0 smallest to 1 largest. */
+  size: number
+  selection: string[]
+  onSelectionChange: (ids: string[]) => void
+  onActivate?: (id: string) => void
+  onDelete?: (ids: string[]) => void
+  onEndReached?: () => void
+  contextMenu?: GroupedListProps['contextMenu']
+  footer?: ReactNode
+}
+
+/** A continuous value, e.g. the grid's card size. */
+export interface SliderProps {
+  label: string
+  value: number
+  onValueChange: (value: number) => void
+  min: number
+  max: number
+  step?: number
 }
 
 /** A floating bar of the main actions at the bottom of a pane. */
@@ -775,6 +823,8 @@ export declare function Pane(props: PaneProps): ReactNode
 export declare function Text(props: TextProps): ReactNode
 export declare function KindBadge(props: KindBadgeProps): ReactNode
 export declare function GroupedList(props: GroupedListProps): ReactNode
+export declare function GroupedGrid(props: GroupedGridProps): ReactNode
+export declare function Slider(props: SliderProps): ReactNode
 export declare function Icon(props: IconProps): ReactNode
 export declare function ColorDot(props: ColorDotProps): ReactNode
 export declare function PreviewFrame(props: PreviewFrameProps): ReactNode

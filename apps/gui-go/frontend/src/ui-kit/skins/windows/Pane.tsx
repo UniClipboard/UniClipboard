@@ -23,6 +23,8 @@ const useStyles = makeStyles({
     borderInlineEndStyle: 'solid',
     borderInlineEndColor: 'var(--w11-divider)',
   },
+  // A browsing column alone (the grid without its inspector) fills the card.
+  main: { flex: '1 1 auto', minWidth: 0 },
   detail: { flex: '1 1 21rem', minWidth: '18rem', backgroundColor: 'var(--w11-detail)' },
   slot: { display: 'contents' },
   header: {

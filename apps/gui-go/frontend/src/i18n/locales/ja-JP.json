@@ -1281,6 +1281,7 @@
       "allOfKind": "すべて{{kind}}",
       "anyTag": "すべてのタグ",
       "anyType": "すべての種類",
+      "cardSize": "カードのサイズ",
       "copyAndClose": "コピーして閉じる",
       "copyImage": "画像をコピー",
       "deleteCount_one": "{{count}} 項目を削除",
@@ -1338,7 +1339,10 @@
       "tagFieldHint": "↑↓ 選択 · ↩ 追加 · ⇥ 色 · esc 閉じる",
       "tagOnSome": "{{total}} 件中 {{on}} 件",
       "toolbar": "ツールバー",
-      "unpinAll": "すべてピン留め解除"
+      "unpinAll": "すべてピン留め解除",
+      "view": "表示",
+      "viewGrid": "グリッド",
+      "viewList": "リスト"
     }
   },
   "dashboard": {

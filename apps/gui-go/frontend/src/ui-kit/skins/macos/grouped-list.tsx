@@ -1,19 +1,11 @@
 import { ContextMenu as BaseContextMenu } from '@base-ui/react/context-menu'
 import { useId, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react'
 import { GroupedVirtuoso, type GroupedVirtuosoHandle } from 'react-virtuoso'
-import type { GroupedListProps, ItemListItem } from '@/ui-kit/contract'
+import type { GroupedListProps } from '@/ui-kit/contract'
 import { Highlighted } from './highlighted'
 import { listStep } from './list-keys'
 import { MenuPanel } from './menus'
-
-/** Ids from `from` to `to` (inclusive) in list order. */
-function range(items: ItemListItem[], from: string, to: string) {
-  const a = items.findIndex(item => item.id === from)
-  const b = items.findIndex(item => item.id === to)
-  if (a < 0 || b < 0) return [to]
-  const [start, end] = a <= b ? [a, b] : [b, a]
-  return items.slice(start, end + 1).map(item => item.id)
-}
+import { useAnchoredSelection } from './selection'
 
 /**
  * NSTableView source list with day groups, virtualized. The list itself is the one tab stop and
@@ -37,8 +29,8 @@ export function GroupedList({
   const domId = useId()
   const listRef = useRef<HTMLDivElement>(null)
   const virtuoso = useRef<GroupedVirtuosoHandle>(null)
-  // The fixed end of a Shift range; the moving end is the last selected id.
-  const anchor = useRef<string | null>(null)
+  const ids = items.map(item => item.id)
+  const select = useAnchoredSelection(ids, selection, onSelectionChange)
   const [menuIds, setMenuIds] = useState<string[]>([])
   const [menuOpen, setMenuOpen] = useState(false)
   const cursor = selection[selection.length - 1]
@@ -56,16 +48,11 @@ export function GroupedList({
     if (next !== null) {
       event.preventDefault()
       const id = items[next].id
-      if (event.shiftKey && anchor.current) {
-        onSelectionChange([...range(items, anchor.current, id).filter(i => i !== id), id])
-      } else {
-        anchor.current = id
-        onSelectionChange([id])
-      }
+      select.moveTo(id, event.shiftKey)
       reveal(id)
     } else if (event.metaKey && event.key.toLowerCase() === 'a') {
       event.preventDefault()
-      onSelectionChange(items.map(item => item.id))
+      select.selectAll()
     } else if (event.key === 'Enter' && cursor) {
       event.preventDefault()
       onActivate?.(cursor)
@@ -80,25 +67,7 @@ export function GroupedList({
     // Keep focus on the list (not the scroller) and keep text from being selected.
     event.preventDefault()
     listRef.current?.focus({ preventScroll: true })
-    const selected = selection.includes(id)
-    if (event.button === 2 || (event.button === 0 && event.ctrlKey)) {
-      // A secondary click keeps a selection that contains the row (the menu acts on all of it).
-      if (!selected) {
-        anchor.current = id
-        onSelectionChange([id])
-      }
-      return
-    }
-    if (event.button !== 0) return
-    if (event.metaKey) {
-      anchor.current = id
-      onSelectionChange(selected ? selection.filter(s => s !== id) : [...selection, id])
-    } else if (event.shiftKey && anchor.current) {
-      onSelectionChange([...range(items, anchor.current, id).filter(i => i !== id), id])
-    } else {
-      anchor.current = id
-      onSelectionChange([id])
-    }
+    select.pointerDown(event, id)
   }
 
   const groupStarts: number[] = []

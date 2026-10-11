@@ -1288,6 +1288,7 @@
       "allOfKind": "todos {{kind}}",
       "anyTag": "Qualquer etiqueta",
       "anyType": "Qualquer tipo",
+      "cardSize": "Tamanho dos cartões",
       "copyAndClose": "Copiar e fechar",
       "copyImage": "Copiar imagem",
       "deleteCount_many": "Excluir {{count}} itens",
@@ -1353,7 +1354,10 @@
       "tagFieldHint": "↑↓ escolher · ↩ adicionar · ⇥ cor · esc fechar",
       "tagOnSome": "{{on}} de {{total}}",
       "toolbar": "Barra de ferramentas",
-      "unpinAll": "Desafixar todos"
+      "unpinAll": "Desafixar todos",
+      "view": "Visualização",
+      "viewGrid": "Grade",
+      "viewList": "Lista"
     }
   },
   "dashboard": {

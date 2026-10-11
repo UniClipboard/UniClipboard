@@ -2981,3 +2981,180 @@
   display: flex;
   justify-content: flex-end;
 }
+
+/* ---------- grid view and size slider (design ME2) ---------- */
+
+.mac-grid-row {
+  display: grid;
+  gap: 14px;
+  padding: 7px 16px;
+}
+
+.mac-card {
+  min-width: 0;
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--content);
+  box-shadow:
+    inset 0 0 0 0.5px var(--separator),
+    0 1px 2px rgba(0, 0, 0, 0.06);
+  display: flex;
+  flex-direction: column;
+  cursor: default;
+  user-select: none;
+}
+
+.mac-card-body {
+  position: relative;
+  aspect-ratio: 16 / 10;
+  overflow: hidden;
+  background: var(--fill-4);
+}
+
+.mac-card[data-kind='code'] .mac-card-body {
+  background: var(--code-bg);
+  color: #e5e5ea;
+}
+
+.mac-card-body > img,
+.mac-card-body .mac-thumb {
+  width: 100%;
+  height: 100%;
+  border-radius: 0;
+  object-fit: cover;
+}
+
+.mac-card-text {
+  padding: 12px 14px;
+  font-size: 13px;
+  line-height: 18px;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 5;
+  -webkit-box-orient: vertical;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.mac-card-text[data-mono] {
+  font-family: var(--mac-mono);
+  font-size: 12px;
+}
+
+.mac-card-link {
+  display: flex;
+  flex-direction: column;
+}
+
+.mac-card-host {
+  padding: 12px 14px 0;
+  font-size: 11px;
+  color: var(--label-2);
+}
+
+.mac-card-link .mac-card-text {
+  font-weight: 600;
+}
+
+.mac-card-badges {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  gap: 4px;
+}
+
+.mac-card-footer {
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  box-shadow: inset 0 0.5px 0 var(--separator);
+}
+
+.mac-card-title {
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mac-card-subtitle {
+  font-size: 11px;
+  color: var(--label-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mac-card[aria-selected='true'] {
+  box-shadow: 0 0 0 3px var(--accent);
+}
+
+.mac-card[aria-selected='true'] .mac-card-footer {
+  background: var(--accent);
+  color: #fff;
+}
+
+.mac-card[aria-selected='true'] .mac-card-subtitle {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+[data-window-inactive] .mac-card[aria-selected='true'] {
+  box-shadow: 0 0 0 3px var(--selection-off);
+}
+
+[data-window-inactive] .mac-card[aria-selected='true'] .mac-card-footer {
+  background: var(--selection-off);
+  color: var(--label);
+}
+
+.mac-grid:focus-visible .mac-card[data-cursor] {
+  outline: 3.5px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.mac-slider {
+  width: 100px;
+}
+
+.mac-slider-control {
+  height: 20px;
+  display: flex;
+  align-items: center;
+}
+
+.mac-slider-track {
+  position: relative;
+  height: 4px;
+  width: 100%;
+  border-radius: 2px;
+  background: var(--fill-1);
+}
+
+.mac-slider-indicator {
+  height: 100%;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+.mac-slider-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 9px;
+  background: #fff;
+  box-shadow:
+    var(--ctrl-shadow),
+    0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.mac-slider-thumb:focus-visible {
+  outline: 3.5px solid var(--focus);
+}
+
+.mac-pane[data-pane='main'] {
+  flex: 1 1 auto;
+  min-width: 0;
+  box-shadow: inset -0.5px 0 0 var(--separator);
+}

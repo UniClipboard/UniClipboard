@@ -48,7 +48,7 @@
 - 作业不缓存 Go 模块（PR 只读默认分支缓存），上传链接产物与 `SHA256SUMS` 作为证据，不发布任何东西。
 - macOS 的 `go vet`/链接已经在 macOS 打包作业里；Linux、Windows 的真实运行不在 PR 门禁内。
 
-必需检查的终值：`pr-check.yml` 原来有 workflow 级 `paths`，不命中的 PR 根本不会出现该 workflow 的任何检查，设为必需后会一直 pending。现在去掉 workflow 级 `paths`，把原列表搬进 `changes` 作业的 `code` 过滤器；`frontend`、`frontend-tests` 用它、`gui-go` 用 `gui_go`、`rust`/`e2e` 用 `rust`，各作业按 `if` 跳过。被 `if` 跳过的作业显示为 Skipped，对必需检查算通过，所以每个目标为 main 的 PR 该检查都有明确终值：相关变更跑真实 gate，不相关的 PR 轻量 Skipped（只多一个 `changes` 作业）。建议的必需检查名称是 `Go Host Compile Check`（作业 `gui-go`）。仓库当前对 `main` 没有必需状态检查（规则集 `Protect main branch` 里没有 `required_status_checks`，只读核对），本任务不修改任何分支保护或规则集。
+PR 检查的路径判断统一由 `.github/ci-paths.yml` 维护：前端、Go 宿主、Go CLI、Rust、Windows Quick Panel、CLI E2E、Membership E2E 与仓库工具测试各有独立触发条件。`pr-check.yml` 保持对所有目标为 main 的 PR 运行，再按任务跳过无关验证，避免必需检查因工作流级路径过滤而一直等待。前端通过可复用的 `frontend-coverage.yml` 统一完成类型检查、构建、生成客户端校验、单元测试及覆盖率；Go 宿主下载同一次运行产生的前端 bundle，并执行宿主结构校验，避免重复构建和类型检查。Rust 覆盖率、Membership E2E 也由 PR Check 按共享变更集合调用；main 的覆盖率基线、Membership 的定时及手动运行保留。Go CLI 改动保留 daemon 集成测试，但不再启动无关前端、Rust 工作区覆盖率和 Windows 面板编译。仓库当前对 `main` 没有必需状态检查（规则集 `Protect main branch` 里没有 `required_status_checks`），本次不修改分支保护或规则集。
 
 PR 门禁没有在 GitHub 上运行过（未 push）；在草稿 PR 里演示故意红再修复变绿需要另行授权。
 

@@ -433,17 +433,22 @@ try {
           await native.getByRole('button', { name: /^Tag/ }).click()
           const menu = page.getByRole('menu')
           await menu.waitFor()
+          // rgb() is opaque, rgba() carries alpha; anything else fails below.
           const alpha = await menu.evaluate(el => {
-            const match = getComputedStyle(el).backgroundColor.match(/rgba?\(([^)]+)\)/)
-            const parts = match ? match[1].split(',').map(Number) : []
-            return parts.length === 4 ? parts[3] : 1
+            const background = getComputedStyle(el).backgroundColor
+            const rgba = background.match(/^rgba\(([^)]+)\)$/)
+            if (rgba) {
+              const parts = rgba[1].split(',').map(Number)
+              return parts.length === 4 ? parts[3] : null
+            }
+            return /^rgb\([^)]+\)$/.test(background) ? 1 : null
           })
           await page.screenshot({
             path: path.join(output, `${skin}-native-sim-menu-${scheme}.png`),
           })
           await page.keyboard.press('Escape')
           assert.ok(
-            alpha >= 0.9,
+            alpha !== null && alpha >= 0.9,
             `${scheme} menu background alpha ${alpha} over the native material`
           )
         }

@@ -902,17 +902,29 @@ async function runHistoryKitScenario() {
   })
   // Over the host's native material a menu must hide what is under it: its own background is
   // nearly opaque (measured in the real WebView while the host reports native glass).
+  const menuElement = renameItem.closest<HTMLElement>('[role="menu"]')
+  const menuBackground = menuElement ? getComputedStyle(menuElement).backgroundColor : null
+  // rgb() is opaque, rgba() carries alpha; anything else (or no menu) fails the step.
   const menuAlpha = (() => {
-    const menu = renameItem.closest<HTMLElement>('[role="menu"]')
-    const match = menu && getComputedStyle(menu).backgroundColor.match(/rgba?\(([^)]+)\)/)
-    const parts = match ? match[1].split(',').map(Number) : []
-    return parts.length === 4 ? parts[3] : 1
+    const rgba = menuBackground?.match(/^rgba\(([^)]+)\)$/)
+    if (rgba) {
+      const parts = rgba[1].split(',').map(Number)
+      return parts.length === 4 ? parts[3] : null
+    }
+    return menuBackground && /^rgb\([^)]+\)$/.test(menuBackground) ? 1 : null
   })()
   const menuMaterial = document.documentElement.dataset.windowMaterial ?? null
   await record(
     'kit-native-menu-opaque',
-    hostMaterial === 'none' || (menuMaterial?.startsWith('native') === true && menuAlpha >= 0.9),
-    { hostReported: hostMaterial, document: menuMaterial, alpha: menuAlpha }
+    hostMaterial === 'none' ||
+      (menuMaterial?.startsWith('native') === true && menuAlpha !== null && menuAlpha >= 0.9),
+    {
+      hostReported: hostMaterial,
+      document: menuMaterial,
+      menuClass: menuElement?.className ?? null,
+      background: menuBackground,
+      alpha: menuAlpha,
+    }
   )
   await shot('tag-manager-menu')
   renameItem.click()

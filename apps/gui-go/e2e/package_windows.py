@@ -37,7 +37,6 @@ import argparse
 import hashlib
 import json
 import os
-import re
 import shutil
 import subprocess
 import sys
@@ -48,6 +47,7 @@ sys.path.insert(0, str(ROOT / 'apps/gui-go/packaging/windows'))
 from build_windows import require_ui_platform  # noqa: E402
 from sign import check_signed_matches  # noqa: E402  (the signing owner also owns the signed-equals-submitted check)
 from portable import write_portable_archive  # noqa: E402
+from resources import gui_resources, wails_version  # noqa: E402
 GUI = ROOT / 'apps/gui-go'
 ARCH_NAMES = {'amd64': 'x64', 'arm64': 'arm64'}
 
@@ -137,11 +137,6 @@ def fetch_tauri_utils(dest):
     return dest
 
 
-def wails_version():
-    mod = (GUI / 'go.mod').read_text()
-    return re.search(r'github.com/wailsapp/wails/v3 (v[0-9][^\s]*)', mod).group(1)
-
-
 STAGE_FILES = ('UniClipboard.exe', 'uniclipd.exe', 'uniclip-quick-panel.exe', 'uninstall.exe')
 
 
@@ -187,36 +182,16 @@ def stage_prepare(args, out):
     daemon_prov = None if fixture else verify_daemon_provenance(args.daemon, args.arch, args.daemon_provenance, prov)
     helper_prov = None if fixture else verify_daemon_provenance(args.helper, args.arch, args.daemon_provenance, prov, 'uniclip-quick-panel')
 
-    # Resources (icon, version info, manifest) with the pinned Wails CLI, not a hand-made .rc.
-    tools = out / 'tools'
-    tools.mkdir()
-    env = dict(os.environ, GOBIN=str(tools))
-    run(['go', 'install', f'github.com/wailsapp/wails/v3/cmd/wails3@{wails_version()}'], cwd=tools, env=env)
-    wails3 = tools / ('wails3.exe' if os.name == 'nt' else 'wails3')
-    res = out / 'resources'
-    res.mkdir()
-    (res / 'info.json').write_text(json.dumps({'fixed': {'file_version': version}, 'info': {'0000': {
-        'ProductVersion': version, 'CompanyName': product, 'FileDescription': product,
-        'LegalCopyright': product, 'ProductName': product, 'Comments': ''}}}, indent=2))
-    manifest = Path(subprocess.check_output(['go', 'list', '-m', '-f', '{{.Dir}}', 'github.com/wailsapp/wails/v3'], cwd=GUI, text=True).strip())
-    tmpl = (manifest / 'internal/commands/updatable_build_assets/windows/wails.exe.manifest.tmpl').read_text()
-    (res / 'app.manifest').write_text(tmpl.replace('{{.ProductIdentifier}}', ident).replace('{{.ProductVersion}}', version + '.0'))
-    syso = GUI / f'wails_windows_{args.arch}.syso'
-    run([str(wails3), 'generate', 'syso', '-arch', args.arch, '-icon', str(ROOT / 'apps/gui-go/icons/icon.ico'),
-         '-manifest', str(res / 'app.manifest'), '-info', str(res / 'info.json'), '-out', str(syso)])
-
     build = out / 'build'
     build.mkdir()
     exe = build / 'UniClipboard.exe'
-    try:
+    with gui_resources(args.arch, version, ident, product):
         run(['go', 'generate', './buildinfo'], cwd=ROOT / 'packages/desktop-host-go')
         run(['bun', '--bun', 'run', '--cwd', 'apps/gui-go/frontend', 'build'], env=dict(os.environ, VITE_GUI_GO_E2E='0', VITE_APP_VERSION=version, UC_UI_PLATFORM='windows'))
         require_ui_platform(GUI / 'frontend/dist', 'windows')
         ldflags = f'-w -s -H windowsgui -X main.updaterPublicKey={pubkey} -X main.productName={product} -X main.bundleID={ident}'
         run(['go', 'build', '-tags', 'production,release', '-trimpath', '-buildvcs=false', '-ldflags', ldflags, '-o', str(exe), '.'],
             cwd=GUI, env=dict(os.environ, GOOS='windows', GOARCH=args.arch, CGO_ENABLED='0'))
-    finally:
-        syso.unlink(missing_ok=True)
 
     st = {'arch': args.arch, 'product': product, 'version': version, 'ident': ident, 'manufacturer': ident.split('.')[1],  # Tauri's default publisher
           'prefix': 'FIXTURE-' if fixture else 'ACCEPTANCE-' if args.acceptance_version else '', 'fixture': fixture,

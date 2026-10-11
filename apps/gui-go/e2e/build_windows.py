@@ -30,6 +30,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / 'apps/gui-go/packaging/windows'))
 from portable import write_portable_archive  # noqa: E402
+from resources import gui_resources, verify_app_icon  # noqa: E402
 
 TAGS = {'e2e': 'e2e', 'production': 'production', 'release': 'production,release'}
 TRIPLES = {'amd64': 'x86_64-pc-windows-msvc', 'arm64': 'aarch64-pc-windows-msvc'}
@@ -124,7 +125,9 @@ def main():
     ldflags = f'-X main.updaterPublicKey={pubkey} -X main.productName={conf["productName"]} -X main.bundleID={bundle_id}'
     # -H windowsgui: a GUI-subsystem executable, so no console window appears next to the app.
     exe = out / (f'{conf["productName"]}.exe' if release else 'gui-go.exe')
-    run(['go', 'build', *(['-trimpath'] if release else []), '-tags', TAGS[args.mode], '-ldflags', ldflags + ' -H windowsgui' + (' -s -w' if release else ''), '-o', str(exe), '.'], cwd=ROOT / 'apps/gui-go', env=env)
+    with gui_resources('amd64' if args.cross_check_only else arch, conf['version'], bundle_id, conf['productName']):
+        run(['go', 'build', *(['-trimpath'] if release else []), '-tags', TAGS[args.mode], '-ldflags', ldflags + ' -H windowsgui' + (' -s -w' if release else ''), '-o', str(exe), '.'], cwd=ROOT / 'apps/gui-go', env=env)
+    verify_app_icon(exe)
     portable = None
     if release and args.part == 'all' and not args.cross_check_only:
         arch_name = 'arm64' if arch == 'arm64' else 'x64'

@@ -35,12 +35,15 @@ if [[ "$MODE" == e2e ]]; then GO_BUNDLE_ID="$BUNDLE_ID.e2e"; fi
 (cd apps/gui-go && go build -tags "$TAGS" -ldflags "-X main.updaterPublicKey=$PUBKEY -X main.productName=$PRODUCT -X main.bundleID=$GO_BUNDLE_ID" -o "../../target/gui-go/$APP-binary" .)
 BUNDLE="$ROOT/target/gui-go/$APP.app"
 mkdir -p "$BUNDLE/Contents/MacOS"
+mkdir -p "$BUNDLE/Contents/Resources"
+cp apps/gui-go/icons/icon.icns "$BUNDLE/Contents/Resources/icon.icns"
 cp "target/gui-go/$APP-binary" "$BUNDLE/Contents/MacOS/gui-go"
 cp "target/sidecar-staging/uniclip-quick-panel-$TRIPLE" "$BUNDLE/Contents/MacOS/uniclip-quick-panel"
 cp "target/sidecar-staging/uniclipd-$TRIPLE" "$BUNDLE/Contents/MacOS/uniclipd"
 cp apps/gui-go/Info.plist "$BUNDLE/Contents/Info.plist"
 PLIST="$BUNDLE/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $BUNDLE_ID" -c "Set :CFBundleName $PRODUCT" "$PLIST"
+/usr/libexec/PlistBuddy -c "Add :CFBundleIconFile string icon" "$PLIST"
 /usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string $VERSION" -c "Set :CFBundleVersion $VERSION" -c "Add :LSMinimumSystemVersion string $MIN_MACOS" "$PLIST"
 if [[ "$MODE" == e2e ]]; then
   # Only the test build gets its own identity, so it can never collide with a real install.

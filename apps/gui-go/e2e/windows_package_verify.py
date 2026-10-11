@@ -11,11 +11,15 @@ import argparse
 import hashlib
 import json
 import shutil
+import struct
 import subprocess
 import sys
 import tempfile
 import zipfile
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'packaging/windows'))
+from resources import verify_app_icon  # noqa: E402
 
 
 def sha256(path):
@@ -76,6 +80,18 @@ def main():
             f = find(root, exe)
             result['checks'].append({'check': f'{label}: {exe} present', 'ok': f is not None, 'sha256': sha256(f) if f else None})
             print(('PASS ' if f else 'FAIL ') + result['checks'][-1]['check'], flush=True)
+        for label, root in (('setup payload', sx), ('portable zip', pz)):
+            f = find(root, 'UniClipboard.exe')
+            try:
+                if f is None:
+                    raise ValueError('UniClipboard.exe: missing executable')
+                verify_app_icon(f)
+                ok, detail = True, 'matches icons/icon.ico'
+            except (ValueError, OSError, struct.error) as error:
+                ok, detail = False, str(error)
+            result['checks'].append({'check': f'{label}: UniClipboard.exe embeds the application icon',
+                                     'ok': ok, 'detail': detail})
+            print(('PASS ' if ok else 'FAIL ') + result['checks'][-1]['check'], flush=True)
         if args.require_signed:
             # The uninstaller is generated at install time; package_windows.py keeps the signed copy NSIS embeds.
             uninstaller = args.package / 'uninstaller-signed.exe'
@@ -91,7 +107,7 @@ def main():
             ok = subprocess.run(cmd).returncode == 0
             result['checks'].append({'check': 'Authenticode: setup, uninstaller and the unpacked GUI exe, daemon and quick panel verify (signtool verify /pa)', 'ok': ok})
             print(('PASS ' if ok else 'FAIL ') + result['checks'][-1]['check'], flush=True)
-        same = [c['sha256'] for c in result['checks'] if 'UniClipboard.exe' in c['check']]
+        same = [c['sha256'] for c in result['checks'] if c['check'].endswith(': UniClipboard.exe present')]
         result['checks'].append({'check': 'GUI exe is identical in the installer and the portable zip', 'ok': len(set(same)) == 1 and None not in same})
         print(('PASS ' if result['checks'][-1]['ok'] else 'FAIL ') + result['checks'][-1]['check'], flush=True)
     finally:

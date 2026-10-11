@@ -41,12 +41,12 @@ import re
 import shutil
 import subprocess
 import sys
-import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / 'apps/gui-go/packaging/windows'))
 from sign import check_signed_matches  # noqa: E402  (the signing owner also owns the signed-equals-submitted check)
+from portable import write_portable_archive  # noqa: E402
 GUI = ROOT / 'apps/gui-go'
 ARCH_NAMES = {'amd64': 'x64', 'arm64': 'arm64'}
 
@@ -312,12 +312,7 @@ def stage_finalize(args, out):
     if signed:
         shutil.copy2(uninstaller, out / 'uninstaller-signed.exe')  # the copy the verify gate checks (the uninstaller exists only after an install)
     portable = out / f'{prefix}{product}_{version}_{arch}-portable.zip'
-    with zipfile.ZipFile(portable, 'w', zipfile.ZIP_DEFLATED) as z:
-        z.write(exe, f'{product}.exe')
-        z.write(daemon, 'uniclipd.exe')
-        z.write(helper, 'uniclip-quick-panel.exe')
-        z.writestr('portable.dat', '')  # the marker that enables portable mode; the installer does not ship it
-        z.write(ROOT / 'packaging/windows/portable/README.txt', 'README.txt')
+    write_portable_archive(portable, product, exe, daemon, helper)
 
     d, h = st['daemon'], st['helper']
     to_sign_hashes = json.loads((out / 'to-sign' / 'to-sign-manifest.json').read_text())

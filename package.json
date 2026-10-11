@@ -15,6 +15,7 @@
     "check:host-boundary": "node scripts/architecture/check-host-events.mjs && tsc -p apps/gui-go/frontend/tsconfig.json && cd apps/gui-go && go run ./cmd/hostcontract lint && go run ./cmd/hostcontract e2e-table -check && go run ./cmd/hostcontract docs -check",
     "mbx:exec": "bash scripts/build-cache/mbx.sh --exec",
     "wails:dev": "node scripts/wails-dev.mjs --profile dev",
+    "wails:build": "node scripts/wails-build.mjs",
     "wails:dev:profile": "node scripts/wails-dev.mjs --profile",
     "test": "bun run --cwd apps/gui-go/frontend test",
     "test:coverage:frontend": "bun run --cwd apps/gui-go/frontend test:coverage:frontend",

@@ -208,16 +208,24 @@ async function unlockIfLocked() {
 async function reloadApp() {
   await page.goto(new URL('/', page.url()).href)
 }
-// The app also keeps its quick panel as a hidden window; the History page is the main window's document.
-function mainWindowPage() {
-  const pages = browser.contexts().flatMap(context => context.pages())
-  const main = pages.find(candidate => !/quick-panel|updater/.test(candidate.url()))
-  assert.ok(main, `no main window among ${pages.map(candidate => candidate.url())}`)
-  return main
+// The app also keeps its quick panel as a hidden window; the History page is the main window's document. Right after
+// launch the main window may not exist yet (or still show a transient blank page), so wait for it.
+async function mainWindowPage() {
+  const end = Date.now() + 60_000
+  for (;;) {
+    const pages = browser.contexts().flatMap(context => context.pages())
+    const main = pages.find(candidate => {
+      const url = candidate.url()
+      return url.startsWith('http://wails.localhost') && !/quick-panel|updater/.test(url)
+    })
+    if (main) return main
+    assert.ok(Date.now() < end, `no main window among ${pages.map(candidate => candidate.url())}`)
+    await new Promise(resolve => setTimeout(resolve, 500))
+  }
 }
 async function newPage(options = {}) {
   if (cdp) {
-    page ??= mainWindowPage()
+    page ??= await mainWindowPage()
     if (!results.nativeUrl) {
       results.nativeUrl = page.url()
       page.on('pageerror', error => results.consoleErrors.push(error.message))
@@ -795,7 +803,8 @@ async function emptyRun() {
   for (const colorScheme of ['light', 'dark']) {
     await step(`empty-${colorScheme}`, async () => {
       if (cdp) {
-        page ??= mainWindowPage()
+        page ??= await mainWindowPage()
+        results.nativeUrl ??= page.url()
         await page.emulateMedia({ colorScheme, reducedMotion: 'reduce' })
         await reloadApp()
         await unlockIfLocked()

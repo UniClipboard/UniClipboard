@@ -1,7 +1,9 @@
+import { existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { sentryVitePlugin } from '@sentry/vite-plugin'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
+import type { Plugin } from 'vite'
 import { defineConfig } from 'vitest/config'
 
 const path = (relative: string) => fileURLToPath(new URL(relative, import.meta.url))
@@ -18,10 +20,34 @@ if (sentryEnabled && !appVersion) {
   throw new Error('VITE_APP_VERSION is required when uploading Sentry source maps')
 }
 
+// The platform UI kit (`src/ui-kit/contract.ts`) has one skin per target platform. The target is
+// an explicit build input, never guessed from the host OS, and only bundles that import the kit
+// need it: the error is raised when `@ui-skin` is resolved, not when the config loads.
+const uiPlatforms = ['windows', 'macos']
+function uiSkin(): Plugin {
+  return {
+    name: 'uc-ui-skin',
+    enforce: 'pre',
+    resolveId(source) {
+      if (source !== '@ui-skin') return null
+      const platform = process.env.UC_UI_PLATFORM
+      if (!platform || !uiPlatforms.includes(platform)) {
+        this.error(
+          `@/ui-kit needs UC_UI_PLATFORM=${uiPlatforms.join('|')} (got ${platform ? `"${platform}"` : 'nothing'})`
+        )
+      }
+      const entry = path(`./src/ui-kit/skins/${platform}/index.ts`)
+      if (!existsSync(entry)) this.error(`The ${platform} skin of @/ui-kit is missing: ${entry}`)
+      return entry
+    },
+  }
+}
+
 // The whole frontend lives in this directory: the business sources are `src` (`@`), the Wails
 // host modules `src/host`. The same config builds the three documents and runs the vitest suite.
 export default defineConfig({
   plugins: [
+    uiSkin(),
     react(),
     tailwindcss(),
     sentryVitePlugin({

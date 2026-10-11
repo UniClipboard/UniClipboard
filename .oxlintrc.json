@@ -241,6 +241,78 @@
       "env": {
         "node": true
       }
+    },
+    {
+      "files": ["apps/gui-go/frontend/src/**", "apps/gui-go/frontend/e2e/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "@ui-skin",
+                "message": "Import UI components from @/ui-kit; the skin is chosen by UC_UI_PLATFORM at build time."
+              }
+            ],
+            "patterns": [
+              {
+                "group": ["@/ui-kit/skins/*", "@fluentui/*"],
+                "message": "Import UI components from @/ui-kit; platform skins and their vendor libraries stay inside src/ui-kit/skins."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["apps/gui-go/frontend/src/ui-kit/index.ts"],
+      "rules": {
+        "no-restricted-imports": "off"
+      }
+    },
+    {
+      "files": ["apps/gui-go/frontend/src/ui-kit/skins/windows/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "@ui-skin",
+                "message": "Import UI components from @/ui-kit; the skin is chosen by UC_UI_PLATFORM at build time."
+              }
+            ],
+            "patterns": [
+              {
+                "group": ["@/ui-kit/skins/*"],
+                "message": "Import UI components from @/ui-kit; platform skins and their vendor libraries stay inside src/ui-kit/skins."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["apps/gui-go/frontend/src/ui-kit/skins/macos/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "@ui-skin",
+                "message": "Import UI components from @/ui-kit; the skin is chosen by UC_UI_PLATFORM at build time."
+              }
+            ],
+            "patterns": [
+              {
+                "group": ["@/ui-kit/skins/*", "@fluentui/*"],
+                "message": "Import UI components from @/ui-kit; platform skins and their vendor libraries stay inside src/ui-kit/skins."
+              }
+            ]
+          }
+        ]
+      }
     }
   ]
 }

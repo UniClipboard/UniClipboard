@@ -24,6 +24,7 @@
     /* Path Aliases */
     "paths": {
       "@/*": ["./src/*"],
+      "@ui-skin": ["./src/ui-kit/contract.ts"],
       "@host/*": ["./bindings/github.com/UniClipboard/UniClipboard/apps/gui-go/*"]
     }
   },

@@ -13,9 +13,10 @@
 //   skins translate Fluent `(event, data)` or Base UI `(value, eventDetails)` internally.
 // - Controlled and uncontrolled forms come in pairs (`value`/`defaultValue`).
 // - Sizes are semantic steps and icons are `IconName`s; no pixels, class names or vendor props.
-// - Window chrome (caption buttons, traffic lights, title-bar dragging), window materials (Mica,
-//   Liquid Glass), the system menu bar and system notifications belong to the native shell, not to
-//   this kit.
+// - Window chrome (caption buttons, traffic lights, title-bar dragging), the system menu bar and
+//   system notifications belong to the native shell, not to this kit. Window materials are applied
+//   by the native host; the kit only marks the regions that show them (`Surface`), and a skin
+//   reads the material the host actually applied from the host layer, never from business code.
 import type { ReactNode } from 'react'
 
 export type ColorScheme = 'light' | 'dark'
@@ -74,13 +75,27 @@ export interface UiRootProps {
   children: ReactNode
 }
 
+/**
+ * Window regions. `sidebar` shows the platform's window material when the native host applied one
+ * (macOS Liquid Glass / vibrancy behind a transparent web view); in a browser, or when the host
+ * applied none, the skin draws an opaque or CSS fallback instead. `content` is always opaque.
+ * Every surface root carries `data-window-material`: `native-liquid-glass`, `native-visual-effect`,
+ * `css-fallback` or `solid`, so a browser rendering can never be mistaken for the native material.
+ */
+export type SurfaceRole = 'sidebar' | 'content'
+
+export interface SurfaceProps {
+  role: SurfaceRole
+  children: ReactNode
+}
+
 export interface ButtonProps {
   variant?: ButtonVariant
   size?: ControlSize
   icon?: IconName
   /** Visible text. Omit it for an icon-only button and give `label` instead. */
   children?: ReactNode
-  /** Accessible name; required when there is no visible text. */
+  /** Accessible name of an icon-only button; ignored when there is visible text. */
   label?: string
   /** Hover/focus hint. For an icon-only button it defaults to `label`. */
   tooltip?: string
@@ -147,7 +162,10 @@ export interface SegmentedItem {
   iconOnly?: boolean
 }
 
-/** Mutually exclusive options shown side by side (radio-group semantics, arrow-key navigation). */
+/**
+ * Mutually exclusive options shown side by side, with radio-group semantics: one tab stop, and
+ * the arrow keys move focus and selection together.
+ */
 export interface SegmentedControlProps {
   items: SegmentedItem[]
   value?: string
@@ -165,8 +183,8 @@ export type MenuEntry =
       shortcut?: string
       destructive?: boolean
       disabled?: boolean
-      /** Trailing count, e.g. items in a saved view. */
-      count?: number
+      /** Trailing count, already formatted by the caller, e.g. items in a saved view. */
+      count?: string
       swatch?: TagColor
     }
   | { id: string; kind: 'separator' }
@@ -207,7 +225,8 @@ export interface AlertDialogProps {
 
 export interface BadgeProps {
   count: number
-  label?: string
+  /** Accessible name, e.g. "3 new items"; a bare number means nothing to a screen reader. */
+  label: string
 }
 
 export interface TagProps {
@@ -279,6 +298,7 @@ export interface SidebarNavItem {
   icon?: IconName
   /** Colour dot or square for smart views and tags. */
   swatch?: TagColor
+  /** Trailing count, already formatted by the caller (`12,408`, `4 of 5`). */
   count?: string
 }
 
@@ -298,6 +318,7 @@ export interface SidebarNavProps {
 }
 
 export declare function UiRoot(props: UiRootProps): ReactNode
+export declare function Surface(props: SurfaceProps): ReactNode
 export declare function Button(props: ButtonProps): ReactNode
 export declare function ToggleButton(props: ToggleButtonProps): ReactNode
 export declare function Switch(props: SwitchProps): ReactNode

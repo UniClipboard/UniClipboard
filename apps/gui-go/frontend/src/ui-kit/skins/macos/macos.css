@@ -1,0 +1,1650 @@
+/* macOS 26/27 component styles of the macOS skin (also used by the design prototype). Sizes are macOS points taken from the design canvas, so
+   they are written in px (1 CSS px = 1 pt); the product typography roles in DESIGN.md do not apply here.
+   Every interactive part is a Base UI primitive; this file only styles its state attributes. */
+
+:root {
+  /* Spring with response 0.35 s and dampingFraction 0.8 (design T3), sampled every 25 ms. */
+  --mac-spring: linear(
+    0,
+    0.079,
+    0.248,
+    0.436,
+    0.608,
+    0.747,
+    0.851,
+    0.922,
+    0.968,
+    0.995,
+    1.009,
+    1.014,
+    1.015,
+    1.013,
+    1.01,
+    1.008,
+    1.005,
+    1.003,
+    1.002,
+    1.001,
+    1
+  );
+  --mac-ease: cubic-bezier(0.32, 0.72, 0, 1);
+  --mac-font: -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
+  --mac-font-display: -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif;
+  --mac-mono: 'SF Mono', ui-monospace, Menlo, monospace;
+}
+
+.mac-theme {
+  font-family: var(--mac-font);
+  font-size: 13px;
+  line-height: 16px;
+  color: var(--label);
+  -webkit-font-smoothing: antialiased;
+}
+
+.mac-icon {
+  flex-shrink: 0;
+}
+
+/* ---------- materials ---------- */
+
+.mac-glass {
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(14px) saturate(1.8);
+  backdrop-filter: blur(14px) saturate(1.8);
+  box-shadow:
+    var(--glass-shadow),
+    inset 0 0.5px 0 var(--glass-rim),
+    inset 0 0 0 0.5px var(--glass-rim);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .mac-glass,
+  .mac-menu,
+  .mac-popover {
+    background: var(--glass-tinted);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+@media (prefers-contrast: more) {
+  .mac-glass {
+    box-shadow: inset 0 0 0 1px var(--label-3);
+  }
+}
+
+/* ---------- push button ---------- */
+
+.mac-btn {
+  all: unset;
+  box-sizing: border-box;
+  height: 24px;
+  padding: 0 12px;
+  border-radius: 7px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--label);
+  background: var(--ctrl);
+  box-shadow: var(--ctrl-shadow);
+  cursor: default;
+  user-select: none;
+  transition: transform 0.35s var(--mac-spring);
+}
+
+.mac-btn[data-size='small'] {
+  height: 20px;
+  padding: 0 9px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.mac-btn[data-size='large'] {
+  height: 32px;
+  padding: 0 16px;
+  border-radius: 16px;
+}
+
+.mac-btn[data-size='xlarge'] {
+  height: 40px;
+  padding: 0 20px;
+  border-radius: 20px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.mac-btn[data-tint='primary'] {
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: 600;
+  box-shadow:
+    inset 0 0.5px 0 rgba(255, 255, 255, 0.25),
+    0 0.5px 1.5px rgba(0, 0, 0, 0.2);
+}
+
+.mac-btn[data-tint='secondary'] {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--accent);
+  box-shadow: none;
+}
+
+.mac-btn[data-tint='destructive'] {
+  background: color-mix(in srgb, var(--red) 14%, transparent);
+  color: var(--red);
+  box-shadow: none;
+}
+
+.mac-btn[data-tint='glass'] {
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(14px) saturate(1.8);
+  backdrop-filter: blur(14px) saturate(1.8);
+  box-shadow:
+    var(--glass-shadow),
+    inset 0 0.5px 0 var(--glass-rim),
+    inset 0 0 0 0.5px var(--glass-rim);
+}
+
+/* Pressed: the design specifies the primary value; the others darken the same way (derived, not in the design). */
+.mac-btn:active:not([data-disabled]) {
+  transform: scale(0.97);
+  transition-duration: 0.08s;
+  transition-timing-function: ease-out;
+}
+
+.mac-btn[data-tint='primary']:active:not([data-disabled]),
+.mac-btn[data-tint='primary'][data-force='pressed'] {
+  background: color-mix(in srgb, var(--accent) 82%, #000);
+}
+
+.mac-btn:not([data-tint='primary']):active:not([data-disabled]),
+.mac-btn:not([data-tint='primary'])[data-force='pressed'] {
+  filter: brightness(0.92);
+}
+
+.mac-btn:focus-visible,
+.mac-btn[data-force='focus'] {
+  outline: 3.5px solid var(--focus);
+  outline-offset: 0;
+}
+
+.mac-btn[data-disabled] {
+  background: var(--fill-2);
+  color: var(--label-3);
+  box-shadow: none;
+}
+
+/* ---------- glass toolbar capsules (Tahoe) ---------- */
+
+.mac-glass-group {
+  height: 32px;
+  padding: 0 4px;
+  border-radius: 16px;
+  display: inline-flex;
+  align-items: center;
+  box-sizing: border-box;
+}
+
+.mac-glass-item {
+  all: unset;
+  width: 32px;
+  height: 26px;
+  border-radius: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--label);
+  cursor: default;
+  transition: transform 0.35s var(--mac-spring);
+}
+
+.mac-glass-item[data-pressed],
+.mac-glass-item[data-popup-open] {
+  background: var(--fill-2);
+}
+
+/* "Press: spring scale" from design T3 — the glass shrinks while held and springs back with overshoot. */
+.mac-glass-item:active:not([data-disabled]),
+.mac-btn[data-tint='glass']:active:not([data-disabled]) {
+  transform: scale(0.92);
+  transition-duration: 0.08s;
+  transition-timing-function: ease-out;
+}
+
+.mac-glass-item:focus-visible {
+  outline: 3.5px solid var(--focus);
+}
+
+.mac-glass-item[data-disabled] {
+  color: var(--label-3);
+}
+
+/* ---------- search field ---------- */
+
+.mac-search {
+  box-sizing: border-box;
+  min-width: 0;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 16px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--label-2);
+}
+
+.mac-search:focus-within,
+.mac-search[data-force='focus'] {
+  outline: 3.5px solid var(--focus);
+}
+
+.mac-search input {
+  all: unset;
+  flex-grow: 1;
+  width: 0;
+  min-width: 0;
+  color: var(--label);
+}
+
+.mac-search input::placeholder {
+  color: var(--label-3);
+}
+
+.mac-search kbd {
+  font: inherit;
+  font-size: 11px;
+  color: var(--label-3);
+}
+
+.mac-token {
+  height: 20px;
+  padding: 0 8px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--accent);
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+}
+
+/* ---------- segmented control ---------- */
+
+.mac-segmented {
+  box-sizing: border-box;
+  height: 24px;
+  padding: 2px;
+  border-radius: 8px;
+  background: var(--fill-2);
+  display: inline-flex;
+}
+
+.mac-segment {
+  all: unset;
+  padding: 0 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--label-2);
+  cursor: default;
+}
+
+.mac-segment[data-pressed] {
+  background: var(--ctrl);
+  box-shadow: var(--ctrl-shadow);
+  font-weight: 600;
+  color: var(--label);
+}
+
+.mac-segment:focus-visible {
+  outline: 3.5px solid var(--focus);
+}
+
+/* ---------- pop-up button (Select) ---------- */
+
+.mac-popup-btn {
+  all: unset;
+  box-sizing: border-box;
+  height: 24px;
+  padding: 0 6px 0 10px;
+  border-radius: 7px;
+  background: var(--ctrl);
+  box-shadow: var(--ctrl-shadow);
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: default;
+}
+
+.mac-popup-btn:focus-visible {
+  outline: 3.5px solid var(--focus);
+}
+
+.mac-popup-btn[data-disabled] {
+  color: var(--label-3);
+}
+
+.mac-popup-indicator {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  background: var(--accent);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ---------- switch / checkbox / badge ---------- */
+
+.mac-switch {
+  all: unset;
+  width: 38px;
+  height: 22px;
+  border-radius: 11px;
+  background: var(--fill-1);
+  position: relative;
+  display: inline-block;
+  transition: background-color 0.2s ease;
+  cursor: default;
+}
+
+.mac-switch[data-checked] {
+  background: var(--accent);
+}
+
+.mac-switch[data-disabled] {
+  opacity: 0.5;
+}
+
+.mac-switch:focus-visible {
+  outline: 3.5px solid var(--focus);
+}
+
+.mac-switch-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 9px;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  transition: transform 0.35s var(--mac-spring);
+}
+
+.mac-switch-thumb[data-checked] {
+  transform: translateX(16px);
+}
+
+.mac-checkbox {
+  all: unset;
+  box-sizing: border-box;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  border-radius: 4px;
+  background: var(--ctrl);
+  box-shadow: var(--ctrl-shadow);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  cursor: default;
+}
+
+.mac-checkbox[data-checked] {
+  background: var(--accent);
+  box-shadow: var(--ctrl-shadow);
+}
+
+.mac-checkbox[data-variant='plain'][data-checked] {
+  box-shadow: none;
+}
+
+.mac-checkbox[data-variant='on-selection'] {
+  background: #fff;
+  color: var(--selection);
+}
+
+.mac-checkbox:focus-visible {
+  outline: 3.5px solid var(--focus);
+}
+
+.mac-checkbox[data-disabled] {
+  opacity: 0.5;
+}
+
+.mac-badge {
+  box-sizing: border-box;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--red);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ---------- tags ---------- */
+
+.mac-tag {
+  height: 20px;
+  padding: 0 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.mac-tag[data-removable] {
+  padding-right: 6px;
+}
+
+.mac-tag-remove {
+  all: unset;
+  display: flex;
+  opacity: 0.7;
+}
+
+.mac-tag {
+  background: var(--fill-2);
+  color: var(--label-2);
+}
+
+.mac-tag[data-tag='deploy'] {
+  background: var(--tag-deploy-bg);
+  color: var(--tag-deploy-ink);
+}
+.mac-tag[data-tag='docker'] {
+  background: var(--tag-docker-bg);
+  color: var(--tag-docker-ink);
+}
+.mac-tag[data-tag='git'] {
+  background: var(--tag-git-bg);
+  color: var(--tag-git-ink);
+}
+.mac-tag[data-tag='design'] {
+  background: var(--tag-design-bg);
+  color: var(--tag-design-ink);
+}
+.mac-tag[data-tag='finance'] {
+  background: var(--tag-finance-bg);
+  color: var(--tag-finance-ink);
+}
+.mac-tag[data-tag='work'] {
+  background: var(--tag-work-bg);
+  color: var(--tag-work-ink);
+}
+
+.mac-tag-add {
+  all: unset;
+  height: 20px;
+  padding: 0 9px;
+  border-radius: 10px;
+  box-shadow: inset 0 0 0 1px var(--label-3);
+  color: var(--label-2);
+  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  cursor: default;
+}
+
+.mac-tag-add:focus-visible {
+  outline: 3.5px solid var(--focus);
+}
+
+/* ---------- list rows ---------- */
+
+.mac-section-header {
+  box-sizing: border-box;
+  height: 28px;
+  padding: 0 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mac-row {
+  box-sizing: border-box;
+  flex-shrink: 0;
+  height: 48px;
+  padding: 0 10px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: default;
+  user-select: none;
+}
+
+.mac-row-text {
+  flex-grow: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.mac-row-title {
+  font-size: 13px;
+  color: var(--label);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mac-row-title[data-mono] {
+  font-family: var(--mac-mono);
+}
+
+.mac-row-meta {
+  font-size: 11px;
+  color: var(--label-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mac-row-trailing {
+  flex-shrink: 0;
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.mac-row-pin {
+  color: var(--yellow);
+}
+
+.mac-row[aria-selected='true'] {
+  background: var(--selection);
+}
+
+.mac-row[aria-selected='true'] .mac-row-title {
+  color: #fff;
+}
+
+.mac-row[aria-selected='true'] .mac-row-meta {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.mac-row[aria-selected='true'] .mac-row-pin {
+  color: #fff;
+}
+
+.mac-row[aria-selected='true'] .mac-tag {
+  height: 18px;
+  padding: 0 7px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.22);
+  color: #fff;
+  font-size: 10.5px;
+}
+
+/* Selection turns gray when the window is not the key window. */
+[data-window-inactive] .mac-row[aria-selected='true'] {
+  background: var(--selection-off);
+}
+
+[data-window-inactive] .mac-row[aria-selected='true'] .mac-row-title {
+  color: var(--label);
+}
+
+[data-window-inactive] .mac-row[aria-selected='true'] .mac-row-meta {
+  color: var(--label-2);
+}
+
+[data-window-inactive] .mac-row[aria-selected='true'] .mac-row-pin {
+  color: var(--yellow);
+}
+
+[data-window-inactive] .mac-row[aria-selected='true'] .mac-tag {
+  height: 20px;
+  padding: 0 8px;
+  border-radius: 10px;
+  font-size: 11px;
+}
+
+[data-window-inactive] .mac-row[aria-selected='true'] .mac-tag[data-tag='deploy'] {
+  background: var(--tag-deploy-bg);
+  color: var(--tag-deploy-ink);
+}
+
+[data-window-inactive] .mac-row[aria-selected='true'] .mac-tag[data-tag='docker'] {
+  background: var(--tag-docker-bg);
+  color: var(--tag-docker-ink);
+}
+
+.mac-thumb {
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border-radius: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--mac-mono);
+  font-size: 9.5px;
+  font-weight: 700;
+}
+
+.mac-thumb[data-kind='code'] {
+  background: #1d1d1f;
+  color: #7ee787;
+}
+.mac-thumb[data-kind='url'] {
+  background: var(--tag-docker-bg);
+  color: var(--tag-docker-ink);
+}
+.mac-thumb[data-kind='text'] {
+  background: var(--fill-2);
+  color: var(--label-2);
+}
+.mac-thumb[data-kind='pdf'] {
+  background: var(--tag-deploy-bg);
+  color: var(--tag-deploy-ink);
+}
+.mac-thumb[data-kind='image'] {
+  width: 40px;
+  border-radius: 6px;
+  background: var(--thumb);
+  box-shadow: inset 0 0 0 0.5px var(--separator);
+}
+
+/* ---------- sidebar ---------- */
+
+.mac-side-item {
+  all: unset;
+  box-sizing: border-box;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 400;
+  cursor: default;
+}
+
+.mac-side-item:hover,
+.mac-side-item[data-force='hover'] {
+  background: var(--fill-3);
+}
+
+.mac-side-item[aria-selected='true'],
+.mac-side-item[aria-current='page'] {
+  background: var(--fill-2);
+  font-weight: 600;
+}
+
+.mac-side-icon {
+  width: 18px;
+  display: flex;
+  justify-content: center;
+  color: var(--label-2);
+}
+
+.mac-side-item[aria-selected='true'] .mac-side-icon,
+.mac-side-item[aria-current='page'] .mac-side-icon {
+  color: var(--accent);
+}
+
+.mac-side-label {
+  flex-grow: 1;
+  white-space: nowrap;
+}
+
+.mac-side-count {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--label-2);
+}
+
+.mac-side-heading {
+  box-sizing: border-box;
+  height: 26px;
+  padding: 0 10px 4px;
+  display: flex;
+  align-items: flex-end;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--label-3);
+}
+
+.mac-dot-smart {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+
+.mac-dot-tag {
+  width: 8px;
+  height: 8px;
+  border-radius: 4px;
+}
+
+/* ---------- window ---------- */
+
+.mac-window {
+  position: relative;
+  border-radius: 26px;
+  background: var(--content);
+  box-shadow: var(--win-shadow);
+  overflow: hidden;
+  display: flex;
+  outline: none;
+}
+
+.mac-traffic {
+  position: absolute;
+  left: 22px;
+  top: 22px;
+  display: flex;
+  gap: 8px;
+  z-index: 3;
+}
+
+.mac-traffic span {
+  width: 12px;
+  height: 12px;
+  border-radius: 6px;
+  box-shadow: inset 0 0 0 0.5px rgba(0, 0, 0, 0.12);
+}
+
+[data-window-inactive] .mac-traffic span {
+  background: var(--fill-1) !important;
+}
+
+.mac-sidebar {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  z-index: 2;
+  outline: none;
+}
+
+.mac-window[data-generation='26'] .mac-sidebar {
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  bottom: 8px;
+  width: 210px;
+  padding: 44px 8px 8px;
+  border-radius: 18px;
+}
+
+.mac-window[data-generation='27'] .mac-sidebar {
+  width: 220px;
+  flex-shrink: 0;
+  padding: 52px 10px 10px;
+  background: var(--glass-tinted);
+  box-shadow: inset -0.5px 0 0 var(--separator);
+}
+
+.mac-toolbar {
+  position: absolute;
+  right: 12px;
+  top: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  z-index: 2;
+}
+
+.mac-window[data-generation='26'] .mac-toolbar {
+  left: 226px;
+}
+.mac-window[data-generation='27'] .mac-toolbar {
+  left: 230px;
+}
+
+.mac-toolbar-title {
+  font-size: 15px;
+  font-weight: 700;
+  padding-left: 4px;
+  white-space: nowrap;
+}
+
+.mac-toolbar-count {
+  font-size: 11px;
+  color: var(--label-2);
+}
+
+.mac-toolbar-spacer {
+  flex-grow: 1;
+  align-self: stretch;
+}
+
+/* Soft scroll-edge effect: content fades under the toolbar instead of a hard line. */
+.mac-scroll-edge {
+  position: absolute;
+  right: 0;
+  top: 0;
+  height: 70px;
+  background: linear-gradient(var(--content) 35%, transparent);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.mac-window[data-generation='26'] .mac-scroll-edge {
+  left: 220px;
+}
+.mac-window[data-generation='27'] .mac-scroll-edge {
+  left: 224px;
+}
+
+.mac-list {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  overflow-y: auto;
+  box-sizing: border-box;
+  padding: 52px 0 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  outline: none;
+  scrollbar-width: thin;
+}
+
+.mac-window[data-generation='26'] .mac-list {
+  left: 226px;
+}
+.mac-window[data-generation='27'] .mac-list {
+  left: 228px;
+}
+
+/* AppKit tables draw no focus ring; the accent selection itself shows which list has focus. */
+
+.mac-detail {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  box-sizing: border-box;
+  padding: 56px 16px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+  border-left: 0.5px solid var(--separator);
+  background: var(--content);
+}
+
+.mac-detail-title {
+  font-size: 17px;
+  line-height: 22px;
+  font-weight: 400;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.mac-window[data-sidebar-hidden] .mac-toolbar {
+  left: 90px;
+}
+
+.mac-window[data-sidebar-hidden] .mac-list {
+  left: 16px;
+}
+
+.mac-window[data-sidebar-hidden] .mac-scroll-edge {
+  left: 0;
+}
+
+/* Native shell: real traffic lights and title bar drag come from the Wails window. */
+[data-shell='native'] .mac-traffic {
+  visibility: hidden;
+}
+
+[data-shell='native'] .mac-toolbar,
+[data-shell='native'] .mac-scroll-edge {
+  --wails-draggable: drag;
+}
+
+[data-shell='native'] .mac-toolbar button,
+[data-shell='native'] .mac-toolbar input {
+  --wails-draggable: no-drag;
+}
+
+/* ---------- detail parts ---------- */
+
+.mac-code {
+  border-radius: 12px;
+  background: var(--code-bg);
+  overflow: hidden;
+}
+
+.mac-code-header {
+  height: 30px;
+  padding: 0 12px 0 14px;
+  display: flex;
+  align-items: center;
+  font-size: 11px;
+  color: #98989d;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.mac-code-header span:first-child {
+  flex-grow: 1;
+}
+
+.mac-code-header kbd {
+  font-family: var(--mac-mono);
+  font-size: 11px;
+}
+
+.mac-code pre {
+  margin: 0;
+  padding: 12px 14px;
+  font-family: var(--mac-mono);
+  font-size: 12.5px;
+  line-height: 20px;
+  color: #e5e5ea;
+  white-space: pre;
+  overflow-x: auto;
+}
+
+.mac-grouped {
+  border-radius: 12px;
+  background: var(--fill-4);
+  box-shadow: inset 0 0 0 0.5px var(--separator);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mac-grouped li {
+  height: 34px;
+  margin: 0 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.mac-grouped li + li {
+  border-top: 0.5px solid var(--separator);
+}
+
+.mac-grouped li > span:nth-child(2) {
+  flex-grow: 1;
+}
+
+.mac-status {
+  font-size: 11px;
+}
+
+.mac-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 4px;
+}
+
+.mac-notice {
+  padding: 10px 12px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.mac-notice[data-tone='blue'] {
+  background: color-mix(in srgb, var(--blue) 10%, transparent);
+}
+.mac-notice[data-tone='green'] {
+  background: color-mix(in srgb, var(--green) 10%, transparent);
+}
+.mac-notice[data-tone='orange'] {
+  background: color-mix(in srgb, var(--orange) 10%, transparent);
+}
+.mac-notice[data-tone='red'] {
+  background: color-mix(in srgb, var(--red) 10%, transparent);
+}
+
+.mac-notice-title {
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.mac-notice-text {
+  font-size: 12px;
+  color: var(--label-2);
+}
+
+.mac-notice-action {
+  margin-left: auto;
+}
+
+.mac-actionbar {
+  box-sizing: border-box;
+  height: 64px;
+  padding: 0 14px;
+  border-radius: 20px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.mac-actionbar-hint {
+  margin-left: auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 11px;
+  color: var(--label-2);
+  white-space: nowrap;
+}
+
+/* ---------- overlays ---------- */
+
+.mac-positioner {
+  z-index: 50;
+  outline: none;
+}
+
+.mac-menu {
+  box-sizing: border-box;
+  min-width: 250px;
+  padding: 5px;
+  border-radius: 13px;
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(14px) saturate(1.8);
+  backdrop-filter: blur(14px) saturate(1.8);
+  box-shadow:
+    var(--menu-shadow),
+    inset 0 0.5px 0 var(--glass-rim),
+    inset 0 0 0 0.5px var(--glass-rim);
+  color: var(--label);
+  outline: none;
+  transform-origin: var(--transform-origin);
+  transition:
+    opacity 0.2s var(--mac-ease),
+    transform 0.2s var(--mac-ease),
+    filter 0.2s var(--mac-ease);
+}
+
+/* "Menu grows out of its button" from design T3: scale + blur fade from the trigger. */
+.mac-menu[data-starting-style],
+.mac-menu[data-ending-style],
+.mac-popover[data-starting-style],
+.mac-popover[data-ending-style] {
+  opacity: 0;
+  transform: scale(0.94);
+  filter: blur(4px);
+}
+
+.mac-menu[data-ending-style],
+.mac-popover[data-ending-style] {
+  transition-duration: 0.15s;
+}
+
+/* A pop-up menu that overlays its trigger opens in place without the grow effect, like AppKit. */
+.mac-menu[data-side='none'][data-starting-style],
+.mac-menu[data-side='none'][data-ending-style] {
+  transform: none;
+  filter: none;
+}
+
+.mac-menu-item {
+  box-sizing: border-box;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 7px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  outline: none;
+  cursor: default;
+  user-select: none;
+}
+
+.mac-menu-item[data-highlighted],
+.mac-menu-item[data-force='highlighted'] {
+  background: var(--accent);
+  color: #fff;
+}
+
+.mac-menu-item[data-destructive]:not([data-highlighted]):not([data-force='highlighted']) {
+  color: var(--red);
+}
+
+.mac-menu-item[data-disabled] {
+  color: var(--label-3);
+}
+
+.mac-menu-icon {
+  width: 16px;
+  display: flex;
+  justify-content: center;
+}
+
+.mac-menu-label {
+  flex-grow: 1;
+  white-space: nowrap;
+}
+
+.mac-menu-shortcut {
+  font-size: 12px;
+  opacity: 0.6;
+}
+
+.mac-menu-separator {
+  height: 1px;
+  margin: 4px 8px;
+  background: var(--separator);
+}
+
+.mac-popover {
+  /* content-box, as in the design: the padding adds to the stated width. */
+  box-sizing: content-box;
+  position: relative;
+  width: 260px;
+  padding: 14px;
+  border-radius: 16px;
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(14px) saturate(1.8);
+  backdrop-filter: blur(14px) saturate(1.8);
+  box-shadow:
+    var(--menu-shadow),
+    inset 0 0.5px 0 var(--glass-rim),
+    inset 0 0 0 0.5px var(--glass-rim);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: var(--label);
+  outline: none;
+  transform-origin: var(--transform-origin);
+  transition:
+    opacity 0.2s var(--mac-ease),
+    transform 0.2s var(--mac-ease),
+    filter 0.2s var(--mac-ease);
+}
+
+.mac-popover-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.mac-popover-row {
+  height: 26px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.mac-popover-row-meta {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--label-2);
+}
+
+.mac-popover-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 4px;
+}
+
+.mac-alert-backdrop {
+  position: absolute;
+  inset: 0;
+  background: var(--scrim);
+  z-index: 40;
+  transition: opacity 0.2s var(--mac-ease);
+}
+
+.mac-alert-backdrop[data-starting-style],
+.mac-alert-backdrop[data-ending-style] {
+  opacity: 0;
+}
+
+.mac-alert {
+  /* content-box, as in the design: the padding adds to the stated width. */
+  box-sizing: content-box;
+  width: 280px;
+  padding: 20px 18px 16px;
+  border-radius: 26px;
+  background: var(--glass-tinted);
+  -webkit-backdrop-filter: blur(14px) saturate(1.8);
+  backdrop-filter: blur(14px) saturate(1.8);
+  box-shadow:
+    var(--win-shadow),
+    inset 0 0.5px 0 var(--glass-rim),
+    inset 0 0 0 0.5px var(--glass-rim);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+  color: var(--label);
+  outline: none;
+}
+
+.mac-alert[data-floating] {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 41;
+  transform: translate(-50%, -50%);
+  transition:
+    opacity 0.2s var(--mac-ease),
+    transform 0.25s var(--mac-spring);
+}
+
+.mac-alert[data-floating][data-starting-style],
+.mac-alert[data-floating][data-ending-style] {
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(0.92);
+}
+
+.mac-alert-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 12px;
+  background: var(--fill-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mac-alert-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.mac-alert-text {
+  margin: 0;
+  font-size: 11px;
+  line-height: 14px;
+  color: var(--label-2);
+}
+
+.mac-alert-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  padding-top: 6px;
+}
+
+.mac-alert-actions .mac-btn {
+  width: 244px;
+}
+
+.mac-tooltip {
+  padding: 3px 7px;
+  border-radius: 6px;
+  background: var(--content);
+  box-shadow: var(--menu-shadow);
+  font-size: 11px;
+  color: var(--label);
+  transition: opacity 0.15s ease;
+}
+
+.mac-tooltip[data-starting-style],
+.mac-tooltip[data-ending-style] {
+  opacity: 0;
+}
+
+.mac-notification {
+  /* content-box, as in the design: the padding adds to the stated width. */
+  box-sizing: content-box;
+  width: 340px;
+  padding: 12px 14px;
+  border-radius: 20px;
+  display: flex;
+  gap: 10px;
+  color: var(--label);
+}
+
+.mac-notification-icon {
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  border-radius: 9px;
+  background: #1d1d1f;
+}
+
+.mac-notification-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex-grow: 1;
+}
+
+.mac-notification-title {
+  margin: 0;
+  display: flex;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.mac-notification-time {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--label-2);
+}
+
+.mac-notification-text {
+  margin: 0;
+  font-size: 12px;
+  line-height: 15px;
+}
+
+.mac-toast-viewport {
+  position: absolute;
+  top: 56px;
+  right: 12px;
+  z-index: 60;
+  width: 340px;
+}
+
+.mac-toast {
+  position: absolute;
+  top: 0;
+  right: 0;
+  transition:
+    transform 0.4s var(--mac-spring),
+    opacity 0.25s ease;
+}
+
+.mac-toast[data-starting-style],
+.mac-toast[data-ending-style] {
+  opacity: 0;
+  transform: translateX(24px);
+}
+
+/* Sheet drops from the window's title bar (design T3), not from the bottom of the screen. */
+.mac-sheet-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  background: var(--scrim);
+  transition: opacity 0.25s var(--mac-ease);
+}
+
+.mac-sheet-backdrop[data-starting-style],
+.mac-sheet-backdrop[data-ending-style] {
+  opacity: 0;
+}
+
+.mac-sheet {
+  box-sizing: border-box;
+  position: absolute;
+  top: 0;
+  left: 50%;
+  z-index: 41;
+  width: 320px;
+  margin-left: -160px;
+  padding: 18px;
+  border-radius: 0 0 16px 16px;
+  background: var(--window);
+  box-shadow: var(--menu-shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  color: var(--label);
+  outline: none;
+  transition: transform 0.4s var(--mac-ease);
+}
+
+.mac-sheet[data-starting-style],
+.mac-sheet[data-ending-style] {
+  transform: translateY(-110%);
+}
+
+.mac-sheet-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.mac-sheet-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.mac-field {
+  all: unset;
+  box-sizing: border-box;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 5px;
+  background: var(--content);
+  box-shadow:
+    inset 0 0 0 0.5px var(--separator),
+    0 0.5px 0 var(--fill-3);
+  font-size: 13px;
+  color: var(--label);
+}
+
+.mac-field:focus-visible {
+  outline: 3.5px solid var(--focus);
+}
+
+.mac-field::placeholder {
+  color: var(--label-3);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mac-btn,
+  .mac-glass-item,
+  .mac-switch-thumb,
+  .mac-menu,
+  .mac-popover,
+  .mac-alert,
+  .mac-sheet,
+  .mac-toast {
+    transition: opacity 0.15s ease !important;
+  }
+
+  .mac-menu[data-starting-style],
+  .mac-menu[data-ending-style],
+  .mac-popover[data-starting-style],
+  .mac-popover[data-ending-style],
+  .mac-sheet[data-starting-style],
+  .mac-sheet[data-ending-style] {
+    transform: none;
+    filter: none;
+  }
+}
+
+/* ---------- skin-only parts (public ui-kit components) ---------- */
+
+.mac-root {
+  isolation: isolate;
+}
+
+.mac-btn[data-tint='borderless'] {
+  background: transparent;
+  box-shadow: none;
+}
+
+.mac-btn[data-tint='borderless']:hover:not([data-disabled]) {
+  background: var(--fill-3);
+}
+
+.mac-btn[data-tint='none'][data-pressed] {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--accent);
+  box-shadow: none;
+}
+
+.mac-btn[data-icon-only] {
+  padding: 0;
+  aspect-ratio: 1;
+}
+
+.mac-btn[data-size='large'][data-icon-only],
+.mac-btn[data-size='xlarge'][data-icon-only] {
+  padding: 0;
+}
+
+.mac-badge-inline {
+  margin-left: 2px;
+}
+
+.mac-check-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.mac-toolbar-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mac-toolbar-divider {
+  width: 4px;
+}
+
+.mac-context-area {
+  display: contents;
+}
+
+.mac-item-list,
+.mac-sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  outline: none;
+}
+
+.mac-sidebar-nav {
+  gap: 1px;
+}
+
+.mac-sidebar-group {
+  display: contents;
+}
+
+.mac-side-item:focus-visible,
+.mac-item-list .mac-row:focus-visible {
+  outline: 3.5px solid var(--focus);
+}
+
+.mac-alert-backdrop[data-fixed] {
+  position: fixed;
+}
+
+.mac-alert[data-fixed] {
+  position: fixed;
+}
+
+.mac-notice-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mac-token .mac-tag-remove {
+  margin-left: 4px;
+}
+
+.mac-segmented-group {
+  display: contents;
+}
+
+.mac-segment[data-checked] {
+  background: var(--ctrl);
+  box-shadow: var(--ctrl-shadow);
+  font-weight: 600;
+  color: var(--label);
+}
+
+/* NSSearchField draws its own clear button on input; the design shows none at rest. */
+.mac-search input::-webkit-search-cancel-button,
+.mac-search input::-webkit-search-decoration {
+  -webkit-appearance: none;
+}
+
+/* ---------- native window material (Wails MacBackdropLiquidGlass) ---------- */
+
+/* The content layer is opaque; in the browser it matches the window background. */
+.mac-content-surface {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 220px;
+  background: var(--content);
+}
+
+.mac-window[data-sidebar-hidden] .mac-content-surface {
+  left: 0;
+}
+
+/* With a native material the page clears everything except the content layer, so the window's
+   NSGlassEffectView (macOS 26+) or NSVisualEffectView shows behind the sidebar and title bar. */
+:root[data-window-material^='native'],
+:root[data-window-material^='native'] body {
+  background: transparent;
+}
+
+.mac-window[data-window-material^='native'] {
+  background: transparent;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.mac-window[data-window-material^='native'] .mac-sidebar {
+  background: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  box-shadow: none;
+}
+
+/* ---------- Surface (public ui-kit regions) ---------- */
+
+.mac-surface {
+  min-width: 0;
+  min-height: 0;
+}
+
+.mac-surface[data-window-material='solid'] {
+  background: var(--content);
+}
+
+/* Browser or no host material: the CSS approximation of the sidebar glass (design T4, tinted). */
+.mac-surface[data-window-material='css-fallback'] {
+  background: var(--glass-tinted);
+  -webkit-backdrop-filter: blur(14px) saturate(1.8);
+  backdrop-filter: blur(14px) saturate(1.8);
+  box-shadow: inset -0.5px 0 0 var(--separator);
+}
+
+/* Native material: nothing is painted, the window's NSGlassEffectView / NSVisualEffectView shows. */
+.mac-surface[data-window-material^='native'] {
+  background: transparent;
+}
+
+.mac-root[data-native-material] {
+  background: transparent;
+}

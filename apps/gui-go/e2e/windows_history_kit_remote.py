@@ -242,15 +242,20 @@ def main():
         machine.ps(f"New-Item -ItemType Directory -Force '{app}' | Out-Null; Copy-Item '{daemon_exe}' '{app}\\uniclipd.exe'")
         for name in ('gui-go.exe', 'uniclip.exe'):
             machine.put(go_out / name, f'{app}\\{name}')
-        # On Windows ARM64 the daemon started right after `space init` has been seen to fail once with
-        # profile_storage_upgrade 'corrupt' (Engine, recover_active_target) and to boot on a later try; each failed
-        # attempt is recorded rather than hidden.
+        # On Windows ARM64 a daemon started while the one `space init` left is still running fails with
+        # profile_storage_upgrade 'corrupt' (Engine, recover_active_target), so init's daemon is stopped first; any
+        # failed attempt is still recorded rather than hidden.
         record['daemonStartAttempts'] = machine.ps(sandbox_env(profile) + f"""
 Set-Location '{app}'
 & .\\uniclip.exe space init --passphrase '{PASSPHRASE}' --device-name kit-windows 2>&1 | Out-Null
+# `space init` leaves its daemon running; starting another one while it holds the profile storage is reported as
+# 'corrupt'. Stop it first.
+& .\\uniclip.exe stop 2>&1 | Out-Null
+Start-Sleep 2
 foreach ($i in 1..3) {{
-  $out = (& .\\uniclip.exe start 2>&1 | Out-String) -replace '\\s+', ' '
-  'attempt ' + $i + ' exit=' + $LASTEXITCODE + ' ' + $out.Substring(0, [Math]::Min(300, $out.Length))
+  $out = ((& .\\uniclip.exe start 2>&1 | Out-String) -replace '\\s+', ' ')
+  $reason = if ($out -match 'reason=(\\w+)') {{ $Matches[1] }} else {{ '' }}
+  'attempt ' + $i + ' exit=' + $LASTEXITCODE + ' reason=' + $reason
   if (Get-ChildItem '{app}\\data' -Recurse -Filter daemon.conn -ErrorAction SilentlyContinue) {{ break }}
   Start-Sleep 5
 }}

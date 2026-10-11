@@ -618,6 +618,38 @@ async function runHistoryKitScenario() {
   }
   await reachMainLayout()
   const root = await waitFor('ui kit page', () => $('[data-ui-skin]'))
+  // First launch (design MA1): the profile has no history yet, so the list shows the getting-started
+  // steps and the detail explains where items come from. The orchestrator seeds entries after this.
+  const steps = await waitFor('getting started', () =>
+    $(`ol[aria-label="${i18n.t('history.kit.gettingStarted')}"]`)
+  )
+  await record(
+    'kit-first-launch',
+    steps.querySelectorAll('li').length === 3 &&
+      !!document.body.textContent?.includes(i18n.t('history.kit.nothingCopied')),
+    { steps: Array.from(steps.querySelectorAll('li')).map(li => li.textContent?.slice(0, 60)) }
+  )
+  await shot('first-launch')
+  await record('kit-ready-for-entries', true)
+  // Entries sent from this profile's CLI are not always pushed to the page (see
+  // history_live_run.py), so wait for the daemon to hold them, then reload the list the way a user
+  // would: Pinned, then All Items.
+  const end = Date.now() + 120000
+  for (;;) {
+    const listed = await daemonClient.request<{ data: Array<{ id: string }> }>(
+      '/clipboard/entries?limit=50&offset=0'
+    )
+    if (listed.data.length >= 5) break
+    if (Date.now() > end) throw new Error(`timeout: seeded entries (${listed.data.length})`)
+    await sleep(1000)
+  }
+  const sidebarRow = (label: string) =>
+    Array.from(document.querySelectorAll<HTMLElement>('nav button')).find(b =>
+      b.textContent?.trim().startsWith(label)
+    )
+  sidebarRow(i18n.t('history.sidebar.pinned'))?.click()
+  await sleep(500)
+  sidebarRow(i18n.t('history.sidebar.allItems'))?.click()
   await record('kit-page-mounted', root.dataset.uiSkin === 'macos', {
     skin: root.dataset.uiSkin,
   })
@@ -893,6 +925,38 @@ async function runHistoryKitScenario() {
       rows: historyRows().length,
     }
   )
+
+  // A failing list query is an error with Retry, not an empty history (fault injected in the page).
+  const realFetch = window.fetch
+  window.fetch = (input, init) =>
+    String(input instanceof Request ? input.url : input).includes('/search/query')
+      ? Promise.resolve(new Response('{"error":"injected"}', { status: 500 }))
+      : realFetch(input, init)
+  field().focus()
+  typeInto(word)
+  key(field(), 'Enter')
+  const failed = await waitFor(
+    'query failure state',
+    () =>
+      Array.from(document.querySelectorAll<HTMLElement>('[role="status"]')).find(el =>
+        el.textContent?.includes(i18n.t('history.kit.queryFailedTitle'))
+      ),
+    30000
+  )
+  await record('kit-query-failure', historyRows().length === 0, {
+    text: failed.textContent?.slice(0, 120),
+  })
+  await shot('query-failure')
+  window.fetch = realFetch
+  Array.from(failed.querySelectorAll('button'))
+    .find(b => b.textContent === i18n.t('history.kit.retry'))!
+    .click()
+  await waitFor('rows after retry', () => historyRows().length === 1, 30000)
+  await record('kit-query-retry', true, { rows: rowTitles() })
+  Array.from(document.querySelectorAll<HTMLElement>('button'))
+    .find(b => b.getAttribute('aria-label') === i18n.t('history.composite.clearAll'))!
+    .click()
+  await waitFor('search cleared again', () => historyRows().length >= 3, 30000)
 
   // Light and dark themes: the material stays native only while the theme matches the system
   // appearance; otherwise the sidebar shows its CSS fallback (the glass would be drawn in the wrong

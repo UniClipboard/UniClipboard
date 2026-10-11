@@ -86,6 +86,16 @@ def capture(bin_, pid, out, name):
     return result
 
 
+def seed(env):
+    for text in [*TEXTS, LINK, CODE]:
+        # Text goes through stdin: an argument that looks like a path (a URL) is taken as a file. With no
+        # paired device the send exits 1 ("no online peers") after storing the entry; the driver checks
+        # that every entry reached the page.
+        subprocess.run([str(ROOT / 'target/gui-go/uniclip'), 'send', '--connect-timeout', '0'], env=env,
+                       input=text, text=True, capture_output=True, timeout=120)
+        time.sleep(1.1)  # distinct copy times keep the list order deterministic
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--out', type=Path, required=True)
@@ -113,15 +123,9 @@ def main():
             bin_ = tools(tmp)
             cli(env, 'space', 'init', '--passphrase', PASSPHRASE, '--device-name', 'Kit Mac')
             cli(env, 'start')
-            for text in [*TEXTS, LINK, CODE]:
-                # Text goes through stdin: an argument that looks like a path (a URL) is taken as a
-                # file. With no paired device the send exits 1 ("no online peers") after storing the
-                # entry; the driver checks that every entry reached the page.
-                subprocess.run([str(ROOT / 'target/gui-go/uniclip'), 'send', '--connect-timeout', '0'], env=env,
-                               input=text, text=True, capture_output=True, timeout=120)
-                time.sleep(1.1)  # distinct copy times keep the list order deterministic
             proc = subprocess.Popen([str(BINARY)], env=gui_env, stdout=(out / 'history-kit-gui.log').open('w'), stderr=subprocess.STDOUT)
-            deadline, seen, steps = time.monotonic() + 420, set(), {}
+            deadline, seen, steps = time.monotonic() + 480, set(), {}
+            seeded = False
             last_front = 0.0
             started = time.monotonic()
             while time.monotonic() < deadline and 'history-kit-complete' not in steps:
@@ -129,6 +133,11 @@ def main():
                     if row['step'] == 'driver-error':
                         raise RuntimeError(f"driver error: {row.get('detail')}")
                     steps[row['step']] = row
+                    # The first-launch state is checked on an empty history; the entries then arrive
+                    # live, as copies would.
+                    if row['step'] == 'kit-ready-for-entries' and not seeded:
+                        seeded = True
+                        seed(env)
                     if args.shots and row['step'].startswith('shot:') and row['step'] not in seen:
                         seen.add(row['step'])
                         subprocess.run([str(bin_['activate']), str(proc.pid)], timeout=30)

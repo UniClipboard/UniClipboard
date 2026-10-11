@@ -500,6 +500,8 @@ export function useHistoryController() {
     mergeTagsInto,
     deleteTags,
     browseCount: data.browseCount,
+    queryFailure: data.queryFailure,
+    retryQuery: data.refetch,
     indexState: data.indexState,
     isSearchActive: data.isSearchActive,
     searchLoading: data.searchLoading,

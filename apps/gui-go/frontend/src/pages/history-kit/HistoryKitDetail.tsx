@@ -14,6 +14,8 @@ import { HistoryKitSendMenu } from './HistoryKitSendMenu'
 
 interface HistoryKitDetailProps {
   item: DisplayClipboardItem | null
+  /** Nothing was ever copied: the detail explains where items come from (design MA1). */
+  emptyHistory?: boolean
   tagging: HistoryKitTagging | null
   copySuccess: boolean
   onCopy: () => void
@@ -28,6 +30,7 @@ interface HistoryKitDetailProps {
  */
 export function HistoryKitDetail({
   item,
+  emptyHistory,
   tagging,
   copySuccess,
   onCopy,
@@ -41,10 +44,22 @@ export function HistoryKitDetail({
   if (!item) {
     return (
       <div className="flex min-h-0 flex-1 flex-col" data-testid="clipboard-detail">
-        <ContentUnavailable
-          title={t('history.kit.noSelection')}
-          description={t('history.detail.emptyHint')}
-        />
+        {emptyHistory ? (
+          <ContentUnavailable
+            icon="copy"
+            title={t('history.kit.nothingCopied')}
+            description={t('history.kit.nothingCopiedText')}
+          >
+            <Text role="caption" tone="secondary">
+              {t('history.kit.encryptionNote')}
+            </Text>
+          </ContentUnavailable>
+        ) : (
+          <ContentUnavailable
+            title={t('history.kit.noSelection')}
+            description={t('history.detail.emptyHint')}
+          />
+        )}
       </div>
     )
   }

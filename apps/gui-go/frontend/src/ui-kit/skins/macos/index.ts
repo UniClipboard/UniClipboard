@@ -27,4 +27,5 @@ export {
   Text,
 } from './pane'
 export { Surface, Toolbar, ToolbarButton, ToolbarDivider, UiRoot } from './root'
+export { StepList } from './step-list'
 export { TokenSearchField } from './token-search'

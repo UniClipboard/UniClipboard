@@ -87,6 +87,7 @@ const LibraryMainLayout: React.FC<LibraryMainLayoutProps> = ({ children }) => {
   return (
     <LibraryChromeContext value={chrome}>
       <main
+        data-window-backdrop
         // Pages inset their top-right headers by this much so they clear the
         // window controls overlay (see WINDOW_CONTROLS_* in window-controls-inset).
         style={hasCustomWindowControls ? WINDOW_CONTROLS_INSET_STYLE : undefined}

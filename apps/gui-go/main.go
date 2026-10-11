@@ -71,13 +71,13 @@ func (h *HostService) emit(name string, payload any) { h.app.Event.Emit(name, pa
 // daemon connection and window state stay alive until an explicit quit; the
 // dock/reopen handler in Wails shows it again.
 func (h *HostService) openMainWindow() {
-	w := h.app.Window.NewWithOptions(quietOptions(application.WebviewWindowOptions{
+	w := h.app.Window.NewWithOptions(quietOptions(withWindowMaterial(application.WebviewWindowOptions{
 		Name: "main", Title: "UniClipboard", URL: "/", Width: 1100, Height: 720, MinWidth: 900, MinHeight: 600,
 		// Match the default Windows custom title bar at creation so Wails sets
 		// up DWM decorations on the first activation, before the page loads.
 		Frameless: runtime.GOOS == "windows",
 		Mac:       application.MacWindow{TitleBar: application.MacTitleBarHiddenInset},
-	}))
+	})))
 	suppressKeyboardMenu(w)
 	w.RegisterHook(events.Common.WindowClosing, func(e *application.WindowEvent) {
 		if h.quitting.Load() {

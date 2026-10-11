@@ -18,30 +18,11 @@ import (
 	"log"
 	"net/http/httputil"
 	"net/url"
-	"strconv"
 	"strings"
-	"syscall"
 
+	"github.com/UniClipboard/UniClipboard/apps/gui-go/internal/windowmaterial"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
-
-// appliedMaterial reports what Wails actually puts behind the page, following the checks of
-// windowSetLiquidGlass in the pinned Wails source: NSGlassEffectView needs macOS 26, older systems get
-// NSVisualEffectView, and either is only visible when the webview is transparent.
-func appliedMaterial() string {
-	if !webviewTransparent {
-		return "none"
-	}
-	version, err := syscall.Sysctl("kern.osproductversion")
-	if err != nil {
-		return "visual-effect"
-	}
-	major, err := strconv.Atoi(strings.SplitN(version, ".", 2)[0])
-	if err == nil && major >= 26 {
-		return "liquid-glass"
-	}
-	return "visual-effect"
-}
 
 func separator(path string) string {
 	if strings.Contains(path, "?") {
@@ -63,8 +44,8 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	material := appliedMaterial()
-	log.Printf("macOS glass preview: webview transparent=%v material=%s", webviewTransparent, material)
+	material := windowmaterial.Applied()
+	log.Printf("macOS glass preview: webview transparent=%v material=%s", windowmaterial.WebviewTransparent, material)
 
 	app := application.New(application.Options{
 		Name: "macOS Glass Preview",
@@ -81,7 +62,7 @@ func main() {
 	}[*theme]
 
 	// `window-material` is the host launch parameter read by src/host/window-material.ts.
-	query := url.Values{"shell": {"native"}, "window-material": {material}, "generation": {*generation}, "theme": {*theme}}
+	query := url.Values{"shell": {"native"}, windowmaterial.LaunchParameter: {material}, "generation": {*generation}, "theme": {*theme}}
 	app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:            "UniClipboard — macOS glass preview",
 		URL:              *path + separator(*path) + query.Encode(),

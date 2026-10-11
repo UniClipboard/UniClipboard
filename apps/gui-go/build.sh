@@ -8,8 +8,8 @@ if [[ "$(uname -s)" != Darwin ]]; then
 fi
 MODE="${1:-manual}"
 case "$MODE" in
-  manual) APP=UniClipboardGo; TAGS=production; E2E=0 ;;
-  e2e) APP=UniClipboardGoE2E; TAGS=e2e; E2E=1 ;;
+  manual) APP=UniClipboardGo; TAGS=production,private_mac_apis; E2E=0 ;;
+  e2e) APP=UniClipboardGoE2E; TAGS=e2e,private_mac_apis; E2E=1 ;;
   *) echo "Usage: apps/gui-go/build.sh [manual|e2e]" >&2; exit 2 ;;
 esac
 mkdir -p target/gui-go

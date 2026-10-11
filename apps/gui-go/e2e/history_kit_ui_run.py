@@ -3,8 +3,9 @@
 
 A throwaway HOME and profile get a space (`uniclip space init`, no network) and synthetic entries sent
 from the CLI. The E2E app (apps/gui-go/build.sh e2e, which builds with -tags private_mac_apis) opens on
-screen; the in-WebView driver (`history-kit` phase of frontend/src/e2e-driver.ts) drives the page
-through its real DOM: rows, keyboard selection, copy, pin, multi-select, the delete confirmation, the
+screen and is kept in front: WebKit suspends the page of a window that is off screen or covered,
+which stops rendering and timers mid-run. The in-WebView driver (`history-kit` phase of
+frontend/src/e2e-driver.ts) drives the page through its real DOM: rows, keyboard selection, copy, pin, multi-select, the delete confirmation, the
 sidebar toggle and both themes. Each `shot:<name>` step makes this script capture the app window, and
 once over a synthetic striped backdrop (the capture tools of cmd/macos-glass-preview/capture), so the
 screenshot shows what the window material samples without exposing other windows.
@@ -46,6 +47,14 @@ def tools(tmp):
     out = Path(tmp) / 'window_id'
     subprocess.run(['swiftc', '-O', str(HERE / 'window_id.swift'), '-o', str(out)], check=True, timeout=300)
     built['window_id'] = out
+    # Brings the test app (by PID) in front: a covered WKWebView stops rendering.
+    source = Path(tmp) / 'activate.swift'
+    source.write_text('import AppKit\n'
+                      'let pid = pid_t(CommandLine.arguments[1])!\n'
+                      'NSRunningApplication(processIdentifier: pid)?.activate(options: [.activateIgnoringOtherApps])\n')
+    out = Path(tmp) / 'activate'
+    subprocess.run(['swiftc', '-O', str(source), '-o', str(out)], check=True, timeout=300)
+    built['activate'] = out
     return built
 
 
@@ -81,8 +90,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--out', type=Path, required=True)
     parser.add_argument('--shots', action='store_true',
-                        help='open the window on screen and capture the shot:<name> steps (needs Screen Recording); '
-                             'without it the window stays off screen, where no other window can cover it')
+                        help='capture the shot:<name> steps, alone and over a striped backdrop (needs Screen Recording)')
     args = parser.parse_args()
     out = args.out.resolve()
     out.mkdir(parents=True, exist_ok=True)
@@ -96,7 +104,7 @@ def main():
     gui_env = isolated_env(home, profile, {'PATH': path, 'UC_GPUI_QUICK_PANEL': '0', 'UC_GUI_GO_ISOLATED': '1',
                                            'UC_GUI_GO_EVIDENCE': str(evidence), 'UC_GUI_GO_E2E_PHASE': 'history-kit',
                                            'UC_GUI_GO_E2E_SECRET': secret, 'UC_GUI_GO_EXIT_MODE': 'full',
-                                           **({'UC_GUI_GO_E2E_VISIBLE': '1'} if args.shots else {})})
+                                           'UC_GUI_GO_E2E_VISIBLE': '1'})
     results = {'profile': profile, 'head': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
                'systemClipboardDisabled': True, 'shots': [], 'passed': False}
     proc = None
@@ -115,6 +123,7 @@ def main():
             proc = subprocess.Popen([str(BINARY)], env=gui_env, stdout=(out / 'history-kit-gui.log').open('w'), stderr=subprocess.STDOUT)
             deadline, seen, steps = time.monotonic() + 420, set(), {}
             last_front = 0.0
+            started = time.monotonic()
             while time.monotonic() < deadline and 'history-kit-complete' not in steps:
                 for row in read_steps(evidence, 0):
                     if row['step'] == 'driver-error':
@@ -122,23 +131,26 @@ def main():
                     steps[row['step']] = row
                     if args.shots and row['step'].startswith('shot:') and row['step'] not in seen:
                         seen.add(row['step'])
+                        subprocess.run([str(bin_['activate']), str(proc.pid)], timeout=30)
+                        time.sleep(.5)
                         shot = capture(bin_, proc.pid, out, row['step'][5:])
                         shot['detail'] = row.get('detail')
                         results['shots'].append(shot)
                 if proc.poll() is not None:
                     break
-                # WKWebView stops rendering while its window is fully covered, so record what is in
-                # front of the app window every few seconds; a stalled run then names the cause.
-                if args.shots and time.monotonic() - last_front > 5:
+                # WebKit suspends a covered page, so keep the test app in front, and record what is in
+                # front of its window now and then; a stalled run then names the cause.
+                if time.monotonic() - last_front > 3:
                     last_front = time.monotonic()
-                    try:
-                        wid = subprocess.check_output([str(bin_['window_id']), str(proc.pid)], text=True, timeout=30).strip()
-                        x, y, w, h = window_bounds(int(wid))
-                        front = subprocess.check_output([str(bin_['FrontCheck']), str(x), str(y), str(w), str(h)], text=True, timeout=30)
-                        owners = [line.split(' ', 1)[1] for line in front.splitlines() if ' ' in line]
-                        results.setdefault('frontWindows', []).append(owners[:3])
-                    except Exception as error:  # noqa: BLE001 - diagnostics only
-                        results.setdefault('frontWindows', []).append([f'unavailable: {error}'])
+                    subprocess.run([str(bin_['activate']), str(proc.pid)], timeout=30)
+                    if len(results.setdefault('frontWindows', [])) < (time.monotonic() - started) / 15:
+                        try:
+                            wid = subprocess.check_output([str(bin_['window_id']), str(proc.pid)], text=True, timeout=30).strip()
+                            x, y, w, h = window_bounds(int(wid))
+                            front = subprocess.check_output([str(bin_['FrontCheck']), str(x), str(y), str(w), str(h)], text=True, timeout=30)
+                            results['frontWindows'].append([line.split(' ', 1)[1] for line in front.splitlines() if ' ' in line][:3])
+                        except Exception as error:  # noqa: BLE001 - diagnostics only
+                            results['frontWindows'].append([f'unavailable: {error}'])
                 time.sleep(.2)
             results['steps'] = {name: {'ok': row['ok'], 'detail': row.get('detail')} for name, row in steps.items()}
             failed = [name for name, row in steps.items() if not row['ok']]

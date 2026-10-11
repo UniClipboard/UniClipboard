@@ -8,6 +8,10 @@ const workflowPath = path.resolve(
 )
 const releaseWorkflowPath = path.resolve(import.meta.dirname, '../../.github/workflows/release.yml')
 
+function read(file: string): string {
+  return fs.readFileSync(path.join(path.dirname(workflowPath), file), 'utf8')
+}
+
 function readWorkflow(): string {
   return fs.readFileSync(workflowPath, 'utf8')
 }
@@ -17,13 +21,23 @@ function readReleaseWorkflow(): string {
 }
 
 describe('Issue lifecycle workflow', () => {
+  test('does not rerun description validation after merge or lifecycle tasks on description edits', () => {
+    const validation = read('pr-description-check.yml')
+    const ready = read('issue-ready-for-test.yml')
+    expect(validation).toContain('types: [opened, edited, reopened]')
+    expect(validation).not.toContain('mark-issues-ready-for-test:')
+    expect(ready).toContain('types: [closed]')
+    expect(ready).not.toContain('validate-issue-references:')
+  })
+
   test('keeps linked issues open until an authorized verification command', () => {
     const workflow = readWorkflow()
 
-    expect(workflow).toContain('pull_request:')
+    expect(read('issue-ready-for-test.yml')).toContain('pull_request:')
+    expect(workflow).not.toContain('pull_request:')
     expect(workflow).toContain('issue_comment:')
     expect(workflow).toContain('release:')
-    expect(workflow).toContain('status:ready-for-test')
+    expect(read('issue-ready-for-test.yml')).toContain('status:ready-for-test')
     expect(workflow).toContain('status:verified')
     expect(workflow).toContain("state: 'closed'")
     expect(workflow).toContain('getCollaboratorPermissionLevel')
@@ -31,12 +45,14 @@ describe('Issue lifecycle workflow', () => {
   })
 
   test('rejects pull request text that would let GitHub close an issue on merge', () => {
-    const workflow = readWorkflow()
+    const workflow = read('pr-description-check.yml')
 
     expect(workflow).toContain('closingReferences')
     expect(workflow).toContain('closing keywords')
     expect(workflow).toContain('Related to #123')
-    expect(workflow).toContain('(?:related(?:\\s+to)?|refs?)\\s*:?\\s+#(\\d+)\\b')
+    expect(read('issue-ready-for-test.yml')).toContain(
+      '(?:related(?:\\s+to)?|refs?)\\s*:?\\s+#(\\d+)\\b'
+    )
   })
 
   test('records the release that must be verified before accepting the command', () => {

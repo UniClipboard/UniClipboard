@@ -340,7 +340,8 @@ exit 1
 """, check=False)
                 raise RuntimeError('the app opened no DevTools endpoint; see launchDiagnosis in native-run.json')
             record['webview'] = machine.ps(f"(Invoke-WebRequest -UseBasicParsing 'http://127.0.0.1:{debug_port}/json/version').Content")
-            envs = '; '.join(f"$env:{k}='{v}'" for k, v in {**driver_env, 'PLAYWRIGHT_MODULE': playwright.replace('\\', '/'),
+            envs = '; '.join(f"$env:{k}='{v}'" for k, v in {**driver_env, # Node's import() on Windows takes a file:// URL, not a drive path.
+                                                             'PLAYWRIGHT_MODULE': 'file:///' + playwright.replace('\\', '/'),
                                                              'HISTORY_KIT_CDP': f'http://127.0.0.1:{debug_port}'}.items())
             # The checkout is reached over the share; the conn path in daemon.json is the share path too.
             result = machine.ps(f"{envs}; & '{node}' '{machine.share(driver)}' '{machine.share(out)}' *>&1 | Out-String; exit $LASTEXITCODE",

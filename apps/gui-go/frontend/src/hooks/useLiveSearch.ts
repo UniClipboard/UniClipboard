@@ -49,6 +49,11 @@ export interface UseLiveSearchResult {
    * the index rebuilds (§4.7); `'ready'` otherwise.
    */
   state: 'ready' | 'degraded'
+  /**
+   * Why the last query failed, `null` when it succeeded: `unavailable` while the search index is
+   * rebuilding or not ready, `failed` for any other error. A failed query is not an empty result.
+   */
+  failure: 'unavailable' | 'failed' | null
   /** Grow the window by one page (infinite scroll). */
   growWindow: () => void
   /** Re-issue the current query (freshness on demand; e.g. on panel re-open). */
@@ -140,6 +145,7 @@ export function useLiveSearch(options: UseLiveSearchOptions): UseLiveSearchResul
   const [hasMore, setHasMore] = useState(() =>
     canUseInitialSnapshot ? initialSnapshot.hasMore : false
   )
+  const [failure, setFailure] = useState<'unavailable' | 'failed' | null>(null)
   const [state, setState] = useState<'ready' | 'degraded'>(() =>
     canUseInitialSnapshot ? initialSnapshot.state : 'ready'
   )
@@ -163,6 +169,7 @@ export function useLiveSearch(options: UseLiveSearchOptions): UseLiveSearchResul
       setTotal(null)
       setHasMore(false)
       setState('ready')
+      setFailure(null)
       setIsLoading(false)
       return
     }
@@ -186,6 +193,7 @@ export function useLiveSearch(options: UseLiveSearchOptions): UseLiveSearchResul
         setTotal(response.data.total)
         setHasMore(response.data.hasMore)
         setState(response.data.state)
+        setFailure(null)
         setIsLoading(false)
       })
       .catch(err => {
@@ -207,9 +215,11 @@ export function useLiveSearch(options: UseLiveSearchOptions): UseLiveSearchResul
           log.error({ err }, 'Live search query failed')
         }
         setItems([])
-        setTotal(0)
+        // Unknown, not zero: the query did not run.
+        setTotal(lockedRace ? 0 : null)
         setHasMore(false)
         setState('ready')
+        setFailure(lockedRace ? null : indexUnavailable ? 'unavailable' : 'failed')
         setIsLoading(false)
       })
 
@@ -307,5 +317,16 @@ export function useLiveSearch(options: UseLiveSearchOptions): UseLiveSearchResul
     []
   )
 
-  return { items, isLoading, total, hasMore, state, growWindow, refetch, removeItem, patchItem }
+  return {
+    items,
+    isLoading,
+    total,
+    hasMore,
+    state,
+    failure,
+    growWindow,
+    refetch,
+    removeItem,
+    patchItem,
+  }
 }

@@ -261,6 +261,8 @@ export function useHistoryData() {
     liveSnapshot,
     /** Match count for the current query (total history count while browsing). */
     browseCount: live.total ?? live.items.length,
+    /** Why the list query failed (`null` when it did not); a failure is not an empty history. */
+    queryFailure: live.failure,
     isSearchActive,
     searchLoading: live.isLoading,
     hasMore: live.hasMore,

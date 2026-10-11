@@ -79,6 +79,7 @@ export function HistoryKitSidebar({
   const tagSection: SidebarNavSection = {
     id: 'tags',
     title: t('history.sidebar.tags'),
+    icon: 'tag',
     items: tagRows.map(row => ({
       id: `${TAG}${row.id}`,
       label: `#${tagLabel(row, t)}`,
@@ -124,6 +125,7 @@ export function HistoryKitSidebar({
   const deviceSection: SidebarNavSection = {
     id: 'devices',
     title: t('history.sidebar.devices'),
+    icon: 'devices',
     items: devices,
     placeholder: {
       action: { label: t('history.kit.pairDevice'), onClick: () => navigate('/devices') },

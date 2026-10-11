@@ -26,6 +26,8 @@ interface HistoryKitListProps {
     items: (ids: string[]) => MenuEntry[]
     onAction: (action: string, ids: string[]) => void
   }
+  /** Search terms to mark in the titles. */
+  highlight?: string[]
 }
 
 /**
@@ -46,6 +48,7 @@ export function HistoryKitList({
   loading,
   onLoadMore,
   contextMenu,
+  highlight,
 }: HistoryKitListProps) {
   const { t, i18n } = useTranslation()
   const now = useNow()
@@ -62,6 +65,7 @@ export function HistoryKitList({
         .filter(Boolean)
         .join(' · '),
       monospace: kind === 'code',
+      highlight,
       leading: <HistoryKitRowLeading entryId={item.id} kind={kind} />,
       trailing: (
         <HistoryKitRowTrailing

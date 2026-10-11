@@ -346,6 +346,8 @@ async function seededRun() {
   await step('copy', async () => {
     await row('https://github.com/UniClipboard/UniClipboard').click()
     const restore = page.waitForResponse(r => r.url().includes('/clipboard/restore/'))
+    // A failed click must not leave this wait to reject unhandled after the step has already failed.
+    restore.catch(() => {})
     await detail().getByRole('button', { name: 'Copy' }).click()
     const response = await restore
     assert.ok(response.ok(), `restore ${response.status()}`)

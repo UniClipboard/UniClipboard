@@ -102,6 +102,14 @@ if (phase === 'image') {
   }
 } else if (phase === 'texts') {
   const [profile, home, seeded] = rest
+  // The steps read English labels; the isolated profile's UI language is fixed to en-US (a test VM's system
+  // locale may be anything).
+  const settings = await fetch(`${base}/settings`, {
+    method: 'PUT',
+    headers: { Authorization: `Session ${session}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ general: { language: 'en-US' } }),
+  })
+  if (!settings.ok) throw new Error(`/settings: ${settings.status} ${await settings.text()}`)
   if (Number(seeded) > 0) {
     for (const text of TEXTS) {
       await send(text)

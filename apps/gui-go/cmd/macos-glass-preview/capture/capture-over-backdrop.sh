@@ -43,6 +43,7 @@ screencapture -x -o -l "$ID" "$OUT/$NAME-window.png"
 
 read -r X Y W H < <(bounds)
 "$TMP/Backdrop" "$ID" "$X" "$Y" "$W" "$H" 10 ${ACTIVATE:-} > /dev/null &
+BACKDROP=$!
 sleep 6
 FRONT=($("$TMP/FrontCheck" "$X" "$Y" "$W" "$H" | awk '{print $2}' | head -2))
 if [[ ${FRONT[1]} == glass-preview && ${FRONT[2]} == Backdrop ]]; then
@@ -50,6 +51,8 @@ if [[ ${FRONT[1]} == glass-preview && ${FRONT[2]} == Backdrop ]]; then
   echo "captured $OUT/$NAME-over-backdrop.png"
 else
   echo "refused: the front windows in the region are ${FRONT[*]}" >&2
+  REFUSED=1
 fi
-wait %2 2>/dev/null || true
+wait "$BACKDROP" 2>/dev/null || true
 grep "material=" "$OUT/$NAME.log" || true
+exit ${REFUSED:-0}

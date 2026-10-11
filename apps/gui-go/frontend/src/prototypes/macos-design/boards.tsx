@@ -1,6 +1,6 @@
 import { Dialog } from '@base-ui/react/dialog'
 import { Menu } from '@base-ui/react/menu'
-import { useRef, useState, type ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import type { BoardId } from '@/prototypes/macos-design/board-ids'
 import {
   ActionBar,
@@ -466,19 +466,11 @@ function OverlayPanel() {
 
 function MorphSearch() {
   const [expanded, setExpanded] = useState(false)
-  const inputRef = useRef<HTMLInputElement>(null)
+  // A label: clicking anywhere on the capsule focuses the field natively, which expands it.
   return (
-    <div
-      className="lab-morph mac-glass"
-      data-expanded={expanded ? '' : undefined}
-      onClick={() => {
-        setExpanded(true)
-        inputRef.current?.focus()
-      }}
-    >
+    <label className="lab-morph mac-glass" data-expanded={expanded ? '' : undefined}>
       <Icon name="search" size={16} />
       <input
-        ref={inputRef}
         aria-label="Search"
         placeholder="Search"
         tabIndex={expanded ? 0 : -1}
@@ -487,7 +479,7 @@ function MorphSearch() {
           if (event.currentTarget.value === '') setExpanded(false)
         }}
       />
-    </div>
+    </label>
   )
 }
 

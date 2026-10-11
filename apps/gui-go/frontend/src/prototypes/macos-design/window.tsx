@@ -103,7 +103,7 @@ export function ClipboardWindow({
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [tagOpen, setTagOpen] = useState(false)
   const searchRef = useRef<HTMLInputElement>(null)
-  const toastManager = useRef(Toast.createToastManager()).current
+  const [toastManager] = useState(() => Toast.createToastManager())
 
   const items = clips
     .map(clip => ({
@@ -413,7 +413,10 @@ export function ClipboardWindow({
               onOpenChange={setTagOpen}
               onAdd={tag => {
                 if (!current) return
-                const name = tag.replace(/^#/, '').trim() as TagName
+                const trimmed = tag.replace(/^#/, '').trim()
+                // Ignore an empty name ("#") and a tag the item already has.
+                if (trimmed === '' || current.tags.includes(trimmed as TagName)) return
+                const name = trimmed as TagName
                 setExtraTags(map => ({ ...map, [current.id]: [...(map[current.id] ?? []), name] }))
               }}
             />

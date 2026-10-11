@@ -11,8 +11,9 @@ import { execSync } from 'node:child_process'
 import { readFileSync, writeFileSync, existsSync } from 'node:fs'
 import { join, basename } from 'node:path'
 import process from 'node:process'
+import { fileURLToPath } from 'node:url'
 
-const ROOT = new URL('..', import.meta.url).pathname.replace(/\/$/, '')
+const ROOT = fileURLToPath(new URL('..', import.meta.url))
 const AGENTS_PATH = join(ROOT, 'crates', 'AGENTS.md')
 const WORKSPACE_TOML = join(ROOT, 'Cargo.toml')
 

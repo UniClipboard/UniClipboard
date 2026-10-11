@@ -424,6 +424,12 @@ try {
           await page.goto(`${base}/?scheme=${scheme}&window-material=liquid-glass`)
           const native = page.getByTestId(`board-${scheme}`)
           await native.waitFor()
+          // Measured only in the native branch: a fallback page would pass trivially.
+          assert.equal(
+            await page.evaluate(() => document.documentElement.dataset.windowMaterial ?? null),
+            'native-liquid-glass',
+            `${scheme} board is in native mode`
+          )
           await native.getByRole('button', { name: /^Tag/ }).click()
           const menu = page.getByRole('menu')
           await menu.waitFor()

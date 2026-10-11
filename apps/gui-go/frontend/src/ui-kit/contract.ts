@@ -549,6 +549,23 @@ export interface ContentUnavailableProps {
   children?: ReactNode
 }
 
+export interface StepListStep {
+  id: string
+  title: string
+  description?: string
+  /** Live status under the description, e.g. "Waiting for your first copy…"; `active` shows it in progress. */
+  status?: { text: string; active?: boolean }
+  /** The step's command, e.g. "Pair a Device…". */
+  action?: LabelledAction & { primary?: boolean }
+  done?: boolean
+}
+
+/** Numbered getting-started steps (macOS cards with numbered badges, WinUI setup-guide list). */
+export interface StepListProps {
+  label: string
+  steps: StepListStep[]
+}
+
 export type StatusTone = 'positive' | 'neutral' | 'warning' | 'critical'
 
 export interface InsetListRow {
@@ -596,4 +613,5 @@ export declare function GroupedList(props: GroupedListProps): ReactNode
 export declare function Icon(props: IconProps): ReactNode
 export declare function ActionBar(props: ActionBarProps): ReactNode
 export declare function ContentUnavailable(props: ContentUnavailableProps): ReactNode
+export declare function StepList(props: StepListProps): ReactNode
 export declare function InsetList(props: InsetListProps): ReactNode

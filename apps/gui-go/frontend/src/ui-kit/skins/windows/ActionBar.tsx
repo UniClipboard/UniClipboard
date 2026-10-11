@@ -1,30 +1,39 @@
 import { makeStyles, tokens } from '@fluentui/react-components'
 import type { ActionBarProps } from '@/ui-kit/contract'
 
-// WinUI CommandBarFlyout-style floating bar: acrylic layer, overlay corner radius and the flyout
-// elevation, docked at the bottom of its pane.
+// Board WA2: the main actions of the detail pane are a WinUI CommandBar across the top of the
+// pane, and the keyboard hint is a status strip along its bottom. Both are ordered against the
+// pane's other children (a flex column), so the bar needs no position of its own.
 const useStyles = makeStyles({
   bar: {
-    position: 'absolute',
-    insetInline: '1rem',
-    bottom: '1rem',
-    zIndex: 2,
+    order: -1,
     boxSizing: 'border-box',
-    minHeight: '3rem',
-    paddingBlock: '0.25rem',
-    paddingInline: '0.5rem',
+    height: '3rem',
+    flexShrink: 0,
+    paddingInline: '0.75rem',
     display: 'flex',
     alignItems: 'center',
     gap: '0.25rem',
-    backgroundColor: 'var(--w11-acrylic)',
-    backdropFilter: 'blur(30px) saturate(125%)',
-    border: `${tokens.strokeWidthThin} solid var(--w11-stroke-elevation)`,
-    borderRadius: tokens.borderRadiusXLarge,
-    boxShadow: tokens.shadow16,
+    backgroundColor: 'var(--w11-card-solid)',
+    borderBottom: `${tokens.strokeWidthThin} solid var(--w11-divider)`,
+    // A CommandBar's buttons are standard 32 px controls whatever size the caller asked for, which
+    // sizes them for a floating bar on other platforms.
+    '& .fui-Button': {
+      minHeight: '2rem',
+      height: '2rem',
+      fontSize: tokens.fontSizeBase300,
+      paddingInline: '0.75rem',
+    },
   },
-  hint: {
-    marginInlineStart: 'auto',
-    paddingInline: '0.5rem',
+  status: {
+    order: 1,
+    boxSizing: 'border-box',
+    height: '2rem',
+    flexShrink: 0,
+    paddingInline: '1rem',
+    display: 'flex',
+    alignItems: 'center',
+    borderTop: `${tokens.strokeWidthThin} solid var(--w11-divider)`,
     minWidth: 0,
     overflow: 'hidden',
     textOverflow: 'ellipsis',
@@ -38,9 +47,9 @@ const useStyles = makeStyles({
 export function ActionBar({ children, hint }: ActionBarProps) {
   const styles = useStyles()
   return (
-    <div className={styles.bar}>
-      {children}
-      {hint ? <span className={styles.hint}>{hint}</span> : null}
-    </div>
+    <>
+      <div className={styles.bar}>{children}</div>
+      {hint ? <div className={styles.status}>{hint}</div> : null}
+    </>
   )
 }

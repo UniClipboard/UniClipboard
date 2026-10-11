@@ -51,6 +51,7 @@ export function SearchField({
       ref={inputRef}
       type="search"
       className={styles.root}
+      root={{ 'data-search-field': '' } as Record<string, string>}
       value={value}
       defaultValue={defaultValue}
       onChange={(_, data) => onValueChange?.(data.value)}

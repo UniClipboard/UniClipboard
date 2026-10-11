@@ -10,8 +10,9 @@ const tint = (color: 'blue' | 'orange' | 'neutral') => ({
 const useStyles = makeStyles({
   tile: {
     boxSizing: 'border-box',
+    // Board WA2: a 32 x 30 px mark.
     width: '2rem',
-    height: '2rem',
+    height: '1.875rem',
     flexShrink: 0,
     borderRadius: tokens.borderRadiusMedium,
     display: 'flex',

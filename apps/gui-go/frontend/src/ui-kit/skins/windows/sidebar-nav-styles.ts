@@ -4,9 +4,13 @@ export const useSidebarNavStyles = makeStyles({
   root: { flexGrow: 1, display: 'flex', flexDirection: 'column', minHeight: 0 },
   nav: { backgroundColor: 'transparent', width: '100%', flexGrow: 1 },
   // Fluent Nav paints items with its drawer background; WinUI pane items are transparent at rest.
+  // Board WA2 / C2: 36 px items, 14 px text, the selected item's icon in the accent colour.
   item: {
     justifyContent: 'flex-start',
-    gap: '0.75rem',
+    gap: '0.875rem',
+    minHeight: '2.25rem',
+    paddingBlock: 0,
+    fontSize: tokens.fontSizeBase300,
     backgroundColor: 'transparent',
     fontWeight: tokens.fontWeightRegular,
     ':hover': { backgroundColor: tokens.colorSubtleBackgroundHover },
@@ -15,6 +19,7 @@ export const useSidebarNavStyles = makeStyles({
       backgroundColor: 'var(--w11-selected)',
       fontWeight: tokens.fontWeightSemibold,
     },
+    '&[aria-current="page"] svg': { color: tokens.colorBrandForeground1 },
   },
   label: {
     flexGrow: 1,
@@ -40,8 +45,20 @@ export const useSidebarNavStyles = makeStyles({
     height: '0.75rem',
     borderRadius: '0.1875rem',
   },
-  heading: { display: 'flex', alignItems: 'center', gap: '0.25rem', paddingInlineEnd: '0.25rem' },
-  headingTitle: { flexGrow: 1, minWidth: 0 },
+  heading: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.25rem',
+    marginTop: '0.625rem',
+    paddingInlineEnd: '0.25rem',
+  },
+  headingTitle: {
+    flexGrow: 1,
+    minWidth: 0,
+    fontSize: tokens.fontSizeBase200,
+    fontWeight: tokens.fontWeightSemibold,
+    color: tokens.colorNeutralForeground2,
+  },
   more: {
     justifyContent: 'flex-start',
     minHeight: '2rem',

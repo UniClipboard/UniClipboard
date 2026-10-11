@@ -13,13 +13,20 @@ import path from 'node:path'
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright')
 const output = path.resolve(process.argv[2] ?? 'target/e2e/history-kit-browser')
 const platform = process.env.UC_UI_PLATFORM
-assert.ok(platform === 'windows' || platform === 'macos', 'UC_UI_PLATFORM=windows|macos is required')
+assert.ok(
+  platform === 'windows' || platform === 'macos',
+  'UC_UI_PLATFORM=windows|macos is required'
+)
 const daemon = JSON.parse(await readFile(path.join(output, 'daemon.json'), 'utf8'))
 const port = Number(process.env.UI_FIXTURE_PORT || 1462)
 await mkdir(output, { recursive: true })
 
 const server = spawn('node', ['e2e/visual-effects-server.mjs'], {
-  env: { ...process.env, UI_FIXTURE_ENTRY: 'e2e/fixtures/history-full-app.tsx', UI_FIXTURE_PORT: String(port) },
+  env: {
+    ...process.env,
+    UI_FIXTURE_ENTRY: 'e2e/fixtures/history-full-app.tsx',
+    UI_FIXTURE_PORT: String(port),
+  },
   stdio: ['ignore', 'pipe', 'inherit'],
 })
 await new Promise((resolve, reject) => {
@@ -103,7 +110,9 @@ try {
         const chain = []
         for (let el = document.querySelector('[data-item-id]'); el; el = el.parentElement) {
           const r = el.getBoundingClientRect()
-          chain.push(`${el.tagName.toLowerCase()}${el.id ? '#' + el.id : ''}.${String(el.className).slice(0, 40)} h=${Math.round(r.height)}`)
+          chain.push(
+            `${el.tagName.toLowerCase()}${el.id ? '#' + el.id : ''}.${String(el.className).slice(0, 40)} h=${Math.round(r.height)}`
+          )
         }
         return chain
       }),
@@ -115,7 +124,12 @@ try {
   await browser.close()
   server.kill()
   results.passed = results.steps.every(s => s.ok)
-  await writeFile(path.join(output, 'browser-results.json'), `${JSON.stringify(results, null, 2)}\n`)
-  console.log(JSON.stringify({ passed: results.passed, steps: results.steps.map(s => [s.name, s.ok]) }))
+  await writeFile(
+    path.join(output, 'browser-results.json'),
+    `${JSON.stringify(results, null, 2)}\n`
+  )
+  console.log(
+    JSON.stringify({ passed: results.passed, steps: results.steps.map(s => [s.name, s.ok]) })
+  )
 }
 assert.ok(results.passed, 'browser checks failed; see browser-results.json')

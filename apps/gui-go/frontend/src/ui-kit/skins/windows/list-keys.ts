@@ -1,5 +1,3 @@
-import type { ItemListItem } from '@/ui-kit/contract'
-
 /** Arrow/Home/End movement in a single-column list; `null` when the key does not move. */
 export function listStep(key: string, index: number, count: number): number | null {
   if (count === 0) return null
@@ -11,7 +9,7 @@ export function listStep(key: string, index: number, count: number): number | nu
 }
 
 /** Ids from `from` to `to` (inclusive) in list order, ending with `to` (the moving end). */
-export function selectRange(items: ItemListItem[], from: string, to: string): string[] {
+export function selectRange(items: readonly { id: string }[], from: string, to: string): string[] {
   const a = items.findIndex(item => item.id === from)
   const b = items.findIndex(item => item.id === to)
   if (a < 0 || b < 0) return [to]

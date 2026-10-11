@@ -528,18 +528,18 @@ async function seededRun() {
     return { id, addedAndReloaded: true, removedAndReloaded: true }
   })
 
-  await step('send-without-devices-is-honest', async () => {
+  await step('send-menu', async () => {
+    // The seeded mobile device (the loopback image upload registers it) is the only send target.
     await row('git rebase').click()
     await detail().getByRole('button', { name: 'Send to…' }).click()
-    const option = page.getByRole('menuitem', { name: 'No paired devices' })
-    await option.waitFor()
-    const disabled = await option.getAttribute('aria-disabled')
-    assert.equal(disabled, 'true', 'the only entry is disabled')
-    await shot('send-no-devices')
+    const menu = page.getByRole('menu').first()
+    await menu.waitFor()
+    const items = await menu.getByRole('menuitem').allTextContents()
+    await shot('send-menu')
     await page.keyboard.press('Escape')
     const focus = await activeDescription()
     assert.ok(/Send to/.test(focus ?? ''), `focus after the send menu: ${focus}`)
-    return { disabled, focus }
+    return { items, focus }
   })
 
   await step('select-filter-focus-return', async () => {
@@ -626,6 +626,50 @@ async function seededRun() {
     await field.fill('')
     await row('Paging entry').waitFor()
     return observed
+  })
+
+  await step('tag-manager', async () => {
+    const more = page.getByRole('button', { name: 'More' }).first()
+    await more.click()
+    await page.getByRole('menuitem', { name: 'Manage tags' }).click()
+    const dialog = page.getByRole('dialog')
+    await dialog.waitFor()
+    const grid = dialog.getByRole('grid')
+    await grid.waitFor()
+    const tagRows = await grid.locator('[data-row-id]').count()
+    await shot('tag-manager')
+    // Row menu: the context menu of the first row offers Rename, Merge into (submenu) and the colours.
+    await grid.locator('[data-row-id]').first().click({ button: 'right' })
+    const menu = page.getByRole('menu').first()
+    await menu.waitFor()
+    const items = await menu.getByRole('menuitem').allTextContents()
+    await shot('tag-manager-menu')
+    await page.keyboard.press('Escape')
+    await page.keyboard.press('Escape')
+    await dialog.waitFor({ state: 'hidden' })
+    const focus = await activeDescription()
+    return { tagRows, items, focus }
+  })
+
+  await step('grid-view', async () => {
+    await page.getByRole('radio', { name: 'Grid' }).click()
+    await rows().first().waitFor()
+    const cards = await rows().count()
+    await shot('grid-view')
+    await page.getByRole('radio', { name: 'List' }).click()
+    await row('Paging entry').waitFor()
+    return { cards }
+  })
+
+  await step('quick-look', async () => {
+    const target = rows().filter({ has: page.locator('img') }).first()
+    await target.click()
+    await detail().getByRole('button', { name: /Quick Look/ }).click()
+    await page.waitForTimeout(500)
+    await shot('quick-look')
+    await page.keyboard.press('Escape')
+    await page.waitForTimeout(300)
+    return { focus: await activeDescription() }
   })
 
   await step('paging', async () => {

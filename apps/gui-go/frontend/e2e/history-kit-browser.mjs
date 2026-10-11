@@ -203,6 +203,11 @@ async function unlockIfLocked() {
     await passphrase.press('Enter')
   }
 }
+// A fresh document from the app's root: the asset server knows no client route such as /history, so reloading
+// that URL fails; the app routes to History again after it starts.
+async function reloadApp() {
+  await page.goto(new URL('/', page.url()).href)
+}
 // The app also keeps its quick panel as a hidden window; the History page is the main window's document.
 function mainWindowPage() {
   const pages = browser.contexts().flatMap(context => context.pages())
@@ -222,7 +227,7 @@ async function newPage(options = {}) {
       reducedMotion: 'reduce',
     })
     if (options.viewport) await page.setViewportSize(options.viewport)
-    await page.reload()
+    await reloadApp()
     await unlockIfLocked()
     await rows().first().waitFor({ timeout: 60_000 })
     await dismissStartupPrompts()
@@ -787,7 +792,7 @@ async function emptyRun() {
       if (cdp) {
         page ??= mainWindowPage()
         await page.emulateMedia({ colorScheme, reducedMotion: 'reduce' })
-        await page.reload()
+        await reloadApp()
         await unlockIfLocked()
       } else {
         if (page) await closePage()

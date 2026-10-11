@@ -36,6 +36,12 @@ Read the [Introduction](https://fumadocs.dev/docs/mdx) for further details.
 
 ## Operations
 
+### Vercel 预览部署
+
+Vercel 项目的 Root Directory 为 `docs-site`。`vercel.json` 中的 `ignoreCommand` 仅在预览部署时检查该目录：没有变更则跳过构建，有变更则继续。生产部署保持原有行为。
+
+比较基准优先使用当前分支上次成功部署的 `VERCEL_GIT_PREVIOUS_SHA`；首次部署没有该值时使用 `HEAD^`。若浅克隆中缺少比较基准，继续构建，避免遗漏部署。Vercel 项目需要启用 Automatically expose System Environment Variables。
+
 ### Consistency check
 
 ```bash

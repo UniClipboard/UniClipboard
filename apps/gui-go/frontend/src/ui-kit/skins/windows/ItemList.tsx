@@ -9,11 +9,14 @@ import { useListStyles } from './list-styles'
  * toggle and the selection checkboxes; Windows "Multiple" selection mode toggles rows on click.
  * Enter and double click activate instead of toggling, Delete reports the selection.
  */
+// A shared empty default, so an omitted prop does not create a new array on every render.
+const noSelection: string[] = []
+
 export function ItemList({
   label,
   items,
   selection,
-  defaultSelection = [],
+  defaultSelection = noSelection,
   onSelectionChange,
   multiSelect,
   onActivate,

@@ -55,12 +55,12 @@ export function UiRoot({ colorScheme, children }: UiRootProps) {
  * NSVisualEffectView before) when the host applied one, and the CSS approximation otherwise;
  * `content` is always solid. `data-window-material` says which one is on screen.
  */
-export function Surface({ role, children }: SurfaceProps) {
+export function Surface({ region, children }: SurfaceProps) {
   const material = use(AppliedMaterial)
   const marker =
-    role === 'content' ? 'solid' : material === 'none' ? 'css-fallback' : `native-${material}`
+    region === 'content' ? 'solid' : material === 'none' ? 'css-fallback' : `native-${material}`
   return (
-    <div className="mac-surface" data-surface={role} data-window-material={marker}>
+    <div className="mac-surface" data-surface={region} data-window-material={marker}>
       {children}
     </div>
   )

@@ -82,10 +82,11 @@ export interface UiRootProps {
  * Every surface root carries `data-window-material`: `native-liquid-glass`, `native-visual-effect`,
  * `css-fallback` or `solid`, so a browser rendering can never be mistaken for the native material.
  */
-export type SurfaceRole = 'sidebar' | 'content'
+export type SurfaceRegion = 'sidebar' | 'content'
 
+/** `region`, not `role`: a surface is a layout region, not an ARIA role on the element. */
 export interface SurfaceProps {
-  role: SurfaceRole
+  region: SurfaceRegion
   children: ReactNode
 }
 

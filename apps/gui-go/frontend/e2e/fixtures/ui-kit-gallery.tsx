@@ -234,7 +234,7 @@ function Board({ scheme }: { scheme: ColorScheme }) {
 
         <div className="ui-kit-gallery-split">
           <Section title="Navigation" note="C2 · NavigationView pane">
-            <Surface role="sidebar">
+            <Surface region="sidebar">
               <SidebarNav
                 label="Library"
                 sections={navSections}
@@ -248,7 +248,7 @@ function Board({ scheme }: { scheme: ColorScheme }) {
           </Section>
 
           <Section title="List" note="C3 · ListViewItem, tags, query chips">
-            <Surface role="content">
+            <Surface region="content">
               <div className="ui-kit-gallery-list">
                 <ContextMenu
                   items={clipActions}

@@ -18,11 +18,14 @@ function focusItem(container: HTMLElement | null, selector: string, index: numbe
  * Return or double click activates; Delete and Backspace report the selection. Selection turns gray
  * when the window is not key.
  */
+// A shared empty default, so an omitted prop does not create a new array on every render.
+const noSelection: string[] = []
+
 export function ItemList({
   label,
   items,
   selection,
-  defaultSelection = [],
+  defaultSelection = noSelection,
   onSelectionChange,
   multiSelect,
   onActivate,

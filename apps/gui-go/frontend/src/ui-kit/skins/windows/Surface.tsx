@@ -13,10 +13,14 @@ const useStyles = makeStyles({
   },
 })
 
-export function Surface({ role, children }: SurfaceProps) {
+export function Surface({ region, children }: SurfaceProps) {
   const styles = useStyles()
   return (
-    <div className={mergeClasses(styles[role])} data-surface={role} data-window-material="solid">
+    <div
+      className={mergeClasses(styles[region])}
+      data-surface={region}
+      data-window-material="solid"
+    >
       {children}
     </div>
   )

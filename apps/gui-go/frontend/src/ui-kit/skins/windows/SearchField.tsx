@@ -1,5 +1,6 @@
 import { Input, makeStyles, tokens } from '@fluentui/react-components'
 import { SearchRegular } from '@fluentui/react-icons'
+import { useMemo } from 'react'
 import type { SearchFieldProps } from '@/ui-kit/contract'
 
 const useStyles = makeStyles({
@@ -28,6 +29,20 @@ export function SearchField({
   shortcutHint,
 }: SearchFieldProps) {
   const styles = useStyles()
+  // Memoized so the Input does not receive a new contentAfter element on every keystroke.
+  const after = useMemo(
+    () => (
+      <span className={styles.after}>
+        {shortcutHint ? (
+          <kbd className={styles.hint} aria-hidden="true">
+            {shortcutHint}
+          </kbd>
+        ) : null}
+        <SearchRegular aria-hidden="true" />
+      </span>
+    ),
+    [shortcutHint, styles.after, styles.hint]
+  )
   return (
     <Input
       type="search"
@@ -37,16 +52,7 @@ export function SearchField({
       onChange={(_, data) => onValueChange?.(data.value)}
       placeholder={placeholder}
       aria-label={label}
-      contentAfter={
-        <span className={styles.after}>
-          {shortcutHint ? (
-            <kbd className={styles.hint} aria-hidden="true">
-              {shortcutHint}
-            </kbd>
-          ) : null}
-          <SearchRegular aria-hidden="true" />
-        </span>
-      }
+      contentAfter={after}
     />
   )
 }

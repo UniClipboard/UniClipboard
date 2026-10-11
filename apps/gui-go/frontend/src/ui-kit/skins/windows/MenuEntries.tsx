@@ -60,9 +60,11 @@ export function MenuEntries({ items, onAction }: MenuEntriesProps) {
             icon={icon}
             secondaryContent={secondary}
             disabled={item.disabled}
-            // The checkmark is drawn; assistive tech reads the state.
-            aria-checked={item.checked === undefined ? undefined : item.checked}
-            role={item.checked === undefined ? undefined : 'menuitemradio'}
+            // The checkmark is drawn; assistive tech reads the state. Only a choice gets the radio role: passing
+            // `role={undefined}` would erase Fluent's default menuitem role.
+            {...(item.checked === undefined
+              ? {}
+              : { role: 'menuitemradio', 'aria-checked': item.checked })}
             className={mergeClasses(styles.item, item.destructive && styles.destructive)}
             onClick={() => onAction(item.id)}
           >

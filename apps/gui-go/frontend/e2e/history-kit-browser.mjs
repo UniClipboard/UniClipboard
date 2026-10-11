@@ -696,13 +696,20 @@ async function seededRun() {
     await row('Q4 roadmap').waitFor()
     const pinnedRows = await rowCountBecomes(1)
     await shot('compact-pane')
+    // WA3: a section is one rail button whose rows open in a flyout beside the rail.
+    await rail.getByRole('button', { name: 'Tags' }).click()
+    const flyout = page.getByRole('menu').first()
+    await flyout.waitFor()
+    const tagItems = await flyout.getByRole('menuitem').allTextContents()
+    await shot('compact-pane-flyout')
+    await page.keyboard.press('Escape')
     // The Pinned tooltip opens above its button and covers All items until the pointer leaves.
     await page.mouse.move(640, 600)
     await rail.getByRole('button', { name: 'All items' }).click()
     await row('Paging entry').waitFor()
     await page.getByRole('button', { name: 'Show sidebar' }).click()
     assert.equal(await display(), 'expanded')
-    return { pinnedRows }
+    return { pinnedRows, tagItems }
   })
 
   await step('overlay-pane', async () => {

@@ -1,4 +1,11 @@
 import {
+  Menu,
+  MenuDivider,
+  MenuGroupHeader,
+  MenuItem,
+  MenuList,
+  MenuPopover,
+  MenuTrigger,
   Button as FluentButton,
   makeStyles,
   mergeClasses,
@@ -6,12 +13,15 @@ import {
   useArrowNavigationGroup,
 } from '@fluentui/react-components'
 import { createElement } from 'react'
-import type { SidebarNavItem, SidebarNavProps } from '@/ui-kit/contract'
+import type { SidebarNavItem, SidebarNavProps, SidebarNavSection } from '@/ui-kit/contract'
 import { iconFor } from './icons'
+import { useMenuStyles } from './menu-styles'
+import { swatch } from './theme'
 import { WithTooltip } from './WithTooltip'
 
 // Board WA3 / C2: the LeftCompact pane, a 48 px rail of 40 x 36 icon buttons with the selection pill; the label is
-// the tooltip and the accessible name. Rows without an icon (tags, devices) are reached by expanding the pane.
+// the tooltip and the accessible name. A section with an icon (tags, devices) is one rail button that opens
+// its rows in a flyout beside the rail, as in WA3.
 const useStyles = makeStyles({
   rail: {
     flexGrow: 1,
@@ -43,6 +53,19 @@ const useStyles = makeStyles({
     },
   },
   footer: { marginTop: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center' },
+  divider: {
+    width: '1.5rem',
+    height: '1px',
+    marginBlock: '0.375rem',
+    backgroundColor: 'var(--w11-divider)',
+  },
+  swatch: {
+    display: 'inline-block',
+    width: '0.75rem',
+    height: '0.75rem',
+    borderRadius: '0.1875rem',
+  },
+  current: { fontWeight: tokens.fontWeightSemibold },
 })
 
 export function SidebarNavCompact({
@@ -57,6 +80,7 @@ export function SidebarNavCompact({
   select: (id: string) => void
 }) {
   const styles = useStyles()
+  const menuStyles = useMenuStyles()
   const arrowNavigation = useArrowNavigationGroup({ axis: 'vertical', memorizeCurrent: true })
   const entry = (item: SidebarNavItem) =>
     item.icon ? (
@@ -71,9 +95,68 @@ export function SidebarNavCompact({
         />
       </WithTooltip>
     ) : null
+  const flyout = (section: SidebarNavSection) => {
+    const icon = section.icon
+    if (!icon) return null
+    const active = section.items.some(item => item.id === current)
+    return (
+      <Menu key={section.id} positioning={{ position: 'after', align: 'top' }}>
+        <MenuTrigger disableButtonEnhancement>
+          <WithTooltip content={section.title ?? section.id} relationship="inaccessible">
+            <FluentButton
+              aria-label={section.title ?? section.id}
+              appearance="subtle"
+              className={styles.item}
+              icon={createElement(iconFor(icon))}
+              aria-current={active ? 'page' : undefined}
+            />
+          </WithTooltip>
+        </MenuTrigger>
+        <MenuPopover className={menuStyles.popover}>
+          <MenuList>
+            {section.title ? <MenuGroupHeader>{section.title}</MenuGroupHeader> : null}
+            {section.items.map(item => (
+              <MenuItem
+                key={item.id}
+                className={mergeClasses(menuStyles.item, item.id === current && styles.current)}
+                icon={
+                  item.swatch ? (
+                    <span
+                      className={styles.swatch}
+                      style={{ backgroundColor: swatch(item.swatch) }}
+                    />
+                  ) : item.icon ? (
+                    createElement(iconFor(item.icon))
+                  ) : undefined
+                }
+                secondaryContent={item.count}
+                onClick={() => select(item.id)}
+              >
+                {item.label}
+              </MenuItem>
+            ))}
+            {section.items.length === 0 && section.placeholder?.action ? (
+              <MenuItem onClick={() => section.placeholder?.action?.onClick()}>
+                {section.placeholder.action.label}
+              </MenuItem>
+            ) : null}
+            {section.more ? (
+              <>
+                <MenuDivider />
+                <MenuItem onClick={() => section.more?.onClick()}>{section.more.label}</MenuItem>
+              </>
+            ) : null}
+          </MenuList>
+        </MenuPopover>
+      </Menu>
+    )
+  }
+  const sectioned = sections.filter(section => section.icon)
   return (
     <nav aria-label={label} className={styles.rail} {...arrowNavigation}>
-      {sections.flatMap(section => section.items.map(entry))}
+      {sections.filter(section => !section.icon).flatMap(section => section.items.map(entry))}
+      {sectioned.length > 0 ? <span className={styles.divider} aria-hidden="true" /> : null}
+      {sectioned.map(flyout)}
       <div className={styles.footer}>{footer.map(entry)}</div>
     </nav>
   )

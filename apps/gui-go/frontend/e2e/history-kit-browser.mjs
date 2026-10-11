@@ -74,8 +74,13 @@ async function pageUrl() {
   return `http://127.0.0.1:${port}/?${new URLSearchParams({ daemon: daemon.daemonUrl, token: await guiSession(), platform })}`
 }
 const results = {
-  head: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
-  dirty: execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8' }).trim() !== '',
+  // Inside a test VM the checkout is not a git work tree there; the orchestrator passes what it built from.
+  head:
+    process.env.HISTORY_KIT_HEAD ??
+    execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
+  dirty: process.env.HISTORY_KIT_HEAD
+    ? process.env.HISTORY_KIT_DIRTY === '1'
+    : execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8' }).trim() !== '',
   platform,
   mode: cdp ? 'native-cdp' : 'browser-fixture',
   profile: daemon.profile,

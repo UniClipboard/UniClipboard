@@ -2,9 +2,9 @@
 """Isolated real daemon with seeded history for the browser run of the kit History page.
 
 `start` creates a throwaway HOME and a unique gui-go-* profile (system clipboard disabled), initialises a space,
-starts `uniclipd` (from target/debug, found on PATH by `uniclip`), sends text, code, link and file entries through
-`uniclip send`, opens a GUI client session (`POST /auth/connect`, clientType gui) and writes the daemon address and
-daemon.conn path to <out>/daemon.json for frontend/e2e/history-kit-browser.mjs. `stop` stops that daemon.
+starts `uniclipd` (from target/debug, found on PATH by `uniclip`), seeds text entries over one GUI session through
+frontend/e2e/history-kit-seed.mjs and two files through `uniclip send`, and writes the daemon address and a copy of its
+file token to <out> (daemon.json, daemon.conn) for frontend/e2e/history-kit-browser.mjs. `stop` stops that daemon.
 
 Needs target/debug/uniclipd (`cargo build -p uc-daemon --bin uniclipd`) and target/gui-go/uniclip
 (`cd apps/cli-go && go build -o ../../target/gui-go/uniclip ./cmd/uniclip`). Nothing touches the real profile.
@@ -12,22 +12,15 @@ Needs target/debug/uniclipd (`cargo build -p uc-daemon --bin uniclipd`) and targ
 import argparse
 import json
 import os
+import subprocess
 import tempfile
 import time
-import urllib.request
 from pathlib import Path
 
 from file_preview_run import PASSPHRASE, PNG, cli
 from peers import start_daemon
 from run import ROOT, isolated_env
 
-TEXTS = [
-    'Q4 roadmap: ship LAN-only mode, then per-device delivery receipts',
-    'https://github.com/UniClipboard/UniClipboard',
-    'git rebase -i HEAD~3',
-    'docker compose -f compose.prod.yml \\\n  --env-file .env.prod \\\n  up -d --build --remove-orphans',
-    'Meeting notes\n- decide the Windows title bar layout\n- review keyboard focus order',
-]
 
 
 def env_for(home, profile):
@@ -38,21 +31,12 @@ def conn_file(home):
     return next(Path(home).rglob('daemon.conn'))
 
 
-def session(home):
-    conn_path = conn_file(home)
-    conn = json.loads(conn_path.read_text())
+def seed(out, home, *seed_args):
+    """frontend/e2e/history-kit-seed.mjs, the one source of the seeded entries (shared with the Windows run)."""
+    conn = json.loads(conn_file(home).read_text())
     base = f"http://{conn.get('host', '127.0.0.1')}:{conn['port']}"
-    request = urllib.request.Request(f'{base}/auth/connect', method='POST', data=json.dumps({'pid': os.getpid(), 'clientType': 'gui'}).encode(),
-                                     headers={'Authorization': f"Bearer {conn['token']}", 'Content-Type': 'application/json'})
-    with urllib.request.urlopen(request, timeout=15) as response:
-        return base, json.load(response)['data']['sessionToken']
-
-
-def post(base, token, path, body):
-    request = urllib.request.Request(f'{base}{path}', method='POST', data=json.dumps(body).encode(),
-                                     headers={'Authorization': f'Session {token}', 'Content-Type': 'application/json'})
-    with urllib.request.urlopen(request, timeout=30) as response:
-        return json.load(response)
+    subprocess.run(['node', str(ROOT / 'apps/gui-go/frontend/e2e/history-kit-seed.mjs'), str(out), base, str(conn_file(home)), PASSPHRASE,
+                    *seed_args], check=True)
 
 
 def send(env, *args):
@@ -75,30 +59,17 @@ def start(out, extra, empty):
     (out / 'daemon.json').write_text(json.dumps({'home': home, 'profile': profile}) + '\n')  # lets `stop` clean up a failed start
     cli(env, 'space', 'init', '--passphrase', PASSPHRASE, '--device-name', 'kit-browser')
     start_daemon(env)
-    if empty:  # first launch: an initialised space with no history
-        base, _ = session(home)
-        info = {'home': home, 'profile': profile, 'daemonUrl': base, 'conn': str(conn_file(home)), 'passphrase': PASSPHRASE, 'seeded': 0}
-        (out / 'daemon.json').write_text(json.dumps(info, indent=2) + '\n')
-        print(json.dumps(info, indent=2))
-        return
-    files = Path(home) / 'seed'
-    files.mkdir()
-    (files / 'pixel.png').write_bytes(PNG)
-    (files / 'invoice-0921.txt').write_text('Invoice 0921\nTotal: 42.00\n')
-    # The paging entries go through one GUI session (`POST /clipboard/dispatch`, the endpoint `uniclip send` uses for
-    # text): a CLI call per entry would open a session each time and hit the daemon's session limit.
-    base, token = session(home)
-    post(base, token, '/content-lock/unlock', {'passphrase': PASSPHRASE})
-    for index in range(extra):
-        post(base, token, '/clipboard/dispatch', {'text': f'Paging entry {index:03d}'})
-    for path in sorted(files.iterdir()):
-        send(env, '--file', str(path))
-    for text in TEXTS:
-        send(env, '--text', text)
-        time.sleep(.2)  # distinct capture times keep the list order deterministic
-    info = {'home': home, 'profile': profile, 'daemonUrl': base, 'conn': str(conn_file(home)), 'passphrase': PASSPHRASE, 'seeded': len(TEXTS) + extra + 2}
-    (out / 'daemon.json').write_text(json.dumps(info, indent=2) + '\n')
-    print(json.dumps(info, indent=2))
+    if not empty:
+        seed(out, home, 'paging', str(extra))
+        files = Path(home) / 'seed'
+        files.mkdir()
+        (files / 'pixel.png').write_bytes(PNG)
+        (files / 'invoice-0921.txt').write_text('Invoice 0921\nTotal: 42.00\n')
+        for path in sorted(files.iterdir()):
+            send(env, '--file', str(path))
+    # Writes daemon.json (with home and profile, which `stop` uses); an empty run is a space without history.
+    seed(out, home, 'texts', profile, home, '0' if empty else str(extra + 2 + 5))
+    print((out / 'daemon.json').read_text())
 
 
 def stop(out):

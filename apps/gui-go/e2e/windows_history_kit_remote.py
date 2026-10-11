@@ -293,10 +293,14 @@ Set-Location '{app}'
         node_seed(PASSPHRASE, 'texts', profile, app, str(seeded))
 
         launcher = sandbox_env(profile, f"$env:UC_GUI_GO_E2E_BROWSER_ARGS='--remote-debugging-port={debug_port}'; "
-                                        f"$env:UC_GUI_GO_EXIT_MODE='full'")
+                                        f"$env:UC_GUI_GO_EXIT_MODE='full'; $env:UC_GUI_GO_E2E_VISIBLE='1'; "
+                                        f"$env:UC_GUI_GO_EVIDENCE='{run_dir}\\native.jsonl'")
         if inside:
-            # Already the logged-in session: start the app detached with the sandbox env.
-            machine.ps(launcher + f"\nStart-Process -FilePath '{app}\\gui-go.exe' -WorkingDirectory '{app}'")
+            # Already the logged-in session: start the app detached with the sandbox env; its output goes to files
+            # so a launch that fails is diagnosable.
+            machine.ps(launcher + f"""
+Start-Process -FilePath '{app}\\gui-go.exe' -WorkingDirectory '{app}' -RedirectStandardOutput '{run_dir}\\gui.out' -RedirectStandardError '{run_dir}\\gui.err'
+""")
         else:
             machine.ps(f"""
 Set-Content -Path '{run_dir}\\launch.ps1' -Value @'
@@ -311,7 +315,15 @@ schtasks /Run /TN '{task}' | Out-Null
 $deadline = (Get-Date).AddMinutes(3)
 while ((Get-Date) -lt $deadline) {{ try {{ Invoke-WebRequest -UseBasicParsing 'http://127.0.0.1:{debug_port}/json/version' | Out-Null; exit 0 }} catch {{ Start-Sleep 1 }} }}
 exit 1
-""", timeout=240)
+""", timeout=240, check=False)
+            if not machine.ps(f"try {{ Invoke-WebRequest -UseBasicParsing 'http://127.0.0.1:{debug_port}/json/version' | Out-Null; 'up' }} catch {{ 'down' }}", check=False).endswith('up'):
+                record['launchDiagnosis'] = machine.ps(f"""
+'running=' + @(Get-Process gui-go -ErrorAction SilentlyContinue | Where-Object {{ $_.Path -eq '{app}\\gui-go.exe' }}).Count
+'--- gui.err'; Get-Content '{run_dir}\\gui.err' -Tail 40 -ErrorAction SilentlyContinue
+'--- gui.out'; Get-Content '{run_dir}\\gui.out' -Tail 40 -ErrorAction SilentlyContinue
+'--- native.jsonl'; Get-Content '{run_dir}\\native.jsonl' -Tail 20 -ErrorAction SilentlyContinue
+""", check=False)
+                raise RuntimeError('the app opened no DevTools endpoint; see launchDiagnosis in native-run.json')
             record['webview'] = machine.ps(f"(Invoke-WebRequest -UseBasicParsing 'http://127.0.0.1:{debug_port}/json/version').Content")
             envs = '; '.join(f"$env:{k}='{v}'" for k, v in {**driver_env, 'PLAYWRIGHT_MODULE': playwright.replace('\\', '/'),
                                                              'HISTORY_KIT_CDP': f'http://127.0.0.1:{debug_port}'}.items())

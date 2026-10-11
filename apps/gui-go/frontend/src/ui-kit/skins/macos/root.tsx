@@ -6,7 +6,8 @@ import type { SurfaceProps, ToolbarButtonProps, ToolbarProps, UiRootProps } from
 import { WithHelpTag } from './controls'
 import { glyph } from './glyph'
 import { Icon } from './icons'
-import { PortalContainer, PushButton } from './parts'
+import { PushButton } from './parts'
+import { PortalContainer } from './portal'
 import './tokens.css'
 import './macos.css'
 

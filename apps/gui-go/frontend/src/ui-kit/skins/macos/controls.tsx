@@ -20,6 +20,7 @@ import type {
 import { glyph } from './glyph'
 import { Icon } from './icons'
 import * as parts from './parts'
+import { usePortalContainer } from './portal'
 
 /** `subtle` has no bezel at rest, which on macOS is a borderless button. */
 const tintOf: Record<ButtonVariant, 'primary' | 'none' | 'borderless'> = {
@@ -30,7 +31,7 @@ const tintOf: Record<ButtonVariant, 'primary' | 'none' | 'borderless'> = {
 
 /** AppKit help tag: shown on hover after a delay; the trigger keeps its own accessible name. */
 export function WithHelpTag({ text, children }: { text?: string; children: ReactElement }) {
-  const container = parts.usePortalContainer()
+  const container = usePortalContainer()
   if (!text) return children
   return (
     <Tooltip.Root>
@@ -173,7 +174,7 @@ export function SearchField({
   return (
     <parts.SearchField
       label={label}
-      placeholder={placeholder ?? label}
+      placeholder={placeholder}
       hint={shortcutHint ?? ''}
       value={value}
       defaultValue={defaultValue}

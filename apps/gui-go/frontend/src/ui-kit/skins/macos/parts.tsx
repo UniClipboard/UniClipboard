@@ -5,15 +5,9 @@ import { Radio } from '@base-ui/react/radio'
 import { RadioGroup } from '@base-ui/react/radio-group'
 import { Select } from '@base-ui/react/select'
 import { Switch as BaseSwitch } from '@base-ui/react/switch'
-import { createContext, use, useState, type ComponentProps, type ReactNode } from 'react'
+import { useState, type ComponentProps, type ReactNode } from 'react'
 import { Icon, type IconName } from './icons'
-
-/** Popups portal into the themed surface that owns them, so a dark panel's menu keeps dark tokens. */
-export const PortalContainer = createContext<HTMLElement | null>(null)
-
-export function usePortalContainer() {
-  return use(PortalContainer)
-}
+import { usePortalContainer } from './portal'
 
 /** Static boards force a visual state on a real control; interactive surfaces never pass it. */
 export type ForcedState = 'pressed' | 'focus' | 'hover' | 'highlighted'
@@ -68,7 +62,7 @@ export function GlassItem({
 
 export function SearchField({
   width = '100%',
-  placeholder = 'Search',
+  placeholder,
   label = placeholder,
   hint = '⌘F',
   tokens,

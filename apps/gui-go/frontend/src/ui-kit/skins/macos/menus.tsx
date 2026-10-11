@@ -6,7 +6,8 @@ import type { AlertDialogProps, ContextMenuProps, MenuEntry, MenuProps } from '@
 import { WithHelpTag } from './controls'
 import { glyph } from './glyph'
 import { Icon } from './icons'
-import { PushButton, usePortalContainer } from './parts'
+import { PushButton } from './parts'
+import { usePortalContainer } from './portal'
 import { swatchColor } from './swatch'
 
 /**

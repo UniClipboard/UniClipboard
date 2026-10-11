@@ -1450,26 +1450,27 @@
   color: var(--label-3);
 }
 
+/* Reduce motion: popups, sheets and controls change state without animating, like AppKit with
+   the system setting on. */
 @media (prefers-reduced-motion: reduce) {
   .mac-btn,
   .mac-glass-item,
+  .mac-switch,
   .mac-switch-thumb,
   .mac-menu,
   .mac-popover,
+  .mac-tooltip,
   .mac-alert,
+  .mac-alert-backdrop,
   .mac-sheet,
+  .mac-sheet-backdrop,
   .mac-toast {
-    transition: opacity 0.15s ease !important;
+    transition: none !important;
   }
 
-  .mac-menu[data-starting-style],
-  .mac-menu[data-ending-style],
-  .mac-popover[data-starting-style],
-  .mac-popover[data-ending-style],
-  .mac-sheet[data-starting-style],
-  .mac-sheet[data-ending-style] {
-    transform: none;
-    filter: none;
+  .mac-btn:active,
+  .mac-glass-item:active {
+    transform: none !important;
   }
 }
 

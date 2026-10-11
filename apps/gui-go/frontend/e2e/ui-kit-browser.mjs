@@ -400,6 +400,39 @@ try {
     })
   }
 
+  // In native mode the page background is cleared so the window material shows. WKWebView does
+  // not blur the native layer behind a transparent page, so a popup cannot rely on backdrop-filter
+  // to hide what is under it: its own background must be nearly opaque. The host parameter is
+  // simulated here; this checks the skin's CSS for that branch and proves nothing native.
+  if (skin === 'macos') {
+    await check(
+      'native-mode popups are opaque enough to read (host parameter simulated)',
+      async () => {
+        for (const scheme of ['light', 'dark']) {
+          await page.goto(`${base}/?scheme=${scheme}&window-material=liquid-glass`)
+          const native = page.getByTestId(`board-${scheme}`)
+          await native.waitFor()
+          await native.getByRole('button', { name: /^Tag/ }).click()
+          const menu = page.getByRole('menu')
+          await menu.waitFor()
+          const alpha = await menu.evaluate(el => {
+            const match = getComputedStyle(el).backgroundColor.match(/rgba?\(([^)]+)\)/)
+            const parts = match ? match[1].split(',').map(Number) : []
+            return parts.length === 4 ? parts[3] : 1
+          })
+          await page.screenshot({
+            path: path.join(output, `${skin}-native-sim-menu-${scheme}.png`),
+          })
+          await page.keyboard.press('Escape')
+          assert.ok(
+            alpha >= 0.9,
+            `${scheme} menu background alpha ${alpha} over the native material`
+          )
+        }
+      }
+    )
+  }
+
   for (const scheme of ['both', 'light', 'dark']) {
     await page.goto(`${base}/?scheme=${scheme}`)
     await page.getByTestId('ui-kit-gallery').waitFor()

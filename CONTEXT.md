@@ -113,14 +113,29 @@ Engine 汇总给出的空间设备状态更新事实，阶段为更新中、已�
 原因 `local_identity_mismatch` 表示本机当前网络身份与已验证成员历史中的本机身份不一致，
 它没有处理方式，自动重试也不能消除；客户端不得提供修复入口，只提示保留现有数据。
 客户端只原样展示这一事实，不得从成员数量、在线情况、设备关系或同步状态推断是否完成。
+原因 `device_security_update_rejected` 的逐设备细节由各设备的 **Device group update** 给出，
+提示只引导用户查看设备列表，不提供重试入口。
 _Avoid_: maintenance health、client-side completion inference、repair button
 
 **Device trust relationship**：
 Engine 对一台已知设备给出的完整关系视图，由成员资格、在线情况、设备组关系、版本兼容性
-和同步关系五个彼此独立的事实组成；任何一项都不得被客户端用来推断另一项。设备组关系
+和同步关系五个彼此独立的事实组成，并可附带可选的 **Device group update**；任何一项都不得
+被客户端用来推断另一项。设备组关系
 `awaiting_removal_acknowledgement` 表示该设备已从本机移除、Engine 正在通知其他设备：它是只读的
 提示状态，不需要用户操作，不阻塞 **Space device update** 完成，客户端不得重试、计时或自行清理。
 _Avoid_: device status、peer state、client-side trust inference
+
+**Device group update**：
+Engine 对本机发往某台设备、最早一条尚未被确认的组密钥更新给出的投递事实，包含密钥版本
+（epoch）、状态、恢复方式与已尝试次数；恢复方式为自动重试时可附带下次重试时间（已过期或为 0
+表示已到期）。状态为尚未送达（`waiting`）、接收方暂时无法应用（`receiver_unavailable`）、
+被拒绝且原因未知（`rejected_unclassified`，旧版设备或升级前遗留）、接收方明确拒绝
+（`rejected_by_receiver`）。恢复方式为按退避自动重试（`automatic`）、设备重新上线并通过
+认证后自动再评估一次（`automatic_on_reconnect`）、不会自动重发且需要核对该设备
+（`review_device`，例如更新其应用或重新配对）。只有 Engine 推进或结清它；客户端重新查询、
+重启或重连不会改变结果。客户端只在设备列表行与设备详情中展示状态并说明由谁继续处理，不得
+重试、计时、清除标志，也不得从在线情况或同步关系推断它。字段缺省表示没有待确认的更新。
+_Avoid_: client-side retry、security update repair button、rekey status inference
 
 **Pairing confirmation**：
 Engine 在当前成员关系上给出的配对确认展示事实：`awaiting_peer_confirmation` 表示本机已完成
@@ -285,6 +300,8 @@ _Avoid_: relay-only、server mode
   不一致设备和升级要求，不改变 **Transient sync semantics**，也不补传历史剪贴板内容
 - **Current member device list** 只由 **SpaceMember** 构成；**Device trust relationship**
   是独立的安全判断视图，不是设备列表的补充来源
+- **Device trust relationship** 为每台设备附带可选的 **Device group update**；
+  **Space device update** 的原因 `device_security_update_rejected` 由它逐设备细化
 - 一次复制产生一个 **ClipboardEvent**，落地为一条对用户可见的 **ClipboardEntry**；
   原始字节来自该 event 的 **SystemClipboardSnapshot**，拆成多条 **Representation**
 - **MasterKey** 由 **Passphrase** 经 KEK 解包，是 **Space** 内一切密文的根密钥；

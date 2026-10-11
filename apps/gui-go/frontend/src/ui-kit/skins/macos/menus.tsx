@@ -26,6 +26,68 @@ function useMenuState(
   return { isOpen: open ?? own, change }
 }
 
+/** The items of a menu panel; an item with `children` opens a submenu (AppKit "›" item). */
+function MenuItems({ items, onSelect }: { items: MenuEntry[]; onSelect: (id: string) => void }) {
+  const container = usePortalContainer()
+  return items.map(entry => {
+    if ('kind' in entry) return <BaseMenu.Separator key={entry.id} className="mac-menu-separator" />
+    const content = (
+      <>
+        <span className="mac-menu-icon">
+          {entry.icon && <Icon name={glyph(entry.icon)} size={14} />}
+          {entry.swatch && (
+            <span
+              className="mac-dot-tag"
+              data-checked={entry.checked ? '' : undefined}
+              style={{ background: swatchColor(entry.swatch) }}
+            />
+          )}
+          {entry.checked && !entry.icon && !entry.swatch && (
+            <Icon name="check" size={12} strokeWidth={2.4} />
+          )}
+        </span>
+        <span className="mac-menu-label">{entry.label}</span>
+        {entry.count !== undefined && <span className="mac-menu-shortcut">{entry.count}</span>}
+        {entry.shortcut && <span className="mac-menu-shortcut">{entry.shortcut}</span>}
+      </>
+    )
+    if (entry.children) {
+      return (
+        <BaseMenu.SubmenuRoot key={entry.id}>
+          <BaseMenu.SubmenuTrigger
+            className="mac-menu-item"
+            disabled={entry.disabled || entry.children.length === 0}
+          >
+            {content}
+            <span className="mac-menu-shortcut">
+              <Icon name="chevronRight" size={10} strokeWidth={2.4} />
+            </span>
+          </BaseMenu.SubmenuTrigger>
+          <BaseMenu.Portal container={container}>
+            <BaseMenu.Positioner className="mac-positioner" sideOffset={2} align="start">
+              <BaseMenu.Popup className="mac-menu">
+                <MenuItems items={entry.children} onSelect={onSelect} />
+              </BaseMenu.Popup>
+            </BaseMenu.Positioner>
+          </BaseMenu.Portal>
+        </BaseMenu.SubmenuRoot>
+      )
+    }
+    return (
+      <BaseMenu.Item
+        key={entry.id}
+        className="mac-menu-item"
+        data-destructive={entry.destructive ? '' : undefined}
+        disabled={entry.disabled}
+        closeOnClick={false}
+        onClick={() => onSelect(entry.id)}
+      >
+        {content}
+      </BaseMenu.Item>
+    )
+  })
+}
+
 /** Menu panel shared by action menus and context menus: Tahoe puts a symbol column on every item. */
 export function MenuPanel({
   items,
@@ -39,35 +101,7 @@ export function MenuPanel({
     <BaseMenu.Portal container={container}>
       <BaseMenu.Positioner className="mac-positioner" sideOffset={4} align="start">
         <BaseMenu.Popup className="mac-menu">
-          {items.map(entry =>
-            'kind' in entry ? (
-              <BaseMenu.Separator key={entry.id} className="mac-menu-separator" />
-            ) : (
-              <BaseMenu.Item
-                key={entry.id}
-                className="mac-menu-item"
-                data-destructive={entry.destructive ? '' : undefined}
-                disabled={entry.disabled}
-                closeOnClick={false}
-                onClick={() => onSelect(entry.id)}
-              >
-                <span className="mac-menu-icon">
-                  {entry.icon && <Icon name={glyph(entry.icon)} size={14} />}
-                  {entry.swatch && (
-                    <span
-                      className="mac-dot-tag"
-                      style={{ background: swatchColor(entry.swatch) }}
-                    />
-                  )}
-                </span>
-                <span className="mac-menu-label">{entry.label}</span>
-                {entry.count !== undefined && (
-                  <span className="mac-menu-shortcut">{entry.count}</span>
-                )}
-                {entry.shortcut && <span className="mac-menu-shortcut">{entry.shortcut}</span>}
-              </BaseMenu.Item>
-            )
-          )}
+          <MenuItems items={items} onSelect={onSelect} />
         </BaseMenu.Popup>
       </BaseMenu.Positioner>
     </BaseMenu.Portal>

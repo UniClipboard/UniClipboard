@@ -2643,3 +2643,151 @@
     transparent 3px 6px
   );
 }
+
+.mac-dot-tag[data-checked] {
+  box-shadow:
+    0 0 0 1.5px var(--popup-opaque),
+    0 0 0 3px var(--accent);
+}
+
+/* ---------- sheet, table, text field (design MC3) ---------- */
+
+.mac-root {
+  position: relative;
+}
+
+.mac-sheet.mac-sheet-wide {
+  width: 760px;
+  max-width: calc(100% - 48px);
+  max-height: calc(100% - 40px);
+  margin-left: 0;
+  transform: translateX(-50%);
+  padding: 16px 20px;
+  gap: 14px;
+}
+
+.mac-sheet.mac-sheet-wide[data-starting-style],
+.mac-sheet.mac-sheet-wide[data-ending-style] {
+  transform: translate(-50%, -110%);
+}
+
+.mac-sheet-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.mac-sheet-header .mac-sheet-title {
+  font-family: var(--mac-font-display);
+  font-size: 17px;
+}
+
+.mac-sheet-body {
+  min-height: 0;
+  flex-grow: 1;
+  overflow: auto;
+  border-radius: 10px;
+  background: var(--content);
+  box-shadow: inset 0 0 0 0.5px var(--separator);
+}
+
+.mac-sheet-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--label-2);
+}
+
+.mac-table {
+  display: grid;
+  outline: none;
+  font-size: 13px;
+}
+
+.mac-table-row {
+  display: contents;
+}
+
+.mac-table-row > span {
+  box-sizing: border-box;
+  min-height: 30px;
+  padding: 4px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.mac-table-row > span[data-align='end'] {
+  justify-content: flex-end;
+  font-variant-numeric: tabular-nums;
+}
+
+.mac-table-row > span[data-align='center'] {
+  justify-content: center;
+}
+
+.mac-table-head > span {
+  min-height: 26px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--label-2);
+  border-bottom: 0.5px solid var(--separator);
+  position: sticky;
+  top: 0;
+  background: var(--content);
+  z-index: 1;
+}
+
+/* Alternating rows. */
+.mac-table-row:nth-child(odd):not(.mac-table-head) > span {
+  background: var(--alt-row);
+}
+
+.mac-table-row[aria-selected='true'] > span {
+  background: var(--selection);
+  color: #fff;
+}
+
+.mac-table-row[aria-selected='true'] > span:first-child {
+  border-radius: 6px 0 0 6px;
+}
+
+.mac-table-row[aria-selected='true'] > span:last-child {
+  border-radius: 0 6px 6px 0;
+}
+
+[data-window-inactive] .mac-table-row[aria-selected='true'] > span {
+  background: var(--selection-off);
+  color: var(--label);
+}
+
+.mac-table:focus-visible .mac-table-row[data-cursor] > span {
+  box-shadow: inset 0 0 0 2px var(--focus);
+}
+
+.mac-table-empty {
+  grid-column: 1 / -1;
+  padding: 24px;
+  text-align: center;
+  color: var(--label-2);
+}
+
+.mac-text-field {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex-grow: 1;
+}
+
+.mac-field-error {
+  font-size: 11px;
+  color: var(--red);
+}
+
+.mac-sheet-header .mac-sheet-title {
+  flex-shrink: 0;
+  white-space: nowrap;
+}

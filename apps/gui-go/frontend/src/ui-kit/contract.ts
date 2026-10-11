@@ -201,6 +201,10 @@ export type MenuEntry =
       /** Trailing count, already formatted by the caller, e.g. items in a saved view. */
       count?: string
       swatch?: TagColor
+      /** Marks the current choice, e.g. a tag's colour. */
+      checked?: boolean
+      /** A submenu, e.g. "Merge into ›". */
+      children?: MenuEntry[]
     }
   | { id: string; kind: 'separator' }
 
@@ -572,6 +576,12 @@ export interface IconProps {
   tone?: 'secondary' | 'highlight'
 }
 
+/** A colour dot, e.g. a tag's colour beside its name; without `label` it is decorative. */
+export interface ColorDotProps {
+  color?: TagColor
+  label?: string
+}
+
 /** A floating bar of the main actions at the bottom of a pane. */
 export interface ActionBarProps {
   children: ReactNode
@@ -586,6 +596,71 @@ export interface ContentUnavailableProps {
   description?: string
   /** Actions or choices below the description. */
   children?: ReactNode
+}
+
+/**
+ * A modal pane for a focused task: macOS sheet dropping from the toolbar, WinUI ContentDialog. Each
+ * skin traps focus inside it and returns focus to the control that opened it on close.
+ */
+export interface SheetProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  title: string
+  /** Controls beside the title, e.g. a filter field. */
+  header?: ReactNode
+  children: ReactNode
+  /** Leading footer content, e.g. add/remove buttons and a status line. */
+  footer?: ReactNode
+  /** The default button that closes the sheet ("Done"). */
+  done: LabelledAction
+}
+
+export interface TableColumn {
+  id: string
+  label: string
+  align?: 'start' | 'end' | 'center'
+  /** Takes the remaining width. */
+  fill?: boolean
+}
+
+export interface TableRow {
+  id: string
+  cells: Record<string, ReactNode>
+}
+
+/**
+ * A multi-column table with row selection (NSTableView with alternating rows; WinUI ListView with
+ * columns). Keyboard as `GroupedList`: Up/Down, Shift extends, the platform select-all shortcut,
+ * the platform delete key calls `onDelete`.
+ */
+export interface TableProps {
+  label: string
+  columns: TableColumn[]
+  rows: TableRow[]
+  selection: string[]
+  onSelectionChange: (ids: string[]) => void
+  onDelete?: (ids: string[]) => void
+  contextMenu?: {
+    items: (ids: string[]) => MenuEntry[]
+    onAction: (id: string, ids: string[]) => void
+  }
+  /** Shown instead of the rows while there are none. */
+  empty?: string
+}
+
+/** A single-line text field, e.g. renaming in place. Return calls `onSubmit`, Escape `onCancel`. */
+export interface TextFieldProps {
+  label: string
+  value: string
+  onValueChange: (value: string) => void
+  onSubmit?: (value: string) => void
+  onCancel?: () => void
+  placeholder?: string
+  maxLength?: number
+  /** Focus the field when it appears. */
+  autoFocus?: boolean
+  /** Shown under the field, e.g. "#design already exists." */
+  error?: string
 }
 
 export interface StepListStep {
@@ -651,7 +726,11 @@ export declare function Text(props: TextProps): ReactNode
 export declare function KindBadge(props: KindBadgeProps): ReactNode
 export declare function GroupedList(props: GroupedListProps): ReactNode
 export declare function Icon(props: IconProps): ReactNode
+export declare function ColorDot(props: ColorDotProps): ReactNode
 export declare function ActionBar(props: ActionBarProps): ReactNode
 export declare function ContentUnavailable(props: ContentUnavailableProps): ReactNode
+export declare function Sheet(props: SheetProps): ReactNode
+export declare function Table(props: TableProps): ReactNode
+export declare function TextField(props: TextFieldProps): ReactNode
 export declare function StepList(props: StepListProps): ReactNode
 export declare function InsetList(props: InsetListProps): ReactNode

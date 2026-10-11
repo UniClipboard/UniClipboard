@@ -129,7 +129,11 @@ export function HistoryKitDetail({
   const sendable = !item.isUnavailable && (delivery === null || delivery.source.tag === 'local')
 
   return (
-    <div className="relative flex min-h-0 flex-1 flex-col" data-testid="clipboard-detail">
+    <div
+      className="relative flex min-h-0 flex-1 flex-col"
+      data-testid="clipboard-detail"
+      data-entry-id={item.id}
+    >
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-6 pb-28 pt-1">
         <div className="flex shrink-0 items-center gap-2">
           <KindBadge kind={kind} label={t(`history.type.${kind}`)} variant="pill" />

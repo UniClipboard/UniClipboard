@@ -424,20 +424,31 @@ try {
           await page.goto(`${base}/?scheme=${scheme}&window-material=liquid-glass`)
           const native = page.getByTestId(`board-${scheme}`)
           await native.waitFor()
+          // Measured only in the native branch: a fallback page would pass trivially.
+          assert.equal(
+            await page.evaluate(() => document.documentElement.dataset.windowMaterial ?? null),
+            'native-liquid-glass',
+            `${scheme} board is in native mode`
+          )
           await native.getByRole('button', { name: /^Tag/ }).click()
           const menu = page.getByRole('menu')
           await menu.waitFor()
+          // rgb() is opaque, rgba() carries alpha; anything else fails below.
           const alpha = await menu.evaluate(el => {
-            const match = getComputedStyle(el).backgroundColor.match(/rgba?\(([^)]+)\)/)
-            const parts = match ? match[1].split(',').map(Number) : []
-            return parts.length === 4 ? parts[3] : 1
+            const background = getComputedStyle(el).backgroundColor
+            const rgba = background.match(/^rgba\(([^)]+)\)$/)
+            if (rgba) {
+              const parts = rgba[1].split(',').map(Number)
+              return parts.length === 4 ? parts[3] : null
+            }
+            return /^rgb\([^)]+\)$/.test(background) ? 1 : null
           })
           await page.screenshot({
             path: path.join(output, `${skin}-native-sim-menu-${scheme}.png`),
           })
           await page.keyboard.press('Escape')
           assert.ok(
-            alpha >= 0.9,
+            alpha !== null && alpha >= 0.9,
             `${scheme} menu background alpha ${alpha} over the native material`
           )
         }
@@ -462,6 +473,29 @@ try {
         assert.equal(state.sidebar, 'css-fallback', 'the sidebar uses its CSS fallback')
       }
     )
+  }
+
+  if (skin === 'macos') {
+    await check('reduce motion stops the skin\'s transitions and animations (media emulated)', async () => {
+      await page.emulateMedia({ reducedMotion: 'reduce' })
+      await page.goto(`${base}/?scheme=light`)
+      const board = page.getByTestId('board-light')
+      await board.waitFor()
+      await board.getByRole('button', { name: /^Tag/ }).click()
+      await page.getByRole('menu').waitFor()
+      const moving = await page.evaluate(() =>
+        Array.from(document.querySelectorAll('[class*="mac-"]'))
+          .filter(el => {
+            const style = getComputedStyle(el)
+            const durations = style.transitionDuration.split(',').map(d => parseFloat(d))
+            return durations.some(d => d > 0) || style.animationName !== 'none'
+          })
+          .map(el => el.className)
+      )
+      await page.keyboard.press('Escape')
+      await page.emulateMedia({ reducedMotion: null })
+      assert.deepEqual(moving, [], 'elements still animating with reduced motion')
+    })
   }
 
   for (const scheme of ['both', 'light', 'dark']) {

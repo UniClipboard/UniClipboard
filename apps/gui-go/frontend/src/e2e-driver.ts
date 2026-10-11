@@ -137,6 +137,7 @@ async function run() {
   if (phase === 'single-image-ui') return runSingleImageUiScenario()
   if (phase === 'scheduler') return runSchedulerScenario()
   if (phase === 'wake') return // the orchestrator drives this launch through the control file
+  if (phase === 'external') return // an external CDP driver owns this launch; the default scenario would race it
   if (phase === 'quick-panel-settings') return runQuickPanelSettingsScenario()
   if (phase === 'native-panel') return runNativePanelScenario()
   if (phase === 'file-ops') return runFileOpsScenario()

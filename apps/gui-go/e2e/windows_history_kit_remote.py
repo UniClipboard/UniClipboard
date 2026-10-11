@@ -309,6 +309,7 @@ Set-Location '{app}'
         node_seed(PASSPHRASE, 'texts', profile, app, str(seeded))
 
         launcher = sandbox_env(profile, f"$env:UC_GUI_GO_E2E_BROWSER_ARGS='--remote-debugging-port={debug_port}'; "
+                                        f"$env:UC_GUI_GO_E2E_PHASE='external'; "
                                         f"$env:UC_GUI_GO_EXIT_MODE='full'; $env:UC_GUI_GO_E2E_VISIBLE='1'; "
                                         f"$env:UC_GUI_GO_EVIDENCE='{run_dir}\\native.jsonl'")
         if inside:

@@ -14,8 +14,10 @@ import { Pane, SplitView, Text, UiRoot, type MenuEntry } from '@/ui-kit'
 import { HistoryKitDeleteAlert } from './HistoryKitDeleteAlert'
 import { HistoryKitDetail } from './HistoryKitDetail'
 import { HistoryKitFilters } from './HistoryKitFilters'
+import { HistoryKitFirstLaunch } from './HistoryKitFirstLaunch'
 import { HistoryKitList } from './HistoryKitList'
 import { HistoryKitNoResults } from './HistoryKitNoResults'
+import { HistoryKitQueryFailed } from './HistoryKitQueryFailed'
 import { HistoryKitScopeBar } from './HistoryKitScopeBar'
 import { HistoryKitSearchField } from './HistoryKitSearchField'
 import { HistoryKitSelection } from './HistoryKitSelection'
@@ -60,7 +62,9 @@ export default function HistoryKitPage() {
     fetchCounts: countSearch,
     onCreateTag: c.historyTags.available ? c.createTagForSearch : undefined,
   })
-  const noResults = c.isSearchActive && !c.searchLoading && c.items.length === 0
+  const noResults = c.isSearchActive && !c.searchLoading && !c.queryFailure && c.items.length === 0
+  const emptyHistory =
+    !c.isSearchActive && !c.searchLoading && !c.queryFailure && c.items.length === 0
   const relaxations = useZeroResultRelaxations({
     active: noResults,
     chips: search.chips,
@@ -233,7 +237,11 @@ export default function HistoryKitPage() {
                 </Text>
               </div>
             )}
-            {noResults ? (
+            {c.queryFailure ? (
+              <HistoryKitQueryFailed reason={c.queryFailure} onRetry={c.retryQuery} />
+            ) : emptyHistory ? (
+              <HistoryKitFirstLaunch />
+            ) : noResults ? (
               <HistoryKitNoResults
                 filterCount={search.chips.length}
                 relaxations={relaxations}
@@ -269,6 +277,7 @@ export default function HistoryKitPage() {
             ) : (
               <HistoryKitDetail
                 item={c.selectedItem}
+                emptyHistory={emptyHistory}
                 tagging={tagging}
                 copySuccess={c.copySuccessId !== null && c.copySuccessId === c.selectedId}
                 onCopy={() => c.selectedId && void c.handleCopy(c.selectedId)}

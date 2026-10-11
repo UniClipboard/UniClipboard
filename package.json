@@ -31,6 +31,8 @@
     "check:cargo-audit-exceptions": "node scripts/architecture/check-cargo-audit-exceptions.mjs",
     "e2e:custom-relays": "node apps/gui-go/frontend/e2e/custom-relays.e2e.mjs",
     "e2e:relay-overview": "node apps/gui-go/frontend/e2e/relay-overview.e2e.mjs",
+    "e2e:ui-kit": "node apps/gui-go/frontend/e2e/ui-kit-run.mjs",
+    "check:ui-kit-bundles": "node apps/gui-go/frontend/e2e/ui-kit-bundle-check.mjs",
     "doctor": "bun run --cwd apps/gui-go/frontend doctor",
     "check:host-structure": "node scripts/architecture/check-host-events.mjs && cd apps/gui-go && go run ./cmd/hostcontract lint && go run ./cmd/hostcontract e2e-table -check && go run ./cmd/hostcontract docs -check"
   },

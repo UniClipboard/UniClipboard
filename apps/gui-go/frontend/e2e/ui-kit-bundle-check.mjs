@@ -5,13 +5,19 @@
 // The result covers the gallery entry only; the full app still bundles @base-ui/react through the
 // existing shared components in src/components/ui.
 import assert from 'node:assert/strict'
-import { mkdtemp, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { build, loadConfigFromFile } from 'vite'
 
+// Vite reads its config and the entry relative to the frontend, whatever directory runs this.
+const invokedFrom = process.cwd()
+process.chdir(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'))
 const input = 'e2e/fixtures/ui-kit-gallery.tsx'
-const output = process.argv[2] || (await mkdtemp(path.join(tmpdir(), 'ui-kit-bundles-')))
+const output = process.argv[2]
+  ? path.resolve(invokedFrom, process.argv[2])
+  : await mkdtemp(path.join(tmpdir(), 'ui-kit-bundles-'))
 const forbidden = {
   windows: [/\/src\/ui-kit\/skins\/macos\//, /node_modules\/@base-ui\//],
   macos: [
@@ -92,6 +98,9 @@ for (const platform of ['windows', 'macos']) {
     missing: missing.map(String),
   }
   await writeFile(path.join(output, `${platform}-modules.txt`), `${result.modules.join('\n')}\n`)
+  report[platform].marker = (
+    await readFile(path.join(output, platform, '.ui-platform'), 'utf8').catch(() => 'missing')
+  ).trim()
 }
 for (const [label, platform] of [
   ['unset', undefined],
@@ -107,15 +116,14 @@ console.log(`module lists and report in ${output}`)
 assert.equal(report.windows.built, true, 'the Windows gallery must build')
 assert.deepEqual(report.windows.leaked, [], 'the Windows bundle contains macOS-only modules')
 assert.deepEqual(report.windows.missing, [])
+assert.equal(report.windows.marker, 'windows', 'the Windows bundle records its target')
 if (report.macos.built) {
   assert.deepEqual(report.macos.leaked, [], 'the macOS bundle contains Windows-only modules')
   assert.deepEqual(report.macos.missing, [])
+  assert.equal(report.macos.marker, 'macos', 'the macOS bundle records its target')
 } else {
   assert.match(report.macos.error, /macos skin of @\/ui-kit is missing/)
   console.log('macOS skin not present in this tree: the macOS bundle check is NOT RUN')
 }
 assert.match(report['platform-unset'].error, /needs UC_UI_PLATFORM=windows\|macos \(got nothing\)/)
-assert.match(
-  report['platform-unknown'].error,
-  /needs UC_UI_PLATFORM=windows\|macos \(got "linux"\)/
-)
+assert.match(report['platform-unknown'].error, /UC_UI_PLATFORM=windows\|macos \(got "linux"\)/)

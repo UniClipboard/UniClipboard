@@ -1,8 +1,9 @@
 // Browser check of the platform UI kit gallery (e2e/fixtures/ui-kit-gallery.tsx).
 // Every interaction is located by ARIA role and name, so the same script verifies that both
-// skins expose the same public semantics. Serve one skin first, then run this script:
-//   UC_UI_PLATFORM=windows UI_FIXTURE_ENTRY=e2e/fixtures/ui-kit-gallery.tsx UI_FIXTURE_PORT=1460 node e2e/visual-effects-server.mjs
-//   UI_KIT_TEST_URL=http://127.0.0.1:1460 node e2e/ui-kit-browser.mjs
+// skins expose the same public semantics. Run it through the entry that serves the gallery:
+//   node e2e/ui-kit-run.mjs --platform windows|macos
+// UI_KIT_PLATFORM is the expected skin; the run fails when the served skin or the bundle's
+// .ui-platform marker differs from it.
 // A browser run is not a native WebView run: Windows WebView2 and macOS WKWebView are not covered.
 import assert from 'node:assert/strict'
 import { mkdir, writeFile } from 'node:fs/promises'
@@ -10,6 +11,13 @@ import path from 'node:path'
 
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright')
 const base = process.env.UI_KIT_TEST_URL || 'http://127.0.0.1:1460'
+const expectedPlatform = process.env.UI_KIT_PLATFORM
+if (!['windows', 'macos'].includes(expectedPlatform ?? '')) {
+  console.error(
+    'UI_KIT_PLATFORM=windows|macos is required: run node e2e/ui-kit-run.mjs --platform <platform>'
+  )
+  process.exit(2)
+}
 const output = process.env.UI_KIT_TEST_OUTPUT || '/tmp/uc-ui-kit-verification'
 await mkdir(output, { recursive: true })
 const browser = await chromium.launch({ headless: true, channel: process.env.PLAYWRIGHT_CHANNEL })
@@ -43,6 +51,12 @@ try {
   // The first load of a cold preview server can take longer than one interaction.
   await board.waitFor({ timeout: 30000 })
   const skin = await page.locator('[data-ui-skin]').first().getAttribute('data-ui-skin')
+  await check('the served bundle is the requested platform', async () => {
+    assert.equal(skin, expectedPlatform, 'data-ui-skin of the rendered UiRoot')
+    const marker = await page.request.get(`${base}/.ui-platform`)
+    assert.equal(marker.ok(), true, 'the gallery bundle has a .ui-platform marker')
+    assert.equal((await marker.text()).trim(), expectedPlatform, '.ui-platform of the bundle')
+  })
   const log = board.getByTestId('event-log')
   const expectLog = async text => assert.equal(await log.textContent(), text)
   const focusedName = () =>

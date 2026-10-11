@@ -11,7 +11,7 @@ import {
 // E2E-only scenario driver. It runs inside the real Wails WebView, interacts
 // with the shared React DOM and reports each assertion to the native test
 // service. It is bundled only when VITE_GUI_GO_E2E=1.
-import { Call, Events } from '@wailsio/runtime'
+import { Call, Events, Window } from '@wailsio/runtime'
 import { daemonClient } from '@/api/daemon/client'
 import { updateSettings } from '@/api/daemon/settings'
 import { setQuickPanelEnabled, setQuickPanelPosition } from '@/api/tauri-command/settings'
@@ -20,6 +20,7 @@ import { subscribeWindowMaterial } from '@/host/window-material'
 import i18n from '@/i18n'
 import { daemonWs } from '@/lib/daemon-ws'
 import { commands } from '@/lib/ipc'
+import { setUiScale } from '@/lib/ui-scale'
 import { isExpectedCommandError } from '@/observability/errors'
 
 const windowName = 'main'
@@ -542,6 +543,7 @@ async function runHistoryKitScenario() {
     link: string
     texts: string[]
     image: { dimensions: string }
+    zoom: boolean
     shotPauseMs: number
   }
   const shot = async (name: string, detail?: unknown) => {
@@ -824,22 +826,56 @@ async function runHistoryKitScenario() {
     )
   )
   await shot('tag-field')
+  // Evidence by stage, so a missing chip names where it stopped: which entry the list and the
+  // detail show around Enter, and the tag requests with their timing (paths only, no bodies).
+  const tagRequests: Array<{ method: string; path: string; status?: number; ms: number[] }> = []
+  const fetchBeforeTag = window.fetch
+  const tagStart = performance.now()
+  window.fetch = async (input, init) => {
+    const path = new URL(String(input instanceof Request ? input.url : input)).pathname
+    const entry = {
+      method: init?.method ?? (input instanceof Request ? input.method : 'GET'),
+      path,
+      ms: [Math.round(performance.now() - tagStart)],
+    } as (typeof tagRequests)[number]
+    if (/tag|search\/query/.test(path)) tagRequests.push(entry)
+    const response = await fetchBeforeTag(input, init)
+    entry.status = response.status
+    entry.ms.push(Math.round(performance.now() - tagStart))
+    return response
+  }
+  const stage = () => {
+    const detail = $('[data-testid="clipboard-detail"]')
+    return {
+      listSelected: selected().map(row => row.dataset.itemId),
+      detailEntry: detail?.dataset.entryId ?? null,
+      detailChips: Array.from(detail?.querySelectorAll('.mac-tag') ?? []).map(c => c.textContent),
+      tagGroup: !!detail?.querySelector('[role="group"]'),
+      tagTotal: $('nav')?.textContent?.match(/· (\d+)/)?.[1] ?? null,
+    }
+  }
+  const beforeEnter = stage()
   key(tagField, 'Enter')
   const chipText = `#${tagName}`
-  await waitFor(
+  const chipShown = await waitFor(
     'tag chip in the detail',
     () =>
       Array.from(document.querySelectorAll('[data-testid="clipboard-detail"] .mac-tag')).some(c =>
         c.textContent?.includes(chipText)
       ),
     30000
-  ).catch(error => {
-    const detail = $('[data-testid="clipboard-detail"]')
-    throw new Error(
-      `${error}; detail: ${detail?.innerText.slice(0, 300)}; tags: ${detail?.querySelector('[role="group"]')?.outerHTML.slice(0, 600)}`
-    )
+  ).then(
+    () => true,
+    () => false
+  )
+  window.fetch = fetchBeforeTag
+  await record('kit-tag-created', chipShown, {
+    tag: chipText,
+    beforeEnter,
+    after: stage(),
+    requests: tagRequests,
   })
-  await record('kit-tag-created', true, { tag: chipText })
+  if (!chipShown) throw new Error('timeout: tag chip in the detail (see kit-tag-created)')
 
   // Command-click adds a second row: the detail becomes the selection summary.
   const other = historyRows().find(row => row.dataset.itemId !== pinnedId)!
@@ -1042,6 +1078,138 @@ async function runHistoryKitScenario() {
     'list again',
     () => $('[role="option"][data-item-id]') && $('[data-testid="clipboard-detail"]')
   )
+
+  // Narrowest window (the host's minimum size), then the same at 150% interface scale: nothing
+  // spills out of the page, the toolbar and the action bar keep their commands on screen, the list
+  // keeps keyboard focus, and the keyboard reaches the last row with the selection in view.
+  const layoutCheck = () => {
+    // What is on screen: the layout viewport, cut to the visual one (a magnified WKWebView keeps
+    // its layout width while showing only part of it).
+    const visible = {
+      width: Math.min(document.documentElement.clientWidth, visualViewport?.width ?? innerWidth),
+      height: Math.min(
+        document.documentElement.clientHeight,
+        visualViewport?.height ?? innerHeight
+      ),
+    }
+    const viewport = {
+      layout: [document.documentElement.clientWidth, document.documentElement.clientHeight],
+      visual: [
+        Math.round(visualViewport?.width ?? innerWidth),
+        Math.round(visualViewport?.height ?? innerHeight),
+      ],
+    }
+    const outside = (
+      selector: string,
+      bounds: DOMRect | { left: number; right: number; top: number; bottom: number }
+    ) =>
+      Array.from(document.querySelectorAll<HTMLElement>(selector))
+        .filter(el => el.offsetParent !== null)
+        .filter(el => {
+          const r = el.getBoundingClientRect()
+          return (
+            r.left < bounds.left - 0.5 ||
+            r.right > bounds.right + 0.5 ||
+            r.top < bounds.top - 0.5 ||
+            r.bottom > bounds.bottom + 0.5
+          )
+        })
+        .map(
+          el => el.getAttribute('aria-label') ?? el.textContent?.trim().slice(0, 24) ?? el.className
+        )
+    const screen = { left: 0, right: visible.width, top: 0, bottom: visible.height }
+    const bar = $('.mac-pane-actionbar')?.getBoundingClientRect()
+    return {
+      viewport,
+      scale: Math.round(devicePixelRatio * 100) / 100,
+      pageOverflowX: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      toolbarOffscreen: outside(
+        '.mac-split-toolbar button, .mac-split-toolbar [role="radio"], .mac-split-toolbar input',
+        screen
+      ),
+      actionBarOffscreen: bar
+        ? [
+            ...outside('.mac-pane-actionbar > *:not(.mac-actionbar-hint)', bar),
+            ...outside('.mac-pane-actionbar', screen),
+          ]
+        : ['no action bar'],
+      panesOffscreen: outside('[data-pane]', screen),
+      panes: Array.from(document.querySelectorAll<HTMLElement>('[data-pane]')).map(pane => [
+        pane.dataset.pane,
+        Math.round(pane.getBoundingClientRect().width),
+      ]),
+    }
+  }
+  const layoutOk = (state: ReturnType<typeof layoutCheck>) =>
+    state.pageOverflowX <= 0 &&
+    state.toolbarOffscreen.length === 0 &&
+    state.actionBarOffscreen.length === 0 &&
+    state.panesOffscreen.length === 0 &&
+    state.panes.every(([, width]) => Number(width) > 0)
+  const reachLastRow = async () => {
+    list().focus()
+    key(list(), 'End')
+    const last = await waitFor('last row selected', () => {
+      const rows = historyRows()
+      const row = selected()[0]
+      return row && rows.length > 0 && row === rows[rows.length - 1] ? row : null
+    })
+    const scroller =
+      list().closest('.mac-glist')?.getBoundingClientRect() ?? list().getBoundingClientRect()
+    const r = last.getBoundingClientRect()
+    return {
+      focused: document.activeElement === list(),
+      inView: r.top >= scroller.top - 0.5 && r.bottom <= scroller.bottom + 0.5,
+    }
+  }
+  const originalSize = await Window.Size()
+  await Window.SetSize(900, 600)
+  await waitFor('narrow window', () => innerWidth <= 905)
+  await sleep(600)
+  const narrow = layoutCheck()
+  const narrowKeys = await reachLastRow()
+  await record('kit-narrow-window', layoutOk(narrow) && narrowKeys.focused && narrowKeys.inView, {
+    ...narrow,
+    ...narrowKeys,
+  })
+  await shot('narrow')
+  // The compact window hides the sidebar; its toolbar toggle still reaches it.
+  // Queried each time: the toggle moves into the sidebar's header when it opens.
+  const sidebarToggle = () => $('[aria-expanded][aria-label]:is(.mac-split-toggle)')!
+  sidebarToggle().click()
+  const drawer = await waitFor('sidebar in the compact window', () => {
+    const nav = $('[data-surface="sidebar"]')
+    const r = nav?.getBoundingClientRect()
+    return r && r.width > 100 && r.left >= -0.5 && r.right <= innerWidth + 0.5 ? r : null
+  })
+  const drawerLayout = layoutCheck()
+  await record('kit-narrow-sidebar', drawerLayout.pageOverflowX <= 0, {
+    sidebarWidth: Math.round(drawer.width),
+    ...drawerLayout,
+  })
+  await shot('narrow-sidebar')
+  sidebarToggle().click()
+  await waitFor('sidebar hidden again', () => $('[data-sidebar-hidden]'))
+  // Interface scale (Settings > Appearance) at the narrowest window: off by default, because the
+  // macOS host magnifies the WKWebView without relaying out (see history_kit_ui_run.py --zoom).
+  if (seeded.zoom) {
+    setUiScale(1.5)
+    await waitFor('150% scale', () => (visualViewport?.width ?? innerWidth) <= 905 / 1.4)
+    await sleep(600)
+    const zoomed = layoutCheck()
+    const zoomedKeys = await reachLastRow()
+    await record('kit-zoom-150', layoutOk(zoomed) && zoomedKeys.focused && zoomedKeys.inView, {
+      ...zoomed,
+      ...zoomedKeys,
+    })
+    await shot('narrow-zoom-150')
+    setUiScale(1)
+  }
+  await Window.SetSize(originalSize.width, originalSize.height)
+  await waitFor('window restored', () => innerWidth > 905)
+  list().focus()
+  key(list(), 'Home')
+  await sleep(300)
 
   // Search (design MB1-MB3): text with match highlighting, a device token from the suggestions,
   // then a search with no results and its widening choices.

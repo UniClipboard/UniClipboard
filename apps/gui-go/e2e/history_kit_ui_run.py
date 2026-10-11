@@ -140,6 +140,9 @@ def main():
     parser.add_argument('--out', type=Path, required=True)
     parser.add_argument('--shots', action='store_true',
                         help='capture the shot:<name> steps, alone and over a striped backdrop (needs Screen Recording)')
+    parser.add_argument('--zoom', action='store_true',
+                        help='also check 150%% interface scale at the narrowest window; fails today: the macOS host '
+                             'magnifies the WKWebView (setMagnification) instead of laying the page out again')
     args = parser.parse_args()
     out = args.out.resolve()
     out.mkdir(parents=True, exist_ok=True)
@@ -149,7 +152,7 @@ def main():
     env = isolated_env(home, profile, {'PATH': path})
     evidence = out / 'history-kit-native.jsonl'
     evidence.write_text('')
-    secret = json.dumps({'code': CODE, 'link': LINK, 'texts': TEXTS, 'image': {'dimensions': f'{IMAGE_SIZE[0]} × {IMAGE_SIZE[1]}'}, 'shotPauseMs': SHOT_PAUSE_MS if args.shots else 0})
+    secret = json.dumps({'code': CODE, 'link': LINK, 'texts': TEXTS, 'image': {'dimensions': f'{IMAGE_SIZE[0]} × {IMAGE_SIZE[1]}'}, 'shotPauseMs': SHOT_PAUSE_MS if args.shots else 0, 'zoom': args.zoom})
     gui_env = isolated_env(home, profile, {'PATH': path, 'UC_GPUI_QUICK_PANEL': '0', 'UC_GUI_GO_ISOLATED': '1',
                                            'UC_GUI_GO_EVIDENCE': str(evidence), 'UC_GUI_GO_E2E_PHASE': 'history-kit',
                                            'UC_GUI_GO_E2E_SECRET': secret, 'UC_GUI_GO_EXIT_MODE': 'full',

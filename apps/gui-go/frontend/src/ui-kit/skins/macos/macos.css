@@ -2271,3 +2271,29 @@
   margin-top: 4px;
   font-size: 11px;
 }
+
+/* Icon-only menus share the capsule with toolbar buttons and look like its items. */
+.mac-toolbar-capsule .mac-btn[data-icon-only] {
+  width: 32px;
+  height: 26px;
+  border-radius: 13px;
+  background: transparent;
+  box-shadow: none;
+  color: var(--label);
+}
+
+.mac-toolbar-capsule .mac-btn[data-icon-only][data-popup-open] {
+  background: var(--fill-2);
+}
+
+/* The toolbar search field (design MA2): 300 pt, narrowing with the window. */
+.mac-split-toolbar .mac-search {
+  width: 300px !important;
+  min-width: 120px;
+  flex-shrink: 1;
+}
+
+.mac-split-toolbar .mac-toolbar-bar {
+  min-width: 0;
+  flex-shrink: 1;
+}

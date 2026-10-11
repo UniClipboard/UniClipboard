@@ -8,6 +8,7 @@
 // Only the macOS skin of `@/ui-kit` and the host window module read this; business code never does.
 export type WindowMaterial = 'liquid-glass' | 'visual-effect' | 'none'
 
+// Read once at startup (src/host/main.ts imports this module first): routing drops the query string.
 const reported = new URLSearchParams(window.location.search).get('window-material')
 const material: WindowMaterial =
   reported === 'liquid-glass' || reported === 'visual-effect' ? reported : 'none'

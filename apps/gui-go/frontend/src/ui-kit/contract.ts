@@ -361,7 +361,12 @@ export interface SplitViewProps {
   title: string
   /** Secondary text after the title, e.g. the item count. */
   subtitle?: string
-  /** Controls at the trailing end of the toolbar band (search field, toolbar buttons). */
+  /**
+   * The window's search field (a `SearchField`). macOS: first item of the toolbar's trailing group;
+   * Windows: centred in the title bar.
+   */
+  search?: ReactNode
+  /** Controls at the trailing end of the toolbar band, after the search field. */
   toolbar?: ReactNode
   children: ReactNode
 }

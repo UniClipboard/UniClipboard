@@ -16,6 +16,7 @@ import { daemonClient } from '@/api/daemon/client'
 import { updateSettings } from '@/api/daemon/settings'
 import { setQuickPanelEnabled, setQuickPanelPosition } from '@/api/tauri-command/settings'
 import { isPermissionGranted, requestPermission, sendNotification } from '@/host/notification'
+import { subscribeWindowMaterial } from '@/host/window-material'
 import i18n from '@/i18n'
 import { daemonWs } from '@/lib/daemon-ws'
 import { commands } from '@/lib/ipc'
@@ -65,11 +66,35 @@ function fill(selector: string, value: string) {
 }
 
 const link = (href: string) => $(`a[href="${href}"]`)
+// The History page built on `@/ui-kit` (macOS builds) navigates with sidebar buttons, not links.
+const kitNavLabels: Record<string, string> = {
+  '/settings': 'history.kit.settings',
+  '/devices': 'history.kit.pairDevice',
+}
+const navControl = (href: string) =>
+  link(href) ??
+  // The row text may end with a shortcut hint (`Settings… ⌘,`).
+  Array.from(document.querySelectorAll<HTMLElement>('nav button')).find(
+    button =>
+      kitNavLabels[href] && button.textContent?.trim().startsWith(i18n.t(kitNavLabels[href]))
+  ) ??
+  null
 const devicesPage = () => $('[data-testid="devices-add-device"]')
+// History rows of either page: the existing cards, or the `@/ui-kit` list's options.
+const ROW_SELECTOR = '[data-testid="history-card"], [role="option"][data-item-id]'
+const historyRows = () => Array.from(document.querySelectorAll<HTMLElement>(ROW_SELECTOR))
+const historyRow = (id: string) =>
+  $(`[data-testid="history-card"][data-entry-id="${id}"], [role="option"][data-item-id="${id}"]`)
+// Opens a row the way a pointer does on that page.
+function openRow(row: HTMLElement) {
+  const button = row.dataset.testid === 'history-card' ? row.querySelector('button') : null
+  if (button) button.click()
+  else row.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 }))
+}
 // The history route with the sidebar shell: independent of list content and locale.
 const mainLayout = () =>
   location.pathname.startsWith('/history') &&
-  link('/settings') &&
+  navControl('/settings') &&
   !$('[data-testid="setup-entry-create"]') &&
   !$('#unlock-passphrase') &&
   !$('[data-testid="unlock-content"]')
@@ -107,6 +132,7 @@ async function run() {
   if (phase === 'unlock-wrong') return runUnlockWrongScenario()
   if (phase === 'unlock-restart') return runUnlockRestartScenario()
   if (phase === 'history-live') return runHistoryLiveScenario()
+  if (phase === 'history-kit') return runHistoryKitScenario()
   if (phase === 'single-image-ui') return runSingleImageUiScenario()
   if (phase === 'scheduler') return runSchedulerScenario()
   if (phase === 'wake') return // the orchestrator drives this launch through the control file
@@ -185,7 +211,7 @@ async function run() {
   await waitFor('home', mainLayout)
   await record('home', true)
   const click = (href: string) => () =>
-    void waitFor(`link ${href}`, () => link(href)).then(a => a.click())
+    void waitFor(`link ${href}`, () => navControl(href)).then(a => a.click())
   // At this window width the shared layout shows devices as a panel of the history route.
   await navigate(click('/devices'), '/', devicesPage, 'devices', true)
   const beforeSettings = location.pathname
@@ -207,7 +233,7 @@ async function run() {
   await control('reopen-main')
   // The WebView survived the hide/show cycle with its React state and host bindings intact.
   const alive = await settle(HostService.GetDeviceMeta())
-  await record('webview-alive-after-reopen', alive.status === 'ok' && !!link('/settings'))
+  await record('webview-alive-after-reopen', alive.status === 'ok' && !!navControl('/settings'))
   // Second windows: the real updater (dev preview) and quick panel pages.
   await control('open-updater')
   await sleep(3000)
@@ -360,7 +386,9 @@ async function runUnlockWrongScenario() {
   await record('right-passphrase-unlocked', (await contentUnlocked()) === true)
   await waitFor('content-lock-changed event', () => lockEvents > 0)
   offLock()
-  await record('content-lock-changed-event', lockEvents > 0, { events: lockEvents })
+  await record('content-lock-changed-event', lockEvents > 0, {
+    events: lockEvents,
+  })
   await sleep(1500)
   await control('exit')
 }
@@ -445,8 +473,7 @@ async function runUnlockRestartScenario() {
 async function runHistoryLiveScenario() {
   const marker = String(await Call.ByName('main.EvidenceService.Secret'))
   await reachMainLayout()
-  const cards = () =>
-    Array.from(document.querySelectorAll<HTMLElement>('[data-testid="history-card"]'))
+  const cards = historyRows
   const withMarker = () => cards().find(card => card.textContent?.includes(marker))
   // Every raw frame the socket delivers after arming, whatever the topic, so the evidence names what drove the update.
   const socket = daemonWs as unknown as {
@@ -470,7 +497,7 @@ async function runHistoryLiveScenario() {
   const loadId = Math.random().toString(36).slice(2)
   ;(window as unknown as { __e2eLoadId: string }).__e2eLoadId = loadId
   const route = location.pathname
-  await waitFor('history list rendered', () => $('[data-testid="history-card"]')) // the orchestrator seeds one entry
+  await waitFor('history list rendered', () => $(ROW_SELECTOR)) // the orchestrator seeds one entry
   await sleep(1500) // let the initial fetch settle before arming
   armed = true // before the step is reported: the orchestrator injects the entry once it sees the step
   await record('history-watch-armed', !withMarker(), {
@@ -506,6 +533,322 @@ async function runHistoryLiveScenario() {
 // system clipboard (the daemon sends one entry per file and rejects directories), which isolated runs disable.
 // So this scenario pins down the boundary instead of faking a consumer: the single image decodes in the DOM and
 // no `/host-file` request was made for it.
+// The History page built on `@/ui-kit` (macOS builds) against the real daemon of an isolated profile.
+// The orchestrator (e2e/history_kit_ui_run.py) seeds synthetic entries and passes their texts as the
+// secret; `shot:<name>` steps ask it to capture the window, so the driver pauses after each.
+async function runHistoryKitScenario() {
+  const seeded = JSON.parse(String(await Call.ByName('main.EvidenceService.Secret'))) as {
+    code: string
+    link: string
+    texts: string[]
+    shotPauseMs: number
+  }
+  const shot = async (name: string, detail?: unknown) => {
+    await record(`shot:${name}`, true, detail)
+    await sleep(seeded.shotPauseMs)
+  }
+  // Shortcut hooks match the physical key (`code`), so letters carry it too.
+  const key = (target: EventTarget, name: string, init: KeyboardEventInit = {}) =>
+    target.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        key: name,
+        code: /^[a-z]$/i.test(name) ? `Key${name.toUpperCase()}` : name,
+        bubbles: true,
+        cancelable: true,
+        ...init,
+      })
+    )
+  // The app theme changes the way a user changes it: Settings > Appearance, then back to History.
+  const setTheme = async (theme: 'light' | 'dark' | 'system') => {
+    navControl('/settings')!.click()
+    await waitFor('settings page', () => $('[data-testid="settings-page-header"]'))
+    const appearance = await waitFor('appearance category', () =>
+      Array.from(document.querySelectorAll<HTMLElement>('button')).find(
+        b => b.textContent?.trim() === i18n.t('settings.categories.appearance')
+      )
+    )
+    appearance.click()
+    const radio = await waitFor('theme choice', () =>
+      $(`input[name="appearance-theme"][value="${theme}"]`)
+    )
+    radio.click()
+    await waitFor('theme saved', () => (radio as HTMLInputElement).checked)
+    history.back()
+    await waitFor(
+      'history again',
+      () => location.pathname.startsWith('/history') && $('[data-ui-skin]')
+    )
+  }
+  const appliedScheme = () =>
+    document.documentElement.classList.contains('dark') ? 'dark' : 'light'
+  const materials = () => ({
+    hostReported: hostMaterial,
+    document: document.documentElement.dataset.windowMaterial ?? null,
+    sidebar: $('[data-surface="sidebar"]')?.dataset.windowMaterial ?? null,
+    content: $('[data-surface="content"]')?.dataset.windowMaterial ?? null,
+    appScheme: appliedScheme(),
+    systemScheme: matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light',
+  })
+  let hostMaterial = 'unread'
+  subscribeWindowMaterial(material => {
+    hostMaterial = material
+  })
+  const rowTitles = () => historyRows().map(row => row.getAttribute('aria-label') ?? '')
+  const selected = () => historyRows().filter(row => row.getAttribute('aria-selected') === 'true')
+
+  // Every route change with its caller, so an unexpected navigation names its source.
+  const routes: string[] = []
+  for (const method of ['pushState', 'replaceState'] as const) {
+    const original = history[method].bind(history)
+    history[method] = (data: unknown, unused: string, url?: string | URL | null) => {
+      routes.push(
+        `${method} ${String(url)} ${new Error().stack?.split('\n').slice(2, 6).join(' < ')}`
+      )
+      original(data, unused, url)
+    }
+  }
+  window.addEventListener('popstate', () => routes.push(`popstate ${location.pathname}`))
+  const list = () => {
+    const found = $('[role="listbox"][aria-multiselectable]')
+    if (!found)
+      throw new Error(
+        `history list missing at ${location.pathname}: ${routes.slice(-6).join(' | ')}`
+      )
+    return found
+  }
+  await reachMainLayout()
+  const root = await waitFor('ui kit page', () => $('[data-ui-skin]'))
+  await record('kit-page-mounted', root.dataset.uiSkin === 'macos', {
+    skin: root.dataset.uiSkin,
+  })
+  // Command-F before Settings was ever opened (page shortcut scope on a fresh page).
+  await waitFor('list before probe', () => $('[role="listbox"][aria-multiselectable]'))
+  key(list(), 'f', { metaKey: true })
+  await sleep(300)
+  await record(
+    'kit-search-shortcut-fresh',
+    document.activeElement?.getAttribute('type') === 'search',
+    {
+      active: document.activeElement?.tagName,
+    }
+  )
+
+  // Following the system appearance, the window material shows behind the sidebar.
+  const systemScheme = () => (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+  await setTheme('system')
+  await waitFor('system theme applied', () => appliedScheme() === systemScheme())
+  const expected = [seeded.code, seeded.link, ...seeded.texts]
+  const geometry = () => {
+    const box = (selector: string) => {
+      const r = $(selector)?.getBoundingClientRect()
+      return r ? [Math.round(r.width), Math.round(r.height)] : null
+    }
+    return {
+      root: box('[data-ui-skin]'),
+      split: box('.mac-split'),
+      pane: box('[data-pane="list"]'),
+      list: box('.mac-glist'),
+      scroller: box('.mac-glist-scroller'),
+      options: document.querySelectorAll('[role="option"]').length,
+    }
+  }
+  await record('kit-geometry', true, geometry())
+  await waitFor(
+    'seeded rows',
+    () => expected.every(text => rowTitles().some(title => title.includes(text.split('\n')[0]))),
+    90000
+  )
+  await record('kit-rows', true, {
+    rows: rowTitles().length,
+    groups: document.querySelectorAll('.mac-glist-header, [role="presentation"]').length,
+  })
+  // The host's report decides the marker; a native marker without a host report would be a lie.
+  const initial = materials()
+  const native = hostMaterial !== 'none'
+  await record(
+    'kit-material',
+    initial.content === 'solid' &&
+      (native
+        ? initial.sidebar === `native-${hostMaterial}` &&
+          initial.document === `native-${hostMaterial}`
+        : initial.sidebar === 'css-fallback' && initial.document === null),
+    initial
+  )
+  await shot('system-default', materials())
+
+  // Keyboard: the list is one tab stop; Down moves the selection and the detail follows it.
+  list().focus()
+  const before = selected()[0]?.dataset.itemId
+  key(list(), 'ArrowDown')
+  await waitFor('selection moved', () => selected()[0]?.dataset.itemId !== before)
+  // Ids, not elements: the virtualized list reuses row elements for other entries.
+  const currentId = selected()[0].dataset.itemId!
+  await record('kit-keyboard-select', document.activeElement === list(), {
+    from: before,
+    to: currentId,
+    activeDescendant: list().getAttribute('aria-activedescendant'),
+  })
+
+  // Return copies the selected entry (the daemon restores it; the system clipboard is off in E2E).
+  key(list(), 'Enter')
+  const copied = i18n.t('clipboard.item.actions.copied')
+  await waitFor('copy feedback', () =>
+    Array.from(document.querySelectorAll('button')).some(b => b.textContent?.includes(copied))
+  )
+  await record('kit-copy-restored', true, { entry: currentId })
+
+  // Command-F (page shortcut scope) focuses the search field.
+  key(list(), 'f', { metaKey: true })
+  await sleep(300)
+  await record('kit-search-shortcut', document.activeElement?.getAttribute('type') === 'search', {
+    active: document.activeElement?.tagName,
+  })
+  // Command-comma opens Settings from anywhere (global shortcut scope).
+  key(list(), ',', { metaKey: true, code: 'Comma' })
+  await sleep(500)
+  const globalShortcut = location.pathname.startsWith('/settings')
+  await record('kit-settings-shortcut', globalShortcut, { opened: location.pathname })
+  if (globalShortcut) {
+    history.back()
+    await waitFor(
+      'history after probe',
+      () => location.pathname.startsWith('/history') && $('[data-ui-skin]')
+    )
+    await waitFor('rows after probe', () => historyRows().length > 0, 15000).catch(error => {
+      const scroller = $('.mac-glist-scroller')
+      const inner = scroller?.firstElementChild as HTMLElement | null
+      throw new Error(
+        `${String(error)} ${JSON.stringify({
+          ...geometry(),
+          scrollerChildren: scroller?.children.length,
+          innerHeight: inner?.getBoundingClientRect().height,
+          innerHtml: scroller?.innerHTML.slice(0, 400),
+        })}`
+      )
+    })
+  }
+  list().focus()
+
+  // Pin from the toolbar, then unpin with Command-P: the row's pin mark and the daemon's flag follow.
+  const pinnedId = currentId
+  const favorited = async () => {
+    const response = await daemonClient.request<{
+      data: Array<{ id: string; is_favorited?: boolean; isFavorited?: boolean }>
+    }>('/clipboard/entries?limit=50&offset=0')
+    const found = response.data.find(e => e.id === pinnedId)
+    return Boolean(found?.is_favorited ?? found?.isFavorited)
+  }
+  const pinMark = () => !!historyRow(pinnedId)?.querySelector('[data-tone="highlight"]')
+  const pinLabel = i18n.t('history.detail.pin')
+  const toolbarPin = Array.from(
+    document.querySelectorAll<HTMLElement>('[role="toolbar"] button')
+  ).find(b => b.getAttribute('aria-label') === pinLabel)
+  toolbarPin?.click()
+  const pinnedByButton = await waitFor('pin mark', pinMark, 10000).catch(() => false)
+  await record('kit-pin-toolbar', Boolean(pinnedByButton) && (await favorited()), {
+    entry: pinnedId,
+    button: Boolean(toolbarPin),
+    mark: pinMark(),
+  })
+  list().focus()
+  key(list(), 'p', { metaKey: true })
+  const unpinned = await waitFor('pin mark gone', () => !pinMark(), 10000).catch(() => false)
+  await record('kit-unpin-shortcut', Boolean(unpinned) && !(await favorited()), {
+    entry: pinnedId,
+    mark: pinMark(),
+    active: document.activeElement?.getAttribute('role'),
+  })
+
+  // Command-click adds a second row: the detail becomes the selection summary.
+  const other = historyRows().find(row => row.dataset.itemId !== pinnedId)!
+  other.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0, metaKey: true }))
+  await waitFor(
+    'two selected',
+    () => selected().length === 2 && $('[data-testid="clipboard-selection"]')
+  )
+  await record('kit-multi-select', true, {
+    selected: selected().map(r => r.dataset.itemId),
+  })
+  await shot('multi-select')
+
+  // Delete asks first; focus starts on Cancel, Escape keeps everything.
+  const countBefore = historyRows().length
+  key(list(), 'Backspace')
+  const alert = await waitFor('delete alert', () => $('[role="alertdialog"]'))
+  await waitFor(
+    'cancel focused',
+    () => document.activeElement?.textContent?.trim() === i18n.t('clipboard.cancelLabel')
+  )
+  await record('kit-delete-alert', true, {
+    focused: document.activeElement?.textContent?.trim(),
+  })
+  await shot('delete-alert')
+  key(document.activeElement ?? alert, 'Escape')
+  await waitFor('alert closed', () => !$('[role="alertdialog"]'))
+  await sleep(500)
+  await record('kit-selection-after-escape', selected().length === 2, {
+    selected: selected().map(r => r.dataset.itemId),
+  })
+  await record('kit-delete-cancelled', historyRows().length === countBefore, {
+    rows: historyRows().length,
+  })
+
+  // Confirming deletes both selected entries for good.
+  const doomed = selected().map(row => row.dataset.itemId!)
+  list().focus()
+  key(list(), 'Backspace')
+  await waitFor('delete alert again', () => $('[role="alertdialog"]'))
+  const confirm = Array.from(
+    document.querySelectorAll<HTMLElement>('[role="alertdialog"] button')
+  ).find(b => b.textContent?.trim() === i18n.t('clipboard.deleteLabel'))!
+  confirm.click()
+  await waitFor('rows deleted', () => doomed.every(id => !historyRow(id)), 30000).catch(
+    async error => {
+      const left = await daemonClient.request<{ data: Array<{ id: string }> }>(
+        '/clipboard/entries?limit=50&offset=0'
+      )
+      throw new Error(
+        `${String(error)}; doomed ${doomed.join(',')}; daemon has ${left.data.map(e => e.id).join(',')}`
+      )
+    }
+  )
+  const remaining = await daemonClient.request<{ data: Array<{ id: string }> }>(
+    '/clipboard/entries?limit=50&offset=0'
+  )
+  await record(
+    'kit-delete-confirmed',
+    doomed.every(id => !remaining.data.some(e => e.id === id)),
+    { deleted: doomed }
+  )
+
+  // Hide and show the sidebar with its toolbar control.
+  const toggle = () => $('[aria-expanded][aria-label]:is(.mac-split-toggle)')
+  toggle()!.click()
+  await waitFor('sidebar hidden', () => $('[data-sidebar-hidden]'))
+  await shot('sidebar-hidden')
+  toggle()!.click()
+  await waitFor('sidebar shown', () => !$('[data-sidebar-hidden]'))
+  await record('kit-sidebar-toggle', true)
+
+  // Light and dark themes: the material stays native only while the theme matches the system
+  // appearance; otherwise the sidebar shows its CSS fallback (the glass would be drawn in the wrong
+  // appearance, Wails sets NSAppearance only at window creation).
+  for (const theme of ['light', 'dark'] as const) {
+    await setTheme(theme)
+    await waitFor(`${theme} theme applied`, () => appliedScheme() === theme)
+    await sleep(500)
+    const state = materials()
+    const expected = theme === systemScheme() ? `native-${hostMaterial}` : 'css-fallback'
+    await record(`kit-material-${theme}`, state.sidebar === expected, { ...state, expected })
+    await shot(`${theme}-default`, state)
+  }
+  await setTheme('system')
+
+  await record('history-kit-complete', true)
+  await sleep(1500)
+  await control('exit')
+}
+
 async function runSingleImageUiScenario() {
   const name = String(await Call.ByName('main.EvidenceService.Secret'))
   await reachMainLayout()
@@ -520,12 +863,8 @@ async function runSingleImageUiScenario() {
     if (!entry) await sleep(1000)
   }
   if (!entry) throw new Error(`timeout: entry for ${name}`)
-  const card = await waitFor('history card', () =>
-    document.querySelector<HTMLElement>(
-      `[data-testid="history-card"][data-entry-id="${entry!.id}"]`
-    )
-  )
-  card.querySelector<HTMLElement>('button')!.click()
+  const card = await waitFor('history card', () => historyRow(entry!.id))
+  openRow(card)
   const panel = await waitFor('detail panel', () => $('[data-testid="clipboard-detail"]'))
   const hero = await waitFor(
     'single image in the detail panel',
@@ -640,7 +979,9 @@ async function runNativePanelScenario() {
   await sleep(4000)
   await record('act-shortcut', true)
   const shortcut = await settle(
-    HostService.UpdateKeyboardShortcuts({ 'global.toggleQuickPanel': 'Ctrl+Alt+Space' })
+    HostService.UpdateKeyboardShortcuts({
+      'global.toggleQuickPanel': 'Ctrl+Alt+Space',
+    })
   )
   await record('shortcut-saved', shortcut.status === 'ok', {
     result: shortcut,
@@ -678,7 +1019,7 @@ async function runLinuxShortcutUiScenario(phase: string) {
     shortcutLabel: editButton()?.textContent,
   })
   await navigate(
-    () => link('/settings')?.click(),
+    () => navControl('/settings')?.click(),
     '/settings',
     () => document.querySelectorAll('button[aria-current]').length,
     'settings-open',
@@ -691,7 +1032,10 @@ async function runLinuxShortcutUiScenario(phase: string) {
     )
   ).then(b => b.click())
   await waitFor('quick panel shortcut row', () => editButton())
-  await record('ui-quick-panel-state', true, { ...readState(), locale: i18n.language })
+  await record('ui-quick-panel-state', true, {
+    ...readState(),
+    locale: i18n.language,
+  })
   const action = phase.split(':')[1] ?? 'observe'
   if (action === 'enable') {
     // The product default may be off. Only this explicit phase plays the user turning the switch on (a separate,
@@ -900,7 +1244,7 @@ async function runAutostartScenario(phase: string) {
 async function runDeviceGroupUpdateScenario() {
   await reachMainLayout()
   const click = (href: string) => () =>
-    void waitFor(`link ${href}`, () => link(href)).then(a => a.click())
+    void waitFor(`link ${href}`, () => navControl(href)).then(a => a.click())
   await navigate(click('/devices'), '/', devicesPage, 'devices', true)
   daemonWs.subscribe(['device-trust', 'system'], event => {
     void record('device-trust-ws', true, { type: event.eventType })
@@ -1050,7 +1394,7 @@ async function runLinuxPackageUpdateScenario() {
     throw new Error('expected an installed deb or rpm')
   }
   await navigate(
-    () => link('/settings')?.click(),
+    () => navControl('/settings')?.click(),
     '/settings',
     () => $('[data-testid="settings-page-header"]'),
     'package-settings',
@@ -1086,7 +1430,10 @@ async function runLinuxPackageUpdateScenario() {
     expected,
     text,
   })
-  sendNotification({ title: 'Linux acceptance', body: 'Isolated package notification fixture' })
+  sendNotification({
+    title: 'Linux acceptance',
+    body: 'Isolated package notification fixture',
+  })
   await record('package-notification-requested', true)
   await sleep(4000)
   await control('exit')
@@ -1115,7 +1462,9 @@ async function runHostContractScenario() {
       !!session.data &&
       session.data.sessionToken.length > 0 &&
       session.data.expiresInSecs > 0,
-    { tokenLength: session.status === 'ok' ? session.data?.sessionToken.length : null }
+    {
+      tokenLength: session.status === 'ok' ? session.data?.sessionToken.length : null,
+    }
   )
   const id = await commands.getDeviceID()
   const meta = await commands.getDeviceMeta()
@@ -1144,9 +1493,13 @@ async function runHostContractScenario() {
     startup
   )
   const unlocked = await commands.getContentUnlocked()
-  await record('content-unlocked-boolean', typeof unlocked === 'boolean', { unlocked })
+  await record('content-unlocked-boolean', typeof unlocked === 'boolean', {
+    unlocked,
+  })
   const kind = await commands.getInstallKind()
-  await record('install-kind-enum', Object.values(InstallKind).includes(kind), { kind })
+  await record('install-kind-enum', Object.values(InstallKind).includes(kind), {
+    kind,
+  })
   await record('bootstrap-failure-null', (await commands.getDaemonBootstrapFailure()) === null)
 
   // ---- typed event: the host emits a snapshot, the page receives the generated payload type

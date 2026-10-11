@@ -1,4 +1,6 @@
 import './install'
+// Reads the `window-material` launch parameter before the router rewrites the URL (`/` -> `/history`).
+import './window-material'
 import './host.css'
 import '@/main'
 

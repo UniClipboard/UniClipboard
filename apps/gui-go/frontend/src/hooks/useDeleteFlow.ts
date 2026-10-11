@@ -26,7 +26,9 @@ export function useDeleteFlow(remove: (id: string) => Promise<void>, animateMs =
       setDeletingIds(new Set(ids))
       // Defer the removal so the exit animation can play first.
       setTimeout(async () => {
-        await Promise.all(ids.map(id => remove(id)))
+        // One at a time: the Engine (rc.22) fails concurrent deletes of history entries with an
+        // internal error, so parallel requests would leave all but one entry behind.
+        for (const id of ids) await remove(id)
         setDeletingIds(NONE)
         targetRef.current = []
       }, animateMs)

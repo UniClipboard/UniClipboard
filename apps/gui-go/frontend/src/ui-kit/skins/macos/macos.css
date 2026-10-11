@@ -2538,3 +2538,108 @@
   border-radius: 3px;
   background: var(--accent);
 }
+
+/* ---------- tag field and partial tags (design MC1/MC2) ---------- */
+
+.mac-combo {
+  position: relative;
+  display: inline-flex;
+}
+
+.mac-combo-field {
+  box-sizing: border-box;
+  height: 22px;
+  width: 170px;
+  padding: 0 9px;
+  border-radius: 11px;
+  background: var(--content);
+  box-shadow: inset 0 0 0 1px var(--accent);
+  outline: 3.5px solid var(--focus);
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.mac-combo-prefix {
+  color: var(--label-2);
+}
+
+.mac-combo-field input {
+  all: unset;
+  min-width: 0;
+  flex-grow: 1;
+  color: var(--label);
+}
+
+.mac-combo-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  width: 300px;
+  z-index: 10;
+}
+
+.mac-combo-menu[hidden] {
+  display: none;
+}
+
+.mac-combo-colors {
+  padding: 2px 10px 8px 30px;
+  display: flex;
+  gap: 8px;
+}
+
+.mac-combo-swatch {
+  all: unset;
+  width: 14px;
+  height: 14px;
+  border-radius: 7px;
+  cursor: default;
+}
+
+.mac-combo-swatch[aria-checked='true'] {
+  box-shadow:
+    0 0 0 2px var(--content),
+    0 0 0 3.5px var(--accent);
+}
+
+.mac-suggestion-label {
+  font-weight: 600;
+}
+
+.mac-tag-detail {
+  margin-left: 5px;
+  font-weight: 400;
+  opacity: 0.8;
+}
+
+.mac-tag-action {
+  all: unset;
+  display: inline-flex;
+  align-items: center;
+  cursor: default;
+}
+
+.mac-tag-action:focus-visible {
+  outline: 3.5px solid var(--focus);
+  border-radius: 10px;
+}
+
+/* Only some of the selection carries the tag: diagonal stripes over the tint. */
+.mac-tag[data-partial] {
+  background-image: repeating-linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.55) 0 3px,
+    transparent 3px 6px
+  );
+}
+
+[data-mac-theme='dark'] .mac-tag[data-partial] {
+  background-image: repeating-linear-gradient(
+    135deg,
+    rgba(0, 0, 0, 0.35) 0 3px,
+    transparent 3px 6px
+  );
+}

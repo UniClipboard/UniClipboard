@@ -251,6 +251,12 @@ export interface TagProps {
   color?: TagColor
   /** Shows a remove button named by `remove.label`, e.g. "Remove #finance". */
   remove?: LabelledAction
+  /** Secondary text after the name, e.g. "2 of 3". */
+  detail?: string
+  /** Only some of the selected items carry the tag (drawn striped). */
+  partial?: boolean
+  /** Makes the tag itself a button, e.g. "Add #docker to all 3". */
+  action?: LabelledAction
 }
 
 /** A condition shown as a token inside a `TokenSearchField`, e.g. `Tag #deploy`. */
@@ -315,6 +321,39 @@ export interface TokenSearchFieldProps {
   clear?: LabelledAction
   /** Display-only footer of the suggestion menu (keyboard hints). */
   suggestionsFooter?: string
+  inputRef?: Ref<HTMLInputElement>
+}
+
+/** The colour choice offered on a `create` suggestion of a `ComboField`. */
+export interface ComboFieldCreateColor {
+  label: string
+  colors: TagColor[]
+  value: TagColor
+  onValueChange: (color: TagColor) => void
+}
+
+/**
+ * A compact text field with a suggestion menu, e.g. the tag field of an item (design MC1). The
+ * caller owns the model (text, suggestions, highlighted item, keys); the field reports when the
+ * user leaves it (`onDismiss`: focus moved away). Each skin implements the ARIA combobox pattern.
+ */
+export interface ComboFieldProps {
+  label: string
+  /** Leading text inside the field, e.g. `#`. */
+  prefix?: string
+  placeholder?: string
+  value: string
+  onValueChange: (value: string) => void
+  suggestions: SearchSuggestion[]
+  highlighted: number
+  onHighlightedChange: (index: number) => void
+  onSelectSuggestion: (index: number) => void
+  onKeyDown?: (key: SearchFieldKey) => void
+  onDismiss: () => void
+  createColor?: ComboFieldCreateColor
+  maxLength?: number
+  /** Display-only footer of the menu (keyboard hints). */
+  footer?: string
   inputRef?: Ref<HTMLInputElement>
 }
 
@@ -599,6 +638,7 @@ export declare function Badge(props: BadgeProps): ReactNode
 export declare function Tag(props: TagProps): ReactNode
 export declare function SearchToken(props: SearchTokenProps): ReactNode
 export declare function TokenSearchField(props: TokenSearchFieldProps): ReactNode
+export declare function ComboField(props: ComboFieldProps): ReactNode
 export declare function InlineNotice(props: InlineNoticeProps): ReactNode
 export declare function Toolbar(props: ToolbarProps): ReactNode
 export declare function ToolbarButton(props: ToolbarButtonProps): ReactNode

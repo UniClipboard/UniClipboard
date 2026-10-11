@@ -222,8 +222,17 @@ export function Badge({ count, label }: BadgeProps) {
   )
 }
 
-export function Tag({ name, color, remove }: TagProps) {
-  return <parts.Tag label={name} color={color} remove={remove} />
+export function Tag({ name, color, remove, detail, partial, action }: TagProps) {
+  return (
+    <parts.Tag
+      label={name}
+      color={color}
+      remove={remove}
+      detail={detail}
+      partial={partial}
+      action={action}
+    />
+  )
 }
 
 export function SearchToken({ field, value, remove }: SearchTokenProps) {

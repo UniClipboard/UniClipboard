@@ -2791,3 +2791,193 @@
   flex-shrink: 0;
   white-space: nowrap;
 }
+
+/* ---------- preview frame, facts, Quick Look (design ME1/ME4) ---------- */
+
+.mac-preview {
+  position: relative;
+  min-height: 160px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--fill-4);
+  box-shadow: inset 0 0 0 0.5px var(--separator);
+  display: flex;
+  flex-direction: column;
+}
+
+.mac-preview[data-kind='code'] {
+  background: var(--code-bg);
+  box-shadow: none;
+}
+
+.mac-preview[data-kind='image'] {
+  background-color: var(--content);
+  background-image:
+    linear-gradient(45deg, var(--fill-3) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--fill-3) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--fill-3) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--fill-3) 75%);
+  background-size: 16px 16px;
+  background-position:
+    0 0,
+    0 8px,
+    8px -8px,
+    -8px 0;
+  min-height: 260px;
+}
+
+.mac-preview-body {
+  position: relative;
+  flex-grow: 1;
+  min-height: 0;
+}
+
+.mac-preview-corner {
+  position: absolute;
+  display: flex;
+  gap: 6px;
+  z-index: 2;
+}
+
+.mac-preview-corner[data-corner='top-end'] {
+  top: 10px;
+  right: 10px;
+}
+
+.mac-preview-corner[data-corner='bottom-start'] {
+  left: 10px;
+  bottom: 10px;
+}
+
+.mac-facts {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 8px;
+}
+
+.mac-fact {
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--fill-4);
+  box-shadow: inset 0 0 0 0.5px var(--separator);
+  min-width: 0;
+}
+
+.mac-fact dt {
+  font-size: 11px;
+  color: var(--label-2);
+}
+
+.mac-fact dd {
+  margin: 2px 0 0;
+  font-size: 13px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mac-fact dd[data-mono] {
+  font-family: var(--mac-mono);
+}
+
+.mac-quicklook-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 60;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.mac-quicklook {
+  position: absolute;
+  inset: 40px 60px;
+  z-index: 61;
+  border-radius: 16px;
+  background: rgba(30, 30, 32, 0.92);
+  box-shadow: var(--win-shadow);
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  outline: none;
+  overflow: hidden;
+}
+
+.mac-quicklook-bar {
+  height: 40px;
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.mac-quicklook-close {
+  all: unset;
+  width: 12px;
+  height: 12px;
+  border-radius: 6px;
+  background: #ff5f57;
+  color: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mac-quicklook-close:focus-visible {
+  outline: 3px solid var(--focus);
+}
+
+.mac-quicklook-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.mac-quicklook-stage {
+  position: relative;
+  flex-grow: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 56px;
+}
+
+.mac-quicklook-image {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 6px;
+}
+
+.mac-quicklook-step {
+  all: unset;
+  position: absolute;
+  top: 50%;
+  width: 34px;
+  height: 34px;
+  margin-top: -17px;
+  border-radius: 17px;
+  background: rgba(255, 255, 255, 0.12);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mac-quicklook-step[data-side='previous'] {
+  left: 12px;
+}
+
+.mac-quicklook-step[data-side='next'] {
+  right: 12px;
+}
+
+.mac-quicklook-step:focus-visible {
+  outline: 3px solid var(--focus);
+}
+
+.mac-quicklook-footer {
+  padding: 10px 14px;
+  display: flex;
+  justify-content: flex-end;
+}

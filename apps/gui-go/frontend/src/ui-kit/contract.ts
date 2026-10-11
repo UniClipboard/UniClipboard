@@ -576,6 +576,56 @@ export interface IconProps {
   tone?: 'secondary' | 'highlight'
 }
 
+/**
+ * The frame around an item's content in a detail pane. `image` puts a checkerboard behind
+ * transparent pixels; `code` is a dark card. Controls can float over two corners (design ME1:
+ * Fit / 100% top trailing, Quick Look bottom leading).
+ */
+export interface PreviewFrameProps {
+  kind: 'plain' | 'code' | 'image'
+  /** A caption bar above the content, e.g. "3 lines · 74 characters". */
+  caption?: string
+  /** Display-only trailing text of the caption bar, e.g. a shortcut. */
+  captionTrailing?: string
+  topEnd?: ReactNode
+  bottomStart?: ReactNode
+  children: ReactNode
+}
+
+export interface Fact {
+  id: string
+  label: string
+  value: string
+  monospace?: boolean
+}
+
+/** Small facts side by side, e.g. an image's dimensions and format (design ME1). */
+export interface FactListProps {
+  label: string
+  facts: Fact[]
+}
+
+/**
+ * A large preview over the window (design ME4 Quick Look; the macOS QLPreviewPanel is not used). It
+ * traps focus; Escape and Space close it, the arrow keys call `previous` / `next`, Return calls
+ * `primary` (e.g. copy and close).
+ */
+export interface QuickLookProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  /** E.g. "2 of 21". */
+  title: string
+  /** Accessible name of the close button. */
+  closeLabel: string
+  src: string | null
+  alt: string
+  previous?: LabelledAction
+  next?: LabelledAction
+  primary?: LabelledAction
+  /** Commands in the title bar, e.g. Open in Preview. */
+  actions?: ReactNode
+}
+
 /** A colour dot, e.g. a tag's colour beside its name; without `label` it is decorative. */
 export interface ColorDotProps {
   color?: TagColor
@@ -727,6 +777,9 @@ export declare function KindBadge(props: KindBadgeProps): ReactNode
 export declare function GroupedList(props: GroupedListProps): ReactNode
 export declare function Icon(props: IconProps): ReactNode
 export declare function ColorDot(props: ColorDotProps): ReactNode
+export declare function PreviewFrame(props: PreviewFrameProps): ReactNode
+export declare function FactList(props: FactListProps): ReactNode
+export declare function QuickLook(props: QuickLookProps): ReactNode
 export declare function ActionBar(props: ActionBarProps): ReactNode
 export declare function ContentUnavailable(props: ContentUnavailableProps): ReactNode
 export declare function Sheet(props: SheetProps): ReactNode

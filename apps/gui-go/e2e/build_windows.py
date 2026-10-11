@@ -28,6 +28,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 TAGS = {'e2e': 'e2e', 'production': 'production'}
+TRIPLES = {'amd64': 'x86_64-pc-windows-msvc', 'arm64': 'aarch64-pc-windows-msvc'}
 
 
 def run(cmd, cwd=ROOT, env=None):
@@ -60,9 +61,16 @@ def main():
     if args.part in ('all', 'rust') and not args.cross_check_only:
         if sys.platform != 'win32':
             sys.exit('the cargo half builds Windows executables and has to run on a Windows host')
-        run(['cargo', 'build', '--locked', '-p', 'uc-daemon', '-p', 'quick-panel', '--bin', 'uniclipd', '--bin', 'uniclip-quick-panel'])
+        cargo_args = ['cargo', 'build', '--locked', '-p', 'uc-daemon', '-p', 'quick-panel', '--bin', 'uniclipd', '--bin', 'uniclip-quick-panel']
+        if arch != host_arch:
+            cargo_args.extend(['--target', TRIPLES[arch]])
+        run(cargo_args)
+        cargo_out = ROOT / 'target'
+        if arch != host_arch:
+            cargo_out /= TRIPLES[arch]
+        cargo_out /= 'debug'
         for name in ('uniclipd.exe', 'uniclip-quick-panel.exe'):
-            shutil.copy2(ROOT / 'target/debug' / name, out / name)
+            shutil.copy2(cargo_out / name, out / name)
     if args.part in ('all', 'go') and not args.cross_check_only:
         run(['go', 'generate', './buildinfo'], cwd=ROOT / 'packages/desktop-host-go')
         run(['go', 'build', '-o', str(out / 'uniclip.exe'), './cmd/uniclip'], cwd=ROOT / 'apps/cli-go', env=env)

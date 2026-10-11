@@ -32,7 +32,7 @@ const uiPlatformMarker = '.ui-platform'
 // so a build without UC_UI_PLATFORM never reaches the kit.
 const kitPages: Record<string, { platforms: string[]; kit: string; existing: string }> = {
   '@ui-history-page': {
-    platforms: ['macos'],
+    platforms: ['macos', 'windows'],
     kit: './src/pages/history-kit/HistoryKitPage.tsx',
     existing: './src/pages/HistoryPage.tsx',
   },

@@ -10,6 +10,11 @@ const useStyles = makeStyles({
   },
 })
 
+// The root fills the page region it is mounted in, so a full-window SplitView can take its height. It is
+// inline: FluentProvider copies its className onto every portal mount node under <body>, where a full
+// height would cover the page.
+const fill = { height: '100%' }
+
 /** FluentProvider with the Win11 theme. Portals (menus, dialogs, tooltips) inherit it. */
 export function UiRoot({ colorScheme, children }: UiRootProps) {
   const styles = useStyles()
@@ -17,6 +22,7 @@ export function UiRoot({ colorScheme, children }: UiRootProps) {
     <FluentProvider
       theme={themes[colorScheme]}
       className={styles.root}
+      style={fill}
       data-ui-skin="windows"
       data-color-scheme={colorScheme}
     >

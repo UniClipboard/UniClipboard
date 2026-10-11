@@ -853,13 +853,8 @@ async function emptyRun() {
         await page.waitForTimeout(3000)
         results.firstLaunchStartUrl ??= page.url()
         await shot(`first-launch-start-${colorScheme}`)
-        if (!page.url().endsWith('/history') && colorScheme === 'light') {
-          await page
-            .getByRole('link', { name: /All items/ })
-            .or(page.getByRole('button', { name: /All items/ }))
-            .first()
-            .click()
-        }
+        // A first-time user must land on History and see the getting-started steps without navigating.
+        assert.equal(new URL(page.url()).pathname, '/history', 'a fresh profile opens on History')
       }
       // The first-run consent alert is modal (it hides the page from the accessibility tree), so wait on text.
       await page.getByText('Nothing Copied Yet').waitFor({ timeout: 60_000 })

@@ -10,6 +10,8 @@ export const useSidebarNavStyles = makeStyles({
     gap: '0.875rem',
     minHeight: '2.25rem',
     paddingBlock: 0,
+    alignItems: 'center',
+    '& > span:first-child': { display: 'inline-flex', alignItems: 'center' },
     fontSize: tokens.fontSizeBase300,
     backgroundColor: 'transparent',
     fontWeight: tokens.fontWeightRegular,

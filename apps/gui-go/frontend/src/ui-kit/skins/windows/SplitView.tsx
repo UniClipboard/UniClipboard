@@ -36,7 +36,8 @@ const useStyles = makeStyles({
     height: '3rem',
     flexShrink: 0,
     display: 'grid',
-    gridTemplateColumns: '1fr minmax(0, auto) 1fr',
+    // The search column gives way first, so the commands at the end are never clipped.
+    gridTemplateColumns: 'minmax(max-content, 1fr) minmax(0, 28.75rem) minmax(max-content, 1fr)',
     alignItems: 'center',
     paddingInlineStart: '0.25rem',
     paddingInlineEnd: 'var(--window-controls-inset-x, 0px)',
@@ -48,7 +49,7 @@ const useStyles = makeStyles({
     display: 'flex',
     justifyContent: 'center',
     // Board C2: the search field is about 460 px wide in a 1280 px window.
-    '& [data-search-field]': { width: '28.75rem', maxWidth: '100%', flexShrink: 1 },
+    '& [data-search-field]': { width: '100%' },
   },
   commands: {
     justifySelf: 'end',

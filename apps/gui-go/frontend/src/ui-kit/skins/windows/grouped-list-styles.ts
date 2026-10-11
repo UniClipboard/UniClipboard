@@ -43,6 +43,28 @@ export const useGroupedListStyles = makeStyles({
   },
   cell: { paddingBlock: '0.0625rem', paddingInline: '0.25rem' },
   row: { userSelect: 'none' },
+  // WinUI CheckBox, 20 px: strong stroke at rest, accent fill with a white mark when checked.
+  check: {
+    boxSizing: 'border-box',
+    width: '1.25rem',
+    height: '1.25rem',
+    flexShrink: 0,
+    borderRadius: tokens.borderRadiusMedium,
+    border: `${tokens.strokeWidthThin} solid ${tokens.colorNeutralStrokeAccessible}`,
+    backgroundColor: 'var(--w11-card-solid)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: tokens.fontSizeBase200,
+    color: tokens.colorNeutralForegroundOnBrand,
+  },
+  checked: {
+    borderTopColor: tokens.colorBrandBackground,
+    borderRightColor: tokens.colorBrandBackground,
+    borderBottomColor: tokens.colorBrandBackground,
+    borderLeftColor: tokens.colorBrandBackground,
+    backgroundColor: tokens.colorBrandBackground,
+  },
   // Bottom room so the last rows can scroll clear of a pane's action bar.
   footer: {
     paddingBlock: '0.75rem 5.5rem',

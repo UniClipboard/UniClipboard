@@ -314,9 +314,8 @@ async function seededRun() {
     await ctrlClick(rows().nth(1))
     ids = await selectedIds()
     assert.equal(ids.length, 2, `ctrl-click removes ${ids.length}`)
-    const checkboxes = await page
-      .locator('[data-item-id] input[type="checkbox"], [data-item-id] [role="checkbox"]')
-      .count()
+    const checkboxes = await page.locator('[data-row-check="checked"]').count()
+    assert.ok(checkboxes >= 2, `multi-select check marks ${checkboxes}`)
     await shot('multi-select')
     await page.keyboard.press('Control+a')
     await page.waitForTimeout(300)

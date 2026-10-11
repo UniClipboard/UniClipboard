@@ -148,6 +148,7 @@ export function GroupedList({
               item={item}
               domId={rowId(item.id)}
               selected={selected}
+              multi={selection.length > 1}
               cursor={item.id === cursor}
               onMouseDown={event => onRowMouseDown(event, item.id)}
               onContextMenu={() => {

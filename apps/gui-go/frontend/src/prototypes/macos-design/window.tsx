@@ -17,7 +17,13 @@ import {
   InlineNotice,
   SidebarRow,
 } from '@/prototypes/macos-design/content'
-import { clips, sidebarSections, type Clip, type TagName } from '@/prototypes/macos-design/data'
+import {
+  clips,
+  sidebarSections,
+  tagColor,
+  type Clip,
+  type TagName,
+} from '@/prototypes/macos-design/data'
 import {
   ClipContextMenu,
   DeleteAlert,
@@ -258,7 +264,7 @@ export function ClipboardWindow({
               </span>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
                 {current.tags.map(tag => (
-                  <Tag key={tag} label={`#${tag}`} color={tag} />
+                  <Tag key={tag} label={`#${tag}`} color={tagColor[tag]} />
                 ))}
                 <button type="button" className="mac-tag-add" onClick={() => setTagOpen(true)}>
                   + Add tag

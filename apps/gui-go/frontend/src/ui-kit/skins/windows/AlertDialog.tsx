@@ -1,5 +1,6 @@
 import {
   Button as FluentButton,
+  Checkbox as FluentCheckbox,
   Dialog,
   DialogActions,
   DialogBody,
@@ -19,6 +20,8 @@ const useStyles = makeStyles({
   body: { display: 'flex', flexDirection: 'column', gap: 0 },
   title: { padding: '1.5rem 1.5rem 0.75rem' },
   content: { padding: '0 1.5rem 1.5rem' },
+  // ContentDialog content checkbox ("Don't ask again"), under the message.
+  suppression: { display: 'flex', marginTop: '0.75rem', marginInlineStart: '-0.5rem' },
   actions: {
     display: 'grid',
     gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
@@ -44,6 +47,7 @@ export function AlertDialog({
   cancelLabel,
   destructive,
   onConfirm,
+  suppression,
 }: AlertDialogProps) {
   const styles = useStyles()
   // Fluent restores focus only to a DialogTrigger; this dialog is opened by the caller's own
@@ -53,6 +57,7 @@ export function AlertDialog({
   const opener = useRef<HTMLElement | null>(null)
   const surface = useRef<HTMLDivElement | null>(null)
   const cancel = useRef<HTMLButtonElement | null>(null)
+  const confirm = useRef<HTMLButtonElement | null>(null)
   useEffect(() => trackFocusHistory(), [])
   useLayoutEffect(() => {
     if (open) opener.current = lastConnectedFocus()
@@ -60,9 +65,10 @@ export function AlertDialog({
   // Fluent focuses the first button from the surface's own effect, which runs after any autoFocus
   // and, because the surface is portalled, after this component's effects. A zero-delay task runs
   // after both and before the user can press Enter.
+  // The default button gets initial focus even when the suppression checkbox comes first.
   useEffect(() => {
-    if (!open || !destructive) return
-    const timer = setTimeout(() => cancel.current?.focus())
+    if (!open) return
+    const timer = setTimeout(() => (destructive ? cancel : confirm).current?.focus())
     return () => clearTimeout(timer)
   }, [open, destructive])
   const restoreFocus = (_: null, data: { direction: 'enter' | 'exit' }) => {
@@ -83,10 +89,21 @@ export function AlertDialog({
       <DialogSurface ref={surface} className={styles.surface}>
         <DialogBody className={styles.body}>
           <DialogTitle className={styles.title}>{title}</DialogTitle>
-          <DialogContent className={styles.content}>{description}</DialogContent>
+          <DialogContent className={styles.content}>
+            {description}
+            {suppression ? (
+              <FluentCheckbox
+                className={styles.suppression}
+                label={suppression.label}
+                checked={suppression.checked}
+                onChange={(_, data) => suppression.onCheckedChange(data.checked === true)}
+              />
+            ) : null}
+          </DialogContent>
           <DialogActions fluid className={styles.actions}>
             <FluentButton
               appearance="primary"
+              ref={confirm}
               onClick={() => {
                 onConfirm()
                 onOpenChange(false)

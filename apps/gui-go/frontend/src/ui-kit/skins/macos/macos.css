@@ -127,13 +127,13 @@
 }
 
 .mac-btn[data-tint='secondary'] {
-  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  background: var(--accent-tint-16);
   color: var(--accent);
   box-shadow: none;
 }
 
 .mac-btn[data-tint='destructive'] {
-  background: color-mix(in srgb, var(--red) 14%, transparent);
+  background: var(--red-tint-14);
   color: var(--red);
   box-shadow: none;
 }
@@ -157,7 +157,7 @@
 
 .mac-btn[data-tint='primary']:active:not([data-disabled]),
 .mac-btn[data-tint='primary'][data-force='pressed'] {
-  background: color-mix(in srgb, var(--accent) 82%, #000);
+  background: var(--accent-pressed);
 }
 
 .mac-btn:not([data-tint='primary']):active:not([data-disabled]),
@@ -264,7 +264,7 @@
   height: 20px;
   padding: 0 8px;
   border-radius: 10px;
-  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  background: var(--accent-tint-18);
   color: var(--accent);
   font-size: 12px;
   display: inline-flex;
@@ -466,29 +466,25 @@
   color: var(--label-2);
 }
 
-.mac-tag[data-tag='deploy'] {
-  background: var(--tag-deploy-bg);
-  color: var(--tag-deploy-ink);
+.mac-tag[data-tag='orange'] {
+  background: var(--tag-orange-bg);
+  color: var(--tag-orange-ink);
 }
-.mac-tag[data-tag='docker'] {
-  background: var(--tag-docker-bg);
-  color: var(--tag-docker-ink);
+.mac-tag[data-tag='blue'] {
+  background: var(--tag-blue-bg);
+  color: var(--tag-blue-ink);
 }
-.mac-tag[data-tag='git'] {
-  background: var(--tag-git-bg);
-  color: var(--tag-git-ink);
+.mac-tag[data-tag='gray'] {
+  background: var(--tag-gray-bg);
+  color: var(--tag-gray-ink);
 }
-.mac-tag[data-tag='design'] {
-  background: var(--tag-design-bg);
-  color: var(--tag-design-ink);
+.mac-tag[data-tag='purple'] {
+  background: var(--tag-purple-bg);
+  color: var(--tag-purple-ink);
 }
-.mac-tag[data-tag='finance'] {
-  background: var(--tag-finance-bg);
-  color: var(--tag-finance-ink);
-}
-.mac-tag[data-tag='work'] {
-  background: var(--tag-work-bg);
-  color: var(--tag-work-ink);
+.mac-tag[data-tag='green'] {
+  background: var(--tag-green-bg);
+  color: var(--tag-green-ink);
 }
 
 .mac-tag-add {
@@ -620,14 +616,14 @@
   font-size: 11px;
 }
 
-[data-window-inactive] .mac-row[aria-selected='true'] .mac-tag[data-tag='deploy'] {
-  background: var(--tag-deploy-bg);
-  color: var(--tag-deploy-ink);
+[data-window-inactive] .mac-row[aria-selected='true'] .mac-tag[data-tag='orange'] {
+  background: var(--tag-orange-bg);
+  color: var(--tag-orange-ink);
 }
 
-[data-window-inactive] .mac-row[aria-selected='true'] .mac-tag[data-tag='docker'] {
-  background: var(--tag-docker-bg);
-  color: var(--tag-docker-ink);
+[data-window-inactive] .mac-row[aria-selected='true'] .mac-tag[data-tag='blue'] {
+  background: var(--tag-blue-bg);
+  color: var(--tag-blue-ink);
 }
 
 .mac-thumb {
@@ -648,16 +644,16 @@
   color: #7ee787;
 }
 .mac-thumb[data-kind='url'] {
-  background: var(--tag-docker-bg);
-  color: var(--tag-docker-ink);
+  background: var(--tag-blue-bg);
+  color: var(--tag-blue-ink);
 }
 .mac-thumb[data-kind='text'] {
   background: var(--fill-2);
   color: var(--label-2);
 }
 .mac-thumb[data-kind='pdf'] {
-  background: var(--tag-deploy-bg);
-  color: var(--tag-deploy-ink);
+  background: var(--tag-orange-bg);
+  color: var(--tag-orange-ink);
 }
 .mac-thumb[data-kind='image'] {
   width: 40px;
@@ -1006,16 +1002,16 @@
 }
 
 .mac-notice[data-tone='blue'] {
-  background: color-mix(in srgb, var(--blue) 10%, transparent);
+  background: var(--blue-tint-10);
 }
 .mac-notice[data-tone='green'] {
-  background: color-mix(in srgb, var(--green) 10%, transparent);
+  background: var(--green-tint-10);
 }
 .mac-notice[data-tone='orange'] {
-  background: color-mix(in srgb, var(--orange) 10%, transparent);
+  background: var(--orange-tint-10);
 }
 .mac-notice[data-tone='red'] {
-  background: color-mix(in srgb, var(--red) 10%, transparent);
+  background: var(--red-tint-10);
 }
 
 .mac-notice-title {
@@ -1490,7 +1486,7 @@
 }
 
 .mac-btn[data-tint='none'][data-pressed] {
-  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  background: var(--accent-tint-16);
   color: var(--accent);
   box-shadow: none;
 }
@@ -1659,4 +1655,619 @@
 :root[data-window-material^='native'] .mac-alert,
 :root[data-window-material^='native'] .mac-notification {
   background: var(--popup-opaque);
+}
+
+/* ---------- main window (SplitView, Pane) ---------- */
+
+.mac-root {
+  height: 100%;
+}
+
+.mac-split {
+  position: relative;
+  height: 100%;
+  display: flex;
+  overflow: hidden;
+}
+
+.mac-split-sidebar {
+  width: 236px;
+  flex-shrink: 0;
+  display: flex;
+}
+
+.mac-split-sidebar > .mac-surface {
+  flex-grow: 1;
+  min-width: 0;
+  box-shadow: inset -0.5px 0 0 var(--separator);
+}
+
+.mac-split-sidebar-inner {
+  box-sizing: border-box;
+  height: 100%;
+  padding: 52px 10px 12px;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  position: relative;
+}
+
+/* The title-bar strip of the sidebar: traffic lights (native) and the sidebar button. */
+.mac-split-chrome {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 52px;
+  --wails-draggable: drag;
+}
+
+.mac-split-toggle {
+  all: unset;
+  box-sizing: border-box;
+  width: 30px;
+  height: 26px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--label-2);
+  --wails-draggable: no-drag;
+}
+
+.mac-split-toggle:hover {
+  background: var(--fill-3);
+}
+
+.mac-split-toggle:focus-visible {
+  outline: 3.5px solid var(--focus);
+}
+
+.mac-split-chrome .mac-split-toggle {
+  position: absolute;
+  right: 10px;
+  top: 13px;
+}
+
+.mac-split-content {
+  position: relative;
+  flex-grow: 1;
+  min-width: 0;
+  display: flex;
+}
+
+.mac-split-content > .mac-surface {
+  position: relative;
+  flex-grow: 1;
+  min-width: 0;
+  display: flex;
+}
+
+.mac-split-panes {
+  flex-grow: 1;
+  min-width: 0;
+  display: flex;
+}
+
+/* Scroll edge effect: content scrolling under the toolbar fades out. */
+.mac-split-scroll-edge {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 64px;
+  background: linear-gradient(var(--content) 45%, rgba(255, 255, 255, 0));
+  pointer-events: none;
+  z-index: 2;
+}
+
+[data-mac-theme='dark'] .mac-split-scroll-edge {
+  background: linear-gradient(var(--content) 45%, rgba(30, 30, 30, 0));
+}
+
+.mac-split-toolbar {
+  position: absolute;
+  left: 16px;
+  right: 12px;
+  top: 10px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  z-index: 3;
+  --wails-draggable: drag;
+}
+
+/* Hidden sidebar: the traffic lights (about 70 pt) and the sidebar button lead the toolbar. */
+.mac-split[data-sidebar-hidden] .mac-split-toolbar {
+  left: 84px;
+}
+
+.mac-split-toolbar button,
+.mac-split-toolbar input,
+.mac-split-toolbar [role='combobox'] {
+  --wails-draggable: no-drag;
+}
+
+.mac-split-title {
+  font-family: var(--mac-font-display);
+  font-size: 15px;
+  line-height: 20px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.mac-split-subtitle {
+  font-size: 11px;
+  color: var(--label-2);
+  white-space: nowrap;
+}
+
+.mac-split-spacer {
+  flex-grow: 1;
+  min-width: 8px;
+}
+
+.mac-pane {
+  position: relative;
+  box-sizing: border-box;
+  min-width: 0;
+  min-height: 0;
+  padding-top: 52px;
+  display: flex;
+  flex-direction: column;
+}
+
+.mac-pane[data-pane='list'] {
+  flex: 0 1 500px;
+  min-width: 300px;
+  box-shadow: inset -0.5px 0 0 var(--separator);
+}
+
+.mac-split[data-sidebar-hidden] .mac-pane[data-pane='list'] {
+  flex-basis: 560px;
+}
+
+.mac-pane[data-pane='detail'] {
+  flex: 1 1 340px;
+  min-width: 300px;
+}
+
+/* ---------- text roles ---------- */
+
+.mac-text {
+  min-width: 0;
+}
+
+.mac-text[data-role='title'] {
+  font-family: var(--mac-font-display);
+  font-size: 15px;
+  line-height: 20px;
+  font-weight: 700;
+}
+
+.mac-text[data-role='headline'] {
+  font-size: 13px;
+  line-height: 16px;
+  font-weight: 700;
+}
+
+.mac-text[data-role='body'] {
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.mac-text[data-role='callout'] {
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.mac-text[data-role='caption'] {
+  font-size: 11px;
+  line-height: 14px;
+}
+
+.mac-text[data-tone='secondary'] {
+  color: var(--label-2);
+}
+.mac-text[data-tone='tertiary'] {
+  color: var(--label-3);
+}
+.mac-text[data-tone='positive'] {
+  color: var(--green);
+}
+.mac-text[data-tone='critical'] {
+  color: var(--red);
+}
+
+.mac-text[data-emphasized] {
+  font-weight: 600;
+  color: var(--label);
+}
+
+.mac-text[data-mono] {
+  font-family: var(--mac-mono);
+}
+
+.mac-text[data-truncate] {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---------- kind badges ---------- */
+
+.mac-thumb[data-kind='link'] {
+  background: var(--tag-blue-bg);
+  color: var(--tag-blue-ink);
+}
+.mac-thumb[data-kind='file'] {
+  background: var(--tag-orange-bg);
+  color: var(--tag-orange-ink);
+}
+
+.mac-thumb[data-kind='image'] {
+  overflow: hidden;
+}
+
+.mac-thumb-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.mac-kind-pill {
+  box-sizing: border-box;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--fill-2);
+  color: var(--label-2);
+}
+
+.mac-kind-pill[data-kind='code'] {
+  background: #1d1d1f;
+  color: #7ee787;
+}
+.mac-kind-pill[data-kind='link'] {
+  background: var(--tag-blue-bg);
+  color: var(--tag-blue-ink);
+}
+.mac-kind-pill[data-kind='image'],
+.mac-kind-pill[data-kind='file'] {
+  background: var(--tag-orange-bg);
+  color: var(--tag-orange-ink);
+}
+
+/* ---------- filter pills ---------- */
+
+.mac-filter-pill {
+  all: unset;
+  box-sizing: border-box;
+  height: 24px;
+  padding: 0 8px 0 10px;
+  border-radius: 12px;
+  background: var(--fill-3);
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+  cursor: default;
+}
+
+.mac-filter-pill:hover {
+  background: var(--fill-2);
+}
+
+.mac-filter-pill[data-active] {
+  background: var(--accent-tint-14);
+  color: var(--accent);
+}
+
+.mac-filter-pill:focus-visible {
+  outline: 3.5px solid var(--focus);
+}
+
+.mac-filter-pill .mac-popup-indicator {
+  width: auto;
+  height: auto;
+  background: none;
+  color: inherit;
+  opacity: 0.7;
+}
+
+/* ---------- action bar, content unavailable, inset list ---------- */
+
+.mac-pane-actionbar {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: 16px;
+  height: 60px;
+  padding: 0 12px;
+  border-radius: 30px;
+  gap: 8px;
+  z-index: 4;
+}
+
+/* Over a native window material the web backdrop-filter only samples web content. */
+:root[data-window-material^='native'] .mac-pane-actionbar {
+  background: var(--popup-opaque);
+}
+
+.mac-unavailable {
+  box-sizing: border-box;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  text-align: center;
+  flex-grow: 1;
+}
+
+.mac-unavailable-icon {
+  margin-bottom: 8px;
+  color: var(--label-3);
+}
+
+.mac-unavailable-title {
+  font-family: var(--mac-font-display);
+  font-size: 17px;
+  line-height: 22px;
+  font-weight: 700;
+  color: var(--label);
+}
+
+.mac-unavailable-text {
+  max-width: 360px;
+  font-size: 12px;
+  line-height: 17px;
+  color: var(--label-2);
+}
+
+.mac-unavailable-actions {
+  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  min-width: 280px;
+}
+
+.mac-grouped li > .mac-grouped-title {
+  flex-grow: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mac-grouped li[data-tone='positive'] .mac-status-dot {
+  background: var(--green);
+}
+.mac-grouped li[data-tone='neutral'] .mac-status-dot {
+  background: var(--gray);
+}
+.mac-grouped li[data-tone='warning'] .mac-status-dot {
+  background: var(--orange);
+}
+.mac-grouped li[data-tone='critical'] .mac-status-dot {
+  background: var(--red);
+}
+.mac-grouped li[data-tone='positive'] .mac-status {
+  color: var(--green);
+}
+.mac-grouped li[data-tone='neutral'] .mac-status {
+  color: var(--label-2);
+}
+.mac-grouped li[data-tone='warning'] .mac-status {
+  color: var(--orange);
+}
+.mac-grouped li[data-tone='critical'] .mac-status {
+  color: var(--red);
+}
+
+.mac-grouped-action {
+  all: unset;
+  font-size: 11px;
+  color: var(--link);
+  cursor: default;
+}
+
+.mac-grouped-action:focus-visible {
+  outline: 3.5px solid var(--focus);
+  border-radius: 4px;
+}
+
+/* ---------- grouped list ---------- */
+
+.mac-glist-menu-area {
+  display: contents;
+}
+
+.mac-glist {
+  flex-grow: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  outline: none;
+}
+
+.mac-glist-scroller {
+  flex-grow: 1;
+  min-height: 0;
+}
+
+.mac-glist-header {
+  box-sizing: border-box;
+  height: 30px;
+  padding: 6px 18px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--content);
+}
+
+.mac-glist-header-title {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.mac-glist-header-detail {
+  font-size: 11px;
+  color: var(--label-2);
+}
+
+.mac-glist-header-trailing {
+  font-size: 11px;
+  color: var(--label-3);
+}
+
+.mac-glist-cell {
+  padding: 1px 8px;
+}
+
+.mac-glist-footer {
+  padding: 12px 18px 96px;
+  display: flex;
+  justify-content: center;
+  font-size: 11px;
+  color: var(--label-2);
+}
+
+/* Keyboard focus on the list shows a ring around the row the keyboard moves from. */
+.mac-glist:focus-visible .mac-row[data-cursor] {
+  outline: 3.5px solid var(--focus);
+}
+
+/* ---------- sidebar navigation (public SidebarNav) ---------- */
+
+.mac-sidebar-nav {
+  flex-grow: 1;
+  min-height: 0;
+}
+
+.mac-side-item .mac-side-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mac-side-heading[data-has-action],
+.mac-side-heading {
+  height: 28px;
+  margin-top: 10px;
+  padding: 0 6px 0 10px;
+  align-items: center;
+}
+
+.mac-sidebar-group:first-child .mac-side-heading {
+  margin-top: 0;
+}
+
+.mac-side-heading-title {
+  flex-grow: 1;
+}
+
+.mac-side-heading-action {
+  all: unset;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--label-2);
+}
+
+.mac-side-heading-action:hover {
+  background: var(--fill-3);
+}
+
+.mac-side-heading-action:focus-visible,
+.mac-side-more:focus-visible {
+  outline: 3.5px solid var(--focus);
+}
+
+.mac-side-more {
+  all: unset;
+  height: 24px;
+  padding-left: 36px;
+  display: flex;
+  align-items: center;
+  font-size: 12px;
+  color: var(--label-2);
+  border-radius: 6px;
+  cursor: default;
+}
+
+.mac-side-placeholder {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mac-side-placeholder-text {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--fill-3);
+  box-shadow: inset 0 0 0 0.5px var(--separator);
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--label-2);
+}
+
+.mac-side-placeholder .mac-btn {
+  width: 100%;
+}
+
+.mac-dot-tag[data-status='positive'] {
+  background: var(--green);
+}
+.mac-dot-tag[data-status='neutral'] {
+  background: var(--gray);
+}
+.mac-dot-tag[data-status='warning'] {
+  background: var(--orange);
+}
+.mac-dot-tag[data-status='critical'] {
+  background: var(--red);
+}
+
+.mac-sidebar-footer {
+  margin-top: auto;
+  padding-top: 10px;
+  display: flex;
+  flex-direction: column;
+}
+
+.mac-inline-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+}
+.mac-inline-icon[data-tone='secondary'] {
+  color: var(--label-2);
+}
+.mac-inline-icon[data-tone='highlight'] {
+  color: var(--yellow);
+}
+.mac-row[aria-selected='true'] .mac-inline-icon {
+  color: #fff;
+}
+[data-window-inactive] .mac-row[aria-selected='true'] .mac-inline-icon[data-tone='highlight'] {
+  color: var(--yellow);
+}
+
+.mac-alert-suppression {
+  align-self: flex-start;
+  margin-top: 4px;
+  font-size: 11px;
 }

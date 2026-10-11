@@ -17,7 +17,7 @@
 //   system notifications belong to the native shell, not to this kit. Window materials are applied
 //   by the native host; the kit only marks the regions that show them (`Surface`), and a skin
 //   reads the material the host actually applied from the host layer, never from business code.
-import type { ReactNode } from 'react'
+import type { ReactNode, Ref } from 'react'
 
 export type ColorScheme = 'light' | 'dark'
 
@@ -35,6 +35,7 @@ export type IconName =
   | 'edit'
   | 'filter'
   | 'history'
+  | 'info'
   | 'moon'
   | 'more'
   | 'pin'
@@ -57,8 +58,12 @@ export type ControlSize = 'small' | 'medium' | 'large' | 'xlarge'
  */
 export type ButtonVariant = 'primary' | 'standard' | 'subtle'
 
-/** Project tag palette; skins own the light/dark values. */
-export type TagColor = 'deploy' | 'docker' | 'git' | 'design' | 'finance' | 'work' | 'neutral'
+/**
+ * Tag colour as the daemon stores it: a palette name, whose light/dark values the skin owns, or a
+ * custom `#rrggbb`. A tag without a colour is drawn neutral.
+ */
+export type TagPaletteColor = 'orange' | 'blue' | 'green' | 'purple' | 'gray'
+export type TagColor = TagPaletteColor | `#${string}`
 
 /**
  * A secondary command of a component. `label` is the visible text or, for an icon-only control,
@@ -137,6 +142,10 @@ export interface SearchFieldProps {
   label: string
   /** Display-only shortcut hint such as `Ctrl+F`; registering the shortcut is the caller's job. */
   shortcutHint?: string
+  /** Return or Enter in the field: search now instead of waiting for typing to settle. */
+  onSubmit?: (value: string) => void
+  /** The text input, for the caller's focus shortcut. */
+  inputRef?: Ref<HTMLInputElement>
 }
 
 export interface SelectItem {
@@ -153,6 +162,11 @@ export interface SelectProps {
   label: string
   placeholder?: string
   disabled?: boolean
+  /**
+   * `filter`: narrows the list in view (a filter pill in the list's filter row); the placeholder is
+   * the filter's name while nothing is chosen.
+   */
+  purpose?: 'filter'
 }
 
 export interface SegmentedItem {
@@ -222,6 +236,8 @@ export interface AlertDialogProps {
   /** The confirmed action destroys data; each skin applies its platform's destructive styling. */
   destructive?: boolean
   onConfirm: () => void
+  /** A "do not ask again" checkbox (NSAlert suppression button). */
+  suppression?: { label: string; checked: boolean; onCheckedChange: (checked: boolean) => void }
 }
 
 export interface BadgeProps {
@@ -301,21 +317,176 @@ export interface SidebarNavItem {
   swatch?: TagColor
   /** Trailing count, already formatted by the caller (`12,408`, `4 of 5`). */
   count?: string
+  /** Status dot in place of an icon, e.g. a device's connection. */
+  status?: StatusTone
+  /** Display-only shortcut hint, e.g. `⌘,` on a settings row. */
+  shortcutHint?: string
 }
 
 export interface SidebarNavSection {
   id: string
   title?: string
   items: SidebarNavItem[]
+  /** A command in the section heading, e.g. "New Tag" (shown as an icon button). */
+  action?: LabelledAction & { icon: IconName }
+  /** A link row after the items, e.g. "All Tags · 42". */
+  more?: LabelledAction
+  /** Shown instead of the items while there are none. */
+  placeholder?: { text?: string; action?: LabelledAction }
 }
 
 /** Single-selection navigation (Up/Down move, Enter/Space select, Tab leaves the list). */
 export interface SidebarNavProps {
   label: string
   sections: SidebarNavSection[]
+  /** Items pinned to the bottom of the sidebar, e.g. Settings; they select like the others. */
+  footer?: SidebarNavItem[]
   value?: string
   defaultValue?: string
   onValueChange?: (id: string) => void
+}
+
+/**
+ * The main window: a sidebar beside the content, with one toolbar band across the top of the
+ * content (macOS unified toolbar). The skin owns the sidebar width, the window-chrome insets
+ * (macOS traffic lights) and where the show/hide control sits; `sidebar` is drawn on the `sidebar`
+ * window region and `children` (the panes) on the opaque `content` region.
+ */
+export interface SplitViewProps {
+  sidebar: ReactNode
+  sidebarHidden?: boolean
+  /** The control that hides or shows the sidebar; `label` names the action it performs now. */
+  sidebarToggle: LabelledAction & { shortcutHint?: string }
+  /** Title of the content at the leading end of the toolbar band. */
+  title: string
+  /** Secondary text after the title, e.g. the item count. */
+  subtitle?: string
+  /** Controls at the trailing end of the toolbar band (search field, toolbar buttons). */
+  toolbar?: ReactNode
+  children: ReactNode
+}
+
+/**
+ * A column of the content region below the toolbar band. `list` is the browsing column (the
+ * history list); `detail` fills the remaining width.
+ */
+export interface PaneProps {
+  kind: 'list' | 'detail'
+  label: string
+  children: ReactNode
+}
+
+/** Text roles; skins map them to the platform type ramp. Business code never sets font sizes. */
+export type TextRole = 'title' | 'headline' | 'body' | 'callout' | 'caption'
+export type TextTone = 'primary' | 'secondary' | 'tertiary' | 'positive' | 'critical'
+
+export interface TextProps {
+  role?: TextRole
+  tone?: TextTone
+  /** Bold within the role, e.g. a device name inside a sentence. */
+  emphasized?: boolean
+  monospace?: boolean
+  /** One line with an ellipsis. */
+  truncate?: boolean
+  children: ReactNode
+}
+
+/** Clipboard content kinds the kit can draw a badge for. */
+export type ContentKind = 'text' | 'code' | 'link' | 'image' | 'file'
+
+/**
+ * The type mark of an entry. `tile`: the square leading visual of a list row (an image shows
+ * `imageSrc` as a thumbnail). `pill`: the capsule naming the kind in a detail header.
+ */
+export interface KindBadgeProps {
+  kind: ContentKind
+  /** Visible text of the mark (`TXT`, `PDF`, `Code`); it is also the accessible name. */
+  label: string
+  variant: 'tile' | 'pill'
+  imageSrc?: string
+}
+
+/** A run of consecutive `items` of a `GroupedList` under one heading. */
+export interface ListGroup {
+  id: string
+  title: string
+  /** Secondary text after the title, e.g. the date of a day heading. */
+  detail?: string
+  /** Right-aligned text, already formatted, e.g. "5 items". */
+  trailing?: string
+  /** How many of the following items belong to this group. */
+  count: number
+}
+
+/**
+ * A long, lazily loaded list of selectable items in groups (a history list). Rows outside the
+ * viewport are not rendered. Keyboard: Up/Down move the selection, Shift extends it, Home/End jump,
+ * the platform select-all shortcut selects every loaded row, Enter calls `onActivate`, the platform's
+ * delete key calls `onDelete` (macOS Delete/⌫ or Forward Delete, Windows Delete). Pointer: a click selects one row, the platform modifier adds or
+ * removes a row and Shift selects a range. Rows show multi-selection the platform way (macOS has no
+ * checkboxes). Each row element carries `data-item-id`.
+ */
+export interface GroupedListProps {
+  label: string
+  groups: ListGroup[]
+  items: ItemListItem[]
+  /** Ids of the selected rows; the last one is the row the keyboard moves from. */
+  selection: string[]
+  onSelectionChange: (ids: string[]) => void
+  onActivate?: (id: string) => void
+  onDelete?: (ids: string[]) => void
+  /** Called near the end of the loaded rows, to load more. */
+  onEndReached?: () => void
+  /** Context menu of the selection, or of the right-clicked row when it is not selected. */
+  contextMenu?: {
+    items: (ids: string[]) => MenuEntry[]
+    onAction: (id: string, ids: string[]) => void
+  }
+  /** Content after the last row, e.g. a loading indicator or a hint. */
+  footer?: ReactNode
+}
+
+/**
+ * A symbol inline with content. Without `label` it is decorative (hidden from assistive tech).
+ * `highlight` is the attention colour of a marked state, e.g. a pinned item (macOS yellow).
+ */
+export interface IconProps {
+  name: IconName
+  label?: string
+  tone?: 'secondary' | 'highlight'
+}
+
+/** A floating bar of the main actions at the bottom of a pane. */
+export interface ActionBarProps {
+  children: ReactNode
+  /** Display-only hint at the trailing end, e.g. keyboard shortcuts. */
+  hint?: string
+}
+
+/** Empty, no-results and placeholder states of a pane (AppKit "content unavailable"). */
+export interface ContentUnavailableProps {
+  icon?: IconName
+  title: string
+  description?: string
+  /** Actions or choices below the description. */
+  children?: ReactNode
+}
+
+export type StatusTone = 'positive' | 'neutral' | 'warning' | 'critical'
+
+export interface InsetListRow {
+  id: string
+  title: string
+  /** Trailing status text, coloured by `tone`. */
+  detail?: string
+  tone?: StatusTone
+  action?: LabelledAction
+}
+
+/** A grouped (inset) table of short rows with a status dot, e.g. per-device delivery. */
+export interface InsetListProps {
+  label: string
+  rows: InsetListRow[]
 }
 
 export declare function UiRoot(props: UiRootProps): ReactNode
@@ -339,3 +510,12 @@ export declare function ToolbarButton(props: ToolbarButtonProps): ReactNode
 export declare function ToolbarDivider(): ReactNode
 export declare function ItemList(props: ItemListProps): ReactNode
 export declare function SidebarNav(props: SidebarNavProps): ReactNode
+export declare function SplitView(props: SplitViewProps): ReactNode
+export declare function Pane(props: PaneProps): ReactNode
+export declare function Text(props: TextProps): ReactNode
+export declare function KindBadge(props: KindBadgeProps): ReactNode
+export declare function GroupedList(props: GroupedListProps): ReactNode
+export declare function Icon(props: IconProps): ReactNode
+export declare function ActionBar(props: ActionBarProps): ReactNode
+export declare function ContentUnavailable(props: ContentUnavailableProps): ReactNode
+export declare function InsetList(props: InsetListProps): ReactNode

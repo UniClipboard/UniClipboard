@@ -1,7 +1,7 @@
 import { makeStyles, tokens } from '@fluentui/react-components'
-import type { TagColor } from '@/ui-kit/contract'
+import type { TagPaletteColor } from '@/ui-kit/contract'
 
-const colored = (color: TagColor) => ({
+const colored = (color: TagPaletteColor | 'neutral') => ({
   backgroundColor: `var(--w11-tag-${color}-bg)`,
   color: `var(--w11-tag-${color}-ink)`,
 })
@@ -20,12 +20,11 @@ export const useTagStyles = makeStyles({
     whiteSpace: 'nowrap',
   },
   name: { fontWeight: tokens.fontWeightSemibold },
-  deploy: colored('deploy'),
-  docker: colored('docker'),
-  git: colored('git'),
-  design: colored('design'),
-  finance: colored('finance'),
-  work: colored('work'),
+  orange: colored('orange'),
+  blue: colored('blue'),
+  gray: colored('gray'),
+  purple: colored('purple'),
+  green: colored('green'),
   neutral: colored('neutral'),
   token: {
     height: '1.5rem',

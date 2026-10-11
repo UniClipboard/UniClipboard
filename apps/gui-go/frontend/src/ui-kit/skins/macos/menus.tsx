@@ -6,7 +6,7 @@ import type { AlertDialogProps, ContextMenuProps, MenuEntry, MenuProps } from '@
 import { WithHelpTag } from './controls'
 import { glyph } from './glyph'
 import { Icon } from './icons'
-import { PushButton } from './parts'
+import { Checkbox, PushButton } from './parts'
 import { usePortalContainer } from './portal'
 import { swatchColor } from './swatch'
 
@@ -56,7 +56,7 @@ export function MenuPanel({
                   {entry.swatch && (
                     <span
                       className="mac-dot-tag"
-                      style={{ background: swatchColor[entry.swatch] }}
+                      style={{ background: swatchColor(entry.swatch) }}
                     />
                   )}
                 </span>
@@ -150,6 +150,7 @@ export function AlertDialog({
   cancelLabel,
   destructive,
   onConfirm,
+  suppression,
 }: AlertDialogProps) {
   const container = usePortalContainer()
   // Focus lands on the alert's key action: Cancel when the action is destructive.
@@ -174,6 +175,15 @@ export function AlertDialog({
           <BaseAlertDialog.Description className="mac-alert-text">
             {description}
           </BaseAlertDialog.Description>
+          {suppression && (
+            <label className="mac-check-label mac-alert-suppression">
+              <Checkbox
+                checked={suppression.checked}
+                onCheckedChange={checked => suppression.onCheckedChange(checked === true)}
+              />
+              {suppression.label}
+            </label>
+          )}
           <div className="mac-alert-actions">
             <PushButton
               ref={confirmRef}

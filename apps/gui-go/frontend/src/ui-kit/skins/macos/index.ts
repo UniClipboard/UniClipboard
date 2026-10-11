@@ -13,6 +13,17 @@ export {
   Tag,
   ToggleButton,
 } from './controls'
+export { GroupedList } from './grouped-list'
 export { ItemList, SidebarNav } from './lists'
 export { AlertDialog, ContextMenu, Menu } from './menus'
+export {
+  ActionBar,
+  ContentUnavailable,
+  Icon,
+  InsetList,
+  KindBadge,
+  Pane,
+  SplitView,
+  Text,
+} from './pane'
 export { Surface, Toolbar, ToolbarButton, ToolbarDivider, UiRoot } from './root'

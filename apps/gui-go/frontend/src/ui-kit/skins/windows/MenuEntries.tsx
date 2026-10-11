@@ -3,7 +3,7 @@ import { createElement } from 'react'
 import type { MenuEntry } from '@/ui-kit/contract'
 import { iconFor } from './icons'
 import { useMenuStyles } from './menu-styles'
-import { swatches } from './theme'
+import { swatch } from './theme'
 
 interface MenuEntriesProps {
   items: MenuEntry[]
@@ -17,7 +17,7 @@ export function MenuEntries({ items, onAction }: MenuEntriesProps) {
       {items.map(item => {
         if ('kind' in item) return <MenuDivider key={item.id} />
         const icon = item.swatch ? (
-          <span className={styles.swatch} style={{ backgroundColor: swatches[item.swatch] }} />
+          <span className={styles.swatch} style={{ backgroundColor: swatch(item.swatch) }} />
         ) : item.icon ? (
           createElement(iconFor(item.icon))
         ) : undefined

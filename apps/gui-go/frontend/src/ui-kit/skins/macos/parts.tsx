@@ -6,8 +6,10 @@ import { RadioGroup } from '@base-ui/react/radio-group'
 import { Select } from '@base-ui/react/select'
 import { Switch as BaseSwitch } from '@base-ui/react/switch'
 import { useState, type ComponentProps, type ReactNode } from 'react'
+import type { TagColor } from '@/ui-kit/contract'
 import { Icon, type IconName } from './icons'
 import { usePortalContainer } from './portal'
+import { isCustomColor } from './swatch'
 
 /** Static boards force a visual state on a real control; interactive surfaces never pass it. */
 export type ForcedState = 'pressed' | 'focus' | 'hover' | 'highlighted'
@@ -156,6 +158,7 @@ export function PopUpButton({
   label,
   placeholder,
   disabled,
+  purpose,
 }: {
   items: { value: string; label: string }[]
   value?: string
@@ -164,12 +167,16 @@ export function PopUpButton({
   label: string
   placeholder?: string
   disabled?: boolean
+  purpose?: 'filter'
 }) {
   const container = usePortalContainer()
+  // A controlled value that is not one of the items is "nothing chosen": the placeholder shows.
+  const controlled =
+    value === undefined ? undefined : items.some(item => item.value === value) ? value : null
   return (
     <Select.Root
       items={items}
-      value={value}
+      value={controlled}
       defaultValue={defaultValue}
       onValueChange={next => {
         if (next !== null) onValueChange?.(next)
@@ -177,7 +184,11 @@ export function PopUpButton({
       disabled={disabled}
       modal={false}
     >
-      <Select.Trigger className="mac-popup-btn" aria-label={label}>
+      <Select.Trigger
+        className={purpose === 'filter' ? 'mac-filter-pill' : 'mac-popup-btn'}
+        data-active={purpose === 'filter' && controlled ? '' : undefined}
+        aria-label={label}
+      >
         <Select.Value placeholder={placeholder} />
         <Select.Icon className="mac-popup-indicator">
           <Icon name="chevronDown" size={10} strokeWidth={2.4} />
@@ -234,19 +245,28 @@ export function Badge({ children }: { children: ReactNode }) {
   return <span className="mac-badge">{children}</span>
 }
 
-/** Capsule tag; `color` picks the project tag palette (design T1), anything else is neutral. */
+/**
+ * Capsule tag; a palette `color` uses the design's tag tints (T1), a custom `#rrggbb` is tinted from
+ * that colour, and no colour is neutral.
+ */
 export function Tag({
   label,
   color,
   remove,
 }: {
   label: string
-  color?: string
+  color?: TagColor
   /** The remove button's accessible name comes from the caller (localized). */
   remove?: { label: string; onClick: () => void }
 }) {
   return (
-    <span className="mac-tag" data-tag={color} data-removable={remove ? '' : undefined}>
+    <span
+      className="mac-tag"
+      data-tag={color && !isCustomColor(color) ? color : undefined}
+      // 8-digit hex keeps the tint working on WebKit without color-mix() (Safari 15.6 target).
+      style={color && isCustomColor(color) ? { background: `${color}29`, color } : undefined}
+      data-removable={remove ? '' : undefined}
+    >
       {label}
       {remove && (
         <button

@@ -27,6 +27,8 @@ export function SearchField({
   placeholder,
   label,
   shortcutHint,
+  onSubmit,
+  inputRef,
 }: SearchFieldProps) {
   const styles = useStyles()
   // Memoized so the Input does not receive a new contentAfter element on every keystroke.
@@ -45,11 +47,19 @@ export function SearchField({
   )
   return (
     <Input
+      // Fluent Input forwards `ref` to the native <input>.
+      ref={inputRef}
       type="search"
       className={styles.root}
       value={value}
       defaultValue={defaultValue}
       onChange={(_, data) => onValueChange?.(data.value)}
+      onKeyDown={event => {
+        // Enter while an IME composition is open commits the composition, not the search.
+        if (event.key !== 'Enter' || event.nativeEvent.isComposing || !onSubmit) return
+        event.preventDefault()
+        onSubmit(event.currentTarget.value)
+      }}
       placeholder={placeholder}
       aria-label={label}
       contentAfter={after}

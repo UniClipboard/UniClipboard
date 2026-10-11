@@ -1,6 +1,6 @@
 import { Toolbar as BaseToolbar } from '@base-ui/react/toolbar'
 import { Tooltip } from '@base-ui/react/tooltip'
-import { createContext, use, useEffect, useState } from 'react'
+import { createContext, use, useEffect, useState, useSyncExternalStore } from 'react'
 import { subscribeWindowMaterial, type WindowMaterial } from '@/host/window-material'
 import type { SurfaceProps, ToolbarButtonProps, ToolbarProps, UiRootProps } from '@/ui-kit/contract'
 import { WithHelpTag } from './controls'
@@ -13,14 +13,59 @@ import './macos.css'
 
 const AppliedMaterial = createContext<WindowMaterial>('none')
 
+function subscribeKeyWindow(onChange: () => void) {
+  window.addEventListener('focus', onChange)
+  window.addEventListener('blur', onChange)
+  return () => {
+    window.removeEventListener('focus', onChange)
+    window.removeEventListener('blur', onChange)
+  }
+}
+
+/**
+ * Web approximation of AppKit's key window: whether the document has focus. Selections turn gray
+ * while it is false, as in an inactive NSWindow.
+ */
+const useKeyWindow = () =>
+  useSyncExternalStore(
+    subscribeKeyWindow,
+    () => document.hasFocus(),
+    () => true
+  )
+
+const darkQuery = '(prefers-color-scheme: dark)'
+
+function subscribeSystemScheme(onChange: () => void) {
+  const media = window.matchMedia(darkQuery)
+  media.addEventListener('change', onChange)
+  return () => media.removeEventListener('change', onChange)
+}
+
+/**
+ * The appearance AppKit draws the window material in. The host leaves the window on the system
+ * appearance (Wails sets NSAppearance only at creation), and WKWebView reports that appearance as
+ * `prefers-color-scheme`.
+ */
+const useMaterialScheme = () =>
+  useSyncExternalStore(
+    subscribeSystemScheme,
+    () => (window.matchMedia(darkQuery).matches ? 'dark' : 'light'),
+    () => 'light'
+  )
+
 /**
  * Theme scope of the macOS skin. Menus, tooltips and alerts portal into this element instead of
  * <body>, so they keep the light/dark tokens of `data-mac-theme`. When the host reports a native
- * window material, the page background is cleared so the material shows behind sidebar surfaces.
+ * window material in the app's appearance, the page background is cleared so the material shows
+ * behind sidebar surfaces.
  */
 export function UiRoot({ colorScheme, children }: UiRootProps) {
   const [element, setElement] = useState<HTMLDivElement | null>(null)
-  const [material, setMaterial] = useState<WindowMaterial>('none')
+  const [hostMaterial, setMaterial] = useState<WindowMaterial>('none')
+  const keyWindow = useKeyWindow()
+  // An app theme that differs from the system appearance would put light content on dark glass (or
+  // the reverse), so the page then covers the material and the sidebar uses its CSS fallback.
+  const material = useMaterialScheme() === colorScheme ? hostMaterial : 'none'
   useEffect(() => {
     const unsubscribe = subscribeWindowMaterial(setMaterial)
     return unsubscribe
@@ -40,6 +85,7 @@ export function UiRoot({ colorScheme, children }: UiRootProps) {
       data-mac-theme={colorScheme}
       data-ui-skin="macos"
       data-native-material={material === 'none' ? undefined : ''}
+      data-window-inactive={keyWindow ? undefined : ''}
     >
       <PortalContainer value={element}>
         <AppliedMaterial value={material}>

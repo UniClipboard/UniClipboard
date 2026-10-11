@@ -1,9 +1,10 @@
 import { useRef, useState, type KeyboardEvent } from 'react'
-import type { ItemListProps, SidebarNavProps } from '@/ui-kit/contract'
+import type { ItemListProps, SidebarNavItem, SidebarNavProps } from '@/ui-kit/contract'
+import { WithHelpTag } from './controls'
 import { glyph } from './glyph'
 import { Icon } from './icons'
 import { listStep } from './list-keys'
-import { Checkbox } from './parts'
+import { Checkbox, PushButton } from './parts'
 import { swatchColor } from './swatch'
 
 /** Moves DOM focus to the item at `index` inside a roving-tabindex container. */
@@ -20,6 +21,7 @@ function focusItem(container: HTMLElement | null, selector: string, index: numbe
  */
 // A shared empty default, so an omitted prop does not create a new array on every render.
 const noSelection: string[] = []
+const noItems: SidebarNavItem[] = []
 
 export function ItemList({
   label,
@@ -130,27 +132,35 @@ export function ItemList({
 }
 
 /**
- * Source-list sidebar as a navigation landmark: one tab stop, arrows move focus, Return or Space
- * selects. Selection is a light rounded fill with an accent symbol, not a blue row.
+ * Source-list sidebar as a navigation landmark: one tab stop for the rows, arrows move focus,
+ * Return or Space selects. Selection is a light rounded fill with an accent symbol, not a blue row.
+ * Section commands (+), "more" links and placeholders are ordinary buttons; `footer` rows sit at
+ * the bottom of the sidebar.
  */
 export function SidebarNav({
   label,
   sections,
+  footer = noItems,
   value,
   defaultValue,
   onValueChange,
 }: SidebarNavProps) {
   const navRef = useRef<HTMLElement>(null)
-  const flat = sections.flatMap(section => section.items)
+  const flat = [...sections.flatMap(section => section.items), ...footer]
   const [own, setOwn] = useState(defaultValue)
   const [focusedId, setFocusedId] = useState<string | undefined>()
   const current = value ?? own
-  const tabStop = flat.find(item => item.id === focusedId)?.id ?? current ?? flat[0]?.id
+  const tabStop =
+    flat.find(item => item.id === focusedId)?.id ??
+    flat.find(item => item.id === current)?.id ??
+    flat[0]?.id
   const choose = (id: string) => {
     if (value === undefined) setOwn(id)
     onValueChange?.(id)
   }
   const onKeyDown = (event: KeyboardEvent) => {
+    if (!(event.target instanceof HTMLElement) || !event.target.classList.contains('mac-side-item'))
+      return
     const next = listStep(
       event.key,
       flat.findIndex(item => item.id === tabStop),
@@ -161,33 +171,71 @@ export function SidebarNav({
       focusItem(navRef.current, '.mac-side-item', next)
     }
   }
+  const row = (item: SidebarNavItem) => (
+    <button
+      key={item.id}
+      type="button"
+      className="mac-side-item"
+      aria-current={item.id === current ? 'page' : undefined}
+      tabIndex={item.id === tabStop ? 0 : -1}
+      onFocus={() => setFocusedId(item.id)}
+      onClick={() => choose(item.id)}
+    >
+      <span className="mac-side-icon">
+        {item.icon && <Icon name={glyph(item.icon)} size={15} />}
+        {item.swatch && (
+          <span className="mac-dot-tag" style={{ background: swatchColor(item.swatch) }} />
+        )}
+        {item.status && <span className="mac-dot-tag" data-status={item.status} />}
+      </span>
+      <span className="mac-side-label">{item.label}</span>
+      {item.count && <span className="mac-side-count">{item.count}</span>}
+      {item.shortcutHint && <span className="mac-side-count">{item.shortcutHint}</span>}
+    </button>
+  )
   return (
     <nav ref={navRef} className="mac-sidebar-nav" aria-label={label} onKeyDown={onKeyDown}>
       {sections.map(section => (
         <div key={section.id} className="mac-sidebar-group">
-          {section.title && <div className="mac-side-heading">{section.title}</div>}
-          {section.items.map(item => (
-            <button
-              key={item.id}
-              type="button"
-              className="mac-side-item"
-              aria-current={item.id === current ? 'page' : undefined}
-              tabIndex={item.id === tabStop ? 0 : -1}
-              onFocus={() => setFocusedId(item.id)}
-              onClick={() => choose(item.id)}
-            >
-              <span className="mac-side-icon">
-                {item.icon && <Icon name={glyph(item.icon)} size={15} />}
-                {item.swatch && (
-                  <span className="mac-dot-tag" style={{ background: swatchColor[item.swatch] }} />
-                )}
-              </span>
-              <span className="mac-side-label">{item.label}</span>
-              {item.count && <span className="mac-side-count">{item.count}</span>}
+          {section.title && (
+            <div className="mac-side-heading" data-has-action={section.action ? '' : undefined}>
+              <span className="mac-side-heading-title">{section.title}</span>
+              {section.action && (
+                <WithHelpTag text={section.action.label}>
+                  <button
+                    type="button"
+                    className="mac-side-heading-action"
+                    aria-label={section.action.label}
+                    onClick={section.action.onClick}
+                  >
+                    <Icon name={glyph(section.action.icon)} size={13} strokeWidth={1.9} />
+                  </button>
+                </WithHelpTag>
+              )}
+            </div>
+          )}
+          {section.items.length === 0 && section.placeholder ? (
+            <div className="mac-side-placeholder">
+              {section.placeholder.text && (
+                <span className="mac-side-placeholder-text">{section.placeholder.text}</span>
+              )}
+              {section.placeholder.action && (
+                <PushButton icon="plus" onClick={section.placeholder.action.onClick}>
+                  {section.placeholder.action.label}
+                </PushButton>
+              )}
+            </div>
+          ) : (
+            section.items.map(row)
+          )}
+          {section.more && (
+            <button type="button" className="mac-side-more" onClick={section.more.onClick}>
+              {section.more.label}
             </button>
-          ))}
+          )}
         </div>
       ))}
+      {footer.length > 0 && <div className="mac-sidebar-footer">{footer.map(row)}</div>}
     </nav>
   )
 }

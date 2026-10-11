@@ -805,7 +805,21 @@ async function emptyRun() {
     await step(`empty-${colorScheme}`, async () => {
       if (cdp) {
         const first = !page
-        page ??= await mainWindowPage()
+        if (first) {
+          // A fresh profile's main window was seen to replace its page target shortly after launch in the Windows
+          // VM; wait until one main-window target has stayed open for 5 s, then drive that one.
+          const end = Date.now() + 90_000
+          for (;;) {
+            const candidate = await mainWindowPage()
+            await new Promise(resolve => setTimeout(resolve, 5000))
+            if (!candidate.isClosed()) {
+              page = candidate
+              break
+            }
+            results.firstLaunchTargetReplaced = (results.firstLaunchTargetReplaced ?? 0) + 1
+            assert.ok(Date.now() < end, 'the main window never settled')
+          }
+        }
         results.nativeUrl ??= page.url()
         await page.emulateMedia({ colorScheme, reducedMotion: 'reduce' })
         // No reload: the app was just launched for this run, and in the Windows VM navigating a fresh profile's

@@ -10,6 +10,8 @@ package hostapi
 import (
 	"encoding/json"
 	"errors"
+
+	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/daemonclient"
 )
 
 // CommandCode is the `code` of a CommandError.
@@ -141,7 +143,11 @@ func Internal(err error) error {
 	if err == nil {
 		return nil
 	}
-	return CommandError{Code: CodeInternalError, Message: err.Error()}
+	message := err.Error()
+	if request, ok := daemonclient.AsRequestError(err); ok && request.Diagnostics() != "" {
+		message += " (" + request.Diagnostics() + ")"
+	}
+	return CommandError{Code: CodeInternalError, Message: message}
 }
 
 // Marshal is the Wails service-level MarshalError: it keeps the typed rejections as their wire shape and wraps

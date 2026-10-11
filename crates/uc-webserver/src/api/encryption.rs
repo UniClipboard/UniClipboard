@@ -31,7 +31,7 @@ use crate::api::dto::encryption::{
     ChangeEncryptionPassphraseRequest, EncryptionActionResponse, EncryptionSessionReadyPayload,
     EncryptionStateResponse, KeychainAccessResponse, UnlockSpaceRequest, UnlockSpaceResponse,
 };
-use crate::api::dto::error::{log_facade_failure, ApiError};
+use crate::api::dto::error::{log_engine_failure, log_facade_failure, ApiError};
 use crate::api::server::DaemonApiState;
 use crate::api::types::DaemonWsEvent;
 
@@ -47,8 +47,7 @@ fn map_encryption_engine_error(
         "unexpected_engine_error"
     };
     let api = ApiError::internal(public_message);
-    log_facade_failure("encryption", op, variant, api.status, &api.message);
-    api
+    log_engine_failure("encryption", op, variant, api, &error)
 }
 
 pub fn router() -> Router<DaemonApiState> {
@@ -393,14 +392,7 @@ fn map_recover_engine_err(err: EngineError) -> ApiError {
             },
         )
     };
-    log_facade_failure(
-        "space_setup",
-        "recover_session",
-        variant,
-        api.status,
-        &api.message,
-    );
-    api
+    log_engine_failure("space_setup", "recover_session", variant, api, &err)
 }
 
 /// GET /encryption/state

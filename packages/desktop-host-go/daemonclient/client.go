@@ -107,12 +107,16 @@ func nonEmptyEnv(name string) string { return strings.TrimSpace(os.Getenv(name))
 
 // RequestError mirrors `DaemonRequestError`.
 type RequestError struct {
-	Kind    RequestErrorKind
-	Path    string
-	Status  int
-	Code    string // empty when the daemon sent no code
-	Message string
-	Err     error
+	Kind                RequestErrorKind
+	Path                string
+	Status              int
+	Code                string // empty when the daemon sent no code
+	Message             string
+	Err                 error
+	RequestID           string
+	EngineErrorCode     uint32
+	EngineErrorCategory string
+	Reason              string
 }
 
 // RequestErrorKind enumerates the Rust error variants.
@@ -143,6 +147,18 @@ func (e *RequestError) Error() string {
 }
 
 func (e *RequestError) Unwrap() error { return e.Err }
+
+// Diagnostics links host failures to daemon logs without exposing response bodies or credentials.
+func (e *RequestError) Diagnostics() string {
+	var fields []string
+	if e.RequestID != "" {
+		fields = append(fields, fmt.Sprintf("request_id=%q", e.RequestID))
+	}
+	if e.EngineErrorCode != 0 {
+		fields = append(fields, fmt.Sprintf("engine_error_code=%d engine_error_kind=%q reason=%q", e.EngineErrorCode, e.EngineErrorCategory, e.Reason))
+	}
+	return strings.Join(fields, " ")
+}
 
 // StatusText renders a status like Rust's `StatusCode` Display ("404 Not Found").
 func StatusText(code int) string {
@@ -318,18 +334,35 @@ func (c *Client) send(ctx context.Context, r Request) (*http.Response, error) {
 	}
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		defer resp.Body.Close()
-		raw, readErr := io.ReadAll(resp.Body)
-		text := string(raw)
-		if readErr != nil {
-			text = "<failed to read body>"
-		}
-		code, message := parseErrorBody(text)
 		if resp.StatusCode == http.StatusUnauthorized {
 			c.dropSession(token)
 		}
-		return nil, &RequestError{Kind: ErrStatus, Path: r.Path, Status: resp.StatusCode, Code: code, Message: message}
+		return nil, responseError(r.Path, resp)
 	}
 	return resp, nil
+}
+
+func responseError(path string, resp *http.Response) *RequestError {
+	raw, readErr := io.ReadAll(resp.Body)
+	text := string(raw)
+	if readErr != nil {
+		text = "<failed to read body>"
+	}
+	code, message := parseErrorBody(text)
+	err := &RequestError{Kind: ErrStatus, Path: path, Status: resp.StatusCode, Code: code, Message: message, RequestID: resp.Header.Get("X-Request-ID")}
+	var parsed struct {
+		Details struct {
+			EngineErrorCode     uint32 `json:"engineErrorCode"`
+			EngineErrorCategory string `json:"engineErrorCategory"`
+			Reason              string `json:"reason"`
+		} `json:"details"`
+	}
+	if json.Unmarshal(raw, &parsed) == nil {
+		err.EngineErrorCode = parsed.Details.EngineErrorCode
+		err.EngineErrorCategory = parsed.Details.EngineErrorCategory
+		err.Reason = parsed.Details.Reason
+	}
+	return err
 }
 
 func parseErrorBody(body string) (string, string) {
@@ -435,7 +468,7 @@ func (c *Client) StartupStatus(ctx context.Context) (json.RawMessage, error) {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		return nil, errors.New("startup status request rejected")
+		return nil, responseError("/startup", resp)
 	}
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {

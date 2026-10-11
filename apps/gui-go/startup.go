@@ -112,7 +112,7 @@ func (h *HostService) ensureDeviceName(settings startupSettings) {
 	defer cancel()
 	patch := map[string]any{"general": map[string]any{"deviceName": name}}
 	if err := h.daemon().Enveloped(ctx, daemonclient.Request{Method: http.MethodPut, Path: "/settings", JSON: patch}, nil); err != nil {
-		log.Printf("failed to initialize the default device name: %v", err)
+		logStartupFailure("initialize_device_name", err)
 	}
 }
 
@@ -127,7 +127,7 @@ func (h *HostService) recoverAfterColdLaunch() {
 	err := h.daemon().Enveloped(ctx, daemonclient.Request{Method: http.MethodPost, Path: "/encryption/unlock"}, &unlocked)
 	switch {
 	case err != nil:
-		log.Printf("daemon auto-unlock failed; the user will need to enter the passphrase: %v", err)
+		logStartupFailure("recover_session", err)
 		return
 	case unlocked.Success != nil && !*unlocked.Success:
 		log.Printf("encryption not initialized or keyring miss; skip auto-unlock")
@@ -139,6 +139,14 @@ func (h *HostService) recoverAfterColdLaunch() {
 		return
 	}
 	log.Printf("daemon lifecycle boot completed")
+}
+
+func logStartupFailure(operation string, err error) {
+	diagnostics := ""
+	if request, ok := daemonclient.AsRequestError(err); ok {
+		diagnostics = request.Diagnostics()
+	}
+	log.Printf("source=gui.startup operation=%s %s error=%q", operation, diagnostics, err.Error())
 }
 
 // waitForEncryptionSession polls until the session is ready; false when it is not initialized or on timeout.

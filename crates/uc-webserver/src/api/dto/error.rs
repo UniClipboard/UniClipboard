@@ -197,11 +197,75 @@ pub fn log_facade_failure(
     }
 }
 
+/// Preserve the Engine's safe diagnostic contract when translating an HTTP failure.
+pub fn log_engine_failure(
+    facade: &'static str,
+    op: &'static str,
+    variant: &'static str,
+    mut api: ApiError,
+    error: &uc_engine::EngineError,
+) -> ApiError {
+    let reason = if error.code() == uc_engine::error_codes::PROFILE_RECOVERY_REQUIRED_CODE {
+        "profile_recovery_required"
+    } else {
+        "engine_operation_failed"
+    };
+    api.details = Some(serde_json::json!({
+        "engineErrorCode": error.code(),
+        "engineErrorCategory": error.category(),
+        "retryable": error.is_retryable(),
+        "reason": reason,
+    }));
+    if api.status.is_server_error() {
+        tracing::error!(
+            facade, op, error_variant = variant,
+            status = api.status.as_u16(),
+            error_code = error.code(), error_kind = %error.category(),
+            retryable = error.is_retryable(), source = "uc_engine", reason,
+            error = %error,
+            public_message = %api.message,
+            "Engine operation failed at HTTP boundary"
+        );
+    }
+    api
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use axum::body::to_bytes;
     use serde_json::json;
+
+    #[tokio::test]
+    async fn engine_failure_preserves_recovery_diagnostics_without_changing_public_error() {
+        let engine_error = uc_engine::EngineError::new(
+            uc_engine::error_codes::PROFILE_RECOVERY_REQUIRED_CODE,
+            uc_engine::EngineErrorCategory::Unavailable,
+            false,
+        );
+        let api = log_engine_failure(
+            "settings",
+            "get",
+            "unavailable",
+            ApiError::service_unavailable("settings service is unavailable"),
+            &engine_error,
+        );
+        let response = api.into_response();
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+        let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let body: ApiErrorResponse = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(body.code, "runtime_unavailable");
+        assert_eq!(body.message, "settings service is unavailable");
+        assert_eq!(
+            body.details.unwrap(),
+            json!({
+                "engineErrorCode": 1220,
+                "engineErrorCategory": "unavailable",
+                "retryable": false,
+                "reason": "profile_recovery_required",
+            })
+        );
+    }
 
     /// `with_details` must survive `IntoResponse` so FE translators can read the
     /// structured fields off `DaemonApiError.details` (e.g. mobile-sync's

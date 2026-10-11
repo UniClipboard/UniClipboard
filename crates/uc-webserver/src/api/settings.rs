@@ -22,7 +22,7 @@ use uc_engine::{
     SaveRelayOutcome, SecretString, SettingsPatch, SettingsUpdateOutcome,
 };
 
-use crate::api::dto::error::{log_facade_failure, ApiError};
+use crate::api::dto::error::{log_engine_failure, log_facade_failure, ApiError};
 use crate::api::dto::settings::{
     CustomRelayDto, CustomRelayMutationDto, CustomRelayMutationResultDto, RelayCredentialEditDto,
     RelayCredentialRequestDto, RelayCredentialStatusDto, RelayEntrySourceDto, RelayOverviewDto,
@@ -747,8 +747,7 @@ fn settings_error_to_api(op: &'static str, error: EngineError) -> ApiError {
             ApiError::internal("settings operation failed"),
         ),
     };
-    log_facade_failure("settings", op, variant, api.status, &api.message);
-    api
+    log_engine_failure("settings", op, variant, api, &error)
 }
 
 fn relay_credential_error_to_api(op: &'static str, error: EngineError) -> ApiError {
@@ -770,8 +769,7 @@ fn relay_credential_error_to_api(op: &'static str, error: EngineError) -> ApiErr
             ApiError::internal("relay credential operation failed"),
         ),
     };
-    log_facade_failure("settings", op, variant, api.status, &api.message);
-    api
+    log_engine_failure("settings", op, variant, api, &error)
 }
 
 // All view↔DTO field mappings live in `crate::api::projection::settings`

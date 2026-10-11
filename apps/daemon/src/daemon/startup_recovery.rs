@@ -15,6 +15,23 @@ pub fn spawn_startup_recovery(
 ) {
     let recovery = tokio::spawn(
         async move {
+            if let Ok(OperationResult::ProfileRecovery(summary)) =
+                engine.execute(Operation::QueryProfileRecovery).await
+            {
+                if !summary.background_ready {
+                    tracing::warn!(
+                        source = "uc_engine",
+                        state = ?summary.state,
+                        background_ready = summary.background_ready,
+                        can_submit_passphrase = summary.can_submit_passphrase,
+                        restart_required = summary.restart_required,
+                        admission_category = ?summary.admission.map(|admission| admission.category),
+                        admission_stage = ?summary.admission.map(|admission| admission.stage),
+                        recovery_action = ?summary.admission.map(|admission| admission.action),
+                        "profile recovery required before background services can start"
+                    );
+                }
+            }
             let recovery = engine
                 .execute(Operation::RecoverSession(RecoverSessionInput {
                     allow_secure_storage_unlock: true,
@@ -37,13 +54,18 @@ pub fn spawn_startup_recovery(
                 }) => tracing::info!("background engine session remains locked"),
                 Ok(_) => tracing::warn!("engine returned an unexpected recovery result"),
                 Err(error) => tracing::warn!(
-                    code = error.code(),
-                    category = %error.category(),
+                    error_code = error.code(),
+                    error_kind = %error.category(),
+                    source = "uc_engine",
+                    retryable = error.is_retryable(),
                     "background engine session recovery failed"
                 ),
             }
         }
-        .in_current_span(),
+        .instrument(info_span!(
+            "daemon.startup.recovery",
+            trace_id = %format!("startup-{}-{}", std::process::id(), chrono::Utc::now().timestamp_millis())
+        )),
     );
     tokio::spawn(async move {
         if let Err(error) = recovery.await {

@@ -544,7 +544,10 @@ pub(crate) async fn request_tracing_middleware(request: Request<Body>, next: Nex
             tracing::info!("daemon http request received");
         }
 
-        let response = next.run(request).await;
+        let mut response = next.run(request).await;
+        if let Ok(value) = HeaderValue::from_str(&request_id) {
+            response.headers_mut().insert("x-request-id", value);
+        }
         let status = response.status();
         let elapsed_ms = start.elapsed().as_millis() as u64;
 
@@ -830,6 +833,13 @@ mod request_log_redaction_tests {
                     .await
                     .expect("test response");
                 assert_eq!(response.status(), StatusCode::OK);
+                let request_id = response
+                    .headers()
+                    .get("x-request-id")
+                    .unwrap()
+                    .to_str()
+                    .unwrap();
+                assert!(writer.output().contains(request_id));
             });
         });
 

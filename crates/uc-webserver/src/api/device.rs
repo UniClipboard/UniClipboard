@@ -18,7 +18,7 @@ use uc_engine::error_codes::QUERY_LOCAL_DEVICE_FAILED_CODE;
 use uc_engine::{EngineError, Operation, OperationResult};
 
 use crate::api::dto::device::LocalDeviceInfoDto;
-use crate::api::dto::error::{log_facade_failure, ApiError};
+use crate::api::dto::error::{log_engine_failure, ApiError};
 use crate::api::server::DaemonApiState;
 
 pub fn router() -> Router<DaemonApiState> {
@@ -62,12 +62,5 @@ fn map_local_device_engine_error(error: EngineError) -> ApiError {
         _ => "unexpected_engine_error",
     };
     let api = ApiError::internal("local device information is unavailable");
-    log_facade_failure(
-        "device",
-        "local_device_info",
-        variant,
-        api.status,
-        &api.message,
-    );
-    api
+    log_engine_failure("device", "local_device_info", variant, api, &error)
 }

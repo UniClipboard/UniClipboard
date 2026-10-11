@@ -1,15 +1,17 @@
 import { makeStyles, tokens } from '@fluentui/react-components'
 
-// WinUI MenuFlyout: acrylic surface, 8px corners, 40px-ish rows at standard density.
+// WinUI MenuFlyout: 8px corners, 40px-ish rows at standard density. The surface is solid: in the WebView2 run the
+// translucent acrylic let the list text behind a flyout show through (this window has a solid material, so there
+// is no backdrop worth blurring).
 export const useMenuStyles = makeStyles({
   popover: {
-    backgroundColor: 'var(--w11-acrylic)',
-    backdropFilter: 'blur(30px) saturate(125%)',
+    backgroundColor: tokens.colorNeutralBackground1,
+    border: `${tokens.strokeWidthThin} solid var(--w11-stroke-elevation)`,
     borderRadius: tokens.borderRadiusXLarge,
     minWidth: '13rem',
   },
   // WinUI menu items use the primary text colour; Fluent web uses the secondary one.
-  // Items are transparent so the acrylic surface shows through, as in MenuFlyout.
+  // Items are transparent over the flyout surface, as in MenuFlyout.
   item: {
     color: tokens.colorNeutralForeground1,
     backgroundColor: 'transparent',

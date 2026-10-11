@@ -75,6 +75,19 @@ export default function HistoryKitPage() {
   })
   const terms = c.filter.submittedQuery.trim().split(/\s+/).filter(Boolean)
 
+  // Quick Look steps through the loaded image entries around the selected one.
+  const images = c.items.filter(item => item.type === 'image')
+  const imageIndex = images.findIndex(item => item.id === c.selectedId)
+  const imageNeighbors = {
+    position: imageIndex + 1,
+    total: images.length,
+    previous: imageIndex > 0 ? () => c.handleCardClick(images[imageIndex - 1].id) : undefined,
+    next:
+      imageIndex >= 0 && imageIndex < images.length - 1
+        ? () => c.handleCardClick(images[imageIndex + 1].id)
+        : undefined,
+  }
+
   const multi = c.checkedItems.length > 1
   const selection = multi ? c.checkedItems.map(item => item.id) : c.selectedId ? [c.selectedId] : []
   const selectedItems = multi ? c.checkedItems : c.selectedItem ? [c.selectedItem] : []
@@ -292,6 +305,7 @@ export default function HistoryKitPage() {
               <HistoryKitDetail
                 item={c.selectedItem}
                 emptyHistory={emptyHistory}
+                imageNeighbors={imageNeighbors}
                 tagging={tagging}
                 copySuccess={c.copySuccessId !== null && c.copySuccessId === c.selectedId}
                 onCopy={() => c.selectedId && void c.handleCopy(c.selectedId)}

@@ -7,7 +7,7 @@ import { useNow } from '@/hooks/useRelativeTime'
 import type { DisplayClipboardItem } from '@/lib/clipboard-entry'
 import { formatShortcutHint } from '@/lib/shortcut-format'
 import { GroupedList, Text, type ItemListItem, type MenuEntry } from '@/ui-kit'
-import { dayGroups } from './history-kit-model'
+import { dayGroups, imageSize } from './history-kit-model'
 import { HistoryKitRowLeading } from './HistoryKitRowLeading'
 import { HistoryKitRowTrailing } from './HistoryKitRowTrailing'
 
@@ -61,7 +61,8 @@ export function HistoryKitList({
     return {
       id: item.id,
       title: rowTitle(item, kind, t('history.type.image', 'image')),
-      subtitle: [device, formatClockTime(item.activeTime, i18n.language)]
+      // An image row names its size instead of the time (design ME1).
+      subtitle: [device, imageSize(item) ?? formatClockTime(item.activeTime, i18n.language)]
         .filter(Boolean)
         .join(' · '),
       monospace: kind === 'code',

@@ -253,6 +253,71 @@ export interface TagProps {
   remove?: LabelledAction
 }
 
+/** A condition shown as a token inside a `TokenSearchField`, e.g. `Tag #deploy`. */
+export interface SearchFieldToken {
+  id: string
+  /** The condition's field, already localized; display only. */
+  field: string
+  value: string
+  /** Colour family hint (design: source green, tag orange, time blue); skins may draw all alike. */
+  kind?: 'tag' | 'source' | 'time' | 'type' | 'other'
+  remove: LabelledAction
+}
+
+export interface SearchSuggestion {
+  id: string
+  label: string
+  /** Heading shown above this item (the first item of a group). */
+  group?: string
+  /** Trailing text, e.g. "12 items · 4 from arch-desktop". */
+  detail?: string
+  kind?: SearchFieldToken['kind']
+  /** Already applied. */
+  selected?: boolean
+  /** Matches nothing under the other conditions. */
+  muted?: boolean
+  /** Creates something new ("Create #re"). */
+  create?: boolean
+}
+
+/** A key press the caller's search model decides on; `preventDefault` keeps the field from acting. */
+export interface SearchFieldKey {
+  key: string
+  shiftKey: boolean
+  preventDefault: () => void
+}
+
+/**
+ * Search field with condition tokens and a suggestion menu (macOS search tokens, WinUI
+ * AutoSuggestBox with tokens). The caller owns the search model: text, tokens, the suggestion list,
+ * which one is highlighted and what keys do (`onKeyDown` sees every key first). Each skin implements
+ * the ARIA combobox pattern: the input has role `combobox`, `aria-expanded` follows
+ * `suggestionsOpen`, `aria-controls` names the suggestion listbox and `aria-activedescendant` the
+ * highlighted option.
+ */
+export interface TokenSearchFieldProps {
+  label: string
+  placeholder?: string
+  /** Display-only shortcut hint such as `⌘F`. */
+  shortcutHint?: string
+  value: string
+  onValueChange: (value: string) => void
+  tokens: SearchFieldToken[]
+  suggestions: SearchSuggestion[]
+  suggestionsOpen: boolean
+  onSuggestionsOpenChange: (open: boolean) => void
+  /** Highlighted suggestion index, -1 for none; the caller moves it (arrow keys via `onKeyDown`). */
+  highlighted: number
+  onHighlightedChange: (index: number) => void
+  onSelectSuggestion: (index: number) => void
+  onKeyDown?: (key: SearchFieldKey) => void
+  /** Trailing clear-all button, shown while there is text or a token. */
+  clear?: LabelledAction
+  /** Display-only footer of the suggestion menu (keyboard hints). */
+  suggestionsFooter?: string
+  inputRef?: Ref<HTMLInputElement>
+}
+
 /** A search condition chip such as `from: iPhone 16`. */
 export interface SearchTokenProps {
   field: string
@@ -289,6 +354,8 @@ export interface ItemListItem {
   leading?: ReactNode
   /** Trailing content such as tags or a pin mark. */
   trailing?: ReactNode
+  /** Search terms the skin marks in the title (system find highlight). */
+  highlight?: string[]
 }
 
 /**
@@ -333,6 +400,11 @@ export interface SidebarNavSection {
   more?: LabelledAction
   /** Shown instead of the items while there are none. */
   placeholder?: { text?: string; action?: LabelledAction }
+  /**
+   * The section as one icon when a skin collapses the sidebar to icons (Windows compact pane), its
+   * items then open in a flyout. Skins that hide the sidebar completely ignore it.
+   */
+  icon?: IconName
 }
 
 /** Single-selection navigation (Up/Down move, Enter/Space select, Tab leaves the list). */
@@ -509,6 +581,7 @@ export declare function AlertDialog(props: AlertDialogProps): ReactNode
 export declare function Badge(props: BadgeProps): ReactNode
 export declare function Tag(props: TagProps): ReactNode
 export declare function SearchToken(props: SearchTokenProps): ReactNode
+export declare function TokenSearchField(props: TokenSearchFieldProps): ReactNode
 export declare function InlineNotice(props: InlineNoticeProps): ReactNode
 export declare function Toolbar(props: ToolbarProps): ReactNode
 export declare function ToolbarButton(props: ToolbarButtonProps): ReactNode

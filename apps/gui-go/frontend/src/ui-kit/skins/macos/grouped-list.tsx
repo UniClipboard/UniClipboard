@@ -2,6 +2,7 @@ import { ContextMenu as BaseContextMenu } from '@base-ui/react/context-menu'
 import { useId, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react'
 import { GroupedVirtuoso, type GroupedVirtuosoHandle } from 'react-virtuoso'
 import type { GroupedListProps, ItemListItem } from '@/ui-kit/contract'
+import { Highlighted } from './highlighted'
 import { listStep } from './list-keys'
 import { MenuPanel } from './menus'
 
@@ -163,7 +164,7 @@ export function GroupedList({
                 {item.leading}
                 <span className="mac-row-text">
                   <span className="mac-row-title" data-mono={item.monospace ? '' : undefined}>
-                    {item.title}
+                    <Highlighted text={item.title} terms={item.highlight} />
                   </span>
                   {item.subtitle && <span className="mac-row-meta">{item.subtitle}</span>}
                 </span>

@@ -2297,3 +2297,170 @@
   min-width: 0;
   flex-shrink: 1;
 }
+
+/* ---------- token search field (design MB1/MB2) ---------- */
+
+.mac-token-search {
+  position: relative;
+  min-width: 0;
+  display: flex;
+  flex-shrink: 1;
+}
+
+.mac-token-search .mac-search {
+  width: 100%;
+  overflow: hidden;
+  transition: width 0.35s var(--mac-ease);
+}
+
+/* In use, the toolbar field widens (Tahoe search morph). */
+.mac-split-toolbar .mac-token-search[data-active] .mac-search,
+.mac-split-toolbar .mac-token-search:focus-within .mac-search {
+  width: 460px !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mac-token-search .mac-search {
+    transition: none;
+  }
+}
+
+.mac-token-search .mac-token {
+  flex-shrink: 0;
+  gap: 4px;
+  padding: 0 4px 0 8px;
+}
+
+.mac-token-field {
+  opacity: 0.75;
+}
+
+.mac-token-value {
+  font-weight: 600;
+}
+
+.mac-token[data-kind='source'] {
+  background: var(--tag-green-bg);
+  color: var(--tag-green-ink);
+}
+.mac-token[data-kind='tag'] {
+  background: var(--tag-orange-bg);
+  color: var(--tag-orange-ink);
+}
+.mac-token[data-kind='time'] {
+  background: var(--tag-blue-bg);
+  color: var(--tag-blue-ink);
+}
+.mac-token[data-kind='type'],
+.mac-token[data-kind='other'] {
+  background: var(--fill-2);
+  color: var(--label);
+}
+
+.mac-search-clear {
+  all: unset;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--label-3);
+  color: var(--content);
+}
+
+.mac-search-clear:focus-visible {
+  outline: 3.5px solid var(--focus);
+}
+
+.mac-suggestions {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: -60px;
+  right: 0;
+  min-width: 420px;
+  max-height: 360px;
+  overflow-y: auto;
+  z-index: 10;
+}
+
+.mac-suggestions[hidden] {
+  display: none;
+}
+
+.mac-suggestion-group {
+  padding: 6px 10px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--label-3);
+}
+
+.mac-suggestion {
+  box-sizing: border-box;
+  min-height: 34px;
+  padding: 4px 10px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  cursor: default;
+}
+
+.mac-suggestion[aria-selected='true'] {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.mac-suggestion[aria-selected='true'] .mac-token {
+  background: rgba(255, 255, 255, 0.22);
+  color: #fff;
+}
+
+.mac-suggestion[data-muted] .mac-token,
+.mac-suggestion[data-muted] .mac-suggestion-detail {
+  opacity: 0.5;
+}
+
+.mac-suggestion-detail {
+  flex-grow: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--label-2);
+}
+
+.mac-suggestion[aria-selected='true'] .mac-suggestion-detail {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.mac-suggestion-create {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+}
+
+.mac-suggestions-footer {
+  margin-top: 4px;
+  padding: 6px 10px 2px;
+  border-top: 0.5px solid var(--separator);
+  font-size: 11px;
+  color: var(--label-2);
+}
+
+/* Search matches in list titles: the system find highlight. */
+.mac-row-title mark {
+  background: var(--yellow);
+  color: #000;
+  border-radius: 3px;
+  padding: 0 1px;
+}
+
+.mac-row[aria-selected='true'] .mac-row-title mark {
+  background: rgba(255, 214, 10, 0.55);
+  color: #fff;
+}

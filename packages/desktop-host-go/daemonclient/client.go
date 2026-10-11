@@ -450,16 +450,22 @@ func marshalNoEscape(v any) ([]byte, error) {
 	return bytes.TrimRight(buf.Bytes(), "\n"), nil
 }
 
-// StartupStatus reads `/startup` with the bearer credential, which is the
-// only credential that route accepts before the business API is ready. It
-// returns nil when the daemon is not reachable yet.
-func (c *Client) StartupStatus(ctx context.Context) (json.RawMessage, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.BaseURL+"/startup", nil)
+// ReadStartupStatus discovers the independent startup service on every poll.
+// It uses that service's bearer credential and does not require a business client.
+// It returns nil when the service has not published its connection or is unreachable.
+func ReadStartupStatus(ctx context.Context) (json.RawMessage, error) {
+	conn, err := daemonproc.ReadStartupConnFile()
+	if err != nil || conn == nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, conn.BaseURL()+"/startup", nil)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Authorization", "Bearer "+c.token)
-	resp, err := c.http.Do(req)
+	req.Header.Set("Authorization", "Bearer "+conn.Token)
+	client := NewLocalHTTPClient(3 * time.Second)
+	defer client.CloseIdleConnections()
+	resp, err := client.Do(req)
 	if err != nil {
 		if ctx.Err() != nil {
 			return nil, ctx.Err()

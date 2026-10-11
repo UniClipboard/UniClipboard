@@ -4,6 +4,7 @@ package main
 
 import (
 	"os"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -142,6 +143,9 @@ const offscreen = -20000
 func quietOptions(o application.WebviewWindowOptions) application.WebviewWindowOptions {
 	if quiet() {
 		o.InitialPosition, o.X, o.Y = application.WindowXY, offscreen, offscreen
+		if runtime.GOOS == "windows" && os.Getenv("UC_GUI_GO_E2E_HIDDEN") == "1" {
+			o.Hidden = true
+		}
 	}
 	return o
 }

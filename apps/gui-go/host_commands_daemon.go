@@ -60,7 +60,7 @@ func (h *HostService) GetDaemonBootstrapFailure() *DaemonBootstrapFailure {
 func (h *HostService) GetDaemonStartupStatus(ctx context.Context) (json.RawMessage, error) {
 	ctx, cancel := commandContext(ctx, "get_daemon_startup_status")
 	defer cancel()
-	raw, err := h.daemon().StartupStatus(ctx)
+	raw, err := daemonclient.ReadStartupStatus(ctx)
 	if err != nil {
 		return nil, hostapi.Internal(err)
 	}

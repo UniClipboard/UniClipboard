@@ -180,6 +180,7 @@ const (
 	ErrIncompatible
 	ErrPromoteRestart
 	ErrPromoteDrainTimeout
+	ErrStartupFailed
 )
 
 // Error mirrors `LocalDaemonError` and its Display text.
@@ -216,7 +217,13 @@ func (e *Error) Error() string {
 		}
 		return fmt.Sprintf("failed to spawn daemon process: %v", e.Err)
 	case ErrStartupTimeout:
-		return fmt.Sprintf("local daemon did not become healthy within %dms for profile %s at %s", e.Timeout.Milliseconds(), profile, e.BaseURL)
+		location := e.BaseURL
+		if location == "" {
+			location = "no business endpoint published"
+		}
+		return fmt.Sprintf("local daemon did not become healthy within %dms for profile %s (%s)", e.Timeout.Milliseconds(), profile, location)
+	case ErrStartupFailed:
+		return fmt.Sprintf("local daemon startup failed for profile %s: %s", profile, e.Details)
 	case ErrIncompatible:
 		observed := "unknown"
 		if e.ObservedVersion != nil {
@@ -245,6 +252,46 @@ func currentBaseURL() string {
 
 func startupTimeout(timeout time.Duration) *Error {
 	return &Error{Kind: ErrStartupTimeout, Timeout: timeout, Profile: os.Getenv("UC_PROFILE"), BaseURL: currentBaseURL()}
+}
+
+// startupFailure reads the independent service before the business API exists.
+func startupFailure() error {
+	ctx, cancel := context.WithTimeout(context.Background(), probeTimeout)
+	defer cancel()
+	body, err := daemonclient.ReadStartupStatus(ctx)
+	if err != nil {
+		return &Error{Kind: ErrProbe, Err: errctx.Wrap("failed to read daemon startup status", err)}
+	}
+	if len(body) == 0 {
+		return nil
+	}
+	var status struct {
+		ServiceFailed bool `json:"service_failed"`
+		Progress      struct {
+			State   string `json:"state"`
+			Upgrade *struct {
+				CurrentStep string `json:"current_step"`
+			} `json:"upgrade"`
+			Failure *struct {
+				Reason    string `json:"reason"`
+				Retryable bool   `json:"retryable"`
+			} `json:"failure"`
+		} `json:"progress"`
+	}
+	if err := json.Unmarshal(body, &status); err != nil {
+		return &Error{Kind: ErrProbe, Err: errctx.Wrap("failed to decode daemon startup status", err)}
+	}
+	if !status.ServiceFailed && status.Progress.State != "failed" && status.Progress.State != "interrupted" {
+		return nil
+	}
+	details := "source=daemon.startup, state=" + status.Progress.State
+	if status.Progress.Upgrade != nil && status.Progress.Upgrade.CurrentStep != "" {
+		details += ", step=" + status.Progress.Upgrade.CurrentStep
+	}
+	if status.Progress.Failure != nil {
+		details += fmt.Sprintf(", reason=%s, retryable=%t", status.Progress.Failure.Reason, status.Progress.Failure.Retryable)
+	}
+	return &Error{Kind: ErrStartupFailed, Profile: os.Getenv("UC_PROFILE"), Details: details}
 }
 
 // IncompatibleError renders an Incompatible outcome with the newer-daemon guard.
@@ -354,6 +401,9 @@ func WaitHealthy(timeout time.Duration, residency string) error {
 			}
 		case Incompatible:
 			return IncompatibleError(outcome)
+		}
+		if err := startupFailure(); err != nil {
+			return err
 		}
 		if !time.Now().Before(deadline) {
 			return startupTimeout(timeout)

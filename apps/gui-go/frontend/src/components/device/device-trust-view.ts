@@ -15,8 +15,12 @@ export type DeviceRowStatus = {
     | 'removed'
     | 'removal_notification_pending'
     | 'diverged'
+    | 'security_update'
   label: string
   description?: string
+  detail?: string
+  /** Status tone for detail views; rows receive it alongside the status. */
+  tone?: StatusDotTone
 }
 
 export interface DeviceTrustListView {
@@ -49,7 +53,7 @@ export function buildDeviceTrustListView(
 
 export function getDeviceTrustStatus(
   device: DeviceTrustRelationship,
-  t: (key: string) => string
+  t: (key: string, opts?: Record<string, unknown>) => string
 ): { tone: StatusDotTone; status: DeviceRowStatus } | null {
   if (device.groupRelationship === 'awaiting_removal_acknowledgement') {
     return {
@@ -82,5 +86,52 @@ export function getDeviceTrustStatus(
   if (device.groupRelationship === 'pending_local_decision') {
     return { tone: 'warning', status: { kind: 'removing', label: t('deviceTrust.status.pending') } }
   }
+  if (device.groupUpdate) return getGroupUpdateStatus(device.groupUpdate, t)
   return null
+}
+
+/**
+ * Presents the Engine-owned delivery state of this device's oldest unacknowledged
+ * group key update. The Engine alone advances or settles it; the description only
+ * explains who acts next and never offers a host-side retry.
+ */
+function getGroupUpdateStatus(
+  update: NonNullable<DeviceTrustRelationship['groupUpdate']>,
+  t: (key: string, opts?: Record<string, unknown>) => string
+): { tone: StatusDotTone; status: DeviceRowStatus } {
+  const rejected =
+    update.state === 'rejected_unclassified' || update.state === 'rejected_by_receiver'
+  const description =
+    // A deadline that has passed (0 for a first attempt) means the retry is already due.
+    update.recovery === 'automatic' &&
+    update.nextRetryAtMs != null &&
+    update.nextRetryAtMs > Date.now()
+      ? t('deviceTrust.groupUpdate.recovery.automaticAt', {
+          time: formatRetryTime(update.nextRetryAtMs),
+        })
+      : t(`deviceTrust.groupUpdate.recovery.${update.recovery}`)
+  const tone: StatusDotTone = rejected ? 'warning' : 'info'
+  return {
+    tone,
+    status: {
+      kind: 'security_update',
+      tone,
+      label: t(`deviceTrust.groupUpdate.state.${update.state}`),
+      description,
+      detail: t('deviceTrust.groupUpdate.detail', {
+        epoch: update.epoch,
+        attempts: update.attempts,
+      }),
+    },
+  }
+}
+
+function formatRetryTime(ms: number): string {
+  const at = new Date(ms)
+  const sameDay = at.toDateString() === new Date().toDateString()
+  return at.toLocaleString([], {
+    ...(sameDay ? {} : { month: 'short', day: 'numeric' }),
+    hour: '2-digit',
+    minute: '2-digit',
+  })
 }

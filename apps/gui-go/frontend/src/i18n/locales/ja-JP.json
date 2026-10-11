@@ -166,6 +166,21 @@
       "pending": "デバイス変更の確認が必要",
       "awaitingPeerConfirmation": "ペアリング完了、相手の確認待ち",
       "unconfirmed": "ペアリング完了、未確認"
+    },
+    "groupUpdate": {
+      "state": {
+        "waiting": "セキュリティ更新は未配信です",
+        "receiver_unavailable": "デバイスが一時的にセキュリティ更新を適用できません",
+        "rejected_unclassified": "セキュリティ更新が拒否されました（理由不明）",
+        "rejected_by_receiver": "デバイスがセキュリティ更新を拒否しました"
+      },
+      "recovery": {
+        "automatic": "自動的に再試行します。操作は不要です。",
+        "automaticAt": "{{time}} ごろに自動的に再試行します。操作は不要です。",
+        "automatic_on_reconnect": "このデバイスが再びオンラインになり検証されると、自動的にもう一度試行します。操作は不要です。",
+        "review_device": "自動では再送されません。このデバイスを確認してください：UniClipboard を更新するか、信頼できることを確認してから再ペアリングしてください。"
+      },
+      "detail": "鍵バージョン {{epoch}} · 試行 {{attempts}} 回"
     }
   },
   "common": {
@@ -1537,7 +1552,7 @@
         "reasons": {
           "device_state_rejected": "一部のデバイス状態を更新できませんでした。現在のデータを保持して、後でもう一度確認してください。",
           "device_relationship_conflict": "デバイスの関係が競合しています。操作ウィンドウで残すデバイスを選択してください。",
-          "device_security_update_rejected": "セキュリティ設定を更新できませんでした。関連するデバイスを確認して再試行してください。",
+          "device_security_update_rejected": "一部のデバイスがセキュリティ更新をまだ受け入れていません。各デバイスの今後の対応はデバイス一覧で確認してください。",
           "device_upgrade_required": "古いバージョンのデバイスがあります。UniClipboard を更新して再試行してください。",
           "local_identity_mismatch": "このデバイスの ID がスペースのメンバー記録と一致しません。既存のデータはそのままにして、後でもう一度確認してください。"
         }

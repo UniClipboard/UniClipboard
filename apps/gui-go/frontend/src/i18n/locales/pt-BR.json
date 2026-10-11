@@ -166,6 +166,21 @@
       "pending": "Alteração precisa de revisão",
       "awaitingPeerConfirmation": "Pareamento concluído, aguardando confirmação do outro dispositivo",
       "unconfirmed": "Pareamento concluído, mas não confirmado"
+    },
+    "groupUpdate": {
+      "state": {
+        "waiting": "Atualização de segurança ainda não entregue",
+        "receiver_unavailable": "O dispositivo não pode aplicar a atualização de segurança no momento",
+        "rejected_unclassified": "Atualização de segurança recusada, motivo desconhecido",
+        "rejected_by_receiver": "O dispositivo recusou a atualização de segurança"
+      },
+      "recovery": {
+        "automatic": "O UniClipboard tentará novamente de forma automática. Nenhuma ação necessária.",
+        "automaticAt": "O UniClipboard tentará novamente por volta de {{time}}. Nenhuma ação necessária.",
+        "automatic_on_reconnect": "O UniClipboard tentará mais uma vez quando este dispositivo voltar a ficar online e for verificado. Nenhuma ação necessária.",
+        "review_device": "Esta atualização não será reenviada automaticamente. Verifique este dispositivo: atualize o UniClipboard nele ou pareie-o novamente depois de confirmar que é confiável."
+      },
+      "detail": "Versão da chave {{epoch}} · {{attempts}} tentativas"
     }
   },
   "common": {
@@ -1545,7 +1560,7 @@
         "reasons": {
           "device_state_rejected": "Não foi possível atualizar o status de alguns dispositivos. Mantenha os dados existentes e verifique novamente mais tarde.",
           "device_relationship_conflict": "Há um conflito entre dispositivos. Escolha quais manter na janela de ação.",
-          "device_security_update_rejected": "Não foi possível atualizar as configurações de segurança. Verifique os dispositivos e tente novamente.",
+          "device_security_update_rejected": "Alguns dispositivos ainda não aceitaram a atualização de segurança. Veja na lista o que acontece com cada dispositivo.",
           "device_upgrade_required": "Um dispositivo usa uma versão antiga. Atualize o UniClipboard e tente novamente.",
           "local_identity_mismatch": "A identidade deste dispositivo não corresponde mais à sua participação no espaço. Mantenha seus dados atuais e verifique novamente mais tarde."
         }

@@ -780,6 +780,28 @@ export type DeviceGroupRelationshipDto = 'confirmation_pending' | 'consistent' |
 
 export type DeviceGroupRemovalDecisionDto = 'accepted' | 'rejected';
 
+export type DeviceGroupUpdateDto = {
+    attempts: number;
+    epoch: number;
+    /**
+     * Present only when `recovery` is `automatic`.
+     */
+    nextRetryAtMs?: number | null;
+    recovery: DeviceGroupUpdateRecoveryDto;
+    state: DeviceGroupUpdateStateDto;
+};
+
+/**
+ * Whether the Engine advances the update on its own (`automatic*`) or the
+ * device needs review; host-side re-queries never change the outcome.
+ */
+export type DeviceGroupUpdateRecoveryDto = 'automatic' | 'automatic_on_reconnect' | 'review_device';
+
+/**
+ * Delivery state of the oldest unacknowledged group key update for one device.
+ */
+export type DeviceGroupUpdateStateDto = 'waiting' | 'receiver_unavailable' | 'rejected_unclassified' | 'rejected_by_receiver';
+
 export type DeviceMembershipDto = 'active' | 'removed' | 'unavailable' | 'unknown';
 
 export type DeviceReachabilityDto = 'online' | 'offline' | 'unknown';
@@ -838,6 +860,7 @@ export type DeviceTrustRelationshipDto = {
     deviceId: string;
     displayName: string;
     groupRelationship: DeviceGroupRelationshipDto;
+    groupUpdate?: DeviceGroupUpdateDto | null;
     isLocal: boolean;
     membership: DeviceMembershipDto;
     pairingConfirmation?: PairingConfirmationDto | null;

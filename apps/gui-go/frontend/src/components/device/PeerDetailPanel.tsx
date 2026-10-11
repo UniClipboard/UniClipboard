@@ -170,12 +170,14 @@ const PeerDetailPanel: React.FC<PeerDetailPanelProps> = ({
               {deviceName}
             </h3>
             <p className="mt-2 flex flex-wrap items-center gap-2 text-ui-caption">
-              <StatusDot tone={status ? 'warning' : dotTone} />
+              <StatusDot tone={status ? (status.tone ?? 'warning') : dotTone} />
               <span
                 className={cn(
                   'font-medium',
                   status
-                    ? 'text-warning'
+                    ? status.tone === 'info'
+                      ? 'text-info'
+                      : 'text-warning'
                     : connected && device?.channel === 'relay'
                       ? 'text-info'
                       : connected && device?.channel === 'direct'
@@ -189,6 +191,17 @@ const PeerDetailPanel: React.FC<PeerDetailPanelProps> = ({
               <span className="text-muted-foreground/50">·</span>
               <span className="text-muted-foreground">{channelLabel}</span>
             </p>
+            {status?.description && (
+              <p
+                data-testid="device-status-description"
+                className="mt-1.5 text-ui-caption text-muted-foreground"
+              >
+                {status.description}
+                {status.detail && (
+                  <span className="mt-0.5 block text-muted-foreground/70">{status.detail}</span>
+                )}
+              </p>
+            )}
           </div>
           <Button
             data-testid="device-unpair"

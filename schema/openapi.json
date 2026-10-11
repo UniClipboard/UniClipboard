@@ -1389,6 +1389,58 @@
         ],
         "type": "string"
       },
+      "DeviceGroupUpdateDto": {
+        "properties": {
+          "attempts": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "epoch": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "nextRetryAtMs": {
+            "description": "Present only when `recovery` is `automatic`.",
+            "format": "int64",
+            "nullable": true,
+            "type": "integer"
+          },
+          "recovery": {
+            "$ref": "#/components/schemas/DeviceGroupUpdateRecoveryDto"
+          },
+          "state": {
+            "$ref": "#/components/schemas/DeviceGroupUpdateStateDto"
+          }
+        },
+        "required": [
+          "epoch",
+          "state",
+          "recovery",
+          "attempts"
+        ],
+        "type": "object"
+      },
+      "DeviceGroupUpdateRecoveryDto": {
+        "description": "Whether the Engine advances the update on its own (`automatic*`) or the\ndevice needs review; host-side re-queries never change the outcome.",
+        "enum": [
+          "automatic",
+          "automatic_on_reconnect",
+          "review_device"
+        ],
+        "type": "string"
+      },
+      "DeviceGroupUpdateStateDto": {
+        "description": "Delivery state of the oldest unacknowledged group key update for one device.",
+        "enum": [
+          "waiting",
+          "receiver_unavailable",
+          "rejected_unclassified",
+          "rejected_by_receiver"
+        ],
+        "type": "string"
+      },
       "DeviceMembershipDto": {
         "enum": [
           "active",
@@ -1562,6 +1614,14 @@
           },
           "groupRelationship": {
             "$ref": "#/components/schemas/DeviceGroupRelationshipDto"
+          },
+          "groupUpdate": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/DeviceGroupUpdateDto"
+              }
+            ],
+            "nullable": true
           },
           "isLocal": {
             "type": "boolean"

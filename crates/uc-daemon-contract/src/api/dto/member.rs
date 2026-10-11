@@ -175,6 +175,38 @@ pub enum PairingConfirmationDto {
     Confirmed,
 }
 
+/// Delivery state of the oldest unacknowledged group key update for one device.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum DeviceGroupUpdateStateDto {
+    Waiting,
+    ReceiverUnavailable,
+    RejectedUnclassified,
+    RejectedByReceiver,
+}
+
+/// Whether the Engine advances the update on its own (`automatic*`) or the
+/// device needs review; host-side re-queries never change the outcome.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum DeviceGroupUpdateRecoveryDto {
+    Automatic,
+    AutomaticOnReconnect,
+    ReviewDevice,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct DeviceGroupUpdateDto {
+    pub epoch: u64,
+    pub state: DeviceGroupUpdateStateDto,
+    pub recovery: DeviceGroupUpdateRecoveryDto,
+    pub attempts: u32,
+    /// Present only when `recovery` is `automatic`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub next_retry_at_ms: Option<i64>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct DeviceTrustImpactDto {
@@ -210,6 +242,9 @@ pub struct DeviceTrustRelationshipDto {
     pub sync_relationship: DeviceSyncRelationshipDto,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pairing_confirmation: Option<PairingConfirmationDto>,
+    /// Unacknowledged group key update for this device; absent means none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group_update: Option<DeviceGroupUpdateDto>,
     pub available_actions: Vec<DeviceTrustActionDto>,
     pub blocked_reason: Option<DeviceTrustUnavailableReasonDto>,
 }

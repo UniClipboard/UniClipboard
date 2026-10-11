@@ -166,6 +166,21 @@
       "pending": "需要確認裝置變化",
       "awaitingPeerConfirmation": "已完成配對，等待對方確認",
       "unconfirmed": "已完成配對，但未被確認"
+    },
+    "groupUpdate": {
+      "state": {
+        "waiting": "安全更新尚未送達",
+        "receiver_unavailable": "裝置暫時無法套用安全更新",
+        "rejected_unclassified": "安全更新遭拒，原因不明",
+        "rejected_by_receiver": "裝置拒絕了安全更新"
+      },
+      "recovery": {
+        "automatic": "將自動重試，無需操作。",
+        "automaticAt": "將在 {{time}} 左右自動重試，無需操作。",
+        "automatic_on_reconnect": "該裝置重新上線並通過驗證後會自動再試一次，無需操作。",
+        "review_device": "不會自動重送。請核對該裝置：更新其 UniClipboard，或在確認可信後重新配對。"
+      },
+      "detail": "金鑰版本 {{epoch}} · 已嘗試 {{attempts}} 次"
     }
   },
   "common": {
@@ -1534,7 +1549,7 @@
         "reasons": {
           "device_state_rejected": "部分裝置狀態未能更新。請保留現有資料，稍後重新檢查。",
           "device_relationship_conflict": "裝置關係存在衝突，請依照處理視窗中的提示選擇要保留的裝置。",
-          "device_security_update_rejected": "安全設定未能更新，請檢查相關裝置後重試。",
+          "device_security_update_rejected": "部分裝置尚未接受安全更新。請在裝置清單中查看各裝置的後續處理。",
           "device_upgrade_required": "有裝置版本過舊，請更新 UniClipboard 後重試。",
           "local_identity_mismatch": "本裝置的身分與空間成員記錄不一致。請保留現有資料，稍後再檢查。"
         }

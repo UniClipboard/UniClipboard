@@ -116,6 +116,7 @@ async function run() {
   if (phase === 'startup-observe') return // the native observer reports; the hidden window may not run scripts
   if (phase.startsWith('startup-set:')) return runStartupSetScenario(phase)
   if (phase === 'tray-devices') return runTrayDevicesScenario()
+  if (phase === 'device-group-update') return runDeviceGroupUpdateScenario()
   if (phase.startsWith('autostart')) return runAutostartScenario(phase)
   if (phase === 'config-export') return runConfigExportScenario()
   if (phase === 'config-applied') {
@@ -893,6 +894,46 @@ async function runAutostartScenario(phase: string) {
 
 // Tray device-sync submenu with a paired peer, the localized menu, the notification bridge and the
 // lightweight-mode exit.
+// Observes the devices list the user sees while the orchestrator drives a peer's group key update through the
+// Engine. Read-only: it reports every change of a peer row's status and the selected peer's status description,
+// so the orchestrator can assert the UI follows the daemon's HTTP/WS state without any UI-side retry.
+async function runDeviceGroupUpdateScenario() {
+  await reachMainLayout()
+  const click = (href: string) => () =>
+    void waitFor(`link ${href}`, () => link(href)).then(a => a.click())
+  await navigate(click('/devices'), '/', devicesPage, 'devices', true)
+  daemonWs.subscribe(['device-trust', 'system'], event => {
+    void record('device-trust-ws', true, { type: event.eventType })
+  })
+  // A hidden e2e window may have its timers throttled, so report from DOM mutations instead of polling.
+  const seen = new Map<string, string>()
+  let described = ''
+  const report = () => {
+    for (const row of document.querySelectorAll<HTMLElement>('[data-testid^="device-peer-"]')) {
+      const deviceId = row.dataset.testid!.slice('device-peer-'.length)
+      const status = row.dataset.status ?? ''
+      const label = row.getAttribute('aria-label') ?? ''
+      if (seen.get(deviceId) !== `${status}|${label}`) {
+        seen.set(deviceId, `${status}|${label}`)
+        void record('device-row', true, { deviceId, status, label })
+      }
+      if (status === 'security_update' && row.getAttribute('aria-current') !== 'true') row.click()
+    }
+    const description = $('[data-testid="device-status-description"]')?.textContent ?? ''
+    if (description !== described) {
+      described = description
+      void record('device-status-description', true, { description })
+    }
+  }
+  new MutationObserver(report).observe(document.body, {
+    subtree: true,
+    childList: true,
+    attributes: true,
+    characterData: true,
+  })
+  report()
+}
+
 async function runTrayDevicesScenario() {
   await waitFor('app root content', () => document.getElementById('root')?.children.length)
   // The app sets the tray language from its UI language at startup (once or more, and later on a host whose language is not English);

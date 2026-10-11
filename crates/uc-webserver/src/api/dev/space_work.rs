@@ -7,8 +7,8 @@ use axum::{Json, Router};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use uc_engine::{
-    DevMembershipHistoryFailure, DevOperation, DevOperationResult, DevSpaceWorkEvent,
-    DevSpaceWorkEventKind,
+    DevGroupUpdateReceiveFault, DevMembershipHistoryFailure, DevOperation, DevOperationResult,
+    DevSpaceWorkEvent, DevSpaceWorkEventKind,
 };
 
 use crate::api::server::DaemonApiState;
@@ -60,6 +60,14 @@ fn kind(name: &str) -> Option<DevSpaceWorkEventKind> {
         "membership_history_sync_reply_received" => {
             Some(DevSpaceWorkEventKind::MembershipHistorySyncReplyReceived)
         }
+        "group_update_receive_fault_injected" => {
+            Some(DevSpaceWorkEventKind::GroupUpdateReceiveFaultInjected)
+        }
+        "group_update_applied" => Some(DevSpaceWorkEventKind::GroupUpdateApplied),
+        "group_update_tampered" => Some(DevSpaceWorkEventKind::GroupUpdateTampered),
+        "legacy_receiver_rejection_injected" => {
+            Some(DevSpaceWorkEventKind::LegacyReceiverRejectionInjected)
+        }
         _ => None,
     }
 }
@@ -89,6 +97,14 @@ fn event(value: DevSpaceWorkEvent) -> Value {
         }
         DevSpaceWorkEventKind::MembershipHistorySyncReplyReceived => {
             "membership_history_sync_reply_received"
+        }
+        DevSpaceWorkEventKind::GroupUpdateReceiveFaultInjected => {
+            "group_update_receive_fault_injected"
+        }
+        DevSpaceWorkEventKind::GroupUpdateApplied => "group_update_applied",
+        DevSpaceWorkEventKind::GroupUpdateTampered => "group_update_tampered",
+        DevSpaceWorkEventKind::LegacyReceiverRejectionInjected => {
+            "legacy_receiver_rejection_injected"
         }
     };
     json!({ "sequence": value.sequence, "kind": name })
@@ -134,6 +150,26 @@ async fn space_work(
                 .ok_or(StatusCode::BAD_REQUEST)?,
         },
         "clear_membership_history_failures" => DevOperation::ClearMembershipHistoryFailures,
+        "set_group_update_receive_fault" => DevOperation::SetGroupUpdateReceiveFault {
+            fault: match request.failure.as_deref() {
+                Some("not_ready") => Some(DevGroupUpdateReceiveFault::NotReady),
+                Some("storage_unavailable") => Some(DevGroupUpdateReceiveFault::StorageUnavailable),
+                None => None,
+                _ => return Err(StatusCode::BAD_REQUEST),
+            },
+        },
+        "arm_group_update_tamper" => DevOperation::ArmGroupUpdateTamper {
+            count: request
+                .count
+                .filter(|count| *count > 0)
+                .ok_or(StatusCode::BAD_REQUEST)?,
+        },
+        "arm_legacy_receiver_rejection" => DevOperation::ArmLegacyReceiverRejection {
+            count: request
+                .count
+                .filter(|count| *count > 0)
+                .ok_or(StatusCode::BAD_REQUEST)?,
+        },
         "wait_space_work_event" => DevOperation::WaitForSpaceWorkEvent {
             after_sequence: request.after_sequence.ok_or(StatusCode::BAD_REQUEST)?,
             kind: kind(request.kind.as_deref().ok_or(StatusCode::BAD_REQUEST)?)
@@ -164,6 +200,9 @@ async fn space_work(
         DevOperationResult::MembershipHistoryFailuresCleared { remaining } => {
             json!({ "remaining": remaining })
         }
+        DevOperationResult::GroupUpdateReceiveFaultSet
+        | DevOperationResult::GroupUpdateTamperArmed
+        | DevOperationResult::LegacyReceiverRejectionArmed => json!({ "status": "armed" }),
         DevOperationResult::SpaceWorkEvent(value) => event(value),
         DevOperationResult::SpaceWorkEvents(values) => {
             Value::Array(values.into_iter().map(event).collect())

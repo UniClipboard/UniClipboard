@@ -166,6 +166,21 @@
       "pending": "Device change needs review",
       "awaitingPeerConfirmation": "Pairing complete, waiting for peer confirmation",
       "unconfirmed": "Pairing complete, but not confirmed"
+    },
+    "groupUpdate": {
+      "state": {
+        "waiting": "Security update not yet delivered",
+        "receiver_unavailable": "Device temporarily cannot apply the security update",
+        "rejected_unclassified": "Security update rejected, reason unknown",
+        "rejected_by_receiver": "Device rejected the security update"
+      },
+      "recovery": {
+        "automatic": "UniClipboard will retry automatically. No action needed.",
+        "automaticAt": "UniClipboard will retry automatically around {{time}}. No action needed.",
+        "automatic_on_reconnect": "UniClipboard will try once more after this device comes back online and is verified. No action needed.",
+        "review_device": "This update will not be resent automatically. Check this device: update its UniClipboard, or pair it again once you trust it."
+      },
+      "detail": "Key version {{epoch}} · {{attempts}} attempts"
     }
   },
   "common": {
@@ -1537,7 +1552,7 @@
         "reasons": {
           "device_state_rejected": "Some device status could not be updated. Keep your existing data and check again later.",
           "device_relationship_conflict": "Device relationships conflict. Choose which devices to keep in the action window.",
-          "device_security_update_rejected": "Security settings could not be updated. Check the affected devices and try again.",
+          "device_security_update_rejected": "Some devices have not accepted the security update. See each device in the list for what happens next.",
           "device_upgrade_required": "A device is using an older version. Update UniClipboard and try again.",
           "local_identity_mismatch": "This device's identity no longer matches its space membership. Keep your existing data and check again later."
         }

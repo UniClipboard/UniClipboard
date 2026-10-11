@@ -411,6 +411,7 @@ mod tests {
             compatibility: DeviceCompatibilityDto::Compatible,
             sync_relationship: DeviceSyncRelationshipDto::Usable,
             pairing_confirmation: None,
+            group_update: None,
             available_actions: vec![],
             blocked_reason: None,
         }

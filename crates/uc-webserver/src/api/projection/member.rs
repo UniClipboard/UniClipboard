@@ -10,10 +10,11 @@ mod device_group;
 use uc_engine::{
     ContentTypesPatch, ContentTypesSummary, DeviceCompatibilitySummary,
     DeviceGroupChoiceOutcomeSummary, DeviceGroupChoiceResultSummary, DeviceGroupChoicesSummary,
-    DeviceGroupRelationshipSummary, DeviceMembershipSummary, DeviceReachabilitySummary,
-    DeviceSyncRelationshipSummary, DeviceTrustActionSummary, DeviceTrustChangeSummary,
-    DeviceTrustChoiceSummary, DeviceTrustImpactSummary, DeviceTrustRecoverySummary,
-    DeviceTrustRelationshipSummary, DeviceTrustSnapshotSummary,
+    DeviceGroupRelationshipSummary, DeviceGroupUpdateRecoverySummary,
+    DeviceGroupUpdateStateSummary, DeviceGroupUpdateSummary, DeviceMembershipSummary,
+    DeviceReachabilitySummary, DeviceSyncRelationshipSummary, DeviceTrustActionSummary,
+    DeviceTrustChangeSummary, DeviceTrustChoiceSummary, DeviceTrustImpactSummary,
+    DeviceTrustRecoverySummary, DeviceTrustRelationshipSummary, DeviceTrustSnapshotSummary,
     DeviceTrustUnavailableReasonSummary, MemberProtectionStatusSummary, MemberProtectionSummary,
     MemberSyncPreferencesPatch, MemberSyncPreferencesSummary,
     MembershipMaintenanceHealthPhaseSummary, MembershipMaintenanceProblemSummary,
@@ -26,6 +27,7 @@ use super::{IntoApiDto, IntoDomain};
 use crate::api::dto::member::{
     DeviceCompatibilityDto, DeviceGroupChoiceIssueDto, DeviceGroupChoiceOutcomeDto,
     DeviceGroupChoiceResultDto, DeviceGroupChoicesDto, DeviceGroupRelationshipDto,
+    DeviceGroupUpdateDto, DeviceGroupUpdateRecoveryDto, DeviceGroupUpdateStateDto,
     DeviceMembershipDto, DeviceReachabilityDto, DeviceSyncRelationshipDto, DeviceTrustActionDto,
     DeviceTrustChangeDto, DeviceTrustChoiceDto, DeviceTrustImpactDto, DeviceTrustRelationshipDto,
     DeviceTrustSnapshotDto, DeviceTrustUnavailableReasonDto, InboundPairingDto,
@@ -423,6 +425,7 @@ fn device_trust_relationship(
                 PairingConfirmationSummary::Unconfirmed => PairingConfirmationDto::Unconfirmed,
                 PairingConfirmationSummary::Confirmed => PairingConfirmationDto::Confirmed,
             }),
+        group_update: relationship.group_update.map(device_group_update),
         available_actions: relationship
             .available_actions
             .into_iter()
@@ -431,6 +434,35 @@ fn device_trust_relationship(
         blocked_reason: relationship
             .blocked_reason
             .map(device_trust_unavailable_reason),
+    }
+}
+
+fn device_group_update(update: DeviceGroupUpdateSummary) -> DeviceGroupUpdateDto {
+    DeviceGroupUpdateDto {
+        epoch: update.epoch,
+        state: match update.state {
+            DeviceGroupUpdateStateSummary::Waiting => DeviceGroupUpdateStateDto::Waiting,
+            DeviceGroupUpdateStateSummary::ReceiverUnavailable => {
+                DeviceGroupUpdateStateDto::ReceiverUnavailable
+            }
+            DeviceGroupUpdateStateSummary::RejectedUnclassified => {
+                DeviceGroupUpdateStateDto::RejectedUnclassified
+            }
+            DeviceGroupUpdateStateSummary::RejectedByReceiver => {
+                DeviceGroupUpdateStateDto::RejectedByReceiver
+            }
+        },
+        recovery: match update.recovery {
+            DeviceGroupUpdateRecoverySummary::Automatic => DeviceGroupUpdateRecoveryDto::Automatic,
+            DeviceGroupUpdateRecoverySummary::AutomaticOnReconnect => {
+                DeviceGroupUpdateRecoveryDto::AutomaticOnReconnect
+            }
+            DeviceGroupUpdateRecoverySummary::ReviewDevice => {
+                DeviceGroupUpdateRecoveryDto::ReviewDevice
+            }
+        },
+        attempts: update.attempts,
+        next_retry_at_ms: update.next_retry_at_ms,
     }
 }
 
@@ -596,6 +628,13 @@ mod tests {
                 compatibility: DeviceCompatibilitySummary::Compatible,
                 sync_relationship: DeviceSyncRelationshipSummary::PausedUnverifiable,
                 pairing_confirmation: Some(PairingConfirmationSummary::Unconfirmed),
+                group_update: Some(DeviceGroupUpdateSummary {
+                    epoch: 5,
+                    state: DeviceGroupUpdateStateSummary::ReceiverUnavailable,
+                    recovery: DeviceGroupUpdateRecoverySummary::Automatic,
+                    attempts: 2,
+                    next_retry_at_ms: Some(67890),
+                }),
                 available_actions: Vec::new(),
                 blocked_reason: None,
             }],
@@ -631,6 +670,16 @@ mod tests {
         assert_eq!(
             mapped.devices[0].group_relationship,
             DeviceGroupRelationshipDto::AwaitingRemovalAcknowledgement
+        );
+        assert_eq!(
+            mapped.devices[0].group_update,
+            Some(DeviceGroupUpdateDto {
+                epoch: 5,
+                state: DeviceGroupUpdateStateDto::ReceiverUnavailable,
+                recovery: DeviceGroupUpdateRecoveryDto::Automatic,
+                attempts: 2,
+                next_retry_at_ms: Some(67890),
+            })
         );
         let change = mapped.current_change.expect("pending device trust change");
         assert_eq!(change.change_id, "change-1");

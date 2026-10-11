@@ -180,7 +180,8 @@
         "automatic_on_reconnect": "該裝置重新上線並通過驗證後會自動再試一次，無需操作。",
         "review_device": "不會自動重送。請核對該裝置：更新其 UniClipboard，或在確認可信後重新配對。"
       },
-      "detail": "金鑰版本 {{epoch}} · 已嘗試 {{attempts}} 次"
+      "detail_one": "金鑰版本 {{epoch}} · 已嘗試 {{count}} 次",
+      "detail_other": "金鑰版本 {{epoch}} · 已嘗試 {{count}} 次"
     }
   },
   "common": {

@@ -180,7 +180,8 @@
         "automatic_on_reconnect": "このデバイスが再びオンラインになり検証されると、自動的にもう一度試行します。操作は不要です。",
         "review_device": "自動では再送されません。このデバイスを確認してください：UniClipboard を更新するか、信頼できることを確認してから再ペアリングしてください。"
       },
-      "detail": "鍵バージョン {{epoch}} · 試行 {{attempts}} 回"
+      "detail_one": "鍵バージョン {{epoch}} · 試行 {{count}} 回",
+      "detail_other": "鍵バージョン {{epoch}} · 試行 {{count}} 回"
     }
   },
   "common": {

@@ -180,7 +180,9 @@
         "automatic_on_reconnect": "O UniClipboard tentará mais uma vez quando este dispositivo voltar a ficar online e for verificado. Nenhuma ação necessária.",
         "review_device": "Esta atualização não será reenviada automaticamente. Verifique este dispositivo: atualize o UniClipboard nele ou pareie-o novamente depois de confirmar que é confiável."
       },
-      "detail": "Versão da chave {{epoch}} · {{attempts}} tentativas"
+      "detail_one": "Versão da chave {{epoch}} · {{count}} tentativa",
+      "detail_other": "Versão da chave {{epoch}} · {{count}} tentativas",
+      "detail_many": "Versão da chave {{epoch}} · {{count}} tentativas"
     }
   },
   "common": {

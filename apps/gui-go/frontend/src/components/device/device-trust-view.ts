@@ -120,7 +120,7 @@ function getGroupUpdateStatus(
       description,
       detail: t('deviceTrust.groupUpdate.detail', {
         epoch: update.epoch,
-        attempts: update.attempts,
+        count: update.attempts,
       }),
     },
   }

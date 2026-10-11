@@ -180,7 +180,8 @@
         "automatic_on_reconnect": "该设备重新上线并通过验证后会自动再试一次，无需操作。",
         "review_device": "不会自动重发。请核对该设备：更新其 UniClipboard，或在确认可信后重新配对。"
       },
-      "detail": "密钥版本 {{epoch}} · 已尝试 {{attempts}} 次"
+      "detail_one": "密钥版本 {{epoch}} · 已尝试 {{count}} 次",
+      "detail_other": "密钥版本 {{epoch}} · 已尝试 {{count}} 次"
     }
   },
   "common": {

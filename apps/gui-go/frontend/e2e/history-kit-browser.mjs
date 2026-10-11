@@ -803,11 +803,16 @@ async function emptyRun() {
   for (const colorScheme of ['light', 'dark']) {
     await step(`empty-${colorScheme}`, async () => {
       if (cdp) {
+        const first = !page
         page ??= await mainWindowPage()
         results.nativeUrl ??= page.url()
         await page.emulateMedia({ colorScheme, reducedMotion: 'reduce' })
-        await reloadApp()
-        await unlockIfLocked()
+        // Load once: in the Windows VM a second load of a fresh profile lost the page target, so the dark pass
+        // only switches the emulated scheme on the same document.
+        if (first) {
+          await reloadApp()
+          await unlockIfLocked()
+        }
       } else {
         if (page) await closePage()
         const context = await browser.newContext({
@@ -826,7 +831,7 @@ async function emptyRun() {
         await page.waitForTimeout(3000)
         results.firstLaunchStartUrl ??= page.url()
         await shot(`first-launch-start-${colorScheme}`)
-        if (!page.url().endsWith('/history')) {
+        if (!page.url().endsWith('/history') && colorScheme === 'light') {
           await page
             .getByRole('link', { name: /All items/ })
             .or(page.getByRole('button', { name: /All items/ }))

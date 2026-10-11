@@ -819,6 +819,21 @@ async function emptyRun() {
         page = await context.newPage()
         await page.goto(await pageUrl())
       }
+      // The real app may start a fresh profile on another page (it opened Devices in the Windows VM); record where
+      // it landed and go to History the way a user would, through the sidebar.
+      if (cdp) {
+        await page.waitForLoadState('domcontentloaded')
+        await page.waitForTimeout(3000)
+        results.firstLaunchStartUrl ??= page.url()
+        await shot(`first-launch-start-${colorScheme}`)
+        if (!page.url().endsWith('/history')) {
+          await page
+            .getByRole('link', { name: /All items/ })
+            .or(page.getByRole('button', { name: /All items/ }))
+            .first()
+            .click()
+        }
+      }
       // The first-run consent alert is modal (it hides the page from the accessibility tree), so wait on text.
       await page.getByText('Nothing Copied Yet').waitFor({ timeout: 60_000 })
       await dismissStartupPrompts()

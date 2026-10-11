@@ -565,6 +565,7 @@ async function seededRun() {
         })
       )
     }
+    assert.ok(!order.some(entry => entry.includes(':body:')), `focus fell to <body>: ${order}`)
     const regions = order.map(entry => entry.split(':')[0])
     const firstIndex = name => regions.findIndex(r => r === name)
     // Title bar, then the navigation pane, the list pane and the detail pane, in drawn order.

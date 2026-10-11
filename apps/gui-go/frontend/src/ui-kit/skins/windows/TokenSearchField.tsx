@@ -247,13 +247,18 @@ export function TokenSearchField({
           placeholder={conditions.length > 0 ? undefined : placeholder}
           value={value}
           onChange={event => onValueChange(event.target.value)}
-          onKeyDown={event =>
+          onKeyDown={event => {
             onKeyDown?.({
               key: event.key,
               shiftKey: event.shiftKey,
               preventDefault: () => event.preventDefault(),
             })
-          }
+            // A Tab the model leaves alone moves focus on. Close the flyout now, inside the key event, so the
+            // page has settled before the browser moves focus; closing on blur instead re-renders while focus
+            // passes the next toolbar's focus guard and drops it on <body>.
+            if (event.key === 'Tab' && !event.defaultPrevented && open)
+              onSuggestionsOpenChange(false)
+          }}
           onFocus={() => onSuggestionsOpenChange(true)}
           onBlur={() => onSuggestionsOpenChange(false)}
           {...editingKeys}

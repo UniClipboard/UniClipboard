@@ -372,7 +372,7 @@ exit 0
 """, check=False)
         # The app's own output and evidence come back before the sandbox is removed.
         record['appOutput'] = machine.ps(f"""
-foreach ($f in 'gui.out','gui.err','native.jsonl') {{ '--- ' + $f; Get-Content '{run_dir}\\' + $f -Tail 200 -ErrorAction SilentlyContinue }}
+foreach ($f in 'gui.out','gui.err','native.jsonl') {{ '--- ' + $f; Get-Content ('{run_dir}\\' + $f) -Tail 200 -ErrorAction SilentlyContinue }}
 """, check=False)
         logs = machine.ps(f"(Get-ChildItem '{app}\\data' -Recurse -Directory -Filter logs -ErrorAction SilentlyContinue | Select -First 1).FullName", check=False)
         if logs:

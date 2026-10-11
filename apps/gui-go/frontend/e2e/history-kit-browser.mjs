@@ -185,8 +185,8 @@ const activeDescription = () =>
 // The real app starts content-locked: unlock through its own unlock screen (keyring first, then the passphrase).
 async function unlockIfLocked() {
   const unlock = page.locator('[data-testid="unlock-content"]')
-  // Any main-window page counts as unlocked (a fresh profile may start on Devices).
-  const ready = page.locator('[data-item-id], [data-pane="detail"], main')
+  // The History page's panes; the app's state shell also renders a <main> around the lock screen, so that is no signal.
+  const ready = page.locator('[data-pane]')
   await Promise.race([
     unlock.waitFor({ timeout: 60_000 }),
     ready.first().waitFor({ timeout: 60_000 }),
@@ -203,6 +203,7 @@ async function unlockIfLocked() {
     await passphrase.fill(daemon.passphrase)
     await passphrase.press('Enter')
   }
+  await ready.first().waitFor({ timeout: 60_000 })
 }
 // A fresh document from the app's root: the asset server knows no client route such as /history, so reloading
 // that URL fails; the app routes to History again after it starts.

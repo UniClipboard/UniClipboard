@@ -49,6 +49,7 @@ from file_preview_run import PASSPHRASE, PNG  # noqa: E402
 ROOT = HERE.parents[2]
 FRONTEND = ROOT / 'apps/gui-go/frontend'
 HOME = Path.home()
+PRODUCT_PATHS = ['apps', 'packages', 'crates', 'scripts', 'Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml', 'package.json', 'bun.lock']
 SSH = ['ssh', '-o', 'BatchMode=yes', '-o', 'ServerAliveInterval=30', '-o', 'LogLevel=ERROR']
 NODE = ('https://nodejs.org/dist/v22.19.0/node-v22.19.0-win-arm64.zip',
         'e4a7336010d58ff35b53d9dd5869095c56089c70913cf22508cf8183593e56b2')
@@ -131,8 +132,12 @@ def build_go_half(arch):
     out = ROOT / f'target/gui-go/windows-e2e-{arch}'
     manifest = json.loads((out / 'manifest.json').read_text())
     head = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
-    if manifest['commit'] != head or manifest['dirty']:
-        sys.exit(f'the Go half is not from a clean HEAD {head}: {manifest}')
+    # Only the product sources must be clean; tool state elsewhere in the checkout (editor or agent skills) is
+    # recorded, not built.
+    product = subprocess.check_output(['git', 'status', '--porcelain', '--', *PRODUCT_PATHS], cwd=ROOT, text=True).strip()
+    if manifest['commit'] != head or product:
+        sys.exit(f'the Go half is not from a clean HEAD {head}: {product or manifest}')
+    manifest['unrelatedChanges'] = subprocess.check_output(['git', 'status', '--porcelain'], cwd=ROOT, text=True).splitlines()
     return out, manifest
 
 
@@ -204,6 +209,7 @@ def main():
 
     go_out, manifest = build_go_half(args.arch)
     record['goHalf'] = manifest['sha256']
+    record['unrelatedChanges'] = manifest['unrelatedChanges']
     daemon_exe, daemon_sha = build_daemon(machine, args.work, head, args.arch, out)
     record['uniclipdSha256'] = daemon_sha
     record['os'] = machine.ps("Get-CimInstance Win32_OperatingSystem | Select Caption,Version,OSArchitecture | ConvertTo-Json -Compress")

@@ -7,7 +7,9 @@ import {
 import { Fragment, useState } from 'react'
 import type { SidebarNavItem, SidebarNavProps } from '@/ui-kit/contract'
 import { Button } from './Button'
+import { useSidebarDisplay } from './sidebar-display'
 import { useSidebarNavStyles } from './sidebar-nav-styles'
+import { SidebarNavCompact } from './SidebarNavCompact'
 import { SidebarNavEntry } from './SidebarNavEntry'
 
 // A shared empty default, so an omitted prop does not create a new array on every render.
@@ -32,16 +34,29 @@ export function SidebarNav({
   // Fluent Nav has neither a landmark role nor arrow-key movement; the contract needs both, with
   // the pane as a single tab stop that remembers the last focused item.
   const arrowNavigation = useArrowNavigationGroup({ axis: 'vertical', memorizeCurrent: true })
+  const display = useSidebarDisplay()
+  const select = (id: string) => {
+    if (value === undefined) setOwnValue(id)
+    onValueChange?.(id)
+  }
+  if (display === 'compact') {
+    return (
+      <SidebarNavCompact
+        label={label}
+        sections={sections}
+        footer={footer}
+        current={current}
+        select={select}
+      />
+    )
+  }
   return (
     <nav aria-label={label} className={styles.root} {...arrowNavigation}>
       <Nav
         className={styles.nav}
         // Always controlled: Fluent fixes controlled vs uncontrolled on its first render.
         selectedValue={current ?? ''}
-        onNavItemSelect={(_, data) => {
-          if (value === undefined) setOwnValue(data.value)
-          onValueChange?.(data.value)
-        }}
+        onNavItemSelect={(_, data) => select(data.value)}
       >
         {sections.map(section => (
           <Fragment key={section.id}>

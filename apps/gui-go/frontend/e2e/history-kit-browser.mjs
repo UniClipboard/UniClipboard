@@ -115,8 +115,10 @@ async function dismissStartupPrompts() {
 async function reset() {
   await page.keyboard.press('Escape')
   await page.keyboard.press('Escape')
-  const field = page.getByRole('searchbox', { name: 'Search history' })
+  const field = page.getByRole('combobox', { name: 'Search history' })
   if (await field.inputValue()) await field.fill('')
+  const clearAll = page.getByRole('button', { name: 'Clear all' })
+  if (await clearAll.isVisible()) await clearAll.click()
   await page.getByRole('navigation').getByText('All items', { exact: true }).click()
   await rows().first().waitFor({ timeout: 10_000 })
 }
@@ -332,7 +334,7 @@ async function seededRun() {
   await step('search-and-delete-key-in-field', async () => {
     await row('git rebase').click()
     await page.keyboard.press('Control+f')
-    const field = page.getByRole('searchbox', { name: 'Search history' })
+    const field = page.getByRole('combobox', { name: 'Search history' })
     assert.ok(await field.evaluate(el => el === document.activeElement), 'Ctrl+F focuses search')
     await field.fill('docker')
     await row('docker compose').waitFor()
@@ -363,11 +365,14 @@ async function seededRun() {
     await row('https://github.com').waitFor()
     const links = await rowCountBecomes(1)
     assert.equal(links, 1, `Type=Link shows ${links}`)
+    // The chosen filter becomes a token of the search field (board WB2) and the scope bar replaces the filters.
+    const token = page.getByRole('button', { name: 'Remove filter: Link' })
+    await token.waitFor()
     await shot('filter-link')
-    await page.getByRole('combobox', { name: 'Type' }).click()
-    await page.getByRole('option', { name: 'Any Type' }).click()
+    await token.click()
     await row('Paging entry').waitFor()
-    return { links }
+    await page.getByRole('combobox', { name: 'Type' }).waitFor()
+    return { links, token: 'Type: Link' }
   })
 
   await step('multi-select', async () => {
@@ -518,7 +523,7 @@ async function seededRun() {
   })
 
   await step('tab-order', async () => {
-    await page.getByRole('searchbox', { name: 'Search history' }).focus()
+    await page.getByRole('combobox', { name: 'Search history' }).focus()
     const order = []
     for (let i = 0; i < 12; i++) {
       await page.keyboard.press('Tab')
@@ -579,7 +584,7 @@ async function seededRun() {
         body: '{"code":"internal","message":"injected"}',
       })
     )
-    const field = page.getByRole('searchbox', { name: 'Search history' })
+    const field = page.getByRole('combobox', { name: 'Search history' })
     await field.fill('docker')
     await page.waitForTimeout(2000)
     const observed = {
@@ -603,6 +608,50 @@ async function seededRun() {
     }
     await loaded.first().waitFor({ timeout: 10_000 })
     return { renderedBefore: before, reachedOldest: true }
+  })
+
+  await step('compact-pane', async () => {
+    const display = () =>
+      page.locator('[data-sidebar-display]').getAttribute('data-sidebar-display')
+    await page.getByRole('button', { name: 'Hide sidebar' }).click()
+    assert.equal(await display(), 'compact')
+    const rail = page
+      .getByRole('navigation', { name: /./ })
+      .filter({ has: page.getByRole('button', { name: 'Pinned' }) })
+    await rail.getByRole('button', { name: 'Pinned' }).click()
+    await row('Q4 roadmap').waitFor()
+    const pinnedRows = await rowCountBecomes(1)
+    await shot('compact-pane')
+    // The Pinned tooltip opens above its button and covers All items until the pointer leaves.
+    await page.mouse.move(640, 600)
+    await rail.getByRole('button', { name: 'All items' }).click()
+    await row('Paging entry').waitFor()
+    await page.getByRole('button', { name: 'Show sidebar' }).click()
+    assert.equal(await display(), 'expanded')
+    return { pinnedRows }
+  })
+
+  await step('overlay-pane', async () => {
+    await closePage()
+    await newPage({ viewport: { width: 1000, height: 800 } })
+    const display = () =>
+      page.locator('[data-sidebar-display]').getAttribute('data-sidebar-display')
+    assert.equal(await display(), 'compact', 'a narrow window starts with the rail')
+    await page.getByRole('button', { name: 'Show sidebar' }).click()
+    assert.equal(await display(), 'overlay')
+    const focusOpen = await activeDescription()
+    await shot('overlay-pane')
+    await page.keyboard.press('Escape')
+    assert.equal(await display(), 'compact', 'Escape closes the pane')
+    const focusClosed = await activeDescription()
+    assert.ok(/Show sidebar/.test(focusClosed ?? ''), `focus after Escape: ${focusClosed}`)
+    await page.getByRole('button', { name: 'Show sidebar' }).click()
+    assert.equal(await display(), 'overlay')
+    await page.mouse.click(700, 400)
+    assert.equal(await display(), 'compact', 'a click outside closes the pane')
+    const overflow = (await geometry()).pageOverflowX
+    assert.ok(overflow <= 0, `overflow ${overflow}`)
+    return { focusOpen, focusClosed }
   })
 
   await step('dark', async () => {
@@ -659,10 +708,14 @@ async function emptyRun() {
         await page.goto(await pageUrl())
       }
       // The first-run consent alert is modal (it hides the page from the accessibility tree), so wait on text.
-      await page.getByText('No Selection').waitFor({ timeout: 60_000 })
+      await page.getByText('Nothing Copied Yet').waitFor({ timeout: 60_000 })
       await dismissStartupPrompts()
       await page.waitForTimeout(1500)
       assert.equal(await rows().count(), 0, 'no rows')
+      // Board WA1: the getting-started steps in the list pane, with the pairing command.
+      const steps = page.getByRole('list', { name: 'Getting started' }).getByRole('listitem')
+      assert.equal(await steps.count(), 3, 'three getting-started steps')
+      await page.getByRole('button', { name: 'Pair a Device…' }).first().waitFor()
       await shot(`empty-${colorScheme}`)
       return {
         geometry: await geometry(),

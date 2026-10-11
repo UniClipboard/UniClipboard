@@ -149,6 +149,16 @@ try {
     await expectLog('theme:system')
     assert.equal(await group.getByRole('radio', { name: 'System' }).isChecked(), true)
   })
+  await check('Tab into the segmented control keeps its value', async () => {
+    const group = board.getByRole('radiogroup', { name: 'Theme' })
+    await group.getByRole('radio', { name: 'Light' }).click()
+    await expectLog('theme:light')
+    await board.getByRole('combobox', { name: 'Device' }).focus()
+    await page.keyboard.press('Tab')
+    await expectFocus(name => ['Light', 'Dark', 'System'].includes(name))
+    await expectLog('theme:light')
+    assert.equal(await group.getByRole('radio', { name: 'Light' }).isChecked(), true)
+  })
   await check('menu opens by keyboard, Escape closes and returns focus', async () => {
     const trigger = board.getByRole('button', { name: 'More commands' })
     await trigger.focus()

@@ -47,6 +47,10 @@ export function ItemList({
     select(selected.includes(id) ? selected.filter(s => s !== id) : [...selected, id])
 
   const onKeyDown = (event: KeyboardEvent) => {
+    // Only keys on a row itself: controls inside a row (a removable tag) keep their own keys, and
+    // a Delete there must not delete the selected items.
+    if (!(event.target instanceof HTMLElement) || event.target.getAttribute('role') !== 'option')
+      return
     const index = items.findIndex(item => item.id === tabStop)
     const next = listStep(event.key, index, items.length)
     if (next !== null) {

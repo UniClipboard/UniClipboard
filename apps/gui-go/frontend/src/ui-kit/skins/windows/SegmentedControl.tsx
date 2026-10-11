@@ -24,8 +24,8 @@ const useStyles = makeStyles({
 /**
  * WinUI has no segmented control; the Win11 board draws it as a radio group of toolbar buttons.
  * Fluent's toolbar supplies the single tab stop and arrow-key movement; the toolbar role itself is
- * removed so the named radio group is the only semantics, and selection follows focus as in a
- * native radio group.
+ * removed so the named radio group is the only semantics, and selection follows arrow-key focus as
+ * in a native radio group.
  */
 export function SegmentedControl({
   items,
@@ -65,7 +65,13 @@ export function SegmentedControl({
               value={item.value}
               appearance="subtle"
               aria-label={item.iconOnly ? item.label : undefined}
-              onFocus={() => select(item.value)}
+              onFocus={event => {
+                // Selection follows focus only when it moves between segments (arrow keys);
+                // Tab entry and focus restoration come from outside the group and keep the value.
+                const group = event.currentTarget.closest('[role="radiogroup"]')
+                if (event.relatedTarget instanceof Node && group?.contains(event.relatedTarget))
+                  select(item.value)
+              }}
               icon={item.icon ? createElement(iconFor(item.icon)) : undefined}
             >
               {item.iconOnly ? undefined : item.label}

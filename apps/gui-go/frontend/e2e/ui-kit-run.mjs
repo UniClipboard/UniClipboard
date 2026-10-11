@@ -16,7 +16,14 @@ const option = name => {
   return index >= 0 ? args[index + 1] : undefined
 }
 const platform = option('--platform')
-const port = option('--port') ?? '1460'
+// A present --port needs a valid value; only an absent flag falls back to the default.
+const port = args.includes('--port') ? option('--port') : '1460'
+if (!/^[1-9][0-9]{0,4}$/.test(port ?? '') || Number(port) > 65535) {
+  console.error(
+    `--port needs a TCP port number (got ${port === undefined ? 'nothing' : `"${port}"`})`
+  )
+  process.exit(2)
+}
 const serveOnly = args.includes('--serve')
 if (!['windows', 'macos'].includes(platform ?? '')) {
   console.error('Usage: node e2e/ui-kit-run.mjs --platform windows|macos [--serve] [--port 1460]')

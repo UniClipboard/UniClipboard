@@ -52,7 +52,7 @@ export function HistoryKitSelection({
       </div>
       <ActionBar hint={t('history.kit.deselectHint')}>
         <HistoryKitSendMenu entryIds={ids} />
-        <Button size="large" icon="delete" onClick={onDeleteAll}>
+        <Button variant="destructive" size="large" icon="delete" onClick={onDeleteAll}>
           {t('history.kit.deleteCount', { count: ids.length })}
         </Button>
       </ActionBar>

@@ -970,6 +970,30 @@ async function runHistoryKitScenario() {
   await waitFor('sidebar shown', () => !$('[data-sidebar-hidden]'))
   await record('kit-sidebar-toggle', true)
 
+  // Grid layout (design ME2): cards in day groups; double click opens the detail as an inspector,
+  // Option-Command-I closes it again.
+  const viewRadio = (value: 'grid' | 'list') =>
+    $(
+      `[role="radio"][aria-label="${i18n.t(value === 'grid' ? 'history.kit.viewGrid' : 'history.kit.viewList')}"]`
+    )
+  viewRadio('grid')!.click()
+  const firstCard = await waitFor('grid cards', () => $('.mac-card[data-item-id]'))
+  await record('kit-grid', !$('[data-testid="clipboard-detail"]'), {
+    cards: document.querySelectorAll('.mac-card[data-item-id]').length,
+  })
+  firstCard.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 }))
+  firstCard.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))
+  await waitFor('inspector', () => $('[data-testid="clipboard-detail"]'))
+  await shot('grid-inspector')
+  key(document.body, 'i', { altKey: true, metaKey: true, code: 'KeyI' })
+  await waitFor('inspector closed', () => !$('[data-testid="clipboard-detail"]'))
+  await record('kit-grid-inspector', true)
+  viewRadio('list')!.click()
+  await waitFor(
+    'list again',
+    () => $('[role="option"][data-item-id]') && $('[data-testid="clipboard-detail"]')
+  )
+
   // Search (design MB1-MB3): text with match highlighting, a device token from the suggestions,
   // then a search with no results and its widening choices.
   const field = () => $('input[role="combobox"]') as HTMLInputElement

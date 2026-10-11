@@ -1278,6 +1278,7 @@
       "allOfKind": "全部為{{kind}}",
       "anyTag": "任意標籤",
       "anyType": "任意類型",
+      "cardSize": "卡片大小",
       "copyAndClose": "拷貝並關閉",
       "copyImage": "拷貝影像",
       "deleteCount_one": "刪除 {{count}} 項",
@@ -1335,7 +1336,10 @@
       "tagFieldHint": "↑↓ 選擇 · ↩ 加入 · ⇥ 顏色 · esc 關閉",
       "tagOnSome": "{{on}}/{{total}}",
       "toolbar": "工具列",
-      "unpinAll": "全部取消釘選"
+      "unpinAll": "全部取消釘選",
+      "view": "顯示方式",
+      "viewGrid": "格狀",
+      "viewList": "列表"
     }
   },
   "dashboard": {

@@ -1,5 +1,7 @@
 import { makeStyles, mergeClasses, tokens } from '@fluentui/react-components'
+import { useState } from 'react'
 import type { PaneProps } from '@/ui-kit/contract'
+import { PaneSlotsProvider } from './pane-slots'
 import { useSplitViewTitle } from './split-view-title'
 
 // Columns of the content card (board WA2): the list column is a 480 px master column that may
@@ -22,6 +24,7 @@ const useStyles = makeStyles({
     borderInlineEndColor: 'var(--w11-divider)',
   },
   detail: { flex: '1 1 21rem', minWidth: '18rem', backgroundColor: 'var(--w11-detail)' },
+  slot: { display: 'contents' },
   header: {
     boxSizing: 'border-box',
     height: '3.5rem',
@@ -52,6 +55,8 @@ const useStyles = makeStyles({
 export function Pane({ kind, label, children }: PaneProps) {
   const styles = useStyles()
   const heading = useSplitViewTitle()
+  const [commandBar, setCommandBar] = useState<HTMLElement | null>(null)
+  const [status, setStatus] = useState<HTMLElement | null>(null)
   return (
     <section
       className={mergeClasses(styles.pane, styles[kind])}
@@ -64,7 +69,9 @@ export function Pane({ kind, label, children }: PaneProps) {
           {heading.subtitle ? <span className={styles.subtitle}>{heading.subtitle}</span> : null}
         </div>
       ) : null}
-      {children}
+      <div ref={setCommandBar} className={styles.slot} />
+      <PaneSlotsProvider value={{ commandBar, status }}>{children}</PaneSlotsProvider>
+      <div ref={setStatus} className={styles.slot} />
     </section>
   )
 }

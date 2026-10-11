@@ -1,12 +1,14 @@
 import { makeStyles, tokens } from '@fluentui/react-components'
+import { createPortal } from 'react-dom'
 import type { ActionBarProps } from '@/ui-kit/contract'
+import { usePaneSlots } from './pane-slots'
 
 // Board WA2: the main actions of the detail pane are a WinUI CommandBar across the top of the
-// pane, and the keyboard hint is a status strip along its bottom. Both are ordered against the
-// pane's other children (a flex column), so the bar needs no position of its own.
+// pane, and the keyboard hint is a status strip along its bottom. Both render into the pane's
+// slots (pane-slots.ts), so DOM and Tab order follow the drawn order; outside a pane they stay in
+// place.
 const useStyles = makeStyles({
   bar: {
-    order: -1,
     boxSizing: 'border-box',
     height: '3rem',
     flexShrink: 0,
@@ -26,7 +28,6 @@ const useStyles = makeStyles({
     },
   },
   status: {
-    order: 1,
     boxSizing: 'border-box',
     height: '2rem',
     flexShrink: 0,
@@ -46,10 +47,13 @@ const useStyles = makeStyles({
 
 export function ActionBar({ children, hint }: ActionBarProps) {
   const styles = useStyles()
+  const slots = usePaneSlots()
+  const bar = <div className={styles.bar}>{children}</div>
+  const status = hint ? <div className={styles.status}>{hint}</div> : null
   return (
     <>
-      <div className={styles.bar}>{children}</div>
-      {hint ? <div className={styles.status}>{hint}</div> : null}
+      {slots?.commandBar ? createPortal(bar, slots.commandBar) : bar}
+      {status && slots?.status ? createPortal(status, slots.status) : status}
     </>
   )
 }

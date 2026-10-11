@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
@@ -74,6 +74,8 @@ async function pageUrl() {
   return `http://127.0.0.1:${port}/?${new URLSearchParams({ daemon: daemon.daemonUrl, token: await guiSession(), platform })}`
 }
 const results = {
+  head: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
+  dirty: execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8' }).trim() !== '',
   platform,
   mode: cdp ? 'native-cdp' : 'browser-fixture',
   profile: daemon.profile,
@@ -423,6 +425,8 @@ async function seededRun() {
     await page.keyboard.press('Delete')
     await page.getByRole('alertdialog').getByRole('button', { name: 'Delete' }).click()
     await target.waitFor({ state: 'detached' })
+    const focusAfterDelete = await activeDescription()
+    results.focusAfterDelete = focusAfterDelete
     const read = await entry(id)
     assert.notEqual(read.status, 200, `deleted entry still readable: ${read.status}`)
     return { id, readBack: read.status }
@@ -450,6 +454,138 @@ async function seededRun() {
       `read-back ${reads.map(r => r.status)}`
     )
     return { ids, readBack: reads.map(r => r.status) }
+  })
+
+  await step('tags-add-remove-persist', async () => {
+    const target = row('git rebase')
+    await target.click()
+    const id = await target.getAttribute('data-item-id')
+    const tags = detail().getByRole('group', { name: 'Tags' })
+    await tags.getByRole('button', { name: 'Add tag' }).click()
+    const input = page.getByRole('combobox', { name: 'Tag name' })
+    await input.fill('deploy')
+    await input.press('Enter')
+    await tags.getByText('#deploy').waitFor()
+    await row('git rebase').getByText('#deploy').waitFor()
+    await shot('tag-added')
+    // Read back through a fresh load from the daemon.
+    await newPage()
+    await row('git rebase').click()
+    await detail().getByRole('group', { name: 'Tags' }).getByText('#deploy').waitFor()
+    await detail().getByRole('button', { name: 'Remove #deploy' }).click()
+    await detail()
+      .getByRole('group', { name: 'Tags' })
+      .getByText('#deploy')
+      .waitFor({ state: 'detached' })
+    await newPage()
+    await row('git rebase').click()
+    await detail().getByRole('button', { name: 'Add tag' }).waitFor()
+    const stillTagged = await detail()
+      .getByRole('group', { name: 'Tags' })
+      .getByText('#deploy')
+      .count()
+    assert.equal(stillTagged, 0, 'tag removal persisted')
+    return { id, addedAndReloaded: true, removedAndReloaded: true }
+  })
+
+  await step('send-without-devices-is-honest', async () => {
+    await row('git rebase').click()
+    await detail().getByRole('button', { name: 'Send to…' }).click()
+    const option = page.getByRole('menuitem', { name: 'No paired devices' })
+    await option.waitFor()
+    const disabled = await option.getAttribute('aria-disabled')
+    assert.equal(disabled, 'true', 'the only entry is disabled')
+    await shot('send-no-devices')
+    await page.keyboard.press('Escape')
+    const focus = await activeDescription()
+    assert.ok(/Send to/.test(focus ?? ''), `focus after the send menu: ${focus}`)
+    return { disabled, focus }
+  })
+
+  await step('select-filter-focus-return', async () => {
+    const type = page.getByRole('combobox', { name: 'Type' })
+    await type.click()
+    await page.getByRole('option').first().waitFor()
+    await page.keyboard.press('Escape')
+    const focus = await activeDescription()
+    assert.ok(/combobox/.test(focus ?? ''), `focus after the Type list: ${focus}`)
+    return { focus }
+  })
+
+  await step('tab-order', async () => {
+    await page.getByRole('searchbox', { name: 'Search history' }).focus()
+    const order = []
+    for (let i = 0; i < 12; i++) {
+      await page.keyboard.press('Tab')
+      order.push(
+        await page.evaluate(() => {
+          const el = document.activeElement
+          const region = el?.closest('[data-pane], [data-surface], nav')
+          return `${region?.getAttribute('data-pane') ?? region?.getAttribute('data-surface') ?? region?.tagName.toLowerCase() ?? 'titlebar'}:${el?.getAttribute('role') ?? el?.tagName.toLowerCase()}:${el?.getAttribute('aria-label') ?? el?.textContent?.trim().slice(0, 24)}`
+        })
+      )
+    }
+    const regions = order.map(entry => entry.split(':')[0])
+    const firstIndex = name => regions.findIndex(r => r === name)
+    // Title bar, then the navigation pane, the list pane and the detail pane, in drawn order.
+    assert.ok(firstIndex('nav') > 0, `order ${order}`)
+    assert.ok(firstIndex('list') > firstIndex('nav'), `order ${order}`)
+    assert.ok(firstIndex('detail') > firstIndex('list'), `order ${order}`)
+    // The detail pane's CommandBar is drawn at its top, so it is reached first.
+    assert.match(
+      order[firstIndex('detail')],
+      /:Copy$/,
+      `first detail stop ${order[firstIndex('detail')]}`
+    )
+    return { order }
+  })
+
+  await step('error-feedback-no-false-success', async () => {
+    const target = row('Paging entry 120')
+    await target.click()
+    const id = await target.getAttribute('data-item-id')
+    // Injected failure (not a real daemon fault): the favorite request answers 500.
+    await page.route('**/clipboard/entries/*/favorite**', route =>
+      route.fulfill({
+        status: 500,
+        contentType: 'application/json',
+        body: '{"code":"internal","message":"injected"}',
+      })
+    )
+    await detail().getByRole('button', { name: 'Pin' }).click()
+    await page.getByText('Failed to update favorite status').first().waitFor({ timeout: 10_000 })
+    await shot('error-pin-failed')
+    await page.unroute('**/clipboard/entries/*/favorite**')
+    await page.waitForTimeout(500)
+    const shownPinned = await detail().getByRole('button', { name: 'Unpin' }).count()
+    const read = await listed(id)
+    assert.equal(read?.isFavorited, false, 'nothing was pinned in the daemon')
+    assert.equal(shownPinned, 0, 'the page does not claim it is pinned')
+    return { id, toast: 'Failed to update favorite status', daemonFavorited: read?.isFavorited }
+  })
+
+  await step('search-failure-observed', async () => {
+    // Injected failure: every search query answers 500. Recorded, not asserted: the kit page has no error state for
+    // a failed list query (the shared hook logs it), which the report lists as a gap.
+    await page.route('**/search/query**', route =>
+      route.fulfill({
+        status: 500,
+        contentType: 'application/json',
+        body: '{"code":"internal","message":"injected"}',
+      })
+    )
+    const field = page.getByRole('searchbox', { name: 'Search history' })
+    await field.fill('docker')
+    await page.waitForTimeout(2000)
+    const observed = {
+      rows: await rows().count(),
+      listPane: (await page.locator('[data-pane="list"]').innerText()).slice(0, 160),
+    }
+    await shot('error-search-failed')
+    await page.unroute('**/search/query**')
+    await field.fill('')
+    await row('Paging entry').waitFor()
+    return observed
   })
 
   await step('paging', async () => {

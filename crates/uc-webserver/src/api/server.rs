@@ -640,12 +640,31 @@ pub(crate) async fn cors_middleware(request: Request<Body>, next: Next) -> Respo
         "daemon cors middleware received request"
     );
 
-    let origin = request
+    let requested_origin = request
         .headers()
         .get(ORIGIN)
-        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.to_str().ok());
+    let origin = requested_origin
         .filter(|origin| is_allowed_cors_origin(origin))
         .map(str::to_owned);
+
+    if requested_origin.is_some() && origin.is_none() {
+        // Keep only the origin; credentials, paths and query parameters are never logged.
+        let rejected_origin = requested_origin
+            .and_then(|value| url::Url::parse(value).ok())
+            .map(|value| value.origin().ascii_serialization())
+            .unwrap_or_else(|| "<invalid-origin>".to_owned());
+        tracing::warn!(
+            error_code = "cors_origin_not_allowed",
+            error_kind = "validation",
+            source = "daemon.http.cors",
+            retryable = false,
+            origin = %rejected_origin,
+            method = %request.method(),
+            path = %request.uri().path(),
+            "browser cannot read daemon response because the request origin is not allowed"
+        );
+    }
 
     if request.method() == Method::OPTIONS
         && request
@@ -702,6 +721,12 @@ fn is_allowed_cors_origin(origin: &str) -> bool {
         || origin == "https://tauri.localhost"
         // Wails serves the bundled frontend on Windows (WebView2) from this origin.
         || origin == "http://wails.localhost"
+        // In development Wails preserves the Vite port on its WebView2 origin.
+        || origin.strip_prefix("http://wails.localhost:").is_some_and(|port| {
+            !port.is_empty()
+                && port.bytes().all(|byte| byte.is_ascii_digit())
+                && port.parse::<u16>().is_ok_and(|port| port != 0)
+        })
         || origin.starts_with("http://localhost:")
         || origin.starts_with("http://127.0.0.1:")
         || origin.starts_with("http://[::1]:")
@@ -796,6 +821,91 @@ mod request_log_redaction_tests {
             sanitize_uri_for_log(&uri),
             "/settings/relay-credential?url=<redacted>&safe=<redacted>"
         );
+    }
+
+    #[tokio::test]
+    async fn cors_allows_windows_wails_development_origin() {
+        for method in ["GET", "OPTIONS"] {
+            let response = Router::new()
+                .route("/v2/setup/state", get(|| async { StatusCode::OK }))
+                .layer(middleware::from_fn(super::cors_middleware))
+                .oneshot(
+                    Request::builder()
+                        .method(method)
+                        .uri("/v2/setup/state")
+                        .header("origin", "http://wails.localhost:28730")
+                        .header("access-control-request-method", "GET")
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(
+                response
+                    .headers()
+                    .get("access-control-allow-origin")
+                    .map(|v| v.to_str().unwrap()),
+                Some("http://wails.localhost:28730"),
+                "missing CORS header for {method}"
+            );
+        }
+    }
+
+    #[test]
+    fn cors_rejects_invalid_windows_wails_development_origins() {
+        for origin in [
+            "http://wails.localhost:28730.evil.example",
+            "http://wails.localhost:28730@evil.example",
+            "http://wails.localhost:28730/path",
+            "http://wails.localhost:70000",
+            "http://wails.localhost:0",
+            "http://wails.localhost:",
+        ] {
+            assert!(!super::is_allowed_cors_origin(origin), "allowed {origin}");
+        }
+    }
+
+    #[test]
+    fn cors_rejection_log_explains_browser_failure_without_exposing_credentials() {
+        let writer = CapturedWriter::default();
+        let subscriber = tracing_subscriber::fmt()
+            .with_ansi(false)
+            .without_time()
+            .with_writer(writer.clone())
+            .finish();
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        tracing::subscriber::with_default(subscriber, || {
+            runtime.block_on(async {
+                let response = Router::new()
+                    .route("/v2/setup/state", get(|| async { StatusCode::OK }))
+                    .layer(middleware::from_fn(super::cors_middleware))
+                    .oneshot(
+                        Request::builder()
+                            .uri("/v2/setup/state")
+                            .header(
+                                "origin",
+                                "http://user:secret@untrusted.example/private?auth=secret",
+                            )
+                            .body(Body::empty())
+                            .unwrap(),
+                    )
+                    .await
+                    .unwrap();
+                assert_eq!(response.status(), StatusCode::OK);
+                assert!(!response
+                    .headers()
+                    .contains_key("access-control-allow-origin"));
+            });
+        });
+        let output = writer.output();
+        assert!(output.contains("cors_origin_not_allowed"), "{output}");
+        assert!(output.contains("daemon.http.cors"), "{output}");
+        assert!(output.contains("http://untrusted.example"), "{output}");
+        assert!(!output.contains("secret"), "{output}");
+        assert!(!output.contains("/private"), "{output}");
     }
 
     #[test]

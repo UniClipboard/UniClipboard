@@ -3,6 +3,7 @@ import { useId, useRef, useState, type KeyboardEvent, type MouseEvent } from 're
 import type { TableProps } from '@/ui-kit/contract'
 import { listStep } from './list-keys'
 import { MenuPanel } from './menus'
+import { useAnchoredSelection } from './selection'
 
 /**
  * NSTableView with alternating rows (design MC3): a header row, one tab stop that names the current
@@ -21,18 +22,15 @@ export function Table({
 }: TableProps) {
   const domId = useId()
   const gridRef = useRef<HTMLDivElement>(null)
-  const anchor = useRef<string | null>(null)
+  const select = useAnchoredSelection(
+    rows.map(row => row.id),
+    selection,
+    onSelectionChange
+  )
   const [menuIds, setMenuIds] = useState<string[]>([])
   const [menuOpen, setMenuOpen] = useState(false)
   const cursor = selection[selection.length - 1]
   const rowId = (id: string) => `${domId}-row-${id}`
-  const range = (from: string, to: string) => {
-    const a = rows.findIndex(row => row.id === from)
-    const b = rows.findIndex(row => row.id === to)
-    if (a < 0 || b < 0) return [to]
-    const [start, end] = a <= b ? [a, b] : [b, a]
-    return rows.slice(start, end + 1).map(row => row.id)
-  }
   const template = columns.map(column => (column.fill ? 'minmax(0, 1fr)' : 'auto')).join(' ')
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -45,16 +43,11 @@ export function Table({
     if (next !== null) {
       event.preventDefault()
       const id = rows[next].id
-      if (event.shiftKey && anchor.current) {
-        onSelectionChange([...range(anchor.current, id).filter(i => i !== id), id])
-      } else {
-        anchor.current = id
-        onSelectionChange([id])
-      }
+      select.moveTo(id, event.shiftKey)
       document.getElementById(rowId(id))?.scrollIntoView({ block: 'nearest' })
     } else if (event.metaKey && event.key.toLowerCase() === 'a') {
       event.preventDefault()
-      onSelectionChange(rows.map(row => row.id))
+      select.selectAll()
     } else if ((event.key === 'Backspace' || event.key === 'Delete') && selection.length > 0) {
       if (!onDelete) return
       event.preventDefault()
@@ -65,24 +58,7 @@ export function Table({
     // Controls inside a row (a switch, a field) keep their own pointer behaviour.
     if ((event.target as HTMLElement).closest('button, input, [role="switch"]')) return
     gridRef.current?.focus({ preventScroll: true })
-    const selected = selection.includes(id)
-    if (event.button === 2 || (event.button === 0 && event.ctrlKey)) {
-      if (!selected) {
-        anchor.current = id
-        onSelectionChange([id])
-      }
-      return
-    }
-    if (event.button !== 0) return
-    if (event.metaKey) {
-      anchor.current = id
-      onSelectionChange(selected ? selection.filter(s => s !== id) : [...selection, id])
-    } else if (event.shiftKey && anchor.current) {
-      onSelectionChange([...range(anchor.current, id).filter(i => i !== id), id])
-    } else {
-      anchor.current = id
-      onSelectionChange([id])
-    }
+    select.pointerDown(event, id)
   }
 
   const grid = (

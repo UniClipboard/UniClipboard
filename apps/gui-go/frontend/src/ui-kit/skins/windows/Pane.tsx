@@ -20,6 +20,8 @@ const useStyles = makeStyles({
     borderInlineEndColor: 'var(--w11-divider)',
   },
   detail: { flex: '1 1 21rem', minWidth: '18rem' },
+  // A browsing column alone (the grid without its inspector) fills the card.
+  main: { flex: '1 1 auto', minWidth: 0 },
 })
 
 export function Pane({ kind, label, children }: PaneProps) {

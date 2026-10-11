@@ -347,7 +347,9 @@ exit 1
             result = machine.ps(f"{envs}; & '{node}' '{machine.share(driver)}' '{machine.share(out)}' *>&1 | Out-String; exit $LASTEXITCODE",
                                 check=False, timeout=3600)
             (out / 'driver-output.txt').write_text(result)
-            record['passed'] = '"passed":true' in result
+            # The driver's own verdict, which needs at least one step; its printed summary is only a log.
+            verdict = json.loads((out / 'browser-results.json').read_text(encoding='utf-8-sig')) if (out / 'browser-results.json').exists() else {}
+            record['passed'] = bool(verdict.get('passed')) and len(verdict.get('steps', [])) > 0
         else:
             cdp_port, t = tunnel(machine.name, debug_port)
             tunnels.append(t)

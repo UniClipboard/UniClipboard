@@ -203,9 +203,16 @@ async function unlockIfLocked() {
     await passphrase.press('Enter')
   }
 }
+// The app also keeps its quick panel as a hidden window; the History page is the main window's document.
+function mainWindowPage() {
+  const pages = browser.contexts().flatMap(context => context.pages())
+  const main = pages.find(candidate => !/quick-panel|updater/.test(candidate.url()))
+  assert.ok(main, `no main window among ${pages.map(candidate => candidate.url())}`)
+  return main
+}
 async function newPage(options = {}) {
   if (cdp) {
-    page ??= browser.contexts()[0].pages()[0]
+    page ??= mainWindowPage()
     if (!results.nativeUrl) {
       results.nativeUrl = page.url()
       page.on('pageerror', error => results.consoleErrors.push(error.message))
@@ -778,7 +785,7 @@ async function emptyRun() {
   for (const colorScheme of ['light', 'dark']) {
     await step(`empty-${colorScheme}`, async () => {
       if (cdp) {
-        page ??= browser.contexts()[0].pages()[0]
+        page ??= mainWindowPage()
         await page.emulateMedia({ colorScheme, reducedMotion: 'reduce' })
         await page.reload()
         await unlockIfLocked()
@@ -821,7 +828,8 @@ try {
   results.nativeCalls = await page?.evaluate(() => window.__ucNativeCalls ?? []).catch(() => null)
   await browser.close()
   server?.kill()
-  results.passed = results.steps.every(s => s.ok)
+  // A run that reached no step proves nothing.
+  results.passed = results.steps.length > 0 && results.steps.every(s => s.ok)
   await writeFile(
     path.join(output, 'browser-results.json'),
     `${JSON.stringify(results, null, 2)}\n`

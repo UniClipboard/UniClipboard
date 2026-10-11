@@ -3,7 +3,6 @@ import { countSearch } from '@/api/daemon/search'
 import { useCompositeSearchBar } from '@/components/history/composite-search/useCompositeSearchBar'
 import { useZeroResultRelaxations } from '@/components/history/composite-search/useZeroResultRelaxations'
 import { LIBRARY_BUILTIN_TAG_IDS } from '@/components/history/tags/history-tag-library'
-import HistoryTagManager from '@/components/history/tags/HistoryTagManager'
 import { NO_TAG_COLORS, TagColorsContext } from '@/components/history/tags/tag-colors-context'
 import { useLibraryChrome } from '@/contexts/library-chrome-context'
 import { useAppliedColorScheme } from '@/hooks/useAppliedColorScheme'
@@ -23,6 +22,7 @@ import { HistoryKitScopeBar } from './HistoryKitScopeBar'
 import { HistoryKitSearchField } from './HistoryKitSearchField'
 import { HistoryKitSelection } from './HistoryKitSelection'
 import { HistoryKitSidebar } from './HistoryKitSidebar'
+import { HistoryKitTagManager } from './HistoryKitTagManager'
 import { HistoryKitToolbar } from './HistoryKitToolbar'
 
 const COPY = 'copy'
@@ -301,6 +301,24 @@ export default function HistoryKitPage() {
             )}
           </Pane>
         </SplitView>
+        <HistoryKitTagManager
+          open={c.tagManagerOpen && c.historyTags.available}
+          onOpenChange={c.setTagManagerOpen}
+          tags={c.historyTags.tags}
+          searchTags={c.searchableTags}
+          sidebarTagIds={c.tagLayout?.sidebar ?? null}
+          tagColors={c.tagLayout?.colors ?? NO_TAG_COLORS}
+          onCreate={c.createTag}
+          onSetColor={c.setTagColor}
+          onSetInSidebar={c.setTagInSidebar}
+          onRename={c.renameTag}
+          onMerge={c.mergeTagsInto}
+          onDelete={c.deleteTags}
+          onShowItems={tagId => {
+            c.filterActions.setTagFilter(tagId)
+            c.setTagManagerOpen(false)
+          }}
+        />
         <HistoryKitDeleteAlert
           open={c.deleteDialogOpen}
           onOpenChange={c.setDeleteDialogOpen}
@@ -308,24 +326,6 @@ export default function HistoryKitPage() {
           onConfirm={c.confirmDelete}
         />
       </UiRoot>
-      <HistoryTagManager
-        open={c.tagManagerOpen && c.historyTags.available}
-        returnFocusTo={null}
-        onOpenChange={c.setTagManagerOpen}
-        tags={c.historyTags.tags}
-        searchTags={c.searchableTags}
-        sidebarTagIds={c.tagLayout?.sidebar ?? null}
-        onCreate={c.createTag}
-        onSetColor={c.setTagColor}
-        onSetInSidebar={c.setTagInSidebar}
-        onRename={c.renameTag}
-        onMerge={c.mergeTagsInto}
-        onDelete={c.deleteTags}
-        onShowItems={tagId => {
-          c.filterActions.setTagFilter(tagId)
-          c.setTagManagerOpen(false)
-        }}
-      />
     </TagColorsContext>
   )
 }

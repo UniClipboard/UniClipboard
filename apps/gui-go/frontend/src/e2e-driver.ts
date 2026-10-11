@@ -1292,9 +1292,19 @@ async function runHistoryKitScenario() {
       ),
     30000
   )
-  await record('kit-query-failure', historyRows().length === 0, {
-    text: failed.textContent?.slice(0, 120),
-  })
+  // No count either: a failed query does not know how many items match.
+  const failureCount = {
+    subtitle: $('.mac-split-subtitle')?.textContent ?? null,
+    zeroResults:
+      $('[data-pane="list"]')?.textContent?.includes(
+        i18n.t('history.composite.results', { count: 0 })
+      ) ?? false,
+  }
+  await record(
+    'kit-query-failure',
+    historyRows().length === 0 && failureCount.subtitle === null && !failureCount.zeroResults,
+    { text: failed.textContent?.slice(0, 120), ...failureCount }
+  )
   await shot('query-failure')
   window.fetch = realFetch
   Array.from(failed.querySelectorAll('button'))

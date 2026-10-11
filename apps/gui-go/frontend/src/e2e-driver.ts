@@ -722,13 +722,30 @@ async function runHistoryKitScenario() {
     activeDescendant: list().getAttribute('aria-activedescendant'),
   })
 
-  // Return copies the selected entry (the daemon restores it; the system clipboard is off in E2E).
+  // Return copies the selected entry: the daemon's restore answers 200. The system clipboard is off
+  // in E2E, so nothing is read back from it.
+  const restores: Array<{ url: string; status: number }> = []
+  const fetchBeforeCopy = window.fetch
+  window.fetch = async (input, init) => {
+    const response = await fetchBeforeCopy(input, init)
+    // The path only: the query carries the session token.
+    const url = new URL(String(input instanceof Request ? input.url : input)).pathname
+    if (url.includes('/clipboard/restore/')) restores.push({ url, status: response.status })
+    return response
+  }
   key(list(), 'Enter')
   const copied = i18n.t('clipboard.item.actions.copied')
   await waitFor('copy feedback', () =>
     Array.from(document.querySelectorAll('button')).some(b => b.textContent?.includes(copied))
   )
-  await record('kit-copy-restored', true, { entry: currentId })
+  window.fetch = fetchBeforeCopy
+  await record(
+    'kit-copy-restored',
+    restores.length === 1 &&
+      restores[0].status === 200 &&
+      restores[0].url.endsWith(`/clipboard/restore/${currentId}`),
+    { entry: currentId, restores, systemClipboardReadBack: 'not run (disabled in E2E)' }
+  )
 
   // Command-F (page shortcut scope) focuses the search field.
   key(list(), 'f', { metaKey: true })
@@ -883,6 +900,20 @@ async function runHistoryKitScenario() {
       i.textContent?.trim()
     ),
   })
+  // Over the host's native material a menu must hide what is under it: its own background is
+  // nearly opaque (measured in the real WebView while the host reports native glass).
+  const menuAlpha = (() => {
+    const menu = renameItem.closest<HTMLElement>('[role="menu"]')
+    const match = menu && getComputedStyle(menu).backgroundColor.match(/rgba?\(([^)]+)\)/)
+    const parts = match ? match[1].split(',').map(Number) : []
+    return parts.length === 4 ? parts[3] : 1
+  })()
+  const menuMaterial = document.documentElement.dataset.windowMaterial ?? null
+  await record(
+    'kit-native-menu-opaque',
+    hostMaterial === 'none' || (menuMaterial?.startsWith('native') === true && menuAlpha >= 0.9),
+    { hostReported: hostMaterial, document: menuMaterial, alpha: menuAlpha }
+  )
   await shot('tag-manager-menu')
   renameItem.click()
   const renameField = (await waitFor('rename field', () =>

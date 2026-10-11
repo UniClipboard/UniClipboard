@@ -21,14 +21,7 @@ const useStyles = makeStyles({
   error: { backgroundColor: 'var(--w11-notice-error)' },
 })
 
-export function InlineNotice({
-  tone,
-  title,
-  text,
-  action,
-  onDismiss,
-  dismissLabel = 'Dismiss',
-}: InlineNoticeProps) {
+export function InlineNotice({ tone, title, text, action, dismiss }: InlineNoticeProps) {
   const styles = useStyles()
   return (
     <MessageBar
@@ -42,12 +35,12 @@ export function InlineNotice({
       </MessageBarBody>
       <MessageBarActions
         containerAction={
-          onDismiss ? (
+          dismiss ? (
             <FluentButton
               appearance="transparent"
-              aria-label={dismissLabel}
+              aria-label={dismiss.label}
               icon={<DismissRegular />}
-              onClick={() => onDismiss()}
+              onClick={() => dismiss.onClick()}
             />
           ) : undefined
         }

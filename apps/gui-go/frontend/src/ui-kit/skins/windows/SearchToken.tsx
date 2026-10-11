@@ -2,7 +2,7 @@ import { mergeClasses, Tag as FluentTag, TagGroup } from '@fluentui/react-compon
 import type { SearchTokenProps } from '@/ui-kit/contract'
 import { useTagStyles } from './tag-styles'
 
-export function SearchToken({ field, value, onRemove }: SearchTokenProps) {
+export function SearchToken({ field, value, remove }: SearchTokenProps) {
   const styles = useTagStyles()
   const name = `${field} ${value}`
   const tag = (
@@ -10,17 +10,17 @@ export function SearchToken({ field, value, onRemove }: SearchTokenProps) {
       size="small"
       appearance="outline"
       value={name}
-      dismissible={Boolean(onRemove)}
-      dismissIcon={onRemove ? { 'aria-label': `Remove ${name}` } : undefined}
+      dismissible={Boolean(remove)}
+      dismissIcon={remove ? { 'aria-label': remove.label } : undefined}
       className={mergeClasses(styles.token)}
     >
       <span className={styles.field}>{field}</span>
       <span className={styles.value}>{value}</span>
     </FluentTag>
   )
-  if (!onRemove) return tag
+  if (!remove) return tag
   return (
-    <TagGroup aria-label={name} onDismiss={() => onRemove()}>
+    <TagGroup aria-label={name} onDismiss={() => remove.onClick()}>
       {tag}
     </TagGroup>
   )

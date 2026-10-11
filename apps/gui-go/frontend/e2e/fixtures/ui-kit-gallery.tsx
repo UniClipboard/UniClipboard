@@ -263,11 +263,15 @@ function Board({ scheme }: { scheme: ColorScheme }) {
               </ContextMenu>
               <div className="ui-kit-gallery-row">
                 <Tag name="#deploy" color="deploy" />
-                <Tag name="#finance" color="finance" onRemove={() => record('remove:#finance')} />
+                <Tag
+                  name="#finance"
+                  color="finance"
+                  remove={{ label: 'Remove #finance', onClick: () => record('remove:#finance') }}
+                />
                 <SearchToken
                   field="from:"
                   value="iPhone 16"
-                  onRemove={() => record('remove:from')}
+                  remove={{ label: 'Remove from: iPhone 16', onClick: () => record('remove:from') }}
                 />
                 <SearchToken field="time:" value="last 7 days" />
                 <Badge count={3} label="3 new items" />
@@ -319,7 +323,7 @@ function Board({ scheme }: { scheme: ColorScheme }) {
               title="Keep the cat visible"
               text="Windows hides new tray icons under ^."
               action={{ label: 'Open settings', onClick: () => record('notice:settings') }}
-              onDismiss={() => record('notice:dismiss')}
+              dismiss={{ label: 'Dismiss', onClick: () => record('notice:dismiss') }}
             />
             <InlineNotice tone="success" title="Sent" text="Arrived on 2 devices." />
             <InlineNotice

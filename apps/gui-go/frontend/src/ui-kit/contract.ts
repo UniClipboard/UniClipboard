@@ -59,6 +59,15 @@ export type ButtonVariant = 'primary' | 'standard' | 'subtle'
 /** Project tag palette; skins own the light/dark values. */
 export type TagColor = 'deploy' | 'docker' | 'git' | 'design' | 'finance' | 'work' | 'neutral'
 
+/**
+ * A secondary command of a component. `label` is the visible text or, for an icon-only control,
+ * the accessible name; it comes from the caller's translations, skins never supply copy.
+ */
+export interface LabelledAction {
+  label: string
+  onClick: () => void
+}
+
 export interface UiRootProps {
   /** Comes from the app's existing theme source; the kit keeps no theme state of its own. */
   colorScheme: ColorScheme
@@ -204,15 +213,15 @@ export interface BadgeProps {
 export interface TagProps {
   name: string
   color?: TagColor
-  /** Shows a remove button; the accessible name is "Remove <name>". */
-  onRemove?: () => void
+  /** Shows a remove button named by `remove.label`, e.g. "Remove #finance". */
+  remove?: LabelledAction
 }
 
 /** A search condition chip such as `from: iPhone 16`. */
 export interface SearchTokenProps {
   field: string
   value: string
-  onRemove?: () => void
+  remove?: LabelledAction
 }
 
 export type NoticeTone = 'info' | 'success' | 'warning' | 'error'
@@ -222,9 +231,9 @@ export interface InlineNoticeProps {
   tone: NoticeTone
   title: string
   text?: string
-  action?: { label: string; onClick: () => void }
-  onDismiss?: () => void
-  dismissLabel?: string
+  action?: LabelledAction
+  /** Shows a close button named by `dismiss.label`. */
+  dismiss?: LabelledAction
 }
 
 /** A row of commands with roving focus (arrow keys move between items, Tab leaves the bar). */

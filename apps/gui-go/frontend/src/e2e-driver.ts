@@ -851,6 +851,66 @@ async function runHistoryKitScenario() {
   )
   await record('kit-tag-added-to-all', true, { tag: chipText })
 
+  // Manage Tags (design MC3): the sheet's table lists the tag; its row menu renames it and the
+  // switch puts it in the sidebar.
+  const manage = Array.from(document.querySelectorAll<HTMLElement>('nav button')).find(
+    b => b.getAttribute('aria-label') === i18n.t('history.tags.manage')
+  )!
+  manage.click()
+  const sheetRow = await waitFor('tag in the manager', () =>
+    Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"] [role="row"]')).find(r =>
+      r.textContent?.includes(chipText)
+    )
+  )
+  const cell = sheetRow.querySelector<HTMLElement>('[role="gridcell"]')!
+  const box = cell.getBoundingClientRect()
+  const at = { bubbles: true, cancelable: true, clientX: box.x + 20, clientY: box.y + 10 }
+  cell.dispatchEvent(new MouseEvent('mousedown', { ...at, button: 2 }))
+  cell.dispatchEvent(new MouseEvent('contextmenu', { ...at, button: 2 }))
+  const renameItem = await waitFor('rename item', () =>
+    Array.from(document.querySelectorAll<HTMLElement>('[role="menuitem"]')).find(
+      i => i.textContent?.trim() === i18n.t('history.tags.rename')
+    )
+  )
+  await record('kit-tag-manager-menu', true, {
+    items: Array.from(document.querySelectorAll('[role="menuitem"]')).map(i =>
+      i.textContent?.trim()
+    ),
+  })
+  await shot('tag-manager-menu')
+  renameItem.click()
+  const renameField = (await waitFor('rename field', () =>
+    $('[role="dialog"] input[aria-invalid], [role="dialog"] .mac-field')
+  )) as HTMLInputElement
+  const renamed = `${tagName}r`
+  valueSetter.call(renameField, renamed)
+  renameField.dispatchEvent(new Event('input', { bubbles: true }))
+  key(renameField, 'Enter')
+  const renamedRow = await waitFor(
+    'renamed tag',
+    () =>
+      Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"] [role="row"]')).find(r =>
+        r.textContent?.includes(`#${renamed}`)
+      ),
+    30000
+  )
+  renamedRow.querySelector<HTMLElement>('[role="switch"]')!.click()
+  await waitFor(
+    'tag in the sidebar',
+    () =>
+      Array.from(document.querySelectorAll('nav button')).some(b =>
+        b.textContent?.includes(`#${renamed}`)
+      ),
+    30000
+  )
+  await record('kit-tag-manager-rename-sidebar', true, { tag: `#${renamed}` })
+  await shot('tag-manager')
+  Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"] button'))
+    .find(b => b.textContent?.trim() === i18n.t('history.composite.done'))!
+    .click()
+  await waitFor('manager closed', () => !$('[role="dialog"]'))
+  list().focus()
+
   // Delete asks first; focus starts on Cancel, Escape keeps everything.
   const countBefore = historyRows().length
   key(list(), 'Backspace')

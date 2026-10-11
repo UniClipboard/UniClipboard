@@ -1,19 +1,24 @@
-import type { ChildProcess, SpawnOptions } from 'node:child_process'
+import type { ChildProcess, SpawnOptions, SpawnSyncOptions } from 'node:child_process'
+import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const calls = vi.hoisted(() => ({
   builds: [] as string[],
   app: '',
   vite: null as ChildProcess | null,
+  mode: 'normal',
+  detached: false,
 }))
 
 vi.mock('node:child_process', async importOriginal => {
   const actual = await importOriginal<typeof import('node:child_process')>()
   return {
     ...actual,
-    spawnSync(command: string) {
+    spawnSync(command: string, args: string[], options: SpawnSyncOptions) {
+      if (command === 'taskkill') return actual.spawnSync(command, args, options)
       calls.builds.push(command)
       return { status: 0 }
     },
@@ -23,6 +28,7 @@ vi.mock('node:child_process', async importOriginal => {
         return calls.vite
       }
       calls.app = command
+      calls.detached = options.detached === true
       // Exercise the real Vite HTTP and hot-reload endpoints without opening a native window.
       return actual.spawn(
         process.execPath,
@@ -30,6 +36,13 @@ vi.mock('node:child_process', async importOriginal => {
           '-e',
           `
           (async () => {
+            if (${JSON.stringify(calls.mode)} === 'tree') {
+              const child = require('node:child_process').spawn(process.execPath,
+                ['-e', 'setInterval(() => {}, 1000)'], { detached: true, stdio: 'ignore' });
+              require('node:fs').writeFileSync(process.env.LAUNCHER_TEST_PID_FILE, String(child.pid));
+              setInterval(() => {}, 1000);
+              return;
+            }
             const url = process.env.FRONTEND_DEVSERVER_URL;
             for (const suffix of ['/', '/@vite/client']) {
               const response = await fetch(url + suffix);
@@ -49,6 +62,13 @@ vi.mock('node:child_process', async importOriginal => {
 import { main } from '../wails-dev.mjs'
 
 describe('development launcher', () => {
+  beforeEach(() => {
+    calls.builds = []
+    calls.app = ''
+    calls.vite = null
+    calls.mode = 'normal'
+    calls.detached = false
+  })
   it.skipIf(process.platform !== 'win32')(
     'launches an exe against Vite on Windows and stops the server on exit',
     async () => {
@@ -66,6 +86,80 @@ describe('development launcher', () => {
         expect(vite.exitCode !== null || vite.signalCode !== null).toBe(true)
       } finally {
         calls.vite?.kill()
+      }
+    },
+    30_000
+  )
+
+  it.skipIf(process.platform !== 'win32')(
+    'does not launch the GUI after Ctrl+C during Vite startup',
+    async () => {
+      const initialListeners = process.listenerCount('SIGINT')
+      const run = main(['--profile', `launcher-cancel-${process.pid}`])
+      try {
+        const deadline = Date.now() + 10_000
+        while (!calls.vite && Date.now() < deadline) {
+          await new Promise(resolve => setTimeout(resolve, 10))
+        }
+        expect(calls.vite).not.toBeNull()
+        process.emit('SIGINT', 'SIGINT')
+        expect(await run).toBe(130)
+        expect(calls.app).toBe('')
+        expect(process.listenerCount('SIGINT')).toBe(initialListeners)
+      } finally {
+        if (process.listenerCount('SIGINT') > initialListeners) process.emit('SIGINT', 'SIGINT')
+        await run
+        calls.vite?.kill()
+      }
+    },
+    15_000
+  )
+
+  it.skipIf(process.platform !== 'win32')(
+    'stops a detached daemon descendant on Ctrl+C and removes signal listeners',
+    async () => {
+      const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), 'uc-launcher-test-'))
+      const pidFile = path.join(sandbox, 'daemon.pid')
+      const initialListeners = process.listenerCount('SIGINT')
+      const { spawn } =
+        await vi.importActual<typeof import('node:child_process')>('node:child_process')
+      const unrelated = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], {
+        windowsHide: true,
+        detached: true,
+        stdio: 'ignore',
+      })
+      calls.mode = 'tree'
+      let daemonPid = 0
+      const run = main(['--profile', `launcher-tree-${process.pid}`], {
+        ...process.env,
+        LAUNCHER_TEST_PID_FILE: pidFile,
+      })
+      try {
+        const deadline = Date.now() + 20_000
+        while (!fs.existsSync(pidFile) && Date.now() < deadline) {
+          await new Promise(resolve => setTimeout(resolve, 50))
+        }
+        expect(fs.existsSync(pidFile)).toBe(true)
+        daemonPid = Number(fs.readFileSync(pidFile, 'utf8'))
+        expect(() => process.kill(daemonPid, 0)).not.toThrow()
+        expect(calls.detached).toBe(true)
+        process.emit('SIGINT', 'SIGINT')
+        expect(await run).toBe(130)
+        expect(() => process.kill(daemonPid, 0)).toThrow()
+        expect(() => process.kill(unrelated.pid!, 0)).not.toThrow()
+        expect(process.listenerCount('SIGINT')).toBe(initialListeners)
+      } finally {
+        if (process.listenerCount('SIGINT') > initialListeners) process.emit('SIGINT', 'SIGINT')
+        await run
+        if (daemonPid) {
+          try {
+            process.kill(daemonPid)
+          } catch {
+            /* The launcher already stopped it. */
+          }
+        }
+        unrelated.kill()
+        fs.rmSync(sandbox, { recursive: true, force: true })
       }
     },
     30_000

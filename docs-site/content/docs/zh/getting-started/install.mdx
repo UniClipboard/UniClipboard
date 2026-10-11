@@ -258,21 +258,36 @@ bun install
 
 <Step>
 
-### 开发模式启动，或构建发行包
+### 开发模式启动，或构建本地应用
 
 ```bash
 # 本地开发，桌面应用支持热重载
 bun wails:dev
 
-# 为当前平台构建发行包
-apps/gui-go/build.sh
+# 在 Windows 或 macOS 构建本地应用，不启动
+bun wails:build
+
+# 仅 Windows：优化的发布构建与便携 ZIP
+bun wails:build --release
 ```
 
 </Step>
 
 </Steps>
 
-发行包位于 `target/release/bundle/`。分支策略、commit 规范与 PR 流程见
+默认构建使用 Go 的 `production` 标签和 Rust 的 debug 二进制。Windows
+产物位于 `target/gui-go/windows-production/`，macOS 产物为
+`target/gui-go/UniClipboardGo.app`。Windows 需要 Python，macOS 需要 Bash 和 Python 3。
+
+Windows 的 `--release` 使用优化的 Rust 二进制和 Go 的 `production,release`
+标签，移除调试符号并嵌入前端，生成
+`target/gui-go/windows-release/UniClipboard_<version>_<arch>-portable.zip`，
+其中 `<arch>` 为 `x64` 或 `arm64`。该本地构建不签名，也不生成安装包。
+快捷面板的发布构建需要 Windows SDK 的 `fxc.exe`，脚本自动查找已安装的 SDK，
+也可设置 `GPUI_FXC_PATH`。运行前需清除 `UC_PROFILE`、
+`UNICLIPBOARD_ENV=development` 等开发环境设置。macOS 暂不支持此命令的 `--release` 参数。
+
+分支策略、commit 规范与 PR 流程见
 [CONTRIBUTING_ZH.md](https://github.com/UniClipboard/UniClipboard/blob/main/CONTRIBUTING_ZH.md)。
 
 ## Android App

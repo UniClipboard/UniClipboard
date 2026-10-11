@@ -288,21 +288,39 @@ bun install
 
 <Step>
 
-### Run in dev mode, or produce a release build
+### Run in dev mode, or build the app locally
 
 ```bash
 # Live-reloading desktop app for local development
 bun wails:dev
 
-# Bundle a release artefact for the host platform
-apps/gui-go/build.sh
+# Build the local app on Windows or macOS without starting it
+bun wails:build
+
+# Windows only: optimized release build and portable ZIP
+bun wails:build --release
 ```
 
 </Step>
 
 </Steps>
 
-The release build lands under `target/release/bundle/`. See
+The default build uses Go's `production` tag and debug Rust binaries. Windows
+outputs are under `target/gui-go/windows-production/`; macOS produces
+`target/gui-go/UniClipboardGo.app`. Windows requires Python; macOS requires
+Bash and Python 3.
+
+On Windows, `--release` uses optimized Rust binaries and Go's
+`production,release` tags, strips debug symbols, and embeds the frontend. It
+produces `target/gui-go/windows-release/UniClipboard_<version>_<arch>-portable.zip`,
+where `<arch>` is `x64` or `arm64`. This local build is unsigned and does not
+produce an installer. The quick panel release build requires the Windows SDK's
+`fxc.exe`; the script detects installed SDKs or accepts `GPUI_FXC_PATH`.
+Clear development overrides such as `UC_PROFILE` and
+`UNICLIPBOARD_ENV=development` before launching it. macOS does not support
+`--release` through this command yet.
+
+See
 [CONTRIBUTING.md](https://github.com/UniClipboard/UniClipboard/blob/main/CONTRIBUTING.md)
 for branch / commit / PR conventions.
 

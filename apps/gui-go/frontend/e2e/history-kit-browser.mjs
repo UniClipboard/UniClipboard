@@ -10,6 +10,11 @@ import path from 'node:path'
 //   UC_UI_PLATFORM=windows node e2e/history-kit-browser.mjs <dir>
 //   python3 apps/gui-go/e2e/history_kit_browser_daemon.py stop --out <dir>
 // Screenshots and assertions land in <dir>.
+//
+// With HISTORY_KIT_CDP=<http://host:port> the same steps drive the REAL app instead: the Wails WebView (WebView2 on
+// Windows, started with --remote-debugging-port) is attached over the DevTools protocol, no fixture is served, input
+// is real CDP input, and colour scheme and window sizes are page emulation (Emulation.*), not native window changes.
+// apps/gui-go/e2e/windows_history_kit_remote.py runs it that way against a Windows machine.
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright')
 const output = path.resolve(process.argv[2] ?? 'target/e2e/history-kit-browser')
 const platform = process.env.UC_UI_PLATFORM
@@ -21,24 +26,29 @@ const daemon = JSON.parse(await readFile(path.join(output, 'daemon.json'), 'utf8
 const port = Number(process.env.UI_FIXTURE_PORT || 1462)
 await mkdir(output, { recursive: true })
 
-const server = spawn('node', ['e2e/visual-effects-server.mjs'], {
-  env: {
-    ...process.env,
-    UI_FIXTURE_ENTRY: 'e2e/fixtures/history-full-app.tsx',
-    UI_FIXTURE_PORT: String(port),
-  },
-  stdio: ['ignore', 'pipe', 'inherit'],
-})
-await new Promise((resolve, reject) => {
-  const timer = setTimeout(() => reject(new Error('fixture server did not start')), 180_000)
-  server.stdout.on('data', chunk => {
-    if (String(chunk).includes(`127.0.0.1:${port}`)) {
-      clearTimeout(timer)
-      resolve()
-    }
+const cdp = process.env.HISTORY_KIT_CDP
+const server = cdp
+  ? null
+  : spawn('node', ['e2e/visual-effects-server.mjs'], {
+      env: {
+        ...process.env,
+        UI_FIXTURE_ENTRY: 'e2e/fixtures/history-full-app.tsx',
+        UI_FIXTURE_PORT: String(port),
+      },
+      stdio: ['ignore', 'pipe', 'inherit'],
+    })
+if (server) {
+  await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('fixture server did not start')), 180_000)
+    server.stdout.on('data', chunk => {
+      if (String(chunk).includes(`127.0.0.1:${port}`)) {
+        clearTimeout(timer)
+        resolve()
+      }
+    })
+    server.on('exit', code => reject(new Error(`fixture server exited: ${code}`)))
   })
-  server.on('exit', code => reject(new Error(`fixture server exited: ${code}`)))
-})
+}
 
 // GUI session tokens live five minutes and the fixture hands the same one out on refresh, so each page context
 // opens its own session with the daemon's file token (daemon.conn in the isolated data dir).
@@ -63,8 +73,15 @@ async function guiSession() {
 async function pageUrl() {
   return `http://127.0.0.1:${port}/?${new URLSearchParams({ daemon: daemon.daemonUrl, token: await guiSession(), platform })}`
 }
-const results = { platform, profile: daemon.profile, steps: [] }
-const browser = await chromium.launch({ headless: true, channel: process.env.PLAYWRIGHT_CHANNEL })
+const results = {
+  platform,
+  mode: cdp ? 'native-cdp' : 'browser-fixture',
+  profile: daemon.profile,
+  steps: [],
+}
+const browser = cdp
+  ? await chromium.connectOverCDP(cdp)
+  : await chromium.launch({ headless: true, channel: process.env.PLAYWRIGHT_CHANNEL })
 let page
 async function step(name, run) {
   try {
@@ -132,12 +149,14 @@ const rows = () => page.locator('[data-item-id]')
 // Ctrl+click as Windows delivers it. Chromium on macOS turns a real Ctrl+click into a context-menu click, so the
 // browser run dispatches the pointer press itself; the native WebView2 run uses real input.
 const ctrlClick = locator =>
-  locator.evaluate(el => {
-    for (const type of ['mousedown', 'mouseup', 'click'])
-      el.dispatchEvent(
-        new MouseEvent(type, { bubbles: true, cancelable: true, ctrlKey: true, button: 0 })
-      )
-  })
+  cdp
+    ? locator.click({ modifiers: ['Control'] })
+    : locator.evaluate(el => {
+        for (const type of ['mousedown', 'mouseup', 'click'])
+          el.dispatchEvent(
+            new MouseEvent(type, { bubbles: true, cancelable: true, ctrlKey: true, button: 0 })
+          )
+      })
 const row = text => rows().filter({ hasText: text }).first()
 const list = () => page.getByRole('listbox', { name: 'Clipboard history' })
 const detail = () => page.getByRole('region', { name: 'Item detail' })
@@ -154,7 +173,45 @@ const activeDescription = () =>
       ? `${el.tagName.toLowerCase()}[role=${el.getAttribute('role')}][name=${el.getAttribute('aria-label') ?? el.textContent?.trim().slice(0, 40)}]`
       : null
   })
-async function newPage(options) {
+// The real app starts content-locked: unlock through its own unlock screen (keyring first, then the passphrase).
+async function unlockIfLocked() {
+  const unlock = page.locator('[data-testid="unlock-content"]')
+  const ready = page.locator('[data-item-id], [data-pane="detail"]')
+  await Promise.race([
+    unlock.waitFor({ timeout: 60_000 }),
+    ready.first().waitFor({ timeout: 60_000 }),
+  ])
+  if (!(await unlock.isVisible())) return
+  await page.screenshot({ path: path.join(output, 'native-unlock.png') })
+  await unlock.click()
+  const passphrase = page.locator('#unlock-passphrase')
+  await Promise.race([
+    passphrase.waitFor({ timeout: 30_000 }),
+    ready.first().waitFor({ timeout: 30_000 }),
+  ])
+  if (await passphrase.isVisible()) {
+    await passphrase.fill(daemon.passphrase)
+    await passphrase.press('Enter')
+  }
+}
+async function newPage(options = {}) {
+  if (cdp) {
+    page ??= browser.contexts()[0].pages()[0]
+    if (!results.nativeUrl) {
+      results.nativeUrl = page.url()
+      page.on('pageerror', error => results.consoleErrors.push(error.message))
+    }
+    await page.emulateMedia({
+      colorScheme: options.colorScheme ?? 'light',
+      reducedMotion: 'reduce',
+    })
+    if (options.viewport) await page.setViewportSize(options.viewport)
+    await page.reload()
+    await unlockIfLocked()
+    await rows().first().waitFor({ timeout: 60_000 })
+    await dismissStartupPrompts()
+    return
+  }
   const context = await browser.newContext({
     viewport: { width: 1280, height: 800 },
     deviceScaleFactor: 2,
@@ -169,6 +226,9 @@ async function newPage(options) {
   await dismissStartupPrompts()
 }
 results.consoleErrors = []
+const closePage = async () => {
+  if (!cdp) await page.context().close()
+}
 const geometry = () =>
   page.evaluate(() => {
     const box = selector => {
@@ -405,7 +465,7 @@ async function seededRun() {
   })
 
   await step('dark', async () => {
-    await page.context().close()
+    await closePage()
     await newPage({ colorScheme: 'dark' })
     await row('git rebase').click()
     await shot('default-dark')
@@ -426,7 +486,7 @@ async function seededRun() {
     ]
     const out = []
     for (const size of sizes) {
-      await page.context().close()
+      await closePage()
       await newPage({ viewport: size.viewport, deviceScaleFactor: size.deviceScaleFactor })
       await shot(size.name)
       const g = await geometry()
@@ -441,15 +501,22 @@ async function seededRun() {
 async function emptyRun() {
   for (const colorScheme of ['light', 'dark']) {
     await step(`empty-${colorScheme}`, async () => {
-      if (page) await page.context().close()
-      const context = await browser.newContext({
-        viewport: { width: 1280, height: 800 },
-        deviceScaleFactor: 2,
-        reducedMotion: 'reduce',
-        colorScheme,
-      })
-      page = await context.newPage()
-      await page.goto(await pageUrl())
+      if (cdp) {
+        page ??= browser.contexts()[0].pages()[0]
+        await page.emulateMedia({ colorScheme, reducedMotion: 'reduce' })
+        await page.reload()
+        await unlockIfLocked()
+      } else {
+        if (page) await closePage()
+        const context = await browser.newContext({
+          viewport: { width: 1280, height: 800 },
+          deviceScaleFactor: 2,
+          reducedMotion: 'reduce',
+          colorScheme,
+        })
+        page = await context.newPage()
+        await page.goto(await pageUrl())
+      }
       // The first-run consent alert is modal (it hides the page from the accessibility tree), so wait on text.
       await page.getByText('No Selection').waitFor({ timeout: 60_000 })
       await dismissStartupPrompts()
@@ -473,7 +540,7 @@ try {
   results.pageErrors = await page?.evaluate(() => window.__ucPageErrors ?? []).catch(() => null)
   results.nativeCalls = await page?.evaluate(() => window.__ucNativeCalls ?? []).catch(() => null)
   await browser.close()
-  server.kill()
+  server?.kill()
   results.passed = results.steps.every(s => s.ok)
   await writeFile(
     path.join(output, 'browser-results.json'),

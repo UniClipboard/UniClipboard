@@ -58,8 +58,7 @@ async fn mobile_lan_activation_notifications() {
             std::env::var_os("UC_E2E_EVIDENCE_DIR")
                 .map(std::path::PathBuf::from)
                 .unwrap_or_else(|| {
-                    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                        .join("target/evidence")
+                    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("target/evidence")
                 })
                 .join(format!("mobile-lan-events-{}.json", uuid::Uuid::new_v4()))
         });

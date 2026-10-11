@@ -120,6 +120,8 @@ def cmd_bundle(a):
     env = dict(os.environ)
     env["VITE_GUI_GO_E2E"] = v["e2e"]
     env["VITE_APP_VERSION"] = CFG["version"]
+    # The macOS skin of the frontend UI kit (apps/gui-go/frontend/src/ui-kit/contract.ts).
+    env["UC_UI_PLATFORM"] = "macos"
     log("frontend build")
     run(["bun", "--bun", "run", "--cwd", "apps/gui-go/frontend", "build"], cwd=REPO, env=env)
     dist = GUI_DIR / "frontend/dist"

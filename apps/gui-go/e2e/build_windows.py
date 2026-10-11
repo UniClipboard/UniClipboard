@@ -103,7 +103,7 @@ def main():
     if args.part in ('all', 'go') and not args.cross_check_only:
         run(['go', 'generate', './buildinfo'], cwd=ROOT / 'packages/desktop-host-go')
         run(['go', 'build', *(['-trimpath', '-ldflags', '-s -w'] if release else []), '-o', str(out / 'uniclip.exe'), './cmd/uniclip'], cwd=ROOT / 'apps/cli-go', env=env)
-        run(['bun', '--bun', 'run', '--cwd', 'apps/gui-go/frontend', 'build'], env=dict(env, VITE_GUI_GO_E2E='1' if args.mode == 'e2e' else '0', VITE_APP_VERSION=conf['version']))
+        run(['bun', '--bun', 'run', '--cwd', 'apps/gui-go/frontend', 'build'], env=dict(env, VITE_GUI_GO_E2E='1' if args.mode == 'e2e' else '0', VITE_APP_VERSION=conf['version'], UC_UI_PLATFORM='windows'))
     if args.cross_check_only and not (ROOT / 'apps/gui-go/frontend/dist').is_dir():
         sys.exit('apps/gui-go/frontend/dist is missing: build the frontend once (bun --bun run --cwd apps/gui-go/frontend build)')
     if args.part == 'rust':

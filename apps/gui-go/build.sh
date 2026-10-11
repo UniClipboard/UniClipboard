@@ -18,7 +18,7 @@ TRIPLE="$(rustc --print host-tuple)"
 node scripts/stage-daemon.mjs --debug
 (cd packages/desktop-host-go && go generate ./buildinfo)
 (cd apps/cli-go && go build -o ../../target/gui-go/uniclip ./cmd/uniclip)
-VITE_APP_VERSION="$(python3 -c 'import json;print(json.load(open("apps/gui-go/app.json"))["version"])')" VITE_GUI_GO_E2E="$E2E" bun --bun run --cwd apps/gui-go/frontend build
+VITE_APP_VERSION="$(python3 -c 'import json;print(json.load(open("apps/gui-go/app.json"))["version"])')" VITE_GUI_GO_E2E="$E2E" UC_UI_PLATFORM=macos bun --bun run --cwd apps/gui-go/frontend build
 # The release signer key comes from apps/gui-go/app.json, the single source of the app identity.
 # E2E builds leave it empty and use the local test feed override instead.
 PUBKEY=""

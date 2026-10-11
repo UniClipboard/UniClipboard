@@ -230,8 +230,9 @@ def main():
     if inside:
         node, playwright = portable_node(machine, args.work, args.arch, out)
 
-    # Isolated mode requires the executables in a uc-gui-go-* directory (environment.go).
-    run_dir = f'{args.work}\\uc-gui-go-{stamp}'
+    # Isolated mode requires the executables in a uc-gui-go-* directory (environment.go). One fixed path, emptied
+    # before every run, so the daemon does not appear to Windows Firewall as a new program each time.
+    run_dir = f'{args.work}\\uc-gui-go-kit'
     app = run_dir
     profile = f'gui-go-kit-{stamp}'
     task = f'uc-history-kit-{stamp}'
@@ -240,7 +241,8 @@ def main():
     seed = FRONTEND / 'e2e/history-kit-seed.mjs'
     driver = FRONTEND / 'e2e/history-kit-browser.mjs'
     try:
-        machine.ps(f"New-Item -ItemType Directory -Force '{app}' | Out-Null; Copy-Item '{daemon_exe}' '{app}\\uniclipd.exe'")
+        machine.ps(f"Remove-Item -Recurse -Force '{run_dir}' -ErrorAction SilentlyContinue; "
+                   f"New-Item -ItemType Directory -Force '{app}' | Out-Null; Copy-Item '{daemon_exe}' '{app}\\uniclipd.exe'")
         for name in ('gui-go.exe', 'uniclip.exe'):
             machine.put(go_out / name, f'{app}\\{name}')
         # On Windows ARM64 a daemon started while the one `space init` left is still running fails with
@@ -366,6 +368,10 @@ Start-Sleep 2
 Get-Process uniclipd -ErrorAction SilentlyContinue | Where-Object {{ $_.Path -eq '{app}\\uniclipd.exe' }} | Stop-Process -Force
 if ('{machine.kind}' -eq 'ssh') {{ schtasks /Delete /TN '{task}' /F 2>&1 | Out-Null }}
 exit 0
+""", check=False)
+        # The app's own output and evidence come back before the sandbox is removed.
+        record['appOutput'] = machine.ps(f"""
+foreach ($f in 'gui.out','gui.err','native.jsonl') {{ '--- ' + $f; Get-Content '{run_dir}\\' + $f -Tail 200 -ErrorAction SilentlyContinue }}
 """, check=False)
         logs = machine.ps(f"(Get-ChildItem '{app}\\data' -Recurse -Directory -Filter logs -ErrorAction SilentlyContinue | Select -First 1).FullName", check=False)
         if logs:

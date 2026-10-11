@@ -554,12 +554,18 @@ async function seededRun() {
   })
 
   await step('send-menu', async () => {
-    // The seeded mobile device (the loopback image upload registers it) is the only send target.
+    // The loopback mobile device the image upload registers is no space member, so nothing can be sent to: the only
+    // entry must be the disabled "No paired devices" (no false success).
     await row('git rebase').click()
     await detail().getByRole('button', { name: 'Send to…' }).click()
     const menu = page.getByRole('menu').first()
     await menu.waitFor()
     const items = await menu.getByRole('menuitem').allTextContents()
+    assert.deepEqual(items, ['No paired devices'], `send targets ${items}`)
+    assert.equal(
+      await menu.getByRole('menuitem', { name: 'No paired devices' }).getAttribute('aria-disabled'),
+      'true'
+    )
     await shot('send-menu')
     await page.keyboard.press('Escape')
     const focus = await activeDescription()
@@ -632,8 +638,8 @@ async function seededRun() {
   })
 
   await step('search-failure-observed', async () => {
-    // Injected failure: every search query answers 500. Recorded, not asserted: the kit page has no error state for
-    // a failed list query (the shared hook logs it), which the report lists as a gap.
+    // Injected failure: every search query answers 500. The page must show its error state with a retry, not an
+    // empty history with a count of 0.
     await page.route('**/search/query**', route =>
       route.fulfill({
         status: 500,
@@ -649,6 +655,9 @@ async function seededRun() {
       listPane: (await page.locator('[data-pane="list"]').innerText()).slice(0, 160),
     }
     await shot('error-search-failed')
+    assert.match(observed.listPane, /History Unavailable/, 'error state shown')
+    assert.match(observed.listPane, /Try Again/, 'retry offered')
+    assert.ok(!/^All\n0\n/.test(observed.listPane), 'no false count of 0')
     await page.unroute('**/search/query**')
     await field.fill('')
     await row('Paging entry').waitFor()

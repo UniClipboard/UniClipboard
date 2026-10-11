@@ -204,15 +204,45 @@ fn resolve_portable(
 
 fn portable_resolution() -> &'static PortableResolution {
     static CACHE: OnceLock<PortableResolution> = OnceLock::new();
-    CACHE.get_or_init(|| match std::env::current_exe() {
-        Ok(exe) => resolve_portable(
-            &exe,
-            env_forces_portable(),
-            std::env::var_os("APPDIR").as_deref(),
-            std::env::var_os("APPIMAGE").as_deref(),
-        ),
-        Err(_) => PortableResolution::Off,
+    CACHE.get_or_init(|| {
+        let resolution = match std::env::current_exe() {
+            Ok(exe) => resolve_portable(
+                &exe,
+                env_forces_portable(),
+                std::env::var_os("APPDIR").as_deref(),
+                std::env::var_os("APPIMAGE").as_deref(),
+            ),
+            Err(_) => PortableResolution::Off,
+        };
+        #[cfg(windows)]
+        {
+            normalize_windows_portable_root(resolution)
+        }
+        #[cfg(not(windows))]
+        {
+            resolution
+        }
     })
+}
+
+#[cfg(windows)]
+fn normalize_windows_portable_root(resolution: PortableResolution) -> PortableResolution {
+    let PortableResolution::Root(root) = resolution else {
+        return resolution;
+    };
+    // Canonicalize the existing executable directory, not the data directory:
+    // first launch has no data yet. The verbatim Windows prefix lets native
+    // filesystem adapters handle generation and temporary paths beyond MAX_PATH.
+    let Some(parent) = root.parent() else {
+        return PortableResolution::Invalid("portable executable directory is missing".into());
+    };
+    match std::fs::canonicalize(parent) {
+        Ok(directory) => PortableResolution::Root(directory.join(PORTABLE_DATA_SUBDIR)),
+        Err(error) => PortableResolution::Invalid(format!(
+            "portable executable directory could not be resolved: {:?}",
+            error.kind()
+        )),
+    }
 }
 
 /// Resolve (and cache) the portable data root for the running binary.
@@ -443,6 +473,49 @@ mod tests {
     use super::*;
 
     static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    #[cfg(windows)]
+    #[test]
+    fn portable_generation_paths_support_native_windows_atomic_replace() {
+        use std::os::windows::ffi::OsStrExt;
+        #[link(name = "kernel32")]
+        extern "system" {
+            fn MoveFileExW(source: *const u16, destination: *const u16, flags: u32) -> i32;
+        }
+        let directory =
+            std::env::temp_dir().join(format!("uc-portable-paths-{}", std::process::id()));
+        std::fs::create_dir_all(&directory).unwrap();
+        let raw_root = directory.join(PORTABLE_DATA_SUBDIR);
+        assert!(!raw_root.exists());
+        let PortableResolution::Root(root) =
+            normalize_windows_portable_root(PortableResolution::Root(raw_root))
+        else {
+            panic!("portable root must resolve before data exists");
+        };
+        assert!(root.to_string_lossy().starts_with(r"\\?\"));
+        let generation = root.join("a".repeat(120)).join("b".repeat(120));
+        std::fs::create_dir_all(&generation).unwrap();
+        let source = generation.join("profile.tmp");
+        let destination = generation.join("profile.sqlite");
+        assert!(source.as_os_str().encode_wide().count() > 260);
+        std::fs::write(&source, b"atomic replace probe").unwrap();
+        let wide = |path: &Path| {
+            path.as_os_str()
+                .encode_wide()
+                .chain(Some(0))
+                .collect::<Vec<_>>()
+        };
+        let source_wide = wide(&source);
+        let destination_wide = wide(&destination);
+        assert_ne!(
+            unsafe { MoveFileExW(source_wide.as_ptr(), destination_wide.as_ptr(), 9) },
+            0,
+            "{}",
+            std::io::Error::last_os_error()
+        );
+        assert_eq!(std::fs::read(destination).unwrap(), b"atomic replace probe");
+        std::fs::remove_dir_all(&directory).unwrap();
+    }
 
     #[test]
     fn not_portable_without_marker_or_env() {

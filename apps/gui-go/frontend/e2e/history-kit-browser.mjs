@@ -185,7 +185,8 @@ const activeDescription = () =>
 // The real app starts content-locked: unlock through its own unlock screen (keyring first, then the passphrase).
 async function unlockIfLocked() {
   const unlock = page.locator('[data-testid="unlock-content"]')
-  const ready = page.locator('[data-item-id], [data-pane="detail"]')
+  // Any main-window page counts as unlocked (a fresh profile may start on Devices).
+  const ready = page.locator('[data-item-id], [data-pane="detail"], main')
   await Promise.race([
     unlock.waitFor({ timeout: 60_000 }),
     ready.first().waitFor({ timeout: 60_000 }),
@@ -807,12 +808,9 @@ async function emptyRun() {
         page ??= await mainWindowPage()
         results.nativeUrl ??= page.url()
         await page.emulateMedia({ colorScheme, reducedMotion: 'reduce' })
-        // Load once: in the Windows VM a second load of a fresh profile lost the page target, so the dark pass
-        // only switches the emulated scheme on the same document.
-        if (first) {
-          await reloadApp()
-          await unlockIfLocked()
-        }
+        // No reload: the app was just launched for this run, and in the Windows VM navigating a fresh profile's
+        // document lost the page target. The dark pass switches the emulated scheme on the same document.
+        if (first) await unlockIfLocked()
       } else {
         if (page) await closePage()
         const context = await browser.newContext({

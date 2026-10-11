@@ -1295,6 +1295,7 @@
     },
     "kit": {
       "actionHint": "{{copy}} копировать · T метка · {{pin}} закрепить",
+      "allOfKind": "все: {{kind}}",
       "anyTag": "Любая метка",
       "anyType": "Любой тип",
       "deleteCount_few": "Удалить {{count}} элемента",
@@ -1310,6 +1311,10 @@
       "filterTag": "Метка",
       "filterTime": "Время",
       "filterType": "Тип",
+      "fromDevices_few": "{{count}} устройства",
+      "fromDevices_many": "{{count}} устройств",
+      "fromDevices_one": "{{count}} устройство",
+      "fromDevices_other": "{{count}} устройства",
       "gettingStarted": "Начало работы",
       "listLabel": "История буфера обмена",
       "multiSelectHint": "{{mod}}-щелчок добавляет или убирает · {{shift}}-щелчок выбирает диапазон · {{all}} выбирает всё",
@@ -1324,6 +1329,7 @@
       "nothingCopiedText": "Здесь появится то, что вы копируете на этом компьютере или на подключённых устройствах. Выберите элемент, чтобы просмотреть, отметить или отправить его.",
       "operators": "Операторы",
       "pairDevice": "Подключить устройство…",
+      "partialTagHint": "Полосы — метка есть только у части элементов. Нажмите, чтобы добавить ко всем; × убирает у всех.",
       "pinAll": "Закрепить все",
       "queryFailed": "Не удалось загрузить историю.",
       "queryFailedTitle": "История недоступна",
@@ -1332,6 +1338,7 @@
       "relaxWithout_many": "Убрать {{filter}} · {{count}} элементов",
       "relaxWithout_one": "Убрать {{filter}} · {{count}} элемент",
       "relaxWithout_other": "Убрать {{filter}} · {{count}} элемента",
+      "removeFromAll": "Убрать {{name}} у всех",
       "retry": "Повторить",
       "searchLabel": "Поиск по истории",
       "searchScope": "Где искать",
@@ -1349,6 +1356,8 @@
       "stepPasteText": "{{shortcut}} открывает быструю панель поверх любого приложения: выберите элемент и нажмите Return.",
       "stepPasteTextUnbound": "Быстрая панель открывается поверх любого приложения: выберите элемент и нажмите Return. Сочетание клавиш задаётся в настройках.",
       "stepPasteTitle": "Вставка из истории",
+      "tagFieldHint": "↑↓ выбор · ↩ добавить · ⇥ цвет · esc закрыть",
+      "tagOnSome": "{{on}} из {{total}}",
       "toolbar": "Панель инструментов",
       "unpinAll": "Открепить все"
     }

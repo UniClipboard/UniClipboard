@@ -1285,6 +1285,7 @@
     },
     "kit": {
       "actionHint": "{{copy}} copiar · T etiqueta · {{pin}} fixar",
+      "allOfKind": "todos {{kind}}",
       "anyTag": "Qualquer etiqueta",
       "anyType": "Qualquer tipo",
       "deleteCount_many": "Excluir {{count}} itens",
@@ -1299,6 +1300,9 @@
       "filterTag": "Etiqueta",
       "filterTime": "Período",
       "filterType": "Tipo",
+      "fromDevices_many": "{{count}} dispositivos",
+      "fromDevices_one": "{{count}} dispositivo",
+      "fromDevices_other": "{{count}} dispositivos",
       "gettingStarted": "Primeiros passos",
       "listLabel": "Histórico da área de transferência",
       "multiSelectHint": "{{mod}}-clique para adicionar ou remover · {{shift}}-clique para um intervalo · {{all}} seleciona tudo",
@@ -1312,6 +1316,7 @@
       "nothingCopiedText": "Os itens copiados neste computador ou em dispositivos pareados aparecem aqui. Selecione um para visualizar, etiquetar ou enviar.",
       "operators": "Operadores",
       "pairDevice": "Parear um dispositivo…",
+      "partialTagHint": "Listrado = só alguns itens têm. Clique para adicionar a todos; × remove de todos.",
       "pinAll": "Fixar todos",
       "queryFailed": "Não foi possível carregar o histórico.",
       "queryFailedTitle": "Histórico indisponível",
@@ -1319,6 +1324,7 @@
       "relaxWithout_many": "Remover {{filter}} · {{count}} itens",
       "relaxWithout_one": "Remover {{filter}} · {{count}} item",
       "relaxWithout_other": "Remover {{filter}} · {{count}} itens",
+      "removeFromAll": "Remover {{name}} de todos",
       "retry": "Tentar novamente",
       "searchLabel": "Buscar no histórico",
       "searchScope": "Buscar em",
@@ -1335,6 +1341,8 @@
       "stepPasteText": "{{shortcut}} abre o painel rápido sobre qualquer app: escolha um item e pressione Return.",
       "stepPasteTextUnbound": "O painel rápido abre sobre qualquer app: escolha um item e pressione Return. Defina o atalho nos Ajustes.",
       "stepPasteTitle": "Cole do histórico",
+      "tagFieldHint": "↑↓ escolher · ↩ adicionar · ⇥ cor · esc fechar",
+      "tagOnSome": "{{on}} de {{total}}",
       "toolbar": "Barra de ferramentas",
       "unpinAll": "Desafixar todos"
     }

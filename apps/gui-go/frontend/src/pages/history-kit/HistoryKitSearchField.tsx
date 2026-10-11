@@ -49,7 +49,8 @@ export function HistoryKitSearchField({
       }))}
       suggestions={search.options.map(option => ({
         id: option.id,
-        label: option.label,
+        // The skin draws the plus of a create item; the shared string carries its own.
+        label: option.create ? option.label.replace(/^\+\s*/, '') : option.label,
         group: option.header,
         detail: option.countLabel ?? option.hint,
         kind: option.dimension ? KIND[option.dimension] : undefined,

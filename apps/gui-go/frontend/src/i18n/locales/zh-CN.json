@@ -1275,6 +1275,7 @@
     },
     "kit": {
       "actionHint": "{{copy}} 复制 · T 标签 · {{pin}} 置顶",
+      "allOfKind": "全部为{{kind}}",
       "anyTag": "任意标签",
       "anyType": "任意类型",
       "deleteCount_one": "删除 {{count}} 项",
@@ -1288,6 +1289,7 @@
       "filterTag": "标签",
       "filterTime": "时间",
       "filterType": "类型",
+      "fromDevices_other": "{{count}} 台设备",
       "gettingStarted": "开始使用",
       "listLabel": "剪贴板历史",
       "multiSelectHint": "{{mod}}-点击增减 · {{shift}}-点击连选 · {{all}} 全选",
@@ -1299,11 +1301,13 @@
       "nothingCopiedText": "在这台电脑或已配对设备上复制的内容会出现在这里。选择一条即可预览、打标签或发送。",
       "operators": "运算符",
       "pairDevice": "配对设备…",
+      "partialTagHint": "斜纹表示只有部分项目有这个标签。点击可添加到全部，× 从全部移除。",
       "pinAll": "全部置顶",
       "queryFailed": "无法加载历史记录。",
       "queryFailedTitle": "历史不可用",
       "queryUnavailable": "搜索索引正在重建，请稍后再试。",
       "relaxWithout_other": "去掉 {{filter}} · {{count}} 项",
+      "removeFromAll": "从全部移除 {{name}}",
       "retry": "重试",
       "searchLabel": "搜索历史",
       "searchScope": "搜索范围",
@@ -1319,6 +1323,8 @@
       "stepPasteText": "{{shortcut}} 会在任意应用上方打开快捷面板：选一条，按回车。",
       "stepPasteTextUnbound": "快捷面板可以在任意应用上方打开：选一条，按回车。可在设置中设定快捷键。",
       "stepPasteTitle": "从历史粘贴",
+      "tagFieldHint": "↑↓ 选择 · ↩ 添加 · ⇥ 颜色 · esc 关闭",
+      "tagOnSome": "{{on}}/{{total}}",
       "toolbar": "工具栏",
       "unpinAll": "全部取消置顶"
     }

@@ -43,3 +43,21 @@ python3 apps/cli-go/e2e/service_lifecycle.py --bin target/compat/go --out target
 `result.json`、服务定义、前台日志和二进制哈希组成可重复验收工件；finally 只清理本次唯一
 服务，并记录卸载与进程退出证据。退出码 37 使用子进程夹具验证传递，不冒充真实 daemon 失败。
 旧 `start` 的警告及新增命令帮助是有意差异，不能要求与旧 Rust 帮助逐字节相等。
+
+## 设备组交互验收
+
+```bash
+python3 apps/cli-go/e2e/trust_workflow.py --bin target/compat/go --out target/compat/trust
+```
+
+运行器使用隔离 HOME/profile、文件密钥存储及本地邀请服务，通过真实 daemon 配对三个
+节点并提出移除，验证设备名称、编号输入、本机移除取消与确认，以及输入期间的并发选择。
+
+另有 HTTP 契约场景：健康检查、身份验证和 WebSocket 控制租约仍连接真实 daemon，
+只对设备组查询和提交注入固定 DTO，验证多问题连续处理、最新 revision、非法编号不提交、
+`--once`、各种结果的停止条件、跨问题确认隔离、显式 ID 和 JSON 的单次兼容性。
+这些场景验证 CLI 的交互与传输契约，不证明 Engine 会生成同样的问题序列或决定结果。
+`--contract-only` 可跳过三节点场景；验收记录保存在 `transcript.txt`。
+
+差分测试中设备组的人类可读输出与 Rust 开发 CLI 存在有意差异，见上级 README 差异表；
+JSON 状态和显式 ID 的调用仍按原契约对比。

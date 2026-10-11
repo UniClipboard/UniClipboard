@@ -134,11 +134,13 @@ func Tree() *cli.Command {
 								Run:   runMemberTrustStatus,
 							},
 							{
-								Name:  "choose",
-								About: "Choose one option from the current device-group query",
+								Name:      "choose",
+								About:     "Choose device groups interactively, or submit one choice by ID",
+								LongAbout: "Choose device groups using numbered options in a terminal. After a completed choice, refresh and continue until no issues remain. Pending changes, re-pairing and local removal stop the workflow. Explicit IDs and --json always execute once without prompting.",
 								Flags: []*cli.Flag{
 									{Long: "issue", ValueName: "ISSUE-ID", Kind: cli.String, Help: "Opaque issue ID from `member trust status`"},
 									{Long: "choice", ValueName: "CHOICE-ID", Kind: cli.String, Help: "Opaque choice ID from the selected issue"},
+									{Long: "once", Kind: cli.Bool, Help: "Handle only one issue in the interactive workflow"},
 									{Long: "confirm-local-removal", Kind: cli.Bool, Help: "Explicitly allow this device to be removed by the change"},
 								},
 								Run: runMemberTrustChoose,

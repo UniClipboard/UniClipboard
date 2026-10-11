@@ -830,6 +830,70 @@ async function runHistoryKitScenario() {
   await waitFor('sidebar shown', () => !$('[data-sidebar-hidden]'))
   await record('kit-sidebar-toggle', true)
 
+  // Search (design MB1-MB3): text with match highlighting, a device token from the suggestions,
+  // then a search with no results and its widening choices.
+  const field = () => $('input[role="combobox"]') as HTMLInputElement
+  const typeInto = (text: string) => {
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!
+    setter.call(field(), text)
+    field().dispatchEvent(new Event('input', { bubbles: true }))
+  }
+  // The oldest seeded text is never selected above, so it survives the deletes.
+  const word = seeded.texts[0].split(/\W+/).sort((a, b) => b.length - a.length)[0]
+  field().focus()
+  typeInto(word)
+  key(field(), 'Enter')
+  await waitFor(
+    'text results',
+    () => historyRows().length === 1 && $('[role="option"] mark')?.textContent === word,
+    30000
+  )
+  await record('kit-search-text', true, {
+    rows: rowTitles(),
+    mark: $('[role="option"] mark')?.textContent,
+  })
+  await shot('search-text')
+  // `#` lists the tags (the isolated profile has no paired device for `@`).
+  const suggestionOptions = () =>
+    Array.from(
+      document.querySelectorAll<HTMLElement>(
+        '[role="listbox"]:not([aria-multiselectable]) [role="option"]'
+      )
+    )
+  typeInto('#')
+  await waitFor('tag suggestions', () => suggestionOptions().length > 0)
+  await record('kit-search-suggestions', field().getAttribute('aria-expanded') === 'true', {
+    options: suggestionOptions().map(o => o.textContent?.slice(0, 40)),
+    activeDescendant: field().getAttribute('aria-activedescendant'),
+  })
+  await shot('search-suggestions')
+  key(field(), 'ArrowDown')
+  key(field(), 'Enter')
+  await waitFor('tag token', () => $('.mac-token-search [data-kind="tag"]'))
+  await record('kit-search-token', true, {
+    token: $('.mac-token-search [data-kind="tag"]')?.textContent,
+  })
+  // No remaining entry carries the link tag: the empty state offers to drop the condition.
+  const empty = await waitFor('no results', () => $('[role="status"]'), 30000)
+  await waitFor('widening choices', () => empty.querySelectorAll('button').length > 0, 30000)
+  await record('kit-search-no-results', true, {
+    text: empty.textContent?.slice(0, 160),
+    choices: Array.from(empty.querySelectorAll('button')).map(b => b.textContent),
+  })
+  await shot('search-no-results')
+  const clear = Array.from(document.querySelectorAll<HTMLElement>('button')).find(
+    b => b.getAttribute('aria-label') === i18n.t('history.composite.clearAll')
+  )!
+  clear.click()
+  await waitFor('search cleared', () => historyRows().length >= 3, 30000)
+  await record(
+    'kit-search-cleared',
+    !($('input[role="combobox"]') as HTMLInputElement | null)?.value,
+    {
+      rows: historyRows().length,
+    }
+  )
+
   // Light and dark themes: the material stays native only while the theme matches the system
   // appearance; otherwise the sidebar shows its CSS fallback (the glass would be drawn in the wrong
   // appearance, Wails sets NSAppearance only at window creation).

@@ -28,6 +28,12 @@ import { DIMENSION_CHIP_KEY } from './dimension-style'
 import type { PanelOption } from './SuggestionPanel'
 import { type FetchSearchCounts, useSearchCounts } from './useSearchCounts'
 
+/** The parts of a key press the search model reads; a DOM keyboard event satisfies it. */
+export type SearchKeyEvent = Pick<
+  React.KeyboardEvent<HTMLInputElement>,
+  'key' | 'shiftKey' | 'preventDefault'
+>
+
 export interface CompositeSearchBarProps {
   contentFilter: Filter
   sourceFilter: string | null
@@ -45,6 +51,7 @@ export interface CompositeSearchBarProps {
   tagOptions: SearchTagOption[]
   totalCount: number
   inputRef: React.RefObject<HTMLInputElement | null>
+  /** Keys the model leaves alone, for a caller that handles the DOM event itself (quick panel). */
   onUnhandledKeyDown?: (e: React.KeyboardEvent<HTMLInputElement>) => void
   clearShortcutEnabled?: boolean
   suggestionActivation?: 'focus' | 'intentional'
@@ -268,8 +275,8 @@ export function useCompositeSearchBar({
     else if (exact) applyCandidate(exact)
   }
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const next = e.target.value
+  /** The field's text changed to `next`. */
+  const changeText = (next: string) => {
     const p = resolveBuffer(next, tokenContext)
     setBuffer(next)
     setHighlight(p.kind === 'token' ? 0 : -1)
@@ -281,6 +288,7 @@ export function useCompositeSearchBar({
       if (p.committed) tryCommit(p.dimension, p.partial)
     }
   }
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => changeText(e.target.value)
 
   const createTag = async (name: string) => {
     const tagId = await onCreateTag?.(name)
@@ -312,7 +320,11 @@ export function useCompositeSearchBar({
     if (refocus) inputRef.current?.focus()
   }
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+  // Only a DOM keyboard event is passed on: a value-only key press has nobody else to handle it.
+  const unhandled = (e: SearchKeyEvent) => {
+    if ('nativeEvent' in e) onUnhandledKeyDown?.(e as React.KeyboardEvent<HTMLInputElement>)
+  }
+  const handleKeyDown = (e: SearchKeyEvent) => {
     if (e.key === 'Escape') {
       e.preventDefault()
       if (open) setOpen(false)
@@ -361,7 +373,7 @@ export function useCompositeSearchBar({
     }
     if (e.key === 'Enter') {
       if (suggestionActivation === 'intentional' && !expanded) {
-        onUnhandledKeyDown?.(e)
+        unhandled(e)
         return
       }
       e.preventDefault()
@@ -375,7 +387,7 @@ export function useCompositeSearchBar({
       }
       return
     }
-    onUnhandledKeyDown?.(e)
+    unhandled(e)
   }
 
   return {
@@ -394,6 +406,7 @@ export function useCompositeSearchBar({
     clampedHighlight,
     expanded,
     hasContent,
+    changeText,
     handleInputChange,
     handleKeyDown,
     clearAll,

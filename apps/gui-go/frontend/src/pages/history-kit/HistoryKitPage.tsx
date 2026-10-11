@@ -1,4 +1,7 @@
 import { useTranslation } from 'react-i18next'
+import { countSearch } from '@/api/daemon/search'
+import { useCompositeSearchBar } from '@/components/history/composite-search/useCompositeSearchBar'
+import { useZeroResultRelaxations } from '@/components/history/composite-search/useZeroResultRelaxations'
 import { LIBRARY_BUILTIN_TAG_IDS } from '@/components/history/tags/history-tag-library'
 import HistoryTagManager from '@/components/history/tags/HistoryTagManager'
 import { NO_TAG_COLORS, TagColorsContext } from '@/components/history/tags/tag-colors-context'
@@ -7,11 +10,14 @@ import { useAppliedColorScheme } from '@/hooks/useAppliedColorScheme'
 import { useHistoryController } from '@/hooks/useHistoryController'
 import { useShortcut } from '@/hooks/useShortcut'
 import { formatShortcutHint } from '@/lib/shortcut-format'
-import { Pane, SearchField, SplitView, Text, UiRoot, type MenuEntry } from '@/ui-kit'
+import { Pane, SplitView, Text, UiRoot, type MenuEntry } from '@/ui-kit'
 import { HistoryKitDeleteAlert } from './HistoryKitDeleteAlert'
 import { HistoryKitDetail } from './HistoryKitDetail'
 import { HistoryKitFilters } from './HistoryKitFilters'
 import { HistoryKitList } from './HistoryKitList'
+import { HistoryKitNoResults } from './HistoryKitNoResults'
+import { HistoryKitScopeBar } from './HistoryKitScopeBar'
+import { HistoryKitSearchField } from './HistoryKitSearchField'
 import { HistoryKitSelection } from './HistoryKitSelection'
 import { HistoryKitSidebar } from './HistoryKitSidebar'
 import { HistoryKitToolbar } from './HistoryKitToolbar'
@@ -32,6 +38,37 @@ export default function HistoryKitPage() {
   const c = useHistoryController()
   const chrome = useLibraryChrome()
   const colorScheme = useAppliedColorScheme()
+
+  const search = useCompositeSearchBar({
+    variant: 'list',
+    contentFilter: c.filter.activeFilter,
+    sourceFilter: c.filter.sourceFilter,
+    tagFilter: c.filter.tagFilter,
+    timeRange: c.filter.timeRange,
+    extensionFilter: c.filter.extensionFilter,
+    onContentFilterChange: c.filterActions.setContentFilter,
+    onTagFilterChange: c.filterActions.setTagFilter,
+    onSourceFilterChange: c.filterActions.setSourceFilter,
+    onTimeRangeChange: c.filterActions.setTimeRange,
+    onExtensionFilterChange: c.filterActions.setExtensionFilter,
+    onQueryChange: c.filterActions.setQuery,
+    onQuerySubmit: text => c.filterActions.submitQuery(text.trim()),
+    sourceOptions: c.sourceOptions,
+    tagOptions: c.searchableTags,
+    totalCount: c.browseCount,
+    inputRef: c.searchInputRef,
+    fetchCounts: countSearch,
+    onCreateTag: c.historyTags.available ? c.createTagForSearch : undefined,
+  })
+  const noResults = c.isSearchActive && !c.searchLoading && c.items.length === 0
+  const relaxations = useZeroResultRelaxations({
+    active: noResults,
+    chips: search.chips,
+    current: search.current,
+    query: c.filter.submittedQuery.trim(),
+    fetchCounts: countSearch,
+  })
+  const terms = c.filter.submittedQuery.trim().split(/\s+/).filter(Boolean)
 
   const multi = c.checkedItems.length > 1
   const selection = multi ? c.checkedItems.map(item => item.id) : c.selectedId ? [c.selectedId] : []
@@ -155,17 +192,7 @@ export default function HistoryKitPage() {
               ? t('history.kit.selectedOf', { count: c.checkedItems.length, total: c.browseCount })
               : c.browseCount.toLocaleString()
           }
-          search={
-            <SearchField
-              label={t('history.kit.searchLabel')}
-              placeholder={t('history.listSearchPlaceholder')}
-              shortcutHint={formatShortcutHint('mod+f')}
-              value={c.filter.searchQuery}
-              onValueChange={c.filterActions.setQuery}
-              onSubmit={value => c.filterActions.submitQuery(value.trim())}
-              inputRef={c.searchInputRef}
-            />
-          }
+          search={<HistoryKitSearchField search={search} inputRef={c.searchInputRef} />}
           toolbar={
             <HistoryKitToolbar
               targetIds={selection}
@@ -177,18 +204,28 @@ export default function HistoryKitPage() {
           }
         >
           <Pane kind="list" label={t('history.kit.listLabel')}>
-            <HistoryKitFilters
-              contentFilter={c.filter.activeFilter}
-              sourceFilter={c.filter.sourceFilter}
-              tagFilter={c.filter.tagFilter}
-              timeRange={c.filter.timeRange}
-              sourceOptions={c.sourceOptions}
-              tags={c.searchableTags}
-              onContentFilterChange={c.filterActions.setContentFilter}
-              onSourceFilterChange={c.filterActions.setSourceFilter}
-              onTagFilterChange={c.filterActions.setTagFilter}
-              onTimeRangeChange={c.filterActions.setTimeRange}
-            />
+            {c.isSearchActive ? (
+              <HistoryKitScopeBar
+                contentFilter={c.filter.activeFilter}
+                onContentFilterChange={c.filterActions.setContentFilter}
+                results={c.browseCount}
+                loading={c.searchLoading}
+                onSeedOperator={search.seedDimension}
+              />
+            ) : (
+              <HistoryKitFilters
+                contentFilter={c.filter.activeFilter}
+                sourceFilter={c.filter.sourceFilter}
+                tagFilter={c.filter.tagFilter}
+                timeRange={c.filter.timeRange}
+                sourceOptions={c.sourceOptions}
+                tags={c.searchableTags}
+                onContentFilterChange={c.filterActions.setContentFilter}
+                onSourceFilterChange={c.filterActions.setSourceFilter}
+                onTagFilterChange={c.filterActions.setTagFilter}
+                onTimeRangeChange={c.filterActions.setTimeRange}
+              />
+            )}
             {c.indexState === 'degraded' && (
               <div className="px-4 pb-1">
                 <Text role="caption" tone="secondary">
@@ -196,19 +233,28 @@ export default function HistoryKitPage() {
                 </Text>
               </div>
             )}
-            <HistoryKitList
-              items={c.items}
-              sourceDeviceNames={c.sourceDeviceNames}
-              tagNames={c.historyTags.available ? c.tagNames : undefined}
-              selection={selection}
-              onSelectionChange={select}
-              onCopy={id => void c.handleCopy(id)}
-              onDelete={ids => c.requestDelete(ids)}
-              hasMore={c.hasMore}
-              loading={c.searchLoading}
-              onLoadMore={c.handleLoadMore}
-              contextMenu={contextMenu}
-            />
+            {noResults ? (
+              <HistoryKitNoResults
+                filterCount={search.chips.length}
+                relaxations={relaxations}
+                onRemove={search.resetDimension}
+              />
+            ) : (
+              <HistoryKitList
+                items={c.items}
+                sourceDeviceNames={c.sourceDeviceNames}
+                tagNames={c.historyTags.available ? c.tagNames : undefined}
+                selection={selection}
+                onSelectionChange={select}
+                onCopy={id => void c.handleCopy(id)}
+                onDelete={ids => c.requestDelete(ids)}
+                hasMore={c.hasMore}
+                loading={c.searchLoading}
+                onLoadMore={c.handleLoadMore}
+                contextMenu={contextMenu}
+                highlight={terms}
+              />
+            )}
           </Pane>
           <Pane kind="detail" label={t('history.detail.aria')}>
             {multi ? (

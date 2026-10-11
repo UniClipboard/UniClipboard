@@ -31,6 +31,13 @@ try {
   page.setDefaultTimeout(5000)
   const errors = []
   page.on('pageerror', error => errors.push(error.message))
+  // React and the component libraries report misuse (controlled/uncontrolled switches, duplicate
+  // keys, missing names) through console.error.
+  page.on('console', message => {
+    // The preview server has no favicon; that request is not a page error.
+    if (message.type() === 'error' && !message.location().url.endsWith('/favicon.ico'))
+      errors.push(`console: ${message.text()}`)
+  })
   await page.goto(`${base}/?scheme=light`)
   const board = page.getByTestId('board-light')
   // The first load of a cold preview server can take longer than one interaction.
@@ -48,7 +55,7 @@ try {
     await board.getByRole('button', { name: 'Copy', exact: true }).first().click()
     await expectLog('click:copy')
   })
-  await check('disabled button is not focusable or clickable', async () => {
+  await check('disabled button is disabled', async () => {
     const disabled = board.getByRole('button', { name: 'Copy', exact: true }).nth(1)
     assert.equal(await disabled.isDisabled(), true)
   })
@@ -99,12 +106,14 @@ try {
     await expectLog('device:pixel')
     await listbox.waitFor({ state: 'hidden' })
   })
-  await check('segmented control is a radio group with arrow keys', async () => {
-    const group = board.getByRole('toolbar', { name: 'Theme' })
+  await check('segmented control is a named radio group; arrows move the selection', async () => {
+    const group = board.getByRole('radiogroup', { name: 'Theme' })
     await group.getByRole('radio', { name: 'Dark' }).click()
     await expectLog('theme:dark')
     await page.keyboard.press('ArrowRight')
     assert.equal(await focusedName(), 'System')
+    await expectLog('theme:system')
+    assert.equal(await group.getByRole('radio', { name: 'System' }).isChecked(), true)
   })
   await check('menu opens by keyboard, Escape closes and returns focus', async () => {
     const trigger = board.getByRole('button', { name: 'More commands' })
@@ -177,11 +186,13 @@ try {
     await page.keyboard.press('Home')
     assert.equal(await focusedName(), 'git rebase -i HEAD~3')
   })
+  // Keyboard only: how a pointer click extends the selection is platform-specific (contract).
   await check('multi-select list shows checkboxes and accumulates the selection', async () => {
     const list = board.getByRole('listbox', { name: 'Multi-select' })
     assert.equal(await list.getAttribute('aria-multiselectable'), 'true')
     assert.equal(await list.getByRole('checkbox').count(), 2)
-    await list.getByRole('option', { name: 'invoice-0921.pdf' }).click()
+    await list.getByRole('option', { name: 'invoice-0921.pdf' }).focus()
+    await page.keyboard.press('Space')
     await expectLog('multi:roadmap,invoice')
     await page.keyboard.press('ArrowUp')
     await page.keyboard.press('Space')
@@ -214,16 +225,23 @@ try {
       'page'
     )
   })
-  await check('removable tag and search token report removal', async () => {
-    await board.getByRole('button', { name: 'Remove #finance' }).click()
+  await check('removable tag and search token have their own named remove button', async () => {
+    // The tag text is not a remove button: clicking it must not remove the tag.
+    const before = await log.textContent()
+    const chip = board
+      .getByRole('button', { name: 'Remove #finance', exact: true })
+      .locator('xpath=..')
+    await chip.getByText('#finance', { exact: true }).click()
+    await expectLog(before)
+    await board.getByRole('button', { name: 'Remove #finance', exact: true }).click()
     await expectLog('remove:#finance')
-    await board.getByRole('button', { name: 'Remove from: iPhone 16' }).click()
+    await board.getByRole('button', { name: 'Remove from: iPhone 16', exact: true }).click()
     await expectLog('remove:from')
   })
   await check('notice action and dismiss', async () => {
     await board.getByRole('button', { name: 'Open settings' }).click()
     await expectLog('notice:settings')
-    await board.getByRole('button', { name: 'Dismiss' }).click()
+    await board.getByRole('button', { name: 'Dismiss', exact: true }).click()
     await expectLog('notice:dismiss')
   })
   await check('alert dialog traps focus, confirms and returns focus', async () => {
@@ -237,6 +255,8 @@ try {
       await dialog.evaluate(el => Boolean(el.closest('[data-testid="board-light"]'))),
       false
     )
+    // Destructive confirmation: initial focus is on Cancel, so Enter does not destroy data.
+    assert.equal(await focusedName(), 'Cancel')
     for (let i = 0; i < 4; i++) {
       await page.keyboard.press('Tab')
       assert.equal(await dialog.evaluate(el => el.contains(document.activeElement)), true)
@@ -247,6 +267,30 @@ try {
     await dialog.waitFor({ state: 'hidden' })
     assert.equal(await trigger.evaluate(el => el === document.activeElement), true)
   })
+  await check('dialog opened from a context menu returns focus to the row', async () => {
+    const row = board
+      .getByRole('listbox', { name: 'Today' })
+      .getByRole('option', { name: 'git rebase -i HEAD~3' })
+    await row.click({ button: 'right' })
+    await page.getByRole('menuitem', { name: /^Delete from all devices/ }).click()
+    const dialog = page.getByRole('alertdialog', { name: 'Delete from all devices?' })
+    await dialog.waitFor()
+    await page.keyboard.press('Escape')
+    await dialog.waitFor({ state: 'hidden' }).catch(async () => {
+      // Alert dialogs may ignore Escape; cancel explicitly.
+      await dialog.getByRole('button', { name: 'Cancel' }).click()
+      await dialog.waitFor({ state: 'hidden' })
+    })
+    assert.equal(await row.evaluate(el => el === document.activeElement), true)
+  })
+  await check('browser rendering never claims a native window material', async () => {
+    const materials = await page
+      .locator('[data-window-material]')
+      .evaluateAll(els => els.map(el => el.getAttribute('data-window-material')))
+    assert.ok(materials.length >= 2, 'every Surface carries data-window-material')
+    for (const material of materials)
+      assert.ok(['css-fallback', 'solid'].includes(material), material)
+  })
   await check('Tab order follows the board', async () => {
     await page.goto(`${base}/?scheme=light`)
     await board.waitFor()
@@ -255,13 +299,15 @@ try {
       await page.keyboard.press('Tab')
       order.push(await focusedName())
     }
-    assert.deepEqual(order.slice(0, 6), [
+    assert.deepEqual(order, [
       'Copy',
       'Send to…',
       'Edit',
       'More',
       'Pin',
       'Search history',
+      'Type',
+      'Tag1',
     ])
   })
 

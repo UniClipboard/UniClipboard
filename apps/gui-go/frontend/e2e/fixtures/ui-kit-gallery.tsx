@@ -20,6 +20,7 @@ import {
   SegmentedControl,
   Select,
   SidebarNav,
+  Surface,
   Switch,
   Tag,
   ToggleButton,
@@ -48,9 +49,9 @@ const clipActions: MenuEntry[] = [
 ]
 
 const smartViews: MenuEntry[] = [
-  { id: 'deploy', label: 'Deploy commands', swatch: 'deploy', count: 14 },
-  { id: 'iphone', label: 'From iPhone today', swatch: 'docker', count: 6 },
-  { id: 'invoices', label: 'Invoices', swatch: 'finance', count: 9 },
+  { id: 'deploy', label: 'Deploy commands', swatch: 'deploy', count: '14' },
+  { id: 'iphone', label: 'From iPhone today', swatch: 'docker', count: '6' },
+  { id: 'invoices', label: 'Invoices', swatch: 'finance', count: '9' },
   { id: 'sep', kind: 'separator' },
   { id: 'save', label: 'Save current search…', icon: 'add' },
 ]
@@ -233,7 +234,7 @@ function Board({ scheme }: { scheme: ColorScheme }) {
 
         <div className="ui-kit-gallery-split">
           <Section title="Navigation" note="C2 · NavigationView pane">
-            <div className="ui-kit-gallery-pane">
+            <Surface role="sidebar">
               <SidebarNav
                 label="Library"
                 sections={navSections}
@@ -243,47 +244,58 @@ function Board({ scheme }: { scheme: ColorScheme }) {
                   record(`nav:${next}`)
                 }}
               />
-            </div>
+            </Surface>
           </Section>
 
           <Section title="List" note="C3 · ListViewItem, tags, query chips">
-            <div className="ui-kit-gallery-list">
-              <ContextMenu items={clipActions} onAction={id => record(`context:${id}`)}>
-                <ItemList
-                  label="Today"
-                  items={clips}
-                  selection={selection}
-                  onSelectionChange={ids => {
-                    setSelection(ids)
-                    record(`selection:${ids.join(',')}`)
+            <Surface role="content">
+              <div className="ui-kit-gallery-list">
+                <ContextMenu
+                  items={clipActions}
+                  onAction={id => {
+                    record(`context:${id}`)
+                    if (id === 'delete') setDialogOpen(true)
                   }}
-                  onActivate={id => record(`activate:${id}`)}
-                  onDelete={ids => record(`delete:${ids.join(',')}`)}
+                >
+                  <ItemList
+                    label="Today"
+                    items={clips}
+                    selection={selection}
+                    onSelectionChange={ids => {
+                      setSelection(ids)
+                      record(`selection:${ids.join(',')}`)
+                    }}
+                    onActivate={id => record(`activate:${id}`)}
+                    onDelete={ids => record(`delete:${ids.join(',')}`)}
+                  />
+                </ContextMenu>
+                <div className="ui-kit-gallery-row">
+                  <Tag name="#deploy" color="deploy" />
+                  <Tag
+                    name="#finance"
+                    color="finance"
+                    remove={{ label: 'Remove #finance', onClick: () => record('remove:#finance') }}
+                  />
+                  <SearchToken
+                    field="from:"
+                    value="iPhone 16"
+                    remove={{
+                      label: 'Remove from: iPhone 16',
+                      onClick: () => record('remove:from'),
+                    }}
+                  />
+                  <SearchToken field="time:" value="last 7 days" />
+                  <Badge count={3} label="3 new items" />
+                </div>
+                <ItemList
+                  label="Multi-select"
+                  multiSelect
+                  items={clips.slice(3)}
+                  defaultSelection={['roadmap']}
+                  onSelectionChange={ids => record(`multi:${ids.join(',')}`)}
                 />
-              </ContextMenu>
-              <div className="ui-kit-gallery-row">
-                <Tag name="#deploy" color="deploy" />
-                <Tag
-                  name="#finance"
-                  color="finance"
-                  remove={{ label: 'Remove #finance', onClick: () => record('remove:#finance') }}
-                />
-                <SearchToken
-                  field="from:"
-                  value="iPhone 16"
-                  remove={{ label: 'Remove from: iPhone 16', onClick: () => record('remove:from') }}
-                />
-                <SearchToken field="time:" value="last 7 days" />
-                <Badge count={3} label="3 new items" />
               </div>
-              <ItemList
-                label="Multi-select"
-                multiSelect
-                items={clips.slice(3)}
-                defaultSelection={['roadmap']}
-                onSelectionChange={ids => record(`multi:${ids.join(',')}`)}
-              />
-            </div>
+            </Surface>
           </Section>
         </div>
 
@@ -364,9 +376,9 @@ body { margin: 0; background: #EDEEF0; }
 .ui-kit-gallery-section h2 small { font-weight: 400; font-size: 0.75rem; opacity: 0.6; }
 .ui-kit-gallery-row { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
 .ui-kit-gallery-search { width: min(100%, 22rem); }
+.ui-kit-gallery-split > section > .ui-kit-gallery-row > * { flex: 1 1 auto; }
 .ui-kit-gallery-split { display: grid; grid-template-columns: minmax(14rem, 18rem) minmax(0, 1fr); gap: 1.25rem; }
-.ui-kit-gallery-pane { width: 100%; }
-.ui-kit-gallery-list { display: flex; flex-direction: column; gap: 0.75rem; width: 100%; }
+.ui-kit-gallery-list { display: flex; flex-direction: column; gap: 0.75rem; padding: 0.5rem; }
 .ui-kit-gallery-wide { width: 100%; }
 .ui-kit-gallery-stack { display: flex; flex-direction: column; gap: 0.5rem; }
 .ui-kit-gallery-kind { display: inline-grid; place-items: center; width: 2rem; height: 2rem; flex-shrink: 0; border-radius: 0.25rem; font-size: 0.625rem; font-weight: 600; background: rgba(127,127,127,0.16); }

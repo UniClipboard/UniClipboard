@@ -23,7 +23,8 @@ export function HistoryKitScopeBar({
 }: {
   contentFilter: Filter
   onContentFilterChange: (filter: Filter) => void
-  results: number
+  /** `null` while the query failed: no count is shown. */
+  results: number | null
   loading: boolean
   onSeedOperator: (dimension: Dimension) => void
 }) {
@@ -40,11 +41,13 @@ export function HistoryKitScopeBar({
             { value: Filter.Favorited, label: t('history.sidebar.pinned') },
           ]}
         />
-        <Text role="caption" tone="secondary">
-          {loading
-            ? t('clipboard.item.loading')
-            : t('history.composite.results', { count: results })}
-        </Text>
+        {(loading || results !== null) && (
+          <Text role="caption" tone="secondary">
+            {loading
+              ? t('clipboard.item.loading')
+              : t('history.composite.results', { count: results ?? 0 })}
+          </Text>
+        )}
       </div>
       <div
         className="flex flex-wrap items-center gap-1"

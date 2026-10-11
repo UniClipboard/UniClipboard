@@ -221,7 +221,12 @@ def main():
         finally:
             if proc and proc.poll() is None:
                 proc.terminate()
-                proc.wait(timeout=30)
+                try:
+                    proc.wait(timeout=30)
+                except subprocess.TimeoutExpired:
+                    # A suspended WebView (locked screen) can ignore SIGTERM; the daemon must still stop.
+                    proc.kill()
+                    proc.wait(timeout=30)
             # Stop the profile's daemon so no task-owned process outlives the run.
             subprocess.run([str(ROOT / 'target/gui-go/uniclip'), 'stop'], env=env, capture_output=True, timeout=60)
             (out / 'history-kit-results.json').write_text(json.dumps(results, indent=2, ensure_ascii=False))

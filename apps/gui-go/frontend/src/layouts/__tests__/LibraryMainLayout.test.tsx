@@ -78,7 +78,7 @@ describe('LibraryMainLayout', () => {
       renderOn(platform, 'custom')
 
       const overlay = screen.getByRole('button', { name: '关闭' }).closest('.absolute')
-      expect(overlay).toHaveClass('right-0', 'top-0', 'z-50', 'h-10')
+      expect(overlay).toHaveClass('right-0', 'top-0', 'z-50', 'h-12')
       // The band stays draggable; only the buttons opt out.
       expect(overlay).toHaveAttribute('data-tauri-drag-region', 'true')
 

@@ -1,7 +1,7 @@
 import type { HistoryTagColorDto } from '@/api/daemon/history-tags'
 import { dayKey, formatDayHeading } from '@/components/history/list/history-list-format'
 import { historyKind } from '@/components/history/list/history-list-kind'
-import type { DisplayClipboardItem } from '@/lib/clipboard-entry'
+import type { ClipboardImageItem, DisplayClipboardItem } from '@/lib/clipboard-entry'
 import { isCustomColor, isPresetColor } from '@/lib/tag-colors'
 import type { ListGroup, TagColor } from '@/ui-kit'
 
@@ -49,4 +49,11 @@ export function selectionSummary(items: DisplayClipboardItem[], t: Translate): s
     devices.size > 0 ? t('history.kit.fromDevices', { count: devices.size }) : null,
   ]
   return parts.filter(Boolean).join(' · ')
+}
+
+/** "1440 × 900" for an image entry whose size is known, else `null`. */
+export function imageSize(item: DisplayClipboardItem): string | null {
+  if (item.type !== 'image') return null
+  const image = item.content as ClipboardImageItem | null
+  return image && image.width > 0 ? `${image.width} × ${image.height}` : null
 }

@@ -28,7 +28,9 @@ function spaceBelongsToFocusedControl(): boolean {
 export function useHistoryImageActions(
   entryId: string | undefined,
   descriptor: string | null,
-  enabled: boolean
+  enabled: boolean,
+  /** Keep Quick Look open when the entry changes (stepping through images inside it). */
+  keepQuickLook = false
 ) {
   const { t } = useTranslation()
   const [mode, setMode] = useState<ImageViewMode>('fit')
@@ -41,7 +43,7 @@ export function useHistoryImageActions(
   if (entryId !== prevEntryId) {
     setPrevEntryId(entryId)
     setMode('fit')
-    setQuickLook(false)
+    if (!keepQuickLook || !enabled) setQuickLook(false)
     setMime(null)
   }
 

@@ -1,13 +1,27 @@
 import { useTranslation } from 'react-i18next'
 import { PreviewContent } from '@/components/clipboard/ClipboardPreview'
+import { useHistoryImageActions } from '@/components/history/detail/useHistoryImageActions'
 import { describeSource } from '@/components/history/history-card/history-card-utils'
 import { formatCopiedAt } from '@/components/history/list/history-list-format'
 import { historyKind } from '@/components/history/list/history-list-kind'
+import { useBlobImageObjectUrl } from '@/hooks/useBlobImageObjectUrl'
 import { useClipboardPreviewState } from '@/hooks/useClipboardPreviewState'
 import { useEntryDelivery } from '@/hooks/useEntryDelivery'
-import type { DisplayClipboardItem } from '@/lib/clipboard-entry'
+import type { ClipboardImageItem, DisplayClipboardItem } from '@/lib/clipboard-entry'
+import { imageFormatLabel } from '@/lib/image-handoff'
 import { formatShortcutHint } from '@/lib/shortcut-format'
-import { ActionBar, Button, ContentUnavailable, KindBadge, Text } from '@/ui-kit'
+import {
+  ActionBar,
+  Button,
+  ContentUnavailable,
+  FactList,
+  KindBadge,
+  PreviewFrame,
+  QuickLook,
+  SegmentedControl,
+  Text,
+} from '@/ui-kit'
+import { formatFileSize } from '@/utils'
 import { HistoryKitDelivery } from './HistoryKitDelivery'
 import { HistoryKitDetailTags, type HistoryKitTagging } from './HistoryKitDetailTags'
 import { HistoryKitSendMenu } from './HistoryKitSendMenu'
@@ -17,6 +31,8 @@ interface HistoryKitDetailProps {
   /** Nothing was ever copied: the detail explains where items come from (design MA1). */
   emptyHistory?: boolean
   tagging: HistoryKitTagging | null
+  /** The loaded image entries around this one, for Quick Look's previous / next. */
+  imageNeighbors: { previous?: () => void; next?: () => void; position: number; total: number }
   copySuccess: boolean
   onCopy: () => void
   onTogglePin: () => void
@@ -32,6 +48,7 @@ export function HistoryKitDetail({
   item,
   emptyHistory,
   tagging,
+  imageNeighbors,
   copySuccess,
   onCopy,
   onTogglePin,
@@ -40,6 +57,16 @@ export function HistoryKitDetail({
   const { t, i18n } = useTranslation()
   const state = useClipboardPreviewState(item)
   const { delivery } = useEntryDelivery(item?.id ?? null)
+  const imageDescriptor =
+    state.preview?.contentType === 'image' ? (state.preview.imageBlobPath ?? null) : null
+  const imageActions = useHistoryImageActions(
+    item?.id,
+    imageDescriptor,
+    item?.type === 'image' && !item.isUnavailable,
+    true
+  )
+  // Cached by path, so this is the object URL the preview already shows.
+  const quickLookSrc = useBlobImageObjectUrl(imageDescriptor, imageActions.quickLook)
 
   if (!item) {
     return (
@@ -65,6 +92,35 @@ export function HistoryKitDetail({
   }
 
   const kind = historyKind(item)
+  const isImage = item.type === 'image'
+  const image = isImage ? (item.content as ClipboardImageItem | null) : null
+  const dims =
+    state.imageDimensions ??
+    (image && image.width > 0 ? { width: image.width, height: image.height } : null)
+  const bytes = image && image.size > 0 ? image.size : (state.preview?.sizeBytes ?? 0)
+  const format = imageActions.formatLabel ?? imageFormatLabel(state.preview?.mimeType)
+  const imageFacts = [
+    ...(dims
+      ? [
+          {
+            id: 'dims',
+            label: t('clipboard.preview.dimensions'),
+            value: `${dims.width} × ${dims.height}`,
+            monospace: true,
+          },
+        ]
+      : []),
+    {
+      id: 'format',
+      label: t('history.kit.format'),
+      value: [format, bytes > 0 ? formatFileSize(bytes) : null].filter(Boolean).join(' · ') || '—',
+    },
+    {
+      id: 'copied',
+      label: t('history.detail.copied'),
+      value: formatCopiedAt(item.activeTime, i18n.language),
+    },
+  ]
   const pinned = item.isFavorited === true
   const source = delivery ? describeSource(delivery.source, t) : null
   const origin = [source?.label, formatCopiedAt(item.activeTime, i18n.language)]
@@ -96,7 +152,29 @@ export function HistoryKitDetail({
             onClick={onDelete}
           />
         </div>
-        <div className="relative min-h-40 shrink-0 overflow-hidden rounded-xl">
+        <PreviewFrame
+          kind={isImage ? 'image' : kind === 'code' ? 'code' : 'plain'}
+          topEnd={
+            isImage && imageDescriptor ? (
+              <SegmentedControl
+                label={t('history.detail.imageZoom')}
+                value={imageActions.mode}
+                onValueChange={mode => imageActions.setMode(mode as 'fit' | 'actual')}
+                items={[
+                  { value: 'fit', label: t('history.detail.imageFit') },
+                  { value: 'actual', label: t('history.detail.imageActual') },
+                ]}
+              />
+            ) : undefined
+          }
+          bottomStart={
+            isImage && imageDescriptor ? (
+              <Button size="small" onClick={() => imageActions.setQuickLook(true)}>
+                {`${t('history.detail.quickLook')} ␣`}
+              </Button>
+            ) : undefined
+          }
+        >
           <PreviewContent
             item={item}
             loading={state.loading}
@@ -107,8 +185,11 @@ export function HistoryKitDetail({
             setImageDimensions={state.setImageDimensions}
             codeVariant="block"
             imageFit
+            imageActualSize={imageActions.mode === 'actual'}
+            onImageType={imageActions.onImageType}
           />
-        </div>
+        </PreviewFrame>
+        {isImage && <FactList label={t('history.kit.imageFacts')} facts={imageFacts} />}
         {tagging && item.userTagIds && (
           <HistoryKitDetailTags tagIds={item.userTagIds} tagging={tagging} />
         )}
@@ -127,10 +208,69 @@ export function HistoryKitDetail({
           disabled={item.isUnavailable}
           onClick={onCopy}
         >
-          {copySuccess ? t('clipboard.item.actions.copied') : t('clipboard.contextMenu.copy')}
+          {copySuccess
+            ? t('clipboard.item.actions.copied')
+            : isImage
+              ? t('history.kit.copyImage')
+              : t('clipboard.contextMenu.copy')}
         </Button>
-        <HistoryKitSendMenu entryIds={[item.id]} disabled={!sendable} />
+        {isImage ? (
+          <>
+            <Button
+              size="large"
+              disabled={item.isUnavailable || !imageActions.canAct || imageActions.busy}
+              onClick={() => void imageActions.saveAs()}
+            >
+              {t('history.detail.saveAs')}
+            </Button>
+            <Button
+              size="large"
+              disabled={item.isUnavailable || !imageActions.canAct || imageActions.busy}
+              onClick={() => void imageActions.openExternally()}
+            >
+              {t('history.detail.openInPreview')}
+            </Button>
+          </>
+        ) : (
+          <HistoryKitSendMenu entryIds={[item.id]} disabled={!sendable} />
+        )}
       </ActionBar>
+      <QuickLook
+        open={imageActions.quickLook}
+        onOpenChange={imageActions.setQuickLook}
+        title={t('history.kit.quickLookPosition', {
+          position: imageNeighbors.position,
+          total: imageNeighbors.total,
+        })}
+        closeLabel={t('history.detail.quickLookClose')}
+        src={quickLookSrc}
+        alt={t('clipboard.item.altText.clipboardImage')}
+        previous={
+          imageNeighbors.previous && {
+            label: t('history.kit.previousImage'),
+            onClick: imageNeighbors.previous,
+          }
+        }
+        next={
+          imageNeighbors.next && { label: t('history.kit.nextImage'), onClick: imageNeighbors.next }
+        }
+        primary={{
+          label: t('history.kit.copyAndClose'),
+          onClick: () => {
+            onCopy()
+            imageActions.setQuickLook(false)
+          },
+        }}
+        actions={
+          <Button
+            size="small"
+            disabled={!imageActions.canAct || imageActions.busy}
+            onClick={() => void imageActions.openExternally()}
+          >
+            {t('history.detail.openInPreview')}
+          </Button>
+        }
+      />
     </div>
   )
 }

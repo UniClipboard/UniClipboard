@@ -1,5 +1,6 @@
 import type {
   ActionBarProps,
+  ColorDotProps,
   ContentUnavailableProps,
   IconProps,
   InsetListProps,
@@ -12,6 +13,7 @@ import { WithHelpTag } from './controls'
 import { glyph } from './glyph'
 import { Icon as Glyph } from './icons'
 import { Surface } from './root'
+import { swatchColor } from './swatch'
 
 /**
  * NSSplitViewController window: a full-height source-list sidebar on the window material, and the
@@ -187,5 +189,17 @@ export function Icon({ name, label, tone }: IconProps) {
     >
       <Glyph name={glyph(name)} size={12} strokeWidth={1.6} />
     </span>
+  )
+}
+
+export function ColorDot({ color, label }: ColorDotProps) {
+  return (
+    <span
+      className="mac-dot-tag mac-color-dot"
+      role={label ? 'img' : undefined}
+      aria-label={label}
+      aria-hidden={label ? undefined : true}
+      style={{ background: color ? swatchColor(color) : 'var(--gray)' }}
+    />
   )
 }

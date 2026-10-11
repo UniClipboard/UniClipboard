@@ -18,6 +18,7 @@ export { ItemList, SidebarNav } from './lists'
 export { AlertDialog, ContextMenu, Menu } from './menus'
 export {
   ActionBar,
+  ColorDot,
   ContentUnavailable,
   Icon,
   InsetList,
@@ -28,5 +29,9 @@ export {
 } from './pane'
 export { Surface, Toolbar, ToolbarButton, ToolbarDivider, UiRoot } from './root'
 export { ComboField } from './combo-field'
+export { FactList, PreviewFrame, QuickLook } from './preview'
+export { Sheet } from './sheet'
 export { StepList } from './step-list'
+export { Table } from './table'
+export { TextField } from './text-field'
 export { TokenSearchField } from './token-search'

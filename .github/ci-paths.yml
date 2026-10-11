@@ -1,0 +1,99 @@
+# Shared inputs for PR routing and main-branch coverage baselines.
+# dorny/paths-filter flattens YAML aliases, so shared dependencies have one owner.
+ci_config: &ci_config
+  - '.github/ci-paths.yml'
+  - '.github/workflows/pr-check.yml'
+  - 'scripts/__tests__/pr-check-routing.test.ts'
+
+rust_shared: &rust_shared
+  - *ci_config
+  - 'Cargo.toml'
+  - 'Cargo.lock'
+  - '.cargo/**'
+  - 'rust-toolchain.toml'
+  - 'clippy.toml'
+  - 'vendor/**'
+
+quick_panel: &quick_panel
+  - *rust_shared
+  - 'apps/quick-panel/**'
+  - 'crates/quick-panel-core/**'
+  - 'crates/uc-app-paths/**'
+  - 'crates/uc-observability/**'
+  - 'crates/uc-daemon-client/**'
+  - 'crates/uc-daemon-process/**'
+  - 'crates/uc-daemon-contract/**'
+
+rust:
+  - *rust_shared
+  - 'crates/**'
+  - 'apps/daemon/**'
+  - 'apps/quick-panel/**'
+  - 'tools/**'
+  - 'schema/**'
+  - 'scripts/architecture/**'
+  - '.github/docker/build-bookworm.Dockerfile'
+  - '.github/workflows/coverage.yml'
+
+frontend:
+  - *ci_config
+  - 'apps/gui-go/frontend/**'
+  - 'package.json'
+  - 'bun.lock'
+  - 'schema/**'
+  - 'scripts/check-macos-compat.mjs'
+  - 'scripts/gen-host-bindings.mjs'
+  - '.github/workflows/frontend-coverage.yml'
+
+cli_go: &cli_go
+  - *ci_config
+  - 'apps/cli-go/**/*.{go,mod,sum}'
+  - 'packages/desktop-host-go/**'
+  - 'Cargo.toml'
+  - 'crates/uc-daemon-contract/src/lib.rs'
+  - 'scripts/ci/build-go-cli.sh'
+
+gui_go:
+  - *ci_config
+  - 'apps/gui-go/**/*.{go,mod,sum,c,h,m,mm,syso,rc,ico,manifest}'
+  - 'packages/desktop-host-go/**'
+  - 'Cargo.toml'
+  - 'crates/uc-daemon-contract/**'
+  - 'scripts/ci/check-gui-go.sh'
+  - 'scripts/gen-host-bindings.mjs'
+  - 'scripts/architecture/check-host-events.mjs'
+  - 'docs/architecture/gui-go-host-commands.md'
+  - '.github/docker/build-bookworm.Dockerfile'
+
+# Both integration suites execute the Go CLI against the real Rust daemon.
+daemon_inputs: &daemon_inputs
+  - *rust_shared
+  - 'apps/daemon/**'
+  - 'crates/uc-{platform,app-paths,observability,bootstrap,daemon-contract,daemon-process,daemon-local,webserver}/**'
+  - '.github/docker/build-bookworm.Dockerfile'
+
+membership:
+  - *daemon_inputs
+  - *cli_go
+  - 'tests/e2e/**'
+  - 'scripts/e2e/**'
+  - 'apps/cli-go/e2e/**'
+  - '.github/workflows/membership-e2e.yml'
+  - 'scripts/__tests__/membership-e2e-hardening.test.ts'
+
+e2e:
+  - *daemon_inputs
+  - *cli_go
+  - 'tools/uc-dev-cli/**'
+  - 'crates/uc-cli-macros/**'
+  - 'tests/e2e/**'
+  - 'scripts/e2e/**'
+  - 'apps/cli-go/e2e/**'
+
+tooling:
+  - *ci_config
+  - '.github/workflows/**'
+  - 'scripts/**'
+  - 'package.json'
+  - 'bun.lock'
+  - 'vitest.config.ts'

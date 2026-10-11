@@ -28,7 +28,8 @@ describe('membership E2E hardening', () => {
     const script = read('scripts/e2e/run-membership-matrix.sh')
     const prCheck = read('.github/workflows/pr-check.yml')
 
-    expect(workflow).toMatch(/^\s{2}pull_request:/m)
+    expect(workflow).toMatch(/^\s{2}workflow_call:/m)
+    expect(prCheck).toContain('uses: ./.github/workflows/membership-e2e.yml')
     expect(workflow).toContain("github.event_name == 'pull_request'")
     expect(workflow).toContain('if [[ "$EVENT_NAME" == "pull_request" ]]; then')
     expect(workflow).toContain('matrix=[{"name":"Linux","runner":"ubuntu-22.04"')
@@ -38,7 +39,9 @@ describe('membership E2E hardening', () => {
     )
     expect(script).not.toContain('r2_permanent_loss_unblocks_an_offline_retained_member')
     expect(script).not.toContain('h5_offline_readmission_can_be_cancelled')
-    expect(prCheck).toContain('run: bun run test -- --run')
+    expect(read('.github/workflows/frontend-coverage.yml')).toContain(
+      'run: bun run test:coverage:frontend'
+    )
   })
 
   it('keeps the membership matrix out of the release dependency chain', () => {
@@ -48,7 +51,7 @@ describe('membership E2E hardening', () => {
 
     expect(release).not.toMatch(/^\s+membership-e2e:/m)
     expect(release).not.toContain('needs: [validate, membership-e2e]')
-    expect(workflow).not.toContain('  workflow_call:')
+    expect(release).not.toContain('uses: ./.github/workflows/membership-e2e.yml')
     expect(workflow).not.toContain('          - release')
     expect(script).not.toContain('pr|nightly|release')
     expect(script).not.toContain('if [[ "$TIER" == "release" ]]')

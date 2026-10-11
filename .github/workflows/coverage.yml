@@ -1,37 +1,34 @@
 name: Coverage
 
 on:
-  # Codecov needs a base report on the default branch to diff PRs against.
-  # Without this push trigger, merge commits on main carry no coverage and
-  # every PR falls back to "Missing Base Commit". See #641 regression.
+  # Main coverage provides Codecov's PR comparison baseline.
   push:
     branches: [main]
-    paths:
-      - 'crates/**'
-      - 'apps/**'
-      - 'tools/**'
-      - 'tests/e2e/**'
-      - 'vendor/**'
-      - 'Cargo.toml'
-      - 'Cargo.lock'
-      - 'rust-toolchain.toml'
-      - 'clippy.toml'
-      - '.github/workflows/coverage.yml'
-  pull_request:
-    paths:
-      - 'crates/**'
-      - 'apps/**'
-      - 'tools/**'
-      - 'tests/e2e/**'
-      - 'vendor/**'
-      - 'Cargo.toml'
-      - 'Cargo.lock'
-      - 'rust-toolchain.toml'
-      - 'clippy.toml'
-      - '.github/workflows/coverage.yml'
+  workflow_call:
+    secrets:
+      CODECOV_TOKEN:
+        required: false
+
+permissions:
+  contents: read
 
 jobs:
+  changes:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    outputs:
+      relevant: ${{ steps.filter.outputs.rust }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          filters: .github/ci-paths.yml
+
   coverage:
+    needs: changes
+    if: ${{ !cancelled() && (github.event_name != 'push' || needs.changes.outputs.relevant == 'true') }}
+    name: Rust tests and coverage
     runs-on: ubuntu-latest
     timeout-minutes: 30
 

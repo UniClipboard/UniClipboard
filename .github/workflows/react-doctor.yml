@@ -3,6 +3,11 @@ name: React Doctor
 on:
   pull_request:
     branches: [main]
+    paths:
+      - 'apps/gui-go/frontend/**'
+      - 'package.json'
+      - 'bun.lock'
+      - '.github/workflows/react-doctor.yml'
 
 permissions:
   contents: read

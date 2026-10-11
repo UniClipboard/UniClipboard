@@ -12,18 +12,9 @@ permissions:
   packages: read
   pull-requests: read
 
-# 本 workflow 对每个目标为 main 的 PR 都运行（没有 workflow 级 paths）：workflow 级 paths 不命中时检查根本不会出现，
-# 若把某个作业设为必需检查，这样的 PR 会一直 pending。路径判断放在 changes 作业里，不相关的 PR 上各作业显示为 Skipped，
-# 这对必需检查算通过。建议的必需检查名称：「Go Host Compile Check」（job gui-go）。
-# 拆 frontend / frontend-tests / rust 三个 job：
-# - changes: 检测 PR 是否改到 Rust 相关路径，供 rust job 判断是否需要运行
-# - frontend: bun install + tsc + vite build (类型检查 + 产物构建)
-# - frontend-tests: bun install + vitest run (前端单元测试)
-# - rust: cargo check --workspace --locked (不再带 --all-targets --all-features，
-#   PR 阶段不为 test/bench/全 feature 编译。test 在 coverage.yml 跑)
-# 桌面 GUI（Go/Wails，apps/gui-go）的打包、签名与公证不在 PR 阶段跑；见
-# docs/architecture/gui-go-tauri-retirement.md。PR 阶段只做 gui-go job 的编译门禁
-# （Linux vet/link，Windows amd64/arm64 交叉编译，docs/architecture/gui-go-distribution-channels.md）。
+# Keep job-level routing so checks have an explicit result on unrelated PRs.
+# Shared inputs live in .github/ci-paths.yml; reusable suites have no independent PR trigger.
+# The frontend suite owns the tested bundle consumed by the Go host compile job.
 jobs:
   changes:
     name: Detect Changed Paths
@@ -31,151 +22,92 @@ jobs:
 
     outputs:
       rust: ${{ steps.filter.outputs.rust }}
+      frontend: ${{ steps.filter.outputs.frontend }}
       gui_go: ${{ steps.filter.outputs.gui_go }}
-      code: ${{ steps.filter.outputs.code }}
+      cli_go: ${{ steps.filter.outputs.cli_go }}
+      quick_panel: ${{ steps.filter.outputs.quick_panel }}
+      e2e: ${{ steps.filter.outputs.e2e }}
+      membership: ${{ steps.filter.outputs.membership }}
+      tooling: ${{ steps.filter.outputs.tooling }}
 
     steps:
-      - name: Detect Rust changes
+      - uses: actions/checkout@v4
+      - name: Detect component changes
         id: filter
         uses: dorny/paths-filter@v4
         with:
-          filters: |
-            code:
-              - 'crates/**'
-              - 'apps/**'
-              - 'tools/**'
-              - 'packages/**'
-              - 'tests/e2e/**'
-              - 'vendor/**'
-              - 'Cargo.toml'
-              - 'Cargo.lock'
-              - 'rust-toolchain.toml'
-              - 'clippy.toml'
-              - 'package.json'
-              - 'bun.lock'
-              - '.oxlintrc.json'
-              - '.oxfmtrc.json'
-              - '.github/docker/build-bookworm.Dockerfile'
-              - '.github/workflows/pr-check.yml'
-              - '.github/workflows/membership-e2e.yml'
-              - 'scripts/ci/check-gui-go.sh'
-              - 'scripts/e2e/run-membership-matrix.sh'
-              - 'scripts/architecture/**'
-            gui_go:
-              - 'apps/gui-go/**'
-              - 'packages/**'
-              - 'Cargo.toml'
-              - 'package.json'
-              - 'bun.lock'
-              - 'crates/uc-daemon-contract/**'
-              - '.github/workflows/pr-check.yml'
-              - 'scripts/ci/check-gui-go.sh'
-              - 'scripts/gen-host-bindings.mjs'
-              - 'scripts/architecture/**'
-              - 'docs/architecture/gui-go-host-commands.md'
-            rust:
-              - 'crates/**'
-              - 'apps/**'
-              - 'tools/**'
-              - 'tests/e2e/**'
-              - 'vendor/**'
-              - 'Cargo.toml'
-              - 'Cargo.lock'
-              - 'rust-toolchain.toml'
-              - 'clippy.toml'
-              - '.github/docker/build-bookworm.Dockerfile'
-              - '.github/workflows/pr-check.yml'
-              - '.github/workflows/membership-e2e.yml'
-              - 'scripts/e2e/run-membership-matrix.sh'
-              - 'scripts/architecture/**'
+          filters: .github/ci-paths.yml
 
   frontend:
-    name: Frontend Type Check
+    name: Frontend
     needs: changes
-    if: ${{ needs.changes.outputs.code == 'true' }}
-    runs-on: ubuntu-latest
+    if: ${{ needs.changes.outputs.frontend == 'true' || needs.changes.outputs.gui_go == 'true' }}
+    uses: ./.github/workflows/frontend-coverage.yml
+    with:
+      validate_build: true
+    secrets:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
+  coverage:
+    name: Rust coverage
+    needs: changes
+    if: ${{ needs.changes.outputs.rust == 'true' }}
+    uses: ./.github/workflows/coverage.yml
+    secrets:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  membership:
+    name: Membership
+    needs: changes
+    if: ${{ needs.changes.outputs.membership == 'true' }}
+    uses: ./.github/workflows/membership-e2e.yml
+    with:
+      tier: pr
+
+  tooling:
+    name: Repository tooling tests
+    needs: changes
+    if: ${{ needs.changes.outputs.tooling == 'true' }}
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install Bun
-        uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
+      - run: bun install --frozen-lockfile
+      - run: bun x vitest run
 
-      - name: Restore Bun dependencies
-        # PR 只读取 default branch 上由 cache-warmup 写入的 Bun cache。
-        # actions/cache 会在 miss 时自动保存,这里用 restore 子 action 避免
-        # 每个 refs/pull/*/merge 写出重复 cache 并挤掉 release 预热缓存。
-        uses: actions/cache/restore@v4
+  cli-go:
+    name: Go CLI Compile Check
+    needs: changes
+    if: ${{ needs.changes.outputs.cli_go == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v6
         with:
-          path: ~/.bun/install/cache
-          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-bun-
-
-      - name: Install frontend dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Type check shared frontend
-        run: bun run typecheck
-
-      # The shipped frontend is the Wails host's bundle (apps/gui-go/frontend/vite.config.ts), which
-      # also runs the macOS 12.5 compatibility check over the built JavaScript.
-      - name: Build shipped frontend
-        run: bun --bun run --cwd apps/gui-go/frontend build
-
-      # @hey-api generated client drift check (ADR-008 P5) —— `bun run gen:client`
-      # 从 committed 的 schema/openapi.json 重新生成 apps/gui-go/frontend/src/api/generated/。如果 schema
-      # 变了但没重新生成客户端，diff 会非零退出。本地修复: `bun run gen:client` 后
-      # git add apps/gui-go/frontend/src/api/generated/。
-      - name: Verify generated API client is up to date
+          go-version-file: apps/cli-go/go.mod
+          cache: false
+      - name: Vet the CLI and shared module
         run: |
-          cp -r apps/gui-go/frontend/src/api/generated /tmp/api-generated.committed
-          bun run gen:client
-          if ! diff -r -q /tmp/api-generated.committed apps/gui-go/frontend/src/api/generated; then
-            echo "::error::Generated API client drift detected. Run 'bun run gen:client' locally and commit apps/gui-go/frontend/src/api/generated/."
-            diff -r -u /tmp/api-generated.committed apps/gui-go/frontend/src/api/generated || true
-            exit 1
-          fi
-
-  frontend-tests:
-    name: Frontend Tests
-    needs: changes
-    if: ${{ needs.changes.outputs.code == 'true' }}
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-
-      - name: Restore Bun dependencies
-        # PR 只读取 default branch 上由 cache-warmup 写入的 Bun cache。
-        # actions/cache 会在 miss 时自动保存,这里用 restore 子 action 避免
-        # 每个 refs/pull/*/merge 写出重复 cache 并挤掉 release 预热缓存。
-        uses: actions/cache/restore@v4
-        with:
-          path: ~/.bun/install/cache
-          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-bun-
-
-      - name: Install frontend dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Run frontend tests
-        run: bun run test -- --run
+          (cd packages/desktop-host-go && go vet ./...)
+          (cd apps/cli-go && go vet ./...)
+      - name: Link the CLI for supported platforms
+        run: |
+          mkdir -p target/cli-go-gate
+          scripts/ci/build-go-cli.sh x86_64-unknown-linux-gnu target/cli-go-gate/linux-amd64
+          for platform in linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64; do
+            os="${platform%/*}"
+            arch="${platform#*/}"
+            (cd apps/cli-go && CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -trimpath -buildvcs=false -o "../../target/cli-go-gate/$os-$arch" ./cmd/uniclip)
+          done
 
   # Compile gate for the Go/Wails host: a regression in a Linux-only (cgo, GTK) or Windows-only file cannot be seen
   # by the macOS developer build or by the frontend job. Same build image as the Rust job, which carries the GTK3 and
   # WebKitGTK 4.1 development packages. Evidence (linked binaries, SHA256SUMS, source head) is uploaded; nothing is shipped.
   gui-go:
     name: Go Host Compile Check
-    needs: changes
+    needs: [changes, frontend]
     if: ${{ needs.changes.outputs.gui_go == 'true' }}
     runs-on: ubuntu-latest
     container:
@@ -203,9 +135,12 @@ jobs:
       - name: Install frontend dependencies
         run: bun install --frozen-lockfile
 
-      # apps/gui-go/main.go embeds frontend/dist.
-      - name: Build shipped frontend
-        run: bun --bun run --cwd apps/gui-go/frontend build
+      # Use the bundle built and tested by this run, including dotfiles.
+      - name: Download tested frontend bundle
+        uses: actions/download-artifact@v6
+        with:
+          name: pr-frontend-${{ github.run_id }}
+          path: apps/gui-go/frontend/dist
 
       - name: Set up Go
         uses: actions/setup-go@v6
@@ -227,7 +162,7 @@ jobs:
           UC_BINDINGS_GOOS: windows
         run: |
           bun run check:host-contract
-          bun run check:host-boundary
+          bun run check:host-structure
 
       - name: Vet and link the Go host (Linux, Windows amd64 and arm64)
         run: scripts/ci/check-gui-go.sh all
@@ -325,7 +260,7 @@ jobs:
   quick-panel-windows:
     name: Quick panel (${{ matrix.name }})
     needs: changes
-    if: ${{ needs.changes.outputs.rust == 'true' }}
+    if: ${{ needs.changes.outputs.quick_panel == 'true' }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     strategy:
@@ -356,7 +291,7 @@ jobs:
   e2e:
     name: CLI E2E Tests
     needs: changes
-    if: ${{ needs.changes.outputs.rust == 'true' }}
+    if: ${{ needs.changes.outputs.e2e == 'true' }}
     runs-on: macos-latest
     timeout-minutes: 45
 

@@ -2,22 +2,15 @@ name: 'Membership E2E'
 run-name: "membership-e2e-${{ inputs.tier || (github.event_name == 'pull_request' && 'pr') || 'nightly' }}-${{ github.run_number }}"
 
 on:
-  pull_request:
-    branches: [main]
-    types: [opened, synchronize, reopened]
-    paths:
-      - 'crates/**'
-      - 'apps/**'
-      - 'tools/**'
-      - 'tests/e2e/**'
-      - 'vendor/**'
-      - 'Cargo.toml'
-      - 'Cargo.lock'
-      - 'rust-toolchain.toml'
-      - '.github/docker/build-bookworm.Dockerfile'
-      - '.github/workflows/membership-e2e.yml'
-      - 'scripts/e2e/run-membership-matrix.sh'
-      - 'scripts/__tests__/membership-e2e-hardening.test.ts'
+  workflow_call:
+    inputs:
+      tier:
+        type: string
+        required: true
+      ref:
+        type: string
+        required: false
+        default: ''
   schedule:
     - cron: '23 18 * * *'
   workflow_dispatch:

@@ -28,6 +28,7 @@
         "lint-staged": "^17.0.4",
         "oxfmt": "0.63.0",
         "oxlint": "1.78.0",
+        "picomatch": "^4.0.4",
         "postcss": "^8.5.14",
         "react-grab": "^0.1.50",
         "shadcn": "^4.7.0",
@@ -38,6 +39,7 @@
         "vite": "^8.0.13",
         "vitest": "^4.1.6",
         "webdriverio": "^9.27.1",
+        "yaml": "^2.8.4",
       },
     },
     "apps/gui-go/frontend": {

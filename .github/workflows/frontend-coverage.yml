@@ -2,25 +2,39 @@ name: Frontend Coverage
 run-name: 'Frontend coverage for ${{ github.head_ref || github.ref_name }}'
 
 on:
-  # Codecov needs a base report on the default branch to diff PRs against.
-  # Without this push trigger, merge commits on main carry no coverage and
-  # every PR falls back to "Missing Base Commit". See #641 regression.
+  # Main coverage provides Codecov's PR comparison baseline.
   push:
     branches: [main]
-    paths:
-      - 'apps/gui-go/frontend/**'
-      - 'package.json'
-      - 'bun.lock'
-      - '.github/workflows/frontend-coverage.yml'
-  pull_request:
-    paths:
-      - 'apps/gui-go/frontend/**'
-      - 'package.json'
-      - 'bun.lock'
-      - '.github/workflows/frontend-coverage.yml'
+  workflow_call:
+    inputs:
+      validate_build:
+        type: boolean
+        required: false
+        default: false
+    secrets:
+      CODECOV_TOKEN:
+        required: false
+
+permissions:
+  contents: read
 
 jobs:
+  changes:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    outputs:
+      relevant: ${{ steps.filter.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          filters: .github/ci-paths.yml
+
   coverage:
+    needs: changes
+    if: ${{ !cancelled() && (github.event_name != 'push' || needs.changes.outputs.relevant == 'true') }}
+    name: Frontend checks and coverage
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -47,7 +61,26 @@ jobs:
       - name: Install frontend dependencies
         run: bun install --frozen-lockfile
 
-      - name: Generate frontend coverage report
+      - name: Type check shared frontend
+        if: inputs.validate_build
+        run: bun run typecheck
+
+      - name: Build shipped frontend
+        if: inputs.validate_build
+        run: bun --bun run --cwd apps/gui-go/frontend build
+
+      - name: Verify generated API client is up to date
+        if: inputs.validate_build
+        run: |
+          cp -r apps/gui-go/frontend/src/api/generated /tmp/api-generated.committed
+          bun run gen:client
+          if ! diff -r -q /tmp/api-generated.committed apps/gui-go/frontend/src/api/generated; then
+            echo "::error::Generated API client drift detected. Run bun run gen:client and commit the generated client."
+            diff -r -u /tmp/api-generated.committed apps/gui-go/frontend/src/api/generated || true
+            exit 1
+          fi
+
+      - name: Run frontend tests and generate coverage report
         run: bun run test:coverage:frontend
 
       - name: Upload to Codecov
@@ -58,3 +91,15 @@ jobs:
           flags: frontend
           name: frontend-coverage
           fail_ci_if_error: false
+
+      # A job-only rerun must still find the bundle from the successful frontend job.
+      - name: Upload tested frontend bundle
+        if: inputs.validate_build
+        uses: actions/upload-artifact@v7
+        with:
+          name: pr-frontend-${{ github.run_id }}
+          path: apps/gui-go/frontend/dist
+          include-hidden-files: true
+          overwrite: true
+          if-no-files-found: error
+          retention-days: 1

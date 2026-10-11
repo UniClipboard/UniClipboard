@@ -401,10 +401,11 @@ try {
         el => getComputedStyle(el.querySelector('[role="menuitem"]')).color
       )
       assert.equal(color, 'rgb(255, 255, 255)')
-      // Skin variables must reach the portal mount node, not only the provider root.
+      // Skin variables must reach the portal mount node, not only the provider root: the menu flyout is the
+      // skin's dark solid layer (#2D2D2D), not Fluent's default.
       assert.equal(
         await menu.evaluate(el => getComputedStyle(el.closest('.fui-MenuPopover')).backgroundColor),
-        'rgba(44, 44, 44, 0.9)'
+        'rgb(45, 45, 45)'
       )
       await page.keyboard.press('Escape')
     })
@@ -476,26 +477,29 @@ try {
   }
 
   if (skin === 'macos') {
-    await check('reduce motion stops the skin\'s transitions and animations (media emulated)', async () => {
-      await page.emulateMedia({ reducedMotion: 'reduce' })
-      await page.goto(`${base}/?scheme=light`)
-      const board = page.getByTestId('board-light')
-      await board.waitFor()
-      await board.getByRole('button', { name: /^Tag/ }).click()
-      await page.getByRole('menu').waitFor()
-      const moving = await page.evaluate(() =>
-        Array.from(document.querySelectorAll('[class*="mac-"]'))
-          .filter(el => {
-            const style = getComputedStyle(el)
-            const durations = style.transitionDuration.split(',').map(d => parseFloat(d))
-            return durations.some(d => d > 0) || style.animationName !== 'none'
-          })
-          .map(el => el.className)
-      )
-      await page.keyboard.press('Escape')
-      await page.emulateMedia({ reducedMotion: null })
-      assert.deepEqual(moving, [], 'elements still animating with reduced motion')
-    })
+    await check(
+      "reduce motion stops the skin's transitions and animations (media emulated)",
+      async () => {
+        await page.emulateMedia({ reducedMotion: 'reduce' })
+        await page.goto(`${base}/?scheme=light`)
+        const board = page.getByTestId('board-light')
+        await board.waitFor()
+        await board.getByRole('button', { name: /^Tag/ }).click()
+        await page.getByRole('menu').waitFor()
+        const moving = await page.evaluate(() =>
+          Array.from(document.querySelectorAll('[class*="mac-"]'))
+            .filter(el => {
+              const style = getComputedStyle(el)
+              const durations = style.transitionDuration.split(',').map(d => parseFloat(d))
+              return durations.some(d => d > 0) || style.animationName !== 'none'
+            })
+            .map(el => el.className)
+        )
+        await page.keyboard.press('Escape')
+        await page.emulateMedia({ reducedMotion: null })
+        assert.deepEqual(moving, [], 'elements still animating with reduced motion')
+      }
+    )
   }
 
   for (const scheme of ['both', 'light', 'dark']) {

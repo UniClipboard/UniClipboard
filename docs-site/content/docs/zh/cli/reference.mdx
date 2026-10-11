@@ -93,11 +93,21 @@ uniclip member remove <PEER-ID>
 
 | 命令                          | 作用                                             |
 | ----------------------------- | ------------------------------------------------ |
-| `uniclip member trust status` | 查看当前设备组变化、变化 ID 以及每种选择的影响。 |
-| `uniclip member trust choose` | 从当前设备组问题的可用选项中选择。 |
+| `uniclip member trust status` | 查看设备名称、截短设备 ID、移除提议以及每种选择的设备影响。 |
+| `uniclip member trust choose` | 按编号处理设备组问题，或使用原始 ID 提交一次选择。 |
 
-交互终端可按提示选择。脚本或 JSON 调用应传入 `--issue <ISSUE-ID>` 和 `--choice <CHOICE-ID>`，
-使用 `member trust status` 返回的编号；涉及移除本机还需 `--confirm-local-removal`。
+交互终端中，不传入 `--issue` 或 `--choice` 时，按提示输入从 1 开始的选项编号。
+非法编号会提示有效范围并允许重新输入，不会提交选择。每次选择完成或已完成后，
+命令重新读取最新状态，默认继续处理剩余问题；添加 `--once` 可只处理一个问题。
+结果仍在等待、需要重新配对、状态已变化或需要本机移除确认时，命令停止，不自动进入下一轮；
+已确认移除本机的选择也会结束本次调用。
+
+涉及移除本机时，交互终端会要求明确确认。`--confirm-local-removal` 只授权本次调用的
+第一个问题，不会授权后续问题；每一轮都会重新判断本机移除风险。
+
+显式 ID、非终端和 JSON 调用均为单次、非交互执行。脚本应传入
+`--issue <ISSUE-ID>` 和 `--choice <CHOICE-ID>`，使用 `member trust status --json`
+返回的原始 ID，而不是交互选项编号；涉及移除本机还需 `--confirm-local-removal`。
 如果状态已变化，应重新查询再选择；提交结果可能仍在等待或需要重新配对。
 
 ### 按成员设置同步

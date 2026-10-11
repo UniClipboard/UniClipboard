@@ -112,12 +112,24 @@ the removal.
 
 | Command                                       | Effect                                                                                     |
 | --------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| `uniclip member trust status`                 | Show the current device-group change, its identifier, and the effect of each choice.      |
-| `uniclip member trust choose` | Select an available option for a current device-group issue. |
+| `uniclip member trust status`                 | Show device names, shortened device IDs, removal proposals, and the device impact of each choice.      |
+| `uniclip member trust choose` | Resolve device-group issues by numbered option, or submit one choice using opaque IDs. |
 
-Interactive terminals can follow the prompts. Scripts and JSON callers should pass
-`--issue <ISSUE-ID>` and `--choice <CHOICE-ID>` using identifiers returned by
-`member trust status`. Removing this device also requires `--confirm-local-removal`.
+In an interactive terminal, omit `--issue` and `--choice` to select options by number,
+starting at 1. Invalid numbers show the valid range and let you retry without submitting
+any choice. After a completed or already-completed choice, the command reads the latest
+state and continues through the remaining issues by default. Add `--once` to handle only
+one issue. Pending changes, required re-pairing, changed state, or required local-removal
+confirmation stop the workflow. A choice that removes this device also ends the call.
+
+Interactive local removal requires explicit confirmation. `--confirm-local-removal`
+authorizes only the first issue in the call; it does not authorize later issues.
+The command checks local-removal risk again for every issue.
+
+Explicit IDs, non-terminal calls, and JSON calls are non-interactive and execute once.
+Scripts should pass `--issue <ISSUE-ID>` and `--choice <CHOICE-ID>` using opaque IDs
+returned by `member trust status --json`, rather than interactive option numbers.
+Removing this device also requires `--confirm-local-removal`.
 Query again if state has changed; a submitted choice may still be pending or require re-pairing.
 
 ### Per-member sync

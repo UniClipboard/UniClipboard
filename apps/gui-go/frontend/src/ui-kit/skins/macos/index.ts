@@ -28,7 +28,7 @@ export {
   SplitView,
   Text,
 } from './pane'
-export { Surface, Toolbar, ToolbarButton, ToolbarDivider, UiRoot } from './root'
+export { Surface, Toolbar, ToolbarButton, ToolbarDivider, ToolbarGroup, UiRoot } from './root'
 export { ComboField } from './combo-field'
 export { FactList, PreviewFrame, QuickLook } from './preview'
 export { Sheet } from './sheet'

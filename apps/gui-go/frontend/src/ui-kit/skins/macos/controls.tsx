@@ -23,10 +23,11 @@ import * as parts from './parts'
 import { usePortalContainer } from './portal'
 
 /** `subtle` has no bezel at rest, which on macOS is a borderless button. */
-const tintOf: Record<ButtonVariant, 'primary' | 'none' | 'borderless'> = {
+const tintOf: Record<ButtonVariant, 'primary' | 'none' | 'borderless' | 'destructive'> = {
   primary: 'primary',
   standard: 'none',
   subtle: 'borderless',
+  destructive: 'destructive',
 }
 
 /** AppKit help tag: shown on hover after a delay; the trigger keeps its own accessible name. */

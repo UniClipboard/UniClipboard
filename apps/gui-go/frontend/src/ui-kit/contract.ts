@@ -58,7 +58,8 @@ export type ControlSize = 'small' | 'medium' | 'large' | 'xlarge'
  * `primary`: the single main action of a view (Windows accent button, macOS default button).
  * `standard`: an ordinary push button. `subtle`: command-bar and icon buttons without a fill at rest.
  */
-export type ButtonVariant = 'primary' | 'standard' | 'subtle'
+/** `destructive` removes data (Delete); it is not the confirmation of an alert. */
+export type ButtonVariant = 'primary' | 'standard' | 'subtle' | 'destructive'
 
 /**
  * Tag colour as the daemon stores it: a palette name, whose light/dark values the skin owns, or a
@@ -388,6 +389,14 @@ export interface ToolbarProps {
   children: ReactNode
 }
 
+/**
+ * Toolbar items that belong together (Send, Pin, More). macOS: one glass capsule; Windows: a
+ * group of the command bar.
+ */
+export interface ToolbarGroupProps {
+  children: ReactNode
+}
+
 export type ToolbarButtonProps = Omit<ButtonProps, 'size'>
 
 export interface ItemListItem {
@@ -483,6 +492,8 @@ export interface SplitViewProps {
    * Windows: centred in the title bar.
    */
   search?: ReactNode
+  /** Controls just before the search field, e.g. the list / grid switch. */
+  toolbarLeading?: ReactNode
   /** Controls at the trailing end of the toolbar band, after the search field. */
   toolbar?: ReactNode
   children: ReactNode
@@ -816,6 +827,7 @@ export declare function InlineNotice(props: InlineNoticeProps): ReactNode
 export declare function Toolbar(props: ToolbarProps): ReactNode
 export declare function ToolbarButton(props: ToolbarButtonProps): ReactNode
 export declare function ToolbarDivider(): ReactNode
+export declare function ToolbarGroup(props: ToolbarGroupProps): ReactNode
 export declare function ItemList(props: ItemListProps): ReactNode
 export declare function SidebarNav(props: SidebarNavProps): ReactNode
 export declare function SplitView(props: SplitViewProps): ReactNode

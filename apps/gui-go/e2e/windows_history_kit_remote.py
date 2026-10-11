@@ -310,11 +310,12 @@ Set-Location '{app}'
                                         f"$env:UC_GUI_GO_EXIT_MODE='full'; $env:UC_GUI_GO_E2E_VISIBLE='1'; "
                                         f"$env:UC_GUI_GO_EVIDENCE='{run_dir}\\native.jsonl'")
         if inside:
-            # Already the logged-in session: start the app detached with the sandbox env; its output goes to files
-            # so a launch that fails is diagnosable.
+            # Already the logged-in session: start the app detached with the sandbox env. A hidden PowerShell does
+            # the output redirection: redirecting in Start-Process itself hands prlctl's pipes to the app, and
+            # `prlctl exec` then never returns.
             machine.ps(launcher + f"""
-Start-Process -FilePath '{app}\\gui-go.exe' -WorkingDirectory '{app}' -RedirectStandardOutput '{run_dir}\\gui.out' -RedirectStandardError '{run_dir}\\gui.err'
-""")
+Start-Process -FilePath powershell.exe -WindowStyle Hidden -WorkingDirectory '{app}' -ArgumentList '-NoProfile','-Command',"& '{app}\\gui-go.exe' > '{run_dir}\\gui.out' 2> '{run_dir}\\gui.err'"
+""", timeout=120)
         else:
             machine.ps(f"""
 Set-Content -Path '{run_dir}\\launch.ps1' -Value @'

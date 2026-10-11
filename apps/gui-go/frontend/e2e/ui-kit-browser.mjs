@@ -419,6 +419,8 @@ try {
       'native-mode popups are opaque enough to read (host parameter simulated)',
       async () => {
         for (const scheme of ['light', 'dark']) {
+          // The skin shows the native material only while the theme matches the system appearance.
+          await page.emulateMedia({ colorScheme: scheme })
           await page.goto(`${base}/?scheme=${scheme}&window-material=liquid-glass`)
           const native = page.getByTestId(`board-${scheme}`)
           await native.waitFor()
@@ -439,6 +441,25 @@ try {
             `${scheme} menu background alpha ${alpha} over the native material`
           )
         }
+        await page.emulateMedia({ colorScheme: null })
+      }
+    )
+    await check(
+      'a theme unlike the system appearance falls back from the native material (simulated)',
+      async () => {
+        await page.emulateMedia({ colorScheme: 'light' })
+        await page.goto(`${base}/?scheme=dark&window-material=liquid-glass`)
+        await page.getByTestId('board-dark').waitFor()
+        const state = await page.evaluate(() => ({
+          document: document.documentElement.dataset.windowMaterial ?? null,
+          sidebar:
+            document
+              .querySelector('[data-surface="sidebar"]')
+              ?.getAttribute('data-window-material') ?? null,
+        }))
+        await page.emulateMedia({ colorScheme: null })
+        assert.equal(state.document, null, 'the page stays opaque')
+        assert.equal(state.sidebar, 'css-fallback', 'the sidebar uses its CSS fallback')
       }
     )
   }

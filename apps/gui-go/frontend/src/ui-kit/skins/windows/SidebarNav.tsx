@@ -54,7 +54,8 @@ export function SidebarNav({
     <nav aria-label={label} {...arrowNavigation}>
       <Nav
         className={styles.nav}
-        selectedValue={current}
+        // Always controlled: Fluent fixes controlled vs uncontrolled on its first render.
+        selectedValue={current ?? ''}
         onNavItemSelect={(_, data) => {
           if (value === undefined) setOwnValue(data.value)
           onValueChange?.(data.value)

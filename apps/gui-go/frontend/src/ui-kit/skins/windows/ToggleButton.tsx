@@ -22,7 +22,7 @@ export function ToggleButton({
   const [ownPressed, setOwnPressed] = useState(defaultPressed)
   const checked = pressed ?? ownPressed
   const iconOnly = children === undefined || children === null
-  const name = nameProps(label, iconOnly ? (tooltip ?? label) : tooltip)
+  const name = nameProps(iconOnly, label, tooltip)
   const toggle = () => {
     if (pressed === undefined) setOwnPressed(!checked)
     onPressedChange?.(!checked)

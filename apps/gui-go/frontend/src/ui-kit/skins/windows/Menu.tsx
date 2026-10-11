@@ -33,7 +33,9 @@ export function Menu({
   const trigger = iconOnly ? (
     // Fluent Tooltip, not WithTooltip: MenuTrigger's props must pass through to the button.
     <Tooltip content={label} relationship="inaccessible" withArrow={false}>
-      <FluentButton appearance={appearance[variant]} icon={iconElement} aria-label={label} />
+      <FluentButton appearance={appearance[variant]} icon={iconElement} aria-label={label}>
+        {count ? <CounterBadge count={count} size="small" /> : undefined}
+      </FluentButton>
     </Tooltip>
   ) : (
     <MenuButton

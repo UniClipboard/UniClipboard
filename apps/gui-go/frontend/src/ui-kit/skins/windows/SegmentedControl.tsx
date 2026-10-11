@@ -23,7 +23,9 @@ const useStyles = makeStyles({
 
 /**
  * WinUI has no segmented control; the Win11 board draws it as a radio group of toolbar buttons.
- * Fluent ToolbarRadioGroup gives radio semantics and arrow-key movement.
+ * Fluent's toolbar supplies the single tab stop and arrow-key movement; the toolbar role itself is
+ * removed so the named radio group is the only semantics, and selection follows focus as in a
+ * native radio group.
  */
 export function SegmentedControl({
   items,
@@ -35,20 +37,23 @@ export function SegmentedControl({
   const styles = useStyles()
   const [ownValue, setOwnValue] = useState(defaultValue)
   const current = value ?? ownValue
+  const select = (next: string) => {
+    if (next === current) return
+    if (value === undefined) setOwnValue(next)
+    onValueChange?.(next)
+  }
   return (
     <Toolbar
-      aria-label={label}
+      role="presentation"
       size="small"
       className={styles.root}
       checkedValues={{ segment: current === undefined ? [] : [current] }}
       onCheckedValueChange={(_, data) => {
         const next = data.checkedItems[0]
-        if (next === undefined) return
-        if (value === undefined) setOwnValue(next)
-        onValueChange?.(next)
+        if (next !== undefined) select(next)
       }}
     >
-      <ToolbarRadioGroup>
+      <ToolbarRadioGroup aria-label={label}>
         {items.map(item => (
           <WithTooltip
             key={item.value}
@@ -60,6 +65,7 @@ export function SegmentedControl({
               value={item.value}
               appearance="subtle"
               aria-label={item.iconOnly ? item.label : undefined}
+              onFocus={() => select(item.value)}
               icon={item.icon ? createElement(iconFor(item.icon)) : undefined}
             >
               {item.iconOnly ? undefined : item.label}

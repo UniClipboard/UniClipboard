@@ -18,7 +18,7 @@ export function Button({
 }: ButtonProps) {
   const elevation = useElevationStyles()
   const iconOnly = children === undefined || children === null
-  const name = nameProps(label, iconOnly ? (tooltip ?? label) : tooltip)
+  const name = nameProps(iconOnly, label, tooltip)
   return (
     <WithTooltip content={name.tooltip} relationship={name.relationship}>
       <FluentButton

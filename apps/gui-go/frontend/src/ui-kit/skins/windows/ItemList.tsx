@@ -1,5 +1,5 @@
 import { List, ListItem, mergeClasses } from '@fluentui/react-components'
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import type { KeyboardEvent } from 'react'
 import type { ItemListProps } from '@/ui-kit/contract'
 import { useListStyles } from './list-styles'
@@ -20,10 +20,22 @@ export function ItemList({
   onDelete,
 }: ItemListProps) {
   const styles = useListStyles()
+  // Fluent writes the item value as the DOM id; prefix it so the same item can appear in two lists.
+  const idPrefix = useId()
   const [ownSelection, setOwnSelection] = useState(defaultSelection)
   const selected = selection ?? ownSelection
   const handleKeyDown = (event: KeyboardEvent) => {
-    if (event.key === 'Delete' && onDelete && selected.length > 0) {
+    // Only a Delete on the row itself: Delete inside a row (a removable tag, an input) is not
+    // a request to delete the selected items.
+    const onRow =
+      event.target instanceof HTMLElement && event.target.getAttribute('role') === 'option'
+    if (
+      event.key === 'Delete' &&
+      onRow &&
+      !event.defaultPrevented &&
+      onDelete &&
+      selected.length > 0
+    ) {
       event.preventDefault()
       onDelete(selected)
     }
@@ -45,6 +57,7 @@ export function ItemList({
         <ListItem
           key={item.id}
           value={item.id}
+          id={`${idPrefix}-${item.id}`}
           aria-label={item.title}
           checkmark={multiSelect ? undefined : null}
           className={mergeClasses(styles.row, multiSelect && styles.multi)}

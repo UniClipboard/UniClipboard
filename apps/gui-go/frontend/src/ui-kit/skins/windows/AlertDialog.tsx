@@ -9,8 +9,9 @@ import {
   makeStyles,
   tokens,
 } from '@fluentui/react-components'
-import { useLayoutEffect, useRef } from 'react'
+import { useEffect, useLayoutEffect, useRef } from 'react'
 import type { AlertDialogProps } from '@/ui-kit/contract'
+import { lastConnectedFocus, trackFocusHistory } from './focus-history'
 
 // ContentDialog layout: content on the solid layer, buttons in a footer band of equal columns.
 const useStyles = makeStyles({
@@ -31,7 +32,8 @@ const useStyles = makeStyles({
 /**
  * WinUI ContentDialog: smoke backdrop, solid surface, equal-width buttons in the footer with the
  * confirming action as the accent button. Windows does not colour destructive confirmations red,
- * so `destructive` keeps the accent style; the text carries the warning.
+ * so `destructive` keeps the accent style; the text carries the warning, and initial focus goes to
+ * Cancel so Enter does not destroy data (WinUI sets the close button as the default for these).
  */
 export function AlertDialog({
   open,
@@ -40,20 +42,35 @@ export function AlertDialog({
   description,
   confirmLabel,
   cancelLabel,
+  destructive,
   onConfirm,
 }: AlertDialogProps) {
   const styles = useStyles()
   // Fluent restores focus only to a DialogTrigger; this dialog is opened by the caller's own
   // control. The layout effect records the opener before the surface moves focus into itself, and
-  // focus goes back once the exit motion has finished and the page is no longer inert.
+  // focus goes back once the exit motion has finished and the page is no longer inert. An opener
+  // that is gone by then (a menu item) falls back to the focus history.
   const opener = useRef<HTMLElement | null>(null)
+  const surface = useRef<HTMLDivElement | null>(null)
+  const cancel = useRef<HTMLButtonElement | null>(null)
+  useEffect(() => trackFocusHistory(), [])
   useLayoutEffect(() => {
-    if (open && document.activeElement instanceof HTMLElement)
-      opener.current = document.activeElement
+    if (open) opener.current = lastConnectedFocus()
   }, [open])
+  // Fluent focuses the first button from the surface's own effect, which runs after any autoFocus
+  // and, because the surface is portalled, after this component's effects. A zero-delay task runs
+  // after both and before the user can press Enter.
+  useEffect(() => {
+    if (!open || !destructive) return
+    const timer = setTimeout(() => cancel.current?.focus())
+    return () => clearTimeout(timer)
+  }, [open, destructive])
   const restoreFocus = (_: null, data: { direction: 'enter' | 'exit' }) => {
     if (data.direction !== 'exit') return
-    if (opener.current?.isConnected) opener.current.focus()
+    const target = opener.current?.isConnected
+      ? opener.current
+      : lastConnectedFocus(surface.current)
+    target?.focus()
     opener.current = null
   }
   return (
@@ -63,7 +80,7 @@ export function AlertDialog({
       onOpenChange={(_, data) => onOpenChange(data.open)}
       surfaceMotion={{ onMotionFinish: restoreFocus }}
     >
-      <DialogSurface className={styles.surface}>
+      <DialogSurface ref={surface} className={styles.surface}>
         <DialogBody className={styles.body}>
           <DialogTitle className={styles.title}>{title}</DialogTitle>
           <DialogContent className={styles.content}>{description}</DialogContent>
@@ -77,7 +94,7 @@ export function AlertDialog({
             >
               {confirmLabel}
             </FluentButton>
-            <FluentButton appearance="secondary" onClick={() => onOpenChange(false)}>
+            <FluentButton appearance="secondary" ref={cancel} onClick={() => onOpenChange(false)}>
               {cancelLabel}
             </FluentButton>
           </DialogActions>

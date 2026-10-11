@@ -3,7 +3,8 @@
 
 `start` creates a throwaway HOME and a unique gui-go-* profile (system clipboard disabled), initialises a space,
 starts `uniclipd` (from target/debug, found on PATH by `uniclip`), seeds text entries over one GUI session through
-frontend/e2e/history-kit-seed.mjs and two files through `uniclip send`, and writes the daemon address and a copy of its
+frontend/e2e/history-kit-seed.mjs, two files through `uniclip send` and one image through the loopback mobile LAN
+listener, and writes the daemon address and a copy of its
 file token to <out> (daemon.json, daemon.conn) for frontend/e2e/history-kit-browser.mjs. `stop` stops that daemon.
 
 Needs target/debug/uniclipd (`cargo build -p uc-daemon --bin uniclipd`) and target/gui-go/uniclip
@@ -12,6 +13,7 @@ Needs target/debug/uniclipd (`cargo build -p uc-daemon --bin uniclipd`) and targ
 import argparse
 import json
 import os
+import socket
 import subprocess
 import tempfile
 import time
@@ -37,6 +39,23 @@ def seed(out, home, *seed_args):
     base = f"http://{conn.get('host', '127.0.0.1')}:{conn['port']}"
     subprocess.run(['node', str(ROOT / 'apps/gui-go/frontend/e2e/history-kit-seed.mjs'), str(out), base, str(conn_file(home)), PASSPHRASE,
                     *seed_args], check=True)
+
+
+def mobile_image(out, home, env):
+    """An image entry without a paired peer: the mobile LAN listener on loopback takes a SyncClipboard image upload."""
+    with socket.socket() as s:
+        s.bind(('127.0.0.1', 0))
+        port = s.getsockname()[1]
+    setup = json.loads(cli(env, '--json', 'mobile', 'setup', '--non-interactive', '--label', 'kit-image', '--ip', '127.0.0.1',
+                           '--accept-network-risk', '--port', str(port)).stdout)
+    url = f'http://127.0.0.1:{port}'
+    for _ in range(60):
+        try:
+            with socket.create_connection(('127.0.0.1', port), timeout=1):
+                break
+        except OSError:
+            time.sleep(.5)
+    seed(out, home, 'image', url, setup['username'], setup['password'])
 
 
 def send(env, *args):
@@ -67,8 +86,9 @@ def start(out, extra, empty):
         (files / 'invoice-0921.txt').write_text('Invoice 0921\nTotal: 42.00\n')
         for path in sorted(files.iterdir()):
             send(env, '--file', str(path))
+        mobile_image(out, home, env)
     # Writes daemon.json (with home and profile, which `stop` uses); an empty run is a space without history.
-    seed(out, home, 'texts', profile, home, '0' if empty else str(extra + 2 + 5))
+    seed(out, home, 'texts', profile, home, '0' if empty else str(extra + 3 + 5))
     print((out / 'daemon.json').read_text())
 
 

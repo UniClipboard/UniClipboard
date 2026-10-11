@@ -99,6 +99,11 @@ class Machine:
             self.ps(f"Copy-Item -Recurse -Force '{remote}\\*' '{self.share(local)}'", check=False)
 
 
+def _json_object(text):
+    """The JSON object a CLI printed, ignoring anything around it."""
+    return json.loads(text[text.index('{'):text.rindex('}') + 1])
+
+
 def free_port():
     with socket.socket() as s:
         s.bind(('127.0.0.1', 0))
@@ -240,7 +245,7 @@ exit 0
         conn_remote = machine.ps(f"(Get-ChildItem '{app}\\data' -Recurse -Filter daemon.conn | Select -First 1).FullName")
         conn = json.loads(machine.ps(f"Get-Content '{conn_remote}' -Raw"))
         record['daemonPort'] = conn['port']
-        seeded = 0 if args.empty else args.extra + 2 + 5
+        seeded = 0 if args.empty else args.extra + 3 + 5
 
         def node_seed(*seed_args):
             if inside:
@@ -268,6 +273,17 @@ Set-Content -Path seed\\invoice-0921.txt -Value "Invoice 0921`nTotal: 42.00"
 & .\\uniclip.exe send --file "$PWD\\seed\\pixel.png" | Out-Null
 exit 0
 """)
+            # One image entry through the loopback mobile LAN listener (SyncClipboard upload), no paired peer.
+            mobile_port = 9800 + int(time.time()) % 150
+            setup = _json_object(machine.ps(sandbox_env(profile) + f"""
+Set-Location '{app}'
+& .\\uniclip.exe --json mobile setup --non-interactive --label kit-image --ip 127.0.0.1 --accept-network-risk --port {mobile_port} | Out-String
+"""))
+            if not inside:
+                mobile_local, t = tunnel(machine.name, mobile_port)
+                tunnels.append(t)
+            mobile_url = f'http://127.0.0.1:{mobile_port if inside else mobile_local}'
+            node_seed(PASSPHRASE, 'image', mobile_url, setup['username'], setup['password'])
         node_seed(PASSPHRASE, 'texts', profile, app, str(seeded))
 
         launcher = sandbox_env(profile, f"$env:UC_GUI_GO_E2E_BROWSER_ARGS='--remote-debugging-port={debug_port}'; "

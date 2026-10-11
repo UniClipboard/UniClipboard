@@ -288,6 +288,36 @@ async function seededRun() {
     return { selected: ids }
   })
 
+  await step('image-entry', async () => {
+    // A real image entry (seeded through the daemon's loopback mobile LAN listener): its row shows the thumbnail
+    // and the detail the decoded picture, both from daemon bytes.
+    const target = rows()
+      .filter({ has: page.locator('img') })
+      .first()
+    await target.waitFor({ timeout: 15_000 })
+    const thumb = await target.locator('img').evaluate(img => ({
+      complete: img.complete,
+      width: img.naturalWidth,
+      src: img.src.slice(0, 5),
+    }))
+    await target.click()
+    const picture = detail().locator('img').first()
+    await picture.waitFor({ timeout: 15_000 })
+    await page.waitForFunction(
+      el => el.complete && el.naturalWidth > 0,
+      await picture.elementHandle(),
+      { timeout: 15_000 }
+    )
+    const shown = await picture.evaluate(img => ({
+      width: img.naturalWidth,
+      height: img.naturalHeight,
+    }))
+    assert.equal(shown.width, 160, `detail image width ${shown.width}`)
+    assert.ok(thumb.width > 0, 'the row thumbnail decoded')
+    await shot('image-detail')
+    return { thumb, shown, title: await target.getAttribute('aria-label') }
+  })
+
   await step('keyboard-arrows', async () => {
     const before = (await selectedIds())[0]
     await page.keyboard.press('ArrowDown')

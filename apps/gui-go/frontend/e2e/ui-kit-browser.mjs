@@ -134,6 +134,18 @@ try {
       await listbox.evaluate(el => Boolean(el.closest('[data-testid="board-light"]'))),
       false
     )
+    // The listbox is ready for keys a frame after it opens: focus moves into it (Base UI) or the
+    // expanded combobox points at an option (Fluent). Keys sent before that reach the closed
+    // trigger (arrows are ignored, Enter closes the list); a user's next key comes far later.
+    await page.waitForFunction(() => {
+      const active = document.activeElement
+      if (active?.closest('[role="listbox"]')) return true
+      return (
+        active?.getAttribute('role') === 'combobox' &&
+        active.getAttribute('aria-expanded') === 'true' &&
+        Boolean(active.getAttribute('aria-activedescendant'))
+      )
+    })
     await page.keyboard.press('ArrowDown')
     await page.keyboard.press('ArrowDown')
     await page.keyboard.press('Enter')

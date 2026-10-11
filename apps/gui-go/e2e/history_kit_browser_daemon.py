@@ -48,32 +48,54 @@ def session(home):
         return base, json.load(response)['data']['sessionToken']
 
 
+def post(base, token, path, body):
+    request = urllib.request.Request(f'{base}{path}', method='POST', data=json.dumps(body).encode(),
+                                     headers={'Authorization': f'Session {token}', 'Content-Type': 'application/json'})
+    with urllib.request.urlopen(request, timeout=30) as response:
+        return json.load(response)
+
+
 def send(env, *args):
-    # With no paired peer `send` exits 1 ("0 accepted"), but the entry is captured locally all the same.
-    result = cli(env, '--json', 'send', *args, check=False)
-    if 'snapshotHash' not in result.stdout:
+    # With no paired peer `send` exits 1 ("0 accepted"), but the entry is captured locally all the same. A send can
+    # also fail before capture: every CLI call opens a session and the daemon rate-limits `/auth/connect` (HTTP 429), so
+    # a failed send backs off and retries.
+    for delay in (2, 5, 10, 20, 30):
+        result = cli(env, '--json', 'send', *args, check=False)
+        if 'snapshotHash' in result.stdout:
+            return
+        time.sleep(delay)
+    else:
         raise RuntimeError(f'uniclip send {args} captured nothing: {result.stdout} {result.stderr}')
 
 
-def start(out, extra):
+def start(out, extra, empty):
     home = tempfile.mkdtemp(prefix='uc-gui-go-')
     profile = 'gui-go-' + os.path.basename(home)
     env = env_for(home, profile)
     (out / 'daemon.json').write_text(json.dumps({'home': home, 'profile': profile}) + '\n')  # lets `stop` clean up a failed start
     cli(env, 'space', 'init', '--passphrase', PASSPHRASE, '--device-name', 'kit-browser')
     start_daemon(env)
+    if empty:  # first launch: an initialised space with no history
+        base, _ = session(home)
+        info = {'home': home, 'profile': profile, 'daemonUrl': base, 'conn': str(conn_file(home)), 'passphrase': PASSPHRASE, 'seeded': 0}
+        (out / 'daemon.json').write_text(json.dumps(info, indent=2) + '\n')
+        print(json.dumps(info, indent=2))
+        return
     files = Path(home) / 'seed'
     files.mkdir()
     (files / 'pixel.png').write_bytes(PNG)
     (files / 'invoice-0921.txt').write_text('Invoice 0921\nTotal: 42.00\n')
+    # The paging entries go through one GUI session (`POST /clipboard/dispatch`, the endpoint `uniclip send` uses for
+    # text): a CLI call per entry would open a session each time and hit the daemon's session limit.
+    base, token = session(home)
+    post(base, token, '/content-lock/unlock', {'passphrase': PASSPHRASE})
     for index in range(extra):
-        send(env, '--text', f'Paging entry {index:03d}')
+        post(base, token, '/clipboard/dispatch', {'text': f'Paging entry {index:03d}'})
     for path in sorted(files.iterdir()):
         send(env, '--file', str(path))
     for text in TEXTS:
         send(env, '--text', text)
         time.sleep(.2)  # distinct capture times keep the list order deterministic
-    base, _ = session(home)  # proves a GUI client session opens; the browser run opens its own
     info = {'home': home, 'profile': profile, 'daemonUrl': base, 'conn': str(conn_file(home)), 'passphrase': PASSPHRASE, 'seeded': len(TEXTS) + extra + 2}
     (out / 'daemon.json').write_text(json.dumps(info, indent=2) + '\n')
     print(json.dumps(info, indent=2))
@@ -88,11 +110,12 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('action', choices=['start', 'stop'])
     parser.add_argument('--out', type=Path, required=True)
-    parser.add_argument('--extra', type=int, default=60, help='plain entries sent first, so the list pages')
+    parser.add_argument('--extra', type=int, default=130, help='plain entries sent first, so the list pages (page size 100)')
+    parser.add_argument('--empty', action='store_true', help='no history at all (first-launch state)')
     args = parser.parse_args()
     out = args.out.resolve()
     out.mkdir(parents=True, exist_ok=True)
-    start(out, args.extra) if args.action == 'start' else stop(out)
+    start(out, args.extra, args.empty) if args.action == 'start' else stop(out)
 
 
 if __name__ == '__main__':

@@ -3,6 +3,14 @@ import { SearchRegular } from '@fluentui/react-icons'
 import { useMemo } from 'react'
 import type { SearchFieldProps } from '@/ui-kit/contract'
 
+// Inside a Toolbar, the arrow-key group (tabster) would otherwise take Home, End
+// and the horizontal arrows away from text editing and move focus to the next command.
+const editingKeys = {
+  'data-tabster': JSON.stringify({
+    focusable: { ignoreKeydown: { Home: true, End: true, ArrowLeft: true, ArrowRight: true } },
+  }),
+}
+
 const useStyles = makeStyles({
   root: { width: '100%', maxWidth: '100%' },
   after: { display: 'flex', alignItems: 'center', gap: '0.5rem' },
@@ -64,6 +72,7 @@ export function SearchField({
       placeholder={placeholder}
       aria-label={label}
       contentAfter={after}
+      {...editingKeys}
     />
   )
 }

@@ -167,8 +167,12 @@ export function GroupedList({
       openOnContext
       open={menuIds !== null}
       onOpenChange={(_, data) => {
-        if (!data.open) setMenuIds(null)
-        else if (pendingMenuIds.current.length > 0) setMenuIds(pendingMenuIds.current)
+        if (!data.open) {
+          setMenuIds(null)
+          // The trigger is a wrapper, not focusable: Escape or a click outside would leave focus on
+          // <body>. Like a WinUI ListView, focus goes back to the list.
+          listRef.current?.focus({ preventScroll: true })
+        } else if (pendingMenuIds.current.length > 0) setMenuIds(pendingMenuIds.current)
       }}
     >
       <MenuTrigger disableButtonEnhancement>

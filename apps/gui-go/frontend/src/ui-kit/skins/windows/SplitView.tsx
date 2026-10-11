@@ -17,7 +17,8 @@ const dragRegion = {
 /**
  * WinUI NavigationView (Left mode) under a custom title bar in a frameless window (Win11 boards
  * C2 and WA2): one 48 px title bar across the window with the hamburger at the far left, the
- * toolbar centred and the room of the app-drawn caption buttons at the right (the main layout
+ * search field centred, the toolbar commands at the trailing end and the room of the app-drawn
+ * caption buttons at the right (the main layout
  * publishes it as `--window-controls-inset-x`); below it the 260 px pane on the base layer and the
  * content card, whose leading top corner is rounded. The title and subtitle head the list pane
  * (`Pane kind="list"`), as in WA2. With the pane hidden (LeftMinimal) only the hamburger remains.
@@ -42,14 +43,20 @@ const useStyles = makeStyles({
     ...dragRegion,
   },
   toggle: { justifySelf: 'start' },
-  toolbar: {
+  search: {
     minWidth: 0,
     display: 'flex',
     justifyContent: 'center',
-    // In the title bar the toolbar is part of the chrome, not a CommandBar card of its own.
-    '& [role="toolbar"]': { backgroundColor: 'transparent', border: 'none', padding: 0 },
     // Board C2: the search field is about 460 px wide in a 1280 px window.
     '& [data-search-field]': { width: '28.75rem', maxWidth: '100%', flexShrink: 1 },
+  },
+  commands: {
+    justifySelf: 'end',
+    minWidth: 0,
+    display: 'flex',
+    paddingInline: '0.5rem',
+    // In the title bar the toolbar is part of the chrome, not a CommandBar card of its own.
+    '& [role="toolbar"]': { backgroundColor: 'transparent', border: 'none', padding: 0 },
   },
   body: { flexGrow: 1, minHeight: 0, display: 'flex' },
   sidebar: {
@@ -94,6 +101,7 @@ export function SplitView({
   sidebarToggle,
   title,
   subtitle,
+  search,
   toolbar,
   children,
 }: SplitViewProps) {
@@ -118,7 +126,8 @@ export function SplitView({
             />
           </WithTooltip>
         </span>
-        <div className={styles.toolbar}>{toolbar}</div>
+        <div className={styles.search}>{search}</div>
+        <div className={styles.commands}>{toolbar}</div>
       </div>
       <div className={styles.body}>
         {sidebarHidden ? null : (

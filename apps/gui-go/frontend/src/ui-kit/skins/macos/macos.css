@@ -1999,7 +1999,14 @@
 }
 
 /* The action bar's secondary commands are glass capsules (design MA2/ME1), not bordered push
-   buttons. */
+   buttons, and the bar sets their size: a menu trigger (Send to…) matches the buttons. */
+.mac-pane-actionbar .mac-btn[data-tint='none'],
+.mac-pane-actionbar .mac-btn[data-tint='destructive'] {
+  height: 32px;
+  padding: 0 16px;
+  border-radius: 16px;
+}
+
 .mac-pane-actionbar .mac-btn[data-tint='none'] {
   background: var(--glass);
   -webkit-backdrop-filter: blur(14px) saturate(1.8);

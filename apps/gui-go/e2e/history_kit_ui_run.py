@@ -16,12 +16,17 @@ restore, not the system pasteboard. Needs the Screen Recording permission for th
   apps/gui-go/build.sh e2e && python3 apps/gui-go/e2e/history_kit_ui_run.py --out <dir>
 """
 import argparse
+import base64
 import json
 import os
+import socket
+import struct
 import subprocess
 import sys
 import tempfile
 import time
+import urllib.request
+import zlib
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -36,6 +41,7 @@ LINK = 'https://github.com/UniClipboard/UniClipboard'
 TEXTS = ['Q4 roadmap: ship LAN-only mode, then per-device gates', 'Release checklist for the desktop app',
          'Meeting notes from the design review']
 SHOT_PAUSE_MS = 9000
+IMAGE_SIZE = (640, 400)
 
 
 def tools(tmp):
@@ -96,6 +102,39 @@ def seed(env):
         time.sleep(1.1)  # distinct copy times keep the list order deterministic
 
 
+def synthetic_png(width, height):
+    """A diagonal gradient, so Fit and 100% look different."""
+    rows = b''.join(b'\x00' + bytes(v for x in range(width)
+                                    for v in (x * 255 // width, y * 255 // height, 160)) for y in range(height))
+
+    def chunk(kind, data):
+        return struct.pack('>I', len(data)) + kind + data + struct.pack('>I', zlib.crc32(kind + data))
+    return (b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', width, height, 8, 2, 0, 0, 0))
+            + chunk(b'IDAT', zlib.compress(rows)) + chunk(b'IEND', b''))
+
+
+def seed_image(env):
+    """An image entry the way a phone sends one: a mobile device registered on this profile uploads a
+    PNG to the daemon's mobile gateway over loopback (no pairing, no rendezvous). The gateway's listener
+    binds every interface for the length of the run, behind the device's random credentials."""
+    with socket.socket() as probe:
+        probe.bind(('127.0.0.1', 0))
+        port = probe.getsockname()[1]
+    setup = json.loads(subprocess.check_output(
+        [str(ROOT / 'target/gui-go/uniclip'), '--json', 'mobile', 'setup', '--non-interactive', '--label', 'e2e-phone',
+         '--ip', '127.0.0.1', '--accept-network-risk', '--port', str(port)], env=env, text=True, timeout=120))
+    auth = 'Basic ' + base64.b64encode(f"{setup['username']}:{setup['password']}".encode()).decode()
+
+    def put(path, body, kind):
+        request = urllib.request.Request(f'http://127.0.0.1:{port}{path}', data=body, method='PUT',
+                                         headers={'Authorization': auth, 'Content-Type': kind})
+        with urllib.request.urlopen(request, timeout=60) as response:
+            assert response.status < 300, response.status
+    put('/file/photo.png', synthetic_png(*IMAGE_SIZE), 'image/png')
+    put('/SyncClipboard.json', json.dumps({'type': 'Image', 'text': 'photo.png', 'dataName': 'photo.png',
+                                           'hasData': True}).encode(), 'application/json')
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--out', type=Path, required=True)
@@ -110,7 +149,7 @@ def main():
     env = isolated_env(home, profile, {'PATH': path})
     evidence = out / 'history-kit-native.jsonl'
     evidence.write_text('')
-    secret = json.dumps({'code': CODE, 'link': LINK, 'texts': TEXTS, 'shotPauseMs': SHOT_PAUSE_MS if args.shots else 0})
+    secret = json.dumps({'code': CODE, 'link': LINK, 'texts': TEXTS, 'image': {'dimensions': f'{IMAGE_SIZE[0]} × {IMAGE_SIZE[1]}'}, 'shotPauseMs': SHOT_PAUSE_MS if args.shots else 0})
     gui_env = isolated_env(home, profile, {'PATH': path, 'UC_GPUI_QUICK_PANEL': '0', 'UC_GUI_GO_ISOLATED': '1',
                                            'UC_GUI_GO_EVIDENCE': str(evidence), 'UC_GUI_GO_E2E_PHASE': 'history-kit',
                                            'UC_GUI_GO_E2E_SECRET': secret, 'UC_GUI_GO_EXIT_MODE': 'full',
@@ -138,6 +177,9 @@ def main():
                     if row['step'] == 'kit-ready-for-entries' and not seeded:
                         seeded = True
                         seed(env)
+                    if row['step'] == 'kit-ready-for-image' and 'image' not in results:
+                        seed_image(env)
+                        results['image'] = 'uploaded through a loopback mobile device'
                     if args.shots and row['step'].startswith('shot:') and row['step'] not in seen:
                         seen.add(row['step'])
                         subprocess.run([str(bin_['activate']), str(proc.pid)], timeout=30)

@@ -252,7 +252,7 @@ Follow the [0.19 → 1.0 upgrade guide](https://docs.uniclipboard.app/migration/
 
 ### Build from Source
 
-Prerequisites: the Rust toolchain (pinned by `rust-toolchain.toml`), [Bun](https://bun.sh), [Go](https://go.dev) (version in `apps/gui-go/go.mod`), and the [Wails v3 prerequisites](https://v3alpha.wails.io/getting-started/installation/) for your OS. The Go GUI currently runs on macOS only from source.
+Prerequisites: the Rust toolchain (pinned by `rust-toolchain.toml`), [Bun](https://bun.sh), [Go](https://go.dev) (version in `apps/gui-go/go.mod`), and the [Wails v3 prerequisites](https://v3alpha.wails.io/getting-started/installation/) for your OS. 开发启动命令 `bun wails:dev` 支持 macOS 与 Windows。
 
 ```bash
 git clone https://github.com/UniClipboard/UniClipboard.git

@@ -24,7 +24,12 @@ Runs the Go GUI in development mode with frontend hot reload. The profile
 keeps data, keychain entries and the daemon separate from the production app.`
 
 function run(command, args, options = {}) {
-  const result = spawnSync(command, args, { stdio: 'inherit', cwd: root, ...options })
+  const result = spawnSync(command, args, {
+    stdio: 'inherit',
+    cwd: root,
+    windowsHide: true,
+    ...options,
+  })
   if (result.status !== 0) {
     throw new Error(`${command} ${args.join(' ')} failed (${result.status ?? result.error})`)
   }
@@ -87,8 +92,8 @@ export async function main(argv, env = process.env) {
     )
     return 1
   }
-  if (process.platform !== 'darwin') {
-    console.error('The Go GUI currently runs only on macOS.')
+  if (!['darwin', 'win32'].includes(process.platform)) {
+    console.error('The development launcher currently supports macOS and Windows.')
     return 1
   }
 
@@ -111,9 +116,9 @@ export async function main(argv, env = process.env) {
   fs.mkdirSync(path.join(gui, 'frontend/dist'), { recursive: true })
   fs.writeFileSync(path.join(gui, 'frontend/dist/.gitkeep'), '')
   // No `production` tag: Wails then proxies assets to FRONTEND_DEVSERVER_URL.
-  const built = path.join(out, 'gui-go-dev')
+  const built = path.join(out, process.platform === 'win32' ? 'gui-go-dev.exe' : 'gui-go-dev')
   run('go', ['build', '-o', built, '.'], { cwd: gui })
-  const binary = makeDevBundle(built)
+  const binary = process.platform === 'darwin' ? makeDevBundle(built) : built
 
   const childEnv = {
     ...env,
@@ -123,10 +128,12 @@ export async function main(argv, env = process.env) {
     // The host resolves the daemon next to itself or on PATH.
     PATH: `${path.join(root, 'target/debug')}${path.delimiter}${env.PATH ?? ''}`,
   }
-  const vite = spawn('bun', ['--bun', 'run', '--cwd', 'apps/gui-go/frontend', 'dev'], {
-    cwd: root,
+  // Run Vite directly so stopping this child also stops the server on Windows.
+  const vite = spawn(process.execPath, [path.join(root, 'node_modules/vite/bin/vite.js')], {
+    cwd: path.join(gui, 'frontend'),
     env: childEnv,
     stdio: 'inherit',
+    windowsHide: true,
   })
   let app
   const stop = () => {
@@ -146,6 +153,7 @@ export async function main(argv, env = process.env) {
     cwd: root,
     env: { ...childEnv, FRONTEND_DEVSERVER_URL: `http://127.0.0.1:${port}` },
     stdio: 'inherit',
+    windowsHide: true,
   })
   const code = await new Promise(resolve =>
     app.on('exit', (status, signal) => resolve(status ?? (signal ? 1 : 0)))

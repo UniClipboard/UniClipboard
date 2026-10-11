@@ -249,7 +249,7 @@ GUI 和 CLI 互不冲突，需要的话两个都装即可。
 
 ### 从源码构建
 
-前置条件：Rust 工具链（版本由 `rust-toolchain.toml` 固定）、[Bun](https://bun.sh)，以及对应系统的 [Go](https://go.dev)（版本见 `apps/gui-go/go.mod`）以及对应系统的 [Wails v3 前置依赖](https://v3alpha.wails.io/getting-started/installation/)；从源码运行的 Go GUI 目前仅支持 macOS。
+前置条件：Rust 工具链（版本由 `rust-toolchain.toml` 固定）、[Bun](https://bun.sh)、[Go](https://go.dev)（版本见 `apps/gui-go/go.mod`）及对应系统的 [Wails v3 前置依赖](https://v3alpha.wails.io/getting-started/installation/)；`bun wails:dev` 支持 macOS 与 Windows。
 
 ```bash
 git clone https://github.com/UniClipboard/UniClipboard.git

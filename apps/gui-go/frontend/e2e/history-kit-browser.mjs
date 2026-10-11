@@ -655,12 +655,13 @@ async function seededRun() {
       listPane: (await page.locator('[data-pane="list"]').innerText()).slice(0, 160),
     }
     await shot('error-search-failed')
-    assert.match(observed.listPane, /History Unavailable/, 'error state shown')
-    assert.match(observed.listPane, /Try Again/, 'retry offered')
-    assert.ok(!/^All\n0\n/.test(observed.listPane), 'no false count of 0')
     await page.unroute('**/search/query**')
     await field.fill('')
     await row('Paging entry').waitFor()
+    // Asserted after the page is restored, so a failure here does not leave the injected route behind.
+    assert.match(observed.listPane, /History Unavailable/, 'error state shown')
+    assert.match(observed.listPane, /Try Again/, 'retry offered')
+    assert.ok(!/^All\n0\n/.test(observed.listPane), 'no false count of 0 in the list header')
     return observed
   })
 

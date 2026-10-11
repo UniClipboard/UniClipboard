@@ -25,6 +25,7 @@ export function SplitView({
   sidebarToggle,
   title,
   subtitle,
+  search,
   toolbar,
   children,
 }: SplitViewProps) {
@@ -70,6 +71,7 @@ export function SplitView({
             <span className="mac-split-title">{title}</span>
             {subtitle && <span className="mac-split-subtitle">{subtitle}</span>}
             <span className="mac-split-spacer" />
+            {search}
             {toolbar}
           </div>
         </Surface>

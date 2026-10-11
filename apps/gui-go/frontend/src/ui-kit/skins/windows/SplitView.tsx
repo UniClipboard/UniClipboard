@@ -107,6 +107,7 @@ export function SplitView({
   sidebarToggle,
   title,
   subtitle,
+  search,
   toolbar,
   children,
 }: SplitViewProps) {
@@ -144,6 +145,7 @@ export function SplitView({
           <span className={styles.title}>{title}</span>
           {subtitle ? <span className={styles.subtitle}>{subtitle}</span> : null}
           <span className={styles.spacer} />
+          {search}
           {toolbar}
         </div>
         <div className={styles.card}>

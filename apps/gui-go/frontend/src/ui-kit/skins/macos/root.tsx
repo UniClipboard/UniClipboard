@@ -1,11 +1,22 @@
 import { Toolbar as BaseToolbar } from '@base-ui/react/toolbar'
 import { Tooltip } from '@base-ui/react/tooltip'
-import { createContext, use, useEffect, useState, useSyncExternalStore } from 'react'
+import {
+  Children,
+  createContext,
+  Fragment,
+  isValidElement,
+  use,
+  useEffect,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from 'react'
 import { subscribeWindowMaterial, type WindowMaterial } from '@/host/window-material'
 import type { SurfaceProps, ToolbarButtonProps, ToolbarProps, UiRootProps } from '@/ui-kit/contract'
 import { WithHelpTag } from './controls'
 import { glyph } from './glyph'
 import { Icon } from './icons'
+import { Menu } from './menus'
 import { PushButton } from './parts'
 import { PortalContainer } from './portal'
 import './tokens.css'
@@ -112,11 +123,35 @@ export function Surface({ region, children }: SurfaceProps) {
   )
 }
 
-/** Tahoe toolbar: one tab stop, arrow keys move between items, controls float as glass capsules. */
+/** Icon-only toolbar items, which Tahoe groups into one glass capsule. */
+function isCapsuleItem(child: ReactNode) {
+  if (!isValidElement<{ children?: ReactNode; iconOnly?: boolean }>(child)) return false
+  if (child.type === ToolbarButton) return child.props.children == null
+  return child.type === Menu && child.props.iconOnly === true
+}
+
+/**
+ * Tahoe toolbar: one tab stop, arrow keys move between items, controls float as glass capsules.
+ * The items between two `ToolbarDivider`s share one capsule when they are all icon-only.
+ */
 export function Toolbar({ label, children }: ToolbarProps) {
+  const runs: ReactNode[][] = [[]]
+  Children.forEach(children, child => {
+    if (isValidElement(child) && child.type === ToolbarDivider) runs.push([])
+    else runs[runs.length - 1].push(child)
+  })
   return (
     <BaseToolbar.Root className="mac-toolbar-bar" aria-label={label}>
-      {children}
+      {runs.map((run, index) =>
+        run.length > 0 && run.every(isCapsuleItem) ? (
+          // eslint-disable-next-line react/no-array-index-key -- runs are positional
+          <span key={index} className="mac-glass-group mac-glass mac-toolbar-capsule">
+            {run}
+          </span>
+        ) : (
+          <Fragment key={index}>{run}</Fragment>
+        )
+      )}
     </BaseToolbar.Root>
   )
 }
@@ -133,18 +168,16 @@ export function ToolbarButton({
   const iconOnly = children === undefined || children === null
   if (iconOnly && icon) {
     return (
-      <span className="mac-glass-group mac-glass">
-        <WithHelpTag text={tooltip ?? label}>
-          <BaseToolbar.Button
-            className="mac-glass-item"
-            aria-label={label}
-            disabled={disabled}
-            onClick={onClick}
-          >
-            <Icon name={glyph(icon)} size={16} strokeWidth={1.7} />
-          </BaseToolbar.Button>
-        </WithHelpTag>
-      </span>
+      <WithHelpTag text={tooltip ?? label}>
+        <BaseToolbar.Button
+          className="mac-glass-item"
+          aria-label={label}
+          disabled={disabled}
+          onClick={onClick}
+        >
+          <Icon name={glyph(icon)} size={16} strokeWidth={1.7} />
+        </BaseToolbar.Button>
+      </WithHelpTag>
     )
   }
   return (

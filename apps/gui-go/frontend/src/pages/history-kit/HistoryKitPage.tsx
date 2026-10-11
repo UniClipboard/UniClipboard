@@ -7,7 +7,7 @@ import { useAppliedColorScheme } from '@/hooks/useAppliedColorScheme'
 import { useHistoryController } from '@/hooks/useHistoryController'
 import { useShortcut } from '@/hooks/useShortcut'
 import { formatShortcutHint } from '@/lib/shortcut-format'
-import { Pane, SplitView, Text, UiRoot, type MenuEntry } from '@/ui-kit'
+import { Pane, SearchField, SplitView, Text, UiRoot, type MenuEntry } from '@/ui-kit'
 import { HistoryKitDeleteAlert } from './HistoryKitDeleteAlert'
 import { HistoryKitDetail } from './HistoryKitDetail'
 import { HistoryKitFilters } from './HistoryKitFilters'
@@ -155,12 +155,19 @@ export default function HistoryKitPage() {
               ? t('history.kit.selectedOf', { count: c.checkedItems.length, total: c.browseCount })
               : c.browseCount.toLocaleString()
           }
+          search={
+            <SearchField
+              label={t('history.kit.searchLabel')}
+              placeholder={t('history.listSearchPlaceholder')}
+              shortcutHint={formatShortcutHint('mod+f')}
+              value={c.filter.searchQuery}
+              onValueChange={c.filterActions.setQuery}
+              onSubmit={value => c.filterActions.submitQuery(value.trim())}
+              inputRef={c.searchInputRef}
+            />
+          }
           toolbar={
             <HistoryKitToolbar
-              query={c.filter.searchQuery}
-              onQueryChange={c.filterActions.setQuery}
-              onQuerySubmit={value => c.filterActions.submitQuery(value.trim())}
-              searchInputRef={c.searchInputRef}
               targetIds={selection}
               pinned={allPinned}
               onTogglePin={togglePin}

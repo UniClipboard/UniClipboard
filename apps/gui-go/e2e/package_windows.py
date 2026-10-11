@@ -45,6 +45,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / 'apps/gui-go/packaging/windows'))
+from build_windows import require_ui_platform  # noqa: E402
 from sign import check_signed_matches  # noqa: E402  (the signing owner also owns the signed-equals-submitted check)
 from portable import write_portable_archive  # noqa: E402
 GUI = ROOT / 'apps/gui-go'
@@ -210,6 +211,7 @@ def stage_prepare(args, out):
     try:
         run(['go', 'generate', './buildinfo'], cwd=ROOT / 'packages/desktop-host-go')
         run(['bun', '--bun', 'run', '--cwd', 'apps/gui-go/frontend', 'build'], env=dict(os.environ, VITE_GUI_GO_E2E='0', VITE_APP_VERSION=version, UC_UI_PLATFORM='windows'))
+        require_ui_platform(GUI / 'frontend/dist', 'windows')
         ldflags = f'-w -s -H windowsgui -X main.updaterPublicKey={pubkey} -X main.productName={product} -X main.bundleID={ident}'
         run(['go', 'build', '-tags', 'production,release', '-trimpath', '-buildvcs=false', '-ldflags', ldflags, '-o', str(exe), '.'],
             cwd=GUI, env=dict(os.environ, GOOS='windows', GOARCH=args.arch, CGO_ENABLED='0'))

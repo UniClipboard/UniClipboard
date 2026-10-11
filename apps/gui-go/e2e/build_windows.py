@@ -35,6 +35,15 @@ TAGS = {'e2e': 'e2e', 'production': 'production', 'release': 'production,release
 TRIPLES = {'amd64': 'x86_64-pc-windows-msvc', 'arm64': 'aarch64-pc-windows-msvc'}
 
 
+def require_ui_platform(dist, target):
+    """The frontend build records its UC_UI_PLATFORM in dist/.ui-platform (vite.config.ts); refuse any other."""
+    marker = dist / '.ui-platform'
+    found = marker.read_text().strip() if marker.is_file() else None
+    if found != target:
+        sys.exit(f'{dist} was built for UI platform {found or "none (no .ui-platform marker)"}, not {target}: '
+                 f'rebuild it with UC_UI_PLATFORM={target} bun --bun run --cwd apps/gui-go/frontend build')
+
+
 def run(cmd, cwd=ROOT, env=None):
     print('+', ' '.join(map(str, cmd)), flush=True)
     subprocess.run(cmd, cwd=cwd, env=env, check=True)
@@ -105,7 +114,10 @@ def main():
         run(['go', 'build', *(['-trimpath', '-ldflags', '-s -w'] if release else []), '-o', str(out / 'uniclip.exe'), './cmd/uniclip'], cwd=ROOT / 'apps/cli-go', env=env)
         run(['bun', '--bun', 'run', '--cwd', 'apps/gui-go/frontend', 'build'], env=dict(env, VITE_GUI_GO_E2E='1' if args.mode == 'e2e' else '0', VITE_APP_VERSION=conf['version'], UC_UI_PLATFORM='windows'))
     if args.cross_check_only and not (ROOT / 'apps/gui-go/frontend/dist').is_dir():
-        sys.exit('apps/gui-go/frontend/dist is missing: build the frontend once (bun --bun run --cwd apps/gui-go/frontend build)')
+        sys.exit('apps/gui-go/frontend/dist is missing: build the frontend once (UC_UI_PLATFORM=windows bun --bun run --cwd apps/gui-go/frontend build)')
+    if args.part in ('all', 'go'):
+        # Also covers --cross-check-only, which links an existing bundle that may come from a macOS build.
+        require_ui_platform(ROOT / 'apps/gui-go/frontend/dist', 'windows')
     if args.part == 'rust':
         print(json.dumps({p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(out.glob('*.exe'))}, indent=2))
         return

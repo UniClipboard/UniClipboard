@@ -125,6 +125,11 @@ def cmd_bundle(a):
     log("frontend build")
     run(["bun", "--bun", "run", "--cwd", "apps/gui-go/frontend", "build"], cwd=REPO, env=env)
     dist = GUI_DIR / "frontend/dist"
+    # The frontend build records its UC_UI_PLATFORM in dist/.ui-platform (vite.config.ts).
+    marker = dist / ".ui-platform"
+    built_for = marker.read_text().strip() if marker.is_file() else "none"
+    if built_for != "macos":
+        sys.exit(f"the embedded frontend was built for UI platform {built_for}, not macos")
     maps = sorted(str(p.relative_to(dist)) for p in dist.rglob("*.map"))
     if maps:
         sys.exit(f"source maps survived into the embedded frontend: {maps[:3]}")

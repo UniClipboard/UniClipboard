@@ -19,6 +19,8 @@ node scripts/stage-daemon.mjs --debug
 (cd packages/desktop-host-go && go generate ./buildinfo)
 (cd apps/cli-go && go build -o ../../target/gui-go/uniclip ./cmd/uniclip)
 VITE_APP_VERSION="$(python3 -c 'import json;print(json.load(open("apps/gui-go/app.json"))["version"])')" VITE_GUI_GO_E2E="$E2E" UC_UI_PLATFORM=macos bun --bun run --cwd apps/gui-go/frontend build
+# The frontend build records its UC_UI_PLATFORM in dist/.ui-platform (vite.config.ts).
+[[ "$(cat apps/gui-go/frontend/dist/.ui-platform 2>/dev/null)" == macos ]] || { echo "apps/gui-go/frontend/dist was not built for UI platform macos" >&2; exit 1; }
 # The release signer key comes from apps/gui-go/app.json, the single source of the app identity.
 # E2E builds leave it empty and use the local test feed override instead.
 PUBKEY=""

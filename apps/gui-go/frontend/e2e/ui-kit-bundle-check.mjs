@@ -2,8 +2,10 @@
 // its own skin: the Windows bundle has no macOS skin module, the macOS bundle has no Fluent UI,
 // Griffel or Windows skin module. Also checks that a missing or unknown UC_UI_PLATFORM fails.
 //   node e2e/ui-kit-bundle-check.mjs [output-dir]
-// The result covers the gallery entry only; the full app still bundles @base-ui/react through the
-// existing shared components in src/components/ui.
+// The full app (the production entries) is checked too: its main window takes the kit History page
+// with only its own skin on Windows and macOS, and a build without a target (Linux) keeps the
+// existing page and no kit skin. The full app still bundles @base-ui/react through the existing
+// shared components in src/components/ui, so the app check does not forbid that package.
 import assert from 'node:assert/strict'
 import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -38,7 +40,7 @@ const packageOf = id => {
   return skin ? `src/ui-kit/skins/${skin[1]}` : 'app source'
 }
 
-async function buildGallery(platform) {
+async function buildGallery(platform, entry = input) {
   const previous = process.env.UC_UI_PLATFORM
   if (platform === undefined) delete process.env.UC_UI_PLATFORM
   else process.env.UC_UI_PLATFORM = platform
@@ -65,9 +67,9 @@ async function buildGallery(platform) {
       ],
       build: {
         ...loaded.config.build,
-        outDir: path.join(output, platform ?? 'unset'),
+        outDir: path.join(output, `${entry ? 'gallery' : 'app'}-${platform ?? 'unset'}`),
         emptyOutDir: true,
-        rollupOptions: { input },
+        ...(entry ? { rollupOptions: { input: entry } } : {}),
       },
     })
     return { ok: true, modules: [...modules].sort() }
@@ -99,7 +101,9 @@ for (const platform of ['windows', 'macos']) {
   }
   await writeFile(path.join(output, `${platform}-modules.txt`), `${result.modules.join('\n')}\n`)
   report[platform].marker = (
-    await readFile(path.join(output, platform, '.ui-platform'), 'utf8').catch(() => 'missing')
+    await readFile(path.join(output, `gallery-${platform}`, '.ui-platform'), 'utf8').catch(
+      () => 'missing'
+    )
   ).trim()
 }
 for (const [label, platform] of [
@@ -108,6 +112,37 @@ for (const [label, platform] of [
 ]) {
   const result = await buildGallery(platform)
   report[`platform-${label}`] = result.ok ? { built: true } : { built: false, error: result.error }
+}
+// The production entries (main window, quick panel, updater) as vite.config.ts builds them.
+const kitPage = /\/src\/pages\/history-kit\/HistoryKitPage\.tsx$/
+const existingPage = /\/src\/pages\/HistoryPage\.tsx$/
+const skin = name => new RegExp(`/src/ui-kit/skins/${name}/`)
+const appExpectations = {
+  windows: { required: [kitPage, skin('windows')], forbidden: [existingPage, skin('macos')] },
+  macos: {
+    required: [kitPage, skin('macos')],
+    forbidden: [existingPage, skin('windows'), /node_modules\/@fluentui\//],
+  },
+  unset: { required: [existingPage], forbidden: [kitPage, skin('windows'), skin('macos')] },
+}
+for (const [label, expectation] of Object.entries(appExpectations)) {
+  const result = await buildGallery(label === 'unset' ? undefined : label, null)
+  if (!result.ok) {
+    report[`app-${label}`] = { built: false, error: result.error }
+    continue
+  }
+  await writeFile(path.join(output, `app-${label}-modules.txt`), `${result.modules.join('\n')}\n`)
+  report[`app-${label}`] = {
+    built: true,
+    moduleCount: result.modules.length,
+    leaked: result.modules.filter(id => expectation.forbidden.some(pattern => pattern.test(id))),
+    missing: expectation.required
+      .filter(pattern => !result.modules.some(id => pattern.test(id)))
+      .map(String),
+    marker: (
+      await readFile(path.join(output, `app-${label}`, '.ui-platform'), 'utf8').catch(() => 'none')
+    ).trim(),
+  }
 }
 await writeFile(path.join(output, 'report.json'), JSON.stringify(report, null, 2))
 console.log(JSON.stringify(report, (key, value) => (key === 'packages' ? undefined : value), 2))
@@ -127,3 +162,10 @@ if (report.macos.built) {
 }
 assert.match(report['platform-unset'].error, /needs UC_UI_PLATFORM=windows\|macos \(got nothing\)/)
 assert.match(report['platform-unknown'].error, /UC_UI_PLATFORM=windows\|macos \(got "linux"\)/)
+for (const label of ['windows', 'macos', 'unset']) {
+  const app = report[`app-${label}`]
+  assert.equal(app.built, true, `the ${label} app must build: ${app.error ?? ''}`)
+  assert.deepEqual(app.leaked, [], `the ${label} app bundles modules of another target`)
+  assert.deepEqual(app.missing, [], `the ${label} app misses its History page or skin`)
+  assert.equal(app.marker, label === 'unset' ? 'none' : label, `the ${label} app marker`)
+}

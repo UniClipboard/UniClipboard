@@ -1,0 +1,225 @@
+body {
+  margin: 0;
+  background: #e9e9eb;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Specimen board frame, matching the design canvas artboards (1720 px wide, light panel left, dark panel right). */
+
+.board {
+  position: relative;
+  width: 1720px;
+  overflow: hidden;
+  background: #e9e9eb;
+  font-family: var(--mac-font);
+  color: #1d1d1f;
+}
+
+.board-heading {
+  position: absolute;
+  left: 40px;
+  top: 30px;
+  right: 40px;
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+}
+
+.board-heading h1 {
+  margin: 0;
+  font-family: var(--mac-font-display);
+  font-size: 26px;
+  line-height: normal;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.board-heading p {
+  margin: 0;
+  font-size: 13px;
+  color: #6e6e73;
+}
+
+.board-panel {
+  position: absolute;
+  top: 90px;
+  width: 810px;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.12);
+  background: var(--window);
+}
+
+.board-panel-label {
+  position: absolute;
+  left: 22px;
+  top: 16px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--label-3);
+}
+
+.board-panel-body {
+  position: absolute;
+  left: 24px;
+  top: 44px;
+  right: 24px;
+  bottom: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.board-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.board-section-title {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+}
+
+.board-section-title h2 {
+  margin: 0;
+  font-size: 13px;
+  line-height: 16px;
+  font-weight: 700;
+}
+
+.board-section-title span {
+  font-size: 11px;
+  color: var(--label-2);
+}
+
+.board-specimens {
+  display: flex;
+  gap: 16px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+
+.board-specimen {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-start;
+}
+
+.board-caption {
+  font-size: 10px;
+  line-height: 13px;
+  color: var(--label-2);
+  font-family: var(--mac-mono);
+}
+
+.board-wall {
+  padding: 18px;
+  border-radius: 14px;
+  background: var(--wall);
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.board-row-specimen {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* ---------- lab (interactive T3 demos; not a pixel replica) ---------- */
+
+.lab-tile {
+  position: relative;
+  width: 200px;
+  height: 120px;
+  border-radius: 14px;
+  background: var(--wall);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.lab-glass-sample {
+  width: 132px;
+  height: 52px;
+  border-radius: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  color: var(--label);
+}
+
+.lab-glass-sample[data-variant='clear'] {
+  background: var(--glass-clear);
+  -webkit-backdrop-filter: blur(6px) saturate(1.8);
+  backdrop-filter: blur(6px) saturate(1.8);
+}
+
+.lab-glass-sample[data-variant='tinted'] {
+  background: var(--glass-tinted);
+}
+
+.lab-glass-sample[data-variant='prominent'] {
+  background: var(--accent);
+  color: #fff;
+}
+
+.lab-morph {
+  all: unset;
+  box-sizing: border-box;
+  height: 44px;
+  width: 44px;
+  border-radius: 22px;
+  padding: 0 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+  color: var(--label-2);
+  transition: width 0.45s var(--mac-ease);
+}
+
+.lab-morph[data-expanded] {
+  width: 180px;
+}
+
+.lab-morph input {
+  all: unset;
+  min-width: 0;
+  flex-grow: 1;
+  color: var(--label);
+}
+
+.lab-mini-window {
+  position: relative;
+  width: 200px;
+  height: 120px;
+  border-radius: 14px;
+  background: var(--content);
+  box-shadow: var(--win-shadow);
+  overflow: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lab-morph {
+    transition: none;
+  }
+}
+
+/* A narrow window collapses the inspector, as AppKit split views do, instead of squeezing the list. */
+@media (max-width: 899px) {
+  .mac-window[data-shell='native'] {
+    --detail-width: 0px !important;
+  }
+
+  .mac-window[data-shell='native'] .mac-detail {
+    display: none;
+  }
+}

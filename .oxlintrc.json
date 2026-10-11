@@ -313,6 +313,28 @@
           }
         ]
       }
+    },
+    {
+      "files": ["apps/gui-go/frontend/src/prototypes/macos-design/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "@ui-skin",
+                "message": "The macOS design prototype renders the macOS skin directly; it never takes the build-time skin."
+              }
+            ],
+            "patterns": [
+              {
+                "group": ["@/ui-kit/skins/windows/*", "@fluentui/*"],
+                "message": "The macOS design prototype (a development preview, not business code) may import only the macOS skin internals it needs for forced design states."
+              }
+            ]
+          }
+        ]
+      }
     }
   ]
 }

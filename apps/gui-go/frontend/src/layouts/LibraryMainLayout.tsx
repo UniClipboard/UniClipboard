@@ -98,7 +98,7 @@ const LibraryMainLayout: React.FC<LibraryMainLayoutProps> = ({ children }) => {
           <div
             data-tauri-drag-region
             {...windowDragging}
-            className="absolute right-0 top-0 z-50 h-10 select-none"
+            className="absolute right-0 top-0 z-50 h-12 select-none"
           >
             <WindowControls />
           </div>

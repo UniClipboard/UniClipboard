@@ -791,6 +791,33 @@ async function runHistoryKitScenario() {
     active: document.activeElement?.getAttribute('role'),
   })
 
+  // T opens the tag field of the selected item; a new name is created and attached (design MC1).
+  const tagName = `kit${Date.now() % 100000}`
+  key(list(), 't', { code: 'KeyT' })
+  const tagField = (await waitFor('tag field', () =>
+    $(`input[role="combobox"][aria-label="${i18n.t('history.tags.inputLabel')}"]`)
+  )) as HTMLInputElement
+  const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!
+  valueSetter.call(tagField, tagName)
+  tagField.dispatchEvent(new Event('input', { bubbles: true }))
+  await waitFor('create suggestion', () =>
+    Array.from(document.querySelectorAll('[role="option"]')).some(o =>
+      o.textContent?.includes(tagName)
+    )
+  )
+  await shot('tag-field')
+  key(tagField, 'Enter')
+  const chipText = `#${tagName}`
+  await waitFor(
+    'tag chip in the detail',
+    () =>
+      Array.from(document.querySelectorAll('[data-testid="clipboard-detail"] .mac-tag')).some(c =>
+        c.textContent?.includes(chipText)
+      ),
+    30000
+  )
+  await record('kit-tag-created', true, { tag: chipText })
+
   // Command-click adds a second row: the detail becomes the selection summary.
   const other = historyRows().find(row => row.dataset.itemId !== pinnedId)!
   other.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0, metaKey: true }))
@@ -801,7 +828,28 @@ async function runHistoryKitScenario() {
   await record('kit-multi-select', true, {
     selected: selected().map(r => r.dataset.itemId),
   })
+  // The new tag is on one of the two: striped "1 of 2"; clicking it adds it to both (design MC2).
+  const partialTag = await waitFor(
+    'partial tag',
+    () =>
+      Array.from(
+        document.querySelectorAll<HTMLElement>(
+          '[data-testid="clipboard-selection"] .mac-tag[data-partial]'
+        )
+      ).find(c => c.textContent?.includes(chipText)),
+    30000
+  )
   await shot('multi-select')
+  partialTag.querySelector<HTMLElement>('button')!.click()
+  await waitFor(
+    'tag on all',
+    () =>
+      Array.from(
+        document.querySelectorAll<HTMLElement>('[data-testid="clipboard-selection"] .mac-tag')
+      ).some(c => c.textContent?.includes(chipText) && !c.hasAttribute('data-partial')),
+    30000
+  )
+  await record('kit-tag-added-to-all', true, { tag: chipText })
 
   // Delete asks first; focus starts on Cancel, Escape keeps everything.
   const countBefore = historyRows().length

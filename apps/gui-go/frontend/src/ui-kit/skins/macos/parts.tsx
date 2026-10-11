@@ -253,12 +253,26 @@ export function Tag({
   label,
   color,
   remove,
+  detail,
+  partial,
+  action,
 }: {
   label: string
   color?: TagColor
   /** The remove button's accessible name comes from the caller (localized). */
   remove?: { label: string; onClick: () => void }
+  detail?: string
+  /** Only some of the selection carries the tag: drawn striped (design MC2). */
+  partial?: boolean
+  /** The tag itself is a button. */
+  action?: { label: string; onClick: () => void }
 }) {
+  const content = (
+    <>
+      {label}
+      {detail && <span className="mac-tag-detail">{detail}</span>}
+    </>
+  )
   return (
     <span
       className="mac-tag"
@@ -266,8 +280,20 @@ export function Tag({
       // 8-digit hex keeps the tint working on WebKit without color-mix() (Safari 15.6 target).
       style={color && isCustomColor(color) ? { background: `${color}29`, color } : undefined}
       data-removable={remove ? '' : undefined}
+      data-partial={partial ? '' : undefined}
     >
-      {label}
+      {action ? (
+        <button
+          type="button"
+          className="mac-tag-action"
+          aria-label={action.label}
+          onClick={action.onClick}
+        >
+          {content}
+        </button>
+      ) : (
+        content
+      )}
       {remove && (
         <button
           type="button"

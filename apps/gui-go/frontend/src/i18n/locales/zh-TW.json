@@ -1275,6 +1275,7 @@
     },
     "kit": {
       "actionHint": "{{copy}} 拷貝 · T 標籤 · {{pin}} 釘選",
+      "allOfKind": "全部為{{kind}}",
       "anyTag": "任意標籤",
       "anyType": "任意類型",
       "deleteCount_one": "刪除 {{count}} 項",
@@ -1288,6 +1289,7 @@
       "filterTag": "標籤",
       "filterTime": "時間",
       "filterType": "類型",
+      "fromDevices_other": "{{count}} 台裝置",
       "gettingStarted": "開始使用",
       "listLabel": "剪貼簿歷史",
       "multiSelectHint": "{{mod}}-點按增減 · {{shift}}-點按連選 · {{all}} 全選",
@@ -1299,11 +1301,13 @@
       "nothingCopiedText": "在這台電腦或已配對裝置上拷貝的內容會出現在這裡。選一則即可預覽、加標籤或傳送。",
       "operators": "運算子",
       "pairDevice": "配對裝置…",
+      "partialTagHint": "斜紋表示只有部分項目有此標籤。點按可加入全部，× 從全部移除。",
       "pinAll": "全部釘選",
       "queryFailed": "無法載入歷史記錄。",
       "queryFailedTitle": "歷史無法使用",
       "queryUnavailable": "搜尋索引正在重建，請稍後再試。",
       "relaxWithout_other": "移除 {{filter}} · {{count}} 項",
+      "removeFromAll": "從全部移除 {{name}}",
       "retry": "再試一次",
       "searchLabel": "搜尋歷史",
       "searchScope": "搜尋範圍",
@@ -1319,6 +1323,8 @@
       "stepPasteText": "{{shortcut}} 會在任何 App 上方打開快速面板：選一則，按 Return。",
       "stepPasteTextUnbound": "快速面板可在任何 App 上方打開：選一則，按 Return。可在設定中設定快速鍵。",
       "stepPasteTitle": "從歷史貼上",
+      "tagFieldHint": "↑↓ 選擇 · ↩ 加入 · ⇥ 顏色 · esc 關閉",
+      "tagOnSome": "{{on}}/{{total}}",
       "toolbar": "工具列",
       "unpinAll": "全部取消釘選"
     }

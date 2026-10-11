@@ -1,5 +1,6 @@
 import type { HistoryTagColorDto } from '@/api/daemon/history-tags'
 import { dayKey, formatDayHeading } from '@/components/history/list/history-list-format'
+import { historyKind } from '@/components/history/list/history-list-kind'
 import type { DisplayClipboardItem } from '@/lib/clipboard-entry'
 import { isCustomColor, isPresetColor } from '@/lib/tag-colors'
 import type { ListGroup, TagColor } from '@/ui-kit'
@@ -35,4 +36,17 @@ export function kitTagColor(color: HistoryTagColorDto | undefined): TagColor | u
   if (isPresetColor(color)) return color
   if (isCustomColor(color)) return color as `#${string}`
   return undefined
+}
+
+/** "All Code · 2 devices": the kind the selected items share (if any) and how many devices they came from. */
+export function selectionSummary(items: DisplayClipboardItem[], t: Translate): string {
+  const kinds = new Set(items.map(item => historyKind(item)))
+  const devices = new Set(items.flatMap(item => (item.sourceDeviceId ? [item.sourceDeviceId] : [])))
+  const parts = [
+    kinds.size === 1
+      ? t('history.kit.allOfKind', { kind: t(`history.type.${[...kinds][0]}`) })
+      : null,
+    devices.size > 0 ? t('history.kit.fromDevices', { count: devices.size }) : null,
+  ]
+  return parts.filter(Boolean).join(' · ')
 }

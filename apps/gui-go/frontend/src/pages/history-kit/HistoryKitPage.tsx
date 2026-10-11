@@ -11,6 +11,7 @@ import { useHistoryController } from '@/hooks/useHistoryController'
 import { useShortcut } from '@/hooks/useShortcut'
 import { formatShortcutHint } from '@/lib/shortcut-format'
 import { Pane, SplitView, Text, UiRoot, type MenuEntry } from '@/ui-kit'
+import { selectionSummary } from './history-kit-model'
 import { HistoryKitDeleteAlert } from './HistoryKitDeleteAlert'
 import { HistoryKitDetail } from './HistoryKitDetail'
 import { HistoryKitFilters } from './HistoryKitFilters'
@@ -268,7 +269,20 @@ export default function HistoryKitPage() {
             {multi ? (
               <HistoryKitSelection
                 ids={selection}
-                total={c.browseCount}
+                summary={selectionSummary(c.checkedItems, t)}
+                tagging={
+                  c.historyTags.available
+                    ? {
+                        tags: c.historyTags.tags,
+                        summary: c.selectionTagSummary,
+                        editorOpen: c.selectionTagEditorOpen,
+                        onEditorOpenChange: c.setSelectionTagEditorOpen,
+                        onAddToAll: tagId => c.addTagToItems(tagId, selection),
+                        onCreateForAll: (name, color) => c.tagItemsByName(name, selection, color),
+                        onRemoveFromAll: tagId => c.removeTagFromItems(tagId, selection),
+                      }
+                    : null
+                }
                 allPinned={allPinned}
                 onPinAll={c.pinChecked}
                 onDeleteAll={c.deleteChecked}

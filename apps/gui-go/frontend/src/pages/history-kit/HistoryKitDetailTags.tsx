@@ -1,10 +1,10 @@
 import { useTranslation } from 'react-i18next'
 import type { HistoryTagColorDto, HistoryTagDto } from '@/api/daemon/history-tags'
 import type { TagSuggestion } from '@/components/history/detail/history-tag-suggestions'
-import HistoryTagEditor from '@/components/history/detail/HistoryTagEditor'
 import { tagLabel } from '@/lib/search-tags'
 import { Button } from '@/ui-kit'
 import { HistoryKitTag } from './HistoryKitTag'
+import { HistoryKitTagEditor } from './HistoryKitTagEditor'
 
 /** What the detail pane needs to show and change one entry's local tags. */
 export interface HistoryKitTagging {
@@ -52,7 +52,7 @@ export function HistoryKitDetailTags({
         )
       })}
       {tagging.editorOpen ? (
-        <HistoryTagEditor
+        <HistoryKitTagEditor
           tags={tagging.tags}
           attachedIds={new Set(tagIds)}
           onPick={pick}

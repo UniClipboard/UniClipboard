@@ -1,10 +1,14 @@
 import { useTranslation } from 'react-i18next'
 import { ActionBar, Button, Text } from '@/ui-kit'
+import { HistoryKitSelectionTags, type HistoryKitSelectionTagging } from './HistoryKitSelectionTags'
 import { HistoryKitSendMenu } from './HistoryKitSendMenu'
 
 interface HistoryKitSelectionProps {
   ids: string[]
-  total: number
+  /** "All Code · 2 devices": what the selection holds. */
+  summary: string
+  /** `null` while local tags are unavailable. */
+  tagging: HistoryKitSelectionTagging | null
   allPinned: boolean
   onPinAll: () => void
   onDeleteAll: () => void
@@ -18,7 +22,8 @@ interface HistoryKitSelectionProps {
  */
 export function HistoryKitSelection({
   ids,
-  total,
+  summary,
+  tagging,
   allPinned,
   onPinAll,
   onDeleteAll,
@@ -31,13 +36,14 @@ export function HistoryKitSelection({
         <div className="flex shrink-0 items-baseline gap-2">
           <Text role="title">{t('history.kit.selectedTitle', { count: ids.length })}</Text>
           <Text role="caption" tone="secondary">
-            {t('history.kit.selectedOf', { count: ids.length, total })}
+            {summary}
           </Text>
           <span className="flex-1" />
           <Button variant="subtle" size="small" onClick={onDeselect}>
             {t('history.kit.deselectAll')}
           </Button>
         </div>
+        {tagging && <HistoryKitSelectionTags count={ids.length} tagging={tagging} />}
         <div className="flex shrink-0 flex-wrap gap-2">
           <Button icon="pin" onClick={onPinAll}>
             {t(allPinned ? 'history.kit.unpinAll' : 'history.kit.pinAll')}

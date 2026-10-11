@@ -242,12 +242,20 @@ def main():
         machine.ps(f"New-Item -ItemType Directory -Force '{app}' | Out-Null; Copy-Item '{daemon_exe}' '{app}\\uniclipd.exe'")
         for name in ('gui-go.exe', 'uniclip.exe'):
             machine.put(go_out / name, f'{app}\\{name}')
-        machine.ps(sandbox_env(profile) + f"""
+        # On Windows ARM64 the daemon started right after `space init` has been seen to fail once with
+        # profile_storage_upgrade 'corrupt' (Engine, recover_active_target) and to boot on a later try; each failed
+        # attempt is recorded rather than hidden.
+        record['daemonStartAttempts'] = machine.ps(sandbox_env(profile) + f"""
 Set-Location '{app}'
-& .\\uniclip.exe space init --passphrase '{PASSPHRASE}' --device-name kit-windows | Out-Null
-& .\\uniclip.exe start | Out-Null
+& .\\uniclip.exe space init --passphrase '{PASSPHRASE}' --device-name kit-windows 2>&1 | Out-Null
+foreach ($i in 1..3) {{
+  $out = (& .\\uniclip.exe start 2>&1 | Out-String) -replace '\\s+', ' '
+  'attempt ' + $i + ' exit=' + $LASTEXITCODE + ' ' + $out.Substring(0, [Math]::Min(300, $out.Length))
+  if (Get-ChildItem '{app}\\data' -Recurse -Filter daemon.conn -ErrorAction SilentlyContinue) {{ break }}
+  Start-Sleep 5
+}}
 exit 0
-""", timeout=600)
+""", timeout=900).splitlines()
         conn_remote = machine.ps(f"(Get-ChildItem '{app}\\data' -Recurse -Filter daemon.conn | Select -First 1).FullName")
         conn = json.loads(machine.ps(f"Get-Content '{conn_remote}' -Raw"))
         record['daemonPort'] = conn['port']

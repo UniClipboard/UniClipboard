@@ -383,7 +383,7 @@
             "label": "Debug 模式",
             "description": "應用程式和 daemon 重新啟動後提高本地診斷日誌詳細度。",
             "confirmTitle": "開啓 Debug 模式？",
-            "confirmDescription": "Debug 模式會增加本地日誌量，並可能記錄更多運行上下文。剪貼簿內容仍不應被主動記錄。確認後將立即重新啟動應用程式與背景 daemon 以使變更生效。不需要時請關閉 Debug 模式，並重新啟動應用程式或 daemon 以完全恢復普通日誌級別。",
+            "confirmDescription": "Debug 模式會記錄更詳細的日誌。確認後應用程式將立即重新啟動以生效。",
             "confirm": "開啓並重新啟動",
             "cancel": "取消",
             "restartToast": "請重新啟動應用程式或 daemon，使日誌級別變更完全生效。",

@@ -384,7 +384,7 @@
             "label": "Modo de depuração",
             "description": "Aumenta o detalhamento dos logs locais de diagnóstico depois que o app e o daemon forem reiniciados.",
             "confirmTitle": "Ativar o modo de depuração?",
-            "confirmDescription": "O modo de depuração aumenta o volume de logs locais e pode incluir mais contexto de execução. O conteúdo da área de transferência não deve ser registrado ativamente. Ao confirmar, o app e o daemon serão reiniciados imediatamente para aplicar a alteração. Desative quando não precisar mais e reinicie o app ou o daemon para voltar totalmente ao registro normal.",
+            "confirmDescription": "O modo de depuração registra logs mais detalhados. O app será reiniciado agora para aplicar a alteração.",
             "confirm": "Ativar e reiniciar",
             "cancel": "Cancelar",
             "restartToast": "Reinicie o app ou o daemon para que a mudança no registro de logs tenha efeito completo.",

@@ -208,6 +208,10 @@ export default function HistoryKitPage() {
           }
         }
       } else if (action === TAG) {
+        // The editor lives in the detail: select what the menu acted on (a row right-clicked
+        // outside the selection) and show the grid's inspector, or "Tag…" would do nothing.
+        select(ids)
+        setInspector(true)
         if (ids.length > 1) c.setSelectionTagEditorOpen(true)
         else c.setTagEditorFor(ids[0])
       } else if (action === DELETE) c.requestDelete(ids)

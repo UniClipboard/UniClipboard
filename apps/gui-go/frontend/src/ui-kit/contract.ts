@@ -436,6 +436,13 @@ export interface ToolbarGroupProps {
 
 export type ToolbarButtonProps = Omit<ButtonProps, 'size' | 'busy' | 'submitForm'>
 
+/** Detail metadata with commands presented according to the platform's layout. */
+export interface DetailHeaderProps {
+  children: ReactNode
+  pin: LabelledAction & { tooltip?: string }
+  delete: LabelledAction
+}
+
 export interface ItemListItem {
   id: string
   title: string
@@ -968,6 +975,7 @@ export declare function Toolbar(props: ToolbarProps): ReactNode
 export declare function ToolbarButton(props: ToolbarButtonProps): ReactNode
 export declare function ToolbarDivider(): ReactNode
 export declare function ToolbarGroup(props: ToolbarGroupProps): ReactNode
+export declare function DetailHeader(props: DetailHeaderProps): ReactNode
 export declare function ItemList(props: ItemListProps): ReactNode
 export declare function SidebarNav(props: SidebarNavProps): ReactNode
 export declare function SplitView(props: SplitViewProps): ReactNode

@@ -14,6 +14,7 @@ export {
   ToggleButton,
 } from './controls'
 export { GroupedGrid } from './grouped-grid'
+export { DetailHeader } from './detail-header'
 export { GroupedList } from './grouped-list'
 export { ItemList, SidebarNav } from './lists'
 export { AlertDialog, ContextMenu, Menu } from './menus'

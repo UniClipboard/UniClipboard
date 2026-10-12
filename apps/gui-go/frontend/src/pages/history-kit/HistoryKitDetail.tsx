@@ -14,6 +14,7 @@ import {
   ActionBar,
   Button,
   ContentUnavailable,
+  DetailHeader,
   FactList,
   KindBadge,
   PreviewFrame,
@@ -40,8 +41,8 @@ interface HistoryKitDetailProps {
 }
 
 /**
- * The detail pane of the selected entry (design MA2): its kind and origin with the pin and delete
- * commands, the content, its tags, delivery to each paired device, and the floating action bar
+ * The detail pane of the selected entry (design MA2): its kind and origin, the content,
+ * its tags, delivery to each paired device, and the floating action bar
  * with Copy and Send. Editing an entry is not offered: the Engine has no way to change one.
  */
 export function HistoryKitDetail({
@@ -135,27 +136,21 @@ export function HistoryKitDetail({
       data-entry-id={item.id}
     >
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-6 pb-28 pt-1">
-        <div className="flex shrink-0 items-center gap-2">
+        <DetailHeader
+          pin={{
+            label: t(pinned ? 'history.detail.unpin' : 'history.detail.pin'),
+            tooltip: `${t(pinned ? 'history.detail.unpin' : 'history.detail.pin')} (${formatShortcutHint('mod+p')})`,
+            onClick: onTogglePin,
+          }}
+          delete={{ label: t('clipboard.contextMenu.delete'), onClick: onDelete }}
+        >
           <KindBadge kind={kind} label={t(`history.type.${kind}`)} variant="pill" />
           <span className="min-w-0 flex-1">
             <Text role="callout" tone="secondary" truncate>
               {origin}
             </Text>
           </span>
-          <Button
-            variant="subtle"
-            icon="pin"
-            label={t(pinned ? 'history.detail.unpin' : 'history.detail.pin')}
-            tooltip={`${t(pinned ? 'history.detail.unpin' : 'history.detail.pin')} (${formatShortcutHint('mod+p')})`}
-            onClick={onTogglePin}
-          />
-          <Button
-            variant="subtle"
-            icon="delete"
-            label={t('clipboard.contextMenu.delete')}
-            onClick={onDelete}
-          />
-        </div>
+        </DetailHeader>
         <PreviewFrame
           kind={isImage ? 'image' : kind === 'code' ? 'code' : 'plain'}
           topEnd={

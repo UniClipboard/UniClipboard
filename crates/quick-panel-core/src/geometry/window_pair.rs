@@ -96,15 +96,25 @@ pub fn preview_placement_for_size(
     let height = body_height
         .max(1.)
         .min((anchor.screen.height - 2. * inset).max(1.));
-    let width = (body_width + anchor.pointer_depth * scale).min(anchor.screen.width);
-    let right = anchor.history.right() + WINDOW_GAP * scale;
-    let (side, x) = if right + width <= anchor.screen.right() {
-        (PreviewSide::Right, right)
-    } else {
+    let wanted = (body_width + anchor.pointer_depth * scale).min(anchor.screen.width);
+    let gap = WINDOW_GAP * scale;
+    let right_room = anchor.screen.right() - anchor.history.right() - gap;
+    let left_room = anchor.history.x - gap - anchor.screen.x;
+    // Beside the history window on the side that holds the preview; when neither does, the preview
+    // shrinks into the larger side rather than overlapping history or leaving the display.
+    let (side, x, width) = if wanted <= right_room {
+        (PreviewSide::Right, anchor.history.right() + gap, wanted)
+    } else if wanted <= left_room {
+        (PreviewSide::Left, anchor.history.x - gap - wanted, wanted)
+    } else if right_room > left_room {
         (
-            PreviewSide::Left,
-            (anchor.history.x - WINDOW_GAP * scale - width).max(anchor.screen.x),
+            PreviewSide::Right,
+            anchor.history.right() + gap,
+            right_room.max(1.),
         )
+    } else {
+        let width = left_room.max(1.);
+        (PreviewSide::Left, anchor.history.x - gap - width, width)
     };
     let y = (anchor.item.center_y() - height / 2.).clamp(
         anchor.screen.y + inset,
@@ -258,5 +268,45 @@ mod tests {
         assert_eq!(rectangular.1, shaped.1);
         let p = preview_placement_for_size(a, rectangular.0, rectangular.1);
         assert_eq!(p.frame.right(), a.screen.right());
+    }
+
+    #[test]
+    fn preview_never_leaves_the_session_work_area_on_a_display_with_an_offset_origin() {
+        // A display stacked above the primary one: its work area has negative y.
+        let mut a = anchor(-500.);
+        a.screen = Rect {
+            x: 2560.,
+            y: -1000.,
+            width: 1920.,
+            height: 975.,
+        };
+        a.history.x = 3000.;
+        a.history.y = -700.;
+        let p = preview_placement(a, 300.);
+        assert!(p.frame.x >= a.screen.x && p.frame.right() <= a.screen.right());
+        assert!(p.frame.y >= a.screen.y && p.frame.bottom() <= a.screen.bottom());
+    }
+
+    #[test]
+    fn preview_shrinks_into_the_larger_side_instead_of_overlapping_history() {
+        let mut a = anchor(300.);
+        a.screen.width = 1000.;
+        a.history.x = 310.;
+        let p = preview_placement(a, 140.);
+        assert!(p.frame.x >= a.screen.x && p.frame.right() <= a.screen.right());
+        let clear_of_history = p.frame.right() <= a.history.x || p.frame.x >= a.history.right();
+        assert!(clear_of_history, "{:?} overlaps {:?}", p.frame, a.history);
+    }
+
+    #[test]
+    fn flip_left_on_a_display_whose_origin_is_not_zero_stays_on_that_display() {
+        let mut a = anchor(300.);
+        a.screen.x = 1920.;
+        a.screen.width = 1920.;
+        a.history.x = 1920. + 1500.;
+        let p = preview_placement(a, 140.);
+        assert_eq!(p.side, PreviewSide::Left);
+        assert!(p.frame.x >= a.screen.x);
+        assert_eq!(p.frame.right(), a.history.x - WINDOW_GAP);
     }
 }

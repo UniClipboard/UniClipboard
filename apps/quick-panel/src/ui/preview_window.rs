@@ -199,6 +199,14 @@ impl PreviewWindow {
                 return;
             }
             self.placement = Some(placement);
+            tracing::info!(
+                history = ?anchor.history,
+                work = ?anchor.screen,
+                preview = ?frame,
+                side = ?placement.side,
+                scale = anchor.scale,
+                "Quick panel preview placement"
+            );
             if let Err(error) =
                 platform::clip_preview_shape(window, placement, self.snapshot.scale, cx)
             {

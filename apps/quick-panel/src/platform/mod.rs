@@ -21,7 +21,7 @@ use fallback as imp;
 
 pub use imp::{
     capture_paste_target, clip_preview_shape, configure_shaped_preview, new_key_state, open_target,
-    panel_anchor, reveal_path, run_as_background_app, set_frame, set_visible, show_without_focus,
+    reveal_path, run_as_background_app, session_screen, set_frame, set_visible, show_without_focus,
     system_language, CAPABILITIES, WINDOW_CORNER_RADIUS,
 };
 

@@ -16,7 +16,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 
 use super::focus;
 
-/// The display scale `screen::panel_anchor` last used, as `f64` bits. GPUI positions windows in
+/// The display scale `screen::session_screen` last used, as `f64` bits. GPUI positions windows in
 /// logical pixels, which on Windows are physical pixels divided by the scale of the display they
 /// are on; the panel and its preview open on the display of the cursor, so one scale serves both.
 pub(super) static ANCHOR_SCALE: AtomicU64 = AtomicU64::new(0);

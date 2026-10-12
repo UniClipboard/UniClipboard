@@ -39,6 +39,34 @@ apps/quick-panel/src/
 
 窗口尺寸通过 GPUI 的 `Window::resize` 更新，禁止直接修改原生窗口尺寸。后者会在当前窗口仍被更新时同步触发回调，导致系统窗口与绘制区域不同步。Windows 是例外：GPUI 的 Windows `resize` 调用 `SetWindowPos` 时不带 `SWP_NOACTIVATE`，已显示的预览窗被缩放会因此成为活动窗口并抢走键盘，所以 `platform/win32` 的 `set_frame` 自己在当前更新结束后用 `SWP_NOACTIVATE` 同时设置位置与尺寸。原生接口负责定位、显示、隐藏和无边框外壳。GPUI 的 `titlebar: None` 在 macOS 仍会创建带系统窗框的窗口，预览需要明确使用无边框 NSPanel，避免箭头后方露出矩形底板。
 
+## 多显示器放置
+
+每次显示面板时，`platform::session_screen` 只测一次：此刻指针位置，以及指针所在显示器的可用区域（macOS 为 `visibleFrame`，不含菜单栏与 Dock；Windows 为工作区，不含任务栏），都换算为 GPUI 的全局逻辑像素。该会话内两个窗口都只使用这份数据：
+
+- 历史窗口由 `quick_panel_core::geometry::placement::panel_origin` 放置（macOS 与 Windows 共用同一算法）：跟随指针时优先放在指针右下，空间不足则翻到另一侧，并始终限制在可用区域内；同时为预览预留宽度，保证右侧或左侧至少一侧放得下预览（显示器足够宽时）。
+- 预览窗口以同一可用区域作为 `PreviewAnchor.screen`，优先右侧，不足则翻到左侧；两侧都放不下时收缩到较大一侧，不与历史窗口重叠，也不离开该显示器。
+- 不读取 GPUI 的 `Window::display().bounds()`：GPUI 0.2.2 的 macOS 实现对每个显示器都返回原点为 0 的矩形，而窗口坐标是全局坐标，位于副屏时预览会被夹到错误的屏幕。
+- 会话期间不持续跟随指针；指针之后移动不会让窗口换屏。每次重新显示都会重新测量。
+
+### 放置诊断
+
+每次显示会输出两条仅含数值的 `info` 日志（不含剪贴板内容、窗口标题或凭据）：
+
+- `Quick panel placement`：`pointer`、`work`（可用区域）、`origin`、`size`、`scale`。
+- `Quick panel preview placement`：`history`（历史窗口边界）、`work`、`preview`（预览窗口边界）、`side`、`scale`。
+
+### 多显示器手动验收清单
+
+在至少两台显示器上，分别让指针位于每台显示器后触发面板，并逐项确认：
+
+1. 历史窗口与预览窗口在同一台显示器上，且都在其可用区域内（不压菜单栏、Dock、任务栏）。
+2. 副屏位于左、右、上、下各一种排列时重复；包含主屏之外的负坐标显示器，以及缩放比例不同的显示器。
+3. 指针在显示器右边缘、下边缘、菜单栏或任务栏上时触发，预览翻到左侧或收缩，不跨屏。
+4. 切换条目、隐藏预览后再出现、关闭后在另一台显示器上重新触发，预览始终跟随历史窗口所在显示器。
+5. 用日志中的 `work` 与 `history`、`preview` 数值核对：两个矩形都应落在 `work` 之内。
+
+macOS 与 Windows 的原生多显示器行为均未在本机验证，以上由使用者在真实拓扑上确认。
+
 ## 运行
 
 从仓库根目录执行，先启动并解锁现有 UniClipboard：

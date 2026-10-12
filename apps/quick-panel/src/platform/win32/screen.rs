@@ -2,6 +2,8 @@
 
 use std::sync::atomic::Ordering;
 
+use quick_panel_core::geometry::placement::SessionScreen;
+use quick_panel_core::geometry::window_pair::Rect;
 use quick_panel_core::ports::PlatformError;
 use windows::Win32::Foundation::POINT;
 use windows::Win32::Graphics::Gdi::{
@@ -12,14 +14,12 @@ use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
 
 use super::window::ANCHOR_SCALE;
 
-/// The top-left corner of the panel in GPUI's logical pixels, on the display that has the cursor.
+/// The pointer and the work area of the display that holds it, in GPUI's logical pixels.
 ///
-/// Placement uses the work area, so the panel never covers the taskbar.
-pub fn panel_anchor(
-    cursor_anchored: bool,
-    width: f64,
-    height: f64,
-) -> Result<(f64, f64), PlatformError> {
+/// The work area leaves out the taskbar, so neither window covers it. Logical pixels are physical
+/// pixels divided by the scale of that display; the same scale is remembered for `set_frame`, so
+/// both windows of the pair are placed in one coordinate system.
+pub fn session_screen() -> Result<SessionScreen, PlatformError> {
     let mut cursor = POINT::default();
     unsafe { GetCursorPos(&mut cursor) }.map_err(|_| PlatformError::NoDisplay)?;
     let monitor = unsafe { MonitorFromPoint(cursor, MONITOR_DEFAULTTONEAREST) };
@@ -37,33 +37,13 @@ pub fn panel_anchor(
     ANCHOR_SCALE.store(scale.to_bits(), Ordering::Relaxed);
 
     let work = info.rcWork;
-    let origin = (f64::from(work.left) / scale, f64::from(work.top) / scale);
-    let extent = (
-        f64::from(work.right - work.left) / scale,
-        f64::from(work.bottom - work.top) / scale,
-    );
-    if cursor_anchored {
-        Ok((
-            anchored_axis(f64::from(cursor.x) / scale, origin.0, extent.0, width),
-            anchored_axis(f64::from(cursor.y) / scale, origin.1, extent.1, height),
-        ))
-    } else {
-        Ok((
-            origin.0 + (extent.0 - width) / 2.,
-            origin.1 + (extent.1 - height) / 2.,
-        ))
-    }
-}
-
-/// Puts the panel just after the cursor, before it when there is no room, and inside the display
-/// either way.
-fn anchored_axis(position: f64, origin: f64, extent: f64, panel: f64) -> f64 {
-    const GAP: f64 = 6.;
-    if position + GAP + panel <= origin + extent {
-        position + GAP
-    } else if position - GAP - panel >= origin {
-        position - GAP - panel
-    } else {
-        (origin + extent - panel).max(origin)
-    }
+    Ok(SessionScreen {
+        pointer: (f64::from(cursor.x) / scale, f64::from(cursor.y) / scale),
+        work: Rect {
+            x: f64::from(work.left) / scale,
+            y: f64::from(work.top) / scale,
+            width: f64::from(work.right - work.left) / scale,
+            height: f64::from(work.bottom - work.top) / scale,
+        },
+    })
 }

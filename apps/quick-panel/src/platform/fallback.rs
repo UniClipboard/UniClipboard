@@ -6,6 +6,7 @@
 use std::rc::Rc;
 
 use crate::app::double_tap::ModifierKeyState;
+use quick_panel_core::geometry::placement::SessionScreen;
 use quick_panel_core::geometry::window_pair::PreviewPlacement;
 use quick_panel_core::ports::{Capabilities, PasteTarget, PlatformError};
 
@@ -44,7 +45,7 @@ pub fn capture_paste_target(_: &gpui::App) -> Rc<dyn PasteTarget> {
     Rc::new(NoPasteTarget)
 }
 
-pub fn panel_anchor(_: bool, _: f64, _: f64) -> Result<(f64, f64), PlatformError> {
+pub fn session_screen() -> Result<SessionScreen, PlatformError> {
     Err(PlatformError::Unsupported)
 }
 

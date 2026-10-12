@@ -34,14 +34,41 @@ impl Panel {
         }
     }
 
+    /// Chooses the display for this show session and places the history window on it. The
+    /// preview window is laid out inside the same work area (see `update_preview_anchor`), so the
+    /// pair stays on one display for the whole session.
     pub(super) fn position(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        match platform::panel_anchor(
-            self.state.catalog.cursor_anchored,
-            quick_panel_core::geometry::window_pair::PANEL_WIDTH * self.scale,
-            quick_panel_core::geometry::window_pair::PANEL_HEIGHT * self.scale,
-        ) {
-            Ok(anchor) => self.anchor = anchor,
-            Err(error) => self.state.set_message(error.to_string()),
+        use quick_panel_core::geometry::{placement, window_pair};
+        let panel = (
+            window_pair::PANEL_WIDTH * self.scale,
+            window_pair::PANEL_HEIGHT * self.scale,
+        );
+        let preview_reserve = (window_pair::WINDOW_GAP
+            + platform::PREVIEW_POINTER_DEPTH
+            + window_pair::PREVIEW_WIDTH)
+            * self.scale;
+        match platform::session_screen() {
+            Ok(screen) => {
+                self.anchor = placement::panel_origin(
+                    screen,
+                    self.state.catalog.cursor_anchored,
+                    panel,
+                    preview_reserve,
+                );
+                tracing::info!(
+                    pointer = ?screen.pointer,
+                    work = ?screen.work,
+                    origin = ?self.anchor,
+                    size = ?panel,
+                    scale = self.scale,
+                    "Quick panel placement"
+                );
+                self.session_screen = Some(screen);
+            }
+            Err(error) => {
+                self.session_screen = None;
+                self.state.set_message(error.to_string());
+            }
         }
         self.layout(window, cx);
     }
@@ -115,7 +142,10 @@ impl Panel {
                 return None;
             }
             let frame = history.bounds();
-            let screen = history.display(cx)?.bounds();
+            // The work area measured when this session was shown, not the display GPUI reports for
+            // the history window: that one can lag behind the move of the window, and on macOS
+            // GPUI reports every display with its origin at zero.
+            let screen = self.session_screen?.work;
             use quick_panel_core::geometry::window_pair::{PreviewAnchor, Rect};
             Some(PreviewAnchor {
                 history: Rect {
@@ -130,12 +160,7 @@ impl Panel {
                     width: f64::from(item.size.width),
                     height: f64::from(item.size.height),
                 },
-                screen: Rect {
-                    x: f64::from(screen.origin.x),
-                    y: f64::from(screen.origin.y),
-                    width: f64::from(screen.size.width),
-                    height: f64::from(screen.size.height),
-                },
+                screen,
                 scale: self.scale,
                 pointer_depth: platform::PREVIEW_POINTER_DEPTH,
             })

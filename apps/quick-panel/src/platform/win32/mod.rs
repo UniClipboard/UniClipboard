@@ -17,7 +17,7 @@ pub const WINDOW_CORNER_RADIUS: f64 = 8.;
 
 pub use locale::system_language;
 pub use modifier_state::new_key_state;
-pub use screen::panel_anchor;
+pub use screen::session_screen;
 pub use shell::{open_target, reveal_path};
 pub use window::{
     clip_preview_shape, configure_shaped_preview, set_frame, set_visible, show_without_focus,

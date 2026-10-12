@@ -16,7 +16,7 @@ pub const WINDOW_CORNER_RADIUS: f64 = 12.;
 
 pub use app::run_as_background_app;
 pub use modifier_state::new_key_state;
-pub use screen::panel_anchor;
+pub use screen::session_screen;
 pub use shell::{open_target, reveal_path};
 pub use window::{
     clip_preview_shape, configure_shaped_preview, set_frame, set_visible, show_without_focus,

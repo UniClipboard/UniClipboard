@@ -116,6 +116,8 @@ pub struct Panel {
     /// for it is dropped (dropping a task cannot stop a blocking closure that already started).
     decode_gate: Arc<tokio::sync::Semaphore>,
     anchor: (f64, f64),
+    /// The pointer and work area of the display this show session was placed on.
+    session_screen: Option<quick_panel_core::geometry::placement::SessionScreen>,
     scale: f64,
     /// General settings from the last successful read. They are applied before every show, so the
     /// first frame already has the configured theme instead of waiting for a new request.
@@ -207,6 +209,7 @@ impl Panel {
             preview_decoding: None,
             decode_gate: Arc::new(tokio::sync::Semaphore::new(1)),
             anchor: (f64::from(bounds.origin.x), f64::from(bounds.origin.y)),
+            session_screen: None,
             scale: std::env::var("UC_GPUI_SCALE")
                 .ok()
                 .and_then(|s| s.parse::<f64>().ok())

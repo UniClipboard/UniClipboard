@@ -1,4 +1,5 @@
 import type { TextFieldProps } from '@/ui-kit/contract'
+import { isImeKey } from './ime'
 
 /** NSTextField: a square-cornered field with the system focus ring. */
 export function TextField({
@@ -27,6 +28,8 @@ export function TextField({
         value={value}
         onChange={event => onValueChange(event.target.value)}
         onKeyDown={event => {
+          // Escape and Enter of an open input-method composition belong to the input method.
+          if (isImeKey(event)) return
           if (event.key === 'Enter' && onSubmit) {
             event.preventDefault()
             onSubmit(event.currentTarget.value)

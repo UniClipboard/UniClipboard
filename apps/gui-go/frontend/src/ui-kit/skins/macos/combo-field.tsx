@@ -1,6 +1,7 @@
 import { useId } from 'react'
 import type { ComboFieldProps } from '@/ui-kit/contract'
 import { Icon } from './icons'
+import { isImeKey } from './ime'
 import { swatchColor } from './swatch'
 
 /**
@@ -46,7 +47,9 @@ export function ComboField({
           maxLength={maxLength}
           value={value}
           onChange={event => onValueChange(event.target.value)}
-          onKeyDown={event => onKeyDown?.(event)}
+          onKeyDown={event => {
+            if (!isImeKey(event)) onKeyDown?.(event)
+          }}
           onBlur={onDismiss}
         />
       </label>

@@ -1,6 +1,7 @@
 import { useId, type KeyboardEvent } from 'react'
 import type { TokenSearchFieldProps } from '@/ui-kit/contract'
 import { Icon } from './icons'
+import { isImeKey } from './ime'
 
 /**
  * Toolbar search field with search tokens (design MB1/MB2): conditions sit inside the glass capsule
@@ -30,7 +31,10 @@ export function TokenSearchField({
   const optionId = (index: number) => `${listId}-option-${index}`
   const open = suggestionsOpen && suggestions.length > 0
   const active = value.length > 0 || tokens.length > 0
-  const keyDown = (event: KeyboardEvent<HTMLInputElement>) => onKeyDown?.(event)
+  const keyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (isImeKey(event)) return
+    onKeyDown?.(event)
+  }
   return (
     <div className="mac-token-search" data-active={active ? '' : undefined}>
       <div className="mac-search mac-glass">

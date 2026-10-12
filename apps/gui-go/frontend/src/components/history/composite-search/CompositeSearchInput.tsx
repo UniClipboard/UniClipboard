@@ -27,6 +27,8 @@ interface CompositeSearchInputProps {
   clearAllLabel: string
   openFiltersLabel: string
   showFilterPanelButton: boolean
+  onSelectionChange: (start: number, end: number) => void
+  feedback?: string | null
   onInputChange: (e: React.ChangeEvent<HTMLInputElement>) => void
   onInputKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => void
   openOnFocus: boolean
@@ -70,6 +72,8 @@ function CompositeSearchInput({
   clearAllLabel,
   openFiltersLabel,
   showFilterPanelButton,
+  onSelectionChange,
+  feedback,
   onInputChange,
   onInputKeyDown,
   openOnFocus,
@@ -94,7 +98,7 @@ function CompositeSearchInput({
           type="button"
           aria-label={openFiltersLabel}
           aria-expanded={expanded}
-          aria-controls={expanded ? panelId : undefined}
+          aria-controls={expanded || feedback ? panelId : undefined}
           onMouseDown={e => e.preventDefault()}
           onClick={onOpenFilters}
           className={cn(
@@ -168,9 +172,10 @@ function CompositeSearchInput({
             type="text"
             role="combobox"
             aria-label={title}
-            aria-expanded={expanded}
+            aria-expanded={expanded || Boolean(feedback)}
             aria-autocomplete="list"
-            aria-controls={expanded ? panelId : undefined}
+            aria-describedby={feedback ? `${panelId}-feedback` : undefined}
+            aria-controls={expanded || feedback ? panelId : undefined}
             aria-activedescendant={
               expanded && clampedHighlight >= 0 ? options[clampedHighlight]?.id : undefined
             }
@@ -180,7 +185,15 @@ function CompositeSearchInput({
             spellCheck={false}
             value={buffer}
             onChange={onInputChange}
-            onKeyDown={onInputKeyDown}
+            onSelect={e =>
+              onSelectionChange(
+                e.currentTarget.selectionStart ?? 0,
+                e.currentTarget.selectionEnd ?? 0
+              )
+            }
+            onKeyDown={event => {
+              if (!event.nativeEvent.isComposing && event.keyCode !== 229) onInputKeyDown(event)
+            }}
             onFocus={() => {
               if (openOnFocus) onOpenChange(true)
             }}
@@ -224,7 +237,7 @@ function CompositeSearchInput({
               <X className="size-3" />
             </button>
           )}
-          {expanded && (
+          {(expanded || feedback) && (
             <SuggestionPanel
               panelId={panelId}
               title={title}
@@ -234,6 +247,7 @@ function CompositeSearchInput({
               onHighlight={onHighlight}
               variant={variant}
               footer={suggestionsFooter}
+              feedback={feedback}
             />
           )}
         </div>

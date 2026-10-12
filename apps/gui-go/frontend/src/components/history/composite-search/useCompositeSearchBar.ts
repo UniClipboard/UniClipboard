@@ -1,8 +1,14 @@
 import { Plus } from 'lucide-react'
-import { useId, useState } from 'react'
+import { useId, useLayoutEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Filter } from '@/api/clipboardItems'
 import type { TimeRangePreset } from '@/api/daemon/search'
+import {
+  replaceSearchRange,
+  resolveSearchInput,
+  searchTokenRanges,
+  type SearchSelection,
+} from '@/components/history/composite-search/search-token-ranges'
 import { readHistorySessionSnapshot } from '@/hooks/historySessionSnapshot'
 import { splitSearchTags, type SearchTagOption } from '@/lib/search-tags'
 import {
@@ -15,9 +21,7 @@ import {
   buildSyntaxSuggestions,
   buildTokenText,
   DIMENSION_LABEL_KEYS,
-  parseBuffer,
   resetDimensionValue,
-  resolveBuffer,
   SYNTAX_KEYS,
   type CandidateItem,
   type Dimension,
@@ -94,10 +98,30 @@ export function useCompositeSearchBar({
   // active text filter after navigation/session restore (the data layer restores
   // `searchQuery`, but the buffer is otherwise local and would start empty —
   // leaving the list filtered while the box looks blank and Escape/clear inert).
-  const [buffer, setBuffer] = useState(
-    () => readHistorySessionSnapshot()?.searchState.searchQuery ?? ''
-  )
-  const [open, setOpen] = useState(false)
+  const [input, setInputState] = useState(() => {
+    const buffer = readHistorySessionSnapshot()?.searchState.searchQuery ?? ''
+    return { buffer, selection: { start: buffer.length, end: buffer.length } }
+  })
+  const { buffer, selection } = input
+  const restoreSelection = useRef(false)
+  const editRevision = useRef(0)
+  const setInput = (next: typeof input) => {
+    editRevision.current++
+    setInputState(next)
+  }
+  useLayoutEffect(() => {
+    if (!restoreSelection.current) return
+    restoreSelection.current = false
+    inputRef.current?.focus()
+    inputRef.current?.setSelectionRange(selection.start, selection.end)
+  }, [input, inputRef, selection])
+  const setBuffer = (buffer: string) =>
+    setInput({ buffer, selection: { start: buffer.length, end: buffer.length } })
+  const [open, setOpenState] = useState(false)
+  const setOpen = (next: boolean) => {
+    if (!next) editRevision.current++
+    setOpenState(next)
+  }
   const [highlight, setHighlight] = useState(-1)
   const panelId = useId()
   const current = {
@@ -110,21 +134,21 @@ export function useCompositeSearchBar({
   const chips = buildChips({ t, sourceOptions, tagOptions, current })
   // The list variant's typed token suggests values *starting with* it.
   const tokenContext = { t, sourceOptions, tagOptions, current, prefixOnly: variant === 'list' }
-  const parsed = resolveBuffer(buffer, tokenContext)
+  const completion = resolveSearchInput(buffer, selection, tokenContext)
+  const { range: activeToken, typed, parsed, query: textQuery } = completion
   const inToken = parsed.kind === 'token'
   const tokenDimension = parsed.kind === 'token' ? parsed.dimension : undefined
   const listToken = variant === 'list' && parsed.kind === 'token'
   const candidates: CandidateItem[] = inToken
-    ? buildCandidates(parsed.dimension, parsed.partial, tokenContext)
+    ? completion.candidates
     : buildAllCandidates(buffer, { t, sourceOptions, tagOptions, current })
   const syntaxSuggestions = inToken ? [] : buildSyntaxSuggestions(buffer, t)
   // HList.dc.html B1: a typed tag no tag has yet ends the list with "+ Create".
-  // A `#name` naming no tag stays a text search (see `resolveBuffer`), so the
-  // offer reads the raw buffer; Enter still searches the text, and the offer
+  // A `#name` naming no tag stays a text search, so the
+  // offer reads the active word; Enter still searches the text, and the offer
   // is picked only by arrow keys or a click.
-  const typed = parseBuffer(buffer)
   const createName =
-    variant === 'list' && onCreateTag && typed.kind === 'token' && typed.dimension === 'tag'
+    variant === 'list' && onCreateTag && typed?.kind === 'token' && typed.dimension === 'tag'
       ? typed.partial
       : ''
   const createOffer =
@@ -139,18 +163,19 @@ export function useCompositeSearchBar({
   // Only a single typed dimension stays within one count batch; the flat
   // all-dimension panel would not.
   const candidateCounts = useSearchCounts(
-    expanded && inToken ? buildCandidateCountQueries(candidates, current) : null,
+    expanded && inToken ? buildCandidateCountQueries(candidates, current, textQuery) : null,
     fetchCounts
   )
   // List variant (HList.dc.html B1): the other active filters qualify the
   // typed dimension — the header reads "Tags starting with "re" · from
   // arch-desktop" and each value counts "12 items · 4 from arch-desktop".
   const contextChips = listToken ? chips.filter(chip => chip.dimension !== tokenDimension) : []
-  const context = contextChips
-    .map(chip => `${DIMENSION_CHIP_KEY[chip.dimension]} ${chip.label}`)
-    .join(' · ')
+  const context = [
+    ...contextChips.map(chip => `${DIMENSION_CHIP_KEY[chip.dimension]} ${chip.label}`),
+    ...(textQuery.trim() ? [t('history.composite.matchingText')] : []),
+  ].join(' · ')
   const candidateTotals = useSearchCounts(
-    expanded && contextChips.length > 0 ? buildCandidateTotalQueries(candidates) : null,
+    expanded && inToken && context.length > 0 ? buildCandidateTotalQueries(candidates) : null,
     fetchCounts
   )
   const listHeader =
@@ -241,60 +266,111 @@ export function useCompositeSearchBar({
     onTimeRangeChange,
     onExtensionFilterChange,
   }
-  const resetDimension = (dimension: Dimension) => resetDimensionValue(dimension, handlers)
-
-  const applyCandidate = (c: CandidateItem) => {
-    applyDimensionValue(c.dimension, c.value, handlers, current)
-    resetBuffer()
+  const resetDimension = (dimension: Dimension) => {
+    editRevision.current++
+    resetDimensionValue(dimension, handlers)
   }
 
-  const resetBuffer = () => {
-    setBuffer('')
-    onQueryChange('')
+  const finishToken = () => {
+    const next = activeToken ? replaceSearchRange(buffer, activeToken) : input
+    restoreSelection.current = true
+    setInput(next)
+    onQueryChange(next.buffer.trim())
+    onQuerySubmit(next.buffer.trim())
     setHighlight(-1)
-    setOpen(suggestionActivation === 'focus')
-    inputRef.current?.focus()
+    setOpen(false)
+  }
+  const applyCandidate = (c: CandidateItem) => {
+    applyDimensionValue(c.dimension, c.value, handlers, current)
+    finishToken()
   }
 
   const seedDimension = (dimension: Dimension) => {
-    setBuffer(SYNTAX_KEYS[dimension])
+    const range =
+      activeToken ?? (syntaxSuggestions.length > 0 ? { start: 0, end: buffer.length } : selection)
+    const prefix = range.start > 0 && !/\s/.test(buffer[range.start - 1]) ? ' ' : ''
+    const suffix = range.end < buffer.length && !/\s/.test(buffer[range.end]) ? ' ' : ''
+    const next = replaceSearchRange(buffer, range, `${prefix}${SYNTAX_KEYS[dimension]}${suffix}`)
+    next.selection.start = next.selection.end =
+      range.start + prefix.length + SYNTAX_KEYS[dimension].length
+    restoreSelection.current = true
+    setInput(next)
     setHighlight(0)
-    onQueryChange('')
+    onQueryChange(textQuery)
     inputRef.current?.focus()
     setOpen(true)
   }
 
-  const tryCommit = (dimension: Dimension, partial: string) => {
-    const cands = buildCandidates(dimension, partial, { t, sourceOptions, tagOptions, current })
-    const exact =
-      cands.find(c => c.value.toLowerCase() === partial.toLowerCase()) ??
-      (cands.length === 1 ? cands[0] : undefined)
-    // Typing an already-selected tag keeps it; only clicking its checked row
-    // toggles it off.
-    if (exact?.dimension === 'tag' && exact.isActive) resetBuffer()
-    else if (exact) applyCandidate(exact)
+  const changeText = (next: string, caret?: SearchSelection) => {
+    let nextInput = { buffer: next, selection: caret ?? { start: next.length, end: next.length } }
+    const nextCurrent = { ...current }
+    const commitHandlers = {
+      ...handlers,
+      onTagFilterChange: (tag: string | null) => {
+        nextCurrent.tag = tag
+        onTagFilterChange(tag)
+      },
+    }
+    // Closed, exact filter words can be pasted or typed together. Apply them from left to right.
+    const completed = searchTokenRanges(next).filter(r => r.end < nextInput.selection.start)
+    const removed: typeof completed = []
+    for (const range of completed) {
+      const p = range.parsed
+      if (p.kind !== 'token' || !p.committed || !p.partial) continue
+      const candidate = buildCandidates(p.dimension, p.partial, {
+        ...tokenContext,
+        current: nextCurrent,
+      }).find(c =>
+        [c.value, c.label].some(
+          value => value.toLocaleLowerCase() === p.partial.toLocaleLowerCase()
+        )
+      )
+      if (!candidate) continue
+      if (!(candidate.dimension === 'tag' && candidate.isActive))
+        applyDimensionValue(candidate.dimension, candidate.value, commitHandlers, nextCurrent)
+      removed.push(range)
+    }
+    for (const range of removed.reverse()) {
+      nextInput = {
+        buffer: replaceSearchRange(nextInput.buffer, range).buffer,
+        selection: {
+          start: nextInput.selection.start - (range.end - range.start),
+          end: nextInput.selection.end - (range.end - range.start),
+        },
+      }
+    }
+    if (!nextInput.buffer.trim()) nextInput = { buffer: '', selection: { start: 0, end: 0 } }
+    if (removed.length) restoreSelection.current = true
+    setInput(nextInput)
+    const nextCompletion = resolveSearchInput(nextInput.buffer, nextInput.selection, tokenContext)
+    const isToken = nextCompletion.parsed.kind === 'token'
+    setHighlight(isToken ? 0 : -1)
+    setOpen(suggestionActivation === 'focus' || isToken)
+    onQueryChange(nextCompletion.query)
+    if (removed.length) onQuerySubmit(nextCompletion.query)
   }
 
-  /** The field's text changed to `next`. */
-  const changeText = (next: string) => {
-    const p = resolveBuffer(next, tokenContext)
-    setBuffer(next)
-    setHighlight(p.kind === 'token' ? 0 : -1)
-    setOpen(suggestionActivation === 'focus' || p.kind === 'token')
-    if (p.kind === 'query') {
-      onQueryChange(next)
-    } else {
-      onQueryChange('')
-      if (p.committed) tryCommit(p.dimension, p.partial)
-    }
+  const changeSelection = (start: number, end: number) => {
+    if (selection.start === start && selection.end === end) return
+    setInput({ buffer, selection: { start, end } })
+    const nextCompletion = resolveSearchInput(buffer, { start, end }, tokenContext)
+    const isToken = nextCompletion.parsed.kind === 'token'
+    setHighlight(isToken ? 0 : -1)
+    setOpen(Boolean(nextCompletion.typed))
+    onQueryChange(nextCompletion.query)
   }
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => changeText(e.target.value)
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) =>
+    changeText(e.target.value, {
+      start: e.target.selectionStart ?? e.target.value.length,
+      end: e.target.selectionEnd ?? e.target.value.length,
+    })
 
   const createTag = async (name: string) => {
+    const revision = editRevision.current
     const tagId = await onCreateTag?.(name)
-    if (!tagId) return
+    if (!tagId || revision !== editRevision.current) return
     applyDimensionValue('tag', tagId, handlers, current)
-    resetBuffer()
+    finishToken()
   }
 
   const selectOption = (index: number) => {
@@ -316,6 +392,7 @@ export function useCompositeSearchBar({
     resetDimension('extension')
     setBuffer('')
     onQueryChange('')
+    onQuerySubmit('')
     setHighlight(-1)
     if (refocus) inputRef.current?.focus()
   }
@@ -327,8 +404,11 @@ export function useCompositeSearchBar({
   const handleKeyDown = (e: SearchKeyEvent) => {
     if (e.key === 'Escape') {
       e.preventDefault()
-      if (open) setOpen(false)
-      else if (hasContent) clearAll()
+      if (open) {
+        setOpen(false)
+        setHighlight(-1)
+        onQueryChange(buffer)
+      } else if (hasContent) clearAll()
       else inputRef.current?.blur()
       return
     }
@@ -372,6 +452,11 @@ export function useCompositeSearchBar({
       return
     }
     if (e.key === 'Enter') {
+      if (!open && suggestionActivation === 'focus') {
+        e.preventDefault()
+        onQuerySubmit(buffer)
+        return
+      }
       if (suggestionActivation === 'intentional' && !expanded) {
         unhandled(e)
         return
@@ -406,6 +491,18 @@ export function useCompositeSearchBar({
     clampedHighlight,
     expanded,
     hasContent,
+    feedback:
+      open && typed?.kind === 'token'
+        ? t(
+            parsed.kind !== 'token'
+              ? 'history.composite.literalFilter'
+              : completion.candidates.length === 0
+                ? 'history.composite.noFilterOptions'
+                : 'history.composite.chooseFilter',
+            { dimension: t(DIMENSION_LABEL_KEYS[typed.dimension]) }
+          )
+        : null,
+    changeSelection,
     changeText,
     handleInputChange,
     handleKeyDown,

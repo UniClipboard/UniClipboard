@@ -351,7 +351,11 @@ export interface TokenSearchFieldProps {
   /** Display-only shortcut hint such as `⌘F`. */
   shortcutHint?: string
   value: string
-  onValueChange: (value: string) => void
+  onValueChange: (value: string, selection?: { start: number; end: number }) => void
+  /** Native input selection; business logic owns the active completion range. */
+  onSelectionChange?: (start: number, end: number) => void
+  /** Immediate completion or literal-search feedback. */
+  feedback?: string | null
   tokens: SearchFieldToken[]
   suggestions: SearchSuggestion[]
   suggestionsOpen: boolean

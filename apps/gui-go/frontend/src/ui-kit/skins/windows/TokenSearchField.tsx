@@ -198,6 +198,8 @@ export function TokenSearchField({
   shortcutHint,
   value,
   onValueChange,
+  onSelectionChange,
+  feedback,
   tokens: conditions,
   suggestions,
   suggestionsOpen,
@@ -213,7 +215,7 @@ export function TokenSearchField({
   const styles = useStyles()
   const listId = useId()
   const optionId = (index: number) => `${listId}-${index}`
-  const open = suggestionsOpen && suggestions.length > 0
+  const open = suggestionsOpen && (suggestions.length > 0 || Boolean(feedback))
   const empty = !value && conditions.length === 0
   return (
     <div className={styles.root} data-search-field="">
@@ -243,11 +245,24 @@ export function TokenSearchField({
           aria-expanded={open}
           aria-controls={listId}
           aria-autocomplete="list"
+          aria-describedby={open && feedback ? `${listId}-feedback` : undefined}
           aria-activedescendant={open && highlighted >= 0 ? optionId(highlighted) : undefined}
           placeholder={conditions.length > 0 ? undefined : placeholder}
           value={value}
-          onChange={event => onValueChange(event.target.value)}
+          onChange={event =>
+            onValueChange(event.target.value, {
+              start: event.target.selectionStart ?? event.target.value.length,
+              end: event.target.selectionEnd ?? event.target.value.length,
+            })
+          }
+          onSelect={event =>
+            onSelectionChange?.(
+              event.currentTarget.selectionStart ?? 0,
+              event.currentTarget.selectionEnd ?? 0
+            )
+          }
           onKeyDown={event => {
+            if (event.nativeEvent.isComposing || event.keyCode === 229) return
             onKeyDown?.({
               key: event.key,
               shiftKey: event.shiftKey,
@@ -283,44 +298,51 @@ export function TokenSearchField({
           <SearchRegular fontSize={16} />
         </span>
       </div>
-      <div id={listId} role="listbox" aria-label={label} className={styles.flyout} hidden={!open}>
-        {suggestions.map((suggestion, index) => (
-          <div key={suggestion.id} role="presentation">
-            {suggestion.group ? (
-              <div className={styles.group} role="presentation">
-                {suggestion.group}
-              </div>
-            ) : null}
-            <div
-              id={optionId(index)}
-              role="option"
-              aria-selected={index === highlighted}
-              aria-disabled={suggestion.muted || undefined}
-              className={mergeClasses(
-                styles.option,
-                index === highlighted && styles.highlighted,
-                suggestion.muted && styles.muted,
-                suggestion.selected && styles.selected
-              )}
-              // The field keeps focus; the pointer only chooses.
-              onMouseDown={event => event.preventDefault()}
-              onMouseEnter={() => onHighlightedChange(index)}
-              onClick={() => onSelectSuggestion(index)}
-            >
-              {suggestion.create ? <AddRegular aria-hidden="true" fontSize={16} /> : null}
-              {suggestion.kind && !suggestion.create ? (
-                <span className={styles.optionChip} style={tintStyle(suggestion.kind)}>
-                  {suggestion.label}
-                </span>
-              ) : (
-                <span>{suggestion.label}</span>
-              )}
-              {suggestion.detail ? (
-                <span className={styles.detail}>{suggestion.detail}</span>
-              ) : null}
-            </div>
+      <div className={styles.flyout} hidden={!open}>
+        {feedback && (
+          <div id={`${listId}-feedback`} role="status" className={styles.footer}>
+            {feedback}
           </div>
-        ))}
+        )}
+        <div id={listId} role="listbox" aria-label={label}>
+          {suggestions.map((suggestion, index) => (
+            <div key={suggestion.id} role="presentation">
+              {suggestion.group ? (
+                <div className={styles.group} role="presentation">
+                  {suggestion.group}
+                </div>
+              ) : null}
+              <div
+                id={optionId(index)}
+                role="option"
+                aria-selected={index === highlighted}
+                aria-disabled={suggestion.muted || undefined}
+                className={mergeClasses(
+                  styles.option,
+                  index === highlighted && styles.highlighted,
+                  suggestion.muted && styles.muted,
+                  suggestion.selected && styles.selected
+                )}
+                // The field keeps focus; the pointer only chooses.
+                onMouseDown={event => event.preventDefault()}
+                onMouseEnter={() => onHighlightedChange(index)}
+                onClick={() => onSelectSuggestion(index)}
+              >
+                {suggestion.create ? <AddRegular aria-hidden="true" fontSize={16} /> : null}
+                {suggestion.kind && !suggestion.create ? (
+                  <span className={styles.optionChip} style={tintStyle(suggestion.kind)}>
+                    {suggestion.label}
+                  </span>
+                ) : (
+                  <span>{suggestion.label}</span>
+                )}
+                {suggestion.detail ? (
+                  <span className={styles.detail}>{suggestion.detail}</span>
+                ) : null}
+              </div>
+            </div>
+          ))}
+        </div>
         {suggestionsFooter ? (
           <div className={styles.footer} aria-hidden="true">
             {suggestionsFooter}

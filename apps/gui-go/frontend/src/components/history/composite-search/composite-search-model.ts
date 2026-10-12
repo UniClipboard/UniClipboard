@@ -151,7 +151,7 @@ export function applyDimensionValue(
  * editing it instead of just clearing it.
  */
 export function buildTokenText(dimension: Dimension, value: string): string {
-  return `${SYNTAX_KEYS[dimension]}${value}`
+  return `${SYNTAX_KEYS[dimension]}${/[\s"\\]/.test(value) ? JSON.stringify(value) : value}`
 }
 
 /** Reset a dimension to its default (no filter). */
@@ -276,16 +276,17 @@ function snapshotToSearchParams(snapshot: FilterSnapshot, query: string): Search
 
 /**
  * One count query per candidate: the current filters with that candidate
- * applied. Picking a candidate clears the text query, so the counts do too.
+ * applied, including the text that remains after completing the filter word.
  * Capped at the daemon's batch size; later candidates get no count.
  */
 export function buildCandidateCountQueries(
   candidates: CandidateItem[],
-  current: FilterSnapshot
+  current: FilterSnapshot,
+  query = ''
 ): SearchParams[] {
   return candidates
     .slice(0, MAX_SEARCH_COUNT_BATCH)
-    .map(c => snapshotToSearchParams(withDimension(current, c.dimension, c.value), ''))
+    .map(c => snapshotToSearchParams(withDimension(current, c.dimension, c.value), query))
 }
 
 /** One count query per candidate on its own, ignoring the other filters: the

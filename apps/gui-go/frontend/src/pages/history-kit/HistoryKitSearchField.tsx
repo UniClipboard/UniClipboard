@@ -37,6 +37,8 @@ export function HistoryKitSearchField({
       shortcutHint={formatShortcutHint('mod+f')}
       value={search.buffer}
       onValueChange={search.changeText}
+      onSelectionChange={search.changeSelection}
+      feedback={search.feedback}
       tokens={search.chips.map(chip => ({
         id: chip.dimension,
         field: t(DIMENSION_LABEL_KEYS[chip.dimension]),

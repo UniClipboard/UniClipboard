@@ -37,6 +37,7 @@ interface SuggestionPanelProps {
    * keyboard footer. */
   variant?: 'compact' | 'list'
   footer?: string
+  feedback?: string | null
 }
 
 /**
@@ -55,6 +56,7 @@ function SuggestionPanel({
   onHighlight,
   variant = 'compact',
   footer,
+  feedback,
 }: SuggestionPanelProps) {
   // Keep the keyboard-highlighted row scrolled into view as arrow keys move it
   // past the panel's visible bounds.
@@ -66,6 +68,15 @@ function SuggestionPanel({
   if (variant === 'list') {
     return (
       <div className="absolute inset-x-0 top-full z-50 mt-1.5 overflow-hidden rounded-xl border border-border bg-popover text-popover-foreground shadow-[0_20px_48px_rgb(14_15_18/0.2)]">
+        {feedback && (
+          <div
+            id={`${panelId}-feedback`}
+            role="status"
+            className="px-4 py-2 text-ui-caption text-muted-foreground"
+          >
+            {feedback}
+          </div>
+        )}
         <div
           id={panelId}
           role="listbox"
@@ -142,6 +153,15 @@ function SuggestionPanel({
 
   return (
     <div className="absolute inset-x-0 top-full z-50 mt-1 overflow-hidden rounded-2xl border border-border/40 bg-popover text-popover-foreground shadow-lg">
+      {feedback && (
+        <div
+          id={`${panelId}-feedback`}
+          role="status"
+          className="px-3 py-2 text-ui-caption text-muted-foreground"
+        >
+          {feedback}
+        </div>
+      )}
       <div id={panelId} role="listbox" aria-label={title} className="max-h-72 overflow-y-auto p-1">
         {options.map((opt, i) => {
           const Icon = opt.icon

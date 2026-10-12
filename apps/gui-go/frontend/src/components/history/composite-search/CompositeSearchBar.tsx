@@ -47,6 +47,8 @@ export function CompositeSearchBarView({
         openFiltersLabel={state.t('history.composite.openFilters')}
         showFilterPanelButton={props.showFilterPanelButton === true}
         onInputChange={state.handleInputChange}
+        onSelectionChange={state.changeSelection}
+        feedback={state.feedback}
         onInputKeyDown={state.handleKeyDown}
         openOnFocus={state.openOnFocus}
         onOpenChange={state.setOpen}

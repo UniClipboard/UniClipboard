@@ -9,6 +9,7 @@ import type { ClipboardEntry, DisplayClipboardItem } from '@/lib/clipboard-entry
 import { clipboardEntryToDisplayItem, searchResultToDisplayItem } from '@/lib/clipboard-transform'
 import { daemonWs } from '@/lib/daemon-ws'
 import { createLogger } from '@/lib/logger'
+import type { SearchQueryFailure } from '@/lib/search-query-failure'
 import { isBuiltinTagId } from '@/lib/search-tags'
 import {
   canPatchLive,
@@ -54,9 +55,10 @@ export interface UseLiveSearchResult {
   state: 'ready' | 'degraded'
   /**
    * Why the last query failed, `null` when it succeeded: `unavailable` while the search index is
-   * rebuilding or not ready, `failed` for any other error. A failed query is not an empty result.
+   * rebuilding or not ready, `invalid` for rejected syntax, `failed` for other errors.
+   * A failed query is not an empty result.
    */
-  failure: 'unavailable' | 'failed' | null
+  failure: SearchQueryFailure | null
   /** Grow the window by one page (infinite scroll). */
   growWindow: () => void
   /** Re-issue the current query (freshness on demand; e.g. on panel re-open). */
@@ -184,7 +186,7 @@ export function useLiveSearch(options: UseLiveSearchOptions): UseLiveSearchResul
   const [hasMore, setHasMore] = useState(() =>
     canUseInitialSnapshot ? initialSnapshot.hasMore : false
   )
-  const [failure, setFailure] = useState<'unavailable' | 'failed' | null>(null)
+  const [failure, setFailure] = useState<SearchQueryFailure | null>(null)
   const [state, setState] = useState<'ready' | 'degraded'>(() =>
     canUseInitialSnapshot ? initialSnapshot.state : 'ready'
   )
@@ -216,6 +218,7 @@ export function useLiveSearch(options: UseLiveSearchOptions): UseLiveSearchResul
     const controller = new AbortController()
     abortRef.current = controller
     setIsLoading(true)
+    setFailure(null)
 
     const params = liveModelToSearchParams({
       query,
@@ -248,9 +251,15 @@ export function useLiveSearch(options: UseLiveSearchOptions): UseLiveSearchResul
         // silently swallowing it as "not ready".
         const indexUnavailable =
           err instanceof DaemonApiError && err.code === DaemonErrorCode.SERVICE_UNAVAILABLE
+        const invalidQuery =
+          err instanceof DaemonApiError &&
+          typeof err.details === 'object' &&
+          err.details !== null &&
+          'code' in err.details &&
+          err.details.code === 'invalid_query'
         if (indexUnavailable) {
           log.warn({ err }, 'Live search unavailable: search index rebuilding or not ready')
-        } else if (!lockedRace) {
+        } else if (!lockedRace && !invalidQuery) {
           log.error({ err }, 'Live search query failed')
         }
         setItems([])
@@ -258,7 +267,9 @@ export function useLiveSearch(options: UseLiveSearchOptions): UseLiveSearchResul
         setTotal(lockedRace ? 0 : null)
         setHasMore(false)
         setState('ready')
-        setFailure(lockedRace ? null : indexUnavailable ? 'unavailable' : 'failed')
+        setFailure(
+          lockedRace ? null : invalidQuery ? 'invalid' : indexUnavailable ? 'unavailable' : 'failed'
+        )
         setIsLoading(false)
       })
 

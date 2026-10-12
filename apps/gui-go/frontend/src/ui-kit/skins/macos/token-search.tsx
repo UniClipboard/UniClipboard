@@ -1,7 +1,8 @@
 import { useId, type KeyboardEvent } from 'react'
 import type { TokenSearchFieldProps } from '@/ui-kit/contract'
-import { Icon } from './icons'
-import { isImeKey } from './ime'
+import { Icon } from '@/ui-kit/skins/macos/icons'
+import { isImeKey } from '@/ui-kit/skins/macos/ime'
+import { TokenSearchSuggestions } from '@/ui-kit/skins/macos/token-search-suggestions'
 
 /**
  * Toolbar search field with search tokens (design MB1/MB2): conditions sit inside the glass capsule
@@ -15,6 +16,8 @@ export function TokenSearchField({
   shortcutHint,
   value,
   onValueChange,
+  onSelectionChange,
+  feedback,
   tokens,
   suggestions,
   suggestionsOpen,
@@ -29,7 +32,7 @@ export function TokenSearchField({
 }: TokenSearchFieldProps) {
   const listId = useId()
   const optionId = (index: number) => `${listId}-option-${index}`
-  const open = suggestionsOpen && suggestions.length > 0
+  const open = suggestionsOpen && (suggestions.length > 0 || Boolean(feedback))
   const active = value.length > 0 || tokens.length > 0
   const keyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (isImeKey(event)) return
@@ -61,10 +64,22 @@ export function TokenSearchField({
           aria-expanded={open}
           aria-controls={listId}
           aria-autocomplete="list"
+          aria-describedby={open && feedback ? `${listId}-feedback` : undefined}
           aria-activedescendant={open && highlighted >= 0 ? optionId(highlighted) : undefined}
           placeholder={tokens.length > 0 ? undefined : placeholder}
           value={value}
-          onChange={event => onValueChange(event.target.value)}
+          onChange={event =>
+            onValueChange(event.target.value, {
+              start: event.target.selectionStart ?? event.target.value.length,
+              end: event.target.selectionEnd ?? event.target.value.length,
+            })
+          }
+          onSelect={event =>
+            onSelectionChange?.(
+              event.currentTarget.selectionStart ?? 0,
+              event.currentTarget.selectionEnd ?? 0
+            )
+          }
           onKeyDown={keyDown}
           onFocus={() => onSuggestionsOpenChange(true)}
           onBlur={() => onSuggestionsOpenChange(false)}
@@ -83,47 +98,18 @@ export function TokenSearchField({
           </button>
         )}
       </div>
-      <div
-        id={listId}
-        role="listbox"
-        aria-label={label}
-        className="mac-menu mac-suggestions"
-        hidden={!open}
-      >
-        {suggestions.map((suggestion, index) => (
-          <div key={suggestion.id} role="presentation">
-            {suggestion.group && <div className="mac-suggestion-group">{suggestion.group}</div>}
-            <div
-              id={optionId(index)}
-              role="option"
-              aria-selected={index === highlighted}
-              className="mac-suggestion"
-              data-muted={suggestion.muted ? '' : undefined}
-              data-create={suggestion.create ? '' : undefined}
-              // Keep focus in the field so the menu stays open.
-              onMouseDown={event => event.preventDefault()}
-              onMouseEnter={() => onHighlightedChange(index)}
-              onClick={() => onSelectSuggestion(index)}
-            >
-              {suggestion.create ? (
-                <span className="mac-suggestion-create">
-                  <Icon name="plus" size={12} />
-                  {suggestion.label}
-                </span>
-              ) : (
-                <span className="mac-token" data-kind={suggestion.kind}>
-                  {suggestion.label}
-                </span>
-              )}
-              {suggestion.detail && (
-                <span className="mac-suggestion-detail">{suggestion.detail}</span>
-              )}
-              {suggestion.selected && <Icon name="check" size={12} strokeWidth={2.4} />}
-            </div>
-          </div>
-        ))}
-        {suggestionsFooter && <div className="mac-suggestions-footer">{suggestionsFooter}</div>}
-      </div>
+      <TokenSearchSuggestions
+        label={label}
+        suggestions={suggestions}
+        highlighted={highlighted}
+        onHighlightedChange={onHighlightedChange}
+        onSelectSuggestion={onSelectSuggestion}
+        feedback={feedback}
+        suggestionsFooter={suggestionsFooter}
+        listId={listId}
+        open={open}
+        optionId={optionId}
+      />
     </div>
   )
 }

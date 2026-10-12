@@ -23,6 +23,7 @@ import {
   HISTORY_PREVIEW_ENTRY_TRANSITION,
 } from '@/components/history/history-entry-animation'
 import HistoryGrid from '@/components/history/HistoryGrid'
+import { HistoryQueryFailed } from '@/components/history/HistoryQueryFailed'
 import { DETAIL_COLUMN_MIN } from '@/components/history/layout/history-layout'
 import { useHistoryListColumn } from '@/components/history/layout/useHistoryListColumn'
 import HistoryBulkBar from '@/components/history/list/HistoryBulkBar'
@@ -70,7 +71,7 @@ const HistoryPage: React.FC = () => {
   const compositeSearch = useCompositeSearchBar(searchProps)
   const listColumn = useHistoryListColumn()
   const relaxations = useZeroResultRelaxations({
-    active: c.isSearchActive && !c.searchLoading && c.items.length === 0,
+    active: c.isSearchActive && !c.searchLoading && !c.queryFailure && c.items.length === 0,
     chips: compositeSearch.chips,
     current: compositeSearch.current,
     query: c.filter.submittedQuery.trim(),
@@ -215,50 +216,54 @@ const HistoryPage: React.FC = () => {
                     />
                   </div>
                 </div>
-                <HistoryGrid
-                  items={c.items}
-                  sourceDeviceNames={c.sourceDeviceNames}
-                  tagNames={c.historyTags.available ? c.tagNames : undefined}
-                  seenIds={c.seenIds}
-                  selectedId={c.selectedId}
-                  listRef={c.listRef}
-                  restoreStateFrom={c.scrollState}
-                  isSearchActive={c.isSearchActive}
-                  submittedQuery={c.filter.submittedQuery}
-                  searchLoading={c.searchLoading}
-                  copySuccessId={c.copySuccessId}
-                  deletingIds={c.deletingIds}
-                  checkedIds={c.checkedIds}
-                  onToggleChecked={c.toggleChecked}
-                  hasMore={c.hasMore}
-                  onLoadMore={c.handleLoadMore}
-                  onCopy={c.handleCopy}
-                  onFilePathsAction={c.handleCopyFilePaths}
-                  onDelete={c.requestDelete}
-                  onToggleFavorite={c.handleToggleFavorite}
-                  onCardClick={c.handleCardClick}
-                  onHoverChange={c.handleHoverChange}
-                  onScrollStateRestored={() => c.setScrollState(null)}
-                  emptyStateActions={
-                    relaxations && (
-                      <ZeroResultRelaxations
-                        relaxations={relaxations}
-                        onRemove={compositeSearch.resetDimension}
-                        variant={searchProps.variant}
-                      />
-                    )
-                  }
-                  emptyStateText={
-                    relaxations && searchProps.variant === 'list'
-                      ? {
-                          title: t('history.composite.relaxTitleAll', {
-                            count: compositeSearch.chips.length,
-                          }),
-                          subtitle: t('history.composite.relaxPrompt'),
-                        }
-                      : undefined
-                  }
-                />
+                {c.queryFailure ? (
+                  <HistoryQueryFailed reason={c.queryFailure} onRetry={c.retryQuery} />
+                ) : (
+                  <HistoryGrid
+                    items={c.items}
+                    sourceDeviceNames={c.sourceDeviceNames}
+                    tagNames={c.historyTags.available ? c.tagNames : undefined}
+                    seenIds={c.seenIds}
+                    selectedId={c.selectedId}
+                    listRef={c.listRef}
+                    restoreStateFrom={c.scrollState}
+                    isSearchActive={c.isSearchActive}
+                    submittedQuery={c.filter.submittedQuery}
+                    searchLoading={c.searchLoading}
+                    copySuccessId={c.copySuccessId}
+                    deletingIds={c.deletingIds}
+                    checkedIds={c.checkedIds}
+                    onToggleChecked={c.toggleChecked}
+                    hasMore={c.hasMore}
+                    onLoadMore={c.handleLoadMore}
+                    onCopy={c.handleCopy}
+                    onFilePathsAction={c.handleCopyFilePaths}
+                    onDelete={c.requestDelete}
+                    onToggleFavorite={c.handleToggleFavorite}
+                    onCardClick={c.handleCardClick}
+                    onHoverChange={c.handleHoverChange}
+                    onScrollStateRestored={() => c.setScrollState(null)}
+                    emptyStateActions={
+                      relaxations && (
+                        <ZeroResultRelaxations
+                          relaxations={relaxations}
+                          onRemove={compositeSearch.resetDimension}
+                          variant={searchProps.variant}
+                        />
+                      )
+                    }
+                    emptyStateText={
+                      relaxations && searchProps.variant === 'list'
+                        ? {
+                            title: t('history.composite.relaxTitleAll', {
+                              count: compositeSearch.chips.length,
+                            }),
+                            subtitle: t('history.composite.relaxPrompt'),
+                          }
+                        : undefined
+                    }
+                  />
+                )}
                 {c.checkedItems.length > 0 && (
                   <HistoryBulkBar
                     items={c.checkedItems}

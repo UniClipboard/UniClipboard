@@ -310,9 +310,6 @@ Set-Location '{app}'
 
         launcher = sandbox_env(profile, f"$env:UC_GUI_GO_E2E_BROWSER_ARGS='--remote-debugging-port={debug_port}'; "
                                         f"$env:UC_GUI_GO_E2E_PHASE='external'; "
-                                        # WebView2 keeps localStorage in a per-exe folder under %APPDATA% unless told
-                                        # otherwise; inside the sandbox it is fresh for every run and removed with it.
-                                        f"$env:WEBVIEW2_USER_DATA_FOLDER='{run_dir}\\webview2'; "
                                         f"$env:UC_GUI_GO_EXIT_MODE='full'; $env:UC_GUI_GO_E2E_VISIBLE='1'; "
                                         f"$env:UC_GUI_GO_EVIDENCE='{run_dir}\\native.jsonl'")
         if inside:
@@ -373,7 +370,10 @@ Get-Process uniclipd -ErrorAction SilentlyContinue | Where-Object {{ $_.Path -eq
 if ('{machine.kind}' -eq 'ssh') {{ schtasks /Delete /TN '{task}' /F 2>&1 | Out-Null }}
 exit 0
 """, check=False)
-        record['webviewDataInSandbox'] = machine.ps(f"Test-Path '{run_dir}\\webview2'", check=False).strip()
+        # A portable profile keeps its WebView2 data in its own data root (webview_data.go), so it is inside the sandbox.
+        record['webviewDataFolder'] = machine.ps(
+            f"(Get-ChildItem '{app}\\data' -Recurse -Directory -Filter webview2 -ErrorAction SilentlyContinue | Select -First 1).FullName",
+            check=False).strip()
         # The app's own output and evidence come back before the sandbox is removed.
         record['appOutput'] = machine.ps(f"""
 foreach ($f in 'gui.out','gui.err','native.jsonl') {{ '--- ' + $f; Get-Content ('{run_dir}\\' + $f) -Tail 200 -ErrorAction SilentlyContinue }}

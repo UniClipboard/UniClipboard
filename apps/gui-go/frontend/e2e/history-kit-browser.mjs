@@ -228,12 +228,24 @@ async function mainWindowPage() {
     await new Promise(resolve => setTimeout(resolve, 500))
   }
 }
+// A fresh native profile must not see layout another launch stored: the host gives a named or portable profile its
+// own WebView2 data folder (webview_data.go). Before that, every launch of the exe shared %APPDATA%\<exe name>.
+const storedLayoutKeys = ['uc.history.kit.view', 'uc.history.kit.gridSize', 'uc.library.hidden.v1']
+async function assertNoStoredLayout() {
+  const found = await page.evaluate(
+    keys => keys.filter(key => localStorage.getItem(key) !== null),
+    storedLayoutKeys
+  )
+  results.storedLayoutAtStart = found
+  assert.deepEqual(found, [], 'a fresh profile starts with no stored History layout')
+}
 async function newPage(options = {}) {
   if (cdp) {
     page ??= await mainWindowPage()
     if (!results.nativeUrl) {
       results.nativeUrl = page.url()
       page.on('pageerror', error => results.consoleErrors.push(error.message))
+      await assertNoStoredLayout()
     }
     await page.emulateMedia({
       colorScheme: options.colorScheme ?? 'light',
@@ -762,8 +774,7 @@ async function seededRun() {
     const tagItems = await flyout.getByRole('menuitem').allTextContents()
     await shot('compact-pane-flyout')
     await page.keyboard.press('Escape')
-    // The Pinned tooltip opens above its button and covers All items until the pointer leaves.
-    await page.mouse.move(640, 600)
+    // No pointer moves: rail tooltips open beside the rail, so the one under the pointer covers no other button.
     await rail.getByRole('button', { name: 'All items' }).click()
     await row('Paging entry').waitFor()
     await page.getByRole('button', { name: 'Show sidebar' }).click()
@@ -873,7 +884,10 @@ async function emptyRun() {
         await page.emulateMedia({ colorScheme, reducedMotion: 'reduce' })
         // No reload: the app was just launched for this run, and in the Windows VM navigating a fresh profile's
         // document lost the page target. The dark pass switches the emulated scheme on the same document.
-        if (first) await unlockIfLocked()
+        if (first) {
+          await unlockIfLocked()
+          await assertNoStoredLayout()
+        }
       } else {
         if (page) await closePage()
         const context = await browser.newContext({

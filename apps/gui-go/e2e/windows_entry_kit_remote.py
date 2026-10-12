@@ -66,7 +66,8 @@ async function shot(name) {
 async function main() {
   await page.waitForFunction(async () => {
     const state = await window.__ucEntrySnapshot()
-    return state.main && state.unlocked === true
+    // The History page mounts its skin root lazily after the main layout, so wait for it.
+    return state.main && state.unlocked === true && state.skin === 'windows'
   },
     null, { timeout: 120000 })
   const state = await snapshot()

@@ -1215,9 +1215,9 @@
 }
 
 .mac-alert {
-  /* content-box, as in the design: the padding adds to the stated width. */
-  box-sizing: content-box;
-  width: 280px;
+  box-sizing: border-box;
+  width: 19.75rem;
+  max-width: calc(100% - 2rem);
   padding: 20px 18px 16px;
   border-radius: 26px;
   background: var(--glass-tinted);
@@ -1285,7 +1285,7 @@
 }
 
 .mac-alert-actions .mac-btn {
-  width: 244px;
+  width: 100%;
 }
 
 .mac-tooltip {

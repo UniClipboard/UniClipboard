@@ -428,6 +428,93 @@ try {
   // to hide what is under it: its own background must be nearly opaque. The host parameter is
   // simulated here; this checks the skin's CSS for that branch and proves nothing native.
   if (skin === 'macos') {
+    await check('alerts share aligned controls and fit narrow windows in both themes', async () => {
+      const measurements = []
+      for (const scheme of ['light', 'dark']) {
+        for (const width of [900, 390, 280]) {
+          await page.setViewportSize({ width, height: 600 })
+          await page.goto(`${base}/?scheme=${scheme}`)
+          const themedBoard = page.getByTestId(`board-${scheme}`)
+          await themedBoard.waitFor()
+          for (const typed of [false, true]) {
+            const trigger = typed
+              ? themedBoard.getByRole('button', {
+                  name: 'Reset and start over',
+                })
+              : themedBoard
+                  .getByRole('toolbar', { name: 'Item commands' })
+                  .getByRole('button', { name: 'Delete' })
+            await trigger.click()
+            const dialog = page.getByRole('alertdialog')
+            await dialog.waitFor()
+            await page.waitForFunction(
+              (el) => Math.abs(el.getBoundingClientRect().width - el.offsetWidth) < 0.5,
+              await dialog.elementHandle(),
+            )
+            const metrics = await dialog.evaluate((el) => {
+              const rect = el.getBoundingClientRect()
+              const style = getComputedStyle(el)
+              const left = rect.left + parseFloat(style.paddingLeft)
+              const right = rect.right - parseFloat(style.paddingRight)
+              const controls = [...el.querySelectorAll('button, input')].map((control) => {
+                const box = control.getBoundingClientRect()
+                return { left: box.left, right: box.right }
+              })
+              return {
+                left,
+                right,
+                controls,
+                dialogLeft: rect.left,
+                dialogRight: rect.right,
+                scrollWidth: el.scrollWidth,
+                clientWidth: el.clientWidth,
+              }
+            })
+            measurements.push({ scheme, width, typed, ...metrics })
+            await page.screenshot({
+              path: path.join(
+                output,
+                `macos-alert-${scheme}-${width}-${typed ? 'typed' : 'plain'}.png`,
+              ),
+            })
+            await writeFile(
+              path.join(output, 'macos-alert-layout.json'),
+              JSON.stringify(measurements, null, 2),
+            )
+            assert.ok(
+              metrics.dialogLeft >= 0 && metrics.dialogRight <= width,
+              'alert fits the window',
+            )
+            assert.ok(
+              metrics.scrollWidth <= metrics.clientWidth + 1,
+              'alert has no horizontal overflow',
+            )
+            for (const control of metrics.controls) {
+              assert.ok(
+                Math.abs(control.left - metrics.left) <= 1,
+                'control aligns with the left inset',
+              )
+              assert.ok(
+                Math.abs(control.right - metrics.right) <= 1,
+                'control aligns with the right inset',
+              )
+            }
+            if (typed) {
+              const confirm = dialog.getByRole('button', {
+                name: 'Reset',
+                exact: true,
+              })
+              assert.equal(await confirm.isDisabled(), true)
+              await dialog.getByLabel('Type RESET to confirm').fill('RESET')
+              assert.equal(await confirm.isDisabled(), false)
+            }
+            await dialog.getByRole('button', { name: 'Cancel', exact: true }).click()
+            await dialog.waitFor({ state: 'hidden' })
+          }
+        }
+      }
+      await page.setViewportSize({ width: 1720, height: 1200 })
+    })
     await check(
       'native-mode popups are opaque enough to read (host parameter simulated)',
       async () => {

@@ -278,6 +278,8 @@ export interface SearchFieldToken {
 }
 
 export interface SearchSuggestion {
+  /** Leading color dot when the suggestion represents a tag. */
+  swatch?: TagColor
   id: string
   label: string
   /** Heading shown above this item (the first item of a group). */

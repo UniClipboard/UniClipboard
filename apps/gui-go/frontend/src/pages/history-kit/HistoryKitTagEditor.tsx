@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { use, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { HistoryTagColorDto, HistoryTagDto } from '@/api/daemon/history-tags'
 import {
@@ -6,8 +6,10 @@ import {
   tagSuggestions,
   type TagSuggestion,
 } from '@/components/history/detail/history-tag-suggestions'
+import { TagColorsContext } from '@/components/history/tags/tag-colors-context'
 import { DEFAULT_TAG_COLOR, TAG_COLORS } from '@/lib/tag-colors'
 import { ComboField, type SearchFieldKey } from '@/ui-kit'
+import { kitTagColor } from './history-kit-model'
 
 /**
  * The tag field of an item or of the selection (design MC1): type to filter this device's tags or
@@ -27,6 +29,7 @@ export function HistoryKitTagEditor({
   onClose: () => void
 }) {
   const { t } = useTranslation()
+  const colors = use(TagColorsContext)
   const [query, setQuery] = useState('')
   const [highlight, setHighlight] = useState(0)
   const [color, setColor] = useState<HistoryTagColorDto>(DEFAULT_TAG_COLOR)
@@ -81,6 +84,7 @@ export function HistoryKitTagEditor({
             }
           : {
               id: suggestion.tag.tagId,
+              swatch: kitTagColor(colors[suggestion.tag.tagId]),
               label: `#${suggestion.tag.name ?? ''}`,
               detail: t('history.subtitle', { count: suggestion.tag.entryCount }),
               group:

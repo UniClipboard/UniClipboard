@@ -2643,39 +2643,109 @@
 }
 
 .mac-combo-menu {
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 0;
-  width: 300px;
-  z-index: 10;
+  width: 18.75rem;
+  min-width: 0;
+  max-width: var(--available-width);
+  max-height: var(--available-height);
+  overflow-y: auto;
+  padding: 0.375rem;
+  border-radius: 0.875rem;
 }
 
-.mac-combo-menu[hidden] {
-  display: none;
+.mac-combo-menu [role='listbox'] {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.mac-combo-option {
+  border-radius: 0.5rem;
+}
+
+.mac-combo-option[data-highlighted] {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.mac-combo-menu .mac-suggestion {
+  min-height: 1.875rem;
+  padding: 0 0.625rem;
+  background: transparent;
+  color: inherit;
+}
+
+.mac-combo-menu .mac-suggestion-label,
+.mac-combo-menu .mac-suggestion-create {
+  font-weight: 400;
+}
+
+.mac-combo-menu .mac-suggestion-detail {
+  flex-grow: 0;
+  margin-left: auto;
+  font-size: 0.6875rem;
+}
+
+.mac-combo-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.mac-combo-option[data-create] {
+  padding: 0.5rem 0 0.625rem;
+  border-radius: 0.5625rem;
+}
+
+.mac-combo-option[data-create] .mac-suggestion {
+  min-height: 0;
+}
+
+.mac-combo-return {
+  margin-left: auto;
 }
 
 .mac-combo-colors {
-  padding: 2px 10px 8px 30px;
+  padding: 0.5rem 0.625rem 0;
   display: flex;
-  gap: 8px;
+  align-items: center;
+  gap: 0.4375rem;
+  font-size: 0.6875rem;
+}
+
+.mac-combo-colors > span {
+  margin-right: 0.1875rem;
 }
 
 .mac-combo-swatch {
   all: unset;
-  width: 14px;
-  height: 14px;
-  border-radius: 7px;
+  box-sizing: border-box;
+  width: 0.875rem;
+  height: 0.875rem;
+  border-radius: 50%;
+  outline: 1px solid var(--separator);
   cursor: default;
+}
+
+.mac-combo-option[data-highlighted] .mac-combo-swatch {
+  outline-color: rgba(255, 255, 255, 0.7);
 }
 
 .mac-combo-swatch[aria-checked='true'] {
   box-shadow:
-    0 0 0 2px var(--content),
+    0 0 0 2px var(--glass),
     0 0 0 3.5px var(--accent);
 }
 
-.mac-suggestion-label {
-  font-weight: 600;
+.mac-combo-option[data-highlighted] .mac-combo-swatch[aria-checked='true'] {
+  box-shadow:
+    0 0 0 2px var(--accent),
+    0 0 0 3.5px var(--on-accent);
+}
+
+.mac-combo-menu .mac-suggestions-footer {
+  margin: 0.25rem 0.5rem 0;
+  padding: 0.375rem 0.125rem 0.125rem;
 }
 
 .mac-tag-detail {

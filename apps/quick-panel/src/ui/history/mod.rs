@@ -156,13 +156,7 @@ impl Panel {
             .overflow_hidden()
             .child(self.search_row(cx))
             .child(list);
-        if let Some(message) = self
-            .state
-            .session
-            .message
-            .as_ref()
-            .filter(|_| !self.state.search.locked)
-        {
+        if let Some(message) = self.state.session.message.as_ref() {
             card = card.child(
                 div()
                     .flex_shrink_0()

@@ -71,6 +71,8 @@ pub struct Ctx<'a> {
     pub capabilities: Capabilities,
     /// The text in the search box.
     pub input: &'a str,
+    /// The text in the passphrase box of the locked page, a box of its own.
+    pub passphrase: &'a str,
     /// An input method is composing text in the search box.
     pub composing: bool,
     /// The search box has selected text.
@@ -119,6 +121,8 @@ pub enum Effect {
         revision: u64,
         queries: Vec<Filters>,
     },
+    /// Empties the passphrase box of the locked page.
+    ClearPassphrase,
     /// Checks the passphrase with the daemon and reports [`Event::UnlockDone`].
     Unlock(Secret),
     ScheduleReconnect(Duration),
@@ -189,6 +193,8 @@ pub enum Event {
     OptionsLoaded(Result<Box<Options>, ServiceError>),
     Live(Live),
     ReconnectDue,
+    /// The passphrase box changed.
+    PassphraseChanged,
     UnlockDone(Result<(), UnlockFailure>),
     PreviewDue {
         id: String,
@@ -407,6 +413,12 @@ impl PanelState {
             Event::OptionsLoaded(result) => self.on_options(result),
             Event::Live(live) => self.on_live(live),
             Event::ReconnectDue => self.on_reconnect_due(),
+            Event::PassphraseChanged => {
+                if matches!(self.session.unlock, UnlockStatus::Failed(_)) {
+                    self.session.unlock = UnlockStatus::Idle;
+                }
+                vec![]
+            }
             Event::UnlockDone(result) => self.on_unlock_done(result),
             Event::PreviewDue { id, kind } => self.on_preview_due(id, kind),
             Event::PreviewLoaded { id, result } => self.on_preview_loaded(id, result),

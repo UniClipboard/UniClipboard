@@ -46,6 +46,7 @@ impl PanelState {
             Effect::ClearPreviewAnchor,
             Effect::Reposition,
             Effect::ResetInput,
+            Effect::ClearPassphrase,
             Effect::LoadOptions,
         ];
         effects.extend(self.search());

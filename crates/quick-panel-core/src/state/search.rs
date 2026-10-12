@@ -144,31 +144,26 @@ impl PanelState {
         }
     }
 
-    /// The panel just became locked. The search box turns into the passphrase box, so what was
-    /// typed there goes: it must not end up in front of the passphrase, and the passphrase must
-    /// never be a search query.
-    fn enter_locked(&mut self) -> Effects {
-        self.search.filters.query.clear();
-        self.suggest.open = false;
-        self.suggest.focused = false;
+    /// The panel just became locked: the locked page starts with an empty passphrase box.
+    pub(super) fn enter_locked(&mut self) -> Effects {
         self.session.unlock = UnlockStatus::Idle;
-        vec![Effect::ResetInput]
+        vec![Effect::ClearPassphrase]
     }
 
-    /// Enter on the locked page: the box holds the passphrase.
+    /// Enter on the locked page.
     pub(super) fn submit_passphrase(&mut self, ctx: &Ctx) -> Effects {
-        if self.session.unlock == UnlockStatus::Checking || ctx.input.is_empty() {
+        if self.session.unlock == UnlockStatus::Checking || ctx.passphrase.is_empty() {
             return vec![];
         }
         self.session.unlock = UnlockStatus::Checking;
-        vec![Effect::Unlock(Secret::new(ctx.input))]
+        vec![Effect::Unlock(Secret::new(ctx.passphrase))]
     }
 
     pub(super) fn on_unlock_done(&mut self, result: Result<(), UnlockFailure>) -> Effects {
         match result {
             Ok(()) => {
                 self.session.unlock = UnlockStatus::Idle;
-                let mut effects = vec![Effect::ResetInput];
+                let mut effects = vec![Effect::ClearPassphrase];
                 if self.session.visible && !self.session.busy {
                     effects.extend(self.search());
                 }
@@ -180,7 +175,7 @@ impl PanelState {
                 let retype = failure == UnlockFailure::WrongPassphrase;
                 self.session.unlock = UnlockStatus::Failed(failure);
                 if retype {
-                    vec![Effect::ResetInput]
+                    vec![Effect::ClearPassphrase]
                 } else {
                     vec![]
                 }
@@ -258,13 +253,6 @@ impl PanelState {
 
     pub(super) fn input_changed(&mut self, value: String, ctx: &Ctx) -> Effects {
         if self.session.busy {
-            return vec![];
-        }
-        // On the locked page the box holds a passphrase, which is not a query.
-        if self.search.locked {
-            if matches!(self.session.unlock, UnlockStatus::Failed(_)) {
-                self.session.unlock = UnlockStatus::Idle;
-            }
             return vec![];
         }
         // The input also reports edits that change nothing, such as Backspace in an empty box.

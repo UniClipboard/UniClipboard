@@ -97,7 +97,7 @@ impl PanelState {
 
     /// Tab: accept the suggestion at the cursor; without suggestions, cycle the type filter.
     pub fn tab(&mut self, reverse: bool, ctx: &Ctx) -> Effects {
-        if ctx.composing {
+        if ctx.composing || self.search.locked {
             return vec![];
         }
         if !reverse {

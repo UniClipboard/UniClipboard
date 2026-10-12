@@ -12,6 +12,7 @@ mod image_preview;
 mod images;
 mod intents;
 mod keyboard;
+mod lock_page;
 mod preview_window;
 mod view;
 mod windows;
@@ -97,8 +98,10 @@ struct Tasks {
 pub struct Panel {
     state: PanelState,
     input: Entity<InputState>,
-    /// The box is the passphrase box of the locked page: masked, with its own placeholder.
-    passphrase_mode: bool,
+    /// The passphrase box of the locked page, apart from the search box.
+    passphrase: Entity<InputState>,
+    /// Which box last got the focus, so the focus moves when the page changes.
+    focus_on_lock_page: bool,
     scroll: ScrollHandle,
     runtime: tokio::runtime::Handle,
     history: Arc<dyn HistoryService>,
@@ -133,6 +136,7 @@ struct CtxData {
     now: Instant,
     target: Rc<dyn PasteTarget>,
     input: String,
+    passphrase: String,
     composing: bool,
     selecting: bool,
 }
@@ -159,6 +163,7 @@ impl CtxData {
             target: &*self.target,
             capabilities: platform::CAPABILITIES,
             input: &self.input,
+            passphrase: &self.passphrase,
             composing: self.composing,
             selecting: self.selecting,
             today: chrono::Local::now().date_naive(),
@@ -179,6 +184,17 @@ impl Panel {
         let input =
             cx.new(|cx| InputState::new(window, cx).placeholder(text::t().search_placeholder));
         input.update(cx, |input, cx| input.focus(window, cx));
+        let passphrase = cx.new(|cx| {
+            InputState::new(window, cx)
+                .masked(true)
+                .placeholder(text::t().passphrase_placeholder)
+        });
+        let passphrase_subscription =
+            cx.subscribe_in(&passphrase, window, |this, _, event, window, cx| {
+                if let InputEvent::Change = event {
+                    this.deliver(Event::PassphraseChanged, window, cx);
+                }
+            });
         let subscription = cx.subscribe_in(&input, window, |this, _, event, window, cx| {
             if let InputEvent::Change = event {
                 this.input_changed(window, cx);
@@ -198,7 +214,8 @@ impl Panel {
         let mut panel = Self {
             state,
             input,
-            passphrase_mode: false,
+            passphrase,
+            focus_on_lock_page: false,
             scroll: ScrollHandle::new(),
             runtime,
             history,
@@ -221,7 +238,7 @@ impl Panel {
                 .unwrap_or(1.)
                 .clamp(0.8, 1.5),
             general: None,
-            _subscriptions: vec![subscription, activation],
+            _subscriptions: vec![subscription, passphrase_subscription, activation],
         };
         let effects = panel.state.start();
         panel.run(effects, window, cx);
@@ -235,6 +252,7 @@ impl Panel {
             now: Instant::now(),
             target: self.target.clone(),
             input: self.input.read(cx).value().to_string(),
+            passphrase: self.passphrase.read(cx).value().to_string(),
             composing: false,
             selecting: false,
         }
@@ -244,7 +262,12 @@ impl Panel {
     /// selected, which decides whether a key belongs to the box or to the panel.
     fn ctx_data_editing(&self, window: &mut Window, cx: &mut Context<Self>) -> CtxData {
         let mut data = self.ctx_data(cx);
-        (data.composing, data.selecting) = self.input.update(cx, |input, cx| {
+        let editing = if self.state.search.locked {
+            &self.passphrase
+        } else {
+            &self.input
+        };
+        (data.composing, data.selecting) = editing.update(cx, |input, cx| {
             let composing = input.marked_text_range(window, cx).is_some();
             let selecting = input
                 .selected_text_range(false, window, cx)

@@ -45,6 +45,9 @@ impl PanelState {
         if !self.session.visible || ctx.composing {
             return KeyResult::ignored();
         }
+        if self.search.locked {
+            return self.locked_key(key, modifiers, ctx);
+        }
         let command = modifiers.platform || modifiers.control;
         let mut effects = vec![];
         if key == "k" && command && !modifiers.shift {
@@ -66,10 +69,6 @@ impl PanelState {
             } else {
                 effects.push(Effect::HideWindow);
             }
-            return KeyResult::taken(effects);
-        }
-        if self.search.locked && key == "enter" {
-            effects.extend(self.submit_passphrase(ctx));
             return KeyResult::taken(effects);
         }
         if command && key == "o" && modifiers.shift {
@@ -177,10 +176,29 @@ impl PanelState {
         KeyResult::taken(effects)
     }
 
+    /// A key on the locked page, which has a passphrase box of its own and none of the search
+    /// page's keys. Everything else stays with the box.
+    fn locked_key(&mut self, key: &str, modifiers: Modifiers, ctx: &Ctx) -> KeyResult {
+        let command = modifiers.platform || modifiers.control;
+        let effects = match key {
+            "escape" if ctx.passphrase.is_empty() => vec![Effect::HideWindow],
+            "escape" => vec![Effect::ClearPassphrase],
+            "enter" => self.submit_passphrase(ctx),
+            "o" if command && modifiers.shift => self.ask_host(HostRequest::ShowMainWindow),
+            "," if command && !modifiers.shift => self.ask_host(HostRequest::OpenSettings),
+            _ => return KeyResult::ignored(),
+        };
+        KeyResult::taken(effects)
+    }
+
     /// Backspace in an empty search box removes the last filter chip. The input binds Backspace to
     /// its own deletion, which runs before a plain key listener, so the panel takes the action.
     pub fn on_backspace(&mut self, ctx: &Ctx) -> KeyResult {
-        if self.session.visible && self.menu.is_none() && ctx.input.is_empty() {
+        if self.session.visible
+            && !self.search.locked
+            && self.menu.is_none()
+            && ctx.input.is_empty()
+        {
             // Nothing to delete in the box: remove the last chip if there is one, and in any
             // case keep the input from reporting an edit that would search again.
             let effects = match self.search.filters.chips().last().cloned() {
@@ -194,7 +212,7 @@ impl PanelState {
 
     /// Command+Backspace (Ctrl+Backspace off macOS): clears the search and its filters.
     pub fn on_clear_all(&mut self) -> KeyResult {
-        if !self.session.visible {
+        if !self.session.visible || self.search.locked {
             return KeyResult::ignored();
         }
         KeyResult::taken(self.clear())
@@ -204,6 +222,7 @@ impl PanelState {
     /// they stay with the caret.
     pub fn on_sideways(&mut self, direction: Direction, ctx: &Ctx) -> KeyResult {
         let free = self.session.visible
+            && !self.search.locked
             && self.search.filters.images_only()
             && !self.search.loading
             && self.menu.is_none()
@@ -217,7 +236,7 @@ impl PanelState {
 
     /// Copy with nothing selected in the search box copies the selected entry instead.
     pub fn on_copy(&mut self, ctx: &Ctx) -> KeyResult {
-        if ctx.composing || ctx.selecting {
+        if ctx.composing || ctx.selecting || self.search.locked {
             return KeyResult::ignored();
         }
         KeyResult::taken(self.restore(false, false, false, ctx))

@@ -457,7 +457,11 @@ impl Render for Panel {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let data = self.ctx_data(cx);
         self.state.normalize_suggestion_focus(&data.ctx());
-        let history = self.history_view(cx);
+        let history = if self.state.search.locked {
+            self.lock_page(cx)
+        } else {
+            self.history_view(cx)
+        };
         div()
             .size_full()
             .text_color(cx.theme().foreground)

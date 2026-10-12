@@ -58,16 +58,13 @@ pub fn relaxations(filters: &Filters, device_name: impl Fn(&str) -> String) -> V
 pub enum Empty {
     /// No history at all and nothing typed.
     FirstUse,
-    Locked,
     Disconnected,
     /// Something was typed or filtered and nothing matched.
     NoMatch,
 }
 
-pub fn classify(locked: bool, disconnected: bool, searching: bool) -> Empty {
-    if locked {
-        Empty::Locked
-    } else if disconnected {
+pub fn classify(disconnected: bool, searching: bool) -> Empty {
+    if disconnected {
         Empty::Disconnected
     } else if searching {
         Empty::NoMatch
@@ -135,9 +132,8 @@ mod tests {
 
     #[test]
     fn the_empty_pages_are_told_apart() {
-        assert_eq!(classify(true, true, true), Empty::Locked);
-        assert_eq!(classify(false, true, false), Empty::Disconnected);
-        assert_eq!(classify(false, false, true), Empty::NoMatch);
-        assert_eq!(classify(false, false, false), Empty::FirstUse);
+        assert_eq!(classify(true, false), Empty::Disconnected);
+        assert_eq!(classify(false, true), Empty::NoMatch);
+        assert_eq!(classify(false, false), Empty::FirstUse);
     }
 }

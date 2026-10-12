@@ -53,6 +53,8 @@ struct Fixture {
     now: Instant,
     target: FakeTarget,
     input: String,
+    /// What is typed on the locked page, which has a box of its own.
+    passphrase: String,
     capabilities: Capabilities,
 }
 
@@ -62,6 +64,7 @@ impl Fixture {
             now: Instant::now(),
             target: FakeTarget::ready(),
             input: String::new(),
+            passphrase: String::new(),
             capabilities: FULL,
         }
     }
@@ -72,6 +75,7 @@ impl Fixture {
             target: &self.target,
             capabilities: self.capabilities,
             input: &self.input,
+            passphrase: &self.passphrase,
             composing: false,
             selecting: false,
             today: NaiveDate::from_ymd_opt(2026, 9, 30).unwrap(),
@@ -772,9 +776,9 @@ fn locked_panel() -> (PanelState, Fixture) {
     (state, fixture)
 }
 
-fn type_in(state: &mut PanelState, fixture: &mut Fixture, value: &str) -> Effects {
-    fixture.input = value.into();
-    state.on_event(Event::InputChanged(value.into()), &fixture.ctx())
+fn type_passphrase(state: &mut PanelState, fixture: &mut Fixture, value: &str) -> Effects {
+    fixture.passphrase = value.into();
+    state.on_event(Event::PassphraseChanged, &fixture.ctx())
 }
 
 fn submit(state: &mut PanelState, fixture: &Fixture) -> KeyResult {
@@ -782,9 +786,10 @@ fn submit(state: &mut PanelState, fixture: &Fixture) -> KeyResult {
 }
 
 #[test]
-fn enter_on_the_locked_page_sends_the_typed_passphrase_for_checking() {
+fn enter_on_the_locked_page_sends_the_passphrase_not_the_search_text() {
     let (mut state, mut fixture) = locked_panel();
-    type_in(&mut state, &mut fixture, "correct horse");
+    fixture.input = "invoice".into();
+    type_passphrase(&mut state, &mut fixture, "correct horse");
     let result = submit(&mut state, &fixture);
     assert!(matches!(
         result.effects.as_slice(),
@@ -795,7 +800,8 @@ fn enter_on_the_locked_page_sends_the_typed_passphrase_for_checking() {
 
 #[test]
 fn enter_on_the_locked_page_without_a_passphrase_does_nothing() {
-    let (mut state, fixture) = locked_panel();
+    let (mut state, mut fixture) = locked_panel();
+    fixture.input = "invoice".into();
     let result = submit(&mut state, &fixture);
     assert!(result.effects.is_empty());
     assert_eq!(state.session.unlock, UnlockStatus::Idle);
@@ -804,49 +810,71 @@ fn enter_on_the_locked_page_without_a_passphrase_does_nothing() {
 #[test]
 fn a_passphrase_being_checked_is_not_sent_twice() {
     let (mut state, mut fixture) = locked_panel();
-    type_in(&mut state, &mut fixture, "secret");
+    type_passphrase(&mut state, &mut fixture, "secret");
     submit(&mut state, &fixture);
     let again = submit(&mut state, &fixture);
     assert!(!has(&again.effects, |e| matches!(e, Effect::Unlock(_))));
 }
 
 #[test]
-fn the_passphrase_never_becomes_a_search_query() {
-    let (mut state, mut fixture) = locked_panel();
+fn the_locked_page_leaves_the_search_alone() {
+    let (mut state, mut fixture) = open_panel(&["a"]);
+    fixture.input = "invoice".into();
+    state.on_event(Event::InputChanged("invoice".into()), &fixture.ctx());
+    state.on_event(Event::Live(Live::ContentLocked), &fixture.ctx());
+    assert_eq!(state.search.filters.query, "invoice");
     let revision = state.search.revision;
-    let effects = type_in(&mut state, &mut fixture, "hunter2");
-    assert_eq!(state.search.filters.query, "");
+    type_passphrase(&mut state, &mut fixture, "hunter2");
+    assert_eq!(state.search.filters.query, "invoice");
     assert_eq!(state.search.revision, revision);
-    assert!(!state.suggest.open);
-    assert!(!has(&effects, |e| matches!(e, Effect::Search { .. })));
 }
 
 #[test]
-fn locking_clears_the_query_so_the_passphrase_does_not_follow_it() {
-    let (mut state, mut fixture) = open_panel(&["a"]);
-    type_in(&mut state, &mut fixture, "invoice");
-    let by_notice = state.on_event(Event::Live(Live::ContentLocked), &fixture.ctx());
-    assert!(has(&by_notice, |e| matches!(e, Effect::ResetInput)));
-    assert_eq!(state.search.filters.query, "");
+fn the_keys_of_the_search_page_do_nothing_on_the_locked_page() {
+    let (mut state, mut fixture) = locked_panel();
+    type_passphrase(&mut state, &mut fixture, "abc");
+    for name in ["up", "down", "left", "right", "tab", "backspace", "k"] {
+        let modifiers = if name == "k" { command() } else { plain() };
+        let result = key(&mut state, &fixture, name, modifiers);
+        assert!(!result.consumed, "{name}");
+        assert!(result.effects.is_empty(), "{name}");
+    }
+    assert!(!state.on_copy(&fixture.ctx()).consumed);
+    assert!(!state.on_backspace(&fixture.ctx()).consumed);
+    assert!(!state.on_clear_all().consumed);
+    assert!(state.menu.is_none());
+}
 
-    let (mut state, mut fixture) = open_panel(&["a"]);
-    type_in(&mut state, &mut fixture, "invoice");
-    let revision = state.search.revision;
-    let by_answer = state.on_event(
-        Event::SearchDone {
-            revision,
-            result: Err(SearchFailure::Locked),
-        },
-        &fixture.ctx(),
-    );
-    assert!(has(&by_answer, |e| matches!(e, Effect::ResetInput)));
-    assert_eq!(state.search.filters.query, "");
+#[test]
+fn tab_on_the_locked_page_does_not_change_the_search_type() {
+    let (mut state, fixture) = locked_panel();
+    let before = state.search.filters.types.clone();
+    assert!(state.tab(false, &fixture.ctx()).is_empty());
+    assert_eq!(state.search.filters.types, before);
+}
+
+#[test]
+fn escape_clears_a_typed_passphrase_first_and_then_closes() {
+    let (mut state, mut fixture) = locked_panel();
+    type_passphrase(&mut state, &mut fixture, "abc");
+    let first = key(&mut state, &fixture, "escape", plain());
+    assert!(matches!(first.effects.as_slice(), [Effect::ClearPassphrase]));
+    fixture.passphrase.clear();
+    let second = key(&mut state, &fixture, "escape", plain());
+    assert!(matches!(second.effects.as_slice(), [Effect::HideWindow]));
+}
+
+#[test]
+fn becoming_locked_empties_the_passphrase_box() {
+    let (mut state, fixture) = open_panel(&["a"]);
+    let effects = state.on_event(Event::Live(Live::ContentLocked), &fixture.ctx());
+    assert!(has(&effects, |e| matches!(e, Effect::ClearPassphrase)));
 }
 
 #[test]
 fn a_wrong_passphrase_stays_locked_and_empties_the_box() {
     let (mut state, mut fixture) = locked_panel();
-    type_in(&mut state, &mut fixture, "nope");
+    type_passphrase(&mut state, &mut fixture, "nope");
     submit(&mut state, &fixture);
     let revision = state.search.revision;
     let effects = state.on_event(
@@ -858,20 +886,20 @@ fn a_wrong_passphrase_stays_locked_and_empties_the_box() {
         state.session.unlock,
         UnlockStatus::Failed(UnlockFailure::WrongPassphrase)
     );
-    assert!(has(&effects, |e| matches!(e, Effect::ResetInput)));
+    assert!(has(&effects, |e| matches!(e, Effect::ClearPassphrase)));
     assert_eq!(state.search.revision, revision);
 }
 
 #[test]
 fn a_failure_that_is_not_the_passphrase_keeps_what_was_typed() {
     let (mut state, mut fixture) = locked_panel();
-    type_in(&mut state, &mut fixture, "right but slow");
+    type_passphrase(&mut state, &mut fixture, "right but slow");
     submit(&mut state, &fixture);
     let effects = state.on_event(
         Event::UnlockDone(Err(UnlockFailure::Timeout)),
         &fixture.ctx(),
     );
-    assert!(!has(&effects, |e| matches!(e, Effect::ResetInput)));
+    assert!(!has(&effects, |e| matches!(e, Effect::ClearPassphrase)));
     assert_eq!(
         state.session.unlock,
         UnlockStatus::Failed(UnlockFailure::Timeout)
@@ -881,39 +909,41 @@ fn a_failure_that_is_not_the_passphrase_keeps_what_was_typed() {
 #[test]
 fn editing_after_a_failure_clears_it() {
     let (mut state, mut fixture) = locked_panel();
-    type_in(&mut state, &mut fixture, "x");
+    type_passphrase(&mut state, &mut fixture, "x");
     submit(&mut state, &fixture);
     state.on_event(
         Event::UnlockDone(Err(UnlockFailure::Timeout)),
         &fixture.ctx(),
     );
-    type_in(&mut state, &mut fixture, "xy");
+    assert!(matches!(state.session.unlock, UnlockStatus::Failed(_)));
+    type_passphrase(&mut state, &mut fixture, "xy");
     assert_eq!(state.session.unlock, UnlockStatus::Idle);
 }
 
 #[test]
 fn a_right_passphrase_empties_the_box_and_looks_at_the_history_again() {
     let (mut state, mut fixture) = locked_panel();
-    type_in(&mut state, &mut fixture, "right");
+    type_passphrase(&mut state, &mut fixture, "right");
     submit(&mut state, &fixture);
     let effects = state.on_event(Event::UnlockDone(Ok(())), &fixture.ctx());
     assert_eq!(state.session.unlock, UnlockStatus::Idle);
-    assert!(has(&effects, |e| matches!(e, Effect::ResetInput)));
+    assert!(has(&effects, |e| matches!(e, Effect::ClearPassphrase)));
     assert!(has(&effects, |e| matches!(e, Effect::Search { .. })));
 }
 
 #[test]
 fn opening_the_panel_again_forgets_an_earlier_failure() {
     let (mut state, mut fixture) = locked_panel();
-    type_in(&mut state, &mut fixture, "x");
+    type_passphrase(&mut state, &mut fixture, "x");
     submit(&mut state, &fixture);
     state.on_event(
         Event::UnlockDone(Err(UnlockFailure::WrongPassphrase)),
         &fixture.ctx(),
     );
     state.on_event(Event::WindowHidden, &fixture.ctx());
-    state.show(&fixture.ctx());
+    let effects = state.show(&fixture.ctx());
     assert_eq!(state.session.unlock, UnlockStatus::Idle);
+    assert!(has(&effects, |e| matches!(e, Effect::ClearPassphrase)));
 }
 
 #[test]

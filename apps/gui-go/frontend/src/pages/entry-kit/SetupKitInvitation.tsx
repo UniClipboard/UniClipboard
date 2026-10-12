@@ -40,7 +40,7 @@ export function SetupKitInvitation({
             data-testid="setup-invitation-code"
             className={`select-all break-words ${expired ? 'line-through opacity-50' : ''}`}
           >
-            <Text role="display" monospace>
+            <Text role="hero" monospace>
               {display}
             </Text>
           </div>

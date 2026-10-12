@@ -7,7 +7,7 @@ import type { TextProps } from '@/ui-kit/contract'
 const useStyles = makeStyles({
   base: { minWidth: 0 },
   // WinUI Title (28/36 semibold): text read and copied by hand, e.g. an invitation code.
-  display: {
+  hero: {
     fontSize: tokens.fontSizeHero700,
     lineHeight: tokens.lineHeightHero700,
     fontWeight: tokens.fontWeightSemibold,

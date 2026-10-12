@@ -511,14 +511,14 @@
 
 /* ---------- display text and link button ---------- */
 
-.mac-text[data-role='display'] {
+.mac-text[data-role='hero'] {
   font-family: var(--mac-font-display);
   font-size: 34px;
   line-height: 40px;
   font-weight: 600;
 }
 
-.mac-text[data-role='display'][data-mono] {
+.mac-text[data-role='hero'][data-mono] {
   font-family: var(--mac-mono);
   letter-spacing: 0.08em;
   font-variant-numeric: tabular-nums;

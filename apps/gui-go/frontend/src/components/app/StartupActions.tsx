@@ -1,9 +1,9 @@
 import { ArrowUpCircle, Download, Loader2, MessageCircle, RotateCw } from 'lucide-react'
-import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { STARTUP_SUPPORT_URL } from '@/api/startup-support-url'
 import { Button } from '@/components/ui/button'
 import type { StartupSnapshot } from '@/lib/startup-progress'
+import { useStartupActions } from './useStartupActions'
 
 type Props = {
   failed: boolean
@@ -15,47 +15,8 @@ type Props = {
 
 export function StartupActions({ failed, onExport, onRetry, required, snapshot }: Props) {
   const { t } = useTranslation()
-  const [exportState, setExportState] = useState<'idle' | 'working' | 'failed' | 'done'>('idle')
-  const [contactState, setContactState] = useState<'idle' | 'working' | 'failed' | 'done'>('idle')
-  const [updateState, setUpdateState] = useState<'idle' | 'working' | 'failed'>('idle')
-
-  async function exportLogs() {
-    if (exportState === 'working') return
-    setExportState('working')
-    try {
-      const exported = await onExport()
-      setExportState(exported === false ? 'idle' : 'done')
-    } catch {
-      setExportState('failed')
-    }
-  }
-
-  async function openSupport() {
-    if (contactState === 'working') return
-    setContactState('working')
-    try {
-      // Loaded on demand: both modules pull in IPC and diagnostics, which the early startup
-      // screen must not wait for.
-      const { contactAuthor } = await import('@/api/startup-support')
-      await contactAuthor()
-      setContactState('done')
-    } catch {
-      setContactState('failed')
-    }
-  }
-
-  async function checkUpdate() {
-    if (updateState === 'working') return
-    setUpdateState('working')
-    try {
-      const { checkForUpdate, openUpdaterWindow } = await import('@/api/updater')
-      await openUpdaterWindow()
-      await checkForUpdate(null)
-      setUpdateState('idle')
-    } catch {
-      setUpdateState('failed')
-    }
-  }
+  const { exportState, contactState, updateState, exportLogs, openSupport, checkUpdate } =
+    useStartupActions(onExport)
 
   return (
     <>

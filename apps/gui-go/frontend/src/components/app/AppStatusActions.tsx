@@ -1,11 +1,8 @@
 import { ArrowUpCircle, Check, Download, Loader2, MessageCircle, RotateCw } from 'lucide-react'
-import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { contactAuthor, exportStartupLogs, STARTUP_SUPPORT_URL } from '@/api/startup-support'
-import { checkForUpdate, openUpdaterWindow } from '@/api/updater'
+import { STARTUP_SUPPORT_URL } from '@/api/startup-support'
 import { Button } from '@/components/ui/button'
-
-type StatusAction = 'export' | 'contact' | 'update'
+import { useStatusActions } from './useStatusActions'
 
 type Props = {
   onRetry: () => void
@@ -13,38 +10,9 @@ type Props = {
   versionTooOld: boolean
 }
 
-async function performStatusAction(next: StatusAction) {
-  if (next === 'export') return exportStartupLogs()
-  if (next === 'contact') {
-    await contactAuthor()
-    return null
-  }
-  await openUpdaterWindow()
-  await checkForUpdate(null)
-  return null
-}
-
 export function AppStatusActions({ onRetry, retrying, versionTooOld }: Props) {
   const { t } = useTranslation()
-  const [action, setAction] = useState<StatusAction | null>(null)
-  const [feedback, setFeedback] = useState<{ error: boolean; message: string } | null>(null)
-
-  async function runAction(next: StatusAction) {
-    if (action) return
-    setAction(next)
-    setFeedback(null)
-    try {
-      const path = await performStatusAction(next)
-      if (next === 'export' && path)
-        setFeedback({ error: false, message: t('startupFailure.exported', { path }) })
-      if (next === 'contact')
-        setFeedback({ error: false, message: t('startupFailure.contactOpened') })
-    } catch {
-      setFeedback({ error: true, message: t(`startupFailure.${next}Failed`) })
-    } finally {
-      setAction(null)
-    }
-  }
+  const { action, feedback, runAction } = useStatusActions()
 
   return (
     <>

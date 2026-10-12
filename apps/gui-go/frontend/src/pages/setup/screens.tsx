@@ -18,25 +18,9 @@ import {
   X,
   XCircle,
 } from 'lucide-react'
-import {
-  useEffect,
-  useEffectEvent,
-  useMemo,
-  useReducer,
-  useRef,
-  useState,
-  type FormEvent,
-  type ReactNode,
-} from 'react'
+import { useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { getSettings } from '@/api/daemon/settings'
-import type {
-  InitializeSpaceErrorKind,
-  IssueInvitationErrorKind,
-  JoinSpaceEndReason,
-  RedeemInvitationErrorKind,
-  ActiveJoinSpaceResponse,
-} from '@/api/daemon/setupV2'
+import type { JoinSpaceEndReason } from '@/api/daemon/setupV2'
 import { AppStateShell } from '@/components/app/AppStateShell'
 import { InvitationCodeInput } from '@/components/InvitationCodeInput'
 import { Button } from '@/components/ui/button'
@@ -45,13 +29,12 @@ import { Label } from '@/components/ui/label'
 import { PasswordInput } from '@/components/ui/password-input'
 import { Progress } from '@/components/ui/progress'
 import { useConfigImport, type ConfigImportErrorKind } from '@/hooks/useConfigImport'
-import {
-  INVITATION_CODE_LENGTH,
-  INVITATION_DEFAULT_TTL_MS,
-  formatInvitationCode,
-} from '@/lib/invitation-code'
-import { invitationIssueErrorKey, isInvitationIssueRetryable } from '@/lib/invitation-issue-error'
+import { INVITATION_CODE_LENGTH } from '@/lib/invitation-code'
 import { cn } from '@/lib/utils'
+import { useInitializeSpaceForm, type InitializeSpaceSubmit } from './useInitializeSpaceForm'
+import { useInvitationCountdown } from './useInvitationCountdown'
+import { useRedeemInvitationForm, type RedeemInvitationSubmit } from './useRedeemInvitationForm'
+import { useSpaceReadyInvite, type IssueInvitation } from './useSpaceReadyInvite'
 
 // ── Common shell ───────────────────────────────────────────────────────────
 
@@ -274,121 +257,19 @@ export function EntryScreen({
 
 // ── S1 — Initialize space ───────────────────────────────────────────────────
 
-function initializeErrorMessage(
-  t: (k: string) => string,
-  kind: InitializeSpaceErrorKind | null
-): string | null {
-  switch (kind) {
-    case null:
-      return null
-    case 'passphrase_mismatch':
-      return t('errors.passphraseMismatch')
-    case 'device_name_required':
-      return t('errors.deviceNameRequired')
-    case 'already_initialized':
-    case 'already_setup':
-      return t('errors.alreadyInitialized')
-    case 'service_unavailable':
-      return t('errors.serviceUnavailable')
-    case 'internal':
-    default:
-      return t('errors.generic')
-  }
-}
-
-interface InitializeForm {
-  deviceName: string
-  pass1: string
-  pass2: string
-  errorKind: InitializeSpaceErrorKind | null
-}
-
-type InitializeFormAction =
-  | { type: 'default_name'; name: string }
-  | { type: 'edit'; changes: Partial<InitializeForm> }
-
 export function InitializeSpaceScreen({
   onSubmit,
   onBack,
   loading,
 }: {
-  onSubmit: (input: {
-    deviceName: string
-    passphrase: string
-    passphraseConfirm: string
-  }) => Promise<{ ok: true } | { ok: false; kind: InitializeSpaceErrorKind; raw: string }>
+  onSubmit: InitializeSpaceSubmit
   onBack: () => void
   loading?: boolean
 }) {
   const { t } = useTranslation(undefined, { keyPrefix: 'setup.initializeSpace' })
   const { t: tWelcome } = useTranslation(undefined, { keyPrefix: 'setup.welcome' })
-  const [form, updateForm] = useReducer(
-    (state: InitializeForm, action: InitializeFormAction): InitializeForm =>
-      action.type === 'default_name'
-        ? { ...state, deviceName: state.deviceName || action.name }
-        : { ...state, ...action.changes },
-    { deviceName: '', pass1: '', pass2: '', errorKind: null }
-  )
-  const { deviceName, pass1, pass2, errorKind } = form
-
-  const errorMessage = initializeErrorMessage(t, errorKind)
-  // Validation errors sit next to the field they describe; service errors stay general.
-  const deviceNameError = errorKind === 'device_name_required' ? errorMessage : null
-  const passphraseError = errorKind === 'passphrase_mismatch' ? errorMessage : null
-  const generalError = deviceNameError || passphraseError ? null : errorMessage
-
-  // Pre-fill the device name with the daemon-resolved default (the OS
-  // hostname, written during bootstrap). Skip the write if the user has
-  // already typed something so a late response never clobbers their input.
-  useEffect(() => {
-    let cancelled = false
-    getSettings()
-      .then(s => {
-        if (cancelled) return
-        const fallback = s.general.deviceName?.trim() ?? ''
-        if (!fallback) return
-        updateForm({ type: 'default_name', name: fallback })
-      })
-      .catch(() => {
-        // Non-fatal — user can still type a name manually.
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  const handleSubmit = async (event: FormEvent) => {
-    event.preventDefault()
-    if (loading) return
-    updateForm({ type: 'edit', changes: { errorKind: null } })
-    if (!deviceName.trim()) {
-      updateForm({
-        type: 'edit',
-        changes: { errorKind: 'device_name_required' },
-      })
-      return
-    }
-    if (!pass1) {
-      updateForm({
-        type: 'edit',
-        changes: { errorKind: 'passphrase_mismatch' },
-      })
-      return
-    }
-    if (pass1 !== pass2) {
-      updateForm({
-        type: 'edit',
-        changes: { errorKind: 'passphrase_mismatch' },
-      })
-      return
-    }
-    const res = await onSubmit({
-      deviceName: deviceName.trim(),
-      passphrase: pass1,
-      passphraseConfirm: pass2,
-    })
-    if (!res.ok) updateForm({ type: 'edit', changes: { errorKind: res.kind } })
-  }
+  const form = useInitializeSpaceForm(onSubmit, loading)
+  const { deviceName, pass1, pass2, deviceNameError, passphraseError, generalError } = form
 
   return (
     <ScreenShell
@@ -424,7 +305,7 @@ export function InitializeSpaceScreen({
     >
       <form
         id="setup-initialize-form"
-        onSubmit={event => void handleSubmit(event)}
+        onSubmit={event => void form.submit(event)}
         className="mt-6 flex flex-col gap-5"
       >
         <div className="flex flex-col gap-2">
@@ -432,12 +313,7 @@ export function InitializeSpaceScreen({
           <Input
             id="device-name"
             value={deviceName}
-            onChange={e =>
-              updateForm({
-                type: 'edit',
-                changes: { deviceName: e.target.value },
-              })
-            }
+            onChange={e => form.setDeviceName(e.target.value)}
             disabled={loading}
             placeholder={t('placeholders.deviceName')}
             aria-invalid={deviceNameError !== null}
@@ -451,7 +327,7 @@ export function InitializeSpaceScreen({
           <PasswordInput
             id="pass1"
             value={pass1}
-            onChange={e => updateForm({ type: 'edit', changes: { pass1: e.target.value } })}
+            onChange={e => form.setPass1(e.target.value)}
             disabled={loading}
             placeholder={t('placeholders.passphrase')}
             aria-describedby="pass1-help"
@@ -466,7 +342,7 @@ export function InitializeSpaceScreen({
           <PasswordInput
             id="pass2"
             value={pass2}
-            onChange={e => updateForm({ type: 'edit', changes: { pass2: e.target.value } })}
+            onChange={e => form.setPass2(e.target.value)}
             disabled={loading}
             placeholder={t('placeholders.passphraseConfirm')}
             aria-invalid={passphraseError !== null}
@@ -481,13 +357,6 @@ export function InitializeSpaceScreen({
 
 // ── S3 — Show invitation ────────────────────────────────────────────────────
 
-function formatRemaining(ms: number): string {
-  const total = Math.max(0, Math.floor(ms / 1000))
-  const m = Math.floor(total / 60)
-  const s = total % 60
-  return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
-}
-
 export function ShowInvitationScreen({
   code,
   expiresAtMs,
@@ -500,30 +369,11 @@ export function ShowInvitationScreen({
   loading?: boolean
 }) {
   const { t } = useTranslation(undefined, { keyPrefix: 'setup.showInvitation' })
-  const [now, setNow] = useState(() => Date.now())
-
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 1000)
-    return () => clearInterval(id)
-  }, [])
-
-  const remaining = expiresAtMs - now
-  const expired = remaining <= 0
-  const progress = expired
-    ? 0
-    : Math.min(100, (remaining / Math.max(INVITATION_DEFAULT_TTL_MS, remaining)) * 100)
-  const display = useMemo(() => formatInvitationCode(code), [code])
-  const handledExpiryCodeRef = useRef<string | null>(null)
-  const cancelExpiredInvitation = useEffectEvent(onCancel)
-
-  // Key the guard on `code` so a fresh invitation re-arms auto-cancel even if
-  // this screen stays mounted, while still firing at most once per code
-  // (including under StrictMode's double-invoked effects).
-  useEffect(() => {
-    if (!expired || handledExpiryCodeRef.current === code) return
-    handledExpiryCodeRef.current = code
-    cancelExpiredInvitation()
-  }, [expired, code])
+  const { display, expired, progress, remainingLabel } = useInvitationCountdown(
+    code,
+    expiresAtMs,
+    onCancel
+  )
 
   return (
     <ScreenShell
@@ -564,7 +414,7 @@ export function ShowInvitationScreen({
               expired ? 'text-destructive' : 'text-muted-foreground'
             )}
           >
-            {expired ? t('expired') : t('expiresIn', { remaining: formatRemaining(remaining) })}
+            {expired ? t('expired') : t('expiresIn', { remaining: remainingLabel })}
           </p>
         </div>
       </div>
@@ -574,87 +424,29 @@ export function ShowInvitationScreen({
 
 // ── S4 — Redeem invitation ──────────────────────────────────────────────────
 
-function redeemErrorMessage(
-  t: (k: string) => string,
-  kind: RedeemInvitationErrorKind | null
-): string | null {
-  switch (kind) {
-    case null:
-      return null
-    case 'invitation_not_found':
-      return t('errors.invitationNotFound')
-    case 'invitation_expired':
-      return t('errors.invitationExpired')
-    case 'passphrase_mismatch':
-      return t('errors.passphraseMismatch')
-    case 'sponsor_unreachable':
-      return t('errors.sponsorUnreachable')
-    case 'sponsor_rejected':
-      return t('errors.sponsorRejected')
-    case 'sponsor_declined':
-      return t('errors.sponsorDeclined')
-    case 'sponsor_upgrade_required':
-      return t('errors.sponsorUpgradeRequired')
-    case 'timeout':
-      return t('errors.timeout')
-    case 'connection_lost':
-      return t('errors.connectionLost')
-    case 'service_unavailable':
-      return t('errors.serviceUnavailable')
-    case 'device_name_required':
-      return t('errors.deviceNameRequired')
-    case 'internal':
-    default:
-      return t('errors.generic')
-  }
-}
-
 export function RedeemInvitationScreen({
   onSubmit,
   onBack,
   loading,
 }: {
-  onSubmit: (input: {
-    code: string
-    passphrase: string
-  }) => Promise<
-    | { ok: true; redeem: ActiveJoinSpaceResponse | null }
-    | { ok: false; kind: RedeemInvitationErrorKind; raw: string }
-  >
+  onSubmit: RedeemInvitationSubmit
   onBack: () => void
   loading?: boolean
 }) {
   const { t } = useTranslation(undefined, { keyPrefix: 'setup.redeemInvitation' })
   const { t: tWelcome } = useTranslation(undefined, { keyPrefix: 'setup.welcome' })
-  const [code, setCode] = useState('')
-  const [pass, setPass] = useState('')
-  const [errorKind, setErrorKind] = useState<RedeemInvitationErrorKind | null>(null)
+  const {
+    code,
+    setCode,
+    pass,
+    setPass,
+    codeComplete,
+    canSubmit,
+    codeInvalid,
+    errorMessage,
+    submit,
+  } = useRedeemInvitationForm(onSubmit, loading)
   const passInputRef = useRef<HTMLInputElement>(null)
-
-  const errorMessage = redeemErrorMessage(t, errorKind)
-  const codeComplete = code.length === INVITATION_CODE_LENGTH
-  const canSubmit = codeComplete && pass.length > 0 && !loading
-  const codeInvalid = errorKind === 'invitation_not_found' || errorKind === 'invitation_expired'
-
-  const handleSubmit = async (event?: FormEvent) => {
-    event?.preventDefault()
-    setErrorKind(null)
-    if (!canSubmit) return
-    const res = await onSubmit({ code, passphrase: pass })
-    if (!res.ok) {
-      setErrorKind(res.kind)
-      // These failures all consume or invalidate the one-time invitation.
-      if (
-        res.kind === 'invitation_not_found' ||
-        res.kind === 'invitation_expired' ||
-        res.kind === 'sponsor_rejected' ||
-        res.kind === 'passphrase_mismatch'
-      ) {
-        setCode('')
-        setPass('')
-      }
-    }
-  }
 
   return (
     <ScreenShell
@@ -690,7 +482,7 @@ export function RedeemInvitationScreen({
     >
       <form
         id="setup-redeem-form"
-        onSubmit={event => void handleSubmit(event)}
+        onSubmit={event => void submit(event)}
         className="mt-6 flex flex-col gap-5"
       >
         <div className="flex flex-col gap-2">
@@ -824,25 +616,13 @@ export function SpaceReadyScreen({
   onDone,
   loading = false,
 }: {
-  onInvite: () => Promise<{ ok: true } | { ok: false; kind: IssueInvitationErrorKind; raw: string }>
+  onInvite: IssueInvitation
   onDone: () => void
   loading?: boolean
 }) {
   const { t } = useTranslation(undefined, { keyPrefix: 'setup.spaceReady' })
   const { t: tStatus } = useTranslation(undefined, { keyPrefix: 'setup.showInvitation' })
-  const { t: tInvitationIssue } = useTranslation()
-  const [inviteError, setInviteError] = useState<string | null>(null)
-  const [inviteRetryable, setInviteRetryable] = useState(true)
-
-  const handleInvite = async () => {
-    setInviteError(null)
-    setInviteRetryable(true)
-    const result = await onInvite()
-    if (!result.ok) {
-      setInviteError(tInvitationIssue(invitationIssueErrorKey(result.kind)))
-      setInviteRetryable(isInvitationIssueRetryable(result.kind))
-    }
-  }
+  const { inviteError, inviteRetryable, invite } = useSpaceReadyInvite(onInvite)
 
   return (
     <ScreenShell
@@ -856,7 +636,7 @@ export function SpaceReadyScreen({
         <>
           <Button
             data-testid="setup-complete-invite"
-            onClick={() => void handleInvite()}
+            onClick={() => void invite()}
             disabled={loading || !inviteRetryable}
           >
             {loading ? (

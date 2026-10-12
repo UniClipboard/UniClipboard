@@ -1,11 +1,9 @@
 import { AlertCircle, Loader2 } from 'lucide-react'
-import { useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { PasswordInput } from '@/components/ui/password-input'
-import { contentUnlockErrorKey } from '@/lib/content-unlock-error'
-import { commands } from '@/lib/ipc'
+import { usePassphraseUnlock } from './usePassphraseUnlock'
 
 interface PassphraseUnlockFormProps {
   onUnlocked: () => Promise<void>
@@ -18,35 +16,10 @@ export function PassphraseUnlockForm({
   onSubmittingChange,
 }: PassphraseUnlockFormProps) {
   const { t } = useTranslation()
-  const [passphrase, setPassphrase] = useState('')
-  const [submitting, setSubmitting] = useState(false)
-  const [errorKey, setErrorKey] = useState<string | null>(null)
-
-  const setBusy = (busy: boolean) => {
-    setSubmitting(busy)
-    onSubmittingChange(busy)
-  }
-
-  const submit = async (event: FormEvent) => {
-    event.preventDefault()
-    if (submitting) return
-    if (passphrase.length === 0) {
-      setErrorKey('unlock.errors.wrongPassphrase')
-      return
-    }
-
-    setBusy(true)
-    setErrorKey(null)
-    try {
-      await commands.unlockContent({ passphrase })
-      setPassphrase('')
-      await onUnlocked()
-    } catch (error) {
-      setErrorKey(contentUnlockErrorKey(error))
-    } finally {
-      setBusy(false)
-    }
-  }
+  const { passphrase, setPassphrase, submitting, errorKey, submit } = usePassphraseUnlock(
+    onUnlocked,
+    onSubmittingChange
+  )
 
   return (
     <form onSubmit={event => void submit(event)} className="mt-7 flex flex-col gap-2">
@@ -54,10 +27,7 @@ export function PassphraseUnlockForm({
       <PasswordInput
         id="unlock-passphrase"
         value={passphrase}
-        onChange={event => {
-          setPassphrase(event.target.value)
-          setErrorKey(null)
-        }}
+        onChange={event => setPassphrase(event.target.value)}
         disabled={submitting}
         placeholder={t('unlock.passphraseModal.passphrasePlaceholder')}
         autoFocus

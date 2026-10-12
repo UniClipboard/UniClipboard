@@ -3,13 +3,9 @@ import { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AppStateShell } from '@/components/app/AppStateShell'
 import { Button } from '@/components/ui/button'
-import { commands } from '@/lib/ipc'
-import { createLogger } from '@/lib/logger'
-import { ensureSetupRealtimeSync, refreshSetupState } from '@/store/setupRealtimeStore'
 import { FactoryResetDialog } from './unlock/FactoryResetDialog'
 import { PassphraseUnlockForm } from './unlock/PassphraseUnlockForm'
-
-const log = createLogger('unlock-page')
+import { useUnlockFlow } from './unlock/useUnlockFlow'
 
 interface UnlockPageProps {
   onUnlockSucceeded?: () => void
@@ -18,37 +14,10 @@ interface UnlockPageProps {
 
 export default function UnlockPage({ onUnlockSucceeded, onResetSucceeded }: UnlockPageProps) {
   const { t } = useTranslation()
-  const [needsPassphrase, setNeedsPassphrase] = useState(false)
+  const { needsPassphrase, unlocking, unlock, finishUnlock } = useUnlockFlow(onUnlockSucceeded)
   const [resetOpen, setResetOpen] = useState(false)
-  const [unlocking, setUnlocking] = useState(false)
   const [submittingPassphrase, setSubmittingPassphrase] = useState(false)
   const resetLinkRef = useRef<HTMLButtonElement>(null)
-
-  const finishUnlock = async () => {
-    try {
-      await ensureSetupRealtimeSync()
-      await refreshSetupState()
-    } catch (error) {
-      log.warn({ err: error }, 'Setup state refresh failed after unlock')
-    }
-    onUnlockSucceeded?.()
-  }
-
-  const unlock = async () => {
-    if (unlocking) return
-    setUnlocking(true)
-    try {
-      if (await commands.unlockContentFromKeyring()) {
-        await finishUnlock()
-        return
-      }
-    } catch (error) {
-      log.warn({ err: error }, 'Keyring unlock failed; requesting the passphrase')
-    } finally {
-      setUnlocking(false)
-    }
-    setNeedsPassphrase(true)
-  }
 
   return (
     <>

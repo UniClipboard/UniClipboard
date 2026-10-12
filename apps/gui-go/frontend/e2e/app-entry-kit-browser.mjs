@@ -74,7 +74,7 @@ const sizes = [
 ]
 
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright')
-const browser = await chromium.launch({ headless: true })
+const browser = await chromium.launch({ headless: true, channel: process.env.PLAYWRIGHT_CHANNEL })
 const results = []
 const flows = []
 const errors = []
@@ -82,12 +82,18 @@ try {
   const page = await browser.newPage({ reducedMotion: 'reduce' })
   page.on('pageerror', error => errors.push(error.message))
   page.on('console', message => {
-    if (message.type() === 'error' && !message.text().includes('Network access is disabled'))
+    // The fixture preview has no favicon; Chrome requests it independently of the page.
+    if (
+      message.type() === 'error' &&
+      !message.text().includes('Network access is disabled') &&
+      !message.location().url.endsWith('/favicon.ico')
+    )
       errors.push(`console: ${message.text()}`)
   })
 
-  async function open(view, { theme = 'light', language = 'zh-CN' } = {}) {
-    await page.goto(`${base}/?${new URLSearchParams({ view, theme, language })}`)
+  async function open(view, { theme = 'light', language = 'zh-CN', material = 'none' } = {}) {
+    const query = new URLSearchParams({ view, theme, language, 'window-material': material })
+    await page.goto(`${base}/?${query}`)
     await page.locator('[data-testid="entry-kit"] h1').waitFor()
     await page.evaluate(() => document.fonts.ready)
     await page.waitForTimeout(250)
@@ -121,6 +127,12 @@ try {
         horizontalScroll: main ? main.scrollWidth > main.clientWidth + 1 : true,
         unnamedButtons,
         fontSizes: [...sizes].sort((a, b) => a - b),
+        entryBackground: getComputedStyle(document.querySelector('.mac-entry') ?? main)
+          .backgroundColor,
+        titlebarBackground: document
+          .elementsFromPoint(innerWidth - 20, 20)
+          .map(element => getComputedStyle(element).backgroundColor)
+          .find(color => color !== 'rgba(0, 0, 0, 0)' && color !== 'transparent'),
       }
     })
 
@@ -140,6 +152,12 @@ try {
           assert.equal(metrics.horizontalScroll, false, `${name}: no horizontal scroll`)
           assert.deepEqual(metrics.unnamedButtons, [], `${name}: every button has a name`)
           assert.ok(Math.min(...metrics.fontSizes) >= 11, `${name}: no text under 11px`)
+          if (platform === 'macos')
+            assert.equal(
+              metrics.titlebarBackground,
+              metrics.entryBackground,
+              `${name}: title bar and page share one background`
+            )
         }
       }
 
@@ -157,6 +175,39 @@ try {
     flows.push(name)
   }
   await page.setViewportSize(sizes[0])
+
+  if (platform === 'macos') {
+    await flow('entry backgrounds match with and without native material (simulated)', async () => {
+      const measurements = []
+      for (const theme of ['light', 'dark']) {
+        await page.emulateMedia({ colorScheme: theme })
+        for (const material of ['none', 'liquid-glass', 'visual-effect']) {
+          for (const view of ['startup', 'setup-entry', 'unlock']) {
+            await open(view, { theme, material })
+            const metrics = await measure()
+            measurements.push({ view, theme, material, ...metrics })
+            await writeFile(
+              path.join(output, 'entry-backgrounds.json'),
+              JSON.stringify(measurements, null, 2)
+            )
+            await page.screenshot({
+              path: path.join(output, `background-${view}-${theme}-${material}.png`),
+            })
+            assert.equal(
+              metrics.titlebarBackground,
+              metrics.entryBackground,
+              `${view}-${theme}-${material}: uniform background`
+            )
+            assert.equal(
+              await page.locator('[data-ui-skin]').getAttribute('data-native-material'),
+              material === 'none' ? null : ''
+            )
+          }
+        }
+      }
+      await page.emulateMedia({ colorScheme: null })
+    })
+  }
 
   await flow(
     'unlock: keyring fallback, wrong passphrase, show/hide, right passphrase',

@@ -1646,6 +1646,11 @@
   background: transparent;
 }
 
+/* Entry pages extend behind the transparent title bar and share one solid window background. */
+.mac-root:has(.mac-entry) {
+  background: var(--window);
+}
+
 /* With a native window material the page has no opaque backdrop: backdrop-filter in WKWebView only
    samples web content, so a translucent popup would show the text behind it unblurred. Popups then
    use the tinted glass colour at full opacity, which keeps them legible like AppKit menus. */

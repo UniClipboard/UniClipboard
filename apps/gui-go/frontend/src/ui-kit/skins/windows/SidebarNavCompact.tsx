@@ -22,7 +22,8 @@ import { WithTooltip } from './WithTooltip'
 
 // Board WA3 / C2: the LeftCompact pane, a 48 px rail of 40 x 36 icon buttons with the selection pill; the label is
 // the tooltip and the accessible name. A section with an icon (tags, devices) is one rail button that opens
-// its rows in a flyout beside the rail, as in WA3.
+// its rows in a flyout beside the rail, as in WA3. Tooltips open beside the rail (as NavigationView's do): opened
+// above, a tooltip would cover the button above it.
 const useStyles = makeStyles({
   rail: {
     flexGrow: 1,
@@ -85,7 +86,12 @@ export function SidebarNavCompact({
   const arrowNavigation = useArrowNavigationGroup({ axis: 'vertical', memorizeCurrent: true })
   const entry = (item: SidebarNavItem) =>
     item.icon ? (
-      <WithTooltip key={item.id} content={item.label} relationship="inaccessible">
+      <WithTooltip
+        key={item.id}
+        content={item.label}
+        relationship="inaccessible"
+        positioning="after"
+      >
         <FluentButton
           aria-label={item.label}
           appearance="subtle"
@@ -107,6 +113,7 @@ export function SidebarNavCompact({
           <Tooltip
             content={section.title ?? section.id}
             relationship="inaccessible"
+            positioning="after"
             withArrow={false}
           >
             <FluentButton

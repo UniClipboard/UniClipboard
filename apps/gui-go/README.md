@@ -41,7 +41,11 @@ Windows 上使用 `bun wails:build --release` 构建发布便携版：Rust 使�
 
 脚本 `scripts/wails-dev.mjs` 依次构建 daemon 与 Go 宿主（不带 `production` 标签），启动 Vite 开发服务器
 （按 profile 取固定端口，被占用则换端口）并让应用通过 `FRONTEND_DEVSERVER_URL` 加载它，前端修改即时热更新；
-Go 或 daemon 改动需重启命令。使用你自己的 HOME 与指定 profile，数据、钥匙串条目和 daemon 与正式版隔离。
+Go 或 daemon 改动需重启命令。
+
+开发构建可用 `F12` 或 `Ctrl+Shift+I` 打开当前窗口的调试工具；macOS 的功能键若被系统作为媒体键使用，可用 `Fn+F12` 或 `Control+Shift+I`。这些快捷键由 Wails 原生宿主处理，前端显示错误边界时仍可触发，`production` 和 `release` 构建不注册。macOS 开发启动器使用 `private_mac_apis`；宿主在该构建中补齐当前 Wails 本地 Inspector 所需的窗口级 `developerExtrasEnabled` 设置，再调用 Wails 打开工具。Safari 的远程 `inspectable` 开关不替代本地 Inspector 设置。
+
+使用你自己的 HOME 与指定 profile，数据、钥匙串条目和 daemon 与正式版隔离。
 按 Ctrl+C 会停止 Vite 与 GUI。Windows 启动器同时结束本次 GUI 启动的进程树，包括 daemon 和辅助进程；复用的已有 daemon 不属于该进程树。旧版启动器留下的 daemon 需要先从托盘退出，再重新运行开发命令。
 开发启动脚本支持 macOS 与 Windows。macOS 开发二进制会先放进最小的 ad-hoc 签名 `.app`（`target/gui-go/dev/UniClipboardGoDev.app`，标识为 `app.json` 中的应用标识加 `.dev`），因为 Wails 的通知服务在 macOS 上没有 bundle identifier 就拒绝启动（`notifications require a valid bundle identifier`），裸二进制会直接退出；它仍作为普通子进程启动，标准输出、退出码与 SIGTERM 不变。Windows 直接运行 `target/gui-go/dev/gui-go-dev.exe`，从 Vite 加载前端并支持热更新。
 宿主只在 `UNICLIPBOARD_ENV=development` 且设置了合法 `UC_PROFILE` 时启动；测试用的隔离模式

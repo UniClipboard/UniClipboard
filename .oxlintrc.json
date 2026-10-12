@@ -256,7 +256,7 @@
             ],
             "patterns": [
               {
-                "group": ["@/ui-kit/skins/*", "@fluentui/*"],
+                "group": ["@/ui-kit/skins/*", "@fluentui/*", "@ui-skin/*"],
                 "message": "Import UI components from @/ui-kit; platform skins and their vendor libraries stay inside src/ui-kit/skins."
               }
             ]
@@ -265,7 +265,10 @@
       }
     },
     {
-      "files": ["apps/gui-go/frontend/src/ui-kit/index.ts"],
+      "files": [
+        "apps/gui-go/frontend/src/ui-kit/index.ts",
+        "apps/gui-go/frontend/src/ui-kit/first-frame.ts"
+      ],
       "rules": {
         "no-restricted-imports": "off"
       }

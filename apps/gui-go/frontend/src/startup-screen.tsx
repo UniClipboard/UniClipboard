@@ -1,7 +1,7 @@
+import { StartupProgressScreen } from '@ui-startup-screen'
 import React from 'react'
 import { getAppRoot } from '@/app-root'
 import { AppStateFrame } from '@/components/app/AppStateFrame'
-import { StartupProgressScreen } from '@/components/app/StartupProgressScreen'
 import '@/i18n'
 import WindowShell from '@/layouts/WindowShell'
 import { detectPlatformInfo } from '@/lib/platform'

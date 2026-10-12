@@ -36,6 +36,33 @@ const kitPages: Record<string, { platforms: string[]; kit: string; existing: str
     kit: './src/pages/history-kit/HistoryKitPage.tsx',
     existing: './src/pages/HistoryPage.tsx',
   },
+  // The entry pages shown before the main window content (design page "Setup · Startup · Unlock").
+  // The startup screen is also the first frame (src/startup-screen.tsx).
+  '@ui-startup-screen': {
+    platforms: ['macos', 'windows'],
+    kit: './src/pages/entry-kit/StartupKitScreen.tsx',
+    existing: './src/components/app/StartupProgressScreen.tsx',
+  },
+  '@ui-app-status-screen': {
+    platforms: ['macos', 'windows'],
+    kit: './src/pages/entry-kit/StatusKitScreen.tsx',
+    existing: './src/components/app/AppStatusScreen.tsx',
+  },
+  '@ui-profile-recovery-page': {
+    platforms: ['macos', 'windows'],
+    kit: './src/pages/entry-kit/ProfileRecoveryKitPage.tsx',
+    existing: './src/pages/ProfileRecoveryPage.tsx',
+  },
+  '@ui-setup-page': {
+    platforms: ['macos', 'windows'],
+    kit: './src/pages/entry-kit/SetupKitPage.tsx',
+    existing: './src/pages/SetupPage.tsx',
+  },
+  '@ui-unlock-page': {
+    platforms: ['macos', 'windows'],
+    kit: './src/pages/entry-kit/UnlockKitPage.tsx',
+    existing: './src/pages/UnlockPage.tsx',
+  },
 }
 function uiSkin(): Plugin {
   const platform = process.env.UC_UI_PLATFORM
@@ -51,11 +78,13 @@ function uiSkin(): Plugin {
       if (page) {
         return path(platform && page.platforms.includes(platform) ? page.kit : page.existing)
       }
-      if (source !== '@ui-skin') return null
+      // `@ui-skin/first-frame` is the skin's subset for the first frame (src/ui-kit/first-frame.ts).
+      if (source !== '@ui-skin' && source !== '@ui-skin/first-frame') return null
       if (!platform || !uiPlatforms.includes(platform)) {
         this.error(`@/ui-kit needs ${required} (got ${platform ? `"${platform}"` : 'nothing'})`)
       }
-      const entry = path(`./src/ui-kit/skins/${platform}/index.ts`)
+      const file = source === '@ui-skin' ? 'index.ts' : 'first-frame.ts'
+      const entry = path(`./src/ui-kit/skins/${platform}/${file}`)
       if (!existsSync(entry)) this.error(`The ${platform} skin of @/ui-kit is missing: ${entry}`)
       return entry
     },

@@ -25,7 +25,13 @@
     "paths": {
       "@/*": ["./src/*"],
       "@ui-skin": ["./src/ui-kit/contract.ts"],
+      "@ui-skin/first-frame": ["./src/ui-kit/contract.ts"],
       "@ui-history-page": ["./src/pages/HistoryPage.tsx"],
+      "@ui-startup-screen": ["./src/components/app/StartupProgressScreen.tsx"],
+      "@ui-app-status-screen": ["./src/components/app/AppStatusScreen.tsx"],
+      "@ui-profile-recovery-page": ["./src/pages/ProfileRecoveryPage.tsx"],
+      "@ui-setup-page": ["./src/pages/SetupPage.tsx"],
+      "@ui-unlock-page": ["./src/pages/UnlockPage.tsx"],
       "@host/*": ["./bindings/github.com/UniClipboard/UniClipboard/apps/gui-go/*"]
     }
   },

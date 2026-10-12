@@ -25,6 +25,8 @@ export function InlineNotice({ tone, title, text, action, dismiss }: InlineNotic
   const styles = useStyles()
   return (
     <MessageBar
+      // Errors are announced at once, other notices politely (as the macOS skin does).
+      role={tone === 'error' ? 'alert' : 'status'}
       intent={tone}
       layout="singleline"
       className={mergeClasses(styles.root, styles[tone])}

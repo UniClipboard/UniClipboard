@@ -4,6 +4,9 @@
 // and the packages in that closure, and fails when the closure contains a forbidden package or
 // grows past the given budget.
 //   node e2e/startup-chunk-check.mjs --platform windows|macos|none [--budget-kb N] [--json out.json]
+// The default budget is the closure measured before the platform kit entry pages (300.4 KiB gzip on
+// all three targets, commit 5d2694d95) plus the growth they are allowed: 64 KiB with a skin, 4 KiB
+// without one (Linux keeps the existing startup screen).
 import assert from 'node:assert/strict'
 import { writeFile } from 'node:fs/promises'
 import path from 'node:path'
@@ -18,13 +21,23 @@ const arg = name => {
 }
 const platform = arg('--platform')
 assert.ok(['windows', 'macos', 'none'].includes(platform ?? ''), '--platform windows|macos|none')
-const budgetKb = arg('--budget-kb') ? Number(arg('--budget-kb')) : undefined
+const budgetKb = arg('--budget-kb')
+  ? Number(arg('--budget-kb'))
+  : platform === 'none'
+    ? 300.4 + 4
+    : 300.4 + 64
 const jsonOut = arg('--json')
 const invokedFrom = process.cwd()
 process.chdir(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'))
 
-// The whole Fluent UI library must never reach the first frame; its button or progress packages may.
-const forbidden = [/node_modules\/@fluentui\/react-components\//, /node_modules\/@fluentui\/react-icons\//, /\/src\/bootstrap\.tsx$/, /\/src\/lib\/ipc\.ts$/, /\/src\/store\//]
+// The app itself (bootstrap, IPC, store) and the Fluent UI barrel must never reach the first frame;
+// single Fluent packages (button, progress, provider) and the icons in use may.
+const forbidden = [
+  /node_modules\/@fluentui\/react-components\//,
+  /\/src\/bootstrap\.tsx$/,
+  /\/src\/lib\/ipc\.ts$/,
+  /\/src\/store\//,
+]
 
 const packageOf = id => {
   const match = id.match(/node_modules\/((?:@[^/]+\/)?[^/]+)/)
@@ -63,9 +76,17 @@ await build({
         }
         roots.forEach(visit)
         const closure = [...seen].map(name => byName.get(name))
-        const modules = closure.flatMap(chunk => Object.keys(chunk.modules))
+        // A module with no rendered code (a re-exporting barrel) does not load anything itself.
+        const modules = closure.flatMap(chunk =>
+          Object.entries(chunk.modules)
+            .filter(([, info]) => info.renderedLength > 0)
+            .map(([id]) => id)
+        )
         const css = Object.values(bundle).filter(
-          item => item.type === 'asset' && item.fileName.endsWith('.css') && closure.some(chunk => chunk.viteMetadata?.importedCss?.has(item.fileName))
+          item =>
+            item.type === 'asset' &&
+            item.fileName.endsWith('.css') &&
+            closure.some(chunk => chunk.viteMetadata?.importedCss?.has(item.fileName))
         )
         const packages = {}
         for (const chunk of closure)
@@ -73,7 +94,10 @@ await build({
             packages[packageOf(id)] = (packages[packageOf(id)] ?? 0) + info.renderedLength
         report = {
           platform,
-          chunks: closure.map(chunk => ({ file: chunk.fileName, bytes: Buffer.byteLength(chunk.code) })),
+          chunks: closure.map(chunk => ({
+            file: chunk.fileName,
+            bytes: Buffer.byteLength(chunk.code),
+          })),
           jsBytes: closure.reduce((sum, chunk) => sum + Buffer.byteLength(chunk.code), 0),
           jsGzipBytes: closure.reduce((sum, chunk) => sum + gzipSync(chunk.code).length, 0),
           cssBytes: css.reduce((sum, asset) => sum + Buffer.byteLength(asset.source), 0),
@@ -84,8 +108,16 @@ await build({
     },
   ],
 })
-console.log(JSON.stringify({ ...report, packages: Object.fromEntries(Object.entries(report.packages).slice(0, 15)) }, null, 2))
+console.log(
+  JSON.stringify(
+    { ...report, packages: Object.fromEntries(Object.entries(report.packages).slice(0, 15)) },
+    null,
+    2
+  )
+)
 if (jsonOut) await writeFile(path.resolve(invokedFrom, jsonOut), JSON.stringify(report, null, 2))
 assert.deepEqual(report.forbidden, [], 'modules that must not load before the first frame')
-if (budgetKb !== undefined)
-  assert.ok(report.jsGzipBytes <= budgetKb * 1024, `first-frame JS ${report.jsGzipBytes} B gzip exceeds ${budgetKb} KiB`)
+assert.ok(
+  report.jsGzipBytes <= budgetKb * 1024,
+  `first-frame JS ${report.jsGzipBytes} B gzip exceeds ${budgetKb} KiB`
+)

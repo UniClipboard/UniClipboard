@@ -1,7 +1,8 @@
 // Development launcher for the GPUI quick panel.
 //
 //   bun quickpanel:dev                      profile `dev`
-//   bun quickpanel:dev --profile <profile>  any other development profile
+//   bun quickpanel:dev:profile <profile>    any other development profile
+//   bun quickpanel:dev --profile <profile>  the same, with the flag spelled out
 //   bun quickpanel:dev --no-daemon          only run the panel (a daemon of that profile is already
 //                                           running, for example from `bun wails:dev`)
 //
@@ -19,6 +20,7 @@ import { PROFILE_PATTERN } from './dev-profile.mjs'
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
 export const USAGE = `Usage: bun quickpanel:dev [--profile <profile>] [--no-daemon]
+       bun quickpanel:dev:profile <profile> [--no-daemon]
 
 Builds and starts uniclipd and the GPUI quick panel for a development profile
 (default: dev). Both stop when this command stops.`

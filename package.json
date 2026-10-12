@@ -16,6 +16,7 @@
     "mbx:exec": "bash scripts/build-cache/mbx.sh --exec",
     "wails:dev": "node scripts/wails-dev.mjs --profile dev",
     "quickpanel:dev": "node scripts/quickpanel-dev.mjs",
+    "quickpanel:dev:profile": "node scripts/quickpanel-dev.mjs --profile",
     "wails:build": "node scripts/wails-build.mjs",
     "wails:dev:profile": "node scripts/wails-dev.mjs --profile",
     "test": "bun run --cwd apps/gui-go/frontend test",

@@ -76,7 +76,7 @@ macOS 与 Windows 的原生多显示器行为均未在本机验证，以上由�
 cargo run -p quick-panel
 ```
 
-开发时可直接用 `bun quickpanel:dev`（`--profile <名称>` 换配置，默认 `dev`）：它构建并启动该配置的 `uniclipd`，再运行面板，停止命令时两者一起退出；配置首次使用仍需在 GUI（`bun wails:dev`）里完成设置；之后锁定时可直接在面板里输入口令解锁。若该配置的 daemon 已在运行（例如 `bun wails:dev` 正在跑），加 `--no-daemon`，否则两个 daemon 会争夺同一配置。
+开发时可直接用 `bun quickpanel:dev`（换配置用 `bun quickpanel:dev:profile <名称>`，等价于 `--profile <名称>`，默认 `dev`；可再加 `--no-daemon`）：它构建并启动该配置的 `uniclipd`，再运行面板，停止命令时两者一起退出；配置首次使用仍需在 GUI（`bun wails:dev`）里完成设置；之后锁定时可直接在面板里输入口令解锁。若该配置的 daemon 已在运行（例如 `bun wails:dev` 正在跑），加 `--no-daemon`，否则两个 daemon 会争夺同一配置。
 
 开发配置需两端使用相同的 `UC_PROFILE`。默认快捷键为 macOS 的 Command + Control + V，连接后读取已保存的快捷键配置。原型与正式应用同时运行时，可显式指定测试快捷键：
 

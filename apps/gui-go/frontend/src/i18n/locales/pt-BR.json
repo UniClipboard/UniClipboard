@@ -1154,6 +1154,10 @@
       "shortcutHint": "C copiar · T etiquetar · F fixar · D excluir"
     },
     "composite": {
+      "matchingText": "correspondente ao texto",
+      "noFilterOptions": "Nenhum filtro de {{dimension}} disponível. Continue digitando para pesquisar como texto.",
+      "chooseFilter": "Escolha um filtro de {{dimension}} com Enter ou Tab. Seu texto permanece na pesquisa.",
+      "literalFilter": "Nenhum filtro de {{dimension}} correspondente. Esta palavra será pesquisada como texto; use aspas ou escape para mantê-la literal.",
       "title": "Pesquisar e filtrar",
       "dimension": {
         "type": "Tipo",
@@ -1284,6 +1288,8 @@
       "builtinHint": "Uma tag nativa vem do tipo de conteúdo, por isso não pode ser renomeada, mesclada nem excluída."
     },
     "kit": {
+      "queryInvalidTitle": "Verifique sua pesquisa",
+      "queryInvalid": "Digite palavras para pesquisar e use apenas um operador: AND ou OR.",
       "actionHint": "{{copy}} copiar · T etiqueta · {{pin}} fixar",
       "allOfKind": "todos {{kind}}",
       "anyTag": "Qualquer etiqueta",

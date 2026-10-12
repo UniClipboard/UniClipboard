@@ -276,7 +276,7 @@ export function useCompositeSearchBar({
     restoreSelection.current = true
     setInput(next)
     onQueryChange(next.buffer.trim())
-    onQuerySubmit(next.buffer.trim())
+    if (next.buffer.trim()) onQuerySubmit(next.buffer.trim())
     setHighlight(-1)
     setOpen(false)
   }
@@ -347,7 +347,7 @@ export function useCompositeSearchBar({
     setHighlight(isToken ? 0 : -1)
     setOpen(suggestionActivation === 'focus' || isToken)
     onQueryChange(nextCompletion.query)
-    if (removed.length) onQuerySubmit(nextCompletion.query)
+    if (removed.length && nextCompletion.query.trim()) onQuerySubmit(nextCompletion.query)
   }
 
   const changeSelection = (start: number, end: number) => {

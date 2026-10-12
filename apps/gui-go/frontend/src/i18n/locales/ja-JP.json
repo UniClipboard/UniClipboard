@@ -1151,6 +1151,10 @@
       "shortcutHint": "C コピー · T タグ · F ピン留め · D 削除"
     },
     "composite": {
+      "matchingText": "入力テキストに一致",
+      "noFilterOptions": "利用できる{{dimension}}フィルターはありません。入力を続けるとテキストとして検索します。",
+      "chooseFilter": "Enter または Tab で{{dimension}}フィルターを選択してください。入力したテキストは検索に残ります。",
+      "literalFilter": "一致する{{dimension}}フィルターはありません。この語をテキストとして検索します。文字列のまま扱うには引用符またはエスケープを使用してください。",
       "title": "検索とフィルタ",
       "dimension": {
         "type": "タイプ",
@@ -1277,6 +1281,8 @@
       "builtinHint": "組み込みタグはコンテンツの種類から自動で付くため、名前の変更・統合・削除はできません。"
     },
     "kit": {
+      "queryInvalidTitle": "検索内容を確認してください",
+      "queryInvalid": "検索する語を入力し、演算子は AND または OR のどちらか一方だけを使用してください。",
       "actionHint": "{{copy}} コピー · T タグ · {{pin}} ピン留め",
       "allOfKind": "すべて{{kind}}",
       "anyTag": "すべてのタグ",

@@ -71,6 +71,9 @@ export function QuickPanelDoubleTapRow({ enabled }: { enabled: boolean }) {
       ? t('settings.sections.quickPanel.doubleTap.windows')
       : t('settings.sections.quickPanel.doubleTap.super')
   const doubleTapSupported = doubleTapAvailability === 'supported'
+  // A missing Accessibility grant is something the user fixes next to the select, so the choice stays editable.
+  const doubleTapSelectable =
+    doubleTapSupported || doubleTapAvailability === 'accessibility_permission_required'
   const doubleTapDescriptionKey =
     doubleTapAvailability === null
       ? 'settings.sections.quickPanel.doubleTap.checking'
@@ -103,7 +106,7 @@ export function QuickPanelDoubleTapRow({ enabled }: { enabled: boolean }) {
           label={t('settings.sections.quickPanel.doubleTap.label')}
           value={doubleTapModifier}
           onValueChange={value => setDoubleTapModifier(value as QuickPanelDoubleTapModifier)}
-          disabled={!enabled || !doubleTapSupported}
+          disabled={!enabled || !doubleTapSelectable}
           items={[
             { value: 'disabled', label: t('settings.sections.quickPanel.doubleTap.disabled') },
             { value: 'alt', label: altLabel },

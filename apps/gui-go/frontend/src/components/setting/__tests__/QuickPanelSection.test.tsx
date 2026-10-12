@@ -165,7 +165,7 @@ describe('QuickPanelSection modifier double-tap trigger', () => {
     const button = await screen.findByRole('button', {
       name: 'settings.sections.quickPanel.doubleTap.openSettings',
     })
-    expect(screen.getAllByRole('combobox')[1]).toBeDisabled()
+    expect(screen.getAllByRole('combobox')[1]).toBeEnabled()
 
     await user.click(button)
     expect(mockOpenUrl).toHaveBeenCalledWith(

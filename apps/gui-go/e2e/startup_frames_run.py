@@ -46,16 +46,17 @@ def main():
                 daemon_pid = json.loads(conn.read_text())['pid']
                 shot = out / f'{label}.png'
                 captured = False
+                screenshot_error = None
                 try:
                     wid = subprocess.check_output([str(ROOT / 'target/gui-go/window-id'), str(proc.pid)], text=True, timeout=5).strip()
                     subprocess.run(['screencapture', '-x', '-o', '-l', wid, str(shot)], check=True, timeout=5)
                     captured = True
-                except (subprocess.SubprocessError, OSError):
-                    pass
+                except (subprocess.SubprocessError, OSError) as error:
+                    screenshot_error = str(error)
                 code = proc.wait(timeout=30)
                 assert code == 0, code
                 assert all(row['ok'] for row in read_steps(evidence, 0)), rows
-                results['rounds'].append({'label': label, 'daemonPID': daemon_pid, 'frames': frames, 'screenshot': captured, 'exitCode': code})
+                results['rounds'].append({'label': label, 'daemonPID': daemon_pid, 'frames': frames, 'screenshot': captured, 'screenshotError': screenshot_error, 'exitCode': code})
                 if exit_mode == 'full':
                     deadline = time.monotonic() + 15
                     while conn.exists() and time.monotonic() < deadline:

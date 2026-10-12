@@ -12,6 +12,7 @@ import {
 // with the shared React DOM and reports each assertion to the native test
 // service. It is bundled only when VITE_GUI_GO_E2E=1.
 import { Call, Events, Window } from '@wailsio/runtime'
+import { lockEncryption } from '@/api/daemon'
 import { daemonClient } from '@/api/daemon/client'
 import { updateSettings } from '@/api/daemon/settings'
 import { setQuickPanelEnabled, setQuickPanelPosition } from '@/api/tauri-command/settings'
@@ -139,7 +140,8 @@ async function run() {
   if (phase === 'wake') return // the orchestrator drives this launch through the control file
   if (phase === 'external') return // an external CDP driver owns this launch; the default scenario would race it
   if (phase === 'entry-cdp') {
-    // Read-only observations for the native entry-page CDP driver. All input stays in CDP.
+    // CDP owns all input; snapshots only observe, and locking uses the real daemon API.
+    Object.defineProperty(window, '__ucEntryLockContent', { value: lockEncryption })
     Object.defineProperty(window, '__ucEntrySnapshot', {
       value: async () => ({
         skin: $('[data-ui-skin]')?.dataset.uiSkin,
@@ -151,6 +153,8 @@ async function run() {
         initialize: !!$('#device-name') && !!$('#pass1') && !!$('#pass2'),
         unlock: !!$('[data-testid="unlock-content"]') || !!$('#unlock-passphrase'),
         recovery: !!$('#recovery-passphrase'),
+        passphrase: !!$('#unlock-passphrase'),
+        passphraseInvalid: $('#unlock-passphrase')?.getAttribute('aria-invalid'),
         alerts: Array.from(document.querySelectorAll('[role="alert"]')).map(node =>
           node.textContent?.trim()
         ),

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Setup and key-loss unlock in the REAL Windows WebView2 app, with CDP input only.
+"""Setup, content-lock and key-loss recovery in the REAL Windows WebView2 app, with CDP input only.
 
 Usage: windows_entry_kit_remote.py ssh:<host>|parallels:<vm> [--out DIR] [--work DIR]
        [--arch amd64|arm64]
@@ -7,17 +7,19 @@ Usage: windows_entry_kit_remote.py ssh:<host>|parallels:<vm> [--out DIR] [--work
 Imports the history runner's machine, clean-HEAD build, portable Node and isolation helpers.
 Requires the same Go/bun/Rust prerequisites and PLAYWRIGHT_MODULE (playwright-core/index.mjs
 for Parallels). Commit the product sources before running: both binaries must come from
-one clean HEAD. The entry-cdp phase only observes the real page and the content-lock state;
+one clean HEAD. The entry-cdp phase observes the real page and exposes the existing daemon lock API;
 the existing default and unlock-wrong phases submit forms themselves, so cannot own input
 in this CDP-only scenario. Screenshots are WebView contents, not OS desktop captures.
 
 Each run creates a unique uc-gui-go-* portable directory under --work, launches in the
 logged-in desktop session, creates the space through its setup page, stops only processes
 whose executable path belongs to that directory, deletes its sole file-keyring entry,
-and relaunches the same profile. No CLI initialization, clipboard access or OS input.
+and relaunches the same profile. Before that restart, content-lock runs in the setup
+window: lock through the real API, delete the sandbox key, and submit both passphrases.
+No CLI initialization, clipboard access or OS input.
 Evidence and logs are saved under --out even on failure. Cleanup removes only that run's
 sandbox and scheduled tasks; shared build caches and portable Node remain under --work.
-Exit 0 requires both scenarios, all screenshots and sandbox removal to pass.
+Exit 0 requires all three scenarios, all screenshots and sandbox removal to pass.
 """
 import argparse
 import json
@@ -37,12 +39,16 @@ from windows_history_kit_remote import (
 # This script is also saved in --out as the reproducible CDP driver artifact.
 DRIVER = r"""
 import assert from 'node:assert/strict'
-import { mkdir, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-const [out, endpoint, scenario] = process.argv.slice(2)
+const [out, endpoint, scenario, stage = 'complete'] = process.argv.slice(2)
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright')
 const secret = 'gui-go-synthetic-passphrase'
-const result = { scenario, mode: 'native-webview2-cdp', steps: [], passed: false }
+const result = scenario === 'content-lock' && stage === 'passphrase'
+  ? JSON.parse(await readFile(path.join(out, `${scenario}-assertions.json`), 'utf8'))
+  : { scenario, mode: 'native-webview2-cdp', steps: [], passed: false }
+result.passed = false
+result.stage = stage
 let browser, page
 await mkdir(out, { recursive: true })
 const save = () => writeFile(path.join(out, `${scenario}-assertions.json`), JSON.stringify(result, null, 2) + '\n')
@@ -51,7 +57,8 @@ async function step(name, run) {
     const detail = await run()
     result.steps.push({ name, ok: true, detail })
   } catch (error) {
-    result.steps.push({ name, ok: false, error: String(error) })
+    const detail = page ? await page.evaluate(() => window.__ucEntrySnapshot()).catch(() => null) : null
+    result.steps.push({ name, ok: false, detail, error: String(error) })
     throw error
   } finally { await save() }
 }
@@ -141,6 +148,64 @@ try {
     const later = page.locator('[data-testid="setup-complete-later"]')
     if (await later.isVisible()) await later.click()
     await step('setup-created-in-gui', main)
+  } else if (scenario === 'content-lock') {
+    const locked = state => state.unlock && !state.main && state.unlocked === false &&
+      !state.recovery && state.skin === 'windows'
+    if (stage === 'entry') {
+      await step('content-lock-started-unlocked', async () => {
+        await until(state => state.main && state.unlocked === true && state.skin === 'windows')
+        const state = await snapshot()
+        assert.equal(state.unlock, false)
+        assert.equal(state.recovery, false)
+        return state
+      })
+      await step('content-lock-locked-screen', async () => {
+        await page.evaluate(() => window.__ucEntryLockContent())
+        const state = await until(locked)
+        assert.equal(state.unlocked, false, 'host contentUnlocked must confirm the daemon lock')
+        assert.equal(state.passphrase, false)
+        await page.locator('[data-testid="unlock-content"]').waitFor({ state: 'visible' })
+        await shot('content-lock-entry')
+        return state
+      })
+    } else {
+      assert.equal(stage, 'passphrase')
+      assert.equal(result.scenario, 'content-lock')
+      assert.ok(result.steps.some(step => step.name === 'content-lock-locked-screen' && step.ok))
+      assert.ok(result.steps.some(step => step.name === 'content-lock-keyring-entry-deleted' && step.ok))
+      await step('content-lock-passphrase-form', async () => {
+        assert.ok(locked(await snapshot()), 'must still be on the content-lock page before clicking Unlock')
+        await page.locator('[data-testid="unlock-content"]').click()
+        // Unexpected direct unlock or recovery is a finding, never an alternate accepted path.
+        const state = await until(state => state.passphrase || state.main || state.unlocked === true || state.recovery)
+        assert.ok(locked(state), `unexpected keyring unlock result: ${JSON.stringify(state)}`)
+        assert.equal(state.passphrase, true)
+        await page.locator('#unlock-passphrase').waitFor({ state: 'visible' })
+        return state
+      })
+      const input = page.locator('#unlock-passphrase')
+      await step('content-lock-wrong-passphrase-rejected', async () => {
+        await input.fill(`${secret}-wrong`)
+        await input.press('Enter')
+        const state = await until(state => state.alerts.includes(state.wrongPassphrase) ||
+          state.main || state.unlocked === true || state.recovery)
+        assert.ok(state.wrongPassphrase.length > 0)
+        assert.ok(state.alerts.includes(state.wrongPassphrase), 'exact localized wrongPassphrase alert is required')
+        assert.equal(state.passphraseInvalid, 'true')
+        assert.ok(locked(state), `wrong passphrase changed lock state: ${JSON.stringify(state)}`)
+        assert.equal(state.passphrase, true)
+        await shot('content-lock-wrong')
+        return state
+      })
+      await step('content-lock-right-passphrase-unlocked', async () => {
+        await input.fill(secret)
+        await input.press('Enter')
+        const state = await main()
+        assert.equal(state.unlock, false)
+        assert.equal(state.recovery, false)
+        return state
+      })
+    }
   } else {
     assert.equal(scenario, 'unlock')
     await step('locked-screen', async () => {
@@ -209,6 +274,20 @@ throw 'Sandbox processes did not stop'
 """, timeout=60)
 
 
+def delete_sandbox_keyring_entry(machine, app):
+    """Delete only the sandbox's single file-keyring entry, using a literal path."""
+    return machine.ps(f"""
+$ErrorActionPreference='Stop'
+$keys = @(Get-ChildItem '{app}\\data' -Recurse -File -Filter '*.bin' | Where-Object {{ $_.Directory.Name -eq 'keyring' }})
+if ($keys.Count -ne 1) {{ throw "Expected exactly one sandbox keyring entry, found $($keys.Count)" }}
+$key = $keys[0].FullName
+if (-not $key.StartsWith('{app}\\data\\', [StringComparison]::OrdinalIgnoreCase)) {{ throw 'Key outside sandbox' }}
+Remove-Item -LiteralPath $key -Force
+if (Test-Path -LiteralPath $key) {{ throw 'Key entry still exists' }}
+$key.Substring('{app}\\'.Length)
+""")
+
+
 def launch(machine, app, profile, port, task, scenario):
     """Use the history runner's desktop-session launch pattern with isolated WebView data."""
     env = sandbox_env(profile,
@@ -235,10 +314,12 @@ Start-ScheduledTask -TaskName '{task}'
 """, timeout=120)
 
 
-def run_driver(machine, app, out, driver, scenario, port, node, playwright):
+def run_driver(machine, app, out, driver, scenario, port, node, playwright, stage='complete'):
     verdict = out / f'{scenario}-assertions.json'
-    # Never accept an artifact left by a previous invocation using the same --out.
-    verdict.unlink(missing_ok=True)
+    log_name = scenario if stage == 'complete' else f'{scenario}-{stage}'
+    # Only the passphrase stage resumes the verdict written earlier in this invocation.
+    if stage != 'passphrase':
+        verdict.unlink(missing_ok=True)
     if machine.kind == 'parallels':
         output = machine.ps(f"""
 $env:PLAYWRIGHT_MODULE='file:///{playwright.replace(chr(92), '/')}'
@@ -248,16 +329,16 @@ while ((Get-Date) -lt $deadline) {{
   try {{ Invoke-WebRequest -UseBasicParsing 'http://127.0.0.1:{port}/json/version' | Out-Null; $ready=$true; break }} catch {{ Start-Sleep 1 }}
 }}
 if (-not $ready) {{ throw 'WebView2 CDP did not start' }}
-& '{node}' '{machine.share(driver)}' '{machine.share(out)}' 'http://127.0.0.1:{port}' '{scenario}' *>&1 | Out-String
+& '{node}' '{machine.share(driver)}' '{machine.share(out)}' 'http://127.0.0.1:{port}' '{scenario}' '{stage}' *>&1 | Out-String
 exit $LASTEXITCODE
 """, check=False, timeout=600)
-        (out / f'{scenario}-driver.log').write_text(output)
+        (out / f'{log_name}-driver.log').write_text(output)
     else:
         local, proc = tunnel(machine.name, port)
         try:
             wait_http(f'http://127.0.0.1:{local}/json/version', timeout=180)
-            with (out / f'{scenario}-driver.log').open('w') as log:
-                subprocess.run(['node', str(driver), str(out), f'http://127.0.0.1:{local}', scenario],
+            with (out / f'{log_name}-driver.log').open('w') as log:
+                subprocess.run(['node', str(driver), str(out), f'http://127.0.0.1:{local}', scenario, stage],
                                cwd=FRONTEND, env=os.environ.copy(), stdout=log, stderr=subprocess.STDOUT,
                                check=True, timeout=600)
         finally:
@@ -266,13 +347,22 @@ exit $LASTEXITCODE
     if not verdict.exists():
         raise RuntimeError(f'{scenario}: CDP driver produced no verdict; see driver log')
     result = json.loads(verdict.read_text(encoding='utf-8-sig'))
-    required = ({'real-app-target', 'first-screen', 'initialize-form', 'setup-created-in-gui'}
-                if scenario == 'setup' else {'real-app-target', 'locked-screen', 'wrong-passphrase-rejected',
-                                            'still-locked-after-wrong-passphrase', 'right-passphrase-unlocked'})
+    required = {
+        'setup': {'real-app-target', 'first-screen', 'initialize-form', 'setup-created-in-gui'},
+        'unlock': {'real-app-target', 'locked-screen', 'wrong-passphrase-rejected',
+                   'still-locked-after-wrong-passphrase', 'right-passphrase-unlocked'},
+        'content-lock': {'real-app-target', 'content-lock-started-unlocked', 'content-lock-locked-screen'},
+    }[scenario]
+    if scenario == 'content-lock' and stage == 'passphrase':
+        required |= {'content-lock-keyring-entry-deleted', 'content-lock-passphrase-form',
+                     'content-lock-wrong-passphrase-rejected', 'content-lock-right-passphrase-unlocked'}
     steps = result.get('steps', [])
-    if not result.get('passed') or not required.issubset({step['name'] for step in steps}) or not all(step['ok'] for step in steps):
+    if result.get('stage') != stage or not result.get('passed') or not required.issubset({step['name'] for step in steps}) or not all(step['ok'] for step in steps):
         raise RuntimeError(f'{scenario}: failed or missing required assertions; see {verdict.name}')
     shots = ['setup-entry', 'initialize-form', 'setup-main'] if scenario == 'setup' else ['unlock-entry', 'unlock-wrong', 'unlock-main']
+    if scenario == 'content-lock':
+        shots = ['content-lock-entry'] if stage == 'entry' else [
+            'content-lock-entry', 'content-lock-wrong', 'content-lock-main']
     for name in shots:
         if not (out / f'{name}.png').is_file() or (out / f'{name}.png').stat().st_size == 0:
             raise RuntimeError(f'{scenario}: missing screenshot {name}.png')
@@ -320,19 +410,28 @@ def main():
         machine.ps(f"$ErrorActionPreference='Stop'; Copy-Item '{daemon}' '{app}\\uniclipd.exe'")
         for name in ('gui-go.exe', 'uniclip.exe'):
             machine.put(go_out / name, f'{app}\\{name}')
-        for scenario in ('setup', 'unlock'):
+        for scenario in ('setup', 'content-lock', 'unlock'):
+            if scenario == 'content-lock':
+                entry = run_driver(machine, app, out, driver, scenario, port, node, playwright, 'entry')
+                entry['passed'] = False
+                deletion = {'name': 'content-lock-keyring-entry-deleted', 'ok': False,
+                            'detail': {'lockedSnapshot': entry['steps'][-1]['detail']}}
+                try:
+                    deleted = delete_sandbox_keyring_entry(machine, app)
+                    deletion['detail']['sandboxRelativePath'] = deleted.strip()
+                    deletion['ok'] = True
+                except Exception as error:
+                    deletion['error'] = str(error)
+                    raise
+                finally:
+                    entry['steps'].append(deletion)
+                    (out / 'content-lock-assertions.json').write_text(json.dumps(entry, indent=2) + '\n')
+                record['scenarios'][scenario] = run_driver(
+                    machine, app, out, driver, scenario, port, node, playwright, 'passphrase')
+                continue
             if scenario == 'unlock':
                 stop_sandbox(machine, app)
-                record['keyringEntryDeleted'] = machine.ps(f"""
-$ErrorActionPreference='Stop'
-$keys = @(Get-ChildItem '{app}\\data' -Recurse -File -Filter '*.bin' | Where-Object {{ $_.Directory.Name -eq 'keyring' }})
-if ($keys.Count -ne 1) {{ throw "Expected exactly one sandbox keyring entry, found $($keys.Count)" }}
-$key = $keys[0].FullName
-if (-not $key.StartsWith('{app}\\data\\', [StringComparison]::OrdinalIgnoreCase)) {{ throw 'Key outside sandbox' }}
-Remove-Item -LiteralPath $key -Force
-if (Test-Path -LiteralPath $key) {{ throw 'Key entry still exists' }}
-$key.Substring('{app}\\'.Length)
-""")
+                record['keyringEntryDeleted'] = delete_sandbox_keyring_entry(machine, app)
             port = 9300 + int(time.time()) % 500
             task = f'uc-entry-kit-{stamp}-{scenario}'
             if machine.kind == 'ssh':
@@ -367,6 +466,8 @@ if (Test-Path '{app}\\data') {{
                 machine.fetch_dir(app + '\\evidence', remote_evidence)
                 # fetch_dir deliberately ignores transport errors; check the required launch logs locally.
                 for scenario in record['scenarios']:
+                    if scenario == 'content-lock':
+                        continue  # This scenario uses the setup launch without a restart.
                     for extension in ('out', 'err'):
                         if not list(remote_evidence.rglob(f'{scenario}-gui.{extension}')):
                             raise RuntimeError(f'missing fetched {scenario} GUI {extension} log')

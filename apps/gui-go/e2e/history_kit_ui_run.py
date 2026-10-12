@@ -113,6 +113,15 @@ def synthetic_png(width, height):
             + chunk(b'IDAT', zlib.compress(rows)) + chunk(b'IEND', b''))
 
 
+def seed_bulk(put, count=230):
+    """Enough entries to page past the daemon's 200-result clamp on /search/query, sent as text from
+    the loopback mobile device of seed_image: one local HTTP request each, where a CLI send per entry
+    is far too slow."""
+    for index in range(count):
+        put('/SyncClipboard.json', json.dumps({'type': 'Text', 'text': f'Bulk entry {index:03d}'}).encode(),
+            'application/json')
+
+
 def seed_image(env):
     """An image entry the way a phone sends one: a mobile device registered on this profile uploads a
     PNG to the daemon's mobile gateway over loopback (no pairing, no rendezvous). The gateway's listener
@@ -133,6 +142,7 @@ def seed_image(env):
     put('/file/photo.png', synthetic_png(*IMAGE_SIZE), 'image/png')
     put('/SyncClipboard.json', json.dumps({'type': 'Image', 'text': 'photo.png', 'dataName': 'photo.png',
                                            'hasData': True}).encode(), 'application/json')
+    return put
 
 
 def main():
@@ -166,8 +176,9 @@ def main():
             cli(env, 'space', 'init', '--passphrase', PASSPHRASE, '--device-name', 'Kit Mac')
             cli(env, 'start')
             proc = subprocess.Popen([str(BINARY)], env=gui_env, stdout=(out / 'history-kit-gui.log').open('w'), stderr=subprocess.STDOUT)
-            deadline, seen, steps = time.monotonic() + 480, set(), {}
+            deadline, seen, steps = time.monotonic() + 900, set(), {}
             seeded = False
+            mobile = None  # the loopback mobile device of seed_image, reused by seed_bulk
             last_front = 0.0
             started = time.monotonic()
             while time.monotonic() < deadline and 'history-kit-complete' not in steps:
@@ -180,8 +191,11 @@ def main():
                     if row['step'] == 'kit-ready-for-entries' and not seeded:
                         seeded = True
                         seed(env)
+                    if row['step'] == 'kit-ready-for-bulk' and 'bulk' not in results:
+                        seed_bulk(mobile)
+                        results['bulk'] = 230
                     if row['step'] == 'kit-ready-for-image' and 'image' not in results:
-                        seed_image(env)
+                        mobile = seed_image(env)
                         results['image'] = 'uploaded through a loopback mobile device'
                     if args.shots and row['step'].startswith('shot:') and row['step'] not in seen:
                         seen.add(row['step'])

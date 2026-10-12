@@ -1458,6 +1458,43 @@ async function runHistoryKitScenario() {
   }
   await setTheme('system')
 
+  // Paging past the daemon's 200-result clamp: the orchestrator adds a few hundred entries, and
+  // End, pressed as the list loads more, must reach the oldest entry instead of stopping at 200.
+  await record('kit-ready-for-bulk', true)
+  const bulkEnd = Date.now() + 240000
+  for (;;) {
+    const page = await daemonClient.request<{ data: Array<{ id: string }> }>(
+      '/clipboard/entries?limit=1&offset=210'
+    )
+    if (page.data.length > 0) break
+    if (Date.now() > bulkEnd) throw new Error('timeout: bulk entries')
+    await sleep(1000)
+  }
+  sidebarRow(i18n.t('history.sidebar.pinned'))?.click()
+  await sleep(500)
+  sidebarRow(i18n.t('history.sidebar.allItems'))?.click()
+  const oldest = seeded.texts[0]
+  const reachedOldest = () => selected()[0]?.getAttribute('aria-label')?.includes(oldest) ?? false
+  const listbox = () => $('[role="listbox"][aria-multiselectable]')
+  await waitFor('bulk list', () => listbox() && historyRows().length > 0, 60000)
+  const scrollEnd = Date.now() + 120000
+  let presses = 0
+  while (!reachedOldest() && Date.now() < scrollEnd) {
+    // While a larger window loads the list is briefly replaced; press End once it is back.
+    const current = listbox()
+    if (current) {
+      current.focus()
+      key(current, 'End')
+      presses++
+    }
+    await sleep(800)
+  }
+  await record('kit-paging-past-200', reachedOldest(), {
+    presses,
+    selected: selected()[0]?.getAttribute('aria-label')?.slice(0, 60),
+    subtitle: $('.mac-split-subtitle')?.textContent ?? null,
+  })
+
   await record('history-kit-complete', true)
   await sleep(1500)
   await control('exit')

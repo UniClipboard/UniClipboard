@@ -35,6 +35,6 @@
       "@host/*": ["./bindings/github.com/UniClipboard/UniClipboard/apps/gui-go/*"]
     }
   },
-  "include": ["src"],
+  "include": ["src", "scripts"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

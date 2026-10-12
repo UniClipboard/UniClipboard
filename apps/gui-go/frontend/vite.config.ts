@@ -1,9 +1,9 @@
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { sentryVitePlugin } from '@sentry/vite-plugin'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
-import type { Plugin } from 'vite'
+import { createServer, type Plugin } from 'vite'
 import { defineConfig } from 'vitest/config'
 
 const path = (relative: string) => fileURLToPath(new URL(relative, import.meta.url))
@@ -95,11 +95,86 @@ function uiSkin(): Plugin {
   }
 }
 
+// Prerender the pending view with the existing first-frame skin. This runs in Node, never
+// ships react-dom/server or Griffel's renderer in the browser, and leaves Linux's HTML intact.
+function startupSplash(): Plugin {
+  const platform = process.env.UC_UI_PLATFORM
+  let rendered:
+    | Promise<{ markup: string; styles: string; exportCopy: Record<string, string> }>
+    | undefined
+  return {
+    name: 'uc-startup-splash',
+    transformIndexHtml: {
+      order: 'pre',
+      async handler(html, context) {
+        if (
+          !platform ||
+          !uiPlatforms.includes(platform) ||
+          !context.filename.endsWith('/index.html')
+        )
+          return html
+        rendered ??= (async () => {
+          const server = await createServer({
+            configFile: false,
+            root: path('.'),
+            plugins: [uiSkin(), react()],
+            resolve: { alias: { '@': path('./src') } },
+            server: { middlewareMode: true, hmr: false },
+            appType: 'custom',
+            optimizeDeps: { noDiscovery: true, include: [] },
+          })
+          try {
+            const { renderStartupSplash } = await server.ssrLoadModule(
+              '/scripts/startup-splash.tsx'
+            )
+            return renderStartupSplash()
+          } finally {
+            await server.close()
+          }
+        })()
+        const { markup, styles, exportCopy } = await rendered
+        const skinCss =
+          platform === 'macos'
+            ? ['tokens.css', 'macos.css', 'entry.css']
+                .map(file => readFileSync(path(`./src/ui-kit/skins/macos/${file}`), 'utf8'))
+                .join('\n')
+            : ''
+        const frameCss = `
+          .uc-splash { position:fixed; inset:0; }
+          .uc-splash-frame { display:flex; height:100%; box-sizing:border-box; padding-top:2.5rem; }
+          .uc-splash-wait { display:flex; flex-direction:column; gap:.5rem; }
+          .uc-splash-caption { display:flex; justify-content:space-between; gap:.5rem; }
+          html:not(.dark) [data-splash-theme=dark], html.dark [data-splash-theme=light] { display:none; }
+        `
+        if (process.env.VITE_GUI_GO_E2E === '1') {
+          const observer = readFileSync(path('./e2e/startup-frame-observer.js'), 'utf8')
+          html = html.replace('</head>', `<script>${observer}</script></head>`)
+        }
+        return html
+          .replace(
+            /(<script type="application\/json" id="uc-splash-copy">)([\s\S]*?)(<\/script>)/,
+            (_, start, json, end) => {
+              const copy = JSON.parse(json)
+              for (const language of Object.keys(copy)) copy[language].export = exportCopy[language]
+              return `${start}${JSON.stringify(copy)}${end}`
+            }
+          )
+          .replace(/<style>[\s\S]*?<\/style>/, `${styles}<style>${skinCss}\n${frameCss}</style>`)
+          .replace(
+            /<div id="root">[\s\S]*?(?= {4}<script type="application\/json")/,
+            `<div id="root">${markup}</div>\n`
+          )
+      },
+    },
+  }
+}
+
 // The whole frontend lives in this directory: the business sources are `src` (`@`), the Wails
 // host modules `src/host`. The same config builds the three documents and runs the vitest suite.
 export default defineConfig({
   plugins: [
     uiSkin(),
+    startupSplash(),
     react(),
     tailwindcss(),
     sentryVitePlugin({

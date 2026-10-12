@@ -9,7 +9,10 @@
 export type WindowMaterial = 'liquid-glass' | 'visual-effect' | 'none'
 
 // Read once at startup (src/host/main.ts imports this module first): routing drops the query string.
-const reported = new URLSearchParams(window.location.search).get('window-material')
+const reported =
+  typeof window === 'undefined'
+    ? null
+    : new URLSearchParams(window.location.search).get('window-material')
 const material: WindowMaterial =
   reported === 'liquid-glass' || reported === 'visual-effect' ? reported : 'none'
 

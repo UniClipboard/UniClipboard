@@ -109,7 +109,7 @@ export function EntryPage({
           <header className={styles.header}>
             <img src={appIcon} alt="" className={styles.icon} draggable={false} />
             {status && (
-              <p className={mergeClasses(styles.status, tone !== 'neutral' && styles[tone])}>
+              <div className={mergeClasses(styles.status, tone !== 'neutral' && styles[tone])}>
                 {status.busy ? (
                   <Spinner size="extra-tiny" />
                 ) : (
@@ -120,7 +120,7 @@ export function EntryPage({
                   )
                 )}
                 <span>{status.text}</span>
-              </p>
+              </div>
             )}
             <h1
               className={mergeClasses(styles.title, !status && styles.titleOnly)}

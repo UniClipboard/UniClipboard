@@ -22,7 +22,8 @@
       } catch {}
     </script>
     <!-- Startup screen: painted from this static markup before any script loads, and replaced
-         when React renders into #root. It mirrors AppStateShell with the pending startup
+         when React renders into #root. macOS/Windows replace it at build time with the selected
+         first-frame skin; the markup below is the Linux view. It mirrors AppStateShell with the pending startup
          snapshot (default zinc theme colors). The copy below must match
          src/i18n/upgrade-progress.ts; src/__tests__/index-startup-splash.test.ts enforces it. -->
     <style>

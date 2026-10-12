@@ -239,6 +239,22 @@ async function run() {
 
   await waitFor('home', mainLayout)
   await record('home', true)
+  if (phase === 'startup-frames') {
+    const observed = window as unknown as {
+      __UC_STARTUP_FRAMES__: Array<{ skin: string; phase: string; at: number }>
+      __UC_STOP_STARTUP_FRAMES__: () => void
+    }
+    observed.__UC_STOP_STARTUP_FRAMES__()
+    const frames = observed.__UC_STARTUP_FRAMES__
+    await record(
+      'startup-frames',
+      frames.length > 0 && frames.every(frame => frame.skin === 'macos'),
+      frames
+    )
+    await sleep(1500)
+    await record('driver-complete', true)
+    return control('exit')
+  }
   const click = (href: string) => () =>
     void waitFor(`link ${href}`, () => navControl(href)).then(a => a.click())
   // At this window width the shared layout shows devices as a panel of the history route.

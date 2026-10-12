@@ -33,6 +33,8 @@ process.chdir(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'))
 // The app itself (bootstrap, IPC, store) and the Fluent UI barrel must never reach the first frame;
 // single Fluent packages (button, progress, provider) and the icons in use may.
 const forbidden = [
+  /\/scripts\/startup-splash\.tsx$/,
+  /node_modules\/react-dom\/.*server/,
   /node_modules\/@fluentui\/react-components\//,
   /\/src\/bootstrap\.tsx$/,
   /\/src\/lib\/ipc\.ts$/,

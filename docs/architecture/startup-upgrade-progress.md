@@ -121,6 +121,32 @@ SetupPage 只负责已确认的向导步骤，旧 loading setup state 展示和�
 资料保护信息缺失、磁盘读取失败或权限不足仍停止升级。这些失败可能影响资料安全或完整性，
 不能按单条历史内容损坏继续处理。
 
+## 主窗口首屏的皮肤
+
+主窗口从 `index.html` 开始。macOS 和 Windows 构建先用
+`apps/gui-go/frontend/scripts/startup-splash.tsx` 将现有 `ui-kit/first-frame`
+组件渲染为静态 HTML；明暗主题共用对应皮肤的样式和令牌。Linux 未指定
+`UC_UI_PLATFORM` 时保留原有静态首屏，不加载平台组件。
+
+静态首屏只声明“正在连接后台服务”，不推断后台进度。脚本加载后，
+`startup-screen.tsx` 通过 `@ui-startup-screen` 显示同一平台的等待页；
+`AppContentView` 随后通过同一别名显示真实启动状态。构建时的服务器渲染代码
+不得进入浏览器首屏模块图，也不得让首屏加载完整 App、IPC 或 store。
+静态诊断按钮在处理程序加载前禁用，React 接管后按真实状态启用。
+
+浏览器验证真实主文档的静态首屏和首个 React 帧：
+
+```bash
+node apps/gui-go/frontend/e2e/startup-first-frame-browser.mjs --platform macos --out /tmp/uc-startup-macos
+node apps/gui-go/frontend/e2e/startup-first-frame-browser.mjs --platform windows --out /tmp/uc-startup-windows
+node apps/gui-go/frontend/e2e/startup-first-frame-browser.mjs --platform none --out /tmp/uc-startup-other
+```
+
+通过 `PLAYWRIGHT_MODULE` 指定已有 Playwright 模块；这些检查保存 JSON 和截图，
+并阻塞 bootstrap，不能代替真实后台或原生 WebView 验收。验收包额外包含只读的
+首屏观察脚本；`apps/gui-go/e2e/startup_frames_run.py` 在独立 HOME/profile 中记录
+真实 WebView 从首屏到主界面的皮肤，并验证冷启动、复用后台与重新启动。
+
 ## 验证入口
 
 - `crates/uc-webserver/tests/startup_progress.rs`：认证、就绪前访问、终态与清理。

@@ -54,8 +54,8 @@ try {
     const frames = await transition(label)
     result.frames[key] = frames
     assert.ok(
-      frames.some((f) => f.width > 1 && f.width < 235),
-      `${key}: intermediate widths`,
+      frames.some(f => f.width > 1 && f.width < 235),
+      `${key}: intermediate widths`
     )
     assert.ok(Math.abs(frames.at(-1).width - last) < 1)
     for (const f of frames) {
@@ -64,7 +64,7 @@ try {
     }
     await browser.saveScreenshot(`${out}/${key}.png`)
   }
-  await browser.executeAsync((done) => {
+  await browser.executeAsync(done => {
     document.querySelector('[aria-label="Hide sidebar"]').click()
     setTimeout(() => document.querySelector('[aria-label="Show sidebar"]').click(), 80)
     setTimeout(done, 450)
@@ -77,7 +77,7 @@ try {
       document.querySelector('.mac-split-sidebar button').focus()
       return document.querySelector('.mac-split-sidebar').contains(document.activeElement)
     }),
-    false,
+    false
   )
   await browser.deleteSession()
   browser = await remote({
@@ -93,11 +93,11 @@ try {
   await browser.$('.mac-split').waitForDisplayed()
   assert.equal(
     await browser.execute(() => matchMedia('(prefers-reduced-motion: reduce)').matches),
-    true,
+    true
   )
   await transition('Hide sidebar')
   result.frames.reduced = await transition('Show sidebar')
-  assert.ok(result.frames.reduced.every((f) => Math.abs(f.width - 236) < 1))
+  assert.ok(result.frames.reduced.every(f => Math.abs(f.width - 236) < 1))
   result.passed = true
 } finally {
   await writeFile(`${out}/result.json`, JSON.stringify(result, null, 2) + '\n')

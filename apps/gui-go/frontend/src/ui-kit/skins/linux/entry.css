@@ -1,0 +1,473 @@
+/* Setup, startup, recovery and unlock pages of the Linux skin, in the style of libadwaita status
+   pages and boxed lists (the design canvas has no dedicated board; sizes follow "GNOME components").
+   Written in px like adwaita.css. */
+
+.adw-entry {
+  box-sizing: border-box;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  width: 100%;
+  background: var(--window);
+  color: var(--fg);
+}
+
+.adw-entry-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0 32px;
+}
+
+.adw-entry-column {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 420px;
+  margin-top: auto;
+  margin-bottom: auto;
+  padding: 24px 0 28px;
+  display: flex;
+  flex-direction: column;
+}
+
+.adw-entry-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.adw-entry-icon {
+  width: 64px;
+  height: 64px;
+  margin-bottom: 16px;
+}
+
+.adw-entry-status {
+  margin: 0 0 6px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12.5px;
+  line-height: 16px;
+  font-weight: 700;
+  color: var(--fg2);
+}
+
+.adw-entry-status[data-tone='positive'] {
+  color: var(--success-text);
+}
+
+.adw-entry-status[data-tone='critical'] {
+  color: var(--destructive-text);
+}
+
+.adw-entry-title {
+  margin: 0;
+  font-size: 26px;
+  line-height: 32px;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.adw-entry-description {
+  margin: 6px 0 0;
+  max-width: 380px;
+  font-size: 14.7px;
+  line-height: 20px;
+  color: var(--fg2);
+  overflow-wrap: anywhere;
+}
+
+.adw-entry-body {
+  margin-top: 26px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.adw-entry-body form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* The page's one prominent action fills the column. */
+.adw-entry-body .adw-btn[data-size='xlarge'] {
+  width: 100%;
+}
+
+.adw-entry-footer {
+  flex-shrink: 0;
+  min-height: 64px;
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Footer buttons are 40 px pills whatever size the caller asked for. */
+.adw-entry-footer .adw-btn {
+  height: 40px;
+  padding: 0 24px;
+  border-radius: 999px;
+  font-size: 14px;
+}
+
+.adw-entry-spacer {
+  flex: 1 1 auto;
+}
+
+.adw-button-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+
+/* ---------- form field ---------- */
+
+.adw-form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.adw-form-label {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.adw-form-control {
+  position: relative;
+  display: flex;
+}
+
+.adw-form-input {
+  all: unset;
+  box-sizing: border-box;
+  width: 100%;
+  height: 34px;
+  padding: 0 10px;
+  border-radius: 6px;
+  background: var(--btn);
+  font-size: 14px;
+  color: var(--fg);
+  cursor: text;
+}
+
+.adw-form-control[data-password] .adw-form-input {
+  padding-right: 38px;
+}
+
+.adw-form-input::placeholder {
+  color: var(--fg3);
+}
+
+.adw-form-input[aria-invalid='true'] {
+  box-shadow: inset 0 0 0 2px var(--destructive);
+}
+
+.adw-form-input:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.adw-form-reveal {
+  all: unset;
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--fg2);
+  cursor: pointer;
+}
+
+.adw-form-reveal:hover:not(:disabled) {
+  background: var(--hover);
+}
+
+.adw-form-reveal:disabled {
+  opacity: 0.45;
+}
+
+.adw-form-error {
+  margin: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 5px;
+  font-size: 12.5px;
+  line-height: 16px;
+  color: var(--destructive-text);
+}
+
+.adw-form-error .adw-icon {
+  margin-top: 1px;
+}
+
+.adw-form-hint {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 16px;
+  color: var(--fg2);
+}
+
+/* ---------- code field ---------- */
+
+.adw-otp-field {
+  align-items: center;
+}
+
+.adw-otp {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.adw-otp-group-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.adw-otp-separator {
+  width: 10px;
+  height: 2px;
+  margin: 0 4px;
+  border-radius: 1px;
+  background: var(--fg3);
+}
+
+.adw-otp-slot {
+  position: relative;
+  box-sizing: border-box;
+  width: 40px;
+  height: 48px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--btn);
+  font-family: var(--adw-mono);
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.adw-otp-slot[data-invalid] {
+  box-shadow: inset 0 0 0 2px var(--destructive);
+  color: var(--destructive-text);
+}
+
+.adw-otp-caret {
+  width: 1.5px;
+  height: 22px;
+  background: var(--accent);
+  animation: adw-caret 1s steps(1) infinite;
+}
+
+@keyframes adw-caret {
+  50% {
+    opacity: 0;
+  }
+}
+
+/* ---------- progress ---------- */
+
+.adw-progress {
+  position: relative;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--btn);
+  overflow: hidden;
+}
+
+.adw-progress > span {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  border-radius: 3px;
+  background: var(--accent);
+  transition: width 0.3s ease;
+}
+
+.adw-progress[data-indeterminate] > span {
+  width: 30%;
+  animation: adw-progress-sweep 1.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+@keyframes adw-progress-sweep {
+  from {
+    left: -30%;
+  }
+  to {
+    left: 100%;
+  }
+}
+
+.adw-spinner {
+  flex-shrink: 0;
+  animation: adw-spin 0.9s steps(8) infinite;
+}
+
+@keyframes adw-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ---------- choices ---------- */
+
+.adw-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.adw-choices-title {
+  margin: 4px 0 0 12px;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 700;
+  color: var(--fg2);
+}
+
+.adw-choices-group {
+  border-radius: 12px;
+  background: var(--card);
+  box-shadow: var(--card-shadow);
+  overflow: hidden;
+}
+
+.adw-choice {
+  all: unset;
+  box-sizing: border-box;
+  position: relative;
+  width: 100%;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--fg);
+  cursor: pointer;
+}
+
+.adw-choice + .adw-choice::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: var(--border);
+}
+
+.adw-choice:hover:not(:disabled) {
+  background: var(--hover);
+}
+
+.adw-choice:active:not(:disabled) {
+  background: var(--press);
+}
+
+.adw-choice:disabled {
+  opacity: 0.5;
+}
+
+.adw-choice > .adw-icon:last-child {
+  color: var(--fg3);
+}
+
+.adw-choice-tile {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  background: var(--accent);
+}
+
+.adw-choice[data-symbol='phone'] .adw-choice-tile {
+  background: var(--success);
+}
+
+.adw-choice[data-symbol='package'] .adw-choice-tile {
+  background: var(--gray);
+}
+
+.adw-choice-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.adw-choice-title {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.adw-choice-description {
+  font-size: 12.5px;
+  line-height: 16px;
+  color: var(--fg2);
+}
+
+/* ---------- disclosure ---------- */
+
+.adw-disclosure > summary {
+  list-style: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--fg2);
+  cursor: pointer;
+}
+
+.adw-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+
+.adw-disclosure > summary .adw-icon {
+  transition: transform 0.2s ease;
+}
+
+.adw-disclosure[open] > summary .adw-icon {
+  transform: rotate(90deg);
+}
+
+.adw-disclosure-content {
+  margin-top: 8px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .adw-progress[data-indeterminate] > span {
+    left: 35%;
+    animation: none;
+  }
+  .adw-spinner,
+  .adw-otp-caret {
+    animation: none;
+  }
+  .adw-disclosure > summary .adw-icon,
+  .adw-progress > span {
+    transition: none;
+  }
+}

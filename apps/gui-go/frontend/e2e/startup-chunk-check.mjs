@@ -3,10 +3,10 @@
 // (main.tsx imports that chunk first and only then the rest of the app). Reports bytes, gzip bytes
 // and the packages in that closure, and fails when the closure contains a forbidden package or
 // grows past the given budget.
-//   node e2e/startup-chunk-check.mjs --platform windows|macos|none [--budget-kb N] [--json out.json]
+//   node e2e/startup-chunk-check.mjs --platform windows|macos|linux|none [--budget-kb N] [--json out.json]
 // The default budget is the closure measured before the platform kit entry pages (300.4 KiB gzip on
 // all three targets, commit 5d2694d95) plus the growth they are allowed: 64 KiB with a skin, 4 KiB
-// without one (Linux keeps the existing startup screen).
+// without one (a platform-less build keeps the existing startup screen).
 import assert from 'node:assert/strict'
 import { writeFile } from 'node:fs/promises'
 import path from 'node:path'
@@ -20,7 +20,10 @@ const arg = name => {
   return index === -1 ? undefined : args[index + 1]
 }
 const platform = arg('--platform')
-assert.ok(['windows', 'macos', 'none'].includes(platform ?? ''), '--platform windows|macos|none')
+assert.ok(
+  ['windows', 'macos', 'linux', 'none'].includes(platform ?? ''),
+  '--platform windows|macos|linux|none'
+)
 const budgetKb = arg('--budget-kb')
   ? Number(arg('--budget-kb'))
   : platform === 'none'

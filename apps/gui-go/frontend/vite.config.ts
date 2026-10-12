@@ -25,41 +25,41 @@ if (sentryEnabled && !appVersion) {
 // it, so a missing value is an error when `@ui-skin` is resolved; a value that is not a known
 // platform is an error for every build. A build with a target writes it to `.ui-platform` in the
 // output, and the packaging scripts refuse a dist built for another target.
-const uiPlatforms = ['windows', 'macos']
+const uiPlatforms = ['windows', 'macos', 'linux']
 const uiPlatformMarker = '.ui-platform'
 // Main-window pages built on `@/ui-kit` replace the existing pages only for the targets listed here.
-// Every other build (Windows, and Linux, which has no skin and no target) keeps the existing page,
-// so a build without UC_UI_PLATFORM never reaches the kit.
+// A build without UC_UI_PLATFORM (vitest, coverage) keeps the existing pages and never reaches the
+// kit; every shipped target (Windows, macOS, Linux) sets one.
 const kitPages: Record<string, { platforms: string[]; kit: string; existing: string }> = {
   '@ui-history-page': {
-    platforms: ['macos', 'windows'],
+    platforms: ['macos', 'windows', 'linux'],
     kit: './src/pages/history-kit/HistoryKitPage.tsx',
     existing: './src/pages/HistoryPage.tsx',
   },
   // The entry pages shown before the main window content (design page "Setup · Startup · Unlock").
   // The startup screen is also the first frame (src/startup-screen.tsx).
   '@ui-startup-screen': {
-    platforms: ['macos', 'windows'],
+    platforms: ['macos', 'windows', 'linux'],
     kit: './src/pages/entry-kit/StartupKitScreen.tsx',
     existing: './src/components/app/StartupProgressScreen.tsx',
   },
   '@ui-app-status-screen': {
-    platforms: ['macos', 'windows'],
+    platforms: ['macos', 'windows', 'linux'],
     kit: './src/pages/entry-kit/StatusKitScreen.tsx',
     existing: './src/components/app/AppStatusScreen.tsx',
   },
   '@ui-profile-recovery-page': {
-    platforms: ['macos', 'windows'],
+    platforms: ['macos', 'windows', 'linux'],
     kit: './src/pages/entry-kit/ProfileRecoveryKitPage.tsx',
     existing: './src/pages/ProfileRecoveryPage.tsx',
   },
   '@ui-setup-page': {
-    platforms: ['macos', 'windows'],
+    platforms: ['macos', 'windows', 'linux'],
     kit: './src/pages/entry-kit/SetupKitPage.tsx',
     existing: './src/pages/SetupPage.tsx',
   },
   '@ui-unlock-page': {
-    platforms: ['macos', 'windows'],
+    platforms: ['macos', 'windows', 'linux'],
     kit: './src/pages/entry-kit/UnlockKitPage.tsx',
     existing: './src/pages/UnlockPage.tsx',
   },
@@ -107,8 +107,14 @@ function uiSkin(): Plugin {
   }
 }
 
+// The stylesheets a skin inlines into the prerendered first frame (Windows styles it with Griffel).
+const skinCssFiles: Record<string, string[]> = {
+  macos: ['tokens.css', 'macos.css', 'entry.css'],
+  linux: ['tokens.css', 'adwaita.css', 'entry.css'],
+}
+
 // Prerender the pending view with the existing first-frame skin. This runs in Node, never
-// ships react-dom/server or Griffel's renderer in the browser, and leaves Linux's HTML intact.
+// ships react-dom/server or Griffel's renderer in the browser.
 function startupSplash(): Plugin {
   const platform = process.env.UC_UI_PLATFORM
   let rendered:
@@ -153,12 +159,9 @@ function startupSplash(): Plugin {
           }
         })()
         const { markup, styles, exportCopy } = await rendered
-        const skinCss =
-          platform === 'macos'
-            ? ['tokens.css', 'macos.css', 'entry.css']
-                .map(file => readFileSync(path(`./src/ui-kit/skins/macos/${file}`), 'utf8'))
-                .join('\n')
-            : ''
+        const skinCss = (skinCssFiles[platform] ?? [])
+          .map(file => readFileSync(path(`./src/ui-kit/skins/${platform}/${file}`), 'utf8'))
+          .join('\n')
         const frameCss = `
           .uc-splash { position:fixed; inset:0; }
           .uc-splash-frame { display:flex; height:100%; box-sizing:border-box; padding-top:2.5rem; }

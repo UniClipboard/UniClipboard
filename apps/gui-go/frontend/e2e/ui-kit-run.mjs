@@ -1,5 +1,5 @@
 // Entry point for the platform UI kit gallery and its browser E2E, with an explicit target:
-//   node e2e/ui-kit-run.mjs --platform windows|macos [--serve] [--port 1460]
+//   node e2e/ui-kit-run.mjs --platform windows|macos|linux [--serve] [--port 1460]
 // The platform is passed to the gallery build as UC_UI_PLATFORM and to the E2E as
 // UI_KIT_PLATFORM, which checks that the served skin and the build marker match it. `--serve`
 // only builds and serves the gallery (for looking at it by hand). Playwright comes from
@@ -25,8 +25,10 @@ if (!/^[1-9][0-9]{0,4}$/.test(port ?? '') || Number(port) > 65535) {
   process.exit(2)
 }
 const serveOnly = args.includes('--serve')
-if (!['windows', 'macos'].includes(platform ?? '')) {
-  console.error('Usage: node e2e/ui-kit-run.mjs --platform windows|macos [--serve] [--port 1460]')
+if (!['windows', 'macos', 'linux'].includes(platform ?? '')) {
+  console.error(
+    'Usage: node e2e/ui-kit-run.mjs --platform windows|macos|linux [--serve] [--port 1460]'
+  )
   process.exit(2)
 }
 

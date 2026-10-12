@@ -142,8 +142,8 @@ export async function main(args, env = process.env) {
   const helper = withHelper ? path.join(root, 'target/debug/uniclip-quick-panel') : null
   const binary = process.platform === 'darwin' ? makeDevBundle(built, helper) : built
 
-  // A dev build targets the machine it runs on. Linux has no UI kit skin, so it sets no target.
-  const uiPlatform = { darwin: 'macos', win32: 'windows' }[process.platform]
+  // A dev build targets the machine it runs on.
+  const uiPlatform = { darwin: 'macos', win32: 'windows', linux: 'linux' }[process.platform]
   const childEnv = {
     ...env,
     ...(uiPlatform ? { UC_UI_PLATFORM: uiPlatform } : {}),

@@ -10,7 +10,7 @@ import { build, preview } from 'vite'
 const args = process.argv.slice(2)
 const option = key => args[args.indexOf(key) + 1]
 const platform = option('--platform')
-assert.ok(['macos', 'windows', 'none'].includes(platform))
+assert.ok(['macos', 'windows', 'linux', 'none'].includes(platform))
 const out = path.resolve(option('--out'))
 await mkdir(out, { recursive: true })
 process.chdir(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'))

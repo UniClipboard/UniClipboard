@@ -1,0 +1,62 @@
+UI kit bundle isolation evidence
+
+== real app entries, UC_UI_PLATFORM=windows ==
+  marker .ui-platform: windows
+  modules in the bundle: 2303
+  kit skins included: windows
+  forbidden (other skins and legacy page modules) found: 0
+  @fluentui packages: @fluentui/keyboard-keys, @fluentui/react-aria, @fluentui/react-badge, @fluentui/react-button, @fluentui/react-checkbox, @fluentui/react-combobox, @fluentui/react-context-selector, @fluentui/react-dialog, @fluentui/react-field, @fluentui/react-icons, @fluentui/react-input, @fluentui/react-jsx-runtime, @fluentui/react-label, @fluentui/react-link, @fluentui/react-menu, @fluentui/react-message-bar, @fluentui/react-motion-components-preview, @fluentui/react-motion, @fluentui/react-nav, @fluentui/react-portal, @fluentui/react-positioning, @fluentui/react-progress, @fluentui/react-provider, @fluentui/react-shared-contexts, @fluentui/react-slider, @fluentui/react-spinner, @fluentui/react-switch, @fluentui/react-tabster, @fluentui/react-toolbar, @fluentui/react-tooltip, @fluentui/react-utilities, @fluentui/tokens
+  @griffel packages: @griffel/core, @griffel/react
+  bundle size (js+css, 25 files): 3902.8 KiB raw, 1137.1 KiB gzip
+  document main: imports @/ui-kit statically: no (5 modules), with lazy chunks: yes (2253 modules)
+  document quick-panel: imports @/ui-kit statically: no (954 modules), with lazy chunks: no (955 modules)
+  document updater: imports @/ui-kit statically: no (745 modules), with lazy chunks: no (746 modules)
+
+== real app entries, UC_UI_PLATFORM=macos ==
+  marker .ui-platform: macos
+  modules in the bundle: 1812
+  kit skins included: macos
+  forbidden (other skins and legacy page modules) found: 0
+  @fluentui packages: absent
+  @griffel packages: absent
+  bundle size (js+css, 25 files): 3505.8 KiB raw, 1035.6 KiB gzip
+  document main: imports @/ui-kit statically: no (5 modules), with lazy chunks: yes (1762 modules)
+  document quick-panel: imports @/ui-kit statically: no (953 modules), with lazy chunks: no (954 modules)
+  document updater: imports @/ui-kit statically: no (745 modules), with lazy chunks: no (746 modules)
+
+== real app entries, UC_UI_PLATFORM=linux ==
+  marker .ui-platform: linux
+  modules in the bundle: 1812
+  kit skins included: linux
+  forbidden (other skins and legacy page modules) found: 0
+  @fluentui packages: absent
+  @griffel packages: absent
+  bundle size (js+css, 25 files): 3492.0 KiB raw, 1032.9 KiB gzip
+  document main: imports @/ui-kit statically: no (5 modules), with lazy chunks: yes (1762 modules)
+  document quick-panel: imports @/ui-kit statically: no (953 modules), with lazy chunks: no (954 modules)
+  document updater: imports @/ui-kit statically: no (745 modules), with lazy chunks: no (746 modules)
+
+== real app entries, UC_UI_PLATFORM=(unset) ==
+  marker .ui-platform: none
+  modules in the bundle: 1743
+  kit skins included: none
+  forbidden (kit page and every skin) found: 0
+  @fluentui packages: absent
+  @griffel packages: absent
+  bundle size (js+css, 25 files): 3427.9 KiB raw, 1014.8 KiB gzip
+  document main: imports @/ui-kit statically: no (5 modules), with lazy chunks: no (1716 modules)
+  document quick-panel: imports @/ui-kit statically: no (955 modules), with lazy chunks: no (956 modules)
+  document updater: imports @/ui-kit statically: no (745 modules), with lazy chunks: no (746 modules)
+
+== gallery fixture (kit only) ==
+  windows: 612 modules, src/ui-kit/skins/windows, leaked 0, 1061.8 KiB raw / 283.8 KiB gzip
+  macos: 265 modules, src/ui-kit/skins/macos, leaked 0, 790.8 KiB raw / 224.7 KiB gzip
+  linux: 264 modules, src/ui-kit/skins/linux, leaked 0, 776.9 KiB raw / 221.9 KiB gzip
+
+== legacy page sources still on disk ==
+  present  src/pages/HistoryPage.tsx
+  present  src/pages/SetupPage.tsx
+  present  src/pages/UnlockPage.tsx
+  present  src/pages/ProfileRecoveryPage.tsx
+  present  src/components/app/StartupProgressScreen.tsx
+  present  src/components/app/AppStatusScreen.tsx

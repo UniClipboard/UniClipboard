@@ -143,7 +143,9 @@ parts:
       # 2) The shared frontend bundle, which the Go host embeds (apps/gui-go/main.go).
       (cd packages/desktop-host-go && go generate ./buildinfo)
       bun install --frozen-lockfile
-      bun --bun run --cwd apps/gui-go/frontend build
+      UC_UI_PLATFORM=linux bun --bun run --cwd apps/gui-go/frontend build
+      # The build records its target in dist/.ui-platform; never embed another platform's bundle.
+      test "$(cat apps/gui-go/frontend/dist/.ui-platform)" = linux
 
       # 3) The Go host, with the shipped tags and the identity from apps/gui-go/app.json (the
       # single source: the identifier keys the single-instance scope and notifications).

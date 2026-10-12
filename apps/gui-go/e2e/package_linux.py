@@ -6,7 +6,7 @@
 Runs on a Linux host (the Dockerfile in e2e/linux provides one): the GUI links GTK3 and WebKitGTK through cgo, so it
 cannot be cross-compiled from macOS. The daemon is NOT built here: `uniclipd` for the same architecture must be
 supplied; a missing or malformed file is a hard error. The frontend bundle (apps/gui-go/frontend/dist) must exist
-(`bun --bun run --cwd apps/gui-go/frontend build`).
+(`UC_UI_PLATFORM=linux bun --bun run --cwd apps/gui-go/frontend build`).
 
 Outputs in <dir> (names follow the Tauri bundler, which the release workflow and updater feed already expect):
   uniclipboard                                       release build (tags gtk3,production,release)
@@ -666,6 +666,15 @@ def read_daemon_evidence(path, daemon, arch):
             'engineLockEntry': engine[:3], 'evidenceFile': str(path), 'evidenceSha256': sha256(path)}
 
 
+def require_ui_platform(dist, target):
+    """The frontend build records its UC_UI_PLATFORM in dist/.ui-platform (vite.config.ts); refuse any other."""
+    marker = dist / '.ui-platform'
+    found = marker.read_text().strip() if marker.is_file() else None
+    if found != target:
+        sys.exit(f'{dist} was built for UI platform {found or "none (no .ui-platform marker)"}, not {target}: '
+                 f'rebuild it with UC_UI_PLATFORM={target} bun --bun run --cwd apps/gui-go/frontend build')
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--arch', choices=sorted(ARCH), required=True)
@@ -690,7 +699,9 @@ def main():
     if sys.platform != 'linux':
         sys.exit('package_linux.py must run on Linux (cgo against GTK3/WebKitGTK); use e2e/linux/Dockerfile')
     if not args.gui_binary and not (GUI / 'frontend/dist').is_dir():
-        sys.exit('apps/gui-go/frontend/dist is missing: build the frontend once (bun --bun run --cwd apps/gui-go/frontend build)')
+        sys.exit('apps/gui-go/frontend/dist is missing: build the frontend once (UC_UI_PLATFORM=linux bun --bun run --cwd apps/gui-go/frontend build)')
+    if not args.gui_binary:
+        require_ui_platform(GUI / 'frontend/dist', 'linux')
     if not args.daemon.is_file():
         sys.exit(f'{args.daemon} not found: a package without the daemon cannot start')
     ok, reason = check_daemon(args.daemon, args.arch)

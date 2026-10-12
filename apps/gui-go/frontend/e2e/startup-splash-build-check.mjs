@@ -1,5 +1,5 @@
 // Nonvisual build E2E. Failure modes: missing HTML anchors must fail; indentation must not
-// silently retain the legacy root; macOS/Windows select their skin; no-platform retains legacy.
+// silently retain the legacy root; macOS/Windows/Linux select their skin; no-platform retains legacy.
 import assert from 'node:assert/strict'
 import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
@@ -24,6 +24,7 @@ const cases = [
     html => html.replace('    <script type="application/json"', '<script type="application/json"'),
   ],
   ['windows', 'normal', html => html],
+  ['linux', 'normal', html => html],
   ['none', 'normal', html => html],
 ]
 const results = []

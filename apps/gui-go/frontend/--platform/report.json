@@ -1,0 +1,309 @@
+{
+  "windows": {
+    "built": true,
+    "moduleCount": 612,
+    "packages": {
+      "app source": 2,
+      "src/ui-kit/skins/windows": 67,
+      "@emotion/hash": 1,
+      "@floating-ui/core": 1,
+      "@floating-ui/dom": 1,
+      "@floating-ui/utils": 2,
+      "@fluentui/keyboard-keys": 1,
+      "@fluentui/react-aria": 6,
+      "@fluentui/react-badge": 6,
+      "@fluentui/react-button": 13,
+      "@fluentui/react-checkbox": 4,
+      "@fluentui/react-combobox": 26,
+      "@fluentui/react-context-selector": 3,
+      "@fluentui/react-dialog": 36,
+      "@fluentui/react-divider": 3,
+      "@fluentui/react-field": 8,
+      "@fluentui/react-icons": 34,
+      "@fluentui/react-input": 4,
+      "@fluentui/react-jsx-runtime": 8,
+      "@fluentui/react-label": 4,
+      "@fluentui/react-link": 1,
+      "@fluentui/react-list": 14,
+      "@fluentui/react-menu": 41,
+      "@fluentui/react-message-bar": 23,
+      "@fluentui/react-motion-components-preview": 5,
+      "@fluentui/react-motion": 15,
+      "@fluentui/react-nav": 15,
+      "@fluentui/react-portal": 6,
+      "@fluentui/react-positioning": 40,
+      "@fluentui/react-progress": 7,
+      "@fluentui/react-provider": 7,
+      "@fluentui/react-shared-contexts": 8,
+      "@fluentui/react-spinner": 5,
+      "@fluentui/react-switch": 4,
+      "@fluentui/react-tabster": 18,
+      "@fluentui/react-toolbar": 19,
+      "@fluentui/react-tooltip": 6,
+      "@fluentui/react-utilities": 34,
+      "@fluentui/tokens": 18,
+      "@griffel/core": 42,
+      "@griffel/react": 8,
+      "input-otp": 1,
+      "keyborg": 1,
+      "react-dom": 4,
+      "react": 4,
+      "rtl-css-js": 1,
+      "scheduler": 2,
+      "stylis": 6,
+      "tabster": 25,
+      "use-sync-external-store": 2
+    },
+    "leaked": [],
+    "missing": [],
+    "size": {
+      "files": 2,
+      "bytes": 1087303,
+      "gzip": 290645
+    },
+    "marker": "windows"
+  },
+  "macos": {
+    "built": true,
+    "moduleCount": 265,
+    "packages": {
+      "app source": 7,
+      "src/ui-kit/skins/macos": 13,
+      "@base-ui/react": 188,
+      "@base-ui/utils": 37,
+      "@floating-ui/core": 1,
+      "@floating-ui/dom": 1,
+      "@floating-ui/react-dom": 1,
+      "@floating-ui/utils": 2,
+      "input-otp": 1,
+      "react-dom": 4,
+      "react": 4,
+      "scheduler": 2,
+      "use-sync-external-store": 4
+    },
+    "leaked": [],
+    "missing": [],
+    "size": {
+      "files": 2,
+      "bytes": 809776,
+      "gzip": 230072
+    },
+    "marker": "macos"
+  },
+  "linux": {
+    "built": true,
+    "moduleCount": 264,
+    "packages": {
+      "app source": 6,
+      "src/ui-kit/skins/linux": 13,
+      "@base-ui/react": 188,
+      "@base-ui/utils": 37,
+      "@floating-ui/core": 1,
+      "@floating-ui/dom": 1,
+      "@floating-ui/react-dom": 1,
+      "@floating-ui/utils": 2,
+      "input-otp": 1,
+      "react-dom": 4,
+      "react": 4,
+      "scheduler": 2,
+      "use-sync-external-store": 4
+    },
+    "leaked": [],
+    "missing": [],
+    "size": {
+      "files": 2,
+      "bytes": 795500,
+      "gzip": 227185
+    },
+    "marker": "linux"
+  },
+  "platform-unset": {
+    "built": false,
+    "error": "Build failed with 1 error: [plugin uc-ui-skin] RolldownError: @/ui-kit needs UC_UI_PLATFORM=windows|macos|linux (got nothing) at error (file:///Users/mark/.herdr/worktrees/desktop/hp-uni-t-0296-linux-gui-kit/node_modules/rolldown/dist/shared/logs-D80CXhvg.mjs:147:24) at PluginContextImpl.error (file:///Users/mark/.herdr/worktrees/desktop/hp-uni-t-0296-linux-gui-kit/node_modules/rolldown/dist/share"
+  },
+  "platform-unknown": {
+    "built": false,
+    "error": "Build failed with 1 error: [plugin uc-ui-skin] RolldownError: UC_UI_PLATFORM=windows|macos|linux (got \"beos\") at error (file:///Users/mark/.herdr/worktrees/desktop/hp-uni-t-0296-linux-gui-kit/node_modules/rolldown/dist/shared/logs-D80CXhvg.mjs:147:24) at PluginContextImpl.error (file:///Users/mark/.herdr/worktrees/desktop/hp-uni-t-0296-linux-gui-kit/node_modules/rolldown/dist/shared/bindingify-inp"
+  },
+  "app-windows": {
+    "built": true,
+    "moduleCount": 2303,
+    "skins": ["windows"],
+    "leaked": [],
+    "missing": [],
+    "entries": {
+      "main": {
+        "staticModules": 5,
+        "lazyModules": 2253,
+        "staticUiKit": false,
+        "lazyUiKit": true
+      },
+      "quick-panel": {
+        "staticModules": 954,
+        "lazyModules": 955,
+        "staticUiKit": false,
+        "lazyUiKit": false
+      },
+      "updater": {
+        "staticModules": 745,
+        "lazyModules": 746,
+        "staticUiKit": false,
+        "lazyUiKit": false
+      }
+    },
+    "fluentPackages": [
+      "@fluentui/keyboard-keys",
+      "@fluentui/react-aria",
+      "@fluentui/react-badge",
+      "@fluentui/react-button",
+      "@fluentui/react-checkbox",
+      "@fluentui/react-combobox",
+      "@fluentui/react-context-selector",
+      "@fluentui/react-dialog",
+      "@fluentui/react-field",
+      "@fluentui/react-icons",
+      "@fluentui/react-input",
+      "@fluentui/react-jsx-runtime",
+      "@fluentui/react-label",
+      "@fluentui/react-link",
+      "@fluentui/react-menu",
+      "@fluentui/react-message-bar",
+      "@fluentui/react-motion-components-preview",
+      "@fluentui/react-motion",
+      "@fluentui/react-nav",
+      "@fluentui/react-portal",
+      "@fluentui/react-positioning",
+      "@fluentui/react-progress",
+      "@fluentui/react-provider",
+      "@fluentui/react-shared-contexts",
+      "@fluentui/react-slider",
+      "@fluentui/react-spinner",
+      "@fluentui/react-switch",
+      "@fluentui/react-tabster",
+      "@fluentui/react-toolbar",
+      "@fluentui/react-tooltip",
+      "@fluentui/react-utilities",
+      "@fluentui/tokens"
+    ],
+    "griffelPackages": ["@griffel/core", "@griffel/react"],
+    "size": {
+      "files": 25,
+      "bytes": 3996430,
+      "gzip": 1164367
+    },
+    "marker": "windows"
+  },
+  "app-macos": {
+    "built": true,
+    "moduleCount": 1812,
+    "skins": ["macos"],
+    "leaked": [],
+    "missing": [],
+    "entries": {
+      "main": {
+        "staticModules": 5,
+        "lazyModules": 1762,
+        "staticUiKit": false,
+        "lazyUiKit": true
+      },
+      "quick-panel": {
+        "staticModules": 953,
+        "lazyModules": 954,
+        "staticUiKit": false,
+        "lazyUiKit": false
+      },
+      "updater": {
+        "staticModules": 745,
+        "lazyModules": 746,
+        "staticUiKit": false,
+        "lazyUiKit": false
+      }
+    },
+    "fluentPackages": [],
+    "griffelPackages": [],
+    "size": {
+      "files": 25,
+      "bytes": 3589914,
+      "gzip": 1060467
+    },
+    "marker": "macos"
+  },
+  "app-linux": {
+    "built": true,
+    "moduleCount": 1812,
+    "skins": ["linux"],
+    "leaked": [],
+    "missing": [],
+    "entries": {
+      "main": {
+        "staticModules": 5,
+        "lazyModules": 1762,
+        "staticUiKit": false,
+        "lazyUiKit": true
+      },
+      "quick-panel": {
+        "staticModules": 953,
+        "lazyModules": 954,
+        "staticUiKit": false,
+        "lazyUiKit": false
+      },
+      "updater": {
+        "staticModules": 745,
+        "lazyModules": 746,
+        "staticUiKit": false,
+        "lazyUiKit": false
+      }
+    },
+    "fluentPackages": [],
+    "griffelPackages": [],
+    "size": {
+      "files": 25,
+      "bytes": 3575780,
+      "gzip": 1057663
+    },
+    "marker": "linux"
+  },
+  "app-unset": {
+    "built": true,
+    "moduleCount": 1743,
+    "skins": [],
+    "leaked": [],
+    "missing": [],
+    "entries": {
+      "main": {
+        "staticModules": 5,
+        "lazyModules": 1716,
+        "staticUiKit": false,
+        "lazyUiKit": false
+      },
+      "quick-panel": {
+        "staticModules": 955,
+        "lazyModules": 956,
+        "staticUiKit": false,
+        "lazyUiKit": false
+      },
+      "updater": {
+        "staticModules": 745,
+        "lazyModules": 746,
+        "staticUiKit": false,
+        "lazyUiKit": false
+      }
+    },
+    "fluentPackages": [],
+    "griffelPackages": [],
+    "size": {
+      "files": 25,
+      "bytes": 3510218,
+      "gzip": 1039122
+    },
+    "marker": "none"
+  },
+  "legacySourcesOnDisk": {
+    "src/pages/HistoryPage.tsx": true,
+    "src/pages/SetupPage.tsx": true,
+    "src/pages/UnlockPage.tsx": true,
+    "src/pages/ProfileRecoveryPage.tsx": true,
+    "src/components/app/StartupProgressScreen.tsx": true,
+    "src/components/app/AppStatusScreen.tsx": true
+  }
+}

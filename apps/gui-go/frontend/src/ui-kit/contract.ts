@@ -1,7 +1,7 @@
 // Public contract of the platform UI kit.
 //
 // Business code imports components only from `@/ui-kit`. The implementation behind it is chosen
-// when the bundle is built: `UC_UI_PLATFORM=windows|macos` makes vite resolve `@ui-skin` to
+// when the bundle is built: `UC_UI_PLATFORM=windows|macos|linux` makes vite resolve `@ui-skin` to
 // `src/ui-kit/skins/<platform>/index.ts` (see `vite.config.ts`), so one bundle contains exactly
 // one skin and never decides the platform at runtime. For the type checker `@ui-skin` resolves to
 // this file, and every skin proves with its `conformance.ts` that it exports exactly these names

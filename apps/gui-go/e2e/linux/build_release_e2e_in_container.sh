@@ -2,9 +2,11 @@
 # Runs INSIDE the uc-gui-go-linux-build image (repository at /work, cache volume at /cache).
 # Builds the GUI in the SHIPPED form plus the test control plane: tags `gtk3,production,release,e2e`. `release` gives the
 # release-no-profile environment checks (no UC_PROFILE, no isolation knobs); `e2e` adds the control file and the update-feed
-# override that the AppImage E2E needs. The frontend bundle must be built with VITE_GUI_GO_E2E=1 (the image has no bun).
+# override that the AppImage E2E needs. The frontend bundle must be built with VITE_GUI_GO_E2E=1 UC_UI_PLATFORM=linux (the image has no bun).
 set -euo pipefail
 cd /work
+# The frontend build records its UC_UI_PLATFORM in dist/.ui-platform (vite.config.ts); never embed another target's bundle.
+[[ "$(cat apps/gui-go/frontend/dist/.ui-platform 2>/dev/null)" == linux ]] || { echo "apps/gui-go/frontend/dist was not built for UI platform linux (UC_UI_PLATFORM=linux)" >&2; exit 1; }
 # The checkout belongs to the CI runner user, not to root in this container: git refuses it without this (rc=128 in run 37746587732).
 git config --global --add safe.directory /work
 export GOPATH=/cache/gopath GOFLAGS=-mod=mod

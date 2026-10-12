@@ -318,6 +318,34 @@
       }
     },
     {
+      "files": ["apps/gui-go/frontend/src/ui-kit/skins/linux/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "@ui-skin",
+                "message": "Import UI components from @/ui-kit; the skin is chosen by UC_UI_PLATFORM at build time."
+              }
+            ],
+            "patterns": [
+              {
+                "group": [
+                  "@/ui-kit/skins/*",
+                  "../macos/*",
+                  "../windows/*",
+                  "@fluentui/*",
+                  "@griffel/*"
+                ],
+                "message": "The Linux skin imports only its own modules; other platform skins and their vendor libraries (Fluent UI, Griffel) stay out of the Linux bundle."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
       "files": ["apps/gui-go/frontend/src/prototypes/macos-design/**"],
       "rules": {
         "no-restricted-imports": [

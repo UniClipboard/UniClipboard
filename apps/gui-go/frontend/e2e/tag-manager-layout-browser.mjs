@@ -7,7 +7,7 @@ import path from 'node:path'
 // UC_UI_PLATFORM=macos node e2e/tag-manager-layout-browser.mjs <dir>
 // Full frontend and real isolated daemon; the fixture stubs only the native host.
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright')
-assert.equal(process.env.UC_UI_PLATFORM, 'macos')
+assert.ok(['macos', 'linux'].includes(process.env.UC_UI_PLATFORM ?? ''))
 const output = path.resolve(process.argv[2])
 await mkdir(output, { recursive: true })
 const daemon = JSON.parse(await readFile(path.join(output, 'daemon.json'), 'utf8'))

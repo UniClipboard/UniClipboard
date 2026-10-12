@@ -19,8 +19,8 @@ const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright')
 const output = path.resolve(process.argv[2] ?? 'target/e2e/history-kit-browser')
 const platform = process.env.UC_UI_PLATFORM
 assert.ok(
-  platform === 'windows' || platform === 'macos',
-  'UC_UI_PLATFORM=windows|macos is required'
+  ['windows', 'macos', 'linux'].includes(platform),
+  'UC_UI_PLATFORM=windows|macos|linux is required'
 )
 const daemon = JSON.parse(await readFile(path.join(output, 'daemon.json'), 'utf8'))
 // The seed sends `Paging entry 000`..`NNN` first, then 8 named entries (history-kit-seed.mjs).
@@ -308,7 +308,7 @@ async function seededRun() {
   await step('page-loads', async () => {
     await shot('default-light')
     const g = await geometry()
-    assert.equal(g.skin, 'windows')
+    assert.equal(g.skin, platform)
     assert.ok(
       g.material.every(m => m === 'solid'),
       `window material ${g.material}`

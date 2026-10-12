@@ -65,9 +65,15 @@ jobs:
         if: inputs.validate_build
         run: bun run typecheck
 
+      # No UC_UI_PLATFORM: this bundle only feeds the Go host compile gate (go:embed), and the platform-less
+      # build is the one vitest uses. Every shipped bundle sets its target; the next step builds all three.
       - name: Build shipped frontend
         if: inputs.validate_build
         run: bun --bun run --cwd apps/gui-go/frontend build
+
+      - name: Verify per-platform UI kit bundles
+        if: inputs.validate_build
+        run: node apps/gui-go/frontend/e2e/ui-kit-bundle-check.mjs "$RUNNER_TEMP/ui-kit-bundles" "$RUNNER_TEMP/ui-kit-bundles/evidence.txt"
 
       - name: Verify generated API client is up to date
         if: inputs.validate_build

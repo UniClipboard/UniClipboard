@@ -71,7 +71,9 @@ build() {
 
   # The shipped frontend bundle is embedded into the GUI executable.
   (cd packages/desktop-host-go && go generate ./buildinfo)
-  bun --bun run --cwd apps/gui-go/frontend build
+  UC_UI_PLATFORM=linux bun --bun run --cwd apps/gui-go/frontend build
+  # The frontend build records its target in dist/.ui-platform; never embed another platform's bundle.
+  [[ "$(cat apps/gui-go/frontend/dist/.ui-platform 2>/dev/null)" == linux ]] || { echo "frontend/dist was not built for UI platform linux" >&2; exit 1; }
 
   # Product name, identifier and updater key come from app.json. The identifier keys the
   # single-instance scope, login item and notifications, so it must match the other packages. The

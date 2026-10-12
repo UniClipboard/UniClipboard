@@ -1,6 +1,6 @@
 // Browser checks of the startup, recovery, unlock and setup pages on the platform UI kit
 // (e2e/fixtures/app-entry-kit.tsx), for one skin:
-//   node e2e/app-entry-kit-browser.mjs --platform windows|macos [--out dir]
+//   node e2e/app-entry-kit-browser.mjs --platform windows|macos|linux [--out dir]
 // Builds and serves the fixture with UC_UI_PLATFORM, then checks every view in both themes, two
 // window sizes and two languages, and the keyboard flows. Playwright comes from PLAYWRIGHT_MODULE
 // when it is not installed in the repository. A browser run is not a native WebView run.
@@ -14,8 +14,10 @@ import { fileURLToPath } from 'node:url'
 const args = process.argv.slice(2)
 const option = name => (args.includes(name) ? args[args.indexOf(name) + 1] : undefined)
 const platform = option('--platform')
-if (!['windows', 'macos'].includes(platform ?? '')) {
-  console.error('Usage: node e2e/app-entry-kit-browser.mjs --platform windows|macos [--out dir]')
+if (!['windows', 'macos', 'linux'].includes(platform ?? '')) {
+  console.error(
+    'Usage: node e2e/app-entry-kit-browser.mjs --platform windows|macos|linux [--out dir]'
+  )
   process.exit(2)
 }
 const output = path.resolve(option('--out') ?? `/tmp/uc-app-entry-kit-${platform}`)

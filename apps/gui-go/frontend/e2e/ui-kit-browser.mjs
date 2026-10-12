@@ -1,7 +1,7 @@
 // Browser check of the platform UI kit gallery (e2e/fixtures/ui-kit-gallery.tsx).
 // Every interaction is located by ARIA role and name, so the same script verifies that both
 // skins expose the same public semantics. Run it through the entry that serves the gallery:
-//   node e2e/ui-kit-run.mjs --platform windows|macos
+//   node e2e/ui-kit-run.mjs --platform windows|macos|linux
 // UI_KIT_PLATFORM is the expected skin; the run fails when the served skin or the bundle's
 // .ui-platform marker differs from it.
 // A browser run is not a native WebView run: Windows WebView2 and macOS WKWebView are not covered.
@@ -12,9 +12,9 @@ import path from 'node:path'
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright')
 const base = process.env.UI_KIT_TEST_URL || 'http://127.0.0.1:1460'
 const expectedPlatform = process.env.UI_KIT_PLATFORM
-if (!['windows', 'macos'].includes(expectedPlatform ?? '')) {
+if (!['windows', 'macos', 'linux'].includes(expectedPlatform ?? '')) {
   console.error(
-    'UI_KIT_PLATFORM=windows|macos is required: run node e2e/ui-kit-run.mjs --platform <platform>'
+    'UI_KIT_PLATFORM=windows|macos|linux is required: run node e2e/ui-kit-run.mjs --platform <platform>'
   )
   process.exit(2)
 }

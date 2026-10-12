@@ -123,10 +123,10 @@ SetupPage 只负责已确认的向导步骤，旧 loading setup state 展示和�
 
 ## 主窗口首屏的皮肤
 
-主窗口从 `index.html` 开始。macOS 和 Windows 构建先用
+主窗口从 `index.html` 开始。macOS、Windows 和 Linux 构建先用
 `apps/gui-go/frontend/scripts/startup-splash.tsx` 将现有 `ui-kit/first-frame`
-组件渲染为静态 HTML；明暗主题共用对应皮肤的样式和令牌。Linux 未指定
-`UC_UI_PLATFORM` 时保留原有静态首屏，不加载平台组件。
+组件渲染为静态 HTML；明暗主题共用对应皮肤的样式和令牌。未指定
+`UC_UI_PLATFORM` 的构建（vitest、覆盖率）保留原有静态首屏，不加载平台组件。
 
 静态首屏只声明“正在连接后台服务”，不推断后台进度。脚本加载后，
 `startup-screen.tsx` 通过 `@ui-startup-screen` 显示同一平台的等待页；

@@ -151,9 +151,12 @@ jobs:
         # SENTRY_AUTH_TOKEN and VITE_SENTRY_PROJECT stay unset: apps/gui-go/frontend/vite.config.ts uploads source maps only when both are present.
         env:
           VITE_GUI_GO_E2E: '0'
+          UC_UI_PLATFORM: linux
           SENTRY_AUTH_TOKEN: ''
           VITE_SENTRY_PROJECT: ''
-        run: bun --bun run --cwd apps/gui-go/frontend build
+        run: |
+          bun --bun run --cwd apps/gui-go/frontend build
+          test "$(cat apps/gui-go/frontend/dist/.ui-platform)" = linux
 
       - name: Package
         run: apps/gui-go/e2e/linux/run.sh package-release "$RUNNER_TEMP/out"

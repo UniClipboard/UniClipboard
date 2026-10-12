@@ -7,6 +7,7 @@ import {
   MENU_SHADOW_CLASS,
   menuMotion,
 } from '@/components/motion/menu/presentation'
+import { usePortalScope } from '@/components/ui/portal-scope'
 import { useReducedMotion } from '@/hooks/useVisualEffects'
 import { cn } from '@/lib/utils'
 
@@ -27,8 +28,9 @@ export function SelectContent({
   >) {
   const reduce = useReducedMotion() ?? false
   const layoutId = useId()
+  const scope = usePortalScope()
   return (
-    <SelectPrimitive.Portal>
+    <SelectPrimitive.Portal container={scope}>
       <SelectPrimitive.Positioner
         side={side}
         sideOffset={sideOffset}

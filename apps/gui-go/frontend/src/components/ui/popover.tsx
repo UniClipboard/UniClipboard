@@ -9,6 +9,7 @@ import {
   MENU_SHADOW_CLASS,
   menuMotion,
 } from '@/components/motion/menu/presentation'
+import { usePortalScope } from '@/components/ui/portal-scope'
 import { useReducedMotion } from '@/hooks/useVisualEffects'
 import { cn } from '@/lib/utils'
 
@@ -35,8 +36,9 @@ function PopoverContent({
     'align' | 'alignOffset' | 'side' | 'sideOffset' | 'anchor'
   >) {
   const reduce = useReducedMotion() ?? false
+  const scope = usePortalScope()
   return (
-    <PopoverPrimitive.Portal>
+    <PopoverPrimitive.Portal container={scope}>
       <PopoverPrimitive.Positioner
         align={align}
         alignOffset={alignOffset}

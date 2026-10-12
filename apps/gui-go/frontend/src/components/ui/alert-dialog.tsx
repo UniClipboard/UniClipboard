@@ -4,6 +4,7 @@ import { AlertDialog as AlertDialogPrimitive } from '@base-ui/react/alert-dialog
 import * as React from 'react'
 import { CenterMorphModalSurface } from '@/components/motion/center-morph-modal'
 import { Button } from '@/components/ui/button'
+import { usePortalScope } from '@/components/ui/portal-scope'
 import { cn } from '@/lib/utils'
 
 function AlertDialog({ ...props }: AlertDialogPrimitive.Root.Props) {
@@ -15,7 +16,10 @@ function AlertDialogTrigger({ ...props }: AlertDialogPrimitive.Trigger.Props) {
 }
 
 function AlertDialogPortal({ ...props }: AlertDialogPrimitive.Portal.Props) {
-  return <AlertDialogPrimitive.Portal data-slot="alert-dialog-portal" {...props} />
+  const scope = usePortalScope()
+  return (
+    <AlertDialogPrimitive.Portal data-slot="alert-dialog-portal" container={scope} {...props} />
+  )
 }
 
 function AlertDialogOverlay({ className, ...props }: AlertDialogPrimitive.Backdrop.Props) {

@@ -3,6 +3,7 @@ import { XIcon } from 'lucide-react'
 import * as React from 'react'
 import { CenterMorphModalSurface } from '@/components/motion/center-morph-modal'
 import { Button } from '@/components/ui/button'
+import { usePortalScope } from '@/components/ui/portal-scope'
 import { cn } from '@/lib/utils'
 
 function Dialog({ ...props }: DialogPrimitive.Root.Props) {
@@ -14,7 +15,8 @@ function DialogTrigger({ ...props }: DialogPrimitive.Trigger.Props) {
 }
 
 function DialogPortal({ ...props }: DialogPrimitive.Portal.Props) {
-  return <DialogPrimitive.Portal data-slot="dialog-portal" {...props} />
+  const scope = usePortalScope()
+  return <DialogPrimitive.Portal data-slot="dialog-portal" container={scope} {...props} />
 }
 
 function DialogClose({ ...props }: DialogPrimitive.Close.Props) {

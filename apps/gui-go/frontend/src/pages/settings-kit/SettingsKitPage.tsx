@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { SETTINGS_CATEGORIES } from '@/components/setting/settings-config'
 import { useSettingsPage } from '@/components/setting/useSettingsPage'
+import { PortalScope } from '@/components/ui/portal-scope'
 import { useAppliedColorScheme } from '@/hooks/useAppliedColorScheme'
 import { useMacTrafficLightPosition } from '@/hooks/useMacTrafficLightPosition'
 import { MAC_SIDEBAR_TRAFFIC_LIGHT_OFFSET } from '@/layouts/mac-traffic-light-offsets'
@@ -42,6 +43,8 @@ function SettingsKitPage() {
   const { activeCategory, activeCategoryConfig, handleCategoryChange, goBack, viewportRef } =
     useSettingsPage()
   const [sidebarHidden, setSidebarHidden] = useState(false)
+  // Where the sections' own popups open, inside the themed root instead of <body>.
+  const [popupHost, setPopupHost] = useState<HTMLDivElement | null>(null)
   useMacTrafficLightPosition(MAC_SIDEBAR_TRAFFIC_LIGHT_OFFSET)
 
   const items: SidebarNavItem[] = SETTINGS_CATEGORIES.map(category => ({
@@ -72,11 +75,16 @@ function SettingsKitPage() {
         title={title}
       >
         <Pane kind="main" label={title}>
-          <SettingsContent label={title} viewportRef={viewportRef}>
-            {ActiveSection && <ActiveSection />}
-          </SettingsContent>
+          <PortalScope value={popupHost}>
+            <SettingsContent label={title} viewportRef={viewportRef}>
+              {ActiveSection && <ActiveSection />}
+            </SettingsContent>
+          </PortalScope>
         </Pane>
       </SplitView>
+      <div className="mac-settings-popups-anchor">
+        <div ref={setPopupHost} className="mac-settings-popups" />
+      </div>
     </UiRoot>
   )
 }

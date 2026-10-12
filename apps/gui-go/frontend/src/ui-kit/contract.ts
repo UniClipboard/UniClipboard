@@ -546,8 +546,7 @@ export interface PaneProps {
 }
 
 /** Text roles; skins map them to the platform type ramp. Business code never sets font sizes. */
-/** `hero`: large text read and copied by hand on another device, e.g. an invitation code. */
-export type TextRole = 'hero' | 'title' | 'headline' | 'body' | 'callout' | 'caption'
+export type TextRole = 'title' | 'headline' | 'body' | 'callout' | 'caption'
 export type TextTone = 'primary' | 'secondary' | 'tertiary' | 'positive' | 'critical'
 
 export interface TextProps {
@@ -556,6 +555,8 @@ export interface TextProps {
   /** Bold within the role, e.g. a device name inside a sentence. */
   emphasized?: boolean
   monospace?: boolean
+  /** Large text read and copied by hand on another device, e.g. an invitation code. */
+  large?: boolean
   /** One line with an ellipsis. */
   truncate?: boolean
   children: ReactNode

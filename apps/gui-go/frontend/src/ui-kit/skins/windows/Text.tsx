@@ -7,7 +7,7 @@ import type { TextProps } from '@/ui-kit/contract'
 const useStyles = makeStyles({
   base: { minWidth: 0 },
   // WinUI Title (28/36 semibold): text read and copied by hand, e.g. an invitation code.
-  hero: {
+  large: {
     fontSize: tokens.fontSizeHero700,
     lineHeight: tokens.lineHeightHero700,
     fontWeight: tokens.fontWeightSemibold,
@@ -45,6 +45,7 @@ export function Text({
   tone = 'primary',
   emphasized,
   monospace,
+  large,
   truncate,
   children,
 }: TextProps) {
@@ -54,6 +55,7 @@ export function Text({
       className={mergeClasses(
         styles.base,
         styles[role],
+        large && styles.large,
         styles[tone],
         emphasized && styles.emphasized,
         monospace && styles.mono,

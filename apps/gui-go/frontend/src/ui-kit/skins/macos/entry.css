@@ -509,16 +509,16 @@
   margin-top: 8px;
 }
 
-/* ---------- display text and link button ---------- */
+/* ---------- large text and link button ---------- */
 
-.mac-text[data-role='hero'] {
+.mac-text[data-role][data-large] {
   font-family: var(--mac-font-display);
   font-size: 34px;
   line-height: 40px;
   font-weight: 600;
 }
 
-.mac-text[data-role='hero'][data-mono] {
+.mac-text[data-role][data-large][data-mono] {
   font-family: var(--mac-mono);
   letter-spacing: 0.08em;
   font-variant-numeric: tabular-nums;

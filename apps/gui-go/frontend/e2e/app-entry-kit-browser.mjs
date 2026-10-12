@@ -111,7 +111,7 @@ try {
       const unnamedButtons = [...document.querySelectorAll('button')]
         .filter(button => !(button.textContent.trim() || button.getAttribute('aria-label')))
         .map(button => button.outerHTML.slice(0, 80))
-      // The kit Text `role` prop is a type-size role, never an ARIA attribute: every `role` attribute
+      // Every `role` attribute
       // in the page must be a real ARIA role.
       const ariaRoles = new Set([
         'alert',
@@ -184,7 +184,7 @@ try {
         heroText:
           document
             .querySelector('[data-testid="setup-invitation-code"] > span')
-            ?.getAttribute('data-role') ?? null,
+            ?.hasAttribute('data-large') ?? null,
         fontSizes: [...sizes].sort((a, b) => a - b),
         entryBackground: getComputedStyle(document.querySelector('.mac-entry') ?? main)
           .backgroundColor,
@@ -218,8 +218,8 @@ try {
           if (view === 'setup-invite' && platform === 'macos')
             assert.equal(
               metrics.heroText,
-              'hero',
-              `${name}: the invitation code uses the hero text role`
+              true,
+              `${name}: the invitation code uses the large text style`
             )
           assert.ok(Math.min(...metrics.fontSizes) >= 11, `${name}: no text under 11px`)
           if (platform === 'macos')

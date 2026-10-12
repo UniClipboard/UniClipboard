@@ -27,6 +27,9 @@ const log = createLogger('use-live-search')
 /** Default window size; the list grows by this as the user scrolls. */
 const DEFAULT_PAGE_SIZE = 100
 
+/** `GET /search/query` clamps `limit` to this (OpenAPI: "Default 50, clamped to 200"). */
+export const SEARCH_QUERY_MAX_LIMIT = 200
+
 export interface UseLiveSearchOptions {
   /** When false the hook idles: empty list, no request, no subscription. */
   enabled?: boolean
@@ -99,6 +102,42 @@ export function growQueryWindow(
     pageSize,
     limit: resolveQueryWindowLimit(window, model, pageSize) + pageSize,
   }
+}
+
+type SearchQueryParams = Parameters<typeof querySearch>[0]
+type SearchQueryPage = Awaited<ReturnType<typeof querySearch>>['data']
+
+/**
+ * The first `limit` results of a query, fetched in pages the daemon accepts: a single request
+ * larger than {@link SEARCH_QUERY_MAX_LIMIT} would be clamped, and the window would stop growing
+ * at that size while `hasMore` stays true. The total and index state come from the first page,
+ * `hasMore` from the last; an entry that moved between pages is kept once.
+ */
+export async function querySearchWindow(
+  params: SearchQueryParams,
+  limit: number,
+  signal: AbortSignal
+): Promise<SearchQueryPage> {
+  const items: SearchQueryPage['items'] = []
+  const seen = new Set<string>()
+  let first: SearchQueryPage | null = null
+  let hasMore = false
+  // The daemon's position, not `items.length`: a duplicate skipped below still advanced it.
+  let offset = 0
+  while (offset < limit) {
+    const pageLimit = Math.min(SEARCH_QUERY_MAX_LIMIT, limit - offset)
+    const page = (await querySearch({ ...params, limit: pageLimit, offset }, signal)).data
+    first ??= page
+    for (const item of page.items) {
+      if (seen.has(item.entryId)) continue
+      seen.add(item.entryId)
+      items.push(item)
+    }
+    hasMore = page.hasMore
+    offset += page.items.length
+    if (!page.hasMore || page.items.length === 0) break
+  }
+  return { ...first!, items, hasMore }
 }
 
 /**
@@ -186,13 +225,13 @@ export function useLiveSearch(options: UseLiveSearchOptions): UseLiveSearchResul
       extensions,
       timeRange,
     })
-    querySearch({ ...params, limit }, controller.signal)
-      .then(response => {
+    querySearchWindow(params, limit, controller.signal)
+      .then(window => {
         if (controller.signal.aborted) return
-        setItems(response.data.items.map(searchResultToDisplayItem))
-        setTotal(response.data.total)
-        setHasMore(response.data.hasMore)
-        setState(response.data.state)
+        setItems(window.items.map(searchResultToDisplayItem))
+        setTotal(window.total)
+        setHasMore(window.hasMore)
+        setState(window.state)
         setFailure(null)
         setIsLoading(false)
       })

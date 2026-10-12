@@ -23,6 +23,9 @@ assert.ok(
   'UC_UI_PLATFORM=windows|macos is required'
 )
 const daemon = JSON.parse(await readFile(path.join(output, 'daemon.json'), 'utf8'))
+// The seed sends `Paging entry 000`..`NNN` first, then 8 named entries (history-kit-seed.mjs).
+const pagingCount = Math.max(0, daemon.seeded - 8)
+const pagingEntry = index => `Paging entry ${String(index).padStart(3, '0')}`
 const port = Number(process.env.UI_FIXTURE_PORT || 1462)
 await mkdir(output, { recursive: true })
 
@@ -506,8 +509,8 @@ async function seededRun() {
   })
 
   await step('delete-batch-persists', async () => {
-    const a = row('Paging entry 129')
-    const b = row('Paging entry 128')
+    const a = row(pagingEntry(pagingCount - 1))
+    const b = row(pagingEntry(pagingCount - 2))
     const ids = [await a.getAttribute('data-item-id'), await b.getAttribute('data-item-id')]
     await a.click()
     await ctrlClick(b)
@@ -719,15 +722,22 @@ async function seededRun() {
     await newPage({ viewport: { width: 1280, height: 12_000 }, deviceScaleFactor: 1 })
     await page.getByRole('radio', { name: 'Grid' }).click()
     await rows().first().waitFor()
-    // The oldest entry is on the second page. (A third page would show whether the grid keeps asking while its end
-    // marker stays in view, but the page cannot get past 200 entries today: the Engine caps `limit` at 200.)
-    await rows().filter({ hasText: 'Paging entry 000' }).first().waitFor({ timeout: 15_000 })
+    // Only with three or more pages (seed `--extra 250`) does this tell a grid that keeps asking while its end marker
+    // stays in view from one that stops after the first load.
+    await rows()
+      .filter({ hasText: pagingEntry(0) })
+      .first()
+      .waitFor({ timeout: 15_000 })
     const loaded = await rows().count()
-    assert.ok(loaded > 100, `the grid loaded the second page (${loaded} cards)`)
+    const pages = Math.ceil(daemon.seeded / 100)
+    assert.ok(
+      loaded > (pages - 1) * 100,
+      `the grid reached its last page (${loaded} cards, ${pages} pages)`
+    )
     await restoreViewport()
     await page.getByRole('radio', { name: 'List' }).click()
     await row('Paging entry').waitFor()
-    return { loaded }
+    return { loaded, pages }
   })
 
   await step('quick-look', async () => {

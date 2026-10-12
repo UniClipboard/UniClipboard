@@ -72,8 +72,8 @@ const kitPages: Record<string, { platforms: string[]; kit: string; existing: str
   // Group, row and the simple controls of the settings sections (the sections' logic is shared).
   '@ui-setting-parts': {
     platforms: ['macos'],
-    kit: './src/components/setting/parts/kit.tsx',
-    existing: './src/components/setting/parts/legacy.tsx',
+    kit: './src/components/setting/setting-parts/kit.tsx',
+    existing: './src/components/setting/setting-parts/legacy.tsx',
   },
 }
 function uiSkin(): Plugin {

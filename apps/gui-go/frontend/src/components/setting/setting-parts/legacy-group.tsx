@@ -1,4 +1,4 @@
-import type { SettingGroupProps } from '@/components/setting/parts/types'
+import type { SettingGroupProps } from '@/components/setting/setting-parts/types'
 import { cn } from '@/lib/utils'
 
 export function SettingGroup({ title, children, className }: SettingGroupProps) {

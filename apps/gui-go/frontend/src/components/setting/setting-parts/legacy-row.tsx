@@ -1,6 +1,6 @@
 import { isExperimentalFeature } from '@/components/setting/experimental-features'
 import { ExperimentalBadge } from '@/components/setting/ExperimentalBadge'
-import type { SettingRowProps } from '@/components/setting/parts/types'
+import type { SettingRowProps } from '@/components/setting/setting-parts/types'
 import { cn } from '@/lib/utils'
 
 export function SettingRow({

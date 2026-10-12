@@ -47,7 +47,7 @@ Go 或 daemon 改动需重启命令。
 
 使用你自己的 HOME 与指定 profile，数据、钥匙串条目和 daemon 与正式版隔离。
 按 Ctrl+C 会停止 Vite 与 GUI。Windows 启动器同时结束本次 GUI 启动的进程树，包括 daemon 和辅助进程；复用的已有 daemon 不属于该进程树。旧版启动器留下的 daemon 需要先从托盘退出，再重新运行开发命令。
-开发启动脚本支持 macOS 与 Windows。macOS 开发二进制会先放进最小的 ad-hoc 签名 `.app`（`target/gui-go/dev/UniClipboardGoDev.app`，标识为 `app.json` 中的应用标识加 `.dev`），因为 Wails 的通知服务在 macOS 上没有 bundle identifier 就拒绝启动（`notifications require a valid bundle identifier`），裸二进制会直接退出；它仍作为普通子进程启动，标准输出、退出码与 SIGTERM 不变。Windows 直接运行 `target/gui-go/dev/gui-go-dev.exe`，从 Vite 加载前端并支持热更新。
+开发启动脚本支持 macOS 与 Windows。macOS 开发二进制会先放进最小的 ad-hoc 签名 `.app`（`target/gui-go/dev/UniClipboardGoDev.app`，标识为 `app.json` 中的应用标识加 `.dev`），因为 Wails 的通知服务在 macOS 上没有 bundle identifier 就拒绝启动（`notifications require a valid bundle identifier`），裸二进制会直接退出；它仍作为普通子进程启动，标准输出、退出码与 SIGTERM 不变。该 `.app` 同时带有原生快捷面板 helper（`uniclip-quick-panel`，由启动脚本以 debug 构建），与正式包一致；缺少它时宿主回退到 WebView 面板，而 macOS 的 WebView 面板没有修饰键双击触发。Windows 直接运行 `target/gui-go/dev/gui-go-dev.exe`，从 Vite 加载前端并支持热更新。
 宿主只在 `UNICLIPBOARD_ENV=development` 且设置了合法 `UC_PROFILE` 时启动；测试用的隔离模式
 （`UC_GUI_GO_ISOLATED=1`，临时 HOME、`gui-go-*` profile、禁用系统剪贴板）仍由 E2E 强制。
 

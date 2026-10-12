@@ -39,12 +39,17 @@ function run(command, args, options = {}) {
 // The development binary therefore runs from a minimal ad-hoc signed .app (the same Info.plist template as build.sh) with its own
 // `.dev` identifier, so it never shares notification or login-item state with an installed app. It is still started as a plain
 // child process, so stdio, the exit code and SIGTERM keep working.
-export function makeDevBundle(binary) {
+// The native quick panel helper goes next to the host executable, where the host looks for it: without it the host falls back
+// to the WebView quick panel, which has no modifier double-tap trigger on macOS.
+export function makeDevBundle(binary, helper) {
   const app = JSON.parse(fs.readFileSync(path.join(root, 'apps/gui-go/app.json'), 'utf8'))
   const contents = path.join(path.dirname(binary), 'UniClipboardGoDev.app/Contents')
   fs.mkdirSync(path.join(contents, 'MacOS'), { recursive: true })
   const executable = path.join(contents, 'MacOS/gui-go')
   fs.copyFileSync(binary, executable)
+  const bundledHelper = path.join(contents, 'MacOS/uniclip-quick-panel')
+  fs.copyFileSync(helper, bundledHelper)
+  fs.chmodSync(bundledHelper, 0o755)
   const plist = path.join(contents, 'Info.plist')
   fs.copyFileSync(path.join(gui, 'Info.plist'), plist)
   run('/usr/libexec/PlistBuddy', [
@@ -112,6 +117,10 @@ export async function main(argv, env = process.env) {
 
   console.log(`[wails-dev] profile=${profile} dev server port=${port}`)
   run('cargo', ['build', '-p', 'uc-daemon'])
+  // macOS ships the native quick panel helper next to the app (stage-daemon.mjs), so the dev bundle carries it too.
+  if (process.platform === 'darwin') {
+    run('cargo', ['build', '--locked', '-p', 'quick-panel', '--bin', 'uniclip-quick-panel'])
+  }
   run('go', ['generate', './buildinfo'], { cwd: path.join(root, 'packages/desktop-host-go') })
   fs.mkdirSync(out, { recursive: true })
   // The binary embeds frontend/dist; in dev the assets come from Vite, so an empty dist is enough.
@@ -122,7 +131,8 @@ export async function main(argv, env = process.env) {
   const built = path.join(out, process.platform === 'win32' ? 'gui-go-dev.exe' : 'gui-go-dev')
   const tags = process.platform === 'darwin' ? ['-tags', 'private_mac_apis'] : []
   run('go', ['build', ...tags, '-o', built, '.'], { cwd: gui })
-  const binary = process.platform === 'darwin' ? makeDevBundle(built) : built
+  const helper = path.join(root, 'target/debug/uniclip-quick-panel')
+  const binary = process.platform === 'darwin' ? makeDevBundle(built, helper) : built
 
   // A dev build targets the machine it runs on. Linux has no UI kit skin, so it sets no target.
   const uiPlatform = { darwin: 'macos', win32: 'windows' }[process.platform]

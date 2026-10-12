@@ -1664,6 +1664,8 @@
 }
 
 .mac-split {
+  --sidebar-width: 236px;
+  --sidebar-transition: 280ms cubic-bezier(0.2, 0, 0, 1);
   position: relative;
   height: 100%;
   display: flex;
@@ -1671,14 +1673,20 @@
 }
 
 .mac-split-sidebar {
-  width: 236px;
+  width: var(--sidebar-width);
   flex-shrink: 0;
   display: flex;
+  overflow: hidden;
+  transition: width var(--sidebar-transition);
+}
+
+.mac-split[data-sidebar-hidden] .mac-split-sidebar {
+  width: 0;
 }
 
 .mac-split-sidebar > .mac-surface {
   flex-grow: 1;
-  min-width: 0;
+  min-width: var(--sidebar-width);
   box-shadow: inset -0.5px 0 0 var(--separator);
 }
 
@@ -1690,6 +1698,11 @@
   flex-direction: column;
   overflow-y: auto;
   position: relative;
+  transition: transform var(--sidebar-transition);
+}
+
+.mac-split[data-sidebar-hidden] .mac-split-sidebar-inner {
+  transform: translateX(-100%);
 }
 
 /* The title-bar strip of the sidebar: traffic lights (native) and the sidebar button. */
@@ -1776,6 +1789,7 @@
   gap: 10px;
   z-index: 3;
   --wails-draggable: drag;
+  transition: left var(--sidebar-transition);
 }
 
 /* Hidden sidebar: the traffic lights (about 70 pt) and the sidebar button lead the toolbar. */
@@ -1822,10 +1836,17 @@
   flex: 0 1 500px;
   min-width: 300px;
   box-shadow: inset -0.5px 0 0 var(--separator);
+  transition: flex-basis var(--sidebar-transition);
 }
 
 .mac-split[data-sidebar-hidden] .mac-pane[data-pane='list'] {
   flex-basis: 560px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mac-split {
+    --sidebar-transition: 0s;
+  }
 }
 
 .mac-pane[data-pane='detail'] {

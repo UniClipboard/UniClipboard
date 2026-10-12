@@ -5,7 +5,7 @@ use crate::ports::{EntryAction, PlatformError, ServiceError};
 use crate::query::filters::Filters;
 use crate::selection::Selection;
 
-use super::{timing, Ctx, Effect, Effects, PanelState, Preview};
+use super::{timing, Ctx, Effect, Effects, PanelState, Preview, UnlockStatus};
 
 impl PanelState {
     /// The shortcut or the double tap: closes the panel if it is open, opens it otherwise.
@@ -32,6 +32,7 @@ impl PanelState {
         self.search.keyboard = true;
         self.search.pointer_moved = false;
         self.session.message = None;
+        self.session.unlock = UnlockStatus::Idle;
         self.suggest.open = false;
         self.suggest.cursor = 0;
         self.suggest.focused = false;

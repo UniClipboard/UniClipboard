@@ -22,8 +22,9 @@ pub(super) static TEXT: Text = Text {
     clear: "Limpar",
     needs_app: "Isto só funciona dentro do app UniClipboard.",
     host_gone: "Não foi possível contatar o app principal.",
-    locked_hint_gui:
-        "Digite sua frase secreta na janela principal para desbloquear; isto se atualiza sozinho.",
+    locked_hint: "Digite sua frase secreta e pressione Enter para desbloquear.",
+    passphrase_placeholder: "Frase secreta",
+    unlocking: "Verificando…",
     open_main_window: "Abrir janela principal",
     settings: "Configurações…",
     suggestions: "Sugestões",
@@ -188,5 +189,12 @@ pub(super) static TEXT: Text = Text {
         copy_failed: "A cópia falhou; tente novamente.",
         no_paths: "Não há caminhos de arquivo para colar.",
         preview_unreadable_retry: "Não foi possível ler a pré-visualização; tente novamente.",
+        unlock_wrong_passphrase: "Frase secreta incorreta; tente novamente.",
+        unlock_not_ready:
+            "Ainda não há o que desbloquear; conclua a configuração na janela principal.",
+        unlock_key_unreadable:
+            "Não foi possível ler a chave guardada; recupere-a na janela principal.",
+        unlock_failed: "Não foi possível desbloquear; tente novamente.",
+        unlock_timeout: "O desbloqueio demorou demais; tente novamente.",
     },
 };

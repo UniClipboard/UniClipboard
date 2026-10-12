@@ -11,10 +11,12 @@ mod preview;
 mod search;
 #[cfg(test)]
 mod tests;
+mod unlock;
 
 use async_trait::async_trait;
 use quick_panel_core::ports::{
-    EntryAction, HistoryService, Live, Options, PreviewData, SearchFailure, ServiceError,
+    EntryAction, HistoryService, Live, Options, PreviewData, SearchFailure, Secret, ServiceError,
+    UnlockFailure,
 };
 use quick_panel_core::query::filters::Filters;
 use uc_daemon_contract::api::dto::search::SearchQueryResultDto;
@@ -45,6 +47,10 @@ impl HistoryService for DaemonHistory {
 
     async fn preview(&self, id: String, kind: String) -> Result<PreviewData, ServiceError> {
         self.load_preview(id, kind).await
+    }
+
+    async fn unlock(&self, passphrase: Secret) -> Result<(), UnlockFailure> {
+        self.unlock_content(passphrase).await
     }
 
     async fn watch(&self, send: tokio::sync::mpsc::Sender<Live>) {

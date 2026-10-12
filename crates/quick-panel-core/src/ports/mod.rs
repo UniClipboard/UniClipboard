@@ -9,7 +9,7 @@ pub mod platform;
 
 pub use history::{
     Choices, EntryAction, HistoryService, ImagePayload, Live, Options, PreviewData, SearchFailure,
-    ServiceError,
+    Secret, ServiceError, UnlockFailure,
 };
 pub use host::{HostLink, HostRequest};
 pub use platform::{Capabilities, PasteTarget, PlatformError};

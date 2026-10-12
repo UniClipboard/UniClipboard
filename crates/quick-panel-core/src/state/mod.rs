@@ -26,7 +26,7 @@ use crate::actions::Row;
 use crate::empty_page::Relaxation;
 use crate::ports::{
     Capabilities, EntryAction, HostRequest, ImagePayload, Live, Options, PasteTarget,
-    PlatformError, PreviewData, SearchFailure, ServiceError,
+    PlatformError, PreviewData, SearchFailure, Secret, ServiceError, UnlockFailure,
 };
 use crate::query::filters::{self, Filters};
 use crate::selection::Selection;
@@ -119,6 +119,8 @@ pub enum Effect {
         revision: u64,
         queries: Vec<Filters>,
     },
+    /// Checks the passphrase with the daemon and reports [`Event::UnlockDone`].
+    Unlock(Secret),
     ScheduleReconnect(Duration),
     CancelReconnect,
     LoadOptions,
@@ -187,6 +189,7 @@ pub enum Event {
     OptionsLoaded(Result<Box<Options>, ServiceError>),
     Live(Live),
     ReconnectDue,
+    UnlockDone(Result<(), UnlockFailure>),
     PreviewDue {
         id: String,
         kind: String,
@@ -234,6 +237,17 @@ pub struct Session {
     /// An action on an entry is running; input is ignored meanwhile.
     pub busy: bool,
     pub message: Option<String>,
+    /// Where entering the passphrase on the locked page stands.
+    pub unlock: UnlockStatus,
+}
+
+/// The passphrase check on the locked page.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UnlockStatus {
+    Idle,
+    /// The daemon is checking; input is ignored meanwhile.
+    Checking,
+    Failed(UnlockFailure),
 }
 
 pub struct Search {
@@ -304,6 +318,7 @@ impl PanelState {
                 blur_grace_until: None,
                 busy: false,
                 message: None,
+                unlock: UnlockStatus::Idle,
             },
             search: Search {
                 filters: Filters::default(),
@@ -392,6 +407,7 @@ impl PanelState {
             Event::OptionsLoaded(result) => self.on_options(result),
             Event::Live(live) => self.on_live(live),
             Event::ReconnectDue => self.on_reconnect_due(),
+            Event::UnlockDone(result) => self.on_unlock_done(result),
             Event::PreviewDue { id, kind } => self.on_preview_due(id, kind),
             Event::PreviewLoaded { id, result } => self.on_preview_loaded(id, result),
             Event::Restored {

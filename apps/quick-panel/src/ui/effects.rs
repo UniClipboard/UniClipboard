@@ -5,7 +5,7 @@
 //! [`Event`], and the state answers with the next effects.
 
 use super::*;
-use quick_panel_core::ports::{SearchFailure, ServiceError};
+use quick_panel_core::ports::{SearchFailure, ServiceError, UnlockFailure};
 use quick_panel_core::state::timing;
 use std::collections::VecDeque;
 use tracing::Instrument;
@@ -20,7 +20,30 @@ impl Panel {
             }
         }
         self.release_stale_preview_image();
+        self.sync_input_mode(window, cx);
         cx.notify();
+    }
+
+    fn input_placeholder(&self) -> &'static str {
+        if self.passphrase_mode {
+            text::t().passphrase_placeholder
+        } else {
+            text::t().search_placeholder
+        }
+    }
+
+    /// The search box becomes the passphrase box while the content is locked, and back.
+    fn sync_input_mode(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let locked = self.state.search.locked;
+        if locked == self.passphrase_mode {
+            return;
+        }
+        self.passphrase_mode = locked;
+        let placeholder = self.input_placeholder();
+        self.input.update(cx, |input, cx| {
+            input.set_masked(locked, window, cx);
+            input.set_placeholder(placeholder, window, cx);
+        });
     }
 
     /// Gives back every bitmap and stops the work that would make more.
@@ -98,6 +121,22 @@ impl Panel {
             Effect::CancelSearch => self.tasks.search = None,
             Effect::CountRelaxations { revision, queries } => {
                 self.count_relaxations(revision, queries, window, cx);
+            }
+            Effect::Unlock(passphrase) => {
+                let runtime = self.runtime.clone();
+                let history = self.history.clone();
+                self.tasks.unlock = Some(cx.spawn_in(window, async move |this, cx| {
+                    let result = runtime
+                        .spawn(
+                            async move { history.unlock(passphrase).await }
+                                .instrument(tracing::info_span!("gpui.unlock")),
+                        )
+                        .await
+                        .unwrap_or(Err(UnlockFailure::Failed));
+                    let _ = this.update_in(cx, |this, window, cx| {
+                        this.deliver(Event::UnlockDone(result), window, cx);
+                    });
+                }));
             }
             Effect::ScheduleReconnect(delay) => {
                 self.tasks.reconnect = Some(cx.spawn_in(window, async move |this, cx| {
@@ -421,7 +460,7 @@ impl Panel {
             self.apply_double_tap_modifier(settings.quick_panel.double_tap_modifier, cx);
             self.general = Some(settings.general.clone());
             if crate::ui::apply_language(settings.general.language.as_deref()) {
-                let placeholder = text::t().search_placeholder;
+                let placeholder = self.input_placeholder();
                 self.input.update(cx, |input, cx| {
                     input.set_placeholder(placeholder, window, cx);
                 });

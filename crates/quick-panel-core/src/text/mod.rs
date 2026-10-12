@@ -99,6 +99,11 @@ pub struct Service {
     pub copy_failed: &'static str,
     pub no_paths: &'static str,
     pub preview_unreadable_retry: &'static str,
+    pub unlock_wrong_passphrase: &'static str,
+    pub unlock_not_ready: &'static str,
+    pub unlock_key_unreadable: &'static str,
+    pub unlock_failed: &'static str,
+    pub unlock_timeout: &'static str,
 }
 
 /// All text of the panel in one language.
@@ -124,7 +129,9 @@ pub struct Text {
     pub clear: &'static str,
     pub needs_app: &'static str,
     pub host_gone: &'static str,
-    pub locked_hint_gui: &'static str,
+    pub locked_hint: &'static str,
+    pub passphrase_placeholder: &'static str,
+    pub unlocking: &'static str,
     pub open_main_window: &'static str,
     pub settings: &'static str,
     pub suggestions: &'static str,

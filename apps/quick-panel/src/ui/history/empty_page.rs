@@ -35,7 +35,15 @@ impl Panel {
             Empty::Locked => (
                 IconName::Asterisk,
                 text::t().locked_title.to_string(),
-                text::t().locked_hint_gui.to_string(),
+                match &self.state.session.unlock {
+                    quick_panel_core::state::UnlockStatus::Idle => {
+                        text::t().locked_hint.to_string()
+                    }
+                    quick_panel_core::state::UnlockStatus::Checking => {
+                        text::t().unlocking.to_string()
+                    }
+                    quick_panel_core::state::UnlockStatus::Failed(failure) => failure.to_string(),
+                },
             ),
             Empty::Disconnected => (
                 IconName::TriangleAlert,

@@ -69,7 +69,7 @@ impl PanelState {
             return KeyResult::taken(effects);
         }
         if self.search.locked && key == "enter" {
-            effects.extend(self.ask_host(HostRequest::ShowMainWindow));
+            effects.extend(self.submit_passphrase(ctx));
             return KeyResult::taken(effects);
         }
         if command && key == "o" && modifiers.shift {

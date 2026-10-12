@@ -12,7 +12,7 @@ use crate::query::filters::Filters;
 /// Why a search did not produce a result list. The `Display` text is what the user is shown.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SearchFailure {
-    /// The history is locked and needs unlocking in the main window.
+    /// The history is locked and needs unlocking.
     Locked,
     Failed,
     /// The daemon cannot be reached at all: no connection info, a refused connection or a failed
@@ -83,6 +83,56 @@ impl fmt::Display for ServiceError {
 
 impl std::error::Error for ServiceError {}
 
+/// A passphrase on its way to the daemon. It never prints: `Debug` hides it, so a logged effect or
+/// event cannot leak it.
+#[derive(Clone, PartialEq, Eq)]
+pub struct Secret(String);
+
+impl Secret {
+    pub fn new(value: impl Into<String>) -> Self {
+        Self(value.into())
+    }
+
+    pub fn expose(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Debug for Secret {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("Secret(..)")
+    }
+}
+
+/// Why the daemon did not unlock the content. The `Display` text is what the user is shown.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UnlockFailure {
+    WrongPassphrase,
+    /// Setup is not finished or the space is not initialized: there is nothing to unlock yet.
+    NotReady,
+    /// The stored key material cannot be read; typing the passphrase again will not help.
+    KeyUnreadable,
+    Disconnected,
+    Failed,
+    Timeout,
+}
+
+impl fmt::Display for UnlockFailure {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let service = &crate::text::t().service;
+        f.write_str(match self {
+            Self::WrongPassphrase => service.unlock_wrong_passphrase,
+            Self::NotReady => service.unlock_not_ready,
+            Self::KeyUnreadable => service.unlock_key_unreadable,
+            Self::Disconnected => service.disconnected,
+            Self::Failed => service.unlock_failed,
+            Self::Timeout => service.unlock_timeout,
+        })
+    }
+}
+
+impl std::error::Error for UnlockFailure {}
+
 /// Filter choices and settings read when the panel opens.
 #[derive(Debug)]
 pub struct Options {
@@ -152,6 +202,9 @@ pub trait HistoryService: Send + Sync {
 
     /// The preview of an entry of content type `kind`.
     async fn preview(&self, id: String, kind: String) -> Result<PreviewData, ServiceError>;
+
+    /// Checks the passphrase with the daemon and, when it is right, lets this panel show content.
+    async fn unlock(&self, passphrase: Secret) -> Result<(), UnlockFailure>;
 
     /// Forwards live changes to `send` until it is closed or the stream ends. A lock waits for
     /// room in the channel instead of being dropped.

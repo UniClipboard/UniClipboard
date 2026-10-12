@@ -1,4 +1,4 @@
-use quick_panel_core::ports::{HistoryService, SearchFailure, ServiceError};
+use quick_panel_core::ports::{HistoryService, SearchFailure, Secret, ServiceError, UnlockFailure};
 use quick_panel_core::query::filters::Filters;
 use serde_json::json;
 use uc_daemon_contract::api::auth::DaemonConnectionInfo;
@@ -200,5 +200,73 @@ async fn live_daemon_search() {
         "Live daemon search succeeded: {} results, total {}",
         result.items.len(),
         result.total
+    );
+}
+
+async fn unlock_with(status: u16, passphrase: &str) -> Result<(), UnlockFailure> {
+    let server = MockServer::start().await;
+    Mock::given(method("POST")).and(path("/auth/connect"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "data": { "sessionToken": "test-session", "expiresInSecs": 3600, "refreshAtSecs": 3000 }, "ts": 0
+        }))).mount(&server).await;
+    let reply = if status == 200 {
+        ResponseTemplate::new(200)
+            .set_body_json(json!({ "data": { "unlocked": true, "generation": 3 }, "ts": 0 }))
+    } else {
+        ResponseTemplate::new(status)
+            .set_body_json(json!({ "error": { "code": "x", "message": "PRIVATE_REMOTE_DETAIL" } }))
+    };
+    Mock::given(method("POST"))
+        .and(path("/content-lock/unlock"))
+        .and(header("authorization", "Session test-session"))
+        .and(wiremock::matchers::body_json(
+            json!({ "passphrase": passphrase }),
+        ))
+        .respond_with(reply)
+        .expect(1)
+        .mount(&server)
+        .await;
+    let address = server.uri();
+    let history = DaemonHistory::with_resolver(move || {
+        Ok(DaemonConnectionInfo {
+            base_url: address.clone(),
+            ws_url: address.replacen("http://", "ws://", 1) + "/ws",
+            token: "test-token".into(),
+            pid: 1,
+        })
+    });
+    history.unlock(Secret::new(passphrase)).await
+}
+
+#[tokio::test]
+async fn the_daemon_accepts_the_right_passphrase() {
+    assert_eq!(unlock_with(200, "pässword 密码").await, Ok(()));
+}
+
+#[tokio::test]
+async fn each_refusal_of_the_daemon_has_its_own_failure() {
+    assert_eq!(
+        unlock_with(403, "x").await,
+        Err(UnlockFailure::WrongPassphrase)
+    );
+    assert_eq!(unlock_with(409, "x").await, Err(UnlockFailure::NotReady));
+    assert_eq!(
+        unlock_with(422, "x").await,
+        Err(UnlockFailure::KeyUnreadable)
+    );
+    assert_eq!(unlock_with(500, "x").await, Err(UnlockFailure::Failed));
+}
+
+#[tokio::test]
+async fn an_unreachable_daemon_is_a_connection_failure() {
+    let history = DaemonHistory::with_resolver(|| Ok(connection(9, "t")));
+    assert_eq!(
+        history.unlock(Secret::new("x")).await,
+        Err(UnlockFailure::Disconnected)
+    );
+    let missing = DaemonHistory::with_resolver(|| Err(anyhow::anyhow!("no daemon")));
+    assert_eq!(
+        missing.unlock(Secret::new("x")).await,
+        Err(UnlockFailure::Disconnected)
     );
 }

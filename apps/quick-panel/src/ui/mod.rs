@@ -89,6 +89,7 @@ struct Tasks {
     preview_load: Option<Task<()>>,
     preview_decode: Option<Task<()>>,
     reconnect: Option<Task<()>>,
+    unlock: Option<Task<()>>,
     count: Option<Task<()>>,
     blur: Option<Task<()>>,
 }
@@ -96,6 +97,8 @@ struct Tasks {
 pub struct Panel {
     state: PanelState,
     input: Entity<InputState>,
+    /// The box is the passphrase box of the locked page: masked, with its own placeholder.
+    passphrase_mode: bool,
     scroll: ScrollHandle,
     runtime: tokio::runtime::Handle,
     history: Arc<dyn HistoryService>,
@@ -195,6 +198,7 @@ impl Panel {
         let mut panel = Self {
             state,
             input,
+            passphrase_mode: false,
             scroll: ScrollHandle::new(),
             runtime,
             history,

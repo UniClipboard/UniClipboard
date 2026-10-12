@@ -22,8 +22,9 @@ pub(super) static TEXT: Text = Text {
     clear: "クリア",
     needs_app: "この機能は UniClipboard アプリ内でのみ使用できます。",
     host_gone: "メインアプリに接続できません。",
-    locked_hint_gui:
-        "メイン画面でパスフレーズを入力してロックを解除すると、ここは自動で更新されます。",
+    locked_hint: "パスフレーズを入力して Enter でロックを解除します。",
+    passphrase_placeholder: "パスフレーズ",
+    unlocking: "確認中…",
     open_main_window: "メイン画面を開く",
     settings: "設定…",
     suggestions: "提案",
@@ -153,5 +154,10 @@ pub(super) static TEXT: Text = Text {
         copy_failed: "コピーに失敗しました。もう一度お試しください。",
         no_paths: "貼り付けるファイルパスがありません。",
         preview_unreadable_retry: "プレビューを読み込めません。もう一度お試しください。",
+        unlock_wrong_passphrase: "パスフレーズが違います。もう一度お試しください。",
+        unlock_not_ready: "まだ設定が完了していません。メイン画面で設定を完了してください。",
+        unlock_key_unreadable: "保存されている鍵を読み取れません。メイン画面で復旧してください。",
+        unlock_failed: "ロックを解除できませんでした。もう一度お試しください。",
+        unlock_timeout: "ロック解除がタイムアウトしました。もう一度お試しください。",
     },
 };

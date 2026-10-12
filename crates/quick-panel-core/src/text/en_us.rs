@@ -22,8 +22,9 @@ pub(super) static TEXT: Text = Text {
     clear: "Clear",
     needs_app: "This only works inside the UniClipboard app.",
     host_gone: "Cannot reach the main app.",
-    locked_hint_gui:
-        "Enter your passphrase in the main window to unlock; this refreshes by itself.",
+    locked_hint: "Enter your passphrase and press Enter to unlock.",
+    passphrase_placeholder: "Passphrase",
+    unlocking: "Checking…",
     open_main_window: "Open main window",
     settings: "Settings…",
     suggestions: "Suggestions",
@@ -176,5 +177,10 @@ pub(super) static TEXT: Text = Text {
         copy_failed: "Copy failed; try again.",
         no_paths: "No file paths to paste.",
         preview_unreadable_retry: "Cannot read the preview; try again.",
+        unlock_wrong_passphrase: "Wrong passphrase; try again.",
+        unlock_not_ready: "Nothing to unlock yet; finish setting up in the main window.",
+        unlock_key_unreadable: "The stored key cannot be read; open the main window to recover.",
+        unlock_failed: "Could not unlock; try again.",
+        unlock_timeout: "Unlocking took too long; try again.",
     },
 };

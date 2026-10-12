@@ -5,10 +5,10 @@ use uc_daemon_contract::api::dto::settings::QuickPanelPositionDto;
 
 use crate::empty_page;
 use crate::grid;
-use crate::ports::{Choices, Live, Options, SearchFailure, ServiceError};
+use crate::ports::{Choices, Live, Options, SearchFailure, Secret, ServiceError, UnlockFailure};
 use crate::query::filters::{Dimension, Filters};
 
-use super::{timing, Ctx, Effect, Effects, PanelState, Preview};
+use super::{timing, Ctx, Effect, Effects, PanelState, Preview, UnlockStatus};
 
 impl PanelState {
     pub fn search(&mut self) -> Effects {
@@ -69,7 +69,11 @@ impl PanelState {
                 effects.push(Effect::LoadThumbnails);
             }
             Err(error) => {
+                let was_locked = self.search.locked;
                 self.search.locked = matches!(error, SearchFailure::Locked);
+                if self.search.locked && !was_locked {
+                    effects.extend(self.enter_locked());
+                }
                 // A 423 means locked as much as the lock notice does, which may have been missed.
                 if self.search.locked {
                     self.catalog.tags.clear();
@@ -83,7 +87,7 @@ impl PanelState {
                     effects.push(Effect::ScheduleReconnect(timing::RECONNECT_DELAY));
                 } else {
                     self.search.disconnected = None;
-                    // A locked history is unlocked in the main window; look again soon.
+                    // The daemon may be unlocked from elsewhere; look again soon.
                     if self.search.locked {
                         effects.push(Effect::ScheduleReconnect(timing::RECONNECT_DELAY));
                     }
@@ -140,6 +144,50 @@ impl PanelState {
         }
     }
 
+    /// The panel just became locked. The search box turns into the passphrase box, so what was
+    /// typed there goes: it must not end up in front of the passphrase, and the passphrase must
+    /// never be a search query.
+    fn enter_locked(&mut self) -> Effects {
+        self.search.filters.query.clear();
+        self.suggest.open = false;
+        self.suggest.focused = false;
+        self.session.unlock = UnlockStatus::Idle;
+        vec![Effect::ResetInput]
+    }
+
+    /// Enter on the locked page: the box holds the passphrase.
+    pub(super) fn submit_passphrase(&mut self, ctx: &Ctx) -> Effects {
+        if self.session.unlock == UnlockStatus::Checking || ctx.input.is_empty() {
+            return vec![];
+        }
+        self.session.unlock = UnlockStatus::Checking;
+        vec![Effect::Unlock(Secret::new(ctx.input))]
+    }
+
+    pub(super) fn on_unlock_done(&mut self, result: Result<(), UnlockFailure>) -> Effects {
+        match result {
+            Ok(()) => {
+                self.session.unlock = UnlockStatus::Idle;
+                let mut effects = vec![Effect::ResetInput];
+                if self.session.visible && !self.session.busy {
+                    effects.extend(self.search());
+                }
+                effects
+            }
+            Err(failure) => {
+                // A wrong passphrase is typed again from scratch; after a timeout or a lost
+                // connection the right one is still in the box.
+                let retype = failure == UnlockFailure::WrongPassphrase;
+                self.session.unlock = UnlockStatus::Failed(failure);
+                if retype {
+                    vec![Effect::ResetInput]
+                } else {
+                    vec![]
+                }
+            }
+        }
+    }
+
     pub(super) fn on_live(&mut self, live: Live) -> Effects {
         match live {
             Live::ContentLocked => self.drop_content(),
@@ -159,6 +207,7 @@ impl PanelState {
     fn drop_content(&mut self) -> Effects {
         self.search.revision += 1;
         self.search.loading = false;
+        let was_locked = self.search.locked;
         self.search.locked = true;
         self.search.disconnected = None;
         self.menu = None;
@@ -172,7 +221,7 @@ impl PanelState {
         self.catalog.members.clear();
         self.session.message = None;
         self.search.hovered = None;
-        vec![
+        let mut effects = vec![
             Effect::CancelSearch,
             Effect::CancelReconnect,
             Effect::ClearImages,
@@ -180,7 +229,11 @@ impl PanelState {
             Effect::CancelPreview,
             Effect::ClearPreviewAnchor,
             Effect::HidePreviewWindow,
-        ]
+        ];
+        if !was_locked {
+            effects.extend(self.enter_locked());
+        }
+        effects
     }
 
     pub(super) fn on_options(&mut self, result: Result<Box<Options>, ServiceError>) -> Effects {
@@ -205,6 +258,13 @@ impl PanelState {
 
     pub(super) fn input_changed(&mut self, value: String, ctx: &Ctx) -> Effects {
         if self.session.busy {
+            return vec![];
+        }
+        // On the locked page the box holds a passphrase, which is not a query.
+        if self.search.locked {
+            if matches!(self.session.unlock, UnlockStatus::Failed(_)) {
+                self.session.unlock = UnlockStatus::Idle;
+            }
             return vec![];
         }
         // The input also reports edits that change nothing, such as Backspace in an empty box.

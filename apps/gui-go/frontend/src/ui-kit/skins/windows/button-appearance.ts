@@ -7,6 +7,8 @@ export const appearance = {
   subtle: 'subtle',
   // Win11 has no destructive push button (WinUI keeps destructive commands standard; the text carries the warning).
   destructive: 'secondary',
+  // HyperlinkButton: no fill, accent text (styled by useElevationStyles.link).
+  link: 'transparent',
 } as const satisfies Record<ButtonVariant, string>
 
 // Fluent buttons stop at `large` (40px), which is also the largest WinUI control height.
@@ -22,6 +24,13 @@ export const fluentSize = {
 export const useElevationStyles = makeStyles({
   // Win11 button text is Body (regular); Fluent web buttons default to semibold.
   text: { fontWeight: tokens.fontWeightRegular },
+  link: {
+    color: tokens.colorBrandForegroundLink,
+    paddingInline: tokens.spacingHorizontalS,
+    minWidth: 'auto',
+    ':hover': { color: tokens.colorBrandForegroundLinkHover },
+    ':hover:active': { color: tokens.colorBrandForegroundLinkPressed },
+  },
   raised: {
     borderBottomColor: 'var(--w11-stroke-elevation)',
     ':hover': { borderBottomColor: 'var(--w11-stroke-elevation)' },

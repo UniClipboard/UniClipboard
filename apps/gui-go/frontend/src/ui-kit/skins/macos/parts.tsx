@@ -23,7 +23,7 @@ export function PushButton({
   ...props
 }: {
   size?: 'small' | 'medium' | 'large' | 'xlarge'
-  tint?: 'none' | 'primary' | 'secondary' | 'destructive' | 'glass' | 'borderless'
+  tint?: 'none' | 'primary' | 'secondary' | 'destructive' | 'glass' | 'borderless' | 'link'
   icon?: IconName
   force?: ForcedState
 } & ComponentProps<typeof Button>) {

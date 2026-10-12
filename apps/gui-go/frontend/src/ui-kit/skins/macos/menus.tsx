@@ -1,13 +1,14 @@
 import { AlertDialog as BaseAlertDialog } from '@base-ui/react/alert-dialog'
 import { ContextMenu as BaseContextMenu } from '@base-ui/react/context-menu'
 import { Menu as BaseMenu } from '@base-ui/react/menu'
-import { useRef, useState } from 'react'
+import { useId, useRef, useState } from 'react'
 import type { AlertDialogProps, ContextMenuProps, MenuEntry, MenuProps } from '@/ui-kit/contract'
 import { WithHelpTag } from './controls'
 import { glyph } from './glyph'
 import { Icon } from './icons'
 import { Checkbox, PushButton } from './parts'
 import { usePortalContainer } from './portal'
+import { Spinner } from './spinner'
 import { swatchColor } from './swatch'
 
 /**
@@ -185,20 +186,38 @@ export function AlertDialog({
   destructive,
   onConfirm,
   suppression,
+  field,
+  confirmDisabled,
+  busyLabel,
+  error,
 }: AlertDialogProps) {
   const container = usePortalContainer()
-  // Focus lands on the alert's key action: Cancel when the action is destructive.
+  // Focus lands on the alert's key action: Cancel when the action is destructive, the field when
+  // the alert asks for typed confirmation.
   const confirmRef = useRef<HTMLButtonElement>(null)
   const cancelRef = useRef<HTMLButtonElement>(null)
+  const fieldRef = useRef<HTMLInputElement>(null)
+  const fieldId = useId()
+  const busy = busyLabel !== undefined
   return (
-    <BaseAlertDialog.Root open={open} onOpenChange={next => onOpenChange(next)}>
+    <BaseAlertDialog.Root
+      open={open}
+      onOpenChange={(next, details) => {
+        // Running work cannot be dismissed (Escape, a click outside).
+        if (!next && busy) {
+          details.cancel()
+          return
+        }
+        onOpenChange(next)
+      }}
+    >
       <BaseAlertDialog.Portal container={container}>
         <BaseAlertDialog.Backdrop className="mac-alert-backdrop" data-fixed="" />
         <BaseAlertDialog.Popup
           className="mac-alert"
           data-floating=""
           data-fixed=""
-          initialFocus={destructive ? cancelRef : confirmRef}
+          initialFocus={field ? fieldRef : destructive ? cancelRef : confirmRef}
         >
           {destructive && (
             <span className="mac-alert-icon">
@@ -218,19 +237,47 @@ export function AlertDialog({
               {suppression.label}
             </label>
           )}
+          {field && (
+            <div className="mac-alert-field">
+              <label htmlFor={fieldId}>{field.label}</label>
+              <input
+                id={fieldId}
+                ref={fieldRef}
+                className="mac-form-input"
+                value={field.value}
+                placeholder={field.placeholder}
+                autoComplete="off"
+                spellCheck={false}
+                disabled={busy}
+                onChange={event => field.onValueChange(event.target.value)}
+              />
+            </div>
+          )}
+          {error && (
+            <p className="mac-alert-error" role="alert">
+              {error}
+            </p>
+          )}
           <div className="mac-alert-actions">
             <PushButton
               ref={confirmRef}
               size="large"
               tint={destructive ? 'destructive' : 'primary'}
+              disabled={confirmDisabled || busy}
+              aria-busy={busy || undefined}
               onClick={() => {
-                onConfirm()
-                onOpenChange(false)
+                const result = onConfirm()
+                if (!(result instanceof Promise)) onOpenChange(false)
               }}
             >
-              {confirmLabel}
+              {busy && <Spinner size={14} />}
+              {busy ? busyLabel : confirmLabel}
             </PushButton>
-            <BaseAlertDialog.Close ref={cancelRef} render={<PushButton size="large" />}>
+            <BaseAlertDialog.Close
+              ref={cancelRef}
+              disabled={busy}
+              render={<PushButton size="large" />}
+            >
               {cancelLabel}
             </BaseAlertDialog.Close>
           </div>

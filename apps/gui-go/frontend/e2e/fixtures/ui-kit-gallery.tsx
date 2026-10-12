@@ -10,11 +10,17 @@ import {
   AlertDialog,
   Badge,
   Button,
+  ButtonRow,
   Checkbox,
+  ChoiceList,
+  CodeField,
   ContextMenu,
+  Disclosure,
+  FormField,
   InlineNotice,
   ItemList,
   Menu,
+  ProgressBar,
   SearchField,
   SearchToken,
   SegmentedControl,
@@ -150,6 +156,10 @@ function Board({ scheme }: { scheme: ColorScheme }) {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [selection, setSelection] = useState(['compose'])
   const [nav, setNav] = useState('all')
+  const [passphrase, setPassphrase] = useState('')
+  const [code, setCode] = useState('')
+  const [resetOpen, setResetOpen] = useState(false)
+  const [resetText, setResetText] = useState('')
   const record = (event: string) => setLog(event)
   return (
     <UiRoot colorScheme={scheme}>
@@ -351,6 +361,65 @@ function Board({ scheme }: { scheme: ColorScheme }) {
             />
           </div>
         </Section>
+
+        <Section title="Entry forms" note="Setup · Startup · Unlock">
+          <div className="ui-kit-gallery-wide ui-kit-gallery-stack">
+            <FormField
+              label="Passphrase"
+              type="password"
+              reveal={{ show: 'Show passphrase', hide: 'Hide passphrase' }}
+              value={passphrase}
+              onValueChange={setPassphrase}
+              hint="Use your space's encryption passphrase."
+              error={passphrase === 'wrong' ? 'Wrong passphrase. Please try again.' : undefined}
+            />
+            <CodeField label="Invitation code" length={6} value={code} onValueChange={setCode} />
+            <ProgressBar label="Current step progress" value={42} />
+            <ProgressBar label="Starting" />
+            <ChoiceList
+              label="Get started"
+              items={[
+                {
+                  id: 'create',
+                  title: 'This is my first device',
+                  description: 'Create an encrypted space.',
+                  icon: 'shield',
+                },
+                { id: 'join', title: 'I already use UniClipboard elsewhere', icon: 'phone' },
+              ]}
+              onSelect={id => record(`choice:${id}`)}
+            />
+            <Disclosure label="Activity">
+              <p>Backing up local data</p>
+            </Disclosure>
+            <ButtonRow>
+              <Button variant="primary" busy>
+                Unlocking...
+              </Button>
+              <Button variant="link" onClick={() => setResetOpen(true)}>
+                Reset and start over
+              </Button>
+            </ButtonRow>
+          </div>
+        </Section>
+
+        <AlertDialog
+          open={resetOpen}
+          onOpenChange={setResetOpen}
+          title="Reset and start over"
+          description="Once reset, the encrypted clipboard history stored on this device cannot be recovered."
+          confirmLabel="Reset"
+          cancelLabel="Cancel"
+          destructive
+          field={{
+            label: 'Type RESET to confirm',
+            value: resetText,
+            onValueChange: setResetText,
+            placeholder: 'RESET',
+          }}
+          confirmDisabled={resetText.trim() !== 'RESET'}
+          onConfirm={() => record('reset:confirm')}
+        />
 
         <AlertDialog
           open={dialogOpen}

@@ -1,0 +1,575 @@
+/* Setup, startup, recovery and unlock pages of the macOS skin (design page "Setup · Startup ·
+   Unlock"). Sizes are macOS points from the design canvas, written in px like macos.css. */
+
+.mac-entry {
+  box-sizing: border-box;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  width: 100%;
+  background: var(--window);
+  color: var(--label);
+}
+
+.mac-entry-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0 32px;
+}
+
+.mac-entry-column {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 420px;
+  margin-top: auto;
+  margin-bottom: auto;
+  padding: 24px 0 28px;
+  display: flex;
+  flex-direction: column;
+}
+
+.mac-entry-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.mac-entry-icon {
+  width: 64px;
+  height: 64px;
+  margin-bottom: 16px;
+}
+
+.mac-entry-status {
+  margin: 0 0 6px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  color: var(--label-2);
+}
+
+.mac-entry-status[data-tone='positive'] {
+  color: var(--tag-green-ink);
+}
+
+.mac-entry-status[data-tone='critical'] {
+  color: var(--red);
+}
+
+.mac-entry-title {
+  margin: 0;
+  font-family: var(--mac-font-display);
+  font-size: 22px;
+  line-height: 28px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+}
+
+.mac-entry-description {
+  margin: 6px 0 0;
+  max-width: 380px;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--label-2);
+  overflow-wrap: anywhere;
+}
+
+.mac-entry-body {
+  margin-top: 26px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.mac-entry-body form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* The page's one prominent action fills the column (design U1/U2). */
+.mac-entry-body .mac-btn[data-size='xlarge'] {
+  width: 100%;
+}
+
+.mac-entry-footer {
+  flex-shrink: 0;
+  min-height: 64px;
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Footer buttons are Tahoe large capsules whatever size the caller asked for. */
+.mac-entry-footer .mac-btn {
+  height: 32px;
+  padding: 0 16px;
+  border-radius: 16px;
+  font-size: 13px;
+}
+
+.mac-entry-spacer {
+  flex: 1 1 auto;
+}
+
+.mac-button-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+
+/* ---------- form field ---------- */
+
+.mac-form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.mac-form-label {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.mac-form-control {
+  position: relative;
+  display: flex;
+}
+
+.mac-form-input {
+  all: unset;
+  box-sizing: border-box;
+  width: 100%;
+  height: 28px;
+  padding: 0 9px;
+  border-radius: 7px;
+  background: var(--content);
+  box-shadow:
+    0 0 0 0.5px rgba(0, 0, 0, 0.2),
+    0 0.5px 1px rgba(0, 0, 0, 0.05);
+  font-size: 13px;
+  color: var(--label);
+  cursor: text;
+}
+
+[data-mac-theme='dark'] .mac-form-input {
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.16);
+}
+
+.mac-form-control[data-password] .mac-form-input {
+  padding-right: 32px;
+}
+
+.mac-form-input::placeholder {
+  color: var(--label-3);
+}
+
+.mac-form-input:focus {
+  box-shadow:
+    0 0 0 1px var(--accent),
+    0 0 0 4px var(--focus);
+}
+
+.mac-form-input[aria-invalid='true'] {
+  box-shadow: 0 0 0 1px var(--red);
+}
+
+.mac-form-input[aria-invalid='true']:focus {
+  box-shadow:
+    0 0 0 1px var(--red),
+    0 0 0 4px var(--red-tint-14);
+}
+
+.mac-form-input:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.mac-form-reveal {
+  all: unset;
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--label-2);
+  cursor: default;
+}
+
+.mac-form-reveal:hover:not(:disabled) {
+  background: var(--fill-3);
+}
+
+.mac-form-reveal:focus-visible {
+  outline: 3px solid var(--focus);
+}
+
+.mac-form-reveal:disabled {
+  opacity: 0.45;
+}
+
+.mac-form-error {
+  margin: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 5px;
+  font-size: 11px;
+  line-height: 14px;
+  color: var(--red);
+}
+
+.mac-form-error .mac-icon {
+  margin-top: 1px;
+}
+
+.mac-form-hint {
+  margin: 0;
+  font-size: 11px;
+  line-height: 14px;
+  color: var(--label-2);
+}
+
+/* ---------- code field ---------- */
+
+.mac-otp-field {
+  align-items: center;
+}
+
+.mac-otp {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mac-otp-group-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mac-otp-separator {
+  width: 10px;
+  height: 2px;
+  margin: 0 4px;
+  border-radius: 1px;
+  background: var(--label-3);
+}
+
+.mac-otp-slot {
+  position: relative;
+  box-sizing: border-box;
+  width: 38px;
+  height: 46px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--content);
+  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.2);
+  font-family: var(--mac-mono);
+  font-size: 22px;
+  font-weight: 600;
+}
+
+[data-mac-theme='dark'] .mac-otp-slot {
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.16);
+}
+
+.mac-otp-slot[data-active] {
+  box-shadow:
+    0 0 0 1px var(--accent),
+    0 0 0 4px var(--focus);
+}
+
+.mac-otp-slot[data-invalid] {
+  box-shadow: 0 0 0 1px var(--red);
+  color: var(--red);
+}
+
+.mac-otp-caret {
+  width: 1.5px;
+  height: 22px;
+  background: var(--accent);
+  animation: mac-caret 1s steps(1) infinite;
+}
+
+@keyframes mac-caret {
+  50% {
+    opacity: 0;
+  }
+}
+
+/* ---------- progress ---------- */
+
+.mac-progress {
+  position: relative;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--fill-2);
+  overflow: hidden;
+}
+
+.mac-progress > span {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  border-radius: 3px;
+  background: var(--accent);
+  transition: width 0.3s var(--mac-ease);
+}
+
+.mac-progress[data-indeterminate] > span {
+  width: 30%;
+  animation: mac-progress-sweep 1.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+@keyframes mac-progress-sweep {
+  from {
+    left: -30%;
+  }
+  to {
+    left: 100%;
+  }
+}
+
+.mac-spinner {
+  flex-shrink: 0;
+  animation: mac-spin 0.9s steps(8) infinite;
+}
+
+@keyframes mac-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ---------- choices ---------- */
+
+.mac-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mac-choices-title {
+  margin: 4px 0 0 12px;
+  font-size: 11px;
+  line-height: 14px;
+  font-weight: 600;
+  color: var(--label-2);
+}
+
+.mac-choices-group {
+  border-radius: 12px;
+  background: var(--content);
+  box-shadow:
+    0 0 0 0.5px var(--separator),
+    0 0.5px 1.5px rgba(0, 0, 0, 0.04);
+  overflow: hidden;
+}
+
+[data-mac-theme='dark'] .mac-choices-group {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.mac-choice {
+  all: unset;
+  box-sizing: border-box;
+  position: relative;
+  width: 100%;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--label);
+  cursor: default;
+}
+
+.mac-choice + .mac-choice::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 52px;
+  right: 0;
+  height: 0.5px;
+  background: var(--separator);
+}
+
+.mac-choice:hover:not(:disabled) {
+  background: var(--fill-4);
+}
+
+.mac-choice:active:not(:disabled) {
+  background: var(--fill-3);
+}
+
+.mac-choice:focus-visible {
+  box-shadow: inset 0 0 0 3px var(--focus);
+  border-radius: 12px;
+}
+
+.mac-choice:disabled {
+  opacity: 0.5;
+}
+
+.mac-choice > .mac-icon:last-child {
+  color: var(--label-3);
+}
+
+.mac-choice-tile {
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border-radius: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  background: var(--accent);
+}
+
+.mac-choice[data-symbol='phone'] .mac-choice-tile {
+  background: var(--green);
+}
+
+.mac-choice[data-symbol='package'] .mac-choice-tile {
+  background: var(--gray);
+}
+
+.mac-choice-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.mac-choice-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.mac-choice-description {
+  font-size: 12px;
+  line-height: 15px;
+  color: var(--label-2);
+}
+
+/* ---------- disclosure ---------- */
+
+.mac-disclosure > summary {
+  list-style: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--label-2);
+  cursor: default;
+}
+
+.mac-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+
+.mac-disclosure > summary:focus-visible {
+  outline: 3px solid var(--focus);
+}
+
+.mac-disclosure > summary .mac-icon {
+  transition: transform 0.2s var(--mac-ease);
+}
+
+.mac-disclosure[open] > summary .mac-icon {
+  transform: rotate(90deg);
+}
+
+.mac-disclosure-content {
+  margin-top: 8px;
+}
+
+/* ---------- display text and link button ---------- */
+
+.mac-text[data-role='display'] {
+  font-family: var(--mac-font-display);
+  font-size: 34px;
+  line-height: 40px;
+  font-weight: 600;
+}
+
+.mac-text[data-role='display'][data-mono] {
+  font-family: var(--mac-mono);
+  letter-spacing: 0.08em;
+  font-variant-numeric: tabular-nums;
+}
+
+.mac-btn[data-tint='link'] {
+  height: auto;
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: transparent;
+  box-shadow: none;
+  font-size: 12px;
+  color: var(--link);
+}
+
+.mac-btn[data-tint='link'][data-disabled] {
+  background: transparent;
+  color: var(--label-3);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mac-progress[data-indeterminate] > span {
+    left: 35%;
+    animation: none;
+  }
+  .mac-spinner,
+  .mac-otp-caret {
+    animation: none;
+  }
+  .mac-disclosure > summary .mac-icon,
+  .mac-progress > span {
+    transition: none;
+  }
+}
+
+/* ---------- typed confirmation inside an alert ---------- */
+
+.mac-alert-field {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+  text-align: start;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.mac-alert-error {
+  margin: 0;
+  font-size: 11px;
+  line-height: 14px;
+  color: var(--red);
+}

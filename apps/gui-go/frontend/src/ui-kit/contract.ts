@@ -25,6 +25,7 @@ export type ColorScheme = 'light' | 'dark'
 export type IconName =
   | 'add'
   | 'back'
+  | 'chat'
   | 'chevronDown'
   | 'chevronRight'
   | 'copy'
@@ -32,21 +33,31 @@ export type IconName =
   | 'desktop'
   | 'devices'
   | 'dismiss'
+  | 'download'
   | 'edit'
+  | 'file'
   | 'filter'
+  | 'globe'
   | 'grid'
   | 'history'
   | 'info'
   | 'list'
+  | 'lock'
   | 'moon'
   | 'more'
+  | 'package'
+  | 'phone'
   | 'pin'
+  | 'retry'
   | 'search'
   | 'send'
   | 'settings'
+  | 'shield'
   | 'sidebar'
   | 'sun'
   | 'tag'
+  | 'unlock'
+  | 'update'
 
 /**
  * `xlarge` is the prominent primary action of an action bar (macOS 40pt capsule); skins without a
@@ -58,8 +69,11 @@ export type ControlSize = 'small' | 'medium' | 'large' | 'xlarge'
  * `primary`: the single main action of a view (Windows accent button, macOS default button).
  * `standard`: an ordinary push button. `subtle`: command-bar and icon buttons without a fill at rest.
  */
-/** `destructive` removes data (Delete); it is not the confirmation of an alert. */
-export type ButtonVariant = 'primary' | 'standard' | 'subtle' | 'destructive'
+/**
+ * `destructive` removes data (Delete); it is not the confirmation of an alert. `link` is an inline
+ * text command inside content (macOS link button, WinUI HyperlinkButton).
+ */
+export type ButtonVariant = 'primary' | 'standard' | 'subtle' | 'destructive' | 'link'
 
 /**
  * Tag colour as the daemon stores it: a palette name, whose light/dark values the skin owns, or a
@@ -109,6 +123,10 @@ export interface ButtonProps {
   /** Hover/focus hint. For an icon-only button it defaults to `label`. */
   tooltip?: string
   disabled?: boolean
+  /** Work started by this button is running: the skin shows its progress glyph and blocks clicks. */
+  busy?: boolean
+  /** Makes it the submit button of the `<form>` with this id (Return in the form presses it). */
+  submitForm?: string
   onClick?: () => void
 }
 
@@ -242,9 +260,24 @@ export interface AlertDialogProps {
   cancelLabel: string
   /** The confirmed action destroys data; each skin applies its platform's destructive styling. */
   destructive?: boolean
-  onConfirm: () => void
+  /**
+   * A synchronous confirmation closes the alert. One that returns a promise keeps it open: the
+   * caller closes it on success and reports a failure through `error`.
+   */
+  onConfirm: () => void | Promise<void>
   /** A "do not ask again" checkbox (NSAlert suppression button). */
   suppression?: { label: string; checked: boolean; onCheckedChange: (checked: boolean) => void }
+  /** A text field the user must fill before confirming, e.g. "Type RESET to confirm"; it takes focus. */
+  field?: {
+    label: string
+    value: string
+    onValueChange: (value: string) => void
+    placeholder?: string
+  }
+  confirmDisabled?: boolean
+  /** The confirmed work is running: shown on the confirm button, and the alert cannot be dismissed. */
+  busyLabel?: string
+  error?: string
 }
 
 export interface BadgeProps {
@@ -397,7 +430,7 @@ export interface ToolbarGroupProps {
   children: ReactNode
 }
 
-export type ToolbarButtonProps = Omit<ButtonProps, 'size'>
+export type ToolbarButtonProps = Omit<ButtonProps, 'size' | 'busy' | 'submitForm'>
 
 export interface ItemListItem {
   id: string
@@ -511,7 +544,8 @@ export interface PaneProps {
 }
 
 /** Text roles; skins map them to the platform type ramp. Business code never sets font sizes. */
-export type TextRole = 'title' | 'headline' | 'body' | 'callout' | 'caption'
+/** `display`: large text read and copied by hand on another device, e.g. an invitation code. */
+export type TextRole = 'display' | 'title' | 'headline' | 'body' | 'callout' | 'caption'
 export type TextTone = 'primary' | 'secondary' | 'tertiary' | 'positive' | 'critical'
 
 export interface TextProps {
@@ -806,6 +840,101 @@ export interface InsetListProps {
   rows: InsetListRow[]
 }
 
+/** A labelled single-line field inside a form. Return submits the form unless an input method is composing. */
+export interface FormFieldProps {
+  /** Visible label above the field. */
+  label: string
+  value: string
+  onValueChange: (value: string) => void
+  /** `password` masks the value and adds a show/hide button whose names come from `reveal`. */
+  type?: 'text' | 'password'
+  reveal?: { show: string; hide: string }
+  placeholder?: string
+  /** Help under the field. */
+  hint?: string
+  /** Shown under the field and marks it invalid. */
+  error?: string
+  disabled?: boolean
+  autoFocus?: boolean
+  autoComplete?: 'off' | 'new-password' | 'current-password'
+  inputRef?: Ref<HTMLInputElement>
+}
+
+/**
+ * A short numeric code typed into separate boxes, split into two halves (`482-913`). Only digits
+ * are kept, so a pasted `482-913` fills every box.
+ */
+export interface CodeFieldProps {
+  label: string
+  length: number
+  value: string
+  onValueChange: (value: string) => void
+  invalid?: boolean
+  disabled?: boolean
+  autoFocus?: boolean
+}
+
+/** Determinate when `value` (0–100) is given, otherwise indeterminate. */
+export interface ProgressBarProps {
+  label: string
+  value?: number
+}
+
+export interface ChoiceListItem {
+  id: string
+  title: string
+  description?: string
+  icon?: IconName
+}
+
+/** Choices that each lead to the next step (macOS grouped rows with a chevron, WinUI SettingsCards). */
+export interface ChoiceListProps {
+  label: string
+  /** Heading above the group, e.g. "Move or recover". */
+  title?: string
+  items: ChoiceListItem[]
+  onSelect: (id: string) => void
+  disabled?: boolean
+}
+
+/** Content hidden behind a heading until opened (macOS disclosure triangle, WinUI Expander). */
+export interface DisclosureProps {
+  label: string
+  defaultOpen?: boolean
+  children: ReactNode
+}
+
+/** Buttons inside page content; the skin aligns the row to the page and wraps it. */
+export interface ButtonRowProps {
+  children: ReactNode
+}
+
+export interface EntryPageStatus {
+  text: string
+  tone?: 'neutral' | 'positive' | 'critical'
+  icon?: IconName
+  /** Work is in progress: a progress glyph replaces the icon. */
+  busy?: boolean
+}
+
+/**
+ * A full-window page shown before the main window content: first-run setup, startup, profile
+ * recovery and unlock. The skin owns the layout (macOS centred, Windows leading-aligned), the
+ * status line, the heading levels and the step footer; window chrome stays with the native shell.
+ */
+export interface EntryPageProps {
+  /** The app icon above the title. */
+  appIcon: string
+  status?: EntryPageStatus
+  title: string
+  description?: string
+  children?: ReactNode
+  /** The footer's leading Back button. */
+  back?: LabelledAction & { disabled?: boolean }
+  /** The footer's trailing actions, the primary one last. */
+  actions?: ReactNode
+}
+
 export declare function UiRoot(props: UiRootProps): ReactNode
 export declare function Surface(props: SurfaceProps): ReactNode
 export declare function Button(props: ButtonProps): ReactNode
@@ -849,3 +978,10 @@ export declare function Table(props: TableProps): ReactNode
 export declare function TextField(props: TextFieldProps): ReactNode
 export declare function StepList(props: StepListProps): ReactNode
 export declare function InsetList(props: InsetListProps): ReactNode
+export declare function FormField(props: FormFieldProps): ReactNode
+export declare function CodeField(props: CodeFieldProps): ReactNode
+export declare function ProgressBar(props: ProgressBarProps): ReactNode
+export declare function ChoiceList(props: ChoiceListProps): ReactNode
+export declare function Disclosure(props: DisclosureProps): ReactNode
+export declare function EntryPage(props: EntryPageProps): ReactNode
+export declare function ButtonRow(props: ButtonRowProps): ReactNode

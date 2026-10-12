@@ -30,6 +30,15 @@ export {
 } from './pane'
 export { Surface, Toolbar, ToolbarButton, ToolbarDivider, ToolbarGroup, UiRoot } from './root'
 export { ComboField } from './combo-field'
+export {
+  ButtonRow,
+  ChoiceList,
+  CodeField,
+  Disclosure,
+  EntryPage,
+  FormField,
+  ProgressBar,
+} from './entry'
 export { FactList, PreviewFrame, QuickLook } from './preview'
 export { Sheet } from './sheet'
 export { Slider } from './slider'

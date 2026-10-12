@@ -1138,6 +1138,16 @@
   white-space: nowrap;
 }
 
+/* Select options need a checkmark gutter, not the wider action-menu spacing. */
+.mac-select-menu .mac-menu-item {
+  padding-inline: 0.25rem;
+  gap: 0.25rem;
+}
+
+.mac-select-menu .mac-menu-icon {
+  flex-shrink: 0;
+}
+
 .mac-menu-shortcut {
   font-size: 12px;
   opacity: 0.6;

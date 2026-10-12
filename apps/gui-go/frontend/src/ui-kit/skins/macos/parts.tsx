@@ -198,7 +198,7 @@ export function PopUpButton({
         {/* alignItemWithTrigger (default) overlays the selected item on the button, like an AppKit pop-up. */}
         <Select.Positioner className="mac-positioner">
           <Select.Popup
-            className="mac-menu"
+            className="mac-menu mac-select-menu"
             style={{ minWidth: 'calc(var(--anchor-width) + 24px)' }}
           >
             <Select.List>

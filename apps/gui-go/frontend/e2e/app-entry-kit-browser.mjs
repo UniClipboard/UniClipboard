@@ -113,7 +113,55 @@ try {
         .map(button => button.outerHTML.slice(0, 80))
       // The kit Text `role` prop is a type-size role, never an ARIA attribute: every `role` attribute
       // in the page must be a real ARIA role.
-      const ariaRoles = new Set(['alert', 'alertdialog', 'button', 'dialog', 'group', 'img', 'listbox', 'menu', 'menuitem', 'option', 'progressbar', 'radio', 'radiogroup', 'status', 'switch', 'timer', 'tooltip', 'presentation', 'none', 'separator', 'list', 'listitem', 'region', 'tab', 'tablist', 'tabpanel', 'checkbox', 'combobox', 'textbox', 'link', 'navigation', 'main', 'banner', 'form', 'search', 'toolbar', 'tree', 'treeitem', 'grid', 'row', 'cell', 'gridcell', 'columnheader', 'rowheader', 'heading', 'figure', 'article'])
+      const ariaRoles = new Set([
+        'alert',
+        'alertdialog',
+        'button',
+        'dialog',
+        'group',
+        'img',
+        'listbox',
+        'menu',
+        'menuitem',
+        'option',
+        'progressbar',
+        'radio',
+        'radiogroup',
+        'status',
+        'switch',
+        'timer',
+        'tooltip',
+        'presentation',
+        'none',
+        'separator',
+        'list',
+        'listitem',
+        'region',
+        'tab',
+        'tablist',
+        'tabpanel',
+        'checkbox',
+        'combobox',
+        'textbox',
+        'link',
+        'navigation',
+        'main',
+        'banner',
+        'form',
+        'search',
+        'toolbar',
+        'tree',
+        'treeitem',
+        'grid',
+        'row',
+        'cell',
+        'gridcell',
+        'columnheader',
+        'rowheader',
+        'heading',
+        'figure',
+        'article',
+      ])
       const invalidRoles = [...document.querySelectorAll('[role]')]
         .map(element => element.getAttribute('role'))
         .filter(role => !ariaRoles.has(role))
@@ -133,7 +181,10 @@ try {
         horizontalScroll: main ? main.scrollWidth > main.clientWidth + 1 : true,
         unnamedButtons,
         invalidRoles,
-        heroText: document.querySelector('[data-testid="setup-invitation-code"] > span')?.getAttribute('data-role') ?? null,
+        heroText:
+          document
+            .querySelector('[data-testid="setup-invitation-code"] > span')
+            ?.getAttribute('data-role') ?? null,
         fontSizes: [...sizes].sort((a, b) => a - b),
         entryBackground: getComputedStyle(document.querySelector('.mac-entry') ?? main)
           .backgroundColor,
@@ -159,9 +210,17 @@ try {
           assert.deepEqual(metrics.overflowing, [], `${name}: nothing crosses the window edge`)
           assert.equal(metrics.horizontalScroll, false, `${name}: no horizontal scroll`)
           assert.deepEqual(metrics.unnamedButtons, [], `${name}: every button has a name`)
-          assert.deepEqual(metrics.invalidRoles, [], `${name}: every role attribute is an ARIA role`)
+          assert.deepEqual(
+            metrics.invalidRoles,
+            [],
+            `${name}: every role attribute is an ARIA role`
+          )
           if (view === 'setup-invite' && platform === 'macos')
-            assert.equal(metrics.heroText, 'hero', `${name}: the invitation code uses the hero text role`)
+            assert.equal(
+              metrics.heroText,
+              'hero',
+              `${name}: the invitation code uses the hero text role`
+            )
           assert.ok(Math.min(...metrics.fontSizes) >= 11, `${name}: no text under 11px`)
           if (platform === 'macos')
             assert.equal(

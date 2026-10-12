@@ -35,4 +35,27 @@ describe('macOS development bundle', () => {
     },
     30_000
   )
+
+  it.skipIf(process.platform !== 'darwin')(
+    'leaves the helper out, and removes an old one, when none is given',
+    () => {
+      const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), 'uc-dev-bundle-'))
+      try {
+        const host = path.join(sandbox, 'gui-go-dev')
+        const helper = path.join(sandbox, 'uniclip-quick-panel')
+        fs.copyFileSync('/usr/bin/true', host)
+        fs.copyFileSync('/usr/bin/true', helper)
+        const executable = makeDevBundle(host, helper)
+
+        makeDevBundle(host, null)
+
+        expect(fs.existsSync(path.join(path.dirname(executable), 'uniclip-quick-panel'))).toBe(
+          false
+        )
+      } finally {
+        fs.rmSync(sandbox, { recursive: true, force: true })
+      }
+    },
+    30_000
+  )
 })

@@ -19,6 +19,7 @@ const out = path.join(root, 'target/gui-go/dev')
 
 export const USAGE = `Usage: bun wails:dev
        bun wails:dev:profile <profile>
+       add --no-helper to leave the native quick panel helper out (macOS)
 
 Runs the Go GUI in development mode with frontend hot reload. The profile
 keeps data, keychain entries and the daemon separate from the production app.`
@@ -40,7 +41,8 @@ function run(command, args, options = {}) {
 // `.dev` identifier, so it never shares notification or login-item state with an installed app. It is still started as a plain
 // child process, so stdio, the exit code and SIGTERM keep working.
 // The native quick panel helper goes next to the host executable, where the host looks for it: without it the host falls back
-// to the WebView quick panel, which has no modifier double-tap trigger on macOS.
+// to the WebView quick panel, which has no modifier double-tap trigger on macOS. Without `helper` the bundle carries none,
+// and one left by an earlier launch is removed.
 export function makeDevBundle(binary, helper) {
   const app = JSON.parse(fs.readFileSync(path.join(root, 'apps/gui-go/app.json'), 'utf8'))
   const contents = path.join(path.dirname(binary), 'UniClipboardGoDev.app/Contents')
@@ -48,8 +50,12 @@ export function makeDevBundle(binary, helper) {
   const executable = path.join(contents, 'MacOS/gui-go')
   fs.copyFileSync(binary, executable)
   const bundledHelper = path.join(contents, 'MacOS/uniclip-quick-panel')
-  fs.copyFileSync(helper, bundledHelper)
-  fs.chmodSync(bundledHelper, 0o755)
+  if (helper) {
+    fs.copyFileSync(helper, bundledHelper)
+    fs.chmodSync(bundledHelper, 0o755)
+  } else {
+    fs.rmSync(bundledHelper, { force: true })
+  }
   const plist = path.join(contents, 'Info.plist')
   fs.copyFileSync(path.join(gui, 'Info.plist'), plist)
   run('/usr/libexec/PlistBuddy', [
@@ -80,7 +86,9 @@ async function waitForServer(port, child, timeoutMs = 60_000) {
   throw new Error('Vite dev server did not become ready')
 }
 
-export async function main(argv, env = process.env) {
+export async function main(args, env = process.env) {
+  const withHelper = !args.includes('--no-helper')
+  const argv = args.filter(arg => arg !== '--no-helper')
   let profile = env.UC_PROFILE
   if (argv[0] === '--help' || argv[0] === '-h') {
     console.log(USAGE)
@@ -118,7 +126,7 @@ export async function main(argv, env = process.env) {
   console.log(`[wails-dev] profile=${profile} dev server port=${port}`)
   run('cargo', ['build', '-p', 'uc-daemon'])
   // macOS ships the native quick panel helper next to the app (stage-daemon.mjs), so the dev bundle carries it too.
-  if (process.platform === 'darwin') {
+  if (process.platform === 'darwin' && withHelper) {
     run('cargo', ['build', '--locked', '-p', 'quick-panel', '--bin', 'uniclip-quick-panel'])
   }
   run('go', ['generate', './buildinfo'], { cwd: path.join(root, 'packages/desktop-host-go') })
@@ -131,7 +139,7 @@ export async function main(argv, env = process.env) {
   const built = path.join(out, process.platform === 'win32' ? 'gui-go-dev.exe' : 'gui-go-dev')
   const tags = process.platform === 'darwin' ? ['-tags', 'private_mac_apis'] : []
   run('go', ['build', ...tags, '-o', built, '.'], { cwd: gui })
-  const helper = path.join(root, 'target/debug/uniclip-quick-panel')
+  const helper = withHelper ? path.join(root, 'target/debug/uniclip-quick-panel') : null
   const binary = process.platform === 'darwin' ? makeDevBundle(built, helper) : built
 
   // A dev build targets the machine it runs on. Linux has no UI kit skin, so it sets no target.

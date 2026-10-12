@@ -138,6 +138,29 @@ async function run() {
   if (phase === 'scheduler') return runSchedulerScenario()
   if (phase === 'wake') return // the orchestrator drives this launch through the control file
   if (phase === 'external') return // an external CDP driver owns this launch; the default scenario would race it
+  if (phase === 'entry-cdp') {
+    // Read-only observations for the native entry-page CDP driver. All input stays in CDP.
+    Object.defineProperty(window, '__ucEntrySnapshot', {
+      value: async () => ({
+        skin: $('[data-ui-skin]')?.dataset.uiSkin,
+        path: location.pathname,
+        language: i18n.language,
+        main: !!mainLayout(),
+        unlocked: await contentUnlocked(),
+        setup: !!$('[data-testid="setup-entry-create"]'),
+        initialize: !!$('#device-name') && !!$('#pass1') && !!$('#pass2'),
+        unlock: !!$('[data-testid="unlock-content"]') || !!$('#unlock-passphrase'),
+        recovery: !!$('#recovery-passphrase'),
+        alerts: Array.from(document.querySelectorAll('[role="alert"]')).map(node =>
+          node.textContent?.trim()
+        ),
+        wrongPassphrase: i18n.t('unlock.errors.wrongPassphrase'),
+        telemetryTitle: i18n.t('settings.sections.general.telemetry.notice.title'),
+        telemetryOptOut: i18n.t('settings.sections.general.telemetry.notice.optOut'),
+      }),
+    })
+    return
+  }
   if (phase === 'quick-panel-settings') return runQuickPanelSettingsScenario()
   if (phase === 'native-panel') return runNativePanelScenario()
   if (phase === 'file-ops') return runFileOpsScenario()

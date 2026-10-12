@@ -38,6 +38,7 @@ src/
 | Setup flow UI               | `src/pages/SetupPage.tsx` + `src/pages/setup/` | multi-step onboarding/join flows             |
 | Shared UI primitives        | `src/components/ui/`                           | Radix/shadcn-style components                |
 | Platform UI kit             | `src/ui-kit/`                                  | `@/ui-kit`; contract in `contract.ts`, skins chosen by `UC_UI_PLATFORM` at build time |
+| Kit entry pages             | `src/pages/entry-kit/`                         | startup, status, recovery, unlock and setup pages on `@/ui-kit`; reached only through the `@ui-*-page` / `@ui-*-screen` build-time aliases (macOS/Windows → kit, otherwise the existing pages) |
 | Error/trace redaction       | `src/observability/`                           | breadcrumbs, tracing, sensitive arg masking  |
 
 ## CONVENTIONS
@@ -51,6 +52,9 @@ src/
 - Keep route guards and page gating in `App.tsx`/layout layer, not duplicated in leaf components.
 - All async settings mutations (`update*`, `save*`, `mutate*`) must handle rejection (`try/catch` or `.catch`) with observable logging/feedback; no silent failures.
 - Within a component, similar mutations should use a consistent error-handling wrapper pattern.
+- Entry pages (setup, startup, recovery, unlock): state, validation and actions live in shared hooks (`pages/setup/*`, `pages/unlock/*`, `pages/recovery/*`, `components/app/use*Actions.ts`); the existing Linux pages and the kit pages in `pages/entry-kit/` are two views over the same hooks. Callers import them through the `@ui-*` aliases in `vite.config.ts`/`tsconfig.json` and never branch on the OS.
+- First frame: `startup-screen.tsx` and `pages/entry-kit/StartupKitScreen.tsx` import skins only through `@ui-skin/first-frame` (`ui-kit/first-frame.ts`), never `@/ui-kit` or the Fluent barrel; they must not import bootstrap, `@/lib/ipc` or the store. After touching them run `node e2e/startup-chunk-check.mjs --platform macos|windows|none` (budget: +64 KiB gzip over the 300.4 KiB baseline with a skin, +4 KiB without).
+- Kit entry pages keep the stable ids / test ids the E2E driver uses (`#unlock-passphrase`, `#recovery-passphrase`, `#device-name`, `#pass1`, `#pass2`, `#join-pass`, `setup-*`, `unlock-content`); `FormField`/`CodeField` accept an `id` for that. Browser checks: `e2e/app-entry-kit-browser.mjs --platform macos|windows`.
 - Frontend tests use Vitest (`jsdom`) with setup file `src/test/setup.ts`; colocate tests in `__tests__`.
 
 ## ANTI-PATTERNS

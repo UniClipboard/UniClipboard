@@ -19,11 +19,31 @@ the history database — see
 
 ## Query syntax
 
-The Quick Panel's advanced search and the History search box share one
-token syntax, and the CLI runs the same queries through equivalent flags —
-so the filters below work on all three surfaces: as `type:` / `ext:` / `#`
-tokens in the two GUI boxes, and as `--type` / `--ext` / `--tag` (etc.)
-flags in `uniclip search`.
+In History, combine free text with structured filters: `/` selects a content
+type, `@` a source device, `#` a tag, `on:` a time preset, and `ext:` a file
+extension. The CLI exposes filters through flags such as `--type`, `--ext`,
+and `--tag`; see the [CLI reference](../cli/reference#search). For the Quick
+Panel's controls, see [Quick Panel](./quick-panel#filtering).
+
+### Add a filter after text
+
+Type `pix /`, `pix @`, or `pix #` to open suggestions at the caret. Choose an
+option with the arrow keys and Enter or Tab, or click it. History keeps `pix`
+and any text after the selected filter word. You can combine conditions,
+move the caret to edit a filter word, and remove a selected filter chip.
+Escape dismisses suggestions without selecting a condition.
+
+Shortcuts start at the beginning of the input or after whitespace. A path
+such as `/tmp/docs`, a URL, or an email address is not converted into a
+filter. Quoting the whole word (`"/text"`) or escaping its leading character
+(`\/text`) also keeps it as query text. This does not add phrase-search
+semantics to the search engine. Unknown conditions remain query text with
+an explanation; an unfinished shortcut prompts you to choose a filter.
+
+If the query is rejected, History asks you to revise it instead of showing
+an empty result. Use ordinary search words or one consistent `AND` or `OR`
+operator; mixing `AND` and `OR` is rejected. A successful query with no
+matches remains distinct from an unavailable index or failed request.
 
 ### Substring matching
 
@@ -38,13 +58,13 @@ project meeting notes
 Results are ranked by BM25 relevance, not by time. For chronological
 output, combine substring search with the time filter below.
 
-### Type filter `type:`
+### Type filter `/`
 
 ```text
-type:text invite
-type:richtext newsletter
-type:image screenshot
-type:file invoice
+/text invite
+/richtext newsletter
+/image screenshot
+/file invoice
 ```
 
 Equivalent to the type chips in the Quick Panel and the CLI's
@@ -78,8 +98,8 @@ uniclip search "report" \
 ### Source-device filter
 
 Narrow results to clips that arrived from one device — a paired computer
-or a mobile-sync phone. In the History search box or the Quick Panel, pick
-a device from the filter bar or type `from:` and choose from the list. In
+or a mobile-sync phone. In History, pick
+a device from the filter bar or type `@` and choose from the list. In
 the CLI, pass `--source-device` with a device name (case-insensitive) or a
 device id; repeat it to match several devices. Run `uniclip member list` to see
 the available device names.
@@ -91,7 +111,7 @@ automatically as items are indexed:
 
 - `#link` — the clip contains a web URL.
 - `#code` — the clip is plain text that looks like source code. Rich
-  text / HTML is a physical type (`type:richtext`), not this tag.
+  text / HTML is a physical type (`/richtext`), not this tag.
 
 The History search box and the Quick Panel both support `#` tags — type
 `#` and pick a tag from the list. The CLI exposes the same tags via
@@ -104,8 +124,8 @@ work here:
 
 - Quoted phrases (`"exact phrase"`) — quotes are treated as ordinary
   characters.
-- Boolean operators (`AND` / `OR` / `NOT`) — `OR` becomes a substring
-  to match.
+- Mixing `AND` and `OR` in the same query — revise the query to use one
+  operator consistently.
 - Wildcards / regex — same.
 - Boolean combinations across content types (e.g. "text or link").
 

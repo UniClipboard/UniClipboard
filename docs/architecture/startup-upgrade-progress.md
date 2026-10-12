@@ -146,6 +146,11 @@ node apps/gui-go/frontend/e2e/startup-first-frame-browser.mjs --platform none --
 并阻塞 bootstrap，不能代替真实后台或原生 WebView 验收。验收包额外包含只读的
 首屏观察脚本；`apps/gui-go/e2e/startup_frames_run.py` 在独立 HOME/profile 中记录
 真实 WebView 从首屏到主界面的皮肤，并验证冷启动、复用后台与重新启动。
+只有记录中先出现 HTML、再出现 React 帧才算首屏链路验证通过；就绪后保存的
+`*-ready.png` 只是主界面截图，不作为启动屏视觉证据。
+
+`e2e/startup-splash-build-check.mjs <输出目录>` 验证真实 Vite 构建在 HTML 锚点
+缺失时明确失败，并覆盖缩进变化和三个平台选择路径；此检查不启动浏览器或 App。
 
 ## 验证入口
 

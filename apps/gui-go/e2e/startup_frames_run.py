@@ -41,10 +41,12 @@ def main():
                 rows = wait_for_step(proc, evidence, 0, 'startup-frames', timeout=180)
                 frames = next(row['detail'] for row in rows if row['step'] == 'startup-frames')
                 assert frames and all(frame['skin'] == 'macos' for frame in frames), frames
-                assert any(frame['phase'] == 'react' for frame in frames), frames
+                phases = [frame['phase'] for frame in frames]
+                assert 'html' in phases and 'react' in phases, frames
+                assert phases.index('html') < phases.index('react'), frames
                 conn = Path(home) / 'Library/Application Support' / ('app.uniclipboard.desktop-' + profile) / 'daemon.conn'
                 daemon_pid = json.loads(conn.read_text())['pid']
-                shot = out / f'{label}.png'
+                shot = out / f'{label}-ready.png'
                 captured = False
                 screenshot_error = None
                 try:
@@ -56,7 +58,7 @@ def main():
                 code = proc.wait(timeout=30)
                 assert code == 0, code
                 assert all(row['ok'] for row in read_steps(evidence, 0)), rows
-                results['rounds'].append({'label': label, 'daemonPID': daemon_pid, 'frames': frames, 'screenshot': captured, 'screenshotError': screenshot_error, 'exitCode': code})
+                results['rounds'].append({'label': label, 'daemonPID': daemon_pid, 'frames': frames, 'screenshotPhase': 'ready', 'screenshot': captured, 'screenshotError': screenshot_error, 'exitCode': code})
                 if exit_mode == 'full':
                     deadline = time.monotonic() + 15
                     while conn.exists() and time.monotonic() < deadline:

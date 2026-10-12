@@ -113,6 +113,14 @@ function startupSplash(): Plugin {
           !context.filename.endsWith('/index.html')
         )
           return html
+        const patterns = {
+          copy: /(<script type="application\/json" id="uc-splash-copy">)([\s\S]*?)(<\/script>)/,
+          style: /<style>[\s\S]*?<\/style>/,
+          root: /<div id="root">[\s\S]*?(?=\s*<script type="application\/json")/,
+        }
+        for (const [name, pattern] of Object.entries(patterns)) {
+          if (!pattern.test(html)) throw new Error(`uc-startup-splash: missing ${name} HTML anchor`)
+        }
         rendered ??= (async () => {
           const server = await createServer({
             configFile: false,
@@ -151,19 +159,13 @@ function startupSplash(): Plugin {
           html = html.replace('</head>', `<script>${observer}</script></head>`)
         }
         return html
-          .replace(
-            /(<script type="application\/json" id="uc-splash-copy">)([\s\S]*?)(<\/script>)/,
-            (_, start, json, end) => {
-              const copy = JSON.parse(json)
-              for (const language of Object.keys(copy)) copy[language].export = exportCopy[language]
-              return `${start}${JSON.stringify(copy)}${end}`
-            }
-          )
-          .replace(/<style>[\s\S]*?<\/style>/, `${styles}<style>${skinCss}\n${frameCss}</style>`)
-          .replace(
-            /<div id="root">[\s\S]*?(?= {4}<script type="application\/json")/,
-            `<div id="root">${markup}</div>\n`
-          )
+          .replace(patterns.copy, (_, start, json, end) => {
+            const copy = JSON.parse(json)
+            for (const language of Object.keys(copy)) copy[language].export = exportCopy[language]
+            return `${start}${JSON.stringify(copy)}${end}`
+          })
+          .replace(patterns.style, `${styles}<style>${skinCss}\n${frameCss}</style>`)
+          .replace(patterns.root, `<div id="root">${markup}</div>\n`)
       },
     },
   }

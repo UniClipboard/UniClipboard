@@ -12,6 +12,7 @@ Do not treat this file as a full memory dump. Read only the documents needed for
 - Fix root causes, not symptoms.
 - Use the standard, established terminology of software engineering and computer science. If a metaphor or coined expression is unavoidable, also give the corresponding standard term; never invent new words for the sake of novelty.
 - Preserve single source of truth and clear ownership.
+- Before work, read relevant entries in [LESSONS.md](LESSONS.md); after regressions or review, propose evidence-backed updates using its workflow.
 - Do not keep parallel old/new logic without a removal plan.
 - Use repo-relative paths in tracked docs.
 - Use language identifiers on fenced code blocks.

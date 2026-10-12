@@ -257,7 +257,9 @@ export interface AlertDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   title: string
-  description: string
+  description?: string
+  /** Further content under the description, e.g. a list of consequences. */
+  children?: ReactNode
   confirmLabel: string
   cancelLabel: string
   /** The confirmed action destroys data; each skin applies its platform's destructive styling. */
@@ -276,6 +278,8 @@ export interface AlertDialogProps {
     onValueChange: (value: string) => void
     placeholder?: string
   }
+  /** The Cancel button was used (as opposed to Escape or a click outside); the alert then closes. */
+  onCancel?: () => void
   confirmDisabled?: boolean
   /** The confirmed work is running: shown on the confirm button, and the alert cannot be dismissed. */
   busyLabel?: string

@@ -3,20 +3,11 @@ import { useCallback, useEffect, useReducer } from 'react'
 import { useTranslation } from 'react-i18next'
 import * as storageApi from '@/api/storage'
 import type { UpgradeBackup } from '@/api/storage'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  Button,
-} from '@/components/ui'
+import { Button } from '@/components/ui'
 import { toast } from '@/components/ui/toast'
 import { createLogger } from '@/lib/logger'
 import { formatFileSize } from '@/utils/formatters'
+import { SettingAlert } from './SettingControls'
 import { SettingGroup } from './SettingGroup'
 import { SettingRow } from './SettingRow'
 
@@ -164,32 +155,19 @@ export function UpgradeBackupGroup() {
           ))}
       </SettingGroup>
 
-      <AlertDialog
+      <SettingAlert
         open={selected !== null}
         onOpenChange={open => {
           if (!open && !deleting) dispatch({ type: 'dismissSelection' })
         }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t(`${I18N}.confirmTitle`)}</AlertDialogTitle>
-            <AlertDialogDescription>{t(`${I18N}.confirmDescription`)}</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>{t(`${I18N}.cancel`)}</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              disabled={deleting}
-              onClick={event => {
-                event.preventDefault()
-                void handleDelete()
-              }}
-            >
-              {deleting ? t(`${I18N}.deleting`) : t(`${I18N}.delete`)}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        title={t(`${I18N}.confirmTitle`)}
+        description={t(`${I18N}.confirmDescription`)}
+        confirmLabel={t(`${I18N}.delete`)}
+        cancelLabel={t(`${I18N}.cancel`)}
+        destructive
+        busyLabel={deleting ? t(`${I18N}.deleting`) : undefined}
+        onConfirm={handleDelete}
+      />
     </>
   )
 }

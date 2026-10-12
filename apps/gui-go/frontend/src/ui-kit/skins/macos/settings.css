@@ -208,3 +208,13 @@
   background: var(--popup-opaque);
   box-shadow: var(--menu-shadow);
 }
+
+/* Content a settings alert shows under its description (consequence lists, update details). */
+.mac-alert-body {
+  align-self: stretch;
+  max-height: 40vh;
+  overflow-y: auto;
+  text-align: start;
+  font-size: 12px;
+  line-height: 16px;
+}

@@ -181,12 +181,14 @@ export function AlertDialog({
   onOpenChange,
   title,
   description,
+  children,
   confirmLabel,
   cancelLabel,
   destructive,
   onConfirm,
   suppression,
   field,
+  onCancel,
   confirmDisabled,
   busyLabel,
   error,
@@ -225,9 +227,12 @@ export function AlertDialog({
             </span>
           )}
           <BaseAlertDialog.Title className="mac-alert-title">{title}</BaseAlertDialog.Title>
-          <BaseAlertDialog.Description className="mac-alert-text">
-            {description}
-          </BaseAlertDialog.Description>
+          {description && (
+            <BaseAlertDialog.Description className="mac-alert-text">
+              {description}
+            </BaseAlertDialog.Description>
+          )}
+          {children && <div className="mac-alert-body">{children}</div>}
           {suppression && (
             <label className="mac-check-label mac-alert-suppression">
               <Checkbox
@@ -276,6 +281,7 @@ export function AlertDialog({
             <BaseAlertDialog.Close
               ref={cancelRef}
               disabled={busy}
+              onClick={onCancel}
               render={<PushButton size="large" />}
             >
               {cancelLabel}

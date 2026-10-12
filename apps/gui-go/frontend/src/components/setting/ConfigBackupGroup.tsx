@@ -1,16 +1,8 @@
-import { AlertTriangle, Loader2 } from 'lucide-react'
+import { AlertTriangle } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import * as storageApi from '@/api/storage'
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
   Button,
   Dialog,
   DialogContent,
@@ -25,6 +17,7 @@ import { toast } from '@/components/ui/toast'
 import { asConfigError, isCancelled, useConfigImport } from '@/hooks/useConfigImport'
 import { commands } from '@/lib/ipc'
 import { createLogger } from '@/lib/logger'
+import { SettingAlert } from './SettingControls'
 import { SettingGroup } from './SettingGroup'
 import { SettingRow } from './SettingRow'
 
@@ -159,104 +152,75 @@ export function ConfigBackupGroup() {
       </Dialog>
 
       {/* ── Import confirmation (device-move warning) ── */}
-      <AlertDialog
+      <SettingAlert
         open={imp.phase === 'confirm' || imp.isRestarting}
-        onOpenChange={(open, eventDetails) => {
-          // While restarting, the dialog is forced: ignore every close request.
-          if (imp.isRestarting) {
-            eventDetails.cancel()
-            return
-          }
+        onOpenChange={open => {
           if (!open) imp.reset()
         }}
+        title={
+          imp.isRestarting ? t(`${I18N}.import.restartingTitle`) : t(`${I18N}.import.confirmTitle`)
+        }
+        description={
+          imp.isRestarting
+            ? t(`${I18N}.import.restartingDescription`)
+            : t(`${I18N}.import.confirmDescription`)
+        }
+        confirmLabel={t(`${I18N}.import.confirmButton`)}
+        cancelLabel={t(`${I18N}.import.cancelButton`)}
+        destructive
+        busyLabel={
+          imp.isRestarting
+            ? t(`${I18N}.import.restartingTitle`)
+            : imp.busy
+              ? t(`${I18N}.import.staging`)
+              : undefined
+        }
+        busyReplacesActions={imp.isRestarting}
+        // Stays open to show the forced restarting state.
+        onConfirm={async () => {
+          await imp.confirmImport()
+        }}
       >
-        <AlertDialogContent className="bg-card text-card-foreground">
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {imp.isRestarting
-                ? t(`${I18N}.import.restartingTitle`)
-                : t(`${I18N}.import.confirmTitle`)}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {imp.isRestarting
-                ? t(`${I18N}.import.restartingDescription`)
-                : t(`${I18N}.import.confirmDescription`)}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-
-          {imp.isRestarting ? (
-            <AlertDialogFooter>
-              <div className="flex w-full items-center justify-center gap-2 text-ui-body text-muted-foreground">
-                <Loader2 className="size-4 animate-spin" />
-                {t(`${I18N}.import.restartingTitle`)}
-              </div>
-            </AlertDialogFooter>
-          ) : (
-            <>
-              {/* Irreversible device-move warnings */}
-              <div className="space-y-2 rounded-lg border border-destructive/40 bg-destructive/5 p-3">
-                {['warningMove', 'warningNoDualOnline', 'warningReplace'].map(warningKey => (
-                  <div
-                    key={warningKey}
-                    className="flex items-start gap-2 text-ui-caption text-foreground/90"
-                  >
-                    <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-destructive" />
-                    <span>{t(`${I18N}.import.${warningKey}`)}</span>
-                  </div>
-                ))}
-              </div>
-
-              {/* Preview metadata */}
-              {imp.preview && (
-                <div className="space-y-1.5">
-                  <div className="text-ui-caption font-medium text-muted-foreground">
-                    {t(`${I18N}.import.metaTitle`)}
-                  </div>
-                  <dl className="space-y-1 text-ui-caption">
-                    <div className="flex justify-between gap-4">
-                      <dt className="text-muted-foreground">
-                        {t(`${I18N}.import.metaAppVersion`)}
-                      </dt>
-                      <dd className="tabular-nums">{imp.preview.appVersion}</dd>
-                    </div>
-                    <div className="flex justify-between gap-4">
-                      <dt className="text-muted-foreground">
-                        {t(`${I18N}.import.metaSourceMode`)}
-                      </dt>
-                      <dd>{sourceModeLabel(imp.preview.sourceMode)}</dd>
-                    </div>
-                    <div className="flex justify-between gap-4">
-                      <dt className="text-muted-foreground">
-                        {t(`${I18N}.import.metaFingerprint`)}
-                      </dt>
-                      <dd className="max-w-56 truncate font-mono">
-                        {imp.preview.deviceFingerprint}
-                      </dd>
-                    </div>
-                  </dl>
-                </div>
-              )}
-
-              <AlertDialogFooter>
-                <AlertDialogCancel onClick={imp.reset} disabled={imp.busy}>
-                  {t(`${I18N}.import.cancelButton`)}
-                </AlertDialogCancel>
-                <AlertDialogAction
-                  onClick={event => {
-                    // Keep the dialog open to show the forced restarting state.
-                    event.preventDefault()
-                    void imp.confirmImport()
-                  }}
-                  disabled={imp.busy}
-                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+        {!imp.isRestarting && (
+          <>
+            {/* Irreversible device-move warnings */}
+            <div className="space-y-2 rounded-lg border border-destructive/40 bg-destructive/5 p-3">
+              {['warningMove', 'warningNoDualOnline', 'warningReplace'].map(warningKey => (
+                <div
+                  key={warningKey}
+                  className="flex items-start gap-2 text-ui-caption text-foreground/90"
                 >
-                  {imp.busy ? t(`${I18N}.import.staging`) : t(`${I18N}.import.confirmButton`)}
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </>
-          )}
-        </AlertDialogContent>
-      </AlertDialog>
+                  <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-destructive" />
+                  <span>{t(`${I18N}.import.${warningKey}`)}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* Preview metadata */}
+            {imp.preview && (
+              <div className="space-y-1.5">
+                <div className="text-ui-caption font-medium text-muted-foreground">
+                  {t(`${I18N}.import.metaTitle`)}
+                </div>
+                <dl className="space-y-1 text-ui-caption">
+                  <div className="flex justify-between gap-4">
+                    <dt className="text-muted-foreground">{t(`${I18N}.import.metaAppVersion`)}</dt>
+                    <dd className="tabular-nums">{imp.preview.appVersion}</dd>
+                  </div>
+                  <div className="flex justify-between gap-4">
+                    <dt className="text-muted-foreground">{t(`${I18N}.import.metaSourceMode`)}</dt>
+                    <dd>{sourceModeLabel(imp.preview.sourceMode)}</dd>
+                  </div>
+                  <div className="flex justify-between gap-4">
+                    <dt className="text-muted-foreground">{t(`${I18N}.import.metaFingerprint`)}</dt>
+                    <dd className="max-w-56 truncate font-mono">{imp.preview.deviceFingerprint}</dd>
+                  </div>
+                </dl>
+              </div>
+            )}
+          </>
+        )}
+      </SettingAlert>
     </SettingGroup>
   )
 }

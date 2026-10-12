@@ -48,12 +48,14 @@ export function AlertDialog({
   onOpenChange,
   title,
   description,
+  children,
   confirmLabel,
   cancelLabel,
   destructive,
   onConfirm,
   suppression,
   field,
+  onCancel,
   confirmDisabled,
   busyLabel,
   error,
@@ -110,6 +112,7 @@ export function AlertDialog({
           <DialogTitle className={styles.title}>{title}</DialogTitle>
           <DialogContent className={styles.content}>
             {description}
+            {children}
             {suppression ? (
               <FluentCheckbox
                 className={styles.suppression}
@@ -155,7 +158,10 @@ export function AlertDialog({
               appearance="secondary"
               ref={cancel}
               disabled={busy}
-              onClick={() => onOpenChange(false)}
+              onClick={() => {
+                onCancel?.()
+                onOpenChange(false)
+              }}
             >
               {cancelLabel}
             </FluentButton>

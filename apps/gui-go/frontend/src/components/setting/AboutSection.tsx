@@ -8,16 +8,6 @@ import {
   type DismissSource,
   toUiPhase,
 } from '@/api/update-telemetry'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { toast } from '@/components/ui/toast'
@@ -31,6 +21,7 @@ import { commands } from '@/lib/ipc'
 import { createLogger } from '@/lib/logger'
 import appIcon from '@/updater/app-icon.png'
 import { SponsorsGroup } from './about/SponsorsGroup'
+import { SettingAlert } from './SettingControls'
 import { UpdatePreferencesGroup } from './UpdatePreferencesGroup'
 
 const log = createLogger('about-section')
@@ -250,45 +241,31 @@ const AboutSection: React.FC = () => {
         </p>
       </div>
 
-      <AlertDialog open={updateDialogOpen} onOpenChange={handleUpdateDialogOpenChange}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t('update.title')}</AlertDialogTitle>
-            <AlertDialogDescription render={<div />} className="space-y-3">
-              <UpdateDetails
-                currentVersion={updateInfo?.currentVersion}
-                version={updateInfo?.version}
-                body={updateInfo?.body}
-                phase={downloadProgress.phase}
-                percent={
-                  downloadProgress.total && downloadProgress.total > 0
-                    ? (downloadProgress.downloaded / downloadProgress.total) * 100
-                    : null
-                }
-              />
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel
-              disabled={isInstallingUpdate}
-              onClick={() => {
-                dialogDismissReasonRef.current = 'dialog_later'
-              }}
-            >
-              {t('update.later')}
-            </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={event => {
-                event.preventDefault()
-                handleInstallUpdate()
-              }}
-              disabled={isInstallingUpdate}
-            >
-              {t('update.updateNow')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <SettingAlert
+        open={updateDialogOpen}
+        onOpenChange={handleUpdateDialogOpenChange}
+        title={t('update.title')}
+        confirmLabel={t('update.updateNow')}
+        cancelLabel={t('update.later')}
+        busyLabel={isInstallingUpdate ? t('update.updateNow') : undefined}
+        onCancel={() => {
+          dialogDismissReasonRef.current = 'dialog_later'
+        }}
+        // Stays open while the install runs.
+        onConfirm={async () => handleInstallUpdate()}
+      >
+        <UpdateDetails
+          currentVersion={updateInfo?.currentVersion}
+          version={updateInfo?.version}
+          body={updateInfo?.body}
+          phase={downloadProgress.phase}
+          percent={
+            downloadProgress.total && downloadProgress.total > 0
+              ? (downloadProgress.downloaded / downloadProgress.total) * 100
+              : null
+          }
+        />
+      </SettingAlert>
 
       {installKind && (
         <PackageManagerUpdateDialog

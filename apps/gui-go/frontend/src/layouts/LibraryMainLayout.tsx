@@ -12,6 +12,7 @@ import { useShortcut } from '@/hooks/useShortcut'
 import { useWindowDragging } from '@/hooks/useWindowDragging'
 import { useWindowFrame } from '@/hooks/useWindowFrame'
 import { WINDOW_CONTROLS_INSET_STYLE } from '@/lib/window-controls-inset'
+import { SIDEBAR_TOGGLE_SHORTCUT } from '@/shortcuts/definitions'
 import {
   MAC_CONTENT_TRAFFIC_LIGHT_OFFSET,
   MAC_SIDEBAR_TRAFFIC_LIGHT_OFFSET,
@@ -31,7 +32,7 @@ interface LibraryMainLayoutProps {
  * the window controls float over the top-right corner (the OS draws its own
  * title bar above the layout when the system frame is selected).
  *
- * The sidebar can be hidden (toolbar toggle, ⌃⌘S), and is hidden in the
+ * The sidebar can be hidden (toolbar toggle, ⌃⌘S; Ctrl+B on Linux), and is hidden in the
  * compact window tier, where the toggle opens it as an overlay drawer instead.
  */
 const LibraryMainLayout: React.FC<LibraryMainLayoutProps> = ({ children }) => {
@@ -57,7 +58,7 @@ const LibraryMainLayout: React.FC<LibraryMainLayoutProps> = ({ children }) => {
   const closeDrawer = useCallback(() => setDrawerOpen(false), [])
   useShortcut({
     id: 'nav.toggleSidebar',
-    key: 'meta+ctrl+s',
+    key: SIDEBAR_TOGGLE_SHORTCUT.key,
     scope: 'global',
     handler: toggle,
     enableOnFormTags: true,

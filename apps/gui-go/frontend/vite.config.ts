@@ -75,6 +75,12 @@ const kitPages: Record<string, { platforms: string[]; kit: string; existing: str
     kit: './src/components/setting/setting-parts/kit.tsx',
     existing: './src/components/setting/setting-parts/legacy.tsx',
   },
+  // The first-run telemetry consent notice; Windows and macOS keep the shared dialog.
+  '@ui-telemetry-notice': {
+    platforms: ['linux'],
+    kit: './src/components/TelemetryKitNotice.tsx',
+    existing: './src/components/TelemetryNotice.tsx',
+  },
 }
 function uiSkin(): Plugin {
   const platform = process.env.UC_UI_PLATFORM

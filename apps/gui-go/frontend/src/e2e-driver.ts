@@ -136,6 +136,27 @@ async function run() {
   if (phase === 'unlock-restart') return runUnlockRestartScenario()
   if (phase === 'history-live') return runHistoryLiveScenario()
   if (phase === 'history-kit') return runHistoryKitScenario()
+  if (phase.startsWith('linux-kit-')) {
+    // Linux kit flows (e2e/linux-kit-flows.ts): the telemetry consent chain and the kit Settings page.
+    const flows = await import('@/e2e/linux-kit-flows')
+    const ctx = {
+      record,
+      control,
+      waitFor,
+      sleep,
+      $,
+      fill,
+      navControl,
+      mainLayout,
+      reachMainLayout,
+    }
+    const mode = phase.endsWith(':accept') ? 'accept' : 'disable'
+    if (phase === 'linux-kit-settings') return flows.runSettingsKitScenario(ctx)
+    if (phase === 'linux-kit-settings-restart') return flows.runSettingsRestartScenario(ctx)
+    if (phase.startsWith('linux-kit-consent:')) return flows.runTelemetryConsentScenario(ctx, mode)
+    if (phase.startsWith('linux-kit-consent-restart:'))
+      return flows.runTelemetryRestartScenario(ctx, mode)
+  }
   if (phase === 'sidebar-toggle') {
     await reachMainLayout()
     return (await import('@/e2e/sidebar-toggle')).runSidebarToggleScenario(record, control)

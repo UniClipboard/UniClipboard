@@ -14,6 +14,16 @@ Stages, each a launch of the GUI on the SAME profile (full quit between them), e
                  menu, delete, grid, narrow window, search/filters, image detail, themes + Settings write-back, paging
   C restart      phase unlock-restart: the entry left by B is still in the history after a quit and a new daemon
   D resize       phase wake: the runner resizes the window from outside (swaymsg / xdotool) and reads GTK's size, then quits
+Then two more FRESH profiles (own sandbox, HOME, data root; frontend/src/e2e/linux-kit-flows.ts), with nothing auto-accepting the
+first-run telemetry notice (the history/entry stages above DO auto-accept it: that is this synthetic harness's choice to get past
+the dialog, never a product default):
+  E consent-disable   profile A: notice appears (kit scope, copy), Escape/overlay keep it, Disable closes it and the daemon holds
+                      telemetryEnabled=usageAnalyticsEnabled=false; F consent-disable-restart: it stays away after a full quit
+  G consent-accept    profile B: same checks, OK closes it, the localStorage key is set and the settings are unchanged;
+                      H consent-accept-restart: it stays away after a full quit
+  I settings          profile B: the kit Settings page, every category per theme (screenshots), a synthetic switch written and
+                      read back from the daemon, back to History; J settings-restart: the change survived a full quit, restored
+`--skip-main` leaves A-D out (their rows become not_run) to iterate on E-J.
 Result: DIR/linux-kit-ui-result.json, one row per check with status passed | failed | not_run and the reason. A step the driver never
 reached because it stopped earlier is not_run (the first one it stopped at is failed). Screenshots: DIR/screenshots/*.png
 (grim on wlroots, gnome-screenshot/spectacle on KDE/GNOME, `import` on X11), synthetic data only.
@@ -104,7 +114,32 @@ CHECKS = [
     ('history-complete', 'history scenario ran to its end', 'history', ['history-kit-complete']),
     ('restart-unlock', 'restart: locked profile unlocks (or opens) after a full quit', 'restart', ['restart-first-screen']),
     ('restart-persistence', 'restart: history persisted across the quit', 'restart', ['history-restored-after-recovery']),
+    # Fresh profiles, no auto-accept (see the header). `evidence` of these rows carries every step's detail.
+    ('consent-shown', 'consent (Linux): the notice opens on a fresh profile with nothing accepting it', 'consent-disable', ['consent-dialog-shown']),
+    ('consent-kit-styling', 'consent: dialog inside the kit root (data-ui-skin=linux / .adw-theme), .adw-alert popup styled', 'consent-disable', ['consent-kit-styling']),
+    ('consent-copy', 'consent: title, body and both buttons present with the i18n copy', 'consent-disable', ['consent-copy']),
+    ('consent-focus-stacking', 'consent: focus is on Disable (document.activeElement) and the dialog is what a pointer hits (stacking above toasts/page)', 'consent-disable', ['consent-focus-disable', 'consent-stacking']),
+    ('consent-escape-overlay', 'consent: Escape and a backdrop click do not close it', 'consent-disable', ['consent-escape-keeps', 'consent-overlay-keeps']),
+    ('consent-disable', 'consent: Disable closes it, daemon holds telemetryEnabled=usageAnalyticsEnabled=false, key set', 'consent-disable', ['consent-disable-closes-and-persists', 'consent-key-set', 'consent-complete']),
+    ('consent-disable-restart', 'consent: after a full quit the notice stays away and the opt-out persisted', 'consent-disable-restart', ['consent-no-reappear', 'consent-settings-after-restart']),
+    ('consent-accept-dialog', 'consent (2nd fresh profile): notice, kit scope, copy, Escape/overlay keep it', 'consent-accept', ['consent-dialog-shown', 'consent-kit-styling', 'consent-copy', 'consent-focus-disable', 'consent-stacking', 'consent-escape-keeps', 'consent-overlay-keeps']),
+    ('consent-accept', 'consent: OK closes it, localStorage key set, daemon settings unchanged', 'consent-accept', ['consent-accept-closes-and-keeps-settings', 'consent-key-set', 'consent-complete']),
+    ('consent-accept-restart', 'consent: after a full quit the notice stays away, settings unchanged', 'consent-accept-restart', ['consent-no-reappear', 'consent-settings-after-restart']),
+    ('settings-dialog', 'settings: no blocking dialog left before the Settings pass', 'settings', ['settings-no-blocking-dialog']),
+    ('settings-page', 'settings: kit page visible (no legacy header), every category in the sidebar', 'settings', ['settings-kit-page']),
+    ('settings-theme-light', 'settings: light theme set from Appearance, daemon holds it', 'settings', ['settings-theme-light']),
+    ('settings-categories-light', 'settings: every category opened in light, controls read, screenshot each', 'settings', ['settings-categories-light']),
+    ('settings-writeback-light', 'settings: switch written in light, read back from the daemon, restored', 'settings', ['settings-writeback-light', 'settings-restore-light']),
+    ('settings-feedback-light', 'settings: save feedback observed in light (honest, may be none)', 'settings', ['settings-save-feedback-light']),
+    ('settings-theme-dark', 'settings: dark theme set from Appearance, daemon holds it', 'settings', ['settings-theme-dark']),
+    ('settings-categories-dark', 'settings: every category opened in dark, controls read, screenshot each', 'settings', ['settings-categories-dark']),
+    ('settings-writeback-dark', 'settings: switch written in dark, read back from the daemon, restored', 'settings', ['settings-writeback-dark', 'settings-restore-dark']),
+    ('settings-feedback-dark', 'settings: save feedback observed in dark (honest, may be none)', 'settings', ['settings-save-feedback-dark']),
+    ('settings-left-changed', 'settings: switch left changed (daemon read back) for the restart check', 'settings', ['settings-left-changed']),
+    ('settings-back-history', 'settings: Back returns to History (route + kit history markers)', 'settings', ['settings-back-history', 'settings-complete']),
+    ('settings-persisted', 'settings: the change survived a full quit (daemon + UI) and was restored', 'settings-restart', ['settings-persisted-daemon', 'settings-persisted-ui', 'settings-restored-after-restart']),
 ]
+DETAILED_STAGES = {'consent-disable', 'consent-disable-restart', 'consent-accept', 'consent-accept-restart', 'settings', 'settings-restart'}
 
 
 def run(cmd, **kw):
@@ -217,7 +252,21 @@ class Runner:
         self.out = args.out.resolve()
         self.shots_dir = self.out / 'screenshots'
         self.shots_dir.mkdir(parents=True, exist_ok=True)
+        self.sandboxes = []
+        self.install_sandbox()
+        self.runtime = self.sandbox / 'run'
+        if args.session == 'existing':
+            self.runtime = Path(os.environ.get('XDG_RUNTIME_DIR') or f'/run/user/{os.getuid()}')
+        else:
+            self.runtime.mkdir(mode=0o700)
+        self.stages, self.shots, self.extra = {}, [], []
+        self.session = self.bus = None
+
+    def install_sandbox(self):
+        """A new sandbox = a new profile: own binaries (portable data root next to them), HOME (WebKit storage) and UC_PROFILE."""
+        args = self.args
         self.sandbox = Path(tempfile.mkdtemp(prefix='uc-gui-go-'))
+        self.sandboxes.append(self.sandbox)
         self.profile = 'gui-go-' + self.sandbox.name
         for name in ('gui-go', 'uniclipd', 'uniclip'):
             shutil.copy2(args.binaries / name, self.sandbox / name)
@@ -226,15 +275,9 @@ class Runner:
             script = self.sandbox / 'gui-go'
             script.write_text(f'#!/bin/sh\nexec {args.gui_wrapper} "{self.sandbox}/gui-go.real" "$@"\n')
             script.chmod(0o755)
-        self.home, self.runtime = self.sandbox / 'home', self.sandbox / 'run'
+        self.home = self.sandbox / 'home'
         self.home.mkdir(mode=0o700)
-        if args.session == 'existing':
-            self.runtime = Path(os.environ.get('XDG_RUNTIME_DIR') or f'/run/user/{os.getuid()}')
-        else:
-            self.runtime.mkdir(mode=0o700)
         self.uniclip = str(self.sandbox / 'uniclip')
-        self.stages, self.shots, self.extra = {}, [], []
-        self.session = self.bus = None
         self.mobile = None
 
     def base_env(self):
@@ -353,6 +396,10 @@ class Runner:
         elif step.startswith('shot:'):
             self.shot(step[5:])
 
+    def shot_rows(self, row, gui):
+        if row['step'].startswith('shot:'):
+            self.shot(row['step'][5:])
+
     def entry_rows(self, row, gui):
         if row['step'] in ('home', 'settings'):
             self.shot('entry-' + row['step'])
@@ -411,7 +458,7 @@ class Runner:
         for cid, label, stage, steps in CHECKS:
             info = self.stages.get(stage)
             row = {'id': cid, 'check': label, 'stage': stage, 'steps': steps}
-            if cid == 'theme-dark' and self.args.skip_dark_theme:
+            if (cid == 'theme-dark' or (stage in DETAILED_STAGES and cid.endswith('-dark'))) and self.args.skip_dark_theme:
                 row.update(status=NOT_RUN, reason='left out on request (--skip-dark-theme)')
             elif info is None:
                 row.update(status=NOT_RUN, reason=self.skipped.get(stage, 'stage did not run'))
@@ -432,6 +479,8 @@ class Runner:
                     row.update(status=NOT_RUN, reason=f"not reached: driver stopped earlier at {first_missing[stage]} ({info['error'][:160]})")
                 else:
                     row.update(status=FAIL, reason=f'the stage ended without {missing}')
+            if info is not None and stage in DETAILED_STAGES:
+                row['evidence'] = {s: info['steps'][s]['detail'] for s in steps if s in info['steps']}
             results.append(row)
         return results
 
@@ -457,6 +506,48 @@ class Runner:
                     'reason': None if taken and len(taken) == len(self.shots) else '; '.join(sorted({s['notRun'] for s in self.shots if s['notRun']})) or 'none requested', 'detail': {'taken': len(taken), 'requested': len(self.shots)}})
         return out
 
+    def main_flows(self, seeded):
+        self.stage('entry', None, timeout=400, on_row=self.entry_rows)
+        if self.stages['entry']['error'] and 'home' not in self.stages['entry']['steps']:
+            for stage in ('history', 'restart', 'resize'):
+                self.skipped[stage] = 'the entry stage did not reach the history route: ' + self.stages['entry']['error'][:200]
+        else:
+            self.stage('history', 'history-kit', seeded, timeout=1500, done='history-kit-complete', on_row=self.history_rows)
+            if not self.stages['history']['steps'].get('kit-rows', {}).get('ok'):
+                self.skipped['restart'] = 'the history stage never listed the seeded entries'
+            else:  # the entry the restart looks for (the oldest text) is never selected by the history scenario, so it survives a partial run
+                # unlock-restart reads the newest 50 entries: after the paging pass that is the last bulk entry, else the oldest text
+                marker = 'Bulk entry 229' if self.stages['history']['steps'].get('kit-paging-past-200', {}).get('ok') else TEXTS[0]
+                self.stage('restart', 'unlock-restart', marker, timeout=240, done='history-restored-after-recovery', on_row=self.restart_rows)
+            self.resize_stage()
+
+    def consent_and_settings(self, shot_pause):
+        """Stages E-J on two fresh profiles (see the header); a stage that cannot start says why in `skipped`."""
+        pause = json.dumps({'shotPauseMs': shot_pause})
+        themes = ['light'] if self.args.skip_dark_theme else ['light', 'dark']
+
+        def created(stage):  # the GUI got as far as creating the space and showing the notice
+            return 'consent-dialog-shown' in self.stages.get(stage, {}).get('steps', {})
+
+        self.install_sandbox()  # profile A
+        self.stage('consent-disable', 'linux-kit-consent:disable', pause, timeout=300, done='consent-complete', on_row=self.shot_rows)
+        if created('consent-disable'):
+            self.stage('consent-disable-restart', 'linux-kit-consent-restart:disable', None, timeout=180, done='consent-settings-after-restart')
+        else:
+            self.skipped['consent-disable-restart'] = 'the notice never opened in the first launch'
+        self.install_sandbox()  # profile B
+        self.stage('consent-accept', 'linux-kit-consent:accept', pause, timeout=300, done='consent-complete', on_row=self.shot_rows)
+        if not created('consent-accept'):
+            reason = 'the notice never opened in the first launch of profile B'
+            self.skipped.update({s: reason for s in ('consent-accept-restart', 'settings', 'settings-restart')})
+            return
+        self.stage('consent-accept-restart', 'linux-kit-consent-restart:accept', None, timeout=180, done='consent-settings-after-restart')
+        self.stage('settings', 'linux-kit-settings', json.dumps({'themes': themes, 'shotPauseMs': shot_pause}), timeout=1200, done='settings-complete', on_row=self.shot_rows)
+        if 'settings-left-changed' in self.stages['settings']['steps']:
+            self.stage('settings-restart', 'linux-kit-settings-restart', None, timeout=180, done='settings-restart-complete')
+        else:
+            self.skipped['settings-restart'] = 'the settings stage never left the switch changed'
+
     def main(self):
         self.skipped = {}
         self.daemon_gone = False
@@ -465,20 +556,13 @@ class Runner:
             self.session = Session(self.args.session, self.runtime, self.out)
             shot_pause = self.args.shot_pause_ms
             seeded = json.dumps({'code': CODE, 'link': LINK, 'texts': TEXTS, 'image': {'dimensions': f'{IMAGE_SIZE[0]} × {IMAGE_SIZE[1]}'}, 'shotPauseMs': shot_pause, 'zoom': False, 'themes': ['light'] if self.args.skip_dark_theme else ['light', 'dark']})
-            self.stage('entry', None, timeout=400, on_row=self.entry_rows)
-            if self.stages['entry']['error'] and 'home' not in self.stages['entry']['steps']:
-                for stage in ('history', 'restart', 'resize'):
-                    self.skipped[stage] = 'the entry stage did not reach the history route: ' + self.stages['entry']['error'][:200]
+            if self.args.skip_main:
+                for stage in ('entry', 'history', 'restart', 'resize'):
+                    self.skipped[stage] = 'left out on request (--skip-main)'
             else:
-                self.stage('history', 'history-kit', seeded, timeout=1500, done='history-kit-complete', on_row=self.history_rows)
-                if not self.stages['history']['steps'].get('kit-rows', {}).get('ok'):
-                    self.skipped['restart'] = 'the history stage never listed the seeded entries'
-                else:  # the entry the restart looks for (the oldest text) is never selected by the history scenario, so it survives a partial run
-                    # unlock-restart reads the newest 50 entries: after the paging pass that is the last bulk entry, else the oldest text
-                    marker = 'Bulk entry 229' if self.stages['history']['steps'].get('kit-paging-past-200', {}).get('ok') else TEXTS[0]
-                    self.stage('restart', 'unlock-restart', marker, timeout=240, done='history-restored-after-recovery', on_row=self.restart_rows)
-                self.resize_stage()
-            conns = list(self.sandbox.rglob('daemon.conn'))
+                self.main_flows(seeded)
+            self.consent_and_settings(shot_pause)
+            conns = [c for box in self.sandboxes for c in box.rglob('daemon.conn')]
             deadline = time.monotonic() + 20
             while conns and time.monotonic() < deadline:
                 conns = [c for c in conns if c.exists()]
@@ -498,12 +582,14 @@ class Runner:
                   'dirtyDiffSha256': hashlib.sha256(diff).hexdigest(), 'dirtyFiles': dirty.splitlines(),
                   'uname': list(os.uname()), 'counts': counts, 'checks': checks, 'screenshots': self.shots,
                   'stages': {n: {k: v for k, v in s.items() if k != 'order'} | {'lastSteps': s['order'][-5:]} for n, s in self.stages.items()},
+                  'telemetryNoticeHarness': 'entry/history stages auto-accept the first-run telemetry notice (synthetic-profile harness choice, never a product default); the consent stages never do',
                   'scope': 'synthetic data only; private D-Bus bus; real WebKitGTK rendering; no real clipboard or profile'}
         (self.out / 'linux-kit-ui-result.json').write_text(json.dumps(result, indent=2, ensure_ascii=False, default=str) + '\n')
         for c in checks:
             print(f"{c['status'].upper():8} {c['id']}: {c['check']}" + (f" -- {c['reason']}" if c.get('reason') else ''), flush=True)
         print(json.dumps(counts))
-        shutil.rmtree(self.sandbox, ignore_errors=True)
+        for box in self.sandboxes:
+            shutil.rmtree(box, ignore_errors=True)
         return 0 if counts[FAIL] == 0 else 1
 
 
@@ -514,6 +600,7 @@ def main():
     parser.add_argument('--session', choices=('sway', 'xvfb', 'existing'), default='sway')
     parser.add_argument('--gui-wrapper', default='', help='command that runs the GUI under a tool, e.g. "gdb -batch -ex run -ex bt --args"')
     parser.add_argument('--skip-dark-theme', action='store_true', help='leave the dark pass out of the theme check (its theme-dark row becomes not_run); libwebkit2gtk segfaulted there in the Ubuntu 24.04 arm64 sway container')
+    parser.add_argument('--skip-main', action='store_true', help='leave stages A-D (entry, history, restart, resize) out and run only the consent and Settings stages')
     parser.add_argument('--shot-pause-ms', type=int, default=1500, help='how long the driver waits after each shot:<name> step')
     args = parser.parse_args()
     if sys.platform != 'linux':

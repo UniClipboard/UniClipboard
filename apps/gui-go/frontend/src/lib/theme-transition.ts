@@ -5,6 +5,7 @@
  */
 
 import { flushSync } from 'react-dom'
+import { detectPlatformInfo } from '@/lib/platform'
 import { isMotionReduced, visualEffectsStore } from '@/lib/visual-effects-store'
 
 let lastClickX = 0
@@ -17,13 +18,29 @@ export function setTransitionOrigin(x: number, y: number) {
 }
 
 /**
+ * WebKitGTK (the Linux desktop host) segfaults inside libwebkit2gtk when a View Transition starts
+ * while the host runs with WEBKIT_DISABLE_DMABUF_RENDERER=1, which it sets on every Wayland session.
+ * The theme still switches, just without the reveal animation.
+ */
+function isWebKitGtkHost() {
+  const { isLinux, isDesktopHost } = detectPlatformInfo()
+  return isLinux && isDesktopHost
+}
+
+/**
  * Execute a DOM update wrapped in a View Transition with circular reveal.
  * Animates from (x, y) outward to cover the entire viewport.
  * Falls back to immediate execution if View Transition API is not supported.
  * Pass null for x or y to skip the reveal animation (e.g. keyboard/ESC activations).
  */
 function startCircularReveal(x: number | null, y: number | null, updateDOM: () => void) {
-  if (x === null || y === null || isMotionReduced() || !document.startViewTransition) {
+  if (
+    x === null ||
+    y === null ||
+    isMotionReduced() ||
+    !document.startViewTransition ||
+    isWebKitGtkHost()
+  ) {
     updateDOM()
     return
   }

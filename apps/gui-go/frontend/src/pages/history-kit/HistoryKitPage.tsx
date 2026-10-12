@@ -10,6 +10,7 @@ import { useAppliedColorScheme } from '@/hooks/useAppliedColorScheme'
 import { useHistoryController } from '@/hooks/useHistoryController'
 import { useShortcut } from '@/hooks/useShortcut'
 import { formatShortcutHint } from '@/lib/shortcut-format'
+import { SIDEBAR_TOGGLE_SHORTCUT } from '@/shortcuts/definitions'
 import { Pane, SplitView, Text, UiRoot, type MenuEntry } from '@/ui-kit'
 import { selectionSummary } from './history-kit-model'
 import { HistoryKitDeleteAlert } from './HistoryKitDeleteAlert'
@@ -255,7 +256,7 @@ export default function HistoryKitPage() {
               chrome.hidden && !chrome.drawerOpen ? 'history.sidebar.show' : 'history.sidebar.hide'
             ),
             onClick: chrome.toggle,
-            shortcutHint: formatShortcutHint('ctrl+meta+s'),
+            shortcutHint: formatShortcutHint(SIDEBAR_TOGGLE_SHORTCUT.hint),
           }}
           title={c.viewLabel}
           // A failed query has no count: showing 0 would claim an empty history.

@@ -2,6 +2,7 @@
  * Shortcut action types
  * Union type of all shortcut actions
  */
+import { detectPlatformInfo } from '@/lib/platform'
 import { isMac } from '@/lib/shortcut-format'
 import { ShortcutLayer } from './layers'
 
@@ -94,6 +95,16 @@ export const QUICK_PANEL_SCALE_SHORTCUTS = [
   },
 ] satisfies ShortcutDefinition[]
 
+/**
+ * Show or hide the Library sidebar. macOS has the system's Hide Sidebar key (⌃⌘S); Windows keeps
+ * the same binding. Linux window managers swallow Super combinations, so it uses Ctrl+B, the
+ * sidebar key of the desktop editors and browsers. `hint` is the same binding spelled in the
+ * order the kit's hint shows it (⌃⌘S).
+ */
+export const SIDEBAR_TOGGLE_SHORTCUT = detectPlatformInfo().isLinux
+  ? { key: 'ctrl+b', hint: 'ctrl+b' }
+  : { key: 'meta+ctrl+s', hint: 'ctrl+meta+s' }
+
 export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
   ...QUICK_PANEL_SCALE_SHORTCUTS,
   // ===== Navigation =====
@@ -105,12 +116,12 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
     description: 'settings.sections.shortcuts.actions.goSettings',
   },
 
-  // macOS: show or hide the Library sidebar (the system's Hide Sidebar key).
-  ...(isMac
+  // macOS and Linux: show or hide the Library sidebar.
+  ...(isMac || detectPlatformInfo().isLinux
     ? [
         {
           id: 'nav.toggleSidebar',
-          key: 'meta+ctrl+s',
+          key: SIDEBAR_TOGGLE_SHORTCUT.key,
           action: 'navigation.toggleSidebar',
           scope: 'global' as const,
           description: 'settings.sections.shortcuts.actions.toggleSidebar',

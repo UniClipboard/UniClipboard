@@ -1,7 +1,7 @@
+import TelemetryNotice from '@ui-telemetry-notice'
 import { useState } from 'react'
 import { useNavigate } from 'react-router'
 import RePairingNotice from '@/components/RePairingNotice'
-import TelemetryNotice from '@/components/TelemetryNotice'
 import { useSetupRealtimeStore } from '@/store/setupRealtimeStore'
 
 const RE_PAIRING_NOTICE_DISMISSED_KEY = 'uc-re-pairing-notice-dismissed'

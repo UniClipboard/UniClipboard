@@ -950,6 +950,24 @@ fn opening_the_panel_again_forgets_an_earlier_failure() {
 }
 
 #[test]
+fn an_unlock_answer_from_an_earlier_opening_is_ignored() {
+    let (mut state, mut fixture) = locked_panel();
+    type_passphrase(&mut state, &mut fixture, "old");
+    submit(&mut state, &fixture);
+    state.on_event(Event::WindowHidden, &fixture.ctx());
+    state.show(&fixture.ctx());
+    type_passphrase(&mut state, &mut fixture, "new");
+    let late = state.on_event(
+        Event::UnlockDone(Err(UnlockFailure::WrongPassphrase)),
+        &fixture.ctx(),
+    );
+    assert!(late.is_empty(), "{late:?}");
+    assert_eq!(state.session.unlock, UnlockStatus::Idle);
+    let late_ok = state.on_event(Event::UnlockDone(Ok(())), &fixture.ctx());
+    assert!(late_ok.is_empty(), "{late_ok:?}");
+}
+
+#[test]
 fn an_effect_never_prints_the_passphrase() {
     let effect = Effect::Unlock(Secret::new("hunter2"));
     assert!(!format!("{effect:?}").contains("hunter2"));

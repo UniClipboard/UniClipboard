@@ -162,6 +162,12 @@ impl PanelState {
     }
 
     pub(super) fn on_unlock_done(&mut self, result: Result<(), UnlockFailure>) -> Effects {
+        // Only the check this opening is waiting for counts. Opening the panel again forgets it, and
+        // a late answer must neither clear what is typed now nor show an old failure. A right
+        // passphrase that came too late still unlocks: the daemon's unlock notice refreshes the list.
+        if self.session.unlock != UnlockStatus::Checking {
+            return vec![];
+        }
         match result {
             Ok(()) => {
                 self.session.unlock = UnlockStatus::Idle;

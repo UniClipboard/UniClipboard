@@ -42,9 +42,15 @@ export function parseArgs(argv, env = process.env) {
   return options
 }
 
-function build(args) {
+function build(args, children) {
   return new Promise(resolve => {
-    spawn('cargo', args, { cwd: root, stdio: 'inherit' }).once('exit', code => resolve(code ?? 1))
+    const child = spawn('cargo', args, { cwd: root, stdio: 'inherit' })
+    children.push(child)
+    child.once('exit', code => resolve(code ?? 1))
+    child.once('error', error => {
+      console.error(`[quickpanel-dev] failed to start cargo: ${error.message}`)
+      resolve(1)
+    })
   })
 }
 
@@ -65,11 +71,9 @@ export async function main(argv, env = process.env) {
   console.log(
     `[quickpanel-dev] profile=${profile} daemon=${options.daemon ? 'started here' : 'external'}`
   )
-  if ((await build(['build', ...packages])) !== 0) return 1
 
-  const childEnv = { ...env, UNICLIPBOARD_ENV: 'development', UC_PROFILE: profile }
-  const exe = name =>
-    path.join(root, 'target/debug', process.platform === 'win32' ? `${name}.exe` : name)
+  // The handlers come before the build, so a signal during `cargo build` also stops cargo instead
+  // of leaving it holding the build lock.
   const children = []
   let stopping = false
   const stop = () => {
@@ -79,6 +83,19 @@ export async function main(argv, env = process.env) {
   }
   process.on('SIGINT', stop)
   process.on('SIGTERM', stop)
+  const finish = () => {
+    stop()
+    process.off('SIGINT', stop)
+    process.off('SIGTERM', stop)
+  }
+  if ((await build(['build', ...packages], children)) !== 0 || stopping) {
+    finish()
+    return stopping ? 130 : 1
+  }
+
+  const childEnv = { ...env, UNICLIPBOARD_ENV: 'development', UC_PROFILE: profile }
+  const exe = name =>
+    path.join(root, 'target/debug', process.platform === 'win32' ? `${name}.exe` : name)
   try {
     if (options.daemon) {
       const daemon = spawn(exe('uniclipd'), [], { cwd: root, env: childEnv, stdio: 'inherit' })
@@ -107,9 +124,7 @@ export async function main(argv, env = process.env) {
     })
     return stopping && code === 1 ? 130 : code
   } finally {
-    stop()
-    process.off('SIGINT', stop)
-    process.off('SIGTERM', stop)
+    finish()
   }
 }
 

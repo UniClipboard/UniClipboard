@@ -599,6 +599,31 @@ async function runHistoryKitScenario() {
   })
   const rowTitles = () => historyRows().map(row => row.getAttribute('aria-label') ?? '')
   const selected = () => historyRows().filter(row => row.getAttribute('aria-selected') === 'true')
+  // Every role attribute in the rendered page must be a WAI-ARIA 1.2 role: a component prop named
+  // like an ARIA attribute (Text's type-ramp `role`) must never reach the DOM.
+  const ARIA_ROLES = new Set(
+    (
+      'alert alertdialog application article banner blockquote button caption cell checkbox code ' +
+      'columnheader combobox comment complementary contentinfo definition deletion dialog document ' +
+      'emphasis feed figure form generic grid gridcell group heading img insertion link list ' +
+      'listbox listitem log main mark marquee math menu menubar menuitem menuitemcheckbox ' +
+      'menuitemradio meter navigation none note option paragraph presentation progressbar radio ' +
+      'radiogroup region row rowgroup rowheader scrollbar search searchbox separator slider ' +
+      'spinbutton status strong subscript suggestion superscript switch tab table tablist tabpanel ' +
+      'term textbox time timer toolbar tooltip tree treegrid treeitem'
+    ).split(' ')
+  )
+  const ariaRoles = () => {
+    const found = Array.from(document.querySelectorAll('[role]'))
+    const invalid = found
+      .filter(el => (el.getAttribute('role') ?? '').split(/\s+/).some(r => !ARIA_ROLES.has(r)))
+      .map(el => `${el.tagName.toLowerCase()}[role=${el.getAttribute('role')}]`)
+    return { checked: found.length, invalid }
+  }
+  const recordAriaRoles = async (state: string) => {
+    const audit = ariaRoles()
+    await record(`kit-aria-roles-${state}`, audit.invalid.length === 0, audit)
+  }
 
   // Every route change with its caller, so an unexpected navigation names its source.
   const routes: string[] = []
@@ -711,6 +736,7 @@ async function runHistoryKitScenario() {
     initial
   )
   await shot('system-default', materials())
+  await recordAriaRoles('detail')
 
   // Keyboard: the list is one tab stop; Down moves the selection and the detail follows it.
   list().focus()
@@ -732,7 +758,8 @@ async function runHistoryKitScenario() {
   window.fetch = async (input, init) => {
     const response = await fetchBeforeCopy(input, init)
     // The path only: the query carries the session token.
-    const url = new URL(String(input instanceof Request ? input.url : input)).pathname
+    const url = new URL(String(input instanceof Request ? input.url : input), location.href)
+      .pathname
     if (url.includes('/clipboard/restore/')) restores.push({ url, status: response.status })
     return response
   }
@@ -833,7 +860,8 @@ async function runHistoryKitScenario() {
   const fetchBeforeTag = window.fetch
   const tagStart = performance.now()
   window.fetch = async (input, init) => {
-    const path = new URL(String(input instanceof Request ? input.url : input)).pathname
+    const path = new URL(String(input instanceof Request ? input.url : input), location.href)
+      .pathname
     const entry = {
       method: init?.method ?? (input instanceof Request ? input.method : 'GET'),
       path,
@@ -900,6 +928,7 @@ async function runHistoryKitScenario() {
     30000
   )
   await shot('multi-select')
+  await recordAriaRoles('selection')
   partialTag.querySelector<HTMLElement>('button')!.click()
   await waitFor(
     'tag on all',
@@ -991,6 +1020,7 @@ async function runHistoryKitScenario() {
   )
   await record('kit-tag-manager-rename-sidebar', true, { tag: `#${renamed}` })
   await shot('tag-manager')
+  await recordAriaRoles('tag-manager')
   Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"] button'))
     .find(b => b.textContent?.trim() === i18n.t('history.composite.done'))!
     .click()
@@ -1074,6 +1104,36 @@ async function runHistoryKitScenario() {
   key(document.body, 'i', { altKey: true, metaKey: true, code: 'KeyI' })
   await waitFor('inspector closed', () => !$('[data-testid="clipboard-detail"]'))
   await record('kit-grid-inspector', true)
+  // "Tag…" from the context menu of a card outside the selection, with the inspector closed, acts
+  // on that card: it becomes the selection and the inspector opens on its tag field.
+  const cards = () => Array.from(document.querySelectorAll<HTMLElement>('.mac-card[data-item-id]'))
+  const otherCard = cards().find(card => card.dataset.itemId !== firstCard.dataset.itemId)!
+  const otherId = otherCard.dataset.itemId!
+  const cardBox = otherCard.getBoundingClientRect()
+  const cardPoint = {
+    bubbles: true,
+    cancelable: true,
+    clientX: cardBox.x + 20,
+    clientY: cardBox.y + 20,
+    button: 2,
+  }
+  otherCard.dispatchEvent(new MouseEvent('contextmenu', cardPoint))
+  const tagItem = await waitFor('Tag… item', () =>
+    Array.from(document.querySelectorAll<HTMLElement>('[role="menuitem"]')).find(item =>
+      item.textContent?.trim().startsWith(i18n.t('history.tags.tagEllipsis'))
+    )
+  )
+  tagItem.click()
+  await waitFor(
+    'tag field for the right-clicked card',
+    () =>
+      $(`[data-testid="clipboard-detail"][data-entry-id="${otherId}"]`) &&
+      $(`input[role="combobox"][aria-label="${i18n.t('history.tags.inputLabel')}"]`)
+  )
+  await record('kit-grid-context-tag', true, { entry: otherId })
+  key(document.activeElement ?? document.body, 'Escape')
+  key(document.body, 'i', { altKey: true, metaKey: true, code: 'KeyI' })
+  await waitFor('inspector closed again', () => !$('[data-testid="clipboard-detail"]'))
   viewRadio('list')!.click()
   await waitFor(
     'list again',

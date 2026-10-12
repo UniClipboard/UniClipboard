@@ -19,6 +19,7 @@ import type {
 } from '@/ui-kit/contract'
 import { glyph } from './glyph'
 import { Icon } from './icons'
+import { isImeKey } from './ime'
 import * as parts from './parts'
 import { usePortalContainer } from './portal'
 
@@ -184,7 +185,7 @@ export function SearchField({
       inputRef={inputRef}
       onValueChange={next => onValueChange?.(next)}
       onKeyDown={event => {
-        if (event.key === 'Enter' && onSubmit) {
+        if (event.key === 'Enter' && onSubmit && !isImeKey(event)) {
           event.preventDefault()
           onSubmit(event.currentTarget.value)
         }

@@ -37,8 +37,11 @@ TRIPLES = {
 # The test variant is the same bundle layout with the E2E control plane and a distinct identity, so
 # it can never collide with an installed app (single instance scope, login item, TCC grants).
 VARIANTS = {
-    "shipping": {"tags": "production,release", "suffix": "", "e2e": "0"},
-    "acceptance": {"tags": "e2e", "suffix": ".e2e", "e2e": "1"},
+    # private_mac_apis: Wails clears the WKWebView background so the window material (Liquid Glass,
+    # NSVisualEffectView) shows behind the sidebar. It uses an undocumented WebKit key; the app is
+    # distributed with Developer ID and notarization, not through the Mac App Store.
+    "shipping": {"tags": "production,release,private_mac_apis", "suffix": "", "e2e": "0"},
+    "acceptance": {"tags": "e2e,private_mac_apis", "suffix": ".e2e", "e2e": "1"},
 }
 GUI, DAEMON, HELPER = "gui-go", "uniclipd", "uniclip-quick-panel"
 

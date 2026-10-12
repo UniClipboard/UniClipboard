@@ -181,6 +181,8 @@ export function AlertDialog({
   onOpenChange,
   title,
   description,
+  children,
+  onCancel,
   confirmLabel,
   cancelLabel,
   destructive,
@@ -220,9 +222,12 @@ export function AlertDialog({
           initialFocus={field ? fieldRef : destructive ? cancelRef : confirmRef}
         >
           <BaseAlertDialog.Title className="adw-alert-title">{title}</BaseAlertDialog.Title>
-          <BaseAlertDialog.Description className="adw-alert-text">
-            {description}
-          </BaseAlertDialog.Description>
+          {description && (
+            <BaseAlertDialog.Description className="adw-alert-text">
+              {description}
+            </BaseAlertDialog.Description>
+          )}
+          {children && <div className="adw-alert-body">{children}</div>}
           {suppression && (
             <label className="adw-check-label adw-alert-suppression">
               <Checkbox
@@ -257,6 +262,7 @@ export function AlertDialog({
             <BaseAlertDialog.Close
               ref={cancelRef}
               disabled={busy}
+              onClick={onCancel}
               render={<PushButton size="large" />}
             >
               {cancelLabel}

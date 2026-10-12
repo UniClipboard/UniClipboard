@@ -33,7 +33,7 @@ export function SplitView({
   toolbar,
   children,
 }: SplitViewProps) {
-  const toggle = (
+  const toggle = sidebarToggle && (
     <WithHelpTag
       text={
         sidebarToggle.shortcutHint
@@ -63,7 +63,7 @@ export function SplitView({
         </Surface>
       </div>
       {/* Only shown below the narrow breakpoint, where the open sidebar overlays the content. */}
-      {!sidebarHidden && (
+      {!sidebarHidden && sidebarToggle && (
         <button
           type="button"
           className="adw-split-scrim"
@@ -74,7 +74,7 @@ export function SplitView({
       )}
       <div className="adw-split-content">
         <Surface region="content">
-          <header className="adw-split-header">
+          <header className="adw-split-toolbar">
             {toggle}
             {toolbarLeading}
             <span className="adw-split-heading">

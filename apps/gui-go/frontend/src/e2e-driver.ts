@@ -14,8 +14,9 @@ import {
 import { Call, Events, Window } from '@wailsio/runtime'
 import { lockEncryption } from '@/api/daemon'
 import { daemonClient } from '@/api/daemon/client'
-import { updateSettings } from '@/api/daemon/settings'
+import { getSettings, updateSettings } from '@/api/daemon/settings'
 import { setQuickPanelEnabled, setQuickPanelPosition } from '@/api/tauri-command/settings'
+import { expectedSkin, modifier, settingsPageOpen, skinClass } from '@/e2e/skin'
 import { isPermissionGranted, requestPermission, sendNotification } from '@/host/notification'
 import { subscribeWindowMaterial } from '@/host/window-material'
 import i18n from '@/i18n'
@@ -68,7 +69,7 @@ function fill(selector: string, value: string) {
 }
 
 const link = (href: string) => $(`a[href="${href}"]`)
-// The History page built on `@/ui-kit` (macOS builds) navigates with sidebar buttons, not links.
+// The History page built on `@/ui-kit` (macOS and Linux builds) navigates with sidebar buttons, not links.
 const kitNavLabels: Record<string, string> = {
   '/settings': 'history.kit.settings',
   '/devices': 'history.kit.pairDevice',
@@ -145,7 +146,9 @@ async function run() {
   if (phase === 'external') return // an external CDP driver owns this launch; the default scenario would race it
   if (phase === 'entry-cdp') {
     // CDP owns all input; snapshots only observe, and locking uses the real daemon API.
-    Object.defineProperty(window, '__ucEntryLockContent', { value: lockEncryption })
+    Object.defineProperty(window, '__ucEntryLockContent', {
+      value: lockEncryption,
+    })
     Object.defineProperty(window, '__ucEntrySnapshot', {
       value: async () => ({
         skin: $('[data-ui-skin]')?.dataset.uiSkin,
@@ -232,7 +235,12 @@ async function run() {
     if (next === 'passphrase') {
       fill('#unlock-passphrase', `${SETUP_PASSPHRASE}-wrong`)
       ;($('#unlock-passphrase') as HTMLInputElement).form?.requestSubmit()
-      await waitFor('wrong passphrase message', () => document.body.innerText.includes('口令错误'))
+      await waitFor(
+        'wrong passphrase message',
+        () =>
+          document.body.innerText.includes('口令错误') ||
+          document.body.innerText.includes(i18n.t('unlock.errors.wrongPassphrase'))
+      )
       await record('unlock-wrong-passphrase-rejected', true)
       fill('#unlock-passphrase', SETUP_PASSPHRASE)
       ;($('#unlock-passphrase') as HTMLInputElement).form?.requestSubmit()
@@ -252,7 +260,7 @@ async function run() {
     const frames = observed.__UC_STARTUP_FRAMES__
     await record(
       'startup-frames',
-      frames.length > 0 && frames.every(frame => frame.skin === 'macos'),
+      frames.length > 0 && frames.every(frame => frame.skin === expectedSkin()),
       frames
     )
     await sleep(1500)
@@ -264,17 +272,11 @@ async function run() {
   // At this window width the shared layout shows devices as a panel of the history route.
   await navigate(click('/devices'), '/', devicesPage, 'devices', true)
   const beforeSettings = location.pathname
-  await navigate(
-    click('/settings'),
-    '/settings',
-    () => $('[data-testid="settings-page-header"]'),
-    'settings',
-    true
-  )
+  await navigate(click('/settings'), '/settings', () => settingsPageOpen(), 'settings', true)
   await navigate(
     () => history.back(),
     beforeSettings,
-    () => !$('[data-testid="settings-page-header"]'),
+    () => !settingsPageOpen(),
     'navigate-back'
   )
 
@@ -582,7 +584,7 @@ async function runHistoryLiveScenario() {
 // system clipboard (the daemon sends one entry per file and rejects directories), which isolated runs disable.
 // So this scenario pins down the boundary instead of faking a consumer: the single image decodes in the DOM and
 // no `/host-file` request was made for it.
-// The History page built on `@/ui-kit` (macOS builds) against the real daemon of an isolated profile.
+// The History page built on `@/ui-kit` (macOS and Linux builds) against the real daemon of an isolated profile.
 // The orchestrator (e2e/history_kit_ui_run.py) seeds synthetic entries and passes their texts as the
 // secret; `shot:<name>` steps ask it to capture the window, so the driver pauses after each.
 async function runHistoryKitScenario() {
@@ -593,6 +595,8 @@ async function runHistoryKitScenario() {
     image: { dimensions: string }
     zoom: boolean
     shotPauseMs: number
+    // Themes of the light/dark pass (default both); a runner can leave one out to get past a host crash.
+    themes?: Array<'light' | 'dark'>
   }
   const shot = async (name: string, detail?: unknown) => {
     await record(`shot:${name}`, true, detail)
@@ -612,7 +616,7 @@ async function runHistoryKitScenario() {
   // The app theme changes the way a user changes it: Settings > Appearance, then back to History.
   const setTheme = async (theme: 'light' | 'dark' | 'system') => {
     navControl('/settings')!.click()
-    await waitFor('settings page', () => $('[data-testid="settings-page-header"]'))
+    await waitFor('settings page', () => settingsPageOpen())
     const appearance = await waitFor('appearance category', () =>
       Array.from(document.querySelectorAll<HTMLElement>('button')).find(
         b => b.textContent?.trim() === i18n.t('settings.categories.appearance')
@@ -692,6 +696,25 @@ async function runHistoryKitScenario() {
       )
     return found
   }
+  // The first-run telemetry notice (a shared modal outside the kit) opens at an unpredictable moment on
+  // a fresh profile and would sit on top of the page's own dialogs: accept it like a user does.
+  if (expectedSkin() === 'linux') {
+    let dismissed = false
+    setInterval(() => {
+      const notice = Array.from(
+        document.querySelectorAll<HTMLElement>('[role="alertdialog"]')
+      ).find(dialog =>
+        dialog.textContent?.includes(i18n.t('settings.sections.general.telemetry.notice.title'))
+      )
+      const accept = Array.from(notice?.querySelectorAll('button') ?? []).find(
+        b => b.textContent?.trim() === i18n.t('settings.sections.general.telemetry.notice.accept')
+      )
+      if (!accept) return
+      accept.click()
+      if (!dismissed) void record('telemetry-notice-accepted', true)
+      dismissed = true
+    }, 300)
+  }
   await reachMainLayout()
   const root = await waitFor('ui kit page', () => $('[data-ui-skin]'))
   // First launch (design MA1): the profile has no history yet, so the list shows the getting-started
@@ -703,7 +726,9 @@ async function runHistoryKitScenario() {
     'kit-first-launch',
     steps.querySelectorAll('li').length === 3 &&
       !!document.body.textContent?.includes(i18n.t('history.kit.nothingCopied')),
-    { steps: Array.from(steps.querySelectorAll('li')).map(li => li.textContent?.slice(0, 60)) }
+    {
+      steps: Array.from(steps.querySelectorAll('li')).map(li => li.textContent?.slice(0, 60)),
+    }
   )
   await shot('first-launch')
   await record('kit-ready-for-entries', true)
@@ -726,12 +751,12 @@ async function runHistoryKitScenario() {
   sidebarRow(i18n.t('history.sidebar.pinned'))?.click()
   await sleep(500)
   sidebarRow(i18n.t('history.sidebar.allItems'))?.click()
-  await record('kit-page-mounted', root.dataset.uiSkin === 'macos', {
+  await record('kit-page-mounted', root.dataset.uiSkin === expectedSkin(), {
     skin: root.dataset.uiSkin,
   })
   // Command-F before Settings was ever opened (page shortcut scope on a fresh page).
   await waitFor('list before probe', () => $('[role="listbox"][aria-multiselectable]'))
-  key(list(), 'f', { metaKey: true })
+  key(list(), 'f', modifier())
   await sleep(300)
   await record(
     'kit-search-shortcut-fresh',
@@ -753,10 +778,10 @@ async function runHistoryKitScenario() {
     }
     return {
       root: box('[data-ui-skin]'),
-      split: box('.mac-split'),
+      split: box(skinClass('split')),
       pane: box('[data-pane="list"]'),
-      list: box('.mac-glist'),
-      scroller: box('.mac-glist-scroller'),
+      list: box(skinClass('glist')),
+      scroller: box(skinClass('glist-scroller')),
       options: document.querySelectorAll('[role="option"]').length,
     }
   }
@@ -768,18 +793,22 @@ async function runHistoryKitScenario() {
   )
   await record('kit-rows', true, {
     rows: rowTitles().length,
-    groups: document.querySelectorAll('.mac-glist-header, [role="presentation"]').length,
+    groups: document.querySelectorAll(`${skinClass('glist-header')}, [role="presentation"]`).length,
   })
   // The host's report decides the marker; a native marker without a host report would be a lie.
   const initial = materials()
   const native = hostMaterial !== 'none'
+  // The Linux skin has no native window material: every surface is solid and the host reports none.
+  const solidSkin = expectedSkin() === 'linux'
   await record(
     'kit-material',
     initial.content === 'solid' &&
-      (native
-        ? initial.sidebar === `native-${hostMaterial}` &&
-          initial.document === `native-${hostMaterial}`
-        : initial.sidebar === 'css-fallback' && initial.document === null),
+      (solidSkin
+        ? initial.sidebar === 'solid' && hostMaterial === 'none'
+        : native
+          ? initial.sidebar === `native-${hostMaterial}` &&
+            initial.document === `native-${hostMaterial}`
+          : initial.sidebar === 'css-fallback' && initial.document === null),
     initial
   )
   await shot('system-default', materials())
@@ -821,20 +850,26 @@ async function runHistoryKitScenario() {
     restores.length === 1 &&
       restores[0].status === 200 &&
       restores[0].url.endsWith(`/clipboard/restore/${currentId}`),
-    { entry: currentId, restores, systemClipboardReadBack: 'not run (disabled in E2E)' }
+    {
+      entry: currentId,
+      restores,
+      systemClipboardReadBack: 'not run (disabled in E2E)',
+    }
   )
 
   // Command-F (page shortcut scope) focuses the search field.
-  key(list(), 'f', { metaKey: true })
+  key(list(), 'f', modifier())
   await sleep(300)
   await record('kit-search-shortcut', document.activeElement?.getAttribute('type') === 'search', {
     active: document.activeElement?.tagName,
   })
   // Command-comma opens Settings from anywhere (global shortcut scope).
-  key(list(), ',', { metaKey: true, code: 'Comma' })
+  key(list(), ',', { ...modifier(), code: 'Comma' })
   await sleep(500)
   const globalShortcut = location.pathname.startsWith('/settings')
-  await record('kit-settings-shortcut', globalShortcut, { opened: location.pathname })
+  await record('kit-settings-shortcut', globalShortcut, {
+    opened: location.pathname,
+  })
   if (globalShortcut) {
     history.back()
     await waitFor(
@@ -842,7 +877,7 @@ async function runHistoryKitScenario() {
       () => location.pathname.startsWith('/history') && $('[data-ui-skin]')
     )
     await waitFor('rows after probe', () => historyRows().length > 0, 15000).catch(error => {
-      const scroller = $('.mac-glist-scroller')
+      const scroller = $(skinClass('glist-scroller'))
       const inner = scroller?.firstElementChild as HTMLElement | null
       throw new Error(
         `${String(error)} ${JSON.stringify({
@@ -860,7 +895,11 @@ async function runHistoryKitScenario() {
   const pinnedId = currentId
   const favorited = async () => {
     const response = await daemonClient.request<{
-      data: Array<{ id: string; is_favorited?: boolean; isFavorited?: boolean }>
+      data: Array<{
+        id: string
+        is_favorited?: boolean
+        isFavorited?: boolean
+      }>
     }>('/clipboard/entries?limit=50&offset=0')
     const found = response.data.find(e => e.id === pinnedId)
     return Boolean(found?.is_favorited ?? found?.isFavorited)
@@ -878,7 +917,7 @@ async function runHistoryKitScenario() {
     mark: pinMark(),
   })
   list().focus()
-  key(list(), 'p', { metaKey: true })
+  key(list(), 'p', modifier())
   const unpinned = await waitFor('pin mark gone', () => !pinMark(), 10000).catch(() => false)
   await record('kit-unpin-shortcut', Boolean(unpinned) && !(await favorited()), {
     entry: pinnedId,
@@ -903,7 +942,12 @@ async function runHistoryKitScenario() {
   await shot('tag-field')
   // Evidence by stage, so a missing chip names where it stopped: which entry the list and the
   // detail show around Enter, and the tag requests with their timing (paths only, no bodies).
-  const tagRequests: Array<{ method: string; path: string; status?: number; ms: number[] }> = []
+  const tagRequests: Array<{
+    method: string
+    path: string
+    status?: number
+    ms: number[]
+  }> = []
   const fetchBeforeTag = window.fetch
   const tagStart = performance.now()
   window.fetch = async (input, init) => {
@@ -925,7 +969,9 @@ async function runHistoryKitScenario() {
     return {
       listSelected: selected().map(row => row.dataset.itemId),
       detailEntry: detail?.dataset.entryId ?? null,
-      detailChips: Array.from(detail?.querySelectorAll('.mac-tag') ?? []).map(c => c.textContent),
+      detailChips: Array.from(detail?.querySelectorAll(skinClass('tag')) ?? []).map(
+        c => c.textContent
+      ),
       tagGroup: !!detail?.querySelector('[role="group"]'),
       tagTotal: $('nav')?.textContent?.match(/· (\d+)/)?.[1] ?? null,
     }
@@ -936,9 +982,9 @@ async function runHistoryKitScenario() {
   const chipShown = await waitFor(
     'tag chip in the detail',
     () =>
-      Array.from(document.querySelectorAll('[data-testid="clipboard-detail"] .mac-tag')).some(c =>
-        c.textContent?.includes(chipText)
-      ),
+      Array.from(
+        document.querySelectorAll(`[data-testid="clipboard-detail"] ${skinClass('tag')}`)
+      ).some(c => c.textContent?.includes(chipText)),
     30000
   ).then(
     () => true,
@@ -955,7 +1001,7 @@ async function runHistoryKitScenario() {
 
   // Command-click adds a second row: the detail becomes the selection summary.
   const other = historyRows().find(row => row.dataset.itemId !== pinnedId)!
-  other.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0, metaKey: true }))
+  other.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0, ...modifier() }))
   await waitFor(
     'two selected',
     () => selected().length === 2 && $('[data-testid="clipboard-selection"]')
@@ -969,7 +1015,7 @@ async function runHistoryKitScenario() {
     () =>
       Array.from(
         document.querySelectorAll<HTMLElement>(
-          '[data-testid="clipboard-selection"] .mac-tag[data-partial]'
+          `[data-testid="clipboard-selection"] ${skinClass('tag')}[data-partial]`
         )
       ).find(c => c.textContent?.includes(chipText)),
     30000
@@ -981,7 +1027,9 @@ async function runHistoryKitScenario() {
     'tag on all',
     () =>
       Array.from(
-        document.querySelectorAll<HTMLElement>('[data-testid="clipboard-selection"] .mac-tag')
+        document.querySelectorAll<HTMLElement>(
+          `[data-testid="clipboard-selection"] ${skinClass('tag')}`
+        )
       ).some(c => c.textContent?.includes(chipText) && !c.hasAttribute('data-partial')),
     30000
   )
@@ -1000,7 +1048,12 @@ async function runHistoryKitScenario() {
   )
   const cell = sheetRow.querySelector<HTMLElement>('[role="gridcell"]')!
   const box = cell.getBoundingClientRect()
-  const at = { bubbles: true, cancelable: true, clientX: box.x + 20, clientY: box.y + 10 }
+  const at = {
+    bubbles: true,
+    cancelable: true,
+    clientX: box.x + 20,
+    clientY: box.y + 10,
+  }
   cell.dispatchEvent(new MouseEvent('mousedown', { ...at, button: 2 }))
   cell.dispatchEvent(new MouseEvent('contextmenu', { ...at, button: 2 }))
   const renameItem = await waitFor('rename item', () =>
@@ -1042,7 +1095,7 @@ async function runHistoryKitScenario() {
   await shot('tag-manager-menu')
   renameItem.click()
   const renameField = (await waitFor('rename field', () =>
-    $('[role="dialog"] input[aria-invalid], [role="dialog"] .mac-field')
+    $(`[role="dialog"] input[aria-invalid], [role="dialog"] ${skinClass('field')}`)
   )) as HTMLInputElement
   const renamed = `${tagName}r`
   valueSetter.call(renameField, renamed)
@@ -1125,7 +1178,7 @@ async function runHistoryKitScenario() {
   )
 
   // Hide and show the sidebar with its toolbar control.
-  const toggle = () => $('[aria-expanded][aria-label]:is(.mac-split-toggle)')
+  const toggle = () => $(`[aria-expanded][aria-label]:is(${skinClass('split-toggle')})`)
   toggle()!.click()
   await waitFor('sidebar hidden', () => $('[data-sidebar-hidden]'))
   await shot('sidebar-hidden')
@@ -1140,20 +1193,21 @@ async function runHistoryKitScenario() {
       `[role="radio"][aria-label="${i18n.t(value === 'grid' ? 'history.kit.viewGrid' : 'history.kit.viewList')}"]`
     )
   viewRadio('grid')!.click()
-  const firstCard = await waitFor('grid cards', () => $('.mac-card[data-item-id]'))
+  const firstCard = await waitFor('grid cards', () => $(`${skinClass('card')}[data-item-id]`))
   await record('kit-grid', !$('[data-testid="clipboard-detail"]'), {
-    cards: document.querySelectorAll('.mac-card[data-item-id]').length,
+    cards: document.querySelectorAll(`${skinClass('card')}[data-item-id]`).length,
   })
   firstCard.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 }))
   firstCard.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))
   await waitFor('inspector', () => $('[data-testid="clipboard-detail"]'))
   await shot('grid-inspector')
-  key(document.body, 'i', { altKey: true, metaKey: true, code: 'KeyI' })
+  key(document.body, 'i', { altKey: true, ...modifier(), code: 'KeyI' })
   await waitFor('inspector closed', () => !$('[data-testid="clipboard-detail"]'))
   await record('kit-grid-inspector', true)
   // "Tag…" from the context menu of a card outside the selection, with the inspector closed, acts
   // on that card: it becomes the selection and the inspector opens on its tag field.
-  const cards = () => Array.from(document.querySelectorAll<HTMLElement>('.mac-card[data-item-id]'))
+  const cards = () =>
+    Array.from(document.querySelectorAll<HTMLElement>(`${skinClass('card')}[data-item-id]`))
   const otherCard = cards().find(card => card.dataset.itemId !== firstCard.dataset.itemId)!
   const otherId = otherCard.dataset.itemId!
   const cardBox = otherCard.getBoundingClientRect()
@@ -1179,7 +1233,7 @@ async function runHistoryKitScenario() {
   )
   await record('kit-grid-context-tag', true, { entry: otherId })
   key(document.activeElement ?? document.body, 'Escape')
-  key(document.body, 'i', { altKey: true, metaKey: true, code: 'KeyI' })
+  key(document.body, 'i', { altKey: true, ...modifier(), code: 'KeyI' })
   await waitFor('inspector closed again', () => !$('[data-testid="clipboard-detail"]'))
   viewRadio('list')!.click()
   await waitFor(
@@ -1225,20 +1279,28 @@ async function runHistoryKitScenario() {
         .map(
           el => el.getAttribute('aria-label') ?? el.textContent?.trim().slice(0, 24) ?? el.className
         )
-    const screen = { left: 0, right: visible.width, top: 0, bottom: visible.height }
-    const bar = $('.mac-pane-actionbar')?.getBoundingClientRect()
+    const screen = {
+      left: 0,
+      right: visible.width,
+      top: 0,
+      bottom: visible.height,
+    }
+    const bar = $(skinClass('pane-actionbar'))?.getBoundingClientRect()
     return {
       viewport,
       scale: Math.round(devicePixelRatio * 100) / 100,
       pageOverflowX: document.documentElement.scrollWidth - document.documentElement.clientWidth,
       toolbarOffscreen: outside(
-        '.mac-split-toolbar button, .mac-split-toolbar [role="radio"], .mac-split-toolbar input',
+        `${skinClass('split-toolbar')} button, ${skinClass('split-toolbar')} [role="radio"], ${skinClass('split-toolbar')} input`,
         screen
       ),
       actionBarOffscreen: bar
         ? [
-            ...outside('.mac-pane-actionbar > *:not(.mac-actionbar-hint)', bar),
-            ...outside('.mac-pane-actionbar', screen),
+            ...outside(
+              `${skinClass('pane-actionbar')} > *:not(${skinClass('actionbar-hint')})`,
+              bar
+            ),
+            ...outside(skinClass('pane-actionbar'), screen),
           ]
         : ['no action bar'],
       panesOffscreen: outside('[data-pane]', screen),
@@ -1263,7 +1325,7 @@ async function runHistoryKitScenario() {
       return row && rows.length > 0 && row === rows[rows.length - 1] ? row : null
     })
     const scroller =
-      list().closest('.mac-glist')?.getBoundingClientRect() ?? list().getBoundingClientRect()
+      list().closest(skinClass('glist'))?.getBoundingClientRect() ?? list().getBoundingClientRect()
     const r = last.getBoundingClientRect()
     return {
       focused: document.activeElement === list(),
@@ -1283,7 +1345,7 @@ async function runHistoryKitScenario() {
   await shot('narrow')
   // The compact window hides the sidebar; its toolbar toggle still reaches it.
   // Queried each time: the toggle moves into the sidebar's header when it opens.
-  const sidebarToggle = () => $('[aria-expanded][aria-label]:is(.mac-split-toggle)')!
+  const sidebarToggle = () => $(`[aria-expanded][aria-label]:is(${skinClass('split-toggle')})`)!
   sidebarToggle().click()
   const drawer = await waitFor('sidebar in the compact window', () => {
     const nav = $('[data-surface="sidebar"]')
@@ -1358,9 +1420,9 @@ async function runHistoryKitScenario() {
   await shot('search-suggestions')
   key(field(), 'ArrowDown')
   key(field(), 'Enter')
-  await waitFor('tag token', () => $('.mac-token-search [data-kind="tag"]'))
+  await waitFor('tag token', () => $(`${skinClass('token-search')} [data-kind="tag"]`))
   await record('kit-search-token', true, {
-    token: $('.mac-token-search [data-kind="tag"]')?.textContent,
+    token: $(`${skinClass('token-search')} [data-kind="tag"]`)?.textContent,
   })
   // No remaining entry carries the link tag: the empty state offers to drop the condition.
   const empty = await waitFor('no results', () => $('[role="status"]'), 30000)
@@ -1402,7 +1464,7 @@ async function runHistoryKitScenario() {
   )
   // No count either: a failed query does not know how many items match.
   const failureCount = {
-    subtitle: $('.mac-split-subtitle')?.textContent ?? null,
+    subtitle: $(skinClass('split-subtitle'))?.textContent ?? null,
     zeroResults:
       $('[data-pane="list"]')?.textContent?.includes(
         i18n.t('history.composite.results', { count: 0 })
@@ -1445,7 +1507,7 @@ async function runHistoryKitScenario() {
   openRow((await imageRow())!)
   const preview = await waitFor(
     'image preview',
-    () => $('[data-testid="clipboard-detail"] .mac-preview[data-kind="image"] img'),
+    () => $(`[data-testid="clipboard-detail"] ${skinClass('preview')}[data-kind="image"] img`),
     60000
   )
   const facts = () =>
@@ -1470,35 +1532,44 @@ async function runHistoryKitScenario() {
   Array.from(document.querySelectorAll<HTMLElement>('[data-testid="clipboard-detail"] button'))
     .find(b => b.textContent?.startsWith(i18n.t('history.detail.quickLook')))!
     .click()
-  const quickLook = await waitFor('quick look', () => $('.mac-quicklook img'), 30000)
+  const quickLook = await waitFor('quick look', () => $(`${skinClass('quicklook')} img`), 30000)
   await waitFor('quick look decoded', () => (quickLook as HTMLImageElement).naturalWidth > 0)
   await record('kit-quick-look', true, {
-    title: $('.mac-quicklook-title')?.textContent,
+    title: $(skinClass('quicklook-title'))?.textContent,
   })
   await shot('quick-look')
   key(document.activeElement ?? document.body, 'Escape')
-  await waitFor('quick look closed', () => !$('.mac-quicklook'))
+  await waitFor('quick look closed', () => !$(skinClass('quicklook')))
   await record('kit-quick-look-closed', true)
 
   // Light and dark themes: the material stays native only while the theme matches the system
   // appearance; otherwise the sidebar shows its CSS fallback (the glass would be drawn in the wrong
   // appearance, Wails sets NSAppearance only at window creation).
-  for (const theme of ['light', 'dark'] as const) {
+  for (const theme of seeded.themes ?? (['light', 'dark'] as const)) {
     await setTheme(theme)
     await waitFor(`${theme} theme applied`, () => appliedScheme() === theme)
+    // Settings write-back: the choice made in the page is what the daemon holds for the profile.
+    let stored = false
+    for (const end = Date.now() + 10000; !stored && Date.now() < end; await sleep(300)) {
+      stored = (await getSettings()).general.theme === theme
+    }
+    await record(`kit-settings-writeback-${theme}`, stored, { theme })
     await sleep(500)
     const state = materials()
     // Without a host material (no private_mac_apis, or an opaque webview) the sidebar always
     // falls back and the page stays opaque.
-    const expected =
-      hostMaterial !== 'none' && theme === systemScheme()
+    const expected = solidSkin
+      ? 'solid'
+      : hostMaterial !== 'none' && theme === systemScheme()
         ? `native-${hostMaterial}`
         : 'css-fallback'
     await record(
       `kit-material-${theme}`,
       state.sidebar === expected &&
         state.content === 'solid' &&
-        (expected === 'css-fallback' ? state.document === null : state.document === expected),
+        (expected === 'css-fallback' || expected === 'solid'
+          ? state.document === null
+          : state.document === expected),
       { ...state, expected }
     )
     await shot(`${theme}-default`, state)
@@ -1539,7 +1610,7 @@ async function runHistoryKitScenario() {
   await record('kit-paging-past-200', reachedOldest(), {
     presses,
     selected: selected()[0]?.getAttribute('aria-label')?.slice(0, 60),
-    subtitle: $('.mac-split-subtitle')?.textContent ?? null,
+    subtitle: $(skinClass('split-subtitle'))?.textContent ?? null,
   })
 
   await record('history-kit-complete', true)
@@ -2094,7 +2165,7 @@ async function runLinuxPackageUpdateScenario() {
   await navigate(
     () => navControl('/settings')?.click(),
     '/settings',
-    () => $('[data-testid="settings-page-header"]'),
+    () => settingsPageOpen(),
     'package-settings',
     true
   )
@@ -2168,7 +2239,7 @@ async function runHostContractScenario() {
   const meta = await commands.getDeviceMeta()
   await record(
     'device-identity',
-    id.length > 0 && meta.deviceId === id && meta.platform === 'macos',
+    id.length > 0 && meta.deviceId === id && meta.platform === expectedSkin(),
     {
       platform: meta.platform,
       appChannel: meta.appChannel,

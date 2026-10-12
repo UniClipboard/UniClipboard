@@ -1,0 +1,220 @@
+/* ---------- settings (AdwPreferencesPage / AdwPreferencesGroup) ---------- */
+
+.adw-settings-scroll,
+.settings-popups-anchor {
+  /* Kept under its own name: the remap below reuses --accent for shadcn's hover surface. */
+  --adw-accent: var(--accent);
+}
+
+.adw-settings-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  box-sizing: border-box;
+  padding: 24px 12px;
+  background: var(--window);
+}
+
+.adw-settings-column,
+.settings-popups {
+  /* The app's own controls (shadcn) read these names; point them at the Adwaita tokens. --card,
+     --popover, --border, --destructive, --success and --warning already carry the right values. */
+  --background: var(--view);
+  --foreground: var(--fg);
+  --card-foreground: var(--fg);
+  --muted: var(--shade);
+  --muted-foreground: var(--fg2);
+  --secondary: var(--btn);
+  --secondary-foreground: var(--fg);
+  --accent: var(--hover);
+  --accent-foreground: var(--fg);
+  --primary: var(--adw-accent);
+  --primary-foreground: var(--accent-fg);
+  --input: var(--btn);
+  --ring: var(--adw-accent);
+  --radius: 0.5rem;
+  --popover-foreground: var(--fg);
+}
+
+.adw-settings-column {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: clamp(600px, 75%, 800px);
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--fg);
+}
+
+/* Kit controls keep the system accent that the remap above replaced. */
+.adw-settings-column [class*='adw-'] {
+  --accent: var(--adw-accent);
+}
+
+/* Sections stack their own groups with a 2rem gap; inside this page the groups are 24px apart. */
+.adw-settings-column [class~='gap-8'] {
+  gap: 24px;
+}
+
+.adw-settings-group {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.adw-settings-group-title {
+  padding: 0 2px 8px;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 700;
+  color: var(--fg2);
+}
+
+.adw-settings-group-body {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+}
+
+.adw-settings-row {
+  min-height: 56px;
+  padding: 8px 12px;
+  box-sizing: border-box;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 12px;
+}
+
+.adw-settings-row[data-bare] {
+  min-height: 48px;
+}
+
+.adw-settings-row + .adw-settings-row {
+  border-top: 1px solid var(--border);
+}
+
+.adw-settings-row-text {
+  flex: 1 1 14rem;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.adw-settings-row-label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.adw-settings-row-description {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--fg2);
+  overflow-wrap: anywhere;
+}
+
+.adw-settings-row-control {
+  min-width: 0;
+  max-width: 100%;
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.adw-settings-row[data-bare] .adw-settings-row-control {
+  flex: 1 1 auto;
+  margin-left: 0;
+}
+
+/* shadcn buttons and fields, drawn as GTK buttons and entries. */
+.adw-settings-column [data-slot='button'] {
+  border: 0;
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+.adw-settings-column [data-slot='button'].border-border {
+  background: var(--btn);
+}
+
+.adw-settings-column [data-slot='button'].border-border:hover {
+  background: var(--btn-hover);
+}
+
+.adw-settings-column [data-slot='input'],
+.adw-settings-column [data-slot='select-trigger'] {
+  border: 0;
+  border-radius: 6px;
+  background: var(--btn);
+  font-size: 14px;
+}
+
+/* Custom blocks a section puts in a group (charts, relay cards, banners) take the row inset. */
+.adw-settings-group-body > :not(.adw-settings-row):not(output) {
+  box-sizing: border-box;
+  padding: 12px;
+}
+
+.adw-settings-group-body > :not(.adw-settings-row) + *,
+.adw-settings-group-body > * + :not(.adw-settings-row) {
+  border-top: 1px solid var(--border);
+}
+
+.adw-settings-group-body > output:first-child {
+  border-radius: 11px 11px 0 0;
+}
+
+/* Popups the sections open (dialogs, popovers, select lists, tooltips) portal into this host. */
+.settings-popups {
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--fg);
+}
+
+.settings-popups [data-slot='alert-dialog-content'],
+.settings-popups [data-slot='dialog-content'] {
+  border: 0;
+  border-radius: 12px;
+  background: var(--dialog);
+  box-shadow: var(--dialog-shadow);
+}
+
+.settings-popups [data-slot='tooltip-content'] {
+  border-radius: 6px;
+  background: var(--toast);
+  color: var(--toast-fg);
+  box-shadow: var(--toast-shadow);
+}
+
+.settings-popups [data-slot='tooltip-content'] > svg,
+.settings-popups [data-slot='tooltip-content'] > [class*='size-2.5'] {
+  display: none;
+}
+
+.settings-popups [data-slot='select-content'],
+.settings-popups [data-slot='popover-content'] {
+  border: 0;
+  border-radius: 12px;
+  background: var(--popover);
+  box-shadow: var(--pop-shadow);
+}
+
+/* Content a settings alert shows under its description (consequence lists, update details). */
+.adw-alert-body {
+  align-self: stretch;
+  max-height: 40vh;
+  overflow-y: auto;
+  text-align: start;
+  font-size: 13px;
+  line-height: 18px;
+}

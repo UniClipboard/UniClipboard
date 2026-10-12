@@ -172,7 +172,14 @@ const legacyPages = [
   'src/components/app/StartupProgressScreen.tsx',
   'src/components/app/AppStatusScreen.tsx',
 ]
-const legacyModules = legacyPages.map(file => new RegExp(`/${file.replaceAll('.', '\\.')}$`))
+// Every platform uses kit settings; untargeted tests keep the legacy modules.
+const legacySettings = [
+  'src/pages/SettingsPage.tsx',
+  'src/components/setting/setting-parts/legacy.tsx',
+]
+const pattern = file => new RegExp(`/${file.replaceAll('.', '\\.')}$`)
+const legacyModules = legacyPages.map(pattern)
+const legacySettingsModules = legacySettings.map(pattern)
 const existingPage = legacyModules[0]
 const kitSettings = /\/src\/pages\/settings-kit\/SettingsKitPage\.tsx$/
 const existingSettings = /\/src\/pages\/SettingsPage\.tsx$/
@@ -185,11 +192,23 @@ const appExpectations = {
   },
   macos: {
     required: [kitPage, kitSettings, kitSettingParts, skin('macos')],
-    forbidden: [...legacyModules, existingSettings, existingSettingParts, ...otherSkins('macos'), fluent],
+    forbidden: [
+      ...legacyModules,
+      existingSettings,
+      existingSettingParts,
+      ...otherSkins('macos'),
+      fluent,
+    ],
   },
   linux: {
-    required: [kitPage, skin('linux')],
-    forbidden: [...legacyModules, ...otherSkins('linux'), fluent, griffel],
+    required: [kitPage, kitSettings, kitSettingParts, skin('linux')],
+    forbidden: [
+      ...legacyModules,
+      ...legacySettingsModules,
+      ...otherSkins('linux'),
+      fluent,
+      griffel,
+    ],
   },
   unset: {
     required: [existingPage, existingSettings, existingSettingParts],
@@ -237,7 +256,7 @@ for (const [label, expectation] of Object.entries(appExpectations)) {
   }
 }
 report.legacySourcesOnDisk = Object.fromEntries(
-  legacyPages.map(file => [file, existsSync(path.resolve(file))])
+  [...legacyPages, ...legacySettings].map(file => [file, existsSync(path.resolve(file))])
 )
 await writeFile(path.join(output, 'report.json'), JSON.stringify(report, null, 2))
 console.log(JSON.stringify(report, (key, value) => (key === 'packages' ? undefined : value), 2))

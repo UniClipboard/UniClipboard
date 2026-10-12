@@ -4,6 +4,10 @@
 #   run.sh xvfb <outdir>         run the Xvfb + private D-Bus scenarios (linux_xvfb_run.py) and write the artifacts to <outdir>
 #   run.sh wayland <outdir>      (17c2, image :17c2 via UC_LINUX_IMAGE) headless sway + Layer Shell scenarios (linux_wayland_run.py)
 #   run.sh wayland-nolib <outdir>  same container image with libgtk-layer-shell removed INSIDE the throwaway container: fallback scenario
+#   run.sh kit-ui <outdir>       build the Linux UI-kit bundle (VITE_GUI_GO_E2E=1 UC_UI_PLATFORM=linux, needs bun on the host), the gtk3,e2e GUI and the daemon
+#                                into /cache/out-kit-ui, then run linux_kit_ui_run.py in a headless-sway container (image :17c2, WebKitGTK renders for real).
+#                                UC_KIT_UI_SKIP_BUILD=1 reuses the bundle and binaries; UC_KIT_UI_SESSION=sway|xvfb picks the display (default sway);
+#                                UC_KIT_UI_ARGS passes more options to the runner (e.g. --skip-dark-theme).
 #   run.sh package <outdir>      run package_linux.py with the daemon from `build` (needs frontend/dist built with VITE_GUI_GO_E2E=0)
 # 17c4 (self-contained AppImage; docs/architecture/gui-go-linux-appimage.md), image :17c2 for the build steps:
 #   run.sh daemon-release        build the shipped release daemon (build_daemon_release.sh) into /cache/out-release with build-evidence.txt
@@ -20,6 +24,7 @@
 #                                portable mode uses the file keystore) linux_appimage_portable_run.py
 #   run.sh appimage-helpers-e2e <outdir> <AppImage> <package-manifest.json>   (17c10; UC_HELPERS_IMAGE, UC_HELPERS_DESKTOP=generic|gnome)
 #   run.sh appimage-tls-e2e <outdir> <AppImage> <package-manifest.json>   (17c7; UC_TLS_E2E_ARGS=--expect-tls absent is the failing control)
+# UC_DOCKER_CPUS=4 caps every container this script starts (docker --cpus). Linux VM without Docker: see the header of e2e/linux_kit_ui_run.py.
 # The image is uc-gui-go-linux-build:17c (e2e/linux/Dockerfile); build artifacts live in the docker volume uc-gui-go-linux-cache.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../../../.." && pwd)"
@@ -32,11 +37,14 @@ RUNTIME_IMAGE="${UC_RUNTIME_IMAGE:-uc-gui-go-linux-runtime:17c4}"
 KEYRING_IMAGE="${UC_KEYRING_IMAGE:-uc-gui-go-linux-keyring:17c4}"
 VOLUME="${UC_LINUX_CACHE_VOLUME:-uc-gui-go-linux-cache}"
 mode="${1:?usage: run.sh build|xvfb|package [outdir]}"
+# kit-ui needs sway, grim and xdotool: the :17c2 image has them, and it also builds the binaries.
+if [ "$mode" = kit-ui ]; then IMAGE="${UC_LINUX_IMAGE:-uc-gui-go-linux-build:17c2}"; UC_OUT_DIR="${UC_OUT_DIR:-/cache/out-kit-ui}"; fi
 docker image inspect "$IMAGE" >/dev/null
+cpus=(); [ -z "${UC_DOCKER_CPUS:-}" ] || cpus=(--cpus "$UC_DOCKER_CPUS" -e CARGO_BUILD_JOBS="$UC_DOCKER_CPUS")
 # A git worktree's .git file points at the main repository's metadata by absolute path: mount that read-only at the same
 # path so git works inside the container (provenance in the manifests), without letting the container write to it.
 GITCOMMON="$(cd "$ROOT" && cd "$(git rev-parse --git-common-dir)" && pwd -P)"
-common=(-e ARCH="$ARCH" -e SENTRY_DSN -e POSTHOG_PROJECT_KEY -e APP_ENV -e UC_BUILD_IMAGE -e CARGO_PROFILE_RELEASE_OPT_LEVEL -e CARGO_PROFILE_RELEASE_LTO -e CARGO_PROFILE_RELEASE_CODEGEN_UNITS -e UC_OUT_DIR="${UC_OUT_DIR:-}" -e UC_WAYLAND_RUN_ARGS="${UC_WAYLAND_RUN_ARGS:-}" --rm --platform "$PLATFORM" -v "$ROOT:/work" --mount "type=bind,src=$GITCOMMON,dst=$GITCOMMON,readonly" -e GIT_OPTIONAL_LOCKS=0 -v "$VOLUME:/cache" -w /work)
+common=(-e ARCH="$ARCH" -e SENTRY_DSN -e POSTHOG_PROJECT_KEY -e APP_ENV -e UC_BUILD_IMAGE -e CARGO_PROFILE_RELEASE_OPT_LEVEL -e CARGO_PROFILE_RELEASE_LTO -e CARGO_PROFILE_RELEASE_CODEGEN_UNITS -e UC_OUT_DIR="${UC_OUT_DIR:-}" -e UC_WAYLAND_RUN_ARGS="${UC_WAYLAND_RUN_ARGS:-}" --rm ${cpus[@]+"${cpus[@]}"} --platform "$PLATFORM" -v "$ROOT:/work" --mount "type=bind,src=$GITCOMMON,dst=$GITCOMMON,readonly" -e GIT_OPTIONAL_LOCKS=0 -v "$VOLUME:/cache" -w /work)
 case "$mode" in
   build)
     docker run "${common[@]}" -e SKIP_DAEMON="${SKIP_DAEMON:-0}" "$IMAGE" bash apps/gui-go/e2e/linux/build_in_container.sh ;;
@@ -63,6 +71,19 @@ case "$mode" in
       set +e
       dbus-run-session -- python3 apps/gui-go/e2e/linux_wayland_run.py --out /out --binaries /cache/out $extra ${UC_WAYLAND_RUN_ARGS:-}
       exit \$?" ;;
+  kit-ui)
+    out="$(mkdir -p "${2:?outdir}" && cd "$2" && pwd)"
+    if [ "${UC_KIT_UI_SKIP_BUILD:-0}" != 1 ]; then
+      (cd "$ROOT" && VITE_APP_VERSION="$(python3 -c 'import json;print(json.load(open("apps/gui-go/app.json"))["version"])')" VITE_GUI_GO_E2E=1 UC_UI_PLATFORM=linux \
+        bun --bun run --cwd apps/gui-go/frontend build)
+      UC_LINUX_IMAGE="$IMAGE" UC_OUT_DIR="$UC_OUT_DIR" SKIP_DAEMON="${UC_KIT_UI_SKIP_DAEMON:-0}" "$0" build
+    fi
+    docker run "${common[@]}" --name "uc-kit-ui-$$" --shm-size 1g -e PYTHONDONTWRITEBYTECODE=1 -e SESSION="${UC_KIT_UI_SESSION:-sway}" -e BIN="$UC_OUT_DIR" -e UC_KIT_UI_ARGS="${UC_KIT_UI_ARGS:-}" -v "$out:/out" "$IMAGE" bash -c '
+      set -e
+      uname -a > /out/container-uname.txt; sway --version > /out/sway-version.txt
+      set +e
+      python3 apps/gui-go/e2e/linux_kit_ui_run.py --session "$SESSION" --out /out --binaries "$BIN" $UC_KIT_UI_ARGS
+      exit $?' ;;
   package)
     out="$(mkdir -p "${2:?outdir}" && cd "$2" && pwd)"
     docker run "${common[@]}" -v "$out:/out" "$IMAGE" bash -c '
@@ -220,5 +241,5 @@ case "$mode" in
     docker run "${common[@]}" -v "$packages:/in:ro" -v "$upload_parent:/up" -e UC_EXPECT_HEAD="${UC_EXPECT_HEAD:?UC_EXPECT_HEAD}" -e UC_MAX_GLIBC "$IMAGE" bash -c '
       python3 apps/gui-go/e2e/linux/verify_package_set.py --arch "$ARCH" --packages /in --daemon-evidence /cache/out-release/build-evidence.txt \
         --expect-head "$UC_EXPECT_HEAD" --max-glibc "${UC_MAX_GLIBC:-2.36}" --upload-dir "/up/'"$upload_name"'" --report "/up/'"$upload_name"'.report.json"' ;;
-  *) echo "usage: run.sh build|xvfb|package|daemon-release|release-e2e-build|package-release|package-appimage [outdir]" >&2; exit 2 ;;
+  *) echo "usage: run.sh build|xvfb|kit-ui|package|daemon-release|release-e2e-build|package-release|package-appimage [outdir]" >&2; exit 2 ;;
 esac

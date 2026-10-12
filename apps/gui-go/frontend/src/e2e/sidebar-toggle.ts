@@ -1,6 +1,7 @@
 // Failure modes: duplicate painted/accessible controls, lost focus, incorrect drawer semantics,
 // interrupted transitions, or a retained sidebar subtree accepting focus after collapse.
 import { Window } from '@wailsio/runtime'
+import { settingsPageOpen, skinClass } from '@/e2e/skin'
 import i18n from '@/i18n'
 
 type RecordStep = (step: string, ok: boolean, detail?: unknown) => Promise<unknown>
@@ -17,11 +18,11 @@ export async function runSidebarToggleScenario(
       await sleep(100)
     }
   }
-  await wait(() => document.querySelector('.mac-split'))
-  const button = () => document.querySelector<HTMLButtonElement>('.mac-split-toggle')!
+  await wait(() => document.querySelector(skinClass('split')))
+  const button = () => document.querySelector<HTMLButtonElement>(skinClass('split-toggle'))!
   const sample = () => {
-    const sidebar = document.querySelector<HTMLElement>('.mac-split-sidebar')!
-    const controls = [...document.querySelectorAll<HTMLButtonElement>('.mac-split-toggle')]
+    const sidebar = document.querySelector<HTMLElement>(skinClass('split-sidebar'))!
+    const controls = [...document.querySelectorAll<HTMLButtonElement>(skinClass('split-toggle'))]
     return {
       count: controls.length,
       accessible: controls.filter(b => !b.closest('[inert], [aria-hidden="true"]')).length,
@@ -61,10 +62,10 @@ export async function runSidebarToggleScenario(
         i18n.t(hidden ? 'history.sidebar.show' : 'history.sidebar.hide')
     await record(name, valid, { frames, final: sample() })
     if (hidden) {
-      document.querySelector<HTMLElement>('.mac-split-sidebar button')?.focus()
+      document.querySelector<HTMLElement>(`${skinClass('split-sidebar')} button`)?.focus()
       await record(
         `${name}-hidden-focus`,
-        !document.querySelector('.mac-split-sidebar')!.contains(document.activeElement)
+        !document.querySelector(skinClass('split-sidebar'))!.contains(document.activeElement)
       )
     }
   }
@@ -77,7 +78,7 @@ export async function runSidebarToggleScenario(
       b.textContent?.trim().startsWith(i18n.t('history.kit.settings'))
     )
     settings?.click()
-    await wait(() => document.querySelector('[data-testid="settings-page-header"]'))
+    await wait(() => settingsPageOpen())
     const appearance = [...document.querySelectorAll<HTMLButtonElement>('button')].find(
       b => b.textContent?.trim() === i18n.t('settings.categories.appearance')
     )!
@@ -88,7 +89,7 @@ export async function runSidebarToggleScenario(
       .click()
     await wait(() => document.documentElement.classList.contains('dark') === (theme === 'dark'))
     history.back()
-    await wait(() => document.querySelector('.mac-split'))
+    await wait(() => document.querySelector(skinClass('split')))
     for (const width of [1200, 900]) {
       await Window.SetSize(width, 720)
       await wait(() => Math.abs(innerWidth - width) < 5)

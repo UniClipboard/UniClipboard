@@ -858,7 +858,10 @@ fn escape_clears_a_typed_passphrase_first_and_then_closes() {
     let (mut state, mut fixture) = locked_panel();
     type_passphrase(&mut state, &mut fixture, "abc");
     let first = key(&mut state, &fixture, "escape", plain());
-    assert!(matches!(first.effects.as_slice(), [Effect::ClearPassphrase]));
+    assert!(matches!(
+        first.effects.as_slice(),
+        [Effect::ClearPassphrase]
+    ));
     fixture.passphrase.clear();
     let second = key(&mut state, &fixture, "escape", plain());
     assert!(matches!(second.effects.as_slice(), [Effect::HideWindow]));
@@ -1252,4 +1255,57 @@ fn what_the_daemon_lists_replaces_the_catalog_and_reaches_the_shell() {
     );
     assert!(effects.is_empty());
     assert_eq!(state.catalog.tags, ["work"]);
+}
+
+#[test]
+fn no_page_is_drawn_until_the_daemon_has_said_whether_content_is_locked() {
+    let fixture = Fixture::new();
+    let mut state = PanelState::new(fixture.now);
+    state.show(&fixture.ctx());
+    assert!(state.awaiting_lock_state());
+    let revision = state.search.revision;
+    state.on_event(
+        Event::SearchDone {
+            revision,
+            result: Err(SearchFailure::Locked),
+        },
+        &fixture.ctx(),
+    );
+    assert!(!state.awaiting_lock_state());
+}
+
+#[test]
+fn an_unlocked_answer_also_settles_the_lock_state() {
+    let (mut state, fixture) = open_panel(&["a"]);
+    assert!(!state.awaiting_lock_state());
+    state.on_event(Event::WindowHidden, &fixture.ctx());
+    state.show(&fixture.ctx());
+    assert!(state.search.loading);
+    assert!(!state.awaiting_lock_state());
+}
+
+#[test]
+fn a_lock_notice_settles_the_lock_state_before_any_search_answers() {
+    let fixture = Fixture::new();
+    let mut state = PanelState::new(fixture.now);
+    state.show(&fixture.ctx());
+    state.on_event(Event::Live(Live::ContentLocked), &fixture.ctx());
+    assert!(!state.awaiting_lock_state());
+}
+
+#[test]
+fn an_unreachable_daemon_says_nothing_about_the_lock() {
+    let fixture = Fixture::new();
+    let mut state = PanelState::new(fixture.now);
+    state.show(&fixture.ctx());
+    let revision = state.search.revision;
+    state.on_event(
+        Event::SearchDone {
+            revision,
+            result: Err(SearchFailure::Disconnected),
+        },
+        &fixture.ctx(),
+    );
+    assert!(!state.search.lock_known);
+    assert!(!state.awaiting_lock_state(), "the disconnected page shows");
 }

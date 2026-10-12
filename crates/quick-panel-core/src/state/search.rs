@@ -52,6 +52,7 @@ impl PanelState {
         self.search.loading = false;
         match result {
             Ok(result) => {
+                self.search.lock_known = true;
                 // Tags and devices were dropped while locked; read them again now it is open.
                 if self.search.locked {
                     effects.push(Effect::LoadOptions);
@@ -71,6 +72,7 @@ impl PanelState {
             Err(error) => {
                 let was_locked = self.search.locked;
                 self.search.locked = matches!(error, SearchFailure::Locked);
+                self.search.lock_known |= self.search.locked;
                 if self.search.locked && !was_locked {
                     effects.extend(self.enter_locked());
                 }
@@ -204,6 +206,7 @@ impl PanelState {
         self.search.loading = false;
         let was_locked = self.search.locked;
         self.search.locked = true;
+        self.search.lock_known = true;
         self.search.disconnected = None;
         self.menu = None;
         self.search.items.clear();

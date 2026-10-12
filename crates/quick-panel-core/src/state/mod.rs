@@ -264,6 +264,8 @@ pub struct Search {
     pub revision: u64,
     pub loading: bool,
     pub locked: bool,
+    /// The daemon has said at least once whether the content is locked.
+    pub lock_known: bool,
     /// Failed attempts to reach the daemon since it last answered.
     pub disconnected: Option<u32>,
     pub selection: Selection,
@@ -333,6 +335,7 @@ impl PanelState {
                 revision: 0,
                 loading: false,
                 locked: false,
+                lock_known: false,
                 disconnected: None,
                 selection: Selection::default(),
                 hovered: None,
@@ -358,6 +361,12 @@ impl PanelState {
         let mut effects = vec![Effect::Reposition, Effect::LoadOptions];
         effects.extend(self.search());
         effects
+    }
+
+    /// The first answer about the lock is still on its way. Neither the search page nor the
+    /// locked page may be drawn yet: whichever it is, the other one would flash first.
+    pub fn awaiting_lock_state(&self) -> bool {
+        !self.search.lock_known && self.search.loading
     }
 
     /// The entry the selection or the pointer is on.

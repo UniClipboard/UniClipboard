@@ -53,12 +53,11 @@ export function SplitView({
   )
   return (
     <div className="mac-split" data-sidebar-hidden={sidebarHidden ? '' : undefined}>
+      <div className="mac-split-chrome">{toggle}</div>
       <div className="mac-split-sidebar" inert={sidebarHidden} aria-hidden={sidebarHidden}>
         <Surface region="sidebar">
           <div className="mac-split-sidebar-inner">
-            <div className="mac-split-chrome" data-window-drag="">
-              {toggle}
-            </div>
+            <div className="mac-split-sidebar-chrome" data-window-drag="" />
             {sidebar}
           </div>
         </Surface>
@@ -68,7 +67,6 @@ export function SplitView({
           <div className="mac-split-panes">{children}</div>
           <div className="mac-split-scroll-edge" aria-hidden="true" />
           <div className="mac-split-toolbar" data-window-drag="">
-            {sidebarHidden && toggle}
             <span className="mac-split-title">{title}</span>
             {subtitle && <span className="mac-split-subtitle">{subtitle}</span>}
             <span className="mac-split-spacer" />

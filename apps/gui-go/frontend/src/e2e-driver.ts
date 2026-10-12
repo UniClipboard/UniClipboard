@@ -135,6 +135,10 @@ async function run() {
   if (phase === 'unlock-restart') return runUnlockRestartScenario()
   if (phase === 'history-live') return runHistoryLiveScenario()
   if (phase === 'history-kit') return runHistoryKitScenario()
+  if (phase === 'sidebar-toggle') {
+    await reachMainLayout()
+    return (await import('@/e2e/sidebar-toggle')).runSidebarToggleScenario(record, control)
+  }
   if (phase === 'single-image-ui') return runSingleImageUiScenario()
   if (phase === 'scheduler') return runSchedulerScenario()
   if (phase === 'wake') return // the orchestrator drives this launch through the control file

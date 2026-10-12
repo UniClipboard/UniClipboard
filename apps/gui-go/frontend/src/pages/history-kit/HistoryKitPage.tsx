@@ -251,7 +251,9 @@ export default function HistoryKitPage() {
           }
           sidebarHidden={chrome.hidden && !chrome.drawerOpen}
           sidebarToggle={{
-            label: t(chrome.hidden ? 'history.sidebar.show' : 'history.sidebar.hide'),
+            label: t(
+              chrome.hidden && !chrome.drawerOpen ? 'history.sidebar.show' : 'history.sidebar.hide'
+            ),
             onClick: chrome.toggle,
             shortcutHint: formatShortcutHint('ctrl+meta+s'),
           }}

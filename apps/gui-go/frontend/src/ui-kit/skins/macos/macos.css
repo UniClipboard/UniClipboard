@@ -1710,14 +1710,25 @@
   transform: translateX(-100%);
 }
 
-/* The title-bar strip of the sidebar: traffic lights (native) and the sidebar button. */
+/* Preserve the sidebar's native title-bar drag region independently of its toggle. */
+.mac-split-sidebar-chrome {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 3.25rem;
+  --wails-draggable: drag;
+}
+
+/* One persistent toggle above both panes, outside the inert sidebar subtree. */
 .mac-split-chrome {
   position: absolute;
-  left: 0;
-  right: 0;
-  top: 0;
-  height: 52px;
-  --wails-draggable: drag;
+  left: calc(var(--sidebar-width) - 40px);
+  top: 13px;
+  z-index: 4;
+  transition: left var(--sidebar-transition);
+}
+
+.mac-split[data-sidebar-hidden] .mac-split-chrome {
+  left: 84px;
 }
 
 .mac-split-toggle {
@@ -1739,12 +1750,6 @@
 
 .mac-split-toggle:focus-visible {
   outline: 3.5px solid var(--focus);
-}
-
-.mac-split-chrome .mac-split-toggle {
-  position: absolute;
-  right: 10px;
-  top: 13px;
 }
 
 .mac-split-content {
@@ -1799,7 +1804,7 @@
 
 /* Hidden sidebar: the traffic lights (about 70 pt) and the sidebar button lead the toolbar. */
 .mac-split[data-sidebar-hidden] .mac-split-toolbar {
-  left: 84px;
+  left: 124px;
 }
 
 .mac-split-toolbar button,

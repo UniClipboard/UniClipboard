@@ -6,7 +6,9 @@ import { Pane, SplitView, Text, UiRoot } from '@/ui-kit'
 export function SidebarAnimationFixture() {
   const [hidden, setHidden] = useState(false)
   return (
-    <UiRoot colorScheme="light">
+    <UiRoot
+      colorScheme={new URLSearchParams(location.search).get('theme') === 'dark' ? 'dark' : 'light'}
+    >
       <SplitView
         title="Sidebar animation"
         sidebarHidden={hidden}

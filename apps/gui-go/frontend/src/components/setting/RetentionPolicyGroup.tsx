@@ -1,12 +1,4 @@
 import { useTranslation } from 'react-i18next'
-import {
-  Switch,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui'
 import { useSetting } from '@/hooks/useSetting'
 import type { RetentionPolicy } from '@/types/setting'
 import {
@@ -21,6 +13,7 @@ import {
   clearByCountRule,
   resolveMaxItemsCount,
 } from './retention-policy'
+import { SettingSelect, SettingSwitch } from './SettingControls'
 import { SettingGroup } from './SettingGroup'
 import { SettingRow } from './SettingRow'
 import { useOptimisticSetting } from './useOptimisticSetting'
@@ -79,52 +72,58 @@ export function RetentionPolicyGroup() {
         label={t('settings.sections.storage.autoClearHistory.label')}
         description={t('settings.sections.storage.autoClearHistory.description')}
       >
-        <Switch checked={enabled} onCheckedChange={handleEnabledChange} />
+        <SettingSwitch
+          label={t('settings.sections.storage.autoClearHistory.label')}
+          checked={enabled}
+          onCheckedChange={handleEnabledChange}
+        />
       </SettingRow>
 
       <SettingRow
         label={t('settings.sections.storage.historyRetention.label')}
         description={t('settings.sections.storage.historyRetention.description')}
       >
-        <Select value={retentionDays} onValueChange={handleRetentionDaysChange} disabled={!enabled}>
-          <SelectTrigger className="w-40">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {RETENTION_DAYS_OPTIONS.map(opt => (
-              <SelectItem key={opt.value} value={opt.value}>
-                {t('settings.sections.storage.historyRetention.days', { days: opt.days })}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <SettingSelect
+          label={t('settings.sections.storage.historyRetention.label')}
+          value={retentionDays}
+          onValueChange={handleRetentionDaysChange}
+          disabled={!enabled}
+          items={RETENTION_DAYS_OPTIONS.map(opt => ({
+            value: opt.value,
+            label: t('settings.sections.storage.historyRetention.days', { days: opt.days }),
+          }))}
+        />
       </SettingRow>
 
       <SettingRow
         label={t('settings.sections.storage.maxHistoryItems.label')}
         description={t('settings.sections.storage.maxHistoryItems.description')}
       >
-        <Select value={maxItems} onValueChange={handleMaxItemsChange} disabled={!enabled}>
-          <SelectTrigger className="w-40">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {MAX_ITEMS_OPTIONS.map(opt => (
-              <SelectItem key={opt.value} value={opt.value}>
-                {opt.count === null
-                  ? t('settings.sections.storage.maxHistoryItems.unlimited')
-                  : t('settings.sections.storage.maxHistoryItems.items', { count: opt.count })}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <SettingSelect
+          label={t('settings.sections.storage.maxHistoryItems.label')}
+          value={maxItems}
+          onValueChange={handleMaxItemsChange}
+          disabled={!enabled}
+          items={MAX_ITEMS_OPTIONS.map(opt => ({
+            value: opt.value,
+            label:
+              opt.count === null
+                ? t('settings.sections.storage.maxHistoryItems.unlimited')
+                : t('settings.sections.storage.maxHistoryItems.items', { count: opt.count }),
+          }))}
+        />
       </SettingRow>
 
       <SettingRow
         label={t('settings.sections.storage.skipPinned.label')}
         description={t('settings.sections.storage.skipPinned.description')}
       >
-        <Switch checked={skipPinned} onCheckedChange={handleSkipPinnedChange} disabled={!enabled} />
+        <SettingSwitch
+          label={t('settings.sections.storage.skipPinned.label')}
+          checked={skipPinned}
+          onCheckedChange={handleSkipPinnedChange}
+          disabled={!enabled}
+        />
       </SettingRow>
     </SettingGroup>
   )

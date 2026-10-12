@@ -1,14 +1,7 @@
 import { useTranslation } from 'react-i18next'
-import {
-  Switch,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui'
 import { useSetting } from '@/hooks/useSetting'
 import type { StartupMode } from '@/types/setting'
+import { SettingSelect, SettingSwitch } from '../SettingControls'
 import { SettingGroup } from '../SettingGroup'
 import { SettingRow } from '../SettingRow'
 import { useOptimisticSetting } from '../useOptimisticSetting'
@@ -44,8 +37,8 @@ export function StartupSettings() {
         label={t('settings.sections.general.autoStart.label')}
         description={t('settings.sections.general.autoStart.description')}
       >
-        <Switch
-          aria-label={t('settings.sections.general.autoStart.label')}
+        <SettingSwitch
+          label={t('settings.sections.general.autoStart.label')}
           checked={autoStart}
           onCheckedChange={setAutoStart}
         />
@@ -55,42 +48,24 @@ export function StartupSettings() {
         label={t('settings.sections.general.startupMode.label')}
         description={t(`settings.sections.general.startupMode.summaries.${startupMode}`)}
       >
-        <div className="w-40">
-          <Select value={startupMode} onValueChange={next => setStartupMode(next as StartupMode)}>
-            <SelectTrigger
-              aria-label={t('settings.sections.general.startupMode.label')}
-              className="w-full"
-            >
-              <SelectValue>
-                {t(`settings.sections.general.startupMode.options.${startupMode}`)}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent className="w-72 max-w-[calc(100vw-2rem)]">
-              {STARTUP_MODES.map(mode => (
-                <SelectItem
-                  key={mode}
-                  value={mode}
-                  aria-label={t(`settings.sections.general.startupMode.options.${mode}`)}
-                >
-                  <span className="flex min-w-0 flex-col gap-1">
-                    <span>{t(`settings.sections.general.startupMode.options.${mode}`)}</span>
-                    <span className="text-ui-caption-relaxed text-muted-foreground">
-                      {t(`settings.sections.general.startupMode.summaries.${mode}`)}
-                    </span>
-                  </span>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+        <SettingSelect
+          label={t('settings.sections.general.startupMode.label')}
+          value={startupMode}
+          onValueChange={next => setStartupMode(next as StartupMode)}
+          items={STARTUP_MODES.map(mode => ({
+            value: mode,
+            label: t(`settings.sections.general.startupMode.options.${mode}`),
+            description: t(`settings.sections.general.startupMode.summaries.${mode}`),
+          }))}
+        />
       </SettingRow>
 
       <SettingRow
         label={t('settings.sections.general.restoreLastEntryOnStartup.label')}
         description={t('settings.sections.general.restoreLastEntryOnStartup.description')}
       >
-        <Switch
-          aria-label={t('settings.sections.general.restoreLastEntryOnStartup.label')}
+        <SettingSwitch
+          label={t('settings.sections.general.restoreLastEntryOnStartup.label')}
           checked={restoreLastEntry}
           onCheckedChange={setRestoreLastEntry}
         />

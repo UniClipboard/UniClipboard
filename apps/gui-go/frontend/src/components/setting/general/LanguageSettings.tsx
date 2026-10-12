@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui'
 import { useSetting } from '@/hooks/useSetting'
 import { SUPPORTED_LANGUAGES, type SupportedLanguage, getInitialLanguage } from '@/i18n'
+import { SettingSelect } from '../SettingControls'
 import { SettingGroup } from '../SettingGroup'
 import { SettingRow } from '../SettingRow'
 import { useOptimisticSetting } from '../useOptimisticSetting'
@@ -28,23 +28,12 @@ export function LanguageSettings() {
         label={t('settings.sections.general.language.label')}
         description={t('settings.sections.general.language.description')}
       >
-        <div className="w-40">
-          <Select
-            value={language}
-            onValueChange={next => setLanguage((next as SupportedLanguage) || getInitialLanguage())}
-          >
-            <SelectTrigger className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {SUPPORTED_LANGUAGES.map(lang => (
-                <SelectItem key={lang} value={lang}>
-                  {t(`language.${lang}`)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+        <SettingSelect
+          label={t('settings.sections.general.language.label')}
+          value={language}
+          onValueChange={next => setLanguage((next as SupportedLanguage) || getInitialLanguage())}
+          items={SUPPORTED_LANGUAGES.map(lang => ({ value: lang, label: t(`language.${lang}`) }))}
+        />
       </SettingRow>
     </SettingGroup>
   )

@@ -41,6 +41,7 @@ export {
   ProgressBar,
 } from './entry'
 export { FactList, PreviewFrame, QuickLook } from './preview'
+export { SettingsContent, SettingsGroup, SettingsRow } from './settings'
 export { Sheet } from './sheet'
 export { Slider } from './slider'
 export { StepList } from './step-list'

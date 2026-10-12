@@ -6,17 +6,11 @@ import { BuiltInRelaysField } from '@/components/setting/BuiltInRelaysField'
 import { CustomRelayUrlsField } from '@/components/setting/CustomRelayUrlsField'
 import { LanOnlyDisclosure } from '@/components/setting/LanOnlyDisclosure'
 import { RestartBanner } from '@/components/setting/RestartBanner'
+import { SettingSelect, SettingSwitch } from '@/components/setting/SettingControls'
 import { SettingGroup } from '@/components/setting/SettingGroup'
 import { SettingRow } from '@/components/setting/SettingRow'
 import { useRelayOverview } from '@/components/setting/useRelayOverview'
-import { Button, Switch } from '@/components/ui'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { Button } from '@/components/ui'
 import { useSetting } from '@/hooks/useSetting'
 import { commands } from '@/lib/ipc'
 import { createLogger } from '@/lib/logger'
@@ -269,9 +263,9 @@ const NetworkSection: React.FC = () => {
           description={t('settings.sections.network.lanOnly.description')}
           experimentalKey="network.lanOnly"
         >
-          <Switch
+          <SettingSwitch
             id="lan-only-switch"
-            aria-label={t('settings.sections.network.lanOnly.label')}
+            label={t('settings.sections.network.lanOnly.label')}
             // FENCE: 反向命名唯一取反点（Pitfall 1 — checked=ON ⇔ allowRelayFallback=false）
             checked={!allowRelayFallback}
             onCheckedChange={handleLanOnlySwitchChange}
@@ -283,9 +277,9 @@ const NetworkSection: React.FC = () => {
           description={t('settings.sections.network.allowOverlayAddrs.description')}
           experimentalKey="network.allowOverlayAddrs"
         >
-          <Switch
+          <SettingSwitch
             id="allow-overlay-addrs-switch"
-            aria-label={t('settings.sections.network.allowOverlayAddrs.label')}
+            label={t('settings.sections.network.allowOverlayAddrs.label')}
             checked={allowOverlayNetworkAddrs}
             onCheckedChange={handleAllowOverlaySwitchChange}
           />
@@ -328,22 +322,18 @@ const NetworkSection: React.FC = () => {
           description={t('settings.sections.network.congestionController.description')}
           experimentalKey="network.congestionController"
         >
-          <Select value={congestionController} onValueChange={handleCongestionControllerChange}>
-            <SelectTrigger
-              id="congestion-controller-select"
-              size="sm"
-              aria-label={t('settings.sections.network.congestionController.label')}
-              className="w-44"
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="cubic">
-                CUBIC ({t('settings.sections.network.congestionController.recommended')})
-              </SelectItem>
-              <SelectItem value="bbr3">BBR3</SelectItem>
-            </SelectContent>
-          </Select>
+          <SettingSelect
+            label={t('settings.sections.network.congestionController.label')}
+            value={congestionController}
+            onValueChange={handleCongestionControllerChange}
+            items={[
+              {
+                value: 'cubic',
+                label: `CUBIC (${t('settings.sections.network.congestionController.recommended')})`,
+              },
+              { value: 'bbr3', label: 'BBR3' },
+            ]}
+          />
         </SettingRow>
       </SettingGroup>
     </>

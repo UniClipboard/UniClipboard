@@ -63,6 +63,18 @@ const kitPages: Record<string, { platforms: string[]; kit: string; existing: str
     kit: './src/pages/entry-kit/UnlockKitPage.tsx',
     existing: './src/pages/UnlockPage.tsx',
   },
+  // Settings is presented by the macOS skin only; Windows and Linux keep the existing page and parts.
+  '@ui-settings-page': {
+    platforms: ['macos'],
+    kit: './src/pages/settings-kit/SettingsKitPage.tsx',
+    existing: './src/pages/SettingsPage.tsx',
+  },
+  // Group, row and the simple controls of the settings sections (the sections' logic is shared).
+  '@ui-setting-parts': {
+    platforms: ['macos'],
+    kit: './src/components/setting/parts/kit.tsx',
+    existing: './src/components/setting/parts/legacy.tsx',
+  },
 }
 function uiSkin(): Plugin {
   const platform = process.env.UC_UI_PLATFORM

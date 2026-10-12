@@ -1,13 +1,14 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import * as storageApi from '@/api/storage'
-import { Button, Switch } from '@/components/ui'
+import { Button } from '@/components/ui'
 import {
   readDeleteConfirmationEnabled,
   setDeleteConfirmationEnabled,
 } from '@/lib/delete-confirmation-preference'
 import { createLogger } from '@/lib/logger'
 import ClearHistoryDialog from './ClearHistoryDialog'
+import { SettingSwitch } from './SettingControls'
 import { SettingGroup } from './SettingGroup'
 import { SettingRow } from './SettingRow'
 const log = createLogger('storage-data')
@@ -63,8 +64,8 @@ export function StorageDataGroup({ onChanged: loadStats }: { onChanged: () => Pr
           label={t('settings.sections.storage.confirmBeforeDelete.label')}
           description={t('settings.sections.storage.confirmBeforeDelete.description')}
         >
-          <Switch
-            aria-label={t('settings.sections.storage.confirmBeforeDelete.label')}
+          <SettingSwitch
+            label={t('settings.sections.storage.confirmBeforeDelete.label')}
             checked={confirmBeforeDelete}
             onCheckedChange={checked => {
               setConfirmBeforeDelete(checked)

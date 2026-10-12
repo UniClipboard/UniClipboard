@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Switch } from '@/components/ui'
 import { playUiSound, readStoredUiSoundEnabled, setUiSoundEnabled } from '@/lib/ui-sound'
+import { SettingSwitch } from '../SettingControls'
 import { SettingGroup } from '../SettingGroup'
 import { SettingRow } from '../SettingRow'
 
@@ -21,8 +21,8 @@ export function SoundSettings() {
         label={t('settings.sections.general.sound.label')}
         description={t('settings.sections.general.sound.description')}
       >
-        <Switch
-          aria-label={t('settings.sections.general.sound.label')}
+        <SettingSwitch
+          label={t('settings.sections.general.sound.label')}
           checked={enabled}
           onCheckedChange={handleChange}
         />

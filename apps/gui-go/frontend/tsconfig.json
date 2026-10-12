@@ -32,6 +32,8 @@
       "@ui-profile-recovery-page": ["./src/pages/ProfileRecoveryPage.tsx"],
       "@ui-setup-page": ["./src/pages/SetupPage.tsx"],
       "@ui-unlock-page": ["./src/pages/UnlockPage.tsx"],
+      "@ui-settings-page": ["./src/pages/SettingsPage.tsx"],
+      "@ui-setting-parts": ["./src/components/setting/parts/legacy.tsx"],
       "@host/*": ["./bindings/github.com/UniClipboard/UniClipboard/apps/gui-go/*"]
     }
   },

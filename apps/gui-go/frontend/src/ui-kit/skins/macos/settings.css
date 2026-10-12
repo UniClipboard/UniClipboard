@@ -1,0 +1,165 @@
+/* ---------- settings (design MS1) ---------- */
+
+.mac-pane[data-pane='main'] {
+  flex: 1 1 auto;
+}
+
+.mac-settings-scroll {
+  --mac-accent: var(--accent);
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  box-sizing: border-box;
+  padding: 4px 22px 22px;
+}
+
+.mac-settings-column {
+  max-width: 720px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  /* The app's own controls (shadcn) read these names; point them at the macOS tokens. */
+  --background: var(--content);
+  --foreground: var(--label);
+  --card: var(--content);
+  --card-foreground: var(--label);
+  --muted: var(--fill-3);
+  --muted-foreground: var(--label-2);
+  --secondary: var(--fill-2);
+  --secondary-foreground: var(--label);
+  --accent: var(--fill-2);
+  --accent-foreground: var(--label);
+  --primary: var(--mac-accent);
+  --primary-foreground: var(--on-accent);
+  --border: var(--separator);
+  --input: var(--fill-1);
+  --ring: var(--mac-accent);
+  --destructive: var(--red);
+  --success: var(--green);
+  --warning: var(--orange);
+  --radius: 0.5rem;
+  font-size: 13px;
+  line-height: 16px;
+}
+
+/* Kit controls keep the system accent that the remap above replaced. */
+.mac-settings-column [class*='mac-'] {
+  --accent: var(--mac-accent);
+}
+
+/* Sections stack their own groups with a 2rem gap; inside this page the groups are 18px apart. */
+.mac-settings-column [class~='gap-8'] {
+  gap: 18px;
+}
+
+.mac-settings-group {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.mac-settings-group-title {
+  padding: 0 12px 6px;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 700;
+  color: var(--label-2);
+}
+
+.mac-settings-group-body {
+  min-width: 0;
+  border-radius: 12px;
+  background: var(--fill-4);
+  box-shadow: inset 0 0 0 0.5px var(--separator);
+}
+
+.mac-settings-row {
+  min-height: 38px;
+  margin: 0 12px;
+  padding: 7px 0;
+  box-sizing: border-box;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 12px;
+  font-size: 13px;
+}
+
+.mac-settings-row + .mac-settings-row {
+  border-top: 0.5px solid var(--separator);
+}
+
+.mac-settings-row-text {
+  flex: 1 1 14rem;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.mac-settings-row-label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.mac-settings-row-description {
+  font-size: 11px;
+  line-height: 14px;
+  color: var(--label-2);
+  overflow-wrap: anywhere;
+}
+
+.mac-settings-row-control {
+  min-width: 0;
+  max-width: 100%;
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mac-settings-row[data-bare] .mac-settings-row-control {
+  flex: 1 1 auto;
+  margin-left: 0;
+}
+
+/* shadcn push buttons and fields, drawn as AppKit controls. */
+.mac-settings-column [data-slot='button'] {
+  border: 0;
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.mac-settings-column [data-slot='button'].border-border {
+  background: var(--ctrl);
+  box-shadow: var(--ctrl-shadow);
+}
+
+.mac-settings-column [data-slot='input'],
+.mac-settings-column [data-slot='select-trigger'] {
+  border: 0;
+  border-radius: 6px;
+  background: var(--ctrl);
+  box-shadow: var(--ctrl-shadow);
+  font-size: 13px;
+}
+
+/* Custom blocks a section puts in a group (charts, relay cards, banners) take the row inset. */
+.mac-settings-group-body > :not(.mac-settings-row):not(output) {
+  box-sizing: border-box;
+  padding: 8px 12px;
+}
+
+.mac-settings-group-body > :not(.mac-settings-row) + *,
+.mac-settings-group-body > * + :not(.mac-settings-row) {
+  border-top: 0.5px solid var(--separator);
+}
+
+.mac-settings-group-body > output:first-child {
+  border-radius: 12px 12px 0 0;
+}

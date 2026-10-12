@@ -36,9 +36,7 @@ export default function AppearanceTheme({ theme, lightTokens, darkTokens, onChan
   }
   return (
     <fieldset disabled={saving} className="min-w-0">
-      <legend className="mb-4 px-1 text-ui-section font-semibold">
-        {t('appearanceLayout.theme')}
-      </legend>
+      <legend className="sr-only">{t('appearanceLayout.theme')}</legend>
       <div className="appearance-theme-choices">
         {OPTIONS.map(({ value, label }) => (
           <label key={value} className="appearance-theme-choice">

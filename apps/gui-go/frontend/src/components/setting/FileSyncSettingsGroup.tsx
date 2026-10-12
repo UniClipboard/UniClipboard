@@ -1,9 +1,9 @@
 import { useTranslation } from 'react-i18next'
 import { Input } from '@/components/motion/input'
+import { SettingSwitch } from '@/components/setting/SettingControls'
 import { SettingGroup } from '@/components/setting/SettingGroup'
 import { SettingRow } from '@/components/setting/SettingRow'
 import { useOptimisticSetting } from '@/components/setting/useOptimisticSetting'
-import { Switch } from '@/components/ui'
 import { useSetting } from '@/hooks/useSetting'
 import { AutoSaveDirectoryRow } from './AutoSaveDirectoryRow'
 import { useFileSyncNumbers } from './useFileSyncNumbers'
@@ -32,9 +32,9 @@ export function FileSyncSettingsGroup({ syncEnabled }: { syncEnabled: boolean })
         label={t('settings.sections.sync.fileSync.enable.label')}
         description={t('settings.sections.sync.fileSync.enable.description')}
       >
-        <Switch
+        <SettingSwitch
           id="file-sync-enabled"
-          aria-label={t('settings.sections.sync.fileSync.enable.label')}
+          label={t('settings.sections.sync.fileSync.enable.label')}
           checked={fileSyncEnabled}
           onCheckedChange={setFileSyncEnabled}
           disabled={!syncEnabled}
@@ -140,9 +140,9 @@ export function FileSyncSettingsGroup({ syncEnabled }: { syncEnabled: boolean })
         label={t('settings.sections.sync.fileSync.autoCleanup.label')}
         description={t('settings.sections.sync.fileSync.autoCleanup.description')}
       >
-        <Switch
+        <SettingSwitch
           id="file-auto-cleanup"
-          aria-label={t('settings.sections.sync.fileSync.autoCleanup.label')}
+          label={t('settings.sections.sync.fileSync.autoCleanup.label')}
           checked={fileAutoCleanup}
           onCheckedChange={setFileAutoCleanup}
           disabled={fileControlsDisabled}

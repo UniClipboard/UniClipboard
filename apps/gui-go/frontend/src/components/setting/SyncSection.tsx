@@ -1,8 +1,9 @@
 import { useTranslation } from 'react-i18next'
+import { SettingSwitch } from '@/components/setting/SettingControls'
 import { SettingGroup } from '@/components/setting/SettingGroup'
 import { SettingRow } from '@/components/setting/SettingRow'
 import { useOptimisticSetting } from '@/components/setting/useOptimisticSetting'
-import { Switch, Badge } from '@/components/ui'
+import { Badge } from '@/components/ui'
 import { useSetting } from '@/hooks/useSetting'
 import { FileSyncSettingsGroup } from './FileSyncSettingsGroup'
 
@@ -51,9 +52,9 @@ const SyncSection: React.FC = () => {
           label={t('settings.sections.sync.syncEnabled.label')}
           description={t('settings.sections.sync.syncEnabled.description')}
         >
-          <Switch
+          <SettingSwitch
             id="sync-enabled"
-            aria-label={t('settings.sections.sync.syncEnabled.label')}
+            label={t('settings.sections.sync.syncEnabled.label')}
             checked={syncEnabled}
             onCheckedChange={setSyncEnabled}
           />
@@ -63,9 +64,9 @@ const SyncSection: React.FC = () => {
           label={t('settings.sections.sync.autoSync.label')}
           description={t('settings.sections.sync.autoSync.description')}
         >
-          <Switch
+          <SettingSwitch
             id="auto-sync"
-            aria-label={t('settings.sections.sync.autoSync.label')}
+            label={t('settings.sections.sync.autoSync.label')}
             checked={autoSyncEnabled}
             onCheckedChange={setAutoSyncEnabled}
             disabled={!syncEnabled}
@@ -76,9 +77,9 @@ const SyncSection: React.FC = () => {
           label={t('settings.sections.sync.syncOnRestore.label')}
           description={t('settings.sections.sync.syncOnRestore.description')}
         >
-          <Switch
+          <SettingSwitch
             id="sync-on-restore"
-            aria-label={t('settings.sections.sync.syncOnRestore.label')}
+            label={t('settings.sections.sync.syncOnRestore.label')}
             checked={syncOnRestore}
             onCheckedChange={setSyncOnRestore}
             disabled={!syncEnabled}

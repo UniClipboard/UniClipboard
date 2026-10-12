@@ -5,20 +5,14 @@ import {
   getQuickPanelDoubleTapAvailability,
   type ModifierDoubleTapAvailability,
 } from '@/api/tauri-command'
-import {
-  Button,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui'
+import { Button } from '@/components/ui'
 import { toast } from '@/components/ui/toast'
 import { usePlatform } from '@/hooks/usePlatform'
 import { useSetting } from '@/hooks/useSetting'
 import { openUrl } from '@/host/opener'
 import { createLogger } from '@/lib/logger'
 import type { QuickPanelDoubleTapModifier } from '@/types/setting'
+import { SettingSelect } from './SettingControls'
 import { SettingRow } from './SettingRow'
 import { useOptimisticSetting } from './useOptimisticSetting'
 const log = createLogger('quick-panel-double-tap')
@@ -105,25 +99,18 @@ export function QuickPanelDoubleTapRow({ enabled }: { enabled: boolean }) {
             {t('settings.sections.quickPanel.doubleTap.openSettings')}
           </Button>
         )}
-        <Select
+        <SettingSelect
+          label={t('settings.sections.quickPanel.doubleTap.label')}
           value={doubleTapModifier}
           onValueChange={value => setDoubleTapModifier(value as QuickPanelDoubleTapModifier)}
           disabled={!enabled || !doubleTapSupported}
-        >
-          <SelectTrigger className="h-9 w-40 ">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="disabled">
-              {t('settings.sections.quickPanel.doubleTap.disabled')}
-            </SelectItem>
-            <SelectItem value="alt">{altLabel}</SelectItem>
-            <SelectItem value="control">
-              {t('settings.sections.quickPanel.doubleTap.control')}
-            </SelectItem>
-            <SelectItem value="meta">{metaLabel}</SelectItem>
-          </SelectContent>
-        </Select>
+          items={[
+            { value: 'disabled', label: t('settings.sections.quickPanel.doubleTap.disabled') },
+            { value: 'alt', label: altLabel },
+            { value: 'control', label: t('settings.sections.quickPanel.doubleTap.control') },
+            { value: 'meta', label: metaLabel },
+          ]}
+        />
       </div>
     </SettingRow>
   )

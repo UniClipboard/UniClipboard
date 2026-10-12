@@ -12,17 +12,14 @@ import { useShortcut } from '@/hooks/useShortcut'
 import { useWindowDragging } from '@/hooks/useWindowDragging'
 import { useWindowFrame } from '@/hooks/useWindowFrame'
 import { WINDOW_CONTROLS_INSET_STYLE } from '@/lib/window-controls-inset'
+import {
+  MAC_CONTENT_TRAFFIC_LIGHT_OFFSET,
+  MAC_SIDEBAR_TRAFFIC_LIGHT_OFFSET,
+} from './mac-traffic-light-offsets'
 
 interface LibraryMainLayoutProps {
   children: ReactNode
 }
-
-// The design (Main.dc.html) seats the traffic lights at the top of the
-// full-height Library sidebar rather than in a 40pt title bar.
-const MAC_SIDEBAR_TRAFFIC_LIGHT_OFFSET = { x: 4, y: 8 } as const
-// With the sidebar collapsed the lights sit in the top band over the icon
-// column, centered on the first content column's 44px header controls.
-const MAC_CONTENT_TRAFFIC_LIGHT_OFFSET = { x: 4, y: 16 } as const
 
 /**
  * The main window layout on every platform: no title bar row and no icon

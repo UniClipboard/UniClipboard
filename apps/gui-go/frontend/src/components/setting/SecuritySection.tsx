@@ -5,10 +5,11 @@ import {
   getPassphraseChangeAvailability,
   getPassphraseChangeAvailabilityMessageKey,
 } from '@/components/security/passphrase-change-availability'
-import { Button, Switch } from '@/components/ui'
+import { Button } from '@/components/ui'
 import { toast } from '@/components/ui/toast'
 import { useDeviceTrust } from '@/hooks/useDeviceTrust'
 import { useSetting } from '@/hooks/useSetting'
+import { SettingSwitch } from './SettingControls'
 import { SettingGroup } from './SettingGroup'
 import { SettingRow } from './SettingRow'
 import { useOptimisticSetting } from './useOptimisticSetting'
@@ -45,7 +46,11 @@ const SecuritySection: React.FC = () => {
           label={t('settings.sections.security.autoUnlock.label')}
           description={t('settings.sections.security.autoUnlock.description')}
         >
-          <Switch checked={autoUnlockEnabled} onCheckedChange={setAutoUnlockEnabled} />
+          <SettingSwitch
+            label={t('settings.sections.security.autoUnlock.label')}
+            checked={autoUnlockEnabled}
+            onCheckedChange={setAutoUnlockEnabled}
+          />
         </SettingRow>
         <SettingRow
           label={t('passphraseChange.entry.label')}

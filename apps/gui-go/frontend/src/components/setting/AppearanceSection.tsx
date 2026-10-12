@@ -4,10 +4,10 @@ import AppearanceColorPicker from '@/components/setting/appearance/AppearanceCol
 import AppearanceDisplay from '@/components/setting/appearance/AppearanceDisplay'
 import AppearancePalette from '@/components/setting/appearance/AppearancePalette'
 import AppearanceTheme from '@/components/setting/appearance/AppearanceTheme'
+import { SettingSwitch } from '@/components/setting/SettingControls'
 import { SettingGroup } from '@/components/setting/SettingGroup'
 import { SettingRow } from '@/components/setting/SettingRow'
 import SmoothModeSetting from '@/components/setting/SmoothModeSetting'
-import { Switch } from '@/components/ui/switch'
 import { DEFAULT_THEME_COLOR } from '@/constants/theme'
 import { useOmarchyTheme } from '@/hooks/useOmarchyTheme'
 import { useSetting } from '@/hooks/useSetting'
@@ -50,8 +50,8 @@ export default function AppearanceSection() {
         {omarchy.available && (
           <div>
             <SettingRow label={t('omarchyTheme.title')} description={t('omarchyTheme.description')}>
-              <Switch
-                aria-label={t('omarchyTheme.title')}
+              <SettingSwitch
+                label={t('omarchyTheme.title')}
                 checked={omarchy.enabled}
                 disabled={omarchy.saving}
                 onCheckedChange={enabled => {
@@ -72,7 +72,7 @@ export default function AppearanceSection() {
         >
           <legend className="sr-only">{t('appearanceLayout.theme')}</legend>
           <div inert={followingOmarchy || undefined} className="min-w-0 flex flex-col gap-8">
-            <div className="min-w-0">
+            <SettingGroup title={t('appearanceLayout.theme')}>
               <AppearanceTheme
                 theme={general?.theme || 'system'}
                 lightTokens={{
@@ -85,7 +85,7 @@ export default function AppearanceSection() {
                 }}
                 onChange={theme => updateGeneralSetting({ theme })}
               />
-            </div>
+            </SettingGroup>
             <SettingGroup title={t('appearanceLayout.palette')}>
               <div>
                 <div className="appearance-palette-list">
@@ -138,12 +138,16 @@ export default function AppearanceSection() {
             </SettingGroup>
           </div>
         </fieldset>
-        <div className="min-w-0 px-1">
-          <SmoothModeSetting />
-        </div>
-        <div className="min-w-0 px-1">
-          <AppearanceDisplay />
-        </div>
+        <SettingGroup>
+          <div className="min-w-0 px-1">
+            <SmoothModeSetting />
+          </div>
+        </SettingGroup>
+        <SettingGroup>
+          <div className="min-w-0 px-1">
+            <AppearanceDisplay />
+          </div>
+        </SettingGroup>
       </div>
     </div>
   )

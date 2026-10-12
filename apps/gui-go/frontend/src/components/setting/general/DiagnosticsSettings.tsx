@@ -16,6 +16,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui'
+import { SettingSwitch } from '../SettingControls'
 import { SettingGroup } from '../SettingGroup'
 import { SettingRow } from '../SettingRow'
 import { openLogsDirectory, useDiagnosticsSettings } from './useDiagnosticsSettings'
@@ -48,8 +49,8 @@ export function DiagnosticsSettings() {
         label={t('settings.sections.general.logs.debug.label')}
         description={t('settings.sections.general.logs.debug.description')}
       >
-        <Switch
-          aria-label={t('settings.sections.general.logs.debug.label')}
+        <SettingSwitch
+          label={t('settings.sections.general.logs.debug.label')}
           checked={debugMode}
           onCheckedChange={handleDebugModeChange}
           disabled={isBusy}

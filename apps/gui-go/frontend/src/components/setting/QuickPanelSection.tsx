@@ -1,13 +1,5 @@
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-  Switch,
-} from '@/components/ui'
 import { useSetting } from '@/hooks/useSetting'
 import { commands } from '@/lib/ipc'
 import { createLogger } from '@/lib/logger'
@@ -16,6 +8,7 @@ import type { QuickPanelPosition } from '@/types/setting'
 import { QuickPanelDoubleTapRow } from './QuickPanelDoubleTapRow'
 import { QuickPanelShortcutRow } from './QuickPanelShortcutRow'
 import { RestartBanner } from './RestartBanner'
+import { SettingSelect, SettingSwitch } from './SettingControls'
 import { SettingGroup } from './SettingGroup'
 import { SettingRow } from './SettingRow'
 import { useOptimisticSetting } from './useOptimisticSetting'
@@ -108,29 +101,29 @@ export default function QuickPanelSection() {
           label={t('settings.sections.quickPanel.enable.label')}
           description={t('settings.sections.quickPanel.enable.description')}
         >
-          <Switch checked={enabled} onCheckedChange={setEnabled} />
+          <SettingSwitch
+            label={t('settings.sections.quickPanel.enable.label')}
+            checked={enabled}
+            onCheckedChange={setEnabled}
+          />
         </SettingRow>
         <SettingRow
           label={t('settings.sections.quickPanel.position.label')}
           description={t('settings.sections.quickPanel.position.description')}
         >
-          <Select
+          <SettingSelect
+            label={t('settings.sections.quickPanel.position.label')}
             value={position}
             onValueChange={value => setPosition(value as QuickPanelPosition)}
             disabled={!enabled}
-          >
-            <SelectTrigger className="h-9 w-40 ">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="center">
-                {t('settings.sections.quickPanel.position.center')}
-              </SelectItem>
-              <SelectItem value="follow_cursor">
-                {t('settings.sections.quickPanel.position.followCursor')}
-              </SelectItem>
-            </SelectContent>
-          </Select>
+            items={[
+              { value: 'center', label: t('settings.sections.quickPanel.position.center') },
+              {
+                value: 'follow_cursor',
+                label: t('settings.sections.quickPanel.position.followCursor'),
+              },
+            ]}
+          />
         </SettingRow>
       </SettingGroup>
 

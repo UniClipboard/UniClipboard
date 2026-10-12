@@ -1,98 +1,15 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { useLocation, useNavigate } from 'react-router'
+import { useMemo } from 'react'
 import InsetSurface from '@/components/layout/InsetSurface'
-import {
-  DEFAULT_CATEGORY,
-  SETTINGS_CATEGORIES,
-  type SettingsCategory,
-} from '@/components/setting/settings-config'
-import {
-  readSettingsScrollOffset,
-  rememberSettingsScrollOffset,
-} from '@/components/setting/settings-scroll-session'
 import SettingsPageHeader from '@/components/setting/SettingsPageHeader'
 import SettingsSidebar from '@/components/setting/SettingsSidebar'
+import { useSettingsPage } from '@/components/setting/useSettingsPage'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { SidebarProvider, SidebarInset } from '@/components/ui/sidebar'
-import { useShortcut } from '@/hooks/useShortcut'
-import { useShortcutScope } from '@/hooks/useShortcutScope'
 import { SettingContentLayout } from '@/layouts'
-import { captureUserIntent } from '@/observability/breadcrumbs'
 
 function SettingsPage() {
-  const routerLocation = useLocation()
-  const { state: locationState, pathname: locationPathname } = routerLocation
-  const [activeCategory, setActiveCategory] = useState(
-    (locationState as { category?: string } | null)?.category || DEFAULT_CATEGORY
-  )
-  const navigate = useNavigate()
-  useShortcutScope('settings')
-
-  useShortcut({
-    key: 'esc',
-    scope: 'settings',
-    handler: () => {
-      const idx = (window.history.state as { idx?: number } | null)?.idx
-      if (typeof idx === 'number' && idx > 0) {
-        navigate(-1)
-      } else {
-        navigate('/')
-      }
-    },
-  })
-
-  // Handle ESC key to navigate back with collapse animation
-  useEffect(() => {
-    captureUserIntent('open_settings')
-  }, [])
-
-  useEffect(() => {
-    if (locationState && (locationState as { category?: string }).category) {
-      const newState = { ...locationState } as Record<string, unknown>
-      delete newState.category
-      navigate(locationPathname, { replace: true, state: newState })
-    }
-  }, [locationState, navigate, locationPathname])
-
-  const viewportRef = useRef<HTMLDivElement | null>(null)
-  // The offset the active category was restored to. A viewport still sitting on
-  // it has not been moved by the user, and a restore clamped by a temporarily
-  // taller window must not shrink the stored offset.
-  const restoredOffsetRef = useRef(0)
-
-  // One scroll area serves every category, so its offset carries over unless the
-  // outgoing category's offset is stored and the incoming one's is restored.
-  useLayoutEffect(() => {
-    const viewport = viewportRef.current
-    if (!viewport) return
-    const limit = Math.max(0, viewport.scrollHeight - viewport.clientHeight)
-    const restored = Math.min(readSettingsScrollOffset(activeCategory), limit)
-    restoredOffsetRef.current = restored
-    viewport.scrollTop = restored
-    // Recorded while scrolling, which also covers leaving the settings page.
-    // Reading the offset on teardown instead would already see it clamped by the
-    // incoming category's shorter content.
-    const record = () => {
-      if (viewport.scrollTop === restoredOffsetRef.current) return
-      rememberSettingsScrollOffset(activeCategory, viewport.scrollTop)
-    }
-    viewport.addEventListener('scroll', record, { passive: true })
-    return () => viewport.removeEventListener('scroll', record)
-  }, [activeCategory])
-
-  const handleCategoryChange = (category: string) => {
-    // Scroll events are delivered at a later rendering step, so a switch in the
-    // same frame as the last scroll would otherwise store a stale offset.
-    const viewport = viewportRef.current
-    if (viewport && viewport.scrollTop !== restoredOffsetRef.current) {
-      rememberSettingsScrollOffset(activeCategory, viewport.scrollTop)
-    }
-    setActiveCategory(category)
-  }
-
-  const activeCategoryConfig = SETTINGS_CATEGORIES.find(
-    (cat: SettingsCategory) => cat.id === activeCategory
-  )
+  const { activeCategory, activeCategoryConfig, handleCategoryChange, viewportRef } =
+    useSettingsPage()
   const ActiveSection = activeCategoryConfig?.Component
   const sectionHeader = useMemo(
     () => (activeCategoryConfig ? <SettingsPageHeader category={activeCategoryConfig.id} /> : null),

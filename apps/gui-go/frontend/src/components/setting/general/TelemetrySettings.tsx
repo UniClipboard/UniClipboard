@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next'
-import { Switch } from '@/components/ui'
 import { useSetting } from '@/hooks/useSetting'
+import { SettingSwitch } from '../SettingControls'
 import { SettingGroup } from '../SettingGroup'
 import { SettingRow } from '../SettingRow'
 import { useOptimisticSetting } from '../useOptimisticSetting'
@@ -26,14 +26,22 @@ export function TelemetrySettings() {
         label={t('settings.sections.general.telemetry.diagnostics.label')}
         description={t('settings.sections.general.telemetry.diagnostics.description')}
       >
-        <Switch checked={telemetryEnabled} onCheckedChange={setTelemetryEnabled} />
+        <SettingSwitch
+          label={t('settings.sections.general.telemetry.diagnostics.label')}
+          checked={telemetryEnabled}
+          onCheckedChange={setTelemetryEnabled}
+        />
       </SettingRow>
 
       <SettingRow
         label={t('settings.sections.general.telemetry.usageAnalytics.label')}
         description={t('settings.sections.general.telemetry.usageAnalytics.description')}
       >
-        <Switch checked={usageAnalyticsEnabled} onCheckedChange={setUsageAnalyticsEnabled} />
+        <SettingSwitch
+          label={t('settings.sections.general.telemetry.usageAnalytics.label')}
+          checked={usageAnalyticsEnabled}
+          onCheckedChange={setUsageAnalyticsEnabled}
+        />
       </SettingRow>
     </SettingGroup>
   )

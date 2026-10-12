@@ -2866,6 +2866,12 @@
   white-space: nowrap;
 }
 
+.mac-sheet-header > .mac-text,
+.mac-sheet-header > .mac-popup-btn {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
 /* ---------- preview frame, facts, Quick Look (design ME1/ME4) ---------- */
 
 .mac-preview {

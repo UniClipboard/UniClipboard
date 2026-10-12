@@ -32,10 +32,10 @@ const CATEGORY_ICONS: Record<string, IconName> = {
 const BACK_ID = 'back'
 
 /**
- * Settings on the macOS skin (design MS1): a source-list sidebar of categories beside one scrolling
- * column of inset groups. The categories, their sections and every save and restart rule are the
- * shared ones of `SettingsPage`; this view only draws them. Chosen at build time through
- * `@ui-settings-page`, never branched on the OS here.
+ * Settings on the platform kit (macOS design MS1, Windows design SetWin): a sidebar of categories
+ * beside one scrolling column of setting groups. The categories, their sections and every save and
+ * restart rule are the shared ones of `SettingsPage`; this view only draws them, and the skin
+ * decides how. Chosen at build time through `@ui-settings-page`, never branched on the OS here.
  */
 function SettingsKitPage() {
   const { t } = useTranslation()
@@ -76,14 +76,14 @@ function SettingsKitPage() {
           </PortalScope>
         </Pane>
       </SplitView>
-      <div className="mac-settings-popups-anchor">
-        <div ref={setPopupHost} className="mac-settings-popups" />
+      <div className="settings-popups-anchor">
+        <div ref={setPopupHost} className="settings-popups" />
       </div>
     </UiRoot>
   )
 }
 
-/** The split view reaches the window top (traffic lights over the sidebar), as the history page. */
+/** The split view reaches the window top (traffic lights, or the app-drawn controls), as the history page. */
 export const settingsOwnsWindowTop = true
 
 export default SettingsKitPage

@@ -14,7 +14,7 @@
 }
 
 .mac-settings-column,
-.mac-settings-popups {
+.settings-popups {
   /* The app's own controls (shadcn) read these names; point them at the macOS tokens. */
   --background: var(--content);
   --foreground: var(--label);
@@ -171,38 +171,38 @@
 }
 
 /* Popups the sections open (dialogs, popovers, select lists, tooltips) portal into this host. */
-.mac-settings-popups-anchor {
+.settings-popups-anchor {
   --mac-accent: var(--accent);
 }
 
-.mac-settings-popups {
+.settings-popups {
   font-size: 13px;
   line-height: 16px;
   color: var(--label);
 }
 
-.mac-settings-popups [data-slot='alert-dialog-content'],
-.mac-settings-popups [data-slot='dialog-content'] {
+.settings-popups [data-slot='alert-dialog-content'],
+.settings-popups [data-slot='dialog-content'] {
   border: 0;
   border-radius: 14px;
   background: var(--popup-opaque);
   box-shadow: var(--menu-shadow);
 }
 
-.mac-settings-popups [data-slot='tooltip-content'] {
+.settings-popups [data-slot='tooltip-content'] {
   border-radius: 5px;
   background: var(--glass-tinted);
   color: var(--label);
   box-shadow: var(--menu-shadow);
 }
 
-.mac-settings-popups [data-slot='tooltip-content'] > svg,
-.mac-settings-popups [data-slot='tooltip-content'] > [class*='size-2.5'] {
+.settings-popups [data-slot='tooltip-content'] > svg,
+.settings-popups [data-slot='tooltip-content'] > [class*='size-2.5'] {
   display: none;
 }
 
-.mac-settings-popups [data-slot='select-content'],
-.mac-settings-popups [data-slot='popover-content'] {
+.settings-popups [data-slot='select-content'],
+.settings-popups [data-slot='popover-content'] {
   border: 0;
   border-radius: 10px;
   background: var(--popup-opaque);

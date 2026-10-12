@@ -116,14 +116,30 @@ for (const [label, platform] of [
 // The production entries (main window, quick panel, updater) as vite.config.ts builds them.
 const kitPage = /\/src\/pages\/history-kit\/HistoryKitPage\.tsx$/
 const existingPage = /\/src\/pages\/HistoryPage\.tsx$/
+const kitSettings = /\/src\/pages\/settings-kit\/SettingsKitPage\.tsx$/
+const existingSettings = /\/src\/pages\/SettingsPage\.tsx$/
+const kitSettingParts = /\/src\/components\/setting\/setting-parts\/kit\.tsx$/
+const existingSettingParts = /\/src\/components\/setting\/setting-parts\/legacy-row\.tsx$/
 const skin = name => new RegExp(`/src/ui-kit/skins/${name}/`)
 const appExpectations = {
-  windows: { required: [kitPage, skin('windows')], forbidden: [existingPage, skin('macos')] },
-  macos: {
-    required: [kitPage, skin('macos')],
-    forbidden: [existingPage, skin('windows'), /node_modules\/@fluentui\//],
+  windows: {
+    required: [kitPage, kitSettings, kitSettingParts, skin('windows')],
+    forbidden: [existingPage, existingSettings, existingSettingParts, skin('macos')],
   },
-  unset: { required: [existingPage], forbidden: [kitPage, skin('windows'), skin('macos')] },
+  macos: {
+    required: [kitPage, kitSettings, kitSettingParts, skin('macos')],
+    forbidden: [
+      existingPage,
+      existingSettings,
+      existingSettingParts,
+      skin('windows'),
+      /node_modules\/@fluentui\//,
+    ],
+  },
+  unset: {
+    required: [existingPage, existingSettings, existingSettingParts],
+    forbidden: [kitPage, kitSettings, kitSettingParts, skin('windows'), skin('macos')],
+  },
 }
 for (const [label, expectation] of Object.entries(appExpectations)) {
   const result = await buildGallery(label === 'unset' ? undefined : label, null)

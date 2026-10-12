@@ -1,0 +1,116 @@
+/* Settings on the Windows skin (boards SetWin1-3). The sections draw some of their own controls with
+   the app's shadcn components; inside the settings column and in the popups the page opens, those
+   components read the Fluent theme (written by FluentProvider on the root) instead of the app theme. */
+
+[data-settings-column],
+.settings-popups {
+  --background: var(--w11-card-solid);
+  --foreground: var(--colorNeutralForeground1);
+  --card: var(--w11-card-solid);
+  --card-foreground: var(--colorNeutralForeground1);
+  --popover: var(--colorNeutralBackground1);
+  --popover-foreground: var(--colorNeutralForeground1);
+  --muted: var(--w11-selected);
+  --muted-foreground: var(--colorNeutralForeground2);
+  --secondary: var(--w11-selected);
+  --secondary-foreground: var(--colorNeutralForeground1);
+  --accent: var(--w11-selected);
+  --accent-foreground: var(--colorNeutralForeground1);
+  --primary: var(--colorBrandBackground);
+  --primary-foreground: var(--colorNeutralForegroundOnBrand);
+  --border: var(--colorNeutralStroke1);
+  --input: var(--colorNeutralStroke1);
+  --ring: var(--colorCompoundBrandStroke);
+  --destructive: var(--colorPaletteRedForeground1);
+  --success: var(--w11-status-positive);
+  --warning: var(--w11-status-warning);
+  --radius: 0.25rem;
+}
+
+/* Sections stack their own groups with a 2rem gap; inside this page the groups are 1.25rem apart. */
+[data-settings-column] [class~='gap-8'] {
+  gap: 1.25rem;
+}
+
+/* Custom blocks a section puts in a group (charts, relay cards, banners) are cards of the stack. */
+[data-settings-stack] > :not([data-settings-row]) {
+  box-sizing: border-box;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--w11-card-stroke);
+  border-radius: 0.25rem;
+  background-color: var(--w11-card);
+  background-clip: padding-box;
+}
+
+/* Push buttons and fields, drawn as WinUI controls: 32 px, 4 px corners, a heavier bottom edge. */
+[data-settings-column] [data-slot='button'],
+[data-settings-column] [data-slot='input'],
+[data-settings-column] [data-slot='select-trigger'] {
+  min-height: 2rem;
+  border-radius: 0.25rem;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+}
+
+[data-settings-column] [data-slot='button'].border-border,
+[data-settings-column] [data-slot='input'],
+[data-settings-column] [data-slot='select-trigger'] {
+  border: 1px solid var(--colorNeutralStroke1);
+  border-bottom-color: var(--colorNeutralStroke1Pressed);
+  background-color: var(--colorNeutralBackground1);
+  box-shadow: none;
+}
+
+[data-settings-column] [data-slot='button'].border-border:hover:not(:disabled),
+[data-settings-column] [data-slot='input']:hover:not(:disabled) {
+  background-color: var(--colorNeutralBackground1Hover);
+}
+
+[data-settings-column] [data-slot='button'].border-border:active:not(:disabled) {
+  background-color: var(--colorNeutralBackground1Pressed);
+}
+
+/* WinUI focus visual: a 2 px outline just outside the control. */
+[data-settings-column] [data-slot='button']:focus-visible,
+[data-settings-column] [data-slot='input']:focus-visible,
+[data-settings-column] [data-slot='select-trigger']:focus-visible {
+  outline: 2px solid var(--colorStrokeFocus2);
+  outline-offset: 1px;
+  box-shadow: none;
+}
+
+/* Popups the sections open (dialogs, popovers, select lists, tooltips) portal into this host. */
+.settings-popups {
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  color: var(--colorNeutralForeground1);
+}
+
+.settings-popups [data-slot='alert-dialog-content'],
+.settings-popups [data-slot='dialog-content'] {
+  border: 1px solid var(--w11-stroke-elevation);
+  border-radius: 0.5rem;
+  background-color: var(--colorNeutralBackground1);
+  box-shadow: var(--shadow64);
+}
+
+.settings-popups [data-slot='select-content'],
+.settings-popups [data-slot='popover-content'] {
+  border: 1px solid var(--w11-stroke-elevation);
+  border-radius: 0.5rem;
+  background-color: var(--colorNeutralBackground1);
+  box-shadow: var(--shadow16);
+}
+
+.settings-popups [data-slot='tooltip-content'] {
+  border: 1px solid var(--w11-stroke-elevation);
+  border-radius: 0.25rem;
+  background-color: var(--colorNeutralBackground1);
+  color: var(--colorNeutralForeground1);
+  box-shadow: var(--shadow16);
+}
+
+.settings-popups [data-slot='tooltip-content'] > svg,
+.settings-popups [data-slot='tooltip-content'] > [class*='size-2.5'] {
+  display: none;
+}

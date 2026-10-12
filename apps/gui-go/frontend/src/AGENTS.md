@@ -39,7 +39,7 @@ src/
 | Shared UI primitives        | `src/components/ui/`                           | Radix/shadcn-style components                |
 | Platform UI kit             | `src/ui-kit/`                                  | `@/ui-kit`; contract in `contract.ts`, skins chosen by `UC_UI_PLATFORM` at build time |
 | Kit entry pages             | `src/pages/entry-kit/`                         | startup, status, recovery, unlock and setup pages on `@/ui-kit`; reached only through the `@ui-*-page` / `@ui-*-screen` build-time aliases (macOS/Windows → kit, otherwise the existing pages) |
-| Kit settings | `src/pages/settings-kit/`, `src/components/setting/setting-parts/` | macOS-only: `@ui-settings-page` and `@ui-setting-parts` (vite.config.ts) swap the page shell and the setting group/row/switch/select; sections, hooks and save/restart rules in `components/setting/` are shared, Windows and Linux keep the existing page and parts |
+| Kit settings | `src/pages/settings-kit/`, `src/components/setting/setting-parts/` | macOS and Windows: `@ui-settings-page` and `@ui-setting-parts` (vite.config.ts) swap the page shell and the setting group/row/switch/select/alert; sections, hooks and save/restart rules in `components/setting/` are shared, Linux keeps the existing page and parts. Popups the sections open portal into the page's `.settings-popups` host, and each skin's `settings.css` maps the shadcn tokens to its own |
 | Error/trace redaction       | `src/observability/`                           | breadcrumbs, tracing, sensitive arg masking  |
 
 ## CONVENTIONS

@@ -42,7 +42,6 @@ function SettingsKitPage() {
   const colorScheme = useAppliedColorScheme()
   const { activeCategory, activeCategoryConfig, handleCategoryChange, goBack, viewportRef } =
     useSettingsPage()
-  const [sidebarHidden, setSidebarHidden] = useState(false)
   // Where the sections' own popups open, inside the themed root instead of <body>.
   const [popupHost, setPopupHost] = useState<HTMLDivElement | null>(null)
   useMacTrafficLightPosition(MAC_SIDEBAR_TRAFFIC_LIGHT_OFFSET)
@@ -67,11 +66,6 @@ function SettingsKitPage() {
             onValueChange={id => (id === BACK_ID ? goBack() : handleCategoryChange(id))}
           />
         }
-        sidebarHidden={sidebarHidden}
-        sidebarToggle={{
-          label: t(sidebarHidden ? 'history.sidebar.show' : 'history.sidebar.hide'),
-          onClick: () => setSidebarHidden(hidden => !hidden),
-        }}
         title={title}
       >
         <Pane kind="main" label={title}>

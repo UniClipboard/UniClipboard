@@ -32,7 +32,7 @@ export function SplitView({
   toolbar,
   children,
 }: SplitViewProps) {
-  const toggle = (
+  const toggle = sidebarToggle && (
     <WithHelpTag
       text={
         sidebarToggle.shortcutHint
@@ -53,7 +53,7 @@ export function SplitView({
   )
   return (
     <div className="mac-split" data-sidebar-hidden={sidebarHidden ? '' : undefined}>
-      <div className="mac-split-chrome">{toggle}</div>
+      {toggle && <div className="mac-split-chrome">{toggle}</div>}
       <div className="mac-split-sidebar" inert={sidebarHidden} aria-hidden={sidebarHidden}>
         <Surface region="sidebar">
           <div className="mac-split-sidebar-inner">

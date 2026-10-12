@@ -169,7 +169,7 @@ export function SplitView({
     }
     wasOverlay.current = overlay
   }, [overlay])
-  const dismiss = () => sidebarToggle.onClick()
+  const dismiss = () => sidebarToggle?.onClick()
   const onPaneKeyDown = (event: KeyboardEvent) => {
     if (event.key !== 'Escape') return
     event.stopPropagation()
@@ -183,24 +183,26 @@ export function SplitView({
       data-sidebar-display={sidebarHidden ? 'compact' : overlay ? 'overlay' : 'expanded'}
     >
       <div className={styles.titleBar}>
-        <span className={styles.toggle}>
-          {/* WinUI accelerator tooltips read "Label (Ctrl+B)"; the name stays the label alone. */}
-          <WithTooltip
-            content={
-              sidebarToggle.shortcutHint
-                ? `${sidebarToggle.label} (${sidebarToggle.shortcutHint})`
-                : sidebarToggle.label
-            }
-            relationship="inaccessible"
-          >
-            <Hamburger
-              ref={toggle}
-              aria-label={sidebarToggle.label}
-              aria-expanded={!sidebarHidden}
-              onClick={() => sidebarToggle.onClick()}
-            />
-          </WithTooltip>
-        </span>
+        {sidebarToggle && (
+          <span className={styles.toggle}>
+            {/* WinUI accelerator tooltips read "Label (Ctrl+B)"; the name stays the label alone. */}
+            <WithTooltip
+              content={
+                sidebarToggle.shortcutHint
+                  ? `${sidebarToggle.label} (${sidebarToggle.shortcutHint})`
+                  : sidebarToggle.label
+              }
+              relationship="inaccessible"
+            >
+              <Hamburger
+                ref={toggle}
+                aria-label={sidebarToggle.label}
+                aria-expanded={!sidebarHidden}
+                onClick={() => sidebarToggle.onClick()}
+              />
+            </WithTooltip>
+          </span>
+        )}
         <div className={styles.search}>{search}</div>
         <div className={styles.commands}>
           {toolbarLeading}

@@ -530,7 +530,7 @@ export interface SplitViewProps {
   sidebar: ReactNode
   sidebarHidden?: boolean
   /** The control that hides or shows the sidebar; `label` names the action it performs now. */
-  sidebarToggle: LabelledAction & { shortcutHint?: string }
+  sidebarToggle?: LabelledAction & { shortcutHint?: string }
   /** Title of the content at the leading end of the toolbar band. */
   title: string
   /** Secondary text after the title, e.g. the item count. */

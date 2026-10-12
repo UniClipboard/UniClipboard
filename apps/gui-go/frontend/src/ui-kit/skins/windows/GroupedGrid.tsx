@@ -190,6 +190,7 @@ export function GroupedGrid({
   const endReached = useRef(onEndReached)
   endReached.current = onEndReached
 
+  // Re-observed after each page: an end marker that stays in view reports no new intersection.
   useEffect(() => {
     const end = endRef.current
     const root = gridRef.current
@@ -202,7 +203,7 @@ export function GroupedGrid({
     )
     observer.observe(end)
     return () => observer.disconnect()
-  }, [])
+  }, [items.length])
 
   const selectOne = (id: string) => {
     anchor.current = id
@@ -221,10 +222,8 @@ export function GroupedGrid({
   }
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.target !== event.currentTarget || items.length === 0) return
-    const index = Math.max(
-      0,
-      items.findIndex(item => item.id === cursor)
-    )
+    const found = items.findIndex(item => item.id === cursor)
+    const index = Math.max(0, found)
     const step: Record<string, number> = {
       ArrowLeft: -1,
       ArrowRight: 1,
@@ -232,7 +231,9 @@ export function GroupedGrid({
       ArrowDown: columnsAt(index),
     }
     let next: number | null = null
-    if (event.key in step) next = Math.min(items.length - 1, Math.max(0, index + step[event.key]))
+    // With no current card the first arrow selects the first card, as in GroupedList.
+    if (event.key in step)
+      next = found < 0 ? 0 : Math.min(items.length - 1, Math.max(0, index + step[event.key]))
     else if (event.key === 'Home') next = 0
     else if (event.key === 'End') next = items.length - 1
     if (next !== null) {

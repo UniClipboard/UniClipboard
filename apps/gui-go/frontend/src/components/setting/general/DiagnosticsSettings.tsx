@@ -1,12 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import {
-  Switch,
-  Button,
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui'
+import { Button, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui'
 import { SettingAlert, SettingSwitch } from '../SettingControls'
 import { SettingGroup } from '../SettingGroup'
 import { SettingRow } from '../SettingRow'
@@ -54,16 +47,14 @@ export function DiagnosticsSettings() {
       >
         <TooltipProvider>
           <Tooltip disabled={!detailedCapture || captureUnavailable}>
-            <TooltipTrigger
-              render={
-                <Switch
-                  aria-label={t('settings.sections.general.logs.capture.label')}
-                  checked={detailedCapture}
-                  onCheckedChange={checked => void handleDetailedCaptureChange(checked)}
-                  disabled={isBusy || captureBusy || captureUnavailable || !captureStatus}
-                />
-              }
-            />
+            <TooltipTrigger render={<span className="inline-flex" />}>
+              <SettingSwitch
+                label={t('settings.sections.general.logs.capture.label')}
+                checked={detailedCapture}
+                onCheckedChange={checked => void handleDetailedCaptureChange(checked)}
+                disabled={isBusy || captureBusy || captureUnavailable || !captureStatus}
+              />
+            </TooltipTrigger>
             <TooltipContent role="tooltip" sideOffset={6}>
               {t('settings.sections.general.logs.capture.tooltip', {
                 minutes: Math.max(1, Math.ceil((captureStatus?.capture.remainingMs ?? 0) / 60_000)),

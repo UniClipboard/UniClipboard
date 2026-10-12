@@ -1,5 +1,13 @@
 import { ContextMenu as BaseContextMenu } from '@base-ui/react/context-menu'
-import { useEffect, useId, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react'
+import {
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type MouseEvent,
+} from 'react'
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
 import type { GridItem, GroupedGridProps, ListGroup } from '@/ui-kit/contract'
 import { MenuPanel } from './menus'
@@ -58,18 +66,23 @@ export function GroupedGrid({
 
   const cardWidth = 150 + Math.round(size * 130)
   const columns = Math.max(1, Math.floor((width - 2 * PADDING + GAP) / (cardWidth + GAP)))
-  const rows: Row[] = []
-  const rowOfItem: number[] = []
-  let start = 0
-  for (const group of groups) {
-    rows.push({ kind: 'header', group })
-    for (let i = start; i < start + group.count; i += columns) {
-      const chunk = items.slice(i, Math.min(i + columns, start + group.count))
-      for (let k = 0; k < chunk.length; k++) rowOfItem[i + k] = rows.length
-      rows.push({ kind: 'cards', items: chunk })
+  // Virtuoso deduplicates endReached by data identity as well as the last index.
+  // Rebuild rows only when their inputs change, not when pagination updates the parent.
+  const { rows, rowOfItem } = useMemo(() => {
+    const rows: Row[] = []
+    const rowOfItem: number[] = []
+    let start = 0
+    for (const group of groups) {
+      rows.push({ kind: 'header', group })
+      for (let i = start; i < start + group.count; i += columns) {
+        const chunk = items.slice(i, Math.min(i + columns, start + group.count))
+        for (let k = 0; k < chunk.length; k++) rowOfItem[i + k] = rows.length
+        rows.push({ kind: 'cards', items: chunk })
+      }
+      start += group.count
     }
-    start += group.count
-  }
+    return { rows, rowOfItem }
+  }, [groups, items, columns])
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.target !== event.currentTarget) return

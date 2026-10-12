@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { deviceLabel } from '@/components/clipboard/entry-delivery-labels'
 import { formatClockTime } from '@/components/history/list/history-list-format'
@@ -44,35 +45,45 @@ export function HistoryKitGrid({
 }: HistoryKitGridProps) {
   const { t, i18n } = useTranslation()
   const now = useNow()
-  const cards: GridItem[] = items.map(item => {
-    const kind = historyKind(item)
-    const device = item.sourceDeviceId
-      ? deviceLabel(sourceDeviceNames[item.sourceDeviceId], item.sourceDeviceId)
-      : null
-    const title = rowTitle(item, kind, t('history.type.image', 'image'))
-    const text =
-      kind === 'image' || kind === 'file'
-        ? title
-        : ((item.content as ClipboardTextItem | null)?.display_text ?? item.textPreview ?? title)
-    return {
-      id: item.id,
-      kind,
-      title: kind === 'code' || kind === 'text' ? t(`history.type.${kind}`) : title,
-      subtitle: [device, imageSize(item) ?? formatClockTime(item.activeTime, i18n.language)]
-        .filter(Boolean)
-        .join(' · '),
-      text: kind === 'link' ? title : text,
-      media: kind === 'image' ? <HistoryKitThumbnail entryId={item.id} /> : undefined,
-      badges:
-        item.isFavorited === true ? (
-          <Icon name="pin" tone="highlight" label={t('history.sidebar.pinned')} />
-        ) : undefined,
-    }
-  })
+  const cards = useMemo<GridItem[]>(
+    () =>
+      items.map(item => {
+        const kind = historyKind(item)
+        const device = item.sourceDeviceId
+          ? deviceLabel(sourceDeviceNames[item.sourceDeviceId], item.sourceDeviceId)
+          : null
+        const title = rowTitle(item, kind, t('history.type.image', 'image'))
+        const text =
+          kind === 'image' || kind === 'file'
+            ? title
+            : ((item.content as ClipboardTextItem | null)?.display_text ??
+              item.textPreview ??
+              title)
+        return {
+          id: item.id,
+          kind,
+          title: kind === 'code' || kind === 'text' ? t(`history.type.${kind}`) : title,
+          subtitle: [device, imageSize(item) ?? formatClockTime(item.activeTime, i18n.language)]
+            .filter(Boolean)
+            .join(' · '),
+          text: kind === 'link' ? title : text,
+          media: kind === 'image' ? <HistoryKitThumbnail entryId={item.id} /> : undefined,
+          badges:
+            item.isFavorited === true ? (
+              <Icon name="pin" tone="highlight" label={t('history.sidebar.pinned')} />
+            ) : undefined,
+        }
+      }),
+    [items, sourceDeviceNames, i18n.language, t]
+  )
+  const groups = useMemo(
+    () => dayGroups(items, now, i18n.language, t),
+    [items, now, i18n.language, t]
+  )
   return (
     <GroupedGrid
       label={t('history.kit.listLabel')}
-      groups={dayGroups(items, now, i18n.language, t)}
+      groups={groups}
       items={cards}
       size={size}
       selection={selection}

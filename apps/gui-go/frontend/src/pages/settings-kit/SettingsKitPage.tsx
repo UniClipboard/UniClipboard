@@ -83,4 +83,7 @@ function SettingsKitPage() {
   )
 }
 
+/** The split view reaches the window top (traffic lights over the sidebar), as the history page. */
+export const settingsOwnsWindowTop = true
+
 export default SettingsKitPage

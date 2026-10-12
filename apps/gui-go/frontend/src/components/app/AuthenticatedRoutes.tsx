@@ -1,5 +1,5 @@
 import HistoryPage from '@ui-history-page'
-import SettingsPage from '@ui-settings-page'
+import SettingsPage, { settingsOwnsWindowTop } from '@ui-settings-page'
 import type { ReactNode } from 'react'
 import { Navigate, Route } from 'react-router'
 import { DeviceTrustDialogHost } from '@/components/device/DeviceTrustDialogHost'
@@ -24,7 +24,9 @@ export function AuthenticatedRoutes({ fullTitleBar }: AuthenticatedRoutesProps) 
           <Route path="/history" element={<HistoryPage />} />
           <Route path="/devices" element={<DevicesPage />} />
         </Route>
-        <Route element={<SettingsFullLayout titleBar={fullTitleBar} />}>
+        <Route
+          element={<SettingsFullLayout titleBar={settingsOwnsWindowTop ? null : fullTitleBar} />}
+        >
           <Route path="/settings" element={<SettingsPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />

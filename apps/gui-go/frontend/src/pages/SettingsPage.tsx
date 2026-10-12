@@ -45,4 +45,7 @@ function SettingsPage() {
   )
 }
 
+/** The page draws no window top of its own, so the layout supplies the title bar. */
+export const settingsOwnsWindowTop = false
+
 export default SettingsPage

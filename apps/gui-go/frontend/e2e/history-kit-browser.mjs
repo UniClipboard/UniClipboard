@@ -257,6 +257,13 @@ async function newPage(options = {}) {
   await dismissStartupPrompts()
 }
 results.consoleErrors = []
+// Drops a CDP viewport override so the native window size applies again (a browser page gets a fresh context).
+const restoreViewport = async () => {
+  if (!cdp) return
+  const session = await page.context().newCDPSession(page)
+  await session.send('Emulation.clearDeviceMetricsOverride')
+  await session.detach()
+}
 const closePage = async () => {
   if (!cdp) await page.context().close()
 }
@@ -690,13 +697,37 @@ async function seededRun() {
   })
 
   await step('grid-view', async () => {
+    // A fresh document loads only the first page.
+    await newPage()
+    await page.getByRole('radio', { name: 'Grid' }).click()
+    await row('git rebase').click()
+    await shot('grid-view')
+    // Arrows step from the current card. (The page keeps a current card whenever there are results, so the grid's
+    // no-current-card path, where the first arrow selects card 0, cannot be reached from here.)
+    const ids = await rows().evaluateAll(cards =>
+      cards.map(card => card.getAttribute('data-item-id'))
+    )
+    const from = ids.indexOf(await row('git rebase').getAttribute('data-item-id'))
+    await list().focus()
+    await page.keyboard.press('ArrowRight')
+    await rows()
+      .nth(from + 1)
+      .and(page.locator('[aria-selected="true"]'))
+      .waitFor()
+    // In a window taller than a loaded page the end marker never leaves view: the grid must still load every page
+    // by itself, without any scrolling.
+    await newPage({ viewport: { width: 1280, height: 12_000 }, deviceScaleFactor: 1 })
     await page.getByRole('radio', { name: 'Grid' }).click()
     await rows().first().waitFor()
-    const cards = await rows().count()
-    await shot('grid-view')
+    // The oldest entry is on the second page. (A third page would show whether the grid keeps asking while its end
+    // marker stays in view, but the page cannot get past 200 entries today: the Engine caps `limit` at 200.)
+    await rows().filter({ hasText: 'Paging entry 000' }).first().waitFor({ timeout: 15_000 })
+    const loaded = await rows().count()
+    assert.ok(loaded > 100, `the grid loaded the second page (${loaded} cards)`)
+    await restoreViewport()
     await page.getByRole('radio', { name: 'List' }).click()
     await row('Paging entry').waitFor()
-    return { cards }
+    return { loaded }
   })
 
   await step('quick-look', async () => {
@@ -715,6 +746,8 @@ async function seededRun() {
   })
 
   await step('paging', async () => {
+    // The grid step loaded every page; start the list from the first page again.
+    await newPage()
     const before = await rows().count()
     const loaded = page.locator('[data-item-id]').filter({ hasText: 'Paging entry 000' })
     for (let i = 0; i < 40 && !(await loaded.count()); i++) {

@@ -260,13 +260,6 @@ async function newPage(options = {}) {
   await dismissStartupPrompts()
 }
 results.consoleErrors = []
-// Drops a CDP viewport override so the native window size applies again (a browser page gets a fresh context).
-const restoreViewport = async () => {
-  if (!cdp) return
-  const session = await page.context().newCDPSession(page)
-  await session.send('Emulation.clearDeviceMetricsOverride')
-  await session.detach()
-}
 const closePage = async () => {
   if (!cdp) await page.context().close()
 }
@@ -717,27 +710,8 @@ async function seededRun() {
       .nth(from + 1)
       .and(page.locator('[aria-selected="true"]'))
       .waitFor()
-    // In a window taller than a loaded page the end marker never leaves view: the grid must still load every page
-    // by itself, without any scrolling.
-    await newPage({ viewport: { width: 1280, height: 12_000 }, deviceScaleFactor: 1 })
-    await page.getByRole('radio', { name: 'Grid' }).click()
-    await rows().first().waitFor()
-    // Only with three or more pages (seed `--extra 250`) does this tell a grid that keeps asking while its end marker
-    // stays in view from one that stops after the first load.
-    await rows()
-      .filter({ hasText: pagingEntry(0) })
-      .first()
-      .waitFor({ timeout: 15_000 })
-    const loaded = await rows().count()
-    const pages = Math.ceil(daemon.seeded / 100)
-    assert.ok(
-      loaded > (pages - 1) * 100,
-      `the grid reached its last page (${loaded} cards, ${pages} pages)`
-    )
-    await restoreViewport()
     await page.getByRole('radio', { name: 'List' }).click()
     await row('Paging entry').waitFor()
-    return { loaded, pages }
   })
 
   await step('quick-look', async () => {
@@ -850,6 +824,27 @@ async function seededRun() {
       out.push({ name: size.name, geometry: g })
     }
     return out
+  })
+
+  // Last: it sets a viewport that a native (CDP) run cannot reliably undo.
+  await step('grid-paging', async () => {
+    // In a window taller than a loaded page the grid must load every page by itself, without any scrolling. (This
+    // does not separate the end observer being re-created per page from one created once: each load re-renders the
+    // grid, so the end marker reports a new intersection either way.)
+    await newPage({ viewport: { width: 1280, height: 12_000 }, deviceScaleFactor: 1 })
+    await page.getByRole('radio', { name: 'Grid' }).click()
+    await rows().first().waitFor()
+    await rows()
+      .filter({ hasText: pagingEntry(0) })
+      .first()
+      .waitFor({ timeout: 15_000 })
+    const loaded = await rows().count()
+    const pages = Math.ceil(daemon.seeded / 100)
+    assert.ok(
+      loaded > (pages - 1) * 100,
+      `the grid reached its last page (${loaded} cards, ${pages} pages)`
+    )
+    return { loaded, pages }
   })
 }
 

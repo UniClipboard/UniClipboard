@@ -33,17 +33,21 @@ export function SetupKitInitialize({
         description={t('subtitle')}
         back={{ label: t('actions.back'), onClick: onBack, disabled: loading }}
         actions={
-          <span data-testid="setup-initialize-submit">
-            <Button variant="primary" submitForm={FORM} busy={loading}>
-              {t(loading ? 'actions.creating' : 'actions.submit')}
-            </Button>
-          </span>
+          <Button
+            data-testid="setup-initialize-submit"
+            variant="primary"
+            submitForm={FORM}
+            busy={loading}
+          >
+            {t(loading ? 'actions.creating' : 'actions.submit')}
+          </Button>
         }
       >
         <form id={FORM} onSubmit={event => void form.submit(event)}>
           {form.generalError && <InlineNotice tone="error" title={form.generalError} />}
           <div data-testid="device-name">
             <FormField
+              id="device-name"
               label={t('labels.deviceName')}
               value={form.deviceName}
               onValueChange={form.setDeviceName}
@@ -54,6 +58,7 @@ export function SetupKitInitialize({
           </div>
           <div data-testid="pass1">
             <FormField
+              id="pass1"
               label={t('labels.passphrase')}
               type="password"
               reveal={reveal}
@@ -67,6 +72,7 @@ export function SetupKitInitialize({
           </div>
           <div data-testid="pass2">
             <FormField
+              id="pass2"
               label={t('labels.passphraseConfirm')}
               type="password"
               reveal={reveal}

@@ -27,11 +27,9 @@ export function SetupKitPaired({
         status={{ text: t('connected'), tone: 'positive', icon: 'shield' }}
         title={t('title')}
         actions={
-          <span data-testid="setup-complete-done">
-            <Button variant="primary" onClick={onDone}>
-              {t('actions.done')}
-            </Button>
-          </span>
+          <Button data-testid="setup-complete-done" variant="primary" onClick={onDone}>
+            {t('actions.done')}
+          </Button>
         }
       >
         <div data-testid="setup-pairing-complete">

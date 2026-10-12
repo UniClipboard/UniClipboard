@@ -30,11 +30,9 @@ export function SetupKitInvitation({
         title={t('title')}
         description={t('subtitle')}
         actions={
-          <span data-testid="setup-invitation-cancel">
-            <Button busy={loading} onClick={onCancel}>
-              {t('actions.cancel')}
-            </Button>
-          </span>
+          <Button data-testid="setup-invitation-cancel" busy={loading} onClick={onCancel}>
+            {t('actions.cancel')}
+          </Button>
         }
       >
         <div className="flex flex-col gap-3">

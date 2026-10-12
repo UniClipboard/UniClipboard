@@ -21,11 +21,9 @@ export function SetupKitJoinEnded({
         status={{ text: tWelcome('join.cta'), tone: 'critical', icon: 'info' }}
         title={t('ended.title')}
         actions={
-          <span data-testid="setup-join-ended-back">
-            <Button variant="primary" onClick={onBack}>
-              {t('actions.back')}
-            </Button>
-          </span>
+          <Button data-testid="setup-join-ended-back" variant="primary" onClick={onBack}>
+            {t('actions.back')}
+          </Button>
         }
       >
         <div data-testid="setup-join-ended">

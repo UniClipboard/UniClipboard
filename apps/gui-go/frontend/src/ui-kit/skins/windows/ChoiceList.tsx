@@ -66,6 +66,7 @@ export function ChoiceList({ label, title, items, onSelect, disabled }: ChoiceLi
       {items.map(item => (
         <button
           key={item.id}
+          data-testid={item['data-testid']}
           type="button"
           className={styles.card}
           disabled={disabled}

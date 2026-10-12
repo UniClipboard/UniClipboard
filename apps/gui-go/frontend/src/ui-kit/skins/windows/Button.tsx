@@ -7,6 +7,7 @@ import { iconFor } from './icons'
 import { WithTooltip } from './WithTooltip'
 
 export function Button({
+  'data-testid': testId,
   variant = 'standard',
   size = 'medium',
   icon,
@@ -24,6 +25,7 @@ export function Button({
   return (
     <WithTooltip content={name.tooltip} relationship={name.relationship}>
       <FluentButton
+        data-testid={testId}
         appearance={appearance[variant]}
         size={fluentSize[size]}
         icon={

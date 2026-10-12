@@ -37,8 +37,9 @@ export default function UnlockPage({ onUnlockSucceeded, onResetSucceeded }: Prop
             onSubmittingChange={setSubmittingPassphrase}
           />
         ) : (
-          <div data-testid="unlock-content" className="flex flex-col">
+          <div className="flex flex-col">
             <Button
+              data-testid="unlock-content"
               variant="primary"
               size="xlarge"
               icon="unlock"

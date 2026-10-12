@@ -133,22 +133,22 @@ export function SetupKitImport({ onBack }: { onBack: () => void }) {
               <Text emphasized>{t('fileLabel')}</Text>
             </span>
             <ButtonRow>
-              <span data-testid="setup-import-pick">
-                <Button
-                  icon="file"
-                  disabled={imp.busy}
-                  onClick={() => {
-                    setErrorKind(null)
-                    void imp.pickFile()
-                  }}
-                >
-                  {fileName ?? t('chooseFile')}
-                </Button>
-              </span>
+              <Button
+                data-testid="setup-import-pick"
+                icon="file"
+                disabled={imp.busy}
+                onClick={() => {
+                  setErrorKind(null)
+                  void imp.pickFile()
+                }}
+              >
+                {fileName ?? t('chooseFile')}
+              </Button>
             </ButtonRow>
           </div>
           {imp.sourcePath && (
             <FormField
+              id="import-pass"
               label={t('passwordLabel')}
               type="password"
               reveal={{ show: tUnlock('show'), hide: tUnlock('hide') }}

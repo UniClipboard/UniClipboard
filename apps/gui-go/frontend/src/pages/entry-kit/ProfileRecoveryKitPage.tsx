@@ -35,6 +35,7 @@ export default function ProfileRecoveryPage({ status, onRecovered, onRestart }: 
           )}
           <div data-testid="recovery-passphrase">
             <FormField
+              id="recovery-passphrase"
               label={t('unlock.passphraseModal.passphraseLabel')}
               type="password"
               reveal={{

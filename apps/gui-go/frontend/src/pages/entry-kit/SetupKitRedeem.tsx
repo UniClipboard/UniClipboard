@@ -33,17 +33,22 @@ export function SetupKitRedeem({
         description={t('subtitle')}
         back={{ label: t('actions.back'), onClick: onBack, disabled: loading }}
         actions={
-          <span data-testid="setup-redeem-submit">
-            <Button variant="primary" submitForm={FORM} busy={loading} disabled={!form.canSubmit}>
-              {t(loading ? 'actions.joining' : 'actions.submit')}
-            </Button>
-          </span>
+          <Button
+            data-testid="setup-redeem-submit"
+            variant="primary"
+            submitForm={FORM}
+            busy={loading}
+            disabled={!form.canSubmit}
+          >
+            {t(loading ? 'actions.joining' : 'actions.submit')}
+          </Button>
         }
       >
         <form id={FORM} onSubmit={event => void form.submit(event)}>
           {form.errorMessage && <InlineNotice tone="error" title={form.errorMessage} />}
           <div data-testid="setup-redeem-code">
             <CodeField
+              id="join-code"
               label={t('labels.code')}
               length={INVITATION_CODE_LENGTH}
               value={form.code}
@@ -56,6 +61,7 @@ export function SetupKitRedeem({
           {form.codeComplete && (
             <div data-testid="join-pass">
               <FormField
+                id="join-pass"
                 label={t('labels.passphrase')}
                 type="password"
                 reveal={{ show: tUnlock('show'), hide: tUnlock('hide') }}

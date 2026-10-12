@@ -80,6 +80,7 @@ export function ButtonRow({ children }: ButtonRowProps) {
 
 /** NSTextField / NSSecureTextField with the label above, the help and the error under it. */
 export function FormField({
+  id: providedId,
   label,
   value,
   onValueChange,
@@ -93,7 +94,8 @@ export function FormField({
   autoComplete,
   inputRef,
 }: FormFieldProps) {
-  const id = useId()
+  const generatedId = useId()
+  const id = providedId ?? generatedId
   const [shown, setShown] = useState(false)
   const password = type === 'password'
   const describedBy = [error && `${id}-error`, hint && `${id}-hint`].filter(Boolean).join(' ')
@@ -157,6 +159,7 @@ const digitsOnly = (text: string) => text.replace(/\D/g, '')
 
 /** One text input under the boxes (input-otp), so paste, autofill and input methods behave as in a field. */
 export function CodeField({
+  id: providedId,
   label,
   length,
   value,
@@ -165,7 +168,8 @@ export function CodeField({
   disabled,
   autoFocus,
 }: CodeFieldProps) {
-  const id = useId()
+  const generatedId = useId()
+  const id = providedId ?? generatedId
   const half = Math.ceil(length / 2)
   return (
     <div className="mac-form-field mac-otp-field">
@@ -243,6 +247,7 @@ export function ChoiceList({ label, title, items, onSelect, disabled }: ChoiceLi
         {items.map(item => (
           <button
             key={item.id}
+            data-testid={item['data-testid']}
             type="button"
             className="mac-choice"
             data-symbol={item.icon}

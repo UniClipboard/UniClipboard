@@ -50,6 +50,7 @@ export function WithHelpTag({ text, children }: { text?: string; children: React
 }
 
 export function Button({
+  'data-testid': testId,
   variant = 'standard',
   size = 'medium',
   icon,
@@ -65,6 +66,7 @@ export function Button({
   return (
     <WithHelpTag text={tooltip ?? (iconOnly ? label : undefined)}>
       <parts.PushButton
+        data-testid={testId}
         size={size}
         tint={tintOf[variant]}
         icon={busy ? undefined : icon && glyph(icon)}

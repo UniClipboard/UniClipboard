@@ -25,12 +25,14 @@ export function SetupKitEntry({
           items={[
             {
               id: 'create',
+              'data-testid': 'setup-entry-create',
               title: t('create.title'),
               description: t('create.description'),
               icon: 'shield',
             },
             {
               id: 'join',
+              'data-testid': 'setup-entry-join',
               title: t('join.title'),
               description: t('join.description'),
               icon: 'phone',
@@ -45,6 +47,7 @@ export function SetupKitEntry({
           items={[
             {
               id: 'import',
+              'data-testid': 'setup-entry-import',
               title: t('import.title'),
               description: t('import.description'),
               icon: 'package',

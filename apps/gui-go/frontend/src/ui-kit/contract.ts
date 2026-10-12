@@ -113,6 +113,8 @@ export interface SurfaceProps {
 }
 
 export interface ButtonProps {
+  /** Automation selector on the interactive button. */
+  'data-testid'?: string
   variant?: ButtonVariant
   size?: ControlSize
   icon?: IconName
@@ -842,6 +844,8 @@ export interface InsetListProps {
 
 /** A labelled single-line field inside a form. Return submits the form unless an input method is composing. */
 export interface FormFieldProps {
+  /** Stable id of the input and its associated label; generated when omitted. */
+  id?: string
   /** Visible label above the field. */
   label: string
   value: string
@@ -865,6 +869,8 @@ export interface FormFieldProps {
  * are kept, so a pasted `482-913` fills every box.
  */
 export interface CodeFieldProps {
+  /** Stable id of the input and its associated label; generated when omitted. */
+  id?: string
   label: string
   length: number
   value: string
@@ -881,6 +887,8 @@ export interface ProgressBarProps {
 }
 
 export interface ChoiceListItem {
+  /** Automation selector on the interactive button. */
+  'data-testid'?: string
   id: string
   title: string
   description?: string

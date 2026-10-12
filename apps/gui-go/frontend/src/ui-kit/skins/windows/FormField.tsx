@@ -19,6 +19,7 @@ const useStyles = makeStyles({
  * the error replaces nothing and shows under it, the help text under that.
  */
 export function FormField({
+  id,
   label,
   value,
   onValueChange,
@@ -37,12 +38,13 @@ export function FormField({
   const password = type === 'password'
   return (
     <Field
-      label={label}
+      label={id ? { children: label, htmlFor: id } : label}
       hint={hint}
       validationMessage={error}
       validationState={error ? 'error' : 'none'}
     >
       <Input
+        id={id}
         ref={inputRef}
         className={styles.input}
         type={password && !shown ? 'password' : 'text'}

@@ -19,6 +19,7 @@ export function UnlockKitPassphraseForm({
     <form id="unlock-form" onSubmit={event => void submit(event)}>
       <div data-testid="unlock-passphrase">
         <FormField
+          id="unlock-passphrase"
           label={t('unlock.passphraseModal.passphraseLabel')}
           type="password"
           reveal={{

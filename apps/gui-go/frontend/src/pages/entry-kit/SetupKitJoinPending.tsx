@@ -25,11 +25,9 @@ export function SetupKitJoinPending({
         description={t(processing ? 'processing.subtitle' : 'subtitle')}
         actions={
           processing ? undefined : (
-            <span data-testid="setup-join-cancel">
-              <Button busy={loading} onClick={onCancel}>
-                {t('actions.cancel')}
-              </Button>
-            </span>
+            <Button data-testid="setup-join-cancel" busy={loading} onClick={onCancel}>
+              {t('actions.cancel')}
+            </Button>
           )
         }
       >

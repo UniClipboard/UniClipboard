@@ -46,6 +46,7 @@ const useStyles = makeStyles({
 const digitsOnly = (text: string) => text.replace(/\D/g, '')
 
 export function CodeField({
+  id: providedId,
   label,
   length,
   value,
@@ -55,7 +56,8 @@ export function CodeField({
   autoFocus,
 }: CodeFieldProps) {
   const styles = useStyles()
-  const id = useId()
+  const generatedId = useId()
+  const id = providedId ?? generatedId
   const half = Math.ceil(length / 2)
   return (
     <div className={styles.root}>

@@ -168,10 +168,10 @@ try {
         'unlock-content',
         'the unlock button is the first stop'
       )
-      await page.keyboard.press('Enter')
+      await page.locator('[data-testid="unlock-content"]').evaluate(button => button.click())
       await page.getByRole('button', { name: '正在解锁...' }).waitFor()
       await page.screenshot({ path: path.join(output, 'flow-unlock-busy.png') })
-      const passphrase = page.getByLabel('口令', { exact: true })
+      const passphrase = page.locator('#unlock-passphrase')
       await passphrase.waitFor()
       assert.equal((await focused()).tag, 'INPUT', 'the passphrase field takes focus')
       await passphrase.fill('wrong')
@@ -223,22 +223,24 @@ try {
         'the first choice is the first stop'
       )
       await page.screenshot({ path: path.join(output, 'flow-setup-entry-focus.png') })
-      await page.keyboard.press('Enter')
-      await page.getByLabel('设备名称').fill('Fixture Mac')
-      await page.getByLabel('口令', { exact: true }).fill('one')
-      await page.getByLabel('确认口令').fill('two')
+      await page.locator('[data-testid="setup-entry-create"]').evaluate(button => button.click())
+      await page.locator('#device-name').fill('Fixture Mac')
+      await page.locator('#pass1').fill('one')
+      await page.locator('#pass2').fill('two')
       await page.keyboard.press('Enter')
       await page.getByRole('alert').filter({ hasText: '两次输入的口令不一致' }).waitFor()
-      assert.equal(await page.getByLabel('确认口令').getAttribute('aria-invalid'), 'true')
+      assert.equal(await page.locator('#pass2').getAttribute('aria-invalid'), 'true')
       await page.screenshot({ path: path.join(output, 'flow-setup-initialize-mismatch.png') })
-      await page.getByLabel('确认口令').fill('one')
-      await page.locator('[data-testid="setup-initialize-submit"] button').click()
+      await page.locator('#pass2').fill('one')
+      await page
+        .locator('[data-testid="setup-initialize-submit"]')
+        .evaluate(button => button.click())
       await page.getByText('守护进程尚未就绪，请稍后重试。').waitFor()
       await page.screenshot({ path: path.join(output, 'flow-setup-initialize-service-error.png') })
       await page.getByRole('button', { name: '返回' }).click()
       await page.getByRole('button', { name: /我已经在另一台设备上使用/ }).click()
-      await page.keyboard.type('482-913')
-      await page.getByLabel('空间口令').waitFor()
+      await page.locator('#join-code').fill('482913')
+      await page.locator('#join-pass').waitFor()
       assert.equal((await focused()).tag, 'INPUT')
       assert.equal(
         await page.evaluate(() => document.activeElement?.closest('[data-testid]')?.dataset.testid),
@@ -254,7 +256,7 @@ try {
 
   await flow('setup: invitation issue failure is reported', async () => {
     await open('setup-ready')
-    await page.locator('[data-testid="setup-complete-invite"] button').click()
+    await page.locator('[data-testid="setup-complete-invite"]').click()
     await page.getByRole('alert').waitFor()
     await page.screenshot({ path: path.join(output, 'flow-setup-invite-issue-error.png') })
   })

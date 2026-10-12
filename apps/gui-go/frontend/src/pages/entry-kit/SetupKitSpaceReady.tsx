@@ -26,22 +26,19 @@ export function SetupKitSpaceReady({
         description={t('subtitle')}
         actions={
           <>
-            <span data-testid="setup-complete-later">
-              <Button disabled={loading} onClick={onDone}>
-                {t('actions.later')}
-              </Button>
-            </span>
-            <span data-testid="setup-complete-invite">
-              <Button
-                variant="primary"
-                icon="desktop"
-                busy={loading}
-                disabled={!inviteRetryable}
-                onClick={() => void invite()}
-              >
-                {t(loading ? 'actions.inviting' : 'actions.invite')}
-              </Button>
-            </span>
+            <Button data-testid="setup-complete-later" disabled={loading} onClick={onDone}>
+              {t('actions.later')}
+            </Button>
+            <Button
+              data-testid="setup-complete-invite"
+              variant="primary"
+              icon="desktop"
+              busy={loading}
+              disabled={!inviteRetryable}
+              onClick={() => void invite()}
+            >
+              {t(loading ? 'actions.inviting' : 'actions.invite')}
+            </Button>
           </>
         }
       >

@@ -74,7 +74,7 @@ impl Panel {
     }
 
     pub(super) fn show_preview(&mut self, history: &mut Window, cx: &mut Context<Self>) {
-        self.update_preview_anchor(history, cx);
+        self.update_preview_anchor(cx);
         let width = (quick_panel_core::geometry::window_pair::PREVIEW_WIDTH
             + platform::PREVIEW_POINTER_DEPTH)
             * self.scale;
@@ -115,7 +115,7 @@ impl Panel {
         }
     }
 
-    pub(super) fn update_preview_anchor(&mut self, history: &Window, cx: &mut Context<Self>) {
+    pub(super) fn update_preview_anchor(&mut self, cx: &mut Context<Self>) {
         let next = (|| {
             if !self.state.session.visible
                 || !self.state.preview.expanded
@@ -141,29 +141,28 @@ impl Panel {
             if item.size.width <= gpui::px(0.) || item.size.height <= gpui::px(0.) {
                 return None;
             }
-            let frame = history.bounds();
-            // The work area measured when this session was shown, not the display GPUI reports for
-            // the history window: that one can lag behind the move of the window, and on macOS
-            // GPUI reports every display with its origin at zero.
-            let screen = self.session_screen?.work;
             use quick_panel_core::geometry::window_pair::{PreviewAnchor, Rect};
-            Some(PreviewAnchor {
-                history: Rect {
-                    x: f64::from(frame.origin.x),
-                    y: f64::from(frame.origin.y),
-                    width: f64::from(frame.size.width),
-                    height: f64::from(frame.size.height),
-                },
-                item: Rect {
-                    x: f64::from(frame.origin.x + item.origin.x),
-                    y: f64::from(frame.origin.y + item.origin.y),
+            // Everything is in the global space of this session's work area, and the history
+            // window is where `position` put it. GPUI's own window and display bounds are not
+            // used: on macOS they are relative to the display the window is on.
+            let work = self.session_screen?.work;
+            let panel = (
+                quick_panel_core::geometry::window_pair::PANEL_WIDTH * self.scale,
+                quick_panel_core::geometry::window_pair::PANEL_HEIGHT * self.scale,
+            );
+            Some(PreviewAnchor::for_session(
+                self.anchor,
+                panel,
+                Rect {
+                    x: f64::from(item.origin.x),
+                    y: f64::from(item.origin.y),
                     width: f64::from(item.size.width),
                     height: f64::from(item.size.height),
                 },
-                screen,
-                scale: self.scale,
-                pointer_depth: platform::PREVIEW_POINTER_DEPTH,
-            })
+                work,
+                self.scale,
+                platform::PREVIEW_POINTER_DEPTH,
+            ))
         })();
         if self.preview_anchor != next {
             self.preview_anchor = next;
@@ -175,12 +174,11 @@ impl Panel {
         &mut self,
         id: String,
         mut bounds: gpui::Bounds<gpui::Pixels>,
-        window: &Window,
         cx: &mut Context<Self>,
     ) {
         bounds.origin -= self.scroll.offset();
         self.image_bounds.insert(id, bounds);
-        self.update_preview_anchor(window, cx);
+        self.update_preview_anchor(cx);
     }
 
     pub(super) fn preview_snapshot(&self, cx: &App) -> PreviewSnapshot {

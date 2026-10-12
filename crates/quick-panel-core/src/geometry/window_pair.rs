@@ -56,6 +56,38 @@ pub struct PreviewPlacement {
     pub pointer_y: f64,
 }
 
+impl PreviewAnchor {
+    /// The anchor of a show session, in the global space of `screen`. The history window is where
+    /// the panel put it (`origin`, `panel` size), and `item` is relative to that window. Reading
+    /// the frame back from the toolkit would not do: GPUI on macOS reports a window frame
+    /// relative to its own display, not in the global space the work area is in.
+    pub fn for_session(
+        origin: (f64, f64),
+        panel: (f64, f64),
+        item: Rect,
+        screen: Rect,
+        scale: f64,
+        pointer_depth: f64,
+    ) -> Self {
+        Self {
+            history: Rect {
+                x: origin.0,
+                y: origin.1,
+                width: panel.0,
+                height: panel.1,
+            },
+            item: Rect {
+                x: origin.0 + item.x,
+                y: origin.1 + item.y,
+                ..item
+            },
+            screen,
+            scale,
+            pointer_depth,
+        }
+    }
+}
+
 pub fn preview_placement(anchor: PreviewAnchor, measured_height: f64) -> PreviewPlacement {
     preview_placement_with_width(anchor, PREVIEW_WIDTH, measured_height)
 }
@@ -403,5 +435,44 @@ mod tests {
         let (width, _) = preview_capacity(a);
         let p = preview_placement_for_size(a, width, 200.);
         assert_grouped(a, p);
+    }
+
+    #[test]
+    fn a_session_on_a_display_with_an_offset_origin_keeps_both_windows_there() {
+        let screen = Rect {
+            x: 2560.,
+            y: -300.,
+            width: 1920.,
+            height: 1055.,
+        };
+        let item = Rect {
+            x: 6.,
+            y: 100.,
+            width: 368.,
+            height: 30.,
+        };
+        let a = PreviewAnchor::for_session((3000., -100.), (380., 366.), item, screen, 1., 8.);
+        assert_eq!(
+            a.history,
+            Rect {
+                x: 3000.,
+                y: -100.,
+                width: 380.,
+                height: 366.
+            }
+        );
+        assert_eq!(
+            a.item,
+            Rect {
+                x: 3006.,
+                y: 0.,
+                width: 368.,
+                height: 30.
+            }
+        );
+        let p = preview_placement(a, 140.);
+        assert!(p.frame.x >= screen.x && p.frame.right() <= screen.right());
+        assert!(p.frame.y >= screen.y && p.frame.bottom() <= screen.bottom());
+        assert_eq!(p.frame.x, a.history.right() + WINDOW_GAP);
     }
 }

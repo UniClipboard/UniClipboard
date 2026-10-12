@@ -135,10 +135,9 @@ impl Panel {
                     if let Some(bounds) = bounds.first().copied() {
                         let tracker = bounds_tracker.clone();
                         let id = bounds_id.clone();
-                        window.defer(cx, move |window, cx| {
-                            let _ = tracker.update(cx, |this, cx| {
-                                this.record_image_bounds(id, bounds, window, cx)
-                            });
+                        window.defer(cx, move |_, cx| {
+                            let _ = tracker
+                                .update(cx, |this, cx| this.record_image_bounds(id, bounds, cx));
                         });
                     }
                 })

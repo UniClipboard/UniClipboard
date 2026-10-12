@@ -55,6 +55,16 @@ async function step(name, run) {
     throw error
   } finally { await save() }
 }
+// waitForFunction treats a returned Promise as truthy, so an async predicate must be polled from here.
+async function until(predicate, timeout = 120000) {
+  const deadline = Date.now() + timeout
+  for (;;) {
+    const state = await page.evaluate(() => window.__ucEntrySnapshot())
+    if (predicate(state)) return state
+    if (Date.now() > deadline) throw new Error(`timed out; last state ${JSON.stringify(state)}`)
+    await page.waitForTimeout(500)
+  }
+}
 async function snapshot() {
   const state = await page.evaluate(() => window.__ucEntrySnapshot())
   assert.equal(state.skin, 'windows', 'data-ui-skin must be windows on the real DOM')
@@ -64,12 +74,8 @@ async function shot(name) {
   await page.screenshot({ path: path.join(out, `${name}.png`) })
 }
 async function main() {
-  await page.waitForFunction(async () => {
-    const state = await window.__ucEntrySnapshot()
-    // The History page mounts its skin root lazily after the main layout, so wait for it.
-    return state.main && state.unlocked === true && state.skin === 'windows'
-  },
-    null, { timeout: 120000 })
+  // The History page mounts its skin root lazily after the main layout, so wait for it.
+  await until(state => state.main && state.unlocked === true && state.skin === 'windows')
   const state = await snapshot()
   assert.equal(state.main, true)
   assert.equal(state.unlocked, true)
@@ -149,10 +155,7 @@ try {
     await input.waitFor({ state: 'visible' })
     await input.fill(`${secret}-wrong`)
     await input.press('Enter')
-    await page.waitForFunction(async () => {
-      const state = await window.__ucEntrySnapshot()
-      return state.alerts.includes(state.wrongPassphrase)
-    }, null, { timeout: 120000 })
+    await until(state => state.alerts.includes(state.wrongPassphrase))
     await step('wrong-passphrase-rejected', async () => {
       const state = await snapshot()
       assert.ok(state.wrongPassphrase.length > 0)

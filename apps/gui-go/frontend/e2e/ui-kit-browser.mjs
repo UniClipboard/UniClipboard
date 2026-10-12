@@ -448,15 +448,15 @@ try {
             const dialog = page.getByRole('alertdialog')
             await dialog.waitFor()
             await page.waitForFunction(
-              (el) => Math.abs(el.getBoundingClientRect().width - el.offsetWidth) < 0.5,
-              await dialog.elementHandle(),
+              el => Math.abs(el.getBoundingClientRect().width - el.offsetWidth) < 0.5,
+              await dialog.elementHandle()
             )
-            const metrics = await dialog.evaluate((el) => {
+            const metrics = await dialog.evaluate(el => {
               const rect = el.getBoundingClientRect()
               const style = getComputedStyle(el)
               const left = rect.left + parseFloat(style.paddingLeft)
               const right = rect.right - parseFloat(style.paddingRight)
-              const controls = [...el.querySelectorAll('button, input')].map((control) => {
+              const controls = [...el.querySelectorAll('button, input')].map(control => {
                 const box = control.getBoundingClientRect()
                 return { left: box.left, right: box.right }
               })
@@ -474,29 +474,29 @@ try {
             await page.screenshot({
               path: path.join(
                 output,
-                `macos-alert-${scheme}-${width}-${typed ? 'typed' : 'plain'}.png`,
+                `macos-alert-${scheme}-${width}-${typed ? 'typed' : 'plain'}.png`
               ),
             })
             await writeFile(
               path.join(output, 'macos-alert-layout.json'),
-              JSON.stringify(measurements, null, 2),
+              JSON.stringify(measurements, null, 2)
             )
             assert.ok(
               metrics.dialogLeft >= 0 && metrics.dialogRight <= width,
-              'alert fits the window',
+              'alert fits the window'
             )
             assert.ok(
               metrics.scrollWidth <= metrics.clientWidth + 1,
-              'alert has no horizontal overflow',
+              'alert has no horizontal overflow'
             )
             for (const control of metrics.controls) {
               assert.ok(
                 Math.abs(control.left - metrics.left) <= 1,
-                'control aligns with the left inset',
+                'control aligns with the left inset'
               )
               assert.ok(
                 Math.abs(control.right - metrics.right) <= 1,
-                'control aligns with the right inset',
+                'control aligns with the right inset'
               )
             }
             if (typed) {

@@ -67,8 +67,7 @@ def send(env, *args):
         if 'snapshotHash' in result.stdout:
             return
         time.sleep(delay)
-    else:
-        raise RuntimeError(f'uniclip send {args} captured nothing: {result.stdout} {result.stderr}')
+    raise RuntimeError(f'uniclip send {args} captured nothing: {result.stdout} {result.stderr}')
 
 
 def start(out, extra, empty):

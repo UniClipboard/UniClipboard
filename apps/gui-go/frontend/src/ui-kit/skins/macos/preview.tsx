@@ -74,6 +74,9 @@ export function QuickLook({
         <Dialog.Popup
           className="mac-quicklook"
           onKeyDown={event => {
+            // A focused button (Next, Close, the actions) handles its own Space and Enter.
+            const onButton = (event.target as HTMLElement).closest('button, [role="button"]')
+            if (onButton && (event.key === ' ' || event.key === 'Enter')) return
             if (event.key === ' ') {
               event.preventDefault()
               onOpenChange(false)

@@ -9,8 +9,7 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
-// withWindowMaterial puts the pinned Wails release's window material (MacBackdropLiquidGlass:
-// NSGlassEffectView on macOS 26+, NSVisualEffectView before) behind the main window and tells the
+// withWindowMaterial puts Wails' frosted NSVisualEffectView behind the main window and tells the
 // page which one it got through the `window-material` launch parameter. When the webview cannot be
 // transparent (a build without -tags private_mac_apis) no material is applied and the page reports
 // `none`, so it stays opaque. The window keeps the system appearance: Wails beta.28 sets
@@ -24,10 +23,6 @@ func withWindowMaterial(o application.WebviewWindowOptions) application.WebviewW
 	}
 	o.BackgroundType = application.BackgroundTypeTransparent
 	o.BackgroundColour = application.RGBA{}
-	o.Mac.Backdrop = application.MacBackdropLiquidGlass
-	o.Mac.LiquidGlass = application.MacLiquidGlass{
-		Style:    application.LiquidGlassStyleAutomatic,
-		Material: application.NSVisualEffectMaterialSidebar,
-	}
+	o.Mac.Backdrop = application.MacBackdropTranslucent
 	return o
 }

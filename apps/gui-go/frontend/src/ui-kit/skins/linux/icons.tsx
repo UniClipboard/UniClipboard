@@ -23,7 +23,12 @@ const paths = {
   ),
   check: <path d="m5 12 5 5 9-10" />,
   trash: <path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" />,
-  sidebar: <path d="M4 6h16M4 12h16M4 18h16" />,
+  sidebar: (
+    <>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="M9 4v16" />
+    </>
+  ),
   more: (
     <>
       <circle cx="5" cy="12" r=".9" />

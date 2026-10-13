@@ -28,6 +28,7 @@ struct Request {
     count: Option<usize>,
 }
 
+/// Parse the diagnostic event name accepted by the isolated E2E control endpoint.
 fn kind(name: &str) -> Option<DevSpaceWorkEventKind> {
     match name {
         "final_confirmation_connection_failed" => {
@@ -83,6 +84,7 @@ fn kind(name: &str) -> Option<DevSpaceWorkEventKind> {
     }
 }
 
+/// Serialize an Engine diagnostic event using the E2E control endpoint names.
 fn event(value: DevSpaceWorkEvent) -> Value {
     let name = match value.kind {
         DevSpaceWorkEventKind::FinalConfirmationConnectionFailed => {

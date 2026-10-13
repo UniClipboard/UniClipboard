@@ -769,7 +769,15 @@ mod tests {
             assert_eq!(api.status, StatusCode::INTERNAL_SERVER_ERROR);
             assert_eq!(api.code, "internal_error");
             assert_eq!(api.message, public_message);
-            assert!(api.details.is_none());
+            assert_eq!(
+                api.details,
+                Some(serde_json::json!({
+                    "engineErrorCode": code,
+                    "engineErrorCategory": EngineErrorCategory::Internal,
+                    "retryable": false,
+                    "reason": "engine_operation_failed",
+                }))
+            );
         }
     }
 

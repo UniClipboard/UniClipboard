@@ -229,8 +229,8 @@ async fn space_work(
         DevOperationResult::MembershipHistoryFailuresCleared { remaining } => {
             json!({ "remaining": remaining })
         }
-        DevOperationResult::MembershipHistoryHoldSet
-        | DevOperationResult::GroupUpdateReceiveFaultSet
+        DevOperationResult::MembershipHistoryHoldSet => json!({ "held": request.held }),
+        DevOperationResult::GroupUpdateReceiveFaultSet
         | DevOperationResult::GroupUpdateTamperArmed
         | DevOperationResult::LegacyReceiverRejectionArmed => json!({ "status": "armed" }),
         DevOperationResult::SpaceWorkEvent(value) => event(value),

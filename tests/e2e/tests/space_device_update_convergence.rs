@@ -846,9 +846,14 @@ async fn group_update_states_follow_receiver_outcomes() {
     //    never resent automatically; re-reading and restarting alice leave it
     //    untouched while verified history is unavailable. Hold history at the
     //    receiver so the gate also survives the sender restart.
-    carol
-        .space_work(serde_json::json!({ "command": "set_membership_history_held", "held": true }))
-        .await;
+    for held in [true, false, true] {
+        let response = carol
+            .space_work(
+                serde_json::json!({ "command": "set_membership_history_held", "held": held }),
+            )
+            .await;
+        assert_eq!(response, serde_json::json!({ "held": held }));
+    }
     alice
         .space_work(serde_json::json!({ "command": "arm_group_update_tamper", "count": 1 }))
         .await;

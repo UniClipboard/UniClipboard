@@ -73,6 +73,7 @@ func (h *HostService) emit(name string, payload any) { h.app.Event.Emit(name, pa
 func (h *HostService) openMainWindow() {
 	w := h.app.Window.NewWithOptions(quietOptions(withWindowMaterial(application.WebviewWindowOptions{
 		Name: "main", Title: "UniClipboard", URL: "/", Width: 1100, Height: 720, MinWidth: 900, MinHeight: 600,
+		JS: windowControlsScript(),
 		// Match the default Windows custom title bar at creation so Wails sets
 		// up DWM decorations on the first activation, before the page loads.
 		Frameless: runtime.GOOS == "windows",

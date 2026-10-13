@@ -13,6 +13,16 @@ it('defaults to automatic before setup', () => {
   expect(readWindowFramePreference()).toBe('auto')
 })
 
+it('hides compositor-managed controls while keeping the custom title bar', () => {
+  expect(resolveWindowFrameMode(linux, 'custom', false, true)).toMatchObject({
+    hasCustomTitleBar: true,
+    hasCustomWindowControls: false,
+  })
+  expect(
+    resolveWindowFrameMode({ ...linux, isLinux: false, isWindows: true }, 'custom', false, true)
+  ).toMatchObject({ hasCustomWindowControls: true })
+})
+
 it.each(['auto', 'custom', 'system', 'none'] as const)('persists the %s choice', preference => {
   setStoredWindowFramePreference(preference)
   expect(readWindowFramePreference()).toBe(preference)

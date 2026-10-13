@@ -8,6 +8,7 @@ let sessionPreference: WindowFramePreference | undefined
 declare global {
   interface Window {
     __UC_WINDOW_FRAME_DEFAULT__?: 'custom' | 'none'
+    __UC_WINDOW_CONTROLS_HIDDEN__?: boolean
   }
 }
 
@@ -84,7 +85,9 @@ export const subscribeWindowFrameChanges = (listener: () => void): (() => void) 
 export const resolveWindowFrameMode = (
   platform: WindowFramePlatform,
   preference: WindowFramePreference,
-  prefersNoTitleBar = typeof window !== 'undefined' && window.__UC_WINDOW_FRAME_DEFAULT__ === 'none'
+  prefersNoTitleBar = typeof window !== 'undefined' &&
+    window.__UC_WINDOW_FRAME_DEFAULT__ === 'none',
+  hidesWindowControls = readWindowControlsHidden()
 ): WindowFrameMode => {
   const canChooseSystemFrame = platform.isDesktopHost && (platform.isWindows || platform.isLinux)
   const selected =
@@ -97,6 +100,10 @@ export const resolveWindowFrameMode = (
     useSystemWindowFrame,
     canChooseSystemFrame,
     hasCustomTitleBar,
-    hasCustomWindowControls: usesSelectableCustomFrame,
+    hasCustomWindowControls:
+      usesSelectableCustomFrame && !(platform.isLinux && hidesWindowControls),
   }
 }
+
+export const readWindowControlsHidden = (): boolean =>
+  typeof window !== 'undefined' && window.__UC_WINDOW_CONTROLS_HIDDEN__ === true

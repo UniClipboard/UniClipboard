@@ -3,6 +3,7 @@ import { usePlatform } from '@/hooks/usePlatform'
 import { getCurrentWindow } from '@/host/window'
 import {
   readWindowFramePreference,
+  readWindowControlsHidden,
   resolveWindowFrameMode,
   setStoredWindowFramePreference,
   subscribeWindowFrameChanges,
@@ -11,14 +12,19 @@ import {
 
 export function useWindowFrame() {
   const platform = usePlatform()
+  const hidesWindowControls = useSyncExternalStore(
+    subscribeWindowFrameChanges,
+    readWindowControlsHidden,
+    () => false
+  )
   const windowFramePreference = useSyncExternalStore(
     subscribeWindowFrameChanges,
     readWindowFramePreference,
     () => 'auto' as const
   )
   const mode = useMemo(
-    () => resolveWindowFrameMode(platform, windowFramePreference),
-    [platform, windowFramePreference]
+    () => resolveWindowFrameMode(platform, windowFramePreference, undefined, hidesWindowControls),
+    [platform, windowFramePreference, hidesWindowControls]
   )
 
   const setWindowFramePreference = useCallback(

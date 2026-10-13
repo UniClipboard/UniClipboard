@@ -769,7 +769,22 @@ async fn group_update_states_follow_receiver_outcomes() {
         unavailable["nextRetryAtMs"].as_i64().is_some(),
         "automatic recovery must carry the Engine retry deadline: {unavailable}"
     );
-    assert_reads_do_not_advance(&truth, &carol_id, &unavailable, Duration::from_secs(3)).await;
+    // Verified peer contact may expedite a retry before nextRetryAtMs. Reads
+    // must still report the same failure and epoch while the fault is active.
+    let observation = Instant::now();
+    let mut attempts = unavailable["attempts"].as_u64().expect("attempt count");
+    while observation.elapsed() < Duration::from_secs(3) {
+        let device = truth.device(&carol_id).await.expect("carol relationship");
+        let update = &device["groupUpdate"];
+        assert_eq!(update["state"], "receiver_unavailable", "{update}");
+        assert_eq!(update["epoch"], unavailable["epoch"], "{update}");
+        assert_eq!(update["recovery"], "automatic", "{update}");
+        assert!(update["nextRetryAtMs"].as_i64().is_some(), "{update}");
+        let current = update["attempts"].as_u64().expect("attempt count");
+        assert!(current >= attempts, "attempt count regressed: {update}");
+        attempts = current;
+        tokio::time::sleep(Duration::from_millis(250)).await;
+    }
     gui_checkpoint(&alice, &carol_id, true, "gui-receiver-unavailable").await;
     accept_pending_decisions(&dave).await;
     wait_for_group_update(
@@ -829,7 +844,11 @@ async fn group_update_states_follow_receiver_outcomes() {
 
     // 2. Explicit security rejection: carol rejects a tampered update. It is
     //    never resent automatically; re-reading and restarting alice leave it
-    //    untouched. Only removing carol settles it.
+    //    untouched while verified history is unavailable. Hold history at the
+    //    receiver so the gate also survives the sender restart.
+    carol
+        .space_work(serde_json::json!({ "command": "set_membership_history_held", "held": true }))
+        .await;
     alice
         .space_work(serde_json::json!({ "command": "arm_group_update_tamper", "count": 1 }))
         .await;

@@ -26,6 +26,7 @@ struct Request {
     kind: Option<String>,
     failure: Option<String>,
     count: Option<usize>,
+    held: Option<bool>,
 }
 
 /// Parse the diagnostic event name accepted by the isolated E2E control endpoint.
@@ -174,6 +175,10 @@ async fn space_work(
                 .ok_or(StatusCode::BAD_REQUEST)?,
         },
         "clear_membership_history_failures" => DevOperation::ClearMembershipHistoryFailures,
+        "set_membership_history_held" => DevOperation::SetMembershipHistoryHeld {
+            held: request.held.ok_or(StatusCode::BAD_REQUEST)?,
+            peer: None,
+        },
         "set_group_update_receive_fault" => DevOperation::SetGroupUpdateReceiveFault {
             fault: match request.failure.as_deref() {
                 Some("not_ready") => Some(DevGroupUpdateReceiveFault::NotReady),
@@ -224,7 +229,8 @@ async fn space_work(
         DevOperationResult::MembershipHistoryFailuresCleared { remaining } => {
             json!({ "remaining": remaining })
         }
-        DevOperationResult::GroupUpdateReceiveFaultSet
+        DevOperationResult::MembershipHistoryHoldSet
+        | DevOperationResult::GroupUpdateReceiveFaultSet
         | DevOperationResult::GroupUpdateTamperArmed
         | DevOperationResult::LegacyReceiverRejectionArmed => json!({ "status": "armed" }),
         DevOperationResult::SpaceWorkEvent(value) => event(value),

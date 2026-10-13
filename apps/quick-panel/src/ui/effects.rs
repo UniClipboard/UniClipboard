@@ -468,6 +468,11 @@ impl Panel {
                 });
             }
         }
+        if settings.is_none() {
+            tracing::warn!(
+                "Settings are unavailable; the modifier double-tap trigger is not applied"
+            );
+        }
         if crate::ui::appearance::apply(settings.map(|s| &s.general), window, cx).is_err() {
             tracing::warn!("Could not apply quick panel theme settings");
         }
@@ -486,8 +491,8 @@ impl Panel {
         }
         let monitor = cx.global::<crate::app::double_tap::DoubleTap>().0.clone();
         self.runtime.spawn_blocking(move || {
-            if monitor.set_modifier(modifier).is_err() {
-                tracing::warn!("Modifier double-tap trigger is unavailable");
+            if let Err(error) = monitor.set_modifier(modifier) {
+                tracing::warn!("Modifier double-tap trigger is unavailable: {error}");
             }
         });
     }

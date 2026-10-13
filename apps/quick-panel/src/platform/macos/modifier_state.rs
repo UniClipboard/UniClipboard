@@ -29,20 +29,38 @@ pub fn new_key_state() -> Result<Box<dyn ModifierKeyState>, String> {
     if !unsafe { AXIsProcessTrusted() } {
         return Err("macOS Accessibility permission is required".to_string());
     }
-    Ok(Box::new(MacosKeyState))
+    // Some systems report a key code (observed: 0, "A") as down while nothing is pressed. Keys
+    // that are already down now are not part of any tap and are ignored until they are released;
+    // otherwise the detector would see another key held forever and never trigger.
+    let stuck = (0..=KEY_CODE_MAX)
+        .filter(|&key_code| {
+            !MODIFIER_KEY_CODES.contains(&key_code) && CGEventSource::key_state(STATE_ID, key_code)
+        })
+        .collect();
+    Ok(Box::new(MacosKeyState { stuck }))
 }
 
-struct MacosKeyState;
+const STATE_ID: CGEventSourceStateID = CGEventSourceStateID::CombinedSessionState;
+
+struct MacosKeyState {
+    /// Key codes that were down when the reader was created and have not been released since.
+    stuck: Vec<u16>,
+}
 
 impl ModifierKeyState for MacosKeyState {
     fn snapshot(&mut self, modifier: QuickPanelDoubleTapModifier) -> (bool, bool) {
-        let state_id = CGEventSourceStateID::CombinedSessionState;
+        let state_id = STATE_ID;
         let flags = CGEventSource::flags_state(state_id);
         let selected_mask = modifier_flag(modifier);
         let selected_down = flags.intersects(selected_mask);
         let other_modifier_down = flags.intersects(other_modifier_flags(selected_mask));
+        self.stuck
+            .retain(|&key_code| CGEventSource::key_state(state_id, key_code));
+        let stuck = &self.stuck;
         let other_key_down = (0..=KEY_CODE_MAX).any(|key_code| {
-            !MODIFIER_KEY_CODES.contains(&key_code) && CGEventSource::key_state(state_id, key_code)
+            !MODIFIER_KEY_CODES.contains(&key_code)
+                && !stuck.contains(&key_code)
+                && CGEventSource::key_state(state_id, key_code)
         });
 
         (selected_down, other_modifier_down || other_key_down)

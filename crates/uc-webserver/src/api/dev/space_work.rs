@@ -65,6 +65,17 @@ fn kind(name: &str) -> Option<DevSpaceWorkEventKind> {
         }
         "group_update_applied" => Some(DevSpaceWorkEventKind::GroupUpdateApplied),
         "group_update_tampered" => Some(DevSpaceWorkEventKind::GroupUpdateTampered),
+        "group_update_missing_predecessor_observed" => {
+            Some(DevSpaceWorkEventKind::GroupUpdateMissingPredecessorObserved)
+        }
+        "group_update_current_wire_sent" => Some(DevSpaceWorkEventKind::GroupUpdateCurrentWireSent),
+        "group_update_legacy_wire_sent" => Some(DevSpaceWorkEventKind::GroupUpdateLegacyWireSent),
+        "group_update_current_wire_acknowledged" => {
+            Some(DevSpaceWorkEventKind::GroupUpdateCurrentWireAcknowledged)
+        }
+        "group_update_legacy_wire_acknowledged" => {
+            Some(DevSpaceWorkEventKind::GroupUpdateLegacyWireAcknowledged)
+        }
         "legacy_receiver_rejection_injected" => {
             Some(DevSpaceWorkEventKind::LegacyReceiverRejectionInjected)
         }
@@ -103,6 +114,17 @@ fn event(value: DevSpaceWorkEvent) -> Value {
         }
         DevSpaceWorkEventKind::GroupUpdateApplied => "group_update_applied",
         DevSpaceWorkEventKind::GroupUpdateTampered => "group_update_tampered",
+        DevSpaceWorkEventKind::GroupUpdateMissingPredecessorObserved => {
+            "group_update_missing_predecessor_observed"
+        }
+        DevSpaceWorkEventKind::GroupUpdateCurrentWireSent => "group_update_current_wire_sent",
+        DevSpaceWorkEventKind::GroupUpdateLegacyWireSent => "group_update_legacy_wire_sent",
+        DevSpaceWorkEventKind::GroupUpdateCurrentWireAcknowledged => {
+            "group_update_current_wire_acknowledged"
+        }
+        DevSpaceWorkEventKind::GroupUpdateLegacyWireAcknowledged => {
+            "group_update_legacy_wire_acknowledged"
+        }
         DevSpaceWorkEventKind::LegacyReceiverRejectionInjected => {
             "legacy_receiver_rejection_injected"
         }

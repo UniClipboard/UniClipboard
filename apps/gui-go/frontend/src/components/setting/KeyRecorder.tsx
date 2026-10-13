@@ -36,17 +36,24 @@ function comboFromEvent(e: KeyboardEvent): string | null {
   if (e.altKey) parts.push('alt')
   if (e.shiftKey) parts.push('shift')
   if (e.metaKey) parts.push('meta')
+  // Preserve Latin layouts; Option symbols, dead keys and non-Latin letters
+  // need the physical letter/digit key name accepted by shortcut handlers.
+  const physicalKey = /^(?:Key([A-Z])|Digit([0-9]))$/.exec(e.code)
+  const baseKey =
+    physicalKey && !/^[a-z0-9]$/i.test(e.key)
+      ? (physicalKey[1] ?? physicalKey[2]).toLowerCase()
+      : e.key.toLowerCase()
   // Shift changes '=' and '-' into '+' and '_'; retain the bindable base key.
   const key =
     e.code === 'NumpadAdd'
       ? 'add'
       : e.code === 'NumpadSubtract'
         ? 'subtract'
-        : e.key === '+'
+        : baseKey === '+'
           ? 'equal'
-          : e.key === '_'
+          : baseKey === '_'
             ? 'minus'
-            : e.key.toLowerCase()
+            : baseKey
   parts.push(key)
   return normalizeHotkey(parts.join('+'))
 }

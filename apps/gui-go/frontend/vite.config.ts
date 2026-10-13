@@ -149,6 +149,8 @@ function startupSplash(): Plugin {
           const server = await createServer({
             configFile: false,
             root: path('.'),
+            // The prerender server must not replace the live browser dependency cache.
+            cacheDir: path('./node_modules/.vite-startup-splash'),
             plugins: [uiSkin(), react()],
             resolve: { alias: { '@': path('./src') } },
             server: { middlewareMode: true, hmr: false },
@@ -195,6 +197,10 @@ function startupSplash(): Plugin {
 // The whole frontend lives in this directory: the business sources are `src` (`@`), the Wails
 // host modules `src/host`. The same config builds the three documents and runs the vitest suite.
 export default defineConfig({
+  // Concurrent profiles and test runs must not invalidate another server's optimized modules.
+  cacheDir: path(
+    `./node_modules/.vite-${process.env.UC_UI_PLATFORM ?? 'test'}-${Number(process.env.UC_DEV_SERVER_PORT ?? 1520)}`
+  ),
   plugins: [
     uiSkin(),
     startupSplash(),

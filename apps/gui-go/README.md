@@ -33,6 +33,12 @@ bun wails:build                  # 构建本地应用，不启动
 bun wails:build --release        # Windows 发布构建，并生成便携 ZIP
 ```
 
+`bun wails:dev` 与 `bun wails:dev:profile <profile>` 支持 macOS、Windows 和 Linux。Linux 需要 Go、Rust、Node.js、Bun，以及可通过 `pkg-config` 查找的 GTK 3 和 WebKitGTK 4.1 开发库；前端自动选择 Linux 平台组件，使用 Vite 热更新。
+
+Linux 启动环境未设置 `DISPLAY` 和 `WAYLAND_DISPLAY` 时，开发脚本从 systemd 用户服务管理器读取桌面连接变量；找不到图形会话则在编译前退出并提示从桌面终端运行。已设置显示变量时使用当前终端的配置。
+
+Hyprland（包括 Omarchy）和 niri 会话中，主窗口隐藏应用绘制的最小化、最大化和关闭按钮，窗口操作交给合成器。宿主通过 `XDG_CURRENT_DESKTOP`、`HYPRLAND_INSTANCE_SIGNATURE` 或 `NIRI_SOCKET` 识别环境。
+
 `bun wails:build` 复用现有平台构建脚本，构建前端、daemon、原生快捷面板、CLI 与 GUI。Windows 产物位于 `target/gui-go/windows-production/`（入口 `gui-go.exe`），macOS 产物为 `target/gui-go/UniClipboardGo.app`。该命令生成本地应用，不生成安装包；Go 使用 `production` 标签，Rust 沿用现有脚本的 debug 构建。Windows 需要 Python，macOS 需要 Bash 与 Python 3。
 
 Windows 上使用 `bun wails:build --release` 构建发布便携版：Rust 使用 `cargo build --release`，Go 使用 `production,release` 标签并移除调试符号，前端嵌入 GUI，无需 Vite。产物位于 `target/gui-go/windows-release/`，包括 `UniClipboard.exe`、daemon、原生快捷面板、CLI、构建清单与 `UniClipboard_<版本>_<x64|arm64>-portable.zip`。便携 ZIP 复用发布流水线的文件布局，包含 `portable.dat`，解压后数据保存在程序旁的 `data/`；该本地命令不进行 Authenticode 签名，也不生成安装包。启动发布版前需清除 `UC_PROFILE` 和 `UNICLIPBOARD_ENV=development` 等开发环境设置。macOS 暂不支持此命令的 `--release` 参数。

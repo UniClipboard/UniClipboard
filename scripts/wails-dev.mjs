@@ -36,6 +36,39 @@ function run(command, args, options = {}) {
   }
 }
 
+export function linuxDesktopEnvironment(env) {
+  if (env.DISPLAY || env.WAYLAND_DISPLAY) return env
+  const result = spawnSync('systemctl', ['--user', 'show-environment', '--output=json'], {
+    env,
+    encoding: 'utf8',
+    timeout: 5000,
+  })
+  if (result.error || result.status !== 0) return env
+  let session
+  try {
+    session = JSON.parse(result.stdout)
+  } catch {
+    return env
+  }
+  if (!session.DISPLAY && !session.WAYLAND_DISPLAY) return env
+  const desktopEnv = { ...env }
+  // Import only desktop connection settings, never the manager's PATH or app settings.
+  for (const name of [
+    'DISPLAY',
+    'WAYLAND_DISPLAY',
+    'XDG_RUNTIME_DIR',
+    'XDG_SESSION_TYPE',
+    'DBUS_SESSION_BUS_ADDRESS',
+    'XAUTHORITY',
+    'HYPRLAND_INSTANCE_SIGNATURE',
+    'NIRI_SOCKET',
+    'XDG_CURRENT_DESKTOP',
+  ]) {
+    if (typeof session[name] === 'string') desktopEnv[name] = session[name]
+  }
+  return desktopEnv
+}
+
 // macOS only: the Wails notification service refuses to start without a bundle identifier, which a bare binary does not have.
 // The development binary therefore runs from a minimal ad-hoc signed .app (the same Info.plist template as build.sh) with its own
 // `.dev` identifier, so it never shares notification or login-item state with an installed app. It is still started as a plain
@@ -107,8 +140,26 @@ export async function main(args, env = process.env) {
     )
     return 1
   }
-  if (!['darwin', 'win32'].includes(process.platform)) {
-    console.error('The development launcher currently supports macOS and Windows.')
+  if (!['darwin', 'win32', 'linux'].includes(process.platform)) {
+    console.error('The development launcher currently supports macOS, Windows and Linux.')
+    return 1
+  }
+
+  if (process.platform === 'linux') {
+    env = linuxDesktopEnvironment(env)
+    if (!env.DISPLAY && !env.WAYLAND_DISPLAY) {
+      console.error(
+        'No graphical desktop session found. Run this command from a desktop terminal with DISPLAY or WAYLAND_DISPLAY set.'
+      )
+      return 1
+    }
+  }
+
+  const goVersion = spawnSync('go', ['version'], { env, encoding: 'utf8', windowsHide: true })
+  if (goVersion.error || goVersion.status !== 0) {
+    console.error(
+      'Go is required to build the development GUI. Install Go and ensure go is on PATH.'
+    )
     return 1
   }
 
@@ -137,7 +188,8 @@ export async function main(args, env = process.env) {
   // No `production` tag: Wails then proxies assets to FRONTEND_DEVSERVER_URL. On macOS the
   // `private_mac_apis` tag lets the window material show through the page, as in the packaged app.
   const built = path.join(out, process.platform === 'win32' ? 'gui-go-dev.exe' : 'gui-go-dev')
-  const tags = process.platform === 'darwin' ? ['-tags', 'private_mac_apis'] : []
+  const platformTags = { darwin: 'private_mac_apis', linux: 'gtk3' }[process.platform]
+  const tags = platformTags ? ['-tags', platformTags] : []
   run('go', ['build', ...tags, '-o', built, '.'], { cwd: gui })
   const helper = withHelper ? path.join(root, 'target/debug/uniclip-quick-panel') : null
   const binary = process.platform === 'darwin' ? makeDevBundle(built, helper) : built

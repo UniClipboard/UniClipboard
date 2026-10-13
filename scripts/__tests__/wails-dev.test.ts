@@ -50,6 +50,8 @@ vi.mock('node:child_process', async importOriginal => {
             }
             if (process.env.UNICLIPBOARD_ENV !== 'development') process.exit(3);
             if (!process.env.UC_PROFILE) process.exit(4);
+            const uiPlatform = { win32: 'windows', linux: 'linux' }[process.platform];
+            if (uiPlatform && process.env.UC_UI_PLATFORM !== uiPlatform) process.exit(6);
           })().catch(() => process.exit(5));
         `,
         ],
@@ -69,14 +71,20 @@ describe('development launcher', () => {
     calls.mode = 'normal'
     calls.detached = false
   })
-  it.skipIf(process.platform !== 'win32')(
-    'launches an exe against Vite on Windows and stops the server on exit',
+  it.skipIf(!['win32', 'linux'].includes(process.platform))(
+    'launches the GUI against Vite and stops the server on exit',
     async () => {
       const root = fileURLToPath(new URL('../../', import.meta.url))
       try {
-        expect(await main(['--profile', `launcher-test-${process.pid}`])).toBe(0)
-        expect(calls.builds).toEqual(['cargo', 'go', 'go'])
-        expect(calls.app).toBe(path.join(root, 'target/gui-go/dev/gui-go-dev.exe'))
+        expect(
+          await main(['--profile', `launcher-test-${process.pid}`], {
+            ...process.env,
+            ...(process.platform === 'linux' ? { DISPLAY: ':launcher-test' } : {}),
+          })
+        ).toBe(0)
+        expect(calls.builds).toEqual(['go', 'cargo', 'go', 'go'])
+        const binary = process.platform === 'win32' ? 'gui-go-dev.exe' : 'gui-go-dev'
+        expect(calls.app).toBe(path.join(root, 'target/gui-go/dev', binary))
         const vite = calls.vite
         if (!vite) throw new Error('Vite was not started')
         await new Promise<void>(resolve => {

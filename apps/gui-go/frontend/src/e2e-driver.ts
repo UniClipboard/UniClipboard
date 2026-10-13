@@ -107,7 +107,8 @@ async function navigate(
   href: string,
   marker: () => unknown,
   step: string,
-  retryClick = false
+  retryClick = false,
+  retryOnceWhenStuck = false
 ) {
   go()
   const arrived = () => location.pathname.startsWith(href) && marker()
@@ -115,6 +116,28 @@ async function navigate(
   for (let attempt = 0; retryClick && attempt < 20 && !arrived(); attempt++) {
     await sleep(1000)
     if (!arrived()) go()
+  }
+  // A route change that has not happened after a few seconds is recorded with the facts that decide why (history depth,
+  // visibility, focus), then the wait below still fails the step on a timeout.
+  for (let waited = 0; waited < 5000 && !arrived(); waited += 250) await sleep(250)
+  if (!arrived()) {
+    await record(`${step}-slow`, true, {
+      path: location.pathname,
+      expected: href,
+      historyLength: history.length,
+      visibility: document.visibilityState,
+      hasFocus: document.hasFocus(),
+    })
+    // One more attempt for a request that was dropped (a session-history traversal issued right after a navigation can be);
+    // nothing has moved, so it cannot traverse twice. Whether it helped is recorded.
+    if (retryOnceWhenStuck) {
+      go()
+      for (let waited = 0; waited < 5000 && !arrived(); waited += 250) await sleep(250)
+      await record(`${step}-retried`, !!arrived(), {
+        path: location.pathname,
+        historyLength: history.length,
+      })
+    }
   }
   await waitFor(step, arrived)
   await record(step, true, { path: location.pathname })
@@ -298,7 +321,9 @@ async function run() {
     () => history.back(),
     beforeSettings,
     () => !settingsPageOpen(),
-    'navigate-back'
+    'navigate-back',
+    false,
+    true
   )
 
   await control('close-main')
@@ -615,6 +640,7 @@ async function runHistoryKitScenario() {
     texts: string[]
     image: { dimensions: string }
     zoom: boolean
+    systemKeys?: boolean
     shotPauseMs: number
     // Themes of the light/dark pass (default both); a runner can leave one out to get past a host crash.
     themes?: Array<'light' | 'dark'>
@@ -737,6 +763,30 @@ async function runHistoryKitScenario() {
     }, 300)
   }
   await reachMainLayout()
+  // Window facts for every resize step: what the page sees and what the host reports, so a window manager that
+  // does not honour a size request shows up as data instead of a bare timeout.
+  const windowFacts = async () => ({
+    inner: [innerWidth, innerHeight],
+    outer: [outerWidth, outerHeight],
+    dpr: devicePixelRatio,
+    screen: [screen.width, screen.height, screen.availWidth, screen.availHeight],
+    host: await Window.Size().then(
+      size => [size.width, size.height],
+      error => `Size failed: ${error}`
+    ),
+  })
+  // The history checks below assume a normal (wide) window. A tiling window manager may open it narrower than the
+  // configured default; ask for the default size once, record what happened, and carry on either way: the narrow-window
+  // checks later are separate rows, and a window that never gets wide fails this row with the observed numbers.
+  const normalRequest =
+    innerWidth > 905
+      ? 'not needed'
+      : await Window.SetSize(1100, 720).then(
+          () => 'resolved',
+          error => `rejected: ${error}`
+        )
+  for (let waited = 0; waited < 8000 && innerWidth <= 905; waited += 250) await sleep(250)
+  await record('kit-window-normal', innerWidth > 905, { normalRequest, ...(await windowFacts()) })
   const root = await waitFor('ui kit page', () => $('[data-ui-skin]'))
   // First launch (design MA1): the profile has no history yet, so the list shows the getting-started
   // steps and the detail explains where items come from. The orchestrator seeds entries after this.
@@ -1354,8 +1404,20 @@ async function runHistoryKitScenario() {
     }
   }
   const originalSize = await Window.Size()
-  await Window.SetSize(900, 600)
+  await record('kit-window-original', true, {
+    original: [originalSize.width, originalSize.height],
+    ...(await windowFacts()),
+  })
+  const narrowRequest = await Window.SetSize(900, 600).then(
+    () => 'resolved',
+    error => `rejected: ${error}`
+  )
   await waitFor('narrow window', () => innerWidth <= 905)
+  await record('kit-window-narrow-facts', true, {
+    request: [900, 600],
+    narrowRequest,
+    ...(await windowFacts()),
+  })
   await sleep(600)
   const narrow = layoutCheck()
   const narrowKeys = await reachLastRow()
@@ -1396,11 +1458,70 @@ async function runHistoryKitScenario() {
     await shot('narrow-zoom-150')
     setUiScale(1)
   }
-  await Window.SetSize(originalSize.width, originalSize.height)
-  await waitFor('window restored', () => innerWidth > 905)
+  const restored = () => Math.abs(innerWidth - originalSize.width) <= 2
+  const restoreRequest = await Window.SetSize(originalSize.width, originalSize.height).then(
+    () => 'resolved',
+    error => `rejected: ${error}`
+  )
+  // Sample for up to 12 s so the record shows whether the size ever moves; the check below still fails on a timeout.
+  const restoreSamples: unknown[] = []
+  for (let elapsed = 0; elapsed <= 12000 && !restored(); elapsed += 1000) {
+    restoreSamples.push({ ms: elapsed, ...(await windowFacts()) })
+    await sleep(1000)
+  }
+  await record('kit-window-restore-facts', restored(), {
+    request: [originalSize.width, originalSize.height],
+    restoreRequest,
+    samples: restoreSamples,
+    final: await windowFacts(),
+  })
+  await waitFor('window restored', restored)
   list().focus()
   key(list(), 'Home')
   await sleep(300)
+
+  // A real key press: the runner types Ctrl+B through the kernel's uinput device (ydotool), so the compositor delivers it to the
+  // focused window like a keyboard would. Only keydown events with isTrusted === true count; a dispatched DOM event never does.
+  if (seeded.systemKeys) {
+    const hidden = () => !!$('[data-sidebar-hidden]')
+    const seen: unknown[] = []
+    const onKeyDown = (event: KeyboardEvent) =>
+      seen.push({ key: event.key, ctrl: event.ctrlKey, trusted: event.isTrusted })
+    addEventListener('keydown', onKeyDown, true)
+    const toggle = $(`[aria-expanded][aria-label]:is(${skinClass('split-toggle')})`)
+    const pressed = async (step: string, expectHidden: boolean) => {
+      await record(`kit-ready-for-${step}`, true, {
+        sidebarHidden: hidden(),
+        hasFocus: document.hasFocus(),
+      })
+      for (let waited = 0; waited < 10000 && hidden() !== expectHidden; waited += 100)
+        await sleep(100)
+      const realCtrlB = seen.some(
+        e =>
+          (e as { key: string; ctrl: boolean; trusted: boolean }).key.toLowerCase() === 'b' &&
+          (e as { ctrl: boolean }).ctrl &&
+          (e as { trusted: boolean }).trusted
+      )
+      await record(`kit-${step}`, hidden() === expectHidden && realCtrlB, {
+        sidebarHidden: hidden(),
+        expectedHidden: expectHidden,
+        keydowns: seen,
+        toggleHint: toggle
+          ? {
+              label: toggle.getAttribute('aria-label'),
+              title: toggle.getAttribute('title'),
+              keys: toggle.getAttribute('aria-keyshortcuts'),
+            }
+          : null,
+      })
+      seen.length = 0
+    }
+    const startHidden = hidden()
+    await pressed('system-ctrl-b-first', !startHidden)
+    await pressed('system-ctrl-b-second', startHidden)
+    removeEventListener('keydown', onKeyDown, true)
+    list().focus()
+  }
 
   // Search (design MB1-MB3): text with match highlighting, a device token from the suggestions,
   // then a search with no results and its widening choices.
@@ -1600,15 +1721,25 @@ async function runHistoryKitScenario() {
   // Paging past the daemon's 200-result clamp: the orchestrator adds a few hundred entries, and
   // End, pressed as the list loads more, must reach the oldest entry instead of stopping at 200.
   await record('kit-ready-for-bulk', true)
-  const bulkEnd = Date.now() + 240000
+  // The runner seeds 230 entries one request at a time: measured 227 s (Xvfb) to 252 s (niri) here, so the budget has to exceed that.
+  const bulkBudget = 480000
+  const bulkEnd = Date.now() + bulkBudget
+  // The daemon is busy ingesting while the runner seeds, so one poll may exceed the client's request timeout. Retry until
+  // the deadline, but keep every failure in the record: a daemon that never answers still ends in the timeout below.
+  const pollFailures: string[] = []
   for (;;) {
-    const page = await daemonClient.request<{ data: Array<{ id: string }> }>(
-      '/clipboard/entries?limit=1&offset=210'
-    )
-    if (page.data.length > 0) break
-    if (Date.now() > bulkEnd) throw new Error('timeout: bulk entries')
+    const page = await daemonClient
+      .request<{ data: Array<{ id: string }> }>('/clipboard/entries?limit=1&offset=210')
+      .catch((error: unknown) => {
+        pollFailures.push(`${Math.round((Date.now() - (bulkEnd - bulkBudget)) / 1000)}s: ${error}`)
+        return null
+      })
+    if (page && page.data.length > 0) break
+    if (Date.now() > bulkEnd)
+      throw new Error(`timeout: bulk entries (poll failures: ${pollFailures.join('; ')})`)
     await sleep(1000)
   }
+  await record('kit-bulk-poll', true, { transientFailures: pollFailures })
   sidebarRow(i18n.t('history.sidebar.pinned'))?.click()
   await sleep(500)
   sidebarRow(i18n.t('history.sidebar.allItems'))?.click()

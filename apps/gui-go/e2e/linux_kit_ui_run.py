@@ -31,7 +31,11 @@ reached because it stopped earlier is not_run (the first one it stopped at is fa
 Sessions
   sway      start a headless sway (wlroots, pixman) in the sandbox; windows float so the in-page Window.SetSize works
   xvfb      start a private Xvfb with no window manager
-  existing  use the running desktop (WAYLAND_DISPLAY or DISPLAY, XDG_RUNTIME_DIR from the environment)
+  existing  use the running desktop (WAYLAND_DISPLAY or DISPLAY, XDG_RUNTIME_DIR from the environment). On niri the runner floats the
+            app's windows and resizes them through `niri msg` (a tiling window manager otherwise ignores Window.SetSize, as sway does
+            without `for_window floating`); that is per-session window state, no compositor config file is touched.
+  --system-keys DIR  type a real Ctrl+B through /dev/uinput with DIR/ydotool + DIR/ydotoold (the user needs write access to
+            /dev/uinput, e.g. the `input` group); the driver counts only keydown events with isTrusted === true.
 
 Docker (macOS or Linux host, linux/arm64 or amd64; builds the bundle, the binaries and runs this in a sway container):
   apps/gui-go/e2e/linux/run.sh kit-ui <outdir>        # UC_DOCKER_CPUS=4 caps the containers
@@ -64,6 +68,7 @@ import socket
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import urllib.request
 from pathlib import Path
@@ -85,6 +90,7 @@ CHECKS = [
     ('entry-devices-settings', 'nav: Devices panel, Settings page, back', 'entry', ['devices', 'settings', 'navigate-back']),
     ('entry-webview-alive', 'WebView alive after hide/show', 'entry', ['webview-alive-after-reopen']),
     ('entry-complete', 'default scenario ran to its end (updater/quick panel/tray windows included)', 'entry', ['file-preview-refusals', 'driver-complete']),
+    ('history-window-normal', 'history: the window is a normal (wide) size before the history checks', 'history', ['kit-window-normal']),
     ('history-first-launch', 'history: first-launch state on an empty profile', 'history', ['kit-first-launch']),
     ('history-skin', 'history: the Linux skin is mounted', 'history', ['kit-page-mounted']),
     ('keyboard-search-fresh', 'keyboard: Ctrl+F focuses search on a fresh page', 'history', ['kit-search-shortcut-fresh']),
@@ -104,6 +110,8 @@ CHECKS = [
     ('sidebar-toggle', 'sidebar hide/show', 'history', ['kit-sidebar-toggle']),
     ('grid-inspector', 'grid layout, inspector, card context menu', 'history', ['kit-grid', 'kit-grid-inspector', 'kit-grid-context-tag']),
     ('resize-in-page', 'resize: narrowest window and compact sidebar (Window.SetSize)', 'history', ['kit-narrow-window', 'kit-narrow-sidebar']),
+    ('keyboard-system-ctrl-b', 'keyboard: a real Ctrl+B (kernel uinput) toggles the sidebar both ways, as trusted keydown events', 'history', ['kit-system-ctrl-b-first', 'kit-system-ctrl-b-second']),
+    ('resize-restore', 'resize: the window returns to its size before the narrow checks', 'history', ['kit-window-restore-facts']),
     ('search-text', 'search: text query with highlight', 'history', ['kit-search-text']),
     ('search-filter', 'filter: tag token, suggestions, no results, clear', 'history', ['kit-search-suggestions', 'kit-search-token', 'kit-search-no-results', 'kit-search-cleared']),
     ('query-failure', 'search failure state and retry', 'history', ['kit-query-failure', 'kit-query-retry']),
@@ -149,9 +157,11 @@ def run(cmd, **kw):
 class Session:
     """The display the GUI runs on, plus the tools to look at it and resize its window."""
 
-    def __init__(self, kind, runtime, out):
+    def __init__(self, kind, runtime, out, system_keys=None):
         self.kind, self.runtime, self.out = kind, runtime, out
+        self.keys_dir, self.ydotoold, self.ydotool_env = system_keys, None, None
         self.env, self.sway, self.xvfb, self.keeper = {}, None, None, None
+        self.niri = self.niri_stop = None
         self.desktop_env = dict(os.environ)  # screenshot tools talk to the desktop's own bus, not the private one
         if kind == 'sway':
             from linux_wayland_run import Sway
@@ -178,6 +188,50 @@ class Session:
             else:
                 raise SystemExit('--session existing: neither WAYLAND_DISPLAY nor DISPLAY is available (see the header for ssh)')
         self.wayland = 'WAYLAND_DISPLAY' in self.env
+        if kind == 'existing' and self.wayland:
+            self.start_niri_floating()
+        if self.keys_dir:
+            sock = out / 'ydotool.sock'
+            self.ydotool_env = dict(os.environ, YDOTOOL_SOCKET=str(sock))
+            self.ydotoold = subprocess.Popen([str(self.keys_dir / 'ydotoold'), '--socket-path', str(sock), '--socket-perm', '0600'], env=self.ydotool_env,
+                                             stdout=(out / 'ydotoold.log').open('w'), stderr=subprocess.STDOUT)
+            for _ in range(50):
+                if sock.exists():
+                    break
+                time.sleep(.1)
+
+    def press_ctrl_b(self):
+        """Ctrl (KEY_LEFTCTRL 29) + B (KEY_B 48) as kernel input events; the compositor decides which window gets them."""
+        r = subprocess.run([str(self.keys_dir / 'ydotool'), 'key', '29:1', '48:1', '48:0', '29:0'], env=self.ydotool_env, capture_output=True, text=True, timeout=20)
+        (self.out / 'ydotool-keys.log').open('a').write(f'rc={r.returncode} {r.stdout}{r.stderr}\n')
+
+    def niri_msg(self, *argv, timeout=10):
+        return subprocess.run(['niri', 'msg', *argv], env=dict(self.desktop_env, NIRI_SOCKET=self.niri), capture_output=True, text=True, timeout=timeout)
+
+    def niri_windows(self):
+        r = self.niri_msg('--json', 'windows')
+        return json.loads(r.stdout) if r.returncode == 0 and r.stdout.strip() else []
+
+    def start_niri_floating(self):
+        """niri tiles new windows and ignores Window.SetSize, like sway without `for_window floating`: the same remedy here, through the
+        compositor's own IPC (a per-session window state, no config file touched). Anything but niri leaves this a no-op."""
+        sockets = sorted(Path(self.runtime).glob('niri.*.sock'))
+        if not sockets or not shutil.which('niri'):
+            return
+        self.niri = str(sockets[0])
+        self.niri_stop = threading.Event()
+
+        def float_new_windows():
+            while not self.niri_stop.is_set():
+                try:
+                    for w in self.niri_windows():
+                        if w.get('app_id') == 'gui-go' and not w.get('is_floating'):
+                            self.niri_msg('action', 'move-window-to-floating', '--id', str(w['id']))
+                except Exception:
+                    pass
+                self.niri_stop.wait(.25)
+
+        threading.Thread(target=float_new_windows, daemon=True).start()
 
     def screenshot(self, path):
         """Returns None on success, else the reason no screenshot could be taken."""
@@ -202,6 +256,14 @@ class Session:
         if self.kind == 'sway':
             self.sway.msg(f'[pid={pid}]', 'resize', 'set', 'width', str(width), 'px', 'height', str(height), 'px')
             return None
+        if self.niri:
+            ids = [w['id'] for w in self.niri_windows() if w.get('pid') == pid and w.get('is_floating')]
+            if not ids:
+                return 'niri has no floating window of the app'
+            for wid in ids:
+                self.niri_msg('action', 'set-window-width', '--id', str(wid), str(width))
+                self.niri_msg('action', 'set-window-height', '--id', str(wid), str(height))
+            return None
         if self.wayland:
             return 'an existing Wayland desktop offers no tool to resize another client window (compositor owns it)'
         if not shutil.which('xdotool'):
@@ -214,6 +276,10 @@ class Session:
         return None
 
     def stop(self):
+        if self.niri_stop:
+            self.niri_stop.set()
+        if self.ydotoold and self.ydotoold.poll() is None:
+            self.ydotoold.terminate()
         for proc in (self.keeper, self.xvfb):
             if proc and proc.poll() is None:
                 proc.terminate()
@@ -393,6 +459,8 @@ class Runner:
             self.seed_image()
         elif step == 'kit-ready-for-bulk' and self.mobile:
             self.seed_bulk()
+        elif step.startswith('kit-ready-for-system-ctrl-b'):
+            self.session.press_ctrl_b()
         elif step.startswith('shot:'):
             self.shot(step[5:])
 
@@ -508,7 +576,10 @@ class Runner:
 
     def main_flows(self, seeded):
         self.stage('entry', None, timeout=400, on_row=self.entry_rows)
-        if self.stages['entry']['error'] and 'home' not in self.stages['entry']['steps']:
+        if self.args.entry_only:
+            for stage in ('history', 'restart', 'resize'):
+                self.skipped[stage] = 'left out on request (--entry-only)'
+        elif self.stages['entry']['error'] and 'home' not in self.stages['entry']['steps']:
             for stage in ('history', 'restart', 'resize'):
                 self.skipped[stage] = 'the entry stage did not reach the history route: ' + self.stages['entry']['error'][:200]
         else:
@@ -553,15 +624,16 @@ class Runner:
         self.daemon_gone = False
         self.bus = PrivateBus(self.out)
         try:
-            self.session = Session(self.args.session, self.runtime, self.out)
+            self.session = Session(self.args.session, self.runtime, self.out, self.args.system_keys)
             shot_pause = self.args.shot_pause_ms
-            seeded = json.dumps({'code': CODE, 'link': LINK, 'texts': TEXTS, 'image': {'dimensions': f'{IMAGE_SIZE[0]} × {IMAGE_SIZE[1]}'}, 'shotPauseMs': shot_pause, 'zoom': False, 'themes': ['light'] if self.args.skip_dark_theme else ['light', 'dark']})
+            seeded = json.dumps({'code': CODE, 'link': LINK, 'texts': TEXTS, 'image': {'dimensions': f'{IMAGE_SIZE[0]} × {IMAGE_SIZE[1]}'}, 'shotPauseMs': shot_pause, 'zoom': False, 'systemKeys': bool(self.args.system_keys), 'themes': ['light'] if self.args.skip_dark_theme else ['light', 'dark']})
             if self.args.skip_main:
                 for stage in ('entry', 'history', 'restart', 'resize'):
                     self.skipped[stage] = 'left out on request (--skip-main)'
             else:
                 self.main_flows(seeded)
-            self.consent_and_settings(shot_pause)
+            if not self.args.entry_only:
+                self.consent_and_settings(shot_pause)
             conns = [c for box in self.sandboxes for c in box.rglob('daemon.conn')]
             deadline = time.monotonic() + 20
             while conns and time.monotonic() < deadline:
@@ -597,9 +669,11 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     parser.add_argument('--out', type=Path, required=True)
     parser.add_argument('--binaries', type=Path, required=True, help='directory with gui-go (gtk3,e2e), uniclipd and uniclip')
+    parser.add_argument('--system-keys', metavar='DIR', type=Path, help='directory with ydotool and ydotoold: type Ctrl+B through /dev/uinput (needs write access to it) instead of leaving that check not_run')
     parser.add_argument('--session', choices=('sway', 'xvfb', 'existing'), default='sway')
     parser.add_argument('--gui-wrapper', default='', help='command that runs the GUI under a tool, e.g. "gdb -batch -ex run -ex bt --args"')
     parser.add_argument('--skip-dark-theme', action='store_true', help='leave the dark pass out of the theme check (its theme-dark row becomes not_run); libwebkit2gtk segfaulted there in the Ubuntu 24.04 arm64 sway container')
+    parser.add_argument('--entry-only', action='store_true', help='run only stage A (entry): repeat the entry navigation quickly while investigating a flake')
     parser.add_argument('--skip-main', action='store_true', help='leave stages A-D (entry, history, restart, resize) out and run only the consent and Settings stages')
     parser.add_argument('--shot-pause-ms', type=int, default=1500, help='how long the driver waits after each shot:<name> step')
     args = parser.parse_args()

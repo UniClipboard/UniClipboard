@@ -204,6 +204,15 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      - name: Return compiler evidence to the runner user
+        if: always()
+        run: |
+          # The daemon container runs as root; mktemp session directories are mode 0700.
+          # Change ownership only for this job's statistics, never its credential file or CAS.
+          if [[ -d "$RUNNER_TEMP/mbx-evidence" ]]; then
+            sudo chown -R "$(id -u):$(id -g)" "$RUNNER_TEMP/mbx-evidence"
+          fi
+
       - name: Retain MBX compiler evidence
         if: always()
         uses: actions/upload-artifact@v7

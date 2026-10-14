@@ -204,7 +204,6 @@ jobs:
           bun-version: latest
 
       - name: Start shared Engine MBX cache
-        if: runner.os != 'Windows'
         uses: ./.github/actions/engine-build-cache
         with:
           cache-key: pr-check
@@ -217,7 +216,7 @@ jobs:
         with:
           workspaces: '. -> target'
           shared-key: pr-check
-          cache-targets: ${{ runner.os == 'Windows' }}
+          cache-targets: false
           # PR 只读 default branch cache,写入由 cache-warmup 统一负责。
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
@@ -266,7 +265,7 @@ jobs:
           fi
 
       - name: Retain MBX compiler evidence
-        if: always() && runner.os != 'Windows'
+        if: always()
         uses: actions/upload-artifact@v7
         with:
           name: mbx-pr-check
@@ -291,6 +290,7 @@ jobs:
           - { name: Windows x64, runner: windows-latest }
           - { name: Windows ARM64, runner: windows-11-arm }
 
+    environment: desktop-build-cache-reader
     steps:
       - uses: actions/checkout@v4
         with:
@@ -299,15 +299,24 @@ jobs:
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Start shared Engine MBX cache
+        uses: ./.github/actions/engine-build-cache
+        with:
+          cache-key: quick-panel-${{ matrix.runner }}
+          endpoint: ${{ secrets.BUILD_CACHE_R2_ENDPOINT }}
+          access-key-id: ${{ secrets.BUILD_CACHE_R2_ACCESS_KEY_ID }}
+          secret-access-key: ${{ secrets.BUILD_CACHE_R2_SECRET_ACCESS_KEY }}
+
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: '. -> target'
+          cache-targets: false
           shared-key: pr-check-quick-panel-${{ matrix.runner }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Check the quick panel
-        run: cargo check -p quick-panel --locked
+        run: bash scripts/build-cache/mbx.sh --exec cargo check -p quick-panel --locked
 
   e2e:
     name: CLI E2E Tests
@@ -326,7 +335,6 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Start shared Engine MBX cache
-        if: runner.os != 'Windows'
         uses: ./.github/actions/engine-build-cache
         with:
           cache-key: e2e-macos
@@ -339,7 +347,7 @@ jobs:
         with:
           workspaces: '. -> target'
           shared-key: e2e-macos
-          cache-targets: ${{ runner.os == 'Windows' }}
+          cache-targets: false
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Build daemon
@@ -457,7 +465,7 @@ jobs:
           retention-days: 14
 
       - name: Retain MBX compiler evidence
-        if: always() && runner.os != 'Windows'
+        if: always()
         uses: actions/upload-artifact@v7
         with:
           name: mbx-e2e-macos

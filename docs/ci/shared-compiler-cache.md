@@ -33,3 +33,7 @@ macOS/Linux 不从 Actions 恢复 target。sidecar 无 R2 时按 ref 保存本�
 每次 Cargo 会话 JSON 上传为 `mbx-sidecar-*` 或 `mbx-linux-package-*`。实际复用须使用两个空 target 并检查 `hits`、`restored_output_files`；R2 验证还必须使用两个独立 CAS，消费者 `downloaded_bytes > 0`、`uploaded_bytes == 0`，远端及后台错误为零，最后运行恢复出的产物。
 
 本地 macOS 小型真实 Engine 内容哈希消费者已验证跨目录恢复和源码/feature/profile/RUSTFLAGS 分键，不能替代完整 daemon、Linux 容器或 Windows CI 验收。自动化脚本下载也计入首次调用耗时，不把安装成本排除后宣称整条发布流水线的收益。
+
+Windows 原生入口已通过 x64/arm64 空 target 恢复和产物执行。CI 配置和统计由 Engine 包装器加载；Node sidecar 脚本对 daemon 与 quick-panel 分别进入包装器，避免原生子进程绕过 shell cargo，也避免两次编译覆盖同一统计文件。自动化 pin 独立于产品 Engine pin。
+
+Warmup 仅调用 `build.yml` 的 `build_only: true`，复用正式编译参数并保留 staging/provenance，不进入签名、安装器或 GUI smoke，也不上传生产调试符号。默认 `build_only: false`，正式发布的签名与包校验策略不变。手动验证直接运行该编译入口，不调用缓存维护/删除流程。

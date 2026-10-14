@@ -65,6 +65,9 @@ jobs:
     with:
       platform: ${{ matrix.platform }}
       save_cache: true
+      build_only: true
+      run_acceptance: false
+      upload_symbols: false
     secrets: inherit
 
   warmup-test-app:
@@ -75,6 +78,9 @@ jobs:
       platform: 'windows-x86_64'
       build_mode: 'test'
       save_cache: true
+      build_only: true
+      run_acceptance: false
+      upload_symbols: false
     secrets: inherit
 
   warmup-pr-check-rust:

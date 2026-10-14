@@ -76,12 +76,23 @@ const exeSuffix = isWindows ? '.exe' : ''
 const profile = release ? 'release' : 'debug'
 
 // 1) Build the daemon binary for the requested target.
+// Native Windows child processes cannot execute the shell cargo entry from PATH.
+// Enter MBX once per build so daemon/helper sessions retain separate statistics.
+const runCargoBuild = args => {
+  const options = { cwd: repoRoot, stdio: 'inherit' }
+  if (process.env.UC_ENGINE_MBX_BIN) {
+    execFileSync('bash', [join(repoRoot, 'scripts/build-cache/mbx.sh'), '--exec', 'cargo', ...args], options)
+  } else {
+    execFileSync('cargo', args, options)
+  }
+}
+
 const buildArgs = ['build', '--locked', '-p', 'uc-daemon', '--bin', 'uniclipd']
 if (release) buildArgs.push('--release')
 if (target) buildArgs.push('--target', target)
 if (timings) buildArgs.push('--timings')
 console.log(`[sidecar] cargo ${buildArgs.join(' ')}`)
-execFileSync('cargo', buildArgs, { cwd: repoRoot, stdio: 'inherit' })
+runCargoBuild(buildArgs)
 
 // 2) Locate the compiled binary. With `--target` cargo nests the output under
 //    the triple; a native build (no `--target`) lands in target/<profile>/.
@@ -105,7 +116,7 @@ if (triple.includes('apple-darwin') || isWindows) {
   if (target) helperArgs.push('--target', target)
   if (timings) helperArgs.push('--timings')
   console.log(`[sidecar] cargo ${helperArgs.join(' ')}`)
-  execFileSync('cargo', helperArgs, { cwd: repoRoot, stdio: 'inherit' })
+  runCargoBuild(helperArgs)
   const helperBuilt = target
     ? join(repoRoot, 'target', triple, profile, `uniclip-quick-panel${exeSuffix}`)
     : join(repoRoot, 'target', profile, `uniclip-quick-panel${exeSuffix}`)

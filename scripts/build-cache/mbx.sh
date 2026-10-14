@@ -10,7 +10,5 @@ shift
 [[ "${1:-}" == -- ]] && shift
 [[ $# -gt 0 ]] || { echo 'mbx: missing command' >&2; exit 2; }
 root=$(bash "$(dirname "${BASH_SOURCE[0]}")/engine-tools.sh")
-# The repository Cargo entry loads CI credentials only in compiler processes.
-# shellcheck source=/dev/null
-source "$root/scripts/build-cache/env.sh"
-exec "$@"
+# One native command tree, including Node/Python descendants, uses the Engine owner.
+exec bash "$root/scripts/build-cache/mbx.sh" --exec "$@"

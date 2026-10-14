@@ -190,7 +190,6 @@ jobs:
         run: node scripts/ci/isolate-build-toolchain.mjs
 
       - name: Start shared Engine MBX cache
-        if: runner.os != 'Windows'
         uses: ./.github/actions/engine-build-cache
         with:
           cache-key: cli-${{ matrix.target }}
@@ -204,7 +203,7 @@ jobs:
         with:
           workspaces: ". -> target"
           shared-key: cli-${{ matrix.target }}
-          cache-targets: ${{ runner.os == 'Windows' }}
+          cache-targets: false
           # 只在 main 写缓存,tag/PR 只读。详见 build.yml 同名 step 的注释。
           save-if: ${{ inputs.save_cache || github.ref == 'refs/heads/main' }}
 
@@ -255,7 +254,7 @@ jobs:
           # musl static-link toolchain configured above (musl-gcc +
           # cmake/clang in the bookworm container, -mno-outline-atomics on
           # aarch64) builds it fully static.
-          cargo build --release -p uc-daemon --bin uniclipd ${{ matrix.args }} --timings
+          bash scripts/build-cache/mbx.sh --exec cargo build --release -p uc-daemon --bin uniclipd ${{ matrix.args }} --timings
 
       - name: Upload Sentry debug symbols
         # uniclipd embeds the backend Sentry DSN, so its crashes need these
@@ -315,7 +314,7 @@ jobs:
           retention-days: 3
 
       - name: Retain MBX compiler evidence
-        if: always() && runner.os != 'Windows'
+        if: always()
         uses: actions/upload-artifact@v7
         with:
           name: mbx-cli-${{ matrix.target }}

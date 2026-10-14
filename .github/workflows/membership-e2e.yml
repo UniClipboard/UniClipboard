@@ -74,7 +74,6 @@ jobs:
           toolchain: 1.95.0
 
       - name: Start shared Engine MBX cache
-        if: runner.os != 'Windows'
         uses: ./.github/actions/engine-build-cache
         with:
           cache-key: membership-${{ matrix.name }}
@@ -87,11 +86,11 @@ jobs:
         with:
           workspaces: '. -> target'
           shared-key: membership-e2e-${{ runner.os }}
-          cache-targets: ${{ runner.os == 'Windows' }}
+          cache-targets: false
           save-if: ${{ github.event_name == 'schedule' }}
 
       - name: Build daemon
-        run: cargo build -p uc-daemon --features uc-daemon/e2e-rendezvous
+        run: bash scripts/build-cache/mbx.sh --exec cargo build -p uc-daemon --features uc-daemon/e2e-rendezvous
 
       - name: Set up Go
         uses: actions/setup-go@v6
@@ -104,15 +103,15 @@ jobs:
         run: scripts/e2e/build-cli.sh
 
       - name: Verify fixed release preparation
-        run: cargo test --manifest-path tests/e2e/Cargo.toml --test release_assets
+        run: bash scripts/build-cache/mbx.sh --exec cargo test --manifest-path tests/e2e/Cargo.toml --test release_assets
 
       - name: Verify local invitation service contract
-        run: cargo test --manifest-path tests/e2e/Cargo.toml --test rendezvous_contract
+        run: bash scripts/build-cache/mbx.sh --exec cargo test --manifest-path tests/e2e/Cargo.toml --test rendezvous_contract
 
       - name: Prepare fixed legacy release
         shell: bash
         run: >-
-          cargo run --manifest-path tests/e2e/Cargo.toml
+          bash scripts/build-cache/mbx.sh --exec cargo run --manifest-path tests/e2e/Cargo.toml
           --bin prepare-legacy-release --
           --output "$RUNNER_TEMP/legacy-release"
 
@@ -142,7 +141,7 @@ jobs:
             ~/AppData/Local/app.uniclipboard.desktop-e2e-membership-*/**
 
       - name: Retain MBX compiler evidence
-        if: always() && runner.os != 'Windows'
+        if: always()
         uses: actions/upload-artifact@v7
         with:
           name: mbx-membership-${{ matrix.name }}

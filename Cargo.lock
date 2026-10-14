@@ -8680,6 +8680,7 @@ dependencies = [
  "uc-app-paths",
  "uc-daemon-client",
  "uc-daemon-contract",
+ "uc-observability",
  "windows 0.61.3",
  "wiremock",
 ]

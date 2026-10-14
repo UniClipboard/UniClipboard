@@ -101,6 +101,7 @@ fn detect_role() -> &'static str {
             "gui-host" => "gui-host",
             "daemon" => "daemon",
             "cli" => "cli",
+            "quick-panel" => "quick-panel",
             _ => "unknown",
         };
     }
@@ -113,6 +114,8 @@ fn detect_role() -> &'static str {
     match stem {
         "uniclipboard" | "UniClipboard" => "gui-host",
         "uniclip" => "cli",
+        // The native quick panel helper (`apps/quick-panel`), supervised by the GUI.
+        "uniclip-quick-panel" => "quick-panel",
         _ => "unknown",
     }
 }
@@ -127,6 +130,7 @@ fn detect_role() -> &'static str {
 /// - `gui-host` → `uniclipboard-gui` → `uniclipboard-gui.json.<date>`
 /// - `daemon`   → `uniclipboard-daemon`
 /// - `cli`      → `uniclipboard-cli`
+/// - `quick-panel` → `uniclipboard-quick-panel`
 /// - `unknown`  → `uniclipboard` (legacy base name; only lib tests / edge
 ///   processes land here and never run concurrently with a real process).
 ///
@@ -138,6 +142,7 @@ pub fn role_log_file_stem() -> &'static str {
         "gui-host" => "uniclipboard-gui",
         "daemon" => "uniclipboard-daemon",
         "cli" => "uniclipboard-cli",
+        "quick-panel" => "uniclipboard-quick-panel",
         _ => "uniclipboard",
     }
 }
@@ -185,6 +190,7 @@ mod tests {
             ("gui-host", "uniclipboard-gui"),
             ("daemon", "uniclipboard-daemon"),
             ("cli", "uniclipboard-cli"),
+            ("quick-panel", "uniclipboard-quick-panel"),
         ] {
             std::env::set_var("UC_HOST_ROLE", role);
             assert_eq!(role_log_file_stem(), expected, "role {role}");

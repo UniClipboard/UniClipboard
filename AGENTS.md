@@ -108,7 +108,7 @@ source of truth is `uc_app_paths::app_log_dir()`):
 - Linux: `~/.local/state/app.uniclipboard.desktop[-<profile>]/logs/`
 - Windows: `%LOCALAPPDATA%\\app.uniclipboard.desktop[-<profile>]\\logs\\`
 
-Per-role files (`uniclipboard-{gui,daemon,cli}.json.<date>`), daily rotation,
+Per-role files (`uniclipboard-{gui,daemon,cli,quick-panel}.json.<date>`), daily rotation,
 7-day retention (older files pruned on start). Portable builds keep logs under
 `<exe>/data/logs/`.
 

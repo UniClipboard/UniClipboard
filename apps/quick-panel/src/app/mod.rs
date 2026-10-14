@@ -16,11 +16,35 @@ use quick_panel_core::ports::{HistoryService, HostLink};
 use crate::adapters::daemon::DaemonHistory;
 use crate::{adapters, platform};
 
-pub fn run() -> anyhow::Result<()> {
-    tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::WARN)
+/// Warnings go to standard error, which the supervising GUI forwards to its own log. Standard
+/// output carries the host protocol, so it is never used for logs. The same events at the
+/// profile's level also go to the per-role log file (`uniclipboard-quick-panel.json.<date>`), so
+/// placement and surface diagnostics survive the session. The guard must outlive the process work.
+fn init_logging() -> Option<uc_observability::WorkerGuard> {
+    use tracing_subscriber::prelude::*;
+    let stderr = tracing_subscriber::fmt::layer()
         .with_writer(std::io::stderr)
-        .init();
+        .with_filter(tracing_subscriber::filter::LevelFilter::WARN);
+    let file = uc_app_paths::app_log_dir().and_then(|dir| {
+        uc_observability::build_json_layer(&dir, &uc_observability::LogProfile::from_env()).ok()
+    });
+    match file {
+        Some((layer, guard)) => {
+            let _ = tracing_subscriber::registry()
+                .with(stderr)
+                .with(layer)
+                .try_init();
+            Some(guard)
+        }
+        None => {
+            let _ = tracing_subscriber::registry().with(stderr).try_init();
+            None
+        }
+    }
+}
+
+pub fn run() -> anyhow::Result<()> {
+    let _log_guard = init_logging();
     let host = Arc::new(adapters::host::SupervisorLink::default());
     if std::env::args().any(|argument| argument == lifecycle::EXIT_WHEN_STDIN_CLOSES) {
         host.mark_supervised();

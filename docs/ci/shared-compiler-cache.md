@@ -2,15 +2,15 @@
 
 ## 入口与所有权
 
-macOS/Linux sidecar、musl CLI daemon、Rust PR/E2E、coverage、warmup 和 Linux 独立打包使用 Engine 的 MBX 1.18.0 实现。`scripts/build-cache/engine-tools.sh` 从 Engine 自动化提交 `2f9afc9956b0cda82e65c912f0c0f6dc6aa51256` 获取五个缓存脚本，逐文件校验 SHA-256。产品依赖的 Engine rev 仍由 Cargo.toml/Cargo.lock 管理；自动化 pin 独立维护，避免升级业务依赖时偷偷改变缓存实现。`.github/actions/engine-build-cache` 只负责共同的 CI 装配和无凭据 CAS 存储，没有复制另一套 MBX/R2 策略。
+macOS/Linux/Windows sidecar、musl CLI daemon、Rust PR/E2E、coverage、warmup 和 Linux 独立打包使用 Engine 的 MBX 1.18.0 实现。`scripts/build-cache/engine-tools.sh` 从 Engine 自动化提交 `a8e21a0505159e7b71630b2178746d72f985ac76` 获取五个缓存脚本，逐文件校验 SHA-256。产品依赖的 Engine rev 仍由 Cargo.toml/Cargo.lock 管理；自动化 pin 独立维护，避免升级业务依赖时偷偷改变缓存实现。`.github/actions/engine-build-cache` 只负责共同的 CI 装配和无凭据 CAS 存储，没有复制另一套 MBX/R2 策略。
 
 本地 `bun mbx:exec -- <command>` 也使用该入口。只在 Cargo 子进程移除冲突的 sccache wrapper，关闭增量编译、target views 和 target seed，不修改全局 Cargo 配置或共享 target。
 
-Windows 继续原有 sccache/R2 路径，和 MBX 不叠用。上游 1.18.0 已提供 Windows x64/arm64 包，但 Engine 固定入口没有 Windows 支持；需要单独完成原生入口与主机验证，不能用 Unix 包装脚本假装覆盖 Windows。
+Windows 使用校验后的原生 MBX x64/arm64 包和私有 cargo.exe，不叠加 sccache。原生双架构 E2E 已验证编译、恢复产物执行及关键输入变化；完整产品工作流的结论应以对应候选 SHA 的 CI 工件为准。
 
 ## 后端与权限
 
-复用私有桶 `uniclipboard-build-cache`，MBX namespace 为 `engine/mbx`，对象位于 `engine/mbx/v1/`。Windows 继续 `desktop/sccache/v1/windows-*`，旧对象不删除，也不能转换成 MBX 命中。
+复用私有桶 `uniclipboard-build-cache`，MBX namespace 为 `engine/mbx`，对象位于 `engine/mbx/v1/`。历史 Windows `desktop/sccache/v1/windows-*` 对象不删除，也不能转换成 MBX 命中。
 
 使用现有 `desktop-build-cache-reader` / `desktop-build-cache-writer` environments 内的三个 secret 名称：
 

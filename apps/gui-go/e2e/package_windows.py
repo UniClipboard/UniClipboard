@@ -222,7 +222,6 @@ def stage_prepare(args, out):
     shutil.copy2(gen / 'uninstall.exe', to_sign / 'uninstall.exe')
     (to_sign / 'to-sign-manifest.json').write_text(json.dumps({n: {'sha256': sha256(to_sign / n), 'bytes': (to_sign / n).stat().st_size} for n in STAGE_FILES}, indent=2) + '\n')
     (out / 'stage.json').write_text(json.dumps(st, indent=2) + '\n')
-    shutil.rmtree(tools)
     print('prepared', *STAGE_FILES, 'in', to_sign)
 
 

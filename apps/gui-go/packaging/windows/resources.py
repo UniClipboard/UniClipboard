@@ -15,6 +15,18 @@ def wails_version():
     return re.search(r'github.com/wailsapp/wails/v3 (v[^\s]+)', (GUI / 'go.mod').read_text()).group(1)
 
 
+def numeric_file_version(version):
+    """Return the four-part numeric version Windows resources and NSIS require (X.X.X.0).
+
+    The prerelease and build metadata of a SemVer string cannot be expressed there; they stay in the string-valued
+    ProductVersion. Dropping the prerelease keeps a prerelease from sorting above its final release.
+    """
+    m = re.fullmatch(r'(\d+)\.(\d+)\.(\d+)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?', version)
+    if not m or any(int(part) > 65535 for part in m.groups()):
+        raise ValueError(f'{version!r} is not a SemVer version whose numeric parts fit a Windows file version')
+    return '.'.join(m.groups()) + '.0'
+
+
 def verify_app_icon(executable):
     """Check the linked PE resources against every image in the canonical ICO."""
     data = Path(executable).read_bytes()
@@ -72,9 +84,9 @@ def gui_resources(arch, version, identifier, product):
         template = (module / 'internal/commands/updatable_build_assets/windows/wails.exe.manifest.tmpl').read_text()
         manifest = work / 'app.manifest'
         manifest.write_text(template.replace('{{.ProductIdentifier}}', identifier)
-                           .replace('{{.ProductVersion}}', version + '.0'))
+                           .replace('{{.ProductVersion}}', numeric_file_version(version)))
         info = work / 'info.json'
-        info.write_text(json.dumps({'fixed': {'file_version': version}, 'info': {'0000': {
+        info.write_text(json.dumps({'fixed': {'file_version': numeric_file_version(version)}, 'info': {'0000': {
             'ProductVersion': version, 'CompanyName': product, 'FileDescription': product,
             'LegalCopyright': product, 'ProductName': product, 'Comments': ''}}}))
         try:

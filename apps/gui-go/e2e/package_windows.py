@@ -47,7 +47,7 @@ sys.path.insert(0, str(ROOT / 'apps/gui-go/packaging/windows'))
 from build_windows import require_ui_platform  # noqa: E402
 from sign import check_signed_matches  # noqa: E402  (the signing owner also owns the signed-equals-submitted check)
 from portable import write_portable_archive  # noqa: E402
-from resources import gui_resources, wails_version  # noqa: E402
+from resources import gui_resources, numeric_file_version, wails_version  # noqa: E402
 GUI = ROOT / 'apps/gui-go'
 ARCH_NAMES = {'amd64': 'x64', 'arm64': 'arm64'}
 
@@ -141,7 +141,7 @@ STAGE_FILES = ('UniClipboard.exe', 'uniclipd.exe', 'uniclip-quick-panel.exe', 'u
 
 
 def nsis_defines(st, plugins, outfile, extra=()):
-    return ['-V2', '-WX', *extra, f'-DPRODUCTNAME={st["product"]}', f'-DVERSION={st["version"]}', f'-DVERSIONWITHBUILD={st["version"]}.0',
+    return ['-V2', '-WX', *extra, f'-DPRODUCTNAME={st["product"]}', f'-DVERSION={st["version"]}', f'-DVERSIONWITHBUILD={numeric_file_version(st["version"])}',
             f'-DMANUFACTURER={st["manufacturer"]}', f'-DBUNDLEID={st["ident"]}', f'-DMAINBINARYNAME={st["product"]}.exe',
             f'-DICON={ROOT / "apps/gui-go/icons/icon.ico"}', f'-DOUTFILE={outfile}', f'-DHOOKS={ROOT / "apps/gui-go/windows/installer-hooks.nsh"}',
             f'-DPLUGINDIR={plugins}']

@@ -144,6 +144,9 @@ jobs:
     if: inputs.platform != 'updater-signatures'
     runs-on: ubuntu-latest
     outputs:
+      # The one commit every build job below checks out. A branch passed in `inputs.branch` is resolved here, once, before any build starts;
+      # release.yml already passes an exact SHA, which resolves to itself.
+      source_sha: ${{ steps.source.outputs.sha }}
       matrix: ${{ steps.set-matrix.outputs.matrix }}
       cli-matrix: ${{ steps.select-cli-targets.outputs.matrix }}
       macos-matrix: ${{ steps.select-macos-targets.outputs.matrix }}
@@ -154,7 +157,12 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
+          ref: ${{ inputs.branch || github.sha }}
           persist-credentials: false
+
+      - name: Pin the source commit
+        id: source
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Select Windows runner
         id: select-windows-runner
@@ -288,7 +296,7 @@ jobs:
 
       - uses: actions/checkout@v6
         with:
-          ref: ${{ inputs.branch || github.sha }}
+          ref: ${{ needs.setup-matrix.outputs.source_sha }}
           submodules: recursive
           persist-credentials: false
 
@@ -516,7 +524,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ inputs.branch || github.sha }}
+          ref: ${{ needs.setup-matrix.outputs.source_sha }}
           persist-credentials: false
 
       - name: setup node
@@ -727,7 +735,7 @@ jobs:
       contents: read
     uses: ./.github/workflows/package-linux-gui.yml
     with:
-      ref: ${{ inputs.branch || github.sha }}
+      ref: ${{ needs.setup-matrix.outputs.source_sha }}
       run_acceptance: ${{ inputs.run_acceptance != false }}
 
   smoke-macos-gui:
@@ -743,7 +751,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ inputs.branch || github.sha }}
+          ref: ${{ needs.setup-matrix.outputs.source_sha }}
           persist-credentials: false
 
       - name: Configure package build mode
@@ -828,7 +836,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ inputs.branch || github.sha }}
+          ref: ${{ needs.setup-matrix.outputs.source_sha }}
           persist-credentials: false
 
       - name: Decide Windows signing mode
@@ -1339,7 +1347,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ inputs.branch || github.sha }}
+          ref: ${{ needs.setup-matrix.outputs.source_sha }}
           persist-credentials: false
 
       - name: Configure package build mode
@@ -1455,7 +1463,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ inputs.branch || github.sha }}
+          ref: ${{ needs.setup-matrix.outputs.source_sha }}
           persist-credentials: false
 
       - name: setup node

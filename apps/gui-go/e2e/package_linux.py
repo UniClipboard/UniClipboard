@@ -25,6 +25,7 @@ What this proves: the artifacts build. It does NOT prove they install or run on 
 """
 import argparse
 import hashlib
+import http.client
 import json
 import os
 import platform
@@ -278,21 +279,30 @@ DOWNLOAD_TIMEOUT = 60  # seconds per socket operation, so a stalled connection f
 
 
 def download(url, part):
-    """Fetch `url` into `part`, retrying transient failures (5xx, 429, connection errors, timeouts) with a growing delay.
-    Other HTTP statuses (404, 403, ...) are not retried and fail at once; 404 means the pin points at nothing, and 403 is not
-    classified further (it may also be access control or rate limiting). The same URL is retried: there is no other source."""
-    for attempt in range(1, DOWNLOAD_ATTEMPTS + 1):
-        try:
-            with urllib.request.urlopen(url, timeout=DOWNLOAD_TIMEOUT) as response, open(part, 'wb') as out:
-                shutil.copyfileobj(response, out)
-            return
-        except OSError as e:
-            transient = not isinstance(e, urllib.error.HTTPError) or e.code >= 500 or e.code == 429
-            if not transient or attempt == DOWNLOAD_ATTEMPTS:
-                raise
-            delay = 10 * attempt
-            print(f'{url}: attempt {attempt}/{DOWNLOAD_ATTEMPTS} failed ({e}); retrying in {delay}s', file=sys.stderr, flush=True)
-            time.sleep(delay)
+    """Fetch `url` into `part`, retrying transient failures with a growing delay: 5xx, 429, connection errors, timeouts and truncated
+    or dropped responses. Other HTTP statuses (404, 403, ...) are not retried and fail at once; 404 means the pin points at nothing,
+    and 403 is not classified further (it may also be access control or rate limiting). Local file errors (the partial file cannot be
+    opened or written) cannot recover and are never retried. The same URL is retried: there is no other source."""
+    with open(part, 'wb') as out:
+        for attempt in range(1, DOWNLOAD_ATTEMPTS + 1):
+            try:
+                with urllib.request.urlopen(url, timeout=DOWNLOAD_TIMEOUT) as response:
+                    out.seek(0)
+                    out.truncate()
+                    shutil.copyfileobj(response, out)
+                    if response.length:  # read() returns short at EOF without raising; bytes still owed means a dropped connection
+                        raise http.client.IncompleteRead(b'', response.length)
+                return
+            except (OSError, http.client.HTTPException) as e:
+                if isinstance(e, urllib.error.HTTPError):
+                    transient = e.code >= 500 or e.code == 429
+                else:
+                    transient = isinstance(e, (urllib.error.URLError, TimeoutError, ConnectionError, http.client.HTTPException))
+                if not transient or attempt == DOWNLOAD_ATTEMPTS:
+                    raise
+                delay = 10 * attempt
+                print(f'{url}: attempt {attempt}/{DOWNLOAD_ATTEMPTS} failed ({e!r}); retrying in {delay}s', file=sys.stderr, flush=True)
+                time.sleep(delay)
 
 
 def fetch_verified(url, sha, dest, machine=None):
@@ -313,7 +323,7 @@ def fetch_verified(url, sha, dest, machine=None):
         part = dest.with_name(dest.name + '.partial')
         try:
             download(url, part)
-        except OSError as e:
+        except (OSError, http.client.HTTPException) as e:
             sys.exit(f'{url}: cannot download the pinned input ({e}); nothing is packaged without it')
         why = problem(part)
         if why:

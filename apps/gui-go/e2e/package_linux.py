@@ -279,8 +279,8 @@ DOWNLOAD_TIMEOUT = 60  # seconds per socket operation, so a stalled connection f
 
 def download(url, part):
     """Fetch `url` into `part`, retrying transient failures (5xx, 429, connection errors, timeouts) with a growing delay.
-    Any other HTTP status (404, 403, ...) means the pin itself is wrong and fails at once. The same URL is retried: there is no
-    other source."""
+    Other HTTP statuses (404, 403, ...) are not retried and fail at once; 404 means the pin points at nothing, and 403 is not
+    classified further (it may also be access control or rate limiting). The same URL is retried: there is no other source."""
     for attempt in range(1, DOWNLOAD_ATTEMPTS + 1):
         try:
             with urllib.request.urlopen(url, timeout=DOWNLOAD_TIMEOUT) as response, open(part, 'wb') as out:

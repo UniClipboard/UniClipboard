@@ -1,7 +1,6 @@
-// Linux UI-kit E2E flows driven from e2e-driver.ts: the first-run telemetry consent chain and the
-// kit Settings page, against the real daemon of an isolated synthetic profile. Every step is
-// reported through `ctx.record`; `shot:<name>` steps ask the orchestrator (e2e/linux_kit_ui_run.py)
-// for a screenshot. Linux skin only (it queries the `adw-` classes).
+// Linux UI-kit E2E flows driven from e2e-driver.ts: the kit Settings page, against the real daemon
+// of an isolated synthetic profile. Every step is reported through `ctx.record`; `shot:<name>` steps
+// ask the orchestrator (e2e/linux_kit_ui_run.py) for a screenshot. Linux skin only (it queries the `adw-` classes).
 import { Call } from '@wailsio/runtime'
 import { getSettings } from '@/api/daemon/settings'
 import { SETTINGS_CATEGORIES } from '@/components/setting/settings-config'
@@ -20,17 +19,10 @@ export interface FlowContext {
   reachMainLayout: () => Promise<void>
 }
 
-// Same key as `useTelemetryNotice` (not exported there).
-const TELEMETRY_NOTICE_KEY = 'uc-telemetry-notice-seen'
-const NOTICE = 'settings.sections.general.telemetry.notice'
 const USAGE_LABEL = 'settings.sections.general.telemetry.usageAnalytics.label'
 const SETUP_PASSPHRASE = 'gui-go-synthetic-passphrase'
 
 const t = (key: string) => i18n.t(key)
-const telemetryDialog = () =>
-  Array.from(document.querySelectorAll<HTMLElement>('[role="alertdialog"]')).find(dialog =>
-    dialog.textContent?.includes(t(`${NOTICE}.title`))
-  ) ?? null
 const telemetryFields = async () => {
   const { general } = await getSettings()
   return {
@@ -49,7 +41,7 @@ async function createSpaceInGui(ctx: FlowContext) {
   const create = await ctx.waitFor('setup entry', () => ctx.$('[data-testid="setup-entry-create"]'))
   create.click()
   await ctx.waitFor('device form', () => ctx.$('#device-name'))
-  ctx.fill('#device-name', 'consent-fixture')
+  ctx.fill('#device-name', 'settings-fixture')
   ctx.fill('#pass1', SETUP_PASSPHRASE)
   ctx.fill('#pass2', SETUP_PASSPHRASE)
   await ctx.sleep(200)
@@ -60,193 +52,6 @@ async function createSpaceInGui(ctx: FlowContext) {
   )
   ctx.$('[data-testid="setup-complete-later"]')?.click()
   await ctx.waitFor('initialised main layout', ctx.mainLayout, 120000)
-}
-
-/**
- * Stage `telemetry-consent:<disable|accept>` on a fresh profile: nothing auto-accepts the notice.
- * Opens it, checks its kit styling and copy, that Escape and an overlay click keep it open, then
- * answers it the way a user does and reads the outcome back from the daemon and localStorage.
- */
-export async function runTelemetryConsentScenario(ctx: FlowContext, mode: 'disable' | 'accept') {
-  const { record, waitFor, sleep } = ctx
-  const pauseMs = (
-    JSON.parse(String(await Call.ByName('main.EvidenceService.Secret'))) as {
-      shotPauseMs: number
-    }
-  ).shotPauseMs
-  await createSpaceInGui(ctx)
-  const before = await telemetryFields()
-  const seenBefore = localStorage.getItem(TELEMETRY_NOTICE_KEY)
-  const dialog = await waitFor('telemetry notice', telemetryDialog, 60000)
-  await sleep(600) // let the open transition settle before measuring
-  const popup = dialog.closest<HTMLElement>('.adw-alert') ?? dialog
-  const buttons = Array.from(
-    dialog.querySelectorAll<HTMLButtonElement>('.adw-alert-actions > button')
-  )
-  const labels = buttons.map(b => b.textContent?.trim())
-  await record('consent-dialog-shown', true, {
-    settingsBefore: before,
-    noticeKeyBefore: seenBefore,
-    role: dialog.getAttribute('role'),
-  })
-  const scope = dialog.closest<HTMLElement>('[data-ui-skin="linux"]')
-  const style = getComputedStyle(popup)
-  await record(
-    'consent-kit-styling',
-    !!scope &&
-      popup.classList.contains('adw-alert') &&
-      !!dialog.closest('.adw-theme') &&
-      style.backgroundColor !== 'rgba(0, 0, 0, 0)',
-    {
-      insideKitRoot: !!scope,
-      insideAdwTheme: !!dialog.closest('.adw-theme'),
-      popupClass: popup.className,
-      parentChain: Array.from({ length: 4 }, (_, i) => {
-        let el: HTMLElement | null = popup
-        for (let n = 0; n <= i; n++) el = el?.parentElement ?? null
-        return el ? `${el.tagName.toLowerCase()}.${el.className}` : null
-      }),
-      backdropPresent: !!ctx.$('.adw-alert-backdrop'),
-      background: style.backgroundColor,
-      borderRadius: style.borderRadius,
-      fontFamily: style.fontFamily.slice(0, 60),
-      buttonClasses: buttons.map(b => b.className),
-    }
-  )
-  const title = dialog.querySelector('.adw-alert-title')?.textContent
-  const body = dialog.querySelector('.adw-alert-text')?.textContent
-  await record(
-    'consent-copy',
-    title === t(`${NOTICE}.title`) &&
-      body === t(`${NOTICE}.body`) &&
-      labels.length === 2 &&
-      labels[0] === t(`${NOTICE}.optOut`) &&
-      labels[1] === t(`${NOTICE}.accept`),
-    {
-      title,
-      bodyLength: body?.length,
-      buttons: labels,
-      focused: (document.activeElement as HTMLElement | null)?.textContent?.trim(),
-    }
-  )
-  // Real WebKitGTK focus and stacking: the default focus is Disable (a consent never defaults to OK), and the
-  // dialog (not a toast or the page) is what a pointer would hit at its centre and at both buttons.
-  const active = document.activeElement as HTMLElement | null
-  await record('consent-focus-disable', !!active && active === buttons[0], {
-    activeElement: active
-      ? `${active.tagName.toLowerCase()}.${active.className} "${active.textContent?.trim()}"`
-      : null,
-    insideDialog: !!active && dialog.contains(active),
-  })
-  const hit = (el: Element) => {
-    const r = el.getBoundingClientRect()
-    const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)
-    return {
-      inside: !!top && dialog.contains(top),
-      top: top ? `${top.tagName.toLowerCase()}.${top.className}` : null,
-    }
-  }
-  const hits = { popup: hit(popup), disable: hit(buttons[0]), ok: hit(buttons[1]) }
-  const zIndexChain: string[] = []
-  for (let el: HTMLElement | null = popup; el; el = el.parentElement) {
-    const z = getComputedStyle(el).zIndex
-    if (z !== 'auto')
-      zIndexChain.push(`${el.tagName.toLowerCase()}.${el.className.toString().slice(0, 30)}=${z}`)
-  }
-  const toaster = ctx.$('[data-sonner-toaster]')
-  await record('consent-stacking', hits.popup.inside && hits.disable.inside && hits.ok.inside, {
-    hits,
-    zIndexChain,
-    toasterPresent: !!toaster,
-    toasterZ: toaster ? getComputedStyle(toaster).zIndex : null,
-  })
-  await record('shot:consent-dialog', true)
-  await sleep(pauseMs)
-
-  // Escape and an outside click must not dismiss a consent.
-  const target = document.activeElement ?? document.body
-  for (const type of ['keydown', 'keyup'] as const) {
-    target.dispatchEvent(
-      new KeyboardEvent(type, {
-        key: 'Escape',
-        code: 'Escape',
-        bubbles: true,
-        cancelable: true,
-      })
-    )
-  }
-  await sleep(800)
-  await record('consent-escape-keeps', dialog.isConnected && !!telemetryDialog(), {
-    stillOpen: dialog.isConnected,
-  })
-  const backdrop = ctx.$('.adw-alert-backdrop')
-  for (const type of ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click']) {
-    backdrop?.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, button: 0 }))
-  }
-  await sleep(800)
-  await record('consent-overlay-keeps', !!backdrop && dialog.isConnected && !!telemetryDialog(), {
-    backdropFound: !!backdrop,
-  })
-
-  const [disable, accept] = buttons
-  if (mode === 'disable') {
-    disable.click()
-    await waitFor('notice closed', () => !dialog.isConnected, 30000)
-    const closedAt = Date.now()
-    const persisted = await daemonSettle(ctx, async () => {
-      const now = await telemetryFields()
-      return now.telemetryEnabled === false && now.usageAnalyticsEnabled === false
-    })
-    const after = await telemetryFields()
-    await record('consent-disable-closes-and-persists', persisted && !telemetryDialog(), {
-      readBackFromDaemon: after,
-      before,
-      closedMsBeforeReadBack: Date.now() - closedAt,
-    })
-  } else {
-    accept.click()
-    await waitFor('notice closed', () => !dialog.isConnected, 30000)
-    await sleep(1500) // a stray write would have landed by now
-    const after = await telemetryFields()
-    await record(
-      'consent-accept-closes-and-keeps-settings',
-      !telemetryDialog() &&
-        after.telemetryEnabled === before.telemetryEnabled &&
-        after.usageAnalyticsEnabled === before.usageAnalyticsEnabled,
-      { before, readBackFromDaemon: after }
-    )
-  }
-  await record('consent-key-set', localStorage.getItem(TELEMETRY_NOTICE_KEY) === '1', {
-    key: TELEMETRY_NOTICE_KEY,
-    value: localStorage.getItem(TELEMETRY_NOTICE_KEY),
-  })
-  await record('shot:consent-closed', true)
-  await sleep(pauseMs)
-  await record('consent-complete', true)
-  await ctx.control('exit')
-}
-
-/** Stage `telemetry-restart:<mode>`: a full quit later, the notice stays away and the choice survived. */
-export async function runTelemetryRestartScenario(ctx: FlowContext, mode: 'disable' | 'accept') {
-  await ctx.reachMainLayout()
-  await ctx.sleep(8000) // the notice mounts with the authenticated routes: anything later than this is not "on launch"
-  const fields = await telemetryFields()
-  const expected = mode === 'disable' ? false : true
-  await ctx.record(
-    'consent-no-reappear',
-    !telemetryDialog() && localStorage.getItem(TELEMETRY_NOTICE_KEY) === '1',
-    {
-      dialogPresent: !!telemetryDialog(),
-      key: localStorage.getItem(TELEMETRY_NOTICE_KEY),
-      path: location.pathname,
-    }
-  )
-  await ctx.record(
-    'consent-settings-after-restart',
-    fields.telemetryEnabled === expected && fields.usageAnalyticsEnabled === expected,
-    { mode, fields }
-  )
-  await ctx.control('exit')
 }
 
 // ---- Settings ----
@@ -363,16 +168,9 @@ export async function runSettingsKitScenario(ctx: FlowContext) {
     themes: Array<'light' | 'dark'>
     shotPauseMs: number
   }
+  await createSpaceInGui(ctx)
   await ctx.reachMainLayout()
-  const blocking = telemetryDialog()
-  if (blocking) {
-    Array.from(blocking.querySelectorAll<HTMLButtonElement>('.adw-alert-actions > button'))
-      .at(-1)!
-      .click()
-    await waitFor('dialog dismissed', () => !blocking.isConnected)
-  }
   await record('settings-no-blocking-dialog', !document.querySelector('[role="alertdialog"]'), {
-    dismissedByClick: !!blocking,
     remaining: document.querySelectorAll('[role="alertdialog"]').length,
   })
 

@@ -86,16 +86,6 @@ async function main() {
   const state = await snapshot()
   assert.equal(state.main, true)
   assert.equal(state.unlocked, true)
-  if (scenario === 'setup') {
-    // The telemetry notice is not guaranteed on every first run (the first Windows run showed the
-    // main window without it), so dismiss it when it appears and record whether it did.
-    const consent = page.getByRole('alertdialog').filter({ hasText: state.telemetryTitle })
-    state.telemetryNoticeShown = await consent.waitFor({ state: 'visible', timeout: 8000 }).then(() => true, () => false)
-    if (state.telemetryNoticeShown) {
-      await consent.getByRole('button', { name: state.telemetryOptOut, exact: true }).click()
-      await consent.waitFor({ state: 'hidden' })
-    }
-  }
   await shot(`${scenario}-main`)
   return state
 }

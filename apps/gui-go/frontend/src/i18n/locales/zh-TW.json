@@ -355,12 +355,6 @@
           "usageAnalytics": {
             "label": "發送使用情況分析",
             "description": "發送匿名功能使用統計，用於改進產品，不包含剪貼簿內容。"
-          },
-          "notice": {
-            "title": "幫助改進 UniClipboard",
-            "body": "UniClipboard 會收集匿名診斷與使用資料以幫助改進應用程式。您的剪貼簿內容絕不會被收集或傳輸。您可以隨時在 設定 > 通用 > 隱私 中分別更改這些選項。",
-            "accept": "好的",
-            "optOut": "關閉"
           }
         },
         "logsDirectory": {

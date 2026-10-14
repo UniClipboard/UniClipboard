@@ -356,12 +356,6 @@
           "usageAnalytics": {
             "label": "Enviar dados de uso",
             "description": "Envia estatísticas anônimas de uso dos recursos para melhorar o produto. O conteúdo da área de transferência nunca é coletado."
-          },
-          "notice": {
-            "title": "Ajude a melhorar o UniClipboard",
-            "body": "O UniClipboard coleta diagnósticos e dados de uso anônimos para ajudar a melhorar o app. O conteúdo da sua área de transferência nunca é coletado nem transmitido. Você pode alterar essas escolhas quando quiser em Configurações > Geral > Privacidade.",
-            "accept": "OK",
-            "optOut": "Desativar"
           }
         },
         "logsDirectory": {

@@ -355,12 +355,6 @@
           "usageAnalytics": {
             "label": "Send usage analytics",
             "description": "Send anonymous feature usage statistics to improve the product. Clipboard content is never collected."
-          },
-          "notice": {
-            "title": "Help improve UniClipboard",
-            "body": "UniClipboard collects anonymous diagnostics and usage data to help improve the app. Your clipboard content is never collected or transmitted. You can change these choices anytime in Settings > General > Privacy.",
-            "accept": "OK",
-            "optOut": "Disable"
           }
         },
         "logsDirectory": {

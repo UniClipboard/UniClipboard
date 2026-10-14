@@ -2,6 +2,13 @@
 
 本文档说明如何使用项目的版本管理和发布系统。
 
+准备发布时，手动触发 `prepare-release.yml`。精确版本输入接受 `1.2.0-alpha.3` 或
+`v1.2.0-alpha.3`，只允许一个小写 `v` 前缀；留空则使用既有 bump/channel 规则。
+工作流在创建分支前通过版本脚本的 dry-run 校验输入，输出不带 `v` 的版本号。
+分支为 `release/v1.2.0-alpha.3`，PR 标题为 `release: v1.2.0-alpha.3`，合并后生成
+`v1.2.0-alpha.3` tag。重复前缀、空白、数字前导零及不符合现有版本格式的输入会失败。
+本地 `bump-version.js --to` 仍使用不带 `v` 的版本号。
+
 > **当前状态：** 标准流程是手动 `prepare-release` → release PR → 合并 → `tag-on-merge` 推送版本 tag → `release.yml`。`release.yml` 现在在对外写入前执行生产签名前提、固定源提交、版本一致性与资产门禁；缺少生产 Windows 签名后端时它失败关闭。Go/Wails 宿主的流水线、门禁和离线验收见 [`docs/architecture/gui-go-release-pipeline.md`](architecture/gui-go-release-pipeline.md)。下文关于安装包、签名与渠道的部分仍是旧流水线的设计记录，以前述文档为准。版本号脚本仍然可用。
 
 ## 版本管理脚本

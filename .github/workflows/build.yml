@@ -474,7 +474,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: mbx-sidecar-${{ matrix.target }}
+          name: mbx-sidecar-${{ matrix.target }}${{ steps.build-mode.outputs.suffix }}
           path: ${{ runner.temp }}/mbx-evidence/
           if-no-files-found: ignore
 

@@ -23,6 +23,10 @@ pub struct PreviewWindow {
     chrome_height: Option<f64>,
     placement: Option<PreviewPlacement>,
     shown: bool,
+    /// Whether the user can see the window. A text preview stays transparent, though drawing,
+    /// until its content is loaded, measured and placed, so that no half-laid-out frame shows.
+    revealed: bool,
+    reveal: Option<Task<()>>,
     image_view: Option<Entity<image_preview::ImagePreview>>,
 }
 
@@ -69,9 +73,14 @@ impl PreviewWindow {
             }
             if changed {
                 this.generation += 1;
-                // Reuse the last measured size for the first frame after reopening.
-                // Hidden native windows do not paint, so waiting for a fresh
-                // measurement before showing them would deadlock the preview.
+                if !this.snapshot.is_image() {
+                    // The old measurements describe the old content. Stay transparent until the
+                    // new content has been measured and placed. The window stays ordered in,
+                    // because a hidden native window does not paint and could not be measured.
+                    this.content_height = None;
+                    this.chrome_height = None;
+                    this.conceal(window, cx);
+                }
             }
             this.apply_layout(window, cx);
             cx.notify();
@@ -106,6 +115,8 @@ impl PreviewWindow {
             chrome_height: None,
             placement: None,
             shown: false,
+            revealed: false,
+            reveal: None,
             image_view,
         }
     }
@@ -148,6 +159,34 @@ impl PreviewWindow {
         self.apply_layout(window, cx);
     }
 
+    fn conceal(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.reveal = None;
+        if self.revealed {
+            self.revealed = false;
+            if platform::set_opacity(window, false, cx).is_err() {
+                tracing::warn!("Could not hide the preview while it updates");
+            }
+        }
+    }
+
+    /// Shows the window once the frame for the current placement has had time to be drawn.
+    fn schedule_reveal(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.revealed || self.reveal.is_some() {
+            return;
+        }
+        self.reveal = Some(cx.spawn_in(window, async move |this, cx| {
+            cx.background_executor()
+                .timer(std::time::Duration::from_millis(40))
+                .await;
+            let _ = this.update_in(cx, |this, window, cx| {
+                this.revealed = true;
+                if platform::set_opacity(window, true, cx).is_err() {
+                    tracing::warn!("Could not reveal the preview");
+                }
+            });
+        }));
+    }
+
     fn apply_layout(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(anchor) = self.snapshot.anchor else {
             if self.shown {
@@ -156,6 +195,8 @@ impl PreviewWindow {
                 }
                 self.shown = false;
             }
+            self.reveal = None;
+            self.revealed = false;
             return;
         };
         let placement = if self.snapshot.is_image() {
@@ -179,6 +220,17 @@ impl PreviewWindow {
             };
             preview_placement_for_size(anchor, body.width, body.height)
         } else {
+            if !self.shown {
+                // Painted while transparent so that it can be measured.
+                if platform::set_opacity(window, false, cx).is_err()
+                    || platform::show_without_focus(window, cx).is_err()
+                {
+                    tracing::warn!("Could not show item preview");
+                    return;
+                }
+                self.revealed = false;
+                self.shown = true;
+            }
             let (Some(content), Some(chrome)) = (self.content_height, self.chrome_height) else {
                 return;
             };
@@ -199,6 +251,8 @@ impl PreviewWindow {
                 return;
             }
             self.placement = Some(placement);
+            // The native size changes after this update ends; make sure a frame is drawn for it.
+            window.refresh();
             tracing::info!(
                 history = ?anchor.history,
                 work = ?anchor.screen,
@@ -220,6 +274,14 @@ impl PreviewWindow {
                 return;
             }
             self.shown = true;
+        }
+        if self.snapshot.is_image() {
+            if !self.revealed {
+                self.revealed = true;
+                let _ = platform::set_opacity(window, true, cx);
+            }
+        } else if !self.snapshot.loading {
+            self.schedule_reveal(window, cx);
         }
     }
 }

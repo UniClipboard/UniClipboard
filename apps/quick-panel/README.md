@@ -37,7 +37,7 @@ apps/quick-panel/src/
 
 两窗共享会话生命周期：在两窗之间切换焦点保持显示；离开两窗、按 Esc 或完成复制粘贴时共同隐藏。隐藏后复用原窗口。预览首次延迟 500ms，切换记录延迟 120ms。预览使用只读显示快照，所有后台操作仍由历史面板统一持有。
 
-窗口尺寸通过 GPUI 的 `Window::resize` 更新，禁止直接修改原生窗口尺寸。后者会在当前窗口仍被更新时同步触发回调，导致系统窗口与绘制区域不同步。Windows 是例外：GPUI 的 Windows `resize` 调用 `SetWindowPos` 时不带 `SWP_NOACTIVATE`，已显示的预览窗被缩放会因此成为活动窗口并抢走键盘，所以 `platform/win32` 的 `set_frame` 自己在当前更新结束后用 `SWP_NOACTIVATE` 同时设置位置与尺寸。原生接口负责定位、显示、隐藏和无边框外壳。GPUI 的 `titlebar: None` 在 macOS 仍会创建带系统窗框的窗口，预览需要明确使用无边框 NSPanel，避免箭头后方露出矩形底板。
+窗口尺寸通过 GPUI 的 `Window::resize` 更新，禁止直接修改原生窗口尺寸。后者会在当前窗口仍被更新时同步触发回调，导致系统窗口与绘制区域不同步。Windows 是例外：GPUI 的 Windows `resize` 调用 `SetWindowPos` 时不带 `SWP_NOACTIVATE`，已显示的预览窗被缩放会因此成为活动窗口并抢走键盘，所以 `platform/win32` 的 `set_frame` 自己在当前更新结束后用 `SWP_NOACTIVATE` 同时设置位置与尺寸。macOS 的 `set_frame` 与 `show_without_focus` 在原生尺寸生效后会显式请求重绘（`setNeedsDisplay`），预览窗口改位置后也调用 `Window::refresh`：只依赖显示链接或边界变化回调时，偶发会漏掉一帧，导致内容按旧帧被拉伸到新的层尺寸并一直保持到下一次状态变化。原生接口负责定位、显示、隐藏和无边框外壳。GPUI 的 `titlebar: None` 在 macOS 仍会创建带系统窗框的窗口，预览需要明确使用无边框 NSPanel，避免箭头后方露出矩形底板。
 
 ## 多显示器放置
 
@@ -56,6 +56,14 @@ apps/quick-panel/src/
 
 - `Quick panel placement`：`pointer`、`work`（可用区域）、`origin`、`size`、`scale`。
 - `Quick panel preview placement`：`history`（历史窗口边界）、`work`、`preview`（预览窗口边界）、`side`、`scale`。
+
+### 文字预览的显示时机
+
+文字类预览在内容加载完成、测量并摆放到位之前保持完全透明（窗口仍在前台，所以继续绘制并能被测量），之后约 40ms 才变为不透明，因此用户看不到切换条目时高度跳变或文字位移。内容变化会清空旧的测量值并重新透明；图片预览不受影响。当前只有 macOS 实现透明度（`set_opacity`），Windows 与回退平台仍是摆放后立即显示。
+
+### 绘制面诊断
+
+quick-panel 进程把日志写入每角色日志文件 `uniclipboard-quick-panel.json.<date>`（位于 `uc_app_paths::app_log_dir()`，按天滚动，保留 7 天）；标准输出保留给与 GUI 的协议，控制台只输出警告到标准错误。macOS 上每次 `set_frame` 与显示预览后输出一条仅含数值的 `Quick panel surface` 日志：`stage`、`requested`、层 `bounds`、`contents_scale`、`drawableSize`、`occlusion`、`has_screen`。预览内容被拉伸时，若 `drawableSize` 不等于层 `bounds` 乘 `contents_scale`，或 `occlusion` 不是可见，就是漏帧而不是布局问题。
 
 ### 多显示器手动验收清单
 

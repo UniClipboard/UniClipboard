@@ -57,12 +57,17 @@ pub fn set_frame(
     .firstObject()
     .ok_or(PlatformError::NoDisplay)?;
     let top = screen.frame().size.height - y;
+    let layer = view.layer();
     // GPUI defers content resizing so its resize callback can update the viewport
     // after the current entity/window update has released its borrow.
     window.resize(gpui::size(gpui::px(width as f32), gpui::px(height as f32)));
     cx.foreground_executor()
         .spawn(async move {
             native.setFrameTopLeftPoint(NSPoint::new(x, top));
+            // GPUI's own deferred `setContentSize:` ran before this task. Ask for a new frame
+            // explicitly: relying on the display link or on a bounds change that already
+            // happened can leave the previous frame stretched to the new layer size.
+            sync_surface("set_frame", &native, layer.as_deref(), (width, height));
         })
         .detach();
     Ok(())
@@ -179,7 +184,7 @@ pub fn clip_preview_shape(
     Ok(())
 }
 
-pub fn show_without_focus(window: &gpui::Window, _: &gpui::App) -> Result<(), PlatformError> {
+pub fn show_without_focus(window: &gpui::Window, cx: &gpui::App) -> Result<(), PlatformError> {
     use raw_window_handle::{HasWindowHandle, RawWindowHandle};
     let handle = HasWindowHandle::window_handle(window)
         .map_err(|_| PlatformError::PreviewWindowInaccessible)?;
@@ -190,5 +195,69 @@ pub fn show_without_focus(window: &gpui::Window, _: &gpui::App) -> Result<(), Pl
     let native = view.window().ok_or(PlatformError::PreviewWindowClosed)?;
     native.setHasShadow(true);
     native.orderFrontRegardless();
+    // Deferred like every other AppKit call that can make GPUI draw: a draw while the update is
+    // still running would find the application state borrowed.
+    let layer = view.layer();
+    cx.foreground_executor()
+        .spawn(async move {
+            sync_surface("show", &native, layer.as_deref(), (0., 0.));
+        })
+        .detach();
     Ok(())
+}
+
+/// Makes the window fully transparent or opaque. A transparent window is still ordered in, so it
+/// keeps drawing and can be measured, but the user sees nothing of it, its shadow included.
+pub fn set_opacity(
+    window: &gpui::Window,
+    opaque: bool,
+    cx: &gpui::App,
+) -> Result<(), PlatformError> {
+    use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+    let handle = HasWindowHandle::window_handle(window)
+        .map_err(|_| PlatformError::PreviewWindowInaccessible)?;
+    let RawWindowHandle::AppKit(handle) = handle.as_raw() else {
+        return Err(PlatformError::UnsupportedWindowKind);
+    };
+    let view = unsafe { &*handle.ns_view.as_ptr().cast::<objc2_app_kit::NSView>() };
+    let native = view.window().ok_or(PlatformError::PreviewWindowClosed)?;
+    // Queued behind the deferred resize of `set_frame`, so the order of the calls is kept.
+    cx.foreground_executor()
+        .spawn(async move {
+            native.setAlphaValue(if opaque { 1. } else { 0. });
+        })
+        .detach();
+    Ok(())
+}
+
+/// Requests a redraw of the window's layer and logs how the layer and the window agree, in
+/// numbers only. A drawable that differs from the layer bounds times the scale means the layer
+/// is showing a frame drawn for another size.
+fn sync_surface(
+    stage: &'static str,
+    native: &objc2_app_kit::NSWindow,
+    layer: Option<&objc2_quartz_core::CALayer>,
+    requested: (f64, f64),
+) {
+    use objc2_quartz_core::CAMetalLayer;
+    let Some(layer) = layer else {
+        return;
+    };
+    layer.setNeedsDisplay();
+    let bounds = layer.bounds();
+    let drawable = layer
+        .downcast_ref::<CAMetalLayer>()
+        .map(|metal| metal.drawableSize());
+    tracing::info!(
+        stage,
+        requested = ?requested,
+        layer_width = bounds.size.width,
+        layer_height = bounds.size.height,
+        contents_scale = layer.contentsScale(),
+        drawable_width = drawable.map(|size| size.width),
+        drawable_height = drawable.map(|size| size.height),
+        occlusion = ?native.occlusionState(),
+        has_screen = native.screen().is_some(),
+        "Quick panel surface"
+    );
 }

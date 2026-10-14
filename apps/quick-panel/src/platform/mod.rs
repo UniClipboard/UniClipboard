@@ -21,8 +21,8 @@ use fallback as imp;
 
 pub use imp::{
     capture_paste_target, clip_preview_shape, configure_shaped_preview, new_key_state, open_target,
-    reveal_path, run_as_background_app, session_screen, set_frame, set_visible, show_without_focus,
-    system_language, CAPABILITIES, WINDOW_CORNER_RADIUS,
+    reveal_path, run_as_background_app, session_screen, set_frame, set_opacity, set_visible,
+    show_without_focus, system_language, CAPABILITIES, WINDOW_CORNER_RADIUS,
 };
 
 /// Only shaped native windows reserve space for a pointer outside the preview body.

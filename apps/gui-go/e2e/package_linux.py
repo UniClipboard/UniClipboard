@@ -33,6 +33,8 @@ import shutil
 import subprocess
 import sys
 import tarfile
+import time
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -271,6 +273,28 @@ def reject(path, why):
     print(f'REJECTED {path} ({why}); kept as {aside}', file=sys.stderr, flush=True)
 
 
+DOWNLOAD_ATTEMPTS = 4
+DOWNLOAD_TIMEOUT = 60  # seconds per socket operation, so a stalled connection fails instead of hanging the job
+
+
+def download(url, part):
+    """Fetch `url` into `part`, retrying transient failures (5xx, 429, connection errors, timeouts) with a growing delay.
+    Other HTTP statuses (404, 403, ...) are not retried and fail at once; 404 means the pin points at nothing, and 403 is not
+    classified further (it may also be access control or rate limiting). The same URL is retried: there is no other source."""
+    for attempt in range(1, DOWNLOAD_ATTEMPTS + 1):
+        try:
+            with urllib.request.urlopen(url, timeout=DOWNLOAD_TIMEOUT) as response, open(part, 'wb') as out:
+                shutil.copyfileobj(response, out)
+            return
+        except OSError as e:
+            transient = not isinstance(e, urllib.error.HTTPError) or e.code >= 500 or e.code == 429
+            if not transient or attempt == DOWNLOAD_ATTEMPTS:
+                raise
+            delay = 10 * attempt
+            print(f'{url}: attempt {attempt}/{DOWNLOAD_ATTEMPTS} failed ({e}); retrying in {delay}s', file=sys.stderr, flush=True)
+            time.sleep(delay)
+
+
 def fetch_verified(url, sha, dest, machine=None):
     """Download once into the tools directory and refuse anything whose SHA-256 (or, with `machine`, ELF architecture) differs
     from the pin. A cached file that fails is moved aside and fetched again; a rejected download is kept as `.rejected-*` and ends
@@ -288,7 +312,7 @@ def fetch_verified(url, sha, dest, machine=None):
     if not dest.exists():
         part = dest.with_name(dest.name + '.partial')
         try:
-            urllib.request.urlretrieve(url, part)
+            download(url, part)
         except OSError as e:
             sys.exit(f'{url}: cannot download the pinned input ({e}); nothing is packaged without it')
         why = problem(part)

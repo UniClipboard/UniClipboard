@@ -178,3 +178,9 @@ pub fn clip_preview_shape(
 ) -> Result<(), PlatformError> {
     Ok(())
 }
+
+/// Windows has no transparent-but-drawing state wired up yet, so the preview is shown as soon as
+/// it is placed.
+pub fn set_opacity(_: &gpui::Window, _: bool, _: &gpui::App) -> Result<(), PlatformError> {
+    Ok(())
+}

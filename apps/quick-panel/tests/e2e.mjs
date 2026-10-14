@@ -736,6 +736,83 @@ test('GPUI quick panel native end-to-end', { timeout: 180_000 }, async t => {
       }
     })
     await run(
+      "switching between a tall and a short preview never shows another entry's content",
+      async () => {
+        // Regression: the text view was keyed by one fixed id, so after a switch the old text
+        // stayed on screen until the view's 200 ms debounced update replaced it. The header (read
+        // from the new entry) then disagreed with the body (the old entry's text), squeezed into
+        // the new window height. While the preview is switching, every frame must be consistent.
+        const rows = await defaultRows()
+        const tall = rows.findIndex(row => row.entryId === 'fixture-4')
+        assert.ok(tall > 0, 'The fixture must hold the 120-line entry after a short one')
+        for (let i = 0; i < tall; i++) {
+          await key('down')
+          await delay(150)
+        }
+        const previewWindow = () =>
+          until('preview window', async () => {
+            const { stdout } = await exec(peekaboo, [
+              'list',
+              'windows',
+              '--pid',
+              String(app.pid),
+              '--no-remote',
+              '--json',
+            ])
+            return JSON.parse(stdout).data.windows.find(w => w.title === 'UniClipboard Preview')
+          })
+        await previewWindow()
+        await delay(1500)
+        const reader = join(temporary, 'read-text')
+        await exec('swiftc', [join(directory, 'read_text.swift'), '-o', reader], {
+          timeout: 120_000,
+        })
+        const frames = []
+        const capture = async seconds => {
+          const window = await previewWindow()
+          const end = Date.now() + seconds * 1000
+          while (Date.now() < end) {
+            const file = join(artifacts, `switch-${frames.length}.png`)
+            await exec('/usr/sbin/screencapture', [
+              '-x',
+              '-o',
+              '-l',
+              String(window.window_id),
+              file,
+            ])
+              .then(() => frames.push(file))
+              .catch(() => {})
+          }
+        }
+        for (const direction of ['up', 'down', 'down', 'up']) {
+          await Promise.all([key(direction), capture(2.2)])
+          await delay(1500)
+        }
+        const seen = new Map()
+        const mismatches = []
+        for (const file of frames) {
+          const hash = (await exec('/sbin/md5', ['-q', file])).stdout.trim()
+          if (!seen.has(hash)) {
+            const { stdout } = await exec(reader, [file, 'zh-Hans,en-US'])
+            seen.set(hash, JSON.parse(stdout).lines.join(' '))
+          }
+          const words = seen.get(hash)
+          const tallHeader = /120\s*行/.test(words)
+          const shortHeader = /80\s*个字符/.test(words)
+          const tallBody = /第\s*\d+\s*行/.test(words)
+          const shortBody = /sample\s*\d/i.test(words)
+          if ((tallHeader && shortBody) || (shortHeader && tallBody))
+            mismatches.push(`${file}: ${words.slice(0, 120)}`)
+        }
+        assert.ok(frames.length >= 8, `captured only ${frames.length} preview frames`)
+        assert.deepEqual(
+          mismatches,
+          [],
+          'A frame showed the header of one entry over the body of another'
+        )
+      }
+    )
+    await run(
       'one letter the index cannot search is "nothing found", not a failed search',
       async () => {
         await text('l')

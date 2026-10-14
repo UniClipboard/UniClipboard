@@ -1,7 +1,9 @@
 // Validate semver format
 export function parseSemver(version) {
-  const match = version.match(/^(\d+)\.(\d+)\.(\d+)(?:-([a-zA-Z]+)\.(\d+))?$/)
-  if (!match) {
+  const match = version.match(
+    /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([a-zA-Z]+)\.(0|[1-9]\d*))?$/
+  )
+  if (!match || match[0] !== version) {
     throw new Error(`Invalid semver format: ${version}`)
   }
 

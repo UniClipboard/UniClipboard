@@ -20,7 +20,8 @@ pub use modifier_state::new_key_state;
 pub use screen::session_screen;
 pub use shell::{open_target, reveal_path};
 pub use window::{
-    clip_preview_shape, configure_shaped_preview, set_frame, set_visible, show_without_focus,
+    clip_preview_shape, configure_shaped_preview, set_frame, set_opacity, set_visible,
+    show_without_focus,
 };
 
 /// There is no window-shape mask on Windows, so the preview stays a rectangular window and the

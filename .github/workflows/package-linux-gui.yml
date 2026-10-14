@@ -12,7 +12,7 @@ on:
         type: boolean
         default: true
       ref:
-        description: 'Commit-ish to build; resolved to a SHA once and used by every job'
+        description: 'Commit SHA to build, pinned by the caller (build.yml passes a full SHA); empty builds the caller commit'
         required: false
         type: string
         default: ''
@@ -46,7 +46,7 @@ on:
         type: boolean
         default: true
       ref:
-        description: 'Commit-ish to build'
+        description: 'Commit-ish to build (branch, tag or SHA); a name is resolved once and every job uses that SHA. Empty builds the dispatched commit'
         required: false
         type: string
         default: ''
@@ -63,23 +63,29 @@ env:
   MAX_GLIBC: ${{ inputs.max_glibc || '2.36' }}
 
 jobs:
+  # Only a standalone manual dispatch with a `ref` needs this. Every other entry already supplies an exact SHA (build.yml passes the SHA
+  # pinned by its setup-matrix job, a PR has its head, an empty ref is the dispatched commit), so the job is skipped there and a release
+  # run never has it. When called from another workflow, `github.workflow` is the caller's name, not this one's.
   resolve:
+    if: github.event_name == 'workflow_dispatch' && github.workflow == 'Package Linux GUI' && inputs.ref != ''
     runs-on: ubuntu-24.04
     outputs:
       sha: ${{ steps.sha.outputs.sha }}
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ inputs.ref || github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ inputs.ref }}
           persist-credentials: false
-      # One SHA for every job: a branch that moves while the workflow runs must not give the daemon job and the
-      # packaging job different sources.
+      # One SHA for both architectures: a branch that moves while the workflow runs must not give them different sources.
       - id: sha
         run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
   package:
     name: Package ${{ matrix.arch }}
     needs: resolve
+    if: ${{ !cancelled() && needs.resolve.result != 'failure' }}
+    outputs:
+      sha: ${{ env.UC_EXPECT_HEAD }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 240
     strategy:
@@ -94,12 +100,18 @@ jobs:
       UC_LINUX_IMAGE: uc-package-build:ci
       UC_LINUX_CACHE_VOLUME: uc-linux-gui-cache
       UC_KEYRING_IMAGE: uc-gui-go-linux-keyring:ci
-      UC_EXPECT_HEAD: ${{ needs.resolve.outputs.sha }}
       UC_MAX_GLIBC: ${{ inputs.max_glibc || '2.36' }}
+      # The one source commit of this run, also verified against the package manifest.
+      UC_EXPECT_HEAD: ${{ needs.resolve.outputs.sha || inputs.ref || github.event.pull_request.head.sha || github.sha }}
     steps:
+      - name: Require a pinned source SHA
+        # Matrix jobs never resolve a name themselves: it could move between them. A name reaching this point means a caller bug.
+        run: |
+          [[ "$UC_EXPECT_HEAD" =~ ^[0-9a-f]{40}$ ]] || { echo "source must be a full 40-character commit SHA, got: $UC_EXPECT_HEAD" >&2; exit 1; }
+
       - uses: actions/checkout@v6
         with:
-          ref: ${{ needs.resolve.outputs.sha }}
+          ref: ${{ env.UC_EXPECT_HEAD }}
           persist-credentials: false
 
       - name: Assert a native runner
@@ -230,9 +242,9 @@ jobs:
           key: linux-gui-mbx-v1-${{ github.ref }}-${{ matrix.arch }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
 
   acceptance:
-    needs: [resolve, package]
+    needs: package
     if: github.event_name == 'pull_request' || inputs.run_acceptance
     uses: ./.github/workflows/linux-gui-acceptance.yml
     with:
-      ref: ${{ needs.resolve.outputs.sha }}
+      ref: ${{ needs.package.outputs.sha }}
       build_image: ${{ inputs.build_image || 'debian:bookworm' }}

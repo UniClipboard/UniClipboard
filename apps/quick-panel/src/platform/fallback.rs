@@ -113,3 +113,9 @@ pub fn system_language() -> Option<String> {
         .iter()
         .find_map(|name| std::env::var(name).ok().filter(|value| !value.is_empty()))
 }
+
+/// Windows has no transparent-but-drawing state wired up yet, so the preview is shown as soon as
+/// it is placed.
+pub fn set_opacity(_: &gpui::Window, _: bool, _: &gpui::App) -> Result<(), PlatformError> {
+    Ok(())
+}

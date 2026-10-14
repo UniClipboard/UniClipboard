@@ -327,8 +327,21 @@ impl PreviewSnapshot {
                     .text_size(units(14.))
                     .line_height(units(22.))
                     .child(
-                        TextView::html("preview-text", format!("<pre>{escaped}</pre>"), window, cx)
-                            .selectable(true),
+                        TextView::html(
+                            // A new element id per entry and text gives a fresh view that parses
+                            // at once. Reusing one id keeps the old text on screen until the
+                            // view's debounced background update (200 ms) replaces it.
+                            gpui::SharedString::from(format!("preview-text-{}", {
+                                use std::hash::{Hash, Hasher};
+                                let mut hasher = std::collections::hash_map::DefaultHasher::new();
+                                (item.entry_id.as_str(), text).hash(&mut hasher);
+                                hasher.finish()
+                            })),
+                            format!("<pre>{escaped}</pre>"),
+                            window,
+                            cx,
+                        )
+                        .selectable(true),
                     )
                     .into_any_element()
             }

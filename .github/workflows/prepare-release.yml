@@ -1,11 +1,11 @@
 name: Prepare Release
-run-name: prepare-release-v${{ inputs.version || inputs.bump }}
+run-name: prepare-release-${{ inputs.version || inputs.bump }}
 
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Exact semver version (e.g. 0.3.0, no "v" prefix). Leave empty to use bump type.'
+        description: 'Exact semver version (e.g. 1.2.0-alpha.3, optional single "v" prefix). Leave empty to use bump type.'
         required: false
         type: string
         default: ''
@@ -59,22 +59,17 @@ jobs:
 
       - name: Determine version
         id: version
+        env:
+          EXACT_VERSION: ${{ inputs.version }}
+          BUMP_TYPE: ${{ inputs.bump }}
+          RELEASE_CHANNEL: ${{ inputs.channel }}
         run: |
-          if [ -n "${{ inputs.version }}" ]; then
-            VERSION="${{ inputs.version }}"
-            echo "Using exact version: $VERSION"
+          if [ -n "$EXACT_VERSION" ]; then
+            # Strip only one optional prefix; validate before creating a branch.
+            node scripts/bump-version.js --to "${EXACT_VERSION#v}" --dry-run
           else
-            # Dry-run bump to determine the version
-            OUTPUT=$(node scripts/bump-version.js --type ${{ inputs.bump }} --channel ${{ inputs.channel }} --dry-run 2>&1)
-            VERSION=$(echo "$OUTPUT" | grep "New version:" | awk '{print $NF}')
-            if [ -z "$VERSION" ]; then
-              echo "Error: Could not determine version from bump-version.js dry-run"
-              echo "$OUTPUT"
-              exit 1
-            fi
-            echo "Determined version from bump: $VERSION"
+            node scripts/bump-version.js --type "$BUMP_TYPE" --channel "$RELEASE_CHANNEL" --dry-run
           fi
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Check release branch does not exist
         run: |

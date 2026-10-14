@@ -53,7 +53,7 @@
 | C1 | arm64 AppImage 命名为 `_arm64.AppImage`，发布收集器丢弃它，更新清单生成器拿不到它 | `verify_package_set.py` 用 `collect-release-assets.py` 的同一个收集函数处理输出目录，要求每个架构正好得到四个文件，名字逐字等于期望集合；对未修复的打包器必须先红 |
 | C2 | 上传集合混入 raw `uniclipboard`、`package-manifest.json`、`E2E-`/`FIXTURE-`/`NEGCONTROL-` 前缀包或证据 | 上传目录只由收集函数产生（单一事实来源）；验证器断言恰好四个文件，且清单 `sha256` 中的这四项与文件一致 |
 | C3 | daemon 与证据不对应：SHA 不同、证据的源码头与检出不同、树不干净、证据的目标架构与 `--arch` 不同、`Cargo.lock` 哈希与检出不同、Engine 修订与 `Cargo.toml` 的 pin 不同 | `read_daemon_evidence` 增加架构、`Cargo.lock` 哈希、Engine 修订三项交叉检查；验证器重做并断言清单 `source.dirty == false` |
-| C4 | 工件之间的源码漂移：daemon 作业与打包作业检出的提交不同（`inputs.branch` 在中途前进） | 第一个作业解析 SHA 作为输出，后续作业一律检出该 SHA；清单的 `source.head` 必须等于它 |
+| C4 | 工件之间的源码漂移：daemon 作业与打包作业检出的提交不同（`inputs.branch` 在中途前进） | 入口提供已固定的完整 SHA（`release.yml` 的 `validate` 作业经 `build.yml` 传入；PR 取 head；手动触发取被触发的提交），`package-linux-gui.yml` 不再解析分支，每个矩阵作业与验收一律检出该 SHA，非 40 位十六进制的 `ref` 在检出前直接失败；清单的 `source.head` 必须等于它 |
 | C5 | glibc 下限回归：包内任一 ELF 需要比声明下限更新的 `GLIBC_*` | 验证器对解开的 deb 与 AppImage 运行 `elf_floor.py --max-glibc 2.36`，失败即作业失败 |
 | C6 | 构建镜像悄悄漂移（基础镜像、包版本） | 证据记录镜像引用、`/etc/os-release`、ldd 版本、关键 `-dev` 包版本；清单记录随包库的 `dpkg` 来源（已有） |
 | C7 | 把模拟或交叉编译当作原生运行 | 作业开头断言 `uname -m` 与 `--arch` 对应并写入证据；E2E 报告记录宿主架构；QEMU 路径不被任何作业使用 |

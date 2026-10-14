@@ -12,7 +12,7 @@ on:
         type: boolean
         default: true
       ref:
-        description: 'Commit-ish to build; resolved to a SHA once and used by every job'
+        description: 'Full 40-character commit SHA to build, pinned by the caller; empty builds the caller commit'
         required: false
         type: string
         default: ''
@@ -45,7 +45,7 @@ on:
         type: boolean
         default: true
       ref:
-        description: 'Commit-ish to build'
+        description: 'Full 40-character commit SHA to build; empty builds the dispatched commit'
         required: false
         type: string
         default: ''
@@ -60,25 +60,15 @@ concurrency:
 env:
   BUILD_IMAGE: ${{ inputs.build_image || 'debian:bookworm' }}
   MAX_GLIBC: ${{ inputs.max_glibc || '2.36' }}
+  # The one source commit of this run. The entry point supplies it already pinned (release.yml's validate job through build.yml; a PR head;
+  # the dispatched commit), so no job resolves a branch: every matrix job checks out and verifies this exact SHA.
+  UC_EXPECT_HEAD: ${{ inputs.ref || github.event.pull_request.head.sha || github.sha }}
 
 jobs:
-  resolve:
-    runs-on: ubuntu-24.04
-    outputs:
-      sha: ${{ steps.sha.outputs.sha }}
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ inputs.ref || github.event.pull_request.head.sha || github.sha }}
-          persist-credentials: false
-      # One SHA for every job: a branch that moves while the workflow runs must not give the daemon job and the
-      # packaging job different sources.
-      - id: sha
-        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-
   package:
     name: Package ${{ matrix.arch }}
-    needs: resolve
+    outputs:
+      sha: ${{ env.UC_EXPECT_HEAD }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 240
     strategy:
@@ -92,12 +82,16 @@ jobs:
       UC_LINUX_IMAGE: uc-package-build:ci
       UC_LINUX_CACHE_VOLUME: uc-linux-gui-cache
       UC_KEYRING_IMAGE: uc-gui-go-linux-keyring:ci
-      UC_EXPECT_HEAD: ${{ needs.resolve.outputs.sha }}
       UC_MAX_GLIBC: ${{ inputs.max_glibc || '2.36' }}
     steps:
+      - name: Require a pinned source SHA
+        # A branch or tag name would be resolved by each matrix job on its own and could move between them.
+        run: |
+          [[ "$UC_EXPECT_HEAD" =~ ^[0-9a-f]{40}$ ]] || { echo "ref must be a full 40-character commit SHA, got: $UC_EXPECT_HEAD" >&2; exit 1; }
+
       - uses: actions/checkout@v6
         with:
-          ref: ${{ needs.resolve.outputs.sha }}
+          ref: ${{ env.UC_EXPECT_HEAD }}
           persist-credentials: false
 
       - name: Assert a native runner
@@ -206,9 +200,9 @@ jobs:
           key: linux-gui-${{ matrix.arch }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
 
   acceptance:
-    needs: [resolve, package]
+    needs: package
     if: github.event_name == 'pull_request' || inputs.run_acceptance
     uses: ./.github/workflows/linux-gui-acceptance.yml
     with:
-      ref: ${{ needs.resolve.outputs.sha }}
+      ref: ${{ needs.package.outputs.sha }}
       build_image: ${{ inputs.build_image || 'debian:bookworm' }}

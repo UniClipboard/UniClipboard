@@ -727,7 +727,7 @@ jobs:
       contents: read
     uses: ./.github/workflows/package-linux-gui.yml
     with:
-      ref: ${{ inputs.branch || github.ref }}
+      ref: ${{ inputs.branch || github.sha }}
       run_acceptance: ${{ inputs.run_acceptance != false }}
 
   smoke-macos-gui:

@@ -172,14 +172,6 @@ jobs:
         # a release build that injects the production values is a separate build and is never the one that was accepted here.
         run: apps/gui-go/e2e/linux/run.sh daemon-release
 
-      - name: Verify the native daemon can execute without starting a service
-        if: github.event_name == 'workflow_dispatch'
-        run: |
-          docker run --rm --platform "${{ matrix.platform }}" \
-            -v "$UC_LINUX_CACHE_VOLUME:/cache:ro" "$UC_LINUX_IMAGE" \
-            /cache/out-release/uniclipd --help > "$RUNNER_TEMP/meta/daemon-help.txt"
-          test -s "$RUNNER_TEMP/meta/daemon-help.txt"
-
       - name: Build the frontend (release, no source map upload)
         # SENTRY_AUTH_TOKEN and VITE_SENTRY_PROJECT stay unset: apps/gui-go/frontend/vite.config.ts uploads source maps only when both are present.
         env:

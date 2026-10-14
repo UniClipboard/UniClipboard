@@ -160,7 +160,7 @@ async function run() {
   if (phase === 'history-live') return runHistoryLiveScenario()
   if (phase === 'history-kit') return runHistoryKitScenario()
   if (phase.startsWith('linux-kit-')) {
-    // Linux kit flows (e2e/linux-kit-flows.ts): the telemetry consent chain and the kit Settings page.
+    // Linux kit flows (e2e/linux-kit-flows.ts): the kit Settings page.
     const flows = await import('@/e2e/linux-kit-flows')
     const ctx = {
       record,
@@ -173,12 +173,8 @@ async function run() {
       mainLayout,
       reachMainLayout,
     }
-    const mode = phase.endsWith(':accept') ? 'accept' : 'disable'
     if (phase === 'linux-kit-settings') return flows.runSettingsKitScenario(ctx)
     if (phase === 'linux-kit-settings-restart') return flows.runSettingsRestartScenario(ctx)
-    if (phase.startsWith('linux-kit-consent:')) return flows.runTelemetryConsentScenario(ctx, mode)
-    if (phase.startsWith('linux-kit-consent-restart:'))
-      return flows.runTelemetryRestartScenario(ctx, mode)
   }
   if (phase === 'sidebar-toggle') {
     await reachMainLayout()
@@ -210,8 +206,6 @@ async function run() {
           node.textContent?.trim()
         ),
         wrongPassphrase: i18n.t('unlock.errors.wrongPassphrase'),
-        telemetryTitle: i18n.t('settings.sections.general.telemetry.notice.title'),
-        telemetryOptOut: i18n.t('settings.sections.general.telemetry.notice.optOut'),
       }),
     })
     return
@@ -742,25 +736,6 @@ async function runHistoryKitScenario() {
         `history list missing at ${location.pathname}: ${routes.slice(-6).join(' | ')}`
       )
     return found
-  }
-  // The first-run telemetry notice (a shared modal outside the kit) opens at an unpredictable moment on
-  // a fresh profile and would sit on top of the page's own dialogs: accept it like a user does.
-  if (expectedSkin() === 'linux') {
-    let dismissed = false
-    setInterval(() => {
-      const notice = Array.from(
-        document.querySelectorAll<HTMLElement>('[role="alertdialog"]')
-      ).find(dialog =>
-        dialog.textContent?.includes(i18n.t('settings.sections.general.telemetry.notice.title'))
-      )
-      const accept = Array.from(notice?.querySelectorAll('button') ?? []).find(
-        b => b.textContent?.trim() === i18n.t('settings.sections.general.telemetry.notice.accept')
-      )
-      if (!accept) return
-      accept.click()
-      if (!dismissed) void record('telemetry-notice-accepted', true)
-      dismissed = true
-    }, 300)
   }
   await reachMainLayout()
   // Window facts for every resize step: what the page sees and what the host reports, so a window manager that
@@ -2295,17 +2270,8 @@ async function runLinuxPackageUpdateScenario() {
   await waitFor('setup complete', () => $('[data-testid="setup-complete-later"]') || mainLayout())
   $('[data-testid="setup-complete-later"]')?.click()
   await waitFor('initialised main layout', mainLayout, 120000)
-  const consent = await waitFor('telemetry notice', () =>
-    Array.from(document.querySelectorAll<HTMLElement>('[role="alertdialog"]')).find(dialog =>
-      dialog.textContent?.includes(i18n.t('settings.sections.general.telemetry.notice.title'))
-    )
-  )
-  Array.from(consent.querySelectorAll<HTMLButtonElement>('button'))
-    .find(
-      b => b.textContent?.trim() === i18n.t('settings.sections.general.telemetry.notice.optOut')
-    )!
-    .click()
-  await waitFor('telemetry notice dismissed', () => !consent.isConnected)
+  // A synthetic profile must never report: opt out through the settings API, as the removed first-run notice did.
+  await updateSettings({ general: { telemetryEnabled: false, usageAnalyticsEnabled: false } })
   const kind = await settle(HostService.GetInstallKind())
   await record('package-install-kind', kind.status === 'ok', kind)
   if (

@@ -84,6 +84,12 @@ jobs:
             libdbus-1-dev libwayland-dev libxkbcommon-dev \
             dbus-daemon dbus-bin gnome-keyring
 
+      - name: Start shared Engine MBX cache
+        if: runner.os != 'Windows'
+        uses: ./.github/actions/engine-build-cache
+        with:
+          cache-key: legacy-file-key-store
+
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
@@ -91,6 +97,7 @@ jobs:
             . -> target
             tests/e2e -> target
           shared-key: legacy-file-key-store-e2e-${{ env.VARIANT }}
+          cache-targets: ${{ runner.os == 'Windows' }}
           save-if: false
 
       - name: Revert production code to the pinned pre-fix commit
@@ -128,3 +135,11 @@ jobs:
           path: ${{ runner.temp }}/legacy-file-key-store-${{ env.VARIANT }}
           if-no-files-found: warn
           retention-days: 14
+
+      - name: Retain MBX compiler evidence
+        if: always() && runner.os != 'Windows'
+        uses: actions/upload-artifact@v7
+        with:
+          name: mbx-legacy-file-key-store
+          path: ${{ runner.temp }}/mbx-evidence/
+          if-no-files-found: ignore

@@ -29,6 +29,7 @@ on:
   pull_request:
     paths:
       - '.github/workflows/package-linux-gui.yml'
+      - 'scripts/build-cache/**'
       - '.github/workflows/linux-gui-acceptance.yml'
       - 'apps/gui-go/e2e_invoke.go'
       - 'apps/gui-go/e2e/package_linux.py'
@@ -87,6 +88,7 @@ jobs:
         include:
           - { arch: amd64, runner: ubuntu-24.04, platform: linux/amd64, machine: x86_64 }
           - { arch: arm64, runner: ubuntu-24.04-arm, platform: linux/arm64, machine: aarch64 }
+    environment: desktop-build-cache-reader
     env:
       UC_DOCKER_PLATFORM: ${{ matrix.platform }}
       UC_LINUX_IMAGE: uc-package-build:ci
@@ -128,12 +130,23 @@ jobs:
           echo "UC_BUILD_IMAGE=$BUILD_IMAGE (packaging image $(cat "$RUNNER_TEMP/meta/image-id.txt"))" >> "$GITHUB_ENV"
           docker run --rm "$UC_LINUX_IMAGE" verify_package_build_image.sh | tee "$RUNNER_TEMP/meta/image-versions.txt"
 
-      - name: Restore the Rust cache
+      - name: Start shared Engine MBX cache
+        env:
+          BUILD_CACHE_ACCESS: read
+          BUILD_CACHE_R2_ENDPOINT: ${{ secrets.BUILD_CACHE_R2_ENDPOINT }}
+          BUILD_CACHE_R2_ACCESS_KEY_ID: ${{ secrets.BUILD_CACHE_R2_ACCESS_KEY_ID }}
+          BUILD_CACHE_R2_SECRET_ACCESS_KEY: ${{ secrets.BUILD_CACHE_R2_SECRET_ACCESS_KEY }}
+        run: bash scripts/build-cache/engine-tools.sh --ci
+
+      - name: Restore Cargo downloads and MBX actions
         uses: actions/cache@v4
         with:
-          path: ${{ runner.temp }}/uc-cache
-          key: linux-gui-${{ matrix.arch }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
-          restore-keys: linux-gui-${{ matrix.arch }}-
+          path: |
+            ${{ runner.temp }}/uc-cache/cargo/registry
+            ${{ runner.temp }}/uc-cache/cargo/git
+            ${{ runner.temp }}/uc-cache/mbx
+          key: linux-gui-mbx-v1-${{ github.ref }}-${{ matrix.arch }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
+          restore-keys: linux-gui-mbx-v1-${{ github.ref }}-${{ matrix.arch }}-
 
       - name: Create the cache volume
         run: |
@@ -179,6 +192,14 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      - name: Retain MBX compiler evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: mbx-linux-package-${{ matrix.arch }}
+          path: ${{ runner.temp }}/mbx-evidence/
+          if-no-files-found: ignore
+
       - name: Gather the build evidence
         if: always()
         run: |
@@ -202,8 +223,11 @@ jobs:
         if: github.ref == 'refs/heads/main'
         uses: actions/cache/save@v4
         with:
-          path: ${{ runner.temp }}/uc-cache
-          key: linux-gui-${{ matrix.arch }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
+          path: |
+            ${{ runner.temp }}/uc-cache/cargo/registry
+            ${{ runner.temp }}/uc-cache/cargo/git
+            ${{ runner.temp }}/uc-cache/mbx
+          key: linux-gui-mbx-v1-${{ github.ref }}-${{ matrix.arch }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
 
   acceptance:
     needs: [resolve, package]

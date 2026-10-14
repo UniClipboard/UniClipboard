@@ -133,10 +133,11 @@ bun mbx:exec -- bun wails:dev:profile a
 
 mbx 缓存由 `MBX_CACHE_DIR` 指定，未指定时采用 mbx 平台默认目录；多个 worktree
 可共用此缓存，`uni-build-storage` 仍为每个 worktree 管理独立 target。入口默认将
-mbx 缓存容量上限设为 20 GiB，Cargo 构建时输出命中摘要，命令结束输出缓存累计统计。
+mbx 缓存容量上限设为 20 GiB，Cargo 构建时输出命中摘要；CI 保留原生 JSON 统计。
 一个 worktree 尽量始终使用同一条构建路线，切换普通 Cargo 与 mbx 可能触发重编译。
 
-固定下载包目前覆盖 macOS arm64、Linux x86_64 和 Linux arm64；Windows 尚未接入此入口。
+固定入口目前覆盖 macOS arm64、Linux x86_64 和 Linux arm64；Windows 保留原有 sccache。
+CI 与 Linux 打包容器的共享 R2 配置和验证边界见 [编译缓存](ci/shared-compiler-cache.md)。
 
 ## Documentation Guide
 

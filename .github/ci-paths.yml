@@ -11,6 +11,8 @@ rust_shared: &rust_shared
   - 'Cargo.lock'
   - '.cargo/**'
   - 'rust-toolchain.toml'
+  - 'scripts/build-cache/**'
+  - '.github/actions/engine-build-cache/**'
   - 'clippy.toml'
   - 'vendor/**'
 

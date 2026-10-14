@@ -3,7 +3,7 @@ name: 'Cache Warmup'
 on:
   push:
     branches: [main]
-    # Only paths that actually invalidate the Rust/sccache cache key (deps,
+    # Only paths that actually invalidate the Rust compiler cache key (deps,
     # toolchain, cargo config) or change which targets get warmed
     # (release-cache-policy.mjs). CI plumbing files (build.yml,
     # cache-warmup.yml itself, runner selection, GHA cache maintenance) don't
@@ -12,6 +12,8 @@ on:
     # here and fired a full 6-target warmup on every unrelated CI edit.
     paths:
       - 'scripts/ci/release-cache-policy.mjs'
+      - 'scripts/build-cache/**'
+      - '.github/actions/engine-build-cache/**'
       - 'Cargo.lock'
       - 'Cargo.toml'
       - 'rust-toolchain.toml'
@@ -79,6 +81,7 @@ jobs:
     needs: maintain-caches
     name: Warm PR check Rust cache
     runs-on: ubuntu-latest
+    environment: ${{ github.ref == 'refs/heads/main' && 'desktop-build-cache-writer' || 'desktop-build-cache-reader' }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -95,15 +98,35 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             libdbus-1-dev libfreetype6-dev libxkbcommon-x11-dev
 
+      - name: Start shared Engine MBX cache
+        if: runner.os != 'Windows'
+        uses: ./.github/actions/engine-build-cache
+        with:
+          cache-key: pr-check
+          access: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && github.ref_protected && 'write' || 'read' }}
+          endpoint: ${{ secrets.BUILD_CACHE_R2_ENDPOINT }}
+          access-key-id: ${{ secrets.BUILD_CACHE_R2_ACCESS_KEY_ID }}
+          secret-access-key: ${{ secrets.BUILD_CACHE_R2_SECRET_ACCESS_KEY }}
+
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: ". -> target"
           shared-key: pr-check
+          cache-targets: ${{ runner.os == 'Windows' }}
           save-if: true
 
       - name: Check Rust workspace
         run: cargo check --workspace --locked
+
+      - name: Retain MBX compiler evidence
+        if: always() && runner.os != 'Windows'
+        uses: actions/upload-artifact@v7
+        with:
+          name: mbx-pr-check
+          path: ${{ runner.temp }}/mbx-evidence/
+          if-no-files-found: ignore
+
 
   warmup-docs-bun:
     needs: maintain-caches
@@ -139,6 +162,7 @@ jobs:
     name: Warm coverage Rust cache
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    environment: ${{ github.ref == 'refs/heads/main' && 'desktop-build-cache-writer' || 'desktop-build-cache-reader' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -153,11 +177,21 @@ jobs:
         with:
           cache: false
 
+      - name: Start shared Engine MBX cache
+        uses: ./.github/actions/engine-build-cache
+        with:
+          cache-key: coverage
+          access: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && github.ref_protected && 'write' || 'read' }}
+          endpoint: ${{ secrets.BUILD_CACHE_R2_ENDPOINT }}
+          access-key-id: ${{ secrets.BUILD_CACHE_R2_ACCESS_KEY_ID }}
+          secret-access-key: ${{ secrets.BUILD_CACHE_R2_SECRET_ACCESS_KEY }}
+
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: ". -> target"
           shared-key: coverage
+          cache-targets: false
           save-if: true
 
       # Rust workspace only: uc-platform uses libdbus; GPUI links FreeType, xcb and xkbcommon (xcb comes with libxkbcommon-x11-dev).
@@ -171,3 +205,11 @@ jobs:
       - name: Generate coverage report
         run: |
           xvfb-run -a cargo llvm-cov --lcov --output-path lcov.info --workspace
+
+      - name: Retain MBX compiler evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: mbx-coverage
+          path: ${{ runner.temp }}/mbx-evidence/
+          if-no-files-found: ignore

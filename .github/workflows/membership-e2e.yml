@@ -61,6 +61,7 @@ jobs:
       matrix:
         include: ${{ fromJSON(needs.setup-matrix.outputs.matrix) }}
 
+    environment: desktop-build-cache-reader
     steps:
       - uses: actions/checkout@v6
         with:
@@ -72,11 +73,21 @@ jobs:
         with:
           toolchain: 1.95.0
 
+      - name: Start shared Engine MBX cache
+        if: runner.os != 'Windows'
+        uses: ./.github/actions/engine-build-cache
+        with:
+          cache-key: membership-${{ matrix.name }}
+          endpoint: ${{ secrets.BUILD_CACHE_R2_ENDPOINT }}
+          access-key-id: ${{ secrets.BUILD_CACHE_R2_ACCESS_KEY_ID }}
+          secret-access-key: ${{ secrets.BUILD_CACHE_R2_SECRET_ACCESS_KEY }}
+
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: '. -> target'
           shared-key: membership-e2e-${{ runner.os }}
+          cache-targets: ${{ runner.os == 'Windows' }}
           save-if: ${{ github.event_name == 'schedule' }}
 
       - name: Build daemon
@@ -129,3 +140,11 @@ jobs:
             ~/.local/share/app.uniclipboard.desktop-e2e-membership-*/**
             ~/.local/state/app.uniclipboard.desktop-e2e-membership-*/**
             ~/AppData/Local/app.uniclipboard.desktop-e2e-membership-*/**
+
+      - name: Retain MBX compiler evidence
+        if: always() && runner.os != 'Windows'
+        uses: actions/upload-artifact@v7
+        with:
+          name: mbx-membership-${{ matrix.name }}
+          path: ${{ runner.temp }}/mbx-evidence/
+          if-no-files-found: ignore

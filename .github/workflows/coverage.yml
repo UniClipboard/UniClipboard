@@ -6,6 +6,12 @@ on:
     branches: [main]
   workflow_call:
     secrets:
+      BUILD_CACHE_R2_ENDPOINT:
+        required: false
+      BUILD_CACHE_R2_ACCESS_KEY_ID:
+        required: false
+      BUILD_CACHE_R2_SECRET_ACCESS_KEY:
+        required: false
       CODECOV_TOKEN:
         required: false
 
@@ -32,6 +38,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
+    environment: desktop-build-cache-reader
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -46,11 +53,21 @@ jobs:
         with:
           cache: false
 
+      - name: Start shared Engine MBX cache
+        if: runner.os != 'Windows'
+        uses: ./.github/actions/engine-build-cache
+        with:
+          cache-key: coverage
+          endpoint: ${{ secrets.BUILD_CACHE_R2_ENDPOINT }}
+          access-key-id: ${{ secrets.BUILD_CACHE_R2_ACCESS_KEY_ID }}
+          secret-access-key: ${{ secrets.BUILD_CACHE_R2_SECRET_ACCESS_KEY }}
+
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: ". -> target"
           shared-key: coverage
+          cache-targets: ${{ runner.os == 'Windows' }}
           # PR 只读 default branch cache,写入由 cache-warmup 统一负责。
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
@@ -75,3 +92,11 @@ jobs:
           flags: rust-backend
           name: rust-coverage
           fail_ci_if_error: false
+
+      - name: Retain MBX compiler evidence
+        if: always() && runner.os != 'Windows'
+        uses: actions/upload-artifact@v7
+        with:
+          name: mbx-coverage
+          path: ${{ runner.temp }}/mbx-evidence/
+          if-no-files-found: ignore

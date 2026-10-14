@@ -139,6 +139,7 @@ jobs:
       matrix:
         include: ${{ fromJSON(needs.setup-matrix.outputs.matrix) }}
 
+    environment: ${{ github.ref == 'refs/heads/main' && 'desktop-build-cache-writer' || 'desktop-build-cache-reader' }}
     steps:
       # Linux 容器走预构建镜像 (.github/docker/build-bookworm.Dockerfile),
       # 含 musl-tools / build-essential / clang / cmake 等 CLI 编译所需 + Tauri 桌面端依赖。
@@ -188,11 +189,22 @@ jobs:
           UC_PINNED_RUST: ${{ steps.rust-channel.outputs.channel }}
         run: node scripts/ci/isolate-build-toolchain.mjs
 
+      - name: Start shared Engine MBX cache
+        if: runner.os != 'Windows'
+        uses: ./.github/actions/engine-build-cache
+        with:
+          cache-key: cli-${{ matrix.target }}
+          access: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && github.ref_protected && 'write' || 'read' }}
+          endpoint: ${{ secrets.BUILD_CACHE_R2_ENDPOINT }}
+          access-key-id: ${{ secrets.BUILD_CACHE_R2_ACCESS_KEY_ID }}
+          secret-access-key: ${{ secrets.BUILD_CACHE_R2_SECRET_ACCESS_KEY }}
+
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: ". -> target"
           shared-key: cli-${{ matrix.target }}
+          cache-targets: ${{ runner.os == 'Windows' }}
           # 只在 main 写缓存,tag/PR 只读。详见 build.yml 同名 step 的注释。
           save-if: ${{ inputs.save_cache || github.ref == 'refs/heads/main' }}
 
@@ -302,9 +314,19 @@ jobs:
           if-no-files-found: error
           retention-days: 3
 
+      - name: Retain MBX compiler evidence
+        if: always() && runner.os != 'Windows'
+        uses: actions/upload-artifact@v7
+        with:
+          name: mbx-cli-${{ matrix.target }}
+          path: ${{ runner.temp }}/mbx-evidence/
+          if-no-files-found: ignore
+
+
   # User-facing CLI (Go, apps/cli-go): no Rust toolchain and no container, it
   # only packages the daemon from build-sidecar. It never builds or links the
   # Rust development CLI.
+
   build-cli:
     name: Build CLI ${{ matrix.target }}
     needs: [setup-matrix, build-sidecar]

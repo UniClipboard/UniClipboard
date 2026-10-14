@@ -42,7 +42,13 @@ present() { [ -n "${!1:-}" ] && echo true || echo false; }
   awk '/^name = "uc-engine"/{f=1} f{print} /^$/{if(f)exit}' Cargo.lock
   rustc -Vv
 } > "$OUT/build-evidence.txt"
-cargo build --locked --release -p uc-daemon --bin uniclipd 2>&1 | tail -n 40
+if [[ -n "${UC_ENGINE_MBX_BIN:-}" ]]; then
+  export PATH="$UC_ENGINE_MBX_BIN:$PATH"
+  cargo build --locked --release -p uc-daemon --bin uniclipd 2>&1 | tail -n 40
+else
+  UC_TOOLS_DIR="$CACHE/tools" MBX_CACHE_DIR="$CACHE/mbx" \
+    bash scripts/build-cache/mbx.sh --exec cargo build --locked --release -p uc-daemon --bin uniclipd 2>&1 | tail -n 40
+fi
 cp "$CACHE/target/release/uniclipd" "$OUT/uniclipd"
 sha256sum "$OUT/uniclipd" >> "$OUT/build-evidence.txt"
 file "$OUT/uniclipd" >> "$OUT/build-evidence.txt"

@@ -90,7 +90,19 @@ case "$mode" in
       git config --global --add safe.directory /work
       python3 apps/gui-go/e2e/package_linux.py --arch "$ARCH" --daemon /cache/out/uniclipd --out /out/packages' ;;
   daemon-release)
-    docker run "${common[@]}" "$IMAGE" bash apps/gui-go/e2e/linux/build_daemon_release.sh ;;
+    cache_args=()
+    if [[ -n "${UC_ENGINE_MBX_BIN:-}" ]]; then
+      # Pass only compiler configuration, never credentials as command arguments.
+      tools_root="$(cd "$UC_ENGINE_MBX_BIN/../../.." && pwd)"
+      mkdir -p "$UC_ENGINE_MBX_STATS_DIR"
+      cache_args+=(--mount "type=bind,src=$tools_root,dst=$tools_root,readonly"
+        --mount "type=bind,src=$UC_ENGINE_MBX_ENV_FILE,dst=$UC_ENGINE_MBX_ENV_FILE,readonly"
+        --mount "type=bind,src=$UC_ENGINE_MBX_STATS_DIR,dst=$UC_ENGINE_MBX_STATS_DIR"
+        -e UC_ENGINE_MBX_BIN -e UC_ENGINE_MBX_ENV_FILE -e UC_ENGINE_MBX_STATS_DIR
+        -e MBX_CACHE_DIR=/cache/mbx -e MBX_GC_MAX_SIZE -e UC_TOOLS_DIR=/cache/tools
+        -e GITHUB_ACTIONS -e GITHUB_EVENT_NAME -e GITHUB_REF -e GITHUB_REF_PROTECTED)
+    fi
+    docker run "${common[@]}" ${cache_args[@]+"${cache_args[@]}"} "$IMAGE" bash apps/gui-go/e2e/linux/build_daemon_release.sh ;;
   release-e2e-build)
     docker run "${common[@]}" "$IMAGE" bash apps/gui-go/e2e/linux/build_release_e2e_in_container.sh ;;
   package-release)

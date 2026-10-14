@@ -189,6 +189,7 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
 
+    environment: desktop-build-cache-reader
     steps:
       - uses: actions/checkout@v4
         with:
@@ -202,11 +203,21 @@ jobs:
         with:
           bun-version: latest
 
+      - name: Start shared Engine MBX cache
+        if: runner.os != 'Windows'
+        uses: ./.github/actions/engine-build-cache
+        with:
+          cache-key: pr-check
+          endpoint: ${{ secrets.BUILD_CACHE_R2_ENDPOINT }}
+          access-key-id: ${{ secrets.BUILD_CACHE_R2_ACCESS_KEY_ID }}
+          secret-access-key: ${{ secrets.BUILD_CACHE_R2_SECRET_ACCESS_KEY }}
+
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: '. -> target'
           shared-key: pr-check
+          cache-targets: ${{ runner.os == 'Windows' }}
           # PR 只读 default branch cache,写入由 cache-warmup 统一负责。
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
@@ -254,9 +265,19 @@ jobs:
             exit 1
           fi
 
+      - name: Retain MBX compiler evidence
+        if: always() && runner.os != 'Windows'
+        uses: actions/upload-artifact@v7
+        with:
+          name: mbx-pr-check
+          path: ${{ runner.temp }}/mbx-evidence/
+          if-no-files-found: ignore
+
+
   # The native quick panel has a Windows platform layer (apps/quick-panel/src/platform/win32). Ubuntu and macOS never
   # compile it, so it is compiled here on both Windows architectures. Running it needs a desktop session and is the
   # job of apps/gui-go/e2e/windows_native_panel_run.py, not of this check.
+
   quick-panel-windows:
     name: Quick panel (${{ matrix.name }})
     needs: changes
@@ -295,6 +316,7 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 45
 
+    environment: desktop-build-cache-reader
     steps:
       - uses: actions/checkout@v4
         with:
@@ -303,11 +325,21 @@ jobs:
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Start shared Engine MBX cache
+        if: runner.os != 'Windows'
+        uses: ./.github/actions/engine-build-cache
+        with:
+          cache-key: e2e-macos
+          endpoint: ${{ secrets.BUILD_CACHE_R2_ENDPOINT }}
+          access-key-id: ${{ secrets.BUILD_CACHE_R2_ACCESS_KEY_ID }}
+          secret-access-key: ${{ secrets.BUILD_CACHE_R2_SECRET_ACCESS_KEY }}
+
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: '. -> target'
           shared-key: e2e-macos
+          cache-targets: ${{ runner.os == 'Windows' }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Build daemon
@@ -423,3 +455,11 @@ jobs:
           path: ${{ runner.temp }}/e2e-evidence
           if-no-files-found: warn
           retention-days: 14
+
+      - name: Retain MBX compiler evidence
+        if: always() && runner.os != 'Windows'
+        uses: actions/upload-artifact@v7
+        with:
+          name: mbx-e2e-macos
+          path: ${{ runner.temp }}/mbx-evidence/
+          if-no-files-found: ignore

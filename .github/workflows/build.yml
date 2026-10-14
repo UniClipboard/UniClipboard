@@ -269,12 +269,8 @@ jobs:
     # matrix.container 仅 Linux 条目设置,其他 platform 该字段缺失 → null →
     # GitHub Actions 跳过容器,直接在 host runner 上执行。
     container: ${{ matrix.container || null }}
-    # sccache R2, all targets (grew out of the aarch64-apple-darwin-only pilot,
-    # t-0160): binds every matrix job to an environment so the sccache step
-    # below can read BUILD_CACHE_R2_* secrets. github.ref is the trigger ref
-    # (release tags included), not the branch actually checked out via
-    # inputs.branch, matching the writer environment's own main-only
-    # deployment restriction.
+    # Cache credentials retain the existing repository/environment scope.
+    # MBX additionally restricts writes to protected main push events.
     environment: ${{ github.ref == 'refs/heads/main' && 'desktop-build-cache-writer' || 'desktop-build-cache-reader' }}
     strategy:
       fail-fast: false
@@ -331,16 +327,15 @@ jobs:
           # toolchain than the pinned channel cargo runs.
           targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || matrix.target == 'aarch64-pc-windows-msvc' && 'aarch64-pc-windows-msvc' || '' }}
 
-      # sccache R2, all targets (grew out of the aarch64-apple-darwin-only
-      # pilot, t-0160; modeled on Engine's ADR-029 shared bucket
-      # `uniclipboard-build-cache`). Per-target object prefix keeps each
-      # target's cache entries independent inside the shared bucket.
+      # Windows keeps its supported sccache route until the native MBX entry is validated.
       - name: install sccache
+        if: runner.os == 'Windows'
         uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
         with:
           version: v0.18.0
 
       - name: configure sccache for R2
+        if: runner.os == 'Windows'
         id: sccache-config
         env:
           TARGET: ${{ matrix.target }}
@@ -393,6 +388,16 @@ jobs:
           UC_PINNED_RUST: ${{ steps.rust-channel.outputs.channel }}
         run: node scripts/ci/isolate-build-toolchain.mjs
 
+      - name: Start shared Engine MBX cache
+        if: runner.os != 'Windows'
+        uses: ./.github/actions/engine-build-cache
+        with:
+          cache-key: sidecar-${{ matrix.target }}
+          access: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && github.ref_protected && 'write' || 'read' }}
+          endpoint: ${{ secrets.BUILD_CACHE_R2_ENDPOINT }}
+          access-key-id: ${{ secrets.BUILD_CACHE_R2_ACCESS_KEY_ID }}
+          secret-access-key: ${{ secrets.BUILD_CACHE_R2_SECRET_ACCESS_KEY }}
+
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
@@ -400,11 +405,8 @@ jobs:
           shared-key: sidecar-${{ matrix.target }}${{ steps.build-mode.outputs.suffix }}
           # The measured workspace-cache experiment still rebuilt every application crate.
           cache-workspace-crates: false
-          # Compiled output is sccache/R2's job once sccache actually got R2
-          # credentials; without them (e.g. fork PR, unrecognized target) this
-          # falls back to caching target/ here instead of going fully cold on
-          # both caches.
-          cache-targets: ${{ steps.sccache-config.outputs.enabled != 'true' }}
+          # MBX owns Unix compilation actions; Windows retains its existing fallback.
+          cache-targets: ${{ runner.os == 'Windows' && steps.sccache-config.outputs.enabled != 'true' }}
           # 只在 main 写缓存,其他分支(含 tag 触发的 release)只读。
           # Windows Post Cache Rust 上传单次 ~2m43s (25682907543),tag run
           # 通常基于刚合入 main 的代码,命中已存的 main cache 即可,不必再
@@ -495,6 +497,14 @@ jobs:
           path: sidecar.tar
           if-no-files-found: error
           retention-days: 3
+
+      - name: Retain MBX compiler evidence
+        if: always() && runner.os != 'Windows'
+        uses: actions/upload-artifact@v7
+        with:
+          name: mbx-sidecar-${{ matrix.target }}
+          path: ${{ runner.temp }}/mbx-evidence/
+          if-no-files-found: ignore
 
   # Go/Wails macOS app (issue #1895): UniClipboard.app around the release uniclipd and quick panel
   # helper from build-sidecar, Developer ID signed (inside-out, hardened runtime), notarized and

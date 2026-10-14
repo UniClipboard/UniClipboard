@@ -1,0 +1,36 @@
+name: Shared Engine MBX cache
+description: Reuse the pinned Engine cache entry without restoring Cargo targets.
+inputs:
+  cache-key:
+    description: Host build context for credential-free local action archives.
+    required: true
+  access:
+    description: Requested remote access; native protected-push policy still applies.
+    default: read
+  endpoint:
+    description: Optional R2 S3 endpoint.
+    default: ''
+  access-key-id:
+    description: Optional R2 access key ID.
+    default: ''
+  secret-access-key:
+    description: Optional R2 secret access key.
+    default: ''
+runs:
+  using: composite
+  steps:
+    - name: Start Engine compiler entry
+      shell: bash
+      env:
+        BUILD_CACHE_ACCESS: ${{ inputs.access }}
+        BUILD_CACHE_R2_ENDPOINT: ${{ inputs.endpoint }}
+        BUILD_CACHE_R2_ACCESS_KEY_ID: ${{ inputs.access-key-id }}
+        BUILD_CACHE_R2_SECRET_ACCESS_KEY: ${{ inputs.secret-access-key }}
+      run: bash scripts/build-cache/engine-tools.sh --ci
+    - name: Restore credential-free MBX actions
+      if: env.UC_COMPILE_CACHE_BACKEND == 'local'
+      uses: actions/cache@v4
+      with:
+        path: ${{ runner.temp }}/engine-mbx-cache
+        key: mbx-v1-${{ runner.os }}-${{ runner.arch }}-${{ inputs.cache-key }}-${{ github.ref }}-${{ github.sha }}
+        restore-keys: mbx-v1-${{ runner.os }}-${{ runner.arch }}-${{ inputs.cache-key }}-${{ github.ref }}-

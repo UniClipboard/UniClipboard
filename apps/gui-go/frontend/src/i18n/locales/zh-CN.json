@@ -375,7 +375,7 @@
           },
           "debug": {
             "label": "Debug 模式",
-            "description": "应用和 daemon 重启后提高本地诊断日志详细度。",
+            "description": "应用和 daemon 重启后提高应用与后台服务日志的详细度。不影响 Engine 连接日志，那部分请使用“捕获详细日志”。",
             "confirmTitle": "开启 Debug 模式？",
             "confirmDescription": "Debug 模式会记录更详细的日志。确认后应用将立即重启以生效。",
             "confirm": "开启并重启",

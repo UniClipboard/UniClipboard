@@ -890,6 +890,11 @@ export type DeviceTrustUnavailableReasonDto = 'no_current_change' | 'change_no_l
 export type DiagnosticArchiveCollectionDto = {
     concurrentWritesPossible: boolean;
     includedFiles: Array<string>;
+    /**
+     * Log sources (`gui`, `daemon`, `cli`, `quick-panel`, `engine`) that
+     * contributed no file to the package.
+     */
+    missingSources: Array<MissingLogSourceDto>;
     truncatedFiles: Array<string>;
     unreadableFiles: Array<string>;
 };
@@ -2371,6 +2376,15 @@ export type MembershipMaintenanceRecoveryDto = 'resolve_device_trust';
  */
 export type MergeHistoryTagsRequest = {
     sourceTagIds: Array<string>;
+};
+
+export type MissingLogSourceDto = {
+    /**
+     * `missing` (no file of this source) or `unreadable` (files exist, none
+     * could be exported).
+     */
+    reason: string;
+    source: string;
 };
 
 /**
@@ -5625,9 +5639,13 @@ export type ExportLogsData = {
 
 export type ExportLogsErrors = {
     /**
-     * Internal server error
+     * Export failed; `details.cause` is source_read_failed, archive_write_failed or unknown
      */
     500: ApiErrorResponse;
+    /**
+     * Export destination or local Engine diagnostics unavailable; `details.cause` may be destination_unavailable
+     */
+    503: ApiErrorResponse;
 };
 
 export type ExportLogsError = ExportLogsErrors[keyof ExportLogsErrors];

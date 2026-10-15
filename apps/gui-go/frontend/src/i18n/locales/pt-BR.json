@@ -376,7 +376,7 @@
           },
           "debug": {
             "label": "Modo de depuração",
-            "description": "Aumenta o detalhamento dos logs locais de diagnóstico depois que o app e o daemon forem reiniciados.",
+            "description": "Aumenta o detalhamento dos logs do app e do serviço em segundo plano depois que ambos forem reiniciados. Os logs de conexão do Engine não são afetados; use Capturar logs detalhados para eles.",
             "confirmTitle": "Ativar o modo de depuração?",
             "confirmDescription": "O modo de depuração registra logs mais detalhados. O app será reiniciado agora para aplicar a alteração.",
             "confirm": "Ativar e reiniciar",

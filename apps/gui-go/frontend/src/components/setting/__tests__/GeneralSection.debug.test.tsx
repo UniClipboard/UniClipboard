@@ -257,6 +257,7 @@ describe('GeneralSection debug diagnostics controls', () => {
         unreadableFiles: [],
         truncatedFiles: [],
         concurrentWritesPossible: true,
+        missingSources: [],
       },
     })
     setup()
@@ -372,6 +373,7 @@ describe('GeneralSection debug diagnostics controls', () => {
         unreadableFiles: [],
         truncatedFiles: [],
         concurrentWritesPossible: true,
+        missingSources: [],
       },
     })
     setup()

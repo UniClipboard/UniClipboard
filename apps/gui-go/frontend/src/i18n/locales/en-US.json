@@ -375,7 +375,7 @@
           },
           "debug": {
             "label": "Debug mode",
-            "description": "Increase local diagnostic log detail after the app and daemon are restarted.",
+            "description": "Increase the detail of the app and background service logs after both are restarted. Engine connection logs are not affected; use Capture detailed logs for those.",
             "confirmTitle": "Enable Debug mode?",
             "confirmDescription": "Debug mode records more detailed logs. The app will restart now to apply it.",
             "confirm": "Enable & Restart",

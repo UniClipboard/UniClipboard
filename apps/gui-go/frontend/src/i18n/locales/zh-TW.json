@@ -375,7 +375,7 @@
           },
           "debug": {
             "label": "Debug 模式",
-            "description": "應用程式和 daemon 重新啟動後提高本地診斷日誌詳細度。",
+            "description": "應用程式和 daemon 重新啟動後提高應用程式與背景服務日誌的詳細度。不影響 Engine 連線日誌，該部分請使用「擷取詳細日誌」。",
             "confirmTitle": "開啓 Debug 模式？",
             "confirmDescription": "Debug 模式會記錄更詳細的日誌。確認後應用程式將立即重新啟動以生效。",
             "confirm": "開啓並重新啟動",

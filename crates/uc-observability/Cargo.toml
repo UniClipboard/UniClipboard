@@ -9,7 +9,7 @@ description = "Observability infrastructure for UniClipboard: dual-output tracin
 # Engine-backed product analytics (sinks, identity, event context). Only the
 # daemon side (uc-bootstrap, uc-webserver, uc-daemon) enables it; the GUI uses
 # the tracing and diagnostic-export parts alone and must not link the Engine.
-analytics = ["dep:uc-engine", "dep:reqwest", "dep:tokio", "dep:uuid"]
+analytics = ["dep:uc-engine", "dep:reqwest", "dep:tokio"]
 
 [dependencies]
 uc-engine = { workspace = true, optional = true }
@@ -22,7 +22,7 @@ chrono = { version = "0.4", features = ["serde"] }
 anyhow = "1.0"
 tempfile = "3"
 zip = { version = "4.6.1", default-features = false, features = ["deflate"] }
-uuid = { version = "1", features = ["v7", "serde"], optional = true }
+uuid = { version = "1", features = ["v7", "serde"] }
 # Slice 7b: PosthogSink 自写 minimal HTTP client
 # - reqwest 0.12 + rustls(ring) features 与 uc-infra/uc-daemon-client/uc-cli/uc-desktop 已有用法一致；
 #   不引 reqwest 0.13 是因为后者 rustls feature 隐式选 aws-lc-rs（C 库 + CMake），破坏 uc-cli musl

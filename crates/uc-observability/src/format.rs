@@ -12,7 +12,7 @@ use tracing_subscriber::fmt::format::{FormatFields, Writer};
 use tracing_subscriber::fmt::{FmtContext, FormatEvent};
 use tracing_subscriber::registry::LookupSpan;
 
-use crate::context::global_device_id;
+use crate::context::{global_device_id, pid, run_id, run_scoped_ref};
 use crate::span_fields::collect_span_fields;
 
 /// A flat JSON event formatter that merges span fields into the top-level JSON object.
@@ -95,28 +95,37 @@ where
                 .map_err(|_| fmt::Error)?;
         }
 
-        let has_device_id =
+        // 3a. Process identity. Reserved: the formatter owns these keys, so a
+        // span or event field with the same name is renamed rather than allowed
+        // to impersonate the run.
+        map.serialize_entry("run_id", run_id())
+            .map_err(|_| fmt::Error)?;
+        map.serialize_entry("pid", &pid()).map_err(|_| fmt::Error)?;
+
+        let has_device_ref =
             event_fields.contains_key("device_id") || span_fields.contains_key("device_id");
 
-        if !has_device_id {
+        if !has_device_ref {
             if let Some(device_id) = global_device_id() {
-                map.serialize_entry("device_id", device_id)
+                map.serialize_entry("device_ref", &run_scoped_ref(device_id))
                     .map_err(|_| fmt::Error)?;
             }
         }
 
         // 4. Merge: span fields with conflict resolution, then event fields
         for (key, value) in &span_fields {
-            if event_fields.contains_key(key) {
-                map.serialize_entry(&format!("parent_{}", key), value)
+            let (key, value) = publishable_field(key, value, "span");
+            if event_fields.contains_key(&key) {
+                map.serialize_entry(&format!("parent_{}", key), &value)
                     .map_err(|_| fmt::Error)?;
             } else {
-                map.serialize_entry(key, value).map_err(|_| fmt::Error)?;
+                map.serialize_entry(&key, &value).map_err(|_| fmt::Error)?;
             }
         }
 
         for (key, value) in &event_fields {
-            map.serialize_entry(key, value).map_err(|_| fmt::Error)?;
+            let (key, value) = publishable_field(key, value, "event");
+            map.serialize_entry(&key, &value).map_err(|_| fmt::Error)?;
         }
 
         map.end().map_err(|_| fmt::Error)?;
@@ -124,6 +133,42 @@ where
         // Write the JSON line
         writeln!(writer, "{}", String::from_utf8_lossy(&buf))
     }
+}
+
+/// Keys that name the process run; owned by the formatter.
+const RESERVED_RUN_KEYS: [&str; 2] = ["run_id", "pid"];
+
+/// Identifier keys that must never be written raw to a host log, with the key
+/// their per-run reference is written under.
+const IDENTIFIER_REFS: [(&str, &str); 5] = [
+    ("device_id", "device_ref"),
+    ("peer_id", "peer_ref"),
+    ("session_token_jti", "session_token_ref"),
+    ("token_jti", "token_ref"),
+    ("jti", "token_ref"),
+];
+
+/// Key and value as they may be written: identifiers become run-scoped
+/// references and reserved run keys are renamed with `origin` as prefix.
+fn publishable_field(
+    key: &str,
+    value: &serde_json::Value,
+    origin: &str,
+) -> (String, serde_json::Value) {
+    if let Some((_, reference_key)) = IDENTIFIER_REFS.iter().find(|(raw, _)| *raw == key) {
+        let raw = match value {
+            serde_json::Value::String(text) => text.clone(),
+            other => other.to_string(),
+        };
+        return (
+            (*reference_key).to_string(),
+            serde_json::Value::from(run_scoped_ref(&raw)),
+        );
+    }
+    if RESERVED_RUN_KEYS.contains(&key) {
+        return (format!("{origin}_{key}"), value.clone());
+    }
+    (key.to_string(), value.clone())
 }
 
 /// Visitor that collects tracing fields as `serde_json::Value` entries.

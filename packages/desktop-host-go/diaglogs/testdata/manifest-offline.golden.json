@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "mode": "offline",
+  "exportedAt": "2026-10-14T08:30:00Z",
+  "since": null,
+  "enginePreparation": null,
+  "startupStatus": {
+    "phase": "ready"
+  },
+  "host": {
+    "appVersion": "1.2.0-alpha.5",
+    "os": "linux",
+    "arch": "amd64",
+    "profile": "dev",
+    "portable": false,
+    "timezoneOffsetMinutes": 480
+  },
+  "collection": {
+    "includedFiles": [
+      "engine.2026-10-14.jsonl",
+      "uniclipboard-gui.json.2026-10-14",
+      "uniclipboard-quick-panel.json.2026-10-14"
+    ],
+    "unreadableFiles": [],
+    "truncatedFiles": [],
+    "concurrentWritesPossible": true,
+    "missingSources": [
+      {
+        "source": "daemon",
+        "reason": "missing"
+      },
+      {
+        "source": "cli",
+        "reason": "missing"
+      }
+    ]
+  }
+}

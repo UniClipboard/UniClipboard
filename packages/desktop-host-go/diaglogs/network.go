@@ -232,10 +232,11 @@ func collectNetwork(archive *zip.Writer, selection networkSelection, now time.Ti
 			if writeErr != nil {
 				return NetworkReport{}, writeErr
 			}
+			// A read error after the member started leaves a partial member in the zip;
+			// it is listed with what was copied and also reported unreadable.
 			if readErr != nil {
 				run.UnreadableFiles = append(run.UnreadableFiles, name)
 				push(reasonFileUnreadable)
-				continue
 			}
 			truncated := copied != info.Size()
 			if truncated {

@@ -318,9 +318,16 @@ fn run_recently_written(run: &CandidateRun) -> bool {
     })
 }
 
+struct CopyOutcome {
+    copied: u64,
+    sha256: String,
+    prefix_sha256: Option<String>,
+}
+
 enum CopyError {
-    /// Reading the source file failed.
-    Read,
+    /// Reading the source file failed; what was already written to the archive
+    /// member is kept so the manifest can still account for it.
+    Read(CopyOutcome),
     /// Writing into the archive failed.
     Write(io::Error),
 }
@@ -333,7 +340,7 @@ fn copy_hashing(
     output: &mut impl Write,
     length: u64,
     prefix_len: Option<u64>,
-) -> Result<(u64, String, Option<String>), CopyError> {
+) -> Result<CopyOutcome, CopyError> {
     let mut full = Sha256::new();
     let mut prefix = Sha256::new();
     let mut prefix_digest = prefix_len
@@ -344,9 +351,16 @@ fn copy_hashing(
     while copied < length {
         let want = usize::try_from((length - copied).min(COPY_BUFFER_BYTES as u64))
             .unwrap_or(COPY_BUFFER_BYTES);
-        let read = input
-            .read(&mut buffer[..want])
-            .map_err(|_| CopyError::Read)?;
+        let read = match input.read(&mut buffer[..want]) {
+            Ok(read) => read,
+            Err(_) => {
+                return Err(CopyError::Read(CopyOutcome {
+                    copied,
+                    sha256: hex(&full.finalize()),
+                    prefix_sha256: prefix_digest,
+                }));
+            }
+        };
         if read == 0 {
             break;
         }
@@ -362,7 +376,35 @@ fn copy_hashing(
         }
         copied += read as u64;
     }
-    Ok((copied, hex(&full.finalize()), prefix_digest))
+    Ok(CopyOutcome {
+        copied,
+        sha256: hex(&full.finalize()),
+        prefix_sha256: prefix_digest,
+    })
+}
+
+/// Opens `path` without following a link, so an entry swapped for a symlink
+/// after the directory listing is refused instead of exported.
+fn open_regular_file(path: &Path) -> io::Result<(File, fs::Metadata)> {
+    let mut options = fs::OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.custom_flags(libc::O_NOFOLLOW);
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
+        options.custom_flags(FILE_FLAG_OPEN_REPARSE_POINT);
+    }
+    let file = options.open(path)?;
+    let meta = file.metadata()?;
+    if !meta.is_file() {
+        return Err(io::Error::other("not a regular file"));
+    }
+    Ok((file, meta))
 }
 
 fn hex(bytes: &[u8]) -> String {
@@ -430,11 +472,7 @@ pub fn collect<W: Write + Seek>(
         };
         for name in &candidate.files {
             let path = candidate.directory.join(name);
-            let opened = File::open(&path).and_then(|file| {
-                let meta = file.metadata()?;
-                Ok((file, meta))
-            });
-            let Ok((file, meta)) = opened else {
+            let Ok((file, meta)) = open_regular_file(&path) else {
                 run.unreadable_files.push(name.clone());
                 push(NetworkArchiveReason::FileUnreadable, &mut reasons);
                 continue;
@@ -448,18 +486,24 @@ pub fn collect<W: Write + Seek>(
             archive
                 .start_file(entry_name, options)
                 .map_err(io::Error::other)?;
-            let (copied, sha256, prefix_sha256) =
+            let (outcome, read_failed) =
                 match copy_hashing(file, archive, length, expected.map(|entry| entry.bytes)) {
-                    Ok(result) => result,
+                    Ok(outcome) => (outcome, false),
                     // A read error after the entry started cannot be undone inside
-                    // the zip; the partial entry stays and is reported unreadable.
-                    Err(CopyError::Read) => {
-                        run.unreadable_files.push(name.clone());
-                        push(NetworkArchiveReason::FileUnreadable, &mut reasons);
-                        continue;
-                    }
+                    // the zip; the partial member stays, so it is listed with what
+                    // was copied and also reported unreadable.
+                    Err(CopyError::Read(outcome)) => (outcome, true),
                     Err(CopyError::Write(error)) => return Err(error),
                 };
+            let CopyOutcome {
+                copied,
+                sha256,
+                prefix_sha256,
+            } = outcome;
+            if read_failed {
+                run.unreadable_files.push(name.clone());
+                push(NetworkArchiveReason::FileUnreadable, &mut reasons);
+            }
             let truncated = copied != length;
             if truncated {
                 push(NetworkArchiveReason::FileTruncated, &mut reasons);

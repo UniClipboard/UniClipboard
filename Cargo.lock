@@ -12288,6 +12288,7 @@ version = "1.2.0-alpha.5"
 dependencies = [
  "anyhow",
  "chrono",
+ "libc",
  "reqwest 0.12.28",
  "serde",
  "serde_json",

@@ -11,6 +11,9 @@ description = "Observability infrastructure for UniClipboard: dual-output tracin
 # the tracing and diagnostic-export parts alone and must not link the Engine.
 analytics = ["dep:uc-engine", "dep:reqwest", "dep:tokio"]
 
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 [dependencies]
 uc-engine = { workspace = true, optional = true }
 tracing = "0.1"

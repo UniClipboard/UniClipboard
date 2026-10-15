@@ -254,7 +254,14 @@ impl DaemonDiagnosticsRuntime for EngineDaemonDiagnostics {
                 }
                 dto
             }
-            Err(_) => not_configured_network_status(),
+            Err(NetworkLogError::NotConfigured) => not_configured_network_status(),
+            // A configured log whose query fails (for example after shutdown) is
+            // unavailable, not unconfigured.
+            Err(_) => NetworkLogStatusDto {
+                availability: NetworkLogAvailabilityDto::Configured,
+                state: Some(NetworkLogStateDto::Unavailable),
+                ..not_configured_network_status()
+            },
         }
     }
 

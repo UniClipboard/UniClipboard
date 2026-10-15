@@ -96,6 +96,11 @@
           },
           "message": {
             "type": "string"
+          },
+          "requestId": {
+            "description": "Id of the request that failed, equal to the `x-request-id` response\nheader, so a user-visible error can be matched to the daemon's log\nrecords. Omitted from the wire when the error was not produced while\nserving a request.",
+            "nullable": true,
+            "type": "string"
           }
         },
         "required": [

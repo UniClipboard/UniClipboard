@@ -241,6 +241,27 @@ describe('DaemonClient', () => {
       }
     })
 
+    it('exposes the request id of the failed response on the thrown error', async () => {
+      mockFetchSequence([
+        {
+          ok: false,
+          status: 500,
+          body: { code: 'internal_error', message: 'boom', requestId: 'req-1a2b' },
+        },
+      ])
+      mockGetDaemonSession.mockResolvedValueOnce({
+        sessionToken: 'jwt-t',
+        expiresInSecs: 300,
+        refreshAtSecs: 240,
+      })
+
+      daemonClient.initialize(TEST_CONFIG)
+      await expect(daemonClient.request('/anything')).rejects.toMatchObject({
+        apiCode: 'internal_error',
+        apiRequestId: 'req-1a2b',
+      })
+    })
+
     it('exposes status and the daemon {code,message,details} body on the thrown error', async () => {
       mockFetchSequence([
         {

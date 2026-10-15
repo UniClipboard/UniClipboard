@@ -28,6 +28,12 @@ pub struct ApiErrorResponse {
     /// Omitted from the wire when `None`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub details: Option<serde_json::Value>,
+    /// Id of the request that failed, equal to the `x-request-id` response
+    /// header, so a user-visible error can be matched to the daemon's log
+    /// records. Omitted from the wire when the error was not produced while
+    /// serving a request.
+    #[serde(default, rename = "requestId", skip_serializing_if = "Option::is_none")]
+    pub request_id: Option<String>,
 }
 
 impl ApiErrorResponse {
@@ -37,6 +43,7 @@ impl ApiErrorResponse {
             code: code.into(),
             message: message.into(),
             details: None,
+            request_id: None,
         }
     }
 
@@ -50,6 +57,7 @@ impl ApiErrorResponse {
             code: code.into(),
             message: message.into(),
             details: Some(details),
+            request_id: None,
         }
     }
 }

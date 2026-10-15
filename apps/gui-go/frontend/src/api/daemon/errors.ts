@@ -56,6 +56,8 @@ export class DaemonApiError extends Error {
   apiMessage?: string
   /** Structured context from the daemon error body (`ApiErrorResponse.details`). */
   apiDetails?: unknown
+  /** Id of the failed request (`ApiErrorResponse.requestId`), matching the daemon's log records. */
+  apiRequestId?: string
 
   constructor(
     code: DaemonErrorCode,
@@ -73,6 +75,7 @@ export class DaemonApiError extends Error {
     this.apiCode = parsed.code
     this.apiMessage = parsed.message
     this.apiDetails = parsed.details
+    this.apiRequestId = parsed.requestId
   }
 }
 
@@ -84,13 +87,15 @@ export function parseApiErrorBody(body: unknown): {
   code?: string
   message?: string
   details?: unknown
+  requestId?: string
 } {
   if (typeof body !== 'object' || body === null) return {}
-  const { code, message, details } = body as Record<string, unknown>
+  const { code, message, details, requestId } = body as Record<string, unknown>
   return {
     code: typeof code === 'string' ? code : undefined,
     message: typeof message === 'string' ? message : undefined,
     details,
+    requestId: typeof requestId === 'string' ? requestId : undefined,
   }
 }
 

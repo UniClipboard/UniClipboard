@@ -309,7 +309,6 @@ mod tests {
     use std::sync::Arc;
 
     use chrono::Utc;
-    use tracing::instrument::WithSubscriber;
     use uc_daemon_contract::api::dto::diagnostics::{
         DiagnosticArchiveCollectionDto, DiagnosticCaptureModeDto, DiagnosticCaptureStateDto,
         DiagnosticExportPreparationDto, DiagnosticSetupStatusDto, DiagnosticSignalResultDto,
@@ -441,9 +440,12 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn a_failed_archive_export_names_its_cause_and_is_logged_once() {
-        let cases = [
+    fn export_failure_cases() -> [(
+        DaemonDiagnosticArchiveError,
+        &'static str,
+        axum::http::StatusCode,
+    ); 4] {
+        [
             (
                 DaemonDiagnosticArchiveError::SourceReadFailed,
                 "source_read_failed",
@@ -464,32 +466,55 @@ mod tests {
                 "unknown",
                 axum::http::StatusCode::INTERNAL_SERVER_ERROR,
             ),
-        ];
-        for (failure, cause, status) in cases {
-            let captured = Captured::default();
-            let subscriber = tracing_subscriber::fmt()
-                .with_writer(captured.clone())
-                .with_ansi(false)
-                .finish();
+        ]
+    }
+
+    #[tokio::test]
+    async fn a_failed_archive_export_names_its_cause() {
+        for (failure, cause, status) in export_failure_cases() {
             let runtime = RuntimeProbe {
                 prepared: Arc::new(AtomicBool::new(false)),
             };
-            let archive = FailingArchive(failure);
 
-            let error = prepare_and_export(&runtime, &archive, Some(24))
-                .with_subscriber(subscriber)
+            let error = prepare_and_export(&runtime, &FailingArchive(failure), Some(24))
                 .await
                 .expect_err("export fails");
 
             assert_eq!(error.status, status);
             assert_eq!(error.code, "diagnostic_export_failed");
             assert_eq!(error.details, Some(serde_json::json!({ "cause": cause })));
+        }
+    }
+
+    #[test]
+    fn a_failed_archive_export_is_logged_once_with_its_cause() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime");
+        for (failure, cause, status) in export_failure_cases() {
+            if !status.is_server_error() {
+                continue;
+            }
+            let captured = Captured::default();
+            let subscriber = tracing_subscriber::fmt()
+                .with_writer(captured.clone())
+                .with_ansi(false)
+                .finish();
+
+            tracing::subscriber::with_default(subscriber, || {
+                runtime.block_on(async {
+                    let probe = RuntimeProbe {
+                        prepared: Arc::new(AtomicBool::new(false)),
+                    };
+                    let _ = prepare_and_export(&probe, &FailingArchive(failure), Some(24)).await;
+                });
+            });
+
             let output =
                 String::from_utf8(captured.0.lock().expect("captured").clone()).expect("utf8");
-            let records: Vec<_> = output.lines().filter(|line| line.contains(cause)).collect();
-            if status.is_server_error() {
-                assert_eq!(records.len(), 1, "one record for {cause}: {output}");
-            }
+            let records = output.lines().filter(|line| line.contains(cause)).count();
+            assert_eq!(records, 1, "one record for {cause}: {output}");
             assert!(
                 !output.contains("/Users"),
                 "no paths in the record: {output}"

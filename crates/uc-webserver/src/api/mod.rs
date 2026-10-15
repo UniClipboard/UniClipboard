@@ -19,6 +19,7 @@ pub mod mobile_sync;
 pub mod openapi;
 pub mod pairing;
 pub mod projection;
+pub(crate) mod request_id;
 pub mod restart;
 pub mod routes;
 pub mod search;

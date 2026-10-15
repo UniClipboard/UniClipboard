@@ -10,7 +10,8 @@ use anyhow::Context;
 use axum::body::Body;
 use axum::http::header::{
     HeaderName, HeaderValue, ACCESS_CONTROL_ALLOW_HEADERS, ACCESS_CONTROL_ALLOW_METHODS,
-    ACCESS_CONTROL_ALLOW_ORIGIN, ACCESS_CONTROL_REQUEST_METHOD, ORIGIN,
+    ACCESS_CONTROL_ALLOW_ORIGIN, ACCESS_CONTROL_EXPOSE_HEADERS, ACCESS_CONTROL_REQUEST_METHOD,
+    ORIGIN,
 };
 use axum::http::HeaderMap;
 use axum::http::Method;
@@ -540,7 +541,7 @@ pub(crate) async fn request_tracing_middleware(request: Request<Body>, next: Nex
     let method = request.method().clone();
     let path = request.uri().path().to_string();
     let query_redacted = redact_query_secrets(request.uri().query());
-    let request_id = format!("{:016x}", rand::random::<u64>());
+    let request_id = crate::api::request_id::accept_or_generate(request.headers());
     let start = Instant::now();
     let span = tracing::info_span!(
         "daemon.http.request",
@@ -557,9 +558,12 @@ pub(crate) async fn request_tracing_middleware(request: Request<Body>, next: Nex
             tracing::info!("daemon http request received");
         }
 
-        let mut response = next.run(request).await;
+        let mut response =
+            crate::api::request_id::scope(request_id.clone(), next.run(request)).await;
         if let Ok(value) = HeaderValue::from_str(&request_id) {
-            response.headers_mut().insert("x-request-id", value);
+            response
+                .headers_mut()
+                .insert(crate::api::request_id::REQUEST_ID_HEADER, value);
         }
         let status = response.status();
         let elapsed_ms = start.elapsed().as_millis() as u64;
@@ -714,7 +718,12 @@ fn apply_cors_headers(headers: &mut HeaderMap, origin: Option<&str>) {
     );
     headers.insert(
         ACCESS_CONTROL_ALLOW_HEADERS,
-        HeaderValue::from_static("authorization, content-type"),
+        HeaderValue::from_static("authorization, content-type, x-request-id"),
+    );
+    // Without this a browser cannot read the id from a cross-origin response.
+    headers.insert(
+        ACCESS_CONTROL_EXPOSE_HEADERS,
+        HeaderValue::from_static("x-request-id"),
     );
     headers.insert(
         HeaderName::from_static("vary"),
@@ -976,6 +985,108 @@ mod request_log_redaction_tests {
             handler_event.contains("path=/correlation-test"),
             "{handler_event}"
         );
+    }
+}
+
+#[cfg(test)]
+mod request_correlation_tests {
+    use axum::body::Body;
+    use axum::http::{Request, StatusCode};
+    use axum::middleware;
+    use axum::routing::get;
+    use axum::Router;
+    use tower::ServiceExt;
+
+    use crate::api::dto::error::ApiError;
+
+    /// The same middleware order the daemon uses: request tracing outside CORS.
+    fn router() -> Router {
+        Router::new()
+            .route(
+                "/fails",
+                get(|| async { Err::<StatusCode, ApiError>(ApiError::bad_request("nope")) }),
+            )
+            .route("/ok", get(|| async { StatusCode::OK }))
+            .layer(middleware::from_fn(super::cors_middleware))
+            .layer(middleware::from_fn(super::request_tracing_middleware))
+    }
+
+    async fn call(uri: &str, request_id: Option<&str>) -> axum::response::Response {
+        let mut request = Request::builder()
+            .uri(uri)
+            .header("origin", "http://localhost:5173");
+        if let Some(id) = request_id {
+            request = request.header("x-request-id", id);
+        }
+        router()
+            .oneshot(request.body(Body::empty()).unwrap())
+            .await
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn a_well_formed_inbound_request_id_is_kept() {
+        let response = call("/ok", Some("ui-7f3a.9c-12")).await;
+        assert_eq!(response.headers()["x-request-id"], "ui-7f3a.9c-12");
+    }
+
+    #[tokio::test]
+    async fn a_malformed_inbound_request_id_is_replaced() {
+        let too_long = "a".repeat(65);
+        for bad in [
+            "has space",
+            "semi;colon",
+            "",
+            too_long.as_str(),
+            "new\u{e9}line",
+        ] {
+            let response = call("/ok", Some(bad)).await;
+            let id = response.headers()["x-request-id"].to_str().unwrap();
+            assert_ne!(id, bad);
+            assert!(!id.is_empty() && id.len() <= 64, "{id}");
+        }
+    }
+
+    #[tokio::test]
+    async fn the_browser_may_send_and_read_the_request_id() {
+        let preflight = router()
+            .oneshot(
+                Request::builder()
+                    .method("OPTIONS")
+                    .uri("/ok")
+                    .header("origin", "http://localhost:5173")
+                    .header("access-control-request-method", "GET")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let allowed = preflight.headers()["access-control-allow-headers"]
+            .to_str()
+            .unwrap()
+            .to_ascii_lowercase();
+        assert!(allowed.contains("x-request-id"), "{allowed}");
+
+        let response = call("/ok", None).await;
+        let exposed = response.headers()["access-control-expose-headers"]
+            .to_str()
+            .unwrap()
+            .to_ascii_lowercase();
+        assert!(exposed.contains("x-request-id"), "{exposed}");
+    }
+
+    #[tokio::test]
+    async fn an_error_body_carries_the_request_id_of_its_response() {
+        let response = call("/fails", Some("trace-me-1")).await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(response.headers()["x-request-id"], "trace-me-1");
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(body["requestId"], "trace-me-1");
+        assert_eq!(body["code"], "bad_request");
+        assert!(body.get("request_id").is_none());
     }
 }
 

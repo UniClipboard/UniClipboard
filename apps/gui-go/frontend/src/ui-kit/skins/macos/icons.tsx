@@ -74,6 +74,7 @@ const paths = {
   list: <path d="M4 6h16M4 12h16M4 18h16" />,
   chevronRight: <path d="m9 6 6 6-6 6" />,
   plus: <path d="M12 5v14M5 12h14" />,
+  minus: <path d="M5 12h14" />,
   filter: <path d="M4 5h16l-6 7.5V19l-4 2v-8.5z" />,
   devices: (
     <>

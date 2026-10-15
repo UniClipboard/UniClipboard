@@ -1,18 +1,17 @@
 import { ChevronRight } from 'lucide-react'
-import React, { useEffect, useState } from 'react'
+import React, { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { LocalDeviceInfo } from '@/api/daemon/members'
 import CopyIconButton from '@/components/device/CopyIconButton'
 import type { DeviceRowStatus } from '@/components/device/device-trust-view'
-import { getDeviceIcon } from '@/components/device/device-utils'
+import { getDeviceIcon, getPlatformLabel } from '@/components/device/device-utils'
 import LocalSyncToggle from '@/components/device/LocalSyncToggle'
 import PanelFactRow from '@/components/device/PanelFactRow'
 import RebuildSpaceDialog from '@/components/device/RebuildSpaceDialog'
 import StatusDot from '@/components/device/StatusDot'
 import { Button } from '@/components/ui/button'
+import { useAppVersion } from '@/hooks/useAppVersion'
 import { useSettingSelector } from '@/hooks/useSetting'
-import { getVersion } from '@/host/app'
-import { detectPlatformInfo } from '@/lib/platform'
 import { cn } from '@/lib/utils'
 
 interface LocalDevicePanelProps {
@@ -31,22 +30,7 @@ const LocalDevicePanel: React.FC<LocalDevicePanelProps> = ({
 }) => {
   const { t } = useTranslation()
   const [showResetModal, setShowResetModal] = useState(false)
-  const [appVersion, setAppVersion] = useState<string | null>(null)
-
-  useEffect(() => {
-    let cancelled = false
-    getVersion()
-      .then(version => {
-        if (!cancelled) setAppVersion(version)
-      })
-      .catch(() => {
-        // Outside Tauri (plain browser dev) the API is unavailable; the
-        // version row simply stays hidden.
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [])
+  const appVersion = useAppVersion()
 
   const platformLabel = getPlatformLabel()
 
@@ -181,15 +165,3 @@ function LocalDeviceHeader({
 }
 
 export default React.memo(LocalDevicePanel)
-
-// ────────────────────────────────────────────────────────────────
-// Local helpers (file-private)
-// ────────────────────────────────────────────────────────────────
-
-function getPlatformLabel(): string | null {
-  const info = detectPlatformInfo()
-  if (info.isMac) return 'macOS'
-  if (info.isWindows) return 'Windows'
-  if (info.isLinux) return 'Linux'
-  return null
-}

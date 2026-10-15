@@ -1,5 +1,6 @@
 import { Laptop, Monitor, Smartphone, Tablet } from 'lucide-react'
 import type { ContentTypes } from '@/api/daemon/member'
+import { detectPlatformInfo } from '@/lib/platform'
 
 export function getDeviceIcon(deviceName?: string | null) {
   const name = deviceName?.toLowerCase() || ''
@@ -28,3 +29,12 @@ export const contentTypeEntries: {
   { field: 'link', i18nKey: 'syncLink', status: 'editable' },
   { field: 'richText', i18nKey: 'syncRichText', status: 'editable' },
 ]
+
+/** The name of this device's operating system, or `null` when it cannot be told. */
+export function getPlatformLabel(): string | null {
+  const info = detectPlatformInfo()
+  if (info.isMac) return 'macOS'
+  if (info.isWindows) return 'Windows'
+  if (info.isLinux) return 'Linux'
+  return null
+}

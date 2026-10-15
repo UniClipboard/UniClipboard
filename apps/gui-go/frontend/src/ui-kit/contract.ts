@@ -48,6 +48,7 @@ export type IconName =
   | 'package'
   | 'phone'
   | 'pin'
+  | 'remove'
   | 'retry'
   | 'search'
   | 'send'
@@ -511,6 +512,11 @@ export interface SidebarNavSection {
    * items then open in a flyout. Skins that hide the sidebar completely ignore it.
    */
   icon?: IconName
+  /**
+   * The heading shows or hides the items (macOS disclosure on hover). `label` names the action the
+   * toggle performs now, e.g. "Hide Devices".
+   */
+  collapse?: { collapsed: boolean; label: string; onCollapsedChange: (collapsed: boolean) => void }
 }
 
 /** Single-selection navigation (Up/Down move, Enter/Space select, Tab leaves the list). */
@@ -776,6 +782,11 @@ export interface SheetProps {
   footer?: ReactNode
   /** The default button that closes the sheet ("Done"). */
   done: LabelledAction
+  /**
+   * Called once the sheet has finished closing, after its exit animation. A caller that mounts
+   * the sheet only while it is in use unmounts it here, so the sheet can still animate out.
+   */
+  onClosed?: () => void
 }
 
 export interface TableColumn {
@@ -843,7 +854,8 @@ export interface StepListProps {
   steps: StepListStep[]
 }
 
-export type StatusTone = 'positive' | 'neutral' | 'warning' | 'critical'
+/** `info`: a working but indirect state, e.g. a device connected through a relay. */
+export type StatusTone = 'positive' | 'info' | 'neutral' | 'warning' | 'critical'
 
 export interface InsetListRow {
   id: string
@@ -858,6 +870,82 @@ export interface InsetListRow {
 export interface InsetListProps {
   label: string
   rows: InsetListRow[]
+}
+
+export interface SourceListItem {
+  /** Automation selector on the row. */
+  'data-testid'?: string
+  /** Automation-only state on the row, e.g. a device's status kind; never shown. */
+  'data-status'?: string
+  id: string
+  title: string
+  subtitle?: string
+  /** Colours the subtitle, e.g. a trust problem; the status dot keeps `status`. */
+  subtitleTone?: StatusTone
+  icon: IconName
+  /** Status dot on the icon, e.g. a device's connection. */
+  status?: StatusTone
+  /** Drawn faded, e.g. an offline device. */
+  dimmed?: boolean
+  /** Something that is not an object yet, e.g. a pending invitation (outlined icon). */
+  pending?: boolean
+}
+
+export interface SourceListSection {
+  id: string
+  title?: string
+  items: SourceListItem[]
+  /** A command in the section heading, shown as an icon button, e.g. Refresh. */
+  action?: LabelledAction & { icon: IconName; busy?: boolean; disabled?: boolean }
+  /** Shown instead of the items while there are none, e.g. "Invite Device". */
+  placeholder?: LabelledAction
+  /** Content after the items, e.g. a status notice or a read-only history. */
+  extra?: ReactNode
+}
+
+/**
+ * The object list of a management view (AppKit source list in a sheet, WinUI ListView with
+ * headers): sections of rows with an icon, a status dot and a subtitle. Single selection with one
+ * tab stop: Up/Down move the selection across sections, Home/End jump.
+ */
+export interface SourceListProps {
+  label: string
+  sections: SourceListSection[]
+  value?: string
+  onValueChange: (id: string) => void
+  /** Above the sections, e.g. a connection notice. */
+  header?: ReactNode
+  /** Display-only status pinned under the list, e.g. "2 online". */
+  footer?: string
+}
+
+/**
+ * A list column beside a detail column inside a `large` sheet (master-detail). The skin owns the
+ * column widths and the divider; the detail scrolls on its own.
+ */
+export interface MasterDetailProps {
+  list: ReactNode
+  detail: ReactNode
+  /** Accessible name of the detail region. */
+  detailLabel: string
+}
+
+/**
+ * The heading of an object's detail, e.g. a device: a large icon, the name, a status line and the
+ * object's commands on the trailing side.
+ */
+export interface EntityHeaderProps {
+  icon: IconName
+  /** Outlined icon for something that is not an object yet, e.g. an invitation. */
+  pending?: boolean
+  title: string
+  /** Small label after the title, e.g. "This device". */
+  badge?: string
+  status?: { text: string; tone: StatusTone; detail?: string }
+  /** A longer explanation under the status line. */
+  description?: string
+  /** Commands on the trailing side, e.g. an Unpair button. */
+  actions?: ReactNode
 }
 
 /** A labelled single-line field inside a form. Return submits the form unless an input method is composing. */
@@ -1030,6 +1118,9 @@ export declare function Table(props: TableProps): ReactNode
 export declare function TextField(props: TextFieldProps): ReactNode
 export declare function StepList(props: StepListProps): ReactNode
 export declare function InsetList(props: InsetListProps): ReactNode
+export declare function SourceList(props: SourceListProps): ReactNode
+export declare function MasterDetail(props: MasterDetailProps): ReactNode
+export declare function EntityHeader(props: EntityHeaderProps): ReactNode
 export declare function FormField(props: FormFieldProps): ReactNode
 export declare function CodeField(props: CodeFieldProps): ReactNode
 export declare function ProgressBar(props: ProgressBarProps): ReactNode

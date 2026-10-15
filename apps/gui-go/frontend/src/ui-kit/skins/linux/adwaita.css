@@ -2688,3 +2688,297 @@
 .adw-split-toolbar .adw-slider-control {
   width: 90px;
 }
+
+/* ---------- Manage Devices sheet (AdwDialog with a sidebar list, design DV0–DV7) ---------- */
+
+.adw-dot-tag[data-status='info'] {
+  background: var(--blue);
+}
+.adw-grouped li[data-tone='info'] .adw-status-dot {
+  background: var(--blue);
+}
+.adw-grouped li[data-tone='info'] .adw-status {
+  color: var(--blue);
+}
+
+.adw-side-disclosure svg {
+  transform: rotate(90deg);
+  transition: transform 0.2s var(--adw-ease);
+}
+.adw-side-disclosure[data-collapsed] svg {
+  transform: none;
+}
+
+/* Inside a sheet's framed body, which sizes to its content: a fixed height, with each column
+   scrolling by itself. */
+.adw-master-detail {
+  display: flex;
+  height: 480px;
+  min-height: 0;
+}
+.adw-master-column {
+  width: 240px;
+  flex-shrink: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--sidebar);
+  box-shadow: inset -1px 0 0 var(--border);
+}
+.adw-detail-column {
+  flex-grow: 1;
+  min-width: 0;
+  overflow-y: auto;
+}
+.adw-detail-column-body {
+  box-sizing: border-box;
+  max-width: 760px;
+  padding: 20px 28px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.adw-source-list {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.adw-source-header {
+  padding: 10px 10px 0;
+}
+.adw-source-scroll {
+  flex-grow: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 2px 8px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  outline: none;
+}
+.adw-source-group {
+  display: contents;
+}
+.adw-source-heading {
+  flex-shrink: 0;
+  height: 30px;
+  margin-top: 8px;
+  padding: 0 4px 0 10px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--fg2);
+}
+.adw-source-row {
+  box-sizing: border-box;
+  flex-shrink: 0;
+  height: 48px;
+  padding: 0 10px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: default;
+  user-select: none;
+  outline: none;
+}
+.adw-source-row:hover {
+  background: var(--hover);
+}
+.adw-source-row:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+.adw-source-tile {
+  position: relative;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: var(--shade);
+  color: var(--fg2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.adw-source-tile[data-pending] {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--border);
+  color: var(--accent-text);
+}
+.adw-source-dot {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 10px;
+  height: 10px;
+  border-radius: 5px;
+  background: var(--gray);
+  box-shadow: 0 0 0 2px var(--sidebar);
+}
+.adw-source-dot[data-status='positive'] {
+  background: var(--green);
+}
+.adw-source-dot[data-status='info'] {
+  background: var(--blue);
+}
+.adw-source-dot[data-status='warning'] {
+  background: var(--orange);
+}
+.adw-source-dot[data-status='critical'] {
+  background: var(--red);
+}
+.adw-source-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.adw-source-subtitle {
+  font-size: 12px;
+  color: var(--fg2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.adw-source-subtitle[data-tone='warning'] {
+  color: var(--warning-text);
+}
+.adw-source-subtitle[data-tone='critical'] {
+  color: var(--destructive-text);
+}
+.adw-source-subtitle[data-tone='info'] {
+  color: var(--accent-text);
+}
+.adw-source-row[data-dimmed] .adw-source-tile,
+.adw-source-row[data-dimmed] .adw-row-text {
+  opacity: 0.55;
+}
+.adw-source-row[aria-selected='true'] {
+  background: var(--accent-tint-14);
+}
+.adw-source-placeholder {
+  padding: 4px 10px;
+}
+.adw-source-extra {
+  padding: 2px 0 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.adw-source-footer {
+  flex-shrink: 0;
+  height: 34px;
+  padding: 0 16px;
+  box-shadow: inset 0 1px 0 var(--border);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--fg2);
+}
+.adw-source-footer::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--green);
+}
+
+.adw-entity-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.adw-entity-tile {
+  flex-shrink: 0;
+  width: 56px;
+  height: 56px;
+  border-radius: 12px;
+  background: var(--shade);
+  color: var(--fg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.adw-entity-tile[data-pending] {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--border);
+  color: var(--accent-text);
+}
+.adw-entity-text {
+  flex-grow: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.adw-entity-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.adw-entity-title {
+  margin: 0;
+  font-size: 22px;
+  line-height: 28px;
+  font-weight: 800;
+  color: var(--fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.adw-entity-badge {
+  flex-shrink: 0;
+  height: 22px;
+  padding: 0 9px;
+  border-radius: 11px;
+  background: var(--shade);
+  color: var(--fg2);
+  font-size: 12px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+}
+.adw-entity-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--fg2);
+  font-variant-numeric: tabular-nums;
+}
+.adw-entity-status .adw-source-dot {
+  position: static;
+  width: 8px;
+  height: 8px;
+  border-radius: 4px;
+  box-shadow: none;
+}
+.adw-entity-status-text {
+  font-weight: 600;
+  color: var(--fg);
+}
+.adw-entity-status[data-tone='warning'] .adw-entity-status-text {
+  color: var(--warning-text);
+}
+.adw-entity-status[data-tone='critical'] .adw-entity-status-text {
+  color: var(--destructive-text);
+}
+.adw-entity-description {
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--fg2);
+}
+.adw-entity-actions {
+  flex-shrink: 0;
+  display: flex;
+  gap: 8px;
+}

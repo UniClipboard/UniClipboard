@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useLocation, useNavigate } from 'react-router'
 import { countSearch } from '@/api/daemon/search'
 import { useCompositeSearchBar } from '@/components/history/composite-search/useCompositeSearchBar'
 import { useZeroResultRelaxations } from '@/components/history/composite-search/useZeroResultRelaxations'
@@ -10,6 +11,9 @@ import { useAppliedColorScheme } from '@/hooks/useAppliedColorScheme'
 import { useHistoryController } from '@/hooks/useHistoryController'
 import { useShortcut } from '@/hooks/useShortcut'
 import { formatShortcutHint } from '@/lib/shortcut-format'
+import { MANAGE_DEVICES_STATE } from '@/pages/devices-kit/devices-kit-model'
+import { DevicesKitSheet } from '@/pages/devices-kit/DevicesKitSheet'
+import { useDevicesKit } from '@/pages/devices-kit/useDevicesKit'
 import { SIDEBAR_TOGGLE_SHORTCUT } from '@/shortcuts/definitions'
 import { Pane, SplitView, Text, UiRoot, type MenuEntry } from '@/ui-kit'
 import { selectionSummary } from './history-kit-model'
@@ -63,6 +67,20 @@ export default function HistoryKitPage() {
   const c = useHistoryController()
   const chrome = useLibraryChrome()
   const colorScheme = useAppliedColorScheme()
+  const routerLocation = useLocation()
+  const navigate = useNavigate()
+  const openDevicesFromRoute =
+    (routerLocation.state as Record<string, unknown> | null)?.[MANAGE_DEVICES_STATE] === true
+  const devices = useDevicesKit(openDevicesFromRoute)
+  // The `/devices` redirect's flag opens the sheet once; drop it from the history entry so a
+  // reload or a later remount of this page does not open the sheet again.
+  useEffect(() => {
+    if (!openDevicesFromRoute) return
+    void navigate(
+      { pathname: routerLocation.pathname, search: routerLocation.search },
+      { replace: true, state: null }
+    )
+  }, [openDevicesFromRoute, navigate, routerLocation.pathname, routerLocation.search])
 
   const search = useCompositeSearchBar({
     variant: 'list',
@@ -248,6 +266,9 @@ export default function HistoryKitPage() {
               onManageTags={openTagManager}
               tagTotal={c.historyTags.tags.length + LIBRARY_BUILTIN_TAG_IDS.length}
               countsRevision={c.items}
+              activeSource={c.filter.sourceFilter}
+              onSelectSource={c.filterActions.setSourceFilter}
+              devices={devices}
             />
           }
           sidebarHidden={chrome.hidden && !chrome.drawerOpen}
@@ -322,7 +343,7 @@ export default function HistoryKitPage() {
             {c.queryFailure ? (
               <HistoryKitQueryFailed reason={c.queryFailure} onRetry={c.retryQuery} />
             ) : emptyHistory ? (
-              <HistoryKitFirstLaunch />
+              <HistoryKitFirstLaunch onPairDevice={devices.invite} />
             ) : noResults ? (
               <HistoryKitNoResults
                 filterCount={search.chips.length}
@@ -419,6 +440,7 @@ export default function HistoryKitPage() {
             c.setTagManagerOpen(false)
           }}
         />
+        {devices.mounted && <DevicesKitSheet devices={devices} />}
         <HistoryKitDeleteAlert
           open={c.deleteDialogOpen}
           onOpenChange={c.setDeleteDialogOpen}

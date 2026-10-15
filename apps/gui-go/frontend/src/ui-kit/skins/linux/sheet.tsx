@@ -6,10 +6,25 @@ import { usePortalContainer } from './portal'
 /**
  * Modal dialog centred over a scrim, keeps focus inside, and Done is the default button. Base UI returns focus to the opener on close.
  */
-export function Sheet({ open, onOpenChange, title, header, children, footer, done }: SheetProps) {
+export function Sheet({
+  open,
+  onOpenChange,
+  title,
+  header,
+  children,
+  footer,
+  done,
+  onClosed,
+}: SheetProps) {
   const container = usePortalContainer()
   return (
-    <Dialog.Root open={open} onOpenChange={next => onOpenChange(next)}>
+    <Dialog.Root
+      open={open}
+      onOpenChange={next => onOpenChange(next)}
+      onOpenChangeComplete={next => {
+        if (!next) onClosed?.()
+      }}
+    >
       <Dialog.Portal container={container}>
         <Dialog.Backdrop className="adw-sheet-backdrop" />
         <Dialog.Popup className="adw-sheet adw-sheet-wide">

@@ -7,10 +7,25 @@ import { usePortalContainer } from './portal'
  * AppKit sheet (design MC3): drops from the top edge of the window over a scrim, keeps focus
  * inside, and Done is the default button. Base UI returns focus to the opener on close.
  */
-export function Sheet({ open, onOpenChange, title, header, children, footer, done }: SheetProps) {
+export function Sheet({
+  open,
+  onOpenChange,
+  title,
+  header,
+  children,
+  footer,
+  done,
+  onClosed,
+}: SheetProps) {
   const container = usePortalContainer()
   return (
-    <Dialog.Root open={open} onOpenChange={next => onOpenChange(next)}>
+    <Dialog.Root
+      open={open}
+      onOpenChange={next => onOpenChange(next)}
+      onOpenChangeComplete={next => {
+        if (!next) onClosed?.()
+      }}
+    >
       <Dialog.Portal container={container}>
         <Dialog.Backdrop className="mac-sheet-backdrop" />
         <Dialog.Popup className="mac-sheet mac-sheet-wide">

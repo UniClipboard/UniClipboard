@@ -27,6 +27,7 @@
       "@ui-skin": ["./src/ui-kit/contract.ts"],
       "@ui-skin/first-frame": ["./src/ui-kit/contract.ts"],
       "@ui-history-page": ["./src/pages/HistoryPage.tsx"],
+      "@ui-devices-page": ["./src/pages/DevicesPage.tsx"],
       "@ui-startup-screen": ["./src/components/app/StartupProgressScreen.tsx"],
       "@ui-app-status-screen": ["./src/components/app/AppStatusScreen.tsx"],
       "@ui-profile-recovery-page": ["./src/pages/ProfileRecoveryPage.tsx"],

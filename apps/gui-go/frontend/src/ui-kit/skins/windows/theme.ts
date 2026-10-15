@@ -127,6 +127,8 @@ const skinTokens: Record<ColorScheme, Record<string, string>> = {
     'w11-status-warning': '#9D5D00',
     'w11-status-critical': '#C42B1C',
     'w11-status-neutral': 'rgba(0, 0, 0, 0.446)',
+    // SystemFillColorAttention: working through an indirect path (a relayed connection).
+    'w11-status-info': '#005FB8',
   },
   dark: {
     'w11-base': '#202020',
@@ -160,6 +162,7 @@ const skinTokens: Record<ColorScheme, Record<string, string>> = {
     'w11-status-warning': '#FCE100',
     'w11-status-critical': '#FF99A4',
     'w11-status-neutral': 'rgba(255, 255, 255, 0.545)',
+    'w11-status-info': '#60CDFF',
   },
 }
 

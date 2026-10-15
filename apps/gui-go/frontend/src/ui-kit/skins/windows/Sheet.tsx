@@ -65,7 +65,16 @@ const useStyles = makeStyles({
  * that opened it (recorded before the surface takes focus), or to the last focused element still in
  * the page when the opener is gone.
  */
-export function Sheet({ open, onOpenChange, title, header, children, footer, done }: SheetProps) {
+export function Sheet({
+  open,
+  onOpenChange,
+  title,
+  header,
+  children,
+  footer,
+  done,
+  onClosed,
+}: SheetProps) {
   const styles = useStyles()
   const opener = useRef<HTMLElement | null>(null)
   const surface = useRef<HTMLDivElement | null>(null)
@@ -73,19 +82,20 @@ export function Sheet({ open, onOpenChange, title, header, children, footer, don
   useLayoutEffect(() => {
     if (open) opener.current = lastConnectedFocus()
   }, [open])
-  const restoreFocus = (_: null, data: { direction: 'enter' | 'exit' }) => {
+  const finishMotion = (_: null, data: { direction: 'enter' | 'exit' }) => {
     if (data.direction !== 'exit') return
     const target = opener.current?.isConnected
       ? opener.current
       : lastConnectedFocus(surface.current)
     target?.focus()
     opener.current = null
+    onClosed?.()
   }
   return (
     <Dialog
       open={open}
       onOpenChange={(_, data) => onOpenChange(data.open)}
-      surfaceMotion={{ onMotionFinish: restoreFocus }}
+      surfaceMotion={{ onMotionFinish: finishMotion }}
     >
       <DialogSurface ref={surface} className={styles.surface}>
         <DialogBody className={styles.body}>

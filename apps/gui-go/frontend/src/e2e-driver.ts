@@ -76,13 +76,25 @@ const kitNavLabels: Record<string, string> = {
 }
 const navControl = (href: string) =>
   link(href) ??
+  // The kit sidebar's gear on the Devices heading opens Manage Devices.
+  (href === '/devices'
+    ? $(`nav button[aria-label="${i18n.t('history.kit.manageDevices')}"]`)
+    : null) ??
   // The row text may end with a shortcut hint (`Settings… ⌘,`).
   Array.from(document.querySelectorAll<HTMLElement>('nav button')).find(
     button =>
       kitNavLabels[href] && button.textContent?.trim().startsWith(i18n.t(kitNavLabels[href]))
   ) ??
   null
-const devicesPage = () => $('[data-testid="devices-add-device"]')
+// The existing Devices page, or the kit's Manage Devices sheet.
+const devicesPage = () =>
+  $('[data-testid="devices-add-device"]') ??
+  $(`[role="dialog"] [role="listbox"][aria-label="${i18n.t('devices.panel.listTitle')}"]`)
+// Done of the kit's Manage Devices sheet, when it is open.
+const manageDevicesDone = () =>
+  Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"] button')).find(
+    button => button.textContent?.trim() === i18n.t('history.composite.done')
+  ) ?? null
 // History rows of either page: the existing cards, or the `@/ui-kit` list's options.
 const ROW_SELECTOR = '[data-testid="history-card"], [role="option"][data-item-id]'
 const historyRows = () => Array.from(document.querySelectorAll<HTMLElement>(ROW_SELECTOR))
@@ -309,6 +321,9 @@ async function run() {
     void waitFor(`link ${href}`, () => navControl(href)).then(a => a.click())
   // At this window width the shared layout shows devices as a panel of the history route.
   await navigate(click('/devices'), '/', devicesPage, 'devices', true)
+  // The kit opens Manage Devices as a sheet over History; close it before moving on.
+  manageDevicesDone()?.click()
+  await waitFor('manage devices closed', () => !manageDevicesDone())
   const beforeSettings = location.pathname
   await navigate(click('/settings'), '/settings', () => settingsPageOpen(), 'settings', true)
   await navigate(
@@ -2157,7 +2172,9 @@ async function runDeviceGroupUpdateScenario() {
         seen.set(deviceId, `${status}|${label}`)
         void record('device-row', true, { deviceId, status, label })
       }
-      if (status === 'security_update' && row.getAttribute('aria-current') !== 'true') row.click()
+      const selected =
+        row.getAttribute('aria-current') === 'true' || row.getAttribute('aria-selected') === 'true'
+      if (status === 'security_update' && !selected) row.click()
     }
     const description = $('[data-testid="device-status-description"]')?.textContent ?? ''
     if (description !== described) {

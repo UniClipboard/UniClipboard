@@ -1360,7 +1360,10 @@
       "unpinAll": "Unpin All",
       "view": "View",
       "viewGrid": "Grid",
-      "viewList": "List"
+      "viewList": "List",
+      "manageDevices": "Manage Devices…",
+      "showSection": "Show {{section}}",
+      "hideSection": "Hide {{section}}"
     }
   },
   "dashboard": {
@@ -2287,7 +2290,22 @@
         }
       }
     },
-    "deviceTrustUnavailable": "Device status is temporarily unavailable. Try again shortly."
+    "deviceTrustUnavailable": "Device status is temporarily unavailable. Try again shortly.",
+    "kit": {
+      "add": "Add",
+      "remove": "Remove Selected Device",
+      "invitation": "Invitation",
+      "cancelInvitation": "Cancel Invitation",
+      "showInvitation": "Show Invitation",
+      "inviteDevice": "Invite Device…",
+      "connectPhone": "Connect Phone…",
+      "joinSpace": "Join Another Space…",
+      "waitHint": "You can keep using UniClipboard while you wait. This invitation stays in the list until the device joins, the code expires, or you cancel it.",
+      "copyPeerId": "Copy peer ID",
+      "rebuildEllipsis": "Rebuild Space…",
+      "unpairEllipsis": "Unpair…",
+      "detailLabel": "Device details"
+    }
   },
   "pairing": {
     "globalRequest": {

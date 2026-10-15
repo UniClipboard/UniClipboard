@@ -1353,7 +1353,10 @@
       "unpinAll": "全部取消釘選",
       "view": "顯示方式",
       "viewGrid": "格狀",
-      "viewList": "列表"
+      "viewList": "列表",
+      "manageDevices": "管理裝置…",
+      "showSection": "顯示{{section}}",
+      "hideSection": "隱藏{{section}}"
     }
   },
   "dashboard": {
@@ -2279,6 +2282,21 @@
           "internal": "內部錯誤 —— 請查看 daemon 日誌。"
         }
       }
+    },
+    "kit": {
+      "add": "新增",
+      "remove": "移除所選裝置",
+      "invitation": "邀請",
+      "cancelInvitation": "取消邀請",
+      "showInvitation": "顯示邀請",
+      "inviteDevice": "邀請裝置…",
+      "connectPhone": "連接手機…",
+      "joinSpace": "加入其他空間…",
+      "waitHint": "等待期間你可以繼續使用 UniClipboard。這則邀請會一直留在清單中，直到裝置加入、驗證碼過期或你取消它。",
+      "copyPeerId": "複製 Peer ID",
+      "rebuildEllipsis": "重建空間…",
+      "unpairEllipsis": "取消配對…",
+      "detailLabel": "裝置詳細資訊"
     }
   },
   "pairing": {

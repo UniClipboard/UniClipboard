@@ -1,8 +1,7 @@
 import { ChevronRight, CircleHelp, Unlink } from 'lucide-react'
-import React, { useCallback, useEffect } from 'react'
+import React from 'react'
 import { useTranslation } from 'react-i18next'
-import type { ContentTypes, MemberProtectionStatus } from '@/api/daemon/member'
-import { DEFAULT_SEND_CONTENT_TYPES } from '@/api/daemon/member'
+import type { MemberProtectionStatus } from '@/api/daemon/member'
 import type { SpaceMember } from '@/api/daemon/members'
 import { deriveBadgeKind, derivePeerStatusTone } from '@/components/device/connection-channel-utils'
 import CopyIconButton from '@/components/device/CopyIconButton'
@@ -13,18 +12,9 @@ import StatusDot from '@/components/device/StatusDot'
 import SyncPreferencesControl from '@/components/device/SyncPreferencesControl'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { toast } from '@/components/ui/toast'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { subscribeDeviceSyncChanged } from '@/lib/device-sync-events'
-import { createLogger } from '@/lib/logger'
+import { usePeerSyncPreferences } from '@/hooks/usePeerSyncPreferences'
 import { cn } from '@/lib/utils'
-import { useAppDispatch, useAppSelector } from '@/store/hooks'
-import {
-  fetchMemberSyncPreferences,
-  updateMemberSyncPreferences,
-} from '@/store/slices/devicesSlice'
-
-const log = createLogger('peer-detail-panel')
 
 interface PeerDetailPanelProps {
   deviceId: string
@@ -47,101 +37,15 @@ const PeerDetailPanel: React.FC<PeerDetailPanelProps> = ({
   onUnpair,
 }) => {
   const { t } = useTranslation()
-  const dispatch = useAppDispatch()
-
-  const preferences = useAppSelector(state => state.devices.memberSyncPreferences[deviceId])
-  const sendEnabled = preferences?.sendEnabled ?? true
-  const receiveEnabled = preferences?.receiveEnabled ?? true
-  const protectionStatus = useAppSelector(
-    state =>
-      state.devices.spaceProtection?.members.find(member => member.deviceId === deviceId)?.status
-  )
-
-  useEffect(() => {
-    if (deviceId) {
-      dispatch(fetchMemberSyncPreferences(deviceId))
-    }
-  }, [dispatch, deviceId])
-
-  useEffect(() => {
-    return subscribeDeviceSyncChanged(deviceId, () => {
-      dispatch(fetchMemberSyncPreferences(deviceId))
-    })
-  }, [dispatch, deviceId])
-
-  // Preferences are updated optimistically in the slice; on failure re-fetch
-  // the authoritative value to roll the optimistic change back.
-  const reconcileAfterFailure = useCallback(() => {
-    dispatch(fetchMemberSyncPreferences(deviceId))
-  }, [dispatch, deviceId])
-
-  const handlePreferenceUpdateFailure = useCallback(
-    (err: unknown, message: string, fields: Record<string, unknown> = {}) => {
-      log.error({ err, ...fields }, message)
-      toast.error(t('devices.settings.sync.updateFailed'))
-      reconcileAfterFailure()
-    },
-    [reconcileAfterFailure, t]
-  )
-
-  const handleSyncEnabledChange = useCallback(
-    (checked: boolean) => {
-      dispatch(
-        updateMemberSyncPreferences({
-          deviceId,
-          patch: { sendEnabled: checked, receiveEnabled: checked },
-        })
-      )
-        .unwrap()
-        .catch(err => {
-          handlePreferenceUpdateFailure(err, 'failed to update device sync preference')
-        })
-    },
-    [dispatch, deviceId, handlePreferenceUpdateFailure]
-  )
-
-  const handleContentDirectionChange = useCallback(
-    (field: keyof ContentTypes, send: boolean, receive: boolean) => {
-      const patch = {
-        sendContentTypes: { [field]: send },
-        receiveContentTypes: { [field]: receive },
-        ...(!sendEnabled && send ? { sendEnabled: true } : {}),
-        ...(!receiveEnabled && receive ? { receiveEnabled: true } : {}),
-      }
-      dispatch(
-        updateMemberSyncPreferences({
-          deviceId,
-          patch,
-        })
-      )
-        .unwrap()
-        .catch(err => {
-          handlePreferenceUpdateFailure(err, 'failed to update content sync direction', {
-            field,
-          })
-        })
-    },
-    [dispatch, deviceId, handlePreferenceUpdateFailure, receiveEnabled, sendEnabled]
-  )
-
-  const handleRestoreDefaults = useCallback(async () => {
-    try {
-      await dispatch(
-        updateMemberSyncPreferences({
-          deviceId,
-          patch: {
-            sendEnabled: true,
-            receiveEnabled: true,
-            sendContentTypes: DEFAULT_SEND_CONTENT_TYPES,
-            receiveContentTypes: DEFAULT_SEND_CONTENT_TYPES,
-          },
-        })
-      ).unwrap()
-      dispatch(fetchMemberSyncPreferences(deviceId))
-    } catch (err) {
-      handlePreferenceUpdateFailure(err, 'failed to restore default sync preferences')
-    }
-  }, [dispatch, deviceId, handlePreferenceUpdateFailure])
+  const {
+    preferences,
+    sendEnabled,
+    receiveEnabled,
+    protectionStatus,
+    setSyncEnabled: handleSyncEnabledChange,
+    setContentDirection: handleContentDirectionChange,
+    restoreDefaults: handleRestoreDefaults,
+  } = usePeerSyncPreferences(deviceId)
 
   if (!deviceId) return null
 

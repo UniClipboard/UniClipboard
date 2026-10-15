@@ -55,7 +55,8 @@ export function useAddDeviceInvitation({
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onSuccess?: () => void
+  /** The invited device joined; `peerDeviceId` is the new member. */
+  onSuccess?: (peerDeviceId: string) => void
   active?: boolean
 }) {
   const { t } = useTranslation()
@@ -79,7 +80,7 @@ export function useAddDeviceInvitation({
   const [copied, setCopied] = useState(false)
   const initialDeviceIdsRef = useRef<ReadonlySet<string> | null>(null)
   const pairingCompletionInFlightRef = useRef(false)
-  const reportSuccess = useEffectEvent(() => onSuccess?.())
+  const reportSuccess = useEffectEvent((peerDeviceId: string) => onSuccess?.(peerDeviceId))
 
   // Tick only while displaying a live invitation.
   useEffect(() => {
@@ -102,7 +103,18 @@ export function useAddDeviceInvitation({
     })
   }
   const restoreOrIssueInvitation = useEffectEvent(async (isCancelled: () => boolean) => {
-    update({ loading: true, error: null })
+    // A reopened session starts clean: a host that keeps this hook mounted between sessions (the
+    // kit's invitation row) must not show the previous session's result.
+    pairingCompletionInFlightRef.current = false
+    update({
+      loading: true,
+      error: null,
+      issueRetryable: null,
+      step: 'invitation',
+      failureReason: null,
+      invitation: null,
+      issuedAtMs: null,
+    })
     try {
       const trust = await getDeviceTrustSnapshot()
       if (isCancelled()) return
@@ -168,7 +180,7 @@ export function useAddDeviceInvitation({
       }
       update({ step: 'success' })
       log.info({ event: 'pairing_confirmed', trigger }, 'new device pairing confirmed')
-      reportSuccess()
+      reportSuccess(peerDeviceId)
     } catch {
       log.warn(
         { error_kind: 'pairing_confirmation_failed', trigger },

@@ -3,6 +3,11 @@ import type { ComponentType } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { ContentTypes } from '@/api/daemon/member'
 import { contentTypeEntries } from '@/components/device/device-utils'
+import {
+  DIRECTION_VALUES,
+  getSyncDirection,
+  type SyncDirection,
+} from '@/components/device/sync-direction'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -15,8 +20,6 @@ import {
 import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
 
-type SyncDirection = 'both' | 'send_only' | 'receive_only' | 'off'
-
 const CONTENT_TYPE_ICONS: Partial<
   Record<keyof ContentTypes, ComponentType<{ className?: string }>>
 > = {
@@ -25,13 +28,6 @@ const CONTENT_TYPE_ICONS: Partial<
   file: FileIcon,
   link: Link2,
   richText: AlignLeft,
-}
-
-const DIRECTION_VALUES: Record<SyncDirection, { send: boolean; receive: boolean }> = {
-  both: { send: true, receive: true },
-  send_only: { send: true, receive: false },
-  receive_only: { send: false, receive: true },
-  off: { send: false, receive: false },
 }
 
 interface SyncPreferencesControlProps {
@@ -220,11 +216,4 @@ export default function SyncPreferencesControl({
       </div>
     </div>
   )
-}
-
-function getSyncDirection(send: boolean, receive: boolean): SyncDirection {
-  if (send && receive) return 'both'
-  if (send) return 'send_only'
-  if (receive) return 'receive_only'
-  return 'off'
 }

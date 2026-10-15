@@ -2,14 +2,8 @@ import { Clock, Info } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { CurrentInvitation } from '@/api/daemon/setupV2'
 import { Progress } from '@/components/ui/progress'
+import { formatInvitationRemaining } from '@/lib/invitation-code'
 import { cn } from '@/lib/utils'
-
-function formatRemaining(ms: number): string {
-  const total = Math.max(0, Math.floor(ms / 1000))
-  const m = Math.floor(total / 60)
-  const s = total % 60
-  return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
-}
 
 export function AddDeviceInvitation({
   invitation,
@@ -63,7 +57,7 @@ export function AddDeviceInvitation({
             {expired
               ? t('devices.addDevice.expired')
               : t('devices.addDevice.expiresIn', {
-                  remaining: formatRemaining(remaining),
+                  remaining: formatInvitationRemaining(remaining),
                 })}
           </div>
         </div>

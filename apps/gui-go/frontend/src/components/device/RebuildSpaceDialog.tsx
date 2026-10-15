@@ -1,7 +1,5 @@
 import { Loader2 } from 'lucide-react'
-import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { resetSetup } from '@/api/daemon/setupV2'
 import {
   AlertDialog,
   AlertDialogContent,
@@ -13,11 +11,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { createLogger } from '@/lib/logger'
-import { refreshSetupState } from '@/store/setupRealtimeStore'
-
-const log = createLogger('rebuild-space-dialog')
-const REBUILD_CONFIRMATION_TOKEN = 'RESET'
+import { useRebuildSpace } from '@/hooks/useRebuildSpace'
 
 export default function RebuildSpaceDialog({
   onClose,
@@ -27,36 +21,21 @@ export default function RebuildSpaceDialog({
   onRebuildSucceeded?: () => void
 }) {
   const { t } = useTranslation()
-  const [resetConfirmInput, setResetConfirmInput] = useState('')
-  const [resetting, setResetting] = useState(false)
-  const [resetErrorKey, setResetErrorKey] = useState<string | null>(null)
+  const {
+    confirmation: resetConfirmInput,
+    setConfirmation: setResetConfirmInput,
+    confirmed: resetConfirmTokenMatches,
+    rebuilding: resetting,
+    errorKey: resetErrorKey,
+    rebuild,
+  } = useRebuildSpace(onRebuildSucceeded)
   const closeResetModal = () => {
     if (resetting) return
     onClose()
   }
 
-  const resetConfirmTokenMatches =
-    resetConfirmInput.trim().toUpperCase() === REBUILD_CONFIRMATION_TOKEN
-
   const handleResetSubmit = async () => {
-    if (!resetConfirmTokenMatches || resetting) return
-    setResetting(true)
-    setResetErrorKey(null)
-    try {
-      await resetSetup()
-      try {
-        await refreshSetupState()
-      } catch (refreshErr) {
-        log.warn({ err: refreshErr }, 'Setup state refresh failed after space rebuild')
-      }
-      onRebuildSucceeded?.()
-      onClose()
-    } catch (error) {
-      log.error({ err: error }, 'Space rebuild failed')
-      setResetErrorKey('devices.panel.danger.failed')
-    } finally {
-      setResetting(false)
-    }
+    if (await rebuild()) onClose()
   }
 
   return (

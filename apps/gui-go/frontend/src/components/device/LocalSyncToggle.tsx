@@ -1,46 +1,10 @@
-import { memo, useRef, useState } from 'react'
-import { useTranslation } from 'react-i18next'
+import { memo } from 'react'
 import { Switch } from '@/components/ui/switch'
-import { toast } from '@/components/ui/toast'
-import { useSettingSelector } from '@/hooks/useSetting'
-import { createLogger } from '@/lib/logger'
+import { useLocalSyncToggle } from '@/hooks/useLocalSyncToggle'
 import { cn } from '@/lib/utils'
 
-const log = createLogger('local-device-sync')
-
 function LocalSyncToggle({ kind }: { kind: 'sync' | 'file' }) {
-  const { t } = useTranslation()
-  const available = useSettingSelector(
-    ({ setting }) => setting !== null && (kind === 'sync' || setting.sync.syncEnabled !== false)
-  )
-  const checked = useSettingSelector(
-    ({ setting }) =>
-      setting !== null &&
-      setting.sync.syncEnabled !== false &&
-      (kind === 'sync' || setting.fileSync?.fileSyncEnabled !== false)
-  )
-  const updateSync = useSettingSelector(context => context.updateSyncSetting)
-  const updateFile = useSettingSelector(context => context.updateFileSyncSetting)
-  const [saving, setSaving] = useState(false)
-  const savingRef = useRef(false)
-  const key = kind === 'sync' ? 'syncEnabled' : 'fileSync'
-  const title = t(`devices.panel.policies.${key}.title`)
-
-  const save = async (value: boolean) => {
-    if (!available || savingRef.current) return
-    savingRef.current = true
-    setSaving(true)
-    try {
-      if (kind === 'sync') await updateSync({ syncEnabled: value })
-      else await updateFile({ fileSyncEnabled: value })
-    } catch (err) {
-      log.error({ err }, 'failed to update device sync setting')
-      toast.error(t('devices.settings.sync.updateFailed'))
-    } finally {
-      savingRef.current = false
-      setSaving(false)
-    }
-  }
+  const { available, checked, saving, title, description, save } = useLocalSyncToggle(kind)
 
   return (
     <div
@@ -51,9 +15,7 @@ function LocalSyncToggle({ kind }: { kind: 'sync' | 'file' }) {
     >
       <div className="min-w-0 flex-1">
         <p className="text-ui-body font-medium text-foreground">{title}</p>
-        <p className="mt-1 text-ui-caption text-muted-foreground">
-          {t(`devices.panel.policies.${key}.description`)}
-        </p>
+        <p className="mt-1 text-ui-caption text-muted-foreground">{description}</p>
       </div>
       <Switch
         aria-label={title}

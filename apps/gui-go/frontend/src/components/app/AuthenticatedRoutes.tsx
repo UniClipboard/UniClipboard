@@ -1,3 +1,4 @@
+import DevicesPage from '@ui-devices-page'
 import HistoryPage from '@ui-history-page'
 import SettingsPage, { settingsOwnsWindowTop } from '@ui-settings-page'
 import type { ReactNode } from 'react'
@@ -9,7 +10,6 @@ import { Toaster } from '@/components/ui/toaster'
 import { DeviceTrustProvider } from '@/contexts/DeviceTrustContext'
 import { SettingsFullLayout } from '@/layouts'
 import { DiagnosticsRoutes } from '@/observability/diagnostics'
-import DevicesPage from '@/pages/DevicesPage'
 import { AuthenticatedLayout } from './AuthenticatedLayout'
 
 type AuthenticatedRoutesProps = { fullTitleBar: ReactNode }

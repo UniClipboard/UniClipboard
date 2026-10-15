@@ -1356,7 +1356,10 @@
       "unpinAll": "すべてピン留め解除",
       "view": "表示",
       "viewGrid": "グリッド",
-      "viewList": "リスト"
+      "viewList": "リスト",
+      "manageDevices": "デバイスを管理…",
+      "showSection": "{{section}}を表示",
+      "hideSection": "{{section}}を隠す"
     }
   },
   "dashboard": {
@@ -2282,6 +2285,21 @@
           "internal": "内部エラー — デーモン ログを参照してください。"
         }
       }
+    },
+    "kit": {
+      "add": "追加",
+      "remove": "選択したデバイスを削除",
+      "invitation": "招待",
+      "cancelInvitation": "招待をキャンセル",
+      "showInvitation": "招待を表示",
+      "inviteDevice": "デバイスを招待…",
+      "connectPhone": "スマートフォンを接続…",
+      "joinSpace": "別のスペースに参加…",
+      "waitHint": "待っている間も UniClipboard を使い続けられます。この招待は、デバイスが参加するか、コードの有効期限が切れるか、キャンセルするまで一覧に残ります。",
+      "copyPeerId": "ピア ID をコピー",
+      "rebuildEllipsis": "スペースを再構築…",
+      "unpairEllipsis": "ペアリング解除…",
+      "detailLabel": "デバイスの詳細"
     }
   },
   "pairing": {

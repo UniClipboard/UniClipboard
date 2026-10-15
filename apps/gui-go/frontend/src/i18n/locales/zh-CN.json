@@ -1353,7 +1353,10 @@
       "unpinAll": "全部取消置顶",
       "view": "显示方式",
       "viewGrid": "网格",
-      "viewList": "列表"
+      "viewList": "列表",
+      "manageDevices": "管理设备…",
+      "showSection": "显示{{section}}",
+      "hideSection": "隐藏{{section}}"
     }
   },
   "dashboard": {
@@ -2279,7 +2282,22 @@
         }
       }
     },
-    "deviceTrustUnavailable": "设备状态暂时不可用。请稍后重试。"
+    "deviceTrustUnavailable": "设备状态暂时不可用。请稍后重试。",
+    "kit": {
+      "add": "添加",
+      "remove": "移除所选设备",
+      "invitation": "邀请",
+      "cancelInvitation": "取消邀请",
+      "showInvitation": "显示邀请",
+      "inviteDevice": "邀请设备…",
+      "connectPhone": "连接手机…",
+      "joinSpace": "加入其他空间…",
+      "waitHint": "等待期间你可以继续使用 UniClipboard。这条邀请会一直留在列表中，直到设备加入、验证码过期或你取消它。",
+      "copyPeerId": "复制 Peer ID",
+      "rebuildEllipsis": "重建空间…",
+      "unpairEllipsis": "取消配对…",
+      "detailLabel": "设备详情"
+    }
   },
   "pairing": {
     "globalRequest": {

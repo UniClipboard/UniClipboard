@@ -166,6 +166,7 @@ const kitPage = /\/src\/pages\/history-kit\/HistoryKitPage\.tsx$/
 // Legacy page sources stay in the repository; a kit target must not reach them.
 const legacyPages = [
   'src/pages/HistoryPage.tsx',
+  'src/pages/DevicesPage.tsx',
   'src/pages/SetupPage.tsx',
   'src/pages/UnlockPage.tsx',
   'src/pages/ProfileRecoveryPage.tsx',

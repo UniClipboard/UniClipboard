@@ -1371,7 +1371,10 @@
       "unpinAll": "Desafixar todos",
       "view": "Visualização",
       "viewGrid": "Grade",
-      "viewList": "Lista"
+      "viewList": "Lista",
+      "manageDevices": "Gerenciar dispositivos…",
+      "showSection": "Mostrar {{section}}",
+      "hideSection": "Ocultar {{section}}"
     }
   },
   "dashboard": {
@@ -2303,6 +2306,21 @@
           "internal": "Erro interno — consulte os logs do daemon."
         }
       }
+    },
+    "kit": {
+      "add": "Adicionar",
+      "remove": "Remover dispositivo selecionado",
+      "invitation": "Convite",
+      "cancelInvitation": "Cancelar convite",
+      "showInvitation": "Mostrar convite",
+      "inviteDevice": "Convidar dispositivo…",
+      "connectPhone": "Conectar celular…",
+      "joinSpace": "Entrar em outro espaço…",
+      "waitHint": "Você pode continuar usando o UniClipboard enquanto espera. Este convite fica na lista até o dispositivo entrar, o código expirar ou você cancelá-lo.",
+      "copyPeerId": "Copiar ID do par",
+      "rebuildEllipsis": "Reconstruir espaço…",
+      "unpairEllipsis": "Desemparelhar…",
+      "detailLabel": "Detalhes do dispositivo"
     }
   },
   "pairing": {

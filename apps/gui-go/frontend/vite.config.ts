@@ -36,6 +36,12 @@ const kitPages: Record<string, { platforms: string[]; kit: string; existing: str
     kit: './src/pages/history-kit/HistoryKitPage.tsx',
     existing: './src/pages/HistoryPage.tsx',
   },
+  // Manage Devices is a sheet over the kit History window; `/devices` opens it there.
+  '@ui-devices-page': {
+    platforms: ['macos', 'windows', 'linux'],
+    kit: './src/pages/devices-kit/DevicesKitRoute.tsx',
+    existing: './src/pages/DevicesPage.tsx',
+  },
   // The entry pages shown before the main window content (design page "Setup · Startup · Unlock").
   // The startup screen is also the first frame (src/startup-screen.tsx).
   '@ui-startup-screen': {

@@ -240,6 +240,37 @@ describe('DaemonClient', () => {
         expect((err as DaemonApiError).code).toBe(DaemonErrorCode.NOT_FOUND)
       }
     })
+
+    it('exposes status and the daemon {code,message,details} body on the thrown error', async () => {
+      mockFetchSequence([
+        {
+          ok: false,
+          status: 500,
+          body: {
+            code: 'diagnostic_export_failed',
+            message: 'export failed',
+            details: { cause: 'source_read_failed' },
+          },
+        },
+      ])
+      mockGetDaemonSession.mockResolvedValueOnce({
+        sessionToken: 'jwt-t',
+        expiresInSecs: 300,
+        refreshAtSecs: 240,
+      })
+
+      daemonClient.initialize(TEST_CONFIG)
+      await expect(daemonClient.request('/diagnostics/export')).rejects.toMatchObject({
+        code: DaemonErrorCode.INTERNAL_ERROR,
+        status: 500,
+        apiCode: 'diagnostic_export_failed',
+        apiMessage: 'export failed',
+        apiDetails: { cause: 'source_read_failed' },
+        // Legacy shape stays intact for existing classifiers.
+        message: '500 on /diagnostics/export',
+        details: expect.objectContaining({ code: 'diagnostic_export_failed' }),
+      })
+    })
   })
 
   // ── callSdk<T> ──────────────────────────────────────────────
@@ -288,6 +319,29 @@ describe('DaemonClient', () => {
       // setupV2 classifiers regex the status out of the message prefix.
       await expect(promise).rejects.toMatchObject({
         message: expect.stringMatching(/^410 on \/clipboard\/restore\/e1/),
+      })
+    })
+
+    it('exposes status and parsed daemon body fields on a normalized SdkRequestError', async () => {
+      daemonClient.initialize(TEST_CONFIG)
+      await daemonClient.refreshSession()
+
+      const body = {
+        code: 'diagnostic_export_failed',
+        message: 'export failed',
+        details: { cause: 'destination_unavailable' },
+      }
+      const promise = daemonClient.callSdk(() =>
+        Promise.reject(
+          new SdkRequestError(body, fakeResponse(500, 'http://127.0.0.1:9999/diagnostics/export'))
+        )
+      )
+
+      await expect(promise).rejects.toMatchObject({
+        status: 500,
+        apiCode: 'diagnostic_export_failed',
+        apiMessage: 'export failed',
+        apiDetails: { cause: 'destination_unavailable' },
       })
     })
 

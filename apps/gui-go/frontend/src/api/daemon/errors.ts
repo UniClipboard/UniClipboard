@@ -48,12 +48,49 @@ export enum DaemonErrorCode {
 export class DaemonApiError extends Error {
   code: DaemonErrorCode
   details?: unknown
+  /** HTTP status of the failed response, when one was received. */
+  status?: number
+  /** Machine code from the daemon error body (`ApiErrorResponse.code`), e.g. `diagnostic_export_failed`. */
+  apiCode?: string
+  /** Human-readable message from the daemon error body. */
+  apiMessage?: string
+  /** Structured context from the daemon error body (`ApiErrorResponse.details`). */
+  apiDetails?: unknown
 
-  constructor(code: DaemonErrorCode, message: string, details?: unknown) {
+  constructor(
+    code: DaemonErrorCode,
+    message: string,
+    details?: unknown,
+    status?: number,
+    body?: unknown
+  ) {
     super(message)
     this.name = 'DaemonApiError'
     this.code = code
     this.details = details
+    this.status = status
+    const parsed = parseApiErrorBody(body ?? details)
+    this.apiCode = parsed.code
+    this.apiMessage = parsed.message
+    this.apiDetails = parsed.details
+  }
+}
+
+/**
+ * Extract `{code, message, details}` from a daemon error body
+ * (`ApiErrorResponse`). Fields with unexpected types are dropped.
+ */
+export function parseApiErrorBody(body: unknown): {
+  code?: string
+  message?: string
+  details?: unknown
+} {
+  if (typeof body !== 'object' || body === null) return {}
+  const { code, message, details } = body as Record<string, unknown>
+  return {
+    code: typeof code === 'string' ? code : undefined,
+    message: typeof message === 'string' ? message : undefined,
+    details,
   }
 }
 

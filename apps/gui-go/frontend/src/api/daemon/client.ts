@@ -288,7 +288,7 @@ class DaemonClient {
     // `err.cause` is the parsed normalized body (`{ code, message, details? }`),
     // mirroring `handleResponse`'s `details = body`. Carry it through verbatim so
     // `.details.message` / `.details.details` stay reachable for classifiers.
-    return new DaemonApiError(code, message, err.cause)
+    return new DaemonApiError(code, message, err.cause, status)
   }
 
   /**
@@ -408,7 +408,7 @@ class DaemonClient {
       } catch {
         // ignore parse failures
       }
-      throw new DaemonApiError(errorCode, message, details)
+      throw new DaemonApiError(errorCode, message, details, response.status)
     }
 
     // Treat empty success responses as void even when the server uses 200 OK.

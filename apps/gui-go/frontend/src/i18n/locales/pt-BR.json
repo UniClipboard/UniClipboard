@@ -374,6 +374,35 @@
             "unavailable": "O diagnóstico do serviço em segundo plano está indisponível.",
             "error": "Não foi possível alterar a captura detalhada"
           },
+          "network": {
+            "label": "Log de conexão de rede",
+            "loading": "Lendo o estado do log de rede…",
+            "unavailable": "O diagnóstico do serviço em segundo plano está indisponível.",
+            "notConfigured": "O log de rede não está configurado nesta versão, portanto nenhum evento de rede é registrado.",
+            "standard": "Registra a camada de conexão com mais detalhes por {{minutes}} minutos e para automaticamente. Um resumo é sempre mantido.",
+            "active": "Registrando detalhes da conexão. Para automaticamente em cerca de {{minutes}} minutos.",
+            "error": "Não foi possível alterar a captura de rede",
+            "state": {
+              "starting": "O log de rede está iniciando.",
+              "unavailable": "O log de rede não conseguiu gravar; os logs de negócio não são afetados.",
+              "closed": "O log de rede está fechado.",
+              "ready": "O log de rede está pronto."
+            },
+            "counters": "Gravados {{written}} · descartados {{dropped}} · falhas de gravação {{failed}}. Um log vazio não prova que a rede ficou parada: confira esses números primeiro.",
+            "budget": "Orçamento de {{run}} MiB por execução, {{root}} MiB no total, mantido por {{retention}}.",
+            "coverage": "Cobre apenas iroh e noq-proto. Outros logs de transporte, pacotes brutos e chaves TLS não são registrados.",
+            "units": {
+              "day_one": "{{count}} dia",
+              "day_many": "{{count}} dias",
+              "day_other": "{{count}} dias",
+              "hour_one": "{{count}} hora",
+              "hour_many": "{{count}} horas",
+              "hour_other": "{{count}} horas",
+              "minute_one": "{{count}} minuto",
+              "minute_many": "{{count}} minutos",
+              "minute_other": "{{count}} minutos"
+            }
+          },
           "debug": {
             "label": "Modo de depuração",
             "description": "Aumenta o detalhamento dos logs do app e do serviço em segundo plano depois que ambos forem reiniciados. Os logs de conexão do Engine não são afetados; use Capturar logs detalhados para eles.",
@@ -411,6 +440,29 @@
               "gui": "Janela do app",
               "cli": "Linha de comando",
               "quickPanel": "Painel rápido"
+            },
+            "network": {
+              "outcome": {
+                "complete": "Log de rede: completo. Todos os arquivos correspondem ao que foi descarregado.",
+                "partial": "Log de rede: cobertura parcial.",
+                "missing": "Log de rede: configurado, mas nenhum arquivo foi coletado.",
+                "notConfigured": "Log de rede: não configurado, portanto não incluído.",
+                "unknown": "Log de rede: não foi possível examinar."
+              },
+              "reason": {
+                "engineOffline": "O serviço em segundo plano não estava em execução, então nada foi descarregado e os contadores são desconhecidos.",
+                "flushFailed": "A descarga do log de rede falhou.",
+                "flushTimedOut": "A descarga do log de rede excedeu o tempo.",
+                "stateNotReady": "O log de rede não estava pronto.",
+                "recordsDropped": "Alguns registros foram descartados antes de serem gravados.",
+                "fileUnreadable": "Alguns arquivos do log de rede não puderam ser lidos.",
+                "fileTruncated": "Alguns arquivos do log de rede foram cortados.",
+                "fileGrewAfterPrepare": "Os arquivos continuaram crescendo após a descarga; a parte descarregada ainda corresponde.",
+                "fileChangedAfterPrepare": "Alguns arquivos diferem do que foi descarregado ou não existem mais.",
+                "otherProcessesNotFlushed": "Outro processo pode ter registros que ainda não descarregou.",
+                "entriesIgnored": "Itens inesperados na pasta do log de rede foram deixados de fora.",
+                "unrecognized": "Observação não reconhecida do exportador."
+              }
             }
           }
         }

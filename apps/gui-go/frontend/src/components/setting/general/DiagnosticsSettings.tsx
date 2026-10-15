@@ -23,7 +23,14 @@ export function DiagnosticsSettings() {
     handleDebugModeChange,
     handleDetailedCaptureChange,
     handleExportLogs,
+    handleNetworkCaptureChange,
     isBusy,
+    networkBusy,
+    networkDescription,
+    networkDetailed,
+    networkExportLines,
+    networkLines,
+    networkSwitchDisabled,
     setDebugDialog,
   } = useDiagnosticsSettings()
   const isRestarting = debugDialog === 'restarting'
@@ -66,6 +73,25 @@ export function DiagnosticsSettings() {
       </SettingRow>
 
       <SettingRow
+        label={t('settings.sections.general.logs.network.label')}
+        description={networkDescription}
+      >
+        <div className="flex flex-col items-end gap-2">
+          <SettingSwitch
+            label={t('settings.sections.general.logs.network.label')}
+            checked={networkDetailed}
+            onCheckedChange={checked => void handleNetworkCaptureChange(checked)}
+            disabled={isBusy || networkBusy || networkSwitchDisabled}
+          />
+          {networkLines.map(line => (
+            <p key={line} className="max-w-96 text-right text-ui-caption text-muted-foreground">
+              {line}
+            </p>
+          ))}
+        </div>
+      </SettingRow>
+
+      <SettingRow
         label={t('settings.sections.general.logs.export.label')}
         description={t('settings.sections.general.logs.export.description')}
       >
@@ -89,6 +115,11 @@ export function DiagnosticsSettings() {
             </div>
           )}
           {exportFallbackLines.map(line => (
+            <p key={line} className="max-w-96 text-right text-ui-caption text-muted-foreground">
+              {line}
+            </p>
+          ))}
+          {networkExportLines.map(line => (
             <p key={line} className="max-w-96 text-right text-ui-caption text-muted-foreground">
               {line}
             </p>

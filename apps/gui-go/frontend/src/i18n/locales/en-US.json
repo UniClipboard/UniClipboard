@@ -373,6 +373,32 @@
             "unavailable": "Background service diagnostics are unavailable.",
             "error": "Failed to change detailed capture"
           },
+          "network": {
+            "label": "Network connection log",
+            "loading": "Checking network log status…",
+            "unavailable": "Background service diagnostics are unavailable.",
+            "notConfigured": "Network log is not configured on this build, so no network events are recorded.",
+            "standard": "Records the connection layer in more detail for {{minutes}} minutes, then stops automatically. A summary is always kept.",
+            "active": "Recording connection details. Stops automatically in about {{minutes}} minutes.",
+            "error": "Failed to change network capture",
+            "state": {
+              "starting": "The network log is starting.",
+              "unavailable": "The network log could not write; business logs are not affected.",
+              "closed": "The network log is closed.",
+              "ready": "The network log is ready."
+            },
+            "counters": "Written {{written}} · dropped {{dropped}} · write failures {{failed}}. An empty log does not prove quiet network: check these counts first.",
+            "budget": "Budget {{run}} MiB per run, {{root}} MiB in total, kept {{retention}}.",
+            "coverage": "Covers iroh and noq-proto only. Other transport logs, raw packet traces and TLS keys are not recorded.",
+            "units": {
+              "day_one": "{{count}} day",
+              "day_other": "{{count}} days",
+              "hour_one": "{{count}} hour",
+              "hour_other": "{{count}} hours",
+              "minute_one": "{{count}} minute",
+              "minute_other": "{{count}} minutes"
+            }
+          },
           "debug": {
             "label": "Debug mode",
             "description": "Increase the detail of the app and background service logs after both are restarted. Engine connection logs are not affected; use Capture detailed logs for those.",
@@ -410,6 +436,29 @@
               "gui": "App window",
               "cli": "Command line",
               "quickPanel": "Quick panel"
+            },
+            "network": {
+              "outcome": {
+                "complete": "Network log: complete. Every file matches what was flushed.",
+                "partial": "Network log: partial coverage.",
+                "missing": "Network log: configured but no file was collected.",
+                "notConfigured": "Network log: not configured, so none is included.",
+                "unknown": "Network log: could not be examined."
+              },
+              "reason": {
+                "engineOffline": "The background service was not running, so nothing was flushed and counters are unknown.",
+                "flushFailed": "The network log flush failed.",
+                "flushTimedOut": "The network log flush timed out.",
+                "stateNotReady": "The network log was not ready.",
+                "recordsDropped": "Some records were dropped before being written.",
+                "fileUnreadable": "Some network log files could not be read.",
+                "fileTruncated": "Some network log files were cut short.",
+                "fileGrewAfterPrepare": "Files kept growing after the flush; the flushed part still matches.",
+                "fileChangedAfterPrepare": "Some files differ from what was flushed or are gone.",
+                "otherProcessesNotFlushed": "Another process may hold records it has not flushed.",
+                "entriesIgnored": "Unexpected entries in the network log folder were left out.",
+                "unrecognized": "Unrecognized note from the exporter."
+              }
             }
           }
         }

@@ -37,7 +37,11 @@ describe('parseExportFailureCause', () => {
 
 describe('normalizeOfflineExportResult', () => {
   it('maps a cancelled export to no path and no gaps', () => {
-    expect(normalizeOfflineExportResult(null)).toEqual({ path: null, missingSources: [] })
+    expect(normalizeOfflineExportResult(null)).toEqual({
+      path: null,
+      missingSources: [],
+      network: { outcome: 'unknown', reasons: [] },
+    })
   })
 
   it('carries the path and missing sources of a saved export', () => {
@@ -45,14 +49,28 @@ describe('normalizeOfflineExportResult', () => {
       normalizeOfflineExportResult({
         path: '/a.zip',
         missingSources: [{ source: 'engine', reason: 'missing' }],
+        networkOutcome: 'partial',
+        networkReasons: ['engineOffline'],
       })
-    ).toEqual({ path: '/a.zip', missingSources: [{ source: 'engine', reason: 'missing' }] })
+    ).toEqual({
+      path: '/a.zip',
+      missingSources: [{ source: 'engine', reason: 'missing' }],
+      network: { outcome: 'partial', reasons: ['engineOffline'] },
+    })
   })
 
   it('treats a null missingSources list as none', () => {
-    expect(normalizeOfflineExportResult({ path: '/a.zip', missingSources: null })).toEqual({
+    expect(
+      normalizeOfflineExportResult({
+        path: '/a.zip',
+        missingSources: null,
+        networkOutcome: 'unknown',
+        networkReasons: null,
+      })
+    ).toEqual({
       path: '/a.zip',
       missingSources: [],
+      network: { outcome: 'unknown', reasons: [] },
     })
   })
 })

@@ -24,9 +24,7 @@ export function DiagnosticsSettings() {
     handleDetailedCaptureChange,
     handleExportLogs,
     isBusy,
-    networkDescription,
     networkExportLines,
-    networkLines,
     setDebugDialog,
   } = useDiagnosticsSettings()
   const isRestarting = debugDialog === 'restarting'
@@ -66,19 +64,6 @@ export function DiagnosticsSettings() {
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
-      </SettingRow>
-
-      <SettingRow
-        label={t('settings.sections.general.logs.network.label')}
-        description={networkDescription}
-      >
-        <div className="flex flex-col items-end gap-2">
-          {networkLines.map(line => (
-            <p key={line} className="max-w-96 text-right text-ui-caption text-muted-foreground">
-              {line}
-            </p>
-          ))}
-        </div>
       </SettingRow>
 
       <SettingRow

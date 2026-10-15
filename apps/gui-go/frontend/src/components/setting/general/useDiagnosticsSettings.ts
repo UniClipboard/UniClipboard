@@ -8,7 +8,6 @@ import {
   stopDiagnosticCapture,
   updateDebugMode,
   type DiagnosticCaptureStatus,
-  type NetworkLogStatus,
 } from '@/api/daemon/diagnostics'
 import * as storageApi from '@/api/storage'
 import { toast } from '@/components/ui/toast'
@@ -36,22 +35,6 @@ type ExportFallbackNotice = {
   missingSources: MissingExportSource[]
 }
 
-/** Decimal counter strings from the daemon; a value that does not parse counts as unknown, not zero. */
-function counter(value: string | undefined): bigint | null {
-  if (value === undefined) return null
-  try {
-    return BigInt(value)
-  } catch {
-    return null
-  }
-}
-
-function mebibytes(bytes: string): string {
-  const value = counter(bytes)
-  if (value === null) return '?'
-  return (Number(value) / (1024 * 1024)).toFixed(value % 1048576n === 0n ? 0 : 1)
-}
-
 type DiagnosticsState = {
   debugDialog: DebugDialogState
   exportPath: string | null
@@ -60,8 +43,7 @@ type DiagnosticsState = {
   captureStatus: DiagnosticCaptureStatus | null
   captureUnavailable: boolean
   captureBusy: boolean
-  networkStatus: NetworkLogStatus | null
-  networkUnavailable: boolean
+  networkLinkFailure: 'startFailed' | 'stopFailed' | null
   networkExportNotice: NetworkExportNotice | null
 }
 
@@ -73,8 +55,7 @@ type DiagnosticsAction =
   | { type: 'captureLoaded'; status: DiagnosticCaptureStatus }
   | { type: 'captureUnavailable' }
   | { type: 'setCaptureBusy'; value: boolean }
-  | { type: 'networkLoaded'; status: NetworkLogStatus }
-  | { type: 'networkUnavailable' }
+  | { type: 'networkLinkFailureLoaded'; value: 'startFailed' | 'stopFailed' | null }
   | { type: 'setNetworkExportNotice'; value: NetworkExportNotice | null }
 
 const initialState: DiagnosticsState = {
@@ -85,8 +66,7 @@ const initialState: DiagnosticsState = {
   captureStatus: null,
   captureUnavailable: false,
   captureBusy: false,
-  networkStatus: null,
-  networkUnavailable: false,
+  networkLinkFailure: null,
   networkExportNotice: null,
 }
 
@@ -106,10 +86,8 @@ function diagnosticsReducer(state: DiagnosticsState, action: DiagnosticsAction):
       return { ...state, captureUnavailable: true }
     case 'setCaptureBusy':
       return { ...state, captureBusy: action.value }
-    case 'networkLoaded':
-      return { ...state, networkStatus: action.status, networkUnavailable: false }
-    case 'networkUnavailable':
-      return { ...state, networkUnavailable: true }
+    case 'networkLinkFailureLoaded':
+      return { ...state, networkLinkFailure: action.value }
     case 'setNetworkExportNotice':
       return { ...state, networkExportNotice: action.value }
   }
@@ -144,29 +122,22 @@ export function useDiagnosticsSettings() {
     return () => window.clearInterval(timer)
   }, [detailedCapture, loadCaptureStatus, state.captureUnavailable])
 
-  const networkDetailed = state.networkStatus?.mode === 'detailed'
-
+  // Only the failure to follow the detailed capture matters to the user; the
+  // network log's own state, counters and budget stay in diagnostics.
   const loadNetworkStatus = useCallback(async () => {
     try {
       const status = await getNetworkLogStatus()
-      dispatch({ type: 'networkLoaded', status })
-      return status
+      dispatch({ type: 'networkLinkFailureLoaded', value: status.captureLinkFailure ?? null })
     } catch (error) {
       log.warn({ err: error }, 'Failed to read network log status')
-      dispatch({ type: 'networkUnavailable' })
-      return null
     }
   }, [])
 
   useEffect(() => {
-    void loadNetworkStatus()
-  }, [loadNetworkStatus])
-
-  useEffect(() => {
-    if (!networkDetailed && !detailedCapture && !state.networkUnavailable) return
+    if (!detailedCapture) return
     const timer = window.setInterval(() => void loadNetworkStatus(), 5_000)
     return () => window.clearInterval(timer)
-  }, [networkDetailed, detailedCapture, loadNetworkStatus, state.networkUnavailable])
+  }, [detailedCapture, loadNetworkStatus])
 
   const handleDebugModeChange = (checked: boolean) => {
     if (checked) {
@@ -318,105 +289,36 @@ export function useDiagnosticsSettings() {
   }
 
   const networkExportLines: string[] = []
-  if (state.networkExportNotice) {
-    const { outcome, reasons } = state.networkExportNotice
+  if (state.networkExportNotice && networkExportIncomplete(state.networkExportNotice)) {
     networkExportLines.push(
-      t(`settings.sections.general.logs.export.network.outcome.${outcome}`),
-      ...reasons.map(reason =>
-        t(`settings.sections.general.logs.export.network.reason.${reason}`, {
-          defaultValue: t('settings.sections.general.logs.export.network.reason.unrecognized'),
-        })
+      t(
+        state.networkExportNotice.reasons.includes('engineOffline')
+          ? 'settings.sections.general.logs.export.network.offline'
+          : 'settings.sections.general.logs.export.network.incomplete'
       )
     )
   }
-
-  const networkLines: string[] = []
-  const networkStatus = state.networkStatus
-  if (networkStatus && networkStatus.availability === 'configured') {
-    const counters = networkStatus.counters
-    const lost =
-      counters &&
-      [
-        counters.queueDropped,
-        counters.rateLimited,
-        counters.oversized,
-        counters.closedDropped,
-        counters.writeFailed,
-      ].reduce<bigint | null>((total, value) => {
-        const parsed = counter(value)
-        return total === null || parsed === null ? null : total + parsed
-      }, 0n)
-    if (counters) {
-      networkLines.push(
-        t('settings.sections.general.logs.network.counters', {
-          written: counters.written,
-          dropped: lost === null || lost === undefined ? '?' : lost.toString(),
-          failed: counters.writeFailed,
-        })
-      )
-    }
-    if (networkStatus.budget) {
-      const retentionSeconds = Number(networkStatus.budget.retentionSeconds)
-      const retention =
-        retentionSeconds >= 86_400
-          ? t('settings.sections.general.logs.network.units.day', {
-              count: Math.round(retentionSeconds / 86_400),
-            })
-          : retentionSeconds >= 3_600
-            ? t('settings.sections.general.logs.network.units.hour', {
-                count: Math.round(retentionSeconds / 3_600),
-              })
-            : t('settings.sections.general.logs.network.units.minute', {
-                count: Math.max(1, Math.round(retentionSeconds / 60)),
-              })
-      networkLines.push(
-        t('settings.sections.general.logs.network.budget', {
-          run: mebibytes(networkStatus.budget.runBytes),
-          root: mebibytes(networkStatus.budget.rootBytes),
-          retention,
-        })
-      )
-    }
-    networkLines.push(t('settings.sections.general.logs.network.coverage'))
-    if (networkStatus.captureLinkFailure) {
-      networkLines.push(
-        t(`settings.sections.general.logs.network.linkFailure.${networkStatus.captureLinkFailure}`)
-      )
-    }
-  }
-  const networkConfigured = networkStatus?.availability === 'configured'
 
   return {
     ...state,
     exportFallbackLines,
     networkExportLines,
-    networkLines,
-    networkDetailed,
-    networkDescription: state.networkUnavailable
-      ? t('settings.sections.general.logs.network.unavailable')
-      : !networkStatus
-        ? t('settings.sections.general.logs.network.loading')
-        : !networkConfigured
-          ? t('settings.sections.general.logs.network.notConfigured')
-          : networkStatus.state !== 'ready'
-            ? t(`settings.sections.general.logs.network.state.${networkStatus.state ?? 'starting'}`)
-            : !networkDetailed
-              ? t('settings.sections.general.logs.network.standard')
-              : t('settings.sections.general.logs.network.active', {
-                  minutes: Math.max(
-                    1,
-                    Math.ceil((networkStatus.detailedRemainingMs ?? 0) / 60_000)
-                  ),
-                }),
-    captureDescription: state.captureUnavailable
-      ? t('settings.sections.general.logs.capture.unavailable')
-      : !state.captureStatus
-        ? t('settings.sections.general.logs.capture.loading')
-        : !detailedCapture
-          ? t('settings.sections.general.logs.capture.standard')
-          : t('settings.sections.general.logs.capture.active', {
-              minutes: Math.max(1, Math.ceil(state.captureStatus.capture.remainingMs / 60_000)),
-            }),
+    captureDescription: [
+      state.captureUnavailable
+        ? t('settings.sections.general.logs.capture.unavailable')
+        : !state.captureStatus
+          ? t('settings.sections.general.logs.capture.loading')
+          : !detailedCapture
+            ? t('settings.sections.general.logs.capture.standard')
+            : t('settings.sections.general.logs.capture.active', {
+                minutes: Math.max(1, Math.ceil(state.captureStatus.capture.remainingMs / 60_000)),
+              }),
+      state.networkLinkFailure
+        ? t(`settings.sections.general.logs.network.linkFailure.${state.networkLinkFailure}`)
+        : null,
+    ]
+      .filter(Boolean)
+      .join(' '),
     debugMode: setting?.general.debugMode ?? false,
     detailedCapture,
     isBusy: loading || saving,

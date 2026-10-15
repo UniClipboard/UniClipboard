@@ -368,32 +368,12 @@
             "label": "捕获详细日志",
             "tooltip": "约剩 {{minutes}} 分钟，可手动关闭。",
             "loading": "正在读取日志记录状态…",
-            "standard": "临时记录详细日志，10 分钟后自动停止。",
+            "standard": "临时记录详细日志，10 分钟后自动停止。 同时记录连接细节。",
             "active": "正在记录详细日志，约 {{minutes}} 分钟后自动停止。",
             "unavailable": "暂时无法开启详细日志。",
             "error": "更改详细日志设置失败"
           },
           "network": {
-            "label": "网络连接日志",
-            "loading": "正在读取网络日志状态…",
-            "unavailable": "暂时无法读取后台服务的诊断状态。",
-            "notConfigured": "此版本没有配置网络日志，不会记录任何网络事件。",
-            "standard": "连接细节随详细日志一起记录。摘要始终保留。",
-            "active": "正在记录连接细节，约 {{minutes}} 分钟后自动停止。",
-            "state": {
-              "starting": "网络日志正在启动。",
-              "unavailable": "网络日志写入失败，业务日志不受影响。",
-              "closed": "网络日志已关闭。",
-              "ready": "网络日志已就绪。"
-            },
-            "counters": "已写入 {{written}} · 已丢弃 {{dropped}} · 写入失败 {{failed}}。日志为空不代表网络没有活动，请先看这些计数。",
-            "budget": "预算：每次运行 {{run}} MiB，总计 {{root}} MiB，保留 {{retention}}。",
-            "coverage": "仅覆盖 iroh 与 noq-proto。其他传输层日志、原始数据包和 TLS 密钥不会记录。",
-            "units": {
-              "day_other": "{{count}} 天",
-              "hour_other": "{{count}} 小时",
-              "minute_other": "{{count}} 分钟"
-            },
             "linkFailure": {
               "startFailed": "连接细节未能随详细日志一起记录。",
               "stopFailed": "连接细节记录未能随详细日志一起关闭，将自行结束。"
@@ -438,27 +418,8 @@
               "quickPanel": "快捷面板"
             },
             "network": {
-              "outcome": {
-                "complete": "网络日志：完整，所有文件与刷新时一致。",
-                "partial": "网络日志：部分覆盖。",
-                "missing": "网络日志：已配置，但没有收集到文件。",
-                "notConfigured": "网络日志：未配置，因此不包含。",
-                "unknown": "网络日志：无法检查。"
-              },
-              "reason": {
-                "engineOffline": "后台服务未运行，没有执行刷新，计数未知。",
-                "flushFailed": "网络日志刷新失败。",
-                "flushTimedOut": "网络日志刷新超时。",
-                "stateNotReady": "网络日志尚未就绪。",
-                "recordsDropped": "部分记录在写入前被丢弃。",
-                "fileUnreadable": "部分网络日志文件无法读取。",
-                "fileTruncated": "部分网络日志文件被截短。",
-                "fileGrewAfterPrepare": "刷新后文件仍在增长，刷新时的部分仍然一致。",
-                "fileChangedAfterPrepare": "部分文件与刷新时不一致或已不存在。",
-                "otherProcessesNotFlushed": "其他进程可能还有未刷新的记录。",
-                "entriesIgnored": "网络日志目录中的意外条目已被排除。",
-                "unrecognized": "导出器给出了无法识别的说明。"
-              }
+              "incomplete": "网络连接日志可能不完整。",
+              "offline": "导出时后台服务未运行，网络连接日志未经刷新，可能不完整。"
             }
           }
         }

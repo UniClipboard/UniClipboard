@@ -368,32 +368,12 @@
             "label": "擷取詳細日誌",
             "tooltip": "約剩 {{minutes}} 分鐘，可手動關閉。",
             "loading": "正在讀取背景服務的記錄狀態…",
-            "standard": "暫時記錄詳細日誌，10 分鐘後自動停止。",
+            "standard": "暫時記錄詳細日誌，10 分鐘後自動停止。 同時記錄連線細節。",
             "active": "正在記錄詳細日誌，約 {{minutes}} 分鐘後自動停止。",
             "unavailable": "背景服務的診斷能力目前無法使用。",
             "error": "變更詳細記錄失敗"
           },
           "network": {
-            "label": "網路連線日誌",
-            "loading": "正在讀取網路日誌狀態…",
-            "unavailable": "目前無法讀取背景服務的診斷狀態。",
-            "notConfigured": "此版本沒有設定網路日誌，不會記錄任何網路事件。",
-            "standard": "連線細節會隨詳細記錄一起記錄。摘要始終保留。",
-            "active": "正在記錄連線細節，約 {{minutes}} 分鐘後自動停止。",
-            "state": {
-              "starting": "網路日誌正在啟動。",
-              "unavailable": "網路日誌寫入失敗，業務日誌不受影響。",
-              "closed": "網路日誌已關閉。",
-              "ready": "網路日誌已就緒。"
-            },
-            "counters": "已寫入 {{written}} · 已丟棄 {{dropped}} · 寫入失敗 {{failed}}。日誌為空不代表網路沒有活動，請先看這些計數。",
-            "budget": "預算：每次執行 {{run}} MiB，總計 {{root}} MiB，保留 {{retention}}。",
-            "coverage": "僅涵蓋 iroh 與 noq-proto。其他傳輸層日誌、原始封包與 TLS 金鑰不會記錄。",
-            "units": {
-              "day_other": "{{count}} 天",
-              "hour_other": "{{count}} 小時",
-              "minute_other": "{{count}} 分鐘"
-            },
             "linkFailure": {
               "startFailed": "連線細節未能隨詳細記錄一起記錄。",
               "stopFailed": "連線細節記錄未能隨詳細記錄一起關閉，將自行結束。"
@@ -438,27 +418,8 @@
               "quickPanel": "快速面板"
             },
             "network": {
-              "outcome": {
-                "complete": "網路日誌：完整，所有檔案與重新整理時一致。",
-                "partial": "網路日誌：部分涵蓋。",
-                "missing": "網路日誌：已設定，但沒有收集到檔案。",
-                "notConfigured": "網路日誌：未設定，因此不包含。",
-                "unknown": "網路日誌：無法檢查。"
-              },
-              "reason": {
-                "engineOffline": "背景服務未執行，沒有進行重新整理，計數未知。",
-                "flushFailed": "網路日誌重新整理失敗。",
-                "flushTimedOut": "網路日誌重新整理逾時。",
-                "stateNotReady": "網路日誌尚未就緒。",
-                "recordsDropped": "部分記錄在寫入前被丟棄。",
-                "fileUnreadable": "部分網路日誌檔案無法讀取。",
-                "fileTruncated": "部分網路日誌檔案被截短。",
-                "fileGrewAfterPrepare": "重新整理後檔案仍在增長，重新整理時的部分仍然一致。",
-                "fileChangedAfterPrepare": "部分檔案與重新整理時不一致或已不存在。",
-                "otherProcessesNotFlushed": "其他處理程序可能還有未重新整理的記錄。",
-                "entriesIgnored": "網路日誌資料夾中的意外項目已被排除。",
-                "unrecognized": "匯出器給出了無法辨識的說明。"
-              }
+              "incomplete": "網路連線記錄可能不完整。",
+              "offline": "匯出時背景服務未執行，網路連線記錄未經刷新，可能不完整。"
             }
           }
         }

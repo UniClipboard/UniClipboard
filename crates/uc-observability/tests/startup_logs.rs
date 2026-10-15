@@ -367,3 +367,27 @@ fn offline_export_keeps_startup_status_when_every_log_in_the_window_is_unreadabl
         "uniclipboard-daemon.json.2026-09-01"
     );
 }
+
+#[test]
+fn export_failures_are_classified_by_where_they_happened() {
+    use uc_observability::startup_logs::ExportFailureCause;
+
+    // Nothing to export.
+    let root = tempfile::tempdir().unwrap();
+    let error = export_startup_logs(root.path(), &root.path().join("out.zip")).unwrap_err();
+    assert_eq!(error.cause(), ExportFailureCause::NoLogs);
+
+    // The log directory cannot be listed: a file stands where it should be.
+    let not_a_directory = root.path().join("logs");
+    fs::write(&not_a_directory, "file").unwrap();
+    let error = export_startup_logs(&not_a_directory, &root.path().join("out.zip")).unwrap_err();
+    assert_eq!(error.cause(), ExportFailureCause::SourceRead);
+
+    // The archive cannot be created next to a destination that has no parent.
+    let logs = root.path().join("real-logs");
+    fs::create_dir(&logs).unwrap();
+    fs::write(logs.join("uniclipboard-gui.json.2026-09-09"), "x\n").unwrap();
+    let error =
+        export_startup_logs(&logs, &root.path().join("missing").join("out.zip")).unwrap_err();
+    assert_eq!(error.cause(), ExportFailureCause::ArchiveWrite);
+}

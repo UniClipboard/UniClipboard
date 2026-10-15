@@ -465,13 +465,26 @@ pub trait DaemonDiagnosticsRuntime: Send + Sync {
     fn prepare_export(&self) -> Result<DiagnosticExportPreparationDto, DaemonDiagnosticError>;
 }
 
+/// Where a diagnostic archive export failed. Carries no error text, which may
+/// hold paths; the cause is what the client and the log record need.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DaemonDiagnosticArchiveError {
+    /// The log directory could not be listed.
+    SourceReadFailed,
+    /// The archive could not be built or saved.
+    ArchiveWriteFailed,
+    /// The export destination (Downloads) is unavailable.
+    DestinationUnavailable,
+    Unknown,
+}
+
 #[async_trait::async_trait]
 pub trait DaemonDiagnosticArchive: Send + Sync {
     async fn export(
         &self,
         since_hours: Option<u32>,
         engine_preparation: DiagnosticExportPreparationDto,
-    ) -> anyhow::Result<LogExportResultDto>;
+    ) -> Result<LogExportResultDto, DaemonDiagnosticArchiveError>;
 }
 
 fn peer_channel_to_wire(channel: PeerConnectionChannelSummary) -> &'static str {

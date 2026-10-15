@@ -5,7 +5,7 @@ use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result};
 use chrono::{DateTime, NaiveDate, Utc};
 use serde::Serialize;
 use serde_json::Value;
@@ -37,8 +37,58 @@ pub struct DiagnosticArchiveReport {
     pub concurrent_writes_possible: bool,
 }
 
+/// Where an export failed, so callers can tell the user what to look at
+/// without parsing error text.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExportFailureCause {
+    /// No managed log lies inside the requested window.
+    NoLogs,
+    /// The log directory could not be listed.
+    SourceRead,
+    /// The archive could not be built or saved.
+    ArchiveWrite,
+}
+
+/// Failure of [`export_diagnostic_logs`], tagged with its [`ExportFailureCause`].
+#[derive(Debug)]
+pub struct ExportError {
+    cause: ExportFailureCause,
+    source: anyhow::Error,
+}
+
+impl ExportError {
+    fn new(cause: ExportFailureCause, source: impl Into<anyhow::Error>) -> Self {
+        Self {
+            cause,
+            source: source.into(),
+        }
+    }
+
+    fn archive_write(source: impl Into<anyhow::Error>) -> Self {
+        Self::new(ExportFailureCause::ArchiveWrite, source)
+    }
+
+    pub fn cause(&self) -> ExportFailureCause {
+        self.cause
+    }
+}
+
+impl std::fmt::Display for ExportError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(formatter, "{:#}", self.source)
+    }
+}
+
+impl std::error::Error for ExportError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(self.source.as_ref())
+    }
+}
+
+const NO_LOGS_MESSAGE: &str = "No application logs are available to export";
+
 /// Package retained logs while the daemon is unavailable.
-pub fn export_startup_logs(logs_dir: &Path, destination: &Path) -> Result<()> {
+pub fn export_startup_logs(logs_dir: &Path, destination: &Path) -> Result<(), ExportError> {
     export_startup_logs_with_status(logs_dir, destination, None)
 }
 
@@ -48,7 +98,7 @@ pub fn export_startup_logs_with_status(
     logs_dir: &Path,
     destination: &Path,
     startup_status: Option<Value>,
-) -> Result<()> {
+) -> Result<(), ExportError> {
     export_diagnostic_logs(
         logs_dir,
         destination,
@@ -67,17 +117,23 @@ pub fn export_diagnostic_logs(
     logs_dir: &Path,
     destination: &Path,
     request: DiagnosticArchiveRequest,
-) -> Result<DiagnosticArchiveReport> {
-    let (mut candidates, unreadable_files) = collect_log_files(logs_dir)?;
+) -> Result<DiagnosticArchiveReport, ExportError> {
+    let (mut candidates, unreadable_files) = collect_log_files(logs_dir)
+        .map_err(|error| ExportError::new(ExportFailureCause::SourceRead, error))?;
     candidates.sort_by(|left, right| left.name.cmp(&right.name));
     if candidates.is_empty() && matches!(request.mode, DiagnosticArchiveMode::Offline) {
-        bail!("No application logs are available to export");
+        return Err(ExportError::new(
+            ExportFailureCause::NoLogs,
+            anyhow::anyhow!(NO_LOGS_MESSAGE),
+        ));
     }
 
     let parent = destination
         .parent()
-        .context("missing destination directory")?;
-    let mut temporary = tempfile::NamedTempFile::new_in(parent)?;
+        .context("missing destination directory")
+        .map_err(ExportError::archive_write)?;
+    let mut temporary =
+        tempfile::NamedTempFile::new_in(parent).map_err(ExportError::archive_write)?;
     let options = SimpleFileOptions::default()
         .compression_method(zip::CompressionMethod::Deflated)
         .unix_permissions(0o600);
@@ -130,8 +186,11 @@ pub fn export_diagnostic_logs(
             } else {
                 metadata.len()
             };
-            archive.start_file(format!("logs/{}", candidate.name), options)?;
-            let copied = io::copy(&mut input.take(length), &mut archive)?;
+            archive
+                .start_file(format!("logs/{}", candidate.name), options)
+                .map_err(ExportError::archive_write)?;
+            let copied = io::copy(&mut input.take(length), &mut archive)
+                .map_err(ExportError::archive_write)?;
             if copied != length {
                 report.truncated_files.push(candidate.name.clone());
             }
@@ -147,20 +206,32 @@ pub fn export_diagnostic_logs(
             startup_status: request.startup_status,
             collection: &report,
         };
-        archive.start_file("manifest.json", options)?;
-        serde_json::to_writer_pretty(&mut archive, &manifest)?;
-        archive.finish()?;
+        archive
+            .start_file("manifest.json", options)
+            .map_err(ExportError::archive_write)?;
+        serde_json::to_writer_pretty(&mut archive, &manifest)
+            .map_err(ExportError::archive_write)?;
+        archive.finish().map_err(ExportError::archive_write)?;
     }
 
     // The window is checked against the opened handle, so an offline export
     // with no file inside it is only known here. Dropping the temporary
     // archive leaves any existing destination untouched.
     if in_window == 0 && matches!(request.mode, DiagnosticArchiveMode::Offline) {
-        bail!("No application logs are available to export");
+        return Err(ExportError::new(
+            ExportFailureCause::NoLogs,
+            anyhow::anyhow!(NO_LOGS_MESSAGE),
+        ));
     }
 
-    temporary.as_file().sync_all()?;
-    temporary.persist(destination).context("save log archive")?;
+    temporary
+        .as_file()
+        .sync_all()
+        .map_err(ExportError::archive_write)?;
+    temporary
+        .persist(destination)
+        .context("save log archive")
+        .map_err(ExportError::archive_write)?;
     Ok(report)
 }
 

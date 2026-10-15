@@ -17,7 +17,8 @@ use utoipa;
 
 use crate::api::dto::error::{log_facade_failure, ApiError};
 use crate::api::server::{
-    DaemonApiState, DaemonDiagnosticArchive, DaemonDiagnosticError, DaemonDiagnosticsRuntime,
+    DaemonApiState, DaemonDiagnosticArchive, DaemonDiagnosticArchiveError, DaemonDiagnosticError,
+    DaemonDiagnosticsRuntime,
 };
 
 pub fn router() -> Router<DaemonApiState> {
@@ -175,7 +176,8 @@ pub async fn update_debug_mode_handler(
     request_body = LogExportRequestDto,
     responses(
         (status = 200, description = "Logs exported to Downloads", body = LogExportEnvelope),
-        (status = 500, description = "Internal server error", body = ApiErrorResponse)
+        (status = 500, description = "Export failed; `details.cause` is source_read_failed, archive_write_failed or unknown", body = ApiErrorResponse),
+        (status = 503, description = "Export destination or local Engine diagnostics unavailable; `details.cause` may be destination_unavailable", body = ApiErrorResponse)
     )
 )]
 #[instrument(name = "api.diagnostics.log_export", level = "info", skip(state, payload), fields(since_hours = payload.since_hours))]
@@ -208,7 +210,35 @@ async fn prepare_and_export(
     archive
         .export(since_hours, preparation)
         .await
-        .map_err(|_| ApiError::internal("diagnostic archive export failed"))
+        .map_err(archive_export_error)
+}
+
+/// Stable error for a failed archive export: `code` plus the cause in
+/// `details`, and one ERROR record with the same cause.
+fn archive_export_error(error: DaemonDiagnosticArchiveError) -> ApiError {
+    let (cause, api) = match error {
+        DaemonDiagnosticArchiveError::SourceReadFailed => (
+            "source_read_failed",
+            ApiError::internal("diagnostic logs could not be read"),
+        ),
+        DaemonDiagnosticArchiveError::ArchiveWriteFailed => (
+            "archive_write_failed",
+            ApiError::internal("diagnostic archive could not be written"),
+        ),
+        DaemonDiagnosticArchiveError::DestinationUnavailable => (
+            "destination_unavailable",
+            ApiError::service_unavailable("diagnostic export destination is unavailable"),
+        ),
+        DaemonDiagnosticArchiveError::Unknown => (
+            "unknown",
+            ApiError::internal("diagnostic archive export failed"),
+        ),
+    };
+    let api = api
+        .with_code("diagnostic_export_failed")
+        .with_details(serde_json::json!({ "cause": cause }));
+    log_facade_failure("diagnostics", "log_export", cause, api.status, &api.message);
+    api
 }
 
 fn diagnostics_runtime(state: &DaemonApiState) -> Result<&dyn DaemonDiagnosticsRuntime, ApiError> {
@@ -259,6 +289,7 @@ mod tests {
     use std::sync::Arc;
 
     use chrono::Utc;
+    use tracing::instrument::WithSubscriber;
     use uc_daemon_contract::api::dto::diagnostics::{
         DiagnosticArchiveCollectionDto, DiagnosticCaptureModeDto, DiagnosticCaptureStateDto,
         DiagnosticExportPreparationDto, DiagnosticSetupStatusDto, DiagnosticSignalResultDto,
@@ -306,7 +337,7 @@ mod tests {
             &self,
             _since_hours: Option<u32>,
             engine_preparation: DiagnosticExportPreparationDto,
-        ) -> anyhow::Result<LogExportResultDto> {
+        ) -> Result<LogExportResultDto, DaemonDiagnosticArchiveError> {
             assert!(self.prepared.load(Ordering::SeqCst));
             assert_eq!(engine_preparation.status.run_id, "run-1");
             Ok(LogExportResultDto {
@@ -338,6 +369,97 @@ mod tests {
 
         assert_eq!(result.engine_preparation.status.run_id, "run-1");
         assert_eq!(result.collection.included_files.len(), 1);
+    }
+
+    struct FailingArchive(DaemonDiagnosticArchiveError);
+
+    #[async_trait::async_trait]
+    impl DaemonDiagnosticArchive for FailingArchive {
+        async fn export(
+            &self,
+            _since_hours: Option<u32>,
+            _engine_preparation: DiagnosticExportPreparationDto,
+        ) -> Result<LogExportResultDto, DaemonDiagnosticArchiveError> {
+            Err(self.0)
+        }
+    }
+
+    #[derive(Clone, Default)]
+    struct Captured(Arc<std::sync::Mutex<Vec<u8>>>);
+
+    impl std::io::Write for Captured {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().expect("captured").extend_from_slice(bytes);
+            Ok(bytes.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for Captured {
+        type Writer = Captured;
+
+        fn make_writer(&'a self) -> Self::Writer {
+            self.clone()
+        }
+    }
+
+    #[tokio::test]
+    async fn a_failed_archive_export_names_its_cause_and_is_logged_once() {
+        let cases = [
+            (
+                DaemonDiagnosticArchiveError::SourceReadFailed,
+                "source_read_failed",
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            ),
+            (
+                DaemonDiagnosticArchiveError::ArchiveWriteFailed,
+                "archive_write_failed",
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            ),
+            (
+                DaemonDiagnosticArchiveError::DestinationUnavailable,
+                "destination_unavailable",
+                axum::http::StatusCode::SERVICE_UNAVAILABLE,
+            ),
+            (
+                DaemonDiagnosticArchiveError::Unknown,
+                "unknown",
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            ),
+        ];
+        for (failure, cause, status) in cases {
+            let captured = Captured::default();
+            let subscriber = tracing_subscriber::fmt()
+                .with_writer(captured.clone())
+                .with_ansi(false)
+                .finish();
+            let runtime = RuntimeProbe {
+                prepared: Arc::new(AtomicBool::new(false)),
+            };
+            let archive = FailingArchive(failure);
+
+            let error = prepare_and_export(&runtime, &archive, Some(24))
+                .with_subscriber(subscriber)
+                .await
+                .expect_err("export fails");
+
+            assert_eq!(error.status, status);
+            assert_eq!(error.code, "diagnostic_export_failed");
+            assert_eq!(error.details, Some(serde_json::json!({ "cause": cause })));
+            let output =
+                String::from_utf8(captured.0.lock().expect("captured").clone()).expect("utf8");
+            let records: Vec<_> = output.lines().filter(|line| line.contains(cause)).collect();
+            if status.is_server_error() {
+                assert_eq!(records.len(), 1, "one record for {cause}: {output}");
+            }
+            assert!(
+                !output.contains("/Users"),
+                "no paths in the record: {output}"
+            );
+        }
     }
 
     #[test]

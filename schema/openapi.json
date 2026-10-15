@@ -10015,7 +10015,17 @@
                 }
               }
             },
-            "description": "Internal server error"
+            "description": "Export failed; `details.cause` is source_read_failed, archive_write_failed or unknown"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Export destination or local Engine diagnostics unavailable; `details.cause` may be destination_unavailable"
           }
         },
         "security": [

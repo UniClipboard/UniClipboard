@@ -22,10 +22,11 @@ use uc_engine::observability::{
     SourceCoverage, StopCaptureResult,
 };
 use uc_observability::startup_logs::{
-    export_diagnostic_logs, DiagnosticArchiveMode, DiagnosticArchiveRequest,
+    export_diagnostic_logs, DiagnosticArchiveMode, DiagnosticArchiveRequest, ExportFailureCause,
 };
 use uc_webserver::api::server::{
-    DaemonDiagnosticArchive, DaemonDiagnosticError, DaemonDiagnosticsRuntime,
+    DaemonDiagnosticArchive, DaemonDiagnosticArchiveError, DaemonDiagnosticError,
+    DaemonDiagnosticsRuntime,
 };
 
 const EXPORT_PREPARATION_DEADLINE: Duration = Duration::from_secs(1);
@@ -217,19 +218,20 @@ impl DaemonDiagnosticArchive for DesktopDiagnosticArchive {
         &self,
         since_hours: Option<u32>,
         engine_preparation: DiagnosticExportPreparationDto,
-    ) -> anyhow::Result<LogExportResultDto> {
+    ) -> Result<LogExportResultDto, DaemonDiagnosticArchiveError> {
         let hours = since_hours.unwrap_or(24).max(1);
         let since = Utc::now() - chrono::Duration::hours(i64::from(hours));
         let directory = dirs::download_dir()
-            .ok_or_else(|| anyhow::anyhow!("Downloads directory is unavailable"))?;
-        std::fs::create_dir_all(&directory)?;
+            .filter(|directory| std::fs::create_dir_all(directory).is_ok())
+            .ok_or(DaemonDiagnosticArchiveError::DestinationUnavailable)?;
         let destination = directory.join(format!(
             "uniclipboard-diagnostics-{}.zip",
             Utc::now().format("%Y%m%d-%H%M%S")
         ));
         let logs_dir = self.logs_dir.clone();
         let destination_for_worker = destination.clone();
-        let manifest_preparation = serde_json::to_value(&engine_preparation)?;
+        let manifest_preparation = serde_json::to_value(&engine_preparation)
+            .map_err(|_| DaemonDiagnosticArchiveError::Unknown)?;
         let report = tokio::task::spawn_blocking(move || {
             export_diagnostic_logs(
                 &logs_dir,
@@ -242,7 +244,13 @@ impl DaemonDiagnosticArchive for DesktopDiagnosticArchive {
                 },
             )
         })
-        .await??;
+        .await
+        .map_err(|_| DaemonDiagnosticArchiveError::Unknown)?
+        .map_err(|error| match error.cause() {
+            ExportFailureCause::SourceRead => DaemonDiagnosticArchiveError::SourceReadFailed,
+            ExportFailureCause::ArchiveWrite => DaemonDiagnosticArchiveError::ArchiveWriteFailed,
+            ExportFailureCause::NoLogs => DaemonDiagnosticArchiveError::Unknown,
+        })?;
         Ok(LogExportResultDto {
             path: destination.to_string_lossy().into_owned(),
             included_files: report.included_files.clone(),

@@ -20,6 +20,7 @@ pub use observability::tracing::{
 };
 pub use wiring::analytics::{initialize_analytics_context, DesktopHostAnalytics};
 pub use wiring::desktop_host::{
-    prepare_desktop_engine_host, DesktopEngineHost, DesktopHostFileHandles, DesktopHostProcessPaths,
+    prepare_desktop_engine_host, resolve_desktop_process_paths, DesktopEngineHost,
+    DesktopHostFileHandles, DesktopHostProcessPaths,
 };
 pub use wiring::error::{WiringError, WiringResult};

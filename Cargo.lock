@@ -11836,6 +11836,8 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tracing",
+ "tracing-subscriber",
+ "uc-app-paths",
  "uc-bootstrap",
  "uc-daemon-contract",
  "uc-daemon-local",

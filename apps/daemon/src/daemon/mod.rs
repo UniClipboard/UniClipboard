@@ -9,6 +9,7 @@ pub mod handle;
 pub mod host;
 pub mod mobile_lan_lifecycle;
 pub mod oneshot;
+pub mod profile_claim;
 pub mod run_mode;
 pub mod startup_recovery;
 pub mod tokio_runtime;

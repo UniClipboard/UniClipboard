@@ -8,7 +8,8 @@ use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 use uc_bootstrap::{
     init_daemon_tracing_subscriber, initialize_analytics_context, install_panic_logging_hook,
-    prepare_desktop_engine_host, DesktopHostFileHandles, DesktopHostProcessPaths,
+    prepare_desktop_engine_host, resolve_desktop_process_paths, DesktopHostFileHandles,
+    DesktopHostProcessPaths,
 };
 use uc_daemon_local::crash_marker::{DaemonExitReport, DaemonRunMarker};
 use uc_daemon_local::process_metadata::{DaemonPidManager, DaemonProcessMode};
@@ -16,6 +17,7 @@ use uc_engine::{
     ActiveClipboardChanged, Engine, HostFileHandle, Operation, OperationResult, StartupProgress,
 };
 use uc_observability::analytics::AnalyticsPort;
+use uc_observability::startup_failure::{StartupFailureClass, StartupStep};
 use uc_webserver::api::auth::load_or_create_auth_token_from_conn;
 use uc_webserver::api::server::{run_http_server, DaemonApiState, DaemonFileHandles};
 use uc_webserver::api::startup::StartupServer;
@@ -26,6 +28,7 @@ use uc_webserver::security::{cleanup_rate_limiter_task, SecurityState};
 use super::diagnostics::{DesktopDiagnosticArchive, EngineDaemonDiagnostics};
 use super::engine_events::forward_engine_events;
 use super::mobile_lan_lifecycle::{initial_lan_target, MobileLanLifecycleController};
+use super::profile_claim::{claim_instance_lock, record_startup_failure};
 use super::run_mode::DaemonRunMode;
 use super::startup_recovery::{record_upgrade_status_at_startup, spawn_startup_recovery};
 use super::tokio_runtime::build_daemon_tokio_runtime;
@@ -61,33 +64,78 @@ pub fn run(run_mode: DaemonRunMode) -> anyhow::Result<()> {
 }
 
 async fn run_async(run_mode: DaemonRunMode) -> anyhow::Result<()> {
-    let process_observability = init_daemon_tracing_subscriber()?;
+    let claim_started = std::time::Instant::now();
+    let process_paths = resolve_process_paths()?;
+    // Claim the profile before anything else is opened: tracing installs the
+    // Engine's shared log files, which a daemon that is still waiting for the
+    // running one must not touch.
+    let _instance_lock = claim_instance_lock(
+        process_paths.app_data_root(),
+        process_paths.logs_dir(),
+        uc_daemon_local::timing::LOCK_ACQUIRE_DEADLINE,
+    )
+    .await?;
+    let lock_wait = claim_started.elapsed();
+    uc_daemon_local::handover::clear(process_paths.app_data_root());
+
+    let process_observability = init_daemon_tracing_subscriber().inspect_err(|_| {
+        record_startup_failure(
+            process_paths.logs_dir(),
+            StartupStep::Tracing,
+            StartupFailureClass::Internal,
+        );
+    })?;
     install_panic_logging_hook();
+    info!(
+        lock_wait_ms = lock_wait.as_millis() as u64,
+        engine_run_id = %process_observability.query_local_diagnostic_status().run_id,
+        "daemon claimed its profile"
+    );
     let diagnostics = Arc::new(EngineDaemonDiagnostics::new(process_observability));
-    let result = run_async_with_diagnostics(run_mode, Arc::clone(&diagnostics)).await;
+    let result =
+        run_async_with_diagnostics(run_mode, Arc::clone(&diagnostics), process_paths.logs_dir())
+            .await;
+    if let Err(error) = &result {
+        tracing::error!(error = %format!("{error:#}"), "daemon run failed");
+    }
     diagnostics.finish_process(&result);
     result
+}
+
+/// Resolve the profile's directories, recording the failure when it cannot be
+/// done. The log directory is looked up independently so the record still has a
+/// place to go.
+fn resolve_process_paths() -> anyhow::Result<DesktopHostProcessPaths> {
+    resolve_desktop_process_paths().map_err(|error| {
+        if let Some(logs_dir) = uc_app_paths::app_log_dir() {
+            record_startup_failure(
+                &logs_dir,
+                StartupStep::PathResolution,
+                StartupFailureClass::Internal,
+            );
+        }
+        anyhow::Error::new(error)
+    })
 }
 
 async fn run_async_with_diagnostics(
     run_mode: DaemonRunMode,
     diagnostics: Arc<EngineDaemonDiagnostics>,
+    logs_dir: &Path,
 ) -> anyhow::Result<()> {
-    let prepared = prepare_desktop_engine_host()?;
+    let prepared = prepare_desktop_engine_host().inspect_err(|_| {
+        record_startup_failure(
+            logs_dir,
+            StartupStep::HostPreparation,
+            StartupFailureClass::Internal,
+        );
+    })?;
     let process_paths = prepared.process_paths().clone();
     let analytics = prepared.analytics();
     let secure_storage_source = prepared.secure_storage_source();
     let file_handles: Arc<dyn DaemonFileHandles> =
         Arc::new(DesktopDaemonFileHandles::new(prepared.file_handles()));
     let (engine_config, host_capabilities) = prepared.into_engine_start();
-
-    let _instance_lock = uc_daemon_local::instance_lock::acquire_with_deadline(
-        process_paths.app_data_root(),
-        uc_daemon_local::timing::LOCK_ACQUIRE_DEADLINE,
-    )
-    .await
-    .map_err(|error| anyhow::anyhow!("{error}"))?;
-    uc_daemon_local::handover::clear(process_paths.app_data_root());
 
     let pid_manager = DaemonPidManager::new(process_paths.daemon_pid());
     let _pid_file_guard = DaemonPidFileGuard::activate(pid_manager, run_mode.process_mode())?;
@@ -133,6 +181,11 @@ async fn run_async_with_diagnostics(
             tracing::error!(
                 error = %format!("{error:#}"),
                 "engine startup failed; startup status remains available"
+            );
+            record_startup_failure(
+                logs_dir,
+                StartupStep::EngineStart,
+                StartupFailureClass::Internal,
             );
             // Keep the terminal snapshot readable until an explicit retry or full quit.
             wait_for_shutdown_signal().await?;
@@ -190,6 +243,11 @@ async fn run_async_with_diagnostics(
             error = %format!("{error:#}"),
             "daemon service startup failed; startup status remains available"
         );
+        record_startup_failure(
+            logs_dir,
+            StartupStep::ServiceStart,
+            StartupFailureClass::Internal,
+        );
         wait_for_shutdown_signal().await?;
     }
     startup_server.shutdown().await?;
@@ -212,7 +270,7 @@ async fn run_daemon_surfaces(
     let auth_token = load_or_create_auth_token_from_conn(&conn_path)?;
     let pid = std::process::id();
     let run_marker = DaemonRunMarker::new(process_paths.app_data_root().to_path_buf());
-    log_previous_crash(run_marker.begin_run(pid)?);
+    begin_marked_run(&run_marker, pid);
 
     let security = Arc::new(SecurityState::new());
     security.register_pid(pid).await;
@@ -338,7 +396,7 @@ async fn run_daemon_surfaces(
     if http_completed {
         anyhow::bail!("daemon HTTP service exited unexpectedly");
     }
-    run_marker.mark_clean_exit()?;
+    mark_clean_exit_best_effort(&run_marker);
     Ok(())
 }
 
@@ -353,6 +411,29 @@ pub(super) async fn apply_initial_mobile_lan_target(
     controller
         .reconcile(initial_lan_target(settings.as_deref()))
         .await;
+}
+
+/// Start this run's crash marker. Crash visibility is best effort: a marker
+/// that cannot be written is logged and the daemon starts anyway.
+fn begin_marked_run(run_marker: &DaemonRunMarker, pid: u32) {
+    match run_marker.begin_run(pid) {
+        Ok(previous) => log_previous_crash(previous),
+        Err(error) => warn!(
+            error = %format!("{error:#}"),
+            "could not write the daemon run marker; abnormal exit detection is unavailable for this run"
+        ),
+    }
+}
+
+/// Clear the crash marker on a graceful exit. Failing to remove it must not
+/// turn a clean shutdown into a failed run.
+fn mark_clean_exit_best_effort(run_marker: &DaemonRunMarker) {
+    if let Err(error) = run_marker.mark_clean_exit() {
+        warn!(
+            error = %format!("{error:#}"),
+            "could not clear the daemon run marker on clean exit"
+        );
+    }
 }
 
 fn log_previous_crash(previous: Option<DaemonExitReport>) {
@@ -429,4 +510,78 @@ pub fn run_standalone_from_env() -> anyhow::Result<()> {
         _ => DaemonRunMode::Standalone,
     };
     run(run_mode)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::Write;
+    use std::sync::{Arc, Mutex};
+
+    use tracing_subscriber::fmt::MakeWriter;
+
+    use super::*;
+
+    #[derive(Clone, Default)]
+    struct Captured(Arc<Mutex<Vec<u8>>>);
+
+    impl Write for Captured {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().expect("captured").extend_from_slice(bytes);
+            Ok(bytes.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    impl<'a> MakeWriter<'a> for Captured {
+        type Writer = Captured;
+
+        fn make_writer(&'a self) -> Self::Writer {
+            self.clone()
+        }
+    }
+
+    fn unwritable_marker() -> (tempfile::TempDir, DaemonRunMarker) {
+        let root = tempfile::tempdir().expect("tempdir");
+        let blocker = root.path().join("not-a-directory");
+        std::fs::write(&blocker, "file").expect("blocker");
+        let marker = DaemonRunMarker::new(blocker.join("data"));
+        (root, marker)
+    }
+
+    fn captured_warnings(run: impl FnOnce()) -> String {
+        let captured = Captured::default();
+        let subscriber = tracing_subscriber::fmt()
+            .with_writer(captured.clone())
+            .with_ansi(false)
+            .finish();
+        tracing::subscriber::with_default(subscriber, run);
+        let bytes = captured.0.lock().expect("captured").clone();
+        String::from_utf8(bytes).expect("utf8")
+    }
+
+    #[test]
+    fn a_run_marker_that_cannot_be_written_does_not_stop_the_start() {
+        let (_root, marker) = unwritable_marker();
+
+        let output = captured_warnings(|| begin_marked_run(&marker, 4242));
+
+        assert!(output.contains("WARN"), "{output}");
+        assert!(output.contains("run marker"), "{output}");
+    }
+
+    #[test]
+    fn a_clean_exit_that_cannot_be_marked_does_not_fail_the_run() {
+        let root = tempfile::tempdir().expect("tempdir");
+        // A directory in place of the marker file cannot be removed as a file.
+        std::fs::create_dir_all(root.path().join("daemon-run.json").join("x")).expect("dir");
+        let marker = DaemonRunMarker::new(root.path().to_path_buf());
+
+        let output = captured_warnings(|| mark_clean_exit_best_effort(&marker));
+
+        assert!(output.contains("WARN"), "{output}");
+        assert!(output.contains("clean exit"), "{output}");
+    }
 }

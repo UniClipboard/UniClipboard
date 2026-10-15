@@ -90,6 +90,12 @@ impl DesktopHostProcessPaths {
     }
 }
 
+/// Resolve the profile's process-level directories without preparing any host
+/// capability, so a daemon can claim its profile before opening anything.
+pub fn resolve_desktop_process_paths() -> WiringResult<DesktopHostProcessPaths> {
+    resolve_desktop_host_paths().map(|paths| DesktopHostProcessPaths::from_app_paths(&paths))
+}
+
 fn host_directories(paths: &DesktopHostPaths, temporary_dir: PathBuf) -> HostDirectories {
     HostDirectories::new(
         paths.app_data_root_dir.clone(),

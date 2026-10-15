@@ -69,7 +69,7 @@ export function ExportConfigPackage(): $CancellablePromise<$models.ExportConfigR
 /**
  * ExportStartupLogs zips the logs to a place the user picks. It resolves nil when the user cancels.
  */
-export function ExportStartupLogs(): $CancellablePromise<string | null> {
+export function ExportStartupLogs(): $CancellablePromise<$models.ExportStartupLogsResult | null> {
     return $Call.ByID(1074859333);
 }
 

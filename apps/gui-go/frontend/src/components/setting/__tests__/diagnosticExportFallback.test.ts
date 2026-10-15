@@ -36,17 +36,23 @@ describe('parseExportFailureCause', () => {
 })
 
 describe('normalizeOfflineExportResult', () => {
-  it('accepts the legacy bare path and null', () => {
-    expect(normalizeOfflineExportResult('/a.zip')).toEqual({ path: '/a.zip', missingSources: [] })
+  it('maps a cancelled export to no path and no gaps', () => {
     expect(normalizeOfflineExportResult(null)).toEqual({ path: null, missingSources: [] })
   })
 
-  it('reads missingSources from a structured result and drops malformed entries', () => {
+  it('carries the path and missing sources of a saved export', () => {
     expect(
       normalizeOfflineExportResult({
         path: '/a.zip',
-        missingSources: [{ source: 'engine', reason: 'unavailable' }, { source: 3 }, 'x'],
+        missingSources: [{ source: 'engine', reason: 'missing' }],
       })
-    ).toEqual({ path: '/a.zip', missingSources: [{ source: 'engine', reason: 'unavailable' }] })
+    ).toEqual({ path: '/a.zip', missingSources: [{ source: 'engine', reason: 'missing' }] })
+  })
+
+  it('treats a null missingSources list as none', () => {
+    expect(normalizeOfflineExportResult({ path: '/a.zip', missingSources: null })).toEqual({
+      path: '/a.zip',
+      missingSources: [],
+    })
   })
 })

@@ -336,7 +336,10 @@ describe('GeneralSection debug diagnostics controls', () => {
   it('falls back to retained logs when the daemon export is unavailable', async () => {
     const user = userEvent.setup()
     mockExportLogs.mockRejectedValue(new Error('daemon unavailable'))
-    mockExportStartupLogs.mockResolvedValue('/home/test/Downloads/offline-diagnostics.zip')
+    mockExportStartupLogs.mockResolvedValue({
+      path: '/home/test/Downloads/offline-diagnostics.zip',
+      missingSources: [],
+    })
     setup()
 
     render(<GeneralSection />)

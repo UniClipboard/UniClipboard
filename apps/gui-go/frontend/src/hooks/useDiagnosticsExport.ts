@@ -8,8 +8,8 @@ export function useDiagnosticsExport() {
     if (exportState === 'exporting') return
     setExportState('exporting')
     try {
-      const path = await exportStartupLogs()
-      setExportState(path ? 'done' : 'idle')
+      const saved = await exportStartupLogs()
+      setExportState(saved ? 'done' : 'idle')
     } catch {
       setExportState('failed')
     }

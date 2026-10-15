@@ -212,11 +212,23 @@ func (h *HostService) OpenImageExternally(fileName string, data []byte) error {
 	return hostapi.Internal(openWithSystem(target, false))
 }
 
+// LogSourceGap is a log source an export lacks; it mirrors the manifest's collection.missingSources entry.
+type LogSourceGap struct {
+	Source string `json:"source"`
+	Reason string `json:"reason"`
+}
+
+// ExportStartupLogsResult is a saved offline log export.
+type ExportStartupLogsResult struct {
+	Path           string         `json:"path"`
+	MissingSources []LogSourceGap `json:"missingSources"`
+}
+
 // ExportStartupLogs zips the logs to a place the user picks. It resolves nil when the user cancels.
 //
 //uc:errors command InternalError
 //uc:os all=real
-func (h *HostService) ExportStartupLogs() (*string, error) {
+func (h *HostService) ExportStartupLogs() (*ExportStartupLogsResult, error) {
 	logs, ok := apppaths.AppLogDir()
 	if !ok {
 		return nil, hostapi.Internal(errors.New("log directory unavailable"))
@@ -229,8 +241,13 @@ func (h *HostService) ExportStartupLogs() (*string, error) {
 	if !picked {
 		return nil, nil
 	}
-	if err := diaglogs.ExportStartup(logs, path, h.startupStatusForDiagnostics()); err != nil {
+	report, err := diaglogs.ExportStartup(logs, path, h.startupStatusForDiagnostics())
+	if err != nil {
 		return nil, hostapi.Internal(err)
 	}
-	return &path, nil
+	gaps := make([]LogSourceGap, 0, len(report.MissingSources))
+	for _, gap := range report.MissingSources {
+		gaps = append(gaps, LogSourceGap{Source: gap.Source, Reason: gap.Reason})
+	}
+	return &ExportStartupLogsResult{Path: path, MissingSources: gaps}, nil
 }

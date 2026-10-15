@@ -167,6 +167,7 @@ export type {
   DownloadProgressSnapshot,
   EffectsSample,
   EffectsSnapshot,
+  ExportStartupLogsResult,
   ImportConfigStageResult,
   SamplePermit,
   UpdateKeyboardShortcutsResult,

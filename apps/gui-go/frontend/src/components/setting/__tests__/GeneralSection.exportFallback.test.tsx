@@ -69,7 +69,7 @@ describe('offline log export fallback notice', () => {
         { source: 'engine', reason: 'daemon_unavailable' },
         { source: 'quick-panel', reason: 'not_collected' },
       ],
-    } as never)
+    })
 
     await clickExport()
 
@@ -83,7 +83,7 @@ describe('offline log export fallback notice', () => {
     vi.mocked(commands.exportStartupLogs).mockResolvedValue({
       path: '/dl/offline.zip',
       missingSources: [],
-    } as never)
+    })
 
     await clickExport()
 
@@ -93,7 +93,10 @@ describe('offline log export fallback notice', () => {
 
   it('surfaces the daemon failure cause', async () => {
     vi.mocked(exportLogs).mockRejectedValue(daemonExportFailure('destination_unavailable'))
-    vi.mocked(commands.exportStartupLogs).mockResolvedValue('/dl/offline.zip' as never)
+    vi.mocked(commands.exportStartupLogs).mockResolvedValue({
+      path: '/dl/offline.zip',
+      missingSources: [],
+    })
 
     await clickExport()
 

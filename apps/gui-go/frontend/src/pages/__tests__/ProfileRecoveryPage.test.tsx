@@ -108,7 +108,10 @@ describe('ProfileRecoveryPage', () => {
   })
 
   it('shows stable admission recovery guidance and exports diagnostics', async () => {
-    vi.mocked(exportStartupLogs).mockResolvedValue('/downloads/uniclipboard-diagnostics.zip')
+    vi.mocked(exportStartupLogs).mockResolvedValue({
+      path: '/downloads/uniclipboard-diagnostics.zip',
+      missingSources: [],
+    })
     render(
       <ProfileRecoveryPage
         status={{

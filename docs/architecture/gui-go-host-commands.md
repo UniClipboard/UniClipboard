@@ -59,7 +59,7 @@ Wails 版本与 Go 工具链只在 `apps/gui-go/go.mod` 中固定一处，生成
 | `dismiss_quick_panel` | `DismissQuickPanel` | - | `-` | none | 真实 | 真实 | 真实 | 契约命令；DismissQuickPanel hides the quick panel and gives the focus back to the application that had it. |
 | `download_update` | `DownloadUpdate` | - | `-` | text | 真实 | 真实 | 真实 | 契约命令；DownloadUpdate downloads the pending release in the background; progress is broadcast on `update-download-progress`. |
 | `export_config_package` | `ExportConfigPackage` | - | `ExportConfigResult` | config | 真实 | 真实 | 真实 | 契约命令；ExportConfigPackage asks where to save, then has the daemon write the configuration bundle there. |
-| `export_startup_logs` | `ExportStartupLogs` | - | `*string` | command: InternalError | 真实 | 真实 | 真实 | 契约命令；ExportStartupLogs zips the logs to a place the user picks. |
+| `export_startup_logs` | `ExportStartupLogs` | - | `*ExportStartupLogsResult` | command: InternalError | 真实 | 真实 | 真实 | 契约命令；ExportStartupLogs zips the logs to a place the user picks. |
 | `finalize_quick_panel_show` | `FinalizeQuickPanelShow` | - | `-` | none | 真实 | 真实 | 真实 | 契约命令；FinalizeQuickPanelShow is the second phase of showing the panel, after the page cleared its stale state. |
 | `get_auto_download_update` | `GetAutoDownloadUpdate` | - | `bool` | text | 真实 | 真实 | 真实 | 契约命令；GetAutoDownloadUpdate reads the "download updates automatically" setting. |
 | `get_content_unlocked` | `GetContentUnlocked` | - | `bool` | command: InternalError | 真实 | 真实 | 真实 | 契约命令；GetContentUnlocked reports whether the daemon lets this GUI show content right now. |

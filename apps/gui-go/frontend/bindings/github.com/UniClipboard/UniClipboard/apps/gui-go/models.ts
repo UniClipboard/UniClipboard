@@ -261,6 +261,14 @@ export interface ExportConfigResult {
 }
 
 /**
+ * ExportStartupLogsResult is a saved offline log export.
+ */
+export interface ExportStartupLogsResult {
+    "path": string;
+    "missingSources": LogSourceGap[] | null;
+}
+
+/**
  * FilePathInputRequest holds file paths to type into the application that was focused before the panel opened.
  */
 export interface FilePathInputRequest {
@@ -308,6 +316,14 @@ export enum InstallKind {
     InstallKindRPM = "rpm",
     InstallKindUnknown = "unknown",
 };
+
+/**
+ * LogSourceGap is a log source an export lacks; it mirrors the manifest's collection.missingSources entry.
+ */
+export interface LogSourceGap {
+    "source": string;
+    "reason": string;
+}
 
 /**
  * ModifierDoubleTapAvailability says whether the modifier double tap trigger can work in this session.

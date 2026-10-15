@@ -69,7 +69,10 @@ describe('startup recovery screen', () => {
     expect(screen.getByRole('button', { name: '导出日志' })).toBeEnabled()
   })
   it('exports logs through the native shell and shows the saved location', async () => {
-    native.exportStartupLogs.mockResolvedValue('/downloads/support.zip')
+    native.exportStartupLogs.mockResolvedValue({
+      path: '/downloads/support.zip',
+      missingSources: [],
+    })
     render(<AppStatusScreen detail="connection refused" onRetry={vi.fn()} />)
     fireEvent.click(screen.getByRole('button', { name: '导出日志' }))
     await waitFor(() =>

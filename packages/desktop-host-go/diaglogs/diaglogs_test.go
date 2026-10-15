@@ -111,7 +111,7 @@ type decodedManifest struct {
 func export(t *testing.T, logs string) (map[string][]byte, decodedManifest) {
 	t.Helper()
 	dest := filepath.Join(t.TempDir(), "out.zip")
-	if err := ExportStartup(logs, dest, nil); err != nil {
+	if _, err := ExportStartup(logs, dest, nil); err != nil {
 		t.Fatal(err)
 	}
 	files := readArchive(t, dest)
@@ -134,14 +134,14 @@ func TestExportIncludesQuickPanelLogs(t *testing.T) {
 func TestExportPropagatesReadDirError(t *testing.T) {
 	notADir := filepath.Join(t.TempDir(), "logs")
 	touch(t, filepath.Dir(notADir), "logs")
-	err := ExportStartup(notADir, filepath.Join(t.TempDir(), "out.zip"), nil)
+	_, err := ExportStartup(notADir, filepath.Join(t.TempDir(), "out.zip"), nil)
 	if err == nil || errors.Is(err, ErrNoLogs) {
 		t.Fatalf("err = %v, want the directory read error", err)
 	}
 }
 
 func TestExportMissingDirectoryReportsNoLogs(t *testing.T) {
-	err := ExportStartup(filepath.Join(t.TempDir(), "absent"), filepath.Join(t.TempDir(), "out.zip"), nil)
+	_, err := ExportStartup(filepath.Join(t.TempDir(), "absent"), filepath.Join(t.TempDir(), "out.zip"), nil)
 	if !errors.Is(err, ErrNoLogs) {
 		t.Fatalf("err = %v, want ErrNoLogs", err)
 	}
@@ -200,7 +200,7 @@ func TestManifestSnapshot(t *testing.T) {
 		},
 	}
 	dest := filepath.Join(t.TempDir(), "out.zip")
-	if err := exportStartup(env, logs, dest, json.RawMessage(`{"phase":"ready"}`)); err != nil {
+	if _, err := exportStartup(env, logs, dest, json.RawMessage(`{"phase":"ready"}`)); err != nil {
 		t.Fatal(err)
 	}
 	got := readArchive(t, dest)["manifest.json"]
@@ -210,5 +210,107 @@ func TestManifestSnapshot(t *testing.T) {
 	}
 	if string(got) != string(want) {
 		t.Fatalf("manifest differs from testdata/manifest-offline.golden.json\n--- got ---\n%s\n--- want ---\n%s", got, want)
+	}
+}
+
+func loadUndatedFiles(t *testing.T) []string {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join("testdata", "log-source-patterns.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fixture struct {
+		UndatedFiles []string `json:"undatedFiles"`
+	}
+	if err := json.Unmarshal(data, &fixture); err != nil {
+		t.Fatal(err)
+	}
+	if len(fixture.UndatedFiles) == 0 {
+		t.Fatal("fixture must list undatedFiles")
+	}
+	return fixture.UndatedFiles
+}
+
+func TestUndatedFilesFromFixtureAreExported(t *testing.T) {
+	for _, name := range loadUndatedFiles(t) {
+		logs := t.TempDir()
+		touch(t, logs, name, "uniclipboard-gui.json.2026-10-14")
+		files, m := export(t, logs)
+		if _, ok := files["logs/"+name]; !ok || !slices.Contains(m.Collection.IncludedFiles, name) {
+			t.Errorf("%s not exported; included = %v", name, m.Collection.IncludedFiles)
+		}
+		if roleOf(name) != "" {
+			t.Errorf("%s must not belong to a dated role", name)
+		}
+	}
+}
+
+func TestStartupFailureRecordAloneIsExportContent(t *testing.T) {
+	logs := t.TempDir()
+	touch(t, logs, "daemon-startup-failure.json")
+	files, m := export(t, logs)
+	if _, ok := files["logs/daemon-startup-failure.json"]; !ok {
+		t.Fatalf("record missing from archive; included = %v", m.Collection.IncludedFiles)
+	}
+	if !slices.Contains(m.Collection.IncludedFiles, "daemon-startup-failure.json") {
+		t.Fatalf("included = %v", m.Collection.IncludedFiles)
+	}
+}
+
+func TestStartupFailureRecordIsCappedAt4096Bytes(t *testing.T) {
+	logs := t.TempDir()
+	big := make([]byte, 10000)
+	for i := range big {
+		big[i] = 'x'
+	}
+	if err := os.WriteFile(filepath.Join(logs, "daemon-startup-failure.json"), big, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	files, _ := export(t, logs)
+	if got := len(files["logs/daemon-startup-failure.json"]); got != 4096 {
+		t.Fatalf("exported %d bytes, want 4096", got)
+	}
+}
+
+func TestStartupFailureRecordThatIsNotARegularFileIsUnreadable(t *testing.T) {
+	logs := t.TempDir()
+	if err := os.Mkdir(filepath.Join(logs, "daemon-startup-failure.json"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	touch(t, logs, "uniclipboard-gui.json.2026-10-14")
+	files, m := export(t, logs)
+	if !slices.Contains(m.Collection.UnreadableFiles, "daemon-startup-failure.json") {
+		t.Fatalf("unreadableFiles = %v", m.Collection.UnreadableFiles)
+	}
+	if _, ok := files["logs/daemon-startup-failure.json"]; ok {
+		t.Fatal("a directory must not be archived")
+	}
+}
+
+func TestExportReturnsTheManifestMissingSources(t *testing.T) {
+	logs := t.TempDir()
+	touch(t, logs, "uniclipboard-gui.json.2026-10-14", "engine.2026-10-14.jsonl")
+	dest := filepath.Join(t.TempDir(), "out.zip")
+	report, err := ExportStartup(logs, dest, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []MissingSource{{"daemon", "missing"}, {"cli", "missing"}, {"quick-panel", "missing"}}
+	if !slices.Equal(report.MissingSources, want) {
+		t.Fatalf("report.MissingSources = %v, want %v", report.MissingSources, want)
+	}
+	var m decodedManifest
+	if err := json.Unmarshal(readArchive(t, dest)["manifest.json"], &m); err != nil {
+		t.Fatal(err)
+	}
+	if len(m.Collection.MissingSources) != len(want) {
+		t.Fatalf("manifest = %v, report = %v", m.Collection.MissingSources, report.MissingSources)
+	}
+}
+
+func TestFailedExportReturnsNoGaps(t *testing.T) {
+	report, err := ExportStartup(filepath.Join(t.TempDir(), "absent"), filepath.Join(t.TempDir(), "out.zip"), nil)
+	if !errors.Is(err, ErrNoLogs) || report.MissingSources != nil {
+		t.Fatalf("report = %v, err = %v", report, err)
 	}
 }

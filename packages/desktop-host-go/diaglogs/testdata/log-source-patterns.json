@@ -1,6 +1,7 @@
 {
-  "_comment": "Shared contract (Go diaglogs and Rust uc-observability tests): a managed log file name is <prefix><YYYY-MM-DD><suffix> with a zero-padded valid calendar date; each role lists names that must match (positive) and must not match any role (negative).",
+  "_comment": "Shared contract (Go diaglogs and Rust uc-observability tests): a managed log file name is <prefix><YYYY-MM-DD><suffix> with a zero-padded valid calendar date; each role lists names that must match (positive) and must not match any role (negative). undatedFiles lists exact file names exported as logs/<name> when they are regular files, read through a hard cap of 4096 bytes; they carry no date, so a time window never excludes them, and a non-regular entry with such a name is reported as unreadable.",
   "schemaVersion": 1,
+  "undatedFiles": ["daemon-startup-failure.json"],
   "roles": {
     "gui": {
       "prefix": "uniclipboard-gui.json.",

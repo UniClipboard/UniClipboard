@@ -1,4 +1,5 @@
 import { DaemonApiError } from '@/api/daemon/errors'
+import type { ExportStartupLogsResult } from '@/lib/ipc'
 
 /**
  * Adapter for the offline (startup) log export contract. The Go host's
@@ -56,23 +57,9 @@ export function parseExportFailureCause(error: unknown): ExportFailureCause | un
   return (typeof wire === 'string' && CAUSE_BY_WIRE[wire]) || 'unknown'
 }
 
-/**
- * Accepts the legacy bare path (`string | null`) as well as a structured result
- * carrying `missingSources`. Malformed entries are dropped.
- */
-export function normalizeOfflineExportResult(raw: unknown): OfflineExportResult {
-  if (typeof raw === 'string') return { path: raw, missingSources: [] }
-  if (typeof raw !== 'object' || raw === null) return { path: null, missingSources: [] }
-  const { path, missingSources } = raw as { path?: unknown; missingSources?: unknown }
-  return {
-    path: typeof path === 'string' ? path : null,
-    missingSources: Array.isArray(missingSources)
-      ? missingSources.flatMap(item => {
-          const { source, reason } = (item ?? {}) as { source?: unknown; reason?: unknown }
-          return typeof source === 'string' && typeof reason === 'string'
-            ? [{ source, reason }]
-            : []
-        })
-      : [],
-  }
+/** Maps the host's `exportStartupLogs` result (`null` when the user cancelled) onto the UI shape. */
+export function normalizeOfflineExportResult(
+  result: ExportStartupLogsResult | null
+): OfflineExportResult {
+  return { path: result?.path ?? null, missingSources: result?.missingSources ?? [] }
 }

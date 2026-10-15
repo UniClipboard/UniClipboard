@@ -43,6 +43,8 @@ export {
 export { FactList, PreviewFrame, QuickLook } from './preview'
 export { SettingsContent, SettingsGroup, SettingsRow } from './settings'
 export { Sheet } from './sheet'
+export { EntityHeader, MasterDetail } from './master-detail'
+export { SourceList } from './source-list'
 export { Slider } from './slider'
 export { StepList } from './step-list'
 export { Table } from './table'

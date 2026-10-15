@@ -63,6 +63,15 @@ export function SidebarNav({
             {section.title ? (
               <div className={styles.heading}>
                 <NavSectionHeader className={styles.headingTitle}>{section.title}</NavSectionHeader>
+                {section.collapse ? (
+                  <Button
+                    variant="subtle"
+                    size="small"
+                    icon={section.collapse.collapsed ? 'chevronRight' : 'chevronDown'}
+                    label={section.collapse.label}
+                    onClick={() => section.collapse?.onCollapsedChange(!section.collapse.collapsed)}
+                  />
+                ) : null}
                 {section.action ? (
                   <Button
                     variant="subtle"
@@ -74,7 +83,8 @@ export function SidebarNav({
                 ) : null}
               </div>
             ) : null}
-            {section.items.length === 0 && section.placeholder ? (
+            {section.collapse?.collapsed ? null : section.items.length === 0 &&
+              section.placeholder ? (
               <div className={styles.placeholder}>
                 {section.placeholder.text ? (
                   <span className={styles.placeholderText}>{section.placeholder.text}</span>
@@ -88,7 +98,7 @@ export function SidebarNav({
             ) : (
               section.items.map(item => <SidebarNavEntry key={item.id} item={item} />)
             )}
-            {section.more ? (
+            {section.more && !section.collapse?.collapsed ? (
               <FluentButton
                 appearance="transparent"
                 className={styles.more}

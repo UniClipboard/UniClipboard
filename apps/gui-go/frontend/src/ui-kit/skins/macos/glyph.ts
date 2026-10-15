@@ -28,6 +28,7 @@ export const contractGlyphs = {
   package: 'box',
   phone: 'phone',
   pin: 'pin',
+  remove: 'minus',
   retry: 'retry',
   search: 'search',
   send: 'arrowRight',

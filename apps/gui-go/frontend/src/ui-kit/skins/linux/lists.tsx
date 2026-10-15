@@ -145,7 +145,10 @@ export function SidebarNav({
   onValueChange,
 }: SidebarNavProps) {
   const navRef = useRef<HTMLElement>(null)
-  const flat = [...sections.flatMap(section => section.items), ...footer]
+  const flat = [
+    ...sections.flatMap(section => (section.collapse?.collapsed ? [] : section.items)),
+    ...footer,
+  ]
   const [own, setOwn] = useState(defaultValue)
   const [focusedId, setFocusedId] = useState<string | undefined>()
   const current = value ?? own
@@ -194,46 +197,64 @@ export function SidebarNav({
   )
   return (
     <nav ref={navRef} className="adw-sidebar-nav" aria-label={label} onKeyDown={onKeyDown}>
-      {sections.map(section => (
-        <div key={section.id} className="adw-sidebar-group">
-          {section.title && (
-            <div className="adw-side-heading" data-has-action={section.action ? '' : undefined}>
-              <span className="adw-side-heading-title">{section.title}</span>
-              {section.action && (
-                <WithHelpTag text={section.action.label}>
+      {sections.map(section => {
+        const collapsed = section.collapse?.collapsed === true
+        return (
+          <div key={section.id} className="adw-sidebar-group">
+            {section.title && (
+              <div
+                className="adw-side-heading"
+                data-has-action={section.action || section.collapse ? '' : undefined}
+              >
+                <span className="adw-side-heading-title">{section.title}</span>
+                {section.collapse && (
                   <button
                     type="button"
-                    className="adw-side-heading-action"
-                    aria-label={section.action.label}
-                    onClick={section.action.onClick}
+                    className="adw-side-heading-action adw-side-disclosure"
+                    aria-label={section.collapse.label}
+                    aria-expanded={!collapsed}
+                    data-collapsed={collapsed ? '' : undefined}
+                    onClick={() => section.collapse?.onCollapsedChange(!collapsed)}
                   >
-                    <Icon name={glyph(section.action.icon)} size={14} />
+                    <Icon name="chevronRight" size={12} />
                   </button>
-                </WithHelpTag>
-              )}
-            </div>
-          )}
-          {section.items.length === 0 && section.placeholder ? (
-            <div className="adw-side-placeholder">
-              {section.placeholder.text && (
-                <span className="adw-side-placeholder-text">{section.placeholder.text}</span>
-              )}
-              {section.placeholder.action && (
-                <PushButton icon="plus" onClick={section.placeholder.action.onClick}>
-                  {section.placeholder.action.label}
-                </PushButton>
-              )}
-            </div>
-          ) : (
-            section.items.map(row)
-          )}
-          {section.more && (
-            <button type="button" className="adw-side-more" onClick={section.more.onClick}>
-              {section.more.label}
-            </button>
-          )}
-        </div>
-      ))}
+                )}
+                {section.action && (
+                  <WithHelpTag text={section.action.label}>
+                    <button
+                      type="button"
+                      className="adw-side-heading-action"
+                      aria-label={section.action.label}
+                      onClick={section.action.onClick}
+                    >
+                      <Icon name={glyph(section.action.icon)} size={14} />
+                    </button>
+                  </WithHelpTag>
+                )}
+              </div>
+            )}
+            {collapsed ? null : section.items.length === 0 && section.placeholder ? (
+              <div className="adw-side-placeholder">
+                {section.placeholder.text && (
+                  <span className="adw-side-placeholder-text">{section.placeholder.text}</span>
+                )}
+                {section.placeholder.action && (
+                  <PushButton icon="plus" onClick={section.placeholder.action.onClick}>
+                    {section.placeholder.action.label}
+                  </PushButton>
+                )}
+              </div>
+            ) : (
+              section.items.map(row)
+            )}
+            {section.more && !collapsed && (
+              <button type="button" className="adw-side-more" onClick={section.more.onClick}>
+                {section.more.label}
+              </button>
+            )}
+          </div>
+        )
+      })}
       {footer.length > 0 && <div className="adw-sidebar-footer">{footer.map(row)}</div>}
     </nav>
   )

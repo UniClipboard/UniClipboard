@@ -102,8 +102,9 @@ where
             .map_err(|_| fmt::Error)?;
         map.serialize_entry("pid", &pid()).map_err(|_| fmt::Error)?;
 
-        let has_device_ref =
-            event_fields.contains_key("device_id") || span_fields.contains_key("device_id");
+        let has_device_ref = ["device_id", "device_ref"]
+            .iter()
+            .any(|key| event_fields.contains_key(*key) || span_fields.contains_key(*key));
 
         if !has_device_ref {
             if let Some(device_id) = global_device_id() {

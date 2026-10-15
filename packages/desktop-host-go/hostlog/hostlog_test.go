@@ -156,3 +156,16 @@ func TestAnUnusableDirectoryIsReportedNotFatal(t *testing.T) {
 		t.Fatal("expected an error")
 	}
 }
+
+func TestWritingAfterCloseIsSilent(t *testing.T) {
+	dir := t.TempDir()
+	var stderr bytes.Buffer
+	logger := install(t, dir, time.Date(2026, 10, 15, 1, 0, 0, 0, time.UTC), &stderr)
+	if err := logger.Close(); err != nil {
+		t.Fatal(err)
+	}
+	logger.Info("late record")
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want nothing", stderr.String())
+	}
+}

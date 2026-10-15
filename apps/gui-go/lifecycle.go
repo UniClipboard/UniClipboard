@@ -104,7 +104,11 @@ func requestDaemonGracefulStop(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	return resp.Body.Close()
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusAccepted {
+		return fmt.Errorf("graceful stop: unexpected status %d", resp.StatusCode)
+	}
+	return nil
 }
 
 // runningDaemonPID returns the pid of the live, GUI-owned daemon. The pid file carries the run mode; the connection

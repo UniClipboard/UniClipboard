@@ -151,6 +151,10 @@ func (l *Logger) write(level, message string) {
 	line = append(line, '\n')
 
 	l.mu.Lock()
+	if l.file == nil { // closed: late records are dropped silently
+		l.mu.Unlock()
+		return
+	}
 	if day := now.Format("2006-01-02"); day != l.day {
 		// A failed rotation keeps appending to the previous day's file rather than dropping the record.
 		_ = l.rotate(day)

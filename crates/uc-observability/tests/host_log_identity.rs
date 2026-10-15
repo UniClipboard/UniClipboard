@@ -121,3 +121,16 @@ fn the_process_device_is_referenced_not_named() {
     assert!(record.get("device_id").is_none());
     assert!(record["device_ref"].as_str().is_some_and(|r| !r.is_empty()));
 }
+
+#[test]
+fn a_raw_device_ref_field_does_not_duplicate_the_process_device_ref() {
+    let _ = uc_observability::set_global_device_id(DEVICE_ID.to_string());
+    let buffer = SharedBuffer::default();
+    let subscriber = tracing_subscriber::fmt()
+        .with_writer(buffer.clone())
+        .event_format(FlatJsonFormat::new())
+        .finish();
+    tracing::subscriber::with_default(subscriber, || tracing::info!(device_ref = "caller", "x"));
+    let text = String::from_utf8(buffer.0.lock().expect("buffer").clone()).expect("utf8");
+    assert_eq!(text.matches("\"device_ref\"").count(), 1, "{text}");
+}

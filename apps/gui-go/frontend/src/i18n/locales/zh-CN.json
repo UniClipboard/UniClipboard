@@ -396,7 +396,21 @@
             "error": "导出日志失败",
             "copyPath": "复制路径",
             "copySuccess": "已复制导出路径",
-            "copyError": "复制导出路径失败"
+            "copyError": "复制导出路径失败",
+            "missingSources": "本次导出未包含:{{sources}}。",
+            "cause": {
+              "sourceReadFailed": "后台服务无法读取部分日志来源。",
+              "archiveWriteFailed": "后台服务无法写入诊断包。",
+              "destinationUnavailable": "后台服务无法访问导出目标位置。",
+              "unknown": "后台服务导出失败,原因未知。"
+            },
+            "sources": {
+              "engine": "Engine",
+              "daemon": "后台服务",
+              "gui": "应用窗口",
+              "cli": "命令行",
+              "quickPanel": "快捷面板"
+            }
           }
         }
       },

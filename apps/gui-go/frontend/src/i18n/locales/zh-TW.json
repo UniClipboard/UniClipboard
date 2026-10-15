@@ -396,7 +396,21 @@
             "error": "匯出日誌失敗",
             "copyPath": "複製路徑",
             "copySuccess": "已複製匯出路徑",
-            "copyError": "複製匯出路徑失敗"
+            "copyError": "複製匯出路徑失敗",
+            "missingSources": "本次匯出未包含:{{sources}}。",
+            "cause": {
+              "sourceReadFailed": "背景服務無法讀取部分記錄來源。",
+              "archiveWriteFailed": "背景服務無法寫入診斷包。",
+              "destinationUnavailable": "背景服務無法存取匯出目的位置。",
+              "unknown": "背景服務匯出失敗,原因不明。"
+            },
+            "sources": {
+              "engine": "Engine",
+              "daemon": "背景服務",
+              "gui": "應用程式視窗",
+              "cli": "命令列",
+              "quickPanel": "快速面板"
+            }
           }
         }
       },

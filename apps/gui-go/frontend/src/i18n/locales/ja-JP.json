@@ -396,7 +396,21 @@
             "error": "ログのエクスポートに失敗しました",
             "copyPath": "パスのコピー",
             "copySuccess": "エクスポート パスのコピーに失敗しました",
-            "copyError": "エクスポートのコピーに失敗しましたパス"
+            "copyError": "エクスポートのコピーに失敗しましたパス",
+            "missingSources": "今回のエクスポートに含まれないもの: {{sources}}。",
+            "cause": {
+              "sourceReadFailed": "バックグラウンドサービスが一部のログソースを読み取れませんでした。",
+              "archiveWriteFailed": "バックグラウンドサービスがアーカイブを書き込めませんでした。",
+              "destinationUnavailable": "バックグラウンドサービスがエクスポート先にアクセスできませんでした。",
+              "unknown": "バックグラウンドサービスのエクスポートが原因不明で失敗しました。"
+            },
+            "sources": {
+              "engine": "Engine",
+              "daemon": "バックグラウンドサービス",
+              "gui": "アプリウィンドウ",
+              "cli": "コマンドライン",
+              "quickPanel": "クイックパネル"
+            }
           }
         }
       },

@@ -13,15 +13,28 @@ import { toast } from '@/components/ui/toast'
 import { useSetting } from '@/hooks/useSetting'
 import { commands } from '@/lib/ipc'
 import { createLogger } from '@/lib/logger'
+import {
+  normalizeOfflineExportResult,
+  parseExportFailureCause,
+  sourceLabelKey,
+  type ExportFailureCause,
+  type MissingExportSource,
+} from './diagnosticExportFallback'
 import { useSavingState } from './useSavingState'
 
 const log = createLogger('general-section')
 
 type DebugDialogState = 'closed' | 'confirming' | 'restarting'
 
+type ExportFallbackNotice = {
+  cause?: ExportFailureCause
+  missingSources: MissingExportSource[]
+}
+
 type DiagnosticsState = {
   debugDialog: DebugDialogState
   exportPath: string | null
+  exportFallback: ExportFallbackNotice | null
   exportingLogs: boolean
   captureStatus: DiagnosticCaptureStatus | null
   captureUnavailable: boolean
@@ -31,6 +44,7 @@ type DiagnosticsState = {
 type DiagnosticsAction =
   | { type: 'setDebugDialog'; value: DebugDialogState }
   | { type: 'setExportPath'; value: string }
+  | { type: 'setExportFallback'; value: ExportFallbackNotice | null }
   | { type: 'setExportingLogs'; value: boolean }
   | { type: 'captureLoaded'; status: DiagnosticCaptureStatus }
   | { type: 'captureUnavailable' }
@@ -39,6 +53,7 @@ type DiagnosticsAction =
 const initialState: DiagnosticsState = {
   debugDialog: 'closed',
   exportPath: null,
+  exportFallback: null,
   exportingLogs: false,
   captureStatus: null,
   captureUnavailable: false,
@@ -51,6 +66,8 @@ function diagnosticsReducer(state: DiagnosticsState, action: DiagnosticsAction):
       return { ...state, debugDialog: action.value }
     case 'setExportPath':
       return { ...state, exportPath: action.value }
+    case 'setExportFallback':
+      return { ...state, exportFallback: action.value }
     case 'setExportingLogs':
       return { ...state, exportingLogs: action.value }
     case 'captureLoaded':
@@ -127,8 +144,10 @@ export function useDiagnosticsSettings() {
 
   const handleExportLogs = async () => {
     dispatch({ type: 'setExportingLogs', value: true })
+    dispatch({ type: 'setExportFallback', value: null })
     try {
       let path: string | null
+      let fallback: ExportFallbackNotice | null = null
       let exportNotice: 'complete' | 'partial' | 'offline' = 'complete'
       try {
         const result = await exportLogs(24)
@@ -142,12 +161,18 @@ export function useDiagnosticsSettings() {
         }
       } catch (daemonError) {
         log.warn({ err: daemonError }, 'Daemon export unavailable; using retained logs')
-        path = await commands.exportStartupLogs()
+        const offline = normalizeOfflineExportResult(await commands.exportStartupLogs())
+        path = offline.path
         if (!path) return
         exportNotice = 'offline'
+        fallback = {
+          cause: parseExportFailureCause(daemonError),
+          missingSources: offline.missingSources,
+        }
       }
       if (!path) return
       dispatch({ type: 'setExportPath', value: path })
+      dispatch({ type: 'setExportFallback', value: fallback })
       if (exportNotice === 'complete') {
         toast.success(t('settings.sections.general.logs.export.success'))
       } else {
@@ -205,8 +230,25 @@ export function useDiagnosticsSettings() {
     }
   }
 
+  const exportFallbackLines: string[] = []
+  if (state.exportFallback?.cause) {
+    exportFallbackLines.push(
+      t(`settings.sections.general.logs.export.cause.${state.exportFallback.cause}`)
+    )
+  }
+  if (state.exportFallback && state.exportFallback.missingSources.length > 0) {
+    const sources = state.exportFallback.missingSources.map(({ source }) => {
+      const key = sourceLabelKey(source)
+      return key ? t(`settings.sections.general.logs.export.sources.${key}`) : source
+    })
+    exportFallbackLines.push(
+      t('settings.sections.general.logs.export.missingSources', { sources: sources.join(', ') })
+    )
+  }
+
   return {
     ...state,
+    exportFallbackLines,
     captureDescription: state.captureUnavailable
       ? t('settings.sections.general.logs.capture.unavailable')
       : !state.captureStatus

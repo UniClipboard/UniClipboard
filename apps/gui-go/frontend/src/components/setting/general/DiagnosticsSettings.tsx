@@ -15,6 +15,7 @@ export function DiagnosticsSettings() {
     debugDialog,
     debugMode,
     detailedCapture,
+    exportFallbackLines,
     exportingLogs,
     exportPath,
     handleConfirmDebugMode,
@@ -87,6 +88,11 @@ export function DiagnosticsSettings() {
               </Button>
             </div>
           )}
+          {exportFallbackLines.map(line => (
+            <p key={line} className="max-w-96 text-right text-ui-caption text-muted-foreground">
+              {line}
+            </p>
+          ))}
         </div>
       </SettingRow>
 

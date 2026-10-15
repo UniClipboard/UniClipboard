@@ -397,7 +397,21 @@
             "error": "Falha ao exportar os logs",
             "copyPath": "Copiar caminho",
             "copySuccess": "Caminho da exportação copiado",
-            "copyError": "Falha ao copiar o caminho da exportação"
+            "copyError": "Falha ao copiar o caminho da exportação",
+            "missingSources": "Não incluído nesta exportação: {{sources}}.",
+            "cause": {
+              "sourceReadFailed": "O serviço em segundo plano não conseguiu ler algumas fontes de log.",
+              "archiveWriteFailed": "O serviço em segundo plano não conseguiu gravar o arquivo.",
+              "destinationUnavailable": "O serviço em segundo plano não conseguiu acessar o destino da exportação.",
+              "unknown": "A exportação do serviço em segundo plano falhou por um motivo desconhecido."
+            },
+            "sources": {
+              "engine": "Engine",
+              "daemon": "Serviço em segundo plano",
+              "gui": "Janela do app",
+              "cli": "Linha de comando",
+              "quickPanel": "Painel rápido"
+            }
           }
         }
       },

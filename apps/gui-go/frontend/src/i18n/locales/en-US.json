@@ -396,7 +396,21 @@
             "error": "Failed to export logs",
             "copyPath": "Copy path",
             "copySuccess": "Export path copied",
-            "copyError": "Failed to copy export path"
+            "copyError": "Failed to copy export path",
+            "missingSources": "Not included in this export: {{sources}}.",
+            "cause": {
+              "sourceReadFailed": "The background service could not read some log sources.",
+              "archiveWriteFailed": "The background service could not write the archive.",
+              "destinationUnavailable": "The background service could not reach the export destination.",
+              "unknown": "The background service export failed for an unknown reason."
+            },
+            "sources": {
+              "engine": "Engine",
+              "daemon": "Background service",
+              "gui": "App window",
+              "cli": "Command line",
+              "quickPanel": "Quick panel"
+            }
           }
         }
       },

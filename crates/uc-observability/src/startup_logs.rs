@@ -11,6 +11,8 @@ use serde::Serialize;
 use serde_json::Value;
 use zip::write::SimpleFileOptions;
 
+use crate::startup_failure::{MAX_STARTUP_FAILURE_BYTES, STARTUP_FAILURE_FILE};
+
 #[derive(Debug, Clone, Copy, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum DiagnosticArchiveMode {
@@ -123,7 +125,11 @@ pub fn export_diagnostic_logs(
             // Copy the length observed at open time rather than reading to
             // EOF, so an export converges while writers keep appending; later
             // records are covered by `concurrent_writes_possible`.
-            let length = metadata.len();
+            let length = if candidate.date.is_none() {
+                metadata.len().min(MAX_STARTUP_FAILURE_BYTES)
+            } else {
+                metadata.len()
+            };
             archive.start_file(format!("logs/{}", candidate.name), options)?;
             let copied = io::copy(&mut input.take(length), &mut archive)?;
             if copied != length {
@@ -161,7 +167,9 @@ pub fn export_diagnostic_logs(
 struct LogCandidate {
     path: PathBuf,
     name: String,
-    date: NaiveDate,
+    /// Calendar day of a dated log; `None` for the undated startup failure
+    /// record, which is always part of the window.
+    date: Option<NaiveDate>,
     /// Directory-entry metadata; only used when the file cannot be opened.
     listed: Option<fs::Metadata>,
 }
@@ -178,7 +186,11 @@ fn collect_log_files(logs_dir: &Path) -> Result<(Vec<LogCandidate>, Vec<String>)
         let Some(name) = name.to_str().map(str::to_owned) else {
             continue;
         };
-        let Some(date) = managed_log_date(&name) else {
+        let date = if name == STARTUP_FAILURE_FILE {
+            None
+        } else if let Some(date) = managed_log_date(&name) {
+            Some(date)
+        } else {
             continue;
         };
         let file_type = match entry.file_type() {
@@ -189,6 +201,11 @@ fn collect_log_files(logs_dir: &Path) -> Result<(Vec<LogCandidate>, Vec<String>)
             }
         };
         if !file_type.is_file() {
+            // The startup failure record is the one file whose absence from an
+            // export must never be silent: report it instead of skipping it.
+            if date.is_none() {
+                unreadable.push(name);
+            }
             continue;
         }
         files.push(LogCandidate {
@@ -227,11 +244,12 @@ pub fn engine_log_file_date(name: &str) -> Option<NaiveDate> {
 }
 
 fn within_window(
-    date: NaiveDate,
+    date: Option<NaiveDate>,
     modified: Option<SystemTime>,
     since: Option<DateTime<Utc>>,
 ) -> bool {
     let Some(since) = since else { return true };
+    let Some(date) = date else { return true };
     if date >= since.date_naive() {
         return true;
     }

@@ -317,7 +317,8 @@ try {
     await openSheet()
     await page.waitForTimeout(800)
     const box = await popup().boundingBox()
-    const traffic = await page.locator('.mac-traffic').boundingBox()
+    // Only the macOS skin draws traffic lights; boundingBox() would wait for them elsewhere.
+    const traffic = platform === 'macos' ? await page.locator('.mac-traffic').boundingBox() : null
     const viewport = page.viewportSize()
     if (platform === 'macos') {
       assert.ok(Math.abs(box.y) < 1, `sheet hangs from the top edge (y=${box.y})`)

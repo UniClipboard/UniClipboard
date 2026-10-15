@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useLocation } from 'react-router'
+import { useLocation, useNavigate } from 'react-router'
 import { countSearch } from '@/api/daemon/search'
 import { useCompositeSearchBar } from '@/components/history/composite-search/useCompositeSearchBar'
 import { useZeroResultRelaxations } from '@/components/history/composite-search/useZeroResultRelaxations'
@@ -68,9 +68,19 @@ export default function HistoryKitPage() {
   const chrome = useLibraryChrome()
   const colorScheme = useAppliedColorScheme()
   const routerLocation = useLocation()
-  const devices = useDevicesKit(
+  const navigate = useNavigate()
+  const openDevicesFromRoute =
     (routerLocation.state as Record<string, unknown> | null)?.[MANAGE_DEVICES_STATE] === true
-  )
+  const devices = useDevicesKit(openDevicesFromRoute)
+  // The `/devices` redirect's flag opens the sheet once; drop it from the history entry so a
+  // reload or a later remount of this page does not open the sheet again.
+  useEffect(() => {
+    if (!openDevicesFromRoute) return
+    void navigate(
+      { pathname: routerLocation.pathname, search: routerLocation.search },
+      { replace: true, state: null }
+    )
+  }, [openDevicesFromRoute, navigate, routerLocation.pathname, routerLocation.search])
 
   const search = useCompositeSearchBar({
     variant: 'list',

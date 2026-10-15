@@ -47,6 +47,11 @@ export function DevicesKitInvitationDetail({ row }: { row: DeviceInvitationRow }
         </Button>
       )}
     </>
+  ) : state.step === 'credentials' || state.step === 'reset_passphrase' ? (
+    // Re-pairing: the row can be dismissed at any step, as the old dialog could be closed.
+    <Button disabled={state.loading} onClick={row.close}>
+      {t('devices.addDevice.actions.close')}
+    </Button>
   ) : undefined
 
   return (

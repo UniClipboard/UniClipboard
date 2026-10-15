@@ -188,7 +188,14 @@ export function DevicesKitList({
       },
       placeholder: spaceMembersError
         ? undefined
-        : { label: t('devices.list.actions.addDevice'), onClick: invitation.start },
+        : {
+            label: t('devices.list.actions.addDevice'),
+            // Show the invitation's code in the detail column, issuing it when there is none.
+            onClick: () => {
+              if (!invitation.active) invitation.start()
+              onSelect({ kind: 'invitation' })
+            },
+          },
       extra: (
         <DevicesKitSpaceUpdate
           status={deviceTrust?.spaceDeviceUpdate}

@@ -4,9 +4,7 @@ import {
   getDiagnosticCaptureStatus as getDiagnosticCaptureStatusSdk,
   getNetworkLogStatus as getNetworkLogStatusSdk,
   startDiagnosticCapture as startDiagnosticCaptureSdk,
-  startNetworkCapture as startNetworkCaptureSdk,
   stopDiagnosticCapture as stopDiagnosticCaptureSdk,
-  stopNetworkCapture as stopNetworkCaptureSdk,
   updateDebugMode as updateDebugModeSdk,
 } from '@/api/generated/sdk.gen'
 import type {
@@ -14,7 +12,6 @@ import type {
   DiagnosticCaptureStopResultDto,
   DiagnosticExportPreparationDto,
   DiagnosticStatusDto,
-  NetworkCaptureStartResultDto,
   NetworkLogStatusDto,
 } from '@/api/generated/types.gen'
 import { daemonClient } from './client'
@@ -81,18 +78,4 @@ export async function stopDiagnosticCapture(
 
 export async function getNetworkLogStatus(): Promise<NetworkLogStatus> {
   return await daemonClient.callEnveloped(() => getNetworkLogStatusSdk({ throwOnError: true }))
-}
-
-export async function startNetworkCapture(
-  durationSeconds: number
-): Promise<NetworkCaptureStartResultDto> {
-  return await daemonClient.callEnveloped(() =>
-    startNetworkCaptureSdk({ body: { durationSeconds }, throwOnError: true })
-  )
-}
-
-export async function stopNetworkCapture(captureId: string): Promise<NetworkLogStatus> {
-  return await daemonClient.callEnveloped(() =>
-    stopNetworkCaptureSdk({ body: { captureId }, throwOnError: true })
-  )
 }

@@ -75,9 +75,9 @@ use uc_webserver::api::openapi::ApiDoc;
 /// Local history tags add six paths and eight operations: 95 / 107.
 /// The tag layout adds four paths and four operations: 99 / 111.
 /// The independent network-library log adds three paths and three operations
-/// (status, start, stop): 102 / 114.
-const EXPECTED_PATHS: usize = 102;
-const EXPECTED_OPERATIONS: usize = 114;
+/// (status): 100 / 112.
+const EXPECTED_PATHS: usize = 100;
+const EXPECTED_OPERATIONS: usize = 112;
 const SCHEMA_PREFIX: &str = "#/components/schemas/";
 const HTTP_METHODS: [&str; 7] = ["get", "put", "post", "delete", "patch", "head", "options"];
 

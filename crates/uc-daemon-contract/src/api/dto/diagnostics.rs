@@ -306,6 +306,10 @@ pub struct NetworkLogStatusDto {
     /// Identifier of the open detailed window, needed to stop it. The Engine does
     /// not report it; the daemon remembers the one its own start call returned.
     pub capture_id: Option<String>,
+    /// The network window did not follow the business diagnostic capture. Set
+    /// when the daemon could not start or stop it together with the business
+    /// capture; cleared by the next successful start.
+    pub capture_link_failure: Option<NetworkCaptureLinkFailureDto>,
     pub detailed_remaining_ms: Option<u64>,
     pub counters: Option<NetworkLogCountersDto>,
     pub libraries: Vec<NetworkLibraryStatusDto>,
@@ -315,25 +319,9 @@ pub struct NetworkLogStatusDto {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
-pub struct NetworkCaptureStartRequestDto {
-    pub duration_seconds: u16,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct NetworkCaptureStopRequestDto {
-    pub capture_id: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct NetworkCaptureStartResultDto {
-    pub capture_id: String,
-    pub started_at_utc: String,
-    pub duration_ms: u64,
-    /// A window was already open; it is returned unchanged and not extended.
-    pub already_active: bool,
-    pub status: NetworkLogStatusDto,
+pub enum NetworkCaptureLinkFailureDto {
+    StartFailed,
+    StopFailed,
 }
 
 /// One file the Engine listed when it prepared the export, with the digest it

@@ -378,9 +378,8 @@
             "loading": "正在讀取網路日誌狀態…",
             "unavailable": "目前無法讀取背景服務的診斷狀態。",
             "notConfigured": "此版本沒有設定網路日誌，不會記錄任何網路事件。",
-            "standard": "在 {{minutes}} 分鐘內更詳細地記錄連線層，時間到自動停止。摘要一律保留。",
+            "standard": "連線細節會隨詳細記錄一起記錄。摘要始終保留。",
             "active": "正在記錄連線細節，約 {{minutes}} 分鐘後自動停止。",
-            "error": "變更網路擷取失敗",
             "state": {
               "starting": "網路日誌正在啟動。",
               "unavailable": "網路日誌寫入失敗，業務日誌不受影響。",
@@ -394,6 +393,10 @@
               "day_other": "{{count}} 天",
               "hour_other": "{{count}} 小時",
               "minute_other": "{{count}} 分鐘"
+            },
+            "linkFailure": {
+              "startFailed": "連線細節未能隨詳細記錄一起記錄。",
+              "stopFailed": "連線細節記錄未能隨詳細記錄一起關閉，將自行結束。"
             }
           },
           "debug": {

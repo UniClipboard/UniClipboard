@@ -378,9 +378,8 @@
             "loading": "Checking network log status…",
             "unavailable": "Background service diagnostics are unavailable.",
             "notConfigured": "Network log is not configured on this build, so no network events are recorded.",
-            "standard": "Records the connection layer in more detail for {{minutes}} minutes, then stops automatically. A summary is always kept.",
+            "standard": "Connection details are recorded together with the detailed log. A summary is always kept.",
             "active": "Recording connection details. Stops automatically in about {{minutes}} minutes.",
-            "error": "Failed to change network capture",
             "state": {
               "starting": "The network log is starting.",
               "unavailable": "The network log could not write; business logs are not affected.",
@@ -397,6 +396,10 @@
               "hour_other": "{{count}} hours",
               "minute_one": "{{count}} minute",
               "minute_other": "{{count}} minutes"
+            },
+            "linkFailure": {
+              "startFailed": "Connection details could not be recorded together with the detailed log.",
+              "stopFailed": "The connection detail recording could not be closed together with the detailed log. It stops on its own."
             }
           },
           "debug": {

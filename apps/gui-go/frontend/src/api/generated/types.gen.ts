@@ -2552,49 +2552,9 @@ export type NetworkArchiveRunDto = {
     unreadableFiles: Array<string>;
 };
 
+export type NetworkCaptureLinkFailureDto = 'startFailed' | 'stopFailed';
+
 export type NetworkCaptureModeDto = 'standard' | 'detailed';
-
-/**
- * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
- *
- * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
- * via [`ApiEnvelope::now`] (the contract carries only the type + the clock
- * helper, not a hard dependency on when the handler reads the clock).
- * `rename_all = "camelCase"` is a no-op for the single-word fields here but is
- * declared for forward-compat.
- *
- * IMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named
- * OpenAPI component is declared in the `#[aliases(...)]` block below. Add a new
- * alias line whenever a new payload type needs enveloping. NEVER register the
- * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
- * generic, and an un-aliased generic inlines an anonymous schema.
- */
-export type NetworkCaptureStartEnvelope = {
-    data: NetworkCaptureStartResultDto;
-    /**
-     * Server time when the response was built (unix epoch milliseconds).
-     */
-    ts: number;
-};
-
-export type NetworkCaptureStartRequestDto = {
-    durationSeconds: number;
-};
-
-export type NetworkCaptureStartResultDto = {
-    /**
-     * A window was already open; it is returned unchanged and not extended.
-     */
-    alreadyActive: boolean;
-    captureId: string;
-    durationMs: number;
-    startedAtUtc: string;
-    status: NetworkLogStatusDto;
-};
-
-export type NetworkCaptureStopRequestDto = {
-    captureId: string;
-};
 
 /**
  * The Engine's network-log export preparation for this process. It says
@@ -2678,6 +2638,7 @@ export type NetworkLogStatusDto = {
      * not report it; the daemon remembers the one its own start call returned.
      */
     captureId?: string | null;
+    captureLinkFailure?: NetworkCaptureLinkFailureDto | null;
     counters?: NetworkLogCountersDto | null;
     detailedRemainingMs?: number | null;
     libraries: Array<NetworkLibraryStatusDto>;
@@ -5899,68 +5860,6 @@ export type GetNetworkLogStatusResponses = {
 };
 
 export type GetNetworkLogStatusResponse = GetNetworkLogStatusResponses[keyof GetNetworkLogStatusResponses];
-
-export type StartNetworkCaptureData = {
-    body: NetworkCaptureStartRequestDto;
-    path?: never;
-    query?: never;
-    url: '/diagnostics/network/start';
-};
-
-export type StartNetworkCaptureErrors = {
-    /**
-     * Capture duration outside 1 to 900 seconds
-     */
-    400: ApiErrorResponse;
-    /**
-     * The network log is not configured; `code` is network_log_not_configured
-     */
-    409: ApiErrorResponse;
-    /**
-     * Local Engine diagnostics unavailable
-     */
-    503: ApiErrorResponse;
-};
-
-export type StartNetworkCaptureError = StartNetworkCaptureErrors[keyof StartNetworkCaptureErrors];
-
-export type StartNetworkCaptureResponses = {
-    /**
-     * The open network capture window; a repeated start returns the existing window unchanged
-     */
-    200: NetworkCaptureStartEnvelope;
-};
-
-export type StartNetworkCaptureResponse = StartNetworkCaptureResponses[keyof StartNetworkCaptureResponses];
-
-export type StopNetworkCaptureData = {
-    body: NetworkCaptureStopRequestDto;
-    path?: never;
-    query?: never;
-    url: '/diagnostics/network/stop';
-};
-
-export type StopNetworkCaptureErrors = {
-    /**
-     * The network log is not configured or the capture id does not match the open window
-     */
-    409: ApiErrorResponse;
-    /**
-     * Local Engine diagnostics unavailable
-     */
-    503: ApiErrorResponse;
-};
-
-export type StopNetworkCaptureError = StopNetworkCaptureErrors[keyof StopNetworkCaptureErrors];
-
-export type StopNetworkCaptureResponses = {
-    /**
-     * Network log state after the window ended
-     */
-    200: NetworkLogStatusEnvelope;
-};
-
-export type StopNetworkCaptureResponse = StopNetworkCaptureResponses[keyof StopNetworkCaptureResponses];
 
 export type FactoryResetSpaceData = {
     body?: never;

@@ -17,8 +17,6 @@ use uc_e2e_tests::{
     get_session_token, invite_join_round, NodeBinarySet, TestCli, TestDaemon, TestProfile,
 };
 
-const TEST_BUDGET: &str = "record_bytes=8192,queue_records=256,file_bytes=1048576,run_bytes=4194304,root_bytes=16777216,retention_secs=86400";
-
 /// Removes the exported package when the test ends. With `UC_E2E_KEEP_ARTIFACTS=<dir>` a
 /// copy is kept there first, for offline cross-checks and review.
 struct ZipCleanup(PathBuf);
@@ -87,6 +85,38 @@ impl Api {
         (status, response.json().await.unwrap_or(Value::Null))
     }
 
+    async fn network_status(&self) -> Value {
+        let (code, body) = self
+            .call(reqwest::Method::GET, "/diagnostics/network", None)
+            .await;
+        assert_eq!(code, 200, "{body}");
+        body["data"].clone()
+    }
+
+    async fn start_business_capture(&self, seconds: u32) -> Value {
+        let (code, body) = self
+            .call(
+                reqwest::Method::POST,
+                "/diagnostics/capture/start",
+                Some(serde_json::json!({ "durationSeconds": seconds })),
+            )
+            .await;
+        assert_eq!(code, 200, "{body}");
+        body["data"].clone()
+    }
+
+    async fn stop_business_capture(&self, capture_id: &str) -> Value {
+        let (code, body) = self
+            .call(
+                reqwest::Method::POST,
+                "/diagnostics/capture/stop",
+                Some(serde_json::json!({ "captureId": capture_id })),
+            )
+            .await;
+        assert_eq!(code, 200, "{body}");
+        body["data"].clone()
+    }
+
     async fn export(&self) -> (PathBuf, Value) {
         let (status, body) = self
             .call(
@@ -125,11 +155,18 @@ async fn wait_until(what: &str, mut condition: impl FnMut() -> bool) {
 
 #[tokio::test]
 #[ignore]
-async fn without_a_budget_the_network_log_is_not_configured_and_the_business_export_is_unaffected()
+async fn a_rejected_budget_leaves_the_network_log_not_configured_and_the_business_side_unaffected()
 {
-    let daemon = TestDaemon::start(TestProfile::new("network-log-unconfigured"))
-        .await
-        .expect("daemon");
+    let daemon = TestDaemon::start_clean_configured_with(
+        TestProfile::new("network-log-unconfigured"),
+        &NodeBinarySet::current(),
+        None,
+        |command| {
+            command.env("UC_NETWORK_LOG_BUDGET", "not-a-budget");
+        },
+    )
+    .await
+    .expect("daemon");
     let api = Api::new(&daemon).await;
 
     let (status, body) = api
@@ -139,15 +176,19 @@ async fn without_a_budget_the_network_log_is_not_configured_and_the_business_exp
     assert_eq!(body["data"]["availability"], "notConfigured");
     assert!(body["data"]["counters"].is_null() && body["data"]["budget"].is_null());
 
-    let (status, body) = api
-        .call(
-            reqwest::Method::POST,
-            "/diagnostics/network/start",
-            Some(serde_json::json!({ "durationSeconds": 60 })),
-        )
-        .await;
-    assert_eq!(status, 409, "{body}");
-    assert_eq!(body["code"], "network_log_not_configured");
+    // The business Detailed capture works on its own; the network side stays
+    // explicitly not configured and reports no link failure.
+    let business = api.start_business_capture(60).await;
+    assert_eq!(business["capture"]["mode"], "detailed", "{business}");
+    let network = api.network_status().await;
+    assert_eq!(network["availability"], "notConfigured", "{network}");
+    assert!(network["captureLinkFailure"].is_null(), "{network}");
+    api.stop_business_capture(
+        business["capture"]["captureId"]
+            .as_str()
+            .expect("capture id"),
+    )
+    .await;
 
     let (path, data) = api.export().await;
     let _cleanup = ZipCleanup(path.clone()).keep_as("unconfigured-daemon");
@@ -177,17 +218,10 @@ async fn without_a_budget_the_network_log_is_not_configured_and_the_business_exp
 
 #[tokio::test]
 #[ignore]
-async fn an_explicit_budget_turns_the_log_on_and_the_export_accounts_for_every_file() {
-    let daemon = TestDaemon::start_clean_configured_with(
-        TestProfile::new("network-log-configured"),
-        &NodeBinarySet::current(),
-        None,
-        |command| {
-            command.env("UC_NETWORK_LOG_BUDGET", TEST_BUDGET);
-        },
-    )
-    .await
-    .expect("daemon");
+async fn the_built_in_budget_turns_the_log_on_and_the_export_accounts_for_every_file() {
+    let daemon = TestDaemon::start(TestProfile::new("network-log-configured"))
+        .await
+        .expect("daemon");
     let api = Api::new(&daemon).await;
     let logs = daemon.profile.log_dir().clone();
 
@@ -208,68 +242,61 @@ async fn an_explicit_budget_turns_the_log_on_and_the_export_accounts_for_every_f
     assert_eq!(status["state"], "ready", "{status}");
     assert_eq!(status["role"], "daemon");
     assert_eq!(status["mode"], "standard");
-    assert_eq!(status["budget"]["runBytes"], "4194304");
-    assert_eq!(status["budget"]["retentionSeconds"], "86400");
+    assert_eq!(status["budget"]["runBytes"], "16777216");
+    assert_eq!(status["budget"]["retentionSeconds"], "604800");
     let run_id = status["runId"].as_str().expect("run id").to_owned();
     let run_dir = logs.join("network").join("daemon").join(&run_id);
     assert!(run_dir.join("run.json").is_file());
 
-    // A bounded window: one window at a time, never extended.
-    for bad in [0_u32, 901] {
-        let (code, _) = api
-            .call(
-                reqwest::Method::POST,
-                "/diagnostics/network/start",
-                Some(serde_json::json!({ "durationSeconds": bad })),
-            )
-            .await;
-        assert!(code == 400 || code == 422, "duration {bad} gave {code}");
-    }
-    let (code, first) = api
-        .call(
-            reqwest::Method::POST,
-            "/diagnostics/network/start",
-            Some(serde_json::json!({ "durationSeconds": 60 })),
-        )
-        .await;
-    assert_eq!(code, 200, "{first}");
-    let capture_id = first["data"]["captureId"]
+    // The network window is part of the business Detailed capture: it opens
+    // with it, belongs to it, and closes with it. There is no switch of its own.
+    let business = api.start_business_capture(60).await;
+    let business_id = business["capture"]["captureId"]
         .as_str()
-        .expect("capture id")
+        .expect("business capture id")
         .to_owned();
-    assert_eq!(first["data"]["alreadyActive"], false);
-    assert_eq!(first["data"]["status"]["mode"], "detailed");
-    assert_eq!(first["data"]["status"]["captureId"], capture_id.as_str());
-    let (_, second) = api
-        .call(
-            reqwest::Method::POST,
-            "/diagnostics/network/start",
-            Some(serde_json::json!({ "durationSeconds": 600 })),
-        )
-        .await;
-    assert_eq!(second["data"]["alreadyActive"], true, "{second}");
-    assert_eq!(second["data"]["captureId"], capture_id.as_str());
-    assert_eq!(second["data"]["durationMs"], first["data"]["durationMs"]);
+    assert_eq!(business["capture"]["mode"], "detailed", "{business}");
+    let linked = api.network_status().await;
+    assert_eq!(linked["mode"], "detailed", "{linked}");
+    assert!(linked["captureId"].is_string(), "{linked}");
+    assert!(linked["captureLinkFailure"].is_null(), "{linked}");
+    let remaining = linked["detailedRemainingMs"].as_u64().expect("remaining");
+    assert!(remaining > 0 && remaining <= 60_000, "{linked}");
 
-    let (code, mismatch) = api
-        .call(
-            reqwest::Method::POST,
-            "/diagnostics/network/stop",
-            Some(serde_json::json!({ "captureId": "not-the-open-window" })),
-        )
+    // The old independent controls are gone.
+    for route in ["/diagnostics/network/start", "/diagnostics/network/stop"] {
+        let (code, _) = api
+            .call(reqwest::Method::POST, route, Some(serde_json::json!({})))
+            .await;
+        assert!(code == 404 || code == 405, "{route} gave {code}");
+    }
+
+    // Stopping a capture the daemon does not own leaves both windows alone.
+    let mut other_id = business_id.clone();
+    let last = other_id.pop().expect("id");
+    other_id.push(if last == '0' { '1' } else { '0' });
+    eprintln!("[linked] business capture id {business_id}, other {other_id}");
+    api.stop_business_capture(&other_id).await;
+    let still = api.network_status().await;
+    assert_eq!(still["mode"], "detailed", "{still}");
+
+    api.stop_business_capture(&business_id).await;
+    let closed = api.network_status().await;
+    assert_eq!(closed["mode"], "standard", "{closed}");
+    assert!(closed["captureId"].is_null(), "{closed}");
+    assert!(closed["captureLinkFailure"].is_null(), "{closed}");
+
+    // Automatic expiry ends both windows without anyone stopping them.
+    api.start_business_capture(2).await;
+    assert_eq!(api.network_status().await["mode"], "detailed");
+    tokio::time::sleep(Duration::from_secs(4)).await;
+    let (_, capture) = api
+        .call(reqwest::Method::GET, "/diagnostics/capture", None)
         .await;
-    assert_eq!(code, 409, "{mismatch}");
-    assert_eq!(mismatch["code"], "network_capture_mismatch");
-    let (code, stopped) = api
-        .call(
-            reqwest::Method::POST,
-            "/diagnostics/network/stop",
-            Some(serde_json::json!({ "captureId": capture_id })),
-        )
-        .await;
-    assert_eq!(code, 200, "{stopped}");
-    assert_eq!(stopped["data"]["mode"], "standard");
-    assert!(stopped["data"]["captureId"].is_null());
+    assert_eq!(capture["data"]["capture"]["mode"], "standard", "{capture}");
+    let expired = api.network_status().await;
+    assert_eq!(expired["mode"], "standard", "{expired}");
+    assert!(expired["captureLinkFailure"].is_null(), "{expired}");
 
     // Things the export must never pick up, planted beside the live run.
     std::fs::write(run_dir.join("notes.txt"), "not a log").expect("plant file");
@@ -409,9 +436,7 @@ const PASSPHRASE: &str = "network-log-e2e-passphrase";
 #[ignore]
 async fn two_paired_daemons_record_connection_events_without_identifiers() {
     let binaries = NodeBinarySet::current();
-    let configure = |command: &mut std::process::Command| {
-        command.env("UC_NETWORK_LOG_BUDGET", TEST_BUDGET);
-    };
+    let configure = |_: &mut std::process::Command| {};
     let alice_daemon = TestDaemon::start_clean_configured_with(
         TestProfile::new("network-log-alice"),
         &binaries,
@@ -447,14 +472,9 @@ async fn two_paired_daemons_record_connection_events_without_identifiers() {
     let alice = Api::new(&alice_daemon).await;
     let bob = Api::new(&bob_daemon).await;
     for api in [&alice, &bob] {
-        let (code, started) = api
-            .call(
-                reqwest::Method::POST,
-                "/diagnostics/network/start",
-                Some(serde_json::json!({ "durationSeconds": 300 })),
-            )
-            .await;
-        assert_eq!(code, 200, "{started}");
+        api.start_business_capture(300).await;
+        let linked = api.network_status().await;
+        assert_eq!(linked["mode"], "detailed", "{linked}");
     }
 
     let join = invite_join_round(&alice_cli, &bob_cli, PASSPHRASE, "bob-node").await;

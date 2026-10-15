@@ -5,7 +5,6 @@ use reqwest::Method;
 use uc_daemon_contract::api::dto::diagnostics::{
     DebugStatusDto, DiagnosticCaptureStartRequestDto, DiagnosticCaptureStopRequestDto,
     DiagnosticCaptureStopResultDto, DiagnosticStatusDto, LogExportRequestDto, LogExportResultDto,
-    NetworkCaptureStartRequestDto, NetworkCaptureStartResultDto, NetworkCaptureStopRequestDto,
     NetworkLogStatusDto, UpdateDebugModeRequestDto, UpdateDebugModeResultDto,
 };
 use uc_daemon_contract::constants::http_route;
@@ -125,35 +124,6 @@ impl DaemonDiagnosticsClient {
             Method::GET,
             http_route::DIAGNOSTICS_NETWORK,
             |request| request,
-        )
-        .await?)
-    }
-
-    pub async fn start_network_capture(
-        &self,
-        duration_seconds: u16,
-    ) -> Result<NetworkCaptureStartResultDto> {
-        let body = NetworkCaptureStartRequestDto { duration_seconds };
-        Ok(enveloped_request(
-            &self.http,
-            &self.connection_state,
-            &self.client_type,
-            Method::POST,
-            http_route::DIAGNOSTICS_NETWORK_START,
-            |request| request.json(&body),
-        )
-        .await?)
-    }
-
-    pub async fn stop_network_capture(&self, capture_id: String) -> Result<NetworkLogStatusDto> {
-        let body = NetworkCaptureStopRequestDto { capture_id };
-        Ok(enveloped_request(
-            &self.http,
-            &self.connection_state,
-            &self.client_type,
-            Method::POST,
-            http_route::DIAGNOSTICS_NETWORK_STOP,
-            |request| request.json(&body),
         )
         .await?)
     }

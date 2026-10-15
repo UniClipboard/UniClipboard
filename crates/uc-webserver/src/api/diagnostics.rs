@@ -9,7 +9,6 @@ use tracing::{info, instrument};
 use uc_daemon_contract::api::dto::diagnostics::{
     DebugStatusDto, DiagnosticCaptureStartRequestDto, DiagnosticCaptureStopRequestDto,
     DiagnosticCaptureStopResultDto, DiagnosticStatusDto, LogExportRequestDto, LogExportResultDto,
-    NetworkCaptureStartRequestDto, NetworkCaptureStartResultDto, NetworkCaptureStopRequestDto,
     NetworkLogStatusDto, UpdateDebugModeRequestDto, UpdateDebugModeResultDto,
 };
 use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
@@ -21,7 +20,7 @@ use utoipa;
 use crate::api::dto::error::{log_facade_failure, ApiError};
 use crate::api::server::{
     DaemonApiState, DaemonDiagnosticArchive, DaemonDiagnosticArchiveError, DaemonDiagnosticError,
-    DaemonDiagnosticsRuntime, DaemonNetworkLogError,
+    DaemonDiagnosticsRuntime,
 };
 
 pub fn router() -> Router<DaemonApiState> {
@@ -32,14 +31,6 @@ pub fn router() -> Router<DaemonApiState> {
         .route("/diagnostics/capture/start", post(start_capture_handler))
         .route("/diagnostics/capture/stop", post(stop_capture_handler))
         .route("/diagnostics/network", get(get_network_status_handler))
-        .route(
-            "/diagnostics/network/start",
-            post(start_network_capture_handler),
-        )
-        .route(
-            "/diagnostics/network/stop",
-            post(stop_network_capture_handler),
-        )
         .route("/diagnostics/log-export", post(export_logs_handler))
 }
 
@@ -59,59 +50,6 @@ pub async fn get_network_status_handler(
 ) -> Result<Json<ApiEnvelope<NetworkLogStatusDto>>, ApiError> {
     let runtime = diagnostics_runtime_arc(&state)?;
     let status = run_blocking(move || runtime.network_status()).await?;
-    Ok(Json(ApiEnvelope::now(status)))
-}
-
-#[utoipa::path(
-    post,
-    path = "/diagnostics/network/start",
-    tag = "system",
-    operation_id = "startNetworkCapture",
-    request_body = NetworkCaptureStartRequestDto,
-    responses(
-        (status = 200, description = "The open network capture window; a repeated start returns the existing window unchanged", body = NetworkCaptureStartEnvelope),
-        (status = 400, description = "Capture duration outside 1 to 900 seconds", body = ApiErrorResponse),
-        (status = 409, description = "The network log is not configured; `code` is network_log_not_configured", body = ApiErrorResponse),
-        (status = 503, description = "Local Engine diagnostics unavailable", body = ApiErrorResponse)
-    )
-)]
-#[instrument(name = "api.diagnostics.network.start", level = "info", skip(state, payload), fields(duration_seconds = payload.duration_seconds))]
-pub async fn start_network_capture_handler(
-    State(state): State<DaemonApiState>,
-    Json(payload): Json<NetworkCaptureStartRequestDto>,
-) -> Result<Json<ApiEnvelope<NetworkCaptureStartResultDto>>, ApiError> {
-    let runtime = diagnostics_runtime_arc(&state)?;
-    let result = run_blocking(move || runtime.start_network_capture(payload))
-        .await?
-        .map_err(network_log_error)?;
-    Ok(Json(ApiEnvelope::now(result)))
-}
-
-#[utoipa::path(
-    post,
-    path = "/diagnostics/network/stop",
-    tag = "system",
-    operation_id = "stopNetworkCapture",
-    request_body = NetworkCaptureStopRequestDto,
-    responses(
-        (status = 200, description = "Network log state after the window ended", body = NetworkLogStatusEnvelope),
-        (status = 409, description = "The network log is not configured or the capture id does not match the open window", body = ApiErrorResponse),
-        (status = 503, description = "Local Engine diagnostics unavailable", body = ApiErrorResponse)
-    )
-)]
-#[instrument(
-    name = "api.diagnostics.network.stop",
-    level = "info",
-    skip(state, payload)
-)]
-pub async fn stop_network_capture_handler(
-    State(state): State<DaemonApiState>,
-    Json(payload): Json<NetworkCaptureStopRequestDto>,
-) -> Result<Json<ApiEnvelope<NetworkLogStatusDto>>, ApiError> {
-    let runtime = diagnostics_runtime_arc(&state)?;
-    let status = run_blocking(move || runtime.stop_network_capture(&payload.capture_id))
-        .await?
-        .map_err(network_log_error)?;
     Ok(Json(ApiEnvelope::now(status)))
 }
 
@@ -367,25 +305,6 @@ async fn run_blocking<T: Send + 'static>(
         .map_err(|_| ApiError::internal("diagnostics worker failed"))
 }
 
-fn network_log_error(error: DaemonNetworkLogError) -> ApiError {
-    match error {
-        DaemonNetworkLogError::NotConfigured => {
-            ApiError::conflict("the network log is not configured")
-                .with_code("network_log_not_configured")
-        }
-        DaemonNetworkLogError::InvalidDuration => {
-            ApiError::bad_request("network capture duration must be between 1 and 900 seconds")
-        }
-        DaemonNetworkLogError::CaptureMismatch => {
-            ApiError::conflict("the capture id does not match the open network capture")
-                .with_code("network_capture_mismatch")
-        }
-        DaemonNetworkLogError::AlreadyShutdown => {
-            ApiError::service_unavailable("local Engine diagnostics are unavailable")
-        }
-    }
-}
-
 fn diagnostics_runtime(state: &DaemonApiState) -> Result<&dyn DaemonDiagnosticsRuntime, ApiError> {
     state
         .diagnostics_runtime
@@ -474,20 +393,6 @@ mod tests {
         fn network_status(&self) -> NetworkLogStatusDto {
             not_configured_network_status()
         }
-
-        fn start_network_capture(
-            &self,
-            _request: NetworkCaptureStartRequestDto,
-        ) -> Result<NetworkCaptureStartResultDto, DaemonNetworkLogError> {
-            Err(DaemonNetworkLogError::NotConfigured)
-        }
-
-        fn stop_network_capture(
-            &self,
-            _capture_id: &str,
-        ) -> Result<NetworkLogStatusDto, DaemonNetworkLogError> {
-            Err(DaemonNetworkLogError::NotConfigured)
-        }
     }
 
     fn not_configured_network_status() -> NetworkLogStatusDto {
@@ -502,6 +407,7 @@ mod tests {
             counters: None,
             libraries: Vec::new(),
             budget: None,
+            capture_link_failure: None,
             sampled_at_utc: None,
         }
     }

@@ -5,9 +5,7 @@ import {
   getDiagnosticCaptureStatus,
   getNetworkLogStatus,
   startDiagnosticCapture,
-  startNetworkCapture,
   stopDiagnosticCapture,
-  stopNetworkCapture,
   updateDebugMode,
   type DiagnosticCaptureStatus,
   type NetworkLogStatus,
@@ -30,9 +28,6 @@ import {
 import { useSavingState } from './useSavingState'
 
 const log = createLogger('general-section')
-
-/** Length of one network capture window. A pending product default; the Engine accepts 1 to 900 seconds. */
-const NETWORK_CAPTURE_SECONDS = 300
 
 type DebugDialogState = 'closed' | 'confirming' | 'restarting'
 
@@ -67,7 +62,6 @@ type DiagnosticsState = {
   captureBusy: boolean
   networkStatus: NetworkLogStatus | null
   networkUnavailable: boolean
-  networkBusy: boolean
   networkExportNotice: NetworkExportNotice | null
 }
 
@@ -81,7 +75,6 @@ type DiagnosticsAction =
   | { type: 'setCaptureBusy'; value: boolean }
   | { type: 'networkLoaded'; status: NetworkLogStatus }
   | { type: 'networkUnavailable' }
-  | { type: 'setNetworkBusy'; value: boolean }
   | { type: 'setNetworkExportNotice'; value: NetworkExportNotice | null }
 
 const initialState: DiagnosticsState = {
@@ -94,7 +87,6 @@ const initialState: DiagnosticsState = {
   captureBusy: false,
   networkStatus: null,
   networkUnavailable: false,
-  networkBusy: false,
   networkExportNotice: null,
 }
 
@@ -118,8 +110,6 @@ function diagnosticsReducer(state: DiagnosticsState, action: DiagnosticsAction):
       return { ...state, networkStatus: action.status, networkUnavailable: false }
     case 'networkUnavailable':
       return { ...state, networkUnavailable: true }
-    case 'setNetworkBusy':
-      return { ...state, networkBusy: action.value }
     case 'setNetworkExportNotice':
       return { ...state, networkExportNotice: action.value }
   }
@@ -173,10 +163,10 @@ export function useDiagnosticsSettings() {
   }, [loadNetworkStatus])
 
   useEffect(() => {
-    if (!networkDetailed && !state.networkUnavailable) return
+    if (!networkDetailed && !detailedCapture && !state.networkUnavailable) return
     const timer = window.setInterval(() => void loadNetworkStatus(), 5_000)
     return () => window.clearInterval(timer)
-  }, [networkDetailed, loadNetworkStatus, state.networkUnavailable])
+  }, [networkDetailed, detailedCapture, loadNetworkStatus, state.networkUnavailable])
 
   const handleDebugModeChange = (checked: boolean) => {
     if (checked) {
@@ -286,6 +276,8 @@ export function useDiagnosticsSettings() {
         await stopDiagnosticCapture(state.captureStatus.capture.captureId)
         await loadCaptureStatus()
       }
+      // The network window opens and closes with the business capture.
+      await loadNetworkStatus()
     } catch (error) {
       const recovered = await loadCaptureStatus()
       const reachedRequestedState = recovered?.capture.mode === (checked ? 'detailed' : 'standard')
@@ -295,30 +287,6 @@ export function useDiagnosticsSettings() {
       }
     } finally {
       dispatch({ type: 'setCaptureBusy', value: false })
-    }
-  }
-
-  const handleNetworkCaptureChange = async (checked: boolean) => {
-    dispatch({ type: 'setNetworkBusy', value: true })
-    try {
-      if (checked) {
-        const started = await startNetworkCapture(NETWORK_CAPTURE_SECONDS)
-        dispatch({ type: 'networkLoaded', status: started.status })
-      } else {
-        const captureId = state.networkStatus?.captureId
-        if (captureId) {
-          dispatch({ type: 'networkLoaded', status: await stopNetworkCapture(captureId) })
-        }
-      }
-    } catch (error) {
-      const recovered = await loadNetworkStatus()
-      const reachedRequestedState = recovered?.mode === (checked ? 'detailed' : 'standard')
-      if (!reachedRequestedState) {
-        log.error({ err: error }, 'Failed to change network capture state')
-        toast.error(t('settings.sections.general.logs.network.error'))
-      }
-    } finally {
-      dispatch({ type: 'setNetworkBusy', value: false })
     }
   }
 
@@ -410,6 +378,11 @@ export function useDiagnosticsSettings() {
       )
     }
     networkLines.push(t('settings.sections.general.logs.network.coverage'))
+    if (networkStatus.captureLinkFailure) {
+      networkLines.push(
+        t(`settings.sections.general.logs.network.linkFailure.${networkStatus.captureLinkFailure}`)
+      )
+    }
   }
   const networkConfigured = networkStatus?.availability === 'configured'
 
@@ -428,21 +401,13 @@ export function useDiagnosticsSettings() {
           : networkStatus.state !== 'ready'
             ? t(`settings.sections.general.logs.network.state.${networkStatus.state ?? 'starting'}`)
             : !networkDetailed
-              ? t('settings.sections.general.logs.network.standard', {
-                  minutes: NETWORK_CAPTURE_SECONDS / 60,
-                })
+              ? t('settings.sections.general.logs.network.standard')
               : t('settings.sections.general.logs.network.active', {
                   minutes: Math.max(
                     1,
                     Math.ceil((networkStatus.detailedRemainingMs ?? 0) / 60_000)
                   ),
                 }),
-    networkSwitchDisabled:
-      state.networkUnavailable ||
-      !networkStatus ||
-      !networkConfigured ||
-      networkStatus.state !== 'ready',
-    handleNetworkCaptureChange,
     captureDescription: state.captureUnavailable
       ? t('settings.sections.general.logs.capture.unavailable')
       : !state.captureStatus

@@ -379,9 +379,8 @@
             "loading": "Lendo o estado do log de rede…",
             "unavailable": "O diagnóstico do serviço em segundo plano está indisponível.",
             "notConfigured": "O log de rede não está configurado nesta versão, portanto nenhum evento de rede é registrado.",
-            "standard": "Registra a camada de conexão com mais detalhes por {{minutes}} minutos e para automaticamente. Um resumo é sempre mantido.",
+            "standard": "Os detalhes da conexão são registrados junto com o log detalhado. Um resumo é sempre mantido.",
             "active": "Registrando detalhes da conexão. Para automaticamente em cerca de {{minutes}} minutos.",
-            "error": "Não foi possível alterar a captura de rede",
             "state": {
               "starting": "O log de rede está iniciando.",
               "unavailable": "O log de rede não conseguiu gravar; os logs de negócio não são afetados.",
@@ -401,6 +400,10 @@
               "minute_one": "{{count}} minuto",
               "minute_many": "{{count}} minutos",
               "minute_other": "{{count}} minutos"
+            },
+            "linkFailure": {
+              "startFailed": "Não foi possível registrar os detalhes da conexão junto com o log detalhado.",
+              "stopFailed": "Não foi possível encerrar o registro dos detalhes da conexão junto com o log detalhado. Ele termina sozinho."
             }
           },
           "debug": {

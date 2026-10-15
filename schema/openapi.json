@@ -4758,84 +4758,19 @@
         ],
         "type": "object"
       },
+      "NetworkCaptureLinkFailureDto": {
+        "enum": [
+          "startFailed",
+          "stopFailed"
+        ],
+        "type": "string"
+      },
       "NetworkCaptureModeDto": {
         "enum": [
           "standard",
           "detailed"
         ],
         "type": "string"
-      },
-      "NetworkCaptureStartEnvelope": {
-        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
-        "properties": {
-          "data": {
-            "$ref": "#/components/schemas/NetworkCaptureStartResultDto"
-          },
-          "ts": {
-            "description": "Server time when the response was built (unix epoch milliseconds).",
-            "format": "int64",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "data",
-          "ts"
-        ],
-        "type": "object"
-      },
-      "NetworkCaptureStartRequestDto": {
-        "properties": {
-          "durationSeconds": {
-            "format": "int32",
-            "minimum": 0,
-            "type": "integer"
-          }
-        },
-        "required": [
-          "durationSeconds"
-        ],
-        "type": "object"
-      },
-      "NetworkCaptureStartResultDto": {
-        "properties": {
-          "alreadyActive": {
-            "description": "A window was already open; it is returned unchanged and not extended.",
-            "type": "boolean"
-          },
-          "captureId": {
-            "type": "string"
-          },
-          "durationMs": {
-            "format": "int64",
-            "minimum": 0,
-            "type": "integer"
-          },
-          "startedAtUtc": {
-            "type": "string"
-          },
-          "status": {
-            "$ref": "#/components/schemas/NetworkLogStatusDto"
-          }
-        },
-        "required": [
-          "captureId",
-          "startedAtUtc",
-          "durationMs",
-          "alreadyActive",
-          "status"
-        ],
-        "type": "object"
-      },
-      "NetworkCaptureStopRequestDto": {
-        "properties": {
-          "captureId": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "captureId"
-        ],
-        "type": "object"
       },
       "NetworkExportPreparationDto": {
         "description": "The Engine's network-log export preparation for this process. It says\nnothing about other processes: `otherProcessesFlushed` is always false.",
@@ -5048,6 +4983,14 @@
             "description": "Identifier of the open detailed window, needed to stop it. The Engine does\nnot report it; the daemon remembers the one its own start call returned.",
             "nullable": true,
             "type": "string"
+          },
+          "captureLinkFailure": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/NetworkCaptureLinkFailureDto"
+              }
+            ],
+            "nullable": true
           },
           "counters": {
             "allOf": [
@@ -10592,132 +10535,6 @@
               }
             },
             "description": "State, budget and drop counters of the independent network-library log; `availability` is `notConfigured` when the daemon runs without it"
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            },
-            "description": "Local Engine diagnostics unavailable"
-          }
-        },
-        "security": [
-          {
-            "session_query": []
-          },
-          {
-            "session_header": []
-          }
-        ],
-        "tags": [
-          "system"
-        ]
-      }
-    },
-    "/diagnostics/network/start": {
-      "post": {
-        "operationId": "startNetworkCapture",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/NetworkCaptureStartRequestDto"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/NetworkCaptureStartEnvelope"
-                }
-              }
-            },
-            "description": "The open network capture window; a repeated start returns the existing window unchanged"
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            },
-            "description": "Capture duration outside 1 to 900 seconds"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            },
-            "description": "The network log is not configured; `code` is network_log_not_configured"
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            },
-            "description": "Local Engine diagnostics unavailable"
-          }
-        },
-        "security": [
-          {
-            "session_query": []
-          },
-          {
-            "session_header": []
-          }
-        ],
-        "tags": [
-          "system"
-        ]
-      }
-    },
-    "/diagnostics/network/stop": {
-      "post": {
-        "operationId": "stopNetworkCapture",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/NetworkCaptureStopRequestDto"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/NetworkLogStatusEnvelope"
-                }
-              }
-            },
-            "description": "Network log state after the window ended"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            },
-            "description": "The network log is not configured or the capture id does not match the open window"
           },
           "503": {
             "content": {

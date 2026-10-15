@@ -30,9 +30,7 @@ vi.mock('@/api/daemon/diagnostics', () => ({
   getDiagnosticCaptureStatus: vi.fn(),
   getNetworkLogStatus: vi.fn(),
   startDiagnosticCapture: vi.fn(),
-  startNetworkCapture: vi.fn(),
   stopDiagnosticCapture: vi.fn(),
-  stopNetworkCapture: vi.fn(),
 }))
 
 vi.mock('@/api/storage', () => ({

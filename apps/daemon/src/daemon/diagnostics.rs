@@ -13,8 +13,8 @@ use uc_daemon_contract::api::dto::diagnostics::{
     DiagnosticSignalResultDto, DiagnosticSourceCapabilityDto, DiagnosticSourceCollectionDto,
     DiagnosticSourceCoverageDto, DiagnosticSourceDto, DiagnosticStatusDto, LogExportResultDto,
     MissingLogSourceDto, NetworkArchiveCollectionDto, NetworkArchiveFileDto,
-    NetworkArchiveOutcomeDto, NetworkArchiveReasonDto, NetworkArchiveRunDto, NetworkCaptureModeDto,
-    NetworkCaptureStartRequestDto, NetworkCaptureStartResultDto, NetworkExportPreparationDto,
+    NetworkArchiveOutcomeDto, NetworkArchiveReasonDto, NetworkArchiveRunDto,
+    NetworkCaptureLinkFailureDto, NetworkCaptureModeDto, NetworkExportPreparationDto,
     NetworkLibraryStatusDto, NetworkLogAvailabilityDto, NetworkLogBudgetDto, NetworkLogCountersDto,
     NetworkLogFileDto, NetworkLogStateDto, NetworkLogStatusDto, NetworkProcessRoleDto,
 };
@@ -37,7 +37,7 @@ use uc_observability::startup_logs::{
 };
 use uc_webserver::api::server::{
     DaemonDiagnosticArchive, DaemonDiagnosticArchiveError, DaemonDiagnosticError,
-    DaemonDiagnosticsRuntime, DaemonNetworkLogError,
+    DaemonDiagnosticsRuntime,
 };
 
 const EXPORT_PREPARATION_DEADLINE: Duration = Duration::from_secs(1);
@@ -58,11 +58,87 @@ pub struct EngineDaemonDiagnostics {
     /// Id of the detailed network window this daemon opened; the Engine status
     /// does not carry it. Only reported while the Engine says the window is open.
     network_capture_id: Mutex<Option<String>>,
+    /// Why the network window is not following the business capture, if it is not.
+    network_link_failure: Mutex<Option<NetworkCaptureLinkFailureDto>>,
     startup_token: Mutex<Option<String>>,
     runtime_started: Mutex<bool>,
 }
 
 impl EngineDaemonDiagnostics {
+    /// The network log's detailed window is part of the business diagnostic
+    /// capture: it opens and closes with it and has no switch of its own. A
+    /// network failure never fails the business capture; it is logged and shows
+    /// in the network status.
+    fn start_network_with_business(&self, duration_seconds: u16) {
+        if self.network_budget.is_none() {
+            return;
+        }
+        let duration = Duration::from_secs(u64::from(duration_seconds.clamp(1, 900)));
+        match self.handle.start_network_capture(duration) {
+            Ok(started) => {
+                *self
+                    .network_capture_id
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(started.capture_id);
+                self.set_network_link_failure(None);
+            }
+            Err(error) => {
+                self.set_network_link_failure(Some(NetworkCaptureLinkFailureDto::StartFailed));
+                tracing::warn!(
+                    ?error,
+                    "network log detailed window did not start with the diagnostic capture"
+                );
+            }
+        }
+    }
+
+    fn set_network_link_failure(&self, failure: Option<NetworkCaptureLinkFailureDto>) {
+        *self
+            .network_link_failure
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = failure;
+    }
+
+    /// Brings the network window back in line with the business capture when
+    /// one of them changed on its own: a window that failed to start is retried
+    /// for the time the business capture has left, and a window the business
+    /// capture no longer justifies is closed.
+    fn reconcile_network_with_business(&self, network: &NetworkLogStatus) -> bool {
+        if network.state != NetworkLogState::Ready {
+            return false;
+        }
+        let business = self.handle.query_local_diagnostic_status().capture;
+        let business_detailed = business.mode == LocalCaptureMode::Detailed;
+        let network_detailed = network.mode == NetworkCaptureMode::Detailed;
+        if business_detailed && !network_detailed {
+            let remaining_secs = business.remaining_ms.div_ceil(1000).clamp(1, 900);
+            self.start_network_with_business(u16::try_from(remaining_secs).unwrap_or(900));
+            return true;
+        }
+        if !business_detailed && network_detailed {
+            self.stop_network_with_business();
+            return true;
+        }
+        false
+    }
+
+    fn stop_network_with_business(&self) {
+        let remembered = self
+            .network_capture_id
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take();
+        if let Some(capture_id) = remembered {
+            if let Err(error) = self.handle.stop_network_capture(&capture_id) {
+                self.set_network_link_failure(Some(NetworkCaptureLinkFailureDto::StopFailed));
+                tracing::warn!(
+                    ?error,
+                    "network log detailed window did not stop with the diagnostic capture"
+                );
+            }
+        }
+    }
+
     pub fn new(
         handle: ProcessObservabilityHandle,
         network_budget: Option<NetworkLogBudget>,
@@ -88,6 +164,7 @@ impl EngineDaemonDiagnostics {
             handle,
             network_budget,
             network_capture_id: Mutex::new(None),
+            network_link_failure: Mutex::new(None),
             startup_token: Mutex::new(startup_token),
             runtime_started: Mutex::new(false),
         }
@@ -215,6 +292,7 @@ impl DaemonDiagnosticsRuntime for EngineDaemonDiagnostics {
                 duration: Duration::from_secs(u64::from(request.duration_seconds)),
             })
             .map_err(diagnostic_error)?;
+        self.start_network_with_business(request.duration_seconds);
         self.status()
     }
 
@@ -222,10 +300,21 @@ impl DaemonDiagnosticsRuntime for EngineDaemonDiagnostics {
         &self,
         capture_id: &str,
     ) -> Result<DiagnosticCaptureStopResultDto, DaemonDiagnosticError> {
-        self.handle
+        let result = self
+            .handle
             .stop_local_diagnostic_capture(capture_id)
             .map(stop_result_dto)
-            .map_err(diagnostic_error)
+            .map_err(diagnostic_error);
+        // A different capture id means the business window was not the one the
+        // caller meant; the network window stays with it.
+        if matches!(
+            result,
+            Ok(DiagnosticCaptureStopResultDto::Stopped
+                | DiagnosticCaptureStopResultDto::AlreadyStopped)
+        ) {
+            self.stop_network_with_business();
+        }
+        result
     }
 
     fn prepare_export(&self) -> Result<DiagnosticExportPreparationDto, DaemonDiagnosticError> {
@@ -240,9 +329,19 @@ impl DaemonDiagnosticsRuntime for EngineDaemonDiagnostics {
     }
 
     fn network_status(&self) -> NetworkLogStatusDto {
-        match self.handle.query_network_log_status() {
+        let mut queried = self.handle.query_network_log_status();
+        if let Ok(status) = &queried {
+            if self.reconcile_network_with_business(status) {
+                queried = self.handle.query_network_log_status();
+            }
+        }
+        match queried {
             Ok(status) => {
                 let mut dto = network_status_dto(status, self.network_budget);
+                dto.capture_link_failure = *self
+                    .network_link_failure
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
                 let mut remembered = self
                     .network_capture_id
                     .lock()
@@ -263,37 +362,6 @@ impl DaemonDiagnosticsRuntime for EngineDaemonDiagnostics {
                 ..not_configured_network_status()
             },
         }
-    }
-
-    fn start_network_capture(
-        &self,
-        request: NetworkCaptureStartRequestDto,
-    ) -> Result<NetworkCaptureStartResultDto, DaemonNetworkLogError> {
-        let started = self
-            .handle
-            .start_network_capture(Duration::from_secs(u64::from(request.duration_seconds)))
-            .map_err(network_log_error)?;
-        *self
-            .network_capture_id
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(started.capture_id.clone());
-        Ok(NetworkCaptureStartResultDto {
-            capture_id: started.capture_id,
-            started_at_utc: started.started_at_utc,
-            duration_ms: started.duration_ms,
-            already_active: started.already_active,
-            status: self.network_status(),
-        })
-    }
-
-    fn stop_network_capture(
-        &self,
-        capture_id: &str,
-    ) -> Result<NetworkLogStatusDto, DaemonNetworkLogError> {
-        self.handle
-            .stop_network_capture(capture_id)
-            .map_err(network_log_error)?;
-        Ok(self.network_status())
     }
 }
 
@@ -588,18 +656,8 @@ fn not_configured_network_status() -> NetworkLogStatusDto {
         counters: None,
         libraries: Vec::new(),
         budget: None,
+        capture_link_failure: None,
         sampled_at_utc: None,
-    }
-}
-
-fn network_log_error(error: NetworkLogError) -> DaemonNetworkLogError {
-    match error {
-        NetworkLogError::NotConfigured => DaemonNetworkLogError::NotConfigured,
-        NetworkLogError::InvalidDuration | NetworkLogError::InvalidDeadline => {
-            DaemonNetworkLogError::InvalidDuration
-        }
-        NetworkLogError::CaptureMismatch => DaemonNetworkLogError::CaptureMismatch,
-        NetworkLogError::AlreadyShutdown => DaemonNetworkLogError::AlreadyShutdown,
     }
 }
 
@@ -629,6 +687,7 @@ fn network_status_dto(
             NetworkCaptureMode::Detailed => NetworkCaptureModeDto::Detailed,
         }),
         capture_id: None,
+        capture_link_failure: None,
         detailed_remaining_ms: status.detailed_remaining_ms,
         counters: Some(NetworkLogCountersDto {
             accepted: counters.accepted.to_string(),

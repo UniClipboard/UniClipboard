@@ -25,8 +25,7 @@ use tokio_util::sync::CancellationToken;
 use tracing::Instrument;
 use uc_daemon_contract::api::dto::diagnostics::{
     DiagnosticCaptureStartRequestDto, DiagnosticCaptureStopResultDto,
-    DiagnosticExportPreparationDto, DiagnosticStatusDto, LogExportResultDto,
-    NetworkCaptureStartRequestDto, NetworkCaptureStartResultDto, NetworkLogStatusDto,
+    DiagnosticExportPreparationDto, DiagnosticStatusDto, LogExportResultDto, NetworkLogStatusDto,
 };
 use uc_engine::{
     Engine, HostFileHandle, NetworkRecoveryPhaseSummary, NetworkRecoveryStatusSummary, Operation,
@@ -470,26 +469,6 @@ pub trait DaemonDiagnosticsRuntime: Send + Sync {
     /// State of the independent network-library log; `NotConfigured` when the
     /// daemon was started without it.
     fn network_status(&self) -> NetworkLogStatusDto;
-    fn start_network_capture(
-        &self,
-        request: NetworkCaptureStartRequestDto,
-    ) -> Result<NetworkCaptureStartResultDto, DaemonNetworkLogError>;
-    fn stop_network_capture(
-        &self,
-        capture_id: &str,
-    ) -> Result<NetworkLogStatusDto, DaemonNetworkLogError>;
-}
-
-/// Why a network-log control call was refused. Carries no error text.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DaemonNetworkLogError {
-    /// The daemon runs without the network log; nothing to control.
-    NotConfigured,
-    /// The window length is outside the Engine's bounds.
-    InvalidDuration,
-    /// The capture id does not match the open window.
-    CaptureMismatch,
-    AlreadyShutdown,
 }
 
 /// Where a diagnostic archive export failed. Carries no error text, which may

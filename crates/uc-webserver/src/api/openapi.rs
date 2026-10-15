@@ -32,12 +32,11 @@ use crate::api::dto::diagnostics::{
     DiagnosticSignalResultDto, DiagnosticSourceCapabilityDto, DiagnosticSourceCollectionDto,
     DiagnosticSourceCoverageDto, DiagnosticSourceDto, DiagnosticStatusDto, LogExportRequestDto,
     LogExportResultDto, MissingLogSourceDto, NetworkArchiveCollectionDto, NetworkArchiveFileDto,
-    NetworkArchiveOutcomeDto, NetworkArchiveReasonDto, NetworkArchiveRunDto, NetworkCaptureModeDto,
-    NetworkCaptureStartRequestDto, NetworkCaptureStartResultDto, NetworkCaptureStopRequestDto,
-    NetworkExportPreparationDto, NetworkLibraryStatusDto, NetworkLogAvailabilityDto,
-    NetworkLogBudgetDto, NetworkLogCountersDto, NetworkLogFileDto, NetworkLogStateDto,
-    NetworkLogStatusDto, NetworkProcessRoleDto, UpdateDebugModeRequestDto,
-    UpdateDebugModeResultDto,
+    NetworkArchiveOutcomeDto, NetworkArchiveReasonDto, NetworkArchiveRunDto,
+    NetworkCaptureLinkFailureDto, NetworkCaptureModeDto, NetworkExportPreparationDto,
+    NetworkLibraryStatusDto, NetworkLogAvailabilityDto, NetworkLogBudgetDto, NetworkLogCountersDto,
+    NetworkLogFileDto, NetworkLogStateDto, NetworkLogStatusDto, NetworkProcessRoleDto,
+    UpdateDebugModeRequestDto, UpdateDebugModeResultDto,
 };
 use crate::api::dto::encryption::{
     AdmissionRecoveryActionDto, AdmissionRecoveryCategoryDto, AdmissionRecoveryDto,
@@ -137,19 +136,18 @@ use uc_daemon_contract::api::dto::envelope::{
     LanInterfaceListEnvelope, LifecycleStatusEnvelope, ListEntriesEnvelope,
     LocalDeviceInfoEnvelope, LogExportEnvelope, MemberSyncPreferencesEnvelope,
     MemberSyncResultEnvelope, MobileDeviceListEnvelope, MobileSyncActionEnvelope,
-    MobileSyncSettingsEnvelope, NetworkCaptureStartEnvelope, NetworkLogStatusEnvelope,
-    NetworkRecoveryStatusEnvelope, PeerSnapshotListEnvelope, PresenceRefreshEnvelope,
-    PreviewImportEnvelope, ProfileRecoveryEnvelope, RegisterMobileDeviceEnvelope,
-    RelayCredentialStatusEnvelope, RelayOverviewEnvelope, RelayProbeOutcomeEnvelope,
-    RelaySaveResultEnvelope, ResendEnvelope, RestartAcceptedEnvelope, RestoreEntryEnvelope,
-    RotateMobilePasswordEnvelope, SearchCountEnvelope, SearchQueryEnvelope, SearchRebuildEnvelope,
-    SearchStatusEnvelope, SearchTagsEnvelope, SessionTokenEnvelope, SettingsEnvelope,
-    SettingsUpdateResultEnvelope, SetupCancelJoinEnvelope, SetupInitializeEnvelope,
-    SetupIssueInvitationEnvelope, SetupRedeemEnvelope, SetupStateEnvelope,
-    SetupSwitchSpaceEnvelope, SpaceMemberListEnvelope, SpaceProtectionEnvelope, StatusEnvelope,
-    StorageStatsEnvelope, ToggleFavoriteEnvelope, UnlockSpaceEnvelope, UpdateDebugModeEnvelope,
-    UpdateMobileDeviceEnvelope, UpdateMobileSyncSettingsEnvelope, UpgradeBackupListEnvelope,
-    UpgradeStatusEnvelope,
+    MobileSyncSettingsEnvelope, NetworkLogStatusEnvelope, NetworkRecoveryStatusEnvelope,
+    PeerSnapshotListEnvelope, PresenceRefreshEnvelope, PreviewImportEnvelope,
+    ProfileRecoveryEnvelope, RegisterMobileDeviceEnvelope, RelayCredentialStatusEnvelope,
+    RelayOverviewEnvelope, RelayProbeOutcomeEnvelope, RelaySaveResultEnvelope, ResendEnvelope,
+    RestartAcceptedEnvelope, RestoreEntryEnvelope, RotateMobilePasswordEnvelope,
+    SearchCountEnvelope, SearchQueryEnvelope, SearchRebuildEnvelope, SearchStatusEnvelope,
+    SearchTagsEnvelope, SessionTokenEnvelope, SettingsEnvelope, SettingsUpdateResultEnvelope,
+    SetupCancelJoinEnvelope, SetupInitializeEnvelope, SetupIssueInvitationEnvelope,
+    SetupRedeemEnvelope, SetupStateEnvelope, SetupSwitchSpaceEnvelope, SpaceMemberListEnvelope,
+    SpaceProtectionEnvelope, StatusEnvelope, StorageStatsEnvelope, ToggleFavoriteEnvelope,
+    UnlockSpaceEnvelope, UpdateDebugModeEnvelope, UpdateMobileDeviceEnvelope,
+    UpdateMobileSyncSettingsEnvelope, UpgradeBackupListEnvelope, UpgradeStatusEnvelope,
 };
 use uc_daemon_contract::api::dto::storage::{
     ClearCacheRequest, ClearCacheResponse, DeleteUpgradeBackupRequest, DeleteUpgradeBackupResponse,
@@ -295,8 +293,6 @@ impl Modify for ContractMeta {
         crate::api::diagnostics::start_capture_handler,
         crate::api::diagnostics::stop_capture_handler,
         crate::api::diagnostics::get_network_status_handler,
-        crate::api::diagnostics::start_network_capture_handler,
-        crate::api::diagnostics::stop_network_capture_handler,
         crate::api::diagnostics::export_logs_handler,
         // ── lifecycle ──────────────────────────────────────────────
         crate::api::lifecycle::get_lifecycle_status_handler,
@@ -664,18 +660,15 @@ impl Modify for ContractMeta {
             DiagnosticStatusEnvelope,
             DiagnosticCaptureStopEnvelope,
             NetworkLogStatusEnvelope,
-            NetworkCaptureStartEnvelope,
             NetworkLogAvailabilityDto,
             NetworkLogStateDto,
             NetworkProcessRoleDto,
             NetworkCaptureModeDto,
+            NetworkCaptureLinkFailureDto,
             NetworkLogBudgetDto,
             NetworkLogCountersDto,
             NetworkLibraryStatusDto,
             NetworkLogStatusDto,
-            NetworkCaptureStartRequestDto,
-            NetworkCaptureStopRequestDto,
-            NetworkCaptureStartResultDto,
             NetworkLogFileDto,
             NetworkExportPreparationDto,
             NetworkArchiveOutcomeDto,
@@ -863,7 +856,7 @@ mod assembly_smoke_tests {
         // Batch search counting adds one path and operation: 89 / 99.
         // Local history tags add six paths and eight operations: 95 / 107.
         // The tag layout adds four paths and four operations: 99 / 111.
-        // The network-library log adds three paths and three operations: 102 / 114.
+        // The network-library log status adds one path and one operation: 100 / 112.
         const HTTP_METHODS: [&str; 7] =
             ["get", "put", "post", "delete", "patch", "head", "options"];
         let paths = value
@@ -872,8 +865,8 @@ mod assembly_smoke_tests {
             .expect("OpenAPI doc must declare paths");
         assert_eq!(
             paths.len(),
-            102,
-            "expected exactly 102 path templates, found {}: {:?}",
+            100,
+            "expected exactly 100 path templates, found {}: {:?}",
             paths.len(),
             paths.keys().collect::<Vec<_>>()
         );
@@ -887,8 +880,8 @@ mod assembly_smoke_tests {
             })
             .sum();
         assert_eq!(
-            operation_count, 114,
-            "expected exactly 114 operations across all paths, found {operation_count}"
+            operation_count, 112,
+            "expected exactly 112 operations across all paths, found {operation_count}"
         );
 
         // A few frozen operationIds (§D) must be present somewhere in the doc.

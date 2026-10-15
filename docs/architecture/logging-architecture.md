@@ -17,7 +17,7 @@
 | --- | --- | --- |
 | `uniclipboard-daemon.json.<日期>` | daemon 的宿主层 | 宿主进程自己的记录：启动、HTTP、桌面平台适配、诊断导出等 |
 | `engine.<日期>.jsonl` | daemon 内的 Engine 诊断运行时 | Engine 的连接、配对、同步诊断记录；由 Engine 的采集模式控制，与宿主 Debug 模式无关 |
-| `network/daemon/<运行 ID>/` | daemon 内的 Engine 网络日志 | 第三方网络库（iroh、noq-proto）的脱敏连接事件，与上面所有文件独立，见 [独立网络日志](#独立网络日志)；默认不存在 |
+| `network/daemon/<运行 ID>/` | daemon 内的 Engine 网络日志 | 第三方网络库（iroh、noq-proto）的脱敏连接事件，与上面所有文件独立，见 [独立网络日志](#独立网络日志) |
 | `uniclipboard-quick-panel.json.<日期>` | 快捷面板进程 | 快捷面板自己的记录 |
 | `uniclipboard-gui.json.<日期>` | Go 图形界面宿主 | 宿主的生命周期事件，以及标准库 `log` 的全部输出（同时仍回显到 stderr） |
 | `uniclipboard-cli.json.<日期>` | Go 命令行 `uniclip` | 每次调用的开始与结果（退出码、耗时）；参数可能含口令，从不记录 |
@@ -62,7 +62,7 @@ Engine 的自有事件、以及它依赖的网络栈（iroh、noq、quinn、netw
 
 - **Debug 模式** 只提高宿主进程（daemon、平台适配、Web 服务、守护进程客户端等）的日志详细度，重启后才生效，不改变 Engine 记录。
 - **详细记录（Detailed capture）** 是 Engine 的限时采集，控制 `engine.<日期>.jsonl` 的内容，1–15 分钟。
-- **网络日志的限时详细记录** 与上一项互相独立：各自开关、各自到期、各自失败，开启一个不会开启另一个。
+- **网络日志的限时详细记录** 并入上一项：同一个入口、同一个时长，随业务限时详细记录一起开启和结束，没有独立开关。网络窗口是否真的跟随、是否失败，在网络状态里单独报告，不并入业务成功状态（见 [独立网络日志](#独立网络日志)）。
 - `GET /diagnostics/debug` 的 `effectiveLogProfile` 报告进程 **实际安装** 的 profile（`uc_observability::installed_log_profile()`），而不是设置值；`debugMode` 是持久化的设置，两者不同说明需要重启，或被环境变量覆盖。
 
 控制台层用于开发。`UC_CONSOLE_LOG=off` 关闭它。macOS 的 launchd 服务把标准输出写进不会轮转的 `service.stdout.log`，所以生成的 plist 设置了这个变量，记录仍然进入按日轮转的 JSON 文件；Linux 的 systemd 单元把输出交给 journal，由 journal 限制大小，不设置。
@@ -101,7 +101,7 @@ Engine 把第三方网络库（iroh、noq-proto 的审定事件）记到自己�
 ### 配置
 
 - daemon 在取得实例锁之后、`install_with_host_layers` 之前，用 `Daemon` 角色调用 `with_network_logs`，并登记 `known_network_alpns()`（`crates/uc-bootstrap/src/observability/network_log.rs`）。GUI、CLI、快捷面板不安装第二个运行时，也没有网络日志写入方。
-- **没有产品默认预算。** Engine 不提供默认值，桌面端的预算、保留期尚待产品决定，所以不带显式预算时网络日志是 `NotConfigured`：状态接口明确返回 `availability: notConfigured`，开始/停止采集返回 409 `network_log_not_configured`，诊断包的网络块是 `notConfigured`，不会伪装成“零事件”。
+- **预算内置在每个构建里。** Engine 不提供默认值，桌面端在 `PRODUCT_DEFAULT_BUDGET` 里内置一组：单条 8 KiB、队列 1024 条（内存上界 8 MiB）、单文件 4 MiB、单次运行 16 MiB、网络目录总计 64 MiB、保留 7 天（与业务日志一致）。内置方式已定，这六个数值仍是待产品确认的建议值。环境变量 `UC_NETWORK_LOG_BUDGET` 只供开发与验证覆盖；覆盖值格式错误时网络日志保持 `NotConfigured`（状态接口返回 `availability: notConfigured`，诊断包的网络块是 `notConfigured`），不会悄悄退回内置值，也不会伪装成“零事件”。
 - 显式预算只用于开发与验证：环境变量 `UC_NETWORK_LOG_BUDGET`，格式 `record_bytes=…,queue_records=…,file_bytes=…,run_bytes=…,root_bytes=…,retention_secs=…`，六项必须齐全且自洽，否则整体拒绝并保持 `NotConfigured`（启动时记一条 WARN）。测试里用的数值不是产品承诺。
 
 ### 接口与界面
@@ -109,10 +109,18 @@ Engine 把第三方网络库（iroh、noq-proto 的审定事件）记到自己�
 | 接口 | 作用 |
 | --- | --- |
 | `GET /diagnostics/network` | 状态、预算、计数（已接受、已写入、策略过滤、限速、超长、队列丢弃、关闭后丢弃、写入失败、淘汰文件数、路径恢复次数、未审查调用点）、各库观察数、当前窗口 id 与剩余时间 |
-| `POST /diagnostics/network/start` | 开启 1–900 秒的限时详细记录；已有窗口时返回原窗口，不延长 |
-| `POST /diagnostics/network/stop` | 用窗口 id 结束窗口；id 不匹配返回 409 `network_capture_mismatch` |
 
-开始、停止、状态和导出准备都在阻塞线程池里执行，不占用异步工作线程。设置页“日志”分组里有独立的“网络连接日志”开关（窗口长度常量 `NETWORK_CAPTURE_SECONDS`，待产品确认）和计数、预算、覆盖范围说明；视觉由用户验收。
+状态和导出准备都在阻塞线程池里执行，不占用异步工作线程。网络状态响应在 `captureId` 之外还有 `captureLinkFailure`（`startFailed` 或 `stopFailed`），表示网络窗口没能随业务采集开启或关闭。设置页“日志”分组只显示只读的网络连接日志状态、计数、预算、覆盖范围和这个失败提示；视觉由用户验收。
+
+### 与业务限时详细记录联动
+
+网络窗口没有自己的入口和时长，复用现有业务入口 `POST /diagnostics/capture/start|stop`（界面固定 600 秒，在 Engine 网络窗口 1–900 秒的范围内；daemon 把时长钳制在该范围内，不缩短也不续期）。
+
+- **开始**：业务窗口开启成功之后，已配置的网络日志用同样的时长开启自己的窗口。网络窗口开启失败只写日志并记 `captureLinkFailure=startFailed`，不让业务采集失败。
+- **停止**：业务停止返回 `stopped` 或 `alreadyStopped` 时一并结束网络窗口；`differentCapture`（id 不属于当前窗口）或出错时两边都不动。网络窗口关闭失败记 `stopFailed`。
+- **自动到期**：两个窗口各自到期，网络窗口晚开启数毫秒，所以略晚结束。
+- **恢复**：每次读取网络状态时，如果业务窗口在进行而网络窗口不在，按业务剩余时间重试开启；如果网络窗口还开着而业务窗口已不在，则关闭它。网络日志不是就绪状态时不重试。
+- 导出包里的网络状态仍然独立：窗口失败不会让网络块被报告为 `complete`，业务的 `flush` 也不受网络结果影响。
 
 ### 诊断包里的网络来源
 
@@ -134,6 +142,6 @@ Engine 在自己的线程里排空网络队列，耗时不占用业务关闭预�
 
 下列路径用真实进程覆盖，见 `tests/e2e/tests/daemon_logging.rs`（`cargo test -p uc-e2e-tests --test daemon_logging -- --ignored`）：同一 profile 上的第二个 daemon 失败并留下启动失败记录且不写任何日志；宿主记录的 `run_id`、`pid` 一致；请求 id 经过 CORS、400/401 响应体和宿主日志；在线导出收录启动失败记录并带 `host` 与 `missingSources`。
 
-网络日志的真实进程用例见 `tests/e2e/tests/daemon_network_log.rs`（`cargo test -p uc-e2e-tests --test daemon_network_log -- --ignored`）：未配置、显式预算下的状态/窗口控制/导出清单与非白名单文件排除、来源提交等于 Cargo.toml 固定值、优雅停止耗时，以及两个真实 daemon 配对时的事件文件、摘要比对和无标识符检查。
+网络日志的真实进程用例见 `tests/e2e/tests/daemon_network_log.rs`（`cargo test -p uc-e2e-tests --test daemon_network_log -- --ignored`）：格式错误的预算覆盖值导致的未配置（业务采集不受影响）、内置预算下的状态、与业务采集联动的开启/停止/自动到期、旧的独立开始/停止接口已移除、导出清单与非白名单文件排除、来源提交等于 Cargo.toml 固定值、优雅停止耗时，以及两个真实 daemon 配对时的事件文件、摘要比对和无标识符检查。
 
 仍须在对应环境单独验证的部分：Windows 的优雅停止与 `TerminateProcess` 回退、macOS launchd 服务实际的标准输出大小、图形界面的离线导出对话框与提示文案。

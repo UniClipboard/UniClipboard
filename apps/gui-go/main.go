@@ -15,6 +15,7 @@ import (
 	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/daemonclient"
 	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/daemonlife"
 	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/daemonproc"
+	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/hostlog"
 	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/quickpanelhelper"
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
@@ -90,6 +91,11 @@ func (h *HostService) openMainWindow() {
 }
 
 func main() {
+	// Persistent role log for the diagnostic export; failing to open it leaves console logging only.
+	hostLog := hostlog.OpenDefault("uniclipboard-gui")
+	hostLog.RedirectStandardLog()
+	hostLog.Info("gui host starting version=%s", buildinfo.PackageVersion)
+	defer hostLog.Close()
 	if err := validateEnvironment(); err != nil {
 		if releaseBuild {
 			failStartup(err)

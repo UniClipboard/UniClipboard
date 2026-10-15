@@ -26,14 +26,21 @@ var ErrNoLogs = errors.New("No application logs are available to export")
 
 // source is one managed log role. A managed file name is prefix + YYYY-MM-DD + suffix; the shared fixture
 // testdata/log-source-patterns.json pins these patterns for both the Go and the Rust exporters.
-type source struct{ role, prefix, suffix string }
+//
+// current says whether a Desktop process of this version still writes the role. The Go GUI host and the Go CLI keep
+// no log files, so gui and cli files only exist as leftovers of older versions: they are exported when present, and
+// their absence is not a gap worth reporting.
+type source struct {
+	role, prefix, suffix string
+	current              bool
+}
 
 var sources = []source{
-	{"gui", "uniclipboard-gui.json.", ""},
-	{"daemon", "uniclipboard-daemon.json.", ""},
-	{"cli", "uniclipboard-cli.json.", ""},
-	{"quick-panel", "uniclipboard-quick-panel.json.", ""},
-	{"engine", "engine.", ".jsonl"},
+	{"gui", "uniclipboard-gui.json.", "", false},
+	{"daemon", "uniclipboard-daemon.json.", "", true},
+	{"cli", "uniclipboard-cli.json.", "", false},
+	{"quick-panel", "uniclipboard-quick-panel.json.", "", true},
+	{"engine", "engine.", ".jsonl", true},
 }
 
 // undatedFiles are exact, date-less names exported alongside the managed logs (pinned in the shared fixture).
@@ -212,12 +219,12 @@ func exportStartup(env environment, logsDir, destination string, startupStatus j
 	return report, nil
 }
 
-// missingSources lists every role with no exported file: "missing" when the directory holds no file of the role,
+// missingSources lists every role a current process writes that has no exported file: "missing" when the directory holds no file of the role,
 // "unreadable" when it holds some but none could be exported. Roles are reported in the order of sources.
 func missingSources(included, present []string) []MissingSource {
 	out := []MissingSource{}
 	for _, src := range sources {
-		if slices.ContainsFunc(included, func(n string) bool { return roleOf(n) == src.role }) {
+		if !src.current || slices.ContainsFunc(included, func(n string) bool { return roleOf(n) == src.role }) {
 			continue
 		}
 		reason := reasonMissing

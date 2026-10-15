@@ -333,21 +333,32 @@ fn collect_log_files(logs_dir: &Path) -> Result<(Vec<LogCandidate>, Vec<String>)
     Ok((files, unreadable))
 }
 
-/// Managed daily logs: source name and the file name around the date
-/// (`<prefix><YYYY-MM-DD><suffix>`). The Go offline export keeps the same list;
-/// `tests/log_source_patterns.rs` and its Go counterpart check both against one
-/// fixture.
-const LOG_SOURCES: [(&str, &str, &str); 5] = [
-    ("gui", "uniclipboard-gui.json.", ""),
-    ("daemon", "uniclipboard-daemon.json.", ""),
-    ("cli", "uniclipboard-cli.json.", ""),
-    ("quick-panel", "uniclipboard-quick-panel.json.", ""),
-    ("engine", "engine.", ".jsonl"),
+/// Managed daily logs: source name, the file name around the date
+/// (`<prefix><YYYY-MM-DD><suffix>`) and whether a current Desktop process
+/// writes the source. The Go GUI host and the Go CLI keep no log files, so `gui`
+/// and `cli` files are only leftovers of older versions: they are exported when
+/// present but their absence is not reported. The Go offline export keeps the
+/// same list; `tests/log_source_patterns.rs` and its Go counterpart check both
+/// against one fixture.
+const LOG_SOURCES: [(&str, &str, &str, bool); 5] = [
+    ("gui", "uniclipboard-gui.json.", "", false),
+    ("daemon", "uniclipboard-daemon.json.", "", true),
+    ("cli", "uniclipboard-cli.json.", "", false),
+    ("quick-panel", "uniclipboard-quick-panel.json.", "", true),
+    ("engine", "engine.", ".jsonl", true),
 ];
+
+/// Whether a current Desktop process writes `source`; `None` for an unknown name.
+pub fn source_written_by_current_host(source: &str) -> Option<bool> {
+    LOG_SOURCES
+        .iter()
+        .find(|(name, ..)| *name == source)
+        .map(|&(.., current)| current)
+}
 
 /// Source and calendar day of a managed daily log, `None` for any other name.
 fn managed_log(name: &str) -> Option<(&'static str, NaiveDate)> {
-    LOG_SOURCES.iter().find_map(|&(source, prefix, suffix)| {
+    LOG_SOURCES.iter().find_map(|&(source, prefix, suffix, _)| {
         let date = name.strip_prefix(prefix)?.strip_suffix(suffix)?;
         // Zero-padded, as every writer produces it. Engine names additionally
         // go through the Engine-compatible parser below.
@@ -371,8 +382,8 @@ fn missing_sources(report: &DiagnosticArchiveReport) -> Vec<MissingSource> {
     };
     LOG_SOURCES
         .iter()
-        .filter_map(|&(source, _, _)| {
-            if contributes(&report.included_files, source) {
+        .filter_map(|&(source, _, _, current)| {
+            if !current || contributes(&report.included_files, source) {
                 None
             } else if contributes(&report.unreadable_files, source) {
                 Some(MissingSource {

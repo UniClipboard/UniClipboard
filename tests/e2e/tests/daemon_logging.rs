@@ -153,8 +153,15 @@ async fn a_second_daemon_on_a_busy_profile_records_its_failure_and_writes_no_log
         .iter()
         .map(|entry| entry["source"].as_str().unwrap())
         .collect();
-    assert!(missing.contains(&"cli"), "no CLI ran: {missing:?}");
+    assert!(
+        missing.contains(&"quick-panel"),
+        "the quick panel never ran: {missing:?}"
+    );
     assert!(!missing.contains(&"daemon"));
+    assert!(
+        !missing.contains(&"gui") && !missing.contains(&"cli"),
+        "no current process writes these: {missing:?}"
+    );
 
     assert!(zip_entry(&path, "logs/daemon-startup-failure.json").is_some());
     let manifest: Value =

@@ -28,10 +28,6 @@
       {
         "source": "daemon",
         "reason": "missing"
-      },
-      {
-        "source": "cli",
-        "reason": "missing"
       }
     ]
   }

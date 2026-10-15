@@ -14,10 +14,11 @@ import (
 )
 
 type roleFixture struct {
-	Prefix   string   `json:"prefix"`
-	Suffix   string   `json:"suffix"`
-	Positive []string `json:"positive"`
-	Negative []string `json:"negative"`
+	WrittenByCurrentHost bool     `json:"writtenByCurrentHost"`
+	Prefix               string   `json:"prefix"`
+	Suffix               string   `json:"suffix"`
+	Positive             []string `json:"positive"`
+	Negative             []string `json:"negative"`
 }
 
 func loadFixture(t *testing.T) map[string]roleFixture {
@@ -48,6 +49,9 @@ func TestSourcePatternsMatchSharedFixture(t *testing.T) {
 		fx, ok := roles[src.role]
 		if !ok {
 			t.Fatalf("role %q missing from the fixture", src.role)
+		}
+		if fx.WrittenByCurrentHost != src.current {
+			t.Errorf("role %q: fixture writtenByCurrentHost %v, code %v", src.role, fx.WrittenByCurrentHost, src.current)
 		}
 		if fx.Prefix != src.prefix || fx.Suffix != src.suffix {
 			t.Errorf("role %q: fixture %q..%q, code %q..%q", src.role, fx.Prefix, fx.Suffix, src.prefix, src.suffix)
@@ -155,7 +159,7 @@ func TestManifestReportsMissingSources(t *testing.T) {
 	for _, s := range m.Collection.MissingSources {
 		got[s.Source] = s.Reason
 	}
-	want := map[string]string{"daemon": "missing", "cli": "missing", "quick-panel": "missing"}
+	want := map[string]string{"daemon": "missing", "quick-panel": "missing"}
 	if len(got) != len(want) {
 		t.Fatalf("missingSources = %v, want %v", got, want)
 	}
@@ -295,7 +299,7 @@ func TestExportReturnsTheManifestMissingSources(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []MissingSource{{"daemon", "missing"}, {"cli", "missing"}, {"quick-panel", "missing"}}
+	want := []MissingSource{{"daemon", "missing"}, {"quick-panel", "missing"}}
 	if !slices.Equal(report.MissingSources, want) {
 		t.Fatalf("report.MissingSources = %v, want %v", report.MissingSources, want)
 	}

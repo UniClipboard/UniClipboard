@@ -123,11 +123,31 @@ pub async fn get_debug_status_handler(
             "engine returned an unexpected diagnostics result",
         ));
     };
-    Ok(Json(ApiEnvelope::now(DebugStatusDto {
-        debug_mode: status.debug_mode,
-        effective_log_profile: status.effective_log_profile,
-        restart_required: status.restart_required,
-    })))
+    Ok(Json(ApiEnvelope::now(debug_status_dto(
+        status.debug_mode,
+        status.effective_log_profile,
+        status.restart_required,
+        uc_observability::installed_log_profile(),
+    ))))
+}
+
+/// Debug Mode status as the user can act on it. `debug_mode` is the persisted
+/// setting; the log profile is what this process actually installed, which the
+/// setting only reaches after a restart (and which an environment override can
+/// replace). The installed profile wins over the Engine's computed one.
+fn debug_status_dto(
+    debug_mode: bool,
+    engine_log_profile: String,
+    restart_required: bool,
+    installed_log_profile: Option<&str>,
+) -> DebugStatusDto {
+    DebugStatusDto {
+        debug_mode,
+        effective_log_profile: installed_log_profile
+            .map(str::to_owned)
+            .unwrap_or(engine_log_profile),
+        restart_required,
+    }
 }
 
 #[utoipa::path(
@@ -350,6 +370,7 @@ mod tests {
                     unreadable_files: Vec::new(),
                     truncated_files: Vec::new(),
                     concurrent_writes_possible: true,
+                    missing_sources: Vec::new(),
                 },
             })
         }
@@ -369,6 +390,20 @@ mod tests {
 
         assert_eq!(result.engine_preparation.status.run_id, "run-1");
         assert_eq!(result.collection.included_files.len(), 1);
+    }
+
+    #[test]
+    fn debug_status_reports_the_profile_the_process_installed() {
+        // Debug Mode is saved but the process still runs the production profile.
+        let status = debug_status_dto(true, "debug".to_owned(), true, Some("prod"));
+        assert!(status.debug_mode);
+        assert_eq!(status.effective_log_profile, "prod");
+        assert!(status.restart_required);
+
+        // Without an installed profile (host logging not up) the Engine value
+        // is all there is.
+        let status = debug_status_dto(false, "prod".to_owned(), false, None);
+        assert_eq!(status.effective_log_profile, "prod");
     }
 
     struct FailingArchive(DaemonDiagnosticArchiveError);

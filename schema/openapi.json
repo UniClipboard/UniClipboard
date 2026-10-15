@@ -1769,6 +1769,13 @@
             },
             "type": "array"
           },
+          "missingSources": {
+            "description": "Log sources (`gui`, `daemon`, `cli`, `quick-panel`, `engine`) that\ncontributed no file to the package.",
+            "items": {
+              "$ref": "#/components/schemas/MissingLogSourceDto"
+            },
+            "type": "array"
+          },
           "truncatedFiles": {
             "items": {
               "type": "string"
@@ -1786,7 +1793,8 @@
           "includedFiles",
           "unreadableFiles",
           "truncatedFiles",
-          "concurrentWritesPossible"
+          "concurrentWritesPossible",
+          "missingSources"
         ],
         "type": "object"
       },
@@ -4438,6 +4446,22 @@
         },
         "required": [
           "sourceTagIds"
+        ],
+        "type": "object"
+      },
+      "MissingLogSourceDto": {
+        "properties": {
+          "reason": {
+            "description": "`missing` (no file of this source) or `unreadable` (files exist, none\ncould be exported).",
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "reason"
         ],
         "type": "object"
       },

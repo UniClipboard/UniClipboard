@@ -31,7 +31,7 @@ use crate::api::dto::diagnostics::{
     DiagnosticExportPreparationDto, DiagnosticFileSourceCountsDto, DiagnosticSetupStatusDto,
     DiagnosticSignalResultDto, DiagnosticSourceCapabilityDto, DiagnosticSourceCollectionDto,
     DiagnosticSourceCoverageDto, DiagnosticSourceDto, DiagnosticStatusDto, LogExportRequestDto,
-    LogExportResultDto, UpdateDebugModeRequestDto, UpdateDebugModeResultDto,
+    LogExportResultDto, MissingLogSourceDto, UpdateDebugModeRequestDto, UpdateDebugModeResultDto,
 };
 use crate::api::dto::encryption::{
     AdmissionRecoveryActionDto, AdmissionRecoveryCategoryDto, AdmissionRecoveryDto,
@@ -648,6 +648,7 @@ impl Modify for ContractMeta {
             DiagnosticFileSourceCountsDto,
             DiagnosticExportPreparationDto,
             DiagnosticArchiveCollectionDto,
+            MissingLogSourceDto,
             DiagnosticCaptureStartRequestDto,
             DiagnosticCaptureStopRequestDto,
             DiagnosticStatusEnvelope,

@@ -170,6 +170,18 @@ pub struct DiagnosticArchiveCollectionDto {
     pub unreadable_files: Vec<String>,
     pub truncated_files: Vec<String>,
     pub concurrent_writes_possible: bool,
+    /// Log sources (`gui`, `daemon`, `cli`, `quick-panel`, `engine`) that
+    /// contributed no file to the package.
+    pub missing_sources: Vec<MissingLogSourceDto>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct MissingLogSourceDto {
+    pub source: String,
+    /// `missing` (no file of this source) or `unreadable` (files exist, none
+    /// could be exported).
+    pub reason: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]

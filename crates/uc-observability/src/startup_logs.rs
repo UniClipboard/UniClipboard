@@ -26,6 +26,27 @@ pub struct DiagnosticArchiveRequest {
     pub since: Option<DateTime<Utc>>,
     pub engine_preparation: Option<Value>,
     pub startup_status: Option<Value>,
+    pub host: Option<HostManifest>,
+}
+
+/// Facts about the exporting host that explain how the logs were produced.
+///
+/// Carries no device, peer or account identifier.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HostManifest {
+    pub app_version: String,
+    pub os: String,
+    pub arch: String,
+    /// Named profile; `None` for the default one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub profile: Option<String>,
+    pub portable: bool,
+    /// Log profile the running process installed (not the persisted setting,
+    /// which only applies at the next start).
+    pub installed_log_profile: String,
+    pub telemetry_enabled: bool,
+    pub timezone_offset_minutes: i32,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -35,6 +56,25 @@ pub struct DiagnosticArchiveReport {
     pub unreadable_files: Vec<String>,
     pub truncated_files: Vec<String>,
     pub concurrent_writes_possible: bool,
+    /// Log sources that contributed no file to the package.
+    pub missing_sources: Vec<MissingSource>,
+}
+
+/// A log source absent from an export and why.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MissingSource {
+    pub source: &'static str,
+    pub reason: MissingReason,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MissingReason {
+    /// The log directory holds no file of this source.
+    Missing,
+    /// Files exist but none could be exported.
+    Unreadable,
 }
 
 /// Where an export failed, so callers can tell the user what to look at
@@ -107,6 +147,7 @@ pub fn export_startup_logs_with_status(
             since: None,
             engine_preparation: None,
             startup_status,
+            host: None,
         },
     )?;
     Ok(())
@@ -142,6 +183,7 @@ pub fn export_diagnostic_logs(
         unreadable_files,
         truncated_files: Vec::new(),
         concurrent_writes_possible: true,
+        missing_sources: Vec::new(),
     };
 
     // Files that belong to the requested window, whether or not they could be
@@ -197,6 +239,7 @@ pub fn export_diagnostic_logs(
             report.included_files.push(candidate.name);
         }
 
+        report.missing_sources = missing_sources(&report);
         let manifest = DiagnosticArchiveManifest {
             schema_version: 1,
             mode: request.mode,
@@ -204,6 +247,7 @@ pub fn export_diagnostic_logs(
             since: request.since,
             engine_preparation: request.engine_preparation,
             startup_status: request.startup_status,
+            host: request.host,
             collection: &report,
         };
         archive
@@ -289,21 +333,70 @@ fn collect_log_files(logs_dir: &Path) -> Result<(Vec<LogCandidate>, Vec<String>)
     Ok((files, unreadable))
 }
 
-fn managed_log_date(name: &str) -> Option<NaiveDate> {
-    if let Some(date) = engine_log_file_date(name) {
-        return Some(date);
-    }
-    [
-        "uniclipboard-gui.json.",
-        "uniclipboard-daemon.json.",
-        "uniclipboard-cli.json.",
-        "uniclipboard-quick-panel.json.",
-    ]
-    .iter()
-    .find_map(|prefix| {
-        name.strip_prefix(prefix)
-            .and_then(|date| NaiveDate::parse_from_str(date, "%Y-%m-%d").ok())
+/// Managed daily logs: source name and the file name around the date
+/// (`<prefix><YYYY-MM-DD><suffix>`). The Go offline export keeps the same list;
+/// `tests/log_source_patterns.rs` and its Go counterpart check both against one
+/// fixture.
+const LOG_SOURCES: [(&str, &str, &str); 5] = [
+    ("gui", "uniclipboard-gui.json.", ""),
+    ("daemon", "uniclipboard-daemon.json.", ""),
+    ("cli", "uniclipboard-cli.json.", ""),
+    ("quick-panel", "uniclipboard-quick-panel.json.", ""),
+    ("engine", "engine.", ".jsonl"),
+];
+
+/// Source and calendar day of a managed daily log, `None` for any other name.
+fn managed_log(name: &str) -> Option<(&'static str, NaiveDate)> {
+    LOG_SOURCES.iter().find_map(|&(source, prefix, suffix)| {
+        let date = name.strip_prefix(prefix)?.strip_suffix(suffix)?;
+        // Zero-padded, as every writer produces it. Engine names additionally
+        // go through the Engine-compatible parser below.
+        let parsed = if source == "engine" {
+            engine_log_file_date(name)?
+        } else if date.len() == 10 {
+            NaiveDate::parse_from_str(date, "%Y-%m-%d").ok()?
+        } else {
+            return None;
+        };
+        Some((source, parsed))
     })
+}
+
+/// Sources of [`LOG_SOURCES`] without an exported file, in table order.
+fn missing_sources(report: &DiagnosticArchiveReport) -> Vec<MissingSource> {
+    let contributes = |names: &[String], source: &str| {
+        names
+            .iter()
+            .any(|name| managed_log_source(name) == Some(source))
+    };
+    LOG_SOURCES
+        .iter()
+        .filter_map(|&(source, _, _)| {
+            if contributes(&report.included_files, source) {
+                None
+            } else if contributes(&report.unreadable_files, source) {
+                Some(MissingSource {
+                    source,
+                    reason: MissingReason::Unreadable,
+                })
+            } else {
+                Some(MissingSource {
+                    source,
+                    reason: MissingReason::Missing,
+                })
+            }
+        })
+        .collect()
+}
+
+/// Source name (`gui`, `daemon`, `cli`, `quick-panel`, `engine`) of a managed
+/// daily log file name.
+pub fn managed_log_source(name: &str) -> Option<&'static str> {
+    managed_log(name).map(|(source, _)| source)
+}
+
+fn managed_log_date(name: &str) -> Option<NaiveDate> {
+    managed_log(name).map(|(_, date)| date)
 }
 
 /// Date of an Engine daily log (`engine.YYYY-MM-DD.jsonl`). Mirrors Engine
@@ -336,5 +429,6 @@ struct DiagnosticArchiveManifest<'a> {
     since: Option<DateTime<Utc>>,
     engine_preparation: Option<Value>,
     startup_status: Option<Value>,
+    host: Option<HostManifest>,
     collection: &'a DiagnosticArchiveReport,
 }

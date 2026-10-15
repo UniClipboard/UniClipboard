@@ -12,6 +12,7 @@ use uc_daemon_contract::api::dto::diagnostics::{
     DiagnosticExportPreparationDto, DiagnosticFileSourceCountsDto, DiagnosticSetupStatusDto,
     DiagnosticSignalResultDto, DiagnosticSourceCapabilityDto, DiagnosticSourceCollectionDto,
     DiagnosticSourceCoverageDto, DiagnosticSourceDto, DiagnosticStatusDto, LogExportResultDto,
+    MissingLogSourceDto,
 };
 use uc_engine::observability::{
     CaptureEndReason, DetailedCaptureRequest, HostDiagnosticAction, HostDiagnosticEvent,
@@ -23,6 +24,7 @@ use uc_engine::observability::{
 };
 use uc_observability::startup_logs::{
     export_diagnostic_logs, DiagnosticArchiveMode, DiagnosticArchiveRequest, ExportFailureCause,
+    HostManifest, MissingReason,
 };
 use uc_webserver::api::server::{
     DaemonDiagnosticArchive, DaemonDiagnosticArchiveError, DaemonDiagnosticError,
@@ -241,6 +243,7 @@ impl DaemonDiagnosticArchive for DesktopDiagnosticArchive {
                     since: Some(since),
                     engine_preparation: Some(manifest_preparation),
                     startup_status: None,
+                    host: Some(host_manifest()),
                 },
             )
         })
@@ -261,8 +264,38 @@ impl DaemonDiagnosticArchive for DesktopDiagnosticArchive {
                 unreadable_files: report.unreadable_files,
                 truncated_files: report.truncated_files,
                 concurrent_writes_possible: report.concurrent_writes_possible,
+                missing_sources: report
+                    .missing_sources
+                    .into_iter()
+                    .map(|missing| MissingLogSourceDto {
+                        source: missing.source.to_owned(),
+                        reason: match missing.reason {
+                            MissingReason::Missing => "missing",
+                            MissingReason::Unreadable => "unreadable",
+                        }
+                        .to_owned(),
+                    })
+                    .collect(),
             },
         })
+    }
+}
+
+/// Facts about this daemon process for the export manifest. No device, peer or
+/// account identifier; the Desktop build has no commit stamp, and the Engine's
+/// source commit already travels in the Engine preparation block.
+fn host_manifest() -> HostManifest {
+    HostManifest {
+        app_version: env!("CARGO_PKG_VERSION").to_owned(),
+        os: std::env::consts::OS.to_owned(),
+        arch: std::env::consts::ARCH.to_owned(),
+        profile: uc_app_paths::resolve_profile(None),
+        portable: uc_app_paths::is_portable(),
+        installed_log_profile: uc_observability::installed_log_profile()
+            .unwrap_or("unknown")
+            .to_owned(),
+        telemetry_enabled: uc_observability::is_telemetry_enabled(),
+        timezone_offset_minutes: chrono::Local::now().offset().local_minus_utc() / 60,
     }
 }
 
@@ -412,6 +445,18 @@ fn export_preparation_dto(report: LocalDiagnosticExportReport) -> DiagnosticExpo
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn host_manifest_describes_this_process_without_identifiers() {
+        let manifest = host_manifest();
+        assert_eq!(manifest.app_version, env!("CARGO_PKG_VERSION"));
+        assert!(!manifest.os.is_empty() && !manifest.arch.is_empty());
+        assert_eq!(manifest.installed_log_profile, "unknown");
+        let json = serde_json::to_string(&manifest).expect("json");
+        assert!(!json.contains("device"), "{json}");
+        assert!(!json.contains("peer"), "{json}");
+    }
+
     use uc_engine::observability::{
         managed_log_files, DeploymentEnvironment, LocalLogConfig, ObservabilityConfig,
         ObservabilityResource, OperatingSystem, ProcessObservabilityRuntime,

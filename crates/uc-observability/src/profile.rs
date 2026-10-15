@@ -4,7 +4,27 @@
 //! via the `UC_LOG_PROFILE` environment variable, with build-type defaults.
 
 use std::fmt;
+use std::sync::OnceLock;
+
 use tracing_subscriber::EnvFilter;
+
+static INSTALLED_PROFILE: OnceLock<String> = OnceLock::new();
+
+/// Record the profile this process installed its host log layers with.
+///
+/// Returns `false` when a profile was already recorded; the first one stays.
+pub fn set_installed_log_profile(profile: &LogProfile) -> bool {
+    INSTALLED_PROFILE.set(profile.to_string()).is_ok()
+}
+
+/// Profile this process runs with, `None` before host logging is installed.
+///
+/// This is what the host log files actually record at. The persisted Debug Mode
+/// setting only becomes the installed profile at the next start, and
+/// `UC_LOG_PROFILE` / `RUST_LOG` can override it entirely.
+pub fn installed_log_profile() -> Option<&'static str> {
+    INSTALLED_PROFILE.get().map(String::as_str)
+}
 
 /// Logging profile that controls filter verbosity for both console and JSON outputs.
 ///
@@ -28,71 +48,22 @@ pub enum LogProfile {
 }
 
 /// Common noise filter directives applied to all profiles.
+///
+/// Host log layers only receive host-process events: the Engine keeps its own
+/// records, and the network stack it runs (iroh, noq, quinn, hickory, pkarr,
+/// swarm-discovery, portmapper, netdev), away from them. Directives for those
+/// targets would never match and are deliberately absent. `netwatch::udp` is
+/// the one exception, kept as a guard against a panic described below.
 const NOISE_FILTERS: &[&str] = &[
-    "libp2p_mdns=info",
-    "libp2p_mdns::behaviour::iface=off",
-    "tauri=warn",
-    "wry=off",
-    "ipc::request=off",
     "hyper_util=info",
     "hyper=info",
-    "quinn=info",
-    "quinn_proto=info",
-    "quinn_udp=info",
-    "Connection::poll=warn",
-    "Pool::poll=warn",
-    "Swarm::poll=warn",
-    // iroh 0.97 forked quinn into noq; the old quinn=info directives no
-    // longer match. noq_proto::connection in particular emits ~40k DEBUG
-    // events per peer-hour without this cap.
-    "noq=info",
-    "noq_proto=info",
-    // noq-udp is a separate crate from `noq` so the directive above does
-    // not cover it. On dual-stack hosts where the VPN / Clash TUN / stale
-    // virtual NIC has no route to a remote IPv6 destination, the udp send
-    // path emits a WARN per transmit (`sendmsg error: No route to host`).
-    // Same EHOSTUNREACH pattern as `swarm_discovery::socket` above —
-    // harmless because reachability still works over other interfaces,
-    // but high-frequency, so cap at ERROR to keep Sentry Logs quiet.
-    "noq_udp=error",
-    // netwatch 0.16/0.17/main 在 `UdpSocket::poll_recv_noq` 的 trace! 字段里
-    // 直接做 `meta.len / meta.stride`,而 `noq_udp::RecvMeta.stride` 在 GRO/GSO
-    // 边界(空 datagram、内核回退到非分段路径)允许为 0,触发 divide-by-zero
-    // panic —— 因为 panic 在第三方 crate 的 trace! 求值阶段,我们栈上没有任何
-    // uc_* 帧,只能在拿到 trace event 前就把该 target 截掉。上游跟踪
-    // n0-computer/net-tools#148;在上游 release 修复前用 EnvFilter 硬上限堵
-    // trace。受影响 Sentry: UNICLIPBOARD-RUST-18 (Windows) / -S (macOS),
-    // 同根因被按 OS 拆组。
+    // netwatch 0.16/0.17/main panics with a divide-by-zero while evaluating a
+    // `trace!` field in `UdpSocket::poll_recv_noq` (`noq_udp::RecvMeta.stride`
+    // may be 0 at GRO/GSO boundaries). The panic happens in third-party code
+    // before any `uc_*` frame exists, so the target is capped here as well as
+    // in the `RUST_LOG` override. Upstream: n0-computer/net-tools#148. Remove
+    // once a fixed netwatch is released.
     "netwatch::udp=debug",
-    // QUIC connection state machine internals. Cap at WARN: silences the
-    // ~40k DEBUG/INFO events per peer-hour of steady-state churn but keeps
-    // the WARN/ERROR signals visible. The earlier `=off` here masked the
-    // exact symptoms ("PTO expired while unset", "failed closing path
-    // err=MultipathNotNegotiated") of upstream noq#512, which made a
-    // multipath-pairing failure invisible at the prod log level — every
-    // diagnosis had to override RUST_LOG to even see the root cause.
-    // Higher layers do re-emit *some* real failures, but for QUIC state
-    // machine races they only re-emit a generic "router.accept timed out"
-    // 60s after the fact, with no path/PTO context. Keeping WARN/ERROR
-    // through preserves that context cheaply.
-    "noq_proto::connection=warn",
-    // magicsock multipath state machine. The remote_state submodule is
-    // also where iroh#4124 spams `Opening path failed` on every event
-    // once the per-connection PathId budget is exhausted; cap that one
-    // at ERROR until upstream lands a fix (PR pending against v1.0.0-rc).
-    "iroh::socket=info",
-    "iroh::socket::remote_map::remote_state=error",
-    // swarm-discovery is the mDNS backend pulled in by the
-    // `address-lookup-mdns` feature; very chatty at INFO/DEBUG.
-    "swarm_discovery=warn",
-    // The socket actor logs `error sending mDNS: No route to host` on every
-    // tick when a bound interface (VPN/Clash TUN, stale virtual NIC, Wi-Fi
-    // mid-reassoc) returns EHOSTUNREACH. The condition is harmless — peer
-    // discovery still works on the other interfaces — but the actor's send
-    // cadence is fixed inside the crate, so we suppress the per-tick WARN.
-    "swarm_discovery::socket=error",
-    // hickory-dns resolver used by pkarr + relay URL resolution.
-    "hickory=warn",
     // === log-bridge noise ===
     //
     // Crates that emit through the `log` crate (forwarded via tracing-log).
@@ -107,13 +78,11 @@ const NOISE_FILTERS: &[&str] = &[
     // Interest collapses to `sometimes`, and the runtime check falls back on
     // the dynamic `filter_meta` whose target is the real module path. At that
     // point `log=warn` no longer matches and the base `debug` lets it through
-    // — which is why we measured ~23k DEBUG events leaking under target="log"
-    // (rustls handshake spam dominated).
+    // — which is why ~23k DEBUG events leaked under target="log" (rustls
+    // handshake spam dominated).
     //
-    // Fix: cap the actual log-bridged crates by their real prefix. These
-    // catch the high-volume offenders observed in production:
-    //   rustls::client::hs / tls13 / common_state  — TLS handshake DEBUG x10
-    //                                                 per iroh connect attempt
+    // Fix: cap the actual log-bridged crates by their real prefix:
+    //   rustls::client::hs / tls13 / common_state  — TLS handshake DEBUG
     //   reqwest::connect                           — DEBUG per HTTP connect
     //   igd_next::aio::tokio                       — UPnP/IGD discovery loop
     "rustls=warn",
@@ -228,25 +197,18 @@ impl LogProfile {
         match self {
             Self::Dev => {
                 directives.push("uc_platform=debug".to_string());
-                directives.push("uc_infra=debug".to_string());
             }
             Self::DebugClipboard => {
                 directives.push("uc_platform::adapters::clipboard=trace".to_string());
-                directives.push("uc_app::usecases::clipboard=debug".to_string());
-                directives.push("uc_core::clipboard=debug".to_string());
             }
             Self::Debug => {
-                directives.push("uc_core=debug".to_string());
-                directives.push("uc_application=debug".to_string());
-                directives.push("uc_app=debug".to_string());
-                directives.push("uc_infra=debug".to_string());
                 directives.push("uc_platform=debug".to_string());
                 directives.push("uc_bootstrap=debug".to_string());
                 directives.push("uc_webserver=debug".to_string());
+                directives.push("uc_daemon=debug".to_string());
                 directives.push("uc_daemon_client=debug".to_string());
                 directives.push("uc_daemon_local=debug".to_string());
                 directives.push("uc_daemon_process=debug".to_string());
-                directives.push("uc_tauri=debug".to_string());
                 directives.push("uc_dev_cli=debug".to_string());
             }
             Self::Prod | Self::Cli => {}
@@ -273,6 +235,54 @@ mod tests {
     use tracing_subscriber::prelude::*;
 
     use super::*;
+
+    /// Targets owned by the Engine or by the network stack it runs. The Engine
+    /// keeps them away from host log layers, so a host profile directive for
+    /// them can never match an event.
+    const ENGINE_AND_NETWORK_TARGETS: [&str; 16] = [
+        "uc_core",
+        "uc_application",
+        "uc_infra",
+        "uc_app=",
+        "uc_app::",
+        "uc_tauri",
+        "libp2p",
+        "tauri=",
+        "wry=",
+        "ipc::request",
+        "quinn",
+        "noq",
+        "iroh",
+        "swarm_discovery",
+        "hickory",
+        "Swarm::poll",
+    ];
+
+    #[test]
+    fn profiles_only_name_targets_a_host_layer_can_receive() {
+        for profile in [
+            LogProfile::Dev,
+            LogProfile::Prod,
+            LogProfile::Debug,
+            LogProfile::DebugClipboard,
+            LogProfile::Cli,
+        ] {
+            let directives = profile.build_filter().to_string();
+            for target in ENGINE_AND_NETWORK_TARGETS {
+                assert!(
+                    !directives.contains(target),
+                    "{profile} names {target}: {directives}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn debug_profile_raises_the_daemon_host_itself() {
+        let directives = LogProfile::Debug.build_filter().to_string();
+        assert!(directives.contains("uc_daemon=debug"), "{directives}");
+        assert!(directives.contains("uc_webserver=debug"), "{directives}");
+    }
 
     #[test]
     fn development_profile_never_enables_openmls_crypto_logs() {

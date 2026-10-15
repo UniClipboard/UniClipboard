@@ -264,6 +264,7 @@ fn install_tracing_subscriber(
     // overrides; persisted Debug Mode only applies when neither env override is set.
     let settings = load_bootstrap_settings(&paths.settings_path);
     let profile = select_log_profile(&settings);
+    uc_observability::set_installed_log_profile(&profile);
 
     // Import the legacy preference before Engine can rewrite its settings.
     // The desktop-owned value controls Sentry independently of Engine settings.

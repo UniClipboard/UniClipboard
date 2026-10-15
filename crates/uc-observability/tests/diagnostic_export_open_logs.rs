@@ -264,6 +264,7 @@ fn export_online(
                 since: None,
                 engine_preparation: None,
                 startup_status: None,
+                host: None,
             },
         );
         let _ = done.send(result);

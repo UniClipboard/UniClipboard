@@ -134,4 +134,29 @@ describe('frontend diagnostic logging', () => {
     expect(diagnosticLogger.debug).not.toHaveBeenCalled()
     expect(diagnosticLogger.info).not.toHaveBeenCalled()
   })
+
+  it('serializes Error instances nested in a log object instead of {}', async () => {
+    const { logger } = await loadLogger()
+
+    logger.error(
+      { err: Object.assign(new Error('db down'), { cause: new Error('socket closed') }) },
+      'failed'
+    )
+
+    const [message, attributes] = diagnosticLogger.error.mock.calls[0]
+    expect(message).toContain('db down')
+    expect(message).toContain('socket closed')
+    expect(attributes.err).toMatchObject({ name: 'Error', message: 'db down' })
+    expect(attributes.err.cause).toMatchObject({ message: 'socket closed' })
+  })
+
+  it('serializes a top-level Error argument into attributes', async () => {
+    const { logger } = await loadLogger()
+
+    logger.error(new TypeError('bad type'))
+
+    const [message, attributes] = diagnosticLogger.error.mock.calls[0]
+    expect(message).toContain('TypeError: bad type')
+    expect(attributes.error).toMatchObject({ name: 'TypeError', message: 'bad type' })
+  })
 })

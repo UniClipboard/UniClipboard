@@ -2,6 +2,7 @@ import pino from 'pino'
 import type { Level, LogEvent } from 'pino'
 import { writeDiagnosticLog } from '@/observability/diagnostics'
 import { redactSensitiveArgs } from '@/observability/redaction'
+import { replaceErrorsDeep, serializeError } from '@/observability/serialize-error'
 import { traceManager } from '@/observability/trace'
 
 function stringifyArg(value: unknown, includeStack = false): string {
@@ -20,7 +21,9 @@ function stringifyArg(value: unknown, includeStack = false): string {
 
 function transmitDiagnostics(level: Level, logEvent: LogEvent): void {
   // Build message from all arguments, applying redaction on each.
-  const message = logEvent.messages.map(m => stringifyArg(redactSensitiveArgs(m), false)).join(' ')
+  const message = logEvent.messages
+    .map(m => stringifyArg(redactSensitiveArgs(replaceErrorsDeep(m)), false))
+    .join(' ')
 
   // Merge all child-logger bindings (e.g. { module: 'api' }) into a flat object.
   const context = Object.assign({}, ...logEvent.bindings) as Record<string, unknown>
@@ -28,7 +31,11 @@ function transmitDiagnostics(level: Level, logEvent: LogEvent): void {
   const traceId = traceManager.getCurrentTrace()?.traceId
   const attributes: Record<string, unknown> = {}
   for (const item of logEvent.messages) {
-    const redacted = redactSensitiveArgs(item)
+    if (item instanceof Error) {
+      attributes.error = serializeError(item)
+      continue
+    }
+    const redacted = redactSensitiveArgs(replaceErrorsDeep(item))
     if (typeof redacted === 'object' && redacted !== null && !Array.isArray(redacted)) {
       Object.assign(attributes, redacted)
     }
@@ -62,6 +69,9 @@ function transmitDiagnostics(level: Level, logEvent: LogEvent): void {
 export const logger = pino({
   level: import.meta.env.DEV ? 'debug' : 'info',
   browser: {
+    // Keep raw Error instances: pino's built-in err serializer drops `cause` and
+    // does not bound the stack. `transmitDiagnostics` serializes them instead.
+    serialize: ['!stdSerializers.err'],
     transmit: {
       level: 'info',
       send: transmitDiagnostics,

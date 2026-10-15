@@ -15,6 +15,7 @@ import {
   initializeDiagnostics,
   DiagnosticsErrorBoundary,
 } from '@/observability/diagnostics'
+import { installGlobalErrorHandlers } from '@/observability/global-errors'
 import { store } from '@/store'
 
 initializeWebviewContextMenu()
@@ -22,6 +23,7 @@ initializeWebviewContextMenu()
 // Initialize diagnostics before React mounts. The provider owns SDK setup;
 // the persisted diagnostics setting still controls remote delivery.
 initializeDiagnostics()
+installGlobalErrorHandlers()
 
 // Attach host context without blocking rendering when the runtime is not ready.
 getDeviceMeta()

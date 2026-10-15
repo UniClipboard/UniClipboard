@@ -1,10 +1,10 @@
 {
-  "_comment": "Shared contract (Go diaglogs and Rust uc-observability tests): a managed log file name is <prefix><YYYY-MM-DD><suffix> with a zero-padded valid calendar date; each role lists names that must match (positive) and must not match any role (negative). undatedFiles lists exact file names exported as logs/<name> when they are regular files, read through a hard cap of 4096 bytes; they carry no date, so a time window never excludes them, and a non-regular entry with such a name is reported as unreadable. writtenByCurrentHost is false for roles no current Desktop process writes (the Go GUI host and Go CLI keep no log files); their legacy files are still exported when present, but their absence is not reported as a missing source.",
+  "_comment": "Shared contract (Go diaglogs and Rust uc-observability tests): a managed log file name is <prefix><YYYY-MM-DD><suffix> with a zero-padded valid calendar date; each role lists names that must match (positive) and must not match any role (negative). undatedFiles lists exact file names exported as logs/<name> when they are regular files, read through a hard cap of 4096 bytes; they carry no date, so a time window never excludes them, and a non-regular entry with such a name is reported as unreadable. writtenByCurrentHost is true for roles a current Desktop process writes; the absence of such a role's file is reported as a missing source, while a role marked false (none today) would still be exported when present but never reported missing.",
   "schemaVersion": 1,
   "undatedFiles": ["daemon-startup-failure.json"],
   "roles": {
     "gui": {
-      "writtenByCurrentHost": false,
+      "writtenByCurrentHost": true,
       "prefix": "uniclipboard-gui.json.",
       "suffix": "",
       "positive": ["uniclipboard-gui.json.2026-10-14", "uniclipboard-gui.json.2024-02-29"],
@@ -30,7 +30,7 @@
       ]
     },
     "cli": {
-      "writtenByCurrentHost": false,
+      "writtenByCurrentHost": true,
       "prefix": "uniclipboard-cli.json.",
       "suffix": "",
       "positive": ["uniclipboard-cli.json.2026-10-14", "uniclipboard-cli.json.2023-12-31"],

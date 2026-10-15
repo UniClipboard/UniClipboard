@@ -27,18 +27,17 @@ var ErrNoLogs = errors.New("No application logs are available to export")
 // source is one managed log role. A managed file name is prefix + YYYY-MM-DD + suffix; the shared fixture
 // testdata/log-source-patterns.json pins these patterns for both the Go and the Rust exporters.
 //
-// current says whether a Desktop process of this version still writes the role. The Go GUI host and the Go CLI keep
-// no log files, so gui and cli files only exist as leftovers of older versions: they are exported when present, and
-// their absence is not a gap worth reporting.
+// current says whether a Desktop process of this version still writes the role; an absent file of a current role is
+// reported as a missing source. Every role is current: the Go GUI host and CLI write theirs through hostlog.
 type source struct {
 	role, prefix, suffix string
 	current              bool
 }
 
 var sources = []source{
-	{"gui", "uniclipboard-gui.json.", "", false},
+	{"gui", "uniclipboard-gui.json.", "", true},
 	{"daemon", "uniclipboard-daemon.json.", "", true},
-	{"cli", "uniclipboard-cli.json.", "", false},
+	{"cli", "uniclipboard-cli.json.", "", true},
 	{"quick-panel", "uniclipboard-quick-panel.json.", "", true},
 	{"engine", "engine.", ".jsonl", true},
 }

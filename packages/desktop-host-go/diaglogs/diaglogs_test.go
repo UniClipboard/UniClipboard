@@ -159,7 +159,7 @@ func TestManifestReportsMissingSources(t *testing.T) {
 	for _, s := range m.Collection.MissingSources {
 		got[s.Source] = s.Reason
 	}
-	want := map[string]string{"daemon": "missing", "quick-panel": "missing"}
+	want := map[string]string{"daemon": "missing", "cli": "missing", "quick-panel": "missing"}
 	if len(got) != len(want) {
 		t.Fatalf("missingSources = %v, want %v", got, want)
 	}
@@ -299,7 +299,7 @@ func TestExportReturnsTheManifestMissingSources(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []MissingSource{{"daemon", "missing"}, {"quick-panel", "missing"}}
+	want := []MissingSource{{"daemon", "missing"}, {"cli", "missing"}, {"quick-panel", "missing"}}
 	if !slices.Equal(report.MissingSources, want) {
 		t.Fatalf("report.MissingSources = %v, want %v", report.MissingSources, want)
 	}

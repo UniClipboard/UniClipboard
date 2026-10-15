@@ -159,8 +159,8 @@ async fn a_second_daemon_on_a_busy_profile_records_its_failure_and_writes_no_log
     );
     assert!(!missing.contains(&"daemon"));
     assert!(
-        !missing.contains(&"gui") && !missing.contains(&"cli"),
-        "no current process writes these: {missing:?}"
+        missing.contains(&"gui") && missing.contains(&"cli"),
+        "the Go GUI host and CLI never ran in this profile: {missing:?}"
     );
 
     assert!(zip_entry(&path, "logs/daemon-startup-failure.json").is_some());

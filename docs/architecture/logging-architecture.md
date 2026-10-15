@@ -18,10 +18,12 @@
 | `uniclipboard-daemon.json.<日期>` | daemon 的宿主层 | 宿主进程自己的记录：启动、HTTP、桌面平台适配、诊断导出等 |
 | `engine.<日期>.jsonl` | daemon 内的 Engine 诊断运行时 | Engine 的连接、配对、同步诊断记录；由 Engine 的采集模式控制，与宿主 Debug 模式无关 |
 | `uniclipboard-quick-panel.json.<日期>` | 快捷面板进程 | 快捷面板自己的记录 |
+| `uniclipboard-gui.json.<日期>` | Go 图形界面宿主 | 宿主的生命周期事件，以及标准库 `log` 的全部输出（同时仍回显到 stderr） |
+| `uniclipboard-cli.json.<日期>` | Go 命令行 `uniclip` | 每次调用的开始与结果（退出码、耗时）；参数可能含口令，从不记录 |
 | `daemon-startup-failure.json` | daemon | 最近一次在日志可用之前失败的启动，见下文，只保留一份 |
 | `service.stdout.log`、`service.stderr.log` | macOS launchd 用户服务 | 服务的标准输出和错误输出，见下文 |
 
-按日轮转，保留 7 天，启动时清理更早的文件。`uniclipboard-gui.json.*` 与 `uniclipboard-cli.json.*` 是旧版本留下的命名：Go 图形界面宿主和 Go 命令行目前不写持久日志文件（本次核对未发现任何写入路径）。它们的旧文件仍会被导出，但文件缺失不会被当作缺口报告。
+按日轮转，保留 7 天，启动时清理更早的文件。Go 进程（图形界面宿主、命令行）通过 `packages/desktop-host-go/hostlog` 写自己的文件，格式与 daemon 的宿主层一致：一行一个 JSON 对象，含 `timestamp`、`level`、`target`（`go.host`）、`message`、`run_id`、`pid`；单条消息上限 8 KiB；目录 `0700`、文件 `0600`；只清理自己角色的过期文件。日志目录无法创建或打开时只退回控制台输出，不阻止启动。
 
 前端（React）日志经 `src/lib/logger.ts` 进入控制台和 Sentry（受遥测开关控制），不写入本地日志目录，因此不在本地诊断包内。
 

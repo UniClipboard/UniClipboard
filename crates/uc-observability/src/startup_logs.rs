@@ -335,15 +335,14 @@ fn collect_log_files(logs_dir: &Path) -> Result<(Vec<LogCandidate>, Vec<String>)
 
 /// Managed daily logs: source name, the file name around the date
 /// (`<prefix><YYYY-MM-DD><suffix>`) and whether a current Desktop process
-/// writes the source. The Go GUI host and the Go CLI keep no log files, so `gui`
-/// and `cli` files are only leftovers of older versions: they are exported when
-/// present but their absence is not reported. The Go offline export keeps the
-/// same list; `tests/log_source_patterns.rs` and its Go counterpart check both
+/// writes the source: an absent file of such a source is reported as missing.
+/// The Go GUI host and CLI write `gui` and `cli` through `hostlog`. The Go
+/// offline export keeps the same list; `tests/log_source_patterns.rs` and its Go counterpart check both
 /// against one fixture.
 const LOG_SOURCES: [(&str, &str, &str, bool); 5] = [
-    ("gui", "uniclipboard-gui.json.", "", false),
+    ("gui", "uniclipboard-gui.json.", "", true),
     ("daemon", "uniclipboard-daemon.json.", "", true),
-    ("cli", "uniclipboard-cli.json.", "", false),
+    ("cli", "uniclipboard-cli.json.", "", true),
     ("quick-panel", "uniclipboard-quick-panel.json.", "", true),
     ("engine", "engine.", ".jsonl", true),
 ];

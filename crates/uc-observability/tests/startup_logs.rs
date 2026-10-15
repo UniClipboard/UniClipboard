@@ -435,6 +435,7 @@ fn the_manifest_names_the_sources_that_contributed_nothing() {
         missing,
         [
             ("daemon".to_owned(), "missing".to_owned()),
+            ("cli".to_owned(), "missing".to_owned()),
             ("quick-panel".to_owned(), "missing".to_owned()),
         ]
     );

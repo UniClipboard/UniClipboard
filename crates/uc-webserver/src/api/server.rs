@@ -1028,6 +1028,15 @@ mod request_correlation_tests {
                 }),
             )
             .route(
+                "/list-error",
+                get(|| async {
+                    (
+                        StatusCode::BAD_REQUEST,
+                        axum::Json(serde_json::json!(["a", "b"])),
+                    )
+                }),
+            )
+            .route(
                 "/ok-json",
                 get(|| async { axum::Json(serde_json::json!({ "code": "x", "message": "y" })) }),
             )
@@ -1115,15 +1124,22 @@ mod request_correlation_tests {
     }
 
     #[tokio::test]
-    async fn only_daemon_error_bodies_are_stamped() {
+    async fn only_json_object_error_bodies_are_stamped() {
         // A successful response keeps its body even if it looks like an error.
         let ok = body_of(call("/ok-json", Some("trace-ok")).await).await;
         assert!(ok.get("requestId").is_none(), "{ok}");
 
-        // An error body that is not the daemon's { code, message } shape is
-        // left exactly as the handler produced it.
+        // Rejections that predate the canonical shape (the session middleware
+        // answers `{ "error": ... }`) are still correlated.
         let foreign = body_of(call("/foreign-error", Some("trace-foreign")).await).await;
-        assert_eq!(foreign, serde_json::json!({ "upstream": "down" }));
+        assert_eq!(
+            foreign,
+            serde_json::json!({ "upstream": "down", "requestId": "trace-foreign" })
+        );
+
+        // Anything that is not a JSON object is passed through untouched.
+        let list = call("/list-error", Some("trace-list")).await;
+        assert_eq!(body_of(list).await, serde_json::json!(["a", "b"]));
     }
 
     #[tokio::test]

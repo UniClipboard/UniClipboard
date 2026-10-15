@@ -43,12 +43,12 @@ const MAX_STAMPED_BODY_BYTES: usize = 64 * 1024;
 
 /// Add `requestId` to a daemon error body.
 ///
-/// Every failure the daemon produces is a JSON object with string `code` and
-/// `message` (`ApiErrorResponse`), built in many places (handlers, security
-/// middleware, route fallbacks). The id is added here, once, after the handler
-/// ran, so no producer has to know about it. Responses that are not client or
-/// server errors, are not JSON, are larger than the bound, or lack that shape
-/// are returned unchanged.
+/// Failure bodies of the daemon are JSON objects built in many places: the
+/// canonical `{ code, message }` of `ApiErrorResponse` in handlers, route
+/// fallbacks and the security middleware, and older `{ error }` rejections. The
+/// id is added here, once, after the handler ran, so no producer has to know
+/// about it. Responses that are not client or server errors, are not JSON, are
+/// larger than the bound, or are not a JSON object are returned unchanged.
 pub(crate) async fn stamp_error_body(response: Response, request_id: &str) -> Response {
     let status = response.status();
     if !(status.is_client_error() || status.is_server_error()) {
@@ -77,11 +77,8 @@ pub(crate) async fn stamp_error_body(response: Response, request_id: &str) -> Re
     let stamped = serde_json::from_slice::<serde_json::Value>(&bytes)
         .ok()
         .and_then(|mut value| {
-            let object = value.as_object_mut()?;
-            if !(object.get("code")?.is_string() && object.get("message")?.is_string()) {
-                return None;
-            }
-            object
+            value
+                .as_object_mut()?
                 .entry("requestId")
                 .or_insert_with(|| serde_json::Value::from(request_id));
             serde_json::to_vec(&value).ok()

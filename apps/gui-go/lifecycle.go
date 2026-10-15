@@ -1,14 +1,17 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"os/exec"
 	"strconv"
 	"sync/atomic"
 	"time"
 
+	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/daemonclient"
 	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/daemonlife"
 	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/daemonproc"
 )
@@ -77,7 +80,7 @@ func stopDaemon() error {
 	if err != nil || !ok {
 		return err
 	}
-	if err := daemonproc.TerminateAndWait(pid, daemonStopTimeout); err != nil {
+	if err := daemonproc.StopDaemon(pid, requestDaemonGracefulStop, daemonStopTimeout); err != nil {
 		return err
 	}
 	deadline := time.Now().Add(daemonStopTimeout)
@@ -88,6 +91,20 @@ func stopDaemon() error {
 		time.Sleep(200 * time.Millisecond)
 	}
 	return fmt.Errorf("the daemon (pid %d) was still answering %s after the stop", pid, daemonStopTimeout)
+}
+
+// requestDaemonGracefulStop asks the daemon to shut down in an orderly way. The route marks the run marker clean
+// before it notifies the shutdown task, so the next start does not report an abnormal exit.
+func requestDaemonGracefulStop(ctx context.Context) error {
+	client, err := daemonclient.FromEnv()
+	if err != nil {
+		return err
+	}
+	resp, err := client.Send(ctx, daemonclient.Request{Method: http.MethodPost, Path: "/lifecycle/graceful-stop"})
+	if err != nil {
+		return err
+	}
+	return resp.Body.Close()
 }
 
 // runningDaemonPID returns the pid of the live, GUI-owned daemon. The pid file carries the run mode; the connection

@@ -10,6 +10,18 @@ use tracing_subscriber::EnvFilter;
 
 static INSTALLED_PROFILE: OnceLock<String> = OnceLock::new();
 
+/// Environment variable that switches the console log layer off when set to `off`.
+///
+/// A process whose standard output is a file nobody rotates (the macOS launchd
+/// service) sets it so that file cannot grow without bound; the JSON file layer
+/// keeps its own daily rotation and retention.
+pub const CONSOLE_LOG_ENV: &str = "UC_CONSOLE_LOG";
+
+/// Whether a [`CONSOLE_LOG_ENV`] value turns the console layer off.
+pub(crate) fn console_logging_disabled(value: Option<&str>) -> bool {
+    value == Some("off")
+}
+
 /// Record the profile this process installed its host log layers with.
 ///
 /// Returns `false` when a profile was already recorded; the first one stays.
@@ -137,8 +149,12 @@ impl LogProfile {
     /// Build the `EnvFilter` for the console (pretty) layer.
     ///
     /// If `RUST_LOG` is set, returns that override with mandatory caps applied.
-    /// For the `Cli` profile, console output is completely disabled.
+    /// Console output is completely disabled for the `Cli` profile and when
+    /// [`CONSOLE_LOG_ENV`] is `off`.
     pub fn console_filter(&self) -> EnvFilter {
+        if console_logging_disabled(std::env::var(CONSOLE_LOG_ENV).ok().as_deref()) {
+            return EnvFilter::new("off");
+        }
         if let Some(filter) = Self::rust_log_override() {
             return filter;
         }
@@ -274,6 +290,14 @@ mod tests {
                     "{profile} names {target}: {directives}"
                 );
             }
+        }
+    }
+
+    #[test]
+    fn the_console_switch_only_accepts_an_explicit_off() {
+        assert!(console_logging_disabled(Some("off")));
+        for value in [None, Some(""), Some("on"), Some("OFF "), Some("0")] {
+            assert!(!console_logging_disabled(value), "{value:?}");
         }
     }
 

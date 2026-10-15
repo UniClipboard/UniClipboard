@@ -220,6 +220,25 @@ func xmlString(value string) string {
 // systemd uses C-style quoting and percent specifiers; the ExecStart ':' prefix disables dollar expansion.
 func unitQuote(value string) string { return strconv.Quote(strings.ReplaceAll(value, "%", "%%")) }
 
+// serviceEnvironment is the environment a service unit starts the daemon with. fileStdout reports that the
+// service manager writes standard output to a plain file that nothing rotates (the launchd plist); the daemon's
+// console layer is then switched off, because its JSON log files already rotate daily and are the record of truth.
+func serviceEnvironment(home, self string, fileStdout bool, getenv func(string) string) map[string]string {
+	env := map[string]string{"HOME": home, "UC_PROFILE": getenv("UC_PROFILE"), "UNICLIPBOARD_ENV": "production", "UC_DAEMON_SPAWN_ORIGIN": "cli", "PATH": filepath.Dir(self) + ":/usr/bin:/bin:/usr/sbin:/sbin"}
+	if getenv("UNICLIPBOARD_ENV") == "development" {
+		env["UNICLIPBOARD_ENV"] = "development"
+	}
+	for _, key := range []string{"XDG_DATA_HOME", "XDG_CACHE_HOME", "XDG_STATE_HOME", "UC_DISABLE_SYSTEM_CLIPBOARD"} {
+		if value := getenv(key); value != "" {
+			env[key] = value
+		}
+	}
+	if fileStdout {
+		env["UC_CONSOLE_LOG"] = "off"
+	}
+	return env
+}
+
 func (s *Service) render(server bool) ([]byte, error) {
 	self, err := os.Executable()
 	if err != nil {
@@ -241,15 +260,7 @@ func (s *Service) render(server bool) ([]byte, error) {
 	if filepath.Dir(daemon) != filepath.Dir(self) {
 		return nil, errors.New("service requires uniclipd installed beside uniclip")
 	}
-	env := map[string]string{"HOME": s.Home, "UC_PROFILE": os.Getenv("UC_PROFILE"), "UNICLIPBOARD_ENV": "production", "UC_DAEMON_SPAWN_ORIGIN": "cli", "PATH": filepath.Dir(self) + ":/usr/bin:/bin:/usr/sbin:/sbin"}
-	if os.Getenv("UNICLIPBOARD_ENV") == "development" {
-		env["UNICLIPBOARD_ENV"] = "development"
-	}
-	for _, key := range []string{"XDG_DATA_HOME", "XDG_CACHE_HOME", "XDG_STATE_HOME", "UC_DISABLE_SYSTEM_CLIPBOARD"} {
-		if value := os.Getenv(key); value != "" {
-			env[key] = value
-		}
-	}
+	env := serviceEnvironment(s.Home, self, runtime.GOOS == "darwin", os.Getenv)
 	keys := make([]string, 0, len(env))
 	for key := range env {
 		keys = append(keys, key)

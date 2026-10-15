@@ -119,6 +119,11 @@ impl EngineDaemonDiagnostics {
             self.stop_network_with_business();
             return true;
         }
+        // Both windows are closed, so a failure of the finished capture no longer
+        // describes anything that is still open.
+        if !business_detailed && !network_detailed {
+            self.set_network_link_failure(None);
+        }
         false
     }
 
@@ -135,7 +140,9 @@ impl EngineDaemonDiagnostics {
                     ?error,
                     "network log detailed window did not stop with the diagnostic capture"
                 );
+                return;
             }
+            self.set_network_link_failure(None);
         }
     }
 

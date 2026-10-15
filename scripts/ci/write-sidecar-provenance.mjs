@@ -26,7 +26,10 @@ const sha256 = path => createHash('sha256').update(readFileSync(path)).digest('h
 // Trust only this explicitly invoked checkout for these child commands. Container actions may
 // use a different HOME than checkout; do not depend on its temporary global safe.directory.
 const git = (...args) =>
-  execFileSync('git', ['-c', `safe.directory=${repoRoot}`, ...args], { cwd: repoRoot, encoding: 'utf8' }).trim()
+  execFileSync('git', ['-c', `safe.directory=${repoRoot}`, ...args], {
+    cwd: repoRoot,
+    encoding: 'utf8',
+  }).trim()
 
 const target = arg('--target')
 const buildMode = arg('--build-mode')

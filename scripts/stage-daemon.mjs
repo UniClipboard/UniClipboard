@@ -81,7 +81,11 @@ const profile = release ? 'release' : 'debug'
 const runCargoBuild = args => {
   const options = { cwd: repoRoot, stdio: 'inherit' }
   if (process.env.UC_ENGINE_MBX_BIN) {
-    execFileSync('bash', [join(repoRoot, 'scripts/build-cache/mbx.sh'), '--exec', 'cargo', ...args], options)
+    execFileSync(
+      'bash',
+      [join(repoRoot, 'scripts/build-cache/mbx.sh'), '--exec', 'cargo', ...args],
+      options
+    )
   } else {
     execFileSync('cargo', args, options)
   }

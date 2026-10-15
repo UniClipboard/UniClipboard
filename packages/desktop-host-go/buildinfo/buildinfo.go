@@ -6,4 +6,4 @@ package buildinfo
 const PackageVersion = "1.2.0-alpha.5"
 
 // DaemonAPIRevision is the daemon contract revision the daemon must report.
-const DaemonAPIRevision = "setup-pairing-http-routes-v2-event-wired-residency-restart-inbound-notice-summary-relay-credentials-diagnostic-capture-v1-profile-recovery-v3-custom-relays-v1-removal-notice-v1"
+const DaemonAPIRevision = "setup-pairing-http-routes-v2-event-wired-residency-restart-inbound-notice-summary-relay-credentials-diagnostic-capture-v1-profile-recovery-v3-custom-relays-v1-removal-notice-v1-network-log-v1"

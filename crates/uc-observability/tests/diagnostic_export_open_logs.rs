@@ -265,6 +265,7 @@ fn export_online(
                 engine_preparation: None,
                 startup_status: None,
                 host: None,
+                network: Default::default(),
             },
         );
         let _ = done.send(result);

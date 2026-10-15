@@ -1,5 +1,7 @@
 //! HTTP route handlers for local diagnostics endpoints.
 
+use std::sync::Arc;
+
 use axum::extract::State;
 use axum::routing::{get, post, put};
 use axum::{Json, Router};
@@ -7,7 +9,8 @@ use tracing::{info, instrument};
 use uc_daemon_contract::api::dto::diagnostics::{
     DebugStatusDto, DiagnosticCaptureStartRequestDto, DiagnosticCaptureStopRequestDto,
     DiagnosticCaptureStopResultDto, DiagnosticStatusDto, LogExportRequestDto, LogExportResultDto,
-    UpdateDebugModeRequestDto, UpdateDebugModeResultDto,
+    NetworkCaptureStartRequestDto, NetworkCaptureStartResultDto, NetworkCaptureStopRequestDto,
+    NetworkLogStatusDto, UpdateDebugModeRequestDto, UpdateDebugModeResultDto,
 };
 use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
 use uc_engine::{
@@ -18,7 +21,7 @@ use utoipa;
 use crate::api::dto::error::{log_facade_failure, ApiError};
 use crate::api::server::{
     DaemonApiState, DaemonDiagnosticArchive, DaemonDiagnosticArchiveError, DaemonDiagnosticError,
-    DaemonDiagnosticsRuntime,
+    DaemonDiagnosticsRuntime, DaemonNetworkLogError,
 };
 
 pub fn router() -> Router<DaemonApiState> {
@@ -28,7 +31,88 @@ pub fn router() -> Router<DaemonApiState> {
         .route("/diagnostics/capture", get(get_capture_status_handler))
         .route("/diagnostics/capture/start", post(start_capture_handler))
         .route("/diagnostics/capture/stop", post(stop_capture_handler))
+        .route("/diagnostics/network", get(get_network_status_handler))
+        .route(
+            "/diagnostics/network/start",
+            post(start_network_capture_handler),
+        )
+        .route(
+            "/diagnostics/network/stop",
+            post(stop_network_capture_handler),
+        )
         .route("/diagnostics/log-export", post(export_logs_handler))
+}
+
+#[utoipa::path(
+    get,
+    path = "/diagnostics/network",
+    tag = "system",
+    operation_id = "getNetworkLogStatus",
+    responses(
+        (status = 200, description = "State, budget and drop counters of the independent network-library log; `availability` is `notConfigured` when the daemon runs without it", body = NetworkLogStatusEnvelope),
+        (status = 503, description = "Local Engine diagnostics unavailable", body = ApiErrorResponse)
+    )
+)]
+#[instrument(name = "api.diagnostics.network.get", level = "info", skip(state))]
+pub async fn get_network_status_handler(
+    State(state): State<DaemonApiState>,
+) -> Result<Json<ApiEnvelope<NetworkLogStatusDto>>, ApiError> {
+    let runtime = diagnostics_runtime_arc(&state)?;
+    let status = run_blocking(move || runtime.network_status()).await?;
+    Ok(Json(ApiEnvelope::now(status)))
+}
+
+#[utoipa::path(
+    post,
+    path = "/diagnostics/network/start",
+    tag = "system",
+    operation_id = "startNetworkCapture",
+    request_body = NetworkCaptureStartRequestDto,
+    responses(
+        (status = 200, description = "The open network capture window; a repeated start returns the existing window unchanged", body = NetworkCaptureStartEnvelope),
+        (status = 400, description = "Capture duration outside 1 to 900 seconds", body = ApiErrorResponse),
+        (status = 409, description = "The network log is not configured; `code` is network_log_not_configured", body = ApiErrorResponse),
+        (status = 503, description = "Local Engine diagnostics unavailable", body = ApiErrorResponse)
+    )
+)]
+#[instrument(name = "api.diagnostics.network.start", level = "info", skip(state, payload), fields(duration_seconds = payload.duration_seconds))]
+pub async fn start_network_capture_handler(
+    State(state): State<DaemonApiState>,
+    Json(payload): Json<NetworkCaptureStartRequestDto>,
+) -> Result<Json<ApiEnvelope<NetworkCaptureStartResultDto>>, ApiError> {
+    let runtime = diagnostics_runtime_arc(&state)?;
+    let result = run_blocking(move || runtime.start_network_capture(payload))
+        .await?
+        .map_err(network_log_error)?;
+    Ok(Json(ApiEnvelope::now(result)))
+}
+
+#[utoipa::path(
+    post,
+    path = "/diagnostics/network/stop",
+    tag = "system",
+    operation_id = "stopNetworkCapture",
+    request_body = NetworkCaptureStopRequestDto,
+    responses(
+        (status = 200, description = "Network log state after the window ended", body = NetworkLogStatusEnvelope),
+        (status = 409, description = "The network log is not configured or the capture id does not match the open window", body = ApiErrorResponse),
+        (status = 503, description = "Local Engine diagnostics unavailable", body = ApiErrorResponse)
+    )
+)]
+#[instrument(
+    name = "api.diagnostics.network.stop",
+    level = "info",
+    skip(state, payload)
+)]
+pub async fn stop_network_capture_handler(
+    State(state): State<DaemonApiState>,
+    Json(payload): Json<NetworkCaptureStopRequestDto>,
+) -> Result<Json<ApiEnvelope<NetworkLogStatusDto>>, ApiError> {
+    let runtime = diagnostics_runtime_arc(&state)?;
+    let status = run_blocking(move || runtime.stop_network_capture(&payload.capture_id))
+        .await?
+        .map_err(network_log_error)?;
+    Ok(Json(ApiEnvelope::now(status)))
 }
 
 #[utoipa::path(
@@ -205,7 +289,7 @@ pub async fn export_logs_handler(
     State(state): State<DaemonApiState>,
     Json(payload): Json<LogExportRequestDto>,
 ) -> Result<Json<ApiEnvelope<LogExportResultDto>>, ApiError> {
-    let runtime = diagnostics_runtime(&state)?;
+    let runtime = diagnostics_runtime_arc(&state)?;
     let archive = state
         .diagnostic_archive
         .as_deref()
@@ -222,11 +306,14 @@ pub async fn export_logs_handler(
 }
 
 async fn prepare_and_export(
-    runtime: &dyn DaemonDiagnosticsRuntime,
+    runtime: Arc<dyn DaemonDiagnosticsRuntime>,
     archive: &dyn DaemonDiagnosticArchive,
     since_hours: Option<u32>,
 ) -> Result<LogExportResultDto, ApiError> {
-    let preparation = runtime.prepare_export().map_err(diagnostic_runtime_error)?;
+    // The flushes wait on the log writer threads; keep them off the async workers.
+    let preparation = run_blocking(move || runtime.prepare_export())
+        .await?
+        .map_err(diagnostic_runtime_error)?;
     archive
         .export(since_hours, preparation)
         .await
@@ -259,6 +346,44 @@ fn archive_export_error(error: DaemonDiagnosticArchiveError) -> ApiError {
         .with_details(serde_json::json!({ "cause": cause }));
     log_facade_failure("diagnostics", "log_export", cause, api.status, &api.message);
     api
+}
+
+fn diagnostics_runtime_arc(
+    state: &DaemonApiState,
+) -> Result<Arc<dyn DaemonDiagnosticsRuntime>, ApiError> {
+    state
+        .diagnostics_runtime
+        .clone()
+        .ok_or_else(|| ApiError::service_unavailable("local Engine diagnostics are unavailable"))
+}
+
+/// Runs a blocking diagnostics call on the blocking pool. A panicked or
+/// cancelled worker is an internal failure, never an empty result.
+async fn run_blocking<T: Send + 'static>(
+    work: impl FnOnce() -> T + Send + 'static,
+) -> Result<T, ApiError> {
+    tokio::task::spawn_blocking(work)
+        .await
+        .map_err(|_| ApiError::internal("diagnostics worker failed"))
+}
+
+fn network_log_error(error: DaemonNetworkLogError) -> ApiError {
+    match error {
+        DaemonNetworkLogError::NotConfigured => {
+            ApiError::conflict("the network log is not configured")
+                .with_code("network_log_not_configured")
+        }
+        DaemonNetworkLogError::InvalidDuration => {
+            ApiError::bad_request("network capture duration must be between 1 and 900 seconds")
+        }
+        DaemonNetworkLogError::CaptureMismatch => {
+            ApiError::conflict("the capture id does not match the open network capture")
+                .with_code("network_capture_mismatch")
+        }
+        DaemonNetworkLogError::AlreadyShutdown => {
+            ApiError::service_unavailable("local Engine diagnostics are unavailable")
+        }
+    }
 }
 
 fn diagnostics_runtime(state: &DaemonApiState) -> Result<&dyn DaemonDiagnosticsRuntime, ApiError> {
@@ -312,7 +437,8 @@ mod tests {
     use uc_daemon_contract::api::dto::diagnostics::{
         DiagnosticArchiveCollectionDto, DiagnosticCaptureModeDto, DiagnosticCaptureStateDto,
         DiagnosticExportPreparationDto, DiagnosticSetupStatusDto, DiagnosticSignalResultDto,
-        DiagnosticStatusDto,
+        DiagnosticStatusDto, NetworkArchiveCollectionDto, NetworkArchiveOutcomeDto,
+        NetworkExportPreparationDto, NetworkLogAvailabilityDto,
     };
 
     use super::*;
@@ -344,6 +470,40 @@ mod tests {
             self.prepared.store(true, Ordering::SeqCst);
             Ok(preparation())
         }
+
+        fn network_status(&self) -> NetworkLogStatusDto {
+            not_configured_network_status()
+        }
+
+        fn start_network_capture(
+            &self,
+            _request: NetworkCaptureStartRequestDto,
+        ) -> Result<NetworkCaptureStartResultDto, DaemonNetworkLogError> {
+            Err(DaemonNetworkLogError::NotConfigured)
+        }
+
+        fn stop_network_capture(
+            &self,
+            _capture_id: &str,
+        ) -> Result<NetworkLogStatusDto, DaemonNetworkLogError> {
+            Err(DaemonNetworkLogError::NotConfigured)
+        }
+    }
+
+    fn not_configured_network_status() -> NetworkLogStatusDto {
+        NetworkLogStatusDto {
+            availability: NetworkLogAvailabilityDto::NotConfigured,
+            state: None,
+            run_id: None,
+            role: None,
+            mode: None,
+            capture_id: None,
+            detailed_remaining_ms: None,
+            counters: None,
+            libraries: Vec::new(),
+            budget: None,
+            sampled_at_utc: None,
+        }
     }
 
     struct ArchiveProbe {
@@ -370,6 +530,12 @@ mod tests {
                     truncated_files: Vec::new(),
                     concurrent_writes_possible: true,
                     missing_sources: Vec::new(),
+                    network: NetworkArchiveCollectionDto {
+                        outcome: NetworkArchiveOutcomeDto::NotConfigured,
+                        reasons: Vec::new(),
+                        runs: Vec::new(),
+                        ignored_entries: 0,
+                    },
                 },
             })
         }
@@ -378,12 +544,12 @@ mod tests {
     #[tokio::test]
     async fn export_prepares_engine_before_collecting_the_archive() {
         let prepared = Arc::new(AtomicBool::new(false));
-        let runtime = RuntimeProbe {
+        let runtime = Arc::new(RuntimeProbe {
             prepared: Arc::clone(&prepared),
-        };
+        });
         let archive = ArchiveProbe { prepared };
 
-        let result = prepare_and_export(&runtime, &archive, Some(24))
+        let result = prepare_and_export(runtime, &archive, Some(24))
             .await
             .expect("export");
 
@@ -502,11 +668,11 @@ mod tests {
     #[tokio::test]
     async fn a_failed_archive_export_names_its_cause() {
         for (failure, cause, status) in export_failure_cases() {
-            let runtime = RuntimeProbe {
+            let runtime = Arc::new(RuntimeProbe {
                 prepared: Arc::new(AtomicBool::new(false)),
-            };
+            });
 
-            let error = prepare_and_export(&runtime, &FailingArchive(failure), Some(24))
+            let error = prepare_and_export(runtime, &FailingArchive(failure), Some(24))
                 .await
                 .expect_err("export fails");
 
@@ -529,10 +695,10 @@ mod tests {
 
             let records = records_of_current_thread(|| {
                 runtime.block_on(async {
-                    let probe = RuntimeProbe {
+                    let probe = Arc::new(RuntimeProbe {
                         prepared: Arc::new(AtomicBool::new(false)),
-                    };
-                    let _ = prepare_and_export(&probe, &FailingArchive(failure), Some(24)).await;
+                    });
+                    let _ = prepare_and_export(probe, &FailingArchive(failure), Some(24)).await;
                 });
             });
 
@@ -559,6 +725,15 @@ mod tests {
             completed_at_utc: "2026-09-11T00:00:01Z".to_string(),
             other_processes_flushed: false,
             files: Vec::new(),
+            network: NetworkExportPreparationDto {
+                availability: NetworkLogAvailabilityDto::NotConfigured,
+                flush: None,
+                status: None,
+                requested_at_utc: None,
+                completed_at_utc: None,
+                other_processes_flushed: false,
+                files: Vec::new(),
+            },
         }
     }
 

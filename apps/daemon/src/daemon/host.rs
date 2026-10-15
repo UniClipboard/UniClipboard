@@ -78,7 +78,7 @@ async fn run_async(run_mode: DaemonRunMode) -> anyhow::Result<()> {
     let lock_wait = claim_started.elapsed();
     uc_daemon_local::handover::clear(process_paths.app_data_root());
 
-    let process_observability = init_daemon_tracing_subscriber().inspect_err(|_| {
+    let observability = init_daemon_tracing_subscriber().inspect_err(|_| {
         record_startup_failure(
             process_paths.logs_dir(),
             StartupStep::Tracing,
@@ -88,10 +88,13 @@ async fn run_async(run_mode: DaemonRunMode) -> anyhow::Result<()> {
     install_panic_logging_hook();
     info!(
         lock_wait_ms = lock_wait.as_millis() as u64,
-        engine_run_id = %process_observability.query_local_diagnostic_status().run_id,
+        engine_run_id = %observability.handle.query_local_diagnostic_status().run_id,
         "daemon claimed its profile"
     );
-    let diagnostics = Arc::new(EngineDaemonDiagnostics::new(process_observability));
+    let diagnostics = Arc::new(EngineDaemonDiagnostics::new(
+        observability.handle,
+        observability.network_log_budget,
+    ));
     let result =
         run_async_with_diagnostics(run_mode, Arc::clone(&diagnostics), process_paths.logs_dir())
             .await;

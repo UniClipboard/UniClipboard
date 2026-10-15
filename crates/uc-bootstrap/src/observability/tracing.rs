@@ -38,7 +38,9 @@ use tracing_subscriber::filter::{filter_fn, FilterExt};
 use tracing_subscriber::prelude::*;
 
 use super::correlation::{self, CorrelationLayer};
+use super::network_log::{daemon_network_log, NetworkLogSetup};
 use super::sentry_gate::{transaction_sample_rate, TelemetryGatedTransportFactory};
+use super::NETWORK_LOG_BUDGET_ENV;
 use uc_observability::redact::{is_sensitive_key, REDACTED_PLACEHOLDER};
 use uc_observability::{LogProfile, WorkerGuard};
 
@@ -206,20 +208,26 @@ pub fn init_tracing_subscriber() -> anyhow::Result<()> {
     install_tracing_subscriber().map(drop)
 }
 
+/// What the daemon keeps from the one process installation: the Engine handle
+/// and the network-log budget it configured (absent when the network log is
+/// `NotConfigured`; the Engine status does not report its own budget).
+pub struct DaemonObservability {
+    pub handle: uc_engine::observability::ProcessObservabilityHandle,
+    pub network_log_budget: Option<uc_engine::observability::NetworkLogBudget>,
+}
+
 /// Initialize tracing for the daemon and return its Engine diagnostics handle.
 ///
 /// Unlike [`init_tracing_subscriber`], this entry requires the caller to own
 /// the first process installation. The daemon retains the returned handle for
 /// capture control, export preparation, and orderly shutdown.
-pub fn init_daemon_tracing_subscriber(
-) -> anyhow::Result<uc_engine::observability::ProcessObservabilityHandle> {
+pub fn init_daemon_tracing_subscriber() -> anyhow::Result<DaemonObservability> {
     install_tracing_subscriber()?.ok_or_else(|| {
         anyhow::anyhow!("daemon tracing was initialized before the daemon acquired its handle")
     })
 }
 
-fn install_tracing_subscriber(
-) -> anyhow::Result<Option<uc_engine::observability::ProcessObservabilityHandle>> {
+fn install_tracing_subscriber() -> anyhow::Result<Option<DaemonObservability>> {
     // Idempotency guard: skip if already initialized
     if TRACING_INITIALIZED.get().is_some() {
         ::tracing::debug!("Tracing already initialized, skipping");
@@ -554,9 +562,24 @@ fn install_tracing_subscriber(
         Box::new(console_layer),
         Box::new(json_layer),
     ];
+    let network_log = if scope_ctx.device_role == "daemon" {
+        let explicit_budget = std::env::var(NETWORK_LOG_BUDGET_ENV).ok();
+        Some(daemon_network_log(
+            &paths.logs_dir,
+            explicit_budget.as_deref(),
+        ))
+    } else {
+        None
+    };
+    let network_log_setup = network_log.as_ref().map(|network| network.setup);
+    let network_log_budget = network_log.as_ref().and_then(|network| network.budget);
     let process_observability =
         match uc_engine::observability::ProcessObservabilityRuntime::install_with_host_layers(
-            engine_observability_config(&scope_ctx, &paths.logs_dir)?,
+            engine_observability_config(
+                &scope_ctx,
+                &paths.logs_dir,
+                network_log.and_then(|network| network.config),
+            )?,
             host_layers,
         ) {
             Ok(installed) => installed.handle(),
@@ -591,13 +614,32 @@ fn install_tracing_subscriber(
         telemetry_enabled = telemetry_enabled,
         "Tracing initialized with host output and shared Engine diagnostics"
     );
+    if let Some(setup) = network_log_setup {
+        match setup {
+            NetworkLogSetup::Configured => {
+                ::tracing::info!("network-library log configured for the daemon");
+            }
+            NetworkLogSetup::NotConfigured => {
+                ::tracing::info!("network-library log is not configured: no budget was given");
+            }
+            NetworkLogSetup::RejectedBudget => {
+                ::tracing::warn!(
+                    "network-library log is not configured: the explicit budget was rejected"
+                );
+            }
+        }
+    }
 
-    Ok(Some(process_observability))
+    Ok(Some(DaemonObservability {
+        handle: process_observability,
+        network_log_budget,
+    }))
 }
 
 fn engine_observability_config(
     scope: &uc_observability::ScopeContext,
     logs_dir: &Path,
+    network_log: Option<uc_engine::observability::NetworkLogConfig>,
 ) -> anyhow::Result<uc_engine::observability::ObservabilityConfig> {
     use uc_engine::observability::{
         DeploymentEnvironment, LocalLogConfig, ObservabilityConfig, ObservabilityResource,
@@ -629,8 +671,14 @@ fn engine_observability_config(
         channel,
     )?);
     // The daemon is the Engine owner. GUI and CLI must not append to its files.
+    // The network-library log is configured here, before the runtime is
+    // installed: the Engine rejects it afterwards.
     Ok(if scope.device_role == "daemon" {
-        config.with_local_logs(LocalLogConfig::new(logs_dir))
+        let config = config.with_local_logs(LocalLogConfig::new(logs_dir));
+        match network_log {
+            Some(network_log) => config.with_network_logs(network_log),
+            None => config,
+        }
     } else {
         config
     })
@@ -924,7 +972,8 @@ mod engine_observability_tests {
                 app_version: "1.1.0-rc.14",
                 app_channel: "dev",
             };
-            let config = engine_observability_config(&scope, Path::new("logs")).expect("config");
+            let config =
+                engine_observability_config(&scope, Path::new("logs"), None).expect("config");
             assert_eq!(config.local_logs.is_some(), owns_files);
             assert!(
                 config.remote.is_none(),

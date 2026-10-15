@@ -1781,6 +1781,9 @@
             },
             "type": "array"
           },
+          "network": {
+            "$ref": "#/components/schemas/NetworkArchiveCollectionDto"
+          },
           "truncatedFiles": {
             "items": {
               "type": "string"
@@ -1799,7 +1802,8 @@
           "unreadableFiles",
           "truncatedFiles",
           "concurrentWritesPossible",
-          "missingSources"
+          "missingSources",
+          "network"
         ],
         "type": "object"
       },
@@ -1924,6 +1928,9 @@
           "flush": {
             "$ref": "#/components/schemas/DiagnosticSignalResultDto"
           },
+          "network": {
+            "$ref": "#/components/schemas/NetworkExportPreparationDto"
+          },
           "otherProcessesFlushed": {
             "type": "boolean"
           },
@@ -1940,7 +1947,8 @@
           "requestedAtUtc",
           "completedAtUtc",
           "otherProcessesFlushed",
-          "files"
+          "files",
+          "network"
         ],
         "type": "object"
       },
@@ -4626,6 +4634,507 @@
           "shortcutInstallMethods"
         ],
         "type": "object"
+      },
+      "NetworkArchiveCollectionDto": {
+        "properties": {
+          "ignoredEntries": {
+            "description": "Entries under the network log directory that were not exported.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/NetworkArchiveOutcomeDto"
+          },
+          "reasons": {
+            "items": {
+              "$ref": "#/components/schemas/NetworkArchiveReasonDto"
+            },
+            "type": "array"
+          },
+          "runs": {
+            "items": {
+              "$ref": "#/components/schemas/NetworkArchiveRunDto"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "outcome",
+          "reasons",
+          "runs",
+          "ignoredEntries"
+        ],
+        "type": "object"
+      },
+      "NetworkArchiveFileDto": {
+        "properties": {
+          "bytes": {
+            "description": "Bytes copied into the package.",
+            "type": "string"
+          },
+          "matchesPrepared": {
+            "description": "Whether the copied prefix matches the digest the Engine computed; `None`\nwhen the Engine prepared nothing for this file.",
+            "nullable": true,
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "sha256": {
+            "description": "SHA-256 of exactly the copied bytes.",
+            "type": "string"
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "bytes",
+          "sha256",
+          "truncated"
+        ],
+        "type": "object"
+      },
+      "NetworkArchiveOutcomeDto": {
+        "enum": [
+          "complete",
+          "partial",
+          "missing",
+          "notConfigured",
+          "unknown"
+        ],
+        "type": "string"
+      },
+      "NetworkArchiveReasonDto": {
+        "description": "Why a package's network log is not `complete`. Reasons are cumulative.",
+        "enum": [
+          "engineOffline",
+          "flushFailed",
+          "flushTimedOut",
+          "stateNotReady",
+          "recordsDropped",
+          "fileUnreadable",
+          "fileTruncated",
+          "fileGrewAfterPrepare",
+          "fileChangedAfterPrepare",
+          "otherProcessesNotFlushed",
+          "entriesIgnored"
+        ],
+        "type": "string"
+      },
+      "NetworkArchiveRunDto": {
+        "properties": {
+          "currentRun": {
+            "description": "The run of the exporting daemon, as opposed to a retained earlier run.",
+            "type": "boolean"
+          },
+          "files": {
+            "items": {
+              "$ref": "#/components/schemas/NetworkArchiveFileDto"
+            },
+            "type": "array"
+          },
+          "role": {
+            "type": "string"
+          },
+          "runId": {
+            "type": "string"
+          },
+          "unreadableFiles": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "role",
+          "runId",
+          "currentRun",
+          "files",
+          "unreadableFiles"
+        ],
+        "type": "object"
+      },
+      "NetworkCaptureModeDto": {
+        "enum": [
+          "standard",
+          "detailed"
+        ],
+        "type": "string"
+      },
+      "NetworkCaptureStartEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/NetworkCaptureStartResultDto"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "NetworkCaptureStartRequestDto": {
+        "properties": {
+          "durationSeconds": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "durationSeconds"
+        ],
+        "type": "object"
+      },
+      "NetworkCaptureStartResultDto": {
+        "properties": {
+          "alreadyActive": {
+            "description": "A window was already open; it is returned unchanged and not extended.",
+            "type": "boolean"
+          },
+          "captureId": {
+            "type": "string"
+          },
+          "durationMs": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "startedAtUtc": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/NetworkLogStatusDto"
+          }
+        },
+        "required": [
+          "captureId",
+          "startedAtUtc",
+          "durationMs",
+          "alreadyActive",
+          "status"
+        ],
+        "type": "object"
+      },
+      "NetworkCaptureStopRequestDto": {
+        "properties": {
+          "captureId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "captureId"
+        ],
+        "type": "object"
+      },
+      "NetworkExportPreparationDto": {
+        "description": "The Engine's network-log export preparation for this process. It says\nnothing about other processes: `otherProcessesFlushed` is always false.",
+        "properties": {
+          "availability": {
+            "$ref": "#/components/schemas/NetworkLogAvailabilityDto"
+          },
+          "completedAtUtc": {
+            "nullable": true,
+            "type": "string"
+          },
+          "files": {
+            "items": {
+              "$ref": "#/components/schemas/NetworkLogFileDto"
+            },
+            "type": "array"
+          },
+          "flush": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/DiagnosticSignalResultDto"
+              }
+            ],
+            "nullable": true
+          },
+          "otherProcessesFlushed": {
+            "type": "boolean"
+          },
+          "requestedAtUtc": {
+            "nullable": true,
+            "type": "string"
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/NetworkLogStatusDto"
+              }
+            ],
+            "nullable": true
+          }
+        },
+        "required": [
+          "availability",
+          "otherProcessesFlushed",
+          "files"
+        ],
+        "type": "object"
+      },
+      "NetworkLibraryStatusDto": {
+        "properties": {
+          "approvedRules": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "library": {
+            "type": "string"
+          },
+          "observedRecords": {
+            "type": "string"
+          },
+          "versionDir": {
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "library",
+          "approvedRules",
+          "observedRecords"
+        ],
+        "type": "object"
+      },
+      "NetworkLogAvailabilityDto": {
+        "description": "Whether this process records the network-library log at all. `NotConfigured`\nis a statement about configuration, never \"no network activity\".",
+        "enum": [
+          "notConfigured",
+          "configured"
+        ],
+        "type": "string"
+      },
+      "NetworkLogBudgetDto": {
+        "description": "Capacity the daemon passed to the Engine. Byte and count values are decimal\nstrings, like every other counter on this API.",
+        "properties": {
+          "fileBytes": {
+            "type": "string"
+          },
+          "queueRecords": {
+            "type": "string"
+          },
+          "recordBytes": {
+            "type": "string"
+          },
+          "retentionSeconds": {
+            "type": "string"
+          },
+          "rootBytes": {
+            "type": "string"
+          },
+          "runBytes": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "recordBytes",
+          "queueRecords",
+          "fileBytes",
+          "runBytes",
+          "rootBytes",
+          "retentionSeconds"
+        ],
+        "type": "object"
+      },
+      "NetworkLogCountersDto": {
+        "description": "Monotonic counters of this run. A missing or zero counter never proves the\nnetwork was quiet: compare the drop counters before reading an empty log.",
+        "properties": {
+          "accepted": {
+            "type": "string"
+          },
+          "closedDropped": {
+            "type": "string"
+          },
+          "oversized": {
+            "type": "string"
+          },
+          "pathRecovered": {
+            "type": "string"
+          },
+          "policyFiltered": {
+            "type": "string"
+          },
+          "queueDropped": {
+            "type": "string"
+          },
+          "rateLimited": {
+            "type": "string"
+          },
+          "rotatedOutFiles": {
+            "type": "string"
+          },
+          "unreviewedCallsites": {
+            "type": "string"
+          },
+          "writeFailed": {
+            "type": "string"
+          },
+          "written": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "accepted",
+          "written",
+          "policyFiltered",
+          "rateLimited",
+          "oversized",
+          "queueDropped",
+          "closedDropped",
+          "writeFailed",
+          "rotatedOutFiles",
+          "pathRecovered",
+          "unreviewedCallsites"
+        ],
+        "type": "object"
+      },
+      "NetworkLogFileDto": {
+        "description": "One file the Engine listed when it prepared the export, with the digest it\ncomputed over the length it observed.",
+        "properties": {
+          "bytes": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "bytes",
+          "sha256"
+        ],
+        "type": "object"
+      },
+      "NetworkLogStateDto": {
+        "enum": [
+          "starting",
+          "ready",
+          "unavailable",
+          "closed"
+        ],
+        "type": "string"
+      },
+      "NetworkLogStatusDto": {
+        "description": "State, budget and drop information of the network-library log. Only the\n`availability` field is present when the log is not configured.",
+        "properties": {
+          "availability": {
+            "$ref": "#/components/schemas/NetworkLogAvailabilityDto"
+          },
+          "budget": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/NetworkLogBudgetDto"
+              }
+            ],
+            "nullable": true
+          },
+          "captureId": {
+            "description": "Identifier of the open detailed window, needed to stop it. The Engine does\nnot report it; the daemon remembers the one its own start call returned.",
+            "nullable": true,
+            "type": "string"
+          },
+          "counters": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/NetworkLogCountersDto"
+              }
+            ],
+            "nullable": true
+          },
+          "detailedRemainingMs": {
+            "format": "int64",
+            "minimum": 0,
+            "nullable": true,
+            "type": "integer"
+          },
+          "libraries": {
+            "items": {
+              "$ref": "#/components/schemas/NetworkLibraryStatusDto"
+            },
+            "type": "array"
+          },
+          "mode": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/NetworkCaptureModeDto"
+              }
+            ],
+            "nullable": true
+          },
+          "role": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/NetworkProcessRoleDto"
+              }
+            ],
+            "nullable": true
+          },
+          "runId": {
+            "nullable": true,
+            "type": "string"
+          },
+          "sampledAtUtc": {
+            "nullable": true,
+            "type": "string"
+          },
+          "state": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/NetworkLogStateDto"
+              }
+            ],
+            "nullable": true
+          }
+        },
+        "required": [
+          "availability",
+          "libraries"
+        ],
+        "type": "object"
+      },
+      "NetworkLogStatusEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/NetworkLogStatusDto"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "NetworkProcessRoleDto": {
+        "enum": [
+          "daemon",
+          "mobileApp",
+          "keyboardExtension",
+          "shareExtension",
+          "backgroundService"
+        ],
+        "type": "string"
       },
       "NetworkRecoveryPhase": {
         "description": "Stable phase of a network-recovery run.",
@@ -10055,6 +10564,170 @@
               }
             },
             "description": "Export destination or local Engine diagnostics unavailable; `details.cause` may be destination_unavailable"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/diagnostics/network": {
+      "get": {
+        "operationId": "getNetworkLogStatus",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NetworkLogStatusEnvelope"
+                }
+              }
+            },
+            "description": "State, budget and drop counters of the independent network-library log; `availability` is `notConfigured` when the daemon runs without it"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Local Engine diagnostics unavailable"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/diagnostics/network/start": {
+      "post": {
+        "operationId": "startNetworkCapture",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NetworkCaptureStartRequestDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NetworkCaptureStartEnvelope"
+                }
+              }
+            },
+            "description": "The open network capture window; a repeated start returns the existing window unchanged"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Capture duration outside 1 to 900 seconds"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "The network log is not configured; `code` is network_log_not_configured"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Local Engine diagnostics unavailable"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/diagnostics/network/stop": {
+      "post": {
+        "operationId": "stopNetworkCapture",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NetworkCaptureStopRequestDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NetworkLogStatusEnvelope"
+                }
+              }
+            },
+            "description": "Network log state after the window ended"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "The network log is not configured or the capture id does not match the open window"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Local Engine diagnostics unavailable"
           }
         },
         "security": [

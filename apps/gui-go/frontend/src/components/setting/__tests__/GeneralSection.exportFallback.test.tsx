@@ -21,6 +21,7 @@ vi.mock('@/api/daemon/diagnostics', () => ({
   updateDebugMode: vi.fn(),
   exportLogs: vi.fn(),
   getDiagnosticCaptureStatus: vi.fn(),
+  getNetworkLogStatus: vi.fn(),
   startDiagnosticCapture: vi.fn(),
   stopDiagnosticCapture: vi.fn(),
 }))
@@ -69,6 +70,8 @@ describe('offline log export fallback notice', () => {
         { source: 'engine', reason: 'daemon_unavailable' },
         { source: 'quick-panel', reason: 'not_collected' },
       ],
+      networkOutcome: 'unknown',
+      networkReasons: ['engineOffline'],
     })
 
     await clickExport()
@@ -83,6 +86,8 @@ describe('offline log export fallback notice', () => {
     vi.mocked(commands.exportStartupLogs).mockResolvedValue({
       path: '/dl/offline.zip',
       missingSources: [],
+      networkOutcome: 'unknown',
+      networkReasons: ['engineOffline'],
     })
 
     await clickExport()
@@ -96,6 +101,8 @@ describe('offline log export fallback notice', () => {
     vi.mocked(commands.exportStartupLogs).mockResolvedValue({
       path: '/dl/offline.zip',
       missingSources: [],
+      networkOutcome: 'unknown',
+      networkReasons: ['engineOffline'],
     })
 
     await clickExport()

@@ -19,9 +19,39 @@ export interface MissingExportSource {
   reason: string
 }
 
+export type NetworkExportOutcome = 'complete' | 'partial' | 'missing' | 'notConfigured' | 'unknown'
+
+/** What a package holds of the independent network-library log, daemon or offline. */
+export interface NetworkExportNotice {
+  outcome: NetworkExportOutcome
+  reasons: string[]
+}
+
 export interface OfflineExportResult {
   path: string | null
   missingSources: MissingExportSource[]
+  network: NetworkExportNotice
+}
+
+const NETWORK_OUTCOMES: readonly string[] = [
+  'complete',
+  'partial',
+  'missing',
+  'notConfigured',
+  'unknown',
+]
+
+/** An unrecognized outcome is `unknown`, never `complete`. */
+export function networkExportNotice(outcome: string, reasons: string[]): NetworkExportNotice {
+  return {
+    outcome: NETWORK_OUTCOMES.includes(outcome) ? (outcome as NetworkExportOutcome) : 'unknown',
+    reasons,
+  }
+}
+
+/** Whether the package's network log is something other than fully covered or deliberately off. */
+export function networkExportIncomplete(notice: NetworkExportNotice): boolean {
+  return notice.outcome !== 'complete' && notice.outcome !== 'notConfigured'
 }
 
 const CAUSE_BY_WIRE: Record<string, ExportFailureCause> = {
@@ -61,5 +91,9 @@ export function parseExportFailureCause(error: unknown): ExportFailureCause | un
 export function normalizeOfflineExportResult(
   result: ExportStartupLogsResult | null
 ): OfflineExportResult {
-  return { path: result?.path ?? null, missingSources: result?.missingSources ?? [] }
+  return {
+    path: result?.path ?? null,
+    missingSources: result?.missingSources ?? [],
+    network: networkExportNotice(result?.networkOutcome ?? 'unknown', result?.networkReasons ?? []),
+  }
 }

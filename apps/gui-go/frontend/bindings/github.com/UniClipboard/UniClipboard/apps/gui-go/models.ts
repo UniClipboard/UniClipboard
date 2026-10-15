@@ -266,6 +266,13 @@ export interface ExportConfigResult {
 export interface ExportStartupLogsResult {
     "path": string;
     "missingSources": LogSourceGap[] | null;
+
+    /**
+     * NetworkOutcome and NetworkReasons mirror the manifest's collection.network block: what the package holds of the
+     * independent network-library log. Offline it is never "complete": no running Engine flushed anything.
+     */
+    "networkOutcome": string;
+    "networkReasons": string[] | null;
 }
 
 /**

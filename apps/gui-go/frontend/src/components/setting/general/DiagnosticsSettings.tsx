@@ -24,6 +24,7 @@ export function DiagnosticsSettings() {
     handleDetailedCaptureChange,
     handleExportLogs,
     isBusy,
+    networkExportLines,
     setDebugDialog,
   } = useDiagnosticsSettings()
   const isRestarting = debugDialog === 'restarting'
@@ -89,6 +90,11 @@ export function DiagnosticsSettings() {
             </div>
           )}
           {exportFallbackLines.map(line => (
+            <p key={line} className="max-w-96 text-right text-ui-caption text-muted-foreground">
+              {line}
+            </p>
+          ))}
+          {networkExportLines.map(line => (
             <p key={line} className="max-w-96 text-right text-ui-caption text-muted-foreground">
               {line}
             </p>

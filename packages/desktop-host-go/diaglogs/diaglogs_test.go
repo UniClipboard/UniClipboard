@@ -200,7 +200,7 @@ func TestManifestSnapshot(t *testing.T) {
 	env := environment{
 		now: func() time.Time { return time.Date(2026, 10, 14, 8, 30, 0, 0, time.UTC) },
 		host: func(now time.Time) hostBlock {
-			return hostBlock{AppVersion: "1.2.0-alpha.5", OS: "linux", Arch: "amd64", Profile: "dev", Portable: false, TimezoneOffsetMinutes: 480}
+			return hostBlock{AppVersion: "1.2.0-alpha.5", BuildCommit: "unknown", OS: "linux", Arch: "amd64", Profile: "dev", Portable: false, TimezoneOffsetMinutes: 480}
 		},
 	}
 	dest := filepath.Join(t.TempDir(), "out.zip")

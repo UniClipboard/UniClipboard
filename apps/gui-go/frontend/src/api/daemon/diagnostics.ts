@@ -2,6 +2,7 @@ import {
   exportLogs as exportLogsSdk,
   getDebugStatus as getDebugStatusSdk,
   getDiagnosticCaptureStatus as getDiagnosticCaptureStatusSdk,
+  getNetworkLogStatus as getNetworkLogStatusSdk,
   startDiagnosticCapture as startDiagnosticCaptureSdk,
   stopDiagnosticCapture as stopDiagnosticCaptureSdk,
   updateDebugMode as updateDebugModeSdk,
@@ -11,6 +12,7 @@ import type {
   DiagnosticCaptureStopResultDto,
   DiagnosticExportPreparationDto,
   DiagnosticStatusDto,
+  NetworkLogStatusDto,
 } from '@/api/generated/types.gen'
 import { daemonClient } from './client'
 
@@ -34,6 +36,7 @@ export interface LogExportResult {
 }
 
 export type DiagnosticCaptureStatus = DiagnosticStatusDto
+export type NetworkLogStatus = NetworkLogStatusDto
 
 export async function getDebugStatus(): Promise<DebugStatus> {
   return await daemonClient.callEnveloped(() => getDebugStatusSdk({ throwOnError: true }))
@@ -71,4 +74,8 @@ export async function stopDiagnosticCapture(
   return await daemonClient.callEnveloped(() =>
     stopDiagnosticCaptureSdk({ body: { captureId }, throwOnError: true })
   )
+}
+
+export async function getNetworkLogStatus(): Promise<NetworkLogStatus> {
+  return await daemonClient.callEnveloped(() => getNetworkLogStatusSdk({ throwOnError: true }))
 }

@@ -17,7 +17,9 @@ pub use entrypoint::cli::{build_cli_engine_runtime, CliEngineRuntime};
 pub use layer::platform::SystemClipboardWiring;
 pub use observability::tracing::{
     init_daemon_tracing_subscriber, init_tracing_subscriber, install_panic_logging_hook,
+    DaemonObservability,
 };
+pub use observability::NETWORK_LOG_BUDGET_ENV;
 pub use wiring::analytics::{initialize_analytics_context, DesktopHostAnalytics};
 pub use wiring::desktop_host::{
     prepare_desktop_engine_host, resolve_desktop_process_paths, DesktopEngineHost,

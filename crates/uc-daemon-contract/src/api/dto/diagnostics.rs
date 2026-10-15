@@ -161,6 +161,9 @@ pub struct DiagnosticExportPreparationDto {
     pub completed_at_utc: String,
     pub other_processes_flushed: bool,
     pub files: Vec<DiagnosticFileSourceCountsDto>,
+    /// The independent network-library log, prepared separately from the
+    /// business log above: its success or failure never changes `flush`.
+    pub network: NetworkExportPreparationDto,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
@@ -173,6 +176,8 @@ pub struct DiagnosticArchiveCollectionDto {
     /// Log sources (`gui`, `daemon`, `cli`, `quick-panel`, `engine`) that
     /// contributed no file to the package.
     pub missing_sources: Vec<MissingLogSourceDto>,
+    /// What the package holds of the independent network-library log.
+    pub network: NetworkArchiveCollectionDto,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
@@ -211,4 +216,210 @@ pub struct LogExportResultDto {
     pub since: DateTime<Utc>,
     pub engine_preparation: DiagnosticExportPreparationDto,
     pub collection: DiagnosticArchiveCollectionDto,
+}
+
+/// Whether this process records the network-library log at all. `NotConfigured`
+/// is a statement about configuration, never "no network activity".
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub enum NetworkLogAvailabilityDto {
+    NotConfigured,
+    Configured,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub enum NetworkLogStateDto {
+    Starting,
+    Ready,
+    Unavailable,
+    Closed,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub enum NetworkProcessRoleDto {
+    Daemon,
+    MobileApp,
+    KeyboardExtension,
+    ShareExtension,
+    BackgroundService,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub enum NetworkCaptureModeDto {
+    Standard,
+    Detailed,
+}
+
+/// Capacity the daemon passed to the Engine. Byte and count values are decimal
+/// strings, like every other counter on this API.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct NetworkLogBudgetDto {
+    pub record_bytes: String,
+    pub queue_records: String,
+    pub file_bytes: String,
+    pub run_bytes: String,
+    pub root_bytes: String,
+    pub retention_seconds: String,
+}
+
+/// Monotonic counters of this run. A missing or zero counter never proves the
+/// network was quiet: compare the drop counters before reading an empty log.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct NetworkLogCountersDto {
+    pub accepted: String,
+    pub written: String,
+    pub policy_filtered: String,
+    pub rate_limited: String,
+    pub oversized: String,
+    pub queue_dropped: String,
+    pub closed_dropped: String,
+    pub write_failed: String,
+    pub rotated_out_files: String,
+    pub path_recovered: String,
+    pub unreviewed_callsites: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct NetworkLibraryStatusDto {
+    pub library: String,
+    pub version_dir: Option<String>,
+    pub approved_rules: u32,
+    pub observed_records: String,
+}
+
+/// State, budget and drop information of the network-library log. Only the
+/// `availability` field is present when the log is not configured.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct NetworkLogStatusDto {
+    pub availability: NetworkLogAvailabilityDto,
+    pub state: Option<NetworkLogStateDto>,
+    pub run_id: Option<String>,
+    pub role: Option<NetworkProcessRoleDto>,
+    pub mode: Option<NetworkCaptureModeDto>,
+    /// Identifier of the open detailed window, needed to stop it. The Engine does
+    /// not report it; the daemon remembers the one its own start call returned.
+    pub capture_id: Option<String>,
+    /// The network window did not follow the business diagnostic capture. Set
+    /// when the daemon could not start or stop it together with the business
+    /// capture; cleared by the next successful start.
+    pub capture_link_failure: Option<NetworkCaptureLinkFailureDto>,
+    pub detailed_remaining_ms: Option<u64>,
+    pub counters: Option<NetworkLogCountersDto>,
+    pub libraries: Vec<NetworkLibraryStatusDto>,
+    pub budget: Option<NetworkLogBudgetDto>,
+    pub sampled_at_utc: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub enum NetworkCaptureLinkFailureDto {
+    StartFailed,
+    StopFailed,
+}
+
+/// One file the Engine listed when it prepared the export, with the digest it
+/// computed over the length it observed.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct NetworkLogFileDto {
+    pub name: String,
+    pub bytes: String,
+    pub sha256: String,
+}
+
+/// The Engine's network-log export preparation for this process. It says
+/// nothing about other processes: `otherProcessesFlushed` is always false.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct NetworkExportPreparationDto {
+    pub availability: NetworkLogAvailabilityDto,
+    pub flush: Option<DiagnosticSignalResultDto>,
+    pub status: Option<NetworkLogStatusDto>,
+    pub requested_at_utc: Option<String>,
+    pub completed_at_utc: Option<String>,
+    pub other_processes_flushed: bool,
+    pub files: Vec<NetworkLogFileDto>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub enum NetworkArchiveOutcomeDto {
+    /// Every file of the current run was read in full and matches the digest
+    /// the Engine computed after flushing.
+    Complete,
+    /// Some log was collected but `reasons` lists what is not covered.
+    Partial,
+    /// A configured log produced no file.
+    Missing,
+    NotConfigured,
+    /// The log could not be examined at all.
+    Unknown,
+}
+
+/// Why a package's network log is not `complete`. Reasons are cumulative.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub enum NetworkArchiveReasonDto {
+    /// The package was built without the running daemon: nothing was flushed
+    /// and counters are unknown.
+    EngineOffline,
+    FlushFailed,
+    FlushTimedOut,
+    /// The network log of this process is not ready.
+    StateNotReady,
+    /// The Engine counted records it did not write.
+    RecordsDropped,
+    FileUnreadable,
+    FileTruncated,
+    /// A file grew after the Engine prepared the export; the digest of the
+    /// prepared prefix still matches.
+    FileGrewAfterPrepare,
+    /// A file differs from what the Engine prepared, or is gone.
+    FileChangedAfterPrepare,
+    /// Another process may hold unflushed records of its own.
+    OtherProcessesNotFlushed,
+    /// Entries outside the allowed file set were left out.
+    EntriesIgnored,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct NetworkArchiveFileDto {
+    pub name: String,
+    /// Bytes copied into the package.
+    pub bytes: String,
+    /// SHA-256 of exactly the copied bytes.
+    pub sha256: String,
+    pub truncated: bool,
+    /// Whether the copied prefix matches the digest the Engine computed; `None`
+    /// when the Engine prepared nothing for this file.
+    pub matches_prepared: Option<bool>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct NetworkArchiveRunDto {
+    pub role: String,
+    pub run_id: String,
+    /// The run of the exporting daemon, as opposed to a retained earlier run.
+    pub current_run: bool,
+    pub files: Vec<NetworkArchiveFileDto>,
+    pub unreadable_files: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct NetworkArchiveCollectionDto {
+    pub outcome: NetworkArchiveOutcomeDto,
+    pub reasons: Vec<NetworkArchiveReasonDto>,
+    pub runs: Vec<NetworkArchiveRunDto>,
+    /// Entries under the network log directory that were not exported.
+    pub ignored_entries: u32,
 }

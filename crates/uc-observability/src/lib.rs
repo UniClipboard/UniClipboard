@@ -51,6 +51,7 @@ pub mod analytics_gate;
 mod context;
 pub mod format;
 mod init;
+pub mod network_archive;
 pub mod profile;
 pub mod redact;
 pub mod scope;

@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import {
   exportLogs,
   getDiagnosticCaptureStatus,
+  getNetworkLogStatus,
   startDiagnosticCapture,
   stopDiagnosticCapture,
   updateDebugMode,
@@ -14,11 +15,14 @@ import { useSetting } from '@/hooks/useSetting'
 import { commands } from '@/lib/ipc'
 import { createLogger } from '@/lib/logger'
 import {
+  networkExportIncomplete,
+  networkExportNotice,
   normalizeOfflineExportResult,
   parseExportFailureCause,
   sourceLabelKey,
   type ExportFailureCause,
   type MissingExportSource,
+  type NetworkExportNotice,
 } from './diagnosticExportFallback'
 import { useSavingState } from './useSavingState'
 
@@ -39,6 +43,8 @@ type DiagnosticsState = {
   captureStatus: DiagnosticCaptureStatus | null
   captureUnavailable: boolean
   captureBusy: boolean
+  networkLinkFailure: 'startFailed' | 'stopFailed' | null
+  networkExportNotice: NetworkExportNotice | null
 }
 
 type DiagnosticsAction =
@@ -49,6 +55,8 @@ type DiagnosticsAction =
   | { type: 'captureLoaded'; status: DiagnosticCaptureStatus }
   | { type: 'captureUnavailable' }
   | { type: 'setCaptureBusy'; value: boolean }
+  | { type: 'networkLinkFailureLoaded'; value: 'startFailed' | 'stopFailed' | null }
+  | { type: 'setNetworkExportNotice'; value: NetworkExportNotice | null }
 
 const initialState: DiagnosticsState = {
   debugDialog: 'closed',
@@ -58,6 +66,8 @@ const initialState: DiagnosticsState = {
   captureStatus: null,
   captureUnavailable: false,
   captureBusy: false,
+  networkLinkFailure: null,
+  networkExportNotice: null,
 }
 
 function diagnosticsReducer(state: DiagnosticsState, action: DiagnosticsAction): DiagnosticsState {
@@ -76,6 +86,10 @@ function diagnosticsReducer(state: DiagnosticsState, action: DiagnosticsAction):
       return { ...state, captureUnavailable: true }
     case 'setCaptureBusy':
       return { ...state, captureBusy: action.value }
+    case 'networkLinkFailureLoaded':
+      return { ...state, networkLinkFailure: action.value }
+    case 'setNetworkExportNotice':
+      return { ...state, networkExportNotice: action.value }
   }
 }
 
@@ -107,6 +121,23 @@ export function useDiagnosticsSettings() {
     const timer = window.setInterval(() => void loadCaptureStatus(), 5_000)
     return () => window.clearInterval(timer)
   }, [detailedCapture, loadCaptureStatus, state.captureUnavailable])
+
+  // Only the failure to follow the detailed capture matters to the user; the
+  // network log's own state, counters and budget stay in diagnostics.
+  const loadNetworkStatus = useCallback(async () => {
+    try {
+      const status = await getNetworkLogStatus()
+      dispatch({ type: 'networkLinkFailureLoaded', value: status.captureLinkFailure ?? null })
+    } catch (error) {
+      log.warn({ err: error }, 'Failed to read network log status')
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!detailedCapture) return
+    const timer = window.setInterval(() => void loadNetworkStatus(), 5_000)
+    return () => window.clearInterval(timer)
+  }, [detailedCapture, loadNetworkStatus])
 
   const handleDebugModeChange = (checked: boolean) => {
     if (checked) {
@@ -145,17 +176,24 @@ export function useDiagnosticsSettings() {
   const handleExportLogs = async () => {
     dispatch({ type: 'setExportingLogs', value: true })
     dispatch({ type: 'setExportFallback', value: null })
+    dispatch({ type: 'setNetworkExportNotice', value: null })
     try {
       let path: string | null
       let fallback: ExportFallbackNotice | null = null
       let exportNotice: 'complete' | 'partial' | 'offline' = 'complete'
+      let networkNotice: NetworkExportNotice | null = null
       try {
         const result = await exportLogs(24)
         path = result.path
+        networkNotice = networkExportNotice(
+          result.collection.network.outcome,
+          result.collection.network.reasons
+        )
         if (
           result.enginePreparation.flush !== 'completed' ||
           result.collection.unreadableFiles.length > 0 ||
-          result.collection.truncatedFiles.length > 0
+          result.collection.truncatedFiles.length > 0 ||
+          networkExportIncomplete(networkNotice)
         ) {
           exportNotice = 'partial'
         }
@@ -164,6 +202,7 @@ export function useDiagnosticsSettings() {
         const offline = normalizeOfflineExportResult(await commands.exportStartupLogs())
         path = offline.path
         if (!path) return
+        networkNotice = offline.network
         exportNotice = 'offline'
         fallback = {
           cause: parseExportFailureCause(daemonError),
@@ -173,6 +212,7 @@ export function useDiagnosticsSettings() {
       if (!path) return
       dispatch({ type: 'setExportPath', value: path })
       dispatch({ type: 'setExportFallback', value: fallback })
+      dispatch({ type: 'setNetworkExportNotice', value: networkNotice })
       if (exportNotice === 'complete') {
         toast.success(t('settings.sections.general.logs.export.success'))
       } else {
@@ -207,6 +247,8 @@ export function useDiagnosticsSettings() {
         await stopDiagnosticCapture(state.captureStatus.capture.captureId)
         await loadCaptureStatus()
       }
+      // The network window opens and closes with the business capture.
+      await loadNetworkStatus()
     } catch (error) {
       const recovered = await loadCaptureStatus()
       const reachedRequestedState = recovered?.capture.mode === (checked ? 'detailed' : 'standard')
@@ -246,18 +288,37 @@ export function useDiagnosticsSettings() {
     )
   }
 
+  const networkExportLines: string[] = []
+  if (state.networkExportNotice && networkExportIncomplete(state.networkExportNotice)) {
+    networkExportLines.push(
+      t(
+        state.networkExportNotice.reasons.includes('engineOffline')
+          ? 'settings.sections.general.logs.export.network.offline'
+          : 'settings.sections.general.logs.export.network.incomplete'
+      )
+    )
+  }
+
   return {
     ...state,
     exportFallbackLines,
-    captureDescription: state.captureUnavailable
-      ? t('settings.sections.general.logs.capture.unavailable')
-      : !state.captureStatus
-        ? t('settings.sections.general.logs.capture.loading')
-        : !detailedCapture
-          ? t('settings.sections.general.logs.capture.standard')
-          : t('settings.sections.general.logs.capture.active', {
-              minutes: Math.max(1, Math.ceil(state.captureStatus.capture.remainingMs / 60_000)),
-            }),
+    networkExportLines,
+    captureDescription: [
+      state.captureUnavailable
+        ? t('settings.sections.general.logs.capture.unavailable')
+        : !state.captureStatus
+          ? t('settings.sections.general.logs.capture.loading')
+          : !detailedCapture
+            ? t('settings.sections.general.logs.capture.standard')
+            : t('settings.sections.general.logs.capture.active', {
+                minutes: Math.max(1, Math.ceil(state.captureStatus.capture.remainingMs / 60_000)),
+              }),
+      state.networkLinkFailure
+        ? t(`settings.sections.general.logs.network.linkFailure.${state.networkLinkFailure}`)
+        : null,
+    ]
+      .filter(Boolean)
+      .join(' '),
     debugMode: setting?.general.debugMode ?? false,
     detailedCapture,
     isBusy: loading || saving,

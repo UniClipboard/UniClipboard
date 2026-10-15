@@ -9,6 +9,7 @@
   },
   "host": {
     "appVersion": "1.2.0-alpha.5",
+    "buildCommit": "unknown",
     "os": "linux",
     "arch": "amd64",
     "profile": "dev",
@@ -33,6 +34,14 @@
         "source": "cli",
         "reason": "missing"
       }
-    ]
+    ],
+    "network": {
+      "outcome": "unknown",
+      "reasons": [
+        "engineOffline"
+      ],
+      "runs": [],
+      "ignoredEntries": 0
+    }
   }
 }

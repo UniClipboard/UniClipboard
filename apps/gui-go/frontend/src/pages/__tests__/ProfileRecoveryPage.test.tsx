@@ -111,6 +111,8 @@ describe('ProfileRecoveryPage', () => {
     vi.mocked(exportStartupLogs).mockResolvedValue({
       path: '/downloads/uniclipboard-diagnostics.zip',
       missingSources: [],
+      networkOutcome: 'unknown',
+      networkReasons: ['engineOffline'],
     })
     render(
       <ProfileRecoveryPage

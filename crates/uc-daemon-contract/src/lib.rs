@@ -1,7 +1,9 @@
 //! Shared daemon transport contracts.
 
-pub const DAEMON_API_REVISION: &str =
-    "setup-pairing-http-routes-v2-event-wired-residency-restart-inbound-notice-summary-relay-credentials-diagnostic-capture-v1-profile-recovery-v3-custom-relays-v1-removal-notice-v1";
+/// Local client <-> daemon control-plane revision. Bump by one whenever a change
+/// is not compatible with an already running daemon; clients replace a daemon
+/// that reports a different value.
+pub const DAEMON_API_REVISION: &str = "1";
 
 pub mod api;
 pub mod constants;

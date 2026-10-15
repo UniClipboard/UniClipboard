@@ -27,7 +27,7 @@ use crate::api::dto::config::{ExportConfigResponse, ImportConfigResponse, Previe
 use crate::api::dto::device::LocalDeviceInfoDto;
 use crate::api::dto::diagnostics::{
     DebugStatusDto, DiagnosticCaptureStopResultDto, DiagnosticStatusDto, LogExportResultDto,
-    UpdateDebugModeResultDto,
+    NetworkLogStatusDto, UpdateDebugModeResultDto,
 };
 use crate::api::dto::encryption::{
     ContentLockStatusResponse, EncryptionActionResponse, EncryptionStateResponse,
@@ -116,6 +116,7 @@ use crate::api::types::{
     UpdateDebugModeEnvelope = ApiEnvelope<UpdateDebugModeResultDto>,
     DiagnosticStatusEnvelope = ApiEnvelope<DiagnosticStatusDto>,
     DiagnosticCaptureStopEnvelope = ApiEnvelope<DiagnosticCaptureStopResultDto>,
+    NetworkLogStatusEnvelope = ApiEnvelope<NetworkLogStatusDto>,
     LogExportEnvelope = ApiEnvelope<LogExportResultDto>,
     // ── device / member ────────────────────────────────────────────
     LocalDeviceInfoEnvelope = ApiEnvelope<LocalDeviceInfoDto>,

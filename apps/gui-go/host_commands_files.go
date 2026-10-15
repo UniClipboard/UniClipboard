@@ -222,6 +222,10 @@ type LogSourceGap struct {
 type ExportStartupLogsResult struct {
 	Path           string         `json:"path"`
 	MissingSources []LogSourceGap `json:"missingSources"`
+	// NetworkOutcome and NetworkReasons mirror the manifest's collection.network block: what the package holds of the
+	// independent network-library log. Offline it is never "complete": no running Engine flushed anything.
+	NetworkOutcome string   `json:"networkOutcome"`
+	NetworkReasons []string `json:"networkReasons"`
 }
 
 // ExportStartupLogs zips the logs to a place the user picks. It resolves nil when the user cancels.
@@ -249,5 +253,10 @@ func (h *HostService) ExportStartupLogs() (*ExportStartupLogsResult, error) {
 	for _, gap := range report.MissingSources {
 		gaps = append(gaps, LogSourceGap{Source: gap.Source, Reason: gap.Reason})
 	}
-	return &ExportStartupLogsResult{Path: path, MissingSources: gaps}, nil
+	return &ExportStartupLogsResult{
+		Path:           path,
+		MissingSources: gaps,
+		NetworkOutcome: report.Network.Outcome,
+		NetworkReasons: report.Network.Reasons,
+	}, nil
 }

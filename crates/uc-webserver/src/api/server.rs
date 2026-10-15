@@ -25,7 +25,7 @@ use tokio_util::sync::CancellationToken;
 use tracing::Instrument;
 use uc_daemon_contract::api::dto::diagnostics::{
     DiagnosticCaptureStartRequestDto, DiagnosticCaptureStopResultDto,
-    DiagnosticExportPreparationDto, DiagnosticStatusDto, LogExportResultDto,
+    DiagnosticExportPreparationDto, DiagnosticStatusDto, LogExportResultDto, NetworkLogStatusDto,
 };
 use uc_engine::{
     Engine, HostFileHandle, NetworkRecoveryPhaseSummary, NetworkRecoveryStatusSummary, Operation,
@@ -463,7 +463,12 @@ pub trait DaemonDiagnosticsRuntime: Send + Sync {
         &self,
         capture_id: &str,
     ) -> Result<DiagnosticCaptureStopResultDto, DaemonDiagnosticError>;
+    /// Flushes and describes the business log and, separately, the network log;
+    /// blocks up to the flush deadlines, so callers run it off the async workers.
     fn prepare_export(&self) -> Result<DiagnosticExportPreparationDto, DaemonDiagnosticError>;
+    /// State of the independent network-library log; `NotConfigured` when the
+    /// daemon was started without it.
+    fn network_status(&self) -> NetworkLogStatusDto;
 }
 
 /// Where a diagnostic archive export failed. Carries no error text, which may

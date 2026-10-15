@@ -28,6 +28,7 @@ vi.mock('@/api/daemon/diagnostics', () => ({
   updateDebugMode: vi.fn(),
   exportLogs: vi.fn(),
   getDiagnosticCaptureStatus: vi.fn(),
+  getNetworkLogStatus: vi.fn(),
   startDiagnosticCapture: vi.fn(),
   stopDiagnosticCapture: vi.fn(),
 }))
@@ -251,6 +252,15 @@ describe('GeneralSection debug diagnostics controls', () => {
         completedAtUtc: '2026-06-16T00:00:01Z',
         otherProcessesFlushed: false,
         files: [],
+        network: {
+          availability: 'notConfigured',
+          flush: null,
+          status: null,
+          requestedAtUtc: null,
+          completedAtUtc: null,
+          otherProcessesFlushed: false,
+          files: [],
+        },
       },
       collection: {
         includedFiles: ['uniclipboard-daemon.json.2026-06-16'],
@@ -258,6 +268,7 @@ describe('GeneralSection debug diagnostics controls', () => {
         truncatedFiles: [],
         concurrentWritesPossible: true,
         missingSources: [],
+        network: { outcome: 'notConfigured', reasons: [], runs: [], ignoredEntries: 0 },
       },
     })
     setup()
@@ -340,6 +351,8 @@ describe('GeneralSection debug diagnostics controls', () => {
     mockExportStartupLogs.mockResolvedValue({
       path: '/home/test/Downloads/offline-diagnostics.zip',
       missingSources: [],
+      networkOutcome: 'unknown',
+      networkReasons: ['engineOffline'],
     })
     setup()
 
@@ -367,6 +380,15 @@ describe('GeneralSection debug diagnostics controls', () => {
         completedAtUtc: '2026-09-11T00:00:01Z',
         otherProcessesFlushed: false,
         files: [],
+        network: {
+          availability: 'notConfigured',
+          flush: null,
+          status: null,
+          requestedAtUtc: null,
+          completedAtUtc: null,
+          otherProcessesFlushed: false,
+          files: [],
+        },
       },
       collection: {
         includedFiles: ['engine.2026-09-11.jsonl'],
@@ -374,6 +396,7 @@ describe('GeneralSection debug diagnostics controls', () => {
         truncatedFiles: [],
         concurrentWritesPossible: true,
         missingSources: [],
+        network: { outcome: 'notConfigured', reasons: [], runs: [], ignoredEntries: 0 },
       },
     })
     setup()

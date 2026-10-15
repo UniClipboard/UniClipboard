@@ -11,6 +11,7 @@ use serde::Serialize;
 use serde_json::Value;
 use zip::write::SimpleFileOptions;
 
+use crate::network_archive::{self, NetworkArchiveReport, NetworkArchiveRequest};
 use crate::startup_failure::{MAX_STARTUP_FAILURE_BYTES, STARTUP_FAILURE_FILE};
 
 #[derive(Debug, Clone, Copy, Serialize)]
@@ -27,6 +28,9 @@ pub struct DiagnosticArchiveRequest {
     pub engine_preparation: Option<Value>,
     pub startup_status: Option<Value>,
     pub host: Option<HostManifest>,
+    /// The independent network-library log. `live` is `None` when no running
+    /// daemon prepared the export.
+    pub network: NetworkArchiveRequest,
 }
 
 /// Facts about the exporting host that explain how the logs were produced.
@@ -36,6 +40,9 @@ pub struct DiagnosticArchiveRequest {
 #[serde(rename_all = "camelCase")]
 pub struct HostManifest {
     pub app_version: String,
+    /// Commit the exporting binary was built from; `unknown` when the build
+    /// carried none. Working-tree changes are not detected.
+    pub build_commit: String,
     pub os: String,
     pub arch: String,
     /// Named profile; `None` for the default one.
@@ -58,6 +65,8 @@ pub struct DiagnosticArchiveReport {
     pub concurrent_writes_possible: bool,
     /// Log sources that contributed no file to the package.
     pub missing_sources: Vec<MissingSource>,
+    /// The network-library log; independent of every field above.
+    pub network: NetworkArchiveReport,
 }
 
 /// A log source absent from an export and why.
@@ -148,6 +157,7 @@ pub fn export_startup_logs_with_status(
             engine_preparation: None,
             startup_status,
             host: None,
+            network: NetworkArchiveRequest::default(),
         },
     )?;
     Ok(())
@@ -162,7 +172,11 @@ pub fn export_diagnostic_logs(
     let (mut candidates, unreadable_files) = collect_log_files(logs_dir)
         .map_err(|error| ExportError::new(ExportFailureCause::SourceRead, error))?;
     candidates.sort_by(|left, right| left.name.cmp(&right.name));
-    if candidates.is_empty() && matches!(request.mode, DiagnosticArchiveMode::Offline) {
+    let network_selection = network_archive::select(logs_dir, request.since, &request.network);
+    if candidates.is_empty()
+        && network_selection.is_empty()
+        && matches!(request.mode, DiagnosticArchiveMode::Offline)
+    {
         return Err(ExportError::new(
             ExportFailureCause::NoLogs,
             anyhow::anyhow!(NO_LOGS_MESSAGE),
@@ -184,6 +198,7 @@ pub fn export_diagnostic_logs(
         truncated_files: Vec::new(),
         concurrent_writes_possible: true,
         missing_sources: Vec::new(),
+        network: NetworkArchiveReport::empty(),
     };
 
     // Files that belong to the requested window, whether or not they could be
@@ -240,6 +255,10 @@ pub fn export_diagnostic_logs(
         }
 
         report.missing_sources = missing_sources(&report);
+        report.network =
+            network_archive::collect(network_selection, &request.network, &mut archive, options)
+                .map_err(ExportError::archive_write)?;
+        in_window += report.network.file_count();
         let manifest = DiagnosticArchiveManifest {
             schema_version: 1,
             mode: request.mode,

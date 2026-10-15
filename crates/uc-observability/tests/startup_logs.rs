@@ -115,6 +115,7 @@ fn online_export_embeds_engine_preparation_and_reports_actual_files() {
             engine_preparation: Some(preparation),
             startup_status: None,
             host: None,
+            network: Default::default(),
         },
     )
     .unwrap();
@@ -168,6 +169,7 @@ fn online_export_keeps_a_partial_package_when_a_managed_file_is_unreadable() {
             engine_preparation: Some(serde_json::json!({ "flush": "completed" })),
             startup_status: None,
             host: None,
+            network: Default::default(),
         },
     )
     .unwrap();
@@ -233,6 +235,7 @@ fn offline_export_fails_when_every_log_is_outside_the_window() {
             engine_preparation: None,
             startup_status: None,
             host: None,
+            network: Default::default(),
         },
     );
 
@@ -305,6 +308,7 @@ fn offline_export_fails_when_unreadable_logs_are_outside_the_window() {
             engine_preparation: None,
             startup_status: None,
             host: None,
+            network: Default::default(),
         },
     );
 
@@ -334,6 +338,7 @@ fn online_export_does_not_report_unreadable_logs_outside_the_window() {
             engine_preparation: None,
             startup_status: None,
             host: None,
+            network: Default::default(),
         },
     )
     .unwrap();
@@ -459,6 +464,7 @@ fn the_manifest_describes_the_exporting_host() {
             startup_status: None,
             host: Some(HostManifest {
                 app_version: "1.2.0".to_owned(),
+                build_commit: "unknown".to_owned(),
                 os: "macos".to_owned(),
                 arch: "aarch64".to_owned(),
                 profile: Some("dev".to_owned()),
@@ -467,6 +473,7 @@ fn the_manifest_describes_the_exporting_host() {
                 telemetry_enabled: true,
                 timezone_offset_minutes: 480,
             }),
+            network: Default::default(),
         },
     )
     .unwrap();
@@ -476,6 +483,7 @@ fn the_manifest_describes_the_exporting_host() {
         host,
         serde_json::json!({
             "appVersion": "1.2.0",
+            "buildCommit": "unknown",
             "os": "macos",
             "arch": "aarch64",
             "profile": "dev",

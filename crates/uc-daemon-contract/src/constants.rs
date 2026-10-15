@@ -138,6 +138,8 @@ pub mod http_route {
     pub const DIAGNOSTICS_CAPTURE_START: &str = "/diagnostics/capture/start";
     /// POST a capture identifier to stop the matching daemon capture.
     pub const DIAGNOSTICS_CAPTURE_STOP: &str = "/diagnostics/capture/stop";
+    /// GET the independent network-library log state, budget and drop counters.
+    pub const DIAGNOSTICS_NETWORK: &str = "/diagnostics/network";
     /// POST /diagnostics/log-export — export recent GUI/daemon/CLI logs to Downloads.
     pub const DIAGNOSTICS_LOG_EXPORT: &str = "/diagnostics/log-export";
     /// GET /encryption/state — encryption state

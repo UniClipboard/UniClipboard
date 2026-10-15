@@ -368,10 +368,16 @@
             "label": "Capture detailed logs",
             "tooltip": "About {{minutes}} minutes remaining. You can turn this off manually.",
             "loading": "Checking log recording status…",
-            "standard": "Record detailed logs temporarily. Stops automatically after 10 minutes.",
+            "standard": "Record detailed logs temporarily. Stops automatically after 10 minutes. Also records connection details.",
             "active": "Recording detailed logs. Stops automatically in about {{minutes}} minutes.",
             "unavailable": "Background service diagnostics are unavailable.",
             "error": "Failed to change detailed capture"
+          },
+          "network": {
+            "linkFailure": {
+              "startFailed": "Connection details could not be recorded together with the detailed log.",
+              "stopFailed": "The connection detail recording could not be closed together with the detailed log. It stops on its own."
+            }
           },
           "debug": {
             "label": "Debug mode",
@@ -410,6 +416,10 @@
               "gui": "App window",
               "cli": "Command line",
               "quickPanel": "Quick panel"
+            },
+            "network": {
+              "incomplete": "Network connection log may be incomplete.",
+              "offline": "Exported while the background service was not running; the network connection log was not flushed and may be incomplete."
             }
           }
         }

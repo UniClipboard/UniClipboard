@@ -1,5 +1,7 @@
 //! HTTP route handlers for local diagnostics endpoints.
 
+use std::sync::Arc;
+
 use axum::extract::State;
 use axum::routing::{get, post, put};
 use axum::{Json, Router};
@@ -7,7 +9,7 @@ use tracing::{info, instrument};
 use uc_daemon_contract::api::dto::diagnostics::{
     DebugStatusDto, DiagnosticCaptureStartRequestDto, DiagnosticCaptureStopRequestDto,
     DiagnosticCaptureStopResultDto, DiagnosticStatusDto, LogExportRequestDto, LogExportResultDto,
-    UpdateDebugModeRequestDto, UpdateDebugModeResultDto,
+    NetworkLogStatusDto, UpdateDebugModeRequestDto, UpdateDebugModeResultDto,
 };
 use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
 use uc_engine::{
@@ -28,7 +30,27 @@ pub fn router() -> Router<DaemonApiState> {
         .route("/diagnostics/capture", get(get_capture_status_handler))
         .route("/diagnostics/capture/start", post(start_capture_handler))
         .route("/diagnostics/capture/stop", post(stop_capture_handler))
+        .route("/diagnostics/network", get(get_network_status_handler))
         .route("/diagnostics/log-export", post(export_logs_handler))
+}
+
+#[utoipa::path(
+    get,
+    path = "/diagnostics/network",
+    tag = "system",
+    operation_id = "getNetworkLogStatus",
+    responses(
+        (status = 200, description = "State, budget and drop counters of the independent network-library log; `availability` is `notConfigured` when the daemon runs without it", body = NetworkLogStatusEnvelope),
+        (status = 503, description = "Local Engine diagnostics unavailable", body = ApiErrorResponse)
+    )
+)]
+#[instrument(name = "api.diagnostics.network.get", level = "info", skip(state))]
+pub async fn get_network_status_handler(
+    State(state): State<DaemonApiState>,
+) -> Result<Json<ApiEnvelope<NetworkLogStatusDto>>, ApiError> {
+    let runtime = diagnostics_runtime_arc(&state)?;
+    let status = run_blocking(move || runtime.network_status()).await?;
+    Ok(Json(ApiEnvelope::now(status)))
 }
 
 #[utoipa::path(
@@ -205,7 +227,7 @@ pub async fn export_logs_handler(
     State(state): State<DaemonApiState>,
     Json(payload): Json<LogExportRequestDto>,
 ) -> Result<Json<ApiEnvelope<LogExportResultDto>>, ApiError> {
-    let runtime = diagnostics_runtime(&state)?;
+    let runtime = diagnostics_runtime_arc(&state)?;
     let archive = state
         .diagnostic_archive
         .as_deref()
@@ -222,11 +244,14 @@ pub async fn export_logs_handler(
 }
 
 async fn prepare_and_export(
-    runtime: &dyn DaemonDiagnosticsRuntime,
+    runtime: Arc<dyn DaemonDiagnosticsRuntime>,
     archive: &dyn DaemonDiagnosticArchive,
     since_hours: Option<u32>,
 ) -> Result<LogExportResultDto, ApiError> {
-    let preparation = runtime.prepare_export().map_err(diagnostic_runtime_error)?;
+    // The flushes wait on the log writer threads; keep them off the async workers.
+    let preparation = run_blocking(move || runtime.prepare_export())
+        .await?
+        .map_err(diagnostic_runtime_error)?;
     archive
         .export(since_hours, preparation)
         .await
@@ -259,6 +284,25 @@ fn archive_export_error(error: DaemonDiagnosticArchiveError) -> ApiError {
         .with_details(serde_json::json!({ "cause": cause }));
     log_facade_failure("diagnostics", "log_export", cause, api.status, &api.message);
     api
+}
+
+fn diagnostics_runtime_arc(
+    state: &DaemonApiState,
+) -> Result<Arc<dyn DaemonDiagnosticsRuntime>, ApiError> {
+    state
+        .diagnostics_runtime
+        .clone()
+        .ok_or_else(|| ApiError::service_unavailable("local Engine diagnostics are unavailable"))
+}
+
+/// Runs a blocking diagnostics call on the blocking pool. A panicked or
+/// cancelled worker is an internal failure, never an empty result.
+async fn run_blocking<T: Send + 'static>(
+    work: impl FnOnce() -> T + Send + 'static,
+) -> Result<T, ApiError> {
+    tokio::task::spawn_blocking(work)
+        .await
+        .map_err(|_| ApiError::internal("diagnostics worker failed"))
 }
 
 fn diagnostics_runtime(state: &DaemonApiState) -> Result<&dyn DaemonDiagnosticsRuntime, ApiError> {
@@ -312,7 +356,8 @@ mod tests {
     use uc_daemon_contract::api::dto::diagnostics::{
         DiagnosticArchiveCollectionDto, DiagnosticCaptureModeDto, DiagnosticCaptureStateDto,
         DiagnosticExportPreparationDto, DiagnosticSetupStatusDto, DiagnosticSignalResultDto,
-        DiagnosticStatusDto,
+        DiagnosticStatusDto, NetworkArchiveCollectionDto, NetworkArchiveOutcomeDto,
+        NetworkExportPreparationDto, NetworkLogAvailabilityDto,
     };
 
     use super::*;
@@ -344,6 +389,27 @@ mod tests {
             self.prepared.store(true, Ordering::SeqCst);
             Ok(preparation())
         }
+
+        fn network_status(&self) -> NetworkLogStatusDto {
+            not_configured_network_status()
+        }
+    }
+
+    fn not_configured_network_status() -> NetworkLogStatusDto {
+        NetworkLogStatusDto {
+            availability: NetworkLogAvailabilityDto::NotConfigured,
+            state: None,
+            run_id: None,
+            role: None,
+            mode: None,
+            capture_id: None,
+            detailed_remaining_ms: None,
+            counters: None,
+            libraries: Vec::new(),
+            budget: None,
+            capture_link_failure: None,
+            sampled_at_utc: None,
+        }
     }
 
     struct ArchiveProbe {
@@ -370,6 +436,12 @@ mod tests {
                     truncated_files: Vec::new(),
                     concurrent_writes_possible: true,
                     missing_sources: Vec::new(),
+                    network: NetworkArchiveCollectionDto {
+                        outcome: NetworkArchiveOutcomeDto::NotConfigured,
+                        reasons: Vec::new(),
+                        runs: Vec::new(),
+                        ignored_entries: 0,
+                    },
                 },
             })
         }
@@ -378,12 +450,12 @@ mod tests {
     #[tokio::test]
     async fn export_prepares_engine_before_collecting_the_archive() {
         let prepared = Arc::new(AtomicBool::new(false));
-        let runtime = RuntimeProbe {
+        let runtime = Arc::new(RuntimeProbe {
             prepared: Arc::clone(&prepared),
-        };
+        });
         let archive = ArchiveProbe { prepared };
 
-        let result = prepare_and_export(&runtime, &archive, Some(24))
+        let result = prepare_and_export(runtime, &archive, Some(24))
             .await
             .expect("export");
 
@@ -502,11 +574,11 @@ mod tests {
     #[tokio::test]
     async fn a_failed_archive_export_names_its_cause() {
         for (failure, cause, status) in export_failure_cases() {
-            let runtime = RuntimeProbe {
+            let runtime = Arc::new(RuntimeProbe {
                 prepared: Arc::new(AtomicBool::new(false)),
-            };
+            });
 
-            let error = prepare_and_export(&runtime, &FailingArchive(failure), Some(24))
+            let error = prepare_and_export(runtime, &FailingArchive(failure), Some(24))
                 .await
                 .expect_err("export fails");
 
@@ -529,10 +601,10 @@ mod tests {
 
             let records = records_of_current_thread(|| {
                 runtime.block_on(async {
-                    let probe = RuntimeProbe {
+                    let probe = Arc::new(RuntimeProbe {
                         prepared: Arc::new(AtomicBool::new(false)),
-                    };
-                    let _ = prepare_and_export(&probe, &FailingArchive(failure), Some(24)).await;
+                    });
+                    let _ = prepare_and_export(probe, &FailingArchive(failure), Some(24)).await;
                 });
             });
 
@@ -559,6 +631,15 @@ mod tests {
             completed_at_utc: "2026-09-11T00:00:01Z".to_string(),
             other_processes_flushed: false,
             files: Vec::new(),
+            network: NetworkExportPreparationDto {
+                availability: NetworkLogAvailabilityDto::NotConfigured,
+                flush: None,
+                status: None,
+                requested_at_utc: None,
+                completed_at_utc: None,
+                other_processes_flushed: false,
+                files: Vec::new(),
+            },
         }
     }
 

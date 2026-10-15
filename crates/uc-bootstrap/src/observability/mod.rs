@@ -8,6 +8,10 @@
 
 pub mod tracing;
 
+/// Daemon configuration of the Engine's independent network-library log.
+mod network_log;
+pub use network_log::NETWORK_LOG_BUDGET_ENV;
+
 /// Sentry-sink correlation enrichment, consumed only by `tracing`'s
 /// `event_mapper`.
 mod correlation;

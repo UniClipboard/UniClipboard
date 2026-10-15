@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"slices"
 	"sort"
 	"strings"
@@ -85,6 +86,7 @@ type Report struct {
 	TruncatedFiles           []string        `json:"truncatedFiles"`
 	ConcurrentWritesPossible bool            `json:"concurrentWritesPossible"`
 	MissingSources           []MissingSource `json:"missingSources"`
+	Network                  NetworkReport   `json:"network"`
 }
 
 type manifest struct {
@@ -112,10 +114,12 @@ type environment struct {
 	host func(now time.Time) hostBlock
 }
 
-// hostBlock describes the exporting host. Facts the offline exporter cannot source cheaply (build commit, log
-// profile, telemetry state) are left out rather than guessed.
+// hostBlock describes the exporting host. Facts the offline exporter cannot source cheaply (log profile, telemetry
+// state) are left out rather than guessed. BuildCommit is the VCS revision the Go toolchain stamped into the binary,
+// "unknown" when the build carried none.
 type hostBlock struct {
 	AppVersion            string `json:"appVersion"`
+	BuildCommit           string `json:"buildCommit"`
 	OS                    string `json:"os"`
 	Arch                  string `json:"arch"`
 	Profile               string `json:"profile,omitempty"` // omitted for the default profile
@@ -128,6 +132,7 @@ func currentHost(now time.Time) hostBlock {
 	_, offsetSeconds := now.Zone()
 	return hostBlock{
 		AppVersion:            buildinfo.PackageVersion,
+		BuildCommit:           buildCommit(),
 		OS:                    runtime.GOOS,
 		Arch:                  runtime.GOARCH,
 		Profile:               profile,
@@ -136,12 +141,37 @@ func currentHost(now time.Time) hostBlock {
 	}
 }
 
+// buildCommit is the commit the Go toolchain recorded for this binary (vcs.revision), or "unknown". It is a
+// 40-character hexadecimal revision; anything else is treated as absent.
+func buildCommit() string {
+	info, ok := debug.ReadBuildInfo()
+	if !ok {
+		return "unknown"
+	}
+	for _, setting := range info.Settings {
+		if setting.Key == "vcs.revision" && len(setting.Value) == 40 && isHex(setting.Value) {
+			return setting.Value
+		}
+	}
+	return "unknown"
+}
+
+func isHex(value string) bool {
+	for _, r := range value {
+		if (r < '0' || r > '9') && (r < 'a' || r > 'f') && (r < 'A' || r > 'F') {
+			return false
+		}
+	}
+	return true
+}
+
 func exportStartup(env environment, logsDir, destination string, startupStatus json.RawMessage) (Report, error) {
 	names, unreadable, err := candidates(logsDir)
 	if err != nil {
 		return Report{}, err
 	}
-	if len(names) == 0 {
+	networkRuns := selectNetwork(logsDir)
+	if len(names) == 0 && len(networkRuns.runs) == 0 {
 		return Report{}, ErrNoLogs
 	}
 	tmp, err := os.CreateTemp(filepath.Dir(destination), ".logs-*.zip")
@@ -183,7 +213,12 @@ func exportStartup(env environment, logsDir, destination string, startupStatus j
 		}
 		report.IncludedFiles = append(report.IncludedFiles, name)
 	}
-	if len(report.IncludedFiles) == 0 {
+	network, err := collectNetwork(archive, networkRuns, env.now())
+	if err != nil {
+		return Report{}, err
+	}
+	report.Network = network
+	if len(report.IncludedFiles) == 0 && !networkHasFiles(network) {
 		return Report{}, ErrNoLogs
 	}
 	if report.UnreadableFiles == nil {
@@ -267,4 +302,13 @@ func candidates(logsDir string) (names, unreadable []string, err error) {
 	}
 	sort.Strings(names)
 	return names, unreadable, nil
+}
+
+func networkHasFiles(report NetworkReport) bool {
+	for _, run := range report.Runs {
+		if len(run.Files) > 0 {
+			return true
+		}
+	}
+	return false
 }

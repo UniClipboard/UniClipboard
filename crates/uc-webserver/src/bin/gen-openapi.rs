@@ -74,8 +74,10 @@ use uc_webserver::api::openapi::ApiDoc;
 /// Batch search counting adds one path and operation: 89 / 99.
 /// Local history tags add six paths and eight operations: 95 / 107.
 /// The tag layout adds four paths and four operations: 99 / 111.
-const EXPECTED_PATHS: usize = 99;
-const EXPECTED_OPERATIONS: usize = 111;
+/// The independent network-library log adds three paths and three operations
+/// (status): 100 / 112.
+const EXPECTED_PATHS: usize = 100;
+const EXPECTED_OPERATIONS: usize = 112;
 const SCHEMA_PREFIX: &str = "#/components/schemas/";
 const HTTP_METHODS: [&str; 7] = ["get", "put", "post", "delete", "patch", "head", "options"];
 

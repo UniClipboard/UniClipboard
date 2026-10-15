@@ -902,6 +902,7 @@ export type DiagnosticArchiveCollectionDto = {
      * contributed no file to the package.
      */
     missingSources: Array<MissingLogSourceDto>;
+    network: NetworkArchiveCollectionDto;
     truncatedFiles: Array<string>;
     unreadableFiles: Array<string>;
 };
@@ -957,6 +958,7 @@ export type DiagnosticExportPreparationDto = {
     completedAtUtc: string;
     files: Array<DiagnosticFileSourceCountsDto>;
     flush: DiagnosticSignalResultDto;
+    network: NetworkExportPreparationDto;
     otherProcessesFlushed: boolean;
     requestedAtUtc: string;
     status: DiagnosticStatusDto;
@@ -2503,6 +2505,174 @@ export type MobileSyncSettingsViewDto = {
     lanPort?: number | null;
     shortcutInstallMethods: Array<ShortcutInstallMethodViewDto>;
 };
+
+export type NetworkArchiveCollectionDto = {
+    /**
+     * Entries under the network log directory that were not exported.
+     */
+    ignoredEntries: number;
+    outcome: NetworkArchiveOutcomeDto;
+    reasons: Array<NetworkArchiveReasonDto>;
+    runs: Array<NetworkArchiveRunDto>;
+};
+
+export type NetworkArchiveFileDto = {
+    /**
+     * Bytes copied into the package.
+     */
+    bytes: string;
+    /**
+     * Whether the copied prefix matches the digest the Engine computed; `None`
+     * when the Engine prepared nothing for this file.
+     */
+    matchesPrepared?: boolean | null;
+    name: string;
+    /**
+     * SHA-256 of exactly the copied bytes.
+     */
+    sha256: string;
+    truncated: boolean;
+};
+
+export type NetworkArchiveOutcomeDto = 'complete' | 'partial' | 'missing' | 'notConfigured' | 'unknown';
+
+/**
+ * Why a package's network log is not `complete`. Reasons are cumulative.
+ */
+export type NetworkArchiveReasonDto = 'engineOffline' | 'flushFailed' | 'flushTimedOut' | 'stateNotReady' | 'recordsDropped' | 'fileUnreadable' | 'fileTruncated' | 'fileGrewAfterPrepare' | 'fileChangedAfterPrepare' | 'otherProcessesNotFlushed' | 'entriesIgnored';
+
+export type NetworkArchiveRunDto = {
+    /**
+     * The run of the exporting daemon, as opposed to a retained earlier run.
+     */
+    currentRun: boolean;
+    files: Array<NetworkArchiveFileDto>;
+    role: string;
+    runId: string;
+    unreadableFiles: Array<string>;
+};
+
+export type NetworkCaptureLinkFailureDto = 'startFailed' | 'stopFailed';
+
+export type NetworkCaptureModeDto = 'standard' | 'detailed';
+
+/**
+ * The Engine's network-log export preparation for this process. It says
+ * nothing about other processes: `otherProcessesFlushed` is always false.
+ */
+export type NetworkExportPreparationDto = {
+    availability: NetworkLogAvailabilityDto;
+    completedAtUtc?: string | null;
+    files: Array<NetworkLogFileDto>;
+    flush?: DiagnosticSignalResultDto | null;
+    otherProcessesFlushed: boolean;
+    requestedAtUtc?: string | null;
+    status?: NetworkLogStatusDto | null;
+};
+
+export type NetworkLibraryStatusDto = {
+    approvedRules: number;
+    library: string;
+    observedRecords: string;
+    versionDir?: string | null;
+};
+
+/**
+ * Whether this process records the network-library log at all. `NotConfigured`
+ * is a statement about configuration, never "no network activity".
+ */
+export type NetworkLogAvailabilityDto = 'notConfigured' | 'configured';
+
+/**
+ * Capacity the daemon passed to the Engine. Byte and count values are decimal
+ * strings, like every other counter on this API.
+ */
+export type NetworkLogBudgetDto = {
+    fileBytes: string;
+    queueRecords: string;
+    recordBytes: string;
+    retentionSeconds: string;
+    rootBytes: string;
+    runBytes: string;
+};
+
+/**
+ * Monotonic counters of this run. A missing or zero counter never proves the
+ * network was quiet: compare the drop counters before reading an empty log.
+ */
+export type NetworkLogCountersDto = {
+    accepted: string;
+    closedDropped: string;
+    oversized: string;
+    pathRecovered: string;
+    policyFiltered: string;
+    queueDropped: string;
+    rateLimited: string;
+    rotatedOutFiles: string;
+    unreviewedCallsites: string;
+    writeFailed: string;
+    written: string;
+};
+
+/**
+ * One file the Engine listed when it prepared the export, with the digest it
+ * computed over the length it observed.
+ */
+export type NetworkLogFileDto = {
+    bytes: string;
+    name: string;
+    sha256: string;
+};
+
+export type NetworkLogStateDto = 'starting' | 'ready' | 'unavailable' | 'closed';
+
+/**
+ * State, budget and drop information of the network-library log. Only the
+ * `availability` field is present when the log is not configured.
+ */
+export type NetworkLogStatusDto = {
+    availability: NetworkLogAvailabilityDto;
+    budget?: NetworkLogBudgetDto | null;
+    /**
+     * Identifier of the open detailed window, needed to stop it. The Engine does
+     * not report it; the daemon remembers the one its own start call returned.
+     */
+    captureId?: string | null;
+    captureLinkFailure?: NetworkCaptureLinkFailureDto | null;
+    counters?: NetworkLogCountersDto | null;
+    detailedRemainingMs?: number | null;
+    libraries: Array<NetworkLibraryStatusDto>;
+    mode?: NetworkCaptureModeDto | null;
+    role?: NetworkProcessRoleDto | null;
+    runId?: string | null;
+    sampledAtUtc?: string | null;
+    state?: NetworkLogStateDto | null;
+};
+
+/**
+ * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
+ *
+ * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
+ * via [`ApiEnvelope::now`] (the contract carries only the type + the clock
+ * helper, not a hard dependency on when the handler reads the clock).
+ * `rename_all = "camelCase"` is a no-op for the single-word fields here but is
+ * declared for forward-compat.
+ *
+ * IMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named
+ * OpenAPI component is declared in the `#[aliases(...)]` block below. Add a new
+ * alias line whenever a new payload type needs enveloping. NEVER register the
+ * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
+ * generic, and an un-aliased generic inlines an anonymous schema.
+ */
+export type NetworkLogStatusEnvelope = {
+    data: NetworkLogStatusDto;
+    /**
+     * Server time when the response was built (unix epoch milliseconds).
+     */
+    ts: number;
+};
+
+export type NetworkProcessRoleDto = 'daemon' | 'mobileApp' | 'keyboardExtension' | 'shareExtension' | 'backgroundService';
 
 /**
  * Stable phase of a network-recovery run.
@@ -5665,6 +5835,31 @@ export type ExportLogsResponses = {
 };
 
 export type ExportLogsResponse = ExportLogsResponses[keyof ExportLogsResponses];
+
+export type GetNetworkLogStatusData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/diagnostics/network';
+};
+
+export type GetNetworkLogStatusErrors = {
+    /**
+     * Local Engine diagnostics unavailable
+     */
+    503: ApiErrorResponse;
+};
+
+export type GetNetworkLogStatusError = GetNetworkLogStatusErrors[keyof GetNetworkLogStatusErrors];
+
+export type GetNetworkLogStatusResponses = {
+    /**
+     * State, budget and drop counters of the independent network-library log; `availability` is `notConfigured` when the daemon runs without it
+     */
+    200: NetworkLogStatusEnvelope;
+};
+
+export type GetNetworkLogStatusResponse = GetNetworkLogStatusResponses[keyof GetNetworkLogStatusResponses];
 
 export type FactoryResetSpaceData = {
     body?: never;

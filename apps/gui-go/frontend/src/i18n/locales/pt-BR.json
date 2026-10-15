@@ -369,10 +369,16 @@
             "label": "Capturar logs detalhados",
             "tooltip": "Restam cerca de {{minutes}} minutos. Você pode desativar manualmente.",
             "loading": "Lendo o estado de captura do serviço em segundo plano…",
-            "standard": "Registra logs detalhados temporariamente e para automaticamente após 10 minutos.",
+            "standard": "Registra logs detalhados temporariamente e para automaticamente após 10 minutos. Também registra os detalhes da conexão.",
             "active": "Registrando logs detalhados. Para automaticamente em cerca de {{minutes}} minutos.",
             "unavailable": "O diagnóstico do serviço em segundo plano está indisponível.",
             "error": "Não foi possível alterar a captura detalhada"
+          },
+          "network": {
+            "linkFailure": {
+              "startFailed": "Não foi possível registrar os detalhes da conexão junto com o log detalhado.",
+              "stopFailed": "Não foi possível encerrar o registro dos detalhes da conexão junto com o log detalhado. Ele termina sozinho."
+            }
           },
           "debug": {
             "label": "Modo de depuração",
@@ -411,6 +417,10 @@
               "gui": "Janela do app",
               "cli": "Linha de comando",
               "quickPanel": "Painel rápido"
+            },
+            "network": {
+              "incomplete": "O log de conexão de rede pode estar incompleto.",
+              "offline": "Exportado com o serviço em segundo plano parado; o log de conexão de rede não foi atualizado e pode estar incompleto."
             }
           }
         }

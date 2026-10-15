@@ -558,8 +558,8 @@ pub(crate) async fn request_tracing_middleware(request: Request<Body>, next: Nex
             tracing::info!("daemon http request received");
         }
 
-        let mut response =
-            crate::api::request_id::scope(request_id.clone(), next.run(request)).await;
+        let response = next.run(request).await;
+        let mut response = crate::api::request_id::stamp_error_body(response, &request_id).await;
         if let Ok(value) = HeaderValue::from_str(&request_id) {
             response
                 .headers_mut()
@@ -1006,6 +1006,31 @@ mod request_correlation_tests {
                 "/fails",
                 get(|| async { Err::<StatusCode, ApiError>(ApiError::bad_request("nope")) }),
             )
+            .route(
+                "/tuple-error",
+                get(|| async {
+                    (
+                        StatusCode::NOT_FOUND,
+                        axum::Json(uc_daemon_contract::api::dto::error::ApiErrorResponse::new(
+                            "not_found",
+                            "gone",
+                        )),
+                    )
+                }),
+            )
+            .route(
+                "/foreign-error",
+                get(|| async {
+                    (
+                        StatusCode::BAD_GATEWAY,
+                        axum::Json(serde_json::json!({ "upstream": "down" })),
+                    )
+                }),
+            )
+            .route(
+                "/ok-json",
+                get(|| async { axum::Json(serde_json::json!({ "code": "x", "message": "y" })) }),
+            )
             .route("/ok", get(|| async { StatusCode::OK }))
             .layer(middleware::from_fn(super::cors_middleware))
             .layer(middleware::from_fn(super::request_tracing_middleware))
@@ -1073,6 +1098,32 @@ mod request_correlation_tests {
             .unwrap()
             .to_ascii_lowercase();
         assert!(exposed.contains("x-request-id"), "{exposed}");
+    }
+
+    async fn body_of(response: axum::response::Response) -> serde_json::Value {
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        serde_json::from_slice(&body).unwrap()
+    }
+
+    #[tokio::test]
+    async fn every_error_body_producer_gets_the_request_id() {
+        let response = call("/tuple-error", Some("trace-tuple")).await;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        assert_eq!(body_of(response).await["requestId"], "trace-tuple");
+    }
+
+    #[tokio::test]
+    async fn only_daemon_error_bodies_are_stamped() {
+        // A successful response keeps its body even if it looks like an error.
+        let ok = body_of(call("/ok-json", Some("trace-ok")).await).await;
+        assert!(ok.get("requestId").is_none(), "{ok}");
+
+        // An error body that is not the daemon's { code, message } shape is
+        // left exactly as the handler produced it.
+        let foreign = body_of(call("/foreign-error", Some("trace-foreign")).await).await;
+        assert_eq!(foreign, serde_json::json!({ "upstream": "down" }));
     }
 
     #[tokio::test]

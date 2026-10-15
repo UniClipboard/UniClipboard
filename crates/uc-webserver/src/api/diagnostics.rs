@@ -418,26 +418,56 @@ mod tests {
         }
     }
 
-    #[derive(Clone, Default)]
-    struct Captured(Arc<std::sync::Mutex<Vec<u8>>>);
+    /// Records of every thread of this test binary, kept in one process-wide
+    /// buffer behind a permanently installed subscriber. A scoped subscriber
+    /// per test races with the other tests' callsite interest caches (the
+    /// ERROR callsite under test is shared), so the subscriber is global and
+    /// each test reads back only its own thread's lines.
+    fn records_of_current_thread(run: impl FnOnce()) -> Vec<String> {
+        use std::io::Write;
+        use std::sync::{Mutex, OnceLock};
 
-    impl std::io::Write for Captured {
-        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
-            self.0.lock().expect("captured").extend_from_slice(bytes);
-            Ok(bytes.len())
+        static BUFFER: OnceLock<Arc<Mutex<Vec<u8>>>> = OnceLock::new();
+        #[derive(Clone)]
+        struct Shared(Arc<Mutex<Vec<u8>>>);
+        impl Write for Shared {
+            fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+                self.0.lock().expect("buffer").extend_from_slice(bytes);
+                Ok(bytes.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for Shared {
+            type Writer = Shared;
+            fn make_writer(&'a self) -> Shared {
+                self.clone()
+            }
         }
 
-        fn flush(&mut self) -> std::io::Result<()> {
-            Ok(())
-        }
-    }
-
-    impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for Captured {
-        type Writer = Captured;
-
-        fn make_writer(&'a self) -> Self::Writer {
-            self.clone()
-        }
+        let buffer = BUFFER.get_or_init(|| {
+            let buffer = Arc::new(Mutex::new(Vec::new()));
+            let subscriber = tracing_subscriber::fmt()
+                .with_writer(Shared(Arc::clone(&buffer)))
+                .with_ansi(false)
+                .with_thread_ids(true)
+                .finish();
+            // Another test binary component may already own the global default;
+            // the buffer then simply stays empty and the assertion reports it.
+            let _ = tracing::subscriber::set_global_default(subscriber);
+            buffer
+        });
+        let marker = format!("{:?}", std::thread::current().id());
+        let before = buffer.lock().expect("buffer").len();
+        run();
+        let bytes = buffer.lock().expect("buffer")[before..].to_vec();
+        String::from_utf8(bytes)
+            .expect("utf8")
+            .lines()
+            .filter(|line| line.contains(&marker))
+            .map(str::to_owned)
+            .collect()
     }
 
     fn export_failure_cases() -> [(
@@ -496,13 +526,8 @@ mod tests {
             if !status.is_server_error() {
                 continue;
             }
-            let captured = Captured::default();
-            let subscriber = tracing_subscriber::fmt()
-                .with_writer(captured.clone())
-                .with_ansi(false)
-                .finish();
 
-            tracing::subscriber::with_default(subscriber, || {
+            let records = records_of_current_thread(|| {
                 runtime.block_on(async {
                     let probe = RuntimeProbe {
                         prepared: Arc::new(AtomicBool::new(false)),
@@ -511,13 +536,11 @@ mod tests {
                 });
             });
 
-            let output =
-                String::from_utf8(captured.0.lock().expect("captured").clone()).expect("utf8");
-            let records = output.lines().filter(|line| line.contains(cause)).count();
-            assert_eq!(records, 1, "one record for {cause}: {output}");
+            let with_cause = records.iter().filter(|line| line.contains(cause)).count();
+            assert_eq!(with_cause, 1, "one record for {cause}: {records:?}");
             assert!(
-                !output.contains("/Users"),
-                "no paths in the record: {output}"
+                records.iter().all(|line| !line.contains("/Users")),
+                "no paths in the record: {records:?}"
             );
         }
     }

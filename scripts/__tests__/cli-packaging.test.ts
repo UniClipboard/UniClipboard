@@ -79,7 +79,7 @@ describe('shipped uniclipd builds', () => {
     const build = read('build.yml')
     const cli = jobs(build)['build-cli']
     expect(cli).toContain(
-      "if: inputs.package_cli && inputs.build_mode == 'release' && needs.setup-matrix.outputs.cli-matrix != '[]'"
+      "if: inputs.build_only != true && (inputs.package_cli && inputs.build_mode == 'release' && needs.setup-matrix.outputs.cli-matrix != '[]')"
     )
     // Only the targets that share a triple with the app reuse its sidecar.
     expect(step(build, 'Select CLI targets')).toContain(

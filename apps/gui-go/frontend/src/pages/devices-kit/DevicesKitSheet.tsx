@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import type { RegisterMobileDeviceResult } from '@/api/tauri-command/mobile_sync'
 import ConnectMobileDialog from '@/components/device/ConnectMobileDialog'
 import MobileSyncSettingsDialog from '@/components/device/MobileSyncSettingsDialog'
 import SwitchSpaceDialog from '@/components/device/SwitchSpaceDialog'
@@ -27,6 +28,14 @@ export function DevicesKitSheet({ devices }: { devices: DevicesKitController }) 
   const { t } = useTranslation()
   const page = useDevicesPage()
   const { invitation } = devices
+  // Registration credentials belong to this Sheet session, never to History's saved selection.
+  const [pendingCredential, setPendingCredential] = useState<RegisterMobileDeviceResult | null>(
+    null
+  )
+  const select = (selection: DevicesKitSelection) => {
+    setPendingCredential(null)
+    devices.setSelection(selection)
+  }
   // The sheet mounts closed and opens after its first commit: a dialog that mounts already open
   // skips its entry animation, and this one is mounted only while in use.
   const [entered, setEntered] = useState(false)
@@ -104,7 +113,7 @@ export function DevicesKitSheet({ devices }: { devices: DevicesKitController }) 
             page={page}
             invitation={invitation}
             selection={resolved}
-            onSelect={devices.setSelection}
+            onSelect={select}
           />
         }
         detailLabel={t('devices.kit.detailLabel')}
@@ -113,6 +122,8 @@ export function DevicesKitSheet({ devices }: { devices: DevicesKitController }) 
             page={page}
             selection={resolved}
             invitation={invitation}
+            initialCredential={pendingCredential}
+            onCredentialConsumed={() => setPendingCredential(null)}
             joinedPeerId={devices.joinedPeerId}
             onDismissJoined={devices.dismissJoined}
           />
@@ -166,7 +177,8 @@ export function DevicesKitSheet({ devices }: { devices: DevicesKitController }) 
         onDirectSuccess={refreshMembers}
         onMobileSuccess={result => {
           page.mobileActions.reload()
-          devices.setSelection({ kind: 'mobile', id: result.deviceId, pendingCredential: result })
+          setPendingCredential(result)
+          devices.setSelection({ kind: 'mobile', id: result.deviceId })
         }}
       />
     </Sheet>

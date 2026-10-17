@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { execFileSync, spawn } from 'node:child_process'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
+import { credentialReopen } from './devices-kit-lifecycle.mjs'
 
 // Browser run of Manage Devices on the kit History window (design DV0–DV7) against a REAL isolated daemon: the
 // sidebar's device rows filter the history, the gear opens the sheet, the invitation is a row that outlives the
@@ -86,13 +87,14 @@ const results = {
 }
 const browser = await chromium.launch({ headless: true, channel: process.env.PLAYWRIGHT_CHANNEL })
 let page
-async function step(name, run) {
+async function step(name, run, { sensitive = false } = {}) {
   try {
     const detail = await run()
     results.steps.push({ name, ok: true, detail })
   } catch (error) {
     results.steps.push({ name, ok: false, error: String(error?.stack ?? error) })
-    await page?.screenshot({ path: path.join(output, `failed-${name}.png`) }).catch(() => {})
+    if (!sensitive)
+      await page?.screenshot({ path: path.join(output, `failed-${name}.png`) }).catch(() => {})
   }
 }
 async function shot(name) {
@@ -336,6 +338,18 @@ try {
     await closeSheet()
     return { open: box, closing, traffic, viewport }
   })
+
+  if (process.env.DEVICES_KIT_LIFECYCLE === '1') {
+    await openSheet()
+    for (const branch of ['password', 'username']) {
+      await step(
+        `credential-${branch}-close-reopen`,
+        () => credentialReopen({ page, sheet, option, openSheet, closeSheet }, branch),
+        { sensitive: true }
+      )
+    }
+    await closeSheet()
+  }
 
   await page.context().close()
   await newPage('dark')

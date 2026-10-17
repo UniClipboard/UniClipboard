@@ -1,5 +1,4 @@
 import type { TFunction } from 'i18next'
-import type { RegisterMobileDeviceResult } from '@/api/tauri-command/mobile_sync'
 import type { StatusDotTone } from '@/components/device/StatusDot'
 import type { useAddDeviceInvitation } from '@/hooks/useAddDeviceInvitation'
 import { formatInvitationRemaining } from '@/lib/invitation-code'
@@ -10,12 +9,7 @@ export type DevicesKitSelection =
   | { kind: 'local' }
   | { kind: 'peer'; id: string }
   | { kind: 'removed'; id: string }
-  | {
-      kind: 'mobile'
-      id: string
-      /** One-time credentials of a phone just added, shown once in its detail. */
-      pendingCredential?: RegisterMobileDeviceResult
-    }
+  | { kind: 'mobile'; id: string }
   | { kind: 'invitation' }
 
 export const INVITATION_ROW_ID = 'invitation'

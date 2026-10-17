@@ -78,6 +78,7 @@ interface Props {
    * the one-time secret is gone (same guarantee the modal's close gave).
    */
   initialCredential?: RegisterMobileDeviceResult | null
+  onInitialCredentialConsumed?: () => void
   onRevoke: (device: MobileDeviceView) => void
   onRotated: () => void
 }
@@ -86,6 +87,7 @@ const MobileDevicePanel: React.FC<Props> = ({
   device,
   settings,
   initialCredential,
+  onInitialCredentialConsumed,
   onRevoke,
   onRotated,
 }) => {
@@ -97,6 +99,10 @@ const MobileDevicePanel: React.FC<Props> = ({
   const [credentialResult, setCredentialResult] = useState<UpdateMobileDeviceResult | null>(
     () => initialCredential ?? null
   )
+  // Release the parent's one-time handoff once this panel owns the credentials.
+  useEffect(() => {
+    if (initialCredential) onInitialCredentialConsumed?.()
+  }, [initialCredential, onInitialCredentialConsumed])
   const [credentialFromRename, setCredentialFromRename] = useState(false)
   // The install helper QR only ships with a registration result (add flow); a
   // password reset never carries it, so it's cleared on every in-panel rotate.

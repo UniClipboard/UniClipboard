@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next'
+import type { RegisterMobileDeviceResult } from '@/api/tauri-command/mobile_sync'
 import MobileDevicePanel from '@/components/device/MobileDevicePanel'
 import type { useDevicesPage } from '@/hooks/useDevicesPage'
 import { createLogger } from '@/lib/logger'
@@ -25,6 +26,8 @@ export function DevicesKitDetail({
   page,
   selection,
   invitation,
+  initialCredential,
+  onCredentialConsumed,
   joinedPeerId,
   onDismissJoined,
 }: {
@@ -32,6 +35,8 @@ export function DevicesKitDetail({
   /** Already resolved: it names a row that exists. */
   selection: DevicesKitSelection
   invitation: DeviceInvitationRow
+  initialCredential: RegisterMobileDeviceResult | null
+  onCredentialConsumed: () => void
   joinedPeerId: string | null
   onDismissJoined: () => void
 }) {
@@ -69,8 +74,11 @@ export function DevicesKitDetail({
           key={device.deviceId}
           device={device}
           settings={page.mobileSettings}
-          initialCredential={selection.pendingCredential ?? null}
+          initialCredential={
+            initialCredential?.deviceId === device.deviceId ? initialCredential : null
+          }
           onRevoke={page.mobileActions.requestRevoke}
+          onInitialCredentialConsumed={onCredentialConsumed}
           onRotated={page.mobileActions.reload}
         />
       )

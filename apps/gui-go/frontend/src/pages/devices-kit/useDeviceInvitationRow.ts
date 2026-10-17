@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useChangePassphraseForm } from '@/components/security/useChangePassphraseForm'
 import { useAddDeviceInvitation } from '@/hooks/useAddDeviceInvitation'
 
 /**
@@ -17,14 +18,29 @@ export function useDeviceInvitationRow(onJoined: (peerDeviceId: string) => void)
       onJoined(peerDeviceId)
     },
   })
+  const passphraseForm = useChangePassphraseForm({
+    submitting: state.passphraseChangeSubmitting,
+    onSubmittingChange: state.setPassphraseChangeSubmitting,
+    onChanged: state.handlePassphraseChanged,
+  })
+  const busy = state.loading || state.passphraseChangeSubmitting
   return {
+    busy,
+    passphraseForm,
     /** The row exists. */
     active,
     state,
     /** Issues (or restores) the invitation and shows the row. */
-    start: () => setActive(true),
+    start: () => {
+      passphraseForm.reset()
+      setActive(true)
+    },
     /** Removes the row without revoking the code (as closing the old dialog did). */
-    close: () => setActive(false),
+    close: () => {
+      if (busy) return
+      setActive(false)
+      passphraseForm.reset()
+    },
   }
 }
 

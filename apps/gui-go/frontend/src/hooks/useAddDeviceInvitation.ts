@@ -80,6 +80,7 @@ export function useAddDeviceInvitation({
   const [copied, setCopied] = useState(false)
   const initialDeviceIdsRef = useRef<ReadonlySet<string> | null>(null)
   const pairingCompletionInFlightRef = useRef(false)
+  const sessionRef = useRef<symbol | null>(null)
   const reportSuccess = useEffectEvent((peerDeviceId: string) => onSuccess?.(peerDeviceId))
 
   // Tick only while displaying a live invitation.
@@ -148,9 +149,11 @@ export function useAddDeviceInvitation({
   useEffect(() => {
     if (!open) return
     let cancelled = false
+    sessionRef.current = Symbol()
     void restoreOrIssueInvitation(() => cancelled)
     return () => {
       cancelled = true
+      sessionRef.current = null
     }
   }, [open])
 
@@ -337,20 +340,26 @@ export function useAddDeviceInvitation({
   }
 
   const handlePassphraseChanged = () => {
+    const session = sessionRef.current
+    if (!session) return
+    const isCurrent = () => sessionRef.current === session
     update({ loading: true, error: null, step: 'invitation' })
     void (async () => {
       try {
-        initialDeviceIdsRef.current = activeDeviceIds(await getDeviceTrustSnapshot())
+        const trust = await getDeviceTrustSnapshot()
+        if (!isCurrent()) return
+        initialDeviceIdsRef.current = activeDeviceIds(trust)
         const issued = await issuePairingInvitation()
+        if (!isCurrent()) return
         update({ invitation: issued, issuedAtMs: Date.now() })
         log.info(
           { event: 'invitation_ready', mode: 'passphrase_reset' },
           'pairing invitation ready'
         )
       } catch (error) {
-        reportIssueFailure(error)
+        if (isCurrent()) reportIssueFailure(error)
       } finally {
-        update({ loading: false })
+        if (isCurrent()) update({ loading: false })
       }
     })()
   }

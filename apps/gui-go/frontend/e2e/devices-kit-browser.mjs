@@ -3,6 +3,7 @@ import { execFileSync, spawn } from 'node:child_process'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { credentialReopen } from './devices-kit-lifecycle.mjs'
+import { passphraseLifecycle } from './devices-kit-passphrase-lifecycle.mjs'
 
 // Browser run of Manage Devices on the kit History window (design DV0–DV7) against a REAL isolated daemon: the
 // sidebar's device rows filter the history, the gear opens the sheet, the invitation is a row that outlives the
@@ -349,6 +350,25 @@ try {
       )
     }
     await closeSheet()
+  }
+
+  if (process.env.DEVICES_KIT_PASSPHRASE_LIFECYCLE === '1') {
+    for (const outcome of ['success', 'failure']) {
+      for (const detachOwner of [false, true]) {
+        await page.context().close()
+        await newPage('light')
+        await step(
+          `passphrase-${outcome}-${detachOwner ? 'detached' : 'retained'}`,
+          () =>
+            passphraseLifecycle(
+              { page, sheet, option, openSheet, closeSheet },
+              outcome,
+              detachOwner
+            ),
+          { sensitive: true }
+        )
+      }
+    }
   }
 
   await page.context().close()

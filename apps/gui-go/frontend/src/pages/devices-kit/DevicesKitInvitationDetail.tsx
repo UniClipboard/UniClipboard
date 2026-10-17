@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import ChangePassphraseForm from '@/components/security/ChangePassphraseForm'
+import ChangePassphraseFields from '@/components/security/ChangePassphraseFields'
 import {
   Button,
   EntityHeader,
@@ -33,7 +33,7 @@ export function DevicesKitInvitationDetail({ row }: { row: DeviceInvitationRow }
     </Button>
   ) : ended ? (
     <>
-      <Button disabled={state.loading} onClick={row.close}>
+      <Button disabled={row.busy} onClick={row.close}>
         {t('devices.addDevice.actions.close')}
       </Button>
       {state.issueRetryable !== false && (
@@ -48,8 +48,8 @@ export function DevicesKitInvitationDetail({ row }: { row: DeviceInvitationRow }
       )}
     </>
   ) : state.step === 'credentials' || state.step === 'reset_passphrase' ? (
-    // Re-pairing: the row can be dismissed at any step, as the old dialog could be closed.
-    <Button disabled={state.loading} onClick={row.close}>
+    // Re-pairing can be dismissed once its pending operation has settled.
+    <Button disabled={row.busy} onClick={row.close}>
       {t('devices.addDevice.actions.close')}
     </Button>
   ) : undefined
@@ -74,11 +74,12 @@ export function DevicesKitInvitationDetail({ row }: { row: DeviceInvitationRow }
       />
       {state.step === 'credentials' && <DevicesKitCredentials state={state} />}
       {state.step === 'reset_passphrase' && (
-        <ChangePassphraseForm
-          submitting={state.passphraseChangeSubmitting}
-          onSubmittingChange={state.setPassphraseChangeSubmitting}
-          onCancel={state.handleCancelPassphraseChange}
-          onChanged={state.handlePassphraseChanged}
+        <ChangePassphraseFields
+          model={row.passphraseForm}
+          onCancel={() => {
+            row.passphraseForm.reset()
+            state.handleCancelPassphraseChange()
+          }}
         />
       )}
       {state.step === 'failed' && (

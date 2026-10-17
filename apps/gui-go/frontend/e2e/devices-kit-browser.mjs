@@ -311,8 +311,8 @@ try {
     return { pathAfter }
   })
 
-  // With motion on, the sheet animates in and out like Manage Tags (on macOS it drops from the title
-  // bar and clears the traffic lights), and it stays mounted until its exit animation has run.
+  // With motion on, the Sheet stays mounted until its exit animation finishes.
+  // Native macOS traffic lights are outside this full-app fixture's DOM.
   await page.context().close()
   await newPage('light', 'no-preference')
   await step('sheet-animates-in-and-out', async () => {
@@ -320,13 +320,12 @@ try {
     await openSheet()
     await page.waitForTimeout(800)
     const box = await popup().boundingBox()
-    // Only the macOS skin draws traffic lights; boundingBox() would wait for them elsewhere.
-    const traffic = platform === 'macos' ? await page.locator('.mac-traffic').boundingBox() : null
     const viewport = page.viewportSize()
+    assert.ok(box && box.width > 0 && box.height > 0, 'the Sheet has visible geometry')
+    assert.ok(box.x >= 0 && box.x + box.width <= viewport.width + 1, 'the Sheet fits the viewport')
     if (platform === 'macos') {
       assert.ok(Math.abs(box.y) < 1, `sheet hangs from the top edge (y=${box.y})`)
       assert.ok(box.width <= 760, `sheet width ${box.width}`)
-      assert.ok(traffic && box.x > traffic.x + traffic.width, 'sheet clears the traffic lights')
     }
     await sheet().getByRole('button', { name: 'Done', exact: true }).click()
     await page.waitForTimeout(120)
@@ -337,7 +336,13 @@ try {
     await sheet().waitFor({ state: 'detached', timeout: 5000 })
     await openSheet()
     await closeSheet()
-    return { open: box, closing, traffic, viewport }
+    return {
+      open: box,
+      closing,
+      viewport,
+      nativeTrafficLightClearance:
+        platform === 'macos' ? 'requires-native-acceptance' : 'not-applicable',
+    }
   })
 
   if (process.env.DEVICES_KIT_LIFECYCLE === '1') {

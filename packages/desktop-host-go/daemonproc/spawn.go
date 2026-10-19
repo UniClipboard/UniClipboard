@@ -86,5 +86,8 @@ func SpawnDetachedDaemon(origin string) error {
 	if err := cmd.Start(); err != nil {
 		return &SpawnError{Err: errctx.Wrap(fmt.Sprintf("failed to spawn daemon via `%s`", exe), err)}
 	}
-	return cmd.Process.Release()
+	// Reap the child when it exits. `Process.Release` would leave it a zombie of this process until we exit,
+	// and a zombie still passes the `kill(pid, 0)` liveness check, so a stopped daemon would look alive.
+	go func() { _ = cmd.Wait() }()
+	return nil
 }

@@ -571,18 +571,11 @@ async fn two_paired_daemons_record_connection_events_without_identifiers() {
         total_records > 0,
         "no network record was written while two daemons paired in a detailed window"
     );
-    // Records must be classified events, not only `unreviewed_callsite` markers. On Windows
-    // the Engine at the pinned revision matches callsite paths on '/' only while rustc embeds
-    // dependency paths with '\\', so every iroh/noq event ends up unreviewed there (measured
-    // on the Windows build: 352 backslash paths, no slash path for iroh-1.3.0).
-    #[cfg(not(windows))]
+    // Records must be classified events, not only `unreviewed_callsite` markers, on every
+    // platform. Windows embeds dependency paths with '\\'; the Engine must match both separators.
     assert!(
         classified_records > 0,
         "only unreviewed_callsite markers were recorded"
-    );
-    #[cfg(windows)]
-    eprintln!(
-        "[windows] classified network records: {classified_records} (known Engine path limitation)"
     );
 
     // The exit flush: every record the Engine accepted before the stop must be on

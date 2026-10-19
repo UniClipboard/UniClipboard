@@ -206,6 +206,11 @@ fn list_runs(logs_dir: &Path, since: Option<DateTime<Utc>>, live: Option<&Networ
         ignored_entries: 0,
         unreadable_root: false,
     };
+    // A link or plain file where the network directory belongs is never followed.
+    if fs::symlink_metadata(&root).is_ok_and(|meta| !meta.is_dir()) {
+        listing.ignored_entries += 1;
+        return listing;
+    }
     let entries = match fs::read_dir(&root) {
         Ok(entries) => entries,
         Err(error) if error.kind() == io::ErrorKind::NotFound => return listing,

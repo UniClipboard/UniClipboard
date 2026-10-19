@@ -182,7 +182,7 @@ func exportStartup(env environment, logsDir, destination string, startupStatus j
 	report := Report{IncludedFiles: []string{}, UnreadableFiles: unreadable, TruncatedFiles: []string{}, ConcurrentWritesPossible: true}
 	archive := zip.NewWriter(tmp)
 	for _, name := range names {
-		input, err := os.Open(filepath.Join(logsDir, name))
+		input, err := openRegular(filepath.Join(logsDir, name))
 		if err != nil {
 			report.UnreadableFiles = append(report.UnreadableFiles, name)
 			continue

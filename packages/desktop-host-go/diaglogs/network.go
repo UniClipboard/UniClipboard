@@ -111,6 +111,11 @@ func networkExportedName(name string) bool {
 func selectNetwork(logsDir string) networkSelection {
 	var selection networkSelection
 	root := filepath.Join(logsDir, networkDir)
+	if info, err := os.Lstat(root); err == nil && !info.IsDir() {
+		// A link or plain file where the network directory belongs is never followed.
+		selection.ignored++
+		return selection
+	}
 	entries, err := os.ReadDir(root)
 	if err != nil {
 		if !os.IsNotExist(err) {
@@ -204,7 +209,7 @@ func collectNetwork(archive *zip.Writer, selection networkSelection, now time.Ti
 		}
 		run := NetworkRun{Role: candidate.role, RunID: candidate.runID, Files: []NetworkFile{}, UnreadableFiles: []string{}}
 		for _, name := range candidate.files {
-			input, err := os.Open(filepath.Join(candidate.dir, name))
+			input, err := openRegular(filepath.Join(candidate.dir, name))
 			if err != nil {
 				run.UnreadableFiles = append(run.UnreadableFiles, name)
 				push(reasonFileUnreadable)

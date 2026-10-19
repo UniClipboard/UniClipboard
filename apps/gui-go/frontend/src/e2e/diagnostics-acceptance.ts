@@ -210,9 +210,39 @@ export async function runDiagnosticsAcceptance(phase: string, h: Helpers) {
   }
 
   if (scenario === 'reopen') {
-    await record('diag-reopen-state', true, { snapshot: await snapshot(), ui: description() })
-    await sleep(2_000)
-    await record('diag-driver-complete', true)
+    const before = await snapshot()
+    await record('diag-reopen-state', true, { snapshot: before, ui: description() })
+    // Open a fresh Detailed capture, let the orchestrator send fresh traffic from the other peer, and record the
+    // network counters right before the GUI exits fully (which stops the daemon gracefully).
+    // After a no-expiry capture run the capture is still open; click only when the switch is off.
+    if (!isOn()) captureSwitch()!.click()
+    await waitFor('switch on', () => isOn())
+    let started: Awaited<ReturnType<typeof snapshot>> | null = null
+    for (let i = 0; i < 120 && !started; i++) {
+      const s = await snapshot()
+      if (s.business.mode === 'detailed' && s.network.mode === 'detailed') started = s
+      else await sleep(500)
+    }
+    await record('diag-tail-ready', !!started, { before: before.network.counters, started })
+    const accepted = (s: Awaited<ReturnType<typeof snapshot>>) =>
+      Number(s.network.counters?.accepted ?? 0)
+    // The orchestrator sends three fresh texts from the other peer. Wait until the last one is in this daemon's
+    // history, so the traffic is known to have crossed the network before the counters are read.
+    const { getClipboardEntries } = await import('@/api/daemon/clipboard')
+    const freshText = `${marker}-tail-3`
+    let freshSeen = false
+    for (let i = 0; i < 240 && !freshSeen; i++) {
+      const entries = (await getClipboardEntries(20, 0)).entries ?? []
+      freshSeen = entries.some(entry => JSON.stringify(entry).includes(freshText))
+      if (!freshSeen) await sleep(500)
+    }
+    await record('diag-tail-traffic-received', freshSeen, { text: freshText })
+    const last = await snapshot()
+    await record('diag-tail-final', freshSeen && accepted(last) > accepted(before), {
+      acceptedBefore: accepted(before),
+      acceptedFinal: accepted(last),
+      final: last,
+    })
     return control('exit')
   }
 

@@ -18,6 +18,7 @@ import argparse
 import hashlib
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -196,13 +197,22 @@ def main():
             (exports / 'export1.zip').write_bytes(exported.read_bytes())
             results['export1'] = verify_export(exports / 'export1.zip', engine)
 
-        # 2. reopen against the same daemon, then quit fully
-        seen = launch('reopen', 'diag:reopen', 'full')
+        # 2. reopen against the same daemon, open a fresh Detailed capture, send fresh traffic from peer B, then
+        # quit fully. The network counters read right before the exit are compared with what the run holds on disk.
+        def send_tail(row):
+            if row['step'] == 'diag-tail-ready' and 'tailSentAt' not in results:
+                results['tailSentAt'] = now()
+                results['tailSendExits'] = [cli(env_b, '--json', 'send', f'{marker}-tail-{i}', check=False).returncode
+                                            for i in range(1, 4)]
+
+        seen = launch('reopen', f'diag:reopen:{marker}', 'full', on_step=send_tail)
         assert seen.get('diag-reopen-state', {}).get('ok')
-        deadline = time.monotonic() + 30
+        guiExitAt = time.monotonic()
+        deadline = guiExitAt + 60
         while pid_alive(daemon_pid) and time.monotonic() < deadline:
             time.sleep(.2)
         results['daemonStoppedByFullQuit'] = not pid_alive(daemon_pid)
+        results['daemonStopSecondsAfterGuiExit'] = round(time.monotonic() - guiExitAt, 1)
         results['daemonStopObservedAt'] = now()
         assert results['daemonStoppedByFullQuit']
         run1_dir = Path(home_a) / 'Library/Logs' / f'app.uniclipboard.desktop-{profile_a}/network/daemon' / seen_run1
@@ -210,6 +220,15 @@ def main():
         results['run1Dir'] = run1_dir.name
         results['run1OnDiskRecords'] = sum(len(f.read_text().splitlines()) for f in run1_dir.glob('network.*.jsonl'))
         results['run1RunJson'] = json.loads((run1_dir / 'run.json').read_text())
+        final = seen.get('diag-tail-final', {})
+        counters = (final.get('detail') or {}).get('final', {}).get('network', {}).get('counters') or {}
+        dropped = sum(int(counters.get(k, 0)) for k in ('queueDropped', 'closedDropped', 'writeFailed'))
+        accepted = (final.get('detail') or {}).get('acceptedFinal')
+        results['tail'] = {'freshRecordsObserved': bool(final.get('ok')), 'acceptedBefore': (final.get('detail') or {}).get('acceptedBefore'),
+                           'acceptedFinal': accepted, 'dropped': dropped, 'onDisk': results['run1OnDiskRecords'],
+                           'persisted': accepted is not None and results['run1OnDiskRecords'] + dropped >= accepted,
+                           'counters': counters}
+        assert seen.get('diag-tail-final', {}).get('ok'), 'no fresh accepted network records before the graceful exit'
 
         # 3. new daemon run: export again, then the offline path
         saved = exports / 'offline.zip'
@@ -217,9 +236,16 @@ def main():
         def stop_daemon(row):
             if row['step'] == 'diag-ready-for-offline' and 'stoppedAt' not in results:
                 results['stoppedAt'] = now()
+                pid_before = conn(home_a, profile_a)['pid']
+                t0 = time.monotonic()
                 stop = cli(env_a, '--json', 'stop', check=False, timeout=80)
                 results['offlineStopExit'] = stop.returncode
                 results['offlineStopOutput'] = (stop.stdout + stop.stderr)[:400]
+                results['offlineStopCommandSeconds'] = round(time.monotonic() - t0, 1)
+                while pid_alive(pid_before) and time.monotonic() - t0 < 120:
+                    time.sleep(.2)
+                results['offlineDaemonGoneAfterSeconds'] = round(time.monotonic() - t0, 1)
+                results['offlineDaemonStillAlive'] = pid_alive(pid_before)
 
         seen = launch('offline', 'diag:offline', 'full', on_step=stop_daemon,
                       extra={'UC_GUI_GO_E2E_DIALOG_SAVE': str(saved)})
@@ -239,6 +265,9 @@ def main():
             cli(env, '--json', 'stop', check=False, timeout=80)
         for f in exports.glob('*.zip'):
             (out / f.name).write_bytes(f.read_bytes())
+        logs = Path(home_a) / 'Library/Logs' / f'app.uniclipboard.desktop-{profile_a}'
+        if logs.is_dir():  # kept for diagnosis; may hold peer addresses, so not for publishing
+            shutil.copytree(logs, out / 'profile-a-logs', dirs_exist_ok=True)
         (out / 'assertions.json').write_text(json.dumps(results, indent=2) + '\n')
     print(json.dumps({k: v for k, v in results.items() if k != 'steps'}, indent=2))
     assert results['passed']

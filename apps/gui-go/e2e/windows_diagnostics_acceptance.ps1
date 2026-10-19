@@ -25,7 +25,16 @@ foreach ($p in 'uc-gui-go-a', 'uc-gui-go-b') {
 }
 $gui = Join-Path $root 'uc-gui-go-a'
 $peer = Join-Path $root 'uc-gui-go-b'
-$results = [ordered]@{ passed = $false; steps = [ordered]@{} }
+$results = @{}
+$seenAll = @{} # step details stay in memory only; the raw evidence files hold them on disk
+# `R` is a built-in alias (Invoke-History) and would win over a function, so the recorder is named Rec.
+# Every result is appended as one small JSON line the moment it is known, so a later failure or hang cannot erase
+# the earlier evidence. Nothing here serializes a large object graph.
+function Rec($k, $v) {
+  $results[$k] = $v
+  $line = (@{ k = $k; v = $v } | ConvertTo-Json -Depth 3 -Compress)
+  Add-Content -Encoding UTF8 (Join-Path $out 'results.jsonl') $line
+}
 function Mark($m) { Add-Content (Join-Path $out 'progress.txt') "$(Get-Date -Format o) $m" }
 function Now { (Get-Date).ToUniversalTime().ToString('o') }
 
@@ -81,8 +90,7 @@ function Shot($proc, $file) {
 $shotSteps = 'diag-settings-open', 'diag-capture-started', 'diag-export-during-capture', 'diag-capture-stopped',
   'diag-capture-restarted', 'diag-capture-expired', 'diag-reopen-state', 'diag-export-after-reopen', 'diag-export-offline'
 $marker = 'diag-accept-' + ([guid]::NewGuid().ToString('N').Substring(0, 20))
-$results.marker = $marker
-$timeline = New-Object System.Collections.ArrayList
+Rec 'marker' $marker
 
 function Launch($name, $phase, $exitMode, $extra = @{}, $onStep = $null, $timeoutSec = 1500) {
   $evidence = Join-Path $out "$name.jsonl"
@@ -90,18 +98,23 @@ function Launch($name, $phase, $exitMode, $extra = @{}, $onStep = $null, $timeou
   $e = @{ UC_GUI_GO_EVIDENCE = $evidence; UC_GUI_GO_E2E_PHASE = $phase; UC_GUI_GO_EXIT_MODE = $exitMode }
   foreach ($k in $extra.Keys) { $e[$k] = $extra[$k] }
   Use-Env 'gui-go-a' $e
-  $results.steps["$name`:launchedAt"] = Now
+  Rec "$name.launchedAt" (Now)
   $proc = Start-Process (Join-Path $gui 'gui-go.exe') -PassThru -WorkingDirectory $gui
   $seen = @{}; $shot = @{}; $cursor = 0; $lastPoll = [datetime]::MinValue
   $deadline = (Get-Date).AddSeconds($timeoutSec)
-  while ((Get-Date) -lt $deadline -and -not $proc.HasExited) {
+  $exitSeen = $false
+  while ((Get-Date) -lt $deadline) {
+    # One more pass after the process exits, so the last evidence lines are not lost.
+    if ($proc.HasExited) { if ($exitSeen) { break }; $exitSeen = $true }
     $lines = @(Get-Content $evidence -Encoding UTF8 -ErrorAction SilentlyContinue)
     for (; $cursor -lt $lines.Count; $cursor++) {
       if (-not $lines[$cursor]) { continue }
       $row = $lines[$cursor] | ConvertFrom-Json
       if ($row.step -eq 'driver-error') { throw "driver error: $($row.detail | ConvertTo-Json -Depth 4 -Compress)" }
       $seen[$row.step] = @{ ok = $row.ok; seenAt = (Now); detail = $row.detail }
-      if ($shotSteps -contains $row.step -and -not $shot[$row.step]) {
+      # The step callback runs first: screenshot retries can take seconds and must not delay orchestrated traffic.
+      if ($onStep) { & $onStep $row.step }
+      if ($shotSteps -contains $row.step -and -not $shot[$row.step] -and -not $proc.HasExited) {
         $shot[$row.step] = $true
         for ($i = 0; $i -lt 8; $i++) {
           Start-Sleep -Seconds 1
@@ -109,20 +122,20 @@ function Launch($name, $phase, $exitMode, $extra = @{}, $onStep = $null, $timeou
           if ((Shot $proc $f) -and (Get-Item $f).Length -gt 60000) { break }
         }
       }
-      if ($onStep) { & $onStep $row.step }
     }
     if ($name -eq 'capture' -and ((Get-Date) - $lastPoll).TotalSeconds -ge 5) {
       $lastPoll = Get-Date
       $c = Uc $gui 'gui-go-a' @('--json', 'debug', 'capture', 'status')
-      [void]$timeline.Add(@{ at = (Now); exit = $c.Exit; out = $c.Out.Trim().Substring(0, [Math]::Min(300, $c.Out.Trim().Length)) })
+      Add-Content -Encoding UTF8 (Join-Path $out 'capture-timeline.jsonl') (@{ at = (Now); exit = $c.Exit; out = ($c.Out -replace '\s+', ' ') } | ConvertTo-Json -Compress)
       Use-Env 'gui-go-a' $e
     }
     Start-Sleep -Milliseconds 300
   }
   if (-not $proc.HasExited) { Stop-Process -Id $proc.Id -Force; throw "$name`: timeout" }
-  $results.steps[$name] = $seen
-  $results.steps["$name`:guiExit"] = $proc.ExitCode
-  $results.steps["$name`:exitedAt"] = Now
+  $seenAll[$name] = $seen
+  foreach ($k in $seen.Keys) { Rec "$name.$k" @{ ok = $seen[$k].ok; seenAt = $seen[$k].seenAt } }
+  Rec "$name.guiExit" $proc.ExitCode
+  Rec "$name.exitedAt" (Now)
   return $seen
 }
 
@@ -131,14 +144,19 @@ try {
   [void](Uc $gui 'gui-go-a' @('space', 'init', '--passphrase', $Passphrase, '--device-name', 'diag-a') -Fail)
   # `start` right after `space init` can race the init daemon's shutdown and fail with engine error 1101; every
   # attempt is recorded so the race stays visible in the results instead of being hidden by the retry.
-  $results.startAttempts = @()
-  for ($a = 1; $a -le 8; $a++) {
+  $startOk = $false
+  for ($a = 1; $a -le 8 -and -not $startOk; $a++) {
     $r = Uc $gui 'gui-go-a' @('start')
-    $results.startAttempts += @{ attempt = $a; exit = $r.Exit; at = (Now) }
-    if ($r.Exit -eq 0) { break }
+    Rec "startAttempt.$a" @{ exit = $r.Exit; at = (Now) }
+    if ($r.Exit -eq 0) { $startOk = $true; break }
+    # Keep the daemon's own failure record and the tail of the Engine log for every failed attempt.
+    $logs = Join-Path $gui 'data\logs'
+    Copy-Item (Join-Path $logs 'daemon-startup-failure.json') (Join-Path $out "start-failure-$a.json") -ErrorAction SilentlyContinue
+    Get-ChildItem $logs -Filter 'engine.*.jsonl' -ErrorAction SilentlyContinue | Select-Object -First 1 | ForEach-Object {
+      Get-Content $_.FullName -Tail 40 | Set-Content -Encoding UTF8 (Join-Path $out "start-failure-$a.engine-tail.jsonl") }
     Start-Sleep -Seconds 6
   }
-  if ($results.startAttempts[-1].exit -ne 0) { throw 'daemon start failed after 8 attempts' }
+  if (-not $startOk) { throw 'daemon start failed after 8 attempts' }
   Use-Env 'gui-go-a'
   $inv = Start-Process (Join-Path $gui 'uniclip.exe') -ArgumentList 'space', 'invite' -PassThru -WindowStyle Hidden `
     -RedirectStandardOutput (Join-Path $out 'invite.txt') -RedirectStandardError (Join-Path $out 'invite.err')
@@ -159,8 +177,7 @@ try {
   }
   if ($members -lt 2) { throw "peer did not join; last member list: $($l.Out)" }
   Stop-Process -Id $inv.Id -Force -ErrorAction SilentlyContinue
-  $results.pairedAt = Now
-  $results.daemonPidsRun1 = @(DaemonPids $gui)
+  Rec 'pairedAt' (Now)
 
   # 1. capture
   $sent = $false
@@ -168,28 +185,52 @@ try {
     param($step)
     if ($step -eq 'diag-capture-started' -and -not $script:sent) {
       $script:sent = $true
-      $results.sentAt = Now
+      Rec 'sentAt' (Now)
       $s = Uc $peer 'gui-go-b' @('--json', 'send', $marker)
-      $results.sendExit = $s.Exit
+      Rec 'sendExit' $s.Exit
     }
   }
   $phase = "diag:capture:$marker" + $(if ($NoExpiryWait) { ':nowait' } else { '' })
   $seen = Launch 'capture' $phase 'keep' @{} $onStep 3000
-  $results.captureTimeline = $timeline
   $need = @('diag-settings-open', 'diag-capture-started', 'diag-marker-received', 'diag-export-during-capture', 'diag-capture-stopped', 'diag-capture-restarted')
   if (-not $NoExpiryWait) { $need += 'diag-capture-expired' }
   foreach ($s in $need) { if (-not $seen[$s] -or -not $seen[$s].ok) { throw "capture step failed: $s" } }
-  $results.daemonAliveAfterGuiClose = (@(DaemonPids $gui).Count -gt 0)
+  Rec 'daemonAliveAfterGuiClose' (@(DaemonPids $gui).Count -gt 0)
+  # Exact equality of the received text (not a substring match): `get` prints the newest entry's text.
   $got = Uc $gui 'gui-go-a' @('get')
-  $results.receivedExact = ($got.Out.Trim() -eq $marker)
-  $results.getExit = $got.Exit
+  Rec 'receivedText' $got.Out.Trim()
+  Rec 'receivedExact' ($got.Out.Trim() -ceq $marker)
+  Rec 'getExit' $got.Exit
 
-  # 2. reopen, then quit fully (graceful daemon stop)
-  [void](Launch 'reopen' 'diag:reopen' 'full')
+  # 2. reopen, open a fresh Detailed capture, send fresh traffic from peer B, then quit fully (graceful daemon stop).
+  $tailSent = $false
+  $onTail = {
+    param($step)
+    if ($step -eq 'diag-tail-ready' -and -not $script:tailSent) {
+      $script:tailSent = $true
+      Rec 'tailSentAt' (Now)
+      $codes = @(1..3 | ForEach-Object { (Uc $peer 'gui-go-b' @('--json', 'send', "$marker-tail-$_")).Exit })
+      Rec 'tailSendExits' ($codes -join ',')
+    }
+  }
+  $seen = Launch 'reopen' "diag:reopen:$marker" 'full' @{} $onTail
   $quitAt = Get-Date
-  while (@(DaemonPids $gui).Count -gt 0 -and ((Get-Date) - $quitAt).TotalSeconds -lt 40) { Start-Sleep -Milliseconds 300 }
-  $results.daemonStoppedByFullQuit = (@(DaemonPids $gui).Count -eq 0)
-  $results.daemonStopSeconds = [math]::Round(((Get-Date) - $quitAt).TotalSeconds, 1)
+  while (@(DaemonPids $gui).Count -gt 0 -and ((Get-Date) - $quitAt).TotalSeconds -lt 60) { Start-Sleep -Milliseconds 300 }
+  Rec 'daemonStoppedByFullQuit' (@(DaemonPids $gui).Count -eq 0)
+  Rec 'daemonStopSecondsAfterGuiExit' ([math]::Round(((Get-Date) - $quitAt).TotalSeconds, 1))
+  $fin = $seenAll['reopen']['diag-tail-final'].detail
+  $c = $fin.final.network.counters
+  $dropped = [int64]$c.queueDropped + [int64]$c.closedDropped + [int64]$c.writeFailed
+  $runId = $seenAll['capture']['diag-capture-started'].detail.snapshot.network.runId
+  $runDir = Join-Path $gui "data\logs\network\daemon\$runId"
+  $onDisk = 0
+  Get-ChildItem $runDir -Filter 'network.*.jsonl' | ForEach-Object { $onDisk += @(Get-Content $_.FullName).Count }
+  Rec 'tailAcceptedBefore' $fin.acceptedBefore
+  Rec 'tailAcceptedFinal' $fin.acceptedFinal
+  Rec 'tailDropped' $dropped
+  Rec 'tailOnDisk' $onDisk
+  Rec 'tailPersisted' (($onDisk + $dropped) -ge $fin.acceptedFinal)
+  if (-not $seen['diag-tail-final'].ok) { throw 'no fresh accepted network records before the graceful exit' }
 
   # 3. new daemon run: export again, then the offline path
   $saved = Join-Path $out 'offline.zip'
@@ -198,40 +239,44 @@ try {
     param($step)
     if ($step -eq 'diag-ready-for-offline' -and -not $script:stopped) {
       $script:stopped = $true
-      $results.stoppedAt = Now
+      Rec 'stoppedAt' (Now)
+      $pidsBefore = @(DaemonPids $gui)
+      $t0 = Get-Date
       $s = Uc $gui 'gui-go-a' @('--json', 'stop')
-      $results.offlineStopExit = $s.Exit
-      $results.offlineStopOutput = $s.Out.Substring(0, [Math]::Min(400, $s.Out.Length))
+      Rec 'offlineStopExit' $s.Exit
+      Rec 'offlineStopOutput' ($s.Out -replace '\s+', ' ')
+      Rec 'offlineStopCommandSeconds' ([math]::Round(((Get-Date) - $t0).TotalSeconds, 1))
+      while (@(DaemonPids $gui).Count -gt 0 -and ((Get-Date) - $t0).TotalSeconds -lt 120) { Start-Sleep -Milliseconds 300 }
+      Rec 'offlineDaemonGoneAfterSeconds' ([math]::Round(((Get-Date) - $t0).TotalSeconds, 1))
+      Rec 'offlineDaemonStillAlive' (@(DaemonPids $gui).Count -gt 0)
     }
   }
   $seen = Launch 'offline' 'diag:offline' 'full' @{ UC_GUI_GO_E2E_DIALOG_SAVE = $saved } $onStop
   foreach ($s in 'diag-export-after-reopen', 'diag-daemon-unreachable', 'diag-export-offline') {
     if (-not $seen[$s] -or -not $seen[$s].ok) { throw "offline step failed: $s" }
   }
-  $results.passed = $true
+  Rec 'passed' $true
 } catch {
-  $results.error = $_.Exception.Message + ' @' + $_.InvocationInfo.ScriptLineNumber
+  Rec 'error' ($_.Exception.Message + ' @' + $_.InvocationInfo.ScriptLineNumber)
 } finally {
-  Mark "finally; error=$($results.error)"
+  Mark "finally; error=$($results['error'])"
   Get-Process gui-go -ErrorAction SilentlyContinue | Where-Object { $_.Path -and $_.Path.StartsWith($gui) } | Stop-Process -Force
   [void](Uc $gui 'gui-go-a' @('--json', 'stop'))
   [void](Uc $peer 'gui-go-b' @('--json', 'stop'))
-  # Exports named by the scenario, and every network run directory the profile holds.
-  $exports = New-Object System.Collections.ArrayList
   foreach ($n in 'capture', 'offline') {
     foreach ($k in 'diag-export-during-capture', 'diag-export-after-reopen') {
-      $step = $results.steps[$n]
+      $step = $seenAll[$n]
       $p = if ($step -and $step[$k]) { $step[$k].detail.path } else { $null }
-      if ($p -and (Test-Path $p)) { Copy-Item $p (Join-Path $out "$n-$k.zip") -Force; [void]$exports.Add("$n-$k.zip") }
+      if ($p -and (Test-Path $p)) { Copy-Item $p (Join-Path $out "$n-$k.zip") -Force; Rec "export.$n.$k" "$n-$k.zip" }
     }
   }
-  $results.exports = $exports
-  $runs = @(Get-ChildItem $gui -Recurse -Directory -ErrorAction SilentlyContinue | Where-Object { $_.FullName -match '\\network\\daemon\\[0-9a-f]{32}$' })
-  $results.networkRuns = @($runs | ForEach-Object {
-      $recs = 0
-      Get-ChildItem $_.FullName -Filter 'network.*.jsonl' | ForEach-Object { $recs += @(Get-Content $_.FullName).Count }
-      @{ runId = $_.Name; records = $recs; runJson = (Get-Content (Join-Path $_.FullName 'run.json') -Raw -ErrorAction SilentlyContinue) }
-    })
-  $results | ConvertTo-Json -Depth 12 | Set-Content (Join-Path $out 'assertions.json')
+  # Raw per-run counts, and a copy of the network and log directories for later verification.
+  $logsDir = Join-Path $gui 'data\logs'
+  if (Test-Path $logsDir) { Copy-Item (Join-Path $logsDir 'network') (Join-Path $out 'network-profile-a') -Recurse -Force -ErrorAction SilentlyContinue }
+  Get-ChildItem (Join-Path $logsDir 'network\daemon') -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+    $recs = 0
+    Get-ChildItem $_.FullName -Filter 'network.*.jsonl' | ForEach-Object { $recs += @(Get-Content $_.FullName).Count }
+    Rec "networkRun.$($_.Name)" $recs
+  }
   'done' | Set-Content (Join-Path $root 'acceptance.done')
 }

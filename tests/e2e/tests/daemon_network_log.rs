@@ -613,3 +613,62 @@ fn has_long_hex(text: &str, min: usize) -> bool {
     }
     false
 }
+
+/// A real process suspension (SIGSTOP longer than the daemon's 15 s gap) makes
+/// the Engine end the business Detailed window as `suspensionExpiryUnknown`
+/// while the network window knows nothing about it. That is a genuine
+/// divergence of the two windows, produced without touching production code.
+/// The network side must follow the business side, say nothing false about it,
+/// and the unified state must settle.
+#[cfg(unix)]
+#[tokio::test]
+#[ignore]
+async fn a_suspension_that_ends_the_business_window_also_closes_the_network_window() {
+    let mut daemon = TestDaemon::start(TestProfile::new("network-log-suspended"))
+        .await
+        .expect("daemon");
+    let api = Api::new(&daemon).await;
+    let business = api.start_business_capture(600).await;
+    assert_eq!(business["capture"]["mode"], "detailed", "{business}");
+    assert_eq!(api.network_status().await["mode"], "detailed");
+
+    daemon.suspend().expect("suspend");
+    tokio::time::sleep(Duration::from_secs(20)).await;
+    daemon.resume().expect("resume");
+
+    // The suspension watcher notices the gap on its next 5 s tick.
+    let mut capture = Value::Null;
+    for _ in 0..60 {
+        let (_, body) = api
+            .call(reqwest::Method::GET, "/diagnostics/capture", None)
+            .await;
+        capture = body["data"]["capture"].clone();
+        if capture["mode"] == "standard" {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    }
+    eprintln!("[suspended] business capture after resume: {capture}");
+    assert_eq!(capture["mode"], "standard", "{capture}");
+    assert_eq!(capture["endReason"], "suspensionExpiryUnknown", "{capture}");
+
+    // The network window is still open on its own; reading the status brings it
+    // in line with the business side instead of leaving it recording.
+    let network = api.network_status().await;
+    eprintln!(
+        "[suspended] network status after reconcile: mode {} link {}",
+        network["mode"], network["captureLinkFailure"]
+    );
+    assert_eq!(network["mode"], "standard", "{network}");
+    assert!(network["captureLinkFailure"].is_null(), "{network}");
+    assert!(network["captureId"].is_null(), "{network}");
+
+    // A new unified capture works after the recovery.
+    let again = api.start_business_capture(60).await;
+    assert_eq!(again["capture"]["mode"], "detailed", "{again}");
+    assert_eq!(api.network_status().await["mode"], "detailed");
+
+    let (path, data) = api.export().await;
+    let _cleanup = ZipCleanup(path.clone()).keep_as("suspended-daemon");
+    assert_eq!(data["enginePreparation"]["flush"], "completed", "{data}");
+}

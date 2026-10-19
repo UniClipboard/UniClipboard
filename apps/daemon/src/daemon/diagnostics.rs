@@ -134,7 +134,12 @@ impl EngineDaemonDiagnostics {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .take();
         if let Some(capture_id) = remembered {
+            // No matching window means it is already closed, the state asked for.
             if let Err(error) = self.handle.stop_network_capture(&capture_id) {
+                if error == NetworkLogError::CaptureMismatch {
+                    self.set_network_link_failure(None);
+                    return;
+                }
                 self.set_network_link_failure(Some(NetworkCaptureLinkFailureDto::StopFailed));
                 tracing::warn!(
                     ?error,

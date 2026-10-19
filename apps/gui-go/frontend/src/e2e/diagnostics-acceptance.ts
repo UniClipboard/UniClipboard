@@ -92,7 +92,15 @@ export async function runDiagnosticsAcceptance(phase: string, h: Helpers) {
     node => node.getAttribute('aria-label') ?? node.closest('div')?.textContent?.slice(0, 40) ?? ''
   )
   const networkSwitches = switches.filter(label => /network|connection|网络|连接/i.test(label))
-  const isOn = () => captureSwitch()!.getAttribute('aria-checked') === 'true'
+  // A skin may render the switch as a checkbox input (state in `checked`) or as an ARIA switch (`aria-checked`).
+  const isOn = () => {
+    const node = captureSwitch()!
+    return (
+      node.getAttribute('aria-checked') === 'true' ||
+      (node as HTMLInputElement).checked === true ||
+      node.getAttribute('data-state') === 'checked'
+    )
+  }
   const settleUi = async () => {
     await waitFor('capture switch enabled', () => !captureSwitch()!.hasAttribute('disabled'))
   }

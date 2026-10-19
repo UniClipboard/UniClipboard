@@ -75,7 +75,7 @@ daemon 的 HTTP 入口（`request_tracing_middleware`）给每个请求一个 id
 - id 写入请求 span（日志里的 `request_id`）、响应头 `x-request-id`，并通过 CORS 的 `Access-Control-Allow-Headers` 与 `Access-Control-Expose-Headers` 让浏览器能发送和读取。
 - 4xx/5xx 的 JSON 对象响应体由中间件统一加上 `requestId`，不依赖各处错误构造代码；前端的 `DaemonApiError.apiRequestId` 保存它。
 
-Engine 的操作记录是否带这个 id，取决于 Engine 是否提供不透明的观察上下文入口。已用真实进程核验（Engine 固定在 `5fc94529cd7b78509f31dc6046142908b85bf998`）：
+Engine 的操作记录是否带这个 id，取决于 Engine 是否提供不透明的观察上下文入口。已用真实进程核验（Engine 固定在 `05338df11a4feb61a2e007b2fcce862219322ad8`）：
 
 - `Engine::execute(operation)` 没有上下文参数。Engine 文档中的“不透明 `ObservationContext`”只在 Application 的完整流程负责人之间延续，并且基于 OpenTelemetry 的 trace/span，不接受宿主的字符串 id。
 - 对隔离 profile 里的真实 daemon 连续发 6 个带 `x-request-id` 的请求：36 条宿主记录中 13 条带这些 id；159 条 Engine 记录中 **0** 条带，Engine 记录的顶层字段里没有任何可承载请求 id 的位置。

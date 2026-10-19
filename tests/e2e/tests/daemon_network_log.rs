@@ -167,7 +167,7 @@ async fn wait_until(what: &str, mut condition: impl FnMut() -> bool) {
 async fn a_rejected_budget_leaves_the_network_log_not_configured_and_the_business_side_unaffected()
 {
     let daemon = TestDaemon::start_clean_configured_with(
-        TestProfile::new("network-log-unconfigured"),
+        TestProfile::new("of"),
         &NodeBinarySet::current(),
         None,
         |command| {
@@ -228,7 +228,7 @@ async fn a_rejected_budget_leaves_the_network_log_not_configured_and_the_busines
 #[tokio::test]
 #[ignore]
 async fn the_built_in_budget_turns_the_log_on_and_the_export_accounts_for_every_file() {
-    let daemon = TestDaemon::start(TestProfile::new("network-log-configured"))
+    let daemon = TestDaemon::start(TestProfile::new("on"))
         .await
         .expect("daemon");
     let api = Api::new(&daemon).await;
@@ -436,6 +436,9 @@ async fn the_built_in_budget_turns_the_log_on_and_the_export_accounts_for_every_
     assert!(run_dir.join("lease.lock").exists() || !run_dir.exists());
 }
 
+// Profile names stay one or two characters long: on Windows the Engine's profile storage
+// upgrade fails once the profile directory path passes about 92 characters (measured: 92
+// starts, 96 does not), and the harness already adds `e2e-` and a 32-character id.
 const PASSPHRASE: &str = "network-log-e2e-passphrase";
 
 /// Two real daemons pair over the real transport with the network log on and a
@@ -446,14 +449,10 @@ const PASSPHRASE: &str = "network-log-e2e-passphrase";
 async fn two_paired_daemons_record_connection_events_without_identifiers() {
     let binaries = NodeBinarySet::current();
     let configure = |_: &mut std::process::Command| {};
-    let alice_daemon = TestDaemon::start_clean_configured_with(
-        TestProfile::new("network-log-alice"),
-        &binaries,
-        None,
-        configure,
-    )
-    .await
-    .expect("alice daemon");
+    let alice_daemon =
+        TestDaemon::start_clean_configured_with(TestProfile::new("a"), &binaries, None, configure)
+            .await
+            .expect("alice daemon");
     let alice_cli = TestCli::with_binaries(&alice_daemon.profile, &binaries);
     let init = alice_cli.run_capture(&[
         "init",
@@ -468,14 +467,10 @@ async fn two_paired_daemons_record_connection_events_without_identifiers() {
         init.stdout,
         init.stderr
     );
-    let bob_daemon = TestDaemon::start_clean_configured_with(
-        TestProfile::new("network-log-bob"),
-        &binaries,
-        None,
-        configure,
-    )
-    .await
-    .expect("bob daemon");
+    let bob_daemon =
+        TestDaemon::start_clean_configured_with(TestProfile::new("b"), &binaries, None, configure)
+            .await
+            .expect("bob daemon");
     let bob_cli = TestCli::with_binaries(&bob_daemon.profile, &binaries);
 
     let alice = Api::new(&alice_daemon).await;
@@ -496,6 +491,7 @@ async fn two_paired_daemons_record_connection_events_without_identifiers() {
     tokio::time::sleep(Duration::from_secs(3)).await;
 
     let mut total_records = 0_usize;
+    let mut classified_records = 0_usize;
     for (name, api) in [("alice", &alice), ("bob", &bob)] {
         let (code, status) = api
             .call(reqwest::Method::GET, "/diagnostics/network", None)
@@ -543,6 +539,9 @@ async fn two_paired_daemons_record_connection_events_without_identifiers() {
                         .unwrap_or_else(|error| panic!("{name}: bad record {line}: {error}"));
                     assert!(record.is_object(), "{line}");
                     total_records += 1;
+                    if record["event"] != "unreviewed_callsite" {
+                        classified_records += 1;
+                    }
                 }
                 content.push_str(&text);
             }
@@ -571,6 +570,19 @@ async fn two_paired_daemons_record_connection_events_without_identifiers() {
     assert!(
         total_records > 0,
         "no network record was written while two daemons paired in a detailed window"
+    );
+    // Records must be classified events, not only `unreviewed_callsite` markers. On Windows
+    // the Engine at the pinned revision matches callsite paths on '/' only while rustc embeds
+    // dependency paths with '\\', so every iroh/noq event ends up unreviewed there (measured
+    // on the Windows build: 352 backslash paths, no slash path for iroh-1.3.0).
+    #[cfg(not(windows))]
+    assert!(
+        classified_records > 0,
+        "only unreviewed_callsite markers were recorded"
+    );
+    #[cfg(windows)]
+    eprintln!(
+        "[windows] classified network records: {classified_records} (known Engine path limitation)"
     );
 
     // The exit flush: every record the Engine accepted before the stop must be on
@@ -695,7 +707,7 @@ fn has_long_hex(text: &str, min: usize) -> bool {
 #[tokio::test]
 #[ignore]
 async fn a_suspension_that_ends_the_business_window_also_closes_the_network_window() {
-    let mut daemon = TestDaemon::start(TestProfile::new("network-log-suspended"))
+    let mut daemon = TestDaemon::start(TestProfile::new("su"))
         .await
         .expect("daemon");
     let api = Api::new(&daemon).await;

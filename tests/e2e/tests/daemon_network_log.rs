@@ -85,6 +85,15 @@ impl Api {
         (status, response.json().await.unwrap_or(Value::Null))
     }
 
+    /// The product's own orderly shutdown (`POST /lifecycle/graceful-stop`), which
+    /// runs the same exit sequence on every platform.
+    async fn graceful_stop(&self) {
+        let (code, body) = self
+            .call(reqwest::Method::POST, "/lifecycle/graceful-stop", None)
+            .await;
+        assert!(code == 200 || code == 202, "{code} {body}");
+    }
+
     async fn network_status(&self) -> Value {
         let (code, body) = self
             .call(reqwest::Method::GET, "/diagnostics/network", None)
@@ -417,7 +426,7 @@ async fn the_built_in_budget_turns_the_log_on_and_the_export_accounts_for_every_
     // A graceful stop must not be delayed by the network log.
     let mut daemon = daemon;
     let started = std::time::Instant::now();
-    daemon.stop_gracefully().await.expect("graceful stop");
+    api.graceful_stop().await;
     wait_until("the daemon to exit", || !daemon.is_running()).await;
     assert!(
         started.elapsed() < Duration::from_secs(15),
@@ -563,6 +572,68 @@ async fn two_paired_daemons_record_connection_events_without_identifiers() {
         total_records > 0,
         "no network record was written while two daemons paired in a detailed window"
     );
+
+    // The exit flush: every record the Engine accepted before the stop must be on
+    // disk once the process is gone, and the stop must not wait for the log.
+    let mut alice_daemon = alice_daemon;
+    let mut bob_daemon = bob_daemon;
+    for (name, daemon, api) in [
+        ("alice", &mut alice_daemon, &alice),
+        ("bob", &mut bob_daemon, &bob),
+    ] {
+        let status = api.network_status().await;
+        let accepted: u64 = status["counters"]["accepted"]
+            .as_str()
+            .and_then(|value| value.parse().ok())
+            .expect("accepted counter");
+        let dropped: u64 = [
+            "queueDropped",
+            "rateLimited",
+            "oversized",
+            "closedDropped",
+            "writeFailed",
+        ]
+        .iter()
+        .map(|key| {
+            status["counters"][*key]
+                .as_str()
+                .and_then(|value| value.parse::<u64>().ok())
+                .unwrap_or(0)
+        })
+        .sum();
+        let run_dir = daemon
+            .profile
+            .log_dir()
+            .join("network")
+            .join("daemon")
+            .join(status["runId"].as_str().expect("run id"));
+        let started = std::time::Instant::now();
+        api.graceful_stop().await;
+        wait_until("the daemon to exit", || !daemon.is_running()).await;
+        let elapsed = started.elapsed();
+        let on_disk: usize = std::fs::read_dir(&run_dir)
+            .expect("run directory")
+            .filter_map(|entry| entry.ok())
+            .filter(|entry| entry.file_name().to_string_lossy().ends_with(".jsonl"))
+            .map(|entry| {
+                std::fs::read_to_string(entry.path())
+                    .unwrap_or_default()
+                    .lines()
+                    .count()
+            })
+            .sum();
+        eprintln!(
+            "[{name}] exit flush: accepted {accepted} dropped {dropped} on disk {on_disk} exit {elapsed:?}"
+        );
+        assert!(
+            u64::try_from(on_disk).unwrap_or(0) + dropped >= accepted,
+            "{name}: {accepted} records accepted before the stop, {dropped} dropped, only {on_disk} on disk"
+        );
+        assert!(
+            elapsed < Duration::from_secs(15),
+            "{name}: shutdown took {elapsed:?}"
+        );
+    }
 }
 
 fn has_ipv4(text: &str) -> bool {

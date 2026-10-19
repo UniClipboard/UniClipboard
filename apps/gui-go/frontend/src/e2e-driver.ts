@@ -210,6 +210,17 @@ async function run() {
     })
     return
   }
+  if (phase.startsWith('diag:')) {
+    const { runDiagnosticsAcceptance } = await import('@/e2e/diagnostics-acceptance')
+    return runDiagnosticsAcceptance(phase, {
+      record,
+      control,
+      waitFor,
+      sleep,
+      reachMainLayout,
+      navControl,
+    })
+  }
   if (phase === 'quick-panel-settings') return runQuickPanelSettingsScenario()
   if (phase === 'native-panel') return runNativePanelScenario()
   if (phase === 'file-ops') return runFileOpsScenario()

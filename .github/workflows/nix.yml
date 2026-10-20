@@ -48,6 +48,17 @@ jobs:
       - name: Assert a native runner
         run: test "$(nix eval --impure --raw --expr builtins.currentSystem)" = "${{ matrix.system }}"
 
+      - name: Generate flake.lock (temporary)
+        if: matrix.system == 'x86_64-linux'
+        run: nix flake lock
+
+      - name: Upload flake.lock (temporary)
+        if: matrix.system == 'x86_64-linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: flake-lock-${{ github.run_id }}
+          path: flake.lock
+
       - name: Evaluate the flake
         run: nix flake check --no-build --all-systems
 

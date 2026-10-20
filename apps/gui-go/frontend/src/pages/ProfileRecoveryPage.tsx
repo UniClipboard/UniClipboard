@@ -20,8 +20,8 @@ export default function ProfileRecoveryPage({
   const { t } = useTranslation()
   const recovery = useProfileRecoveryForm(status, onRecovered)
 
-  if (status.state === 'admission_recovery_required') {
-    return <AdmissionRecoveryView status={status} />
+  if (status.state === 'admission_recovery_required' || recovery.requiresSupport) {
+    return <ProfileRecoverySupportView status={status} />
   }
 
   const { errorKey } = recovery
@@ -73,15 +73,18 @@ export default function ProfileRecoveryPage({
   )
 }
 
-function AdmissionRecoveryView({ status }: { status: ProfileRecoveryResponse }) {
+function ProfileRecoverySupportView({ status }: { status: ProfileRecoveryResponse }) {
   const { t } = useTranslation()
   const { exportState, exportDiagnostics } = useDiagnosticsExport()
   const admission = status.admission
+  const admissionRequired = status.state === 'admission_recovery_required'
 
   return (
     <AppStateShell
-      title={t('profileAdmissionRecovery.title')}
-      description={t('profileAdmissionRecovery.description')}
+      title={t(admissionRequired ? 'profileAdmissionRecovery.title' : 'profileRecovery.title')}
+      description={t(
+        admissionRequired ? 'profileAdmissionRecovery.description' : 'profileRecovery.partial'
+      )}
     >
       <div className="mt-6 flex items-center gap-2 text-ui-body font-medium text-destructive">
         <TriangleAlert className="size-4" aria-hidden="true" />

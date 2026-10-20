@@ -55,6 +55,7 @@ const views = [
   'failure',
   'version-too-old',
   'recovery',
+  'recovery-partial',
   'recovery-restart',
   'admission',
   'unlock',
@@ -247,6 +248,25 @@ try {
     flows.push(name)
   }
   await page.setViewportSize(sizes[0])
+
+  await flow(
+    'recovery: terminal key loss offers diagnostics instead of a disabled form',
+    async () => {
+      for (const theme of ['light', 'dark']) {
+        await open('recovery-partial', { theme })
+        assert.equal(await page.locator('#recovery-passphrase').count(), 0)
+        assert.equal(await page.getByRole('button', { name: '恢复并继续' }).count(), 0)
+        assert.equal(await page.getByRole('button', { name: '导出诊断资料' }).isEnabled(), true)
+        assert.ok((await page.locator('main').innerText()).includes('部分旧密钥已丢失'))
+        assert.ok(!(await page.locator('main').innerText()).includes('请输入原加密口令恢复'))
+        await open('recovery', { theme })
+        const passphrase = page.locator('#recovery-passphrase')
+        await passphrase.click()
+        await page.keyboard.type('fixture-passphrase')
+        assert.equal(await passphrase.inputValue(), 'fixture-passphrase')
+      }
+    }
+  )
 
   if (platform === 'macos') {
     await flow('entry backgrounds match with and without native material (simulated)', async () => {

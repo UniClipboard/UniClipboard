@@ -56,6 +56,11 @@ export function useProfileRecoveryForm(status: ProfileRecoveryResponse, onRecove
     errorKey,
     /** Some original keys are missing; shown while no more specific error is. */
     showLosses: status.losses.length > 0 && !errorKey,
+    requiresSupport:
+      status.state === 'partially_recoverable' &&
+      !status.canSubmitPassphrase &&
+      !status.restartRequired &&
+      !busy,
     inputDisabled,
     canSubmit: !busy && status.canSubmitPassphrase && form.passphrase.length > 0,
     restartRequired: status.restartRequired,

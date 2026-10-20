@@ -17,6 +17,14 @@ Append a project-specific lesson to `crates/AGENTS.md` so future sessions avoid 
 
 ## Procedure
 
+### Step 0 — Check the Provisional Inbox and Ownership
+
+Read relevant entries in [LESSONS.md](../../../LESSONS.md) and the target area's instructions first. After a regression, review finding, or project-specific discovery, propose an evidence-backed inbox entry or update an existing ID; uncertain findings remain provisional. Use the inbox template, lifecycle, and daily-inspector procedure for evidence gathering, deduplication, conflicts, and retirement.
+
+This skill still promotes qualified Rust-workspace conventions and anti-patterns into `crates/AGENTS.md` using Steps 1–6 below. Do not copy other areas' rules there: use the owning guide or an automated check as described in `LESSONS.md`. Protocol and persistence fixes remain owned by `UniClipboard/Engine`; record the handoff, not a desktop workaround. A directly qualified lesson need not wait for recurrence; serious security or data-loss findings require immediate escalation to the user and owning maintainers through authorized channels.
+
+Once a promotion is accepted in the authoritative destination, mark the inbox entry promoted and link that destination and its review evidence. Keep rationale in the inbox or owning documentation, not in the concise rule. Neither inbox maintenance nor promotion grants automatic commit, publication, scheduling, or merge authority; the no-automatic-commit rule in Step 6 still applies.
+
 ### Step 1 — Identify the Lesson Type
 
 | Type | Target Section | Criteria |

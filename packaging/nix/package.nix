@@ -1,75 +1,125 @@
-# nixpkgs derivation for UniClipboard — binary repackage of the upstream AppImage.
+# UniClipboard for Nix: repackages the released .deb of the Go/Wails GUI host and its bundled `uniclipd` daemon.
 #
-# Why a binary repackage instead of a source build:
-#   UniClipboard is a Go/Wails desktop host (apps/gui-go, cgo against GTK 3 and
-#   WebKitGTK) plus a Rust `uniclipd` daemon with git dependencies and a bun-built
-#   frontend. A from-source build under the Nix sandbox would need a fixed-output
-#   bun/node_modules derivation, a Go vendor hash, a cargoLock entry for the git
-#   sources, and two separate binaries — hard to land and to keep green. Wrapping the official AppImage is an accepted
-#   nixpkgs pattern for this class of app and is far easier to maintain. If a
-#   reviewer asks for a source build, see ./README.md for the migration path.
+# Why the .deb and not the AppImage or a source build:
+# - The host branches on APPIMAGE/APPDIR (install kind, self-update, restart, autostart, portable data root). Wrapping the
+#   AppImage would make a Nix install behave like a self-updating AppImage; the .deb has none of that.
+# - The .deb links the system GTK 3 / WebKitGTK 4.1 / libsoup 3, which nixpkgs provides, so no bundled libraries and no FHS sandbox.
+# - A source build needs a fixed-output bun tree, a Go vendor hash, a cargoLock with git sources and the Engine build tools.
 #
-# This file is the in-repo submission source (same convention as packaging/aur/).
-# To ship it, copy it into nixpkgs at pkgs/by-name/un/uniclipboard/package.nix —
-# see ./README.md for the full step-by-step.
+# The version and the per-architecture hashes live in ./sources.json; `./update.py` rewrites them from a release's SHA256SUMS.txt.
+# This file is `callPackage`-able and needs nixpkgs 26.05 or newer (`libx11` as a top-level attribute).
 {
   lib,
-  appimageTools,
+  stdenv,
   fetchurl,
+  dpkg,
+  autoPatchelfHook,
+  wrapGAppsHook3,
+  adwaita-icon-theme,
+  cairo,
+  dbus,
+  gdk-pixbuf,
+  glib,
+  glib-networking,
+  gtk-layer-shell,
+  gtk3,
+  libsoup_3,
+  libx11,
+  librsvg,
+  webkitgtk_4_1,
+  xdg-utils,
 }:
 let
+  sources = builtins.fromJSON (builtins.readFile ./sources.json);
+  debArch =
+    {
+      x86_64-linux = "amd64";
+      aarch64-linux = "arm64";
+    }
+    .${stdenv.hostPlatform.system} or (throw "uniclipboard: unsupported system ${stdenv.hostPlatform.system}");
+in
+stdenv.mkDerivation (finalAttrs: {
   pname = "uniclipboard";
-  version = "0.15.0";
+  inherit (sources) version;
 
   src = fetchurl {
-    url = "https://github.com/UniClipboard/UniClipboard/releases/download/v${version}/UniClipboard_${version}_amd64.AppImage";
-    # Placeholder. Replace with the real hash before submitting. Easiest path:
-    # leave this as-is, run `nix-build`, and copy the "got:" hash Nix prints.
-    # Or precompute:
-    #   nix store prefetch-file --hash-type sha256 \
-    #     https://github.com/UniClipboard/UniClipboard/releases/download/v0.15.0/UniClipboard_0.15.0_amd64.AppImage
-    # The same value is published (minisign-signed) in the release SHA256SUMS.txt.
-    hash = lib.fakeHash;
+    url = "https://github.com/UniClipboard/UniClipboard/releases/download/v${finalAttrs.version}/UniClipboard_${finalAttrs.version}_${debArch}.deb";
+    hash = sources.hashes.${stdenv.hostPlatform.system};
   };
 
-  appimageContents = appimageTools.extractType2 { inherit pname version src; };
-in
-appimageTools.wrapType2 {
-  inherit pname version src;
+  nativeBuildInputs = [
+    autoPatchelfHook
+    dpkg
+    wrapGAppsHook3
+  ];
 
-  # The AppImage bundles most of the GTK/WebKit stack, but the wrapped FHS env
-  # may still miss a library at runtime. If the app fails to start with a
-  # "cannot open shared object file" error, add the missing package here.
-  extraPkgs = pkgs: with pkgs; [ gtk-layer-shell ];
+  # Every DT_NEEDED entry of both binaries; autoPatchelfHook fails the build if one stays unresolved.
+  buildInputs = [
+    cairo
+    dbus
+    gdk-pixbuf
+    glib
+    gtk3
+    libsoup_3
+    libx11
+    stdenv.cc.cc.lib
+    webkitgtk_4_1
+    # GTK and WebKit runtime data, collected by wrapGAppsHook3 into the GUI wrapper.
+    adwaita-icon-theme
+    glib-networking
+    librsvg
+  ];
 
-  extraInstallCommands = ''
-    # Desktop entry + icons taken from the AppImage payload. The Go AppImage
-    # (apps/gui-go/e2e/package_linux.py) carries uniclipboard.desktop at the AppDir
-    # root with `Exec=uniclipboard %U` and hicolor icons named "uniclipboard"
-    # under usr/share/icons (checked on the 1.1.1 AppImage, not by a nix build).
-    # If the first build fails here, run `ls ${appimageContents}` and adjust the paths.
-    install -Dm444 ${appimageContents}/uniclipboard.desktop \
-      $out/share/applications/uniclipboard.desktop
-    substituteInPlace $out/share/applications/uniclipboard.desktop \
-      --replace-warn 'Exec=AppRun --no-sandbox %U' 'Exec=uniclipboard %U' \
-      --replace-warn 'Exec=AppRun' 'Exec=uniclipboard'
-    cp -r ${appimageContents}/usr/share/icons $out/share/icons
+  # The GUI dlopen()s libgtk-layer-shell.so.0 (Wayland quick panel). It is not a DT_NEEDED entry, so autoPatchelfHook only
+  # adds it to the RUNPATH through this list. Without it the quick panel silently falls back to a normal window.
+  runtimeDependencies = [ (lib.getLib gtk-layer-shell) ];
+
+  dontConfigure = true;
+  dontBuild = true;
+  # wrapGAppsHook3 would wrap every file in bin/. `uniclipd` must keep its name: the host accepts a running daemon only if
+  # /proc/<pid>/exe is called `uniclipd` (packages/desktop-host-go/daemonproc/pid.go), so only the GUI is wrapped, in postFixup.
+  dontWrapGApps = true;
+
+  unpackPhase = ''
+    runHook preUnpack
+    dpkg-deb -x $src .
+    runHook postUnpack
+  '';
+  sourceRoot = ".";
+
+  installPhase = ''
+    runHook preInstall
+    # The GUI finds its daemon as a sibling of its own executable, so both stay in bin/.
+    install -Dm755 usr/bin/uniclipboard $out/bin/uniclipboard
+    install -Dm755 usr/bin/uniclipd $out/bin/uniclipd
+    mkdir -p $out/share
+    cp -r usr/share/applications usr/share/icons $out/share/
+    runHook postInstall
+  '';
+
+  postFixup = ''
+    # xdg-open opens links and files; gsettings reads the desktop theme for the tray icon. Both come last in PATH so the
+    # host's own tools win.
+    wrapProgram $out/bin/uniclipboard \
+      "''${gappsWrapperArgs[@]}" \
+      --suffix PATH : ${lib.makeBinPath [ xdg-utils glib ]}
   '';
 
   meta = {
     description = "Encrypted peer-to-peer clipboard sync between your devices";
     longDescription = ''
-      UniClipboard syncs your clipboard securely across your devices on the local
-      network. End-to-end encrypted and powered by iroh QUIC — no clouds, no
-      accounts, no third-party servers, just direct peer-to-peer sync of text,
-      images, and files.
+      UniClipboard syncs text, images and files between your devices over end-to-end encrypted direct connections.
+      This package installs the released desktop app (`uniclipboard`) together with its background daemon (`uniclipd`).
     '';
     homepage = "https://uniclipboard.app";
     downloadPage = "https://github.com/UniClipboard/UniClipboard/releases";
+    changelog = "https://github.com/UniClipboard/UniClipboard/releases/tag/v${finalAttrs.version}";
     license = lib.licenses.agpl3Only;
-    sourceProvenance = with lib.sourceTypes; [ binaryNativeCode ];
-    maintainers = with lib.maintainers; [ ]; # add your nixpkgs handle here
+    sourceProvenance = [ lib.sourceTypes.binaryNativeCode ];
     mainProgram = "uniclipboard";
-    platforms = [ "x86_64-linux" ];
+    platforms = [
+      "x86_64-linux"
+      "aarch64-linux"
+    ];
   };
-}
+})

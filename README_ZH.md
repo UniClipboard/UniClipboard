@@ -192,6 +192,15 @@ sudo dnf install uniclipboard
 sudo snap install uniclipboard
 ```
 
+**Nix（x86_64 与 aarch64，实验性）**
+
+```bash
+nix run github:UniClipboard/UniClipboard          # 试运行
+nix profile add github:UniClipboard/UniClipboard  # 安装（旧版 Nix 用 nix profile install）
+```
+
+这些命令需要启用 `nix-command` 与 `flakes` 实验特性。该 flake 重打包已发布的 `.deb`，目前固定在一个预发布版本。NixOS 配置、已知缺口和验证状态见 [`packaging/nix/README.md`](packaging/nix/README.md)。请通过 Nix 更新，不要用应用内更新器；Nix 安装下也不要使用应用内的“开机自启”开关。
+
 **或者从 Releases 页面单独下载 .rpm / .deb / AppImage：**
 
 ```bash

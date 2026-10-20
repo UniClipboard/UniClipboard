@@ -1,0 +1,74 @@
+name: 'Nix package'
+run-name: "nix-${{ github.run_number }}"
+
+# Builds packaging/nix with Nix on a native runner of each supported architecture and launches the result headlessly.
+# Pull requests and pushes to main only build and check; nothing here publishes to nixpkgs, a binary cache or any other
+# external service.
+on:
+  pull_request:
+    paths:
+      - 'flake.nix'
+      - 'flake.lock'
+      - 'packaging/nix/**'
+      - 'scripts/ci/check-nix-package.sh'
+      - '.github/workflows/nix.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'flake.nix'
+      - 'flake.lock'
+      - 'packaging/nix/**'
+      - 'scripts/ci/check-nix-package.sh'
+      - '.github/workflows/nix.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: nix-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: Build and launch (${{ matrix.system }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { system: x86_64-linux, runner: ubuntu-24.04 }
+          - { system: aarch64-linux, runner: ubuntu-24.04-arm }
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: cachix/install-nix-action@v31
+
+      - name: Assert a native runner
+        run: test "$(nix eval --impure --raw --expr builtins.currentSystem)" = "${{ matrix.system }}"
+
+      - name: Evaluate the flake
+        run: nix flake check --no-build --all-systems
+
+      - name: Build the package
+        run: nix build .#uniclipboard --print-build-logs --out-link "$RUNNER_TEMP/result"
+
+      - name: Install the harness tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends xvfb x11-utils dbus dbus-x11 gnome-keyring libsecret-tools desktop-file-utils procps binutils
+          # Ubuntu 24.04 blocks unprivileged user namespaces, which WebKitGTK's bubblewrap sandbox needs.
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
+      - name: Check the package and launch it
+        run: scripts/ci/check-nix-package.sh "$RUNNER_TEMP/result" "$RUNNER_TEMP/evidence"
+
+      - name: Upload the evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nix-package-${{ matrix.system }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/evidence
+          retention-days: 14
+          if-no-files-found: warn

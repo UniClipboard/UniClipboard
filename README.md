@@ -194,6 +194,15 @@ After enabling, `sudo dnf upgrade` will pick up new releases automatically.
 sudo snap install uniclipboard
 ```
 
+**Nix (x86_64 and aarch64, experimental)**
+
+```bash
+nix run github:UniClipboard/UniClipboard          # try it
+nix profile add github:UniClipboard/UniClipboard  # install (older Nix: nix profile install)
+```
+
+These commands need the `nix-command` and `flakes` experimental features. The flake repackages the released `.deb` and currently pins a pre-release (see [`packaging/nix/README.md`](packaging/nix/README.md) for the NixOS setup, known gaps and the validation status). Update through Nix, not the in-app updater, and do not use the in-app launch-at-login switch on a Nix install.
+
 **Or download a single .rpm / .deb / AppImage from the Releases page:**
 
 ```bash

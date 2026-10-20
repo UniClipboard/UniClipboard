@@ -60,7 +60,7 @@ PR 门禁没有在 GitHub 上运行过（未 push）；在草稿 PR 里演示故
 | AUR | 移植：源码构建；发布只能由 main 上的 `workflow_dispatch(publish=true)` | `PKGBUILD`、`aur.yml`、`build-aur-package.sh`、`check-arch-package.sh` | 干净 `archlinux:base-devel`（amd64，模拟）里 `makepkg` 成功并在全新容器里安装、启动通过，见下 | 原生 amd64/aarch64 构建；真实桌面；合入后需要有权限的人 dispatch 一次才会更新 AUR；`namcap` 警告（无 PIE/RELRO、`uniclipd` 含 `$srcdir` 引用）未处理 |
 | COPR | 保持重打包 Go rpm | spec、`copr.yml`（`run_ids` 取 `linux-gui-*`，`dry_run`）、`build-copr-srpm.sh` | Fedora 44 arm64 容器里 SRPM → 重建 → 与上游 rpm 对比 → 安装启动，见下 | 真实 COPR 提交；amd64；EPEL；Fedora 之外的发行版 |
 | Flathub | 保持重打包 deb | 注释与 README | 仅静态核对：deb 布局与 manifest 的 `install` 命令一致 | `flatpak-builder` 未运行；沙箱内托盘/剪贴板/快捷键。已核实（只读，上游 gnome-build-meta 源码）：GNOME 46 运行时 2025-04-17 起 EOL，必须升级 `runtime-version` 才能提交；`elements/sdk-platform.bst` 在 gnome-46、gnome-49、gnome-50 分支都列有 `sdk/webkit2gtk-4.1.bst`，所以升级后仍有 Go 宿主链接的 WebKitGTK 4.1 API；Platform 里没有 gtk-layer-shell，快捷面板回退为普通窗口。manifest 尚未改到新版本，因为没有构建就不改 |
-| nix | 保持包装 AppImage | 注释与 README | 在 1.1.1 的 Go AppImage 里核对了根目录 `uniclipboard.desktop`（`Exec=uniclipboard %U`）与 `usr/share/icons`，与 `package.nix` 一致 | `nix-build` 未运行；FHS 环境里能否启动未知 |
+| nix | 改为重打包 Go 宿主的 `.deb`（`flake.nix` 与 `packaging/nix/`）：AppImage 会触发宿主的 `APPIMAGE`/`APPDIR` 分支（自更新、重启、自启动、便携数据根）并需要 FHS 沙箱；`.deb` 链接 nixpkgs 已有的 GTK 3 / WebKitGTK 4.1 | 新 `package.nix`、`sources.json`、`update.py`、根 `flake.nix`、`nix.yml`、`check-nix-package.sh` | 静态：`1.2.0-alpha.7` 两个架构 `.deb` 的 SHA256 与签名过的 `SHA256SUMS.txt` 一致（`rsign` 验证通过）；两个二进制的 `DT_NEEDED` 与 `dlopen` 库；`update.py` 复算哈希与手写一致 | 没有 Nix，`nix build`、启动、`flake.lock` 均未运行；等 `nix.yml` 在原生 x86_64/aarch64 runner 上产生证据；GPU/Wayland/托盘需在 NixOS 上人工验收；应用内自启动与更新在 Nix 下的产品缺口见 `packaging/nix/README.md` |
 | Homebrew cask | 保持 | 无 | 静态：dmg 名、`UniClipboard.app`、zap 路径（`Application Support`/`Caches`/`Logs` 下 `app.uniclipboard.desktop`）与 Go 宿主一致；`:monterey` 无法表达最低 12.5 | 没有 `brew install`（不在个人 macOS 上运行发布形态） |
 | Chocolatey | 保持包装 NSIS 安装器 | 一行注释 | 静态：`/S` 静默、用户级（`RequestExecutionLevel user`，HKCU 卸载项）、卸载项名 `UniClipboard` 与 `softwareName` 匹配 | 没有 `choco install`（Windows 只在一次性托管 runner 上运行发布形态）；Authenticode 未做 |
 | winget | 保持 | README | 静态：`nullsoft`、`Scope: user` 与 NSIS 一致，x64/arm64 安装器名匹配收集器 | 没有 `winget install`；#1140 的首次提交不变 |
@@ -110,7 +110,7 @@ PR 门禁没有在 GitHub 上运行过（未 push）；在草稿 PR 里演示故
 ## 未证明的边界
 
 - 所有渠道的真实发布或安装；AUR、COPR、Snap Store、nixpkgs、Flathub、cask、Chocolatey、winget、scoop 的账号与权限。
-- snap strict 限制下的任何行为；Flathub 沙箱；nix FHS 环境。
+- snap strict 限制下的任何行为；Flathub 沙箱；nix 在 NixOS 上的 GPU、Wayland 与托盘（nix 渠道已改为重打包 `.deb`，不再有 FHS 环境）。
 - 原生 amd64 的 Arch/Fedora/Ubuntu 22.04 构建；真实 GNOME/KDE/Wayland 桌面。
 - PR 门禁在 GitHub 上的运行，以及它被设为必需检查之后对不触及这些路径的 PR 的影响（workflow 级 `paths` 过滤会让必需检查一直 pending；本作业放在已有的 `changes` 过滤器之后，但整个 `pr-check.yml` 仍有 `paths`）。
 - `aur.yml`、`snap.yml`、`copr.yml` 的新工作流只做了 YAML 解析，没有在 Actions 上运行。

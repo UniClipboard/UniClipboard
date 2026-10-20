@@ -405,11 +405,13 @@ pub fn verify_pid_identity(metadata: &DaemonPidMetadata) -> PidVerification {
 ///   holder is busy serving and never arbitrates, so there is no simultaneous
 ///   bidirectional decision.
 /// - A freshly launched contender always has a later `started_at_ms` than an
-///   incumbent, so **same version ⇒ contender evicts incumbent**. In practice
-///   this only fires against a stuck/orphaned holder: GUI bootstrap REUSES a
-///   healthy same-version daemon (probe → Compatible) instead of spawning a
-///   second one, so a second same-version daemon exists only when the incumbent
-///   is unreachable yet still holds the lock.
+///   incumbent, so **same version ⇒ contender evicts incumbent**. GUI bootstrap
+///   REUSES a healthy same-version daemon (probe → Compatible) instead of
+///   spawning a second one, so a second same-version daemon exists only when the
+///   incumbent is unreachable yet still holds the lock: either stuck, or already
+///   shutting down (a promoted oneshot or a restart withdraws its endpoint
+///   before it closes storage and releases the lock). Eviction must therefore
+///   let a shutting-down holder finish before it forces anything.
 /// - A strictly-newer incumbent always out-ranks the contender, giving free
 ///   downgrade protection (mirrors the GUI's `RefusedNewerDaemon`).
 pub fn should_evict_holder(

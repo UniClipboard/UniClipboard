@@ -273,9 +273,9 @@ async fn block_acquire_within(
 async fn try_evict_outranked_holder(
     data_dir: &Path,
 ) -> Result<Option<DaemonInstanceLock>, InstanceLockError> {
-    use uc_daemon_process::contract::{
-        force_terminate_local_daemon_pid, terminate_local_daemon_pid,
-    };
+    use uc_daemon_process::contract::force_terminate_local_daemon_pid;
+    #[cfg(unix)]
+    use uc_daemon_process::contract::terminate_local_daemon_pid;
     use uc_daemon_process::process_metadata::{
         read_pid_metadata_in, should_evict_holder, verify_pid_identity, PidVerification,
         SELF_PACKAGE_VERSION,
@@ -328,6 +328,13 @@ async fn try_evict_outranked_holder(
         "instance lock held by an out-ranked daemon — evicting it (SIGTERM, then SIGKILL)"
     );
 
+    // Only Unix has a termination request the holder can act on (`SIGTERM`); a
+    // holder that is already shutting down simply finishes. Windows has none:
+    // `terminate_local_daemon_pid` is `TerminateProcess` there, which would kill a
+    // predecessor that is still closing its databases, and the replacement would
+    // then open them mid-teardown. On Windows the graceful window is therefore a
+    // plain wait, and only the escalation below terminates the process.
+    #[cfg(unix)]
     if let Err(error) = terminate_local_daemon_pid(holder.pid) {
         tracing::warn!(holder_pid = holder.pid, %error, "SIGTERM to lock holder failed");
     }

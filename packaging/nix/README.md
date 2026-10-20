@@ -4,7 +4,7 @@
 
 ## 状态
 
-- **未在 Nix 里构建过。** 编写环境没有 Nix，Docker 守护进程未启动，两台 Linux 测试机不可达。`package.nix` 是经过静态核对的实现，不是已验证的实现。验证由 `.github/workflows/nix.yml` 在原生 x86_64 与 aarch64 runner 上完成，见「验证」。
+- **构建已在 CI 通过，运行验证进行中。** PR #2036 的首次 CI 在原生 x86_64 与 aarch64 runner（Nix 2.35.3，nixpkgs 的 WebKitGTK 2.54.1）上成功构建；GUI 由包内路径启动并拉起同目录的 `uniclipd`，WebKit 进程来自包内 WebKitGTK，`daemon.conn` 写在一次性 HOME 下。当时的两个失败是检查脚本自身的问题（宿主 `ldd` 误报、已不存在的日志信号），已修正。Wayland、托盘、真实 GPU 仍需在 NixOS 上人工验收。
 - 打包版本：`1.2.0-alpha.7`（预发布）。这是目前唯一由 Go 宿主构建的发布；最新正式版 `v1.1.2` 仍是已退役的 Tauri 宿主，布局和依赖不同（`libayatana-appindicator`），本包不支持。出正式的 Go 宿主版本后用 `update.py` 切换。
 - 支持架构：`x86_64-linux`、`aarch64-linux`，与发布的 `.deb` 一致。macOS 与其他架构不支持。
 - 需要 nixpkgs 26.05 或更新版本（`package.nix` 使用顶层属性 `libx11`）。flake 固定在 `nixos-26.05`。
@@ -83,7 +83,7 @@ NixOS 上，把下面几行加进现有配置。`inputs` 与 `outputs` 的写法
 | `dlopen` 的 layer-shell 库不在 RUNPATH，快捷面板静默退化 | `check-nix-package.sh` 静态检查 RUNPATH 中的库文件 |
 | `uniclipd` 被包装，守护进程身份判断失败 | 检查 `bin/uniclipd` 是 ELF，且运行中的 `/proc/<pid>/exe` 就是它 |
 | GUI 找不到旁边的守护进程 | 启动检查：守护进程由 GUI 拉起并写出 `daemon.conn` |
-| GTK/GIO/gsettings 数据缺失导致崩溃或空白 WebView | 启动检查：GUI 与 WebKit 进程在 WebView 出现 15 秒后仍存活；日志含 `Main window revealed`；日志没有加载器、GTK、GSettings 错误（与 `scripts/linux-appimage-smoke.sh` 同一组信号）；EGL 错误行只作信息记录 |
+| GTK/GIO/gsettings 数据缺失导致崩溃或空白 WebView | 启动检查：GUI 与 WebKit 进程在 WebView 出现 15 秒后仍存活；日志含 存在标题为 UniClipboard 的顶层窗口（`xwininfo`）；日志没有加载器、GTK、GSettings 错误（与 `scripts/linux-appimage-smoke.sh` 同一组信号）；EGL 错误行只作信息记录 |
 | 数据写到 store 或主机真实目录 | 启动检查用一次性 HOME 与 XDG 目录，`daemon.conn` 必须出现在其中 |
 | 哈希与发布物不一致 / 可变 URL | `fetchurl` 固定哈希；`update.py` 对同一个 `SHA256SUMS.txt` 复算得到相同的 `sources.json` |
 

@@ -28,8 +28,11 @@ daemon="$PKG/bin/uniclipd"
 check "the GUI wrapper is executable" test -x "$PKG/bin/uniclipboard"
 check "the real GUI executable sits beside the daemon" test -x "$gui_real"
 check "the daemon is an unwrapped ELF" bash -c "[ \"\$(head -c4 '$daemon' | od -An -c | tr -d ' ')\" = '177ELF' ]"
-check "no unresolved library in the GUI executable" bash -c "! ldd '$gui_real' | grep 'not found'"
-check "no unresolved library in the daemon" bash -c "! ldd '$daemon' | grep 'not found'"
+# Resolve with the loader the binary itself requests (the Nix glibc). The host's ldd would use the host loader against Nix libraries
+# and report a GLIBC version mismatch that does not exist at run time.
+unresolved() { local interp; interp="$(readelf -l "$1" | sed -n 's/.*Requesting program interpreter: \(.*\)\]/\1/p')"; test -x "$interp" && ! "$interp" --list "$1" | grep 'not found'; }
+check "no unresolved library in the GUI executable" unresolved "$gui_real"
+check "no unresolved library in the daemon" unresolved "$daemon"
 # libgtk-layer-shell.so.0 is dlopen()ed, so only the RUNPATH can make it loadable.
 layer_dir="$(readelf -d "$gui_real" | sed -n 's/.*RUNPATH.*\[\(.*\)\]/\1/p' | tr ':' '\n' | grep -- '-gtk-layer-shell-' | head -1)"
 check "libgtk-layer-shell.so.0 is reachable through the GUI RUNPATH" test -e "${layer_dir:-/nonexistent}/libgtk-layer-shell.so.0"
@@ -64,6 +67,7 @@ dbus-run-session -- bash -c '
   { echo "gui_exe=$(readlink /proc/${gui_pid:-0}/exe 2>/dev/null)"; echo "daemon_exe=$(readlink /proc/${daemon:-0}/exe 2>/dev/null)"; echo "webkit_exe=$(readlink /proc/${webkit:-0}/exe 2>/dev/null)"
     echo "gui_alive=$([ -n "$gui_pid" ] && kill -0 $gui_pid 2>/dev/null && echo yes || echo no)"; echo "daemon_alive=$([ -n "$daemon" ] && kill -0 $daemon 2>/dev/null && echo yes || echo no)"
     echo "daemon_conn=$(ls "$XDG_DATA_HOME"/*/daemon.conn "$XDG_DATA_HOME"/*/*/daemon.conn 2>/dev/null | head -1)"; } >"$HOME/launch.txt"
+  xwininfo -root -tree >"$HOME/windows.txt" 2>&1
   ps -eo pid,ppid,etime,args | grep -E "uniclip|WebKit" | grep -v grep >"$HOME/launch-ps.txt"
   kill $gui 2>/dev/null; sleep 3; echo "daemon_after_gui_exit=$(pgrep -u $(id -u) -x uniclipd >/dev/null && echo running || echo gone)" >>"$HOME/launch.txt"
   pkill -u $(id -u) -x uniclipd 2>/dev/null; for i in $(seq 50); do pgrep -u $(id -u) -x uniclipd >/dev/null || break; sleep .2; done; kill $xvfb 2>/dev/null; true' >"$OUT/launch-stdout.txt" 2>&1
@@ -75,9 +79,11 @@ grep -q '^keyring-ready$' "$OUT/launch-stdout.txt" && ok "the Secret Service of 
 [[ "${daemon_exe:-}" == "$daemon" ]] && ok "daemon runs from the package" || bad "daemon runs from the package" "exe=${daemon_exe:-none}"
 case "${webkit_exe:-}" in /nix/store/*-webkitgtk-*/libexec/webkit2gtk-4.1/WebKitWebProcess) ok "WebView process runs from the package's WebKitGTK" "$webkit_exe" ;; *) bad "WebView process runs from the package's WebKitGTK" "exe=${webkit_exe:-none}" ;; esac
 [[ "${gui_alive:-}" == yes && "${daemon_alive:-}" == yes ]] && ok "GUI and daemon are still alive 15 s after the WebView appeared" || bad "GUI and daemon are still alive 15 s after the WebView appeared" "gui=${gui_alive:-?} daemon=${daemon_alive:-?}"
-# The same log signals as scripts/linux-appimage-smoke.sh: a live process alone also passes with a blank WebView.
+# A live process alone also passes with no window at all: require a mapped top-level window titled UniClipboard. (The AppImage smoke's
+# "Main window revealed" log line is a Tauri-era signal that the Go host never logs.)
+cp "$home/windows.txt" "$OUT/" 2>/dev/null || true
 sed 's/\x1b\[[0-9;]*m//g' "$OUT/gui.log" >"$OUT/gui.clean.log" 2>/dev/null || : >"$OUT/gui.clean.log"
-grep -a -q 'Main window revealed' "$OUT/gui.clean.log" && ok "the frontend reported ready (Main window revealed)" || bad "the frontend reported ready (Main window revealed)" "see gui.clean.log"
+grep -a -q '"UniClipboard"' "$OUT/windows.txt" 2>/dev/null && ok "a top-level window titled UniClipboard exists" || bad "a top-level window titled UniClipboard exists" "see windows.txt"
 fatal='Segmentation fault|undefined symbol|Failed to load module|symbol lookup error|Failed to initialize GTK|panicked|Main window readiness timed out|No GSettings schemas are installed|schema .* is not installed'
 fatal_hits="$(grep -a -E "$fatal" "$OUT/gui.clean.log" | cut -c1-200 | sort | uniq -c)"
 [[ -z "$fatal_hits" ]] && ok "no loader, GTK or GSettings error in the GUI log" || bad "no loader, GTK or GSettings error in the GUI log" "$(echo "$fatal_hits" | tr '\n' ' ' | cut -c1-300)"

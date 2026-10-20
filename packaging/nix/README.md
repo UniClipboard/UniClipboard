@@ -23,14 +23,26 @@ nix run github:UniClipboard/UniClipboard
 nix profile add github:UniClipboard/UniClipboard
 ```
 
-NixOS 上，把下面几行加进现有配置。`inputs` 与 `outputs` 的写法取决于你的 flake，这里只给出与 UniClipboard 有关的部分：
+NixOS 上分两步。先在 `flake.nix` 里接入输入，并把它传给你的模块（具体写法取决于你的 flake）：
 
 ```nix
 {
-  # flake inputs
   inputs.uniclipboard.url = "github:UniClipboard/UniClipboard";
 
-  # in a NixOS module (it needs `pkgs` and the flake's `uniclipboard` input in scope)
+  outputs = { nixpkgs, uniclipboard, ... }: {
+    nixosConfigurations.host = nixpkgs.lib.nixosSystem {
+      specialArgs = { inherit uniclipboard; };
+      modules = [ ./configuration.nix ];
+    };
+  };
+}
+```
+
+再在 `configuration.nix` 里使用：
+
+```nix
+{ pkgs, uniclipboard, ... }:
+{
   environment.systemPackages = [ uniclipboard.packages.${pkgs.stdenv.hostPlatform.system}.default ];
   # The daemon keeps its keys in the Secret Service. Use any provider; GNOME Keyring is one.
   services.gnome.gnome-keyring.enable = true;
@@ -87,7 +99,7 @@ NixOS 上，把下面几行加进现有配置。`inputs` 与 `outputs` 的写法
 | 数据写到 store 或主机真实目录 | 启动检查用一次性 HOME 与 XDG 目录，`daemon.conn` 必须出现在其中 |
 | 哈希与发布物不一致 / 可变 URL | `fetchurl` 固定哈希；`update.py` 对同一个 `SHA256SUMS.txt` 复算得到相同的 `sources.json` |
 
-`.github/workflows/nix.yml` 在 `ubuntu-24.04` 与 `ubuntu-24.04-arm` 上执行 `nix flake check --no-build --all-systems`、`nix build`，再运行 `scripts/ci/check-nix-package.sh`：静态检查（布局、`ldd`、RUNPATH、桌面文件与图标），然后在 Xvfb、私有 D-Bus 与一次性 GNOME Keyring 中启动 GUI，核对进程路径、存活、`daemon.conn`。证据（`results.tsv`、`commands.log`、`gui.log`、`launch-ps.txt`）作为 artifact 上传，可重复运行。Wayland、托盘、真实 GPU 与桌面环境的目视验收需要在 NixOS 上人工进行，CI 不覆盖。
+`.github/workflows/nix.yml` 在 `ubuntu-24.04` 与 `ubuntu-24.04-arm` 上执行 `nix flake check --no-build --all-systems`、`nix build`，再运行 `scripts/ci/check-nix-package.sh`：静态检查（布局；依赖解析读取每个二进制请求的解释器并用它的 `--list` 解析，不用宿主 `ldd`；RUNPATH；桌面文件与图标），然后在 Xvfb、私有 D-Bus 与一次性 GNOME Keyring 中启动 GUI，核对进程路径、存活、`daemon.conn`。证据（`results.tsv`、`commands.log`、`gui.log`、`launch-ps.txt`）作为 artifact 上传，可重复运行。Wayland、托盘、真实 GPU 与桌面环境的目视验收需要在 NixOS 上人工进行，CI 不覆盖。
 
 本次在编写环境里实际做过的：对 `v1.2.0-alpha.7` 的两个 `.deb` 与 `SHA256SUMS.txt` 逐项核对（SHA256 完整比对，`rsign` 验证 `SHA256SUMS.txt.minisig` 通过）；用 `readelf` 读取两个架构上两个二进制的 `DT_NEEDED` 与 `dlopen` 字符串；`update.py` 复算 `sources.json` 与手写结果一致。
 

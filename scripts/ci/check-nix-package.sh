@@ -30,7 +30,13 @@ check "the real GUI executable sits beside the daemon" test -x "$gui_real"
 check "the daemon is an unwrapped ELF" bash -c "[ \"\$(head -c4 '$daemon' | od -An -c | tr -d ' ')\" = '177ELF' ]"
 # Resolve with the loader the binary itself requests (the Nix glibc). The host's ldd would use the host loader against Nix libraries
 # and report a GLIBC version mismatch that does not exist at run time.
-unresolved() { local interp; interp="$(readelf -l "$1" | sed -n 's/.*Requesting program interpreter: \(.*\)\]/\1/p')"; test -x "$interp" && ! "$interp" --list "$1" | grep 'not found'; }
+unresolved() {
+  local interp out
+  interp="$(readelf -l "$1" | sed -n 's/.*Requesting program interpreter: \(.*\)\]/\1/p')"
+  test -x "$interp" || { echo "interpreter not executable: $interp"; return 1; }
+  out="$("$interp" --list "$1" 2>&1)" || { echo "$out"; return 1; }
+  ! grep 'not found' <<<"$out"
+}
 check "no unresolved library in the GUI executable" unresolved "$gui_real"
 check "no unresolved library in the daemon" unresolved "$daemon"
 # libgtk-layer-shell.so.0 is dlopen()ed, so only the RUNPATH can make it loadable.
@@ -52,7 +58,7 @@ dbus-run-session -- bash -c '
   printf "uc-throwaway" | gnome-keyring-daemon --foreground --unlock --components=secrets >"$HOME/keyring.env" 2>"$HOME/keyring.err" &
   for i in $(seq 100); do dbus-send --session --dest=org.freedesktop.DBus --print-reply /org/freedesktop/DBus org.freedesktop.DBus.NameHasOwner string:org.freedesktop.secrets 2>/dev/null | grep -q "boolean true" && break; sleep 0.1; done
   printf "probe" | secret-tool store --label=uc-probe uc probe && [ "$(secret-tool lookup uc probe)" = probe ] && secret-tool clear uc probe && echo keyring-ready
-  trap "kill ${gui:-} ${xvfb:-} 2>/dev/null; pkill -u $(id -u) -x uniclipd 2>/dev/null || true" EXIT
+  trap "kill \${gui:-} \${xvfb:-} 2>/dev/null; pkill -u \$(id -u) -x uniclipd 2>/dev/null || true" EXIT
   Xvfb :99 -screen 0 1280x800x24 -nolisten tcp & xvfb=$!
   export DISPLAY=:99; for i in $(seq 50); do xdpyinfo >/dev/null 2>&1 && break; sleep 0.2; done
   "$PKG/bin/uniclipboard" >"$HOME/gui.log" 2>&1 & gui=$!

@@ -325,8 +325,16 @@ jobs:
           MINISIGN_RELEASE_PRIVATE_KEY: ${{ secrets.MINISIGN_RELEASE_PRIVATE_KEY }}
           MINISIGN_RELEASE_PASSWORD: ${{ secrets.MINISIGN_RELEASE_PASSWORD }}
           VERSION: ${{ needs.validate.outputs.version }}
+          WINDOWS_UNSIGNED: ${{ steps.windows-signing.outputs.unsigned }}
         run: |
           cd release-assets
+
+          # Unsigned Windows packages are only acceptable when the checksums are authenticated: the release notes tell users to
+          # verify SHA256SUMS.txt.minisig, so a missing key must stop the release instead of skipping the signature.
+          if [ "$WINDOWS_UNSIGNED" = "true" ] && [ -z "${MINISIGN_RELEASE_PRIVATE_KEY}" ]; then
+            echo "::error::Windows packages are unsigned, so SHA256SUMS.txt must be minisign-signed; MINISIGN_RELEASE_PRIVATE_KEY is not available."
+            exit 1
+          fi
 
           # Checksum every release artifact. Exclude the checksum files themselves
           # (the .minisig won't exist yet, but guard against re-runs anyway).

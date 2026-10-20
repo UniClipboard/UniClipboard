@@ -1497,6 +1497,7 @@
 .adw-pane {
   position: relative;
   box-sizing: border-box;
+  padding-block-start: 0.75rem;
   min-width: 0;
   min-height: 0;
   display: flex;

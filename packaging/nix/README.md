@@ -4,7 +4,7 @@
 
 ## 状态
 
-- **构建已在 CI 通过，运行验证进行中。** PR #2036 的首次 CI 在原生 x86_64 与 aarch64 runner（Nix 2.35.3，nixpkgs 的 WebKitGTK 2.54.1）上成功构建；GUI 由包内路径启动并拉起同目录的 `uniclipd`，WebKit 进程来自包内 WebKitGTK，`daemon.conn` 写在一次性 HOME 下。当时的两个失败是检查脚本自身的问题（宿主 `ldd` 误报、已不存在的日志信号），已修正。Wayland、托盘、真实 GPU 仍需在 NixOS 上人工验收。
+- **构建与无头启动已在 CI 通过。** PR #2036 的首次 CI 在原生 x86_64 与 aarch64 runner（Nix 2.35.3，nixpkgs 的 WebKitGTK 2.54.1）上成功构建；GUI 由包内路径启动并拉起同目录的 `uniclipd`，WebKit 进程来自包内 WebKitGTK，`daemon.conn` 写在一次性 HOME 下。当时的两个失败是检查脚本自身的问题（宿主 `ldd` 误报、已不存在的日志信号），已修正。Wayland、托盘、真实 GPU 仍需在 NixOS 上人工验收。
 - 打包版本：`1.2.0-alpha.7`（预发布）。这是目前唯一由 Go 宿主构建的发布；最新正式版 `v1.1.2` 仍是已退役的 Tauri 宿主，布局和依赖不同（`libayatana-appindicator`），本包不支持。出正式的 Go 宿主版本后用 `update.py` 切换。
 - 支持架构：`x86_64-linux`、`aarch64-linux`，与发布的 `.deb` 一致。macOS 与其他架构不支持。
 - 需要 nixpkgs 26.05 或更新版本（`package.nix` 使用顶层属性 `libx11`）。flake 固定在 `nixos-26.05`。

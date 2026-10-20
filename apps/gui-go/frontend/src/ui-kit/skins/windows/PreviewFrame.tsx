@@ -6,6 +6,8 @@ import type { PreviewFrameProps } from '@/ui-kit/contract'
 const useStyles = makeStyles({
   frame: {
     position: 'relative',
+    flexShrink: 0,
+    height: 'clamp(10rem, 40vh, 28rem)',
     display: 'flex',
     flexDirection: 'column',
     minHeight: '10rem',
@@ -42,7 +44,7 @@ const useStyles = makeStyles({
     borderBottomColor: 'rgba(255, 255, 255, 0.06)',
   },
   trailing: { marginInlineStart: 'auto', fontFamily: tokens.fontFamilyMonospace },
-  body: { position: 'relative', flexGrow: 1, minHeight: 0 },
+  body: { position: 'relative', flexGrow: 1, minHeight: 0, overflow: 'auto' },
   topEnd: { position: 'absolute', top: '0.5rem', insetInlineEnd: '0.5rem', zIndex: 1 },
   bottomStart: { position: 'absolute', bottom: '0.5rem', insetInlineStart: '0.5rem', zIndex: 1 },
 })

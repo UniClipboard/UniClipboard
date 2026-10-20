@@ -2982,6 +2982,8 @@
 
 .mac-preview {
   position: relative;
+  flex-shrink: 0;
+  height: clamp(10rem, 40vh, 28rem);
   min-height: 160px;
   border-radius: 12px;
   overflow: hidden;
@@ -3016,6 +3018,7 @@
   position: relative;
   flex-grow: 1;
   min-height: 0;
+  overflow: auto;
 }
 
 .mac-preview-corner {

@@ -654,6 +654,7 @@ export interface IconProps {
  * The frame around an item's content in a detail pane. `image` puts a checkerboard behind
  * transparent pixels; `code` is a dark card. Controls can float over two corners (design ME1:
  * Fit / 100% top trailing, Quick Look bottom leading).
+ * The frame keeps a bounded responsive height; its body scrolls independently of the detail pane.
  */
 export interface PreviewFrameProps {
   kind: 'plain' | 'code' | 'image'

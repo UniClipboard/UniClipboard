@@ -101,16 +101,12 @@ export function HistoryKitDetail({
   const bytes = image && image.size > 0 ? image.size : (state.preview?.sizeBytes ?? 0)
   const format = imageActions.formatLabel ?? imageFormatLabel(state.preview?.mimeType)
   const imageFacts = [
-    ...(dims
-      ? [
-          {
-            id: 'dims',
-            label: t('clipboard.preview.dimensions'),
-            value: `${dims.width} × ${dims.height}`,
-            monospace: true,
-          },
-        ]
-      : []),
+    {
+      id: 'dims',
+      label: t('clipboard.preview.dimensions'),
+      value: dims ? `${dims.width} × ${dims.height}` : '…',
+      monospace: true,
+    },
     {
       id: 'format',
       label: t('history.kit.format'),

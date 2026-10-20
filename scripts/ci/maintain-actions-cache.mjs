@@ -7,6 +7,12 @@ const CACHE_BUDGET_BYTES = 8 * 1024 ** 3
 
 function cacheFamily(key) {
   return (
+    key.match(
+      /^(mbx-v1-(?:Linux|macOS|Windows)-(?:X86|X64|ARM|ARM64)-.+-refs\/(?:heads|tags|pull)\/.+)-[a-f0-9]{40}$/
+    )?.[1] ??
+    key.match(
+      /^(linux-gui-mbx-v1-refs\/(?:heads|tags|pull)\/.+-(?:amd64|arm64))-[a-f0-9]{64}$/
+    )?.[1] ??
     key.match(/^(v\d+-rust-.+-[a-f0-9]{8})-[a-f0-9]{8}$/)?.[1] ??
     key.match(/^((?:Linux|macOS|Windows)(?:-docs)?-bun)-[a-f0-9]{64}$/)?.[1] ??
     key.match(/^(codeql-dependencies-.+)-[a-f0-9]{64}$/)?.[1]

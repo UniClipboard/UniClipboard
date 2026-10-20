@@ -24,8 +24,75 @@ const windows = 'v0-rust-x86_64-pc-windows-msvc-Windows_NT-x64-5bb3579f-11111111
 const coverage = 'v0-rust-coverage-Linux-x64-20a16cf1-11111111'
 const macArm = 'v0-rust-aarch64-apple-darwin-Darwin-arm64-5bb3579f-11111111'
 const windowsArm = windows.replace('x86_64-pc', 'aarch64-pc')
+const mbxKey = (context: string, ref: string, revision = 'a', host = 'Linux-X64') =>
+  `mbx-v1-${host}-${context}-${ref}-${revision.repeat(40)}`
 
 describe('Actions cache retention', () => {
+  it('reclaims MBX caches from closed PRs while retaining open PR caches', () => {
+    const closedRef = 'refs/pull/2008/merge'
+    const openRef = 'refs/pull/2028/merge'
+    const entries = [
+      cache(1, mbxKey('membership-Linux', closedRef), closedRef),
+      cache(2, mbxKey('legacy-file-key-store', closedRef), closedRef),
+      cache(3, mbxKey('coverage', openRef), openRef),
+    ]
+    const result = planCacheCleanup(entries, [2028])
+    expect(result.remove.map(entry => entry.id)).toEqual([1, 2])
+    expect(result.remove.every(entry => entry.reason === 'closed PR cache')).toBe(true)
+    expect(result.remainingBytes).toBe(GiB)
+  })
+
+  it('keeps the newest MBX revision independently for each context, host and ref', () => {
+    const ref = 'refs/heads/main'
+    const pullRef = 'refs/pull/2028/merge'
+    const entries = [
+      cache(1, mbxKey('membership-Linux', ref)),
+      cache(2, mbxKey('membership-Linux', ref, 'b')),
+      cache(3, mbxKey('coverage', ref)),
+      cache(4, mbxKey('membership-Linux', ref, 'a', 'macOS-ARM64')),
+      cache(5, mbxKey('membership-Linux', pullRef), pullRef),
+    ]
+    const result = planCacheCleanup(entries, [2028])
+    expect(result.remove.map(entry => entry.id)).toEqual([1])
+    expect(result.remove[0].reason).toBe('superseded cache generation')
+  })
+
+  it('evicts the least recently accessed MBX cache to meet the capacity budget', () => {
+    const entries = [
+      cache(1, mbxKey('membership-Linux', 'refs/heads/main'), undefined, 3 * GiB),
+      cache(2, mbxKey('coverage', 'refs/heads/main'), undefined, 3 * GiB),
+      cache(3, windows, undefined, 3 * GiB),
+    ]
+    entries[0].last_accessed_at = '2026-09-05T00:00:00Z'
+    const result = planCacheCleanup(entries, [])
+    expect(result.remove.map(entry => entry.id)).toEqual([2])
+    expect(result.remove[0].reason).toBe('reserve upload capacity')
+    expect(result.remainingBytes).toBe(6 * GiB)
+    expect(result.overBudget).toBe(false)
+  })
+
+  it('manages Linux GUI MBX generations and closed PR caches', () => {
+    const ref = 'refs/pull/2028/merge'
+    const entries = [
+      cache(1, `linux-gui-mbx-v1-refs/heads/main-amd64-${'a'.repeat(64)}`),
+      cache(2, `linux-gui-mbx-v1-refs/heads/main-amd64-${'b'.repeat(64)}`),
+      cache(3, `linux-gui-mbx-v1-refs/heads/main-arm64-${'a'.repeat(64)}`),
+      cache(4, `linux-gui-mbx-v1-${ref}-amd64-${'a'.repeat(64)}`, ref),
+    ]
+    expect(planCacheCleanup(entries, []).remove.map(entry => entry.id)).toEqual([4, 1])
+  })
+
+  it('leaves unsupported MBX versions and malformed revisions unmanaged', () => {
+    const key = mbxKey('coverage', 'refs/pull/12/merge')
+    const entries = [
+      cache(1, key.replace('mbx-v1-', 'mbx-v2-'), 'refs/pull/12/merge', 5 * GiB),
+      cache(2, key.slice(0, -1), 'refs/pull/12/merge', 5 * GiB),
+    ]
+    const result = planCacheCleanup(entries, [])
+    expect(result.remove).toEqual([])
+    expect(result.overBudget).toBe(true)
+  })
+
   it('protects ARM release caches before less expensive CI caches', () => {
     const entries = [
       cache(1, macArm, undefined, 2 * GiB),

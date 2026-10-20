@@ -6,11 +6,11 @@ import { Icon } from './icons'
  * The two columns of a large sheet (design DV1): a fixed source-list column with a hairline
  * divider and a detail column that scrolls by itself, as in System Settings.
  */
-export function MasterDetail({ list, detail, detailLabel }: MasterDetailProps) {
+export function MasterDetail({ list, detail, detailKey, detailLabel }: MasterDetailProps) {
   return (
     <div className="mac-master-detail">
       <div className="mac-master-column">{list}</div>
-      <section className="mac-detail-column" aria-label={detailLabel}>
+      <section key={detailKey} className="mac-detail-column" aria-label={detailLabel}>
         <div className="mac-detail-column-body">{detail}</div>
       </section>
     </div>

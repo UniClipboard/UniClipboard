@@ -8,7 +8,7 @@ import { useDevicesPage } from '@/hooks/useDevicesPage'
 import { useShortcutLayer } from '@/hooks/useShortcutLayer'
 import { fetchSpaceMembers, fetchSpaceProtection } from '@/store/slices/devicesSlice'
 import { AlertDialog, Button, MasterDetail, Menu, Sheet, type MenuEntry } from '@/ui-kit'
-import type { DevicesKitSelection } from './devices-kit-model'
+import { selectionId, type DevicesKitSelection } from './devices-kit-model'
 import { DevicesKitDetail } from './DevicesKitDetail'
 import { DevicesKitList } from './DevicesKitList'
 import type { DevicesKitController } from './useDevicesKit'
@@ -108,6 +108,7 @@ export function DevicesKitSheet({ devices }: { devices: DevicesKitController }) 
       done={{ label: t('history.composite.done'), onClick: () => devices.setOpen(false) }}
     >
       <MasterDetail
+        detailKey={selectionId(resolved)}
         list={
           <DevicesKitList
             page={page}

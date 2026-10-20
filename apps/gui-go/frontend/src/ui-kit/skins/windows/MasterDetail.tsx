@@ -32,12 +32,12 @@ const useStyles = makeStyles({
   },
 })
 
-export function MasterDetail({ list, detail, detailLabel }: MasterDetailProps) {
+export function MasterDetail({ list, detail, detailKey, detailLabel }: MasterDetailProps) {
   const styles = useStyles()
   return (
     <div className={styles.root}>
       <div className={styles.list}>{list}</div>
-      <section className={styles.detail} aria-label={detailLabel}>
+      <section key={detailKey} className={styles.detail} aria-label={detailLabel}>
         <div className={styles.body}>{detail}</div>
       </section>
     </div>

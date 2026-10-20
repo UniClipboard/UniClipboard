@@ -256,7 +256,7 @@ const HistoryDetailPanel: React.FC<HistoryDetailPanelProps> = ({
       </header>
 
       {/* The body scrolls on its own so the header and footer stay pinned. */}
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div key={item.id} className="min-h-0 flex-1 overflow-y-auto">
         <div className="flex min-h-full w-full flex-col gap-4.5 px-6 py-5">
           {state.effectiveStatus === 'transferring' && state.transfer?.status === 'active' && (
             <TransferProgressBar

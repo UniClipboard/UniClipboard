@@ -926,6 +926,8 @@ export interface SourceListProps {
 export interface MasterDetailProps {
   list: ReactNode
   detail: ReactNode
+  /** Changing the selected object's identity resets the detail and its scroll position. */
+  detailKey?: string
   /** Accessible name of the detail region. */
   detailLabel: string
 }

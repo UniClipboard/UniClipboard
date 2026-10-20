@@ -135,7 +135,10 @@ export function HistoryKitDetail({
       data-testid="clipboard-detail"
       data-entry-id={item.id}
     >
-      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-6 pb-28 pt-1">
+      <div
+        key={item.id}
+        className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-6 pb-28 pt-1"
+      >
         <DetailHeader
           pin={{
             label: t(pinned ? 'history.detail.unpin' : 'history.detail.pin'),

@@ -119,7 +119,8 @@ on:
         default: true
       allow_unsigned_windows:
         description: >-
-          Alpha releases only, set by release.yml from the repository variable ALLOW_UNSIGNED_WINDOWS_ALPHA: when no production Windows
+          Alpha and stable releases only, set by release.yml from the per-channel repository variable ALLOW_UNSIGNED_WINDOWS_ALPHA or
+          ALLOW_UNSIGNED_WINDOWS_STABLE (default off; beta and rc have none): when no production Windows
           signing backend is configured, package the Windows installers, portable zips and CLI archive unsigned instead of failing.
           A configured production backend always wins. Test certificates are still refused.
         required: false
@@ -846,7 +847,7 @@ jobs:
           elif [ -n "$SIGN_BACKEND" ]; then
             echo "mode=signed" >> "$GITHUB_OUTPUT"; echo "sfx=" >> "$GITHUB_OUTPUT"
           elif [ "$IS_CALL" = "true" ] && [ "$ALLOW_UNSIGNED" = "true" ]; then
-            echo "::warning::No production Windows code-signing backend is configured; packaging UNSIGNED Windows installers because this is an alpha release and ALLOW_UNSIGNED_WINDOWS_ALPHA is set."
+            echo "::warning::No production Windows code-signing backend is configured; packaging UNSIGNED Windows installers because the explicit per-channel ALLOW_UNSIGNED_WINDOWS_* switch is set for this release."
             echo "mode=unsigned" >> "$GITHUB_OUTPUT"; echo "sfx=" >> "$GITHUB_OUTPUT"
           elif [ "$IS_CALL" = "true" ]; then
             echo "::error::No Windows code-signing backend is configured (WINDOWS_SIGN_BACKEND); refusing to package unsigned Windows installers for a release."

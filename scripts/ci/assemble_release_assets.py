@@ -43,8 +43,8 @@ def main():
     p.add_argument('--zh-notes-file', type=Path, required=True)
     p.add_argument('--registration-source', required=True)
     p.add_argument('--mode', choices=['release', 'fixture'], default='release')
-    p.add_argument('--allow-unsigned-windows-alpha', action='store_true',
-                   help='alpha releases only: accept unsigned Windows packages (explicit opt-in recorded in the index); test signing is still refused')
+    p.add_argument('--allow-unsigned-windows', action='store_true',
+                   help='alpha and stable releases only: accept unsigned Windows packages (explicit opt-in recorded in the index); test signing is still refused')
     p.add_argument('--signer', type=Path, help='fixture mode only: prebuilt updater-sign binary')
     p.add_argument('--app-config', type=Path, help='fixture mode only: app.json carrying the fixture public key')
     args = p.parse_args()
@@ -65,7 +65,7 @@ def main():
     run('collect', py + [ROOT / 'scripts/collect-release-assets.py', '--source', args.artifacts, '--destination', assets], evidence)
     run('gate-assets', py + [ROOT / 'scripts/ci/release_gate.py', 'assets', '--version', args.version, '--source-sha', args.source_sha,
                              '--artifacts', args.artifacts, '--assets', assets, '--mode', args.mode,
-                             *(['--allow-unsigned-windows-alpha'] if args.allow_unsigned_windows_alpha else []),
+                             *(['--allow-unsigned-windows'] if args.allow_unsigned_windows else []),
                              '--out', evidence / 'release-assets-index.json'], evidence)
 
     config = args.app_config or ROOT / 'apps/gui-go/app.json'

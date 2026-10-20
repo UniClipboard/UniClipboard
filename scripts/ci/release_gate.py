@@ -85,6 +85,16 @@ def fail(problems):
     sys.exit(1)
 
 
+def unsigned_windows_kind(version_or_ref):
+    """'alpha' for X.Y.Z-alpha.N, 'stable' for X.Y.Z, else None (beta, rc and anything else can never ship unsigned Windows)."""
+    v = version_or_ref[1:] if version_or_ref.startswith('v') else version_or_ref
+    if re.fullmatch(r'\d+\.\d+\.\d+-alpha\.\d+', v) or v.endswith('-alpha'):
+        return 'alpha'
+    if re.fullmatch(r'\d+\.\d+\.\d+', v) or v.endswith('-stable'):  # '-stable' is the workflow_dispatch placeholder ref
+        return 'stable'
+    return None
+
+
 def cmd_prerequisites(args):
     """Exactly one production Windows backend must be configured, or the release stops here.
 
@@ -101,9 +111,11 @@ def cmd_prerequisites(args):
     if backend and policy:
         problems.append('Both WINDOWS_SIGN_BACKEND and a SignPath production policy are configured; a release uses exactly one production backend.')
     ref = os.environ.get('RELEASE_REF', '')
-    alpha = bool(re.search(r'-alpha\.\d+$', ref)) or ref.endswith('-alpha')
-    if not backend and not policy and os.environ.get('ALLOW_UNSIGNED_WINDOWS_ALPHA') == 'true' and alpha:
-        print('::notice::No production Windows signing backend: this ALPHA release will ship UNSIGNED Windows packages (ALLOW_UNSIGNED_WINDOWS_ALPHA=true).')
+    # Each opt-in applies to its own channel only: the alpha switch never unlocks stable and vice versa. Beta and rc have none.
+    kind = unsigned_windows_kind(ref)
+    switch = {'alpha': 'ALLOW_UNSIGNED_WINDOWS_ALPHA', 'stable': 'ALLOW_UNSIGNED_WINDOWS_STABLE'}.get(kind)
+    if not backend and not policy and switch and os.environ.get(switch) == 'true':
+        print(f'::notice::No production Windows signing backend: this {kind.upper()} release will ship UNSIGNED Windows packages ({switch}=true).')
     elif not backend and not policy:
         problems.append('No production Windows code-signing backend is configured: set WINDOWS_SIGN_BACKEND (azure | pfx) or the SignPath '
                         'production variables SIGNPATH_PRODUCTION_POLICY_SLUG and SIGNPATH_PRODUCTION_CERT_THUMBPRINT. '
@@ -365,7 +377,7 @@ def check_evidence(artifacts, v, sha, assets=None, expect_thumbprint=None, allow
             signing = doc.get('signing') or {}
             provider, proof = signing.get('provider'), signing.get('evidence') or {}
             if allow_unsigned and doc.get('signed') is False and not doc.get('signing'):
-                unsigned_windows.append(str(rel))  # the explicit alpha opt-in; nothing is claimed about a signature
+                unsigned_windows.append(str(rel))  # the explicit alpha/stable opt-in; nothing is claimed about a signature
                 continue
             if not doc.get('signed') or provider not in PRODUCTION_WINDOWS_PROVIDERS:
                 problems.append(f'{rel}: Windows signing provider is {provider!r}; a release requires a production signature '
@@ -444,16 +456,17 @@ def cmd_assets(args):
         index.append({'name': f.name, 'sha256': digest, 'bytes': f.stat().st_size,
                       'sourceArtifacts': sorted({o.parts[0] for o in origins})})
 
-    allow_unsigned = args.allow_unsigned_windows_alpha
-    if allow_unsigned and not re.search(r'-alpha\.\d+$', v):
-        problems.append(f'unsigned Windows packages are allowed for alpha releases only, not for {v}')
+    allow_unsigned = args.allow_unsigned_windows
+    unsigned_kind = unsigned_windows_kind(v)
+    if allow_unsigned and not unsigned_kind:
+        problems.append(f'unsigned Windows packages are allowed for alpha and stable releases only, not for {v}')
         allow_unsigned = False
     evidence_problems, seen, unsigned_windows = check_evidence(artifacts, v, sha, assets, args.windows_thumbprint, allow_unsigned)
     problems += evidence_problems
 
     if problems:
         fail(problems)
-    windows_signing = 'unsigned-alpha' if unsigned_windows else 'production'
+    windows_signing = f'unsigned-{unsigned_kind}' if unsigned_windows else 'production'
     record = {'mode': args.mode, 'version': v, 'sourceSha': sha, 'windowsSigning': windows_signing, 'unsignedWindowsEvidence': unsigned_windows,
               'platformsCovered': sorted({p for _, p, _ in required}), 'requiredAssets': len(required), 'assets': index}
     Path(args.out).write_text(json.dumps(record, indent=2, sort_keys=True) + '\n')
@@ -484,8 +497,8 @@ def main():
     a.add_argument('--artifacts', required=True)
     a.add_argument('--assets', required=True)
     a.add_argument('--mode', choices=['release', 'fixture'], default='release')
-    a.add_argument('--allow-unsigned-windows-alpha', action='store_true',
-                   help='explicit alpha-only opt-in: Windows evidence may say unsigned; test certificates and forged labels are still refused')
+    a.add_argument('--allow-unsigned-windows', action='store_true',
+                   help='explicit opt-in for alpha and stable versions only: Windows evidence may say unsigned; test certificates and forged labels are still refused')
     a.add_argument('--windows-thumbprint', default=os.environ.get('SIGNPATH_PRODUCTION_CERT_THUMBPRINT') or None,
                    help='the production certificate configured for this release (SignPath); defaults to $SIGNPATH_PRODUCTION_CERT_THUMBPRINT')
     a.add_argument('--out', required=True)

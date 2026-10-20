@@ -17,7 +17,7 @@
 
 | 位置 | 变更 |
 | --- | --- |
-| `release.yml` `validate` | 原无条件 `exit 1` 改为 `scripts/ci/release_gate.py prerequisites`：必须恰好配置一个生产 Windows 签名后端（唯一例外：仅 alpha 且仓库变量 `ALLOW_UNSIGNED_WINDOWS_ALPHA=true` 时可不配置，见下文“未签名 Windows alpha”；其余版本不可绕过，测试签名在任何情况下都不满足），即 `WINDOWS_SIGN_BACKEND` 为 `azure`/`pfx`，**或** SignPath 生产（变量 `SIGNPATH_PRODUCTION_POLICY_SLUG` 与 `SIGNPATH_PRODUCTION_CERT_THUMBPRINT`），且有更新签名私钥，否则失败。测试签名（self-test、SignPath test-signing）永远不满足；两个后端同时存在也失败。随后 `release_gate.py source` 固定 `source_sha`，并要求 tag 版本与 `package.json`、`apps/gui-go/app.json`、`Cargo.toml`、`buildinfo.go`、`Cargo.lock` 工作区成员一致，且 `Cargo.toml` 与 `Cargo.lock` 的 Engine 版本固定一致。 |
+| `release.yml` `validate` | 原无条件 `exit 1` 改为 `scripts/ci/release_gate.py prerequisites`：必须恰好配置一个生产 Windows 签名后端（唯一例外：alpha 且 `ALLOW_UNSIGNED_WINDOWS_ALPHA=true`，或 stable 且 `ALLOW_UNSIGNED_WINDOWS_STABLE=true` 时可不配置，见下文“无生产签名的 Windows 包”；beta 与 rc 不可绕过，测试签名在任何情况下都不满足），即 `WINDOWS_SIGN_BACKEND` 为 `azure`/`pfx`，**或** SignPath 生产（变量 `SIGNPATH_PRODUCTION_POLICY_SLUG` 与 `SIGNPATH_PRODUCTION_CERT_THUMBPRINT`），且有更新签名私钥，否则失败。测试签名（self-test、SignPath test-signing）永远不满足；两个后端同时存在也失败。随后 `release_gate.py source` 固定 `source_sha`，并要求 tag 版本与 `package.json`、`apps/gui-go/app.json`、`Cargo.toml`、`buildinfo.go`、`Cargo.lock` 工作区成员一致，且 `Cargo.toml` 与 `Cargo.lock` 的 Engine 版本固定一致。 |
 | `release.yml` `build` / `build-cli` / `create-release` | 一律检出并构建 `needs.validate.outputs.source_sha`（完整提交 SHA），而不是移动的分支或 tag 名。 |
 | `release.yml` `create-release` | 收集、签名、清单、登记改为一次调用 `scripts/ci/assemble_release_assets.py`（见下），其后才是原有的 SHA256SUMS、tag（仅 dispatch）、Release、R2、FlareRelease。 |
 | `release.yml` 渠道分发 | Snap：alpha 仍异步触发，但 `release=false`，只产出 artifact；COPR：alpha 仍触发，但 `dry_run=true`，只产出 SRPM。推送商店与提交 COPR 需要人显式 `workflow_dispatch`。npm 与 GitCode 镜像入口不变（见下）。 |
@@ -62,15 +62,20 @@ Windows CLI 归档：`build-cli` 作业只会用 `sign.py` 本地后端签名。
 
 **状态：结构已写好，从未与真实 SignPath 生产策略运行过；策略、证书、Environment 与 token 都未配置（只读核对见 `production-blocked` 证据）。生产签名验收 blocked，未配置时仍失败关闭。**
 
-## 无生产签名的 Windows alpha（显式、仅 alpha 的选择加入）
+## 无生产签名的 Windows 包（显式、按渠道的选择加入）
 
-生产 Windows 签名未到位时，维护者可以只为 alpha 发布未签名的 Windows 包。这是 [gui-go-windows-packaging.md](gui-go-windows-packaging.md) 里“暂不签名发布”一项的决定，由维护者做出，默认关闭：
+生产 Windows 签名未到位时，维护者可以为 alpha 或 stable 发布未签名的 Windows 包。这是 [gui-go-windows-packaging.md](gui-go-windows-packaging.md) 里“暂不签名发布”一项的决定，由维护者做出，默认关闭。两个渠道各有独立开关，互不解锁：
 
-- 开关：仓库变量 `ALLOW_UNSIGNED_WINDOWS_ALPHA=true`（不设置就是失败关闭，原行为不变）。本任务不设置它。
-- 范围：只对版本形如 `X.Y.Z-alpha.N` 的发布生效；stable、beta、rc 即使设置了变量也照旧失败（前提门禁按 tag 判断，资产门禁按版本判断）。
-- 行为：`validate` 前提门禁在没有任何生产后端时放行并打印提示；`build.yml` 的 release 调用在没有后端时把 Windows 安装包、便携包与 CLI 压缩包按未签名构建（已配置的生产后端永远优先）；`release_gate.py assets --allow-unsigned-windows-alpha` 接受“`signed=false` 且无 signing 块”的 Windows 证据，并在索引写 `windowsSigning: unsigned-alpha`；发布说明自动加上“Windows 包未做代码签名，SmartScreen/杀毒软件可能告警，请核对 `SHA256SUMS.txt(.minisig)`”的警告。
-- 不放宽：测试证书（selftest、SignPath test-signing）、伪造的 `signed`/`signpath` 标签（无回执）、测试模式 artifact 仍然被拒绝；更新密钥前提仍然要求；macOS 与 Linux 的检查不变。
-- 用户影响：Windows 应用内更新仍由更新签名（minisign）验证，不依赖 Authenticode；但首次手动安装会遇到 SmartScreen 警告。winget、Chocolatey、Scoop 等只对 stable 触发的渠道不受影响。
+| 开关（仓库变量） | 生效范围 |
+| --- | --- |
+| `ALLOW_UNSIGNED_WINDOWS_ALPHA=true` | 只对 `X.Y.Z-alpha.N` |
+| `ALLOW_UNSIGNED_WINDOWS_STABLE=true` | 只对 `X.Y.Z`（stable） |
+
+- 默认：两个变量都不设置，行为是失败关闭。beta 与 rc 没有开关，任何情况下都失败。
+- 选择方式：`release.yml` 由 tag 触发，没有输入参数，所以开关只能是仓库变量。`validate` 作业的“Set outputs”步骤是唯一把变量和版本转换成 `allow_unsigned_windows` 输出的地方；构建调用、资产门禁都读这个输出。每次发布前设置，发布尝试结束后删除变量。运行中的发布在 `validate` 读取变量后不再受后续变量变化影响。
+- 行为：`validate` 前提门禁在没有任何生产后端时放行并打印提示；`build.yml` 的 release 调用在没有后端时把 Windows 安装包、便携包与 CLI 压缩包按未签名构建（已配置的生产后端永远优先）；`release_gate.py assets --allow-unsigned-windows` 接受“`signed=false` 且无 signing 块”的 Windows 证据，并在索引写 `windowsSigning: unsigned-alpha` 或 `unsigned-stable`；发布说明自动加上“Windows 包未做代码签名，SmartScreen/杀毒软件可能告警，请核对 `SHA256SUMS.txt(.minisig)`”的警告（stable 没有预发布警告，该段单独输出），任务摘要也写明。
+- 不放宽：测试证书（selftest、SignPath test-signing）、伪造的 `signed`/`signpath` 标签（无回执）、测试模式 artifact 仍然被拒绝；更新密钥前提、更新签名、`SHA256SUMS.txt` + minisign、来源与版本检查仍然要求；macOS 与 Linux 的检查不变。开关关闭时，签名出错不会静默退回未签名。
+- 用户影响：Windows 应用内更新仍由更新签名（minisign）验证，不依赖 Authenticode；但首次手动安装会遇到 SmartScreen 警告。stable 发布后，winget、Chocolatey、Scoop 等只对 stable 触发的渠道也会分发未签名的安装包，维护者需自行判断是否继续。
 - 退出：生产后端配置好之后，同一条流水线自动走签名路径；把变量删除即恢复失败关闭。
 
 ## 失败模型与验证

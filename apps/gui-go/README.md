@@ -728,7 +728,7 @@ UC_PORTABLE_E2E_ARGS=--supplement apps/gui-go/e2e/linux/run.sh appimage-portable
 契约、Wails 优先审计、选型理由（为什么是 `8f39b89` 而不是带日期的 `20251108`）、失败方式与证据映射在 [docs/architecture/gui-go-linux-appimage-runtime-pin.md](../../docs/architecture/gui-go-linux-appimage-runtime-pin.md)。证据目录 `/Users/mark/.herdr-projects/uni/t-0188-artifacts/linux-17c6/`（仓库只索引）。
 
 - 缺陷：`appimagetool 1.9.0` 的 SHA 固定，但 `package_linux.py` 不传 `--runtime-file`，appimagetool 在打包时下载当前的 `continuous` runtime（不可复现，且依赖网络；离线复现：`Failed to download runtime`）。
-- 实现：`package_linux.py` 的 `RUNTIME*` 固定 revision `8f39b89e…`、`continuous` 来源与每架构 SHA-256；`fetch_verified` 先检查 ELF 架构再检查 SHA，拒绝的字节保留为 `*.rejected-<sha8>`；appimagetool 以 `--runtime-file` 调用；打包后校验镜像前缀等于 runtime（只允许 `.digest_md5` 节不同）、紧接 SquashFS，并运行 `--appimage-version`；manifest 的 `appimage.runtime` 记录全部身份。
+- 实现：`package_linux.py` 的 `RUNTIME*` 固定 revision `fedfad51…`（2026-10-20 重新固定，见 runtime-pin 文档）、`continuous` 来源与每架构 SHA-256；`fetch_verified` 先检查 ELF 架构再检查 SHA，拒绝的字节保留为 `*.rejected-<sha8>`；appimagetool 以 `--runtime-file` 调用；打包后校验镜像前缀等于 runtime（只允许 `.digest_md5` 节不同）、紧接 SquashFS，并运行 `--appimage-version`；manifest 的 `appimage.runtime` 记录全部身份。
 - 验收（容器内 arm64，干净提交 `3ed97b642`，`final-3ed97b642`）：离线 v2 打包成功；负面用例 7/7 拒绝（非 ELF、错架构缓存、截断、位翻转、错误 pin SHA、pin 指向错架构、无缓存且无网络）且无 `.AppImage`；缓存损坏联网时自愈并等于 pin；四个包的 runtime 清零摘要后哈希都等于 pin；整套重跑：portable 64/64、`--supplement` 13/13、非 portable 34/34、negative 2/2、release 冒烟 5/5、MIME 探针有/无为成功/失败。
 - 边界：`continuous` URL 可变（没有官方 immutable 链接），SHA 不符时失败而不回退，pin 需有意更新；amd64 只核对了资产 SHA 与 ELF 机型，没有嵌入与运行；gpg 密钥不是独立信任根。
 

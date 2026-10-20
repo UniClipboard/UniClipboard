@@ -32,12 +32,12 @@ AppImage 文件 = type2 runtime（一个静态 ELF）+ SquashFS。runtime 提供
 
 1. 资产的 SHA-256（GitHub 资产 digest 与本地独立下载的哈希一致）。
 2. 发布的 `.sig` 用 `signing-pubkey.asc` 做 gpg 验证通过（两个架构；密钥取自同一个 release，不是独立信任根，所以这只是一致性证据，不是信任锚）。
-3. 来源 revision：`8f39b89e2ac31e1640b3d3f7e9a5108e6ce805fa`。
+3. 来源 revision：`fedfad51acc2860b2916a1eef32ba4a500ff31ef`。
 
 | 架构 | 资产 | SHA-256 | 字节数 | ELF `e_machine` |
 | --- | --- | --- | --- | --- |
-| arm64 | `runtime-aarch64` | `b4ff0030242d0c3bb12ce40541828303cf167493f4793456f0436edd6255c39d` | 936456 | 183（AArch64） |
-| amd64 | `runtime-x86_64` | `156f4bdbde9c52d01814600013e0a273f0118dc2de98975f3c8c63427ec79074` | 944632 | 62（x86-64） |
+| arm64 | `runtime-aarch64` | `9a72a744d221576c9347ec074243acc5c3c7568896b12714e0e82e9f0bf47900` | 936456 | 183（AArch64） |
+| amd64 | `runtime-x86_64` | `617aa77314d57c8b8e4fae9c3f0b35af7b30d5529cb69e98f64f92510ed98a46` | 944632 | 62（x86-64） |
 
 pin 的位置：`apps/gui-go/e2e/package_linux.py` 中 `APPIMAGETOOL` 旁边的 `RUNTIME*`。不放进旧的 `scripts/linux-appimage-tools.mjs`（已随 Tauri 打包器移除）：那个文件只服务 Tauri 的 AppImage 打包，Tauri 不能传 `--runtime-file`。
 
@@ -47,6 +47,15 @@ pin 的位置：`apps/gui-go/e2e/package_linux.py` 中 `APPIMAGETOOL` 旁边的 
 - 缓存缺失或损坏时重新下载会因为 SHA 不匹配而失败，打包停止（不回退到别的来源）。
 - 这时要有意识地更新 pin：改 `RUNTIME_REVISION`、两个 SHA 与（如果上游发布了带日期的 release 且包含该修复）URL，并重跑 17c6 流水线。
 - 17c6 把当时下载的字节保存在 `linux-17c6/source-evidence/continuous-8f39b89-*`（含 `.sig`），所以即使 URL 失效也能核对当时的输入。
+
+## 重新固定记录（2026-10-20）
+
+上游在 2026-10-19T20:37Z 重新发布了 `continuous`，原 pin 的 SHA-256 不再匹配，Release 的 Linux GUI 打包按设计失败（run 39396592400）。有意识地更新 pin，核对如下：
+
+- 新 revision `fedfad51acc2860b2916a1eef32ba4a500ff31ef` 是 `8f39b89` 之后的 1 个提交（GitHub compare：ahead 1，behind 0），只改 `scripts/common/install-dependencies.sh`（“Make dependency builds independent of the temporary directory path”）。`runtime.c` 与 0700 修复不变，资产字节数不变（arm64 936456，amd64 944632）。
+- 本地独立下载的 SHA-256 与 GitHub 资产 digest 一致；ELF `e_machine` 为 183 与 62；两个架构的 `.sig` 用同一个 release 的 `signing-pubkey.asc` 做 gpg 验证通过（仍是一致性证据，不是独立信任根）。
+- 旧值（revision `8f39b89`、arm64 `b4ff0030…`、amd64 `156f4bdb…`）只保留在上文的历史证据描述中。上文表格之外出现的 `8f39b89` 都指 17c6 当时验收的字节。
+- 没有重跑 17c6 的容器内嵌入与运行验收；新 pin 由 Release 的 Linux GUI 打包 job 实际检验。
 
 ## 嵌入契约（实测）
 

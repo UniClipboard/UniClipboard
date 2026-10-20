@@ -49,7 +49,7 @@ mk n2-cache-wrong-arch; curl -fsSL -o "$out/n2-cache-wrong-arch/tools/appimage-r
 run_case n2-cache-wrong-arch "ELF e_machine 62, expected 183" yes "$OFFLINE"
 # 3 cached runtime truncated (valid ELF header, wrong bytes)
 mk n3-cache-truncated; head -c 900000 "$out/n3-cache-truncated/tools/good-runtime" > "$out/n3-cache-truncated/tools/appimage-runtime-aarch64"
-run_case n3-cache-truncated "differs from the pinned b4ff0030" yes "$OFFLINE"
+run_case n3-cache-truncated "differs from the pinned 9a72a744" yes "$OFFLINE"
 # 4 cached runtime with one flipped byte
 mk n4-cache-bitflip; python3 -I - "$out/n4-cache-bitflip/tools" <<'PY'
 import sys
@@ -57,13 +57,13 @@ d = sys.argv[1]
 b = bytearray(open(d + '/good-runtime', 'rb').read()); b[500000] ^= 1
 open(d + '/appimage-runtime-aarch64', 'wb').write(b)
 PY
-run_case n4-cache-bitflip "differs from the pinned b4ff0030" yes "$OFFLINE"
+run_case n4-cache-bitflip "differs from the pinned 9a72a744" yes "$OFFLINE"
 # 5/6 a bad pin (mutated copy of the packager, online, empty runtime cache): wrong SHA for the real arm64 runtime; wrong-architecture asset behind the arm64 pin
 mk n5-bad-pin-sha; rm "$out/n5-bad-pin-sha/tools/good-runtime"
-mutate "$out/n5-bad-pin-sha/package_linux.py" "b4ff0030242d0c3bb12ce40541828303cf167493f4793456f0436edd6255c39d" "b4ff0030242d0c3bb12ce40541828303cf167493f4793456f0436edd6255c39e"
-run_case n5-bad-pin-sha "differs from the pinned b4ff0030242d0c3bb12ce40541828303cf167493f4793456f0436edd6255c39e" yes "-v $out/n5-bad-pin-sha/package_linux.py:/work/apps/gui-go/e2e/package_linux.py:ro"
+mutate "$out/n5-bad-pin-sha/package_linux.py" "9a72a744d221576c9347ec074243acc5c3c7568896b12714e0e82e9f0bf47900" "9a72a744d221576c9347ec074243acc5c3c7568896b12714e0e82e9f0bf47901"
+run_case n5-bad-pin-sha "differs from the pinned 9a72a744d221576c9347ec074243acc5c3c7568896b12714e0e82e9f0bf47901" yes "-v $out/n5-bad-pin-sha/package_linux.py:/work/apps/gui-go/e2e/package_linux.py:ro"
 mk n6-bad-pin-arch; rm "$out/n6-bad-pin-arch/tools/good-runtime"
-mutate "$out/n6-bad-pin-arch/package_linux.py" "('runtime-aarch64', 'b4ff0030242d0c3bb12ce40541828303cf167493f4793456f0436edd6255c39d', 183)" "('runtime-x86_64', '156f4bdbde9c52d01814600013e0a273f0118dc2de98975f3c8c63427ec79074', 183)"
+mutate "$out/n6-bad-pin-arch/package_linux.py" "('runtime-aarch64', '9a72a744d221576c9347ec074243acc5c3c7568896b12714e0e82e9f0bf47900', 183)" "('runtime-x86_64', '617aa77314d57c8b8e4fae9c3f0b35af7b30d5529cb69e98f64f92510ed98a46', 183)"
 run_case n6-bad-pin-arch "ELF e_machine 62, expected 183" yes "-v $out/n6-bad-pin-arch/package_linux.py:/work/apps/gui-go/e2e/package_linux.py:ro"
 # 7 no runtime in the cache AND no network: nothing is packaged (no implicit fallback to a download inside appimagetool)
 mk n7-offline-empty-cache; rm "$out/n7-offline-empty-cache/tools/good-runtime"

@@ -62,15 +62,16 @@ APPIMAGETOOL = {  # a fixed release tag, SHA-256 verified after the download
 # CURRENT `continuous` runtime at pack time (an unpinned input; a network blip also fails the package). The runtime provides the
 # `<AppImage>.home` and `$APPIMAGE` semantics the portable mode relies on, so it is pinned here, next to appimagetool, the one consumer
 # (the retired Tauri bundler could not pass --runtime-file).
-# Source: type2-runtime revision 8f39b89 (the build that carries "Create directories for extraction with mode 0700"; the dated tag
-# 20251108 = dd6cebe lacks it). The `continuous` URL is mutable: when it moves on, the SHA-256 check fails closed and the pin must
+# Source: type2-runtime revision fedfad5, one build-script-only commit after 8f39b89 (the build that carries "Create directories for
+# extraction with mode 0700"; the dated tag 20251108 = dd6cebe lacks it). Re-pinned on 2026-10-20 after upstream
+# republished `continuous`. The `continuous` URL is mutable: when it moves on, the SHA-256 check fails closed and the pin must
 # be updated deliberately (docs/architecture/gui-go-linux-appimage-runtime-pin.md). The SHA-256 values are the GitHub asset digests,
 # re-verified by hand and by a gpg check of the published .sig files.
-RUNTIME_REVISION = '8f39b89e2ac31e1640b3d3f7e9a5108e6ce805fa'
+RUNTIME_REVISION = 'fedfad51acc2860b2916a1eef32ba4a500ff31ef'
 RUNTIME_BASE = 'https://github.com/AppImage/type2-runtime/releases/download/continuous'
 RUNTIME = {  # go arch -> (asset, SHA-256, ELF e_machine)
-    'amd64': ('runtime-x86_64', '156f4bdbde9c52d01814600013e0a273f0118dc2de98975f3c8c63427ec79074', 62),
-    'arm64': ('runtime-aarch64', 'b4ff0030242d0c3bb12ce40541828303cf167493f4793456f0436edd6255c39d', 183),
+    'amd64': ('runtime-x86_64', '617aa77314d57c8b8e4fae9c3f0b35af7b30d5529cb69e98f64f92510ed98a46', 62),
+    'arm64': ('runtime-aarch64', '9a72a744d221576c9347ec074243acc5c3c7568896b12714e0e82e9f0bf47900', 183),
 }
 # The linuxdeploy build the AppImage is assembled with, pinned by release and SHA-256 (a mismatch fails closed). Its exclude list
 # keeps libwayland-client.so.0 out of the bundle (docs/architecture/linux-appimage-library-policy.md); the unpinned 2024-era build

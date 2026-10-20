@@ -28,7 +28,6 @@ import {
   type DevicesKitSelection,
   selectionId,
 } from './devices-kit-model'
-import { DevicesKitSpaceUpdate } from './DevicesKitSpaceUpdate'
 import type { DeviceInvitationRow } from './useDeviceInvitationRow'
 
 /**
@@ -61,9 +60,6 @@ export function DevicesKitList({
     peers,
     trustListView,
     deviceTrust,
-    deviceTrustError,
-    deviceTrustFailure,
-    refreshDeviceTrust,
     mobileDevices,
     mobileActions,
     spaceMembersError,
@@ -196,15 +192,6 @@ export function DevicesKitList({
               onSelect({ kind: 'invitation' })
             },
           },
-      extra: (
-        <DevicesKitSpaceUpdate
-          status={deviceTrust?.spaceDeviceUpdate}
-          loadFailure={
-            !deviceTrust && deviceTrustError ? (deviceTrustFailure ?? 'unavailable') : null
-          }
-          onRetry={() => void refreshDeviceTrust()}
-        />
-      ),
     },
     ...(removedItems.length > 0
       ? [{ id: 'removed', title: t('devices.memberRemoval.removedDevices'), items: removedItems }]

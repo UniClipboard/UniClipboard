@@ -1635,40 +1635,6 @@
         "requestFailed": "Could not start connection recovery"
       }
     },
-    "spaceDeviceUpdate": {
-      "completed": "Space device status updated",
-      "updating": {
-        "title": "Updating space device status",
-        "description": "This refreshes automatically. You do not need to keep this page open."
-      },
-      "retrying": {
-        "title": "Updating space device status",
-        "description": "Not finished yet. It will retry automatically."
-      },
-      "attention": {
-        "title": "Space device status needs attention",
-        "description": "This cannot finish automatically. Keep your existing data and check again later.",
-        "reasons": {
-          "device_state_rejected": "Some device status could not be updated. Keep your existing data and check again later.",
-          "device_relationship_conflict": "Device relationships conflict. Choose which devices to keep in the action window.",
-          "device_security_update_rejected": "Some devices have not accepted the security update. See each device in the list for what happens next.",
-          "device_upgrade_required": "A device is using an older version. Update UniClipboard and try again.",
-          "local_identity_mismatch": "This device's identity no longer matches its space membership. Keep your existing data and check again later."
-        }
-      },
-      "unavailable": {
-        "title": "Space device status is temporarily unavailable",
-        "description": "Your existing devices remain listed. You can check again."
-      },
-      "unlockRequired": {
-        "title": "Unlock to view space device status",
-        "description": "Your existing devices remain listed. Unlock this space, then check again."
-      },
-      "recoveryRequired": {
-        "title": "Space device status needs recovery",
-        "description": "Your existing devices remain listed. Checking again will not fix this. Keep your existing data."
-      }
-    },
     "addDevice": {
       "title": "Invite a new device",
       "subtitle": "Enter this code on the computer or phone you're adding",

@@ -1628,40 +1628,6 @@
         "requestFailed": "无法开始恢复连接"
       }
     },
-    "spaceDeviceUpdate": {
-      "completed": "空间设备状态已更新",
-      "updating": {
-        "title": "正在更新空间设备状态",
-        "description": "完成后会自动刷新，无需保持此页面打开。"
-      },
-      "retrying": {
-        "title": "正在更新空间设备状态",
-        "description": "暂时未完成，稍后自动重试。"
-      },
-      "attention": {
-        "title": "空间设备状态需要处理",
-        "description": "当前无法自动完成。请保留现有资料，稍后重新检查。",
-        "reasons": {
-          "device_state_rejected": "部分设备状态未能更新。请保留现有资料，稍后重新检查。",
-          "device_relationship_conflict": "设备关系存在冲突，请按处理窗口中的提示选择要保留的设备。",
-          "device_security_update_rejected": "部分设备尚未接受安全更新。请在设备列表中查看各设备的后续处理。",
-          "device_upgrade_required": "有设备版本过旧，请更新 UniClipboard 后重试。",
-          "local_identity_mismatch": "本设备的身份与空间成员记录不一致。请保留现有数据，稍后再检查。"
-        }
-      },
-      "unavailable": {
-        "title": "暂时无法确认空间设备状态",
-        "description": "现有设备仍保留在列表中，可以重新检查。"
-      },
-      "unlockRequired": {
-        "title": "解锁后才能查看空间设备状态",
-        "description": "现有设备仍会列出。请先解锁当前空间，再重新检查。"
-      },
-      "recoveryRequired": {
-        "title": "空间设备状态需要恢复",
-        "description": "现有设备仍会列出。重新检查无法解决此问题，请保留现有数据。"
-      }
-    },
     "addDevice": {
       "title": "邀请新设备",
       "subtitle": "在要加入的电脑或手机上输入此邀请码",

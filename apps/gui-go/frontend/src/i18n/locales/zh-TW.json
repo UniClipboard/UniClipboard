@@ -1629,40 +1629,6 @@
         "requestFailed": "無法開始恢復連接"
       }
     },
-    "spaceDeviceUpdate": {
-      "completed": "空間裝置狀態已更新",
-      "updating": {
-        "title": "正在更新空間裝置狀態",
-        "description": "完成後會自動重新整理，無需保持此頁面開啟。"
-      },
-      "retrying": {
-        "title": "正在更新空間裝置狀態",
-        "description": "暫時未完成，稍後自動重試。"
-      },
-      "attention": {
-        "title": "空間裝置狀態需要處理",
-        "description": "目前無法自動完成。請保留現有資料，稍後重新檢查。",
-        "reasons": {
-          "device_state_rejected": "部分裝置狀態未能更新。請保留現有資料，稍後重新檢查。",
-          "device_relationship_conflict": "裝置關係存在衝突，請依照處理視窗中的提示選擇要保留的裝置。",
-          "device_security_update_rejected": "部分裝置尚未接受安全更新。請在裝置清單中查看各裝置的後續處理。",
-          "device_upgrade_required": "有裝置版本過舊，請更新 UniClipboard 後重試。",
-          "local_identity_mismatch": "本裝置的身分與空間成員記錄不一致。請保留現有資料，稍後再檢查。"
-        }
-      },
-      "unavailable": {
-        "title": "暫時無法確認空間裝置狀態",
-        "description": "現有裝置仍保留在清單中，可以重新檢查。"
-      },
-      "unlockRequired": {
-        "title": "解鎖後才能查看空間裝置狀態",
-        "description": "現有裝置仍會列出。請先解鎖目前的空間，再重新檢查。"
-      },
-      "recoveryRequired": {
-        "title": "空間裝置狀態需要復原",
-        "description": "現有裝置仍會列出。重新檢查無法解決此問題，請保留現有資料。"
-      }
-    },
     "memberRemoval": {
       "removedDevices": "已移除裝置",
       "removed": {

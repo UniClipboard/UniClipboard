@@ -9,7 +9,6 @@ import DeviceListItem from '@/components/device/DeviceListItem'
 import SectionLabel from '@/components/device/DeviceSectionLabel'
 import EmptyAddRow from '@/components/device/EmptyAddRow'
 import LocalDeviceListItem from '@/components/device/LocalDeviceListItem'
-import { SpaceDeviceUpdateNotice } from '@/components/device/SpaceDeviceUpdateNotice'
 import { type StatusDotTone } from '@/components/device/StatusDot'
 import TrafficLightOverhang from '@/components/history/sidebar/TrafficLightOverhang'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -40,9 +39,6 @@ export default function DeviceList({ page }: { page: ReturnType<typeof useDevice
     spaceProtectionError,
     networkRecovery,
     deviceTrust,
-    deviceTrustError,
-    deviceTrustFailure,
-    refreshDeviceTrust,
     networkRecoveryError,
     manualRefreshInProgress,
     peers,
@@ -205,14 +201,6 @@ export default function DeviceList({ page }: { page: ReturnType<typeof useDevice
                 onClick={() => setAddP2PDialogOpen(true)}
               />
             )}
-
-            <SpaceDeviceUpdateNotice
-              status={deviceTrust?.spaceDeviceUpdate}
-              loadFailure={
-                !deviceTrust && deviceTrustError ? (deviceTrustFailure ?? 'unavailable') : null
-              }
-              onRetry={() => void refreshDeviceTrust()}
-            />
 
             {trustListView.removedDevices.length > 0 && (
               <>

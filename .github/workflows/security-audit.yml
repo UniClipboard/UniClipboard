@@ -38,9 +38,8 @@ on:
   schedule:
     # Catches newly-published RustSec/npm advisories against an unchanged
     # lockfile — the whole point of running this daily rather than only on
-    # PRs that happen to touch dependencies. rustsec/audit-check detects the
-    # `schedule` event and files a GitHub issue per new advisory instead of
-    # failing a check (there's no PR/commit to attach a check to).
+    # PRs that happen to touch dependencies. Scheduled Rust audits report in
+    # the job logs and summary, failing the job instead of opening issues.
     - cron: '0 0 * * *'
   workflow_dispatch:
 
@@ -51,7 +50,6 @@ jobs:
     permissions:
       contents: read
       checks: write
-      issues: write
 
     steps:
       - uses: actions/checkout@v4
@@ -61,24 +59,31 @@ jobs:
       - name: Install cargo-audit from its locked dependency set
         run: cargo install cargo-audit --locked
 
+      # audit-check opens issues on schedule events; retain its check reports
+      # only for PR, push, and manual runs.
       - name: Audit Rust dependencies
+        if: github.event_name != 'schedule'
         uses: rustsec/audit-check@v2.0.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Label RustSec issues
+      - name: Audit Rust dependencies on schedule
         if: github.event_name == 'schedule'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          LABEL: security-audit
+        shell: bash
         run: |
           set -euo pipefail
-          gh issue list --state all --limit 10000 --json number,title,labels \
-            --jq '.[] | select(.title | startswith("RUSTSEC-")) | select((.labels | map(.name) | index("security-audit")) == null) | .number' |
-            while IFS= read -r issue_number; do
-              [ -z "$issue_number" ] && continue
-              gh issue edit "$issue_number" --add-label "$LABEL"
-            done
+          status=0
+          cargo audit 2>&1 | tee "$RUNNER_TEMP/cargo-audit.txt" || status=$?
+          {
+            echo '## Rust dependency audit'
+            echo
+            echo "Exit status: $status"
+            echo
+            echo '```text'
+            cat "$RUNNER_TEMP/cargo-audit.txt"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
 
   bun-audit:
     name: bun audit (${{ matrix.project.directory }})

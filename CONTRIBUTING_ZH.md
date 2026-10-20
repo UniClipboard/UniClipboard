@@ -300,6 +300,8 @@ bun run test:coverage   # 在 target/llvm-cov 下生成 HTML 报告
 
 CI 会在每个改动到 lockfile 的 PR/push 上运行自动化依赖审计（`.github/workflows/security-audit.yml`），另外每天还会跑一次定时任务，这样即使没有 PR 改动依赖，新曝出的漏洞也能被及时发现：
 
+审计不会自动创建或修改 GitHub issue。PR、push 和手动运行保留 Rust 审计的检查报告；每日定时运行直接执行 `cargo audit`，将输出保留在日志和任务摘要中，并在发现漏洞或审计执行出错时让任务失败。JS/TS 审计的范围、日志和失败状态保持不变。失败通知沿用 GitHub Actions 的现有机制，是否送达及接收人取决于个人的 Actions 通知设置和 [GitHub 的通知规则](https://docs.github.com/en/actions/concepts/workflows-and-actions/notifications-for-workflow-runs)；这不保证向所有仓库关注者发送通知。不会新增外部通知渠道或修改通知设置。定时任务通知通常发送给创建工作流或最后修改 cron 的用户（重新启用任务也可能改变接收人）；仅供参考的提示保留在报告中，不会单独触发失败通知。
+
 - **Rust** —— [`rustsec/audit-check`](https://github.com/rustsec/audit-check) 对 `Cargo.lock` 运行 `cargo audit`。只要出现真实的漏洞公告就会让检查失败（"unmaintained" 这类仅供参考的提示不会导致失败）。本地运行方式：
 
   ```bash

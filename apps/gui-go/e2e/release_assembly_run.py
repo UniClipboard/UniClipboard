@@ -488,7 +488,7 @@ def main():
         make_unsigned(un_tree)
         un_work = base / 'unsigned-alpha'
         assemble('unsigned-alpha-accepted-with-explicit-opt-in', un_tree, un_work, source_record_path=pre_record, sha=pre_sha, ver=pre_version,
-                 extra=['--allow-unsigned-windows-alpha'])
+                 extra=['--allow-unsigned-windows'])
         un_index = json.loads((un_work / 'evidence/assembly-index.json').read_text())
         run.assert_('the index records that the Windows packages are unsigned', un_index['windowsSigning'] == 'unsigned-alpha')
         assemble('negative-unsigned-alpha-without-opt-in', un_tree, base / 'unsigned-alpha-no-flag', source_record_path=pre_record, sha=pre_sha,
@@ -508,9 +508,21 @@ def main():
                                          '--expect-sha', st_sha, '--mode', 'fixture', '--out', st_record])
         build_tree(st_tree, st_version, st_sha)
         make_unsigned(st_tree)
-        assemble('negative-unsigned-for-a-non-alpha-version-even-with-opt-in', st_tree, base / 'unsigned-stable', want_ok=False,
-                 source_record_path=st_record, sha=st_sha, ver=st_version,
-                 extra=['--allow-unsigned-windows-alpha'], contains='alpha releases only')
+        # stable: the explicit opt-in is accepted and labelled; without it, or with a forged/test provider, it is still refused
+        assemble('unsigned-stable-accepted-with-explicit-opt-in', st_tree, base / 'unsigned-stable', source_record_path=st_record, sha=st_sha,
+                 ver=st_version, extra=['--allow-unsigned-windows'])
+        st_index = json.loads((base / 'unsigned-stable/evidence/assembly-index.json').read_text())
+        run.assert_('the index labels the stable Windows packages unsigned-stable', st_index['windowsSigning'] == 'unsigned-stable')
+        run.assert_('updater signatures are still produced and verified for unsigned stable',
+                    list((base / 'unsigned-stable/release-assets').glob('*.sig')) and (base / 'unsigned-stable/evidence/flare-signatures.json').exists())
+        assemble('negative-unsigned-stable-without-opt-in', st_tree, base / 'unsigned-stable-no-flag', want_ok=False,
+                 source_record_path=st_record, sha=st_sha, ver=st_version, contains='requires a production signature')
+        st_forged = base / 'unsigned-stable-forged-artifacts'
+        build_tree(st_forged, st_version, st_sha)
+        make_unsigned(st_forged)
+        windows_manifest('selftest')(st_forged)
+        assemble('negative-stable-opt-in-does-not-relax-test-certificate', st_forged, base / 'unsigned-stable-forged', want_ok=False,
+                 source_record_path=st_record, sha=st_sha, ver=st_version, extra=['--allow-unsigned-windows'], contains='requires a production signature')
         for label, mutate, text in (
                 ('selftest-provider', lambda t: windows_manifest('selftest')(t), 'requires a production signature'),
                 ('signpath-test-provider', lambda t: windows_manifest('signpath-test')(t), 'requires a production signature'),
@@ -520,7 +532,7 @@ def main():
             build_tree(t, pre_version, pre_sha)
             mutate(t)
             assemble(f'negative-opt-in-does-not-relax-{label}', t, base / f'unsigned-opt-in-{label}', source_record_path=pre_record, sha=pre_sha,
-                     ver=pre_version, extra=['--allow-unsigned-windows-alpha'], want_ok=False, contains=text)
+                     ver=pre_version, extra=['--allow-unsigned-windows'], want_ok=False, contains=text)
         # release notes: the unsigned state must be said to the users
         notes_out = lambda name: out / 'cases' / name
         for flag, name in (('true', 'notes-unsigned.md'), ('false', 'notes-signed.md')):
@@ -528,6 +540,12 @@ def main():
                      '--repo', 'example/repo', '--previous-tag', 'v0.0.0', '--channel', 'alpha', '--is-prerelease', 'true',
                      '--artifacts-dir', un_work / 'release-assets', '--template', ROOT / '.github/release-notes/release.md.tmpl',
                      '--windows-unsigned', flag, '--mobile-android-release-url', 'https://example.invalid/mobile', '--output', notes_out(name)])
+        run.exec('release-notes-stable-windows-unsigned', ['node', ROOT / 'scripts/generate-release-notes.js', '--version', st_version,
+                 '--repo', 'example/repo', '--previous-tag', 'v0.0.0', '--channel', 'stable', '--is-prerelease', 'false',
+                 '--artifacts-dir', base / 'unsigned-stable/release-assets', '--template', ROOT / '.github/release-notes/release.md.tmpl',
+                 '--windows-unsigned', 'true', '--mobile-android-release-url', 'https://example.invalid/mobile', '--output', notes_out('notes-stable-unsigned.md')])
+        run.assert_('stable release notes disclose unsigned Windows without a prerelease warning',
+                    'not code-signed' in notes_out('notes-stable-unsigned.md').read_text() and 'Prerelease Warning' not in notes_out('notes-stable-unsigned.md').read_text())
         run.assert_('release notes say the Windows packages are not code-signed only when they are',
                     'not code-signed' in notes_out('notes-unsigned.md').read_text() and 'not code-signed' not in notes_out('notes-signed.md').read_text())
 
@@ -556,9 +574,16 @@ def main():
         pre('prerequisites-presence-only-passes', {'WINDOWS_SIGN_BACKEND': 'azure', 'TAURI_SIGNING_PRIVATE_KEY': 'k'}, True)
         un = {'TAURI_SIGNING_PRIVATE_KEY': 'k', 'ALLOW_UNSIGNED_WINDOWS_ALPHA': 'true', 'RELEASE_REF': 'v1.2.0-alpha.1'}
         pre('prerequisites-unsigned-alpha-with-explicit-opt-in-passes', un, True)
-        pre('prerequisites-unsigned-opt-in-refused-for-stable-tag', dict(un, RELEASE_REF='v1.2.0'), False, 'No production Windows code-signing backend')
-        pre('prerequisites-unsigned-opt-in-refused-for-beta-tag', dict(un, RELEASE_REF='v1.2.0-beta.1'), False, 'No production Windows code-signing backend')
-        pre('prerequisites-unsigned-opt-in-refused-for-rc-tag', dict(un, RELEASE_REF='v1.2.0-rc.1'), False, 'No production Windows code-signing backend')
+        pre('prerequisites-alpha-opt-in-does-not-unlock-stable-tag', dict(un, RELEASE_REF='v1.2.0'), False, 'No production Windows code-signing backend')
+        st = dict(un, ALLOW_UNSIGNED_WINDOWS_ALPHA='', ALLOW_UNSIGNED_WINDOWS_STABLE='true', RELEASE_REF='v1.2.0')
+        pre('prerequisites-unsigned-stable-with-explicit-opt-in-passes', st, True)
+        pre('prerequisites-stable-opt-in-off-fails-closed', dict(st, ALLOW_UNSIGNED_WINDOWS_STABLE=''), False, 'No production Windows code-signing backend')
+        pre('prerequisites-stable-opt-in-does-not-unlock-alpha-tag', dict(st, RELEASE_REF='v1.2.0-alpha.1'), False, 'No production Windows code-signing backend')
+        pre('prerequisites-stable-opt-in-still-needs-the-updater-key', dict(st, TAURI_SIGNING_PRIVATE_KEY=''), False, 'TAURI_SIGNING_PRIVATE_KEY')
+        pre('prerequisites-stable-opt-in-does-not-hide-a-bad-backend', dict(st, WINDOWS_SIGN_BACKEND='signpath-test'), False, 'must be azure or pfx')
+        pre('prerequisites-stable-opt-in-refused-for-rc-tag', dict(st, RELEASE_REF='v1.2.0-rc.1'), False, 'No production Windows code-signing backend')
+        pre('prerequisites-unsigned-opt-in-refused-for-beta-tag', dict(un, ALLOW_UNSIGNED_WINDOWS_STABLE='true', RELEASE_REF='v1.2.0-beta.1'), False, 'No production Windows code-signing backend')
+        pre('prerequisites-unsigned-opt-in-refused-for-rc-tag', dict(un, ALLOW_UNSIGNED_WINDOWS_STABLE='true', RELEASE_REF='v1.2.0-rc.1'), False, 'No production Windows code-signing backend')
         pre('prerequisites-unsigned-alpha-without-opt-in-fails', dict(un, ALLOW_UNSIGNED_WINDOWS_ALPHA=''), False, 'No production Windows code-signing backend')
         pre('prerequisites-opt-in-still-needs-the-updater-key', dict(un, TAURI_SIGNING_PRIVATE_KEY=''), False, 'TAURI_SIGNING_PRIVATE_KEY')
         pre('prerequisites-opt-in-does-not-hide-a-bad-backend', dict(un, WINDOWS_SIGN_BACKEND='signpath-test'), False, 'must be azure or pfx')

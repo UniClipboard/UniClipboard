@@ -59,6 +59,7 @@ jobs:
       is_prerelease: ${{ steps.set-outputs.outputs.is_prerelease }}
       channel: ${{ steps.set-outputs.outputs.channel }}
       source_sha: ${{ steps.pin-source.outputs.source_sha }}
+      allow_unsigned_windows: ${{ steps.set-outputs.outputs.allow_unsigned_windows }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -77,8 +78,10 @@ jobs:
           SIGNPATH_PRODUCTION_POLICY_SLUG: ${{ vars.SIGNPATH_PRODUCTION_POLICY_SLUG }}
           SIGNPATH_PRODUCTION_CERT_THUMBPRINT: ${{ vars.SIGNPATH_PRODUCTION_CERT_THUMBPRINT }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          # Opt-in for alpha only (a repository variable the maintainer sets; unset = fail closed). See docs/architecture/gui-go-release-pipeline.md.
+          # Per-channel opt-ins (repository variables the maintainer sets; unset = fail closed). Alpha and stable have separate
+          # switches; beta and rc have none. See docs/architecture/gui-go-release-pipeline.md.
           ALLOW_UNSIGNED_WINDOWS_ALPHA: ${{ vars.ALLOW_UNSIGNED_WINDOWS_ALPHA }}
+          ALLOW_UNSIGNED_WINDOWS_STABLE: ${{ vars.ALLOW_UNSIGNED_WINDOWS_STABLE }}
           RELEASE_REF: ${{ github.event_name == 'push' && github.ref_name || format('v0-{0}', inputs.channel) }}
         run: python3 scripts/ci/release_gate.py prerequisites
 
@@ -109,6 +112,9 @@ jobs:
 
       - name: Set outputs
         id: set-outputs
+        env:
+          ALLOW_UNSIGNED_WINDOWS_ALPHA: ${{ vars.ALLOW_UNSIGNED_WINDOWS_ALPHA }}
+          ALLOW_UNSIGNED_WINDOWS_STABLE: ${{ vars.ALLOW_UNSIGNED_WINDOWS_STABLE }}
         run: |
           if [ "${{ github.event_name }}" = "push" ]; then
             # Extract version from tag (strip 'v' prefix)
@@ -127,6 +133,12 @@ jobs:
             echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
             echo "channel=stable" >> "$GITHUB_OUTPUT"
           fi
+
+          # The single place that turns the per-channel repository switches into the build/gate decision.
+          ALLOW=false
+          if [ "$VERSION" != "${VERSION%-alpha.*}" ] && [ "$ALLOW_UNSIGNED_WINDOWS_ALPHA" = "true" ]; then ALLOW=true; fi
+          if [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] && [ "$ALLOW_UNSIGNED_WINDOWS_STABLE" = "true" ]; then ALLOW=true; fi
+          echo "allow_unsigned_windows=$ALLOW" >> "$GITHUB_OUTPUT"
 
       - name: Commit version bump
         if: github.event_name == 'workflow_dispatch'
@@ -192,7 +204,7 @@ jobs:
       package_cli: true
       # Publication builds and verifies artifacts; full runtime acceptance belongs to PR/manual workflows.
       run_acceptance: false
-      allow_unsigned_windows: ${{ vars.ALLOW_UNSIGNED_WINDOWS_ALPHA == 'true' && needs.validate.outputs.channel == 'alpha' }}
+      allow_unsigned_windows: ${{ needs.validate.outputs.allow_unsigned_windows == 'true' }}
       # A release tag can land while cache-warmup.yml is still writing a
       # freshly-bumped Cargo.lock's cache, so the read-only release build
       # races it and loses to GHA cache LRU eviction (see t-0159). Writing
@@ -283,7 +295,7 @@ jobs:
             --notes-file "docs/changelog/${VERSION}.md" \
             --zh-notes-file "docs/changelog/${VERSION}.zh.md" \
             --registration-source "github-actions:${{ github.repository }}:${{ github.run_id }}" \
-            ${{ vars.ALLOW_UNSIGNED_WINDOWS_ALPHA == 'true' && needs.validate.outputs.channel == 'alpha' && '--allow-unsigned-windows-alpha' || '' }}
+            ${{ needs.validate.outputs.allow_unsigned_windows == 'true' && '--allow-unsigned-windows' || '' }}
           mv assembly/release-assets release-assets
           mkdir flare-release
           cp assembly/evidence/manifest.json assembly/evidence/registration.json flare-release/
@@ -293,7 +305,13 @@ jobs:
         run: |
           MODE="$(python3 -c "import json;print(json.load(open('assembly/evidence/assembly-index.json'))['windowsSigning'])")"
           echo "mode=$MODE" >> "$GITHUB_OUTPUT"
-          if [ "$MODE" = "unsigned-alpha" ]; then echo "unsigned=true" >> "$GITHUB_OUTPUT"; echo "::warning::The Windows packages in this alpha are NOT code-signed (ALLOW_UNSIGNED_WINDOWS_ALPHA)."; fi
+          case "$MODE" in
+            unsigned-alpha|unsigned-stable)
+              KIND="${MODE#unsigned-}"
+              echo "unsigned=true" >> "$GITHUB_OUTPUT"
+              echo "::warning::The Windows packages in this $KIND release are NOT code-signed (ALLOW_UNSIGNED_WINDOWS_${KIND^^})."
+              echo "> **Windows packages are NOT code-signed** (${MODE})." >> "$GITHUB_STEP_SUMMARY" ;;
+          esac
 
       - name: Archive updater verification evidence
         uses: actions/upload-artifact@v7

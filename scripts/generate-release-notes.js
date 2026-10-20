@@ -347,13 +347,14 @@ function buildNewContributorsSection(generatedNotesFile) {
 }
 
 function buildPrereleaseWarning(isPrerelease, channel, windowsUnsigned = false) {
-  if (!isPrerelease) {
-    return ''
-  }
-
+  // The unsigned-Windows disclosure applies to every channel, including stable (which has no prerelease warning).
   const unsigned = windowsUnsigned
     ? '\n## ⚠️ Windows packages are not code-signed\n\nThe Windows installer, portable zip and CLI archive in this release are **not code-signed**. Windows SmartScreen or antivirus software may warn about them. Verify the downloads against `SHA256SUMS.txt` (and `SHA256SUMS.txt.minisig`). In-app updates are still verified with the updater signature.\n'
     : ''
+
+  if (!isPrerelease) {
+    return unsigned
+  }
 
   return `\n## ⚠️ Prerelease Warning\n\nThis is a **${channel}** release and may contain bugs or incomplete features.\nNot recommended for production use. Please report issues on GitHub.\n${unsigned}`
 }

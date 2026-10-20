@@ -6,6 +6,7 @@ import type { ClipboardPreviewData } from '@/lib/clipboard-preview-cache'
 
 const useAppSelectorMock = vi.fn()
 const cacheGetMock = vi.fn()
+const cachePeekMock = vi.fn()
 
 vi.mock('@/store/hooks', () => ({
   useAppSelector: (selector: (state: unknown) => unknown) => useAppSelectorMock(selector),
@@ -20,6 +21,7 @@ vi.mock('@/store/slices/fileTransferSlice', () => ({
 vi.mock('@/lib/clipboard-preview-cache', () => ({
   clipboardPreviewCache: {
     get: (...args: unknown[]) => cacheGetMock(...args),
+    peek: (...args: unknown[]) => cachePeekMock(...args),
   },
 }))
 
@@ -39,6 +41,7 @@ function createFileItem(overrides: Partial<DisplayClipboardItem> = {}): DisplayC
 describe('useClipboardPreviewState', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    cachePeekMock.mockReturnValue(null)
     useAppSelectorMock.mockImplementation((selector: (state: unknown) => unknown) => selector({}))
   })
 
@@ -85,5 +88,42 @@ describe('useClipboardPreviewState', () => {
     expect(result.current.loading).toBe(false)
     expect(result.current.preview).toBeNull()
     expect(cacheGetMock).not.toHaveBeenCalled()
+  })
+
+  it('keeps a loaded preview when the same entry receives a new item object', async () => {
+    const item = createFileItem()
+    const preview: ClipboardPreviewData = { entryId: item.id, contentType: 'file', sizeBytes: 1 }
+    cacheGetMock.mockResolvedValue(preview)
+    const { result, rerender } = renderHook(value => useClipboardPreviewState(value), {
+      initialProps: item,
+    })
+    await waitFor(() => expect(result.current.preview).toEqual(preview))
+    rerender({ ...item })
+    expect(result.current.preview).toEqual(preview)
+    expect(result.current.loading).toBe(false)
+    expect(cacheGetMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('renders cached selections synchronously without painting the previous preview', async () => {
+    const a = createFileItem({ id: 'a' })
+    const b = createFileItem({ id: 'b' })
+    const previews: Record<string, ClipboardPreviewData> = {
+      a: { entryId: 'a', contentType: 'file', sizeBytes: 1 },
+      b: { entryId: 'b', contentType: 'file', sizeBytes: 2 },
+    }
+    cachePeekMock.mockImplementation(id => previews[id])
+    cacheGetMock.mockImplementation(id => Promise.resolve(previews[id]))
+    const { result, rerender } = renderHook(value => useClipboardPreviewState(value), {
+      initialProps: a,
+    })
+    expect(result.current.preview?.entryId).toBe('a')
+    expect(result.current.loading).toBe(false)
+    await waitFor(() => expect(cacheGetMock).toHaveBeenCalledWith('a'))
+    rerender(b)
+    expect(result.current.preview?.entryId).toBe('b')
+    expect(result.current.loading).toBe(false)
+    rerender(a)
+    expect(result.current.preview?.entryId).toBe('a')
+    expect(result.current.loading).toBe(false)
   })
 })

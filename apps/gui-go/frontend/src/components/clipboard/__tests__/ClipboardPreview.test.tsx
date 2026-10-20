@@ -12,6 +12,7 @@ vi.mock('@/host/core', () => ({
 // assertable without standing up the real fetch + URL.createObjectURL path.
 vi.mock('@/api/daemon/blob-image-cache', () => ({
   getBlobImageObjectUrl: vi.fn(async (path: string) => `blob:mock-${path}`),
+  peekBlobImageObjectUrl: vi.fn(() => null),
 }))
 
 const previewMock = vi.hoisted((): { value: ClipboardPreviewData | null } => ({

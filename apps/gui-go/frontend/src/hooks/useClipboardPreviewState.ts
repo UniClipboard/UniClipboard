@@ -31,55 +31,57 @@ export function useClipboardPreviewState(item: DisplayClipboardItem | null): Cli
     item ? selectEntryTransferStatus(state, item.id) : undefined
   )
   const effectiveStatus = resolveEntryTransferStatus(entryStatus, transfer)
-  const [preview, setPreview] = useState<ClipboardPreviewData | null>(null)
-  const [loading, setLoading] = useState(false)
+  const entryId = item?.id ?? null
+  const textItem =
+    item?.type === 'text' || item?.type === 'richtext'
+      ? (item.content as ClipboardTextItem | null)
+      : null
+  const shouldLoadPreview =
+    item?.type === 'image' ||
+    item?.type === 'file' ||
+    (textItem !== null && (item?.contentTags?.includes('code') === true || textItem.has_detail))
+  const [request, setRequest] = useState(() => {
+    const preview = entryId && shouldLoadPreview ? clipboardPreviewCache.peek(entryId) : null
+    return { entryId, preview, loading: shouldLoadPreview && !preview }
+  })
   const [imageDimensions, setImageDimensions] = useState<{ width: number; height: number } | null>(
     null
   )
 
-  useEffect(() => {
-    setPreview(null)
+  // Reset selection state before paint; object replacements for the same entry keep their data.
+  if (request.entryId !== entryId) {
+    const preview = entryId && shouldLoadPreview ? clipboardPreviewCache.peek(entryId) : null
+    setRequest({ entryId, preview, loading: shouldLoadPreview && !preview })
     setImageDimensions(null)
-    setLoading(false)
+  }
 
-    if (!item) return
-
-    const textItem =
-      item.type === 'text' || item.type === 'richtext'
-        ? (item.content as ClipboardTextItem | null)
-        : null
-    const shouldLoadPreview =
-      item.type === 'image' ||
-      item.type === 'file' ||
-      (textItem !== null && (item.contentTags?.includes('code') === true || textItem.has_detail))
-
-    if (!shouldLoadPreview) return
+  useEffect(() => {
+    if (!entryId || !shouldLoadPreview) return
 
     let cancelled = false
-    setLoading(true)
 
     void (async () => {
       try {
-        const nextPreview = await clipboardPreviewCache.get(item.id)
-        if (!cancelled) setPreview(nextPreview)
+        const preview = await clipboardPreviewCache.get(entryId)
+        if (!cancelled) setRequest({ entryId, preview, loading: false })
       } catch (e) {
         if (!cancelled) log.error({ err: e }, 'Failed to load clipboard preview')
       } finally {
-        if (!cancelled) setLoading(false)
+        if (!cancelled) setRequest(current => ({ ...current, loading: false }))
       }
     })()
 
     return () => {
       cancelled = true
     }
-  }, [item])
+  }, [entryId, shouldLoadPreview])
 
   return {
     effectiveStatus,
     entryStatus,
     imageDimensions,
-    loading,
-    preview,
+    loading: request.loading,
+    preview: request.preview,
     setImageDimensions,
     transfer,
   }

@@ -83,6 +83,11 @@ export async function getBlobImageObjectUrl(path: string): Promise<string | null
   return promise
 }
 
+/** Read an existing object URL before paint without starting a fetch. */
+export function peekBlobImageObjectUrl(path: string): string | null {
+  return cache.get(path) ?? null
+}
+
 /**
  * Revoke every cached object URL and clear the cache. Call on teardown / logout
  * so the pinned image bytes are released.

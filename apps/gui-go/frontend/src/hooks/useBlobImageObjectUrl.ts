@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { getBlobImageObjectUrl } from '@/api/daemon/blob-image-cache'
+import { getBlobImageObjectUrl, peekBlobImageObjectUrl } from '@/api/daemon/blob-image-cache'
 
 /**
  * Resolve an image descriptor into a displayable `<img src>`.
@@ -28,9 +28,8 @@ export function useBlobImageObjectUrl(descriptor: string | null, enabled = true)
       ? null
       : descriptor.startsWith('data:')
         ? descriptor
-        : resolved.descriptor === descriptor
-          ? resolved.url
-          : null
+        : (peekBlobImageObjectUrl(descriptor) ??
+          (resolved.descriptor === descriptor ? resolved.url : null))
 
   useEffect(() => {
     if (!descriptor || !enabled || descriptor.startsWith('data:')) return

@@ -27,6 +27,7 @@ import { daemonWs } from '@/lib/daemon-ws'
 import { createLogger } from '@/lib/logger'
 
 const log = createLogger('entry-delivery')
+const RECENT_DELIVERY_LIMIT = 32
 
 export interface EntryDeliveryHookResult {
   delivery: EntryDeliveryView | null
@@ -36,9 +37,18 @@ export interface EntryDeliveryHookResult {
 }
 
 export function useEntryDelivery(entryId: string | null): EntryDeliveryHookResult {
-  const [delivery, setDelivery] = useState<EntryDeliveryView | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  // Keep recent views only for this mounted detail, and revalidate on every selection.
+  const recentViews = useRef(new Map<string, EntryDeliveryView>())
+  const [state, setState] = useState<{
+    entryId: string | null
+    delivery: EntryDeliveryView | null
+    loading: boolean
+    error: string | null
+  }>({ entryId, delivery: null, loading: entryId !== null, error: null })
+  if (state.entryId !== entryId) {
+    const delivery = entryId ? (recentViews.current.get(entryId) ?? null) : null
+    setState({ entryId, delivery, loading: entryId !== null && !delivery, error: null })
+  }
   const requestIdRef = useRef(0)
 
   useEffect(() => {
@@ -46,9 +56,6 @@ export function useEntryDelivery(entryId: string | null): EntryDeliveryHookResul
 
     if (!entryId) {
       requestIdRef.current++
-      setDelivery(null)
-      setLoading(false)
-      setError(null)
       return () => {
         cancelled = true
       }
@@ -60,25 +67,27 @@ export function useEntryDelivery(entryId: string | null): EntryDeliveryHookResul
     // ID 不匹配的 guard 丢掉,避免老快照覆盖新快照。
     const fetchDelivery = async (initial: boolean) => {
       const currentRequestId = ++requestIdRef.current
-      if (initial) {
-        setLoading(true)
-        setError(null)
-        setDelivery(null)
-      }
       try {
         const next = await getEntryDeliveryView(entryId)
         if (cancelled || currentRequestId !== requestIdRef.current) return
-        setDelivery(next)
+        recentViews.current.delete(entryId)
+        recentViews.current.set(entryId, next)
+        if (recentViews.current.size > RECENT_DELIVERY_LIMIT) {
+          recentViews.current.delete(recentViews.current.keys().next().value!)
+        }
+        setState({ entryId, delivery: next, loading: false, error: null })
         // 事件驱动的 refetch 隐式清掉旧 error —— 上次错可能是 entry 还
         // 没落库的瞬态,delivery 落库后事件到达此刻已能拉到。
-        setError(null)
       } catch (err) {
         if (cancelled || currentRequestId !== requestIdRef.current) return
         log.warn({ err, entryId }, 'failed to load entry delivery view')
-        setError(err instanceof Error ? err.message : String(err))
+        setState(current => ({
+          ...current,
+          error: err instanceof Error ? err.message : String(err),
+        }))
       } finally {
         if (!cancelled && currentRequestId === requestIdRef.current && initial) {
-          setLoading(false)
+          setState(current => ({ ...current, loading: false }))
         }
       }
     }
@@ -105,5 +114,5 @@ export function useEntryDelivery(entryId: string | null): EntryDeliveryHookResul
     }
   }, [entryId])
 
-  return { delivery, loading, error }
+  return { delivery: state.delivery, loading: state.loading, error: state.error }
 }

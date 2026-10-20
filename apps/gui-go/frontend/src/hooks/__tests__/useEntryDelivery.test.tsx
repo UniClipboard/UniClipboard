@@ -181,4 +181,27 @@ describe('useEntryDelivery', () => {
     expect(result.current.loading).toBe(false)
     expect(result.current.error).toBeNull()
   })
+
+  it('keeps the matching cached delivery visible while revalidating a revisited entry', async () => {
+    mockGet
+      .mockResolvedValueOnce(viewWithStatus('a', 'peer-a'))
+      .mockResolvedValueOnce(viewWithStatus('b', 'peer-b'))
+    const { result, rerender } = renderHook(id => useEntryDelivery(id), { initialProps: 'a' })
+    await waitFor(() => expect(result.current.delivery?.entryId).toBe('a'))
+    rerender('b')
+    expect(result.current.delivery).toBeNull()
+    await waitFor(() => expect(result.current.delivery?.entryId).toBe('b'))
+    let resolveRefresh!: (view: ReturnType<typeof viewWithStatus>) => void
+    mockGet.mockImplementationOnce(
+      () =>
+        new Promise(resolve => {
+          resolveRefresh = resolve
+        })
+    )
+    rerender('a')
+    expect(result.current.delivery?.deliveries[0].targetDeviceName).toBe('peer-a')
+    expect(result.current.loading).toBe(false)
+    await act(async () => resolveRefresh(viewWithStatus('a', 'updated-a')))
+    expect(result.current.delivery?.deliveries[0].targetDeviceName).toBe('updated-a')
+  })
 })

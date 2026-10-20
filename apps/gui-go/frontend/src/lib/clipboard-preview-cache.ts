@@ -41,6 +41,12 @@ class ClipboardPreviewCache {
     this.ttlMs = ttlMs
   }
 
+  /** Read a fresh preview synchronously so revisiting an entry does not paint a loading frame. */
+  peek(entryId: string): ClipboardPreviewData | null {
+    const cached = this.cache.get(entryId)
+    return cached && cached.expiresAt > Date.now() ? cached.value : null
+  }
+
   async get(entryId: string): Promise<ClipboardPreviewData | null> {
     const now = Date.now()
     const cached = this.cache.get(entryId)

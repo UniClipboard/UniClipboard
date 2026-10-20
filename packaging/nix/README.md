@@ -80,7 +80,7 @@ NixOS 上分两步。先在 `flake.nix` 里接入输入，并把它传给你的�
 1. **应用内“开机自启”在 Nix 安装下不可靠。** Wails 把 `os.Executable()` 解析后的真实路径写进 XDG 自启动条目，这里是 `/nix/store/…/bin/.uniclipboard-wrapped`：它绕过包装器（缺 GTK 数据路径），升级并 GC 后路径失效，启动时对已有条目不再改写（`apps/gui-go/autostart.go` `apply` 的 `reconcile`）。在 Nix 里请不要使用该开关，改用声明式自启动，例如 Home Manager 的 `xdg.autostart.entries = [ "${pkg}/share/applications/uniclipboard.desktop" ];`。根治需要改产品代码（见 Next）。本包不创建任何 systemd 用户服务，也不修改主机配置。
 2. **应用内更新对 Nix 安装不适用。** `/nix/store` 下的安装类型是 `unknown`，前端不会走“请用包管理器更新”对话框，而宿主会拒绝原地安装（`ErrInstallUnsupported`）。需要新增 `nix` 安装类型与前端文案，属于产品改动，未做。
 3. **没有 `uniclip` 命令行包。** 发布的 CLI 是静态 musl 构建，自带一份与 GUI 守护进程链接方式不同（无 `libdbus`）的 `uniclipd`，且文件名与本包冲突；在确认两者对同一 profile 的密钥存储一致之前不提供。
-4. **`flake.lock` 缺失。** 编写环境没有 Nix，无法生成锁文件，手写 `narHash` 出错会让 flake 无法求值。首次在有 Nix 的机器上运行 `nix flake lock` 并提交，之后 nixpkgs 才是可复现固定的。
+4. **`flake.lock` 由 CI 生成。** 本机没有 Nix；锁文件由 `nix flake lock` 在 CI runner（Nix 2.35.3）上生成，经产物下载后提交（nixpkgs rev `f3a73bcf5d1c`，`nixos-26.05`）。更新 nixpkgs 用 `nix flake update`。
 5. **非 NixOS 主机的 GPU。** Nix 的 libglvnd 在没有 `/run/opengl-driver` 的发行版上找不到驱动，WebKitGTK 可能没有 EGL。这是所有 Nix GUI 程序的通病（常用 nixGL 解决），不是本包独有；NixOS 不受影响。
 6. **外部提交。** 没有提交 nixpkgs，也没有二进制缓存。nixpkgs 此前的 PR（NixOS/nixpkgs#536692，包装 AppImage）已关闭，未合入。
 

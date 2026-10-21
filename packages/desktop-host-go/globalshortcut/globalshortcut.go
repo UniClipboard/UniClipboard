@@ -53,6 +53,7 @@ type Applier struct {
 	desired     []string
 	active      []string // as last reported by the executor
 	activeKnown bool
+	lastGood    []string // the last binding the executor confirmed holding; the fallback after a relaunch
 	err         string
 	onChange    func(Status)
 }
@@ -155,20 +156,20 @@ func (a *Applier) Reconcile(target []string, confirm func() ([]string, error)) {
 }
 
 // Relaunched is called after the executor started afresh holding nothing (the helper process was launched). The
-// desired binding is applied; when it is refused the last binding the executor held is tried, so a crash does not
-// lose a working binding. A new process may still be starting when the first command times out, so an unknown
+// desired binding is applied; when it is refused the last binding an executor confirmed holding is tried, so a crash
+// does not lose a working binding. A new process may still be starting when the first command times out, so an unknown
 // outcome is asked once more.
 func (a *Applier) Relaunched() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	previous, hadPrevious := slices.Clone(a.active), a.activeKnown && len(a.active) > 0
+	previous := slices.Clone(a.lastGood)
 	a.active, a.activeKnown = nil, true
 	if a.known && a.exec != nil {
 		err := a.applyLocked(a.desired)
 		if errors.Is(err, ErrUnknown) {
 			err = a.applyLocked(a.desired)
 		}
-		if err != nil && hadPrevious && !slices.Equal(previous, a.desired) && a.activeKnown && len(a.active) == 0 {
+		if err != nil && len(previous) > 0 && !slices.Equal(previous, a.desired) && a.activeKnown && len(a.active) == 0 {
 			refused := a.err
 			if a.applyLocked(previous) == nil {
 				a.err = refused // the desired binding is still refused; only the fallback took
@@ -198,6 +199,9 @@ func (a *Applier) applyLocked(target []string) error {
 		a.active, a.activeKnown = nil, false
 	default:
 		a.active, a.activeKnown = slices.Clone(held), true
+		if len(held) > 0 {
+			a.lastGood = slices.Clone(held)
+		}
 	}
 	if err != nil {
 		a.err = err.Error()

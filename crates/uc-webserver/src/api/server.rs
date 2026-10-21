@@ -32,13 +32,11 @@ use uc_engine::{
     OperationResult, PeerConnectionChannelSummary,
 };
 use uc_observability::analytics::{AnalyticsPort, NoopAnalyticsSink};
-use utoipa::OpenApi;
-use utoipa_swagger_ui::SwaggerUi;
 
 use crate::api::auth::{build_connection_info, DaemonAuthToken, DaemonConnectionInfo};
 use crate::api::control_lease::ControlLeaseRegistry;
+use crate::api::documentation;
 use crate::api::dto::error::ApiError;
-use crate::api::openapi::ApiDoc;
 use crate::api::routes;
 use crate::api::types::{
     DaemonResidency, DaemonWsEvent, HealthResponse, NetworkRecoveryPhase,
@@ -532,16 +530,8 @@ pub(crate) fn ensure_not_quiescing(quiescing: &AtomicBool) -> Result<(), ApiErro
 }
 
 pub fn build_router(state: DaemonApiState) -> Router {
-    let swagger = SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi());
-
-    #[cfg(debug_assertions)]
-    let swagger = swagger.url("/api-docs/openapi-dev.json", {
-        use crate::api::ApiDocDev;
-        ApiDocDev::openapi()
-    });
-
     Router::new()
-        .merge(swagger)
+        .merge(documentation::router())
         .merge(routes::router_l1(state.clone()))
         .merge(routes::router_l2_plus(state.clone()))
         .merge(crate::security::connect::router())

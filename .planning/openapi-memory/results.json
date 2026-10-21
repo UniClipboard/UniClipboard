@@ -1,0 +1,54 @@
+{
+  "openapi-before-100": {
+    "phases": {
+      "idle": {
+        "Pss": 51.5654296875,
+        "Rss": 53.84375,
+        "Pss_Anon": 20.828125,
+        "Pss_File": 30.7373046875
+      },
+      "after-documentation": {
+        "Pss": 67.7154296875,
+        "Rss": 69.99375,
+        "Pss_Anon": 36.978125,
+        "Pss_File": 30.7373046875
+      },
+      "cooldown": {
+        "Pss": 71.93770926339286,
+        "Rss": 74.234375,
+        "Pss_Anon": 40.09375,
+        "Pss_File": 31.843959263392858
+      }
+    },
+    "ingest_p50_ms": 234.4174544996349,
+    "ingest_p95_ms": 268.66910100216046,
+    "minimum_available_mib": 6167.953125,
+    "sha256": "9e5fc69ecb0647aebba314ac724deeebedcb4a230ed71ca3d34714cb84a4e62a"
+  },
+  "openapi-after-100": {
+    "phases": {
+      "idle": {
+        "Pss": 50.1826171875,
+        "Rss": 52.421875,
+        "Pss_Anon": 18.90625,
+        "Pss_File": 31.2763671875
+      },
+      "after-documentation": {
+        "Pss": 50.1890625,
+        "Rss": 52.428125,
+        "Pss_Anon": 18.9125,
+        "Pss_File": 31.2765625
+      },
+      "cooldown": {
+        "Pss": 54.722586495535715,
+        "Rss": 56.984375,
+        "Pss_Anon": 22.96875,
+        "Pss_File": 31.753836495535715
+      }
+    },
+    "ingest_p50_ms": 229.0026444970863,
+    "ingest_p95_ms": 273.91819897457026,
+    "minimum_available_mib": 7642.609375,
+    "sha256": "c4d8b97913e18a293ec5b896580645db303c4d1f7bb7be99f714fc44f184eef2"
+  }
+}

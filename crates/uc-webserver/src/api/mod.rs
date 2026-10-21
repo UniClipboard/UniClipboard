@@ -9,6 +9,7 @@ pub mod content_lock;
 pub mod control_lease;
 pub mod device;
 pub mod diagnostics;
+mod documentation;
 pub mod dto;
 pub mod encryption;
 pub mod event_emitter;

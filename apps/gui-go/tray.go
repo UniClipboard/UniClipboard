@@ -105,9 +105,10 @@ func (t *trayMenu) view() []menuEntry {
 }
 
 func (h *HostService) showMainWindow() {
+	// Outside mainMu: the switch waits for the main thread, which may itself be waiting for mainMu (tray icon click).
+	h.setDockIconVisible(true)
 	h.mainMu.Lock()
 	defer h.mainMu.Unlock() // two callers must not both create the window
-	h.setDockIconVisible(true)
 	w, ok := h.app.Window.GetByName("main")
 	if !ok {
 		// A running app builds the native window synchronously, so it can be focused (and the app activated) at once.

@@ -28,7 +28,7 @@
 ## Tray icon style preference (`general.trayIcon`)
 
 - Values: `glyph` (the default, the glyph above) and `cat` (the cat shipped in v1.1.2). The daemon's product settings store the preference (ADR-013). The host only reads it and never writes it back.
-- Cat image: `apps/gui-go/icons/tray-cat@2x.png`. It is byte-identical to `apps/gui/src-tauri/icons/tray-icon@2x.png` at tag `v1.1.2`: 44 x 44, black pixels only, shape in the alpha channel (a template image). The source note and the hash check script are in `apps/gui-go/icons/TRAY-CAT-SOURCE.md`. v1.1.2 used it on macOS only (`include_bytes!` references `@2x` only); Windows and Linux showed the application icon.
+- Cat image: `apps/gui-go/icons/tray-cat@2x.png`. It is byte-identical to the macOS tray image of the retired host at tag `v1.1.2` (git blob `b745edc61efe18b8895d427830919280d62693b9`): 44 x 44, black pixels only, shape in the alpha channel (a template image). The source note and the hash check script are in `apps/gui-go/icons/TRAY-CAT-SOURCE.md`. v1.1.2 used it on macOS only (`include_bytes!` references `@2x` only); Windows and Linux showed the application icon.
 - Per platform:
   - macOS: the embedded bytes go to `SetTemplateIcon` unchanged, the same bytes v1.1.2 gave the menu bar.
   - Windows and Linux: the host takes the image's alpha, scales it to the size from `trayIconSpec()` and fills it with that spec's foreground colour. This is a new rendering derived from the macOS image; v1.1.x never shipped a cat on these platforms.

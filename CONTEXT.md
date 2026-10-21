@@ -519,11 +519,14 @@ _Avoid_: synced tray setting、tray status icon
 ## Language — 桌面产品设置
 
 **Desktop product settings**：
-桌面应用自身的偏好（托盘、窗口、全局快捷键、快捷面板、启动与登录项、更新、界面语言、外观），
+桌面应用自身的偏好（托盘、窗口、全局快捷键、快捷面板、启动与登录项、更新、界面语言、外观、调试模式），
 由 daemon 保存在 `<app_data_root>/desktop-settings.json`，与 Engine 的同步与设备设置、错误报告许可分开，
 不参与设备同步。一次保存可能涉及多个所有者，部分失败时告知已保存、未保存和未尝试的部分；
 首次启动从旧版 Engine `settings.json` 导入，用户已写过的字段不会被之后的导入覆盖；
-无效值或无法使用的文件回退为默认值，不阻止启动。
+无效值回退为默认值，不阻止启动；旧产品字段的导入无法写盘时先停止 Engine 启动，保留旧文件供修复后重试。
+调试模式保存值与当前进程的日志配置分开；保存后需重启才能改变日志配置，环境覆盖仍有效。
+恢复出厂设置在 Engine 重置成功后删除产品设置；删除失败会明确报错，用户可以重试，错误报告许可保留。
+配置导出和导入包含产品设置，不包含错误报告许可；旧的不完整配置包会被拒绝，并提示重新导出。
 详见 [ADR-013](docs/adr/adr-013-desktop-product-settings.md)。
 _Avoid_: Engine settings、synced settings、whole-section save
 

@@ -186,6 +186,22 @@ The biggest section, and the one with the most footguns.
 The data directory paths are listed under
 [Install — Where data lives](../getting-started/install#where-data-lives).
 
+### Product preferences and recovery
+
+Desktop preferences include appearance, shortcuts, startup, updates and Debug Mode.
+Saving Debug Mode does not change the running process log profile. Restart the app to apply
+it. Explicit log environment overrides still take precedence.
+
+Configuration exports include Desktop preferences and update notification state. Imports
+restore them after the daemon restarts, including on another installation. Error-reporting
+consent remains local and is not included in the export. If an old incomplete export is
+rejected, export a new configuration package from the source installation.
+
+Factory reset clears Desktop preferences after the engine reset succeeds. It retains
+error-reporting consent. If deleting the preferences fails after the engine reset, the
+operation reports that failure. Retry factory reset to finish clearing the preferences.
+
+
 ## Mobile sync
 
 Mobile-sync configuration **does not** live under the Settings panel.

@@ -5,8 +5,8 @@
   (task 3), field set 1 with the legacy import and owner-split writes (task 4, section 8),
   frontend diff patches and daemon-followed settings (task 5, section 9), and the global shortcut
   apply status (task 6, section 10; native OS registration checks pending).
-  Acceptance B3 is blocked until the Engine drops the product fields (tasks 7 and 10; section
-  8.4).
+  P3 adoption removes the remaining Engine product projection and imports field set 2
+  (task 10; section 11). Native OS registration checks remain separate.
 - **Date**: 2026-10-20
 - **Related decisions**:
   - [ADR-008](../architecture/adr-008-uniclipd-split-gui-as-client.md)
@@ -772,3 +772,46 @@ Native acceptance of the global shortcut (real helper, real OS registration):
 - `tag_layout` is already product-side and stays in `uc-webserver` for now. Moving it into this
   crate is a separate decision; its file and format would not change.
 - Deleting this file on factory reset (D5) and including it in config export (D6) are task 10.
+
+
+### 11. P3: Engine adoption, log profile and configuration lifecycle
+
+This section supersedes the P1 transitional ownership and export limitations in section 8.
+The immutable Engine source is `4c363556f6deab7ce93fea679bcba33553db5571`, the remote
+head of Engine PR #227, including #225 and #226. These Engine PRs are cross-repository
+release dependencies. This pin does not imply a merged or published Engine release.
+
+- The importer runs before host log selection and before any Engine settings read.
+  Its current field set is 2. Set 2 imports `general.debug_mode`. Direct pre-P1 upgrades
+  import sets 1 and 2. Advancing from set 1 preserves all existing set-1 values.
+- `userWritten` still protects explicit product writes. The fingerprint still hashes
+  normalized values. A new Engine file without product keys is not a downgrade edit.
+  The importer stays available for supported older upgrade sources. If an import cannot
+  complete while the source still contains product fields, host preparation stops before
+  Engine can erase them. Correct the product file permissions or type and restart.
+  Without legacy product fields, an unusable product file still falls back leniently.
+- The product store owns `general.debugMode`. Both `/settings` and `/diagnostics/debug`
+  use that preference. Engine no longer receives product fields or debug operations.
+- Bootstrap selects and installs the host profile. Existing `UC_LOG_PROFILE` and
+  `RUST_LOG` precedence stays in force. `EngineConfig.with_host_log_profile` declares
+  that installed label. Diagnostics report that label, including environment overrides.
+  `restartRequired` compares the requested preference with the installed profile;
+  writing a preference does not change the installed profile.
+- The host declares `desktop-settings.json` as `ByHost`. The three updater files
+  `skipped_version.json`, `last_notified_update.json` and `update_prompt_throttle.json`
+  are declared as `ByEngine`. Engine includes them in exports, imports and upgrade backups.
+- Factory reset deletes the product file only after Engine reset succeeds. The store
+  serializes deletion with writes, resets memory, advances its revision and emits
+  `settings.changed` only after deletion succeeds. `PRODUCT_SETTINGS_RESET_FAILED`
+  means Engine reset completed but host deletion failed. Retrying factory reset retries
+  host deletion. `desktop-telemetry.json` is retained.
+- Engine applies staged configuration imports during startup. The daemon loads the
+  product store afterwards, so a restored file becomes authoritative in memory.
+  The current process keeps its already installed log profile until restart.
+- Configuration exports exclude `desktop-telemetry.json`. Old incomplete bundles
+  return `422 INCOMPATIBLE_BUNDLE` with a request to re-export from the source installation.
+
+The reproducible real-daemon runner is `scripts/e2e/desktop-settings/adoption.py`.
+Its receipts distinguish migration, CLI, effective logging, cross-installation restore,
+upgrade backup, reset failures and retry. It uses synthetic isolated profiles and a no-op
+system clipboard. It does not establish native GUI, Windows, Linux or physical-device acceptance.

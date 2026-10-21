@@ -1,0 +1,174 @@
+import { act, renderHook, waitFor } from '@testing-library/react'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { getSettings, updateSettings } from '@/api/daemon'
+import type { Settings } from '@/api/daemon/settings'
+import {
+  setQuickPanelDoubleTapModifier as persistQuickPanelDoubleTapModifier,
+  updateKeyboardShortcuts as persistKeyboardShortcuts,
+} from '@/api/tauri-command'
+import { SettingProvider } from '@/contexts/SettingContext'
+import { useSetting } from '@/hooks/useSetting'
+import { connectDaemonWs } from '@/lib/daemon-ws-bootstrap'
+import { resetSettingsSyncForTest } from '@/lib/settings-sync'
+import { makeBaseSettings } from '@/test/fixtures/settings'
+
+vi.mock('@/api/daemon', () => ({
+  getSettings: vi.fn(),
+  updateSettings: vi.fn(),
+}))
+
+vi.mock('@/api/tauri-command', () => ({
+  setQuickPanelDoubleTapModifier: vi.fn(),
+  setQuickPanelEnabled: vi.fn(),
+  setQuickPanelPosition: vi.fn(),
+  updateAutostart: vi.fn(),
+  updateKeyboardShortcuts: vi.fn(),
+}))
+
+vi.mock('@/lib/daemon-ws-bootstrap', () => ({
+  connectDaemonWs: vi.fn(),
+}))
+
+vi.mock('@/lib/daemon-ws', () => import('@/test/fixtures/settings-ws'))
+
+vi.mock('@/i18n', () => ({
+  __esModule: true,
+  default: {
+    language: 'en-US',
+    changeLanguage: vi.fn().mockResolvedValue(undefined),
+  },
+  normalizeLanguage: vi.fn((language: string | null | undefined) => language ?? 'en-US'),
+  persistLanguage: vi.fn(),
+}))
+
+const mockGetSettings = vi.mocked(getSettings)
+const mockUpdateSettings = vi.mocked(updateSettings)
+const mockPersistQuickPanelDoubleTapModifier = vi.mocked(persistQuickPanelDoubleTapModifier)
+const mockPersistKeyboardShortcuts = vi.mocked(persistKeyboardShortcuts)
+const mockConnectDaemonWs = vi.mocked(connectDaemonWs)
+
+const baseSetting: Settings = makeBaseSettings({
+  general: { theme: 'light', themeColor: 'zinc' },
+  keyboardShortcuts: { 'global.toggleQuickPanel': 'meta+ctrl+v' },
+})
+
+// The daemon stores what the host commands persist; the window reads it back after each write.
+let stored: Settings
+
+const wrapper = ({ children }: { children: React.ReactNode }) => (
+  <SettingProvider>{children}</SettingProvider>
+)
+
+describe('SettingContext shortcuts — in-process apply path', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    resetSettingsSyncForTest()
+    stored = baseSetting
+    mockConnectDaemonWs.mockResolvedValue(undefined)
+    mockGetSettings.mockImplementation(async () => stored)
+    mockUpdateSettings.mockResolvedValue({ success: true, restartRequired: false })
+    mockPersistQuickPanelDoubleTapModifier.mockImplementation(async modifier => {
+      stored = { ...stored, quickPanel: { ...stored.quickPanel, doubleTapModifier: modifier } }
+    })
+    mockPersistKeyboardShortcuts.mockImplementation(async (_previous, next) => {
+      stored = { ...stored, keyboardShortcuts: next }
+      return next
+    })
+
+    Object.defineProperty(window, 'matchMedia', {
+      writable: true,
+      value: vi.fn().mockReturnValue({
+        matches: false,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      }),
+    })
+  })
+
+  it('更新双击修饰键时走本机副作用命令并更新设置视图', async () => {
+    const { result } = renderHook(() => useSetting(), { wrapper })
+    await waitFor(() => {
+      expect(result.current.setting).toEqual(baseSetting)
+    })
+
+    await act(async () => {
+      await result.current.updateQuickPanelSetting({ doubleTapModifier: 'meta' })
+    })
+
+    expect(mockPersistQuickPanelDoubleTapModifier).toHaveBeenCalledWith('meta')
+    expect(mockUpdateSettings).not.toHaveBeenCalled()
+    expect(result.current.setting?.quickPanel.doubleTapModifier).toBe('meta')
+  })
+
+  it('更新快捷键时不走 daemon HTTP，避免丢失 OS 全局快捷键副作用', async () => {
+    const { result } = renderHook(() => useSetting(), { wrapper })
+    await waitFor(() => {
+      expect(result.current.setting).toEqual(baseSetting)
+    })
+
+    await act(async () => {
+      await result.current.updateKeyboardShortcuts(baseSetting.keyboardShortcuts ?? {}, {
+        'global.toggleQuickPanel': 'meta+shift+v',
+      })
+    })
+
+    expect(mockPersistKeyboardShortcuts).toHaveBeenCalledWith(
+      {
+        'global.toggleQuickPanel': 'meta+ctrl+v',
+      },
+      {
+        'global.toggleQuickPanel': 'meta+shift+v',
+      }
+    )
+    expect(mockUpdateSettings).not.toHaveBeenCalled()
+    expect(result.current.setting?.keyboardShortcuts).toEqual({
+      'global.toggleQuickPanel': 'meta+shift+v',
+    })
+  })
+
+  it('merges queued edits that were both created from the same previous snapshot', async () => {
+    const { result } = renderHook(() => useSetting(), { wrapper })
+    await waitFor(() => {
+      expect(result.current.setting).toEqual(baseSetting)
+    })
+
+    let resolveFirst: ((value: Record<string, string | string[]>) => void) | undefined
+    mockPersistKeyboardShortcuts.mockImplementationOnce(
+      (_previous, next) =>
+        new Promise(resolve => {
+          resolveFirst = value => {
+            stored = { ...stored, keyboardShortcuts: next }
+            resolve(value)
+          }
+        })
+    )
+
+    const previous = baseSetting.keyboardShortcuts ?? {}
+    let firstSave!: Promise<void>
+    let secondSave!: Promise<void>
+    act(() => {
+      firstSave = result.current.updateKeyboardShortcuts(previous, {
+        ...previous,
+        'clipboard.copy': 'meta+shift+c',
+      })
+      secondSave = result.current.updateKeyboardShortcuts(previous, {
+        ...previous,
+        'clipboard.delete': 'meta+shift+d',
+      })
+    })
+
+    await waitFor(() => expect(mockPersistKeyboardShortcuts).toHaveBeenCalledTimes(1))
+    await act(async () => {
+      resolveFirst?.({ ...previous, 'clipboard.copy': 'meta+shift+c' })
+      await firstSave
+      await secondSave
+    })
+
+    expect(mockPersistKeyboardShortcuts).toHaveBeenCalledTimes(2)
+    expect(mockPersistKeyboardShortcuts.mock.calls[1][1]).toEqual({
+      ...previous,
+      'clipboard.copy': 'meta+shift+c',
+      'clipboard.delete': 'meta+shift+d',
+    })
+  })
+})

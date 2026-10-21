@@ -8,6 +8,7 @@ import { useSetting } from '@/hooks/useSetting'
 import { connectDaemonWs } from '@/lib/daemon-ws-bootstrap'
 import { resetSettingsSyncForTest } from '@/lib/settings-sync'
 import { makeBaseSettings } from '@/test/fixtures/settings'
+import { emitDaemonWsEvent } from '@/test/fixtures/settings-ws'
 
 vi.mock('@/lib/daemon-ws', () => import('@/test/fixtures/settings-ws'))
 
@@ -83,6 +84,19 @@ describe('SettingProvider theme integration', () => {
       expect(result.current.setting?.general.themeColor).toBe(DEFAULT_THEME_COLOR)
       expect(document.documentElement.getAttribute('data-theme')).toBe(DEFAULT_THEME_COLOR)
     })
+  })
+
+  it('reloads the saved sync switch after a tray change', async () => {
+    const { result } = renderHook(() => useSetting(), { wrapper })
+    await waitFor(() => expect(result.current.setting).not.toBeNull())
+    mockGetSettings.mockResolvedValue(
+      makeBaseSettings({ sync: { ...baseSetting.sync, syncEnabled: false } })
+    )
+    // The tray's write reaches the window as the daemon's Engine settings.changed.
+    await act(async () => {
+      emitDaemonWsEvent('settings.changed', { owner: 'engine', sections: ['sync'], revision: 1 })
+    })
+    await waitFor(() => expect(result.current.setting?.sync.syncEnabled).toBe(false))
   })
 
   it('does not reapply the page theme when only file sync changes', async () => {

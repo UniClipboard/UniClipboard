@@ -11922,7 +11922,7 @@ dependencies = [
 
 [[package]]
 name = "uc-desktop-settings"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "blake3",
  "serde_json",

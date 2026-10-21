@@ -513,6 +513,32 @@ try {
     )
   }
 
+  // ---- C11 (F70, removal of settings://sync-changed): an Engine-owned write from another client reaches the window
+  // through the Engine settings.changed alone; nothing in the page asks for a read.
+  {
+    const target = !state().sync.syncEnabled
+    const from = startSeq()
+    const write = await otherPut('go-host body apps/gui-go/tray.go toggleSync', {
+      sync: { syncEnabled: target },
+    })
+    await waitState('the Engine change in the window', s => s.sync.syncEnabled === target)
+    const changed = wire.find(
+      e => e.seq > write.seq && e.kind === 'ws' && e.type === 'settings.changed'
+    )
+    const read = pageGets(from).find(e => e.seq > changed.seq)
+    record.cases.push({
+      case: 'C11 Engine-owned external write, no explicit refresh',
+      body: write.body,
+      status: write.status,
+      event: changed.payload,
+      readAfterEventSeq: read?.seq,
+      windowSyncEnabled: state().sync.syncEnabled,
+    })
+    assert.equal(changed.payload.owner, 'engine')
+    assert.ok(changed.payload.sections.includes('sync'))
+    assert.ok(read, 'the event caused the read')
+  }
+
   // ---- C7 (F72/F76): a rejected save reports the error after a read.
   {
     const before = summarize(state())

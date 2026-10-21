@@ -37,7 +37,10 @@ vi.mock('@/hooks/useSetting', () => ({
 }))
 
 vi.mock('@/lib/ipc', () => ({
-  commands: { restartApp: vi.fn(), getQuickPanelShortcutStatus: vi.fn(() => new Promise(() => {})) },
+  commands: {
+    restartApp: vi.fn(),
+    getQuickPanelShortcutStatus: vi.fn(() => new Promise(() => {})),
+  },
 }))
 
 vi.mock('@/components/setting/ShortcutRow', () => ({

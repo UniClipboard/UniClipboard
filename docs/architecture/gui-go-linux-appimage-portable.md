@@ -69,7 +69,7 @@ GUI 启动 daemon 时继承环境（`daemonproc/spawn.go`：`os.Environ()` 加 `
 | F2 | GUI 与 daemon 算出不同的根（规则漂移，或 `APPIMAGE` 没到 daemon） | GUI 读到 `daemon.conn`（`panelReady`）；`/proc/<daemon pid>/environ` 含同一 `APPIMAGE`；文件树里只有一个数据根 |
 | F3 | portable 仍使用 Secret Service / 真实 HOME，用户秘密外泄到共享 profile | portable E2E **不启动任何 Secret Service**。session bus 地址为空不是 portable 的契约（GLib 会为 GUI 自动拉起一个空总线，daemon 继承其地址），所以证据是三项：总线上 `ListNames` 没有、`ListActivatableNames` 也没有 `org.freedesktop.secrets`（且镜像里没有任何 secret/keyring 的 D-Bus service 文件），没有 keyring 进程；再加功能证明：文件 keystore（`data/…/keyring/*.bin`）存在，加密空间初始化、重启后读回、历史条目经加密索引搜回，真实用户 HOME 里没有 UniClipboard 数据 |
 | F4 | 路径含空格、非 ASCII、符号链接启动 | AppImage 放在 `dir with space é/My App.AppImage`，经符号链接启动；`APPIMAGE` 为 realpath，`.home` 在真实文件旁而不是链接旁 |
-| F5 | 设置与加密空间语义不持久 | 经 daemon API 写设置、初始化加密空间并写入一条剪贴板内容；退出（旧 daemon 退出）、再启动、读回相同且无需重新初始化；无明文落库（沿用 AGENTS 的持久化默认密文：在 `data` 下搜索写入的明文内容必须找不到） |
+| F5 | 设置与加密空间语义不持久 | 经 daemon API 写设置、初始化加密空间并写入一条剪贴板内容；退出（旧 daemon 退出）、再启动、读回相同且无需重新初始化；无明文落库（沿用 AGENTS 的用户内容持久化必须密文规则：在 `data` 下搜索写入的明文内容必须找不到） |
 | F6 | 更新后数据丢失或旧 daemon 残留 | 17c3 的 fixture 更新替换 AppImage 并重启：数据仍在同一 `.home`，新进程的 `/proc/<pid>/exe` 在新挂载内、`$APPIMAGE` 的 SHA-256 等于 v2、旧 daemon pid 已退出（`/proc` 状态 + HTTP，不用 `kill 0`） |
 | F7 | 自启动注册写入无人读取的位置，却报告成功 | 以 **非 root 用户** 运行，passwd 主目录与 `.home` 不同：启用后 `Exec=$APPIMAGE` 的条目必须在 `<passwd 主目录>/.config/autostart`，`.home/.config/autostart` 下没有任何条目；禁用后条目消失；`XDG_CONFIG_HOME` 为绝对路径时用它；UI 的开关状态（daemon `/settings` 与 `Status()`）一致 |
 | F8 | `.home` 不可写却假装成功 | 以 **非 root 用户** 运行（root 下 `chmod 555` 不能证明不可写），`.home` 由另一用户拥有且 `0555`：GUI 预检失败、退出码 1、stderr 与对话框说明路径与原因；没有任何文件写入 `.home`；没有回退到 XDG 目录 |

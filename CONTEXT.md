@@ -39,7 +39,7 @@ _Avoid_: pin、key、token
 记录无法识别时，启动失败，不改用另一处。没有记录时，按两处实际持有的旧条目选择；两处持有的条目不一致时，同样启动失败。
 只有在能同时查询两处存储的前提下，Engine 用所选存储的 KEK 解锁了资料，或第一次写入、删除即将改动所选存储时，才写入记录；因系统存储不可用而选用文件存储时从不写记录。
 没有旧文件条目的资料永远不写记录，新资料也不会回退到空的文件存储。两处之间从不复制、迁移或删除条目。
-记录只含存储类别（`system` / `legacy_file`），必须在任何密钥可用之前读取，因此是默认加密规则的明文例外。
+记录只含存储类别（`system` / `legacy_file`），不含用户内容或凭据，并且必须在任何密钥可用之前读取，因此以明文保存。
 详见 `docs/architecture/adr-007-headless-server-node-deployment.md` §2.6。
 _Avoid_: keyring fallback、key migration、file KEK fallback
 

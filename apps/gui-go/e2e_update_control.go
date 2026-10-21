@@ -14,6 +14,7 @@ import (
 
 	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/daemonclient"
 	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/daemonproc"
+	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/settings"
 )
 
 // watchControlFile is the command channel of the wake/analytics scenarios: the orchestrator appends one command

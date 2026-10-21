@@ -219,7 +219,7 @@ fn install_tracing_subscriber() -> anyhow::Result<Option<DaemonObservability>> {
 
     // Step 2: Select log profile. RUST_LOG and UC_LOG_PROFILE remain explicit
     // overrides; persisted Debug Mode only applies when neither env override is set.
-    let (_, settings) = uc_desktop_settings::import_legacy(
+    let (product_import, settings) = uc_desktop_settings::import_legacy(
         &paths.app_data_root_dir.join(uc_desktop_settings::FILE_NAME),
         &paths.settings_path,
     );
@@ -550,6 +550,7 @@ fn install_tracing_subscriber() -> anyhow::Result<Option<DaemonObservability>> {
         == uc_engine::observability::ObservabilitySetupStatus::Ready;
 
     let _ = TRACING_INITIALIZED.set(());
+    product_import.emit_diagnostics();
 
     // `sentry_dsn_present` describes whether the export pipeline was *constructed*;
     // `telemetry_enabled` is the runtime gate that decides whether events

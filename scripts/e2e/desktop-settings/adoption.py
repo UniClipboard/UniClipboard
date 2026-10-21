@@ -114,11 +114,16 @@ class Profile:
         raise AssertionError('API readiness timeout')
 
     def stop(self):
-        if self.process is not None:
-            self.process.send_signal(signal.SIGTERM)
-            code = self.process.wait(timeout=40)
+        process, self.process = self.process, None
+        if process is not None:
+            if process.poll() is None:
+                process.send_signal(signal.SIGTERM)
+            try:
+                code = process.wait(timeout=40)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                code = process.wait(timeout=10)
             self.runs[-1]['exitCode'] = code
-            self.process = None
             assert code == 0, code
 
     def init(self):
@@ -135,12 +140,26 @@ class Profile:
         return files
 
     def finish(self):
-        self.stop()
-        # Authentication responses contain ephemeral session tokens; never retain them.
-        for call in self.calls:
-            if call['route'] == '/auth/connect':
-                call['response'] = {'redacted': True}
-        (self.root / 'receipt.json').write_text(json.dumps({'processes': self.runs, 'api': self.calls}, indent=2))
+        try:
+            self.stop()
+        finally:
+            # Authentication responses contain ephemeral tokens; never retain them.
+            for call in self.calls:
+                if call['route'] == '/auth/connect':
+                    call['response'] = {'redacted': True}
+            (self.root / 'receipt.json').write_text(json.dumps({'processes': self.runs, 'api': self.calls}, indent=2))
+
+
+def finish_profiles(profiles):
+    errors = []
+    for profile in profiles:
+        try:
+            profile.finish()
+        except Exception as error:
+            detail = {'profile': profile.root.name, 'error': str(error)}
+            errors.append(detail)
+            print('Profile cleanup failed: ' + json.dumps(detail), file=sys.stderr)
+    return errors
 
 
 def main():
@@ -325,11 +344,24 @@ def main():
         cases.append({'name': 'B3-invalid-legacy-enums', 'passed': True})
         result['passed'] = True
     finally:
+        original_failure = sys.exc_info()[0] is not None
+        cleanup_errors = []
         if 'watcher' in locals() and watcher.poll() is None:
-            watcher.terminate(); watcher.wait(timeout=5)
-        for p in profiles:
-            p.finish()
+            try:
+                watcher.terminate()
+                try:
+                    watcher.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    watcher.kill(); watcher.wait(timeout=5)
+            except Exception as error:
+                cleanup_errors.append({'profile': 'settings-observer', 'error': str(error)})
+        cleanup_errors.extend(finish_profiles(profiles))
+        result['cleanupErrors'] = cleanup_errors
+        if cleanup_errors:
+            result['passed'] = False
         (out / 'result.json').write_text(json.dumps(result, indent=2))
+        if cleanup_errors and not original_failure:
+            raise RuntimeError('profile cleanup failed; see result.json')
     print(json.dumps(result, indent=2))
 
 

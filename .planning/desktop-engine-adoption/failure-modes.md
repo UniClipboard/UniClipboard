@@ -63,3 +63,18 @@ legacy copy. Start a real daemon with the product path occupied by a directory a
 legacy product values. Require startup failure before Engine I/O, byte-identical legacy
 settings, and successful migration after correcting the file type. Current Engine settings
 without product keys must still allow lenient product-file fallback.
+
+## Review follow-up failures
+
+- Initial import warnings can be lost before tracing is installed. Use a real daemon with
+  invalid legacy startup mode and a user-written theme value; require the invalid-field
+  and kept-user-value diagnostics after tracing starts, without changing initial log selection.
+- Unlink success without directory synchronization can resurrect preferences after power loss.
+  Synchronize the parent on Unix, including retry after an earlier unlink. Real reset/restart
+  checks cover the normal path; power loss and Windows durability remain unverified.
+- A daemon stop failure can abort cleanup of other profiles and omit receipts. Kill one owned
+  real daemon, then clean up it and another owned real daemon; retain both exit codes and
+  receipts, and preserve the original test exception when cleanup also fails.
+- A stopped owned daemon cannot process TERM. Stop it with SIGSTOP inside the isolated
+  runner, require timeout escalation to SIGKILL, and retain its failure receipt while
+  still stopping a second running daemon normally. Only the spawned process handle is used.

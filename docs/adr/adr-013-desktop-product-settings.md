@@ -815,3 +815,23 @@ The reproducible real-daemon runner is `scripts/e2e/desktop-settings/adoption.py
 Its receipts distinguish migration, CLI, effective logging, cross-installation restore,
 upgrade backup, reset failures and retry. It uses synthetic isolated profiles and a no-op
 system clipboard. It does not establish native GUI, Windows, Linux or physical-device acceptance.
+
+
+#### Review follow-up boundaries
+
+The initial import retains field-path diagnostics and replays them only after host tracing is
+installed. Import still precedes profile selection. Invalid values and protected user writes
+therefore remain visible without logging their values.
+
+Product reset flushes the parent directory on Unix before publishing defaults. A retry also
+flushes when the previous unlink succeeded but its directory flush failed. Filesystem operations
+run on a blocking task. This does not establish power-loss acceptance or a Windows durable-unlink
+guarantee; those remain explicit platform gates.
+
+The E2E runner records receipts even when a daemon exits unsuccessfully. Cleanup continues for
+other owned profiles, escalates an owned daemon that cannot honor TERM, and keeps the original
+failure when cleanup also fails. `review_regressions.py` exercises real daemon failures.
+
+The original 11 adoption cases do not cover the later Engine task-8 findings about old pending
+schema-1 imports, aggregate export limits, blocking file reads or conflicting schema documentation.
+Those require the corrected task-8 source integrated into task 9 and a new immutable Desktop pin.

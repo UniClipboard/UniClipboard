@@ -43,3 +43,14 @@ Not covered: power loss, forced termination during atomic persistence, concurren
 stress, native GUI/shortcut registration, real historical user profiles, Windows/Linux execution,
 physical-device synchronization or release installation. Engine PRs #225, #226 and #227 remain
 cross-repository release dependencies; a successful local run does not mark them released.
+
+
+Run review regressions against the same built binaries with:
+
+```bash
+uv run --with pynacl==1.6.2 --with argon2-cffi==25.1.0 python scripts/e2e/desktop-settings/review_regressions.py   --daemon target/debug/uniclipd --cli target/compat/go/uniclip --out target/settings-review-evidence
+```
+
+This runner verifies initial migration warning replay and then kills/stops only its own spawned
+real daemons. It requires nonzero-exit receipts, timeout escalation, and cleanup of a surviving
+daemon. It does not establish Windows or power-loss durability.

@@ -195,11 +195,11 @@ impl DesktopSettingsStore {
             async move {
                 let mut state = inner.state.lock().await;
                 if let Some(path) = &inner.path {
-                    match std::fs::remove_file(path) {
-                        Ok(()) => {}
-                        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
-                        Err(error) => return Err(DesktopSettingsError::Write(error)),
-                    }
+                    let path = path.clone();
+                    tokio::task::spawn_blocking(move || remove_product_file(&path))
+                        .await
+                        .map_err(|error| DesktopSettingsError::Write(io::Error::other(error)))?
+                        .map_err(DesktopSettingsError::Write)?;
                 }
                 state.raw = None;
                 state.settings = DesktopSettings::default();
@@ -426,5 +426,23 @@ fn write_atomic(path: &Path, bytes: &[u8]) -> io::Result<()> {
     temporary.flush()?;
     temporary.as_file().sync_all()?;
     temporary.persist(path).map_err(|error| error.error)?;
+    Ok(())
+}
+
+/// Flush the Unix directory entry before publishing reset defaults. Retry also
+/// flushes when an earlier unlink succeeded but directory synchronization failed.
+fn remove_product_file(path: &Path) -> io::Result<()> {
+    match std::fs::remove_file(path) {
+        Ok(()) => {}
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error),
+    }
+    #[cfg(unix)]
+    {
+        let parent = path
+            .parent()
+            .ok_or_else(|| io::Error::other("missing product settings directory"))?;
+        std::fs::File::open(parent)?.sync_all()?;
+    }
     Ok(())
 }

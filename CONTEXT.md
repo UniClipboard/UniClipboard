@@ -510,6 +510,31 @@ _Avoid_: synced window setting、system frame toggle
 详见[流畅模式规格](docs/specs/2026-09-08-adaptive-smooth-mode-spec.md)。
 _Avoid_: synced performance setting、background sync mode
 
+**Tray icon style preference**：
+菜单栏或系统托盘图标的本机偏好（`general.trayIcon`），提供默认（`glyph`）和经典猫头（`cat`）两档，
+不参与设备同步。未知值按默认显示；只有桌面宿主读取并应用它，应用失败不改变已保存的偏好。
+详见[托盘图标](docs/architecture/gui-go-tray-icon.md)。
+_Avoid_: synced tray setting、tray status icon
+
+## Language — 桌面产品设置
+
+**Desktop product settings**：
+桌面应用自身的偏好（托盘、窗口、全局快捷键、快捷面板、启动与登录项、更新、界面语言、外观），
+由 daemon 保存在 `<app_data_root>/desktop-settings.json`，与 Engine 的同步与设备设置、错误报告许可分开，
+不参与设备同步。一次保存可能涉及多个所有者，部分失败时告知已保存、未保存和未尝试的部分；
+首次启动从旧版 Engine `settings.json` 导入，用户已写过的字段不会被之后的导入覆盖；
+无效值或无法使用的文件回退为默认值，不阻止启动。
+详见 [ADR-013](docs/adr/adr-013-desktop-product-settings.md)。
+_Avoid_: Engine settings、synced settings、whole-section save
+
+**Quick panel shortcut apply status**：
+宿主报告的快捷面板全局快捷键（`global.toggleQuickPanel`）生效状态，只在内存中，不持久化：
+`active`（已生效）、`not_active`（已保存未生效，附系统错误和仍有效的绑定）、
+`unknown`（无法确认是否生效）、`inactive`（快捷面板未运行或已停用）。
+应用内保存先应用、失败则不保存并保留旧绑定；其他客户端写入的值即使无法生效也保持已保存，从不回退。
+详见 [ADR-013 第 10 节](docs/adr/adr-013-desktop-product-settings.md)。
+_Avoid_: shortcut probe、revert on failure
+
 ## Relationships — 关系
 
 - 一个剪贴板 **Entry** 拥有零或多个 **Tracked inbound file transfer**

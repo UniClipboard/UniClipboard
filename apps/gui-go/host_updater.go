@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -16,6 +17,8 @@ import (
 	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/apppaths"
 	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/buildinfo"
 	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/daemonclient"
+	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/daemonlife"
+	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/daemonproc"
 	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/settings"
 )
 
@@ -288,20 +291,49 @@ func (h *HostService) installUpdate(ctx context.Context, send func(DownloadEvent
 		version = u.release.Version
 	}
 	u.mu.Unlock()
-	// installPayload stops the daemon; the settings watcher's connection would hold that stop. A successful install
-	// relaunches the GUI, so the watcher resumes only when the install or the relaunch failed and this process stays.
-	h.settingsWatch.Pause()
+	// installPayload stops the daemon. Announce the stop first, as the exit and restart paths do: the windows close their
+	// daemon sockets and the settings watcher pauses, so no connection holds the stop. A successful install relaunches the
+	// GUI; when the install fails this process stays and reconnects.
+	h.announceDaemonStop()
 	if err := h.installPayload(data, version); err != nil {
-		h.settingsWatch.Resume()
+		h.reconnectAfterFailedInstall()
 		send(failedEvent(err))
 		return hostapi.TextError(err.Error())
 	}
 	send(DownloadEvent{Event: DownloadEventFinished})
 	if err := h.relaunchAfterInstall(); err != nil {
+		// The new version is installed and the daemon is stopped: a daemon started now would be the new one, which this
+		// GUI refuses, so only the watcher resumes; the windows stay disconnected until the user restarts the app.
 		h.settingsWatch.Resume()
 		return hostapi.TextError(err.Error())
 	}
 	return nil
+}
+
+// reconnectAfterFailedInstall runs when an update install failed after announceDaemonStop: the install may have stopped
+// the daemon, and the windows have closed their sockets. Start a daemon when none runs, then reconnect the host and the
+// windows the way RestartDaemon does.
+func (h *HostService) reconnectAfterFailedInstall() {
+	defer h.settingsWatch.Resume()
+	if outcome, err := daemonlife.Probe(); err != nil {
+		log.Printf("after the failed install the daemon state is unknown: %v", err)
+	} else if outcome.Kind == daemonlife.Absent {
+		if err := daemonproc.SpawnDetachedDaemon("gui"); err != nil {
+			log.Printf("failed to start the daemon after the failed install: %v", err)
+			return
+		}
+		if err := daemonlife.WaitHealthy(daemonlife.StartupTimeout, ""); err != nil {
+			log.Printf("the daemon did not become healthy after the failed install: %v", err)
+			return
+		}
+	}
+	client, err := daemonclient.FromEnv()
+	if err != nil {
+		log.Printf("failed to reconnect after the failed install: %v", err)
+		return
+	}
+	h.client.Store(client)
+	h.emit(daemonConnectionChanged, nil)
 }
 
 // skippedVersions maps channel → version the user chose to skip, stored beside the

@@ -95,9 +95,10 @@ use crate::api::dto::settings::{
     RelayOverviewEntryDto, RelayProbeCredentialDto, RelayProbeOutcomeDto, RelayProbeRequestDto,
     RelayRoutingModeDto, RelaySaveRequestDto, RelaySaveResultDto, RetentionPolicyDto,
     RetentionPolicyPatchDto, RetentionRuleDto, RuleEvaluationDto, SecuritySettingsDto,
-    SecuritySettingsPatchDto, SettingsDto, SettingsPatchDto, SettingsUpdateResultDto,
-    ShortcutKeyDto, StartupModeDto, SyncFrequencyDto, SyncSettingsDto, SyncSettingsPatchDto,
-    ThemeDto, TrayIconDto, UpdateChannelDto,
+    SecuritySettingsPatchDto, SettingsChangedPayload, SettingsDto, SettingsOwnerDto,
+    SettingsPatchDto, SettingsRevisionsDto, SettingsSectionDto, SettingsSnapshotPayload,
+    SettingsUpdateResultDto, ShortcutKeyDto, StartupModeDto, SyncFrequencyDto, SyncSettingsDto,
+    SyncSettingsPatchDto, ThemeDto, TrayIconDto, UpdateChannelDto,
 };
 use uc_daemon_contract::api::dto::analytics::{
     CaptureUiEventRequest, CaptureUiEventResponse, UiDialogOpenSource, UiDismissSource,
@@ -692,6 +693,11 @@ impl Modify for ContractMeta {
             DaemonWsEvent,
             WsSubscribeRequest,
             WsErrorResponse,
+            SettingsChangedPayload,
+            SettingsOwnerDto,
+            SettingsRevisionsDto,
+            SettingsSectionDto,
+            SettingsSnapshotPayload,
             // ── auth/connect (L1/public) ───────────────────────────
             SessionTokenEnvelope,
             SessionTokenResponse,

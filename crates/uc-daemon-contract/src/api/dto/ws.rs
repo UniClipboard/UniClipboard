@@ -50,4 +50,5 @@ pub const WS_SUPPORTED_TOPICS: &[&str] = &[
     ws_topic::SEARCH,
     ws_topic::DEVICE_TRUST,
     ws_topic::NETWORK_RECOVERY,
+    ws_topic::SETTINGS,
 ];

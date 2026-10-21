@@ -302,7 +302,7 @@ async fn run_daemon_surfaces(
             .join("history-tags")
             .join("layout.v1.json"),
     )))
-    .with_desktop_settings(desktop_settings)
+    .with_desktop_settings(Arc::clone(&desktop_settings))
     .with_diagnostics(
         diagnostics.clone(),
         Arc::new(DesktopDiagnosticArchive::new(
@@ -322,6 +322,15 @@ async fn run_daemon_surfaces(
     let cleanup_cancel = cancel.child_token();
     let event_cancel = cancel.child_token();
     let suspension_cancel = cancel.child_token();
+    // Subscribed before the HTTP server serves, so no product settings change is missed.
+    let settings_forwarder = tokio::spawn(
+        uc_webserver::api::settings_events::forward_desktop_settings(
+            desktop_settings,
+            event_tx.clone(),
+            cancel.child_token(),
+        ),
+    );
+    let engine_settings_revision = api_state.engine_settings_revision.clone();
     let mut http_handle = tokio::spawn(run_http_server(api_state, http_cancel));
     let _cleanup_handle = cleanup_rate_limiter_task(security, cleanup_cancel);
 
@@ -334,6 +343,7 @@ async fn run_daemon_surfaces(
         events,
         Arc::clone(&engine),
         event_tx,
+        engine_settings_revision,
         active_clipboard_tx.clone(),
         Arc::clone(&mobile_lan),
         event_cancel,
@@ -406,6 +416,11 @@ async fn run_daemon_surfaces(
     let _ = tokio::time::timeout(
         uc_daemon_local::timing::SHUTDOWN_JOIN_TIMEOUT,
         suspension_observer,
+    )
+    .await;
+    let _ = tokio::time::timeout(
+        uc_daemon_local::timing::SHUTDOWN_JOIN_TIMEOUT,
+        settings_forwarder,
     )
     .await;
     if http_completed {

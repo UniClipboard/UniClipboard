@@ -92,6 +92,9 @@ pub enum SettingsSection {
 }
 
 impl SettingsSection {
+    /// Every section, for a subscriber that must report all of them after missing notifications.
+    pub const ALL: &'static [SettingsSection] = &[Self::General];
+
     pub fn as_str(self) -> &'static str {
         match self {
             Self::General => "general",

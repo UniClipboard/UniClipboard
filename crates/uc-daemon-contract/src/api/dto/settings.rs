@@ -1871,3 +1871,60 @@ mod duration_wire_tests {
         assert_eq!(wire["byAge"]["maxAge"], serde_json::json!(2_592_000u64));
     }
 }
+
+// =========================
+// Settings change events (WS topic `settings`, ADR-013 section 7)
+// =========================
+
+/// Who persisted a settings change. Each owner has its own revision.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub enum SettingsOwnerDto {
+    /// The daemon's product settings store (`desktop-settings.json`).
+    Desktop,
+    /// The Engine settings (`settings.json`).
+    Engine,
+}
+
+/// A top-level section of `GET /settings`. `MobileSync` is an Engine section without a path in
+/// `/settings`; clients read again like for any other section.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub enum SettingsSectionDto {
+    General,
+    Sync,
+    RetentionPolicy,
+    Security,
+    Pairing,
+    KeyboardShortcuts,
+    FileSync,
+    Network,
+    MobileSync,
+    QuickPanel,
+}
+
+/// Payload of `settings.changed`. It never carries setting values.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SettingsChangedPayload {
+    pub owner: SettingsOwnerDto,
+    pub sections: Vec<SettingsSectionDto>,
+    /// The owner's revision after this change. In daemon memory only: it starts at 0 with each
+    /// daemon run and is comparable only with revisions of the same owner on the same connection.
+    pub revision: u64,
+}
+
+/// Each owner's current revision.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SettingsRevisionsDto {
+    pub desktop: u64,
+    pub engine: u64,
+}
+
+/// Payload of `settings.snapshot`, sent once after a client subscribes to `settings`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SettingsSnapshotPayload {
+    pub revisions: SettingsRevisionsDto,
+}

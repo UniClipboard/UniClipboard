@@ -150,6 +150,8 @@ pub struct DaemonApiState {
     /// Desktop product settings (ADR-013). In memory unless the daemon injects
     /// its file-backed store via [`Self::with_desktop_settings`].
     pub desktop_settings: Arc<uc_desktop_settings::DesktopSettingsStore>,
+    /// The daemon-assigned revision of Engine settings changes (ADR-013 section 7).
+    pub engine_settings_revision: crate::api::settings_events::EngineSettingsRevision,
 }
 
 /// Max concurrent full-buffer blob pulls (D6 interim RSS guard; see
@@ -194,6 +196,7 @@ impl DaemonApiState {
             graceful_stop_requested: Arc::new(tokio::sync::Notify::new()),
             tag_layout: Arc::new(crate::api::tag_layout::TagLayoutStore::in_memory()),
             desktop_settings: Arc::new(uc_desktop_settings::DesktopSettingsStore::in_memory()),
+            engine_settings_revision: Default::default(),
         }
     }
 

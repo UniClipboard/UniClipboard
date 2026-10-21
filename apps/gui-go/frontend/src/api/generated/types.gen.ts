@@ -3875,6 +3875,19 @@ export type SetHistoryTagSidebarRequest = {
     tagIds: Array<string>;
 };
 
+/**
+ * Payload of `settings.changed`. It never carries setting values.
+ */
+export type SettingsChangedPayload = {
+    owner: SettingsOwnerDto;
+    /**
+     * The owner's revision after this change. In daemon memory only: it starts at 0 with each
+     * daemon run and is comparable only with revisions of the same owner on the same connection.
+     */
+    revision: number;
+    sections: Array<SettingsSectionDto>;
+};
+
 export type SettingsDto = {
     fileSync: FileSyncSettingsDto;
     general: GeneralSettingsDto;
@@ -3913,6 +3926,11 @@ export type SettingsEnvelope = {
     ts: number;
 };
 
+/**
+ * Who persisted a settings change. Each owner has its own revision.
+ */
+export type SettingsOwnerDto = 'desktop' | 'engine';
+
 export type SettingsPatchDto = {
     fileSync?: FileSyncSettingsPatchDto | null;
     general?: GeneralSettingsPatchDto | null;
@@ -3923,6 +3941,27 @@ export type SettingsPatchDto = {
     retentionPolicy?: RetentionPolicyPatchDto | null;
     security?: SecuritySettingsPatchDto | null;
     sync?: SyncSettingsPatchDto | null;
+};
+
+/**
+ * Each owner's current revision.
+ */
+export type SettingsRevisionsDto = {
+    desktop: number;
+    engine: number;
+};
+
+/**
+ * A top-level section of `GET /settings`. `MobileSync` is an Engine section without a path in
+ * `/settings`; clients read again like for any other section.
+ */
+export type SettingsSectionDto = 'general' | 'sync' | 'retentionPolicy' | 'security' | 'pairing' | 'keyboardShortcuts' | 'fileSync' | 'network' | 'mobileSync' | 'quickPanel';
+
+/**
+ * Payload of `settings.snapshot`, sent once after a client subscribes to `settings`.
+ */
+export type SettingsSnapshotPayload = {
+    revisions: SettingsRevisionsDto;
 };
 
 /**

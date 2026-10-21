@@ -7086,6 +7086,32 @@
         ],
         "type": "object"
       },
+      "SettingsChangedPayload": {
+        "description": "Payload of `settings.changed`. It never carries setting values.",
+        "properties": {
+          "owner": {
+            "$ref": "#/components/schemas/SettingsOwnerDto"
+          },
+          "revision": {
+            "description": "The owner's revision after this change. In daemon memory only: it starts at 0 with each\ndaemon run and is comparable only with revisions of the same owner on the same connection.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "sections": {
+            "items": {
+              "$ref": "#/components/schemas/SettingsSectionDto"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "owner",
+          "sections",
+          "revision"
+        ],
+        "type": "object"
+      },
       "SettingsDto": {
         "properties": {
           "fileSync": {
@@ -7154,6 +7180,14 @@
           "ts"
         ],
         "type": "object"
+      },
+      "SettingsOwnerDto": {
+        "description": "Who persisted a settings change. Each owner has its own revision.",
+        "enum": [
+          "desktop",
+          "engine"
+        ],
+        "type": "string"
       },
       "SettingsPatchDto": {
         "properties": {
@@ -7230,6 +7264,54 @@
             "nullable": true
           }
         },
+        "type": "object"
+      },
+      "SettingsRevisionsDto": {
+        "description": "Each owner's current revision.",
+        "properties": {
+          "desktop": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "engine": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "desktop",
+          "engine"
+        ],
+        "type": "object"
+      },
+      "SettingsSectionDto": {
+        "description": "A top-level section of `GET /settings`. `MobileSync` is an Engine section without a path in\n`/settings`; clients read again like for any other section.",
+        "enum": [
+          "general",
+          "sync",
+          "retentionPolicy",
+          "security",
+          "pairing",
+          "keyboardShortcuts",
+          "fileSync",
+          "network",
+          "mobileSync",
+          "quickPanel"
+        ],
+        "type": "string"
+      },
+      "SettingsSnapshotPayload": {
+        "description": "Payload of `settings.snapshot`, sent once after a client subscribes to `settings`.",
+        "properties": {
+          "revisions": {
+            "$ref": "#/components/schemas/SettingsRevisionsDto"
+          }
+        },
+        "required": [
+          "revisions"
+        ],
         "type": "object"
       },
       "SettingsUpdateResultDto": {

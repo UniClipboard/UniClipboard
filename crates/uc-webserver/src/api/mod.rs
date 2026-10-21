@@ -25,6 +25,7 @@ pub mod routes;
 pub mod search;
 pub mod server;
 pub mod settings;
+pub mod settings_events;
 pub mod startup;
 pub mod storage;
 pub mod tag_layout;

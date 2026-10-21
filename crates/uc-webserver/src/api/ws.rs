@@ -539,6 +539,7 @@ fn is_supported_topic(topic: &str) -> bool {
             | ws_topic::SEARCH
             | ws_topic::DEVICE_TRUST
             | ws_topic::NETWORK_RECOVERY
+            | ws_topic::SETTINGS
     )
 }
 
@@ -635,6 +636,15 @@ async fn build_snapshot_event(
             crate::api::content_lock::resolve_status(state)
                 .await
                 .map_err(|error| anyhow::anyhow!(error.message))?,
+        )
+        .map(Some),
+
+        // The subscription is active once this arrives; clients read `GET /settings` after it.
+        ws_topic::SETTINGS => snapshot_event(
+            ws_topic::SETTINGS,
+            ws_event::SETTINGS_SNAPSHOT,
+            None,
+            crate::api::settings_events::snapshot_payload(state).await,
         )
         .map(Some),
 

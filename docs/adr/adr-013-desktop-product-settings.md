@@ -444,12 +444,22 @@ shows the stored state. `500 settings_partially_applied` becomes a typed error w
 error state is not used for save errors.
 
 **Verification.** `apps/gui-go/frontend/e2e/settings-sync-api.mjs` runs these modules in Node against an
-isolated real daemon (cases C1–C10 map to F64–F76). It records every HTTP request and WS frame.
+isolated real daemon (cases C1–C11 map to F64–F77). It records every HTTP request and WS frame.
+
+**Tray language (B9).** The Go host applies `general.language` from the daemon in `applySettings`, so
+the tray follows the store without a WebView. It uses the rule the main window and the quick panel
+already use: the configured language when it is not empty, otherwise the system language (macOS: the
+first of the preferred languages; Windows: the first preferred UI language; other systems: `LC_ALL`,
+`LC_MESSAGES`, `LANG`), then the subtag mapping of `normalizeTrayLanguage`. The page no longer sets the
+tray language; the host command `SetTrayLanguage` is removed.
+
+**Update install.** `installUpdate` stops the daemon. Before that it now announces the stop like the
+exit and restart paths (`app://shutting-down`, the watcher paused), so no window socket holds the stop.
+When the install fails and this process stays, the host starts the daemon again if none runs, stores
+the new client and emits `app://daemon-connection-changed`, so the host and the windows reconnect.
 
 **Not changed by task 5.**
-- The tray language is still set by the main window (`SetTrayLanguage`). The Go host has no
-  language resolution of its own, so a silent start shows the tray in the language of the last
-  page run (acceptance B9 stays open).
+- (Superseded below: the tray language moved to the Go host.)
 - Shortcut apply status for external writes is task 6.
 
 ## Failure modes (listed before implementation)
@@ -544,6 +554,12 @@ Field set 1, legacy import and owner-split writes (task 4):
 | F76 | A recorder value outside the token set fails silently | the 400 reaches the caller and a read follows | frontend-module E2E |
 | F77 | The removed page event comes back | the host-event check fails on `settings://changed` and `settings://sync-changed` | `bun run check:host-structure` |
 | F78 | A first-paint cache (language, telemetry mirror) wins over the daemon | written from the authoritative copy only | code review |
+| F79 | The tray keeps the language of the last page run, or English, in a silent start | the host applies the stored language without a WebView | Go watcher E2E decodes `general.language`; native check pending |
+| F80 | A null or empty language shows English instead of the system language | the system language through the same subtag mapping | code review against `apps/quick-panel/src/ui/mod.rs` `apply_language` |
+| F81 | Every settings read rebuilds the tray menu | an unchanged language does nothing | code review |
+| F82 | A window socket delays the daemon stop of an update install | the stop is announced first; windows close their sockets | code review; native check pending |
+| F83 | A failed install leaves the windows and the host without a daemon | the daemon is started again and every client reconnects | code review; native check pending |
+| F84 | The page still sets the tray language and races the host | the page call and the host command are removed | `bun run check:host-structure`, bindings `--check` |
 
 ## Consequences
 

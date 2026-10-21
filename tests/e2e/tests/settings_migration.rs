@@ -514,7 +514,22 @@ async fn missing_legacy_file_advances_the_marker_and_uses_engine_defaults() {
     assert_engine_defaults(&run.settings().await);
     let product = run.product();
     assert_eq!(product["import"]["fieldSet"], 1);
-    assert!(product["import"].get("sourceFingerprint").is_none());
+    assert!(product["import"]["sourceFingerprint"].is_string());
+    // The Engine writes its defaults later; the next start must not import again.
+    assert_eq!(
+        run.put("engine-only write", json!({ "sync": { "syncOnRestore": true } }))
+            .await
+            .0,
+        200
+    );
+    assert!(run.bytes(LEGACY).is_some());
+    let product_bytes = run.bytes(PRODUCT).unwrap();
+    run.restart("start after the Engine wrote its defaults").await;
+    assert_eq!(run.bytes(PRODUCT).unwrap(), product_bytes);
+    assert_eq!(
+        run.count_events("Legacy settings unchanged since the last import"),
+        1
+    );
     assert!(!run
         .import_lines("Legacy settings missing; import marker advanced without values")
         .is_empty());

@@ -41,24 +41,20 @@ pub enum ImportOutcome {
 /// Run the import and return its outcome with the resulting effective
 /// settings (no field warnings; the store logs those when it loads).
 pub fn import_legacy(product_path: &Path, legacy_path: &Path) -> (ImportOutcome, DesktopSettings) {
-    let (mut document, product_replaced) = match read(product_path) {
-        Ok(document) => (document.unwrap_or_default(), false),
-        Err(reason @ ("unreadable" | "too_large")) => {
+    // A product file that cannot be used is kept as it is until an explicit
+    // write replaces it (ADR-013 section 3), so the import waits for that.
+    let mut document = match read(product_path) {
+        Ok(document) => document.unwrap_or_default(),
+        Err(reason) => {
             warn!(
                 error_kind = "desktop_settings_import_deferred",
-                reason, "Product settings unreadable; legacy import deferred to the next start"
+                reason,
+                "Product settings unusable; legacy import deferred until the file is usable"
             );
             return (ImportOutcome::Deferred(reason), effective(None, false));
         }
-        Err(reason) => {
-            warn!(
-                error_kind = "desktop_settings_unusable",
-                reason, "Product settings unusable; the legacy import replaces the file"
-            );
-            (Map::new(), true)
-        }
     };
-    let outcome = import_into(&mut document, product_replaced, product_path, legacy_path);
+    let outcome = import_into(&mut document, product_path, legacy_path);
     let settings = match &outcome {
         ImportOutcome::Imported { .. } | ImportOutcome::MarkedWithoutLegacy => {
             effective(Some(&document), false)
@@ -70,7 +66,6 @@ pub fn import_legacy(product_path: &Path, legacy_path: &Path) -> (ImportOutcome,
 
 fn import_into(
     document: &mut Map<String, Value>,
-    product_replaced: bool,
     product_path: &Path,
     legacy_path: &Path,
 ) -> ImportOutcome {
@@ -94,7 +89,10 @@ fn import_into(
                 );
                 return ImportOutcome::Unchanged;
             }
-            write_marker(document, None);
+            // The fingerprint of "no legacy values": when the Engine later
+            // writes its defaults, the normalized set is the same and no
+            // import follows.
+            write_marker(document, Some(&fingerprint(&derive(&Map::new()))));
             return match persist(document, product_path) {
                 Ok(()) => {
                     info!(
@@ -127,7 +125,7 @@ fn import_into(
             "Product settings come from a newer field set; legacy import skipped"
         );
         return ImportOutcome::Unchanged;
-    } else if stored_fingerprint.as_deref() == Some(fingerprint.as_str()) && !product_replaced {
+    } else if stored_fingerprint.as_deref() == Some(fingerprint.as_str()) {
         info!(
             field_set = stored_set,
             legacy_settings_blake3 = %source_hash,
@@ -323,6 +321,7 @@ fn canonical(value: &Value) -> Value {
 }
 
 fn write_marker(document: &mut Map<String, Value>, fingerprint: Option<&str>) {
+    // `None` keeps an existing fingerprint.
     document
         .entry("version")
         .or_insert_with(|| Value::from(FORMAT_VERSION));

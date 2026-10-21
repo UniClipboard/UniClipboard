@@ -22,6 +22,10 @@ use uc_e2e_tests::{get_session_token, NodeBinarySet, TestDaemon, TestProfile};
 
 const FILE_NAME: &str = "desktop-settings.json";
 
+/// `import.sourceFingerprint` written when there is no legacy `settings.json`:
+/// the BLAKE3 of the normalized all-default field set 1 (ADR-013 section 8.2).
+const EMPTY_LEGACY_FINGERPRINT: &str = "b6a9ea7e03eee439662d6acbe610f4994508f64e0cbe3880e02721744b72fee9";
+
 struct Context {
     daemon: TestDaemon,
     client: reqwest::Client,
@@ -165,11 +169,19 @@ fn read_json(path: &Path) -> Value {
 
 #[tokio::test]
 #[ignore]
-async fn first_start_without_a_file_uses_the_default_and_creates_nothing() {
+async fn first_start_without_a_file_uses_the_default_and_records_only_the_import_marker() {
     let mut context = Context::start("desktop-settings-fresh", None).await;
 
     assert_eq!(context.tray_icon().await, json!("glyph"));
-    assert!(!context.product_path().exists(), "load created the file");
+    // Since field set 1 (ADR-013 section 8.2) the import records its marker
+    // when there is no legacy file; the store load itself still writes nothing.
+    assert_eq!(
+        read_json(&context.product_path()),
+        json!({
+            "version": 1,
+            "import": { "fieldSet": 1, "sourceFingerprint": EMPTY_LEGACY_FINGERPRINT }
+        })
+    );
     context.note("read default", json!({ "trayIcon": "glyph" }));
 
     context.note("completed", Value::Null);
@@ -221,10 +233,20 @@ async fn invalid_and_unknown_values_are_kept_and_explicit_writes_persist() {
     let seed = br#"{"version":1,"import":{"fieldSet":0,"futureImport":true},"general":{"trayIcon":"neon","futureGeneral":{"x":1}},"futureSection":{"theme":"aurora"}}"#;
     let mut context = Context::start("desktop-settings-lenient", Some(seed)).await;
 
-    // Invalid stored value: effective default, file untouched, warning names
-    // the field but not the value.
+    // Invalid stored value: effective default, warning names the field but not
+    // the value. Since field set 1 the import (no legacy file here) advances the
+    // marker in place; the invalid and unknown values stay (ADR-013 section 8.2).
     assert_eq!(context.tray_icon().await, json!("glyph"));
-    assert_eq!(context.product_bytes().as_deref(), Some(&seed[..]));
+    assert_eq!(
+        read_json(&context.product_path()),
+        json!({
+            "version": 1,
+            "import": { "fieldSet": 1, "futureImport": true, "sourceFingerprint": EMPTY_LEGACY_FINGERPRINT },
+            "general": { "trayIcon": "neon", "futureGeneral": { "x": 1 } },
+            "futureSection": { "theme": "aurora" }
+        })
+    );
+    let seeded = context.product_bytes();
     let warnings: Vec<String> = context
         .settings_log_lines()
         .into_iter()
@@ -248,7 +270,7 @@ async fn invalid_and_unknown_values_are_kept_and_explicit_writes_persist() {
     );
     let engine_before = context.engine_bytes();
     assert!(engine_before.is_some(), "Engine settings file missing");
-    assert_eq!(context.product_bytes().as_deref(), Some(&seed[..]));
+    assert_eq!(context.product_bytes(), seeded);
     context.note("engine-only write", Value::Null);
 
     // An invalid write is refused and changes nothing.
@@ -256,7 +278,7 @@ async fn invalid_and_unknown_values_are_kept_and_explicit_writes_persist() {
         .put(json!({ "general": { "trayIcon": "bogus" } }))
         .await;
     assert!(status.is_client_error(), "{status}");
-    assert_eq!(context.product_bytes().as_deref(), Some(&seed[..]));
+    assert_eq!(context.product_bytes(), seeded);
     assert_eq!(context.engine_bytes(), engine_before);
     context.note(
         "invalid write refused",
@@ -278,7 +300,12 @@ async fn invalid_and_unknown_values_are_kept_and_explicit_writes_persist() {
     );
     let expected = json!({
         "version": 1,
-        "import": { "fieldSet": 0, "futureImport": true, "userWritten": ["general.trayIcon"] },
+        "import": {
+            "fieldSet": 1,
+            "futureImport": true,
+            "sourceFingerprint": EMPTY_LEGACY_FINGERPRINT,
+            "userWritten": ["general.trayIcon"]
+        },
         "general": { "trayIcon": "cat", "futureGeneral": { "x": 1 } },
         "futureSection": { "theme": "aurora" }
     });

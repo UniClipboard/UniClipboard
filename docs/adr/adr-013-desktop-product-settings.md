@@ -271,13 +271,16 @@ only path to `Engine::start`, for both the daemon and `uc-dev-cli`. The import r
 is installed and before any Engine settings load. The daemon loads the store after the import.
 
 1. Read the product file.
-   - Missing, malformed JSON or a root that is not an object: use an empty document. The import
-     then replaces the file, as an explicit write does.
-   - Unreadable or larger than 1 MiB: skip the import for this start.
+   - Missing: use an empty document.
+   - Unreadable, larger than 1 MiB, malformed JSON or a root that is not an object: skip the
+     import. The file stays as it is until an explicit write replaces it (section 3); the import
+     runs on the first start after that.
 2. Read `stored = import.fieldSet` (missing = 0). The binary's field set is `N = 1`.
 3. Read `settings.json` as raw JSON, with the reader rules of section 3. Log the BLAKE3 hash of the
    bytes read. Never log values.
-   - Missing file: if `stored < N`, write `fieldSet = N` and stop. Otherwise stop.
+   - Missing file: if `stored < N`, write `fieldSet = N` with the fingerprint of the empty
+     legacy set (every path at its default) and stop. Otherwise stop. When the Engine later writes
+     its defaults, the normalized set is the same, so no import follows.
    - Unreadable, too large, invalid JSON, or root not an object: log the reason category and
      stop. The marker does not advance, so the next start tries again.
 4. Derive the legacy value of each field-set-1 path:

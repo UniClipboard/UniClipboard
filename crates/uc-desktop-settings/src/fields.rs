@@ -242,6 +242,9 @@ pub(crate) fn set_member(
     key: &str,
     value: Option<Value>,
 ) {
+    if value.is_none() && !document.contains_key(section) {
+        return;
+    }
     let mut object = match document.remove(section) {
         Some(Value::Object(object)) => object,
         _ => Map::new(),

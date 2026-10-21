@@ -7,20 +7,27 @@ import { EntryKitFacts } from './EntryKitFacts'
 import { EntryKitFrame } from './EntryKitFrame'
 
 /**
- * Saved local data that could not be opened safely (design R3): the daemon's classification and
- * recommendation, and diagnostics export. Data stays untouched; no repair is offered here.
+ * Support for profiles that cannot be recovered by passphrase: explain the daemon's diagnosis
+ * and offer diagnostics export while preserving the saved data.
  */
-export function AdmissionRecoveryKitView({ status }: { status: ProfileRecoveryResponse }) {
+export function ProfileRecoverySupportKitView({ status }: { status: ProfileRecoveryResponse }) {
   const { t } = useTranslation()
   const { exportState, exportDiagnostics } = useDiagnosticsExport()
   const admission = status.admission
+  const admissionRequired = status.state === 'admission_recovery_required'
   return (
     <EntryKitFrame>
       <EntryPage
         appIcon={appIcon}
-        status={{ text: t('profileAdmissionRecovery.category'), tone: 'critical', icon: 'info' }}
-        title={t('profileAdmissionRecovery.title')}
-        description={t('profileAdmissionRecovery.description')}
+        status={{
+          text: t('profileAdmissionRecovery.category'),
+          tone: 'critical',
+          icon: 'info',
+        }}
+        title={t(admissionRequired ? 'profileAdmissionRecovery.title' : 'profileRecovery.title')}
+        description={t(
+          admissionRequired ? 'profileAdmissionRecovery.description' : 'profileRecovery.partial'
+        )}
       >
         {admission && (
           <EntryKitFacts

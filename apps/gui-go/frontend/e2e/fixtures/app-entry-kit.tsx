@@ -116,6 +116,19 @@ function View({ view }: { view: string }) {
     )
   if (view === 'recovery')
     return <ProfileRecoveryPage status={recoveryStatus} onRecovered={noop} onRestart={noop} />
+  if (view === 'recovery-partial')
+    return (
+      <ProfileRecoveryPage
+        status={{
+          ...recoveryStatus,
+          state: 'partially_recoverable',
+          canSubmitPassphrase: false,
+          losses: ['device_identity'],
+        }}
+        onRecovered={noop}
+        onRestart={noop}
+      />
+    )
   if (view === 'recovery-restart')
     return (
       <ProfileRecoveryPage

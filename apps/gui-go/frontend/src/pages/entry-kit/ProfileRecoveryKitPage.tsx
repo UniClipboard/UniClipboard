@@ -4,8 +4,8 @@ import type ExistingProfileRecoveryPage from '@/pages/ProfileRecoveryPage'
 import { useProfileRecoveryForm } from '@/pages/recovery/useProfileRecoveryForm'
 import { Button, EntryPage, FormField, InlineNotice } from '@/ui-kit'
 import appIcon from '@/updater/app-icon.png'
-import { AdmissionRecoveryKitView } from './AdmissionRecoveryKitView'
 import { EntryKitFrame } from './EntryKitFrame'
+import { ProfileRecoverySupportKitView } from './ProfileRecoverySupportKitView'
 
 type Props = ComponentProps<typeof ExistingProfileRecoveryPage>
 
@@ -18,8 +18,8 @@ export default function ProfileRecoveryPage({ status, onRecovered, onRestart }: 
   const { t } = useTranslation()
   const recovery = useProfileRecoveryForm(status, onRecovered)
 
-  if (status.state === 'admission_recovery_required') {
-    return <AdmissionRecoveryKitView status={status} />
+  if (status.state === 'admission_recovery_required' || recovery.requiresSupport) {
+    return <ProfileRecoverySupportKitView status={status} />
   }
 
   return (

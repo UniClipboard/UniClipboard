@@ -150,6 +150,8 @@ jobs:
           ref: ${{ inputs.branch || github.ref }}
           submodules: recursive
           persist-credentials: false
+          # MBX inherits predictions from earlier Cargo.lock revisions through Git history.
+          fetch-depth: 0
 
       - name: setup node
         uses: actions/setup-node@v6

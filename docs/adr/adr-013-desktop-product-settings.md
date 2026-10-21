@@ -516,7 +516,7 @@ values are saved there; this is consistent with a Windows-only report but is not
 Confirming the root cause needs the user's stored `global.toggleQuickPanel` value and the GUI and
 helper logs from the failing save.
 
-Storage was not the cause. The task 4 store does not change any of these steps.
+Storage is not on any of these chains. The task 4 store does not change any of these steps.
 
 **Ownership.** The Go host owns the desired binding and the active binding of the running
 executor, in memory only. `packages/desktop-host-go/globalshortcut` holds this state without a GUI
@@ -528,14 +528,21 @@ dependency. The executors:
 | WebView panel (Wails `GlobalShortcut`) | Linux, or when the helper is missing | `updateShortcuts` in `global_shortcuts.go` |
 | none | lightweight mode (the GUI exits) | nothing; no status |
 
-Both executors are transactional: on a failure they keep the bindings they held before.
+Both executors are transactional: on a failure they keep the bindings they held before. Every
+apply returns the bindings the executor reports it holds afterwards, or "unknown" when it cannot
+say (no answer). The host records that report as the active binding; it never sets active to the
+desired binding without one.
 
 **GUI save** (`UpdateKeyboardShortcuts`, `SetQuickPanelEnabled`):
 1. Compute the target (the effective binding while the panel is enabled, none otherwise).
 2. If it differs from the desired binding, apply it in the executor. On failure return `Conflict`;
    nothing is saved.
-3. Persist. On failure apply the previous binding again and return the error.
-4. Record desired = active = target before the lock is released.
+3. Persist. On failure apply the previous binding again and return the error. Desired stays the
+   previous (still stored) binding; active is what the rollback reports. When the rollback is
+   refused or unanswered, the status says so (`not_active` or `unknown`); it does not claim the
+   old binding is back.
+4. Record desired = target and active = the executor's report before the lock is released.
+5. An unknown result in step 2 is a failure: nothing is saved, the status is `unknown`.
 
 The Windows probe is removed: the executor that will hold the binding is the check.
 
@@ -565,7 +572,15 @@ against a binding the host already holds.
   binding.
 - A shortcut or double-tap change no longer restarts the helper: `set_shortcuts` and
   `reload_settings` apply it in the running process. Own saves cause zero helper restarts.
-- A reply that does not arrive within 3 s is a failure.
+- Every reply carries `active`, the bindings the helper holds after the command, also after a
+  refusal. The host takes `active` from the reply, not from the request.
+- A reply that does not arrive within 3 s makes the result **unknown**: the helper may have
+  applied the command, refused it, or not read it. The host records active as unknown and does
+  not report a rollback. A reply whose `seq` is not the one awaited (a late answer to a timed-out
+  command) is dropped; it cannot be matched to the current request.
+- Convergence: while active is unknown, the next settings read, GUI save or helper launch sends
+  `set_shortcuts` with the desired binding again. Replacing a binding with the same binding
+  registers nothing, so the retry is safe; its reply gives the actual state.
 
 **Double tap and the enabled switch.** The reconcile step also follows `quickPanel.enabled` and
 `quickPanel.doubleTapModifier`. Each is compared with the value the host last applied, so the
@@ -584,8 +599,9 @@ non-Latin character without a physical name, a dead key, `F25` and above) is sho
 and cannot be saved. The recorder stays open after a failed save and shows the error.
 
 **Status in the UI.** The host command `GetQuickPanelShortcutStatus` returns
-`{shortcutId, state, desired, active, error}` with state `active`, `not_active` or `inactive`
-(no executor, or the panel is disabled). The host emits `quick-panel://shortcut-status` with the
+`{shortcutId, state, desired, active, error}` with state `active`, `not_active`, `unknown`
+(the executor's state could not be read; `active` is empty) or `inactive` (no executor, or the
+panel is disabled). The host emits `quick-panel://shortcut-status` with the
 same payload on every change. The shortcut row shows "saved, not active" with the active binding
 and the error.
 
@@ -720,6 +736,8 @@ Global shortcut apply status (task 6):
 | F104 | Concurrent GUI save and external write leave the executor and the store on different values | both run under one lock; the later write wins in both | globalshortcut E2E |
 | F105 | The helper is not running (disabled, gave up) when the GUI saves | GUI save fails without writing; an external write is `not_active` until the helper starts | helper protocol E2E |
 | F106 | Lightweight mode expects a status | no executor, state `inactive` | code review |
+| F107 | The helper applied `set_shortcuts` but its reply is lost or later than 3 s; the host reports the old binding as active, or a rollback as done | state `unknown`, active unknown; a late reply with an old `seq` is dropped; the next read, save or launch sends the desired binding again and takes active from that reply | helper protocol E2E (stand-in helper that applies and answers late; then a retry) |
+| F108 | The save fails and putting the old binding back also fails; the host records desired = active anyway | desired stays the stored binding; active is the executor's report or unknown; state `not_active` or `unknown` with the error | globalshortcut E2E (executor refuses the rollback) |
 
 ## Consequences
 

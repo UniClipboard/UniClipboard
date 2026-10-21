@@ -14,7 +14,7 @@
 //   swift tray_ax.swift cancel <pid>                      AXCancel on the open menu
 //   swift tray_ax.swift elementat <pid> <x> <y>           the AX element under a screen point, its owner pid and `mine` (read-only)
 //   swift tray_ax.swift windows <pid>                     every window of the pid with bounds/layer/on-screen (the pop-up observable)
-//   swift tray_ax.swift clickat <pid> <x> <y> left|right owner|overflow:<desc>:<ownerPid>   verified synthesized click (see the case)
+//   swift tray_ax.swift clickat <pid> <x> <y> left|right owner|item|overflow:<desc>:<ownerPid>   verified synthesized click (see the case)
 //   swift tray_ax.swift escape <pid>                      one Escape, refused unless the pid's pop-up menu window is on screen
 //   swift tray_ax.swift watch  <pid> <seconds> <ms>       read the open menu every <ms> ms for <seconds>, one JSON line per read (with a monotonic wall clock in ns)
 //
@@ -248,7 +248,7 @@ case "hover":
 case "clickat":
     // clickat <pid> <x> <y> left|right owner | overflow:<description>:<ownerPid>: an ordinary synthesized click. The element under the point is
     // re-verified HERE, in the same call, right before the events. `owner`: owned by <pid> (this run's GUI) and a menu-bar item (AXMenuBarItem or
-    // AXMenuExtra): the app's own status item. `overflow:...`: the explicit overflow step: role AXButton, description containing <description>,
+    // AXMenuExtra): the app's own status item. `item`: an AXMenuItem owned by <pid> while its status item menu is open. `overflow:...`: the explicit overflow step: role AXButton, description containing <description>,
     // owned by <ownerPid> (the owner the runner read in its own verification) and NOT by <pid>. Otherwise nothing is clicked. Moves onto the
     // point, holds the button, releases, and puts the pointer back.
     guard argv.count >= 7, let px = Double(argv[3]), let py = Double(argv[4]) else { fail("clickat <pid> <x> <y> left|right owner|overflow:<description>:<ownerPid>") }
@@ -261,6 +261,8 @@ case "clickat":
     var accepted = false
     if argv[6] == "owner" {
         accepted = hitOwner == pid && (hitRole == "AXMenuBarItem" || hitRole == "AXMenuExtra")
+    } else if argv[6] == "item" {
+        accepted = hitOwner == pid && hitRole == "AXMenuItem" && openMenu(pid) != nil
     } else if argv[6].hasPrefix("overflow:") {
         let parts = argv[6].split(separator: ":", omittingEmptySubsequences: false).map(String.init)
         accepted = parts.count == 3 && !parts[1].isEmpty && hitRole == "AXButton" && hitDesc.contains(parts[1]) && Int32(parts[2]) == hitOwner && hitOwner != pid

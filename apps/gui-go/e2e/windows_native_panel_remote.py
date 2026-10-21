@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
-"""One command: the native quick panel E2E on a real Windows machine reachable over SSH.
+"""One command: the native quick panel E2E on a real Windows machine reachable over SSH or a local Parallels VM.
 
-    python3 apps/gui-go/e2e/windows_native_panel_remote.py <ssh-host> [--out DIR] [--work DIR] [--clobber-clipboard]
+    python3 apps/gui-go/e2e/windows_native_panel_remote.py <ssh-host> | parallels:<vm>
+                                                          [--out DIR] [--work DIR] [--clobber-clipboard]
+
+`parallels:<vm>` runs the same commands through `prlctl exec --current-user` (the logged-in user) and moves files over
+the Parallels share of the Mac home (Z:), so --out must be under the home directory, as this checkout is.
 
 The check is a REAL desktop run: the Go host starts the GPUI helper, the helper talks to an isolated daemon, real key
 events open the panel, search, select and paste into an isolated editor, and the exit leaves nothing behind
@@ -43,8 +47,24 @@ TASK = 'uniclip-native-panel-e2e'
 SSH = ['ssh', '-o', 'BatchMode=yes', '-o', 'ServerAliveInterval=30', '-o', 'LogLevel=ERROR']
 
 
+HOME = Path.home().resolve()
+
+
+def parallels_vm(host):
+    kind, _, name = host.partition(':')
+    return name if kind == 'parallels' and name else None
+
+
+def share_path(local):
+    """The Windows path of a local file through the Parallels share of the Mac home (Z:)."""
+    return 'Z:\\' + str(Path(local).resolve().relative_to(HOME)).replace('/', '\\')
+
+
 def ssh(host, command, check=True, timeout=600):
-    result = subprocess.run(SSH + [host, command], capture_output=True, timeout=timeout)
+    """Runs a cmd.exe command on the machine (the default shell of Windows OpenSSH, or cmd /c in the VM)."""
+    vm = parallels_vm(host)
+    argv = ['prlctl', 'exec', vm, '--current-user', 'cmd', '/c', command] if vm else SSH + [host, command]
+    result = subprocess.run(argv, capture_output=True, timeout=timeout)
     text = (result.stdout + result.stderr).decode('utf-8', errors='replace')
     if check and result.returncode != 0:
         sys.exit(f'ssh {host} {command!r} failed ({result.returncode}):\n{text}')
@@ -52,6 +72,15 @@ def ssh(host, command, check=True, timeout=600):
 
 
 def scp(host, source, destination, to_remote=True):
+    if parallels_vm(host):
+        if to_remote:
+            ssh(host, f'copy /y "{share_path(source)}" "{destination.replace("/", chr(92))}"')
+        else:
+            Path(destination).mkdir(parents=True, exist_ok=True)
+            source_win = source.replace('/', chr(92))
+            target = share_path(destination) + chr(92) + source_win.rsplit(chr(92), 1)[-1]
+            ssh(host, f'robocopy "{source_win}" "{target}" /E /NFL /NDL /NJH /NJS /NP & if errorlevel 8 (exit 1) else (exit 0)')
+        return
     pair = [str(source), f'{host}:{destination}'] if to_remote else [f'{host}:{source}', str(destination)]
     subprocess.run(['scp', '-q', '-o', 'BatchMode=yes', '-o', 'LogLevel=ERROR', *(['-r'] if not to_remote else []), *pair], check=True)
 
@@ -97,7 +126,8 @@ def main():
     args = parser.parse_args()
     work = args.work.replace('\\', '/').rstrip('/')
     work_win = work.replace('/', '\\')
-    out = args.out or ROOT / 'target/e2e/windows-native-panel' / f'{args.host}-{time.strftime("%Y%m%d-%H%M%S")}'
+    label = args.host.replace(':', '-').replace(' ', '-')
+    out = args.out or ROOT / 'target/e2e/windows-native-panel' / f'{label}-{time.strftime("%Y%m%d-%H%M%S")}'
     out.mkdir(parents=True, exist_ok=True)
 
     arch = remote_arch(args.host)

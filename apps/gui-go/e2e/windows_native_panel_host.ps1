@@ -37,7 +37,14 @@ try {
     Set-Location "$Work\src"
     $env:PATH = "$env:USERPROFILE\.cargo\bin;$env:PATH"
     if ((Get-Command clang -ErrorAction SilentlyContinue) -eq $null -and $env:PROCESSOR_ARCHITECTURE -eq 'ARM64') {
-        throw 'building the Rust half on Windows ARM64 needs clang on PATH (the ring crate)'
+        # The Visual Studio C++ Clang component installs clang without putting it on PATH.
+        $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+        $clang = if (Test-Path $vswhere) {
+            & $vswhere -latest -products * -find 'VC\Tools\Llvm\ARM64\bin\clang.exe' | Select-Object -First 1
+        }
+        if (-not $clang) { throw 'building the Rust half on Windows ARM64 needs clang on PATH (the ring crate)' }
+        $env:PATH = "$(Split-Path $clang);$env:PATH"
+        Step "clang: $clang"
     }
     $code = Invoke-Logged "$run\build.log" $py @("$e2e\build_windows.py", '--mode', 'e2e', '--part', 'rust')
     if ($code -ne 0) { throw "build_windows.py exited with $code (see build.log)" }

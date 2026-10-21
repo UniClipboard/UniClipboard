@@ -64,6 +64,8 @@ pub fn engine_settings_changed_event(
 fn desktop_section(section: SettingsSection) -> SettingsSectionDto {
     match section {
         SettingsSection::General => SettingsSectionDto::General,
+        SettingsSection::KeyboardShortcuts => SettingsSectionDto::KeyboardShortcuts,
+        SettingsSection::QuickPanel => SettingsSectionDto::QuickPanel,
     }
 }
 

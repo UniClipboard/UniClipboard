@@ -21,6 +21,19 @@ use serde_json::{Map, Value};
 use tokio::sync::{broadcast, Mutex};
 use tracing::warn;
 
+mod fields;
+mod grammar;
+mod legacy;
+mod model;
+
+pub use fields::InvalidField;
+pub use legacy::{import_legacy, ImportOutcome, CURRENT_FIELD_SET};
+pub use model::{
+    DesktopSettings, DesktopSettingsPatch, DoubleTapModifier, GeneralSettings,
+    GeneralSettingsPatch, QuickPanelPosition, QuickPanelSettings, QuickPanelSettingsPatch,
+    ShortcutBinding, StartupMode, Theme, TrayIcon, UpdateChannel,
+};
+
 /// File name of the product settings, next to the Engine's `settings.json`
 /// in the profile's app data root.
 pub const FILE_NAME: &str = "desktop-settings.json";
@@ -34,70 +47,24 @@ const MAX_BYTES: u64 = 1024 * 1024;
 /// Buffered notifications per subscriber before it lags.
 const CHANGE_CAPACITY: usize = 64;
 
-const TRAY_ICON_PATH: &str = "general.trayIcon";
-
-/// The tray icon artwork.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
-pub enum TrayIcon {
-    /// The monochrome app glyph.
-    #[default]
-    Glyph,
-    /// The cat artwork.
-    Cat,
-}
-
-impl TrayIcon {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Glyph => "glyph",
-            Self::Cat => "cat",
-        }
-    }
-
-    pub fn parse(raw: &str) -> Option<Self> {
-        match raw {
-            "glyph" => Some(Self::Glyph),
-            "cat" => Some(Self::Cat),
-            _ => None,
-        }
-    }
-}
-
-/// Effective product settings: every field has a valid value.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct DesktopSettings {
-    pub general: GeneralSettings,
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct GeneralSettings {
-    pub tray_icon: TrayIcon,
-}
-
-/// An explicit write. `None` leaves the field as it is on disk.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct DesktopSettingsPatch {
-    pub general: GeneralSettingsPatch,
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct GeneralSettingsPatch {
-    pub tray_icon: Option<TrayIcon>,
-}
-
 /// A top-level settings section named in a change notification.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum SettingsSection {
     General,
+    KeyboardShortcuts,
+    QuickPanel,
 }
 
 impl SettingsSection {
     /// Every section, for a subscriber that must report all of them after missing notifications.
-    pub const ALL: &'static [SettingsSection] = &[Self::General];
+    pub const ALL: &'static [SettingsSection] =
+        &[Self::General, Self::KeyboardShortcuts, Self::QuickPanel];
 
     pub fn as_str(self) -> &'static str {
         match self {
             Self::General => "general",
+            Self::KeyboardShortcuts => "keyboardShortcuts",
+            Self::QuickPanel => "quickPanel",
         }
     }
 }
@@ -128,12 +95,15 @@ pub struct ApplyResult {
 
 #[derive(Debug)]
 pub enum DesktopSettingsError {
+    /// A value failed its grammar; nothing was written.
+    Invalid(InvalidField),
     Write(io::Error),
 }
 
 impl std::fmt::Display for DesktopSettingsError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::Invalid(error) => error.fmt(formatter),
             Self::Write(error) => write!(formatter, "failed to write product settings: {error}"),
         }
     }
@@ -142,6 +112,7 @@ impl std::fmt::Display for DesktopSettingsError {
 impl std::error::Error for DesktopSettingsError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
+            Self::Invalid(error) => Some(error),
             Self::Write(error) => Some(error),
         }
     }
@@ -216,6 +187,13 @@ impl DesktopSettingsStore {
         }
     }
 
+    /// Check `patch` against the grammars and the current document without
+    /// writing, so a caller can reject it before writing other stores.
+    pub async fn validate(&self, patch: &DesktopSettingsPatch) -> Result<(), InvalidField> {
+        let state = self.inner.state.lock().await;
+        merge(&state, patch).map(|_| ())
+    }
+
     pub fn subscribe(&self) -> broadcast::Receiver<DesktopSettingsChanged> {
         self.inner.changes.subscribe()
     }
@@ -245,22 +223,7 @@ impl Inner {
         patch: DesktopSettingsPatch,
     ) -> Result<ApplyResult, DesktopSettingsError> {
         let mut state = self.state.lock().await;
-        let mut sections = Vec::new();
-        let mut next = state.raw.clone();
-        if let Some(icon) = patch.general.tray_icon {
-            let document = next.get_or_insert_with(Map::new);
-            document
-                .entry("version")
-                .or_insert_with(|| Value::from(FORMAT_VERSION));
-            let mut general = take_object(document, "general");
-            general.insert(
-                "trayIcon".to_owned(),
-                Value::String(icon.as_str().to_owned()),
-            );
-            document.insert("general".to_owned(), Value::Object(general));
-            record_user_write(document, TRAY_ICON_PATH);
-            sections.push(SettingsSection::General);
-        }
+        let (next, sections) = merge(&state, &patch).map_err(DesktopSettingsError::Invalid)?;
 
         if next == state.raw {
             return Ok(ApplyResult {
@@ -301,25 +264,67 @@ impl Inner {
     }
 }
 
+/// The document after a patch, and the sections the patch touches.
+type Merged = (Option<Map<String, Value>>, Vec<SettingsSection>);
+
+/// The document after `patch`, and the sections it touches. Fails, without
+/// side effects, when a value does not pass its grammar.
+fn merge(state: &State, patch: &DesktopSettingsPatch) -> Result<Merged, InvalidField> {
+    if patch
+        .general
+        .theme_color
+        .as_deref()
+        .is_some_and(|name| !grammar::is_preset_name(name))
+    {
+        return Err(InvalidField {
+            path: "general.themeColor".to_owned(),
+        });
+    }
+    let entries = fields::patch_entries(patch, &state.settings);
+    fields::validate_entries(&entries)?;
+    let mut sections = Vec::new();
+    let mut next = state.raw.clone();
+    if entries.is_empty() {
+        return Ok((next, sections));
+    }
+    let document = next.get_or_insert_with(Map::new);
+    document
+        .entry("version")
+        .or_insert_with(|| Value::from(FORMAT_VERSION));
+    for entry in &entries {
+        fields::set_member(document, entry.section, &entry.key, entry.value.clone());
+        record_user_write(document, &entry.path);
+        if let Some(section) = fields::section_of_path(&entry.path) {
+            if !sections.contains(&section) {
+                sections.push(section);
+            }
+        }
+    }
+    let shortcut_ids = document
+        .get(fields::SHORTCUTS)
+        .and_then(Value::as_object)
+        .map_or(0, Map::len);
+    if !grammar::shortcut_id_count_ok(shortcut_ids) {
+        return Err(InvalidField {
+            path: fields::SHORTCUTS.to_owned(),
+        });
+    }
+    Ok((next, sections))
+}
+
 /// Derive valid values from the raw document. Warnings name the field path,
 /// never the stored value.
 fn effective(raw: Option<&Map<String, Value>>, warn_invalid: bool) -> DesktopSettings {
-    let mut settings = DesktopSettings::default();
-    let stored = raw
-        .and_then(|document| document.get("general"))
-        .and_then(|general| general.get("trayIcon"));
-    if let Some(value) = stored {
-        match value.as_str().and_then(TrayIcon::parse) {
-            Some(icon) => settings.general.tray_icon = icon,
-            None if warn_invalid => warn!(
+    let values = fields::normalized(raw, |path| {
+        if warn_invalid {
+            warn!(
                 error_kind = "desktop_settings_invalid_field",
-                field = TRAY_ICON_PATH,
+                field = path,
                 "Invalid product setting; using its default"
-            ),
-            None => {}
+            );
         }
-    }
-    settings
+    });
+    fields::typed(&values)
 }
 
 /// Remove the object under `key` for editing; a value of any other type is
@@ -349,6 +354,14 @@ fn record_user_write(document: &mut Map<String, Value>, path: &str) {
 /// Read the document. `Ok(None)` for a missing file; `Err` carries a reason
 /// category for the log, never file content.
 fn read(path: &Path) -> Result<Option<Map<String, Value>>, &'static str> {
+    match read_bytes(path)? {
+        Some(bytes) => parse_document(&bytes).map(Some),
+        None => Ok(None),
+    }
+}
+
+/// Read at most [`MAX_BYTES`]. `Ok(None)` for a missing file.
+fn read_bytes(path: &Path) -> Result<Option<Vec<u8>>, &'static str> {
     let file = match std::fs::File::open(path) {
         Ok(file) => file,
         Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
@@ -361,8 +374,12 @@ fn read(path: &Path) -> Result<Option<Map<String, Value>>, &'static str> {
     if bytes.len() as u64 > MAX_BYTES {
         return Err("too_large");
     }
-    match serde_json::from_slice::<Value>(&bytes) {
-        Ok(Value::Object(document)) => Ok(Some(document)),
+    Ok(Some(bytes))
+}
+
+fn parse_document(bytes: &[u8]) -> Result<Map<String, Value>, &'static str> {
+    match serde_json::from_slice::<Value>(bytes) {
+        Ok(Value::Object(document)) => Ok(document),
         Ok(_) => Err("not_an_object"),
         Err(_) => Err("malformed_json"),
     }

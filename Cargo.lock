@@ -11923,6 +11923,7 @@ dependencies = [
 name = "uc-desktop-settings"
 version = "1.2.0"
 dependencies = [
+ "blake3",
  "serde_json",
  "tempfile",
  "tokio",

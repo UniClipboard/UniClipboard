@@ -21,7 +21,9 @@ fn tray(icon: TrayIcon) -> DesktopSettingsPatch {
     DesktopSettingsPatch {
         general: GeneralSettingsPatch {
             tray_icon: Some(icon),
+            ..Default::default()
         },
+        ..Default::default()
     }
 }
 

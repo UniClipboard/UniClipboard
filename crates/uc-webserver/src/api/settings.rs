@@ -499,7 +499,9 @@ async fn update_settings_handler(
                 .as_ref()
                 .and_then(|general| general.tray_icon)
                 .map(IntoDomain::into_domain),
+            ..Default::default()
         },
+        ..Default::default()
     };
 
     // A patch that names only product fields must not reach the Engine: an

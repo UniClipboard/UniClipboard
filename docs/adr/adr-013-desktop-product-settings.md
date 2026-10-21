@@ -184,10 +184,8 @@ events carry no setting values: clients read `GET /settings` again.
   before the GUI relaunch fails). The watcher therefore gets its client through
   `daemonclient.Follow`: it keeps the stored client while `daemon.conn` names the same endpoint
   and token, and otherwise swaps in a fresh client for every caller of the host.
-- **Page-originated `settings://changed`.** Until the frontend follows `settings.changed`, the
-  page still emits it after its own saves. The host does not use the page's settings copy: it
-  reads `GET /settings` and runs the same idempotent apply. The listener and the page's emit are
-  removed together when the frontend moves to `settings.changed`.
+- **Page-originated `settings://changed`.** Removed in task 5 together with the host's listener
+  (section 9). The host follows only the daemon's `settings.changed`.
 
 ### 8. Field set 1: moved fields, legacy import and owner-split writes (task 4, P1)
 
@@ -383,11 +381,9 @@ Not changed in task 4 (task 5 handles them):
   preferences survive until the first Engine settings save. On the start after that save the
   fingerprint differs, so paths not in `userWritten` return to their defaults; written paths
   keep their values. Not verified by a run.
-- **Whole-section saves defeat the `userWritten` rule until task 5.** The frontend saves the whole
-  `general` section on every General change, so one GUI save puts every general path into
-  `userWritten`. After that, a downgrade edit or a config import restores nothing in `general`.
-  The repeated import works as designed only for diff patches. Task 4 must not ship ahead of
-  task 5.
+- **Whole-section saves defeated the `userWritten` rule before task 5.** The frontend saved the
+  whole `general` section on every General change, so one GUI save put every general path into
+  `userWritten`. Task 5 sends diff patches (section 9). Task 4 must not ship without task 5.
 - **Recorder output outside the token set is rejected on write.** The recorder can still produce
   tokens outside 8.1.1 (non-ASCII characters, `dead`, `contextmenu`, `altgraph`). Saving such a
   value now returns 400, so the user sees a save error instead of an inert binding (task 5/6).
@@ -402,6 +398,56 @@ Not changed in task 4 (task 5 handles them):
 - **Release order.** The Engine removal (tasks 7–9) requires that this importer has shipped (P1
   before P2 and P3). The importer must stay in every release until the oldest supported upgrade
   source already has field set 1.
+
+### 9. Frontend authority and diff patches (task 5, P1)
+
+**Diff patches.** Every GUI save sends only the leaves the user changed, at the server's merge
+granularity:
+
+| Path | Leaf |
+|---|---|
+| scalar fields (`general.*`, `sync.*`, `security.*`, `fileSync.*`, `network.*`, `quickPanel.*`) | the field |
+| `sync.contentTypes` | each boolean |
+| `general.themeOverridesLight` / `themeOverridesDark` | the whole map (the server replaces it) |
+| `retentionPolicy.rules` | the whole list (the server replaces it) |
+| `keyboardShortcuts` | each id; `null` removes the override |
+
+- The leaves come from the caller's intended change, not from comparing a whole section with a
+  cached copy. A control that holds a whole object (the retention policy) sends the leaves that
+  differ from the value it displayed.
+- `false`, `0` and `""` are values. `fileSync.autoSaveDir: ""` still clears the directory.
+- `null` on `language`, `updateChannel`, `deviceName` and `themeColor*` stays a wire no-op (the
+  #606 two-state rule). The frontend sends what the control produces and does not reinterpret it.
+- Go host writers (tray sync, updater `autoDownloadUpdate`, `autoStart`, `deviceName`, quick panel,
+  shortcuts) already send single leaves.
+- `restartRequired` is true only when the patch carries `network` or `general.debugMode`. A tray,
+  theme or other General change no longer carries them. The GUI changes `debugMode` through
+  `POST /diagnostics/debug-mode`, not through this patch.
+
+**One authoritative copy per window.** `src/lib/settings-sync.ts` holds each document's settings:
+- It subscribes to the `settings` and `system` topics. Every `settings.snapshot` starts a new
+  epoch and causes a read; so do `settings.changed`, `system.refresh_required` and a reconnect.
+  Revisions are not compared across snapshots.
+- Reads and the window's own writes run one at a time in one queue, so a read result never
+  replaces a newer one. Requests that arrive during a read coalesce into one more read.
+- The main window's `SettingContext`, the theme of the other windows (`useThemeSync`) and the
+  quick panel's shortcut overrides read from it. First-paint caches (the stored UI language and
+  the telemetry mirror) are written from the authoritative copy only.
+- The page-originated Wails event `settings://changed` and the host's listener are removed, and
+  `settings://sync-changed` with them: the tray's sync write reaches every window as an Engine
+  `settings.changed`. `scripts/architecture/check-host-events.mjs` rejects both names.
+
+**Save errors.** After any failed save (daemon error, 400, a host command error, a network
+failure) the window reads `GET /settings` before the error reaches the control, so the control
+shows the stored state. `500 settings_partially_applied` becomes a typed error with the
+`applied`, `failed` and `skipped` owners; the control shows them in a toast. The window's load
+error state is not used for save errors.
+
+**Not changed by task 5.**
+- The tray language is still set by the main window (`SetTrayLanguage`). The Go host has no
+  language resolution of its own, so a silent start shows the tray in the language of the last
+  page run (acceptance B9 stays open).
+- Shortcut apply status for external writes is task 6.
 
 ## Failure modes (listed before implementation)
 
@@ -480,6 +526,21 @@ Field set 1, legacy import and owner-split writes (task 4):
 | F61 | An out-of-set shortcut token (`f25`, `ctrl+ä`, `alt+meta+√`, `page up`) is accepted on write, or its raw legacy value is lost on import | write: 400; import: raw kept, effective entry absent (built-in binding), warning names the id | daemon E2E |
 | F62 | A new product section is not reported, or is reported under the wrong key | `SettingsSection::ALL` has `general`, `keyboardShortcuts`, `quickPanel`; the mapping to `SettingsSectionDto` has no wildcard | compiler; daemon E2E (one event per write with the right sections) |
 | F63 | Logs leak a setting value | the import and the handler log paths, ids, reason categories and hashes only | daemon E2E (a unique non-default value is absent from the log) |
+| F64 | A tray, theme or other General save carries `debugMode` or `network` and reports a restart | the body holds only the changed leaf; `restartRequired: false` | frontend-module E2E (wire body and response) |
+| F65 | A real `debugMode` or network change loses the restart indication | `restartRequired: true` | frontend-module E2E |
+| F66 | A save from a stale cached section overwrites a concurrent edit of another field | only changed leaves are sent; every field survives | frontend-module E2E (B7: concurrent saves from two windows and the Go writers' single-leaf bodies) |
+| F67 | `false`, `0` or `""` is dropped as "no change" | the leaf is sent | frontend-module E2E (`autoSaveDir: ""`, `syncEnabled: false`) |
+| F68 | A read issued before a write returns after it and replaces the newer state | reads and writes run in one queue; a later read wins | frontend-module E2E (a held GET) |
+| F69 | Revisions are compared across daemon lifetimes, so a restarted daemon's lower revision is ignored | every snapshot starts a new epoch and reads | frontend-module E2E (restart the daemon after an offline file edit) |
+| F70 | A change from another client never reaches an open window | `settings.changed` causes a read | frontend-module E2E (external PUT) |
+| F71 | A missed event while the socket was down leaves the window stale | the reconnect snapshot causes a read | frontend-module E2E |
+| F72 | A failed save leaves the control showing the unsaved value or a value the server rolled forward | the window reads before the error is reported | frontend-module E2E (400 and partial failure, GET after the PUT in the wire log) |
+| F73 | A partial failure is shown as "nothing saved" | typed error with `applied`/`failed`/`skipped` | frontend-module E2E (B8, product file replaced by a directory) |
+| F74 | A save error replaces a settings section with the load-error view | save errors are toasts; the load error is set only by a failed read | code review |
+| F75 | A shortcut save resubmits another id's raw invalid value | the patch holds the changed id only; the raw value stays in the file | frontend-module E2E |
+| F76 | A recorder value outside the token set fails silently | the 400 reaches the caller and a read follows | frontend-module E2E |
+| F77 | The removed page event comes back | the host-event check fails on `settings://changed` and `settings://sync-changed` | `bun run check:host-structure` |
+| F78 | A first-paint cache (language, telemetry mirror) wins over the daemon | written from the authoritative copy only | code review |
 
 ## Consequences
 

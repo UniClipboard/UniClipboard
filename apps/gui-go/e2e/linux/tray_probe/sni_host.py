@@ -56,8 +56,21 @@ class SniHost:
         return {"IsStatusNotifierHostRegistered": GLib.Variant("b", True), "ProtocolVersion": GLib.Variant("i", 0),
                 "RegisteredStatusNotifierItems": GLib.Variant("as", [])}[name]
 
+    def item_property(self, name):
+        result = self.bus.call_sync(
+            self.item[0], self.item[1], "org.freedesktop.DBus.Properties", "Get",
+            GLib.Variant("(ss)", ("org.kde.StatusNotifierItem", name)),
+            None, Gio.DBusCallFlags.NONE, 3000, None)
+        return result.get_child_value(0).get_variant()
+
+    def menu_path(self):
+        value = self.item_property("Menu")
+        if value.get_type_string() != "o" or value.unpack() == "/":
+            raise ValueError("the tray did not advertise a menu object path")
+        return value.unpack()
+
     def _menu_call(self, method, args, sig):
-        return self.bus.call_sync(self.item[0], "/StatusNotifierMenu", "com.canonical.dbusmenu", method,
+        return self.bus.call_sync(self.item[0], self.menu_path(), "com.canonical.dbusmenu", method,
                                   GLib.Variant(sig, args), None, Gio.DBusCallFlags.NONE, 3000, None).unpack()
 
     def layout(self):

@@ -1296,6 +1296,7 @@
       "builtinHint": "內建標籤由內容類型自動產生，無法重新命名、合併或刪除。"
     },
     "kit": {
+      "backToList": "返回列表",
       "actionHint": "{{copy}} 拷貝 · T 標籤 · {{pin}} 釘選",
       "allOfKind": "全部為{{kind}}",
       "anyTag": "任意標籤",

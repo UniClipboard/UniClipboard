@@ -1300,6 +1300,7 @@
       "builtinHint": "A built-in tag follows the content type, so it can't be renamed, merged or deleted."
     },
     "kit": {
+      "backToList": "Back to list",
       "actionHint": "{{copy}} copy · T tag · {{pin}} pin",
       "allOfKind": "all {{kind}}",
       "anyTag": "Any Tag",

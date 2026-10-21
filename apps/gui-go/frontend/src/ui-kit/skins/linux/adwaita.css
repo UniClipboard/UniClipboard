@@ -1478,6 +1478,11 @@
   min-width: 8px;
 }
 
+.adw-split-search {
+  min-width: 0;
+  flex-shrink: 1;
+}
+
 .adw-split-toolbar .adw-search {
   width: 260px !important;
   min-width: 120px;
@@ -1554,52 +1559,79 @@
   text-align: center;
 }
 
-/* Below the narrow breakpoint the open sidebar overlays the content on a scrim (libadwaita
-   AdwOverlaySplitView with `collapsed`). Whether it is open stays the caller's choice. */
-@media (max-width: 760px) {
-  .adw-split-sidebar {
-    position: absolute;
-    z-index: 30;
-    top: 0;
-    bottom: 0;
-    left: 0;
-    box-shadow: var(--dialog-shadow);
-    transition: transform var(--sidebar-transition);
-  }
+/* The layout owner decides when the sidebar is a drawer. Keep its breakpoint in one place. */
+.adw-split[data-sidebar-overlay] .adw-split-sidebar {
+  position: absolute;
+  z-index: 30;
+  inset: 0 auto 0 0;
+  width: var(--sidebar-width);
+  box-shadow: var(--dialog-shadow);
+  transition: transform var(--sidebar-transition);
+}
 
-  .adw-split[data-sidebar-hidden] .adw-split-sidebar {
-    width: var(--sidebar-width);
-    transform: translateX(-100%);
-    box-shadow: none;
-  }
+.adw-split[data-sidebar-overlay][data-sidebar-hidden] .adw-split-sidebar {
+  width: var(--sidebar-width);
+  transform: translateX(-100%);
+  box-shadow: none;
+}
 
-  .adw-split-scrim {
-    all: unset;
-    display: block;
-    position: absolute;
-    inset: 0;
-    z-index: 20;
-    background: var(--scrim);
-  }
+.adw-split[data-sidebar-overlay] .adw-split-scrim {
+  all: unset;
+  display: block;
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  background: var(--scrim);
+}
 
-  .adw-pane[data-pane='list'],
-  .adw-split[data-sidebar-hidden] .adw-pane[data-pane='list'] {
-    flex: 1 1 0;
-    min-width: 240px;
-  }
+/* Single-pane navigation preserves the browsing pane's dimensions and scroll position while
+   it is hidden. Hidden panes are also inert and excluded from the accessibility tree. */
+.adw-split[data-single-pane] .adw-split-panes {
+  position: relative;
+}
 
-  .adw-pane[data-pane='detail'] {
-    min-width: 240px;
-  }
+.adw-split[data-single-pane] .adw-pane {
+  position: absolute;
+  inset: 0;
+  min-width: 0;
+  border-right: 0;
+}
 
-  .adw-split-toolbar .adw-search {
-    width: 160px !important;
-    min-width: 96px;
-  }
+.adw-pane[data-pane-hidden] {
+  visibility: hidden;
+  pointer-events: none;
+}
 
-  .adw-split-subtitle {
-    display: none;
-  }
+.adw-split[data-single-pane] .adw-split-toolbar {
+  height: auto;
+  min-height: 46px;
+  padding-block: 6px 8px;
+  flex-wrap: wrap;
+}
+
+.adw-split[data-single-pane] .adw-split-subtitle {
+  display: none;
+}
+
+.adw-split[data-single-pane] .adw-split-search {
+  order: 1;
+  flex: 1 0 100%;
+  width: 100%;
+}
+
+.adw-split[data-single-pane] .adw-split-search > .adw-token-search {
+  width: 100%;
+}
+
+.adw-split[data-single-pane] .adw-split-toolbar .adw-search,
+.adw-split[data-single-pane] .adw-token-search[data-active] .adw-search,
+.adw-split[data-single-pane] .adw-token-search:focus-within .adw-search {
+  width: 100% !important;
+  min-width: 0;
+}
+
+.adw-split-back {
+  flex-shrink: 0;
 }
 
 @media (prefers-reduced-motion: reduce) {

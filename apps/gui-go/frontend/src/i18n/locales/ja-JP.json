@@ -1299,6 +1299,7 @@
       "builtinHint": "組み込みタグはコンテンツの種類から自動で付くため、名前の変更・統合・削除はできません。"
     },
     "kit": {
+      "backToList": "一覧に戻る",
       "queryInvalidTitle": "検索内容を確認してください",
       "queryInvalid": "検索する語を入力し、演算子は AND または OR のどちらか一方だけを使用してください。",
       "actionHint": "{{copy}} コピー · T タグ · {{pin}} ピン留め",

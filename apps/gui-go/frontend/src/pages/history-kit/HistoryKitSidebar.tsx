@@ -5,6 +5,7 @@ import { Filter } from '@/api/clipboardItems'
 import type { HistoryTagColorDto } from '@/api/daemon/history-tags'
 import { deriveBadgeKind } from '@/components/device/connection-channel-utils'
 import { sidebarTagRows } from '@/components/history/sidebar/history-sidebar-tags'
+import { useLibraryChrome } from '@/contexts/library-chrome-context'
 import { useLibraryCounts } from '@/hooks/useLibraryCounts'
 import { useMobileDeviceList } from '@/hooks/useMobileDeviceList'
 import { useNow } from '@/hooks/useRelativeTime'
@@ -89,6 +90,7 @@ export function HistoryKitSidebar({
 }: HistoryKitSidebarProps) {
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const chrome = useLibraryChrome()
   const counts = useLibraryCounts(countsRevision)
   const now = useNow()
   const members = useAppSelector(state => state.devices.spaceMembers)
@@ -212,6 +214,7 @@ export function HistoryKitSidebar({
             : undefined
 
   const select = (id: string) => {
+    chrome.closeDrawer()
     if (id === ALL) onSelectLibrary(Filter.All)
     else if (id === PINNED) onSelectLibrary(Filter.Favorited)
     else if (id === SETTINGS) navigate('/settings')

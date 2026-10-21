@@ -1296,6 +1296,7 @@
       "builtinHint": "内置标签由内容类型自动生成，不能改名、合并或删除。"
     },
     "kit": {
+      "backToList": "返回列表",
       "actionHint": "{{copy}} 复制 · T 标签 · {{pin}} 置顶",
       "allOfKind": "全部为{{kind}}",
       "anyTag": "任意标签",

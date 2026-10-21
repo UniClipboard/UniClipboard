@@ -1306,6 +1306,7 @@
       "builtinHint": "Uma tag nativa vem do tipo de conteúdo, por isso não pode ser renomeada, mesclada nem excluída."
     },
     "kit": {
+      "backToList": "Voltar à lista",
       "queryInvalidTitle": "Verifique sua pesquisa",
       "queryInvalid": "Digite palavras para pesquisar e use apenas um operador: AND ou OR.",
       "actionHint": "{{copy}} copiar · T etiqueta · {{pin}} fixar",

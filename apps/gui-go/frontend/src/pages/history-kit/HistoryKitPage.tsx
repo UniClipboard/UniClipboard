@@ -136,10 +136,11 @@ export default function HistoryKitPage() {
     const stored = Number(readPreference(SIZE_KEY))
     return Number.isFinite(stored) && stored >= 0 && stored <= 1 ? stored : 0.4
   })
-  // In the grid the detail is an inspector: double click or the shortcut opens it.
+  // Explicit detail navigation opens the grid inspector or replaces the list in a narrow skin.
   const [inspector, setInspector] = useState(false)
   const changeView = (next: 'list' | 'grid') => {
     setView(next)
+    setInspector(false)
     writePreference(VIEW_KEY, next)
   }
   const changeGridSize = (next: number) => {
@@ -258,8 +259,14 @@ export default function HistoryKitPage() {
             <HistoryKitSidebar
               activeFilter={c.filter.activeFilter}
               activeTag={c.filter.tagFilter}
-              onSelectLibrary={c.filterActions.setContentFilter}
-              onSelectTag={c.filterActions.setTagFilter}
+              onSelectLibrary={filter => {
+                setInspector(false)
+                c.filterActions.setContentFilter(filter)
+              }}
+              onSelectTag={tagId => {
+                setInspector(false)
+                c.filterActions.setTagFilter(tagId)
+              }}
               tags={c.searchableTags}
               sidebarTagIds={c.tagLayout?.sidebar ?? null}
               tagColors={c.tagLayout?.colors ?? NO_TAG_COLORS}
@@ -267,11 +274,20 @@ export default function HistoryKitPage() {
               tagTotal={c.historyTags.tags.length + LIBRARY_BUILTIN_TAG_IDS.length}
               countsRevision={c.items}
               activeSource={c.filter.sourceFilter}
-              onSelectSource={c.filterActions.setSourceFilter}
+              onSelectSource={sourceId => {
+                setInspector(false)
+                c.filterActions.setSourceFilter(sourceId)
+              }}
               devices={devices}
             />
           }
           sidebarHidden={chrome.hidden && !chrome.drawerOpen}
+          sidebarOverlay={chrome.drawer}
+          detailNavigation={{
+            open: inspector,
+            onOpenChange: setInspector,
+            backLabel: t('history.kit.backToList'),
+          }}
           sidebarToggle={{
             label: t(
               chrome.hidden && !chrome.drawerOpen ? 'history.sidebar.show' : 'history.sidebar.hide'
@@ -374,6 +390,10 @@ export default function HistoryKitPage() {
                 selection={selection}
                 onSelectionChange={select}
                 onCopy={id => void c.handleCopy(id)}
+                onInspect={id => {
+                  select([id])
+                  setInspector(true)
+                }}
                 onDelete={ids => c.requestDelete(ids)}
                 hasMore={c.hasMore}
                 loading={c.searchLoading}

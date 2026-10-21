@@ -72,8 +72,12 @@ func (h *HostService) emit(name string, payload any) { h.app.Event.Emit(name, pa
 // daemon connection and window state stay alive until an explicit quit, and
 // removes the Dock icon; showMainWindow (tray, reopen, second launch) shows it again.
 func (h *HostService) openMainWindow() *application.WebviewWindow {
+	minWidth := 900
+	if runtime.GOOS == "linux" {
+		minWidth = 640
+	}
 	w := h.app.Window.NewWithOptions(quietOptions(withWindowMaterial(application.WebviewWindowOptions{
-		Name: "main", Title: "UniClipboard", URL: "/", Width: 1100, Height: 720, MinWidth: 900, MinHeight: 600,
+		Name: "main", Title: "UniClipboard", URL: "/", Width: 1100, Height: 720, MinWidth: minWidth, MinHeight: 600,
 		JS: windowControlsScript(),
 		// Match the default Windows custom title bar at creation so Wails sets
 		// up DWM decorations on the first activation, before the page loads.

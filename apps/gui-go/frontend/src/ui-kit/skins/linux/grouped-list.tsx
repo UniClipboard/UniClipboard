@@ -2,6 +2,7 @@ import { ContextMenu as BaseContextMenu } from '@base-ui/react/context-menu'
 import { useId, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react'
 import { GroupedVirtuoso, type GroupedVirtuosoHandle } from 'react-virtuoso'
 import type { GroupedListProps } from '@/ui-kit/contract'
+import { useSinglePaneLayout } from '@/ui-kit/skins/linux/adaptive-layout'
 import { Highlighted } from './highlighted'
 import { listStep } from './list-keys'
 import { MenuPanel } from './menus'
@@ -21,12 +22,14 @@ export function GroupedList({
   selection,
   onSelectionChange,
   onActivate,
+  onInspect,
   onDelete,
   onEndReached,
   contextMenu,
   footer,
 }: GroupedListProps) {
   const domId = useId()
+  const singlePane = useSinglePaneLayout()
   const listRef = useRef<HTMLDivElement>(null)
   const virtuoso = useRef<GroupedVirtuosoHandle>(null)
   const ids = items.map(item => item.id)
@@ -55,7 +58,8 @@ export function GroupedList({
       select.selectAll()
     } else if (event.key === 'Enter' && cursor) {
       event.preventDefault()
-      onActivate?.(cursor)
+      if (singlePane && onInspect) onInspect(cursor)
+      else onActivate?.(cursor)
     } else if ((event.key === 'Backspace' || event.key === 'Delete') && selection.length > 0) {
       if (!onDelete) return
       event.preventDefault()
@@ -132,10 +136,17 @@ export function GroupedList({
                 data-item-id={item.id}
                 data-cursor={item.id === cursor ? '' : undefined}
                 onMouseDown={event => onRowMouseDown(event, item.id)}
+                onClick={event => {
+                  if (singlePane && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
+                    onInspect?.(item.id)
+                  }
+                }}
                 onContextMenu={() => {
                   setMenuIds(isSelected ? selection : [item.id])
                 }}
-                onDoubleClick={() => onActivate?.(item.id)}
+                onDoubleClick={() => {
+                  if (!singlePane || !onInspect) onActivate?.(item.id)
+                }}
               >
                 {item.leading}
                 <span className="adw-row-text">

@@ -21,7 +21,7 @@ use crate::{
 };
 
 /// The highest field set this binary imports.
-pub const CURRENT_FIELD_SET: u64 = 1;
+pub const CURRENT_FIELD_SET: u64 = 2;
 
 #[derive(Debug)]
 pub enum ImportOutcome {
@@ -36,6 +36,32 @@ pub enum ImportOutcome {
     Deferred(&'static str),
     /// The product file write failed; both files are unchanged.
     WriteFailed(io::Error),
+}
+
+impl ImportOutcome {
+    /// Prevent a destructive Engine rewrite when a failed import would erase
+    /// legacy product values. Malformed legacy JSON already fails Engine load.
+    pub fn blocks_engine_load(&self, legacy_path: &Path) -> bool {
+        if !matches!(self, Self::Deferred(_) | Self::WriteFailed(_)) {
+            return false;
+        }
+        read(legacy_path)
+            .ok()
+            .flatten()
+            .as_ref()
+            .is_some_and(has_product_fields)
+    }
+}
+
+fn has_product_fields(legacy: &Map<String, Value>) -> bool {
+    SCALARS.iter().any(|field| {
+        field
+            .legacy
+            .is_some_and(|(section, key)| member(Some(legacy), section, key).is_some())
+    }) || legacy.contains_key(LEGACY_SHORTCUTS)
+        || ["silent_start", "lightweight_start", "theme_color"]
+            .iter()
+            .any(|key| member(Some(legacy), "general", key).is_some())
 }
 
 /// Run the import and return its outcome with the resulting effective
@@ -112,6 +138,10 @@ fn import_into(
         Err(reason) => return defer(reason),
     };
 
+    // New Engine versions erase product keys. Absence is not a downgrade edit.
+    if stored_set >= CURRENT_FIELD_SET && !has_product_fields(&legacy) {
+        return ImportOutcome::Unchanged;
+    }
     let derived = derive(&legacy);
     let fingerprint = fingerprint(&derived);
     let repeated = if stored_set < CURRENT_FIELD_SET {
@@ -152,6 +182,13 @@ fn import_into(
     let mut invalid = Vec::new();
     let mut kept = Vec::new();
     for (path, (section, key, value)) in &derived {
+        let field_set = SCALARS
+            .iter()
+            .find(|field| field.path() == *path)
+            .map_or(1, |field| field.field_set());
+        if !repeated && field_set <= stored_set {
+            continue;
+        }
         if user_written.contains(path) {
             let legacy_normalized = normalize_one(path, value.as_ref());
             if before.get(path) != legacy_normalized.as_ref() {
@@ -185,7 +222,7 @@ fn import_into(
                 .collect()
         })
         .unwrap_or_default();
-    for id in stale {
+    for id in stale.into_iter().filter(|_| repeated || stored_set < 1) {
         changed.push(shortcut_path(&id));
         set_member(document, SHORTCUTS, &id, None);
     }

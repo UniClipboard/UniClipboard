@@ -19,7 +19,7 @@ use std::sync::Arc;
 
 use serde_json::{Map, Value};
 use tokio::sync::{broadcast, Mutex};
-use tracing::warn;
+use tracing::{warn, Instrument};
 
 mod fields;
 mod grammar;
@@ -185,6 +185,35 @@ impl DesktopSettingsStore {
             settings: state.settings.clone(),
             revision: state.revision,
         }
+    }
+
+    /// Delete the host-owned file only after Engine reset succeeds. Serialize
+    /// deletion with writes and publish defaults only after deletion succeeds.
+    pub async fn reset(&self) -> Result<(), DesktopSettingsError> {
+        let inner = Arc::clone(&self.inner);
+        tokio::spawn(
+            async move {
+                let mut state = inner.state.lock().await;
+                if let Some(path) = &inner.path {
+                    match std::fs::remove_file(path) {
+                        Ok(()) => {}
+                        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+                        Err(error) => return Err(DesktopSettingsError::Write(error)),
+                    }
+                }
+                state.raw = None;
+                state.settings = DesktopSettings::default();
+                state.revision += 1;
+                let _ = inner.changes.send(DesktopSettingsChanged {
+                    revision: state.revision,
+                    sections: SettingsSection::ALL.to_vec(),
+                });
+                Ok(())
+            }
+            .in_current_span(),
+        )
+        .await
+        .map_err(|error| DesktopSettingsError::Write(io::Error::other(error)))?
     }
 
     /// Check `patch` against the grammars and the current document without

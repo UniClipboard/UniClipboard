@@ -157,6 +157,9 @@ pub struct GeneralSettings {
     pub theme_overrides_dark: BTreeMap<String, String>,
     pub language: Option<String>,
     pub usage_analytics_enabled: bool,
+    /// Whether the next daemon start installs the debug log profile. The profile
+    /// this process actually installed is a separate fact.
+    pub debug_mode: bool,
 }
 
 impl Default for GeneralSettings {
@@ -176,6 +179,7 @@ impl Default for GeneralSettings {
             theme_overrides_dark: BTreeMap::new(),
             language: None,
             usage_analytics_enabled: true,
+            debug_mode: false,
         }
     }
 }
@@ -227,6 +231,7 @@ pub struct GeneralSettingsPatch {
     pub theme_overrides_dark: Option<BTreeMap<String, String>>,
     pub language: Option<Option<String>>,
     pub usage_analytics_enabled: Option<bool>,
+    pub debug_mode: Option<bool>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]

@@ -12,9 +12,7 @@ use uc_daemon_contract::api::dto::diagnostics::{
     NetworkLogStatusDto, UpdateDebugModeRequestDto, UpdateDebugModeResultDto,
 };
 use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
-use uc_engine::{
-    EngineError, EngineErrorCategory, Operation, OperationResult, UpdateDebugModeInput,
-};
+use uc_engine::{EngineError, EngineErrorCategory, Operation, OperationResult};
 use utoipa;
 
 use crate::api::dto::error::{log_facade_failure, ApiError};
@@ -145,31 +143,30 @@ pub async fn get_debug_status_handler(
             "engine returned an unexpected diagnostics result",
         ));
     };
+    info!("debug status queried");
     Ok(Json(ApiEnvelope::now(debug_status_dto(
-        status.debug_mode,
-        status.effective_log_profile,
-        status.restart_required,
-        uc_observability::installed_log_profile(),
+        state
+            .desktop_settings
+            .snapshot()
+            .await
+            .settings
+            .general
+            .debug_mode,
+        status.effective_log_profile.as_deref(),
     ))))
 }
 
-/// Debug Mode status as the user can act on it. `debug_mode` is the persisted
-/// setting; the log profile is what this process actually installed, which the
-/// setting only reaches after a restart (and which an environment override can
-/// replace). The installed profile wins over the Engine's computed one.
-fn debug_status_dto(
-    debug_mode: bool,
-    engine_log_profile: String,
-    restart_required: bool,
-    installed_log_profile: Option<&str>,
-) -> DebugStatusDto {
+/// The preference is persistent; the declared profile describes this process.
+fn debug_status_dto(debug_mode: bool, installed_log_profile: Option<&str>) -> DebugStatusDto {
     DebugStatusDto {
         debug_mode,
-        effective_log_profile: installed_log_profile
-            .map(str::to_owned)
-            .unwrap_or(engine_log_profile),
-        restart_required,
+        effective_log_profile: installed_log_profile.unwrap_or("unknown").to_owned(),
+        restart_required: debug_restart_required(debug_mode, installed_log_profile),
     }
+}
+
+pub(crate) fn debug_restart_required(enabled: bool, profile: Option<&str>) -> bool {
+    enabled != matches!(profile, Some("debug" | "debug_clipboard"))
 }
 
 #[utoipa::path(
@@ -188,17 +185,13 @@ pub async fn update_debug_mode_handler(
     State(state): State<DaemonApiState>,
     Json(payload): Json<UpdateDebugModeRequestDto>,
 ) -> Result<Json<ApiEnvelope<UpdateDebugModeResultDto>>, ApiError> {
-    let result = state
-        .execute(Operation::UpdateDebugMode(UpdateDebugModeInput {
-            enabled: payload.enabled,
-        }))
-        .await
-        .map_err(|error| diagnostics_error_to_api("update_debug_mode", error))?;
-    let OperationResult::DebugModeUpdated(result) = result else {
-        return Err(ApiError::internal(
-            "engine returned an unexpected debug-mode result",
-        ));
-    };
+    let mut patch = uc_desktop_settings::DesktopSettingsPatch::default();
+    patch.general.debug_mode = Some(payload.enabled);
+    state.desktop_settings.apply(patch).await.map_err(|error| {
+        tracing::warn!(error = %error, error_kind = "desktop_settings_write", "Debug preference write failed");
+        ApiError::internal("failed to persist debug preference")
+    })?;
+    let result = debug_status_dto(payload.enabled, uc_observability::installed_log_profile());
     info!(
         debug_mode = result.debug_mode,
         restart_required = result.restart_required,
@@ -466,15 +459,14 @@ mod tests {
     #[test]
     fn debug_status_reports_the_profile_the_process_installed() {
         // Debug Mode is saved but the process still runs the production profile.
-        let status = debug_status_dto(true, "debug".to_owned(), true, Some("prod"));
+        let status = debug_status_dto(true, Some("prod"));
         assert!(status.debug_mode);
         assert_eq!(status.effective_log_profile, "prod");
         assert!(status.restart_required);
 
-        // Without an installed profile (host logging not up) the Engine value
-        // is all there is.
-        let status = debug_status_dto(false, "prod".to_owned(), false, None);
-        assert_eq!(status.effective_log_profile, "prod");
+        // A host that made no declaration reports an unknown profile.
+        let status = debug_status_dto(false, None);
+        assert_eq!(status.effective_log_profile, "unknown");
     }
 
     struct FailingArchive(DaemonDiagnosticArchiveError);

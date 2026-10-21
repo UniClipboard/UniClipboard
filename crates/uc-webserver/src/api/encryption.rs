@@ -649,10 +649,11 @@ async fn lock_handler(
     operation_id = "factoryResetSpace",
     tag = "encryption",
     responses(
-        (status = 200, description = "Space reset to factory state", body = EncryptionActionEnvelope),
-        (status = 500, description = "Internal server error", body = ApiErrorResponse),
+        (status = 200, description = "Space and Desktop product preferences reset; telemetry consent retained", body = EncryptionActionEnvelope),
+        (status = 500, description = "Engine reset failed, or PRODUCT_SETTINGS_RESET_FAILED: Engine reset completed but product file deletion failed; retry factory reset", body = ApiErrorResponse),
     )
 )]
+#[tracing::instrument(name = "api.encryption.factory_reset", skip(state))]
 async fn factory_reset_handler(
     State(state): State<DaemonApiState>,
 ) -> Result<Json<ApiEnvelope<EncryptionActionResponse>>, ApiError> {
@@ -666,8 +667,18 @@ async fn factory_reset_handler(
         ));
     }
 
-    info!("space factory-reset completed");
     crate::api::content_lock::notify_facts_changed(&state);
+    state.desktop_settings.reset().await.map_err(|error| {
+        tracing::error!(error = %error, error_kind = "product_settings_reset_failed", retryable = true, "Engine reset succeeded but product settings deletion failed");
+        ApiError {
+            status: axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            code: "PRODUCT_SETTINGS_RESET_FAILED".to_owned(),
+            message: "Engine reset completed; product settings could not be deleted. Retry factory reset.".to_owned(),
+            details: None,
+        }
+    })?;
+    uc_observability::set_analytics_enabled(true);
+    info!("space factory-reset completed");
     Ok(Json(ApiEnvelope::now(EncryptionActionResponse {
         success: true,
     })))

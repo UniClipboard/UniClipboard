@@ -51,11 +51,9 @@ pub fn engine_settings_changed_event(
             SettingsSectionSummary::RetentionPolicy => SettingsSectionDto::RetentionPolicy,
             SettingsSectionSummary::Security => SettingsSectionDto::Security,
             SettingsSectionSummary::Pairing => SettingsSectionDto::Pairing,
-            SettingsSectionSummary::KeyboardShortcuts => SettingsSectionDto::KeyboardShortcuts,
             SettingsSectionSummary::FileSync => SettingsSectionDto::FileSync,
             SettingsSectionSummary::Network => SettingsSectionDto::Network,
             SettingsSectionSummary::MobileSync => SettingsSectionDto::MobileSync,
-            SettingsSectionSummary::QuickPanel => SettingsSectionDto::QuickPanel,
         })
         .collect();
     changed_event(SettingsOwnerDto::Engine, sections, revision.advance())

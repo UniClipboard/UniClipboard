@@ -468,7 +468,7 @@ fn daemon_diagnostics_paths_depend_on_the_desktop_diagnostics_capability() {
     assert!(
         !handler.contains("app_facade_or_error()")
             && handler.contains("Operation::QueryDiagnostics")
-            && handler.contains("Operation::UpdateDebugMode")
+            && handler.contains("state.desktop_settings.apply(patch)")
             && handler.contains("DaemonDiagnosticsRuntime")
             && handler.contains("DaemonDiagnosticArchive")
             && !handler.contains("Operation::ExportDiagnosticLogs")

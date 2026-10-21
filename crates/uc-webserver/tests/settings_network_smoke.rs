@@ -61,9 +61,6 @@ fn simulate_put(fixture: &mut SettingsBoundaryFixture, body_json: &str) -> Value
 
     let patch: SettingsPatch = payload.into_domain();
     if let Some(general) = patch.general {
-        if let Some(value) = general.auto_start {
-            fixture.current.general.auto_start = value;
-        }
         if let Some(value) = general.device_name {
             fixture.current.general.device_name = value;
         }

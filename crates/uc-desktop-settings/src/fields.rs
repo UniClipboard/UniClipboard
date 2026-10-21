@@ -46,6 +46,16 @@ impl Scalar {
     pub(crate) fn accepts(&self, value: &Value) -> bool {
         accepts(self.kind, value)
     }
+
+    /// The import field set that first copies this field from the Engine file
+    /// (ADR-013 section 8.2); 0 for a field that never lived there.
+    pub(crate) fn field_set(&self) -> u64 {
+        match (self.legacy, self.key) {
+            (None, _) => 0,
+            (Some(_), "debugMode") => 2,
+            (Some(_), _) => 1,
+        }
+    }
 }
 
 macro_rules! scalar {
@@ -60,7 +70,7 @@ macro_rules! scalar {
     };
 }
 
-/// Every scalar field. Field set 1 is every entry with a legacy path.
+/// Every scalar field. [`Scalar::field_set`] says which import set copies it.
 pub(crate) const SCALARS: &[Scalar] = &[
     scalar!(
         GENERAL,
@@ -159,6 +169,13 @@ pub(crate) const SCALARS: &[Scalar] = &[
         Some(("general", "usage_analytics_enabled")),
         Kind::Bool,
         true
+    ),
+    scalar!(
+        GENERAL,
+        "debugMode",
+        Some(("general", "debug_mode")),
+        Kind::Bool,
+        false
     ),
     scalar!(
         QUICK_PANEL,
@@ -387,6 +404,9 @@ pub(crate) fn patch_entries(patch: &DesktopSettingsPatch, current: &DesktopSetti
     if let Some(v) = general.usage_analytics_enabled {
         push(GENERAL, "usageAnalyticsEnabled", Some(Value::Bool(v)));
     }
+    if let Some(v) = general.debug_mode {
+        push(GENERAL, "debugMode", Some(Value::Bool(v)));
+    }
     for (id, binding) in &patch.keyboard_shortcuts {
         push(
             SHORTCUTS,
@@ -503,6 +523,7 @@ pub(crate) fn typed(values: &BTreeMap<String, Value>) -> DesktopSettings {
         "general.usageAnalyticsEnabled",
         &mut general.usage_analytics_enabled,
     );
+    flag("general.debugMode", &mut general.debug_mode);
 
     let quick_panel = &mut settings.quick_panel;
     flag("quickPanel.enabled", &mut quick_panel.enabled);

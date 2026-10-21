@@ -39,7 +39,6 @@ impl IntoDomain<app_settings::SettingsPatch> for SettingsPatchDto {
                 .general
                 .map(|general| app_settings::GeneralSettingsPatch {
                     device_name: general.device_name,
-                    debug_mode: general.debug_mode,
                     ..Default::default()
                 })
                 .filter(|general| *general != app_settings::GeneralSettingsPatch::default()),
@@ -76,7 +75,6 @@ impl IntoDomain<app_settings::SettingsPatch> for SettingsPatchDto {
                     session_timeout_secs: pairing.session_timeout.map(|value| value.as_secs()),
                     max_retries: pairing.max_retries,
                 }),
-            keyboard_shortcuts: None,
             file_sync: self
                 .file_sync
                 .map(|file_sync| app_settings::FileSyncSettingsPatch {
@@ -109,7 +107,6 @@ impl IntoDomain<app_settings::SettingsPatch> for SettingsPatchDto {
                         }
                     }),
                 }),
-            quick_panel: None,
         }
     }
 }
@@ -139,7 +136,7 @@ impl IntoApiDto<SettingsDto> for (app_settings::SettingsView, &DesktopSettings) 
                 update_channel: desktop.general.update_channel.map(IntoApiDto::into_api_dto),
                 telemetry_enabled: uc_observability::is_telemetry_enabled(),
                 usage_analytics_enabled: desktop.general.usage_analytics_enabled,
-                debug_mode: view.general.debug_mode,
+                debug_mode: desktop.general.debug_mode,
                 tray_icon: desktop.general.tray_icon.into_api_dto(),
             },
             sync: SyncSettingsDto {
@@ -496,6 +493,7 @@ pub fn desktop_patch(patch: &SettingsPatchDto) -> DesktopSettingsPatch {
                 theme_overrides_dark: general.theme_overrides_dark.clone(),
                 language: general.language.clone(),
                 usage_analytics_enabled: general.usage_analytics_enabled,
+                debug_mode: general.debug_mode,
             }
         }),
         keyboard_shortcuts: patch

@@ -456,7 +456,12 @@ async fn update_settings_handler(
         .general
         .as_ref()
         .and_then(|general| general.debug_mode)
-        .is_some();
+        .is_some_and(|enabled| {
+            super::diagnostics::debug_restart_required(
+                enabled,
+                uc_observability::installed_log_profile(),
+            )
+        });
     let restart_required = payload.network.is_some() || debug_mode_changed;
 
     let telemetry_update = payload.general.as_ref().and_then(|g| g.telemetry_enabled);

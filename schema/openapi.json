@@ -10715,7 +10715,7 @@
                 }
               }
             },
-            "description": "Space reset to factory state"
+            "description": "Space and Desktop product preferences reset; telemetry consent retained"
           },
           "500": {
             "content": {
@@ -10725,7 +10725,7 @@
                 }
               }
             },
-            "description": "Internal server error"
+            "description": "Engine reset failed, or PRODUCT_SETTINGS_RESET_FAILED: Engine reset completed but product file deletion failed; retry factory reset"
           }
         },
         "security": [

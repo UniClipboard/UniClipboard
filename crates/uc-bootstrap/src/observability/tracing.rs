@@ -33,7 +33,6 @@ use sentry::integrations::tracing::{
     breadcrumb_from_event, event_from_event, log_from_event, CombinedEventMapping, EventFilter,
     EventMapping,
 };
-use serde::Deserialize;
 use tracing_subscriber::filter::{filter_fn, FilterExt};
 use tracing_subscriber::prelude::*;
 
@@ -116,52 +115,11 @@ fn sentry_event_filter(level: &::tracing::Level, target: &str) -> Option<EventFi
     }
 }
 
-#[derive(Deserialize)]
-#[serde(default)]
-#[derive(Default)]
-struct BootstrapSettings {
-    general: BootstrapGeneralSettings,
-}
-
-#[derive(Deserialize)]
-#[serde(default)]
-#[derive(Default)]
-struct BootstrapGeneralSettings {
-    debug_mode: bool,
-}
-
-fn load_bootstrap_settings(settings_path: &Path) -> BootstrapSettings {
-    let content = match std::fs::read_to_string(settings_path) {
-        Ok(content) => content,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            return BootstrapSettings::default();
-        }
-        Err(error) => {
-            ::tracing::warn!(
-                error_kind = ?error.kind(),
-                "Failed to read bootstrap settings; using defaults"
-            );
-            return BootstrapSettings::default();
-        }
-    };
-
-    match serde_json::from_str(&content) {
-        Ok(settings) => settings,
-        Err(error) => {
-            ::tracing::warn!(
-                error_class = ?error.classify(),
-                "Failed to parse bootstrap settings; using defaults"
-            );
-            BootstrapSettings::default()
-        }
-    }
-}
-
-fn select_log_profile(settings: &BootstrapSettings) -> LogProfile {
+fn select_log_profile(debug_mode: bool) -> LogProfile {
     if std::env::var("UC_LOG_PROFILE").is_ok() || std::env::var("RUST_LOG").is_ok() {
         return LogProfile::from_env();
     }
-    if settings.general.debug_mode {
+    if debug_mode {
         LogProfile::Debug
     } else {
         LogProfile::from_env()
@@ -261,8 +219,11 @@ fn install_tracing_subscriber() -> anyhow::Result<Option<DaemonObservability>> {
 
     // Step 2: Select log profile. RUST_LOG and UC_LOG_PROFILE remain explicit
     // overrides; persisted Debug Mode only applies when neither env override is set.
-    let settings = load_bootstrap_settings(&paths.settings_path);
-    let profile = select_log_profile(&settings);
+    let (_, settings) = uc_desktop_settings::import_legacy(
+        &paths.app_data_root_dir.join(uc_desktop_settings::FILE_NAME),
+        &paths.settings_path,
+    );
+    let profile = select_log_profile(settings.general.debug_mode);
     uc_observability::set_installed_log_profile(&profile);
 
     // Import the legacy preference before Engine can rewrite its settings.

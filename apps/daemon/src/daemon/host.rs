@@ -140,15 +140,6 @@ async fn run_async_with_diagnostics(
     let file_handles: Arc<dyn DaemonFileHandles> =
         Arc::new(DesktopDaemonFileHandles::new(prepared.file_handles()));
     let (engine_config, host_capabilities) = prepared.into_engine_start();
-    // Product settings load before the Engine starts and never depend on it.
-    // The profile instance lock held by `run_async` makes this the only writer
-    // of the file (ADR-013).
-    let desktop_settings = Arc::new(DesktopSettingsStore::load(
-        process_paths
-            .app_data_root()
-            .join(uc_desktop_settings::FILE_NAME),
-    ));
-
     let pid_manager = DaemonPidManager::new(process_paths.daemon_pid());
     let _pid_file_guard = DaemonPidFileGuard::activate(pid_manager, run_mode.process_mode())?;
     let token =
@@ -206,6 +197,24 @@ async fn run_async_with_diagnostics(
         }
     };
     let engine = Arc::new(engine);
+    // Engine startup applies a staged config import. Load its restored product
+    // file afterwards so stale memory cannot overwrite the restored values.
+    // The profile instance lock held by `run_async` makes this the only writer
+    // of the file (ADR-013).
+    let desktop_settings = Arc::new(DesktopSettingsStore::load(
+        process_paths
+            .app_data_root()
+            .join(uc_desktop_settings::FILE_NAME),
+    ));
+
+    uc_observability::set_analytics_enabled(
+        desktop_settings
+            .snapshot()
+            .await
+            .settings
+            .general
+            .usage_analytics_enabled,
+    );
     diagnostics.mark_runtime_started();
 
     initialize_analytics_context(

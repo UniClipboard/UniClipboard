@@ -108,7 +108,7 @@ fn host_directories(paths: &DesktopHostPaths, temporary_dir: PathBuf) -> HostDir
 
 pub fn prepare_desktop_engine_host() -> WiringResult<DesktopEngineHost> {
     let paths = resolve_desktop_host_paths()?;
-    import_product_settings(&paths);
+    import_product_settings(&paths)?;
     let secure_storage_prelude = build_secure_storage_prelude(&paths)?;
     let secure_storage = secure_storage_prelude.secure_storage;
     let (_, system_clipboard, clipboard_wiring) = create_desktop_system_clipboard()?.into_parts();
@@ -122,7 +122,29 @@ pub fn prepare_desktop_engine_host() -> WiringResult<DesktopEngineHost> {
         ))
     })?;
     let engine_config = EngineConfig::new(env!("CARGO_PKG_VERSION"))
-        .with_portable_storage(uc_app_paths::is_portable());
+        .with_portable_storage(uc_app_paths::is_portable())
+        .with_host_configuration_files([
+            uc_engine::HostConfigurationFile::new(
+                uc_desktop_settings::FILE_NAME,
+                uc_engine::HostConfigurationFileReset::ByHost,
+            ),
+            uc_engine::HostConfigurationFile::new(
+                "skipped_version.json",
+                uc_engine::HostConfigurationFileReset::ByEngine,
+            ),
+            uc_engine::HostConfigurationFile::new(
+                "last_notified_update.json",
+                uc_engine::HostConfigurationFileReset::ByEngine,
+            ),
+            uc_engine::HostConfigurationFile::new(
+                "update_prompt_throttle.json",
+                uc_engine::HostConfigurationFileReset::ByEngine,
+            ),
+        ]);
+    let engine_config = match uc_observability::installed_log_profile() {
+        Some(profile) => engine_config.with_host_log_profile(profile),
+        None => engine_config,
+    };
     #[cfg(feature = "e2e-rendezvous")]
     let engine_config = match std::env::var("UC_E2E_RENDEZVOUS_BASE_URL") {
         Ok(base_url) if !base_url.trim().is_empty() => {
@@ -158,13 +180,22 @@ pub fn prepare_desktop_engine_host() -> WiringResult<DesktopEngineHost> {
 /// Copy product fields out of the Engine `settings.json` before anything loads
 /// it (ADR-013 section 8.2). Both the daemon and `uc-dev-cli` start the Engine
 /// only through [`prepare_desktop_engine_host`], so this is the single choke
-/// point. The import never fails startup: a deferred or failed import keeps
-/// the marker and retries on the next start.
-fn import_product_settings(paths: &DesktopHostPaths) {
+/// point. A failed import must not let Engine erase the only legacy copy.
+fn import_product_settings(paths: &DesktopHostPaths) -> WiringResult<()> {
     let product_path = paths.app_data_root_dir.join(uc_desktop_settings::FILE_NAME);
     let (outcome, settings) =
         uc_desktop_settings::import_legacy(&product_path, &paths.settings_path);
     tracing::debug!(outcome = ?outcome, "product settings import finished");
+    if outcome.blocks_engine_load(&paths.settings_path) {
+        tracing::error!(
+            error_kind = "product_settings_import_incomplete",
+            retryable = true,
+            "Engine startup stopped to preserve legacy product settings"
+        );
+        return Err(WiringError::ConfigInit(
+            "product settings migration must complete before Engine starts; correct product file permissions or type and restart".to_owned(),
+        ));
+    }
     // Product consent is authoritative from field set 1 on; the Engine file
     // only holds a frozen copy.
     uc_observability::set_analytics_enabled(settings.general.usage_analytics_enabled);
@@ -173,6 +204,7 @@ fn import_product_settings(paths: &DesktopHostPaths) {
         source = "desktop-settings",
         "analytics gate set from product settings"
     );
+    Ok(())
 }
 
 struct DesktopSecureStorage {

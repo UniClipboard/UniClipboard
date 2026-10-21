@@ -5940,7 +5940,7 @@ export type FactoryResetSpaceData = {
 
 export type FactoryResetSpaceErrors = {
     /**
-     * Internal server error
+     * Engine reset failed, or PRODUCT_SETTINGS_RESET_FAILED: Engine reset completed but product file deletion failed; retry factory reset
      */
     500: ApiErrorResponse;
 };
@@ -5949,7 +5949,7 @@ export type FactoryResetSpaceError = FactoryResetSpaceErrors[keyof FactoryResetS
 
 export type FactoryResetSpaceResponses = {
     /**
-     * Space reset to factory state
+     * Space and Desktop product preferences reset; telemetry consent retained
      */
     200: EncryptionActionEnvelope;
 };

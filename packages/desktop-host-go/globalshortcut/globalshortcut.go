@@ -205,9 +205,14 @@ func (a *Applier) applyLocked(target []string) error {
 	}
 	if err != nil {
 		a.err = err.Error()
-		log.Printf("global shortcut: the executor did not take the binding: %v", err)
+		if a.activeKnown {
+			log.Printf("global shortcut: the executor did not take %q and holds %q: %v", target, held, err)
+		} else {
+			log.Printf("global shortcut: unknown whether the executor took %q: %v", target, err)
+		}
 		return err
 	}
+	log.Printf("global shortcut: the executor holds %q", held)
 	a.err = ""
 	return nil
 }

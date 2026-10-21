@@ -101,6 +101,8 @@ Warnings are logged once, at load.
    revision and send the notification, while it still holds the lock.
 6. If step 4 fails, the memory state, the revision and the notifications are unchanged, and the
    caller receives an error.
+7. Steps 2–5 run on their own task. A caller that is dropped mid-write cannot leave the file
+   changed while the memory state, the revision and the notification stay behind.
 
 ### 5. Revision and notification
 
@@ -144,6 +146,7 @@ Warnings are logged once, at load.
 | F15 | Invalid write (`trayIcon: "bogus"`) | rejected; file and memory unchanged | daemon E2E |
 | F16 | A `trayIcon`-only `PUT` changes the Engine `settings.json` | not allowed | daemon E2E (hash before and after) |
 | F17 | Logs leak a setting value | warnings carry only the field path and a reason category | daemon E2E (`neon` absent from the log) |
+| F18 | The caller is dropped while the write is in flight (cancelled HTTP request) | the write runs on its own task: the file, memory, revision and notification still move together | library test |
 
 ## Consequences
 

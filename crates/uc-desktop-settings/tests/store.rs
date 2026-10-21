@@ -1,7 +1,7 @@
 //! End-to-end checks of the product settings store against real files.
 //!
 //! Each case maps to a failure mode in
-//! `docs/adr/adr-013-desktop-product-settings.md` (F1–F14).
+//! `docs/adr/adr-013-desktop-product-settings.md` (F1–F14, F18).
 
 #![allow(clippy::unwrap_used)]
 
@@ -314,4 +314,40 @@ async fn concurrent_writes_are_serialized_and_counted_exactly() {
 
     let reloaded = DesktopSettingsStore::load(path).snapshot().await;
     assert_eq!(reloaded.settings, snapshot.settings);
+}
+
+// F18
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_cancelled_caller_cannot_split_the_file_from_memory() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = settings_path(&dir);
+    let store = DesktopSettingsStore::load(path.clone());
+    let mut changes = store.subscribe();
+
+    // The caller is dropped after the first poll, while the write is in flight.
+    let _ = tokio::time::timeout(std::time::Duration::ZERO, store.apply(tray(TrayIcon::Cat))).await;
+
+    let mut snapshot = store.snapshot().await;
+    for _ in 0..200 {
+        if snapshot.revision > 0 {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        snapshot = store.snapshot().await;
+    }
+    let on_disk = std::fs::read(&path)
+        .ok()
+        .map(|bytes| serde_json::from_slice::<Value>(&bytes).unwrap());
+    match on_disk {
+        Some(document) => {
+            assert_eq!(document["general"]["trayIcon"], "cat");
+            assert_eq!(snapshot.settings.general.tray_icon, TrayIcon::Cat);
+            assert_eq!(snapshot.revision, 1);
+            assert_eq!(changes.try_recv().unwrap().revision, 1);
+        }
+        None => {
+            assert_eq!(snapshot.revision, 0);
+            assert!(changes.try_recv().is_err());
+        }
+    }
 }

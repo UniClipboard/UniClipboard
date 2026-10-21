@@ -172,6 +172,7 @@ async fn first_start_without_a_file_uses_the_default_and_creates_nothing() {
     assert!(!context.product_path().exists(), "load created the file");
     context.note("read default", json!({ "trayIcon": "glyph" }));
 
+    context.note("completed", Value::Null);
     context.keep_artifact();
 }
 
@@ -210,6 +211,7 @@ async fn corrupt_file_does_not_stop_startup_and_stays_until_an_explicit_write() 
         .iter()
         .any(|line| line.contains("desktop_settings_read") && line.contains("malformed_json")));
 
+    context.note("completed", Value::Null);
     context.keep_artifact();
 }
 
@@ -311,5 +313,6 @@ async fn invalid_and_unknown_values_are_kept_and_explicit_writes_persist() {
     assert_eq!(read_json(&context.product_path()), expected);
     context.note("after restart", json!({ "trayIcon": "cat" }));
 
+    context.note("completed", Value::Null);
     context.keep_artifact();
 }

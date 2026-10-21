@@ -15,6 +15,7 @@
 
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use serde_json::{Map, Value};
 use tokio::sync::{broadcast, Mutex};
@@ -152,6 +153,10 @@ struct State {
 
 /// The single writer of the product settings file.
 pub struct DesktopSettingsStore {
+    inner: Arc<Inner>,
+}
+
+struct Inner {
     path: Option<PathBuf>,
     state: Mutex<State>,
     changes: broadcast::Sender<DesktopSettingsChanged>,
@@ -188,18 +193,20 @@ impl DesktopSettingsStore {
     ) -> Self {
         let (changes, _) = broadcast::channel(CHANGE_CAPACITY);
         Self {
-            path,
-            state: Mutex::new(State {
-                raw,
-                settings,
-                revision: 0,
+            inner: Arc::new(Inner {
+                path,
+                state: Mutex::new(State {
+                    raw,
+                    settings,
+                    revision: 0,
+                }),
+                changes,
             }),
-            changes,
         }
     }
 
     pub async fn snapshot(&self) -> DesktopSettingsSnapshot {
-        let state = self.state.lock().await;
+        let state = self.inner.state.lock().await;
         DesktopSettingsSnapshot {
             settings: state.settings.clone(),
             revision: state.revision,
@@ -207,14 +214,30 @@ impl DesktopSettingsStore {
     }
 
     pub fn subscribe(&self) -> broadcast::Receiver<DesktopSettingsChanged> {
-        self.changes.subscribe()
+        self.inner.changes.subscribe()
     }
 
     /// Write the fields `patch` names. The file is replaced atomically, and
     /// only after that succeeds do the memory state and revision advance and
     /// the notification go out. A write that leaves the document unchanged
     /// does none of that.
+    ///
+    /// The write runs on its own task, so a caller that is dropped mid-write
+    /// (a cancelled HTTP request) cannot leave the file changed while memory,
+    /// revision and notification stay behind.
     pub async fn apply(
+        &self,
+        patch: DesktopSettingsPatch,
+    ) -> Result<ApplyResult, DesktopSettingsError> {
+        let inner = Arc::clone(&self.inner);
+        tokio::spawn(async move { inner.apply(patch).await })
+            .await
+            .map_err(|error| DesktopSettingsError::Write(io::Error::other(error)))?
+    }
+}
+
+impl Inner {
+    async fn apply(
         &self,
         patch: DesktopSettingsPatch,
     ) -> Result<ApplyResult, DesktopSettingsError> {

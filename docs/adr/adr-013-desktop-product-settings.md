@@ -379,9 +379,23 @@ Not changed in task 4 (task 5 handles them):
     the paths not in `userWritten`. Written paths keep the local value. The result is a partial
     restore, not the full restore that pre-P1 versions give.
 - **Factory reset.** The Engine deletes `settings.json`. The product file stays until task 10
-  (D5). The Engine writes defaults on its next start. On the start after that the fingerprint
-  differs, so paths not in `userWritten` return to their defaults. Written paths keep their
-  values.
+  (D5). The Engine loads defaults without saving them when the file is missing, so the
+  preferences survive until the first Engine settings save. On the start after that save the
+  fingerprint differs, so paths not in `userWritten` return to their defaults; written paths
+  keep their values. Not verified by a run.
+- **Whole-section saves defeat the `userWritten` rule until task 5.** The frontend saves the whole
+  `general` section on every General change, so one GUI save puts every general path into
+  `userWritten`. After that, a downgrade edit or a config import restores nothing in `general`.
+  The repeated import works as designed only for diff patches. Task 4 must not ship ahead of
+  task 5.
+- **Recorder output outside the token set is rejected on write.** The recorder can still produce
+  tokens outside 8.1.1 (non-ASCII characters, `dead`, `contextmenu`, `altgraph`). Saving such a
+  value now returns 400, so the user sees a save error instead of an inert binding (task 5/6).
+- **An unusable product file serves defaults.** When the product file is malformed, the import
+  is deferred and every moved field is effective at its default, including
+  `usageAnalyticsEnabled` (the gate is set to `true`) and `autoStart` (the Go host's start-up
+  reconcile then removes an existing login item). This is the section 3 rule applied to more
+  fields; it needs a decision before release.
 - **The Engine still parses the frozen fields** until P2 removes them. The import keeps an
   invalid raw value and uses the default, but it cannot change what the Engine does with the
   same value in `settings.json` (acceptance B3 records the actual outcome).

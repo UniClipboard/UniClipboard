@@ -474,6 +474,26 @@ async fn desktop_0_19_4_settings_import_with_engine_defaults() {
     let product = run.product();
     assert_eq!(product["import"]["fieldSet"], 1);
     assert_eq!(product["general"]["startupMode"], json!("normal"));
+
+    // B1b on a real Engine rewrite: an Engine-only write re-serializes the
+    // historical file (for example the `auto_sync` alias); the next start must
+    // not import again.
+    assert_eq!(
+        run.put("engine-only write", json!({ "sync": { "syncOnRestore": true } }))
+            .await
+            .0,
+        200
+    );
+    let rewritten = run.bytes(LEGACY).unwrap();
+    assert_ne!(rewritten, legacy, "Engine did not rewrite settings.json");
+    let product_bytes = run.bytes(PRODUCT).unwrap();
+    run.restart("start after the Engine rewrote the 0.19.4 file").await;
+    assert_import_read(&run, &rewritten);
+    assert_eq!(run.bytes(PRODUCT).unwrap(), product_bytes);
+    assert_eq!(
+        run.count_events("Legacy settings unchanged since the last import"),
+        1
+    );
     run.note("completed", settings);
     run.keep();
 }

@@ -43,7 +43,7 @@
       "node scripts/refresh-agents-structure.mjs"
     ],
     "*.{js,jsx,ts,tsx}": [
-      "oxlint --fix",
+      "oxlint --fix --no-error-on-unmatched-pattern",
       "oxfmt --write --no-error-on-unmatched-pattern"
     ],
     "*.md": [

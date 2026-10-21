@@ -3,12 +3,16 @@
 
 One isolated profile; the launch preferences are stored through the shared settings API by a setup launch
 (a full quit then stops the daemon, so each following launch is a cold start that spawns the daemon):
-  - silent:      the main window is not created or shown, the "still running" notice is shown, the app keeps running;
+  - silent:      the main window is not created or shown, the "still running" notice is shown, the app keeps running
+                 without a Dock icon;
+  - silent Dock lifecycle: the tray's Open builds and shows the window with the Dock icon, a close request hides
+    the window and removes the Dock icon, twice in a row;
   - lightweight cold start: the GUI exits by itself with the daemon left running, after the notice;
   - lightweight reopen: the daemon is already running, so the GUI shows the main window and does not notify;
   - normal cold start with restore enabled: the cold-launch sequence runs (auto-unlock from the keyring,
-    lifecycle retry, restore attempt) and the window is shown.
-The e2e build records notifications instead of showing them, and a native observer reports the window state
+    lifecycle retry, restore attempt) and the window is shown with the Dock icon.
+The e2e build records notifications and the requested Dock icon state (quiet mode keeps the test app an accessory, so the
+real activation policy is not changed: the native Dock, app menu and focus behaviour is a manual check) instead of showing them, and a native observer reports the window state
 of a launch (a hidden window may not run page scripts). Not covered: an actual restore of a history entry
 (the profile has no history; the restore call sequence stops at "no clipboard history entry to restore").
 """
@@ -39,12 +43,13 @@ class Profile:
         self.base = {'PATH': path, 'UC_GPUI_QUICK_PANEL': '0', 'UC_GUI_GO_ISOLATED': '1'}
         self.notify_log = Path(tempfile.mkdtemp(prefix='uc-gui-go-notify-')) / 'n.log'
 
-    def launch(self, label, phase, exit_mode='full', observe=None, wait=True, timeout=150):
+    def launch(self, label, phase, exit_mode='full', observe=None, wait=True, timeout=150, control=None):
         evidence = self.out / f'startup-{label}.jsonl'
         evidence.write_text('')
         env = isolated_env(self.home, self.profile, dict(self.base, UC_GUI_GO_EVIDENCE=str(evidence), UC_GUI_GO_E2E_PHASE=phase,
                                                           UC_GUI_GO_EXIT_MODE=exit_mode, UC_GUI_GO_E2E_NOTIFY_LOG=str(self.notify_log),
-                                                          **({'UC_GUI_GO_E2E_OBSERVE': str(observe)} if observe else {})))
+                                                          **({'UC_GUI_GO_E2E_OBSERVE': str(observe)} if observe else {}),
+                                                          **({'UC_GUI_GO_E2E_CONTROL_FILE': str(control)} if control else {})))
         log = self.out / f'startup-{label}-gui.log'
         proc = subprocess.Popen([str(BINARY)], env=env, stdout=log.open('w'), stderr=subprocess.STDOUT)
         deadline = time.monotonic() + timeout
@@ -70,6 +75,46 @@ def set_mode(p, mode, restore=False):
     assert row['ok'], row
 
 
+def silent_dock_lifecycle(p):
+    control = p.out / 'startup-silent-dock.control'
+    control.write_text('')
+    proc, evidence, _ = p.launch('silent-dock', 'wake', exit_mode='full', wait=False, control=control)
+    commands = ['state boot', 'open-main 1', 'close-main 1', 'open-main 2', 'close-main 2', 'state end']
+    want = ['control-state', 'open-main-1', 'close-main-1', 'open-main-2', 'close-main-2', 'control-state']
+    rows = []
+    try:
+        deadline = time.monotonic() + 120
+        while time.monotonic() < deadline and not any(r['step'] == 'bootstrapped' for r in read_steps(evidence, 0)):
+            assert proc.poll() is None, 'the silent GUI exited before its bootstrap finished'
+            time.sleep(.3)
+        for command, step in zip(commands, want):
+            with control.open('a') as f:
+                f.write(command + '\n')
+            deadline = time.monotonic() + 30
+            while time.monotonic() < deadline:
+                done = [r for r in read_steps(evidence, 0) if r['step'] == step]
+                if len(done) > sum(1 for r in rows if r['step'] == step):
+                    rows.append(done[-1])
+                    break
+                time.sleep(.2)
+            else:
+                raise AssertionError(f'no {step} step after "{command}"')
+        with control.open('a') as f:
+            f.write('exit\n')
+        assert proc.wait(timeout=90) == 0
+    finally:
+        if proc.poll() is None:
+            proc.terminate()
+    boot, opened1, closed1, opened2, closed2, end = rows
+    assert not boot['detail']['mainExists'] and boot['detail']['dockIconVisible'] is False, boot
+    for opened in (opened1, opened2):
+        assert opened['ok'] and opened['detail']['dockIconVisible'] is True, opened
+    for closed in (closed1, closed2):
+        assert closed['ok'] and closed['detail']['dockIconVisible'] is False, closed
+    assert end['detail']['mainExists'] and not end['detail']['mainVisible'] and end['detail']['dockIconVisible'] is False, end
+    return [{'step': r['step'], 'ok': r['ok'], 'detail': r['detail']} for r in rows]
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--out', type=Path, required=True)
@@ -91,10 +136,14 @@ def main():
         assert proc.wait(timeout=90) == 0
         state = [r for r in read_steps(evidence, 0) if r['step'] == 'startup-state'][0]['detail']
         assert not state['mainVisible'], f'silent start must keep the window hidden: {state}'
+        assert state['dockIconVisible'] is False, f'silent start must run without a Dock icon: {state}'
         silent_notes = [n for n in p.notes() if n.startswith('silent-start|')]
         assert len(silent_notes) == 1 and 'Still running in the background' in silent_notes[0], p.notes()
         assert 'encryption auto-unlocked via daemon' in log.read_text() or 'skip auto-unlock' in log.read_text(), 'cold launch recovery did not run'
         results['silent'] = {'state': state, 'notice': silent_notes[0][:60]}
+
+        # Silent Dock lifecycle: tray Open -> close -> tray Open -> close, driven through the control file.
+        results['silentDock'] = silent_dock_lifecycle(p)
 
         # Lightweight cold start: the GUI hands off by itself and leaves the daemon running.
         set_mode(p, 'lightweight')
@@ -127,6 +176,7 @@ def main():
         state = [r for r in read_steps(evidence, 0) if r['step'] == 'startup-state'][0]['detail']
         text = log.read_text()
         assert state['mainVisible'], state
+        assert state['dockIconVisible'] is True, f'a normal start must keep the Dock icon: {state}'
         assert 'encryption auto-unlocked via daemon' in text or 'skip auto-unlock' in text, text[-800:]
         assert 'no clipboard history entry to restore' in text or 'restored the most recent clipboard entry' in text, text[-800:]
         results['normalRestore'] = {'state': state, 'unlocked': 'encryption auto-unlocked via daemon' in text,

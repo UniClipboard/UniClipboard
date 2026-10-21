@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/UniClipboard/UniClipboard/apps/gui-go/internal/update"
@@ -193,6 +194,15 @@ func activationPolicy() application.ActivationPolicy {
 		return application.ActivationPolicyAccessory
 	}
 	return application.ActivationPolicyRegular
+}
+
+// dockIconHidden is the Dock icon state the host last asked for (the launch starts Regular, with the icon).
+var dockIconHidden atomic.Bool
+
+// applyDockIconVisible records the requested Dock icon state and, in quiet mode, keeps the app an accessory.
+func applyDockIconVisible(visible bool) bool {
+	dockIconHidden.Store(!visible)
+	return !quiet()
 }
 
 var (

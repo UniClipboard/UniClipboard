@@ -102,6 +102,17 @@ func (s *EvidenceService) runControlCommand(line string) {
 		}
 		time.Sleep(500 * time.Millisecond)
 		_ = s.write(Step{Window: "main", Step: "show-main-" + arg, OK: ok && w.IsVisible(), Detail: map[string]any{"mainExists": ok, "visible": ok && w.IsVisible(), "focused": ok && w.IsFocused()}})
+	case "open-main":
+		// open-main <label>: the tray's Open item (showMainWindow), which builds the window when it does not exist yet.
+		h.showMainWindow()
+		_ = s.write(Step{Window: "main", Step: "open-main-" + arg, OK: s.waitVisible("main", true), Detail: map[string]any{"dockIconVisible": !dockIconHidden.Load()}})
+	case "close-main":
+		// close-main <label>: a close request (Cmd+W, the red button), handled by the main window's closing hook.
+		w, ok := h.app.Window.GetByName("main")
+		if ok {
+			w.Close()
+		}
+		_ = s.write(Step{Window: "main", Step: "close-main-" + arg, OK: ok && s.waitVisible("main", false), Detail: map[string]any{"mainExists": ok, "dockIconVisible": !dockIconHidden.Load()}})
 	case "tray-language-quiet":
 		// tray-language-quiet <label> <ms>: wait until no tray language call arrived for ms (the frontend's startup calls come in a burst).
 		label, ms, _ := strings.Cut(arg, " ")
@@ -171,9 +182,10 @@ func (s *EvidenceService) runControlCommand(line string) {
 		_ = s.write(Step{Window: "update", Step: "control-close-updater", OK: ok})
 	case "state":
 		// A snapshot of the process the launch scenarios compare across second launches.
-		_, mainExists := h.app.Window.GetByName("main")
+		w, mainExists := h.app.Window.GetByName("main")
 		conn, _ := daemonproc.ReadConnFile()
-		detail := map[string]any{"pid": os.Getpid(), "uniqueID": h.singleInstanceID, "mainExists": mainExists, "label": arg}
+		detail := map[string]any{"pid": os.Getpid(), "uniqueID": h.singleInstanceID, "mainExists": mainExists, "label": arg,
+			"mainVisible": mainExists && w.IsVisible(), "dockIconVisible": !dockIconHidden.Load()}
 		if conn != nil {
 			detail["daemonPid"] = conn.PID
 		}

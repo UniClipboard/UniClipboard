@@ -69,9 +69,9 @@ func (h *HostService) daemon() *daemonclient.Client { return h.client.Load() }
 func (h *HostService) emit(name string, payload any) { h.app.Event.Emit(name, payload) }
 
 // openMainWindow creates the main window. Closing it hides it so the process,
-// daemon connection and window state stay alive until an explicit quit; the
-// dock/reopen handler in Wails shows it again.
-func (h *HostService) openMainWindow() {
+// daemon connection and window state stay alive until an explicit quit, and
+// removes the Dock icon; showMainWindow (tray, reopen, second launch) shows it again.
+func (h *HostService) openMainWindow() *application.WebviewWindow {
 	w := h.app.Window.NewWithOptions(quietOptions(withWindowMaterial(application.WebviewWindowOptions{
 		Name: "main", Title: "UniClipboard", URL: "/", Width: 1100, Height: 720, MinWidth: 900, MinHeight: 600,
 		JS: windowControlsScript(),
@@ -87,7 +87,9 @@ func (h *HostService) openMainWindow() {
 		}
 		e.Cancel()
 		w.Hide()
+		h.setDockIconVisible(false)
 	})
+	return w
 }
 
 func main() {
@@ -126,6 +128,7 @@ func main() {
 		ShouldQuit:     func() bool { host.quitting.Store(true); return true },
 		OnShutdown:     host.shutdown})
 	host.app = app
+	host.routeDockReopen()
 	e2eLaunch(host)
 	if hasArg(os.Args[1:], quickPanelLaunchArg) {
 		// Tauri contract (validate_primary_launch): the panel can only be requested from a running GUI.
@@ -207,6 +210,8 @@ func (h *HostService) bootstrap() {
 	// cost); it is created the first time something asks to show it.
 	if !startup.hidden() || forceMainWindow() {
 		h.openMainWindow()
+	} else {
+		h.setDockIconVisible(false) // no window yet: run as a menu bar app until one is shown
 	}
 	h.initQuickPanel()
 	h.initPanelShortcuts()

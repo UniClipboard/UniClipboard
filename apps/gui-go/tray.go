@@ -107,9 +107,11 @@ func (t *trayMenu) view() []menuEntry {
 func (h *HostService) showMainWindow() {
 	h.mainMu.Lock()
 	defer h.mainMu.Unlock() // two callers must not both create the window
+	h.setDockIconVisible(true)
 	w, ok := h.app.Window.GetByName("main")
 	if !ok {
-		h.openMainWindow()
+		// A running app builds the native window synchronously, so it can be focused (and the app activated) at once.
+		focusWindow(h.openMainWindow())
 		return
 	}
 	w.UnMinimise()

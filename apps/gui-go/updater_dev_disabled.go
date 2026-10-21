@@ -49,6 +49,7 @@ func focusWindow(w application.Window)                                          
 func moveWindow(w application.Window, x, y int)                                        { w.SetPosition(x, y) }
 func centerWindow(w application.Window)                                                { w.Center() }
 func activationPolicy() application.ActivationPolicy                                   { return application.ActivationPolicyRegular }
+func applyDockIconVisible(bool) bool                                                   { return true }
 func cursorOverride() (float64, float64, bool)                                         { return 0, 0, false }
 
 // shortcutDefaultOverride and shortcutBackendAllowed are absent in normal builds: the quick panel default is the

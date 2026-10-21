@@ -210,7 +210,7 @@ func (s *EvidenceService) ServiceStartup(context.Context, application.ServiceOpt
 		h := s.host
 		w, ok := h.app.Window.GetByName("main")
 		stored, _ := h.loadStartupSettings()
-		detail := map[string]any{"mainExists": ok, "mainVisible": ok && w.IsVisible(), "pid": os.Getpid(), "storedStartup": stored}
+		detail := map[string]any{"mainExists": ok, "mainVisible": ok && w.IsVisible(), "dockIconVisible": !dockIconHidden.Load(), "pid": os.Getpid(), "storedStartup": stored}
 		_ = s.write(Step{Window: "main", Step: "startup-state", OK: true, Detail: detail})
 		h.quit(os.Getenv("UC_GUI_GO_EXIT_MODE") != "full")
 	}()

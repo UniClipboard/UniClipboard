@@ -5,6 +5,7 @@
 //! 结果 wire 是 `{"byAge":{"max_age":N}}`、前端发 `{"byAge":{"maxAge":N}}`，
 //! Axum `Json` 提取器反序列化失败返回 422，UI 显示
 //! "保存设置失败: DaemonApiError: 422 on /settings"。
+//! （ADR-013 §8.3 起，无法解码的请求体返回 400，不再是 422。）
 //!
 //! 这里锁定五件事，防止再次回归：
 //!   1. **`byAge` 序列化字段是 `maxAge`**（不是 `max_age`）；

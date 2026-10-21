@@ -3931,6 +3931,25 @@ export type SettingsEnvelope = {
  */
 export type SettingsOwnerDto = 'desktop' | 'engine';
 
+/**
+ * `details` of the `settings_partially_applied` error (HTTP 500). An owner whose part of the
+ * patch was empty is in no list.
+ */
+export type SettingsPartiallyAppliedDetailsDto = {
+    /**
+     * Owners whose part was written and stays written.
+     */
+    applied: Array<SettingsWriteOwnerDto>;
+    /**
+     * The owner whose write failed; its part was not written.
+     */
+    failed: Array<SettingsWriteOwnerDto>;
+    /**
+     * Owners in the patch that were not attempted after the failure.
+     */
+    skipped: Array<SettingsWriteOwnerDto>;
+};
+
 export type SettingsPatchDto = {
     fileSync?: FileSyncSettingsPatchDto | null;
     general?: GeneralSettingsPatchDto | null;
@@ -4004,6 +4023,11 @@ export type SettingsUpdateResultEnvelope = {
      */
     ts: number;
 };
+
+/**
+ * A store that `PUT /settings` writes, in write order: Engine, then product, then telemetry.
+ */
+export type SettingsWriteOwnerDto = 'engine' | 'desktop' | 'telemetry';
 
 /**
  * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
@@ -7591,11 +7615,11 @@ export type UpdateSettingsData = {
 
 export type UpdateSettingsErrors = {
     /**
-     * Invalid request
+     * Body does not decode, a product value fails its grammar, or the Engine rejected the patch; nothing was written
      */
     400: ApiErrorResponse;
     /**
-     * Internal server error
+     * A write failed. Code `settings_partially_applied` with `SettingsPartiallyAppliedDetailsDto` details when an earlier owner was written; `internal_error` when nothing was written
      */
     500: ApiErrorResponse;
 };

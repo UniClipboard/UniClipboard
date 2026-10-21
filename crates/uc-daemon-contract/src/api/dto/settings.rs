@@ -1928,3 +1928,35 @@ pub struct SettingsRevisionsDto {
 pub struct SettingsSnapshotPayload {
     pub revisions: SettingsRevisionsDto,
 }
+
+// =========================
+// Owner-split settings writes (ADR-013 section 8.3)
+// =========================
+
+/// Error `code` of a `PUT /settings` that wrote some owners and then failed.
+pub const SETTINGS_PARTIALLY_APPLIED_CODE: &str = "settings_partially_applied";
+
+/// A store that `PUT /settings` writes, in write order: Engine, then product, then telemetry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub enum SettingsWriteOwnerDto {
+    /// The Engine settings (`settings.json`).
+    Engine,
+    /// The daemon's product settings store (`desktop-settings.json`).
+    Desktop,
+    /// The error reporting consent (`desktop-telemetry.json`).
+    Telemetry,
+}
+
+/// `details` of the `settings_partially_applied` error (HTTP 500). An owner whose part of the
+/// patch was empty is in no list.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SettingsPartiallyAppliedDetailsDto {
+    /// Owners whose part was written and stays written.
+    pub applied: Vec<SettingsWriteOwnerDto>,
+    /// The owner whose write failed; its part was not written.
+    pub failed: Vec<SettingsWriteOwnerDto>,
+    /// Owners in the patch that were not attempted after the failure.
+    pub skipped: Vec<SettingsWriteOwnerDto>,
+}

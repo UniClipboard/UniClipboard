@@ -7189,6 +7189,38 @@
         ],
         "type": "string"
       },
+      "SettingsPartiallyAppliedDetailsDto": {
+        "description": "`details` of the `settings_partially_applied` error (HTTP 500). An owner whose part of the\npatch was empty is in no list.",
+        "properties": {
+          "applied": {
+            "description": "Owners whose part was written and stays written.",
+            "items": {
+              "$ref": "#/components/schemas/SettingsWriteOwnerDto"
+            },
+            "type": "array"
+          },
+          "failed": {
+            "description": "The owner whose write failed; its part was not written.",
+            "items": {
+              "$ref": "#/components/schemas/SettingsWriteOwnerDto"
+            },
+            "type": "array"
+          },
+          "skipped": {
+            "description": "Owners in the patch that were not attempted after the failure.",
+            "items": {
+              "$ref": "#/components/schemas/SettingsWriteOwnerDto"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "applied",
+          "failed",
+          "skipped"
+        ],
+        "type": "object"
+      },
       "SettingsPatchDto": {
         "properties": {
           "fileSync": {
@@ -7348,6 +7380,15 @@
           "ts"
         ],
         "type": "object"
+      },
+      "SettingsWriteOwnerDto": {
+        "description": "A store that `PUT /settings` writes, in write order: Engine, then product, then telemetry.",
+        "enum": [
+          "engine",
+          "desktop",
+          "telemetry"
+        ],
+        "type": "string"
       },
       "SetupCancelJoinEnvelope": {
         "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
@@ -13922,7 +13963,7 @@
         ]
       },
       "put": {
-        "description": "Updates application settings. Accepts a partial settings object and merges it\nwith the existing settings.\n\nNOTE: Unlike the Tauri command, this handler does NOT apply OS-level side\neffects (no autostart registration, no keyboard shortcut updates). It only\npersists the settings domain model.",
+        "description": "Updates application settings. Accepts a partial settings object and splits\nit by owner (ADR-013 section 8.3): Engine fields to the Engine, product\nfields to the daemon's product store, `telemetryEnabled` to its own file.\n\nNOTE: this handler does NOT apply OS-level side effects (no autostart\nregistration, no keyboard shortcut updates). It only persists settings.",
         "operationId": "updateSettings",
         "requestBody": {
           "content": {
@@ -13953,7 +13994,7 @@
                 }
               }
             },
-            "description": "Invalid request"
+            "description": "Body does not decode, a product value fails its grammar, or the Engine rejected the patch; nothing was written"
           },
           "500": {
             "content": {
@@ -13963,7 +14004,7 @@
                 }
               }
             },
-            "description": "Internal server error"
+            "description": "A write failed. Code `settings_partially_applied` with `SettingsPartiallyAppliedDetailsDto` details when an earlier owner was written; `internal_error` when nothing was written"
           }
         },
         "security": [

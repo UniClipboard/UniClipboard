@@ -359,7 +359,8 @@ async fn unchanged_rejected_and_failed_writes_report_nothing() {
     assert_eq!(events.len(), 1, "{events:?}");
     changed(&events[0], "desktop", desktop);
 
-    // F23: an invalid product value is refused, then a positive control.
+    // F23: an invalid product value is refused (400 since ADR-013 section 8.3), then a positive
+    // control.
     let (status, events) = context
         .write(
             &mut ws,
@@ -367,7 +368,7 @@ async fn unchanged_rejected_and_failed_writes_report_nothing() {
             json!({ "general": { "trayIcon": "bogus" } }),
         )
         .await;
-    assert_eq!((status, events.len()), (422, 0), "{events:?}");
+    assert_eq!((status, events.len()), (400, 0), "{events:?}");
     let (_, events) = context
         .write(
             &mut ws,

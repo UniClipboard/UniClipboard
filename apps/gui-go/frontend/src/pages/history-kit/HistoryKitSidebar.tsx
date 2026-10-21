@@ -21,6 +21,7 @@ import { kitTagColor } from './history-kit-model'
 const ALL = 'library:all'
 const PINNED = 'library:pinned'
 const SETTINGS = 'settings'
+const MANAGE_DEVICES = 'devices:manage'
 const TAG = 'tag:'
 const DEVICE = 'device:'
 const MOBILE_SOURCE = 'mobile_sync:'
@@ -68,7 +69,7 @@ interface HistoryKitSidebarProps {
 /**
  * The window sidebar (design MA2): the Library rows with their counts, the daemon's sidebar tags,
  * the paired devices with their connection, and Settings at the bottom. A device row filters the
- * history by that source; the gear on the Devices heading opens Manage Devices (design DV0). Smart Views and Recently
+ * history by that source; the labelled footer entry opens Manage Devices (design DV0). Smart Views and Recently
  * Deleted from the design are not shown: the Engine has no saved searches and deletes entries
  * permanently.
  */
@@ -180,11 +181,6 @@ export function HistoryKitSidebar({
     title: devicesTitle,
     icon: 'devices',
     items: deviceItems,
-    action: {
-      label: t('history.kit.manageDevices'),
-      icon: 'settings',
-      onClick: () => devices.show(),
-    },
     collapse: {
       collapsed: devicesCollapsed,
       label: t(devicesCollapsed ? 'history.kit.showSection' : 'history.kit.hideSection', {
@@ -215,6 +211,7 @@ export function HistoryKitSidebar({
     if (id === ALL) onSelectLibrary(Filter.All)
     else if (id === PINNED) onSelectLibrary(Filter.Favorited)
     else if (id === SETTINGS) navigate('/settings')
+    else if (id === MANAGE_DEVICES) devices.show()
     else if (id === INVITATION) devices.show({ kind: 'invitation' })
     else if (id.startsWith(DEVICE)) {
       const sourceId = id.slice(DEVICE.length)
@@ -232,6 +229,11 @@ export function HistoryKitSidebar({
       label={t('history.sidebar.library')}
       sections={[library, tagSection, deviceSection]}
       footer={[
+        {
+          id: MANAGE_DEVICES,
+          label: t('history.kit.manageDevices'),
+          icon: 'devices',
+        },
         {
           id: SETTINGS,
           label: t('history.kit.settings'),

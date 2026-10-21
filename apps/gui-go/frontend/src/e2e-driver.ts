@@ -1911,6 +1911,9 @@ async function runNativePanelScenario() {
     result: shortcut,
   })
   await sleep(4000)
+  // What the running helper reported holding, next to what was saved.
+  const status = await settle(HostService.GetQuickPanelShortcutStatus())
+  await record('shortcut-status', status.status === 'ok', { result: status })
   await record('act-double-tap', true)
   const tap = await settle(
     HostService.SetQuickPanelDoubleTapModifier(QuickPanelDoubleTapModifier.DoubleTapModifierAlt)

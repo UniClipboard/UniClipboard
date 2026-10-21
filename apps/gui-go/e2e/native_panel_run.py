@@ -3,8 +3,9 @@
 
 Run 1 (real `uniclip-quick-panel` from the bundle, real daemon profile): the helper starts as a child of
 the GUI; disabling the quick panel stops it, enabling starts a new one, changing the global shortcut or the
-modifier double-tap setting restarts it, killing it makes the supervisor bring it back, and a full quit
-leaves no helper behind. The in-WebView driver changes settings through the shared frontend bindings and
+modifier double-tap setting keeps the same helper process (ADR-013 section 10: the host sends the shortcut, the
+helper reloads the trigger) and the host reports the saved shortcut as the one the helper holds, killing it
+makes the supervisor bring it back, and a full quit leaves no helper behind. The in-WebView driver changes settings through the shared frontend bindings and
 marks each action; the orchestrator samples the helper process table throughout and judges it afterwards.
 
 Run 2 (stand-in helper through the e2e-only override): the host passes --exit-when-stdin-closes, tolerates
@@ -86,7 +87,7 @@ def run_real_helper(out, results):
         assert proc.wait(timeout=60) == 0, 'GUI did not exit cleanly'
         seen.update({r['step']: r for r in read_steps(evidence, 0)})
         exit_at = time.time()
-        for step in ('shortcut-saved', 'double-tap-saved', 'double-tap-availability'):
+        for step in ('shortcut-saved', 'shortcut-status', 'double-tap-saved', 'double-tap-availability'):
             assert seen[step]['ok'], seen[step]
 
         def at(step):
@@ -105,9 +106,12 @@ def run_real_helper(out, results):
         after_enable = pids_at(at('act-shortcut') - .2)
         assert len(after_enable) == 1 and after_enable != before, f'enable must start a new helper: {before} -> {after_enable}'
         after_shortcut = pids_at(at('act-double-tap') - .2)
-        assert len(after_shortcut) == 1 and after_shortcut != after_enable, f'shortcut change must restart: {after_enable} -> {after_shortcut}'
+        assert after_shortcut == after_enable, f'a shortcut change must not restart the helper: {after_enable} -> {after_shortcut}'
+        status = seen['shortcut-status']['detail']['result']['data']
+        assert status['state'] == 'active' and [b.lower() for b in status['active']] == ['ctrl+alt+space'], \
+            f'the helper does not hold the saved shortcut: {status}'
         after_tap = pids_at(at('act-kill') - .2)
-        assert len(after_tap) == 1 and after_tap != after_shortcut, f'double-tap change must restart: {after_shortcut} -> {after_tap}'
+        assert after_tap == after_shortcut, f'a double-tap change must not restart the helper: {after_shortcut} -> {after_tap}'
         assert killed.get('pid') == after_tap[0], (killed, after_tap)
         revived = pids_at(at('act-exit') - .2)
         assert len(revived) == 1 and revived != after_tap, f'killed helper was not restarted: {after_tap} -> {revived}'
@@ -119,7 +123,7 @@ def run_real_helper(out, results):
             except ProcessLookupError:
                 pass
         results['real'] = {'start': before, 'afterEnable': after_enable, 'afterShortcut': after_shortcut,
-                           'afterDoubleTap': after_tap, 'killed': killed['pid'], 'revived': revived,
+                           'shortcutStatus': status, 'afterDoubleTap': after_tap, 'killed': killed['pid'], 'revived': revived,
                            'availability': seen['double-tap-availability']['detail'], 'exitedWithoutHelper': True}
     finally:
         stop.set()

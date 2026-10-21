@@ -403,6 +403,12 @@ jobs:
           cargo build --manifest-path "$engine_root/Cargo.toml" -p uc-connectivity-host --locked
           echo "UC_E2E_SPACE_WORK_HOST=$engine_root/target/debug/uc-connectivity-host" >> "$GITHUB_ENV"
 
+      - name: Prepare pinned settings-migration history
+        run: >-
+          python3 scripts/e2e/desktop-settings/prepare-history.py
+          --out "${{ runner.temp }}/e2e-evidence/settings-history"
+          --github-env "$GITHUB_ENV"
+
       # `--no-fail-fast` runs every test binary even after one fails, so an
       # unrelated failing suite cannot hide the result of the others; the step
       # still fails if any test fails. The per-test results are kept with the
@@ -413,6 +419,7 @@ jobs:
           # tests/e2e/tests/update_analytics_capture.rs).
           UC_E2E_EVIDENCE_DIR: ${{ runner.temp }}/e2e-evidence
           UC_E2E_DEV_CLI: ${{ github.workspace }}/target/e2e-dev/debug/uc-dev-cli
+          UC_E2E_ARTIFACT_DIR: ${{ runner.temp }}/e2e-evidence/settings-migration
         # See above: `shell: bash` keeps the step failing when a test fails.
         shell: bash
         run: |

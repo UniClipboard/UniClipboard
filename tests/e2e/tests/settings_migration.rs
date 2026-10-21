@@ -350,7 +350,7 @@ async fn v1_2_0_profile_imports_every_value_once_and_keeps_out_of_set_shortcuts_
     run.note("current GET after import", settings.clone());
 
     let product = run.product();
-    assert_eq!(product["import"]["fieldSet"], 1);
+    assert_eq!(product["import"]["fieldSet"], 2);
     assert!(product["import"]["sourceFingerprint"].is_string());
     // Raw values of out-of-set shortcuts stay in the product file.
     assert_eq!(
@@ -377,10 +377,6 @@ async fn v1_2_0_profile_imports_every_value_once_and_keeps_out_of_set_shortcuts_
         assert_eq!(run.bytes(PRODUCT).unwrap(), product_after_import, "{start}");
         assert_v1_2_0_values(&run.settings().await);
     }
-    assert_eq!(
-        run.count_events("Legacy settings unchanged since the last import"),
-        2
-    );
     assert_eq!(
         run.count_events("Imported product settings from the legacy Engine settings"),
         1
@@ -414,7 +410,8 @@ async fn v1_2_0_edits_after_a_downgrade_are_imported_except_paths_written_under_
     let legacy_before_downgrade = run.bytes(LEGACY).unwrap();
 
     run.switch_to(&v1_2_0(), "downgrade").await;
-    // The old binary reads the frozen Engine values: the P1 write is not visible.
+    // Without an Engine write, the old binary still reads its frozen values.
+    // The Desktop-owned P1 write remains authoritative when upgrading again.
     assert_eq!(run.settings().await["general"]["theme"], json!("dark"));
     assert_eq!(
         run.put(
@@ -472,7 +469,7 @@ async fn desktop_0_19_4_settings_import_with_engine_defaults() {
     assert_engine_defaults(&settings);
     assert_eq!(settings["general"]["deviceName"], json!("LegacyFixture"));
     let product = run.product();
-    assert_eq!(product["import"]["fieldSet"], 1);
+    assert_eq!(product["import"]["fieldSet"], 2);
     assert_eq!(product["general"]["startupMode"], json!("normal"));
 
     // B1b on a real Engine rewrite: an Engine-only write re-serializes the
@@ -488,10 +485,10 @@ async fn desktop_0_19_4_settings_import_with_engine_defaults() {
     assert_ne!(rewritten, legacy, "Engine did not rewrite settings.json");
     let product_bytes = run.bytes(PRODUCT).unwrap();
     run.restart("start after the Engine rewrote the 0.19.4 file").await;
-    assert_import_read(&run, &rewritten);
+    // Product fields were erased by Engine; absence must not trigger an import.
     assert_eq!(run.bytes(PRODUCT).unwrap(), product_bytes);
     assert_eq!(
-        run.count_events("Legacy settings unchanged since the last import"),
+        run.count_events("Imported product settings from the legacy Engine settings"),
         1
     );
     run.note("completed", settings);
@@ -533,7 +530,7 @@ async fn missing_legacy_file_advances_the_marker_and_uses_engine_defaults() {
     let mut run = Run::start("migration-fresh", &NodeBinarySet::current(), &[]).await;
     assert_engine_defaults(&run.settings().await);
     let product = run.product();
-    assert_eq!(product["import"]["fieldSet"], 1);
+    assert_eq!(product["import"]["fieldSet"], 2);
     assert!(product["import"]["sourceFingerprint"].is_string());
     // The Engine writes its defaults later; the next start must not import again.
     assert_eq!(
@@ -547,11 +544,11 @@ async fn missing_legacy_file_advances_the_marker_and_uses_engine_defaults() {
     run.restart("start after the Engine wrote its defaults").await;
     assert_eq!(run.bytes(PRODUCT).unwrap(), product_bytes);
     assert_eq!(
-        run.count_events("Legacy settings unchanged since the last import"),
-        1
+        run.count_events("Imported product settings from the legacy Engine settings"),
+        0
     );
     assert!(!run
-        .import_lines("Legacy settings missing; import marker advanced without values")
+        .import_lines("Product settings import marker advanced without legacy values")
         .is_empty());
     run.note("completed", product);
     run.keep();
@@ -591,10 +588,11 @@ async fn schema_2_legacy_rules_apply_and_the_engine_migration_does_not_reimport(
     assert_ne!(rewritten, legacy, "Engine did not rewrite settings.json");
     let rewritten_json: Value = serde_json::from_slice(&rewritten).unwrap();
     assert_eq!(rewritten_json["schema_version"], 3);
-    assert_eq!(rewritten_json["general"]["startup_mode"], json!("lightweight"));
+    assert_eq!(rewritten_json["general"]["startup_mode"], Value::Null);
+    assert_eq!(run.settings().await["general"]["startupMode"], json!("lightweight"));
     assert_eq!(run.bytes(PRODUCT).unwrap(), product);
     assert_eq!(
-        run.count_events("Legacy settings unchanged since the last import"),
+        run.count_events("Imported product settings from the legacy Engine settings"),
         1
     );
 
@@ -642,7 +640,7 @@ async fn p0_product_file_with_tray_icon_still_imports_field_set_1() {
     assert_eq!(settings["general"]["language"], json!("zh-TW"));
     assert_eq!(settings["quickPanel"]["position"], json!("follow_cursor"));
     let file = run.product();
-    assert_eq!(file["import"]["fieldSet"], 1);
+    assert_eq!(file["import"]["fieldSet"], 2);
     assert_eq!(file["import"]["userWritten"], json!(["general.trayIcon"]));
     run.note("completed", settings);
     run.keep();
@@ -844,7 +842,7 @@ async fn invalid_legacy_json_does_not_advance_the_marker() {
         .await
         .unwrap();
     let product: Value = serde_json::from_slice(&std::fs::read(data.join(PRODUCT)).unwrap()).unwrap();
-    assert_eq!(product["import"]["fieldSet"], 1);
+    assert_eq!(product["import"]["fieldSet"], 2);
     assert_eq!(product["general"]["theme"], json!("dark"));
     let deferred = std::fs::read_to_string(daemon.profile.process_log_path()).unwrap_or_default()
         + &std::fs::read_dir(daemon.profile.log_dir())
@@ -893,9 +891,12 @@ async fn a_failed_or_interrupted_import_repeats_to_the_same_result() {
     let data = profile.data_dir().clone();
     std::fs::create_dir_all(data.join(PRODUCT).join("blocker")).unwrap();
     std::fs::write(data.join(LEGACY), &legacy).unwrap();
-    let mut daemon = TestDaemon::start_preserving_with(profile, &NodeBinarySet::current(), None)
-        .await
-        .unwrap();
+    let mut daemon = TestDaemon::spawn_preserving_configured_with(
+        profile, &NodeBinarySet::current(), None, |_| {},
+    ).unwrap();
+    assert!(daemon.wait_healthy(Duration::from_secs(30)).await.is_err());
+    assert!(!data.join("daemon.conn").exists());
+    assert_eq!(std::fs::read(data.join(LEGACY)).unwrap(), legacy);
     let mut log = std::fs::read_to_string(daemon.profile.process_log_path()).unwrap_or_default();
     for entry in std::fs::read_dir(daemon.profile.log_dir()).unwrap().flatten() {
         log.push_str(&std::fs::read_to_string(entry.path()).unwrap_or_default());
@@ -916,7 +917,7 @@ async fn a_failed_or_interrupted_import_repeats_to_the_same_result() {
     daemon.kill();
     let after_kill: Value =
         serde_json::from_slice(&std::fs::read(data.join(PRODUCT)).unwrap()).unwrap();
-    assert_eq!(after_kill["import"]["fieldSet"], 1);
+    assert_eq!(after_kill["import"]["fieldSet"], 2);
 
     daemon
         .restart_preserving_with(&NodeBinarySet::current(), None)

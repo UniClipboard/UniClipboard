@@ -23,8 +23,8 @@ use uc_e2e_tests::{get_session_token, NodeBinarySet, TestDaemon, TestProfile};
 const FILE_NAME: &str = "desktop-settings.json";
 
 /// `import.sourceFingerprint` written when there is no legacy `settings.json`:
-/// the BLAKE3 of the normalized all-default field set 1 (ADR-013 section 8.2).
-const EMPTY_LEGACY_FINGERPRINT: &str = "b6a9ea7e03eee439662d6acbe610f4994508f64e0cbe3880e02721744b72fee9";
+/// the BLAKE3 of the normalized all-default field sets 1 and 2 (ADR-013 section 8.2).
+const EMPTY_LEGACY_FINGERPRINT: &str = "aa5b045a7ec9fbccce78924ef660e2b4d1b037640332491c955e94f553af6de9";
 
 struct Context {
     daemon: TestDaemon,
@@ -179,7 +179,7 @@ async fn first_start_without_a_file_uses_the_default_and_records_only_the_import
         read_json(&context.product_path()),
         json!({
             "version": 1,
-            "import": { "fieldSet": 1, "sourceFingerprint": EMPTY_LEGACY_FINGERPRINT }
+            "import": { "fieldSet": 2, "sourceFingerprint": EMPTY_LEGACY_FINGERPRINT }
         })
     );
     context.note("read default", json!({ "trayIcon": "glyph" }));
@@ -241,7 +241,7 @@ async fn invalid_and_unknown_values_are_kept_and_explicit_writes_persist() {
         read_json(&context.product_path()),
         json!({
             "version": 1,
-            "import": { "fieldSet": 1, "futureImport": true, "sourceFingerprint": EMPTY_LEGACY_FINGERPRINT },
+            "import": { "fieldSet": 2, "futureImport": true, "sourceFingerprint": EMPTY_LEGACY_FINGERPRINT },
             "general": { "trayIcon": "neon", "futureGeneral": { "x": 1 } },
             "futureSection": { "theme": "aurora" }
         })
@@ -301,7 +301,7 @@ async fn invalid_and_unknown_values_are_kept_and_explicit_writes_persist() {
     let expected = json!({
         "version": 1,
         "import": {
-            "fieldSet": 1,
+            "fieldSet": 2,
             "futureImport": true,
             "sourceFingerprint": EMPTY_LEGACY_FINGERPRINT,
             "userWritten": ["general.trayIcon"]

@@ -22,10 +22,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
-	"syscall"
 	"testing"
 	"time"
 
@@ -101,7 +101,12 @@ func (r *protocolRun) pids() []int {
 	return pids
 }
 
-func alive(pid int) bool { return syscall.Kill(pid, 0) == nil }
+// source names the commit under test and whether the tree had uncommitted changes.
+func source() map[string]any {
+	head, _ := exec.Command("git", "rev-parse", "HEAD").Output()
+	status, _ := exec.Command("git", "status", "--porcelain").Output()
+	return map[string]any{"sha": strings.TrimSpace(string(head)), "clean": len(strings.TrimSpace(string(status))) == 0}
+}
 
 func waitFor(timeout time.Duration, cond func() bool) bool {
 	deadline := time.Now().Add(timeout)
@@ -128,6 +133,9 @@ func TestHelperProtocol(t *testing.T) {
 	defer log.SetOutput(os.Stderr)
 	work := t.TempDir()
 	standin := filepath.Join(work, "standin")
+	if runtime.GOOS == "windows" {
+		standin += ".exe"
+	}
 	build := exec.Command("go", "build", "-o", standin, "./testdata/standin")
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build stand-in: %v\n%s", err, out)
@@ -144,7 +152,7 @@ func TestHelperProtocol(t *testing.T) {
 	supervisor.OnLaunch(r.applier.Relaunched)
 	var stillAlive []int
 	defer func() {
-		record := map[string]any{"test": t.Name(), "passed": !t.Failed(),
+		record := map[string]any{"test": t.Name(), "source": source(), "platform": runtime.GOOS, "passed": !t.Failed(),
 			"executor": "stand-in helper process (test double; no OS registration)",
 			"steps":    r.steps, "standin": r.standinLog(), "standinPidsAliveAfterShutdown": stillAlive, "hostLog": hostLog.String()}
 		data, _ := json.MarshalIndent(record, "", "  ")

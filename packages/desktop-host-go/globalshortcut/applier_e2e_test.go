@@ -98,6 +98,40 @@ type run struct {
 	statusMu sync.Mutex
 	applied  chan settings.View
 	product  string // desktop-settings.json path
+	framesMu sync.Mutex
+	frames   []map[string]any // every WS frame of a separate recording subscriber (topics settings, system)
+}
+
+// recordFrames subscribes a separate WS client to the daemon's settings and system topics and keeps every frame it
+// receives, so the artifact shows the events that caused each watcher read. It ends with the daemon.
+func (r *run) recordFrames() {
+	c, err := daemonclient.FromEnv()
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	ctx := context.Background()
+	ws, err := c.DialWS(ctx)
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	if err := ws.Subscribe(ctx, "settings", "system"); err != nil {
+		r.t.Fatal(err)
+	}
+	pid := r.daemon.cmd.Process.Pid
+	go func() {
+		for event := range ws.Events(ctx) {
+			r.framesMu.Lock()
+			r.frames = append(r.frames, map[string]any{"atMs": time.Now().UnixMilli(), "daemonPid": pid, "type": event.Type, "payload": event.Payload})
+			r.framesMu.Unlock()
+		}
+	}()
+}
+
+// source names the commit under test and whether the tree had uncommitted changes.
+func source() map[string]any {
+	head, _ := exec.Command("git", "rev-parse", "HEAD").Output()
+	status, _ := exec.Command("git", "status", "--porcelain").Output()
+	return map[string]any{"sha": strings.TrimSpace(string(head)), "clean": len(strings.TrimSpace(string(status))) == 0}
 }
 
 func (r *run) note(step string, detail map[string]any) {
@@ -141,6 +175,7 @@ func (r *run) start() {
 		if conn != nil && int(conn.PID) == cmd.Process.Pid {
 			if _, err := r.read(); err == nil {
 				r.steps = append(r.steps, map[string]any{"step": "daemon started", "detail": map[string]any{"pid": cmd.Process.Pid, "port": conn.Port}})
+				r.recordFrames()
 				return
 			}
 		}
@@ -304,10 +339,13 @@ func TestApplierAgainstDaemon(t *testing.T) {
 			}
 		}
 		r.statusMu.Lock()
-		record := map[string]any{"test": t.Name(), "profile": os.Getenv("UC_PROFILE"), "passed": !t.Failed(),
+		r.framesMu.Lock()
+		record := map[string]any{"test": t.Name(), "source": source(), "profile": os.Getenv("UC_PROFILE"), "passed": !t.Failed(),
+			"wsFrames": r.frames,
 			"executor": "countingExecutor (test double; no OS registration)", "executorCalls": r.exec.calls,
 			"statusEvents": r.statuses, "steps": r.steps, "profileDirsRemoved": removed}
 		r.statusMu.Unlock()
+		r.framesMu.Unlock()
 		data, _ := json.MarshalIndent(record, "", "  ")
 		_ = os.WriteFile(filepath.Join(artifactDir, "global-shortcut.json"), data, 0o644)
 	}()

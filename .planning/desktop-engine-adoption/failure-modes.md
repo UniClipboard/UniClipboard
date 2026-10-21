@@ -158,3 +158,13 @@ Do not claim these cases passed until the real Desktop daemon executes against t
 - A platform-specific pipe selector can break Windows. Use a standard reader thread and queue.
 - A timeout can leave the child alive. Terminate only the Popen-owned child; retain the timeout
   and cleanup receipts, and allow the existing bounded escalation to finish cleanup.
+
+## Merged Engine source and CI completion
+
+- A merged PR can have a rewritten history: verify the actual pin is an ancestor of remote main.
+- Compare production, binding and lock sources before retaining any previous acceptance scope.
+- Rebuild every artifact that embeds the Engine or Desktop source revision. Preserve old receipts.
+- Cargo update can change unrelated dependency edges: retain the prior graph and verify --locked.
+- Cold builds and the full CLI suite can exceed 45 minutes: retain cancellation annotations and
+  rerun the entire suite with a 90-minute job budget, without adding skips or removing assertions.
+- Keep the existing Swagger/zip audit failure visible; do not upgrade or add exemptions here.

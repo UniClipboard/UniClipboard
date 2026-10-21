@@ -777,9 +777,11 @@ Native acceptance of the global shortcut (real helper, real OS registration):
 ### 11. P3: Engine adoption, log profile and configuration lifecycle
 
 This section supersedes the P1 transitional ownership and export limitations in section 8.
-The immutable Engine source is `e4ff36c97d244f8c858784097615ef52e3bdcedb`, the remote
-head of Engine PR #227, including #225 and #226. These Engine PRs are cross-repository
-release dependencies. This pin does not imply a merged or published Engine release.
+The immutable Engine source is `a8e1b2c912cebbbb835049d3bc343cfe9a036bb7`, the merged
+commit of Engine PR #227 on Engine main, including merged #225 and #226. Production code,
+binding sources and Engine lockfiles match the earlier e4ff36c9 acceptance source. The old
+revision is not a main ancestor, so new embedded source identifiers require rebuilt artifacts.
+The merged source does not imply a published Engine release or product release approval.
 
 - The importer runs before host log selection and before any Engine settings read.
   Its current field set is 2. Set 2 imports `general.debug_mode`. Direct pre-P1 upgrades

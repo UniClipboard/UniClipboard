@@ -323,7 +323,8 @@ jobs:
     needs: changes
     if: ${{ needs.changes.outputs.e2e == 'true' }}
     runs-on: macos-latest
-    timeout-minutes: 45
+    # Cold builds and the complete real-daemon suite exceeded the previous 45-minute budget.
+    timeout-minutes: 90
 
     environment: desktop-build-cache-reader
     steps:

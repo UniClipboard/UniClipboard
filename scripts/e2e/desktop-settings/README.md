@@ -41,8 +41,10 @@ an old manifest schema; it is a deterministic fixture, not an archived historica
 
 Not covered: power loss, forced termination during atomic persistence, concurrent reset/write
 stress, native GUI/shortcut registration, real historical user profiles, Windows/Linux execution,
-physical-device synchronization or release installation. Engine PRs #225, #226 and #227 remain
-cross-repository release dependencies; a successful local run does not mark them released.
+physical-device synchronization or release installation. Engine PRs #225, #226 and #227 are
+merged. Cargo pins the merged #227 commit a8e1b2c912cebbbb835049d3bc343cfe9a036bb7. A successful
+local run does not mark the Engine or Desktop released. Embedded source identifiers require
+rebuilding artifacts even when production source matches an older acceptance checkpoint.
 
 
 Run review regressions against the same built binaries with:

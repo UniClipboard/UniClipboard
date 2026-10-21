@@ -176,7 +176,11 @@ events carry no setting values: clients read `GET /settings` again.
   starts: quit, `RestartDaemon`, the full restart and the update install. It resumes the watcher
   whenever the process keeps running afterwards: after `RestartDaemon` (also when the restart
   failed), when the GUI relaunch of a full restart fails, and when the install or its relaunch
-  fails.
+  fails. On those paths the host may not have stored a client for the daemon that now runs (a
+  restart reported as failed can still bring a daemon up; a full restart replaces the daemon
+  before the GUI relaunch fails). The watcher therefore gets its client through
+  `daemonclient.Follow`: it keeps the stored client while `daemon.conn` names the same endpoint
+  and token, and otherwise swaps in a fresh client for every caller of the host.
 - **Page-originated `settings://changed`.** Until the frontend follows `settings.changed`, the
   page still emits it after its own saves. The host does not use the page's settings copy: it
   reads `GET /settings` and runs the same idempotent apply. The listener and the page's emit are
@@ -224,7 +228,7 @@ Settings change events (task 2):
 | F31 | The host applies its own write twice | executors compare with the state they hold (the tray sync label does nothing when unchanged) | code review |
 | F32 | The host watcher keeps the daemon waiting at stop, or stays paused for good | the watcher closes with a normal close frame and stays paused before every host-initiated daemon stop; it resumes whenever the process keeps running | Go E2E (the daemon logs the close right after `Pause`; reconnect after a failed restart and after `Resume`); the host call sites are code review only |
 | F33 | Settings reach the host only through a WebView | the watcher is in a package without Wails; an external write is seen with no frontend running | Go E2E (build without Wails; external `PUT`) |
-| F34 | After `RestartDaemon` the watcher keeps using the old client | the watcher asks for the current client on every connection attempt | Go E2E (provider re-reads `daemon.conn`) |
+| F34 | After a daemon restart the host did not record, the watcher keeps using the old client | the watcher asks for its client through `daemonclient.Follow` on every attempt | Go E2E (holder never updated by the test; a watcher with the stale client is the negative control and does not recover) |
 | F35 | A future Engine section is silently dropped | exhaustive match without a wildcard | compiler |
 | F36 | A wrong JSON tag in the shared Go type yields a silent zero value | a real `GET /settings` is decoded into the type and checked against non-default values | Go E2E |
 | F37 | The watcher retries without pause while the daemon is gone | bounded exponential backoff | Go E2E (reconnect after restart) and code review |

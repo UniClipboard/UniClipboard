@@ -21,6 +21,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -263,13 +264,11 @@ func TestWatcherAgainstDaemon(t *testing.T) {
 	h.note("shared view decoded", map[string]any{"view": view})
 
 	// F33: the watcher alone (no frontend) reads at connect and follows external writes of both owners.
-	watcher := NewWatcher(func() *daemonclient.Client {
-		client, err := daemonclient.FromEnv() // re-reads daemon.conn, as the host's client is replaced on restart
-		if err != nil {
-			return nil
-		}
-		return client
-	}, func(v View) { h.applied <- v })
+	// The host's provider: the stored client, followed to whichever daemon daemon.conn names. The test never stores
+	// a new client itself, so every recovery below depends on Follow, as in a host whose restart reported a failure.
+	var holder atomic.Pointer[daemonclient.Client]
+	holder.Store(h.client())
+	watcher := NewWatcher(func() *daemonclient.Client { return daemonclient.Follow(&holder) }, func(v View) { h.applied <- v })
 	runCtx, stop := context.WithCancel(context.Background())
 	defer stop()
 	go watcher.Run(runCtx)
@@ -294,15 +293,28 @@ func TestWatcherAgainstDaemon(t *testing.T) {
 	paused := h.gracefulStop()
 	h.note("graceful stop after Pause", map[string]any{"ms": paused.Milliseconds(), "baselineMs": baseline.Milliseconds()})
 
-	// Failed daemon restart (RestartDaemon resumes in a defer): no daemon comes up, the watcher resumes and
-	// retries; when a daemon is back it reads the current state.
+	// Failed daemon restart (RestartDaemon resumes in a defer and stores no new client): no daemon comes up, the
+	// watcher resumes and retries; when a daemon is back it reads the current state. A second watcher that keeps the
+	// stale client (the provider without Follow) is the negative control: it must not recover.
+	stale := holder.Load()
+	staleApplied := make(chan View, 64)
+	staleWatcher := NewWatcher(func() *daemonclient.Client { return stale }, func(v View) { staleApplied <- v })
+	staleCtx, stopStale := context.WithCancel(context.Background())
+	go staleWatcher.Run(staleCtx)
 	h.drain()
 	watcher.Resume()
 	h.note("resumed with no daemon (failed restart)", nil)
 	time.Sleep(3 * time.Second) // several failed attempts with backoff
 	h.start()
 	h.put(map[string]any{"sync": map[string]any{"syncEnabled": true}})
-	h.waitApplied("recovered after a failed restart", 40*time.Second, func(v View) bool { return v.Sync.SyncEnabled })
+	h.waitApplied("recovered after a failed restart (Follow)", 40*time.Second, func(v View) bool { return v.Sync.SyncEnabled })
+	select {
+	case v := <-staleApplied:
+		t.Fatalf("negative control: a watcher with the stale client applied %+v", v)
+	case <-time.After(10 * time.Second):
+		h.note("negative control: the stale client never recovers", map[string]any{"windowMs": 10000})
+	}
+	stopStale()
 
 	// Full restart or update whose relaunch failed: Pause, stop, a new daemon, a write while paused, Resume.
 	// The value written while paused comes from the read after the snapshot, not from an event.

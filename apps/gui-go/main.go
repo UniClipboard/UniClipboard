@@ -114,7 +114,9 @@ func main() {
 		log.Fatal(err)
 	}
 	host := &HostService{effects: newVisualEffects(), notifier: notifications.New(), wake: make(chan string, 1)}
-	host.settingsWatch = settings.NewWatcher(host.daemon, host.applySettings)
+	// Follow, not daemon(): after a restart the host did not record (it reported a failure, or the GUI relaunch
+	// failed), the watcher must reach the daemon that actually runs, and every other caller then uses it too.
+	host.settingsWatch = settings.NewWatcher(func() *daemonclient.Client { return daemonclient.Follow(&host.client) }, host.applySettings)
 	host.lastCheck.recordNow()
 	services := append([]application.Service{hostService(host)}, notifierServices(host)...)
 	services = append(services, e2eServices(host)...)

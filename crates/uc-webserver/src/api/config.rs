@@ -70,6 +70,18 @@ fn map_config_engine_error(op: &'static str, error: EngineError) -> ApiError {
     api
 }
 
+fn export_output_error(operation: &'static str) -> ApiError {
+    let api = ApiError::internal("configuration export could not commit its output");
+    log_facade_failure(
+        "config_migration",
+        operation,
+        "output_write_failed",
+        api.status,
+        &api.message,
+    );
+    api
+}
+
 fn locked_error() -> ApiError {
     ApiError {
         status: StatusCode::LOCKED,
@@ -148,9 +160,20 @@ async fn export_config_handler(
     Json(req): Json<ExportConfigRequest>,
 ) -> Result<Json<ApiEnvelope<ExportConfigResponse>>, ApiError> {
     info!("config export request received");
+    // Keep an existing bundle intact until Engine has completed the export.
+    let target = std::path::PathBuf::from(&req.target_path);
+    let parent = target
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."))
+        .to_path_buf();
+    let temporary = tokio::task::spawn_blocking(move || tempfile::NamedTempFile::new_in(parent))
+        .await
+        .map_err(|_| export_output_error("prepare_output"))?
+        .map_err(|_| ApiError::bad_request("configuration export path is unavailable"))?;
     let destination = state
         .file_handles
-        .register_output(Path::new(&req.target_path))
+        .register_output(temporary.path())
         .map_err(|_| ApiError::bad_request("configuration export path is unavailable"))?;
     let result = state
         .execute(Operation::ExportConfig(ExportConfigInput { destination }))
@@ -171,6 +194,10 @@ async fn export_config_handler(
         }
     }
 
+    tokio::task::spawn_blocking(move || temporary.persist(target))
+        .await
+        .map_err(|_| export_output_error("commit_output"))?
+        .map_err(|_| export_output_error("replace_output"))?;
     info!("config export completed");
     Ok(Json(ApiEnvelope::now(ExportConfigResponse {
         path: req.target_path,

@@ -1,7 +1,8 @@
 // Package quickpanelhelper supervises the native quick panel helper process
 // (`uniclip-quick-panel`) for desktop hosts. The helper owns the global shortcut, the
 // modifier double-tap trigger and the panel window; the host only starts, restarts and
-// stops it and carries out the few requests it prints on stdout. The supervision rules
+// stops it, carries out the few requests it prints on stdout, and tells it which global shortcut to hold (ADR-013
+// section 10). The supervision rules
 // (restart backoff, giving up, graceful stop) were ported from crates/uc-desktop/src/quick_panel_helper.rs at
 // ed778b239f52c7da5c83532342e53b517e8e6bf9; this package is their only implementation now.
 package quickpanelhelper
@@ -9,6 +10,8 @@ package quickpanelhelper
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"log"
 	"os"
@@ -17,6 +20,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -33,6 +37,8 @@ const (
 	maxConsecutiveFails = 5
 	gracefulExit        = time.Second
 	tickInterval        = 500 * time.Millisecond
+	// replyTimeout bounds how long a shortcut command waits for the helper's answer.
+	replyTimeout = 3 * time.Second
 )
 
 // Request is something the helper asks the host to do.
@@ -59,10 +65,33 @@ func ParseRequest(line string) (Request, bool) {
 	return "", false
 }
 
+// ShortcutReply is the helper's answer to `set_shortcuts`: the bindings it holds now, and the error when it refused
+// the requested ones (it then still holds the previous ones).
+type ShortcutReply struct {
+	Seq    uint64   `json:"seq"`
+	Active []string `json:"active"`
+	Error  string   `json:"error,omitempty"`
+}
+
+// parseShortcutReply decodes a `{"shortcuts":{...}}` line.
+func parseShortcutReply(line string) (ShortcutReply, bool) {
+	var msg struct {
+		Shortcuts *ShortcutReply `json:"shortcuts"`
+	}
+	if json.Unmarshal([]byte(strings.TrimSpace(line)), &msg) != nil || msg.Shortcuts == nil {
+		return ShortcutReply{}, false
+	}
+	return *msg.Shortcuts, true
+}
+
 // Child is a running helper.
 type Child interface {
 	HasExited() bool
 	Terminate()
+	// Send writes one command line to the helper's standard input.
+	Send(line []byte) error
+	// Replies delivers the helper's shortcut replies; it is never closed.
+	Replies() <-chan ShortcutReply
 }
 
 // Launcher starts one helper process.
@@ -98,10 +127,21 @@ func ForHelper(executable string, onRequest func(Request)) *ProcessLauncher {
 }
 
 type processChild struct {
-	cmd   *exec.Cmd
-	stdin io.WriteCloser
-	done  chan struct{}
+	cmd     *exec.Cmd
+	stdin   io.WriteCloser
+	done    chan struct{}
+	replies chan ShortcutReply
+	writeMu sync.Mutex
 }
+
+func (c *processChild) Send(line []byte) error {
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
+	_, err := c.stdin.Write(append(line, '\n'))
+	return err
+}
+
+func (c *processChild) Replies() <-chan ShortcutReply { return c.replies }
 
 func (c *processChild) HasExited() bool {
 	select {
@@ -114,7 +154,9 @@ func (c *processChild) HasExited() bool {
 
 // Terminate closes the helper's stdin (its cue to exit), waits briefly, then kills it.
 func (c *processChild) Terminate() {
+	c.writeMu.Lock()
 	_ = c.stdin.Close()
+	c.writeMu.Unlock()
 	select {
 	case <-c.done:
 	case <-time.After(gracefulExit):
@@ -142,7 +184,7 @@ func (l *ProcessLauncher) Launch() (Child, error) {
 	if err := cmd.Start(); err != nil {
 		return nil, err
 	}
-	child := &processChild{cmd: cmd, stdin: stdin, done: make(chan struct{})}
+	child := &processChild{cmd: cmd, stdin: stdin, done: make(chan struct{}), replies: make(chan ShortcutReply, 8)}
 	var readers sync.WaitGroup
 	readers.Add(2)
 	go func() {
@@ -156,7 +198,12 @@ func (l *ProcessLauncher) Launch() (Child, error) {
 		defer readers.Done()
 		scan := bufio.NewScanner(stdout)
 		for scan.Scan() {
-			if request, ok := ParseRequest(scan.Text()); ok && l.OnRequest != nil {
+			if reply, ok := parseShortcutReply(scan.Text()); ok {
+				select {
+				case child.replies <- reply:
+				default: // nobody waits: a late answer to a command that already timed out
+				}
+			} else if request, ok := ParseRequest(scan.Text()); ok && l.OnRequest != nil {
 				l.OnRequest(request)
 			}
 		}
@@ -181,6 +228,84 @@ type Supervisor struct {
 	stop      chan struct{}
 	stopped   chan struct{}
 	closeOnce sync.Once
+
+	onLaunch  func()     // called on its own goroutine after every launch; set before the first SetEnabled
+	commandMu sync.Mutex // one shortcut command at a time
+	seq       atomic.Uint64
+}
+
+// ErrNotRunning: no helper process runs, so it cannot take a command (and holds nothing).
+var ErrNotRunning = errors.New("the quick panel helper is not running")
+
+// OnLaunch registers fn to run after every launch of the helper (first start, enable, restart after a crash). A new
+// helper holds no global shortcut until it is told one. Call it before the first SetEnabled.
+func (s *Supervisor) OnLaunch(fn func()) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.onLaunch = fn
+}
+
+// ErrNoAnswer: the command was sent, or its sending failed half-way, and no matching answer came. The helper may hold
+// the old bindings, the new ones or none; the next command's answer tells.
+var ErrNoAnswer = errors.New("the quick panel helper did not answer")
+
+// SetShortcuts tells the running helper which global shortcuts to hold and returns the bindings it reports holding
+// afterwards. The helper replaces its bindings transactionally, so after a refusal it reports the previous ones. An
+// error wrapping ErrNoAnswer means the held bindings are unknown. An answer with another seq is a late answer to an
+// earlier command that timed out; it is dropped.
+func (s *Supervisor) SetShortcuts(bindings []string) ([]string, error) {
+	s.commandMu.Lock()
+	defer s.commandMu.Unlock()
+	child := s.currentChild()
+	if child == nil {
+		return nil, ErrNotRunning
+	}
+	seq := s.seq.Add(1)
+	if bindings == nil {
+		bindings = []string{}
+	}
+	line, err := json.Marshal(map[string]any{"command": "set_shortcuts", "seq": seq, "shortcuts": bindings})
+	if err != nil {
+		return nil, err
+	}
+	if err := child.Send(line); err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrNoAnswer, err)
+	}
+	timeout := time.After(replyTimeout)
+	for {
+		select {
+		case reply := <-child.Replies():
+			if reply.Seq != seq {
+				log.Printf("quick panel helper: dropped a late shortcut answer (seq %d, waiting for %d)", reply.Seq, seq)
+				continue
+			}
+			if reply.Error != "" {
+				return reply.Active, errors.New(reply.Error)
+			}
+			return reply.Active, nil
+		case <-timeout:
+			return nil, ErrNoAnswer
+		}
+	}
+}
+
+// ReloadSettings asks the running helper to read its settings again (double tap, theme, language). Without a running
+// helper there is nothing to do: the next launch reads them anyway.
+func (s *Supervisor) ReloadSettings() {
+	if child := s.currentChild(); child != nil {
+		if err := child.Send([]byte(`{"command":"reload_settings"}`)); err != nil {
+			log.Printf("quick panel helper: could not ask it to reload its settings: %v", err)
+		}
+	}
+}
+
+func (s *Supervisor) currentChild() Child {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.running == nil {
+		return nil
+	}
+	return s.running.child
 }
 
 type running struct {
@@ -286,6 +411,9 @@ func (s *Supervisor) startLocked(now time.Time) {
 	}
 	log.Printf("quick panel helper: started")
 	s.running = &running{child: child, startedAt: now}
+	if s.onLaunch != nil {
+		go s.onLaunch()
+	}
 }
 
 func (s *Supervisor) stopLocked() {

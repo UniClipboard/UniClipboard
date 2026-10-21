@@ -923,7 +923,12 @@
         "confirmOverride": "Apply anyway (clears conflict)",
         "confirm": "Confirm",
         "cancel": "Cancel",
-        "modified": "Modified"
+        "modified": "Modified",
+        "unsupportedKey": "This key cannot be used in a shortcut: {{key}}",
+        "saveFailed": "Not saved: {{message}}",
+        "notActive": "Saved, but not active. {{active}} still opens the quick panel. ({{error}})",
+        "notActiveNone": "Saved, but not active. No shortcut opens the quick panel now. ({{error}})",
+        "applyUnknown": "Saved, but it is not known whether the shortcut is active. ({{error}})"
       },
       "quickPanel": {
         "compositorShortcuts": "Wayland activation shortcuts are managed by your desktop. Bind the following command in your compositor settings.",

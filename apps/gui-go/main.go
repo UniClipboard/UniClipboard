@@ -15,6 +15,7 @@ import (
 	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/daemonclient"
 	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/daemonlife"
 	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/daemonproc"
+	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/globalshortcut"
 	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/hostlog"
 	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/quickpanelhelper"
 	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/settings"
@@ -56,7 +57,9 @@ type HostService struct {
 	quitting atomic.Bool
 
 	shortcutsMu       sync.Mutex
-	osShortcuts       []string // the shortcuts currently registered with the OS; guarded by shortcutsMu
+	panelShortcut     *globalshortcut.Applier // the quick panel shortcut's desired and active binding; set by initQuickPanel
+	appliedPanel      appliedPanelSettings    // what reconcilePanel last applied; guarded by shortcutsMu
+	osShortcuts       []string                // the shortcuts the WebView executor registered with the OS; written by panelShortcut only
 	binder            *wailsShortcutBinder
 	modifierOnce      sync.Once
 	modifier          *modifierMonitor // the WebView panel's modifier double-tap trigger; created by modifierMonitor()

@@ -924,7 +924,12 @@
         "confirmOverride": "Aplicar mesmo assim (remove o conflito)",
         "confirm": "Confirmar",
         "cancel": "Cancelar",
-        "modified": "Modificado"
+        "modified": "Modificado",
+        "unsupportedKey": "Esta tecla não pode ser usada em um atalho: {{key}}",
+        "saveFailed": "Não salvo: {{message}}",
+        "notActive": "Salvo, mas não ativo. {{active}} ainda abre o painel rápido. ({{error}})",
+        "notActiveNone": "Salvo, mas não ativo. Nenhum atalho abre o painel rápido agora. ({{error}})",
+        "applyUnknown": "Salvo, mas não se sabe se o atalho está ativo. ({{error}})"
       },
       "quickPanel": {
         "compositorShortcuts": "No Wayland, os atalhos de ativação são gerenciados pelo ambiente de trabalho. Associe o comando abaixo a um atalho nas configurações do compositor.",

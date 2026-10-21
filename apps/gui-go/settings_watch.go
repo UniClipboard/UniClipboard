@@ -25,4 +25,5 @@ func (h *HostService) applySettings(view settings.View) {
 		h.tray.setLanguage(language)
 	}
 	h.tray.icon.setStyle(view.General.TrayIcon)
+	h.reconcilePanel(view)
 }

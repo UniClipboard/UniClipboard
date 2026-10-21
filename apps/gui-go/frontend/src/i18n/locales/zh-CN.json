@@ -923,7 +923,12 @@
         "confirmOverride": "仍然应用（清除冲突）",
         "confirm": "确认",
         "cancel": "取消",
-        "modified": "已修改"
+        "modified": "已修改",
+        "unsupportedKey": "此按键不能用于快捷键：{{key}}",
+        "saveFailed": "未保存：{{message}}",
+        "notActive": "已保存，但未生效。仍可用 {{active}} 打开快捷面板。（{{error}}）",
+        "notActiveNone": "已保存，但未生效。当前没有快捷键可打开快捷面板。（{{error}}）",
+        "applyUnknown": "已保存，但无法确认快捷键是否生效。（{{error}}）"
       },
       "quickPanel": {
         "compositorShortcuts": "Wayland 下的唤起快捷键由桌面环境管理。请在窗口管理器设置中为以下命令绑定快捷键。",

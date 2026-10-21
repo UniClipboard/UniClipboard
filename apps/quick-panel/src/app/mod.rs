@@ -46,11 +46,21 @@ fn init_logging() -> Option<uc_observability::WorkerGuard> {
 pub fn run() -> anyhow::Result<()> {
     let _log_guard = init_logging();
     let host = Arc::new(adapters::host::SupervisorLink::default());
-    if std::env::args().any(|argument| argument == lifecycle::EXIT_WHEN_STDIN_CLOSES) {
+    // Both triggers and the GUI's commands feed one channel; it exists before standard input is read.
+    let (send, receive) = async_channel::unbounded();
+    let supervised = std::env::args().any(|argument| argument == lifecycle::EXIT_WHEN_STDIN_CLOSES);
+    if supervised {
         host.mark_supervised();
         // Under test control standard input carries commands, and its reader exits on its end.
         if !test_control::enabled() {
-            lifecycle::watch_parent(std::io::stdin(), || std::process::exit(0));
+            let commands = send.clone();
+            lifecycle::watch_host(
+                std::io::stdin(),
+                move |command| {
+                    let _ = commands.try_send(triggers::Trigger::Host(command));
+                },
+                || std::process::exit(0),
+            );
         }
     }
     // Until the settings are read the panel follows the system, as the main window does for an
@@ -75,8 +85,8 @@ pub fn run() -> anyhow::Result<()> {
                     Some("QuickPanel"),
                 ),
             ]);
-            let receive = match triggers::install(cx) {
-                Ok(receive) => receive,
+            match triggers::install(cx, send, supervised) {
+                Ok(()) => {}
                 Err(_) => {
                     tracing::error!("Failed to initialize quick panel hotkey manager");
                     cx.quit();

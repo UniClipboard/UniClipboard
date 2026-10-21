@@ -923,7 +923,12 @@
         "confirmOverride": "とにかく適用 (競合をクリア)",
         "confirm": "確認",
         "cancel": "キャンセル",
-        "modified": "変更済み"
+        "modified": "変更済み",
+        "unsupportedKey": "このキーはショートカットに使用できません：{{key}}",
+        "saveFailed": "保存されませんでした：{{message}}",
+        "notActive": "保存されましたが、有効になっていません。クイックパネルは引き続き {{active}} で開きます。（{{error}}）",
+        "notActiveNone": "保存されましたが、有効になっていません。現在クイックパネルを開くショートカットはありません。（{{error}}）",
+        "applyUnknown": "保存されましたが、ショートカットが有効かどうか確認できません。（{{error}}）"
       },
       "quickPanel": {
         "compositorShortcuts": "Wayland の呼び出しショートカットはデスクトップ環境が管理します。コンポジターの設定で次のコマンドにキーを割り当ててください。",

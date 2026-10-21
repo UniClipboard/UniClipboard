@@ -28,6 +28,7 @@ var e2eCommandTable = map[string]e2eCommand{
 	"get_install_kind":                        {Method: "GetInstallKind", Params: []string{}},
 	"get_profile_recovery":                    {Method: "GetProfileRecovery", Params: []string{}},
 	"get_quick_panel_double_tap_availability": {Method: "GetQuickPanelDoubleTapAvailability", Params: []string{}},
+	"get_quick_panel_shortcut_status":         {Method: "GetQuickPanelShortcutStatus", Params: []string{}},
 	"get_visual_effects":                      {Method: "GetVisualEffects", Params: []string{}},
 	"host_notification_permission":            {Method: "HostNotificationPermission", Params: []string{}},
 	"host_notification_request_permission":    {Method: "HostNotificationRequestPermission", Params: []string{}},

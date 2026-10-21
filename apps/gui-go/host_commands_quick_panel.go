@@ -4,14 +4,18 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"runtime"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/UniClipboard/UniClipboard/apps/gui-go/internal/hostapi"
 	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/daemonclient"
+	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/globalshortcut"
+	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/quickpanelhelper"
 	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/settings"
 )
 
@@ -47,10 +51,18 @@ func (h *HostService) SetQuickPanelEnabled(ctx context.Context, enabled bool) er
 	if h.helper == nil {
 		return h.setWebViewPanelEnabled(ctx, enabled)
 	}
+	h.shortcutsMu.Lock()
+	defer h.shortcutsMu.Unlock()
+	view, err := settings.Read(ctx, h.daemon())
+	if err != nil {
+		return hostapi.Internal(err)
+	}
 	if err := h.patchQuickPanel(ctx, map[string]any{"enabled": enabled}); err != nil {
 		return err
 	}
-	h.panelEnabledChanged(enabled)
+	// The helper process is the executor: a started helper is told the binding on launch (Relaunched).
+	h.setHelperEnabled(enabled, panelShortcutTarget(enabled, view.KeyboardShortcuts))
+	h.appliedPanel.enabled = enabled
 	return nil
 }
 
@@ -144,7 +156,8 @@ func (h *HostService) SetQuickPanelDoubleTapModifier(ctx context.Context, modifi
 	if modifier != DoubleTapModifierDisabled && !helperSupportsDoubleTap() {
 		return hostapi.New(hostapi.CodeConflict, "modifier double-tap is not available with the native quick panel on this platform yet")
 	}
-	// The helper reads the trigger at startup: persist, then restart it.
+	h.shortcutsMu.Lock()
+	defer h.shortcutsMu.Unlock()
 	current, err := h.loadQuickPanelSettings(ctx)
 	if err != nil {
 		return hostapi.Internal(err)
@@ -153,16 +166,19 @@ func (h *HostService) SetQuickPanelDoubleTapModifier(ctx context.Context, modifi
 		if err := h.patchQuickPanel(ctx, map[string]any{"doubleTapModifier": modifier}); err != nil {
 			return err
 		}
-		h.restartPanelHelper()
+		// The running helper reads its settings again and applies the trigger; no restart.
+		h.helper.ReloadSettings()
 	}
+	h.appliedPanel.modifier = string(modifier)
 	return nil
 }
 
 // quickPanelShortcutKey is the setting id of the quick panel's global shortcut.
 const quickPanelShortcutKey = "global.toggleQuickPanel"
 
-// updateKeyboardShortcuts merges a shortcut patch into the daemon settings. The native helper
-// registers its global shortcut at startup, so it is restarted when that shortcut changed.
+// updateKeyboardShortcuts merges a shortcut patch into the daemon settings. The executor that holds the quick panel's
+// global shortcut (the native helper or the host's Wails binder) takes the new binding before it is saved, so a
+// refused binding is reported and nothing is saved (ADR-013 section 10).
 func (h *HostService) updateKeyboardShortcuts(ctx context.Context, patch map[string]json.RawMessage) (UpdateKeyboardShortcutsResult, error) {
 	h.shortcutsMu.Lock()
 	defer h.shortcutsMu.Unlock()
@@ -181,43 +197,31 @@ func (h *HostService) updateKeyboardShortcuts(ctx context.Context, patch map[str
 			next[id] = value
 		}
 	}
-	// Without the native helper the host owns the OS binding: move it first so a conflicting shortcut is refused
-	// before anything is saved, and undo it when the save fails so the OS and the persisted setting agree.
-	var previousOS []string
-	osChanged := false
-	if h.helper == nil {
-		previousOS = h.osShortcuts
-		target := panelShortcutTarget(view.QuickPanel.Enabled, next)
-		if !sameShortcutSet(previousOS, target) {
-			if err := h.applyOSShortcuts(target); err != nil {
-				return UpdateKeyboardShortcutsResult{}, err
-			}
-			osChanged = true
-		}
-	} else if err := h.probeHelperShortcuts(view.KeyboardShortcuts, next, view.QuickPanel.Enabled); err != nil {
-		return UpdateKeyboardShortcutsResult{}, err
+	var persistErr error
+	persist := func() error {
+		body := map[string]any{"keyboardShortcuts": map[string]any{"shortcuts": patch}}
+		persistErr = h.daemon().Enveloped(ctx, daemonclient.Request{Method: http.MethodPut, Path: "/settings", JSON: body}, nil)
+		return persistErr
 	}
-	body := map[string]any{"keyboardShortcuts": map[string]any{"shortcuts": patch}}
-	if err := h.daemon().Enveloped(ctx, daemonclient.Request{Method: http.MethodPut, Path: "/settings", JSON: body}, nil); err != nil {
-		if osChanged {
-			if rollbackErr := h.applyOSShortcuts(previousOS); rollbackErr != nil {
-				log.Printf("failed to roll the global shortcut back after the settings save failed: %v", rollbackErr)
-			}
-		}
-		return UpdateKeyboardShortcutsResult{}, hostapi.Internal(err)
-	}
-	if !sameShortcut(view.KeyboardShortcuts[quickPanelShortcutKey], next[quickPanelShortcutKey]) {
-		h.restartPanelHelper()
+	if err := h.panelShortcut.Save(panelShortcutTarget(view.QuickPanel.Enabled, next), persist); err != nil {
+		return UpdateKeyboardShortcutsResult{}, shortcutSaveError(err, persistErr)
 	}
 	return UpdateKeyboardShortcutsResult{KeyboardShortcuts: next}, nil
 }
 
-func sameShortcut(a, b json.RawMessage) bool {
-	var ca, cb bytes.Buffer
-	if json.Compact(&ca, a) != nil || json.Compact(&cb, b) != nil {
-		return bytes.Equal(a, b)
+// shortcutSaveError maps a failed globalshortcut.Applier.Save: the save's own error is internal, an executor that
+// refused the binding is a conflict, and an executor that is not running or did not answer is internal.
+func shortcutSaveError(err, persistErr error) error {
+	switch {
+	case persistErr != nil && errors.Is(err, persistErr):
+		if _, ok := err.(hostapi.CommandError); ok {
+			return err
+		}
+		return hostapi.Internal(err)
+	case errors.Is(err, globalshortcut.ErrUnknown), errors.Is(err, quickpanelhelper.ErrNotRunning):
+		return hostapi.Internal(err)
 	}
-	return bytes.Equal(ca.Bytes(), cb.Bytes())
+	return hostapi.New(hostapi.CodeConflict, err.Error())
 }
 
 func sameShortcutSet(a, b []string) bool {
@@ -241,36 +245,32 @@ func (h *HostService) setWebViewPanelEnabled(ctx context.Context, enabled bool) 
 	if err != nil {
 		return hostapi.Internal(err)
 	}
-	previous := h.osShortcuts
-	if err := h.applyOSShortcuts(panelShortcutTarget(enabled, view.KeyboardShortcuts)); err != nil {
-		return err
+	var persistErr error
+	persist := func() error {
+		// The modifier trigger follows the enabled switch like the shortcut does: watched only while the panel is on.
+		previousModifier := h.modifierMonitor().Current()
+		if err := h.modifierMonitor().Set(desiredLiveModifier(enabled, modifierDoubleTapSupported(), view.QuickPanel.DoubleTapModifier)); err != nil {
+			persistErr = hostapi.New(hostapi.CodeConflict, err.Error())
+			return persistErr
+		}
+		if err := h.patchQuickPanel(ctx, map[string]any{"enabled": enabled}); err != nil {
+			if rollback := h.modifierMonitor().Set(previousModifier); rollback != nil {
+				log.Printf("failed to roll the modifier double-tap trigger back after the settings save failed: %v", rollback)
+			}
+			persistErr = err
+			return err
+		}
+		return nil
 	}
-	// The modifier trigger follows the enabled switch like the shortcut does: watched only while the panel is on.
-	previousModifier := h.modifierMonitor().Current()
-	if err := h.modifierMonitor().Set(desiredLiveModifier(enabled, modifierDoubleTapSupported(), view.QuickPanel.DoubleTapModifier)); err != nil {
-		h.rollbackPanelOS(previous, previousModifier)
-		return hostapi.New(hostapi.CodeConflict, err.Error())
+	if err := h.panelShortcut.Save(panelShortcutTarget(enabled, view.KeyboardShortcuts), persist); err != nil {
+		return shortcutSaveError(err, persistErr)
 	}
-	if err := h.patchQuickPanel(ctx, map[string]any{"enabled": enabled}); err != nil {
-		h.rollbackPanelOS(previous, previousModifier)
-		return err
-	}
+	h.appliedPanel.enabled = enabled
 	h.panel.toggle.setEnabled(enabled)
 	if !enabled {
 		h.dismissQuickPanel()
 	}
 	return nil
-}
-
-// rollbackPanelOS puts the global shortcut and the modifier trigger back after a failed change, so the OS state
-// and the persisted settings agree. Failures are only logged: the original error is the one to report.
-func (h *HostService) rollbackPanelOS(shortcuts []string, modifier string) {
-	if err := h.applyOSShortcuts(shortcuts); err != nil {
-		log.Printf("failed to roll the global shortcut back after the settings save failed: %v", err)
-	}
-	if err := h.modifierMonitor().Set(modifier); err != nil {
-		log.Printf("failed to roll the modifier double-tap trigger back after the settings save failed: %v", err)
-	}
 }
 
 // setWebViewModifier is `set_quick_panel_double_tap_modifier` for the WebView panel: the monitor changes first (an
@@ -290,6 +290,7 @@ func (h *HostService) setWebViewModifier(ctx context.Context, modifier string) e
 		return hostapi.New(hostapi.CodeConflict, err.Error())
 	}
 	if current.DoubleTapModifier == modifier {
+		h.appliedPanel.modifier = modifier
 		return nil
 	}
 	if err := h.patchQuickPanel(ctx, map[string]any{"doubleTapModifier": modifier}); err != nil {
@@ -298,6 +299,7 @@ func (h *HostService) setWebViewModifier(ctx context.Context, modifier string) e
 		}
 		return err
 	}
+	h.appliedPanel.modifier = modifier
 	return nil
 }
 
@@ -314,8 +316,8 @@ func (h *HostService) modifierMonitor() *modifierMonitor {
 }
 
 // initPanelShortcuts registers the quick panel's global shortcut at startup when the WebView panel is in use (the
-// native helper registers its own). A shortcut the OS refuses is logged, not fatal: the panel stays reachable from
-// the tray and the user can pick another shortcut in settings.
+// native helper is told its binding when it launches). A shortcut the OS refuses is recorded in the status, not
+// fatal: the panel stays reachable from the tray and the user can pick another shortcut in settings.
 func (h *HostService) initPanelShortcuts() {
 	if h.helper != nil {
 		return
@@ -330,16 +332,101 @@ func (h *HostService) initPanelShortcuts() {
 		log.Printf("quick panel shortcut: settings unreadable, using the defaults: %v", err)
 	}
 	h.shortcutsMu.Lock()
-	if err := h.applyOSShortcuts(panelShortcutTarget(enabled, view.KeyboardShortcuts)); err != nil {
-		log.Printf("quick panel shortcut not registered: %v", err)
-	}
+	h.panelShortcut.Init(panelShortcutTarget(enabled, view.KeyboardShortcuts))
 	if err := h.modifierMonitor().Set(desiredLiveModifier(enabled, modifierDoubleTapSupported(), view.QuickPanel.DoubleTapModifier)); err != nil {
 		log.Printf("quick panel modifier double-tap not started: %v", err)
 	}
+	h.appliedPanel = appliedPanelSettings{known: err == nil, enabled: enabled, modifier: view.QuickPanel.DoubleTapModifier}
 	h.shortcutsMu.Unlock()
 	if h.panel.toggle.configure(enabled) {
 		h.toggleQuickPanel()
 	}
+}
+
+// appliedPanelSettings is what the host last applied of `quickPanel.enabled` and `quickPanel.doubleTapModifier`, so
+// a settings read that brings the same values does nothing (ADR-013 section 10).
+type appliedPanelSettings struct {
+	known    bool
+	enabled  bool
+	modifier string
+}
+
+// reconcilePanel applies an external change of the quick panel's shortcut, enabled switch or double-tap modifier.
+// It runs after every settings read; the host's own saves record what they applied, so their events change nothing.
+// When anything differs the settings are read again under the lock, so a read older than the host's own save cannot
+// bring an old value back.
+func (h *HostService) reconcilePanel(view settings.View) {
+	if h.panelShortcut == nil {
+		return
+	}
+	h.shortcutsMu.Lock()
+	defer h.shortcutsMu.Unlock()
+	status := h.panelShortcut.Status()
+	target := panelShortcutTarget(view.QuickPanel.Enabled, view.KeyboardShortcuts)
+	applied := h.appliedPanel
+	if applied.known && applied.enabled == view.QuickPanel.Enabled && applied.modifier == view.QuickPanel.DoubleTapModifier &&
+		slices.Equal(target, status.Desired) && status.State != globalshortcut.StateUnknown {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	fresh, err := settings.Read(ctx, h.daemon())
+	cancel()
+	if err != nil {
+		log.Printf("quick panel: settings changed but could not be read again: %v", err)
+		return
+	}
+	qp := fresh.QuickPanel
+	target = panelShortcutTarget(qp.Enabled, fresh.KeyboardShortcuts)
+	enabledChanged := !applied.known || applied.enabled != qp.Enabled
+	modifierChanged := !applied.known || applied.modifier != qp.DoubleTapModifier
+	h.appliedPanel = appliedPanelSettings{known: true, enabled: qp.Enabled, modifier: qp.DoubleTapModifier}
+	if h.helper != nil {
+		if enabledChanged {
+			h.setHelperEnabled(qp.Enabled, target) // a launched helper reads its settings and is told its binding
+			return
+		}
+		h.panelShortcut.Reconcile(target, func() ([]string, error) { return target, nil })
+		if modifierChanged {
+			h.helper.ReloadSettings()
+		}
+		return
+	}
+	h.panelShortcut.Reconcile(target, func() ([]string, error) { return target, nil })
+	if enabledChanged || modifierChanged {
+		if err := h.modifierMonitor().Set(desiredLiveModifier(qp.Enabled, modifierDoubleTapSupported(), qp.DoubleTapModifier)); err != nil {
+			log.Printf("quick panel modifier double-tap not applied: %v", err)
+		}
+	}
+	if enabledChanged {
+		h.panel.toggle.setEnabled(qp.Enabled)
+		if !qp.Enabled {
+			h.dismissQuickPanel()
+		}
+	}
+}
+
+// GetQuickPanelShortcutStatus reports whether the saved quick panel shortcut is the one the OS holds: active, saved
+// but not active (with the binding still held and the OS error), unknown, or inactive (ADR-013 section 10). The host
+// emits quick-panel://shortcut-status on every change.
+//
+//uc:errors none
+//uc:os all=real
+func (h *HostService) GetQuickPanelShortcutStatus() QuickPanelShortcutStatus {
+	if h.panelShortcut == nil {
+		return toShortcutStatus(globalshortcut.Status{State: globalshortcut.StateInactive})
+	}
+	return toShortcutStatus(h.panelShortcut.Status())
+}
+
+func toShortcutStatus(s globalshortcut.Status) QuickPanelShortcutStatus {
+	desired, active := s.Desired, s.Active
+	if desired == nil {
+		desired = []string{}
+	}
+	if active == nil {
+		active = []string{}
+	}
+	return QuickPanelShortcutStatus{ShortcutID: quickPanelShortcutKey, State: QuickPanelShortcutState(s.State), Desired: desired, Active: active, Error: s.Error}
 }
 
 // asTextError turns a failure into the plain-string rejection of the quick panel commands.

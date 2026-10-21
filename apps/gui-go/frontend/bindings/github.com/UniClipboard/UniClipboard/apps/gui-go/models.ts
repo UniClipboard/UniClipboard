@@ -408,6 +408,48 @@ export enum QuickPanelPosition {
 };
 
 /**
+ * QuickPanelShortcutState is the apply state of the quick panel's global shortcut (ADR-013 section 10).
+ */
+export enum QuickPanelShortcutState {
+    /**
+     * The Go zero value for the underlying type of the enum.
+     */
+    $zero = "",
+
+    /**
+     * the executor holds the saved binding
+     */
+    ShortcutStateActive = "active",
+
+    /**
+     * saved, but the executor holds `active` instead
+     */
+    ShortcutStateNotActive = "not_active",
+
+    /**
+     * the executor could not report what it holds
+     */
+    ShortcutStateUnknown = "unknown",
+
+    /**
+     * nothing is bound on purpose (panel disabled, no executor)
+     */
+    ShortcutStateInactive = "inactive",
+};
+
+/**
+ * QuickPanelShortcutStatus is what the host knows about the quick panel's global shortcut: the saved binding, the
+ * binding the executor reported holding, and the executor's error. It lives in the host's memory only.
+ */
+export interface QuickPanelShortcutStatus {
+    "shortcutId": string;
+    "state": QuickPanelShortcutState;
+    "desired": string[] | null;
+    "active": string[] | null;
+    "error": string;
+}
+
+/**
  * SamplePermit allows the page to measure one sample.
  */
 export interface SamplePermit {

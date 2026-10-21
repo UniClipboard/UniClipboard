@@ -180,6 +180,15 @@ export function GetQuickPanelDoubleTapAvailability(): $CancellablePromise<$model
 }
 
 /**
+ * GetQuickPanelShortcutStatus reports whether the saved quick panel shortcut is the one the OS holds: active, saved
+ * but not active (with the binding still held and the OS error), unknown, or inactive (ADR-013 section 10). The host
+ * emits quick-panel://shortcut-status on every change.
+ */
+export function GetQuickPanelShortcutStatus(): $CancellablePromise<$models.QuickPanelShortcutStatus> {
+    return $Call.ByID(2070180582);
+}
+
+/**
  * GetVisualEffects returns the visual effects state of this session.
  */
 export function GetVisualEffects(): $CancellablePromise<$models.EffectsSnapshot> {

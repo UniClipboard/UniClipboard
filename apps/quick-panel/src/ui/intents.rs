@@ -9,6 +9,11 @@ impl Panel {
         self.apply(window, cx, |state, ctx| state.toggle(ctx));
     }
 
+    /// Reads the settings again, as a show does (the GUI's `reload_settings`).
+    pub fn reload_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.run(vec![Effect::LoadOptions], window, cx);
+    }
+
     /// Closes the panel.
     pub(super) fn dismiss(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.run(vec![Effect::HideWindow], window, cx);

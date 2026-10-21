@@ -34,15 +34,29 @@ fn wire_line(request: HostRequest) -> &'static str {
     }
 }
 
+/// The answer to a `set_shortcuts` command: the bindings this process holds now and, when it
+/// refused the requested ones, why (it then still holds the previous ones). Read by
+/// `parseShortcutReply` in the Go host.
+pub fn shortcut_reply_line(seq: u64, active: &[String], error: Option<&str>) -> String {
+    let mut reply = serde_json::json!({ "seq": seq, "active": active });
+    if let Some(error) = error {
+        reply["error"] = error.into();
+    }
+    serde_json::json!({ "shortcuts": reply }).to_string()
+}
+
+/// Writes one protocol line to standard output, which the supervising GUI reads.
+pub fn write_line(line: &str) -> std::io::Result<()> {
+    let mut out = std::io::stdout().lock();
+    writeln!(out, "{line}").and_then(|()| out.flush())
+}
+
 impl HostLink for SupervisorLink {
     fn send(&self, request: HostRequest) -> Result<(), String> {
         if !self.supervised.load(Ordering::Relaxed) {
             return Err(quick_panel_core::text::t().needs_app.into());
         }
-        let line = wire_line(request);
-        let mut out = std::io::stdout().lock();
-        writeln!(out, "{line}")
-            .and_then(|()| out.flush())
+        write_line(wire_line(request))
             .map_err(|_| quick_panel_core::text::t().host_gone.to_string())
     }
 }

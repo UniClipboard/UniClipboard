@@ -2,13 +2,14 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"log"
 	"runtime"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/UniClipboard/UniClipboard/apps/gui-go/internal/hostapi"
+	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/globalshortcut"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
@@ -102,7 +103,8 @@ type shortcutBinder interface {
 
 // updateShortcuts replaces the registered set: drop the old bindings, defensively drop the new ones (a binding left
 // behind by an earlier partial update), register the new ones, and on the first failure undo the new registrations
-// and restore the old ones. The failure is returned; rollback errors are only logged.
+// and restore the old ones. The failure is returned; when an old binding could not be restored the error also wraps
+// globalshortcut.ErrUnknown, since the set now held is no longer the old one.
 func updateShortcuts(binder shortcutBinder, old, next []string) error {
 	for _, shortcut := range old {
 		if err := binder.unregister(shortcut); err != nil {
@@ -123,10 +125,15 @@ func updateShortcuts(binder shortcutBinder, old, next []string) error {
 		for _, done := range next[:i] {
 			_ = binder.unregister(done)
 		}
+		restored := true
 		for _, previous := range old {
 			if rollbackErr := binder.register(previous); rollbackErr != nil {
 				log.Printf("failed to restore the global shortcut %q: %v", previous, rollbackErr)
+				restored = false
 			}
+		}
+		if !restored {
+			return errors.Join(err, globalshortcut.ErrUnknown)
 		}
 		return err
 	}
@@ -182,7 +189,7 @@ func (b *wailsShortcutBinder) register(shortcut string) error {
 
 func (b *wailsShortcutBinder) unregister(shortcut string) error {
 	for _, combo := range strings.Fields(shortcut) {
-		_ = b.manager.Unregister(combo) // not registered counts as success
+		_ = b.manager.Unregister(wailsAccelerator(combo)) // not registered counts as success
 	}
 	return nil
 }
@@ -190,8 +197,30 @@ func (b *wailsShortcutBinder) unregister(shortcut string) error {
 // registerCombo drops a leftover binding of the same accelerator first: Wails reports a duplicate registration as
 // an error and keeps the old callback, which would make a changed handler silently ineffective.
 func (b *wailsShortcutBinder) registerCombo(combo string, onPress func()) error {
-	_ = b.manager.Unregister(combo)
-	return b.manager.Register(combo, onPress)
+	accelerator := wailsAccelerator(combo)
+	_ = b.manager.Unregister(accelerator)
+	return b.manager.Register(accelerator, onPress)
+}
+
+// wailsKeyNames maps named keys of the stored token set (ADR-013 section 8.1.1) to the names Wails `parseAccelerator`
+// accepts. Wails knows single characters and a short list of words; the set also has the `global-hotkey` and
+// KeyboardEvent.code names, which the recorder stores. A key missing here and unknown to Wails is refused by Wails,
+// and that refusal reaches the user (ADR-013 section 10).
+var wailsKeyNames = map[string]string{
+	"arrowup": "up", "arrowdown": "down", "arrowleft": "left", "arrowright": "right",
+	"pageup": "page up", "pagedown": "page down", "esc": "escape",
+	"equal": "=", "minus": "-", "comma": ",", "period": ".", "slash": "/", "semicolon": ";", "quote": "'",
+	"backquote": "`", "bracketleft": "[", "bracketright": "]", "backslash": "\\",
+}
+
+// wailsAccelerator turns one stroke in the physical-key form ("ctrl+alt+arrowup") into a Wails accelerator
+// ("ctrl+alt+up"). Only the key, the last token, is renamed.
+func wailsAccelerator(combo string) string {
+	parts := strings.Split(combo, "+")
+	if name, ok := wailsKeyNames[parts[len(parts)-1]]; ok {
+		parts[len(parts)-1] = name
+	}
+	return strings.Join(parts, "+")
 }
 
 func (b *wailsShortcutBinder) leaderPressed(leader, second string) {
@@ -220,17 +249,26 @@ func (b *wailsShortcutBinder) secondPressed(second string) {
 	}
 }
 
-// applyOSShortcuts moves the registered set to next and records it. The caller holds shortcutsMu.
-func (h *HostService) applyOSShortcuts(next []string) error {
+// webViewShortcuts is the WebView panel's executor for globalshortcut.Applier: the host binds the shortcut itself
+// through Wails. It is only called by the applier, which serializes the calls.
+type webViewShortcuts struct{ h *HostService }
+
+// Apply moves the registered set to next and reports the set held afterwards: next on success, the old set after a
+// refusal that was rolled back, unknown when the rollback failed too.
+func (e webViewShortcuts) Apply(next []string) ([]string, error) {
+	h := e.h
 	if !shortcutBackendAllowed() {
 		h.osShortcuts = next
-		return nil
+		return next, nil
 	}
 	if err := updateShortcuts(h.shortcutBinder(), h.osShortcuts, next); err != nil {
-		return hostapi.New(hostapi.CodeConflict, err.Error())
+		if errors.Is(err, globalshortcut.ErrUnknown) {
+			h.osShortcuts = nil
+		}
+		return h.osShortcuts, err
 	}
 	h.osShortcuts = next
-	return nil
+	return next, nil
 }
 
 func (h *HostService) shortcutBinder() shortcutBinder {

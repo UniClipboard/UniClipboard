@@ -10,19 +10,27 @@ pub struct Shortcuts {
     sequences: Vec<Vec<u32>>,
     pending: Option<(u32, Instant)>,
     definitions: Vec<String>,
+    /// The supervising GUI decides the shortcut (`set_shortcuts`); the settings this process reads
+    /// do not (ADR-013 section 10).
+    host_owned: bool,
 }
 impl Global for Shortcuts {}
 
 impl Shortcuts {
-    pub fn new() -> anyhow::Result<Self> {
+    /// `supervised`: a GUI supervises this process. It then registers nothing until the GUI names
+    /// the shortcut, so a start never activates the platform default in place of the user's
+    /// binding. `UC_GPUI_SHORTCUT` (development) still fixes the shortcut.
+    pub fn new(supervised: bool) -> anyhow::Result<Self> {
+        let host_owned = supervised && std::env::var("UC_GPUI_SHORTCUT").is_err();
         let mut host = Self {
             manager: GlobalHotKeyManager::new()?,
             registered: vec![],
             sequences: vec![],
             pending: None,
             definitions: vec![],
+            host_owned,
         };
-        if super::test_control::enabled() {
+        if super::test_control::enabled() || host_owned {
             return Ok(host);
         }
         // Another program may already hold the shortcut (common on Windows). That must not end
@@ -44,8 +52,25 @@ impl Shortcuts {
             .map(|binding| shortcut_text(binding))
     }
 
-    pub fn configure(&mut self, settings: &SettingsDto) -> anyhow::Result<()> {
+    /// The bindings this process holds.
+    pub fn held(&self) -> Vec<String> {
+        self.definitions.clone()
+    }
+
+    /// The GUI's `set_shortcuts`: holds exactly `bindings`, or keeps the previous ones and says why.
+    /// The same bindings again register nothing.
+    pub fn set_from_host(&mut self, bindings: Vec<String>) -> Result<(), String> {
         if super::test_control::enabled() {
+            return Err("the shortcut is not registered under test control".into());
+        }
+        if !self.host_owned {
+            return Err("the shortcut is fixed by UC_GPUI_SHORTCUT".into());
+        }
+        self.replace(bindings).map_err(|error| error.to_string())
+    }
+
+    pub fn configure(&mut self, settings: &SettingsDto) -> anyhow::Result<()> {
+        if super::test_control::enabled() || self.host_owned {
             return Ok(());
         }
         if let Ok(value) = std::env::var("UC_GPUI_SHORTCUT") {
@@ -96,9 +121,13 @@ impl Shortcuts {
             }
             applied.push(key);
         }
+        // The new bindings are held now; an old one the OS does not release stays held too, but
+        // the replacement itself succeeded.
         for old in &self.registered {
-            if !keys.iter().any(|key| key.id() == old.id()) {
-                self.manager.unregister(*old)?;
+            if !keys.iter().any(|key| key.id() == old.id())
+                && self.manager.unregister(*old).is_err()
+            {
+                tracing::warn!("Could not release a previous quick panel shortcut");
             }
         }
         self.registered = keys;

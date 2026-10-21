@@ -22,6 +22,7 @@ const (
 	daemonConnectionChanged   = "app://daemon-connection-changed" // host -> page, no payload: the daemon was replaced, reconnect
 	desktopThemeChangedEvent  = "desktop-theme://changed"         // host -> page, DesktopThemeSnapshot: the desktop theme changed. Declared for the page's listener; no host emits it (Omarchy theming is not implemented in the Go host)
 	devicesChangedEvent       = "devices://sync-changed"          // both ways, string device id: a device's sync switch changed
+	shortcutStatusEvent       = "quick-panel://shortcut-status"   // host -> page, QuickPanelShortcutStatus: the global shortcut's apply status changed
 )
 
 func init() {
@@ -37,4 +38,5 @@ func init() {
 	application.RegisterEvent[application.Void](daemonConnectionChanged)
 	application.RegisterEvent[DesktopThemeSnapshot](desktopThemeChangedEvent)
 	application.RegisterEvent[string](devicesChangedEvent)
+	application.RegisterEvent[QuickPanelShortcutStatus](shortcutStatusEvent)
 }

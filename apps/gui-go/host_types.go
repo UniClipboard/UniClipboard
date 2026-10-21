@@ -222,6 +222,26 @@ type UpdateKeyboardShortcutsResult struct {
 	KeyboardShortcuts map[string]json.RawMessage `json:"keyboardShortcuts"`
 }
 
+// QuickPanelShortcutState is the apply state of the quick panel's global shortcut (ADR-013 section 10).
+type QuickPanelShortcutState string
+
+const (
+	ShortcutStateActive    QuickPanelShortcutState = "active"     // the executor holds the saved binding
+	ShortcutStateNotActive QuickPanelShortcutState = "not_active" // saved, but the executor holds `active` instead
+	ShortcutStateUnknown   QuickPanelShortcutState = "unknown"    // the executor could not report what it holds
+	ShortcutStateInactive  QuickPanelShortcutState = "inactive"   // nothing is bound on purpose (panel disabled, no executor)
+)
+
+// QuickPanelShortcutStatus is what the host knows about the quick panel's global shortcut: the saved binding, the
+// binding the executor reported holding, and the executor's error. It lives in the host's memory only.
+type QuickPanelShortcutStatus struct {
+	ShortcutID string                  `json:"shortcutId"`
+	State      QuickPanelShortcutState `json:"state"`
+	Desired    []string                `json:"desired"`
+	Active     []string                `json:"active"`
+	Error      string                  `json:"error"`
+}
+
 // ---- updater
 
 // UpdateMetadata describes an available update.

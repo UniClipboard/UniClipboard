@@ -169,6 +169,7 @@ export type {
   EffectsSnapshot,
   ExportStartupLogsResult,
   ImportConfigStageResult,
+  QuickPanelShortcutStatus,
   SamplePermit,
   UpdateKeyboardShortcutsResult,
   UpdateMetadata,
@@ -182,5 +183,6 @@ export {
   QuickPanelDoubleTapModifier,
   QuickPanelExpandSide,
   QuickPanelPosition,
+  QuickPanelShortcutState,
   SystemMotion,
 } from '@host/models'

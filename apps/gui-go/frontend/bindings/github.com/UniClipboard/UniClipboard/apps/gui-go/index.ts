@@ -20,6 +20,7 @@ export {
     QuickPanelDoubleTapModifier,
     QuickPanelExpandSide,
     QuickPanelPosition,
+    QuickPanelShortcutState,
     SystemMotion
 } from "./models.js";
 
@@ -44,6 +45,7 @@ export type {
     ImportConfigStageResult,
     LogSourceGap,
     NotificationAction,
+    QuickPanelShortcutStatus,
     SamplePermit,
     UpdateKeyboardShortcutsResult,
     UpdateMetadata

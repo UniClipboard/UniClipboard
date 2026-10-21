@@ -31,7 +31,8 @@ What is checked (each recorded in native-assertions.json):
   4b Ctrl+Shift+O in the panel (the `show_main_window` request) brings the minimized main window back to the foreground
   4c Ctrl+, in the panel (the `open_settings` request) does the same (the settings route itself is not machine-checked)
   5  a shortcut owned by another process is refused as Conflict and the old binding stays; after the other process lets
-     go the same change succeeds, the helper is restarted, the old shortcut is dead and the new one opens the panel
+     go the same change succeeds in the running helper (no restart, ADR-013 section 10), the old shortcut is dead and
+     the new one opens the panel
   6  the modifier double tap (Ctrl, twice, alone) opens the panel after the setting is saved; a Ctrl chord does not
   7  a helper killed by this script is brought back by the supervisor
   8  exit: GUI exit code 0, no helper, no daemon of this run remains, and the shortcut is free again
@@ -432,7 +433,7 @@ def main():
             wait_for(lambda: user32.IsIconic(main['hwnd']), 5)
             focus_target()
 
-        # 5: a conflicting shortcut is refused before it is saved; once free it is accepted and the helper restarts.
+        # 5: a conflicting shortcut is refused before it is saved; once free it is accepted by the running helper.
         release = hold_hotkey(NEW_SHORTCUT)
         before_pids = helper_pids()
         r = gui.invoke('conflict', 'update_keyboard_shortcuts', {'shortcuts': {KEY: NEW_SHORTCUT}})
@@ -442,10 +443,9 @@ def main():
         release()
         release = None
         r = gui.invoke('rebind', 'update_keyboard_shortcuts', {'shortcuts': {KEY: NEW_SHORTCUT}})
-        restarted = wait_for(lambda: (lambda now: now and now != before_pids and now)(helper_pids()), 20)
         time.sleep(2)
-        check('5 the same change succeeds once the other process let go, and the helper is restarted',
-              r['ok'] and bool(restarted), {'result': r, 'before': sorted(before_pids), 'after': sorted(helper_pids())})
+        check('5 the same change succeeds once the other process let go, in the same helper process',
+              r['ok'] and helper_pids() == before_pids, {'result': r, 'before': sorted(before_pids), 'after': sorted(helper_pids())})
         focus_target()
         send_chord('ctrl', 'alt', 'v', hold=0.15)
         time.sleep(1.2)
@@ -462,7 +462,8 @@ def main():
         wait_for(lambda: helper_pids(), 20)
         time.sleep(3)
         focus_target()
-        # The restarted helper applies the persisted setting once it has reached the daemon, so tap until it reacts.
+        # The helper reads its settings again (reload_settings) and applies the trigger off its UI thread, so tap until
+        # it reacts.
         shown = None
         for _ in range(8):
             send_chord('ctrl', hold=0.06)

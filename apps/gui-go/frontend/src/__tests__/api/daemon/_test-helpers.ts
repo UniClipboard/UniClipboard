@@ -187,6 +187,7 @@ export function makeSettingsDto(overrides: Partial<Settings> = {}): Settings {
       telemetryEnabled: true,
       usageAnalyticsEnabled: true,
       debugMode: false,
+      trayIcon: 'glyph',
     },
     sync: {
       syncEnabled: true,

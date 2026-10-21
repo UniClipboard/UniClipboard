@@ -308,6 +308,15 @@
       "general": {
         "title": "通用设置",
         "startupTitle": "启动设置",
+        "trayTitle": "托盘",
+        "trayIcon": {
+          "label": "托盘图标",
+          "description": "菜单栏或系统托盘中显示的图标。",
+          "options": {
+            "glyph": "默认",
+            "cat": "经典猫头"
+          }
+        },
         "saveError": "保存设置失败",
         "deviceName": {
           "label": "设备名称",

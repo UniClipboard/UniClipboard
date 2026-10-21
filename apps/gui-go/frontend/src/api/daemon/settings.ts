@@ -41,6 +41,7 @@ import type {
   RelayProbeOutcomeDto,
   RelaySaveResultDto,
   SettingsPatchDto,
+  TrayIconDto,
 } from '@/api/generated/types.gen'
 import type {
   CustomRelay,
@@ -76,6 +77,9 @@ export type UpdateChannel = 'stable' | 'alpha' | 'beta' | 'rc'
  *   shows the window.
  */
 export type StartupMode = 'normal' | 'silent' | 'lightweight'
+
+/** Tray icon style, stored by the daemon's product settings (`general.trayIcon`). */
+export type TrayIcon = TrayIconDto
 
 /** Sync frequency mode. / 同步频率模式。 */
 export type SyncFrequency = 'realtime' | 'interval'
@@ -148,6 +152,7 @@ export interface GeneralSettings {
   telemetryEnabled: boolean
   usageAnalyticsEnabled: boolean
   debugMode: boolean
+  trayIcon: TrayIcon
 }
 
 /** Content type toggles for sync filtering. / 同步过滤的内容类型开关。 */
@@ -514,6 +519,7 @@ function toSettingsPatchRequest(
       telemetryEnabled,
       usageAnalyticsEnabled,
       debugMode,
+      trayIcon,
     } = settings.general
 
     patch.general = {
@@ -533,6 +539,7 @@ function toSettingsPatchRequest(
       telemetryEnabled,
       usageAnalyticsEnabled,
       debugMode,
+      trayIcon,
     }
   }
 

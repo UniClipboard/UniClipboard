@@ -308,6 +308,15 @@
       "general": {
         "title": "通用設定",
         "startupTitle": "啟動設定",
+        "trayTitle": "托盤",
+        "trayIcon": {
+          "label": "托盤圖示",
+          "description": "選單列或系統托盤中顯示的圖示。",
+          "options": {
+            "glyph": "預設",
+            "cat": "經典貓頭"
+          }
+        },
         "saveError": "儲存設定失敗",
         "deviceName": {
           "label": "裝置名稱",

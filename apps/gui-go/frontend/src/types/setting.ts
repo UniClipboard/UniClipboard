@@ -1,3 +1,5 @@
+import type { TrayIconDto } from '@/api/generated/types.gen'
+
 // ============================================================================
 // 新架构类型定义 - 与 Rust 后端 uc-core/src/settings/model.rs 完全匹配
 // ============================================================================
@@ -32,6 +34,9 @@ export type UpdateChannel = 'stable' | 'alpha' | 'beta' | 'rc'
  * 三者互斥，与 `autoStart`（是否开机自启）相互独立。
  */
 export type StartupMode = 'normal' | 'silent' | 'lightweight'
+
+/** Tray icon style, stored by the daemon's product settings (`general.trayIcon`). */
+export type TrayIcon = TrayIconDto
 
 /**
  * 通用设置 - 对应 Rust GeneralSettings
@@ -76,6 +81,7 @@ export interface GeneralSettings {
   telemetryEnabled: boolean
   usageAnalyticsEnabled: boolean
   debugMode: boolean
+  trayIcon: TrayIcon
 }
 
 /**

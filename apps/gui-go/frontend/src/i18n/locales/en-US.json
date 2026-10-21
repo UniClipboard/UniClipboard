@@ -308,6 +308,15 @@
       "general": {
         "title": "General",
         "startupTitle": "Startup",
+        "trayTitle": "Tray",
+        "trayIcon": {
+          "label": "Tray icon",
+          "description": "The icon shown in the menu bar or system tray.",
+          "options": {
+            "glyph": "Default",
+            "cat": "Classic cat"
+          }
+        },
         "saveError": "Failed to save setting",
         "deviceName": {
           "label": "Device Name",

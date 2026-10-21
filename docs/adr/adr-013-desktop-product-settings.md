@@ -469,7 +469,131 @@ host path that stops the daemon announces the stop first (`announceDaemonStop`: 
 
 **Not changed by task 5.**
 - (Superseded below: the tray language moved to the Go host.)
-- Shortcut apply status for external writes is task 6.
+- Shortcut apply status for external writes is task 6 (section 10).
+
+### 10. Global shortcut apply status (task 6, P1)
+
+Scope: the quick panel's global shortcut (`keyboardShortcuts["global.toggleQuickPanel"]`), the
+`quickPanel.enabled` switch and the modifier double tap. In-app shortcuts are matched in the page
+and have no OS side effect.
+
+**Diagnosis of the v1.2 Windows report** ("changing the trigger shortcut has no effect; Ctrl+Alt+V
+still works"). The executor code is the same in v1.2.0 (`4438ff72b`) and at the task 5 baseline.
+On Windows the native helper is the executor (`nativePanelDefault`, and `build.yml` ships
+`uniclip-quick-panel.exe`). The GUI save runs:
+
+1. `ShortcutRow.handleConfirm` closes the recorder and calls `useShortcutSettings.persist`.
+2. The host command `UpdateKeyboardShortcuts` runs `probeHelperShortcuts` (Windows only). The probe
+   registers the new binding through Wails `GlobalShortcut` in the host process and releases it.
+3. Only when the probe succeeds: `PUT /settings`, then a helper restart.
+
+Evidence boundary. Proven and not proven are kept apart:
+
+- **Proven (real parsers, source reading):** the probe parses with Wails `parseAccelerator`; the
+  helper parses with `global-hotkey`. Running both real parsers shows that Wails rejects
+  `arrowup`, `pageup`, `insert`, `esc`, `equal`, `minus`, `comma`, `quote`, `semicolon`,
+  `period`, `slash`, `backquote`, `bracket*`, `backslash`, `numpad*`, `capslock`, `printscreen`
+  and the media keys, all of which `global-hotkey` accepts. The recorder turns the Space key into
+  `ctrl+alt` (the space is the stroke separator), which both parsers reject.
+- **Proven (source reading):** `useShortcutSettings.persist` catches the command error and only
+  logs it. The recorder is already closed, and the page reloads the stored value. A refused save
+  shows no error, and the old binding stays.
+- **Not proven:** which value the reporting user recorded, whether their save was refused or
+  saved, which executor ran on their machine (the helper, or the WebView panel when the helper is
+  missing), and whether `RegisterHotKey` failed (for example `Win+V`, which Windows reserves for
+  clipboard history). No log, settings file or Windows run from that user is available.
+
+Candidate chains that end with "the default still works", none confirmed for the user:
+
+1. The probe refuses the value (Wails parser or `RegisterHotKey`); the UI hides the error;
+   nothing is saved.
+2. The value is saved, the helper restarts, registers the platform default at start, and then
+   fails to register the configured value (its only signal is a message inside the hidden panel).
+3. The helper's first settings read fails; it keeps the default until the panel is shown.
+
+The parser difference alone does not prove chain 1 for this user. macOS has no probe, so the same
+values are saved there; this is consistent with a Windows-only report but is not proof.
+Confirming the root cause needs the user's stored `global.toggleQuickPanel` value and the GUI and
+helper logs from the failing save.
+
+Storage was not the cause. The task 4 store does not change any of these steps.
+
+**Ownership.** The Go host owns the desired binding and the active binding of the running
+executor, in memory only. `packages/desktop-host-go/globalshortcut` holds this state without a GUI
+dependency. The executors:
+
+| Executor | Platforms | Applies |
+|---|---|---|
+| Native helper (`uniclip-quick-panel`) | macOS, Windows (default) | `set_shortcuts` over the helper's standard input; the helper answers with the bindings it holds |
+| WebView panel (Wails `GlobalShortcut`) | Linux, or when the helper is missing | `updateShortcuts` in `global_shortcuts.go` |
+| none | lightweight mode (the GUI exits) | nothing; no status |
+
+Both executors are transactional: on a failure they keep the bindings they held before.
+
+**GUI save** (`UpdateKeyboardShortcuts`, `SetQuickPanelEnabled`):
+1. Compute the target (the effective binding while the panel is enabled, none otherwise).
+2. If it differs from the desired binding, apply it in the executor. On failure return `Conflict`;
+   nothing is saved.
+3. Persist. On failure apply the previous binding again and return the error.
+4. Record desired = active = target before the lock is released.
+
+The Windows probe is removed: the executor that will hold the binding is the check.
+
+**External write** (CLI, another client, a silent start without a WebView): the settings watcher
+calls `applySettings` after every read. The reconcile step:
+- does nothing when the target equals the desired binding (the host's own write, a reconnect, a
+  snapshot, an unrelated event);
+- otherwise reads `GET /settings` again under the lock, so a read that started before the host's
+  own write cannot reapply an old value;
+- applies the target. On success: active. On failure: the target stays saved and desired, the
+  previous binding stays active, and the status is `not_active` with the OS error. The saved
+  value is never reverted.
+
+**Retry.** A `not_active` binding is retried only when the desired binding changes or the helper
+starts again. Unrelated events do not retry it, so a reconnect cannot produce a false conflict
+against a binding the host already holds.
+
+**Helper protocol.** One JSON object per line, in both directions, next to the existing requests.
+- Host to helper (standard input): `{"command":"set_shortcuts","seq":N,"shortcuts":["ctrl+alt+b"]}`
+  and `{"command":"reload_settings"}`. The end of input still means exit.
+- Helper to host (standard output): `{"shortcuts":{"seq":N,"active":[...],"error":"..."}}`.
+- A supervised helper registers nothing until the first `set_shortcuts` and does not apply the
+  shortcut from its own settings reads. An unsupervised helper (development) keeps the old
+  behaviour.
+- After every launch (first start, crash restart, enable) the host sends the desired binding.
+  When it fails, the host sends the last active binding, so a crash does not lose a working
+  binding.
+- A shortcut or double-tap change no longer restarts the helper: `set_shortcuts` and
+  `reload_settings` apply it in the running process. Own saves cause zero helper restarts.
+- A reply that does not arrive within 3 s is a failure.
+
+**Double tap and the enabled switch.** The reconcile step also follows `quickPanel.enabled` and
+`quickPanel.doubleTapModifier`. Each is compared with the value the host last applied, so the
+host's own write does nothing a second time. The helper reloads its settings; the WebView panel
+sets its modifier monitor.
+
+**Executor key names.** The approved token set (section 8.1.1) is unchanged. The WebView executor
+maps the set's named keys to Wails names (`arrowup` → `up`, `pageup` → `page up`, `esc` →
+`escape`, `equal` → `=`, `comma` → `,` and the other punctuation names). A token that the
+executor or the OS still refuses (`insert`, `numpad*`, the media keys on the WebView panel) is a
+visible failure, not a silent one.
+
+**Recorder.** The recorder stores physical key names from `KeyboardEvent.code` (`comma`, `quote`,
+`semicolon`, `space`, `arrowup`), as decided after task 4. A key with no name in the set (a
+non-Latin character without a physical name, a dead key, `F25` and above) is shown as unsupported
+and cannot be saved. The recorder stays open after a failed save and shows the error.
+
+**Status in the UI.** The host command `GetQuickPanelShortcutStatus` returns
+`{shortcutId, state, desired, active, error}` with state `active`, `not_active` or `inactive`
+(no executor, or the panel is disabled). The host emits `quick-panel://shortcut-status` with the
+same payload on every change. The shortcut row shows "saved, not active" with the active binding
+and the error.
+
+**Verification.** `packages/desktop-host-go/globalshortcut` E2E runs the reconcile step against an
+isolated real daemon with a counting executor, and the helper protocol against a stand-in helper
+process. Both are test doubles: they prove the sequence of requests, events and executor calls,
+not an OS registration. OS registration on macOS, Windows (helper and WebView) and Linux X11 is a
+native user check.
 
 ## Failure modes (listed before implementation)
 
@@ -570,6 +694,32 @@ Field set 1, legacy import and owner-split writes (task 4):
 | F83 | A failed install leaves the windows and the host without a daemon | the daemon is started again and every client reconnects | code review; native check pending |
 | F85 | A restart path stops the daemon while window sockets are open, or leaves the windows disconnected after a failure | every stop path in the table above announces; every surviving path ends with `resumeAfterStop` | code review; native check pending |
 | F84 | The page still sets the tray language and races the host | the page call and the host command are removed | `bun run check:host-structure`, bindings `--check` |
+
+Global shortcut apply status (task 6):
+
+| # | Failure mode | Expected behaviour | Verification |
+|---|---|---|---|
+| F86 | The host's own save registers again when its own `settings.changed` arrives (Windows: a false "not active") | the reconcile step compares with the recorded desired binding and does nothing | globalshortcut E2E (one executor call per own save) |
+| F87 | A watcher read that started before the host's own write is applied after it and reapplies the old binding | a differing view is read again under the lock before anything is applied | globalshortcut E2E (stale view injected after the own save) |
+| F88 | A GUI save with a conflicting binding is persisted | the executor applies first; on failure nothing is written | globalshortcut E2E (file hash unchanged); native check |
+| F89 | The save fails after the executor applied the new binding | the previous binding is applied again; the error is returned | globalshortcut E2E (daemon rejects with 400) |
+| F90 | An external conflicting write is reverted, or the old binding is dropped | the value stays saved; status `not_active`; the previous binding stays active | globalshortcut E2E; native check |
+| F91 | An external write is not applied without a WebView | the host watcher applies it | globalshortcut E2E without any page; native silent-start check |
+| F92 | A reconnect or snapshot read registers the active binding again | equal target: nothing happens | globalshortcut E2E (daemon restart, no executor call) |
+| F93 | Every unrelated event retries a failed binding | retried only when the desired binding changes or the helper starts | globalshortcut E2E (tray write after a failure: no executor call) |
+| F94 | A helper restart drops the old binding or activates the platform default | no restart for shortcut changes; the helper replaces bindings in its process, add before remove | code review; native check |
+| F95 | A helper crash loses the binding or leaves a stale status | after every launch the host sends the desired binding, then the last active one on failure | helper protocol E2E (stand-in helper relaunched) |
+| F96 | A hung or silent helper blocks the save | 3 s timeout; the GUI save fails without writing; an external write is `not_active` | helper protocol E2E (stand-in helper that never answers) |
+| F97 | The helper's own settings read and the host both change the shortcut | a supervised helper takes the shortcut only from the host | code review |
+| F98 | A pre-save check parses differently from the executor | the probe is removed; the executor itself is the check | parser matrix (real Wails and `global-hotkey` parsers) |
+| F99 | The WebView executor rejects named keys of the approved set | mapped to Wails names; remaining refusals are visible failures | parser matrix |
+| F100 | The recorder stores an out-of-set value (Unicode, dead key, `f25`, Space as `ctrl+alt`) | code-based names; unsupported keys are shown and cannot be saved | code review; native check |
+| F101 | A failed save is silent and the recorder closes | the recorder stays open and shows the error | code review; native check |
+| F102 | An external change of `quickPanel.enabled` or `doubleTapModifier` is never applied | the reconcile step applies it once | globalshortcut E2E |
+| F103 | A double-tap change restarts the helper, or restarts it twice | `reload_settings`, compared with the last applied value | code review; helper protocol E2E |
+| F104 | Concurrent GUI save and external write leave the executor and the store on different values | both run under one lock; the later write wins in both | globalshortcut E2E |
+| F105 | The helper is not running (disabled, gave up) when the GUI saves | GUI save fails without writing; an external write is `not_active` until the helper starts | helper protocol E2E |
+| F106 | Lightweight mode expects a status | no executor, state `inactive` | code review |
 
 ## Consequences
 

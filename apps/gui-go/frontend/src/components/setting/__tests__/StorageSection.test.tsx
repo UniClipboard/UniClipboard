@@ -25,6 +25,12 @@ vi.mock('@/hooks/useConfigImportStatus', () => ({
     refetch: vi.fn(),
   }),
 }))
+vi.mock('@/store/api', async importOriginal => ({
+  ...(await importOriginal<typeof import('@/store/api')>()),
+  useLazyGetConfigImportStatusQuery: () => [
+    () => ({ unwrap: async () => ({ rejectedImport: null }) }),
+  ],
+}))
 vi.mock('@/api/daemon/config-import', () => ({
   getConfigImportStatus: vi.fn().mockResolvedValue({ rejectedImport: null }),
 }))

@@ -1,8 +1,8 @@
 import { useState } from 'react'
-import { getConfigImportStatus } from '@/api/daemon/config-import'
 import { commands } from '@/lib/ipc'
 import type { ConfigCommandError, ConfigImportPreview, ImportConfigStageResult } from '@/lib/ipc'
 import { createLogger } from '@/lib/logger'
+import { useLazyGetConfigImportStatusQuery } from '@/store/api'
 
 const log = createLogger('config-import')
 
@@ -88,6 +88,7 @@ export interface UseConfigImport {
  */
 export function useConfigImport(options: UseConfigImportOptions = {}): UseConfigImport {
   const { onError, onStaged } = options
+  const [readImportStatus] = useLazyGetConfigImportStatusQuery()
   const [phase, setPhase] = useState<ConfigImportPhase>('idle')
   const [sourcePath, setSourcePath] = useState<string | null>(null)
   const [password, setPassword] = useState('')
@@ -134,7 +135,7 @@ export function useConfigImport(options: UseConfigImportOptions = {}): UseConfig
     setBusy(true)
     try {
       // A failed query is not permission to replace or evidence of success.
-      const status = await getConfigImportStatus()
+      const status = await readImportStatus().unwrap()
       if (status.rejectedImport) {
         setPhase('replaceRejected')
         return

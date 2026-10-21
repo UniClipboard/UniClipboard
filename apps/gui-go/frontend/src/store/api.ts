@@ -50,6 +50,7 @@ export const appApi = createApi({
 
 export const {
   useGetConfigImportStatusQuery,
+  useLazyGetConfigImportStatusQuery,
   useGetEncryptionSessionStatusQuery,
   useLazyGetEncryptionSessionStatusQuery,
 } = appApi

@@ -140,3 +140,10 @@ Do not claim these cases passed until the real Desktop daemon executes against t
   successful, repeatable migration and restart.
 - Engine-erased product fields are mistaken for a new import. Require product bytes and values
   to remain stable; do not require an import event for input that no longer has product fields.
+
+## Review: status read recovery
+
+- A failed pre-stage read and the settings query keep separate error state. A successful retry
+  can leave stale failure feedback. Route pre-stage reads through the same RTK Query endpoint
+  as startup/settings and remove the parallel error flag. Successful reads must clear its error
+  before a replacement prompt; failed reads must keep failure feedback and never call Stage.

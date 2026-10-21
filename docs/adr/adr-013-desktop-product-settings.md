@@ -848,7 +848,8 @@ Engine retains the original pending marker and entire staging tree and starts th
 space. Desktop queries at authenticated startup, settings entry and reconnect.
 It shows a startup warning and a persistent settings notice. A client-session dismissal does not
 acknowledge Engine state or suppress the next client startup. A failed query has separate visible
-feedback and a retry action. Existing content-lock and key-recovery gates remain authoritative.
+feedback and a retry action. Pre-stage reads use that same RTK Query endpoint, so a successful
+retry clears stale query errors before any replacement prompt. There is no parallel error flag. Existing content-lock and key-recovery gates remain authoritative.
 
 The existing picker, password validation and identity-move confirmation remain the import path.
 `replaceRejectedImport` defaults to false in the HTTP request. The Go host forwards the explicit

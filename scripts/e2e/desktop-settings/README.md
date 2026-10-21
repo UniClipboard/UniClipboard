@@ -84,3 +84,12 @@ its pinned SHA-256. Missing history, unsupported platform or a checksum mismatch
 The CI job prepares the same inputs before requesting the entire existing ignored E2E suite.
 The local history runner executes all 17 tests in the two affected suites; it does not stand in
 for the complete general CLI CI job. Each result records the actual old and current binaries.
+
+
+The preserved-import runner also executes `status-cache.ts` against the same real daemon.
+It uses the production generated SDK, DaemonClient and RTK Query endpoint. Only the native
+session-bootstrap command is replaced by the already minted real daemon JWT supplied over stdin.
+No query response is mocked. The receipt records success → actual I/O failure → successful retry
+and verifies the shared error flag clears while the rejection stays available. This is nonvisual
+SDK/cache integration evidence, not native Wails IPC or browser acceptance. The driver exits and
+clears its subscriptions/timer; the parent retains the owned child exit code even on failure.

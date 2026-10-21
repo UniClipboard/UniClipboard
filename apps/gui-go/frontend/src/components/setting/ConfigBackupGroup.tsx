@@ -1,4 +1,3 @@
-import { SettingNotice } from '@ui-setting-parts'
 import { AlertTriangle } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -42,14 +41,12 @@ export function ConfigBackupGroup() {
   // installation's own key material (opening it later needs the space
   // passphrase), so the button goes straight to the save dialog.
   const [exporting, setExporting] = useState(false)
-  const [statusReadFailed, setStatusReadFailed] = useState(false)
 
   // ── Import flow ──────────────────────────────────────────────────
   // The command sequence + daemon error classification live in the shared
   // hook; this surface only renders the dialogs and maps failures to toasts.
   const imp = useConfigImport({
     onError: kind => {
-      setStatusReadFailed(kind === 'statusRead')
       switch (kind) {
         case 'invalidPassword':
           toast.error(t(`${I18N}.import.invalidPasswordError`))
@@ -65,7 +62,6 @@ export function ConfigBackupGroup() {
       }
     },
     onStaged: result => {
-      setStatusReadFailed(false)
       if (result.unlockRequiredAfterApply) {
         toast.message(t(`${I18N}.import.restartingUnlockHint`))
       }
@@ -113,13 +109,6 @@ export function ConfigBackupGroup() {
           void imp.pickFile()
         }}
       />
-      {statusReadFailed && (
-        <SettingNotice
-          tone="error"
-          title={t('configImportRecovery.statusReadFailed')}
-          text={t('configImportRecovery.statusReadHint')}
-        />
-      )}
       <ConfigImportReplacementDialog
         open={imp.phase === 'replaceRejected'}
         busy={imp.busy}

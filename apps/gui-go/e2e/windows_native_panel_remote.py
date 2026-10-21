@@ -107,10 +107,11 @@ def python_zip(arch):
 
 
 def source_archive(path):
-    """The working tree as the build sees it: tracked and not-ignored files, deleted ones left out."""
+    """The working tree as the build sees it: tracked and not-ignored files, deleted ones left out. Symbolic links
+    (the CLAUDE.md entry points) go in as the files they name: Windows tar cannot create a link without privileges."""
     names = subprocess.check_output(['git', 'ls-files', '-z', '--cached', '--others', '--exclude-standard'], cwd=ROOT).decode().split('\0')
     path.parent.mkdir(parents=True, exist_ok=True)
-    with tarfile.open(path, 'w') as tar:
+    with tarfile.open(path, 'w', dereference=True) as tar:
         for name in names:
             if name and (ROOT / name).is_file():
                 tar.add(ROOT / name, arcname=name, recursive=False)

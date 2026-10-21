@@ -19,43 +19,99 @@ interface KeyRecorderProps {
   currentOverrides: ShortcutKeyOverrides
   onConfirm: (key: string, clearedIds?: string[]) => void
   onCancel: () => void
+  /** The last save failed; the recorder stays open and shows why. */
+  saveError?: string | null
+  saving?: boolean
 }
 
 /** Physical modifier keys, which alone never form a chord segment. */
 const MODIFIER_KEYS = new Set(['Control', 'Shift', 'Alt', 'Meta'])
 
 /**
+ * Names of the physical keys other than letters and digits, by `KeyboardEvent.code`. Every name is
+ * in the stored token set (ADR-013 section 8.1.1), so a recorded value is never refused for its
+ * form; the code names also match the in-app handlers, which compare codes. A key without an entry
+ * (a key only some layouts have, F25 and above) cannot be recorded (ADR-013 section 10).
+ */
+const CODE_KEY_NAMES: Record<string, string> = {
+  Space: 'space',
+  Enter: 'enter',
+  Tab: 'tab',
+  Backspace: 'backspace',
+  Delete: 'delete',
+  Insert: 'insert',
+  Home: 'home',
+  End: 'end',
+  PageUp: 'pageup',
+  PageDown: 'pagedown',
+  ArrowUp: 'arrowup',
+  ArrowDown: 'arrowdown',
+  ArrowLeft: 'arrowleft',
+  ArrowRight: 'arrowright',
+  Comma: 'comma',
+  Period: 'period',
+  Slash: 'slash',
+  Semicolon: 'semicolon',
+  Quote: 'quote',
+  Backquote: 'backquote',
+  BracketLeft: 'bracketleft',
+  BracketRight: 'bracketright',
+  Backslash: 'backslash',
+  Equal: 'equal',
+  Minus: 'minus',
+  NumpadAdd: 'add',
+  NumpadSubtract: 'subtract',
+  NumpadMultiply: 'numpadmultiply',
+  NumpadDivide: 'numpaddivide',
+  NumpadDecimal: 'numpaddecimal',
+  NumpadEnter: 'numpadenter',
+  NumpadEqual: 'numpadequal',
+  CapsLock: 'capslock',
+  NumLock: 'numlock',
+  ScrollLock: 'scrolllock',
+  PrintScreen: 'printscreen',
+  Pause: 'pause',
+  AudioVolumeUp: 'audiovolumeup',
+  AudioVolumeDown: 'audiovolumedown',
+  AudioVolumeMute: 'audiovolumemute',
+  MediaPlayPause: 'mediaplaypause',
+  MediaStop: 'mediastop',
+  MediaTrackNext: 'mediatracknext',
+  MediaTrackPrevious: 'mediatrackprevious',
+}
+
+/** The key name for a code, or `null` when the key has none in the stored token set. */
+function keyName(e: KeyboardEvent): string | null {
+  // A Latin letter or digit is kept as the layout produces it (Dvorak, AZERTY); Option symbols,
+  // dead keys and non-Latin letters fall back to the physical letter or digit.
+  if (/^[a-z0-9]$/i.test(e.key)) return e.key.toLowerCase()
+  const physicalKey = /^(?:Key([A-Z])|Digit([0-9]))$/.exec(e.code)
+  if (physicalKey) return (physicalKey[1] ?? physicalKey[2]).toLowerCase()
+  const numpadDigit = /^Numpad([0-9])$/.exec(e.code)
+  if (numpadDigit) return `numpad${numpadDigit[1]}`
+  const functionKey = /^F([1-9]|1[0-9]|2[0-4])$/.exec(e.code)
+  if (functionKey) return `f${functionKey[1]}`
+  return CODE_KEY_NAMES[e.code] ?? null
+}
+
+type RecordedCombo = { combo: string } | { unsupported: string }
+
+/**
  * Build a normalized single combo from a keydown event, or `null` if the event
  * is a bare modifier press (we wait for a real key). Modifier state is read off
  * the event so holding Cmd and tapping V twice yields two `meta+v` segments.
  */
-function comboFromEvent(e: KeyboardEvent): string | null {
+function comboFromEvent(e: KeyboardEvent): RecordedCombo | null {
   if (MODIFIER_KEYS.has(e.key)) return null
+  const key = keyName(e)
+  if (!key) return { unsupported: e.key && e.key !== 'Unidentified' ? e.key : e.code || '?' }
   const parts: string[] = []
   if (e.ctrlKey) parts.push('ctrl')
   if (e.altKey) parts.push('alt')
   if (e.shiftKey) parts.push('shift')
   if (e.metaKey) parts.push('meta')
-  // Preserve Latin layouts; Option symbols, dead keys and non-Latin letters
-  // need the physical letter/digit key name accepted by shortcut handlers.
-  const physicalKey = /^(?:Key([A-Z])|Digit([0-9]))$/.exec(e.code)
-  const baseKey =
-    physicalKey && !/^[a-z0-9]$/i.test(e.key)
-      ? (physicalKey[1] ?? physicalKey[2]).toLowerCase()
-      : e.key.toLowerCase()
-  // Shift changes '=' and '-' into '+' and '_'; retain the bindable base key.
-  const key =
-    e.code === 'NumpadAdd'
-      ? 'add'
-      : e.code === 'NumpadSubtract'
-        ? 'subtract'
-        : baseKey === '+'
-          ? 'equal'
-          : baseKey === '_'
-            ? 'minus'
-            : baseKey
   parts.push(key)
-  return normalizeHotkey(parts.join('+'))
+  return { combo: normalizeHotkey(parts.join('+')) }
 }
 
 export function KeyRecorder({
@@ -64,12 +120,16 @@ export function KeyRecorder({
   currentOverrides,
   onConfirm,
   onCancel,
+  saveError,
+  saving = false,
 }: KeyRecorderProps) {
   const { t } = useTranslation()
   const recordingRef = useRef<HTMLDivElement>(null)
   useShortcutLayer({ layer: 'modal', scope: 'modal' })
   // Committed chord segments (one combo each), at most MAX_CHORD_SEGMENTS.
   const [segments, setSegments] = useState<string[]>([])
+  // The last key pressed has no name in the stored token set; it was not recorded.
+  const [unsupportedKey, setUnsupportedKey] = useState<string | null>(null)
 
   const cancelRecording = useEffectEvent(onCancel)
 
@@ -88,9 +148,14 @@ export function KeyRecorder({
       e.preventDefault()
       e.stopPropagation()
       if (e.repeat) return
-      const combo = comboFromEvent(e)
-      if (!combo) return
-      setSegments(prev => (prev.length >= MAX_CHORD_SEGMENTS ? prev : [...prev, combo]))
+      const recorded = comboFromEvent(e)
+      if (!recorded) return
+      if ('unsupported' in recorded) {
+        setUnsupportedKey(recorded.unsupported)
+        return
+      }
+      setUnsupportedKey(null)
+      setSegments(prev => (prev.length >= MAX_CHORD_SEGMENTS ? prev : [...prev, recorded.combo]))
     }
     window.addEventListener('keydown', onKeyDown, true)
     return () => window.removeEventListener('keydown', onKeyDown, true)
@@ -118,12 +183,13 @@ export function KeyRecorder({
   const infoIssues = issues.filter(i => i.level === 'info')
 
   const handleConfirm = () => {
-    if (!candidateKey) return
+    if (!candidateKey || saving) return
     onConfirm(candidateKey, errorIssue?.relatedIds)
   }
 
   const handleClear = () => {
     setSegments([])
+    setUnsupportedKey(null)
     recordingRef.current?.focus()
   }
 
@@ -158,6 +224,17 @@ export function KeyRecorder({
         <span className="text-ui-caption text-muted-foreground">
           {t('settings.sections.shortcuts.chordHint')}
         </span>
+      )}
+
+      {(unsupportedKey || saveError) && (
+        <div role="alert" className="flex flex-col gap-1 text-ui-caption-relaxed text-destructive">
+          {unsupportedKey && (
+            <span>{t('settings.sections.shortcuts.unsupportedKey', { key: unsupportedKey })}</span>
+          )}
+          {saveError && (
+            <span>{t('settings.sections.shortcuts.saveFailed', { message: saveError })}</span>
+          )}
+        </div>
       )}
 
       {/* Conflict warnings */}
@@ -202,7 +279,7 @@ export function KeyRecorder({
         <Button
           size="sm"
           onClick={handleConfirm}
-          disabled={!candidateKey}
+          disabled={!candidateKey || saving}
           className="h-auto min-h-7 whitespace-normal"
         >
           {errorIssue

@@ -1,8 +1,9 @@
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { SettingGroup } from '@/components/setting/SettingGroup'
-import { ShortcutRow } from '@/components/setting/ShortcutRow'
+import { saveErrorMessage, ShortcutRow } from '@/components/setting/ShortcutRow'
 import { Button } from '@/components/ui'
+import { toast } from '@/components/ui/toast'
 import { usePlatform } from '@/hooks/usePlatform'
 import {
   SHORTCUT_DEFINITIONS,
@@ -67,7 +68,18 @@ const ShortcutsSection: React.FC = () => {
       })}
 
       <div className="flex justify-end pt-2">
-        <Button variant="outline" size="sm" disabled={!hasOverrides} onClick={handleResetAll}>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={!hasOverrides}
+          onClick={() =>
+            handleResetAll().catch((err: unknown) =>
+              toast.error(
+                t('settings.sections.shortcuts.saveFailed', { message: saveErrorMessage(err) })
+              )
+            )
+          }
+        >
           {t('settings.sections.shortcuts.resetAll')}
         </Button>
       </div>

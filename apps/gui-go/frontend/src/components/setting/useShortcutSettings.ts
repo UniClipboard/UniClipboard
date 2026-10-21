@@ -10,12 +10,14 @@ export function useShortcutSettings() {
   const { setting, updateKeyboardShortcuts } = useSetting()
   const overrides = useMemo(() => setting?.keyboardShortcuts ?? {}, [setting?.keyboardShortcuts])
 
+  // Rejects on failure, so the caller can show it (a refused global shortcut is not saved).
   const persist = useCallback(
     async (next: typeof overrides) => {
       try {
         await updateKeyboardShortcuts(overrides, next)
       } catch (err) {
         log.error({ err }, 'Failed to update keyboard shortcuts')
+        throw err
       }
     },
     [overrides, updateKeyboardShortcuts]

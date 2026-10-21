@@ -377,7 +377,10 @@ func (h *HostService) reconcilePanel(view settings.View) {
 	}
 	qp := fresh.QuickPanel
 	target = panelShortcutTarget(qp.Enabled, fresh.KeyboardShortcuts)
-	enabledChanged := !applied.known || applied.enabled != qp.Enabled
+	// appliedPanel.enabled is what startup actually applied, also when its read failed (the default), so it is
+	// compared as is: an unchanged switch must reach Reconcile, or a helper started with the default binding would
+	// never be told the saved one (F109). The modifier read at a failed startup is unknown and is applied once.
+	enabledChanged := applied.enabled != qp.Enabled
 	modifierChanged := !applied.known || applied.modifier != qp.DoubleTapModifier
 	h.appliedPanel = appliedPanelSettings{known: true, enabled: qp.Enabled, modifier: qp.DoubleTapModifier}
 	if h.helper != nil {

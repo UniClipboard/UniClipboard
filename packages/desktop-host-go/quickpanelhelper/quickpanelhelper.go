@@ -345,17 +345,6 @@ func (s *Supervisor) SetEnabled(enabled bool) {
 	}
 }
 
-// Restart relaunches a running helper so it re-reads settings it only applies at startup.
-func (s *Supervisor) Restart() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.stopLocked()
-	if s.enabled {
-		s.resetFailures()
-		s.startLocked(time.Now())
-	}
-}
-
 // Running reports whether a helper process is currently supervised.
 func (s *Supervisor) Running() bool {
 	s.mu.Lock()

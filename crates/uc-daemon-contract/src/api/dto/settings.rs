@@ -301,6 +301,7 @@ mod relay_credential_wire_tests {
                 telemetry_enabled: false,
                 usage_analytics_enabled: true,
                 debug_mode: false,
+                tray_icon: TrayIconDto::Glyph,
             },
             sync: SyncSettingsDto {
                 sync_enabled: true,
@@ -587,6 +588,10 @@ pub struct GeneralSettingsDto {
     /// Persistent local diagnostic logging mode. Takes effect after restart.
     #[serde(default)]
     pub debug_mode: bool,
+    /// Tray icon artwork. A Desktop product setting: the daemon reads it from
+    /// its product settings store, not from the Engine (ADR-013).
+    #[serde(default)]
+    pub tray_icon: TrayIconDto,
 }
 
 fn default_true() -> bool {
@@ -608,6 +613,15 @@ pub enum UpdateChannelDto {
     Alpha,
     Beta,
     Rc,
+}
+
+/// Tray icon artwork. Unknown values are rejected on write.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum TrayIconDto {
+    #[default]
+    Glyph,
+    Cat,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
@@ -893,6 +907,10 @@ pub struct GeneralSettingsPatchDto {
     pub telemetry_enabled: Option<bool>,
     pub usage_analytics_enabled: Option<bool>,
     pub debug_mode: Option<bool>,
+    /// Tray icon artwork; written to the Desktop product settings store, never
+    /// sent to the Engine (ADR-013).
+    #[serde(default)]
+    pub tray_icon: Option<TrayIconDto>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]

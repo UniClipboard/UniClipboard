@@ -147,6 +147,9 @@ pub struct DaemonApiState {
     /// The History sidebar's tags and each tag's color. In memory unless the
     /// daemon injects its file-backed store via [`Self::with_tag_layout`].
     pub tag_layout: Arc<crate::api::tag_layout::TagLayoutStore>,
+    /// Desktop product settings (ADR-013). In memory unless the daemon injects
+    /// its file-backed store via [`Self::with_desktop_settings`].
+    pub desktop_settings: Arc<uc_desktop_settings::DesktopSettingsStore>,
 }
 
 /// Max concurrent full-buffer blob pulls (D6 interim RSS guard; see
@@ -190,6 +193,7 @@ impl DaemonApiState {
             run_marker: None,
             graceful_stop_requested: Arc::new(tokio::sync::Notify::new()),
             tag_layout: Arc::new(crate::api::tag_layout::TagLayoutStore::in_memory()),
+            desktop_settings: Arc::new(uc_desktop_settings::DesktopSettingsStore::in_memory()),
         }
     }
 
@@ -210,6 +214,16 @@ impl DaemonApiState {
     /// Inject the daemon's file-backed tag layout store.
     pub fn with_tag_layout(mut self, store: Arc<crate::api::tag_layout::TagLayoutStore>) -> Self {
         self.tag_layout = store;
+        self
+    }
+
+    /// Inject the daemon's file-backed product settings store, the single
+    /// writer of the product settings file.
+    pub fn with_desktop_settings(
+        mut self,
+        store: Arc<uc_desktop_settings::DesktopSettingsStore>,
+    ) -> Self {
+        self.desktop_settings = store;
         self
     }
 

@@ -25,8 +25,9 @@ use crate::api::dto::settings::{
     QuickPanelDoubleTapModifierDto, QuickPanelPositionDto, QuickPanelSettingsDto,
     RetentionPolicyDto, RetentionRuleDto, RuleEvaluationDto, SecuritySettingsDto, SettingsDto,
     SettingsPatchDto, ShortcutKeyDto, StartupModeDto, SyncFrequencyDto, SyncSettingsDto, ThemeDto,
-    UpdateChannelDto,
+    TrayIconDto, UpdateChannelDto,
 };
+use uc_desktop_settings::{DesktopSettings, TrayIcon};
 
 impl IntoDomain<app_settings::SettingsPatch> for SettingsPatchDto {
     fn into_domain(self) -> app_settings::SettingsPatch {
@@ -139,89 +140,111 @@ impl IntoDomain<app_settings::SettingsPatch> for SettingsPatchDto {
     }
 }
 
-impl IntoApiDto<SettingsDto> for app_settings::SettingsView {
+/// The aggregate `/settings` view: Engine settings composed with the Desktop
+/// product settings (ADR-013). Paths on the wire are unchanged.
+impl IntoApiDto<SettingsDto> for (app_settings::SettingsView, &DesktopSettings) {
     fn into_api_dto(self) -> SettingsDto {
+        let (view, desktop) = self;
         SettingsDto {
-            schema_version: self.schema_version,
+            schema_version: view.schema_version,
             general: GeneralSettingsDto {
-                auto_start: self.general.auto_start,
-                startup_mode: self.general.startup_mode.into_api_dto(),
-                restore_last_entry_on_startup: self.general.restore_last_entry_on_startup,
-                auto_check_update: self.general.auto_check_update,
-                auto_download_update: self.general.auto_download_update,
-                theme: self.general.theme.into_api_dto(),
-                theme_color: self.general.theme_color,
-                theme_color_light: self.general.theme_color_light,
-                theme_color_dark: self.general.theme_color_dark,
-                theme_overrides_light: self.general.theme_overrides_light,
-                theme_overrides_dark: self.general.theme_overrides_dark,
-                language: self.general.language,
-                device_name: self.general.device_name,
-                update_channel: self.general.update_channel.map(IntoApiDto::into_api_dto),
+                auto_start: view.general.auto_start,
+                startup_mode: view.general.startup_mode.into_api_dto(),
+                restore_last_entry_on_startup: view.general.restore_last_entry_on_startup,
+                auto_check_update: view.general.auto_check_update,
+                auto_download_update: view.general.auto_download_update,
+                theme: view.general.theme.into_api_dto(),
+                theme_color: view.general.theme_color,
+                theme_color_light: view.general.theme_color_light,
+                theme_color_dark: view.general.theme_color_dark,
+                theme_overrides_light: view.general.theme_overrides_light,
+                theme_overrides_dark: view.general.theme_overrides_dark,
+                language: view.general.language,
+                device_name: view.general.device_name,
+                update_channel: view.general.update_channel.map(IntoApiDto::into_api_dto),
                 telemetry_enabled: uc_observability::is_telemetry_enabled(),
-                usage_analytics_enabled: self.general.usage_analytics_enabled,
-                debug_mode: self.general.debug_mode,
+                usage_analytics_enabled: view.general.usage_analytics_enabled,
+                debug_mode: view.general.debug_mode,
+                tray_icon: desktop.general.tray_icon.into_api_dto(),
             },
             sync: SyncSettingsDto {
-                sync_enabled: self.sync.sync_enabled,
-                auto_sync_enabled: self.sync.auto_sync_enabled,
-                sync_frequency: self.sync.sync_frequency.into_api_dto(),
-                content_types: self.sync.content_types.into_api_dto(),
-                sync_on_restore: self.sync.sync_on_restore,
+                sync_enabled: view.sync.sync_enabled,
+                auto_sync_enabled: view.sync.auto_sync_enabled,
+                sync_frequency: view.sync.sync_frequency.into_api_dto(),
+                content_types: view.sync.content_types.into_api_dto(),
+                sync_on_restore: view.sync.sync_on_restore,
             },
             retention_policy: RetentionPolicyDto {
-                enabled: self.retention_policy.enabled,
-                rules: self
+                enabled: view.retention_policy.enabled,
+                rules: view
                     .retention_policy
                     .rules
                     .into_iter()
                     .map(IntoApiDto::into_api_dto)
                     .collect(),
-                skip_pinned: self.retention_policy.skip_pinned,
-                evaluation: self.retention_policy.evaluation.into_api_dto(),
+                skip_pinned: view.retention_policy.skip_pinned,
+                evaluation: view.retention_policy.evaluation.into_api_dto(),
             },
             security: SecuritySettingsDto {
-                encryption_enabled: self.security.encryption_enabled,
-                passphrase_configured: self.security.passphrase_configured,
-                auto_unlock_enabled: self.security.auto_unlock_enabled,
+                encryption_enabled: view.security.encryption_enabled,
+                passphrase_configured: view.security.passphrase_configured,
+                auto_unlock_enabled: view.security.auto_unlock_enabled,
             },
             pairing: PairingSettingsDto {
-                step_timeout: Duration::from_secs(self.pairing.step_timeout_secs),
+                step_timeout: Duration::from_secs(view.pairing.step_timeout_secs),
                 user_verification_timeout: Duration::from_secs(
-                    self.pairing.user_verification_timeout_secs,
+                    view.pairing.user_verification_timeout_secs,
                 ),
-                session_timeout: Duration::from_secs(self.pairing.session_timeout_secs),
-                max_retries: self.pairing.max_retries,
-                protocol_version: self.pairing.protocol_version,
+                session_timeout: Duration::from_secs(view.pairing.session_timeout_secs),
+                max_retries: view.pairing.max_retries,
+                protocol_version: view.pairing.protocol_version,
             },
-            keyboard_shortcuts: self
+            keyboard_shortcuts: view
                 .keyboard_shortcuts
                 .into_iter()
                 .map(|(name, shortcut)| (name, shortcut.into_api_dto()))
                 .collect(),
             file_sync: FileSyncSettingsDto {
-                file_sync_enabled: self.file_sync.file_sync_enabled,
-                small_file_threshold: self.file_sync.small_file_threshold,
-                max_file_size: self.file_sync.max_file_size,
-                file_cache_quota_per_device: self.file_sync.file_cache_quota_per_device,
-                file_retention_hours: self.file_sync.file_retention_hours,
-                file_auto_cleanup: self.file_sync.file_auto_cleanup,
-                auto_save_dir: self.file_sync.auto_save_dir.clone(),
+                file_sync_enabled: view.file_sync.file_sync_enabled,
+                small_file_threshold: view.file_sync.small_file_threshold,
+                max_file_size: view.file_sync.max_file_size,
+                file_cache_quota_per_device: view.file_sync.file_cache_quota_per_device,
+                file_retention_hours: view.file_sync.file_retention_hours,
+                file_auto_cleanup: view.file_sync.file_auto_cleanup,
+                auto_save_dir: view.file_sync.auto_save_dir.clone(),
             },
             network: NetworkSettingsDto {
-                allow_relay_fallback: self.network.allow_relay_fallback,
-                allow_overlay_network_addrs: self.network.allow_overlay_network_addrs,
-                custom_relay_urls: self.network.custom_relay_urls,
-                congestion_controller: match self.network.congestion_controller {
+                allow_relay_fallback: view.network.allow_relay_fallback,
+                allow_overlay_network_addrs: view.network.allow_overlay_network_addrs,
+                custom_relay_urls: view.network.custom_relay_urls,
+                congestion_controller: match view.network.congestion_controller {
                     app_settings::CongestionControllerView::Cubic => CongestionControllerDto::Cubic,
                     app_settings::CongestionControllerView::Bbr3 => CongestionControllerDto::Bbr3,
                 },
             },
             quick_panel: QuickPanelSettingsDto {
-                enabled: self.quick_panel.enabled,
-                position: self.quick_panel.position.into_api_dto(),
-                double_tap_modifier: self.quick_panel.double_tap_modifier.into_api_dto(),
+                enabled: view.quick_panel.enabled,
+                position: view.quick_panel.position.into_api_dto(),
+                double_tap_modifier: view.quick_panel.double_tap_modifier.into_api_dto(),
             },
+        }
+    }
+}
+
+impl IntoApiDto<TrayIconDto> for TrayIcon {
+    fn into_api_dto(self) -> TrayIconDto {
+        match self {
+            Self::Glyph => TrayIconDto::Glyph,
+            Self::Cat => TrayIconDto::Cat,
+        }
+    }
+}
+
+impl IntoDomain<TrayIcon> for TrayIconDto {
+    fn into_domain(self) -> TrayIcon {
+        match self {
+            Self::Glyph => TrayIcon::Glyph,
+            Self::Cat => TrayIcon::Cat,
         }
     }
 }

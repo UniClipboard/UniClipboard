@@ -3085,6 +3085,9 @@
             "description": "Light 模式下用户对预设 token 的自定义覆盖（`{ tokenName: oklchString }`）。\n为空 map 表示完全跟随 preset。wire 字段名 `themeOverridesLight`。",
             "type": "object"
           },
+          "trayIcon": {
+            "$ref": "#/components/schemas/TrayIconDto"
+          },
           "updateChannel": {
             "allOf": [
               {
@@ -3187,6 +3190,14 @@
             "description": "Light 模式 overrides patch。`Some(map)` 整体替换；`None` 表示不修改。",
             "nullable": true,
             "type": "object"
+          },
+          "trayIcon": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TrayIconDto"
+              }
+            ],
+            "nullable": true
           },
           "updateChannel": {
             "allOf": [
@@ -7836,6 +7847,14 @@
           "success"
         ],
         "type": "object"
+      },
+      "TrayIconDto": {
+        "description": "Tray icon artwork. Unknown values are rejected on write.",
+        "enum": [
+          "glyph",
+          "cat"
+        ],
+        "type": "string"
       },
       "UiDialogOpenSource": {
         "description": "Mirrors `analytics::DialogOpenSource`. wire: `notification` | `sidebar_icon`.",

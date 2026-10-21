@@ -13,6 +13,7 @@ use uc_bootstrap::{
 };
 use uc_daemon_local::crash_marker::{DaemonExitReport, DaemonRunMarker};
 use uc_daemon_local::process_metadata::{DaemonPidManager, DaemonProcessMode};
+use uc_desktop_settings::DesktopSettingsStore;
 use uc_engine::{
     ActiveClipboardChanged, Engine, HostFileHandle, Operation, OperationResult, StartupProgress,
 };
@@ -139,6 +140,14 @@ async fn run_async_with_diagnostics(
     let file_handles: Arc<dyn DaemonFileHandles> =
         Arc::new(DesktopDaemonFileHandles::new(prepared.file_handles()));
     let (engine_config, host_capabilities) = prepared.into_engine_start();
+    // Product settings load before the Engine starts and never depend on it.
+    // The profile instance lock held by `run_async` makes this the only writer
+    // of the file (ADR-013).
+    let desktop_settings = Arc::new(DesktopSettingsStore::load(
+        process_paths
+            .app_data_root()
+            .join(uc_desktop_settings::FILE_NAME),
+    ));
 
     let pid_manager = DaemonPidManager::new(process_paths.daemon_pid());
     let _pid_file_guard = DaemonPidFileGuard::activate(pid_manager, run_mode.process_mode())?;
@@ -224,6 +233,7 @@ async fn run_async_with_diagnostics(
         events,
         file_handles,
         process_paths,
+        desktop_settings,
         analytics.sink(),
         startup_server.ready_flag(),
         diagnostics,
@@ -263,6 +273,7 @@ async fn run_daemon_surfaces(
     events: uc_engine::EventStream,
     file_handles: Arc<dyn DaemonFileHandles>,
     process_paths: DesktopHostProcessPaths,
+    desktop_settings: Arc<DesktopSettingsStore>,
     analytics_sink: Arc<dyn AnalyticsPort>,
     startup_ready: Arc<std::sync::atomic::AtomicBool>,
     diagnostics: Arc<EngineDaemonDiagnostics>,
@@ -291,6 +302,7 @@ async fn run_daemon_surfaces(
             .join("history-tags")
             .join("layout.v1.json"),
     )))
+    .with_desktop_settings(desktop_settings)
     .with_diagnostics(
         diagnostics.clone(),
         Arc::new(DesktopDiagnosticArchive::new(

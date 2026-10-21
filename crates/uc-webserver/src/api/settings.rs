@@ -32,6 +32,9 @@ use crate::api::dto::settings::{
 };
 use crate::api::projection::{IntoApiDto, IntoDomain};
 use crate::api::server::DaemonApiState;
+use uc_desktop_settings::{
+    DesktopSettingsPatch, GeneralSettingsPatch as DesktopGeneralSettingsPatch,
+};
 
 pub fn router() -> Router<DaemonApiState> {
     Router::new()
@@ -406,8 +409,15 @@ async fn get_settings_handler(
         ));
     };
 
-    info!("get settings succeeded");
-    Ok(Json(ApiEnvelope::now((*settings).into_api_dto())))
+    let desktop = state.desktop_settings.snapshot().await;
+
+    info!(
+        desktop_revision = desktop.revision,
+        "get settings succeeded"
+    );
+    Ok(Json(ApiEnvelope::now(
+        (*settings, &desktop.settings).into_api_dto(),
+    )))
 }
 
 /// PUT /settings
@@ -480,24 +490,63 @@ async fn update_settings_handler(
         .as_ref()
         .and_then(|g| g.usage_analytics_enabled);
 
+    // Product settings (ADR-013) go to the daemon's own store, never to the
+    // Engine. Their values were validated while decoding the request.
+    let desktop_patch = DesktopSettingsPatch {
+        general: DesktopGeneralSettingsPatch {
+            tray_icon: payload
+                .general
+                .as_ref()
+                .and_then(|general| general.tray_icon)
+                .map(IntoDomain::into_domain),
+        },
+    };
+
+    // A patch that names only product fields must not reach the Engine: an
+    // Engine update rewrites `settings.json` and emits `SettingsChanged`.
+    let mut engine_patch: SettingsPatch = payload.into_domain();
+    if engine_patch
+        .general
+        .as_ref()
+        .is_some_and(|general| *general == uc_engine::GeneralSettingsPatch::default())
+    {
+        engine_patch.general = None;
+    }
+
     // The facade persists the patch. ADR-008 §0.1 folds `success` +
     // `restart_required` INTO the payload DTO, so the updated `SettingsView` is
     // no longer echoed back on the wire (the FE re-reads settings via GET). The
     // write must still happen for its side effects and error propagation.
-    let result = state
-        .execute(Operation::UpdateSettings(Box::new(payload.into_domain())))
-        .await
-        .map_err(|error| settings_error_to_api("update_settings", error))?;
-    match result {
-        OperationResult::SettingsUpdated(SettingsUpdateOutcome::Updated(_)) => {}
-        OperationResult::SettingsUpdated(SettingsUpdateOutcome::Rejected { reason }) => {
-            return Err(ApiError::bad_request(reason));
+    if engine_patch != SettingsPatch::default() {
+        let result = state
+            .execute(Operation::UpdateSettings(Box::new(engine_patch)))
+            .await
+            .map_err(|error| settings_error_to_api("update_settings", error))?;
+        match result {
+            OperationResult::SettingsUpdated(SettingsUpdateOutcome::Updated(_)) => {}
+            OperationResult::SettingsUpdated(SettingsUpdateOutcome::Rejected { reason }) => {
+                return Err(ApiError::bad_request(reason));
+            }
+            _ => {
+                return Err(ApiError::internal(
+                    "engine returned an unexpected settings-update result",
+                ));
+            }
         }
-        _ => {
-            return Err(ApiError::internal(
-                "engine returned an unexpected settings-update result",
-            ));
-        }
+    }
+
+    // Written after the Engine part succeeded. If this write fails after an
+    // Engine change, the Engine change stays; the typed partial-failure error
+    // replaces this generic one when `/settings` splits by owner (ADR-013 §6).
+    if desktop_patch != DesktopSettingsPatch::default() {
+        state
+            .desktop_settings
+            .apply(desktop_patch)
+            .await
+            .map_err(|error| {
+                tracing::warn!(error = %error, error_kind = "desktop_settings_save_failed", "Failed to save product settings");
+                ApiError::internal("failed to save desktop settings")
+            })?;
     }
 
     if let Some(enabled) = analytics_update {
@@ -671,7 +720,13 @@ async fn save_relay_handler(
         OperationResult::RelaySaved(SaveRelayOutcome::Saved {
             settings,
             credential_status,
-        }) => ((*settings).into_api_dto(), credential_status),
+        }) => {
+            let desktop = state.desktop_settings.snapshot().await;
+            (
+                (*settings, &desktop.settings).into_api_dto(),
+                credential_status,
+            )
+        }
         OperationResult::RelaySaved(SaveRelayOutcome::Rejected { reason }) => {
             return Err(ApiError::bad_request(reason));
         }

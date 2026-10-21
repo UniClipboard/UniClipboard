@@ -68,7 +68,11 @@ fn simulate_put(fixture: &mut SettingsBoundaryFixture, body_json: &str) -> Value
 }
 
 fn simulate_get(fixture: &SettingsBoundaryFixture) -> Value {
-    let dto: SettingsDto = fixture.current.clone().into_api_dto();
+    let dto: SettingsDto = (
+        fixture.current.clone(),
+        &uc_desktop_settings::DesktopSettings::default(),
+    )
+        .into_api_dto();
     serde_json::to_value(&dto).expect("serialize get")
 }
 

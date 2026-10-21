@@ -43,7 +43,6 @@ use uc_daemon_contract::constants::{http_route, ws_event, ws_topic};
 use uc_engine::{Operation, OperationResult};
 
 use crate::api::dto::error::ApiError;
-use crate::api::projection::IntoApiDto;
 use crate::api::server::DaemonApiState;
 use crate::api::types::DaemonWsEvent;
 use crate::security::claims::SessionTokenClaims;
@@ -185,7 +184,7 @@ pub(crate) async fn resolve_status(
     }
     if before.value.is_none() {
         let settings = match state.execute(Operation::QuerySettings).await {
-            Ok(OperationResult::Settings(settings)) => (*settings).into_api_dto(),
+            Ok(OperationResult::Settings(settings)) => settings,
             _ => return Err(unavailable("settings")),
         };
         state

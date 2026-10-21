@@ -20,6 +20,7 @@ uc-app-paths = { path = "../../crates/uc-app-paths" }
 uc-engine.workspace = true
 uc-observability = { path = "../../crates/uc-observability", features = ["analytics"] }
 uc-daemon-contract = { path = "../../crates/uc-daemon-contract" }
+uc-desktop-settings = { path = "../../crates/uc-desktop-settings" }
 uc-daemon-local = { path = "../../crates/uc-daemon-local" }
 uc-webserver = { path = "../../crates/uc-webserver" }
 tokio = { version = "1", features = ["full"] }

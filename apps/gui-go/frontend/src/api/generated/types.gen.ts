@@ -1564,6 +1564,7 @@ export type GeneralSettingsDto = {
     themeOverridesLight?: {
         [key: string]: string;
     };
+    trayIcon?: TrayIconDto;
     updateChannel?: UpdateChannelDto | null;
     /**
      * Whether anonymous product usage analytics is enabled.
@@ -1611,6 +1612,7 @@ export type GeneralSettingsPatchDto = {
     themeOverridesLight?: {
         [key: string]: string;
     } | null;
+    trayIcon?: TrayIconDto | null;
     updateChannel?: UpdateChannelDto | null;
     usageAnalyticsEnabled?: boolean | null;
 };
@@ -4351,6 +4353,11 @@ export type ToggleFavoriteRequest = {
 export type ToggleFavoriteResultDto = {
     success: boolean;
 };
+
+/**
+ * Tray icon artwork. Unknown values are rejected on write.
+ */
+export type TrayIconDto = 'glyph' | 'cat';
 
 /**
  * Mirrors `analytics::DialogOpenSource`. wire: `notification` | `sidebar_icon`.

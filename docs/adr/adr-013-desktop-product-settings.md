@@ -762,7 +762,7 @@ Native acceptance of the global shortcut (real helper, real OS registration):
 | F112 | A value the executor cannot register (the modifier-only `ctrl+alt`) is saved, or drops the binding that was active | `Conflict`; the stored value and the helper process are unchanged; status `active` with the previous binding | Windows native script, check 5b |
 | F113 | After a GUI restart the helper holds the platform default instead of the saved binding, or both | status `active` with the saved binding; the default does not open the panel; the saved one does | Windows native script, check 9 |
 | F114 | The macOS native script requires a helper restart for a shortcut or double-tap change, so it fails on the contract above and would pass a regression back to restarting | the same helper process before and after both changes; status `active` with the saved binding | macOS native script |
-| F115 | Logs do not say which binding the executor holds, so a report of "the old shortcut still works" cannot be diagnosed | the host logs the bindings the executor reports after every apply (binding names only) | code review; host log in the native script output |
+| F115 | Logs do not say which binding the executor holds, so a report of "the old shortcut still works" cannot be diagnosed | the host logs the bindings the executor reports after every apply (binding names only). F17 and F63 cover the daemon import and handler; the host already logs shortcut names when it binds them (`apps/gui-go/global_shortcuts.go`) | code review; host log in the native script output |
 
 ## Consequences
 

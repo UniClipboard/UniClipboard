@@ -1,51 +1,44 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { beforeEach, expect, it, vi } from 'vitest'
+import { resetSettingsSyncForTest } from '@/lib/settings-sync'
+import { emitDaemonWsEvent } from '@/test/fixtures/settings-ws'
 import { useQuickPanelShortcutOverrides } from '../hooks/useQuickPanelShortcutOverrides'
-const { load, listen, dispose } = vi.hoisted(() => ({
-  load: vi.fn(),
-  listen: vi.fn(),
-  dispose: vi.fn(),
-}))
+const { load } = vi.hoisted(() => ({ load: vi.fn() }))
 vi.mock('@/api/daemon', () => ({ getSettings: load }))
-vi.mock('@/host/event', () => ({ listen, emit: vi.fn() }))
+vi.mock('@/lib/daemon-ws', () => import('@/test/fixtures/settings-ws'))
+vi.mock('@/lib/daemon-ws-bootstrap', () => ({
+  connectDaemonWs: vi.fn().mockResolvedValue(undefined),
+}))
+const changed = () =>
+  emitDaemonWsEvent('settings.changed', {
+    owner: 'desktop',
+    sections: ['keyboardShortcuts'],
+    revision: 1,
+  })
 beforeEach(() => {
-  listen.mockReset().mockResolvedValue(dispose)
+  resetSettingsSyncForTest()
   load.mockReset()
-  dispose.mockClear()
 })
-it('loads persisted overrides, applies live changes and unsubscribes', async () => {
+it('loads persisted overrides and applies live changes', async () => {
   load.mockResolvedValue({ keyboardShortcuts: { 'quickPanel.windowIncrease': 'ctrl+k' } })
-  const { result, unmount } = renderHook(() => useQuickPanelShortcutOverrides())
+  const { result } = renderHook(() => useQuickPanelShortcutOverrides())
   await waitFor(() => expect(result.current).toEqual({ 'quickPanel.windowIncrease': 'ctrl+k' }))
-  act(() =>
-    listen.mock.calls[0][1]({
-      payload: {
-        settingJson: JSON.stringify({
-          keyboardShortcuts: { 'quickPanel.windowIncrease': 'ctrl+j' },
-        }),
-      },
-    })
-  )
-  expect(result.current).toEqual({ 'quickPanel.windowIncrease': 'ctrl+j' })
-  unmount()
-  await waitFor(() => expect(dispose).toHaveBeenCalledOnce())
+  load.mockResolvedValue({ keyboardShortcuts: { 'quickPanel.windowIncrease': 'ctrl+j' } })
+  act(changed)
+  await waitFor(() => expect(result.current).toEqual({ 'quickPanel.windowIncrease': 'ctrl+j' }))
 })
-it('does not overwrite a live update with a stale initial response', async () => {
+it('does not overwrite a newer read with a stale initial response', async () => {
   let resolve!: (value: unknown) => void
-  load.mockReturnValue(
-    new Promise(done => {
-      resolve = done
-    })
-  )
+  load
+    .mockReturnValueOnce(
+      new Promise(done => {
+        resolve = done
+      })
+    )
+    .mockResolvedValue({ keyboardShortcuts: { 'quickPanel.textDecrease': 'ctrl+j' } })
   const { result } = renderHook(() => useQuickPanelShortcutOverrides())
   await waitFor(() => expect(load).toHaveBeenCalledOnce())
-  act(() =>
-    listen.mock.calls[0][1]({
-      payload: {
-        settingJson: JSON.stringify({ keyboardShortcuts: { 'quickPanel.textDecrease': 'ctrl+j' } }),
-      },
-    })
-  )
+  act(changed)
   await act(async () => resolve({ keyboardShortcuts: { 'quickPanel.textDecrease': 'ctrl+k' } }))
-  expect(result.current).toEqual({ 'quickPanel.textDecrease': 'ctrl+j' })
+  await waitFor(() => expect(result.current).toEqual({ 'quickPanel.textDecrease': 'ctrl+j' }))
 })

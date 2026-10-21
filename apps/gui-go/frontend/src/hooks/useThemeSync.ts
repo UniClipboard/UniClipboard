@@ -1,63 +1,30 @@
 import { useEffect, useLayoutEffect, useRef } from 'react'
-import { getSettings } from '@/api/daemon'
-import { listen } from '@/host/event'
-import { createLogger } from '@/lib/logger'
-import { parseSettingsChangedPayload, SETTINGS_CHANGED_EVENT } from '@/lib/settings-events'
+import { subscribeSettings } from '@/lib/settings-sync'
 import { createWindowThemeController } from '@/lib/window-theme'
-import type { SettingChangedEvent } from '@/types/events'
 
-const log = createLogger('use-theme-sync')
-
-/** Theme the entire window, including startup and error surfaces before settings are available. */
+/**
+ * Theme the entire window, including startup and error surfaces before settings are available.
+ * The theme follows the window's authoritative settings copy (`@/lib/settings-sync`), which reads
+ * the daemon after its own snapshot and after every settings change.
+ */
 export function useThemeSync(settingsReady = true): void {
-  const sessionRef = useRef<{
-    theme: ReturnType<typeof createWindowThemeController>
-    revision: number
-  } | null>(null)
+  const themeRef = useRef<ReturnType<typeof createWindowThemeController> | null>(null)
 
   useLayoutEffect(() => {
-    let cancelled = false
-    const session = { theme: createWindowThemeController(), revision: 0 }
-    sessionRef.current = session
+    const theme = createWindowThemeController()
+    themeRef.current = theme
     // Apply the system appearance before the first paint; desktop updates do not need the daemon.
-    session.theme.setGeneral(null)
-
-    const unlistenPromise = listen<SettingChangedEvent>(SETTINGS_CHANGED_EVENT, event => {
-      if (cancelled) return
-      const nextSettings = parseSettingsChangedPayload(event.payload)
-      if (!nextSettings) return
-      session.revision += 1
-      session.theme.setGeneral(nextSettings.general)
-    }).catch(err => {
-      if (!cancelled) {
-        log.error({ err }, 'Failed to subscribe to settings changes for theme sync')
-      }
-      return () => {}
-    })
-
+    theme.setGeneral(null)
     return () => {
-      cancelled = true
-      sessionRef.current = null
-      session.theme.dispose()
-      void unlistenPromise.then(unlisten => unlisten())
+      themeRef.current = null
+      theme.dispose()
     }
   }, [])
 
   useEffect(() => {
-    const session = sessionRef.current
-    if (!settingsReady || !session) return
-    let cancelled = false
-    const revision = session.revision
-    void getSettings()
-      .then(settings => {
-        // A live settings update takes precedence over an older startup response.
-        if (!cancelled && session.revision === revision) session.theme.setGeneral(settings.general)
-      })
-      .catch(err => {
-        if (!cancelled) log.error({ err }, 'Failed to load settings for theme')
-      })
-    return () => {
-      cancelled = true
-    }
+    if (!settingsReady) return
+    return subscribeSettings(({ settings }) => {
+      if (settings) themeRef.current?.setGeneral(settings.general)
+    })
   }, [settingsReady])
 }

@@ -60,7 +60,6 @@ const setup = (
     loading: false,
     error: null,
     reloadSetting: vi.fn(),
-    updateSetting: vi.fn(),
     updateGeneralSetting,
     updateAutostart: vi.fn(),
     updateSyncSetting: vi.fn(),

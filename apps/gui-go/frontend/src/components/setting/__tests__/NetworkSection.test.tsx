@@ -104,7 +104,6 @@ const setupSetting = ({
     relayError,
     reloadSetting: vi.fn(),
     reloadCustomRelays,
-    updateSetting: vi.fn(),
     updateGeneralSetting: vi.fn(),
     updateAutostart: vi.fn(),
     updateSyncSetting: vi.fn(),

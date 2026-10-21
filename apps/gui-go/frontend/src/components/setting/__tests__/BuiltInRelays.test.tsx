@@ -59,7 +59,6 @@ const mountWith = (customRelays: CustomRelay[], relayLoading = false) => {
     relayError: null,
     reloadSetting: vi.fn(),
     reloadCustomRelays: vi.fn(),
-    updateSetting: vi.fn(),
     updateGeneralSetting: vi.fn(),
     updateAutostart: vi.fn(),
     updateSyncSetting: vi.fn(),

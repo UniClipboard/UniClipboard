@@ -1,3 +1,4 @@
+import { useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useSetting } from '@/hooks/useSetting'
 import type { RetentionPolicy } from '@/types/setting'
@@ -18,14 +19,31 @@ import { SettingGroup } from './SettingGroup'
 import { SettingRow } from './SettingRow'
 import { useOptimisticSetting } from './useOptimisticSetting'
 
+function changedRetentionFields(
+  shown: RetentionPolicy,
+  next: RetentionPolicy
+): Partial<RetentionPolicy> {
+  const changed: Partial<RetentionPolicy> = {}
+  if (next.enabled !== shown.enabled) changed.enabled = next.enabled
+  if (next.skipPinned !== shown.skipPinned) changed.skipPinned = next.skipPinned
+  if (next.evaluation !== shown.evaluation) changed.evaluation = next.evaluation
+  // The daemon replaces the rule list as a whole.
+  if (JSON.stringify(next.rules) !== JSON.stringify(shown.rules)) changed.rules = next.rules
+  return changed
+}
+
 export function RetentionPolicyGroup() {
   const { t } = useTranslation()
   const { setting, updateRetentionPolicy } = useSetting()
+  // Each control edits one field of the whole policy it shows; only the fields that differ from the
+  // shown policy are saved, so a concurrent change of another field is not overwritten.
+  const shownRef = useRef<RetentionPolicy>(DEFAULT_RETENTION_POLICY)
   const [retentionPolicy, setRetentionPolicy] = useOptimisticSetting<RetentionPolicy>(
     setting?.retentionPolicy ?? DEFAULT_RETENTION_POLICY,
-    next => updateRetentionPolicy(next),
+    next => updateRetentionPolicy(changedRetentionFields(shownRef.current, next)),
     { failureLog: 'Failed to update retention policy' }
   )
+  shownRef.current = retentionPolicy
   const enabled = retentionPolicy.enabled
   const skipPinned = retentionPolicy.skipPinned
   const ageSecs = getByAgeSecs(retentionPolicy.rules)

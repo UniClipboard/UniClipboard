@@ -417,14 +417,6 @@ export interface SamplePermit {
 }
 
 /**
- * SettingsChanged is what the page sends after saving settings; the tray reads the sync switch out of the JSON.
- */
-export interface SettingsChanged {
-    "settingJson": string;
-    "timestamp": number;
-}
-
-/**
  * SystemMotion is the operating system's reduce-motion preference as the page reports it.
  */
 export enum SystemMotion {

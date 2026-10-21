@@ -293,6 +293,15 @@
       "errorMessage": "自動再起動に失敗しました。アプリを手動で終了し、再度開いて変更を適用してください。",
       "retryButton": "再試行"
     },
+    "partialSave": {
+      "message": "変更の一部だけが保存されました。保存済み：{{applied}}。未保存：{{failed}}。未実行：{{skipped}}。設定には保存された値が表示されています。",
+      "owners": {
+        "engine": "同期とデバイスの設定",
+        "desktop": "アプリの設定",
+        "telemetry": "エラーレポートの同意",
+        "none": "なし"
+      }
+    },
     "categories": {
       "general": "全般",
       "appearance": "外観",

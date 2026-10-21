@@ -129,13 +129,11 @@ Wails 版本与 Go 工具链只在 `apps/gui-go/go.mod` 中固定一处，生成
 | `update-available` | `updateAvailableEvent` | 宿主 → 页面 | `*UpdateMetadata` |
 | `update-download-progress` | `updateProgressEvent` | 宿主 → 页面 | `DownloadEvent` |
 | `update-install-progress` | `updateInstallEvent` | 宿主 → 页面 | `DownloadEvent` |
-| `settings://sync-changed` | `settingsSyncChangedEvent` | 宿主 → 页面 | `无载荷` |
 | `ui://navigate` | `uiNavigateEvent` | 宿主 → 页面 | `string` |
 | `quick-panel://prepare-show` | `quickPanelPrepareShow` | 宿主 → 页面 | `无载荷` |
 | `app://shutting-down` | `appShuttingDownEvent` | 宿主 → 页面 | `无载荷` |
 | `app://daemon-connection-changed` | `daemonConnectionChanged` | 宿主 → 页面 | `无载荷` |
 | `desktop-theme://changed` | `desktopThemeChangedEvent` | 宿主 → 页面 | `DesktopThemeSnapshot` |
-| `settings://changed` | `settingsChangedEvent` | 页面 → 宿主 | `SettingsChanged` |
 | `devices://sync-changed` | `devicesChangedEvent` | 双向 | `string` |
 
 <!-- END GENERATED: host-contract -->

@@ -1,12 +1,14 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { getSettings } from '@/api/daemon'
-import { listen } from '@/host/event'
+import { resetSettingsSyncForTest } from '@/lib/settings-sync'
 import { applyThemePreset } from '@/lib/theme-engine'
+import { emitDaemonWsEvent } from '@/test/fixtures/settings-ws'
 import { useThemeSync } from '../useThemeSync'
 
-vi.mock('@/host/event', () => ({
-  listen: vi.fn(),
+vi.mock('@/lib/daemon-ws', () => import('@/test/fixtures/settings-ws'))
+vi.mock('@/lib/daemon-ws-bootstrap', () => ({
+  connectDaemonWs: vi.fn().mockResolvedValue(undefined),
 }))
 
 vi.mock('@/api/daemon', () => ({
@@ -21,19 +23,16 @@ vi.mock('@/lib/theme-engine', async importOriginal => {
   }
 })
 
-const mockListen = vi.mocked(listen)
 const mockGetSettings = vi.mocked(getSettings)
 const mockApplyThemePreset = vi.mocked(applyThemePreset)
 
 describe('useThemeSync', () => {
-  let settingsChangedCallback: ((event: { payload: { settingJson: string } }) => void) | null = null
   let mediaQueryListener: ((event: MediaQueryListEvent) => void) | null = null
   let prefersDark = false
-  const unlisten = vi.fn()
 
   beforeEach(() => {
     vi.clearAllMocks()
-    settingsChangedCallback = null
+    resetSettingsSyncForTest()
     mediaQueryListener = null
     prefersDark = false
 
@@ -45,13 +44,6 @@ describe('useThemeSync', () => {
         themeColorDark: 'blue',
       },
     } as never)
-
-    mockListen.mockImplementation(async (eventName: string, callback: unknown) => {
-      if (eventName === 'settings://changed') {
-        settingsChangedCallback = callback as (event: { payload: { settingJson: string } }) => void
-      }
-      return unlisten
-    })
 
     Object.defineProperty(window, 'matchMedia', {
       writable: true,
@@ -67,39 +59,44 @@ describe('useThemeSync', () => {
     })
   })
 
-  it('loads settings and subscribes to cross-window theme changes', async () => {
+  it('loads settings after the settings snapshot', async () => {
     renderHook(() => useThemeSync())
 
     await waitFor(() => {
       expect(mockGetSettings).toHaveBeenCalled()
-      expect(mockListen).toHaveBeenCalledWith('settings://changed', expect.any(Function))
       expect(mockApplyThemePreset).toHaveBeenCalledWith('blue', 'dark', document.documentElement)
       expect(document.documentElement.classList.contains('dark')).toBe(true)
     })
   })
 
-  it('reapplies theme when another window broadcasts settings changes', async () => {
+  it('reapplies theme when the daemon reports a settings change', async () => {
     renderHook(() => useThemeSync())
+    await waitFor(() => expect(mockGetSettings).toHaveBeenCalledTimes(1))
+
+    mockGetSettings.mockResolvedValue({
+      general: {
+        theme: 'light',
+        themeColor: null,
+        themeColorLight: 'rose',
+        themeColorDark: 'claude',
+      },
+    } as never)
+    act(() =>
+      emitDaemonWsEvent('settings.changed', {
+        owner: 'desktop',
+        sections: ['general'],
+        revision: 1,
+      })
+    )
 
     await waitFor(() => {
-      expect(settingsChangedCallback).not.toBeNull()
+      expect(mockApplyThemePreset).toHaveBeenLastCalledWith(
+        'rose',
+        'light',
+        document.documentElement
+      )
+      expect(document.documentElement.classList.contains('light')).toBe(true)
     })
-
-    settingsChangedCallback?.({
-      payload: {
-        settingJson: JSON.stringify({
-          general: {
-            theme: 'light',
-            themeColor: null,
-            themeColorLight: 'rose',
-            themeColorDark: 'claude',
-          },
-        }),
-      },
-    })
-
-    expect(mockApplyThemePreset).toHaveBeenLastCalledWith('rose', 'light', document.documentElement)
-    expect(document.documentElement.classList.contains('light')).toBe(true)
   })
 
   it('reacts to system theme changes when current setting follows the system', async () => {
@@ -131,26 +128,34 @@ describe('useThemeSync', () => {
     expect(mockApplyThemePreset).toHaveBeenLastCalledWith('zinc', 'light', document.documentElement)
   })
 
-  it('does not let a pending settings query overwrite a newer live preference', async () => {
+  it('does not let a pending settings query overwrite a newer read', async () => {
     let resolveSettings!: (settings: Awaited<ReturnType<typeof getSettings>>) => void
-    mockGetSettings.mockReturnValue(
-      new Promise(resolve => {
-        resolveSettings = resolve
-      })
-    )
+    mockGetSettings
+      .mockReturnValueOnce(
+        new Promise(resolve => {
+          resolveSettings = resolve
+        })
+      )
+      .mockResolvedValue({ general: { theme: 'light', themeColorLight: 'rose' } } as never)
     renderHook(() => useThemeSync())
-    await waitFor(() => expect(settingsChangedCallback).not.toBeNull())
+    await waitFor(() => expect(mockGetSettings).toHaveBeenCalledTimes(1))
     act(() =>
-      settingsChangedCallback?.({
-        payload: {
-          settingJson: JSON.stringify({ general: { theme: 'light', themeColorLight: 'rose' } }),
-        },
+      emitDaemonWsEvent('settings.changed', {
+        owner: 'desktop',
+        sections: ['general'],
+        revision: 1,
       })
     )
     await act(async () => {
       resolveSettings({ general: { theme: 'dark', themeColorDark: 'blue' } } as never)
     })
-    expect(mockApplyThemePreset).toHaveBeenLastCalledWith('rose', 'light', document.documentElement)
+    await waitFor(() =>
+      expect(mockApplyThemePreset).toHaveBeenLastCalledWith(
+        'rose',
+        'light',
+        document.documentElement
+      )
+    )
   })
 
   it('falls back to legacy themeColor when split fields are null', async () => {

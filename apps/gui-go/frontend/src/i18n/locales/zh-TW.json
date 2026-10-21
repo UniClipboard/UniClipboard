@@ -293,6 +293,15 @@
       "errorMessage": "自動重新啟動失敗，請手動退出並重新打開應用程式以使更改生效。",
       "retryButton": "重試"
     },
+    "partialSave": {
+      "message": "變更只儲存了一部分。已儲存：{{applied}}。未儲存：{{failed}}。未嘗試：{{skipped}}。設定頁現在顯示已儲存的值。",
+      "owners": {
+        "engine": "同步與裝置設定",
+        "desktop": "應用程式偏好",
+        "telemetry": "錯誤報告許可",
+        "none": "無"
+      }
+    },
     "categories": {
       "general": "通用設定",
       "appearance": "外觀設定",

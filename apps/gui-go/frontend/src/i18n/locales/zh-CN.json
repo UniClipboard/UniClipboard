@@ -293,6 +293,15 @@
       "errorMessage": "自动重启失败，请手动退出并重新打开应用以使更改生效。",
       "retryButton": "重试"
     },
+    "partialSave": {
+      "message": "更改只保存了一部分。已保存：{{applied}}。未保存：{{failed}}。未尝试：{{skipped}}。设置页现在显示已保存的值。",
+      "owners": {
+        "engine": "同步与设备设置",
+        "desktop": "应用偏好",
+        "telemetry": "错误报告许可",
+        "none": "无"
+      }
+    },
     "categories": {
       "general": "通用设置",
       "appearance": "外观设置",

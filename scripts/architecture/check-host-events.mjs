@@ -6,7 +6,8 @@
 //   - Page side: apps/gui-go/frontend/src calls listen(...) / Events.On(...).
 // Failures: a page listener for an event the host never declares; a declared event nobody emits (unless it is in
 // UNEMITTED with the reason); a declared host->page event no page listens to; a declared event that is not
-// registered with RegisterEvent (so Wails would not type it); an emit of a literal name instead of the constant.
+// registered with RegisterEvent (so Wails would not type it); an emit of a literal name instead of the constant;
+// any use of a RETIRED event name.
 
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { dirname, join, relative, resolve } from 'node:path'
@@ -23,6 +24,18 @@ const UNEMITTED = new Map([
   [
     'desktop-theme://changed',
     'Omarchy theming is not implemented in the Go host (GetDesktopTheme always reports it unavailable), so nothing can change the desktop theme at runtime. The page listener is gated on availability.',
+  ],
+])
+
+// Events removed on purpose, with the reason. Their names must not come back in the host or the page.
+const RETIRED = new Map([
+  [
+    'settings://changed',
+    'Page-originated settings authority. Windows and the Go host follow the daemon WS settings.changed (ADR-013 section 9).',
+  ],
+  [
+    'settings://sync-changed',
+    'The tray sync write reaches every window as the daemon WS settings.changed (ADR-013 section 9).',
   ],
 ])
 
@@ -104,6 +117,15 @@ for (const file of pageFiles) {
     const name = match[1] ?? constants.get(match[2])
     if (name === undefined) continue // an identifier that is not a string constant (a parameter)
     if (!pageListened.has(name)) pageListened.set(name, rel(file))
+  }
+}
+
+// ---- retired names
+for (const file of [join(GO_DIR, 'host_events.go'), ...goFiles, ...pageFiles]) {
+  const source = readFileSync(file, 'utf8')
+  for (const [name, reason] of RETIRED) {
+    if (source.includes(`'${name}'`) || source.includes(`"${name}"`))
+      problems.push(`${rel(file)}: uses the retired event "${name}" (${reason})`)
   }
 }
 

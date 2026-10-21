@@ -1,11 +1,12 @@
 import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { updateSettings, getSettings } from '@/api/daemon'
+import { updateSettings, getSettings, type Settings, type SettingsPatchInput } from '@/api/daemon'
 import LocalDeviceListItem from '@/components/device/LocalDeviceListItem'
 import LocalDevicePanel from '@/components/device/LocalDevicePanel'
 import { SettingProvider } from '@/contexts/SettingContext'
 import i18n from '@/i18n'
+import { resetSettingsSyncForTest } from '@/lib/settings-sync'
 import { makeBaseSettings } from '@/test/fixtures/settings'
 
 const commits = vi.hoisted(() => ({ sync: 0, file: 0, info: 0, status: 0, list: 0 }))
@@ -13,9 +14,7 @@ vi.mock('@/api/daemon', () => ({ getSettings: vi.fn(), updateSettings: vi.fn() }
 vi.mock('@/lib/daemon-ws-bootstrap', () => ({
   connectDaemonWs: vi.fn().mockResolvedValue(undefined),
 }))
-vi.mock('@/lib/settings-events', () => ({
-  emitSettingsChanged: vi.fn().mockResolvedValue(undefined),
-}))
+vi.mock('@/lib/daemon-ws', () => import('@/test/fixtures/settings-ws'))
 vi.mock('@/lib/ipc', () => ({
   commands: { setTrayLanguage: vi.fn().mockResolvedValue(undefined) },
 }))
@@ -102,19 +101,37 @@ async function setup() {
   Object.assign(commits, { sync: 0, file: 0, info: 0, status: 0, list: 0 })
 }
 
+// The daemon stores each saved patch; the window reads it back after the save.
+let stored: Settings
+function store(patch: SettingsPatchInput) {
+  stored = {
+    ...stored,
+    sync: { ...stored.sync, ...patch.sync },
+    fileSync: { ...stored.fileSync, ...patch.fileSync },
+  }
+}
+
 describe('local device render isolation', () => {
   beforeEach(async () => {
+    resetSettingsSyncForTest()
     await i18n.changeLanguage('en-US')
-    vi.mocked(getSettings).mockResolvedValue(makeBaseSettings())
-    vi.mocked(updateSettings).mockResolvedValue({ success: true, restartRequired: false })
+    stored = makeBaseSettings()
+    vi.mocked(getSettings).mockImplementation(async () => stored)
+    vi.mocked(updateSettings).mockImplementation(async patch => {
+      store(patch)
+      return { success: true, restartRequired: false }
+    })
   })
 
   it('updates only the file row while saving and completing a file-sync change', async () => {
     let finish!: () => void
     vi.mocked(updateSettings).mockImplementation(
-      () =>
+      patch =>
         new Promise(resolve => {
-          finish = () => resolve({ success: true, restartRequired: false })
+          finish = () => {
+            store(patch)
+            resolve({ success: true, restartRequired: false })
+          }
         })
     )
     await setup()

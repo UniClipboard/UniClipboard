@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { SettingsPartiallyAppliedError } from '@/api/daemon'
 import { toast } from '@/components/ui/toast'
 import { createLogger } from '@/lib/logger'
 
@@ -23,7 +24,8 @@ interface OptimisticSettingOptions {
  *   daemon round-trip), so the control never lags behind the click;
  * - persistence runs in the background and the control is NOT disabled while it
  *   runs, so changing one control never dims itself or its siblings;
- * - on failure the value reverts to the last persisted value and a toast fires.
+ * - on failure the value shows the stored state (the settings are read again before the error
+ *   arrives) and a toast fires; a partial write names what stayed saved.
  *
  * Replaces the per-section `form` mirror + `useSavingState` + `isBusy` +
  * `disabled` scaffolding, which coupled "persisting" to "disable/dim the whole
@@ -51,6 +53,22 @@ export function useOptimisticSetting<T>(
       (err: unknown) => {
         log.error({ err }, options?.failureLog ?? 'Failed to persist setting')
         setPending(active => (active?.id === id ? null : active))
+        // A partial write is not "nothing saved": name what stays saved. The settings were read
+        // again before the error arrived, so `current` already shows the stored state.
+        if (err instanceof SettingsPartiallyAppliedError) {
+          const owners = (list: string[]) =>
+            list.length === 0
+              ? t('settings.partialSave.owners.none')
+              : list.map(owner => t(`settings.partialSave.owners.${owner}`)).join(', ')
+          toast.error(
+            t('settings.partialSave.message', {
+              applied: owners(err.applied),
+              failed: owners(err.failed),
+              skipped: owners(err.skipped),
+            })
+          )
+          return
+        }
         const errorKey =
           typeof options?.errorKey === 'function'
             ? options.errorKey(err)

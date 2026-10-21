@@ -138,7 +138,6 @@ const setupSetting = ({
     loading: false,
     error,
     reloadSetting: vi.fn(),
-    updateSetting: vi.fn(),
     updateGeneralSetting: vi.fn(),
     updateAutostart: vi.fn(),
     updateSyncSetting: vi.fn(),

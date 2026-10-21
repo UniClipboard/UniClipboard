@@ -13,6 +13,7 @@ export {
   probeRelayUrl,
   saveRelay,
   mutateCustomRelay,
+  SettingsPartiallyAppliedError,
   updateSettings,
 } from './settings'
 export { exportLogs, getDebugStatus, updateDebugMode } from './diagnostics'
@@ -38,6 +39,7 @@ export type {
   RelaySaveResult,
   CustomRelayMutationErrorKind,
   SettingsPatchInput,
+  SettingsWriteOwner,
 } from './settings'
 export { getEncryptionState, unlockEncryption, lockEncryption } from './encryption'
 export type { EncryptionStateResponse } from './encryption'

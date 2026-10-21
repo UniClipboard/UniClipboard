@@ -45,7 +45,6 @@ export type {
     LogSourceGap,
     NotificationAction,
     SamplePermit,
-    SettingsChanged,
     UpdateKeyboardShortcutsResult,
     UpdateMetadata
 } from "./models.js";

@@ -16,21 +16,13 @@ const (
 	updateAvailableEvent      = "update-available"                // host -> page, *UpdateMetadata (nil = up to date)
 	updateProgressEvent       = "update-download-progress"        // host -> page, DownloadEvent: a background download
 	updateInstallEvent        = "update-install-progress"         // host -> page, DownloadEvent: the install_update call
-	settingsSyncChangedEvent  = "settings://sync-changed"         // host -> page, no payload: the tray flipped the sync switch
 	uiNavigateEvent           = "ui://navigate"                   // host -> page, string route
 	quickPanelPrepareShow     = "quick-panel://prepare-show"      // host -> page, no payload: clear state before showing
 	appShuttingDownEvent      = "app://shutting-down"             // host -> page, no payload: close the daemon WebSocket before the daemon stops
 	daemonConnectionChanged   = "app://daemon-connection-changed" // host -> page, no payload: the daemon was replaced, reconnect
 	desktopThemeChangedEvent  = "desktop-theme://changed"         // host -> page, DesktopThemeSnapshot: the desktop theme changed. Declared for the page's listener; no host emits it (Omarchy theming is not implemented in the Go host)
-	settingsChangedEvent      = "settings://changed"              // page -> host, SettingsChanged: settings were saved. The host re-reads the daemon on it (see startSettingsWatch); both go when the frontend follows settings.changed
 	devicesChangedEvent       = "devices://sync-changed"          // both ways, string device id: a device's sync switch changed
 )
-
-// SettingsChanged is what the page sends after saving settings.
-type SettingsChanged struct {
-	SettingJSON string `json:"settingJson"`
-	Timestamp   int64  `json:"timestamp"`
-}
 
 func init() {
 	application.RegisterEvent[application.Void](contentLockChangedEvent)
@@ -39,12 +31,10 @@ func init() {
 	application.RegisterEvent[*UpdateMetadata](updateAvailableEvent)
 	application.RegisterEvent[DownloadEvent](updateProgressEvent)
 	application.RegisterEvent[DownloadEvent](updateInstallEvent)
-	application.RegisterEvent[application.Void](settingsSyncChangedEvent)
 	application.RegisterEvent[string](uiNavigateEvent)
 	application.RegisterEvent[application.Void](quickPanelPrepareShow)
 	application.RegisterEvent[application.Void](appShuttingDownEvent)
 	application.RegisterEvent[application.Void](daemonConnectionChanged)
 	application.RegisterEvent[DesktopThemeSnapshot](desktopThemeChangedEvent)
-	application.RegisterEvent[SettingsChanged](settingsChangedEvent)
 	application.RegisterEvent[string](devicesChangedEvent)
 }

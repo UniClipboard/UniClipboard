@@ -7,11 +7,3 @@ export interface ClipboardEvent {
   preview?: string
   origin?: 'local' | 'remote'
 }
-
-/**
- * Setting changed event data
- */
-export interface SettingChangedEvent {
-  settingJson: string
-  timestamp: number
-}

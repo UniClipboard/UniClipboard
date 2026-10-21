@@ -46,7 +46,7 @@
 
 - **F8 Field path mismatch**: if the JSON path of `View.General.TrayIcon` differs from the daemon's, it decodes to an empty string without an error. Expected: the real-daemon Go e2e asserts the decoded value with the non-default value `cat`.
 - **F9 Unknown value**: a value other than `glyph` or `cat` (or an empty string) is read. Expected: the glyph is shown; the log says only "unknown style" and never prints the received string.
-- **F10 Duplicate calls**: repeated reads of the same value, or the watcher and the page's `settings://changed` trigger arriving together. Expected: zero native icon calls while the style is unchanged; the comparison is against the style the tray shows, not the last requested one.
+- **F10 Duplicate calls**: repeated reads of the same value, or several reads after one change (the host's own write and the daemon event). Expected: zero native icon calls while the style is unchanged; the comparison is against the style the tray shows, not the last requested one.
 - **F11 Apply failure**: decoding, scaling or PNG encoding of the image fails. Expected: an error without the setting value is logged, the shown style is not updated and the next read tries again; the saved preference stays as it is and the host does not write to the daemon. Wails' `SetIcon` / `SetTemplateIcon` return no error, so a failure inside the native layer cannot be detected.
 - **F12 Theme repaint with the wrong style**: the Windows taskbar theme changes. Expected: the style currently shown is repainted, not the glyph.
 - **F13 Concurrency**: a theme repaint and a style change happen together. Expected: both render and apply under the same lock, the latest style wins, and an event handler does not wait for the icon call on the main thread (as F3).

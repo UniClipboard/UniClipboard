@@ -294,6 +294,15 @@
       "errorMessage": "A reinicialização automática falhou. Feche o app manualmente e abra-o novamente para aplicar a alteração.",
       "retryButton": "Tentar novamente"
     },
+    "partialSave": {
+      "message": "Apenas parte da alteração foi salva. Salvo: {{applied}}. Não salvo: {{failed}}. Não tentado: {{skipped}}. As configurações agora mostram os valores armazenados.",
+      "owners": {
+        "engine": "configurações de sincronização e dispositivo",
+        "desktop": "preferências do aplicativo",
+        "telemetry": "consentimento de relatório de erros",
+        "none": "nenhum"
+      }
+    },
     "categories": {
       "general": "Geral",
       "appearance": "Aparência",

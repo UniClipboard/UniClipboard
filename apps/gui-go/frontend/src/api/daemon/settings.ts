@@ -40,7 +40,9 @@ import type {
   RelayProbeCredentialDto,
   RelayProbeOutcomeDto,
   RelaySaveResultDto,
+  SettingsPartiallyAppliedDetailsDto,
   SettingsPatchDto,
+  SettingsWriteOwnerDto,
   TrayIconDto,
 } from '@/api/generated/types.gen'
 import type {
@@ -50,6 +52,7 @@ import type {
   RelayOverview,
 } from '@/types/setting'
 import { daemonClient } from './client'
+import { DaemonApiError } from './errors'
 
 // ── Enums ──────────────────────────────────────────────────────
 
@@ -473,15 +476,63 @@ export async function updateSettings(
   // Route through the generated SDK. `success` + `restartRequired` are now folded
   // INTO the envelope payload (`SettingsUpdateResultDto`) per ADR-008 §0.1;
   // `callEnveloped` unwraps down to that payload.
-  const data = await daemonClient.callEnveloped(() =>
-    updateSettingsSdk({
-      // `toSettingsPatchRequest` returns a structurally-equivalent camelCase patch;
-      // bridge to the generated `SettingsPatchDto` shape for the SDK body param.
-      body: patch as unknown as SettingsPatchDto,
-      throwOnError: true,
-    })
-  )
-  return { success: data.success, restartRequired: data.restartRequired }
+  try {
+    const data = await daemonClient.callEnveloped(() =>
+      updateSettingsSdk({
+        // `toSettingsPatchRequest` returns a structurally-equivalent camelCase patch;
+        // bridge to the generated `SettingsPatchDto` shape for the SDK body param.
+        body: patch as unknown as SettingsPatchDto,
+        throwOnError: true,
+      })
+    )
+    return { success: data.success, restartRequired: data.restartRequired }
+  } catch (err) {
+    throw toSettingsPartiallyAppliedError(err) ?? err
+  }
+}
+
+export type SettingsWriteOwner = SettingsWriteOwnerDto
+
+/**
+ * `PUT /settings` wrote some owners and then failed (`500 settings_partially_applied`,
+ * ADR-013 section 8.3). The applied owners stay written; nothing was rolled back.
+ */
+export class SettingsPartiallyAppliedError extends Error {
+  readonly applied: SettingsWriteOwner[]
+  readonly failed: SettingsWriteOwner[]
+  readonly skipped: SettingsWriteOwner[]
+
+  readonly cause: unknown
+
+  constructor(details: SettingsPartiallyAppliedDetailsDto, cause?: unknown) {
+    super(
+      `settings partially applied: applied [${details.applied.join(', ')}], failed [${details.failed.join(', ')}], skipped [${details.skipped.join(', ')}]`
+    )
+    this.cause = cause
+    this.name = 'SettingsPartiallyAppliedError'
+    this.applied = details.applied
+    this.failed = details.failed
+    this.skipped = details.skipped
+  }
+}
+
+const SETTINGS_PARTIALLY_APPLIED_CODE = 'settings_partially_applied'
+const SETTINGS_WRITE_OWNERS: readonly string[] = ['engine', 'desktop', 'telemetry']
+
+function toSettingsPartiallyAppliedError(err: unknown): SettingsPartiallyAppliedError | null {
+  if (!(err instanceof DaemonApiError) || err.apiCode !== SETTINGS_PARTIALLY_APPLIED_CODE) {
+    return null
+  }
+  const details = err.apiDetails as Record<string, unknown> | null | undefined
+  const owners = (value: unknown): SettingsWriteOwner[] | null =>
+    Array.isArray(value) && value.every(owner => SETTINGS_WRITE_OWNERS.includes(owner))
+      ? (value as SettingsWriteOwner[])
+      : null
+  const applied = owners(details?.applied)
+  const failed = owners(details?.failed)
+  const skipped = owners(details?.skipped)
+  if (!applied || !failed || !skipped) return null
+  return new SettingsPartiallyAppliedError({ applied, failed, skipped }, err)
 }
 
 /**

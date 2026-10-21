@@ -199,7 +199,7 @@ func (h *HostService) showSyncError() {
 	h.app.Dialog.Error().SetTitle("UniClipboard").SetMessage(message).Show()
 }
 
-// toggleSync flips the persisted sync switch through the daemon and notifies windows.
+// toggleSync flips the persisted sync switch through the daemon. Windows follow the daemon's settings.changed.
 func (h *HostService) toggleSync() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
@@ -218,6 +218,5 @@ func (h *HostService) toggleSync() error {
 		return errSyncRejected
 	}
 	h.tray.setSyncEnabled(!current)
-	h.emit(settingsSyncChangedEvent, nil)
 	return nil
 }

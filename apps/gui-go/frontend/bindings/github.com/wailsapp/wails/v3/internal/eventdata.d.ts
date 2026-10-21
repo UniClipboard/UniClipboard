@@ -19,8 +19,6 @@ declare module "@wailsio/runtime" {
             "devices://sync-changed": string;
             "notification://action": main$0.NotificationAction;
             "quick-panel://prepare-show": void;
-            "settings://changed": main$0.SettingsChanged;
-            "settings://sync-changed": void;
             "ui://navigate": string;
             "update-available": main$0.UpdateMetadata | null;
             "update-download-progress": main$0.DownloadEvent;

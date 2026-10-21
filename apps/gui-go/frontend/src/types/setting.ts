@@ -340,7 +340,6 @@ export interface SettingContextType {
   relayError: string | null
   reloadSetting: () => Promise<void>
   reloadCustomRelays: () => Promise<void>
-  updateSetting: (newSetting: Settings) => Promise<void>
   /**
    * Update general settings EXCEPT `autoStart`. Autostart is a desktop-host OS
    * side effect and must go through the dedicated `updateAutostart` command;

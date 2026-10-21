@@ -293,6 +293,15 @@
       "errorMessage": "Automatic restart failed. Please quit the app manually and reopen it to apply the change.",
       "retryButton": "Retry"
     },
+    "partialSave": {
+      "message": "Only part of the change was saved. Saved: {{applied}}. Not saved: {{failed}}. Not attempted: {{skipped}}. The settings now show the stored values.",
+      "owners": {
+        "engine": "sync and device settings",
+        "desktop": "app preferences",
+        "telemetry": "error reporting consent",
+        "none": "none"
+      }
+    },
     "categories": {
       "general": "General",
       "appearance": "Appearance",

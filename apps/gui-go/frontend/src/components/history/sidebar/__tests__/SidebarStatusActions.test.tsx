@@ -78,7 +78,6 @@ function renderActions(state: UpdateState, setting: Settings = baseSetting) {
         loading: false,
         error: null,
         reloadSetting,
-        updateSetting: vi.fn(),
         updateGeneralSetting: vi.fn(),
         updateAutostart: vi.fn(),
         updateSyncSetting: vi.fn(),

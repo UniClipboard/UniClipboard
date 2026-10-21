@@ -3,7 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { getSettings } from '@/api/daemon'
 import { subscribeDesktopTheme } from '@/lib/desktop-theme'
 import type { DesktopTheme } from '@/lib/desktop-theme'
+import { resetSettingsSyncForTest } from '@/lib/settings-sync'
 import { themePresets } from '@/lib/theme-engine'
+import { connectDaemonWsForTest, disconnectDaemonWsForTest } from '@/test/fixtures/settings-ws'
 import QuickPanelApp from '../QuickPanelApp'
 
 const connectDaemonWsMock = vi.fn()
@@ -20,8 +22,14 @@ vi.mock('@/api/daemon', () => ({
 }))
 vi.mock('@/lib/desktop-theme', () => ({ subscribeDesktopTheme: vi.fn(() => () => {}) }))
 
+vi.mock('@/lib/daemon-ws', () => import('@/test/fixtures/settings-ws'))
 vi.mock('@/lib/daemon-ws-bootstrap', () => ({
-  connectDaemonWs: (...args: unknown[]) => connectDaemonWsMock(...args),
+  // The settings snapshot arrives once the socket is open.
+  connectDaemonWs: (...args: unknown[]) =>
+    Promise.resolve(connectDaemonWsMock(...args)).then(value => {
+      connectDaemonWsForTest()
+      return value
+    }),
 }))
 
 vi.mock('@host/hostservice', () => {
@@ -78,6 +86,8 @@ function deferred() {
 describe('QuickPanelApp', () => {
   afterEach(() => vi.restoreAllMocks())
   beforeEach(() => {
+    resetSettingsSyncForTest()
+    disconnectDaemonWsForTest()
     contentAccess.unlocked = true
     vi.clearAllMocks()
     vi.mocked(subscribeDesktopTheme).mockImplementation(() => () => {})

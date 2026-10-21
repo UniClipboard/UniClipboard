@@ -116,7 +116,6 @@ function setup(Section: ComponentType = QuickPanelSection) {
     loading: false,
     error: null,
     reloadSetting: vi.fn(),
-    updateSetting: vi.fn(),
     updateGeneralSetting: vi.fn(),
     updateAutostart: vi.fn(),
     updateSyncSetting: vi.fn(),

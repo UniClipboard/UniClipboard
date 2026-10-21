@@ -5,9 +5,11 @@ import type { Settings } from '@/api/daemon/settings'
 import { DEFAULT_THEME_COLOR } from '@/constants/theme'
 import { SettingProvider } from '@/contexts/SettingContext'
 import { useSetting } from '@/hooks/useSetting'
-import { listen } from '@/host/event'
 import { connectDaemonWs } from '@/lib/daemon-ws-bootstrap'
+import { resetSettingsSyncForTest } from '@/lib/settings-sync'
 import { makeBaseSettings } from '@/test/fixtures/settings'
+
+vi.mock('@/lib/daemon-ws', () => import('@/test/fixtures/settings-ws'))
 
 vi.mock('@/api/daemon', () => ({
   getSettings: vi.fn(),
@@ -22,9 +24,6 @@ vi.mock('@/lib/daemon-ws-bootstrap', () => ({
   connectDaemonWs: vi.fn(),
 }))
 
-vi.mock('@/lib/settings-events', () => ({
-  emitSettingsChanged: vi.fn().mockResolvedValue(undefined),
-}))
 vi.mock('@/lib/ipc', () => ({
   commands: { setTrayLanguage: vi.fn().mockResolvedValue(undefined) },
 }))
@@ -54,6 +53,7 @@ describe('SettingProvider theme integration', () => {
   )
 
   beforeEach(() => {
+    resetSettingsSyncForTest()
     vi.clearAllMocks()
     prefersDark = false
     mockConnectDaemonWs.mockResolvedValue(undefined)
@@ -83,26 +83,6 @@ describe('SettingProvider theme integration', () => {
       expect(result.current.setting?.general.themeColor).toBe(DEFAULT_THEME_COLOR)
       expect(document.documentElement.getAttribute('data-theme')).toBe(DEFAULT_THEME_COLOR)
     })
-  })
-
-  it('reloads the saved sync switch after a tray change', async () => {
-    const { result } = renderHook(() => useSetting(), { wrapper })
-    await waitFor(() => expect(result.current.setting).not.toBeNull())
-    const subscription = vi
-      .mocked(listen)
-      .mock.calls.find(([name]) => name === 'settings://sync-changed')
-    expect(subscription).toBeDefined()
-    mockGetSettings.mockResolvedValue(
-      makeBaseSettings({ sync: { ...baseSetting.sync, syncEnabled: false } })
-    )
-    await act(async () => {
-      subscription![1]({
-        event: 'settings://sync-changed',
-        id: 1,
-        payload: null,
-      })
-    })
-    await waitFor(() => expect(result.current.setting?.sync.syncEnabled).toBe(false))
   })
 
   it('does not reapply the page theme when only file sync changes', async () => {

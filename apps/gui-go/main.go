@@ -142,6 +142,7 @@ func main() {
 		ShouldQuit:     func() bool { host.quitting.Store(true); return true },
 		OnShutdown:     host.shutdown})
 	host.app = app
+	host.initTray()
 	host.routeDockReopen()
 	e2eLaunch(host)
 	if hasArg(os.Args[1:], quickPanelLaunchArg) {
@@ -184,7 +185,7 @@ func incompatibleDaemonError(outcome daemonlife.Outcome) error {
 	return fmt.Errorf("UniClipboard %s cannot start because UniClipboard %s is still running. Quit it completely from its tray menu, or log out and back in, then start UniClipboard again.", buildinfo.PackageVersion, observed)
 }
 
-// bootstrap attaches to (or starts) the daemon and builds the shell around it: windows, tray, quick panel, login item
+// bootstrap attaches to (or starts) the daemon and prepares the shell: windows, tray activation, quick panel, login item
 // reconcile, the cold-launch sequence and the update scheduler.
 func (h *HostService) bootstrap() {
 	spawnedDaemon := false // whether this launch started the daemon (a cold start) or attached to one
@@ -230,7 +231,7 @@ func (h *HostService) bootstrap() {
 	h.initQuickPanel()
 	h.initPanelShortcuts()
 	go h.reconcileAutoStart()
-	h.initTray()
+	h.startTray()
 	h.startSettingsWatch()
 	h.watchNotificationClicks()
 	if startup.silent() {

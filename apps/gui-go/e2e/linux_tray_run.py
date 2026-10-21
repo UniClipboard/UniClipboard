@@ -118,6 +118,10 @@ def main():
         conn = next(sandbox.rglob('daemon.conn'))
         daemon_pid = json.loads(conn.read_text())['pid']
         check('1 the tray item registers with the StatusNotifierWatcher', host.registered.wait(40), host.item)
+        check('1b the tray advertises its menu through the StatusNotifierItem Menu property', bool(host.menu_path()))
+        identity = {name: host.item_property(name).unpack() for name in ('Id', 'Title', 'ToolTip')}
+        check('1c the tray identity and hover text identify UniClipboard',
+              identity['Id'] == identity['Title'] == identity['ToolTip'][2] == 'UniClipboard', identity)
         lay = host.wait(lambda l: len(l['children']) >= 9, 30, 'root menu')
         check('2 the root menu order and the localized labels reach the host through dbusmenu',
               lay is not None and labels(lay)[1:] == ROOT_ORDER and labels(lay)[0] in ('Enable Sync', 'Disable Sync'), labels(lay) if lay else None)

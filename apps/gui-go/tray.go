@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"net/http"
+	"runtime"
 	"slices"
 	"sync"
 	"time"
@@ -31,6 +32,8 @@ type trayMenu struct {
 	quit                                                    *application.MenuItem
 }
 
+// initTray configures the tray before app.Run: Wails exports the Linux Menu
+// property only when the native tray starts with a menu already attached.
 func (h *HostService) initTray() {
 	t := &trayMenu{language: "en", syncEnabled: true} // matches the initial syncOn label until the first read
 	h.tray = t
@@ -47,11 +50,16 @@ func (h *HostService) initTray() {
 	t.lightweight = menu.Add(labels.lightweight).OnClick(func(*application.Context) { go h.enterLightweightMode() })
 	t.quit = menu.Add(labels.quit).OnClick(func(*application.Context) { h.quit(false) })
 	t.menu = menu
+	t.setActionsEnabled(false)
 
 	t.tray = h.app.SystemTray.New()
+	if runtime.GOOS == "linux" {
+		// Wails derives the SNI Id, Title and ToolTip from the initial label;
+		// its Linux SetTooltip implementation is currently a no-op.
+		t.tray.SetLabel("UniClipboard")
+	}
 	t.icon = newTrayIcon(t.tray)
 	t.icon.show()
-	watchSystemTheme(h.app, func() { go t.icon.show() }) // an event handler may run on the main thread, which the icon call waits for
 	t.tray.SetTooltip("UniClipboard")
 	t.tray.SetMenu(menu)
 	// Set before the refresh goroutine and the event handlers below exist, so every render sees it. t.mu keeps the
@@ -72,13 +80,28 @@ func (h *HostService) initTray() {
 		t.published = view
 	}
 	t.devices.mu.Unlock()
+}
+
+// startTray enables interaction and daemon-backed refreshes after bootstrap.
+func (h *HostService) startTray() {
+	t := h.tray
+	t.setActionsEnabled(true)
 	t.tray.OnClick(h.showMainWindow)
+	watchSystemTheme(h.app, func() { go t.icon.show() }) // an event handler may run on the main thread, which the icon call waits for
 
 	// The sync toggle label follows the daemon's settings through the settings watcher (applySettings).
 	h.app.Event.On(devicesChangedEvent, func(*application.CustomEvent) { t.devices.requestRefresh() })
 	trayCtx, stopTray := context.WithCancel(context.Background())
 	h.stopTray = stopTray
 	go t.devices.run(trayCtx)
+}
+
+func (t *trayMenu) setActionsEnabled(enabled bool) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	for _, item := range []*application.MenuItem{t.sync, t.open, t.settings, t.checkUpdate, t.restart, t.lightweight, t.quit} {
+		item.SetEnabled(enabled)
+	}
 }
 
 // menuEntry is the part of a menu item the user can see.

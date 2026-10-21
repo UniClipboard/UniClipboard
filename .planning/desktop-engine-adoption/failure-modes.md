@@ -147,3 +147,14 @@ Do not claim these cases passed until the real Desktop daemon executes against t
   can leave stale failure feedback. Route pre-stage reads through the same RTK Query endpoint
   as startup/settings and remove the parallel error flag. Successful reads must clear its error
   before a replacement prompt; failed reads must keep failure feedback and never call Stage.
+
+## Review: cache-driver protocol lifecycle
+
+- Missing readiness, a request that never returns, or endless non-receipt output can leave
+  stdout.readline blocked forever. Require one bounded deadline per protocol receipt.
+- The child can exit early or close stdin between poll and close. Preserve early-exit failure
+  and collect its owned exit code without skipping daemon cleanup.
+- A pipe read can fail. Surface that failure rather than waiting without a result.
+- A platform-specific pipe selector can break Windows. Use a standard reader thread and queue.
+- A timeout can leave the child alive. Terminate only the Popen-owned child; retain the timeout
+  and cleanup receipts, and allow the existing bounded escalation to finish cleanup.

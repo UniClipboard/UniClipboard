@@ -2,8 +2,10 @@
 """Real daemon/production CLI checks of retained rejected imports and replacement consent."""
 import argparse
 import json
+import queue
 from pathlib import Path
 import subprocess
+import threading
 import tomllib
 
 from adoption import Profile, PASSWORD, ROOT, bundle_members, digest, finish_profiles
@@ -24,10 +26,31 @@ def cli(profile, *args, expected=0):
 
 def cache_read(process, command):
     process.stdin.write(command + '\n'); process.stdin.flush()
-    while True:
-        line = process.stdout.readline()
-        if not line: raise AssertionError('Frontend cache driver exited before its receipt')
-        if line.startswith('CACHE_RECEIPT '): return json.loads(line[len('CACHE_RECEIPT '):])
+    received = queue.Queue()
+
+    def read_receipt():
+        try:
+            while line := process.stdout.readline():
+                if line.startswith('CACHE_RECEIPT '):
+                    received.put(line)
+                    return
+            received.put(None)
+        except Exception as error:
+            received.put(error)
+
+    # Threads work with subprocess pipes on Windows as well as Unix.
+    threading.Thread(target=read_receipt, daemon=True).start()
+    try:
+        line = received.get(timeout=30)
+    except queue.Empty:
+        if process.poll() is None:
+            process.terminate()
+        raise AssertionError('Frontend cache driver receipt timed out after 30 seconds') from None
+    if isinstance(line, Exception):
+        raise AssertionError('Frontend cache driver receipt read failed') from line
+    if line is None:
+        raise AssertionError('Frontend cache driver exited before its receipt')
+    return json.loads(line[len('CACHE_RECEIPT '):])
 
 
 def main():
@@ -158,7 +181,9 @@ def main():
             try:
                 if cache.poll() is None:
                     try: cache.stdin.close()
-                    except BrokenPipeError: pass
+                    except BrokenPipeError:
+                        # The child may close its pipe after poll; wait still collects its exit.
+                        pass
                     try: cache.wait(timeout=10)
                     except subprocess.TimeoutExpired:
                         cache.terminate()

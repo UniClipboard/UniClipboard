@@ -570,8 +570,8 @@ against a binding the host already holds.
   shortcut from its own settings reads. An unsupervised helper (development) keeps the old
   behaviour.
 - After every launch (first start, crash restart, enable) the host sends the desired binding.
-  When it fails, the host sends the last active binding, so a crash does not lose a working
-  binding.
+  When it fails, the host sends the last binding an executor confirmed holding, so a crash
+  does not lose a working binding.
 - A shortcut or double-tap change no longer restarts the helper: `set_shortcuts` and
   `reload_settings` apply it in the running process. Own saves cause zero helper restarts.
 - Every reply carries `active`, the bindings the helper holds after the command, also after a
@@ -750,6 +750,7 @@ Global shortcut apply status (task 6):
 | F105 | The helper is not running (disabled, gave up) when the GUI saves | GUI save fails without writing; an external write is `not_active` until the helper starts | helper protocol E2E |
 | F106 | Lightweight mode expects a status | no executor, state `inactive` | code review |
 | F107 | The helper applied `set_shortcuts` but its reply is lost or later than 3 s; the host reports the old binding as active, or a rollback as done | state `unknown`, active unknown; a late reply with an old `seq` is dropped; the next read, save or launch sends the desired binding again and takes active from that reply | helper protocol E2E (stand-in helper that applies and answers late; then a retry) |
+| F109 | The startup read fails (a slow cold start), the helper starts with the default binding, and the first watcher read only records the saved binding: the running helper is never told it, and later reads find nothing to do | the enabled switch is compared with the value actually applied at launch, not with "unknown"; when it is unchanged the binding goes through the normal reconcile step and is applied once | code review (`reconcilePanel` is in `package main`); native cold-start check |
 | F108 | The save fails and putting the old binding back also fails; the host records desired = active anyway | desired stays the stored binding; active is the executor's report or unknown; state `not_active` or `unknown` with the error | globalshortcut E2E (executor refuses the rollback) |
 
 ## Consequences

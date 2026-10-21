@@ -13,7 +13,7 @@
  * Nothing else in the page is an authority for settings: other windows and the Go host follow the
  * daemon themselves.
  */
-import { getSettings, type Settings } from '@/api/daemon'
+import { getSettings, updateSettings, type Settings, type SettingsPatchInput } from '@/api/daemon'
 import { daemonWs, type DaemonWsEvent } from '@/lib/daemon-ws'
 import { connectDaemonWs } from '@/lib/daemon-ws-bootstrap'
 import { createLogger } from '@/lib/logger'
@@ -88,6 +88,33 @@ export function writeSettings<T>(write: () => Promise<T>): Promise<T> {
       log.warn({ err: readErr }, 'Failed to read settings after a save')
     })
     return result
+  })
+}
+
+// A patch whose sections hold no defined field changes nothing and is not sent.
+function hasChangedLeaf(patch: SettingsPatchInput): boolean {
+  return Object.values(patch).some(
+    section =>
+      section !== undefined &&
+      (typeof section !== 'object' ||
+        section === null ||
+        Object.values(section).some(value => value !== undefined))
+  )
+}
+
+/**
+ * Save the leaves the caller changed (`PUT /settings`), then read the stored state. A field that
+ * is absent is not changed; `false`, `0` and `""` are values. Only `network` or
+ * `general.debugMode` make the daemon ask for a restart.
+ */
+export async function saveSettingsPatch(
+  patch: SettingsPatchInput
+): Promise<{ restartRequired: boolean }> {
+  if (!hasChangedLeaf(patch)) return { restartRequired: false }
+  return writeSettings(async () => {
+    const result = await updateSettings(patch)
+    if (!result.success) throw new Error('Settings update was rejected')
+    return { restartRequired: result.restartRequired }
   })
 }
 

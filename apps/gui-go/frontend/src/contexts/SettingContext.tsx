@@ -3,7 +3,6 @@ import {
   CustomRelayMutationError,
   getCustomRelays,
   mutateCustomRelay as persistCustomRelayMutation,
-  updateSettings,
   type SettingsPatchInput,
 } from '@/api/daemon'
 import {
@@ -21,6 +20,7 @@ import { createLogger } from '@/lib/logger'
 import {
   getSettingsSyncState,
   refreshSettings,
+  saveSettingsPatch,
   subscribeSettings,
   writeSettings,
   type SettingsSyncState,
@@ -39,17 +39,6 @@ const log = createLogger('setting-context')
 
 interface SettingProviderProps {
   children: ReactNode
-}
-
-// A patch whose sections hold no defined field changes nothing and is not sent.
-function hasChangedLeaf(patch: SettingsPatchInput): boolean {
-  return Object.values(patch).some(
-    section =>
-      section !== undefined &&
-      (typeof section !== 'object' ||
-        section === null ||
-        Object.values(section).some(value => value !== undefined))
-  )
 }
 
 function loadErrorText(state: SettingsSyncState): string | null {
@@ -96,18 +85,11 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
     await refreshSettings()
   }, [])
 
-  // Send exactly the leaves the caller changed: a field that is absent is not changed, while
-  // `false`, `0` and `""` are values. Only `network` or `general.debugMode` make the daemon ask
-  // for a restart.
+  // The caller's partial is the patch: only the leaves it changed are sent (ADR-013 section 9).
   const saveSetting = useCallback(
     async (patch: SettingsPatchInput): Promise<{ restartRequired: boolean }> => {
-      if (!hasChangedLeaf(patch)) return { restartRequired: false }
       try {
-        return await writeSettings(async () => {
-          const result = await updateSettings(patch)
-          if (!result.success) throw new Error('Settings update was rejected')
-          return { restartRequired: result.restartRequired }
-        })
+        return await saveSettingsPatch(patch)
       } catch (err) {
         log.error({ err }, '保存设置失败')
         throw err

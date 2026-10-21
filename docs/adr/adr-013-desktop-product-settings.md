@@ -753,6 +753,17 @@ Global shortcut apply status (task 6):
 | F109 | The startup read fails (a slow cold start), the helper starts with the default binding, and the first watcher read only records the saved binding: the running helper is never told it, and later reads find nothing to do | the enabled switch is compared with the value actually applied at launch, not with "unknown"; when it is unchanged the binding goes through the normal reconcile step and is applied once | code review (`reconcilePanel` is in `package main`); native cold-start check |
 | F108 | The save fails and putting the old binding back also fails; the host records desired = active anyway | desired stays the stored binding; active is the executor's report or unknown; state `not_active` or `unknown` with the error | globalshortcut E2E (executor refuses the rollback) |
 
+Native acceptance of the global shortcut (real helper, real OS registration):
+
+| # | Failure mode | Expected behaviour | Verification |
+|---|---|---|---|
+| F110 | A second change keeps the first new binding held, or fails because the helper still holds it | the same helper process holds only the second binding; the first one and the default no longer open the panel | Windows native script, check 5c |
+| F111 | A key name that `global-hotkey` accepts but the Wails parser does not (`equal`; the v1.2 Windows probe refused it as a conflict) is refused on the native helper | saved; status `active` with that binding | Windows native script, check 5c |
+| F112 | A value the executor cannot register (the modifier-only `ctrl+alt`) is saved, or drops the binding that was active | `Conflict`; the stored value and the helper process are unchanged; status `active` with the previous binding | Windows native script, check 5b |
+| F113 | After a GUI restart the helper holds the platform default instead of the saved binding, or both | status `active` with the saved binding; the default does not open the panel; the saved one does | Windows native script, check 9 |
+| F114 | The macOS native script requires a helper restart for a shortcut or double-tap change, so it fails on the contract above and would pass a regression back to restarting | the same helper process before and after both changes; status `active` with the saved binding | macOS native script |
+| F115 | Logs do not say which binding the executor holds, so a report of "the old shortcut still works" cannot be diagnosed | the host logs the bindings the executor reports after every apply (binding names only) | code review; host log in the native script output |
+
 ## Consequences
 
 - An invalid product value no longer affects Engine session startup.

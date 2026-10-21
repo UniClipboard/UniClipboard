@@ -2,7 +2,9 @@
 
 - **Status**: Accepted. Implemented: the store, its daemon wiring and `general.trayIcon` (task 1),
   the `settings` WS topic and the Go host subscription (task 2), the tray executor and settings UI
-  (task 3). Task 4 (section 8: field set 1, legacy import, owner-split writes) is in progress.
+  (task 3), field set 1 with the legacy import and owner-split writes (task 4, section 8).
+  Acceptance B3 is blocked until the Engine drops the product fields (tasks 7 and 10; section
+  8.4).
 - **Date**: 2026-10-20
 - **Related decisions**:
   - [ADR-008](../architecture/adr-008-uniclipd-split-gui-as-client.md)
@@ -439,16 +441,16 @@ Field set 1, legacy import and owner-split writes (task 4):
 | # | Failure mode | Expected behaviour | Verification |
 |---|---|---|---|
 | F38 | The import runs after an Engine settings load, so the Engine has already rewritten or dropped values | the import runs at the start of `prepare_desktop_engine_host`; the hash of the bytes it read equals the hash of the profile's `settings.json` taken before start, and its log line comes before the Engine start | daemon E2E (hash in log against hash before start; log order) |
-| F39 | `uc-dev-cli` loads Engine settings without the import | it uses the same `prepare_desktop_engine_host` | code review (one call path) |
+| F39 | `uc-dev-cli` loads Engine settings without the import | it uses the same `prepare_desktop_engine_host` | code review only (one call path; not run) |
 | F40 | The import writes `settings.json` | never; the importer has no write path to it | code review; daemon E2E (hash read by the importer equals the hash before start) |
 | F41 | File existence is used as the marker, so a P0 file (`trayIcon`) skips the import | the marker is `import.fieldSet`; `trayIcon` stays, field set 1 is imported | daemon E2E (B1a) |
 | F42 | The marker advances on unreadable or invalid legacy JSON, so values are lost for good | no write, marker unchanged; the next start with a valid file imports | daemon E2E (malformed `settings.json`, then repaired) |
 | F43 | A missing legacy file blocks the marker forever | `fieldSet = 1` is written with no values | daemon E2E |
-| F44 | The marker and the values are written separately, so a crash leaves the marker without values | one atomic write holds both; a failed write leaves both files unchanged and the next start imports | daemon E2E (product path made a directory, then removed; B2) |
+| F44 | The marker and the values are written separately, so a crash leaves the marker without values | one atomic write holds both; a failed write leaves both files unchanged and the next start imports | daemon E2E: an unusable product path defers the import and the next start imports; a kill right after the product file appears keeps one consistent result. Not covered by E2E: the persist-failure branch itself (any path that fails the rename fails the read first) and a deterministic kill between the temporary file and the rename (code review of the single atomic write) |
 | F45 | Engine's rewrite on the second start (v2→v3 migration, default insertion, formatting) changes the fingerprint and triggers a false re-import | the fingerprint covers normalized values only; second and third starts do not write the product file | daemon E2E (B1b: product file hash unchanged, no import log) |
 | F46 | A re-import overwrites values the user wrote under P1 | paths in `userWritten` keep the product value, with a warning that names them | daemon E2E (B4, B1c) |
 | F47 | Edits made in an older binary after a downgrade are ignored | the fingerprint differs; paths not in `userWritten` are imported again; the log names them | daemon E2E (B4 with a v1.2.0 binary) |
-| F48 | An invalid legacy value is lost, or it stops startup, or it reaches the effective value | the raw value is copied into the product file; the effective value is the default; the warning names the path, never the value | daemon E2E (B3) |
+| F48 | An invalid legacy value is lost, or it stops startup, or it reaches the effective value | the raw value is copied into the product file; the effective value is the default; the warning names the path, never the value | daemon E2E for values the Engine does not type (shortcuts, presets, overrides, language). For an Engine-typed enum (`theme: "neon"`) the import behaves as stated, but the pinned Engine session does not start: B3 fails until tasks 7 and 10 (a valid-enum control with otherwise identical input starts) |
 | F49 | Legacy rules differ from the design: startup precedence or `theme_color` fallback | `startup_mode`, else `lightweight_start`, else `silent_start`; `theme_color` fills a split preset that is null or absent | daemon E2E (v2-shaped input) |
 | F50 | Product defaults differ from Engine defaults, so a fresh install changes behaviour | defaults equal `uc-core` defaults | daemon E2E (missing legacy file: GET equals the pre-P1 defaults) |
 | F51 | A product field still reaches the Engine (dual write), through `PUT /settings` or `PUT /settings/relay` | the Engine patch never carries a product field; `/settings/relay` rejects them with 400 | daemon E2E (product-only `PUT` of every moved field leaves `settings.json` byte-identical; relay with a product field is 400) |

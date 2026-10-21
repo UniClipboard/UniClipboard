@@ -281,8 +281,8 @@ func e2eNotificationResponse(id string) {
 	_ = evidenceWriter.write(Step{Window: "app", Step: "notification-click", OK: true, Detail: map[string]any{"pid": os.Getpid(), "id": id}})
 }
 
-// e2eTrayLanguage records every tray language call, whoever made it (the test driver or the frontend's own
-// settings effect), so a label that did not change can be attributed from the evidence.
+// e2eTrayLanguage records every tray language change the host applies from the daemon settings, so a label that did
+// not change can be attributed from the evidence.
 func e2eTrayLanguage(language string) {
 	trayLanguageLastCall.Store(time.Now().UnixNano())
 	_ = evidenceWriter.write(Step{Window: "tray", Step: "tray-language-call", OK: true, Detail: language})
@@ -327,8 +327,8 @@ func e2eTrayPublishSkipped() {
 	_ = evidenceWriter.write(Step{Window: "tray", Step: "tray-publish-skipped", OK: true, Detail: map[string]any{"startNs": time.Now().UnixNano()}})
 }
 
-// waitTrayLanguageQuiet blocks until no tray language call arrived for quietMs (at most 60 s). The frontend sets the tray language
-// from its settings effect at startup, possibly more than once; a test that pins a language earlier is overwritten by it.
+// waitTrayLanguageQuiet blocks until no tray language call arrived for quietMs (at most 60 s). The host applies the stored language
+// after its first settings read; a test that pins a language earlier is overwritten by it.
 func waitTrayLanguageQuiet(quietMs int) bool {
 	quiet := time.Duration(quietMs) * time.Millisecond
 	for deadline := time.Now().Add(60 * time.Second); time.Now().Before(deadline); time.Sleep(100 * time.Millisecond) {

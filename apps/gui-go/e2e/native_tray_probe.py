@@ -114,6 +114,14 @@ def main():
                 rows.append(r.get('detail'))
         return rows
 
+    def pin_language(language):
+        # The e2e control that pins the tray language in the host (the page no longer sets it).
+        seq[0] += 1
+        label = f'n{seq[0]}'
+        with (out / 'gui.control').open('a') as f:
+            f.write(f'tray-language {label} {language}\n')
+        return {'ok': bool((step(f'tray-language-{label}') or {}).get('ok'))}
+
     def invoke(command, arg):
         seq[0] += 1
         label = f'n{seq[0]}'
@@ -152,7 +160,7 @@ def main():
         result['languageCallsBefore'] = lang_calls()
         check('5 precondition: the frontend\'s own startup tray-language calls were seen and then quiet for 5 s before the test changes the language (ordering)',
               bool(lang_calls()) and time.time() - t_change >= 5, lang_calls())
-        r = invoke('set_tray_language', {'language': 'zh-CN'})
+        r = pin_language('zh-CN')
         l2 = host.wait(lambda l: labels(l)[1:] == ZH, 30, 'zh')
         check('5 set_tray_language(zh-CN) relabels the whole menu in the host', bool(r.get('ok')) and l2 is not None, labels(l2) if l2 else None)
         result['languageCallsAfterZh'] = lang_calls()
@@ -171,7 +179,7 @@ def main():
         check('5c five rounds of 8 concurrent set_tray_language calls always leave root labels, device title and placeholder in one language, the last recorded one',
               all(r['consistent'] for r in race), race)
         # ARTIFICIAL schedule (E2E-only one-shot gap), see linux_tray_run.py: not a natural race.
-        invoke('set_tray_language', {'language': 'zh-CN'})  # known starting state (zh)
+        pin_language('zh-CN')  # known starting state (zh)
         host.wait(lambda l: labels(l)[1:] == ZH, 20, 'zh before gap')
         with (out / 'gui.control').open('a') as f:
             f.write('tray-language-gap g0 600\n')
@@ -179,9 +187,9 @@ def main():
         lay = host.wait(lambda l: labels(l)[1:] == ROOT_ORDER and [n['label'] for n in submenu(l, 'Device Sync')] == ['No paired devices'], 20, 'gap schedule')
         result['languageGapSchedule'] = {'final': (row.get('detail') or {}).get('final'), 'gapConsumed': (row.get('detail') or {}).get('gapConsumed'), 'rootLabels': labels(host.layout()) if host.layout() and 'error' not in host.layout() else None}
         check('5d [artificial E2E schedule] two overlapping language changes leave root labels, device title and placeholder all in en', lay is not None and (row.get('detail') or {}).get('final') == 'en' and (row.get('detail') or {}).get('gapConsumed') is True, result['languageGapSchedule'])
-        invoke('set_tray_language', {'language': 'en'})
+        pin_language('en')
         host.wait(lambda l: labels(l)[1:] == ROOT_ORDER, 20, 'en after race')
-        r = invoke('set_tray_language', {'language': 'en'})
+        r = pin_language('en')
         l2 = host.wait(lambda l: labels(l)[1:] == ROOT_ORDER, 30, 'en')
         check('5 and back to English', bool(r.get('ok')) and l2 is not None, labels(l2) if l2 else None)
         # Observe the layout for the window: with no peer the placeholder is rebuilt (new item ids) every 10 s period, so the number of

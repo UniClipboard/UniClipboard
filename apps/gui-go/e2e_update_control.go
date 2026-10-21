@@ -119,6 +119,12 @@ func (s *EvidenceService) runControlCommand(line string) {
 		label, ms, _ := strings.Cut(arg, " ")
 		quiet, _ := strconv.Atoi(ms)
 		_ = s.write(Step{Window: "tray", Step: "tray-language-quiet-" + label, OK: waitTrayLanguageQuiet(quiet), Detail: map[string]any{"quietMs": quiet}})
+	case "tray-language":
+		// tray-language <label> <language>: pins the tray language in the host, as the removed SetTrayLanguage command did. The
+		// host applies the stored language again only when it changes, so a pin holds until the next language write.
+		label, language, _ := strings.Cut(arg, " ")
+		h.tray.setLanguage(language)
+		_ = s.write(Step{Window: "tray", Step: "tray-language-" + label, OK: true, Detail: language})
 	case "tray-language-race":
 		// tray-language-race <label> <n>: n concurrent tray language changes released together, alternating zh-CN and en. The
 		// menu (root labels and the device submenu title) must end in one language, the one the tray recorded last.

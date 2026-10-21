@@ -242,7 +242,8 @@ func TestWatcherAgainstDaemon(t *testing.T) {
 	channel := "beta"
 	h.put(map[string]any{
 		"general": map[string]any{"autoStart": true, "startupMode": "silent", "restoreLastEntryOnStartup": true,
-			"deviceName": "e2e-watch-device", "autoCheckUpdate": false, "autoDownloadUpdate": true, "updateChannel": channel, "trayIcon": "cat"},
+			"deviceName": "e2e-watch-device", "autoCheckUpdate": false, "autoDownloadUpdate": true, "updateChannel": channel, "trayIcon": "cat",
+			"language": "ja-JP"},
 		"sync":       map[string]any{"syncEnabled": false},
 		"quickPanel": map[string]any{"enabled": false, "position": "follow_cursor", "doubleTapModifier": "alt"},
 	})
@@ -253,7 +254,7 @@ func TestWatcherAgainstDaemon(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := General{AutoStart: true, StartupMode: "silent", RestoreLastEntryOnStartup: true, DeviceName: "e2e-watch-device",
-		AutoCheckUpdate: false, AutoDownloadUpdate: true, TrayIcon: "cat"}
+		AutoCheckUpdate: false, AutoDownloadUpdate: true, TrayIcon: "cat", Language: "ja-JP"}
 	got := view.General
 	got.UpdateChannel = nil
 	if got != want || view.General.UpdateChannel == nil || *view.General.UpdateChannel != channel ||
@@ -277,6 +278,9 @@ func TestWatcherAgainstDaemon(t *testing.T) {
 	h.waitApplied("engine-owned external write applied", 5*time.Second, func(v View) bool { return v.Sync.SyncEnabled })
 	h.put(map[string]any{"general": map[string]any{"trayIcon": "glyph"}}) // F36 left "cat", so this is a change
 	h.waitApplied("product-owned external write applied", 5*time.Second, func(v View) bool { return v.General.TrayIcon == "glyph" })
+	// B9: the tray language reaches the host from an external write, with no frontend (applySettings resolves it).
+	h.put(map[string]any{"general": map[string]any{"language": "zh-TW"}})
+	h.waitApplied("external language write applied", 5*time.Second, func(v View) bool { return v.General.Language == "zh-TW" })
 
 	// F32, measured: an open watcher connection at a daemon stop, which the host avoids with Pause.
 	held := h.gracefulStop()

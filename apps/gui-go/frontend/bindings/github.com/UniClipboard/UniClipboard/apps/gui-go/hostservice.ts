@@ -422,13 +422,6 @@ export function SetTrafficLightPosition(offsetX: number | null, offsetY: number 
 }
 
 /**
- * SetTrayLanguage updates the tray menu labels to the UI language. It does not persist anything.
- */
-export function SetTrayLanguage(language: string): $CancellablePromise<void> {
-    return $Call.ByID(4127180375, language);
-}
-
-/**
  * SetVisualEffectsMode sets the visual effects preference and tells every window.
  */
 export function SetVisualEffectsMode(mode: $models.EffectsMode): $CancellablePromise<$models.EffectsSnapshot> {

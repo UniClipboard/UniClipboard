@@ -548,7 +548,7 @@ def main():
         # the pin). Pin, wait for a longer quiet, and pin again if the frontend overwrote it; every call is kept as evidence.
         pins = []
         for attempt in range(4):
-            pins.append(gui.ctl(f'invoke en{attempt} set_tray_language {{"language":"en","trace":null}}', f'invoke-en{attempt}')['ok'])
+            pins.append(gui.ctl(f'tray-language en{attempt} en', f'tray-language-en{attempt}')['ok'])
             gui.ctl(f'tray-language-quiet qq{attempt} 8000', f'tray-language-quiet-qq{attempt}', 90)
             calls = [r['detail'] for r in gui.rows() if r['step'] == 'tray-language-call']
             if calls[-1:] == ['en']:
@@ -663,12 +663,12 @@ def main():
                 return sorted({(r['detail'] or {}).get('cause') for r in gui.rows()[i:] if r['step'] == 'tray-refresh'} - {None})
             # C1 language: MANUAL (invoke), the open menu must follow; whether the submenu stays expanded afterwards is the system's recorded boundary
             i = len(gui.rows())
-            gui.ctl('invoke zh9 set_tray_language {"language":"zh-CN","trace":null}', 'invoke-zh9')
+            gui.ctl('tray-language zh9 zh-CN', 'tray-language-zh9')
             time.sleep(1.5)
             rz = ax('read', str(proc.pid))
             st_z, _ = _submenu_state(proc.pid)
             check('C1 MANUAL language change zh-CN: the open menu (root and device submenu) relabelled; the real-change collapse state is recorded', rz.get('ok') and titles(rz['menu'])[1:] == ZH and bool(rz.get('popupWindows')), {'root': titles(rz['menu']) if rz.get('ok') else rz, 'submenuStillExpanded': bool(st_z['submenu']), 'publishesSince': sum(1 for r in gui.rows()[i:] if r['step'] == 'tray-publish')})
-            gui.ctl('invoke en9 set_tray_language {"language":"en","trace":null}', 'invoke-en9')
+            gui.ctl('tray-language en9 en', 'tray-language-en9')
             time.sleep(1.5)
             re_ = ax('read', str(proc.pid))
             check('C1 language restored to English in the open menu', re_.get('ok') and titles(re_['menu'])[1:] == EN, titles(re_['menu']) if re_.get('ok') else re_)
@@ -797,7 +797,7 @@ def main():
 
         # 2. MANUAL scheduling: language change while the menu is open
         n2 = len(gui.rows())
-        zh = gui.ctl('invoke zh1 set_tray_language {"language":"zh-CN","trace":null}', 'invoke-zh1')
+        zh = gui.ctl('tray-language zh1 zh-CN', 'tray-language-zh1')
         time.sleep(1.5)
         r2 = ax('read', str(proc.pid))
         check('2 MANUAL: language changed to zh-CN while the menu was open (hook fired: invoke-enter/return and a publish)',
@@ -806,7 +806,7 @@ def main():
         if r2.get('ok'):
             sub = device_items(r2['menu'])
             check('2 MANUAL: the open menu relabelled, root and device submenu in the same language', titles(r2['menu'])[1:] == ZH and sub is not None and [d['title'] for d in sub] == ['tray-peer-b'], {'root': titles(r2['menu']), 'sub': sub})
-        gui.ctl('invoke en2 set_tray_language {"language":"en","trace":null}', 'invoke-en2')
+        gui.ctl('tray-language en2 en', 'tray-language-en2')
         time.sleep(1.5)
         r3 = ax('read', str(proc.pid))
         check('2 MANUAL: language restored to English in the open menu (pop-up menu window still on screen)', r3.get('ok') and bool(r3.get('popupWindows')) and titles(r3['menu'])[1:] == EN, titles(r3['menu']) if r3.get('ok') else r3)
@@ -894,7 +894,7 @@ def main():
         # 3b' MANUAL language change; the expanded state is sampled IMMEDIATELY before the invoke and must hold there
         ok_exp, det_l = ensure_expanded('3b-lang')
         st_pre, _ = submenu_state()
-        gui.ctl('invoke zh3 set_tray_language {"language":"zh-CN","trace":null}', 'invoke-zh3')
+        gui.ctl('tray-language zh3 zh-CN', 'tray-language-zh3')
         time.sleep(.3)
         st_soon, _ = submenu_state()
         time.sleep(1.2)
@@ -904,7 +904,7 @@ def main():
         check('3b MANUAL language change to zh-CN with the submenu expanded in the sample right before the invoke: the open menu and its submenu relabelled together, menu still tracked (whether the submenu stayed expanded is recorded)',
               ok_exp and bool(st_pre['submenu']) and rz.get('ok') and bool(rz.get('popupWindows')) and titles(rz['menu'])[1:] == ZH and subz is not None and [d['title'] for d in subz] == ['tray-peer-b'],
               {'expandedAtStart': ok_exp, 'expandedImmediatelyBefore': bool(st_pre['submenu']), 'root': titles(rz['menu']) if rz.get('ok') else rz, 'sub': subz, 'popupsSoon': st_soon['popups'], 'popupsLate': st_late['popups'], 'submenuWindowSoon': bool(st_soon['submenu'])})
-        gui.ctl('invoke en3 set_tray_language {"language":"en","trace":null}', 'invoke-en3')
+        gui.ctl('tray-language en3 en', 'tray-language-en3')
         time.sleep(1.5)
 
         # 3c a device-structure change DURING expansion: a second peer is paired through the production rendezvous while the menu is tracked and

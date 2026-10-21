@@ -225,7 +225,7 @@ def main():
         results['languageCallsBefore'] = lang_calls()
         check('7b precondition: the frontend\'s own startup tray-language calls were seen and then quiet for 5 s before the test changes the language (ordering)',
               bool(lang_calls()) and time.time() - t_change >= 5, lang_calls())
-        r = gui.invoke('lang-zh', 'set_tray_language', {'language': 'zh-CN'})
+        r = {'ok': gui.ctl('tray-language lang-zh zh-CN', 'tray-language-lang-zh')['ok']}
         lay = host.wait(lambda l: labels(l)[1:] == ZH, 30, 'zh labels')
         check('7b set_tray_language(zh-CN) relabels the whole menu in the host, including the device submenu title and keeping the peer row',
               r['ok'] and lay is not None and [n['label'] for n in submenu(lay, '设备同步')] == ['tray-peer-b'], [r, labels(lay) if lay else None])
@@ -245,16 +245,16 @@ def main():
               all(r['consistent'] for r in race), race)
         # ARTIFICIAL schedule (E2E-only, one-shot gap between the two steps of call A while call B starts): not a natural race. Serialized, the
         # menu ends entirely in B's language; unserialized, A's device-menu step lands after B's and the menu is mixed.
-        gui.invoke('lang-zh-pre', 'set_tray_language', {'language': 'zh-CN'})  # known starting state (zh), so the schedule cannot pass by starting in en
+        {'ok': gui.ctl('tray-language lang-zh-pre zh-CN', 'tray-language-lang-zh-pre')['ok']}  # known starting state (zh), so the schedule cannot pass by starting in en
         host.wait(lambda l: labels(l)[1:] == ZH, 20, 'zh before gap')
         row = gui.ctl('tray-language-gap g0 600', 'tray-language-gap-g0', 60)
         lay = host.wait(lambda l: labels(l)[1:] == ROOT_ORDER, 20, 'gap schedule')
         results['languageGapSchedule'] = {'final': (row.get('detail') or {}).get('final'), 'gapConsumed': (row.get('detail') or {}).get('gapConsumed'), 'rootLabels': labels(host.layout()) if host.layout() and 'error' not in host.layout() else None}
         check('7d [artificial E2E schedule] two overlapping language changes (zh-CN paused between its steps, en started meanwhile) leave the whole menu in en',
               lay is not None and (row.get('detail') or {}).get('final') == 'en' and (row.get('detail') or {}).get('gapConsumed') is True, results['languageGapSchedule'])
-        gui.invoke('lang-en2', 'set_tray_language', {'language': 'en'})
+        {'ok': gui.ctl('tray-language lang-en2 en', 'tray-language-lang-en2')['ok']}
         host.wait(lambda l: labels(l)[1:] == ROOT_ORDER, 20, 'en after race')
-        r = gui.invoke('lang-en', 'set_tray_language', {'language': 'en'})
+        r = {'ok': gui.ctl('tray-language lang-en en', 'tray-language-lang-en')['ok']}
         lay = host.wait(lambda l: labels(l)[1:] == ROOT_ORDER, 30, 'en labels')
         check('7b and back to English', r['ok'] and lay is not None, labels(lay) if lay else None)
 

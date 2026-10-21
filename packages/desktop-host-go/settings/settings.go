@@ -30,6 +30,7 @@ type General struct {
 	AutoDownloadUpdate        bool    `json:"autoDownloadUpdate"`
 	UpdateChannel             *string `json:"updateChannel"` // nil: no explicit channel
 	TrayIcon                  string  `json:"trayIcon"`      // "glyph" or "cat"
+	Language                  string  `json:"language"`      // "" (null): follow the system language
 }
 
 // Sync is the `sync` section.

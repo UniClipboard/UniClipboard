@@ -27,30 +27,31 @@ import (
 var assets embed.FS
 
 type HostService struct {
-	app              *application.App
-	client           atomic.Pointer[daemonclient.Client] // replaced when the daemon is restarted; read through daemon()
-	effects          *visualEffects
-	panel            panelState
-	exit             exitIntent
-	prompts          promptStore
-	stopScheduler    context.CancelFunc
-	stopTray         context.CancelFunc
-	settingsWatch    *settings.Watcher // keeps applySettings current from the daemon, with or without a window
-	stopSettings     context.CancelFunc
-	notifier         *notifications.NotificationService
-	helper           *quickpanelhelper.Supervisor // nil when the WebView quick panel is in use
-	updates          updater
-	lastCheck        lastCheckAt
-	wake             chan string // pending wake source (system resume, background activity) for the update scheduler, capacity 1
-	analytics        analyticsQueue
-	stopWake         func()
-	stopActivity     func() // invalidates the macOS background activity
-	tray             *trayMenu
-	singleInstanceID string
-	readyMu          sync.Mutex
-	ready            bool // the daemon bootstrap finished
-	showWhenReady    bool // a second launch asked for the main window before that
-	files            knownFiles
+	app                 *application.App
+	client              atomic.Pointer[daemonclient.Client] // replaced when the daemon is restarted; read through daemon()
+	effects             *visualEffects
+	panel               panelState
+	exit                exitIntent
+	prompts             promptStore
+	stopScheduler       context.CancelFunc
+	stopTray            context.CancelFunc
+	settingsWatch       *settings.Watcher // keeps applySettings current from the daemon, with or without a window
+	trayLanguageApplied string            // the tray language applySettings last applied; read and written on the watcher goroutine only
+	stopSettings        context.CancelFunc
+	notifier            *notifications.NotificationService
+	helper              *quickpanelhelper.Supervisor // nil when the WebView quick panel is in use
+	updates             updater
+	lastCheck           lastCheckAt
+	wake                chan string // pending wake source (system resume, background activity) for the update scheduler, capacity 1
+	analytics           analyticsQueue
+	stopWake            func()
+	stopActivity        func() // invalidates the macOS background activity
+	tray                *trayMenu
+	singleInstanceID    string
+	readyMu             sync.Mutex
+	ready               bool // the daemon bootstrap finished
+	showWhenReady       bool // a second launch asked for the main window before that
+	files               knownFiles
 
 	quitting atomic.Bool
 

@@ -15,7 +15,6 @@ import {
 import { useWindowTheme } from '@/hooks/useWindowTheme'
 import i18n, { normalizeLanguage, persistLanguage } from '@/i18n'
 import { connectDaemonWs } from '@/lib/daemon-ws-bootstrap'
-import { commands } from '@/lib/ipc'
 import { createLogger } from '@/lib/logger'
 import {
   getSettingsSyncState,
@@ -244,10 +243,7 @@ export const SettingProvider: React.FC<SettingProviderProps> = ({ children }) =>
       i18n.changeLanguage(next)
     }
     persistLanguage(next)
-    // Sync tray menu labels with UI language
-    commands.setTrayLanguage(next).catch(err => {
-      log.error({ err }, 'Failed to sync tray language')
-    })
+    // The tray follows the daemon's language itself (Go host applySettings, ADR-013 section 9).
   }, [setting?.general?.language])
 
   // Synchronize the user preference to every frontend Sentry payload path.

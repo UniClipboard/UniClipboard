@@ -205,7 +205,7 @@ def main():
 
         # T2 language switch through the host command the settings page uses
         target = 'en' if lang == 'zh-CN' else 'zh-CN'
-        gui.invoke('lang', 'set_tray_language', {'language': target})
+        {'ok': gui.ctl(f'tray-language lang {target}', 'tray-language-lang')['ok']}
         time.sleep(.8)
         rc, clicked = uia('-Action', 'icon', '-Match', 'UniClipboard', '-Button', 'right')
         names2, items2 = menu_names()

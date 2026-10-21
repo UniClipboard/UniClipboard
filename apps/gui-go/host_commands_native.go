@@ -193,15 +193,6 @@ func installKind() InstallKind {
 	return platformInstallKind()
 }
 
-// SetTrayLanguage updates the tray menu labels to the UI language. It does not persist anything.
-//
-//uc:errors none
-//uc:os all=real
-func (h *HostService) SetTrayLanguage(language string) {
-	defer e2eInvoke("set_tray_language")() // e2e builds record when this command enters and leaves; a no-op otherwise
-	h.tray.setLanguage(language)
-}
-
 // SetWindowDecorations applies the page's frame preference (custom controls drawn by the page, or the system
 // frame) to the main window. macOS keeps its hidden-inset title bar either way.
 //

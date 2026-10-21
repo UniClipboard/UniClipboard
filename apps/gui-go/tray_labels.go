@@ -18,6 +18,15 @@ var trayLabelTable = map[string]trayLabels{
 	"en":    {"Open", "Settings", "Check for Updates…", "Restart", "Lightweight Mode (Background Sync)", "Quit", "Disable Sync", "Enable Sync", "Could not change sync. Please try again."},
 }
 
+// resolveTrayLanguage picks the tray language the way the main window and the quick panel pick theirs: the
+// configured language when there is one, the system language otherwise, both through normalizeTrayLanguage.
+func resolveTrayLanguage(configured string) string {
+	if strings.TrimSpace(configured) != "" {
+		return normalizeTrayLanguage(configured)
+	}
+	return normalizeTrayLanguage(systemLanguage())
+}
+
 // normalizeTrayLanguage maps a language tag to a supported locale, following
 // the daemon-side normalization (zh with Hant/TW/HK/MO subtags is Traditional).
 func normalizeTrayLanguage(tag string) string {

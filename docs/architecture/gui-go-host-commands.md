@@ -48,7 +48,7 @@ Wails 版本与 Go 工具链只在 `apps/gui-go/go.mod` 中固定一处，生成
 
 此区块由 `go run ./cmd/hostcontract docs` 从 Go 源码生成（命令来自 `*HostService` 的导出方法及其 `//uc:` 指令，事件来自 `apps/gui-go/host_events.go`），请勿手改。
 
-### 命令（66 个）
+### 命令（65 个）
 
 | 命令 | Go 方法 | 参数 | 结果 | 错误族 / 错误码 | macOS | Windows | Linux | 来源 / 说明 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -107,7 +107,6 @@ Wails 版本与 Go 工具链只在 `apps/gui-go/go.mod` 中固定一处，生成
 | `set_quick_panel_layout` | `SetQuickPanelLayout` | `scale *float64, previewExpanded bool, windowScale *float64` | `-` | none | 真实 | 真实 | 真实 | 契约命令；SetQuickPanelLayout sizes the quick panel for the page's content scale, the preview pane and (Linux) the window scale. |
 | `set_quick_panel_position` | `SetQuickPanelPosition` | `position QuickPanelPosition` | `-` | command: ValidationError, InternalError | 真实 | 真实 | 真实 | 契约命令；SetQuickPanelPosition saves where the quick panel appears. |
 | `set_traffic_light_position` | `SetTrafficLightPosition` | `offsetX *float64, offsetY *float64` | `-` | none | 不支持 | 有意空操作 | 有意空操作 | 契约命令；SetTrafficLightPosition would place the macOS window buttons. |
-| `set_tray_language` | `SetTrayLanguage` | `language string` | `-` | none | 真实 | 真实 | 真实 | 契约命令；SetTrayLanguage updates the tray menu labels to the UI language. |
 | `set_visual_effects_mode` | `SetVisualEffectsMode` | `mode EffectsMode` | `EffectsSnapshot` | command: ValidationError | 真实 | 真实 | 真实 | 契约命令；SetVisualEffectsMode sets the visual effects preference and tells every window. |
 | `set_window_decorations` | `SetWindowDecorations` | `decorations bool` | `-` | none | 有意空操作 | 真实 | 真实 | 适配器：`@/host/window`；SetWindowDecorations applies the page's frame preference (custom controls drawn by the page, or the system frame) to the main window. |
 | `show_content_unlock` | `ShowContentUnlock` | - | `-` | none | 真实 | 真实 | 真实 | 契约命令；ShowContentUnlock brings the main window forward so the user can unlock content. |

@@ -61,7 +61,6 @@ var e2eCommandTable = map[string]e2eCommand{
 	"set_quick_panel_layout":                  {Method: "SetQuickPanelLayout", Params: []string{"scale", "previewExpanded", "windowScale"}},
 	"set_quick_panel_position":                {Method: "SetQuickPanelPosition", Params: []string{"position"}},
 	"set_traffic_light_position":              {Method: "SetTrafficLightPosition", Params: []string{"offsetX", "offsetY"}},
-	"set_tray_language":                       {Method: "SetTrayLanguage", Params: []string{"language"}},
 	"set_visual_effects_mode":                 {Method: "SetVisualEffectsMode", Params: []string{"mode"}},
 	"set_window_decorations":                  {Method: "SetWindowDecorations", Params: []string{"decorations"}},
 	"show_content_unlock":                     {Method: "ShowContentUnlock", Params: []string{}},

@@ -19,5 +19,10 @@ func (h *HostService) startSettingsWatch() {
 // is unchanged.
 func (h *HostService) applySettings(view settings.View) {
 	h.tray.setSyncEnabled(view.Sync.SyncEnabled)
+	// The tray language follows the stored language (B9). Only a change is applied, so a read does not rebuild the menu.
+	if language := resolveTrayLanguage(view.General.Language); language != h.trayLanguageApplied {
+		h.trayLanguageApplied = language
+		h.tray.setLanguage(language)
+	}
 	h.tray.icon.setStyle(view.General.TrayIcon)
 }

@@ -3085,6 +3085,9 @@
             "description": "Light 模式下用户对预设 token 的自定义覆盖（`{ tokenName: oklchString }`）。\n为空 map 表示完全跟随 preset。wire 字段名 `themeOverridesLight`。",
             "type": "object"
           },
+          "trayIcon": {
+            "$ref": "#/components/schemas/TrayIconDto"
+          },
           "updateChannel": {
             "allOf": [
               {
@@ -3187,6 +3190,14 @@
             "description": "Light 模式 overrides patch。`Some(map)` 整体替换；`None` 表示不修改。",
             "nullable": true,
             "type": "object"
+          },
+          "trayIcon": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TrayIconDto"
+              }
+            ],
+            "nullable": true
           },
           "updateChannel": {
             "allOf": [
@@ -7075,6 +7086,32 @@
         ],
         "type": "object"
       },
+      "SettingsChangedPayload": {
+        "description": "Payload of `settings.changed`. It never carries setting values.",
+        "properties": {
+          "owner": {
+            "$ref": "#/components/schemas/SettingsOwnerDto"
+          },
+          "revision": {
+            "description": "The owner's revision after this change. In daemon memory only: it starts at 0 with each\ndaemon run and is comparable only with revisions of the same owner on the same connection.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "sections": {
+            "items": {
+              "$ref": "#/components/schemas/SettingsSectionDto"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "owner",
+          "sections",
+          "revision"
+        ],
+        "type": "object"
+      },
       "SettingsDto": {
         "properties": {
           "fileSync": {
@@ -7141,6 +7178,46 @@
         "required": [
           "data",
           "ts"
+        ],
+        "type": "object"
+      },
+      "SettingsOwnerDto": {
+        "description": "Who persisted a settings change. Each owner has its own revision.",
+        "enum": [
+          "desktop",
+          "engine"
+        ],
+        "type": "string"
+      },
+      "SettingsPartiallyAppliedDetailsDto": {
+        "description": "`details` of the `settings_partially_applied` error (HTTP 500). An owner whose part of the\npatch was empty is in no list.",
+        "properties": {
+          "applied": {
+            "description": "Owners whose part was written and stays written.",
+            "items": {
+              "$ref": "#/components/schemas/SettingsWriteOwnerDto"
+            },
+            "type": "array"
+          },
+          "failed": {
+            "description": "The owner whose write failed; its part was not written.",
+            "items": {
+              "$ref": "#/components/schemas/SettingsWriteOwnerDto"
+            },
+            "type": "array"
+          },
+          "skipped": {
+            "description": "Owners in the patch that were not attempted after the failure.",
+            "items": {
+              "$ref": "#/components/schemas/SettingsWriteOwnerDto"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "applied",
+          "failed",
+          "skipped"
         ],
         "type": "object"
       },
@@ -7221,6 +7298,54 @@
         },
         "type": "object"
       },
+      "SettingsRevisionsDto": {
+        "description": "Each owner's current revision.",
+        "properties": {
+          "desktop": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "engine": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "desktop",
+          "engine"
+        ],
+        "type": "object"
+      },
+      "SettingsSectionDto": {
+        "description": "A top-level section of `GET /settings`. `MobileSync` is an Engine section without a path in\n`/settings`; clients read again like for any other section.",
+        "enum": [
+          "general",
+          "sync",
+          "retentionPolicy",
+          "security",
+          "pairing",
+          "keyboardShortcuts",
+          "fileSync",
+          "network",
+          "mobileSync",
+          "quickPanel"
+        ],
+        "type": "string"
+      },
+      "SettingsSnapshotPayload": {
+        "description": "Payload of `settings.snapshot`, sent once after a client subscribes to `settings`.",
+        "properties": {
+          "revisions": {
+            "$ref": "#/components/schemas/SettingsRevisionsDto"
+          }
+        },
+        "required": [
+          "revisions"
+        ],
+        "type": "object"
+      },
       "SettingsUpdateResultDto": {
         "description": "Folded payload for `PUT /settings` (ADR-008 §0.1).\n\nThe current handler returns `success` and `restartRequired` as top-level\nsiblings of the `{data,ts}` envelope. This DTO folds those siblings INTO the\npayload so the endpoint can return `ApiEnvelope<SettingsUpdateResultDto>`\nwith no bespoke wrapper. P1 only defines the type; the handler is rewired in\nP2.",
         "properties": {
@@ -7255,6 +7380,15 @@
           "ts"
         ],
         "type": "object"
+      },
+      "SettingsWriteOwnerDto": {
+        "description": "A store that `PUT /settings` writes, in write order: Engine, then product, then telemetry.",
+        "enum": [
+          "engine",
+          "desktop",
+          "telemetry"
+        ],
+        "type": "string"
       },
       "SetupCancelJoinEnvelope": {
         "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
@@ -7836,6 +7970,14 @@
           "success"
         ],
         "type": "object"
+      },
+      "TrayIconDto": {
+        "description": "Tray icon artwork. Unknown values are rejected on write.",
+        "enum": [
+          "glyph",
+          "cat"
+        ],
+        "type": "string"
       },
       "UiDialogOpenSource": {
         "description": "Mirrors `analytics::DialogOpenSource`. wire: `notification` | `sidebar_icon`.",
@@ -13821,7 +13963,7 @@
         ]
       },
       "put": {
-        "description": "Updates application settings. Accepts a partial settings object and merges it\nwith the existing settings.\n\nNOTE: Unlike the Tauri command, this handler does NOT apply OS-level side\neffects (no autostart registration, no keyboard shortcut updates). It only\npersists the settings domain model.",
+        "description": "Updates application settings. Accepts a partial settings object and splits\nit by owner (ADR-013 section 8.3): Engine fields to the Engine, product\nfields to the daemon's product store, `telemetryEnabled` to its own file.\n\nNOTE: this handler does NOT apply OS-level side effects (no autostart\nregistration, no keyboard shortcut updates). It only persists settings.",
         "operationId": "updateSettings",
         "requestBody": {
           "content": {
@@ -13852,7 +13994,7 @@
                 }
               }
             },
-            "description": "Invalid request"
+            "description": "Body does not decode, a product value fails its grammar, or the Engine rejected the patch; nothing was written"
           },
           "500": {
             "content": {
@@ -13862,7 +14004,7 @@
                 }
               }
             },
-            "description": "Internal server error"
+            "description": "A write failed. Code `settings_partially_applied` with `SettingsPartiallyAppliedDetailsDto` details when an earlier owner was written; `internal_error` when nothing was written"
           }
         },
         "security": [

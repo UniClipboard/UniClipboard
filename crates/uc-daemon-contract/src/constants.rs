@@ -20,6 +20,8 @@ pub mod ws_topic {
     pub const NETWORK_RECOVERY: &str = "network-recovery";
     /// Content-lock grant changes. Carries no content, only whether content may be shown.
     pub const CONTENT_LOCK: &str = "content-lock";
+    /// Settings change notifications of both owners (ADR-013 section 7). Carries no values.
+    pub const SETTINGS: &str = "settings";
 }
 
 /// WebSocket event type names emitted within topics.
@@ -77,6 +79,11 @@ pub mod ws_event {
     /// Emitted alongside `CLIPBOARD_NEW_CONTENT`; carries only display summaries
     /// and delivery metadata, never the full clipboard payload.
     pub const CLIPBOARD_INBOUND_NOTICE: &str = "clipboard.inbound_notice";
+    /// Sent once after a client subscribes to `settings`: the subscription is active, and the
+    /// payload holds each owner's current revision. Clients read `GET /settings` after it.
+    pub const SETTINGS_SNAPSHOT: &str = "settings.snapshot";
+    /// One owner persisted a change (`{ owner, sections, revision }`); clients read again.
+    pub const SETTINGS_CHANGED: &str = "settings.changed";
 }
 
 /// Pairing stage labels used in pairing session state payloads.

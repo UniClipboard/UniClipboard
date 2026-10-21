@@ -17,6 +17,7 @@ import (
 	"github.com/UniClipboard/UniClipboard/apps/gui-go/internal/hostapi"
 	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/apppaths"
 	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/daemonclient"
+	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/settings"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
@@ -149,13 +150,8 @@ type daemonAutoStartStore struct {
 }
 
 func (s daemonAutoStartStore) get() (bool, error) {
-	var settings struct {
-		General struct {
-			AutoStart bool `json:"autoStart"`
-		} `json:"general"`
-	}
-	err := s.client.Get(s.ctx, "/settings", &settings)
-	return settings.General.AutoStart, err
+	view, err := settings.Read(s.ctx, s.client)
+	return view.General.AutoStart, err
 }
 
 func (s daemonAutoStartStore) set(enabled bool) error {

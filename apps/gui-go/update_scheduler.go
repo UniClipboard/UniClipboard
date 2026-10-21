@@ -14,6 +14,7 @@ import (
 
 	"github.com/UniClipboard/UniClipboard/apps/gui-go/internal/update"
 	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/apppaths"
+	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/settings"
 )
 
 // schedulerTiming mirrors the cadence of the Tauri update scheduler
@@ -276,17 +277,12 @@ func (h *HostService) runUpdateScheduler(ctx context.Context, timing schedulerTi
 // scheduledCheck runs one iteration and reports whether it counts as a success.
 // A disabled auto-check is an idle success so toggling it on has no retry penalty.
 func (h *HostService) scheduledCheck(ctx context.Context) bool {
-	var settings struct {
-		General struct {
-			AutoCheckUpdate    bool `json:"autoCheckUpdate"`
-			AutoDownloadUpdate bool `json:"autoDownloadUpdate"`
-		} `json:"general"`
-	}
-	if err := h.daemon().Get(ctx, "/settings", &settings); err != nil {
+	view, err := settings.Read(ctx, h.daemon())
+	if err != nil {
 		log.Printf("update scheduler: load settings: %v", err)
 		return false
 	}
-	if !settings.General.AutoCheckUpdate {
+	if !view.General.AutoCheckUpdate {
 		return true
 	}
 	checkCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
@@ -299,7 +295,7 @@ func (h *HostService) scheduledCheck(ctx context.Context) bool {
 	// Side effects first, the check event last: that is the order the Tauri scheduler reports them in.
 	if meta != nil && meta.Version != "" {
 		opened := h.notifyIfNew(channel, meta.Version, true)
-		if settings.General.AutoDownloadUpdate {
+		if view.General.AutoDownloadUpdate {
 			// In-place install is supported on macOS, the only host this build targets.
 			// A refused download (already downloaded or running) neither reports nor re-opens the window.
 			switch err := h.downloadUpdateReported(ctx); {

@@ -22,11 +22,11 @@ const (
 	appShuttingDownEvent      = "app://shutting-down"             // host -> page, no payload: close the daemon WebSocket before the daemon stops
 	daemonConnectionChanged   = "app://daemon-connection-changed" // host -> page, no payload: the daemon was replaced, reconnect
 	desktopThemeChangedEvent  = "desktop-theme://changed"         // host -> page, DesktopThemeSnapshot: the desktop theme changed. Declared for the page's listener; no host emits it (Omarchy theming is not implemented in the Go host)
-	settingsChangedEvent      = "settings://changed"              // page -> host, SettingsChanged: settings were saved
+	settingsChangedEvent      = "settings://changed"              // page -> host, SettingsChanged: settings were saved. The host re-reads the daemon on it (see startSettingsWatch); both go when the frontend follows settings.changed
 	devicesChangedEvent       = "devices://sync-changed"          // both ways, string device id: a device's sync switch changed
 )
 
-// SettingsChanged is what the page sends after saving settings; the tray reads the sync switch out of the JSON.
+// SettingsChanged is what the page sends after saving settings.
 type SettingsChanged struct {
 	SettingJSON string `json:"settingJson"`
 	Timestamp   int64  `json:"timestamp"`

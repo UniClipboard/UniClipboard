@@ -301,6 +301,7 @@ mod relay_credential_wire_tests {
                 telemetry_enabled: false,
                 usage_analytics_enabled: true,
                 debug_mode: false,
+                tray_icon: TrayIconDto::Glyph,
             },
             sync: SyncSettingsDto {
                 sync_enabled: true,
@@ -587,6 +588,10 @@ pub struct GeneralSettingsDto {
     /// Persistent local diagnostic logging mode. Takes effect after restart.
     #[serde(default)]
     pub debug_mode: bool,
+    /// Tray icon artwork. A Desktop product setting: the daemon reads it from
+    /// its product settings store, not from the Engine (ADR-013).
+    #[serde(default)]
+    pub tray_icon: TrayIconDto,
 }
 
 fn default_true() -> bool {
@@ -608,6 +613,15 @@ pub enum UpdateChannelDto {
     Alpha,
     Beta,
     Rc,
+}
+
+/// Tray icon artwork. Unknown values are rejected on write.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum TrayIconDto {
+    #[default]
+    Glyph,
+    Cat,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
@@ -893,6 +907,10 @@ pub struct GeneralSettingsPatchDto {
     pub telemetry_enabled: Option<bool>,
     pub usage_analytics_enabled: Option<bool>,
     pub debug_mode: Option<bool>,
+    /// Tray icon artwork; written to the Desktop product settings store, never
+    /// sent to the Engine (ADR-013).
+    #[serde(default)]
+    pub tray_icon: Option<TrayIconDto>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -1852,4 +1870,93 @@ mod duration_wire_tests {
         let wire = serde_json::to_value(&rule).expect("serialize");
         assert_eq!(wire["byAge"]["maxAge"], serde_json::json!(2_592_000u64));
     }
+}
+
+// =========================
+// Settings change events (WS topic `settings`, ADR-013 section 7)
+// =========================
+
+/// Who persisted a settings change. Each owner has its own revision.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub enum SettingsOwnerDto {
+    /// The daemon's product settings store (`desktop-settings.json`).
+    Desktop,
+    /// The Engine settings (`settings.json`).
+    Engine,
+}
+
+/// A top-level section of `GET /settings`. `MobileSync` is an Engine section without a path in
+/// `/settings`; clients read again like for any other section.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub enum SettingsSectionDto {
+    General,
+    Sync,
+    RetentionPolicy,
+    Security,
+    Pairing,
+    KeyboardShortcuts,
+    FileSync,
+    Network,
+    MobileSync,
+    QuickPanel,
+}
+
+/// Payload of `settings.changed`. It never carries setting values.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SettingsChangedPayload {
+    pub owner: SettingsOwnerDto,
+    pub sections: Vec<SettingsSectionDto>,
+    /// The owner's revision after this change. In daemon memory only: it starts at 0 with each
+    /// daemon run and is comparable only with revisions of the same owner on the same connection.
+    pub revision: u64,
+}
+
+/// Each owner's current revision.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SettingsRevisionsDto {
+    pub desktop: u64,
+    pub engine: u64,
+}
+
+/// Payload of `settings.snapshot`, sent once after a client subscribes to `settings`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SettingsSnapshotPayload {
+    pub revisions: SettingsRevisionsDto,
+}
+
+// =========================
+// Owner-split settings writes (ADR-013 section 8.3)
+// =========================
+
+/// Error `code` of a `PUT /settings` that wrote some owners and then failed.
+pub const SETTINGS_PARTIALLY_APPLIED_CODE: &str = "settings_partially_applied";
+
+/// A store that `PUT /settings` writes, in write order: Engine, then product, then telemetry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub enum SettingsWriteOwnerDto {
+    /// The Engine settings (`settings.json`).
+    Engine,
+    /// The daemon's product settings store (`desktop-settings.json`).
+    Desktop,
+    /// The error reporting consent (`desktop-telemetry.json`).
+    Telemetry,
+}
+
+/// `details` of the `settings_partially_applied` error (HTTP 500). An owner whose part of the
+/// patch was empty is in no list.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SettingsPartiallyAppliedDetailsDto {
+    /// Owners whose part was written and stays written.
+    pub applied: Vec<SettingsWriteOwnerDto>,
+    /// The owner whose write failed; its part was not written.
+    pub failed: Vec<SettingsWriteOwnerDto>,
+    /// Owners in the patch that were not attempted after the failure.
+    pub skipped: Vec<SettingsWriteOwnerDto>,
 }

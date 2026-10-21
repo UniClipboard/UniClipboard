@@ -17,6 +17,7 @@ import (
 	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/daemonproc"
 	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/hostlog"
 	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/quickpanelhelper"
+	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/settings"
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
 	"github.com/wailsapp/wails/v3/pkg/services/notifications"
@@ -34,6 +35,8 @@ type HostService struct {
 	prompts          promptStore
 	stopScheduler    context.CancelFunc
 	stopTray         context.CancelFunc
+	settingsWatch    *settings.Watcher // keeps applySettings current from the daemon, with or without a window
+	stopSettings     context.CancelFunc
 	notifier         *notifications.NotificationService
 	helper           *quickpanelhelper.Supervisor // nil when the WebView quick panel is in use
 	updates          updater
@@ -111,6 +114,9 @@ func main() {
 		log.Fatal(err)
 	}
 	host := &HostService{effects: newVisualEffects(), notifier: notifications.New(), wake: make(chan string, 1)}
+	// Follow, not daemon(): after a restart the host did not record (it reported a failure, or the GUI relaunch
+	// failed), the watcher must reach the daemon that actually runs, and every other caller then uses it too.
+	host.settingsWatch = settings.NewWatcher(func() *daemonclient.Client { return daemonclient.Follow(&host.client) }, host.applySettings)
 	host.lastCheck.recordNow()
 	services := append([]application.Service{hostService(host)}, notifierServices(host)...)
 	services = append(services, e2eServices(host)...)
@@ -217,6 +223,7 @@ func (h *HostService) bootstrap() {
 	h.initPanelShortcuts()
 	go h.reconcileAutoStart()
 	h.initTray()
+	h.startSettingsWatch()
 	h.watchNotificationClicks()
 	if startup.silent() {
 		// Silent mode leaves no window to see, so tell the user the app is running.

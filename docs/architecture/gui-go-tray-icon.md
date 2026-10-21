@@ -1,14 +1,14 @@
-# Go GUI 托盘图标：一个字形（one glyph）
+# Go GUI 托盘图标：一个字形（one glyph）与历史猫头
 
-状态：已实现为一个固定图标（内容不变、没有状态和动画，由代码在运行时渲染，不是内嵌的图片文件）。失败模型与验收契约先于实现落盘，证据与边界见文末「结果」节。
+状态：默认图标是一个固定字形（内容不变、没有状态和动画，由代码在运行时渲染）。用户可以在设置中改用历史猫头（`general.trayIcon`，见「图标样式偏好」节）。失败模型与验收契约先于实现落盘，证据与边界见文末「结果」节。
 
 ## 范围
 
-托盘只显示一个图标：设计里“一个字形”方案的“同步完成”静止形态，两张错位的卡片（一份剪贴板在多台设备上），描边 2、圆角 3.5、圆头。它不依赖 daemon 的任何状态，也没有动画。
+默认样式 `glyph` 是设计里“一个字形”方案的“同步完成”静止形态，两张错位的卡片（一份剪贴板在多台设备上），描边 2、圆角 3.5、圆头。它不依赖 daemon 的任何状态，也没有动画。
 
 设计稿的其余内容没有实现：另外 8 个状态（传输中、收到新内容、已暂停、仅局域网、离线、暂不记录、已锁定、需要处理）、右下角标和动效。需要时再做，并且要先有产品决定：这些状态同时成立时显示哪一个（例如“已锁定”与“已暂停”同时成立），以及“暂不记录”“内容被拦截”目前没有 daemon 事实来源。
 
-此前评估过另一个方向（“实心猫”，B solid cat）并实现过它的 9 状态、耳朵动效和 daemon 状态订阅，最终选定字形方案，猫的实现已删除。它们在提交历史里：猫的实现（含 9 状态、耳朵动效和 daemon 状态订阅）在 `c7209b188..a16a466e7`（`git log c7209b188..a16a466e7 -- apps/gui-go`），猫与字形并存的一版是 `90b57af6d`。
+此前评估过另一个方向（“实心猫”，B solid cat）并实现过它的 9 状态、耳朵动效和 daemon 状态订阅，最终选定字形方案，实心猫的实现已删除，也从未进入任何发布版本，不得用作 `cat` 样式。它们在提交历史里：猫的实现（含 9 状态、耳朵动效和 daemon 状态订阅）在 `c7209b188..a16a466e7`（`git log c7209b188..a16a466e7 -- apps/gui-go`），猫与字形并存的一版是 `90b57af6d`。
 
 ## 设计来源（可验证快照）
 
@@ -23,7 +23,16 @@
   - macOS：模板图（只用 alpha，菜单栏深浅色自动着色），44 px 图像，网格按 44 px（22 pt）绘制，字形可见部分约 16.5 × 18.3 pt。设计写的是 18 pt 画稿，那样只有约 13.5 × 15 pt，在 Mac 上会比旁边的状态栏图标小（此前的猫方案在真机上就是这个反馈），所以放大了网格；这是对设计尺寸的有意偏离。
   - Windows：按当前任务栏主题画一份（浅色 `#1B1B1B`，深色 `#FFFFFF`），尺寸取系统小图标尺寸（`SM_CXSMICON`，系统 DPI）；任务栏主题变化时（`SystemThemeChanged`）在独立 goroutine 里重画。不用 Wails 的亮/暗两份图标：读源码可知，运行期调用 `SetIcon` 或 `SetDarkModeIcon` 时，只要两个模式共用一个句柄，后设置的就会同时替换两个模式，两份图标无法保持分开。
   - Linux：22 px，StatusNotifierItem 忽略模板标志，必须给出显式颜色：默认浅色图标 `#CDD6F4`（设计的深色栏环境），桌面配色方案为 `prefer-light`（`gsettings` 读取）时用深色 `#1B1B1B`；配色在显示图标时读一次。
-- 接入点：`tray.go` 的 `initTray` 用 `newTrayIcon(...).show()` 代替原来内嵌的 PNG；`tray_icon.go` 的 `show` 持锁渲染并应用，保证两次主题变化不会让较旧的图像留在托盘上。
+- Entry points: `initTray` in `tray.go` calls `newTrayIcon(...).show()` to show the default glyph; `applySettings` in `settings_watch.go` calls `setStyle` to apply `general.trayIcon`. `show` and `setStyle` in `tray_icon.go` render and apply under one lock, and a theme repaint draws the style currently shown. The cat is in `tray_icon_cat.go` and in `catTrayImage` of each platform file.
+
+## Tray icon style preference (`general.trayIcon`)
+
+- Values: `glyph` (the default, the glyph above) and `cat` (the cat shipped in v1.1.2). The daemon's product settings store the preference (ADR-013). The host only reads it and never writes it back.
+- Cat image: `apps/gui-go/icons/tray-cat@2x.png`. It is byte-identical to `apps/gui/src-tauri/icons/tray-icon@2x.png` at tag `v1.1.2`: 44 x 44, black pixels only, shape in the alpha channel (a template image). The source note and the hash check script are in `apps/gui-go/icons/TRAY-CAT-SOURCE.md`. v1.1.2 used it on macOS only (`include_bytes!` references `@2x` only); Windows and Linux showed the application icon.
+- Per platform:
+  - macOS: the embedded bytes go to `SetTemplateIcon` unchanged, the same bytes v1.1.2 gave the menu bar.
+  - Windows and Linux: the host takes the image's alpha, scales it to the size from `trayIconSpec()` and fills it with that spec's foreground colour. This is a new rendering derived from the macOS image; v1.1.x never shipped a cat on these platforms.
+- Apply: the host calls `applySettings` at startup and after every read of the authoritative settings. The tray icon executor compares with the style it shows and makes no native call when nothing changed. A lightweight cold start has no GUI process and therefore no tray owner; that is not an apply failure.
 
 ## 失败模型
 
@@ -35,6 +44,15 @@
 - **F6 持久化**：图标不写任何东西到磁盘或数据库，没有持久化明文的问题。
 - **F7 尺寸**：图像被边缘裁切，或在 macOS 上比旁边的状态栏图标明显小。预期：生产帧不被裁切，macOS 上可见部分的长边为 17 到 19 pt。
 
+- **F8 Field path mismatch**: if the JSON path of `View.General.TrayIcon` differs from the daemon's, it decodes to an empty string without an error. Expected: the real-daemon Go e2e asserts the decoded value with the non-default value `cat`.
+- **F9 Unknown value**: a value other than `glyph` or `cat` (or an empty string) is read. Expected: the glyph is shown; the log says only "unknown style" and never prints the received string.
+- **F10 Duplicate calls**: repeated reads of the same value, or the watcher and the page's `settings://changed` trigger arriving together. Expected: zero native icon calls while the style is unchanged; the comparison is against the style the tray shows, not the last requested one.
+- **F11 Apply failure**: decoding, scaling or PNG encoding of the image fails. Expected: an error without the setting value is logged, the shown style is not updated and the next read tries again; the saved preference stays as it is and the host does not write to the daemon. Wails' `SetIcon` / `SetTemplateIcon` return no error, so a failure inside the native layer cannot be detected.
+- **F12 Theme repaint with the wrong style**: the Windows taskbar theme changes. Expected: the style currently shown is repainted, not the glyph.
+- **F13 Concurrency**: a theme repaint and a style change happen together. Expected: both render and apply under the same lock, the latest style wins, and an event handler does not wait for the icon call on the main thread (as F3).
+- **F14 Startup order**: `initTray` shows the glyph first and switches to the cat after the first settings read. Expected: a user who chose the cat may see the glyph briefly at startup; this is a known boundary, and the tray still has an icon when the daemon is unavailable.
+- **F15 Image source**: the unshipped solid-cat vector is used by mistake. Expected: the sha256 of the embedded file equals that of `tray-icon@2x.png` at `v1.1.2` (`21e459b6f6fd8fa4de3335370f8198a400ae7d555550388cf48d239d4e34a93b`).
+
 ## 验收契约
 
 1. 渲染对照（e2e 构建的 `tray-icon-compare`）：形状对照，用设计的 44 px / 36 px 几何和 macOS 浅色配色渲染，与独立栅格化的设计画板 `glyph.png` 逐像素比对，30% 容差下差异像素不超过 30；以及生产帧检查，按托盘实际收到的图像（`trayIconSpec`，不是设计几何）检查模板图 alpha 采样点（透明点在前面卡片的内部，实心点在它左边描边的中心线上）、不被图像边缘裁切，并且在 macOS 上长边为 17 到 19 pt。形状对照只验证轮廓，不代表菜单栏里的实际尺寸。
@@ -42,6 +60,13 @@
 3. 原生状态项（真实 Go GUI、独立 profile、同一个真实 daemon）：截取这个 pid 自己状态项周围的一小块菜单栏，与设计对照。
 4. 菜单不回退：右键打开菜单（十个条目，八项加两条分隔线；标签随会话语言，所以只检查结构）；菜单里的同步开关使 daemon 的 `syncEnabled` 翻转并恢复；Quit 使这个 GUI 进程以 0 退出，对应的 daemon 进程消失。
 5. 边界：只在 macOS 本机实测；Windows 做 `go vet`，Linux 在测试主机上做 `go vet` 与 `go build`，运行结果写在文末。
+
+6. Tray icon style (`general.trayIcon`):
+   - Persistence and events: in the real-daemon Go watcher e2e, a write of `cat` decodes to `View.General.TrayIcon == "cat"` (F8).
+   - Frontend save path: `apps/gui-go/frontend/e2e/tray-icon-settings-api.mjs` runs the real frontend settings modules against an isolated real daemon and records the request body, the HTTP result, the value read back and the hash of `desktop-settings.json` for `cat` and `glyph`.
+   - Executor: an isolated test replaces the native call with a recorder and covers F9-F12. It proves the number of calls and the images passed, not what the tray displays.
+   - Image: the output of the hash check script (F15).
+   - The native display is accepted by the user by hand: switching between glyph and cat, keeping the style after a restart, silent start, and light/dark theme changes.
 
 ## 结果
 

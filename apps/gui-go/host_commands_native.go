@@ -231,6 +231,7 @@ func (h *HostService) RestartApp() {
 //uc:os all=real
 func (h *HostService) RestartDaemon(ctx context.Context) error {
 	h.announceDaemonStop()
+	defer h.settingsWatch.Resume() // after the new client is stored, or to retry against whatever is running
 	if err := restartDaemon(); err != nil {
 		return hostapi.Internal(err)
 	}

@@ -3,7 +3,6 @@
 package main
 
 import (
-	"image"
 	"image/color"
 	"image/png"
 	"os"
@@ -16,7 +15,8 @@ import (
 //
 //	tray-icon-compare:<dir>  the glyph's shape against the design board raster <dir>/glyph.png, and the image the tray really receives:
 //	                         template alpha at sampled points, no clipping, and the visible size on macOS
-//	tray-icon-export:<dir>   the image the running process hands to the tray and the glyph at the design geometry, as PNG files
+//	tray-icon-export:<dir>   the image of the style the tray shows (platform.png, its style in the step detail) and the glyph at the design
+//	                         geometry (reference.png), as PNG files
 func (s *EvidenceService) controlTrayIcon(action string) (bool, error) {
 	switch {
 	case strings.HasPrefix(action, "tray-icon-compare:"):
@@ -27,21 +27,28 @@ func (s *EvidenceService) controlTrayIcon(action string) (bool, error) {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return true, s.write(Step{Window: "tray", Step: "tray-icon-export", OK: false, Detail: err.Error()})
 		}
-		files := map[string]*image.NRGBA{
-			"platform.png":  renderIcon(trayIconSpec()), // what the running process hands to the tray
-			"reference.png": renderIcon(iconSpec{size: 44, art: 36, pal: iconPalette{fg: color.NRGBA{0x1D, 0x1D, 0x1F, 255}}}),
+		icon := s.host.tray.icon
+		icon.mu.Lock()
+		style := icon.shown
+		icon.mu.Unlock()
+		if style == "" {
+			style = trayIconGlyph
 		}
-		for name, img := range files {
-			f, err := os.Create(filepath.Join(dir, name))
-			if err == nil {
-				err = png.Encode(f, img)
+		platform, err := trayIconImage(style) // the same render the tray received, in the current look
+		if err == nil {
+			err = os.WriteFile(filepath.Join(dir, "platform.png"), platform, 0o644)
+		}
+		if err == nil {
+			var f *os.File
+			if f, err = os.Create(filepath.Join(dir, "reference.png")); err == nil {
+				err = png.Encode(f, renderIcon(iconSpec{size: 44, art: 36, pal: iconPalette{fg: color.NRGBA{0x1D, 0x1D, 0x1F, 255}}}))
 				_ = f.Close()
 			}
-			if err != nil {
-				return true, s.write(Step{Window: "tray", Step: "tray-icon-export", OK: false, Detail: err.Error()})
-			}
 		}
-		return true, s.write(Step{Window: "tray", Step: "tray-icon-export", OK: true, Detail: map[string]any{"dir": dir, "files": len(files)}})
+		if err != nil {
+			return true, s.write(Step{Window: "tray", Step: "tray-icon-export", OK: false, Detail: err.Error()})
+		}
+		return true, s.write(Step{Window: "tray", Step: "tray-icon-export", OK: true, Detail: map[string]any{"dir": dir, "files": 2, "style": style}})
 	}
 	return false, nil
 }

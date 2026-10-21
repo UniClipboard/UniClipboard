@@ -22,5 +22,8 @@ func trayIconSpec() iconSpec {
 
 func applyTrayIcon(tray *application.SystemTray, data []byte) { tray.SetTemplateIcon(data) }
 
+// catTrayImage is the shipped template image itself, so the menu bar receives the same bytes v1.1.2 gave it.
+func catTrayImage() ([]byte, error) { return trayCatPNG, nil }
+
 // watchSystemTheme: macOS recolours a template image itself, so nothing to watch.
 func watchSystemTheme(*application.App, func()) {}

@@ -9,6 +9,8 @@ use uc_engine::{
     PeerConnectionChannelSummary, PeerConnectionSummary,
 };
 
+use uc_webserver::api::settings_events::{engine_settings_changed_event, EngineSettingsRevision};
+
 use super::mobile_lan_lifecycle::{mobile_lan_target, MobileLanLifecycleController};
 
 fn daemon_ws_event(event: EngineEvent) -> Option<DaemonWsEvent> {
@@ -19,6 +21,7 @@ pub(crate) async fn forward_engine_events(
     mut events: EventStream,
     engine: Arc<Engine>,
     event_tx: broadcast::Sender<DaemonWsEvent>,
+    engine_settings_revision: EngineSettingsRevision,
     active_clipboard_tx: broadcast::Sender<ActiveClipboardChanged>,
     mobile_lan: Arc<MobileLanLifecycleController>,
     cancel: CancellationToken,
@@ -49,6 +52,11 @@ pub(crate) async fn forward_engine_events(
                             let _ = event_tx.send(event);
                         }
                         publish_peer_snapshot(&engine, &event_tx).await;
+                    }
+                    EngineEvent::SettingsChanged(changed) => {
+                        if let Some(event) = engine_settings_changed_event(&engine_settings_revision, changed) {
+                            let _ = event_tx.send(event);
+                        }
                     }
                     EngineEvent::MobileLanSettingsChanged(settings) => {
                         mobile_lan

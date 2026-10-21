@@ -89,6 +89,7 @@ describe('Settings API', () => {
           telemetryEnabled: true,
           usageAnalyticsEnabled: false,
           debugMode: false,
+          trayIcon: 'glyph',
         },
       })
       getSdkMock.mockResolvedValueOnce({ data: { data: settings, ts: Date.now() } })
@@ -189,6 +190,7 @@ describe('Settings API', () => {
           telemetryEnabled: true,
           usageAnalyticsEnabled: true,
           debugMode: false,
+          trayIcon: 'glyph',
         },
       })
 
@@ -229,6 +231,7 @@ describe('Settings API', () => {
           telemetryEnabled: true,
           usageAnalyticsEnabled: true,
           debugMode: false,
+          trayIcon: 'glyph',
         },
       })
 
@@ -284,6 +287,7 @@ describe('Settings API', () => {
             telemetryEnabled: true,
             usageAnalyticsEnabled: true,
             debugMode: false,
+            trayIcon: 'glyph',
           },
         })
       ).rejects.toMatchObject({

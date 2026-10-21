@@ -5,6 +5,7 @@
 //! NOTE: Unlike the Tauri command (which applies OS-level side effects like
 //! autostart registration and global shortcut updates), these handlers only
 //! update the settings domain model — no autostart, no keyboard shortcuts.
+use axum::extract::rejection::JsonRejection;
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::routing::{get, post, put};
@@ -30,8 +31,12 @@ use crate::api::dto::settings::{
     RelayRoutingModeDto, RelaySaveRequestDto, RelaySaveResultDto, SettingsDto, SettingsPatchDto,
     SettingsUpdateResultDto,
 };
+use crate::api::projection::settings::desktop_patch;
 use crate::api::projection::{IntoApiDto, IntoDomain};
 use crate::api::server::DaemonApiState;
+use uc_daemon_contract::api::dto::settings::{
+    SettingsPartiallyAppliedDetailsDto, SettingsWriteOwnerDto, SETTINGS_PARTIALLY_APPLIED_CODE,
+};
 
 pub fn router() -> Router<DaemonApiState> {
     Router::new()
@@ -406,17 +411,24 @@ async fn get_settings_handler(
         ));
     };
 
-    info!("get settings succeeded");
-    Ok(Json(ApiEnvelope::now((*settings).into_api_dto())))
+    let desktop = state.desktop_settings.snapshot().await;
+
+    info!(
+        desktop_revision = desktop.revision,
+        "get settings succeeded"
+    );
+    Ok(Json(ApiEnvelope::now(
+        (*settings, &desktop.settings).into_api_dto(),
+    )))
 }
 
 /// PUT /settings
-/// Updates application settings. Accepts a partial settings object and merges it
-/// with the existing settings.
+/// Updates application settings. Accepts a partial settings object and splits
+/// it by owner (ADR-013 section 8.3): Engine fields to the Engine, product
+/// fields to the daemon's product store, `telemetryEnabled` to its own file.
 ///
-/// NOTE: Unlike the Tauri command, this handler does NOT apply OS-level side
-/// effects (no autostart registration, no keyboard shortcut updates). It only
-/// persists the settings domain model.
+/// NOTE: this handler does NOT apply OS-level side effects (no autostart
+/// registration, no keyboard shortcut updates). It only persists settings.
 #[utoipa::path(
     put,
     path = "/settings",
@@ -425,41 +437,21 @@ async fn get_settings_handler(
     request_body = SettingsPatchDto,
     responses(
         (status = 200, description = "Settings persisted; carries success + restart-required signal", body = SettingsUpdateResultEnvelope),
-        (status = 400, description = "Invalid request", body = ApiErrorResponse),
-        (status = 500, description = "Internal server error", body = ApiErrorResponse)
+        (status = 400, description = "Body does not decode, a product value fails its grammar, or the Engine rejected the patch; nothing was written", body = ApiErrorResponse),
+        (status = 500, description = "A write failed. Code `settings_partially_applied` with `SettingsPartiallyAppliedDetailsDto` details when an earlier owner was written; `internal_error` when nothing was written", body = ApiErrorResponse)
     )
 )]
-#[instrument(
-    name = "api.settings.update",
-    level = "info",
-    skip(state, payload),
-    fields(
-        has_general = payload.general.is_some(),
-        has_sync = payload.sync.is_some(),
-        has_security = payload.security.is_some(),
-        has_pairing = payload.pairing.is_some(),
-        has_file_sync = payload.file_sync.is_some(),
-        has_network = payload.network.is_some(),
-        has_retention_policy = payload.retention_policy.is_some(),
-        has_keyboard_shortcuts = payload.keyboard_shortcuts.is_some(),
-        has_quick_panel = payload.quick_panel.is_some(),
-    )
-)]
+#[instrument(name = "api.settings.update", level = "info", skip(state, body))]
 async fn update_settings_handler(
     State(state): State<DaemonApiState>,
-    Json(payload): Json<SettingsPatchDto>,
+    body: Result<Json<SettingsPatchDto>, JsonRejection>,
 ) -> Result<Json<ApiEnvelope<SettingsUpdateResultDto>>, ApiError> {
-    info!("update settings request received");
+    // The rejection text can quote the submitted value, so it is not logged or returned.
+    let Json(payload) = body.map_err(|_| ApiError::bad_request("invalid settings request body"))?;
 
-    // D-D1：`network` 段非空（任何字段变更）触发 restart_required = true。
-    // network 段里的 iroh 相关字段都是 endpoint bind-time 常量，仍走
-    // `payload.network.is_some()` 统一触发重启。其它字段（general / sync 等）
-    // 不影响该信号 — 它们不需要重启。
-    //
-    // `general.telemetry_enabled` 历史曾通过这里触发 restart（260505-17q），后于
-    // 260505-1np 改成运行时 gate（见 uc-observability::set_telemetry_enabled），
-    // 不再需要重启 — 下面在 facade 写盘成功后直接把新值推进 atomic 即可立即生效。
-    // Pitfall 3 防御：调用方（前端 Phase 95）必须显式承担"还没真正生效"。
+    // D-D1: `network` changes and `debugMode` take effect after a restart.
+    // The frontend still sends whole sections, so this is coarse until task 5
+    // moves it to diff patches.
     let debug_mode_changed = payload
         .general
         .as_ref()
@@ -467,47 +459,76 @@ async fn update_settings_handler(
         .is_some();
     let restart_required = payload.network.is_some() || debug_mode_changed;
 
-    // 取出可能存在的 telemetry 新值，再传 patch 给 facade 写盘 — 写盘成功后再
-    // 把 atomic 推进新值，保证持久化与运行时状态保持单调一致（如果写盘失败，
-    // 也不会污染运行时 gate）。
-    //
-    // `usage_analytics_enabled` 走同样的"先取值、写盘、再推 gate"流程，但
-    // 与 `telemetry_enabled` 是两个独立的开关（schema doc §6.4，GDPR
-    // 友好实践）：前者控制 Sentry 错误上报，后者控制产品 telemetry。
     let telemetry_update = payload.general.as_ref().and_then(|g| g.telemetry_enabled);
     let analytics_update = payload
         .general
         .as_ref()
         .and_then(|g| g.usage_analytics_enabled);
 
-    // The facade persists the patch. ADR-008 §0.1 folds `success` +
-    // `restart_required` INTO the payload DTO, so the updated `SettingsView` is
-    // no longer echoed back on the wire (the FE re-reads settings via GET). The
-    // write must still happen for its side effects and error propagation.
-    let result = state
-        .execute(Operation::UpdateSettings(Box::new(payload.into_domain())))
+    // Validate every local value before any store is written.
+    let desktop_patch = desktop_patch(&payload);
+    state
+        .desktop_settings
+        .validate(&desktop_patch)
         .await
-        .map_err(|error| settings_error_to_api("update_settings", error))?;
-    match result {
-        OperationResult::SettingsUpdated(SettingsUpdateOutcome::Updated(_)) => {}
-        OperationResult::SettingsUpdated(SettingsUpdateOutcome::Rejected { reason }) => {
-            return Err(ApiError::bad_request(reason));
+        .map_err(|error| ApiError::bad_request(error.to_string()))?;
+    let engine_patch: SettingsPatch = payload.into_domain();
+    let has_engine = engine_patch != SettingsPatch::default();
+    let has_desktop = !desktop_patch.is_empty();
+    info!(
+        has_engine,
+        has_desktop,
+        has_telemetry = telemetry_update.is_some(),
+        "update settings request received"
+    );
+
+    let mut applied = Vec::new();
+    if has_engine {
+        let result = state
+            .execute(Operation::UpdateSettings(Box::new(engine_patch)))
+            .await
+            .map_err(|error| settings_error_to_api("update_settings", error))?;
+        match result {
+            OperationResult::SettingsUpdated(SettingsUpdateOutcome::Updated(_)) => {}
+            OperationResult::SettingsUpdated(SettingsUpdateOutcome::Rejected { reason }) => {
+                return Err(ApiError::bad_request(reason));
+            }
+            _ => {
+                return Err(ApiError::internal(
+                    "engine returned an unexpected settings-update result",
+                ));
+            }
         }
-        _ => {
-            return Err(ApiError::internal(
-                "engine returned an unexpected settings-update result",
+        applied.push(SettingsWriteOwnerDto::Engine);
+    }
+
+    if has_desktop {
+        if let Err(error) = state.desktop_settings.apply(desktop_patch).await {
+            tracing::warn!(error = %error, error_kind = "desktop_settings_save_failed", "Failed to save product settings");
+            let skipped = telemetry_update
+                .map(|_| vec![SettingsWriteOwnerDto::Telemetry])
+                .unwrap_or_default();
+            return Err(write_failure(
+                applied,
+                SettingsWriteOwnerDto::Desktop,
+                skipped,
             ));
+        }
+        applied.push(SettingsWriteOwnerDto::Desktop);
+        if let Some(enabled) = analytics_update {
+            uc_observability::set_analytics_enabled(enabled);
         }
     }
 
-    if let Some(enabled) = analytics_update {
-        uc_observability::set_analytics_enabled(enabled);
-    }
     if let Some(enabled) = telemetry_update {
-        uc_observability::telemetry_gate::save_preference(enabled).map_err(|error| {
+        if let Err(error) = uc_observability::telemetry_gate::save_preference(enabled) {
             tracing::warn!(error = %error, error_kind = "telemetry_preference_save_failed", "Failed to save error reporting preference");
-            ApiError::internal("failed to save error reporting preference")
-        })?;
+            return Err(write_failure(
+                applied,
+                SettingsWriteOwnerDto::Telemetry,
+                Vec::new(),
+            ));
+        }
     }
 
     info!(restart_required, "update settings succeeded");
@@ -648,6 +669,18 @@ async fn save_relay_handler(
         url,
         credential,
     } = payload;
+    // The relay save is an Engine operation; product and telemetry fields
+    // belong to other owners and must never reach the Engine (ADR-013 section 8.3).
+    let carries_other_owner = !desktop_patch(&settings).is_empty()
+        || settings
+            .general
+            .as_ref()
+            .is_some_and(|general| general.telemetry_enabled.is_some());
+    if carries_other_owner {
+        return Err(ApiError::bad_request(
+            "relay save accepts Engine settings only",
+        ));
+    }
     let credential = match credential {
         RelayCredentialEditDto::Keep => RelayCredentialEdit::Keep { url },
         RelayCredentialEditDto::Set { mut access_token } => {
@@ -671,7 +704,13 @@ async fn save_relay_handler(
         OperationResult::RelaySaved(SaveRelayOutcome::Saved {
             settings,
             credential_status,
-        }) => ((*settings).into_api_dto(), credential_status),
+        }) => {
+            let desktop = state.desktop_settings.snapshot().await;
+            (
+                (*settings, &desktop.settings).into_api_dto(),
+                credential_status,
+            )
+        }
         OperationResult::RelaySaved(SaveRelayOutcome::Rejected { reason }) => {
             return Err(ApiError::bad_request(reason));
         }
@@ -690,6 +729,37 @@ async fn save_relay_handler(
         credential_status: relay_credential_status_to_dto(status),
         settings,
     })))
+}
+
+/// The error for a failed write after validation. Partial when an earlier
+/// owner's part stays written (ADR-013 section 8.3).
+fn write_failure(
+    applied: Vec<SettingsWriteOwnerDto>,
+    failed: SettingsWriteOwnerDto,
+    skipped: Vec<SettingsWriteOwnerDto>,
+) -> ApiError {
+    if applied.is_empty() {
+        return ApiError::internal(match failed {
+            SettingsWriteOwnerDto::Desktop => "failed to save desktop settings",
+            SettingsWriteOwnerDto::Telemetry => "failed to save error reporting preference",
+            SettingsWriteOwnerDto::Engine => "failed to save engine settings",
+        });
+    }
+    let details = SettingsPartiallyAppliedDetailsDto {
+        applied,
+        failed: vec![failed],
+        skipped,
+    };
+    tracing::warn!(
+        applied = ?details.applied,
+        failed = ?details.failed,
+        skipped = ?details.skipped,
+        error_kind = "settings_partially_applied",
+        "Settings update partially applied"
+    );
+    ApiError::internal("settings were partially applied")
+        .with_code(SETTINGS_PARTIALLY_APPLIED_CODE)
+        .with_details(serde_json::to_value(&details).unwrap_or_default())
 }
 
 fn relay_credential_status_to_dto(status: RelayCredentialStatus) -> RelayCredentialStatusDto {

@@ -308,6 +308,15 @@
       "general": {
         "title": "全般",
         "startupTitle": "起動",
+        "trayTitle": "トレイ",
+        "trayIcon": {
+          "label": "トレイアイコン",
+          "description": "メニューバーまたはシステムトレイに表示するアイコンです。",
+          "options": {
+            "glyph": "デフォルト",
+            "cat": "クラシックな猫"
+          }
+        },
         "saveError": "設定の保存に失敗しました",
         "deviceName": {
           "label": "デバイス名",

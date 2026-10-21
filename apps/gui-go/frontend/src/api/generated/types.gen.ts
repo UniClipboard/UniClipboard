@@ -1564,6 +1564,7 @@ export type GeneralSettingsDto = {
     themeOverridesLight?: {
         [key: string]: string;
     };
+    trayIcon?: TrayIconDto;
     updateChannel?: UpdateChannelDto | null;
     /**
      * Whether anonymous product usage analytics is enabled.
@@ -1611,6 +1612,7 @@ export type GeneralSettingsPatchDto = {
     themeOverridesLight?: {
         [key: string]: string;
     } | null;
+    trayIcon?: TrayIconDto | null;
     updateChannel?: UpdateChannelDto | null;
     usageAnalyticsEnabled?: boolean | null;
 };
@@ -3873,6 +3875,19 @@ export type SetHistoryTagSidebarRequest = {
     tagIds: Array<string>;
 };
 
+/**
+ * Payload of `settings.changed`. It never carries setting values.
+ */
+export type SettingsChangedPayload = {
+    owner: SettingsOwnerDto;
+    /**
+     * The owner's revision after this change. In daemon memory only: it starts at 0 with each
+     * daemon run and is comparable only with revisions of the same owner on the same connection.
+     */
+    revision: number;
+    sections: Array<SettingsSectionDto>;
+};
+
 export type SettingsDto = {
     fileSync: FileSyncSettingsDto;
     general: GeneralSettingsDto;
@@ -3911,6 +3926,30 @@ export type SettingsEnvelope = {
     ts: number;
 };
 
+/**
+ * Who persisted a settings change. Each owner has its own revision.
+ */
+export type SettingsOwnerDto = 'desktop' | 'engine';
+
+/**
+ * `details` of the `settings_partially_applied` error (HTTP 500). An owner whose part of the
+ * patch was empty is in no list.
+ */
+export type SettingsPartiallyAppliedDetailsDto = {
+    /**
+     * Owners whose part was written and stays written.
+     */
+    applied: Array<SettingsWriteOwnerDto>;
+    /**
+     * The owner whose write failed; its part was not written.
+     */
+    failed: Array<SettingsWriteOwnerDto>;
+    /**
+     * Owners in the patch that were not attempted after the failure.
+     */
+    skipped: Array<SettingsWriteOwnerDto>;
+};
+
 export type SettingsPatchDto = {
     fileSync?: FileSyncSettingsPatchDto | null;
     general?: GeneralSettingsPatchDto | null;
@@ -3921,6 +3960,27 @@ export type SettingsPatchDto = {
     retentionPolicy?: RetentionPolicyPatchDto | null;
     security?: SecuritySettingsPatchDto | null;
     sync?: SyncSettingsPatchDto | null;
+};
+
+/**
+ * Each owner's current revision.
+ */
+export type SettingsRevisionsDto = {
+    desktop: number;
+    engine: number;
+};
+
+/**
+ * A top-level section of `GET /settings`. `MobileSync` is an Engine section without a path in
+ * `/settings`; clients read again like for any other section.
+ */
+export type SettingsSectionDto = 'general' | 'sync' | 'retentionPolicy' | 'security' | 'pairing' | 'keyboardShortcuts' | 'fileSync' | 'network' | 'mobileSync' | 'quickPanel';
+
+/**
+ * Payload of `settings.snapshot`, sent once after a client subscribes to `settings`.
+ */
+export type SettingsSnapshotPayload = {
+    revisions: SettingsRevisionsDto;
 };
 
 /**
@@ -3963,6 +4023,11 @@ export type SettingsUpdateResultEnvelope = {
      */
     ts: number;
 };
+
+/**
+ * A store that `PUT /settings` writes, in write order: Engine, then product, then telemetry.
+ */
+export type SettingsWriteOwnerDto = 'engine' | 'desktop' | 'telemetry';
 
 /**
  * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
@@ -4351,6 +4416,11 @@ export type ToggleFavoriteRequest = {
 export type ToggleFavoriteResultDto = {
     success: boolean;
 };
+
+/**
+ * Tray icon artwork. Unknown values are rejected on write.
+ */
+export type TrayIconDto = 'glyph' | 'cat';
 
 /**
  * Mirrors `analytics::DialogOpenSource`. wire: `notification` | `sidebar_icon`.
@@ -7545,11 +7615,11 @@ export type UpdateSettingsData = {
 
 export type UpdateSettingsErrors = {
     /**
-     * Invalid request
+     * Body does not decode, a product value fails its grammar, or the Engine rejected the patch; nothing was written
      */
     400: ApiErrorResponse;
     /**
-     * Internal server error
+     * A write failed. Code `settings_partially_applied` with `SettingsPartiallyAppliedDetailsDto` details when an earlier owner was written; `internal_error` when nothing was written
      */
     500: ApiErrorResponse;
 };

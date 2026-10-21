@@ -108,6 +108,7 @@ fn host_directories(paths: &DesktopHostPaths, temporary_dir: PathBuf) -> HostDir
 
 pub fn prepare_desktop_engine_host() -> WiringResult<DesktopEngineHost> {
     let paths = resolve_desktop_host_paths()?;
+    import_product_settings(&paths);
     let secure_storage_prelude = build_secure_storage_prelude(&paths)?;
     let secure_storage = secure_storage_prelude.secure_storage;
     let (_, system_clipboard, clipboard_wiring) = create_desktop_system_clipboard()?.into_parts();
@@ -152,6 +153,26 @@ pub fn prepare_desktop_engine_host() -> WiringResult<DesktopEngineHost> {
         analytics,
         secure_storage_source: secure_storage_prelude.source,
     })
+}
+
+/// Copy product fields out of the Engine `settings.json` before anything loads
+/// it (ADR-013 section 8.2). Both the daemon and `uc-dev-cli` start the Engine
+/// only through [`prepare_desktop_engine_host`], so this is the single choke
+/// point. The import never fails startup: a deferred or failed import keeps
+/// the marker and retries on the next start.
+fn import_product_settings(paths: &DesktopHostPaths) {
+    let product_path = paths.app_data_root_dir.join(uc_desktop_settings::FILE_NAME);
+    let (outcome, settings) =
+        uc_desktop_settings::import_legacy(&product_path, &paths.settings_path);
+    tracing::debug!(outcome = ?outcome, "product settings import finished");
+    // Product consent is authoritative from field set 1 on; the Engine file
+    // only holds a frozen copy.
+    uc_observability::set_analytics_enabled(settings.general.usage_analytics_enabled);
+    tracing::info!(
+        usage_analytics_enabled = settings.general.usage_analytics_enabled,
+        source = "desktop-settings",
+        "analytics gate set from product settings"
+    );
 }
 
 struct DesktopSecureStorage {

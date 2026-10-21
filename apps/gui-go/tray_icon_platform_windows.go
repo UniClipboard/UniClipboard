@@ -31,6 +31,9 @@ func trayIconSpec() iconSpec {
 
 func applyTrayIcon(tray *application.SystemTray, data []byte) { tray.SetIcon(data) }
 
+// catTrayImage tints the cat's alpha with the same size and colour the glyph gets.
+func catTrayImage() ([]byte, error) { return tintedCat(trayIconSpec()) }
+
 // watchSystemTheme asks for a repaint when the system theme changes (the same application event Wails' tray listens to).
 func watchSystemTheme(app *application.App, changed func()) {
 	app.Event.OnApplicationEvent(events.Windows.SystemThemeChanged, func(*application.ApplicationEvent) { changed() })

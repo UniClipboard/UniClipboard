@@ -12,22 +12,14 @@ import (
 
 	"github.com/UniClipboard/UniClipboard/apps/gui-go/internal/hostapi"
 	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/daemonclient"
+	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/settings"
 )
-
-type quickPanelSettings struct {
-	Enabled           bool   `json:"enabled"`
-	Position          string `json:"position"`
-	DoubleTapModifier string `json:"doubleTapModifier"`
-}
 
 // loadQuickPanelSettings reads the persisted quick-panel preferences; the daemon
 // settings are the single source of truth, so nothing is cached in the host.
-func (h *HostService) loadQuickPanelSettings(ctx context.Context) (quickPanelSettings, error) {
-	var settings struct {
-		QuickPanel quickPanelSettings `json:"quickPanel"`
-	}
-	err := h.daemon().Get(ctx, "/settings", &settings)
-	return settings.QuickPanel, err
+func (h *HostService) loadQuickPanelSettings(ctx context.Context) (settings.QuickPanel, error) {
+	view, err := settings.Read(ctx, h.daemon())
+	return view.QuickPanel, err
 }
 
 func (h *HostService) patchQuickPanel(ctx context.Context, patch map[string]any) error {
@@ -174,15 +166,12 @@ const quickPanelShortcutKey = "global.toggleQuickPanel"
 func (h *HostService) updateKeyboardShortcuts(ctx context.Context, patch map[string]json.RawMessage) (UpdateKeyboardShortcutsResult, error) {
 	h.shortcutsMu.Lock()
 	defer h.shortcutsMu.Unlock()
-	var settings struct {
-		KeyboardShortcuts map[string]json.RawMessage `json:"keyboardShortcuts"`
-		QuickPanel        quickPanelSettings         `json:"quickPanel"`
-	}
-	if err := h.daemon().Get(ctx, "/settings", &settings); err != nil {
+	view, err := settings.Read(ctx, h.daemon())
+	if err != nil {
 		return UpdateKeyboardShortcutsResult{}, hostapi.Internal(err)
 	}
 	next := map[string]json.RawMessage{}
-	for id, value := range settings.KeyboardShortcuts {
+	for id, value := range view.KeyboardShortcuts {
 		next[id] = value
 	}
 	for id, value := range patch {
@@ -198,14 +187,14 @@ func (h *HostService) updateKeyboardShortcuts(ctx context.Context, patch map[str
 	osChanged := false
 	if h.helper == nil {
 		previousOS = h.osShortcuts
-		target := panelShortcutTarget(settings.QuickPanel.Enabled, next)
+		target := panelShortcutTarget(view.QuickPanel.Enabled, next)
 		if !sameShortcutSet(previousOS, target) {
 			if err := h.applyOSShortcuts(target); err != nil {
 				return UpdateKeyboardShortcutsResult{}, err
 			}
 			osChanged = true
 		}
-	} else if err := h.probeHelperShortcuts(settings.KeyboardShortcuts, next, settings.QuickPanel.Enabled); err != nil {
+	} else if err := h.probeHelperShortcuts(view.KeyboardShortcuts, next, view.QuickPanel.Enabled); err != nil {
 		return UpdateKeyboardShortcutsResult{}, err
 	}
 	body := map[string]any{"keyboardShortcuts": map[string]any{"shortcuts": patch}}
@@ -217,7 +206,7 @@ func (h *HostService) updateKeyboardShortcuts(ctx context.Context, patch map[str
 		}
 		return UpdateKeyboardShortcutsResult{}, hostapi.Internal(err)
 	}
-	if !sameShortcut(settings.KeyboardShortcuts[quickPanelShortcutKey], next[quickPanelShortcutKey]) {
+	if !sameShortcut(view.KeyboardShortcuts[quickPanelShortcutKey], next[quickPanelShortcutKey]) {
 		h.restartPanelHelper()
 	}
 	return UpdateKeyboardShortcutsResult{KeyboardShortcuts: next}, nil
@@ -248,20 +237,17 @@ func sameShortcutSet(a, b []string) bool {
 func (h *HostService) setWebViewPanelEnabled(ctx context.Context, enabled bool) error {
 	h.shortcutsMu.Lock()
 	defer h.shortcutsMu.Unlock()
-	var settings struct {
-		KeyboardShortcuts map[string]json.RawMessage `json:"keyboardShortcuts"`
-		QuickPanel        quickPanelSettings         `json:"quickPanel"`
-	}
-	if err := h.daemon().Get(ctx, "/settings", &settings); err != nil {
+	view, err := settings.Read(ctx, h.daemon())
+	if err != nil {
 		return hostapi.Internal(err)
 	}
 	previous := h.osShortcuts
-	if err := h.applyOSShortcuts(panelShortcutTarget(enabled, settings.KeyboardShortcuts)); err != nil {
+	if err := h.applyOSShortcuts(panelShortcutTarget(enabled, view.KeyboardShortcuts)); err != nil {
 		return err
 	}
 	// The modifier trigger follows the enabled switch like the shortcut does: watched only while the panel is on.
 	previousModifier := h.modifierMonitor().Current()
-	if err := h.modifierMonitor().Set(desiredLiveModifier(enabled, modifierDoubleTapSupported(), settings.QuickPanel.DoubleTapModifier)); err != nil {
+	if err := h.modifierMonitor().Set(desiredLiveModifier(enabled, modifierDoubleTapSupported(), view.QuickPanel.DoubleTapModifier)); err != nil {
 		h.rollbackPanelOS(previous, previousModifier)
 		return hostapi.New(hostapi.CodeConflict, err.Error())
 	}
@@ -336,21 +322,18 @@ func (h *HostService) initPanelShortcuts() {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	var settings struct {
-		KeyboardShortcuts map[string]json.RawMessage `json:"keyboardShortcuts"`
-		QuickPanel        quickPanelSettings         `json:"quickPanel"`
-	}
 	enabled := true // the setting's default when it cannot be read
-	if err := h.daemon().Get(ctx, "/settings", &settings); err == nil {
-		enabled = settings.QuickPanel.Enabled
+	view, err := settings.Read(ctx, h.daemon())
+	if err == nil {
+		enabled = view.QuickPanel.Enabled
 	} else {
 		log.Printf("quick panel shortcut: settings unreadable, using the defaults: %v", err)
 	}
 	h.shortcutsMu.Lock()
-	if err := h.applyOSShortcuts(panelShortcutTarget(enabled, settings.KeyboardShortcuts)); err != nil {
+	if err := h.applyOSShortcuts(panelShortcutTarget(enabled, view.KeyboardShortcuts)); err != nil {
 		log.Printf("quick panel shortcut not registered: %v", err)
 	}
-	if err := h.modifierMonitor().Set(desiredLiveModifier(enabled, modifierDoubleTapSupported(), settings.QuickPanel.DoubleTapModifier)); err != nil {
+	if err := h.modifierMonitor().Set(desiredLiveModifier(enabled, modifierDoubleTapSupported(), view.QuickPanel.DoubleTapModifier)); err != nil {
 		log.Printf("quick panel modifier double-tap not started: %v", err)
 	}
 	h.shortcutsMu.Unlock()

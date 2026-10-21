@@ -8,7 +8,11 @@ Do not treat this file as a full memory dump. Read only the documents needed for
 
 ## Always Apply
 
-- **持久化默认密文（不可打破的基石）**：任何写入持久化存储的业务负载——SQLite 数据库列、磁盘缓存、搜索索引——默认必须先经 MasterKey AEAD 加密，**严禁明文落库**（剪贴板正文、标题、预览、搜索渲染字段、标签名、文件名和文件路径等一切用户内容）。例外包括内容类型分类枚举（text/image/file/link 等）、文件内容本体，以及入站文件在受管文件缓存中的经安全清理的原始文件名；该文件名只能作为实际缓存文件的 basename，原始目录路径、数据库/搜索字段、日志及关联元数据仍须加密或脱敏。新增其他持久化列/文件默认加密，主张明文需在 PR 中论证并获批。详见 `VISION.md`「安全与隐私底线」与「绝对禁区」。
+- **用户内容持久化必须密文（不可打破的基石）**：用户内容——来自剪贴板或经同步收到的内容及其派生数据（剪贴板正文、标题、预览、搜索渲染字段、搜索索引、标签名、剪贴板文件的文件名和文件路径，以及经同步收到的其他设备设备名等用户输入）——写入持久化存储（SQLite 数据库列、磁盘缓存、搜索索引、配置文件）前必须先经 MasterKey AEAD 加密，**严禁明文落库**。例外包括内容类型分类枚举（text/image/file/link 等）、文件内容本体，以及入站文件在受管文件缓存中的经安全清理的原始文件名；该文件名只能作为实际缓存文件的 basename，原始目录路径、数据库/搜索字段、日志及关联元数据仍须加密或脱敏。
+  - **凭据**：凭据和密钥材料（MasterKey、passphrase、KEK、relay 访问令牌、鉴权令牌等）只能保存在系统安全存储中，不得写入配置文件、日志或其他普通文件。已有兼容例外仅限 ADR-007 §2.6 的文件式 KEK、ADR-011 的 `daemon.conn` 本机 daemon token，以及 Engine「运行期密钥材料」的 `vault/profile-secrets-v1`，按原授权边界保留，不得扩大；详见 `VISION.md`。
+  - **配置**：用户或程序的偏好与参数（本机设备名、保存目录、relay 地址、局域网地址、快捷键、主题、标签颜色与顺序、启动与更新设置等）可以明文持久化，无需逐项审批；配置不得包含用户内容（例如剪贴板文件的文件名或路径）或凭据。日志与遥测规则不变。
+  - **其他持久化数据**：除配置外，新增持久化列/文件默认加密，主张明文需在 PR 中论证并获批。
+  - 详见 `VISION.md`「安全与隐私底线」与「绝对禁区」。
 - Fix root causes, not symptoms.
 - Use the standard, established terminology of software engineering and computer science. If a metaphor or coined expression is unavoidable, also give the corresponding standard term; never invent new words for the sake of novelty.
 - Preserve single source of truth and clear ownership.

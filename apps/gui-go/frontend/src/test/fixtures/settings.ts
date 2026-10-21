@@ -39,6 +39,7 @@ export function makeBaseSettings(overrides: BaseSettingsOverrides = {}): Setting
       telemetryEnabled: true,
       usageAnalyticsEnabled: true,
       debugMode: false,
+      trayIcon: 'glyph',
       ...generalOverrides,
     },
     sync: {

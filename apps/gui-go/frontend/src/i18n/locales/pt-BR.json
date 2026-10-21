@@ -309,6 +309,15 @@
       "general": {
         "title": "Geral",
         "startupTitle": "Inicialização",
+        "trayTitle": "Bandeja",
+        "trayIcon": {
+          "label": "Ícone da bandeja",
+          "description": "O ícone exibido na barra de menus ou na bandeja do sistema.",
+          "options": {
+            "glyph": "Padrão",
+            "cat": "Gato clássico"
+          }
+        },
         "saveError": "Falha ao salvar a configuração",
         "deviceName": {
           "label": "Nome do dispositivo",

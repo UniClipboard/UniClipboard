@@ -13,6 +13,7 @@ use uc_bootstrap::{
 };
 use uc_daemon_local::crash_marker::{DaemonExitReport, DaemonRunMarker};
 use uc_daemon_local::process_metadata::{DaemonPidManager, DaemonProcessMode};
+use uc_desktop_settings::DesktopSettingsStore;
 use uc_engine::{
     ActiveClipboardChanged, Engine, HostFileHandle, Operation, OperationResult, StartupProgress,
 };
@@ -139,6 +140,14 @@ async fn run_async_with_diagnostics(
     let file_handles: Arc<dyn DaemonFileHandles> =
         Arc::new(DesktopDaemonFileHandles::new(prepared.file_handles()));
     let (engine_config, host_capabilities) = prepared.into_engine_start();
+    // Product settings load before the Engine starts and never depend on it.
+    // The profile instance lock held by `run_async` makes this the only writer
+    // of the file (ADR-013).
+    let desktop_settings = Arc::new(DesktopSettingsStore::load(
+        process_paths
+            .app_data_root()
+            .join(uc_desktop_settings::FILE_NAME),
+    ));
 
     let pid_manager = DaemonPidManager::new(process_paths.daemon_pid());
     let _pid_file_guard = DaemonPidFileGuard::activate(pid_manager, run_mode.process_mode())?;
@@ -224,6 +233,7 @@ async fn run_async_with_diagnostics(
         events,
         file_handles,
         process_paths,
+        desktop_settings,
         analytics.sink(),
         startup_server.ready_flag(),
         diagnostics,
@@ -263,6 +273,7 @@ async fn run_daemon_surfaces(
     events: uc_engine::EventStream,
     file_handles: Arc<dyn DaemonFileHandles>,
     process_paths: DesktopHostProcessPaths,
+    desktop_settings: Arc<DesktopSettingsStore>,
     analytics_sink: Arc<dyn AnalyticsPort>,
     startup_ready: Arc<std::sync::atomic::AtomicBool>,
     diagnostics: Arc<EngineDaemonDiagnostics>,
@@ -291,6 +302,7 @@ async fn run_daemon_surfaces(
             .join("history-tags")
             .join("layout.v1.json"),
     )))
+    .with_desktop_settings(Arc::clone(&desktop_settings))
     .with_diagnostics(
         diagnostics.clone(),
         Arc::new(DesktopDiagnosticArchive::new(
@@ -310,6 +322,15 @@ async fn run_daemon_surfaces(
     let cleanup_cancel = cancel.child_token();
     let event_cancel = cancel.child_token();
     let suspension_cancel = cancel.child_token();
+    // Subscribed before the HTTP server serves, so no product settings change is missed.
+    let settings_forwarder = tokio::spawn(
+        uc_webserver::api::settings_events::forward_desktop_settings(
+            desktop_settings,
+            event_tx.clone(),
+            cancel.child_token(),
+        ),
+    );
+    let engine_settings_revision = api_state.engine_settings_revision.clone();
     let mut http_handle = tokio::spawn(run_http_server(api_state, http_cancel));
     let _cleanup_handle = cleanup_rate_limiter_task(security, cleanup_cancel);
 
@@ -322,6 +343,7 @@ async fn run_daemon_surfaces(
         events,
         Arc::clone(&engine),
         event_tx,
+        engine_settings_revision,
         active_clipboard_tx.clone(),
         Arc::clone(&mobile_lan),
         event_cancel,
@@ -394,6 +416,11 @@ async fn run_daemon_surfaces(
     let _ = tokio::time::timeout(
         uc_daemon_local::timing::SHUTDOWN_JOIN_TIMEOUT,
         suspension_observer,
+    )
+    .await;
+    let _ = tokio::time::timeout(
+        uc_daemon_local::timing::SHUTDOWN_JOIN_TIMEOUT,
+        settings_forwarder,
     )
     .await;
     if http_completed {

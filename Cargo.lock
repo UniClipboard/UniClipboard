@@ -11767,6 +11767,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "uc-app-paths",
+ "uc-desktop-settings",
  "uc-engine",
  "uc-observability",
  "uc-platform",
@@ -11837,6 +11838,7 @@ dependencies = [
  "uc-bootstrap",
  "uc-daemon-contract",
  "uc-daemon-local",
+ "uc-desktop-settings",
  "uc-engine",
  "uc-observability",
  "uc-platform",
@@ -11916,6 +11918,17 @@ dependencies = [
  "uc-daemon-contract",
  "which 7.0.3",
  "windows-sys 0.59.0",
+]
+
+[[package]]
+name = "uc-desktop-settings"
+version = "1.2.0"
+dependencies = [
+ "blake3",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -12430,6 +12443,7 @@ dependencies = [
  "uc-daemon-contract",
  "uc-daemon-local",
  "uc-daemon-process",
+ "uc-desktop-settings",
  "uc-engine",
  "uc-observability",
  "url",

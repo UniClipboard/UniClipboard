@@ -1,0 +1,20 @@
+[package]
+name = "uc-desktop-settings"
+version.workspace = true
+license.workspace = true
+edition = "2021"
+description = "Desktop product settings owned by the daemon: model, per-field validation, lenient loading, atomic storage, revision and change notification. No Engine or HTTP dependency."
+
+[dependencies]
+blake3 = "1.8.2"
+serde_json = "1"
+tempfile = "3"
+tokio = { version = "1", default-features = false, features = ["sync", "rt"] }
+tracing = "0.1"
+
+[dev-dependencies]
+tempfile = "3"
+tokio = { version = "1", default-features = false, features = ["sync", "rt", "rt-multi-thread", "macros", "time"] }
+
+[lints]
+workspace = true

@@ -1565,12 +1565,12 @@ export const getSettings = <ThrowOnError extends boolean = false>(options?: Opti
 /**
  * PUT /settings
  *
- * Updates application settings. Accepts a partial settings object and merges it
- * with the existing settings.
+ * Updates application settings. Accepts a partial settings object and splits
+ * it by owner (ADR-013 section 8.3): Engine fields to the Engine, product
+ * fields to the daemon's product store, `telemetryEnabled` to its own file.
  *
- * NOTE: Unlike the Tauri command, this handler does NOT apply OS-level side
- * effects (no autostart registration, no keyboard shortcut updates). It only
- * persists the settings domain model.
+ * NOTE: this handler does NOT apply OS-level side effects (no autostart
+ * registration, no keyboard shortcut updates). It only persists settings.
  */
 export const updateSettings = <ThrowOnError extends boolean = false>(options: Options<UpdateSettingsData, ThrowOnError>) => (options.client ?? client).put<UpdateSettingsResponses, UpdateSettingsErrors, ThrowOnError>({
     security: [{

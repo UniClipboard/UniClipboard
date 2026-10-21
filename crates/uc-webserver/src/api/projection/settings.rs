@@ -5,54 +5,44 @@ use std::time::Duration;
 mod app_settings {
     pub use uc_engine::{
         CongestionControllerSummary as CongestionControllerView, FileSyncSettingsPatch,
-        GeneralSettingsPatch, NetworkSettingsPatch, PairingSettingsPatch,
-        QuickPanelDoubleTapModifierSummary as QuickPanelDoubleTapModifierView,
-        QuickPanelPositionSummary as QuickPanelPositionView, QuickPanelSettingsPatch,
-        RetentionPolicyPatch, RetentionRulePatch as RetentionRulePatchValue,
-        RetentionRuleSummary as RetentionRuleView, RuleEvaluationSummary as RuleEvaluationView,
-        SecuritySettingsPatch, SettingsContentTypes as ContentTypesView,
-        SettingsContentTypesPatch as ContentTypesPatch, SettingsPatch,
-        SettingsSummary as SettingsView, ShortcutKeySummary as ShortcutKeyView,
-        StartupModeSummary as StartupModeView, SyncFrequencySummary as SyncFrequencyView,
-        SyncSettingsPatch, ThemeSummary as ThemeView, UpdateChannelSummary as UpdateChannelView,
+        GeneralSettingsPatch, NetworkSettingsPatch, PairingSettingsPatch, RetentionPolicyPatch,
+        RetentionRulePatch as RetentionRulePatchValue, RetentionRuleSummary as RetentionRuleView,
+        RuleEvaluationSummary as RuleEvaluationView, SecuritySettingsPatch,
+        SettingsContentTypes as ContentTypesView, SettingsContentTypesPatch as ContentTypesPatch,
+        SettingsPatch, SettingsSummary as SettingsView, SyncFrequencySummary as SyncFrequencyView,
+        SyncSettingsPatch,
     };
 }
 
 use super::{IntoApiDto, IntoDomain};
 use crate::api::dto::settings::{
     CongestionControllerDto, ContentTypesDto, ContentTypesPatchDto, FileSyncSettingsDto,
-    GeneralSettingsDto, KeyboardShortcutsPatchDto, NetworkSettingsDto, PairingSettingsDto,
-    QuickPanelDoubleTapModifierDto, QuickPanelPositionDto, QuickPanelSettingsDto,
-    RetentionPolicyDto, RetentionRuleDto, RuleEvaluationDto, SecuritySettingsDto, SettingsDto,
-    SettingsPatchDto, ShortcutKeyDto, StartupModeDto, SyncFrequencyDto, SyncSettingsDto, ThemeDto,
-    UpdateChannelDto,
+    GeneralSettingsDto, NetworkSettingsDto, PairingSettingsDto, QuickPanelDoubleTapModifierDto,
+    QuickPanelPositionDto, QuickPanelSettingsDto, RetentionPolicyDto, RetentionRuleDto,
+    RuleEvaluationDto, SecuritySettingsDto, SettingsDto, SettingsPatchDto, ShortcutKeyDto,
+    StartupModeDto, SyncFrequencyDto, SyncSettingsDto, ThemeDto, TrayIconDto, UpdateChannelDto,
+};
+use uc_desktop_settings::{
+    DesktopSettings, DesktopSettingsPatch, DoubleTapModifier,
+    GeneralSettingsPatch as DesktopGeneralSettingsPatch, QuickPanelPosition,
+    QuickPanelSettingsPatch as DesktopQuickPanelSettingsPatch, ShortcutBinding, StartupMode, Theme,
+    TrayIcon, UpdateChannel,
 };
 
 impl IntoDomain<app_settings::SettingsPatch> for SettingsPatchDto {
     fn into_domain(self) -> app_settings::SettingsPatch {
         app_settings::SettingsPatch {
+            // Only Engine-owned general fields. Product fields go to the
+            // product store (ADR-013 section 8.3) and `telemetryEnabled` to its
+            // own file; the Engine never receives them, so there is no dual write.
             general: self
                 .general
                 .map(|general| app_settings::GeneralSettingsPatch {
-                    auto_start: general.auto_start,
-                    startup_mode: general.startup_mode.map(IntoDomain::into_domain),
-                    restore_last_entry_on_startup: general.restore_last_entry_on_startup,
-                    auto_check_update: general.auto_check_update,
-                    auto_download_update: general.auto_download_update,
-                    theme: general.theme.map(IntoDomain::into_domain),
-                    theme_color: general.theme_color,
-                    theme_color_light: general.theme_color_light,
-                    theme_color_dark: general.theme_color_dark,
-                    theme_overrides_light: general.theme_overrides_light,
-                    theme_overrides_dark: general.theme_overrides_dark,
-                    language: general.language,
                     device_name: general.device_name,
-                    update_channel: general
-                        .update_channel
-                        .map(|channel| channel.map(IntoDomain::into_domain)),
-                    usage_analytics_enabled: general.usage_analytics_enabled,
                     debug_mode: general.debug_mode,
-                }),
+                    ..Default::default()
+                })
+                .filter(|general| *general != app_settings::GeneralSettingsPatch::default()),
             sync: self.sync.map(|sync| app_settings::SyncSettingsPatch {
                 sync_enabled: sync.sync_enabled,
                 auto_sync_enabled: sync.auto_sync_enabled,
@@ -86,14 +76,7 @@ impl IntoDomain<app_settings::SettingsPatch> for SettingsPatchDto {
                     session_timeout_secs: pairing.session_timeout.map(|value| value.as_secs()),
                     max_retries: pairing.max_retries,
                 }),
-            keyboard_shortcuts: self.keyboard_shortcuts.map(
-                |KeyboardShortcutsPatchDto { shortcuts }| {
-                    shortcuts
-                        .into_iter()
-                        .map(|(name, value)| (name, value.map(IntoDomain::into_domain)))
-                        .collect()
-                },
-            ),
+            keyboard_shortcuts: None,
             file_sync: self
                 .file_sync
                 .map(|file_sync| app_settings::FileSyncSettingsPatch {
@@ -126,118 +109,133 @@ impl IntoDomain<app_settings::SettingsPatch> for SettingsPatchDto {
                         }
                     }),
                 }),
-            quick_panel: self.quick_panel.map(|quick_panel| {
-                app_settings::QuickPanelSettingsPatch {
-                    enabled: quick_panel.enabled,
-                    position: quick_panel.position.map(IntoDomain::into_domain),
-                    double_tap_modifier: quick_panel
-                        .double_tap_modifier
-                        .map(IntoDomain::into_domain),
-                }
-            }),
+            quick_panel: None,
         }
     }
 }
 
-impl IntoApiDto<SettingsDto> for app_settings::SettingsView {
+/// The aggregate `/settings` view: Engine settings composed with the Desktop
+/// product settings (ADR-013). Paths on the wire are unchanged.
+impl IntoApiDto<SettingsDto> for (app_settings::SettingsView, &DesktopSettings) {
     fn into_api_dto(self) -> SettingsDto {
+        let (view, desktop) = self;
         SettingsDto {
-            schema_version: self.schema_version,
+            schema_version: view.schema_version,
             general: GeneralSettingsDto {
-                auto_start: self.general.auto_start,
-                startup_mode: self.general.startup_mode.into_api_dto(),
-                restore_last_entry_on_startup: self.general.restore_last_entry_on_startup,
-                auto_check_update: self.general.auto_check_update,
-                auto_download_update: self.general.auto_download_update,
-                theme: self.general.theme.into_api_dto(),
-                theme_color: self.general.theme_color,
-                theme_color_light: self.general.theme_color_light,
-                theme_color_dark: self.general.theme_color_dark,
-                theme_overrides_light: self.general.theme_overrides_light,
-                theme_overrides_dark: self.general.theme_overrides_dark,
-                language: self.general.language,
-                device_name: self.general.device_name,
-                update_channel: self.general.update_channel.map(IntoApiDto::into_api_dto),
+                auto_start: desktop.general.auto_start,
+                startup_mode: desktop.general.startup_mode.into_api_dto(),
+                restore_last_entry_on_startup: desktop.general.restore_last_entry_on_startup,
+                auto_check_update: desktop.general.auto_check_update,
+                auto_download_update: desktop.general.auto_download_update,
+                theme: desktop.general.theme.into_api_dto(),
+                // Folded into the split presets by the import (ADR-013 section 8.3).
+                theme_color: None,
+                theme_color_light: desktop.general.theme_color_light.clone(),
+                theme_color_dark: desktop.general.theme_color_dark.clone(),
+                theme_overrides_light: desktop.general.theme_overrides_light.clone(),
+                theme_overrides_dark: desktop.general.theme_overrides_dark.clone(),
+                language: desktop.general.language.clone(),
+                device_name: view.general.device_name,
+                update_channel: desktop.general.update_channel.map(IntoApiDto::into_api_dto),
                 telemetry_enabled: uc_observability::is_telemetry_enabled(),
-                usage_analytics_enabled: self.general.usage_analytics_enabled,
-                debug_mode: self.general.debug_mode,
+                usage_analytics_enabled: desktop.general.usage_analytics_enabled,
+                debug_mode: view.general.debug_mode,
+                tray_icon: desktop.general.tray_icon.into_api_dto(),
             },
             sync: SyncSettingsDto {
-                sync_enabled: self.sync.sync_enabled,
-                auto_sync_enabled: self.sync.auto_sync_enabled,
-                sync_frequency: self.sync.sync_frequency.into_api_dto(),
-                content_types: self.sync.content_types.into_api_dto(),
-                sync_on_restore: self.sync.sync_on_restore,
+                sync_enabled: view.sync.sync_enabled,
+                auto_sync_enabled: view.sync.auto_sync_enabled,
+                sync_frequency: view.sync.sync_frequency.into_api_dto(),
+                content_types: view.sync.content_types.into_api_dto(),
+                sync_on_restore: view.sync.sync_on_restore,
             },
             retention_policy: RetentionPolicyDto {
-                enabled: self.retention_policy.enabled,
-                rules: self
+                enabled: view.retention_policy.enabled,
+                rules: view
                     .retention_policy
                     .rules
                     .into_iter()
                     .map(IntoApiDto::into_api_dto)
                     .collect(),
-                skip_pinned: self.retention_policy.skip_pinned,
-                evaluation: self.retention_policy.evaluation.into_api_dto(),
+                skip_pinned: view.retention_policy.skip_pinned,
+                evaluation: view.retention_policy.evaluation.into_api_dto(),
             },
             security: SecuritySettingsDto {
-                encryption_enabled: self.security.encryption_enabled,
-                passphrase_configured: self.security.passphrase_configured,
-                auto_unlock_enabled: self.security.auto_unlock_enabled,
+                encryption_enabled: view.security.encryption_enabled,
+                passphrase_configured: view.security.passphrase_configured,
+                auto_unlock_enabled: view.security.auto_unlock_enabled,
             },
             pairing: PairingSettingsDto {
-                step_timeout: Duration::from_secs(self.pairing.step_timeout_secs),
+                step_timeout: Duration::from_secs(view.pairing.step_timeout_secs),
                 user_verification_timeout: Duration::from_secs(
-                    self.pairing.user_verification_timeout_secs,
+                    view.pairing.user_verification_timeout_secs,
                 ),
-                session_timeout: Duration::from_secs(self.pairing.session_timeout_secs),
-                max_retries: self.pairing.max_retries,
-                protocol_version: self.pairing.protocol_version,
+                session_timeout: Duration::from_secs(view.pairing.session_timeout_secs),
+                max_retries: view.pairing.max_retries,
+                protocol_version: view.pairing.protocol_version,
             },
-            keyboard_shortcuts: self
+            keyboard_shortcuts: desktop
                 .keyboard_shortcuts
-                .into_iter()
-                .map(|(name, shortcut)| (name, shortcut.into_api_dto()))
+                .iter()
+                .map(|(id, binding)| (id.clone(), binding.clone().into_api_dto()))
                 .collect(),
             file_sync: FileSyncSettingsDto {
-                file_sync_enabled: self.file_sync.file_sync_enabled,
-                small_file_threshold: self.file_sync.small_file_threshold,
-                max_file_size: self.file_sync.max_file_size,
-                file_cache_quota_per_device: self.file_sync.file_cache_quota_per_device,
-                file_retention_hours: self.file_sync.file_retention_hours,
-                file_auto_cleanup: self.file_sync.file_auto_cleanup,
-                auto_save_dir: self.file_sync.auto_save_dir.clone(),
+                file_sync_enabled: view.file_sync.file_sync_enabled,
+                small_file_threshold: view.file_sync.small_file_threshold,
+                max_file_size: view.file_sync.max_file_size,
+                file_cache_quota_per_device: view.file_sync.file_cache_quota_per_device,
+                file_retention_hours: view.file_sync.file_retention_hours,
+                file_auto_cleanup: view.file_sync.file_auto_cleanup,
+                auto_save_dir: view.file_sync.auto_save_dir.clone(),
             },
             network: NetworkSettingsDto {
-                allow_relay_fallback: self.network.allow_relay_fallback,
-                allow_overlay_network_addrs: self.network.allow_overlay_network_addrs,
-                custom_relay_urls: self.network.custom_relay_urls,
-                congestion_controller: match self.network.congestion_controller {
+                allow_relay_fallback: view.network.allow_relay_fallback,
+                allow_overlay_network_addrs: view.network.allow_overlay_network_addrs,
+                custom_relay_urls: view.network.custom_relay_urls,
+                congestion_controller: match view.network.congestion_controller {
                     app_settings::CongestionControllerView::Cubic => CongestionControllerDto::Cubic,
                     app_settings::CongestionControllerView::Bbr3 => CongestionControllerDto::Bbr3,
                 },
             },
             quick_panel: QuickPanelSettingsDto {
-                enabled: self.quick_panel.enabled,
-                position: self.quick_panel.position.into_api_dto(),
-                double_tap_modifier: self.quick_panel.double_tap_modifier.into_api_dto(),
+                enabled: desktop.quick_panel.enabled,
+                position: desktop.quick_panel.position.into_api_dto(),
+                double_tap_modifier: desktop.quick_panel.double_tap_modifier.into_api_dto(),
             },
         }
     }
 }
 
-impl IntoDomain<app_settings::QuickPanelDoubleTapModifierView> for QuickPanelDoubleTapModifierDto {
-    fn into_domain(self) -> app_settings::QuickPanelDoubleTapModifierView {
+impl IntoApiDto<TrayIconDto> for TrayIcon {
+    fn into_api_dto(self) -> TrayIconDto {
         match self {
-            Self::Disabled => app_settings::QuickPanelDoubleTapModifierView::Disabled,
-            Self::Alt => app_settings::QuickPanelDoubleTapModifierView::Alt,
-            Self::Control => app_settings::QuickPanelDoubleTapModifierView::Control,
-            Self::Meta => app_settings::QuickPanelDoubleTapModifierView::Meta,
+            Self::Glyph => TrayIconDto::Glyph,
+            Self::Cat => TrayIconDto::Cat,
         }
     }
 }
 
-impl IntoApiDto<QuickPanelDoubleTapModifierDto> for app_settings::QuickPanelDoubleTapModifierView {
+impl IntoDomain<TrayIcon> for TrayIconDto {
+    fn into_domain(self) -> TrayIcon {
+        match self {
+            Self::Glyph => TrayIcon::Glyph,
+            Self::Cat => TrayIcon::Cat,
+        }
+    }
+}
+
+impl IntoDomain<DoubleTapModifier> for QuickPanelDoubleTapModifierDto {
+    fn into_domain(self) -> DoubleTapModifier {
+        match self {
+            Self::Disabled => DoubleTapModifier::Disabled,
+            Self::Alt => DoubleTapModifier::Alt,
+            Self::Control => DoubleTapModifier::Control,
+            Self::Meta => DoubleTapModifier::Meta,
+        }
+    }
+}
+
+impl IntoApiDto<QuickPanelDoubleTapModifierDto> for DoubleTapModifier {
     fn into_api_dto(self) -> QuickPanelDoubleTapModifierDto {
         match self {
             Self::Disabled => QuickPanelDoubleTapModifierDto::Disabled,
@@ -339,86 +337,82 @@ impl IntoApiDto<RetentionRuleDto> for app_settings::RetentionRuleView {
     }
 }
 
-impl IntoDomain<app_settings::ThemeView> for ThemeDto {
-    fn into_domain(self) -> app_settings::ThemeView {
+impl IntoDomain<Theme> for ThemeDto {
+    fn into_domain(self) -> Theme {
         match self {
-            ThemeDto::Light => app_settings::ThemeView::Light,
-            ThemeDto::Dark => app_settings::ThemeView::Dark,
-            ThemeDto::System => app_settings::ThemeView::System,
+            ThemeDto::Light => Theme::Light,
+            ThemeDto::Dark => Theme::Dark,
+            ThemeDto::System => Theme::System,
         }
     }
 }
 
-impl IntoApiDto<ThemeDto> for app_settings::ThemeView {
+impl IntoApiDto<ThemeDto> for Theme {
     fn into_api_dto(self) -> ThemeDto {
         match self {
-            app_settings::ThemeView::Light => ThemeDto::Light,
-            app_settings::ThemeView::Dark => ThemeDto::Dark,
-            app_settings::ThemeView::System => ThemeDto::System,
+            Theme::Light => ThemeDto::Light,
+            Theme::Dark => ThemeDto::Dark,
+            Theme::System => ThemeDto::System,
         }
     }
 }
 
-impl IntoDomain<app_settings::StartupModeView> for StartupModeDto {
-    fn into_domain(self) -> app_settings::StartupModeView {
+impl IntoDomain<StartupMode> for StartupModeDto {
+    fn into_domain(self) -> StartupMode {
         match self {
-            StartupModeDto::Normal => app_settings::StartupModeView::Normal,
-            StartupModeDto::Silent => app_settings::StartupModeView::Silent,
-            StartupModeDto::Lightweight => app_settings::StartupModeView::Lightweight,
+            StartupModeDto::Normal => StartupMode::Normal,
+            StartupModeDto::Silent => StartupMode::Silent,
+            StartupModeDto::Lightweight => StartupMode::Lightweight,
         }
     }
 }
 
-impl IntoApiDto<StartupModeDto> for app_settings::StartupModeView {
+impl IntoApiDto<StartupModeDto> for StartupMode {
     fn into_api_dto(self) -> StartupModeDto {
         match self {
-            app_settings::StartupModeView::Normal => StartupModeDto::Normal,
-            app_settings::StartupModeView::Silent => StartupModeDto::Silent,
-            app_settings::StartupModeView::Lightweight => StartupModeDto::Lightweight,
+            StartupMode::Normal => StartupModeDto::Normal,
+            StartupMode::Silent => StartupModeDto::Silent,
+            StartupMode::Lightweight => StartupModeDto::Lightweight,
         }
     }
 }
 
-impl IntoDomain<app_settings::QuickPanelPositionView> for QuickPanelPositionDto {
-    fn into_domain(self) -> app_settings::QuickPanelPositionView {
+impl IntoDomain<QuickPanelPosition> for QuickPanelPositionDto {
+    fn into_domain(self) -> QuickPanelPosition {
         match self {
-            QuickPanelPositionDto::Center => app_settings::QuickPanelPositionView::Center,
-            QuickPanelPositionDto::FollowCursor => {
-                app_settings::QuickPanelPositionView::FollowCursor
-            }
+            QuickPanelPositionDto::Center => QuickPanelPosition::Center,
+            QuickPanelPositionDto::FollowCursor => QuickPanelPosition::FollowCursor,
         }
     }
 }
 
-impl IntoApiDto<QuickPanelPositionDto> for app_settings::QuickPanelPositionView {
+impl IntoApiDto<QuickPanelPositionDto> for QuickPanelPosition {
     fn into_api_dto(self) -> QuickPanelPositionDto {
         match self {
-            app_settings::QuickPanelPositionView::Center => QuickPanelPositionDto::Center,
-            app_settings::QuickPanelPositionView::FollowCursor => {
-                QuickPanelPositionDto::FollowCursor
-            }
+            QuickPanelPosition::Center => QuickPanelPositionDto::Center,
+            QuickPanelPosition::FollowCursor => QuickPanelPositionDto::FollowCursor,
         }
     }
 }
 
-impl IntoDomain<app_settings::UpdateChannelView> for UpdateChannelDto {
-    fn into_domain(self) -> app_settings::UpdateChannelView {
+impl IntoDomain<UpdateChannel> for UpdateChannelDto {
+    fn into_domain(self) -> UpdateChannel {
         match self {
-            UpdateChannelDto::Stable => app_settings::UpdateChannelView::Stable,
-            UpdateChannelDto::Alpha => app_settings::UpdateChannelView::Alpha,
-            UpdateChannelDto::Beta => app_settings::UpdateChannelView::Beta,
-            UpdateChannelDto::Rc => app_settings::UpdateChannelView::Rc,
+            UpdateChannelDto::Stable => UpdateChannel::Stable,
+            UpdateChannelDto::Alpha => UpdateChannel::Alpha,
+            UpdateChannelDto::Beta => UpdateChannel::Beta,
+            UpdateChannelDto::Rc => UpdateChannel::Rc,
         }
     }
 }
 
-impl IntoApiDto<UpdateChannelDto> for app_settings::UpdateChannelView {
+impl IntoApiDto<UpdateChannelDto> for UpdateChannel {
     fn into_api_dto(self) -> UpdateChannelDto {
         match self {
-            app_settings::UpdateChannelView::Stable => UpdateChannelDto::Stable,
-            app_settings::UpdateChannelView::Alpha => UpdateChannelDto::Alpha,
-            app_settings::UpdateChannelView::Beta => UpdateChannelDto::Beta,
-            app_settings::UpdateChannelView::Rc => UpdateChannelDto::Rc,
+            UpdateChannel::Stable => UpdateChannelDto::Stable,
+            UpdateChannel::Alpha => UpdateChannelDto::Alpha,
+            UpdateChannel::Beta => UpdateChannelDto::Beta,
+            UpdateChannel::Rc => UpdateChannelDto::Rc,
         }
     }
 }
@@ -459,20 +453,69 @@ impl IntoApiDto<RuleEvaluationDto> for app_settings::RuleEvaluationView {
     }
 }
 
-impl IntoDomain<app_settings::ShortcutKeyView> for ShortcutKeyDto {
-    fn into_domain(self) -> app_settings::ShortcutKeyView {
+impl IntoDomain<ShortcutBinding> for ShortcutKeyDto {
+    fn into_domain(self) -> ShortcutBinding {
         match self {
-            ShortcutKeyDto::Single(v) => app_settings::ShortcutKeyView::Single(v),
-            ShortcutKeyDto::Multiple(v) => app_settings::ShortcutKeyView::Multiple(v),
+            ShortcutKeyDto::Single(v) => ShortcutBinding::Single(v),
+            ShortcutKeyDto::Multiple(v) => ShortcutBinding::Multiple(v),
         }
     }
 }
 
-impl IntoApiDto<ShortcutKeyDto> for app_settings::ShortcutKeyView {
+impl IntoApiDto<ShortcutKeyDto> for ShortcutBinding {
     fn into_api_dto(self) -> ShortcutKeyDto {
         match self {
-            app_settings::ShortcutKeyView::Single(v) => ShortcutKeyDto::Single(v),
-            app_settings::ShortcutKeyView::Multiple(v) => ShortcutKeyDto::Multiple(v),
+            ShortcutBinding::Single(v) => ShortcutKeyDto::Single(v),
+            ShortcutBinding::Multiple(v) => ShortcutKeyDto::Multiple(v),
         }
+    }
+}
+
+/// The product part of a `PUT /settings` patch (ADR-013 section 8.3). Values
+/// are validated by the store's grammars before any write.
+pub fn desktop_patch(patch: &SettingsPatchDto) -> DesktopSettingsPatch {
+    let general = patch.general.as_ref();
+    DesktopSettingsPatch {
+        general: general.map_or_else(DesktopGeneralSettingsPatch::default, |general| {
+            DesktopGeneralSettingsPatch {
+                tray_icon: general.tray_icon.map(IntoDomain::into_domain),
+                auto_start: general.auto_start,
+                startup_mode: general.startup_mode.clone().map(IntoDomain::into_domain),
+                restore_last_entry_on_startup: general.restore_last_entry_on_startup,
+                auto_check_update: general.auto_check_update,
+                auto_download_update: general.auto_download_update,
+                update_channel: general
+                    .update_channel
+                    .clone()
+                    .map(|channel| channel.map(IntoDomain::into_domain)),
+                theme: general.theme.clone().map(IntoDomain::into_domain),
+                theme_color: general.theme_color.clone().flatten(),
+                theme_color_light: general.theme_color_light.clone(),
+                theme_color_dark: general.theme_color_dark.clone(),
+                theme_overrides_light: general.theme_overrides_light.clone(),
+                theme_overrides_dark: general.theme_overrides_dark.clone(),
+                language: general.language.clone(),
+                usage_analytics_enabled: general.usage_analytics_enabled,
+            }
+        }),
+        keyboard_shortcuts: patch
+            .keyboard_shortcuts
+            .as_ref()
+            .map(|shortcuts| {
+                shortcuts
+                    .shortcuts
+                    .iter()
+                    .map(|(id, value)| (id.clone(), value.clone().map(IntoDomain::into_domain)))
+                    .collect()
+            })
+            .unwrap_or_default(),
+        quick_panel: patch.quick_panel.as_ref().map_or_else(
+            DesktopQuickPanelSettingsPatch::default,
+            |quick_panel| DesktopQuickPanelSettingsPatch {
+                enabled: quick_panel.enabled,
+                position: quick_panel.position.map(IntoDomain::into_domain),
+                double_tap_modifier: quick_panel.double_tap_modifier.map(IntoDomain::into_domain),
+            },
+        ),
     }
 }

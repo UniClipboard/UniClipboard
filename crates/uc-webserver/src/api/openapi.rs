@@ -95,9 +95,11 @@ use crate::api::dto::settings::{
     RelayOverviewEntryDto, RelayProbeCredentialDto, RelayProbeOutcomeDto, RelayProbeRequestDto,
     RelayRoutingModeDto, RelaySaveRequestDto, RelaySaveResultDto, RetentionPolicyDto,
     RetentionPolicyPatchDto, RetentionRuleDto, RuleEvaluationDto, SecuritySettingsDto,
-    SecuritySettingsPatchDto, SettingsDto, SettingsPatchDto, SettingsUpdateResultDto,
-    ShortcutKeyDto, StartupModeDto, SyncFrequencyDto, SyncSettingsDto, SyncSettingsPatchDto,
-    ThemeDto, UpdateChannelDto,
+    SecuritySettingsPatchDto, SettingsChangedPayload, SettingsDto, SettingsOwnerDto,
+    SettingsPartiallyAppliedDetailsDto, SettingsPatchDto, SettingsRevisionsDto, SettingsSectionDto,
+    SettingsSnapshotPayload, SettingsUpdateResultDto, SettingsWriteOwnerDto, ShortcutKeyDto,
+    StartupModeDto, SyncFrequencyDto, SyncSettingsDto, SyncSettingsPatchDto, ThemeDto, TrayIconDto,
+    UpdateChannelDto,
 };
 use uc_daemon_contract::api::dto::analytics::{
     CaptureUiEventRequest, CaptureUiEventResponse, UiDialogOpenSource, UiDismissSource,
@@ -590,6 +592,7 @@ impl Modify for ContractMeta {
             ThemeDto,
             UpdateChannelDto,
             StartupModeDto,
+            TrayIconDto,
             // ── settings: PUT /settings patch DTOs (nested children of
             //    SettingsPatchDto, each $ref'd from the request body) ───────
             GeneralSettingsPatchDto,
@@ -691,6 +694,14 @@ impl Modify for ContractMeta {
             DaemonWsEvent,
             WsSubscribeRequest,
             WsErrorResponse,
+            SettingsChangedPayload,
+            SettingsOwnerDto,
+            SettingsRevisionsDto,
+            SettingsSectionDto,
+            SettingsSnapshotPayload,
+            // ── owner-split settings writes (ADR-013 section 8.3) ──
+            SettingsPartiallyAppliedDetailsDto,
+            SettingsWriteOwnerDto,
             // ── auth/connect (L1/public) ───────────────────────────
             SessionTokenEnvelope,
             SessionTokenResponse,

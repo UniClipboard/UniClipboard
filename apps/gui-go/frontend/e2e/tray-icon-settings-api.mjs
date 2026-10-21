@@ -141,10 +141,8 @@ try {
   assert.equal(initial.general.trayIcon, 'glyph')
 
   for (const trayIcon of ['cat', 'glyph']) {
-    // The same input the settings page builds (SettingContext.updateGeneralSetting): the current settings with the
-    // changed general field merged in.
-    const current = await getSettings()
-    const result = await updateSettings({ ...current, general: { ...current.general, trayIcon } })
+    // The same input the settings page builds (SettingContext.updateGeneralSetting): only the changed field.
+    const result = await updateSettings({ general: { trayIcon } })
     const body = sent.at(-1)
     const readBack = await getSettings()
     const bytes = await readProduct()
@@ -160,6 +158,8 @@ try {
     })
     assert.equal(body?.general?.trayIcon, trayIcon, 'the request body carries trayIcon')
     assert.equal(result.success, true)
+    assert.equal(result.restartRequired, false, 'a tray change does not ask for a restart')
+    assert.deepEqual(body, { general: { trayIcon } }, 'the body holds only the changed field')
     assert.equal(readBack.general.trayIcon, trayIcon)
     assert.equal(stored?.general?.trayIcon, trayIcon, 'desktop-settings.json holds the value')
   }

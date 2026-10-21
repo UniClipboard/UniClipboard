@@ -443,6 +443,9 @@ shows the stored state. `500 settings_partially_applied` becomes a typed error w
 `applied`, `failed` and `skipped` owners; the control shows them in a toast. The window's load
 error state is not used for save errors.
 
+**Verification.** `apps/gui-go/frontend/e2e/settings-sync-api.mjs` runs these modules in Node against an
+isolated real daemon (cases C1–C10 map to F64–F76). It records every HTTP request and WS frame.
+
 **Not changed by task 5.**
 - The tray language is still set by the main window (`SetTrayLanguage`). The Go host has no
   language resolution of its own, so a silent start shows the tray in the language of the last

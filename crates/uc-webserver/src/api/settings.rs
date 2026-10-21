@@ -450,8 +450,8 @@ async fn update_settings_handler(
     let Json(payload) = body.map_err(|_| ApiError::bad_request("invalid settings request body"))?;
 
     // D-D1: `network` changes and `debugMode` take effect after a restart.
-    // The frontend still sends whole sections, so this is coarse until task 5
-    // moves it to diff patches.
+    // The check is by presence: GUI patches carry only the leaves the user
+    // changed (ADR-013 section 9).
     let debug_mode_changed = payload
         .general
         .as_ref()

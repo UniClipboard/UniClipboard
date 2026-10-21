@@ -125,18 +125,9 @@ struct BootstrapSettings {
 
 #[derive(Deserialize)]
 #[serde(default)]
+#[derive(Default)]
 struct BootstrapGeneralSettings {
-    usage_analytics_enabled: bool,
     debug_mode: bool,
-}
-
-impl Default for BootstrapGeneralSettings {
-    fn default() -> Self {
-        Self {
-            usage_analytics_enabled: true,
-            debug_mode: false,
-        }
-    }
 }
 
 fn load_bootstrap_settings(settings_path: &Path) -> BootstrapSettings {
@@ -283,12 +274,9 @@ fn install_tracing_subscriber() -> anyhow::Result<Option<DaemonObservability>> {
         });
     uc_observability::set_telemetry_enabled(telemetry_enabled);
 
-    // Step 2c: 同样的"读盘 → 推 gate"流程，但作用对象是产品 telemetry
-    // 开关（schema doc §6.4 双开关方案）。本调用在 sink 接入前也是无害
-    // 的——`uc-observability::analytics_gate` 的初值就是 true，这里只是
-    // 把用户上次的选择落到 gate，让首次事件构造时就尊重持久化偏好。
-    let usage_analytics_enabled = settings.general.usage_analytics_enabled;
-    uc_observability::set_analytics_enabled(usage_analytics_enabled);
+    // The analytics gate is set from the product settings after the legacy
+    // import in `prepare_desktop_engine_host` (ADR-013 section 8.2); the Engine
+    // file only holds a frozen copy from field set 1 on.
 
     // Step 3: Initialize Sentry whenever a DSN is available.
     //

@@ -13,6 +13,8 @@ uc-observability = { path = "../uc-observability", features = ["analytics"] }
 # directory for one-time cleanup after logs moved to the platform-conventional
 # location.
 uc-app-paths = { path = "../uc-app-paths" }
+# Product settings: the legacy import runs before the Engine loads its settings (ADR-013).
+uc-desktop-settings = { path = "../uc-desktop-settings" }
 
 tokio = { version = "1", features = ["full"] }
 anyhow = "1.0"

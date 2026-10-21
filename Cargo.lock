@@ -11767,6 +11767,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "uc-app-paths",
+ "uc-desktop-settings",
  "uc-engine",
  "uc-observability",
  "uc-platform",

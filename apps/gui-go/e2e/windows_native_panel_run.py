@@ -33,9 +33,16 @@ What is checked (each recorded in native-assertions.json):
   5  a shortcut owned by another process is refused as Conflict and the old binding stays; after the other process lets
      go the same change succeeds in the running helper (no restart, ADR-013 section 10), the old shortcut is dead and
      the new one opens the panel
+  5b a value the helper cannot register (`ctrl+alt`, what the v1.2 recorder saved for Ctrl+Alt+Space) is refused as
+     Conflict: nothing is saved, the helper keeps running and the status still names the previous binding as active
+  5c a second change, to a key the helper accepts but the Wails parser does not (`equal`; the v1.2 Windows pre-save probe
+     refused it), is taken by the same helper process: the status names it active, the previous and the default
+     shortcuts are dead and the new one opens the panel
   6  the modifier double tap (Ctrl, twice, alone) opens the panel after the setting is saved; a Ctrl chord does not
   7  a helper killed by this script is brought back by the supervisor
   8  exit: GUI exit code 0, no helper, no daemon of this run remains, and the shortcut is free again
+  9  restart: a new GUI on the same data reports the saved shortcut active, the default does not open the panel and the
+     saved one does; then it exits cleanly again
 """
 import argparse
 import ctypes
@@ -72,7 +79,7 @@ if user32 is not None:
     user32.EnumWindows.argtypes = [ctypes.c_void_p, wt.LPARAM]
     kernel32.GetCurrentThreadId.restype = wt.DWORD
 
-VK.update({'v': 0x56, 'enter': 0x0D, 'esc': 0x1B, 'f13': 0x7C, 'f14': 0x7D, 'shift': 0x10, 'down': 0x28, 'o': 0x4F, 'comma': 0xBC, 'back': 0x08})
+VK.update({'equal': 0xBB, 'v': 0x56, 'enter': 0x0D, 'esc': 0x1B, 'f13': 0x7C, 'f14': 0x7D, 'shift': 0x10, 'down': 0x28, 'o': 0x4F, 'comma': 0xBC, 'back': 0x08})
 HELPER = 'uniclip-quick-panel.exe'
 PANEL_TITLE = 'UniClipboard History'
 DEFAULT_SHORTCUT = 'ctrl+alt+v'
@@ -80,6 +87,7 @@ SANDBOX_ROOT = Path(os.environ.get('UC_GUI_GO_E2E_SANDBOX_ROOT', r'C:\w'))
 # One fixed sandbox directory: Windows keys its Firewall decision for the daemon by program path, see firewall_rule().
 SANDBOX_NAME = 'uc-gui-go-native'
 NEW_SHORTCUT = 'ctrl+alt+shift+f13'
+SECOND_SHORTCUT = 'ctrl+alt+shift+equal'
 MARKERS = ['uc-native-alpha-1111', 'uc-native-beta-2222', 'uc-native-gamma-3333']
 
 
@@ -288,6 +296,14 @@ def main():
     def helper_pids():
         return {p['ProcessId'] for p in processes(HELPER) if str(sandbox).lower() in (p['ExecutablePath'] or '').lower()}
 
+    status_reads = iter(range(1, 10_000))
+
+    def shortcut_status(label):
+        """The host's apply status of the quick panel shortcut (desired, active as the helper reported it, error)."""
+        # A step is found by its name, so every read needs its own label or a poll would see the first answer again.
+        r = gui.invoke(f'status-{label}-{next(status_reads)}', 'get_quick_panel_shortcut_status')
+        return r.get('data') or {} if r.get('ok') else {}
+
     gui = target = release = None
     saved_clip = get_clipboard_text()
     daemon_pid = None
@@ -457,6 +473,35 @@ def main():
         wait_for(lambda: not panel_windows(helper_pids()), 5)
         focus_target()
 
+        # 5b: a value the executor cannot register is refused before it is saved; the previous binding stays active.
+        before_pids = helper_pids()
+        r = gui.invoke('invalid', 'update_keyboard_shortcuts', {'shortcuts': {KEY: 'ctrl+alt'}})
+        state = gui.state('after-invalid')
+        status = shortcut_status('after-invalid')
+        check('5b a value the helper cannot register is refused as Conflict, nothing is saved, the previous binding stays active',
+              not r['ok'] and r['error']['code'] == 'Conflict' and state['stored'] == NEW_SHORTCUT and helper_pids() == before_pids
+              and status.get('state') == 'active' and status.get('active') == [NEW_SHORTCUT], [r, state, status])
+
+        # 5c: a second change, to a key name the host's Wails parser does not know, in the same helper process.
+        r = gui.invoke('rebind-second', 'update_keyboard_shortcuts', {'shortcuts': {KEY: SECOND_SHORTCUT}})
+        state = gui.state('after-second')
+        status = shortcut_status('after-second')
+        check('5c the second change is saved and the same helper reports it active',
+              r['ok'] and state['stored'] == SECOND_SHORTCUT and helper_pids() == before_pids
+              and status.get('state') == 'active' and status.get('active') == [SECOND_SHORTCUT],
+              {'result': r, 'state': state, 'status': status, 'before': sorted(before_pids), 'after': sorted(helper_pids())})
+        focus_target()
+        for label, chord in (('previous', ('ctrl', 'alt', 'shift', 'f13')), ('default', ('ctrl', 'alt', 'v'))):
+            send_chord(*chord, hold=0.15)
+            time.sleep(1.2)
+            check(f'5c the {label} shortcut no longer opens the panel', not panel_windows(helper_pids()))
+        send_chord('ctrl', 'alt', 'shift', 'equal', hold=0.15)
+        shown = wait_for(lambda: panel_windows(helper_pids()), 10)
+        check('5c the second shortcut opens it', bool(shown))
+        send_chord('esc', hold=0.1)
+        wait_for(lambda: not panel_windows(helper_pids()), 5)
+        focus_target()
+
         # 6: the modifier double tap.
         r = gui.invoke('double-tap', 'set_quick_panel_double_tap_modifier', {'modifier': 'control'})
         wait_for(lambda: helper_pids(), 20)
@@ -497,7 +542,37 @@ def main():
         wait_for(lambda: not helper_pids() and not alive(daemon_pid), 20)
         check('8 GUI exit 0, no helper and no daemon of this run remain', code == 0 and not helper_pids() and not alive(daemon_pid),
               {'exit': code, 'helpers': sorted(helper_pids()), 'daemonAlive': alive(daemon_pid)})
-        check('8 both shortcuts are free after exit', hotkey_is_free('ctrl+alt+shift+f13') and hotkey_is_free('ctrl+alt+v'))
+        check('8 every shortcut of this run is free after exit',
+              all(hotkey_is_free(s) for s in (NEW_SHORTCUT, SECOND_SHORTCUT, DEFAULT_SHORTCUT)))
+
+        # 9: the saved shortcut survives a restart; the default stays unbound. A slow helper start reports `unknown`
+        # first, so the status is polled rather than read once.
+        restart_out = out / 'restart'
+        restart_out.mkdir(exist_ok=True)
+        gui = Gui(sandbox, gui_env, restart_out)
+        gui.step('bootstrapped', 120)
+        daemon_pid = json.loads((sandbox / 'data' / f'app.uniclipboard.desktop-{profile}' / 'daemon.conn').read_text())['pid']
+        wait_for(lambda: helper_pids(), 30)
+        r = gui.invoke('unlock-after-restart', 'unlock_content', {'request': {'passphrase': PASSPHRASE}})
+        check('9 content unlocked again after the restart', r['ok'], r)
+        status = wait_for(lambda: (lambda s: s if s.get('state') == 'active' else None)(shortcut_status('after-restart')), 30) or {}
+        state = gui.state('after-restart')
+        check('9 after a restart the saved shortcut is still stored and the helper reports it active',
+              state['stored'] == SECOND_SHORTCUT and status.get('active') == [SECOND_SHORTCUT], [state, status])
+        focus_target()
+        send_chord('ctrl', 'alt', 'v', hold=0.15)
+        time.sleep(1.2)
+        check('9 the default shortcut does not open the panel after a restart', not panel_windows(helper_pids()))
+        send_chord('ctrl', 'alt', 'shift', 'equal', hold=0.15)
+        shown = wait_for(lambda: panel_windows(helper_pids()), 10)
+        check('9 the saved shortcut opens the panel after a restart', bool(shown))
+        send_chord('esc', hold=0.1)
+        wait_for(lambda: not panel_windows(helper_pids()), 5)
+        gui.ctl('exit', 'control-exit')
+        code = gui.proc.wait(timeout=60)
+        wait_for(lambda: not helper_pids() and not alive(daemon_pid), 20)
+        check('9 the restarted GUI exits 0 and leaves no helper or daemon', code == 0 and not helper_pids() and not alive(daemon_pid),
+              {'exit': code, 'helpers': sorted(helper_pids()), 'daemonAlive': alive(daemon_pid)})
         results['passed'] = all(c['ok'] is not False for c in checks)
     finally:
         if release:

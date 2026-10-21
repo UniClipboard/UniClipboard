@@ -121,7 +121,7 @@ macOS 构建需要包含 Metal 编译工具的 Xcode。如默认版本缺少组�
 
 ### 真实桌面验收
 
-`apps/gui-go/e2e/windows_native_panel_run.py` 在已登录的 Windows 桌面会话里跑完整链路：Go 宿主 → GPUI 助手 → 隔离的 daemon，真实键盘事件（`SendInput`）开关面板、搜索选择、粘贴到隔离的编辑器、冲突与改键、修饰键双击、助手被杀后重启、退出无残留，并保存截图与 `native-assertions.json`。一条命令的远程驱动是 `apps/gui-go/e2e/windows_native_panel_remote.py <ssh-host>`（目标机只需要 Rust 和 tar）。运行期间会占用该桌面的键盘与前台，运行时不要在同一会话里启动控制台进程（它们会抢走前台，面板按设计会因此收起）。跨编译、WSL 和假助手不能代替这个验收。
+`apps/gui-go/e2e/windows_native_panel_run.py` 在已登录的 Windows 桌面会话里跑完整链路：Go 宿主 → GPUI 助手 → 隔离的 daemon，真实键盘事件（`SendInput`）开关面板、搜索选择、粘贴到隔离的编辑器、冲突与改键、无法注册的值被拒绝且旧快捷键保持生效、第二次改键（`equal`，Wails 解析器不认识的键名）在同一助手进程内生效、修饰键双击、助手被杀后重启、退出无残留、重启 GUI 后保存的快捷键仍生效且默认快捷键无效，并保存截图与 `native-assertions.json`。一条命令的远程驱动是 `apps/gui-go/e2e/windows_native_panel_remote.py <ssh-host>`（目标机只需要 Rust 和 tar）。运行期间会占用该桌面的键盘与前台，运行时不要在同一会话里启动控制台进程（它们会抢走前台，面板按设计会因此收起）。跨编译、WSL 和假助手不能代替这个验收。
 
 ## 已接入的操作
 

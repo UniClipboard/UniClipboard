@@ -1,8 +1,8 @@
 # ADR-013: The daemon owns Desktop product settings
 
-- **Status**: Accepted. In progress: the store, its daemon wiring and the `general.trayIcon`
-  field on `/settings` are implemented; the `settings.changed` WS event (task 2) and the tray
-  executor and settings UI (task 3) are not.
+- **Status**: Accepted. In progress: the store, its daemon wiring, the `general.trayIcon`
+  field on `/settings`, the `settings` WS topic and the Go host subscription (task 2) are
+  implemented; the tray executor and settings UI (task 3) are not.
 - **Date**: 2026-10-20
 - **Related decisions**:
   - [ADR-008](../architecture/adr-008-uniclipd-split-gui-as-client.md)
@@ -111,7 +111,7 @@ Warnings are logged once, at load.
 - Notifications go through `tokio::sync::broadcast`. The payload is `{ revision, sections }` and
   carries no values; subscribers read a new snapshot. Notifications arrive in revision order. A
   subscriber that lags (`Lagged`) must read a new snapshot.
-- Task 2 maps this notification to the daemon WS event `settings.changed`.
+- The daemon maps this notification to the WS event `settings.changed` (section 7).
 
 ### 6. `PUT /settings` order (P0)
 
@@ -124,6 +124,55 @@ Warnings are logged once, at load.
    written and the product write fails, the handler returns an internal error and logs it. Task 4
    adds the typed `settings_partially_applied` error with `applied` and `failed` lists. Until
    task 3, the frontend does not send `trayIcon`, so the GUI never sends a mixed patch in P0.
+
+### 7. Settings change events (WS topic `settings`)
+
+Clients learn about changes from the daemon WebSocket, never from a page-originated event. The
+events carry no setting values: clients read `GET /settings` again.
+
+| Event | When | Payload |
+|---|---|---|
+| `settings.snapshot` | once, right after a client subscribes to `settings` | `{ "revisions": { "desktop": n, "engine": m } }` |
+| `settings.changed` | after a persisted change by one owner | `{ "owner": "desktop" \| "engine", "sections": [...], "revision": n }` |
+
+- **Owners.** `desktop` is the product store of this crate. `engine` is the Engine settings,
+  reported by Engine `SettingsChanged`. A mixed `PUT /settings` that changes both produces one
+  event per owner.
+- **Sections** use the top-level JSON keys of `GET /settings` (`general`, `sync`,
+  `retentionPolicy`, `security`, `pairing`, `keyboardShortcuts`, `fileSync`, `network`,
+  `quickPanel`). Engine `MobileSync` maps to `mobileSync`, which has no path in `/settings`; a
+  client treats it like any other section and reads again. The Engine section mapping is an
+  exhaustive match, so a new Engine section fails to compile instead of being dropped.
+- **Revisions** are per owner, in daemon memory, and start at 0 with each daemon run. The
+  `desktop` revision is the store revision (section 5). The Engine event has no revision, so the
+  daemon assigns one: it adds one per mapped Engine `SettingsChanged`. Revisions of different
+  owners, or of different daemon runs, are never compared.
+- **Sources.** The daemon subscribes to the store before it starts the HTTP server and forwards
+  each notification. The Engine event forwarder maps Engine `SettingsChanged`.
+- **Lag.**
+  - If the store-to-WS forwarder lags, it reads a new snapshot and sends one `settings.changed`
+    for `desktop` with every product section and the current revision.
+  - If one WS client lags, the existing per-connection rule sends `system.refresh_required`.
+  - If the Engine event consumer lags, the Engine sends `RefreshRequired`, which becomes
+    `system.refresh_required`.
+- **Client protocol.**
+  1. Connect and subscribe to `settings` and `system`.
+  2. Wait for `settings.snapshot`. Only then is the subscription active. Then read
+     `GET /settings` and apply it. The snapshot revisions are the baseline for this connection.
+  3. On `settings.changed` with a revision above the baseline of its owner, or on
+     `system.refresh_required`, read `GET /settings` again. Events that arrive during a read
+     are coalesced into one more read.
+  4. On disconnect, reconnect with a bounded backoff and start again at step 1. A new
+     connection has no baseline; a daemon restart therefore needs no special case.
+- **Apply is idempotent.** An executor compares the new value with the state it already holds
+  and does nothing when they are equal. The host's own writes therefore are not applied twice;
+  the event is not suppressed by revision, because `PUT /settings` returns no revision and a
+  mixed write produces two events.
+- **Go host.** The shared Go settings view and the watcher live in
+  `packages/desktop-host-go/settingswatch`, which does not import Wails. The GUI host starts the
+  watcher during bootstrap, also when no window exists (silent start). It closes the watcher
+  connection, and keeps it closed, before it stops the daemon: an open WebSocket holds a control
+  lease and makes the daemon wait for its HTTP server to finish.
 
 ## Failure modes (listed before implementation)
 
@@ -147,6 +196,30 @@ Warnings are logged once, at load.
 | F16 | A `trayIcon`-only `PUT` changes the Engine `settings.json` | not allowed | daemon E2E (hash before and after) |
 | F17 | Logs leak a setting value | warnings carry only the field path and a reason category | daemon E2E (`neon` absent from the log) |
 | F18 | The caller is dropped while the write is in flight (cancelled HTTP request) | the write runs on its own task: the file, memory, revision and notification still move together | library test |
+
+Settings change events (task 2):
+
+| # | Failure mode | Expected behaviour | Verification |
+|---|---|---|---|
+| F19 | A product write emits no event, or more than one | exactly one `settings.changed` with owner `desktop`, sections `["general"]` and revision + 1 | daemon E2E |
+| F20 | An Engine write is not reported, or is reported as `desktop` | exactly one `settings.changed` with owner `engine` and the Engine sections; no `desktop` event | daemon E2E |
+| F21 | A mixed write merges both owners into one event | one event per owner, each with its own revision | daemon E2E |
+| F22 | A same-value write emits an event | no event; a following real write emits one (positive control) | daemon E2E |
+| F23 | An invalid value (422) emits an event | no event, then a positive control | daemon E2E |
+| F24 | An Engine rejection (400) emits an event | no event, then a positive control | daemon E2E |
+| F25 | A failed product file write emits a success event | error response and no `desktop` event; after the directory is writable again a write emits one | daemon E2E |
+| F26 | A change between the client's read and its subscription is lost | the client reads only after `settings.snapshot`, which is sent after the subscription is active | daemon E2E (snapshot arrives; a write right after it is delivered), Go E2E |
+| F27 | The store-to-WS forwarder lags and a change is lost | it reads a new snapshot and sends one `desktop` event with every section | code review only (forcing 64 missed store notifications needs a stalled forwarder) |
+| F28 | A WS client lags, or the Engine consumer lags, and a change is lost | `system.refresh_required`; the client subscribes to `system` and reads again | existing per-connection rule; client handling in Go E2E is code review only |
+| F29 | After a daemon restart the client compares the new revision 0 with the old revision and ignores changes, or keeps stale settings | the client reconnects, waits for the snapshot and reads again; baselines are per connection | daemon E2E (revision restarts at 0), Go E2E (value written while the daemon was down is seen after reconnect) |
+| F30 | The payload leaks setting values | the payload has only `owner`, `sections` and `revision` (or `revisions`) | daemon E2E (exact key set; written value absent from every frame) |
+| F31 | The host applies its own write twice | executors compare with the state they hold (the tray sync label does nothing when unchanged) | code review |
+| F32 | The host watcher keeps the daemon waiting at stop | the watcher closes with a normal close frame and stays paused before every host-initiated daemon stop | Go E2E (graceful stop time with the watcher connected) |
+| F33 | Settings reach the host only through a WebView | the watcher is in a package without Wails; an external write is seen with no frontend running | Go E2E (build without Wails; external `PUT`) |
+| F34 | After `RestartDaemon` the watcher keeps using the old client | the watcher asks for the current client on every connection attempt | Go E2E (provider re-reads `daemon.conn`) |
+| F35 | A future Engine section is silently dropped | exhaustive match without a wildcard | compiler |
+| F36 | A wrong JSON tag in the shared Go type yields a silent zero value | a real `GET /settings` is decoded into the type and checked against non-default values | Go E2E |
+| F37 | The watcher retries without pause while the daemon is gone | bounded exponential backoff | Go E2E (reconnect after restart) and code review |
 
 ## Consequences
 

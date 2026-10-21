@@ -1,4 +1,4 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "ignoreCommand": "if [ \"$VERCEL_ENV\" = \"preview\" ]; then git diff --quiet \"${VERCEL_GIT_PREVIOUS_SHA:-HEAD^}\" HEAD -- .; else exit 1; fi"
+  "ignoreCommand": "if [ \"$VERCEL_ENV\" = \"preview\" ] && git diff --quiet \"${VERCEL_GIT_PREVIOUS_SHA:-HEAD^}\" HEAD -- .; then exit 0; else exit 1; fi"
 }

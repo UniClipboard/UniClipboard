@@ -2,12 +2,9 @@ package main
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
-	"runtime"
-	"sync"
-
 	"github.com/UniClipboard/UniClipboard/apps/gui-go/internal/hostapi"
+	"runtime"
+
 	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/daemonclient"
 )
 
@@ -18,40 +15,6 @@ func hostPlatform() string {
 		return "macos"
 	}
 	return runtime.GOOS
-}
-
-// visualEffects keeps the per-process preference the React frontend reads. It is
-// session-only until the host owns a persisted preference store.
-type visualEffects struct {
-	mu           sync.Mutex
-	sessionID    string
-	revision     int
-	mode         EffectsMode
-	systemMotion SystemMotion
-}
-
-func newVisualEffects() *visualEffects {
-	id := make([]byte, 8)
-	_, _ = rand.Read(id)
-	return &visualEffects{sessionID: hex.EncodeToString(id), revision: 1, mode: EffectsModeAuto, systemMotion: SystemMotionUnknown}
-}
-
-// snapshot reads the state; callers hold v.mu.
-func (v *visualEffects) snapshot() EffectsSnapshot {
-	reduce := v.systemMotion == SystemMotionReduce
-	reason := EffectsReasonPlatformDefault
-	switch {
-	case v.mode != EffectsModeAuto:
-		reason = EffectsReasonManual
-	case reduce:
-		reason = EffectsReasonSystem
-	}
-	return EffectsSnapshot{
-		SessionID: v.sessionID, Revision: v.revision, Mode: v.mode,
-		AutoForSession: AutoResultEffects, SystemMotion: v.systemMotion,
-		ReduceMotion: reduce, LowEffects: v.mode == EffectsModeSmooth || reduce,
-		Reason: reason, Persistence: EffectsPersistenceSessionOnly,
-	}
 }
 
 // unavailableTheme is the desktop theme of a host without an Omarchy theme source (every host today).
@@ -73,73 +36,6 @@ func (h *HostService) GetDesktopTheme() DesktopThemeSnapshot {
 //uc:os darwin=noop windows=noop linux=unsupported
 func (h *HostService) SetFollowOmarchyTheme(enabled bool) DesktopThemeSnapshot {
 	return unavailableTheme()
-}
-
-// GetVisualEffects returns the visual effects state of this session.
-//
-//uc:errors none
-//uc:os all=real
-func (h *HostService) GetVisualEffects() EffectsSnapshot {
-	h.effects.mu.Lock()
-	defer h.effects.mu.Unlock()
-	return h.effects.snapshot()
-}
-
-// SetVisualEffectsMode sets the visual effects preference and tells every window.
-//
-//uc:errors command ValidationError
-//uc:os all=real
-func (h *HostService) SetVisualEffectsMode(mode EffectsMode) (EffectsSnapshot, error) {
-	switch mode {
-	case EffectsModeAuto, EffectsModeEffects, EffectsModeSmooth:
-	default:
-		return EffectsSnapshot{}, hostapi.New(hostapi.CodeValidationError, "unknown visual effects mode")
-	}
-	h.effects.mu.Lock()
-	h.effects.mode = mode
-	h.effects.revision++
-	snap := h.effects.snapshot()
-	h.effects.mu.Unlock()
-	h.emit(visualEffectsChangedEvent, snap)
-	return snap, nil
-}
-
-// ReportVisualEffectsEnvironment records the system reduce-motion preference the page observed.
-//
-//uc:errors command ValidationError
-//uc:os all=real
-func (h *HostService) ReportVisualEffectsEnvironment(sessionID string, systemMotion SystemMotion) (EffectsSnapshot, error) {
-	switch systemMotion {
-	case SystemMotionReduce, SystemMotionAllow, SystemMotionUnknown:
-	default:
-		return EffectsSnapshot{}, hostapi.New(hostapi.CodeValidationError, "unknown system motion")
-	}
-	h.effects.mu.Lock()
-	defer h.effects.mu.Unlock()
-	if systemMotion != h.effects.systemMotion {
-		h.effects.systemMotion = systemMotion
-		h.effects.revision++
-	}
-	return h.effects.snapshot(), nil
-}
-
-// BeginVisualEffectsSample asks for permission to measure one sample. This host does not sample frames, so no
-// permit is ever granted (always nil).
-//
-//uc:errors none
-//uc:os all=noop
-func (h *HostService) BeginVisualEffectsSample(sessionID string) *SamplePermit {
-	return nil
-}
-
-// ReportVisualEffectsSample accepts a frame-timing sample. It is read and dropped: this host does not sample.
-//
-//uc:errors none
-//uc:os all=noop
-func (h *HostService) ReportVisualEffectsSample(sample EffectsSample) EffectsSnapshot {
-	h.effects.mu.Lock()
-	defer h.effects.mu.Unlock()
-	return h.effects.snapshot()
 }
 
 // TakePendingNavigation returns, once, the route a tray or second launch asked the page to open.

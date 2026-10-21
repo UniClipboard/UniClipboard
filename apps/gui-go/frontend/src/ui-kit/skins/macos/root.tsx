@@ -9,6 +9,7 @@ import type {
   ToolbarProps,
   UiRootProps,
 } from '@/ui-kit/contract'
+import { useGuiVisualEffects } from '@/ui-kit/visual-effects'
 import { WithHelpTag } from './controls'
 import { glyph } from './glyph'
 import { Icon } from './icons'
@@ -69,9 +70,11 @@ export function UiRoot({ colorScheme, children }: UiRootProps) {
   const [element, setElement] = useState<HTMLDivElement | null>(null)
   const [hostMaterial, setMaterial] = useState<WindowMaterial>('none')
   const keyWindow = useKeyWindow()
+  const { lowEffects } = useGuiVisualEffects()
   // An app theme that differs from the system appearance would put light content on dark glass (or
   // the reverse), so the page then covers the material and the sidebar uses its CSS fallback.
-  const material = useMaterialScheme() === colorScheme ? hostMaterial : 'none'
+  const materialScheme = useMaterialScheme()
+  const material = !lowEffects && materialScheme === colorScheme ? hostMaterial : 'none'
   useEffect(() => {
     const unsubscribe = subscribeWindowMaterial(setMaterial)
     return unsubscribe

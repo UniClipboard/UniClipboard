@@ -52,7 +52,7 @@ Wails 版本与 Go 工具链只在 `apps/gui-go/go.mod` 中固定一处，生成
 
 | 命令 | Go 方法 | 参数 | 结果 | 错误族 / 错误码 | macOS | Windows | Linux | 来源 / 说明 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `begin_visual_effects_sample` | `BeginVisualEffectsSample` | `sessionID string` | `*SamplePermit` | none | 有意空操作 | 有意空操作 | 有意空操作 | 契约命令；BeginVisualEffectsSample asks for permission to measure one sample. |
+| `begin_visual_effects_sample` | `BeginVisualEffectsSample` | `sessionID string` | `*SamplePermit` | none | 真实 | 真实 | 有意空操作 | 契约命令；BeginVisualEffectsSample grants one bounded, process-wide foreground measurement. |
 | `cancel_download` | `CancelDownload` | - | `-` | none | 真实 | 真实 | 真实 | 契约命令；CancelDownload cancels a running download. |
 | `check_for_update` | `CheckForUpdate` | `channel *string` | `*UpdateMetadata` | text | 真实 | 真实 | 真实 | 契约命令；CheckForUpdate looks for a newer release on the given channel (null = the user's channel) and tells every window through `update-available`. |
 | `dev_open_updater_window` | `DevOpenUpdaterWindow` | - | `-` | none | 真实 | 真实 | 真实 | 契约命令；DevOpenUpdaterWindow opens the update window in preview mode (`?dev=1`), which shows a sample release. |
@@ -74,7 +74,7 @@ Wails 版本与 Go 工具链只在 `apps/gui-go/go.mod` 中固定一处，生成
 | `get_install_kind` | `GetInstallKind` | - | `InstallKind` | none | 真实 | 真实 | 真实 | 契约命令；GetInstallKind tells how this copy was installed, so the page can route package-managed copies to their package manager instead of the in-app updater. |
 | `get_profile_recovery` | `GetProfileRecovery` | - | `json.RawMessage` | command: InternalError | 真实 | 真实 | 真实 | 契约命令；GetProfileRecovery returns the daemon's profile recovery state (`GET /encryption/recovery`) untouched. |
 | `get_quick_panel_double_tap_availability` | `GetQuickPanelDoubleTapAvailability` | - | `ModifierDoubleTapAvailability` | none | 真实 | 真实 | 真实 | 契约命令；GetQuickPanelDoubleTapAvailability tells whether the modifier double tap trigger can work in this session. |
-| `get_visual_effects` | `GetVisualEffects` | - | `EffectsSnapshot` | none | 真实 | 真实 | 真实 | 契约命令；GetVisualEffects returns the visual effects state of this session. |
+| `get_visual_effects` | `GetVisualEffects` | - | `EffectsSnapshot` | none | 真实 | 真实 | 真实 | 契约命令；GetVisualEffects returns this GUI session's authoritative state. |
 | `host_notification_permission` | `HostNotificationPermission` | - | `bool` | none | 真实 | 真实 | 真实 | 适配器：`@/host/notification`；HostNotificationPermission reports whether system notifications are allowed. |
 | `host_notification_request_permission` | `HostNotificationRequestPermission` | - | `NotificationPermission` | none | 真实 | 真实 | 真实 | 适配器：`@/host/notification`；HostNotificationRequestPermission asks the system for notification permission (adapter command). |
 | `host_notification_send` | `HostNotificationSend` | `options HostNotification` | `-` | command: InternalError | 真实 | 真实 | 真实 | 适配器：`@/host/notification`；HostNotificationSend shows a system notification (adapter command). |
@@ -93,8 +93,8 @@ Wails 版本与 Go 工具链只在 `apps/gui-go/go.mod` 中固定一处，生成
 | `pick_directory` | `PickDirectory` | - | `*string` | command: InternalError | 真实 | 真实 | 真实 | 契约命令；PickDirectory shows the native folder picker. |
 | `preview_config_import` | `PreviewConfigImport` | `password string, sourcePath string` | `ConfigImportPreview` | config | 真实 | 真实 | 真实 | 契约命令；PreviewConfigImport reads the descriptive metadata of a bundle without importing it. |
 | `quick_panel_uses_compositor_shortcuts` | `QuickPanelUsesCompositorShortcuts` | - | `bool` | none | 真实 | 真实 | 真实 | 契约命令；QuickPanelUsesCompositorShortcuts reports whether the shortcut is bound by the Wayland compositor instead of the app. |
-| `report_visual_effects_environment` | `ReportVisualEffectsEnvironment` | `sessionID string, systemMotion SystemMotion` | `EffectsSnapshot` | command: ValidationError | 真实 | 真实 | 真实 | 契约命令；ReportVisualEffectsEnvironment records the system reduce-motion preference the page observed. |
-| `report_visual_effects_sample` | `ReportVisualEffectsSample` | `sample EffectsSample` | `EffectsSnapshot` | none | 有意空操作 | 有意空操作 | 有意空操作 | 契约命令；ReportVisualEffectsSample accepts a frame-timing sample. |
+| `report_visual_effects_environment` | `ReportVisualEffectsEnvironment` | `sessionID string, systemMotion SystemMotion` | `EffectsSnapshot` | command: ValidationError | 真实 | 真实 | 真实 | 契约命令；ReportVisualEffectsEnvironment merges live GUI windows' system preferences. |
+| `report_visual_effects_sample` | `ReportVisualEffectsSample` | `sample EffectsSample` | `EffectsSnapshot` | none | 真实 | 真实 | 有意空操作 | 契约命令；ReportVisualEffectsSample validates the permit and saves only a next-launch downgrade. |
 | `resolve_quick_panel_expand_side` | `ResolveQuickPanelExpandSide` | `scale *float64` | `QuickPanelExpandSide` | none | 有意空操作 | 有意空操作 | 有意空操作 | 契约命令；ResolveQuickPanelExpandSide tells which side the inline preview opens toward. |
 | `restart_app` | `RestartApp` | - | `-` | none | 真实 | 真实 | 真实 | 契约命令；RestartApp restarts the daemon and then the GUI. |
 | `restart_daemon` | `RestartDaemon` | - | `-` | command: InternalError | 真实 | 真实 | 真实 | 契约命令；RestartDaemon replaces the daemon process; the page reconnects itself. |
@@ -108,7 +108,7 @@ Wails 版本与 Go 工具链只在 `apps/gui-go/go.mod` 中固定一处，生成
 | `set_quick_panel_position` | `SetQuickPanelPosition` | `position QuickPanelPosition` | `-` | command: ValidationError, InternalError | 真实 | 真实 | 真实 | 契约命令；SetQuickPanelPosition saves where the quick panel appears. |
 | `set_traffic_light_position` | `SetTrafficLightPosition` | `offsetX *float64, offsetY *float64` | `-` | none | 不支持 | 有意空操作 | 有意空操作 | 契约命令；SetTrafficLightPosition would place the macOS window buttons. |
 | `set_tray_language` | `SetTrayLanguage` | `language string` | `-` | none | 真实 | 真实 | 真实 | 契约命令；SetTrayLanguage updates the tray menu labels to the UI language. |
-| `set_visual_effects_mode` | `SetVisualEffectsMode` | `mode EffectsMode` | `EffectsSnapshot` | command: ValidationError | 真实 | 真实 | 真实 | 契约命令；SetVisualEffectsMode sets the visual effects preference and tells every window. |
+| `set_visual_effects_mode` | `SetVisualEffectsMode` | `mode EffectsMode` | `EffectsSnapshot` | command: ValidationError | 真实 | 真实 | 真实 | 契约命令；SetVisualEffectsMode applies immediately, then saves without rolling back on disk errors. |
 | `set_window_decorations` | `SetWindowDecorations` | `decorations bool` | `-` | none | 有意空操作 | 真实 | 真实 | 适配器：`@/host/window`；SetWindowDecorations applies the page's frame preference (custom controls drawn by the page, or the system frame) to the main window. |
 | `show_content_unlock` | `ShowContentUnlock` | - | `-` | none | 真实 | 真实 | 真实 | 契约命令；ShowContentUnlock brings the main window forward so the user can unlock content. |
 | `skip_version` | `SkipVersion` | `version string` | `-` | text | 真实 | 真实 | 真实 | 契约命令；SkipVersion remembers that the user does not want the given version on the current channel. |

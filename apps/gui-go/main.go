@@ -143,7 +143,7 @@ func main() {
 	// second-instance observer when the loop starts, so the seconds a cold daemon start takes must not precede it:
 	// a launch arriving meanwhile would be lost. Activations that arrive before bootstrap finishes are held
 	// (see onSecondInstance) and carried out afterwards.
-	app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) { go host.bootstrap() })
+	app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) { host.startVisualEffects(); go host.bootstrap() })
 	host.stopWake = app.Event.OnApplicationEvent(events.Common.SystemDidWake, func(*application.ApplicationEvent) { host.signalWake(wakeSystemResume) })
 	if err := app.Run(); err != nil {
 		log.Fatal(err)

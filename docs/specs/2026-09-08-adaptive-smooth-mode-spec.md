@@ -1,5 +1,7 @@
 # 桌面流畅模式实施规格
 
+> Go/Wails 宿主的当前实现与验证入口见 [Go GUI 流畅模式](2026-10-21-gui-smooth-mode.md)。本文件中的 Tauri 路径是历史记录；独立原生快捷面板已由用户明确排除在本设置范围之外。
+
 - 日期：2026-09-08。
 - 状态：已实现三档选择、统一效果控制、原生能力初判和运行评估规则；完整跨平台实测仍需补齐。能力规则及当前证据见[校准记录](2026-09-08-adaptive-smooth-mode-calibration.md)，界面验证见[验收记录](2026-09-08-adaptive-smooth-mode-verification.md)。
 - 需求：[GitHub issue #1622](https://github.com/UniClipboard/UniClipboard/issues/1622)。

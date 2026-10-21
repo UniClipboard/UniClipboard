@@ -49,6 +49,7 @@
         "@base-ui/utils": "^0.3.1",
         "@fluentui/react-components": "^9.74.9",
         "@fluentui/react-icons": "^2.0.343",
+        "@fluentui/react-motion": "9.16.4",
         "@fontsource-variable/inter": "^5.2.8",
         "@fontsource-variable/noto-sans-sc": "^5.2.10",
         "@fontsource/jetbrains-mono": "^5.2.8",

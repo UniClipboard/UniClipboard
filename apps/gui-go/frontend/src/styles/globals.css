@@ -558,6 +558,29 @@ html[data-uc-low-effects='true'] .glass-strong {
   background-color: var(--background);
 }
 
+/* Skin elevation tokens exclude focus rings and selection outlines. */
+html[data-uc-low-effects='true'] .mac-theme {
+  --glass: var(--window);
+  --glass-clear: var(--window);
+  --glass-tinted: var(--popup-opaque);
+  --glass-shadow: none;
+  --menu-shadow: none;
+  --win-shadow: none;
+}
+
+html[data-uc-low-effects='true'] .adw-theme {
+  --pop-shadow: none;
+  --dialog-shadow: none;
+  --toast-shadow: none;
+  --card-shadow: none;
+}
+
+/* Cover the native macOS backdrop as well as the CSS fallback. */
+html[data-uc-low-effects='true'] .mac-root,
+html[data-uc-low-effects='true'] .mac-surface:not([data-window-material='solid']) {
+  background: var(--window);
+}
+
 html[data-uc-reduce-motion='true']::view-transition-old(root),
 html[data-uc-reduce-motion='true']::view-transition-new(root) {
   animation: none !important;

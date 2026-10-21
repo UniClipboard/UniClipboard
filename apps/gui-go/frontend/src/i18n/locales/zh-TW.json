@@ -64,6 +64,7 @@
     "smooth": "流暢優先",
     "currentSmooth": "目前採用流暢模式",
     "currentEffects": "目前採用效果優先",
+    "currentEffectsReduced": "目前採用效果優先，已減少動態效果",
     "notSaved": "本次已生效，但無法儲存，重新啟動後可能恢復原設定。",
     "unavailable": "暫時無法讀取或儲存外觀偏好，請稍後再試。",
     "reason": {

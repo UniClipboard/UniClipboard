@@ -14,8 +14,7 @@ import * as json$0 from "../../../../../encoding/json/models.js";
 import * as $models from "./models.js";
 
 /**
- * BeginVisualEffectsSample asks for permission to measure one sample. This host does not sample frames, so no
- * permit is ever granted (always nil).
+ * BeginVisualEffectsSample grants one bounded, process-wide foreground measurement.
  */
 export function BeginVisualEffectsSample(sessionID: string): $CancellablePromise<$models.SamplePermit | null> {
     return $Call.ByID(4266959612, sessionID);
@@ -180,7 +179,7 @@ export function GetQuickPanelDoubleTapAvailability(): $CancellablePromise<$model
 }
 
 /**
- * GetVisualEffects returns the visual effects state of this session.
+ * GetVisualEffects returns this GUI session's authoritative state.
  */
 export function GetVisualEffects(): $CancellablePromise<$models.EffectsSnapshot> {
     return $Call.ByID(1553539489);
@@ -320,14 +319,14 @@ export function QuickPanelUsesCompositorShortcuts(): $CancellablePromise<boolean
 }
 
 /**
- * ReportVisualEffectsEnvironment records the system reduce-motion preference the page observed.
+ * ReportVisualEffectsEnvironment merges live GUI windows' system preferences.
  */
 export function ReportVisualEffectsEnvironment(sessionID: string, systemMotion: $models.SystemMotion): $CancellablePromise<$models.EffectsSnapshot> {
     return $Call.ByID(2881188950, sessionID, systemMotion);
 }
 
 /**
- * ReportVisualEffectsSample accepts a frame-timing sample. It is read and dropped: this host does not sample.
+ * ReportVisualEffectsSample validates the permit and saves only a next-launch downgrade.
  */
 export function ReportVisualEffectsSample(sample: $models.EffectsSample): $CancellablePromise<$models.EffectsSnapshot> {
     return $Call.ByID(1922281659, sample);
@@ -429,7 +428,7 @@ export function SetTrayLanguage(language: string): $CancellablePromise<void> {
 }
 
 /**
- * SetVisualEffectsMode sets the visual effects preference and tells every window.
+ * SetVisualEffectsMode applies immediately, then saves without rolling back on disk errors.
  */
 export function SetVisualEffectsMode(mode: $models.EffectsMode): $CancellablePromise<$models.EffectsSnapshot> {
     return $Call.ByID(1102935882, mode);

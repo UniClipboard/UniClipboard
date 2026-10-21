@@ -853,3 +853,7 @@ apps/gui-go/e2e/linux/run_17c8.sh wayland <标签> <新目录>   # 既有 sway �
 ### 更新归档签名与渠道发布
 
 签名工具、CI 隔离验收、六平台发布前检查及 Pages fallback 所有权见 [更新签名与渠道发布](../../docs/architecture/gui-go-updater-signatures.md)。生产信任锚保持 `app.json` 的现有公钥；合成 E2E、真实归档签名、本地 feed、真实服务和各 OS 安装证明分别记录。`release.yml` 的全平台阻断仍保留。
+
+## GUI 流畅模式
+
+自动／效果优先／流畅优先由 Go GUI 统一决策并按 profile 保存，覆盖主窗口、更新窗口和 WebView 快捷面板；不控制独立原生快捷面板。行为、配置迁移、采样规则与验证边界见 [实施说明](../../docs/specs/2026-10-21-gui-smooth-mode.md)。

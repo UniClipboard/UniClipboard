@@ -68,6 +68,8 @@ const primaryButton = () => [...document.querySelectorAll('button')].at(-1) as H
 /** Updater window entry for E2E: dev preview check, or the real signed-update flow. */
 export async function driveUpdater() {
   const phase = (await Call.ByName('main.EvidenceService.Phase')) as string
+  if (phase.startsWith('effects:'))
+    return (await import('@/e2e/visual-effects')).reportSecondaryEffects()
   if (!phase.startsWith('update')) {
     await reportMounted('updater', 'updater-mounted', '0.99.0')
     return

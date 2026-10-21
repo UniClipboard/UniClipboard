@@ -87,7 +87,7 @@ cargo run -p quick-panel
 
 开发时可直接用 `bun quickpanel:dev`（换配置用 `bun quickpanel:dev:profile <名称>`，等价于 `--profile <名称>`，默认 `dev`；可再加 `--no-daemon`）：它构建并启动该配置的 `uniclipd`，再运行面板，停止命令时两者一起退出；配置首次使用仍需在 GUI（`bun wails:dev`）里完成设置；之后锁定时可直接在面板里输入口令解锁。若该配置的 daemon 已在运行（例如 `bun wails:dev` 正在跑），加 `--no-daemon`，否则两个 daemon 会争夺同一配置。
 
-开发配置需两端使用相同的 `UC_PROFILE`。默认快捷键为 macOS 的 Command + Control + V，连接后读取已保存的快捷键配置。原型与正式应用同时运行时，可显式指定测试快捷键：
+开发配置需两端使用相同的 `UC_PROFILE`。单独运行（没有 GUI 监管）时，默认快捷键为 macOS 的 Command + Control + V，连接后读取已保存的快捷键配置；由 GUI 监管运行时，快捷键只由 GUI 通过标准输入的 `set_shortcuts` 指定（ADR-013 第 10 节）。原型与正式应用同时运行时，可显式指定测试快捷键：
 
 ```bash
 UC_PROFILE=dev UC_GPUI_SHORTCUT=ctrl+alt+space cargo run -p quick-panel
@@ -113,7 +113,7 @@ macOS 构建需要包含 Metal 编译工具的 Xcode。如默认版本缺少组�
 - **原生调用必须延后**：`ShowWindow`、`SetWindowPos`、`SetForegroundWindow` 会同步投递窗口消息，GPUI 在处理它们时再借用正在更新的窗口状态，表现为 `RefCell already borrowed`、丢失激活通知、搜索框拿不到键盘。`platform/win32` 一律在当前更新结束后经前台执行器执行。
 - **定位与 DPI**：锚点用光标所在显示器的工作区（`rcWork`）和该显示器的缩放（`GetDpiForMonitor`），逻辑像素 = 物理像素 / 缩放，历史窗与预览窗共用这一个缩放。
 - **粘贴**：用 `SendInput` 发 Ctrl+V，纯文本模式逐字符发 Unicode 事件。粘贴前先让目标窗口回到前台并等待；仍按住的 Alt、Shift、Win 会先抬起、粘贴后再按下（默认快捷键里的 Alt 就是这种情况）。目标进程以管理员身份运行而本进程不是时，系统（UIPI）会丢弃注入的输入，面板直接报“没有权限”而不是盲发。
-- **快捷键**：默认 Ctrl+Alt+V，用 `RegisterHotKey`（`global-hotkey`）。被别的程序占用时助手不退出，而是记录警告并继续运行；GUI 在保存新快捷键前先用宿主的同一个注册器试注册，被占用时返回 `Conflict` 且不保存。
+- **快捷键**：用 `RegisterHotKey`（`global-hotkey`）注册。由 GUI 监管时，助手在收到 GUI 的 `set_shortcuts` 之前不注册任何快捷键；替换时先注册新键、再释放旧键，失败时保留原有快捷键，并把实际持有的快捷键回复给 GUI。被别的程序占用时助手不退出。GUI 保存新快捷键前先让助手注册，失败时返回 `Conflict` 且不保存；其他客户端写入的快捷键注册失败时，设置保持已保存，设置页显示“已保存，未生效”（ADR-013 第 10 节）。
 - **修饰键双击**：沿用 macOS 的契约与产品设置（`quick_panel.double_tap_modifier`），读取方式与主窗口的监视器相同：`GetAsyncKeyState` 轮询 `0x07..0xFE`，只有选中修饰键按下、且没有其他键按下才算一次点按。
 - **助手进程**：由 Go 宿主以 `CREATE_NO_WINDOW` 启动并监督（意外退出 1 秒后重启，宿主退出时助手随之退出，不遗留进程）。`show_main_window` 与 `open_settings` 请求经标准输出 JSON 行回到宿主，与 macOS 相同。
 - **输入法**：字符经 GPUI 的 `WM_CHAR`/输入法路径进入搜索框，中文输入法的组合状态按 GPUI 的规则处理。

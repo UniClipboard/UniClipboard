@@ -2,7 +2,9 @@
 
 - **Status**: Accepted. Implemented: the store, its daemon wiring and `general.trayIcon` (task 1),
   the `settings` WS topic and the Go host subscription (task 2), the tray executor and settings UI
-  (task 3), field set 1 with the legacy import and owner-split writes (task 4, section 8).
+  (task 3), field set 1 with the legacy import and owner-split writes (task 4, section 8),
+  frontend diff patches and daemon-followed settings (task 5, section 9), and the global shortcut
+  apply status (task 6, section 10; native OS registration checks pending).
   Acceptance B3 is blocked until the Engine drops the product fields (tasks 7 and 10; section
   8.4).
 - **Date**: 2026-10-20
@@ -605,11 +607,22 @@ panel is disabled). The host emits `quick-panel://shortcut-status` with the
 same payload on every change. The shortcut row shows "saved, not active" with the active binding
 and the error.
 
-**Verification.** `packages/desktop-host-go/globalshortcut` E2E runs the reconcile step against an
-isolated real daemon with a counting executor, and the helper protocol against a stand-in helper
-process. Both are test doubles: they prove the sequence of requests, events and executor calls,
-not an OS registration. OS registration on macOS, Windows (helper and WebView) and Linux X11 is a
-native user check.
+**Verification.**
+- `packages/desktop-host-go/globalshortcut/applier_e2e_test.go`: the applier and the settings
+  watcher against an isolated real daemon, with a counting executor.
+- `packages/desktop-host-go/quickpanelhelper/protocol_e2e_test.go`: the real supervisor and
+  process launcher against a stand-in helper process (`testdata/standin`).
+- `apps/gui-go/frontend/e2e/shortcut-recorder-api.mjs`: the production key mapping
+  (`src/shortcuts/record.ts`) against the daemon's token set.
+
+The executors in these checks are test doubles: they prove the sequence of requests, events and
+executor calls, not an OS registration. The real helper binary was not run. OS registration on
+macOS, Windows (helper and WebView) and Linux X11 is a native user check.
+
+**Open question (not changed).** The section 8.1.1 grammar accepts a stroke made only of
+modifiers (`ctrl+alt`, which the v1.2 recorder produced for Ctrl+Alt+Space). Both executors refuse
+it, so it shows as a refused GUI save or "saved, not active". Rejecting it in the grammar would
+narrow the approved set and needs a decision.
 
 ## Failure modes (listed before implementation)
 

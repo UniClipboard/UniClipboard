@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/daemonclient"
+	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/settings"
 )
 
 // Startup modes, as stored in `general.startupMode`.
@@ -19,11 +20,7 @@ const (
 )
 
 // startupSettings are the preferences that shape the launch sequence.
-type startupSettings struct {
-	StartupMode               string `json:"startupMode"`
-	RestoreLastEntryOnStartup bool   `json:"restoreLastEntryOnStartup"`
-	DeviceName                string `json:"deviceName"`
-}
+type startupSettings settings.General
 
 // Silent and Lightweight launches keep the window hidden at boot; Lightweight then decides once it knows
 // whether this launch started the daemon.
@@ -38,14 +35,12 @@ func (s startupSettings) lightweight() bool { return s.StartupMode == startupLig
 func (h *HostService) loadStartupSettings() (startupSettings, bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	var settings struct {
-		General startupSettings `json:"general"`
-	}
-	if err := h.daemon().Get(ctx, "/settings", &settings); err != nil {
+	view, err := settings.Read(ctx, h.daemon())
+	if err != nil {
 		log.Printf("failed to load settings for startup: %v; using defaults", err)
 		return startupSettings{StartupMode: startupNormal}, false
 	}
-	return settings.General, true
+	return startupSettings(view.General), true
 }
 
 // startupWindowAction is what a launch does with the window once the daemon origin is known.

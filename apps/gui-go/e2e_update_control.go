@@ -259,11 +259,7 @@ func (s *EvidenceService) runControlCommand(line string) {
 		h.shortcutsMu.Lock()
 		recorded := append([]string{}, h.osShortcuts...)
 		h.shortcutsMu.Unlock()
-		var stored struct {
-			KeyboardShortcuts map[string]json.RawMessage `json:"keyboardShortcuts"`
-			QuickPanel        quickPanelSettings         `json:"quickPanel"`
-		}
-		err := h.daemon().Get(ctx, "/settings", &stored)
+		stored, err := settings.Read(ctx, h.daemon())
 		visible := false
 		if w, ok := h.app.Window.GetByName(quickPanelWindowName); ok {
 			visible = w.IsVisible()

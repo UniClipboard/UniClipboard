@@ -32,7 +32,7 @@ type trayMenu struct {
 }
 
 func (h *HostService) initTray() {
-	t := &trayMenu{language: "en"}
+	t := &trayMenu{language: "en", syncEnabled: true} // matches the initial syncOn label until the first read
 	h.tray = t
 	menu := h.app.NewMenu()
 	labels := trayLabelTable[t.language]
@@ -74,10 +74,8 @@ func (h *HostService) initTray() {
 	t.devices.mu.Unlock()
 	t.tray.OnClick(h.showMainWindow)
 
-	// Keep the toggle label in step with settings changed from any window.
-	h.app.Event.On(settingsChangedEvent, func(e *application.CustomEvent) { h.refreshTraySync(e.Data) })
+	// The sync toggle label follows the daemon's settings through the settings watcher (applySettings).
 	h.app.Event.On(devicesChangedEvent, func(*application.CustomEvent) { t.devices.requestRefresh() })
-	go h.syncTrayFromDaemon()
 	trayCtx, stopTray := context.WithCancel(context.Background())
 	h.stopTray = stopTray
 	go t.devices.run(trayCtx)
@@ -159,9 +157,13 @@ func (t *trayMenu) setLanguage(tag string) {
 	t.devices.setLanguage(language)
 }
 
+// setSyncEnabled shows the sync state; an unchanged state does nothing, so applying the same settings twice is safe.
 func (t *trayMenu) setSyncEnabled(enabled bool) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	if t.syncEnabled == enabled {
+		return
+	}
 	t.syncEnabled = enabled
 	t.sync.SetLabel(t.syncLabel())
 }
@@ -176,28 +178,6 @@ func (t *trayMenu) reserveSync(busy bool) bool {
 	t.syncBusy = busy
 	t.sync.SetEnabled(!busy)
 	return true
-}
-
-func (h *HostService) refreshTraySync(data any) {
-	payload, ok := data.(map[string]any)
-	if !ok {
-		return
-	}
-	raw, ok := payload["settingJson"].(string)
-	if !ok {
-		return
-	}
-	if enabled, ok := parseSyncEnabled([]byte(raw)); ok {
-		h.tray.setSyncEnabled(enabled)
-	}
-}
-
-func (h *HostService) syncTrayFromDaemon() {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	if enabled, err := h.readSyncEnabled(ctx); err == nil {
-		h.tray.setSyncEnabled(enabled)
-	}
 }
 
 func (h *HostService) toggleSyncFromTray() {

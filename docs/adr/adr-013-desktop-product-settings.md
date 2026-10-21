@@ -168,11 +168,19 @@ events carry no setting values: clients read `GET /settings` again.
   and does nothing when they are equal. The host's own writes therefore are not applied twice;
   the event is not suppressed by revision, because `PUT /settings` returns no revision and a
   mixed write produces two events.
-- **Go host.** The shared Go settings view and the watcher live in
-  `packages/desktop-host-go/settingswatch`, which does not import Wails. The GUI host starts the
-  watcher during bootstrap, also when no window exists (silent start). It closes the watcher
-  connection, and keeps it closed, before it stops the daemon: an open WebSocket holds a control
-  lease and makes the daemon wait for its HTTP server to finish.
+- **Go host.** The shared Go settings view (`settings.View`, `settings.Read`) and the watcher
+  (`settings.Watcher`) live in `packages/desktop-host-go/settings`, which does not import Wails.
+  The GUI host reads `GET /settings` only through this view and starts the watcher during
+  bootstrap, also when no window exists (silent start). An open WebSocket holds a control lease,
+  so the host pauses the watcher (normal close frame, no reconnect) before every daemon stop it
+  starts: quit, `RestartDaemon`, the full restart and the update install. It resumes the watcher
+  whenever the process keeps running afterwards: after `RestartDaemon` (also when the restart
+  failed), when the GUI relaunch of a full restart fails, and when the install or its relaunch
+  fails.
+- **Page-originated `settings://changed`.** Until the frontend follows `settings.changed`, the
+  page still emits it after its own saves. The host does not use the page's settings copy: it
+  reads `GET /settings` and runs the same idempotent apply. The listener and the page's emit are
+  removed together when the frontend moves to `settings.changed`.
 
 ## Failure modes (listed before implementation)
 
@@ -210,11 +218,11 @@ Settings change events (task 2):
 | F25 | A failed product file write emits a success event | error response and no `desktop` event; after the directory is writable again a write emits one | daemon E2E |
 | F26 | A change between the client's read and its subscription is lost | the client reads only after `settings.snapshot`, which is sent after the subscription is active | daemon E2E (snapshot arrives; a write right after it is delivered), Go E2E |
 | F27 | The store-to-WS forwarder lags and a change is lost | it reads a new snapshot and sends one `desktop` event with every section | code review only (forcing 64 missed store notifications needs a stalled forwarder) |
-| F28 | A WS client lags, or the Engine consumer lags, and a change is lost | `system.refresh_required`; the client subscribes to `system` and reads again | existing per-connection rule; client handling in Go E2E is code review only |
+| F28 | A WS client lags, or the Engine consumer lags, and a change is lost | `system.refresh_required`; the client subscribes to `system` and reads again | code review only (the existing per-connection rule and the watcher's handling were not forced) |
 | F29 | After a daemon restart the client compares the new revision 0 with the old revision and ignores changes, or keeps stale settings | the client reconnects, waits for the snapshot and reads again; baselines are per connection | daemon E2E (revision restarts at 0), Go E2E (value written while the daemon was down is seen after reconnect) |
 | F30 | The payload leaks setting values | the payload has only `owner`, `sections` and `revision` (or `revisions`) | daemon E2E (exact key set; written value absent from every frame) |
 | F31 | The host applies its own write twice | executors compare with the state they hold (the tray sync label does nothing when unchanged) | code review |
-| F32 | The host watcher keeps the daemon waiting at stop | the watcher closes with a normal close frame and stays paused before every host-initiated daemon stop | Go E2E (graceful stop time with the watcher connected) |
+| F32 | The host watcher keeps the daemon waiting at stop, or stays paused for good | the watcher closes with a normal close frame and stays paused before every host-initiated daemon stop; it resumes whenever the process keeps running | Go E2E (the daemon logs the close right after `Pause`; reconnect after a failed restart and after `Resume`); the host call sites are code review only |
 | F33 | Settings reach the host only through a WebView | the watcher is in a package without Wails; an external write is seen with no frontend running | Go E2E (build without Wails; external `PUT`) |
 | F34 | After `RestartDaemon` the watcher keeps using the old client | the watcher asks for the current client on every connection attempt | Go E2E (provider re-reads `daemon.conn`) |
 | F35 | A future Engine section is silently dropped | exhaustive match without a wildcard | compiler |

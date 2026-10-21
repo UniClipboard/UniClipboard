@@ -23,7 +23,7 @@
   - macOS：模板图（只用 alpha，菜单栏深浅色自动着色），44 px 图像，网格按 44 px（22 pt）绘制，字形可见部分约 16.5 × 18.3 pt。设计写的是 18 pt 画稿，那样只有约 13.5 × 15 pt，在 Mac 上会比旁边的状态栏图标小（此前的猫方案在真机上就是这个反馈），所以放大了网格；这是对设计尺寸的有意偏离。
   - Windows：按当前任务栏主题画一份（浅色 `#1B1B1B`，深色 `#FFFFFF`），尺寸取系统小图标尺寸（`SM_CXSMICON`，系统 DPI）；任务栏主题变化时（`SystemThemeChanged`）在独立 goroutine 里重画。不用 Wails 的亮/暗两份图标：读源码可知，运行期调用 `SetIcon` 或 `SetDarkModeIcon` 时，只要两个模式共用一个句柄，后设置的就会同时替换两个模式，两份图标无法保持分开。
   - Linux：22 px，StatusNotifierItem 忽略模板标志，必须给出显式颜色：默认浅色图标 `#CDD6F4`（设计的深色栏环境），桌面配色方案为 `prefer-light`（`gsettings` 读取）时用深色 `#1B1B1B`；配色在显示图标时读一次。
-- 接入点：`tray.go` 的 `initTray` 用 `newTrayIcon(...).show()` 代替原来内嵌的 PNG；`tray_icon.go` 的 `show` 持锁渲染并应用，保证两次主题变化不会让较旧的图像留在托盘上。
+- 接入点：`tray.go` 的 `initTray` 调用 `newTrayIcon(...).show()` 显示默认字形；`settings_watch.go` 的 `applySettings` 调用 `setStyle` 应用 `general.trayIcon`。`tray_icon.go` 的 `show` 与 `setStyle` 持同一把锁渲染并应用，主题变化重画的是当前已生效的样式。猫头见 `tray_icon_cat.go` 与各平台文件的 `catTrayImage`。
 
 ## 图标样式偏好（`general.trayIcon`）
 

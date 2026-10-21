@@ -242,7 +242,7 @@ func TestWatcherAgainstDaemon(t *testing.T) {
 	channel := "beta"
 	h.put(map[string]any{
 		"general": map[string]any{"autoStart": true, "startupMode": "silent", "restoreLastEntryOnStartup": true,
-			"deviceName": "e2e-watch-device", "autoCheckUpdate": false, "autoDownloadUpdate": true, "updateChannel": channel},
+			"deviceName": "e2e-watch-device", "autoCheckUpdate": false, "autoDownloadUpdate": true, "updateChannel": channel, "trayIcon": "cat"},
 		"sync":       map[string]any{"syncEnabled": false},
 		"quickPanel": map[string]any{"enabled": false, "position": "follow_cursor", "doubleTapModifier": "alt"},
 	})
@@ -253,7 +253,7 @@ func TestWatcherAgainstDaemon(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := General{AutoStart: true, StartupMode: "silent", RestoreLastEntryOnStartup: true, DeviceName: "e2e-watch-device",
-		AutoCheckUpdate: false, AutoDownloadUpdate: true}
+		AutoCheckUpdate: false, AutoDownloadUpdate: true, TrayIcon: "cat"}
 	got := view.General
 	got.UpdateChannel = nil
 	if got != want || view.General.UpdateChannel == nil || *view.General.UpdateChannel != channel ||
@@ -275,8 +275,8 @@ func TestWatcherAgainstDaemon(t *testing.T) {
 	h.waitApplied("initial read after snapshot", 10*time.Second, func(v View) bool { return !v.Sync.SyncEnabled })
 	h.put(map[string]any{"sync": map[string]any{"syncEnabled": true}})
 	h.waitApplied("engine-owned external write applied", 5*time.Second, func(v View) bool { return v.Sync.SyncEnabled })
-	h.put(map[string]any{"general": map[string]any{"trayIcon": "cat"}})
-	h.waitApplied("product-owned external write applied", 5*time.Second, func(View) bool { return true })
+	h.put(map[string]any{"general": map[string]any{"trayIcon": "glyph"}}) // F36 left "cat", so this is a change
+	h.waitApplied("product-owned external write applied", 5*time.Second, func(v View) bool { return v.General.TrayIcon == "glyph" })
 
 	// F32, measured: an open watcher connection at a daemon stop, which the host avoids with Pause.
 	held := h.gracefulStop()

@@ -37,4 +37,5 @@ func (h *HostService) readAndApplySettings() {
 // is unchanged.
 func (h *HostService) applySettings(view settings.View) {
 	h.tray.setSyncEnabled(view.Sync.SyncEnabled)
+	h.tray.icon.setStyle(view.General.TrayIcon)
 }

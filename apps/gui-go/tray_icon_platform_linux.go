@@ -30,6 +30,9 @@ func trayIconSpec() iconSpec {
 
 func applyTrayIcon(tray *application.SystemTray, data []byte) { tray.SetIcon(data) }
 
+// catTrayImage tints the cat's alpha with the same size and colour the glyph gets.
+func catTrayImage() ([]byte, error) { return tintedCat(trayIconSpec()) }
+
 // watchSystemTheme: the colour scheme is read when the icon is shown; a later change needs a restart (a boundary, see the document).
 func watchSystemTheme(*application.App, func()) {}
 

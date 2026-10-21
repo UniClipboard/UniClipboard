@@ -9,7 +9,9 @@ import type {
   SplitViewProps,
   TextProps,
 } from '@/ui-kit/contract'
-import { WithHelpTag } from './controls'
+import { PaneNavigation, usePaneNavigation } from '@/ui-kit/skins/linux/pane-navigation'
+import { SplitSidebarToggle } from '@/ui-kit/skins/linux/split-sidebar-toggle'
+import { useSplitNavigation } from '@/ui-kit/skins/linux/use-split-navigation'
 import { glyph } from './glyph'
 import { Icon as Glyph } from './icons'
 import { Surface } from './root'
@@ -18,52 +20,59 @@ import { swatchColor } from './swatch'
 /**
  * Adaptive window layout: a full-height sidebar (`--sidebar`) beside the content, whose header bar
  * runs across the list and detail panes. The sidebar toggle leads the header bar, so it stays in
- * place while the sidebar slides away. Below the narrow breakpoint (see adwaita.css) the sidebar
- * overlays the content on a scrim instead of squeezing it; the caller's `sidebarHidden` still
- * decides whether it is open.
+ * place while the sidebar slides away. The layout owner chooses an inline or
+ * overlay sidebar. In a narrow history window, the list and detail share one content region.
  */
 export function SplitView({
   sidebar,
   sidebarHidden,
+  sidebarOverlay,
   sidebarToggle,
   title,
   subtitle,
   search,
   toolbarLeading,
   toolbar,
+  detailNavigation,
   children,
 }: SplitViewProps) {
-  const toggle = sidebarToggle && (
-    <WithHelpTag
-      text={
-        sidebarToggle.shortcutHint
-          ? `${sidebarToggle.label}  ${sidebarToggle.shortcutHint}`
-          : sidebarToggle.label
-      }
-    >
-      <button
-        type="button"
-        className="adw-btn adw-split-toggle"
-        data-size="medium"
-        data-tint="borderless"
-        data-icon-only=""
-        aria-label={sidebarToggle.label}
-        aria-expanded={!sidebarHidden}
-        onClick={sidebarToggle.onClick}
-      >
-        <Glyph name={glyph('sidebar')} size={16} />
-      </button>
-    </WithHelpTag>
-  )
+  const {
+    root,
+    sidebarRef,
+    toggleRef,
+    backRef,
+    single,
+    detail,
+    overlay,
+    drawerOpen,
+    onSidebarKeyDown,
+    onSearchFocus,
+  } = useSplitNavigation({ sidebarHidden, sidebarOverlay, sidebarToggle, detailNavigation })
   return (
-    <div className="adw-split" data-sidebar-hidden={sidebarHidden ? '' : undefined}>
-      <div className="adw-split-sidebar" inert={sidebarHidden} aria-hidden={sidebarHidden}>
+    <div
+      ref={root}
+      className="adw-split"
+      data-sidebar-hidden={sidebarHidden ? '' : undefined}
+      data-sidebar-overlay={overlay ? '' : undefined}
+      data-single-pane={single ? '' : undefined}
+      data-detail-open={detail ? '' : undefined}
+    >
+      <div
+        ref={sidebarRef}
+        className="adw-split-sidebar"
+        inert={sidebarHidden}
+        aria-hidden={sidebarHidden}
+        role={drawerOpen ? 'dialog' : undefined}
+        aria-modal={drawerOpen || undefined}
+        aria-label={drawerOpen ? sidebarToggle?.label : undefined}
+        onKeyDown={onSidebarKeyDown}
+      >
         <Surface region="sidebar">
           <div className="adw-split-sidebar-inner">{sidebar}</div>
         </Surface>
       </div>
       {/* Only shown below the narrow breakpoint, where the open sidebar overlays the content. */}
-      {!sidebarHidden && sidebarToggle && (
+      {drawerOpen && sidebarToggle && (
         <button
           type="button"
           className="adw-split-scrim"
@@ -72,19 +81,39 @@ export function SplitView({
           onClick={sidebarToggle.onClick}
         />
       )}
-      <div className="adw-split-content">
+      <div className="adw-split-content" inert={drawerOpen} aria-hidden={drawerOpen || undefined}>
         <Surface region="content">
           <header className="adw-split-toolbar">
-            {toggle}
+            {detail && detailNavigation && (
+              <button
+                ref={backRef}
+                type="button"
+                className="adw-btn adw-split-back"
+                data-tint="borderless"
+                onClick={() => detailNavigation.onOpenChange(false)}
+              >
+                <Glyph name={glyph('back')} size={16} />
+                {detailNavigation.backLabel}
+              </button>
+            )}
+            <SplitSidebarToggle
+              action={sidebarToggle}
+              hidden={sidebarHidden}
+              buttonRef={toggleRef}
+            />
             {toolbarLeading}
             <span className="adw-split-heading">
               <span className="adw-split-title">{title}</span>
               {subtitle && <span className="adw-split-subtitle">{subtitle}</span>}
             </span>
-            {search}
+            <div className="adw-split-search" onFocusCapture={onSearchFocus}>
+              {search}
+            </div>
             {toolbar}
           </header>
-          <div className="adw-split-panes">{children}</div>
+          <PaneNavigation value={detailNavigation ? { single, detail } : null}>
+            <div className="adw-split-panes">{children}</div>
+          </PaneNavigation>
         </Surface>
       </div>
     </div>
@@ -92,8 +121,17 @@ export function SplitView({
 }
 
 export function Pane({ kind, label, children }: PaneProps) {
+  const navigation = usePaneNavigation()
+  const hidden = navigation?.single && (kind === 'detail' ? !navigation.detail : navigation.detail)
   return (
-    <section className="adw-pane" data-pane={kind} aria-label={label}>
+    <section
+      className="adw-pane"
+      data-pane={kind}
+      data-pane-hidden={hidden ? '' : undefined}
+      inert={hidden}
+      aria-hidden={hidden || undefined}
+      aria-label={label}
+    >
       {children}
     </section>
   )

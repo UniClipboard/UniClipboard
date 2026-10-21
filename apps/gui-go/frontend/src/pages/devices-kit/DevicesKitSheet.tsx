@@ -18,8 +18,8 @@ const PHONE = 'phone'
 const JOIN = 'join'
 
 /**
- * Manage Devices (design DV1–DV7): a sheet over the History window, opened from the gear on
- * the sidebar's Devices heading, the same pattern as Manage Tags. The device list and the detail
+ * Manage Devices (design DV1–DV7): a sheet over the History window, opened from the labelled
+ * Manage Devices entry in the sidebar footer. The device list and the detail
  * of the selected row inside; + (Invite Device, Connect Phone, Join Another Space), − (unpair or
  * revoke the selected device) and Done in the footer. Mounted from opening until it has animated
  * out, so the device page's polling and subscriptions run only then.

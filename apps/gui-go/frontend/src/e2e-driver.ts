@@ -158,6 +158,8 @@ async function navigate(
 async function run() {
   const phase = (await Call.ByName('main.EvidenceService.Phase')) as string
   if (phase === 'linux-package-update') return runLinuxPackageUpdateScenario()
+  if (phase.startsWith('effects:'))
+    return (await import('@/e2e/visual-effects')).runVisualEffects(phase)
   if (phase === 'host-contract') return runHostContractScenario()
   if (phase === 'download-cancel') return runDownloadCancelScenario()
   if (phase.startsWith('update')) return runUpdateScenario(phase)

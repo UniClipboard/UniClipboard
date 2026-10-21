@@ -2,10 +2,15 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 const mock = vi.hoisted(() => ({
   begin: vi.fn(),
   report: vi.fn(),
+  lifecycle: vi.fn(async (_listener: () => void) => () => {}),
   state: { sessionId: 'gui', revision: 1, mode: 'auto', reduceMotion: false },
 }))
 vi.mock('@/api/visual-effects', () => ({
-  visualEffectsApi: { beginSample: mock.begin, reportSample: mock.report },
+  visualEffectsApi: {
+    beginSample: mock.begin,
+    reportSample: mock.report,
+    subscribeLifecycle: mock.lifecycle,
+  },
 }))
 vi.mock('@/lib/visual-effects-store', () => ({
   visualEffectsStore: { getSnapshot: () => mock.state, subscribe: () => () => {}, accept: vi.fn() },
@@ -54,7 +59,13 @@ describe('visual effects samples', () => {
     expect(frame).not.toHaveBeenCalled()
     stop()
   })
-  it('cancels the pending frame on visibility changes and disposal', async () => {
+  it('cancels the pending frame on native hiding, DOM visibility changes and disposal', async () => {
+    let onNative = () => {}
+    const offNative = vi.fn()
+    mock.lifecycle.mockImplementation(async listener => {
+      onNative = listener
+      return offNative
+    })
     let now = 0
     vi.spyOn(performance, 'now').mockImplementation(() => now)
     const add = vi.spyOn(document, 'addEventListener')
@@ -72,9 +83,11 @@ describe('visual effects samples', () => {
     now = 11000
     interaction({ isTrusted: true } as Event)
     await Promise.resolve()
-    document.dispatchEvent(new Event('visibilitychange'))
+    onNative()
     expect(cancel).toHaveBeenCalledWith(9)
+    document.dispatchEvent(new Event('visibilitychange'))
     expect(mock.report).not.toHaveBeenCalled()
     stop()
+    expect(offNative).toHaveBeenCalledOnce()
   })
 })

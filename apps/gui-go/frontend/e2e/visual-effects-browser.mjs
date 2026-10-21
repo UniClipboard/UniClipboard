@@ -4,7 +4,11 @@ const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright')
 const base = process.env.SMOOTH_TEST_URL || 'http://127.0.0.1:1439'
 const output = process.env.SMOOTH_TEST_OUTPUT || '/tmp/smooth-mode-verification'
 await mkdir(output, { recursive: true })
-const browser = await chromium.launch({ headless: true, channel: process.env.PLAYWRIGHT_CHANNEL })
+const browser = await chromium.launch({
+  headless: true,
+  channel: process.env.PLAYWRIGHT_CHANNEL,
+  executablePath: process.env.PLAYWRIGHT_EXECUTABLE_PATH,
+})
 try {
   const context = await browser.newContext({
     viewport: { width: 1100, height: 800 },
@@ -54,6 +58,20 @@ try {
       .evaluate(node => node === document.activeElement),
     true
   )
+  const skin = await main.locator('[data-ui-skin]').first().getAttribute('data-ui-skin')
+  if (process.env.SMOOTH_TEST_PLATFORM) assert.equal(skin, process.env.SMOOTH_TEST_PLATFORM)
+  const shadowToken = { linux: '--pop-shadow', macos: '--menu-shadow', windows: '--shadow16' }[skin]
+  if (shadowToken)
+    assert.equal(
+      await main
+        .locator('[data-ui-skin]')
+        .first()
+        .evaluate(
+          (node, token) => getComputedStyle(node).getPropertyValue(token).trim(),
+          shadowToken
+        ),
+      'none'
+    )
   await main.screenshot({ path: `${output}/desktop-light.png` })
   await main.getByText('效果优先', { exact: true }).click()
   await main.emulateMedia({ reducedMotion: 'reduce' })
@@ -69,7 +87,7 @@ try {
   await main.waitForFunction(() => document.documentElement.dataset.ucLowEffects === 'true')
   assert.equal(await main.getByRole('radio', { name: '自动', exact: true }).isChecked(), true)
   await main.setViewportSize({ width: 360, height: 740 })
-  await main.evaluate(() => document.documentElement.classList.add('dark'))
+  await main.getByRole('button', { name: '切换主题' }).click()
   await main.screenshot({ path: `${output}/narrow-dark.png` })
   assert.equal(
     await main.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),

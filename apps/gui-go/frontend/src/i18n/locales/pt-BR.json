@@ -64,6 +64,7 @@
     "smooth": "Priorizar fluidez",
     "currentSmooth": "Atual: priorizando fluidez",
     "currentEffects": "Atual: priorizando efeitos",
+    "currentEffectsReduced": "Efeitos visuais com movimento reduzido",
     "notSaved": "Aplicado nesta sessão, mas não foi possível salvar. Reiniciar pode restaurar a seleção anterior.",
     "unavailable": "Não foi possível ler ou salvar as preferências de aparência. Tente novamente.",
     "reason": {
@@ -1329,6 +1330,7 @@
       "builtinHint": "Uma tag nativa vem do tipo de conteúdo, por isso não pode ser renomeada, mesclada nem excluída."
     },
     "kit": {
+      "backToList": "Voltar à lista",
       "queryInvalidTitle": "Verifique sua pesquisa",
       "queryInvalid": "Digite palavras para pesquisar e use apenas um operador: AND ou OR.",
       "actionHint": "{{copy}} copiar · T etiqueta · {{pin}} fixar",

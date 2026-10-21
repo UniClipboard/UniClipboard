@@ -18,6 +18,7 @@ interface HistoryKitListProps {
   selection: string[]
   onSelectionChange: (ids: string[]) => void
   onCopy: (id: string) => void
+  onInspect?: (id: string) => void
   onDelete: (ids: string[]) => void
   hasMore: boolean
   loading: boolean
@@ -43,6 +44,7 @@ export function HistoryKitList({
   selection,
   onSelectionChange,
   onCopy,
+  onInspect,
   onDelete,
   hasMore,
   loading,
@@ -84,6 +86,7 @@ export function HistoryKitList({
       selection={selection}
       onSelectionChange={onSelectionChange}
       onActivate={onCopy}
+      onInspect={onInspect}
       onDelete={onDelete}
       onEndReached={hasMore ? onLoadMore : undefined}
       contextMenu={contextMenu}

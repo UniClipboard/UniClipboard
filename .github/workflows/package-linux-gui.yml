@@ -113,6 +113,8 @@ jobs:
         with:
           ref: ${{ env.UC_EXPECT_HEAD }}
           persist-credentials: false
+          # MBX inherits predictions from earlier Cargo.lock revisions through Git history.
+          fetch-depth: 0
 
       - name: Assert a native runner
         # Emulation or cross-building must never be recorded as native evidence (C7). Everything this job writes for itself lives under

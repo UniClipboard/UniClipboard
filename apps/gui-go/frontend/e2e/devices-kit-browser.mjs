@@ -6,7 +6,7 @@ import { credentialReopen } from './devices-kit-lifecycle.mjs'
 import { passphraseLifecycle } from './devices-kit-passphrase-lifecycle.mjs'
 
 // Browser run of Manage Devices on the kit History window (design DV0–DV7) against a REAL isolated daemon: the
-// sidebar's device rows filter the history, the gear opens the sheet, the invitation is a row that outlives the
+// sidebar's device rows filter the history, the labelled footer entry opens the sheet, the invitation is a row that outlives the
 // sheet, and `/devices` opens the sheet. The complete frontend is served by e2e/fixtures/history-full-app.tsx,
 // built for the target skin; only the native host is stubbed. The daemon is the History run's one (it seeds a
 // LAN phone, `kit-image`, whose image entry is the phone's only history):
@@ -185,12 +185,16 @@ try {
     const stored = await page.evaluate(() =>
       localStorage.getItem('uc.history.kit.devicesCollapsed')
     )
+    const manage = sidebar().getByRole('button', { name: 'Manage Devices…' })
+    assert.equal((await manage.innerText()).trim(), 'Manage Devices…', 'entry has a visible label')
+    await openSheet()
+    await closeSheet()
     await sidebar().getByRole('button', { name: 'Show Devices' }).click()
     await phone.waitFor()
     return { storedWhileCollapsed: stored }
   })
 
-  await step('sheet-opens-from-gear', async () => {
+  await step('sheet-opens-from-labelled-entry', async () => {
     await openSheet()
     const local = deviceList().getByRole('option', { selected: true })
     const localName = await local.getAttribute('aria-label')

@@ -1,3 +1,4 @@
+import { EffectsMode } from '@host/models'
 import { visualEffectsApi } from '@/api/visual-effects'
 import { visualEffectsStore } from '@/lib/visual-effects-store'
 
@@ -38,8 +39,9 @@ export function startVisualEffectsSampler(isReady: () => boolean): () => void {
       raf ||
       !active ||
       !isReady() ||
-      state.mode !== 'auto' ||
+      state.mode !== EffectsMode.EffectsModeAuto ||
       state.reduceMotion ||
+      state.lowEffects ||
       !state.sessionId ||
       document.visibilityState !== 'visible' ||
       performance.now() < nextEligible
@@ -49,9 +51,15 @@ export function startVisualEffectsSampler(isReady: () => boolean): () => void {
     waiting = true
     nextEligible = performance.now() + 30_000
     try {
+      const requestedAt = performance.now()
       const permit = await visualEffectsApi.beginSample(state.sessionId)
       if (!active || epoch !== generation || !permit) return
-      if (!isReady() || document.visibilityState !== 'visible') return
+      if (
+        performance.now() - requestedAt > 150 ||
+        !isReady() ||
+        document.visibilityState !== 'visible'
+      )
+        return
       const start = performance.now()
       let previous = start
       const intervals: number[] = []
@@ -68,7 +76,7 @@ export function startVisualEffectsSampler(isReady: () => boolean): () => void {
         )
           return
         if (now - previous > 500) return
-        if (now - start >= 1950) {
+        if (now - start >= 1800) {
           const summary = summarizeFrames(intervals)
           if (summary)
             void visualEffectsApi
@@ -97,6 +105,17 @@ export function startVisualEffectsSampler(isReady: () => boolean): () => void {
     cancel()
   }
   const unsubscribe = visualEffectsStore.subscribe(cancel)
+  let unlistenNative: (() => void) | undefined
+  void visualEffectsApi
+    .subscribeLifecycle(cancel)
+    .then(dispose => {
+      if (active) unlistenNative = dispose
+      else dispose()
+    })
+    .catch(() => {
+      // Without lifecycle signals, native visibility gates and permit expiry
+      // still reject hidden samples; DOM visibility remains the local fallback.
+    })
   for (const type of ['pointerdown', 'keydown', 'wheel'])
     document.addEventListener(type, onInteraction, { capture: true, passive: true })
   document.addEventListener('visibilitychange', onVisibility)
@@ -105,6 +124,7 @@ export function startVisualEffectsSampler(isReady: () => boolean): () => void {
     active = false
     cancel()
     unsubscribe()
+    unlistenNative?.()
     for (const type of ['pointerdown', 'keydown', 'wheel'])
       document.removeEventListener(type, onInteraction, true)
     document.removeEventListener('visibilitychange', onVisibility)

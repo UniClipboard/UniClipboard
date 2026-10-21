@@ -72,23 +72,17 @@ describe('ProfileRecoveryPage', () => {
     )
     expect(screen.getByRole('button')).toBeDisabled()
   })
-  it.each([
-    ['failed', 'failed'],
-    ['partially_recoverable', 'partial'],
-  ] as const)(
-    'explains an existing %s state without requiring another submission',
-    (state, key) => {
-      render(
-        <ProfileRecoveryPage
-          status={{ ...status, state, canSubmitPassphrase: false }}
-          onRecovered={vi.fn()}
-          onRestart={vi.fn()}
-        />
-      )
-      expect(screen.getByRole('alert')).toHaveTextContent(i18n.t(`profileRecovery.${key}`))
-      expect(screen.getByRole('button')).toBeDisabled()
-    }
-  )
+  it('explains an existing failed state without requiring another submission', () => {
+    render(
+      <ProfileRecoveryPage
+        status={{ ...status, state: 'failed', canSubmitPassphrase: false }}
+        onRecovered={vi.fn()}
+        onRestart={vi.fn()}
+      />
+    )
+    expect(screen.getByRole('alert')).toHaveTextContent(i18n.t('profileRecovery.failed'))
+    expect(screen.getByRole('button')).toBeDisabled()
+  })
   it('requires a background restart after startup failure, even before a local submission', () => {
     const restart = vi.fn()
     render(
@@ -107,37 +101,59 @@ describe('ProfileRecoveryPage', () => {
     expect(screen.queryByText(i18n.t('profileRecovery.recovering'))).toBeNull()
   })
 
-  it('shows stable admission recovery guidance and exports diagnostics', async () => {
-    vi.mocked(exportStartupLogs).mockResolvedValue({
-      path: '/downloads/uniclipboard-diagnostics.zip',
-      missingSources: [],
-      networkOutcome: 'unknown',
-      networkReasons: ['engineOffline'],
-    })
-    render(
-      <ProfileRecoveryPage
-        status={{
-          ...status,
-          state: 'admission_recovery_required',
-          canSubmitPassphrase: false,
-          admission: {
-            category: 'legacy_fallback_invalid',
-            stage: 'legacy_repository',
-            action: 'choose_backup',
-          },
-        }}
-        onRecovered={vi.fn()}
-        onRestart={vi.fn()}
-      />
-    )
+  it.each(['admission_recovery_required', 'partially_recoverable'] as const)(
+    'shows safe support guidance and exports diagnostics for %s',
+    async state => {
+      vi.mocked(exportStartupLogs).mockResolvedValue({
+        path: '/downloads/uniclipboard-diagnostics.zip',
+        missingSources: [],
+        networkOutcome: 'unknown',
+        networkReasons: ['engineOffline'],
+      })
+      render(
+        <ProfileRecoveryPage
+          status={{
+            ...status,
+            state,
+            canSubmitPassphrase: false,
+            admission:
+              state === 'admission_recovery_required'
+                ? {
+                    category: 'legacy_fallback_invalid',
+                    stage: 'legacy_repository',
+                    action: 'choose_backup',
+                  }
+                : null,
+          }}
+          onRecovered={vi.fn()}
+          onRestart={vi.fn()}
+        />
+      )
 
-    expect(screen.getByRole('heading')).toHaveTextContent(i18n.t('profileAdmissionRecovery.title'))
-    expect(screen.getByText(i18n.t('profileAdmissionRecovery.preserved'))).toBeVisible()
-    fireEvent.click(screen.getByRole('button', { name: i18n.t('profileAdmissionRecovery.export') }))
-    expect(await screen.findByRole('status')).toHaveTextContent(
-      i18n.t('profileAdmissionRecovery.exported')
-    )
-    expect(exportStartupLogs).toHaveBeenCalledOnce()
-    expect(commands.unlockContent).not.toHaveBeenCalled()
-  })
+      expect(screen.getByRole('heading')).toHaveTextContent(
+        i18n.t(
+          state === 'admission_recovery_required'
+            ? 'profileAdmissionRecovery.title'
+            : 'profileRecovery.title'
+        )
+      )
+      if (state === 'partially_recoverable') {
+        expect(screen.getByText(i18n.t('profileRecovery.partial'))).toBeVisible()
+      }
+      expect(screen.queryByLabelText(i18n.t('unlock.passphraseModal.passphraseLabel'))).toBeNull()
+      expect(screen.queryByRole('button', { name: i18n.t('profileRecovery.submit') })).toBeNull()
+      expect(
+        screen.getByRole('button', { name: i18n.t('profileAdmissionRecovery.export') })
+      ).toBeEnabled()
+      expect(screen.getByText(i18n.t('profileAdmissionRecovery.preserved'))).toBeVisible()
+      fireEvent.click(
+        screen.getByRole('button', { name: i18n.t('profileAdmissionRecovery.export') })
+      )
+      expect(await screen.findByRole('status')).toHaveTextContent(
+        i18n.t('profileAdmissionRecovery.exported')
+      )
+      expect(exportStartupLogs).toHaveBeenCalledOnce()
+      expect(commands.unlockContent).not.toHaveBeenCalled()
+    }
+  )
 })

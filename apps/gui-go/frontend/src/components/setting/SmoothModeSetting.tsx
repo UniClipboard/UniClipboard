@@ -60,7 +60,13 @@ export default function SmoothModeSetting() {
       </div>
       <div className="appearance-note flex items-center gap-1.5 text-ui-caption-relaxed text-muted-foreground">
         <p role="status">
-          {t(effects.lowEffects ? 'smoothMode.currentSmooth' : 'smoothMode.currentEffects')}
+          {t(
+            effects.lowEffects
+              ? 'smoothMode.currentSmooth'
+              : effects.reduceMotion
+                ? 'smoothMode.currentEffectsReduced'
+                : 'smoothMode.currentEffects'
+          )}
         </p>
         <TooltipProvider>
           <Tooltip>
@@ -81,7 +87,7 @@ export default function SmoothModeSetting() {
           </Tooltip>
         </TooltipProvider>
       </div>
-      {(unavailable || effects.persistence === 'session_only') && (
+      {(unavailable || (!!effects.sessionId && effects.persistence === 'session_only')) && (
         <p role="alert" className="appearance-note text-ui-body text-destructive">
           {t(unavailable ? 'smoothMode.unavailable' : 'smoothMode.notSaved')}
         </p>

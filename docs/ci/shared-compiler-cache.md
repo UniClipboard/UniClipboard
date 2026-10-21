@@ -28,6 +28,8 @@ macOS/Linux 不从 Actions 恢复 target。sidecar 无 R2 时按 ref 保存本�
 
 共享桶不保证任意构建互相命中。MBX 按编译器身份、完整编译参数、输入内容、发现的环境输入和受支持链接器/SDK 身份分键。不同 target、features、profile、RUSTFLAGS 或源码可以合法未命中。Engine 作为 workspace member 与 Desktop 的 git dependency 还可能有源路径、Cargo metadata、依赖图或 profile 差异；不启用 `share_workspace_root` 去改变调试路径、`file!()` 或 panic 语义。
 
+MBX 的 Cargo 预测清单按 `Cargo.lock` 内容区分；升版本即使只修改工作区包版本，也会产生新的清单标识。GUI sidecar、CLI sidecar 和 Linux 独立打包的编译 checkout 使用 `fetch-depth: 0`，让 MBX 能通过 Git 历史找到旧锁文件并继承预测记录；预热复用相同入口。浅克隆只有当前提交，会阻断该继承路径。继承的预测仍需按当前输入重新计算动作键，不会绕过缓存有效性校验，也不要求发布等待同一提交的预热完成。
+
 ## 验证
 
 每次 Cargo 会话 JSON 上传为 `mbx-sidecar-*` 或 `mbx-linux-package-*`。实际复用须使用两个空 target 并检查 `hits`、`restored_output_files`；R2 验证还必须使用两个独立 CAS，消费者 `downloaded_bytes > 0`、`uploaded_bytes == 0`，远端及后台错误为零，最后运行恢复出的产物。

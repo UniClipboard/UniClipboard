@@ -64,6 +64,7 @@
     "smooth": "動作優先",
     "currentSmooth": "現在：動作優先",
     "currentEffects": "現在：効果優先",
+    "currentEffectsReduced": "視覚効果を優先し、動きを軽減しています",
     "notSaved": "今回の変更は適用されましたが、保存できませんでした。再起動後に元の設定に戻る場合があります。",
     "unavailable": "外観設定を読み込むか保存できません。後でもう一度お試しください。",
     "reason": {
@@ -1322,6 +1323,7 @@
       "builtinHint": "組み込みタグはコンテンツの種類から自動で付くため、名前の変更・統合・削除はできません。"
     },
     "kit": {
+      "backToList": "一覧に戻る",
       "queryInvalidTitle": "検索内容を確認してください",
       "queryInvalid": "検索する語を入力し、演算子は AND または OR のどちらか一方だけを使用してください。",
       "actionHint": "{{copy}} コピー · T タグ · {{pin}} ピン留め",

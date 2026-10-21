@@ -48,6 +48,10 @@ data and doesn't sync to other devices.
 
 ### Window layout
 
+On Linux, the main window has a minimum width of 640 logical pixels. History uses a single pane when the content viewport is 760 pixels wide or narrower: click an entry to open its details, then click **Back to list** or press Escape to return without losing the selection or scroll position. Search occupies its own row; focusing search from the detail view returns to the results list.
+
+Below a content viewport width of 1100 pixels, the Linux History sidebar starts collapsed. Its button opens an overlay drawer without reducing the list or detail width. Choosing a category, tag, or device closes the drawer; clicking the backdrop or pressing Escape also closes it.
+
 The main window remembers its normal size, position and maximized state when you close it or restart the app. Minimized and fullscreen states are not restored. Layout stays local to the current profile and is stored separately from general settings; it is not synchronized between devices.
 
 If a display is disconnected or its scaling changes, the restored window is fitted to an available display. Temporary restoration adjustments keep the preferred layout; later stable adjustments are remembered on a best-effort basis. Wayland compositors control window placement, so absolute position restoration is unavailable there.
@@ -60,7 +64,7 @@ The preference is saved only in this device's current profile, survives restarts
 
 ### Smooth Mode
 
-Choose **Auto** (the default), **Effects first**, or **Smooth first**. Effects first keeps visual effects; Smooth first reduces nonessential animation and heavier effects. Manual changes apply immediately across the main window and Quick Panel. System reduced-motion preferences still limit animation in every mode.
+Choose **Auto** (the default), **Effects first**, or **Smooth first**. Effects first keeps visual effects; Smooth first reduces nonessential animation and heavier effects. Manual changes apply immediately across the GUI main window, updater window, and WebView Quick Panel. This setting does not apply to the standalone native Quick Panel on macOS or Windows. System reduced-motion preferences still limit animation in every mode.
 
 Auto uses device capabilities on macOS and Windows, conservatively reducing effects when information is unavailable. On Linux, Auto defaults to Smooth first; manual choices remain available. Repeated slow interactions can reduce Auto effects at the next launch, without changing effects mid-session. That result remains until the policy version or device capability classification changes; manual choices are not overridden.
 

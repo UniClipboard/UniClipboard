@@ -539,6 +539,8 @@ export interface SidebarNavProps {
 export interface SplitViewProps {
   sidebar: ReactNode
   sidebarHidden?: boolean
+  /** Show the expanded sidebar over the content, without taking column width. */
+  sidebarOverlay?: boolean
   /** The control that hides or shows the sidebar; `label` names the action it performs now. */
   sidebarToggle?: LabelledAction & { shortcutHint?: string }
   /** Title of the content at the leading end of the toolbar band. */
@@ -554,6 +556,12 @@ export interface SplitViewProps {
   toolbarLeading?: ReactNode
   /** Controls at the trailing end of the toolbar band, after the search field. */
   toolbar?: ReactNode
+  /** Explicit detail navigation. Adaptive skins use a single pane with a back button when narrow. */
+  detailNavigation?: {
+    open: boolean
+    onOpenChange: (open: boolean) => void
+    backLabel: string
+  }
   children: ReactNode
 }
 
@@ -628,6 +636,8 @@ export interface GroupedListProps {
   selection: string[]
   onSelectionChange: (ids: string[]) => void
   onActivate?: (id: string) => void
+  /** Open the selected entry for inspection in a narrow, single-pane skin. */
+  onInspect?: (id: string) => void
   onDelete?: (ids: string[]) => void
   /** Called near the end of the loaded rows, to load more. */
   onEndReached?: () => void

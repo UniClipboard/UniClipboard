@@ -1,5 +1,5 @@
 import type { EffectsMode, EffectsSnapshot, SystemMotion } from '@host/models'
-// Browser-only component fixture. The native policy is tested separately in Rust.
+// Browser-only component fixture. The native policy is exercised by the Go/Wails acceptance runner.
 import { LazyMotion, domMax, m } from 'framer-motion'
 import { useState } from 'react'
 import { createRoot } from 'react-dom/client'
@@ -9,6 +9,7 @@ import SmoothModeSetting from '@/components/setting/SmoothModeSetting'
 import { Dialog, DialogContent, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Switch } from '@/components/ui/switch'
 import { initializeVisualEffects, INITIAL_EFFECTS } from '@/lib/visual-effects-store'
+import { UiRoot } from '@/ui-kit'
 import '@/i18n'
 import '@/styles/globals.css'
 
@@ -58,30 +59,41 @@ initializeVisualEffects()
 
 export default function Fixture() {
   const [checked, setChecked] = useState(false)
+  const [dark, setDark] = useState(false)
   return (
     <LazyMotion features={domMax} strict>
       <VisualEffectsProvider>
-        <main className="mx-auto max-w-xl p-6 text-foreground">
-          <SmoothModeSetting />
-          <label className="my-4 block">
-            保留输入
-            <input aria-label="保留输入" className="ml-2 border p-2" />
-          </label>
-          <Switch checked={checked} onCheckedChange={setChecked} aria-label="测试开关" />
-          <m.div
-            data-testid="motion-target"
-            animate={{ opacity: checked ? 0.4 : 1, x: checked ? 80 : 0 }}
-            transition={{ duration: 2 }}
-            className="my-4 h-10 w-24 bg-primary"
-          />
-          <Dialog>
-            <DialogTrigger className="border p-2">打开弹窗</DialogTrigger>
-            <DialogContent>
-              <DialogTitle>测试弹窗</DialogTitle>
-              <input aria-label="弹窗输入" />
-            </DialogContent>
-          </Dialog>
-        </main>
+        <UiRoot colorScheme={dark ? 'dark' : 'light'}>
+          <main className="mx-auto max-w-xl p-6 text-foreground">
+            <SmoothModeSetting />
+            <button
+              onClick={() => {
+                setDark(value => !value)
+                document.documentElement.classList.toggle('dark')
+              }}
+            >
+              切换主题
+            </button>
+            <label className="my-4 block">
+              保留输入
+              <input aria-label="保留输入" className="ml-2 border p-2" />
+            </label>
+            <Switch checked={checked} onCheckedChange={setChecked} aria-label="测试开关" />
+            <m.div
+              data-testid="motion-target"
+              animate={{ opacity: checked ? 0.4 : 1, x: checked ? 80 : 0 }}
+              transition={{ duration: 2 }}
+              className="my-4 h-10 w-24 bg-primary"
+            />
+            <Dialog>
+              <DialogTrigger className="border p-2">打开弹窗</DialogTrigger>
+              <DialogContent>
+                <DialogTitle>测试弹窗</DialogTitle>
+                <input aria-label="弹窗输入" />
+              </DialogContent>
+            </Dialog>
+          </main>
+        </UiRoot>
       </VisualEffectsProvider>
     </LazyMotion>
   )

@@ -64,6 +64,7 @@
     "smooth": "流畅优先",
     "currentSmooth": "当前采用流畅模式",
     "currentEffects": "当前采用效果优先",
+    "currentEffectsReduced": "当前采用效果优先，已减少动效",
     "notSaved": "本次已生效，但未能保存，重启后可能恢复原设置。",
     "unavailable": "暂时无法读取或保存外观偏好，请稍后重试。",
     "reason": {
@@ -1319,6 +1320,7 @@
       "builtinHint": "内置标签由内容类型自动生成，不能改名、合并或删除。"
     },
     "kit": {
+      "backToList": "返回列表",
       "actionHint": "{{copy}} 复制 · T 标签 · {{pin}} 置顶",
       "allOfKind": "全部为{{kind}}",
       "anyTag": "任意标签",

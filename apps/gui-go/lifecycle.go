@@ -166,12 +166,46 @@ func restartDaemon() error {
 // fullRestart replaces the daemon first, then the GUI. A failed daemon restart
 // does not stop the GUI restart: the new GUI's bootstrap retries recovery.
 func (h *HostService) fullRestart() {
-	h.settingsWatch.Pause() // the GUI restarts too; it resumes only when that fails and this process stays
+	h.announceDaemonStop() // the windows close their sockets and the watcher pauses, so no connection holds the stop
 	if err := restartDaemon(); err != nil {
 		log.Printf("daemon restart failed, restarting the GUI anyway: %v", err)
 	}
 	if err := h.restartGUI(); err != nil {
-		h.settingsWatch.Resume()
+		h.resumeAfterStop(false)
 		h.app.Dialog.Error().SetTitle("UniClipboard").SetMessage(err.Error()).Show()
 	}
+}
+
+// resumeAfterStop ends a host-initiated daemon stop after which this process keeps running: a daemon restart, a
+// failed GUI relaunch, a failed update install. announceDaemonStop made the windows close their daemon sockets and
+// paused the watcher. Start a daemon when startAbsent is set and none runs; when a compatible daemon answers, store
+// its client and tell the windows to reconnect. The watcher resumes in every case and retries against whatever runs.
+func (h *HostService) resumeAfterStop(startAbsent bool) {
+	defer h.settingsWatch.Resume()
+	outcome, err := daemonlife.Probe()
+	if err != nil {
+		log.Printf("after the daemon stop the daemon state is unknown: %v", err)
+		return
+	}
+	if outcome.Kind == daemonlife.Absent && startAbsent {
+		if err := daemonproc.SpawnDetachedDaemon("gui"); err != nil {
+			log.Printf("failed to start the daemon after the stop: %v", err)
+			return
+		}
+		if err := daemonlife.WaitHealthy(daemonlife.StartupTimeout, ""); err != nil {
+			log.Printf("the daemon did not become healthy after the stop: %v", err)
+			return
+		}
+	} else if outcome.Kind != daemonlife.Compatible {
+		log.Printf("no compatible daemon after the stop (%v); the windows stay disconnected", outcome.Kind)
+		return
+	}
+	// A new process has its own connection file and token: re-read them, then tell the windows to reconnect.
+	client, err := daemonclient.FromEnv()
+	if err != nil {
+		log.Printf("failed to reconnect after the daemon stop: %v", err)
+		return
+	}
+	h.client.Store(client)
+	h.emit(daemonConnectionChanged, nil)
 }

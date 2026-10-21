@@ -453,10 +453,19 @@ first of the preferred languages; Windows: the first preferred UI language; othe
 `LC_MESSAGES`, `LANG`), then the subtag mapping of `normalizeTrayLanguage`. The page no longer sets the
 tray language; the host command `SetTrayLanguage` is removed.
 
-**Update install.** `installUpdate` stops the daemon. Before that it now announces the stop like the
-exit and restart paths (`app://shutting-down`, the watcher paused), so no window socket holds the stop.
-When the install fails and this process stays, the host starts the daemon again if none runs, stores
-the new client and emits `app://daemon-connection-changed`, so the host and the windows reconnect.
+**Host daemon stops.** Every window's daemon socket and the host watcher hold a control lease, so every
+host path that stops the daemon announces the stop first (`announceDaemonStop`: watcher paused,
+`app://shutting-down`, 300 ms grace). A path after which the process keeps running ends with
+`resumeAfterStop`: when a compatible daemon answers, the host stores its client and emits
+`app://daemon-connection-changed`, then resumes the watcher.
+
+| Path (`apps/gui-go`) | Reached from | Before the stop | When this process keeps running |
+|---|---|---|---|
+| `shutdown` → `stopDaemonOnExit` (`lifecycle.go`) | tray Quit, Cmd-Q | announce (skipped when the exit keeps the daemon) | none: the process exits |
+| `RestartDaemon` (`host_commands_native.go`) | network, diagnostics, factory reset, config import, startup recovery | announce | `resumeAfterStop`, success or failure |
+| `fullRestart` (`lifecycle.go`) | tray Restart, `RestartApp` | announce | `resumeAfterStop` when the GUI relaunch fails |
+| `installUpdate` → `installPayload` (`host_updater.go`) | updater window | announce | install failed: `resumeAfterStop` that also starts a daemon when none runs; relaunch failed: `resumeAfterStop` without a start (the installed daemon is newer than this GUI) |
+| `PromoteOneshot` (bootstrap, `main.go`) | GUI start while a CLI one-shot daemon runs | none needed: no window has connected yet | bootstrap continues |
 
 **Not changed by task 5.**
 - (Superseded below: the tray language moved to the Go host.)
@@ -559,6 +568,7 @@ Field set 1, legacy import and owner-split writes (task 4):
 | F81 | Every settings read rebuilds the tray menu | an unchanged language does nothing | code review |
 | F82 | A window socket delays the daemon stop of an update install | the stop is announced first; windows close their sockets | code review; native check pending |
 | F83 | A failed install leaves the windows and the host without a daemon | the daemon is started again and every client reconnects | code review; native check pending |
+| F85 | A restart path stops the daemon while window sockets are open, or leaves the windows disconnected after a failure | every stop path in the table above announces; every surviving path ends with `resumeAfterStop` | code review; native check pending |
 | F84 | The page still sets the tray language and races the host | the page call and the host command are removed | `bun run check:host-structure`, bindings `--check` |
 
 ## Consequences

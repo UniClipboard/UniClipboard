@@ -422,7 +422,7 @@ granularity:
   shortcuts) already send single leaves.
 - `restartRequired` is true only when the patch carries `network` or `general.debugMode`. A tray,
   theme or other General change no longer carries them. The GUI changes `debugMode` through
-  `POST /diagnostics/debug-mode`, not through this patch.
+  `PUT /diagnostics/debug`, not through this patch.
 
 **One authoritative copy per window.** `src/lib/settings-sync.ts` holds each document's settings:
 - It subscribes to the `settings` and `system` topics. Every `settings.snapshot` starts a new

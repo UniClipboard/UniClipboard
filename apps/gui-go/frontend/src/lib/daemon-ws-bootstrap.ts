@@ -54,6 +54,9 @@ function resetConnectionState(): void {
  *          or immediately if already connected.
  */
 export function connectDaemonWs(): Promise<void> {
+  // Every window that opens a socket must close it on `app://shutting-down`, or the daemon stop
+  // waits for the heartbeat timeout. Idempotent.
+  void registerDaemonShutdownListener()
   if (connectionEstablished) {
     return Promise.resolve()
   }

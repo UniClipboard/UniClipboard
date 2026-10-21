@@ -1,6 +1,6 @@
 # PROJECT KNOWLEDGE BASE
 
-**最后刷新：** 2026-10-20（自动；15 个工作区 crate）
+**最后刷新：** 2026-10-21（自动；16 个工作区 crate）
 
 ## OVERVIEW
 
@@ -15,7 +15,7 @@
 |  |- quick-panel/         # GPUI quick panel app (`uniclip-quick-panel`, macOS default)
 |- tools/                # Development-only crates (never in production builds)
 |  |- uc-dev-cli/          # `uc-dev-cli` development and diagnostics CLI (user-facing `uniclip` is apps/cli-go)
-|- crates/               # Library crates (12)
+|- crates/               # Library crates (13)
 |  # -- Desktop host adapters --
 |  |- uc-platform/      # OS adapters: clipboard, secure storage, autostart
 |  |- uc-app-paths/     # Lightweight directory-layout authority (data/cache/tmp)
@@ -31,6 +31,7 @@
 |  |- uc-cli-macros/    # Proc-macros for uc-dev-cli (internal)
 |  |- p2p-bench/        # Throwaway perf-spike bins (not shipped; publish = false)
 |  # -- Other --
+|  |- uc-desktop-settings/ # Desktop product settings owned by the daemon: model, per-field validation, lenient loading, atomic storage, revision and change notification. No Engine or HTTP dependency.
 |  |- quick-panel-core/ # Platform-independent logic of the GPUI quick panel: query model, state machine, ports
 ```
 
@@ -46,6 +47,7 @@
 | Quick panel (GPUI)        | `apps/quick-panel/`, `crates/quick-panel-core/` | Native macOS quick panel hosted by the Go shell                    |
 | Platform adapters         | `crates/uc-platform/src/`                  | clipboard (linux X11/Wayland, windows, macos), secure storage, app dirs |
 | Daemon API surface        | `crates/uc-webserver/src/api/`             | HTTP + WS endpoints; ApiEnvelope normalization                          |
+| Product settings          | `crates/uc-desktop-settings/`              | Daemon-owned shell preferences; rules in `docs/adr/adr-013-desktop-product-settings.md` |
 | Legacy reference          | Removed (2026-02-26)                       | Do not reintroduce legacy module tree                                   |
 
 ## CODE MAP
@@ -57,6 +59,7 @@ The desktop host is Go (`apps/gui-go`); the Rust binaries are `apps/daemon` (`un
 
 - Rust commands run from the repo root (the cargo workspace root); stop if `Cargo.toml` absent.
 - Portable engine, protocol, persistence, migration, and binding changes belong in `UniClipboard/Engine`; never recreate those packages here.
+  - Exception (D10, ADR-013): Desktop product-shell preferences (tray, windows, OS shortcuts, login item, updater, UI language, appearance) are persisted by the daemon through `crates/uc-desktop-settings` in `<app_data_root>/desktop-settings.json`. Add new product fields there, not to Engine settings. The file is plaintext configuration and must never hold clipboard content, data derived from it, or credentials.
 - 升级引擎时，只修改根目录 `Cargo.toml` 中唯一的固定发布标签，并同步更新 `Cargo.lock`。
 - Desktop-only capability flow: platform adapter -> `uc-bootstrap/src/wiring/` -> `HostCapabilities` -> `Engine::start`.
 - Host handlers (Go) and daemon HTTP routes call app-layer use cases; avoid direct `deps` access from the transport layer.

@@ -11919,6 +11919,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "uc-desktop-settings"
+version = "1.2.0"
+dependencies = [
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "uc-dev-cli"
 version = "1.2.0"
 dependencies = [

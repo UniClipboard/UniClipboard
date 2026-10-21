@@ -102,6 +102,7 @@ impl DaemonConfigClient {
             password,
             source_path,
             confirmed,
+            replace_rejected_import: false,
         };
         enveloped_request(
             &self.http,

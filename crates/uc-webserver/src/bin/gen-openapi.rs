@@ -76,8 +76,9 @@ use uc_webserver::api::openapi::ApiDoc;
 /// The tag layout adds four paths and four operations: 99 / 111.
 /// The independent network-library log adds three paths and three operations
 /// (status): 100 / 112.
-const EXPECTED_PATHS: usize = 100;
-const EXPECTED_OPERATIONS: usize = 112;
+// Preserved config-import status adds one path and operation: 101 / 113.
+const EXPECTED_PATHS: usize = 101;
+const EXPECTED_OPERATIONS: usize = 113;
 const SCHEMA_PREFIX: &str = "#/components/schemas/";
 const HTTP_METHODS: [&str; 7] = ["get", "put", "post", "delete", "patch", "head", "options"];
 

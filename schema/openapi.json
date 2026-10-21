@@ -579,6 +579,46 @@
         ],
         "type": "object"
       },
+      "ConfigImportRejectionReasonDto": {
+        "description": "Safe, queryable summary of preserved rejected input. Absence is not success.",
+        "enum": [
+          "unsupported_format",
+          "malformed_marker",
+          "missing_runtime_members"
+        ],
+        "type": "string"
+      },
+      "ConfigImportStatusEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ConfigImportStatusResponse"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "ConfigImportStatusResponse": {
+        "properties": {
+          "rejectedImport": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/RejectedConfigImportDto"
+              }
+            ],
+            "nullable": true
+          }
+        },
+        "type": "object"
+      },
       "CongestionControllerDto": {
         "description": "Algorithm for network flow control. Wire form: `\"cubic\"` | `\"bbr3\"`.",
         "enum": [
@@ -3661,6 +3701,10 @@
           "password": {
             "type": "string"
           },
+          "replaceRejectedImport": {
+            "description": "Separate consent to irreversibly replace possibly unique rejected input.",
+            "type": "boolean"
+          },
           "sourcePath": {
             "type": "string"
           }
@@ -5745,6 +5789,21 @@
           "connectUri",
           "qrCodePngBase64",
           "qrCodeAscii"
+        ],
+        "type": "object"
+      },
+      "RejectedConfigImportDto": {
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "reason": {
+            "$ref": "#/components/schemas/ConfigImportRejectionReasonDto"
+          }
+        },
+        "required": [
+          "reason",
+          "message"
         ],
         "type": "object"
       },
@@ -10144,6 +10203,44 @@
           }
         ],
         "summary": "POST /config/import/preview",
+        "tags": [
+          "config"
+        ]
+      }
+    },
+    "/config/import/status": {
+      "get": {
+        "operationId": "getConfigImportStatus",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigImportStatusEnvelope"
+                }
+              }
+            },
+            "description": "Preserved rejected input, or null; null does not prove import success"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Status could not be read"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
         "tags": [
           "config"
         ]

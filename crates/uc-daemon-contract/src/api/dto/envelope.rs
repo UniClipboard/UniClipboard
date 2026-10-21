@@ -23,7 +23,9 @@ use crate::api::dto::clipboard_command::{
     DispatchOutcomeResponse, EntryReceiveProgressResponse, ResendResponse, RestoreEntryResponse,
 };
 use crate::api::dto::clipboard_delivery::EntryDeliveryViewDto;
-use crate::api::dto::config::{ExportConfigResponse, ImportConfigResponse, PreviewImportResponse};
+use crate::api::dto::config::{
+    ConfigImportStatusResponse, ExportConfigResponse, ImportConfigResponse, PreviewImportResponse,
+};
 use crate::api::dto::device::LocalDeviceInfoDto;
 use crate::api::dto::diagnostics::{
     DebugStatusDto, DiagnosticCaptureStopResultDto, DiagnosticStatusDto, LogExportResultDto,
@@ -168,6 +170,7 @@ use crate::api::types::{
     ExportConfigEnvelope = ApiEnvelope<ExportConfigResponse>,
     PreviewImportEnvelope = ApiEnvelope<PreviewImportResponse>,
     ImportConfigEnvelope = ApiEnvelope<ImportConfigResponse>,
+    ConfigImportStatusEnvelope = ApiEnvelope<ConfigImportStatusResponse>,
     // ── system diagnostics & topology (newly enveloped, §H) ────────
     HealthEnvelope = ApiEnvelope<HealthResponse>,
     StatusEnvelope = ApiEnvelope<StatusResponse>,

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { getConfigImportStatus } from '@/api/daemon/config-import'
 import { commands } from '@/lib/ipc'
 import type { ConfigCommandError, ConfigImportPreview, ImportConfigStageResult } from '@/lib/ipc'
 import { createLogger } from '@/lib/logger'
@@ -14,14 +15,14 @@ const log = createLogger('config-import')
  * - `restarting` — forced terminal state while the daemon + GUI restart to
  *   apply the staged migration on the next boot
  */
-export type ConfigImportPhase = 'idle' | 'password' | 'confirm' | 'restarting'
+export type ConfigImportPhase = 'idle' | 'password' | 'confirm' | 'replaceRejected' | 'restarting'
 
 /**
  * Classified, presentation-agnostic import failure. Each surface maps these to
  * its own copy (toast vs. inline) so the command sequence and daemon error-code
  * classification stay single-sourced here.
  */
-export type ConfigImportErrorKind = 'invalidPassword' | 'incompatible' | 'generic'
+export type ConfigImportErrorKind = 'invalidPassword' | 'incompatible' | 'statusRead' | 'generic'
 
 interface UseConfigImportOptions {
   /** Reports a classified failure. Cancellations are swallowed silently. */
@@ -71,6 +72,8 @@ export interface UseConfigImport {
   submitPassword: () => Promise<void>
   /** Stage the bundle and drive the daemon + GUI restart. */
   confirmImport: () => Promise<void>
+  confirmReplacement: () => Promise<void>
+  cancelReplacement: () => void
   /** Step back from `confirm` to `password`, keeping the chosen file. */
   back: () => void
   /** Reset to `idle` (no-op while restarting). */
@@ -127,11 +130,39 @@ export function useConfigImport(options: UseConfigImportOptions = {}): UseConfig
   }
 
   const confirmImport = async () => {
-    if (!sourcePath) return
+    if (!sourcePath || !preview || busy || phase !== 'confirm') return
+    setBusy(true)
+    try {
+      // A failed query is not permission to replace or evidence of success.
+      const status = await getConfigImportStatus()
+      if (status.rejectedImport) {
+        setPhase('replaceRejected')
+        return
+      }
+    } catch (error) {
+      onError?.('statusRead', error)
+      return
+    } finally {
+      setBusy(false)
+    }
+    await stageImport(false)
+  }
+
+  const confirmReplacement = async () => {
+    if (phase !== 'replaceRejected' || busy) return
+    await stageImport(true)
+  }
+
+  const cancelReplacement = () => {
+    if (!busy) setPhase('confirm')
+  }
+
+  const stageImport = async (replaceRejectedImport: boolean) => {
+    if (!sourcePath || !preview || busy) return
     setBusy(true)
     let result: ImportConfigStageResult
     try {
-      result = await commands.importConfigPackage(password, sourcePath)
+      result = await commands.importConfigPackage(password, sourcePath, replaceRejectedImport)
     } catch (error) {
       setBusy(false)
       if (isCancelled(error)) {
@@ -196,6 +227,8 @@ export function useConfigImport(options: UseConfigImportOptions = {}): UseConfig
     pickFile,
     submitPassword,
     confirmImport,
+    confirmReplacement,
+    cancelReplacement,
     back,
     reset,
   }

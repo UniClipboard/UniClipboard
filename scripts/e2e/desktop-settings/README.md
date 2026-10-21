@@ -54,3 +54,33 @@ uv run --with pynacl==1.6.2 --with argon2-cffi==25.1.0 python scripts/e2e/deskto
 This runner verifies initial migration warning replay and then kills/stops only its own spawned
 real daemons. It requires nonzero-exit receipts, timeout escalation, and cleanup of a surviving
 daemon. It does not establish Windows or power-loss durability.
+
+
+Run the preserved-rejection acceptance against the same binaries:
+
+```bash
+uv run --with pynacl==1.6.2 --with argon2-cffi==25.1.0 python scripts/e2e/desktop-settings/rejected_import.py \
+  --daemon target/debug/uniclipd --cli target/debug/uniclip --out target/rejected-import-evidence
+```
+
+The runner retains the old staged-input inventory, actual API/production CLI results, process exits,
+source hashes and final receipt. Its sparse 2 GiB synthetic blob verifies the aggregate export bound
+without allocating a 2 GiB payload. It checks that an existing output stays byte-identical after
+rejection. It never deletes a preserved real profile: every fault is inside its own synthetic root.
+The CLI send with no peers deliberately returns exit 1; its dispatch result and subsequent real
+history reads establish successful local capture separately from delivery.
+
+Prepare historical inputs and run both existing migration suites on macOS arm64:
+
+```bash
+python3 scripts/e2e/desktop-settings/prepare-history.py --out target/settings-history
+uv run --with pynacl==1.6.2 --with argon2-cffi==25.1.0 python scripts/e2e/desktop-settings/run-history.py \
+  --inputs target/settings-history --out target/settings-history-evidence
+```
+
+Preparation verifies the v1.2.0 published archive SHA-256 before extracting its daemon only.
+The 0.19.4 settings fixture comes from the exact Cargo-resolved Engine source and must match
+its pinned SHA-256. Missing history, unsupported platform or a checksum mismatch fails the run.
+The CI job prepares the same inputs before requesting the entire existing ignored E2E suite.
+The local history runner executes all 17 tests in the two affected suites; it does not stand in
+for the complete general CLI CI job. Each result records the actual old and current binaries.

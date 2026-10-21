@@ -377,6 +377,38 @@ export type ClipboardStatsEnvelope = {
 };
 
 /**
+ * Safe, queryable summary of preserved rejected input. Absence is not success.
+ */
+export type ConfigImportRejectionReasonDto = 'unsupported_format' | 'malformed_marker' | 'missing_runtime_members';
+
+/**
+ * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
+ *
+ * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
+ * via [`ApiEnvelope::now`] (the contract carries only the type + the clock
+ * helper, not a hard dependency on when the handler reads the clock).
+ * `rename_all = "camelCase"` is a no-op for the single-word fields here but is
+ * declared for forward-compat.
+ *
+ * IMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named
+ * OpenAPI component is declared in the `#[aliases(...)]` block below. Add a new
+ * alias line whenever a new payload type needs enveloping. NEVER register the
+ * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
+ * generic, and an un-aliased generic inlines an anonymous schema.
+ */
+export type ConfigImportStatusEnvelope = {
+    data: ConfigImportStatusResponse;
+    /**
+     * Server time when the response was built (unix epoch milliseconds).
+     */
+    ts: number;
+};
+
+export type ConfigImportStatusResponse = {
+    rejectedImport?: RejectedConfigImportDto | null;
+};
+
+/**
  * Algorithm for network flow control. Wire form: `"cubic"` | `"bbr3"`.
  */
 export type CongestionControllerDto = 'cubic' | 'bbr3';
@@ -1967,6 +1999,10 @@ export type ImportConfigEnvelope = {
 export type ImportConfigRequest = {
     confirmed: boolean;
     password: string;
+    /**
+     * Separate consent to irreversibly replace possibly unique rejected input.
+     */
+    replaceRejectedImport?: boolean;
     sourcePath: string;
 };
 
@@ -3065,6 +3101,11 @@ export type RegisterMobileDeviceResultDto = {
      */
     qrCodePngBase64: string;
     username: string;
+};
+
+export type RejectedConfigImportDto = {
+    message: string;
+    reason: ConfigImportRejectionReasonDto;
 };
 
 export type RelayCredentialEditDto = {
@@ -5619,6 +5660,31 @@ export type PreviewConfigImportResponses = {
 };
 
 export type PreviewConfigImportResponse = PreviewConfigImportResponses[keyof PreviewConfigImportResponses];
+
+export type GetConfigImportStatusData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/config/import/status';
+};
+
+export type GetConfigImportStatusErrors = {
+    /**
+     * Status could not be read
+     */
+    500: ApiErrorResponse;
+};
+
+export type GetConfigImportStatusError = GetConfigImportStatusErrors[keyof GetConfigImportStatusErrors];
+
+export type GetConfigImportStatusResponses = {
+    /**
+     * Preserved rejected input, or null; null does not prove import success
+     */
+    200: ConfigImportStatusEnvelope;
+};
+
+export type GetConfigImportStatusResponse = GetConfigImportStatusResponses[keyof GetConfigImportStatusResponses];
 
 export type GetContentLockData = {
     body?: never;

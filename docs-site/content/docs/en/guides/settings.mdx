@@ -272,3 +272,12 @@ don't hunt for them:
 If any of these are blockers for your workflow, file an issue with
 context at
 [github.com/UniClipboard/UniClipboard/issues](https://github.com/UniClipboard/UniClipboard/issues).
+
+If an older pending import cannot complete, the app preserves it and continues using your original space.
+The startup warning and configuration-import notice ask you to export a new package from the source
+installation using the new version. A status-read error is reported separately; retry it before proceeding.
+No rejection status does not prove that an import completed.
+
+Import the new package through the existing configuration import action. After its password is checked,
+the app asks for separate confirmation before replacing preserved pending data. That data may be the only
+copy. Replacement cannot be undone. Cancel to keep it. A wrong password keeps the old data.

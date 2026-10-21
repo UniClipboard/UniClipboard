@@ -107,11 +107,11 @@ func (h *HostService) PreviewConfigImport(ctx context.Context, password string, 
 //
 //uc:errors config
 //uc:os all=real
-func (h *HostService) ImportConfigPackage(ctx context.Context, password string, sourcePath string) (ImportConfigStageResult, error) {
+func (h *HostService) ImportConfigPackage(ctx context.Context, password string, sourcePath string, replaceRejectedImport bool) (ImportConfigStageResult, error) {
 	ctx, cancel := commandContext(ctx, "import_config_package")
 	defer cancel()
 	var staged ImportConfigStageResult
-	if err := h.configPost(ctx, "/config/import", map[string]any{"password": password, "sourcePath": sourcePath, "confirmed": true}, &staged); err != nil {
+	if err := h.configPost(ctx, "/config/import", map[string]any{"password": password, "sourcePath": sourcePath, "confirmed": true, "replaceRejectedImport": replaceRejectedImport}, &staged); err != nil {
 		return ImportConfigStageResult{}, err
 	}
 	return staged, nil

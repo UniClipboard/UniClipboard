@@ -78,3 +78,65 @@ without product keys must still allow lenient product-file fallback.
 - A stopped owned daemon cannot process TERM. Stop it with SIGSTOP inside the isolated
   runner, require timeout escalation to SIGKILL, and retain its failure receipt while
   still stopping a second running daemon normally. Only the spawned process handle is used.
+
+## Persistent rejected-import feedback (user-confirmed policy)
+
+Record these failures before implementing the Desktop consumer:
+
+- Rejected old staging is deleted or silently applied. Require staged-data hashes to remain
+  available and the original initialized space to start and remain queryable.
+- A one-time event/toast disappears after reconnect or restart. Query Engine's actual durable
+  rejection contract on startup and on settings entry/reconnect. Keep an inline settings notice;
+  do not use localStorage or a parallel persisted client status as the authority.
+- A rejection is mistaken for key/profile recovery or first-run setup. Keep the original-space
+  gates unchanged. Present the rejection without stopping normal original-space use.
+- A startup notice is suppressed forever. Dismiss only for the current client session; show it
+  again after a new client start while the authoritative rejection remains.
+- The recovery path requires deleting the preserved staging or resetting the original space.
+  Reuse the existing config picker, preview, confirmation and stage/restart path after a new
+  export. Never make deletion/reset the recovery action.
+- The old source pin has no durable rejection contract. Do not invent a temporary Engine API
+  or accept a log-only implementation. Wait for the corrected contract in remote task 9.
+- Re-export guidance is generic or lost. The Simplified Chinese message must read:
+  “导入未完成，需要使用新版本重新导出配置包”. Keep equivalent guidance in every locale.
+- UI feedback is claimed visually accepted without a user check. Use real-daemon receipts and
+  non-visual structural checks; retain native/visual acceptance as a separate user gate.
+
+## Preservation contract follow-up (Engine task 8 at 7a9e639f)
+
+- A missing rejection is reported as a successful import. Treat `None` only as no current
+  rejected input. Never infer application success from that value.
+- A diagnostics I/O failure is converted into an absent rejection. Propagate the error and
+  show a separate status-read failure while leaving the original-space gates unchanged.
+- A host reads private marker/staging files to reconstruct public status. Use only the actual
+  `QueryDiagnostics.rejected_config_import` summary and retain its reason.
+- A generic identity-move confirmation is reused as authorization to destroy rejected staging.
+  Require a separate explicit warning: the preserved staging may be the only copy and its
+  replacement cannot be undone. Cancel/back must leave it untouched.
+- The host silently enables replacement. Default the Desktop request to false and forward that
+  value unchanged through the Go host and daemon to `StageConfigImportInput`.
+- A wrong password releases the only rejected copy. With explicit replacement authorization,
+  send a wrong password first and compare the retained marker and complete staging inventory.
+  Only a fully validated new package may replace the old input.
+- Stale status permits an unconfirmed replacement after reconnect. Requery authoritative status;
+  an unconfirmed stage must remain false even when the old status was absent or a read failed.
+- Error feedback disappears into a toast. Retain a settings status-read failure with retry and
+  retain the startup rejection across new client sessions. Do not store a permanent client ack.
+
+The final adoption source must be the synchronized remote task-9 SHA, not the task-8 SHA above.
+Do not claim these cases passed until the real Desktop daemon executes against that source.
+
+## Existing CLI E2E alignment before implementation
+
+- CI requests historical tests without providing historical inputs. Prepare the pinned v1.2.0
+  release daemon and the hash-verified 0.19.4 Engine fixture before running the full suite.
+  Fail preparation on download, platform, source or digest mismatch; never report a skip as pass.
+- Field-set-1 expectations reject a correct field-set-2 migration. Keep exact file and unknown-key
+  assertions but update the approved version and normalized empty fingerprint.
+- Info-level migration assertions run with warn logging. Set the suite's explicit info override;
+  keep privacy assertions and compare actual input/source hashes.
+- An incomplete product migration is expected to reach API readiness. Instead require a real
+  failed startup with unchanged legacy bytes, then repair only the synthetic blocker and prove
+  successful, repeatable migration and restart.
+- Engine-erased product fields are mistaken for a new import. Require product bytes and values
+  to remain stable; do not require an import event for input that no longer has product fields.

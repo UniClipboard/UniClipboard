@@ -2816,5 +2816,20 @@
       "rebuild_derived_state": "Reconstruir o resumo dos membros com uma ferramenta de recuperação compatível",
       "export_diagnostics": "Exportar diagnósticos e pedir ajuda antes de alterar o perfil"
     }
+  },
+  "configImportRecovery": {
+    "message": "A importação não foi concluída. Exporte o pacote de configuração novamente usando a nova versão.",
+    "preserved": "O espaço original continua disponível. Os dados da importação pendente foram preservados. Exporte o pacote de configuração novamente no dispositivo de origem usando a nova versão e importe-o outra vez.",
+    "reimport": "Importar um novo pacote de configuração",
+    "openImport": "Abrir importação de configuração",
+    "continueOriginal": "Continuar usando o espaço original",
+    "statusReadFailed": "Não foi possível ler o estado da importação",
+    "statusReadHint": "O espaço original continua disponível. Tente ler o estado antes de substituir os dados preservados.",
+    "retry": "Tentar novamente",
+    "replaceTitle": "Substituir os dados preservados?",
+    "replaceWarning": "Os dados preservados podem ser a única cópia. A substituição remove permanentemente os dados antigos. Isso não pode ser desfeito. Primeiro, exporte um novo pacote de configuração com a nova versão.",
+    "replaceConfirm": "Substituir permanentemente",
+    "keepStaging": "Manter os dados antigos",
+    "replacing": "Validando e substituindo…"
   }
 }

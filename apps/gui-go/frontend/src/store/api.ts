@@ -1,6 +1,8 @@
 import { createApi, fakeBaseQuery } from '@reduxjs/toolkit/query/react'
 import { getEncryptionState } from '@/api/daemon'
+import { getConfigImportStatus } from '@/api/daemon/config-import'
 import type { EncryptionStateResponse } from '@/api/daemon/encryption'
+import type { ConfigImportStatusResponse } from '@/api/generated/types.gen'
 
 type ApiError = {
   message: string
@@ -17,6 +19,15 @@ export const appApi = createApi({
   baseQuery: fakeBaseQuery<ApiError>(),
   tagTypes: ['EncryptionStatus'],
   endpoints: builder => ({
+    getConfigImportStatus: builder.query<ConfigImportStatusResponse, void>({
+      queryFn: async () => {
+        try {
+          return { data: await getConfigImportStatus() }
+        } catch (error) {
+          return { error: { message: error instanceof Error ? error.message : String(error) } }
+        }
+      },
+    }),
     getEncryptionSessionStatus: builder.query<EncryptionSessionStatus, void>({
       queryFn: async () => {
         try {
@@ -37,4 +48,8 @@ export const appApi = createApi({
   }),
 })
 
-export const { useGetEncryptionSessionStatusQuery, useLazyGetEncryptionSessionStatusQuery } = appApi
+export const {
+  useGetConfigImportStatusQuery,
+  useGetEncryptionSessionStatusQuery,
+  useLazyGetEncryptionSessionStatusQuery,
+} = appApi

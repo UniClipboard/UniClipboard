@@ -2800,5 +2800,20 @@
       "rebuild_derived_state": "Rebuild the derived membership summary with a supported recovery tool",
       "export_diagnostics": "Export diagnostics and ask for help before changing the profile"
     }
+  },
+  "configImportRecovery": {
+    "message": "Import did not complete. Export a new configuration package using the new version.",
+    "preserved": "Your original space remains available. The pending import has been preserved. Export the configuration package again on the source device using the new version, then import it again.",
+    "reimport": "Import a new configuration package",
+    "openImport": "Open configuration import",
+    "continueOriginal": "Continue using the original space",
+    "statusReadFailed": "Could not read import status",
+    "statusReadHint": "Your original space remains available. Retry before replacing preserved import data.",
+    "retry": "Retry",
+    "replaceTitle": "Replace preserved import data?",
+    "replaceWarning": "The preserved data may be the only copy. Replacing it permanently removes the old staged import. This cannot be undone. First export a new configuration package using the new version.",
+    "replaceConfirm": "Permanently replace",
+    "keepStaging": "Keep preserved data",
+    "replacing": "Validating and replacing…"
   }
 }

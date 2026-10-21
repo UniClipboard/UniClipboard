@@ -2792,5 +2792,20 @@
       "rebuild_derived_state": "使用受支援的恢復工具重建成員摘要",
       "export_diagnostics": "先匯出診斷資料並尋求協助，不要改動目前資料"
     }
+  },
+  "configImportRecovery": {
+    "message": "匯入未完成，需要使用新版本重新匯出設定包",
+    "preserved": "原空間仍可使用，待匯入資料已保留。請在來源裝置上使用新版本重新匯出設定包，然後重新匯入。",
+    "reimport": "重新匯入設定包",
+    "openImport": "開啟設定匯入",
+    "continueOriginal": "繼續使用原空間",
+    "statusReadFailed": "無法讀取匯入狀態",
+    "statusReadHint": "原空間仍可使用。取代保留的待匯入資料前，請重試讀取狀態。",
+    "retry": "重試",
+    "replaceTitle": "取代保留的待匯入資料？",
+    "replaceWarning": "保留的資料可能是唯一副本。取代會永久移除舊的待匯入資料。此操作無法復原。請先使用新版本重新匯出設定套件。",
+    "replaceConfirm": "永久取代",
+    "keepStaging": "保留舊資料",
+    "replacing": "正在驗證並取代…"
   }
 }

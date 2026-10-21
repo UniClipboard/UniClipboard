@@ -1,5 +1,6 @@
 import { useId, useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
+import { ConfigImportReplacementDialog } from '@/components/config-import/ConfigImportReplacementDialog'
 import { useConfigImport, type ConfigImportErrorKind } from '@/hooks/useConfigImport'
 import { Button, ButtonRow, EntryPage, FormField, InlineNotice, ProgressBar, Text } from '@/ui-kit'
 import appIcon from '@/updater/app-icon.png'
@@ -26,7 +27,13 @@ export function SetupKitImport({ onBack }: { onBack: () => void }) {
   const [errorKind, setErrorKind] = useState<ConfigImportErrorKind | null>(null)
   const imp = useConfigImport({ onError: setErrorKind })
   const fileLabelId = useId()
-  const errorMessage = errorKind ? t(`errors.${errorKind}`) : null
+  const { t: tRecovery } = useTranslation(undefined, { keyPrefix: 'configImportRecovery' })
+  const errorMessage =
+    errorKind === 'statusRead'
+      ? tRecovery('statusReadFailed')
+      : errorKind
+        ? t(`errors.${errorKind}`)
+        : null
   const fileName = imp.sourcePath ? baseName(imp.sourcePath) : null
   const status = { text: tWelcome('import.title'), icon: 'package' as const }
 
@@ -50,7 +57,7 @@ export function SetupKitImport({ onBack }: { onBack: () => void }) {
     )
   }
 
-  if (imp.phase === 'confirm') {
+  if (imp.phase === 'confirm' || imp.phase === 'replaceRejected') {
     const sourceMode = imp.preview?.sourceMode
     return (
       <EntryKitFrame>
@@ -73,6 +80,12 @@ export function SetupKitImport({ onBack }: { onBack: () => void }) {
             </Button>
           }
         >
+          <ConfigImportReplacementDialog
+            open={imp.phase === 'replaceRejected'}
+            busy={imp.busy}
+            onConfirm={imp.confirmReplacement}
+            onCancel={imp.cancelReplacement}
+          />
           {errorMessage && <InlineNotice tone="error" title={errorMessage} />}
           <InlineNotice tone="warning" title={t('note')} />
           {imp.preview && (

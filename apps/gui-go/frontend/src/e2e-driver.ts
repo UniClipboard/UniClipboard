@@ -2107,7 +2107,7 @@ async function runConfigExportScenario() {
   await setQuickPanelPosition('center')
   await step(
     'import-staged',
-    settle(HostService.ImportConfigPackage(passphrase, bundle)),
+    settle(HostService.ImportConfigPackage(passphrase, bundle, false)),
     r => r.status === 'ok' && r.data.stagedOk === true
   )
   await control('exit')

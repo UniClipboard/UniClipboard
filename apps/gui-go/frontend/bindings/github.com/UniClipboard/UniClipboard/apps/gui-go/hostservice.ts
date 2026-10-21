@@ -220,8 +220,8 @@ export function HostNotificationSend(options: $models.HostNotification): $Cancel
 /**
  * ImportConfigPackage validates a bundle and stages it to be applied at the next start.
  */
-export function ImportConfigPackage(password: string, sourcePath: string): $CancellablePromise<$models.ImportConfigStageResult> {
-    return $Call.ByID(2573355644, password, sourcePath);
+export function ImportConfigPackage(password: string, sourcePath: string, replaceRejectedImport: boolean): $CancellablePromise<$models.ImportConfigStageResult> {
+    return $Call.ByID(2573355644, password, sourcePath, replaceRejectedImport);
 }
 
 /**

@@ -175,7 +175,7 @@ def main():
               'diffSha256': digest(subprocess.check_output(['git', 'diff', 'HEAD'], cwd=ROOT)),
               'daemonSha256': digest(args.daemon.read_bytes()), 'cliSha256': digest(args.cli.read_bytes()),
               'sourceSha256': {str(path.relative_to(ROOT)): digest(path.read_bytes()) for path in [ROOT / 'Cargo.toml', ROOT / 'Cargo.lock', *[ROOT / item for item in subprocess.check_output(['git', 'diff', '--name-only', 'HEAD'], cwd=ROOT, text=True).splitlines() if item.endswith('.rs')], Path(__file__), Path(__file__).with_name('watch.mjs')]},
-              'engineSha': '4c363556f6deab7ce93fea679bcba33553db5571'}
+              'engineSha': __import__('tomllib').loads((ROOT / 'Cargo.toml').read_text())['workspace']['dependencies']['uc-engine']['rev']}
     def profile(name):
         p = Profile(out, name, args.daemon.resolve(), args.cli.resolve())
         profiles.append(p)

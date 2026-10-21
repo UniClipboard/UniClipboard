@@ -2792,5 +2792,20 @@
       "rebuild_derived_state": "使用受支持的恢复工具重建成员摘要",
       "export_diagnostics": "先导出诊断资料并求助，不要改动当前资料"
     }
+  },
+  "configImportRecovery": {
+    "message": "导入未完成，需要使用新版本重新导出配置包",
+    "preserved": "原空间仍可使用，待导入资料已保留。请在来源设备上使用新版本重新导出配置包，然后重新导入。",
+    "reimport": "重新导入配置包",
+    "openImport": "打开配置导入",
+    "continueOriginal": "继续使用原空间",
+    "statusReadFailed": "导入状态读取失败",
+    "statusReadHint": "原空间仍可使用。替换保留的待导入资料前，请重试读取状态。",
+    "retry": "重试",
+    "replaceTitle": "替换保留的待导入资料？",
+    "replaceWarning": "保留的资料可能是唯一副本。替换会永久移除旧的待导入资料。此操作不可撤销。请先使用新版本重新导出配置包。",
+    "replaceConfirm": "不可撤销地替换",
+    "keepStaging": "保留旧资料",
+    "replacing": "正在验证并替换…"
   }
 }

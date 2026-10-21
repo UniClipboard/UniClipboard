@@ -777,7 +777,7 @@ Native acceptance of the global shortcut (real helper, real OS registration):
 ### 11. P3: Engine adoption, log profile and configuration lifecycle
 
 This section supersedes the P1 transitional ownership and export limitations in section 8.
-The immutable Engine source is `4c363556f6deab7ce93fea679bcba33553db5571`, the remote
+The immutable Engine source is `e4ff36c97d244f8c858784097615ef52e3bdcedb`, the remote
 head of Engine PR #227, including #225 and #226. These Engine PRs are cross-repository
 release dependencies. This pin does not imply a merged or published Engine release.
 
@@ -835,3 +835,37 @@ failure when cleanup also fails. `review_regressions.py` exercises real daemon f
 The original 11 adoption cases do not cover the later Engine task-8 findings about old pending
 schema-1 imports, aggregate export limits, blocking file reads or conflicting schema documentation.
 Those require the corrected task-8 source integrated into task 9 and a new immutable Desktop pin.
+
+
+#### Preserved rejected imports
+
+The daemon projects the actual Engine `QueryDiagnostics.rejected_config_import` through
+`GET /config/import/status`. The result preserves the three public reasons. `rejectedImport: null`
+only means there is no rejected input; it is not proof of a completed import. I/O and journal
+errors propagate as status-read failures. The Desktop host does not parse private import files.
+
+Engine retains the original pending marker and entire staging tree and starts the original
+space. Desktop queries at authenticated startup, settings entry and reconnect.
+It shows a startup warning and a persistent settings notice. A client-session dismissal does not
+acknowledge Engine state or suppress the next client startup. A failed query has separate visible
+feedback and a retry action. Existing content-lock and key-recovery gates remain authoritative.
+
+The existing picker, password validation and identity-move confirmation remain the import path.
+`replaceRejectedImport` defaults to false in the HTTP request. The Go host forwards the explicit
+boolean. If Engine reports rejected input, Desktop requires a separate destructive confirmation
+that the preserved input may be the only copy and replacing it cannot be undone. Only that
+confirmation calls Stage with true. Engine validates the new package and password before
+replacing the preserved input. Cancel and wrong passwords retain it. No automatic deletion,
+localStorage acknowledgement, new credential copy or weaker encryption is introduced.
+
+Configuration export writes to a same-directory temporary file and atomically replaces the
+requested output only after Engine succeeds. An aggregate-limit rejection therefore does not
+truncate an existing output. This is not a claim of power-loss acceptance.
+
+The new `rejected_import.py` real-daemon E2E covers repeated rejected-input queries and starts,
+original-space history and identity, all three rejection reasons, I/O failure propagation,
+default/false replacement refusal, wrong-password preservation, explicit replacement, actual
+adoption, re-export and aggregate export-limit propagation. `prepare-history.py` verifies the
+v1.2.0 release archive and the Engine 0.19.4 fixture hashes. `run-history.py` runs both existing
+migration suites with those inputs and info logging in an isolated HOME. Failed attempts remain
+separate evidence. Native visual acceptance stays with the user.

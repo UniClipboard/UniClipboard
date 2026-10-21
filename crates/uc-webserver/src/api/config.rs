@@ -6,10 +6,11 @@
 //! * `POST /config/import/preview` — read a bundle's non-secret manifest
 //!   metadata for operator confirmation (read-only, ungated).
 //! * `POST /config/import` — validate a bundle and stage it for the next
-//!   restart to apply on boot (requires an uninitialized target + `confirmed`).
+//!   restart to apply on boot (requires explicit identity-move confirmation).
+//! * `GET /config/import/status` — query Engine's preserved rejection summary.
 //!
-//! Like `/encryption/*`, all three are session-JWT gated and carry their
-//! password in the request body over the loopback API. Handlers MUST NOT log
+//! Like `/encryption/*`, these routes are session-JWT gated. Passwords travel
+//! only in request bodies over the loopback API. Handlers MUST NOT log
 //! the request body — there is intentionally no `?req` / password field on any
 //! span or tracing event here. All responses use the canonical
 //! `ApiEnvelope<T> { data, ts }` success envelope; errors use the shared
@@ -19,19 +20,20 @@ use std::path::Path;
 
 use axum::extract::{rejection::JsonRejection, State};
 use axum::http::StatusCode;
-use axum::routing::post;
+use axum::routing::{get, post};
 use axum::{Json, Router};
 use tracing::info;
 use uc_daemon_contract::api::dto::config::{
-    ExportConfigRequest, ExportConfigResponse, ImportConfigRequest, ImportConfigResponse,
-    PreviewImportRequest, PreviewImportResponse,
+    ConfigImportRejectionReasonDto, ConfigImportStatusResponse, ExportConfigRequest,
+    ExportConfigResponse, ImportConfigRequest, ImportConfigResponse, PreviewImportRequest,
+    PreviewImportResponse, RejectedConfigImportDto,
 };
 use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
 use uc_engine::{
     ConfigExportOutcome, ConfigImportPreviewOutcome, ConfigImportPreviewSummary,
-    ConfigImportStageOutcome, ConfigSourceModeSummary, EngineError, EngineErrorCategory,
-    ExportConfigInput, Operation, OperationResult, PreviewConfigImportInput, SecretString,
-    StageConfigImportInput,
+    ConfigImportRejectionReason, ConfigImportStageOutcome, ConfigSourceModeSummary, EngineError,
+    EngineErrorCategory, ExportConfigInput, Operation, OperationResult, PreviewConfigImportInput,
+    SecretString, StageConfigImportInput,
 };
 
 use crate::api::dto::error::{log_facade_failure, ApiError};
@@ -42,6 +44,55 @@ pub fn router() -> Router<DaemonApiState> {
         .route("/config/export", post(export_config_handler))
         .route("/config/import/preview", post(preview_import_handler))
         .route("/config/import", post(import_config_handler))
+        .route("/config/import/status", get(import_status_handler))
+}
+
+#[utoipa::path(
+    get,
+    path = "/config/import/status",
+    operation_id = "getConfigImportStatus",
+    tag = "config",
+    responses(
+        (status = 200, description = "Preserved rejected input, or null; null does not prove import success", body = ConfigImportStatusEnvelope),
+        (status = 500, description = "Status could not be read", body = ApiErrorResponse)
+    )
+)]
+#[tracing::instrument(name = "api.config.import.status", skip(state))]
+pub async fn import_status_handler(
+    State(state): State<DaemonApiState>,
+) -> Result<Json<ApiEnvelope<ConfigImportStatusResponse>>, ApiError> {
+    let result = state
+        .execute(Operation::QueryDiagnostics)
+        .await
+        .map_err(|error| map_config_engine_error("query_import_status", error))?;
+    let OperationResult::DiagnosticsStatus(status) = result else {
+        return Err(ApiError::internal(
+            "engine returned an unexpected diagnostics result",
+        ));
+    };
+    let rejected_import = status
+        .rejected_config_import
+        .map(|rejected| RejectedConfigImportDto {
+            reason: match rejected.reason {
+                ConfigImportRejectionReason::UnsupportedFormat => {
+                    ConfigImportRejectionReasonDto::UnsupportedFormat
+                }
+                ConfigImportRejectionReason::MalformedMarker => {
+                    ConfigImportRejectionReasonDto::MalformedMarker
+                }
+                ConfigImportRejectionReason::MissingRuntimeMembers => {
+                    ConfigImportRejectionReasonDto::MissingRuntimeMembers
+                }
+            },
+            message: rejected.message,
+        });
+    info!(
+        rejected = rejected_import.is_some(),
+        "config import status queried"
+    );
+    Ok(Json(ApiEnvelope::now(ConfigImportStatusResponse {
+        rejected_import,
+    })))
 }
 
 fn map_config_engine_error(op: &'static str, error: EngineError) -> ApiError {
@@ -307,6 +358,7 @@ async fn import_config_handler(
         .execute(Operation::StageConfigImport(StageConfigImportInput {
             source,
             password: SecretString::new(req.password),
+            replace_rejected_import: req.replace_rejected_import,
         }))
         .await
         .map_err(|error| map_config_engine_error("stage_import", error))?;

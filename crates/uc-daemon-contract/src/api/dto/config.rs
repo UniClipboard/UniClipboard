@@ -68,6 +68,31 @@ pub struct ImportConfigRequest {
     pub password: String,
     pub source_path: String,
     pub confirmed: bool,
+    /// Separate consent to irreversibly replace possibly unique rejected input.
+    #[serde(default)]
+    pub replace_rejected_import: bool,
+}
+
+/// Safe, queryable summary of preserved rejected input. Absence is not success.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ConfigImportRejectionReasonDto {
+    UnsupportedFormat,
+    MalformedMarker,
+    MissingRuntimeMembers,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct RejectedConfigImportDto {
+    pub reason: ConfigImportRejectionReasonDto,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ConfigImportStatusResponse {
+    pub rejected_import: Option<RejectedConfigImportDto>,
 }
 
 /// Response payload for `POST /config/import` on success (staged for the next

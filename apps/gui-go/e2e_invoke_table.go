@@ -33,7 +33,7 @@ var e2eCommandTable = map[string]e2eCommand{
 	"host_notification_permission":            {Method: "HostNotificationPermission", Params: []string{}},
 	"host_notification_request_permission":    {Method: "HostNotificationRequestPermission", Params: []string{}},
 	"host_notification_send":                  {Method: "HostNotificationSend", Params: []string{"options"}},
-	"import_config_package":                   {Method: "ImportConfigPackage", Params: []string{"password", "sourcePath"}},
+	"import_config_package":                   {Method: "ImportConfigPackage", Params: []string{"password", "sourcePath", "replaceRejectedImport"}},
 	"install_update":                          {Method: "InstallUpdate", Params: []string{}},
 	"main_window_presentation_ready":          {Method: "MainWindowPresentationReady", Params: []string{"generation"}},
 	"mark_main_window_ready":                  {Method: "MarkMainWindowReady", Params: []string{"generation"}},

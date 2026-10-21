@@ -119,23 +119,24 @@ use uc_daemon_contract::api::dto::clipboard_delivery::{
     EntrySourceDto,
 };
 use uc_daemon_contract::api::dto::config::{
-    ExportConfigRequest, ExportConfigResponse, ImportConfigRequest, ImportConfigResponse,
-    PreviewImportRequest, PreviewImportResponse,
+    ConfigImportRejectionReasonDto, ConfigImportStatusResponse, ExportConfigRequest,
+    ExportConfigResponse, ImportConfigRequest, ImportConfigResponse, PreviewImportRequest,
+    PreviewImportResponse, RejectedConfigImportDto,
 };
 use uc_daemon_contract::api::dto::envelope::{
     AckUpgradeEnvelope, CancelEntryReceiveEnvelope, CancelTransferEnvelope,
     CaptureCurrentClipboardEnvelope, CaptureUiEventEnvelope, ClearCacheEnvelope,
-    ClearHistoryEnvelope, ClipboardStatsEnvelope, ContentLockStatusEnvelope,
-    CustomRelayListEnvelope, CustomRelayMutationResultEnvelope, DebugStatusEnvelope,
-    DeleteUpgradeBackupEnvelope, DeviceGroupChoiceResultEnvelope, DeviceGroupChoicesEnvelope,
-    DeviceTrustEnvelope, DiagnosticCaptureStopEnvelope, DiagnosticStatusEnvelope,
-    DispatchOutcomeEnvelope, EncryptionActionEnvelope, EncryptionStateEnvelope,
-    EntryDeliveryViewEnvelope, EntryDetailEnvelope, EntryReceiveProgressEnvelope,
-    EntryReceiveProgressListEnvelope, EntryResourceEnvelope, ExportConfigEnvelope,
-    HistoryEntryTagSummaryEnvelope, HistoryTagBatchEnvelope, HistoryTagCreatedEnvelope,
-    HistoryTagDeletedEnvelope, HistoryTagLayoutEnvelope, HistoryTagMergeEnvelope,
-    HistoryTagRenameEnvelope, HistoryTagsEnvelope, ImportConfigEnvelope, KeychainAccessEnvelope,
-    LanInterfaceListEnvelope, LifecycleStatusEnvelope, ListEntriesEnvelope,
+    ClearHistoryEnvelope, ClipboardStatsEnvelope, ConfigImportStatusEnvelope,
+    ContentLockStatusEnvelope, CustomRelayListEnvelope, CustomRelayMutationResultEnvelope,
+    DebugStatusEnvelope, DeleteUpgradeBackupEnvelope, DeviceGroupChoiceResultEnvelope,
+    DeviceGroupChoicesEnvelope, DeviceTrustEnvelope, DiagnosticCaptureStopEnvelope,
+    DiagnosticStatusEnvelope, DispatchOutcomeEnvelope, EncryptionActionEnvelope,
+    EncryptionStateEnvelope, EntryDeliveryViewEnvelope, EntryDetailEnvelope,
+    EntryReceiveProgressEnvelope, EntryReceiveProgressListEnvelope, EntryResourceEnvelope,
+    ExportConfigEnvelope, HistoryEntryTagSummaryEnvelope, HistoryTagBatchEnvelope,
+    HistoryTagCreatedEnvelope, HistoryTagDeletedEnvelope, HistoryTagLayoutEnvelope,
+    HistoryTagMergeEnvelope, HistoryTagRenameEnvelope, HistoryTagsEnvelope, ImportConfigEnvelope,
+    KeychainAccessEnvelope, LanInterfaceListEnvelope, LifecycleStatusEnvelope, ListEntriesEnvelope,
     LocalDeviceInfoEnvelope, LogExportEnvelope, MemberSyncPreferencesEnvelope,
     MemberSyncResultEnvelope, MobileDeviceListEnvelope, MobileSyncActionEnvelope,
     MobileSyncSettingsEnvelope, NetworkLogStatusEnvelope, NetworkRecoveryStatusEnvelope,
@@ -248,6 +249,7 @@ impl Modify for ContractMeta {
         crate::api::config::export_config_handler,
         crate::api::config::preview_import_handler,
         crate::api::config::import_config_handler,
+        crate::api::config::import_status_handler,
         // ── device ─────────────────────────────────────────────────
         crate::api::device::get_local_device_info_handler,
         // ── member ─────────────────────────────────────────────────
@@ -434,6 +436,10 @@ impl Modify for ContractMeta {
             ExportConfigEnvelope,
             PreviewImportEnvelope,
             ImportConfigEnvelope,
+            ConfigImportStatusEnvelope,
+            ConfigImportRejectionReasonDto, ConfigImportStatusResponse,
+            RejectedConfigImportDto,
+            ConfigImportRejectionReasonDto,
             ExportConfigRequest,
             ExportConfigResponse,
             PreviewImportRequest,
@@ -876,8 +882,8 @@ mod assembly_smoke_tests {
             .expect("OpenAPI doc must declare paths");
         assert_eq!(
             paths.len(),
-            100,
-            "expected exactly 100 path templates, found {}: {:?}",
+            101,
+            "expected exactly 101 path templates, found {}: {:?}",
             paths.len(),
             paths.keys().collect::<Vec<_>>()
         );
@@ -891,8 +897,8 @@ mod assembly_smoke_tests {
             })
             .sum();
         assert_eq!(
-            operation_count, 112,
-            "expected exactly 112 operations across all paths, found {operation_count}"
+            operation_count, 113,
+            "expected exactly 113 operations across all paths, found {operation_count}"
         );
 
         // A few frozen operationIds (§D) must be present somewhere in the doc.

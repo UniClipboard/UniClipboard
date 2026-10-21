@@ -6,6 +6,18 @@ import StartupModals from '@/components/StartupModals'
 
 const mockSetupSnapshot = vi.hoisted(() => ({ rePairingRequired: false }))
 
+// Existing isolated scenarios have no pending import; real rejection coverage is daemon E2E.
+vi.mock('@/hooks/useConfigImportStatus', () => ({
+  useConfigImportStatus: () => ({
+    data: { rejectedImport: null },
+    isError: false,
+    refetch: vi.fn(),
+  }),
+}))
+vi.mock('@/api/daemon/config-import', () => ({
+  getConfigImportStatus: vi.fn().mockResolvedValue({ rejectedImport: null }),
+}))
+
 vi.mock('@/store/setupRealtimeStore', () => ({
   useSetupRealtimeStore: () => mockSetupSnapshot,
 }))

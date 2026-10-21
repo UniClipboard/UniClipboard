@@ -45,6 +45,8 @@ export function useSettingsPage() {
   useEffect(() => {
     if (locationState && (locationState as { category?: string }).category) {
       const newState = { ...locationState } as Record<string, unknown>
+      // A startup recovery action can target Settings while it is already mounted.
+      setActiveCategory(String(newState.category))
       delete newState.category
       navigate(locationPathname, { replace: true, state: newState })
     }

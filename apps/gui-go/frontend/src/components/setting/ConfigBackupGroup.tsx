@@ -1,7 +1,10 @@
+import { SettingNotice } from '@ui-setting-parts'
 import { AlertTriangle } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import * as storageApi from '@/api/storage'
+import { ConfigImportRecoveryStatus } from '@/components/config-import/ConfigImportRecoveryStatus'
+import { ConfigImportReplacementDialog } from '@/components/config-import/ConfigImportReplacementDialog'
 import {
   Button,
   Dialog,
@@ -39,15 +42,20 @@ export function ConfigBackupGroup() {
   // installation's own key material (opening it later needs the space
   // passphrase), so the button goes straight to the save dialog.
   const [exporting, setExporting] = useState(false)
+  const [statusReadFailed, setStatusReadFailed] = useState(false)
 
   // ── Import flow ──────────────────────────────────────────────────
   // The command sequence + daemon error classification live in the shared
   // hook; this surface only renders the dialogs and maps failures to toasts.
   const imp = useConfigImport({
     onError: kind => {
+      setStatusReadFailed(kind === 'statusRead')
       switch (kind) {
         case 'invalidPassword':
           toast.error(t(`${I18N}.import.invalidPasswordError`))
+          return
+        case 'statusRead':
+          toast.error(t('configImportRecovery.statusReadFailed'))
           return
         case 'incompatible':
           toast.error(t(`${I18N}.import.incompatibleError`))
@@ -57,6 +65,7 @@ export function ConfigBackupGroup() {
       }
     },
     onStaged: result => {
+      setStatusReadFailed(false)
       if (result.unlockRequiredAfterApply) {
         toast.message(t(`${I18N}.import.restartingUnlockHint`))
       }
@@ -99,6 +108,24 @@ export function ConfigBackupGroup() {
 
   return (
     <SettingGroup title={t(`${I18N}.label`)}>
+      <ConfigImportRecoveryStatus
+        onImport={() => {
+          void imp.pickFile()
+        }}
+      />
+      {statusReadFailed && (
+        <SettingNotice
+          tone="error"
+          title={t('configImportRecovery.statusReadFailed')}
+          text={t('configImportRecovery.statusReadHint')}
+        />
+      )}
+      <ConfigImportReplacementDialog
+        open={imp.phase === 'replaceRejected'}
+        busy={imp.busy}
+        onConfirm={imp.confirmReplacement}
+        onCancel={imp.cancelReplacement}
+      />
       <SettingRow label={t(`${I18N}.export.label`)} description={t(`${I18N}.export.description`)}>
         <Button variant="outline" size="sm" onClick={handleExport} disabled={exporting}>
           {exporting ? t(`${I18N}.export.exporting`) : t(`${I18N}.export.button`)}

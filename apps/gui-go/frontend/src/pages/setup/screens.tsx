@@ -22,6 +22,7 @@ import { useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { JoinSpaceEndReason } from '@/api/daemon/setupV2'
 import { AppStateShell } from '@/components/app/AppStateShell'
+import { ConfigImportReplacementDialog } from '@/components/config-import/ConfigImportReplacementDialog'
 import { InvitationCodeInput } from '@/components/InvitationCodeInput'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -764,7 +765,13 @@ export function ImportConfigScreen({ onBack }: { onBack: () => void }) {
 
   const imp = useConfigImport({ onError: setErrorKind })
 
-  const errorMessage = errorKind ? t(`errors.${errorKind}`) : null
+  const { t: tRecovery } = useTranslation(undefined, { keyPrefix: 'configImportRecovery' })
+  const errorMessage =
+    errorKind === 'statusRead'
+      ? tRecovery('statusReadFailed')
+      : errorKind
+        ? t(`errors.${errorKind}`)
+        : null
   const fileName = imp.sourcePath ? baseName(imp.sourcePath) : null
   const category = tWelcome('import.title')
   const categoryIcon = <Package {...iconProps} />
@@ -807,7 +814,7 @@ export function ImportConfigScreen({ onBack }: { onBack: () => void }) {
   }
 
   // ── Confirm: preview metadata + device-move note. ──
-  if (imp.phase === 'confirm') {
+  if (imp.phase === 'confirm' || imp.phase === 'replaceRejected') {
     return (
       <ScreenShell
         category={category}
@@ -834,6 +841,12 @@ export function ImportConfigScreen({ onBack }: { onBack: () => void }) {
           />
         }
       >
+        <ConfigImportReplacementDialog
+          open={imp.phase === 'replaceRejected'}
+          busy={imp.busy}
+          onConfirm={imp.confirmReplacement}
+          onCancel={imp.cancelReplacement}
+        />
         <div className="mt-6 flex flex-col gap-4">
           <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2.5 text-ui-body">
             <AlertTriangle

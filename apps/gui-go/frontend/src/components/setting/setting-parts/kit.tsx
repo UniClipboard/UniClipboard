@@ -84,3 +84,6 @@ export function SettingAlert({
 }: SettingAlertProps) {
   return <AlertDialog {...alert} />
 }
+
+export { InlineNotice as SettingNotice } from '@/ui-kit'
+export { SettingPresentationRoot } from './kit-root'

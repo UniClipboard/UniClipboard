@@ -1,4 +1,4 @@
-import { themePresets } from '../../src/lib/theme-engine'
+import { themePresets } from '../gui-go/frontend/src/lib/theme-engine'
 
 // Export the existing theme authority for the Rust renderer; never maintain a second palette.
 const output = JSON.stringify(themePresets, null, 2) + '\n'

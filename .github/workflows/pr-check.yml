@@ -233,6 +233,11 @@ jobs:
       # if it links any Engine package. The workspace `cargo check` above cannot
       # catch this: feature unification lets the daemon side enable
       # `uc-observability/analytics` for every member.
+      # The quick panel renders from apps/quick-panel/assets/themes.json, which is generated
+      # from the frontend preset table (the single source). Local fix: `bun run gen:theme-presets`.
+      - name: Verify the quick panel theme presets match the frontend
+        run: bun run check:theme-presets
+
       - name: Verify Engine repository extraction rules
         run: bun run check:engine-repository
 

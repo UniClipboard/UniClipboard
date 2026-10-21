@@ -169,7 +169,7 @@ UC_GPUI_IMAGE_FIXTURES=1 UC_GPUI_FIXTURE_THEME=light node apps/quick-panel/tests
 cargo test -p quick-panel -p quick-panel-core
 cargo clippy -p quick-panel -p quick-panel-core --all-targets --no-deps -- -D warnings
 cargo check -p quick-panel-core --target x86_64-unknown-linux-gnu   # 核心不含平台依赖
-bun apps/quick-panel/export-theme.ts --check
+bun run check:theme-presets
 ```
 
 真实后台只读检查：
@@ -212,7 +212,7 @@ uv run --with pillow python apps/quick-panel/tests/check_surface.py <历史窗�
 主题颜色由已有前端来源导出，禁止独立维护另一套颜色值：
 
 ```bash
-bun apps/quick-panel/export-theme.ts
+bun run gen:theme-presets
 ```
 
 ## 高级搜索验证（2026-09-10）

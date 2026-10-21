@@ -11,6 +11,8 @@
     "gen:client": "bun run --cwd apps/gui-go/frontend gen:client",
     "gen:api": "bun run gen:openapi && bun run gen:client",
     "gen:host-contract": "node scripts/gen-host-bindings.mjs",
+    "gen:theme-presets": "bun apps/quick-panel/export-theme.ts",
+    "check:theme-presets": "bun apps/quick-panel/export-theme.ts --check",
     "check:host-contract": "node scripts/gen-host-bindings.mjs --check",
     "check:host-boundary": "bun run typecheck && bun run check:host-structure",
     "mbx:exec": "bash scripts/build-cache/mbx.sh --exec",

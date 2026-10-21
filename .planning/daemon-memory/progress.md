@@ -5,3 +5,5 @@ Engine单线程压缩已在独立分支提交，79个受影响crate测试、全w
 全部完成：最终去符号优化构建100张图片/120秒静置，最后15秒PSS58.53MiB；daemon45测试、observability22测试、Desktop workspace all-targets、fmt、Engine边界与diff检查均通过。原始证据与构建指纹保存在本机既有诊断目录。
 
 2026-10-21：用户授权提交PR。Desktop分支已获确认改名为perf/daemon-memory；Engine提交f56aca62fe8880607b84772a89a7a3ec450a30a0已推送，对应 https://github.com/UniClipboard/Engine/pull/229 。安装版未替换。正在对优化后二进制补采堆数据，研究缓存、SQLite、网络与分配器的进一步空间。
+
+后续研究完成：Desktop https://github.com/UniClipboard/UniClipboard/pull/2055 已创建，两PR均无合并冲突。补采10/10图片及120秒静置，优化版存活堆17.32MiB；主要为剪贴板4.30、HTTP/OpenAPI4.29、网络4.04、SQLite3.33MiB。已恢复匹配符号，模块汇总守恒、官方峰值147,965,872字节一致，火焰图已生成。研究发现OpenAPI深拷贝、Wayland容量余量与网络固定UDP缓冲，建议后续独立验证，未扩大当前生产改动。新样本启用Heaptrack，其PSS不用于替换无分析器100张验收结果。

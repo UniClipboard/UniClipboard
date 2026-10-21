@@ -244,6 +244,27 @@ const pageGets = from =>
   wire.filter(
     e => e.seq > from && e.kind === 'http' && e.method === 'GET' && e.path === '/settings'
   )
+// sha256 of the three settings files the daemon owns; a case records them before and after it runs.
+async function fileHashes() {
+  const hash = async file => {
+    try {
+      return sha256(await readFile(file))
+    } catch (error) {
+      return error.code === 'EISDIR' ? 'directory' : null
+    }
+  }
+  return {
+    'settings.json': await hash(legacyFile),
+    'desktop-settings.json': await hash(productFile),
+    'desktop-telemetry.json': await hash(telemetryFile),
+  }
+}
+let filesBefore = null
+async function recordCase(entry) {
+  const filesAfter = await fileHashes()
+  record.cases.push({ ...entry, filesBefore, filesAfter })
+  filesBefore = filesAfter
+}
 async function product() {
   const bytes = existsSync(productFile) ? await readFile(productFile) : null
   return { sha256: sha256(bytes), json: bytes ? JSON.parse(bytes.toString('utf8')) : null }
@@ -261,6 +282,7 @@ try {
   )
   await mkdir(saveDir, { recursive: true })
   await startDaemon()
+  filesBefore = await fileHashes()
 
   const events = new EventTarget()
   globalThis.addEventListener = events.addEventListener.bind(events)
@@ -334,7 +356,7 @@ try {
     const snapshot = wire.find(
       e => e.seq > from && e.kind === 'ws' && e.type === 'settings.snapshot'
     )
-    record.cases.push({
+    await recordCase({
       case: 'C1 snapshot gates the first read',
       getsBeforeSnapshot,
       getsWhileHeld,
@@ -368,7 +390,7 @@ try {
       const result = await sync.saveSettingsPatch(patch)
       const [put] = pagePuts(from)
       const readAfter = pageGets(from).find(e => e.seq > put.seq)
-      record.cases.push({
+      await recordCase({
         case: `C2 ${label}`,
         body: put.body,
         result,
@@ -388,7 +410,7 @@ try {
     const from = startSeq()
     const legacy = await updateSettings({ ...s, general: { ...s.general, trayIcon: 'glyph' } })
     const [put] = pagePuts(from)
-    record.cases.push({
+    await recordCase({
       case: 'C2 control: whole-section body as before task 5',
       generalKeys: Object.keys(put.body.general).sort(),
       hasNetwork: 'network' in put.body,
@@ -409,7 +431,7 @@ try {
       await sync.saveSettingsPatch(patch)
       results.push({ body: pagePuts(from)[0].body, after: summarize(state()) })
     }
-    record.cases.push({ case: 'C3 explicit false and empty string', results })
+    await recordCase({ case: 'C3 explicit false and empty string', results })
     assert.equal(results[0].body.sync.syncEnabled, false)
     assert.equal(results[0].after.syncEnabled, false)
     assert.equal(results[1].after.autoSaveDir, saveDir)
@@ -433,7 +455,7 @@ try {
     ])
     await sync.refreshSettings()
     const after = await otherGet()
-    record.cases.push({
+    await recordCase({
       case: 'C4 concurrent independent saves (B7)',
       bodies: wire
         .filter(e => e.seq > from && e.method === 'PUT')
@@ -478,7 +500,7 @@ try {
     await sleep(300)
     const gets = pageGets(from)
     const sequence = published.slice(publishedFrom).map(s => s.trayIcon)
-    record.cases.push({
+    await recordCase({
       case: 'C5 stale read ordering and external change',
       getsWhileHeld,
       gets: gets.map(e => ({ seq: e.seq, doneSeq: e.doneSeq, trayIcon: e.response?.trayIcon })),
@@ -501,7 +523,7 @@ try {
     await until('socket closed', () => socket.readyState === RealWebSocket.CLOSED)
     const write = await otherPut('other client', { general: { theme: 'dark' } })
     await waitState('the reconnect read', s => s.general.theme === 'dark')
-    record.cases.push({
+    await recordCase({
       case: 'C6 reconnect after a missed event',
       writeSeq: write.seq,
       framesAfter: wire.filter(e => e.seq > from && e.kind === 'ws').map(e => e.type),
@@ -526,7 +548,7 @@ try {
       e => e.seq > write.seq && e.kind === 'ws' && e.type === 'settings.changed'
     )
     const read = pageGets(from).find(e => e.seq > changed.seq)
-    record.cases.push({
+    await recordCase({
       case: 'C11 Engine-owned external write, no explicit refresh',
       body: write.body,
       status: write.status,
@@ -547,7 +569,7 @@ try {
     await sync.saveSettingsPatch({ general: { theme: 'neon' } }).catch(err => (error = err))
     const [put] = pagePuts(from)
     const readAfter = pageGets(from).find(e => e.seq > put.doneSeq)
-    record.cases.push({
+    await recordCase({
       case: 'C7 400 then read',
       body: put.body,
       status: put.status,
@@ -607,7 +629,7 @@ try {
       assert.equal(put.status, 500)
       assert.ok(readAfter, `${label}: read after the error`)
     }
-    record.cases.push({ case: 'C8 partial failure (B8)', results })
+    await recordCase({ case: 'C8 partial failure (B8)', results })
     assert.deepEqual([results[0].applied, results[0].failed], [['engine'], ['desktop']])
     assert.equal(
       results[0].windowCopy.deviceName,
@@ -657,7 +679,7 @@ try {
       })
       .catch(err => (error = err))
     const readAfter = pageGets(from).length > 0
-    record.cases.push({
+    await recordCase({
       case: 'C9 shortcuts',
       getShowsRawInvalid: 'global.toggleQuickPanel' in current,
       okPatch,
@@ -701,7 +723,7 @@ try {
     const snapshot = wire.find(
       e => e.seq > from && e.kind === 'ws' && e.type === 'settings.snapshot'
     )
-    record.cases.push({
+    await recordCase({
       case: 'C10 restart with an offline edit',
       lastChangedBeforeRestart: lastRevision,
       snapshotAfterRestart: snapshot?.payload,

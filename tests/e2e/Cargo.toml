@@ -57,6 +57,8 @@ axum = { version = "0.7", features = ["ws"] }
 futures-util = "0.3"
 flate2 = "1"
 sha2 = "0.10"
+# Matches the product settings importer's log hash (settings_migration).
+blake3 = "1"
 tar = "0.4"
 zip = { version = "2.4.2", default-features = false, features = ["deflate"] }
 

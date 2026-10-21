@@ -3907,6 +3907,7 @@ version = "0.0.0"
 dependencies = [
  "assert_cmd",
  "axum",
+ "blake3",
  "dirs-next",
  "flate2",
  "futures-util",

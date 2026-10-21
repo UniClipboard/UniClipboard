@@ -13,6 +13,8 @@
 //! Thin entry point that initializes platform prerequisites and delegates to
 //! [`uc_daemon::daemon::host::run_standalone_from_env`].
 
+mod allocator;
+
 /// Bootstrap AppKit for headless macOS processes.
 ///
 /// `clipboard-rs` eagerly calls `+[NSPasteboard generalPasteboard]` during
@@ -49,6 +51,7 @@ fn init_macos_appkit() {
 fn init_macos_appkit() {}
 
 fn main() -> anyhow::Result<()> {
+    allocator::configure()?;
     init_macos_appkit();
 
     // rustls 0.23+ requires a process-wide CryptoProvider. Install ring as

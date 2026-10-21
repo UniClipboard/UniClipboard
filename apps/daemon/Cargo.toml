@@ -32,6 +32,9 @@ dirs = "6"
 tracing = "0.1"
 rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
 
+[target.'cfg(all(target_os = "linux", target_env = "gnu"))'.dependencies]
+libc = "0.2"
+
 # macOS: the headless daemon loads AppKit (for `NSPasteboard`) and must then
 # demote its activation policy so it never shows a (forever-bouncing) Dock tile.
 [target.'cfg(target_os = "macos")'.dependencies]

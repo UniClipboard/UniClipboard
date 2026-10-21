@@ -36,6 +36,9 @@ use crate::profile::LogProfile;
 /// bound.
 const LOG_RETENTION_DAYS: usize = 7;
 
+/// Bound the preallocated queue while allowing bursts without blocking normal logging.
+const LOG_BUFFERED_LINES: usize = 8_192;
+
 /// Diagnostic-only daemon override for writing JSON logs to one exact,
 /// non-rolling file. Benchmarks use this to measure one daemon process without
 /// racing daily rotation or accidentally reading a GUI/CLI role file.
@@ -157,6 +160,7 @@ fn build_json_writer(
         make_file_private(&file)?;
         return Ok(
             tracing_appender::non_blocking::NonBlockingBuilder::default()
+                .buffered_lines_limit(LOG_BUFFERED_LINES)
                 .lossy(false)
                 .finish(file),
         );
@@ -178,7 +182,11 @@ fn build_json_writer(
         .build(logs_dir)
         .map_err(|err| anyhow::anyhow!("failed to build rolling log appender: {err}"))?;
     make_existing_log_files_private(logs_dir)?;
-    Ok(tracing_appender::non_blocking(daily_appender))
+    Ok(
+        tracing_appender::non_blocking::NonBlockingBuilder::default()
+            .buffered_lines_limit(LOG_BUFFERED_LINES)
+            .finish(daily_appender),
+    )
 }
 
 #[cfg(unix)]
@@ -291,6 +299,46 @@ mod tests {
 
         let contents = std::fs::read_to_string(&log_file).expect("exact log file is readable");
         assert!(contents.contains(r#""level":"INFO""#));
+    }
+
+    #[test]
+    fn rolling_writer_flushes_a_concurrent_burst_without_dropping_records() {
+        let temp = tempfile::tempdir().expect("temp directory");
+        let (writer, guard) = build_json_writer(temp.path(), None).expect("rolling writer");
+        let counter = writer.error_counter();
+        let workers: Vec<_> = (0..4)
+            .map(|worker| {
+                let mut writer = writer.clone();
+                std::thread::spawn(move || {
+                    for index in 0..2_000 {
+                        let record = format!("{worker}:{index}\n");
+                        writer
+                            .write_all(record.as_bytes())
+                            .expect("write burst record");
+                    }
+                })
+            })
+            .collect();
+        for worker in workers {
+            worker.join().expect("log producer");
+        }
+        drop(writer);
+        drop(guard);
+
+        assert_eq!(counter.dropped_lines(), 0);
+        let contents: String = std::fs::read_dir(temp.path())
+            .expect("log directory")
+            .map(|entry| {
+                std::fs::read_to_string(entry.expect("log file").path()).expect("read log")
+            })
+            .collect();
+        let records: std::collections::HashSet<_> = contents.lines().collect();
+        assert_eq!(records.len(), 8_000);
+        for worker in 0..4 {
+            for index in 0..2_000 {
+                assert!(records.contains(format!("{worker}:{index}").as_str()));
+            }
+        }
     }
 
     #[test]

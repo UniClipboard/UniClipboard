@@ -1,5 +1,8 @@
-name: 'Publish to AUR (uniclipboard-git)'
-run-name: "aur-git-${{ github.run_number }}"
+name: 'AUR package'
+run-name: >-
+  ${{ github.event_name == 'pull_request'
+    && format('aur-validate-pr-{0}', github.event.pull_request.number)
+    || format('aur-main-{0}', github.run_number) }}
 
 # PRs validate only. Packaging changes on main and daily reconciliation publish
 # only after a clean build and installation test of the same immutable commit.

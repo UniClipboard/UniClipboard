@@ -2216,7 +2216,26 @@
         }
       }
     },
+    "tasks": {
+      "continue": "続ける",
+      "back": "戻る",
+      "step": "ステップ {{current}} / {{total}}",
+      "save": "保存",
+      "joinCodeTitle": "招待コードを入力",
+      "joinCodeDescription": "参加先のスペースにあるデバイスで招待を作成し、6桁のコードを入力してください。",
+      "joinConfirmTitle": "スペースの切り替えを確認",
+      "joinConfirmDescription": "相手のデバイスで設定したパスフレーズを入力してください。現在のスペースから退出し、参加先のスペースに接続します。",
+      "phoneTitle": "スマートフォンを接続",
+      "phoneDescription": "このスマートフォンとパソコンの接続方法を選択してください。",
+      "directTitle": "デバイス接続（実験的）",
+      "enableTitle": "ローカルネットワーク接続を許可",
+      "connectionUnavailable": "接続の確認が必要です",
+      "phoneNameTitle": "スマートフォンに名前を付ける",
+      "phoneNameDescription": "追加後、デバイス一覧に接続情報が表示されます。両方のデバイスを同じネットワークに接続してください。",
+      "invalidPort": "1から65535までのポート番号を入力してください。"
+    },
     "switchSpace": {
+      "backToDevices": "デバイス管理に戻る",
       "button": "別のスペースに参加します",
       "title": "別のスペースに切り替えます",
       "subtitle": "既存のクリップボード履歴は、新しいマスター キーで再暗号化されます。",

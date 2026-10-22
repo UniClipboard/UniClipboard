@@ -2234,7 +2234,26 @@
         }
       }
     },
+    "tasks": {
+      "continue": "Continuar",
+      "back": "Voltar",
+      "step": "Etapa {{current}} de {{total}}",
+      "save": "Salvar",
+      "joinCodeTitle": "Digite o código de convite",
+      "joinCodeDescription": "Crie um convite em um dispositivo do espaço desejado e digite o código de seis dígitos.",
+      "joinConfirmTitle": "Confirmar troca de espaço",
+      "joinConfirmDescription": "Digite a frase secreta definida no outro dispositivo. Este computador sairá do espaço atual e entrará no novo.",
+      "phoneTitle": "Conectar seu celular",
+      "phoneDescription": "Escolha como este celular se conectará ao computador.",
+      "directTitle": "Conexão direta (experimental)",
+      "enableTitle": "Permitir acesso à rede local",
+      "connectionUnavailable": "A conexão requer atenção",
+      "phoneNameTitle": "Dê um nome ao celular",
+      "phoneNameDescription": "Após adicionar, os dados de conexão aparecerão na lista de dispositivos. Mantenha ambos na mesma rede.",
+      "invalidPort": "Digite uma porta entre 1 e 65535."
+    },
     "switchSpace": {
+      "backToDevices": "Voltar aos dispositivos",
       "button": "Entrar em outro Espaço",
       "title": "Mudar para outro Espaço",
       "subtitle": "O histórico da área de transferência existente será recriptografado com a nova chave mestra.",

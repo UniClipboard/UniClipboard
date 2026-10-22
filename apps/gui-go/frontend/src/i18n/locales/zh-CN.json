@@ -2212,7 +2212,26 @@
         }
       }
     },
+    "tasks": {
+      "continue": "继续",
+      "back": "返回",
+      "step": "第 {{current}} 步，共 {{total}} 步",
+      "save": "保存",
+      "joinCodeTitle": "输入空间邀请码",
+      "joinCodeDescription": "在目标空间的一台设备上创建邀请，然后在此输入六位数字邀请码。",
+      "joinConfirmTitle": "确认切换空间",
+      "joinConfirmDescription": "输入对方设备设置的空间口令。确认后，本机将离开当前空间并加入目标空间。",
+      "phoneTitle": "连接你的手机",
+      "phoneDescription": "选择这台手机与电脑的连接方式。",
+      "directTitle": "设备直连（实验性）",
+      "enableTitle": "允许局域网连接",
+      "connectionUnavailable": "连接需要处理",
+      "phoneNameTitle": "为手机命名",
+      "phoneNameDescription": "添加后将在设备列表中显示连接信息。请让手机和电脑连接同一局域网。",
+      "invalidPort": "请输入 1 到 65535 之间的端口号。"
+    },
     "switchSpace": {
+      "backToDevices": "返回设备管理",
       "button": "加入其他空间",
       "title": "切换到其他空间",
       "subtitle": "当前剪贴板历史会用新空间的主密钥重新加密。",

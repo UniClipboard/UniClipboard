@@ -783,6 +783,8 @@ export interface ContentUnavailableProps {
  * skin traps focus inside it and returns focus to the control that opened it on close.
  */
 export interface SheetProps {
+  /** Focused tasks use a compact surface; device browsing keeps the master-detail width. */
+  variant?: 'management' | 'task'
   open: boolean
   onOpenChange: (open: boolean) => void
   title: string
@@ -792,7 +794,7 @@ export interface SheetProps {
   /** Leading footer content, e.g. add/remove buttons and a status line. */
   footer?: ReactNode
   /** The default button that closes the sheet ("Done"). */
-  done: LabelledAction
+  done?: LabelledAction
   /**
    * Called once the sheet has finished closing, after its exit animation. A caller that mounts
    * the sheet only while it is in use unmounts it here, so the sheet can still animate out.
@@ -983,6 +985,16 @@ export interface FormFieldProps {
   inputRef?: Ref<HTMLInputElement>
 }
 
+/** A focused task inside a management sheet. Each skin owns header, form and action layout. */
+export interface TaskPanelProps {
+  title: string
+  description?: string
+  stage?: string
+  children: ReactNode
+  back?: LabelledAction & { disabled?: boolean }
+  actions?: ReactNode
+}
+
 /**
  * A short numeric code typed into separate boxes, split into two halves (`482-913`). Only digits
  * are kept, so a pasted `482-913` fills every box.
@@ -1135,6 +1147,7 @@ export declare function SourceList(props: SourceListProps): ReactNode
 export declare function MasterDetail(props: MasterDetailProps): ReactNode
 export declare function EntityHeader(props: EntityHeaderProps): ReactNode
 export declare function FormField(props: FormFieldProps): ReactNode
+export declare function TaskPanel(props: TaskPanelProps): ReactNode
 export declare function CodeField(props: CodeFieldProps): ReactNode
 export declare function ProgressBar(props: ProgressBarProps): ReactNode
 export declare function ChoiceList(props: ChoiceListProps): ReactNode

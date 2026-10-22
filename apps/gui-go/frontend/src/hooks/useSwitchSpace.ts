@@ -31,21 +31,29 @@ interface SwitchState {
   pendingJoinId: string | null
 }
 
-export function useSwitchSpace({ onOpenChange }: { onOpenChange: (open: boolean) => void }) {
+const initialState: SwitchState = {
+  step: 'input',
+  code: '',
+  pass: '',
+  showPass: false,
+  errorKind: null,
+  errorRaw: null,
+  result: null,
+  pendingJoinId: null,
+}
+
+export function useSwitchSpace({
+  onOpenChange,
+  autoClose = true,
+}: {
+  onOpenChange: (open: boolean) => void
+  autoClose?: boolean
+}) {
   const { t } = useTranslation(undefined, { keyPrefix: 'devices.switchSpace' })
   const dispatch = useAppDispatch()
   const [state, update] = useReducer(
     (current: SwitchState, changes: Partial<SwitchState>) => ({ ...current, ...changes }),
-    {
-      step: 'input',
-      code: '',
-      pass: '',
-      showPass: false,
-      errorKind: null,
-      errorRaw: null,
-      result: null,
-      pendingJoinId: null,
-    }
+    initialState
   )
   const { step, code, pass, errorKind, errorRaw, pendingJoinId } = state
 
@@ -55,10 +63,10 @@ export function useSwitchSpace({ onOpenChange }: { onOpenChange: (open: boolean)
   // Keep the close timer stable across parent renders.
   const closeDialog = useEffectEvent(() => onOpenChange(false))
   useEffect(() => {
-    if (step !== 'success') return
+    if (step !== 'success' || !autoClose) return
     const id = setTimeout(() => closeDialog(), SUCCESS_AUTO_CLOSE_MS)
     return () => clearTimeout(id)
-  }, [step])
+  }, [step, autoClose])
 
   const resolveJoinAdmission = useCallback(
     (resolution: JoinAdmissionResolution) => {
@@ -174,5 +182,6 @@ export function useSwitchSpace({ onOpenChange }: { onOpenChange: (open: boolean)
     handleSubmit,
     handleRetry,
     handleCancelPending,
+    reset: () => update(initialState),
   }
 }

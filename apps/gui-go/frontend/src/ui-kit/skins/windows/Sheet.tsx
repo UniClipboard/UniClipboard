@@ -5,6 +5,7 @@ import {
   DialogSurface,
   DialogTitle,
   makeStyles,
+  mergeClasses,
   tokens,
 } from '@fluentui/react-components'
 import { useEffect, useLayoutEffect, useRef } from 'react'
@@ -15,6 +16,7 @@ import { lastConnectedFocus, trackFocusHistory } from './focus-history'
 // below, and a footer band on the base layer with the status text at the start and the closing
 // button at the end.
 const useStyles = makeStyles({
+  task: { width: 'min(38rem, calc(100vw - 4rem))' },
   surface: {
     padding: 0,
     width: 'min(50rem, calc(100vw - 4rem))',
@@ -66,6 +68,7 @@ const useStyles = makeStyles({
  * the page when the opener is gone.
  */
 export function Sheet({
+  variant = 'management',
   open,
   onOpenChange,
   title,
@@ -97,17 +100,24 @@ export function Sheet({
       onOpenChange={(_, data) => onOpenChange(data.open)}
       surfaceMotion={{ onMotionFinish: finishMotion }}
     >
-      <DialogSurface ref={surface} className={styles.surface}>
+      <DialogSurface
+        ref={surface}
+        className={mergeClasses(styles.surface, variant === 'task' && styles.task)}
+      >
         <DialogBody className={styles.body}>
           <DialogTitle className={styles.title}>{title}</DialogTitle>
           {header ? <div className={styles.header}>{header}</div> : null}
           <div className={styles.content}>{children}</div>
-          <div className={styles.footer}>
-            <div className={styles.footerStart}>{footer}</div>
-            <FluentButton className={styles.done} onClick={() => done.onClick()}>
-              {done.label}
-            </FluentButton>
-          </div>
+          {(footer || done) && (
+            <div className={styles.footer}>
+              <div className={styles.footerStart}>{footer}</div>
+              {done && (
+                <FluentButton className={styles.done} onClick={() => done.onClick()}>
+                  {done.label}
+                </FluentButton>
+              )}
+            </div>
+          )}
         </DialogBody>
       </DialogSurface>
     </Dialog>

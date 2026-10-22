@@ -45,6 +45,8 @@ src/
 
 ## CONVENTIONS
 
+- 设备管理中的加入空间与连接手机使用同一个 `Sheet` 的任务态（`variant="task"`），内部以 `TaskPanel` 和各平台原生风格的表单、选择列表呈现；不得嵌入旧 Dialog、标签页或另一层 Sheet。任务主操作由 `TaskPanel.actions` 持有，设备浏览时才显示 Sheet 的完成按钮。浏览器验收入口为 `e2e/device-tasks-browser.mjs`，配合 `UI_FIXTURE_ENTRY=e2e/fixtures/device-tasks.tsx` 的预览服务验证真实皮肤与脚本化 API。
+
 - 修改快捷面板的布局、字体、间距、菜单或交互前，先读 `src/quick-panel/DESIGN.md`；改变规范值时同步更新该文档。
 
 - Use alias imports `@/*` (configured in `tsconfig.json` and `vite.config.ts`).

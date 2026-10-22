@@ -12,6 +12,10 @@ permissions:
   packages: read
   pull-requests: read
 
+concurrency:
+  group: pr-check-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 # Keep job-level routing so checks have an explicit result on unrelated PRs.
 # Shared inputs live in .github/ci-paths.yml; reusable suites have no independent PR trigger.
 # The frontend suite owns the tested bundle consumed by the Go host compile job.

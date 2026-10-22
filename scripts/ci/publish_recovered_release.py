@@ -16,13 +16,21 @@ subprocess.run(['sha256sum', '--check', 'SHA256SUMS.txt'], cwd='release-assets',
 marker = f'<!-- recovery:{lock["runId"]}:{lock["sourceSha"]} -->'
 notes = Path('release-notes.md').read_text() + '\n' + marker + '\n'
 Path('release-notes.md').write_text(notes)
-result = subprocess.run(['gh', 'api', f'repos/{repo}/releases/tags/{tag}'], capture_output=True, text=True)
+def find_release():
+    return subprocess.run(['gh', 'release', 'view', tag, '--repo', repo, '--json', 'databaseId'],
+                          capture_output=True, text=True)
+
+
+result = find_release()
 if result.returncode:
-    # Distinguish absent release from auth/network failure. Never create on an ambiguous read.
-    require('HTTP 404' in result.stderr, 'cannot establish release absence')
+    # The REST tag endpoint does not return drafts. The CLI resolves both drafts and published releases.
+    require('release not found' in result.stderr.lower(), 'cannot establish release absence')
     subprocess.run(['gh', 'release', 'create', tag, '--repo', repo, '--verify-tag', '--draft',
                     '--prerelease', '--title', tag, '--notes-file', 'release-notes.md'], check=True)
-release = api(f'releases/tags/{tag}')
+    result = find_release()
+require(result.returncode == 0, 'cannot resolve recovery release ID')
+release_id = json.loads(result.stdout)['databaseId']
+release = api(f'releases/{release_id}')
 require(release['tag_name'] == tag and release['prerelease'] and marker in (release['body'] or ''),
         'existing release is not this authorized recovery')
 
@@ -53,6 +61,8 @@ compare(remote)
 require({a['name'] for a in remote} == set(assets), 'release assets incomplete')
 if release['draft']:
     subprocess.run(['gh', 'release', 'edit', tag, '--repo', repo, '--draft=false'], check=True)
+release = api(f'releases/{release_id}')
+require(not release['draft'], 'release remains a draft')
 Path('publication-receipt.json').write_text(json.dumps({
     'originRunId': lock['runId'], 'sourceSha': lock['sourceSha'], 'tag': tag,
     'url': release['html_url'], 'assets': remote,

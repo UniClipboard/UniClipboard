@@ -30,16 +30,9 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { openUrl } from '@/host/opener'
 import { createLogger } from '@/lib/logger'
+import { ANDROID_RELEASES_URL, TESTFLIGHT_URL } from '@/lib/mobile-client-downloads'
 
 const log = createLogger('mobile-sync-install-helper')
-
-// Product-level constants — not localized, user-facing as-is.
-// The iOS app is currently a TestFlight public beta; users must install
-// TestFlight first. This is the recommended iOS path for now.
-const TESTFLIGHT_URL = 'https://testflight.apple.com/join/nyNQ8dQe'
-// The Android client is a SyncClipboard-protocol-compatible fork; the APK
-// ships via GitHub releases.
-const ANDROID_RELEASES_URL = 'https://github.com/UniClipboard/uc-android/releases/latest'
 
 interface MobileSyncInstallHelperProps {
   /** Install QR for the SyncClipboard Shortcut (backend-rendered base64 PNG). */

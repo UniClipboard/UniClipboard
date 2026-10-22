@@ -1,23 +1,14 @@
 import { Loader2 } from 'lucide-react'
-import { useEffect, useEffectEvent, useReducer, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import {
   DEFAULT_MOBILE_LAN_PORT,
-  getMobileSyncSettings,
-  updateMobileSyncSettings,
   type MobileSyncSettingsView,
   type RegisterMobileDeviceResult,
 } from '@/api/tauri-command/mobile_sync'
 import MobileSyncRegistrationForm from '@/components/device/MobileSyncRegistrationForm'
 import { Button } from '@/components/ui/button'
-import { createLogger } from '@/lib/logger'
-
-const log = createLogger('mobile-regular-sync-flow')
-type State =
-  | { kind: 'loading' }
-  | { kind: 'failed'; message: string }
-  | { kind: 'ready'; settings: MobileSyncSettingsView }
+import { useMobileSyncSetup } from '@/hooks/useMobileSyncSetup'
 
 interface Props {
   footerContainer: HTMLDivElement | null
@@ -37,66 +28,7 @@ export default function MobileRegularSyncFlow({
   footerContainer,
 }: Props) {
   const { t } = useTranslation()
-  const [state, setState] = useState<State>({ kind: 'loading' })
-  const [attempt, retry] = useReducer((value: number) => value + 1, 0)
-  const [enabling, setEnabling] = useState(false)
-  const reportSettings = useEffectEvent(onSettingsChange)
-  const reportLoadError = useEffectEvent(() => {
-    setState({
-      kind: 'failed',
-      message: t('devices.connectMobile.loadFailed'),
-    })
-  })
-
-  useEffect(() => {
-    let cancelled = false
-    void getMobileSyncSettings()
-      .then(settings => {
-        if (cancelled) return
-        setState({ kind: 'ready', settings })
-        reportSettings(settings)
-      })
-      .catch(() => {
-        if (cancelled) return
-        log.warn('failed to load mobile sync settings')
-        reportLoadError()
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [attempt])
-
-  const enable = async () => {
-    setEnabling(true)
-    onBusyChange(true)
-    try {
-      const result = await updateMobileSyncSettings({
-        enabled: true,
-        lanListenEnabled: true,
-      })
-      if (result.lanListenerBindError) {
-        setState({
-          kind: 'failed',
-          message: t('devices.mobileSync.statusBar.bindFailed', {
-            reason: result.lanListenerBindError,
-          }),
-        })
-        return
-      }
-      const settings = await getMobileSyncSettings()
-      setState({ kind: 'ready', settings })
-      onSettingsChange(settings)
-    } catch {
-      log.warn('failed to enable mobile sync')
-      setState({
-        kind: 'failed',
-        message: t('devices.connectMobile.enableFailed'),
-      })
-    } finally {
-      setEnabling(false)
-      onBusyChange(false)
-    }
-  }
+  const { state, enabling, enable, reload } = useMobileSyncSetup({ onSettingsChange, onBusyChange })
 
   if (state.kind === 'loading') {
     return (
@@ -128,8 +60,7 @@ export default function MobileRegularSyncFlow({
               </Button>
               <Button
                 onClick={() => {
-                  setState({ kind: 'loading' })
-                  retry()
+                  reload()
                 }}
               >
                 {t('devices.list.actions.retry')}

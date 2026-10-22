@@ -254,6 +254,8 @@ fn restart_required_truth_table() {
             usage_analytics_enabled: None,
             debug_mode: None,
             tray_icon: None,
+            main_window_size: None,
+            main_window_maximized: None,
         }),
         ..Default::default()
     };

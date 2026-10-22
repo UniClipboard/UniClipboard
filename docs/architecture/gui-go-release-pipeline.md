@@ -143,3 +143,15 @@ deb 排序验证：`python3 -I apps/gui-go/e2e/linux/deb_version_order_run.py --
 - 在 GitHub Actions 上的真实运行（tag 触发、构建、全平台包）未做：没有 push、没有 dispatch。所有证据来自本地。
 - 生产更新私钥、`MINISIGN_RELEASE_PRIVATE_KEY`、R2 / FlareRelease 凭据的真实可用性未验证。
 - `workflow_dispatch` 路径（`release.yml` 里的 `bump`）不是标准入口，本任务未改动，其二次 bump 与 `buildinfo` 不重新生成的问题见报告。
+
+## v1.4.0-alpha.2 现有工件恢复
+
+移动端预览下载链接只用于发布说明。查询为空、失败或返回无效链接时，发布流程发出警告，并使用 `https://github.com/UniClipboard/UniClip/releases`。稳定渠道仍使用 `/releases/latest`。
+
+已注册的 `release.yml` 提供显式输入 `recover_existing_alpha2=true`。该输入只调用 `publish-existing-artifacts.yml`。正常的版本递增、构建和后续渠道任务全部跳过。恢复流程固定使用原运行 `39803502078`、源码 `de067caac785c3be008c31860037b2073b482ead`、标签 `v1.4.0-alpha.2` 和 `alpha` 渠道。`.github/release-recovery/alpha2.json` 固定每个工件的 ID 和 SHA-256 摘要。
+
+恢复流程不构建安装包，不修改标签，不提升 FlareRelease 渠道。它重新执行原源码的版本、六平台、生产更新签名和校验和检查。它核对原装配回执中的安装包字节。Windows 仍受现有 `ALLOW_UNSIGNED_WINDOWS_ALPHA=true` 授权约束，发布说明保留未代码签名提示。
+
+先归档 `recovery-publication`，再执行发布。GitHub Release 先保持草稿，完整上传并核对资产摘要后才公开。恢复流程拒绝其他来源的 Release 和冲突资产。R2 上传后逐项读回并比较字节。FlareRelease 登记必须返回 `ready`。
+
+若发布作业失败，使用 `gh run rerun <recovery-run-id> --failed`。失败作业复用同一运行的归档，不重新签名或覆盖冲突资产。不要重新运行全部作业。不要对原失败运行执行普通重试。恢复分支可直接通过已注册的 `release.yml` 入口调度；不得改用会递增版本的正常入口。保留发布回执后，删除一次性恢复输入、恢复 workflow、工件锁定文件和专属脚本。保留移动端链接修复。

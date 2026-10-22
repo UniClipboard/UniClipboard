@@ -1,0 +1,160 @@
+{
+  "repository": "UniClipboard/UniClipboard",
+  "runId": 39803502078,
+  "sourceSha": "de067caac785c3be008c31860037b2073b482ead",
+  "version": "1.4.0-alpha.2",
+  "tag": "v1.4.0-alpha.2",
+  "channel": "alpha",
+  "artifacts": [
+    {
+      "id": 12440110127,
+      "name": "updater-verification",
+      "digest": "sha256:084b75cd9a1d0c065209c40235aa19d49032a7f1fd5a1787c83bcca1b6520fc6"
+    },
+    {
+      "id": 12439205274,
+      "name": "windows-gui-evidence-x86_64-pc-windows-msvc",
+      "digest": "sha256:aa58c6a2c1f855932f128d4c1adbb494a5bd54ee963265fe297df476ec2fed9a"
+    },
+    {
+      "id": 12438690693,
+      "name": "sidecar-component-aarch64-pc-windows-msvc-daemon",
+      "digest": "sha256:b06cb24b70e2463d1459752796539b1304a82d086081dee14d895aa3d4a961ef"
+    },
+    {
+      "id": 12438640977,
+      "name": "sidecar-aarch64-apple-darwin",
+      "digest": "sha256:35cbc36937c3afdf16a75faa8b10bcec8e34a9556cf09788310d6d7b91f053f5"
+    },
+    {
+      "id": 12438590902,
+      "name": "sidecar-component-x86_64-pc-windows-msvc-daemon",
+      "digest": "sha256:cf7ab0414b41676751136df555b21b737dd196b3495647516e82626d0b6032cb"
+    },
+    {
+      "id": 12438283105,
+      "name": "windows-gui-aarch64-pc-windows-msvc",
+      "digest": "sha256:e170e598d299b3da539eab3312f457853ee4ba72135dc6fb4773c61d6acca13f"
+    },
+    {
+      "id": 12438160812,
+      "name": "mbx-sidecar-aarch64-pc-windows-msvc-helper",
+      "digest": "sha256:1d260ee69ab9595e0c391511383a235cb970dd98de0f06b8fac0a4940247621e"
+    },
+    {
+      "id": 12438017243,
+      "name": "sidecar-x86_64-pc-windows-msvc",
+      "digest": "sha256:2f6571ac4269e207ae91e04ee309276e7dc20ec83d154cbbe06503499844393d"
+    },
+    {
+      "id": 12438000848,
+      "name": "cli-sidecar-aarch64-unknown-linux-musl",
+      "digest": "sha256:0c2d677a6c5c34f2e30d729a652f846fb4a7488dff35e376fdf71aa4d2f665d7"
+    },
+    {
+      "id": 12437968957,
+      "name": "cli-aarch64-apple-darwin",
+      "digest": "sha256:7fd3a684b5c8ed871176cc85ca0b484532d87e15999efc886dd689487fdfbb2a"
+    },
+    {
+      "id": 12437888526,
+      "name": "mbx-sidecar-aarch64-pc-windows-msvc-daemon",
+      "digest": "sha256:20c8d9e23995375501362bb4cb3242cc4655a16e1cf25de3b8c66dba3c4adda2"
+    },
+    {
+      "id": 12437878977,
+      "name": "windows-gui-evidence-aarch64-pc-windows-msvc",
+      "digest": "sha256:d6b5fe7eccfecd6e416e4a789f5b4b2c2a272b09edf22d6b71df900d7f0fe12e"
+    },
+    {
+      "id": 12437861777,
+      "name": "mbx-linux-package-arm64",
+      "digest": "sha256:2a9c7548cb24ad57d1837980e6718d3cbb2545cb982ae73bcaa14a1e8bb5ecd6"
+    },
+    {
+      "id": 12437814771,
+      "name": "windows-gui-x86_64-pc-windows-msvc",
+      "digest": "sha256:f6a12a358a39e0532e41a931f98a1410b9c948ea37b302cc28c8a59424eb8156"
+    },
+    {
+      "id": 12437736519,
+      "name": "cli-sidecar-x86_64-unknown-linux-musl",
+      "digest": "sha256:c20ea6698f7913619788729ea981427ae8ccf36aeda0a0fb7c6f89305a6a8315"
+    },
+    {
+      "id": 12437697606,
+      "name": "sidecar-component-aarch64-pc-windows-msvc-helper",
+      "digest": "sha256:e10474eef020209d9e1b18d6730f2f7035dbf4e71f3bb78d0ba94b49d52e149c"
+    },
+    {
+      "id": 12437687895,
+      "name": "sidecar-component-aarch64-apple-darwin-helper",
+      "digest": "sha256:3cbb2f6d99155208a020e647b962dc1da64490a8fed015b5f167819d01bbb3ed"
+    },
+    {
+      "id": 12437667885,
+      "name": "cli-x86_64-apple-darwin",
+      "digest": "sha256:f3a2e43e2bd8fecdd528fc45375f6d6f58fcdc604bf7ead837f21395dfcf284e"
+    },
+    {
+      "id": 12437658655,
+      "name": "cargo-timings-sidecar-aarch64-pc-windows-msvc-daemon",
+      "digest": "sha256:9271ae8506aa5e36ae4eb64d3d21daa695b09ba5b28a932374a507cd979dbc92"
+    },
+    {
+      "id": 12437551377,
+      "name": "cargo-timings-cli-sidecar-aarch64-unknown-linux-musl",
+      "digest": "sha256:0c771c5c2f0ffd4c72973aa2e8fbd27b8edaa0a1ff6e7b1620fb193bcc208172"
+    },
+    {
+      "id": 12437546636,
+      "name": "cargo-timings-sidecar-x86_64-pc-windows-msvc-helper",
+      "digest": "sha256:bbddd62fe9572845e9bc9285441af6c252084d0c9a2aa48c4ba526b94e129b01"
+    },
+    {
+      "id": 12437537194,
+      "name": "cargo-timings-sidecar-aarch64-apple-darwin-helper",
+      "digest": "sha256:9b9c18b2df8b4f9cedecca06bbfba339123ef40ff4a2ea182b13f99cc4b00a87"
+    },
+    {
+      "id": 12437519818,
+      "name": "macos-gui-evidence-aarch64-apple-darwin",
+      "digest": "sha256:75d70371f638f1a76e9f8630efe759a102f0adea1155c4d68fd862b04a6aee95"
+    },
+    {
+      "id": 12437467336,
+      "name": "linux-gui-arm64",
+      "digest": "sha256:c63f1dcf3889b99915a15ebe9ef3e2c6088f1853f1367bf25014e4a78d84aed6"
+    },
+    {
+      "id": 12437464803,
+      "name": "macos-gui-aarch64-apple-darwin",
+      "digest": "sha256:0b8c3e0d5a2a6e8be51291589a2d8dca8fe4ca849210470ab8bbba72a912e907"
+    },
+    {
+      "id": 12437418028,
+      "name": "sidecar-component-aarch64-apple-darwin-daemon",
+      "digest": "sha256:492d768ed3a9527c3ae64cbae3d799310ae897819e59528309311742df9526a0"
+    },
+    {
+      "id": 12437408604,
+      "name": "sidecar-aarch64-pc-windows-msvc",
+      "digest": "sha256:3e79e5da57c8a920f649ac22bfaf9d24b971b449896cc0cf62665232f6b01583"
+    },
+    {
+      "id": 12437322245,
+      "name": "mbx-linux-package-amd64",
+      "digest": "sha256:901a388ecba3a972b250940441e4eb78f614a353c8f05ba60f588b3ccb18f022"
+    },
+    {
+      "id": 12437308191,
+      "name": "cargo-timings-sidecar-aarch64-apple-darwin-daemon",
+      "digest": "sha256:edefa4aa75496016973e97e1bda0d7d080057b8d6d563afb218674a6452c4cf5"
+    },
+    {
+      "id": 12437277304,
+      "name": "linux-gui-amd64",
+      "digest": "sha256:25e81442d8f8a4d98b935cb76bf7ca625af91e432b571fd450cdece48fcbc611"
+    }
+  ]
+}

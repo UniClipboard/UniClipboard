@@ -1,0 +1,343 @@
+name: Publish existing Desktop artifacts
+on:
+  workflow_call:
+    secrets:
+      TAURI_SIGNING_PRIVATE_KEY:
+        required: true
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD:
+        required: false
+      MINISIGN_RELEASE_PRIVATE_KEY:
+        required: true
+      MINISIGN_RELEASE_PASSWORD:
+        required: false
+      CLOUDFLARE_API_TOKEN:
+        required: true
+      CLOUDFLARE_ACCOUNT_ID:
+        required: true
+      FLARE_RELEASE_ACCESS_CLIENT_ID:
+        required: true
+      FLARE_RELEASE_ACCESS_CLIENT_SECRET:
+        required: true
+
+# One fixed recovery target. Remove this route after the recovery is merged and retained receipts are archived.
+concurrency:
+  group: publish-existing-v1.4.0-alpha.2
+  cancel-in-progress: false
+permissions:
+  contents: read
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          ref: de067caac785c3be008c31860037b2073b482ead
+
+      # Before anything is installed or downloaded: the source gate refuses a dirty checkout, and `artifacts/` and
+      # `node_modules/` are not ignored by git.
+      - name: Verify the pinned source and version carriers
+        run: |
+          python3 scripts/ci/release_gate.py source \
+            --version "1.4.0-alpha.2" \
+            --expect-sha "de067caac785c3be008c31860037b2073b482ead" \
+            --out release-source.json
+
+      - name: Checkout recovery controls
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          path: recovery-control
+
+      - name: Verify provenance and download digest-pinned original artifacts
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 recovery-control/scripts/ci/recover_release_artifacts.py
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: lts/*
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install frontend dependencies
+        # Release metadata scripts use the repository's locked dependencies.
+        run: bun install --frozen-lockfile
+
+      - name: Setup Go for updater signer
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: apps/gui-go/go.mod
+          cache: false
+
+      # Collect, gate (six-platform coverage, versions, source SHA, production Windows signature, no test artifacts), updater
+      # signatures with the production key and public-key check, secret-free re-verification, manifest and registration. The
+      # same script runs in the offline acceptance (apps/gui-go/e2e/release_assembly_run.py); it performs no external write.
+      - name: Assemble and verify release assets
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # The gate pins the Windows Authenticode receipts to this certificate when SignPath production is the backend.
+          SIGNPATH_PRODUCTION_CERT_THUMBPRINT: ${{ vars.SIGNPATH_PRODUCTION_CERT_THUMBPRINT }}
+        run: |
+          test "${{ vars.ALLOW_UNSIGNED_WINDOWS_ALPHA }}" = "true"
+          VERSION="1.4.0-alpha.2"
+          python3 scripts/ci/assemble_release_assets.py \
+            --artifacts artifacts \
+            --work assembly \
+            --version "$VERSION" \
+            --channel "alpha" \
+            --source-sha "de067caac785c3be008c31860037b2073b482ead" \
+            --source-record release-source.json \
+            --base-url "${{ vars.UPDATE_SERVER_URL }}/artifacts/v${VERSION}" \
+            --notes-file "docs/changelog/${VERSION}.md" \
+            --zh-notes-file "docs/changelog/${VERSION}.zh.md" \
+            --registration-source "github-actions:${{ github.repository }}:${{ github.run_id }}" \
+            --allow-unsigned-windows
+          mv assembly/release-assets release-assets
+          mkdir flare-release
+          cp assembly/evidence/manifest.json assembly/evidence/registration.json flare-release/
+
+      - name: Verify unchanged package bytes against original assembly
+        run: |
+          python3 recovery-control/scripts/ci/recover_release_artifacts.py --verify-packages
+
+      - name: Record how the Windows packages are signed
+        id: windows-signing
+        run: |
+          MODE="$(python3 -c "import json;print(json.load(open('assembly/evidence/assembly-index.json'))['windowsSigning'])")"
+          echo "mode=$MODE" >> "$GITHUB_OUTPUT"
+          case "$MODE" in
+            unsigned-alpha|unsigned-stable)
+              KIND="${MODE#unsigned-}"
+              echo "unsigned=true" >> "$GITHUB_OUTPUT"
+              echo "::warning::The Windows packages in this $KIND release are NOT code-signed (ALLOW_UNSIGNED_WINDOWS_${KIND^^})."
+              echo "> **Windows packages are NOT code-signed** (${MODE})." >> "$GITHUB_STEP_SUMMARY" ;;
+          esac
+
+      - name: Archive updater verification evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: recovery-updater-verification
+          path: assembly/evidence/
+          if-no-files-found: error
+
+      - name: Sign release assets (SHA256SUMS + minisign)
+        env:
+          MINISIGN_RELEASE_PRIVATE_KEY: ${{ secrets.MINISIGN_RELEASE_PRIVATE_KEY }}
+          MINISIGN_RELEASE_PASSWORD: ${{ secrets.MINISIGN_RELEASE_PASSWORD }}
+          VERSION: 1.4.0-alpha.2
+          WINDOWS_UNSIGNED: ${{ steps.windows-signing.outputs.unsigned }}
+        run: |
+          : "${MINISIGN_RELEASE_PRIVATE_KEY:?Checksum signing key is required}"
+          cd release-assets
+
+          # Unsigned Windows packages are only acceptable when the checksums are authenticated: the release notes tell users to
+          # verify SHA256SUMS.txt.minisig, so a missing key must stop the release instead of skipping the signature.
+          if [ "$WINDOWS_UNSIGNED" = "true" ] && [ -z "${MINISIGN_RELEASE_PRIVATE_KEY}" ]; then
+            echo "::error::Windows packages are unsigned, so SHA256SUMS.txt must be minisign-signed; MINISIGN_RELEASE_PRIVATE_KEY is not available."
+            exit 1
+          fi
+
+          # Checksum every release artifact. Exclude the checksum files themselves
+          # (the .minisig won't exist yet, but guard against re-runs anyway).
+          : > SHA256SUMS.txt
+          while IFS= read -r f; do
+            sha256sum "$f" >> SHA256SUMS.txt
+          done < <(find . -maxdepth 1 -type f \
+            ! -name 'SHA256SUMS.txt' ! -name 'SHA256SUMS.txt.minisig' \
+            -printf '%P\n' | sort)
+
+          echo "=== SHA256SUMS.txt ==="
+          cat SHA256SUMS.txt
+
+          # Sign the checksum file with the dedicated release-artifact minisign key.
+          # Skipped (with a warning) when the secret isn't configured yet, so a
+          # release never hard-fails during rollout — SHA256SUMS.txt is still shipped.
+          if [ -z "${MINISIGN_RELEASE_PRIVATE_KEY}" ]; then
+            echo "::warning::MINISIGN_RELEASE_PRIVATE_KEY not set — publishing SHA256SUMS.txt without a signature."
+            exit 0
+          fi
+
+          sudo apt-get update
+          sudo apt-get install -y minisign
+
+          umask 077
+          printf '%s\n' "${MINISIGN_RELEASE_PRIVATE_KEY}" > minisign-release.key
+          # minisign reads the key password from stdin when stdin is not a TTY; a
+          # passwordless key simply ignores the piped line.
+          printf '%s\n' "${MINISIGN_RELEASE_PASSWORD:-}" | \
+            minisign -S -s minisign-release.key -m SHA256SUMS.txt \
+              -t "UniClipboard v${VERSION} release artifacts (SHA256SUMS)"
+          printf '%s\n' "${MINISIGN_RELEASE_PASSWORD:-}" | \
+            minisign -R -s minisign-release.key -p ../assembly/evidence/release-checksums.pub
+          minisign -V -p ../assembly/evidence/release-checksums.pub -m SHA256SUMS.txt
+          rm -f minisign-release.key
+
+          echo "=== SHA256SUMS.txt.minisig ==="
+          cat SHA256SUMS.txt.minisig
+
+      - name: Fetch GitHub generated notes
+        id: gh-generated-notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
+        run: |
+          VERSION="1.4.0-alpha.2"
+          PREV_TAG="v1.4.0-alpha.1"
+
+          # 仅当 previous_tag 是真实 tag (以 v 开头) 时才传给 API；
+          # 首发场景下 previous_tag 会是 commit hash，让 GitHub 自行回退。
+          ARGS=(-X POST "/repos/${{ github.repository }}/releases/generate-notes"
+                -f "tag_name=v${VERSION}")
+          if [[ "$PREV_TAG" == v* ]]; then
+            ARGS+=(-f "previous_tag_name=${PREV_TAG}")
+          fi
+
+          if ! gh api "${ARGS[@]}" --jq '.body' > generated-notes.md; then
+            echo "Warning: gh api generate-notes failed; New Contributors section will be omitted"
+            : > generated-notes.md
+          fi
+
+          echo "Preview of GitHub-generated notes:"
+          head -80 generated-notes.md || true
+
+      - name: Resolve mobile app download
+        id: mobile-release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CHANNEL: alpha
+        run: python3 recovery-control/scripts/ci/resolve_mobile_release.py
+
+      - name: Generate release notes
+        id: release-notes
+        run: |
+          node scripts/generate-release-notes.js \
+            --version "1.4.0-alpha.2" \
+            --repo "${{ github.repository }}" \
+            --previous-tag "v1.4.0-alpha.1" \
+            --channel "alpha" \
+            --is-prerelease "true" \
+            --mobile-android-release-url "${{ steps.mobile-release.outputs.android_release_url }}" \
+            --artifacts-dir "release-assets" \
+            --template ".github/release-notes/release.md.tmpl" \
+            --generated-notes-file "generated-notes.md" \
+            ${{ steps.windows-signing.outputs.unsigned == 'true' && '--windows-unsigned true' || '' }} \
+            --output "release-notes.md"
+
+      - name: Archive verified publication bytes before external writes
+        uses: actions/upload-artifact@v7
+        with:
+          name: recovery-publication
+          path: |
+            release-assets/
+            flare-release/
+            release-notes.md
+            assembly/evidence/
+            artifact-provenance.json
+          if-no-files-found: error
+          retention-days: 30
+
+  publish:
+    needs: prepare
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/download-artifact@v6
+        with:
+          name: recovery-publication
+          path: publication
+      - name: Restore verified publication bytes
+        run: |
+          mv publication/release-assets publication/flare-release publication/release-notes.md .
+      - name: Verify preserved checksum signature
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y minisign
+          minisign -V -p publication/assembly/evidence/release-checksums.pub -m release-assets/SHA256SUMS.txt
+      - name: Publish or resume identical GitHub prerelease
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 scripts/ci/publish_recovered_release.py
+      - name: Dispatch verification reminder for Alpha release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: 1.4.0-alpha.2
+        run: |
+          gh api \
+            --method POST \
+            "repos/${{ github.repository }}/dispatches" \
+            -f "event_type=issue-lifecycle-release" \
+            -f "client_payload[tag_name]=v${VERSION}" \
+            -f "client_payload[html_url]=https://github.com/${{ github.repository }}/releases/tag/v${VERSION}"
+
+      - name: Upload artifacts to R2
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          npm install -g wrangler
+          VERSION="1.4.0-alpha.2"
+          for file in release-assets/*; do
+            filename=$(basename "$file")
+            echo "Uploading ${filename} to R2..."
+            wrangler r2 object put \
+              "uniclipboard-releases/artifacts/v${VERSION}/${filename}" \
+              --file "$file" \
+              --remote
+            wrangler r2 object get \
+              "uniclipboard-releases/artifacts/v${VERSION}/${filename}" \
+              --file "$RUNNER_TEMP/r2-verify" --remote
+            cmp "$file" "$RUNNER_TEMP/r2-verify"
+            sha256sum "$file" >> r2-verification.txt
+          done
+
+      - name: Register release with FlareRelease
+        env:
+          FLARE_RELEASE_ACCESS_CLIENT_ID: ${{ secrets.FLARE_RELEASE_ACCESS_CLIENT_ID }}
+          FLARE_RELEASE_ACCESS_CLIENT_SECRET: ${{ secrets.FLARE_RELEASE_ACCESS_CLIENT_SECRET }}
+        run: |
+          : "${FLARE_RELEASE_ACCESS_CLIENT_ID:?FLARE_RELEASE_ACCESS_CLIENT_ID organization secret is unavailable to this repository}"
+          : "${FLARE_RELEASE_ACCESS_CLIENT_SECRET:?FLARE_RELEASE_ACCESS_CLIENT_SECRET organization secret is unavailable to this repository}"
+
+          curl --fail-with-body --silent --show-error \
+            --retry 3 \
+            --retry-all-errors \
+            --header "CF-Access-Client-Id: ${FLARE_RELEASE_ACCESS_CLIENT_ID}" \
+            --header "CF-Access-Client-Secret: ${FLARE_RELEASE_ACCESS_CLIENT_SECRET}" \
+            --header "Content-Type: application/json" \
+            --data-binary @flare-release/registration.json \
+            "https://release-admin.uniclipboard.app/api/releases/register" \
+            --output flare-release/response.json
+          jq -e '.data.status == "ready"' flare-release/response.json
+
+      - name: Archive publication receipts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: recovery-publication-receipts-${{ github.run_attempt }}
+          path: |
+            publication-receipt.json
+            r2-verification.txt
+            flare-release/response.json
+          if-no-files-found: warn
+
+      - name: Summary
+        run: |
+          {
+            echo "Recovered v1.4.0-alpha.2 from run 39803502078 at de067caac785c3be008c31860037b2073b482ead."
+            echo "GitHub prerelease assets verified; R2 objects read back and compared; FlareRelease status ready."
+            echo "No installers rebuilt, no tags changed, no FlareRelease channel promoted."
+          } >> "$GITHUB_STEP_SUMMARY"

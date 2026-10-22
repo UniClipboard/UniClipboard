@@ -1,6 +1,7 @@
 name: 'Release'
 run-name: >-
-  ${{ github.event_name == 'push'
+  ${{ inputs.recover_existing_alpha2 && 'recover-existing-v1.4.0-alpha.2'
+    || github.event_name == 'push'
     && format('release-{0}', github.ref_name)
     || format('release-{0}-{1}', inputs.channel, github.run_number) }}
 on:
@@ -9,6 +10,10 @@ on:
       - 'v*'
   workflow_dispatch:
     inputs:
+      recover_existing_alpha2:
+        description: 'Publish existing v1.4.0-alpha.2 artifacts without building or changing versions'
+        type: boolean
+        default: false
       branch:
         description: '发布分支'
         required: true
@@ -49,7 +54,24 @@ on:
         default: 'stable'
 
 jobs:
+  recover-existing:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.recover_existing_alpha2 }}
+    permissions:
+      contents: write
+      actions: read
+    uses: ./.github/workflows/publish-existing-artifacts.yml
+    secrets:
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+      MINISIGN_RELEASE_PRIVATE_KEY: ${{ secrets.MINISIGN_RELEASE_PRIVATE_KEY }}
+      MINISIGN_RELEASE_PASSWORD: ${{ secrets.MINISIGN_RELEASE_PASSWORD }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      FLARE_RELEASE_ACCESS_CLIENT_ID: ${{ secrets.FLARE_RELEASE_ACCESS_CLIENT_ID }}
+      FLARE_RELEASE_ACCESS_CLIENT_SECRET: ${{ secrets.FLARE_RELEASE_ACCESS_CLIENT_SECRET }}
+
   validate:
+    if: ${{ !inputs.recover_existing_alpha2 }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -406,20 +428,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CHANNEL: ${{ needs.validate.outputs.channel }}
-        run: |
-          if [ "$CHANNEL" = "stable" ]; then
-            echo "android_release_url=https://github.com/UniClipboard/UniClip/releases/latest" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          MOBILE_URL="$(gh api -X GET 'repos/UniClipboard/UniClip/releases?per_page=100' \
-            --jq 'map(select(.prerelease == true and .draft == false)) | .[0].html_url // empty')"
-          if [ -z "$MOBILE_URL" ]; then
-            echo "No published mobile preview release is available for the $CHANNEL desktop release." >&2
-            exit 1
-          fi
-
-          echo "android_release_url=$MOBILE_URL" >> "$GITHUB_OUTPUT"
+        run: python3 scripts/ci/resolve_mobile_release.py
 
       - name: Generate release notes
         id: release-notes

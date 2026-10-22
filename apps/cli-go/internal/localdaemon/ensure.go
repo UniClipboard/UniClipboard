@@ -35,11 +35,7 @@ const errDaemonConnMissing = stringError("daemon connection file not found (is t
 // spawnAndWait spawns a detached daemon and waits until it is healthy.
 func spawnAndWait(timeout time.Duration) (Session, error) {
 	spinner := ui.NewSpinner("Starting local daemon…")
-	if err := daemonproc.SpawnDetachedDaemon("cli"); err != nil {
-		spinner.FinishError("Failed to spawn local daemon")
-		return Session{}, &daemonlife.Error{Kind: daemonlife.ErrSpawn, Err: err}
-	}
-	if err := daemonlife.WaitHealthy(timeout, ""); err != nil {
+	if err := daemonlife.SpawnAndWait("cli", timeout, ""); err != nil {
 		spinner.FinishError("Local daemon failed to start")
 		return Session{}, err
 	}

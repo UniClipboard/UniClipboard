@@ -25,6 +25,40 @@ pub(crate) fn is_binary_content_rejected(msg: &str) -> bool {
         && (lower.contains("text encoding") || lower.contains("text/plain"))
 }
 
+/// Narrow startup-readiness classification for a missing D-Bus name.
+/// Denial, prompts and binary/integrity failures are never retryable here.
+#[cfg(any(target_os = "linux", feature = "test-helpers"))]
+pub(crate) fn is_service_name_unavailable(message: &str) -> bool {
+    let lower = message.to_ascii_lowercase();
+    if [
+        "denied",
+        "not authorized",
+        "notauthorized",
+        "locked",
+        "dismissed",
+        "invalid utf-8",
+    ]
+    .iter()
+    .any(|marker| lower.contains(marker))
+    {
+        return false;
+    }
+    if lower.contains("org.freedesktop.secrets")
+        && lower.contains("was not provided by any .service files")
+    {
+        return true;
+    }
+    [
+        "the name is not activatable",
+        "namehasnoowner",
+        "name_has_no_owner",
+        "serviceunknown",
+        "service_unknown",
+    ]
+    .iter()
+    .any(|marker| lower.contains(marker))
+}
+
 /// Classify a `keyring::Error::PlatformFailure` into a domain `SecureStorageError`.
 ///
 /// Linux backends surface D-Bus / Secret Service transport faults as `PlatformFailure(msg)`
@@ -36,8 +70,8 @@ pub(crate) fn is_binary_content_rejected(msg: &str) -> bool {
 /// kept out of `Unavailable`/`PermissionDenied`: it is neither a transport outage nor an
 /// ACL refusal, but a structural incompatibility between this backend and binary secrets.
 /// It still surfaces as `Other`, but with wording that names the real cause instead of
-/// the generic "platform failure" prefix, so logs and the probe-level fallback decision
-/// (see `secure_storage::probed`) can recognize it without re-deriving the classification.
+/// the generic "platform failure" prefix. It is a permanent probe failure and
+/// never permits switching the profile to another storage provider.
 fn classify_platform_failure(msg: &str) -> SecureStorageError {
     if is_binary_content_rejected(msg) {
         return SecureStorageError::Other(format!(
@@ -54,6 +88,7 @@ fn classify_platform_failure(msg: &str) -> SecureStorageError {
         "no such file or directory",
         "no such interface",
         "no such object",
+        "the name is not activatable",
         "serviceunknown",
         "service_unknown",
         "namehasnoowner",

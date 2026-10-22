@@ -74,7 +74,7 @@ func (h *HostService) announceDaemonStop() {
 
 // stopDaemonOnExit terminates the connected daemon and waits for it to exit.
 func (h *HostService) stopDaemonOnExit() {
-	if h.exit.keepDaemon.Load() {
+	if h.exit.keepDaemon.Load() || h.daemon() == nil {
 		return
 	}
 	h.announceDaemonStop()
@@ -97,7 +97,7 @@ func stopDaemon() error {
 	}
 	deadline := time.Now().Add(daemonStopTimeout)
 	for time.Now().Before(deadline) {
-		if outcome, err := daemonlife.Probe(); err == nil && outcome.Kind == daemonlife.Absent {
+		if outcome, err := daemonlife.ProbeForReuse(daemonlife.StartupTimeout); err == nil && outcome.Kind == daemonlife.Absent {
 			return nil
 		}
 		time.Sleep(200 * time.Millisecond)
@@ -164,10 +164,7 @@ func restartDaemon() error {
 	if err := stopDaemon(); err != nil {
 		return err
 	}
-	if err := daemonproc.SpawnDetachedDaemon("gui"); err != nil {
-		return err
-	}
-	return daemonlife.WaitHealthy(daemonlife.StartupTimeout, "")
+	return daemonlife.SpawnAndWait("gui", daemonlife.StartupTimeout, "")
 }
 
 // fullRestart replaces the daemon first, then the GUI. A failed daemon restart
@@ -189,17 +186,13 @@ func (h *HostService) fullRestart() {
 // its client and tell the windows to reconnect. The watcher resumes in every case and retries against whatever runs.
 func (h *HostService) resumeAfterStop(startAbsent bool) {
 	defer h.settingsWatch.Resume()
-	outcome, err := daemonlife.Probe()
+	outcome, err := daemonlife.ProbeForReuse(daemonlife.StartupTimeout)
 	if err != nil {
 		log.Printf("after the daemon stop the daemon state is unknown: %v", err)
 		return
 	}
 	if outcome.Kind == daemonlife.Absent && startAbsent {
-		if err := daemonproc.SpawnDetachedDaemon("gui"); err != nil {
-			log.Printf("failed to start the daemon after the stop: %v", err)
-			return
-		}
-		if err := daemonlife.WaitHealthy(daemonlife.StartupTimeout, ""); err != nil {
+		if err := daemonlife.SpawnAndWait("gui", daemonlife.StartupTimeout, ""); err != nil {
 			log.Printf("the daemon did not become healthy after the stop: %v", err)
 			return
 		}

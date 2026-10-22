@@ -47,6 +47,9 @@ pub struct DaemonConnFile {
     pub token: String,
     pub pid: u32,
     pub started_at_ms: u64,
+    /// Random identity for the startup service; absent in older publications.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub instance_id: Option<String>,
 }
 
 impl DaemonConnFile {
@@ -67,6 +70,7 @@ impl DaemonConnFile {
             token: token.to_string(),
             pid,
             started_at_ms,
+            instance_id: None,
         }
     }
 }

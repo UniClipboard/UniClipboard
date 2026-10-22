@@ -86,3 +86,22 @@ func ConnPointsToLiveDaemon() (bool, error) {
 	}
 	return IsActiveDaemon(conn.PID), nil
 }
+
+// ProfileHasLiveDaemon checks both publication phases and pre-API PID metadata.
+// A health timeout is not proof that the profile owner has exited.
+func ProfileHasLiveDaemon() (bool, error) {
+	for _, read := range []func() (*ConnFile, error){ReadConnFile, ReadStartupConnFile} {
+		conn, err := read()
+		if err != nil {
+			return false, err
+		}
+		if conn != nil && IsActiveDaemon(conn.PID) {
+			return true, nil
+		}
+	}
+	meta, err := ReadPidMetadata()
+	if err != nil {
+		return false, err
+	}
+	return meta != nil && IsActiveDaemon(meta.PID), nil
+}

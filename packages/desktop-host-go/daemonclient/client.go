@@ -458,6 +458,15 @@ func ReadStartupStatus(ctx context.Context) (json.RawMessage, error) {
 	if err != nil || conn == nil {
 		return nil, err
 	}
+	return ReadStartupStatusAt(ctx, *conn)
+}
+
+// ReadStartupStatusAt accepts only a live process and matching random run identity.
+// Re-read discovery after the response to reject an endpoint replaced in flight.
+func ReadStartupStatusAt(ctx context.Context, conn daemonproc.ConnFile) (json.RawMessage, error) {
+	if conn.InstanceID == "" || !daemonproc.IsActiveDaemon(conn.PID) {
+		return nil, nil
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, conn.BaseURL()+"/startup", nil)
 	if err != nil {
 		return nil, err
@@ -479,6 +488,20 @@ func ReadStartupStatus(ctx context.Context) (json.RawMessage, error) {
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
+	}
+	var identity struct {
+		InstanceID string `json:"instanceId"`
+		PID        uint32 `json:"pid"`
+	}
+	if err := json.Unmarshal(body, &identity); err != nil {
+		return nil, err
+	}
+	current, err := daemonproc.ReadStartupConnFile()
+	if err != nil {
+		return nil, err
+	}
+	if current == nil || *current != conn || identity.InstanceID != conn.InstanceID || identity.PID != conn.PID || !daemonproc.IsActiveDaemon(conn.PID) {
+		return nil, nil
 	}
 	return json.RawMessage(body), nil
 }

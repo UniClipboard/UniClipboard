@@ -191,7 +191,10 @@ async fn run_async_with_diagnostics(
                 StartupFailureClass::Internal,
             );
             // Keep the terminal snapshot readable until an explicit retry or full quit.
-            wait_for_shutdown_signal().await?;
+            tokio::select! {
+                signal = wait_for_shutdown_signal() => { signal?; }
+                () = startup_server.retry_requested() => {}
+            }
             startup_server.shutdown().await?;
             return Err(error);
         }

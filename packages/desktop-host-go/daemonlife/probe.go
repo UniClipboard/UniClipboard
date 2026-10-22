@@ -155,12 +155,15 @@ func ProbeForReuse(timeout time.Duration) (Outcome, error) {
 		if outcome.Kind != Absent {
 			return outcome, nil
 		}
-		live, err := daemonproc.ConnPointsToLiveDaemon()
+		live, err := daemonproc.ProfileHasLiveDaemon()
 		if err != nil {
 			return Outcome{}, &Error{Kind: ErrResolveAddress, Err: errctx.Wrap("failed to read daemon connection file", err)}
 		}
 		if !live {
 			return outcome, nil
+		}
+		if err := startupFailure(nil); err != nil {
+			return Outcome{}, err
 		}
 		if !time.Now().Before(deadline) {
 			return Outcome{}, startupTimeout(timeout)
@@ -193,6 +196,7 @@ type Error struct {
 	Details         string
 	ObservedVersion *string
 	Newer           bool
+	Retryable       bool
 }
 
 func (e *Error) Error() string {
@@ -255,10 +259,17 @@ func startupTimeout(timeout time.Duration) *Error {
 }
 
 // startupFailure reads the independent service before the business API exists.
-func startupFailure() error {
+func startupFailure(attempt *daemonproc.StartupAttempt) error {
 	ctx, cancel := context.WithTimeout(context.Background(), probeTimeout)
 	defer cancel()
-	body, err := daemonclient.ReadStartupStatus(ctx)
+	conn, err := daemonproc.ReadStartupConnFile()
+	if err != nil {
+		return &Error{Kind: ErrProbe, Err: err}
+	}
+	if conn == nil || (attempt != nil && (conn.PID != attempt.PID() || conn.InstanceID != attempt.InstanceID())) {
+		return nil
+	}
+	body, err := daemonclient.ReadStartupStatusAt(ctx, *conn)
 	if err != nil {
 		return &Error{Kind: ErrProbe, Err: errctx.Wrap("failed to read daemon startup status", err)}
 	}
@@ -268,7 +279,10 @@ func startupFailure() error {
 	var status struct {
 		ServiceFailed bool `json:"service_failed"`
 		Progress      struct {
-			State   string `json:"state"`
+			State          string `json:"state"`
+			AllowedActions struct {
+				Retry bool `json:"retry"`
+			} `json:"allowed_actions"`
 			Upgrade *struct {
 				CurrentStep string `json:"current_step"`
 			} `json:"upgrade"`
@@ -291,7 +305,8 @@ func startupFailure() error {
 	if status.Progress.Failure != nil {
 		details += fmt.Sprintf(", reason=%s, retryable=%t", status.Progress.Failure.Reason, status.Progress.Failure.Retryable)
 	}
-	return &Error{Kind: ErrStartupFailed, Profile: os.Getenv("UC_PROFILE"), Details: details}
+	return &Error{Kind: ErrStartupFailed, Profile: os.Getenv("UC_PROFILE"), Details: details,
+		Retryable: status.Progress.AllowedActions.Retry || (status.Progress.Failure != nil && status.Progress.Failure.Retryable)}
 }
 
 // IncompatibleError renders an Incompatible outcome with the newer-daemon guard.
@@ -388,6 +403,11 @@ func compareSemver(a, b semver) int {
 // WaitHealthy polls until a Compatible daemon (optionally with the expected
 // residency) answers, an Incompatible one appears, or the timeout passes.
 func WaitHealthy(timeout time.Duration, residency string) error {
+	return WaitHealthyForAttempt(timeout, residency, nil)
+}
+
+// WaitHealthyForAttempt never attributes another run's startup failure to a child.
+func WaitHealthyForAttempt(timeout time.Duration, residency string, attempt *daemonproc.StartupAttempt) error {
 	deadline := time.Now().Add(timeout)
 	for {
 		outcome, err := Probe()
@@ -402,7 +422,7 @@ func WaitHealthy(timeout time.Duration, residency string) error {
 		case Incompatible:
 			return IncompatibleError(outcome)
 		}
-		if err := startupFailure(); err != nil {
+		if err := startupFailure(attempt); err != nil {
 			return err
 		}
 		if !time.Now().Before(deadline) {
@@ -423,7 +443,13 @@ func WaitAbsent(timeout time.Duration) error {
 			return err
 		}
 		if outcome.Kind == Absent {
-			return nil
+			live, err := daemonproc.ProfileHasLiveDaemon()
+			if err != nil {
+				return err
+			}
+			if !live {
+				return nil
+			}
 		}
 		if !time.Now().Before(deadline) {
 			return &Error{Kind: ErrPromoteDrainTimeout, Timeout: timeout, Profile: os.Getenv("UC_PROFILE"), BaseURL: currentBaseURL()}
@@ -453,8 +479,20 @@ func PromoteOneshot(target, origin string) error {
 	if err := WaitAbsent(PromoteDrainTimeout); err != nil {
 		return err
 	}
-	if err := daemonproc.SpawnDetachedDaemon(origin); err != nil {
+	return SpawnAndWait(origin, StartupTimeout, target)
+}
+
+// SpawnAndWait binds failure observation to the exact child run for every shell.
+func SpawnAndWait(origin string, timeout time.Duration, residency string) error {
+	attempt, err := daemonproc.SpawnDetachedDaemonForStartup(origin)
+	if err != nil {
 		return &Error{Kind: ErrSpawn, Err: err}
 	}
-	return WaitHealthy(StartupTimeout, target)
+	return WaitHealthyForAttempt(timeout, residency, attempt)
+}
+
+// RetryableStartupError permits an explicit user retry, never automatic respawn.
+func RetryableStartupError(err error) bool {
+	var failure *Error
+	return errors.As(err, &failure) && (failure.Kind == ErrStartupTimeout || (failure.Kind == ErrStartupFailed && failure.Retryable))
 }

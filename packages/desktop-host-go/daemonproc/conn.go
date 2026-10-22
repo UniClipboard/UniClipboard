@@ -28,6 +28,7 @@ type ConnFile struct {
 	Token       string `json:"token"`
 	PID         uint32 `json:"pid"`
 	StartedAtMs uint64 `json:"startedAtMs"`
+	InstanceID  string `json:"instanceId,omitempty"`
 }
 
 // BaseURL is the HTTP base URL the connection file advertises.

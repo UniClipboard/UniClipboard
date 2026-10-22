@@ -56,7 +56,9 @@ type HostService struct {
 	showWhenReady       bool // a second launch asked for the main window before that
 	files               knownFiles
 
-	quitting atomic.Bool
+	quitting       atomic.Bool
+	bootstrapping  atomic.Bool
+	startupAttempt atomic.Pointer[daemonproc.StartupAttempt]
 
 	shortcutsMu       sync.Mutex
 	panelShortcut     *globalshortcut.Applier // the quick panel shortcut's desired and active binding; set by initQuickPanel
@@ -203,33 +205,17 @@ func incompatibleDaemonError(outcome daemonlife.Outcome) error {
 
 // bootstrap attaches to (or starts) the daemon and prepares the shell: windows, tray activation, quick panel, login item
 // reconcile, the cold-launch sequence and the update scheduler.
-func (h *HostService) bootstrap() {
-	spawnedDaemon := false // whether this launch started the daemon (a cold start) or attached to one
-	outcome, err := daemonlife.ProbeForReuse(daemonlife.StartupTimeout)
-	if err != nil {
-		h.fatal(err)
+func (h *HostService) bootstrap() { h.bootstrapWithRetry(false) }
+
+func (h *HostService) bootstrapWithRetry(retry bool) {
+	if !h.bootstrapping.CompareAndSwap(false, true) {
+		return
 	}
-	switch outcome.Kind {
-	case daemonlife.Incompatible:
-		log.Print(daemonlife.IncompatibleError(outcome))
-		h.fatal(incompatibleDaemonError(outcome))
-	case daemonlife.Absent:
-		spawnedDaemon = true
-		if err := daemonproc.SpawnDetachedDaemon("gui"); err != nil {
-			h.fatal(err)
-		}
-		if err := daemonlife.WaitHealthy(daemonlife.StartupTimeout, ""); err != nil {
-			h.fatal(err)
-		}
-	case daemonlife.Compatible:
-		if outcome.Health.Residency == daemonlife.ResidencyOneshot {
-			// A command-line `space init` (or another one-shot client) is still winding down: promote it to the
-			// persistent daemon this shell needs, like `uniclip start` does.
-			spawnedDaemon = true
-			if err := daemonlife.PromoteOneshot(daemonlife.ResidencyStandalone, "gui"); err != nil {
-				h.fatal(err)
-			}
-		}
+	defer h.bootstrapping.Store(false)
+	spawnedDaemon, err := h.attachStartupDaemon(retry)
+	if err != nil {
+		h.startupFailed(err)
+		return
 	}
 	client, err := daemonclient.FromEnv()
 	if err != nil {
@@ -266,5 +252,73 @@ func (h *HostService) bootstrap() {
 		timing := schedulerTimingOverride(defaultSchedulerTiming)
 		h.stopActivity = startBackgroundActivity(timing.activityInterval, func() { h.signalWake(wakeBackgroundActivity) })
 		go h.runUpdateScheduler(schedulerCtx, timing)
+	}
+}
+
+// attachStartupDaemon keeps the resident host as the sole daemon owner.
+// A retry may release only this host's exact child after a retryable failure.
+func (h *HostService) attachStartupDaemon(retry bool) (bool, error) {
+	outcome, err := daemonlife.ProbeForReuse(daemonlife.StartupTimeout)
+	if err != nil && retry && daemonlife.RetryableStartupError(err) && h.startupAttempt.Load() != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), daemonStopTimeout)
+		releaseErr := daemonproc.ReleaseFailedStartup(ctx, h.startupAttempt.Load())
+		cancel()
+		if releaseErr != nil {
+			return false, &daemonlife.Error{Kind: daemonlife.ErrStartupFailed, Retryable: true, Details: fmt.Sprintf("startup retry could not release the owned run: %v", releaseErr)}
+		}
+		h.startupAttempt.Store(nil)
+		outcome, err = daemonlife.ProbeForReuse(daemonlife.StartupTimeout)
+	}
+	if err != nil {
+		return false, err
+	}
+	switch outcome.Kind {
+	case daemonlife.Incompatible:
+		log.Print(daemonlife.IncompatibleError(outcome))
+		return false, incompatibleDaemonError(outcome)
+	case daemonlife.Absent:
+		attempt, err := daemonproc.SpawnDetachedDaemonForStartup("gui")
+		if err != nil {
+			return false, err
+		}
+		h.startupAttempt.Store(attempt)
+		return true, daemonlife.WaitHealthyForAttempt(daemonlife.StartupTimeout, "", attempt)
+	case daemonlife.Compatible:
+		if outcome.Health.Residency == daemonlife.ResidencyOneshot {
+			return true, daemonlife.PromoteOneshot(daemonlife.ResidencyStandalone, "gui")
+		}
+	}
+	return false, nil
+}
+
+// Keep a usable recovery path instead of exiting a retryable startup failure.
+// This native dialog works before any business endpoint or UI child exists.
+func (h *HostService) startupFailed(err error) {
+	if !daemonlife.RetryableStartupError(err) {
+		h.releaseOwnedFailedStartup()
+		h.fatal(err)
+		return
+	}
+	log.Print(err)
+	message := err.Error()
+	if h.startupAttempt.Load() == nil {
+		message += "\nAn existing daemon owns this profile. Retry checks it again without stopping it."
+	}
+	dialog := h.app.Dialog.Error().SetTitle("UniClipboard").SetMessage(message)
+	dialog.AddButton("Retry").OnClick(func() { go h.bootstrapWithRetry(true) })
+	dialog.AddButton("Quit").OnClick(func() {
+		// An unready or shared daemon must never be stopped by GUI shutdown.
+		go func() { h.releaseOwnedFailedStartup(); h.quit(true) }()
+	})
+	dialog.Show()
+}
+
+func (h *HostService) releaseOwnedFailedStartup() {
+	if attempt := h.startupAttempt.Load(); attempt != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), daemonStopTimeout)
+		defer cancel()
+		if err := daemonproc.ReleaseFailedStartup(ctx, attempt); err != nil {
+			log.Printf("could not release owned failed startup: %v", err)
+		}
 	}
 }

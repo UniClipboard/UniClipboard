@@ -115,13 +115,70 @@ fn probe_system_storage_integrity(storage: &dyn SecureStorageProvider) -> Result
 
 /// Upper bound for the Linux Secret-Service probe.
 ///
-/// Must stay comfortably below the GUI's 8s daemon-startup window (the bootstrap
-/// `StartupTimeout`) so that a *blocked* probe still leaves enough time for the
-/// rest of daemon wiring to report secure-storage failure. A
+/// Must stay below the host's daemon startup timeout so a blocked probe leaves
+/// enough time for daemon wiring to report secure-storage failure. A
 /// healthy, already-unlocked gnome-keyring round-trips set/get/delete in well
 /// under a second, so 3s only ever trips on genuinely stuck backends.
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", feature = "test-helpers"))]
 const SYSTEM_STORAGE_PROBE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(3);
+
+/// Retry only absence of the D-Bus service name, never permission, integrity,
+/// binary encoding or generic timeout errors. All attempts share one worker
+/// and one deadline; a blocked call cannot create overlapping probe workers.
+#[cfg(any(target_os = "linux", feature = "test-helpers"))]
+fn probe_system_storage_until_ready(storage: &dyn SecureStorageProvider) -> Result<(), String> {
+    use std::time::{Duration, Instant};
+    let started = Instant::now();
+    let mut attempt = 0u32;
+    loop {
+        attempt += 1;
+        let result = probe_system_storage_integrity(storage);
+        let elapsed = started.elapsed();
+        match result {
+            Ok(()) => {
+                tracing::info!(
+                    attempt,
+                    elapsed_ms = elapsed.as_millis() as u64,
+                    outcome = "ready",
+                    "system secure storage probe completed"
+                );
+                return Ok(());
+            }
+            Err(error) => {
+                let transient = crate::system_secure_storage::is_service_name_unavailable(&error);
+                let remaining = SYSTEM_STORAGE_PROBE_TIMEOUT.saturating_sub(elapsed);
+                if !transient || remaining <= Duration::from_millis(200) {
+                    tracing::warn!(
+                        attempt,
+                        elapsed_ms = elapsed.as_millis() as u64,
+                        reason = if transient {
+                            "readiness_budget_exhausted"
+                        } else {
+                            "non_retryable"
+                        },
+                        "system secure storage probe failed"
+                    );
+                    return Err(error);
+                }
+                tracing::debug!(
+                    attempt,
+                    elapsed_ms = elapsed.as_millis() as u64,
+                    reason = "service_name_unavailable",
+                    "retrying system secure storage probe"
+                );
+                std::thread::sleep(Duration::from_millis(200));
+            }
+        }
+    }
+}
+
+/// Nonvisual process harness entry for the production Linux readiness policy.
+#[cfg(feature = "test-helpers")]
+pub fn probe_system_storage_for_e2e(storage: Arc<dyn SecureStorageProvider>) -> Result<(), String> {
+    run_probe_with_timeout(SYSTEM_STORAGE_PROBE_TIMEOUT, move || {
+        probe_system_storage_until_ready(storage.as_ref())
+    })
+}
 
 /// Run a secure-storage `probe` on a detached worker thread, bounded by
 /// `timeout`. Returns the probe's own `Result` if it finishes in time, or an
@@ -203,19 +260,9 @@ fn secure_storage_from_capability_in_app_data_root(
 ) -> Result<SelectedSecureStorage, SecureStorageFactoryError> {
     match capability {
         SecureStorageCapability::SystemKeyring => {
-            // A file store at the same path the legacy-entry reconciliation below
-            // also uses: when the system store deterministically rejects binary
-            // writes (t-0155), falling back here keeps a single on-disk location
-            // for this profile's keys instead of inventing a second one.
-            let file_fallback = app_data_root.as_ref().map(|root| {
-                Arc::new(FileSecureStorage::with_base_dir(
-                    root.join(FILE_KEY_STORE_DIR),
-                )) as Arc<dyn SecureStorageProvider>
-            });
-            let system = Arc::new(ProbedSecureStorage::with_file_fallback(
-                Arc::new(SystemSecureStorage::new()),
-                file_fallback,
-            )) as Arc<dyn SecureStorageProvider>;
+            let system = Arc::new(ProbedSecureStorage::new(Arc::new(
+                SystemSecureStorage::new(),
+            ))) as Arc<dyn SecureStorageProvider>;
             Ok(match app_data_root {
                 Some(root) => {
                     let (storage, source) =

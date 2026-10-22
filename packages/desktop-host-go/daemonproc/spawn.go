@@ -1,12 +1,17 @@
 package daemonproc
 
 import (
+	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"time"
 
 	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/errctx"
 )
@@ -68,12 +73,58 @@ type handoverRecord struct {
 // inheriting this process's environment, and applies a pending handover's
 // run mode exactly like the Rust spawn contract.
 func SpawnDetachedDaemon(origin string) error {
+	_, err := SpawnDetachedDaemonForStartup(origin)
+	return err
+}
+
+// StartupAttempt retains the actual child lifetime, not just its reusable PID.
+// Only this spawn can construct the handle used to release a failed startup.
+type StartupAttempt struct {
+	pid        uint32
+	instanceID string
+	done       <-chan struct{}
+}
+
+// PID is the actual spawned child PID.
+func (a *StartupAttempt) PID() uint32 { return a.pid }
+
+// InstanceID is the random identity assigned before spawning this child.
+func (a *StartupAttempt) InstanceID() string { return a.instanceID }
+
+// Exited reports whether this exact child was reaped.
+func (a *StartupAttempt) Exited() bool {
+	select {
+	case <-a.done:
+		return true
+	default:
+		return false
+	}
+}
+
+// Wait waits for this exact child without sending signals to any process.
+func (a *StartupAttempt) Wait(ctx context.Context) error {
+	select {
+	case <-a.done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+// SpawnDetachedDaemonForStartup returns a handle to the exact spawned run.
+// NoTakeover closes the race with another client that claims the profile first.
+func SpawnDetachedDaemonForStartup(origin string) (*StartupAttempt, error) {
 	exe, err := ResolveDaemonExe()
 	if err != nil {
-		return err
+		return nil, err
 	}
+	nonce := make([]byte, 16)
+	if _, err := rand.Read(nonce); err != nil {
+		return nil, err
+	}
+	instanceID := hex.EncodeToString(nonce)
 	cmd := exec.Command(exe)
-	cmd.Env = append(os.Environ(), spawnOriginEnv+"="+origin)
+	cmd.Env = append(os.Environ(), spawnOriginEnv+"="+origin, NoTakeoverEnv+"=1", "UC_DAEMON_STARTUP_ID="+instanceID)
 	if root, err := AppDataRoot(); err == nil {
 		if data, err := os.ReadFile(filepath.Join(root, handoverFile)); err == nil {
 			var record handoverRecord
@@ -84,10 +135,46 @@ func SpawnDetachedDaemon(origin string) error {
 	}
 	configureDetached(cmd)
 	if err := cmd.Start(); err != nil {
-		return &SpawnError{Err: errctx.Wrap(fmt.Sprintf("failed to spawn daemon via `%s`", exe), err)}
+		return nil, &SpawnError{Err: errctx.Wrap(fmt.Sprintf("failed to spawn daemon via `%s`", exe), err)}
 	}
 	// Reap the child when it exits. `Process.Release` would leave it a zombie of this process until we exit,
 	// and a zombie still passes the `kill(pid, 0)` liveness check, so a stopped daemon would look alive.
-	go func() { _ = cmd.Wait() }()
-	return nil
+	done := make(chan struct{})
+	go func() { _ = cmd.Wait(); close(done) }()
+	return &StartupAttempt{pid: uint32(cmd.Process.Pid), instanceID: instanceID, done: done}, nil
+}
+
+// ReleaseFailedStartup requests an orderly exit only from this host's child.
+// The startup service itself checks terminal state and run identity.
+func ReleaseFailedStartup(ctx context.Context, attempt *StartupAttempt) error {
+	if attempt != nil && attempt.done == nil {
+		return fmt.Errorf("startup attempt has no owned child handle")
+	}
+	if attempt == nil || attempt.Exited() {
+		return nil
+	}
+	conn, err := ReadStartupConnFile()
+	if err != nil {
+		return err
+	}
+	if conn == nil || conn.PID != attempt.PID() || conn.InstanceID != attempt.InstanceID() {
+		return fmt.Errorf("the owned startup service has not published its run identity; retry later")
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, conn.BaseURL()+"/startup/exit", nil)
+	if err != nil {
+		return err
+	}
+	request.Header.Set("Authorization", "Bearer "+conn.Token)
+	request.Header.Set("X-UniClipboard-Startup-Instance", attempt.InstanceID())
+	client := &http.Client{Timeout: 3 * time.Second, Transport: &http.Transport{Proxy: nil}, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	defer client.CloseIdleConnections()
+	response, err := client.Do(request)
+	if err != nil {
+		return err
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusAccepted {
+		return fmt.Errorf("owned daemon refused startup retry (HTTP %d)", response.StatusCode)
+	}
+	return attempt.Wait(ctx)
 }

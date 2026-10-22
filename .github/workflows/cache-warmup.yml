@@ -125,6 +125,11 @@ jobs:
       - name: Check Rust workspace
         run: cargo check --workspace --locked
 
+      - name: Summarize MBX cache requests
+        if: always()
+        shell: bash
+        run: python3 scripts/ci/summarize-mbx.py "$RUNNER_TEMP/mbx-evidence"
+
       - name: Retain MBX compiler evidence
         if: always() && runner.os != 'Windows'
         uses: actions/upload-artifact@v7
@@ -211,6 +216,11 @@ jobs:
       - name: Generate coverage report
         run: |
           xvfb-run -a cargo llvm-cov --lcov --output-path lcov.info --workspace
+
+      - name: Summarize MBX cache requests
+        if: always()
+        shell: bash
+        run: python3 scripts/ci/summarize-mbx.py "$RUNNER_TEMP/mbx-evidence"
 
       - name: Retain MBX compiler evidence
         if: always()

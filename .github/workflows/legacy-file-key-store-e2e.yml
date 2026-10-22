@@ -136,6 +136,11 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+      - name: Summarize MBX cache requests
+        if: always()
+        shell: bash
+        run: python3 scripts/ci/summarize-mbx.py "$RUNNER_TEMP/mbx-evidence"
+
       - name: Retain MBX compiler evidence
         if: always() && runner.os != 'Windows'
         uses: actions/upload-artifact@v7

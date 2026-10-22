@@ -140,6 +140,11 @@ jobs:
             ~/.local/state/app.uniclipboard.desktop-e2e-membership-*/**
             ~/AppData/Local/app.uniclipboard.desktop-e2e-membership-*/**
 
+      - name: Summarize MBX cache requests
+        if: always()
+        shell: bash
+        run: python3 scripts/ci/summarize-mbx.py "$RUNNER_TEMP/mbx-evidence"
+
       - name: Retain MBX compiler evidence
         if: always()
         uses: actions/upload-artifact@v7

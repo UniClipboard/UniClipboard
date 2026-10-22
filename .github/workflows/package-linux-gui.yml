@@ -223,6 +223,11 @@ jobs:
             sudo chown -R "$(id -u):$(id -g)" "$RUNNER_TEMP/mbx-evidence"
           fi
 
+      - name: Summarize MBX cache requests
+        if: always() && hashFiles('scripts/ci/summarize-mbx.py') != ''
+        shell: bash
+        run: python3 scripts/ci/summarize-mbx.py "$RUNNER_TEMP/mbx-evidence"
+
       - name: Retain MBX compiler evidence
         if: always()
         uses: actions/upload-artifact@v7

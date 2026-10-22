@@ -18,7 +18,11 @@ pub enum SecureStorageCapability {
 ///
 /// # Detection Logic
 ///
-/// - **macOS**: Always `SystemKeyring` (Keychain available)
+/// - **Development**: Debug builds with an explicit development environment and
+///   a named profile use `FileBasedKeystore`, without probing the system store.
+///   `UC_DEV_USE_PLATFORM_STORAGE=1` opts into normal platform detection for
+///   isolated secure-storage integration tests.
+/// - **macOS**: `SystemKeyring` (Keychain available)
 /// - **Windows**: Always `SystemKeyring` (Credential Manager available)
 /// - **Linux**:
 ///   - If WSL detected → `FileBasedKeystore`
@@ -26,13 +30,18 @@ pub enum SecureStorageCapability {
 ///   - Otherwise → `FileBasedKeystore`
 /// - **Other**: `Unsupported`
 pub fn detect_storage_capability() -> SecureStorageCapability {
+    if dev_env_forces_file_storage() {
+        tracing::debug!(
+            storage = "file",
+            environment = "development",
+            "Selected development secure storage"
+        );
+        return SecureStorageCapability::FileBasedKeystore;
+    }
+
     // macOS: Always has Keychain
     #[cfg(target_os = "macos")]
     {
-        if dev_env_forces_file_storage() {
-            tracing::warn!("⚠️  macOS dev environment detected. Using file-based secure storage.");
-            return SecureStorageCapability::FileBasedKeystore;
-        }
         SecureStorageCapability::SystemKeyring
     }
 
@@ -122,11 +131,35 @@ fn classify_display_session(
     }
 }
 
-#[cfg(target_os = "macos")]
 fn dev_env_forces_file_storage() -> bool {
-    std::env::var("UNICLIPBOARD_ENV")
-        .map(|value| value == "development")
-        .unwrap_or(false)
+    development_file_storage_allowed(
+        cfg!(debug_assertions),
+        std::env::var("UNICLIPBOARD_ENV").ok().as_deref(),
+        std::env::var("UC_PROFILE").ok().as_deref(),
+        std::env::var("UC_DEV_USE_PLATFORM_STORAGE").as_deref() == Ok("1"),
+    )
+}
+
+fn development_file_storage_allowed(
+    debug_build: bool,
+    environment: Option<&str>,
+    profile: Option<&str>,
+    use_platform_storage: bool,
+) -> bool {
+    debug_build
+        && !use_platform_storage
+        && environment == Some("development")
+        && profile.is_some_and(|value| {
+            !value.is_empty()
+                && !["default", "prod", "production"]
+                    .iter()
+                    .any(|reserved| value.eq_ignore_ascii_case(reserved))
+                && value.len() <= 64
+                && value.as_bytes()[0].is_ascii_alphanumeric()
+                && value
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-')
+        })
 }
 
 /// Detect if running under WSL (Windows Subsystem for Linux).
@@ -168,6 +201,61 @@ fn has_desktop_environment() -> bool {
 mod tests {
     use super::*;
     use std::ffi::OsString;
+
+    #[test]
+    fn file_storage_requires_a_debug_development_profile() {
+        assert!(development_file_storage_allowed(
+            true,
+            Some("development"),
+            Some("dev"),
+            false
+        ));
+        assert!(!development_file_storage_allowed(
+            false,
+            Some("development"),
+            Some("dev"),
+            false
+        ));
+        assert!(!development_file_storage_allowed(
+            true,
+            Some("production"),
+            Some("dev"),
+            false
+        ));
+        assert!(!development_file_storage_allowed(
+            true,
+            None,
+            Some("dev"),
+            false
+        ));
+        for profile in [
+            None,
+            Some(""),
+            Some("../production"),
+            Some("-dev"),
+            Some("default"),
+            Some("prod"),
+            Some("production"),
+            Some("PROD"),
+        ] {
+            assert!(!development_file_storage_allowed(
+                true,
+                Some("development"),
+                profile,
+                false
+            ));
+        }
+    }
+
+    #[test]
+    fn platform_storage_opt_in_bypasses_only_the_development_override() {
+        assert!(!development_file_storage_allowed(
+            true,
+            Some("development"),
+            Some("dev"),
+            true,
+        ));
+    }
 
     fn env(value: &str) -> Option<OsString> {
         Some(OsString::from(value))

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useEffectEvent, useMemo, useReducer } from 'react'
+import { useCallback, useEffect, useEffectEvent, useMemo, useReducer, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   SetupV2Error,
@@ -31,23 +31,33 @@ interface SwitchState {
   pendingJoinId: string | null
 }
 
-export function useSwitchSpace({ onOpenChange }: { onOpenChange: (open: boolean) => void }) {
+const initialState: SwitchState = {
+  step: 'input',
+  code: '',
+  pass: '',
+  showPass: false,
+  errorKind: null,
+  errorRaw: null,
+  result: null,
+  pendingJoinId: null,
+}
+
+export function useSwitchSpace({
+  onOpenChange,
+  autoClose = true,
+}: {
+  onOpenChange: (open: boolean) => void
+  autoClose?: boolean
+}) {
   const { t } = useTranslation(undefined, { keyPrefix: 'devices.switchSpace' })
   const dispatch = useAppDispatch()
   const [state, update] = useReducer(
     (current: SwitchState, changes: Partial<SwitchState>) => ({ ...current, ...changes }),
-    {
-      step: 'input',
-      code: '',
-      pass: '',
-      showPass: false,
-      errorKind: null,
-      errorRaw: null,
-      result: null,
-      pendingJoinId: null,
-    }
+    initialState
   )
   const { step, code, pass, errorKind, errorRaw, pendingJoinId } = state
+  const activeJoinId = useRef<string | null>(null)
+  const operation = useRef(0)
 
   const codeComplete = code.length === INVITATION_CODE_LENGTH
   const canSubmit = codeComplete && pass.length > 0 && step === 'input'
@@ -55,13 +65,15 @@ export function useSwitchSpace({ onOpenChange }: { onOpenChange: (open: boolean)
   // Keep the close timer stable across parent renders.
   const closeDialog = useEffectEvent(() => onOpenChange(false))
   useEffect(() => {
-    if (step !== 'success') return
+    if (step !== 'success' || !autoClose) return
     const id = setTimeout(() => closeDialog(), SUCCESS_AUTO_CLOSE_MS)
     return () => clearTimeout(id)
-  }, [step])
+  }, [step, autoClose])
 
   const resolveJoinAdmission = useCallback(
     (resolution: JoinAdmissionResolution) => {
+      if (resolution.joinId !== activeJoinId.current) return
+      activeJoinId.current = null
       if (resolution.status === 'active') {
         dispatch(fetchSpaceMembers())
         dispatch(fetchLocalDeviceInfo())
@@ -78,6 +90,7 @@ export function useSwitchSpace({ onOpenChange }: { onOpenChange: (open: boolean)
     [dispatch]
   )
   useJoinAdmission(pendingJoinId, resolveJoinAdmission, result => {
+    if (result.joinId !== activeJoinId.current) return
     update({ step: result.status })
   })
 
@@ -86,6 +99,8 @@ export function useSwitchSpace({ onOpenChange }: { onOpenChange: (open: boolean)
     if (!codeComplete || pass.length === 0) return
     // Allow submission when in 'input' step OR when preserveUnreadableHistory retry is triggered
     if (step !== 'input' && !preserveUnreadableHistory) return
+    const currentOperation = ++operation.current
+    activeJoinId.current = null
     update({ errorKind: null, errorRaw: null, step: 'migrating' })
     try {
       const res = await switchSpace({
@@ -93,9 +108,12 @@ export function useSwitchSpace({ onOpenChange }: { onOpenChange: (open: boolean)
         newPassphrase: pass,
         preserveUnreadableHistory,
       })
+      if (currentOperation !== operation.current) return
       if (res.status === 'active') {
+        activeJoinId.current = res.joinId
         resolveJoinAdmission(res)
       } else if (res.status === 'pending' || res.status === 'processing') {
+        activeJoinId.current = res.joinId
         update({ pendingJoinId: res.joinId, step: res.status })
       } else if (
         res.status === 'needs_attention' ||
@@ -105,6 +123,7 @@ export function useSwitchSpace({ onOpenChange }: { onOpenChange: (open: boolean)
         update({ errorKind: 'internal', errorRaw: res.reason, step: 'failed' })
       }
     } catch (err) {
+      if (currentOperation !== operation.current) return
       log.error({ err }, 'switchSpace failed')
       if (err instanceof SetupV2Error) {
         update({ errorKind: err.kind as SwitchSpaceErrorKind, errorRaw: err.raw })
@@ -134,17 +153,23 @@ export function useSwitchSpace({ onOpenChange }: { onOpenChange: (open: boolean)
   }
 
   const handleCancelPending = async () => {
-    if (!pendingJoinId) return
+    const joinId = activeJoinId.current
+    const currentOperation = operation.current
+    if (!joinId || joinId !== pendingJoinId) return
     try {
-      const result = await cancelJoinSpace(pendingJoinId)
+      const result = await cancelJoinSpace(joinId)
+      if (currentOperation !== operation.current || joinId !== activeJoinId.current) return
       if (result.status === 'active') {
         resolveJoinAdmission(result)
       } else if (result.status === 'rejected' || result.status === 'terminated') {
         resolveJoinAdmission(result)
       }
     } catch (err) {
-      log.error({ err, joinId: pendingJoinId }, 'cancelJoinSpace failed')
+      if (currentOperation !== operation.current || joinId !== activeJoinId.current) return
+      activeJoinId.current = null
+      log.error({ err, joinId }, 'cancelJoinSpace failed')
       update({
+        pendingJoinId: null,
         errorKind: 'internal',
         errorRaw: err instanceof Error ? err.message : String(err),
         step: 'failed',
@@ -174,5 +199,10 @@ export function useSwitchSpace({ onOpenChange }: { onOpenChange: (open: boolean)
     handleSubmit,
     handleRetry,
     handleCancelPending,
+    reset: () => {
+      operation.current += 1
+      activeJoinId.current = null
+      update(initialState)
+    },
   }
 }

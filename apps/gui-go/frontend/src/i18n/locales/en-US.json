@@ -2219,7 +2219,26 @@
         }
       }
     },
+    "tasks": {
+      "continue": "Continue",
+      "back": "Back",
+      "step": "Step {{current}} of {{total}}",
+      "save": "Save",
+      "joinCodeTitle": "Enter an invitation code",
+      "joinCodeDescription": "Create an invitation on a device in the space you want to join. Enter its six-digit code here.",
+      "joinConfirmTitle": "Confirm the space switch",
+      "joinConfirmDescription": "Enter the passphrase chosen by the other device. Your current space connection will be replaced.",
+      "phoneTitle": "Connect your phone",
+      "phoneDescription": "Choose how this phone will connect to this computer.",
+      "directTitle": "Device connection (experimental)",
+      "enableTitle": "Enable local network access",
+      "connectionUnavailable": "Connection needs attention",
+      "phoneNameTitle": "Name your phone",
+      "phoneNameDescription": "After adding it, connection details will appear in the device list. Keep both devices on the same network.",
+      "invalidPort": "Enter a port from 1 to 65535."
+    },
     "switchSpace": {
+      "backToDevices": "Back to devices",
       "button": "Join another space",
       "title": "Switch to another space",
       "subtitle": "Existing clipboard history will be re-encrypted under the new master key.",

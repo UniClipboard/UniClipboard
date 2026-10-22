@@ -158,27 +158,14 @@ paths.
 
 ### Pairing a mobile device
 
-On the desktop, click the **phone icon beside Invite device** to open **Connect phone**. **Regular sync** is selected by default; confirm enabling it if needed. The following steps describe regular sync. To join the space with an invitation code, switch to **Device connection (Experimental)**.
+On the desktop, click the phone icon beside the invitation button to open **Connect phone**, then choose **Regular sync**. Confirm enabling it when needed. All steps stay within the current task panel without stacking dialogs. For invitation-code pairing, go back and choose **Device connection (Experimental)**.
 
-1. Pick a label for the device.
-2. The daemon mints a one-time username and password and shows them
-   inside a **credentials modal** with iOS / Android tabs:
-   - **iOS** — scan the QR code to install the bundled UniClipboard
-     iOS Shortcut, which is pre-filled with the base URL and
-     credentials.
-   - **Android / other clients** — copy the base URL, username, and
-     password into any SyncClipboard-compatible client. For Android,
-     install the **UniClipboard Android client** at
-     [github.com/UniClipboard/UniClip](https://github.com/UniClipboard/UniClip),
-     with APKs in
-     [releases](https://github.com/UniClipboard/UniClip/releases/latest)
-     (side-load only, no Google Play).
-3. The plaintext password is shown **once**; close the modal and the
-   desktop only retains an Argon2id hash. If the user loses it, use
-   **Rotate password** on the device row to mint a new one.
+1. Enter a device name. Expand advanced options if you need a custom username or password.
+2. After registration, scan the connection QR using the phone client, or expand manual entry to copy the server address, username, and password separately. The password is masked by default.
+3. If the phone has no client, expand installation help and choose iOS, Android, or the available Shortcut option. Android packages are available from [GitHub Releases](https://github.com/UniClipboard/uc-android/releases/latest).
+4. Choose **Done** to return to the device list. Closing the panel keeps the registered device but clears the current view's one-time credentials. Reset the password from device details if it is lost.
 
-Settings — LAN listener on/off, advertised IP and port — live behind
-the **Mobile sync settings** sheet on the same page.
+Connection failures offer network configuration and retry actions within the task panel. The registered-phone group also provides access to mobile sync settings.
 
 ### What mobile sync does _not_ do
 

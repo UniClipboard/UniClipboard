@@ -1,17 +1,15 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { RegisterMobileDeviceResult } from '@/api/tauri-command/mobile_sync'
-import ConnectMobileDialog from '@/components/device/ConnectMobileDialog'
-import MobileSyncSettingsDialog from '@/components/device/MobileSyncSettingsDialog'
-import SwitchSpaceDialog from '@/components/device/SwitchSpaceDialog'
 import { useDevicesPage } from '@/hooks/useDevicesPage'
 import { useShortcutLayer } from '@/hooks/useShortcutLayer'
-import { fetchSpaceMembers, fetchSpaceProtection } from '@/store/slices/devicesSlice'
 import { AlertDialog, Button, MasterDetail, Menu, Sheet, type MenuEntry } from '@/ui-kit'
 import { selectionId, type DevicesKitSelection } from './devices-kit-model'
 import { DevicesKitDetail } from './DevicesKitDetail'
 import { DevicesKitList } from './DevicesKitList'
+import { DevicesKitTaskContent } from './DevicesKitTaskContent'
 import type { DevicesKitController } from './useDevicesKit'
+import { useDevicesKitTasks } from './useDevicesKitTasks'
 
 const INVITE = 'invite'
 const PHONE = 'phone'
@@ -27,6 +25,8 @@ const JOIN = 'join'
 export function DevicesKitSheet({ devices }: { devices: DevicesKitController }) {
   const { t } = useTranslation()
   const page = useDevicesPage()
+  const tasks = useDevicesKitTasks(page, devices)
+  const flowOpen = tasks.active !== null
   const { invitation } = devices
   // Registration credentials belong to this Sheet session, never to History's saved selection.
   const [pendingCredential, setPendingCredential] = useState<RegisterMobileDeviceResult | null>(
@@ -70,66 +70,83 @@ export function DevicesKitSheet({ devices }: { devices: DevicesKitController }) 
     { id: 'separator', kind: 'separator' },
     { id: JOIN, label: t('devices.kit.joinSpace') },
   ]
-  const refreshMembers = () => {
-    page.dispatch(fetchSpaceMembers())
-    page.dispatch(fetchSpaceProtection())
-  }
-
   return (
     <Sheet
+      variant={flowOpen ? 'task' : 'management'}
       open={devices.open && entered}
-      onOpenChange={devices.setOpen}
+      onOpenChange={next => {
+        if (!next) {
+          setPendingCredential(null)
+          tasks.close()
+        }
+      }}
       onClosed={devices.onClosed}
       title={t('devices.panel.listTitle')}
       footer={
-        <>
-          <Menu
-            label={t('devices.kit.add')}
-            icon="add"
-            iconOnly
-            items={addMenu}
-            onAction={id => {
-              if (id === INVITE) devices.invite()
-              else if (id === PHONE) page.mobileActions.handleAddClick()
-              else if (id === JOIN) page.setSwitchSpaceOpen(true)
-            }}
-          />
-          <Button
-            icon="remove"
-            label={t('devices.kit.remove')}
-            disabled={!removable}
-            onClick={() => {
-              if (resolved.kind === 'peer') page.handleUnpairRequest(resolved.id)
-              else if (selectedMobile) page.mobileActions.requestRevoke(selectedMobile)
-            }}
-          />
-        </>
+        flowOpen ? undefined : (
+          <>
+            <Menu
+              label={t('devices.kit.add')}
+              icon="add"
+              iconOnly
+              items={addMenu}
+              onAction={id => {
+                if (id === INVITE) devices.invite()
+                else if (id === PHONE) page.mobileActions.handleAddClick()
+                else if (id === JOIN) page.setSwitchSpaceOpen(true)
+              }}
+            />
+            <Button
+              icon="remove"
+              label={t('devices.kit.remove')}
+              disabled={!removable}
+              onClick={() => {
+                if (resolved.kind === 'peer') page.handleUnpairRequest(resolved.id)
+                else if (selectedMobile) page.mobileActions.requestRevoke(selectedMobile)
+              }}
+            />
+          </>
+        )
       }
-      done={{ label: t('history.composite.done'), onClick: () => devices.setOpen(false) }}
+      done={flowOpen ? undefined : { label: t('history.composite.done'), onClick: tasks.close }}
     >
-      <MasterDetail
-        detailKey={selectionId(resolved)}
-        list={
-          <DevicesKitList
-            page={page}
-            invitation={invitation}
-            selection={resolved}
-            onSelect={select}
-          />
-        }
-        detailLabel={t('devices.kit.detailLabel')}
-        detail={
-          <DevicesKitDetail
-            page={page}
-            selection={resolved}
-            invitation={invitation}
-            initialCredential={pendingCredential}
-            onCredentialConsumed={() => setPendingCredential(null)}
-            joinedPeerId={devices.joinedPeerId}
-            onDismissJoined={devices.dismissJoined}
-          />
-        }
-      />
+      {flowOpen ? (
+        <DevicesKitTaskContent
+          tasks={tasks}
+          page={page}
+          devices={devices}
+          onCredential={setPendingCredential}
+          credential={pendingCredential}
+          onCredentialDone={() => {
+            setPendingCredential(null)
+            tasks.close()
+          }}
+        />
+      ) : (
+        <MasterDetail
+          detailKey={selectionId(resolved)}
+          list={
+            <DevicesKitList
+              page={page}
+              invitation={invitation}
+              selection={resolved}
+              onSelect={select}
+            />
+          }
+          detailLabel={t('devices.kit.detailLabel')}
+          detail={
+            <DevicesKitDetail
+              page={page}
+              selection={resolved}
+              invitation={invitation}
+              initialCredential={pendingCredential}
+              onCredentialConsumed={() => setPendingCredential(null)}
+              joinedPeerId={devices.joinedPeerId}
+              onDismissJoined={devices.dismissJoined}
+            />
+          }
+        />
+      )}
 
       <AlertDialog
         open={page.unpairDialogOpen}
@@ -158,29 +175,6 @@ export function DevicesKitSheet({ devices }: { devices: DevicesKitController }) 
         destructive
         busyLabel={page.revokeBusy ? t('devices.mobileSync.revoke.confirm') : undefined}
         onConfirm={page.mobileActions.handleRevokeConfirm}
-      />
-
-      {/* The app's own dialogs for these flows, nested in the sheet so focus moves to them. */}
-      <SwitchSpaceDialog open={page.switchSpaceOpen} onOpenChange={page.setSwitchSpaceOpen} />
-      <MobileSyncSettingsDialog
-        open={page.settingsSheetOpen}
-        onOpenChange={page.mobileActions.setSettingsSheetOpen}
-        onSettingsChange={page.mobileActions.setSettings}
-      />
-      <ConnectMobileDialog
-        open={page.addDialogOpen}
-        onOpenChange={page.mobileActions.setAddDialogOpen}
-        onSettingsChange={page.mobileActions.setSettings}
-        onConfigure={() => {
-          page.mobileActions.setAddDialogOpen(false)
-          page.mobileActions.openSettings()
-        }}
-        onDirectSuccess={refreshMembers}
-        onMobileSuccess={result => {
-          page.mobileActions.reload()
-          setPendingCredential(result)
-          devices.setSelection({ kind: 'mobile', id: result.deviceId })
-        }}
       />
     </Sheet>
   )

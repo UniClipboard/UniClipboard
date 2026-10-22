@@ -55,9 +55,10 @@ LAN listener, register the phone, and print a QR code in one go.
 ### Open the **Devices** page
 
 Click the phone icon beside the invitation button to open **Connect phone**.
-**Regular sync** is selected by default. On first use, confirm enabling it,
-then enter a device label and add the phone. For invitation-code pairing,
-switch to **Device connection (Experimental)**.
+Choose **Regular sync** and continue. On first use, confirm enabling it,
+then enter a device name and add the phone. For invitation-code pairing,
+go back and choose **Device connection (Experimental)**. Configuration and
+results appear within the same task panel without stacking dialogs.
 
 </Step>
 
@@ -65,32 +66,13 @@ switch to **Device connection (Experimental)**.
 
 ### Adjust settings when needed
 
-Manual configuration is usually unnecessary. If a connection error occurs,
-use **Configure** in the dialog to open Mobile sync settings. The registered
-phone group also retains its settings action. Under **Network parameters**:
+Manual configuration is usually unnecessary. If a connection error occurs, use **Configure** within the current task panel. The registered-phone group also retains its settings action.
 
-- **Bind IP** — leave on `Auto` to have the desktop offer every
-  RFC1918 candidate at copy time, or pick a specific interface to
-  fix the advertised URL to one address. Tailscale CGNAT addresses
-  (`100.64.0.0/10`) are included in the dropdown so a Tailscale-
-  reachable phone can be paired the same way as a LAN phone; this
-  is independent of the **Settings → Network → Allow overlay
-  network addrs** toggle, which only affects desktop ↔ desktop
-  pairing. Either way the actual socket always binds to `0.0.0.0`;
-  this picker only controls which address gets advertised to the
-  mobile device.
-- **Port** — defaults to `42720`. Change only if there's a conflict.
+- **Sync and LAN listener**: control regular sync and LAN listening separately; confirm the network-risk notice when enabling them.
+- **Bind IP**: choose Auto or a specific interface. Tailscale CGNAT addresses (`100.64.0.0/10`) are also eligible; this is independent of the overlay-address setting used for desktop pairing. The socket still binds to `0.0.0.0`; this selection controls the address advertised to the phone.
+- **Port**: defaults to `42720`. Change it if there is a conflict; invalid ports produce an inline error.
 
-The dialog shows the **current listening address** as you go. If
-Bind IP is `Auto`, that row expands inline into every candidate LAN
-IPv4 — copy the one the mobile device can dial. If a specific
-interface is picked, a single URL is shown. The LAN listener is
-hot-swapped: changes apply immediately, no daemon restart needed.
-
-If the daemon raises `lan_listener_error` (port in use, permission
-denied, etc.), a red Alert at the top of the dialog spells out the
-reason. The Connect phone dialog also shows the reason and offers
-configuration and retry actions.
+Saved changes apply without restarting the daemon. Listener failures show their reason and offer configuration and retry actions within the panel.
 
 </Step>
 
@@ -98,44 +80,14 @@ configuration and retry actions.
 
 ### Click **Add device**
 
-Pick a label (e.g. "My iPhone 15"). The desktop mints a one-time
-**username** and **password** and shows them inside a single
-scan-first credentials modal:
+Enter a device name (for example, "My iPhone 15"). Credentials are generated automatically unless you specify them in advanced options.
+After registration, the same panel displays one-time connection information:
 
-- **Big QR (top, always on)** — encodes **every reachable candidate
-  address** (the public entry if configured, plus all qualifying
-  interface IPs including Tailscale CGNAT) together with the
-  credentials as a single `uniclipboard://connect` URI, so one code
-  works whether the phone is on the LAN or coming in from outside;
-  clients that understand the candidate list probe them in order.
-  Scan it from the **UniClipboard iOS App** (TestFlight public
-  beta — recommended; see [Pair an iPhone](#pair-an-iphone) below),
-  the
-  [UniClipboard Android client](https://github.com/UniClipboard/UniClip),
-  or any other SyncClipboard-protocol client. All fields auto-fill;
-  no typing. A baseUrl dropdown sits next to the QR so you can
-  switch which address is the preferred (first) candidate — the
-  remaining candidates stay in the code — without re-opening the
-  Configure modal.
-- **"Haven't installed a client?" disclosure (collapsed by default)** —
-  expand it when the phone has no client yet. Inside are two tabs:
-  **iOS** shows a QR for the TestFlight invite (with a Shortcut
-  install QR as a sub-fallback for users who can't or won't use
-  TestFlight), and **Android** shows a QR for the
-  [GitHub Releases APK download page](https://github.com/UniClipboard/UniClip/releases/latest).
-- **"Credentials" disclosure (amber, collapsed by default)** —
-  expand it to reveal the raw `username` / `password` for clients
-  that need manual entry. A **Backup** button copies a
-  `Server / Username / Password` block to the clipboard in one go.
+- **Connection QR**: encodes reachable candidate addresses and credentials in a `uniclipboard://connect` URI. Scan it using the UniClipboard iOS App, [Android client](https://github.com/UniClipboard/UniClip), or a client supporting this connection format.
+- **Manual entry**: expand to copy the server address, username, and password separately. The password is masked until you choose to reveal it.
+- **Haven't installed a client?**: expand and select iOS, Android, or the available Shortcut option to scan its installation QR.
 
-Closing the modal (the **Done** button, the `X` icon, `Esc`, or
-clicking outside the dialog) all **keep the device** — there's no
-in-modal discard path. To revoke a device, open it from the
-**Mobile sync** device grid instead (see
-[Manage paired devices](#manage-paired-devices)).
-
-The plaintext password is shown **once**. The desktop only retains
-an Argon2id hash after the modal closes.
+Choosing **Done** or closing the panel keeps the registered device and clears the current view's one-time credentials. To revoke it, select the phone in the device list; see [Manage paired devices](#manage-paired-devices). The plaintext password cannot be shown again later; reset it if lost.
 
 </Step>
 

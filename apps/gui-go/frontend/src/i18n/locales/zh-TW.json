@@ -2213,7 +2213,26 @@
         }
       }
     },
+    "tasks": {
+      "continue": "繼續",
+      "back": "返回",
+      "step": "第 {{current}} 步，共 {{total}} 步",
+      "save": "儲存",
+      "joinCodeTitle": "輸入空間邀請碼",
+      "joinCodeDescription": "在目標空間的一台裝置上建立邀請，然後在此輸入六位數字邀請碼。",
+      "joinConfirmTitle": "確認切換空間",
+      "joinConfirmDescription": "輸入對方裝置設定的空間密語。確認後，本機將離開目前空間並加入目標空間。",
+      "phoneTitle": "連接你的手機",
+      "phoneDescription": "選擇這台手機與電腦的連接方式。",
+      "directTitle": "裝置直連（實驗性）",
+      "enableTitle": "允許區域網路連接",
+      "connectionUnavailable": "連接需要處理",
+      "phoneNameTitle": "為手機命名",
+      "phoneNameDescription": "新增後將在裝置清單顯示連接資訊。請讓手機和電腦連接同一區域網路。",
+      "invalidPort": "請輸入 1 到 65535 之間的連接埠。"
+    },
     "switchSpace": {
+      "backToDevices": "返回裝置管理",
       "button": "加入其他空間",
       "title": "切換到其他空間",
       "subtitle": "目前剪貼簿歷史會用新空間的主密鑰重新加密。",

@@ -2,8 +2,11 @@ name: MBX CAS snapshot
 description: Transfer a private R2 action closure without restoring Cargo targets.
 inputs:
   operation:
-    description: Restore or save the e2e-macos snapshot.
+    description: Restore or save a workload snapshot.
     default: restore
+  scene:
+    description: Workload exported by MBX; host OS and architecture further isolate the key.
+    default: e2e-macos
   object-fallback:
     description: Keep per-object R2 reads after a snapshot hit.
     default: 'true'
@@ -16,15 +19,34 @@ runs:
       continue-on-error: true
       shell: bash
       env:
+        SNAPSHOT_SCENE: ${{ inputs.scene }}
         SNAPSHOT_OPERATION: ${{ inputs.operation }}
         SNAPSHOT_OBJECT_FALLBACK: ${{ inputs.object-fallback }}
       run: |
-        python_bin="$RUNNER_TEMP/mbx-snapshot-python/bin/python"
+        python_command=python3
+        python_directory=bin
+        python_executable=python
+        if [[ "$RUNNER_OS" == Windows ]]; then
+          python_command=python
+          python_directory=Scripts
+          python_executable=python.exe
+          # Native Python does not interpret Git Bash /d/... environment paths.
+          for variable in RUNNER_TEMP UC_ENGINE_MBX_ENV_FILE UC_ENGINE_MBX_STATS_DIR MBX_CACHE_DIR; do
+            export "$variable=$(cygpath -m "${!variable}")"
+          done
+        fi
+        python_bin="$RUNNER_TEMP/mbx-snapshot-python/$python_directory/$python_executable"
         if [[ ! -x "$python_bin" ]]; then
-          python3 -m venv "$RUNNER_TEMP/mbx-snapshot-python"
+          if ! "$python_command" -m venv "$RUNNER_TEMP/mbx-snapshot-python"; then
+            # The existing Debian build image has Python but may lack ensurepip.
+            [[ "$RUNNER_OS" == Linux ]] || exit 1
+            apt-get update
+            apt-get install -y --no-install-recommends python3-venv
+            "$python_command" -m venv "$RUNNER_TEMP/mbx-snapshot-python"
+          fi
         fi
         if ! "$python_bin" -c 'import boto3' 2>/dev/null; then
           "$python_bin" -m pip install --disable-pip-version-check -q boto3==1.43.117
         fi
         source "$UC_ENGINE_MBX_ENV_FILE"
-        "$python_bin" scripts/ci/mbx-snapshot.py "$SNAPSHOT_OPERATION" --object-fallback "$SNAPSHOT_OBJECT_FALLBACK"
+        "$python_bin" scripts/ci/mbx-snapshot.py "$SNAPSHOT_OPERATION" --scene "$SNAPSHOT_SCENE" --object-fallback "$SNAPSHOT_OBJECT_FALLBACK"

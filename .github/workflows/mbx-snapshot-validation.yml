@@ -1,0 +1,31 @@
+name: MBX snapshot portability
+on:
+  pull_request:
+    paths:
+      - 'scripts/ci/mbx-snapshot*'
+      - 'scripts/build-cache/**'
+      - '.github/actions/mbx-snapshot/**'
+      - '.github/actions/build-pr-rust/**'
+      - '.github/workflows/mbx-snapshot-validation.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: mbx-snapshot-portability-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  native-roundtrip:
+    name: Native CAS round trip (${{ matrix.runner }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-latest, macos-latest, windows-latest, windows-11-arm]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Verify native export, compaction, import and executable reuse
+        shell: bash
+        run: |
+          bash scripts/build-cache/mbx.sh --exec bash -c 'UC_MBX_TEST_BINARY="$(command -v mbx)" python3 scripts/ci/mbx-snapshot.test.py -v'

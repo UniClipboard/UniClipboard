@@ -1,0 +1,26 @@
+name: Build PR Rust checks
+description: Share the exact Linux and Windows compiler workloads with snapshot producers.
+inputs:
+  scene:
+    description: Snapshot workload, pr-check-linux or quick-panel-windows.
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Check Linux workspace and isolated quick panel
+      if: inputs.scene == 'pr-check-linux'
+      shell: bash
+      run: |
+        cargo check --workspace --locked
+        cargo check -p quick-panel --locked
+        cargo build -p uc-webserver --bin gen-openapi --locked
+    - name: Check Windows quick panel and build font contract
+      if: inputs.scene == 'quick-panel-windows'
+      shell: bash
+      run: |
+        cargo check -p quick-panel --locked
+        cargo test -p quick-panel --test windows_font_fallback --locked --no-run
+    - name: Reject unknown workload
+      if: inputs.scene != 'pr-check-linux' && inputs.scene != 'quick-panel-windows'
+      shell: bash
+      run: exit 2

@@ -5,6 +5,7 @@ import importlib.util
 import io
 import json
 import os
+import shutil
 import subprocess
 import tarfile
 import tempfile
@@ -26,6 +27,14 @@ summary = load("summarize-mbx")
 
 
 class SnapshotTests(unittest.TestCase):
+    def test_scene_keys_isolate_workloads_and_host_architectures(self):
+        with patch.object(snapshot.subprocess, "check_output", return_value=b"compiler"), patch.object(snapshot.platform, "system", return_value="Windows"):
+            with patch.object(snapshot.platform, "machine", return_value="AMD64"):
+                x64 = snapshot.scene_key("quick-panel-windows")
+                self.assertNotEqual(x64, snapshot.scene_key("e2e-macos"))
+            with patch.object(snapshot.platform, "machine", return_value="ARM64"):
+                self.assertNotEqual(x64, snapshot.scene_key("quick-panel-windows"))
+
     def test_index_cannot_escape_scene_or_exceed_limit(self):
         sha = "a" * 64
         valid = dict(version=1, sha256=sha, size=20, key=f"scene/{sha}.tar.gz")
@@ -38,7 +47,9 @@ class SnapshotTests(unittest.TestCase):
     def test_archive_rejects_links_unsafe_paths_and_unexpected_files(self):
         for name, kind in [("../escape", tarfile.REGTYPE), ("/escape", tarfile.REGTYPE),
                            ("cas/link", tarfile.SYMTYPE), ("cas/hardlink", tarfile.LNKTYPE),
-                           ("target/debug/bin", tarfile.REGTYPE), ("cas\\escape", tarfile.REGTYPE)]:
+                           ("target/debug/bin", tarfile.REGTYPE), ("cas\\escape", tarfile.REGTYPE),
+                           ("cas/C:/escape", tarfile.REGTYPE), ("cas/blob:stream", tarfile.REGTYPE),
+                           ("cas/alias.", tarfile.REGTYPE), ("cas/alias ", tarfile.REGTYPE), ("cas/CON.bin", tarfile.REGTYPE)]:
             with self.subTest(name=name), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
                 archive = root / "bundle.tar.gz"
@@ -140,6 +151,9 @@ class SnapshotTests(unittest.TestCase):
 class NativeMbxTests(unittest.TestCase):
     def test_compaction_restore_execution_and_corruption(self):
         binary = os.environ["UC_MBX_TEST_BINARY"]
+        if os.name == "nt":
+            binary = subprocess.check_output(["cygpath", "-w", binary], text=True).strip()
+        executable = "snapshot-proof.exe" if os.name == "nt" else "snapshot-proof"
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             workspace = root / "workspace"
@@ -170,13 +184,17 @@ class NativeMbxTests(unittest.TestCase):
             self.assertEqual({file.name for file in bundle.iterdir()}, {snapshot.MANIFEST, "cas", "action-results"})
             # The native importer validates the action closure. Importing to an
             # empty target must not restore scheduler state or compiler outputs.
+            wrapper_bundle = root / "wrapper-bundle"
+            shutil.copytree(bundle, wrapper_bundle)
+            snapshot.mbx("cache", "import", str(wrapper_bundle), cache=root / "wrapper-consumer")
+            self.assertTrue((root / "wrapper-consumer/actions/cas").is_dir())
             original_target = workspace / "target"
             original_target.rename(workspace / "producer-target")
             run("cache", "import", str(bundle), cache=root / "consumer")
             self.assertFalse(original_target.exists())
             run("build", "--offline", cache=root / "consumer")
             self.assertGreater(json.loads((root / "native-stats.json").read_text())["hits"], 0)
-            output = subprocess.check_output([str(original_target / "debug/snapshot-proof")], text=True)
+            output = subprocess.check_output([str(original_target / "debug" / executable)], text=True)
             self.assertEqual(output.strip(), "snapshot-proof")
             # Exercise the complete compressed transport with the native
             # exporter/importer, including the snapshot-only policy transition.
@@ -219,15 +237,16 @@ class NativeMbxTests(unittest.TestCase):
                 self.assertEqual(restored["index_reads"], 1)
                 self.assertEqual(restored["archive_reads"], 1)
                 self.assertIn("unset MBX_REMOTE_URL", config.read_text())
-                self.assertEqual(config.stat().st_mode & 0o777, 0o600)
+                if os.name != "nt":
+                    self.assertEqual(config.stat().st_mode & 0o777, 0o600)
                 self.assertTrue((root / "transport-consumer/actions/cas").is_dir())
                 environment["MBX_CACHE_DIR"] = str(root / "producer")
             run("build", "--offline", "--features", "variant", cache=root / "consumer")
-            self.assertEqual(subprocess.check_output([str(original_target / "debug/snapshot-proof")], text=True).strip(), "variant")
+            self.assertEqual(subprocess.check_output([str(original_target / "debug" / executable)], text=True).strip(), "variant")
             source = workspace / "src/main.rs"
             source.write_text(source.read_text().replace('"snapshot-proof"', '"changed-source"'))
             run("build", "--offline", cache=root / "consumer")
-            self.assertEqual(subprocess.check_output([str(original_target / "debug/snapshot-proof")], text=True).strip(), "changed-source")
+            self.assertEqual(subprocess.check_output([str(original_target / "debug" / executable)], text=True).strip(), "changed-source")
             # Corrupt a required object and confirm native import rejects it.
             exported = root / "corrupt-export"
             run("cache", "export", "--group", "e2e-macos", "--format", "directory", str(exported), cache=root / "consumer")

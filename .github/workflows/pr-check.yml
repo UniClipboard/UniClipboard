@@ -198,6 +198,8 @@ jobs:
         password: ${{ secrets.GITHUB_TOKEN }}
 
     environment: desktop-build-cache-reader
+    env:
+      MBX_CACHE_EXPORT_GROUP: pr-check-linux
     steps:
       - uses: actions/checkout@v4
         with:
@@ -228,14 +230,16 @@ jobs:
           # PR 只读 default branch cache,写入由 cache-warmup 统一负责。
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
-      - name: Check Rust workspace
-        run: cargo check --workspace --locked
+      - name: Restore Linux PR CAS snapshot
+        uses: ./.github/actions/mbx-snapshot
+        with:
+          scene: pr-check-linux
+          object-fallback: 'false'
 
-      # Compile the native quick panel (the only Rust GUI) on its own. The workspace
-      # check above unifies features across members, so a GUI dependency that only
-      # the daemon side enables (e.g. `uc-observability/analytics`) would be hidden there.
-      - name: Check quick panel without workspace feature unification
-        run: cargo check -p quick-panel --locked
+      - name: Build Linux PR Rust checks
+        uses: ./.github/actions/build-pr-rust
+        with:
+          scene: pr-check-linux
 
       # Also resolves the quick panel package on its own with `cargo tree` and fails
       # if it links any Engine package. The workspace `cargo check` above cannot
@@ -309,6 +313,8 @@ jobs:
           - { name: Windows ARM64, runner: windows-11-arm }
 
     environment: desktop-build-cache-reader
+    env:
+      MBX_CACHE_EXPORT_GROUP: quick-panel-windows
     steps:
       - uses: actions/checkout@v4
         with:
@@ -333,13 +339,34 @@ jobs:
           shared-key: pr-check-quick-panel-${{ matrix.runner }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
-      - name: Check the quick panel
-        run: bash scripts/build-cache/mbx.sh --exec cargo check -p quick-panel --locked
+      - name: Restore Windows quick-panel CAS snapshot
+        uses: ./.github/actions/mbx-snapshot
+        with:
+          scene: quick-panel-windows
+          object-fallback: 'false'
+
+      - name: Build Windows PR Rust checks
+        uses: ./.github/actions/build-pr-rust
+        with:
+          scene: quick-panel-windows
 
       - name: Verify Windows font fallback with DirectWrite
         env:
           UC_WINDOWS_FONT_REGRESSION: '1'
         run: bash scripts/build-cache/mbx.sh --exec cargo test -p quick-panel --test windows_font_fallback --locked -- --ignored
+
+      - name: Summarize MBX cache requests
+        if: always()
+        shell: bash
+        run: python3 scripts/ci/summarize-mbx.py "$RUNNER_TEMP/mbx-evidence"
+
+      - name: Retain MBX compiler evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: mbx-quick-panel-${{ matrix.runner }}
+          path: ${{ runner.temp }}/mbx-evidence/
+          if-no-files-found: ignore
 
   e2e:
     name: CLI E2E Tests

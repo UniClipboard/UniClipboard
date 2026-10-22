@@ -21,7 +21,15 @@ MANIFEST = "mbx-cache-export-v1.json"
 MAX_ARCHIVE_BYTES = 16 * 1024**3
 MAX_EXPANDED_BYTES = 40 * 1024**3
 MAX_MEMBERS = 200_000
+WINDOWS_DEVICES = {"CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$"} | {
+    f"{prefix}{digit}" for prefix in ("COM", "LPT") for digit in "123456789¹²³"
+}
 ROOT = Path(__file__).resolve().parents[2]
+SCENES = {
+    "e2e-macos": ".github/actions/build-e2e-rust/action.yml",
+    "pr-check-linux": ".github/actions/build-pr-rust/action.yml",
+    "quick-panel-windows": ".github/actions/build-pr-rust/action.yml",
+}
 
 
 def digest_file(file):
@@ -33,8 +41,12 @@ def scene_key(scene):
     digest = hashlib.sha256()
     for name in ("Cargo.lock", "Cargo.toml", ".cargo/config.toml", "rust-toolchain.toml",
                  "scripts/build-cache/engine-tools.sh", "scripts/ci/mbx-snapshot.py",
-                 ".github/actions/build-e2e-rust/action.yml"):
+                 SCENES[scene]):
         digest.update(name.encode() + b"\0" + (ROOT / name).read_bytes() + b"\0")
+    if scene == "pr-check-linux":
+        # Producer and consumer must use the same container ABI and toolchain.
+        digest.update((ROOT / ".github/docker/build-bookworm.Dockerfile").read_bytes())
+        digest.update(Path("/etc/os-release").read_bytes())
     digest.update(subprocess.check_output(["rustc", "-vV"]))
     digest.update(f"{platform.system()}-{platform.machine()}-{scene}".encode())
     return f"{PREFIX}/{scene}/{digest.hexdigest()}"
@@ -45,7 +57,7 @@ def mbx(*args, cache=None):
     if cache is not None:
         environment["MBX_CACHE_DIR"] = str(cache)
     subprocess.run(
-        ["bash", str(ROOT / "scripts/build-cache/mbx.sh"), "--exec", "mbx", *args],
+        ["bash", "scripts/build-cache/mbx.sh", "--exec", "mbx", *args],
         cwd=ROOT, env=environment, check=True,
     )
 
@@ -103,6 +115,9 @@ def unpack(archive, destination):
             name = PurePosixPath(entry.name)
             if (name.is_absolute() or ".." in name.parts or entry.name in seen
                     or not name.parts or "\\" in entry.name
+                    or any(any(c in part for c in ':<>"|?*') or part.endswith((".", " "))
+                           or part.split(".")[0].upper() in WINDOWS_DEVICES
+                           for part in name.parts)
                     or entry.size < 0 or not (entry.isfile() or entry.isdir())):
                 raise ValueError("Unsafe snapshot member")
             seen.add(entry.name)
@@ -216,7 +231,7 @@ def save(s3, key, temporary, report, scene):
 
 
 def prune_snapshots(s3, scene, report):
-    """Expire only this pilot's old objects, independently of the MBX bucket."""
+    """Expire only this scene's old objects, independently of the MBX bucket."""
     cutoff = datetime.now(timezone.utc) - timedelta(days=14)
     paginator = s3.get_paginator("list_objects_v2")
     report.update(list_requests=0, expired_objects=0)
@@ -234,12 +249,12 @@ def prune_snapshots(s3, scene, report):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("command", choices=("restore", "save"))
-    parser.add_argument("--scene", choices=("e2e-macos",), default="e2e-macos")
+    parser.add_argument("--scene", choices=tuple(SCENES), default="e2e-macos")
     parser.add_argument("--object-fallback", choices=("true", "false"), default="true")
     args = parser.parse_args()
     evidence = Path(os.environ["UC_ENGINE_MBX_STATS_DIR"])
     evidence.mkdir(parents=True, exist_ok=True)
-    report = {"operation": args.command, "status": "pending", "index_reads": 0,
+    report = {"operation": args.command, "scene": args.scene, "status": "pending", "index_reads": 0,
               "archive_reads": 0, "downloaded_bytes": 0}
     started = time.monotonic()
     try:

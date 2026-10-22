@@ -15,6 +15,7 @@ on:
       - 'scripts/ci/mbx-snapshot.py'
       - '.github/actions/mbx-snapshot/**'
       - '.github/actions/build-e2e-rust/**'
+      - '.github/actions/build-pr-rust/**'
       - 'scripts/build-cache/**'
       - '.github/actions/engine-build-cache/**'
       - 'Cargo.lock'
@@ -86,61 +87,73 @@ jobs:
       upload_symbols: false
     secrets: inherit
 
-  warmup-pr-check-rust:
+  warmup-pr-rust:
     needs: maintain-caches
-    name: Warm PR check Rust cache
-    runs-on: ubuntu-latest
-    environment: ${{ github.ref == 'refs/heads/main' && 'desktop-build-cache-writer' || 'desktop-build-cache-reader' }}
+    name: Warm PR CAS snapshot (${{ matrix.runner }})
+    runs-on: ${{ matrix.runner }}
+    container: ${{ matrix.container || null }}
+    timeout-minutes: 90
+    if: github.ref == 'refs/heads/main' && github.ref_protected
+    environment: desktop-build-cache-writer
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            container: ghcr.io/uniclipboard/build-bookworm:latest
+            scene: pr-check-linux
+            cache-key: pr-check
+          - runner: windows-latest
+            scene: quick-panel-windows
+            cache-key: quick-panel-windows-latest
+          - runner: windows-11-arm
+            scene: quick-panel-windows
+            cache-key: quick-panel-windows-11-arm
+    env:
+      MBX_CACHE_EXPORT_GROUP: ${{ matrix.scene }}
     steps:
       - uses: actions/checkout@v6
         with:
           submodules: recursive
-
-      - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
-
-      # Rust workspace only: uc-platform uses libdbus; GPUI links FreeType, xcb and xkbcommon (xcb comes with libxkbcommon-x11-dev).
-      # Wails GTK/WebKit and Linux packaging tools belong to the separate Go GUI build jobs.
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            libdbus-1-dev libfreetype6-dev libxkbcommon-x11-dev
-
+      - uses: dtolnay/rust-toolchain@stable
       - name: Start shared Engine MBX cache
-        if: runner.os != 'Windows'
         uses: ./.github/actions/engine-build-cache
         with:
-          cache-key: pr-check
-          access: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && github.ref_protected && 'write' || 'read' }}
+          cache-key: ${{ matrix.cache-key }}
+          access: ${{ github.event_name == 'push' && 'write' || 'read' }}
           endpoint: ${{ secrets.BUILD_CACHE_R2_ENDPOINT }}
           access-key-id: ${{ secrets.BUILD_CACHE_R2_ACCESS_KEY_ID }}
           secret-access-key: ${{ secrets.BUILD_CACHE_R2_SECRET_ACCESS_KEY }}
-
-      - name: Cache Rust dependencies
+      - name: Restore previous PR CAS snapshot
+        uses: ./.github/actions/mbx-snapshot
+        with:
+          scene: ${{ matrix.scene }}
+      - name: Cache Rust downloads
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: ". -> target"
-          shared-key: pr-check
-          cache-targets: ${{ runner.os == 'Windows' }}
+          shared-key: ${{ matrix.cache-key }}
+          cache-targets: false
           save-if: true
-
-      - name: Check Rust workspace
-        run: cargo check --workspace --locked
-
+      - name: Build PR Rust checks
+        uses: ./.github/actions/build-pr-rust
+        with:
+          scene: ${{ matrix.scene }}
+      - name: Save PR CAS snapshot
+        uses: ./.github/actions/mbx-snapshot
+        with:
+          operation: save
+          scene: ${{ matrix.scene }}
       - name: Summarize MBX cache requests
         if: always()
         shell: bash
         run: python3 scripts/ci/summarize-mbx.py "$RUNNER_TEMP/mbx-evidence"
-
       - name: Retain MBX compiler evidence
-        if: always() && runner.os != 'Windows'
+        if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: mbx-pr-check
+          name: mbx-pr-${{ matrix.runner }}-warmup
           path: ${{ runner.temp }}/mbx-evidence/
           if-no-files-found: ignore
-
 
   warmup-docs-bun:
     needs: maintain-caches

@@ -2,6 +2,19 @@
 
 这是原生快捷面板，复用现有 UniClipboard 后台。macOS 与 Windows 安装包随附并默认使用它（可执行文件名为 `uniclip-quick-panel`，Windows 上为 `uniclip-quick-panel.exe`，crate 名仍为 `quick-panel`）；Linux 继续使用 WebView 面板。
 
+## GPUI 依赖与 Windows 字体回归
+
+根 `Cargo.toml` 的 `[patch.crates-io]` 将所有 GPUI 使用方统一到 Zed 仓库的固定提交；`Cargo.lock` 固定完整依赖图。所选提交包含上游 [PR #42212](https://github.com/zed-industries/zed/pull/42212)，修复 Windows 系统界面字体不可用时对空值调用 `unwrap()` 的崩溃。仓库不维护 GPUI 本地源码副本；该修复早于平台拆包，因此继续使用现有 `gpui-component 0.5.1`。
+
+`tests/windows_font_fallback.rs` 使用真实 Windows API 和 GPUI 字体系统验证系统界面字体不可用、指定字体不存在及可用字体的选择与测量。测试会临时改变当前会话的图标字体，不持久化设置或广播变更，并在 GPUI 完成初始化后恢复。仅在一次性 Windows 测试主机上执行；默认忽略，普通开发机不要启用：
+
+```powershell
+$env:UC_WINDOWS_FONT_REGRESSION = '1'
+cargo test -p quick-panel --test windows_font_fallback --locked -- --ignored
+```
+
+Windows x64 与 ARM64 的 `quick-panel-windows` CI 检查执行该回归。升级上游提交时同时验证 Linux 编译、Windows 编译与字体回归，并在 macOS 验证原生窗口和焦点行为；不要仅依据仍为 `0.2.2` 的包版本号判断兼容性。
+
 ## 代码结构
 
 业务规则与界面分离，依赖只向内。详细设计与迁移记录见 `.planning/research/gpui-quick-panel/ARCHITECTURE.md`。

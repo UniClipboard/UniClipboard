@@ -323,6 +323,11 @@ jobs:
       - name: Check the quick panel
         run: bash scripts/build-cache/mbx.sh --exec cargo check -p quick-panel --locked
 
+      - name: Verify Windows font fallback with DirectWrite
+        env:
+          UC_WINDOWS_FONT_REGRESSION: '1'
+        run: bash scripts/build-cache/mbx.sh --exec cargo test -p quick-panel --test windows_font_fallback --locked -- --ignored
+
   e2e:
     name: CLI E2E Tests
     needs: changes

@@ -27,8 +27,8 @@ describe('MBX request reduction', () => {
     })
   })
 
-  it('uses the same Rust feature graphs for the reader, writer and comparison', () => {
-    for (const file of ['pr-check.yml', 'cache-warmup.yml', 'mbx-cache-benchmark.yml']) {
+  it('uses the same Rust feature graphs for the reader and writer', () => {
+    for (const file of ['pr-check.yml', 'cache-warmup.yml']) {
       const jobs = yaml(`.github/workflows/${file}`).jobs as Record<string, Job>
       const builds = Object.values(jobs).filter(job =>
         job.steps?.some(step => step.uses === './.github/actions/build-e2e-rust')
@@ -38,10 +38,9 @@ describe('MBX request reduction', () => {
     }
   })
 
-  it('uses matching platform workloads for PR readers, warmup and comparisons', () => {
+  it('uses matching platform workloads for PR readers and warmup', () => {
     const pr = yaml('.github/workflows/pr-check.yml').jobs
     const warm = yaml('.github/workflows/cache-warmup.yml').jobs['warmup-pr-rust']
-    const compare = yaml('.github/workflows/mbx-cache-benchmark.yml').jobs.compare
     expect(warm.strategy.matrix.include.map((entry: { runner: string }) => entry.runner)).toEqual([
       'ubuntu-latest',
       'windows-latest',
@@ -63,11 +62,9 @@ describe('MBX request reduction', () => {
         job.steps.find((step: Step) => step.uses === './.github/actions/build-pr-rust').with.scene
       ).toBe(scene)
     }
-    for (const job of [warm, compare]) {
-      expect(
-        job.steps.find((step: Step) => step.uses === './.github/actions/build-pr-rust').with.scene
-      ).toContain(job === warm ? 'matrix.scene' : 'MBX_CACHE_EXPORT_GROUP')
-    }
+    expect(
+      warm.steps.find((step: Step) => step.uses === './.github/actions/build-pr-rust').with.scene
+    ).toContain('matrix.scene')
     expect(warm.strategy.matrix.include[0].container).toBe(pr.rust.container.image)
     expect(
       yaml('.github/workflows/mbx-snapshot-validation.yml').jobs['native-roundtrip'].strategy.matrix

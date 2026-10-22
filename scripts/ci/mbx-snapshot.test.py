@@ -109,7 +109,7 @@ class SnapshotTests(unittest.TestCase):
                 snapshot.save(None, "scene", Path("unused"), {}, "e2e-macos")
             mbx.assert_not_called()
 
-    def test_retention_only_deletes_expired_pilot_objects(self):
+    def test_retention_only_deletes_expired_scene_objects(self):
         now = datetime.now(timezone.utc)
 
         class FakeS3:

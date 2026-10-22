@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/daemonclient"
@@ -158,6 +159,10 @@ func main() {
 	}
 	_, err = daemonlife.ProbeForReuse(300 * time.Millisecond)
 	results = append(results, map[string]any{"case": "live-startup-owner", "passed": err != nil, "error": fmt.Sprint(err)})
+	stopStarted := time.Now()
+	stopErr := daemonlife.WaitAbsent(300 * time.Millisecond)
+	stopElapsed := time.Since(stopStarted)
+	results = append(results, map[string]any{"case": "bounded-owner-drain", "passed": stopErr != nil && stopElapsed >= 300*time.Millisecond && stopElapsed < time.Second, "elapsedMs": stopElapsed.Milliseconds()})
 	must(child.Process.Kill())
 	_ = child.Wait()
 
@@ -213,6 +218,32 @@ func main() {
 		if predecessor != nil {
 			must(predecessor.Process.Kill())
 			_ = predecessor.Wait()
+		}
+	}
+
+	// The convenience API owns its failed child and must release it before return.
+	for _, mode := range []string{"valid", "valid", "still-starting"} {
+		must(os.RemoveAll(root()))
+		must(os.Setenv("STARTUP_FIXTURE", mode))
+		waitErr := daemonlife.SpawnAndWait("e2e", 2*time.Second, "")
+		must(os.Unsetenv("STARTUP_FIXTURE"))
+		conn, readErr := daemonproc.ReadStartupConnFile()
+		must(readErr)
+		live, readErr := daemonproc.ProfileHasLiveDaemon()
+		must(readErr)
+		passed := daemonlife.RetryableStartupError(waitErr) && !live
+		if mode == "still-starting" {
+			passed = daemonlife.RetryableStartupError(waitErr) && live && strings.Contains(waitErr.Error(), "release")
+		}
+		results = append(results, map[string]any{"case": "spawn-and-wait-release-" + mode, "passed": passed, "childLive": live, "error": fmt.Sprint(waitErr)})
+		if live && conn != nil {
+			process, e := os.FindProcess(int(conn.PID))
+			must(e)
+			must(process.Kill())
+			deadline := time.Now().Add(time.Second)
+			for daemonproc.IsActiveDaemon(conn.PID) && time.Now().Before(deadline) {
+				time.Sleep(10 * time.Millisecond)
+			}
 		}
 	}
 

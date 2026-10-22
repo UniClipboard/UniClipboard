@@ -95,14 +95,10 @@ func stopDaemon() error {
 	if err := daemonproc.StopDaemon(pid, requestDaemonGracefulStop, daemonStopTimeout); err != nil {
 		return err
 	}
-	deadline := time.Now().Add(daemonStopTimeout)
-	for time.Now().Before(deadline) {
-		if outcome, err := daemonlife.ProbeForReuse(daemonlife.StartupTimeout); err == nil && outcome.Kind == daemonlife.Absent {
-			return nil
-		}
-		time.Sleep(200 * time.Millisecond)
+	if err := daemonlife.WaitAbsent(daemonStopTimeout); err != nil {
+		return fmt.Errorf("the daemon (pid %d) was still present %s after the stop: %w", pid, daemonStopTimeout, err)
 	}
-	return fmt.Errorf("the daemon (pid %d) was still answering %s after the stop", pid, daemonStopTimeout)
+	return nil
 }
 
 // requestDaemonGracefulStop asks the daemon to shut down in an orderly way. The route marks the run marker clean

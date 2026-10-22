@@ -488,7 +488,18 @@ func SpawnAndWait(origin string, timeout time.Duration, residency string) error 
 	if err != nil {
 		return &Error{Kind: ErrSpawn, Err: err}
 	}
-	return WaitHealthyForAttempt(timeout, residency, attempt)
+	err = WaitHealthyForAttempt(timeout, residency, attempt)
+	var failure *Error
+	if errors.As(err, &failure) && failure.Kind == ErrStartupFailed {
+		ctx, cancel := context.WithTimeout(context.Background(), predecessorRelease)
+		releaseErr := daemonproc.ReleaseFailedStartup(ctx, attempt)
+		cancel()
+		if releaseErr != nil {
+			return &Error{Kind: ErrStartupFailed, Profile: failure.Profile, Retryable: failure.Retryable,
+				Details: fmt.Sprintf("%s; failed to release owned startup: %v", failure.Details, releaseErr)}
+		}
+	}
+	return err
 }
 
 // RetryableStartupError permits an explicit user retry, never automatic respawn.

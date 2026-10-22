@@ -82,7 +82,8 @@ this profile's Key Encryption Key (KEK) already lives:
 - **Profiles without a file key store** — the daemon does **not** create an
   empty file store as a substitute. Startup stops with "The app could not
   start", and the logs show `engine startup failed` with an error code.
-  Make the Secret Service reachable, then restart the app.
+  Make the Secret Service reachable. If the startup dialog offers **Retry**,
+  select it. Otherwise, restart the app.
 - **Profiles with entries in both places** — when the Secret Service holds
   only some of the entries in the file store, the daemon cannot tell which
   copy is complete. It stops without changing either store, and the log
@@ -95,6 +96,21 @@ this profile's Key Encryption Key (KEK) already lives:
   this record. If the recorded store is
   unavailable, startup stops instead of switching to the other store. Do not
   edit or delete that file.
+
+On Linux, a missing Secret Service name can be temporary during login. The
+probe retries only name-owner and activation-absence errors, with 200 ms between
+attempts and a total budget of three seconds. Permission denial, a locked
+service, binary-data rejection, and byte mismatch are not automatically retried.
+A blocked call also reaches the three-second timeout.
+
+After a retryable failure, the desktop host keeps a native **Retry** / **Quit**
+dialog. Once the service is available, select **Retry**. The host can release
+only the failed daemon that it started. If another process owns the daemon,
+**Retry** checks that daemon again without stopping it.
+
+A profile recorded as using System storage never switches to file storage,
+even when the backend rejects binary data. Fix the backend compatibility issue
+or contact support. Keep the profile, keys, and storage-source record intact.
 
 Two situations commonly make the Secret Service unreachable:
 

@@ -2,6 +2,8 @@ use gpui::{App, Hsla, Rgba, Window};
 use gpui_component::{Theme, ThemeMode};
 use uc_daemon_contract::api::dto::settings::{GeneralSettingsDto, ThemeDto};
 
+const DEFAULT_PRESET: &str = "default";
+
 pub struct Surfaces {
     pub background: Hsla,
     pub card: Hsla,
@@ -39,12 +41,12 @@ pub fn apply(
             }
         })
         .or_else(|| settings.and_then(|s| s.theme_color.as_deref()))
-        .unwrap_or("zinc");
+        .unwrap_or(DEFAULT_PRESET);
     let presets: serde_json::Value =
         serde_json::from_str(include_str!("../../assets/themes.json"))?;
     let tokens = presets
         .get(preset)
-        .or_else(|| presets.get("zinc"))
+        .or_else(|| presets.get(DEFAULT_PRESET))
         .and_then(|p| p.get(if dark { "dark" } else { "light" }))
         .ok_or_else(|| anyhow::anyhow!("Missing theme preset"))?;
     let overrides = settings.map(|s| {

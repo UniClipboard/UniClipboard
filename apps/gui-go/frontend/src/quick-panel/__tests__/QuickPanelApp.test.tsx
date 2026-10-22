@@ -4,7 +4,7 @@ import { getSettings } from '@/api/daemon'
 import { subscribeDesktopTheme } from '@/lib/desktop-theme'
 import type { DesktopTheme } from '@/lib/desktop-theme'
 import { resetSettingsSyncForTest } from '@/lib/settings-sync'
-import { themePresets } from '@/lib/theme-engine'
+import { DEFAULT_THEME_COLOR, themePresets } from '@/lib/theme-engine'
 import { connectDaemonWsForTest, disconnectDaemonWsForTest } from '@/test/fixtures/settings-ws'
 import QuickPanelApp from '../QuickPanelApp'
 
@@ -179,7 +179,7 @@ describe('QuickPanelApp', () => {
     expect(screen.getByText('Connecting clipboard history...')).toBeInTheDocument()
     expect(document.documentElement).toHaveClass(mode)
     expect(document.documentElement.style.getPropertyValue('--card')).toBe(
-      themePresets.zinc[mode].card
+      themePresets[DEFAULT_THEME_COLOR][mode].card
     )
     expect(getSettings).not.toHaveBeenCalled()
   })

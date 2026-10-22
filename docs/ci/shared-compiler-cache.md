@@ -39,3 +39,39 @@ MBX 的 Cargo 预测清单按 `Cargo.lock` 内容区分；升版本即使只修�
 Windows 原生入口已通过 x64/arm64 空 target 恢复和产物执行。CI 配置和统计由 Engine 包装器加载；Node sidecar 脚本对 daemon 与 quick-panel 分别进入包装器，避免原生子进程绕过 shell cargo，也避免两次编译覆盖同一统计文件。自动化 pin 独立于产品 Engine pin。
 
 Warmup 仅调用 `build.yml` 的 `build_only: true`，复用正式编译参数并保留 staging/provenance，不进入签名、安装器或 GUI smoke，也不上传生产调试符号。默认 `build_only: false`，正式发布的签名与包校验策略不变。手动验证直接运行该编译入口，不调用缓存维护/删除流程。
+
+## R2 请求控制与 macOS E2E 快照
+
+PR Check 按 PR 编号分组，新推送取消该 PR 的过时运行。编译任务通过 `scripts/ci/summarize-mbx.py` 把现有会话统计汇总到任务摘要与原证据工件；逻辑读取是 manifest、action、blob、blob pack 请求之和，不等同于 Cloudflare 账单，未包含 SDK 内部重试。快照传输的请求、字节和错误单独记录，不能只看 MBX 下载量判断总流量。旧源码缺少汇总脚本时，发布任务保留原统计工件并跳过汇总。
+
+macOS E2E 使用私有桶中独立的 `desktop/mbx-snapshots/v1/e2e-macos/` 前缀，不占用 Actions 缓存容量。场景键包含目标宿主、实际 Rust 编译器、依赖锁文件、Cargo 配置、缓存工具 pin、快照协议脚本和共享构建动作。源码变化仍由 MBX 重新校验，不依赖快照键判断编译产物有效性。
+
+`cache-warmup.yml` 的 macOS E2E 任务在受保护 main 上生成快照，使用现有 writer 环境；PR 只读现有 reader 环境。快照预热复用 `.github/actions/build-e2e-rust`，与 PR 使用相同的 daemon、开发 CLI、Engine host 和测试二进制编译命令，保留开发 CLI 的独立 target 与 feature 图。构建本身继续使用 Engine 固定入口，原生 MBX 对象写入限制不变。快照发布是独立的 CI 归档传输，允许受保护 main 的 push、定时预热和手动预热，不允许 PR 或任意分支写入。
+
+快照由 `scripts/ci/mbx-snapshot.py` 编排：
+
+1. 为本次任务的命令设置 `MBX_CACHE_EXPORT_GROUP=e2e-macos`，通过原生分组导出选取实际构建记录。
+2. 删除导出格式中的可选 Cargo workspace state 附件，再用原生 MBX 导入到隔离 CAS；原生导入器确定传递闭包、校验对象并丢弃无引用附件。编排脚本不实现动作键或对象遍历逻辑。
+3. 只打包已校验的 CAS、action result 与原生导出清单，不携带 target、凭据文件、用户数据或完整历史预取缓存。原生导出临时阶段仍会捕获 Cargo 状态，最终发布的归档不包含它。
+4. 先上传不可变、按 SHA-256 命名的压缩归档，再更新场景索引。消费者校验归档大小和 SHA-256，拒绝路径穿越、链接、额外目录、状态附件与超限内容，再交给原生 MBX 导入。
+5. 成功发布后只清理该试点前缀下超过 14 天的索引和归档，不修改桶级生命周期或 `engine/mbx/` 对象。清理异常单独报告。
+
+PR 的读取策略是：**快照完整导入成功后只使用本地 CAS；变化的输入在本地编译，避免远端历史预测触发额外预取。** 快照缺失、损坏或不可用时，记录状态并继续原来的逐对象 R2 读取。快照命中后的停止读取通过清除本次 Engine 配置文件中的远端选择实现，不使用 MBX 不支持的预取配置，也不修改全局 Cargo 配置。预热仍保留逐对象读取，以填充下一份快照。
+
+快照上传和恢复使用 runner 临时虚拟环境中的固定 boto3，凭据从已有 0600 临时文件加载；原始凭据、端点与 SDK 异常正文不进入摘要。压缩归档上限为 16 GiB，解包总量上限为 40 GiB；临时导出、隔离导入与压缩仍需要额外磁盘空间。优化失败会在任务中发出警告并写入 `snapshot-restore.json` 或 `snapshot-save.json`，不能把错误标记为普通命中或未命中。
+
+首次接入后，在 main 运行 Cache Warmup 生成基线；工具链、依赖或快照协议变动后同样需要重新预热。在快照成功生成前，PR 保持原 R2 行为。快照在成功预热时清理，长期不运行预热不会主动清理过期对象。
+
+## 请求成本对照验证
+
+手动运行 `mbx-cache-benchmark.yml`，三个独立 macOS runner 对同一源码分别使用原始 R2、快照加逐对象补齐、快照命中后仅本地缓存。三者使用相同构建动作并实际执行 daemon 合同测试，不写 R2。快照未命中或失败时，第三组会退回原策略，必须结合 `snapshot-restore.json` 判断实验是否有效。
+
+比较完整 job 耗时、快照安装/下载/导入耗时、快照与 MBX 下载字节、逻辑请求、命中/重编译和错误；快照生成的时间、R2 写入与存储也计入总体成本。当前没有完整 macOS 产品运行的降幅数据，不能把本地小型闭包验证当作性能结论。后续根据对照结果决定是否保留快照命中后的本地策略，以及是否推广到发布 sidecar。
+
+本地检查脚本边界：
+
+```bash
+python3 scripts/ci/mbx-snapshot.test.py -v
+```
+
+已有本机 MBX 1.18.0 时，可通过 `UC_MBX_TEST_BINARY` 指向其二进制，运行真实导出、压缩传输、空 target 导入、命中、产物执行、源码/feature 失效及损坏拒绝验证。该测试只操作自己的临时 fixture，不修改项目 target 或远端缓存。

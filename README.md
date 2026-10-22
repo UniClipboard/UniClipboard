@@ -53,32 +53,6 @@
 <p align="center">English | <a href="./README_ZH.md">简体中文</a></p>
 <p align="center"><a href="./ABOUT.md">Who maintains this project? (About &amp; Trust)</a></p>
 
-<!-- package-manager-versions:start -->
-## 包管理器版本
-
-各渠道已发布的版本如下；点击版本可查看对应包页面。版本来自渠道元数据，每 6 小时查询一次，发布流程完成后也会刷新；徽章可能有缓存延迟。
-
-| 包管理器 | 稳定渠道 | 开发／预发布／固定版本 |
-| --- | --- | --- |
-| AUR · `uniclipboard-git` | — | [![aur 已发布版本](https://raw.githubusercontent.com/UniClipboard/UniClipboard/package-status/badges/aur.svg)](https://aur.archlinux.org/packages/uniclipboard-git) |
-| Homebrew · 官方 GUI | [![brew-official 已发布版本](https://raw.githubusercontent.com/UniClipboard/UniClipboard/package-status/badges/brew-official.svg)](https://formulae.brew.sh/cask/uniclipboard) | — |
-| Homebrew tap · GUI | [![brew-gui 已发布版本](https://raw.githubusercontent.com/UniClipboard/UniClipboard/package-status/badges/brew-gui.svg)](https://github.com/UniClipboard/homebrew-tap/blob/HEAD/Casks/uniclipboard.rb) | — |
-| Homebrew tap · CLI | [![brew-cli 已发布版本](https://raw.githubusercontent.com/UniClipboard/UniClipboard/package-status/badges/brew-cli.svg)](https://github.com/UniClipboard/homebrew-tap/blob/HEAD/Formula/uniclipboard.rb) | — |
-| Scoop Extras | [![scoop 已发布版本](https://raw.githubusercontent.com/UniClipboard/UniClipboard/package-status/badges/scoop.svg)](https://github.com/ScoopInstaller/Extras/blob/HEAD/bucket/uniclipboard.json) | — |
-| winget | [![winget 已发布版本](https://raw.githubusercontent.com/UniClipboard/UniClipboard/package-status/badges/winget.svg)](https://github.com/microsoft/winget-pkgs/tree/master/manifests/u/UniClipboard/UniClipboard) | — |
-| Chocolatey | [![chocolatey 已发布版本](https://raw.githubusercontent.com/UniClipboard/UniClipboard/package-status/badges/chocolatey.svg)](https://community.chocolatey.org/packages/uniclipboard) | — |
-| npm · `@uniclipboard/cli` | [![npm 已发布版本](https://raw.githubusercontent.com/UniClipboard/UniClipboard/package-status/badges/npm.svg)](https://www.npmjs.com/package/@uniclipboard/cli) | [![npm-alpha 已发布版本](https://raw.githubusercontent.com/UniClipboard/UniClipboard/package-status/badges/npm-alpha.svg)](https://www.npmjs.com/package/@uniclipboard/cli?activeTab=versions)（alpha） |
-| Snap | [![snap 已发布版本](https://raw.githubusercontent.com/UniClipboard/UniClipboard/package-status/badges/snap.svg)](https://snapcraft.io/uniclipboard) | [![snap-edge 已发布版本](https://raw.githubusercontent.com/UniClipboard/UniClipboard/package-status/badges/snap-edge.svg)](https://snapcraft.io/uniclipboard)（edge） |
-| COPR · Fedora 44 x86_64 | [![copr 已发布版本](https://raw.githubusercontent.com/UniClipboard/UniClipboard/package-status/badges/copr.svg)](https://copr.fedorainfracloud.org/coprs/mkdir700/uniclipboard/) | [![copr-alpha 已发布版本](https://raw.githubusercontent.com/UniClipboard/UniClipboard/package-status/badges/copr-alpha.svg)](https://copr.fedorainfracloud.org/coprs/mkdir700/uniclipboard-alpha/) |
-| Nix · 项目 flake（实验性） | — | [![nix-flake 已发布版本](https://raw.githubusercontent.com/UniClipboard/UniClipboard/package-status/badges/nix-flake.svg)](https://github.com/UniClipboard/UniClipboard/blob/main/packaging/nix/sources.json)（固定版本） |
-| nixpkgs · unstable | [![nixpkgs 已发布版本](https://raw.githubusercontent.com/UniClipboard/UniClipboard/package-status/badges/nixpkgs.svg)](https://search.nixos.org/packages?channel=unstable&query=uniclipboard) | — |
-| Flathub | [![flathub 已发布版本](https://raw.githubusercontent.com/UniClipboard/UniClipboard/package-status/badges/flathub.svg)](https://flathub.org/apps/app.uniclipboard.desktop) | — |
-
-[![版本查询时间](https://raw.githubusercontent.com/UniClipboard/UniClipboard/package-status/badges/checked-at.svg)](https://github.com/UniClipboard/UniClipboard/blob/package-status/status.json)
-
-“未发布”表示未查询到该包或渠道；“查询失败”表示本次无法核实版本；“—”表示此表不展示该渠道。AUR 的版本是最近发布的元数据快照，安装时会从主分支重新计算；COPR 此处仅展示 Fedora 44 x86_64，Nix flake 展示其固定的发行版版本。
-<!-- package-manager-versions:end -->
-
 ## Project Overview
 
 > **Copy on one device. Paste on another — even across the internet.**
@@ -149,6 +123,30 @@ It keeps a searchable, encrypted history of everything you copy, brings it back 
 - **Localized UI**: English, Simplified Chinese, Traditional Chinese, Japanese, Russian, and Brazilian Portuguese.
 
 ## Installation
+
+<!-- package-manager-versions:start -->
+Install through your preferred package manager, or choose a download option below. Version badges link to the published packages.
+
+| Platform | Package manager | Current version | Install command |
+| --- | --- | --- | --- |
+| macOS | Homebrew | [![Homebrew](https://img.shields.io/homebrew/cask/v/uniclipboard?label=version)](https://formulae.brew.sh/cask/uniclipboard) | `brew install --cask uniclipboard` |
+| Windows | WinGet | [![WinGet](https://img.shields.io/winget/v/UniClipboard.UniClipboard?label=version)](https://github.com/microsoft/winget-pkgs/tree/master/manifests/u/UniClipboard/UniClipboard) | `winget install --id UniClipboard.UniClipboard -e` |
+| Windows | Scoop | [![Scoop](https://img.shields.io/scoop/v/uniclipboard?bucket=extras&label=version)](https://github.com/ScoopInstaller/Extras/blob/HEAD/bucket/uniclipboard.json) | `scoop install extras/uniclipboard` |
+| Windows | Chocolatey | [![Chocolatey](https://img.shields.io/chocolatey/v/uniclipboard?label=version)](https://community.chocolatey.org/packages/uniclipboard) | `choco install uniclipboard` |
+| Arch Linux | AUR | [![AUR](https://img.shields.io/aur/version/uniclipboard-git?label=version)](https://aur.archlinux.org/packages/uniclipboard-git) | `yay -S uniclipboard-git` |
+| Linux | Snap | [![Snap](https://img.shields.io/snapcraft/v/uniclipboard/latest/stable?label=version)](https://snapcraft.io/uniclipboard) | `sudo snap install uniclipboard` |
+| macOS / Windows / Linux | npm (CLI) | [![npm](https://img.shields.io/npm/v/@uniclipboard/cli?label=version)](https://www.npmjs.com/package/@uniclipboard/cli) | `npm install -g @uniclipboard/cli` |
+| Linux | Flathub | [![Flathub](https://img.shields.io/flathub/v/app.uniclipboard.desktop?label=version)](https://flathub.org/apps/app.uniclipboard.desktop) | Not yet published |
+
+Scoop requires the Extras bucket (`scoop bucket add extras`). AUR tracks the main branch. Flathub is not published yet.
+
+<details>
+<summary>Other channels and version details</summary>
+
+COPR and the experimental Nix flake are covered in the [Linux instructions](#linux); the [Homebrew section](#homebrew-macos) also includes the project tap and CLI. See the [full channel status snapshot](https://github.com/UniClipboard/UniClipboard/blob/package-status/status.json) for prerelease versions and other package sources. Shields.io badges may lag behind a publication because of caching.
+
+</details>
+<!-- package-manager-versions:end -->
 
 ### Download from Releases
 
@@ -287,7 +285,7 @@ Follow the [0.19 → 1.0 upgrade guide](https://docs.uniclipboard.app/migration/
 
 ### Build from Source
 
-Prerequisites: the Rust toolchain (pinned by `rust-toolchain.toml`), [Bun](https://bun.sh), [Go](https://go.dev) (version in `apps/gui-go/go.mod`), and the [Wails v3 prerequisites](https://v3alpha.wails.io/getting-started/installation/) for your OS. 开发启动命令 `bun wails:dev` 支持 macOS 与 Windows。
+Prerequisites: the Rust toolchain (pinned by `rust-toolchain.toml`), [Bun](https://bun.sh), [Go](https://go.dev) (version in `apps/gui-go/go.mod`), and the [Wails v3 prerequisites](https://v3alpha.wails.io/getting-started/installation/) for your OS. The development command `bun wails:dev` supports macOS and Windows.
 
 ```bash
 git clone https://github.com/UniClipboard/UniClipboard.git

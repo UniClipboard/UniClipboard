@@ -52,32 +52,6 @@
 <p align="center"><a href="./README.md">English</a> | 简体中文</p>
 <p align="center"><a href="./ABOUT_ZH.md">谁在维护这个项目？（关于本项目 & 信任说明）</a></p>
 
-<!-- package-manager-versions:start -->
-## 包管理器版本
-
-各渠道已发布的版本如下；点击版本可查看对应包页面。版本来自渠道元数据，每 6 小时查询一次，发布流程完成后也会刷新；徽章可能有缓存延迟。
-
-| 包管理器 | 稳定渠道 | 开发／预发布／固定版本 |
-| --- | --- | --- |
-| AUR · `uniclipboard-git` | — | [![aur 已发布版本](https://raw.githubusercontent.com/UniClipboard/UniClipboard/package-status/badges/aur.svg)](https://aur.archlinux.org/packages/uniclipboard-git) |
-| Homebrew · 官方 GUI | [![brew-official 已发布版本](https://raw.githubusercontent.com/UniClipboard/UniClipboard/package-status/badges/brew-official.svg)](https://formulae.brew.sh/cask/uniclipboard) | — |
-| Homebrew tap · GUI | [![brew-gui 已发布版本](https://raw.githubusercontent.com/UniClipboard/UniClipboard/package-status/badges/brew-gui.svg)](https://github.com/UniClipboard/homebrew-tap/blob/HEAD/Casks/uniclipboard.rb) | — |
-| Homebrew tap · CLI | [![brew-cli 已发布版本](https://raw.githubusercontent.com/UniClipboard/UniClipboard/package-status/badges/brew-cli.svg)](https://github.com/UniClipboard/homebrew-tap/blob/HEAD/Formula/uniclipboard.rb) | — |
-| Scoop Extras | [![scoop 已发布版本](https://raw.githubusercontent.com/UniClipboard/UniClipboard/package-status/badges/scoop.svg)](https://github.com/ScoopInstaller/Extras/blob/HEAD/bucket/uniclipboard.json) | — |
-| winget | [![winget 已发布版本](https://raw.githubusercontent.com/UniClipboard/UniClipboard/package-status/badges/winget.svg)](https://github.com/microsoft/winget-pkgs/tree/master/manifests/u/UniClipboard/UniClipboard) | — |
-| Chocolatey | [![chocolatey 已发布版本](https://raw.githubusercontent.com/UniClipboard/UniClipboard/package-status/badges/chocolatey.svg)](https://community.chocolatey.org/packages/uniclipboard) | — |
-| npm · `@uniclipboard/cli` | [![npm 已发布版本](https://raw.githubusercontent.com/UniClipboard/UniClipboard/package-status/badges/npm.svg)](https://www.npmjs.com/package/@uniclipboard/cli) | [![npm-alpha 已发布版本](https://raw.githubusercontent.com/UniClipboard/UniClipboard/package-status/badges/npm-alpha.svg)](https://www.npmjs.com/package/@uniclipboard/cli?activeTab=versions)（alpha） |
-| Snap | [![snap 已发布版本](https://raw.githubusercontent.com/UniClipboard/UniClipboard/package-status/badges/snap.svg)](https://snapcraft.io/uniclipboard) | [![snap-edge 已发布版本](https://raw.githubusercontent.com/UniClipboard/UniClipboard/package-status/badges/snap-edge.svg)](https://snapcraft.io/uniclipboard)（edge） |
-| COPR · Fedora 44 x86_64 | [![copr 已发布版本](https://raw.githubusercontent.com/UniClipboard/UniClipboard/package-status/badges/copr.svg)](https://copr.fedorainfracloud.org/coprs/mkdir700/uniclipboard/) | [![copr-alpha 已发布版本](https://raw.githubusercontent.com/UniClipboard/UniClipboard/package-status/badges/copr-alpha.svg)](https://copr.fedorainfracloud.org/coprs/mkdir700/uniclipboard-alpha/) |
-| Nix · 项目 flake（实验性） | — | [![nix-flake 已发布版本](https://raw.githubusercontent.com/UniClipboard/UniClipboard/package-status/badges/nix-flake.svg)](https://github.com/UniClipboard/UniClipboard/blob/main/packaging/nix/sources.json)（固定版本） |
-| nixpkgs · unstable | [![nixpkgs 已发布版本](https://raw.githubusercontent.com/UniClipboard/UniClipboard/package-status/badges/nixpkgs.svg)](https://search.nixos.org/packages?channel=unstable&query=uniclipboard) | — |
-| Flathub | [![flathub 已发布版本](https://raw.githubusercontent.com/UniClipboard/UniClipboard/package-status/badges/flathub.svg)](https://flathub.org/apps/app.uniclipboard.desktop) | — |
-
-[![版本查询时间](https://raw.githubusercontent.com/UniClipboard/UniClipboard/package-status/badges/checked-at.svg)](https://github.com/UniClipboard/UniClipboard/blob/package-status/status.json)
-
-“未发布”表示未查询到该包或渠道；“查询失败”表示本次无法核实版本；“—”表示此表不展示该渠道。AUR 的版本是最近发布的元数据快照，安装时会从主分支重新计算；COPR 此处仅展示 Fedora 44 x86_64，Nix flake 展示其固定的发行版版本。
-<!-- package-manager-versions:end -->
-
 ## 项目介绍
 
 > **一台设备 Ctrl+C，另一台设备 Ctrl+V —— 哪怕跨着一整个互联网。**
@@ -147,6 +121,30 @@ UniClipboard 是一款以 **隐私优先** 为核心理念的剪贴板工具。�
 - **多语言界面**：英语、简体中文、繁体中文、日语、俄语、巴西葡萄牙语。
 
 ## 安装方法
+
+<!-- package-manager-versions:start -->
+可以通过包管理器安装，也可以选择下方的直接下载方式。点击版本徽章可查看对应的软件包。
+
+| 平台 | 包管理器 | 当前版本 | 安装命令 |
+| --- | --- | --- | --- |
+| macOS | Homebrew | [![Homebrew](https://img.shields.io/homebrew/cask/v/uniclipboard?label=version)](https://formulae.brew.sh/cask/uniclipboard) | `brew install --cask uniclipboard` |
+| Windows | WinGet | [![WinGet](https://img.shields.io/winget/v/UniClipboard.UniClipboard?label=version)](https://github.com/microsoft/winget-pkgs/tree/master/manifests/u/UniClipboard/UniClipboard) | `winget install --id UniClipboard.UniClipboard -e` |
+| Windows | Scoop | [![Scoop](https://img.shields.io/scoop/v/uniclipboard?bucket=extras&label=version)](https://github.com/ScoopInstaller/Extras/blob/HEAD/bucket/uniclipboard.json) | `scoop install extras/uniclipboard` |
+| Windows | Chocolatey | [![Chocolatey](https://img.shields.io/chocolatey/v/uniclipboard?label=version)](https://community.chocolatey.org/packages/uniclipboard) | `choco install uniclipboard` |
+| Arch Linux | AUR | [![AUR](https://img.shields.io/aur/version/uniclipboard-git?label=version)](https://aur.archlinux.org/packages/uniclipboard-git) | `yay -S uniclipboard-git` |
+| Linux | Snap | [![Snap](https://img.shields.io/snapcraft/v/uniclipboard/latest/stable?label=version)](https://snapcraft.io/uniclipboard) | `sudo snap install uniclipboard` |
+| macOS / Windows / Linux | npm (CLI) | [![npm](https://img.shields.io/npm/v/@uniclipboard/cli?label=version)](https://www.npmjs.com/package/@uniclipboard/cli) | `npm install -g @uniclipboard/cli` |
+| Linux | Flathub | [![Flathub](https://img.shields.io/flathub/v/app.uniclipboard.desktop?label=version)](https://flathub.org/apps/app.uniclipboard.desktop) | 尚未发布 |
+
+Scoop 需要先添加 Extras 软件源（`scoop bucket add extras`）。AUR 跟踪主分支；Flathub 尚未发布。
+
+<details>
+<summary>其他渠道与版本说明</summary>
+
+COPR 与实验性 Nix flake 的安装方式见 [Linux](#linux)，项目软件源和命令行工具见 [Homebrew](#homebrewmacos)。预发布版本及其他软件源可查看 [完整渠道状态](https://github.com/UniClipboard/UniClipboard/blob/package-status/status.json)。Shields.io 徽章可能因缓存而延迟显示更新。
+
+</details>
+<!-- package-manager-versions:end -->
 
 ### 从 Releases 下载
 

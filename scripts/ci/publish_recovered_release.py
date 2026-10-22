@@ -4,7 +4,6 @@ import hashlib
 import json
 from pathlib import Path
 import subprocess
-import sys
 
 from recover_release_artifacts import api, lock, require, verify_tag
 

@@ -2,7 +2,11 @@
   "default": {
     "name": "default",
     "accentColor": "#3584e4",
-    "previewDots": ["#3584e4", "#fafafb", "#ebebed"],
+    "previewDots": [
+      "#3584e4",
+      "#fafafb",
+      "#ebebed"
+    ],
     "light": {
       "background": "#fafafb",
       "foreground": "rgba(0, 0, 6, 0.8)",

@@ -26,6 +26,7 @@
     "apps/gui-go/frontend/src/lib/host-errors.generated.ts",
     "apps/gui-go/frontend/bindings/",
     "schema/openapi.json",
+    "apps/quick-panel/assets/themes.json",
     "packages/desktop-host-go/diaglogs/testdata/",
     "apps/gui-go/frontend/src/api/generated/",
     ".agents/",

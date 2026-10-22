@@ -303,6 +303,7 @@ mod relay_credential_wire_tests {
                 debug_mode: false,
                 tray_icon: TrayIconDto::Glyph,
                 main_window_size: WindowSizeDto::default(),
+                main_window_maximized: false,
             },
             sync: SyncSettingsDto {
                 sync_enabled: true,
@@ -596,6 +597,9 @@ pub struct GeneralSettingsDto {
     /// Normal main-window size, owned by Desktop product settings.
     #[serde(default)]
     pub main_window_size: WindowSizeDto,
+    /// Whether to restore the main window maximized, owned by Desktop.
+    #[serde(default)]
+    pub main_window_maximized: bool,
 }
 
 /// Window frame dimensions in logical pixels on macOS, Windows and Linux.
@@ -935,6 +939,8 @@ pub struct GeneralSettingsPatchDto {
     /// Replaces both dimensions together; validated by the Desktop store.
     #[serde(default)]
     pub main_window_size: Option<WindowSizeDto>,
+    #[serde(default)]
+    pub main_window_maximized: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]

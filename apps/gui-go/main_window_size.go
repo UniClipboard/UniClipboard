@@ -15,25 +15,30 @@ import (
 // mainWindowSizeState holds unsaved native state on the Wails main thread.
 // The daemon owns the persisted preference; the host never opens its file.
 type mainWindowSizeState struct {
-	window *application.WebviewWindow
-	normal settings.WindowSize
+	window    *application.WebviewWindow
+	normal    settings.WindowSize
+	maximized bool
 }
 
-func (h *HostService) loadMainWindowSize() settings.WindowSize {
+func (h *HostService) loadMainWindowSize() (settings.WindowSize, bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	view, err := settings.Read(ctx, h.daemon())
 	if err != nil {
 		log.Printf("load main window preference: %v; using defaults", err)
-		return settings.WindowSize{Width: 1100, Height: 720}
+		return settings.WindowSize{Width: 1100, Height: 720}, false
 	}
-	return view.General.MainWindowSize
+	return view.General.MainWindowSize, view.General.MainWindowMaximized
 }
 
 func (s *mainWindowSizeState) capture() {
 	// InvokeSync also runs directly when already on the Wails main thread.
 	application.InvokeSync(func() {
-		if s.window.IsMinimised() || s.window.IsMaximised() || s.window.IsFullscreen() {
+		if s.window.IsMinimised() || s.window.IsFullscreen() {
+			return
+		}
+		s.maximized = s.window.IsMaximised()
+		if s.maximized {
 			return
 		}
 		width, height := s.window.Size()
@@ -43,8 +48,8 @@ func (s *mainWindowSizeState) capture() {
 	})
 }
 
-func (h *HostService) rememberMainWindowSize(w *application.WebviewWindow, size settings.WindowSize) {
-	state := &mainWindowSizeState{window: w, normal: size}
+func (h *HostService) rememberMainWindowSize(w *application.WebviewWindow, size settings.WindowSize, maximized bool) {
+	state := &mainWindowSizeState{window: w, normal: size, maximized: maximized}
 	application.InvokeSync(func() { h.windowSize = state })
 	w.OnWindowEvent(events.Common.WindowDidResize, func(*application.WindowEvent) { state.capture() })
 }
@@ -54,11 +59,13 @@ func (h *HostService) rememberMainWindowSize(w *application.WebviewWindow, size 
 // persist this patch just like every other desktop preference, on all platforms.
 func (h *HostService) persistMainWindowSize() {
 	var size *settings.WindowSize
+	var maximized bool
 	application.InvokeSync(func() {
 		if h.windowSize != nil {
 			h.windowSize.capture()
 			value := h.windowSize.normal
 			size = &value
+			maximized = h.windowSize.maximized
 		}
 	})
 	if size == nil {
@@ -66,7 +73,7 @@ func (h *HostService) persistMainWindowSize() {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	patch := map[string]any{"general": map[string]any{"mainWindowSize": size}}
+	patch := map[string]any{"general": map[string]any{"mainWindowSize": size, "mainWindowMaximized": maximized}}
 	client := daemonclient.Follow(&h.client)
 	if err := client.Enveloped(ctx, daemonclient.Request{Method: http.MethodPut, Path: "/settings", JSON: patch}, nil); err != nil {
 		log.Printf("save main window preference: %v", err)

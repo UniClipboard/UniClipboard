@@ -53,7 +53,7 @@ into the Engine.
 
 `general.mainWindowSize` 是三端共用的 Desktop 偏好，由本 ADR 的单写入者、逐字段校验、原子存储和设置事件机制管理，不进入 Engine。其值为 `{ "width": 1100, "height": 720 }`，单位为逻辑像素；默认宽高分别为 1100、720，两个维度必须同时存在，且均为 `1..=i32::MAX` 的整数。没有旧 Engine 字段，不增加导入字段集。无效存量值只对本字段回退到默认值，不阻塞其他设置加载。
 
-Go 宿主通过 `GET /settings` 读取偏好，运行时采集普通窗口尺寸，在 daemon 停止前或 GUI 进入轻量模式时通过 `PUT /settings` 一并写入宽高。最小化、最大化和全屏尺寸不覆盖普通尺寸，未创建主窗口的静默启动不写该字段。始终自动记住，不增加开关；macOS、Windows 和 Linux 执行相同流程。GUI 不打开 `desktop-settings.json`，不创建独立的窗口设置文件。
+Go 宿主通过 `GET /settings` 读取偏好，运行时采集普通窗口尺寸和最大化状态，在 daemon 停止前或 GUI 进入轻量模式时通过 `PUT /settings` 一并写入宽高和 `general.mainWindowMaximized`。该布尔配置默认为 `false`。启动时，宿主先设置普通窗口尺寸，再用 Wails `Maximise` 恢复最大化状态。取消最大化后恢复普通窗口尺寸。最小化和全屏期间保留此前的最大化状态。最小化、最大化和全屏尺寸不覆盖普通尺寸，未创建主窗口的静默启动不写该字段。始终自动记住，不增加开关；macOS、Windows 和 Linux 执行相同流程。GUI 不打开 `desktop-settings.json`，不创建独立的窗口设置文件。
 
 ### 2. File format
 

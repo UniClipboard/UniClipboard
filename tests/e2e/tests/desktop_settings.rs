@@ -24,7 +24,8 @@ const FILE_NAME: &str = "desktop-settings.json";
 
 /// `import.sourceFingerprint` written when there is no legacy `settings.json`:
 /// the BLAKE3 of the normalized all-default field sets 1 and 2 (ADR-013 section 8.2).
-const EMPTY_LEGACY_FINGERPRINT: &str = "aa5b045a7ec9fbccce78924ef660e2b4d1b037640332491c955e94f553af6de9";
+const EMPTY_LEGACY_FINGERPRINT: &str =
+    "aa5b045a7ec9fbccce78924ef660e2b4d1b037640332491c955e94f553af6de9";
 
 struct Context {
     daemon: TestDaemon,
@@ -88,7 +89,7 @@ impl Context {
         }));
     }
 
-    async fn tray_icon(&self) -> Value {
+    async fn general(&self) -> Value {
         let response = self
             .client
             .get(format!("{}/settings", self.daemon.base_url()))
@@ -98,7 +99,11 @@ impl Context {
             .unwrap();
         assert_eq!(response.status(), 200);
         let body: Value = response.json().await.unwrap();
-        body["data"]["general"]["trayIcon"].clone()
+        body["data"]["general"].clone()
+    }
+
+    async fn tray_icon(&self) -> Value {
+        self.general().await["trayIcon"].clone()
     }
 
     async fn put(&self, body: Value) -> reqwest::StatusCode {
@@ -340,6 +345,72 @@ async fn invalid_and_unknown_values_are_kept_and_explicit_writes_persist() {
     assert_eq!(read_json(&context.product_path()), expected);
     context.note("after restart", json!({ "trayIcon": "cat" }));
 
+    context.note("completed", Value::Null);
+    context.keep_artifact();
+}
+
+#[tokio::test]
+#[ignore]
+async fn main_window_maximized_state_persists_without_changing_normal_size_or_engine_settings() {
+    let mut context = Context::start("desktop-settings-window-state", None).await;
+    let initial = context.general().await;
+    assert_eq!(initial["mainWindowMaximized"], false);
+    assert_eq!(
+        initial["mainWindowSize"],
+        json!({"width": 1100, "height": 720})
+    );
+    context.note("defaults", initial);
+
+    let engine_before = context.engine_bytes();
+    assert_eq!(
+        context
+            .put(json!({"general": {
+                "mainWindowSize": {"width": 1234, "height": 810},
+                "mainWindowMaximized": true
+            }}))
+            .await,
+        200
+    );
+    context.restart().await;
+    let maximized = context.general().await;
+    assert_eq!(maximized["mainWindowMaximized"], true);
+    assert_eq!(
+        maximized["mainWindowSize"],
+        json!({"width": 1234, "height": 810})
+    );
+    assert_eq!(
+        read_json(&context.product_path())["general"]["mainWindowMaximized"],
+        true
+    );
+    assert_eq!(context.engine_bytes(), engine_before);
+    context.note("maximized after restart", maximized);
+
+    let stored = context.product_bytes();
+    let invalid = context
+        .put(json!({"general": {"mainWindowMaximized": "true"}}))
+        .await;
+    assert!(invalid.is_client_error());
+    assert_eq!(context.product_bytes(), stored);
+    context.note(
+        "invalid boolean refused",
+        json!({"status": invalid.as_u16()}),
+    );
+
+    assert_eq!(
+        context
+            .put(json!({"general": {"mainWindowMaximized": false}}))
+            .await,
+        200
+    );
+    context.restart().await;
+    let normal = context.general().await;
+    assert_eq!(normal["mainWindowMaximized"], false);
+    assert_eq!(
+        normal["mainWindowSize"],
+        json!({"width": 1234, "height": 810})
+    );
+    assert_eq!(context.engine_bytes(), engine_before);
+    context.note("normal after restart", normal);
     context.note("completed", Value::Null);
     context.keep_artifact();
 }

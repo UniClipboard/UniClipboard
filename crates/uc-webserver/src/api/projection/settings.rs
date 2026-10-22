@@ -140,6 +140,7 @@ impl IntoApiDto<SettingsDto> for (app_settings::SettingsView, &DesktopSettings) 
                 debug_mode: desktop.general.debug_mode,
                 tray_icon: desktop.general.tray_icon.into_api_dto(),
                 main_window_size: desktop.general.main_window_size.into_api_dto(),
+                main_window_maximized: desktop.general.main_window_maximized,
             },
             sync: SyncSettingsDto {
                 sync_enabled: view.sync.sync_enabled,
@@ -497,6 +498,7 @@ pub fn desktop_patch(patch: &SettingsPatchDto) -> DesktopSettingsPatch {
             DesktopGeneralSettingsPatch {
                 tray_icon: general.tray_icon.map(IntoDomain::into_domain),
                 main_window_size: general.main_window_size.map(IntoDomain::into_domain),
+                main_window_maximized: general.main_window_maximized,
                 auto_start: general.auto_start,
                 startup_mode: general.startup_mode.clone().map(IntoDomain::into_domain),
                 restore_last_entry_on_startup: general.restore_last_entry_on_startup,

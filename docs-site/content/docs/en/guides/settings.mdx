@@ -54,7 +54,7 @@ Below a content viewport width of 1100 pixels, the Linux History sidebar starts 
 
 On macOS, Windows, and Linux, the main window automatically remembers its normal size across app exits and restarts. The size is a local Desktop preference for the current profile and is not synchronized between devices.
 
-The last normal size is saved before the app or daemon stops or restarts, including update installation and entering Lightweight Mode. Minimized, maximized, and fullscreen dimensions do not overwrite it. A silent launch that creates no main window preserves the saved size.
+The last normal size is saved before the app or daemon stops or restarts, including update installation and entering Lightweight Mode. The app also saves the maximized state and restores it at the next launch. Unmaximizing restores the normal size. Minimized, maximized, and fullscreen dimensions do not overwrite the normal size. Minimizing or entering fullscreen preserves the previous maximized state. A silent launch that creates no main window preserves the saved size.
 
 ### Follow Omarchy theme
 

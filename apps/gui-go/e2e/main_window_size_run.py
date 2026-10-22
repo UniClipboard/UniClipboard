@@ -123,6 +123,13 @@ def main():
                     check('API rejects invalid window preference', error.code == 400, error.code)
                 else:
                     check('API rejects invalid window preference', False)
+            check('fresh window is not maximized', settings_request()['general']['mainWindowMaximized'] is False)
+            try:
+                settings_request('PUT', {'general': {'mainWindowMaximized': 'true'}})
+            except urllib.error.HTTPError as error:
+                check('API rejects invalid maximized state', error.code == 400, error.code)
+            else:
+                check('API rejects invalid maximized state', False)
             resize(1234, 810)
             quit_gui()
             gui = launch('restart')
@@ -147,7 +154,18 @@ def main():
             check('window maximized', size() != (1140, 760), size())
             quit_gui()
             gui = launch('maximized-restart')
-            check('maximized size does not replace latest normal size', size() == (1140, 760), size())
+            check('maximized state survives restart', size() != (1140, 760), size())
+            stored = settings_request()['general']
+            check('daemon persists maximized state', stored['mainWindowMaximized'] is True)
+            check('maximization preserves normal size', stored['mainWindowSize'] == {'width': 1140, 'height': 760})
+            subprocess.run(['wmctrl', '-ir', window_id(), '-b', 'remove,maximized_vert,maximized_horz'],
+                           env=env, check=True, timeout=15)
+            time.sleep(1)
+            check('unmaximize restores normal size', size() == (1140, 760), size())
+            quit_gui()
+            gui = launch('unmaximized-restart')
+            check('unmaximized state survives restart', size() == (1140, 760), size())
+            check('daemon clears maximized state', settings_request()['general']['mainWindowMaximized'] is False)
             subprocess.run(['wmctrl', '-ir', window_id(), '-b', 'add,fullscreen'],
                            env=env, check=True, timeout=15)
             time.sleep(1)

@@ -3082,6 +3082,10 @@
             "nullable": true,
             "type": "string"
           },
+          "mainWindowMaximized": {
+            "description": "Whether to restore the main window maximized, owned by Desktop.",
+            "type": "boolean"
+          },
           "mainWindowSize": {
             "$ref": "#/components/schemas/WindowSizeDto"
           },
@@ -3178,6 +3182,10 @@
           "language": {
             "nullable": true,
             "type": "string"
+          },
+          "mainWindowMaximized": {
+            "nullable": true,
+            "type": "boolean"
           },
           "mainWindowSize": {
             "allOf": [

@@ -39,9 +39,9 @@ Linux 启动环境未设置 `DISPLAY` 和 `WAYLAND_DISPLAY` 时，开发脚本�
 
 Hyprland（包括 Omarchy）和 niri 会话中，主窗口隐藏应用绘制的最小化、最大化和关闭按钮，窗口操作交给合成器。宿主通过 `XDG_CURRENT_DESKTOP`、`HYPRLAND_INSTANCE_SIGNATURE` 或 `NIRI_SOCKET` 识别环境。
 
-主窗口始终自动记住普通窗口尺寸，不增加设置开关。偏好为 `general.mainWindowSize`，由 daemon 的 `uc-desktop-settings` 按 profile 写入 `desktop-settings.json`；macOS、Windows、Linux 共用同一模型、校验、默认值和 `/settings` 接口。Go 宿主只采集原生尺寸和执行恢复，不直接读写设置文件。首次启动默认 `1100×720`，并遵守各平台最小尺寸；正常退出、重启、更新停服前及进入轻量模式时，通过 `PUT /settings` 保存最近的普通尺寸。最小化、最大化和全屏不覆盖普通尺寸，未创建主窗口的静默启动不写入该偏好。Wails `v3.0.0-beta.28` 提供 `Size`、`SetSize` 和 `WindowDidResize`，没有尺寸持久化；宿主复用这些 API，不添加平台原生实现。
+主窗口始终自动记住普通窗口尺寸，不增加设置开关。偏好为 `general.mainWindowSize` 和 `general.mainWindowMaximized`，由 daemon 的 `uc-desktop-settings` 按 profile 写入 `desktop-settings.json`；macOS、Windows、Linux 共用同一模型、校验、默认值和 `/settings` 接口。Go 宿主只采集原生尺寸和执行恢复，不直接读写设置文件。首次启动默认 `1100×720`，并遵守各平台最小尺寸；正常退出、重启、更新停服前及进入轻量模式时，通过 `PUT /settings` 保存最近的普通尺寸和最大化状态。最大化状态默认为 `false`，重启时恢复该状态。最小化和全屏保留此前的最大化状态。最小化、最大化和全屏不覆盖普通尺寸，未创建主窗口的静默启动不写入该偏好。Wails `v3.0.0-beta.28` 提供 `Size`、`SetSize`、`IsMaximised`、`Maximise` 和 `WindowDidResize`，没有尺寸持久化；宿主复用这些 API，不添加平台原生实现。
 
-回归脚本 `e2e/main_window_size_run.py` 在私有 Xvfb（`1920×1200`）、Openbox 和 D-Bus 会话中运行，要求前端以 `VITE_GUI_GO_E2E=1 UC_UI_PLATFORM=linux` 构建、GUI 使用 `gtk3,e2e` 标签。传入 `--gui`、`--daemon`、`--cli`、`--out`，验证真实原生窗口缩放、完整退出重启、隐藏后退出、最小化/最大化/全屏尺寸隔离、daemon 设置接口校验、静默启动、无效配置及 profile 隔离，输出各次启动的日志、观察结果及 `result.json`。该脚本不覆盖 macOS、Windows 原生运行或 Wayland 合成器行为。
+回归脚本 `e2e/main_window_size_run.py` 在私有 Xvfb（`1920×1200`）、Openbox 和 D-Bus 会话中运行，要求前端以 `VITE_GUI_GO_E2E=1 UC_UI_PLATFORM=linux` 构建、GUI 使用 `gtk3,e2e` 标签。传入 `--gui`、`--daemon`、`--cli`、`--out`，验证真实原生窗口缩放、完整退出重启、隐藏后退出、最大化状态恢复、取消最大化后的普通尺寸恢复、最小化/最大化/全屏尺寸隔离、daemon 设置接口校验、静默启动、无效配置及 profile 隔离，输出各次启动的日志、观察结果及 `result.json`。该脚本不覆盖 macOS、Windows 原生运行或 Wayland 合成器行为。
 
 Omarchy 环境的「设置 → 外观 → 主题」显示「跟随 Omarchy 主题」开关，默认关闭。开启后主窗口与快捷面板跟随 Omarchy 的深浅模式和配色（约一秒内生效）；关闭后恢复已保存的应用主题。宿主读取 `~/.local/state/omarchy/current/theme/colors.toml`，兼容旧版 `$XDG_CONFIG_HOME/omarchy/current/theme/colors.toml`；其他桌面不显示此配置。偏好按 profile 保存在应用数据目录的 `desktop-theme.json`，保存失败时保留原值并在设置页提示。
 

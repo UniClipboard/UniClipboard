@@ -86,7 +86,7 @@ func (h *HostService) openMainWindow() *application.WebviewWindow {
 	if runtime.GOOS == "linux" {
 		minWidth = 640
 	}
-	size := h.loadMainWindowSize()
+	size, maximized := h.loadMainWindowSize()
 	size.Width, size.Height = max(size.Width, minWidth), max(size.Height, 600)
 	w := h.app.Window.NewWithOptions(quietOptions(withWindowMaterial(application.WebviewWindowOptions{
 		Name: "main", Title: "UniClipboard", URL: "/", Width: size.Width, Height: size.Height, MinWidth: minWidth, MinHeight: 600,
@@ -99,7 +99,10 @@ func (h *HostService) openMainWindow() *application.WebviewWindow {
 	// Use the runtime frame dimensions: macOS construction sizes the content
 	// rectangle, whereas Size and SetSize use the outer window frame.
 	w.SetSize(size.Width, size.Height)
-	h.rememberMainWindowSize(w, size)
+	h.rememberMainWindowSize(w, size, maximized)
+	if maximized {
+		w.Maximise()
+	}
 	suppressKeyboardMenu(w)
 	w.RegisterHook(events.Common.WindowClosing, func(e *application.WindowEvent) {
 		if h.quitting.Load() {

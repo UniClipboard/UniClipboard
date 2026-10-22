@@ -1554,6 +1554,10 @@ export type GeneralSettingsDto = {
     debugMode?: boolean;
     deviceName?: string | null;
     language?: string | null;
+    /**
+     * Whether to restore the main window maximized, owned by Desktop.
+     */
+    mainWindowMaximized?: boolean;
     mainWindowSize?: WindowSizeDto;
     /**
      * Whether to push the most recent clipboard history entry back onto the
@@ -1617,6 +1621,7 @@ export type GeneralSettingsPatchDto = {
     debugMode?: boolean | null;
     deviceName?: string | null;
     language?: string | null;
+    mainWindowMaximized?: boolean | null;
     mainWindowSize?: WindowSizeDto | null;
     restoreLastEntryOnStartup?: boolean | null;
     startupMode?: StartupModeDto | null;

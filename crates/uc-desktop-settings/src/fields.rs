@@ -73,6 +73,7 @@ macro_rules! scalar {
 
 /// Every scalar field. [`Scalar::field_set`] says which import set copies it.
 pub(crate) const SCALARS: &[Scalar] = &[
+    scalar!(GENERAL, "mainWindowMaximized", None, Kind::Bool, false),
     Scalar {
         section: GENERAL,
         key: "mainWindowSize",
@@ -356,6 +357,9 @@ pub(crate) fn patch_entries(patch: &DesktopSettingsPatch, current: &DesktopSetti
     if let Some(v) = general.tray_icon {
         push(GENERAL, "trayIcon", Some(string(v.as_str())));
     }
+    if let Some(v) = general.main_window_maximized {
+        push(GENERAL, "mainWindowMaximized", Some(Value::Bool(v)));
+    }
     if let Some(v) = general.main_window_size {
         push(GENERAL, "mainWindowSize", Some(v.to_value()));
     }
@@ -498,6 +502,10 @@ pub(crate) fn typed(values: &BTreeMap<String, Value>) -> DesktopSettings {
     };
 
     let general = &mut settings.general;
+    flag(
+        "general.mainWindowMaximized",
+        &mut general.main_window_maximized,
+    );
     if let Some(v) = get("general.mainWindowSize").and_then(WindowSize::from_value) {
         general.main_window_size = v;
     }

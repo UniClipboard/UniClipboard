@@ -181,6 +181,7 @@ pub struct DesktopSettings {
 pub struct GeneralSettings {
     pub tray_icon: TrayIcon,
     pub main_window_size: WindowSize,
+    pub main_window_maximized: bool,
     pub auto_start: bool,
     pub startup_mode: StartupMode,
     pub restore_last_entry_on_startup: bool,
@@ -204,6 +205,7 @@ impl Default for GeneralSettings {
         Self {
             tray_icon: TrayIcon::Glyph,
             main_window_size: WindowSize::default(),
+            main_window_maximized: false,
             auto_start: false,
             startup_mode: StartupMode::Normal,
             restore_last_entry_on_startup: false,
@@ -253,6 +255,7 @@ pub struct DesktopSettingsPatch {
 pub struct GeneralSettingsPatch {
     pub tray_icon: Option<TrayIcon>,
     pub main_window_size: Option<WindowSize>,
+    pub main_window_maximized: Option<bool>,
     pub auto_start: Option<bool>,
     pub startup_mode: Option<StartupMode>,
     pub restore_last_entry_on_startup: Option<bool>,

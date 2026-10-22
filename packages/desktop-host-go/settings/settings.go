@@ -22,6 +22,7 @@ type View struct {
 
 // General is the `general` section.
 type General struct {
+	MainWindowMaximized       bool       `json:"mainWindowMaximized"`
 	MainWindowSize            WindowSize `json:"mainWindowSize"`
 	AutoStart                 bool       `json:"autoStart"`
 	StartupMode               string     `json:"startupMode"`

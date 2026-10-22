@@ -76,13 +76,17 @@ These were collected by scanning the repo on 2026-05-19. The PKGBUILDs in §6/§
 
 ## 6. PKGBUILD — `uniclipboard-git` (implemented)
 
-**Source of truth:** `packaging/aur/uniclipboard-git/PKGBUILD` (+ `.SRCINFO`).
-**Sync mechanism:** `.github/workflows/aur.yml`.
+**唯一打包规则来源：** `packaging/aur/uniclipboard-git/PKGBUILD`。`.SRCINFO` 在发布时生成。
+**同步入口：** `.github/workflows/aur.yml`。
 
-- On a pull request or a push to `main` that touches `packaging/aur/uniclipboard-git/**`, `scripts/ci/build-aur-package.sh` or the workflow, the `build` job builds the package with `makepkg` in `archlinux:base-devel` against the exact commit under test. Nothing is published, no secret is read.
-- `workflow_dispatch` with `publish` set, and only on `main`, additionally runs the `publish` job after a successful build of the same commit: it computes `pkgver` from `git describe`, clones `ssh://aur@aur.archlinux.org/uniclipboard-git.git` with the `AUR_SSH_PRIVATE_KEY` secret, renders the PKGBUILD, regenerates `.SRCINFO` as a non-root `builder` user, diffs against AUR HEAD and pushes only if something changed.
-- Before 2026-10-09 every push to `main` published straight to the AUR. That is why a PKGBUILD that no longer built could go live; publishing is now a separate, deliberate step. After a PKGBUILD change merges, someone with the right to publish dispatches the workflow once.
-- The concurrency group serializes runs per ref, so two publishes never race on the same remote.
+- PR 修改打包定义、构建脚本、安装验收脚本、版本渲染脚本或工作流时，只执行构建与安装启动验收，不发布。
+- 同样的变更合入 `main` 后，自动构建、验收并发布，无需人工再次触发。
+- 每天 UTC 02:23 比较当前 `main` 生成的候选 `PKGBUILD` 与 AUR Git 远端；一致时跳过构建，不一致时执行完整构建、验收与发布。该检查覆盖普通源码更新造成的版本变化。
+- `workflow_dispatch` 保留仅验证入口；仅在 `main` 上设置 `publish=true` 才发布。
+- 准备阶段固定源码提交与版本；后续作业检出相同提交，并检查实际构建版本。`scripts/ci/render-aur-package.sh` 复用 `PKGBUILD` 的 `pkgver()`，不重复维护版本算法。
+- 所有发布任务共用并发组。推送前再次核对 `main`：源码已变化则失败，需新任务重新验证，防止重跑旧任务覆盖新版。失败后可手动重跑最新 `main`，每日检查也会再次尝试。
+- 构建和干净安装启动验收均成功后，以非 root 的 `builder` 生成 `.SRCINFO`，只提交有差异的文件；推送后核对 AUR 远端提交，网页缓存不作为发布成功依据。
+- 早期流程曾在未经构建验证时直接发布；当前自动化保留完整验收门控，只移除了依赖人工触发的环节。
 
 Required secret:
 - `AUR_SSH_PRIVATE_KEY` — ed25519 private key. Generate via `ssh-keygen -t ed25519 -C aur-uniclipboard -f aur`, upload `aur.pub` at `https://aur.archlinux.org/account/<user>/edit/`, paste the private key (`aur`) into repo secrets.

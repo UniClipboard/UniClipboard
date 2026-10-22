@@ -1,0 +1,41 @@
+"""Exercise the real PKGBUILD version function with tagged and untagged Git histories."""
+from pathlib import Path
+import shutil
+import subprocess
+import tempfile
+import unittest
+
+ROOT = Path(__file__).resolve().parents[2]
+
+
+class AurPackageTests(unittest.TestCase):
+    def test_renderer_uses_pkgbuild_version_and_handles_missing_tags(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory) / 'repo'
+            package = repo / 'packaging/aur/uniclipboard-git'
+            package.mkdir(parents=True)
+            shutil.copyfile(ROOT / 'packaging/aur/uniclipboard-git/PKGBUILD', package / 'PKGBUILD')
+            def git(*args):
+                return subprocess.check_output(['git', '-C', str(repo), *args], text=True).strip()
+            git('init', '-q')
+            git('config', 'user.name', 'Test')
+            git('config', 'user.email', 'test@example.invalid')
+            git('add', '.')
+            git('commit', '-qm', 'Initial packaging')
+            commit = git('rev-parse', '--short=7', 'HEAD')
+            output = Path(directory) / 'PKGBUILD'
+            def render():
+                return subprocess.check_output(['bash', str(ROOT / 'scripts/ci/render-aur-package.sh'),
+                                                str(repo), str(output)], text=True).strip()
+            self.assertEqual(render(), f'0.0.0.r1.g{commit}')
+            git('tag', 'v1.4.0-alpha.1')
+            self.assertEqual(render(), f'1.4.0.alpha.1.r0.g{commit}')
+            git('commit', '--allow-empty', '-qm', 'Next source commit')
+            version = render()
+            self.assertRegex(version, r'^1\.4\.0\.alpha\.1\.r1\.g[0-9a-f]{7}$')
+            self.assertIn(f'pkgver={version}\n', output.read_text())
+            self.assertIn('https://github.com/UniClipboard/UniClipboard.git', output.read_text())
+
+
+if __name__ == '__main__':
+    unittest.main()

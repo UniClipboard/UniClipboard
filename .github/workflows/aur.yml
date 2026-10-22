@@ -1,30 +1,26 @@
 name: 'Publish to AUR (uniclipboard-git)'
 run-name: "aur-git-${{ github.run_number }}"
 
-# Triggers:
-#   1. pull_request touching the PKGBUILD, this workflow or the build script: build the package in a clean Arch
-#      container and nothing else (no secrets, no AUR access).
-#   2. push to main with the same paths: the same build. It never publishes.
-#   3. workflow_dispatch: the same build and, only when `publish` is set and the run is on main, the push to the AUR.
-#
-# History: a push to main used to publish the PKGBUILD to the AUR directly, so a PKGBUILD that could not build was
-# live within minutes of a merge. Publishing is now a deliberate dispatch that runs behind a successful build of
-# exactly the commit being published.
-#
-# Not bound to release.published: a -git package tracks main, and pkgver is recomputed by makepkg on the user's
-# machine, so releases are not its heartbeat. The AUR copy only needs to change when the PKGBUILD does.
+# PRs validate only. Packaging changes on main and daily reconciliation publish
+# only after a clean build and installation test of the same immutable commit.
 on:
   pull_request:
     paths:
       - 'packaging/aur/uniclipboard-git/**'
       - 'scripts/ci/build-aur-package.sh'
+      - 'scripts/ci/check-arch-package.sh'
+      - 'scripts/ci/render-aur-package.sh'
       - '.github/workflows/aur.yml'
   push:
     branches: [main]
     paths:
       - 'packaging/aur/uniclipboard-git/**'
       - 'scripts/ci/build-aur-package.sh'
+      - 'scripts/ci/check-arch-package.sh'
+      - 'scripts/ci/render-aur-package.sh'
       - '.github/workflows/aur.yml'
+  schedule:
+    - cron: '23 2 * * *'
   workflow_dispatch:
     inputs:
       publish:
@@ -36,14 +32,45 @@ on:
 # The AUR is a single-branch git remote and concurrent pushes trample each other. Runs are serialized;
 # cancel-in-progress=false lets a running publish finish instead of being cut off half way.
 concurrency:
-  group: aur-uniclipboard-git-${{ github.event.pull_request.number || github.ref }}
+  group: aur-uniclipboard-git-${{ github.event.pull_request.number || 'publish' }}
   cancel-in-progress: false
 
 permissions:
   contents: read
 
 jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      build: ${{ steps.candidate.outputs.build }}
+      commit: ${{ steps.candidate.outputs.commit }}
+      pkgver: ${{ steps.candidate.outputs.pkgver }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Compare the candidate with published packaging
+        id: candidate
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        shell: bash
+        run: |
+          echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          version=$(scripts/ci/render-aur-package.sh "$PWD" "$RUNNER_TEMP/PKGBUILD")
+          echo "pkgver=$version" >> "$GITHUB_OUTPUT"
+          build=true
+          if [[ "$EVENT_NAME" == schedule ]]; then
+            git clone --depth 1 https://aur.archlinux.org/uniclipboard-git.git "$RUNNER_TEMP/aur-current"
+            if cmp -s "$RUNNER_TEMP/PKGBUILD" "$RUNNER_TEMP/aur-current/PKGBUILD"; then
+              build=false
+            fi
+          fi
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+          echo "Candidate: $version; build required: $build" >> "$GITHUB_STEP_SUMMARY"
+
   build:
+    needs: prepare
+    if: needs.prepare.outputs.build == 'true'
     name: Build the package in a clean Arch container
     runs-on: ubuntu-latest
     timeout-minutes: 120
@@ -58,6 +85,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           path: src
+          ref: ${{ needs.prepare.outputs.commit }}
           # Full history and tags: pkgver() runs `git describe`, which needs them.
           fetch-depth: 0
 
@@ -70,6 +98,8 @@ jobs:
           commit="$(git -C src rev-parse HEAD)"
           echo "commit=$commit" >> "$GITHUB_OUTPUT"
           src/scripts/ci/build-aur-package.sh "$GITHUB_WORKSPACE/src" "$commit" "$GITHUB_WORKSPACE/aur-build-evidence"
+          actual=$(sed -n 's/^pkgver=//p' aur-build-evidence/PKGBUILD)
+          test "$actual" = '${{ needs.prepare.outputs.pkgver }}'
 
       - name: Upload the package and its evidence
         if: always()
@@ -82,7 +112,7 @@ jobs:
 
   install:
     name: Install and launch in a clean Arch container
-    needs: build
+    needs: [prepare, build]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # A fresh container that did not build the package: its declared dependencies are the only runtime libraries present.
@@ -93,6 +123,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           path: src
+          ref: ${{ needs.prepare.outputs.commit }}
 
       - uses: actions/download-artifact@v4
         with:
@@ -116,10 +147,12 @@ jobs:
 
   publish:
     name: Sync PKGBUILD to AUR
-    needs: [build, install]
-    # Only a deliberate dispatch on main publishes. A pull request or a push never reaches this job, so a PKGBUILD that
-    # has not been built cannot be pushed, and a branch cannot publish its own PKGBUILD.
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish == true && github.ref == 'refs/heads/main' }}
+    needs: [prepare, build, install]
+    # PRs and branch dispatches cannot access publishing credentials.
+    if: >-
+      github.repository == 'UniClipboard/UniClipboard' && github.ref == 'refs/heads/main' &&
+      (github.event_name == 'push' || github.event_name == 'schedule' ||
+       (github.event_name == 'workflow_dispatch' && inputs.publish == true))
     runs-on: ubuntu-latest
     # base-devel already has makepkg; git and openssh are installed below.
     container: archlinux:base-devel
@@ -142,15 +175,18 @@ jobs:
       - uses: actions/checkout@v4
         with:
           path: src
+          ref: ${{ needs.prepare.outputs.commit }}
           fetch-depth: 0
 
       - name: Check that the published commit is the one that was built
         shell: bash
         env:
           BUILT: ${{ needs.build.outputs.commit }}
+          PKGVER: ${{ needs.prepare.outputs.pkgver }}
         run: |
           git config --global --add safe.directory "$GITHUB_WORKSPACE/src"
           test "$(git -C src rev-parse HEAD)" = "$BUILT"
+          test "$(src/scripts/ci/render-aur-package.sh "$GITHUB_WORKSPACE/src" "$RUNNER_TEMP/PKGBUILD")" = "$PKGVER"
 
       - name: Setup SSH for AUR
         env:
@@ -229,22 +265,8 @@ jobs:
       - name: Render PKGBUILD with current pkgver snapshot
         shell: bash
         run: |
-          cd src
-          # git describe 输出形如 v0.10.1-alpha.2-3-g1234567，经 sed 变成
-          # 0.10.1.alpha.2.r3.g1234567，与 PKGBUILD 内 pkgver() 函数算法一致。
-          # CI 这步只更新 web 视图，用户 makepkg 时仍以 pkgver() 重算为准。
-          PKGVER=$(git describe --long --tags --abbrev=7 2>/dev/null \
-            | sed 's/^v//; s/\([^-]*-g\)/r\1/; s/-/./g' \
-            || printf "0.0.0.r%s.g%s" \
-                 "$(git rev-list --count HEAD)" \
-                 "$(git rev-parse --short=7 HEAD)")
-          echo "Computed pkgver=$PKGVER"
-          echo "PKGVER=$PKGVER" >> "$GITHUB_ENV"
-
-          install -m644 -o builder -g builder \
-            packaging/aur/uniclipboard-git/PKGBUILD /home/builder/aur/PKGBUILD
-          # sed 替换 pkgver= 那一行；用 # 作分隔符避免 $PKGVER 内任何 / 干扰。
-          sudo -u builder sed -i "s#^pkgver=.*#pkgver=$PKGVER#" /home/builder/aur/PKGBUILD
+          echo "PKGVER=${{ needs.prepare.outputs.pkgver }}" >> "$GITHUB_ENV"
+          install -m644 -o builder -g builder "$RUNNER_TEMP/PKGBUILD" /home/builder/aur/PKGBUILD
 
       - name: Generate .SRCINFO
         shell: bash
@@ -272,6 +294,18 @@ jobs:
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Refuse an outdated source commit
+        if: steps.diff.outputs.changed == 'true'
+        env:
+          BUILT: ${{ needs.build.outputs.commit }}
+        shell: bash
+        run: |
+          current=$(git -C src ls-remote origin refs/heads/main | cut -f1)
+          if [[ "$current" != "$BUILT" ]]; then
+            echo '::error::Main advanced during validation. A fresh run must validate the new commit.'
+            exit 1
+          fi
+
       - name: Push to AUR
         if: ${{ steps.diff.outputs.changed == 'true' }}
         shell: bash
@@ -279,6 +313,9 @@ jobs:
           cd /home/builder/aur
           # AUR 默认分支是 master（旧 git 默认），不要写 main。
           sudo -u builder git push origin HEAD:master
+          expected=$(sudo -u builder git rev-parse HEAD)
+          actual=$(sudo -u builder git ls-remote origin refs/heads/master | cut -f1)
+          test "$expected" = "$actual"
 
       - name: Upload rendered artifacts
         # 不管推没推都上传，方便人工 review 时下载。

@@ -5,14 +5,15 @@
 # repackages the .deb.
 #
 # Sync rules: this file is the source of truth. .github/workflows/aur.yml builds it in a clean Arch
-# container on every change (pull request and main) and pushes it to the AUR only from a manual dispatch
-# with `publish` set. Do not edit the AUR copy by hand; it is overwritten by the next publish.
+# container on every packaging change and publishes validated main snapshots automatically. A daily
+# comparison catches source changes; manual dispatch can also validate without publishing.
+# Do not edit the AUR copy by hand; it is overwritten by the next publish.
 
 pkgname=uniclipboard-git
 _pkgname=uniclipboard
 # Snapshot shown on the AUR web page; makepkg recomputes it with pkgver() below. The publish step
 # replaces this line with the current `git describe` value.
-pkgver=0.10.1.alpha.2.r0.g0000000
+pkgver=1.4.0.alpha.1.r3.g0fdcdaa
 pkgrel=1
 pkgdesc="Real-time clipboard sync across macOS, Windows and Linux — local-first, peer-to-peer, and end-to-end encrypted"
 arch=('x86_64' 'aarch64')
@@ -42,11 +43,12 @@ pkgver() {
   # 1) sed 's/^v//'             drop the v prefix
   # 2) 's/\([^-]*-g\)/r\1/'     put an r before the trailing "<count>-g<hash>"
   # 3) 's/-/./g'                every - becomes . to satisfy the pacman version format
-  ( git describe --long --tags --abbrev=7 2>/dev/null \
-      | sed 's/^v//; s/\([^-]*-g\)/r\1/; s/-/./g' ) \
-    || printf "0.0.0.r%s.g%s" \
-         "$(git rev-list --count HEAD)" \
-         "$(git rev-parse --short=7 HEAD)"
+  local description
+  if description="$(git describe --long --tags --abbrev=7 2>/dev/null)"; then
+    printf '%s\n' "$description" | sed 's/^v//; s/\([^-]*-g\)/r\1/; s/-/./g'
+  else
+    printf "0.0.0.r%s.g%s" "$(git rev-list --count HEAD)" "$(git rev-parse --short=7 HEAD)"
+  fi
 }
 
 prepare() {

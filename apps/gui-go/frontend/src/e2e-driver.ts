@@ -2443,12 +2443,17 @@ async function runHostContractScenario() {
       seen[0].sessionId === snapshot.sessionId,
     { revision: seen[0].revision, mode: seen[0].mode }
   )
-  const theme = await commands.setFollowOmarchyTheme(true)
-  await record(
-    'desktop-theme-unavailable',
-    theme.omarchyAvailable === false &&
-      (await commands.getDesktopTheme()).omarchyAvailable === false
+  const originalTheme = await commands.getDesktopTheme()
+  const theme = await commands.setFollowOmarchyTheme(
+    originalTheme.omarchyAvailable || originalTheme.followOmarchyTheme
   )
+  await record(
+    'desktop-theme-availability',
+    theme.omarchyAvailable === originalTheme.omarchyAvailable &&
+      (!theme.omarchyAvailable || (theme.followOmarchyTheme && theme.theme !== null))
+  )
+
+  await commands.setFollowOmarchyTheme(originalTheme.followOmarchyTheme)
 
   // ---- errors: business failures are user-facing, system failures are not
   const bogusMode = await settle(HostService.SetVisualEffectsMode('bogus' as EffectsMode))

@@ -126,8 +126,7 @@ export function GetDaemonStartupStatus(): $CancellablePromise<json$0.RawMessage>
 }
 
 /**
- * GetDesktopTheme reports the desktop theme. Only a Linux host with an Omarchy theme source could report one; this
- * host has none on any platform, so it always answers "unavailable" and `desktop-theme://changed` is never sent.
+ * GetDesktopTheme reports the current Omarchy palette and device-local preference.
  */
 export function GetDesktopTheme(): $CancellablePromise<$models.DesktopThemeSnapshot> {
     return $Call.ByID(567851396);
@@ -385,8 +384,7 @@ export function SetAutoDownloadUpdate(enabled: boolean): $CancellablePromise<voi
 }
 
 /**
- * SetFollowOmarchyTheme would switch the page to the Omarchy theme. Unsupported: with no theme source the request
- * changes nothing and the answer stays "unavailable".
+ * SetFollowOmarchyTheme saves the preference before publishing it to all windows.
  */
 export function SetFollowOmarchyTheme(enabled: boolean): $CancellablePromise<$models.DesktopThemeSnapshot> {
     return $Call.ByID(117402040, enabled);

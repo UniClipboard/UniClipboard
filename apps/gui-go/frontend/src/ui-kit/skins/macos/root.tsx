@@ -1,6 +1,7 @@
 import { Toolbar as BaseToolbar } from '@base-ui/react/toolbar'
 import { Tooltip } from '@base-ui/react/tooltip'
 import { createContext, use, useEffect, useState, useSyncExternalStore } from 'react'
+import type { CSSProperties } from 'react'
 import { subscribeWindowMaterial, type WindowMaterial } from '@/host/window-material'
 import type {
   SurfaceProps,
@@ -9,12 +10,14 @@ import type {
   ToolbarProps,
   UiRootProps,
 } from '@/ui-kit/contract'
+import { isDefaultTheme, useAppliedTheme } from '@/ui-kit/theme/applied-theme'
 import { useGuiVisualEffects } from '@/ui-kit/visual-effects'
 import { WithHelpTag } from './controls'
 import { glyph } from './glyph'
 import { Icon } from './icons'
 import { PushButton } from './parts'
 import { PortalContainer } from './portal'
+import { macTheme } from './theme'
 import './tokens.css'
 import './macos.css'
 
@@ -67,6 +70,7 @@ const useMaterialScheme = () =>
  * behind sidebar surfaces.
  */
 export function UiRoot({ colorScheme, children }: UiRootProps) {
+  const appliedTheme = useAppliedTheme()
   const [element, setElement] = useState<HTMLDivElement | null>(null)
   const [hostMaterial, setMaterial] = useState<WindowMaterial>('none')
   const keyWindow = useKeyWindow()
@@ -74,7 +78,9 @@ export function UiRoot({ colorScheme, children }: UiRootProps) {
   // An app theme that differs from the system appearance would put light content on dark glass (or
   // the reverse), so the page then covers the material and the sidebar uses its CSS fallback.
   const materialScheme = useMaterialScheme()
-  const material = !lowEffects && materialScheme === colorScheme ? hostMaterial : 'none'
+  const defaultPalette = isDefaultTheme(appliedTheme)
+  const material =
+    defaultPalette && !lowEffects && materialScheme === colorScheme ? hostMaterial : 'none'
   useEffect(() => {
     const unsubscribe = subscribeWindowMaterial(setMaterial)
     return unsubscribe
@@ -91,6 +97,7 @@ export function UiRoot({ colorScheme, children }: UiRootProps) {
     <div
       ref={setElement}
       className="mac-theme mac-root"
+      style={macTheme(colorScheme, appliedTheme) as CSSProperties}
       data-mac-theme={colorScheme}
       data-ui-skin="macos"
       data-native-material={material === 'none' ? undefined : ''}

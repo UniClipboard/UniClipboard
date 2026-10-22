@@ -24,7 +24,7 @@ from run import ROOT, isolated_env, pid_alive, read_steps  # noqa: E402
 BINARY = ROOT / 'target/gui-go/UniClipboardGoE2E.app/Contents/MacOS/gui-go'
 STEPS = ['connection-info', 'daemon-session', 'device-identity', 'profile-recovery-passthrough', 'startup-status-passthrough',
          'content-unlocked-boolean', 'install-kind-enum', 'bootstrap-failure-null', 'visual-effects-typed-event',
-         'desktop-theme-unavailable', 'error-validation-user-facing', 'error-not-found-user-facing',
+         'desktop-theme-availability', 'error-validation-user-facing', 'error-not-found-user-facing',
          'null-argument-is-zero-value', 'error-text-is-system', 'error-wrong-arity-is-system',
          'error-unknown-method-is-system', 'error-bad-base64-is-system', 'restart-daemon-start', 'restart-daemon-result',
          'restart-daemon-events', 'restart-daemon-client-replaced', 'restart-daemon-new-session']

@@ -16,25 +16,25 @@ func hostPlatform() string {
 	return runtime.GOOS
 }
 
-// unavailableTheme is the desktop theme of a host without an Omarchy theme source (every host today).
-func unavailableTheme() DesktopThemeSnapshot { return DesktopThemeSnapshot{} }
-
-// GetDesktopTheme reports the desktop theme. Only a Linux host with an Omarchy theme source could report one; this
-// host has none on any platform, so it always answers "unavailable" and `desktop-theme://changed` is never sent.
+// GetDesktopTheme reports the current Omarchy palette and device-local preference.
 //
 //uc:errors none
-//uc:os darwin=noop windows=noop linux=unsupported
+//uc:os darwin=noop windows=noop linux=real
 func (h *HostService) GetDesktopTheme() DesktopThemeSnapshot {
-	return unavailableTheme()
+	return h.desktopTheme.snapshot()
 }
 
-// SetFollowOmarchyTheme would switch the page to the Omarchy theme. Unsupported: with no theme source the request
-// changes nothing and the answer stays "unavailable".
+// SetFollowOmarchyTheme saves the preference before publishing it to all windows.
 //
-//uc:errors none
-//uc:os darwin=noop windows=noop linux=unsupported
-func (h *HostService) SetFollowOmarchyTheme(enabled bool) DesktopThemeSnapshot {
-	return unavailableTheme()
+//uc:errors command InternalError
+//uc:os darwin=noop windows=noop linux=real
+func (h *HostService) SetFollowOmarchyTheme(enabled bool) (DesktopThemeSnapshot, error) {
+	snapshot, err := h.desktopTheme.setEnabled(enabled)
+	if err != nil {
+		return snapshot, hostapi.Internal(err)
+	}
+	h.emit(desktopThemeChangedEvent, snapshot)
+	return snapshot, nil
 }
 
 // TakePendingNavigation returns, once, the route a tray or second launch asked the page to open.

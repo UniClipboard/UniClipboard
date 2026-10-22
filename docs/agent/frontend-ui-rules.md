@@ -17,6 +17,9 @@ Use this document when editing React, TypeScript, Tailwind, UX flows, or fronten
 
 ## Theme Support Best Practices
 
+- 三端组件库的默认外观统一定义在 `apps/gui-go/frontend/src/themes/default.json`，调色板名称为 `default`；各平台仍保留自己的默认颜色。不得在组件根或控件中新增绕过主题的固定强调色、窗口背景或状态色。
+- 窗口主题控制器是已应用配色的唯一来源。皮肤通过 `ui-kit/theme/applied-theme.ts` 观察已应用语义颜色，再映射到 Adwaita、AppKit 或 Fluent token；设置、弹层、按钮、开关与选中态使用同一映射。新增主题接入必须用浏览器计算样式验证，宿主快照与保存成功不能作为界面已变色的证据。
+
 Always verify components in both light and dark themes.
 
 ### Container Components

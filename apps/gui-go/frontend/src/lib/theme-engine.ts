@@ -1,4 +1,7 @@
-export const DEFAULT_THEME_COLOR = 'zinc'
+import { defaultTheme } from '../ui-kit/theme/default'
+import { THEME_TOKEN_CSS_VARIABLES } from './theme-token-variables'
+
+export const DEFAULT_THEME_COLOR = 'default'
 
 export type ThemeMode = 'light' | 'dark'
 
@@ -658,6 +661,7 @@ const notebookDark: ThemeTokens = {
 }
 
 const PRESETS: Record<string, ThemePreset> = {
+  default: defaultTheme,
   zinc: {
     name: 'zinc',
     accentColor: '#52525b',
@@ -790,48 +794,28 @@ export function applyThemePreset(
   mode: ThemeMode,
   root: HTMLElement
 ): void {
+  root.removeAttribute('data-theme-customized')
   const tokens = getTokens(themeName, mode)
   const preset = getPresetOrDefault(themeName)
 
-  const setVar = (name: string, value: string) => {
-    root.style.setProperty(name, value)
+  for (const [token, variable] of Object.entries(THEME_TOKEN_CSS_VARIABLES)) {
+    root.style.setProperty(variable, tokens[token as keyof ThemeTokens])
   }
-
-  setVar('--background', tokens.background)
-  setVar('--foreground', tokens.foreground)
-  setVar('--card', tokens.card)
-  setVar('--card-foreground', tokens.cardForeground)
-  setVar('--popover', tokens.popover)
-  setVar('--popover-foreground', tokens.popoverForeground)
-  setVar('--primary', tokens.primary)
-  setVar('--primary-foreground', tokens.primaryForeground)
-  setVar('--secondary', tokens.secondary)
-  setVar('--secondary-foreground', tokens.secondaryForeground)
-  setVar('--muted', tokens.muted)
-  setVar('--muted-foreground', tokens.mutedForeground)
-  setVar('--accent', tokens.accent)
-  setVar('--accent-foreground', tokens.accentForeground)
-  setVar('--destructive', tokens.destructive)
-  setVar('--destructive-foreground', tokens.destructiveForeground)
-  setVar('--border', tokens.border)
-  setVar('--input', tokens.input)
-  setVar('--ring', tokens.ring)
-  setVar('--chart-1', tokens.chart1)
-  setVar('--chart-2', tokens.chart2)
-  setVar('--chart-3', tokens.chart3)
-  setVar('--chart-4', tokens.chart4)
-  setVar('--chart-5', tokens.chart5)
-  setVar('--sidebar', tokens.sidebar)
-  setVar('--sidebar-foreground', tokens.sidebarForeground)
-  setVar('--sidebar-primary', tokens.sidebarPrimary)
-  setVar('--sidebar-primary-foreground', tokens.sidebarPrimaryForeground)
-  setVar('--sidebar-accent', tokens.sidebarAccent)
-  setVar('--sidebar-accent-foreground', tokens.sidebarAccentForeground)
-  setVar('--sidebar-border', tokens.sidebarBorder)
-  setVar('--sidebar-ring', tokens.sidebarRing)
 
   // Keep data-theme in sync for any CSS selectors that still rely on it.
   root.setAttribute('data-theme', preset.name)
+}
+
+/** Apply a desktop palette through the same theme surface observed by every skin. */
+export function applyDesktopTheme(
+  variables: Record<string, string | undefined>,
+  root: HTMLElement
+): void {
+  root.removeAttribute('data-theme-customized')
+  for (const [key, value] of Object.entries(variables)) {
+    if (value !== undefined) root.style.setProperty(key, value)
+  }
+  root.setAttribute('data-theme', 'desktop')
 }
 
 /**
@@ -840,13 +824,6 @@ export function applyThemePreset(
  */
 export const OVERRIDABLE_TOKENS = ['primary', 'background', 'foreground', 'border'] as const
 export type OverridableToken = (typeof OVERRIDABLE_TOKENS)[number]
-
-const OVERRIDE_TO_CSS_VAR: Record<OverridableToken, string> = {
-  primary: '--primary',
-  background: '--background',
-  foreground: '--foreground',
-  border: '--border',
-}
 
 /**
  * 在已应用的 preset token 之上叠加用户自定义 override。
@@ -866,7 +843,8 @@ export function applyThemeOverrides(
   for (const token of OVERRIDABLE_TOKENS) {
     const value = overrides[token]
     if (typeof value === 'string' && value.length > 0) {
-      root.style.setProperty(OVERRIDE_TO_CSS_VAR[token], value)
+      root.style.setProperty(THEME_TOKEN_CSS_VARIABLES[token], value)
+      root.setAttribute('data-theme-customized', 'true')
     }
   }
 }

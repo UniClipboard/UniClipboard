@@ -1,8 +1,9 @@
 import { FluentProvider, makeStyles, tokens } from '@fluentui/react-components'
 import { MotionBehaviourProvider } from '@fluentui/react-motion'
 import type { UiRootProps } from '@/ui-kit/contract'
+import { useAppliedTheme } from '@/ui-kit/theme/applied-theme'
 import { useGuiVisualEffects } from '@/ui-kit/visual-effects'
-import { themes } from './theme'
+import { windowsTheme } from './theme'
 
 const useStyles = makeStyles({
   root: {
@@ -19,10 +20,11 @@ const fill = { height: '100%' }
 
 /** FluentProvider with the Win11 theme. Portals (menus, dialogs, tooltips) inherit it. */
 export function UiRoot({ colorScheme, children }: UiRootProps) {
+  const appliedTheme = useAppliedTheme()
   const styles = useStyles()
   const { lowEffects, reduceMotion } = useGuiVisualEffects()
   const theme = {
-    ...themes[colorScheme],
+    ...windowsTheme(colorScheme, appliedTheme),
     ...(lowEffects
       ? {
           shadow2: 'none',

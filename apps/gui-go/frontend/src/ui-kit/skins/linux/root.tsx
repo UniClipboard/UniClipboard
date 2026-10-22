@@ -1,6 +1,7 @@
 import { Toolbar as BaseToolbar } from '@base-ui/react/toolbar'
 import { Tooltip } from '@base-ui/react/tooltip'
 import { useState } from 'react'
+import type { CSSProperties } from 'react'
 import type {
   SurfaceProps,
   ToolbarButtonProps,
@@ -8,10 +9,12 @@ import type {
   ToolbarProps,
   UiRootProps,
 } from '@/ui-kit/contract'
+import { useAppliedTheme } from '@/ui-kit/theme/applied-theme'
 import { WithHelpTag } from './controls'
 import { glyph } from './glyph'
 import { PushButton } from './parts'
 import { PortalContainer } from './portal'
+import { linuxTheme } from './theme'
 import './tokens.css'
 import './adwaita.css'
 
@@ -21,11 +24,13 @@ import './adwaita.css'
  * system (GTK client-side or server-side decorations), so the page draws no window chrome.
  */
 export function UiRoot({ colorScheme, children }: UiRootProps) {
+  const appliedTheme = useAppliedTheme()
   const [element, setElement] = useState<HTMLDivElement | null>(null)
   return (
     <div
       ref={setElement}
       className="adw-theme adw-root"
+      style={linuxTheme(colorScheme, appliedTheme) as CSSProperties}
       data-adw-theme={colorScheme}
       data-ui-skin="linux"
     >

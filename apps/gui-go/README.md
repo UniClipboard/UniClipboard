@@ -39,6 +39,19 @@ Linux 启动环境未设置 `DISPLAY` 和 `WAYLAND_DISPLAY` 时，开发脚本�
 
 Hyprland（包括 Omarchy）和 niri 会话中，主窗口隐藏应用绘制的最小化、最大化和关闭按钮，窗口操作交给合成器。宿主通过 `XDG_CURRENT_DESKTOP`、`HYPRLAND_INSTANCE_SIGNATURE` 或 `NIRI_SOCKET` 识别环境。
 
+Omarchy 环境的「设置 → 外观 → 主题」显示「跟随 Omarchy 主题」开关，默认关闭。开启后主窗口与快捷面板跟随 Omarchy 的深浅模式和配色（约一秒内生效）；关闭后恢复已保存的应用主题。宿主读取 `~/.local/state/omarchy/current/theme/colors.toml`，兼容旧版 `$XDG_CONFIG_HOME/omarchy/current/theme/colors.toml`；其他桌面不显示此配置。偏好按 profile 保存在应用数据目录的 `desktop-theme.json`，保存失败时保留原值并在设置页提示。
+
+三端组件库的原生配色统一保存在 `frontend/src/themes/default.json`，外观页调色板名为 `default`。其他预设、自定义覆盖和桌面主题共用窗口主题控制器，皮肤只负责把语义颜色映射为平台控件颜色，不再用固定配色覆盖应用主题。
+
+三端计算样式验收按顺序运行，覆盖浅深模式、窗口背景、主按钮、设置开关、选中行、弹层与恢复默认：
+
+```bash
+NODE_OPTIONS=--max-old-space-size=1536 node apps/gui-go/frontend/e2e/theme-palette-run.mjs
+```
+
+验收需要已有的 Playwright 与 Chromium，可通过 `PLAYWRIGHT_MODULE`、`PLAYWRIGHT_EXECUTABLE_PATH` 指定；结果和截图保存在系统临时目录中的 `uc-theme-<platform>`。这项浏览器验收不替代 macOS、Windows 原生 WebView 验收。
+
+
 `bun wails:build` 复用现有平台构建脚本，构建前端、daemon、原生快捷面板、CLI 与 GUI。Windows 产物位于 `target/gui-go/windows-production/`（入口 `gui-go.exe`），macOS 产物为 `target/gui-go/UniClipboardGo.app`。该命令生成本地应用，不生成安装包；Go 使用 `production` 标签，Rust 沿用现有脚本的 debug 构建。Windows 需要 Python，macOS 需要 Bash 与 Python 3。
 
 Windows 上使用 `bun wails:build --release` 构建发布便携版：Rust 使用 `cargo build --release`，Go 使用 `production,release` 标签并移除调试符号，前端嵌入 GUI，无需 Vite。产物位于 `target/gui-go/windows-release/`，包括 `UniClipboard.exe`、daemon、原生快捷面板、CLI、构建清单与 `UniClipboard_<版本>_<x64|arm64>-portable.zip`。便携 ZIP 复用发布流水线的文件布局，包含 `portable.dat`，解压后数据保存在程序旁的 `data/`；该本地命令不进行 Authenticode 签名，也不生成安装包。启动发布版前需清除 `UC_PROFILE` 和 `UNICLIPBOARD_ENV=development` 等开发环境设置。macOS 暂不支持此命令的 `--release` 参数。

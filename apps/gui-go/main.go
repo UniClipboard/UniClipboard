@@ -31,6 +31,8 @@ type HostService struct {
 	app                 *application.App
 	client              atomic.Pointer[daemonclient.Client] // replaced when the daemon is restarted; read through daemon()
 	effects             *visualEffects
+	desktopTheme        *desktopThemeState
+	stopDesktopTheme    context.CancelFunc
 	panel               panelState
 	exit                exitIntent
 	prompts             promptStore
@@ -121,7 +123,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	host := &HostService{effects: newVisualEffects(), notifier: notifications.New(), wake: make(chan string, 1)}
+	host := &HostService{effects: newVisualEffects(), desktopTheme: newDesktopThemeState(), notifier: notifications.New(), wake: make(chan string, 1)}
 	// Follow, not daemon(): after a restart the host did not record (it reported a failure, or the GUI relaunch
 	// failed), the watcher must reach the daemon that actually runs, and every other caller then uses it too.
 	host.settingsWatch = settings.NewWatcher(func() *daemonclient.Client { return daemonclient.Follow(&host.client) }, host.applySettings)
@@ -154,7 +156,11 @@ func main() {
 	// second-instance observer when the loop starts, so the seconds a cold daemon start takes must not precede it:
 	// a launch arriving meanwhile would be lost. Activations that arrive before bootstrap finishes are held
 	// (see onSecondInstance) and carried out afterwards.
-	app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) { host.startVisualEffects(); go host.bootstrap() })
+	app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
+		host.startVisualEffects()
+		host.startDesktopTheme()
+		go host.bootstrap()
+	})
 	host.stopWake = app.Event.OnApplicationEvent(events.Common.SystemDidWake, func(*application.ApplicationEvent) { host.signalWake(wakeSystemResume) })
 	if err := app.Run(); err != nil {
 		log.Fatal(err)

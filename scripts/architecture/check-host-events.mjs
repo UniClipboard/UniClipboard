@@ -20,12 +20,7 @@ const PAGE_DIRS = [join(ROOT, 'apps/gui-go/frontend/src')]
 
 // Declared events that have a page listener but no host emitter, with the reason. Adding to this list is a product
 // decision, not a way to silence the check.
-const UNEMITTED = new Map([
-  [
-    'desktop-theme://changed',
-    'Omarchy theming is not implemented in the Go host (GetDesktopTheme always reports it unavailable), so nothing can change the desktop theme at runtime. The page listener is gated on availability.',
-  ],
-])
+const UNEMITTED = new Map()
 
 // Events removed on purpose, with the reason. Their names must not come back in the host or the page.
 const RETIRED = new Map([

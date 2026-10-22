@@ -20,7 +20,7 @@ const (
 	quickPanelPrepareShow     = "quick-panel://prepare-show"      // host -> page, no payload: clear state before showing
 	appShuttingDownEvent      = "app://shutting-down"             // host -> page, no payload: close the daemon WebSocket before the daemon stops
 	daemonConnectionChanged   = "app://daemon-connection-changed" // host -> page, no payload: the daemon was replaced, reconnect
-	desktopThemeChangedEvent  = "desktop-theme://changed"         // host -> page, DesktopThemeSnapshot: the desktop theme changed. Declared for the page's listener; no host emits it (Omarchy theming is not implemented in the Go host)
+	desktopThemeChangedEvent  = "desktop-theme://changed"         // host -> page, DesktopThemeSnapshot: the Omarchy palette or follow preference changed
 	devicesChangedEvent       = "devices://sync-changed"          // both ways, string device id: a device's sync switch changed
 	shortcutStatusEvent       = "quick-panel://shortcut-status"   // host -> page, QuickPanelShortcutStatus: the global shortcut's apply status changed
 )

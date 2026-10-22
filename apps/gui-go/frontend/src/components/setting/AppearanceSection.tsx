@@ -47,32 +47,31 @@ export default function AppearanceSection() {
   return (
     <div className="appearance-settings min-w-0" data-testid="appearance-settings">
       <div className="flex min-w-0 flex-col gap-8">
-        {omarchy.available && (
-          <div>
-            <SettingRow label={t('omarchyTheme.title')} description={t('omarchyTheme.description')}>
-              <SettingSwitch
+        <SettingGroup title={t('appearanceLayout.theme')}>
+          {omarchy.available && (
+            <>
+              <SettingRow
                 label={t('omarchyTheme.title')}
-                checked={omarchy.enabled}
-                disabled={omarchy.saving}
-                onCheckedChange={enabled => {
-                  void omarchy.setEnabled(enabled)
-                }}
-              />
-            </SettingRow>
-            {omarchy.failed && (
-              <p role="alert" className="text-ui-body text-destructive">
-                {t('appearanceLayout.saveFailed')}
-              </p>
-            )}
-          </div>
-        )}
-        <fieldset
-          disabled={followingOmarchy}
-          className="min-w-0 flex flex-col gap-8 disabled:opacity-60"
-        >
-          <legend className="sr-only">{t('appearanceLayout.theme')}</legend>
-          <div inert={followingOmarchy || undefined} className="min-w-0 flex flex-col gap-8">
-            <SettingGroup title={t('appearanceLayout.theme')}>
+                description={t('omarchyTheme.description')}
+              >
+                <SettingSwitch
+                  label={t('omarchyTheme.title')}
+                  checked={omarchy.enabled}
+                  disabled={omarchy.saving}
+                  onCheckedChange={enabled => {
+                    void omarchy.setEnabled(enabled)
+                  }}
+                />
+              </SettingRow>
+              {omarchy.failed && (
+                <p role="alert" className="text-ui-body text-destructive">
+                  {t('appearanceLayout.saveFailed')}
+                </p>
+              )}
+            </>
+          )}
+          <fieldset disabled={followingOmarchy} className="min-w-0 disabled:opacity-60">
+            <div inert={followingOmarchy || undefined}>
               <AppearanceTheme
                 theme={general?.theme || 'system'}
                 lightTokens={{
@@ -85,7 +84,15 @@ export default function AppearanceSection() {
                 }}
                 onChange={theme => updateGeneralSetting({ theme })}
               />
-            </SettingGroup>
+            </div>
+          </fieldset>
+        </SettingGroup>
+        <fieldset
+          disabled={followingOmarchy}
+          className="min-w-0 flex flex-col gap-8 disabled:opacity-60"
+        >
+          <legend className="sr-only">{t('appearanceLayout.palette')}</legend>
+          <div inert={followingOmarchy || undefined} className="min-w-0 flex flex-col gap-8">
             <SettingGroup title={t('appearanceLayout.palette')}>
               <div>
                 <div className="appearance-palette-list">

@@ -31,6 +31,9 @@ func (h *HostService) quit(keepDaemon bool) {
 
 // shutdown stops background work, then the daemon unless the exit keeps it.
 func (h *HostService) shutdown() {
+	if h.stopDesktopTheme != nil {
+		h.stopDesktopTheme()
+	}
 	h.settingsWatch.Pause() // close its daemon connection before the daemon may be stopped below
 	if h.stopSettings != nil {
 		h.stopSettings()

@@ -6,6 +6,7 @@ toolchain go1.27.1
 
 require (
 	aead.dev/minisign v0.3.0
+	github.com/BurntSushi/toml v1.6.0
 	github.com/UniClipboard/UniClipboard/packages/desktop-host-go v0.0.0
 	github.com/wailsapp/wails/v3 v3.0.0-beta.28
 	golang.org/x/image v0.41.0

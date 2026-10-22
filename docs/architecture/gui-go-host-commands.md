@@ -67,7 +67,7 @@ Wails 版本与 Go 工具链只在 `apps/gui-go/go.mod` 中固定一处，生成
 | `get_daemon_connection_info` | `GetDaemonConnectionInfo` | - | `*DaemonConnection` | none | 真实 | 真实 | 真实 | 契约命令；GetDaemonConnectionInfo tells the page where the daemon listens. |
 | `get_daemon_session` | `GetDaemonSession` | - | `*DaemonSession` | command: InternalError | 真实 | 真实 | 真实 | 契约命令；GetDaemonSession exchanges a short-lived daemon session for the page. |
 | `get_daemon_startup_status` | `GetDaemonStartupStatus` | - | `json.RawMessage` | command: InternalError | 真实 | 真实 | 真实 | 契约命令；GetDaemonStartupStatus returns the daemon's startup progress (`GET /startup`) as the daemon sent it: nil while the daemon is not reachable yet. |
-| `get_desktop_theme` | `GetDesktopTheme` | - | `DesktopThemeSnapshot` | none | 有意空操作 | 有意空操作 | 不支持 | 契约命令；GetDesktopTheme reports the desktop theme. |
+| `get_desktop_theme` | `GetDesktopTheme` | - | `DesktopThemeSnapshot` | none | 有意空操作 | 有意空操作 | 真实 | 契约命令；GetDesktopTheme reports the current Omarchy palette and device-local preference. |
 | `get_device_id` | `GetDeviceID` | - | `string` | command: InternalError | 真实 | 真实 | 真实 | 契约命令；GetDeviceID returns this device's peer id. |
 | `get_device_meta` | `GetDeviceMeta` | - | `DeviceMeta` | command: InternalError | 真实 | 真实 | 真实 | 契约命令；GetDeviceMeta returns the host's device and application metadata for the page's Sentry scope. |
 | `get_download_progress` | `GetDownloadProgress` | - | `DownloadProgressSnapshot` | none | 真实 | 真实 | 真实 | 契约命令；GetDownloadProgress returns the pending update state, so a window that mounts mid-download can catch up before it listens to the broadcast events. |
@@ -102,7 +102,7 @@ Wails 版本与 Go 工具链只在 `apps/gui-go/go.mod` 中固定一处，生成
 | `reveal_path` | `RevealPath` | `path string` | `-` | command: InternalError, NotFound | 真实 | 真实 | 真实 | 契约命令；RevealPath shows an existing file or folder in the file manager. |
 | `save_image_as` | `SaveImageAs` | `fileName string, data []byte` | `*string` | command: InternalError | 真实 | 真实 | 真实 | 契约命令；SaveImageAs writes image bytes to a place the user picks. |
 | `set_auto_download_update` | `SetAutoDownloadUpdate` | `enabled bool` | `-` | text | 真实 | 真实 | 真实 | 契约命令；SetAutoDownloadUpdate saves the "download updates automatically" setting. |
-| `set_follow_omarchy_theme` | `SetFollowOmarchyTheme` | `enabled bool` | `DesktopThemeSnapshot` | none | 有意空操作 | 有意空操作 | 不支持 | 契约命令；SetFollowOmarchyTheme would switch the page to the Omarchy theme. |
+| `set_follow_omarchy_theme` | `SetFollowOmarchyTheme` | `enabled bool` | `DesktopThemeSnapshot` | command: InternalError | 有意空操作 | 有意空操作 | 真实 | 契约命令；SetFollowOmarchyTheme saves the preference before publishing it to all windows. |
 | `set_quick_panel_double_tap_modifier` | `SetQuickPanelDoubleTapModifier` | `modifier QuickPanelDoubleTapModifier` | `-` | command: ValidationError, Conflict, InternalError | 真实 | 真实 | 真实 | 契约命令；SetQuickPanelDoubleTapModifier sets the modifier whose double tap opens the quick panel. |
 | `set_quick_panel_enabled` | `SetQuickPanelEnabled` | `enabled bool` | `-` | command: InternalError, Conflict | 真实 | 真实 | 真实 | 契约命令；SetQuickPanelEnabled turns the quick panel and its global shortcut on or off. |
 | `set_quick_panel_layout` | `SetQuickPanelLayout` | `scale *float64, previewExpanded bool, windowScale *float64` | `-` | none | 真实 | 真实 | 真实 | 契约命令；SetQuickPanelLayout sizes the quick panel for the page's content scale, the preview pane and (Linux) the window scale. |
@@ -153,10 +153,10 @@ Wails 版本与 Go 工具链只在 `apps/gui-go/go.mod` 中固定一处，生成
 
 | 事件 | 结论 |
 | --- | --- |
+| `desktop-theme://changed` | Linux 宿主在 Omarchy 配色或跟随偏好变化时发射，所有窗口复用主题控制器。其他桌面报告不可用，外观页隐藏开关。 |
 | `lifecycle://event` | 唯一的监听方 `useLifecycleStatus` 没有任何使用者，属于死代码，已连同监听一起删除。 |
 | `app://shutting-down` | 页面需要在 daemon 停止前主动关闭 WebSocket，否则 daemon 要等心跳超时（约 30 秒）才能退出。宿主现在在停止 daemon 之前（退出与 `restart_daemon`）发射该事件并等待 300 毫秒。 |
 | `app://daemon-connection-changed` | `restart_daemon` 会换掉 daemon 进程，新进程有新的连接文件与令牌。宿主现在重新读取连接信息并替换客户端（`HostService.daemon()`），然后发射该事件让页面重连。 |
-| `desktop-theme://changed` | Omarchy 主题源在 Go 宿主中未实现（`get_desktop_theme` 恒为不可用），没有可发射的变化，页面监听受可用性限制。事件已按类型声明，并登记为“无发射方（不支持）”，登记理由见 `scripts/architecture/check-host-events.mjs`。 |
 
 ## 窗口、日志与 WebView 适配器审计
 

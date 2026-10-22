@@ -2,7 +2,12 @@ import { isDesktopHost } from '@/host/core'
 import { getCurrentWindow } from '@/host/window'
 import { subscribeDesktopTheme } from '@/lib/desktop-theme'
 import type { DesktopTheme } from '@/lib/desktop-theme'
-import { applyThemeOverrides, applyThemePreset, DEFAULT_THEME_COLOR } from '@/lib/theme-engine'
+import {
+  applyDesktopTheme,
+  applyThemeOverrides,
+  applyThemePreset,
+  DEFAULT_THEME_COLOR,
+} from '@/lib/theme-engine'
 import { writeCachedThemeMode } from '@/lib/theme-mode-cache'
 import { startThemeTransition } from '@/lib/theme-transition'
 import type { Settings } from '@/types/setting'
@@ -67,10 +72,7 @@ export function createWindowThemeController(animate = false) {
       root.classList.add(mode)
       writeCachedThemeMode(mode)
       if (external) {
-        for (const [key, value] of Object.entries(external.variables ?? {})) {
-          if (value !== undefined) root.style.setProperty(key, value)
-        }
-        root.setAttribute('data-theme', 'desktop')
+        applyDesktopTheme(external.variables ?? {}, root)
       } else {
         applyThemePreset(preset, mode, root)
         applyThemeOverrides(overrides, root)

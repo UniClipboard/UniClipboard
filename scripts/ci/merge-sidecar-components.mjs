@@ -37,11 +37,12 @@ export function mergeSidecarComponents({
     let merged
     const verified = []
     for (const { component, binary } of components) {
-      const archive = resolve(
-        artifacts,
-        `sidecar-component-${target}${suffix}-${component}`,
-        'sidecar.tar'
-      )
+      // download-artifact v6 flattens a single match even when selected by pattern.
+      const artifactDirectory =
+        components.length === 1
+          ? artifacts
+          : join(artifacts, `sidecar-component-${target}${suffix}-${component}`)
+      const archive = resolve(artifactDirectory, 'sidecar.tar')
       // Only regular files with the exact names emitted by the component builder may be extracted.
       const listing = execFileSync('tar', ['-tf', archive], { encoding: 'utf8' })
         .trim()

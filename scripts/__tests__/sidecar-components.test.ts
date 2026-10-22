@@ -217,9 +217,13 @@ describe('component build evidence assembly', () => {
     }
   )
 
-  it('accepts the daemon-only Linux artifact contract', () => {
+  it('accepts the flat daemon-only Linux download produced by download-artifact v6', () => {
     const { options, archive } = fixture('aarch64-unknown-linux-gnu')
     const { binary } = archive('daemon')
+    fs.renameSync(
+      path.join(options.artifacts, `sidecar-component-${options.target}-daemon`, 'sidecar.tar'),
+      path.join(options.artifacts, 'sidecar.tar')
+    )
     mergeSidecarComponents(options)
     expect(fs.readdirSync(options.out).sort()).toEqual([binary, 'sidecar-provenance.json'].sort())
   })

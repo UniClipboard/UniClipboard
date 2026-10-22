@@ -27,4 +27,10 @@ if ! "$python_bin" -c 'import boto3' 2>/dev/null; then
   "$python_bin" -m pip install --disable-pip-version-check -q boto3==1.43.117
 fi
 source "$UC_ENGINE_MBX_ENV_FILE"
+# Container checkout ownership may differ from the shell's user. Scope trust to
+# this process and the explicit source checkout, preserving inherited Git config.
+git_config_count=${GIT_CONFIG_COUNT:-0}
+export "GIT_CONFIG_KEY_${git_config_count}=safe.directory"
+export "GIT_CONFIG_VALUE_${git_config_count}=$UC_MBX_SNAPSHOT_SOURCE_ROOT"
+export GIT_CONFIG_COUNT=$((git_config_count + 1))
 "$python_bin" "$script_dir/mbx-snapshot.py" "$@"

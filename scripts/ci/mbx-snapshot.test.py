@@ -28,6 +28,40 @@ summary = load("summarize-mbx")
 
 
 class SnapshotTests(unittest.TestCase):
+    def test_bootstrap_trusts_only_the_source_checkout_and_preserves_git_config(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "source checkout"
+            source.mkdir()
+            clean = {**os.environ, "GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1"}
+            subprocess.run(["git", "init", "-q", str(source)], env=clean, check=True, capture_output=True)
+            subprocess.run(["git", "-c", "user.name=Snapshot Test", "-c", "user.email=test@example.invalid", "-c", "commit.gpgsign=false", "commit", "--allow-empty", "-qm", "fixture"], cwd=source, env=clean, check=True, capture_output=True)
+            expected = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=source, env=clean, text=True).strip()
+            forced = {**clean, "GIT_TEST_ASSUME_DIFFERENT_OWNER": "1"}
+            rejected = subprocess.run(["git", "rev-parse", "HEAD"], cwd=source, env=forced, capture_output=True)
+            self.assertNotEqual(rejected.returncode, 0)
+            tools = root / "tools"
+            tools.mkdir()
+            shutil.copyfile(Path(__file__).with_name("mbx-snapshot.sh"), tools / "mbx-snapshot.sh")
+            (tools / "mbx-snapshot.py").write_text('import json, os, subprocess\nfrom pathlib import Path\nroot = os.environ["UC_MBX_SNAPSHOT_SOURCE_ROOT"]\nprint(json.dumps(dict(sha=subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip(), abbrev=subprocess.check_output(["git", "config", "core.abbrev"], cwd=root, text=True).strip(), trust=subprocess.check_output(["git", "config", "--get-all", "safe.directory"], cwd=root, text=True).strip())))\n')
+            # Avoid SDK installation; the probe exercises the real shell and Git boundary.
+            (tools / "boto3.py").write_text("")
+            config = root / "engine-env"
+            config.write_text("")
+            env = {**forced, "UC_MBX_SNAPSHOT_SOURCE_ROOT": str(source), "RUNNER_TEMP": str(root),
+                   "RUNNER_OS": "Windows" if os.name == "nt" else "Linux" if sys.platform == "linux" else "macOS",
+                   "UC_ENGINE_MBX_ENV_FILE": str(config), "UC_ENGINE_MBX_STATS_DIR": str(root / "stats"),
+                   "MBX_CACHE_DIR": str(root / "cache"), "PYTHONPATH": str(tools),
+                   "GIT_CONFIG_COUNT": "1", "GIT_CONFIG_KEY_0": "core.abbrev", "GIT_CONFIG_VALUE_0": "9"}
+            # Windows also exposes a WSL bash.exe; use the Git Bash installation.
+            bash = str(Path(shutil.which("cygpath")).with_name("bash.exe")) if os.name == "nt" else "bash"
+            probe = subprocess.run([bash, (tools / "mbx-snapshot.sh").as_posix()], env=env, capture_output=True, text=True)
+            self.assertEqual(probe.returncode, 0, probe.stdout + probe.stderr)
+            result = json.loads(probe.stdout)
+            self.assertEqual(result["sha"], expected)
+            self.assertEqual(result["abbrev"], "9")
+            self.assertEqual(Path(result["trust"]).resolve(), source.resolve())
+
     def test_scene_keys_isolate_workloads_and_host_architectures(self):
         with patch.object(snapshot.subprocess, "check_output", return_value=b"compiler"), patch.object(snapshot.platform, "system", return_value="Windows"):
             with patch.object(snapshot.platform, "machine", return_value="AMD64"):

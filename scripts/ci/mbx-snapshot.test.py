@@ -251,6 +251,10 @@ class NativeMbxTests(unittest.TestCase):
             exported = root / "corrupt-export"
             run("cache", "export", "--group", "e2e-macos", "--format", "directory", str(exported), cache=root / "consumer")
             leaf = next(file for file in (exported / "cas").rglob("*") if file.is_file())
+            # Exports can hard-link read-only compiler objects. Replace the
+            # fixture's link instead of modifying the producer's shared inode.
+            leaf.chmod(0o600)
+            leaf.unlink()
             leaf.write_bytes(b"corrupt")
             with self.assertRaises(subprocess.CalledProcessError):
                 run("cache", "import", str(exported), cache=root / "rejected")

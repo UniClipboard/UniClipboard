@@ -45,7 +45,7 @@ func (h *HostService) SetFollowOmarchyTheme(enabled bool) (DesktopThemeSnapshot,
 		defer cancel()
 		var snapshot DesktopThemeSnapshot
 		err := h.ownerCall(ctx, "desktop-theme-follow", enabled, &snapshot)
-		return snapshot, hostapi.Internal(err)
+		return snapshot, err
 	}
 	snapshot, err := h.desktopTheme.setEnabled(enabled)
 	if err != nil {
@@ -135,7 +135,7 @@ func (h *HostService) RestartApp() {
 //uc:os all=real
 func (h *HostService) RestartDaemon(ctx context.Context) error {
 	if uiChild {
-		return hostapi.Internal(h.ownerCall(ctx, "restart-daemon", nil, nil))
+		return h.ownerCall(ctx, "restart-daemon", nil, nil)
 	}
 	h.announceDaemonStop()
 	err := restartDaemon()

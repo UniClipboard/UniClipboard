@@ -20,6 +20,16 @@
 
 Ready 注册与渠道提升是两回事；不能因为注册成功就将该版本写入 fallback。
 
+## 按当前版本显示累计更新日志
+
+Go 更新客户端在每次清单请求中携带 `?from=<当前安装版本>`，由 FlareRelease 按当前版本合并累计日志。前端直接渲染返回的双语 `notes`，不另行拉取历史或实现版本筛选。静态 GitHub Pages 备用清单忽略查询参数，仍显示最新版本的日志。
+
+以下命令通过本地 HTTP 服务驱动生产 `update.Client.Check`，验证当前版本传递、双语累计日志、预发布版本编码、已有查询参数保留、静态备用源和已是最新版本的行为；不安装应用，也不覆盖原生窗口：
+
+```bash
+python3 -I apps/gui-go/e2e/update_notes_run.py --out <new-evidence-directory>
+```
+
 ## 无发布的生产密钥验收
 
 已有的 `build.yml` 手动入口新增 `platform=updater-signatures` 与 `updater_artifact_runs`。此模式跳过所有构建、Sentry、安装和发布，仅调用 `updater-signatures.yml`：

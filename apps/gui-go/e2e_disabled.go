@@ -52,3 +52,5 @@ func e2eBrowserArgs() []string { return nil }
 func e2eUIControl(*HostService, string, bool) error {
 	return errors.New("E2E controls are unavailable")
 }
+
+func e2eUIState(map[string]any) {}

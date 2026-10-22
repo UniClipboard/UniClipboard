@@ -84,7 +84,7 @@ func (s *EvidenceService) runControlCommand(line string) {
 					break
 				}
 			}
-			_ = s.write(Step{Window: "main", Step: "close-main-" + arg, OK: closed, Detail: map[string]any{"mainExists": false, "dockIconVisible": false}})
+			_ = s.write(Step{Window: "main", Step: "close-main-" + arg, OK: closed, Detail: h.ui.state()})
 			return
 		case "show-main", "close-updater", "window-frame-state":
 			if err := h.ui.call("e2e-control", line, nil); err != nil {
@@ -131,7 +131,12 @@ func (s *EvidenceService) runControlCommand(line string) {
 	case "open-main":
 		// open-main <label>: the tray's Open item (showMainWindow), which builds the window when it does not exist yet.
 		h.showMainWindow()
-		_ = s.write(Step{Window: "main", Step: "open-main-" + arg, OK: s.waitVisible("main", true), Detail: map[string]any{"dockIconVisible": !dockIconHidden.Load()}})
+		visible := s.waitVisible("main", true)
+		detail := map[string]any{"dockIconVisible": !dockIconHidden.Load()}
+		if h.ui != nil {
+			detail = h.ui.state()
+		}
+		_ = s.write(Step{Window: "main", Step: "open-main-" + arg, OK: visible, Detail: detail})
 	case "close-main":
 		// close-main <label>: a close request (Cmd+W, the red button), handled by the main window's closing hook.
 		w, ok := h.app.Window.GetByName("main")

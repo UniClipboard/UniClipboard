@@ -92,23 +92,35 @@ def silent_dock_lifecycle(p):
     commands = ['state boot', 'open-main 1', 'close-main 1', 'open-main 2', 'close-main 2', 'state end']
     want = ['control-state', 'open-main-1', 'close-main-1', 'open-main-2', 'close-main-2', 'control-state']
     rows = []
+
+    def request(command, step):
+        with control.open('a') as f:
+            f.write(command + '\n')
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline:
+            done = [r for r in read_steps(evidence, 0) if r['step'] == step
+                    and (step != 'control-state' or r['detail'].get('label') == command.split(' ', 1)[1])]
+            if done:
+                row = done[-1]
+                if step == 'control-state':
+                    assert 'stateError' not in row['detail'], row
+                return row
+            assert proc.poll() is None, 'resident exited before state observation'
+            time.sleep(.2)
+        raise AssertionError(f'no {step} step after "{command}"')
+
     try:
         deadline = time.monotonic() + 120
         while time.monotonic() < deadline and not any(r['step'] == 'bootstrapped' for r in read_steps(evidence, 0)):
             assert proc.poll() is None, 'the silent GUI exited before its bootstrap finished'
             time.sleep(.3)
         for command, step in zip(commands, want):
-            with control.open('a') as f:
-                f.write(command + '\n')
-            deadline = time.monotonic() + 30
-            while time.monotonic() < deadline:
-                done = [r for r in read_steps(evidence, 0) if r['step'] == step]
-                if len(done) > sum(1 for r in rows if r['step'] == step):
-                    rows.append(done[-1])
-                    break
-                time.sleep(.2)
-            else:
-                raise AssertionError(f'no {step} step after "{command}"')
+            row = request(command, step)
+            if step != 'control-state':
+                # Read the UI child's recorded Dock state through the resident's state IPC.
+                snapshot = request('state dock-' + step, 'control-state')
+                row = dict(row, detail=snapshot['detail'])
+            rows.append(row)
         with control.open('a') as f:
             f.write('exit\n')
         assert proc.wait(timeout=90) == 0

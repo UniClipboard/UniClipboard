@@ -50,12 +50,13 @@ def main():
     control.write_text('')
     env.update(UC_PORTABLE='1', UC_PROFILE=profile, UNICLIPBOARD_ENV='development',
                UC_GUI_GO_ISOLATED='1', UC_DISABLE_SYSTEM_CLIPBOARD='1',
+               UC_GPUI_QUICK_PANEL='1' if helper in names else '0',
                UC_GUI_GO_E2E_PHASE='wake', UC_GUI_GO_E2E_VISIBLE='1',
                UC_GUI_GO_E2E_SECRET='gui-go-synthetic-passphrase', UC_GUI_GO_EXIT_MODE='full',
                UC_GUI_GO_EVIDENCE=str(evidence), UC_GUI_GO_E2E_CONTROL_FILE=str(control))
     binary, cli = sandbox / names[0], sandbox / names[2]
     result = {'passed': False, 'platform': sys.platform, 'sandbox': str(sandbox),
-              'checks': [], 'binaries': {name: digest(sandbox / name) for name in names},
+              'helperExpected': helper in names, 'checks': [], 'binaries': {name: digest(sandbox / name) for name in names},
               'notRun': ['OS tray clicks and keyboard shortcuts', 'installer/AppImage update',
                          'native panel interaction', 'cross-device synchronization']}
     result['sourceHead'] = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
@@ -113,12 +114,20 @@ def main():
                 fields = stat[stat.rfind(')') + 2:].split()
                 if fields[0] == 'Z':
                     continue
+                command = (path / 'cmdline').read_bytes()
                 values.append({'pid': int(path.name), 'parent': int(fields[1]), 'start': fields[19],
                                'name': stat[stat.find('(') + 1:stat.rfind(')')],
-                               'command': (path / 'cmdline').read_bytes().replace(b'\0', b' ').decode(errors='replace')})
+                               'argv0': command.split(b'\0', 1)[0].decode(errors='replace'),
+                               'command': command.replace(b'\0', b' ').decode(errors='replace')})
             except (OSError, ValueError):
                 pass
         return values
+
+    def is_helper(row):
+        return row['parent'] == proc.pid and (row['name'] == helper or Path(row.get('argv0', '')).name == helper)
+
+    def helper_identities():
+        return [(r['pid'], r['start']) for r in processes() if is_helper(r)]
 
     def browsers(ui_pid):
         values = processes()
@@ -154,11 +163,14 @@ def main():
                         '--device-name', 'ui-lifecycle'], env=env, check=True, capture_output=True, timeout=120)
         with (out / 'gui.log').open('w') as log:
             proc = subprocess.Popen([str(binary)], env=env, stdout=log, stderr=log)
-        initial = until(lambda: (s if (s := state()).get('bootstrapped') and s.get('mainVisible') else None), 'boot', 120)
+        initial = until(lambda: (s if (s := state()).get('bootstrapped') and s.get('mainVisible')
+                                 and (helper not in names or s.get('helperRunning')) else None), 'boot', 120)
         assert initial['uiPid'] != proc.pid and initial['uiPid'] > 0, initial
         assert initial['residentWindowCount'] == 0, initial
         previous = initial['uiPid']
-        helpers = [(r['pid'], r['start']) for r in processes() if r['parent'] == proc.pid and r['name'] == helper]
+        helpers = until(helper_identities, 'shipped helper starts') if helper in names else []
+        if helper in names:
+            assert len(helpers) == 1 and initial.get('helperRunning'), (helpers, initial)
         for cycle in range(3):
             page_ready(previous)
             baseline = until(lambda: browsers(previous), 'positive browser attribution')
@@ -169,7 +181,7 @@ def main():
             assert closed['daemonPid'] == initial['daemonPid'], closed
             assert closed['startupMode'] == initial['startupMode'], closed
             assert closed.get('helperRunning') == initial.get('helperRunning'), closed
-            assert [(r['pid'], r['start']) for r in processes() if r['parent'] == proc.pid and r['name'] == helper] == helpers
+            assert helper_identities() == helpers, 'native helper identity changed'
             # The daemon still answers a real client while the UI is absent.
             subprocess.run([str(cli), '--json', 'status'], env=env, check=True, capture_output=True, timeout=20)
             command('tray-menu closed-' + str(cycle))

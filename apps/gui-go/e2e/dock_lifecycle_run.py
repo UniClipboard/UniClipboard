@@ -4,6 +4,7 @@
 The previous single-process lifecycle scenario was replaced by the UI-process scenario.
 The entry still requires --allow-session. Importing these observers starts no application.
 """
+import hashlib
 import json
 import re
 import subprocess
@@ -13,7 +14,8 @@ from pathlib import Path
 from startup_run import BINARY
 
 BUNDLE = BINARY.parents[2]
-GUI_DIR = Path(__file__).resolve().parent.parent
+HERE = Path(__file__).resolve().parent
+GUI_DIR = HERE.parent
 
 
 def tray_labels():

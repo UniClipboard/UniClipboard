@@ -239,7 +239,6 @@ func (s *EvidenceService) ServiceStartup(context.Context, application.ServiceOpt
 			for key, value := range h.ui.state() {
 				detail[key] = value
 			}
-			detail["dockIconVisible"] = detail["mainVisible"]
 		}
 		_ = s.write(Step{Window: "main", Step: "startup-state", OK: true, Detail: detail})
 		h.quit(os.Getenv("UC_GUI_GO_EXIT_MODE") != "full")
@@ -410,4 +409,8 @@ func e2eUIControl(h *HostService, action string, line bool) error {
 		return nil
 	}
 	return s.Control(action)
+}
+
+func e2eUIState(state map[string]any) {
+	state["dockIconVisible"] = !dockIconHidden.Load()
 }

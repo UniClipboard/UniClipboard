@@ -171,7 +171,7 @@ func (u *uiProcess) event(name string, payload any) {
 func (u *uiProcess) state() map[string]any {
 	u.mu.Lock()
 	defer u.mu.Unlock()
-	result := map[string]any{"uiPid": 0, "mainExists": false, "mainVisible": false}
+	result := map[string]any{"uiPid": 0, "mainExists": false, "mainVisible": false, "dockIconVisible": false}
 	if u.child == nil {
 		return result
 	}
@@ -332,6 +332,7 @@ func (h *HostService) handleUIRequest(m uiPacket) (any, error) {
 		if ok {
 			state["mainWindowId"] = w.ID()
 		}
+		e2eUIState(state)
 		return state, nil
 	case "e2e-control":
 		var action string

@@ -18,7 +18,7 @@ import uuid
 import urllib.error
 import urllib.request
 
-from linux_xvfb_run import Gui
+from linux_xvfb_run import Gui, read_steps
 
 
 def main():
@@ -79,6 +79,8 @@ def main():
             nonlocal gui
             gui = Gui(sandbox, env, out, label)
             gui.step('bootstrapped')
+            if settings_request()['general']['startupMode'] == 'normal':
+                gui.step('ui-page-ready')
             return gui
 
         sample = 0
@@ -91,7 +93,21 @@ def main():
             return detail['width'], detail['height']
 
         def window_id():
-            return subprocess.check_output(['xdotool', 'search', '--onlyvisible', '--pid', str(gui.proc.pid),
+            nonlocal sample
+            sample += 1
+            label = f'ui-pid-{sample}'
+            gui.ctl('state ' + label, 'control-state')
+            deadline = time.monotonic() + 20
+            while True:
+                rows = read_steps(gui.evidence)
+                state = next((r['detail'] for r in rows if r.get('step') == 'control-state' and r.get('detail', {}).get('label') == label), None)
+                if state is not None:
+                    break
+                if time.monotonic() > deadline:
+                    raise RuntimeError('UI PID request timed out')
+                time.sleep(.1)
+            check('main window belongs to UI child', state['uiPid'] > 0 and state['uiPid'] != gui.proc.pid, state)
+            return subprocess.check_output(['xdotool', 'search', '--onlyvisible', '--pid', str(state['uiPid']),
                                             '--name', '^UniClipboard$'], env=env, text=True).splitlines()[0]
 
         def resize(width, height):

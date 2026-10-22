@@ -1,5 +1,5 @@
 {
-  "checked_at": "2026-10-22 21:53 UTC",
+  "checked_at": "2026-10-22 23:24 UTC",
   "channels": {
     "aur": {
       "status": "published",
@@ -43,7 +43,7 @@
     },
     "snap-edge": {
       "status": "published",
-      "version": "1.4.0-alpha.1"
+      "version": "amd64: 1.4.0-alpha.2 / arm64: 1.4.0-alpha.1"
     },
     "copr": {
       "status": "published",

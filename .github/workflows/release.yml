@@ -406,20 +406,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CHANNEL: ${{ needs.validate.outputs.channel }}
-        run: |
-          if [ "$CHANNEL" = "stable" ]; then
-            echo "android_release_url=https://github.com/UniClipboard/UniClip/releases/latest" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          MOBILE_URL="$(gh api -X GET 'repos/UniClipboard/UniClip/releases?per_page=100' \
-            --jq 'map(select(.prerelease == true and .draft == false)) | .[0].html_url // empty')"
-          if [ -z "$MOBILE_URL" ]; then
-            echo "No published mobile preview release is available for the $CHANNEL desktop release." >&2
-            exit 1
-          fi
-
-          echo "android_release_url=$MOBILE_URL" >> "$GITHUB_OUTPUT"
+        run: python3 scripts/ci/resolve_mobile_release.py
 
       - name: Generate release notes
         id: release-notes

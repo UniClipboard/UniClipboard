@@ -53,8 +53,11 @@ class SnapshotTests(unittest.TestCase):
                    "UC_ENGINE_MBX_ENV_FILE": str(config), "UC_ENGINE_MBX_STATS_DIR": str(root / "stats"),
                    "MBX_CACHE_DIR": str(root / "cache"), "PYTHONPATH": str(tools),
                    "GIT_CONFIG_COUNT": "1", "GIT_CONFIG_KEY_0": "core.abbrev", "GIT_CONFIG_VALUE_0": "9"}
-            output = subprocess.check_output(["bash", (tools / "mbx-snapshot.sh").as_posix()], env=env, text=True)
-            result = json.loads(output)
+            # Windows also exposes a WSL bash.exe; use the Git Bash installation.
+            bash = str(Path(shutil.which("cygpath")).with_name("bash.exe")) if os.name == "nt" else "bash"
+            probe = subprocess.run([bash, (tools / "mbx-snapshot.sh").as_posix()], env=env, capture_output=True, text=True)
+            self.assertEqual(probe.returncode, 0, probe.stdout + probe.stderr)
+            result = json.loads(probe.stdout)
             self.assertEqual(result["sha"], expected)
             self.assertEqual(result["abbrev"], "9")
             self.assertEqual(Path(result["trust"]).resolve(), source.resolve())

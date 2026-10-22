@@ -41,6 +41,9 @@ try {
   await page.goto(process.env.THEME_TEST_URL || 'http://127.0.0.1:1462')
   await page.getByTestId('primary').waitFor()
   for (const mode of ['light', 'dark']) {
+    const invalid = await page.evaluate(mode => Object.entries(window.themeFixture.presets.default[mode])
+      .filter(([, value]) => typeof value !== 'string' || !CSS.supports('color', value)), mode)
+    assert.deepEqual(invalid, [], `${platform} ${mode}: every default token must be a valid color`)
     await apply('default', mode)
     await page.waitForTimeout(180)
     const baseline = await colors()

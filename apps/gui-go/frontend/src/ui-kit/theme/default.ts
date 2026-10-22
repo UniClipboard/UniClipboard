@@ -9,11 +9,24 @@ function semanticColors(
   platform: keyof typeof configuration.platforms,
   mode: ThemeMode
 ): ThemeTokens {
-  const source = configuration.platforms[platform][mode] as Record<string, string>
-  const linux = platform === 'linux'
-  const mac = platform === 'macos'
-  const color = (adw: string, appkit: string, fluent: string) =>
-    source[linux ? adw : mac ? appkit : fluent]
+  const color = (
+    adw: keyof typeof configuration.platforms.linux.light,
+    appkit: keyof typeof configuration.platforms.macos.light,
+    fluent: keyof typeof configuration.platforms.windows.light
+  ): string => {
+    const value =
+      platform === 'linux'
+        ? configuration.platforms.linux[mode][adw]
+        : platform === 'macos'
+          ? configuration.platforms.macos[mode][appkit]
+          : configuration.platforms.windows[mode][fluent]
+    if (typeof value !== 'string' || value.trim() === '') {
+      throw new Error(
+        `Missing default theme color for ${platform}/${mode}: ${adw}, ${appkit}, ${fluent}`
+      )
+    }
+    return value
+  }
   const background = color('--window', '--window', 'w11-base')
   const foreground = color('--fg', '--label', 'colorNeutralForeground1')
   const primary = color('--accent', '--accent', 'colorBrandBackground')
@@ -44,8 +57,8 @@ function semanticColors(
     chart1: primary,
     chart2: color('--green', '--green', 'w11-status-positive'),
     chart3: color('--yellow', '--yellow', 'w11-status-warning'),
-    chart4: color('--purple', '--purple', 'colorPalettePurpleForeground1'),
-    chart5: color('--teal', '--pink', 'colorPaletteTealForeground1'),
+    chart4: color('--purple', '--purple', 'colorPalettePurpleBorderActive'),
+    chart5: color('--teal', '--pink', 'colorPaletteTealBorderActive'),
     sidebar,
     sidebarForeground: foreground,
     sidebarPrimary: primary,

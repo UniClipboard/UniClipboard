@@ -34,8 +34,44 @@ def verify_tag():
     require(obj['type'] == 'commit' and obj['sha'] == lock['sourceSha'], 'tag source changed')
 
 
+
+def download_artifact(item, expected_run, source_sha, destination):
+    artifact = api(f'actions/artifacts/{item["id"]}')
+    require(not artifact['expired'] and artifact['name'] == item['name']
+            and artifact['digest'] == item['digest']
+            and artifact['workflow_run']['id'] == expected_run
+            and artifact['workflow_run']['head_sha'] == source_sha,
+            f'artifact provenance mismatch: {item["name"]}')
+    with tempfile.TemporaryDirectory() as tmp:
+        archive = Path(tmp) / 'artifact.zip'
+        with archive.open('wb') as output:
+            subprocess.run(['gh', 'api', f'repos/{repo}/actions/artifacts/{item["id"]}/zip'],
+                           stdout=output, check=True)
+        require('sha256:' + digest(archive) == item['digest'], f'archive digest mismatch: {item["name"]}')
+        destination = destination.resolve()
+        with zipfile.ZipFile(archive) as bundle:
+            for member in bundle.infolist():
+                target = (destination / member.filename).resolve()
+                require(target.is_relative_to(destination), 'unsafe artifact archive path')
+                require((member.external_attr >> 16) & 0o170000 != 0o120000, 'artifact symlink refused')
+            bundle.extractall(destination)
+
 def main():
-    if '--verify-packages' in sys.argv:
+    if '--prepared' in sys.argv:
+        prepared = lock['prepared']
+        verify_tag()
+        run = api(f'actions/runs/{prepared["runId"]}')
+        require(run['head_sha'] == prepared['controlSha'] and run['path'] == '.github/workflows/release.yml',
+                'prepared publication workflow provenance changed')
+        jobs = api(f'actions/runs/{prepared["runId"]}/jobs?per_page=100')['jobs']
+        require(any(j['name'] == 'recover-existing / prepare' and j['conclusion'] == 'success' for j in jobs),
+                'prepared publication did not pass production preparation')
+        download_artifact(prepared['artifact'], prepared['runId'], prepared['controlSha'], Path('publication'))
+        record = json.loads(Path('publication/assembly/evidence/source-record.json').read_text())
+        require(record['sourceSha'] == lock['sourceSha'] and record['version'] == lock['version']
+                and record['mode'] == 'release', 'prepared source record mismatch')
+        print('Reused digest-pinned production publication bytes; no signing was repeated')
+    elif '--verify-packages' in sys.argv:
         original = json.loads(Path('artifacts/updater-verification/assembly-index.json').read_text())
         current = json.loads(Path('assembly/evidence/assembly-index.json').read_text())
         for field in ['version', 'sourceSha', 'channel', 'enginePin', 'windowsSigning']:
@@ -64,25 +100,7 @@ def main():
         root.mkdir(exist_ok=False)
         receipts = []
         for item in lock['artifacts']:
-            artifact = api(f'actions/artifacts/{item["id"]}')
-            require(not artifact['expired'] and artifact['name'] == item['name']
-                    and artifact['digest'] == item['digest']
-                    and artifact['workflow_run']['id'] == run_id
-                    and artifact['workflow_run']['head_sha'] == lock['sourceSha'],
-                    f'artifact provenance mismatch: {item["name"]}')
-            with tempfile.TemporaryDirectory() as tmp:
-                archive = Path(tmp) / 'artifact.zip'
-                with archive.open('wb') as output:
-                    subprocess.run(['gh', 'api', f'repos/{repo}/actions/artifacts/{item["id"]}/zip'],
-                                   stdout=output, check=True)
-                require('sha256:' + digest(archive) == item['digest'], f'archive digest mismatch: {item["name"]}')
-                destination = (root / item['name']).resolve()
-                with zipfile.ZipFile(archive) as bundle:
-                    for member in bundle.infolist():
-                        target = (destination / member.filename).resolve()
-                        require(target.is_relative_to(destination), 'unsafe artifact archive path')
-                        require((member.external_attr >> 16) & 0o170000 != 0o120000, 'artifact symlink refused')
-                    bundle.extractall(destination)
+            download_artifact(item, run_id, lock['sourceSha'], root / item['name'])
             receipts.append(item)
             print(f'Verified original artifact: {item["name"]}', flush=True)
         Path('artifact-provenance.json').write_text(json.dumps({'run': run, 'artifacts': receipts}, indent=2) + '\n')

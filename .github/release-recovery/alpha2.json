@@ -276,5 +276,14 @@
       "name": "mbx-sidecar-x86_64-apple-darwin-daemon",
       "digest": "sha256:ca491a79f523f2834078a4b52188ec0ac4d9bc361e1da44011cee97e66abfd98"
     }
-  ]
+  ],
+  "prepared": {
+    "runId": 39812967946,
+    "controlSha": "b897cf2c421c41b914a09eda3919d2ae3cdcfd9e",
+    "artifact": {
+      "id": 12441315895,
+      "name": "recovery-publication",
+      "digest": "sha256:0d557da4d88c3d6f585a98d4f8dd72a5ec5261479482ebf4b7810a64736f35fc"
+    }
+  }
 }

@@ -1,6 +1,10 @@
 name: Publish existing Desktop artifacts
 on:
   workflow_call:
+    inputs:
+      reuse_prepared:
+        type: boolean
+        default: false
     secrets:
       TAURI_SIGNING_PRIVATE_KEY:
         required: true
@@ -27,6 +31,7 @@ permissions:
   contents: read
 jobs:
   prepare:
+    if: ${{ !inputs.reuse_prepared }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -247,6 +252,7 @@ jobs:
 
   publish:
     needs: prepare
+    if: ${{ always() && !cancelled() && (inputs.reuse_prepared || needs.prepare.result == 'success') }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -255,7 +261,13 @@ jobs:
       - uses: actions/checkout@v6
         with:
           ref: ${{ github.sha }}
+      - name: Download digest-pinned prepared publication
+        if: inputs.reuse_prepared
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 scripts/ci/recover_release_artifacts.py --prepared
       - uses: actions/download-artifact@v6
+        if: ${{ !inputs.reuse_prepared }}
         with:
           name: recovery-publication
           path: publication

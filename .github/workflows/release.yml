@@ -10,6 +10,10 @@ on:
       - 'v*'
   workflow_dispatch:
     inputs:
+      reuse_prepared_alpha2:
+        description: 'Reuse verified signed publication bytes from recovery run 39812967946'
+        type: boolean
+        default: false
       recover_existing_alpha2:
         description: 'Publish existing v1.4.0-alpha.2 artifacts without building or changing versions'
         type: boolean
@@ -60,6 +64,8 @@ jobs:
       contents: write
       actions: read
     uses: ./.github/workflows/publish-existing-artifacts.yml
+    with:
+      reuse_prepared: ${{ inputs.reuse_prepared_alpha2 || false }}
     secrets:
       TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
       TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}

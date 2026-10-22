@@ -155,3 +155,5 @@ deb 排序验证：`python3 -I apps/gui-go/e2e/linux/deb_version_order_run.py --
 先归档 `recovery-publication`，再执行发布。GitHub Release 先保持草稿，完整上传并核对资产摘要后才公开。恢复流程拒绝其他来源的 Release 和冲突资产。R2 上传后逐项读回并比较字节。FlareRelease 登记必须返回 `ready`。
 
 若发布作业失败，使用 `gh run rerun <recovery-run-id> --failed`。失败作业复用同一运行的归档，不重新签名或覆盖冲突资产。不要重新运行全部作业。不要对原失败运行执行普通重试。恢复分支可直接通过已注册的 `release.yml` 入口调度；不得改用会递增版本的正常入口。保留发布回执后，删除一次性恢复输入、恢复 workflow、工件锁定文件和专属脚本。保留移动端链接修复。
+
+运行 `39812967946` 已完成生产装配与签名，并保留 `recovery-publication`。后续修复流程代码时，同时传入 `recover_existing_alpha2=true` 和 `reuse_prepared_alpha2=true`。恢复流程固定该归档的运行 ID、控制代码 SHA、工件 ID 和摘要，再验证原生产准备作业成功。此路径复用全部发布字节，不再次签名。草稿查询通过 `gh release view` 取得 ID，再读取 REST Release ID 接口；按标签查询的 REST 接口不返回草稿。

@@ -5,7 +5,8 @@
 - `uniclipboard.nuspec` — 包元数据
 - `tools/chocolateyInstall.ps1` — 下载 NSIS 安装器并静默安装（`/S`）
 - `tools/chocolateyUninstall.ps1` — 静默卸载
-- `tools/VERIFICATION.txt` — 来源与校验说明
+
+安装器在安装时从官方 GitHub Releases 下载，由 `checksum64` 和 `checksumType64` 校验 SHA256；包内不分发安装器二进制。
 
 ## 为什么进 Chocolatey
 
@@ -33,8 +34,7 @@ choco install uniclipboard
    Get-RemoteChecksum https://github.com/UniClipboard/UniClipboard/releases/download/v1.1.0/UniClipboard_1.1.0_x64-setup.exe
    ```
    > 不要用本仓库环境产出的 hash——沙箱输出不可信。同时确认 `uniclipboard.nuspec`
-   > 的 `<version>`、`<releaseNotes>`（release 页必须已发布、非 draft）与
-   > `VERIFICATION.txt` 里的版本号一致。
+   > 的 `<version>` 与 `<releaseNotes>` 中的版本号一致（release 页必须已发布、非 draft）。
 
 2. **打包并本地实测**（必做）
    ```powershell

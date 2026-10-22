@@ -29,6 +29,20 @@ func main() {
 		fail("usage: manifestprobe fixture <root> <pubkey-out> <relpath>... | consume <manifest> <root> <pubkey> <port> [installer]")
 	}
 	switch os.Args[1] {
+	case "notes":
+		if len(os.Args) < 5 {
+			fail("usage: manifestprobe notes <current-version> <channel> <feed-url>...")
+		}
+		client := &update.Client{
+			HTTP: update.NewHTTPClient(), Current: os.Args[2],
+			Endpoints: func(update.Channel) []string { return os.Args[4:] },
+			Targets:   []string{"linux-x86_64"},
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), update.FeedTimeout)
+		defer cancel()
+		release, err := client.Check(ctx, update.ParseChannel(os.Args[3]))
+		check(err)
+		check(json.NewEncoder(os.Stdout).Encode(release))
 	case "fixture":
 		fixture(os.Args[2], os.Args[3], os.Args[4:])
 	case "consume":

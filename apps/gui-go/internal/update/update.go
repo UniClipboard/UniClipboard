@@ -178,6 +178,11 @@ func (c *Client) fetch(ctx context.Context, endpoint string) (*Manifest, error) 
 	if err != nil {
 		return nil, err
 	}
+	// The release service uses the installed version to merge notes for (current, latest].
+	// Static fallback feeds ignore the query and still provide the latest release.
+	query := req.URL.Query()
+	query.Set("from", c.Current)
+	req.URL.RawQuery = query.Encode()
 	req.Header.Set("Accept", "application/json")
 	resp, err := c.HTTP.Do(req)
 	if err != nil {

@@ -73,7 +73,32 @@ func (s *EvidenceService) runControlCommand(line string) {
 	verb, arg, _ := strings.Cut(line, " ")
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
+	if h.ui != nil {
+		switch verb {
+		case "close-main":
+			_ = h.ui.call("e2e-control", line, nil)
+			closed := false
+			for deadline := time.Now().Add(15 * time.Second); time.Now().Before(deadline); time.Sleep(100 * time.Millisecond) {
+				if h.ui.state()["uiPid"] == 0 {
+					closed = true
+					break
+				}
+			}
+			_ = s.write(Step{Window: "main", Step: "close-main-" + arg, OK: closed, Detail: map[string]any{"mainExists": false, "dockIconVisible": false}})
+			return
+		case "show-main", "close-updater", "window-frame-state":
+			if err := h.ui.call("e2e-control", line, nil); err != nil {
+				_ = s.write(Step{Window: "ui", Step: "control-error", OK: false, Detail: err.Error()})
+			}
+			return
+		}
+	}
 	switch verb {
+	case "tray-menu":
+		_, _ = s.controlQuickPanel("tray-menu:" + arg)
+	case "quit-app":
+		go h.quit(false)
+
 	case "wake":
 		n, _ := strconv.Atoi(arg)
 		var postErr error
@@ -112,6 +137,9 @@ func (s *EvidenceService) runControlCommand(line string) {
 		w, ok := h.app.Window.GetByName("main")
 		if ok {
 			w.Close()
+		}
+		if uiChild {
+			return
 		}
 		_ = s.write(Step{Window: "main", Step: "close-main-" + arg, OK: ok && s.waitVisible("main", false), Detail: map[string]any{"mainExists": ok, "dockIconVisible": !dockIconHidden.Load()}})
 	case "tray-language-quiet":
@@ -193,10 +221,27 @@ func (s *EvidenceService) runControlCommand(line string) {
 		conn, _ := daemonproc.ReadConnFile()
 		detail := map[string]any{"pid": os.Getpid(), "uniqueID": h.singleInstanceID, "mainExists": mainExists, "label": arg,
 			"mainVisible": mainExists && w.IsVisible(), "dockIconVisible": !dockIconHidden.Load()}
+		if mainExists {
+			detail["mainWindowId"] = w.ID()
+		}
+		if h.ui != nil {
+			detail["residentWindowCount"] = len(h.app.Window.GetAll())
+			for key, value := range h.ui.state() {
+				detail[key] = value
+			}
+		}
+		h.readyMu.Lock()
+		ready := h.ready
+		h.readyMu.Unlock()
+		detail["bootstrapped"] = ready
+		if ready {
+			stored, _ := h.loadStartupSettings()
+			detail["startupMode"] = stored.StartupMode
+		}
 		if conn != nil {
 			detail["daemonPid"] = conn.PID
 		}
-		if h.helper != nil {
+		if ready && h.helper != nil {
 			detail["helperRunning"] = h.helper.Running()
 		}
 		_ = s.write(Step{Window: "app", Step: "control-state", OK: true, Detail: detail})

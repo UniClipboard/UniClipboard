@@ -58,6 +58,10 @@ func (h *HostService) rememberMainWindowSize(w *application.WebviewWindow, size 
 // the GUI exits into lightweight mode. Desktop settings serialize and atomically
 // persist this patch just like every other desktop preference, on all platforms.
 func (h *HostService) persistMainWindowSize() {
+	if h.ui != nil {
+		h.ui.saveWindowSize()
+		return
+	}
 	var size *settings.WindowSize
 	var maximized bool
 	application.InvokeSync(func() {

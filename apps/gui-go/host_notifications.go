@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"strconv"
 	"time"
@@ -15,6 +16,15 @@ const backgroundNotice = "UniClipboard 仍在后台运行，点应用图标可�
 	"Still running in the background — open it from the app icon to show the window again."
 
 func (h *HostService) notificationsGranted() bool {
+	if uiChild {
+		var result bool
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := h.ownerCall(ctx, "notification-permission", false, &result); err != nil {
+			log.Printf("notification permission request failed: %v", err)
+		}
+		return result
+	}
 	if granted, handled := notifyPermissionOverride(); handled {
 		return granted
 	}
@@ -23,6 +33,15 @@ func (h *HostService) notificationsGranted() bool {
 }
 
 func (h *HostService) requestNotificationPermission() bool {
+	if uiChild {
+		var result bool
+		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+		defer cancel()
+		if err := h.ownerCall(ctx, "notification-permission", true, &result); err != nil {
+			log.Printf("notification authorization failed: %v", err)
+		}
+		return result
+	}
 	if granted, handled := notifyPermissionOverride(); handled {
 		return granted
 	}
@@ -32,20 +51,31 @@ func (h *HostService) requestNotificationPermission() bool {
 
 // notify shows a system notification. It is best effort: a failure is logged and never blocks the caller.
 func (h *HostService) notify(id, title, body string) error {
+	if uiChild {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		return h.ownerCall(ctx, "notification-send", struct{ ID, Title, Body string }{id, title, body}, nil)
+	}
 	if handled, err := notifyOverride(id, title, body); handled {
 		return err
 	}
 	return h.notifier.SendNotification(notifications.NotificationOptions{ID: id, Title: title, Body: body})
 }
 
-// enterLightweightMode leaves only the daemon running: tell the user, then exit the GUI keeping the daemon.
+// enterLightweightMode exits the UI child but keeps the tray host and daemon.
+// It changes the current window state, never the saved startup preference.
 func (h *HostService) enterLightweightMode() {
 	if err := h.notify("lightweight-"+strconv.FormatInt(time.Now().UnixNano(), 10), "UniClipboard", backgroundNotice); err != nil {
 		log.Printf("failed to show the lightweight-mode notification: %v", err)
-	} else {
-		time.Sleep(300 * time.Millisecond) // let the notification post before the process exits
 	}
-	h.quit(true)
+	if h.ui != nil {
+		h.ui.stop()
+		return
+	}
+	if uiChild {
+		h.closeUI()
+		return
+	}
 }
 
 func (h *HostService) watchNotificationClicks() {

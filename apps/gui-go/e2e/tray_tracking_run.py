@@ -557,7 +557,7 @@ def main():
         check('0 precondition: after the frontend\'s startup calls (re-pinned if they came late) the last language call is the test\'s English and nothing followed it for 8 s',
               quiet['ok'] and all(pins) and calls[-1:] == ['en'], {'calls': calls, 'pinAttempts': len(pins)})
         if args.scenario == 'lightweight':
-            # M5b: the tray's lightweight-mode item through the real menu. The GUI must exit with 0 and the daemon must stay (exact pid held by the
+            # M5b: the tray's lightweight-mode item through the real menu. The GUI host and daemon must stay (exact pid held by the
             # profile's lock file, executable checked, HTTP healthy); the orchestrator then stops it through the CLI and the SAME pid must go.
             daemons0 = daemon_pids(home_a, prof_a)
             check('5b the profile\'s daemon is identified before the lightweight press (lock-file holder, executable path)', bool(daemons0) and all(d['exe'].endswith('uniclipd') for d in daemons0), daemons0)
@@ -568,15 +568,24 @@ def main():
             check('5b the real menu was opened through AppKit tracking before the lightweight press', opened.get('ok') and first.get('ok') and bool(first.get('popupWindows')), {'popupWindows': first.get('popupWindows')})
             gui_title = 'Lightweight Mode (Background Sync)'
             press = press_checked('5b', gui_title)
-            try:
-                rc = proc.wait(timeout=40)
-            except subprocess.TimeoutExpired:
-                rc = None
-            check('5b pressing the lightweight item in the real menu made the exact GUI pid exit with 0', press.get('ok') and rc == 0, {'press': press, 'rc': rc})
-            time.sleep(4)  # 17c16: a settle delay, so a daemon that dies shortly AFTER the GUI exit is not missed by a check taken right at the exit
+            time.sleep(2)
+            with (out / 'gui.control').open('a') as control_file:
+                control_file.write('state lightweight-finished\n')
+            deadline = time.monotonic() + 15
+            states = []
+            while time.monotonic() < deadline and proc.poll() is None:
+                states = [r['detail'] for r in read_steps(evidence, 0) if r['step'] == 'control-state'
+                          and r['detail'].get('label') == 'lightweight-finished']
+                if states:
+                    break
+                time.sleep(.2)
+            check('5b lightweight destroyed the main window and kept the exact GUI pid',
+                  press.get('ok') and proc.poll() is None and states and not states[-1]['mainExists'],
+                  {'press': press, 'state': states, 'rc': proc.poll()})
+            time.sleep(4)  # Check that the daemon remains healthy after lightweight mode settles.
             daemons1 = daemon_pids(home_a, prof_a)
             health = dget(env_a, '/settings')
-            check('5b the daemon survived the GUI exit: same exact pid(s) alive, lock still held, HTTP healthy (GET /settings answered)',
+            check('5b the daemon survived lightweight mode: same exact pid(s) alive, lock still held, HTTP healthy (GET /settings answered)',
                   bool(daemons1) and [d['pid'] for d in daemons1] == [d['pid'] for d in daemons0] and all(_alive(d['pid']) for d in daemons1) and health is not None,
                   {'before': daemons0, 'after': daemons1, 'settingsAnswered': health is not None})
             notes = (out / 'notifications.log').read_text() if (out / 'notifications.log').exists() else ''

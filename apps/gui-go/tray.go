@@ -126,22 +126,30 @@ func (t *trayMenu) view() []menuEntry {
 }
 
 func (h *HostService) showMainWindow() {
-	// Outside mainMu: the switch waits for the main thread, which may itself be waiting for mainMu (tray icon click).
-	h.setDockIconVisible(true)
-	h.mainMu.Lock()
-	defer h.mainMu.Unlock() // two callers must not both create the window
-	w, ok := h.app.Window.GetByName("main")
-	if !ok {
-		// A running app builds the native window synchronously, so it can be focused (and the app activated) at once.
-		focusWindow(h.openMainWindow())
+	if h.ui != nil {
+		h.ui.open("main", nil)
 		return
 	}
-	w.UnMinimise()
-	w.Show()
-	focusWindow(w)
+	// The UI thread owns window lookup and creation. A mutex held across a UI dispatch
+	// can deadlock when a tray click on that thread requests the same window.
+	application.InvokeSync(func() {
+		h.setDockIconVisible(true)
+		w, ok := h.app.Window.GetByName("main")
+		if !ok {
+			focusWindow(h.openMainWindow())
+			return
+		}
+		w.UnMinimise()
+		w.Show()
+		focusWindow(w)
+	})
 }
 
 func (h *HostService) showSettings() {
+	if h.ui != nil {
+		h.ui.open("settings", nil)
+		return
+	}
 	h.navMu.Lock()
 	h.pendingNavigation = "/settings"
 	h.navMu.Unlock()

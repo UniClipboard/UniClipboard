@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -387,6 +388,11 @@ func (h *HostService) checkUpdateFromTray() {
 //uc:errors text
 //uc:os all=real
 func (h *HostService) CheckForUpdate(ctx context.Context, channel *string) (*UpdateMetadata, error) {
+	if uiChild {
+		var result *UpdateMetadata
+		err := h.ownerCall(ctx, "update-check", channel, &result)
+		return result, err
+	}
 	ctx, cancel := commandContext(ctx, "check_for_update")
 	defer cancel()
 	return h.checkForUpdate(ctx, channel)
@@ -398,6 +404,9 @@ func (h *HostService) CheckForUpdate(ctx context.Context, channel *string) (*Upd
 //uc:errors text
 //uc:os all=real
 func (h *HostService) DownloadUpdate(ctx context.Context) error {
+	if uiChild {
+		return h.ownerCall(ctx, "update-download", nil, nil)
+	}
 	ctx, cancel := commandContext(ctx, "download_update")
 	defer cancel()
 	if err := h.downloadUpdateReported(ctx); err != nil {
@@ -411,6 +420,14 @@ func (h *HostService) DownloadUpdate(ctx context.Context) error {
 //uc:errors none
 //uc:os all=real
 func (h *HostService) CancelDownload() {
+	if uiChild {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := h.ownerCall(ctx, "update-cancel", nil, nil); err != nil {
+			log.Printf("update cancellation failed: %v", err)
+		}
+		return
+	}
 	h.cancelDownload()
 }
 
@@ -420,6 +437,15 @@ func (h *HostService) CancelDownload() {
 //uc:errors none
 //uc:os all=real
 func (h *HostService) GetDownloadProgress() DownloadProgressSnapshot {
+	if uiChild {
+		var result DownloadProgressSnapshot
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := h.ownerCall(ctx, "update-progress", nil, &result); err != nil {
+			log.Printf("update progress unavailable: %v", err)
+		}
+		return result
+	}
 	return h.downloadProgress()
 }
 
@@ -429,6 +455,9 @@ func (h *HostService) GetDownloadProgress() DownloadProgressSnapshot {
 //uc:errors text
 //uc:os all=real
 func (h *HostService) InstallUpdate(ctx context.Context) error {
+	if uiChild {
+		return h.ownerCall(ctx, "update-install", nil, nil)
+	}
 	ctx, cancel := commandContext(ctx, "install_update")
 	defer cancel()
 	return h.installUpdate(ctx, func(event DownloadEvent) { h.emit(updateInstallEvent, event) })
@@ -439,6 +468,9 @@ func (h *HostService) InstallUpdate(ctx context.Context) error {
 //uc:errors text
 //uc:os all=real
 func (h *HostService) SkipVersion(ctx context.Context, version string) error {
+	if uiChild {
+		return h.ownerCall(ctx, "update-skip", version, nil)
+	}
 	ctx, cancel := commandContext(ctx, "skip_version")
 	defer cancel()
 	return h.skipVersion(ctx, version)

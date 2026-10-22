@@ -129,6 +129,17 @@ def main():
     extra = sorted(x.name for x in macos.iterdir()) if macos.is_dir() else []
     r.add("Contents/MacOS holds exactly the three executables", extra == sorted([GUI, DAEMON, HELPER]), str(extra))
 
+    ui_bundle = app / "Contents/Helpers/UniClipboardUI.app"
+    ui_exe = ui_bundle / "Contents/MacOS/gui-go"
+    r.add("UI child is bundled and executable", ui_exe.is_file() and os.access(ui_exe, os.X_OK), str(ui_exe))
+    ui_plist = ui_bundle / "Contents/Info.plist"
+    if ui_plist.is_file():
+        ui_info = plistlib.loads(ui_plist.read_bytes())
+        r.add("UI child has an independent bundle identity", ui_info.get("CFBundleIdentifier") == bundle_id + ".ui",
+              str(ui_info.get("CFBundleIdentifier")))
+    else:
+        r.add("UI child Info.plist exists", False, str(ui_plist))
+
     # --- no packaging debris -------------------------------------------------------------------
     debris = [str(p.relative_to(app)) for p in app.rglob("*") if p.name.startswith("._") or p.name == ".DS_Store"]
     r.add("no AppleDouble / .DS_Store files", not debris, str(debris[:5]))
@@ -137,7 +148,7 @@ def main():
     r.add("no quarantine attribute inside the bundle", not quarantine, str(quarantine[:3]))
 
     # --- signatures ----------------------------------------------------------------------------
-    targets = {GUI: bundle_id, DAEMON: f"{cfg['identifier']}.uniclipd" + args.identity_suffix,
+    targets = {"ui": bundle_id + ".ui", GUI: bundle_id, DAEMON: f"{cfg['identifier']}.uniclipd" + args.identity_suffix,
                HELPER: f"{cfg['identifier']}.quick-panel" + args.identity_suffix}
     if args.signature == "none":
         r.add("bundle is unsigned", run("codesign", "-v", str(app))[0] != 0)
@@ -146,7 +157,7 @@ def main():
         r.add("codesign --verify --deep --strict", code == 0, out.strip()[-300:])
         teams = set()
         for name, ident in targets.items():
-            path = app if name == GUI else macos / name
+            path = app if name == GUI else (ui_bundle if name == "ui" else macos / name)
             code, info = codesign_info(path)
             got = re.search(r"^Identifier=(.*)$", info, re.M)
             r.add(f"{name}: signing identifier {ident}", bool(got) and got.group(1) == ident, got.group(1) if got else info[-200:])

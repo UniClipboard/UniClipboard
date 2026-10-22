@@ -219,6 +219,9 @@ func (h *HostService) reconcileAutoStart() {
 //uc:errors command InternalError
 //uc:os all=real
 func (h *HostService) UpdateAutostart(ctx context.Context, enabled bool) error {
+	if uiChild {
+		return h.ownerCall(ctx, "autostart", enabled, nil)
+	}
 	ctx, cancel := commandContext(ctx, "update_autostart")
 	defer cancel()
 	return h.updateAutoStart(ctx, enabled)

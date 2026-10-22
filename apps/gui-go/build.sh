@@ -50,5 +50,6 @@ if [[ "$MODE" == e2e ]]; then
   # The name is what System Settings lists for a registered login item, so it must not read as the real app.
   /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $BUNDLE_ID.e2e" -c "Set :CFBundleName $PRODUCT E2E Test Build" "$PLIST"
 fi
+python3 apps/gui-go/packaging/macos/ui_bundle.py "$BUNDLE"
 codesign --force --deep --sign - "$BUNDLE"
 echo "Built $BUNDLE"

@@ -39,6 +39,9 @@ func (h *HostService) patchQuickPanel(ctx context.Context, patch map[string]any)
 //uc:errors command InternalError Conflict
 //uc:os all=real
 func (h *HostService) SetQuickPanelEnabled(ctx context.Context, enabled bool) error {
+	if uiChild {
+		return h.ownerCall(ctx, "quick-enabled", enabled, nil)
+	}
 	ctx, cancel := commandContext(ctx, "set_quick_panel_enabled")
 	defer cancel()
 	current, err := h.loadQuickPanelSettings(ctx)
@@ -84,6 +87,16 @@ func (h *HostService) SetQuickPanelPosition(ctx context.Context, position QuickP
 //uc:errors none
 //uc:os all=real
 func (h *HostService) GetQuickPanelDoubleTapAvailability() ModifierDoubleTapAvailability {
+	if uiChild {
+		var result ModifierDoubleTapAvailability
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := h.ownerCall(ctx, "quick-availability", nil, &result); err != nil {
+			log.Printf("modifier availability request failed: %v", err)
+			return DoubleTapUnsupportedDisplaySession
+		}
+		return result
+	}
 	switch {
 	case h.helper == nil && modifierDoubleTapSupported():
 		return DoubleTapSupported // the WebView panel's own monitor (Windows)
@@ -131,6 +144,11 @@ func (h *HostService) TypeFilePathsToPreviousApp(request FilePathInputRequest) e
 //uc:errors command InternalError Conflict
 //uc:os all=real
 func (h *HostService) UpdateKeyboardShortcuts(ctx context.Context, shortcuts map[string]json.RawMessage) (UpdateKeyboardShortcutsResult, error) {
+	if uiChild {
+		var result UpdateKeyboardShortcutsResult
+		err := h.ownerCall(ctx, "quick-shortcuts", shortcuts, &result)
+		return result, err
+	}
 	ctx, cancel := commandContext(ctx, "update_keyboard_shortcuts")
 	defer cancel()
 	return h.updateKeyboardShortcuts(ctx, shortcuts)
@@ -141,6 +159,9 @@ func (h *HostService) UpdateKeyboardShortcuts(ctx context.Context, shortcuts map
 //uc:errors command ValidationError Conflict InternalError
 //uc:os all=real
 func (h *HostService) SetQuickPanelDoubleTapModifier(ctx context.Context, modifier QuickPanelDoubleTapModifier) error {
+	if uiChild {
+		return h.ownerCall(ctx, "quick-modifier", modifier, nil)
+	}
 	ctx, cancel := commandContext(ctx, "set_quick_panel_double_tap_modifier")
 	defer cancel()
 	switch modifier {
@@ -338,7 +359,12 @@ func (h *HostService) initPanelShortcuts() {
 	}
 	h.appliedPanel = appliedPanelSettings{known: err == nil, enabled: enabled, modifier: view.QuickPanel.DoubleTapModifier}
 	h.shortcutsMu.Unlock()
-	if h.panel.toggle.configure(enabled) {
+	pending := h.panel.toggle.configure(enabled)
+	if h.ui != nil {
+		// The resident can dispatch now; the child separately waits for its page readiness.
+		pending = h.panel.toggle.markReady() || pending
+	}
+	if pending {
 		h.toggleQuickPanel()
 	}
 }
@@ -415,6 +441,16 @@ func (h *HostService) reconcilePanel(view settings.View) {
 //uc:errors none
 //uc:os all=real
 func (h *HostService) GetQuickPanelShortcutStatus() QuickPanelShortcutStatus {
+	if uiChild {
+		var result QuickPanelShortcutStatus
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := h.ownerCall(ctx, "quick-status", nil, &result); err != nil {
+			log.Printf("shortcut status request failed: %v", err)
+			return toShortcutStatus(globalshortcut.Status{State: globalshortcut.StateUnknown})
+		}
+		return result
+	}
 	if h.panelShortcut == nil {
 		return toShortcutStatus(globalshortcut.Status{State: globalshortcut.StateInactive})
 	}

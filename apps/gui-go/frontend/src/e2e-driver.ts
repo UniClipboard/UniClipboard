@@ -348,11 +348,9 @@ async function run() {
     true
   )
 
-  await control('close-main')
-  await control('reopen-main')
-  // The WebView survived the hide/show cycle with its React state and host bindings intact.
+  // External ui_process drivers own close/reopen because closing ends this document.
   const alive = await settle(HostService.GetDeviceMeta())
-  await record('webview-alive-after-reopen', alive.status === 'ok' && !!navControl('/settings'))
+  await record('webview-host-bridge-alive', alive.status === 'ok' && !!navControl('/settings'))
   // Second windows: the real updater (dev preview) and quick panel pages.
   await control('open-updater')
   await sleep(3000)
@@ -2000,7 +1998,7 @@ async function runLinuxShortcutUiScenario(phase: string) {
 // Requests printed by a stand-in helper: show the hidden main window, then open the settings page.
 async function runNativeRequestsScenario() {
   await waitFor('app root content', () => document.getElementById('root')?.children.length)
-  await control('close-main')
+  await control('hide-main')
   await control('wait-main-visible')
   await waitFor(
     'settings after open_settings request',

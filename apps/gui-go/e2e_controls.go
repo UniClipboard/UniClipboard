@@ -122,7 +122,7 @@ func (s *EvidenceService) controlQuickPanel(action string) (bool, error) {
 		detail["send"], detail["receive"] = prefs.SendEnabled, prefs.ReceiveEnabled
 		return true, s.write(Step{Window: "tray", Step: "tray-device-toggled", OK: err == nil && detail != nil, Detail: detail})
 	case action == "tray-lightweight":
-		// The tray's lightweight item: notify, then exit leaving the daemon running.
+		// Invoke the real lightweight action, including macOS window teardown.
 		go h.enterLightweightMode()
 		return true, nil
 	case action == "panel-hide":

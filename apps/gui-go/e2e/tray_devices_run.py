@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Tray completion E2E: the device-sync submenu with a real paired peer, the localized menu order, the
-system notification bridge, and the lightweight-mode exit.
+system notification bridge, and lightweight window teardown.
 
 Two CLI profiles are paired through the production rendezvous service (needs network); peer A is also the
 GUI profile. The in-WebView driver and the e2e build then check, natively:
@@ -11,8 +11,7 @@ GUI profile. The in-WebView driver and the e2e build then check, natively:
   - a language change relabels the whole menu including the submenu;
   - the notification plugin shim reaches the host (the e2e build records notifications instead of showing
     them, since the real service needs the user's permission and would pop UI on the tester's desktop);
-  - the tray's lightweight item shows the bilingual "still running" notice, exits the GUI and leaves the
-    daemon running.
+  - the tray's lightweight item shows the bilingual "still running" notice, destroys the main window, and retains the host, tray and daemon.
 """
 import argparse
 import json
@@ -77,8 +76,22 @@ def main():
             for row in read_steps(evidence, 0):
                 if row['step'] == 'driver-error':
                     raise RuntimeError(f"driver error: {row.get('detail')}")
+            if notify_log.exists() and 'lightweight-' in notify_log.read_text():
+                with (out / 'gui.control').open('a') as control_file:
+                    control_file.write('state lightweight-finished\n')
+                break
             time.sleep(.3)
-        assert proc.wait(timeout=60) == 0, 'GUI did not exit cleanly after the lightweight item'
+        deadline = time.monotonic() + 15
+        while time.monotonic() < deadline:
+            states = [r['detail'] for r in read_steps(evidence, 0) if r['step'] == 'control-state'
+                      and r['detail'].get('label') == 'lightweight-finished']
+            if states and not states[-1]['mainExists']:
+                break
+            with (out / 'gui.control').open('a') as control_file:
+                control_file.write('state lightweight-finished\n')
+            time.sleep(.3)
+        assert states and not states[-1]['mainExists'], states
+        assert proc.poll() is None, 'lightweight mode exited the macOS host'
         rows = read_steps(evidence, 0)
         seen = {r['step']: r for r in rows}
         for step in STEPS:

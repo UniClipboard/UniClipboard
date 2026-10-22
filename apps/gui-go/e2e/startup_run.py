@@ -5,9 +5,9 @@ One isolated profile; the launch preferences are stored through the shared setti
 (a full quit then stops the daemon, so each following launch is a cold start that spawns the daemon):
   - silent:      the main window is not created or shown, the "still running" notice is shown, the app keeps running
                  without a Dock icon;
-  - silent Dock lifecycle: the tray's Open builds and shows the window with the Dock icon, a close request hides
+  - silent Dock lifecycle: the tray's Open builds and shows the window with the Dock icon, a close request destroys
     the window and removes the Dock icon, twice in a row;
-  - lightweight cold start: the GUI exits by itself with the daemon left running, after the notice;
+  - lightweight cold start: the host keeps its tray with no main window or Dock icon, after the notice;
   - lightweight reopen: the daemon is already running, so the GUI shows the main window and does not notify;
   - normal cold start with restore enabled: the cold-launch sequence runs (auto-unlock from the keyring,
     lifecycle retry, restore attempt) and the window is shown with the Dock icon.
@@ -23,6 +23,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import urllib.request
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -65,7 +66,16 @@ class Profile:
         return self.notify_log.read_text().splitlines() if self.notify_log.exists() else []
 
     def daemon_alive(self):
-        return cli(self.cli_env, '--json', 'start', check=False).returncode == 0
+        # Observe health without starting or replacing the daemon under test.
+        path = Path(self.home) / 'Library/Application Support' / f'app.uniclipboard.desktop-{self.profile}' / 'daemon.conn'
+        try:
+            conn = json.loads(path.read_text())
+            request = urllib.request.Request(f"http://{conn['host']}:{conn['port']}/health")
+            opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+            with opener.open(request, timeout=2) as response:
+                return response.status == 200
+        except (OSError, ValueError, KeyError):
+            return False
 
 
 def set_mode(p, mode, restore=False):
@@ -111,7 +121,7 @@ def silent_dock_lifecycle(p):
         assert opened['ok'] and opened['detail']['dockIconVisible'] is True, opened
     for closed in (closed1, closed2):
         assert closed['ok'] and closed['detail']['dockIconVisible'] is False, closed
-    assert end['detail']['mainExists'] and not end['detail']['mainVisible'] and end['detail']['dockIconVisible'] is False, end
+    assert not end['detail']['mainExists'] and not end['detail']['mainVisible'] and end['detail']['dockIconVisible'] is False, end
     return [{'step': r['step'], 'ok': r['ok'], 'detail': r['detail']} for r in rows]
 
 
@@ -145,15 +155,16 @@ def main():
         # Silent Dock lifecycle: tray Open -> close -> tray Open -> close, driven through the control file.
         results['silentDock'] = silent_dock_lifecycle(p)
 
-        # Lightweight cold start: the GUI hands off by itself and leaves the daemon running.
+        # Lightweight cold start: observe the resident host, then let the test observer exit while keeping the daemon.
         set_mode(p, 'lightweight')
         before = len(p.notes())
-        proc, evidence, log = p.launch('lightweight-cold', 'startup-observe', observe=60, exit_mode='full')
+        proc, evidence, log = p.launch('lightweight-cold', 'startup-observe', observe=12, exit_mode='keep')
         code = proc.wait(timeout=90)
         assert code == 0, code
         notes = p.notes()[before:]
         assert len(notes) == 1 and notes[0].startswith('lightweight-') and 'UniClipboard 仍在后台运行' in notes[0], notes
-        assert not any(r['step'] == 'startup-state' for r in read_steps(evidence, 0)), 'the GUI should have exited before the observer'
+        state = [r for r in read_steps(evidence, 0) if r['step'] == 'startup-state'][0]['detail']
+        assert not state['mainExists'] and not state['dockIconVisible'], state
         assert 'entering lightweight mode' in log.read_text() or 'lightweight cold start' in log.read_text()
         assert p.daemon_alive(), 'the daemon must keep running after the lightweight hand-off'
         results['lightweightCold'] = {'exitCode': code, 'notice': notes[0][:40], 'daemonAlive': True}

@@ -80,6 +80,8 @@ export function makeDevBundle(binary, helper) {
   const app = JSON.parse(fs.readFileSync(path.join(root, 'apps/gui-go/app.json'), 'utf8'))
   const contents = path.join(path.dirname(binary), 'UniClipboardGoDev.app/Contents')
   fs.mkdirSync(path.join(contents, 'MacOS'), { recursive: true })
+  fs.mkdirSync(path.join(contents, 'Resources'), { recursive: true })
+  fs.copyFileSync(path.join(gui, 'icons/icon.icns'), path.join(contents, 'Resources/icon.icns'))
   const executable = path.join(contents, 'MacOS/gui-go')
   fs.copyFileSync(binary, executable)
   const bundledHelper = path.join(contents, 'MacOS/uniclip-quick-panel')
@@ -96,8 +98,11 @@ export function makeDevBundle(binary, helper) {
     `Set :CFBundleIdentifier ${app.identifier}.dev`,
     '-c',
     `Set :CFBundleName ${app.productName} Dev`,
+    '-c',
+    'Add :CFBundleIconFile string icon',
     plist,
   ])
+  run('python3', [path.join(gui, 'packaging/macos/ui_bundle.py'), path.join(contents, '..')])
   run('codesign', ['--force', '--deep', '--sign', '-', path.join(contents, '..')])
   return executable
 }

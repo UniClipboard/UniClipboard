@@ -151,6 +151,9 @@ func (s *promptStore) recordNotified(channel update.Channel, version string) {
 // announcement and records it once the window is up. A scheduled trigger also honours the prompt cooldown; a
 // manual one does not. It reports whether it opened the window.
 func (h *HostService) notifyIfNew(channel update.Channel, version string, scheduled bool) bool {
+	if scheduled && h.ui != nil && !h.ui.running() {
+		return false
+	}
 	s := &h.prompts
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -166,6 +169,9 @@ func (h *HostService) notifyIfNew(channel update.Channel, version string, schedu
 // openReadyFallback re-opens the window when an auto-download reached "ready" but
 // the dedup kept it closed because an earlier process already announced the version.
 func (h *HostService) openReadyFallback(channel update.Channel) {
+	if h.ui != nil && !h.ui.running() {
+		return
+	}
 	s := &h.prompts
 	s.mu.Lock()
 	defer s.mu.Unlock()

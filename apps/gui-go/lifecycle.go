@@ -19,11 +19,19 @@ import (
 const daemonStopTimeout = 10 * time.Second
 
 // exitIntent records what happens to the daemon when the GUI process exits.
-// A plain quit (tray Quit, Cmd-Q) stops the daemon; lightweight mode and
-// restart leave it running for the next GUI.
+// A plain quit (tray Quit, Cmd-Q) stops the daemon. Restart keeps it running.
+// Lightweight mode stops only the UI child on every platform.
 type exitIntent struct{ keepDaemon atomic.Bool }
 
 func (h *HostService) quit(keepDaemon bool) {
+	if uiChild && !keepDaemon {
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			_ = h.ownerCall(ctx, "quit-app", nil, nil)
+		}()
+		return
+	}
 	h.exit.keepDaemon.Store(keepDaemon)
 	h.quitting.Store(true)
 	h.app.Quit()
@@ -31,12 +39,20 @@ func (h *HostService) quit(keepDaemon bool) {
 
 // shutdown stops background work, then the daemon unless the exit keeps it.
 func (h *HostService) shutdown() {
-	if h.exit.keepDaemon.Load() {
+	if uiChild {
 		h.persistMainWindowSize()
+		if h.owner != nil {
+			h.owner.close()
+		}
+		return
+	}
+	if h.ui != nil {
+		h.ui.stop()
 	}
 	if h.stopDesktopTheme != nil {
 		h.stopDesktopTheme()
 	}
+
 	h.settingsWatch.Pause() // close its daemon connection before the daemon may be stopped below
 	if h.stopSettings != nil {
 		h.stopSettings()
@@ -145,6 +161,11 @@ func runningDaemonPID() (uint32, bool, error) {
 
 // restartGUI starts a fresh copy of this executable and exits, keeping the daemon.
 func (h *HostService) restartGUI() error {
+	if uiChild {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		return h.ownerCall(ctx, "restart-gui", nil, nil)
+	}
 	exe, err := restartExecutable()
 	if err != nil {
 		return err
@@ -173,6 +194,14 @@ func restartDaemon() error {
 // fullRestart replaces the daemon first, then the GUI. A failed daemon restart
 // does not stop the GUI restart: the new GUI's bootstrap retries recovery.
 func (h *HostService) fullRestart() {
+	if uiChild {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		if err := h.ownerCall(ctx, "restart-app", nil, nil); err != nil {
+			log.Printf("app restart request failed: %v", err)
+		}
+		return
+	}
 	h.announceDaemonStop() // the windows close their sockets and the watcher pauses, so no connection holds the stop
 	if err := restartDaemon(); err != nil {
 		log.Printf("daemon restart failed, restarting the GUI anyway: %v", err)

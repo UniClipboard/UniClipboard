@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"log"
 	"runtime"
+	"time"
 
 	"github.com/UniClipboard/UniClipboard/apps/gui-go/internal/hostapi"
 )
@@ -21,6 +23,15 @@ func hostPlatform() string {
 //uc:errors none
 //uc:os darwin=noop windows=noop linux=real
 func (h *HostService) GetDesktopTheme() DesktopThemeSnapshot {
+	if uiChild {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		var snapshot DesktopThemeSnapshot
+		if err := h.ownerCall(ctx, "desktop-theme", nil, &snapshot); err != nil {
+			log.Printf("desktop theme request failed: %v", err)
+		}
+		return snapshot
+	}
 	return h.desktopTheme.snapshot()
 }
 
@@ -29,6 +40,13 @@ func (h *HostService) GetDesktopTheme() DesktopThemeSnapshot {
 //uc:errors command InternalError
 //uc:os darwin=noop windows=noop linux=real
 func (h *HostService) SetFollowOmarchyTheme(enabled bool) (DesktopThemeSnapshot, error) {
+	if uiChild {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		var snapshot DesktopThemeSnapshot
+		err := h.ownerCall(ctx, "desktop-theme-follow", enabled, &snapshot)
+		return snapshot, hostapi.Internal(err)
+	}
 	snapshot, err := h.desktopTheme.setEnabled(enabled)
 	if err != nil {
 		return snapshot, hostapi.Internal(err)
@@ -116,6 +134,9 @@ func (h *HostService) RestartApp() {
 //uc:errors command InternalError
 //uc:os all=real
 func (h *HostService) RestartDaemon(ctx context.Context) error {
+	if uiChild {
+		return hostapi.Internal(h.ownerCall(ctx, "restart-daemon", nil, nil))
+	}
 	h.announceDaemonStop()
 	err := restartDaemon()
 	// Reconnect the host and the windows to the new daemon or, after a failure, to whatever daemon runs.

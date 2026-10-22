@@ -104,6 +104,10 @@ func setPanelSize(w application.Window, width, height int) {
 
 // openUpdater creates the decorated updater window, or focuses the existing one.
 func (h *HostService) openUpdater(dev bool) {
+	if h.ui != nil {
+		h.ui.open("updater", dev)
+		return
+	}
 	if w, ok := h.app.Window.GetByName(updaterWindowName); ok {
 		w.UnMinimise()
 		w.Show()
@@ -118,6 +122,17 @@ func (h *HostService) openUpdater(dev bool) {
 		Name: updaterWindowName, Title: "Software Update", URL: url,
 		Width: updaterWidth, Height: updaterHeight, DisableResize: true,
 	}))
+	if uiChild {
+		w.RegisterHook(events.Common.WindowClosing, func(e *application.WindowEvent) {
+			if h.quitting.Load() {
+				return
+			}
+			if _, ok := h.app.Window.GetByName("main"); !ok {
+				e.Cancel()
+				go h.closeUI()
+			}
+		})
+	}
 	suppressKeyboardMenu(w)
 	centerWindow(w)
 }
@@ -125,6 +140,9 @@ func (h *HostService) openUpdater(dev bool) {
 // preCreateQuickPanel builds the hidden, frameless quick panel at startup so
 // showing it later never has to create a window.
 func (h *HostService) preCreateQuickPanel() {
+	if h.ui != nil {
+		return
+	}
 	width, height := panelSize(nil, false, 1)
 	options := application.WebviewWindowOptions{
 		Name: quickPanelWindowName, Title: "Quick Panel", URL: "/quick-panel.html",
@@ -147,6 +165,7 @@ func (h *HostService) preCreateQuickPanel() {
 		}
 		e.Cancel()
 		w.Hide()
+		h.closeIdleUI()
 	})
 	w.OnWindowEvent(events.Common.WindowLostFocus, func(*application.WindowEvent) {
 		if time.Since(time.Unix(0, h.panel.lastShown.Load())) <= quickPanelBlurDebounce {
@@ -155,6 +174,7 @@ func (h *HostService) preCreateQuickPanel() {
 		time.AfterFunc(quickPanelBlurVerify, func() {
 			if !w.IsFocused() {
 				w.Hide()
+				h.closeIdleUI()
 			}
 		})
 	})
@@ -171,6 +191,7 @@ func (h *HostService) showQuickPanel() {
 	prefs, err := h.loadQuickPanelSettings(ctx)
 	cancel()
 	if err == nil && !prefs.Enabled {
+		h.closeIdleUI()
 		return // the user turned the quick panel off
 	}
 	if !layerPrepareShow(w, prefs.Position, 1) {
@@ -192,6 +213,11 @@ func (h *HostService) showQuickPanel() {
 
 // dismissQuickPanel hides the panel and hands the keyboard focus back to the window that had it.
 func (h *HostService) dismissQuickPanel() {
+	if h.ui != nil {
+		h.ui.existing("dismiss-panel")
+		return
+	}
+	defer h.closeIdleUI()
 	if w, ok := h.app.Window.GetByName(quickPanelWindowName); ok {
 		w.Hide()
 	}
@@ -204,6 +230,10 @@ func (h *HostService) dismissQuickPanel() {
 
 // toggleQuickPanel shows the hidden panel and dismisses the visible one.
 func (h *HostService) toggleQuickPanel() {
+	if h.ui != nil {
+		h.ui.open("panel", nil)
+		return
+	}
 	if w, ok := h.app.Window.GetByName(quickPanelWindowName); ok && w.IsVisible() {
 		h.dismissQuickPanel()
 		return
@@ -213,6 +243,12 @@ func (h *HostService) toggleQuickPanel() {
 
 // requestPanelToggle is the entry for the global shortcut and for `--quick-panel` launches.
 func (h *HostService) requestPanelToggle() {
+	if h.ui != nil {
+		if h.helper == nil && h.panel.toggle.request() {
+			h.ui.open("panel", nil)
+		}
+		return
+	}
 	if h.helper != nil {
 		return // the native helper owns its panel and shortcut; a request has nothing to toggle here
 	}
@@ -246,6 +282,8 @@ func (h *HostService) pasteIntoPreviousApp(send func() error) error {
 	}
 	if err != nil {
 		h.showQuickPanel()
+	} else {
+		h.closeIdleUI()
 	}
 	return err
 }

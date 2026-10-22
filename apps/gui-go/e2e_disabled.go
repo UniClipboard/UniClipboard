@@ -3,6 +3,7 @@
 package main
 
 import "github.com/wailsapp/wails/v3/pkg/application"
+import "errors"
 
 func e2eServices(*HostService) []application.Service { return nil }
 
@@ -47,3 +48,7 @@ func e2eTrayPublishSkipped() {}
 func e2eInvoke(string) func() { return func() {} }
 
 func e2eBrowserArgs() []string { return nil }
+
+func e2eUIControl(*HostService, string, bool) error {
+	return errors.New("E2E controls are unavailable")
+}

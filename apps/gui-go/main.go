@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/buildinfo"
 	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/daemonclient"
@@ -28,6 +29,8 @@ import (
 var assets embed.FS
 
 type HostService struct {
+	ui                  *uiProcess
+	owner               *uiPeer
 	app                 *application.App
 	client              atomic.Pointer[daemonclient.Client] // replaced when the daemon is restarted; read through daemon()
 	effects             *visualEffects
@@ -66,7 +69,6 @@ type HostService struct {
 	modifierOnce      sync.Once
 	modifier          *modifierMonitor     // the WebView panel's modifier double-tap trigger; created by modifierMonitor()
 	windowSize        *mainWindowSizeState // accessed only on the Wails main thread
-	mainMu            sync.Mutex
 	navMu             sync.Mutex
 	pendingNavigation string
 }
@@ -76,11 +78,15 @@ type HostService struct {
 // callers fetch it per use instead of keeping it.
 func (h *HostService) daemon() *daemonclient.Client { return h.client.Load() }
 
-func (h *HostService) emit(name string, payload any) { h.app.Event.Emit(name, payload) }
+func (h *HostService) emit(name string, payload any) {
+	h.app.Event.Emit(name, payload)
+	if h.ui != nil {
+		h.ui.event(name, payload)
+	}
+}
 
-// openMainWindow creates the main window. Closing it hides it so the process,
-// daemon connection and window state stay alive until an explicit quit, and
-// removes the Dock icon; showMainWindow (tray, reopen, second launch) shows it again.
+// openMainWindow creates the main window in the UI child. Closing it exits that
+// child on every platform; the resident tray host and daemon stay alive.
 func (h *HostService) openMainWindow() *application.WebviewWindow {
 	minWidth := 900
 	if runtime.GOOS == "linux" {
@@ -109,8 +115,7 @@ func (h *HostService) openMainWindow() *application.WebviewWindow {
 			return
 		}
 		e.Cancel()
-		w.Hide()
-		h.setDockIconVisible(false)
+		go h.closeUI()
 	})
 	return w
 }
@@ -119,7 +124,7 @@ func main() {
 	// Persistent role log for the diagnostic export; failing to open it leaves console logging only.
 	hostLog := hostlog.OpenDefault("uniclipboard-gui")
 	hostLog.RedirectStandardLog()
-	hostLog.Info("gui host starting version=%s", buildinfo.PackageVersion)
+	hostLog.Info("gui host starting version=%s ui_child=%t", buildinfo.PackageVersion, hasArg(os.Args[1:], uiChildArg))
 	defer hostLog.Close()
 	if err := validateEnvironment(); err != nil {
 		if releaseBuild {
@@ -127,36 +132,77 @@ func main() {
 		}
 		log.Fatal(err)
 	}
-	waitForRestartParent()
+	if err := validateUIRole(); err != nil {
+		log.Fatal(err)
+	}
+	if !uiChild {
+		waitForRestartParent()
+	}
 	ensureAppScope()
 	content, err := fs.Sub(assets, "frontend/dist")
 	if err != nil {
 		log.Fatal(err)
 	}
-	host := &HostService{effects: newVisualEffects(), desktopTheme: newDesktopThemeState(), notifier: notifications.New(), wake: make(chan string, 1)}
+	host := &HostService{effects: newVisualEffects(), notifier: notifications.New(), wake: make(chan string, 1)}
 	// Follow, not daemon(): after a restart the host did not record (it reported a failure, or the GUI relaunch
 	// failed), the watcher must reach the daemon that actually runs, and every other caller then uses it too.
 	host.settingsWatch = settings.NewWatcher(func() *daemonclient.Client { return daemonclient.Follow(&host.client) }, host.applySettings)
+	if uiChild {
+		host.owner = newUIPeer(uiInput, uiOutput, host.handleUIRequest)
+	}
+	if !uiChild {
+		host.desktopTheme = newDesktopThemeState()
+	}
 	host.lastCheck.recordNow()
-	services := append([]application.Service{hostService(host)}, notifierServices(host)...)
+	services := []application.Service{hostService(host)}
+	if !uiChild {
+		services = append(services, notifierServices(host)...)
+	}
 	services = append(services, e2eServices(host)...)
 	uniqueID, err := singleInstanceID()
 	if err != nil {
 		log.Fatal(err)
 	}
+	if uiChild {
+		uniqueID += ".ui"
+	}
 	host.singleInstanceID = uniqueID
+	if uiProcessEnabled() {
+		host.ui = &uiProcess{host: host}
+	}
 	// application.New takes the single-instance lock before anything else touches shared state: a second GUI of the
 	// same scope hands its arguments to the first one and exits inside this call, so it never probes or spawns a
 	// daemon, starts the quick panel helper or reconciles the login item. The daemon client is attached afterwards.
-	app := application.New(application.Options{Name: "UniClipboard Go GUI", Services: services, Mac: application.MacOptions{ActivationPolicy: activationPolicy()}, Windows: application.WindowsOptions{AdditionalBrowserArgs: e2eBrowserArgs(), WebviewUserDataPath: webviewDataPath()}, Assets: application.AssetOptions{Handler: application.BundledAssetFileServer(content), Middleware: host.fileMiddleware},
+	app := application.New(application.Options{Name: "UniClipboard Go GUI", Services: services, Mac: application.MacOptions{ActivationPolicy: initialActivationPolicy(), ApplicationShouldTerminateAfterLastWindowClosed: false}, Linux: application.LinuxOptions{ApplicationID: uniqueID, ProgramName: bundleID, DisableQuitOnLastWindowClosed: true}, Windows: application.WindowsOptions{DisableQuitOnLastWindowClosed: true, AdditionalBrowserArgs: e2eBrowserArgs(), WebviewUserDataPath: webviewDataPath()}, Assets: application.AssetOptions{Handler: application.BundledAssetFileServer(content), Middleware: host.fileMiddleware},
 		KeyBindings:    devToolsKeyBindings(),
 		SingleInstance: host.singleInstanceOptions(uniqueID),
-		ShouldQuit:     func() bool { host.quitting.Store(true); return true },
-		OnShutdown:     host.shutdown})
+		ShouldQuit: func() bool {
+			if uiChild && !host.quitting.Load() {
+				if host.owner == nil {
+					host.quitting.Store(true)
+					return true
+				}
+				go func() {
+					ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+					defer cancel()
+					if err := host.ownerCall(ctx, "quit-app", nil, nil); err != nil {
+						log.Printf("full quit request failed: %v", err)
+					}
+				}()
+				return false
+			}
+			host.quitting.Store(true)
+			return true
+		},
+		OnShutdown: host.shutdown})
 	host.app = app
-	host.initTray()
+	if !uiChild {
+		host.initTray()
+	}
 	host.routeDockReopen()
-	e2eLaunch(host)
+	if !uiChild {
+		e2eLaunch(host)
+	}
 	if hasArg(os.Args[1:], quickPanelLaunchArg) {
 		// Tauri contract (validate_primary_launch): the panel can only be requested from a running GUI.
 		log.Print("UniClipboard GUI is not running; cannot show the quick panel")
@@ -167,9 +213,16 @@ func main() {
 	// a launch arriving meanwhile would be lost. Activations that arrive before bootstrap finishes are held
 	// (see onSecondInstance) and carried out afterwards.
 	app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
-		host.startVisualEffects()
-		host.startDesktopTheme()
-		go host.bootstrap()
+		if host.ui == nil {
+			host.startVisualEffects()
+		} else {
+			host.startDesktopTheme()
+		}
+		if uiChild {
+			go host.bootstrapUI()
+		} else {
+			go host.bootstrap()
+		}
 	})
 	host.stopWake = app.Event.OnApplicationEvent(events.Common.SystemDidWake, func(*application.ApplicationEvent) { host.signalWake(wakeSystemResume) })
 	if err := app.Run(); err != nil {
@@ -240,7 +293,7 @@ func (h *HostService) bootstrap() {
 	// A Silent or Lightweight launch does not build the window at boot (and so never pays the WebView
 	// cost); it is created the first time something asks to show it.
 	if !startup.hidden() || forceMainWindow() {
-		h.openMainWindow()
+		h.showMainWindow()
 	} else {
 		h.setDockIconVisible(false) // no window yet: run as a menu bar app until one is shown
 	}

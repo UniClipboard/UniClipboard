@@ -26,6 +26,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from ui_bundle import assemble_ui_bundle
 
 REPO = Path(__file__).resolve().parents[4]
 GUI_DIR = REPO / "apps/gui-go"
@@ -175,6 +176,7 @@ def cmd_bundle(a):
     (bundle / "Contents/Info.plist").write_bytes(plistlib.dumps(plist))
     (bundle / "Contents/PkgInfo").write_text("APPL????")
 
+    ui_bundle = assemble_ui_bundle(bundle)
     host = platform.machine()
     prov = {
         "target": a.target, "variant": a.variant, "goTags": v["tags"], "bundleIdentifier": bundle_id(a.variant),
@@ -192,7 +194,7 @@ def cmd_bundle(a):
         "telemetryInputsPresent": {k: bool(os.environ.get(k)) for k in
                                    ("VITE_SENTRY_DSN", "VITE_APP_ENV", "SENTRY_AUTH_TOKEN", "SENTRY_ORG", "VITE_SENTRY_PROJECT")},
         "frontendSourceMapsEmbedded": False,
-        "preSignSha256": {n: sha256(macos / n) for n in (GUI, DAEMON, HELPER)},
+        "preSignSha256": {**{n: sha256(macos / n) for n in (GUI, DAEMON, HELPER)}, "ui": sha256(ui_bundle / "Contents/MacOS/gui-go")},
         "stagedInputsSha256": {DAEMON: sha256(daemon_src), HELPER: sha256(helper_src)},
     }
     (outdir / "provenance.json").write_text(json.dumps(prov, indent=2))
@@ -223,6 +225,8 @@ def cmd_sign(a):
         run(codesign_args(a.identity, a.keychain) + ["--identifier", CFG["identifier"] + suffix + VARIANTS[a.variant]["suffix"],
                                                        macos / name])
     ent = ["--entitlements", a.entitlements] if a.entitlements else []
+    ui_bundle = bundle / "Contents/Helpers/UniClipboardUI.app"
+    run(codesign_args(a.identity, a.keychain) + ["--identifier", ident + ".ui"] + ent + [ui_bundle])
     run(codesign_args(a.identity, a.keychain) + ["--identifier", ident] + ent + [bundle])
     run(["codesign", "--verify", "--deep", "--strict", "--verbose=2", bundle])
 

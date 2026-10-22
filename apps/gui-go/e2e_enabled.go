@@ -58,12 +58,23 @@ func (s *EvidenceService) Record(step Step) error { return s.write(step) }
 // Control performs native window actions the DOM cannot, and records the
 // resulting native window state as its own evidence step.
 func (s *EvidenceService) Control(action string) error {
+	if uiChild && (strings.HasPrefix(action, "tray-") || action == "exit") {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		return s.host.ownerCall(ctx, "e2e-control", action, nil)
+	}
 	if handled, err := s.controlQuickPanel(action); handled {
 		return err
 	}
 	h := s.host
 	main, ok := h.app.Window.GetByName("main")
 	switch action {
+	case "hide-main":
+		if !ok {
+			return fmt.Errorf("main window absent")
+		}
+		main.Hide()
+		return nil
 	case "close-main":
 		if !ok {
 			return fmt.Errorf("main window absent")
@@ -92,7 +103,9 @@ func (s *EvidenceService) Control(action string) error {
 		_, still := h.app.Window.GetByName(updaterWindowName)
 		return s.write(Step{Window: updaterWindowName, Step: "native-updater-closed", OK: !still})
 	case "show-quick-panel":
-		h.showQuickPanel()
+		if _, err := h.handleUIRequest(uiPacket{Operation: "panel"}); err != nil {
+			return err
+		}
 		return s.write(Step{Window: quickPanelWindowName, Step: "native-quick-panel-visible", OK: s.waitVisible(quickPanelWindowName, true), Detail: map[string]bool{"ready": h.panel.toggle.isReady()}})
 	case "dismiss-quick-panel":
 		h.dismissQuickPanel()
@@ -189,12 +202,23 @@ func e2eServices(h *HostService) []application.Service {
 }
 
 // Phase tells the in-WebView driver which scenario this launch runs.
-func (s *EvidenceService) Phase() string { return os.Getenv("UC_GUI_GO_E2E_PHASE") }
+func (s *EvidenceService) Phase() string {
+	if uiChild {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		_, err := s.host.deviceID(ctx)
+		cancel()
+		_ = s.write(Step{Window: "main", Step: "ui-page-ready", OK: err == nil, Detail: map[string]any{"pid": os.Getpid(), "daemonConnected": err == nil}})
+	}
+	return os.Getenv("UC_GUI_GO_E2E_PHASE")
+}
 
 // ServiceStartup lets a launch report its own state without any WebView driver: with
 // UC_GUI_GO_E2E_OBSERVE=<seconds> the service writes a `startup-state` step after that delay and then quits,
 // which is how the startup-mode scenarios observe a hidden window.
 func (s *EvidenceService) ServiceStartup(context.Context, application.ServiceOptions) error {
+	if uiChild {
+		return nil
+	}
 	if path := os.Getenv("UC_GUI_GO_E2E_CONTROL_FILE"); path != "" {
 		go s.watchControlFile(path)
 	}
@@ -211,6 +235,12 @@ func (s *EvidenceService) ServiceStartup(context.Context, application.ServiceOpt
 		w, ok := h.app.Window.GetByName("main")
 		stored, _ := h.loadStartupSettings()
 		detail := map[string]any{"mainExists": ok, "mainVisible": ok && w.IsVisible(), "dockIconVisible": !dockIconHidden.Load(), "pid": os.Getpid(), "storedStartup": stored}
+		if h.ui != nil {
+			for key, value := range h.ui.state() {
+				detail[key] = value
+			}
+			detail["dockIconVisible"] = detail["mainVisible"]
+		}
 		_ = s.write(Step{Window: "main", Step: "startup-state", OK: true, Detail: detail})
 		h.quit(os.Getenv("UC_GUI_GO_EXIT_MODE") != "full")
 	}()
@@ -229,7 +259,14 @@ func (s *EvidenceService) Installed() bool {
 // waitVisible polls a window's visibility; window show/hide completes asynchronously.
 func (s *EvidenceService) waitVisible(name string, want bool) bool {
 	for deadline := time.Now().Add(8 * time.Second); time.Now().Before(deadline); time.Sleep(100 * time.Millisecond) {
-		if w, ok := s.host.app.Window.GetByName(name); ok && w.IsVisible() == want {
+		if s.host.ui != nil && name == "main" {
+			state := s.host.ui.state()
+			if state["mainVisible"] == want {
+				return true
+			}
+			continue
+		}
+		if w, ok := s.host.app.Window.GetByName(name); (!ok && !want) || (ok && w.IsVisible() == want) {
 			return true
 		}
 	}
@@ -365,3 +402,12 @@ func (s *EvidenceService) recordNativeWindowState() {
 // e2eBrowserArgs lets a test run pass extra WebView2 arguments (for example a remote debugging port to read the page
 // state of a window that does not leave its startup screen). Only the e2e build reads it.
 func e2eBrowserArgs() []string { return strings.Fields(os.Getenv("UC_GUI_GO_E2E_BROWSER_ARGS")) }
+
+func e2eUIControl(h *HostService, action string, line bool) error {
+	s := &EvidenceService{host: h}
+	if line {
+		s.runControlCommand(action)
+		return nil
+	}
+	return s.Control(action)
+}

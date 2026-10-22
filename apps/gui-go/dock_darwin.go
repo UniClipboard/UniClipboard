@@ -70,7 +70,7 @@ var bundleDockIcon = sync.OnceValue(func() []byte {
 // that already exist and so neither builds the main window after a Silent start nor restores the Dock icon.
 func (h *HostService) routeDockReopen() {
 	h.app.Event.RegisterApplicationEventHook(events.Mac.ApplicationShouldHandleReopen, func(e *application.ApplicationEvent) {
-		if e.Context().HasVisibleWindows() {
+		if w, ok := h.app.Window.GetByName("main"); ok && w.IsVisible() {
 			return
 		}
 		e.Cancel()

@@ -29,6 +29,10 @@ and Quick Panel shortcut changes route to the resident owner. The existing front
 and daemon API remain unchanged. Both Go processes append to the existing GUI log with distinct
 PID and run_id fields.
 
+The resident also owns the desktop theme preference and palette watcher. UI theme commands use
+the private channel. The UI saves the main window size before exit; before a daemon restart,
+the resident requests an existing UI to flush its window preference without opening one.
+
 The saved `general.startupMode` is a launch preference owned by the daemon's Desktop settings
 store (ADR-013). Closing the UI never writes it. Background update checks and downloads continue,
 but scheduled prompts do not create a UI child while the application is windowless. Manual

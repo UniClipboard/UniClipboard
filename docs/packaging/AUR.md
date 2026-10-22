@@ -88,6 +88,8 @@ These were collected by scanning the repo on 2026-05-19. The PKGBUILDs in §6/§
 - 构建和干净安装启动验收均成功后，以非 root 的 `builder` 生成 `.SRCINFO`，只提交有差异的文件；推送后核对 AUR 远端提交，网页缓存不作为发布成功依据。
 - 早期流程曾在未经构建验证时直接发布；当前自动化保留完整验收门控，只移除了依赖人工触发的环节。
 
+README 的版本展示与刷新机制见 [包管理器版本状态](package-status.md)。
+
 Required secret:
 - `AUR_SSH_PRIVATE_KEY` — ed25519 private key. Generate via `ssh-keygen -t ed25519 -C aur-uniclipboard -f aur`, upload `aur.pub` at `https://aur.archlinux.org/account/<user>/edit/`, paste the private key (`aur`) into repo secrets.
 

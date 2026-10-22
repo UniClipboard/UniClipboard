@@ -1,0 +1,102 @@
+name: Package manager versions
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/package-status.py'
+      - 'scripts/tests/test_package_status.py'
+      - 'scripts/tests/test_aur_package.py'
+      - 'scripts/ci/render-aur-package.sh'
+      - 'packaging/aur/uniclipboard-git/PKGBUILD'
+      - '.github/workflows/package-status.yml'
+      - '.github/workflows/aur.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/package-status.py'
+      - 'scripts/tests/test_package_status.py'
+      - '.github/workflows/package-status.yml'
+      - 'README.md'
+      - 'README_ZH.md'
+  schedule:
+    - cron: '41 */6 * * *'
+  workflow_dispatch:
+  workflow_run:
+    workflows:
+      - 'Publish to AUR (uniclipboard-git)'
+      - 'Homebrew Tap'
+      - 'Homebrew Official Cask'
+      - 'npm Publish'
+      - 'Publish to COPR'
+      - 'Snap'
+      - 'winget Publish'
+      - 'Chocolatey Publish'
+    types: [completed]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: package-status-${{ github.event.pull_request.number || 'publish' }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: python3 -m unittest discover -s scripts/tests -p 'test_package_status.py' -v
+      - run: python3 -m unittest discover -s scripts/tests -p 'test_aur_package.py' -v
+
+  snapshot:
+    needs: test
+    if: >-
+      github.repository == 'UniClipboard/UniClipboard' &&
+      github.event_name != 'pull_request' &&
+      (github.event_name != 'workflow_dispatch' || github.ref == 'refs/heads/main') &&
+      (github.event_name != 'workflow_run' ||
+       (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      # workflow_run may originate from a PR: always use trusted main code.
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          path: source
+          persist-credentials: false
+      - name: Query actual published packages
+        run: python3 source/scripts/package-status.py --output snapshot
+      - uses: actions/upload-artifact@v4
+        with:
+          name: package-manager-versions
+          path: snapshot/
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          path: published
+      - name: Publish the shared badge snapshot
+        working-directory: published
+        shell: bash
+        run: |
+          if git ls-remote --exit-code origin refs/heads/package-status >/dev/null; then
+            git fetch origin refs/heads/package-status
+            git checkout -B package-status FETCH_HEAD
+          else
+            git checkout --orphan package-status
+            git rm -rf .
+          fi
+          cp -R ../snapshot/badges .
+          cp ../snapshot/status.json .
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add badges status.json
+          if ! git diff --cached --quiet; then
+            git commit -m 'chore: refresh published package versions'
+            git push origin HEAD:refs/heads/package-status
+          fi
+          test "$(git rev-parse HEAD)" = "$(git ls-remote origin refs/heads/package-status | cut -f1)"

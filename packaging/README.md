@@ -2,6 +2,8 @@
 
 本目录汇集 UniClipboard 各分发渠道的打包定义源。真正生效的副本在各渠道自己的仓库里（nixpkgs、Scoop Extras、homebrew-cask 等），这里保存源 + 提交指引，与 `packaging/aur/` 的惯例一致。
 
+README 顶部展示各渠道已发布版本，数据来源与刷新机制见 [包管理器版本状态](../docs/packaging/package-status.md)。
+
 ## 渠道全景
 
 「Repology」列指该渠道是否被 [repology.org](https://repology.org/project/uniclipboard/versions) 抓取——即是否能让 packaging-status 徽章多一行。**Snap / COPR / 自建 Homebrew tap / npm / winget / Flathub 都不被 Repology 抓取**（已用 7zip 的完整源列表交叉验证）。

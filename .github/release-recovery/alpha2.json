@@ -155,6 +155,126 @@
       "id": 12437277304,
       "name": "linux-gui-amd64",
       "digest": "sha256:25e81442d8f8a4d98b935cb76bf7ca625af91e432b571fd450cdece48fcbc611"
+    },
+    {
+      "id": 12437237704,
+      "name": "linux-gui-evidence-amd64",
+      "digest": "sha256:f46fcef6b40fece53b58830fba282bf1fde428ac309cdef8a8748398fa6f2cff"
+    },
+    {
+      "id": 12437192379,
+      "name": "cli-aarch64-unknown-linux-musl",
+      "digest": "sha256:14e061136550f6f40c6f9c2213120bafd9a798d3174a8d99023cc5537b2986dd"
+    },
+    {
+      "id": 12437187582,
+      "name": "mbx-sidecar-aarch64-apple-darwin-helper",
+      "digest": "sha256:b77cb64b5bbbd42412c22092522473fd109fffb829bf735ed3de0b75d983eb95"
+    },
+    {
+      "id": 12437152022,
+      "name": "mbx-sidecar-x86_64-apple-darwin-helper",
+      "digest": "sha256:7510e95c61cb0dbcc2a457768d4a3f868e9b427fb0ea8e56f66deab0322af76f"
+    },
+    {
+      "id": 12437103232,
+      "name": "macos-gui-x86_64-apple-darwin",
+      "digest": "sha256:988fa3ef244284085a2f0bf4fa1bac017e8d4c7bc27d9002ce8672a063587904"
+    },
+    {
+      "id": 12437097650,
+      "name": "sidecar-component-x86_64-pc-windows-msvc-helper",
+      "digest": "sha256:494abfc6d03ced00e3c18ac35a689817587643c89bcff101563caba23315a732"
+    },
+    {
+      "id": 12437067737,
+      "name": "sidecar-x86_64-apple-darwin",
+      "digest": "sha256:76a214d3c340c449ddbd1a795f34ad048b3194d7ff344efe686b58d0afde8bb0"
+    },
+    {
+      "id": 12436997802,
+      "name": "cargo-timings-sidecar-aarch64-pc-windows-msvc-helper",
+      "digest": "sha256:b570371619839d8f802bb43c6e7739efb059f1f34748acda010bbfde4fab15ae"
+    },
+    {
+      "id": 12436997409,
+      "name": "cargo-timings-sidecar-x86_64-apple-darwin-helper",
+      "digest": "sha256:f7cf8a976886a86c76a0e4679faea633d49cfab978e03ec318a294fb1995cd68"
+    },
+    {
+      "id": 12436993154,
+      "name": "linux-gui-evidence-arm64",
+      "digest": "sha256:62c12d3f7104a355ff78cc18f164ff82f9e8ac8181a2ca737b219d2cea8560e7"
+    },
+    {
+      "id": 12436947957,
+      "name": "cargo-timings-sidecar-x86_64-apple-darwin-daemon",
+      "digest": "sha256:67fe5a0ec91b270a5a4f1df86edac880bec20527f27f09a19099f6411a64edb2"
+    },
+    {
+      "id": 12436943673,
+      "name": "macos-gui-evidence-x86_64-apple-darwin",
+      "digest": "sha256:7c530519b7c8028d030d703d37e75394399eba41de67866b7516a2be5ffa171c"
+    },
+    {
+      "id": 12436937662,
+      "name": "mbx-cli-aarch64-unknown-linux-musl",
+      "digest": "sha256:0604621549e2a7e8b5deb02c8eea78bef481f3ff6b5c4bd5973777a59015ae3e"
+    },
+    {
+      "id": 12436862774,
+      "name": "sidecar-component-x86_64-apple-darwin-helper",
+      "digest": "sha256:02680d0eae2cd8f5a752fd376f0ad2cf49fc6494beb519a462ad45bd392d8d0f"
+    },
+    {
+      "id": 12436774579,
+      "name": "cli-x86_64-pc-windows-msvc",
+      "digest": "sha256:41a5c76f5c9c25b0709a4fa3c8eac7f166257b13761a7ce760448321dc3e67ba"
+    },
+    {
+      "id": 12436683581,
+      "name": "mbx-sidecar-x86_64-pc-windows-msvc-helper",
+      "digest": "sha256:8ddfcff3544ba6b5d3fb0598cf9b28933c4970ba56759a168d90413b04914998"
+    },
+    {
+      "id": 12436659444,
+      "name": "mbx-sidecar-aarch64-apple-darwin-daemon",
+      "digest": "sha256:3f6c01e8b1757b0391d84424619735dfd4ca383113e964c82eb7af263e054ac7"
+    },
+    {
+      "id": 12436574627,
+      "name": "mbx-sidecar-x86_64-pc-windows-msvc-daemon",
+      "digest": "sha256:09704154ee6e141f6f48770411ba0a06b831ae3eb30827b66977a5625c01079d"
+    },
+    {
+      "id": 12436569724,
+      "name": "sidecar-component-x86_64-apple-darwin-daemon",
+      "digest": "sha256:edb13b860e37420e97bc6d06a0824142e1f1b91039063990725e683e23e1d76e"
+    },
+    {
+      "id": 12436444255,
+      "name": "cli-x86_64-unknown-linux-musl",
+      "digest": "sha256:fe054dbeeeba6b627bdaa848e984c823c90b784178c882e0709df70b73a51bd9"
+    },
+    {
+      "id": 12436369957,
+      "name": "cargo-timings-sidecar-x86_64-pc-windows-msvc-daemon",
+      "digest": "sha256:de6a803ed885cc1542cd11889a4e60aec23289a64e551dd00b394d4bd5980fcb"
+    },
+    {
+      "id": 12436339071,
+      "name": "cargo-timings-cli-sidecar-x86_64-unknown-linux-musl",
+      "digest": "sha256:720881cbc2120db4253f9e1b77591e679cc51b844bc7bd09f3d3e6eae8dba7d9"
+    },
+    {
+      "id": 12436279287,
+      "name": "mbx-cli-x86_64-unknown-linux-musl",
+      "digest": "sha256:c0900e59d83898bd5cba3ed0c75e6cb75542f788da03a951415cf739f29a5fed"
+    },
+    {
+      "id": 12436219861,
+      "name": "mbx-sidecar-x86_64-apple-darwin-daemon",
+      "digest": "sha256:ca491a79f523f2834078a4b52188ec0ac4d9bc361e1da44011cee97e66abfd98"
     }
   ]
 }

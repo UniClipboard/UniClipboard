@@ -49,12 +49,17 @@ def main():
         print(f'Original package byte comparison passed: {len(packages)} packages')
     else:
         require(lock['channel'] == 'alpha' and lock['version'] == '1.4.0-alpha.2', 'wrong recovery target')
+        require(len(lock['artifacts']) == 54, 'incomplete original artifact lock')
         verify_tag()
         run = api(f'actions/runs/{run_id}')
         require(run['head_sha'] == lock['sourceSha'] and run['event'] == 'push'
                 and run['path'] == '.github/workflows/release.yml' and run['run_attempt'] == 1
                 and run['conclusion'] == 'failure', 'original run provenance changed')
-        # Each item is fetched by immutable ID, so API pagination cannot hide missing archives.
+        inventory = api(f'actions/runs/{run_id}/artifacts?per_page=100')
+        require(inventory['total_count'] == len(inventory['artifacts']) == len(lock['artifacts'])
+                and {a['id'] for a in inventory['artifacts']} == {a['id'] for a in lock['artifacts']},
+                'original artifact inventory changed or is incomplete')
+        # Each item is fetched by immutable ID after the complete inventory check.
         root = Path('artifacts')
         root.mkdir(exist_ok=False)
         receipts = []

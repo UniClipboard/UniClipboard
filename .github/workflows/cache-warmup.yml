@@ -13,6 +13,10 @@ on:
     paths:
       - 'scripts/ci/release-cache-policy.mjs'
       - 'scripts/ci/mbx-snapshot.py'
+      - 'scripts/ci/mbx-snapshot.sh'
+      - 'scripts/stage-daemon.mjs'
+      - 'scripts/ci/configure-build-mode.mjs'
+      - 'scripts/ci/resolve-app-env.mjs'
       - '.github/actions/mbx-snapshot/**'
       - '.github/actions/build-e2e-rust/**'
       - '.github/actions/build-pr-rust/**'

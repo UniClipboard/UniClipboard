@@ -11,6 +11,7 @@ import subprocess
 import tarfile
 import tempfile
 import time
+import tomllib
 from datetime import datetime, timedelta, timezone
 from pathlib import Path, PurePosixPath
 
@@ -24,8 +25,9 @@ MAX_MEMBERS = 200_000
 WINDOWS_DEVICES = {"CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$"} | {
     f"{prefix}{digit}" for prefix in ("COM", "LPT") for digit in "123456789¹²³"
 }
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(os.environ.get("UC_MBX_SNAPSHOT_SOURCE_ROOT", Path(__file__).resolve().parents[2])).resolve()
 SCENES = {
+    "release-sidecar": "scripts/stage-daemon.mjs",
     "e2e-macos": ".github/actions/build-e2e-rust/action.yml",
     "pr-check-linux": ".github/actions/build-pr-rust/action.yml",
     "quick-panel-windows": ".github/actions/build-pr-rust/action.yml",
@@ -37,19 +39,76 @@ def digest_file(file):
         return hashlib.file_digest(source, "sha256").hexdigest()
 
 
-def scene_key(scene):
+def release_context(target, component, build_mode, target_args):
+    targets = {
+        "aarch64-apple-darwin", "x86_64-apple-darwin",
+        "aarch64-pc-windows-msvc", "x86_64-pc-windows-msvc",
+        "aarch64-unknown-linux-gnu", "x86_64-unknown-linux-gnu",
+    }
+    if (target not in targets or component not in ("daemon", "helper")
+            or build_mode not in ("release", "test")
+            or target_args not in ("", f"--target {target}")
+            or (component == "helper" and "linux" in target)):
+        raise ValueError("Invalid release snapshot context")
+    target_mode = "explicit" if target_args else "native"
+    return dict(target=target, component=component, build_mode=build_mode, target_mode=target_mode)
+
+
+def export_group(scene, context=None):
+    if scene != "release-sidecar":
+        return scene
+    if context is None:
+        raise ValueError("Release snapshot requires a build context")
+    return "sidecar-" + "-".join(context[field] for field in ("target", "component", "build_mode", "target_mode"))
+
+
+def release_seed_input(name, raw):
+    """Select a reusable dependency baseline; native MBX still validates full inputs."""
+    if name not in ("Cargo.toml", "Cargo.lock"):
+        return raw
+    value = tomllib.loads(raw.decode())
+    if name == "Cargo.toml":
+        for package in (value.get("package", {}), value.get("workspace", {}).get("package", {})):
+            if "version" in package:
+                package["version"] = "<local-version>"
+    else:
+        packages = value.get("package", [])
+        local_versions = {(package["name"], package["version"]) for package in packages if "source" not in package}
+        for package in packages:
+            if "source" not in package:
+                package["version"] = "<local-version>"
+            # Cargo adds a version to dependency references only when needed to disambiguate.
+            package["dependencies"] = [
+                f"{parts[0]} <local-version>" if len(parts := dependency.split()) == 2 and tuple(parts) in local_versions else dependency
+                for dependency in package.get("dependencies", [])
+            ]
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), default=str).encode()
+
+
+def scene_key(scene, context=None):
+    group = export_group(scene, context)
     digest = hashlib.sha256()
-    for name in ("Cargo.lock", "Cargo.toml", ".cargo/config.toml", "rust-toolchain.toml",
-                 "scripts/build-cache/engine-tools.sh", "scripts/ci/mbx-snapshot.py",
-                 SCENES[scene]):
-        digest.update(name.encode() + b"\0" + (ROOT / name).read_bytes() + b"\0")
-    if scene == "pr-check-linux":
-        # Producer and consumer must use the same container ABI and toolchain.
+    names = ["Cargo.lock", "Cargo.toml", ".cargo/config.toml", "rust-toolchain.toml",
+             "scripts/build-cache/engine-tools.sh", "scripts/ci/mbx-snapshot.py", SCENES[scene]]
+    if scene == "release-sidecar":
+        names.extend(("scripts/ci/configure-build-mode.mjs", "scripts/ci/resolve-app-env.mjs"))
+        # Channels and local package versions are deliberately coarse seed inputs.
+        # MBX owns artifact validity, including APP_ENV and CARGO_PKG_VERSION.
+        flags = {key: value for key, value in os.environ.items()
+                 if key.startswith("CARGO_PROFILE_") or key in ("RUSTFLAGS", "CARGO_ENCODED_RUSTFLAGS")}
+        digest.update(json.dumps(dict(context=context, flags=flags), sort_keys=True).encode())
+    for name in names:
+        # Release automation may run from RUNNER_TEMP against a historical source checkout.
+        raw = (Path(__file__) if name == "scripts/ci/mbx-snapshot.py" else ROOT / name).read_bytes()
+        if scene == "release-sidecar":
+            raw = release_seed_input(name, raw)
+        digest.update(name.encode() + b"\0" + raw + b"\0")
+    if scene == "pr-check-linux" or (scene == "release-sidecar" and "linux" in context["target"]):
         digest.update((ROOT / ".github/docker/build-bookworm.Dockerfile").read_bytes())
         digest.update(Path("/etc/os-release").read_bytes())
     digest.update(subprocess.check_output(["rustc", "-vV"]))
-    digest.update(f"{platform.system()}-{platform.machine()}-{scene}".encode())
-    return f"{PREFIX}/{scene}/{digest.hexdigest()}"
+    digest.update(f"{platform.system()}-{platform.machine()}-{group}".encode())
+    return f"{PREFIX}/{group}/{digest.hexdigest()}"
 
 
 def mbx(*args, cache=None):
@@ -208,7 +267,7 @@ def restore(s3, key, temporary, report, object_fallback):
                 replacement.unlink(missing_ok=True)
 
 
-def save(s3, key, temporary, report, scene):
+def save(s3, key, temporary, report, scene, *, source_sha=None):
     if (os.environ.get("GITHUB_REF") != "refs/heads/main"
             or os.environ.get("GITHUB_REF_PROTECTED") != "true"
             or os.environ.get("GITHUB_EVENT_NAME") not in ("push", "schedule", "workflow_dispatch")):
@@ -226,12 +285,12 @@ def save(s3, key, temporary, report, scene):
         raise ValueError("Snapshot archive exceeds limit")
     sha = digest_file(archive)
     index = {"version": 1, "sha256": sha, "size": size,
-             "key": f"{key}/{sha}.tar.gz", "source_sha": os.environ["GITHUB_SHA"]}
+             "key": f"{key}/{sha}.tar.gz", "source_sha": source_sha or os.environ["GITHUB_SHA"]}
     # Publish the index last so a reader never sees a partially uploaded bundle.
     s3.upload_file(str(archive), BUCKET, index["key"])
     s3.put_object(Bucket=BUCKET, Key=f"{key}/latest.json",
                   Body=json.dumps(index).encode(), ContentType="application/json")
-    report.update(status="saved", uploaded_bytes=size)
+    report.update(status="saved", uploaded_bytes=size, source_sha=index["source_sha"])
 
 
 def prune_snapshots(s3, scene, report):
@@ -255,6 +314,10 @@ def main():
     parser.add_argument("command", choices=("restore", "save"))
     parser.add_argument("--scene", choices=tuple(SCENES), default="e2e-macos")
     parser.add_argument("--object-fallback", choices=("true", "false"), default="true")
+    parser.add_argument("--target", default="")
+    parser.add_argument("--component", default="")
+    parser.add_argument("--build-mode", default="release")
+    parser.add_argument("--target-args", default="")
     args = parser.parse_args()
     evidence = Path(os.environ["UC_ENGINE_MBX_STATS_DIR"])
     evidence.mkdir(parents=True, exist_ok=True)
@@ -262,15 +325,28 @@ def main():
               "archive_reads": 0, "downloaded_bytes": 0}
     started = time.monotonic()
     try:
+        context = None
+        source_sha = None
+        if args.scene == "release-sidecar":
+            context = release_context(args.target, args.component, args.build_mode, args.target_args)
+            source_sha = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
+            if args.command == "save" and source_sha != os.environ.get("GITHUB_SHA"):
+                raise ValueError("Release publisher must build the protected workflow source")
+            report["context"] = context
+        group = export_group(args.scene, context)
+        if context is not None:
+            # The restore step configures receipts even on a cold snapshot miss.
+            with open(os.environ["GITHUB_ENV"], "a") as output:
+                output.write(f"MBX_CACHE_EXPORT_GROUP={group}\n")
         with tempfile.TemporaryDirectory(prefix="mbx-snapshot-", dir=os.environ["RUNNER_TEMP"]) as directory:
             s3 = client()
-            key = scene_key(args.scene)
+            key = scene_key(args.scene, context)
             if args.command == "restore":
                 restore(s3, key, Path(directory), report, args.object_fallback == "true")
             else:
-                save(s3, key, Path(directory), report, args.scene)
+                save(s3, key, Path(directory), report, group, source_sha=source_sha)
                 try:
-                    prune_snapshots(s3, args.scene, report)
+                    prune_snapshots(s3, group, report)
                 except Exception as error:
                     report["retention_error_type"] = type(error).__name__
                     print(f"::warning::MBX snapshot retention failed ({type(error).__name__})")

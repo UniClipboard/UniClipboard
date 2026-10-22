@@ -46,13 +46,14 @@ PR Check 按 PR 编号分组，新推送取消该 PR 的过时运行。编译任
 
 快照使用私有桶中独立的 `desktop/mbx-snapshots/v1/<scene>/` 前缀，不占用 Actions 缓存容量。场景键包含宿主操作系统与架构、实际 Rust 编译器、依赖锁文件、Cargo 配置、缓存工具 pin、快照协议脚本和对应的共享构建动作。Linux PR 场景还包含容器定义与 `/etc/os-release`，生产和消费都使用 bookworm 镜像。Windows x64 与 ARM64 的键独立；不同场景、平台和架构不混用快照。源码变化仍由 MBX 重新校验，不依赖快照键判断编译产物有效性。
 
-| 场景 | PR 消费者 | 共享编译入口 |
+| 场景 | 消费者 | 共享编译入口 |
 | --- | --- | --- |
+| `release-sidecar` | Windows / macOS daemon 与 helper；Linux sidecar daemon | `.github/workflows/build-target.yml`，每个组件独立编译 |
 | `e2e-macos` | macOS CLI E2E | `.github/actions/build-e2e-rust`：daemon、独立开发 CLI、Engine host、E2E 测试 |
 | `pr-check-linux` | bookworm 容器内 Rust Check | `.github/actions/build-pr-rust`：工作区检查、独立 Quick Panel 检查、OpenAPI 生成器 |
 | `quick-panel-windows` | Windows x64 / ARM64 Quick Panel | `.github/actions/build-pr-rust`：独立 Quick Panel 检查、字体回退测试编译 |
 
-所有消费者保留原有运行验证。发布 sidecar、覆盖率与 membership 的编译图未在这次扩展中接入快照，仍走现有 MBX 策略。
+所有消费者保留原有运行验证。musl CLI、Linux GUI 自有打包容器、覆盖率与 membership 尚未接入这些快照，仍走各自原有缓存策略，不混用 sidecar 编译图。
 
 `cache-warmup.yml` 的 E2E 与 PR Rust 预热任务在受保护 main 上生成快照，使用现有 writer 环境；PR 只读现有 reader 环境。快照预热复用 `.github/actions/build-e2e-rust`，与 PR 使用相同的 daemon、开发 CLI、Engine host 和测试二进制编译命令，保留开发 CLI 的独立 target 与 feature 图。构建本身继续使用 Engine 固定入口，原生 MBX 对象写入限制不变。快照发布是独立的 CI 归档传输，允许受保护 main 的 push、定时预热和手动预热，不允许 PR 或任意分支写入。
 
@@ -64,17 +65,29 @@ PR Check 按 PR 编号分组，新推送取消该 PR 的过时运行。编译任
 4. 先上传不可变、按 SHA-256 命名的压缩归档，再更新场景索引。消费者校验归档大小和 SHA-256，拒绝路径穿越、链接、额外目录、状态附件与超限内容，再交给原生 MBX 导入。
 5. 成功发布后只清理该场景前缀下超过 14 天的索引和归档，不修改桶级生命周期或 `engine/mbx/` 对象。清理异常单独报告。
 
-PR 的读取策略是：**快照完整导入成功后只使用本地 CAS；变化的输入在本地编译，避免远端历史预测触发额外预取。** 快照缺失、损坏或不可用时，记录状态并继续原来的逐对象 R2 读取。快照命中后的停止读取通过清除本次 Engine 配置文件中的远端选择实现，不使用 MBX 不支持的预取配置，也不修改全局 Cargo 配置。预热仍保留逐对象读取，以填充下一份快照。
+PR 与正式 sidecar 消费者的读取策略是：**快照完整导入成功后只使用本地 CAS；变化的输入在本地编译，避免远端历史预测触发额外预取。** 快照缺失、损坏或不可用时，记录状态并继续原来的逐对象 R2 读取。快照命中后的停止读取通过清除本次 Engine 配置文件中的远端选择实现，不使用 MBX 不支持的预取配置，也不修改全局 Cargo 配置。预热仍保留逐对象读取，以填充下一份快照。
 
 快照上传和恢复使用 runner 临时虚拟环境中的固定 boto3；Windows 使用 `Scripts/python.exe` 并将 Git Bash 路径转换为原生路径，Debian 缺少虚拟环境支持时安装 `python3-venv`。凭据从现有 Engine 临时文件加载，Unix 文件权限为 0600；原始凭据、端点与 SDK 异常正文不进入摘要。压缩归档上限为 16 GiB，解包总量上限为 40 GiB；临时导出、隔离导入与压缩仍需要额外磁盘空间。优化失败会在任务中发出警告并写入 `snapshot-restore.json` 或 `snapshot-save.json`，不能把错误标记为普通命中或未命中。
 
 首次接入后，在 main 运行 Cache Warmup 生成基线；工具链、依赖或快照协议变动后同样需要重新预热。在快照成功生成前，PR 保持原 R2 行为。快照在成功预热时清理，长期不运行预热不会主动清理过期对象。
 
+## 正式发布 sidecar 基线
+
+正式发布与缓存预热共用 `build-target.yml` 的 `build-component` 作业，在原有 `stage-daemon.mjs` 编译命令前恢复快照。目标 triple、daemon/helper、release/test 优化模式、原生/显式 `--target` 分别隔离，前缀为 `desktop/mbx-snapshots/v1/sidecar-<target>-<component>-<build-mode>-<target-mode>/`；每个组件只导出自己的实际构建闭包。
+
+发布基线选择在内存中归一化根 manifest 与 lock 中的本地包版本，保留 registry/git 依赖、Engine rev、编译器、Cargo 配置和实际 profile/Rust flags 的差异。`APP_ENV` 不参与基线选择，让 alpha 与 stable 共享依赖基线。真实源码、manifest 和 lock 不变，原生 MBX 仍按完整输入校验动作，包括 `CARGO_PKG_VERSION`、渠道与 feature；版本或渠道变化时，受影响的产物必须重编译。快照键只选择基线，不决定产物有效性。
+
+传输脚本按工作流的 `GITHUB_SHA` 固定下载到 `RUNNER_TEMP`，随后再 checkout 被构建源码；`UC_MBX_SNAPSHOT_SOURCE_ROOT` 指向实际源码目录。历史 tag 不需要自带新协议，源码目录也不会因缓存工具产生未提交改动。脚本下载、恢复或发布失败均保留原构建与逐对象缓存路径。
+
+只有受保护 main 上的 `build_only && save_cache` 任务、且构建源码 SHA 与工作流 SHA 相同时才发布基线；脚本再次校验这一源码边界并记录实际生产 SHA。正式发布和其他分支只恢复，命中后关闭逐对象远端读取，变化的内容在本地编译。预热保留逐对象补齐，生产成本需单独计入，不能把整个发布体系描述成只需两次读取。
+
+首次合并后，现有 main 自动预热会为各平台组件建立基线，同时更新协议变更后的 PR 基线。正式发布的降幅须以预热成功后的实际构建统计验证；尚无基线时会正常回退，不能当作快照命中样本。
+
 ## 验证与历史对照
 
 一次性三模式对照工作流已移除，常规 CI 保留快照生产、只读消费、请求统计和跨平台原生回归测试。共享构建动作继续作为预热与 PR 的单一编译入口。`object-fallback` 输入服务于两个正式角色：预热命中后继续逐对象补齐，PR 命中后只使用本地 CAS。
 
-2026-10-22 的 [macOS E2E 三模式对照](https://github.com/UniClipboard/UniClipboard/actions/runs/39786130655)中，原始 R2 与快照仅本地模式分别为 27,264 / 2 次逻辑读取、29,172,597,769 / 2,964,122,625 字节下载、931 / 590 秒完整任务时长。该样本不代表所有平台、完整产品构建或 Cloudflare 账单；Windows / Linux 尚无真实三模式降幅数据。
+2026-10-22 的 [macOS E2E 三模式对照](https://github.com/UniClipboard/UniClipboard/actions/runs/39786130655)中，原始 R2 与快照仅本地模式分别为 27,264 / 2 次逻辑读取、29,172,597,769 / 2,964,122,625 字节下载、931 / 590 秒完整任务时长。该样本不代表所有平台、完整产品构建或 Cloudflare 账单；这些是 PR/E2E 编译图的数据，不能直接推算正式 release 构建的降幅。
 
 重新评估时可从实验提交 `7c2c0cfd5` 恢复临时对照工作流，在专用分支对固定源码比较原始 R2、快照加逐对象补齐、快照仅本地三种模式，结束后删除。必须先确认受保护 main 已成功发布对应场景的基线，恢复记录为 `hit` 且 `source_sha` 对应预期生产者，再比较包含快照传输的总请求、总下载、完整任务耗时、实际产物执行、消费者上传量与错误。快照未命中后的回退不能作为快照模式的有效样本；生产快照的时间、写入和存储需要单独计入成本。
 
@@ -84,6 +97,6 @@ PR 的读取策略是：**快照完整导入成功后只使用本地 CAS；变�
 python3 scripts/ci/mbx-snapshot.test.py -v
 ```
 
-已有本机 MBX 1.18.0 时，可通过 `UC_MBX_TEST_BINARY` 指向其二进制，运行真实导出、压缩传输、空 target 导入、命中、产物执行、源码/feature 失效及损坏拒绝验证。该测试只操作自己的临时 fixture，不修改项目 target 或远端缓存。
+已有本机 MBX 1.18.0 时，可通过 `UC_MBX_TEST_BINARY` 指向其二进制，运行真实导出、压缩传输、空 target 导入、命中、产物执行、源码/feature 失效、release 版本/渠道变化及损坏拒绝验证。该测试只操作自己的临时 fixture，不修改项目 target 或远端缓存。
 
 `mbx-snapshot-validation.yml` 在 Linux、macOS、Windows x64 / ARM64 上运行小型原生往返测试，不需要 R2 凭据。它验证可移植性和缓存正确性，不代替受保护 main 的真实发布与三模式性能对照。修改快照脚本会使已有快照键失效，包括 macOS；合并后的自动预热会生成新基线。

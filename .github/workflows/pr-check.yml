@@ -80,6 +80,10 @@ jobs:
           bun-version: latest
       - run: bun install --frozen-lockfile
       - run: bun x vitest run
+      - name: Verify native MBX snapshot round trip
+        shell: bash
+        run: |
+          bash scripts/build-cache/mbx.sh --exec bash -c 'UC_MBX_TEST_BINARY="$(command -v mbx)" python3 scripts/ci/mbx-snapshot.test.py -v'
 
   cli-go:
     name: Go CLI Compile Check
@@ -339,6 +343,8 @@ jobs:
 
   e2e:
     name: CLI E2E Tests
+    env:
+      MBX_CACHE_EXPORT_GROUP: e2e-macos
     needs: changes
     if: ${{ needs.changes.outputs.e2e == 'true' }}
     runs-on: macos-latest
@@ -370,8 +376,14 @@ jobs:
           cache-targets: false
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
-      - name: Build daemon
-        run: cargo build -p uc-daemon --features uc-daemon/e2e-rendezvous
+      - name: Restore E2E CAS snapshot
+        uses: ./.github/actions/mbx-snapshot
+        with:
+          # A validated snapshot supplies the baseline; changed inputs compile locally.
+          object-fallback: 'false'
+
+      - name: Build E2E Rust tools
+        uses: ./.github/actions/build-e2e-rust
 
       - name: Run native clipboard startup recovery E2E
         env:
@@ -409,19 +421,6 @@ jobs:
           cargo test -p uc-daemon --features uc-daemon/e2e-rendezvous \
             --test engine_log_file_name_contract 2>&1 \
             | tee "$UC_E2E_EVIDENCE_DIR/engine_log_file_name_contract.log"
-
-      # The Rust development CLI serves only the `dev` commands that have no daemon
-      # API (history seeding). It builds into its own target directory so the
-      # dev-tools features never unify into the daemon build above.
-      - name: Build development CLI for the E2E tests that seed history
-        run: CARGO_TARGET_DIR=target/e2e-dev cargo build -p uc-dev-cli --features uc-dev-cli/dev-tools
-
-      - name: Build Engine host for final-confirmation E2E test
-        run: |
-          engine_manifest="$({ cargo metadata --locked --format-version 1; } | jq -r '.packages[] | select(.name == "uc-engine") | .manifest_path')"
-          engine_root="$(cd "$(dirname "$engine_manifest")/../.." && pwd)"
-          cargo build --manifest-path "$engine_root/Cargo.toml" -p uc-connectivity-host --locked
-          echo "UC_E2E_SPACE_WORK_HOST=$engine_root/target/debug/uc-connectivity-host" >> "$GITHUB_ENV"
 
       - name: Prepare pinned settings-migration history
         run: >-

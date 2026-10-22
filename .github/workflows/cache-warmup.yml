@@ -12,6 +12,9 @@ on:
     # here and fired a full 6-target warmup on every unrelated CI edit.
     paths:
       - 'scripts/ci/release-cache-policy.mjs'
+      - 'scripts/ci/mbx-snapshot.py'
+      - '.github/actions/mbx-snapshot/**'
+      - '.github/actions/build-e2e-rust/**'
       - 'scripts/build-cache/**'
       - '.github/actions/engine-build-cache/**'
       - 'Cargo.lock'
@@ -227,5 +230,53 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: mbx-coverage
+          path: ${{ runner.temp }}/mbx-evidence/
+          if-no-files-found: ignore
+
+  warmup-e2e-macos:
+    name: Warm macOS E2E CAS snapshot
+    needs: maintain-caches
+    runs-on: macos-latest
+    timeout-minutes: 90
+    if: github.ref == 'refs/heads/main' && github.ref_protected
+    environment: desktop-build-cache-writer
+    env:
+      MBX_CACHE_EXPORT_GROUP: e2e-macos
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Start shared Engine MBX cache
+        uses: ./.github/actions/engine-build-cache
+        with:
+          cache-key: e2e-macos
+          access: ${{ github.event_name == 'push' && 'write' || 'read' }}
+          endpoint: ${{ secrets.BUILD_CACHE_R2_ENDPOINT }}
+          access-key-id: ${{ secrets.BUILD_CACHE_R2_ACCESS_KEY_ID }}
+          secret-access-key: ${{ secrets.BUILD_CACHE_R2_SECRET_ACCESS_KEY }}
+      - name: Restore previous E2E CAS snapshot
+        uses: ./.github/actions/mbx-snapshot
+      - name: Cache Rust downloads
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: e2e-macos
+          cache-targets: false
+          save-if: true
+      - name: Build E2E Rust tools
+        uses: ./.github/actions/build-e2e-rust
+      - name: Save E2E CAS snapshot
+        uses: ./.github/actions/mbx-snapshot
+        with:
+          operation: save
+      - name: Summarize MBX cache requests
+        if: always()
+        shell: bash
+        run: python3 scripts/ci/summarize-mbx.py "$RUNNER_TEMP/mbx-evidence"
+      - name: Retain MBX compiler evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: mbx-e2e-macos-warmup
           path: ${{ runner.temp }}/mbx-evidence/
           if-no-files-found: ignore

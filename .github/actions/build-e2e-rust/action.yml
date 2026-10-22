@@ -1,0 +1,25 @@
+name: Build E2E Rust tools
+description: Build the same isolated feature graphs for PRs, snapshot warmup and cache measurements.
+runs:
+  using: composite
+  steps:
+    - name: Build daemon
+      shell: bash
+      run: cargo build -p uc-daemon --features uc-daemon/e2e-rendezvous
+    - name: Build Engine log-file-name contract test
+      shell: bash
+      run: cargo test -p uc-daemon --features uc-daemon/e2e-rendezvous --test engine_log_file_name_contract --no-run
+    - name: Build development CLI
+      shell: bash
+      # Keep dev-tools out of the daemon's dependency feature graph.
+      run: CARGO_TARGET_DIR=target/e2e-dev cargo build -p uc-dev-cli --features uc-dev-cli/dev-tools
+    - name: Build Engine host
+      shell: bash
+      run: |
+        engine_manifest="$({ cargo metadata --locked --format-version 1; } | jq -r '.packages[] | select(.name == "uc-engine") | .manifest_path')"
+        engine_root="$(cd "$(dirname "$engine_manifest")/../.." && pwd)"
+        cargo build --manifest-path "$engine_root/Cargo.toml" -p uc-connectivity-host --locked
+        echo "UC_E2E_SPACE_WORK_HOST=$engine_root/target/debug/uc-connectivity-host" >> "$GITHUB_ENV"
+    - name: Build E2E test binaries
+      shell: bash
+      run: cargo test --manifest-path tests/e2e/Cargo.toml --no-run

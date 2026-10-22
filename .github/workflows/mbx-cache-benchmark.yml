@@ -1,0 +1,53 @@
+name: MBX cache comparison
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: mbx-cache-comparison-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  compare:
+    name: macOS E2E (${{ matrix.mode }})
+    runs-on: macos-latest
+    timeout-minutes: 90
+    environment: desktop-build-cache-reader
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [objects, snapshot-and-objects, snapshot-only]
+    env:
+      MBX_CACHE_EXPORT_GROUP: e2e-macos
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Start shared Engine MBX cache
+        uses: ./.github/actions/engine-build-cache
+        with:
+          cache-key: e2e-macos
+          endpoint: ${{ secrets.BUILD_CACHE_R2_ENDPOINT }}
+          access-key-id: ${{ secrets.BUILD_CACHE_R2_ACCESS_KEY_ID }}
+          secret-access-key: ${{ secrets.BUILD_CACHE_R2_SECRET_ACCESS_KEY }}
+      - name: Restore snapshot
+        if: matrix.mode != 'objects'
+        uses: ./.github/actions/mbx-snapshot
+        with:
+          object-fallback: ${{ matrix.mode != 'snapshot-only' }}
+      - name: Build E2E Rust tools
+        uses: ./.github/actions/build-e2e-rust
+      - name: Run restored contract test
+        shell: bash
+        run: cargo test -p uc-daemon --features uc-daemon/e2e-rendezvous --test engine_log_file_name_contract
+      - name: Summarize MBX cache requests
+        if: always()
+        shell: bash
+        run: python3 scripts/ci/summarize-mbx.py "$RUNNER_TEMP/mbx-evidence"
+      - name: Upload comparison evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: mbx-comparison-${{ matrix.mode }}
+          path: ${{ runner.temp }}/mbx-evidence/
+          if-no-files-found: warn

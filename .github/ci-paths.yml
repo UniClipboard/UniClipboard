@@ -13,6 +13,9 @@ rust_shared: &rust_shared
   - 'rust-toolchain.toml'
   - 'scripts/build-cache/**'
   - '.github/actions/engine-build-cache/**'
+  - '.github/actions/mbx-snapshot/**'
+  - '.github/actions/build-e2e-rust/**'
+  - 'scripts/ci/mbx-snapshot.py'
   - 'clippy.toml'
   - 'vendor/**'
 

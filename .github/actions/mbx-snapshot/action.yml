@@ -1,0 +1,30 @@
+name: MBX CAS snapshot
+description: Transfer a private R2 action closure without restoring Cargo targets.
+inputs:
+  operation:
+    description: Restore or save the e2e-macos snapshot.
+    default: restore
+  object-fallback:
+    description: Keep per-object R2 reads after a snapshot hit.
+    default: 'true'
+runs:
+  using: composite
+  steps:
+    - name: Transfer MBX snapshot
+      if: env.UC_COMPILE_CACHE_BACKEND == 'r2'
+      # A transport failure costs cache reuse, never the build's correctness.
+      continue-on-error: true
+      shell: bash
+      env:
+        SNAPSHOT_OPERATION: ${{ inputs.operation }}
+        SNAPSHOT_OBJECT_FALLBACK: ${{ inputs.object-fallback }}
+      run: |
+        python_bin="$RUNNER_TEMP/mbx-snapshot-python/bin/python"
+        if [[ ! -x "$python_bin" ]]; then
+          python3 -m venv "$RUNNER_TEMP/mbx-snapshot-python"
+        fi
+        if ! "$python_bin" -c 'import boto3' 2>/dev/null; then
+          "$python_bin" -m pip install --disable-pip-version-check -q boto3==1.43.117
+        fi
+        source "$UC_ENGINE_MBX_ENV_FILE"
+        "$python_bin" scripts/ci/mbx-snapshot.py "$SNAPSHOT_OPERATION" --object-fallback "$SNAPSHOT_OBJECT_FALLBACK"

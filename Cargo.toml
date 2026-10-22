@@ -55,7 +55,7 @@ exclude = ["tests/e2e"]
 resolver = "2"
 
 [workspace.package]
-version = "1.3.0"
+version = "1.3.1"
 license = "AGPL-3.0-only"
 
 # Machine-checked subset of docs/agent/rust-tauri-rules.md ("no unwrap/expect

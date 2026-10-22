@@ -9,7 +9,7 @@ use serde_json::{json, Map, Value};
 use crate::grammar;
 use crate::model::{
     DesktopSettings, DesktopSettingsPatch, DoubleTapModifier, QuickPanelPosition, ShortcutBinding,
-    StartupMode, Theme, TrayIcon, UpdateChannel,
+    StartupMode, Theme, TrayIcon, UpdateChannel, WindowSize,
 };
 use crate::SettingsSection;
 
@@ -21,6 +21,7 @@ const SHORTCUT_PATH_PREFIX: &str = "keyboardShortcuts.";
 #[derive(Clone, Copy)]
 pub(crate) enum Kind {
     Bool,
+    WindowSize,
     Enum(&'static [&'static str]),
     NullableEnum(&'static [&'static str]),
     NullablePreset,
@@ -72,6 +73,13 @@ macro_rules! scalar {
 
 /// Every scalar field. [`Scalar::field_set`] says which import set copies it.
 pub(crate) const SCALARS: &[Scalar] = &[
+    Scalar {
+        section: GENERAL,
+        key: "mainWindowSize",
+        legacy: None,
+        kind: Kind::WindowSize,
+        default: || WindowSize::default().to_value(),
+    },
     scalar!(
         GENERAL,
         "trayIcon",
@@ -206,6 +214,7 @@ pub(crate) const LEGACY_SHORTCUTS: &str = "keyboard_shortcuts";
 fn accepts(kind: Kind, value: &Value) -> bool {
     match kind {
         Kind::Bool => value.is_boolean(),
+        Kind::WindowSize => WindowSize::from_value(value).is_some(),
         Kind::Enum(values) => value.as_str().is_some_and(|raw| values.contains(&raw)),
         Kind::NullableEnum(values) => {
             value.is_null() || value.as_str().is_some_and(|raw| values.contains(&raw))
@@ -347,6 +356,9 @@ pub(crate) fn patch_entries(patch: &DesktopSettingsPatch, current: &DesktopSetti
     if let Some(v) = general.tray_icon {
         push(GENERAL, "trayIcon", Some(string(v.as_str())));
     }
+    if let Some(v) = general.main_window_size {
+        push(GENERAL, "mainWindowSize", Some(v.to_value()));
+    }
     if let Some(v) = general.auto_start {
         push(GENERAL, "autoStart", Some(Value::Bool(v)));
     }
@@ -486,6 +498,9 @@ pub(crate) fn typed(values: &BTreeMap<String, Value>) -> DesktopSettings {
     };
 
     let general = &mut settings.general;
+    if let Some(v) = get("general.mainWindowSize").and_then(WindowSize::from_value) {
+        general.main_window_size = v;
+    }
     if let Some(v) = text("general.trayIcon")
         .as_deref()
         .and_then(TrayIcon::parse)

@@ -22,15 +22,22 @@ type View struct {
 
 // General is the `general` section.
 type General struct {
-	AutoStart                 bool    `json:"autoStart"`
-	StartupMode               string  `json:"startupMode"`
-	RestoreLastEntryOnStartup bool    `json:"restoreLastEntryOnStartup"`
-	DeviceName                string  `json:"deviceName"`
-	AutoCheckUpdate           bool    `json:"autoCheckUpdate"`
-	AutoDownloadUpdate        bool    `json:"autoDownloadUpdate"`
-	UpdateChannel             *string `json:"updateChannel"` // nil: no explicit channel
-	TrayIcon                  string  `json:"trayIcon"`      // "glyph" or "cat"
-	Language                  string  `json:"language"`      // "" (null): follow the system language
+	MainWindowSize            WindowSize `json:"mainWindowSize"`
+	AutoStart                 bool       `json:"autoStart"`
+	StartupMode               string     `json:"startupMode"`
+	RestoreLastEntryOnStartup bool       `json:"restoreLastEntryOnStartup"`
+	DeviceName                string     `json:"deviceName"`
+	AutoCheckUpdate           bool       `json:"autoCheckUpdate"`
+	AutoDownloadUpdate        bool       `json:"autoDownloadUpdate"`
+	UpdateChannel             *string    `json:"updateChannel"` // nil: no explicit channel
+	TrayIcon                  string     `json:"trayIcon"`      // "glyph" or "cat"
+	Language                  string     `json:"language"`      // "" (null): follow the system language
+}
+
+// WindowSize is the normal main-window frame size in logical pixels.
+type WindowSize struct {
+	Width  int `json:"width"`
+	Height int `json:"height"`
 }
 
 // Sync is the `sync` section.

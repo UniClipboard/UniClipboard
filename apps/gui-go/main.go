@@ -64,7 +64,8 @@ type HostService struct {
 	osShortcuts       []string                // the shortcuts the WebView executor registered with the OS; written by panelShortcut only
 	binder            *wailsShortcutBinder
 	modifierOnce      sync.Once
-	modifier          *modifierMonitor // the WebView panel's modifier double-tap trigger; created by modifierMonitor()
+	modifier          *modifierMonitor     // the WebView panel's modifier double-tap trigger; created by modifierMonitor()
+	windowSize        *mainWindowSizeState // accessed only on the Wails main thread
 	mainMu            sync.Mutex
 	navMu             sync.Mutex
 	pendingNavigation string
@@ -85,14 +86,20 @@ func (h *HostService) openMainWindow() *application.WebviewWindow {
 	if runtime.GOOS == "linux" {
 		minWidth = 640
 	}
+	size := h.loadMainWindowSize()
+	size.Width, size.Height = max(size.Width, minWidth), max(size.Height, 600)
 	w := h.app.Window.NewWithOptions(quietOptions(withWindowMaterial(application.WebviewWindowOptions{
-		Name: "main", Title: "UniClipboard", URL: "/", Width: 1100, Height: 720, MinWidth: minWidth, MinHeight: 600,
+		Name: "main", Title: "UniClipboard", URL: "/", Width: size.Width, Height: size.Height, MinWidth: minWidth, MinHeight: 600,
 		JS: windowControlsScript(),
 		// Match the default Windows custom title bar at creation so Wails sets
 		// up DWM decorations on the first activation, before the page loads.
 		Frameless: runtime.GOOS == "windows",
 		Mac:       application.MacWindow{TitleBar: application.MacTitleBarHiddenInset},
 	})))
+	// Use the runtime frame dimensions: macOS construction sizes the content
+	// rectangle, whereas Size and SetSize use the outer window frame.
+	w.SetSize(size.Width, size.Height)
+	h.rememberMainWindowSize(w, size)
 	suppressKeyboardMenu(w)
 	w.RegisterHook(events.Common.WindowClosing, func(e *application.WindowEvent) {
 		if h.quitting.Load() {

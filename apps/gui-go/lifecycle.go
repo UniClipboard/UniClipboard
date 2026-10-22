@@ -31,6 +31,9 @@ func (h *HostService) quit(keepDaemon bool) {
 
 // shutdown stops background work, then the daemon unless the exit keeps it.
 func (h *HostService) shutdown() {
+	if h.exit.keepDaemon.Load() {
+		h.persistMainWindowSize()
+	}
 	if h.stopDesktopTheme != nil {
 		h.stopDesktopTheme()
 	}
@@ -63,6 +66,7 @@ const pageDisconnectGrace = 300 * time.Millisecond
 // announceDaemonStop tells the pages to close their daemon WebSocket before the daemon stops. A WebView that is
 // destroyed sends no close frame, so the daemon would otherwise wait for its heartbeat timeout before it exits.
 func (h *HostService) announceDaemonStop() {
+	h.persistMainWindowSize()
 	h.settingsWatch.Pause() // the host's own connection would hold the daemon the same way; RestartDaemon resumes it
 	h.emit(appShuttingDownEvent, nil)
 	time.Sleep(pageDisconnectGrace)

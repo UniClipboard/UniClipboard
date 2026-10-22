@@ -21,12 +21,13 @@ use crate::api::dto::settings::{
     QuickPanelPositionDto, QuickPanelSettingsDto, RetentionPolicyDto, RetentionRuleDto,
     RuleEvaluationDto, SecuritySettingsDto, SettingsDto, SettingsPatchDto, ShortcutKeyDto,
     StartupModeDto, SyncFrequencyDto, SyncSettingsDto, ThemeDto, TrayIconDto, UpdateChannelDto,
+    WindowSizeDto,
 };
 use uc_desktop_settings::{
     DesktopSettings, DesktopSettingsPatch, DoubleTapModifier,
     GeneralSettingsPatch as DesktopGeneralSettingsPatch, QuickPanelPosition,
     QuickPanelSettingsPatch as DesktopQuickPanelSettingsPatch, ShortcutBinding, StartupMode, Theme,
-    TrayIcon, UpdateChannel,
+    TrayIcon, UpdateChannel, WindowSize,
 };
 
 impl IntoDomain<app_settings::SettingsPatch> for SettingsPatchDto {
@@ -138,6 +139,7 @@ impl IntoApiDto<SettingsDto> for (app_settings::SettingsView, &DesktopSettings) 
                 usage_analytics_enabled: desktop.general.usage_analytics_enabled,
                 debug_mode: desktop.general.debug_mode,
                 tray_icon: desktop.general.tray_icon.into_api_dto(),
+                main_window_size: desktop.general.main_window_size.into_api_dto(),
             },
             sync: SyncSettingsDto {
                 sync_enabled: view.sync.sync_enabled,
@@ -468,6 +470,24 @@ impl IntoApiDto<ShortcutKeyDto> for ShortcutBinding {
     }
 }
 
+impl IntoApiDto<WindowSizeDto> for WindowSize {
+    fn into_api_dto(self) -> WindowSizeDto {
+        WindowSizeDto {
+            width: self.width,
+            height: self.height,
+        }
+    }
+}
+
+impl IntoDomain<WindowSize> for WindowSizeDto {
+    fn into_domain(self) -> WindowSize {
+        WindowSize {
+            width: self.width,
+            height: self.height,
+        }
+    }
+}
+
 /// The product part of a `PUT /settings` patch (ADR-013 section 8.3). Values
 /// are validated by the store's grammars before any write.
 pub fn desktop_patch(patch: &SettingsPatchDto) -> DesktopSettingsPatch {
@@ -476,6 +496,7 @@ pub fn desktop_patch(patch: &SettingsPatchDto) -> DesktopSettingsPatch {
         general: general.map_or_else(DesktopGeneralSettingsPatch::default, |general| {
             DesktopGeneralSettingsPatch {
                 tray_icon: general.tray_icon.map(IntoDomain::into_domain),
+                main_window_size: general.main_window_size.map(IntoDomain::into_domain),
                 auto_start: general.auto_start,
                 startup_mode: general.startup_mode.clone().map(IntoDomain::into_domain),
                 restore_last_entry_on_startup: general.restore_last_entry_on_startup,
@@ -515,5 +536,47 @@ pub fn desktop_patch(patch: &SettingsPatchDto) -> DesktopSettingsPatch {
                 double_tap_modifier: quick_panel.double_tap_modifier.map(IntoDomain::into_domain),
             },
         ),
+    }
+}
+
+#[cfg(test)]
+mod window_size_tests {
+    use super::*;
+
+    #[test]
+    fn window_size_patch_is_owned_only_by_desktop() {
+        let patch: SettingsPatchDto = serde_json::from_value(serde_json::json!({
+            "general": {"mainWindowSize": {"width": 1234, "height": 810}}
+        }))
+        .unwrap();
+        let wire = serde_json::to_value(&patch).unwrap();
+        assert_eq!(
+            wire["general"]["mainWindowSize"],
+            serde_json::json!({"width":1234,"height":810})
+        );
+        assert!(wire["general"].get("main_window_size").is_none());
+        assert_eq!(
+            WindowSizeDto::default().into_domain(),
+            WindowSize::default()
+        );
+        let desktop = desktop_patch(&patch);
+        assert_eq!(
+            desktop.general.main_window_size,
+            Some(WindowSize {
+                width: 1234,
+                height: 810
+            })
+        );
+        let engine: app_settings::SettingsPatch = patch.into_domain();
+        assert!(engine == app_settings::SettingsPatch::default());
+        let wire = serde_json::to_value(
+            WindowSize {
+                width: 1234,
+                height: 810,
+            }
+            .into_api_dto(),
+        )
+        .unwrap();
+        assert_eq!(wire, serde_json::json!({"width":1234,"height":810}));
     }
 }

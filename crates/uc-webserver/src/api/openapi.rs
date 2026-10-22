@@ -99,7 +99,7 @@ use crate::api::dto::settings::{
     SettingsPartiallyAppliedDetailsDto, SettingsPatchDto, SettingsRevisionsDto, SettingsSectionDto,
     SettingsSnapshotPayload, SettingsUpdateResultDto, SettingsWriteOwnerDto, ShortcutKeyDto,
     StartupModeDto, SyncFrequencyDto, SyncSettingsDto, SyncSettingsPatchDto, ThemeDto, TrayIconDto,
-    UpdateChannelDto,
+    UpdateChannelDto, WindowSizeDto,
 };
 use uc_daemon_contract::api::dto::analytics::{
     CaptureUiEventRequest, CaptureUiEventResponse, UiDialogOpenSource, UiDismissSource,
@@ -599,6 +599,7 @@ impl Modify for ContractMeta {
             UpdateChannelDto,
             StartupModeDto,
             TrayIconDto,
+            WindowSizeDto,
             // ── settings: PUT /settings patch DTOs (nested children of
             //    SettingsPatchDto, each $ref'd from the request body) ───────
             GeneralSettingsPatchDto,

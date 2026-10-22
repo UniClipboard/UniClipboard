@@ -1554,6 +1554,7 @@ export type GeneralSettingsDto = {
     debugMode?: boolean;
     deviceName?: string | null;
     language?: string | null;
+    mainWindowSize?: WindowSizeDto;
     /**
      * Whether to push the most recent clipboard history entry back onto the
      * OS clipboard once the daemon connection is confirmed at startup.
@@ -1616,6 +1617,7 @@ export type GeneralSettingsPatchDto = {
     debugMode?: boolean | null;
     deviceName?: string | null;
     language?: string | null;
+    mainWindowSize?: WindowSizeDto | null;
     restoreLastEntryOnStartup?: boolean | null;
     startupMode?: StartupModeDto | null;
     telemetryEnabled?: boolean | null;
@@ -4813,6 +4815,14 @@ export type UpgradeStatusEnvelope = {
      * Server time when the response was built (unix epoch milliseconds).
      */
     ts: number;
+};
+
+/**
+ * Window frame dimensions in logical pixels on macOS, Windows and Linux.
+ */
+export type WindowSizeDto = {
+    height: number;
+    width: number;
 };
 
 export type WorkerStatusDto = {

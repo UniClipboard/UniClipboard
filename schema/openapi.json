@@ -3082,6 +3082,9 @@
             "nullable": true,
             "type": "string"
           },
+          "mainWindowSize": {
+            "$ref": "#/components/schemas/WindowSizeDto"
+          },
           "restoreLastEntryOnStartup": {
             "description": "Whether to push the most recent clipboard history entry back onto the\nOS clipboard once the daemon connection is confirmed at startup.\nAdded after initial launch; `#[serde(default)]` keeps old wire\npayloads compatible.",
             "type": "boolean"
@@ -3175,6 +3178,14 @@
           "language": {
             "nullable": true,
             "type": "string"
+          },
+          "mainWindowSize": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/WindowSizeDto"
+              }
+            ],
+            "nullable": true
           },
           "restoreLastEntryOnStartup": {
             "nullable": true,
@@ -8553,6 +8564,26 @@
         "required": [
           "data",
           "ts"
+        ],
+        "type": "object"
+      },
+      "WindowSizeDto": {
+        "description": "Window frame dimensions in logical pixels on macOS, Windows and Linux.",
+        "properties": {
+          "height": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "width": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "width",
+          "height"
         ],
         "type": "object"
       },

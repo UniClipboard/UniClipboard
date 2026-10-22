@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use serde_json::{json, Value};
 use uc_desktop_settings::{
     DesktopSettingsPatch, DesktopSettingsStore, GeneralSettingsPatch, SettingsSection, TrayIcon,
-    FILE_NAME,
+    WindowSize, FILE_NAME,
 };
 
 fn settings_path(dir: &tempfile::TempDir) -> PathBuf {
@@ -29,6 +29,81 @@ fn tray(icon: TrayIcon) -> DesktopSettingsPatch {
 
 fn read_json(path: &Path) -> Value {
     serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap()
+}
+
+#[tokio::test]
+async fn window_size_is_validated_persisted_and_notified_by_the_desktop_store() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = settings_path(&dir);
+    std::fs::write(&path, br#"{"general":{"futurePreference":true}}"#).unwrap();
+    let store = DesktopSettingsStore::load(path.clone());
+    let mut changes = store.subscribe();
+    let patch = |size| DesktopSettingsPatch {
+        general: GeneralSettingsPatch {
+            main_window_size: Some(size),
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    assert_eq!(
+        store.snapshot().await.settings.general.main_window_size,
+        WindowSize::default()
+    );
+    let size = WindowSize {
+        width: 1234,
+        height: 810,
+    };
+    store.apply(patch(size)).await.unwrap();
+    assert_eq!(
+        changes.recv().await.unwrap().sections,
+        vec![SettingsSection::General]
+    );
+    assert_eq!(
+        read_json(&path)["general"]["mainWindowSize"],
+        json!({"width":1234,"height":810})
+    );
+    assert_eq!(read_json(&path)["general"]["futurePreference"], true);
+    let bytes = std::fs::read(&path).unwrap();
+    for invalid in [
+        WindowSize {
+            width: 0,
+            height: 810,
+        },
+        WindowSize {
+            width: 1234,
+            height: u32::MAX,
+        },
+    ] {
+        assert!(store.apply(patch(invalid)).await.is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+    }
+    assert!(!store.apply(patch(size)).await.unwrap().changed);
+    assert!(changes.try_recv().is_err());
+    let restarted = DesktopSettingsStore::load(path);
+    assert_eq!(
+        restarted.snapshot().await.settings.general.main_window_size,
+        size
+    );
+}
+
+#[tokio::test]
+async fn invalid_window_size_defaults_without_rewriting_other_preferences() {
+    for invalid in [
+        json!({"width":0,"height":810}),
+        json!({"width":1200}),
+        json!({"width":-1,"height":810}),
+        json!({"width":1200.5,"height":810}),
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        let path = settings_path(&dir);
+        let raw = json!({"general":{"mainWindowSize":invalid,"trayIcon":"cat"}});
+        std::fs::write(&path, serde_json::to_vec(&raw).unwrap()).unwrap();
+        let store = DesktopSettingsStore::load(path.clone());
+        let general = store.snapshot().await.settings.general;
+        assert_eq!(general.main_window_size, WindowSize::default());
+        assert_eq!(general.tray_icon, TrayIcon::Cat);
+        assert_eq!(read_json(&path), raw);
+    }
 }
 
 // F1

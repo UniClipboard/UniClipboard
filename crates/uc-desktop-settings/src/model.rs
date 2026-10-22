@@ -132,6 +132,42 @@ impl ShortcutBinding {
     }
 }
 
+/// Normal main-window dimensions in logical pixels, shared by all desktop hosts.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct WindowSize {
+    pub width: u32,
+    pub height: u32,
+}
+
+impl Default for WindowSize {
+    fn default() -> Self {
+        Self {
+            width: 1100,
+            height: 720,
+        }
+    }
+}
+
+impl WindowSize {
+    pub(crate) fn to_value(self) -> Value {
+        serde_json::json!({"width": self.width, "height": self.height})
+    }
+
+    pub(crate) fn from_value(value: &Value) -> Option<Self> {
+        let dimension = |key| {
+            value
+                .get(key)?
+                .as_u64()
+                .filter(|v| (1..=i32::MAX as u64).contains(v))
+                .and_then(|v| u32::try_from(v).ok())
+        };
+        Some(Self {
+            width: dimension("width")?,
+            height: dimension("height")?,
+        })
+    }
+}
+
 /// Effective product settings: every field has a valid value.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct DesktopSettings {
@@ -144,6 +180,7 @@ pub struct DesktopSettings {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct GeneralSettings {
     pub tray_icon: TrayIcon,
+    pub main_window_size: WindowSize,
     pub auto_start: bool,
     pub startup_mode: StartupMode,
     pub restore_last_entry_on_startup: bool,
@@ -166,6 +203,7 @@ impl Default for GeneralSettings {
     fn default() -> Self {
         Self {
             tray_icon: TrayIcon::Glyph,
+            main_window_size: WindowSize::default(),
             auto_start: false,
             startup_mode: StartupMode::Normal,
             restore_last_entry_on_startup: false,
@@ -214,6 +252,7 @@ pub struct DesktopSettingsPatch {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct GeneralSettingsPatch {
     pub tray_icon: Option<TrayIcon>,
+    pub main_window_size: Option<WindowSize>,
     pub auto_start: Option<bool>,
     pub startup_mode: Option<StartupMode>,
     pub restore_last_entry_on_startup: Option<bool>,

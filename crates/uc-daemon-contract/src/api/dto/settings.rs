@@ -302,6 +302,7 @@ mod relay_credential_wire_tests {
                 usage_analytics_enabled: true,
                 debug_mode: false,
                 tray_icon: TrayIconDto::Glyph,
+                main_window_size: WindowSizeDto::default(),
             },
             sync: SyncSettingsDto {
                 sync_enabled: true,
@@ -592,6 +593,26 @@ pub struct GeneralSettingsDto {
     /// its product settings store, not from the Engine (ADR-013).
     #[serde(default)]
     pub tray_icon: TrayIconDto,
+    /// Normal main-window size, owned by Desktop product settings.
+    #[serde(default)]
+    pub main_window_size: WindowSizeDto,
+}
+
+/// Window frame dimensions in logical pixels on macOS, Windows and Linux.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct WindowSizeDto {
+    pub width: u32,
+    pub height: u32,
+}
+
+impl Default for WindowSizeDto {
+    fn default() -> Self {
+        Self {
+            width: 1100,
+            height: 720,
+        }
+    }
 }
 
 fn default_true() -> bool {
@@ -911,6 +932,9 @@ pub struct GeneralSettingsPatchDto {
     /// sent to the Engine (ADR-013).
     #[serde(default)]
     pub tray_icon: Option<TrayIconDto>,
+    /// Replaces both dimensions together; validated by the Desktop store.
+    #[serde(default)]
+    pub main_window_size: Option<WindowSizeDto>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]

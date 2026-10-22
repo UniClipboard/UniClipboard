@@ -31,7 +31,7 @@ pub use legacy::{import_legacy, ImportOutcome, CURRENT_FIELD_SET};
 pub use model::{
     DesktopSettings, DesktopSettingsPatch, DoubleTapModifier, GeneralSettings,
     GeneralSettingsPatch, QuickPanelPosition, QuickPanelSettings, QuickPanelSettingsPatch,
-    ShortcutBinding, StartupMode, Theme, TrayIcon, UpdateChannel,
+    ShortcutBinding, StartupMode, Theme, TrayIcon, UpdateChannel, WindowSize,
 };
 
 /// File name of the product settings, next to the Engine's `settings.json`

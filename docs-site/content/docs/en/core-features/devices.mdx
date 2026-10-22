@@ -143,7 +143,9 @@ The CLI equivalent is `uniclip space reset --yes`. This is not a factory reset.
 Registered phones appear in a separate group on the left, with their names and last activity. They are not members of the desktop trust group and do not show desktop transport badges.
 Selecting a phone opens its server address, username, last activity, and credential controls on the right.
 
-The phone icon opens **Connect phone**. **Regular sync** is selected by default and connects using local-network settings. **Device connection (Experimental)** instead pairs the phone into the space with an invitation code. Each method has a short description, with actions in the shared dialog footer.
+The phone icon opens **Connect phone**. Choose a connection method before configuring it. **Regular sync** connects using local-network settings; **Device connection (Experimental)** uses an invitation code to join the space. Enter a device name, optionally customize credentials in advanced options, then scan the QR code or expand manual entry within the same panel.
+
+Joining another space replaces device management with consecutive steps: enter the six-digit invitation code, confirm the space passphrase, and inspect the result. You can go back to edit the code before confirming, then return to the device list when finished. These flows use each platform's task panel without stacking dialogs.
 Regular sync is enabled only after confirmation. Listener errors appear inside the dialog with configuration and retry actions, while device connection remains available. When phones are registered, a settings button also appears beside their group heading.
 
 An existing device's original password cannot be recovered. Reset the password to pair it again. Newly created or updated credentials provide a fresh QR code and credential backup in the detail panel.

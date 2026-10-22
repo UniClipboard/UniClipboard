@@ -1,31 +1,83 @@
 name: MBX snapshot portability
 on:
-  pull_request:
-    paths:
-      - 'scripts/ci/mbx-snapshot*'
-      - 'scripts/build-cache/**'
-      - '.github/actions/mbx-snapshot/**'
-      - '.github/actions/build-pr-rust/**'
-      - '.github/workflows/mbx-snapshot-validation.yml'
   workflow_dispatch:
+    inputs:
+      platform:
+        description: Workload to compare; seed its protected-main snapshot first.
+        type: choice
+        default: macos
+        options: [macos, linux, windows, windows-arm64]
+
 permissions:
   contents: read
+  packages: read
 concurrency:
-  group: mbx-snapshot-portability-${{ github.event.pull_request.number || github.ref }}
+  group: mbx-cache-comparison-${{ github.ref }}-${{ inputs.platform }}
   cancel-in-progress: true
 jobs:
-  native-roundtrip:
-    name: Native CAS round trip (${{ matrix.runner }})
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 15
+  compare:
+    name: ${{ inputs.platform }} (${{ matrix.mode }})
+    runs-on: ${{ inputs.platform == 'macos' && 'macos-latest' || inputs.platform == 'linux' && 'ubuntu-latest' || inputs.platform == 'windows-arm64' && 'windows-11-arm' || 'windows-latest' }}
+    container: ${{ inputs.platform == 'linux' && 'ghcr.io/uniclipboard/build-bookworm:latest' || null }}
+    timeout-minutes: 90
+    environment: desktop-build-cache-reader
     strategy:
       fail-fast: false
       matrix:
-        runner: [ubuntu-latest, macos-latest, windows-latest, windows-11-arm]
+        mode: [objects, snapshot-and-objects, snapshot-only]
+    env:
+      MBX_CACHE_EXPORT_GROUP: ${{ inputs.platform == 'macos' && 'e2e-macos' || inputs.platform == 'linux' && 'pr-check-linux' || 'quick-panel-windows' }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          submodules: recursive
       - uses: dtolnay/rust-toolchain@stable
-      - name: Verify native export, compaction, import and executable reuse
+      - name: Start shared Engine MBX cache
+        uses: ./.github/actions/engine-build-cache
+        with:
+          cache-key: ${{ env.MBX_CACHE_EXPORT_GROUP }}
+          endpoint: ${{ secrets.BUILD_CACHE_R2_ENDPOINT }}
+          access-key-id: ${{ secrets.BUILD_CACHE_R2_ACCESS_KEY_ID }}
+          secret-access-key: ${{ secrets.BUILD_CACHE_R2_SECRET_ACCESS_KEY }}
+      - name: Restore snapshot
+        if: matrix.mode != 'objects'
+        uses: ./.github/actions/mbx-snapshot
+        with:
+          scene: ${{ env.MBX_CACHE_EXPORT_GROUP }}
+          object-fallback: ${{ matrix.mode != 'snapshot-only' }}
+      - name: Build E2E Rust tools
+        if: inputs.platform == 'macos'
+        uses: ./.github/actions/build-e2e-rust
+      - name: Build PR Rust checks
+        if: inputs.platform != 'macos'
+        uses: ./.github/actions/build-pr-rust
+        with:
+          scene: ${{ env.MBX_CACHE_EXPORT_GROUP }}
+      - name: Run restored macOS contract test
+        if: inputs.platform == 'macos'
+        shell: bash
+        run: cargo test -p uc-daemon --features uc-daemon/e2e-rendezvous --test engine_log_file_name_contract
+      - name: Run restored Linux schema generator
+        if: inputs.platform == 'linux'
         shell: bash
         run: |
-          bash scripts/build-cache/mbx.sh --exec bash -c 'UC_MBX_TEST_BINARY="$(command -v mbx)" python3 scripts/ci/mbx-snapshot.test.py -v'
+          target/debug/gen-openapi
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git diff --exit-code -- schema/openapi.json
+      - name: Run restored Windows font contract
+        if: startsWith(inputs.platform, 'windows')
+        shell: bash
+        env:
+          UC_WINDOWS_FONT_REGRESSION: '1'
+        run: cargo test -p quick-panel --test windows_font_fallback --locked -- --ignored
+      - name: Summarize MBX cache requests
+        if: always()
+        shell: bash
+        run: python3 scripts/ci/summarize-mbx.py "$RUNNER_TEMP/mbx-evidence"
+      - name: Upload comparison evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: mbx-comparison-${{ inputs.platform }}-${{ matrix.mode }}
+          path: ${{ runner.temp }}/mbx-evidence/
+          if-no-files-found: warn

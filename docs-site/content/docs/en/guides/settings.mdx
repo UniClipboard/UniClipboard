@@ -52,9 +52,9 @@ On Linux, the main window has a minimum width of 640 logical pixels. History use
 
 Below a content viewport width of 1100 pixels, the Linux History sidebar starts collapsed. Its button opens an overlay drawer without reducing the list or detail width. Choosing a category, tag, or device closes the drawer; clicking the backdrop or pressing Escape also closes it.
 
-The main window remembers its normal size, position and maximized state when you close it or restart the app. Minimized and fullscreen states are not restored. Layout stays local to the current profile and is stored separately from general settings; it is not synchronized between devices.
+On macOS, Windows, and Linux, the main window automatically remembers its normal size across app exits and restarts. The size is a local Desktop preference for the current profile and is not synchronized between devices.
 
-If a display is disconnected or its scaling changes, the restored window is fitted to an available display. Temporary restoration adjustments keep the preferred layout; later stable adjustments are remembered on a best-effort basis. Wayland compositors control window placement, so absolute position restoration is unavailable there.
+The last normal size is saved before the app or daemon stops or restarts, including update installation and entering Lightweight Mode. Minimized, maximized, and fullscreen dimensions do not overwrite it. A silent launch that creates no main window preserves the saved size.
 
 ### Follow Omarchy theme
 

@@ -61,14 +61,14 @@ describe('APP_ENV resolution', () => {
 
 describe('shipped uniclipd builds', () => {
   it('embeds the same telemetry env in the app sidecar and the CLI daemon', () => {
-    const sidecar = step(read('build.yml'), 'prepare uniclipd sidecar')
+    const sidecar = step(read('build-target.yml'), 'prepare uniclipd sidecar')
     const cli = step(read('build-cli.yml'), 'build uniclipd')
     expect(cli).toContain('cargo build --release -p uc-daemon --bin uniclipd')
     for (const line of TELEMETRY_ENV) {
       expect(sidecar).toContain(line)
       expect(cli).toContain(line)
     }
-    for (const source of [read('build.yml'), read('build-cli.yml')]) {
+    for (const source of [read('build-target.yml'), read('build-cli.yml')]) {
       expect(step(source, 'resolve APP_ENV from channel')).toContain(
         'run: node scripts/ci/resolve-app-env.mjs'
       )
@@ -76,7 +76,7 @@ describe('shipped uniclipd builds', () => {
   })
 
   it('packages macOS and Windows x64 CLI archives from the release app sidecar', () => {
-    const build = read('build.yml')
+    const build = read('build-target.yml')
     const cli = jobs(build)['build-cli']
     expect(cli).toContain(
       "if: inputs.build_only != true && (inputs.package_cli && inputs.build_mode == 'release' && needs.setup-matrix.outputs.cli-matrix != '[]')"
@@ -102,17 +102,19 @@ describe('shipped uniclipd builds', () => {
 
 describe('build job graph', () => {
   it.each([
-    ['build.yml', 'build-cli'],
+    ['build-target.yml', 'build-cli'],
     ['build-cli.yml', 'build-cli'],
   ])('%s builds the sidecar first, then runs %s after it', (file, job) => {
     const all = jobs(read(file))
-    expect(needsOf(all['build-sidecar'])).toEqual(['setup-matrix'])
+    const compiler = file === 'build-target.yml' ? 'build-component' : 'build-sidecar'
+    expect(needsOf(all[compiler])).toEqual(['setup-matrix'])
+    if (compiler === 'build-component') expect(needsOf(all['build-sidecar'])).toContain(compiler)
     expect(needsOf(all[job])).toContain('build-sidecar')
   })
 
   it('builds the daemon only in the sidecar job', () => {
-    const build = jobs(read('build.yml'))
-    expect(build['build-sidecar']).toContain('run: node scripts/stage-daemon.mjs')
+    const build = jobs(read('build-target.yml'))
+    expect(build['build-component']).toContain('run: node scripts/stage-daemon.mjs')
     expect(build['build-cli']).not.toContain('run: node scripts/stage-daemon.mjs')
     expect(build['build-cli']).not.toContain('cargo build')
     const cliWorkflow = jobs(read('build-cli.yml'))
@@ -121,7 +123,7 @@ describe('build job graph', () => {
   })
 
   it('builds the user-facing CLI from the Go module, without a Rust toolchain', () => {
-    for (const file of ['build.yml', 'build-cli.yml']) {
+    for (const file of ['build-target.yml', 'build-cli.yml']) {
       const cli = jobs(read(file))['build-cli']
       expect(cli).toContain('uses: actions/setup-go@v6')
       expect(cli).toContain('go-version-file: apps/cli-go/go.mod')
@@ -134,7 +136,7 @@ describe('build job graph', () => {
     // release.yml collects every *.exe / *.json / *.sig under the downloaded
     // artifacts, so a loose uniclipd-*.exe would be published as a release asset.
     for (const [file, name] of [
-      ['build.yml', 'sidecar-${{ matrix.target }}'],
+      ['build-target.yml', 'sidecar-${{ matrix.target }}'],
       ['build-cli.yml', 'cli-sidecar-${{ matrix.target }}'],
     ]) {
       const all = jobs(read(file))
@@ -155,6 +157,7 @@ describe('Rust development CLI stays out of production builds', () => {
   const root = path.resolve(__dirname, '../..')
   const production = [
     '.github/workflows/build.yml',
+    '.github/workflows/build-target.yml',
     '.github/workflows/build-cli.yml',
     '.github/workflows/release.yml',
     '.github/workflows/build-server-image.yml',

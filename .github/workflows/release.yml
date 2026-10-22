@@ -205,12 +205,8 @@ jobs:
       # Publication builds and verifies artifacts; full runtime acceptance belongs to PR/manual workflows.
       run_acceptance: false
       allow_unsigned_windows: ${{ needs.validate.outputs.allow_unsigned_windows == 'true' }}
-      # A release tag can land while cache-warmup.yml is still writing a
-      # freshly-bumped Cargo.lock's cache, so the read-only release build
-      # races it and loses to GHA cache LRU eviction (see t-0159). Writing
-      # this release's own cache backfills it for the next run even when
-      # that race is lost, at the cost of one extra write per release.
-      save_cache: true
+      # Main and cache-warmup own cache writes; publication must not wait for cache uploads.
+      save_cache: false
     secrets: inherit
 
   build-cli:
@@ -222,6 +218,7 @@ jobs:
       channel: ${{ needs.validate.outputs.channel }}
       # macOS and Windows x64 CLI archives come from the build job above.
       linux_only: true
+      save_cache: false
     secrets: inherit
 
   create-release:

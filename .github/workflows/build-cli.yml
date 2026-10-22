@@ -207,7 +207,7 @@ jobs:
           shared-key: cli-${{ matrix.target }}
           cache-targets: false
           # 只在 main 写缓存,tag/PR 只读。详见 build.yml 同名 step 的注释。
-          save-if: ${{ inputs.save_cache || github.ref == 'refs/heads/main' }}
+          save-if: ${{ inputs.save_cache || (github.event_name == 'push' && github.ref == 'refs/heads/main') }}
 
       - name: resolve APP_ENV from channel
         id: resolve-env

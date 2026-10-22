@@ -1,0 +1,146 @@
+import { spawnSync } from 'node:child_process'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { describe, expect, it } from 'vitest'
+import { parse } from 'yaml'
+import { selectBuildPlatforms } from '../ci/select-build-platforms.mjs'
+
+const read = (file: string) =>
+  parse(fs.readFileSync(path.resolve(__dirname, '../../.github/workflows', file), 'utf8'))
+
+describe('independent release platform pipelines', () => {
+  it('splits every macOS and Windows architecture before compiling or packaging', () => {
+    expect(selectBuildPlatforms('all')).toEqual([
+      'macos-aarch64',
+      'macos-x86_64',
+      'windows-x86_64',
+      'windows-arm64',
+      'linux-gui',
+    ])
+    expect(selectBuildPlatforms('windows-latest')).toEqual(['windows-x86_64', 'windows-arm64'])
+    for (const platform of selectBuildPlatforms('all')) {
+      expect(selectBuildPlatforms(platform)).toEqual([platform])
+    }
+  })
+
+  it('preserves the Linux GUI exclusion in all/test and build-only runs', () => {
+    expect(selectBuildPlatforms('all', { buildMode: 'test' })).not.toContain('linux-gui')
+    expect(selectBuildPlatforms('all', { buildOnly: true })).not.toContain('linux-gui')
+    expect(selectBuildPlatforms('linux-gui', { buildMode: 'test' })).toEqual(['linux-gui'])
+    expect(selectBuildPlatforms('ubuntu-22.04')).toEqual(['ubuntu-22.04'])
+    expect(selectBuildPlatforms('ubuntu-22.04-arm')).toEqual(['ubuntu-22.04-arm'])
+    expect(() => selectBuildPlatforms('unsupported')).toThrow('Unknown build platform')
+  })
+
+  it('pins a moving source ref once and forwards signing/acceptance controls to each pipeline', () => {
+    const outer = read('build.yml')
+    const inner = read('build-target.yml')
+    const call = outer.jobs['build-platform']
+    expect(call.uses).toBe('./.github/workflows/build-target.yml')
+    expect(call.with.branch).toBe('${{ needs.setup-platforms.outputs.source_sha }}')
+    expect(call.with.platform).toBe('${{ matrix.platform }}')
+    expect(call.strategy['fail-fast']).toBe(false)
+    expect(call.secrets).toBe('inherit')
+    for (const name of Object.keys(inner.on.workflow_call.inputs)) {
+      expect(call.with, name).toHaveProperty(name)
+    }
+    for (const name of [
+      'require_signing',
+      'signing_self_test',
+      'signpath_test_signing',
+      'allow_unsigned_windows',
+    ]) {
+      expect(call.with[name]).toBe(`\${{ inputs.${name} == true }}`)
+    }
+  })
+
+  it('executes each platform selector with exactly one target and independent compiler components', () => {
+    const steps = read('build-target.yml').jobs['setup-matrix'].steps
+    const generate = steps.find((step: { name?: string }) => step.name === 'Generate matrix').run
+    const select = steps.find(
+      (step: { name?: string }) => step.name === 'Select independent sidecar components'
+    ).run
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'uc-platform-selector-'))
+    try {
+      for (const platform of [...selectBuildPlatforms('all'), 'ubuntu-22.04', 'ubuntu-22.04-arm']) {
+        const output = path.join(directory, 'output')
+        const run = (script: string, env = {}) => {
+          fs.writeFileSync(output, '')
+          const result = spawnSync('bash', ['-e', '-c', script], {
+            encoding: 'utf8',
+            env: {
+              ...process.env,
+              GITHUB_OUTPUT: output,
+              WINDOWS_RUNNER: 'dedicated-windows',
+              ...env,
+            },
+          })
+          expect(result.status, result.stderr).toBe(0)
+          return JSON.parse(
+            fs
+              .readFileSync(output, 'utf8')
+              .trim()
+              .replace(/^matrix=/, '')
+          ) as Array<{ target: string; component: string; runner?: string }>
+        }
+        const targets = run(generate.replaceAll('${{ inputs.platform }}', platform))
+        expect(targets).toHaveLength(platform === 'linux-gui' ? 0 : 1)
+        const components = run(select, { MATRIX: JSON.stringify(targets) })
+        expect(components.map(entry => entry.component)).toEqual(
+          platform === 'linux-gui'
+            ? []
+            : platform.startsWith('ubuntu')
+              ? ['daemon']
+              : ['daemon', 'helper']
+        )
+        for (const component of components) {
+          expect(component.target).toBe(targets[0].target)
+          if (platform.startsWith('windows')) expect(component.runner).toBe('dedicated-windows')
+        }
+      }
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true })
+    }
+  })
+
+  it('builds daemon and helper independently, then verifies both before packaging', () => {
+    const jobs = read('build-target.yml').jobs
+    expect(jobs['build-component'].needs).toBe('setup-matrix')
+    expect(jobs['build-sidecar'].needs).toEqual(['setup-matrix', 'build-component'])
+    expect(
+      jobs['build-sidecar'].steps.some((step: { run?: string }) =>
+        step.run?.includes('merge-sidecar-components.mjs')
+      )
+    ).toBe(true)
+    for (const consumer of ['package-macos-gui', 'package-windows-gui', 'build-cli']) {
+      expect(jobs[consumer].needs).toContain('build-sidecar')
+    }
+  })
+
+  it('keeps release cache writes disabled while warmup explicitly populates downloads', () => {
+    expect(read('release.yml').jobs.build.with.save_cache).toBe(false)
+    expect(read('release.yml').jobs.build.secrets).toBe('inherit')
+    expect(read('release.yml').jobs['build-cli'].with.save_cache).toBe(false)
+    const linux = read('package-linux-gui.yml').jobs.package.steps
+    expect(
+      linux.find(
+        (step: { name?: string }) => step.name === 'Restore Cargo downloads and MBX actions'
+      ).uses
+    ).toBe('actions/cache/restore@v4')
+    expect(
+      linux.find((step: { name?: string }) => step.name === 'Save the Rust cache').if
+    ).toContain('inputs.save_cache != false')
+    expect(read('build-target.yml').jobs['package-linux-gui'].with.save_cache).toBe(
+      '${{ inputs.save_cache == true }}'
+    )
+    const warmup = read('cache-warmup.yml').jobs
+    expect(warmup['warmup-release-app'].with.save_cache).toBe(true)
+    expect(warmup['warmup-test-app'].with.save_cache).toBe(true)
+    const cache = read('build-target.yml').jobs['build-component'].steps.find(
+      (step: { uses?: string }) => step.uses === 'Swatinem/rust-cache@v2'
+    )
+    expect(cache.with['cache-targets']).toBe(false)
+    expect(cache.with['save-if']).toContain("github.event_name == 'push'")
+  })
+})

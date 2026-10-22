@@ -48,7 +48,7 @@ describe('hosted build toolchain isolation', () => {
   })
 
   it('isolates every Rust-building job before cache lookup', () => {
-    for (const file of ['build.yml', 'build-cli.yml']) {
+    for (const file of ['build-target.yml', 'build-cli.yml']) {
       const source = fs.readFileSync(
         path.resolve(__dirname, '../../.github/workflows', file),
         'utf8'

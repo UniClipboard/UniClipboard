@@ -6,6 +6,10 @@ run-name: package-linux-gui-${{ github.run_number }}
 on:
   workflow_call:
     inputs:
+      save_cache:
+        description: 'Save Rust downloads after packaging; release disables this'
+        type: boolean
+        default: true
       run_acceptance:
         description: 'Run isolated AppImage, package lifecycle and telemetry acceptance after packaging'
         required: false
@@ -40,6 +44,10 @@ on:
       - 'scripts/collect-release-assets.py'
   workflow_dispatch:
     inputs:
+      save_cache:
+        description: 'Save Rust downloads after packaging; release disables this'
+        type: boolean
+        default: true
       run_acceptance:
         description: 'Run isolated package lifecycle and functional acceptance'
         required: false
@@ -153,7 +161,7 @@ jobs:
         run: bash scripts/build-cache/engine-tools.sh --ci
 
       - name: Restore Cargo downloads and MBX actions
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: |
             ${{ runner.temp }}/uc-cache/cargo/registry
@@ -243,7 +251,7 @@ jobs:
           retention-days: 14
 
       - name: Save the Rust cache
-        if: github.ref == 'refs/heads/main'
+        if: inputs.save_cache != false && github.ref == 'refs/heads/main'
         uses: actions/cache/save@v4
         with:
           path: |

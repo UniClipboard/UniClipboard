@@ -14,7 +14,7 @@
 // packaging job uses (matrix.args), and locally for a native build.
 //
 // Usage:
-//   node scripts/stage-daemon.mjs [--target <triple>] [--debug] [--timings]
+//   node scripts/stage-daemon.mjs [--target <triple>] [--component daemon|helper|all] [--debug] [--timings]
 
 import { execFileSync } from 'node:child_process'
 import { chmodSync, copyFileSync, mkdirSync } from 'node:fs'
@@ -28,12 +28,15 @@ function parseArgs(argv) {
   let target = ''
   let release = true
   let timings = false
+  let component = 'all'
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]
     if (arg === '--target') {
       target = argv[++i] ?? ''
     } else if (arg.startsWith('--target=')) {
       target = arg.slice('--target='.length)
+    } else if (arg === '--component') {
+      component = argv[++i] ?? ''
     } else if (arg === '--debug') {
       release = false
     } else if (arg === '--release') {
@@ -44,7 +47,10 @@ function parseArgs(argv) {
     // Unknown args are ignored on purpose so callers can forward the packaging
     // job's `${{ matrix.args }}` verbatim (it is either `--target <triple>` or empty).
   }
-  return { target, release, timings }
+  if (!['all', 'daemon', 'helper'].includes(component)) {
+    throw new Error(`Unknown sidecar component: ${component}`)
+  }
+  return { target, release, timings, component }
 }
 
 function hostTriple() {
@@ -69,15 +75,23 @@ function hostTriple() {
   }
 }
 
-const { target, release, timings } = parseArgs(process.argv.slice(2))
+const { target, release, timings, component } = parseArgs(process.argv.slice(2))
 const triple = target || hostTriple()
 const isWindows = triple.includes('windows')
 const exeSuffix = isWindows ? '.exe' : ''
 const profile = release ? 'release' : 'debug'
 
-// 1) Build the daemon binary for the requested target.
-// Native Windows child processes cannot execute the shell cargo entry from PATH.
-// Enter MBX once per build so daemon/helper sessions retain separate statistics.
+// CI builds each component on an independent runner. Local callers can still stage the full set.
+// Separate Cargo invocations preserve each binary's existing dependency features.
+const binaries = [{ component: 'daemon', package: 'uc-daemon', name: 'uniclipd' }]
+if (triple.includes('apple-darwin') || isWindows) {
+  binaries.push({ component: 'helper', package: 'quick-panel', name: 'uniclip-quick-panel' })
+}
+const selected = binaries.filter(binary => component === 'all' || binary.component === component)
+if (selected.length === 0)
+  throw new Error(`Sidecar component ${component} is not supported on ${triple}`)
+
+// Native Windows child processes cannot execute the shell Cargo entry from PATH.
 const runCargoBuild = args => {
   const options = { cwd: repoRoot, stdio: 'inherit' }
   if (process.env.UC_ENGINE_MBX_BIN) {
@@ -91,41 +105,20 @@ const runCargoBuild = args => {
   }
 }
 
-const buildArgs = ['build', '--locked', '-p', 'uc-daemon', '--bin', 'uniclipd']
-if (release) buildArgs.push('--release')
-if (target) buildArgs.push('--target', target)
-if (timings) buildArgs.push('--timings')
-console.log(`[sidecar] cargo ${buildArgs.join(' ')}`)
-runCargoBuild(buildArgs)
+mkdirSync(stagingDir, { recursive: true })
+for (const binary of selected) {
+  const args = ['build', '--locked', '-p', binary.package, '--bin', binary.name]
+  if (release) args.push('--release')
+  if (target) args.push('--target', target)
+  if (timings) args.push('--timings')
+  console.log(`[sidecar] cargo ${args.join(' ')}`)
+  runCargoBuild(args)
 
-// 2) Locate the compiled binary. With `--target` cargo nests the output under
-//    the triple; a native build (no `--target`) lands in target/<profile>/.
-const builtPath = target
-  ? join(repoRoot, 'target', triple, profile, `uniclipd${exeSuffix}`)
-  : join(repoRoot, 'target', profile, `uniclipd${exeSuffix}`)
-
-// 3) Stage it as `uniclipd-<triple>`.
-const binariesDir = stagingDir
-mkdirSync(binariesDir, { recursive: true })
-const sidecarPath = join(binariesDir, `uniclipd-${triple}${exeSuffix}`)
-copyFileSync(builtPath, sidecarPath)
-if (!isWindows) chmodSync(sidecarPath, 0o755)
-console.log(`[sidecar] staged ${builtPath} -> ${sidecarPath}`)
-
-// 4) macOS and Windows: the native quick panel helper ships next to the app executable too, where
-//    the Go host's `quickpanelhelper.ResolveExePath` looks for it. Linux keeps the WebView panel.
-if (triple.includes('apple-darwin') || isWindows) {
-  const helperArgs = ['build', '--locked', '-p', 'quick-panel', '--bin', 'uniclip-quick-panel']
-  if (release) helperArgs.push('--release')
-  if (target) helperArgs.push('--target', target)
-  if (timings) helperArgs.push('--timings')
-  console.log(`[sidecar] cargo ${helperArgs.join(' ')}`)
-  runCargoBuild(helperArgs)
-  const helperBuilt = target
-    ? join(repoRoot, 'target', triple, profile, `uniclip-quick-panel${exeSuffix}`)
-    : join(repoRoot, 'target', profile, `uniclip-quick-panel${exeSuffix}`)
-  const helperPath = join(binariesDir, `uniclip-quick-panel-${triple}${exeSuffix}`)
-  copyFileSync(helperBuilt, helperPath)
-  if (!isWindows) chmodSync(helperPath, 0o755)
-  console.log(`[sidecar] staged ${helperBuilt} -> ${helperPath}`)
+  const builtPath = target
+    ? join(repoRoot, 'target', triple, profile, `${binary.name}${exeSuffix}`)
+    : join(repoRoot, 'target', profile, `${binary.name}${exeSuffix}`)
+  const sidecarPath = join(stagingDir, `${binary.name}-${triple}${exeSuffix}`)
+  copyFileSync(builtPath, sidecarPath)
+  if (!isWindows) chmodSync(sidecarPath, 0o755)
+  console.log(`[sidecar] staged ${builtPath} -> ${sidecarPath}`)
 }

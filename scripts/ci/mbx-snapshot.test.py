@@ -7,6 +7,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import tarfile
 import tempfile
 import unittest
@@ -34,6 +35,67 @@ class SnapshotTests(unittest.TestCase):
                 self.assertNotEqual(x64, snapshot.scene_key("e2e-macos"))
             with patch.object(snapshot.platform, "machine", return_value="ARM64"):
                 self.assertNotEqual(x64, snapshot.scene_key("quick-panel-windows"))
+
+    def test_release_seed_survives_local_version_and_channel_changes(self):
+        manifest = b'[workspace.package]\nversion = "1.0.0"\n[workspace.dependencies]\nengine = { git = "https://example.invalid/engine", rev = "abc" }\n'
+        lock = b'[[package]]\nname = "daemon"\nversion = "1.0.0"\ndependencies = ["helper 1.0.0", "external"]\n[[package]]\nname = "helper"\nversion = "1.0.0"\n[[package]]\nname = "external"\nversion = "2.0.0"\nsource = "registry+https://example.invalid/index"\nchecksum = "abc"\n'
+        for name, raw in [("Cargo.toml", manifest), ("Cargo.lock", lock)]:
+            self.assertEqual(snapshot.release_seed_input(name, raw), snapshot.release_seed_input(name, raw.replace(b'1.0.0', b'1.1.0-alpha.1')))
+        self.assertNotEqual(snapshot.release_seed_input("Cargo.lock", lock), snapshot.release_seed_input("Cargo.lock", lock.replace(b'2.0.0', b'2.0.1')))
+        self.assertNotEqual(snapshot.release_seed_input("Cargo.toml", manifest), snapshot.release_seed_input("Cargo.toml", manifest.replace(b'rev = "abc"', b'rev = "def"')))
+        context = snapshot.release_context("x86_64-pc-windows-msvc", "daemon", "release", "")
+        with patch.object(snapshot.subprocess, "check_output", return_value=b"compiler"), patch.dict(os.environ, CARGO_PROFILE_RELEASE_OPT_LEVEL="3"):
+            with patch.dict(os.environ, APP_ENV="production"):
+                baseline = snapshot.scene_key("release-sidecar", context)
+            with patch.dict(os.environ, APP_ENV="alpha"):
+                self.assertEqual(baseline, snapshot.scene_key("release-sidecar", context))
+            for changed in [dict(context, component="helper"), dict(context, build_mode="test"), dict(context, target_mode="explicit"), dict(context, target="aarch64-pc-windows-msvc")]:
+                self.assertNotEqual(baseline, snapshot.scene_key("release-sidecar", changed))
+            with patch.dict(os.environ, CARGO_PROFILE_RELEASE_OPT_LEVEL="1"):
+                self.assertNotEqual(baseline, snapshot.scene_key("release-sidecar", context))
+
+    def test_release_seed_uses_pinned_transport_with_a_historical_source_root(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name in ("Cargo.toml", "Cargo.lock", ".cargo/config.toml", "rust-toolchain.toml", "scripts/build-cache/engine-tools.sh", "scripts/stage-daemon.mjs", "scripts/ci/configure-build-mode.mjs", "scripts/ci/resolve-app-env.mjs"):
+                target = root / name
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(snapshot.ROOT / name, target)
+            context = snapshot.release_context("x86_64-pc-windows-msvc", "daemon", "release", "")
+            with patch.object(snapshot, "ROOT", root), patch.object(snapshot.subprocess, "check_output", return_value=b"compiler"):
+                baseline = snapshot.scene_key("release-sidecar", context)
+                (root / "scripts/ci/mbx-snapshot.py").write_text("historical transport is not executed")
+                self.assertEqual(baseline, snapshot.scene_key("release-sidecar", context))
+
+    def test_release_context_rejects_unsupported_or_inconsistent_targets(self):
+        for context in [("../escape", "daemon", "release", ""),
+                        ("x86_64-unknown-linux-gnu", "helper", "release", ""),
+                        ("x86_64-pc-windows-msvc", "daemon", "debug", ""),
+                        ("x86_64-pc-windows-msvc", "daemon", "release", "--target aarch64-pc-windows-msvc")]:
+            with self.subTest(context=context), self.assertRaises(ValueError):
+                snapshot.release_context(*context)
+
+    def test_release_publisher_refuses_a_different_source_before_accessing_r2(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            env = dict(UC_ENGINE_MBX_STATS_DIR=str(root), GITHUB_ENV=str(root / "env"), GITHUB_SHA="a" * 40)
+            argv = ["mbx-snapshot.py", "save", "--scene", "release-sidecar", "--target", "x86_64-pc-windows-msvc", "--component", "daemon"]
+            with patch.dict(os.environ, env), patch.object(sys, "argv", argv), patch.object(snapshot.subprocess, "check_output", return_value="b" * 40), patch.object(snapshot, "client") as client:
+                snapshot.main()
+                client.assert_not_called()
+            report = json.loads((root / "snapshot-save.json").read_text())
+            self.assertEqual(report["status"], "error")
+            self.assertEqual(report["error_type"], "ValueError")
+
+    def test_release_cold_miss_configures_export_group_and_preserves_remote_policy(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            env = dict(UC_ENGINE_MBX_STATS_DIR=str(root), GITHUB_ENV=str(root / "env"), RUNNER_TEMP=str(root))
+            argv = ["mbx-snapshot.py", "restore", "--scene", "release-sidecar", "--target", "x86_64-pc-windows-msvc", "--component", "daemon", "--object-fallback", "false"]
+            with patch.dict(os.environ, env), patch.object(sys, "argv", argv), patch.object(snapshot.subprocess, "check_output", return_value="a" * 40), patch.object(snapshot, "client"), patch.object(snapshot, "scene_key", return_value="scene"), patch.object(snapshot, "get_index", return_value=None):
+                snapshot.main()
+            self.assertIn("MBX_CACHE_EXPORT_GROUP=sidecar-x86_64-pc-windows-msvc-daemon-release-native", (root / "env").read_text())
+            self.assertEqual(json.loads((root / "snapshot-restore.json").read_text())["status"], "miss")
 
     def test_index_cannot_escape_scene_or_exceed_limit(self):
         sha = "a" * 64
@@ -186,7 +248,15 @@ class NativeMbxTests(unittest.TestCase):
             # empty target must not restore scheduler state or compiler outputs.
             wrapper_bundle = root / "wrapper-bundle"
             shutil.copytree(bundle, wrapper_bundle)
-            snapshot.mbx("cache", "import", str(wrapper_bundle), cache=root / "wrapper-consumer")
+            tooling = root / "pipeline-tools"
+            tooling.mkdir()
+            shutil.copyfile(Path(snapshot.__file__), tooling / "mbx-snapshot.py")
+            spec = importlib.util.spec_from_file_location("relocated_snapshot", tooling / "mbx-snapshot.py")
+            relocated = importlib.util.module_from_spec(spec)
+            with patch.dict(os.environ, UC_MBX_SNAPSHOT_SOURCE_ROOT=str(snapshot.ROOT)):
+                spec.loader.exec_module(relocated)
+            self.assertEqual(relocated.ROOT, snapshot.ROOT)
+            relocated.mbx("cache", "import", str(wrapper_bundle), cache=root / "wrapper-consumer")
             self.assertTrue((root / "wrapper-consumer/actions/cas").is_dir())
             original_target = workspace / "target"
             original_target.rename(workspace / "producer-target")
@@ -247,6 +317,38 @@ class NativeMbxTests(unittest.TestCase):
             source.write_text(source.read_text().replace('"snapshot-proof"', '"changed-source"'))
             run("build", "--offline", cache=root / "consumer")
             self.assertEqual(subprocess.check_output([str(original_target / "debug" / executable)], text=True).strip(), "changed-source")
+            # A dependency seed may cross versions and channels, but executable
+            # contents must always reflect Cargo's current full inputs.
+            source.write_text('fn main() { println!("{}|{}", env!("CARGO_PKG_VERSION"), env!("APP_ENV")); }\n')
+            environment.update(MBX_CACHE_EXPORT_GROUP="release-proof", APP_ENV="production")
+            run("build", "--offline", "--locked", "--release")
+            release_transport = root / "release-transport"
+            release_transport.mkdir()
+            release_export = release_transport / "exported"
+            run("cache", "export", "--group", "release-proof", "--format", "directory", str(release_export))
+            release_bundle = release_transport / "bundle"
+            with patch.object(snapshot, "mbx", side_effect=run):
+                snapshot.compact_bundle(release_export, release_bundle)
+            original_target.rename(workspace / "release-producer-target")
+            run("cache", "import", str(release_bundle), cache=root / "release-consumer")
+            run("build", "--offline", "--locked", "--release", cache=root / "release-consumer")
+            self.assertGreater(json.loads((root / "native-stats.json").read_text())["hits"], 0)
+            release_executable = original_target / "release" / executable
+            self.assertEqual(subprocess.check_output([str(release_executable)], text=True).strip(), "0.1.0|production")
+            seeds = {name: snapshot.release_seed_input(name, (workspace / name).read_bytes()) for name in ("Cargo.toml", "Cargo.lock")}
+            for name in seeds:
+                path = workspace / name
+                path.write_text(path.read_text().replace('0.1.0', '0.2.0'))
+                self.assertEqual(seeds[name], snapshot.release_seed_input(name, path.read_bytes()))
+            shutil.rmtree(original_target)
+            run("build", "--offline", "--locked", "--release", cache=root / "release-consumer")
+            self.assertEqual(subprocess.check_output([str(release_executable)], text=True).strip(), "0.2.0|production")
+            environment["APP_ENV"] = "alpha"
+            shutil.rmtree(original_target)
+            run("build", "--offline", "--locked", "--release", cache=root / "release-consumer")
+            self.assertEqual(subprocess.check_output([str(release_executable)], text=True).strip(), "0.2.0|alpha")
+            environment["MBX_CACHE_EXPORT_GROUP"] = "e2e-macos"
+            run("build", "--offline", cache=root / "consumer")
             # Corrupt a required object and confirm native import rejects it.
             exported = root / "corrupt-export"
             run("cache", "export", "--group", "e2e-macos", "--format", "directory", str(exported), cache=root / "consumer")

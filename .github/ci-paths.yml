@@ -17,6 +17,7 @@ rust_shared: &rust_shared
   - '.github/actions/build-e2e-rust/**'
   - '.github/actions/build-pr-rust/**'
   - 'scripts/ci/mbx-snapshot.py'
+  - 'scripts/ci/mbx-snapshot.sh'
   - 'clippy.toml'
   - 'vendor/**'
 

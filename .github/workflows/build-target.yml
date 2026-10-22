@@ -232,6 +232,19 @@ jobs:
       # apt-get 已经在镜像里跑过,这里直接 checkout。镜像由 build-base-image.yml
       # 维护:Dockerfile 变更即重推 :latest,multi-arch (amd64/arm64) manifest。
 
+      - name: Pin snapshot transport to the workflow revision
+        # Historical source tags need not contain the current cache protocol.
+        continue-on-error: true
+        shell: bash
+        run: |
+          echo 'UC_MBX_SNAPSHOT_TOOLS=' >> "$GITHUB_ENV"
+          tools=$(mktemp -d "$RUNNER_TEMP/mbx-snapshot-tools.XXXXXX")
+          for file in mbx-snapshot.py mbx-snapshot.sh; do
+            curl -fsSL --retry 3 -o "$tools/$file" \
+              "https://raw.githubusercontent.com/$GITHUB_REPOSITORY/$GITHUB_SHA/scripts/ci/$file"
+          done
+          echo "UC_MBX_SNAPSHOT_TOOLS=$tools" >> "$GITHUB_ENV"
+
       - uses: actions/checkout@v6
         with:
           ref: ${{ needs.setup-matrix.outputs.source_sha }}
@@ -326,6 +339,23 @@ jobs:
           UC_CHANNEL: ${{ inputs.channel || 'stable' }}
         run: node scripts/ci/resolve-app-env.mjs
 
+      - name: Restore release sidecar CAS snapshot
+        if: env.UC_COMPILE_CACHE_BACKEND == 'r2' && env.UC_MBX_SNAPSHOT_TOOLS != ''
+        continue-on-error: true
+        shell: bash
+        env:
+          UC_MBX_SNAPSHOT_SOURCE_ROOT: ${{ github.workspace }}
+          SNAPSHOT_TARGET: ${{ matrix.target }}
+          SNAPSHOT_COMPONENT: ${{ matrix.component }}
+          SNAPSHOT_BUILD_MODE: ${{ inputs.build_mode || 'release' }}
+          SNAPSHOT_TARGET_ARGS: ${{ matrix.args }}
+          SNAPSHOT_OBJECT_FALLBACK: ${{ inputs.build_only && inputs.save_cache && github.ref == 'refs/heads/main' && github.ref_protected && needs.setup-matrix.outputs.source_sha == github.sha }}
+        run: |
+          bash "$UC_MBX_SNAPSHOT_TOOLS/mbx-snapshot.sh" restore --scene release-sidecar \
+            --target "$SNAPSHOT_TARGET" --component "$SNAPSHOT_COMPONENT" \
+            --build-mode "$SNAPSHOT_BUILD_MODE" --target-args="$SNAPSHOT_TARGET_ARGS" \
+            --object-fallback "$SNAPSHOT_OBJECT_FALLBACK"
+
       - name: prepare uniclipd sidecar
         # ADR-008 D13: the standalone `uniclipd` daemon ships next to the GUI
         # executable so the GUI can spawn it as a sibling (uc-daemon-local
@@ -338,6 +368,21 @@ jobs:
           POSTHOG_PROJECT_KEY: ${{ secrets.POSTHOG_PROJECT_KEY }}
           APP_ENV: ${{ steps.resolve-env.outputs.app_env }}
         run: node scripts/stage-daemon.mjs ${{ matrix.args }} --component ${{ matrix.component }} --timings
+
+      - name: Save release sidecar CAS snapshot
+        if: env.UC_COMPILE_CACHE_BACKEND == 'r2' && env.UC_MBX_SNAPSHOT_TOOLS != '' && inputs.build_only && inputs.save_cache && github.ref == 'refs/heads/main' && github.ref_protected && needs.setup-matrix.outputs.source_sha == github.sha
+        continue-on-error: true
+        shell: bash
+        env:
+          UC_MBX_SNAPSHOT_SOURCE_ROOT: ${{ github.workspace }}
+          SNAPSHOT_TARGET: ${{ matrix.target }}
+          SNAPSHOT_COMPONENT: ${{ matrix.component }}
+          SNAPSHOT_BUILD_MODE: ${{ inputs.build_mode || 'release' }}
+          SNAPSHOT_TARGET_ARGS: ${{ matrix.args }}
+        run: |
+          bash "$UC_MBX_SNAPSHOT_TOOLS/mbx-snapshot.sh" save --scene release-sidecar \
+            --target "$SNAPSHOT_TARGET" --component "$SNAPSHOT_COMPONENT" \
+            --build-mode "$SNAPSHOT_BUILD_MODE" --target-args="$SNAPSHOT_TARGET_ARGS"
 
       - name: record sidecar provenance
         # Build evidence written by the job that built the binaries (source commit, hashes, toolchain).

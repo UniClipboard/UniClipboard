@@ -86,4 +86,67 @@ describe('MBX request reduction', () => {
       ]
     ).toBe('false')
   })
+
+  it('preserves release source provenance and limits publishers to protected-main warmup', () => {
+    const job = yaml('.github/workflows/build-target.yml').jobs['build-component']
+    const steps = job.steps
+    const pin = steps.findIndex(
+      (step: { name?: string }) => step.name === 'Pin snapshot transport to the workflow revision'
+    )
+    const checkout = steps.findIndex(
+      (step: { uses?: string }) => step.uses === 'actions/checkout@v6'
+    )
+    const restore = steps.findIndex(
+      (step: { name?: string }) => step.name === 'Restore release sidecar CAS snapshot'
+    )
+    const build = steps.findIndex(
+      (step: { name?: string }) => step.name === 'prepare uniclipd sidecar'
+    )
+    const save = steps.findIndex(
+      (step: { name?: string }) => step.name === 'Save release sidecar CAS snapshot'
+    )
+    const provenance = steps.findIndex(
+      (step: { name?: string }) => step.name === 'record sidecar provenance'
+    )
+    expect(pin).toBeLessThan(checkout)
+    expect(checkout).toBeLessThan(restore)
+    expect(restore).toBeLessThan(build)
+    expect(build).toBeLessThan(save)
+    expect(save).toBeLessThan(provenance)
+    expect(steps[pin].run).toContain('$RUNNER_TEMP/mbx-snapshot-tools.')
+    expect(steps[pin].run).toContain('$GITHUB_REPOSITORY/$GITHUB_SHA/scripts/ci/')
+    expect(steps[pin]['continue-on-error']).toBe(true)
+    expect(steps[checkout].with.ref).toBe('${{ needs.setup-matrix.outputs.source_sha }}')
+    for (const index of [restore, save]) {
+      expect(steps[index]['continue-on-error']).toBe(true)
+      expect(steps[index].env.UC_MBX_SNAPSHOT_SOURCE_ROOT).toBe('${{ github.workspace }}')
+      expect(steps[index].run).toContain('$UC_MBX_SNAPSHOT_TOOLS/mbx-snapshot.sh')
+      expect(steps[index].run).toContain('--scene release-sidecar')
+    }
+    for (const key of [
+      'SNAPSHOT_TARGET',
+      'SNAPSHOT_COMPONENT',
+      'SNAPSHOT_BUILD_MODE',
+      'SNAPSHOT_TARGET_ARGS',
+    ]) {
+      expect(steps[restore].env[key]).toBe(steps[save].env[key])
+    }
+    const publisher = steps[restore].env.SNAPSHOT_OBJECT_FALLBACK.slice(3, -3)
+    for (const guard of [
+      'inputs.build_only',
+      'inputs.save_cache',
+      "github.ref == 'refs/heads/main'",
+      'github.ref_protected',
+      'needs.setup-matrix.outputs.source_sha == github.sha',
+    ]) {
+      expect(publisher).toContain(guard)
+    }
+    expect(steps[save].if).toContain(publisher)
+    expect(yaml('.github/workflows/cache-warmup.yml').jobs['warmup-release-app'].uses).toBe(
+      './.github/workflows/build.yml'
+    )
+    expect(yaml('.github/workflows/build.yml').jobs['build-platform'].uses).toBe(
+      './.github/workflows/build-target.yml'
+    )
+  })
 })

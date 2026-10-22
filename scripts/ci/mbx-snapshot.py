@@ -56,8 +56,12 @@ def mbx(*args, cache=None):
     environment = os.environ.copy()
     if cache is not None:
         environment["MBX_CACHE_DIR"] = str(cache)
+    # Windows CreateProcess searches System32 before PATH for bare executables;
+    # its bash.exe is the WSL launcher, not the Git Bash running this workflow.
+    bash = (subprocess.check_output(["cygpath", "-w", "/bin/bash"], text=True).strip()
+            if os.name == "nt" else "bash")
     subprocess.run(
-        ["bash", "scripts/build-cache/mbx.sh", "--exec", "mbx", *args],
+        [bash, "scripts/build-cache/mbx.sh", "--exec", "mbx", *args],
         cwd=ROOT, env=environment, check=True,
     )
 

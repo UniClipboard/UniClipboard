@@ -534,7 +534,7 @@ dependency. The executors:
 |---|---|---|
 | Native helper (`uniclip-quick-panel`) | macOS, Windows (default) | `set_shortcuts` over the helper's standard input; the helper answers with the bindings it holds |
 | WebView panel (Wails `GlobalShortcut`) | Linux, or when the helper is missing | `updateShortcuts` in `global_shortcuts.go` |
-| none | lightweight mode (the GUI exits) | nothing; no status |
+| none | quick panel disabled | no active binding |
 
 Both executors are transactional: on a failure they keep the bindings they held before. Every
 apply returns the bindings the executor reports it holds afterwards, or "unknown" when it cannot
@@ -754,7 +754,7 @@ Global shortcut apply status (task 6):
 | F103 | A double-tap change restarts the helper, or restarts it twice | `reload_settings`, compared with the last applied value | code review; helper protocol E2E |
 | F104 | Concurrent GUI save and external write leave the executor and the store on different values | both run under one lock; the later write wins in both | globalshortcut E2E |
 | F105 | The helper is not running (disabled, gave up) when the GUI saves | GUI save fails without writing; an external write is `not_active` until the helper starts | helper protocol E2E |
-| F106 | Lightweight mode expects a status | no executor, state `inactive` | code review |
+| F106 | Lightweight mode incorrectly reports the shortcut as inactive because the UI exited | report the resident executor state; UI absence alone does not deactivate the shortcut | code review; native lifecycle E2E |
 | F107 | The helper applied `set_shortcuts` but its reply is lost or later than 3 s; the host reports the old binding as active, or a rollback as done | state `unknown`, active unknown; a late reply with an old `seq` is dropped; the next read, save or launch sends the desired binding again and takes active from that reply | helper protocol E2E (stand-in helper that applies and answers late; then a retry) |
 | F109 | The startup read fails (a slow cold start), the helper starts with the default binding, and the first watcher read only records the saved binding: the running helper is never told it, and later reads find nothing to do | the enabled switch is compared with the value actually applied at launch, not with "unknown"; when it is unchanged the binding goes through the normal reconcile step and is applied once | code review (`reconcilePanel` is in `package main`); native cold-start check |
 | F108 | The save fails and putting the old binding back also fails; the host records desired = active anyway | desired stays the stored binding; active is the executor's report or unknown; state `not_active` or `unknown` with the error | globalshortcut E2E (executor refuses the rollback) |

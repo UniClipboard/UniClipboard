@@ -518,6 +518,11 @@ _Avoid_: synced tray setting、tray status icon
 
 ## Language — 桌面产品设置
 
+**Lightweight Mode**：
+桌面应用保留托盘与后台同步、关闭界面的当前运行状态；再次打开应用恢复界面，
+进入或退出该状态不修改已保存的启动方式。
+_Avoid_: silent startup、daemon-only mode、application quit
+
 **Desktop product settings**：
 桌面应用自身的偏好（托盘、窗口、全局快捷键、快捷面板、启动与登录项、更新、界面语言、外观、调试模式），
 由 daemon 保存在 `<app_data_root>/desktop-settings.json`，与 Engine 的同步与设备设置、错误报告许可分开，

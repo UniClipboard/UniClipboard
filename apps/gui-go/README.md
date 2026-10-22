@@ -35,6 +35,8 @@ bun wails:build --release        # Windows 发布构建，并生成便携 ZIP
 
 `bun wails:dev` 与 `bun wails:dev:profile <profile>` 支持 macOS、Windows 和 Linux。Linux 需要 Go、Rust、Node.js、Bun，以及可通过 `pkg-config` 查找的 GTK 3 和 WebKitGTK 4.1 开发库；前端自动选择 Linux 平台组件，使用 Vite 热更新。
 
+三端开发启动使用独立 profile 下的 `keyring/` 文件式密钥存储，不访问系统凭据管理器。必须同时满足调试构建、`UNICLIPBOARD_ENV=development` 与合法的独立 `UC_PROFILE`；release 构建不接受此开发例外。剪贴板内容仍加密保存。既有系统凭据不自动迁移或覆盖，原来依赖系统凭据自动解锁的开发资料可能需要手动输入空间口令。
+
 Linux 启动环境未设置 `DISPLAY` 和 `WAYLAND_DISPLAY` 时，开发脚本从 systemd 用户服务管理器读取桌面连接变量；找不到图形会话则在编译前退出并提示从桌面终端运行。已设置显示变量时使用当前终端的配置。
 
 Hyprland（包括 Omarchy）和 niri 会话中，主窗口隐藏应用绘制的最小化、最大化和关闭按钮，窗口操作交给合成器。宿主通过 `XDG_CURRENT_DESKTOP`、`HYPRLAND_INSTANCE_SIGNATURE` 或 `NIRI_SOCKET` 识别环境。

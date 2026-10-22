@@ -11,6 +11,8 @@
 //!   Secret Service (only for the test that needs one).
 //!
 //! `scripts/e2e/linux-legacy-file-key-store.sh` prepares both buses.
+//! These tests opt into platform storage detection so development defaults do
+//! not bypass the isolated Secret Service and legacy-store authority checks.
 #![cfg(target_os = "linux")]
 
 use std::path::{Path, PathBuf};
@@ -50,6 +52,7 @@ fn bus(variable: &str) -> String {
 fn session(bus: String) -> impl FnOnce(&mut Command) {
     move |command: &mut Command| {
         command
+            .env("UC_DEV_USE_PLATFORM_STORAGE", "1")
             .env("DBUS_SESSION_BUS_ADDRESS", bus)
             .env("DISPLAY", ":99")
             .env_remove("WAYLAND_DISPLAY");

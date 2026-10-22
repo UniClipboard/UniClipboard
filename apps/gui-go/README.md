@@ -37,6 +37,8 @@ bun wails:build --release        # Windows 发布构建，并生成便携 ZIP
 
 三端开发启动使用独立 profile 下的 `keyring/` 文件式密钥存储，不访问系统凭据管理器。必须同时满足调试构建、`UNICLIPBOARD_ENV=development` 与合法的独立 `UC_PROFILE`；release 构建不接受此开发例外。剪贴板内容仍加密保存。既有系统凭据不自动迁移或覆盖，原来依赖系统凭据自动解锁的开发资料可能需要手动输入空间口令。
 
+验证系统密钥存储与旧资料兼容性时，可在隔离测试进程中设置 `UC_DEV_USE_PLATFORM_STORAGE=1`，恢复正常平台存储探测；此选项不强制使用系统存储，也不改变生产策略。Linux 旧密钥存储测试通过私有 D-Bus 与独立密钥环使用此选项，普通开发启动无需设置。
+
 Linux 启动环境未设置 `DISPLAY` 和 `WAYLAND_DISPLAY` 时，开发脚本从 systemd 用户服务管理器读取桌面连接变量；找不到图形会话则在编译前退出并提示从桌面终端运行。已设置显示变量时使用当前终端的配置。
 
 Hyprland（包括 Omarchy）和 niri 会话中，主窗口隐藏应用绘制的最小化、最大化和关闭按钮，窗口操作交给合成器。宿主通过 `XDG_CURRENT_DESKTOP`、`HYPRLAND_INSTANCE_SIGNATURE` 或 `NIRI_SOCKET` 识别环境。

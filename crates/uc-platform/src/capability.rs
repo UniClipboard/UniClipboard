@@ -20,6 +20,8 @@ pub enum SecureStorageCapability {
 ///
 /// - **Development**: Debug builds with an explicit development environment and
 ///   a named profile use `FileBasedKeystore`, without probing the system store.
+///   `UC_DEV_USE_PLATFORM_STORAGE=1` opts into normal platform detection for
+///   isolated secure-storage integration tests.
 /// - **macOS**: `SystemKeyring` (Keychain available)
 /// - **Windows**: Always `SystemKeyring` (Credential Manager available)
 /// - **Linux**:
@@ -134,6 +136,7 @@ fn dev_env_forces_file_storage() -> bool {
         cfg!(debug_assertions),
         std::env::var("UNICLIPBOARD_ENV").ok().as_deref(),
         std::env::var("UC_PROFILE").ok().as_deref(),
+        std::env::var("UC_DEV_USE_PLATFORM_STORAGE").as_deref() == Ok("1"),
     )
 }
 
@@ -141,8 +144,10 @@ fn development_file_storage_allowed(
     debug_build: bool,
     environment: Option<&str>,
     profile: Option<&str>,
+    use_platform_storage: bool,
 ) -> bool {
     debug_build
+        && !use_platform_storage
         && environment == Some("development")
         && profile.is_some_and(|value| {
             !value.is_empty()
@@ -199,26 +204,45 @@ mod tests {
         assert!(development_file_storage_allowed(
             true,
             Some("development"),
-            Some("dev")
+            Some("dev"),
+            false
         ));
         assert!(!development_file_storage_allowed(
             false,
             Some("development"),
-            Some("dev")
+            Some("dev"),
+            false
         ));
         assert!(!development_file_storage_allowed(
             true,
             Some("production"),
-            Some("dev")
+            Some("dev"),
+            false
         ));
-        assert!(!development_file_storage_allowed(true, None, Some("dev")));
+        assert!(!development_file_storage_allowed(
+            true,
+            None,
+            Some("dev"),
+            false
+        ));
         for profile in [None, Some(""), Some("../production"), Some("-dev")] {
             assert!(!development_file_storage_allowed(
                 true,
                 Some("development"),
-                profile
+                profile,
+                false
             ));
         }
+    }
+
+    #[test]
+    fn platform_storage_opt_in_bypasses_only_the_development_override() {
+        assert!(!development_file_storage_allowed(
+            true,
+            Some("development"),
+            Some("dev"),
+            true,
+        ));
     }
 
     fn env(value: &str) -> Option<OsString> {

@@ -8631,7 +8631,7 @@ dependencies = [
 
 [[package]]
 name = "quick-panel-core"
-version = "1.4.0-alpha.1"
+version = "1.4.0-alpha.2"
 dependencies = [
  "async-trait",
  "chrono",
@@ -11696,7 +11696,7 @@ checksum = "b6f5e870be6c3b371b77fe0ee0bafb859fa4964b4404c27de1d380043c4dda20"
 
 [[package]]
 name = "uc-app-paths"
-version = "1.4.0-alpha.1"
+version = "1.4.0-alpha.2"
 dependencies = [
  "dirs 6.0.0",
 ]
@@ -11735,7 +11735,7 @@ dependencies = [
 
 [[package]]
 name = "uc-bootstrap"
-version = "1.4.0-alpha.1"
+version = "1.4.0-alpha.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -11756,7 +11756,7 @@ dependencies = [
 
 [[package]]
 name = "uc-cli-macros"
-version = "1.4.0-alpha.1"
+version = "1.4.0-alpha.2"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -11800,7 +11800,7 @@ dependencies = [
 
 [[package]]
 name = "uc-daemon"
-version = "1.4.0-alpha.1"
+version = "1.4.0-alpha.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -11829,7 +11829,7 @@ dependencies = [
 
 [[package]]
 name = "uc-daemon-client"
-version = "1.4.0-alpha.1"
+version = "1.4.0-alpha.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -11851,7 +11851,7 @@ dependencies = [
 
 [[package]]
 name = "uc-daemon-contract"
-version = "1.4.0-alpha.1"
+version = "1.4.0-alpha.2"
 dependencies = [
  "cargo_metadata",
  "chrono",
@@ -11867,7 +11867,7 @@ dependencies = [
 
 [[package]]
 name = "uc-daemon-local"
-version = "1.4.0-alpha.1"
+version = "1.4.0-alpha.2"
 dependencies = [
  "anyhow",
  "fs2",
@@ -11885,7 +11885,7 @@ dependencies = [
 
 [[package]]
 name = "uc-daemon-process"
-version = "1.4.0-alpha.1"
+version = "1.4.0-alpha.2"
 dependencies = [
  "anyhow",
  "libc",
@@ -11904,7 +11904,7 @@ dependencies = [
 
 [[package]]
 name = "uc-desktop-settings"
-version = "1.4.0-alpha.1"
+version = "1.4.0-alpha.2"
 dependencies = [
  "blake3",
  "serde_json",
@@ -11915,7 +11915,7 @@ dependencies = [
 
 [[package]]
 name = "uc-dev-cli"
-version = "1.4.0-alpha.1"
+version = "1.4.0-alpha.2"
 dependencies = [
  "anyhow",
  "base64",
@@ -12276,7 +12276,7 @@ dependencies = [
 
 [[package]]
 name = "uc-observability"
-version = "1.4.0-alpha.1"
+version = "1.4.0-alpha.2"
 dependencies = [
  "anyhow",
  "chrono",
@@ -12348,7 +12348,7 @@ dependencies = [
 
 [[package]]
 name = "uc-platform"
-version = "1.4.0-alpha.1"
+version = "1.4.0-alpha.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -12400,7 +12400,7 @@ dependencies = [
 
 [[package]]
 name = "uc-webserver"
-version = "1.4.0-alpha.1"
+version = "1.4.0-alpha.2"
 dependencies = [
  "anyhow",
  "argon2",

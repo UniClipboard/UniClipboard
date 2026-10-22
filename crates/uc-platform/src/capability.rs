@@ -151,6 +151,9 @@ fn development_file_storage_allowed(
         && environment == Some("development")
         && profile.is_some_and(|value| {
             !value.is_empty()
+                && !["default", "prod", "production"]
+                    .iter()
+                    .any(|reserved| value.eq_ignore_ascii_case(reserved))
                 && value.len() <= 64
                 && value.as_bytes()[0].is_ascii_alphanumeric()
                 && value
@@ -225,7 +228,16 @@ mod tests {
             Some("dev"),
             false
         ));
-        for profile in [None, Some(""), Some("../production"), Some("-dev")] {
+        for profile in [
+            None,
+            Some(""),
+            Some("../production"),
+            Some("-dev"),
+            Some("default"),
+            Some("prod"),
+            Some("production"),
+            Some("PROD"),
+        ] {
             assert!(!development_file_storage_allowed(
                 true,
                 Some("development"),

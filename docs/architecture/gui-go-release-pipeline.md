@@ -23,6 +23,14 @@
 | `release.yml` 渠道分发 | Snap：alpha 仍异步触发，但 `release=false`，只产出 artifact；COPR：alpha 仍触发，但 `dry_run=true`，只产出 SRPM。推送商店与提交 COPR 需要人显式 `workflow_dispatch`。npm 与 GitCode 镜像入口不变（见下）。 |
 | `apps/gui-go/e2e/package_linux.py` | deb 的 `Control: Version` 把预发布分隔符换成 `~`（与 rpm 既有约定一致）；`Conflicts`/`Replaces`/`Provides` 同样使用该写法。文件名与更新语义版本不变。 |
 
+### 构建调度与缓存边界
+
+`build.yml` 是手动构建、发布和缓存预热的公共入口。它先固定源码提交，再按 macOS ARM64、macOS x64、Windows ARM64、Windows x64 分别调用 `build-target.yml`；正式的全平台构建另调用 Linux GUI 流程。每条架构内部完成后即可打包，不等待其他架构的 sidecar。正式发布仍等待全部要求的平台通过现有门禁。
+
+`build-target.yml` 内的 daemon 与 quick-panel 在独立作业中并行构建，保持各自原有的 Cargo 依赖特性。没有把两个包合并到同一次 Cargo 调用：那会统一依赖特性，例如把 quick-panel 的 `serde_json/preserve_order` 引入 daemon。两个编译作业各自生成来源记录，汇合作业通过 `scripts/ci/merge-sidecar-components.mjs` 核对源码、构建模式、编译器、锁文件、工作流运行和重试次数，以及每个文件的 SHA-256 与大小，再生成原有的 `sidecar-<target>` 工件及合并来源记录。签名、打包和验收继续消费这个工件。
+
+`release.yml` 显式传入 `save_cache: false`，不在正式发布的关键路径保存 Rust 下载缓存；Linux GUI 使用独立的恢复与保存步骤，保存开关由入口传递。main 推送与显式缓存预热负责写入。MBX 的远端读写授权仍由 Engine 缓存入口控制。发布优化未调整 release 编译参数；实际提速以修改后的 Actions 运行为准，独立编译会增加并发 runner 的需求。
+
 ### 共享的发布阶段
 
 `scripts/ci/assemble_release_assets.py` 依次执行：收集具名发行物（`collect-release-assets.py`）→ `release_gate.py assets` → 更新签名（`updater-sign`，使用 `app.json` 里的生产公钥）→ 不带任何密钥的签名复验 → `assemble-update-manifest.js --require-all-platforms` → `build-flare-release-registration.js` → 写出 SHA-256 索引（`assembly-index.json`）。它不访问网络服务，也不写任何外部系统。

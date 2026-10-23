@@ -2,6 +2,10 @@ name: Build desktop target
 on:
   workflow_call:
     inputs:
+      plan:
+        description: 'Build and acceptance matrices computed once by build.yml'
+        required: true
+        type: string
       run_acceptance:
         description: 'Run isolated package lifecycle and functional acceptance; publishing disables this'
         required: false
@@ -75,146 +79,10 @@ on:
         default: false
 
 jobs:
-  setup-matrix:
-    runs-on: ubuntu-latest
-    outputs:
-      # The one commit every build job below checks out. A branch passed in `inputs.branch` is resolved here, once, before any build starts;
-      # release.yml already passes an exact SHA, which resolves to itself.
-      source_sha: ${{ steps.source.outputs.sha }}
-      matrix: ${{ steps.set-matrix.outputs.matrix }}
-      component-matrix: ${{ steps.select-components.outputs.matrix }}
-      cli-matrix: ${{ steps.select-cli-targets.outputs.matrix }}
-      macos-matrix: ${{ steps.select-macos-targets.outputs.matrix }}
-      macos-smoke-matrix: ${{ steps.select-macos-targets.outputs.smoke }}
-      windows-gui-matrix: ${{ steps.select-windows-gui-targets.outputs.matrix }}
-      windows-runner: ${{ steps.select-windows-runner.outputs.runner }}
-      windows-runner-source: ${{ steps.select-windows-runner.outputs.source }}
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ inputs.branch || github.sha }}
-          persist-credentials: false
-
-      - name: Pin the source commit
-        id: source
-        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-
-      - name: Select Windows runner
-        id: select-windows-runner
-        env:
-          RUNNER_STATUS_TOKEN: ${{ secrets.WINDOWS_RUNNER_STATUS_TOKEN }}
-        run: node scripts/ci/select-windows-runner.mjs
-
-      - name: Generate matrix
-        id: set-matrix
-        env:
-          WINDOWS_RUNNER: ${{ steps.select-windows-runner.outputs.runner }}
-        run: |
-          # Linux 构建在 host=ubuntu-22.04 / ubuntu-22.04-arm 上启容器跑
-          # (debian:bookworm, glibc 2.36),其他 platform (macOS/Windows) 不带
-          # container 字段 → 直接在 host runner 跑。
-          # aarch64 走 native arm runner (ubuntu-22.04-arm),避免在 x86 容器里
-          # cross-compile webkit/gtk 栈;x86_64 仍在 ubuntu-22.04。
-          PLATFORM="${{ inputs.platform }}"
-          # Linux GUI owns its daemon build; explicit Ubuntu inputs remain sidecar-only warmup targets.
-          if [ "$PLATFORM" == "macos-aarch64" ]; then
-            echo 'matrix=[{"platform":"macos-latest","target":"aarch64-apple-darwin","args":"--target aarch64-apple-darwin"}]' >> "$GITHUB_OUTPUT"
-          elif [ "$PLATFORM" == "macos-x86_64" ]; then
-            echo 'matrix=[{"platform":"macos-latest","target":"x86_64-apple-darwin","args":"--target x86_64-apple-darwin"}]' >> "$GITHUB_OUTPUT"
-          elif [ "$PLATFORM" == "ubuntu-22.04" ]; then
-            echo 'matrix=[{"platform":"ubuntu-22.04","target":"x86_64-unknown-linux-gnu","args":"","container":"ghcr.io/uniclipboard/build-bookworm:latest"}]' >> "$GITHUB_OUTPUT"
-          elif [ "$PLATFORM" == "ubuntu-22.04-arm" ]; then
-            echo 'matrix=[{"platform":"ubuntu-22.04-arm","target":"aarch64-unknown-linux-gnu","args":"","container":"ghcr.io/uniclipboard/build-bookworm:latest"}]' >> "$GITHUB_OUTPUT"
-          elif [ "$PLATFORM" == "linux-gui" ]; then
-            # The Linux GUI packages are built by package-linux-gui.yml on native runners and need no sidecar matrix.
-            echo 'matrix=[]' >> "$GITHUB_OUTPUT"
-          elif [ "$PLATFORM" == "windows-x86_64" ]; then
-            echo "matrix=[{\"platform\":\"windows-latest\",\"runner\":\"$WINDOWS_RUNNER\",\"target\":\"x86_64-pc-windows-msvc\",\"args\":\"\"}]" >> "$GITHUB_OUTPUT"
-          elif [ "$PLATFORM" == "windows-arm64" ]; then
-            echo "matrix=[{\"platform\":\"windows-latest\",\"runner\":\"$WINDOWS_RUNNER\",\"target\":\"aarch64-pc-windows-msvc\",\"args\":\"--target aarch64-pc-windows-msvc\"}]" >> "$GITHUB_OUTPUT"
-          else
-            echo "Error: Unknown platform '$PLATFORM'. Valid options: macos-aarch64, macos-x86_64, ubuntu-22.04, ubuntu-22.04-arm, linux-gui, windows-x86_64, windows-arm64"
-            exit 1
-          fi
-
-      - name: Select independent sidecar components
-        id: select-components
-        env:
-          MATRIX: ${{ steps.set-matrix.outputs.matrix }}
-        run: |
-          node -e '
-            const all = JSON.parse(process.env.MATRIX)
-            const components = all.flatMap(e =>
-              (e.target.includes("apple-darwin") || e.target.includes("windows")
-                ? ["daemon", "helper"] : ["daemon"]
-              ).map(component => ({ ...e, component })))
-            console.log("matrix=" + JSON.stringify(components))
-          ' >> "$GITHUB_OUTPUT"
-
-      - name: Select CLI targets
-        id: select-cli-targets
-        # The CLI archive is packaged only where the CLI and the app share a
-        # target triple (macOS, Windows x64), so it can reuse the app's
-        # uniclipd sidecar. Linux CLI archives are musl-static and come from
-        # build-cli.yml.
-        env:
-          MATRIX: ${{ steps.set-matrix.outputs.matrix }}
-          # With a SignPath production policy a release signs the Windows CLI executables in the Windows GUI job (stage 1) and that
-          # job publishes the Windows CLI archive; the sign.py-only build-cli leg would refuse it for lack of WINDOWS_SIGN_BACKEND.
-          SIGNPATH_PRODUCTION: ${{ inputs.require_signing == true && vars.SIGNPATH_PRODUCTION_POLICY_SLUG != '' }}
-        run: |
-          node -e '
-            const all = JSON.parse(process.env.MATRIX)
-            const skipWindows = process.env.SIGNPATH_PRODUCTION === "true"
-            const keep = all.filter(e => e.platform === "macos-latest" || (e.target === "x86_64-pc-windows-msvc" && !skipWindows))
-            console.log("matrix=" + JSON.stringify(keep))
-          ' >> "$GITHUB_OUTPUT"
-
-      - name: Select macOS GUI targets
-        id: select-macos-targets
-        # The macOS app is assembled on an arm64 runner for both architectures (Go and the Rust
-        # sidecar cross-compile; the x86_64 bundle is exercised on a native Intel runner by the
-        # smoke job), and from the same uniclipd/helper sidecar build-sidecar produced.
-        env:
-          MATRIX: ${{ steps.set-matrix.outputs.matrix }}
-        run: |
-          node -e '
-            const all = JSON.parse(process.env.MATRIX)
-            const keep = all.filter(e => e.platform === "macos-latest")
-            console.log("matrix=" + JSON.stringify(keep))
-            // Each shipped architecture is smoke-tested on a host of that architecture: Apple Silicon on
-            // macos-latest, Intel on the native Intel runner (not Rosetta).
-            const hosts = {
-              "aarch64-apple-darwin": { arch: "arm64", runner: "macos-latest" },
-              "x86_64-apple-darwin": { arch: "x86_64", runner: "macos-15-intel" },
-            }
-            const smoke = keep.map(e => ({ target: e.target, ...hosts[e.target] }))
-            console.log("smoke=" + JSON.stringify(smoke))
-          ' >> "$GITHUB_OUTPUT"
-
-      - name: Select Windows GUI targets
-        id: select-windows-gui-targets
-        # The Windows packages are assembled on an x64 hosted runner for both architectures (Go and the
-        # Rust sidecar cross-compile). Each is accepted on a disposable hosted runner of its own
-        # architecture: x64 on windows-latest, arm64 on the native windows-11-arm runner (never emulated).
-        env:
-          MATRIX: ${{ steps.set-matrix.outputs.matrix }}
-        run: |
-          node -e '
-            const all = JSON.parse(process.env.MATRIX)
-            const hosts = {
-              "x86_64-pc-windows-msvc": { arch: "amd64", smoke: "windows-latest" },
-              "aarch64-pc-windows-msvc": { arch: "arm64", smoke: "windows-11-arm" },
-            }
-            const keep = all.filter(e => hosts[e.target]).map(e => ({ target: e.target, ...hosts[e.target] }))
-            console.log("matrix=" + JSON.stringify(keep))
-          ' >> "$GITHUB_OUTPUT"
-
   # Independent runners keep daemon/helper dependency features unchanged while compiling in parallel.
   build-component:
     name: Build ${{ matrix.component }} ${{ matrix.target }}
-    needs: setup-matrix
-    if: needs.setup-matrix.outputs.matrix != '[]'
+    if: fromJSON(inputs.plan).matrix[0] != null
     runs-on: ${{ matrix.runner || matrix.platform }}
     # matrix.container 仅 Linux 条目设置,其他 platform 该字段缺失 → null →
     # GitHub Actions 跳过容器,直接在 host runner 上执行。
@@ -225,7 +93,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON(needs.setup-matrix.outputs.component-matrix) }}
+        include: ${{ fromJSON(inputs.plan).components }}
 
     steps:
       # Linux 容器走预构建镜像 (.github/docker/build-bookworm.Dockerfile),
@@ -247,7 +115,7 @@ jobs:
 
       - uses: actions/checkout@v6
         with:
-          ref: ${{ needs.setup-matrix.outputs.source_sha }}
+          ref: ${{ inputs.branch }}
           submodules: recursive
           persist-credentials: false
           # MBX inherits predictions from earlier Cargo.lock revisions through Git history.
@@ -370,7 +238,7 @@ jobs:
         run: node scripts/stage-daemon.mjs ${{ matrix.args }} --component ${{ matrix.component }} --timings
 
       - name: Save release sidecar CAS snapshot
-        if: env.UC_COMPILE_CACHE_BACKEND == 'r2' && env.UC_MBX_SNAPSHOT_TOOLS != '' && inputs.build_only && inputs.save_cache && github.ref == 'refs/heads/main' && github.ref_protected && needs.setup-matrix.outputs.source_sha == github.sha
+        if: env.UC_COMPILE_CACHE_BACKEND == 'r2' && env.UC_MBX_SNAPSHOT_TOOLS != '' && inputs.build_only && inputs.save_cache && github.ref == 'refs/heads/main' && github.ref_protected && inputs.branch == github.sha
         continue-on-error: true
         shell: bash
         env:
@@ -461,17 +329,17 @@ jobs:
   # Preserve the existing artifact/provenance contract for all packaging consumers.
   build-sidecar:
     name: Assemble sidecar ${{ matrix.target }}
-    needs: [setup-matrix, build-component]
-    if: needs.setup-matrix.outputs.matrix != '[]'
+    needs: build-component
+    if: fromJSON(inputs.plan).matrix[0] != null
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON(needs.setup-matrix.outputs.matrix) }}
+        include: ${{ fromJSON(inputs.plan).matrix }}
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ needs.setup-matrix.outputs.source_sha }}
+          ref: ${{ inputs.branch }}
           persist-credentials: false
       - uses: actions/setup-node@v6
         with:
@@ -488,7 +356,7 @@ jobs:
           path: target/sidecar-components
       - name: Verify and merge component provenance
         env:
-          UC_EXPECT_SOURCE_SHA: ${{ needs.setup-matrix.outputs.source_sha }}
+          UC_EXPECT_SOURCE_SHA: ${{ inputs.branch }}
         run: |
           node scripts/ci/merge-sidecar-components.mjs \
             --target "${{ matrix.target }}" --build-mode "${{ inputs.build_mode || 'release' }}" \
@@ -510,20 +378,20 @@ jobs:
   # release caller (workflow_call) fails instead of publishing that.
   package-macos-gui:
     name: Package macOS app ${{ matrix.target }}
-    needs: [setup-matrix, build-sidecar]
-    if: inputs.build_only != true && needs.setup-matrix.outputs.macos-matrix != '[]'
+    needs: build-sidecar
+    if: inputs.build_only != true && fromJSON(inputs.plan).macos[0] != null
     runs-on: ${{ matrix.platform }}
     timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON(needs.setup-matrix.outputs.macos-matrix) }}
+        include: ${{ fromJSON(inputs.plan).macos }}
     outputs:
       signed: ${{ steps.mode.outputs.signed }}
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ needs.setup-matrix.outputs.source_sha }}
+          ref: ${{ inputs.branch }}
           persist-credentials: false
 
       - name: setup node
@@ -728,30 +596,29 @@ jobs:
   # consumer. Always an optimised release build: a `test` build mode would not produce accepted evidence, so `all` runs it only for release.
   package-linux-gui:
     name: Package Linux GUI
-    needs: setup-matrix
     if: inputs.build_only != true && inputs.platform == 'linux-gui'
     permissions:
       contents: read
     uses: ./.github/workflows/package-linux-gui.yml
     with:
-      ref: ${{ needs.setup-matrix.outputs.source_sha }}
+      ref: ${{ inputs.branch }}
       save_cache: ${{ inputs.save_cache == true }}
       run_acceptance: ${{ inputs.run_acceptance != false }}
 
   smoke-macos-gui:
     name: Smoke macOS app ${{ matrix.arch }}
-    needs: [setup-matrix, package-macos-gui]
+    needs: package-macos-gui
     if: inputs.run_acceptance != false && needs.package-macos-gui.result == 'success'
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON(needs.setup-matrix.outputs.macos-smoke-matrix) }}
+        include: ${{ fromJSON(inputs.plan).macosSmoke }}
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ needs.setup-matrix.outputs.source_sha }}
+          ref: ${{ inputs.branch }}
           persist-credentials: false
 
       - name: Configure package build mode
@@ -799,8 +666,8 @@ jobs:
   # caller (workflow_call) fails instead of publishing unsigned installers.
   package-windows-gui:
     name: Package Windows ${{ matrix.arch }}
-    needs: [setup-matrix, build-sidecar]
-    if: inputs.build_only != true && needs.setup-matrix.outputs.windows-gui-matrix != '[]'
+    needs: build-sidecar
+    if: inputs.build_only != true && fromJSON(inputs.plan).windows[0] != null
     # Always a hosted runner: the packaging is deterministic and needs nothing from the self-hosted VM.
     runs-on: windows-latest
     timeout-minutes: 60
@@ -832,11 +699,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON(needs.setup-matrix.outputs.windows-gui-matrix) }}
+        include: ${{ fromJSON(inputs.plan).windows }}
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ needs.setup-matrix.outputs.source_sha }}
+          ref: ${{ inputs.branch }}
           persist-credentials: false
 
       - name: Decide Windows signing mode
@@ -1333,7 +1200,7 @@ jobs:
   # (windows_package_acceptance.py refuses anything else). arm64 runs on the native windows-11-arm runner.
   smoke-windows-gui:
     name: Smoke Windows ${{ matrix.arch }}
-    needs: [setup-matrix, package-windows-gui]
+    needs: package-windows-gui
     if: inputs.run_acceptance != false && needs.package-windows-gui.result == 'success'
     runs-on: ${{ matrix.smoke }}
     timeout-minutes: 60
@@ -1343,11 +1210,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON(needs.setup-matrix.outputs.windows-gui-matrix) }}
+        include: ${{ fromJSON(inputs.plan).windows }}
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ needs.setup-matrix.outputs.source_sha }}
+          ref: ${{ inputs.branch }}
           persist-credentials: false
 
       - name: Configure package build mode
@@ -1452,18 +1319,18 @@ jobs:
   # build-sidecar and never builds or links the Rust development CLI.
   build-cli:
     name: Build CLI ${{ matrix.target }}
-    needs: [setup-matrix, build-sidecar]
-    if: inputs.build_only != true && (inputs.package_cli && inputs.build_mode == 'release' && needs.setup-matrix.outputs.cli-matrix != '[]')
+    needs: build-sidecar
+    if: inputs.build_only != true && (inputs.package_cli && inputs.build_mode == 'release' && fromJSON(inputs.plan).cli[0] != null)
     runs-on: ${{ matrix.runner || matrix.platform }}
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON(needs.setup-matrix.outputs.cli-matrix) }}
+        include: ${{ fromJSON(inputs.plan).cli }}
 
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ needs.setup-matrix.outputs.source_sha }}
+          ref: ${{ inputs.branch }}
           persist-credentials: false
 
       - name: setup node

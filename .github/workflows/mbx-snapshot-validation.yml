@@ -3,6 +3,7 @@ on:
   pull_request:
     paths:
       - 'scripts/ci/mbx-snapshot*'
+      - 'scripts/ci/cache-warmup-needed*'
       - 'scripts/build-cache/**'
       - '.github/actions/mbx-snapshot/**'
       - '.github/actions/build-pr-rust/**'
@@ -25,6 +26,9 @@ jobs:
         runner: [ubuntu-latest, macos-latest, windows-latest, windows-11-arm]
     steps:
       - uses: actions/checkout@v6
+      - name: Verify dependency-only warmup selection
+        shell: bash
+        run: python3 scripts/ci/cache-warmup-needed.test.py -v
       - uses: dtolnay/rust-toolchain@stable
       - name: Verify native export, compaction, import and executable reuse
         shell: bash

@@ -28,6 +28,7 @@ WINDOWS_DEVICES = {"CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$"} | {
 }
 ROOT = Path(os.environ.get("UC_MBX_SNAPSHOT_SOURCE_ROOT", Path(__file__).resolve().parents[2])).resolve()
 SCENES = {
+    "linux-gui": "apps/gui-go/e2e/linux/build_daemon_release.sh",
     "coverage-linux": ".github/actions/rust-coverage/action.yml",
     "release-sidecar": "scripts/stage-daemon.mjs",
     "e2e-macos": ".github/actions/build-e2e-rust/action.yml",
@@ -46,6 +47,7 @@ def release_context(target, component, build_mode, target_args):
         "aarch64-apple-darwin", "x86_64-apple-darwin",
         "aarch64-pc-windows-msvc", "x86_64-pc-windows-msvc",
         "aarch64-unknown-linux-gnu", "x86_64-unknown-linux-gnu",
+        "aarch64-unknown-linux-musl", "x86_64-unknown-linux-musl",
     }
     if (target not in targets or component not in ("daemon", "helper")
             or build_mode not in ("release", "test")
@@ -92,9 +94,10 @@ def scene_key(scene, context=None):
     digest = hashlib.sha256()
     names = ["Cargo.lock", "Cargo.toml", ".cargo/config.toml", "rust-toolchain.toml",
              "scripts/build-cache/engine-tools.sh", "scripts/ci/mbx-snapshot.py", SCENES[scene]]
-    if scene in ("release-sidecar", "coverage-linux"):
+    if scene in ("release-sidecar", "coverage-linux", "linux-gui"):
         flags = {key: value for key, value in os.environ.items()
-                 if key.startswith("CARGO_PROFILE_") or key in ("RUSTFLAGS", "CARGO_ENCODED_RUSTFLAGS")}
+                 if key.startswith(("CARGO_PROFILE_", "CC_", "CFLAGS_")) or key in ("RUSTFLAGS", "CARGO_ENCODED_RUSTFLAGS")
+                 or (key.startswith("CARGO_TARGET_") and key.endswith(("_RUSTFLAGS", "_LINKER")))}
         seed = dict(flags=flags)
         if scene == "release-sidecar":
             names.extend(("scripts/ci/configure-build-mode.mjs", "scripts/ci/resolve-app-env.mjs"))
@@ -105,10 +108,15 @@ def scene_key(scene, context=None):
     if scene == "coverage-linux":
         digest.update(subprocess.check_output(["cargo", "llvm-cov", "--version"]))
         digest.update(Path("/etc/os-release").read_bytes())
+    if scene == "linux-gui":
+        names.extend(("apps/gui-go/e2e/linux/Dockerfile.package-build", "apps/gui-go/e2e/linux/run.sh",
+                      "apps/gui-go/e2e/linux/apt_install.sh", "apps/gui-go/e2e/linux/verify_package_build_image.sh"))
+        digest.update(os.environ.get("UC_MBX_BUILD_IMAGE", "").encode())
+        digest.update(Path("/etc/os-release").read_bytes())
     for name in names:
         # Release automation may run from RUNNER_TEMP against a historical source checkout.
         raw = (Path(__file__) if name == "scripts/ci/mbx-snapshot.py" else ROOT / name).read_bytes()
-        if scene == "release-sidecar":
+        if scene in ("release-sidecar", "coverage-linux", "linux-gui"):
             raw = release_seed_input(name, raw)
         digest.update(name.encode() + b"\0" + raw + b"\0")
     if scene == "pr-check-linux" or (scene == "release-sidecar" and "linux" in context["target"]):
@@ -338,12 +346,11 @@ def main():
     started = time.monotonic()
     try:
         context = None
-        source_sha = None
+        source_sha = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
+        if args.command == "save" and source_sha != os.environ.get("GITHUB_SHA"):
+            raise ValueError("Snapshot publisher must build the protected workflow source")
         if args.scene == "release-sidecar":
             context = release_context(args.target, args.component, args.build_mode, args.target_args)
-            source_sha = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
-            if args.command == "save" and source_sha != os.environ.get("GITHUB_SHA"):
-                raise ValueError("Release publisher must build the protected workflow source")
             report["context"] = context
         group = export_group(args.scene, context)
         if context is not None:

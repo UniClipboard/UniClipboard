@@ -18,13 +18,13 @@ Windows 使用校验后的原生 MBX x64/arm64 包和私有 cargo.exe，不叠�
 - `BUILD_CACHE_R2_ACCESS_KEY_ID`
 - `BUILD_CACHE_R2_SECRET_ACCESS_KEY`
 
-sidecar 只在受保护 main 的 push 请求 read-write，其他事件请求 read-only；MBX 原生策略和实际桶令牌仍是最终约束。Linux 独立打包、PR、coverage 和 membership 绑定现有 reader，只请求读取；历史 file-key-store 回归继续不接触 secrets，只使用本地 MBX。secret 名称存在不证明令牌能访问 `engine/mbx/v1/`，需实际 R2 恢复验证；本改动不修改远端权限。
+sidecar 只在受保护 main 的 push 请求 read-write，其他事件请求 read-only；MBX 原生策略和实际桶令牌仍是最终约束。Linux 独立打包的消费者、PR、coverage 和 membership 绑定现有 reader，只请求读取；Linux 专用预热只有在受保护 main 上使用 writer；历史 file-key-store 回归继续不接触 secrets，只使用本地 MBX。secret 名称存在不证明令牌能访问 `engine/mbx/v1/`，需实际 R2 恢复验证；本改动不修改远端权限。
 
 没有凭据时继续本地 MBX；部分凭据或非 HTTPS 端点拒绝装配。凭据只进入 runner 临时 0600 文件，GITHUB_ENV 保存路径。Linux daemon 容器只读挂载此文件和固定工具快照，写入单独统计目录；原始值不写入缓存、产物或命令参数。
 
 ## 存储边界与发布
 
-macOS/Linux 不从 Actions 恢复 target。sidecar 无 R2 时按 ref 保存本地 CAS；Linux 缓存只含 Cargo registry/git 下载和 MBX CAS。容器仍使用自己独立的 target。构建参数、Engine rev、签名、Sentry 符号上传、安装包和发布检查不变。
+macOS/Linux 不从 Actions 恢复 target。sidecar 无 R2 时按 ref 保存本地 CAS；Linux 的 Actions 缓存只含 Cargo registry/git 下载；私有 MBX CAS 使用 R2 快照传输。容器仍使用自己独立的 target。构建参数、Engine rev、签名、Sentry 符号上传、安装包和发布检查不变。
 
 共享桶不保证任意构建互相命中。MBX 按编译器身份、完整编译参数、输入内容、发现的环境输入和受支持链接器/SDK 身份分键。不同 target、features、profile、RUSTFLAGS 或源码可以合法未命中。Engine 作为 workspace member 与 Desktop 的 git dependency 还可能有源路径、Cargo metadata、依赖图或 profile 差异；不启用 `share_workspace_root` 去改变调试路径、`file!()` 或 panic 语义。
 
@@ -38,7 +38,7 @@ MBX 的 Cargo 预测清单按 `Cargo.lock` 内容区分；升版本即使只修�
 
 Windows 原生入口已通过 x64/arm64 空 target 恢复和产物执行。CI 配置和统计由 Engine 包装器加载；Node sidecar 脚本对 daemon 与 quick-panel 分别进入包装器，避免原生子进程绕过 shell cargo，也避免两次编译覆盖同一统计文件。自动化 pin 独立于产品 Engine pin。
 
-Warmup 仅调用 `build.yml` 的 `build_only: true`，复用正式编译参数并保留 staging/provenance，不进入签名、安装器或 GUI smoke，也不上传生产调试符号。默认 `build_only: false`，正式发布的签名与包校验策略不变。手动验证直接运行该编译入口，不调用缓存维护/删除流程。
+sidecar 预热调用 `build.yml` 的 `build_only: true`，复用正式编译参数并保留 staging/provenance，不进入签名、安装器或 GUI smoke，也不上传生产调试符号。默认 `build_only: false`，正式发布的签名与包校验策略不变。手动验证直接运行该编译入口，不调用缓存维护/删除流程。
 
 ## R2 请求控制与跨平台快照
 
@@ -48,12 +48,13 @@ PR Check 按 PR 编号分组，新推送取消该 PR 的过时运行。编译任
 
 | 场景 | 消费者 | 共享编译入口 |
 | --- | --- | --- |
-| `release-sidecar` | Windows / macOS daemon 与 helper；Linux sidecar daemon | `.github/workflows/build-target.yml`，每个组件独立编译 |
+| `release-sidecar` | Windows / macOS daemon 与 helper；Linux sidecar daemon、musl CLI daemon | `.github/workflows/build-target.yml` 或 `build-cli.yml`，每个组件独立编译 |
+| `linux-gui` | GTK4 Linux GUI 打包容器内的 daemon | `apps/gui-go/e2e/linux/build_daemon_release.sh`，两种架构分别预热 |
 | `e2e-macos` | macOS CLI E2E | `.github/actions/build-e2e-rust`：daemon、独立开发 CLI、Engine host、E2E 测试 |
 | `pr-check-linux` | bookworm 容器内 Rust Check | `.github/actions/build-pr-rust`：工作区检查、独立 Quick Panel 检查、OpenAPI 生成器 |
 | `quick-panel-windows` | Windows x64 / ARM64 Quick Panel | `.github/actions/build-pr-rust`：独立 Quick Panel 检查、字体回退测试编译 |
 
-所有消费者保留原有运行验证。musl CLI、Linux GUI 自有打包容器与 membership 尚未接入这些快照，仍走各自原有缓存策略，不混用 sidecar 编译图。
+所有消费者保留原有运行验证。musl 的场景键包含目标 C 编译器、CFLAGS、Rust flags 和链接器；Linux GUI 在实际打包容器内恢复、编译、保存，键包含打包镜像定义、基础镜像和容器系统身份，不与 bookworm sidecar 混用。membership 仍使用原有缓存策略。
 
 `cache-warmup.yml` 的 E2E 与 PR Rust 预热任务在受保护 main 上生成快照，使用现有 writer 环境；PR 只读现有 reader 环境。快照预热复用 `.github/actions/build-e2e-rust`，与 PR 使用相同的 daemon、开发 CLI、Engine host 和测试二进制编译命令，保留开发 CLI 的独立 target 与 feature 图。构建本身继续使用 Engine 固定入口，原生 MBX 对象写入限制不变。快照发布是独立的 CI 归档传输，允许受保护 main 的 push、定时预热和手动预热，不允许 PR 或任意分支写入。
 
@@ -114,3 +115,15 @@ python3 scripts/ci/mbx-snapshot.test.py -v
 消费者仅恢复；预热只有在受保护 main 且测试成功后才发布。两者命中后均停止逐对象 R2 读写，缺失或损坏时保留原对象回退。快照上传、清理及必要的本地重编译仍存在，不能把覆盖率报告当成编译缓存复用。
 
 新增场景修改了共享协议脚本，因此现有场景的键也会一次性失效。合并后的自动预热会重新建立基线；应在基线保存后验证覆盖率生产者命中、再次保存及独立消费者命中，不能把首次回退作为优化效果。Linux 原生回归另外验证：插桩编译 → 导出及精简闭包 → 空 CAS/空 target 导入 → 再次执行测试 → 新 LCOV 含已覆盖的库代码，且运行标记确实增加。
+
+## 发布调度与后台预热
+
+`build.yml` 固定源码 SHA 后，一次调用 `build-target-plan.mjs` 生成全部平台的编译、打包和原生验收矩阵，再交给 `build-target.yml` 执行。后者不再单独启动 `setup-matrix` runner；Windows runner 状态也只查询一次。每个平台仍有独立的组件、组装和打包依赖，不会因其他平台未完成而提前使用其产物。
+
+后台预热先由 `cache-warmup-needed.py` 比较实际提交的依赖输入。只修改本地包版本的 Cargo 元数据不会触发整套预热；外部依赖、profile、工具链、Cargo 配置和构建脚本变化仍会预热。手动和定时运行始终预热。覆盖率的依赖基线同样归一化本地包版本，实际版本相关编译输入继续由 MBX 校验。
+
+release sidecar 预热一次只启动一个平台（该平台的 daemon/helper 仍并行），PR、E2E、coverage 等辅助预热随后启动。musl 和 Linux GUI 使用 `build_only` 入口，只生成编译基线，不执行正式签名、打包或安装验收。此策略减少后台争用，不代表 GitHub 提供发布作业优先级，也不保证其他 PR 或平台容量不会产生排队。GitHub 的额度与矩阵并发行为见[官方限制](https://docs.github.com/en/actions/reference/limits)与[工作流语法](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax)。
+
+最终二进制仍可能需要重新编译：`unportable-native-link`、不支持的 crate 类型和实际输入变化都不能用依赖快照强行绕过。运行 39900895332 中 macOS x64 的最终 `uniclipd` 动作耗时 320.27 秒；Cargo timing 没有进一步区分此动作内部的链接和代码生成。不会通过关闭 ThinLTO、复用不同版本二进制或在 CAS 快照中加入 Cargo target 来宣称消除了这段时间。
+
+本轮增加场景并修改协议后，已有键会一次性更新；受保护主线必须先完成冷预热。效果验证依次检查快照保存、独立消费者命中、每组件两次逻辑读取、原生逐对象读写为零以及实际编译/打包成功。首次冷构建和未经主线发布的 PR 不能作为命中效果样本。

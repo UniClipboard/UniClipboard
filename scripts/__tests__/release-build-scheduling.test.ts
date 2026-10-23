@@ -1,6 +1,4 @@
-import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
-import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { parse } from 'yaml'
@@ -38,6 +36,11 @@ describe('independent release platform pipelines', () => {
     const inner = read('build-target.yml')
     const call = outer.jobs['build-platform']
     expect(call.uses).toBe('./.github/workflows/build-target.yml')
+    const setup = outer.jobs['setup-platforms'].steps
+    expect(setup[0].with.ref).toBe('${{ github.sha }}')
+    expect(setup.find((s: { id?: string }) => s.id === 'source').run).toContain(
+      'git rev-parse FETCH_HEAD'
+    )
     expect(call.with.branch).toBe('${{ needs.setup-platforms.outputs.source_sha }}')
     expect(call.with.platform).toBe('${{ matrix.platform }}')
     expect(call.strategy['fail-fast']).toBe(false)
@@ -55,66 +58,19 @@ describe('independent release platform pipelines', () => {
     }
   })
 
-  it('executes each platform selector with exactly one target and independent compiler components', () => {
-    const steps = read('build-target.yml').jobs['setup-matrix'].steps
-    const generate = steps.find((step: { name?: string }) => step.name === 'Generate matrix').run
-    const select = steps.find(
-      (step: { name?: string }) => step.name === 'Select independent sidecar components'
-    ).run
-    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'uc-platform-selector-'))
-    try {
-      for (const platform of [...selectBuildPlatforms('all'), 'ubuntu-22.04', 'ubuntu-22.04-arm']) {
-        const output = path.join(directory, 'output')
-        const run = (script: string, env = {}) => {
-          fs.writeFileSync(output, '')
-          const result = spawnSync('bash', ['-e', '-c', script], {
-            encoding: 'utf8',
-            env: {
-              ...process.env,
-              GITHUB_OUTPUT: output,
-              WINDOWS_RUNNER: 'dedicated-windows',
-              ...env,
-            },
-          })
-          expect(result.status, result.stderr).toBe(0)
-          return JSON.parse(
-            fs
-              .readFileSync(output, 'utf8')
-              .trim()
-              .replace(/^matrix=/, '')
-          ) as Array<{ target: string; component: string; runner?: string }>
-        }
-        const targets = run(generate.replaceAll('${{ inputs.platform }}', platform))
-        expect(targets).toHaveLength(platform === 'linux-gui' ? 0 : 1)
-        const components = run(select, { MATRIX: JSON.stringify(targets) })
-        expect(components.map(entry => entry.component)).toEqual(
-          platform === 'linux-gui'
-            ? []
-            : platform.startsWith('ubuntu')
-              ? ['daemon']
-              : ['daemon', 'helper']
-        )
-        for (const component of components) {
-          expect(component.target).toBe(targets[0].target)
-          if (platform.startsWith('windows')) expect(component.runner).toBe('dedicated-windows')
-        }
-      }
-    } finally {
-      fs.rmSync(directory, { recursive: true, force: true })
-    }
-  })
-
   it('builds daemon and helper independently, then verifies both before packaging', () => {
     const jobs = read('build-target.yml').jobs
-    expect(jobs['build-component'].needs).toBe('setup-matrix')
-    expect(jobs['build-sidecar'].needs).toEqual(['setup-matrix', 'build-component'])
+    expect(jobs['setup-matrix']).toBeUndefined()
+    expect(jobs['build-component'].needs).toBeUndefined()
+    expect(read('build.yml').jobs['build-platform'].with.plan).toBe('${{ matrix.plan }}')
+    expect(jobs['build-sidecar'].needs).toBe('build-component')
     expect(
       jobs['build-sidecar'].steps.some((step: { run?: string }) =>
         step.run?.includes('merge-sidecar-components.mjs')
       )
     ).toBe(true)
     for (const consumer of ['package-macos-gui', 'package-windows-gui', 'build-cli']) {
-      expect(jobs[consumer].needs).toContain('build-sidecar')
+      expect(jobs[consumer].needs).toBe('build-sidecar')
     }
   })
 
@@ -124,9 +80,7 @@ describe('independent release platform pipelines', () => {
     expect(read('release.yml').jobs['build-cli'].with.save_cache).toBe(false)
     const linux = read('package-linux-gui.yml').jobs.package.steps
     expect(
-      linux.find(
-        (step: { name?: string }) => step.name === 'Restore Cargo downloads and MBX actions'
-      ).uses
+      linux.find((step: { name?: string }) => step.name === 'Restore Cargo downloads').uses
     ).toBe('actions/cache/restore@v4')
     expect(
       linux.find((step: { name?: string }) => step.name === 'Save the Rust cache').if

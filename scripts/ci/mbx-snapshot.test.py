@@ -11,6 +11,7 @@ import sys
 import tarfile
 import tempfile
 import unittest
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
@@ -25,6 +26,22 @@ def load(name):
 
 snapshot = load("mbx-snapshot")
 summary = load("summarize-mbx")
+
+
+@contextmanager
+def linux_container_metadata():
+    """Model Linux scene inputs without reading the test runner's OS metadata."""
+    read_bytes = Path.read_bytes
+
+    def read(file):
+        if file == Path("/etc/os-release"):
+            return b'ID=ubuntu\nVERSION_ID="24.04"\n'
+        return read_bytes(file)
+
+    with patch.object(Path, "read_bytes", read), \
+            patch.object(snapshot.platform, "system", return_value="Linux"), \
+            patch.object(snapshot.platform, "machine", return_value="x86_64"):
+        yield
 
 
 class SnapshotTests(unittest.TestCase):
@@ -116,6 +133,23 @@ class SnapshotTests(unittest.TestCase):
                 self.assertNotEqual(seed, snapshot.scene_key("coverage-linux"))
             tool = "cargo-llvm-cov 0.9.2"
             self.assertNotEqual(seed, snapshot.scene_key("coverage-linux"))
+
+    def test_musl_key_isolates_compiler_and_linker_configuration(self):
+        context = snapshot.release_context("x86_64-unknown-linux-musl", "daemon", "release", "--target x86_64-unknown-linux-musl")
+        with linux_container_metadata(), patch.object(snapshot.subprocess, "check_output", return_value=b"compiler"), patch.dict(os.environ, CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_RUSTFLAGS="-C relocation-model=static"):
+            baseline = snapshot.scene_key("release-sidecar", context)
+            with patch.dict(os.environ, CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_RUSTFLAGS="-C relocation-model=pic"):
+                self.assertNotEqual(baseline, snapshot.scene_key("release-sidecar", context))
+            with patch.dict(os.environ, CC_x86_64_unknown_linux_musl="other-cc"):
+                self.assertNotEqual(baseline, snapshot.scene_key("release-sidecar", context))
+
+    def test_linux_gui_seed_isolates_container_from_bookworm_sidecars(self):
+        with linux_container_metadata(), patch.object(snapshot.subprocess, "check_output", return_value=b"compiler"):
+            baseline = snapshot.scene_key("linux-gui")
+            context = snapshot.release_context("x86_64-unknown-linux-gnu", "daemon", "release", "")
+            self.assertNotEqual(baseline, snapshot.scene_key("release-sidecar", context))
+            with patch.dict(os.environ, UC_MBX_BUILD_IMAGE="different-distribution"):
+                self.assertNotEqual(baseline, snapshot.scene_key("linux-gui"))
 
     def test_release_seed_survives_local_version_and_channel_changes(self):
         manifest = b'[workspace.package]\nversion = "1.0.0"\n[workspace.dependencies]\nengine = { git = "https://example.invalid/engine", rev = "abc" }\n'

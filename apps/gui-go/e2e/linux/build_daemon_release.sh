@@ -19,6 +19,23 @@ if ! command -v cargo >/dev/null; then
   # No toolchain is chosen here: rust-toolchain.toml in the repository pins the channel and rustup installs exactly that.
   curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none
 fi
+# Snapshot transport runs in the same container, with the same compiler and CAS
+# as the workload. GitHub command files stay inside this disposable container.
+if [[ "${UC_COMPILE_CACHE_BACKEND:-}" == r2 ]]; then
+  export RUNNER_TEMP="$CACHE/snapshot-tmp" MBX_CACHE_DIR="$CACHE/mbx"
+  export GITHUB_ENV="$RUNNER_TEMP/github-env" MBX_CACHE_EXPORT_GROUP=linux-gui
+  export UC_MBX_SNAPSHOT_SOURCE_ROOT="$WORK"
+  mkdir -p "$RUNNER_TEMP"
+  : > "$GITHUB_ENV"
+  if ! bash scripts/ci/mbx-snapshot.sh restore --scene linux-gui; then
+    echo '::warning::Linux snapshot setup failed; retaining ordinary compiler cache policy'
+  fi
+  # The command file contains paths only; the SDK identity remains in its
+  # original restricted mount and the native policy contains no credentials.
+  set -a
+  source "$GITHUB_ENV"
+  set +a
+fi
 # The source that determines the daemon: anything dirty here makes the build non-immutable.
 dirty="$(git status --porcelain -- Cargo.toml Cargo.lock rust-toolchain.toml crates apps/daemon tools packages 2>/dev/null || true)"
 overrides="$(env | grep '^CARGO_PROFILE_RELEASE_' | sort | tr '\n' ' ' || true)"
@@ -48,6 +65,11 @@ if [[ -n "${UC_ENGINE_MBX_BIN:-}" ]]; then
 else
   UC_TOOLS_DIR="$CACHE/tools" MBX_CACHE_DIR="$CACHE/mbx" \
     bash scripts/build-cache/mbx.sh --exec cargo build --locked --release -p uc-daemon --bin uniclipd 2>&1 | tail -n 40
+fi
+if [[ "${UC_COMPILE_CACHE_BACKEND:-}" == r2 && "${UC_MBX_PUBLISH_SNAPSHOT:-}" == true ]]; then
+  if ! bash scripts/ci/mbx-snapshot.sh save --scene linux-gui; then
+    echo '::warning::Linux snapshot publication failed'
+  fi
 fi
 cp "$CACHE/target/release/uniclipd" "$OUT/uniclipd"
 sha256sum "$OUT/uniclipd" >> "$OUT/build-evidence.txt"

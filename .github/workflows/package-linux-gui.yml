@@ -6,6 +6,10 @@ run-name: package-linux-gui-${{ github.run_number }}
 on:
   workflow_call:
     inputs:
+      build_only:
+        description: 'Protected warmup: build only the daemon dependency baseline'
+        type: boolean
+        default: false
       save_cache:
         description: 'Save Rust downloads after packaging; release disables this'
         type: boolean
@@ -110,8 +114,10 @@ jobs:
         include:
           - { arch: amd64, runner: ubuntu-24.04, platform: linux/amd64, machine: x86_64 }
           - { arch: arm64, runner: ubuntu-24.04-arm, platform: linux/arm64, machine: aarch64 }
-    environment: desktop-build-cache-reader
+    environment: ${{ inputs.build_only && inputs.save_cache && github.ref == 'refs/heads/main' && github.ref_protected && 'desktop-build-cache-writer' || 'desktop-build-cache-reader' }}
     env:
+      UC_MBX_PUBLISH_SNAPSHOT: ${{ inputs.build_only && inputs.save_cache && github.ref == 'refs/heads/main' && github.ref_protected && 'true' || 'false' }}
+      UC_MBX_BUILD_IMAGE: ${{ inputs.build_image || 'ubuntu:24.04' }}
       UC_DOCKER_PLATFORM: ${{ matrix.platform }}
       UC_LINUX_IMAGE: uc-package-build:ci
       UC_LINUX_CACHE_VOLUME: uc-linux-gui-cache
@@ -150,6 +156,7 @@ jobs:
           node-version: lts/*
 
       - name: Install frontend dependencies
+        if: inputs.build_only != true
         run: bun install --frozen-lockfile
 
       - name: Build the packaging image
@@ -164,22 +171,23 @@ jobs:
         run: |
           docker run --rm --platform "${{ matrix.platform }}" -v "$PWD:/work:ro" -w /work "$UC_LINUX_IMAGE" \
             python3 -m unittest discover -s scripts/tests -p test_linux_gtk4_packaging.py
+          docker run --rm --platform "${{ matrix.platform }}" "$UC_LINUX_IMAGE" \
+            python3 -m venv /tmp/mbx-bootstrap-check
 
       - name: Start shared Engine MBX cache
         env:
-          BUILD_CACHE_ACCESS: read
+          BUILD_CACHE_ACCESS: ${{ env.UC_MBX_PUBLISH_SNAPSHOT == 'true' && 'write' || 'read' }}
           BUILD_CACHE_R2_ENDPOINT: ${{ secrets.BUILD_CACHE_R2_ENDPOINT }}
           BUILD_CACHE_R2_ACCESS_KEY_ID: ${{ secrets.BUILD_CACHE_R2_ACCESS_KEY_ID }}
           BUILD_CACHE_R2_SECRET_ACCESS_KEY: ${{ secrets.BUILD_CACHE_R2_SECRET_ACCESS_KEY }}
         run: bash scripts/build-cache/engine-tools.sh --ci
 
-      - name: Restore Cargo downloads and MBX actions
+      - name: Restore Cargo downloads
         uses: actions/cache/restore@v4
         with:
           path: |
             ${{ runner.temp }}/uc-cache/cargo/registry
             ${{ runner.temp }}/uc-cache/cargo/git
-            ${{ runner.temp }}/uc-cache/mbx
           key: linux-gui-mbx-v1-${{ github.ref }}-${{ matrix.arch }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
           restore-keys: linux-gui-mbx-v1-${{ github.ref }}-${{ matrix.arch }}-
 
@@ -196,6 +204,7 @@ jobs:
         run: apps/gui-go/e2e/linux/run.sh daemon-release
 
       - name: Build the frontend (release, no source map upload)
+        if: inputs.build_only != true
         # SENTRY_AUTH_TOKEN and VITE_SENTRY_PROJECT stay unset: apps/gui-go/frontend/vite.config.ts uploads source maps only when both are present.
         env:
           VITE_GUI_GO_E2E: '0'
@@ -207,6 +216,7 @@ jobs:
           test "$(cat apps/gui-go/frontend/dist/.ui-platform)" = linux
 
       - name: Package
+        if: inputs.build_only != true
         run: apps/gui-go/e2e/linux/run.sh package-release "$RUNNER_TEMP/out"
 
       - name: Assert the checkout is still clean
@@ -216,9 +226,11 @@ jobs:
           test ! -s "$RUNNER_TEMP/meta/dirty.txt"
 
       - name: Verify the package set
+        if: inputs.build_only != true
         run: apps/gui-go/e2e/linux/run.sh verify-packages "$RUNNER_TEMP/out/packages" "$RUNNER_TEMP/upload"
 
       - name: Upload the named release candidates
+        if: inputs.build_only != true
         # Only the four files checked for naming, manifest, provenance and glibc floor. Runtime acceptance is a separate job.
         uses: actions/upload-artifact@v7
         with:
@@ -269,18 +281,17 @@ jobs:
           retention-days: 14
 
       - name: Save the Rust cache
-        if: inputs.save_cache != false && github.ref == 'refs/heads/main'
+        if: inputs.save_cache != false && github.ref == 'refs/heads/main' && github.ref_protected
         uses: actions/cache/save@v4
         with:
           path: |
             ${{ runner.temp }}/uc-cache/cargo/registry
             ${{ runner.temp }}/uc-cache/cargo/git
-            ${{ runner.temp }}/uc-cache/mbx
           key: linux-gui-mbx-v1-${{ github.ref }}-${{ matrix.arch }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
 
   acceptance:
     needs: package
-    if: ${{ !cancelled() && needs.package.result == 'success' && (github.event_name == 'pull_request' || inputs.run_acceptance) }}
+    if: ${{ !cancelled() && needs.package.result == 'success' && inputs.build_only != true && (github.event_name == 'pull_request' || inputs.run_acceptance) }}
     uses: ./.github/workflows/linux-gui-acceptance.yml
     with:
       ref: ${{ needs.package.outputs.sha }}

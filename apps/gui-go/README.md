@@ -35,6 +35,8 @@ bun wails:build --release        # Windows 发布构建，并生成便携 ZIP
 
 `bun wails:dev` 与 `bun wails:dev:profile <profile>` 支持 macOS、Windows 和 Linux。Linux 统一使用 GTK4，需要 Go、Rust、Node.js、Bun，以及可通过 `pkg-config` 查找的 GTK ≥ 4.14 和 WebKitGTK 6.0 开发库；前端自动选择 Linux 平台组件，使用 Vite 热更新。
 
+macOS 与 Windows 开发启动默认构建 GPUI 快捷面板，并将辅助程序放到宿主可执行文件旁，与安装包保持一致。锁定时直接在面板输入口令并按回车解锁，无需打开主窗口。可加 `--no-helper` 验证 WebView 回退面板；Windows 会同时移除上次暂存的辅助程序，避免误用旧版本。
+
 ```bash
 pkg-config --exists 'gtk4 >= 4.14' webkitgtk-6.0
 bun wails:dev

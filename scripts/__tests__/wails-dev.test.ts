@@ -11,6 +11,7 @@ const calls = vi.hoisted(() => ({
   vite: null as ChildProcess | null,
   mode: 'normal',
   detached: false,
+  helpers: [] as string[][],
 }))
 
 vi.mock('node:child_process', async importOriginal => {
@@ -65,6 +66,16 @@ import { main } from '../wails-dev.mjs'
 
 describe('development launcher', () => {
   beforeEach(() => {
+    vi.restoreAllMocks()
+    const copy = fs.copyFileSync
+    vi.spyOn(fs, 'copyFileSync').mockImplementation((source, destination, mode) => {
+      if (String(destination).endsWith('uniclip-quick-panel.exe')) {
+        calls.helpers.push([String(source), String(destination)])
+        return
+      }
+      copy(source, destination, mode)
+    })
+    calls.helpers = []
     calls.builds = []
     calls.app = ''
     calls.vite = null
@@ -86,11 +97,20 @@ describe('development launcher', () => {
           ...(process.platform === 'linux' ? ['pkg-config'] : []),
           'go',
           'cargo',
+          ...(process.platform === 'win32' ? ['cargo'] : []),
           'go',
           'go',
         ])
         const binary = process.platform === 'win32' ? 'gui-go-dev.exe' : 'gui-go-dev'
         expect(calls.app).toBe(path.join(root, 'target/gui-go/dev', binary))
+        if (process.platform === 'win32') {
+          expect(calls.helpers).toEqual([
+            [
+              path.join(root, 'target/debug/uniclip-quick-panel.exe'),
+              path.join(root, 'target/gui-go/dev/uniclip-quick-panel.exe'),
+            ],
+          ])
+        }
         const vite = calls.vite
         if (!vite) throw new Error('Vite was not started')
         await new Promise<void>(resolve => {

@@ -3,7 +3,27 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { makeDevBundle } from '../wails-dev.mjs'
+import { makeDevBundle, stageWindowsDevHelper } from '../wails-dev.mjs'
+
+describe('Windows development helper', () => {
+  it('stages the helper beside the host and removes it when disabled', () => {
+    const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), 'uc-dev-helper-'))
+    const host = path.join(sandbox, 'host', 'gui-go-dev.exe')
+    const source = path.join(sandbox, 'uniclip-quick-panel.exe')
+    const destination = path.join(path.dirname(host), 'uniclip-quick-panel.exe')
+    try {
+      fs.mkdirSync(path.dirname(host))
+      fs.writeFileSync(source, 'native-panel-fixture')
+      stageWindowsDevHelper(host, source)
+      expect(fs.readFileSync(destination, 'utf8')).toBe('native-panel-fixture')
+      stageWindowsDevHelper(host, null)
+      expect(fs.existsSync(destination)).toBe(false)
+      expect(fs.readFileSync(source, 'utf8')).toBe('native-panel-fixture')
+    } finally {
+      fs.rmSync(sandbox, { recursive: true, force: true })
+    }
+  })
+})
 
 // The Go host only drives the native quick panel (global shortcut, modifier double tap) when the
 // helper executable sits next to its own executable; without it the macOS WebView panel is used,

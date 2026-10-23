@@ -19,7 +19,7 @@ const out = path.join(root, 'target/gui-go/dev')
 
 export const USAGE = `Usage: bun wails:dev
        bun wails:dev:profile <profile>
-       add --no-helper to leave the native quick panel helper out (macOS)
+       add --no-helper to leave the native quick panel helper out (macOS/Windows)
        Linux requires GTK >= 4.14 and WebKitGTK 6.0
 
 Runs the Go GUI in development mode with frontend hot reload. The profile
@@ -106,6 +106,13 @@ export function makeDevBundle(binary, helper) {
   run('python3', [path.join(gui, 'packaging/macos/ui_bundle.py'), path.join(contents, '..')])
   run('codesign', ['--force', '--deep', '--sign', '-', path.join(contents, '..')])
   return executable
+}
+
+// Windows resolves the native panel beside the host, not through PATH.
+export function stageWindowsDevHelper(binary, helper) {
+  const destination = path.join(path.dirname(binary), 'uniclip-quick-panel.exe')
+  if (helper) fs.copyFileSync(helper, destination)
+  else fs.rmSync(destination, { force: true })
 }
 
 async function waitForServer(port, child, timeoutMs = 60_000) {
@@ -197,8 +204,9 @@ export async function main(args, env = process.env) {
 
   console.log(`[wails-dev] profile=${profile} dev server port=${port}`)
   run('cargo', ['build', '-p', 'uc-daemon'])
-  // macOS ships the native quick panel helper next to the app (stage-daemon.mjs), so the dev bundle carries it too.
-  if (process.platform === 'darwin' && withHelper) {
+  // Match the native panel shipped on macOS and Windows, including in development.
+  const nativeHelper = ['darwin', 'win32'].includes(process.platform) && withHelper
+  if (nativeHelper) {
     run('cargo', ['build', '--locked', '-p', 'quick-panel', '--bin', 'uniclip-quick-panel'])
   }
   run('go', ['generate', './buildinfo'], { cwd: path.join(root, 'packages/desktop-host-go') })
@@ -212,7 +220,14 @@ export async function main(args, env = process.env) {
   const platformTags = { darwin: 'private_mac_apis', linux: 'gtk4' }[process.platform]
   const tags = platformTags ? ['-tags', platformTags] : []
   run('go', ['build', ...tags, '-o', built, '.'], { cwd: gui, env })
-  const helper = withHelper ? path.join(root, 'target/debug/uniclip-quick-panel') : null
+  const helper = nativeHelper
+    ? path.join(
+        root,
+        'target/debug',
+        process.platform === 'win32' ? 'uniclip-quick-panel.exe' : 'uniclip-quick-panel'
+      )
+    : null
+  if (process.platform === 'win32') stageWindowsDevHelper(built, helper)
   const binary = process.platform === 'darwin' ? makeDevBundle(built, helper) : built
 
   // A dev build targets the machine it runs on.

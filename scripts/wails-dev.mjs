@@ -169,7 +169,9 @@ export async function main(args, env = process.env) {
       encoding: 'utf8',
     })
     if (dependencies.error || dependencies.status !== 0) {
-      console.error('Linux development requires GTK >= 4.10 and WebKitGTK 6.0 development packages.')
+      console.error(
+        'Linux development requires GTK >= 4.10 and WebKitGTK 6.0 development packages.'
+      )
       return 1
     }
   }

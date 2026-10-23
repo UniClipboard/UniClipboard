@@ -120,87 +120,97 @@ func runSend(ctx *cli.Context) int {
 		peerFilter = peers
 	}
 
-	// One absolute deadline bounds daemon readiness and target connection so
-	// no stage can restart the clock. Dispatch happens at most once, after
-	// this phase, so a wait can never duplicate a send.
-	timeoutSecs := ctx.Uint("connect-timeout")
-	var deadline time.Time
-	if timeoutSecs > 0 {
-		deadline = time.Now().Add(time.Duration(timeoutSecs) * time.Second)
-	}
-	var waitPeers []string
-	waitForTargets := !deadline.IsZero() && !resend
-	if waitForTargets {
-		waitPeers = peers
-	}
+	plan := newSendWaitPlan(ctx.Uint("connect-timeout"), resend, peers)
 
-	// The Rust CLI installs its Ctrl-C handler on the first wait and keeps it
-	// for the rest of the process: an interrupt during dispatch is swallowed,
-	// and only the explicit wait points react to it.
+	// Keep the existing process-wide Ctrl-C disposition during dispatch.
 	interrupts := make(chan os.Signal, 1)
 	signal.Notify(interrupts, os.Interrupt)
-
-	client, lease, code, cancelled := prepareSendDispatch(interrupts, deadline, waitForTargets, waitPeers, timeoutSecs)
+	code, cancelled := dispatchSend(plan, interrupts, connectSendSession, waitForSendTargets, func(client *daemonclient.Client) int {
+		switch {
+		case resend:
+			return runResendViaDaemon(client, resendID, peerFilter, asJSON)
+		case input.kind == sendInputFile:
+			return runSendFileViaDaemon(client, input.paths[0], peerFilter, asJSON, true, interrupts).exitCode
+		case input.kind == sendInputFiles:
+			return runSendFilesViaDaemon(client, input.paths, peerFilter, asJSON, interrupts)
+		default:
+			return runSendTextViaDaemon(client, input.text, peerFilter, asJSON)
+		}
+	})
 	if cancelled {
 		ui.Warn("Cancelled before dispatch; nothing was sent.")
-		return exitcode.Error
 	}
-	if code != exitcode.Success {
-		return code
-	}
-	// Hold the control lease to the end of the command so a transient oneshot
-	// daemon does not self-terminate mid-fan-out.
-	defer lease.Release()
+	return code
+}
 
-	switch {
-	case resend:
-		return runResendViaDaemon(client, resendID, peerFilter, asJSON)
-	case input.kind == sendInputFile:
-		return runSendFileViaDaemon(client, input.paths[0], peerFilter, asJSON, true, interrupts).exitCode
-	case input.kind == sendInputFiles:
-		return runSendFilesViaDaemon(client, input.paths, peerFilter, asJSON, interrupts)
-	default:
-		return runSendTextViaDaemon(client, input.text, peerFilter, asJSON)
+// sendWaitPlan shares one absolute deadline across all preparation stages.
+type sendWaitPlan struct {
+	deadline       time.Time
+	waitForTargets bool
+	peers          []string
+	budgetSecs     uint64
+}
+
+func newSendWaitPlan(timeoutSecs uint64, resend bool, peers []string) sendWaitPlan {
+	plan := sendWaitPlan{budgetSecs: timeoutSecs}
+	if timeoutSecs > 0 {
+		plan.deadline = time.Now().Add(time.Duration(timeoutSecs) * time.Second)
+		plan.waitForTargets = !resend
 	}
+	if plan.waitForTargets {
+		plan.peers = peers
+	}
+	return plan
 }
 
 type preparedDispatch struct {
-	client *daemonclient.Client
-	lease  *daemonclient.Lease
-	code   int
+	client  *daemonclient.Client
+	release func()
+	code    int
 }
 
-// prepareSendDispatch connects to the daemon (spawning a transient one when
-// absent), takes the control lease, then optionally waits for the targets.
-// It races the whole phase against Ctrl-C.
-func prepareSendDispatch(interrupts <-chan os.Signal, deadline time.Time, waitForTargets bool, peers []string, budgetSecs uint64) (*daemonclient.Client, *daemonclient.Lease, int, bool) {
+// connectSendSession owns the daemon and lease I/O boundary.
+func connectSendSession(deadline time.Time) preparedDispatch {
+	client, err := session.ConnectOrSpawnOneshot(deadline)
+	if err != nil {
+		return preparedDispatch{code: session.ExitCode(err)}
+	}
+	lease, err := client.HoldLease(context.Background())
+	if err != nil {
+		ui.Error("Failed to hold daemon session lease: " + err.Error())
+		return preparedDispatch{code: exitcode.Error}
+	}
+	return preparedDispatch{client: client, release: lease.Release, code: exitcode.Success}
+}
+
+// dispatchSend races preparation against Ctrl-C, then invokes the selected
+// send operation once while retaining the daemon control lease.
+func dispatchSend(plan sendWaitPlan, interrupts <-chan os.Signal, connect func(time.Time) preparedDispatch, wait func([]string, time.Time, uint64) int, dispatch func(*daemonclient.Client) int) (int, bool) {
 	done := make(chan preparedDispatch, 1)
 	go func() {
-		client, err := session.ConnectOrSpawnOneshot(deadline)
-		if err != nil {
-			done <- preparedDispatch{code: session.ExitCode(err)}
+		prepared := connect(plan.deadline)
+		if prepared.code != exitcode.Success {
+			done <- prepared
 			return
 		}
-		lease, err := client.HoldLease(context.Background())
-		if err != nil {
-			ui.Error("Failed to hold daemon session lease: " + err.Error())
-			done <- preparedDispatch{code: exitcode.Error}
-			return
-		}
-		if waitForTargets {
-			if code := waitForSendTargets(peers, deadline, budgetSecs); code != exitcode.Success {
-				lease.Release()
+		if plan.waitForTargets {
+			if code := wait(plan.peers, plan.deadline, plan.budgetSecs); code != exitcode.Success {
+				prepared.release()
 				done <- preparedDispatch{code: code}
 				return
 			}
 		}
-		done <- preparedDispatch{client: client, lease: lease, code: exitcode.Success}
+		done <- prepared
 	}()
 	select {
 	case <-interrupts:
-		return nil, nil, exitcode.Error, true
-	case p := <-done:
-		return p.client, p.lease, p.code, false
+		return exitcode.Error, true
+	case prepared := <-done:
+		if prepared.code != exitcode.Success {
+			return prepared.code, false
+		}
+		defer prepared.release()
+		return dispatch(prepared.client), false
 	}
 }
 

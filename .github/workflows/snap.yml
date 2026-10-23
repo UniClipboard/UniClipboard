@@ -176,6 +176,7 @@ jobs:
         with:
           name: snap-acceptance-${{ matrix.arch }}
           path: ${{ runner.temp }}/snap-acceptance
+          include-hidden-files: true
           retention-days: 7
           if-no-files-found: ignore
 
@@ -225,4 +226,5 @@ jobs:
         with:
           name: snap-startup-diagnostic-arm64
           path: ${{ runner.temp }}/snap-acceptance
+          include-hidden-files: true
           if-no-files-found: error

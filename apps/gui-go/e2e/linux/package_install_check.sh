@@ -97,6 +97,8 @@ if [ "$scenario" = upgrade ]; then
 fi
 # Shipped form: no profile, an ordinary desktop user and its unlocked throwaway keyring.
 useradd --create-home --shell /bin/bash uc-acceptance
+# The bind-mounted evidence directory must belong to the actual test UID on every distribution.
+chown uc-acceptance:uc-acceptance /out
 export UC_DISABLE_SYSTEM_CLIPBOARD=1
 launch() {
   export UC_PACKAGE_PROFILE_MODE="$1" UC_PACKAGE_SEED_DAEMON="${seed_daemon:-/usr/bin/uniclipd}"

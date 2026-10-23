@@ -494,6 +494,7 @@ impl Render for Panel {
         };
         div()
             .size_full()
+            .font(super::fonts::ui_font(cx))
             .text_color(cx.theme().foreground)
             .key_context("QuickPanel")
             .on_action(

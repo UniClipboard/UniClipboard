@@ -158,7 +158,10 @@ jobs:
        (github.event_name == 'workflow_dispatch' && inputs.publish == true))
     runs-on: ubuntu-latest
     # base-devel already has makepkg; git and openssh are installed below.
-    container: archlinux:base-devel
+    container:
+      image: archlinux:base-devel
+      # WebKitGTK4 needs nested namespaces for bubblewrap in this disposable harness.
+      options: --cap-add=SYS_ADMIN --security-opt seccomp=unconfined --security-opt apparmor=unconfined
     permissions:
       contents: read
     steps:

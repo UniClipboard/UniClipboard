@@ -4,21 +4,23 @@
 
 ## 依赖与兼容范围
 
-Wails 使用 `GtkFileDialog`，要求 GTK ≥ 4.10；WebKit 使用 `webkitgtk-6.0` ABI。公共 GUI 构建镜像改为 Ubuntu 24.04，glibc 验收上限为 2.39；这是明确提高的构建基线，不再承诺 Debian 12 或 Ubuntu 22.04 的原生 deb/rpm/AppImage 兼容性。最终产物中每个 ELF 的实际需求仍由 `elf_floor.py` 检查。
+Wails 使用 GTK 4.14 起提供的 `GdkMonitor.get_scale`，因此要求 GTK ≥ 4.14（`GtkFileDialog` 自 GTK 4.10 起提供）；WebKit 使用 `webkitgtk-6.0` ABI。公共 GUI 构建镜像改为 Ubuntu 24.04，glibc 验收上限为 2.39；这是明确提高的构建基线，不再承诺 Debian 12 或 Ubuntu 22.04 的原生 deb/rpm/AppImage 兼容性。最终产物中每个 ELF 的实际需求仍由 `elf_floor.py` 检查。
 
 | 渠道 | GTK4 契约 |
 | --- | --- |
-| deb | `libc6 (>= 2.39)`、`libgtk-4-1 (>= 4.10)`、`libwebkitgtk-6.0-4`、`libx11-6` |
-| rpm / COPR | GTK4、WebKitGTK 6.0、X11 的 soname；glibc ≥ 2.39；GTK 包版本 ≥ 4.10。COPR 与上游 RPM 使用相同能力声明，回归检查防止漂移 |
+| deb | `libc6 (>= 2.39)`、`libgtk-4-1 (>= 4.14)`、`libwebkitgtk-6.0-4`、`libx11-6` |
+| rpm / COPR | GTK4、WebKitGTK 6.0、X11 的 soname；glibc ≥ 2.39；GTK 包版本 ≥ 4.14。COPR 与上游 RPM 使用相同能力声明，回归检查防止漂移 |
 | AppImage | 使用 Wails 自带 GTK 插件的 `DEPLOY_GTK_VERSION=4`；携带 GTK4、WebKitGTK 6.0、JavaScriptCore 6.0 及 WebKit 进程助手；将 `webkitgtk-6.0` 的编译期助手路径等长重定位到包内 |
-| AUR | `gtk4>=4.10`、`webkitgtk-6.0`、`libx11`、`libsoup3`；源码使用 `gtk4,production,release` 标签 |
-| Snap | 保留 `core22`、strict、devel；GTK ≥ 4.10 由 GNOME SDK/内容平台提供，应用打包 WebKitGTK 6.0；细节见 [分发渠道](gui-go-distribution-channels.md) |
+| AUR | `gtk4>=4.14`、`webkitgtk-6.0`、`libx11`、`libsoup3`；源码使用 `gtk4,production,release` 标签 |
+| Snap | 使用 `core24`、strict、devel；GTK ≥ 4.14 由 GNOME 46 SDK/内容平台提供，应用打包 WebKitGTK 6.0；细节见 [分发渠道](gui-go-distribution-channels.md) |
 | Nix | GTK4 发布使用 `wrapGAppsHook4`、`gtk4`、`webkitgtk_6_0`；更新源 pin 前校验两个 deb 的真实 SHA-256 和 GTK4 ELF 依赖 |
 | Flatpak / Flathub | GNOME 50 运行时；构建时拒绝 GTK3 输入 deb。发布 URL、哈希与 AppStream 占位项仍须在提交前替换，不能视为已可发布 |
 
 安装脚本对 Ubuntu 20.04 / 22.04、对应派生发行版和 Debian 11 / 12 选择 Snap，避免自动安装不满足原生 GTK4 依赖的 deb。其他发行版仍须满足包声明的 GTK 与 glibc 条件；Snap 在旧宿主上的实际兼容性需要验收。
 
 GTK4 快捷面板使用普通窗口。本项目尚未实现 GTK4 Layer Shell 适配，因此新的包不声明或捆绑 GTK3 的 `libgtk-layer-shell`，Wayland 的覆盖层、独占键盘和定位不能沿用旧 GTK3 验收结论。仅用于在旧提交中重现 GTK3 Layer Shell 实验的 `run_17c*` 脚本保留其原始标签；它们不属于当前包的构建入口。
+
+实际 CI 发现 GNOME 42 SDK 的 GTK 4.12.3 无法编译 Wails 的 `gdk_monitor_get_scale` 调用，因此 Snap 基线改为 core24/GNOME 46。core24 是包内运行时，不代表宿主必须是 Ubuntu 24.04；Ubuntu 20.04 的 snapd、内核与桌面兼容性仍须验收。AppImage 在部署结束后按宿主库策略移除 Vulkan 和 D-Bus 入口库，干净验收宿主须提供 Vulkan 加载器。
 
 ## 已发布产物的迁移顺序
 
@@ -35,6 +37,7 @@ Flatpak manifest 原本使用占位 URL/哈希，目前仍不可提交发布。G
 
 ## 上游依据
 
+- [GdkMonitor.get_scale：GTK 4.14 起提供](https://docs.gtk.org/gdk4/method.Monitor.get_scale.html)
 - [GtkFileDialog：GTK 4.10 起提供](https://docs.gtk.org/gtk4/class.FileDialog.html)
 - [GNOME 50 平台构成：包含 WebKitGTK 6.0](https://raw.githubusercontent.com/GNOME/gnome-build-meta/gnome-50/elements/sdk-platform.bst)
 - [Arch Linux WebKitGTK 6.0 包](https://archlinux.org/packages/extra/x86_64/webkitgtk-6.0/)

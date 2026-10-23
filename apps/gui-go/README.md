@@ -33,17 +33,17 @@ bun wails:build                  # 构建本地应用，不启动
 bun wails:build --release        # Windows 发布构建，并生成便携 ZIP
 ```
 
-`bun wails:dev` 与 `bun wails:dev:profile <profile>` 支持 macOS、Windows 和 Linux。Linux 统一使用 GTK4，需要 Go、Rust、Node.js、Bun，以及可通过 `pkg-config` 查找的 GTK ≥ 4.10 和 WebKitGTK 6.0 开发库；前端自动选择 Linux 平台组件，使用 Vite 热更新。
+`bun wails:dev` 与 `bun wails:dev:profile <profile>` 支持 macOS、Windows 和 Linux。Linux 统一使用 GTK4，需要 Go、Rust、Node.js、Bun，以及可通过 `pkg-config` 查找的 GTK ≥ 4.14 和 WebKitGTK 6.0 开发库；前端自动选择 Linux 平台组件，使用 Vite 热更新。
 
 ```bash
-pkg-config --exists 'gtk4 >= 4.10' webkitgtk-6.0
+pkg-config --exists 'gtk4 >= 4.14' webkitgtk-6.0
 bun wails:dev
 bun wails:dev:profile gtk4-dev
 ```
 
 Arch Linux／Arch Linux ARM 的开发包为 `gtk4`、`webkitgtk-6.0`，Ubuntu 24.04 为 `libgtk-4-dev`、`libwebkitgtk-6.0-dev`。启动器在构建前检查依赖，输出为 `target/gui-go/dev/gui-go-dev`。原先的 `--gtk4` 参数仍可接受，但不再选择另一套后端。GTK4 快捷面板使用普通窗口，尚无本项目的 Layer Shell 适配，因此 Wayland 的覆盖层、独占键盘与定位行为不能沿用旧 GTK3 结论。各渠道依赖、兼容范围与验收边界见 [Linux GTK4 打包迁移](../../docs/architecture/gui-go-linux-gtk4-migration.md)。
 
-真实宿主滚动验收使用 `e2e/linux_scroll_run.py`，要求当前源码构建的 `target/debug/uniclipd` 和 `target/gui-go/uniclip`，以及带 `VITE_GUI_GO_E2E=1 UC_UI_PLATFORM=linux` 的前端。分别构建 `gtk3,e2e`／`gtk4,e2e` 宿主，再运行：
+真实宿主滚动验收使用 `e2e/linux_scroll_run.py`，要求当前源码构建的 `target/debug/uniclipd` 和 `target/gui-go/uniclip`，以及带 `VITE_GUI_GO_E2E=1 UC_UI_PLATFORM=linux` 的前端。构建 `gtk4,e2e` 宿主，再运行：
 
 ```bash
 python3 apps/gui-go/e2e/linux_scroll_run.py --gui target/gui-go/history-scroll/uniclipboard-gtk4 --out target/gui-go/gtk4-trial

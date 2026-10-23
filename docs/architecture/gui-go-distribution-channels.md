@@ -58,7 +58,7 @@ PR 门禁没有在 GitHub 上运行过（未 push）；在草稿 PR 里演示故
 
 | 渠道 | 决定 | 改动 | 实测 | 未验证 |
 | --- | --- | --- | --- | --- |
-| snap | 源码构建 GTK4 Go 宿主 + Rust daemon；保留 `core22`、`grade: devel`；默认不推送 | `snap/snapcraft.yaml`、`.github/workflows/snap.yml`；GNOME 提供 GTK4，应用打包 WebKitGTK 6.0 | 配方检查与图标检查共 11 项通过；旧 GTK3 编译证据见下，不代表 GTK4 配方已构建成功 | 完整 GTK4 Snap 构建、Ubuntu 20.04 实机安装及 strict 限制下的启动、托盘、通知、自启动、全局快捷键均待验证 |
+| snap | 源码构建 GTK4 Go 宿主 + Rust daemon；使用 `core24`、`grade: devel`；默认不推送 | `snap/snapcraft.yaml`、`.github/workflows/snap.yml`；GNOME 提供 GTK4，应用打包 WebKitGTK 6.0 | 配方检查与图标检查共 11 项通过；旧 GTK3 编译证据见下，不代表 GTK4 配方已构建成功 | 完整 GTK4 Snap 构建、Ubuntu 20.04 实机安装及 strict 限制下的启动、托盘、通知、自启动、全局快捷键均待验证 |
 | AUR | 移植：源码构建；发布只能由 main 上的 `workflow_dispatch(publish=true)` | `PKGBUILD`、`aur.yml`、`build-aur-package.sh`、`check-arch-package.sh` | 干净 `archlinux:base-devel`（amd64，模拟）里 `makepkg` 成功并在全新容器里安装、启动通过，见下 | 原生 amd64/aarch64 构建；真实桌面；合入后需要有权限的人 dispatch 一次才会更新 AUR；`namcap` 警告（无 PIE/RELRO、`uniclipd` 含 `$srcdir` 引用）未处理 |
 | COPR | 保持重打包 Go rpm | spec、`copr.yml`（`run_ids` 取 `linux-gui-*`，`dry_run`）、`build-copr-srpm.sh` | Fedora 44 arm64 容器里 SRPM → 重建 → 与上游 rpm 对比 → 安装启动，见下 | 真实 COPR 提交；amd64；EPEL；Fedora 之外的发行版 |
 | Flathub | 重打包 GTK4 deb；提交占位项仍待填入 | GNOME 50 运行时；拒绝旧 GTK3 输入 deb | YAML 解析通过；上游 GNOME 50 平台清单包含 WebKitGTK 6.0 | `flatpak-builder`、真实 GTK4 发布 URL/哈希及沙箱内桌面功能未验证 |
@@ -102,11 +102,11 @@ PR 门禁没有在 GitHub 上运行过（未 push）；在草稿 PR 里演示故
 ### snap
 
 - 历史证据：旧 GTK3 配方在 Ubuntu 22.04 arm64 容器编译 Go 宿主成功，二进制 sha256 `4ed42194…`。第一次尝试暴露配方缺 C 编译器，已加入 `build-essential`。此结果不能用于证明当前 GTK4 配方可构建。
-- 当前配方保留 `base: core22` 与 GNOME 扩展，改用 `gtk4,production,release` 构建标签。Wails 的 `GtkFileDialog` 要求 GTK ≥ 4.10，因此构建使用 GNOME SDK 的 GTK（上游配方为 4.12.3），并显式检查最低版本；不能使用 Jammy 自带的 GTK 4.6。
-- 应用声明构建依赖 `libgtk-4-dev`、`libwebkitgtk-6.0-dev`，打包 `libwebkitgtk-6.0-4` 及其传递依赖。运行时 GTK 由 GNOME 内容平台提供，排除 apt 传递带入的旧 `libgtk-4.so*`，避免覆盖平台版本。
-- 增加 WebKitGTK 6.0 的 `/usr/lib/$CRAFT_ARCH_TRIPLET/webkitgtk-6.0` 布局，让进程助手的绝对路径在 Snap 内可解析；打包前检查 WebKit、JavaScriptCore、进程助手及注入库是否完整。移除 GTK3 的 `libgtk-layer-shell0`，GTK4 快捷面板使用普通窗口。
-- `python3 -m unittest discover -s scripts/tests -p 'test_*snap*.py'` 共 11 项通过，覆盖 amd64/arm64 路径、缺失依赖、助手不可执行、旧 GTK 覆盖及图标检查。CI 在构建前执行相同检查。
-- 本轮环境没有 Snapcraft，且无法访问 Docker socket，未执行完整 Snap 构建。保留 core22 避免主动提高用户态 ABI 基线，但 Ubuntu 20.04 的内核、显卡驱动、snapd 与桌面集成仍需实机验收，不能仅凭配方声明保证兼容。
+- 当前配方使用 `base: core24` 与 GNOME 46 扩展，以 `gtk4,production,release` 标签构建。真实 CI 证明旧 GNOME 42 SDK 的 GTK 4.12.3 无法编译 Wails 的 `GdkMonitor.get_scale`（GTK 4.14 起提供）；最低版本检查已同步提高到 4.14。
+- GNOME SDK/内容平台提供 GTK。应用声明 `libgtk-4-dev`、`libwebkitgtk-6.0-dev` 构建依赖，打包 `libwebkitgtk-6.0-4` 及传递依赖，并排除 apt 带入的 GTK 动态库，避免覆盖平台版本。
+- GNOME 46 扩展只提供旧 WebKit 布局，因此显式将 `/usr/lib/$CRAFT_ARCH_TRIPLET_BUILD_FOR/webkitgtk-6.0` 绑定到包内助手目录。打包前检查 WebKit、JavaScriptCore、进程助手及注入库；GTK4 面板不引入 GTK3 Layer Shell 库。
+- 配方检查覆盖两个架构的路径、缺失依赖、不可执行助手、GTK 覆盖与图标。完整构建以 PR 的 Snap CI 结果为准。
+- core24 是包内用户态基线，不代表宿主必须是 Ubuntu 24.04；Ubuntu 20.04 的 snapd、内核、显卡与桌面集成仍需实际验收。
 
 ## 环境与证据的区别
 

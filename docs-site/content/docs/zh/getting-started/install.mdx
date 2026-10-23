@@ -25,7 +25,7 @@ curl -fsSL https://uniclipboard.app/install.sh | bash
 脚本会自动判断：
 
 - **macOS** —— 下载 `.app.tar.gz`，解压后搬到 `/Applications/UniClipboard.app`（写权限不足时自动调用 `sudo`；也可用 `--prefix "$HOME/Applications"` 走用户级安装）。
-- **Linux** —— 一键安装脚本在 Ubuntu 20.04 / 22.04、基于这两个版本的派生发行版，以及 Debian 11 / 12 上自动选择 `snap`，以避开 GTK4 原生包的最低依赖限制；缺 `snapd` 时会通过 `apt` 自动补装。其它满足依赖要求的 Debian 系发行版默认通过 `apt` 安装 `.deb`。`dnf` 系发行版（Fedora/RHEL/openSUSE）会启用 [`mkdir700/uniclipboard`](https://copr.fedorainfracloud.org/coprs/mkdir700/uniclipboard/) COPR 仓库并 `dnf install uniclipboard`，后续 `dnf upgrade` 自动跟版本——若传 `--version vX.Y.Z` 则改走一次性 `.rpm` 下载。无 root 时回退到 AppImage（装到 `~/.local/bin` 并注册 `.desktop`）。
+- **Linux** —— 一键安装脚本在 Ubuntu 20.04 / 22.04、基于这两个版本的派生发行版，以及 Debian 11 / 12 上自动选择 `snap`，以避开 GTK4 原生包的最低依赖限制；缺 `snapd` 时会通过 `apt` 自动补装。其它满足依赖要求的 Debian 系发行版默认通过 `apt` 安装 `.deb`。`dnf` 系发行版（Fedora/RHEL/openSUSE）会启用 [`mkdir700/uniclipboard`](https://copr.fedorainfracloud.org/coprs/mkdir700/uniclipboard/) COPR 仓库并 `dnf install uniclipboard`，后续 `dnf upgrade` 自动跟版本——若传 `--version vX.Y.Z` 则改走一次性 `.rpm` 下载。未选择 Snap 且没有 root 或 sudo 时，脚本才会回退到 AppImage（装到 `~/.local/bin` 并注册 `.desktop`）。在选择 Snap 的系统上，无 root 安装需要显式传入 `--format appimage`，且宿主须满足 AppImage 的 glibc 要求。
 
 常用选项：
 
@@ -137,7 +137,7 @@ Windows 提供两种形式：**安装版**（NSIS 安装包，推荐大多数人
 
 <Tab value="Linux">
 
-每次发布都会构建 `.deb`、`.rpm` 与 `.AppImage` 三种格式，覆盖 `x86_64` 与 `aarch64`。GTK4 版本的原生包要求 GTK ≥ 4.10、WebKitGTK 6.0 和 glibc ≥ 2.39，公共构建基线为 Ubuntu 24.04；旧版本的要求请查看对应发布说明。按你的发行版挑最合适的渠道：
+每次发布都会构建 `.deb`、`.rpm` 与 `.AppImage` 三种格式，覆盖 `x86_64` 与 `aarch64`。GTK4 版本的原生包要求 GTK ≥ 4.14、WebKitGTK 6.0 和 glibc ≥ 2.39，公共构建基线为 Ubuntu 24.04；旧版本的要求请查看对应发布说明。按你的发行版挑最合适的渠道：
 
 ### Arch Linux / Omarchy — AUR
 
@@ -173,7 +173,7 @@ sudo dnf install uniclipboard
 
 ### Ubuntu / Debian / 老发行版 — 推荐 Snap
 
-GTK4 Snap 配方保留 `core22` 严格沙箱，由 GNOME 平台提供 GTK，并在包内提供 WebKitGTK 6.0，因此不依赖宿主系统的 GTK 版本。不过，Ubuntu 20.04 等旧宿主上的 GTK4 实机兼容性仍待验收，不能仅凭运行时声明保证可用；请以对应发布说明为准。
+GTK4 Snap 配方保留 `core24` 严格沙箱，由 GNOME 平台提供 GTK，并在包内提供 WebKitGTK 6.0，因此不依赖宿主系统的 GTK 版本。不过，Ubuntu 20.04 等旧宿主上的 GTK4 实机兼容性仍待验收，不能仅凭运行时声明保证可用；请以对应发布说明为准。
 
 ```bash
 # 正式渠道（稳定版，amd64 + arm64 双架构）

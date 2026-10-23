@@ -26,7 +26,7 @@ curl -fsSL https://uniclipboard.app/install.sh | bash
 What it does:
 
 - **macOS** — downloads `.app.tar.gz`, extracts it, and moves `UniClipboard.app` into `/Applications` (escalates with `sudo` if needed; pass `--prefix "$HOME/Applications"` for a user-level install).
-- **Linux** — the quick-install script selects `snap` on Ubuntu 20.04 / 22.04, derivatives based on those releases, and Debian 11 / 12 to avoid the native GTK4 package requirements; missing `snapd` is installed via `apt`. Other Debian-family distributions that meet the requirements default to the `.deb` via `apt`. `dnf`-based distros (Fedora/RHEL/openSUSE) enable the [`mkdir700/uniclipboard`](https://copr.fedorainfracloud.org/coprs/mkdir700/uniclipboard/) COPR repo and `dnf install uniclipboard`, so `dnf upgrade` keeps tracking new releases — pass `--version vX.Y.Z` to fall back to a one-shot `.rpm` download instead. Without root, the script falls back to AppImage in `~/.local/bin` with a `.desktop` entry.
+- **Linux** — the quick-install script selects `snap` on Ubuntu 20.04 / 22.04, derivatives based on those releases, and Debian 11 / 12 to avoid the native GTK4 package requirements; missing `snapd` is installed via `apt`. Other Debian-family distributions that meet the requirements default to the `.deb` via `apt`. `dnf`-based distros (Fedora/RHEL/openSUSE) enable the [`mkdir700/uniclipboard`](https://copr.fedorainfracloud.org/coprs/mkdir700/uniclipboard/) COPR repo and `dnf install uniclipboard`, so `dnf upgrade` keeps tracking new releases — pass `--version vX.Y.Z` to fall back to a one-shot `.rpm` download instead. When Snap is not selected and root or sudo is unavailable, the script falls back to AppImage in `~/.local/bin` with a `.desktop` entry. On Snap-selected systems, a rootless AppImage install requires `--format appimage` and a host that meets its glibc requirement.
 
 Common flags:
 
@@ -165,7 +165,7 @@ Download the installer or portable zip from the
 
 <Tab value="Linux">
 
-Each release ships `.deb`, `.rpm`, and `.AppImage` artifacts for both `x86_64` and `aarch64`. Native GTK4 packages require GTK >= 4.10, WebKitGTK 6.0, and glibc >= 2.39; the shared build baseline is Ubuntu 24.04. Check the corresponding release notes for older versions. Pick the channel that fits your distribution:
+Each release ships `.deb`, `.rpm`, and `.AppImage` artifacts for both `x86_64` and `aarch64`. Native GTK4 packages require GTK >= 4.14, WebKitGTK 6.0, and glibc >= 2.39; the shared build baseline is Ubuntu 24.04. Check the corresponding release notes for older versions. Pick the channel that fits your distribution:
 
 ### Arch Linux / Omarchy — AUR
 
@@ -201,7 +201,7 @@ See the [COPR deployment notes](https://github.com/UniClipboard/UniClipboard/blo
 
 ### Ubuntu / Debian / older distros — recommended: Snap
 
-The GTK4 Snap recipe retains strict confinement on `core22`, obtains GTK from the GNOME platform, and bundles WebKitGTK 6.0, avoiding the host GTK requirement. Native GTK4 acceptance on older hosts such as Ubuntu 20.04 is still pending; the runtime declaration alone does not guarantee compatibility. Check the corresponding release notes.
+The GTK4 Snap recipe retains strict confinement on `core24`, obtains GTK from the GNOME platform, and bundles WebKitGTK 6.0, avoiding the host GTK requirement. Native GTK4 acceptance on older hosts such as Ubuntu 20.04 is still pending; the runtime declaration alone does not guarantee compatibility. Check the corresponding release notes.
 
 ```bash
 # Stable channel (final releases, amd64 + arm64)

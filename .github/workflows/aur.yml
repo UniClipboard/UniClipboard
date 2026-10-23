@@ -140,7 +140,7 @@ jobs:
         run: |
           pkg="$(realpath built/*.pkg.tar.zst)"
           mkdir aur-install-evidence
-          docker run --rm --init --security-opt seccomp=unconfined \
+          docker run --rm --init --security-opt seccomp=unconfined --security-opt systempaths=unconfined \
             --security-opt "apparmor=$UC_WEBKIT_CI_APPARMOR_PROFILE" \
             -v "$GITHUB_WORKSPACE/src:/work:ro" -v "$pkg:/in/package.pkg.tar.zst:ro" \
             -v "$GITHUB_WORKSPACE/aur-install-evidence:/out" archlinux:base-devel \

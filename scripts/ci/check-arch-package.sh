@@ -34,7 +34,7 @@ check "the icon named by the desktop entry is installed" test -f /usr/share/icon
 # Install as root, then run the shipped form as a normal desktop user. Bubblewrap
 # obtains capabilities inside its own user/network namespaces, not from Docker's root capabilities.
 useradd --create-home --shell /bin/bash uc-acceptance
-runuser -u uc-acceptance -- env HOME=/home/uc-acceptance UC_DISABLE_SYSTEM_CLIPBOARD=1 dbus-run-session -- bash -c '
+runuser -u uc-acceptance -- env HOME=/home/uc-acceptance UC_DISABLE_SYSTEM_CLIPBOARD=1 DISPLAY=:99 GDK_BACKEND=x11 dbus-run-session -- bash -c '
   set -u
   export XDG_RUNTIME_DIR="$HOME/run" XDG_DATA_HOME="$HOME/.local/share" XDG_CONFIG_HOME="$HOME/.config" XDG_CACHE_HOME="$HOME/.cache"
   mkdir -p "$XDG_DATA_HOME" "$XDG_CONFIG_HOME" "$XDG_CACHE_HOME"
@@ -49,7 +49,7 @@ runuser -u uc-acceptance -- env HOME=/home/uc-acceptance UC_DISABLE_SYSTEM_CLIPB
   cleanup() { kill ${gui:-} ${xvfb:-} 2>/dev/null || true; pkill -u "$(id -u)" -x uniclipd 2>/dev/null || true; }
   trap cleanup EXIT
   Xvfb :99 -screen 0 1280x800x24 -nolisten tcp & xvfb=$!
-  export DISPLAY=:99 GDK_BACKEND=x11 GSK_RENDERER=cairo LIBGL_ALWAYS_SOFTWARE=1; for i in $(seq 50); do xdpyinfo >/dev/null 2>&1 && break; sleep 0.2; done
+  export GSK_RENDERER=cairo LIBGL_ALWAYS_SOFTWARE=1; for i in $(seq 50); do xdpyinfo >/dev/null 2>&1 && break; sleep 0.2; done
   /usr/bin/uniclipboard >/tmp/gui.log 2>&1 & gui=$!
   # Under user-mode emulation, argument 2 identifies the program behind /proc/PID/exe.
   exe_of() { local e; e=$(readlink /proc/$1/exe 2>/dev/null); case "$e" in */qemu-*) e=$(tr "\\0" "\\n" </proc/$1/cmdline | sed -n 2p);; esac; echo "$e"; }

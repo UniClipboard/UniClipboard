@@ -23,7 +23,7 @@ if [ "${1:-}" != "--inner" ]; then
   cp "$here/package_install_check.sh" "$here/package_profile_check.py" "$out/source/"
   shasum -a 256 "$out/source/"* > "$out/harness.sha256"
   platform="${UC_DOCKER_PLATFORM:?UC_DOCKER_PLATFORM}"
-  docker run --rm --init --security-opt seccomp=unconfined --security-opt "apparmor=${UC_WEBKIT_CI_APPARMOR_PROFILE:-unconfined}" --platform "$platform" -v "$out/source/package_install_check.sh:/check.sh:ro" -v "$out/source/package_profile_check.py:/profile.py:ro" -v "$new:/in/new.$kind:ro" -v "$old:/in/old.$kind:ro" -v "$out:/out" \
+  docker run --rm --init --security-opt seccomp=unconfined --security-opt systempaths=unconfined --security-opt "apparmor=${UC_WEBKIT_CI_APPARMOR_PROFILE:-unconfined}" --platform "$platform" -v "$out/source/package_install_check.sh:/check.sh:ro" -v "$out/source/package_profile_check.py:/profile.py:ro" -v "$new:/in/new.$kind:ro" -v "$old:/in/old.$kind:ro" -v "$out:/out" \
     "$image" bash /check.sh --inner "$kind" "$scenario" "$sha" > "$out/run.log" 2>&1
   rc=$?
   tail -n 40 "$out/results.tsv" 2>/dev/null; exit "$rc"
@@ -100,7 +100,7 @@ useradd --create-home --shell /bin/bash uc-acceptance
 export UC_DISABLE_SYSTEM_CLIPBOARD=1
 launch() {
   export UC_PACKAGE_PROFILE_MODE="$1" UC_PACKAGE_SEED_DAEMON="${seed_daemon:-/usr/bin/uniclipd}"
-  runuser -u uc-acceptance -- env HOME=/home/uc-acceptance dbus-run-session -- bash -c '
+  runuser -u uc-acceptance -- env HOME=/home/uc-acceptance DISPLAY=:99 GDK_BACKEND=x11 dbus-run-session -- bash -c '
     set -u
     mkdir -p "$HOME/.local/share" "$HOME/.config" "$HOME/.cache"
     printf "uc-throwaway" | gnome-keyring-daemon --foreground --unlock --components=secrets > /tmp/keyring.env 2> /tmp/keyring.err &
@@ -109,7 +109,7 @@ launch() {
     cleanup() { kill ${gui:-} ${xvfb:-} 2>/dev/null; pkill -x uniclipd 2>/dev/null || true; }
     trap cleanup EXIT
     Xvfb :99 -screen 0 1280x800x24 -nolisten tcp & xvfb=$!
-    export DISPLAY=:99; for i in $(seq 50); do xdpyinfo >/dev/null 2>&1 && break; sleep 0.2; done
+    for i in $(seq 50); do xdpyinfo >/dev/null 2>&1 && break; sleep 0.2; done
     if [ "$UC_PACKAGE_PROFILE_MODE" = seed ]; then
       "$UC_PACKAGE_SEED_DAEMON" > /tmp/gui.log 2>&1 & gui=$!
     else

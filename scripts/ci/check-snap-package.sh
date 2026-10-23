@@ -36,8 +36,25 @@ keyring_pid=$!
 Xvfb :98 -screen 0 1280x800x24 -ac -nolisten tcp >"$OUT/xvfb.log" 2>&1 &
 xvfb_pid=$!
 run_pid=''
-trap 'kill ${run_pid:-} "$xvfb_pid" "$keyring_pid" 2>/dev/null || true' EXIT
-export DISPLAY=:98 GDK_BACKEND=x11 GSK_RENDERER=cairo LIBGL_ALWAYS_SOFTWARE=1 UC_DISABLE_SYSTEM_CLIPBOARD=1
+collect_evidence() {
+  ps -eo pid,ppid,uid,stat,wchan:32,args >"$OUT/processes.txt"
+  xwininfo -root -tree >"$OUT/windows.txt" 2>&1 || true
+  # The release host redirects its logs to files before Wails initializes.
+  # Console output alone cannot distinguish a launcher stall from a host error.
+  while IFS= read -r -d "" file; do
+    relative="${file#"$HOME/snap/uniclipboard/"}"
+    mkdir -p "$OUT/application-logs/$(dirname "$relative")"
+    cp "$file" "$OUT/application-logs/$relative" || true
+  done < <(find "$HOME/snap/uniclipboard" -type f -path "*/logs/*" -print0 2>/dev/null)
+  sudo journalctl -k --since "@$session_start" --no-pager >"$OUT/kernel.log" 2>&1 || true
+}
+cleanup() {
+  collect_evidence
+  kill ${run_pid:-} "$xvfb_pid" "$keyring_pid" 2>/dev/null || true
+}
+session_start=$(date +%s)
+trap cleanup EXIT
+export DISPLAY=:98 GDK_BACKEND=x11 GSK_RENDERER=cairo LIBGL_ALWAYS_SOFTWARE=1 UC_DISABLE_SYSTEM_CLIPBOARD=1 SNAP_DESKTOP_DEBUG=1
 for _ in $(seq 50); do xdpyinfo >/dev/null 2>&1 && break; sleep 0.2; done
 keyring_ready=false
 for _ in $(seq 100); do

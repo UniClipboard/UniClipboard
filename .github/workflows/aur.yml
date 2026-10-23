@@ -121,8 +121,8 @@ jobs:
     # A fresh container that did not build the package: its declared dependencies are the only runtime libraries present.
     container:
       image: archlinux:base-devel
-      # WebKitGTK4 needs nested namespaces for bubblewrap in this disposable harness.
-      options: --init --cap-add=IPC_LOCK --cap-add=SYS_ADMIN --security-opt seccomp=unconfined --security-opt apparmor=unconfined
+      # The ordinary-user WebKit sandbox creates nested namespaces; no host SYS_ADMIN capability is granted.
+      options: --init --security-opt seccomp=unconfined --security-opt apparmor=unconfined
     steps:
       - uses: actions/checkout@v4
         with:

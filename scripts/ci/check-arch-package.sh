@@ -21,7 +21,7 @@ if [[ "${UC_PACMAN_DISABLE_SANDBOX:-0}" == 1 ]]; then sed -i '/^\[options\]/a Di
 { . /etc/os-release; echo "image: $PRETTY_NAME"; echo "machine: $(uname -m)"; sha256sum "$PKG"; } | tee "$OUT/host.txt"
 
 # Harness tools first, then the package: they must not be what satisfies the package's own dependencies.
-check "harness tools install" pacman -Syu --noconfirm --needed xorg-server-xvfb xorg-xdpyinfo dbus gnome-keyring libsecret procps-ng desktop-file-utils
+check "harness tools install" pacman -Syu --noconfirm --needed xorg-server-xvfb xorg-xdpyinfo dbus gnome-keyring libsecret procps-ng desktop-file-utils xorg-xwininfo
 check "package installs with its declared dependencies" pacman -U --noconfirm "$PKG"
 name="$(pacman -Qpq "$PKG")"
 check "one package owns the executable" bash -c "[ \"\$(pacman -Qoq /usr/bin/uniclipboard)\" = '$name' ]"
@@ -31,39 +31,53 @@ check "no unresolved library in the daemon" bash -c '! ldd /usr/bin/uniclipd | g
 check "the desktop entry is valid" desktop-file-validate /usr/share/applications/uniclipboard.desktop
 check "the icon named by the desktop entry is installed" test -f /usr/share/icons/hicolor/128x128/apps/uniclipboard.png
 
-# Shipped form: no profile, the real data root of this throwaway root user, the Secret Service of an unlocked throwaway keyring.
-export HOME=/root; mkdir -p /root/.local/share /root/.config /root/.cache
-dbus-run-session -- bash -c '
+# Install as root, then run the shipped form as a normal desktop user. Bubblewrap
+# obtains capabilities inside its own user/network namespaces, not from Docker's root capabilities.
+useradd --create-home --shell /bin/bash uc-acceptance
+runuser -u uc-acceptance -- env HOME=/home/uc-acceptance UC_DISABLE_SYSTEM_CLIPBOARD=1 dbus-run-session -- bash -c '
   set -u
+  export XDG_RUNTIME_DIR="$HOME/run" XDG_DATA_HOME="$HOME/.local/share" XDG_CONFIG_HOME="$HOME/.config" XDG_CACHE_HOME="$HOME/.cache"
+  mkdir -p "$XDG_DATA_HOME" "$XDG_CONFIG_HOME" "$XDG_CACHE_HOME"
+  id
+  bwrap --version
+  mkdir -m700 "$XDG_RUNTIME_DIR"
+  bwrap --unshare-user --unshare-net --ro-bind / / --proc /proc --dev /dev /usr/bin/true || exit 1
+  echo namespace-ready
   printf "uc-throwaway" | gnome-keyring-daemon --foreground --unlock --components=secrets >/tmp/keyring.env 2>/tmp/keyring.err &
   for i in $(seq 100); do dbus-send --session --dest=org.freedesktop.DBus --print-reply /org/freedesktop/DBus org.freedesktop.DBus.NameHasOwner string:org.freedesktop.secrets 2>/dev/null | grep -q "boolean true" && break; sleep 0.1; done
   printf "probe" | secret-tool store --label=uc-probe uc probe && [ "$(secret-tool lookup uc probe)" = probe ] && secret-tool clear uc probe && echo keyring-ready
-  trap "kill ${gui:-} ${xvfb:-} 2>/dev/null; pkill -x uniclipd 2>/dev/null || true" EXIT
+  cleanup() { kill ${gui:-} ${xvfb:-} 2>/dev/null || true; pkill -u "$(id -u)" -x uniclipd 2>/dev/null || true; }
+  trap cleanup EXIT
   Xvfb :99 -screen 0 1280x800x24 -nolisten tcp & xvfb=$!
-  export DISPLAY=:99; for i in $(seq 50); do xdpyinfo >/dev/null 2>&1 && break; sleep 0.2; done
+  export DISPLAY=:99 GDK_BACKEND=x11 GSK_RENDERER=cairo LIBGL_ALWAYS_SOFTWARE=1; for i in $(seq 50); do xdpyinfo >/dev/null 2>&1 && break; sleep 0.2; done
   /usr/bin/uniclipboard >/tmp/gui.log 2>&1 & gui=$!
+  # Under user-mode emulation, argument 2 identifies the program behind /proc/PID/exe.
+  exe_of() { local e; e=$(readlink /proc/$1/exe 2>/dev/null); case "$e" in */qemu-*) e=$(tr "\\0" "\\n" </proc/$1/cmdline | sed -n 2p);; esac; echo "$e"; }
   daemon=""; webkit=""
   for i in $(seq 120); do
-    daemon=$(pgrep -x uniclipd | head -1); webkit=$(pgrep -f "[W]ebKitWebProcess" | head -1)
+    daemon=$(pgrep -u "$(id -u)" -x uniclipd | head -1)
+    for candidate in $(pgrep -u "$(id -u)" -f "[W]ebKitWebProcess"); do
+      case "$(exe_of "$candidate")" in /usr/lib/webkitgtk-6.0/WebKitWebProcess|/usr/lib/*/webkitgtk-6.0/WebKitWebProcess) webkit="$candidate"; break ;; esac
+    done
     [ -n "$daemon" ] && [ -n "$webkit" ] && break; sleep 1
   done
   sleep 15
-  # Under user-mode emulation (an amd64 container on an arm64 host) /proc/PID/exe is the emulator and its command line is
-  # "emulator program args", so the program is argument 2. On a native run the two agree.
-  exe_of() { local e; e=$(readlink /proc/$1/exe 2>/dev/null); case "$e" in */qemu-*) e=$(tr "\\0" "\\n" </proc/$1/cmdline | sed -n 2p);; esac; echo "$e"; }
   { echo "gui_exe=$(exe_of $gui)"; echo "daemon_exe=$(exe_of $daemon)"; echo "webkit_exe=$(exe_of $webkit)"
     echo "gui_alive=$(kill -0 $gui 2>/dev/null && echo yes || echo no)"; echo "daemon_alive=$([ -n "$daemon" ] && kill -0 $daemon 2>/dev/null && echo yes || echo no)"
-    echo "daemon_conn=$(ls /root/.local/share/*/daemon.conn /root/.local/share/*/*/daemon.conn 2>/dev/null | head -1)"; } >/tmp/launch.txt
+    echo "daemon_conn=$(ls $HOME/.local/share/*/daemon.conn $HOME/.local/share/*/*/daemon.conn 2>/dev/null | head -1)"; } >/tmp/launch.txt
+  xwininfo -root -tree >/tmp/windows.txt
   ps -eo pid,ppid,etime,args | grep -E "uniclip|WebKit" | grep -v grep >/tmp/launch-ps.txt
   kill $gui 2>/dev/null; sleep 3; echo "daemon_after_gui_exit=$(pgrep -x uniclipd >/dev/null && echo running || echo gone)" >>/tmp/launch.txt
   pkill -x uniclipd 2>/dev/null; for i in $(seq 50); do pgrep -x uniclipd >/dev/null || break; sleep .2; done; kill $xvfb 2>/dev/null; true' >"$OUT/launch-stdout.txt" 2>&1
-cp /tmp/gui.log /tmp/launch.txt /tmp/launch-ps.txt "$OUT/" 2>/dev/null || true
+cp /tmp/gui.log /tmp/launch.txt /tmp/launch-ps.txt /tmp/windows.txt "$OUT/" 2>/dev/null || true
 # shellcheck disable=SC1091
 . /tmp/launch.txt 2>/dev/null || true
+grep -q '^namespace-ready$' "$OUT/launch-stdout.txt" && ok "WebKit user/network namespaces work as a normal user" || bad "WebKit user/network namespaces work as a normal user"
 grep -q '^keyring-ready$' "$OUT/launch-stdout.txt" && ok "the Secret Service of the harness is ready" || bad "the Secret Service of the harness is ready"
 [[ "${gui_exe:-}" == /usr/bin/uniclipboard ]] && ok "GUI runs from the installed path" || bad "GUI runs from the installed path" "exe=${gui_exe:-none}"
 [[ "${daemon_exe:-}" == /usr/bin/uniclipd ]] && ok "daemon runs from the installed path" || bad "daemon runs from the installed path" "exe=${daemon_exe:-none}"
 case "${webkit_exe:-}" in /usr/lib/webkitgtk-6.0/WebKitWebProcess | /usr/lib/*/webkitgtk-6.0/WebKitWebProcess) ok "WebView process runs from the installed WebKitGTK" "$webkit_exe" ;; *) bad "WebView process runs from the installed WebKitGTK" "exe=${webkit_exe:-none}" ;; esac
 [[ "${gui_alive:-}" == yes && "${daemon_alive:-}" == yes ]] && ok "GUI and daemon are still alive 15 s after the WebView appeared" || bad "GUI and daemon are still alive 15 s after the WebView appeared" "gui=${gui_alive:-?} daemon=${daemon_alive:-?}"
-[[ -n "${daemon_conn:-}" ]] && ok "daemon published its connection file" "$daemon_conn" || bad "daemon published its connection file" "none under /root/.local/share"
+[[ -n "${daemon_conn:-}" ]] && ok "daemon published its connection file" "$daemon_conn" || bad "daemon published its connection file" "none under the acceptance user data directory"
+grep -q '"UniClipboard"' "$OUT/windows.txt" && ok "the installed GUI maps a top-level window" || bad "the installed GUI maps a top-level window"
 exit "$failures"

@@ -99,10 +99,6 @@ parts:
       - ca-certificates
     stage-packages:
       - libwebkitgtk-6.0-4
-    prime:
-      - '*'
-      # GTK is owned by the GNOME platform, not the transitive apt package.
-      - -usr/lib/*/libgtk-4.so*
     build-environment:
       # NOTE: build-environment 的值会被 craft-parts 用双引号包裹后注入构建
       # 脚本(export KEY="VALUE"),且不转义值里的内层字符。含 $VAR 的值(如
@@ -177,9 +173,19 @@ parts:
         "${CRAFT_PART_INSTALL}/usr/share/icons/hicolor/512x512/apps/uniclipboard.png"
       install -Dm644 apps/gui-go/icons/128x128.png \
         "${CRAFT_PART_INSTALL}/usr/share/icons/hicolor/128x128/apps/uniclipboard.png"
+
+  platform-cleanup:
+    after: [uniclipboard, gnome/sdk]
+    plugin: nil
+    build-snaps: [gnome-46-2404]
+    build-packages: [python3, binutils]
     override-prime: |
       set -eu
       craftctl default
+      # The platform owns its complete shared-library ABI, including HarfBuzz and GLib.
+      # Match SONAMEs too: apt and the platform can use different backing filenames.
+      python3 "${CRAFT_PROJECT_DIR}/scripts/ci/remove-snap-platform-libraries.py" \
+        --prime "${CRAFT_PRIME}" --platform /snap/gnome-46-2404/current
       # Fail before packing if the new WebKit ABI or its sandbox helpers were dropped.
       LIBDIR="${CRAFT_PRIME}/usr/lib/${CRAFT_ARCH_TRIPLET_BUILD_FOR}"
       test -e "${LIBDIR}/libwebkitgtk-6.0.so.4"

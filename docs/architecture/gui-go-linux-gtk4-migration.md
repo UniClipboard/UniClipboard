@@ -22,6 +22,10 @@ GTK4 快捷面板使用普通窗口。本项目尚未实现 GTK4 Layer Shell 适
 
 实际 CI 发现 GNOME 42 SDK 的 GTK 4.12.3 无法编译 Wails 的 `gdk_monitor_get_scale` 调用，因此 Snap 基线改为 core24/GNOME 46。core24 是包内运行时，不代表宿主必须是 Ubuntu 24.04；Ubuntu 20.04 的 snapd、内核与桌面兼容性仍须验收。AppImage 在部署结束后按宿主库策略移除 Vulkan 和 D-Bus 入口库，干净验收宿主须提供 Vulkan 加载器。
 
+Snap 的 GNOME 平台统一提供共享库，应用仅携带平台未提供的 WebKitGTK 6.0 等依赖。最后执行的 `platform-cleanup` 部件根据实际内容平台的文件路径及 ELF SONAME 清理重复库，避免应用内较旧的 HarfBuzz、GLib 等遮蔽平台版本；不同版本的实际文件名也按 SONAME 归属清理。此阶段随后检查 WebKitGTK 6.0 的库和进程助手完整性。
+
+AUR 安装验收在可丢弃容器中由 root 安装软件包，再由独立普通用户启动密钥环、Xvfb 和应用；不向应用授予宿主 `SYS_ADMIN`。启动前先检查普通用户的 bubblewrap 用户及网络命名空间，随后按可执行文件路径识别 WebKit 子进程，并确认真实窗口映射，避免将沙箱包装进程或仍存活的托盘宿主误当作成功启动的界面。
+
 ## 已发布产物的迁移顺序
 
 Nix 当前仍锁定已发布的 GTK3 `1.2.0-alpha.7`，不能把这份产物改称 GTK4，也不能为尚未发布的 deb 编造校验和。配方仅为这一个准确的版本及 `gtkMajor: 3` 保留原有依赖；其他源必须声明 `gtkMajor: 4`。首个 GTK4 deb 发布后，使用 `packaging/nix/update.py <version> <SHA256SUMS.txt> <deb-directory>` 验证并更新 pin，同时删除 `legacyGtk3` 分支及对应验收兼容逻辑。CI 同时评估 GTK4 分支，默认构建继续核验真实旧 pin。

@@ -21,6 +21,7 @@ on:
       - '.github/workflows/snap.yml'
       - 'scripts/check-snap-desktop-icons.py'
       - 'scripts/ci/check-snap-package.sh'
+      - 'scripts/ci/remove-snap-platform-libraries.py'
       - 'scripts/tests/test_*snap*.py'
   release:
     types: [published]

@@ -2,12 +2,14 @@
 import os
 from pathlib import Path
 import subprocess
+import shutil
 import tempfile
 import unittest
 
 import yaml
 
 RECIPE = Path(__file__).resolve().parents[2] / 'snap/snapcraft.yaml'
+ROOT = RECIPE.parents[1]
 ASSETS = (
     'libwebkitgtk-6.0.so.4',
     'libjavascriptcoregtk-6.0.so.1',
@@ -27,7 +29,10 @@ class SnapGTK4PrimeGate(unittest.TestCase):
         craftctl = self.bin / 'craftctl'
         craftctl.write_text('#!/bin/sh\nexit 0\n')
         craftctl.chmod(0o755)
-        self.script = yaml.safe_load(RECIPE.read_text())['parts']['uniclipboard']['override-prime']
+        self.platform = self.root / 'platform'
+        self.platform.mkdir()
+        self.script = yaml.safe_load(RECIPE.read_text())['parts']['platform-cleanup']['override-prime']
+        self.script = self.script.replace('/snap/gnome-46-2404/current', str(self.platform))
 
     def populate(self, triplet):
         libdir = self.root / 'prime/usr/lib' / triplet
@@ -44,6 +49,7 @@ class SnapGTK4PrimeGate(unittest.TestCase):
             **os.environ,
             'PATH': str(self.bin) + os.pathsep + os.environ['PATH'],
             'CRAFT_PRIME': str(self.root / 'prime'),
+            'CRAFT_PROJECT_DIR': str(ROOT),
             'CRAFT_ARCH_TRIPLET_BUILD_FOR': triplet,
         }, capture_output=True).returncode
 
@@ -67,11 +73,49 @@ class SnapGTK4PrimeGate(unittest.TestCase):
         (libdir / 'webkitgtk-6.0/WebKitWebProcess').chmod(0o644)
         self.assertNotEqual(self.run_gate(triplet), 0)
 
-    def test_old_staged_gtk_cannot_shadow_the_content_runtime(self):
+    def test_old_staged_gtk_is_removed_in_favor_of_the_content_runtime(self):
         triplet = 'aarch64-linux-gnu'
         libdir = self.populate(triplet)
         (libdir / 'libgtk-4.so.1').write_bytes(b'old apt GTK')
-        self.assertNotEqual(self.run_gate(triplet), 0)
+        platform_lib = self.platform / libdir.relative_to(self.root / 'prime')
+        platform_lib.mkdir(parents=True)
+        (platform_lib / 'libgtk-4.so.1').write_bytes(b'platform GTK')
+        self.assertEqual(self.run_gate(triplet), 0)
+        self.assertFalse((libdir / 'libgtk-4.so.1').exists())
+
+    @unittest.skipUnless(shutil.which('gcc') and shutil.which('readelf'), 'requires native ELF tools')
+    def test_platform_soname_ownership_resolves_real_harfbuzz_symbol_conflict(self):
+        triplet = 'aarch64-linux-gnu'
+        app = self.populate(triplet)
+        platform = self.platform / app.relative_to(self.root / 'prime')
+        platform.mkdir(parents=True)
+        def build(name, source, *arguments):
+            code = self.root / (name + '.c')
+            code.write_text(source)
+            subprocess.run(['gcc', str(code), '-o', str(self.root / name), *arguments], check=True)
+
+        old = app / 'libharfbuzz.so.0.80000'
+        new = platform / 'libharfbuzz.so.0.120000'
+        build('old', 'void hb_legacy(void) {}', '-shared', '-fPIC', '-Wl,-soname,libharfbuzz.so.0')
+        shutil.move(self.root / 'old', old)
+        (app / 'libharfbuzz.so.0').symlink_to(old.name)
+        build('new', 'void hb_free(void) {}', '-shared', '-fPIC', '-Wl,-soname,libharfbuzz.so.0')
+        shutil.move(self.root / 'new', new)
+        (platform / 'libharfbuzz.so.0').symlink_to(new.name)
+        build('subset', 'void hb_free(void); void subset(void) { hb_free(); }',
+              '-shared', '-fPIC', '-Wl,-soname,libharfbuzz-subset.so.0',
+              '-L' + str(platform), '-l:libharfbuzz.so.0')
+        shutil.move(self.root / 'subset', platform / 'libharfbuzz-subset.so.0')
+        build('probe', 'void subset(void); int main(void) { subset(); return 0; }',
+              '-L' + str(platform), '-l:libharfbuzz-subset.so.0', '-l:libharfbuzz.so.0')
+        env = {**os.environ, 'LD_LIBRARY_PATH': str(app) + os.pathsep + str(platform)}
+        broken = subprocess.run([str(self.root / 'probe')], env=env, capture_output=True)
+        self.assertNotEqual(broken.returncode, 0)
+        self.assertIn(b'hb_free', broken.stderr)
+        self.assertEqual(self.run_gate(triplet), 0)
+        self.assertFalse(old.exists())
+        self.assertFalse((app / 'libharfbuzz.so.0').is_symlink())
+        self.assertEqual(subprocess.run([str(self.root / 'probe')], env=env).returncode, 0)
 
 
 if __name__ == '__main__':

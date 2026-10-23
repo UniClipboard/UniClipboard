@@ -1,5 +1,8 @@
 name: GTK4 runtime replay
 on:
+  push:
+    branches: [diag/linux-gtk4-snap-startup]
+    paths: [.github/workflows/linux-gtk4-runtime-replay.yml]
   workflow_dispatch:
     inputs:
       artifact_run_id:
@@ -25,18 +28,18 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ inputs.source_ref }}
+          ref: ${{ inputs.source_ref || '29c2416b1' }}
           persist-credentials: false
       - uses: actions/download-artifact@v6
         with:
           name: linux-gui-${{ matrix.arch }}
-          run-id: ${{ inputs.artifact_run_id }}
+          run-id: ${{ inputs.artifact_run_id || '39910006328' }}
           github-token: ${{ github.token }}
           path: candidates
       - uses: actions/download-artifact@v6
         with:
           name: linux-gui-evidence-${{ matrix.arch }}
-          run-id: ${{ inputs.artifact_run_id }}
+          run-id: ${{ inputs.artifact_run_id || '39910006328' }}
           github-token: ${{ github.token }}
           path: evidence
       - name: Permit namespaces only in the disposable test containers

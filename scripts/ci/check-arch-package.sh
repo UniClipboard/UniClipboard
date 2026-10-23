@@ -70,8 +70,13 @@ runuser -u uc-acceptance -- env HOME=/home/uc-acceptance UC_DISABLE_SYSTEM_CLIPB
   kill $gui 2>/dev/null; sleep 3; echo "daemon_after_gui_exit=$(pgrep -x uniclipd >/dev/null && echo running || echo gone)" >>/tmp/launch.txt
   pkill -x uniclipd 2>/dev/null; for i in $(seq 50); do pgrep -x uniclipd >/dev/null || break; sleep .2; done; kill $xvfb 2>/dev/null; true' >"$OUT/launch-stdout.txt" 2>&1
 cp /tmp/gui.log /tmp/launch.txt /tmp/launch-ps.txt /tmp/windows.txt "$OUT/" 2>/dev/null || true
-# shellcheck disable=SC1091
-. /tmp/launch.txt 2>/dev/null || true
+# Read the ordinary user's report as data; never execute it as root.
+while IFS="=" read -r field value; do
+  case "$field" in
+    gui_exe|daemon_exe|webkit_exe|gui_alive|daemon_alive|daemon_conn|daemon_after_gui_exit)
+      printf -v "$field" "%s" "$value" ;;
+  esac
+done < /tmp/launch.txt
 grep -q '^namespace-ready$' "$OUT/launch-stdout.txt" && ok "WebKit user/network namespaces work as a normal user" || bad "WebKit user/network namespaces work as a normal user"
 grep -q '^keyring-ready$' "$OUT/launch-stdout.txt" && ok "the Secret Service of the harness is ready" || bad "the Secret Service of the harness is ready"
 [[ "${gui_exe:-}" == /usr/bin/uniclipboard ]] && ok "GUI runs from the installed path" || bad "GUI runs from the installed path" "exe=${gui_exe:-none}"

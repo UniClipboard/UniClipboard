@@ -23,7 +23,7 @@ if [ "${1:-}" != "--inner" ]; then
   cp "$here/package_install_check.sh" "$here/package_profile_check.py" "$out/source/"
   shasum -a 256 "$out/source/"* > "$out/harness.sha256"
   platform="${UC_DOCKER_PLATFORM:?UC_DOCKER_PLATFORM}"
-  docker run --rm --init --security-opt seccomp=unconfined --security-opt apparmor=unconfined --platform "$platform" -v "$out/source/package_install_check.sh:/check.sh:ro" -v "$out/source/package_profile_check.py:/profile.py:ro" -v "$new:/in/new.$kind:ro" -v "$old:/in/old.$kind:ro" -v "$out:/out" \
+  docker run --rm --init --security-opt seccomp=unconfined --security-opt "apparmor=${UC_WEBKIT_CI_APPARMOR_PROFILE:-unconfined}" --platform "$platform" -v "$out/source/package_install_check.sh:/check.sh:ro" -v "$out/source/package_profile_check.py:/profile.py:ro" -v "$new:/in/new.$kind:ro" -v "$old:/in/old.$kind:ro" -v "$out:/out" \
     "$image" bash /check.sh --inner "$kind" "$scenario" "$sha" > "$out/run.log" 2>&1
   rc=$?
   tail -n 40 "$out/results.tsv" 2>/dev/null; exit "$rc"
@@ -205,7 +205,13 @@ launch verify > /out/launch-stdout.txt 2>&1
 launch_rc=$?
 [ "$launch_rc" = 0 ] && ok "initialized profile and keyring survive restart" || bad "initialized profile and keyring survive restart" "exit=$launch_rc"
 
-. /tmp/launch.txt 2>/dev/null
+# Read the ordinary user's report as data; never execute it as root.
+while IFS="=" read -r field value; do
+  case "$field" in
+    gui_exe|daemon_exe|webkit_exe|gui_alive|daemon_alive|daemon_conn|daemon_after_gui_exit)
+      printf -v "$field" "%s" "$value" ;;
+  esac
+done < /tmp/launch.txt
 grep -q '^keyring-ready$' /out/launch-stdout.txt && ok "the Secret Service of the harness is ready" || bad "the Secret Service of the harness is ready" "$(grep -i -m1 'keyring\|secrets' /out/launch-stdout.txt)"
 [ "${gui_exe:-}" = /usr/bin/uniclipboard ] && ok "GUI runs from the installed path" || bad "GUI runs from the installed path" "exe=${gui_exe:-none}"
 [ "${daemon_exe:-}" = /usr/bin/uniclipd ] && ok "daemon runs from the installed path" || bad "daemon runs from the installed path" "exe=${daemon_exe:-none}"

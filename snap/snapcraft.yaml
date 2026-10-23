@@ -166,8 +166,9 @@ parts:
       PRODUCT="$(jq -r .productName apps/gui-go/app.json)"
       IDENTIFIER="$(jq -r .identifier apps/gui-go/app.json)"
       PUBKEY="$(jq -r .updater.pubkey apps/gui-go/app.json)"
+      # Use the build package interpreter; the SDK shadows python3 without distro modules.
       # The declared slots are authoritative for the fixed Wails instance scope.
-      INSTANCE_SCOPE="$(python3 - <<'PY_SCOPE'
+      INSTANCE_SCOPE="$(/usr/bin/python3 -I - <<'PY_SCOPE'
       import yaml
       recipe = yaml.safe_load(open('snap/snapcraft.yaml'))
       slots = recipe['slots']

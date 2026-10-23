@@ -67,14 +67,20 @@ class SnapGTK4PrimeGate(unittest.TestCase):
         fixture = self.root / 'snap/snapcraft.yaml'
         fixture.parent.mkdir()
         fixture.write_text(yaml.safe_dump(recipe))
-        result = subprocess.run(['bash', '-eu', '-c', command], cwd=self.root, capture_output=True, text=True)
+        sdk_python = self.bin / 'python3'
+        sdk_python.write_text('#!/bin/sh\nexit 99\n')
+        sdk_python.chmod(0o755)
+        sdk_env = {**os.environ, 'PATH': str(self.bin) + os.pathsep + os.environ['PATH'],
+                   'PYTHONHOME': str(self.root / 'incompatible-sdk-python')}
+        result = subprocess.run(['bash', '-eu', '-c', command], cwd=self.root, env=sdk_env,
+                                capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         scope = result.stdout.strip()
         self.assertEqual(recipe['slots']['gui-instance']['name'], scope + '.SingleInstance')
         self.assertEqual(recipe['slots']['gui-ui-instance']['name'], scope + '.ui.SingleInstance')
         recipe['slots']['gui-ui-instance']['name'] = 'invalid.fixture.SingleInstance'
         fixture.write_text(yaml.safe_dump(recipe))
-        result = subprocess.run(['bash', '-eu', '-c', command], cwd=self.root, capture_output=True, text=True)
+        result = subprocess.run(['bash', '-eu', '-c', command], cwd=self.root, env=sdk_env, capture_output=True, text=True)
         self.assertNotEqual(result.returncode, 0)
 
     def test_complete_runtime_for_both_architectures(self):

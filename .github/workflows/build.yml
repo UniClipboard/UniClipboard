@@ -158,33 +158,49 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       source_sha: ${{ steps.source.outputs.sha }}
-      platforms: ${{ steps.platforms.outputs.platforms }}
+      matrix: ${{ steps.platforms.outputs.matrix }}
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ inputs.branch || github.sha }}
+          # Planning belongs to this workflow revision, even for historical source builds.
+          ref: ${{ github.sha }}
           persist-credentials: false
       - name: Pin the source commit before platform fan-out
         id: source
-        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+        env:
+          SOURCE_REF: ${{ inputs.branch }}
+        run: |
+          if [[ -n "$SOURCE_REF" ]]; then
+            git fetch --no-tags --depth=1 -- origin "$SOURCE_REF"
+            echo "sha=$(git rev-parse FETCH_HEAD)" >> "$GITHUB_OUTPUT"
+          else
+            echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Select Windows runner once
+        id: windows-runner
+        env:
+          RUNNER_STATUS_TOKEN: ${{ secrets.WINDOWS_RUNNER_STATUS_TOKEN }}
+        run: node scripts/ci/select-windows-runner.mjs
       - name: Select independent platform pipelines
         id: platforms
         env:
+          WINDOWS_RUNNER: ${{ steps.windows-runner.outputs.runner }}
+          SIGNPATH_PRODUCTION: ${{ inputs.require_signing == true && vars.SIGNPATH_PRODUCTION_POLICY_SLUG != '' }}
           UC_PLATFORM: ${{ inputs.platform || 'all' }}
           UC_BUILD_MODE: ${{ inputs.build_mode || 'release' }}
           UC_BUILD_ONLY: ${{ inputs.build_only }}
-        run: node scripts/ci/select-build-platforms.mjs
+        run: node scripts/ci/build-target-plan.mjs
 
   build-platform:
     name: ${{ matrix.platform }}
     needs: setup-platforms
     strategy:
       fail-fast: false
-      matrix:
-        platform: ${{ fromJSON(needs.setup-platforms.outputs.platforms) }}
+      matrix: ${{ fromJSON(needs.setup-platforms.outputs.matrix) }}
     uses: ./.github/workflows/build-target.yml
     with:
       platform: ${{ matrix.platform }}
+      plan: ${{ matrix.plan }}
       branch: ${{ needs.setup-platforms.outputs.source_sha }}
       channel: ${{ inputs.channel || 'stable' }}
       build_mode: ${{ inputs.build_mode || 'release' }}

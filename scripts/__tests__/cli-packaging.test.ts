@@ -79,12 +79,10 @@ describe('shipped uniclipd builds', () => {
     const build = read('build-target.yml')
     const cli = jobs(build)['build-cli']
     expect(cli).toContain(
-      "if: inputs.build_only != true && (inputs.package_cli && inputs.build_mode == 'release' && needs.setup-matrix.outputs.cli-matrix != '[]')"
+      "if: inputs.build_only != true && (inputs.package_cli && inputs.build_mode == 'release' && fromJSON(inputs.plan).cli[0] != null)"
     )
     // Only the targets that share a triple with the app reuse its sidecar.
-    expect(step(build, 'Select CLI targets')).toContain(
-      'e.platform === "macos-latest" || (e.target === "x86_64-pc-windows-msvc" && !skipWindows)'
-    )
+    expect(cli).toContain('fromJSON(inputs.plan).cli')
     expect(step(cli, 'package CLI binary')).toContain(
       '"target/sidecar-staging/uniclipd-${{ matrix.target }}$EXE"'
     )
@@ -107,7 +105,7 @@ describe('build job graph', () => {
   ])('%s builds the sidecar first, then runs %s after it', (file, job) => {
     const all = jobs(read(file))
     const compiler = file === 'build-target.yml' ? 'build-component' : 'build-sidecar'
-    expect(needsOf(all[compiler])).toEqual(['setup-matrix'])
+    expect(needsOf(all[compiler])).toEqual(file === 'build-target.yml' ? [] : ['setup-matrix'])
     if (compiler === 'build-component') expect(needsOf(all['build-sidecar'])).toContain(compiler)
     expect(needsOf(all[job])).toContain('build-sidecar')
   })

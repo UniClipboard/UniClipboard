@@ -29,6 +29,33 @@ describe('MBX request reduction', () => {
     })
   }, 30_000)
 
+  it('skips only unchanged dependency baselines in real Git histories', () => {
+    execFileSync('python3', ['scripts/ci/cache-warmup-needed.test.py'], { stdio: 'pipe' })
+  })
+
+  it('keeps musl and container snapshot writers off release consumers', () => {
+    const cli = yaml('.github/workflows/build-cli.yml').jobs['build-sidecar']
+    const restore = cli.steps.find(
+      (s: { name: string }) => s.name === 'Restore musl daemon CAS snapshot'
+    )
+    const save = cli.steps.find((s: { name: string }) => s.name === 'Save musl daemon CAS snapshot')
+    expect(restore.run).toContain('--target-args=')
+    expect(save.if).toContain('inputs.build_only')
+    expect(save.if).toContain('github.ref_protected')
+    const linux = yaml('.github/workflows/package-linux-gui.yml').jobs.package
+    expect(linux.env.UC_MBX_PUBLISH_SNAPSHOT).toContain('github.ref_protected')
+    expect(linux.env.UC_MBX_PUBLISH_SNAPSHOT).toContain('inputs.build_only')
+    for (const name of [
+      'Package',
+      'Verify the package set',
+      'Upload the named release candidates',
+    ]) {
+      expect(linux.steps.find((s: { name: string }) => s.name === name).if).toBe(
+        'inputs.build_only != true'
+      )
+    }
+  })
+
   it('shares instrumented tests while only protected-main warmup publishes coverage', () => {
     const reader = yaml('.github/workflows/coverage.yml').jobs.coverage
     const writer = yaml('.github/workflows/cache-warmup.yml').jobs['warmup-coverage-rust']
@@ -152,7 +179,7 @@ describe('MBX request reduction', () => {
     expect(steps[pin].run).toContain('$RUNNER_TEMP/mbx-snapshot-tools.')
     expect(steps[pin].run).toContain('$GITHUB_REPOSITORY/$GITHUB_SHA/scripts/ci/')
     expect(steps[pin]['continue-on-error']).toBe(true)
-    expect(steps[checkout].with.ref).toBe('${{ needs.setup-matrix.outputs.source_sha }}')
+    expect(steps[checkout].with.ref).toBe('${{ inputs.branch }}')
     for (const index of [restore, save]) {
       expect(steps[index]['continue-on-error']).toBe(true)
       expect(steps[index].env.UC_MBX_SNAPSHOT_SOURCE_ROOT).toBe('${{ github.workspace }}')
@@ -174,7 +201,7 @@ describe('MBX request reduction', () => {
       'inputs.save_cache',
       "github.ref == 'refs/heads/main'",
       'github.ref_protected',
-      'needs.setup-matrix.outputs.source_sha == github.sha',
+      'inputs.branch == github.sha',
     ]) {
       expect(publisher).toContain(guard)
     }

@@ -42,7 +42,7 @@ Flatpak manifest 原本使用占位 URL/哈希，目前仍不可提交发布。G
 
 ## 验证与边界
 
-运行时验收尚未完成：修复前的 CI 已构建两种架构的 Snap、deb/rpm/AppImage，但 strict Snap 在 GUI 初始化前因 HarfBuzz 的 `hb_free` 符号缺失失败，AUR 因 root 下 bubblewrap 的 `Failed RTM_NEWADDR` 失败，deb/rpm 因 root 下沙箱命名空间创建被拒绝失败，干净宿主 AppImage 因缺少 bubblewrap 失败。上面的共享库清理、普通用户验收和 AppImage 命名空间设计是这些问题的修复方案；必须以修复后 CI 的实际结果确认，不能把流程描述当成已经通过的证据。
+以下记录最初验收暴露的问题；后续验证进展见本节末尾。修复前的 CI 已构建两种架构的 Snap、deb/rpm/AppImage，但 strict Snap 在 GUI 初始化前因 HarfBuzz 的 `hb_free` 符号缺失失败，AUR 因 root 下 bubblewrap 的 `Failed RTM_NEWADDR` 失败，deb/rpm 因 root 下沙箱命名空间创建被拒绝失败，干净宿主 AppImage 因缺少 bubblewrap 失败。上面的共享库清理、普通用户验收和 AppImage 命名空间设计是这些问题的修复方案；必须以修复后 CI 的实际结果确认，不能把流程描述当成已经通过的证据。
 
 - `scripts/tests/test_linux_gtk4_packaging.py` 使用可丢弃 ELF 和真实 deb/rpm 工具检查旧 ABI/混合 ABI 拒绝、助手路径重定位、包依赖及 Nix pin 校验。
 - `scripts/ci/check-gui-go.sh` 编译与静态检查 GTK4 发布/E2E 标签；PR GUI 作业在 Ubuntu 24.04 安装 GTK4 构建依赖，Rust/CLI 继续使用独立 bookworm 镜像，不抬高其基线。
@@ -50,7 +50,11 @@ Flatpak manifest 原本使用占位 URL/哈希，目前仍不可提交发布。G
 - 当前包验收矩阵改为 Ubuntu 24.04、Debian 13 和 Fedora；AppImage 内容及进程映射检查改为 GTK4/WebKitGTK 6.0，并拒绝旧 GTK3 库。
 - 本轮环境无 Docker socket 权限、Snapcraft 和 Flatpak Builder，完整各架构容器构建、真实包安装及桌面功能需要 CI/专用主机验收。静态检查、合成包检查与本机 GUI 编译不能替代这些结果。
 
-后续 CI 已确认两种架构的原生包与 AppImage 构建通过，Snap 的重复 HarfBuzz 文件也已实际移除；Snap 跟踪已确认动态单实例 D-Bus 名称被 AppArmor 拒绝，已补齐固定名称与 slot 声明，仍待完整启动验收。AUR 在专用 AppArmor 配置下的普通用户命名空间探针已通过，随后暴露出 WebKit D-Bus 代理挂载 `/proc` 被 Docker 拒绝的问题；上述 `systempaths=unconfined` 修复仍须新一轮运行确认。Snap 的文件日志工件须保留隐藏目录，否则日志复制成功后仍会被上传步骤过滤。
+后续 CI 已确认两种架构的原生包与 AppImage 构建通过，AUR 的 16 项安装与启动检查通过。amd64 与 arm64 Snap 的严格隔离启动、WebKit 与平台 GTK 映射、窗口和 daemon 连接均通过；另在真实 Ubuntu 20.04.6、Linux 5.4.0-216、snapd 2.68.4.1 虚拟机中验证了 amd64 Snap 安装及启动。
+
+AppImage 在 Ubuntu 24.04 与 Debian 13 干净宿主上的实际启动、库映射、加密资料与自启动检查、负向对照和发布版启动检查已通过，完整更新流程暴露出界面进程 JSON 传输丢失事件类型的问题。Wails 没有公开其注册表的 JSON 解码接口，因此界面管道解码器由 `host_events.go` 的现有 `RegisterEvent` 声明自动生成，并在 Go 编译门禁检查是否过期；事件注册仍是唯一事实来源。真实 WebView 的不可信签名拒绝事件已验证送达，完整 AppImage 替换与重启仍待 CI。
+
+deb/rpm 安装生命周期验证中，Ubuntu 24.04 已通过；Debian/Fedora 暴露出证据目录归属依赖偶然 UID 相同的问题。验收现在将证据目录交给实际创建的普通用户，避免借用宿主 UID 或放宽产品资料权限。此修复仍待完整矩阵确认。Snap 的文件日志工件保留隐藏目录，避免上传步骤过滤已经收集的角色日志。
 
 ## 上游依据
 

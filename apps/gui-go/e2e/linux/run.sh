@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
 # Host-side driver for the Linux container checks (macOS or Linux host with Docker).
-#   run.sh build                 build daemon, CLI and the gtk3,e2e GUI inside the container (needs frontend/dist built with VITE_GUI_GO_E2E=1)
+#   run.sh build                 build daemon, CLI and the gtk4,e2e GUI inside the container (needs frontend/dist built with VITE_GUI_GO_E2E=1)
 #   run.sh xvfb <outdir>         run the Xvfb + private D-Bus scenarios (linux_xvfb_run.py) and write the artifacts to <outdir>
 #   run.sh wayland <outdir>      (17c2, image :17c2 via UC_LINUX_IMAGE) headless sway + Layer Shell scenarios (linux_wayland_run.py)
 #   run.sh wayland-nolib <outdir>  same container image with libgtk-layer-shell removed INSIDE the throwaway container: fallback scenario
-#   run.sh kit-ui <outdir>       build the Linux UI-kit bundle (VITE_GUI_GO_E2E=1 UC_UI_PLATFORM=linux, needs bun on the host), the gtk3,e2e GUI and the daemon
+#   run.sh kit-ui <outdir>       build the Linux UI-kit bundle (VITE_GUI_GO_E2E=1 UC_UI_PLATFORM=linux, needs bun on the host), the gtk4,e2e GUI and the daemon
 #                                into /cache/out-kit-ui, then run linux_kit_ui_run.py in a headless-sway container (image :17c2, WebKitGTK renders for real).
 #                                UC_KIT_UI_SKIP_BUILD=1 reuses the bundle and binaries; UC_KIT_UI_SESSION=sway|xvfb picks the display (default sway);
 #                                UC_KIT_UI_ARGS passes more options to the runner (e.g. --skip-dark-theme).
 #   run.sh package <outdir>      run package_linux.py with the daemon from `build` (needs frontend/dist built with VITE_GUI_GO_E2E=0)
 # 17c4 (self-contained AppImage; docs/architecture/gui-go-linux-appimage.md), image :17c2 for the build steps:
 #   run.sh daemon-release        build the shipped release daemon (build_daemon_release.sh) into /cache/out-release with build-evidence.txt
-#   run.sh release-e2e-build     build the GUI with tags gtk3,production,release,e2e (needs frontend/dist built with VITE_GUI_GO_E2E=1)
+#   run.sh release-e2e-build     build the GUI with tags gtk4,production,release,e2e (needs frontend/dist built with VITE_GUI_GO_E2E=1)
 #   run.sh package-release <outdir>      full release package (release-tag GUI, deb, rpm, AppImage) from the release daemon (dist built with E2E=0)
 #   run.sh package-appimage <outdir> [package_linux.py args]   AppImage-only package of the release+e2e GUI (E2E-prefixed; v2 adds --update-marker)
 #   run.sh appimage-feed <outdir> <v2 AppImage.tar.gz>   sign the v2 updater archive with isolated fixture keys (e2e/updatetool, needs Go: build image)
@@ -138,9 +138,13 @@ case "$mode" in
     docker run -d --name "$keyring" --platform "$PLATFORM" -v "$bus:/bus" "$KEYRING_IMAGE" /usr/local/bin/keyring_service.sh >/dev/null
     for _ in $(seq 60); do docker run --rm -v "$bus:/bus" "$RUNTIME_IMAGE" test -f /bus/ready && break; sleep 1; done
     set +e
-    docker run --rm --init --platform "$PLATFORM" --device /dev/fuse --cap-add SYS_ADMIN --security-opt apparmor:unconfined \
+    docker run --rm --init --platform "$PLATFORM" --device /dev/fuse --cap-add SYS_ADMIN --security-opt seccomp=unconfined --security-opt systempaths=unconfined --security-opt "apparmor=${UC_WEBKIT_CI_APPARMOR_PROFILE:-unconfined}" \
       -e UC_E2E_BUS=unix:path=/bus/bus -v "$bus:/bus" -v "$ROOT:/work:ro" -v "$VOLUME:/cache:ro" -v "$out:/out" "${mounts[@]}" \
-      "$RUNTIME_IMAGE" python3 /work/apps/gui-go/e2e/linux_appimage_run.py "${runargs[@]}" --uniclip /cache/out/uniclip > "$out/run.log" 2>&1
+      "$RUNTIME_IMAGE" bash -c '
+        chown uc-appimage:uc-appimage /out
+        bwrap --version
+        exec runuser -u uc-appimage -- python3 /work/apps/gui-go/e2e/linux_appimage_run.py "$@"
+      ' _ "${runargs[@]}" --uniclip /cache/out/uniclip > "$out/run.log" 2>&1
     code=$?
     docker logs "$keyring" > "$out/keyring-container.log" 2>&1
     # A bus-activated (locked) keyring or a prompt request means the Secret Service did not behave like an unlocked desktop keyring:
@@ -157,7 +161,7 @@ case "$mode" in
     feed="$(cd "${4:?feed dir}" && pwd)"
     manifest="$(cd "$(dirname "${5:?package-manifest.json}")" && pwd)/$(basename "$5")"
     set +e
-    docker run --rm --init --platform "$PLATFORM" --device /dev/fuse --cap-add SYS_ADMIN --cap-add SYS_PTRACE --security-opt apparmor:unconfined \
+    docker run --rm --init --platform "$PLATFORM" --device /dev/fuse --cap-add SYS_ADMIN --cap-add SYS_PTRACE --security-opt seccomp=unconfined --security-opt systempaths=unconfined --security-opt "apparmor=${UC_WEBKIT_CI_APPARMOR_PROFILE:-unconfined}" \
       -v "$ROOT:/work:ro" -v "$VOLUME:/cache:ro" -v "$out:/out" -v "$image:/in/appimage.AppImage:ro" -v "$feed:/in/feed" \
       -v "$manifest:/in/package-manifest.json:ro" \
       uc-gui-go-linux-runtime:17c4 python3 /work/apps/gui-go/e2e/linux_appimage_portable_run.py --out /out --appimage /in/appimage.AppImage \
@@ -169,7 +173,7 @@ case "$mode" in
     image="$(cd "$(dirname "${3:?AppImage}")" && pwd)/$(basename "$3")"
     manifest="$(cd "$(dirname "${4:?package-manifest.json}")" && pwd)/$(basename "$4")"
     set +e
-    docker run --rm --init --platform "$PLATFORM" --device /dev/fuse --cap-add SYS_ADMIN --cap-add SYS_PTRACE --security-opt apparmor:unconfined \
+    docker run --rm --init --platform "$PLATFORM" --device /dev/fuse --cap-add SYS_ADMIN --cap-add SYS_PTRACE --security-opt seccomp=unconfined --security-opt systempaths=unconfined --security-opt "apparmor=${UC_WEBKIT_CI_APPARMOR_PROFILE:-unconfined}" \
       -v "$ROOT:/work:ro" -v "$out:/out" -v "$image:/in/appimage.AppImage:ro" -v "$manifest:/in/package-manifest.json:ro" \
       "${UC_TLS_IMAGE:-uc-gui-go-linux-runtime:17c7}" python3 /work/apps/gui-go/e2e/linux_appimage_tls_run.py --out /out --appimage /in/appimage.AppImage \
       --manifest /in/package-manifest.json ${UC_TLS_E2E_ARGS:-} > "$out/run.log" 2>&1
@@ -180,7 +184,7 @@ case "$mode" in
     image="$(cd "$(dirname "${3:?AppImage}")" && pwd)/$(basename "$3")"
     manifest="$(cd "$(dirname "${4:?package-manifest.json}")" && pwd)/$(basename "$4")"
     set +e
-    docker run --rm --init --platform "$PLATFORM" --device /dev/fuse --cap-add SYS_ADMIN --cap-add SYS_PTRACE --security-opt apparmor:unconfined \
+    docker run --rm --init --platform "$PLATFORM" --device /dev/fuse --cap-add SYS_ADMIN --cap-add SYS_PTRACE --security-opt seccomp=unconfined --security-opt systempaths=unconfined --security-opt "apparmor=${UC_WEBKIT_CI_APPARMOR_PROFILE:-unconfined}" \
       -v "$ROOT:/work:ro" -v "$out:/out" -v "$image:/in/appimage.AppImage:ro" -v "$manifest:/in/package-manifest.json:ro" \
       "${UC_HELPERS_IMAGE:?UC_HELPERS_IMAGE}" python3 /work/apps/gui-go/e2e/linux_appimage_helpers_run.py --out /out --appimage /in/appimage.AppImage \
       --manifest /in/package-manifest.json --desktop "${UC_HELPERS_DESKTOP:?UC_HELPERS_DESKTOP}" ${UC_HELPERS_E2E_ARGS:-} > "$out/run.log" 2>&1
@@ -195,7 +199,7 @@ case "$mode" in
     # route out, so the browser cannot reach anything but the controlled loopback target. The Engine also fails its p2p bind when the host has no default route (dev4: `engine error 1101`,
     # reproduced in a bare container), so the runner adds `default dev eth0` (NET_ADMIN) inside this internal network: a fixture requirement, recorded as an open Engine observation. bwrap (WebKit's sandbox in Epiphany) needs seccomp and systempaths unconfined.
     net="uc17c11-internal-$$"; docker network create --internal "$net" >/dev/null
-    docker run --rm --init --platform "$PLATFORM" --network "$net" --shm-size 1g --device /dev/fuse --cap-add SYS_ADMIN --cap-add SYS_PTRACE --cap-add NET_ADMIN --security-opt apparmor:unconfined \
+    docker run --rm --init --platform "$PLATFORM" --network "$net" --shm-size 1g --device /dev/fuse --cap-add SYS_ADMIN --cap-add SYS_PTRACE --cap-add NET_ADMIN --security-opt "apparmor=${UC_WEBKIT_CI_APPARMOR_PROFILE:-unconfined}" \
       --security-opt seccomp:unconfined --security-opt systempaths=unconfined \
       -v "$ROOT:/work:ro" -v "$out:/out" -v "$image:/in/appimage.AppImage:ro" -v "$manifest:/in/package-manifest.json:ro" \
       "${UC_REAL_IMAGE:?UC_REAL_IMAGE}" python3 /work/apps/gui-go/e2e/linux_appimage_real_helpers_run.py --out /out --appimage /in/appimage.AppImage \
@@ -210,7 +214,7 @@ case "$mode" in
     case "$comp" in weston) cimage=uc-gui-go-linux-weston:17c13-b ;; sway) cimage=uc-gui-go-linux-sway-nolib:17c13 ;; *) echo "bad compositor" >&2; exit 2 ;; esac
     set +e
     net="uc17c13-internal-$$"; docker network create --internal "$net" >/dev/null
-    docker run --rm --init --platform "$PLATFORM" --network "$net" --shm-size 1g --device /dev/fuse --cap-add SYS_ADMIN --cap-add SYS_PTRACE --cap-add NET_ADMIN --security-opt apparmor:unconfined \
+    docker run --rm --init --platform "$PLATFORM" --network "$net" --shm-size 1g --device /dev/fuse --cap-add SYS_ADMIN --cap-add SYS_PTRACE --cap-add NET_ADMIN --security-opt "apparmor=${UC_WEBKIT_CI_APPARMOR_PROFILE:-unconfined}" \
       --security-opt seccomp:unconfined --security-opt systempaths=unconfined \
       -v "$ROOT:/work:ro" -v "$out:/out" -v "$image:/in/appimage.AppImage:ro" \
       "$cimage" bash /work/apps/gui-go/e2e/linux/native_wayland_container.sh "$comp" "$pmode" /out/run > "$out/run.log" 2>&1
@@ -224,7 +228,7 @@ case "$mode" in
     set +e
     # --internal: no route out (nothing can leave the container); NET_ADMIN lets the runner add the default route the Engine needs (17c11 R1)
     net="uc17c12-internal-$$"; docker network create --internal "$net" >/dev/null
-    docker run --rm --init --platform "$PLATFORM" --network "$net" --device /dev/fuse --cap-add SYS_ADMIN --cap-add SYS_PTRACE --cap-add NET_ADMIN --security-opt apparmor:unconfined \
+    docker run --rm --init --platform "$PLATFORM" --network "$net" --device /dev/fuse --cap-add SYS_ADMIN --cap-add SYS_PTRACE --cap-add NET_ADMIN --security-opt "apparmor=${UC_WEBKIT_CI_APPARMOR_PROFILE:-unconfined}" \
       -v "$ROOT:/work:ro" -v "$out:/out" -v "$image:/in/appimage.AppImage:ro" -v "$manifest:/in/package-manifest.json:ro" \
       "${UC_PROXY_IMAGE:-uc-gui-go-linux-proxy:17c12-ubuntu}" python3 /work/apps/gui-go/e2e/${UC_PROXY_RUNNER:-linux_appimage_proxy_run.py} --out /out --appimage /in/appimage.AppImage \
       --manifest /in/package-manifest.json ${UC_PROXY_ARGS:-} > "$out/run.log" 2>&1
@@ -252,6 +256,6 @@ case "$mode" in
     packages="$(cd "${2:?package_linux.py output dir}" && pwd)"; mkdir -p "$(dirname "${3:?upload dir}")"; upload_parent="$(cd "$(dirname "$3")" && pwd)"; upload_name="$(basename "$3")"
     docker run "${common[@]}" -v "$packages:/in:ro" -v "$upload_parent:/up" -e UC_EXPECT_HEAD="${UC_EXPECT_HEAD:?UC_EXPECT_HEAD}" -e UC_MAX_GLIBC "$IMAGE" bash -c '
       python3 apps/gui-go/e2e/linux/verify_package_set.py --arch "$ARCH" --packages /in --daemon-evidence /cache/out-release/build-evidence.txt \
-        --expect-head "$UC_EXPECT_HEAD" --max-glibc "${UC_MAX_GLIBC:-2.36}" --upload-dir "/up/'"$upload_name"'" --report "/up/'"$upload_name"'.report.json"' ;;
+        --expect-head "$UC_EXPECT_HEAD" --max-glibc "${UC_MAX_GLIBC:-2.39}" --upload-dir "/up/'"$upload_name"'" --report "/up/'"$upload_name"'.report.json"' ;;
   *) echo "usage: run.sh build|xvfb|kit-ui|package|daemon-release|release-e2e-build|package-release|package-appimage [outdir]" >&2; exit 2 ;;
 esac

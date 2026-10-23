@@ -51,6 +51,13 @@ jobs:
       - name: Evaluate the flake
         run: nix flake check --no-build --all-systems
 
+      - name: Evaluate the GTK4 runtime contract
+        run: |
+          # Existing release hashes remain unchanged; evaluate the future GTK4 branch without fetching that legacy payload.
+          nix eval --json .#uniclipboard --apply 'p: (p.override {
+            releaseSources = p.releaseSources // { gtkMajor = 4; };
+          }).drvPath'
+
       - name: Build the package
         run: nix build .#uniclipboard --print-build-logs --out-link "$RUNNER_TEMP/result"
 

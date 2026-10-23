@@ -55,13 +55,17 @@ NixOS 上分两步。先在 `flake.nix` 里接入输入，并把它传给你的�
 
 升级：`nix profile upgrade` 或 `nix flake update uniclipboard`。仓库 `main` 上的 `sources.json` 只在发布之后由维护者更新，所以 `main` 指向最近一次已发布且已更新的版本。
 
+## GTK4 迁移
+
+新 GTK4 发布使用 `gtk4`、`webkitgtk_6_0`、`wrapGAppsHook4`，快捷面板使用普通窗口，不引入 GTK3 Layer Shell。`sources.json` 当前仍锁定真实的 GTK3 `1.2.0-alpha.7`，因此仅这个版本保留原有依赖；不能重标旧产物的 ABI，也不能伪造新发布哈希。首个 GTK4 版本发布后，用下方命令同时校验下载产物与 ELF ABI，再更新 pin，并删除 `legacyGtk3` 分支。细节见 [Linux GTK4 打包迁移](../../docs/architecture/gui-go-linux-gtk4-migration.md)。
+
 ## 为什么重打包 `.deb`
 
 | 方案 | 结论 |
 | --- | --- |
 | 包装 AppImage（`appimageTools.wrapType2`，旧 `package.nix` 的做法） | 放弃。宿主在 `APPIMAGE`/`APPDIR` 上分支（安装类型、原地自更新、重启、自启动、便携数据根），包装后 Nix 安装会表现成会自更新的 AppImage；还要 FHS 沙箱和用户命名空间，并带一份与 nixpkgs 不同的 GTK/WebKitGTK。 |
 | 从源码构建 | 暂不做。需要固定输出的 bun 依赖树、Go vendor 哈希、带 git 依赖的 `cargoLock` 和 Engine 构建工具；落地与维护成本高。需要时再迁移，`meta` 与桌面文件处理可复用。 |
-| **重打包 `.deb`（采用）** | `.deb` 只含 `uniclipboard`、`uniclipd`、桌面文件和图标，动态链接系统 GTK 3、WebKitGTK 4.1、libsoup 3。这些库由 nixpkgs 提供，用 `autoPatchelfHook` 修正解释器与 RUNPATH，不需要 FHS 环境，也没有 AppImage 分支。发布物按 SHA256 固定，glibc 下限 2.36，低于 nixpkgs。 |
+| **重打包 `.deb`（采用）** | `.deb` 只含 `uniclipboard`、`uniclipd`、桌面文件和图标，新发布动态链接系统 GTK4、WebKitGTK 6.0、libsoup 3；当前旧 pin 的 ABI 单独保留。这些库由 nixpkgs 提供，用 `autoPatchelfHook` 修正解释器与 RUNPATH，不需要 FHS 环境，也没有 AppImage 分支。发布物按 SHA256 固定；新的公共 GUI 构建基线为 glibc 2.39。 |
 
 `.deb` 来自 `https://github.com/UniClipboard/UniClipboard/releases/download/v<version>/`，`fetchurl` 用 `sources.json` 里的 SRI 哈希固定，没有可变 URL。哈希等于发布的 `SHA256SUMS.txt`（已用 `SECURITY.md` 的发布公钥验证过签名），`update.py` 负责转换。
 
@@ -72,7 +76,7 @@ NixOS 上分两步。先在 `flake.nix` 里接入输入，并把它传给你的�
 - **`libgtk-layer-shell.so.0` 是 `dlopen`，不在 `DT_NEEDED`。** Wayland 快捷面板靠它；缺库时面板静默退回普通窗口。`runtimeDependencies` 把它写进 RUNPATH，CI 检查该库可从 RUNPATH 找到。
 - **GTK 与 WebKitGTK 数据**（gsettings schema、GIO 模块、pixbuf 加载器、图标主题）由 `wrapGAppsHook3` 放进 GUI 包装器。`xdg-open`（打开链接与文件）和 `gsettings`（托盘主题）以 `--suffix PATH` 追加，宿主自己的工具优先。
 - **剪贴板**：Wayland 与 X11 后端是纯 Rust（`wayland-backend`、`x11rb`），不依赖外部命令或 `dlopen`，不需要额外包。
-- **托盘**走 StatusNotifierItem（D-Bus），不链接 `libappindicator`；GNOME 需要自带的 AppIndicator 扩展。
+- **托盘** 走 StatusNotifierItem（D-Bus），不链接 `libappindicator`；GNOME 需要自带的 AppIndicator 扩展。
 - **用户数据不在 store 里。** 数据根仍是各平台的用户目录（`$XDG_DATA_HOME/app.uniclipboard.desktop`），profile 语义不变。
 
 ## 已知缺口
@@ -108,7 +112,7 @@ NixOS 上分两步。先在 `flake.nix` 里接入输入，并把它传给你的�
 ```bash
 gh release download v<version> -R UniClipboard/UniClipboard -p 'SHA256SUMS.txt*'
 # Verify the signature first; SECURITY.md has the public key and the command.
-packaging/nix/update.py v<version> SHA256SUMS.txt
+packaging/nix/update.py v<version> SHA256SUMS.txt <downloaded-deb-directory>
 nix build .#uniclipboard   # and review the diff of packaging/nix/sources.json
 ```
 

@@ -5,4 +5,6 @@ FROM ubuntu:24.04
 ENV DEBIAN_FRONTEND=noninteractive
 COPY apt_install.sh keyring_service.sh /usr/local/bin/
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
-RUN apt_install.sh dbus gnome-keyring libsecret-tools
+RUN apt_install.sh dbus gnome-keyring libsecret-tools passwd util-linux
+
+RUN useradd --create-home --uid 1600 --shell /bin/bash uc-appimage

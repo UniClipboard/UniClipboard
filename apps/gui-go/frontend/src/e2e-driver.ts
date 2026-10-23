@@ -172,6 +172,10 @@ async function run() {
   if (phase === 'unlock-wrong') return runUnlockWrongScenario()
   if (phase === 'unlock-restart') return runUnlockRestartScenario()
   if (phase === 'history-live') return runHistoryLiveScenario()
+  if (phase === 'linux-scroll') {
+    await reachMainLayout()
+    return (await import('@/e2e/linux-scroll')).runLinuxScroll(record, control)
+  }
   if (phase === 'history-kit') return runHistoryKitScenario()
   if (phase.startsWith('linux-kit-')) {
     // Linux kit flows (e2e/linux-kit-flows.ts): the kit Settings page.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Main-window frame E2E for the Linux Go host (needs the gtk3,e2e GUI build; the official package has no control plane).
+"""Main-window frame E2E for the Linux Go host (needs the gtk4,e2e GUI build; the official package has no control plane).
 
   linux_window_frame_run.py --appimage X.AppImage --out DIR [--expect fixed|unfixed]
 

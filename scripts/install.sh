@@ -20,7 +20,7 @@
 #
 # Auto-detection:
 #   - macOS:        download .app.tar.gz and move it to PREFIX
-#   - Ubuntu 20.04: snap (host lacks libwebkit2gtk-4.1, .deb won't launch)
+#   - Ubuntu 20.04 / 22.04, Debian 11 / 12: snap (below the native GTK4/glibc baseline)
 #   - Other Linux:  with root/sudo + apt/dpkg → deb; dnf-based + no --version
 #                   → COPR (so `dnf upgrade` keeps tracking releases);
 #                   dnf-based + --version → local .rpm; otherwise AppImage
@@ -118,6 +118,7 @@ fi
 # ---- Detect distro / version ------------------------------------------------
 DISTRO_ID=""
 DISTRO_VERSION_ID=""
+DISTRO_UBUNTU_CODENAME=""
 if [[ "$OS" == "linux" && -r /etc/os-release ]]; then
   # Source /etc/os-release inside a subshell — it defines VERSION=, NAME=,
   # etc. which would otherwise clobber our own VERSION variable (set from
@@ -126,10 +127,15 @@ if [[ "$OS" == "linux" && -r /etc/os-release ]]; then
   DISTRO_ID="$(. /etc/os-release && printf '%s' "${ID:-}")"
   # shellcheck disable=SC1091
   DISTRO_VERSION_ID="$(. /etc/os-release && printf '%s' "${VERSION_ID:-}")"
+  # shellcheck disable=SC1091
+  DISTRO_UBUNTU_CODENAME="$(. /etc/os-release && printf '%s' "${UBUNTU_CODENAME:-}")"
 fi
 
-is_ubuntu_2004() {
-  [[ "$DISTRO_ID" == "ubuntu" && "$DISTRO_VERSION_ID" == "20.04" ]]
+needs_snap_gtk_runtime() {
+  case "$DISTRO_ID:$DISTRO_VERSION_ID:$DISTRO_UBUNTU_CODENAME" in
+    ubuntu:20.04:* | ubuntu:22.04:* | debian:11:* | debian:12:* | *:*:focal | *:*:jammy) return 0 ;;
+    *) return 1 ;;
+  esac
 }
 
 # ---- Resolve version --------------------------------------------------------
@@ -157,11 +163,9 @@ VER_NUM="${VERSION#v}"
 choose_format() {
   if [[ -n "$FORMAT" ]]; then echo "$FORMAT"; return; fi
   if [[ "$OS" == "macos" ]]; then echo app; return; fi
-  # Ubuntu 20.04 hosts only ship libwebkit2gtk-4.0 (4.1 lands in 22.04), so
-  # the .deb installs but won't launch. snap pulls in the gnome-42-2204
-  # extension which bundles its own webkit2gtk-4.1 stack, so it just works
-  # — prefer it here.
-  if is_ubuntu_2004; then echo snap; return; fi
+  # The native GTK4 packages require GTK >= 4.14 and glibc >= 2.39; older supported releases use Snap.
+  # Snap's core24/GNOME platform does not depend on the host GTK version.
+  if needs_snap_gtk_runtime; then echo snap; return; fi
   if [[ -n "$SUDO" || $EUID -eq 0 ]]; then
     if command -v dpkg >/dev/null 2>&1 && command -v apt-get >/dev/null 2>&1; then echo deb; return; fi
     if command -v rpm >/dev/null 2>&1 \
@@ -258,11 +262,10 @@ install_deb() {
   fi
 }
 
-# ---- Linux: snap (recommended on Ubuntu 20.04 and other older distros) ------
-# The snap binary loads webkit2gtk-4.1 + the full GTK stack from the
-# gnome-42-2204 extension, fully decoupled from host glibc / GTK, so it runs
-# on Ubuntu 20.04 (webkit2gtk-4.0 era) too. snap manages its own channel and
-# update flow, so this script doesn't pass --version through.
+# ---- Linux: snap (recommended on Ubuntu 20.04 / 22.04 and other older distros) ------
+# The GTK4 snap stages WebKitGTK 6.0; GTK >= 4.14 comes from the GNOME content platform.
+# Native desktop/snapd compatibility is still subject to acceptance; host GTK alone is not sufficient.
+# snap manages its own channel and update flow, so this script does not pass --version through.
 install_snap() {
   if ! command -v snap >/dev/null 2>&1; then
     info "snapd not detected; installing it (sudo required)…"

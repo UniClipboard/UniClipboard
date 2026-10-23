@@ -2,6 +2,10 @@
 # Runs inside uc-gui-go-linux-keyring:17c4: a private session bus on the shared volume (/bus/bus) with an unlocked gnome-keyring
 # Secret Service. Stays in the foreground; the orchestrator stops the container by its exact name.
 set -eu
+if [ "$(id -u)" = 0 ]; then
+  chown uc-appimage:uc-appimage /bus
+  exec runuser -u uc-appimage -- "$0"
+fi
 rm -f /bus/bus /bus/ready
 dbus-daemon --session --address=unix:path=/bus/bus --nofork --print-pid > /bus/dbus.pid &
 for i in $(seq 50); do [ -S /bus/bus ] && break; sleep 0.1; done

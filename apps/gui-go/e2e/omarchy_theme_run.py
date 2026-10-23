@@ -2,7 +2,7 @@
 """Exercise Omarchy theme commands in the native Linux GUI with an isolated profile.
 
 Build the frontend with VITE_GUI_GO_E2E=1 UC_UI_PLATFORM=linux, then the GUI
-with -tags gtk3,e2e. Run inside dbus-run-session on an available display:
+with -tags gtk4,e2e. Run inside dbus-run-session on an available display:
   python3 apps/gui-go/e2e/omarchy_theme_run.py --binaries DIR --out DIR
 
 DIR contains gui-go, uniclip and uniclipd. Only synthetic theme files in the

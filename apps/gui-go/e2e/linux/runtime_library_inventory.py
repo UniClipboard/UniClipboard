@@ -29,6 +29,9 @@ import time
 import urllib.request
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from appimage_processes import appdir_from_executable, belongs_to_appimage, library_from_mapping
+
 ROLES = {'uniclipboard': 'gui', 'uniclipd': 'daemon', 'WebKitWebProcess': 'webkit-web', 'WebKitNetworkProcess': 'webkit-network', 'WebKitGPUProcess': 'webkit-gpu'}
 ENV_DROP = ('UC_PROFILE', 'UC_GUI_GO_ISOLATED', 'UNICLIPBOARD_ENV', 'APPIMAGE', 'APPDIR', 'WAYLAND_DISPLAY')
 DLOPEN = re.compile(r'^\s*(\d+):\s+file=(\S+) \[\d+\];\s+dynamically loaded by (\S+)')
@@ -113,12 +116,12 @@ def still_running(pid, exe):
         return False
 
 
-def mapped_libraries(pid):
+def mapped_libraries(pid, appdir):
     libs = set()
     for line in Path(f'/proc/{pid}/maps').read_text().splitlines():
         fields = line.split(None, 5)
         if len(fields) == 6 and '.so' in fields[5] and fields[5].startswith('/'):
-            libs.add(fields[5].replace(' (deleted)', ''))
+            libs.add(library_from_mapping(fields, appdir))
     return sorted(libs)
 
 
@@ -160,7 +163,8 @@ def observe(args):
         sys.exit(str(e))
     env.update(LD_DEBUG='libs,files', LD_DEBUG_OUTPUT=str(out / 'loader'))  # after the bus: the bus itself is not under test
     proc = subprocess.Popen([str(image)] + (['--appimage-extract-and-run'] if args.extract else []), env=env, stdout=(out / 'gui.log').open('w'), stderr=subprocess.STDOUT, start_new_session=True)
-    scoped, health = {}, None
+    scoped, process_roots, health = {}, {}, None
+    appdirs = set()
     result = {'imageSha256': sha256(image), 'extract': args.extract, 'processes': [], 'sonames': {}}
     try:
         for _ in range(args.seconds):
@@ -169,8 +173,15 @@ def observe(args):
                     continue
                 with contextlib.suppress(OSError):  # the process exited between listing /proc and reading it
                     exe = os.readlink(entry / 'exe')
-                    if os.getpgid(int(entry.name)) == proc.pid and Path(exe).name in ROLES and ('.mount_' in exe or 'appimage_extracted_' in exe):
-                        scoped[int(entry.name)] = exe
+                    pid = int(entry.name)
+                    if os.getpgid(pid) == proc.pid and Path(exe).name in ROLES:
+                        appdir = appdir_from_executable(exe)
+                        if appdir:
+                            appdirs.add(appdir)
+                        owned = next((root for root in appdirs if belongs_to_appimage(pid, exe, root)), None)
+                        if owned:
+                            scoped[pid] = exe
+                            process_roots[pid] = owned
             for conn in home.rglob('daemon.conn'):
                 with contextlib.suppress(OSError, ValueError, KeyError):  # daemon.conn is stale or the daemon is not up yet; the next poll retries and the health check gates the result
                     c = json.loads(conn.read_text())
@@ -178,6 +189,7 @@ def observe(args):
                     if '.mount_' not in daemon_exe and 'appimage_extracted_' not in daemon_exe:
                         raise ValueError(f'daemon executable outside the test image: {daemon_exe}')
                     scoped[c['pid']] = daemon_exe
+                    process_roots[c['pid']] = appdir_from_executable(daemon_exe)
                     with urllib.request.urlopen(f"http://{c['host']}:{c['port']}/health", timeout=2) as r:
                         health = r.status
             if health == 200 and any(Path(e).name == 'WebKitWebProcess' for e in scoped.values()):
@@ -190,8 +202,8 @@ def observe(args):
             with contextlib.suppress(OSError):  # the process exited before its maps were read; the role coverage assertions catch a missing process
                 if os.readlink(f'/proc/{pid}/exe') != exe:
                     continue
-                libraries = mapped_libraries(pid)
-                result['processes'].append({'pid': pid, 'exe': exe, 'role': ROLES[Path(exe).name], 'libraries': libraries, 'ancestors': ancestors(pid)})
+                libraries = mapped_libraries(pid, process_roots[pid])
+                result['processes'].append({'pid': pid, 'exe': exe, 'role': ROLES[Path(exe).name], 'appdir': process_roots[pid], 'libraries': libraries, 'ancestors': ancestors(pid)})
                 for path in libraries:
                     if Path(path).name != 'ld.so.cache' and path not in result['sonames']:
                         result['sonames'][path] = elf_soname(path)
@@ -242,17 +254,17 @@ def merge(args):
         hashes.add(obs['imageSha256'])
         scenario = 'extract-and-run' if obs['extract'] else 'fuse-mount'
         for proc in obs['processes']:
-            appdir = re.match(r'(/.+?/(?:\.mount_[^/]+|appimage_extracted_[^/]+))/', proc['exe'])
+            appdir = proc['appdir']
             if not appdir:
-                raise SystemExit(f"cannot find the AppDir of {proc['exe']}")
+                raise SystemExit(f"missing proven AppDir for {proc['exe']}")
             if proc['role'].startswith('webkit'):
                 sandbox.append({'scenario': scenario, 'role': proc['role'], 'underBwrap': 'bwrap' in proc['ancestors']})
             for path in proc['libraries']:
                 name = Path(path).name
                 if name == 'ld.so.cache' or '.so' not in name:
                     continue
-                if path.startswith(appdir[1] + '/'):
-                    rel = path[len(appdir[1]) + 1:]
+                if path.startswith(appdir + '/'):
+                    rel = path[len(appdir) + 1:]
                     elf = root / rel
                     if not elf.is_file():
                         raise SystemExit(f'observed bundled file is missing from the extracted image: {rel}')

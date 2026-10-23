@@ -3,8 +3,8 @@
 #
 #   scripts/ci/check-gui-go.sh [linux|windows|all]
 #
-# linux:   vet and link the shipped tags (gtk3,production,release) plus the E2E tags (gtk3,e2e). Needs the GTK3 and
-#          WebKitGTK 4.1 development packages, because the Wails host links them through cgo: it cannot run on macOS.
+# linux:   vet and link the shipped tags (gtk4,production,release) plus the E2E tags (gtk4,e2e). Needs the GTK4 and
+#          WebKitGTK 6.0 development packages, because the Wails host links them through cgo: it cannot run on macOS.
 # windows: vet and link windows/amd64 and windows/arm64 with the shipped tags (production,release), CGO disabled. This
 #          proves the code compiles and links for Windows; it does not prove it runs.
 #
@@ -23,6 +23,9 @@ rm -rf "$OUT" && mkdir -p "$OUT"
 GIT=(git -c safe.directory='*')
 HEAD_SHA="$("${GIT[@]}" rev-parse HEAD)"
 
+# The UI pipe codecs must match the authoritative Wails event registrations.
+(cd apps/gui-go && go run ./cmd/hosteventcodec -check)
+
 # The generated build info must match the Rust workspace it is derived from (version and daemon API revision).
 (cd packages/desktop-host-go && go generate ./buildinfo)
 "${GIT[@]}" diff --exit-code -- packages/desktop-host-go/buildinfo ||
@@ -30,9 +33,11 @@ HEAD_SHA="$("${GIT[@]}" rev-parse HEAD)"
 (cd packages/desktop-host-go && go vet ./...)
 
 if [[ "$MODE" == linux || "$MODE" == all ]]; then
-  (cd apps/gui-go && CGO_ENABLED=1 go vet -tags gtk3,production,release ./... &&
-    CGO_ENABLED=1 go vet -tags gtk3,e2e . &&
-    CGO_ENABLED=1 go build -tags gtk3,production,release -trimpath -buildvcs=false -o "$OUT/linux-$(go env GOARCH)/uniclipboard" .)
+  pkg-config --atleast-version=4.14 gtk4
+  pkg-config --exists webkitgtk-6.0
+  (cd apps/gui-go && CGO_ENABLED=1 go vet -tags gtk4,production,release ./... &&
+    CGO_ENABLED=1 go vet -tags gtk4,e2e . &&
+    CGO_ENABLED=1 go build -tags gtk4,production,release -trimpath -buildvcs=false -o "$OUT/linux-$(go env GOARCH)/uniclipboard" .)
 fi
 
 if [[ "$MODE" == windows || "$MODE" == all ]]; then

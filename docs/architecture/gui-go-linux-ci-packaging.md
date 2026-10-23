@@ -1,5 +1,7 @@
 # Go GUI 的 Linux 包在 CI 中构建与验收（issue #1898）
 
+2026-10-23 更新：当前构建已统一迁移到 GTK4 / WebKitGTK 6.0，公共 GUI 镜像为 Ubuntu 24.04（glibc 验收上限 2.39）；GTK4 快捷面板使用普通窗口。以下 GTK3 的测量、容器与 Layer Shell 验收属于历史证据，不能沿用到新产物。当前契约见 [Linux GTK4 打包迁移](gui-go-linux-gtk4-migration.md)。
+
 本文是 Linux deb、rpm、AppImage 与 `.AppImage.tar.gz` 在 CI 中构建、验收的契约：失败模型、状态不变量、验收合同、构建镜像与 glibc 下限的决定依据、明确未证明的边界。实现之前先写；结果在文末「验证结果」补录。打包本身的设计见 [gui-go-linux-appimage.md](gui-go-linux-appimage.md) 与 [linux-appimage-library-policy.md](linux-appimage-library-policy.md)，本文不重复。
 
 ## 范围与不做的事
@@ -30,7 +32,7 @@
 
 结论：Ubuntu 24.04 构建把 AppImage 的 glibc 下限从 2.36 抬到 2.38，没有记录过决定；Debian 12 构建精确还原旧下限。
 
-## 决定：构建镜像与下限
+## 历史决定：GTK3 构建镜像与下限（已由 GTK4 迁移替代）
 
 默认构建镜像为 `debian:bookworm`（glibc 2.36），保持既有兼容范围。依据是上表的实测，而不是镜像名推断。在 Debian 12 上直接运行既有打包器，第一处失败是 `libpxbackend-1.0.so is missing in the build image: install libproxy1v5`：打包器把 libproxy 0.5 的依赖闭包（`libduktape`、`libcurl-gnutls` 等）和 `t64` 包名冻结成了常量。Debian 12 的 libproxy 0.4 是单个自包含库。打包器因此按构建镜像实际提供的 libproxy 选择支持库集合（由库文件是否存在决定，不是开关）。
 

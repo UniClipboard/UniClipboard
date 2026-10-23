@@ -3,7 +3,7 @@
 # Why the .deb and not the AppImage or a source build:
 # - The host branches on APPIMAGE/APPDIR (install kind, self-update, restart, autostart, portable data root). Wrapping the
 #   AppImage would make a Nix install behave like a self-updating AppImage; the .deb has none of that.
-# - The .deb links the system GTK 3 / WebKitGTK 4.1 / libsoup 3, which nixpkgs provides, so no bundled libraries and no FHS sandbox.
+# - The .deb links the system GTK4 / WebKitGTK 6.0 / libsoup 3, which nixpkgs provides, so no bundled libraries and no FHS sandbox.
 # - A source build needs a fixed-output bun tree, a Go vendor hash, a cargoLock with git sources and the Engine build tools.
 #
 # The version and the per-architecture hashes live in ./sources.json; `./update.py` rewrites them from a release's SHA256SUMS.txt.
@@ -14,6 +14,7 @@
   fetchurl,
   dpkg,
   autoPatchelfHook,
+  wrapGAppsHook4,
   wrapGAppsHook3,
   adwaita-icon-theme,
   cairo,
@@ -22,15 +23,24 @@
   glib,
   glib-networking,
   gtk-layer-shell,
+  gtk4,
   gtk3,
   libsoup_3,
   libx11,
   librsvg,
+  webkitgtk_6_0,
   webkitgtk_4_1,
   xdg-utils,
+  releaseSources ? builtins.fromJSON (builtins.readFile ./sources.json),
 }:
 let
-  sources = builtins.fromJSON (builtins.readFile ./sources.json);
+  sources = releaseSources;
+  # TODO: Remove this exact legacy release branch when sources.json first pins a verified GTK4 deb.
+  # Existing published hashes cannot be relabelled as GTK4 artifacts before a new release exists.
+  legacyGtk3 = sources.version == "1.2.0-alpha.7" && sources.gtkMajor == 3;
+  gtkRuntime = if legacyGtk3 then gtk3 else gtk4;
+  webkitRuntime = if legacyGtk3 then webkitgtk_4_1 else webkitgtk_6_0;
+  gappsHook = if legacyGtk3 then wrapGAppsHook3 else wrapGAppsHook4;
   debArch =
     {
       x86_64-linux = "amd64";
@@ -38,6 +48,7 @@ let
     }
     .${stdenv.hostPlatform.system} or (throw "uniclipboard: unsupported system ${stdenv.hostPlatform.system}");
 in
+assert legacyGtk3 || sources.gtkMajor == 4;
 stdenv.mkDerivation (finalAttrs: {
   pname = "uniclipboard";
   inherit (sources) version;
@@ -50,7 +61,7 @@ stdenv.mkDerivation (finalAttrs: {
   nativeBuildInputs = [
     autoPatchelfHook
     dpkg
-    wrapGAppsHook3
+    gappsHook
   ];
 
   # Every DT_NEEDED entry of both binaries; autoPatchelfHook fails the build if one stays unresolved.
@@ -59,24 +70,23 @@ stdenv.mkDerivation (finalAttrs: {
     dbus
     gdk-pixbuf
     glib
-    gtk3
+    gtkRuntime
     libsoup_3
     libx11
     stdenv.cc.cc.lib
-    webkitgtk_4_1
-    # GTK and WebKit runtime data, collected by wrapGAppsHook3 into the GUI wrapper.
+    webkitRuntime
+    # GTK and WebKit runtime data, collected by the GTK wrapper hook into the GUI wrapper.
     adwaita-icon-theme
     glib-networking
     librsvg
   ];
 
-  # The GUI dlopen()s libgtk-layer-shell.so.0 (Wayland quick panel). It is not a DT_NEEDED entry, so autoPatchelfHook only
-  # adds it to the RUNPATH through this list. Without it the quick panel silently falls back to a normal window.
-  runtimeDependencies = [ (lib.getLib gtk-layer-shell) ];
+  # Only the pinned pre-migration release needs the GTK3 Layer Shell library. GTK4 uses ordinary windows.
+  runtimeDependencies = lib.optionals legacyGtk3 [ (lib.getLib gtk-layer-shell) ];
 
   dontConfigure = true;
   dontBuild = true;
-  # wrapGAppsHook3 would wrap every file in bin/. `uniclipd` must keep its name: the host accepts a running daemon only if
+  # The GTK wrapper hook would wrap every file in bin/. `uniclipd` must keep its name: the host accepts a running daemon only if
   # /proc/<pid>/exe is called `uniclipd` (packages/desktop-host-go/daemonproc/pid.go), so only the GUI is wrapped, in postFixup.
   dontWrapGApps = true;
 
@@ -104,6 +114,9 @@ stdenv.mkDerivation (finalAttrs: {
       "''${gappsWrapperArgs[@]}" \
       --suffix PATH : ${lib.makeBinPath [ xdg-utils glib ]}
   '';
+
+  passthru.gtkMajor = if legacyGtk3 then 3 else 4;
+  passthru.releaseSources = sources;
 
   meta = {
     description = "Encrypted peer-to-peer clipboard sync between your devices";

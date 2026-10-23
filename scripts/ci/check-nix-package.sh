@@ -39,9 +39,17 @@ unresolved() {
 }
 check "no unresolved library in the GUI executable" unresolved "$gui_real"
 check "no unresolved library in the daemon" unresolved "$daemon"
-# libgtk-layer-shell.so.0 is dlopen()ed, so only the RUNPATH can make it loadable.
-layer_dir="$(readelf -d "$gui_real" | sed -n 's/.*RUNPATH.*\[\(.*\)\]/\1/p' | tr ':' '\n' | grep -- '-gtk-layer-shell-' | head -1)"
-check "libgtk-layer-shell.so.0 is reachable through the GUI RUNPATH" test -e "${layer_dir:-/nonexistent}/libgtk-layer-shell.so.0"
+# The ELF ABI is authoritative; only the exact pre-migration release still uses GTK3.
+if readelf -d "$gui_real" | grep -q 'libgtk-4.so.1'; then
+  check "the GUI links WebKitGTK 6.0" bash -c 'readelf -d "$1" | grep -q "libwebkitgtk-6.0.so.4"' _ "$gui_real"
+  check "the GTK4 GUI has no GTK3 dependencies" bash -c '! readelf -d "$1" | grep -Eq "libgtk-3|libwebkit2gtk-4.1"' _ "$gui_real"
+  webkit_abi=6.0
+else
+  # TODO: Remove with the exact GTK3 pin in packaging/nix/sources.json.
+  layer_dir="$(readelf -d "$gui_real" | sed -n 's/.*RUNPATH.*\[\(.*\)\]/\1/p' | tr ':' '\n' | grep -- '-gtk-layer-shell-' | head -1)"
+  check "legacy release Layer Shell library is reachable" test -e "${layer_dir:-/nonexistent}/libgtk-layer-shell.so.0"
+  webkit_abi=4.1
+fi
 check "the desktop entry is valid" desktop-file-validate "$PKG/share/applications/uniclipboard.desktop"
 check "the icon named by the desktop entry is installed" test -f "$PKG/share/icons/hicolor/128x128/apps/uniclipboard.png"
 
@@ -83,7 +91,11 @@ cp "$home/gui.log" "$home/launch.txt" "$home/launch-ps.txt" "$OUT/" 2>/dev/null 
 grep -q '^keyring-ready$' "$OUT/launch-stdout.txt" && ok "the Secret Service of the harness is ready" || bad "the Secret Service of the harness is ready"
 [[ "${gui_exe:-}" == "$gui_real" ]] && ok "GUI runs from the package" || bad "GUI runs from the package" "exe=${gui_exe:-none}"
 [[ "${daemon_exe:-}" == "$daemon" ]] && ok "daemon runs from the package" || bad "daemon runs from the package" "exe=${daemon_exe:-none}"
-case "${webkit_exe:-}" in /nix/store/*-webkitgtk-*/libexec/webkit2gtk-4.1/WebKitWebProcess) ok "WebView process runs from the package's WebKitGTK" "$webkit_exe" ;; *) bad "WebView process runs from the package's WebKitGTK" "exe=${webkit_exe:-none}" ;; esac
+case "${webkit_exe:-}" in /nix/store/*-webkitgtk-*/libexec/webkitgtk-6.0/WebKitWebProcess | /nix/store/*-webkitgtk-*/libexec/webkit2gtk-4.1/WebKitWebProcess) ok "WebView process runs from the package's WebKitGTK" "$webkit_exe" ;; *) bad "WebView process runs from the package's WebKitGTK" "exe=${webkit_exe:-none}" ;; esac
+case "$webkit_abi:${webkit_exe:-}" in
+  6.0:*/webkitgtk-6.0/WebKitWebProcess | 4.1:*/webkit2gtk-4.1/WebKitWebProcess) ok "WebKit helper ABI matches the GUI" ;;
+  *) bad "WebKit helper ABI matches the GUI" ;;
+esac
 [[ "${gui_alive:-}" == yes && "${daemon_alive:-}" == yes ]] && ok "GUI and daemon are still alive 15 s after the WebView appeared" || bad "GUI and daemon are still alive 15 s after the WebView appeared" "gui=${gui_alive:-?} daemon=${daemon_alive:-?}"
 # A live process alone also passes with no window at all: require a mapped top-level window titled UniClipboard. (The AppImage smoke's
 # "Main window revealed" log line is a Tauri-era signal that the Go host never logs.)

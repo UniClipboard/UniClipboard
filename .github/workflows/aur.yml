@@ -12,6 +12,7 @@ on:
       - 'packaging/aur/uniclipboard-git/**'
       - 'scripts/ci/build-aur-package.sh'
       - 'scripts/ci/check-arch-package.sh'
+      - 'scripts/ci/prepare-webkit-container-profile.sh'
       - 'scripts/ci/render-aur-package.sh'
       - '.github/workflows/aur.yml'
   push:
@@ -20,6 +21,7 @@ on:
       - 'packaging/aur/uniclipboard-git/**'
       - 'scripts/ci/build-aur-package.sh'
       - 'scripts/ci/check-arch-package.sh'
+      - 'scripts/ci/prepare-webkit-container-profile.sh'
       - 'scripts/ci/render-aur-package.sh'
       - '.github/workflows/aur.yml'
   schedule:
@@ -118,10 +120,7 @@ jobs:
     needs: [prepare, build]
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    # A fresh container that did not build the package: its declared dependencies are the only runtime libraries present.
-    container:
-      image: archlinux:base-devel
-      options: --init --cap-add IPC_LOCK
+    # Run Docker explicitly so the VM can load a named userns profile first.
     steps:
       - uses: actions/checkout@v4
         with:
@@ -133,11 +132,19 @@ jobs:
           name: aur-uniclipboard-git-build-${{ github.run_id }}-${{ github.run_attempt }}
           path: built
 
+      - name: Permit WebKit namespaces in the disposable test container
+        run: src/scripts/ci/prepare-webkit-container-profile.sh
+
       - name: Install the package and launch the shipped form
         shell: bash
         run: |
-          pkg="$(ls built/*.pkg.tar.zst)"
-          src/scripts/ci/check-arch-package.sh "$pkg" "$GITHUB_WORKSPACE/aur-install-evidence"
+          pkg="$(realpath built/*.pkg.tar.zst)"
+          mkdir aur-install-evidence
+          docker run --rm --init --security-opt seccomp=unconfined --security-opt systempaths=unconfined \
+            --security-opt "apparmor=$UC_WEBKIT_CI_APPARMOR_PROFILE" \
+            -v "$GITHUB_WORKSPACE/src:/work:ro" -v "$pkg:/in/package.pkg.tar.zst:ro" \
+            -v "$GITHUB_WORKSPACE/aur-install-evidence:/out" archlinux:base-devel \
+            bash /work/scripts/ci/check-arch-package.sh /in/package.pkg.tar.zst /out
 
       - name: Upload install evidence
         if: always()

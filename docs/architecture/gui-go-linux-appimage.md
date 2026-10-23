@@ -1,5 +1,7 @@
 # Go GUI 的自包含 Linux AppImage（切片 17c4）
 
+2026-10-23 更新：当前 AppImage 使用宿主 bubblewrap，仅为界面子进程建立私有挂载空间，将包内 WebKit 助手与 D-Bus 代理映射到绝对路径；旧的相对路径重定位不再适用。当前构建已统一迁移到 GTK4 / WebKitGTK 6.0，公共 GUI 镜像为 Ubuntu 24.04（glibc 验收上限 2.39）；GTK4 快捷面板使用普通窗口。以下 GTK3 的测量、容器与 Layer Shell 验收属于历史证据，不能沿用到新产物。当前契约见 [Linux GTK4 打包迁移](gui-go-linux-gtk4-migration.md)。
+
 本文是 Go/Wails GUI 的 AppImage 打包契约：失败方式、E2E 范围、明确未证明的边界。实现之前先写，结果在文末「验证结果」章节补录。库策略（哪些库必须来自宿主）沿用 [linux-appimage-library-policy.md](linux-appimage-library-policy.md)，本文不重复其根因分析。
 
 ## 背景与现状

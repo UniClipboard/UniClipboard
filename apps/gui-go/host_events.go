@@ -1,5 +1,7 @@
 package main
 
+//go:generate go run ./cmd/hosteventcodec
+
 import "github.com/wailsapp/wails/v3/pkg/application"
 
 // Every event the host sends to, or accepts from, the shared frontend. Each is registered below with its payload

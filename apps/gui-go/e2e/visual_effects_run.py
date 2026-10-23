@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Real WebView/binding/storage acceptance. Run in a private Xvfb + D-Bus session.
 
-Build frontend with VITE_GUI_GO_E2E=1 UC_UI_PLATFORM=linux, GUI with gtk3,e2e.
+Build frontend with VITE_GUI_GO_E2E=1 UC_UI_PLATFORM=linux, GUI with gtk4,e2e.
 Pass --gui, --daemon, --cli and --out. No production profile or clipboard is used.
 Capability fixtures exercise policy only, not macOS/Windows GPU support.
 """

@@ -1,10 +1,8 @@
 name: 'Snap'
 run-name: "snap-${{ inputs.channel || github.event.release.tag_name || 'edge' }}-${{ github.run_number }}"
 
-# Snap 走 strict + gnome extension,base=core22 让产物在 Ubuntu 20.04 / RHEL 9
-# / openSUSE Leap 这类 webkit2gtk-4.1 缺位的老 distro 上也能跑(snap 内部
-# bundle 了 webkit/glibc/GTK 完整 stack,跟 host 解耦)。这是 .deb 覆盖不了
-# 的用户群,详见 snap/snapcraft.yaml 顶部说明。
+# The core24 GNOME platform owns GTK >= 4.14. WebKitGTK 6.0 is application-owned.
+# The application checks its helpers before packing; old-host acceptance is separate.
 #
 # 默认只构建:pull request(改了 snap 配方时)和 release.published 都只产
 # workflow artifact,不推送商店。Go 宿主在 strict 限制下的行为还没有在真实
@@ -22,6 +20,9 @@ on:
       - 'snap/**'
       - '.github/workflows/snap.yml'
       - 'scripts/check-snap-desktop-icons.py'
+      - 'scripts/ci/check-snap-package.sh'
+      - 'scripts/ci/remove-snap-platform-libraries.py'
+      - 'scripts/tests/test_*snap*.py'
   release:
     types: [published]
   workflow_dispatch:
@@ -74,11 +75,7 @@ jobs:
     # release.published 入口只承接人工发布的 beta / rc / stable。
     if: ${{ github.event_name != 'release' || !contains(github.event.release.tag_name, '-alpha') }}
     name: Build snap (${{ matrix.arch }})
-    # snap build 必须在 Ubuntu host 上跑,snapcraft action 自带 LXD;
-    # 我们用 22.04 跟 base=core22 对齐,snapcraft action-build 装的工具链
-    # 跟 base 一致避免 ABI 错位。arm64 走 GitHub 公开仓库免费的
-    # ubuntu-22.04-arm hosted runner,不用 QEMU 交叉构建(原生构建 Rust +
-    # webkit2gtk 比 QEMU 快一个数量级)。
+    # Native runners match the core24 build environment on both architectures.
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
     permissions:
@@ -88,9 +85,9 @@ jobs:
       matrix:
         include:
           - arch: amd64
-            runner: ubuntu-22.04
+            runner: ubuntu-24.04
           - arch: arm64
-            runner: ubuntu-22.04-arm
+            runner: ubuntu-24.04-arm
 
     steps:
       - name: Resolve snap metadata
@@ -129,12 +126,20 @@ jobs:
           ref: ${{ steps.snap-meta.outputs.ref }}
           submodules: recursive
 
+      - name: Verify snap recipe checks
+        run: |
+          if ! python3 -c 'import yaml' >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo apt-get install -y python3-yaml
+          fi
+          python3 -m unittest discover -s scripts/tests -p 'test_*snap*.py'
+
       - name: Build snap
         id: build
         uses: snapcore/action-build@v1
         # action-build 默认在 LXD 容器里跑 snapcraft,产物路径输出到
         # steps.build.outputs.snap。strict + gnome extension 自动 attach
-        # gnome-42-2204 + gtk-common-themes content snaps,无需手动挂。
+        # gnome-46-2404 + gtk-common-themes content snaps,无需手动挂。
 
       - name: Upload .snap as workflow artifact
         # 即便 publish 走 store,也保留 artifact 用于离线分发 / 调试
@@ -153,8 +158,22 @@ jobs:
           SNAP_FILE: ${{ steps.build.outputs.snap }}
         run: |
           command -v unsquashfs >/dev/null || sudo apt-get install -y squashfs-tools
-          python3 -m unittest discover -s scripts/tests -p test_check_snap_desktop_icons.py
           python3 scripts/check-snap-desktop-icons.py "$SNAP_FILE"
+
+      - name: Install and launch the confined GTK4 Snap
+        env:
+          SNAP_FILE: ${{ steps.build.outputs.snap }}
+        run: scripts/ci/check-snap-package.sh "$SNAP_FILE" "$RUNNER_TEMP/snap-acceptance"
+
+      - name: Upload Snap runtime evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: snap-acceptance-${{ matrix.arch }}
+          path: ${{ runner.temp }}/snap-acceptance
+          include-hidden-files: true
+          retention-days: 7
+          if-no-files-found: ignore
 
       - name: Check snap store credentials
         id: check-creds

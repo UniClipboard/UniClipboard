@@ -23,13 +23,15 @@ if [ "${1:-}" != "--inner" ]; then
   cp "$here/package_install_check.sh" "$here/package_profile_check.py" "$out/source/"
   shasum -a 256 "$out/source/"* > "$out/harness.sha256"
   platform="${UC_DOCKER_PLATFORM:?UC_DOCKER_PLATFORM}"
-  docker run --rm --init --cap-add IPC_LOCK --platform "$platform" -v "$out/source/package_install_check.sh:/check.sh:ro" -v "$out/source/package_profile_check.py:/profile.py:ro" -v "$new:/in/new.$kind:ro" -v "$old:/in/old.$kind:ro" -v "$out:/out" \
+  docker run --rm --init --security-opt seccomp=unconfined --security-opt systempaths=unconfined --security-opt "apparmor=${UC_WEBKIT_CI_APPARMOR_PROFILE:-unconfined}" --platform "$platform" -e UC_HOST_UID="$(id -u)" -e UC_HOST_GID="$(id -g)" -v "$out/source/package_install_check.sh:/check.sh:ro" -v "$out/source/package_profile_check.py:/profile.py:ro" -v "$new:/in/new.$kind:ro" -v "$old:/in/old.$kind:ro" -v "$out:/out" \
     "$image" bash /check.sh --inner "$kind" "$scenario" "$sha" > "$out/run.log" 2>&1
   rc=$?
   tail -n 40 "$out/results.tsv" 2>/dev/null; exit "$rc"
 fi
 
 shift; kind="$1"; scenario="$2"; sha="$3"
+# Return only harness evidence to its caller; never change the product profile permissions.
+trap 'chown -R "$UC_HOST_UID:$UC_HOST_GID" /out' EXIT
 sha256sum /in/new.* /in/old.* > /out/package-inputs.sha256
 results=/out/results.tsv; : > "$results"; failures=0
 ok()  { printf 'PASS\t%s\t%s\n' "$1" "${2:-}" | tee -a "$results"; }
@@ -40,7 +42,7 @@ check() { local name="$1"; shift; local rc=0; "$@" >/tmp/check.out 2>&1 || rc=$?
 if [ "$kind" = deb ]; then
   export DEBIAN_FRONTEND=noninteractive
   apt-get update -qq && apt-get install -y -qq --no-install-recommends ca-certificates >/dev/null
-  tools=(xvfb xauth dbus dbus-x11 gnome-keyring libsecret-tools procps python3)
+  tools=(xvfb xauth dbus dbus-x11 gnome-keyring libsecret-tools procps python3 passwd util-linux)
   # The distribution mirrors drop requests now and then; a retry of the package manager is not a retry of the assertion.
   install_pkg() { for a in 1 2 3; do apt-get install -y -qq --no-install-recommends -o Acquire::Retries=5 "$1" && return 0; sleep 5; apt-get update -qq; done; return 1; }
   remove_pkg()  { apt-get remove -y -qq uniclipboard; }
@@ -53,11 +55,11 @@ if [ "$kind" = deb ]; then
 elif command -v zypper >/dev/null; then
   # openSUSE: zypper resolves the rpm's Requires against the distribution's own package names (issue #1903).
   zypper -n --gpg-auto-import-keys refresh >/dev/null 2>&1
-  zypper -n install --no-recommends xorg-x11-server-Xvfb xauth dbus-1-daemon dbus-1-tools gnome-keyring libsecret-tools procps python3 cpio diffutils xdpyinfo >/dev/null
+  zypper -n install --no-recommends xorg-x11-server-Xvfb xauth dbus-1-daemon dbus-1-tools gnome-keyring libsecret-tools procps python3 cpio diffutils xdpyinfo shadow util-linux >/dev/null
   install_pkg() { for a in 1 2 3; do zypper -n install --allow-unsigned-rpm "$1" && return 0; sleep 5; done; return 1; }
   remove_pkg()  { zypper -n remove uniclipboard; }
 else
-  dnf -y -q install xorg-x11-server-Xvfb xauth dbus-x11 gnome-keyring libsecret procps-ng python3 cpio diffutils >/dev/null
+  dnf -y -q install xorg-x11-server-Xvfb xauth dbus-x11 gnome-keyring libsecret procps-ng python3 cpio diffutils shadow-utils util-linux >/dev/null
   install_pkg() { for a in 1 2 3; do dnf -y -q --setopt=retries=10 install "$1" && return 0; sleep 5; done; return 1; }
   remove_pkg()  { dnf -y -q remove uniclipboard; }
 fi
@@ -95,21 +97,27 @@ if [ "$scenario" = upgrade ]; then
     seed_daemon=/tmp/seed/usr/bin/uniclipd
   fi
 fi
-# Shipped form: no profile, the real data root of this throwaway root user, the Secret Service of an unlocked throwaway keyring.
+# Shipped form: no profile, an ordinary desktop user and its unlocked throwaway keyring.
+useradd --create-home --shell /bin/bash uc-acceptance
+# The bind-mounted evidence directory must belong to the actual test UID on every distribution.
+chown uc-acceptance:uc-acceptance /out
+export UC_DISABLE_SYSTEM_CLIPBOARD=1
 launch() {
   export UC_PACKAGE_PROFILE_MODE="$1" UC_PACKAGE_SEED_DAEMON="${seed_daemon:-/usr/bin/uniclipd}"
-  export HOME=/root; mkdir -p /root/.local/share /root/.config /root/.cache  # gnome-keyring needs ~/.cache for its sockets
-  dbus-run-session -- bash -c '
+  runuser -u uc-acceptance -- env HOME=/home/uc-acceptance DISPLAY=:99 GDK_BACKEND=x11 dbus-run-session -- bash -c '
     set -u
+    mkdir -p "$HOME/.local/share" "$HOME/.config" "$HOME/.cache"
     printf "uc-throwaway" | gnome-keyring-daemon --foreground --unlock --components=secrets > /tmp/keyring.env 2> /tmp/keyring.err &
     for i in $(seq 100); do dbus-send --session --dest=org.freedesktop.DBus --print-reply /org/freedesktop/DBus org.freedesktop.DBus.NameHasOwner string:org.freedesktop.secrets 2>/dev/null | grep -q "boolean true" && break; sleep 0.1; done
     printf "probe" | secret-tool store --label=uc-probe uc probe && [ "$(secret-tool lookup uc probe)" = probe ] && secret-tool clear uc probe && echo keyring-ready
-    trap "kill \${gui:-} \${xvfb:-} 2>/dev/null; pkill -x uniclipd 2>/dev/null || true" EXIT
+    cleanup() { kill ${gui:-} ${xvfb:-} 2>/dev/null; pkill -x uniclipd 2>/dev/null || true; }
+    trap cleanup EXIT
     Xvfb :99 -screen 0 1280x800x24 -nolisten tcp & xvfb=$!
-    export DISPLAY=:99; for i in $(seq 50); do xdpyinfo >/dev/null 2>&1 && break; sleep 0.2; done
+    for i in $(seq 50); do xdpyinfo >/dev/null 2>&1 && break; sleep 0.2; done
     if [ "$UC_PACKAGE_PROFILE_MODE" = seed ]; then
       "$UC_PACKAGE_SEED_DAEMON" > /tmp/gui.log 2>&1 & gui=$!
     else
+      bwrap --unshare-user --unshare-net --ro-bind / / --proc /proc --dev /dev /usr/bin/true || exit 1
       export UC_GUI_GO_E2E_PHASE=startup-observe
       export UC_GUI_GO_EXIT_MODE=full
       mapfile -t entry_args < <(python3 /profile.py exec)
@@ -118,7 +126,10 @@ launch() {
     fi
     daemon=""; webkit=""
     for i in $(seq 90); do
-      daemon=$(pgrep -x uniclipd | head -1); webkit=$(pgrep -f "[W]ebKitWebProcess" | head -1)
+      daemon=$(pgrep -x uniclipd | head -1); webkit=""
+      for candidate in $(pgrep -f "[W]ebKitWebProcess"); do
+        case "$(readlink /proc/$candidate/exe 2>/dev/null)" in */WebKitWebProcess) webkit=$candidate; break ;; esac
+      done
       [ -n "$daemon" ] && { [ "$UC_PACKAGE_PROFILE_MODE" = seed ] || [ -n "$webkit" ]; } && break; sleep 1
     done
     python3 /profile.py "$UC_PACKAGE_PROFILE_MODE" || exit 1
@@ -130,7 +141,7 @@ launch() {
     sleep 10
     { echo "gui_exe=$(readlink /proc/$gui/exe 2>/dev/null)"; echo "daemon_exe=$(readlink /proc/$daemon/exe 2>/dev/null)"; echo "webkit_exe=$(readlink /proc/$webkit/exe 2>/dev/null)"
       echo "gui_alive=$(kill -0 $gui 2>/dev/null && echo yes || echo no)"; echo "daemon_alive=$([ -n "$daemon" ] && kill -0 $daemon 2>/dev/null && echo yes || echo no)"
-      echo "daemon_conn=$(ls /root/.local/share/*/daemon.conn /root/.local/share/*/*/daemon.conn 2>/dev/null | head -1)"; } > /tmp/launch.txt
+      echo "daemon_conn=$(ls /home/uc-acceptance/.local/share/*/daemon.conn /home/uc-acceptance/.local/share/*/*/daemon.conn 2>/dev/null | head -1)"; } > /tmp/launch.txt
     ps -eo pid,ppid,etime,args | grep -E "uniclip|WebKit" | grep -v grep > /tmp/launch-ps.txt
     kill $gui 2>/dev/null; sleep 3; echo "daemon_after_gui_exit=$(pgrep -x uniclipd >/dev/null && echo running || echo gone)" >> /tmp/launch.txt
     pkill -x uniclipd 2>/dev/null; for i in $(seq 50); do pgrep -x uniclipd >/dev/null || break; sleep .2; done; kill $xvfb 2>/dev/null; true'
@@ -140,7 +151,7 @@ launch() {
   return "$launch_rc"
 }
 snapshot() {
-  (cd /root && find .local/share/app.uniclipboard.desktop .local/share/keyrings .config/autostart -type f \
+  (cd /home/uc-acceptance && find .local/share/app.uniclipboard.desktop .local/share/keyrings .config/autostart -type f \
     ! -name '*.sqlite-wal' ! -name '*.sqlite-shm' ! -name 'daemon*.conn' ! -name '.daemon-pid' ! -name '.uniclipd.lock' ! -name 'daemon-run.json*' \
     -print0 | sort -z | xargs -0 sha256sum) > "$1"
 }
@@ -198,13 +209,19 @@ launch verify > /out/launch-stdout.txt 2>&1
 launch_rc=$?
 [ "$launch_rc" = 0 ] && ok "initialized profile and keyring survive restart" || bad "initialized profile and keyring survive restart" "exit=$launch_rc"
 
-. /tmp/launch.txt 2>/dev/null
+# Read the ordinary user's report as data; never execute it as root.
+while IFS="=" read -r field value; do
+  case "$field" in
+    gui_exe|daemon_exe|webkit_exe|gui_alive|daemon_alive|daemon_conn|daemon_after_gui_exit)
+      printf -v "$field" "%s" "$value" ;;
+  esac
+done < /tmp/launch.txt
 grep -q '^keyring-ready$' /out/launch-stdout.txt && ok "the Secret Service of the harness is ready" || bad "the Secret Service of the harness is ready" "$(grep -i -m1 'keyring\|secrets' /out/launch-stdout.txt)"
 [ "${gui_exe:-}" = /usr/bin/uniclipboard ] && ok "GUI runs from the installed path" || bad "GUI runs from the installed path" "exe=${gui_exe:-none}"
 [ "${daemon_exe:-}" = /usr/bin/uniclipd ] && ok "daemon runs from the installed path" || bad "daemon runs from the installed path" "exe=${daemon_exe:-none}"
-case "${webkit_exe:-}" in /usr/lib/*/webkit2gtk-4.1/WebKitWebProcess|/usr/lib64/webkit2gtk-4.1/WebKitWebProcess|/usr/libexec/webkit2gtk-4.1/WebKitWebProcess|/usr/libexec/libwebkit2gtk-4_1-0/WebKitWebProcess) ok "WebView process runs from the installed WebKitGTK" "$webkit_exe" ;; *) bad "WebView process runs from the installed WebKitGTK" "exe=${webkit_exe:-none}" ;; esac
+case "${webkit_exe:-}" in /usr/lib/*/webkitgtk-6.0/WebKitWebProcess|/usr/lib64/webkitgtk-6.0/WebKitWebProcess|/usr/libexec/webkitgtk-6.0/WebKitWebProcess|/usr/libexec/libwebkitgtk-6_0-4/WebKitWebProcess) ok "WebView process runs from the installed WebKitGTK" "$webkit_exe" ;; *) bad "WebView process runs from the installed WebKitGTK" "exe=${webkit_exe:-none}" ;; esac
 [ "${gui_alive:-}" = yes ] && [ "${daemon_alive:-}" = yes ] && ok "GUI and daemon are still alive 10 s after the WebView appeared" || bad "GUI and daemon are still alive 10 s after the WebView appeared" "gui=${gui_alive:-?} daemon=${daemon_alive:-?}"
-[ -n "${daemon_conn:-}" ] && ok "daemon published its connection file" "$daemon_conn" || bad "daemon published its connection file" "none under /root/.local/share"
+[ -n "${daemon_conn:-}" ] && ok "daemon published its connection file" "$daemon_conn" || bad "daemon published its connection file" "none under /home/uc-acceptance/.local/share"
 
 snapshot /tmp/pre-remove.sha256
 check "the package removes" remove_pkg
@@ -217,6 +234,6 @@ check "the executables are gone after removal" bash -c '! test -e /usr/bin/unicl
 check "the desktop entry is gone after removal" bash -c "! test -e $new_desktop"
 ! is_installed && ok "the package manager reports it as not installed" || bad "the package manager reports it as not installed" "$(installed)"
 cp /tmp/*sha256 /out/
-check "user data survives a plain removal" test -d /root/.local/share/app.uniclipboard.desktop
+check "user data survives a plain removal" test -d /home/uc-acceptance/.local/share/app.uniclipboard.desktop
 echo "failures=$failures" | tee -a "$results"
 exit "$failures"

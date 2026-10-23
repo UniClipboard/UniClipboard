@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Runs INSIDE the uc-gui-go-linux-build image with the repository mounted at /work and a cache volume at /cache.
 # Builds the Linux E2E binaries: the Rust daemon (debug, like build.sh e2e), the Go CLI, and the Go GUI with the
-# `gtk3,e2e` tags. The frontend bundle must already exist (apps/gui-go/frontend/dist, built on the host with
+# `gtk4,e2e` tags. The frontend bundle must already exist (apps/gui-go/frontend/dist, built on the host with
 # VITE_GUI_GO_E2E=1 UC_UI_PLATFORM=linux): the image has no bun. Outputs go to /cache/out (the host reads them from the volume).
 set -euo pipefail
 cd /work
@@ -21,8 +21,8 @@ fi
 (cd packages/desktop-host-go && go generate ./buildinfo)
 (cd apps/cli-go && CGO_ENABLED=0 go build -o "$OUT/uniclip" ./cmd/uniclip)
 read -r BUNDLE_ID PRODUCT < <(python3 -c 'import json;c=json.load(open("apps/gui-go/app.json"));print(c["identifier"],c["productName"])')
-(cd apps/gui-go && CGO_ENABLED=1 go build -tags gtk3,e2e -ldflags "-X main.updaterPublicKey= -X main.productName=$PRODUCT -X main.bundleID=$BUNDLE_ID.e2e" -o "$OUT/gui-go" .)
-(cd apps/gui-go && CGO_ENABLED=1 go vet -tags gtk3,production,release . && echo "vet gtk3,production,release ok")
+(cd apps/gui-go && CGO_ENABLED=1 go build -tags gtk4,e2e -ldflags "-X main.updaterPublicKey= -X main.productName=$PRODUCT -X main.bundleID=$BUNDLE_ID.e2e" -o "$OUT/gui-go" .)
+(cd apps/gui-go && CGO_ENABLED=1 go vet -tags gtk4,production,release . && echo "vet gtk4,production,release ok")
 ldd "$OUT/gui-go" | awk '{print $1}' | sort > "$OUT/gui-go.ldd.txt"
 file "$OUT/gui-go" "$OUT/uniclip" ${SKIP_DAEMON:+} > "$OUT/file.txt" || true
 git -C /work rev-parse HEAD > "$OUT/head.txt"

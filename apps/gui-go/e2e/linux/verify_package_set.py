@@ -2,7 +2,7 @@
 """Acceptance contract for one architecture's Linux package set (docs/architecture/gui-go-linux-ci-packaging.md, C1-C5, C10).
 
   verify_package_set.py --arch amd64|arm64 --packages <package_linux.py --out dir> --daemon-evidence <build-evidence.txt>
-                        --expect-head <sha> --upload-dir <new dir> [--max-glibc 2.36] [--report report.json]
+                        --expect-head <sha> --upload-dir <new dir> [--max-glibc 2.39] [--report report.json]
 
 Reads what package_linux.py wrote and fails unless:
   * the shared release collector (scripts/collect-release-assets.py, the one definition of "named distributable") picks up
@@ -29,7 +29,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(ROOT / 'apps/gui-go/e2e'))
-from package_linux import PACKAGE_NAME  # noqa: E402  (the one definition of the package identity)
+from package_linux import PACKAGE_NAME, RPM_REQUIRES, require_gtk4_binary  # noqa: E402  (the one definition of the package identity)
 ARCH = {'amd64': {'deb': 'amd64', 'rpm': 'x86_64', 'appimage': 'amd64', 'machine': 62, 'uname': 'x86_64'},
         'arm64': {'deb': 'arm64', 'rpm': 'aarch64', 'appimage': 'aarch64', 'machine': 183, 'uname': 'aarch64'}}
 
@@ -65,7 +65,7 @@ def main():
     parser.add_argument('--daemon-evidence', type=Path, required=True)
     parser.add_argument('--expect-head', required=True)
     parser.add_argument('--upload-dir', type=Path, required=True)
-    parser.add_argument('--max-glibc', default='2.36')
+    parser.add_argument('--max-glibc', default='2.39')
     parser.add_argument('--report', type=Path)
     args = parser.parse_args()
     a = ARCH[args.arch]
@@ -123,12 +123,22 @@ def main():
         for exe in ('usr/bin/uniclipboard', 'usr/bin/uniclipd'):
             if e_machine(work / 'deb' / exe) != a['machine']:
                 problems.append(f'deb {exe} is not an ELF for {args.arch}')
+        require_gtk4_binary(work / 'deb/usr/bin/uniclipboard')
+        dependencies = sh(['dpkg-deb', '-f', str(deb), 'Depends'])
+        report['debDepends'] = dependencies
+        if not all(n in dependencies for n in ('libgtk-4-1 (>= 4.14)', 'libwebkitgtk-6.0-4', 'libc6 (>= 2.39)')) or 'libgtk-3' in dependencies:
+            problems.append(f'deb GTK4 dependencies are incorrect: {dependencies}')
         daemon_in_deb = sha256(work / 'deb/usr/bin/uniclipd')
         if daemon_in_deb != daemon.get('sha256'):
             problems.append(f'deb daemon {daemon_in_deb} != evidence daemon {daemon.get("sha256")}')
     if rpm.is_file():
         header = sh(['rpm', '-qp', '--qf', '%{NAME} %{VERSION} %{RELEASE} %{ARCH}', str(rpm)])
         report['rpmHeader'] = header
+        requirements = sh(['rpm', '-qpR', str(rpm)]).splitlines()
+        report['rpmRequires'] = requirements
+        for requirement in RPM_REQUIRES.split(', '):
+            if requirement not in requirements:
+                problems.append(f'rpm GTK4 requirement missing: {requirement}')
         # A pre-release separator is "~" in the rpm Version tag (package_linux.py build_rpm); the file name keeps the release version.
         if header != f'{PACKAGE_NAME} {version.replace("-", "~", 1)} 1 {a["rpm"]}':
             problems.append(f'rpm header {header!r} does not match {a["rpm"]} {version}')

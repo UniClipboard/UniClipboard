@@ -2,7 +2,7 @@
 """Main-window size persistence through real GTK/WebView and daemon launches.
 
 Run inside a private Xvfb (1920x1200) + Openbox + D-Bus session, with the
-frontend built with VITE_GUI_GO_E2E=1 and the GUI built with gtk3,e2e:
+frontend built with VITE_GUI_GO_E2E=1 and the GUI built with gtk4,e2e:
   python3 main_window_size_run.py --gui <gui> --daemon <uniclipd> --cli <uniclip> --out <artifacts>
 Only the private display receives input. All data and credentials use a temporary portable profile.
 """

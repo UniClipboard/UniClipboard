@@ -11,7 +11,7 @@ on:
       build_image:
         required: false
         type: string
-        default: 'debian:bookworm'
+        default: 'ubuntu:24.04'
 
 permissions:
   contents: read
@@ -40,6 +40,9 @@ jobs:
         with:
           ref: ${{ inputs.ref }}
           persist-credentials: false
+      - name: Permit WebKit namespaces in the disposable test containers
+        run: scripts/ci/prepare-webkit-container-profile.sh
+
       - name: Assert a native runner
         run: |
           test "$(uname -m)" = "${{ matrix.machine }}"
@@ -101,13 +104,9 @@ jobs:
       - name: Build the clean-host and Secret Service images
         run: |
           cd apps/gui-go/e2e/linux
-          if [ "$BUILD_IMAGE" = "debian:bookworm" ]; then
-            floor_args=(--build-arg BASE_IMAGE=debian:bookworm --build-arg FUSE_PACKAGE=libfuse2 --build-arg HOST_EXTRA_PACKAGES=libasound2)
-          else
-            floor_args=(--build-arg BASE_IMAGE="$BUILD_IMAGE" --build-arg HOST_EXTRA_PACKAGES=libasound2t64)
-          fi
+          floor_args=(--build-arg BASE_IMAGE="$BUILD_IMAGE" --build-arg HOST_EXTRA_PACKAGES=libasound2t64)
           docker build --platform "${{ matrix.platform }}" "${floor_args[@]}" -f Dockerfile.17c4-runtime -t uc-clean-host:floor .
-          docker build --platform "${{ matrix.platform }}" --build-arg BASE_IMAGE=ubuntu:24.04 --build-arg HOST_EXTRA_PACKAGES=libasound2t64 -f Dockerfile.17c4-runtime -t uc-clean-host:newer .
+          docker build --platform "${{ matrix.platform }}" --build-arg BASE_IMAGE=debian:trixie --build-arg HOST_EXTRA_PACKAGES=libasound2t64 -f Dockerfile.17c4-runtime -t uc-clean-host:newer .
           docker build --platform "${{ matrix.platform }}" -f Dockerfile.17c4-keyring -t "$UC_KEYRING_IMAGE" .
 
       - name: Accept the AppImage on the floor and a newer distribution
@@ -182,11 +181,11 @@ jobs:
       fail-fast: false
       matrix:
         arch: [amd64, arm64]
-        image: ['debian:bookworm', 'ubuntu:24.04', 'fedora:latest']
+        image: ['debian:trixie', 'ubuntu:24.04', 'fedora:latest']
         include:
           - { arch: amd64, runner: ubuntu-24.04, platform: linux/amd64, deb: amd64, rpm: x86_64 }
           - { arch: arm64, runner: ubuntu-24.04-arm, platform: linux/arm64, deb: arm64, rpm: aarch64 }
-          - { image: 'debian:bookworm', kind: deb }
+          - { image: 'debian:trixie', kind: deb }
           - { image: 'ubuntu:24.04', kind: deb }
           - { image: 'fedora:latest', kind: rpm }
     env:
@@ -196,6 +195,9 @@ jobs:
         with:
           ref: ${{ inputs.ref }}
           persist-credentials: false
+
+      - name: Permit WebKit namespaces in the disposable test containers
+        run: scripts/ci/prepare-webkit-container-profile.sh
 
       - name: Assert a native runner
         run: test "$(docker version --format '{{.Server.Arch}}')" = "${{ matrix.arch }}"

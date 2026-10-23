@@ -15,7 +15,7 @@ engine_arch="$(docker version --format '{{.Server.Arch}}')"; image_arch="$(docke
 [ "$engine_arch" = "$image_arch" ] || { echo "image $image is $image_arch but the engine is $engine_arch: that would run under emulation" >&2; exit 3; }
 docker image inspect "$image" --format '{{.Id}} {{.Architecture}}' > "$out/host-image.txt"
 echo "docker-engine-arch: $engine_arch (native: same as the image)" >> "$out/host-image.txt"
-docker run --rm --init --device /dev/fuse --cap-add SYS_ADMIN --security-opt apparmor=unconfined \
+docker run --rm --init --device /dev/fuse --cap-add SYS_ADMIN --security-opt seccomp=unconfined --security-opt systempaths=unconfined --security-opt "apparmor=${UC_WEBKIT_CI_APPARMOR_PROFILE:-unconfined}" \
   -e UC_HOST_UID="$(id -u)" -e UC_HOST_GID="$(id -g)" -v "$root:/work:ro" -v "$appimage:/in/app.AppImage:ro" -v "$out:/out" "$image" bash -c '
 set -euo pipefail
 id uc >/dev/null 2>&1 || useradd --create-home --uid 1500 uc

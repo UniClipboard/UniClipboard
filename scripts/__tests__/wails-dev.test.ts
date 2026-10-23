@@ -82,7 +82,13 @@ describe('development launcher', () => {
             ...(process.platform === 'linux' ? { DISPLAY: ':launcher-test' } : {}),
           })
         ).toBe(0)
-        expect(calls.builds).toEqual(['go', 'cargo', 'go', 'go'])
+        expect(calls.builds).toEqual([
+          ...(process.platform === 'linux' ? ['pkg-config'] : []),
+          'go',
+          'cargo',
+          'go',
+          'go',
+        ])
         const binary = process.platform === 'win32' ? 'gui-go-dev.exe' : 'gui-go-dev'
         expect(calls.app).toBe(path.join(root, 'target/gui-go/dev', binary))
         const vite = calls.vite

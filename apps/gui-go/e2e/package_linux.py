@@ -3,13 +3,13 @@
 
   python3 apps/gui-go/e2e/package_linux.py --arch amd64|arm64 --daemon <path to uniclipd> --out <dir> [--frontend-dist <dir>]
 
-Runs on a Linux host (the Dockerfile in e2e/linux provides one): the GUI links GTK3 and WebKitGTK through cgo, so it
+Runs on a Linux host (the Dockerfile in e2e/linux provides one): the GUI links GTK4 and WebKitGTK through cgo, so it
 cannot be cross-compiled from macOS. The daemon is NOT built here: `uniclipd` for the same architecture must be
 supplied; a missing or malformed file is a hard error. The frontend bundle (apps/gui-go/frontend/dist) must exist
 (`UC_UI_PLATFORM=linux bun --bun run --cwd apps/gui-go/frontend build`).
 
 Outputs in <dir> (names follow the Tauri bundler, which the release workflow and updater feed already expect):
-  uniclipboard                                       release build (tags gtk3,production,release)
+  uniclipboard                                       release build (tags gtk4,production,release)
   UniClipboard_<version>_<amd64|arm64>.deb           /usr/bin/uniclipboard + /usr/bin/uniclipd + desktop entry + icons
   UniClipboard-<version>-1.<x86_64|aarch64>.rpm      same payload
   UniClipboard_<version>_<amd64|aarch64>.AppImage    self-contained AppDir (linuxdeploy + the Wails GTK plugin, docs/architecture/gui-go-linux-appimage.md)
@@ -17,7 +17,7 @@ Outputs in <dir> (names follow the Tauri bundler, which the release workflow and
   package-manifest.json                              provenance and an explicit list of what is NOT proven
 
 What this proves: the artifacts build. It does NOT prove they install or run on a real desktop, and:
-  * the AppImage bundles GTK3, WebKitGTK, GLib and the WebKit helper processes with linuxdeploy-07333c6 (the pinned build whose
+  * the AppImage bundles GTK4, WebKitGTK, GLib and the WebKit helper processes with linuxdeploy-07333c6 (the pinned build whose
     exclude list keeps the host driver stack out, docs/architecture/linux-appimage-library-policy.md); package-manifest.json
     records what the AppDir inspection found, but only linux_appimage_run.py in a host without GTK/WebKitGTK proves it runs;
   * nothing is signed (no minisign `.sig`): signing stays in the release workflow;
@@ -38,6 +38,8 @@ import time
 import urllib.error
 import urllib.request
 from pathlib import Path
+
+from appimage_processes import WEBKIT_HELPERS
 
 ROOT = Path(__file__).resolve().parents[3]
 GUI = ROOT / 'apps/gui-go'
@@ -137,15 +139,10 @@ def gio_support_libs():
 
 # Libraries every Linux host has and that the 17c7 classification (linux_appimage_tls_run.HOST_OK) already leaves to the host.
 GIO_SUPPORT_HOST_OK = ('libz.so.1', 'libgmp.so.10', 'libcom_err.so.2', 'libresolv.so.2', 'libstdc++.so.6', 'libgcc_s.so.1')
-# 17c13: the Wayland Layer Shell library the quick panel loads with dlopen (internal/layershell). It is carried so that the panel does not depend on the host having it
-# (GNOME and Ubuntu-based desktops do not ship it by default); it is the distribution's own build, not ours. Its one host-provided dependency is libwayland-client, which
-# the AppImage keeps out on purpose (docs/architecture/linux-appimage-library-policy.md).
-LAYER_SHELL = ('libgtk-layer-shell.so.0', 'libgtk-layer-shell0')
-LAYER_SHELL_HOST_OK = ('libwayland-client.so.0',)
 # 17c13: the linuxdeploy GTK plugin's AppRun hook exports this line unconditionally (module internal/commands/linuxdeploy-plugin-gtk.sh, line 246). It is the only reason the
 # AppImage ran through XWayland; docs/architecture/gui-go-linux-appimage-native-wayland.md records the upstream history and why it is removed here.
 GDK_BACKEND_HOOK_LINE = re.compile(r'^export GDK_BACKEND=x11[ \t]*(#.*)?$', re.M)
-WEBKIT_HELPERS = ('WebKitWebProcess', 'WebKitNetworkProcess', 'WebKitGPUProcess')
+WEBKIT_RUNTIME_ROOT = '/run/uc-webkit'
 APPRUN = GUI / 'e2e/linux/appimage/AppRun'
 ICONS = {'32x32': '32x32.png', '128x128': '128x128.png', '256x256': '128x128@2x.png'}
 
@@ -199,6 +196,15 @@ def stage_tree(root, binary, daemon):
         shutil.copy2(ROOT / 'apps/gui-go/icons' / name, d / 'uniclipboard.png')
 
 
+def require_gtk4_binary(binary):
+    """Reject a stale GTK3 prebuilt GUI before declaring GTK4 package dependencies."""
+    dynamic = run(['readelf', '-d', str(binary)], env=dict(os.environ, LC_ALL='C'), capture=True)
+    needed = set(re.findall(r'\(NEEDED\)\s+Shared library: \[(.+?)\]', dynamic))
+    required = {'libgtk-4.so.1', 'libwebkitgtk-6.0.so.4'}
+    if not required.issubset(needed) or needed & {'libgtk-3.so.0', 'libwebkit2gtk-4.1.so.0'}:
+        sys.exit(f'{binary}: expected GTK4/WebKitGTK 6.0, got {sorted(needed)}')
+
+
 def build_deb(stage, out, version, arch, name, *, package_name=PACKAGE_NAME):
     # The legacy name is used only by the CI regression fixture; shipped calls use the default identity.
     assert package_name in (PACKAGE_NAME, LEGACY_PACKAGE_NAME)
@@ -212,24 +218,22 @@ def build_deb(stage, out, version, arch, name, *, package_name=PACKAGE_NAME):
     shutil.copytree(stage, d, symlinks=True)
     size_kib = sum(f.stat().st_size for f in d.rglob('*') if f.is_file()) // 1024
     (d / 'DEBIAN').mkdir()
-    # GTK3/WebKitGTK/X11 plus libgtk-layer-shell0, as the Tauri deb declares it (the Layer Shell panel loads it with dlopen
-    # and falls back to the ordinary window when it is absent, but the package still pulls it in for the Wayland panel).
-    # The Tauri deb's libayatana-appindicator3 is not needed: Wails' tray is StatusNotifierItem over D-Bus.
+    # Wails uses GdkMonitor.get_scale (GTK >= 4.14). GTK4 uses an ordinary quick-panel window;
+    # the GTK3 Layer Shell library must not be pulled into this process.
     (d / 'DEBIAN/control').write_text(
         f'Package: {package_name}\nVersion: {deb_version}\nArchitecture: {ARCH[arch][0]}\nSection: utils\nPriority: optional\n'
         + relationships +
         f'Installed-Size: {size_kib}\nMaintainer: UniClipboard <support@uniclipboard.app>\n'
-        'Depends: libgtk-3-0, libwebkit2gtk-4.1-0, libx11-6, libgtk-layer-shell0\n'
+        'Depends: libc6 (>= 2.39), libgtk-4-1 (>= 4.14), libwebkitgtk-6.0-4, libx11-6\n'
         'Description: Encrypted peer-to-peer clipboard sync between your devices\n')
     deb = out / name
     run(['dpkg-deb', '--root-owner-group', '--build', str(d), str(deb)])
     return deb
 
 
-# Shared libraries the host must provide, as soname capabilities. Fedora names these packages gtk3, webkit2gtk4.1 and gtk-layer-shell,
-# openSUSE libgtk-3-0, libwebkit2gtk-4_1-0 and libgtk-layer-shell0: a package name resolves on only one of them, a soname on both.
+# Shared libraries the host must provide, as soname capabilities across RPM distributions.
 # AutoReqProv is off (see the spec), so this list is the whole dependency declaration.
-RPM_REQUIRES = ', '.join(f'{soname}()(64bit)' for soname in ('libgtk-3.so.0', 'libwebkit2gtk-4.1.so.0', 'libgtk-layer-shell.so.0'))
+RPM_REQUIRES = ', '.join(f'{soname}()(64bit)' for soname in ('libgtk-4.so.1', 'libwebkitgtk-6.0.so.4', 'libX11.so.6')) + ', glibc >= 2.39, (gtk4 >= 4.14 or libgtk-4-1 >= 4.14)'
 
 
 def build_rpm(stage, out, version, arch, name, *, package_name=PACKAGE_NAME):
@@ -369,34 +373,42 @@ def linuxdeploy_pin(arch):
 
 
 def webkit_helper_dir():
-    """The host directory that holds WebKitWebProcess (what libwebkit2gtk has compiled in as its helper directory)."""
-    for base in sorted(Path('/usr').glob('lib*/**/webkit2gtk-4.1')):
+    """The host directory that holds WebKitWebProcess (what libwebkitgtk has compiled in as its helper directory)."""
+    for base in sorted(Path('/usr').glob('lib*/**/webkitgtk-6.0')):
         if (base / 'WebKitWebProcess').is_file():
             return base
-    sys.exit('no webkit2gtk-4.1 helper directory under /usr (libwebkit2gtk-4.1-dev is required on the build host)')
+    sys.exit('no webkitgtk-6.0 helper directory under /usr (libwebkitgtk-6.0-dev is required on the build host)')
 
 
 def relocate_webkit(appdir, helper_dir):
-    """Rewrite the helper directory compiled into libwebkit2gtk (`/usr/lib/<triple>/webkit2gtk-4.1`) to
-    `././/lib/<triple>/webkit2gtk-4.1`, the same length, so it resolves relative to $APPDIR/usr (AppRun's working
-    directory). The Tauri bundler does the same with a blanket /usr replacement; only the one path is changed here."""
+    """Use fixed absolute paths inside the UI child's private mount namespace.
+    Bubblewrap requires absolute bind destinations; equal-length slash padding
+    preserves ELF offsets without copying or modifying libraries at launch."""
     old = str(helper_dir).encode()
     assert old.startswith(b'/usr')
-    new = b'././' + old[4:]
-    libs = sorted((appdir / 'usr/lib').rglob('libwebkit2gtk-4.1.so*'))
+    new = (WEBKIT_RUNTIME_ROOT + '/h').encode()
+    assert len(new) <= len(old)
+    new += b'/' * (len(old) - len(new))
+    libs = sorted((appdir / 'usr/lib').rglob('libwebkitgtk-6.0.so*'))
     libs = [lib for lib in libs if lib.is_file() and not lib.is_symlink()]
     if not libs:
-        sys.exit('libwebkit2gtk-4.1 was not deployed into the AppDir')
-    count = 0
+        sys.exit('libwebkitgtk-6.0 was not deployed into the AppDir')
+    proxy_old = b'/usr/bin/xdg-dbus-proxy'
+    proxy_new = (WEBKIT_RUNTIME_ROOT + '/').encode()
+    proxy_new += b'/' * (len(proxy_old) - len(proxy_new) - 1) + b'p'
+    assert len(proxy_new) == len(proxy_old)
+    counts = {old: 0, proxy_old: 0}
     for lib in libs:
         data = lib.read_bytes()
-        n = data.count(old)
-        if n:
-            lib.write_bytes(data.replace(old, new))
-            count += n
-    if not count:
-        sys.exit(f'{old.decode()} is not compiled into the deployed libwebkit2gtk: the layout assumption is wrong')
-    return {'from': old.decode(), 'to': new.decode(), 'occurrences': count, 'libraries': [str(l.relative_to(appdir)) for l in libs]}
+        for source, destination in ((old, new), (proxy_old, proxy_new)):
+            counts[source] += data.count(source)
+            data = data.replace(source, destination)
+        lib.write_bytes(data)
+    for source, count in counts.items():
+        if not count:
+            sys.exit(f'{source.decode()} is not compiled into the deployed libwebkitgtk: the layout assumption is wrong')
+    return {'from': old.decode(), 'to': new.decode(), 'occurrences': counts[old], 'libraries': [str(l.relative_to(appdir)) for l in libs],
+            'dbusProxy': {'from': proxy_old.decode(), 'to': proxy_new.decode(), 'occurrences': counts[proxy_old]}}
 
 
 def inspect_appdir(appdir, helper_dir):
@@ -406,8 +418,9 @@ def inspect_appdir(appdir, helper_dir):
         return sorted({n for n in names if n.startswith(prefix)})
     inside = appdir / 'usr' / str(helper_dir).lstrip('/')[len('usr/'):]
     return {
-        'webkit': has('libwebkit2gtk-4.1.so'), 'gtk3': has('libgtk-3.so'), 'glib': has('libglib-2.0.so'), 'gio': has('libgio-2.0.so'),
-        'helpers': sorted(h for h in WEBKIT_HELPERS if (inside / h).is_file()), 'injectedBundle': (inside / 'injected-bundle').is_dir(),
+        'webkit': has('libwebkitgtk-6.0.so'), 'gtk4': has('libgtk-4.so'), 'glib': has('libglib-2.0.so'), 'gio': has('libgio-2.0.so'),
+        'helpers': sorted(h for h in WEBKIT_HELPERS if (inside / h).is_file()), 'injectedBundle': (inside / 'injected-bundle/libwebkitgtkinjectedbundle.so').is_file(),
+        'legacyGtk3LibrariesFound': sorted({n for n in names if n.startswith(('libgtk-3.so', 'libwebkit2gtk-4.1.so', 'libgtk-layer-shell.so'))}),
         'hostOnlyLibrariesFound': sorted({n for n in names if any(n.startswith(p) for p in HOST_ONLY_LIBS)}),
         'gioModules': sorted(p.name for p in (appdir / 'usr/lib/gio/modules').iterdir()),
         'gioModuleDirs': sorted(str(p.relative_to(appdir)) for p in appdir.rglob('modules') if p.parent.name == 'gio'),
@@ -497,32 +510,6 @@ def deploy_gio_modules(appdir):
     return {'pacRunner': pac_row, 'modules': rows, 'supportLibraries': support_rows, 'bundledGLibPackageVersion': glib_version}
 
 
-def deploy_layer_shell(appdir):
-    """Copy libgtk-layer-shell from the build image into usr/lib with its provenance (owning package, version, SHA-256) and prove its dependency closure: every NEEDED
-    library is in the AppDir, libc-family or the one deliberately host-provided libwayland-client."""
-    soname, package = LAYER_SHELL
-    loader = run(['ldconfig', '-p'], capture=True)
-    found = next((m.group(2) for m in (re.match(r'\s*(\S+) \(.*\) => (\S+)', l) for l in loader.splitlines()) if m and m.group(1) == soname), None)
-    if not found:
-        sys.exit(f'{soname} is missing in the build image: install {package}')
-    real = Path(found).resolve()
-    owner = run(['dpkg', '-S', str(real)], capture=True)
-    if not owner.startswith(package):
-        sys.exit(f'{real} is not owned by {package}: {owner}')
-    dest = appdir / 'usr/lib' / real.name
-    shutil.copy2(real, dest)
-    if real.name != soname:
-        (appdir / 'usr/lib' / soname).symlink_to(real.name)
-    shipped = {p.name for p in (appdir / 'usr/lib').rglob('*.so*') if p.is_file() or p.is_symlink()}
-    libc_family = re.compile(r'^(libc|libm|libdl|libpthread|librt|ld-linux.*)\.so(\.\d+)*$')
-    needed = re.findall(r'\(NEEDED\)\s+Shared library: \[(.+?)\]', run(['readelf', '-d', str(dest)], capture=True))
-    missing = sorted(n for n in needed if n not in shipped and not libc_family.match(n) and n not in LAYER_SHELL_HOST_OK)
-    if missing:
-        sys.exit(f'{soname} needs libraries that are neither in the AppDir, libc-family nor host-provided: {missing}')
-    return {'soname': soname, 'file': dest.name, 'source': str(real), 'package': package, 'packageVersion': run(['dpkg-query', '-W', '-f', '${Version}', package], capture=True),
-            'sha256': sha256(dest), 'needed': needed, 'hostProvided': sorted(n for n in needed if n in LAYER_SHELL_HOST_OK)}
-
-
 def release_gdk_backend(appdir):
     """Remove the unconditional `export GDK_BACKEND=x11` from the generated GTK hook, so GTK chooses its own backend (Wayland when the session offers it, else X11) and an
     explicit GDK_BACKEND from the user is respected. Exactly one such line must exist: a changed plugin is a decision, not an accident."""
@@ -537,7 +524,17 @@ def release_gdk_backend(appdir):
     return {'hook': str(hook.relative_to(appdir)), 'removedLine': GDK_BACKEND_HOOK_LINE.search(text).group(0), 'hookSha256Before': before, 'hookSha256After': sha256(hook)}
 
 
-def build_appimage(stage, out, arch, name, tools, daemon, relocate=True, marker=None, tls_module=True, force_x11_hook=False, layer_shell=True):
+def remove_host_libraries(appdir):
+    """Apply the host graphics/D-Bus ownership policy after every deployment pass."""
+    removed = []
+    for path in sorted((appdir / 'usr/lib').rglob('*')):
+        if (path.is_file() or path.is_symlink()) and path.name.startswith(HOST_ONLY_LIBS):
+            removed.append(str(path.relative_to(appdir)))
+            path.unlink()
+    return removed
+
+
+def build_appimage(stage, out, arch, name, tools, daemon, relocate=True, marker=None, tls_module=True, force_x11_hook=False):
     tools.mkdir(exist_ok=True)
     tool_url, tool_pin = APPIMAGETOOL[arch]
     appimagetool = fetch_verified(tool_url, tool_pin, tools / 'appimagetool')
@@ -562,6 +559,16 @@ def build_appimage(stage, out, arch, name, tools, daemon, relocate=True, marker=
         if (helper_dir / helper).is_file():
             shutil.copy2(helper_dir / helper, target / helper)
     shutil.copytree(helper_dir / 'injected-bundle', target / 'injected-bundle')
+    # A host proxy would inherit the bundled GLib and could require newer symbols.
+    # Package the build distribution's proxy with its matching library closure.
+    proxy = appdir / 'usr/bin/xdg-dbus-proxy'
+    shutil.copy2('/usr/bin/xdg-dbus-proxy', proxy)
+    proxy.chmod(0o755)
+    (appdir / 'usr/h').symlink_to(target.relative_to(appdir / 'usr'))
+    (appdir / 'usr/p').symlink_to('bin/xdg-dbus-proxy')
+    runtime_metadata = appdir / 'usr/share/uniclipboard/webkit-runtime-root'
+    runtime_metadata.parent.mkdir(parents=True, exist_ok=True)
+    runtime_metadata.write_text(WEBKIT_RUNTIME_ROOT + '\n')
     # The pinned Wails GTK plugin deploys no GIO modules. The bundled directory is what AppRun's GIO_MODULE_DIR points at, so the bundled
     # GLib never loads the host's (ABI-incompatible) gvfs/dconf modules; deploy_gio_modules fills it with the TLS backend below (only the
     # --negative-control-no-tls-module variant leaves it empty).
@@ -577,10 +584,10 @@ def build_appimage(stage, out, arch, name, tools, daemon, relocate=True, marker=
     (appdir / 'usr/share/mime').mkdir(parents=True)
     shutil.copy2(mime_cache, appdir / 'usr/share/mime/mime.cache')
     if marker:
-        (appdir / 'usr/share/uniclipboard').mkdir(parents=True)
+        (appdir / 'usr/share/uniclipboard').mkdir(parents=True, exist_ok=True)
         (appdir / 'usr/share/uniclipboard/update-marker.txt').write_text(marker)
 
-    execs = [appdir / 'usr/bin/uniclipboard', appdir / 'usr/bin/uniclipd'] + [target / h for h in WEBKIT_HELPERS if (target / h).is_file()]
+    execs = [appdir / 'usr/bin/uniclipboard', appdir / 'usr/bin/uniclipd', proxy] + [target / h for h in WEBKIT_HELPERS if (target / h).is_file()]
     cmd = [str(linuxdeploy), '--appimage-extract-and-run', '--appdir', str(appdir), '--plugin', 'gtk', '--custom-apprun', str(APPRUN),
            '-d', str(appdir / 'usr/share/applications/uniclipboard.desktop'), '-i', str(appdir / 'usr/share/icons/hicolor/128x128/apps/uniclipboard.png')]
     for e in execs:
@@ -589,7 +596,7 @@ def build_appimage(stage, out, arch, name, tools, daemon, relocate=True, marker=
     if plugin_so:
         cmd += ['-l', str(plugin_so)]  # linuxdeploy deploys the plugin's own dependencies (JavaScriptCore 4.0) with it
     # NO_STRIP: the bundled strip cannot process the .relr.dyn sections of current distributions' GTK libraries (Wails does the same).
-    run(cmd, env=dict(os.environ, DEPLOY_GTK_VERSION='3', NO_STRIP='1', ARCH=ARCH[arch][1], PATH=f'{tools}:{os.environ["PATH"]}'))
+    run(cmd, env=dict(os.environ, DEPLOY_GTK_VERSION='4', NO_STRIP='1', ARCH=ARCH[arch][1], PATH=f'{tools}:{os.environ["PATH"]}'))
 
     # 17c7: the TLS backend. The module comes from the build image's glib-networking package, i.e. built against the very GLib/GnuTLS that
     # linuxdeploy just bundled (same distribution release), which is why it can be loaded where the host's gvfs/dconf modules cannot.
@@ -610,17 +617,13 @@ def build_appimage(stage, out, arch, name, tools, daemon, relocate=True, marker=
         if isinstance(gio_modules_info, dict):
             gio_modules_info['libproxyPlugin'] = {'path': f'usr/lib/libproxy/modules/{LIBPROXY_PLUGIN[0]}', 'source': str(plugin_so), 'package': LIBPROXY_PLUGIN[1],
                 'packageVersion': run(['dpkg-query', '-W', '-f', '${Version}', LIBPROXY_PLUGIN[1]], capture=True), 'sha256': sha256(moddir / LIBPROXY_PLUGIN[0]), 'needed': needed}
-    layer_shell_info = deploy_layer_shell(appdir) if layer_shell else 'DISABLED (negative control: libgtk-layer-shell is not in the AppDir)'
     gdk_hook_info = 'KEPT (differential control: the hook still forces GDK_BACKEND=x11)' if force_x11_hook else release_gdk_backend(appdir)
 
-    # libdbus-1 is the host's. linuxdeploy's exclude list does not name it, and its `--exclude-library` option is honoured by the main run but not by the
-    # GTK plugin's own deployment pass (the log shows "Skipping ... blacklisted libdbus" and then the plugin deploying it anyway). A bundled copy shadows
-    # the host's for every host helper the GUI starts through AppRun's LD_LIBRARY_PATH: observed 17c7 on Fedora, whose dbus-launch (libdbus 1.16.2)
-    # failed on the bundled older copy ("version LIBDBUS_PRIVATE_1.16.2 not found", rc 127) and the GUI then exited 1 without a message.
-    # Removed after linuxdeploy; inspect_appdir fails the package if any libdbus is left.
-    removed_dbus = sorted(p.name for p in (appdir / 'usr/lib').glob('libdbus-1.so*'))
-    for p in (appdir / 'usr/lib').glob('libdbus-1.so*'):
-        p.unlink()
+    # GTK4 adds a direct Vulkan loader dependency. The GTK plugin may re-add libraries
+    # excluded by the main linuxdeploy pass; remove all host-owned entry points last.
+    # The same ownership rule protects host helpers from the bundled libdbus ABI.
+    removed_host = remove_host_libraries(appdir)
+    removed_dbus = [Path(name).name for name in removed_host if Path(name).name.startswith('libdbus-1.so')]
 
     # linuxdeploy sets an $ORIGIN rpath on every executable it is given, which changes the bytes. The daemon is given to it so that
     # its libraries are deployed, then the original file is put back: AppRun's LD_LIBRARY_PATH covers the lookup, and the daemon
@@ -638,16 +641,18 @@ def build_appimage(stage, out, arch, name, tools, daemon, relocate=True, marker=
     info = {'linuxdeploy': {'release': release, 'sha256': pin}, 'daemonRestoredAfterLinuxdeploy': True, 'daemonHashChain': daemon_chain, 'appimagetoolSha256': tool_pin,
             'gtkPlugin': {'source': str(plugin_source), 'wailsModuleDir': str(wails_dir), 'sha256': sha256(plugin)},
             'webkitHelperDirectory': str(helper_dir), 'updateMarker': bool(marker),
-            'sharedMimeCache': {'source': str(mime_cache), 'sha256': sha256(mime_cache)}, 'gioModules': gio_modules_info, 'libdbusRemoved': removed_dbus,
-            'layerShell': layer_shell_info, 'gdkBackendHook': gdk_hook_info}
+            'sharedMimeCache': {'source': str(mime_cache), 'sha256': sha256(mime_cache)}, 'gioModules': gio_modules_info, 'libdbusRemoved': removed_dbus, 'hostLibrariesRemoved': removed_host,
+            'panelBackend': 'ordinary-window', 'gdkBackendHook': gdk_hook_info}
     info['relocation'] = relocate_webkit(appdir, helper_dir) if relocate else 'DISABLED (negative control)'
     info['inspection'] = inspect_appdir(appdir, helper_dir)
     ins = info['inspection']
     problems = []
-    if not (ins['webkit'] and ins['gtk3'] and ins['glib'] and ins['gio']):
-        problems.append('GTK3/WebKitGTK/GLib not bundled')
+    if not (ins['webkit'] and ins['gtk4'] and ins['glib'] and ins['gio']):
+        problems.append('GTK4/WebKitGTK/GLib not bundled')
     if len(ins['helpers']) < 2 or not ins['injectedBundle']:
         problems.append('WebKit helper processes or injected bundle missing')
+    if ins['legacyGtk3LibrariesFound']:
+        problems.append(f"legacy GTK3 libraries bundled: {ins['legacyGtk3LibrariesFound']}")
     if ins['hostOnlyLibrariesFound']:
         problems.append(f"host driver libraries bundled: {ins['hostOnlyLibrariesFound']}")
     if not ins['gioModuleDirs']:
@@ -718,7 +723,7 @@ def main():
     parser.add_argument('--out', type=Path, required=True)
     parser.add_argument('--packaging-check-fixture', action='store_true',
                         help='PACKAGING CHECK ONLY: accept a placeholder daemon; outputs are marked fixture, prefixed FIXTURE- and are not a product')
-    parser.add_argument('--gui-binary', type=Path, help='package this prebuilt GUI (e.g. the gtk3,e2e build) instead of building the release one; marks the output E2E')
+    parser.add_argument('--gui-binary', type=Path, help='package this prebuilt GUI (e.g. the gtk4,e2e build) instead of building the release one; marks the output E2E')
     parser.add_argument('--appimage-only', action='store_true', help='build only the AppImage and its updater archive (no deb/rpm)')
     parser.add_argument('--update-marker', help='write this text to usr/share/uniclipboard/update-marker.txt inside the AppImage (update E2E: tells v2 from v1)')
     parser.add_argument('--negative-control-no-tls-module', action='store_true',
@@ -727,12 +732,10 @@ def main():
                         help='NEGATIVE CONTROL: skip the WebKit helper relocation; the result must not start without a host WebKitGTK; prefixed NEGCONTROL-')
     parser.add_argument('--negative-control-keep-x11-hook', action='store_true',
                         help='DIFFERENTIAL CONTROL (17c13): keep the GTK hook\'s unconditional GDK_BACKEND=x11 (what 17c4-17c12 shipped); prefixed X11HOOK-')
-    parser.add_argument('--negative-control-no-layer-shell', action='store_true',
-                        help='NEGATIVE CONTROL (17c13): do not carry libgtk-layer-shell (what 17c4-17c12 shipped); on a host without it the panel must fall back to an ordinary window; prefixed NOLAYER-')
     parser.add_argument('--tools-dir', type=Path, help='keep the downloaded, SHA-256-verified tools here (default: a throwaway directory in --out)')
     args = parser.parse_args()
     if sys.platform != 'linux':
-        sys.exit('package_linux.py must run on Linux (cgo against GTK3/WebKitGTK); use e2e/linux/Dockerfile')
+        sys.exit('package_linux.py must run on Linux (cgo against GTK4/WebKitGTK); use e2e/linux/Dockerfile')
     if not args.gui_binary and not (GUI / 'frontend/dist').is_dir():
         sys.exit('apps/gui-go/frontend/dist is missing: build the frontend once (UC_UI_PLATFORM=linux bun --bun run --cwd apps/gui-go/frontend build)')
     if not args.gui_binary:
@@ -748,10 +751,10 @@ def main():
         if not args.daemon_evidence:
             sys.exit('--daemon-evidence is required: a daemon of unverified origin is not packaged (use --packaging-check-fixture for a marked check build)')
         evidence = read_daemon_evidence(args.daemon_evidence, args.daemon, args.arch)
-    if sum([args.negative_control_no_relocation, args.negative_control_no_tls_module, args.negative_control_keep_x11_hook, args.negative_control_no_layer_shell]) > 1:
+    if sum([args.negative_control_no_relocation, args.negative_control_no_tls_module, args.negative_control_keep_x11_hook]) > 1:
         sys.exit('pick one negative control')
     prefix = ('FIXTURE-' if fixture else 'NEGCONTROL-' if args.negative_control_no_relocation else 'NEGTLS-' if args.negative_control_no_tls_module
-              else 'X11HOOK-' if args.negative_control_keep_x11_hook else 'NOLAYER-' if args.negative_control_no_layer_shell else 'E2E-' if args.gui_binary else '')
+              else 'X11HOOK-' if args.negative_control_keep_x11_hook else 'E2E-' if args.gui_binary else '')
     out = args.out.resolve()
     if out.exists() and any(out.iterdir()):
         sys.exit(f'{out} is not empty: pick a new directory, earlier artifacts are not overwritten')
@@ -770,11 +773,15 @@ def main():
             sys.exit(f'{args.gui_binary}.sha256 does not match the file')
         tags = f"prebuilt (--gui-binary): tags={info['tags']}, built at head={info['head']}, sha256={sha256(binary)}"
     else:
+        run(['pkg-config', '--atleast-version=4.14', 'gtk4'])
+        run(['pkg-config', '--exists', 'webkitgtk-6.0'])
         run(['go', 'generate', './buildinfo'], cwd=ROOT / 'packages/desktop-host-go')
-        binary, tags = out / 'uniclipboard', 'gtk3,production,release'
+        binary, tags = out / 'uniclipboard', 'gtk4,production,release'
         ldflags = f'-w -s -X main.updaterPublicKey={pubkey} -X main.productName={product} -X main.bundleID={ident}'
         run(['go', 'build', '-tags', tags, '-trimpath', '-buildvcs=false', '-ldflags', ldflags, '-o', str(binary), '.'],
             cwd=GUI, env=dict(os.environ, CGO_ENABLED='1', GOARCH=args.arch))
+
+    require_gtk4_binary(binary)
 
     stage = out / 'stage'
     stage_tree(stage, binary, args.daemon)
@@ -791,7 +798,7 @@ def main():
     tools.mkdir(parents=True, exist_ok=True)
     image, appimage = build_appimage(stage, out, args.arch, f'{prefix}{product}_{version}_{APPIMAGE_NAME_ARCH[args.arch]}.AppImage', tools, args.daemon,
                                      relocate=not args.negative_control_no_relocation, marker=args.update_marker,
-                                     tls_module=not args.negative_control_no_tls_module, force_x11_hook=args.negative_control_keep_x11_hook, layer_shell=not args.negative_control_no_layer_shell)
+                                     tls_module=not args.negative_control_no_tls_module, force_x11_hook=args.negative_control_keep_x11_hook)
     archive = out / f'{image.name}.tar.gz'
     with tarfile.open(archive, 'w:gz') as tar:
         tar.add(image, arcname=image.name)
@@ -807,7 +814,7 @@ def main():
         daemon['note'] = 'placeholder daemon'
     (out / 'package-manifest.json').write_text(json.dumps({
         'source': prov, 'arch': args.arch, 'version': version, 'tags': tags, 'go': run(['go', 'version'], capture=True),
-        'purpose': 'packaging-check' if fixture else ('negative-control' if (args.negative_control_no_relocation or args.negative_control_no_tls_module or args.negative_control_keep_x11_hook or args.negative_control_no_layer_shell) else ('e2e-package' if args.gui_binary else 'package')),
+        'purpose': 'packaging-check' if fixture else ('negative-control' if (args.negative_control_no_relocation or args.negative_control_no_tls_module or args.negative_control_keep_x11_hook) else ('e2e-package' if args.gui_binary else 'package')),
         'productionUsable': False, 'daemon': daemon, 'appimage': appimage, 'extra': extra,
         'sha256': {p.name: sha256(p) for p in outputs},
         'signed': False, 'nativeDesktopVerified': False, 'appImageRunProven': False,

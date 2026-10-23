@@ -35,8 +35,10 @@ func main() {
 	pubText, err := pub.MarshalText()
 	check(err)
 	out := os.Args[2]
+	// Public keys and signatures must be readable by the ordinary runtime test user.
+	// Private signing keys remain in memory and are never written to the feed.
 	write := func(name string, data []byte) {
-		check(os.WriteFile(filepath.Join(out, name), []byte(base64.StdEncoding.EncodeToString(data)), 0o600))
+		check(os.WriteFile(filepath.Join(out, name), []byte(base64.StdEncoding.EncodeToString(data)), 0o644))
 	}
 	write("pubkey.b64", pubText)
 	write("good.sig.b64", minisign.Sign(priv, artifact))

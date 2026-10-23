@@ -6,20 +6,14 @@
 # sandbox would need vendored cargo, Go and bun dependencies and is
 # impractical). Flathub accepts deb repackaging for this class of app.
 #
-# The deb is the Go/Wails host: /usr/bin/uniclipboard, the sibling daemon
-# /usr/bin/uniclipd, the desktop entry and hicolor icons named "uniclipboard"
-# (apps/gui-go/e2e/package_linux.py stage_tree). It links GTK 3, WebKitGTK 4.1
-# and libsoup 3 from the runtime below; libgtk-layer-shell is not in the GNOME
-# runtime, so the Wayland quick panel falls back to an ordinary window.
-# GNOME 46 reached end of life on 2025-04-17 (Flathub rejects EOL runtimes), so
-# runtime-version must move before submission. The Platform stack of
-# gnome-build-meta (elements/sdk-platform.bst) lists sdk/webkit2gtk-4.1.bst on
-# gnome-46, gnome-49 and gnome-50, so the move keeps the WebKitGTK 4.1 API that
-# the Go host links; the Platform stack does not list gtk-layer-shell.
-# Unverified: flatpak-builder has never run on this manifest.
+# The deb must contain the GTK4 Go/Wails host and its sibling Rust daemon.
+# GNOME 50's sdk-platform.bst includes GTK4 and sdk/webkitgtk-6.0.bst.
+# GTK4 uses an ordinary quick-panel window and needs no GTK3 Layer Shell library.
+# The source URLs/hashes below remain submission placeholders until a GTK4 release exists.
+# Unverified: flatpak-builder has not run on this manifest.
 app-id: app.uniclipboard.desktop
 runtime: org.gnome.Platform
-runtime-version: '46'
+runtime-version: '50'
 sdk: org.gnome.Sdk
 command: uniclipboard
 
@@ -48,6 +42,12 @@ modules:
       # Unpack the .deb (ar -> data.tar) into the build dir.
       - ar x *.deb
       - tar -xf data.tar.*
+      # Reject a stale GTK3 release before producing a package with the new runtime contract.
+      - |
+        set -eu
+        readelf -d usr/bin/uniclipboard | grep -F 'Shared library: [libgtk-4.so.1]'
+        readelf -d usr/bin/uniclipboard | grep -F 'Shared library: [libwebkitgtk-6.0.so.4]'
+      - "! readelf -d usr/bin/uniclipboard | grep -E 'libgtk-3\\.so|libwebkit2gtk-4\\.1\\.so'"
       # Binaries: GUI + its required sidecar daemon.
       - install -Dm755 usr/bin/uniclipboard /app/bin/uniclipboard
       - install -Dm755 usr/bin/uniclipd /app/bin/uniclipd

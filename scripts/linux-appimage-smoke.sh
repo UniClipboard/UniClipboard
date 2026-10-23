@@ -166,7 +166,7 @@ alive=no; app_alive && alive=yes
   echo "display=$display session=$session x_display=$x_display wayland=$wayland_name"
   echo "date=$(date -u +%FT%TZ)"; uname -srm; grep -E '^(PRETTY_NAME|ID|VERSION_ID)=' /etc/os-release
   ldd --version | head -1
-  for pkg in glib2 libglib2.0-0t64 libglib2.0-0 gvfs mesa libegl-mesa0 wayland libwayland-client0 webkit2gtk-4.1; do
+  for pkg in glib2 libglib2.0-0t64 libglib2.0-0 gvfs mesa libegl-mesa0 wayland libwayland-client0 webkitgtk-6.0; do
     pacman -Q "$pkg" 2>/dev/null; dpkg-query -W "$pkg" 2>/dev/null
   done
   host_wl=$(ldconfig -p | awk '/libwayland-client.so.0/ {print $NF; exit}')

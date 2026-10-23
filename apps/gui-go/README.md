@@ -33,7 +33,28 @@ bun wails:build                  # 构建本地应用，不启动
 bun wails:build --release        # Windows 发布构建，并生成便携 ZIP
 ```
 
-`bun wails:dev` 与 `bun wails:dev:profile <profile>` 支持 macOS、Windows 和 Linux。Linux 需要 Go、Rust、Node.js、Bun，以及可通过 `pkg-config` 查找的 GTK 3 和 WebKitGTK 4.1 开发库；前端自动选择 Linux 平台组件，使用 Vite 热更新。
+`bun wails:dev` 与 `bun wails:dev:profile <profile>` 支持 macOS、Windows 和 Linux。Linux 统一使用 GTK4，需要 Go、Rust、Node.js、Bun，以及可通过 `pkg-config` 查找的 GTK ≥ 4.14 和 WebKitGTK 6.0 开发库；前端自动选择 Linux 平台组件，使用 Vite 热更新。
+
+```bash
+pkg-config --exists 'gtk4 >= 4.14' webkitgtk-6.0
+bun wails:dev
+bun wails:dev:profile gtk4-dev
+```
+
+Arch Linux／Arch Linux ARM 的开发包为 `gtk4`、`webkitgtk-6.0`，Ubuntu 24.04 为 `libgtk-4-dev`、`libwebkitgtk-6.0-dev`。启动器在构建前检查依赖，输出为 `target/gui-go/dev/gui-go-dev`。原先的 `--gtk4` 参数仍可接受，但不再选择另一套后端。GTK4 快捷面板使用普通窗口，尚无本项目的 Layer Shell 适配，因此 Wayland 的覆盖层、独占键盘与定位行为不能沿用旧 GTK3 结论。各渠道依赖、兼容范围与验收边界见 [Linux GTK4 打包迁移](../../docs/architecture/gui-go-linux-gtk4-migration.md)。
+
+真实宿主滚动验收使用 `e2e/linux_scroll_run.py`，要求当前源码构建的 `target/debug/uniclipd` 和 `target/gui-go/uniclip`，以及带 `VITE_GUI_GO_E2E=1 UC_UI_PLATFORM=linux` 的前端。构建 `gtk4,e2e` 宿主，再运行：
+
+```bash
+cargo build -p uc-daemon --bin uniclipd
+mkdir -p target/gui-go/history-scroll
+go -C apps/cli-go build -o ../../target/gui-go/uniclip ./cmd/uniclip
+VITE_GUI_GO_E2E=1 UC_UI_PLATFORM=linux bun --bun run --cwd apps/gui-go/frontend build
+go -C apps/gui-go build -tags gtk4,e2e -o ../../target/gui-go/history-scroll/uniclipboard-gtk4 .
+python3 apps/gui-go/e2e/linux_scroll_run.py --gui target/gui-go/history-scroll/uniclipboard-gtk4 --out target/gui-go/gtk4-trial
+```
+
+验收会复制二进制到一次性便携沙箱，用独立资料初始化空间、经真实 daemon 写入合成历史，再检查主窗口 HTTP／WebSocket 连接、实际明暗主题、流畅模式、虚拟列表滚动与快捷面板显示／隐藏。结果在输出目录的 `native.jsonl` 与 `result.json`；不生成物理触控板或键盘事件，脚本化滚动间隔不能代替手感验收。当前仍未验证 GTK4 能消除触控板滚动拖影。
 
 三端开发启动使用独立 profile 下的 `keyring/` 文件式密钥存储，不访问系统凭据管理器。必须同时满足调试构建、`UNICLIPBOARD_ENV=development` 与合法的独立 `UC_PROFILE`；release 构建不接受此开发例外。剪贴板内容仍加密保存。既有系统凭据不自动迁移或覆盖，原来依赖系统凭据自动解锁的开发资料可能需要手动输入空间口令。
 
@@ -47,7 +68,7 @@ Hyprland（包括 Omarchy）和 niri 会话中，主窗口隐藏应用绘制的�
 
 主窗口始终自动记住普通窗口尺寸，不增加设置开关。偏好为 `general.mainWindowSize` 和 `general.mainWindowMaximized`，由 daemon 的 `uc-desktop-settings` 按 profile 写入 `desktop-settings.json`；macOS、Windows、Linux 共用同一模型、校验、默认值和 `/settings` 接口。Go 宿主只采集原生尺寸和执行恢复，不直接读写设置文件。首次启动默认 `1100×720`，并遵守各平台最小尺寸；正常退出、重启、更新停服前及进入轻量模式时，通过 `PUT /settings` 保存最近的普通尺寸和最大化状态。最大化状态默认为 `false`，重启时恢复该状态。最小化和全屏保留此前的最大化状态。最小化、最大化和全屏不覆盖普通尺寸，未创建主窗口的静默启动不写入该偏好。Wails `v3.0.0-beta.28` 提供 `Size`、`SetSize`、`IsMaximised`、`Maximise` 和 `WindowDidResize`，没有尺寸持久化；宿主复用这些 API，不添加平台原生实现。
 
-回归脚本 `e2e/main_window_size_run.py` 在私有 Xvfb（`1920×1200`）、Openbox 和 D-Bus 会话中运行，要求前端以 `VITE_GUI_GO_E2E=1 UC_UI_PLATFORM=linux` 构建、GUI 使用 `gtk3,e2e` 标签。传入 `--gui`、`--daemon`、`--cli`、`--out`，验证真实原生窗口缩放、完整退出重启、隐藏后退出、最大化状态恢复、取消最大化后的普通尺寸恢复、最小化/最大化/全屏尺寸隔离、daemon 设置接口校验、静默启动、无效配置及 profile 隔离，输出各次启动的日志、观察结果及 `result.json`。该脚本不覆盖 macOS、Windows 原生运行或 Wayland 合成器行为。
+回归脚本 `e2e/main_window_size_run.py` 在私有 Xvfb（`1920×1200`）、Openbox 和 D-Bus 会话中运行，要求前端以 `VITE_GUI_GO_E2E=1 UC_UI_PLATFORM=linux` 构建、GUI 使用 `gtk4,e2e` 标签。传入 `--gui`、`--daemon`、`--cli`、`--out`，验证真实原生窗口缩放、完整退出重启、隐藏后退出、最大化状态恢复、取消最大化后的普通尺寸恢复、最小化/最大化/全屏尺寸隔离、daemon 设置接口校验、静默启动、无效配置及 profile 隔离，输出各次启动的日志、观察结果及 `result.json`。该脚本不覆盖 macOS、Windows 原生运行或 Wayland 合成器行为。
 
 Omarchy 环境的「设置 → 外观 → 主题」显示「跟随 Omarchy 主题」开关，默认关闭。开启后主窗口与快捷面板跟随 Omarchy 的深浅模式和配色（约一秒内生效）；关闭后恢复已保存的应用主题。宿主读取 `~/.local/state/omarchy/current/theme/colors.toml`，兼容旧版 `$XDG_CONFIG_HOME/omarchy/current/theme/colors.toml`；其他桌面不显示此配置。偏好按 profile 保存在应用数据目录的 `desktop-theme.json`，保存失败时保留原值并在设置页提示。
 
@@ -348,12 +369,42 @@ beta.28 在 Linux 默认链接 GTK4 + `webkitgtk-6.0`；构建标签 `gtk3` 切�
 | L13 | 托盘（appindicator） | `tray.rs` | **有**：StatusNotifierItem（`systemtray_linux.go`），不需要 libappindicator | 既有托盘逻辑。Wails 源码走 StatusNotifierItem，不链接 libappindicator；deb/rpm 现在与 Tauri 一致地声明 `libgtk-layer-shell0` / `gtk-layer-shell`（17c2 改了 `package_linux.py`，**包未重建、依赖声明未在包管理器里验证**） | **无托盘宿主，未验证** |
 | L14 | 通知 | `lightweight.rs` | **有**：D-Bus（`notifications_linux.go`） | 既有通知逻辑 | **无通知服务，未验证** |
 | L15 | 唤醒补检查 | Tauri 在 Linux 没有（`wake_source.rs` 空实现） | **有**：`Linux.SystemDidWake`（logind，映射到 `Common.SystemDidWake`） | 现有更新调度器的唤醒路径直接适用，比 Tauri 多一个能力 | **未验证**（需要真实挂起/恢复） |
-| L16 | WebKitGTK DMABUF：Wayland 下默认关闭 | `run.rs:176-250` | 无 | `webkit_env_linux.go` | 代码；未在真实 Wayland 验证 |
+| L16 | WebKitGTK DMABUF：由 Wails 管理，NVIDIA 驱动下默认关闭；尊重显式环境变量 | `run.rs:176-250` | Wails Linux 初始化 | 无自定义实现 | 真实 Wayland 下合成历史滚动对照；见 `e2e/history_scroll_webkit.py` |
 | L17 | 安装类型：`appimage`/`deb`/`rpm`/`unknown` | `commands/updater.rs:1144-1280` | 无 | `install_kind_linux.go`（`$APPIMAGE`，`/usr` 等前缀 + `dpkg-query -S`/`rpm -qf`） | 代码；**包管理器分支未在真实安装的包里验证** |
 | L18 | 更新：**只有 AppImage 原位更新**；deb/rpm 由包管理器负责（前端弹出命令提示） | `UpdateContext.tsx:45-50` | **无** 更新服务 | `internal/update/appimage.go` + `host_install_linux.go`：载荷可为 `.AppImage.tar.gz` 或裸 ELF，同目录暂存后原子替换 `$APPIMAGE`，从 `$APPIMAGE` 重启；其余安装类型明确拒绝 | 载荷提取/替换/拒绝路径的离线契约已运行（`linux_contract`，见结果小节）；**真实 AppImage 更新重启未验证** |
 | L19 | 更新清单键：Tauri 只产出 `linux-x86_64` | `scripts/assemble-update-manifest.js:75-110` | — | **既有缺口**：脚本把任何 `.AppImage(.tar.gz).sig` 都归到 `linux-x86_64`，arm64 的 AppImage 既拿不到 `linux-aarch64` 键，还可能覆盖 x86_64 键；Windows 同类冲突已修，Linux 没有。Go 客户端在 arm64 上请求 `linux-aarch64`，会找不到条目 | 已记录，**本片未改生成器**；属于全迁移范围内的必做独立切片（17c3：修生成器，用隔离 fixture 清单验证，不触发正式发布、不改生产更新源）；在此之前不能称 arm64 Linux 更新已就绪 |
 | L20 | 打包：AppImage、deb、rpm（Tauri 目标），AUR/COPR/Flatpak/Snap 为二次打包；**无 Linux 便携包** | 旧 Tauri 配置与 `build.yml`（均已退役） | 无 | `e2e/package_linux.py`：deb（dpkg-deb）、rpm（rpmbuild）、AppImage（appimagetool）、更新用 `.AppImage.tar.gz`；布局与 Tauri deb/AUR 相同（`/usr/bin/uniclipboard` + `/usr/bin/uniclipd` + 桌面项 + 图标） | 容器内构建与结构检查通过（deb 在容器内可安装，rpm 元数据与依赖已核对，AppImage 解包与更新归档内容已核对，见结果小节；**从未在真实桌面启动**）；**（17c 当时）AppImage 不自包含；17c4 已改为自包含 AppImage，见 17c4 一节**：Tauri 用 linuxdeploy 打包库并固定插件（`docs/architecture/linux-appimage-library-policy.md`），本片只是 appimagetool 的结构检查，依赖宿主 GTK3/WebKitGTK。**后续必做打包切片 17c4**：按该策略集成 linuxdeploy 与固定插件、核验真实 Rust daemon 来源（而非占位或自构建的未验证来源）、产出并运行实际 AppImage 启动与更新工件；这些是代码/集成工作，不是“只缺原生机器或签名”。未签名（签名在发布流程） |
 | L21 | 严格 Secret Service 拒绝探针写入的回退 | daemon（#1819） | — | daemon 行为，GUI 不涉及 | 不在本片 |
+
+### Wayland 历史滚动性能对照
+
+宿主不再为所有 Wayland 会话设置 `WEBKIT_DISABLE_DMABUF_RENDERER=1`。固定依赖 Wails beta.28 已在 Linux 初始化中检测 NVIDIA 内核模块并关闭 DMABUF，同时尊重用户显式设置的环境变量；其他设备使用 WebKit 默认渲染路径。该策略由 Wails 持有，流畅模式只负责减少界面效果，不改变渲染后端。
+
+以下工具只使用 2000 条合成记录，不连接 daemon、不读取剪贴板或用户资料。先在前端目录启动生产构建预览：
+
+```bash
+cd apps/gui-go/frontend
+UC_UI_PLATFORM=linux UI_FIXTURE_ENTRY=e2e/fixtures/history-scroll.tsx UI_FIXTURE_PORT=1478 node e2e/visual-effects-server.mjs
+```
+
+再从仓库根目录在实际桌面会话运行原生 WebKitGTK 对照。每次会打开一个不主动获取焦点的临时窗口，测量结束自动关闭；依赖 Python 的 PyGObject、GTK3 和 WebKit2 4.1：
+
+```bash
+python3 apps/gui-go/e2e/history_scroll_webkit.py --dmabuf disabled --out target/gui-go/history-scroll/disabled.json
+python3 apps/gui-go/e2e/history_scroll_webkit.py --out target/gui-go/history-scroll/default.json
+```
+
+默认组继承当前环境；对照前需确认没有外部设置 `WEBKIT_DISABLE_DMABUF_RENDERER=1`。可通过 `--url 'http://127.0.0.1:1478/?view=grid&scheme=light'` 测量浅色网格。测量始终启用流畅模式，输出帧间隔中位数、第 95 百分位、超过 25 毫秒的帧数和挂载条目数。2026-10-23 在 Hyprland、WebKitGTK 2.52.6 的本机列表对照中，180 帧的中位帧间隔从约 46 毫秒降至 17 毫秒，超过 25 毫秒的帧数从 179 降至 0。该结果只验证原生渲染路径，不代表完整 Wails → daemon 业务验收，也不保证其他 GPU 的帧率。
+
+**高刷新率与连续输入必须单独验证。** 上述按 JavaScript 回调修改位置的测量不能证明触控板滚动跟手，也不能证明画面以显示器刷新率呈现。补充命令：
+
+```bash
+python3 apps/gui-go/e2e/history_scroll_webkit.py --input touchpad --out target/gui-go/history-scroll/touchpad-frame-clock.json
+```
+
+`touchpad` 模式每 8 毫秒尝试注入一次 GDK 连续滚动事件，属于合成输入，不模拟物理触控板的完整手势阶段与惯性。工具同时记录显示器刷新率、GTK 绘制阶段的帧时钟间隔、JavaScript 回调间隔与滚动位置；长帧门槛为显示器刷新间隔的 1.5 倍。GTK 绘制时钟也不等同于实际屏幕呈现时间，后者缺少反馈时不能推断。
+
+2026-10-23 的追加调查中，本机显示器为 120 Hz，GTK3 绘制时钟中位间隔仍约 16.67 毫秒。`--page-rate display`（关闭 WebKit 偏向 60 Hz 的选项）与 `--no-smooth-scroll` 均未消除该限制；`--url 'http://127.0.0.1:1478/?static=1'` 可绕过虚拟列表进行对照。相关上游记录：[WebKit #199376](https://bugs.webkit.org/show_bug.cgi?id=199376)。因此，移除 DMABUF 的全局禁用只解决其中一个瓶颈，不能将剩余滚动发虚、拖影或高刷新率问题记为已修复。GTK4 的隔离原型测到了约 8.33 毫秒的 GTK 时钟，但网页更新仍未稳定达到 120 Hz；原型同时换用了 WebKitGTK 2.54.1，不足以单独归因于 GTK 版本，也不构成迁移发布后端的验收证据。
 
 ### 失败方式与对应检查
 

@@ -176,6 +176,8 @@ func main() {
 	// same scope hands its arguments to the first one and exits inside this call, so it never probes or spawns a
 	// daemon, starts the quick panel helper or reconciles the login item. The daemon client is attached afterwards.
 	app := application.New(application.Options{Name: "UniClipboard Go GUI", Services: services, Mac: application.MacOptions{ActivationPolicy: initialActivationPolicy(), ApplicationShouldTerminateAfterLastWindowClosed: false}, Linux: application.LinuxOptions{ApplicationID: uniqueID, ProgramName: bundleID, DisableQuitOnLastWindowClosed: true}, Windows: application.WindowsOptions{DisableQuitOnLastWindowClosed: true, AdditionalBrowserArgs: e2eBrowserArgs(), WebviewUserDataPath: webviewDataPath()}, Assets: application.AssetOptions{Handler: application.BundledAssetFileServer(content), Middleware: host.fileMiddleware},
+		// Wails discards its default logger in production, including fatal startup errors.
+		ErrorHandler:   func(err error) { log.Printf("Wails application error: %v", err) },
 		KeyBindings:    devToolsKeyBindings(),
 		SingleInstance: host.singleInstanceOptions(uniqueID),
 		ShouldQuit: func() bool {

@@ -1,5 +1,7 @@
 # Go GUI 的 Linux AppImage 原生 Wayland 与 Layer Shell（切片 17c13）
 
+2026-10-23 更新：当前构建已统一迁移到 GTK4 / WebKitGTK 6.0，公共 GUI 镜像为 Ubuntu 24.04（glibc 验收上限 2.39）；GTK4 快捷面板使用普通窗口。以下 GTK3 的测量、容器与 Layer Shell 验收属于历史证据，不能沿用到新产物。当前契约见 [Linux GTK4 打包迁移](gui-go-linux-gtk4-migration.md)。
+
 本文是 17c13 的契约，**先于** 实现与真机运行写成。运行中发现的偏差记录在「契约修订」一节，不改写原条款。没有源码或运行证据的内容标为 OPEN，不当作事实。
 
 ## 问题

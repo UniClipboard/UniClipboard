@@ -20,6 +20,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--gui', type=Path, required=True)
     parser.add_argument('--out', type=Path, required=True)
+    parser.add_argument('--cli', type=Path, default=ROOT / 'target/gui-go/uniclip')
+    parser.add_argument('--daemon', type=Path, default=ROOT / 'target/debug/uniclipd')
     args = parser.parse_args()
     out = args.out.resolve()
     out.mkdir(parents=True, exist_ok=True)
@@ -32,8 +34,8 @@ def main():
         binary = Path(home) / 'uniclipboard'
         shutil.copy2(args.gui.resolve(), binary)
         cli = Path(home) / 'uniclip'
-        shutil.copy2(ROOT / 'target/gui-go/uniclip', cli)
-        shutil.copy2(ROOT / 'target/debug/uniclipd', Path(home) / 'uniclipd')
+        shutil.copy2(args.cli.resolve(), cli)
+        shutil.copy2(args.daemon.resolve(), Path(home) / 'uniclipd')
         desktop_keys = ('DISPLAY', 'WAYLAND_DISPLAY', 'XDG_RUNTIME_DIR', 'XDG_SESSION_TYPE',
                         'DBUS_SESSION_BUS_ADDRESS', 'GDK_BACKEND', 'LD_LIBRARY_PATH',
                         'FRONTEND_DEVSERVER_URL', 'WEBKIT_DISABLE_DMABUF_RENDERER')

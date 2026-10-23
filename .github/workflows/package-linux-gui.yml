@@ -276,7 +276,7 @@ jobs:
 
   acceptance:
     needs: package
-    if: github.event_name == 'pull_request' || inputs.run_acceptance
+    if: ${{ !cancelled() && needs.package.result == 'success' && (github.event_name == 'pull_request' || inputs.run_acceptance) }}
     uses: ./.github/workflows/linux-gui-acceptance.yml
     with:
       ref: ${{ needs.package.outputs.sha }}

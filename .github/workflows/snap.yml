@@ -27,6 +27,11 @@ on:
     types: [published]
   workflow_dispatch:
     inputs:
+      ubuntu20:
+        description: 'Diagnostic only: boot Ubuntu 20.04 with the existing amd64 Snap'
+        required: false
+        type: boolean
+        default: false
       artifact_run_id:
         description: 'Diagnostic only: reuse an existing arm64 Snap artifact'
         required: false
@@ -204,7 +209,7 @@ jobs:
           release: ${{ steps.snap-meta.outputs.channel }}
 
   diagnose:
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.artifact_run_id != '' }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.artifact_run_id != '' && !inputs.ubuntu20 }}
     name: Diagnose the existing arm64 Snap
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 15
@@ -227,4 +232,46 @@ jobs:
           name: snap-startup-diagnostic-arm64
           path: ${{ runner.temp }}/snap-acceptance
           include-hidden-files: true
+          if-no-files-found: error
+
+  old-host:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.artifact_run_id != '' && inputs.ubuntu20 }}
+    name: Verify the existing Snap on Ubuntu 20.04
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v6
+        with:
+          name: uniclipboard-amd64-snap
+          run-id: ${{ inputs.artifact_run_id }}
+          github-token: ${{ github.token }}
+          path: snap-artifact
+      - name: Read the harness from the artifact source commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_RUN_ID: ${{ inputs.artifact_run_id }}
+        run: |
+          source_commit=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$ARTIFACT_RUN_ID" --jq .head_sha)
+          git fetch --depth=1 origin "$source_commit"
+          git show "$source_commit:scripts/ci/check-snap-package.sh" > "$RUNNER_TEMP/check-snap.sh"
+          printf '%s\n' "$source_commit" > "$RUNNER_TEMP/artifact-source.txt"
+      - name: Boot Focal and verify the confined Snap
+        run: scripts/ci/check-snap-ubuntu20-vm.sh "$(find snap-artifact -name '*.snap' -print -quit)" "$RUNNER_TEMP/check-snap.sh"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: snap-ubuntu20-vm
+          include-hidden-files: true
+          path: |
+            ${{ runner.temp }}/artifact-source.txt
+            ${{ runner.temp }}/snap-ubuntu20-vm/accelerator.txt
+            ${{ runner.temp }}/snap-ubuntu20-vm/console.log
+            ${{ runner.temp }}/snap-ubuntu20-vm/shared/host.txt
+            ${{ runner.temp }}/snap-ubuntu20-vm/shared/guest.log
+            ${{ runner.temp }}/snap-ubuntu20-vm/shared/result-code
+            ${{ runner.temp }}/snap-ubuntu20-vm/shared/evidence/
           if-no-files-found: error

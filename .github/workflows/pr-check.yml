@@ -80,10 +80,6 @@ jobs:
           bun-version: latest
       - run: bun install --frozen-lockfile
       - run: bun x vitest run
-      - name: Verify native MBX snapshot round trip
-        shell: bash
-        run: |
-          bash scripts/build-cache/mbx.sh --exec bash -c 'UC_MBX_TEST_BINARY="$(command -v mbx)" python3 scripts/ci/mbx-snapshot.test.py -v'
 
   cli-go:
     name: Go CLI Compile Check

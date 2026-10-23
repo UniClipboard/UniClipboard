@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { parse } from 'yaml'
 
 const projectRoot = path.resolve(__dirname, '../..')
 
@@ -11,6 +12,19 @@ function read(relativePath: string): string {
 }
 
 describe('membership E2E hardening', () => {
+  it('prepares historical releases only for the nightly tier, including manual PR-tier runs', () => {
+    const job = parse(read('.github/workflows/membership-e2e.yml')).jobs.membership
+    expect(job.env.MEMBERSHIP_TIER).toBe(
+      "${{ inputs.tier || (github.event_name == 'pull_request' && 'pr') || 'nightly' }}"
+    )
+    for (const name of ['Verify fixed release preparation', 'Prepare fixed legacy release']) {
+      expect(job.steps.find(step => step.name === name).if).toBe("env.MEMBERSHIP_TIER == 'nightly'")
+    }
+    expect(job.steps.find(step => step.name === 'Run membership matrix').if).toBeUndefined()
+    expect(
+      job.steps.find(step => step.name === 'Verify local invitation service contract').if
+    ).toBeUndefined()
+  })
   it('passes the workflow tier through a quoted environment variable', () => {
     const workflow = read('.github/workflows/membership-e2e.yml')
 

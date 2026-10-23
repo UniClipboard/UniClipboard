@@ -6,6 +6,7 @@ on:
       - 'scripts/build-cache/**'
       - '.github/actions/mbx-snapshot/**'
       - '.github/actions/build-pr-rust/**'
+      - '.github/actions/rust-coverage/**'
       - '.github/workflows/mbx-snapshot-validation.yml'
   workflow_dispatch:
 permissions:
@@ -29,3 +30,20 @@ jobs:
         shell: bash
         run: |
           bash scripts/build-cache/mbx.sh --exec bash -c 'UC_MBX_TEST_BINARY="$(command -v mbx)" python3 scripts/ci/mbx-snapshot.test.py -v'
+
+  coverage-roundtrip:
+    name: Instrumented coverage CAS round trip
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov@0.9.1
+      - name: Verify restored compiler actions execute tests and produce fresh LCOV
+        shell: bash
+        run: |
+          bash scripts/build-cache/mbx.sh --exec bash -c 'UC_MBX_TEST_BINARY="$(command -v mbx)" UC_MBX_TEST_COVERAGE=1 python3 scripts/ci/mbx-snapshot.test.py NativeMbxTests.test_coverage_snapshot_executes_tests_and_regenerates_lcov -v'

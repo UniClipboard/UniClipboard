@@ -1,0 +1,75 @@
+name: Rust coverage workload
+description: Share coverage setup, instrumented tests and CAS snapshots between readers and warmup.
+inputs:
+  publish-snapshot:
+    description: Publish the compiler closure from protected main after successful tests.
+    default: 'false'
+  endpoint:
+    description: Optional R2 S3 endpoint.
+    default: ''
+  access-key-id:
+    description: Optional R2 access key ID.
+    default: ''
+  secret-access-key:
+    description: Optional R2 secret access key.
+    default: ''
+runs:
+  using: composite
+  steps:
+    - name: Install cargo-llvm-cov
+      uses: taiki-e/install-action@v2
+      with:
+        tool: cargo-llvm-cov@0.9.1
+    - name: Setup Rust toolchain
+      uses: actions-rust-lang/setup-rust-toolchain@v1.15.2
+      with:
+        cache: false
+        components: llvm-tools-preview
+    - name: Start shared Engine MBX cache
+      uses: ./.github/actions/engine-build-cache
+      with:
+        cache-key: coverage
+        access: ${{ inputs.publish-snapshot == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main' && github.ref_protected && 'write' || 'read' }}
+        endpoint: ${{ inputs.endpoint }}
+        access-key-id: ${{ inputs.access-key-id }}
+        secret-access-key: ${{ inputs.secret-access-key }}
+    - name: Restore coverage CAS snapshot
+      uses: ./.github/actions/mbx-snapshot
+      with:
+        scene: coverage-linux
+        object-fallback: 'false'
+    - name: Cache Rust dependencies
+      uses: Swatinem/rust-cache@v2
+      with:
+        workspaces: ". -> target"
+        shared-key: coverage
+        cache-targets: false
+        save-if: ${{ github.ref == 'refs/heads/main' }}
+    - name: Install system dependencies
+      shell: bash
+      run: |
+        sudo apt-get update
+        # The workspace tests link libdbus and the GPUI font/X11 libraries.
+        sudo apt-get install -y --no-install-recommends libdbus-1-dev libfreetype6-dev libxkbcommon-x11-dev xvfb xauth
+    - name: Generate coverage report
+      shell: bash
+      env:
+        MBX_CACHE_EXPORT_GROUP: coverage-linux
+      run: xvfb-run -a cargo llvm-cov --lcov --output-path lcov.info --workspace
+    - name: Save coverage CAS snapshot
+      if: inputs.publish-snapshot == 'true' && github.ref == 'refs/heads/main' && github.ref_protected
+      uses: ./.github/actions/mbx-snapshot
+      with:
+        operation: save
+        scene: coverage-linux
+    - name: Summarize MBX cache requests
+      if: always()
+      shell: bash
+      run: python3 scripts/ci/summarize-mbx.py "$RUNNER_TEMP/mbx-evidence"
+    - name: Retain MBX compiler evidence
+      if: always()
+      uses: actions/upload-artifact@v7
+      with:
+        name: mbx-coverage
+        path: ${{ runner.temp }}/mbx-evidence/
+        if-no-files-found: ignore

@@ -45,44 +45,12 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Install cargo-llvm-cov
-        uses: taiki-e/install-action@cargo-llvm-cov
-
-      - name: Setup Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@v1.15.2
+      - name: Run shared coverage workload
+        uses: ./.github/actions/rust-coverage
         with:
-          cache: false
-
-      - name: Start shared Engine MBX cache
-        if: runner.os != 'Windows'
-        uses: ./.github/actions/engine-build-cache
-        with:
-          cache-key: coverage
           endpoint: ${{ secrets.BUILD_CACHE_R2_ENDPOINT }}
           access-key-id: ${{ secrets.BUILD_CACHE_R2_ACCESS_KEY_ID }}
           secret-access-key: ${{ secrets.BUILD_CACHE_R2_SECRET_ACCESS_KEY }}
-
-      - name: Cache Rust dependencies
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: ". -> target"
-          shared-key: coverage
-          cache-targets: ${{ runner.os == 'Windows' }}
-          # PR 只读 default branch cache,写入由 cache-warmup 统一负责。
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-
-      # Rust workspace only: uc-platform uses libdbus; GPUI links FreeType, xcb and xkbcommon (xcb comes with libxkbcommon-x11-dev).
-      # Wails GTK/WebKit and Linux packaging tools belong to the separate Go GUI build jobs.
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          # libxkbcommon-x11-dev: the workspace includes the GPUI quick panel (apps/quick-panel), whose
-          # Linux test binary links xkbcommon-x11 (rust-lld: unable to find library -lxkbcommon-x11).
-          sudo apt-get install -y --no-install-recommends libdbus-1-dev libfreetype6-dev libxkbcommon-x11-dev xvfb xauth
-
-      - name: Generate coverage report
-        run: |
-          xvfb-run -a cargo llvm-cov --lcov --output-path lcov.info --workspace
 
       - name: Upload to Codecov
         uses: codecov/codecov-action@v5.5.2
@@ -92,16 +60,3 @@ jobs:
           flags: rust-backend
           name: rust-coverage
           fail_ci_if_error: false
-
-      - name: Summarize MBX cache requests
-        if: always()
-        shell: bash
-        run: python3 scripts/ci/summarize-mbx.py "$RUNNER_TEMP/mbx-evidence"
-
-      - name: Retain MBX compiler evidence
-        if: always() && runner.os != 'Windows'
-        uses: actions/upload-artifact@v7
-        with:
-          name: mbx-coverage
-          path: ${{ runner.temp }}/mbx-evidence/
-          if-no-files-found: ignore

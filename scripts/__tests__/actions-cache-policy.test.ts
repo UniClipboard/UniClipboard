@@ -209,11 +209,17 @@ describe('cache workflow ownership', () => {
     expect(source).not.toContain('workflow_run.head_sha')
     expect(source).not.toContain('workflow_run.head_branch')
   })
-  it('disables the implicit cache in both coverage entry points', () => {
+  it('disables implicit toolchain caches in the shared coverage workload', () => {
+    const source = fs.readFileSync(
+      path.join(root, '.github/actions/rust-coverage/action.yml'),
+      'utf8'
+    )
+    expect(source).toMatch(
+      /uses: actions-rust-lang\/setup-rust-toolchain@v1\.15\.2\s+with:\s+cache: false/
+    )
     for (const file of ['coverage.yml', 'cache-warmup.yml']) {
-      const source = fs.readFileSync(path.join(root, '.github/workflows', file), 'utf8')
-      expect(source).toMatch(
-        /uses: actions-rust-lang\/setup-rust-toolchain@v1\.15\.2\s+with:\s+cache: false/
+      expect(fs.readFileSync(path.join(root, '.github/workflows', file), 'utf8')).toContain(
+        'uses: ./.github/actions/rust-coverage'
       )
     }
   })

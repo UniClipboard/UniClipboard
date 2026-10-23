@@ -28,6 +28,7 @@ WINDOWS_DEVICES = {"CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$"} | {
 }
 ROOT = Path(os.environ.get("UC_MBX_SNAPSHOT_SOURCE_ROOT", Path(__file__).resolve().parents[2])).resolve()
 SCENES = {
+    "coverage-linux": ".github/actions/rust-coverage/action.yml",
     "release-sidecar": "scripts/stage-daemon.mjs",
     "e2e-macos": ".github/actions/build-e2e-rust/action.yml",
     "pr-check-linux": ".github/actions/build-pr-rust/action.yml",
@@ -91,13 +92,19 @@ def scene_key(scene, context=None):
     digest = hashlib.sha256()
     names = ["Cargo.lock", "Cargo.toml", ".cargo/config.toml", "rust-toolchain.toml",
              "scripts/build-cache/engine-tools.sh", "scripts/ci/mbx-snapshot.py", SCENES[scene]]
-    if scene == "release-sidecar":
-        names.extend(("scripts/ci/configure-build-mode.mjs", "scripts/ci/resolve-app-env.mjs"))
-        # Channels and local package versions are deliberately coarse seed inputs.
-        # MBX owns artifact validity, including APP_ENV and CARGO_PKG_VERSION.
+    if scene in ("release-sidecar", "coverage-linux"):
         flags = {key: value for key, value in os.environ.items()
                  if key.startswith("CARGO_PROFILE_") or key in ("RUSTFLAGS", "CARGO_ENCODED_RUSTFLAGS")}
-        digest.update(json.dumps(dict(context=context, flags=flags), sort_keys=True).encode())
+        seed = dict(flags=flags)
+        if scene == "release-sidecar":
+            names.extend(("scripts/ci/configure-build-mode.mjs", "scripts/ci/resolve-app-env.mjs"))
+            # Channels and local package versions select only a dependency seed.
+            # MBX owns artifact validity, including APP_ENV and CARGO_PKG_VERSION.
+            seed["context"] = context
+        digest.update(json.dumps(seed, sort_keys=True).encode())
+    if scene == "coverage-linux":
+        digest.update(subprocess.check_output(["cargo", "llvm-cov", "--version"]))
+        digest.update(Path("/etc/os-release").read_bytes())
     for name in names:
         # Release automation may run from RUNNER_TEMP against a historical source checkout.
         raw = (Path(__file__) if name == "scripts/ci/mbx-snapshot.py" else ROOT / name).read_bytes()

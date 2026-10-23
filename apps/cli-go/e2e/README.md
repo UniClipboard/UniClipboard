@@ -61,3 +61,32 @@ python3 apps/cli-go/e2e/trust_workflow.py --bin target/compat/go --out target/co
 
 差分测试中设备组的人类可读输出与 Rust 开发 CLI 存在有意差异，见上级 README 差异表；
 JSON 状态和显式 ID 的调用仍按原契约对比。
+
+## 发送等待的虚拟时间检查
+
+发送前的设备条件、500ms 轮询、共享绝对截止时间及单次发送准入使用生产共享代码，
+在 `testing/synctest` 内验证，不启动 daemon、不访问网络或系统凭据：
+
+```bash
+(cd apps/cli-go && go test -count=1 -run '^TestSendVirtualTime' ./internal/commands)
+(cd apps/cli-go && go test -race -count=1 -run '^TestSendVirtualTime' ./internal/commands)
+```
+
+`tests/e2e/tests/send_connect_wait.rs` 保留真实进程启动、重连、传输、离线后无补送和取消检查。
+其多节点夹具使用现有 `LocalRendezvous`，地址会在 daemon 重启后保留。该本地邀请目录
+不模拟 P2P 网络，也不证明公网服务可用；Python 差分的 `pair` 仍依赖生产目录服务，
+须与本地目录组分开记录。公网目录冒烟可独立运行 `compat.py --only send_to_paired_peer`。
+
+构建与执行真实等待组：
+
+```bash
+cargo build -p uc-daemon --features uc-daemon/e2e-rendezvous
+scripts/e2e/build-cli.sh
+cargo test --manifest-path tests/e2e/Cargo.toml --test send_connect_wait -- --ignored --test-threads=1
+```
+
+手工运行这组 Rust 测试二进制时也应使用临时 HOME 和独立 XDG 目录，禁用系统剪贴板；
+不要直接手工运行内部 CLI。Unix 字节进度用例沿用 `UC_E2E_RECORD_ONLY` 门控，默认通过
+并不表示已检查终端进度。详细范围和覆盖迁移见
+[规格](../../../docs/specs/2026-10-23-cli-virtual-time-spec.md)与
+[执行计划](../../../docs/specs/2026-10-23-cli-virtual-time-plan.md)。

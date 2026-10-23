@@ -27,7 +27,10 @@ Rust 开发 CLI `tools/uc-dev-cli`（原 `apps/cli`）并存。用户端 `unicli
 
 ## 验证
 
-不编写单元测试；以真实 daemon 的 Rust/Go 差分端到端测试验证（`e2e/README.md`）。
+默认不编写单元测试；以真实 daemon 的 Rust/Go 差分端到端测试验证（`e2e/README.md`）。
+发送前目标等待及发送准入编排允许使用 `testing/synctest` 的进程内测试；仅替换查询和准备 I/O，
+执行共享生产逻辑，不接触网络、真实进程或系统凭据。真实 daemon、输出差分与实际传输仍须由 E2E 验证。
+此例外不适用于其他 CLI 模块或 GUI。
 任何对 CLI 的手工运行都必须经 `e2e/iso.py` 或 `e2e/compat.py`，绝不使用真实 HOME。
 
 改动后至少运行：

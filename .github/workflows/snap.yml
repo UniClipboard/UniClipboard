@@ -27,6 +27,11 @@ on:
     types: [published]
   workflow_dispatch:
     inputs:
+      artifact_run_id:
+        description: 'Diagnostic only: reuse an existing arm64 Snap artifact'
+        required: false
+        type: string
+        default: ''
       channel:
         description: 'Snap store channel'
         required: true
@@ -73,7 +78,7 @@ jobs:
   build:
     # alpha 由 release.yml 在自动发布完成后显式 dispatch,这里的
     # release.published 入口只承接人工发布的 beta / rc / stable。
-    if: ${{ github.event_name != 'release' || !contains(github.event.release.tag_name, '-alpha') }}
+    if: ${{ (github.event_name != 'release' || !contains(github.event.release.tag_name, '-alpha')) && inputs.artifact_run_id == '' }}
     name: Build snap (${{ matrix.arch }})
     # Native runners match the core24 build environment on both architectures.
     runs-on: ${{ matrix.runner }}
@@ -196,3 +201,28 @@ jobs:
         with:
           snap: ${{ steps.build.outputs.snap }}
           release: ${{ steps.snap-meta.outputs.channel }}
+
+  diagnose:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.artifact_run_id != '' }}
+    name: Diagnose the existing arm64 Snap
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v6
+        with:
+          name: uniclipboard-arm64-snap
+          run-id: ${{ inputs.artifact_run_id }}
+          github-token: ${{ github.token }}
+          path: snap-artifact
+      - name: Diagnose startup without rebuilding
+        run: scripts/ci/check-snap-package.sh "$(find snap-artifact -name '*.snap' -print -quit)" "$RUNNER_TEMP/snap-acceptance"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: snap-startup-diagnostic-arm64
+          path: ${{ runner.temp }}/snap-acceptance
+          if-no-files-found: error

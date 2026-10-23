@@ -6,7 +6,7 @@ OUT="$(mkdir -p "${2:?evidence directory}" && cd "$2" && pwd)"
 if [[ "$1" != --session ]]; then
   PACKAGE="$(readlink -f "$1")"
   sudo apt-get update -qq
-  sudo apt-get install -y --no-install-recommends xvfb x11-utils dbus-x11 dbus-user-session gnome-keyring libsecret-tools
+  sudo apt-get install -y --no-install-recommends xvfb x11-utils dbus-x11 dbus-user-session gnome-keyring libsecret-tools strace
   for provider in core24 gnome-46-2404 gtk-common-themes mesa-2404; do
     snap list "$provider" >/dev/null 2>&1 || sudo snap install "$provider"
   done
@@ -54,6 +54,7 @@ cleanup() {
 }
 session_start=$(date +%s)
 trap cleanup EXIT
+export GODEBUG=inittrace=1
 export DISPLAY=:98 GDK_BACKEND=x11 GSK_RENDERER=cairo LIBGL_ALWAYS_SOFTWARE=1 UC_DISABLE_SYSTEM_CLIPBOARD=1 SNAP_DESKTOP_DEBUG=1
 for _ in $(seq 50); do xdpyinfo >/dev/null 2>&1 && break; sleep 0.2; done
 keyring_ready=false
@@ -75,7 +76,21 @@ for _ in $(seq 120); do
   [[ -z "$web_pid" ]] || break
   sleep 0.5
 done
-[[ -n "$web_pid" ]] || { echo 'Snap never started the GTK4 WebKit process' >&2; exit 1; }
+if [[ -z "$web_pid" ]]; then
+  if ! kill -0 "$run_pid" 2>/dev/null; then
+    set +e
+    wait "$run_pid"
+    printf 'initial_exit_code=%s\n' "$?" >"$OUT/exit-code.txt"
+    set -e
+  fi
+  timeout --kill-after=5s 20s snap run --shell uniclipboard -c '
+    printf "HOME=%s\nSNAP_USER_DATA=%s\nSNAP_USER_COMMON=%s\nXDG_STATE_HOME=%s\nXDG_RUNTIME_DIR=%s\nDBUS_SESSION_BUS_ADDRESS=%s\n" "$HOME" "$SNAP_USER_DATA" "$SNAP_USER_COMMON" "${XDG_STATE_HOME:-}" "${XDG_RUNTIME_DIR:-}" "${DBUS_SESSION_BUS_ADDRESS:-}"
+  ' >"$OUT/snap-paths.txt" 2>&1 || true
+  # Observe paths, connections and exit status only; never read credential bytes.
+  timeout --kill-after=5s 20s snap run --strace="-f -e trace=openat,connect,exit_group -s 120" uniclipboard >"$OUT/syscalls.log" 2>&1 || true
+  echo 'Snap never started the GTK4 WebKit process' >&2
+  exit 1
+fi
 sleep 15
 kill -0 "$web_pid"
 sudo cat "/proc/$web_pid/maps" >"$OUT/webkit-maps.txt"

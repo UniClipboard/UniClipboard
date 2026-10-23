@@ -3,7 +3,7 @@
 # resolve through pkg-config, and every tool the E2E and packaging scripts call exists. A cached Docker layer
 # marked DONE proves none of this.
 set -eu
-pkg-config --atleast-version=4.10 gtk4
+pkg-config --atleast-version=4.14 gtk4
 audit="$(dpkg --audit)"
 if [ -n "$audit" ]; then echo "dpkg --audit reports problems:" >&2; echo "$audit" >&2; exit 1; fi
 pkg-config --exists --print-errors gtk4 webkitgtk-6.0 x11 dbus-1

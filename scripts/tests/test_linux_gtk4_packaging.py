@@ -96,7 +96,7 @@ class LinuxGTK4Packaging(unittest.TestCase):
             shutil.copy2(deb, self.root / asset)
             sums.append(f'{hashlib.sha256(deb.read_bytes()).hexdigest()}  {asset}\n')
             depends = subprocess.check_output(['dpkg-deb', '-f', str(deb), 'Depends'], text=True)
-            self.assertIn('libgtk-4-1 (>= 4.10)', depends)
+            self.assertIn('libgtk-4-1 (>= 4.14)', depends)
             self.assertIn('libwebkitgtk-6.0-4', depends)
             self.assertNotIn('layer-shell', depends)
         manifest = self.root / 'SHA256SUMS.txt'

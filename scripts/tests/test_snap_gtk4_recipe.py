@@ -44,7 +44,7 @@ class SnapGTK4PrimeGate(unittest.TestCase):
             **os.environ,
             'PATH': str(self.bin) + os.pathsep + os.environ['PATH'],
             'CRAFT_PRIME': str(self.root / 'prime'),
-            'CRAFT_ARCH_TRIPLET': triplet,
+            'CRAFT_ARCH_TRIPLET_BUILD_FOR': triplet,
         }, capture_output=True).returncode
 
     def test_complete_runtime_for_both_architectures(self):

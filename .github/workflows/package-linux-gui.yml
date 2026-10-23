@@ -21,7 +21,7 @@ on:
         type: string
         default: ''
       build_image:
-        description: 'GTK4 packaging base image (GTK >= 4.10); default Ubuntu 24.04, glibc 2.39'
+        description: 'GTK4 packaging base image (GTK >= 4.14); default Ubuntu 24.04, glibc 2.39'
         required: false
         type: string
         default: 'ubuntu:24.04'

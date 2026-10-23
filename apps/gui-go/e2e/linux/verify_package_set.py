@@ -126,7 +126,7 @@ def main():
         require_gtk4_binary(work / 'deb/usr/bin/uniclipboard')
         dependencies = sh(['dpkg-deb', '-f', str(deb), 'Depends'])
         report['debDepends'] = dependencies
-        if not all(n in dependencies for n in ('libgtk-4-1 (>= 4.10)', 'libwebkitgtk-6.0-4', 'libc6 (>= 2.39)')) or 'libgtk-3' in dependencies:
+        if not all(n in dependencies for n in ('libgtk-4-1 (>= 4.14)', 'libwebkitgtk-6.0-4', 'libc6 (>= 2.39)')) or 'libgtk-3' in dependencies:
             problems.append(f'deb GTK4 dependencies are incorrect: {dependencies}')
         daemon_in_deb = sha256(work / 'deb/usr/bin/uniclipd')
         if daemon_in_deb != daemon.get('sha256'):

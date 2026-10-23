@@ -55,7 +55,7 @@ Requires:       libgtk-4.so.1()(64bit)
 Requires:       libwebkitgtk-6.0.so.4()(64bit)
 Requires:       libX11.so.6()(64bit)
 Requires:       glibc >= 2.39
-Requires:       (gtk4 >= 4.10 or libgtk-4-1 >= 4.10)
+Requires:       (gtk4 >= 4.14 or libgtk-4-1 >= 4.14)
 
 # 包名从 uni-clipboard 改为 uniclipboard 的整包替换关系,同上游 rpm。
 Provides:       uni-clipboard = %{version}-%{release}

@@ -106,7 +106,7 @@ jobs:
             (cd apps/cli-go && CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -trimpath -buildvcs=false -o "../../target/cli-go-gate/$os-$arch" ./cmd/uniclip)
           done
 
-  # Native GUI gate uses GTK >= 4.10. Rust/CLI retain their separate bookworm ABI baseline.
+  # Native GUI gate uses GTK >= 4.14. Rust/CLI retain their separate bookworm ABI baseline.
   gui-go:
     name: Go Host Compile Check
     needs: [changes, frontend]

@@ -163,8 +163,8 @@ VER_NUM="${VERSION#v}"
 choose_format() {
   if [[ -n "$FORMAT" ]]; then echo "$FORMAT"; return; fi
   if [[ "$OS" == "macos" ]]; then echo app; return; fi
-  # The native GTK4 packages require GTK >= 4.10 and glibc >= 2.39; older supported releases use Snap.
-  # Snap's core22/GNOME platform does not depend on the host GTK version.
+  # The native GTK4 packages require GTK >= 4.14 and glibc >= 2.39; older supported releases use Snap.
+  # Snap's core24/GNOME platform does not depend on the host GTK version.
   if needs_snap_gtk_runtime; then echo snap; return; fi
   if [[ -n "$SUDO" || $EUID -eq 0 ]]; then
     if command -v dpkg >/dev/null 2>&1 && command -v apt-get >/dev/null 2>&1; then echo deb; return; fi
@@ -263,7 +263,7 @@ install_deb() {
 }
 
 # ---- Linux: snap (recommended on Ubuntu 20.04 / 22.04 and other older distros) ------
-# The GTK4 snap stages WebKitGTK 6.0; GTK >= 4.10 comes from the GNOME content platform.
+# The GTK4 snap stages WebKitGTK 6.0; GTK >= 4.14 comes from the GNOME content platform.
 # Native desktop/snapd compatibility is still subject to acceptance; host GTK alone is not sufficient.
 # snap manages its own channel and update flow, so this script does not pass --version through.
 install_snap() {

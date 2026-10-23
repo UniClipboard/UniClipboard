@@ -216,13 +216,13 @@ def build_deb(stage, out, version, arch, name, *, package_name=PACKAGE_NAME):
     shutil.copytree(stage, d, symlinks=True)
     size_kib = sum(f.stat().st_size for f in d.rglob('*') if f.is_file()) // 1024
     (d / 'DEBIAN').mkdir()
-    # GtkFileDialog requires GTK >= 4.10. GTK4 uses an ordinary quick-panel window;
-    # the GTK4 Layer Shell library must not be pulled into this process.
+    # Wails uses GdkMonitor.get_scale (GTK >= 4.14). GTK4 uses an ordinary quick-panel window;
+    # the GTK3 Layer Shell library must not be pulled into this process.
     (d / 'DEBIAN/control').write_text(
         f'Package: {package_name}\nVersion: {deb_version}\nArchitecture: {ARCH[arch][0]}\nSection: utils\nPriority: optional\n'
         + relationships +
         f'Installed-Size: {size_kib}\nMaintainer: UniClipboard <support@uniclipboard.app>\n'
-        'Depends: libc6 (>= 2.39), libgtk-4-1 (>= 4.10), libwebkitgtk-6.0-4, libx11-6\n'
+        'Depends: libc6 (>= 2.39), libgtk-4-1 (>= 4.14), libwebkitgtk-6.0-4, libx11-6\n'
         'Description: Encrypted peer-to-peer clipboard sync between your devices\n')
     deb = out / name
     run(['dpkg-deb', '--root-owner-group', '--build', str(d), str(deb)])
@@ -231,7 +231,7 @@ def build_deb(stage, out, version, arch, name, *, package_name=PACKAGE_NAME):
 
 # Shared libraries the host must provide, as soname capabilities across RPM distributions.
 # AutoReqProv is off (see the spec), so this list is the whole dependency declaration.
-RPM_REQUIRES = ', '.join(f'{soname}()(64bit)' for soname in ('libgtk-4.so.1', 'libwebkitgtk-6.0.so.4', 'libX11.so.6')) + ', glibc >= 2.39, (gtk4 >= 4.10 or libgtk-4-1 >= 4.10)'
+RPM_REQUIRES = ', '.join(f'{soname}()(64bit)' for soname in ('libgtk-4.so.1', 'libwebkitgtk-6.0.so.4', 'libX11.so.6')) + ', glibc >= 2.39, (gtk4 >= 4.14 or libgtk-4-1 >= 4.14)'
 
 
 def build_rpm(stage, out, version, arch, name, *, package_name=PACKAGE_NAME):
@@ -753,7 +753,7 @@ def main():
             sys.exit(f'{args.gui_binary}.sha256 does not match the file')
         tags = f"prebuilt (--gui-binary): tags={info['tags']}, built at head={info['head']}, sha256={sha256(binary)}"
     else:
-        run(['pkg-config', '--atleast-version=4.10', 'gtk4'])
+        run(['pkg-config', '--atleast-version=4.14', 'gtk4'])
         run(['pkg-config', '--exists', 'webkitgtk-6.0'])
         run(['go', 'generate', './buildinfo'], cwd=ROOT / 'packages/desktop-host-go')
         binary, tags = out / 'uniclipboard', 'gtk4,production,release'

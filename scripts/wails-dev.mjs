@@ -20,7 +20,7 @@ const out = path.join(root, 'target/gui-go/dev')
 export const USAGE = `Usage: bun wails:dev
        bun wails:dev:profile <profile>
        add --no-helper to leave the native quick panel helper out (macOS)
-       Linux requires GTK >= 4.10 and WebKitGTK 6.0
+       Linux requires GTK >= 4.14 and WebKitGTK 6.0
 
 Runs the Go GUI in development mode with frontend hot reload. The profile
 keeps data, keychain entries and the daemon separate from the production app.`
@@ -164,13 +164,13 @@ export async function main(args, env = process.env) {
       )
       return 1
     }
-    const dependencies = spawnSync('pkg-config', ['--exists', 'gtk4 >= 4.10', 'webkitgtk-6.0'], {
+    const dependencies = spawnSync('pkg-config', ['--exists', 'gtk4 >= 4.14', 'webkitgtk-6.0'], {
       env,
       encoding: 'utf8',
     })
     if (dependencies.error || dependencies.status !== 0) {
       console.error(
-        'Linux development requires GTK >= 4.10 and WebKitGTK 6.0 development packages.'
+        'Linux development requires GTK >= 4.14 and WebKitGTK 6.0 development packages.'
       )
       return 1
     }

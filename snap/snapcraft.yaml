@@ -1,5 +1,5 @@
 name: uniclipboard
-base: core22
+base: core24
 adopt-info: uniclipboard
 
 summary: Encrypted peer-to-peer clipboard sync between your devices
@@ -21,9 +21,9 @@ source-code: https://github.com/UniClipboard/UniClipboard
 issues: https://github.com/UniClipboard/UniClipboard/issues
 contact: https://github.com/UniClipboard/UniClipboard/issues
 
-# core22 keeps the Ubuntu 22.04 ABI baseline independently of the host distribution.
-# The GNOME extension supplies GTK >= 4.10; WebKitGTK 6.0 is staged from Jammy updates.
-# Host kernel, GPU and desktop integration still require native snapd acceptance.
+# core24 selects GNOME46 with GTK >= 4.14, independently of the host distribution.
+# GTK comes from the GNOME platform; the application stages WebKitGTK 6.0 from Noble.
+# Host kernel, snapd, GPU and desktop integration still require old-host acceptance.
 #
 # grade: devel 是有意的:Snap Store 不允许把 devel 的 snap 发布到 stable / candidate。
 # Go 宿主(apps/gui-go)在 strict 限制下的启动、托盘、通知、自启动和全局快捷键
@@ -33,16 +33,14 @@ grade: devel
 confinement: strict
 
 # WebKit's compiled helper paths must resolve inside the confined mount namespace.
-# The core22 GNOME extension supplies the older WebKit layouts, not this one.
+# The core24 GNOME extension supplies the WebKitGTK 4.1 layout, not the 6.0 one.
 layout:
-  /usr/lib/$CRAFT_ARCH_TRIPLET/webkitgtk-6.0:
-    bind: $SNAP/usr/lib/$CRAFT_ARCH_TRIPLET/webkitgtk-6.0
+  /usr/lib/$CRAFT_ARCH_TRIPLET_BUILD_FOR/webkitgtk-6.0:
+    bind: $SNAP/usr/lib/$CRAFT_ARCH_TRIPLET_BUILD_FOR/webkitgtk-6.0
 
-architectures:
-  - build-on: amd64
-    build-for: amd64
-  - build-on: arm64
-    build-for: arm64
+platforms:
+  amd64:
+  arm64:
 
 apps:
   uniclipboard:
@@ -83,11 +81,9 @@ parts:
     plugin: nil
     source: .
     source-type: local
-    # Wails requires GtkFileDialog (GTK >= 4.10), supplied by the GNOME SDK/platform.
-    # Jammy's libgtk-4-dev is also installed as a WebKit development dependency,
-    # but its GTK 4.6 must not replace the SDK's headers or runtime library.
-    # WebKitGTK 6.0 and its helper processes are application-owned stage packages.
-    # GTK4 currently uses the ordinary quick-panel window, without Layer Shell.
+    # Wails needs GdkMonitor.get_scale (GTK >= 4.14), supplied by the GNOME SDK/platform.
+    # The application stages WebKitGTK 6.0; the platform owns the GTK runtime.
+    # GTK4 uses an ordinary quick-panel window, without the GTK3 Layer Shell library.
     build-packages:
       # cgo and the Rust build scripts need a C toolchain; do not rely on the build image having one.
       - build-essential
@@ -105,7 +101,7 @@ parts:
       - libwebkitgtk-6.0-4
     prime:
       - '*'
-      # GTK is owned by the GNOME platform, not the older transitive apt package.
+      # GTK is owned by the GNOME platform, not the transitive apt package.
       - -usr/lib/*/libgtk-4.so*
     build-environment:
       # NOTE: build-environment 的值会被 craft-parts 用双引号包裹后注入构建
@@ -123,7 +119,7 @@ parts:
       set -euo pipefail
 
       # The GNOME extension's PKG_CONFIG_PATH must select the SDK's GTK headers.
-      pkg-config --atleast-version=4.10 gtk4
+      pkg-config --atleast-version=4.14 gtk4
       pkg-config --exists webkitgtk-6.0
       pkg-config --modversion gtk4 webkitgtk-6.0
 
@@ -139,7 +135,7 @@ parts:
       tar -C "${GO_ROOT}" -xzf "${GO_ROOT}/go.tar.gz"
 
       # Bun (frontend bundler) and the Rust toolchain pinned by rust-toolchain.toml.
-      # core22 ships nodejs/npm but no bun.
+      # Bun is installed explicitly; do not rely on a system package.
       curl -fsSL https://bun.sh/install | bash
       curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
         | sh -s -- -y --profile minimal --default-toolchain none
@@ -185,11 +181,11 @@ parts:
       set -eu
       craftctl default
       # Fail before packing if the new WebKit ABI or its sandbox helpers were dropped.
-      LIBDIR="${CRAFT_PRIME}/usr/lib/${CRAFT_ARCH_TRIPLET}"
+      LIBDIR="${CRAFT_PRIME}/usr/lib/${CRAFT_ARCH_TRIPLET_BUILD_FOR}"
       test -e "${LIBDIR}/libwebkitgtk-6.0.so.4"
       test -e "${LIBDIR}/libjavascriptcoregtk-6.0.so.1"
       test -x "${LIBDIR}/webkitgtk-6.0/WebKitWebProcess"
       test -x "${LIBDIR}/webkitgtk-6.0/WebKitNetworkProcess"
       test -e "${LIBDIR}/webkitgtk-6.0/injected-bundle/libwebkitgtkinjectedbundle.so"
-      # The staged GTK 4.6 cannot satisfy Wails; the content platform owns GTK4.
+      # GTK stays owned by the content platform instead of shadowing its runtime.
       test ! -e "${LIBDIR}/libgtk-4.so.1"

@@ -19,9 +19,9 @@ pkgdesc="Real-time clipboard sync across macOS, Windows and Linux — local-firs
 arch=('x86_64' 'aarch64')
 url="https://www.uniclipboard.app"
 license=('AGPL-3.0-only')
-# The GUI links GTK >= 4.10, WebKitGTK 6.0 and Xlib. GTK4 uses an ordinary quick-panel window.
+# The GUI links GTK >= 4.14, WebKitGTK 6.0 and Xlib. GTK4 uses an ordinary quick-panel window.
 # The tray and notifications use D-Bus directly; no GTK3 Layer Shell library is needed.
-depends=('gtk4>=4.10' 'webkitgtk-6.0' 'libx11' 'libsoup3')
+depends=('gtk4>=4.14' 'webkitgtk-6.0' 'libx11' 'libsoup3')
 # `bun` builds the shared frontend (extra/bun). `jq` reads the app identity from apps/gui-go/app.json, the
 # single source of it. The `go` in extra satisfies the toolchain line of apps/gui-go/go.mod, so no
 # toolchain is downloaded during the build.

@@ -30,7 +30,7 @@ HEAD_SHA="$("${GIT[@]}" rev-parse HEAD)"
 (cd packages/desktop-host-go && go vet ./...)
 
 if [[ "$MODE" == linux || "$MODE" == all ]]; then
-  pkg-config --atleast-version=4.10 gtk4
+  pkg-config --atleast-version=4.14 gtk4
   pkg-config --exists webkitgtk-6.0
   (cd apps/gui-go && CGO_ENABLED=1 go vet -tags gtk4,production,release ./... &&
     CGO_ENABLED=1 go vet -tags gtk4,e2e . &&

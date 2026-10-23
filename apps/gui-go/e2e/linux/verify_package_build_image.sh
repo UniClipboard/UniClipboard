@@ -2,7 +2,7 @@
 # Real integrity check of the packaging build image: no half-installed package, the development files the Go GUI links against
 # resolve through pkg-config, and every tool and library package_linux.py needs exists. A cached layer marked DONE proves none of this.
 set -eu
-pkg-config --atleast-version=4.10 gtk4
+pkg-config --atleast-version=4.14 gtk4
 [ -z "$(dpkg --audit)" ] || { echo "dpkg --audit not clean" >&2; dpkg --audit >&2; exit 1; }
 pkg-config --exists --print-errors gtk4 webkitgtk-6.0 x11 dbus-1 gio-2.0
 for tool in rpmbuild rpm2cpio cpio dpkg-deb file python3 git curl go readelf gcc desktop-file-validate glib-compile-schemas; do

@@ -1,0 +1,63 @@
+name: GTK4 runtime replay
+on:
+  workflow_dispatch:
+    inputs:
+      artifact_run_id:
+        required: true
+        type: string
+      source_ref:
+        required: true
+        type: string
+permissions:
+  contents: read
+  actions: read
+jobs:
+  install:
+    name: Fresh ${{ matrix.kind }} on ${{ matrix.image }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {runner: ubuntu-24.04, arch: amd64, kind: deb, image: 'debian:trixie'}
+          - {runner: ubuntu-24.04-arm, arch: arm64, kind: rpm, image: 'fedora:latest'}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.source_ref }}
+          persist-credentials: false
+      - uses: actions/download-artifact@v6
+        with:
+          name: linux-gui-${{ matrix.arch }}
+          run-id: ${{ inputs.artifact_run_id }}
+          github-token: ${{ github.token }}
+          path: candidates
+      - uses: actions/download-artifact@v6
+        with:
+          name: linux-gui-evidence-${{ matrix.arch }}
+          run-id: ${{ inputs.artifact_run_id }}
+          github-token: ${{ github.token }}
+          path: evidence
+      - name: Permit namespaces only in the disposable test containers
+        run: scripts/ci/prepare-webkit-container-profile.sh
+      - name: Replay fresh install with the corrected harness
+        env:
+          UC_DOCKER_PLATFORM: linux/${{ matrix.arch }}
+          KIND: ${{ matrix.kind }}
+          IMAGE: ${{ matrix.image }}
+        run: |
+          candidate=$(find candidates -name "*.$KIND" -print -quit)
+          sha=$(python3 -c 'import json;print(json.load(open("evidence/package-manifest.json"))["daemon"]["sha256"])')
+          apps/gui-go/e2e/linux/package_install_check.sh "$KIND" "$IMAGE" fresh "$PWD/$candidate" "$PWD/$candidate" "$sha" "$RUNNER_TEMP/install-replay"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: install-replay-${{ matrix.arch }}-${{ matrix.kind }}
+          path: |
+            ${{ runner.temp }}/install-replay/results.tsv
+            ${{ runner.temp }}/install-replay/*.log
+            ${{ runner.temp }}/install-replay/profile-*.json
+            ${{ runner.temp }}/install-replay/launch.txt
+            ${{ runner.temp }}/install-replay/host.txt
+          if-no-files-found: warn

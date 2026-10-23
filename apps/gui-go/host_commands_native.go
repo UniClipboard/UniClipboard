@@ -3,13 +3,36 @@ package main
 import (
 	"context"
 	"log"
+	"math"
 	"runtime"
 	"time"
 
 	"github.com/UniClipboard/UniClipboard/apps/gui-go/internal/hostapi"
+	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
 // Native shell, appearance and lifecycle commands.
+
+// SetWindowZoom changes the calling WebView's native zoom, including scales below 100%.
+//
+//uc:errors command ValidationError NotFound InternalError
+//uc:os all=real
+//uc:adapter @/host/webview
+func (h *HostService) SetWindowZoom(ctx context.Context, scale float64) error {
+	if math.IsNaN(scale) || math.IsInf(scale, 0) || scale <= 0 {
+		return hostapi.New(hostapi.CodeValidationError, "zoom must be a finite positive number")
+	}
+	w, ok := ctx.Value(application.WindowKey).(application.Window)
+	if !ok || w == nil {
+		return hostapi.New(hostapi.CodeNotFound, "calling window is unavailable")
+	}
+	var err error
+	application.InvokeSync(func() { err = setWindowZoom(w, scale) })
+	if err != nil {
+		return hostapi.Internal(err)
+	}
+	return nil
+}
 
 func hostPlatform() string {
 	if runtime.GOOS == "darwin" {

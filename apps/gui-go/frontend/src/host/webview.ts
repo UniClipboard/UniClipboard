@@ -1,6 +1,6 @@
 // WebView-level controls of the desktop host.
-import { Window } from '@wailsio/runtime'
+import { commands } from '@/lib/ipc'
 
 export const getCurrentWebview = () => ({
-  setZoom: (scale: number): Promise<void> => Window.SetZoom(scale),
+  setZoom: (scale: number): Promise<void> => commands.setWindowZoom(scale),
 })

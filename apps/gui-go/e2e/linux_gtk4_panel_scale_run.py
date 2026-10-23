@@ -122,12 +122,28 @@ def main():
                 probe('for(const type of ["keydown","keyup"])document.body.dispatchEvent(new KeyboardEvent(type,{key:"=",code:"Equal",ctrlKey:true,bubbles:true}));return {}')
                 time.sleep(.2)
                 measure((round(800 * factor), round(560 * factor)))
+            main_label = uuid.uuid4().hex
+            main_before = gui.ctl(f'window-frame-state {main_label} main', f'window-frame-state-{main_label}')['detail']
+            result['textMeasurements'] = []
+            for key, code, scale in [('_', 'Minus', .9), ('_', 'Minus', .8), ('_', 'Minus', .8),
+                                     ('+', 'Equal', .9), ('+', 'Equal', 1), ('+', 'Equal', 1.1),
+                                     ('+', 'Equal', 1.25), ('+', 'Equal', 1.5), ('+', 'Equal', 1.5)]:
+                probe('for(const type of ["keydown","keyup"])document.body.dispatchEvent(new KeyboardEvent(type,{key:' + json.dumps(key) + ',code:' + json.dumps(code) + ',ctrlKey:true,shiftKey:true,bubbles:true}));return {}')
+                time.sleep(.3)
+                label = uuid.uuid4().hex
+                frame = gui.ctl(f'window-frame-state {label} quick-panel', f'window-frame-state-{label}')['detail']
+                dom = probe('return {scale:localStorage.getItem("uniclipboard.uiScale"),dpr:devicePixelRatio}')
+                ok = abs(frame.get('zoom', 0) - scale) < .001 and abs(float(dom['scale']) - scale) < .001 and (frame['width'], frame['height']) == (1200, 840)
+                result['textMeasurements'].append({'target': scale, 'native': frame, 'dom': dom, 'ok': ok})
+            main_label = uuid.uuid4().hex
+            main_after = gui.ctl(f'window-frame-state {main_label} main', f'window-frame-state-{main_label}')['detail']
+            result['sharedUiScale'] = {'before': main_before, 'after': main_after, 'ok': not main_after.get('exists') or (abs(main_after.get('zoom', 0) - 1.5) < .001 and (main_before.get('width'), main_before.get('height')) == (main_after.get('width'), main_after.get('height')))}
             protocol = (out / 'gui.log').read_text()
             panel_ids = set(re.findall(r'xdg_toplevel#(\d+)\.set_title\("(?:Quick Panel|app\.uniclipboard\.desktop)"\)', protocol))
             maximums = {(int(width), int(height)) for ident, width, height in re.findall(r'xdg_toplevel#(\d+)\.set_max_size\((\d+), (\d+)\)', protocol) if ident in panel_ids}
             expected = {tuple(row['target']) for row in result['measurements']}
             result['fixedWindowConstraints'] = {'expected': sorted(expected), 'maximums': sorted(maximums), 'ok': expected <= maximums}
-            result['passed'] = all(row['ok'] for row in result['measurements']) and expected <= maximums
+            result['passed'] = all(row['ok'] for row in result['measurements']) and expected <= maximums and all(row['ok'] for row in result['textMeasurements']) and result['sharedUiScale']['ok']
         finally:
             if gui is not None and gui.proc.poll() is None:
                 gui.proc.terminate()

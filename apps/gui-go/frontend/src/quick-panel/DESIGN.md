@@ -58,6 +58,12 @@ WebView 面板在主窗口关闭后仍可独立解锁，不为解锁打开主窗
 
 每次按下尺寸或文字缩放快捷键（包含到达上下限时），面板右下角显示文字与窗口百分比浮层，距右侧与底部各 `0.75rem`，最后一次调整后 1.2 秒自动消失。浮层使用 13px 字号、主题卡片底色、圆角与细边框，不拦截鼠标、不改变焦点、不占据布局空间；重新打开面板时清除旧提示。
 
+## 原生文字缩放
+
+界面缩放统一经过 `src/host/webview.ts` 的 `SetWindowZoom` 宿主命令，使用 Wails 提供的调用窗口上下文；不通过主窗口转发、不使用 CSS `zoom`。Linux GTK4 使用 WebKitGTK 的原生 zoom，支持 80%–150%，修复固定 Wails beta.28 将小于 100% 的请求钳制到 100% 的限制。其他平台继续使用 Wails。升级 Wails 并通过同一原生缩放验收后，可移除 Linux 原生适配。
+
+界面缩放偏好仍由现有 `ui-scale.ts` 管理并在同源窗口间同步，不另存面板专属文字比例；文字缩放不调整面板或主窗口的逻辑尺寸。
+
 ## 字号、行高与间距
 
 Windows 原生 GPUI 面板与 Wails GUI 的 Fluent 皮肤共用 `src/themes/default.json` 字体配置。正文按 Segoe UI Variable Text、Segoe UI 的顺序选择已安装字体，中文按 Microsoft YaHei UI、Microsoft YaHei 回退；等宽字体按 Cascadia Mono、Consolas、JetBrains Mono 选择。历史、输入框及独立预览窗口继承相同中文回退链。字体选择与字号缩放分别处理，不通过放大字号补偿渲染差异。

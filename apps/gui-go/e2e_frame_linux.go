@@ -39,6 +39,7 @@ func windowFrameDetail(h *HostService, name string) map[string]any {
 		detail["active"] = C.uc_active(handle) != 0
 		detail["visible"] = C.uc_visible(handle) != 0
 		detail["width"], detail["height"] = int(width), int(height)
+		detail["zoom"] = w.GetZoom()
 	})
 	return detail
 }

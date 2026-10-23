@@ -87,3 +87,10 @@ dbus-run-session -- python3 apps/gui-go/e2e/linux_gtk4_panel_scale_run.py \
 `WAYLAND_DISPLAY` 和 `XDG_RUNTIME_DIR` 必须指向私有合成器，输出至少为 1920×1200，以容纳上限尺寸。runtime 路径应足够短，使 WebKit 的代理 Unix socket 路径不超过系统长度限制；不要通过禁用 WebKit 沙箱绕过启动失败。CLI 与 daemon 必须是同版本构建。
 
 本机使用 Weston 15 的独立无头输出完成对照：旧实现的原生尺寸在 Weston 下也能变化，但协议最大尺寸始终为 `(0, 0)`，无法约束合成器保留的旧浮动尺寸；修复后同时验证目标尺寸与 `min = max` 的协议约束。这不等于 Hyprland 实体桌面的焦点与键盘验收。
+
+
+## 小于 100% 的 WebView 文字缩放
+
+Wails beta.28 的 Linux `setZoom` 会把小于 1 的参数改成 1，与已有 80%／90% 界面缩放档位不兼容。`SetWindowZoom` 通过公开的 `application.WindowKey` 获取调用窗口，在 GTK 主线程中找到该窗口的 WebView 并调用 `webkit_web_view_set_zoom_level`；其他平台继续调用 Wails `SetZoom`。前端只有 `src/host/webview.ts` 一条缩放路径，沿用现有偏好、跨窗口同步和错误反馈，不使用 CSS `zoom`。待固定版本 Wails 支持低于 100% 的缩放并通过原生验收后，可删除 Linux 适配。
+
+同一缩放验收脚本还覆盖 9 次文字缩放，包括 90%／80%、上下限、缩小后放大，读取 WebKit 实际 zoom，确认窗口逻辑尺寸不变，以及主窗口共享界面缩放偏好的同步。旧版本在 90%／80% 时实际 zoom 为 1；修复后全部目标值匹配。

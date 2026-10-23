@@ -64,6 +64,7 @@ var e2eCommandTable = map[string]e2eCommand{
 	"set_traffic_light_position":              {Method: "SetTrafficLightPosition", Params: []string{"offsetX", "offsetY"}},
 	"set_visual_effects_mode":                 {Method: "SetVisualEffectsMode", Params: []string{"mode"}},
 	"set_window_decorations":                  {Method: "SetWindowDecorations", Params: []string{"decorations"}},
+	"set_window_zoom":                         {Method: "SetWindowZoom", Params: []string{"scale"}},
 	"show_content_unlock":                     {Method: "ShowContentUnlock", Params: []string{}},
 	"skip_version":                            {Method: "SkipVersion", Params: []string{"version"}},
 	"take_pending_navigation":                 {Method: "TakePendingNavigation", Params: []string{}},

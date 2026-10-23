@@ -73,33 +73,44 @@ func waitForSendTargets(requested []string, deadline time.Time, budgetSecs uint6
 		return exitcode.Error
 	}
 	var spinner *ui.Spinner
-	clear := func() {
+	defer func() {
 		if spinner != nil {
 			spinner.Clear()
 		}
-	}
-	for {
+	}()
+	waiting := pollSendTargets(requested, deadline, func() ([]peerSnapshot, error) {
 		var peers []peerSnapshot
-		// The peer list only optimizes waiting. If it cannot be read (no
-		// space yet, locked session, daemon error), stop waiting and let
-		// dispatch report the authoritative error.
-		if err := client.Get(context.Background(), "/peers", &peers); err != nil {
-			clear()
-			return exitcode.Success
-		}
-		ready, waiting := targetReadiness(peers, requested)
-		if ready {
-			clear()
-			return exitcode.Success
-		}
+		err := client.Get(context.Background(), "/peers", &peers)
+		return peers, err
+	}, func() {
 		if spinner == nil {
 			spinner = ui.NewSpinner("Waiting for target device(s) to connect...")
 		}
+	})
+	if waiting == "" {
+		return exitcode.Success
+	}
+	spinner.Clear()
+	ui.Error(fmt.Sprintf("Timed out after %ds waiting for target device(s) to connect: %s. Nothing was sent.", budgetSecs, waiting))
+	ui.Warn("Bring the device online, check `uniclip members`, or raise --connect-timeout.")
+	return exitcode.Error
+}
+
+// pollSendTargets returns the last waiting reason on timeout, or an empty
+// string to let dispatch report its authoritative result. Only queries repeat.
+func pollSendTargets(requested []string, deadline time.Time, query func() ([]peerSnapshot, error), onWaiting func()) string {
+	for {
+		peers, err := query()
+		if err != nil {
+			return ""
+		}
+		ready, waiting := targetReadiness(peers, requested)
+		if ready {
+			return ""
+		}
+		onWaiting()
 		if !time.Now().Before(deadline) {
-			clear()
-			ui.Error(fmt.Sprintf("Timed out after %ds waiting for target device(s) to connect: %s. Nothing was sent.", budgetSecs, waiting))
-			ui.Warn("Bring the device online, check `uniclip members`, or raise --connect-timeout.")
-			return exitcode.Error
+			return waiting
 		}
 		pause := targetPollInterval
 		if remaining := time.Until(deadline); remaining < pause {

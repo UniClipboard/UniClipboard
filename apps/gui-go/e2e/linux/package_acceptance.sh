@@ -12,7 +12,7 @@
 #                           distribution and a newer one; every image runs every scenario
 #   UC_KEYRING_IMAGE        Secret Service image (Dockerfile.17c4-keyring)
 #
-# Builds the test-control-plane GUI (tags gtk3,production,release,e2e) and packages it as E2E-prefixed AppImages (v1, v2 with an update
+# Builds the test-control-plane GUI (tags gtk4,production,release,e2e) and packages it as E2E-prefixed AppImages (v1, v2 with an update
 # marker, and the no-relocation negative control), signs v2's updater archive with the isolated fixture key (e2e/updatetool), then per host
 # image runs: full (launch with daemon and WebView, HTTPS, in-place update, refusal of an untrusted signature, autostart, data root),
 # negative (the control must fail) and, when given, smoke on the release AppImage (no control plane by design).

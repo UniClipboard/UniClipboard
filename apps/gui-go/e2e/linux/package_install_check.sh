@@ -202,7 +202,7 @@ launch_rc=$?
 grep -q '^keyring-ready$' /out/launch-stdout.txt && ok "the Secret Service of the harness is ready" || bad "the Secret Service of the harness is ready" "$(grep -i -m1 'keyring\|secrets' /out/launch-stdout.txt)"
 [ "${gui_exe:-}" = /usr/bin/uniclipboard ] && ok "GUI runs from the installed path" || bad "GUI runs from the installed path" "exe=${gui_exe:-none}"
 [ "${daemon_exe:-}" = /usr/bin/uniclipd ] && ok "daemon runs from the installed path" || bad "daemon runs from the installed path" "exe=${daemon_exe:-none}"
-case "${webkit_exe:-}" in /usr/lib/*/webkit2gtk-4.1/WebKitWebProcess|/usr/lib64/webkit2gtk-4.1/WebKitWebProcess|/usr/libexec/webkit2gtk-4.1/WebKitWebProcess|/usr/libexec/libwebkit2gtk-4_1-0/WebKitWebProcess) ok "WebView process runs from the installed WebKitGTK" "$webkit_exe" ;; *) bad "WebView process runs from the installed WebKitGTK" "exe=${webkit_exe:-none}" ;; esac
+case "${webkit_exe:-}" in /usr/lib/*/webkitgtk-6.0/WebKitWebProcess|/usr/lib64/webkitgtk-6.0/WebKitWebProcess|/usr/libexec/webkitgtk-6.0/WebKitWebProcess|/usr/libexec/libwebkitgtk-6_0-4/WebKitWebProcess) ok "WebView process runs from the installed WebKitGTK" "$webkit_exe" ;; *) bad "WebView process runs from the installed WebKitGTK" "exe=${webkit_exe:-none}" ;; esac
 [ "${gui_alive:-}" = yes ] && [ "${daemon_alive:-}" = yes ] && ok "GUI and daemon are still alive 10 s after the WebView appeared" || bad "GUI and daemon are still alive 10 s after the WebView appeared" "gui=${gui_alive:-?} daemon=${daemon_alive:-?}"
 [ -n "${daemon_conn:-}" ] && ok "daemon published its connection file" "$daemon_conn" || bad "daemon published its connection file" "none under /root/.local/share"
 

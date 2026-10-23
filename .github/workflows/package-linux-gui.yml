@@ -21,15 +21,15 @@ on:
         type: string
         default: ''
       build_image:
-        description: 'Packaging base image. debian:bookworm keeps the glibc 2.36 floor of the released Tauri packages'
+        description: 'GTK4 packaging base image (GTK >= 4.10); default Ubuntu 24.04, glibc 2.39'
         required: false
         type: string
-        default: 'debian:bookworm'
+        default: 'ubuntu:24.04'
       max_glibc:
         description: 'Highest GLIBC symbol version any shipped ELF may need (must match build_image)'
         required: false
         type: string
-        default: '2.36'
+        default: '2.39'
   pull_request:
     paths:
       - '.github/workflows/package-linux-gui.yml'
@@ -37,6 +37,10 @@ on:
       - '.github/workflows/linux-gui-acceptance.yml'
       - 'apps/gui-go/e2e_invoke.go'
       - 'apps/gui-go/e2e/package_linux.py'
+      - 'scripts/tests/test_linux_gtk4_packaging.py'
+      - 'scripts/install.sh'
+      - 'packaging/nix/update.py'
+      - 'packaging/uniclipboard.spec'
       - 'apps/gui-go/e2e/linux/**'
       - 'apps/gui-go/e2e/linux_appimage_run.py'
       - 'apps/gui-go/packaging/linux/**'
@@ -67,8 +71,8 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  BUILD_IMAGE: ${{ inputs.build_image || 'debian:bookworm' }}
-  MAX_GLIBC: ${{ inputs.max_glibc || '2.36' }}
+  BUILD_IMAGE: ${{ inputs.build_image || 'ubuntu:24.04' }}
+  MAX_GLIBC: ${{ inputs.max_glibc || '2.39' }}
 
 jobs:
   # Only a standalone manual dispatch with a `ref` needs this. Every other entry already supplies an exact SHA (build.yml passes the SHA
@@ -108,7 +112,7 @@ jobs:
       UC_LINUX_IMAGE: uc-package-build:ci
       UC_LINUX_CACHE_VOLUME: uc-linux-gui-cache
       UC_KEYRING_IMAGE: uc-gui-go-linux-keyring:ci
-      UC_MAX_GLIBC: ${{ inputs.max_glibc || '2.36' }}
+      UC_MAX_GLIBC: ${{ inputs.max_glibc || '2.39' }}
       # The one source commit of this run, also verified against the package manifest.
       UC_EXPECT_HEAD: ${{ needs.resolve.outputs.sha || inputs.ref || github.event.pull_request.head.sha || github.sha }}
     steps:
@@ -151,6 +155,11 @@ jobs:
           docker image inspect "$UC_LINUX_IMAGE" --format '{{.Id}}' | tee "$RUNNER_TEMP/meta/image-id.txt"
           echo "UC_BUILD_IMAGE=$BUILD_IMAGE (packaging image $(cat "$RUNNER_TEMP/meta/image-id.txt"))" >> "$GITHUB_ENV"
           docker run --rm "$UC_LINUX_IMAGE" verify_package_build_image.sh | tee "$RUNNER_TEMP/meta/image-versions.txt"
+
+      - name: Verify GTK4 package contracts
+        run: |
+          docker run --rm --platform "${{ matrix.platform }}" -v "$PWD:/work:ro" -w /work "$UC_LINUX_IMAGE" \
+            python3 -m unittest discover -s scripts/tests -p test_linux_gtk4_packaging.py
 
       - name: Start shared Engine MBX cache
         env:
@@ -271,4 +280,4 @@ jobs:
     uses: ./.github/workflows/linux-gui-acceptance.yml
     with:
       ref: ${{ needs.package.outputs.sha }}
-      build_image: ${{ inputs.build_image || 'debian:bookworm' }}
+      build_image: ${{ inputs.build_image || 'ubuntu:24.04' }}

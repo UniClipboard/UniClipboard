@@ -9,7 +9,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && for i in 1 2 3 4 5 6; do \
       apt-get install -y --no-install-recommends -o Acquire::Retries=5 --fix-missing \
         ca-certificates curl git build-essential pkg-config xz-utils \
-        libgtk-3-dev libwebkit2gtk-4.1-dev libx11-dev libdbus-1-dev libssl-dev \
+        libgtk-4-dev libwebkitgtk-6.0-dev libx11-dev libdbus-1-dev libssl-dev \
         xvfb xauth dbus dbus-x11 xdotool x11-utils python3 && break; \
       echo "apt attempt $i failed" >&2; sleep 5; apt-get update; \
     done && command -v Xvfb && rm -rf /var/lib/apt/lists/*
@@ -21,7 +21,7 @@ COPY apt_install.sh verify_image.sh /usr/local/bin/
 ARG APT_OPTS=""
 RUN APT_OPTS="$APT_OPTS" apt_install.sh \
       ca-certificates curl git build-essential pkg-config xz-utils \
-      libgtk-3-dev libwebkit2gtk-4.1-dev libx11-dev libdbus-1-dev libssl-dev \
+      libgtk-4-dev libwebkitgtk-6.0-dev libx11-dev libdbus-1-dev libssl-dev \
       xvfb xauth dbus dbus-x11 xdotool x11-utils python3
 # Packaging tools (package_linux.py): rpmbuild for the rpm, file for inspection. dpkg-deb ships with the base image.
 RUN APT_OPTS="$APT_OPTS" apt_install.sh rpm file desktop-file-utils

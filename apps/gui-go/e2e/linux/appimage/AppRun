@@ -8,8 +8,8 @@
 #     have no HTTPS): GIO_EXTRA_MODULES would only append, so the bundled GLib would still scan the host's module directory and
 #     load gvfs/dconf modules built for another GLib
 #     (docs/architecture/linux-appimage-library-policy.md, "GIO module ABI mixing"; docs/architecture/gui-go-linux-appimage-runtime-deps.md);
-#   * runs from $APPDIR/usr: libwebkit2gtk's compiled-in helper directory `/usr/lib/<triple>/webkit2gtk-4.1` was rewritten to
-#     `././/lib/<triple>/webkit2gtk-4.1` at packaging time, a path that only resolves relative to $APPDIR/usr.
+#   * runs from $APPDIR/usr: libwebkitgtk's compiled-in helper directory `/usr/lib/<triple>/webkitgtk-6.0` was rewritten to
+#     `././/lib/<triple>/webkitgtk-6.0` at packaging time, a path that only resolves relative to $APPDIR/usr.
 # The GUI consumes no file or URL argument (its only argument is the quick-panel launch flag), so changing the working
 # directory loses nothing.
 HERE="$(dirname "$(readlink -f "$0")")"

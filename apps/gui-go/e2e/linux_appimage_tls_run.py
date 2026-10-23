@@ -269,8 +269,8 @@ def main():
     servers = []
     try:
         loader = run_cmd(['ldconfig', '-p']).stdout
-        bad = [l for l in loader.splitlines() if 'libwebkit2gtk' in l or 'libgtk-3' in l or 'libsoup' in l]
-        run.check('T0 clean host: no libwebkit2gtk / libgtk-3 / libsoup in the loader cache', not bad, bad)
+        bad = [l for l in loader.splitlines() if 'libwebkitgtk' in l or 'libgtk-4' in l or 'libsoup' in l]
+        run.check('T0 clean host: no libwebkitgtk / libgtk-4 / libsoup in the loader cache', not bad, bad)
         r['hostGLib'] = [l.strip() for l in loader.splitlines() if 'libglib-2.0' in l or 'libgio-2.0' in l]
         hostgio = sorted(str(p) for pat in ('/usr/lib*/gio/modules/*', '/usr/lib/*/gio/modules/*') for p in Path('/').glob(pat.lstrip('/')))
         r['hostGioModules'] = hostgio

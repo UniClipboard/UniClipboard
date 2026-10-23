@@ -216,8 +216,8 @@ def main():
     launches = []
     try:
         loader = subprocess.run(['ldconfig', '-p'], capture_output=True, text=True).stdout
-        bad = [l for l in loader.splitlines() if 'libwebkit2gtk' in l or 'libgtk-3' in l]
-        run.check('P0 clean host: no libwebkit2gtk / libgtk-3 in the loader cache', not bad, bad)
+        bad = [l for l in loader.splitlines() if 'libwebkitgtk' in l or 'libgtk-4' in l]
+        run.check('P0 clean host: no libwebkitgtk / libgtk-4 in the loader cache', not bad, bad)
         run.check('P0 the run is unprivileged and has no Secret Service: uid != 0, no session bus address in the environment',
                   account.pw_uid != 0 and 'DBUS_SESSION_BUS_ADDRESS' not in env, {'uid': account.pw_uid})
         if args.supplement:

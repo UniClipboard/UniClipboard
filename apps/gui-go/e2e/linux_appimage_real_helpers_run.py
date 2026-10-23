@@ -393,7 +393,7 @@ def main():
         mapped = {}
         for pid in [gui_pid] + helpers[:2]:
             libs = maps_of(pid)
-            mapped[str(pid)] = {k: sorted(p for p in libs if k in p.rsplit('/', 1)[-1]) for k in ('libglib-2.0', 'libgio-2.0', 'libgtk-3', 'libwebkit2gtk-4.1', 'libjavascriptcoregtk-4.1')}
+            mapped[str(pid)] = {k: sorted(p for p in libs if k in p.rsplit('/', 1)[-1]) for k in ('libglib-2.0', 'libgio-2.0', 'libgtk-4', 'libwebkitgtk-6.0', 'libjavascriptcoregtk-6.0')}
         run.check('G7 although the host has GTK, the GUI and its WebKit helpers map GTK, WebKitGTK, JavaScriptCore, GLib and GIO from the AppImage mount, not from /usr',
                   bool(helpers) and all(paths and all(p.startswith(mount) for p in paths) for libs in mapped.values() for paths in libs.values()), mapped)
         host_gtk = subprocess.run('ldconfig -p | grep -E "libgtk-3|libgtk-4|libwebkit" | head', shell=True, capture_output=True, text=True).stdout

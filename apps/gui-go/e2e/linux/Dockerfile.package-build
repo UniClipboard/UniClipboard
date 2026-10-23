@@ -1,9 +1,8 @@
 # Build image for the CI package pipeline (docs/architecture/gui-go-linux-ci-packaging.md): the release daemon, the GUI and
 # package_linux.py all run here, so the glibc floor of the package is the floor of THIS image.
-#   docker build --build-arg BASE_IMAGE=debian:bookworm  (default, glibc 2.36: the floor of the released Tauri packages)
-#   docker build --build-arg BASE_IMAGE=ubuntu:24.04     (glibc 2.39, AppImage floor 2.38 as measured)
+# Default: Ubuntu 24.04, GTK >= 4.10 and glibc 2.39. Debian 12 has GTK 4.8 and cannot build this host.
 # No display server and no test tools: the clean-host runtime images (Dockerfile.17c4-runtime) run the AppImage.
-ARG BASE_IMAGE=debian:bookworm
+ARG BASE_IMAGE=ubuntu:24.04
 FROM ${BASE_IMAGE}
 ARG GO_VERSION=1.27.1
 ARG TARGETARCH
@@ -13,12 +12,10 @@ COPY apt_install.sh verify_package_build_image.sh /usr/local/bin/
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
 RUN apt_install.sh \
       curl git build-essential pkg-config xz-utils python3 file binutils cpio rpm desktop-file-utils \
-      libgtk-3-dev libwebkit2gtk-4.1-dev libx11-dev libdbus-1-dev libssl-dev \
-      libglib2.0-bin libgdk-pixbuf2.0-bin libgtk-3-bin shared-mime-info \
-      glib-networking glib-networking-services dconf-gsettings-backend libgtk-layer-shell0 \
+      libgtk-4-dev libwebkitgtk-6.0-dev libx11-dev libdbus-1-dev libssl-dev \
+      libglib2.0-bin libgdk-pixbuf2.0-bin libgtk-4-bin shared-mime-info \
+      glib-networking glib-networking-services dconf-gsettings-backend \
  && rm -rf /var/lib/apt/lists/*
-# libproxy 0.4 (Debian 12) needs its PAC plugin to evaluate PAC scripts; libproxy 0.5 (Ubuntu 24.04) has the runtime built in and the package does not exist there.
-RUN apt-get update -qq && if apt-cache show libproxy1-plugin-webkit >/dev/null 2>&1; then apt_install.sh libproxy1-plugin-webkit; fi; rm -rf /var/lib/apt/lists/*
 RUN curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-${TARGETARCH}.tar.gz" | tar -C /usr/local -xz
 ENV PATH=/usr/local/go/bin:$PATH GOFLAGS=-mod=mod GOTOOLCHAIN=local
 RUN verify_package_build_image.sh

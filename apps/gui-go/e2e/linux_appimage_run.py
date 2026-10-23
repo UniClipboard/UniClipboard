@@ -9,9 +9,9 @@ a volume (UC_E2E_BUS): the daemon refuses to start without one, and gnome-keyrin
   linux_appimage_run.py --mode negative --out DIR --appimage NEGCONTROL.AppImage             (must fail to come up)
   linux_appimage_run.py --mode smoke    --out DIR --appimage release.AppImage                (release build: no control plane)
 
-`full` runs the shipped form (tags gtk3,production,release,e2e: release-no-profile, non-portable data root, no UC_PROFILE) from an
+`full` runs the shipped form (tags gtk4,production,release,e2e: release-no-profile, non-portable data root, no UC_PROFILE) from an
 AppImage that is the install target:
-  1 clean host           no libwebkit2gtk / libgtk-3 in the loader cache
+  1 clean host           no libwebkitgtk / libgtk-4 in the loader cache
   2 launch               the AppImage mounts (FUSE) and runs; GUI, daemon and WebKit helper processes execute from the mount; the
                          daemon is byte-identical to the build evidence; GTK/WebKit/GLib/GIO are mapped from the mount, not from /usr
   3 handshake            the WebView ran the frontend and reached the daemon (evidence step, shortcut state)
@@ -213,9 +213,9 @@ def main():
     launches = []
     try:
         loader = subprocess.run(['ldconfig', '-p'], capture_output=True, text=True).stdout
-        bad = [l for l in loader.splitlines() if 'libwebkit2gtk' in l or 'libgtk-3' in l or 'libjavascriptcoregtk' in l]
-        run.check('1 clean host: no libwebkit2gtk / libgtk-3 / libjavascriptcoregtk in the loader cache',
-                  not bad and not list(Path('/usr/lib').glob('*/webkit2gtk-4.1')), bad)
+        bad = [l for l in loader.splitlines() if 'libwebkitgtk' in l or 'libgtk-4' in l or 'libjavascriptcoregtk' in l]
+        run.check('1 clean host: no libwebkitgtk / libgtk-4 / libjavascriptcoregtk in the loader cache',
+                  not bad and not list(Path('/usr/lib').glob('*/webkitgtk-6.0')), bad)
         r['hostGLib'] = [l.strip() for l in loader.splitlines() if 'libglib-2.0' in l or 'libgio-2.0' in l]
         if args.mode == 'negative':
             negative(run, launches)
@@ -302,7 +302,7 @@ def inspect_processes(run, label, launch_pid, expected_daemon_sha, daemon_pid):
     mapped = {}
     for pid in [launch_pid] + helpers[:2]:
         libs = maps_of(pid)
-        picked = {k: sorted(p for p in libs if k in p.rsplit('/', 1)[-1]) for k in ('libglib-2.0', 'libgio-2.0', 'libgtk-3', 'libwebkit2gtk-4.1', 'libjavascriptcoregtk-4.1')}
+        picked = {k: sorted(p for p in libs if k in p.rsplit('/', 1)[-1]) for k in ('libglib-2.0', 'libgio-2.0', 'libgtk-4', 'libwebkitgtk-6.0', 'libjavascriptcoregtk-6.0')}
         mapped[str(pid)] = picked
     ok = bool(mount) and all(paths and all(p.startswith(mount) for p in paths) for libs in mapped.values() for paths in libs.values()
                              if True) if mapped else False
@@ -516,7 +516,7 @@ def negative(run, launches):
     except RuntimeError as e:
         time.sleep(1)
         log = gui.log.read_text(errors='replace')
-        cause = [l for l in log.splitlines() if 'Failed to spawn child process' in l and 'webkit2gtk-4.1/WebKit' in l and 'No such file or directory' in l]
+        cause = [l for l in log.splitlines() if 'Failed to spawn child process' in l and 'webkitgtk-6.0/WebKit' in l and 'No such file or directory' in l]
         run.check('N the package without helper relocation never reaches the page, and the log names the cause: the host helper path does not exist',
                   bool(cause), {'wait': str(e), 'cause': cause[:1]})
         run.results['negativeLogTail'] = log[-3000:]

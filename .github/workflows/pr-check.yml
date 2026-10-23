@@ -106,22 +106,20 @@ jobs:
             (cd apps/cli-go && CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -trimpath -buildvcs=false -o "../../target/cli-go-gate/$os-$arch" ./cmd/uniclip)
           done
 
-  # Compile gate for the Go/Wails host: a regression in a Linux-only (cgo, GTK) or Windows-only file cannot be seen
-  # by the macOS developer build or by the frontend job. Same build image as the Rust job, which carries the GTK3 and
-  # WebKitGTK 4.1 development packages. Evidence (linked binaries, SHA256SUMS, source head) is uploaded; nothing is shipped.
+  # Native GUI gate uses GTK >= 4.10. Rust/CLI retain their separate bookworm ABI baseline.
   gui-go:
     name: Go Host Compile Check
     needs: [changes, frontend]
     if: ${{ needs.changes.outputs.gui_go == 'true' }}
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/uniclipboard/build-bookworm:latest
-      credentials:
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
+    runs-on: ubuntu-24.04
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Install GTK4 build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends libgtk-4-dev libwebkitgtk-6.0-dev libx11-dev libdbus-1-dev pkg-config
 
       - name: Install Bun
         uses: oven-sh/setup-bun@v2

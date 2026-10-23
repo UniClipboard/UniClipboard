@@ -50,13 +50,12 @@ Source1:        https://github.com/UniClipboard/UniClipboard/releases/download/v
 
 ExclusiveArch:  x86_64 aarch64
 
-# 运行时依赖 — 与上游 rpm 相同(GTK3 + WebKitGTK 4.1;gtk-layer-shell 由 Wayland
-# 快捷面板在运行时加载)。托盘与通知由 Go 宿主直接走 D-Bus,不需要 appindicator。
-# 包名在 Fedora 与 RHEL/openSUSE 系略有差异,这里用 Fedora 主线名;COPR
-# 默认 chroot 都是 Fedora/EPEL,后续要扩展到 openSUSE 再加 conditional。
-Requires:       gtk3
-Requires:       webkit2gtk4.1
-Requires:       gtk-layer-shell
+# Match the upstream RPM capabilities, including GtkFileDialog and the GUI build ABI floor.
+Requires:       libgtk-4.so.1()(64bit)
+Requires:       libwebkitgtk-6.0.so.4()(64bit)
+Requires:       libX11.so.6()(64bit)
+Requires:       glibc >= 2.39
+Requires:       (gtk4 >= 4.10 or libgtk-4-1 >= 4.10)
 
 # 包名从 uni-clipboard 改为 uniclipboard 的整包替换关系,同上游 rpm。
 Provides:       uni-clipboard = %{version}-%{release}

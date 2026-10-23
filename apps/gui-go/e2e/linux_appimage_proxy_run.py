@@ -767,7 +767,7 @@ def main():
                 gui_exe = procs().get(gui.proc.pid, ('', ''))[0]
                 mount = gui_exe.split('/usr/bin/')[0] if '/usr/bin/' in gui_exe else None
                 net_pids = [pid for pid, (exe, comm) in procs().items() if mount and exe.startswith(mount) and exe.endswith('/WebKitNetworkProcess')]
-                want = {'gui': ([gui.proc.pid], ('libgtk-3', 'libwebkit2gtk-4.1', 'libglib-2.0', 'libgio-2.0')), 'webkitNetwork': (net_pids, ('libglib-2.0', 'libgio-2.0', 'libsoup-3.0'))}
+                want = {'gui': ([gui.proc.pid], ('libgtk-4', 'libwebkitgtk-6.0', 'libglib-2.0', 'libgio-2.0')), 'webkitNetwork': (net_pids, ('libglib-2.0', 'libgio-2.0', 'libsoup-3.0'))}
                 bad, unverified = {}, []
                 for who, (pids, libs) in want.items():
                     if not pids:

@@ -20,6 +20,7 @@ const out = path.join(root, 'target/gui-go/dev')
 export const USAGE = `Usage: bun wails:dev
        bun wails:dev:profile <profile>
        add --no-helper to leave the native quick panel helper out (macOS)
+       Linux requires GTK >= 4.10 and WebKitGTK 6.0
 
 Runs the Go GUI in development mode with frontend hot reload. The profile
 keeps data, keychain entries and the daemon separate from the production app.`
@@ -126,7 +127,8 @@ async function waitForServer(port, child, timeoutMs = 60_000) {
 
 export async function main(args, env = process.env) {
   const withHelper = !args.includes('--no-helper')
-  const argv = args.filter(arg => arg !== '--no-helper')
+  const explicitGtk4 = args.includes('--gtk4')
+  const argv = args.filter(arg => arg !== '--no-helper' && arg !== '--gtk4')
   let profile = env.UC_PROFILE
   if (argv[0] === '--help' || argv[0] === '-h') {
     console.log(USAGE)
@@ -149,6 +151,10 @@ export async function main(args, env = process.env) {
     console.error('The development launcher currently supports macOS, Windows and Linux.')
     return 1
   }
+  if (explicitGtk4 && process.platform !== 'linux') {
+    console.error('--gtk4 is supported only on Linux.')
+    return 1
+  }
 
   if (process.platform === 'linux') {
     env = linuxDesktopEnvironment(env)
@@ -156,6 +162,14 @@ export async function main(args, env = process.env) {
       console.error(
         'No graphical desktop session found. Run this command from a desktop terminal with DISPLAY or WAYLAND_DISPLAY set.'
       )
+      return 1
+    }
+    const dependencies = spawnSync('pkg-config', ['--exists', 'gtk4 >= 4.10', 'webkitgtk-6.0'], {
+      env,
+      encoding: 'utf8',
+    })
+    if (dependencies.error || dependencies.status !== 0) {
+      console.error('Linux development requires GTK >= 4.10 and WebKitGTK 6.0 development packages.')
       return 1
     }
   }
@@ -193,9 +207,9 @@ export async function main(args, env = process.env) {
   // No `production` tag: Wails then proxies assets to FRONTEND_DEVSERVER_URL. On macOS the
   // `private_mac_apis` tag lets the window material show through the page, as in the packaged app.
   const built = path.join(out, process.platform === 'win32' ? 'gui-go-dev.exe' : 'gui-go-dev')
-  const platformTags = { darwin: 'private_mac_apis', linux: 'gtk3' }[process.platform]
+  const platformTags = { darwin: 'private_mac_apis', linux: 'gtk4' }[process.platform]
   const tags = platformTags ? ['-tags', platformTags] : []
-  run('go', ['build', ...tags, '-o', built, '.'], { cwd: gui })
+  run('go', ['build', ...tags, '-o', built, '.'], { cwd: gui, env })
   const helper = withHelper ? path.join(root, 'target/debug/uniclip-quick-panel') : null
   const binary = process.platform === 'darwin' ? makeDevBundle(built, helper) : built
 

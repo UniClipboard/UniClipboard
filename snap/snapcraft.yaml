@@ -21,11 +21,9 @@ source-code: https://github.com/UniClipboard/UniClipboard
 issues: https://github.com/UniClipboard/UniClipboard/issues
 contact: https://github.com/UniClipboard/UniClipboard/issues
 
-# strict + gnome extension。base=core22 决定 binary 链接 glibc 2.35,gnome
-# extension (gnome-42-2204) 提供 webkit2gtk-4.1 + libsoup-3.0 + 完整 GTK
-# stack。snap 跑在 mount namespace 里,binary 看到的 /lib 是 snap 内部的,
-# 跟 host 完全解耦 —— Ubuntu 20.04 / RHEL 9 / openSUSE Leap 这些老
-# distro 上 host 没有 webkit2gtk-4.1 也无所谓。
+# core22 keeps the Ubuntu 22.04 ABI baseline independently of the host distribution.
+# The GNOME extension supplies GTK >= 4.10; WebKitGTK 6.0 is staged from Jammy updates.
+# Host kernel, GPU and desktop integration still require native snapd acceptance.
 #
 # grade: devel 是有意的:Snap Store 不允许把 devel 的 snap 发布到 stable / candidate。
 # Go 宿主(apps/gui-go)在 strict 限制下的启动、托盘、通知、自启动和全局快捷键
@@ -33,6 +31,12 @@ contact: https://github.com/UniClipboard/UniClipboard/issues
 # 验证并记录之后才能改成 stable。
 grade: devel
 confinement: strict
+
+# WebKit's compiled helper paths must resolve inside the confined mount namespace.
+# The core22 GNOME extension supplies the older WebKit layouts, not this one.
+layout:
+  /usr/lib/$CRAFT_ARCH_TRIPLET/webkitgtk-6.0:
+    bind: $SNAP/usr/lib/$CRAFT_ARCH_TRIPLET/webkitgtk-6.0
 
 architectures:
   - build-on: amd64
@@ -65,6 +69,7 @@ apps:
       - desktop-legacy
       - wayland
       - x11
+      - opengl
       - unity7
       - network
       - network-bind
@@ -78,21 +83,16 @@ parts:
     plugin: nil
     source: .
     source-type: local
-    # core22 build env = Ubuntu 22.04 仓库,libwebkit2gtk-4.1-dev 等 dev 包都
-    # 在 main / universe 里。runtime 阶段这些 .so 由 gnome extension 提供,
-    # stage-packages 只 stage extension 没覆盖到的 libgtk-layer-shell0
-    # (Wayland 快捷面板在运行时加载它)。托盘和通知由 Go 宿主直接走 D-Bus,
-    # 不链接 appindicator / libnotify。
-    #
-    # 构建链:Rust 守护进程(cargo,工具链由仓库的 rust-toolchain.toml 决定)、
-    # 共享前端(bun)、Go 宿主(cgo 链接 GTK3 + WebKitGTK 4.1)。Go 1.27.1 是
-    # apps/gui-go/go.mod 的 toolchain 行;core22 的 apt 里没有这么新的 Go,所以
-    # 下载官方压缩包并校验 SHA-256(与 e2e/linux/Dockerfile.package-build 同一版本)。
+    # Wails requires GtkFileDialog (GTK >= 4.10), supplied by the GNOME SDK/platform.
+    # Jammy's libgtk-4-dev is also installed as a WebKit development dependency,
+    # but its GTK 4.6 must not replace the SDK's headers or runtime library.
+    # WebKitGTK 6.0 and its helper processes are application-owned stage packages.
+    # GTK4 currently uses the ordinary quick-panel window, without Layer Shell.
     build-packages:
       # cgo and the Rust build scripts need a C toolchain; do not rely on the build image having one.
       - build-essential
-      - libwebkit2gtk-4.1-dev
-      - libgtk-3-dev
+      - libwebkitgtk-6.0-dev
+      - libgtk-4-dev
       - libssl-dev
       - cmake
       - clang
@@ -102,7 +102,11 @@ parts:
       - unzip
       - ca-certificates
     stage-packages:
-      - libgtk-layer-shell0
+      - libwebkitgtk-6.0-4
+    prime:
+      - '*'
+      # GTK is owned by the GNOME platform, not the older transitive apt package.
+      - -usr/lib/*/libgtk-4.so*
     build-environment:
       # NOTE: build-environment 的值会被 craft-parts 用双引号包裹后注入构建
       # 脚本(export KEY="VALUE"),且不转义值里的内层字符。含 $VAR 的值(如
@@ -117,6 +121,11 @@ parts:
       craftctl set version="${VERSION}"
     override-build: |
       set -euo pipefail
+
+      # The GNOME extension's PKG_CONFIG_PATH must select the SDK's GTK headers.
+      pkg-config --atleast-version=4.10 gtk4
+      pkg-config --exists webkitgtk-6.0
+      pkg-config --modversion gtk4 webkitgtk-6.0
 
       case "$(dpkg --print-architecture)" in
         amd64) GO_ARCH=amd64; GO_SHA256=63d339f0da5ab53635a56f2490a7984dfe12dfcff22ad749f63edaf590168445 ;;
@@ -152,11 +161,11 @@ parts:
       PRODUCT="$(jq -r .productName apps/gui-go/app.json)"
       IDENTIFIER="$(jq -r .identifier apps/gui-go/app.json)"
       PUBKEY="$(jq -r .updater.pubkey apps/gui-go/app.json)"
-      (cd apps/gui-go && CGO_ENABLED=1 go build -tags gtk3,production,release -trimpath -buildvcs=false \
+      (cd apps/gui-go && CGO_ENABLED=1 go build -tags gtk4,production,release -trimpath -buildvcs=false \
         -ldflags "-w -s -X main.updaterPublicKey=${PUBKEY} -X main.productName=${PRODUCT} -X main.bundleID=${IDENTIFIER}" \
         -o ../../target/release/uniclipboard .)
 
-      # 4) Install into the snap. A strict snap mounts this tree at /usr, so paths start with usr/.
+      # 4) Install into the snap's application tree; layouts expose compiled absolute paths.
       install -Dm755 target/release/uniclipboard \
         "${CRAFT_PART_INSTALL}/usr/bin/uniclipboard"
       install -Dm755 target/release/uniclipd \
@@ -172,3 +181,15 @@ parts:
         "${CRAFT_PART_INSTALL}/usr/share/icons/hicolor/512x512/apps/uniclipboard.png"
       install -Dm644 apps/gui-go/icons/128x128.png \
         "${CRAFT_PART_INSTALL}/usr/share/icons/hicolor/128x128/apps/uniclipboard.png"
+    override-prime: |
+      set -eu
+      craftctl default
+      # Fail before packing if the new WebKit ABI or its sandbox helpers were dropped.
+      LIBDIR="${CRAFT_PRIME}/usr/lib/${CRAFT_ARCH_TRIPLET}"
+      test -e "${LIBDIR}/libwebkitgtk-6.0.so.4"
+      test -e "${LIBDIR}/libjavascriptcoregtk-6.0.so.1"
+      test -x "${LIBDIR}/webkitgtk-6.0/WebKitWebProcess"
+      test -x "${LIBDIR}/webkitgtk-6.0/WebKitNetworkProcess"
+      test -e "${LIBDIR}/webkitgtk-6.0/injected-bundle/libwebkitgtkinjectedbundle.so"
+      # The staged GTK 4.6 cannot satisfy Wails; the content platform owns GTK4.
+      test ! -e "${LIBDIR}/libgtk-4.so.1"

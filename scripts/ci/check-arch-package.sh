@@ -63,7 +63,7 @@ cp /tmp/gui.log /tmp/launch.txt /tmp/launch-ps.txt "$OUT/" 2>/dev/null || true
 grep -q '^keyring-ready$' "$OUT/launch-stdout.txt" && ok "the Secret Service of the harness is ready" || bad "the Secret Service of the harness is ready"
 [[ "${gui_exe:-}" == /usr/bin/uniclipboard ]] && ok "GUI runs from the installed path" || bad "GUI runs from the installed path" "exe=${gui_exe:-none}"
 [[ "${daemon_exe:-}" == /usr/bin/uniclipd ]] && ok "daemon runs from the installed path" || bad "daemon runs from the installed path" "exe=${daemon_exe:-none}"
-case "${webkit_exe:-}" in /usr/lib/webkit2gtk-4.1/WebKitWebProcess | /usr/lib/*/webkit2gtk-4.1/WebKitWebProcess) ok "WebView process runs from the installed WebKitGTK" "$webkit_exe" ;; *) bad "WebView process runs from the installed WebKitGTK" "exe=${webkit_exe:-none}" ;; esac
+case "${webkit_exe:-}" in /usr/lib/webkitgtk-6.0/WebKitWebProcess | /usr/lib/*/webkitgtk-6.0/WebKitWebProcess) ok "WebView process runs from the installed WebKitGTK" "$webkit_exe" ;; *) bad "WebView process runs from the installed WebKitGTK" "exe=${webkit_exe:-none}" ;; esac
 [[ "${gui_alive:-}" == yes && "${daemon_alive:-}" == yes ]] && ok "GUI and daemon are still alive 15 s after the WebView appeared" || bad "GUI and daemon are still alive 15 s after the WebView appeared" "gui=${gui_alive:-?} daemon=${daemon_alive:-?}"
 [[ -n "${daemon_conn:-}" ]] && ok "daemon published its connection file" "$daemon_conn" || bad "daemon published its connection file" "none under /root/.local/share"
 exit "$failures"

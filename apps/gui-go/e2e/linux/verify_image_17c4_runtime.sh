@@ -3,10 +3,10 @@
 # and the services the E2E relies on must be present and working.
 set -eu
 [ -z "$(dpkg --audit)" ] || { echo "dpkg --audit not clean" >&2; exit 1; }
-for lib in libwebkit2gtk libjavascriptcoregtk libgtk-3 libgdk-3 libgtk-4 libsoup libcairo.so libpango libgdk_pixbuf; do
+for lib in libwebkit libjavascriptcoregtk libgtk-3 libgdk-3 libgtk-4 libsoup libcairo.so libpango libgdk_pixbuf; do
   if ldconfig -p | grep -q "$lib"; then echo "host unexpectedly provides $lib" >&2; ldconfig -p | grep "$lib" >&2; exit 1; fi
 done
-[ ! -d /usr/lib/aarch64-linux-gnu/webkit2gtk-4.1 ] && [ ! -d /usr/lib/x86_64-linux-gnu/webkit2gtk-4.1 ] || { echo "webkit2gtk helper directory present" >&2; exit 1; }
+[ ! -d /usr/lib/aarch64-linux-gnu/webkitgtk-6.0 ] && [ ! -d /usr/lib/x86_64-linux-gnu/webkitgtk-6.0 ] || { echo "webkit2gtk helper directory present" >&2; exit 1; }
 for tool in Xvfb xdotool xdpyinfo dbus-run-session fusermount3; do
   command -v "$tool" >/dev/null || { echo "missing executable: $tool" >&2; exit 1; }
 done

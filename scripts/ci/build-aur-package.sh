@@ -52,6 +52,6 @@ pacman -Qlp "$PKG" >"$OUT/package-files.txt"
   echo "commit=$COMMIT"
   echo "package=$(basename "$PKG")"
   echo "host=$(uname -sm)"
-  pacman -Q go rust bun jq webkit2gtk-4.1 gtk3 gtk-layer-shell libsoup3 libx11
+  pacman -Q go rust bun jq webkitgtk-6.0 gtk4 libsoup3 libx11
 } >"$OUT/manifest.txt"
 cat "$OUT/SHA256SUMS" "$OUT/manifest.txt"

@@ -1,10 +1,9 @@
 name: 'Snap'
 run-name: "snap-${{ inputs.channel || github.event.release.tag_name || 'edge' }}-${{ github.run_number }}"
 
-# Snap 走 strict + gnome extension,base=core22 让产物在 Ubuntu 20.04 / RHEL 9
-# / openSUSE Leap 这类 webkit2gtk-4.1 缺位的老 distro 上也能跑(snap 内部
-# bundle 了 webkit/glibc/GTK 完整 stack,跟 host 解耦)。这是 .deb 覆盖不了
-# 的用户群,详见 snap/snapcraft.yaml 顶部说明。
+# Keep core22 as the application ABI baseline. The GNOME content platform owns
+# GTK4; the application stages WebKitGTK 6.0 and checks its helpers before packing.
+# Ubuntu 20.04 host compatibility still requires native snapd acceptance.
 #
 # 默认只构建:pull request(改了 snap 配方时)和 release.published 都只产
 # workflow artifact,不推送商店。Go 宿主在 strict 限制下的行为还没有在真实
@@ -22,6 +21,7 @@ on:
       - 'snap/**'
       - '.github/workflows/snap.yml'
       - 'scripts/check-snap-desktop-icons.py'
+      - 'scripts/tests/test_*snap*.py'
   release:
     types: [published]
   workflow_dispatch:
@@ -129,6 +129,14 @@ jobs:
           ref: ${{ steps.snap-meta.outputs.ref }}
           submodules: recursive
 
+      - name: Verify snap recipe checks
+        run: |
+          if ! python3 -c 'import yaml' >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo apt-get install -y python3-yaml
+          fi
+          python3 -m unittest discover -s scripts/tests -p 'test_*snap*.py'
+
       - name: Build snap
         id: build
         uses: snapcore/action-build@v1
@@ -153,7 +161,6 @@ jobs:
           SNAP_FILE: ${{ steps.build.outputs.snap }}
         run: |
           command -v unsquashfs >/dev/null || sudo apt-get install -y squashfs-tools
-          python3 -m unittest discover -s scripts/tests -p test_check_snap_desktop_icons.py
           python3 scripts/check-snap-desktop-icons.py "$SNAP_FILE"
 
       - name: Check snap store credentials

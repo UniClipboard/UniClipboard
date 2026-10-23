@@ -2,7 +2,7 @@
 # Strict acceptance of the 17c12 Fedora image: real proxy, control client, proxy-config stack present; the toolkit libraries are still absent from the host.
 set -eu
 for tool in tinyproxy curl ip gsettings dconf proxy python3 openssl update-ca-trust; do command -v "$tool" >/dev/null || { echo "missing executable: $tool" >&2; exit 1; }; done
-for lib in libwebkit2gtk libgtk-3 libsoup; do
+for lib in libwebkit libgtk-3 libgtk-4 libsoup; do
   if ldconfig -p | grep -q "$lib"; then echo "host unexpectedly provides $lib" >&2; exit 1; fi
 done
 mods=$(ls /usr/lib64/gio/modules/ | tr '\n' ' ')

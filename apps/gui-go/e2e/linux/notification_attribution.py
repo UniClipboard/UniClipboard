@@ -3,7 +3,7 @@
 
   notification_attribution.py --control FILE --evidence FILE --out DIR [--click-wait 20]
 
-Needs the gtk3,e2e GUI already running with UC_GUI_GO_E2E_CONTROL_FILE=FILE and UC_GUI_GO_EVIDENCE=FILE (the app under test, started by the
+Needs the gtk4,e2e GUI already running with UC_GUI_GO_E2E_CONTROL_FILE=FILE and UC_GUI_GO_EVIDENCE=FILE (the app under test, started by the
 driver). It monitors org.freedesktop.Notifications on the session bus, makes the app send one notification through the control verb
 `invoke host_notification_send`, and records:
   - the Notify call (app_name, hints) as the daemon received it,

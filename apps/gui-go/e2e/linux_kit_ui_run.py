@@ -3,7 +3,7 @@
 
   linux_kit_ui_run.py --out DIR --binaries DIR [--session sway|xvfb|existing] [--shot-pause-ms 1500]
 
-DIR/binaries holds `gui-go` (built with tags gtk3,e2e from a frontend built with VITE_GUI_GO_E2E=1 UC_UI_PLATFORM=linux),
+DIR/binaries holds `gui-go` (built with tags gtk4,e2e from a frontend built with VITE_GUI_GO_E2E=1 UC_UI_PLATFORM=linux),
 `uniclipd` and `uniclip`. Everything runs in a throwaway sandbox: UC_PORTABLE=1 (data root, caches and the file keystore inside
 it), a unique gui-go-* UC_PROFILE, UC_GUI_GO_ISOLATED=1, HOME/XDG_* in the sandbox, UC_DISABLE_SYSTEM_CLIPBOARD=1 and a private
 D-Bus session bus. Entries are synthetic (`uniclip send`, a loopback mobile device); the real clipboard and profile are never used.
@@ -36,14 +36,14 @@ Docker (macOS or Linux host, linux/arm64 or amd64; builds the bundle, the binari
   apps/gui-go/e2e/linux/run.sh kit-ui <outdir>        # UC_DOCKER_CPUS=4 caps the containers
 
 Fedora VM with a native GNOME session (aarch64 or x86_64), over ssh:
-  sudo dnf install gtk3-devel webkit2gtk4.1-devel libX11-devel dbus-devel openssl-devel gcc pkgconf-pkg-config \
+  sudo dnf install gtk4-devel webkitgtk6.0-devel libX11-devel dbus-devel openssl-devel gcc pkgconf-pkg-config \
        python3 dbus-daemon xdotool ImageMagick gnome-screenshot golang rust cargo
   # in the repo; the frontend needs bun (or npm) and the bundle must be built for the Linux skin:
   VITE_GUI_GO_E2E=1 UC_UI_PLATFORM=linux bun --bun run --cwd apps/gui-go/frontend build
   (cd packages/desktop-host-go && go generate ./buildinfo)
   cargo build -p uc-daemon && mkdir -p /tmp/kit-bin && cp target/debug/uniclipd /tmp/kit-bin/
   (cd apps/cli-go && go build -o /tmp/kit-bin/uniclip ./cmd/uniclip)
-  (cd apps/gui-go && CGO_ENABLED=1 go build -tags gtk3,e2e -ldflags "-X main.updaterPublicKey=" -o /tmp/kit-bin/gui-go .)
+  (cd apps/gui-go && CGO_ENABLED=1 go build -tags gtk4,e2e -ldflags "-X main.updaterPublicKey=" -o /tmp/kit-bin/gui-go .)
   # an ssh shell has no desktop: point it at the GNOME session that is logged in on the VM (Wayland socket is usually wayland-0)
   export XDG_RUNTIME_DIR=/run/user/$(id -u) WAYLAND_DISPLAY=wayland-0
   python3 apps/gui-go/e2e/linux_kit_ui_run.py --session existing --binaries /tmp/kit-bin --out ~/kit-ui-out
@@ -635,7 +635,7 @@ class Runner:
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     parser.add_argument('--out', type=Path, required=True)
-    parser.add_argument('--binaries', type=Path, required=True, help='directory with gui-go (gtk3,e2e), uniclipd and uniclip')
+    parser.add_argument('--binaries', type=Path, required=True, help='directory with gui-go (gtk4,e2e), uniclipd and uniclip')
     parser.add_argument('--system-keys', metavar='DIR', type=Path, help='directory with ydotool and ydotoold: type Ctrl+B through /dev/uinput (needs write access to it) instead of leaving that check not_run')
     parser.add_argument('--session', choices=('sway', 'xvfb', 'existing'), default='sway')
     parser.add_argument('--gui-wrapper', default='', help='command that runs the GUI under a tool, e.g. "gdb -batch -ex run -ex bt --args"')

@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
 # Host-side driver for the Linux container checks (macOS or Linux host with Docker).
-#   run.sh build                 build daemon, CLI and the gtk3,e2e GUI inside the container (needs frontend/dist built with VITE_GUI_GO_E2E=1)
+#   run.sh build                 build daemon, CLI and the gtk4,e2e GUI inside the container (needs frontend/dist built with VITE_GUI_GO_E2E=1)
 #   run.sh xvfb <outdir>         run the Xvfb + private D-Bus scenarios (linux_xvfb_run.py) and write the artifacts to <outdir>
 #   run.sh wayland <outdir>      (17c2, image :17c2 via UC_LINUX_IMAGE) headless sway + Layer Shell scenarios (linux_wayland_run.py)
 #   run.sh wayland-nolib <outdir>  same container image with libgtk-layer-shell removed INSIDE the throwaway container: fallback scenario
-#   run.sh kit-ui <outdir>       build the Linux UI-kit bundle (VITE_GUI_GO_E2E=1 UC_UI_PLATFORM=linux, needs bun on the host), the gtk3,e2e GUI and the daemon
+#   run.sh kit-ui <outdir>       build the Linux UI-kit bundle (VITE_GUI_GO_E2E=1 UC_UI_PLATFORM=linux, needs bun on the host), the gtk4,e2e GUI and the daemon
 #                                into /cache/out-kit-ui, then run linux_kit_ui_run.py in a headless-sway container (image :17c2, WebKitGTK renders for real).
 #                                UC_KIT_UI_SKIP_BUILD=1 reuses the bundle and binaries; UC_KIT_UI_SESSION=sway|xvfb picks the display (default sway);
 #                                UC_KIT_UI_ARGS passes more options to the runner (e.g. --skip-dark-theme).
 #   run.sh package <outdir>      run package_linux.py with the daemon from `build` (needs frontend/dist built with VITE_GUI_GO_E2E=0)
 # 17c4 (self-contained AppImage; docs/architecture/gui-go-linux-appimage.md), image :17c2 for the build steps:
 #   run.sh daemon-release        build the shipped release daemon (build_daemon_release.sh) into /cache/out-release with build-evidence.txt
-#   run.sh release-e2e-build     build the GUI with tags gtk3,production,release,e2e (needs frontend/dist built with VITE_GUI_GO_E2E=1)
+#   run.sh release-e2e-build     build the GUI with tags gtk4,production,release,e2e (needs frontend/dist built with VITE_GUI_GO_E2E=1)
 #   run.sh package-release <outdir>      full release package (release-tag GUI, deb, rpm, AppImage) from the release daemon (dist built with E2E=0)
 #   run.sh package-appimage <outdir> [package_linux.py args]   AppImage-only package of the release+e2e GUI (E2E-prefixed; v2 adds --update-marker)
 #   run.sh appimage-feed <outdir> <v2 AppImage.tar.gz>   sign the v2 updater archive with isolated fixture keys (e2e/updatetool, needs Go: build image)

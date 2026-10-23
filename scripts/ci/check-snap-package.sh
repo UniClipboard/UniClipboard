@@ -6,7 +6,7 @@ OUT="$(mkdir -p "${2:?evidence directory}" && cd "$2" && pwd)"
 if [[ "$1" != --session ]]; then
   PACKAGE="$(readlink -f "$1")"
   sudo apt-get update -qq
-  sudo apt-get install -y --no-install-recommends xvfb x11-utils dbus-x11 gnome-keyring libsecret-tools
+  sudo apt-get install -y --no-install-recommends xvfb x11-utils dbus-x11 dbus-user-session gnome-keyring libsecret-tools
   for provider in core24 gnome-46-2404 gtk-common-themes mesa-2404; do
     snap list "$provider" >/dev/null 2>&1 || sudo snap install "$provider"
   done
@@ -19,7 +19,14 @@ if [[ "$1" != --session ]]; then
   done
   snap connections uniclipboard >"$OUT/connections.txt"
   snap list >"$OUT/snaps.txt"
-  timeout --kill-after=10s 180s dbus-run-session -- bash "$0" --session "$OUT"
+  # Snap asks the user manager on the session bus to create its tracking cgroup.
+  # A private dbus-run-session has no user manager and fails before the app starts.
+  sudo loginctl enable-linger "$(id -un)"
+  sudo systemctl start "user@$(id -u).service"
+  export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+  export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+  systemctl --user start dbus.socket
+  timeout --kill-after=10s 180s systemd-run --user --scope --quiet -- bash "$0" --session "$OUT"
   exit
 fi
 
@@ -39,7 +46,7 @@ for _ in $(seq 100); do
   fi
   sleep 0.1
 done
-[[ "$keyring_ready" == true ]] || { echo 'Private Secret Service did not start' >&2; exit 1; }
+[[ "$keyring_ready" == true ]] || { echo 'Runner Secret Service did not start' >&2; exit 1; }
 timeout --kill-after=10s 100s snap run uniclipboard >"$OUT/gui.log" 2>&1 &
 run_pid=$!
 web_pid=''

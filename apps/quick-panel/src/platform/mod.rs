@@ -14,6 +14,16 @@ mod win32;
 #[cfg(target_os = "windows")]
 use win32 as imp;
 
+#[cfg(target_os = "windows")]
+pub use win32::window_is_active;
+#[cfg(target_os = "windows")]
+pub use win32::ForegroundObserver;
+
+#[cfg(not(target_os = "windows"))]
+pub fn window_is_active(window: &gpui::Window) -> bool {
+    window.is_window_active()
+}
+
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 mod fallback;
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]

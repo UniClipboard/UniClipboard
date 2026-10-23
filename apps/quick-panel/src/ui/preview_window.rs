@@ -86,7 +86,7 @@ impl PreviewWindow {
             cx.notify();
         });
         let activation = cx.observe_window_activation(window, |this, window, cx| {
-            if window.is_window_active() {
+            if platform::window_is_active(window) {
                 this.blur = None;
                 return;
             }

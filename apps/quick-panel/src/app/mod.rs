@@ -87,8 +87,8 @@ pub fn run() -> anyhow::Result<()> {
             ]);
             match triggers::install(cx, send, supervised) {
                 Ok(()) => {}
-                Err(_) => {
-                    tracing::error!("Failed to initialize quick panel hotkey manager");
+                Err(error) => {
+                    tracing::error!(error = ?error, "Failed to initialize quick panel triggers");
                     cx.quit();
                     return;
                 }
@@ -96,8 +96,8 @@ pub fn run() -> anyhow::Result<()> {
             let (window, panel) =
                 match window::open_panel(cx, handle.clone(), history, host.clone(), None) {
                     Ok(panel) => panel,
-                    Err(_) => {
-                        tracing::error!("Failed to open GPUI quick panel");
+                    Err(error) => {
+                        tracing::error!(error = ?error, "Failed to open GPUI quick panel");
                         cx.quit();
                         return;
                     }

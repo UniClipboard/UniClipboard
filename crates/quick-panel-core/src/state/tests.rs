@@ -408,9 +408,10 @@ fn a_window_that_cannot_be_hidden_stays_open_with_the_reason() {
 fn losing_focus_closes_the_panel_unless_something_holds_it_open() {
     let (mut state, mut fixture) = open_panel(&["a"]);
     // Right after opening the window is still settling.
-    assert!(state
-        .on_event(Event::Deactivated, &fixture.ctx())
-        .is_empty());
+    assert!(matches!(
+        state.on_event(Event::Deactivated, &fixture.ctx()).as_slice(),
+        [Effect::ScheduleBlurCheck(delay)] if *delay == timing::BLUR_IGNORE_AFTER_SHOW + timing::BLUR_CHECK_DELAY
+    ));
     fixture.now += Duration::from_secs(1);
     let effects = state.on_event(Event::Deactivated, &fixture.ctx());
     assert!(matches!(
@@ -432,10 +433,10 @@ fn losing_focus_closes_the_panel_unless_something_holds_it_open() {
         "the preview has it"
     );
     state.session.blur_grace_until = Some(fixture.now + Duration::from_millis(500));
-    assert!(
-        blurred(&mut state, &fixture, false, false).is_empty(),
-        "grace period"
-    );
+    assert!(matches!(
+        blurred(&mut state, &fixture, false, false).as_slice(),
+        [Effect::ScheduleBlurCheck(delay)] if *delay == Duration::from_millis(500) + timing::BLUR_CHECK_DELAY
+    ));
     fixture.now += Duration::from_secs(1);
     assert!(matches!(
         blurred(&mut state, &fixture, false, false).as_slice(),
@@ -1374,6 +1375,30 @@ fn an_unreachable_daemon_says_nothing_about_the_lock() {
     );
     assert!(!state.search.lock_known);
     assert!(!state.awaiting_lock_state(), "the disconnected page shows");
+}
+
+#[test]
+fn a_click_outside_during_show_debounce_is_checked_after_it_expires() {
+    let (mut state, mut fixture) = open_panel(&["a"]);
+    fixture.now += Duration::from_millis(50);
+    let effects = state.on_event(Event::Deactivated, &fixture.ctx());
+    assert!(
+        matches!(effects.as_slice(), [Effect::ScheduleBlurCheck(delay)]
+        if *delay == Duration::from_millis(350))
+    );
+    fixture.now += Duration::from_millis(350);
+    assert!(matches!(
+        state
+            .on_blur_checked(false, false, &fixture.ctx())
+            .as_slice(),
+        [Effect::HideWindow]
+    ));
+    assert!(state
+        .on_blur_checked(true, false, &fixture.ctx())
+        .is_empty());
+    assert!(state
+        .on_blur_checked(false, true, &fixture.ctx())
+        .is_empty());
 }
 
 #[test]

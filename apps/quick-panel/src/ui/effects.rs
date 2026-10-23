@@ -356,8 +356,10 @@ impl Panel {
 
     /// Whether either window still has the focus, asked when the panel window lost it.
     pub(super) fn dismiss_if_unfocused(&mut self, history: &mut Window, cx: &mut Context<Self>) {
-        let panel_active = history.is_window_active();
+        let panel_active = platform::window_is_active(history);
+        let cached_active = history.is_window_active();
         let preview_active = self.preview_active(cx);
+        tracing::debug!(panel_active, preview_active, cached_active, unlock = ?self.state.session.unlock, visible = self.state.session.visible, "Quick panel focus checked");
         self.deliver(
             Event::BlurChecked {
                 panel_active,
@@ -376,7 +378,7 @@ impl Panel {
         self.preview_window
             .and_then(|handle| {
                 handle
-                    .update(cx, |_, window, _| window.is_window_active())
+                    .update(cx, |_, window, _| platform::window_is_active(window))
                     .ok()
             })
             .unwrap_or(false)

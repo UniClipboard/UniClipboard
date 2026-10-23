@@ -377,6 +377,16 @@ def main():
         check('2 the same shortcut hides it and the previous window is the foreground again', hidden and foreground_pid() == target.pid,
               {'foreground': foreground_pid(), 'target': target.pid})
 
+        for label, delay in [('immediate', 0), ('settled', 0.5)]:
+            send_chord('ctrl', 'alt', 'v', hold=0.15)
+            wait_for(lambda: panel_windows(helper_pids()) and foreground_pid() == panel_pid, 10)
+            time.sleep(delay)
+            focus_target()
+            dismissed = wait_for(lambda: not panel_windows(helper_pids()), 5)
+            check(f'2b {label} foreground change dismisses the panel without stealing focus back',
+                  bool(dismissed) and foreground_pid() == target.pid,
+                  {'foreground': foreground_pid(), 'target': target.pid})
+
         # 3a: the history is newest first (gamma, beta, alpha), so two Downs from the first row reach alpha.
         clear_editor()  # the panel pastes into whatever window was in front when it opened
         send_chord('ctrl', 'alt', 'v', hold=0.15)

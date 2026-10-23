@@ -4,6 +4,24 @@ use super::*;
 use quick_panel_core::actions::Action;
 
 impl Panel {
+    #[cfg(target_os = "windows")]
+    pub fn foreground_changed(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let active = platform::window_is_active(window);
+        tracing::debug!(
+            active,
+            visible = self.state.session.visible,
+            "Quick panel desktop foreground changed"
+        );
+        self.deliver(
+            if active {
+                Event::Activated
+            } else {
+                Event::Deactivated
+            },
+            window,
+            cx,
+        );
+    }
     /// The shortcut or the double tap.
     pub fn toggle(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.apply(window, cx, |state, ctx| state.toggle(ctx));

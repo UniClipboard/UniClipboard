@@ -203,7 +203,13 @@ impl Panel {
             }
         });
         let activation = cx.observe_window_activation(window, |this, window, cx| {
-            let event = if window.is_window_active() {
+            let active = platform::window_is_active(window);
+            tracing::debug!(
+                active,
+                cached_active = window.is_window_active(),
+                "Quick panel activation changed"
+            );
+            let event = if active {
                 Event::Activated
             } else {
                 Event::Deactivated

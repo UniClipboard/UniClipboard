@@ -18,7 +18,16 @@ pub enum Trigger {
     TestControl,
     /// A command line from the supervising GUI, see `lifecycle::watch_host`.
     Host(HostCommand),
+    #[cfg(target_os = "windows")]
+    ForegroundChanged,
 }
+
+#[cfg(target_os = "windows")]
+struct ForegroundGuard {
+    _observer: crate::platform::ForegroundObserver,
+}
+#[cfg(target_os = "windows")]
+impl gpui::Global for ForegroundGuard {}
 
 /// Registers both triggers on the channel `send` feeds. The channel must exist before the panel
 /// opens, because the panel applies the persisted double-tap modifier as soon as it loads settings.
@@ -36,6 +45,15 @@ pub fn install(
     GlobalHotKeyEvent::set_event_handler(Some(move |event| {
         let _ = hotkey_send.try_send(Trigger::Hotkey(event));
     }));
+    #[cfg(target_os = "windows")]
+    {
+        let foreground_send = send.clone();
+        cx.set_global(ForegroundGuard {
+            _observer: crate::platform::ForegroundObserver::new(move || {
+                let _ = foreground_send.try_send(Trigger::ForegroundChanged);
+            })?,
+        });
+    }
     cx.set_global(double_tap::DoubleTap(double_tap::new_monitor(move || {
         let _ = send.try_send(Trigger::DoubleTap);
     })));
@@ -87,6 +105,13 @@ pub fn forward(
 ) {
     cx.spawn(async move |cx: &mut AsyncApp| {
         while let Ok(trigger) = receive.recv().await {
+            #[cfg(target_os = "windows")]
+            if matches!(trigger, Trigger::ForegroundChanged) {
+                let _ = window.update(cx, |_, window, cx| {
+                    panel.update(cx, |panel, cx| panel.foreground_changed(window, cx));
+                });
+                continue;
+            }
             if let Trigger::Host(command) = trigger {
                 if cx
                     .update(|cx| host_command(cx, command, window, &panel))

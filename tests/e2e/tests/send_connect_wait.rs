@@ -2,10 +2,14 @@
 //! deadline for daemon readiness and target-device connection.
 //!
 //! Single-node cases need one initialized node. Two-node cases pair two
-//! isolated profiles, stop the peer's daemon, and restart it while `send` waits.
+//! isolated profiles against a local invitation directory, stop the peer's
+//! daemon, and restart it while `send` waits. P2P transport remains real.
 //! The two-node cases depend on the Engine reconnecting a restarted peer, the
 //! same path as the known flaky `cli_engine_workflows` restart test, so a
 //! failure there must be triaged against that baseline before blaming `send`.
+//!
+//! Pure target-selection combinations are covered by Go TestSendVirtualTime;
+//! this suite retains real startup, transport, cancellation and output checks.
 //!
 //! Run with: cargo test -p uc-e2e-tests --test send_connect_wait -- --ignored
 
@@ -14,8 +18,8 @@ use std::time::{Duration, Instant};
 
 use serde_json::Value;
 use uc_e2e_tests::{
-    get_session_token, invite_join_round, pair_two_nodes, setup_initialized_node, TestCli,
-    TestDaemon, TestProfile,
+    get_session_token, invite_join_round, pair_two_nodes_with_rendezvous, setup_initialized_node,
+    LocalRendezvous, NodeBinarySet, TestCli, TestDaemon, TestProfile,
 };
 
 const UNKNOWN_DEVICE: &str = "no-such-device";
@@ -126,6 +130,17 @@ async fn file_send_waits_for_targets_before_dispatch() {
     );
 }
 
+// The caller retains the local invitation service until all nodes stop.
+async fn pair_two_nodes(
+    prefix: &str,
+    passphrase: &str,
+) -> (LocalRendezvous, TestDaemon, TestCli, TestDaemon, TestCli) {
+    let rendezvous = LocalRendezvous::start().await;
+    let (alice, alice_cli, bob, bob_cli) =
+        pair_two_nodes_with_rendezvous(prefix, passphrase, Some(&rendezvous.uri())).await;
+    (rendezvous, alice, alice_cli, bob, bob_cli)
+}
+
 // ── Helpers ──────────────────────────────────────────────────────────
 
 fn peer_device_id(cli: &TestCli, name: &str) -> String {
@@ -216,7 +231,7 @@ fn spawn_cli(
 #[tokio::test]
 #[ignore]
 async fn late_connecting_peer_receives_exactly_one_copy() {
-    let (alice_daemon, alice_cli, mut bob_daemon, bob_cli) =
+    let (_rendezvous, alice_daemon, alice_cli, mut bob_daemon, bob_cli) =
         pair_two_nodes("send-wait-late", "wait-pass").await;
     let bob_id = peer_device_id(&alice_cli, "bob-node");
     let text = "late-peer-single-copy";
@@ -277,7 +292,7 @@ async fn late_connecting_peer_receives_exactly_one_copy() {
 #[tokio::test]
 #[ignore]
 async fn permanently_offline_peer_gets_nothing_after_the_deadline() {
-    let (alice_daemon, alice_cli, mut bob_daemon, bob_cli) =
+    let (_rendezvous, alice_daemon, alice_cli, mut bob_daemon, bob_cli) =
         pair_two_nodes("send-wait-offline", "wait-pass").await;
     let bob_id = peer_device_id(&alice_cli, "bob-node");
     let text = "offline-peer-never-sent";
@@ -331,7 +346,7 @@ async fn permanently_offline_peer_gets_nothing_after_the_deadline() {
 #[tokio::test]
 #[ignore]
 async fn interrupt_while_waiting_for_a_device_exits_without_sending() {
-    let (alice_daemon, alice_cli, mut bob_daemon, bob_cli) =
+    let (_rendezvous, alice_daemon, alice_cli, mut bob_daemon, bob_cli) =
         pair_two_nodes("send-wait-sigint", "wait-pass").await;
     let bob_id = peer_device_id(&alice_cli, "bob-node");
     let text = "interrupted-before-dispatch";
@@ -440,7 +455,7 @@ async fn daemon_that_never_starts_ends_at_the_deadline_with_exit_5() {
 #[tokio::test]
 #[ignore]
 async fn file_send_json_keeps_stdout_machine_readable() {
-    let (alice_daemon, alice_cli, bob_daemon, _bob_cli) =
+    let (_rendezvous, alice_daemon, alice_cli, bob_daemon, _bob_cli) =
         pair_two_nodes("send-wait-file-json", "wait-pass").await;
     let bob_id = peer_device_id(&alice_cli, "bob-node");
     let mut file = tempfile::NamedTempFile::new().expect("temp file");
@@ -477,11 +492,12 @@ async fn file_send_json_keeps_stdout_machine_readable() {
 // ── Two- and three-node: target selection policy and resend ──────────
 
 /// Alice's space plus Bob and Carol as members. Returns
-/// `(alice_daemon, alice_cli, bob_daemon, bob_cli, carol_daemon, carol_cli)`.
+/// the service guard followed by each daemon and its CLI.
 async fn three_nodes(
     prefix: &str,
     passphrase: &str,
 ) -> (
+    LocalRendezvous,
     TestDaemon,
     TestCli,
     TestDaemon,
@@ -489,16 +505,22 @@ async fn three_nodes(
     TestDaemon,
     TestCli,
 ) {
-    let (alice_daemon, alice_cli, bob_daemon, bob_cli) = pair_two_nodes(prefix, passphrase).await;
+    let (rendezvous, alice_daemon, alice_cli, bob_daemon, bob_cli) =
+        pair_two_nodes(prefix, passphrase).await;
     let carol_profile = TestProfile::new(&format!("{prefix}-carol"));
-    let carol_daemon = TestDaemon::start(carol_profile)
-        .await
-        .expect("carol daemon start");
+    let carol_daemon = TestDaemon::start_clean_with(
+        carol_profile,
+        &NodeBinarySet::current(),
+        Some(&rendezvous.uri()),
+    )
+    .await
+    .expect("carol daemon start");
     let carol_cli = TestCli::new(&carol_daemon.profile);
     let joined = invite_join_round(&alice_cli, &carol_cli, passphrase, "carol-node").await;
     assert!(joined.success(), "carol join failed: {joined:?}");
     tokio::time::sleep(Duration::from_secs(2)).await;
     (
+        rendezvous,
         alice_daemon,
         alice_cli,
         bob_daemon,
@@ -508,50 +530,12 @@ async fn three_nodes(
     )
 }
 
-/// With `--peer`, every listed device must be connected: one online device
-/// does not satisfy the wait, and only the offline one is named.
-#[tokio::test]
-#[ignore]
-async fn every_listed_peer_must_connect_before_dispatch() {
-    let (alice_daemon, alice_cli, mut bob_daemon, _bob_cli, carol_daemon, _carol_cli) =
-        three_nodes("send-wait-listed", "wait-pass").await;
-    let bob_id = peer_device_id(&alice_cli, "bob-node");
-    let carol_id = peer_device_id(&alice_cli, "carol-node");
-
-    kill_and_wait_offline(&alice_daemon, &mut bob_daemon, &bob_id).await;
-    let output = alice_cli.run_capture(&[
-        "--json",
-        "send",
-        "listed-peers-all-required",
-        "--peer",
-        &bob_id,
-        "--peer",
-        &carol_id,
-        "--connect-timeout",
-        "3",
-    ]);
-
-    assert_eq!(output.exit_code, 1, "stderr: {}", output.stderr);
-    assert!(output.stdout.trim().is_empty(), "stdout: {}", output.stdout);
-    assert!(
-        output.stderr.contains(&format!("{bob_id} (offline)")),
-        "{}",
-        output.stderr
-    );
-    assert!(
-        !output.stderr.contains(&format!("{carol_id} (offline)")),
-        "connected device must not be reported: {}",
-        output.stderr
-    );
-    drop((alice_daemon, carol_daemon));
-}
-
 /// Without `--peer`, one connected paired device is enough: the send does not
 /// wait for the offline one, and the offline one is counted in the outcome.
 #[tokio::test]
 #[ignore]
 async fn one_connected_device_is_enough_without_the_peer_flag() {
-    let (alice_daemon, alice_cli, mut bob_daemon, _bob_cli, carol_daemon, carol_cli) =
+    let (_rendezvous, alice_daemon, alice_cli, mut bob_daemon, _bob_cli, carol_daemon, carol_cli) =
         three_nodes("send-wait-any", "wait-pass").await;
     let text = "one-connected-is-enough";
 
@@ -575,45 +559,13 @@ async fn one_connected_device_is_enough_without_the_peer_flag() {
     drop((alice_daemon, carol_daemon));
 }
 
-/// Without `--peer` and with every paired device offline, the wait times out
-/// and states how many paired devices were unreachable.
-#[tokio::test]
-#[ignore]
-async fn all_paired_devices_offline_times_out_without_the_peer_flag() {
-    let (alice_daemon, alice_cli, mut bob_daemon, _bob_cli, mut carol_daemon, _carol_cli) =
-        three_nodes("send-wait-none", "wait-pass").await;
-
-    let bob_id = peer_device_id(&alice_cli, "bob-node");
-    kill_and_wait_offline(&alice_daemon, &mut bob_daemon, &bob_id).await;
-    let carol_id = peer_device_id(&alice_cli, "carol-node");
-    kill_and_wait_offline(&alice_daemon, &mut carol_daemon, &carol_id).await;
-    let output =
-        alice_cli.run_capture(&["--json", "send", "nobody-online", "--connect-timeout", "3"]);
-
-    assert_eq!(output.exit_code, 1, "stderr: {}", output.stderr);
-    assert!(output.stdout.trim().is_empty(), "stdout: {}", output.stdout);
-    assert!(
-        output
-            .stderr
-            .contains("none of 2 paired device(s) is connected"),
-        "{}",
-        output.stderr
-    );
-    assert!(
-        output.stderr.contains("Nothing was sent"),
-        "{}",
-        output.stderr
-    );
-    drop(alice_daemon);
-}
-
 /// `--resend` waits only for the daemon, never for devices: with the target
 /// offline it returns promptly through the normal resend outcome instead of
 /// running into the connect deadline.
 #[tokio::test]
 #[ignore]
 async fn resend_does_not_wait_for_devices() {
-    let (alice_daemon, alice_cli, mut bob_daemon, _bob_cli) =
+    let (_rendezvous, alice_daemon, alice_cli, mut bob_daemon, _bob_cli) =
         pair_two_nodes("send-wait-resend", "wait-pass").await;
     let bob_id = peer_device_id(&alice_cli, "bob-node");
     let mut file = tempfile::NamedTempFile::new().expect("temp file");
@@ -682,7 +634,7 @@ async fn file_send_shows_real_byte_progress_on_a_terminal() {
         return;
     }
 
-    let (alice_daemon, alice_cli, bob_daemon, _bob_cli) =
+    let (_rendezvous, alice_daemon, alice_cli, bob_daemon, _bob_cli) =
         pair_two_nodes("send-wait-pty", "wait-pass").await;
     let bob_id = peer_device_id(&alice_cli, "bob-node");
     let dir = tempfile::tempdir().expect("temp dir");

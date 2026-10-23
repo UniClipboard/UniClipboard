@@ -8,7 +8,7 @@
 use std::process::{Child, Command, Stdio};
 use std::time::Duration;
 
-use crate::{CapturedOutput, TestCli, TestDaemon, TestProfile};
+use crate::{CapturedOutput, NodeBinarySet, TestCli, TestDaemon, TestProfile};
 
 /// Start a daemon, init a space, and return (daemon, cli).
 pub async fn setup_initialized_node(
@@ -16,8 +16,17 @@ pub async fn setup_initialized_node(
     device_name: &str,
     passphrase: &str,
 ) -> (TestDaemon, TestCli) {
+    setup_initialized_node_with_rendezvous(name, device_name, passphrase, None).await
+}
+
+async fn setup_initialized_node_with_rendezvous(
+    name: &str,
+    device_name: &str,
+    passphrase: &str,
+    rendezvous: Option<&str>,
+) -> (TestDaemon, TestCli) {
     let profile = TestProfile::new(name);
-    let daemon = TestDaemon::start(profile)
+    let daemon = TestDaemon::start_clean_with(profile, &NodeBinarySet::current(), rendezvous)
         .await
         .expect("daemon start failed");
     let cli = TestCli::new(&daemon.profile);
@@ -184,15 +193,31 @@ pub async fn pair_two_nodes(
     test_prefix: &str,
     passphrase: &str,
 ) -> (TestDaemon, TestCli, TestDaemon, TestCli) {
+    pair_two_nodes_with_rendezvous(test_prefix, passphrase, None).await
+}
+
+/// Pair fresh nodes using the supplied invitation directory on both daemons.
+/// The caller owns the service lifetime; daemon restarts retain its address.
+pub async fn pair_two_nodes_with_rendezvous(
+    test_prefix: &str,
+    passphrase: &str,
+    rendezvous: Option<&str>,
+) -> (TestDaemon, TestCli, TestDaemon, TestCli) {
     // Alice: init space
-    let (alice_daemon, alice_cli) =
-        setup_initialized_node(&format!("{test_prefix}-alice"), "alice-node", passphrase).await;
+    let (alice_daemon, alice_cli) = setup_initialized_node_with_rendezvous(
+        &format!("{test_prefix}-alice"),
+        "alice-node",
+        passphrase,
+        rendezvous,
+    )
+    .await;
 
     // Bob: start daemon (no init yet — join will set up the space)
     let bob_profile = TestProfile::new(&format!("{test_prefix}-bob"));
-    let bob_daemon = TestDaemon::start(bob_profile)
-        .await
-        .expect("bob daemon start");
+    let bob_daemon =
+        TestDaemon::start_clean_with(bob_profile, &NodeBinarySet::current(), rendezvous)
+            .await
+            .expect("bob daemon start");
     let bob_cli = TestCli::new(&bob_daemon.profile);
 
     let join_out = invite_join_round(&alice_cli, &bob_cli, passphrase, "bob-node").await;

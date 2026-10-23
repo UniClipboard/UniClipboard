@@ -22,7 +22,8 @@ pub use cli::{CapturedOutput, TestCli};
 pub use daemon::TestDaemon;
 pub use device_group::confirm_device_group;
 pub use pairing::{
-    invite_join_round, invite_switch_round, pair_two_nodes, setup_initialized_node, InviteSession,
+    invite_join_round, invite_switch_round, pair_two_nodes, pair_two_nodes_with_rendezvous,
+    setup_initialized_node, InviteSession,
 };
 pub use profile::TestProfile;
 pub use releases::{

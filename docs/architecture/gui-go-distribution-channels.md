@@ -25,7 +25,7 @@
 
 | # | 失败方式 | 如何被发现或防住 |
 | --- | --- | --- |
-| G1 | Linux 专有（cgo、GTK）或 Windows 专有文件里的编译错误，在 macOS 开发机和前端作业里都看不到 | PR 作业在 Linux 镜像里 `go vet` 并链接 `gtk3,production,release`，并对 windows/amd64、windows/arm64 做 `vet` 与链接；故意注入错误必须使作业失败（见「验证结果」） |
+| G1 | Linux 专有（cgo、GTK）或 Windows 专有文件里的编译错误，在 macOS 开发机和前端作业里都看不到 | PR 作业在 Linux 镜像里 `go vet` 并链接 `gtk4,production,release`，并对 windows/amd64、windows/arm64 做 `vet` 与链接；故意注入错误必须使作业失败（见「验证结果」） |
 | G2 | 门禁绿了，但只检查了子集（缺 `packages/desktop-host-go`、缺 `e2e` 标签、`./...` 被缩成 `.`） | 脚本显式覆盖这三处；`desktop-host-go` 的 `buildinfo` 与 Rust 工作区的版本漂移也被拦截 |
 | G3 | 路径过滤让必需检查永远 pending：workflow 级 `paths` 不命中的 PR 不会出现该检查 | 作业放进已有的 `pr-check.yml`，复用它的 `changes` 过滤器；`packages/**` 补进 `paths`。把该检查设为必需（分支保护）属于需要授权的动作，见报告 |
 | G4 | 自动推送把坏的 PKGBUILD 发布到 AUR | 推送改为只能由 `main` 上显式的 `workflow_dispatch(publish=true)` 触发，且排在同一提交的 `makepkg` 构建与干净安装之后；PR 与 push 只构建 |
@@ -45,7 +45,7 @@
 `pr-check.yml` 的 `gui-go` 作业（名称 `Go Host Compile Check`）在 `ghcr.io/uniclipboard/build-bookworm` 容器里运行 `scripts/ci/check-gui-go.sh all`：
 
 - `packages/desktop-host-go`：重新生成 `buildinfo` 并要求与已提交内容一致，再 `go vet ./...`。
-- Linux：`go vet -tags gtk3,production,release ./...`、`go vet -tags gtk3,e2e .`，并链接 `gtk3,production,release`。
+- Linux：`go vet -tags gtk4,production,release ./...`、`go vet -tags gtk4,e2e .`，并链接 `gtk4,production,release`。
 - Windows：amd64 与 arm64 各做 `go vet -tags production,release ./...` 与链接（`CGO_ENABLED=0`，`-H windowsgui`）。`build_windows.py --cross-check-only` 只覆盖 amd64 与非 release 标签，是它的子集，因此没有再调用它。
 - 作业不缓存 Go 模块（PR 只读默认分支缓存），上传链接产物与 `SHA256SUMS` 作为证据，不发布任何东西。
 - macOS 的 `go vet`/链接已经在 macOS 打包作业里；Linux、Windows 的真实运行不在 PR 门禁内。

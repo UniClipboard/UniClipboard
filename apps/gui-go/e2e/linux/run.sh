@@ -252,6 +252,6 @@ case "$mode" in
     packages="$(cd "${2:?package_linux.py output dir}" && pwd)"; mkdir -p "$(dirname "${3:?upload dir}")"; upload_parent="$(cd "$(dirname "$3")" && pwd)"; upload_name="$(basename "$3")"
     docker run "${common[@]}" -v "$packages:/in:ro" -v "$upload_parent:/up" -e UC_EXPECT_HEAD="${UC_EXPECT_HEAD:?UC_EXPECT_HEAD}" -e UC_MAX_GLIBC "$IMAGE" bash -c '
       python3 apps/gui-go/e2e/linux/verify_package_set.py --arch "$ARCH" --packages /in --daemon-evidence /cache/out-release/build-evidence.txt \
-        --expect-head "$UC_EXPECT_HEAD" --max-glibc "${UC_MAX_GLIBC:-2.36}" --upload-dir "/up/'"$upload_name"'" --report "/up/'"$upload_name"'.report.json"' ;;
+        --expect-head "$UC_EXPECT_HEAD" --max-glibc "${UC_MAX_GLIBC:-2.39}" --upload-dir "/up/'"$upload_name"'" --report "/up/'"$upload_name"'.report.json"' ;;
   *) echo "usage: run.sh build|xvfb|kit-ui|package|daemon-release|release-e2e-build|package-release|package-appimage [outdir]" >&2; exit 2 ;;
 esac

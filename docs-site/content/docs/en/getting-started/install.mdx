@@ -225,7 +225,7 @@ Don't have `snapd`? See the [Snapcraft install guide](https://snapcraft.io/docs/
 
 ### Compatible distributions — AppImage
 
-An AppImage is also published with each release. GTK4 versions bundle GTK and WebKitGTK but still require host glibc >= 2.39, so they cannot run on every older distribution. Download it from the [Releases](https://github.com/UniClipboard/UniClipboard/releases) page, mark it executable, and run it:
+An AppImage is also published with each release. GTK4 versions bundle GTK and WebKitGTK but still require host glibc >= 2.39 and a system Vulkan loader (`libvulkan.so.1`), so they cannot run on every older distribution. Download it from the [Releases](https://github.com/UniClipboard/UniClipboard/releases) page, mark it executable, and run it:
 
 ```bash
 chmod +x UniClipboard_<version>_amd64.AppImage

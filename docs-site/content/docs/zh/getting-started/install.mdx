@@ -197,7 +197,7 @@ sudo snap connect uniclipboard:password-manager-service
 
 ### 兼容发行版 — AppImage
 
-每个 release 也会发布 AppImage。GTK4 版本虽自带 GTK 和 WebKitGTK，仍要求宿主 glibc ≥ 2.39，不能用于所有老发行版。从 [Releases](https://github.com/UniClipboard/UniClipboard/releases) 页面下载，赋予可执行权限即可运行：
+每个 release 也会发布 AppImage。GTK4 版本虽自带 GTK 和 WebKitGTK，仍要求宿主 glibc ≥ 2.39 和系统 Vulkan 加载器（`libvulkan.so.1`），不能用于所有老发行版。从 [Releases](https://github.com/UniClipboard/UniClipboard/releases) 页面下载，赋予可执行权限即可运行：
 
 ```bash
 chmod +x UniClipboard_<version>_amd64.AppImage

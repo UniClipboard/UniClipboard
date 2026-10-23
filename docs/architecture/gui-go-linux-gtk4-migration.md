@@ -4,7 +4,7 @@
 
 ## 依赖与兼容范围
 
-Wails 使用 GTK 4.14 起提供的 `GdkMonitor.get_scale`，因此要求 GTK ≥ 4.14（`GtkFileDialog` 自 GTK 4.10 起提供）；WebKit 使用 `webkitgtk-6.0` ABI。公共 GUI 构建镜像改为 Ubuntu 24.04，glibc 验收上限为 2.39；这是明确提高的构建基线，不再承诺 Debian 12 或 Ubuntu 22.04 的原生 deb/rpm/AppImage 兼容性。最终产物中每个 ELF 的实际需求仍由 `elf_floor.py` 检查。
+Wails 使用 GTK 4.14 起提供的 `GdkMonitor.get_scale`，因此要求 GTK ≥ 4.14（`GtkFileDialog` 自 GTK 4.10 起提供）；WebKit 使用 `webkitgtk-6.0` ABI。公共 GUI 构建镜像改为 Ubuntu 24.04；打包产物中 ELF 的 GLIBC 符号版本需求上限为 2.39，而非宿主 glibc 的版本上限；这是明确提高的构建基线，不再承诺 Debian 12 或 Ubuntu 22.04 的原生 deb/rpm/AppImage 兼容性。最终产物中每个 ELF 的实际需求仍由 `elf_floor.py` 检查。
 
 | 渠道 | GTK4 契约 |
 | --- | --- |

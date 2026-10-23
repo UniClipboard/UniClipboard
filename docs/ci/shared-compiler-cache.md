@@ -53,7 +53,7 @@ PR Check 按 PR 编号分组，新推送取消该 PR 的过时运行。编译任
 | `pr-check-linux` | bookworm 容器内 Rust Check | `.github/actions/build-pr-rust`：工作区检查、独立 Quick Panel 检查、OpenAPI 生成器 |
 | `quick-panel-windows` | Windows x64 / ARM64 Quick Panel | `.github/actions/build-pr-rust`：独立 Quick Panel 检查、字体回退测试编译 |
 
-所有消费者保留原有运行验证。musl CLI、Linux GUI 自有打包容器、覆盖率与 membership 尚未接入这些快照，仍走各自原有缓存策略，不混用 sidecar 编译图。
+所有消费者保留原有运行验证。musl CLI、Linux GUI 自有打包容器与 membership 尚未接入这些快照，仍走各自原有缓存策略，不混用 sidecar 编译图。
 
 `cache-warmup.yml` 的 E2E 与 PR Rust 预热任务在受保护 main 上生成快照，使用现有 writer 环境；PR 只读现有 reader 环境。快照预热复用 `.github/actions/build-e2e-rust`，与 PR 使用相同的 daemon、开发 CLI、Engine host 和测试二进制编译命令，保留开发 CLI 的独立 target 与 feature 图。构建本身继续使用 Engine 固定入口，原生 MBX 对象写入限制不变。快照发布是独立的 CI 归档传输，允许受保护 main 的 push、定时预热和手动预热，不允许 PR 或任意分支写入。
 
@@ -104,3 +104,13 @@ python3 scripts/ci/mbx-snapshot.test.py -v
 `mbx-snapshot-validation.yml` 在 Linux、macOS、Windows x64 / ARM64 上运行小型原生往返测试，不需要 R2 凭据。它验证可移植性和缓存正确性，不代替受保护 main 的真实发布与三模式性能对照。修改快照脚本会使已有快照键失效，包括 macOS；合并后的自动预热会生成新基线。
 
 预热命中后停止对象回源的策略需要在合并后验证：先由受保护 main 发布当前协议基线，再核对命中生产者的 `snapshot-restore.json`、原生对象读取为零、`snapshot-save.json` 成功且实际生产 SHA 正确，最后以独立只读消费者恢复并验证产物。协议更新后的首次未命中预热仍会产生对象读取，不能作为命中策略的有效样本。
+
+## 覆盖率编译快照
+
+覆盖率生产和消费统一调用 `.github/actions/rust-coverage`，使用固定的 cargo-llvm-cov 0.9.1、相同工具链配置、系统依赖和完整的 `cargo llvm-cov --lcov --output-path lcov.info --workspace` 测试命令。消费者继续向 Codecov 上传本次生成的报告，预热不上传 Codecov。
+
+`coverage-linux` 是独立的 MBX 导出分组与快照场景，不混用普通 check、E2E 或发布编译图。除了共享协议输入，场景键还包含 cargo-llvm-cov 实际版本、宿主 `/etc/os-release` 和显式 Rust/profile flags；插桩的实际编译输入继续由原生 MBX 校验。只恢复编译动作闭包，每次仍完整执行测试并重新生成 LCOV、profraw/profdata；这些运行结果和 Cargo target 状态不进入快照。
+
+消费者仅恢复；预热只有在受保护 main 且测试成功后才发布。两者命中后均停止逐对象 R2 读写，缺失或损坏时保留原对象回退。快照上传、清理及必要的本地重编译仍存在，不能把覆盖率报告当成编译缓存复用。
+
+新增场景修改了共享协议脚本，因此现有场景的键也会一次性失效。合并后的自动预热会重新建立基线；应在基线保存后验证覆盖率生产者命中、再次保存及独立消费者命中，不能把首次回退作为优化效果。Linux 原生回归另外验证：插桩编译 → 导出及精简闭包 → 空 CAS/空 target 导入 → 再次执行测试 → 新 LCOV 含已覆盖的库代码，且运行标记确实增加。

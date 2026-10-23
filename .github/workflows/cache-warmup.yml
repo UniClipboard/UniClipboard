@@ -18,6 +18,7 @@ on:
       - 'scripts/ci/configure-build-mode.mjs'
       - 'scripts/ci/resolve-app-env.mjs'
       - '.github/actions/mbx-snapshot/**'
+      - '.github/actions/rust-coverage/**'
       - '.github/actions/build-e2e-rust/**'
       - '.github/actions/build-pr-rust/**'
       - 'scripts/build-cache/**'
@@ -201,55 +202,13 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Install cargo-llvm-cov
-        uses: taiki-e/install-action@cargo-llvm-cov
-
-      - name: Setup Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@v1.15.2
+      - name: Run shared coverage workload and publish snapshot
+        uses: ./.github/actions/rust-coverage
         with:
-          cache: false
-
-      - name: Start shared Engine MBX cache
-        uses: ./.github/actions/engine-build-cache
-        with:
-          cache-key: coverage
-          access: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && github.ref_protected && 'write' || 'read' }}
+          publish-snapshot: 'true'
           endpoint: ${{ secrets.BUILD_CACHE_R2_ENDPOINT }}
           access-key-id: ${{ secrets.BUILD_CACHE_R2_ACCESS_KEY_ID }}
           secret-access-key: ${{ secrets.BUILD_CACHE_R2_SECRET_ACCESS_KEY }}
-
-      - name: Cache Rust dependencies
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: ". -> target"
-          shared-key: coverage
-          cache-targets: false
-          save-if: true
-
-      # Rust workspace only: uc-platform uses libdbus; GPUI links FreeType, xcb and xkbcommon (xcb comes with libxkbcommon-x11-dev).
-      # Wails GTK/WebKit and Linux packaging tools belong to the separate Go GUI build jobs.
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          # Same list as coverage.yml; libxkbcommon-x11-dev is linked by the GPUI quick panel's test binary.
-          sudo apt-get install -y --no-install-recommends libdbus-1-dev libfreetype6-dev libxkbcommon-x11-dev xvfb xauth
-
-      - name: Generate coverage report
-        run: |
-          xvfb-run -a cargo llvm-cov --lcov --output-path lcov.info --workspace
-
-      - name: Summarize MBX cache requests
-        if: always()
-        shell: bash
-        run: python3 scripts/ci/summarize-mbx.py "$RUNNER_TEMP/mbx-evidence"
-
-      - name: Retain MBX compiler evidence
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: mbx-coverage
-          path: ${{ runner.temp }}/mbx-evidence/
-          if-no-files-found: ignore
 
   warmup-e2e-macos:
     name: Warm macOS E2E CAS snapshot

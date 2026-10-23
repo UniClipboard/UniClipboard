@@ -5,7 +5,12 @@ import { parse } from 'yaml'
 
 type Step = {
   uses?: string
-  with?: { operation?: string; scene?: string; 'object-fallback'?: string }
+  with?: {
+    operation?: string
+    scene?: string
+    'object-fallback'?: string
+    'publish-snapshot'?: string
+  }
 }
 type Job = {
   steps?: Step[]
@@ -23,6 +28,33 @@ describe('MBX request reduction', () => {
       timeout: 25_000,
     })
   }, 30_000)
+
+  it('shares instrumented tests while only protected-main warmup publishes coverage', () => {
+    const reader = yaml('.github/workflows/coverage.yml').jobs.coverage
+    const writer = yaml('.github/workflows/cache-warmup.yml').jobs['warmup-coverage-rust']
+    const call = (job: Job) =>
+      job.steps?.find(step => step.uses === './.github/actions/rust-coverage')
+    expect(call(reader)?.with?.['publish-snapshot']).toBeUndefined()
+    expect(call(writer)?.with?.['publish-snapshot']).toBe('true')
+    expect(reader.environment).toBe('desktop-build-cache-reader')
+    const steps = yaml('.github/actions/rust-coverage/action.yml').runs.steps
+    const position = (name: string) =>
+      steps.findIndex((step: { name: string }) => step.name === name)
+    expect(position('Restore coverage CAS snapshot')).toBeLessThan(
+      position('Generate coverage report')
+    )
+    expect(position('Generate coverage report')).toBeLessThan(
+      position('Save coverage CAS snapshot')
+    )
+    const save = steps[position('Save coverage CAS snapshot')]
+    expect(save.if).toContain('github.ref_protected')
+    expect(save.if).toContain("github.ref == 'refs/heads/main'")
+    expect(save.if).toContain("inputs.publish-snapshot == 'true'")
+    const build = steps[position('Generate coverage report')]
+    expect(build.env.MBX_CACHE_EXPORT_GROUP).toBe('coverage-linux')
+    expect(build.run).toBe('xvfb-run -a cargo llvm-cov --lcov --output-path lcov.info --workspace')
+    expect(steps[position('Restore coverage CAS snapshot')].with['object-fallback']).toBe('false')
+  })
 
   it('cancels outdated runs independently for each PR', () => {
     expect(yaml('.github/workflows/pr-check.yml').concurrency).toEqual({

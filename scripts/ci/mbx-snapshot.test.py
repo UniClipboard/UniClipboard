@@ -102,6 +102,21 @@ class SnapshotTests(unittest.TestCase):
             with patch.object(snapshot.platform, "machine", return_value="ARM64"):
                 self.assertNotEqual(x64, snapshot.scene_key("quick-panel-windows"))
 
+    def test_coverage_seed_tracks_instrumentation_tool_and_flags(self):
+        read_bytes = Path.read_bytes
+        tool = "cargo-llvm-cov 0.9.1"
+        def version(command):
+            return tool.encode() if command == ["cargo", "llvm-cov", "--version"] else b"compiler"
+        def read(file):
+            return b"fixture-linux" if file == Path("/etc/os-release") else read_bytes(file)
+        with patch.object(snapshot.subprocess, "check_output", side_effect=version), patch.object(Path, "read_bytes", read), patch.dict(os.environ, RUSTFLAGS="--cfg original"):
+            seed = snapshot.scene_key("coverage-linux")
+            self.assertNotEqual(seed, snapshot.scene_key("e2e-macos"))
+            with patch.dict(os.environ, RUSTFLAGS="--cfg changed"):
+                self.assertNotEqual(seed, snapshot.scene_key("coverage-linux"))
+            tool = "cargo-llvm-cov 0.9.2"
+            self.assertNotEqual(seed, snapshot.scene_key("coverage-linux"))
+
     def test_release_seed_survives_local_version_and_channel_changes(self):
         manifest = b'[workspace.package]\nversion = "1.0.0"\n[workspace.dependencies]\nengine = { git = "https://example.invalid/engine", rev = "abc" }\n'
         lock = b'[[package]]\nname = "daemon"\nversion = "1.0.0"\ndependencies = ["helper 1.0.0", "external"]\n[[package]]\nname = "helper"\nversion = "1.0.0"\n[[package]]\nname = "external"\nversion = "2.0.0"\nsource = "registry+https://example.invalid/index"\nchecksum = "abc"\n'
@@ -277,6 +292,66 @@ class SnapshotTests(unittest.TestCase):
 
 @unittest.skipUnless(os.environ.get("UC_MBX_TEST_BINARY"), "Set UC_MBX_TEST_BINARY for native MBX integration")
 class NativeMbxTests(unittest.TestCase):
+    @unittest.skipUnless(os.environ.get("UC_MBX_TEST_COVERAGE"), "Enable the instrumented coverage fixture explicitly")
+    def test_coverage_snapshot_executes_tests_and_regenerates_lcov(self):
+        binary = os.environ["UC_MBX_TEST_BINARY"]
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            workspace = root / "workspace"
+            (workspace / "src").mkdir(parents=True)
+            (workspace / "tests").mkdir()
+            (workspace / "Cargo.toml").write_text('[package]\nname = "coverage-proof"\nversion = "0.1.0"\nedition = "2021"\n')
+            (workspace / "src/lib.rs").write_text('pub fn choose(value: bool) -> u32 { if value { 7 } else { 9 } }\n')
+            (workspace / "tests/proof.rs").write_text('''#[test]
+fn executes_on_every_run() {
+    assert_eq!(coverage_proof::choose(true), 7);
+    assert_eq!(coverage_proof::choose(false), 9);
+    let marker = std::env::var("UC_COVERAGE_MARKER").unwrap();
+    use std::io::Write;
+    writeln!(std::fs::OpenOptions::new().create(true).append(true).open(marker).unwrap(), "executed").unwrap();
+}
+''')
+            env = os.environ.copy()
+            for name in list(env):
+                if name.startswith(("MBX_REMOTE_", "BUILD_CACHE_R2_")) or name in ("RUSTC_WRAPPER", "CARGO_BUILD_RUSTC_WRAPPER", "UC_ENGINE_MBX_ENV_FILE", "CARGO_TARGET_DIR", "CARGO_LLVM_COV_TARGET_DIR"):
+                    env.pop(name)
+            env.update(RUSTUP_TOOLCHAIN=subprocess.check_output(["rustup", "show", "active-toolchain"], text=True).split()[0],
+                       MBX_CACHE_DIR=str(root / "producer"), MBX_CACHE_EXPORT_GROUP="coverage-linux",
+                       CARGO_INCREMENTAL="0", MBX_TARGET_VIEWS="0", MBX_TARGET_SEED="0", MBX_LEARNED_INCREMENTAL="0",
+                       MBX_STATS_REPORT=str(root / "stats.json"), UC_COVERAGE_MARKER=str(root / "executions"))
+
+            def native(*args, cache=None):
+                return subprocess.run([binary, *args], cwd=workspace, env={**env, **({"MBX_CACHE_DIR": str(cache)} if cache else {})}, check=True, capture_output=True, text=True)
+
+            def coverage():
+                result = subprocess.run(["cargo", "llvm-cov", "--lcov", "--output-path", "lcov.info", "--workspace", "--offline"], cwd=workspace, env=env, capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertIn("src/lib.rs", (workspace / "lcov.info").read_text())
+                records = (workspace / "lcov.info").read_text().split("end_of_record")
+                library = next(record for record in records if "src/lib.rs" in record)
+                self.assertRegex(library, r"DA:[0-9]+,[1-9][0-9]*")
+
+            coverage()
+            self.assertEqual((root / "executions").read_text().splitlines(), ["executed"])
+            exported = root / "exported"
+            native("cache", "export", "--group", "coverage-linux", "--format", "directory", str(exported))
+            bundle = root / "bundle"
+            with patch.object(snapshot, "mbx", side_effect=native):
+                snapshot.compact_bundle(exported, bundle)
+            self.assertTrue(all(p.name == snapshot.MANIFEST or p.parts[len(bundle.parts)] in ("cas", "action-results") for p in bundle.rglob("*") if p.is_file()))
+            # A new target and empty CAS must not reuse profiling files or reports.
+            shutil.rmtree(workspace / "target")
+            (workspace / "lcov.info").unlink()
+            env["MBX_CACHE_DIR"] = str(root / "consumer")
+            native("cache", "import", str(bundle))
+            self.assertFalse((workspace / "target").exists())
+            coverage()
+            self.assertEqual((root / "executions").read_text().splitlines(), ["executed", "executed"])
+            stats = json.loads((root / "stats.json").read_text())
+            self.assertGreater(stats["hits"], 0)
+            for counter in ("remote_manifest_lookups", "remote_action_lookups", "remote_blob_requests", "remote_blob_pack_requests", "uploaded_bytes"):
+                self.assertEqual(stats[counter], 0)
+
     def test_compaction_restore_execution_and_corruption(self):
         binary = os.environ["UC_MBX_TEST_BINARY"]
         if os.name == "nt":

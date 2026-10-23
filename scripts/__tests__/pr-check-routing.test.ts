@@ -40,6 +40,7 @@ describe('PR check routing', () => {
     ['scripts/e2e/run-membership-matrix.sh', false],
     ['apps/cli-go/e2e/compat.py', false],
     ['.github/actions/build-pr-rust/action.yml', false],
+    ['.github/actions/rust-coverage/action.yml', false],
     ['.github/docker/build-bookworm.Dockerfile', false],
     ['clippy.toml', false],
     ['scripts/ci/build-go-cli.sh', false],
@@ -191,6 +192,17 @@ describe('PR check routing', () => {
     expect(
       hostSteps.some((step: { uses?: string }) =>
         step.uses?.startsWith('actions/download-artifact@')
+      )
+    ).toBe(true)
+  })
+
+  it('routes the shared coverage workload to Rust checks and native coverage validation', () => {
+    expect(route(['.github/actions/rust-coverage/action.yml'])).toContain('rust')
+    const native = workflow('mbx-snapshot-validation.yml')
+    expect(native.on.pull_request.paths).toContain('.github/actions/rust-coverage/**')
+    expect(
+      native.jobs['coverage-roundtrip'].steps.some((step: { run?: string }) =>
+        step.run?.includes('test_coverage_snapshot_executes_tests_and_regenerates_lcov')
       )
     ).toBe(true)
   })

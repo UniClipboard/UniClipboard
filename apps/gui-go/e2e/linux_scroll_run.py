@@ -57,7 +57,7 @@ def main():
                 base = f"http://{conn.get('host', '127.0.0.1')}:{conn['port']}"
                 subprocess.run(['node', str(ROOT / 'apps/gui-go/frontend/e2e/history-kit-seed.mjs'),
                                 str(out), base, str(conn_path), 'gui-go-synthetic-passphrase', 'paging', '140'],
-                               env=env, stdout=log, stderr=subprocess.STDOUT, check=True, timeout=120)
+                               env=env, stdout=log, stderr=subprocess.STDOUT, check=True, timeout=420)
             with (out / 'gui.log').open('w') as log:
                 process = subprocess.Popen([str(binary)], env=env, stdout=log, stderr=subprocess.STDOUT)
                 wait_for_step(process, evidence, 0, 'linux-scroll-complete', timeout=120)

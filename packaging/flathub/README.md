@@ -5,6 +5,8 @@
 - `app.uniclipboard.desktop.yml` — Flatpak manifest（app-id = `apps/gui-go/app.json` 的 identifier）
 - `app.uniclipboard.desktop.metainfo.xml` — AppStream 元数据（Flathub 强制要求）
 
+GTK4 迁移与快捷面板限制见 [Linux GTK4 打包迁移](../../docs/architecture/gui-go-linux-gtk4-migration.md)。发布 URL、哈希与 AppStream 信息仍有占位，当前不能直接提交发布。
+
 ## 重要：Flathub 不进 Repology
 
 和 winget 一样，**Repology 不抓 Flathub**，这一步不会改变 packaging-status 徽章。做它的理由：Flathub 是 Linux 桌面应用覆盖面最大的分发渠道（远超 deb/rpm/AppImage 总和），补齐最大的真实分发缺口。
@@ -16,7 +18,7 @@ flatpak install flathub app.uniclipboard.desktop
 
 不像 nixpkgs/Scoop 能较快落地，Flathub 首次提交通常需要明显的现场调试。已知卡点：
 
-1. **WebKitGTK 版本匹配**：deb 二进制链接系统 `webkit2gtk-4.1`（GTK3）。需确认所选 `org.gnome.Platform` 版本提供同一 ABI；若不匹配，要换 runtime 版本或把 webkitgtk 作为 extension/bundle。`runtime-version: '46'` 是起点，按构建报错调整。
+1. **WebKitGTK 版本匹配**：只接受 GTK4 / `webkitgtk-6.0` 的 deb；GNOME 50 平台包含该 ABI，manifest 已切到 `runtime-version: '50'` 并增加 ELF 检查。不能填入旧 GTK3 发布物；完整 `flatpak-builder` 验证尚未运行。
 2. **剪贴板权限**：后台 daemon（`uniclipd`）在 Wayland 沙箱里读系统剪贴板依赖 `wlr-data-control` 协议，flatpak 默认可能受限。装好后务必实测复制/粘贴是否真的跨设备同步，必要时调 `finish-args` 或走 portal。
 3. **AppStream 截图**：`metainfo.xml` 里截图 URL 是占位，**必须** 换成真实可访问的图片（提交一张到仓库 `assets/` 再引用），否则 Flathub CI 的 `appstream-util validate` 不过。
 4. **release date**：`metainfo.xml` 里 0.15.0 的 `date` 按实际发布日核对。
@@ -25,7 +27,7 @@ flatpak install flathub app.uniclipboard.desktop
 
 1. **本地构建验证**（必做，需 `flatpak-builder`）
    ```bash
-   flatpak install flathub org.gnome.Platform//46 org.gnome.Sdk//46
+   flatpak install flathub org.gnome.Platform//50 org.gnome.Sdk//50
    # 先填 manifest 里两个 deb 的 sha256（全 0 占位）：
    #   sha256sum 下载好的 .deb，或与 release SHA256SUMS.txt 核对（勿用沙箱产出的 hash）
    flatpak-builder --user --install --force-clean build-dir packaging/flathub/app.uniclipboard.desktop.yml

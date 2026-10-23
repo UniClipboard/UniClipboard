@@ -1,5 +1,7 @@
 # Go 宿主的分发渠道与 PR 构建门禁（issue #1899）
 
+2026-10-23 更新：当前 Linux GUI 构建和渠道配方统一迁移至 GTK4 / WebKitGTK 6.0；下表与后文的 GTK3 实测为迁移前证据。新构建基线、Nix 旧发布 pin 例外、Flatpak 占位与未验证边界见 [Linux GTK4 打包迁移](gui-go-linux-gtk4-migration.md)。
+
 本文记录 `apps/gui-go` 成为唯一桌面宿主之后，各分发渠道的去留决定、PR 构建门禁的设计、失败模型、实测证据与未证明的边界。它是 [gui-go-tauri-retirement.md](gui-go-tauri-retirement.md) 里「暂缓移植的打包渠道」一节的后续；打包本身见 [gui-go-linux-ci-packaging.md](gui-go-linux-ci-packaging.md)、[gui-go-windows-packaging.md](gui-go-windows-packaging.md) 与 `apps/gui-go/README.md`「macOS 发布构建」。
 
 ## 范围与不做的事
@@ -56,10 +58,10 @@ PR 门禁没有在 GitHub 上运行过（未 push）；在草稿 PR 里演示故
 
 | 渠道 | 决定 | 改动 | 实测 | 未验证 |
 | --- | --- | --- | --- | --- |
-| snap | 移植：源码构建 Go 宿主 + Rust daemon；`grade: devel`；默认不推送 | `snapcraft.yaml`、`snap.yml`（PR 触发，仅构建；`release` 输入默认 false） | Ubuntu 22.04 arm64 容器里按配方的 Go/前端步骤编译成功（WebKitGTK 2.50.4、GTK 3.24.33） | 没有运行 `snapcraft`（容器里没有 snapd/LXD）；strict 限制下的启动、托盘、通知、自启动、全局快捷键完全未验证，不声称支持；Rust daemon 步骤未在 core22 里执行 |
+| snap | 源码构建 GTK4 Go 宿主 + Rust daemon；保留 `core22`、`grade: devel`；默认不推送 | `snap/snapcraft.yaml`、`.github/workflows/snap.yml`；GNOME 提供 GTK4，应用打包 WebKitGTK 6.0 | 配方检查与图标检查共 11 项通过；旧 GTK3 编译证据见下，不代表 GTK4 配方已构建成功 | 完整 GTK4 Snap 构建、Ubuntu 20.04 实机安装及 strict 限制下的启动、托盘、通知、自启动、全局快捷键均待验证 |
 | AUR | 移植：源码构建；发布只能由 main 上的 `workflow_dispatch(publish=true)` | `PKGBUILD`、`aur.yml`、`build-aur-package.sh`、`check-arch-package.sh` | 干净 `archlinux:base-devel`（amd64，模拟）里 `makepkg` 成功并在全新容器里安装、启动通过，见下 | 原生 amd64/aarch64 构建；真实桌面；合入后需要有权限的人 dispatch 一次才会更新 AUR；`namcap` 警告（无 PIE/RELRO、`uniclipd` 含 `$srcdir` 引用）未处理 |
 | COPR | 保持重打包 Go rpm | spec、`copr.yml`（`run_ids` 取 `linux-gui-*`，`dry_run`）、`build-copr-srpm.sh` | Fedora 44 arm64 容器里 SRPM → 重建 → 与上游 rpm 对比 → 安装启动，见下 | 真实 COPR 提交；amd64；EPEL；Fedora 之外的发行版 |
-| Flathub | 保持重打包 deb | 注释与 README | 仅静态核对：deb 布局与 manifest 的 `install` 命令一致 | `flatpak-builder` 未运行；沙箱内托盘/剪贴板/快捷键。已核实（只读，上游 gnome-build-meta 源码）：GNOME 46 运行时 2025-04-17 起 EOL，必须升级 `runtime-version` 才能提交；`elements/sdk-platform.bst` 在 gnome-46、gnome-49、gnome-50 分支都列有 `sdk/webkit2gtk-4.1.bst`，所以升级后仍有 Go 宿主链接的 WebKitGTK 4.1 API；Platform 里没有 gtk-layer-shell，快捷面板回退为普通窗口。manifest 尚未改到新版本，因为没有构建就不改 |
+| Flathub | 重打包 GTK4 deb；提交占位项仍待填入 | GNOME 50 运行时；拒绝旧 GTK3 输入 deb | YAML 解析通过；上游 GNOME 50 平台清单包含 WebKitGTK 6.0 | `flatpak-builder`、真实 GTK4 发布 URL/哈希及沙箱内桌面功能未验证 |
 | nix | 改为重打包 Go 宿主的 `.deb`（`flake.nix` 与 `packaging/nix/`）：AppImage 会触发宿主的 `APPIMAGE`/`APPDIR` 分支（自更新、重启、自启动、便携数据根）并需要 FHS 沙箱；`.deb` 链接 nixpkgs 已有的 GTK 3 / WebKitGTK 4.1 | 新 `package.nix`、`sources.json`、`update.py`、根 `flake.nix`、`nix.yml`、`check-nix-package.sh` | 静态：`1.2.0-alpha.7` 两个架构 `.deb` 的 SHA256 与签名过的 `SHA256SUMS.txt` 一致（`rsign` 验证通过）；两个二进制的 `DT_NEEDED` 与 `dlopen` 库；`update.py` 复算哈希与手写一致 | CI run 39448990929（PR #2036）在原生 x86_64 与 aarch64 runner 上 `nix build` 并无头启动通过（进程路径、存活、顶层窗口、`daemon.conn`）；`flake.lock` 由 CI 上的 `nix flake lock` 生成并提交；GPU/Wayland/托盘需在 NixOS 上人工验收；应用内自启动与更新在 Nix 下的产品缺口见 `packaging/nix/README.md` |
 | Homebrew cask | 保持 | 无 | 静态：dmg 名、`UniClipboard.app`、zap 路径（`Application Support`/`Caches`/`Logs` 下 `app.uniclipboard.desktop`）与 Go 宿主一致；`:monterey` 无法表达最低 12.5 | 没有 `brew install`（不在个人 macOS 上运行发布形态） |
 | Chocolatey | 保持包装 NSIS 安装器 | 一行注释 | 静态：`/S` 静默、用户级（`RequestExecutionLevel user`，HKCU 卸载项）、卸载项名 `UniClipboard` 与 `softwareName` 匹配 | 没有 `choco install`（Windows 只在一次性托管 runner 上运行发布形态）；Authenticode 未做 |
@@ -99,7 +101,12 @@ PR 门禁没有在 GitHub 上运行过（未 push）；在草稿 PR 里演示故
 
 ### snap
 
-- Ubuntu 22.04 arm64 容器按配方编译 Go 宿主成功，二进制 sha256 `4ed42194…`。第一次尝试暴露配方缺 C 编译器，已加入 `build-essential`。
+- 历史证据：旧 GTK3 配方在 Ubuntu 22.04 arm64 容器编译 Go 宿主成功，二进制 sha256 `4ed42194…`。第一次尝试暴露配方缺 C 编译器，已加入 `build-essential`。此结果不能用于证明当前 GTK4 配方可构建。
+- 当前配方保留 `base: core22` 与 GNOME 扩展，改用 `gtk4,production,release` 构建标签。Wails 的 `GtkFileDialog` 要求 GTK ≥ 4.10，因此构建使用 GNOME SDK 的 GTK（上游配方为 4.12.3），并显式检查最低版本；不能使用 Jammy 自带的 GTK 4.6。
+- 应用声明构建依赖 `libgtk-4-dev`、`libwebkitgtk-6.0-dev`，打包 `libwebkitgtk-6.0-4` 及其传递依赖。运行时 GTK 由 GNOME 内容平台提供，排除 apt 传递带入的旧 `libgtk-4.so*`，避免覆盖平台版本。
+- 增加 WebKitGTK 6.0 的 `/usr/lib/$CRAFT_ARCH_TRIPLET/webkitgtk-6.0` 布局，让进程助手的绝对路径在 Snap 内可解析；打包前检查 WebKit、JavaScriptCore、进程助手及注入库是否完整。移除 GTK3 的 `libgtk-layer-shell0`，GTK4 快捷面板使用普通窗口。
+- `python3 -m unittest discover -s scripts/tests -p 'test_*snap*.py'` 共 11 项通过，覆盖 amd64/arm64 路径、缺失依赖、助手不可执行、旧 GTK 覆盖及图标检查。CI 在构建前执行相同检查。
+- 本轮环境没有 Snapcraft，且无法访问 Docker socket，未执行完整 Snap 构建。保留 core22 避免主动提高用户态 ABI 基线，但 Ubuntu 20.04 的内核、显卡驱动、snapd 与桌面集成仍需实机验收，不能仅凭配方声明保证兼容。
 
 ## 环境与证据的区别
 

@@ -81,3 +81,37 @@ Rust/Go 全量差分发现 Rust 开发 CLI 与用户 Go CLI 的现有命令名�
 不得据此标记整个 CLI 全量兼容通过。恢复全量基准维护属于独立工作。
 
 上述实现不改动 Engine、daemon API、持久化、凭据、遥测或传输规则。用户随后已授权提交、创建 PR，并在发布后重新运行 CLI E2E；发布后结果另行记录。
+
+
+## PR 发布后 CLI E2E 复验
+
+PR：[#2099](https://github.com/UniClipboard/UniClipboard/pull/2099)。被测实现提交：
+`57ae9a87196fc9e01a6db66e1d24213163bc8024`。先发布 PR，再执行下列检查。
+所有真实测试使用临时 HOME、独立 XDG 目录并禁用系统剪贴板；历史种子使用启用
+`uc-dev-cli/dev-tools` 的开发 CLI，其余动作使用 Go 用户 CLI。
+
+| 测试组 | 结果 | 执行耗时 |
+| --- | --- | --- |
+| `single_node` | 14/14 通过 | 16.12 秒 |
+| `send_connect_wait` | 12/12 通过，含 1 项默认跳过的终端进度测试 | 244.41 秒 |
+| `cli_engine_workflows` | 10/10 通过 | 255.87 秒 |
+
+三个真实组共报告 36 项通过，实际执行完整场景 35 项。未启用已有的终端进度门控，
+不能把这次结果当作终端字节进度已验证。
+
+发布后的四组 Rust/Go 发送差分结果如下，与发布前历史结果分开记录：
+
+| 场景 | 结果及证据 |
+| --- | --- |
+| `send_input_errors` | 一致，28 步/实现 |
+| `send_without_space` | 有差异，5 步/实现；Rust 的标准输入发送那次重新启动 daemon 并报告未创建空间，Go 那次复用 daemon 并收到 dispatch 错误。退出码均为 1 |
+| `send_without_peers` | 一致，24 步/实现 |
+| `send_to_paired_peer` | 有差异；Rust 文本发送被 `/auth/connect` 的 HTTP 429 `rate_limit_exceeded` 拒绝，未完成正常发送；Go 侧正常完成，双方接收端历史不同 |
+
+无空间场景另以原始 Go 和改造后 Go 对照，五步均一致；历史 Rust 运行记录也包含
+这两种输出，证据符合 daemon 启动/复用时序影响。该对照不替代或抹去首次差分失败。
+HTTP 429 是本轮已确认的拒绝原因，尚未确认触发限流的完整请求序列，不擅自放宽限流或
+修改 CLI 错误语义。四组差分运行的整体退出码为 1，本轮不宣称发送差分验收全通过。
+
+发布后工件：`target/cli-virtual-time/pr-*.log`、对应计时 JSON，以及
+`target/compat/pr-send-rust/`、`target/compat/pr-no-space-baseline/`。

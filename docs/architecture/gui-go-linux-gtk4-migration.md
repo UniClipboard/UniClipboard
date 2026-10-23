@@ -18,7 +18,9 @@ Wails 使用 GTK 4.14 起提供的 `GdkMonitor.get_scale`，因此要求 GTK ≥
 
 安装脚本对 Ubuntu 20.04 / 22.04、对应派生发行版和 Debian 11 / 12 选择 Snap，避免自动安装不满足原生 GTK4 依赖的 deb。其他发行版仍须满足包声明的 GTK 与 glibc 条件；Snap 在旧宿主上的实际兼容性需要验收。
 
-GTK4 快捷面板使用普通窗口。本项目尚未实现 GTK4 Layer Shell 适配，因此新的包不声明或捆绑 GTK3 的 `libgtk-layer-shell`，Wayland 的覆盖层、独占键盘和定位不能沿用旧 GTK3 验收结论。仅用于在旧提交中重现 GTK3 Layer Shell 实验的 `run_17c*` 脚本保留其原始标签；它们不属于当前包的构建入口。
+GTK4 快捷面板使用普通窗口。固定尺寸直接使用 Wails 的 `DisableResize: true` 与 `SetSize`：GTK4 后端的 `SetSize` 调用 `gtk_window_set_default_size`，GTK 会将每次目标尺寸作为 Wayland 的最小与最大尺寸一并发布。旧 GTK3 的 `SetResizable(true)` 加 `SetMinSize`／`SetMaxSize` 适配已移除；GTK4 的 Wails 最大尺寸实现不发布真正的 Wayland 最大约束，旧逻辑在 Hyprland 下会出现百分比下降但窗口不缩小。
+
+本项目尚未实现 GTK4 Layer Shell 适配，因此新的包不声明或捆绑 GTK3 的 `libgtk-layer-shell`，Wayland 的覆盖层、独占键盘和定位不能沿用旧 GTK3 验收结论。仅用于在旧提交中重现 GTK3 Layer Shell 实验的 `run_17c*` 脚本保留其原始标签；它们不属于当前包的构建入口。
 
 实际 CI 发现 GNOME 42 SDK 的 GTK 4.12.3 无法编译 Wails 的 `gdk_monitor_get_scale` 调用，因此 Snap 基线改为 core24/GNOME 46。core24 是包内运行时，不代表宿主必须是 Ubuntu 24.04；Ubuntu 20.04 的 snapd、内核与桌面兼容性仍须验收。AppImage 在部署结束后按宿主库策略移除 Vulkan 和 D-Bus 入口库，干净验收宿主须提供 Vulkan 加载器。
 
@@ -67,3 +69,28 @@ deb/rpm 安装生命周期验证中，Ubuntu 24.04 已通过；Debian/Fedora 暴
 - Wails 固定版本及内嵌 GTK 插件以 `apps/gui-go/go.mod` 解析的模块为准；插件已支持 GTK4，无须复制或修改上游脚本。
 
 Docker procfs 限制的上游说明见 [Moby BuildKit 的容器化与挂载诊断文档](https://github.com/moby/buildkit/blob/master/docs/rootless.md)。
+
+
+## GTK4 快捷面板窗口缩放验证
+
+`apps/gui-go/e2e/linux_gtk4_panel_scale_run.py` 在独立 Wayland 合成器内运行真实 GTK4 WebView，通过 DOM 快捷键与真实宿主桥接调整窗口，读取 GTK 的实际尺寸、WebView 视口与 Wayland 协议约束。覆盖 80%–150%、边界钳制、放大后缩回、隐藏后再显示；测试不发送物理输入、不接触系统剪贴板。
+
+在已启动的私有 Wayland 显示环境中，使用普通 Linux 前端与 `gtk4,production,e2e` 宿主构建运行：
+
+```bash
+dbus-run-session -- python3 apps/gui-go/e2e/linux_gtk4_panel_scale_run.py \
+  --gui target/gui-go/panel-scale/gui-go-fixed \
+  --cli target/gui-go/uniclip \
+  --out target/gui-go/panel-scale/acceptance
+```
+
+`WAYLAND_DISPLAY` 和 `XDG_RUNTIME_DIR` 必须指向私有合成器，输出至少为 1920×1200，以容纳上限尺寸。runtime 路径应足够短，使 WebKit 的代理 Unix socket 路径不超过系统长度限制；不要通过禁用 WebKit 沙箱绕过启动失败。CLI 与 daemon 必须是同版本构建。
+
+本机使用 Weston 15 的独立无头输出完成对照：旧实现的原生尺寸在 Weston 下也能变化，但协议最大尺寸始终为 `(0, 0)`，无法约束合成器保留的旧浮动尺寸；修复后同时验证目标尺寸与 `min = max` 的协议约束。这不等于 Hyprland 实体桌面的焦点与键盘验收。
+
+
+## 小于 100% 的 WebView 文字缩放
+
+Wails beta.28 的 Linux `setZoom` 会把小于 1 的参数改成 1，与已有 80%／90% 界面缩放档位不兼容。`SetWindowZoom` 通过公开的 `application.WindowKey` 获取调用窗口，在 GTK 主线程中找到该窗口的 WebView 并调用 `webkit_web_view_set_zoom_level`；其他平台继续调用 Wails `SetZoom`。前端只有 `src/host/webview.ts` 一条缩放路径，沿用现有偏好、跨窗口同步和错误反馈，不使用 CSS `zoom`。待固定版本 Wails 支持低于 100% 的缩放并通过原生验收后，可删除 Linux 适配。
+
+同一缩放验收脚本还覆盖 9 次文字缩放，包括 90%／80%、上下限、缩小后放大，读取 WebKit 实际 zoom，确认窗口逻辑尺寸不变，以及主窗口共享界面缩放偏好的同步。旧版本在 90%／80% 时实际 zoom 为 1；修复后全部目标值匹配。

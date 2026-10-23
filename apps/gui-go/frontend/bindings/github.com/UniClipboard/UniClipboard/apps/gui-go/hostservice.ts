@@ -443,6 +443,13 @@ export function SetWindowDecorations(decorations: boolean): $CancellablePromise<
 }
 
 /**
+ * SetWindowZoom changes the calling WebView's native zoom. GTK4 Linux also supports scales below 100%.
+ */
+export function SetWindowZoom(scale: number): $CancellablePromise<void> {
+    return $Call.ByID(1278275270, scale);
+}
+
+/**
  * ShowContentUnlock brings the main window forward so the user can unlock content.
  */
 export function ShowContentUnlock(): $CancellablePromise<void> {

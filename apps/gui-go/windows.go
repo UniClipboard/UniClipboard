@@ -86,22 +86,6 @@ func panelSize(scale *float64, previewExpanded bool, windowScale float64) (int, 
 	return int(math.Round(width + 2*panelWindowPadding)), int(math.Round(panelBaseHeight*s + 2*panelWindowPadding))
 }
 
-// setPanelSize sizes the quick panel. On Linux the panel is fixed-size: the size is pinned by geometry hints (Wails
-// SetMinSize/SetMaxSize, min = max = the target) instead of the GTK non-resizable flag, because GTK pins a non-resizable
-// window to its creation size and can then only grow it (gtk_window_resize, which Wails SetSize calls on gtk3), so a
-// smaller window scale never took effect (17c9). The hints keep the window manager from resizing it. Releasing the minimum
-// first and the maximum second lets the window move to a smaller or a larger target.
-func setPanelSize(w application.Window, width, height int) {
-	if runtime.GOOS != "linux" {
-		w.SetSize(width, height)
-		return
-	}
-	w.SetMinSize(0, 0)
-	w.SetMaxSize(width, height)
-	w.SetSize(width, height)
-	w.SetMinSize(width, height)
-}
-
 // openUpdater creates the decorated updater window, or focuses the existing one.
 func (h *HostService) openUpdater(dev bool) {
 	if h.ui != nil {
@@ -153,12 +137,6 @@ func (h *HostService) preCreateQuickPanel() {
 	w := h.app.Window.NewWithOptions(quietOptions(options))
 	suppressKeyboardMenu(w)
 	attachLayerPanel(w) // Wayland Layer Shell: must happen while the hidden window is still unrealized
-	if runtime.GOOS == "linux" && !layerPanelActive() {
-		// The ordinary X11/XWayland window: fixed size by geometry hints instead of the GTK flag (see setPanelSize). The
-		// Layer Shell surface keeps its own sizing: a minimum hint above a capped surface size breaks small outputs (17c9 F7).
-		w.SetResizable(true)
-		setPanelSize(w, width, height)
-	}
 	w.RegisterHook(events.Common.WindowClosing, func(e *application.WindowEvent) {
 		if h.quitting.Load() {
 			return
@@ -196,7 +174,7 @@ func (h *HostService) showQuickPanel() {
 	}
 	if !layerPrepareShow(w, prefs.Position, 1) {
 		width, height := panelSize(nil, false, 1)
-		setPanelSize(w, width, height)
+		w.SetSize(width, height)
 		if x, y, ok := panelOrigin(prefs.Position, h.app.Screen.GetAll(), float64(width), float64(height)); ok {
 			moveWindow(w, x, y)
 		} else {
@@ -322,7 +300,7 @@ func (h *HostService) SetQuickPanelLayout(scale *float64, previewExpanded bool, 
 	if w, ok := h.app.Window.GetByName(quickPanelWindowName); ok {
 		if !layerSetLayout(w, windowScaleOrOne(windowScale)) {
 			width, height := panelSize(scale, previewExpanded, windowScaleOrOne(windowScale))
-			setPanelSize(w, width, height)
+			w.SetSize(width, height)
 		}
 	}
 }

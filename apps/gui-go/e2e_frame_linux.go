@@ -1,15 +1,18 @@
-//go:build e2e && linux && gtk3
+//go:build e2e && linux && gtk4
 
 package main
 
 /*
-#cgo pkg-config: gtk+-3.0
+#cgo pkg-config: gtk4
 #include <gtk/gtk.h>
 
 static int uc_decorated(void *w) { return gtk_window_get_decorated(GTK_WINDOW(w)); }
 static int uc_active(void *w) { return gtk_window_is_active(GTK_WINDOW(w)); }
 static int uc_visible(void *w) { return gtk_widget_get_visible(GTK_WIDGET(w)); }
-static void uc_size(void *w, int *width, int *height) { gtk_window_get_size(GTK_WINDOW(w), width, height); }
+static void uc_size(void *w, int *width, int *height) {
+    *width = gtk_widget_get_width(GTK_WIDGET(w));
+    *height = gtk_widget_get_height(GTK_WIDGET(w));
+}
 */
 import "C"
 
@@ -36,6 +39,7 @@ func windowFrameDetail(h *HostService, name string) map[string]any {
 		detail["active"] = C.uc_active(handle) != 0
 		detail["visible"] = C.uc_visible(handle) != 0
 		detail["width"], detail["height"] = int(width), int(height)
+		detail["zoom"] = w.GetZoom()
 	})
 	return detail
 }

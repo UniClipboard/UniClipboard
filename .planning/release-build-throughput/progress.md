@@ -17,3 +17,5 @@ PR #2097 首轮 macOS、Windows x64/ARM64 失败均为新增 Linux 场景测试�
 本地完整 Python 快照测试通过；真实原生 MBX 测试21通过/1未启用插桩测试；额外模拟宿主不存在 os-release，原失败两项均通过。后续核对新提交的三平台远端结果。
 
 同时核对审查建议：Linux 原生缓存访问请求与快照发布使用同一个受保护 main 的权限判定，避免非 main 的 build_only/save_cache 调用请求 read-write。Decision: accept；测试验证两者共享发布能力变量，无额外权限来源。
+
+Linux 首轮打包虽然成功，MBX证据缺少 snapshot-restore.json。读取双架构日志确认 python venv 缺少 ensurepip，RUNNER_OS未传入容器导致引导脚本未执行Linux安装回退。修复打包镜像预装python3-venv，显式传入容器RUNNER_OS=Linux，并在镜像合同步骤实际创建虚拟环境。后续检查快照报告，不以打包成功替代缓存验证。

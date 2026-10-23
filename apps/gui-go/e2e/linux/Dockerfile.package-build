@@ -11,7 +11,7 @@ COPY apt_install.sh verify_package_build_image.sh /usr/local/bin/
 # apt_install.sh switches the sources to HTTPS, which needs the CA bundle first.
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
 RUN apt_install.sh \
-      curl git build-essential pkg-config xz-utils python3 file binutils cpio rpm desktop-file-utils \
+      curl git build-essential pkg-config xz-utils python3 python3-venv file binutils cpio rpm desktop-file-utils \
       libgtk-4-dev libwebkitgtk-6.0-dev libx11-dev libdbus-1-dev libssl-dev \
       libglib2.0-bin libgdk-pixbuf2.0-bin libgtk-4-bin shared-mime-info \
       glib-networking glib-networking-services dconf-gsettings-backend xdg-dbus-proxy \

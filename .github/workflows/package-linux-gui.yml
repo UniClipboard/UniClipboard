@@ -171,6 +171,8 @@ jobs:
         run: |
           docker run --rm --platform "${{ matrix.platform }}" -v "$PWD:/work:ro" -w /work "$UC_LINUX_IMAGE" \
             python3 -m unittest discover -s scripts/tests -p test_linux_gtk4_packaging.py
+          docker run --rm --platform "${{ matrix.platform }}" "$UC_LINUX_IMAGE" \
+            python3 -m venv /tmp/mbx-bootstrap-check
 
       - name: Start shared Engine MBX cache
         env:

@@ -3,7 +3,7 @@
 package buildinfo
 
 // PackageVersion is the workspace package version the daemon must report.
-const PackageVersion = "1.4.0-alpha.2"
+const PackageVersion = "1.4.0-alpha.3"
 
 // DaemonAPIRevision is the daemon contract revision the daemon must report.
 const DaemonAPIRevision = "1"

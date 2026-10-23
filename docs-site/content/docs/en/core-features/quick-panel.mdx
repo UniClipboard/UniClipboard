@@ -69,7 +69,7 @@ An empty result from the second command means the configuration is valid. `Super
 
 The Linux WebView Quick Panel and the WebView fallback on macOS and Windows can unlock independently, without opening the main window. When content is locked, click **Unlock** to try the configured secure storage first. If it is unavailable or authorization is refused, enter your space passphrase directly in the panel. An incorrect passphrase keeps content locked and shows an error; successful unlock opens the history list.
 
-Press `Esc` to dismiss the unlock page. Reopening clears any unsubmitted passphrase. Content access is still revoked when the UI process exits, while background sync and clipboard monitoring continue; unlocking again does not require the main window.
+Press `Esc` to dismiss the unlock page. Reopening clears any unsubmitted passphrase. Content authorization belongs to the background service session and survives closing or restarting the UI process. Explicitly locking the interface revokes access; background sync and clipboard monitoring continue.
 
 ## macOS and Windows native panel
 

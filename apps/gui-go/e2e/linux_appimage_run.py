@@ -165,9 +165,23 @@ class Launch:
         return self.ctl(f'invoke {label} {command} {json.dumps(args) if args is not None else ""}', f'invoke-{label}')['detail']
 
 
+def same_file(left, right):
+    try:
+        return os.path.samefile(left, right)
+    except OSError:
+        return False
+
+
 def descendants_of_mount(mount_marker):
-    """Processes whose executable lives under a mounted/extracted AppImage (`/tmp/.mount_*` or `/tmp/appimage_extracted_*`)."""
-    return {pid: v for pid, v in procs().items() if mount_marker in v[0]}
+    """Prove helper ownership by device/inode across WebKit's mount namespace."""
+    rows = {}
+    for pid, value in procs().items():
+        name = Path(value[0]).name
+        helper = Path(mount_marker) / 'usr/h' / name
+        if mount_marker in value[0] or (name in ('WebKitWebProcess', 'WebKitNetworkProcess')
+                                       and same_file(f'/proc/{pid}/exe', helper)):
+            rows[pid] = value
+    return rows
 
 
 def start_xvfb(out):
@@ -195,6 +209,9 @@ def main():
     home, runtime_dir, install = sandbox / 'home', sandbox / 'run', sandbox / 'install'
     for d in (home, runtime_dir, install):
         d.mkdir(mode=0o700)
+    if args.feed:
+        shutil.copytree(args.feed, sandbox / 'feed')
+        args.feed = sandbox / 'feed'
     target = install / 'UniClipboard.AppImage'
     shutil.copy2(args.appimage, target)
     original_sha = sha256(target)
@@ -293,7 +310,7 @@ def inspect_processes(run, label, launch_pid, expected_daemon_sha, daemon_pid):
     names = sorted(v[0].rsplit('/', 1)[-1] for v in under.values())
     helpers = [pid for pid, v in under.items() if v[0].endswith(('WebKitWebProcess', 'WebKitNetworkProcess'))]
     run.check(f'{label} the GUI executes from the mounted AppImage ({gui_exe})', bool(marker) and gui_exe.endswith('/usr/bin/uniclipboard'), gui_exe)
-    run.check(f'{label} WebKitWebProcess and WebKitNetworkProcess execute from the same mount (not from /usr/lib)',
+    run.check(f'{label} WebKitWebProcess and WebKitNetworkProcess execute from the same AppImage (device/inode checked across mount namespaces)',
               {'WebKitWebProcess', 'WebKitNetworkProcess'} <= set(names), names)
     daemon_exe = table.get(daemon_pid, ('', ''))[0]
     run.check(f'{label} the daemon executes from the mount and is byte-identical to the build evidence',
@@ -363,8 +380,8 @@ def full(run, launches, args, sandbox, home, target, original_sha):
         return
     subprocess.run([str(args.uniclip), 'space', 'init', '--passphrase', PASSPHRASE, '--device-name', 'appimage-e2e'], env=run.env, check=True, timeout=120,
                    stdout=(out / 'space-init.log').open('w'), stderr=subprocess.STDOUT)
-    boot = gui.step('bootstrapped', 120)
-    run.check('3 the WebView ran the frontend (evidence step `bootstrapped` is written by the page, through the host service)', boot['ok'], boot)
+    boot = gui.step('ui-page-ready', 120)
+    run.check('3 the WebView ran the frontend (evidence step `ui-page-ready` is written by the page, through the host service)', boot['ok'], boot)
     mount = inspect_processes(run, '2', gui.proc.pid, daemon_sha, daemon_pid)
     state = wait_panel_ready(gui, 'boot')
     run.check('3 the frontend reached the daemon: the panel reports ready', state.get('panelReady') is True, state)
@@ -463,8 +480,9 @@ def full(run, launches, args, sandbox, home, target, original_sha):
             time.sleep(.5)
         old_status = daemon_status(home, old_daemon) if old_daemon else None
         run.check('7 the old daemon is gone after the update (not running by /proc state, health endpoint silent)', old_status is not None and not old_status['running'], old_status)
-        boots = [x for x in read_steps(good.evidence) if x['step'] == 'bootstrapped']
-        run.check('7 the restarted process bootstrapped its page against the existing profile (a second `bootstrapped` in the same evidence file)', len(boots) == 2, boots)
+        boots = [x for x in read_steps(good.evidence) if x['step'] == 'ui-page-ready']
+        page_pids = {x['detail']['pid'] for x in boots if x['ok'] and x.get('detail', {}).get('daemonConnected')}
+        run.check('7 both UI processes loaded a real page against the existing profile (distinct ui-page-ready PIDs)', len(page_pids) == 2, boots)
         data_after = sorted(str(p.relative_to(home / '.local/share')) for p in (home / '.local/share/app.uniclipboard.desktop').rglob('*') if p.is_file())
         run.check('7 persisted user data files survived the update (lifecycle state files excluded: they are rewritten at daemon start)',
                   set(data_before) <= set(data_after), sorted(set(data_before) - set(data_after)))
@@ -481,7 +499,7 @@ def full(run, launches, args, sandbox, home, target, original_sha):
         launches.append(post)
         pconn, pdaemon = wait_daemon(home)
         run.check('8 the replaced AppImage starts a daemon on the existing data root', pconn is not None and pdaemon not in (None, old_daemon), [str(pconn), pdaemon, old_daemon])
-        post.step('bootstrapped', 120)
+        post.step('ui-page-ready', 120)
         pstate = wait_panel_ready(post, 'post')
         run.check('8 the v2 page reached the daemon (panel ready)', pstate.get('panelReady') is True, pstate)
         pmount = inspect_processes(run, '8', post.proc.pid, daemon_sha, pdaemon)
@@ -511,12 +529,12 @@ def negative(run, launches):
     gui = run.launch('negative')
     launches.append(gui)
     try:
-        step = gui.step('bootstrapped', 75)
+        step = gui.step('ui-page-ready', 75)
         run.check('N the negative-control package unexpectedly reached the page', False, step)
     except RuntimeError as e:
         time.sleep(1)
         log = gui.log.read_text(errors='replace')
-        cause = [l for l in log.splitlines() if 'Failed to spawn child process' in l and 'webkitgtk-6.0/WebKit' in l and 'No such file or directory' in l]
+        cause = [l for l in log.splitlines() if 'No such file or directory' in l and ('webkitgtk-6.0/WebKit' in l or ('bwrap:' in l and '/usr/bin/xdg-dbus-proxy' in l))]
         run.check('N the package without helper relocation never reaches the page, and the log names the cause: the host helper path does not exist',
                   bool(cause), {'wait': str(e), 'cause': cause[:1]})
         run.results['negativeLogTail'] = log[-3000:]

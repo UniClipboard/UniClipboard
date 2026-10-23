@@ -61,12 +61,16 @@ class LinuxGTK4Packaging(unittest.TestCase):
                 libdir.mkdir(parents=True)
                 library = libdir / 'libwebkitgtk-6.0.so.4'
                 old = f'/usr/lib/{triplet}/webkitgtk-6.0'
-                original = b'prefix\0' + old.encode() + b'/WebKitWebProcess\0suffix'
+                original = b'prefix\0' + old.encode() + b'/WebKitWebProcess\0/usr/bin/xdg-dbus-proxy\0suffix'
                 library.write_bytes(original)
                 result = package.relocate_webkit(appdir, Path(old))
                 self.assertEqual(len(library.read_bytes()), len(original))
                 self.assertNotIn(old.encode(), library.read_bytes())
+                self.assertEqual(Path(result['to']), Path(package.WEBKIT_RUNTIME_ROOT) / 'h')
+                self.assertEqual(Path(result['dbusProxy']['to']), Path(package.WEBKIT_RUNTIME_ROOT) / 'p')
                 self.assertIn(result['to'].encode() + b'/WebKitWebProcess', library.read_bytes())
+                self.assertNotIn(b'/usr/bin/xdg-dbus-proxy', library.read_bytes())
+                self.assertIn(result['dbusProxy']['to'].encode(), library.read_bytes())
 
     def test_post_deploy_policy_removes_vulkan_and_dbus_without_removing_gtk(self):
         appdir = self.root / 'appdir'

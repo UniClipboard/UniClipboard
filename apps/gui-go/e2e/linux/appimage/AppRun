@@ -8,12 +8,14 @@
 #     have no HTTPS): GIO_EXTRA_MODULES would only append, so the bundled GLib would still scan the host's module directory and
 #     load gvfs/dconf modules built for another GLib
 #     (docs/architecture/linux-appimage-library-policy.md, "GIO module ABI mixing"; docs/architecture/gui-go-linux-appimage-runtime-deps.md);
-#   * runs from $APPDIR/usr: libwebkitgtk's compiled-in helper directory `/usr/lib/<triple>/webkitgtk-6.0` was rewritten to
-#     `././/lib/<triple>/webkitgtk-6.0` at packaging time, a path that only resolves relative to $APPDIR/usr.
-# The GUI consumes no file or URL argument (its only argument is the quick-panel launch flag), so changing the working
-# directory loses nothing.
+#   * the UI child mounts bundled WebKit helpers and the D-Bus proxy at the absolute
+#     paths recorded by the packager, inside its own user/mount namespace.
 HERE="$(dirname "$(readlink -f "$0")")"
 export APPDIR="${APPDIR:-$HERE}"
+if [ ! -x /usr/bin/bwrap ]; then
+  echo 'UniClipboard requires host bubblewrap (/usr/bin/bwrap). Install the bubblewrap package with your package manager.' >&2
+  exit 1
+fi
 # Without a session bus, libdbus/GDBus/godbus start one on demand by running `dbus-launch --autolaunch` as a child of the process that first needs it, and
 # that bus hands its environment to every service it activates. From inside the AppImage that environment carries LD_LIBRARY_PATH, so the host's own
 # glib-pacrunner would load the bundled (possibly older) GLib and die with "undefined symbol" before it can serve PAC. Start (or find) that same

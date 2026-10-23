@@ -180,13 +180,11 @@ func (u *uiProcess) state() map[string]any {
 		return result
 	default:
 	}
-	result["uiPid"] = u.child.Process.Pid
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := u.peer.call(ctx, "state", nil, &result); err != nil {
 		result["stateError"] = err.Error()
 	}
-	result["uiPid"] = u.child.Process.Pid
 	return result
 }
 func (h *HostService) ownerCall(ctx context.Context, operation string, data any, out any) error {
@@ -328,7 +326,7 @@ func (h *HostService) handleUIRequest(m uiPacket) (any, error) {
 		h.app.Event.Emit(e.Name, e.Payload)
 	case "state":
 		w, ok := h.app.Window.GetByName("main")
-		state := map[string]any{"mainExists": ok, "mainVisible": ok && w.IsVisible()}
+		state := map[string]any{"uiPid": os.Getpid(), "mainExists": ok, "mainVisible": ok && w.IsVisible()}
 		if ok {
 			state["mainWindowId"] = w.ID()
 		}

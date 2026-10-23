@@ -140,6 +140,7 @@ GIO_SUPPORT_HOST_OK = ('libz.so.1', 'libgmp.so.10', 'libcom_err.so.2', 'libresol
 # 17c13: the linuxdeploy GTK plugin's AppRun hook exports this line unconditionally (module internal/commands/linuxdeploy-plugin-gtk.sh, line 246). It is the only reason the
 # AppImage ran through XWayland; docs/architecture/gui-go-linux-appimage-native-wayland.md records the upstream history and why it is removed here.
 GDK_BACKEND_HOOK_LINE = re.compile(r'^export GDK_BACKEND=x11[ \t]*(#.*)?$', re.M)
+WEBKIT_RUNTIME_ROOT = '/run/uc-webkit'
 WEBKIT_HELPERS = ('WebKitWebProcess', 'WebKitNetworkProcess', 'WebKitGPUProcess')
 APPRUN = GUI / 'e2e/linux/appimage/AppRun'
 ICONS = {'32x32': '32x32.png', '128x128': '128x128.png', '256x256': '128x128@2x.png'}
@@ -379,26 +380,34 @@ def webkit_helper_dir():
 
 
 def relocate_webkit(appdir, helper_dir):
-    """Rewrite the helper directory compiled into libwebkitgtk (`/usr/lib/<triple>/webkitgtk-6.0`) to
-    `././/lib/<triple>/webkitgtk-6.0`, the same length, so it resolves relative to $APPDIR/usr (AppRun's working
-    directory). The Tauri bundler does the same with a blanket /usr replacement; only the one path is changed here."""
+    """Use fixed absolute paths inside the UI child's private mount namespace.
+    Bubblewrap requires absolute bind destinations; equal-length slash padding
+    preserves ELF offsets without copying or modifying libraries at launch."""
     old = str(helper_dir).encode()
     assert old.startswith(b'/usr')
-    new = b'././' + old[4:]
+    new = (WEBKIT_RUNTIME_ROOT + '/h').encode()
+    assert len(new) <= len(old)
+    new += b'/' * (len(old) - len(new))
     libs = sorted((appdir / 'usr/lib').rglob('libwebkitgtk-6.0.so*'))
     libs = [lib for lib in libs if lib.is_file() and not lib.is_symlink()]
     if not libs:
         sys.exit('libwebkitgtk-6.0 was not deployed into the AppDir')
-    count = 0
+    proxy_old = b'/usr/bin/xdg-dbus-proxy'
+    proxy_new = (WEBKIT_RUNTIME_ROOT + '/').encode()
+    proxy_new += b'/' * (len(proxy_old) - len(proxy_new) - 1) + b'p'
+    assert len(proxy_new) == len(proxy_old)
+    counts = {old: 0, proxy_old: 0}
     for lib in libs:
         data = lib.read_bytes()
-        n = data.count(old)
-        if n:
-            lib.write_bytes(data.replace(old, new))
-            count += n
-    if not count:
-        sys.exit(f'{old.decode()} is not compiled into the deployed libwebkitgtk: the layout assumption is wrong')
-    return {'from': old.decode(), 'to': new.decode(), 'occurrences': count, 'libraries': [str(l.relative_to(appdir)) for l in libs]}
+        for source, destination in ((old, new), (proxy_old, proxy_new)):
+            counts[source] += data.count(source)
+            data = data.replace(source, destination)
+        lib.write_bytes(data)
+    for source, count in counts.items():
+        if not count:
+            sys.exit(f'{source.decode()} is not compiled into the deployed libwebkitgtk: the layout assumption is wrong')
+    return {'from': old.decode(), 'to': new.decode(), 'occurrences': counts[old], 'libraries': [str(l.relative_to(appdir)) for l in libs],
+            'dbusProxy': {'from': proxy_old.decode(), 'to': proxy_new.decode(), 'occurrences': counts[proxy_old]}}
 
 
 def inspect_appdir(appdir, helper_dir):
@@ -549,6 +558,16 @@ def build_appimage(stage, out, arch, name, tools, daemon, relocate=True, marker=
         if (helper_dir / helper).is_file():
             shutil.copy2(helper_dir / helper, target / helper)
     shutil.copytree(helper_dir / 'injected-bundle', target / 'injected-bundle')
+    # A host proxy would inherit the bundled GLib and could require newer symbols.
+    # Package the build distribution's proxy with its matching library closure.
+    proxy = appdir / 'usr/bin/xdg-dbus-proxy'
+    shutil.copy2('/usr/bin/xdg-dbus-proxy', proxy)
+    proxy.chmod(0o755)
+    (appdir / 'usr/h').symlink_to(target.relative_to(appdir / 'usr'))
+    (appdir / 'usr/p').symlink_to('bin/xdg-dbus-proxy')
+    runtime_metadata = appdir / 'usr/share/uniclipboard/webkit-runtime-root'
+    runtime_metadata.parent.mkdir(parents=True, exist_ok=True)
+    runtime_metadata.write_text(WEBKIT_RUNTIME_ROOT + '\n')
     # The pinned Wails GTK plugin deploys no GIO modules. The bundled directory is what AppRun's GIO_MODULE_DIR points at, so the bundled
     # GLib never loads the host's (ABI-incompatible) gvfs/dconf modules; deploy_gio_modules fills it with the TLS backend below (only the
     # --negative-control-no-tls-module variant leaves it empty).
@@ -564,10 +583,10 @@ def build_appimage(stage, out, arch, name, tools, daemon, relocate=True, marker=
     (appdir / 'usr/share/mime').mkdir(parents=True)
     shutil.copy2(mime_cache, appdir / 'usr/share/mime/mime.cache')
     if marker:
-        (appdir / 'usr/share/uniclipboard').mkdir(parents=True)
+        (appdir / 'usr/share/uniclipboard').mkdir(parents=True, exist_ok=True)
         (appdir / 'usr/share/uniclipboard/update-marker.txt').write_text(marker)
 
-    execs = [appdir / 'usr/bin/uniclipboard', appdir / 'usr/bin/uniclipd'] + [target / h for h in WEBKIT_HELPERS if (target / h).is_file()]
+    execs = [appdir / 'usr/bin/uniclipboard', appdir / 'usr/bin/uniclipd', proxy] + [target / h for h in WEBKIT_HELPERS if (target / h).is_file()]
     cmd = [str(linuxdeploy), '--appimage-extract-and-run', '--appdir', str(appdir), '--plugin', 'gtk', '--custom-apprun', str(APPRUN),
            '-d', str(appdir / 'usr/share/applications/uniclipboard.desktop'), '-i', str(appdir / 'usr/share/icons/hicolor/128x128/apps/uniclipboard.png')]
     for e in execs:

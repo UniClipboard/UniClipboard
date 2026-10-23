@@ -48,6 +48,13 @@ def _sha256_as_user(path):
     return _sha256(path)
 
 
+def _same_file_as_user(left, right):
+    result = subprocess.run(['test', str(left), '-ef', str(right)], user=USER, group=USER,
+                            extra_groups=[], capture_output=True)
+    return result.returncode == 0
+
+
+base.same_file = _same_file_as_user
 base.sha256 = _sha256_as_user
 
 USER = 'uc'
@@ -308,7 +315,7 @@ def scenarios(run, launches, args, sandbox, install, target, login_home, origina
               and not keyring_procs and not service_files, [names, keyring_procs, service_files])
     init = uniclip(run, args, conn, 'space', 'init', '--passphrase', PASSPHRASE, '--device-name', 'portable-e2e')
     run.results['spaceInit'] = init
-    boot = gui.step('bootstrapped', 120)
+    boot = gui.step('ui-page-ready', 120)
     run.check('P1 the WebView ran the frontend and reached the daemon', boot['ok'], boot)
     state = wait_panel_ready(gui, 'boot')
     run.check('P1 the panel reports ready', state.get('panelReady') is True, state)
@@ -371,7 +378,7 @@ def scenarios(run, launches, args, sandbox, install, target, login_home, origina
     conn2_path, conn2 = wait_daemon(sandbox)
     run.check('P3 restart (forced UC_PORTABLE=1): a NEW daemon on the same data root', conn2 is not None and conn2['pid'] != conn['pid'] and conn2_path.parent == data_root,
               [str(conn2_path), conn2 and conn2['pid'], conn['pid']])
-    gui2.step('bootstrapped', 120)
+    gui2.step('ui-page-ready', 120)
     wait_panel_ready(gui2, 'p3')
     after = gui2.invoke('ad2', 'get_auto_download_update')
     run.check('P3 the setting written before the restart reads back', after['data'] == flipped, after)
@@ -452,7 +459,7 @@ def update(run, launches, args, sandbox, target, home_dir, data_root, daemon_sha
         pconn_path, pconn = wait_daemon(sandbox)
         run.check('P4 the replaced AppImage starts a new daemon on the same portable data root',
                   pconn is not None and pconn['pid'] not in (old['pid'], new['pid']) and pconn_path.parent == data_root, [str(pconn_path), pconn and pconn['pid']])
-        post.step('bootstrapped', 120)
+        post.step('ui-page-ready', 120)
         pstate = wait_panel_ready(post, 'post')
         run.check('P4 the v2 page reached the daemon (panel ready)', pstate.get('panelReady') is True, pstate)
         pmount = inspect_processes(run, 'P4', post.proc.pid, daemon_sha, pconn['pid'])
@@ -541,7 +548,7 @@ exec {root}/usr/bin/uniclipboard "$@"
         run.check('S1 the process really had the stale environment (APPIMAGE = decoy, APPDIR does not contain the executable)',
                   env_gui.get('APPIMAGE') == str(decoy) and env_gui.get('APPDIR') == '/nonexistent-appdir', {k: env_gui.get(k) for k in ('APPIMAGE', 'APPDIR')})
         try:
-            gui.step('bootstrapped', 120)
+            gui.step('ui-page-ready', 120)
             gui.ctl('exit', 'control-exit')
         except RuntimeError as e:
             run.results['staleAppimage']['bootstrapNote'] = str(e)
@@ -565,7 +572,7 @@ exec {root}/usr/bin/uniclipboard "$@"
     run.check('S2 the portable AppImage starts with XDG_CONFIG_HOME set', conn is not None, str(conn_path))
     if conn is None:
         return
-    gui.step('bootstrapped', 120)
+    gui.step('ui-page-ready', 120)
     on = gui.invoke('xdg-on', 'update_autostart', {'enabled': True})
     entry = xdg / 'autostart/UniClipboard.desktop'
     body = entry.read_text() if entry.exists() else ''

@@ -7,7 +7,7 @@ for lib in libwebkit libjavascriptcoregtk libgtk-3 libgdk-3 libgtk-4 libsoup lib
   if ldconfig -p | grep -q "$lib"; then echo "host unexpectedly provides $lib" >&2; ldconfig -p | grep "$lib" >&2; exit 1; fi
 done
 [ ! -d /usr/lib/aarch64-linux-gnu/webkitgtk-6.0 ] && [ ! -d /usr/lib/x86_64-linux-gnu/webkitgtk-6.0 ] || { echo "webkit2gtk helper directory present" >&2; exit 1; }
-for tool in Xvfb xdotool xdpyinfo dbus-run-session fusermount3; do
+for tool in Xvfb xdotool xdpyinfo dbus-run-session fusermount3 bwrap; do
   command -v "$tool" >/dev/null || { echo "missing executable: $tool" >&2; exit 1; }
 done
 for lib in libvulkan.so.1 libGL.so.1 libEGL.so.1 libGLESv2.so.2 libX11.so.6 libwayland-client.so.0 libfuse.so.2; do

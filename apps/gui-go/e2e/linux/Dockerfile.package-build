@@ -1,6 +1,6 @@
 # Build image for the CI package pipeline (docs/architecture/gui-go-linux-ci-packaging.md): the release daemon, the GUI and
 # package_linux.py all run here, so the glibc floor of the package is the floor of THIS image.
-# Default: Ubuntu 24.04, GTK >= 4.10 and glibc 2.39. Debian 12 has GTK 4.8 and cannot build this host.
+# Default: Ubuntu 24.04, GTK >= 4.14 and glibc 2.39. Debian 12 has GTK 4.8 and cannot build this host.
 # No display server and no test tools: the clean-host runtime images (Dockerfile.17c4-runtime) run the AppImage.
 ARG BASE_IMAGE=ubuntu:24.04
 FROM ${BASE_IMAGE}
@@ -14,7 +14,7 @@ RUN apt_install.sh \
       curl git build-essential pkg-config xz-utils python3 file binutils cpio rpm desktop-file-utils \
       libgtk-4-dev libwebkitgtk-6.0-dev libx11-dev libdbus-1-dev libssl-dev \
       libglib2.0-bin libgdk-pixbuf2.0-bin libgtk-4-bin shared-mime-info \
-      glib-networking glib-networking-services dconf-gsettings-backend \
+      glib-networking glib-networking-services dconf-gsettings-backend xdg-dbus-proxy \
  && rm -rf /var/lib/apt/lists/*
 RUN curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-${TARGETARCH}.tar.gz" | tar -C /usr/local -xz
 ENV PATH=/usr/local/go/bin:$PATH GOFLAGS=-mod=mod GOTOOLCHAIN=local

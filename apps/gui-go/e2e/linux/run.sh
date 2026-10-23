@@ -138,9 +138,13 @@ case "$mode" in
     docker run -d --name "$keyring" --platform "$PLATFORM" -v "$bus:/bus" "$KEYRING_IMAGE" /usr/local/bin/keyring_service.sh >/dev/null
     for _ in $(seq 60); do docker run --rm -v "$bus:/bus" "$RUNTIME_IMAGE" test -f /bus/ready && break; sleep 1; done
     set +e
-    docker run --rm --init --platform "$PLATFORM" --device /dev/fuse --cap-add SYS_ADMIN --security-opt apparmor:unconfined \
+    docker run --rm --init --platform "$PLATFORM" --device /dev/fuse --cap-add SYS_ADMIN --security-opt seccomp=unconfined --security-opt apparmor:unconfined \
       -e UC_E2E_BUS=unix:path=/bus/bus -v "$bus:/bus" -v "$ROOT:/work:ro" -v "$VOLUME:/cache:ro" -v "$out:/out" "${mounts[@]}" \
-      "$RUNTIME_IMAGE" python3 /work/apps/gui-go/e2e/linux_appimage_run.py "${runargs[@]}" --uniclip /cache/out/uniclip > "$out/run.log" 2>&1
+      "$RUNTIME_IMAGE" bash -c '
+        chown uc-appimage:uc-appimage /out
+        bwrap --version
+        exec runuser -u uc-appimage -- python3 /work/apps/gui-go/e2e/linux_appimage_run.py "$@"
+      ' _ "${runargs[@]}" --uniclip /cache/out/uniclip > "$out/run.log" 2>&1
     code=$?
     docker logs "$keyring" > "$out/keyring-container.log" 2>&1
     # A bus-activated (locked) keyring or a prompt request means the Secret Service did not behave like an unlocked desktop keyring:
@@ -157,7 +161,7 @@ case "$mode" in
     feed="$(cd "${4:?feed dir}" && pwd)"
     manifest="$(cd "$(dirname "${5:?package-manifest.json}")" && pwd)/$(basename "$5")"
     set +e
-    docker run --rm --init --platform "$PLATFORM" --device /dev/fuse --cap-add SYS_ADMIN --cap-add SYS_PTRACE --security-opt apparmor:unconfined \
+    docker run --rm --init --platform "$PLATFORM" --device /dev/fuse --cap-add SYS_ADMIN --cap-add SYS_PTRACE --security-opt seccomp=unconfined --security-opt apparmor:unconfined \
       -v "$ROOT:/work:ro" -v "$VOLUME:/cache:ro" -v "$out:/out" -v "$image:/in/appimage.AppImage:ro" -v "$feed:/in/feed" \
       -v "$manifest:/in/package-manifest.json:ro" \
       uc-gui-go-linux-runtime:17c4 python3 /work/apps/gui-go/e2e/linux_appimage_portable_run.py --out /out --appimage /in/appimage.AppImage \
@@ -169,7 +173,7 @@ case "$mode" in
     image="$(cd "$(dirname "${3:?AppImage}")" && pwd)/$(basename "$3")"
     manifest="$(cd "$(dirname "${4:?package-manifest.json}")" && pwd)/$(basename "$4")"
     set +e
-    docker run --rm --init --platform "$PLATFORM" --device /dev/fuse --cap-add SYS_ADMIN --cap-add SYS_PTRACE --security-opt apparmor:unconfined \
+    docker run --rm --init --platform "$PLATFORM" --device /dev/fuse --cap-add SYS_ADMIN --cap-add SYS_PTRACE --security-opt seccomp=unconfined --security-opt apparmor:unconfined \
       -v "$ROOT:/work:ro" -v "$out:/out" -v "$image:/in/appimage.AppImage:ro" -v "$manifest:/in/package-manifest.json:ro" \
       "${UC_TLS_IMAGE:-uc-gui-go-linux-runtime:17c7}" python3 /work/apps/gui-go/e2e/linux_appimage_tls_run.py --out /out --appimage /in/appimage.AppImage \
       --manifest /in/package-manifest.json ${UC_TLS_E2E_ARGS:-} > "$out/run.log" 2>&1
@@ -180,7 +184,7 @@ case "$mode" in
     image="$(cd "$(dirname "${3:?AppImage}")" && pwd)/$(basename "$3")"
     manifest="$(cd "$(dirname "${4:?package-manifest.json}")" && pwd)/$(basename "$4")"
     set +e
-    docker run --rm --init --platform "$PLATFORM" --device /dev/fuse --cap-add SYS_ADMIN --cap-add SYS_PTRACE --security-opt apparmor:unconfined \
+    docker run --rm --init --platform "$PLATFORM" --device /dev/fuse --cap-add SYS_ADMIN --cap-add SYS_PTRACE --security-opt seccomp=unconfined --security-opt apparmor:unconfined \
       -v "$ROOT:/work:ro" -v "$out:/out" -v "$image:/in/appimage.AppImage:ro" -v "$manifest:/in/package-manifest.json:ro" \
       "${UC_HELPERS_IMAGE:?UC_HELPERS_IMAGE}" python3 /work/apps/gui-go/e2e/linux_appimage_helpers_run.py --out /out --appimage /in/appimage.AppImage \
       --manifest /in/package-manifest.json --desktop "${UC_HELPERS_DESKTOP:?UC_HELPERS_DESKTOP}" ${UC_HELPERS_E2E_ARGS:-} > "$out/run.log" 2>&1

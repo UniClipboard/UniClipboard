@@ -9,6 +9,9 @@ import (
 )
 
 func startUICommand(cmd *exec.Cmd, input, output *os.File) error {
+	if err := prepareUICommand(cmd); err != nil {
+		return err
+	}
 	cmd.ExtraFiles = []*os.File{input, output}
 	return cmd.Start()
 }

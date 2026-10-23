@@ -23,13 +23,15 @@ if [ "${1:-}" != "--inner" ]; then
   cp "$here/package_install_check.sh" "$here/package_profile_check.py" "$out/source/"
   shasum -a 256 "$out/source/"* > "$out/harness.sha256"
   platform="${UC_DOCKER_PLATFORM:?UC_DOCKER_PLATFORM}"
-  docker run --rm --init --security-opt seccomp=unconfined --security-opt systempaths=unconfined --security-opt "apparmor=${UC_WEBKIT_CI_APPARMOR_PROFILE:-unconfined}" --platform "$platform" -v "$out/source/package_install_check.sh:/check.sh:ro" -v "$out/source/package_profile_check.py:/profile.py:ro" -v "$new:/in/new.$kind:ro" -v "$old:/in/old.$kind:ro" -v "$out:/out" \
+  docker run --rm --init --security-opt seccomp=unconfined --security-opt systempaths=unconfined --security-opt "apparmor=${UC_WEBKIT_CI_APPARMOR_PROFILE:-unconfined}" --platform "$platform" -e UC_HOST_UID="$(id -u)" -e UC_HOST_GID="$(id -g)" -v "$out/source/package_install_check.sh:/check.sh:ro" -v "$out/source/package_profile_check.py:/profile.py:ro" -v "$new:/in/new.$kind:ro" -v "$old:/in/old.$kind:ro" -v "$out:/out" \
     "$image" bash /check.sh --inner "$kind" "$scenario" "$sha" > "$out/run.log" 2>&1
   rc=$?
   tail -n 40 "$out/results.tsv" 2>/dev/null; exit "$rc"
 fi
 
 shift; kind="$1"; scenario="$2"; sha="$3"
+# Return only harness evidence to its caller; never change the product profile permissions.
+trap 'chown -R "$UC_HOST_UID:$UC_HOST_GID" /out' EXIT
 sha256sum /in/new.* /in/old.* > /out/package-inputs.sha256
 results=/out/results.tsv; : > "$results"; failures=0
 ok()  { printf 'PASS\t%s\t%s\n' "$1" "${2:-}" | tee -a "$results"; }

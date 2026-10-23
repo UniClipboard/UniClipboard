@@ -514,6 +514,16 @@ def release_gdk_backend(appdir):
     return {'hook': str(hook.relative_to(appdir)), 'removedLine': GDK_BACKEND_HOOK_LINE.search(text).group(0), 'hookSha256Before': before, 'hookSha256After': sha256(hook)}
 
 
+def remove_host_libraries(appdir):
+    """Apply the host graphics/D-Bus ownership policy after every deployment pass."""
+    removed = []
+    for path in sorted((appdir / 'usr/lib').rglob('*')):
+        if (path.is_file() or path.is_symlink()) and path.name.startswith(HOST_ONLY_LIBS):
+            removed.append(str(path.relative_to(appdir)))
+            path.unlink()
+    return removed
+
+
 def build_appimage(stage, out, arch, name, tools, daemon, relocate=True, marker=None, tls_module=True, force_x11_hook=False):
     tools.mkdir(exist_ok=True)
     tool_url, tool_pin = APPIMAGETOOL[arch]
@@ -589,14 +599,11 @@ def build_appimage(stage, out, arch, name, tools, daemon, relocate=True, marker=
                 'packageVersion': run(['dpkg-query', '-W', '-f', '${Version}', LIBPROXY_PLUGIN[1]], capture=True), 'sha256': sha256(moddir / LIBPROXY_PLUGIN[0]), 'needed': needed}
     gdk_hook_info = 'KEPT (differential control: the hook still forces GDK_BACKEND=x11)' if force_x11_hook else release_gdk_backend(appdir)
 
-    # libdbus-1 is the host's. linuxdeploy's exclude list does not name it, and its `--exclude-library` option is honoured by the main run but not by the
-    # GTK plugin's own deployment pass (the log shows "Skipping ... blacklisted libdbus" and then the plugin deploying it anyway). A bundled copy shadows
-    # the host's for every host helper the GUI starts through AppRun's LD_LIBRARY_PATH: observed 17c7 on Fedora, whose dbus-launch (libdbus 1.16.2)
-    # failed on the bundled older copy ("version LIBDBUS_PRIVATE_1.16.2 not found", rc 127) and the GUI then exited 1 without a message.
-    # Removed after linuxdeploy; inspect_appdir fails the package if any libdbus is left.
-    removed_dbus = sorted(p.name for p in (appdir / 'usr/lib').glob('libdbus-1.so*'))
-    for p in (appdir / 'usr/lib').glob('libdbus-1.so*'):
-        p.unlink()
+    # GTK4 adds a direct Vulkan loader dependency. The GTK plugin may re-add libraries
+    # excluded by the main linuxdeploy pass; remove all host-owned entry points last.
+    # The same ownership rule protects host helpers from the bundled libdbus ABI.
+    removed_host = remove_host_libraries(appdir)
+    removed_dbus = [Path(name).name for name in removed_host if Path(name).name.startswith('libdbus-1.so')]
 
     # linuxdeploy sets an $ORIGIN rpath on every executable it is given, which changes the bytes. The daemon is given to it so that
     # its libraries are deployed, then the original file is put back: AppRun's LD_LIBRARY_PATH covers the lookup, and the daemon
@@ -614,7 +621,7 @@ def build_appimage(stage, out, arch, name, tools, daemon, relocate=True, marker=
     info = {'linuxdeploy': {'release': release, 'sha256': pin}, 'daemonRestoredAfterLinuxdeploy': True, 'daemonHashChain': daemon_chain, 'appimagetoolSha256': tool_pin,
             'gtkPlugin': {'source': str(plugin_source), 'wailsModuleDir': str(wails_dir), 'sha256': sha256(plugin)},
             'webkitHelperDirectory': str(helper_dir), 'updateMarker': bool(marker),
-            'sharedMimeCache': {'source': str(mime_cache), 'sha256': sha256(mime_cache)}, 'gioModules': gio_modules_info, 'libdbusRemoved': removed_dbus,
+            'sharedMimeCache': {'source': str(mime_cache), 'sha256': sha256(mime_cache)}, 'gioModules': gio_modules_info, 'libdbusRemoved': removed_dbus, 'hostLibrariesRemoved': removed_host,
             'panelBackend': 'ordinary-window', 'gdkBackendHook': gdk_hook_info}
     info['relocation'] = relocate_webkit(appdir, helper_dir) if relocate else 'DISABLED (negative control)'
     info['inspection'] = inspect_appdir(appdir, helper_dir)

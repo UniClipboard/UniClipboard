@@ -68,6 +68,21 @@ class LinuxGTK4Packaging(unittest.TestCase):
                 self.assertNotIn(old.encode(), library.read_bytes())
                 self.assertIn(result['to'].encode() + b'/WebKitWebProcess', library.read_bytes())
 
+    def test_post_deploy_policy_removes_vulkan_and_dbus_without_removing_gtk(self):
+        appdir = self.root / 'appdir'
+        libdir = appdir / 'usr/lib'
+        libdir.mkdir(parents=True)
+        (libdir / 'libvulkan.so.1.3.275').write_bytes(b'host loader')
+        (libdir / 'libvulkan.so.1').symlink_to('libvulkan.so.1.3.275')
+        (libdir / 'libdbus-1.so.3').write_bytes(b'host D-Bus')
+        (libdir / 'libgtk-4.so.1').write_bytes(b'bundled GTK4')
+        (libdir / 'libwebkitgtk-6.0.so.4').write_bytes(b'bundled WebKit')
+        removed = package.remove_host_libraries(appdir)
+        self.assertEqual(set(removed), {
+            'usr/lib/libvulkan.so.1', 'usr/lib/libvulkan.so.1.3.275', 'usr/lib/libdbus-1.so.3',
+        })
+        self.assertEqual(sorted(p.name for p in libdir.iterdir()), ['libgtk-4.so.1', 'libwebkitgtk-6.0.so.4'])
+
     @unittest.skipUnless(shutil.which('dpkg-deb'), 'requires dpkg-deb')
     def test_real_deb_and_nix_pin_require_verified_gtk4_payloads(self):
         binary = self.binary('gui', ['libgtk-4.so.1', 'libwebkitgtk-6.0.so.4'])

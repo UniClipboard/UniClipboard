@@ -259,12 +259,12 @@ def restore(s3, key, temporary, report, object_fallback):
         policy = f"source {shlex.quote(config.as_posix())}\n"
         policy += "unset BUILD_CACHE_R2_ENDPOINT BUILD_CACHE_R2_ACCESS_KEY_ID BUILD_CACHE_R2_SECRET_ACCESS_KEY\n"
         policy += "unset MBX_REMOTE_URL MBX_REMOTE_NAMESPACE MBX_REMOTE_S3_ENDPOINT MBX_REMOTE_S3_REGION MBX_REMOTE_MODE\n"
-        with tempfile.NamedTemporaryFile(mode="w", newline="\n", prefix="mbx-local-policy-", dir=config.parent, delete=False) as output:
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", newline="\n", prefix="mbx-local-policy-", dir=config.parent, delete=False) as output:
             replacement = Path(output.name)
             try:
                 output.write(policy)
                 output.close()
-                with open(os.environ["GITHUB_ENV"], "a") as commands:
+                with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as commands:
                     commands.write(f"UC_MBX_SNAPSHOT_ENV_FILE={config.as_posix()}\nUC_ENGINE_MBX_ENV_FILE={replacement.as_posix()}\n")
             except BaseException:
                 output.close()

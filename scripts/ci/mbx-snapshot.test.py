@@ -72,7 +72,7 @@ class SnapshotTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            config = root / "engine's identity"
+            config = root / "engine's identity 身份"
             original = "export BUILD_CACHE_R2_SECRET_ACCESS_KEY=fixture-secret\n"
             config.write_text(original, newline="\n")
             original_bytes = config.read_bytes()
@@ -82,11 +82,11 @@ class SnapshotTests(unittest.TestCase):
             with patch.dict(os.environ, env), patch.object(snapshot, "get_index", return_value=index), patch.object(snapshot, "unpack"), patch.object(snapshot, "mbx"):
                 snapshot.restore(FakeS3(), "scene", root, dict(index_reads=0, archive_reads=0, downloaded_bytes=0), False)
             self.assertEqual(config.read_bytes(), original_bytes)
-            changes = dict(line.split("=", 1) for line in command_file.read_text().splitlines())
+            changes = dict(line.split("=", 1) for line in command_file.read_text(encoding="utf-8").splitlines())
             self.assertEqual(Path(changes["UC_MBX_SNAPSHOT_ENV_FILE"]), config)
             policy = Path(changes["UC_ENGINE_MBX_ENV_FILE"])
             self.assertNotEqual(policy, config)
-            self.assertNotIn("fixture-secret", policy.read_text())
+            self.assertNotIn("fixture-secret", policy.read_text(encoding="utf-8"))
             self.assertNotIn(b"\r", policy.read_bytes())
             if os.name != "nt":
                 self.assertEqual(policy.stat().st_mode & 0o777, 0o600)

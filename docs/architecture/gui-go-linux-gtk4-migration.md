@@ -28,7 +28,7 @@ AUR 安装验收在可丢弃容器中由 root 安装软件包，再由独立普�
 
 AppImage 的 GTK4 WebKit 沙箱会把编译期路径用作 bubblewrap 的绝对挂载目标，旧 GTK3 的相对路径替换不适用。固定 Wails 版本的 AppImage 命令没有重定位这些路径的接口，因此打包器将助手目录与 D-Bus 代理路径等长替换为 `/run/uc-webkit` 下的路径，并在包内记录唯一的运行时布局。只有界面子进程通过宿主 `/usr/bin/bwrap` 建立私有用户与挂载命名空间，将只读 AppDir 映射到该路径；原有 `/run` 子项、设备、网络、控制管道和用户文件仍可访问。驻留宿主、daemon 与更新流程不进入该命名空间，WebKit 继续在其内建立自己的进程沙箱。该机制替代旧的相对路径方案，不修改系统挂载，也不在启动时复制或重写库。界面状态中的 `uiPid` 由界面进程自身报告，不使用 bubblewrap 监控进程的 PID。
 
-Ubuntu 托管 runner 的 AppArmor 会让未命名的 `unconfined` 容器进入限制命名空间能力的配置，普通用户的 bubblewrap 网络初始化仍会失败。AUR 与原生包 CI 在宿主加载一个仅供显式标记的测试容器使用的 `userns` 配置；保留宿主全局限制，并继续启用 WebKit 沙箱。此操作仅允许一次性的 GitHub 托管 runner 执行，Snap 严格隔离验收不使用这项测试配置。
+Ubuntu 托管 runner 的 AppArmor 会让未命名的 `unconfined` 容器进入限制命名空间能力的配置，普通用户的 bubblewrap 网络初始化仍会失败。AUR、原生包与 AppImage CI 在宿主加载一个仅供显式标记的测试容器使用的 `userns` 配置；保留宿主全局限制，并继续启用 WebKit 沙箱。此操作仅允许一次性的 GitHub 托管 runner 执行，Snap 严格隔离验收不使用这项测试配置。Docker 的默认 `/proc` 掩码还会阻止 WebKit 的 D-Bus 代理挂载新的 procfs，因此这些一次性容器显式使用 `systempaths=unconfined`；应用仍由普通用户运行，WebKit 自身的沙箱保持启用。私有 D-Bus 启动前设置显示环境，使按需激活的桌面服务能够连接 Xvfb。
 
 deb/rpm 与 AppImage 验收同样使用普通用户启动实际界面。AppImage 的独立密钥环容器使用相同测试 UID，避免 D-Bus 身份不一致；宿主没有 GTK/WebKit 的检查保持有效。真实网页就绪要求前端通过宿主服务写入 `ui-page-ready`，驻留宿主的 `bootstrapped` 事件不能作为网页已加载的证明。
 
@@ -49,7 +49,7 @@ Flatpak manifest 原本使用占位 URL/哈希，目前仍不可提交发布。G
 - 当前包验收矩阵改为 Ubuntu 24.04、Debian 13 和 Fedora；AppImage 内容及进程映射检查改为 GTK4/WebKitGTK 6.0，并拒绝旧 GTK3 库。
 - 本轮环境无 Docker socket 权限、Snapcraft 和 Flatpak Builder，完整各架构容器构建、真实包安装及桌面功能需要 CI/专用主机验收。静态检查、合成包检查与本机 GUI 编译不能替代这些结果。
 
-后续 CI 已确认两种架构的原生包与 AppImage 构建通过，Snap 的重复 HarfBuzz 文件也已实际移除；Snap 启动仍未达到 WebKit 检查，正在补齐发布宿主的文件日志。AUR 的普通用户命名空间探针仍被 Ubuntu 宿主策略拒绝，因此增加了上述仅供测试容器使用的 AppArmor 配置；尚待新一轮运行确认。
+后续 CI 已确认两种架构的原生包与 AppImage 构建通过，Snap 的重复 HarfBuzz 文件也已实际移除；Snap 启动仍未达到 WebKit 检查，正在补齐发布宿主的文件日志。AUR 在专用 AppArmor 配置下的普通用户命名空间探针已通过，随后暴露出 WebKit D-Bus 代理挂载 `/proc` 被 Docker 拒绝的问题；上述 `systempaths=unconfined` 修复仍须新一轮运行确认。Snap 的文件日志工件须保留隐藏目录，否则日志复制成功后仍会被上传步骤过滤。
 
 ## 上游依据
 
@@ -59,3 +59,5 @@ Flatpak manifest 原本使用占位 URL/哈希，目前仍不可提交发布。G
 - [Ubuntu 24.04 的 AppArmor 用户命名空间限制与配置规则](https://documentation.ubuntu.com/release-notes/24.04/)
 - [Arch Linux WebKitGTK 6.0 包](https://archlinux.org/packages/extra/x86_64/webkitgtk-6.0/)
 - Wails 固定版本及内嵌 GTK 插件以 `apps/gui-go/go.mod` 解析的模块为准；插件已支持 GTK4，无须复制或修改上游脚本。
+
+Docker procfs 限制的上游说明见 [Moby BuildKit 的容器化与挂载诊断文档](https://github.com/moby/buildkit/blob/master/docs/rootless.md)。

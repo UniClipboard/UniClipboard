@@ -13,7 +13,7 @@ import (
 
 // Native shell, appearance and lifecycle commands.
 
-// SetWindowZoom changes the calling WebView's native zoom, including scales below 100%.
+// SetWindowZoom changes the calling WebView's native zoom. GTK4 Linux also supports scales below 100%.
 //
 //uc:errors command ValidationError NotFound InternalError
 //uc:os all=real

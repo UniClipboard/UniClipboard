@@ -110,7 +110,7 @@ Wails 版本与 Go 工具链只在 `apps/gui-go/go.mod` 中固定一处，生成
 | `set_traffic_light_position` | `SetTrafficLightPosition` | `offsetX *float64, offsetY *float64` | `-` | none | 不支持 | 有意空操作 | 有意空操作 | 契约命令；SetTrafficLightPosition would place the macOS window buttons. |
 | `set_visual_effects_mode` | `SetVisualEffectsMode` | `mode EffectsMode` | `EffectsSnapshot` | command: ValidationError | 真实 | 真实 | 真实 | 契约命令；SetVisualEffectsMode applies immediately, then saves without rolling back on disk errors. |
 | `set_window_decorations` | `SetWindowDecorations` | `decorations bool` | `-` | none | 有意空操作 | 真实 | 真实 | 适配器：`@/host/window`；SetWindowDecorations applies the page's frame preference (custom controls drawn by the page, or the system frame) to the main window. |
-| `set_window_zoom` | `SetWindowZoom` | `scale float64` | `-` | command: ValidationError, NotFound, InternalError | 真实 | 真实 | 真实 | 适配器：`@/host/webview`；SetWindowZoom changes the calling WebView's native zoom, including scales below 100%. |
+| `set_window_zoom` | `SetWindowZoom` | `scale float64` | `-` | command: ValidationError, NotFound, InternalError | 真实 | 真实 | 真实 | 适配器：`@/host/webview`；SetWindowZoom changes the calling WebView's native zoom. |
 | `show_content_unlock` | `ShowContentUnlock` | - | `-` | none | 真实 | 真实 | 真实 | 契约命令；ShowContentUnlock brings the main window forward so the user can unlock content. |
 | `skip_version` | `SkipVersion` | `version string` | `-` | text | 真实 | 真实 | 真实 | 契约命令；SkipVersion remembers that the user does not want the given version on the current channel. |
 | `take_pending_navigation` | `TakePendingNavigation` | - | `*string` | none | 真实 | 真实 | 真实 | 契约命令；TakePendingNavigation returns, once, the route a tray or second launch asked the page to open. |

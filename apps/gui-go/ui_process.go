@@ -313,17 +313,21 @@ func (h *HostService) handleUIRequest(m uiPacket) (any, error) {
 	case "event":
 		var e struct {
 			Name    string
-			Payload any
+			Payload json.RawMessage
 		}
 		if err := json.Unmarshal(m.Data, &e); err != nil {
 			return nil, err
+		}
+		payload, err := decodeUIEventPayload(e.Name, e.Payload)
+		if err != nil {
+			return nil, fmt.Errorf("decode UI event %q: %w", e.Name, err)
 		}
 		if e.Name == daemonConnectionChanged {
 			if client, err := daemonclient.FromEnv(); err == nil {
 				h.client.Store(client)
 			}
 		}
-		h.app.Event.Emit(e.Name, e.Payload)
+		h.app.Event.Emit(e.Name, payload)
 	case "state":
 		w, ok := h.app.Window.GetByName("main")
 		state := map[string]any{"uiPid": os.Getpid(), "mainExists": ok, "mainVisible": ok && w.IsVisible()}

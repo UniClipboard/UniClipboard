@@ -23,6 +23,9 @@ rm -rf "$OUT" && mkdir -p "$OUT"
 GIT=(git -c safe.directory='*')
 HEAD_SHA="$("${GIT[@]}" rev-parse HEAD)"
 
+# The UI pipe codecs must match the authoritative Wails event registrations.
+(cd apps/gui-go && go run ./cmd/hosteventcodec -check)
+
 # The generated build info must match the Rust workspace it is derived from (version and daemon API revision).
 (cd packages/desktop-host-go && go generate ./buildinfo)
 "${GIT[@]}" diff --exit-code -- packages/desktop-host-go/buildinfo ||

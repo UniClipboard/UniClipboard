@@ -35,6 +35,9 @@ function run(command, args, options = {}) {
   }
 }
 
+// Keep the UI pipe codecs derived from the same registrations as the frontend bindings.
+run('go', ['run', './cmd/hosteventcodec', ...(check ? ['-check'] : [])], { cwd: GUI_GO })
+
 // The generator is built for the machine it runs on, before GOOS is applied: GOOS/GOARCH only select which
 // source files of apps/gui-go it analyses.
 let generatorBinary

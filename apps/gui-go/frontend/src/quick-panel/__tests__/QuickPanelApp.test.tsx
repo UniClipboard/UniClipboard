@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { getSettings } from '@/api/daemon'
 import { subscribeDesktopTheme } from '@/lib/desktop-theme'
@@ -12,9 +13,63 @@ const connectDaemonWsMock = vi.fn()
 const panelRenderMock = vi.fn()
 const invokeMock = vi.fn()
 let eventHandlers: Record<string, () => void> = {}
-const contentAccess = vi.hoisted(() => ({ unlocked: true as boolean | null }))
+const contentAccess = vi.hoisted(() => ({ unlocked: true as boolean | null, refresh: vi.fn() }))
 vi.mock('@/hooks/useContentUnlocked', () => ({
-  useContentUnlocked: () => ({ unlocked: contentAccess.unlocked }),
+  useContentUnlocked: () => ({ unlocked: contentAccess.unlocked, refresh: contentAccess.refresh }),
+}))
+
+vi.mock('@/store/setupRealtimeStore', () => ({
+  ensureSetupRealtimeSync: vi.fn().mockResolvedValue(undefined),
+  refreshSetupState: vi.fn().mockResolvedValue(undefined),
+}))
+
+vi.mock('@/ui-kit', () => ({
+  UiRoot: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  Text: ({ children }: { children: ReactNode }) => <p>{children}</p>,
+  Button: ({
+    children,
+    onClick,
+    busy,
+    submitForm,
+  }: {
+    children: ReactNode
+    onClick?: () => void
+    busy?: boolean
+    submitForm?: string
+  }) => (
+    <button
+      type={submitForm ? 'submit' : 'button'}
+      form={submitForm}
+      disabled={busy}
+      onClick={onClick}
+    >
+      {children}
+    </button>
+  ),
+  FormField: ({
+    id,
+    label,
+    value,
+    onValueChange,
+    error,
+  }: {
+    id: string
+    label: string
+    value: string
+    onValueChange: (value: string) => void
+    error?: string
+  }) => (
+    <label>
+      {label}
+      <input
+        id={id}
+        type="password"
+        value={value}
+        onChange={event => onValueChange(event.target.value)}
+      />
+      {error && <span role="alert">{error}</span>}
+    </label>
+  ),
 }))
 
 vi.mock('@/api/daemon', () => ({
@@ -48,6 +103,9 @@ vi.mock('@host/hostservice', () => {
     SetQuickPanelLayout: call('SetQuickPanelLayout'),
     SetVisualEffectsMode: call('SetVisualEffectsMode'),
     ShowContentUnlock: call('ShowContentUnlock'),
+    UnlockContentFromKeyring: call('UnlockContentFromKeyring'),
+    UnlockContent: call('UnlockContent'),
+    DismissQuickPanel: call('DismissQuickPanel'),
   }
 })
 
@@ -117,9 +175,7 @@ describe('QuickPanelApp', () => {
     contentAccess.unlocked = unlocked
     connectDaemonWsMock.mockResolvedValue(undefined)
     const view = render(<QuickPanelApp />)
-    await waitFor(() =>
-      expect(screen.queryByText('Connecting clipboard history...')).not.toBeInTheDocument()
-    )
+    await waitFor(() => expect(connectDaemonWsMock).toHaveBeenCalled())
     expect(panelRenderMock).not.toHaveBeenCalled()
     expect(screen.queryByText('Clipboard history panel')).not.toBeInTheDocument()
     contentAccess.unlocked = true
@@ -127,23 +183,47 @@ describe('QuickPanelApp', () => {
     expect(screen.getByText('Clipboard history panel')).toBeVisible()
   })
 
-  it('shows an error when the unlock window cannot be opened', async () => {
+  it('unlocks from the keyring inside the panel without opening the main window', async () => {
     contentAccess.unlocked = false
     connectDaemonWsMock.mockResolvedValue(undefined)
     invokeMock.mockImplementation((command: string) =>
-      command === 'ShowContentUnlock'
-        ? Promise.reject(new Error('window unavailable'))
-        : Promise.resolve(undefined)
+      Promise.resolve(command === 'UnlockContentFromKeyring')
     )
-
     render(<QuickPanelApp />)
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Unlock' })).toBeVisible())
-    fireEvent.click(screen.getByRole('button', { name: 'Unlock' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Unlock' }))
+    await waitFor(() => expect(contentAccess.refresh).toHaveBeenCalledOnce())
+    expect(invokeMock).toHaveBeenCalledWith('UnlockContentFromKeyring')
+    expect(invokeMock).not.toHaveBeenCalledWith('ShowContentUnlock')
+  })
 
-    expect(
-      await screen.findByText('Could not open the unlock window. Try again from the main window.')
-    ).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Unlock' })).toBeEnabled()
+  it('accepts a passphrase in the panel, keeps wrong-passphrase content hidden and clears it on reopen', async () => {
+    contentAccess.unlocked = false
+    connectDaemonWsMock.mockResolvedValue(undefined)
+    invokeMock.mockImplementation((command: string) =>
+      command === 'UnlockContent'
+        ? Promise.reject({ code: 'WRONG_PASSPHRASE' })
+        : Promise.resolve(false)
+    )
+    render(<QuickPanelApp />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Unlock' }))
+    const input = await screen.findByLabelText('Passphrase')
+    fireEvent.change(input, { target: { value: 'wrong' } })
+    fireEvent.submit(input.closest('form')!)
+    expect(await screen.findByRole('alert')).toBeVisible()
+    expect(contentAccess.refresh).not.toHaveBeenCalled()
+    expect(panelRenderMock).not.toHaveBeenCalled()
+    fireEvent.keyDown(window, { key: 'Escape' })
+    await waitFor(() => expect(invokeMock).toHaveBeenCalledWith('DismissQuickPanel'))
+    await act(async () => eventHandlers['quick-panel://prepare-show']?.())
+    expect(screen.queryByLabelText('Passphrase')).not.toBeInTheDocument()
+    fireEvent.click(await screen.findByRole('button', { name: 'Unlock' }))
+    const nextInput = await screen.findByLabelText('Passphrase')
+    expect(nextInput).toHaveValue('')
+    invokeMock.mockResolvedValue(undefined)
+    fireEvent.change(nextInput, { target: { value: 'correct' } })
+    fireEvent.submit(nextInput.closest('form')!)
+    await waitFor(() => expect(contentAccess.refresh).toHaveBeenCalledOnce())
+    expect(invokeMock).not.toHaveBeenCalledWith('ShowContentUnlock')
   })
 
   it('themes the connecting screen before daemon bootstrap finishes', async () => {

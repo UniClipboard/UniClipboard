@@ -1,4 +1,4 @@
-//go:build e2e && (!linux || !gtk3)
+//go:build e2e && (!linux || !gtk4)
 
 package main
 

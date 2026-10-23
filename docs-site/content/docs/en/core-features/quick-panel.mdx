@@ -65,6 +65,12 @@ hyprctl configerrors
 
 An empty result from the second command means the configuration is valid. `Super+Ctrl+V` now opens or closes the Quick Panel while the UniClipboard GUI is running. If the GUI is not running, the command exits with an error instead of starting it. Quick Panel must remain enabled in UniClipboard settings.
 
+## Unlocking the WebView panel
+
+The Linux WebView Quick Panel and the WebView fallback on macOS and Windows can unlock independently, without opening the main window. When content is locked, click **Unlock** to try the configured secure storage first. If it is unavailable or authorization is refused, enter your space passphrase directly in the panel. An incorrect passphrase keeps content locked and shows an error; successful unlock opens the history list.
+
+Press `Esc` to dismiss the unlock page. Reopening clears any unsubmitted passphrase. Content access is still revoked when the UI process exits, while background sync and clipboard monitoring continue; unlocking again does not require the main window.
+
 ## macOS and Windows native panel
 
 The macOS and Windows installers include a separate native panel process. It is used by default, and stays resident in the tray with very low usage after the main window is closed. To go back to the previous panel, set the environment variable `UC_GPUI_QUICK_PANEL=0` before starting the app. While content is locked the panel shows a locked page and can read no history: the background refuses its requests, and the moment content gets locked the panel also drops every row, thumbnail and preview it was showing. The whole panel then becomes a separate unlock page with only a masked passphrase box (nothing typed there is ever used as a search), so you can type the passphrase and press `Enter` to unlock right in the panel without opening the main window; a wrong passphrase asks you to try again. The panel refreshes by itself once unlocked.
@@ -127,6 +133,15 @@ shortcut while the modifier is held. UniClipboard writes only the
 `text/plain` representation to the system clipboard first; if the item
 has no plain-text representation, it silently falls back to the normal
 multi-format paste.
+
+### Linux window and text scaling
+
+| Shortcut | Action |
+| --- | --- |
+| `Ctrl + =` / `Ctrl + -` | Enlarge or shrink the panel window in 10% steps, from 80% to 150%, without changing text zoom. |
+| `Ctrl + Shift + =` / `Ctrl + Shift + -` | Enlarge or shrink text using the existing 80%–150% UI zoom presets, without changing the window size. |
+
+Both scales are remembered locally. Text scaling shares the main window's UI zoom preference. Customize these keys in **Settings → Shortcuts → Quick Panel**. Each adjustment briefly shows the current text and window percentages in the panel's bottom-right corner.
 
 ## Right-click actions
 

@@ -86,7 +86,7 @@ func (s *EvidenceService) runControlCommand(line string) {
 			}
 			_ = s.write(Step{Window: "main", Step: "close-main-" + arg, OK: closed, Detail: h.ui.state()})
 			return
-		case "show-main", "close-updater", "window-frame-state":
+		case "show-main", "close-updater", "window-frame-state", "panel-js":
 			if err := h.ui.call("e2e-control", line, nil); err != nil {
 				_ = s.write(Step{Window: "ui", Step: "control-error", OK: false, Detail: err.Error()})
 			}

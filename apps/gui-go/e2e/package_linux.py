@@ -39,6 +39,8 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+from appimage_processes import WEBKIT_HELPERS
+
 ROOT = Path(__file__).resolve().parents[3]
 GUI = ROOT / 'apps/gui-go'
 ARCH = {  # go arch -> (deb, rpm/ARCH for the AppImage tools)
@@ -141,7 +143,6 @@ GIO_SUPPORT_HOST_OK = ('libz.so.1', 'libgmp.so.10', 'libcom_err.so.2', 'libresol
 # AppImage ran through XWayland; docs/architecture/gui-go-linux-appimage-native-wayland.md records the upstream history and why it is removed here.
 GDK_BACKEND_HOOK_LINE = re.compile(r'^export GDK_BACKEND=x11[ \t]*(#.*)?$', re.M)
 WEBKIT_RUNTIME_ROOT = '/run/uc-webkit'
-WEBKIT_HELPERS = ('WebKitWebProcess', 'WebKitNetworkProcess', 'WebKitGPUProcess')
 APPRUN = GUI / 'e2e/linux/appimage/AppRun'
 ICONS = {'32x32': '32x32.png', '128x128': '128x128.png', '256x256': '128x128@2x.png'}
 

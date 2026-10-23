@@ -40,6 +40,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
+from appimage_processes import belongs_to_appimage, same_file
 from linux_xvfb_run import read_steps  # noqa: E402
 
 
@@ -165,23 +166,10 @@ class Launch:
         return self.ctl(f'invoke {label} {command} {json.dumps(args) if args is not None else ""}', f'invoke-{label}')['detail']
 
 
-def same_file(left, right):
-    try:
-        return os.path.samefile(left, right)
-    except OSError:
-        return False
-
-
 def descendants_of_mount(mount_marker):
     """Prove helper ownership by device/inode across WebKit's mount namespace."""
-    rows = {}
-    for pid, value in procs().items():
-        name = Path(value[0]).name
-        helper = Path(mount_marker) / 'usr/h' / name
-        if mount_marker in value[0] or (name in ('WebKitWebProcess', 'WebKitNetworkProcess')
-                                       and same_file(f'/proc/{pid}/exe', helper)):
-            rows[pid] = value
-    return rows
+    return {pid: value for pid, value in procs().items()
+            if belongs_to_appimage(pid, value[0], mount_marker, compare=same_file)}
 
 
 def start_xvfb(out):

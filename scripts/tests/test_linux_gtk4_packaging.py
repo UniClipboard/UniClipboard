@@ -13,6 +13,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'apps/gui-go/e2e'))
 import package_linux as package
+from appimage_processes import belongs_to_appimage, library_from_mapping
 
 spec = importlib.util.spec_from_file_location('nix_update', ROOT / 'packaging/nix/update.py')
 nix_update = importlib.util.module_from_spec(spec)
@@ -52,6 +53,35 @@ class LinuxGTK4Packaging(unittest.TestCase):
         for libraries in (['libgtk-3.so.0', 'libwebkit2gtk-4.1.so.0'], gtk4 + ['libgtk-3.so.0'], ['libgtk-4.so.1']):
             with self.subTest(libraries=libraries), self.assertRaises(SystemExit):
                 package.require_gtk4_binary(self.binary('invalid', libraries))
+
+    def test_helper_mount_alias_requires_the_packaged_executable_inode(self):
+        appdir = self.root / 'ownership'
+        helper = appdir / 'usr/h/WebKitWebProcess'
+        helper.parent.mkdir(parents=True)
+        executable = Path(sys.executable).resolve()
+        helper.symlink_to(executable)
+        self.assertTrue(belongs_to_appimage(os.getpid(), '/run/uc-webkit/h/WebKitWebProcess', appdir))
+        helper.unlink()
+        shutil.copy2(executable, helper)
+        self.assertFalse(belongs_to_appimage(os.getpid(), '/run/uc-webkit/h/WebKitWebProcess', appdir))
+
+    def test_mapped_library_alias_requires_the_kernel_device_and_inode(self):
+        appdir = self.root / 'mapped'
+        directory = appdir / 'usr/lib/webkitgtk-6.0'
+        directory.mkdir(parents=True)
+        library = directory / 'libprobe.so'
+        library.write_bytes(b'fixture')
+        (appdir / 'usr/h').symlink_to('lib/webkitgtk-6.0')
+        metadata = appdir / 'usr/share/uniclipboard/webkit-runtime-root'
+        metadata.parent.mkdir(parents=True)
+        metadata.write_text(package.WEBKIT_RUNTIME_ROOT + '\n')
+        stat = library.stat()
+        fields = ['0-1', 'r--p', '0', f'{os.major(stat.st_dev):02x}:{os.minor(stat.st_dev):02x}',
+                  str(stat.st_ino), package.WEBKIT_RUNTIME_ROOT + '/h/libprobe.so']
+        self.assertEqual(library_from_mapping(fields, appdir), str(library))
+        fields[4] = str(stat.st_ino + 1)
+        with self.assertRaises(ValueError):
+            library_from_mapping(fields, appdir)
 
     def test_helper_relocation_keeps_both_architecture_paths_the_same_length(self):
         for triplet in ('x86_64-linux-gnu', 'aarch64-linux-gnu'):

@@ -23,16 +23,27 @@ from linux_xvfb_run import Gui
 from run import ROOT, isolated_env
 
 
-def fixed_window_constraints(protocol, expected):
-    panel_ids = set(re.findall(r'xdg_toplevel#(\d+)\.set_title\("(?:Quick Panel|app\.uniclipboard\.desktop)"\)', protocol))
-
-    def sizes(kind):
-        pattern = rf'xdg_toplevel#(\d+)\.set_{kind}_size\((\d+), (\d+)\)'
-        return {(int(width), int(height)) for ident, width, height in re.findall(pattern, protocol) if ident in panel_ids}
-
-    minimums, maximums = sizes('min'), sizes('max')
-    return {'expected': sorted(expected), 'minimums': sorted(minimums), 'maximums': sorted(maximums),
-            'ok': expected <= minimums and expected <= maximums}
+def fixed_window_constraints(protocol, target):
+    """Check the latest constraints of each live panel in this protocol snapshot."""
+    windows = {}
+    events = re.finditer(
+        r'xdg_toplevel#(\d+)\.(set_title|set_min_size|set_max_size|destroy)\(([^\n]*)\)', protocol)
+    for event in events:
+        ident, method, arguments = event.groups()
+        if method == 'destroy':
+            windows.pop(ident, None)
+            continue
+        window = windows.setdefault(ident, {})
+        if method == 'set_title':
+            window['panel'] = arguments in ('"Quick Panel"', '"app.uniclipboard.desktop"')
+        else:
+            size = re.fullmatch(r'(\d+), (\d+)', arguments)
+            if size:
+                window[method] = tuple(map(int, size.groups()))
+    panels = {ident: window for ident, window in windows.items() if window.get('panel')}
+    return {'target': target, 'panels': panels,
+            'ok': bool(panels) and all(window.get('set_min_size') == target and
+                                      window.get('set_max_size') == target for window in panels.values())}
 
 
 def main():
@@ -97,7 +108,10 @@ def main():
                 time.sleep(.1)
             dom = probe('return {width:innerWidth,height:innerHeight,scale:localStorage.getItem("uniclipboard.quickPanel.windowScale"),dpr:devicePixelRatio}')
             ok = (frame.get('width'), frame.get('height')) == target and abs(dom['width'] * dom['dpr'] - target[0]) < 2 and abs(dom['height'] * dom['dpr'] - target[1]) < 2
-            result['measurements'].append({'target': target, 'native': frame, 'dom': dom, 'ok': ok})
+            protocol = (out / 'gui.log').read_text()
+            constraints = fixed_window_constraints(protocol, target)
+            result['measurements'].append({'target': target, 'native': frame, 'dom': dom,
+                                           'protocolLength': len(protocol), 'constraints': constraints, 'ok': ok})
             (out / 'result.json').write_text(json.dumps(result, indent=2) + '\n')
 
         try:
@@ -150,9 +164,7 @@ def main():
             main_label = uuid.uuid4().hex
             main_after = gui.ctl(f'window-frame-state {main_label} main', f'window-frame-state-{main_label}')['detail']
             result['sharedUiScale'] = {'before': main_before, 'after': main_after, 'ok': not main_after.get('exists') or (abs(main_after.get('zoom', 0) - 1.5) < .001 and (main_before.get('width'), main_before.get('height')) == (main_after.get('width'), main_after.get('height')))}
-            protocol = (out / 'gui.log').read_text()
-            expected = {tuple(row['target']) for row in result['measurements']}
-            result['fixedWindowConstraints'] = fixed_window_constraints(protocol, expected)
+            result['fixedWindowConstraints'] = {'ok': all(row['constraints']['ok'] for row in result['measurements'])}
             result['passed'] = all(row['ok'] for row in result['measurements']) and result['fixedWindowConstraints']['ok'] and all(row['ok'] for row in result['textMeasurements']) and result['sharedUiScale']['ok']
         finally:
             if gui is not None and gui.proc.poll() is None:

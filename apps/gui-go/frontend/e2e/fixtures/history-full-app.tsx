@@ -1,5 +1,5 @@
 import { pendingStartupSnapshot } from '@/lib/startup-progress'
-import { installFakeHost } from './fake-host'
+import { HostRejection, installFakeHost } from './fake-host'
 
 // The complete desktop frontend (`@/bootstrap`: App, routing, layout, sidebar,
 // toolbar search, list, preview, daemon HTTP + WebSocket) in a plain browser
@@ -17,12 +17,22 @@ window.addEventListener('unhandledrejection', e => errors.push(`rejection: ${Str
 
 // Native commands that only proxy daemon state are answered from the same
 // daemon, so the page sees real values.
-async function daemonData(path: string) {
+async function daemonData(path: string, body?: unknown) {
   const url = new URL(`${baseUrl}${path}`)
   url.searchParams.set('auth', `Session ${sessionToken}`)
-  const res = await fetch(url)
-  if (!res.ok) throw new Error(`fixture: ${path} -> ${res.status}`)
-  return (await res.json()).data
+  const res = await fetch(
+    url,
+    body === undefined
+      ? undefined
+      : {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        }
+  )
+  const response = await res.json()
+  if (!res.ok) throw new HostRejection({ code: response.code ?? 'INTERNAL' })
+  return response.data
 }
 
 installFakeHost({
@@ -36,6 +46,11 @@ installFakeHost({
   }),
   GetProfileRecovery: () => daemonData('/encryption/recovery'),
   GetContentUnlocked: async () => (await daemonData('/content-lock')).unlocked,
+  UnlockContent: (request: unknown) => daemonData('/content-lock/unlock', request),
+  UnlockContentFromKeyring: async () =>
+    params.has('denyKeyring')
+      ? false
+      : (await daemonData('/content-lock/unlock-keyring', {})).unlocked,
   GetDaemonConnectionInfo: () => ({
     baseUrl,
     wsUrl: `${baseUrl.replace(/^http/, 'ws')}/ws`,
@@ -62,5 +77,7 @@ if (platformOverride === 'windows' || platformOverride === 'linux') {
 const frame = params.get('frame')
 if (frame) localStorage.setItem('uniclipboard.useSystemWindowFrame', frame)
 
-history.replaceState(null, '', '/history')
-void import('@/bootstrap')
+const quickPanel = params.get('surface') === 'quick-panel'
+history.replaceState(null, '', quickPanel ? '/quick-panel.html' : '/history')
+if (quickPanel) void import('@/quick-panel/main')
+else void import('@/bootstrap')

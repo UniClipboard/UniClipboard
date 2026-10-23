@@ -39,6 +39,12 @@
 
 Linux 面板高度受限时，历史与预览分别在内部滚动。不要通过扩大窗口或改变列宽来容纳条目、标签或预览内容。浮动平台的外侧留白用于阴影和窗口布局，不与栏内留白混用。
 
+## 独立解锁
+
+WebView 面板在主窗口关闭后仍可独立解锁，不为解锁打开主窗口。内容锁定时隐藏历史和预览，在面板内提供显式解锁按钮；先尝试钥匙串，不可用或用户拒绝时使用共享口令表单。错误口令显示本地化提示，只有 daemon 确认内容授权后才显示历史。
+
+内容授权仍由 daemon 管理；界面进程退出后撤销授权，重新唤起时按实际锁定状态显示。查询状态期间显示连接提示，不提前显示解锁操作。锁定页支持 Esc 收起；重新唤起时清除未提交口令与错误提示。解锁区域复用平台组件库、共享解锁流程与表单，使用面板既有窗口尺寸和主题，内部滚动以适应缩小窗口。
+
 ## Linux 窗口尺寸快捷键
 
 以上操作在设置 → 快捷键 → 快捷面板分组中可修改、清除或恢复默认键位，使用统一快捷键定义与设置存储。运行中的面板订阅设置变更并更新绑定，支持两段组合键；下列键位为默认值。
@@ -122,3 +128,14 @@ Windows 原生 GPUI 面板与 Wails GUI 的 Fluent 皮肤共用 `src/themes/defa
 GTK 窗口和 WebView 开启透明背景，统一面板通过 `--desktop-window-radius` 同时绘制边框和裁切内容。该值由桌面主题快照携带，与颜色主题选择独立；手动选择浅色或深色也跟随圆角。
 
 Hyprland IPC 每 2 秒读取一次有效设置，覆盖配置重载与运行时覆盖；读取失败保留最近有效值，退出时停止。无需修改用户配置或增加窗口规则。其他桌面未知值使用直角；macOS、Windows 继续使用各自面板圆角。
+
+独立解锁的浏览器验证入口如下，需要同版本 Go CLI 与 daemon，以及 Playwright（未安装在项目中时由 `PLAYWRIGHT_MODULE` 指定模块路径）：
+
+```bash
+node apps/gui-go/frontend/e2e/quick-panel-unlock-browser.mjs \
+  --uniclip target/gui-go/uniclip \
+  --uniclipd target/debug/uniclipd \
+  --out target/gui-go/quick-panel-unlock-browser
+```
+
+脚本运行真实 `QuickPanelApp` 和独立 daemon，检查钥匙串、错误口令、正确口令、主窗口依赖与明暗主题布局；仅替代原生 Wails 传输，不替代 daemon HTTP／WebSocket。这不能替代 GTK、系统钥匙串提示和真实桌面的交互验收。

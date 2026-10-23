@@ -3,8 +3,6 @@ import React, { useCallback, useEffect, useEffectEvent, useRef, useState } from 
 import { useTranslation } from 'react-i18next'
 import { daemonClient } from '@/api/daemon/client'
 import VisualEffectsProvider from '@/components/motion/VisualEffectsProvider'
-import { Button } from '@/components/ui/button'
-import { toast } from '@/components/ui/toast'
 import { Toaster } from '@/components/ui/toaster'
 import { ShortcutProvider } from '@/contexts/ShortcutContext'
 import { useContentUnlocked } from '@/hooks/useContentUnlocked'
@@ -19,6 +17,7 @@ import { readStoredUiScale } from '@/lib/ui-scale'
 import { visualEffectsStore } from '@/lib/visual-effects-store'
 import ClipboardHistoryPanel from './ClipboardHistoryPanel'
 import QuickPanelScaleIndicator from './components/QuickPanelScaleIndicator'
+import { QuickPanelUnlock } from './components/QuickPanelUnlock'
 import { getQuickPanelLayoutClassNames } from './constants'
 import { setQuickPanelLayout } from './window-layout'
 
@@ -35,7 +34,8 @@ const QuickPanelApp: React.FC = () => {
   const { isLinux, isDesktopHost } = usePlatform()
   const layoutClassNames = getQuickPanelLayoutClassNames(isLinux && isDesktopHost)
   const [daemonReady, setDaemonReady] = useState(daemonClient.initialized)
-  const { unlocked: contentUnlocked } = useContentUnlocked(daemonReady)
+  const { unlocked: contentUnlocked, refresh: refreshContentAccess } =
+    useContentUnlocked(daemonReady)
   useThemeSync(daemonReady)
   const [bootstrapError, setBootstrapError] = useState<string | null>(null)
   const [showRequestId, setShowRequestId] = useState(0)
@@ -127,8 +127,21 @@ const QuickPanelApp: React.FC = () => {
     }
   }, [])
 
+  useEffect(() => {
+    if (daemonReady && contentUnlocked === true) return
+    const dismiss = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.isComposing) return
+      event.preventDefault()
+      void commands.dismissQuickPanel().catch(err => {
+        log.warn({ err }, 'Could not dismiss the locked quick panel')
+      })
+    }
+    window.addEventListener('keydown', dismiss)
+    return () => window.removeEventListener('keydown', dismiss)
+  }, [daemonReady, contentUnlocked])
+
   let content: React.ReactNode
-  if (!daemonReady) {
+  if (!daemonReady || contentUnlocked === null) {
     content = bootstrapError ? (
       <div
         className={`flex h-screen w-screen items-center justify-center ${layoutClassNames.statusSurface} px-6 text-center text-[13px] text-destructive`}
@@ -142,22 +155,12 @@ const QuickPanelApp: React.FC = () => {
         {t('loading')}
       </div>
     )
-  } else if (contentUnlocked !== true) {
+  } else if (!contentUnlocked) {
     content = (
-      <div
-        className={`flex h-screen w-screen flex-col items-center justify-center gap-3 ${layoutClassNames.statusSurface} px-6 text-center text-[13px] text-muted-foreground`}
-      >
-        {t('history.locked.description')}
-        <Button
-          onClick={() =>
-            void commands.showContentUnlock().catch(err => {
-              log.warn({ err }, 'Could not open content unlock window')
-              toast.error(t('history.locked.openFailed'))
-            })
-          }
-        >
-          {t('history.locked.action')}
-        </Button>
+      <div className={layoutClassNames.container}>
+        <div className={layoutClassNames.card}>
+          <QuickPanelUnlock key={showRequestId} onUnlocked={refreshContentAccess} />
+        </div>
       </div>
     )
   } else {

@@ -86,6 +86,15 @@ if [[ -z "$web_pid" ]]; then
   timeout --kill-after=5s 20s snap run --shell uniclipboard -c '
     printf "HOME=%s\nSNAP_USER_DATA=%s\nSNAP_USER_COMMON=%s\nXDG_STATE_HOME=%s\nXDG_RUNTIME_DIR=%s\nDBUS_SESSION_BUS_ADDRESS=%s\n" "$HOME" "$SNAP_USER_DATA" "$SNAP_USER_COMMON" "${XDG_STATE_HOME:-}" "${XDG_RUNTIME_DIR:-}" "${DBUS_SESSION_BUS_ADDRESS:-}"
   ' >"$OUT/snap-paths.txt" 2>&1 || true
+  # Match the scoped Wails name using only known fixture paths, never credential data.
+  timeout --kill-after=5s 15s snap run --shell uniclipboard -c '
+    data_root="${XDG_DATA_HOME:-$HOME/.local/share}/app.uniclipboard.desktop"
+    digest=$(printf "app.uniclipboard.desktop\\0\\0\\0%s" "$data_root" | sha256sum)
+    bus_name="app.uniclipboard.desktop.default.default.h${digest:0:12}.SingleInstance"
+    echo "Requesting fixture bus name: $bus_name"
+    command -v gdbus
+    gdbus call --session --dest org.freedesktop.DBus --object-path /org/freedesktop/DBus --method org.freedesktop.DBus.RequestName "$bus_name" 4
+  ' >"$OUT/dbus-name-probe.txt" 2>&1 || true
   # Observe paths, connections and exit status only; never read credential bytes.
   timeout --kill-after=5s 20s snap run --strace="-f -e trace=openat,connect,exit_group -s 120" uniclipboard >"$OUT/syscalls.log" 2>&1 || true
   echo 'Snap never started the GTK4 WebKit process' >&2

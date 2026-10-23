@@ -54,6 +54,8 @@ Linux 面板高度受限时，历史与预览分别在内部滚动。不要通�
 
 ## 字号、行高与间距
 
+Windows 原生 GPUI 面板与 Wails GUI 的 Fluent 皮肤共用 `src/themes/default.json` 字体配置。正文按 Segoe UI Variable Text、Segoe UI 的顺序选择已安装字体，中文按 Microsoft YaHei UI、Microsoft YaHei 回退；等宽字体按 Cascadia Mono、Consolas、JetBrains Mono 选择。历史、输入框及独立预览窗口继承相同中文回退链。字体选择与字号缩放分别处理，不通过放大字号补偿渲染差异。
+
 | 元素 | 字号 | 行高／高度 | 留白与间距 |
 | --- | --- | --- | --- |
 | 搜索输入 | 14px | 输入区域最小 32px | 内部左右 8px；展开时右侧保留清除按钮空间 |

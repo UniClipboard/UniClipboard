@@ -314,6 +314,7 @@ impl Render for PreviewWindow {
         let panel = self.panel.clone();
         let history = self.history;
         div()
+            .font(super::fonts::ui_font(cx))
             .relative()
             .size_full()
             .child(

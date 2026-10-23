@@ -4,6 +4,10 @@
 
 ## GPUI 依赖与 Windows 字体回归
 
+Windows 字体与 Wails GUI 共用 `apps/gui-go/frontend/src/themes/default.json` 中的 Fluent 字体配置：正文优先 Segoe UI Variable Text，其次 Segoe UI；中文优先 Microsoft YaHei UI、Microsoft YaHei；等宽字体优先 Cascadia Mono，其次 Consolas、JetBrains Mono。面板按本机已安装的字体顺序选择，主窗口与预览窗口均继承中文回退链，不再随系统图标字体切换界面字体。缺少候选字体时仍保留 GPUI 的系统字体回退。
+
+该选择统一字体来源，不改变 GPUI 的 DirectWrite 灰度抗锯齿实现；清晰度仍需在实际 Windows 显示器和缩放比例下验收，不能据此保证与 WebView2 逐像素一致。
+
 根 `Cargo.toml` 的 `[patch.crates-io]` 将所有 GPUI 使用方统一到 Zed 仓库的固定提交；`Cargo.lock` 固定完整依赖图。所选提交包含上游 [PR #42212](https://github.com/zed-industries/zed/pull/42212)，修复 Windows 系统界面字体不可用时对空值调用 `unwrap()` 的崩溃。仓库不维护 GPUI 本地源码副本；该修复早于平台拆包，因此继续使用现有 `gpui-component 0.5.1`。
 
 `tests/windows_font_fallback.rs` 使用真实 Windows API 和 GPUI 字体系统验证系统界面字体不可用、指定字体不存在及可用字体的选择与测量。测试会临时改变当前会话的图标字体，不持久化设置或广播变更，并在 GPUI 完成初始化后恢复。仅在一次性 Windows 测试主机上执行；默认忽略，普通开发机不要启用：

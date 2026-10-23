@@ -7,6 +7,7 @@
 
 pub mod appearance;
 mod effects;
+mod fonts;
 mod history;
 mod image_preview;
 mod images;

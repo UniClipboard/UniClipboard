@@ -44,7 +44,80 @@ on:
   workflow_dispatch:
 
 jobs:
+  changes:
+    name: Select dependency audits
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      rust: ${{ steps.filter.outputs.rust }}
+      projects: ${{ steps.projects.outputs.projects }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dorny/paths-filter@v4
+        id: filter
+        if: github.event_name == 'pull_request' || github.event_name == 'push'
+        with:
+          filters: |
+            rust:
+              - 'Cargo.toml'
+              - 'crates/**/Cargo.toml'
+              - 'apps/**/Cargo.toml'
+              - 'tools/**/Cargo.toml'
+              - 'Cargo.lock'
+              - '.cargo/audit.toml'
+              - '.github/workflows/security-audit.yml'
+            root:
+              - 'package.json'
+              - 'bun.lock'
+              - '.github/workflows/security-audit.yml'
+            docs-site:
+              - 'docs-site/package.json'
+              - 'docs-site/bun.lock'
+              - '.github/workflows/security-audit.yml'
+            update-server:
+              - 'workers/update-server/package.json'
+              - 'workers/update-server/bun.lock'
+              - '.github/workflows/security-audit.yml'
+      - uses: actions/github-script@v7
+        id: projects
+        env:
+          ALL_PROJECTS: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+          CHANGED_PROJECTS: ${{ steps.filter.outputs.changes || '[]' }}
+        with:
+          script: |
+            // Keep each project's production dependency exceptions with its audit configuration.
+            // The docs-site allowlist tracks #1226; remove entries as dependency fixes land.
+            // Never add root-project findings to that allowlist.
+            const projects = [
+              {
+                "directory": ".",
+                "name": "root",
+                "ignore": ""
+              },
+              {
+                "directory": "docs-site",
+                "name": "docs-site",
+                "ignore": "--ignore=GHSA-vxr8-fq34-vvx9 --ignore=GHSA-cmwh-pvxp-8882 --ignore=GHSA-qx2v-qp2m-jg93 --ignore=GHSA-g7r4-m6w7-qqqr --ignore=GHSA-h67p-54hq-rp68 --ignore=GHSA-f88m-g3jw-g9cj --ignore=GHSA-c2j3-45gr-mqc4 --ignore=GHSA-6g55-p6wh-862q --ignore=GHSA-r28c-9q8g-f849 --ignore=GHSA-89xv-2m56-2m9x --ignore=GHSA-68g3-v927-f742 --ignore=GHSA-6gpp-xcg3-4w24 --ignore=GHSA-m99w-x7hq-7vfj --ignore=GHSA-4633-3j49-mh5q --ignore=GHSA-4c39-4ccg-62r3 --ignore=GHSA-p9j2-gv94-2wf4 --ignore=GHSA-q8wf-6r8g-63ch --ignore=GHSA-955p-x3mx-jcvp --ignore=GHSA-52cp-r559-cp3m"
+              },
+              {
+                "directory": "workers/update-server",
+                "name": "update-server",
+                "ignore": ""
+              }
+            ];
+            const changed = JSON.parse(process.env.CHANGED_PROJECTS);
+            const selected = process.env.ALL_PROJECTS === 'true'
+              ? projects
+              : projects.filter(project => changed.includes(project.name));
+            core.setOutput('projects', JSON.stringify(selected));
+
   cargo-audit:
+    needs: changes
+    if: needs.changes.result == 'success' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || needs.changes.outputs.rust == 'true')
     name: cargo audit
     runs-on: ubuntu-latest
     permissions:
@@ -86,6 +159,8 @@ jobs:
           exit "$status"
 
   bun-audit:
+    needs: changes
+    if: needs.changes.outputs.projects != '[]'
     name: bun audit (${{ matrix.project.directory }})
     runs-on: ubuntu-latest
     permissions:
@@ -93,39 +168,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        project:
-          - directory: '.'
-            name: root
-            ignore: ''
-          - directory: 'docs-site'
-            name: docs-site
-            # docs-site dependency remediation is tracked in #1226. Keep this
-            # temporary allowlist scoped to docs-site so unrelated root PRs are
-            # not blocked; remove each entry as its dependency upgrade lands.
-            # Root-project findings must never be added here.
-            ignore: >-
-              --ignore=GHSA-vxr8-fq34-vvx9
-              --ignore=GHSA-cmwh-pvxp-8882
-              --ignore=GHSA-qx2v-qp2m-jg93
-              --ignore=GHSA-g7r4-m6w7-qqqr
-              --ignore=GHSA-h67p-54hq-rp68
-              --ignore=GHSA-f88m-g3jw-g9cj
-              --ignore=GHSA-c2j3-45gr-mqc4
-              --ignore=GHSA-6g55-p6wh-862q
-              --ignore=GHSA-r28c-9q8g-f849
-              --ignore=GHSA-89xv-2m56-2m9x
-              --ignore=GHSA-68g3-v927-f742
-              --ignore=GHSA-6gpp-xcg3-4w24
-              --ignore=GHSA-m99w-x7hq-7vfj
-              --ignore=GHSA-4633-3j49-mh5q
-              --ignore=GHSA-4c39-4ccg-62r3
-              --ignore=GHSA-p9j2-gv94-2wf4
-              --ignore=GHSA-q8wf-6r8g-63ch
-              --ignore=GHSA-955p-x3mx-jcvp
-              --ignore=GHSA-52cp-r559-cp3m
-          - directory: 'workers/update-server'
-            name: update-server
-            ignore: ''
+        project: ${{ fromJSON(needs.changes.outputs.projects) }}
 
     defaults:
       run:

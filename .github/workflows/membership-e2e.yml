@@ -62,6 +62,8 @@ jobs:
         include: ${{ fromJSON(needs.setup-matrix.outputs.matrix) }}
 
     environment: desktop-build-cache-reader
+    env:
+      MEMBERSHIP_TIER: ${{ inputs.tier || (github.event_name == 'pull_request' && 'pr') || 'nightly' }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -103,12 +105,14 @@ jobs:
         run: scripts/e2e/build-cli.sh
 
       - name: Verify fixed release preparation
+        if: env.MEMBERSHIP_TIER == 'nightly'
         run: bash scripts/build-cache/mbx.sh --exec cargo test --manifest-path tests/e2e/Cargo.toml --test release_assets
 
       - name: Verify local invitation service contract
         run: bash scripts/build-cache/mbx.sh --exec cargo test --manifest-path tests/e2e/Cargo.toml --test rendezvous_contract
 
       - name: Prepare fixed legacy release
+        if: env.MEMBERSHIP_TIER == 'nightly'
         shell: bash
         run: >-
           bash scripts/build-cache/mbx.sh --exec cargo run --manifest-path tests/e2e/Cargo.toml
@@ -122,7 +126,6 @@ jobs:
           UC_E2E_KEEP_PROFILES: '1'
           UC_E2E_LEGACY_RELEASE_DIR: ${{ runner.temp }}/legacy-release
           UC_E2E_RUST_LOG: info
-          MEMBERSHIP_TIER: ${{ inputs.tier || (github.event_name == 'pull_request' && 'pr') || 'nightly' }}
         run: bash scripts/e2e/run-membership-matrix.sh "$MEMBERSHIP_TIER"
 
       - name: Upload matrix results and isolated profiles

@@ -35,6 +35,36 @@ function route(files: string[]): string[] {
 
 describe('PR check routing', () => {
   it.each([
+    ['scripts/e2e/x11-clipboard.sh', false],
+    ['scripts/e2e/linux-legacy-file-key-store.sh', false],
+    ['scripts/e2e/run-membership-matrix.sh', false],
+    ['apps/cli-go/e2e/compat.py', false],
+    ['.github/actions/build-pr-rust/action.yml', false],
+    ['.github/docker/build-bookworm.Dockerfile', false],
+    ['clippy.toml', false],
+    ['scripts/ci/build-go-cli.sh', false],
+    ['packages/desktop-host-go/quickpanelhelper/quickpanelhelper.go', false],
+    ['packages/desktop-host-go/settings/settings.go', false],
+    ['scripts/e2e/build-cli.sh', true],
+    ['scripts/e2e/clipboard-startup/private-pasteboard.m', true],
+    ['scripts/e2e/desktop-settings/prepare-history.py', true],
+    ['.github/actions/build-e2e-rust/action.yml', true],
+    ['packages/desktop-host-go/errctx/errctx.go', true],
+    ['packages/desktop-host-go/buildinfo/gen.go', true],
+    ['packages/desktop-host-go/go.mod', true],
+    ['packages/desktop-host-go/go.sum', true],
+    ['crates/uc-daemon-client/src/lib.rs', true],
+    ['apps/daemon/src/main.rs', true],
+    ['tests/e2e/tests/clipboard_sync.rs', true],
+    ['vendor/engine', true],
+    ['Cargo.lock', true],
+    ['.github/actions/engine-build-cache/action.yml', true],
+    ['.github/actions/mbx-snapshot/action.yml', true],
+  ])('routes CLI E2E input %s with expected relevance %s', (file, relevant) => {
+    expect(route([file]).includes('e2e')).toBe(relevant)
+  })
+
+  it.each([
     ['coverage', 'rust'],
     ['rust', 'rust'],
     ['e2e', 'e2e'],
@@ -51,7 +81,7 @@ describe('PR check routing', () => {
     ['Go CLI', ['apps/cli-go/internal/commands/tree.go'], ['cli_go', 'e2e', 'membership']],
     ['frontend', ['apps/gui-go/frontend/src/App.tsx'], ['frontend']],
     ['Go host', ['apps/gui-go/main.go'], ['gui_go']],
-    ['Quick Panel client', ['crates/uc-daemon-client/src/lib.rs'], ['quick_panel', 'rust']],
+    ['daemon client', ['crates/uc-daemon-client/src/lib.rs'], ['e2e', 'quick_panel', 'rust']],
     [
       'shared Go module',
       ['packages/desktop-host-go/daemonproc/client.go'],
@@ -91,6 +121,36 @@ describe('PR check routing', () => {
         (step: { run?: string }) => step.run === 'bun x vitest run'
       )
     ).toBe(true)
+    expect(
+      workflow('pr-check.yml').jobs.tooling.steps.some((step: { run?: string }) =>
+        step.run?.includes('UC_MBX_TEST_BINARY')
+      )
+    ).toBe(false)
+    const native = workflow('mbx-snapshot-validation.yml').jobs['native-roundtrip']
+    expect(native.strategy.matrix.runner).toContain('ubuntu-latest')
+    expect(
+      native.steps.some((step: { run?: string }) => step.run?.includes('UC_MBX_TEST_BINARY'))
+    ).toBe(true)
+  })
+
+  it.each([
+    ['tests/e2e/tests/clipboard_sync.rs', false],
+    ['tests/e2e/tests/membership_convergence.rs', false],
+    ['tests/e2e/README.md', false],
+    ['tests/e2e/tests/legacy_file_key_store.rs', true],
+    ['tests/e2e/src/profile.rs', true],
+    ['tests/e2e/Cargo.toml', true],
+    [
+      'tests/e2e/fixtures/upgrades/v0.19.3/macos-aarch64/single-node-mixed-content/manifest.json',
+      true,
+    ],
+    ['scripts/e2e/build-cli.sh', true],
+    ['apps/cli-go/internal/commands/get.go', true],
+    ['packages/desktop-host-go/daemonproc/conn.go', true],
+    ['Cargo.lock', true],
+  ])('routes legacy key store input %s with relevance %s', (file, relevant) => {
+    const rules = workflow('legacy-file-key-store-e2e.yml').on.pull_request.paths
+    expect(picomatch(rules, { dot: true })(file)).toBe(relevant)
   })
 
   it('reuses frontend type checking while preserving the full local boundary check', () => {

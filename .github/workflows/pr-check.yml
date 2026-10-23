@@ -96,6 +96,11 @@ jobs:
         run: |
           (cd packages/desktop-host-go && go vet ./...)
           (cd apps/cli-go && go vet ./...)
+      - name: Test send preparation with virtual time
+        working-directory: apps/cli-go
+        run: |
+          go test -count=1 -run '^TestSendVirtualTime' ./internal/commands
+          go test -race -count=1 -run '^TestSendVirtualTime' ./internal/commands
       - name: Link the CLI for supported platforms
         run: |
           mkdir -p target/cli-go-gate

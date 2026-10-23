@@ -16,9 +16,17 @@ type Job = {
 const yaml = (file: string) => parse(fs.readFileSync(file, 'utf8'))
 
 describe('MBX request reduction', () => {
-  it('enforces snapshot boundaries and summarizes logical requests', () => {
-    execFileSync('python3', ['scripts/ci/mbx-snapshot.test.py'], { stdio: 'pipe' })
-  })
+  it(
+    'enforces snapshot boundaries and summarizes logical requests',
+    () => {
+      // The Python suite creates an isolated venv and exercises real shell/Git processes.
+      execFileSync('python3', ['scripts/ci/mbx-snapshot.test.py'], {
+        stdio: 'pipe',
+        timeout: 25_000,
+      })
+    },
+    30_000
+  )
 
   it('cancels outdated runs independently for each PR', () => {
     expect(yaml('.github/workflows/pr-check.yml').concurrency).toEqual({

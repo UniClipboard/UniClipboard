@@ -349,7 +349,7 @@ jobs:
           SNAPSHOT_COMPONENT: ${{ matrix.component }}
           SNAPSHOT_BUILD_MODE: ${{ inputs.build_mode || 'release' }}
           SNAPSHOT_TARGET_ARGS: ${{ matrix.args }}
-          SNAPSHOT_OBJECT_FALLBACK: ${{ inputs.build_only && inputs.save_cache && github.ref == 'refs/heads/main' && github.ref_protected && needs.setup-matrix.outputs.source_sha == github.sha }}
+          SNAPSHOT_OBJECT_FALLBACK: 'false'
         run: |
           bash "$UC_MBX_SNAPSHOT_TOOLS/mbx-snapshot.sh" restore --scene release-sidecar \
             --target "$SNAPSHOT_TARGET" --component "$SNAPSHOT_COMPONENT" \

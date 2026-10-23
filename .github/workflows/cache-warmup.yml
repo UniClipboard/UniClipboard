@@ -132,6 +132,7 @@ jobs:
         uses: ./.github/actions/mbx-snapshot
         with:
           scene: ${{ matrix.scene }}
+          object-fallback: 'false'
       - name: Cache Rust downloads
         uses: Swatinem/rust-cache@v2
         with:
@@ -274,6 +275,8 @@ jobs:
           secret-access-key: ${{ secrets.BUILD_CACHE_R2_SECRET_ACCESS_KEY }}
       - name: Restore previous E2E CAS snapshot
         uses: ./.github/actions/mbx-snapshot
+        with:
+          object-fallback: 'false'
       - name: Cache Rust downloads
         uses: Swatinem/rust-cache@v2
         with:

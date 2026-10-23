@@ -9,7 +9,7 @@ inputs:
     default: e2e-macos
   object-fallback:
     description: Keep per-object R2 reads after a snapshot hit.
-    default: 'true'
+    default: 'false'
 runs:
   using: composite
   steps:

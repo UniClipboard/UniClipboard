@@ -69,6 +69,11 @@ const kitPages: Record<string, { platforms: string[]; kit: string; existing: str
     kit: './src/pages/entry-kit/UnlockKitPage.tsx',
     existing: './src/pages/UnlockPage.tsx',
   },
+  '@ui-quick-panel-unlock': {
+    platforms: ['macos', 'windows', 'linux'],
+    kit: './src/quick-panel/components/QuickPanelUnlock.tsx',
+    existing: './src/quick-panel/components/QuickPanelUnlockLegacy.tsx',
+  },
   // Settings is presented by each platform skin.
   '@ui-settings-page': {
     platforms: ['macos', 'windows', 'linux'],

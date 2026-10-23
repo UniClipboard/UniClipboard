@@ -1,3 +1,4 @@
+import { QuickPanelUnlock } from '@ui-quick-panel-unlock'
 import { LazyMotion, domMax } from 'framer-motion'
 import React, { useCallback, useEffect, useEffectEvent, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -17,7 +18,6 @@ import { readStoredUiScale } from '@/lib/ui-scale'
 import { visualEffectsStore } from '@/lib/visual-effects-store'
 import ClipboardHistoryPanel from './ClipboardHistoryPanel'
 import QuickPanelScaleIndicator from './components/QuickPanelScaleIndicator'
-import { QuickPanelUnlock } from './components/QuickPanelUnlock'
 import { getQuickPanelLayoutClassNames } from './constants'
 import { setQuickPanelLayout } from './window-layout'
 

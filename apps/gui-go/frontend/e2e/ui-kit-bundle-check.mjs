@@ -182,19 +182,28 @@ const pattern = file => new RegExp(`/${file.replaceAll('.', '\\.')}$`)
 const legacyModules = legacyPages.map(pattern)
 const legacySettingsModules = legacySettings.map(pattern)
 const existingPage = legacyModules[0]
+const kitPanelUnlock = pattern('src/quick-panel/components/QuickPanelUnlock.tsx')
+const legacyPanelUnlock = pattern('src/quick-panel/components/QuickPanelUnlockLegacy.tsx')
 const kitSettings = /\/src\/pages\/settings-kit\/SettingsKitPage\.tsx$/
 const existingSettings = /\/src\/pages\/SettingsPage\.tsx$/
 const kitSettingParts = /\/src\/components\/setting\/setting-parts\/kit\.tsx$/
 const existingSettingParts = /\/src\/components\/setting\/setting-parts\/legacy-row\.tsx$/
 const appExpectations = {
   windows: {
-    required: [kitPage, kitSettings, kitSettingParts, skin('windows')],
-    forbidden: [...legacyModules, existingSettings, existingSettingParts, ...otherSkins('windows')],
-  },
-  macos: {
-    required: [kitPage, kitSettings, kitSettingParts, skin('macos')],
+    required: [kitPage, kitSettings, kitSettingParts, kitPanelUnlock, skin('windows')],
     forbidden: [
       ...legacyModules,
+      existingSettings,
+      existingSettingParts,
+      legacyPanelUnlock,
+      ...otherSkins('windows'),
+    ],
+  },
+  macos: {
+    required: [kitPage, kitSettings, kitSettingParts, kitPanelUnlock, skin('macos')],
+    forbidden: [
+      ...legacyModules,
+      legacyPanelUnlock,
       existingSettings,
       existingSettingParts,
       ...otherSkins('macos'),
@@ -202,9 +211,10 @@ const appExpectations = {
     ],
   },
   linux: {
-    required: [kitPage, kitSettings, kitSettingParts, skin('linux')],
+    required: [kitPage, kitSettings, kitSettingParts, kitPanelUnlock, skin('linux')],
     forbidden: [
       ...legacyModules,
+      legacyPanelUnlock,
       ...legacySettingsModules,
       ...otherSkins('linux'),
       fluent,
@@ -212,8 +222,8 @@ const appExpectations = {
     ],
   },
   unset: {
-    required: [existingPage, existingSettings, existingSettingParts],
-    forbidden: [kitPage, kitSettings, kitSettingParts, ...platforms.map(skin)],
+    required: [existingPage, existingSettings, existingSettingParts, legacyPanelUnlock],
+    forbidden: [kitPage, kitSettings, kitSettingParts, kitPanelUnlock, ...platforms.map(skin)],
   },
 }
 for (const [label, expectation] of Object.entries(appExpectations)) {

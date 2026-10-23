@@ -19,6 +19,10 @@ import (
 // (the E2E build gets a distinct `.e2e` suffix), so a test build can never share an instance with a real install.
 var bundleID = "app.uniclipboard.desktop"
 
+// singleInstanceScope is set only for packages whose sandbox requires statically declared D-Bus names.
+// Snap supplies it from its slot declaration; other forms retain their data-root-scoped identity.
+var singleInstanceScope string
+
 // Launch arguments a second GUI process can carry. `--quick-panel` is the Tauri contract (toggle the panel of the
 // running GUI); `--autostart` tags a launch started by the login item.
 const (
@@ -43,6 +47,12 @@ const (
 // notification named by this ID, so the ID alone separates applications, environments, profiles and data roots.
 // Every component is a segment of a valid D-Bus name too (the Linux backend derives its bus name from it).
 func singleInstanceID() (string, error) {
+	if singleInstanceScope != "" {
+		if !releaseBuild || apppaths.IsPortable() {
+			return "", fmt.Errorf("a fixed single-instance scope requires the installed release form")
+		}
+		return singleInstanceScope, nil
+	}
 	root, ok := apppaths.AppDataRoot()
 	if !ok {
 		return "", fmt.Errorf("data root unavailable; cannot scope the single instance")

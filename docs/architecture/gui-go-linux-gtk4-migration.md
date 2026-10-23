@@ -24,6 +24,8 @@ GTK4 快捷面板使用普通窗口。本项目尚未实现 GTK4 Layer Shell 适
 
 Snap 的 GNOME 平台统一提供共享库，应用仅携带平台未提供的 WebKitGTK 6.0 等依赖。最后执行的 `platform-cleanup` 部件根据实际内容平台的文件路径及 ELF SONAME 清理重复库，避免应用内较旧的 HarfBuzz、GLib 等遮蔽平台版本；不同版本的实际文件名也按 SONAME 归属清理。此阶段随后检查 WebKitGTK 6.0 的库和进程助手完整性。
 
+Snap 的严格隔离还要求在配方中声明所拥有的会话 D-Bus 名称。原先包含资料目录哈希的动态单实例名称被 AppArmor 拒绝；Snap 构建现在从宿主和界面两个 `dbus` slot 推导固定的 `singleInstanceScope`，继续使用 Wails 的单实例机制。固定作用域仅允许安装版发布构建使用，普通安装包、便携版和开发资料仍按原规则区分。Wails 发布构建默认丢弃框架日志，宿主通过 `ErrorHandler` 将框架错误接入既有日志，避免启动失败静默退出。
+
 AUR 安装验收在可丢弃容器中由 root 安装软件包，再由独立普通用户启动密钥环、Xvfb 和应用；不向应用授予宿主 `SYS_ADMIN`。启动前先检查普通用户的 bubblewrap 用户及网络命名空间，随后按可执行文件路径识别 WebKit 子进程，并确认真实窗口映射，避免将沙箱包装进程或仍存活的托盘宿主误当作成功启动的界面。
 
 AppImage 的 GTK4 WebKit 沙箱会把编译期路径用作 bubblewrap 的绝对挂载目标，旧 GTK3 的相对路径替换不适用。固定 Wails 版本的 AppImage 命令没有重定位这些路径的接口，因此打包器将助手目录与 D-Bus 代理路径等长替换为 `/run/uc-webkit` 下的路径，并在包内记录唯一的运行时布局。只有界面子进程通过宿主 `/usr/bin/bwrap` 建立私有用户与挂载命名空间，将只读 AppDir 映射到该路径；原有 `/run` 子项、设备、网络、控制管道和用户文件仍可访问。驻留宿主、daemon 与更新流程不进入该命名空间，WebKit 继续在其内建立自己的进程沙箱。该机制替代旧的相对路径方案，不修改系统挂载，也不在启动时复制或重写库。界面状态中的 `uiPid` 由界面进程自身报告，不使用 bubblewrap 监控进程的 PID。
@@ -42,20 +44,20 @@ Flatpak manifest 原本使用占位 URL/哈希，目前仍不可提交发布。G
 
 运行时验收尚未完成：修复前的 CI 已构建两种架构的 Snap、deb/rpm/AppImage，但 strict Snap 在 GUI 初始化前因 HarfBuzz 的 `hb_free` 符号缺失失败，AUR 因 root 下 bubblewrap 的 `Failed RTM_NEWADDR` 失败，deb/rpm 因 root 下沙箱命名空间创建被拒绝失败，干净宿主 AppImage 因缺少 bubblewrap 失败。上面的共享库清理、普通用户验收和 AppImage 命名空间设计是这些问题的修复方案；必须以修复后 CI 的实际结果确认，不能把流程描述当成已经通过的证据。
 
-
 - `scripts/tests/test_linux_gtk4_packaging.py` 使用可丢弃 ELF 和真实 deb/rpm 工具检查旧 ABI/混合 ABI 拒绝、助手路径重定位、包依赖及 Nix pin 校验。
 - `scripts/ci/check-gui-go.sh` 编译与静态检查 GTK4 发布/E2E 标签；PR GUI 作业在 Ubuntu 24.04 安装 GTK4 构建依赖，Rust/CLI 继续使用独立 bookworm 镜像，不抬高其基线。
 - 本机用私有 Xvfb、D-Bus、密钥环和独立 profile 运行了新挂载命名空间下的真实 WebView：20 项历史列表、主题与快捷面板检查通过；这只是路径与功能验证，不能替代真实 AppImage 的挂载、更新或触控板体感验收。
 - 当前包验收矩阵改为 Ubuntu 24.04、Debian 13 和 Fedora；AppImage 内容及进程映射检查改为 GTK4/WebKitGTK 6.0，并拒绝旧 GTK3 库。
 - 本轮环境无 Docker socket 权限、Snapcraft 和 Flatpak Builder，完整各架构容器构建、真实包安装及桌面功能需要 CI/专用主机验收。静态检查、合成包检查与本机 GUI 编译不能替代这些结果。
 
-后续 CI 已确认两种架构的原生包与 AppImage 构建通过，Snap 的重复 HarfBuzz 文件也已实际移除；Snap 启动仍未达到 WebKit 检查，正在补齐发布宿主的文件日志。AUR 在专用 AppArmor 配置下的普通用户命名空间探针已通过，随后暴露出 WebKit D-Bus 代理挂载 `/proc` 被 Docker 拒绝的问题；上述 `systempaths=unconfined` 修复仍须新一轮运行确认。Snap 的文件日志工件须保留隐藏目录，否则日志复制成功后仍会被上传步骤过滤。
+后续 CI 已确认两种架构的原生包与 AppImage 构建通过，Snap 的重复 HarfBuzz 文件也已实际移除；Snap 跟踪已确认动态单实例 D-Bus 名称被 AppArmor 拒绝，已补齐固定名称与 slot 声明，仍待完整启动验收。AUR 在专用 AppArmor 配置下的普通用户命名空间探针已通过，随后暴露出 WebKit D-Bus 代理挂载 `/proc` 被 Docker 拒绝的问题；上述 `systempaths=unconfined` 修复仍须新一轮运行确认。Snap 的文件日志工件须保留隐藏目录，否则日志复制成功后仍会被上传步骤过滤。
 
 ## 上游依据
 
 - [GdkMonitor.get_scale：GTK 4.14 起提供](https://docs.gtk.org/gdk4/method.Monitor.get_scale.html)
 - [GtkFileDialog：GTK 4.10 起提供](https://docs.gtk.org/gtk4/class.FileDialog.html)
 - [GNOME 50 平台构成：包含 WebKitGTK 6.0](https://raw.githubusercontent.com/GNOME/gnome-build-meta/gnome-50/elements/sdk-platform.bst)
+- [Snap D-Bus 名称的 slot 声明与权限](https://snapcraft.io/docs/reference/interfaces/dbus-interface/)
 - [Ubuntu 24.04 的 AppArmor 用户命名空间限制与配置规则](https://documentation.ubuntu.com/release-notes/24.04/)
 - [Arch Linux WebKitGTK 6.0 包](https://archlinux.org/packages/extra/x86_64/webkitgtk-6.0/)
 - Wails 固定版本及内嵌 GTK 插件以 `apps/gui-go/go.mod` 解析的模块为准；插件已支持 GTK4，无须复制或修改上游脚本。

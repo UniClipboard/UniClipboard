@@ -53,6 +53,30 @@ class SnapGTK4PrimeGate(unittest.TestCase):
             'CRAFT_ARCH_TRIPLET_BUILD_FOR': triplet,
         }, capture_output=True).returncode
 
+    def test_declared_instance_scope_drives_the_build_and_rejects_a_mismatched_ui_slot(self):
+        recipe = yaml.safe_load(RECIPE.read_text())
+        script = recipe['parts']['uniclipboard']['override-build']
+        start = script.index('INSTANCE_SCOPE=')
+        end = script.index('(cd apps/gui-go &&', start)
+        command = script[start:end] + '\nprintf "%s\\n" "$INSTANCE_SCOPE"'
+        self.assertIn('-X main.singleInstanceScope=${INSTANCE_SCOPE}', script)
+        for slot in ('gui-instance', 'gui-ui-instance'):
+            self.assertIn(slot, recipe['apps']['uniclipboard']['slots'])
+            self.assertEqual(recipe['slots'][slot]['bus'], 'session')
+            self.assertEqual(recipe['slots'][slot]['interface'], 'dbus')
+        fixture = self.root / 'snap/snapcraft.yaml'
+        fixture.parent.mkdir()
+        fixture.write_text(yaml.safe_dump(recipe))
+        result = subprocess.run(['bash', '-eu', '-c', command], cwd=self.root, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        scope = result.stdout.strip()
+        self.assertEqual(recipe['slots']['gui-instance']['name'], scope + '.SingleInstance')
+        self.assertEqual(recipe['slots']['gui-ui-instance']['name'], scope + '.ui.SingleInstance')
+        recipe['slots']['gui-ui-instance']['name'] = 'invalid.fixture.SingleInstance'
+        fixture.write_text(yaml.safe_dump(recipe))
+        result = subprocess.run(['bash', '-eu', '-c', command], cwd=self.root, capture_output=True, text=True)
+        self.assertNotEqual(result.returncode, 0)
+
     def test_complete_runtime_for_both_architectures(self):
         for triplet in ('x86_64-linux-gnu', 'aarch64-linux-gnu'):
             with self.subTest(triplet=triplet):

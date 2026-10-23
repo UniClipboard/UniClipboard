@@ -42,12 +42,24 @@ platforms:
   amd64:
   arm64:
 
+# Wails owns one name for the resident host and another for its UI child.
+slots:
+  gui-instance:
+    interface: dbus
+    bus: session
+    name: app.uniclipboard.desktop.snap.SingleInstance
+  gui-ui-instance:
+    interface: dbus
+    bus: session
+    name: app.uniclipboard.desktop.snap.ui.SingleInstance
+
 apps:
   uniclipboard:
     command: usr/bin/uniclipboard
     extensions: [gnome]
     desktop: usr/share/applications/uniclipboard.desktop
     common-id: app.uniclipboard.desktop
+    slots: [gui-instance, gui-ui-instance]
     # plug 列表覆盖 GUI + 全局剪贴板 + LAN P2P 同步 + 本地配置/数据 +
     # 文件传输场景。剪贴板事件从 GTK clipboard API 取,strict snap 通过
     # wayland / x11 plug 拿到 host compositor selection;daemon 监听
@@ -97,6 +109,7 @@ parts:
       - jq
       - unzip
       - ca-certificates
+      - python3-yaml
     stage-packages:
       - libwebkitgtk-6.0-4
     build-environment:
@@ -153,8 +166,21 @@ parts:
       PRODUCT="$(jq -r .productName apps/gui-go/app.json)"
       IDENTIFIER="$(jq -r .identifier apps/gui-go/app.json)"
       PUBKEY="$(jq -r .updater.pubkey apps/gui-go/app.json)"
+      # The declared slots are authoritative for the fixed Wails instance scope.
+      INSTANCE_SCOPE="$(python3 - <<'PY_SCOPE'
+      import yaml
+      recipe = yaml.safe_load(open('snap/snapcraft.yaml'))
+      slots = recipe['slots']
+      suffix = '.SingleInstance'
+      name = slots['gui-instance']['name']
+      assert name.endswith(suffix)
+      scope = name[:-len(suffix)]
+      assert slots['gui-ui-instance']['name'] == scope + '.ui' + suffix
+      print(scope)
+      PY_SCOPE
+      )"
       (cd apps/gui-go && CGO_ENABLED=1 go build -tags gtk4,production,release -trimpath -buildvcs=false \
-        -ldflags "-w -s -X main.updaterPublicKey=${PUBKEY} -X main.productName=${PRODUCT} -X main.bundleID=${IDENTIFIER}" \
+        -ldflags "-w -s -X main.updaterPublicKey=${PUBKEY} -X main.productName=${PRODUCT} -X main.bundleID=${IDENTIFIER} -X main.singleInstanceScope=${INSTANCE_SCOPE}" \
         -o ../../target/release/uniclipboard .)
 
       # 4) Install into the snap's application tree; layouts expose compiled absolute paths.

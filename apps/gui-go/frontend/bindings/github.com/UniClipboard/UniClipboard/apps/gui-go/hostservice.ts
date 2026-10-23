@@ -450,13 +450,6 @@ export function SetWindowZoom(scale: number): $CancellablePromise<void> {
 }
 
 /**
- * ShowContentUnlock brings the main window forward so the user can unlock content.
- */
-export function ShowContentUnlock(): $CancellablePromise<void> {
-    return $Call.ByID(1835680799);
-}
-
-/**
  * SkipVersion remembers that the user does not want the given version on the current channel.
  */
 export function SkipVersion(version: string): $CancellablePromise<void> {

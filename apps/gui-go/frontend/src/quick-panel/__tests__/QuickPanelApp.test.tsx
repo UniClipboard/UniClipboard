@@ -102,7 +102,6 @@ vi.mock('@host/hostservice', () => {
     ReportVisualEffectsSample: call('ReportVisualEffectsSample'),
     SetQuickPanelLayout: call('SetQuickPanelLayout'),
     SetVisualEffectsMode: call('SetVisualEffectsMode'),
-    ShowContentUnlock: call('ShowContentUnlock'),
     UnlockContentFromKeyring: call('UnlockContentFromKeyring'),
     UnlockContent: call('UnlockContent'),
     DismissQuickPanel: call('DismissQuickPanel'),

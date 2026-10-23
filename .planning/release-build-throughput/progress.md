@@ -15,3 +15,5 @@ Linux GUI在实际容器内恢复/编译/保存；musl沿用release-sidecar但�
 PR #2097 首轮 macOS、Windows x64/ARM64 失败均为新增 Linux 场景测试直接读取 `/etc/os-release`，两项测试报 FileNotFoundError；原生导出/导入往返已通过。为这两项测试增加固定 Linux 容器元数据上下文（OS、架构和发行版），不改变生产脚本的真实环境校验。
 
 本地完整 Python 快照测试通过；真实原生 MBX 测试21通过/1未启用插桩测试；额外模拟宿主不存在 os-release，原失败两项均通过。后续核对新提交的三平台远端结果。
+
+同时核对审查建议：Linux 原生缓存访问请求与快照发布使用同一个受保护 main 的权限判定，避免非 main 的 build_only/save_cache 调用请求 read-write。Decision: accept；测试验证两者共享发布能力变量，无额外权限来源。

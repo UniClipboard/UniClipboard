@@ -174,7 +174,7 @@ jobs:
 
       - name: Start shared Engine MBX cache
         env:
-          BUILD_CACHE_ACCESS: ${{ inputs.build_only && inputs.save_cache && 'write' || 'read' }}
+          BUILD_CACHE_ACCESS: ${{ env.UC_MBX_PUBLISH_SNAPSHOT == 'true' && 'write' || 'read' }}
           BUILD_CACHE_R2_ENDPOINT: ${{ secrets.BUILD_CACHE_R2_ENDPOINT }}
           BUILD_CACHE_R2_ACCESS_KEY_ID: ${{ secrets.BUILD_CACHE_R2_ACCESS_KEY_ID }}
           BUILD_CACHE_R2_SECRET_ACCESS_KEY: ${{ secrets.BUILD_CACHE_R2_SECRET_ACCESS_KEY }}

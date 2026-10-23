@@ -45,6 +45,10 @@ describe('MBX request reduction', () => {
     const linux = yaml('.github/workflows/package-linux-gui.yml').jobs.package
     expect(linux.env.UC_MBX_PUBLISH_SNAPSHOT).toContain('github.ref_protected')
     expect(linux.env.UC_MBX_PUBLISH_SNAPSHOT).toContain('inputs.build_only')
+    expect(
+      linux.steps.find((s: { name: string }) => s.name === 'Start shared Engine MBX cache').env
+        .BUILD_CACHE_ACCESS
+    ).toBe("${{ env.UC_MBX_PUBLISH_SNAPSHOT == 'true' && 'write' || 'read' }}")
     for (const name of [
       'Package',
       'Verify the package set',

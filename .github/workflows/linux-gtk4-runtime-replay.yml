@@ -28,7 +28,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ inputs.source_ref || '29c2416b1' }}
+          ref: ${{ inputs.source_ref || '29c2416b1383986e941746b7a50987bc97e6bbc5' }}
           persist-credentials: false
       - uses: actions/download-artifact@v6
         with:

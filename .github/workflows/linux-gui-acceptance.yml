@@ -40,6 +40,9 @@ jobs:
         with:
           ref: ${{ inputs.ref }}
           persist-credentials: false
+      - name: Permit WebKit namespaces in the disposable test containers
+        run: scripts/ci/prepare-webkit-container-profile.sh
+
       - name: Assert a native runner
         run: |
           test "$(uname -m)" = "${{ matrix.machine }}"
@@ -192,6 +195,9 @@ jobs:
         with:
           ref: ${{ inputs.ref }}
           persist-credentials: false
+
+      - name: Permit WebKit namespaces in the disposable test containers
+        run: scripts/ci/prepare-webkit-container-profile.sh
 
       - name: Assert a native runner
         run: test "$(docker version --format '{{.Server.Arch}}')" = "${{ matrix.arch }}"

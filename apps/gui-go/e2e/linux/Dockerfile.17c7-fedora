@@ -10,7 +10,7 @@ FROM fedora:44@sha256:43b29f65a41eb9c35e1cd5323e3bdf3b655c2357a9f4f1ff2f9c2798e5
 RUN dnf -y --setopt=install_weak_deps=False install \
       xorg-x11-server-Xvfb xorg-x11-xauth dbus-daemon dbus-tools dbus-x11 xdotool xdpyinfo python3 openssl ca-certificates \
       libglvnd-glx libglvnd-egl libglvnd-gles libglvnd-opengl mesa-dri-drivers mesa-libgbm libX11 libwayland-client dejavu-sans-fonts \
-      fuse-libs fuse3 procps-ng file binutils shadow-utils util-linux findutils \
+      fuse-libs fuse3 bubblewrap vulkan-loader procps-ng file binutils shadow-utils util-linux findutils \
       expat fontconfig freetype fribidi harfbuzz gmp libgpg-error libxcb libX11-xcb zlib-ng-compat libcom_err libstdc++ libdrm glib2 glib-networking \
     && dnf clean all
 # The container image ships an EMPTY /etc/machine-id; libdbus refuses to start a bus with it ("D-Bus library appears to be incorrectly set up", found by strace
@@ -18,3 +18,5 @@ RUN dnf -y --setopt=install_weak_deps=False install \
 RUN rm -f /etc/machine-id && dbus-uuidgen --ensure=/etc/machine-id
 COPY verify_image_17c7_fedora.sh /usr/local/bin/
 RUN verify_image_17c7_fedora.sh
+
+RUN useradd --create-home --uid 1600 --shell /bin/bash uc-appimage

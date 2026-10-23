@@ -138,7 +138,7 @@ case "$mode" in
     docker run -d --name "$keyring" --platform "$PLATFORM" -v "$bus:/bus" "$KEYRING_IMAGE" /usr/local/bin/keyring_service.sh >/dev/null
     for _ in $(seq 60); do docker run --rm -v "$bus:/bus" "$RUNTIME_IMAGE" test -f /bus/ready && break; sleep 1; done
     set +e
-    docker run --rm --init --platform "$PLATFORM" --device /dev/fuse --cap-add SYS_ADMIN --security-opt seccomp=unconfined --security-opt apparmor:unconfined \
+    docker run --rm --init --platform "$PLATFORM" --device /dev/fuse --cap-add SYS_ADMIN --security-opt seccomp=unconfined --security-opt "apparmor=${UC_WEBKIT_CI_APPARMOR_PROFILE:-unconfined}" \
       -e UC_E2E_BUS=unix:path=/bus/bus -v "$bus:/bus" -v "$ROOT:/work:ro" -v "$VOLUME:/cache:ro" -v "$out:/out" "${mounts[@]}" \
       "$RUNTIME_IMAGE" bash -c '
         chown uc-appimage:uc-appimage /out
@@ -161,7 +161,7 @@ case "$mode" in
     feed="$(cd "${4:?feed dir}" && pwd)"
     manifest="$(cd "$(dirname "${5:?package-manifest.json}")" && pwd)/$(basename "$5")"
     set +e
-    docker run --rm --init --platform "$PLATFORM" --device /dev/fuse --cap-add SYS_ADMIN --cap-add SYS_PTRACE --security-opt seccomp=unconfined --security-opt apparmor:unconfined \
+    docker run --rm --init --platform "$PLATFORM" --device /dev/fuse --cap-add SYS_ADMIN --cap-add SYS_PTRACE --security-opt seccomp=unconfined --security-opt "apparmor=${UC_WEBKIT_CI_APPARMOR_PROFILE:-unconfined}" \
       -v "$ROOT:/work:ro" -v "$VOLUME:/cache:ro" -v "$out:/out" -v "$image:/in/appimage.AppImage:ro" -v "$feed:/in/feed" \
       -v "$manifest:/in/package-manifest.json:ro" \
       uc-gui-go-linux-runtime:17c4 python3 /work/apps/gui-go/e2e/linux_appimage_portable_run.py --out /out --appimage /in/appimage.AppImage \
@@ -173,7 +173,7 @@ case "$mode" in
     image="$(cd "$(dirname "${3:?AppImage}")" && pwd)/$(basename "$3")"
     manifest="$(cd "$(dirname "${4:?package-manifest.json}")" && pwd)/$(basename "$4")"
     set +e
-    docker run --rm --init --platform "$PLATFORM" --device /dev/fuse --cap-add SYS_ADMIN --cap-add SYS_PTRACE --security-opt seccomp=unconfined --security-opt apparmor:unconfined \
+    docker run --rm --init --platform "$PLATFORM" --device /dev/fuse --cap-add SYS_ADMIN --cap-add SYS_PTRACE --security-opt seccomp=unconfined --security-opt "apparmor=${UC_WEBKIT_CI_APPARMOR_PROFILE:-unconfined}" \
       -v "$ROOT:/work:ro" -v "$out:/out" -v "$image:/in/appimage.AppImage:ro" -v "$manifest:/in/package-manifest.json:ro" \
       "${UC_TLS_IMAGE:-uc-gui-go-linux-runtime:17c7}" python3 /work/apps/gui-go/e2e/linux_appimage_tls_run.py --out /out --appimage /in/appimage.AppImage \
       --manifest /in/package-manifest.json ${UC_TLS_E2E_ARGS:-} > "$out/run.log" 2>&1
@@ -184,7 +184,7 @@ case "$mode" in
     image="$(cd "$(dirname "${3:?AppImage}")" && pwd)/$(basename "$3")"
     manifest="$(cd "$(dirname "${4:?package-manifest.json}")" && pwd)/$(basename "$4")"
     set +e
-    docker run --rm --init --platform "$PLATFORM" --device /dev/fuse --cap-add SYS_ADMIN --cap-add SYS_PTRACE --security-opt seccomp=unconfined --security-opt apparmor:unconfined \
+    docker run --rm --init --platform "$PLATFORM" --device /dev/fuse --cap-add SYS_ADMIN --cap-add SYS_PTRACE --security-opt seccomp=unconfined --security-opt "apparmor=${UC_WEBKIT_CI_APPARMOR_PROFILE:-unconfined}" \
       -v "$ROOT:/work:ro" -v "$out:/out" -v "$image:/in/appimage.AppImage:ro" -v "$manifest:/in/package-manifest.json:ro" \
       "${UC_HELPERS_IMAGE:?UC_HELPERS_IMAGE}" python3 /work/apps/gui-go/e2e/linux_appimage_helpers_run.py --out /out --appimage /in/appimage.AppImage \
       --manifest /in/package-manifest.json --desktop "${UC_HELPERS_DESKTOP:?UC_HELPERS_DESKTOP}" ${UC_HELPERS_E2E_ARGS:-} > "$out/run.log" 2>&1
@@ -199,7 +199,7 @@ case "$mode" in
     # route out, so the browser cannot reach anything but the controlled loopback target. The Engine also fails its p2p bind when the host has no default route (dev4: `engine error 1101`,
     # reproduced in a bare container), so the runner adds `default dev eth0` (NET_ADMIN) inside this internal network: a fixture requirement, recorded as an open Engine observation. bwrap (WebKit's sandbox in Epiphany) needs seccomp and systempaths unconfined.
     net="uc17c11-internal-$$"; docker network create --internal "$net" >/dev/null
-    docker run --rm --init --platform "$PLATFORM" --network "$net" --shm-size 1g --device /dev/fuse --cap-add SYS_ADMIN --cap-add SYS_PTRACE --cap-add NET_ADMIN --security-opt apparmor:unconfined \
+    docker run --rm --init --platform "$PLATFORM" --network "$net" --shm-size 1g --device /dev/fuse --cap-add SYS_ADMIN --cap-add SYS_PTRACE --cap-add NET_ADMIN --security-opt "apparmor=${UC_WEBKIT_CI_APPARMOR_PROFILE:-unconfined}" \
       --security-opt seccomp:unconfined --security-opt systempaths=unconfined \
       -v "$ROOT:/work:ro" -v "$out:/out" -v "$image:/in/appimage.AppImage:ro" -v "$manifest:/in/package-manifest.json:ro" \
       "${UC_REAL_IMAGE:?UC_REAL_IMAGE}" python3 /work/apps/gui-go/e2e/linux_appimage_real_helpers_run.py --out /out --appimage /in/appimage.AppImage \
@@ -214,7 +214,7 @@ case "$mode" in
     case "$comp" in weston) cimage=uc-gui-go-linux-weston:17c13-b ;; sway) cimage=uc-gui-go-linux-sway-nolib:17c13 ;; *) echo "bad compositor" >&2; exit 2 ;; esac
     set +e
     net="uc17c13-internal-$$"; docker network create --internal "$net" >/dev/null
-    docker run --rm --init --platform "$PLATFORM" --network "$net" --shm-size 1g --device /dev/fuse --cap-add SYS_ADMIN --cap-add SYS_PTRACE --cap-add NET_ADMIN --security-opt apparmor:unconfined \
+    docker run --rm --init --platform "$PLATFORM" --network "$net" --shm-size 1g --device /dev/fuse --cap-add SYS_ADMIN --cap-add SYS_PTRACE --cap-add NET_ADMIN --security-opt "apparmor=${UC_WEBKIT_CI_APPARMOR_PROFILE:-unconfined}" \
       --security-opt seccomp:unconfined --security-opt systempaths=unconfined \
       -v "$ROOT:/work:ro" -v "$out:/out" -v "$image:/in/appimage.AppImage:ro" \
       "$cimage" bash /work/apps/gui-go/e2e/linux/native_wayland_container.sh "$comp" "$pmode" /out/run > "$out/run.log" 2>&1
@@ -228,7 +228,7 @@ case "$mode" in
     set +e
     # --internal: no route out (nothing can leave the container); NET_ADMIN lets the runner add the default route the Engine needs (17c11 R1)
     net="uc17c12-internal-$$"; docker network create --internal "$net" >/dev/null
-    docker run --rm --init --platform "$PLATFORM" --network "$net" --device /dev/fuse --cap-add SYS_ADMIN --cap-add SYS_PTRACE --cap-add NET_ADMIN --security-opt apparmor:unconfined \
+    docker run --rm --init --platform "$PLATFORM" --network "$net" --device /dev/fuse --cap-add SYS_ADMIN --cap-add SYS_PTRACE --cap-add NET_ADMIN --security-opt "apparmor=${UC_WEBKIT_CI_APPARMOR_PROFILE:-unconfined}" \
       -v "$ROOT:/work:ro" -v "$out:/out" -v "$image:/in/appimage.AppImage:ro" -v "$manifest:/in/package-manifest.json:ro" \
       "${UC_PROXY_IMAGE:-uc-gui-go-linux-proxy:17c12-ubuntu}" python3 /work/apps/gui-go/e2e/${UC_PROXY_RUNNER:-linux_appimage_proxy_run.py} --out /out --appimage /in/appimage.AppImage \
       --manifest /in/package-manifest.json ${UC_PROXY_ARGS:-} > "$out/run.log" 2>&1

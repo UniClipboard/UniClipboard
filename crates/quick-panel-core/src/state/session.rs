@@ -33,6 +33,7 @@ impl PanelState {
         self.search.pointer_moved = false;
         self.session.message = None;
         self.session.unlock = UnlockStatus::Idle;
+        self.session.needs_passphrase = false;
         self.suggest.open = false;
         self.suggest.cursor = 0;
         self.suggest.focused = false;
@@ -91,7 +92,10 @@ impl PanelState {
         preview_active: bool,
         ctx: &Ctx,
     ) -> Effects {
-        if !self.session.visible || panel_active {
+        if !self.session.visible
+            || panel_active
+            || self.session.unlock == UnlockStatus::CheckingKeyring
+        {
             return vec![];
         }
         if self

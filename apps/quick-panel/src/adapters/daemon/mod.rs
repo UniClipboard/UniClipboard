@@ -49,6 +49,10 @@ impl HistoryService for DaemonHistory {
         self.load_preview(id, kind).await
     }
 
+    async fn unlock_from_keyring(&self) -> Result<bool, UnlockFailure> {
+        self.unlock_content_from_keyring().await
+    }
+
     async fn unlock(&self, passphrase: Secret) -> Result<(), UnlockFailure> {
         self.unlock_content(passphrase).await
     }

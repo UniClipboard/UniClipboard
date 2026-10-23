@@ -26,7 +26,10 @@ impl Panel {
 
     /// The focus follows the page: the passphrase box while locked, the search box otherwise.
     fn sync_focus(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let locked = self.state.search.locked;
+        let locked = (
+            self.state.search.locked,
+            self.state.session.needs_passphrase,
+        );
         if locked == self.focus_on_lock_page {
             return;
         }
@@ -35,6 +38,10 @@ impl Panel {
     }
 
     fn focus_active_input(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.state.search.locked && !self.state.session.needs_passphrase {
+            self.lock_focus.focus(window);
+            return;
+        }
         let input = if self.state.search.locked {
             &self.passphrase
         } else {
@@ -121,6 +128,22 @@ impl Panel {
             Effect::CancelSearch => self.tasks.search = None,
             Effect::CountRelaxations { revision, queries } => {
                 self.count_relaxations(revision, queries, window, cx);
+            }
+            Effect::UnlockFromKeyring => {
+                let runtime = self.runtime.clone();
+                let history = self.history.clone();
+                self.tasks.unlock = Some(cx.spawn_in(window, async move |this, cx| {
+                    let result = runtime.spawn(
+                        async move { history.unlock_from_keyring().await }
+                            .instrument(tracing::info_span!("gpui.unlock_keyring")),
+                    ).await.unwrap_or(Err(UnlockFailure::Failed));
+                    if let Err(error) = &result {
+                        tracing::warn!(error = %error, "System secure store unlock failed; requesting passphrase");
+                    }
+                    let _ = this.update_in(cx, |this, window, cx| {
+                        this.deliver(Event::KeyringUnlockDone(result), window, cx);
+                    });
+                }));
             }
             Effect::Unlock(passphrase) => {
                 let runtime = self.runtime.clone();

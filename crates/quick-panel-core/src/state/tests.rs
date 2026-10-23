@@ -777,6 +777,10 @@ fn locked_panel() -> (PanelState, Fixture) {
 }
 
 fn type_passphrase(state: &mut PanelState, fixture: &mut Fixture, value: &str) -> Effects {
+    if !state.session.needs_passphrase {
+        state.on_event(Event::UnlockRequested, &fixture.ctx());
+        state.on_event(Event::KeyringUnlockDone(Ok(false)), &fixture.ctx());
+    }
     fixture.passphrase = value.into();
     state.on_event(Event::PassphraseChanged, &fixture.ctx())
 }
@@ -799,12 +803,56 @@ fn enter_on_the_locked_page_sends_the_passphrase_not_the_search_text() {
 }
 
 #[test]
-fn enter_on_the_locked_page_without_a_passphrase_does_nothing() {
+fn the_locked_page_tries_the_keyring_before_requesting_a_passphrase() {
     let (mut state, mut fixture) = locked_panel();
     fixture.input = "invoice".into();
-    let result = submit(&mut state, &fixture);
-    assert!(result.effects.is_empty());
+    assert!(!state.session.needs_passphrase);
+    assert!(matches!(
+        submit(&mut state, &fixture).effects.as_slice(),
+        [Effect::UnlockFromKeyring]
+    ));
+    assert_eq!(state.session.unlock, UnlockStatus::CheckingKeyring);
+    assert!(submit(&mut state, &fixture).effects.is_empty());
+    state.on_event(Event::KeyringUnlockDone(Ok(false)), &fixture.ctx());
+    assert!(state.session.needs_passphrase);
     assert_eq!(state.session.unlock, UnlockStatus::Idle);
+    assert!(submit(&mut state, &fixture).effects.is_empty());
+}
+
+#[test]
+fn a_keyring_unlock_refreshes_history_without_opening_the_main_window() {
+    let (mut state, fixture) = locked_panel();
+    state.on_event(Event::UnlockRequested, &fixture.ctx());
+    let effects = state.on_event(Event::KeyringUnlockDone(Ok(true)), &fixture.ctx());
+    assert_eq!(state.session.unlock, UnlockStatus::Idle);
+    assert!(!state.session.needs_passphrase);
+    assert!(has(&effects, |e| matches!(e, Effect::Search { .. })));
+    assert!(!has(&effects, |e| matches!(e, Effect::HostRequest(_))));
+}
+
+#[test]
+fn a_keyring_failure_requests_a_passphrase_and_a_new_opening_retries_the_keyring() {
+    let (mut state, fixture) = locked_panel();
+    state.on_event(Event::UnlockRequested, &fixture.ctx());
+    state.on_event(
+        Event::KeyringUnlockDone(Err(UnlockFailure::Failed)),
+        &fixture.ctx(),
+    );
+    assert!(state.session.needs_passphrase);
+    state.show(&fixture.ctx());
+    assert!(!state.session.needs_passphrase);
+    let late = state.on_event(Event::KeyringUnlockDone(Ok(false)), &fixture.ctx());
+    assert!(late.is_empty());
+    assert!(!state.session.needs_passphrase);
+}
+
+#[test]
+fn the_keyring_authorization_dialog_does_not_close_the_panel() {
+    let (mut state, mut fixture) = locked_panel();
+    state.on_event(Event::UnlockRequested, &fixture.ctx());
+    fixture.now += std::time::Duration::from_secs(5);
+    let effects = state.on_blur_checked(false, false, &fixture.ctx());
+    assert!(!has(&effects, |e| matches!(e, Effect::HideWindow)));
 }
 
 #[test]
@@ -1326,4 +1374,17 @@ fn an_unreachable_daemon_says_nothing_about_the_lock() {
     );
     assert!(!state.search.lock_known);
     assert!(!state.awaiting_lock_state(), "the disconnected page shows");
+}
+
+#[test]
+fn completing_keyring_authorization_rechecks_focus() {
+    for result in [Ok(false), Ok(true), Err(UnlockFailure::Failed)] {
+        let (mut pending, fixture) = locked_panel();
+        pending.on_event(Event::UnlockRequested, &fixture.ctx());
+        let effects = pending.on_event(Event::KeyringUnlockDone(result), &fixture.ctx());
+        assert!(has(&effects, |effect| matches!(
+            effect,
+            Effect::ScheduleBlurCheck(_)
+        )));
+    }
 }

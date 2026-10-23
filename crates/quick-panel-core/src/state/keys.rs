@@ -183,7 +183,7 @@ impl PanelState {
         let effects = match key {
             "escape" if ctx.passphrase.is_empty() => vec![Effect::HideWindow],
             "escape" => vec![Effect::ClearPassphrase],
-            "enter" => self.submit_passphrase(ctx),
+            "enter" => self.request_unlock(ctx),
             "o" if command && modifiers.shift => self.ask_host(HostRequest::ShowMainWindow),
             "," if command && !modifiers.shift => self.ask_host(HostRequest::OpenSettings),
             _ => return KeyResult::ignored(),

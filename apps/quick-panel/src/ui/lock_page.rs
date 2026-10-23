@@ -7,7 +7,12 @@ use super::history::keycap;
 use super::view::units;
 use super::*;
 use gpui::{div, AnyElement, IntoElement};
-use gpui_component::{input::Input, ActiveTheme, Icon, IconName, Sizable};
+use gpui_component::Disableable;
+use gpui_component::{
+    button::{Button, ButtonVariants},
+    input::Input,
+    ActiveTheme, Icon, IconName, Sizable,
+};
 use quick_panel_core::state::UnlockStatus;
 
 impl Panel {
@@ -15,9 +20,22 @@ impl Panel {
         let theme = cx.theme();
         let muted = theme.muted_foreground;
         let status = &self.state.session.unlock;
+        let checking = matches!(
+            status,
+            UnlockStatus::Checking | UnlockStatus::CheckingKeyring
+        );
         let (detail, detail_color) = match status {
-            UnlockStatus::Idle => (text::t().locked_hint.to_string(), muted),
-            UnlockStatus::Checking => (text::t().unlocking.to_string(), muted),
+            UnlockStatus::Idle => (
+                if self.state.session.needs_passphrase {
+                    text::t().locked_hint.to_string()
+                } else {
+                    String::new()
+                },
+                muted,
+            ),
+            UnlockStatus::Checking | UnlockStatus::CheckingKeyring => {
+                (text::t().unlocking.to_string(), muted)
+            }
             UnlockStatus::Failed(failure) => (failure.to_string(), theme.danger),
         };
         let hint = |keys: &'static str, label: &'static str| {
@@ -31,6 +49,7 @@ impl Panel {
                 .child(keycap(keys, cx))
         };
         div()
+            .track_focus(&self.lock_focus)
             .relative()
             .w(units(
                 quick_panel_core::geometry::window_pair::PANEL_WIDTH as f32,
@@ -60,32 +79,43 @@ impl Panel {
                     .font_weight(gpui::FontWeight::MEDIUM)
                     .child(text::t().locked_title),
             )
-            .child(
-                div()
-                    .w_full()
-                    .h(units(36.))
-                    .px(units(10.))
-                    .flex()
-                    .items_center()
-                    .rounded(units(8.))
-                    .border_1()
-                    .border_color(theme.border)
-                    .bg(theme.muted.opacity(0.4))
-                    .child(
-                        Input::new(&self.passphrase)
-                            .appearance(false)
-                            .small()
-                            .disabled(*status == UnlockStatus::Checking)
-                            .px_0()
-                            .text_size(units(14.)),
-                    ),
-            )
+            .when(self.state.session.needs_passphrase, |card| {
+                card.child(
+                    div()
+                        .w_full()
+                        .h(units(36.))
+                        .px(units(10.))
+                        .flex()
+                        .items_center()
+                        .rounded(units(8.))
+                        .border_1()
+                        .border_color(theme.border)
+                        .bg(theme.muted.opacity(0.4))
+                        .child(
+                            Input::new(&self.passphrase)
+                                .appearance(false)
+                                .small()
+                                .disabled(checking)
+                                .px_0()
+                                .text_size(units(14.)),
+                        ),
+                )
+            })
             .child(
                 div()
                     .text_size(units(12.))
                     .text_color(detail_color)
                     .text_center()
                     .child(detail),
+            )
+            .child(
+                Button::new("unlock-content")
+                    .label(text::t().unlock)
+                    .primary()
+                    .disabled(checking)
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.deliver(Event::UnlockRequested, window, cx);
+                    })),
             )
             .child(
                 div()

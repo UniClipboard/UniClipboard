@@ -102,7 +102,8 @@ pub struct Panel {
     /// The passphrase box of the locked page, apart from the search box.
     passphrase: Entity<InputState>,
     /// Which box last got the focus, so the focus moves when the page changes.
-    focus_on_lock_page: bool,
+    focus_on_lock_page: (bool, bool),
+    lock_focus: gpui::FocusHandle,
     scroll: ScrollHandle,
     runtime: tokio::runtime::Handle,
     history: Arc<dyn HistoryService>,
@@ -216,7 +217,8 @@ impl Panel {
             state,
             input,
             passphrase,
-            focus_on_lock_page: false,
+            focus_on_lock_page: (false, false),
+            lock_focus: cx.focus_handle(),
             scroll: ScrollHandle::new(),
             runtime,
             history,

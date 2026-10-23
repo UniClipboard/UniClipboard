@@ -26,7 +26,7 @@ curl -fsSL https://uniclipboard.app/install.sh | bash
 What it does:
 
 - **macOS** — downloads `.app.tar.gz`, extracts it, and moves `UniClipboard.app` into `/Applications` (escalates with `sudo` if needed; pass `--prefix "$HOME/Applications"` for a user-level install).
-- **Linux** — the quick-install script uses `snap` only on Ubuntu 20.04 (the `core22` runtime bundles GTK + WebKit, so the `.deb`'s `libwebkit2gtk-4.1` requirement is avoided; `snapd` is auto-installed via `apt` if missing). Other Debian-family distros default to the `.deb` via `apt`; the Snap section below is an alternative manual path. `dnf`-based distros (Fedora/RHEL/openSUSE) enable the [`mkdir700/uniclipboard`](https://copr.fedorainfracloud.org/coprs/mkdir700/uniclipboard/) COPR repo and `dnf install uniclipboard`, so `dnf upgrade` keeps tracking new releases — pass `--version vX.Y.Z` to fall back to a one-shot `.rpm` download instead. Without root, the script falls back to AppImage in `~/.local/bin` with a `.desktop` entry.
+- **Linux** — the quick-install script selects `snap` on Ubuntu 20.04 / 22.04, derivatives based on those releases, and Debian 11 / 12 to avoid the native GTK4 package requirements; missing `snapd` is installed via `apt`. Other Debian-family distributions that meet the requirements default to the `.deb` via `apt`. `dnf`-based distros (Fedora/RHEL/openSUSE) enable the [`mkdir700/uniclipboard`](https://copr.fedorainfracloud.org/coprs/mkdir700/uniclipboard/) COPR repo and `dnf install uniclipboard`, so `dnf upgrade` keeps tracking new releases — pass `--version vX.Y.Z` to fall back to a one-shot `.rpm` download instead. Without root, the script falls back to AppImage in `~/.local/bin` with a `.desktop` entry.
 
 Common flags:
 
@@ -165,7 +165,7 @@ Download the installer or portable zip from the
 
 <Tab value="Linux">
 
-Each release ships `.deb`, `.rpm`, and `.AppImage` artifacts for both `x86_64` and `aarch64`. Pick the channel that fits your distribution:
+Each release ships `.deb`, `.rpm`, and `.AppImage` artifacts for both `x86_64` and `aarch64`. Native GTK4 packages require GTK >= 4.10, WebKitGTK 6.0, and glibc >= 2.39; the shared build baseline is Ubuntu 24.04. Check the corresponding release notes for older versions. Pick the channel that fits your distribution:
 
 ### Arch Linux / Omarchy — AUR
 
@@ -181,7 +181,7 @@ Alternatively, install the upstream-maintained source package, which tracks the 
 yay -S uniclipboard-git
 ```
 
-`uniclipboard-bin` is maintained by the community and repackages UniClipboard's prebuilt release; `uniclipboard-git` is maintained upstream but builds the application locally. Both install the GUI, daemon, desktop entry, and the GTK Layer Shell runtime required by the Quick Panel on Wayland. After installation, follow [Quick Panel — Omarchy](../core-features/quick-panel#omarchy) to bind `Super+Ctrl+V` to the panel.
+`uniclipboard-bin` is maintained by the community and repackages UniClipboard's prebuilt release; `uniclipboard-git` is maintained upstream but builds the application locally. Both install the GUI, daemon, and desktop entry. The upstream GTK4 source package uses an ordinary Quick Panel window without Layer Shell overlay placement or exclusive keyboard behavior; the community binary package depends on its selected release. After installation, follow [Quick Panel — Omarchy](../core-features/quick-panel#omarchy) to bind `Super+Ctrl+V` to the panel.
 
 ### Fedora / RHEL / openSUSE — recommended: COPR
 
@@ -201,7 +201,7 @@ See the [COPR deployment notes](https://github.com/UniClipboard/UniClipboard/blo
 
 ### Ubuntu / Debian / older distros — recommended: Snap
 
-The Snap is built with strict confinement on `core22` and bundles its own GTK + WebKit stack, so it runs the same on Ubuntu 20.04+, Debian 11+, RHEL 9, openSUSE Leap, and similar.
+The GTK4 Snap recipe retains strict confinement on `core22`, obtains GTK from the GNOME platform, and bundles WebKitGTK 6.0, avoiding the host GTK requirement. Native GTK4 acceptance on older hosts such as Ubuntu 20.04 is still pending; the runtime declaration alone does not guarantee compatibility. Check the corresponding release notes.
 
 ```bash
 # Stable channel (final releases, amd64 + arm64)
@@ -223,9 +223,9 @@ New installations need this step: without a reachable keyring the daemon refuses
 
 Don't have `snapd`? See the [Snapcraft install guide](https://snapcraft.io/docs/installing-snapd) for your distribution.
 
-### Any distro — AppImage
+### Compatible distributions — AppImage
 
-An AppImage is also published with each release. Download it from the [Releases](https://github.com/UniClipboard/UniClipboard/releases) page, mark it executable, and run it:
+An AppImage is also published with each release. GTK4 versions bundle GTK and WebKitGTK but still require host glibc >= 2.39, so they cannot run on every older distribution. Download it from the [Releases](https://github.com/UniClipboard/UniClipboard/releases) page, mark it executable, and run it:
 
 ```bash
 chmod +x UniClipboard_<version>_amd64.AppImage

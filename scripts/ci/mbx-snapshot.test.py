@@ -82,34 +82,58 @@ class SnapshotTests(unittest.TestCase):
             self.assertEqual(Path(result["trust"]).resolve(), source.resolve())
             self.assertTrue(result["transport_ready"])
 
-    def test_local_policy_preserves_transport_identity_without_copying_credentials(self):
-        class FakeS3:
-            def get_object(self, **kwargs):
-                return dict(ContentLength=7, Body=io.BytesIO(b"archive"))
-
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            config = root / "engine's identity 身份"
-            original = "export BUILD_CACHE_R2_SECRET_ACCESS_KEY=fixture-secret\n"
-            config.write_text(original, newline="\n")
-            original_bytes = config.read_bytes()
-            command_file = root / "github-env"
-            index = dict(size=7, sha256=snapshot.hashlib.sha256(b"archive").hexdigest(), key="bundle")
-            env = dict(UC_ENGINE_MBX_ENV_FILE=str(config), GITHUB_ENV=str(command_file))
-            with patch.dict(os.environ, env), patch.object(snapshot, "get_index", return_value=index), patch.object(snapshot, "unpack"), patch.object(snapshot, "mbx"):
-                snapshot.restore(FakeS3(), "scene", root, dict(index_reads=0, archive_reads=0, downloaded_bytes=0), False)
-            self.assertEqual(config.read_bytes(), original_bytes)
-            changes = dict(line.split("=", 1) for line in command_file.read_text(encoding="utf-8").splitlines())
-            self.assertEqual(Path(changes["UC_MBX_SNAPSHOT_ENV_FILE"]), config)
-            policy = Path(changes["UC_ENGINE_MBX_ENV_FILE"])
-            self.assertNotEqual(policy, config)
-            self.assertNotIn("fixture-secret", policy.read_text(encoding="utf-8"))
-            self.assertNotIn(b"\r", policy.read_bytes())
-            if os.name != "nt":
-                self.assertEqual(policy.stat().st_mode & 0o777, 0o600)
-            bash = str(Path(shutil.which("cygpath")).with_name("bash.exe")) if os.name == "nt" else "bash"
-            probe = subprocess.run([bash, "-e", "-c", 'source "$1"; test -z "${BUILD_CACHE_R2_SECRET_ACCESS_KEY+x}${MBX_REMOTE_URL+x}"', "probe", policy.as_posix()], env={**os.environ, "MBX_REMOTE_URL": "fixture-remote"}, capture_output=True, text=True)
-            self.assertEqual(probe.returncode, 0, probe.stdout + probe.stderr)
+    def test_ci_setup_separates_identity_before_any_restore(self):
+        # Exercise the real Desktop setup branch with the pinned owner's output
+        # contract; avoid downloading tools or contacting an actual R2 service.
+        setup = (snapshot.ROOT / "scripts/build-cache/engine-tools.sh").read_text()
+        setup = setup[setup.index('if [[ "${1:-}" == --ci ]]; then'):]
+        bash = str(Path(shutil.which("cygpath")).with_name("bash.exe")) if os.name == "nt" else "bash"
+        for credentials in (False, True):
+            for outcome in ("no-snapshot", "hit", "miss", "corrupt", "error"):
+                with self.subTest(credentials=credentials, outcome=outcome), tempfile.TemporaryDirectory() as directory:
+                    root = Path(directory)
+                    owner = root / "scripts/build-cache"
+                    owner.mkdir(parents=True)
+                    config = root / "identity"
+                    config.write_text("export BUILD_CACHE_R2_SECRET_ACCESS_KEY=fixture-secret\n" if credentials else "# No credentials\n")
+                    original = config.read_bytes()
+                    (owner / "start-ci-mbx.sh").write_text('printf "UC_ENGINE_MBX_ENV_FILE=%s/identity\\n" "$RUNNER_TEMP" >> "$GITHUB_ENV"\n')
+                    entry = root / "setup.sh"
+                    entry.write_text('set -euo pipefail\nroot="$RUNNER_TEMP"\n' + setup)
+                    shutil.copyfile(snapshot.ROOT / "scripts/build-cache/ci-local-policy.sh", root / "ci-local-policy.sh")
+                    commands = root / "commands"
+                    env = {**os.environ, "RUNNER_TEMP": root.as_posix(), "GITHUB_ENV": commands.as_posix()}
+                    subprocess.run([bash, entry.as_posix(), "--ci"], env=env, check=True, capture_output=True)
+                    changes = dict(line.split("=", 1) for line in commands.read_text().splitlines())
+                    policy = Path(changes["UC_ENGINE_MBX_ENV_FILE"])
+                    self.assertEqual(Path(changes["UC_MBX_SNAPSHOT_ENV_FILE"]), config)
+                    self.assertNotIn("fixture-secret", policy.read_text())
+                    if os.name != "nt":
+                        self.assertEqual(policy.stat().st_mode & 0o777, 0o600)
+                    report = dict(index_reads=0, archive_reads=0, downloaded_bytes=0)
+                    if outcome != "no-snapshot":
+                        index = None if outcome == "miss" else dict(size=7, sha256=snapshot.hashlib.sha256(b"archive").hexdigest(), key="bundle")
+                        class S3:
+                            def get_object(self, **kwargs):
+                                if outcome == "error":
+                                    raise RuntimeError("Transport unavailable")
+                                return dict(ContentLength=7, Body=io.BytesIO(b"corrupt" if outcome == "corrupt" else b"archive"))
+                        with patch.dict(os.environ, {**env, **changes}), patch.object(snapshot, "get_index", return_value=index), patch.object(snapshot, "unpack"), patch.object(snapshot, "mbx"):
+                            if outcome in ("error", "corrupt"):
+                                with self.assertRaises((RuntimeError, ValueError)):
+                                    snapshot.restore(S3(), "scene", root, report)
+                            else:
+                                snapshot.restore(S3(), "scene", root, report)
+                                self.assertEqual(report["status"], outcome)
+                    self.assertEqual(config.read_bytes(), original)
+                    # Descendants must have no remote selector even if the runner
+                    # or transport process supplied an inherited identity.
+                    poisoned = {**env, **changes, "BUILD_CACHE_R2_ENDPOINT": "https://fixture.invalid",
+                                "BUILD_CACHE_R2_ACCESS_KEY_ID": "fixture", "BUILD_CACHE_R2_SECRET_ACCESS_KEY": "fixture",
+                                "MBX_REMOTE_URL": "s3://fixture", "MBX_REMOTE_MODE": "read-write",
+                                "MBX_REMOTE_TOKEN": "fixture", "MBX_REMOTE_FUTURE_OPTION": "fixture"}
+                    probe = 'source "$UC_ENGINE_MBX_ENV_FILE"; exec python3 -c \'import os; assert not any(k.startswith(("MBX_REMOTE_", "BUILD_CACHE_R2_")) for k in os.environ)\''
+                    subprocess.run([bash, "-eu", "-c", probe], env=poisoned, check=True, capture_output=True)
 
     def test_scene_keys_isolate_workloads_and_host_architectures(self):
         with patch.object(snapshot.subprocess, "check_output", return_value=b"compiler"), patch.object(snapshot.platform, "system", return_value="Windows"):
@@ -202,11 +226,11 @@ class SnapshotTests(unittest.TestCase):
             self.assertEqual(report["status"], "error")
             self.assertEqual(report["error_type"], "ValueError")
 
-    def test_release_cold_miss_configures_export_group_and_preserves_remote_policy(self):
+    def test_release_cold_miss_configures_export_group(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             env = dict(UC_ENGINE_MBX_STATS_DIR=str(root), GITHUB_ENV=str(root / "env"), RUNNER_TEMP=str(root))
-            argv = ["mbx-snapshot.py", "restore", "--scene", "release-sidecar", "--target", "x86_64-pc-windows-msvc", "--component", "daemon", "--object-fallback", "false"]
+            argv = ["mbx-snapshot.py", "restore", "--scene", "release-sidecar", "--target", "x86_64-pc-windows-msvc", "--component", "daemon"]
             with patch.dict(os.environ, env), patch.object(sys, "argv", argv), patch.object(snapshot.subprocess, "check_output", return_value="a" * 40), patch.object(snapshot, "client"), patch.object(snapshot, "scene_key", return_value="scene"), patch.object(snapshot, "get_index", return_value=None):
                 snapshot.main()
             self.assertIn("MBX_CACHE_EXPORT_GROUP=sidecar-x86_64-pc-windows-msvc-daemon-release-native", (root / "env").read_text())
@@ -262,10 +286,10 @@ class SnapshotTests(unittest.TestCase):
                     with self.assertRaises(ValueError):
                         snapshot.unpack(root / "bundle.tar.gz", root / "output")
 
-    def test_miss_preserves_existing_cache_policy(self):
+    def test_miss_does_not_invoke_mbx(self):
         report = dict(index_reads=0, archive_reads=0)
         with patch.object(snapshot, "get_index", return_value=None), patch.object(snapshot, "mbx") as mbx:
-            snapshot.restore(None, "scene", Path("unused"), report, False)
+            snapshot.restore(None, "scene", Path("unused"), report)
         self.assertEqual(report, dict(index_reads=1, archive_reads=0, status="miss"))
         mbx.assert_not_called()
 
@@ -277,7 +301,7 @@ class SnapshotTests(unittest.TestCase):
         report = dict(index_reads=0, archive_reads=0, downloaded_bytes=0)
         with tempfile.TemporaryDirectory() as directory, patch.object(snapshot, "get_index", return_value=dict(size=3, sha256="0" * 64, key="blob")), patch.object(snapshot, "mbx") as mbx:
             with self.assertRaises(ValueError):
-                snapshot.restore(FakeS3(), "scene", Path(directory), report, False)
+                snapshot.restore(FakeS3(), "scene", Path(directory), report)
             mbx.assert_not_called()
 
     def test_reader_cannot_publish(self):
@@ -326,6 +350,37 @@ class SnapshotTests(unittest.TestCase):
 
 @unittest.skipUnless(os.environ.get("UC_MBX_TEST_BINARY"), "Set UC_MBX_TEST_BINARY for native MBX integration")
 class NativeMbxTests(unittest.TestCase):
+    def test_ci_wrapper_compiles_cold_hit_and_changed_inputs_without_object_requests(self):
+        bash = str(Path(shutil.which("cygpath")).with_name("bash.exe")) if os.name == "nt" else "bash"
+        wrapper = snapshot.ROOT / "scripts/build-cache/mbx.sh"
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "src").mkdir()
+            (root / "Cargo.toml").write_text('[package]\nname = "ci-local-proof"\nversion = "0.1.0"\nedition = "2021"\n')
+            source = root / "src/main.rs"
+            source.write_text('fn main() { println!("cold"); }\n')
+            identity = root / "identity"
+            identity.write_text('export BUILD_CACHE_R2_ENDPOINT=https://127.0.0.1:1\n')
+            env = {**os.environ, "GITHUB_ACTIONS": "true", "GITHUB_REF": "refs/heads/main",
+                   "GITHUB_REF_PROTECTED": "true", "GITHUB_EVENT_NAME": "push",
+                   "UC_ENGINE_MBX_ENV_FILE": identity.as_posix(), "BUILD_CACHE_R2_ENDPOINT": "https://127.0.0.1:1",
+                   "BUILD_CACHE_R2_ACCESS_KEY_ID": "fixture", "BUILD_CACHE_R2_SECRET_ACCESS_KEY": "fixture",
+                   "MBX_REMOTE_URL": "s3://fixture", "MBX_REMOTE_MODE": "read-write",
+                   "MBX_CACHE_DIR": str(root / "cache"), "MBX_STATS_REPORT": str(root / "stats.json")}
+            executable = "ci-local-proof.exe" if os.name == "nt" else "ci-local-proof"
+            for iteration in ("cold", "hit", "changed"):
+                if iteration == "changed":
+                    source.write_text('fn main() { println!("changed"); }\n')
+                target = root / iteration
+                subprocess.run([bash, wrapper.as_posix(), "--exec", "cargo", "build", "--offline", "--target-dir", str(target)], cwd=root, env=env, check=True, capture_output=True)
+                stats = json.loads((root / "stats.json").read_text())
+                for counter in ("remote_manifest_lookups", "remote_action_lookups", "remote_blob_requests", "remote_blob_pack_requests", "uploaded_bytes", "downloaded_bytes"):
+                    self.assertEqual(stats[counter], 0, (iteration, counter))
+                if iteration == "hit":
+                    self.assertGreater(stats["hits"], 0)
+                result = subprocess.check_output([str(target / "debug" / executable)], text=True).strip()
+                self.assertEqual(result, "changed" if iteration == "changed" else "cold")
+
     @unittest.skipUnless(os.environ.get("UC_MBX_TEST_COVERAGE"), "Enable the instrumented coverage fixture explicitly")
     def test_coverage_snapshot_executes_tests_and_regenerates_lcov(self):
         binary = os.environ["UC_MBX_TEST_BINARY"]
@@ -478,20 +533,14 @@ fn executes_on_every_run() {
                 restored = dict(index_reads=0, archive_reads=0, downloaded_bytes=0)
                 restored_dir = root / "restored"
                 restored_dir.mkdir()
-                snapshot.restore(s3, "scene", restored_dir, restored, False)
+                snapshot.restore(s3, "scene", restored_dir, restored)
                 self.assertEqual(restored["status"], "hit")
                 self.assertEqual(restored["index_reads"], 1)
                 self.assertEqual(restored["archive_reads"], 1)
                 self.assertEqual(config.read_text(), "# Test policy\n")
-                changes = dict(line.split("=", 1) for line in command_file.read_text().splitlines())
-                policy = Path(changes["UC_ENGINE_MBX_ENV_FILE"])
-                self.assertIn("unset MBX_REMOTE_URL", policy.read_text())
-                if os.name != "nt":
-                    self.assertEqual(policy.stat().st_mode & 0o777, 0o600)
-                self.assertTrue((root / "transport-consumer/actions/cas").is_dir())
                 # A snapshot-only warmup must still publish a new closure after
                 # local input changes, and an empty consumer must execute it.
-                os.environ.update(changes)
+                self.assertTrue((root / "transport-consumer/actions/cas").is_dir())
                 warm_target = workspace / "warm-target"
                 run("build", "--offline", "--target-dir", str(warm_target))
                 self.assertGreater(json.loads((root / "native-stats.json").read_text())["hits"], 0)
@@ -512,7 +561,7 @@ fn executes_on_every_run() {
                 environment["MBX_CACHE_DIR"] = str(root / "refreshed-consumer")
                 final_dir = root / "final-restore"
                 final_dir.mkdir()
-                snapshot.restore(s3, "scene", final_dir, dict(index_reads=0, archive_reads=0, downloaded_bytes=0), False)
+                snapshot.restore(s3, "scene", final_dir, dict(index_reads=0, archive_reads=0, downloaded_bytes=0))
                 final_target = workspace / "final-target"
                 self.assertFalse(final_target.exists())
                 run("build", "--offline", "--target-dir", str(final_target))

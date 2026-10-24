@@ -7,9 +7,6 @@ inputs:
   scene:
     description: Workload exported by MBX; host OS and architecture further isolate the key.
     default: e2e-macos
-  object-fallback:
-    description: Keep per-object R2 reads after a snapshot hit.
-    default: 'false'
 runs:
   using: composite
   steps:
@@ -21,6 +18,5 @@ runs:
       env:
         SNAPSHOT_SCENE: ${{ inputs.scene }}
         SNAPSHOT_OPERATION: ${{ inputs.operation }}
-        SNAPSHOT_OBJECT_FALLBACK: ${{ inputs.object-fallback }}
       run: |
-        bash scripts/ci/mbx-snapshot.sh "$SNAPSHOT_OPERATION" --scene "$SNAPSHOT_SCENE" --object-fallback "$SNAPSHOT_OBJECT_FALLBACK"
+        bash scripts/ci/mbx-snapshot.sh "$SNAPSHOT_OPERATION" --scene "$SNAPSHOT_SCENE"

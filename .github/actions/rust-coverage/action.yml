@@ -37,7 +37,6 @@ runs:
       uses: ./.github/actions/mbx-snapshot
       with:
         scene: coverage-linux
-        object-fallback: 'false'
     - name: Cache Rust dependencies
       uses: Swatinem/rust-cache@v2
       with:

@@ -217,12 +217,10 @@ jobs:
           SNAPSHOT_COMPONENT: ${{ matrix.component }}
           SNAPSHOT_BUILD_MODE: ${{ inputs.build_mode || 'release' }}
           SNAPSHOT_TARGET_ARGS: ${{ matrix.args }}
-          SNAPSHOT_OBJECT_FALLBACK: 'false'
         run: |
           bash "$UC_MBX_SNAPSHOT_TOOLS/mbx-snapshot.sh" restore --scene release-sidecar \
             --target "$SNAPSHOT_TARGET" --component "$SNAPSHOT_COMPONENT" \
-            --build-mode "$SNAPSHOT_BUILD_MODE" --target-args="$SNAPSHOT_TARGET_ARGS" \
-            --object-fallback "$SNAPSHOT_OBJECT_FALLBACK"
+            --build-mode "$SNAPSHOT_BUILD_MODE" --target-args="$SNAPSHOT_TARGET_ARGS"
 
       - name: prepare uniclipd sidecar
         # ADR-008 D13: the standalone `uniclipd` daemon ships next to the GUI
@@ -600,6 +598,12 @@ jobs:
     permissions:
       contents: read
     uses: ./.github/workflows/package-linux-gui.yml
+    # Forward only snapshot credential names; the called job's reader
+    # environment supplies their values for this consumer route.
+    secrets:
+      BUILD_CACHE_R2_ENDPOINT: ${{ secrets.BUILD_CACHE_R2_ENDPOINT }}
+      BUILD_CACHE_R2_ACCESS_KEY_ID: ${{ secrets.BUILD_CACHE_R2_ACCESS_KEY_ID }}
+      BUILD_CACHE_R2_SECRET_ACCESS_KEY: ${{ secrets.BUILD_CACHE_R2_SECRET_ACCESS_KEY }}
     with:
       ref: ${{ inputs.branch }}
       save_cache: ${{ inputs.save_cache == true }}

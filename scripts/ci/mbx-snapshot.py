@@ -6,7 +6,6 @@ import hashlib
 import json
 import os
 import platform
-import shlex
 import shutil
 import subprocess
 import tarfile
@@ -242,7 +241,7 @@ def compact_bundle(exported, destination):
             shutil.move(str(source), destination / name)
 
 
-def restore(s3, key, temporary, report, object_fallback):
+def restore(s3, key, temporary, report):
     report["index_reads"] += 1
     index = get_index(s3, key)
     if index is None:
@@ -266,25 +265,7 @@ def restore(s3, key, temporary, report, object_fallback):
     bundle.mkdir()
     unpack(archive, bundle)
     mbx("cache", "import", str(bundle))
-    report.update(status="hit", source_sha=index.get("source_sha"), object_fallback=object_fallback)
-    if not object_fallback:
-        # Keep the Engine identity immutable for snapshot publication. Native
-        # Cargo commands load a separate policy containing only a source path.
-        config = Path(os.environ.get("UC_MBX_SNAPSHOT_ENV_FILE", os.environ["UC_ENGINE_MBX_ENV_FILE"]))
-        policy = f"source {shlex.quote(config.as_posix())}\n"
-        policy += "unset BUILD_CACHE_R2_ENDPOINT BUILD_CACHE_R2_ACCESS_KEY_ID BUILD_CACHE_R2_SECRET_ACCESS_KEY\n"
-        policy += "unset MBX_REMOTE_URL MBX_REMOTE_NAMESPACE MBX_REMOTE_S3_ENDPOINT MBX_REMOTE_S3_REGION MBX_REMOTE_MODE\n"
-        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", newline="\n", prefix="mbx-local-policy-", dir=config.parent, delete=False) as output:
-            replacement = Path(output.name)
-            try:
-                output.write(policy)
-                output.close()
-                with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as commands:
-                    commands.write(f"UC_MBX_SNAPSHOT_ENV_FILE={config.as_posix()}\nUC_ENGINE_MBX_ENV_FILE={replacement.as_posix()}\n")
-            except BaseException:
-                output.close()
-                replacement.unlink(missing_ok=True)
-                raise
+    report.update(status="hit", source_sha=index.get("source_sha"))
 
 
 def save(s3, key, temporary, report, scene, *, source_sha=None):
@@ -333,7 +314,6 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("command", choices=("restore", "save"))
     parser.add_argument("--scene", choices=tuple(SCENES), default="e2e-macos")
-    parser.add_argument("--object-fallback", choices=("true", "false"), default="false")
     parser.add_argument("--target", default="")
     parser.add_argument("--component", default="")
     parser.add_argument("--build-mode", default="release")
@@ -361,7 +341,7 @@ def main():
             s3 = client()
             key = scene_key(args.scene, context)
             if args.command == "restore":
-                restore(s3, key, Path(directory), report, args.object_fallback == "true")
+                restore(s3, key, Path(directory), report)
             else:
                 save(s3, key, Path(directory), report, group, source_sha=source_sha)
                 try:
@@ -373,7 +353,7 @@ def main():
         # SDK exceptions can include signed URLs and endpoints. Keep those out
         # of evidence while making the failed optimization visible in CI.
         report.update(status="error", error_type=type(error).__name__)
-        print(f"::warning::MBX snapshot {args.command} failed ({type(error).__name__}); ordinary cache policy retained")
+        print(f"::warning::MBX snapshot {args.command} failed ({type(error).__name__}); compilation remains local-only")
     report["duration_seconds"] = round(time.monotonic() - started, 3)
     path = evidence / f"snapshot-{args.command}.json"
     path.write_text(json.dumps(report, indent=2) + "\n")

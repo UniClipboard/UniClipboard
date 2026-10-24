@@ -2,7 +2,7 @@
 
 ## 入口与所有权
 
-macOS/Linux/Windows sidecar、musl CLI daemon、Rust PR/E2E、coverage、warmup 和 Linux 独立打包使用 Engine 的 MBX 1.18.0 实现。`scripts/build-cache/engine-tools.sh` 从 Engine 自动化提交 `a8e21a0505159e7b71630b2178746d72f985ac76` 获取五个缓存脚本，逐文件校验 SHA-256。产品依赖的 Engine rev 仍由 Cargo.toml/Cargo.lock 管理；自动化 pin 独立维护，避免升级业务依赖时偷偷改变缓存实现。`.github/actions/engine-build-cache` 只负责共同的 CI 装配和无凭据 CAS 存储，没有复制另一套 MBX/R2 策略。
+macOS/Linux/Windows sidecar、musl CLI daemon、Rust PR/E2E、coverage、warmup 和 Linux 独立打包使用 Engine 的 MBX 1.18.0 实现。`scripts/build-cache/engine-tools.sh` 从 Engine 自动化提交 `a8e21a0505159e7b71630b2178746d72f985ac76` 获取五个缓存脚本，逐文件校验 SHA-256。产品依赖的 Engine rev 仍由 Cargo.toml/Cargo.lock 管理；自动化 pin 独立维护，避免升级业务依赖时偷偷改变缓存实现。`.github/actions/engine-build-cache` 只负责共同的 CI 装配和无凭据 CAS 存储，由 Desktop 在 CI 装配时强制编译仅使用本地 CAS，快照传输独立持有身份。
 
 本地 `bun mbx:exec -- <command>` 也使用该入口。只在 Cargo 子进程移除冲突的 sccache wrapper，关闭增量编译、target views 和 target seed，不修改全局 Cargo 配置或共享 target。
 
@@ -10,7 +10,7 @@ Windows 使用校验后的原生 MBX x64/arm64 包和私有 cargo.exe，不叠�
 
 ## 后端与权限
 
-复用私有桶 `uniclipboard-build-cache`，MBX namespace 为 `engine/mbx`，对象位于 `engine/mbx/v1/`。历史 Windows `desktop/sccache/v1/windows-*` 对象不删除，也不能转换成 MBX 命中。
+复用私有桶 `uniclipboard-build-cache`，CI 仅传输 `desktop/mbx-snapshots/v1/` 下的快照，不再读写 `engine/mbx/v1/` 中的逐对象缓存。历史 Windows `desktop/sccache/v1/windows-*` 对象不删除，也不能转换成 MBX 命中。
 
 使用现有 `desktop-build-cache-reader` / `desktop-build-cache-writer` environments 内的三个 secret 名称：
 
@@ -18,7 +18,7 @@ Windows 使用校验后的原生 MBX x64/arm64 包和私有 cargo.exe，不叠�
 - `BUILD_CACHE_R2_ACCESS_KEY_ID`
 - `BUILD_CACHE_R2_SECRET_ACCESS_KEY`
 
-sidecar 只在受保护 main 的 push 请求 read-write，其他事件请求 read-only；MBX 原生策略和实际桶令牌仍是最终约束。Linux 独立打包的消费者、PR、coverage 和 membership 绑定现有 reader，只请求读取；Linux 专用预热只有在受保护 main 上使用 writer；历史 file-key-store 回归继续不接触 secrets，只使用本地 MBX。secret 名称存在不证明令牌能访问 `engine/mbx/v1/`，需实际 R2 恢复验证；本改动不修改远端权限。
+快照继续使用现有 reader / writer 环境和发布门控，只有受保护 main 上的生产者可发布。编译本身不加载远端身份，不论生产者还是消费者都只使用本地 MBX。secret 名称存在不证明快照可读，需实际恢复验证；不修改远端权限。
 
 没有凭据时继续本地 MBX；部分凭据或非 HTTPS 端点拒绝装配。凭据只进入 runner 临时 0600 文件，GITHUB_ENV 保存路径。Linux daemon 容器只读挂载此文件和固定工具快照，写入单独统计目录；原始值不写入缓存、产物或命令参数。
 
@@ -66,11 +66,13 @@ PR Check 按 PR 编号分组，新推送取消该 PR 的过时运行。编译任
 4. 先上传不可变、按 SHA-256 命名的压缩归档，再更新场景索引。消费者校验归档大小和 SHA-256，拒绝路径穿越、链接、额外目录、状态附件与超限内容，再交给原生 MBX 导入。
 5. 成功发布后只清理该场景前缀下超过 14 天的索引和归档，不修改桶级生命周期或 `engine/mbx/` 对象。清理异常单独报告。
 
-PR、正式 sidecar 消费者与快照预热采用同一读取策略：**快照完整导入成功后只使用本地 CAS；变化的输入在本地编译，避免远端历史预测触发额外预取。** 快照缺失、损坏或不可用时，记录状态并继续原来的逐对象 R2 读取。命中后，Engine 原始私有配置文件保持不变；`UC_MBX_SNAPSHOT_ENV_FILE` 保留其路径供传输脚本使用，`UC_ENGINE_MBX_ENV_FILE` 改为不含凭据的临时策略文件。策略文件引用原始文件后清除远端选择与凭据，仅使原生编译使用本地 CAS，不使用 MBX 不支持的预取配置，也不修改全局 Cargo 配置。两个路径进入 GITHUB_ENV，凭据本身不进入。策略文件权限为 0600，不复制原始凭据。
+PR、正式 sidecar 消费者与快照预热采用同一策略：**编译始终只使用本地 CAS；快照缺失、损坏、不可用或根本未执行恢复时，均在本地冷编译。** `engine-tools.sh --ci` 在暴露编译入口前，生成不含凭据、不引用身份文件的本地策略。`UC_MBX_SNAPSHOT_ENV_FILE` 保留原始受限身份文件的路径，仅供传输使用；`UC_ENGINE_MBX_ENV_FILE` 指向本地策略，清除全部 `MBX_REMOTE_*` 及 R2 选择变量。直接 CI 包装器调用也强制该策略。Linux 容器只读挂载两个独立文件；历史源码检出继续使用装配时固定的编译入口。没有命中后的策略切换，也没有逐对象回退开关。
 
 快照上传和恢复使用 runner 临时虚拟环境中的固定 boto3；Windows 使用 `Scripts/python.exe` 并将 Git Bash 路径转换为原生路径，Debian 缺少虚拟环境支持时安装 `python3-venv`。凭据从现有 Engine 临时文件加载，Unix 文件权限为 0600；原始凭据、端点与 SDK 异常正文不进入摘要。压缩归档上限为 16 GiB，解包总量上限为 40 GiB；临时导出、隔离导入与压缩仍需要额外磁盘空间。优化失败会在任务中发出警告并写入 `snapshot-restore.json` 或 `snapshot-save.json`，不能把错误标记为普通命中或未命中。
 
-首次接入后，在 main 运行 Cache Warmup 生成基线；工具链、依赖或快照协议变动后同样需要重新预热。在快照成功生成前，PR 保持原 R2 行为。快照在成功预热时清理，长期不运行预热不会主动清理过期对象。
+首次接入后，在 main 运行 Cache Warmup 生成基线；工具链、依赖或快照协议变动后同样需要重新预热。在快照成功生成前，PR 使用本地冷编译。快照在成功预热时清理，长期不运行预热不会主动清理过期对象。
+
+没有匹配快照场景的 membership 与历史 file-key-store 测试也使用同一 CI 本地策略，保留全部测试命令；不新增独立预热。Linux GUI 消费作业自身绑定现有 reader environment，生产作业仅在受保护 main 的 `build_only && save_cache` 下绑定 writer；嵌套调用仍须显式传递 secret 名称，否则环境 secret 会解析为空；`build-target.yml` 只映射三个 `BUILD_CACHE_R2_*` 名称，被调用工作流将它们声明为可选，由现有 reader 环境提供消费者值，不继承无关发布凭据。无凭据时仍本地冷编译。参见 [GitHub 可复用工作流的 secret 规则](https://docs.github.com/en/actions/how-tos/reuse-automations/reuse-workflows#using-inputs-and-secrets-in-a-reusable-workflow)。
 
 ## 正式发布 sidecar 基线
 
@@ -78,17 +80,17 @@ PR、正式 sidecar 消费者与快照预热采用同一读取策略：**快照�
 
 发布基线选择在内存中归一化根 manifest 与 lock 中的本地包版本，保留 registry/git 依赖、Engine rev、编译器、Cargo 配置和实际 profile/Rust flags 的差异。`APP_ENV` 不参与基线选择，让 alpha 与 stable 共享依赖基线。真实源码、manifest 和 lock 不变，原生 MBX 仍按完整输入校验动作，包括 `CARGO_PKG_VERSION`、渠道与 feature；版本或渠道变化时，受影响的产物必须重编译。快照键只选择基线，不决定产物有效性。
 
-传输脚本按工作流的 `GITHUB_SHA` 固定下载到 `RUNNER_TEMP`，随后再 checkout 被构建源码；`UC_MBX_SNAPSHOT_SOURCE_ROOT` 指向实际源码目录。历史 tag 不需要自带新协议，源码目录也不会因缓存工具产生未提交改动。脚本下载、恢复或发布失败均保留原构建与逐对象缓存路径。
+传输脚本按工作流的 `GITHUB_SHA` 固定下载到 `RUNNER_TEMP`，随后再 checkout 被构建源码；`UC_MBX_SNAPSHOT_SOURCE_ROOT` 指向实际源码目录。历史 tag 不需要自带新协议，源码目录也不会因缓存工具产生未提交改动。脚本下载、恢复或发布失败均保留本地编译路径。
 
 容器中的源码目录可能由不同用户检出。启动脚本通过进程级 Git 配置只信任明确的源码目录，保留已有 Git 配置，不写入全局配置或信任通配符。该配置仅供快照进程及其子进程读取源码身份，不改变发布权限或源码 SHA 校验。
 
-只有受保护 main 上的 `build_only && save_cache` 任务、且构建源码 SHA 与工作流 SHA 相同时才发布基线；脚本再次校验这一源码边界并记录实际生产 SHA。正式发布和其他分支只恢复，命中后关闭逐对象远端读取，变化的内容在本地编译。预热命中后同样停止原生对象读取与写入，变化的输入在本地重编译，随后使用原始传输身份发布新闭包。新动作进入发布快照，不再同时填充逐对象池；缺失或损坏时仍沿用原对象路径及其写入权限限制。生产者仍有本地编译、导出、压缩、上传与清理成本，不能把整个发布体系描述成只需两次读取。
+只有受保护 main 上的 `build_only && save_cache` 任务、且构建源码 SHA 与工作流 SHA 相同时才发布基线；脚本再次校验这一源码边界并记录实际生产 SHA。正式发布和其他分支只恢复，编译始终禁用逐对象远端读取，变化的内容在本地编译。预热也始终禁用原生对象读取与写入，变化的输入在本地重编译，随后使用原始传输身份发布新闭包。新动作进入发布快照，不再同时填充逐对象池；缺失或损坏时也只在本地编译，再发布完整快照。生产者仍有本地编译、导出、压缩、上传与清理成本，不能把整个发布体系描述成只需两次读取。
 
-首次合并后，现有 main 自动预热会为各平台组件建立基线，同时更新协议变更后的 PR 基线。正式发布的降幅须以预热成功后的实际构建统计验证；尚无基线时会正常回退，不能当作快照命中样本。
+首次合并后，现有 main 自动预热会为各平台组件建立基线，同时更新协议变更后的 PR 基线。正式发布的降幅须以预热成功后的实际构建统计验证；尚无基线时会本地冷编译，不能当作快照命中样本。
 
 ## 验证与历史对照
 
-一次性三模式对照工作流已移除，常规 CI 保留快照生产、只读消费、请求统计和跨平台原生回归测试。共享构建动作继续作为预热与 PR 的单一编译入口。`object-fallback` 默认值为 `false`，预热和消费者在完整命中后均只使用本地 CAS；显式 `true` 仅用于需要继续对象回源的诊断。未命中和损坏不改变原对象策略。
+一次性三模式对照工作流已移除，常规 CI 保留快照生产、只读消费、请求统计和跨平台原生回归测试。共享构建动作继续作为预热与 PR 的单一编译入口。逐对象回退开关已删除；预热和消费者在所有恢复结果下均只使用本地 CAS。
 
 2026-10-22 的 [macOS E2E 三模式对照](https://github.com/UniClipboard/UniClipboard/actions/runs/39786130655)中，原始 R2 与快照仅本地模式分别为 27,264 / 2 次逻辑读取、29,172,597,769 / 2,964,122,625 字节下载、931 / 590 秒完整任务时长。该样本不代表所有平台、完整产品构建或 Cloudflare 账单；这些是 PR/E2E 编译图的数据，不能直接推算正式 release 构建的降幅。
 
@@ -104,7 +106,7 @@ python3 scripts/ci/mbx-snapshot.test.py -v
 
 `mbx-snapshot-validation.yml` 在 Linux、macOS、Windows x64 / ARM64 上运行小型原生往返测试，不需要 R2 凭据。它验证可移植性和缓存正确性，不代替受保护 main 的真实发布与三模式性能对照。修改快照脚本会使已有快照键失效，包括 macOS；合并后的自动预热会生成新基线。
 
-预热命中后停止对象回源的策略需要在合并后验证：先由受保护 main 发布当前协议基线，再核对命中生产者的 `snapshot-restore.json`、原生对象读取为零、`snapshot-save.json` 成功且实际生产 SHA 正确，最后以独立只读消费者恢复并验证产物。协议更新后的首次未命中预热仍会产生对象读取，不能作为命中策略的有效样本。
+预热命中后停止对象回源的策略需要在合并后验证：先由受保护 main 发布当前协议基线，再核对命中生产者的 `snapshot-restore.json`、原生对象读取为零、`snapshot-save.json` 成功且实际生产 SHA 正确，最后以独立只读消费者恢复并验证产物。协议更新后的首次未命中预热必须本地冷编译并发布基线，原生逐对象读写应为零；冷编译成本不能计作命中收益。
 
 ## 覆盖率编译快照
 
@@ -112,7 +114,7 @@ python3 scripts/ci/mbx-snapshot.test.py -v
 
 `coverage-linux` 是独立的 MBX 导出分组与快照场景，不混用普通 check、E2E 或发布编译图。除了共享协议输入，场景键还包含 cargo-llvm-cov 实际版本、宿主 `/etc/os-release` 和显式 Rust/profile flags；插桩的实际编译输入继续由原生 MBX 校验。只恢复编译动作闭包，每次仍完整执行测试并重新生成 LCOV、profraw/profdata；这些运行结果和 Cargo target 状态不进入快照。
 
-消费者仅恢复；预热只有在受保护 main 且测试成功后才发布。两者命中后均停止逐对象 R2 读写，缺失或损坏时保留原对象回退。快照上传、清理及必要的本地重编译仍存在，不能把覆盖率报告当成编译缓存复用。
+消费者仅恢复；预热只有在受保护 main 且测试成功后才发布。两者始终禁用逐对象 R2 读写，缺失或损坏时只进行本地冷编译。快照上传、清理及必要的本地重编译仍存在，不能把覆盖率报告当成编译缓存复用。
 
 新增场景修改了共享协议脚本，因此现有场景的键也会一次性失效。合并后的自动预热会重新建立基线；应在基线保存后验证覆盖率生产者命中、再次保存及独立消费者命中，不能把首次回退作为优化效果。Linux 原生回归另外验证：插桩编译 → 导出及精简闭包 → 空 CAS/空 target 导入 → 再次执行测试 → 新 LCOV 含已覆盖的库代码，且运行标记确实增加。
 
@@ -126,4 +128,4 @@ release sidecar 预热一次只启动一个平台（该平台的 daemon/helper �
 
 最终二进制仍可能需要重新编译：`unportable-native-link`、不支持的 crate 类型和实际输入变化都不能用依赖快照强行绕过。运行 39900895332 中 macOS x64 的最终 `uniclipd` 动作耗时 320.27 秒；Cargo timing 没有进一步区分此动作内部的链接和代码生成。不会通过关闭 ThinLTO、复用不同版本二进制或在 CAS 快照中加入 Cargo target 来宣称消除了这段时间。
 
-本轮增加场景并修改协议后，已有键会一次性更新；受保护主线必须先完成冷预热。效果验证依次检查快照保存、独立消费者命中、每组件两次逻辑读取、原生逐对象读写为零以及实际编译/打包成功。首次冷构建和未经主线发布的 PR 不能作为命中效果样本。
+本轮修改 CI 策略后，已有键会一次性更新；受保护主线必须先完成冷预热。效果验证依次检查快照保存、独立消费者命中、每组件两次逻辑读取、原生逐对象读写为零以及实际编译/打包成功。首次冷构建和未经主线发布的 PR 不能作为命中效果样本。

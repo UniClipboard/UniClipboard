@@ -28,7 +28,7 @@ if [[ "${UC_COMPILE_CACHE_BACKEND:-}" == r2 ]]; then
   mkdir -p "$RUNNER_TEMP"
   : > "$GITHUB_ENV"
   if ! bash scripts/ci/mbx-snapshot.sh restore --scene linux-gui; then
-    echo '::warning::Linux snapshot setup failed; retaining ordinary compiler cache policy'
+    echo '::warning::Linux snapshot setup failed; compiling with local MBX'
   fi
   # The command file contains paths only; the SDK identity remains in its
   # original restricted mount and the native policy contains no credentials.

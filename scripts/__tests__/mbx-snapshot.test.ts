@@ -5,6 +5,7 @@ import { parse } from 'yaml'
 
 type Step = {
   uses?: string
+  name?: string
   with?: {
     operation?: string
     scene?: string
@@ -207,6 +208,21 @@ describe('MBX request reduction', () => {
     expect(yaml('.github/workflows/build.yml').jobs['build-platform'].uses).toBe(
       './.github/workflows/build-target.yml'
     )
+  })
+
+  it('does not leave empty action inputs after removing fallback', () => {
+    for (const directory of ['.github/workflows', '.github/actions']) {
+      for (const file of fs.readdirSync(directory, { recursive: true }) as string[]) {
+        if (!file.endsWith('.yml')) continue
+        const document = yaml(`${directory}/${file}`)
+        const steps =
+          document.runs?.steps ??
+          (Object.values(document.jobs ?? {}) as Job[]).flatMap(job => job.steps ?? [])
+        for (const step of steps) {
+          if ('with' in step) expect(step.with, `${file}: ${step.name ?? step.uses}`).not.toBeNull()
+        }
+      }
+    }
   })
 
   it('applies local compilation before snapshot transport across CI routes', () => {

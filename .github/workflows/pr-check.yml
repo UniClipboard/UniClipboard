@@ -395,8 +395,6 @@ jobs:
 
       - name: Restore E2E CAS snapshot
         uses: ./.github/actions/mbx-snapshot
-        with:
-          # A validated snapshot supplies the baseline; changed inputs compile locally.
 
       - name: Build E2E Rust tools
         uses: ./.github/actions/build-e2e-rust

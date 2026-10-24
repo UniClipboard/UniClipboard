@@ -217,12 +217,10 @@ jobs:
           SNAPSHOT_COMPONENT: ${{ matrix.component }}
           SNAPSHOT_BUILD_MODE: ${{ inputs.build_mode || 'release' }}
           SNAPSHOT_TARGET_ARGS: ${{ matrix.args }}
-          SNAPSHOT_OBJECT_FALLBACK: 'false'
         run: |
           bash "$UC_MBX_SNAPSHOT_TOOLS/mbx-snapshot.sh" restore --scene release-sidecar \
             --target "$SNAPSHOT_TARGET" --component "$SNAPSHOT_COMPONENT" \
-            --build-mode "$SNAPSHOT_BUILD_MODE" --target-args="$SNAPSHOT_TARGET_ARGS" \
-            --object-fallback "$SNAPSHOT_OBJECT_FALLBACK"
+            --build-mode "$SNAPSHOT_BUILD_MODE" --target-args="$SNAPSHOT_TARGET_ARGS"
 
       - name: prepare uniclipd sidecar
         # ADR-008 D13: the standalone `uniclipd` daemon ships next to the GUI

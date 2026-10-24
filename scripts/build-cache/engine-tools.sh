@@ -39,6 +39,18 @@ if [[ ! -d "$root/scripts/build-cache" ]] || ! verify "$root/scripts/build-cache
   cp "$staging/scripts/build-cache/bin/cargo" "$root/scripts/build-cache/bin/"
 fi
 if [[ "${1:-}" == --ci ]]; then
-  exec bash "$root/scripts/build-cache/start-ci-mbx.sh"
+  # Install the compiler policy before exposing any entry to later steps. The
+  # transport identity stays separate even when restore is skipped or fails.
+  commands=$(mktemp "$RUNNER_TEMP/desktop-mbx-commands.XXXXXX")
+  GITHUB_ENV="$commands" bash "$root/scripts/build-cache/start-ci-mbx.sh"
+  identity=$(sed -n 's/^UC_ENGINE_MBX_ENV_FILE=//p' "$commands")
+  [[ -n "$identity" && -f "$identity" ]] || exit 1
+  policy=$(mktemp "$RUNNER_TEMP/desktop-mbx-local.XXXXXX")
+  cp "$(dirname "${BASH_SOURCE[0]}")/ci-local-policy.sh" "$policy"
+  # Never source the identity from the compiler process tree.
+  sed '/^UC_ENGINE_MBX_ENV_FILE=/d' "$commands" >> "$GITHUB_ENV"
+  printf 'UC_ENGINE_MBX_ENV_FILE=%s\nUC_MBX_SNAPSHOT_ENV_FILE=%s\n' "$policy" "$identity" >> "$GITHUB_ENV"
+  rm "$commands"
+  exit 0
 fi
 printf '%s\n' "$root"

@@ -97,8 +97,9 @@ case "$mode" in
       mkdir -p "$UC_ENGINE_MBX_STATS_DIR"
       cache_args+=(--mount "type=bind,src=$tools_root,dst=$tools_root,readonly"
         --mount "type=bind,src=$UC_ENGINE_MBX_ENV_FILE,dst=$UC_ENGINE_MBX_ENV_FILE,readonly"
+        --mount "type=bind,src=$UC_MBX_SNAPSHOT_ENV_FILE,dst=$UC_MBX_SNAPSHOT_ENV_FILE,readonly"
         --mount "type=bind,src=$UC_ENGINE_MBX_STATS_DIR,dst=$UC_ENGINE_MBX_STATS_DIR"
-        -e UC_ENGINE_MBX_BIN -e UC_ENGINE_MBX_ENV_FILE -e UC_ENGINE_MBX_STATS_DIR
+        -e UC_ENGINE_MBX_BIN -e UC_ENGINE_MBX_ENV_FILE -e UC_ENGINE_MBX_STATS_DIR -e UC_MBX_SNAPSHOT_ENV_FILE
         -e RUNNER_OS=Linux -e UC_COMPILE_CACHE_BACKEND -e UC_MBX_PUBLISH_SNAPSHOT -e UC_MBX_BUILD_IMAGE
         -e GITHUB_SHA -e GITHUB_WORKSPACE=/work
         -e MBX_CACHE_DIR=/cache/mbx -e MBX_GC_MAX_SIZE -e UC_TOOLS_DIR=/cache/tools

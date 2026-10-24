@@ -226,7 +226,6 @@ jobs:
         uses: ./.github/actions/mbx-snapshot
         with:
           scene: pr-check-linux
-          object-fallback: 'false'
 
       - name: Build Linux PR Rust checks
         uses: ./.github/actions/build-pr-rust
@@ -335,7 +334,6 @@ jobs:
         uses: ./.github/actions/mbx-snapshot
         with:
           scene: quick-panel-windows
-          object-fallback: 'false'
 
       - name: Build Windows PR Rust checks
         uses: ./.github/actions/build-pr-rust
@@ -399,7 +397,6 @@ jobs:
         uses: ./.github/actions/mbx-snapshot
         with:
           # A validated snapshot supplies the baseline; changed inputs compile locally.
-          object-fallback: 'false'
 
       - name: Build E2E Rust tools
         uses: ./.github/actions/build-e2e-rust

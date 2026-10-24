@@ -8,7 +8,6 @@ type Step = {
   with?: {
     operation?: string
     scene?: string
-    'object-fallback'?: string
     'publish-snapshot'?: string
   }
 }
@@ -84,7 +83,6 @@ describe('MBX request reduction', () => {
     const build = steps[position('Generate coverage report')]
     expect(build.env.MBX_CACHE_EXPORT_GROUP).toBe('coverage-linux')
     expect(build.run).toBe('xvfb-run -a cargo llvm-cov --lcov --output-path lcov.info --workspace')
-    expect(steps[position('Restore coverage CAS snapshot')].with['object-fallback']).toBe('false')
   })
 
   it('cancels outdated runs independently for each PR', () => {
@@ -123,7 +121,7 @@ describe('MBX request reduction', () => {
       expect(job.env.MBX_CACHE_EXPORT_GROUP).toBe(scene)
       expect(job.environment).toBe('desktop-build-cache-reader')
       const restore = job.steps.find((step: Step) => step.uses === './.github/actions/mbx-snapshot')
-      expect(restore.with).toEqual({ scene, 'object-fallback': 'false' })
+      expect(restore.with).toEqual({ scene })
       expect(job.steps.some((step: Step) => step.with?.operation === 'save')).toBe(false)
       expect(
         job.steps.find((step: Step) => step.uses === './.github/actions/build-pr-rust').with.scene
@@ -147,11 +145,6 @@ describe('MBX request reduction', () => {
     const reader = yaml('.github/workflows/pr-check.yml').jobs.e2e
     expect(reader.environment).toBe('desktop-build-cache-reader')
     expect(reader.steps.some((step: Step) => step.with?.operation === 'save')).toBe(false)
-    expect(
-      reader.steps.find((step: Step) => step.uses === './.github/actions/mbx-snapshot').with[
-        'object-fallback'
-      ]
-    ).toBe('false')
   })
 
   it('preserves release source provenance and limits publishers to protected-main warmup', () => {
@@ -198,7 +191,6 @@ describe('MBX request reduction', () => {
     ]) {
       expect(steps[restore].env[key]).toBe(steps[save].env[key])
     }
-    expect(steps[restore].env.SNAPSHOT_OBJECT_FALLBACK).toBe('false')
     const publisher = steps[save].if
     for (const guard of [
       'inputs.build_only',
@@ -217,7 +209,54 @@ describe('MBX request reduction', () => {
     )
   })
 
-  it('keeps warmup local after a complete hit while retaining independent snapshot publication', () => {
+  it('applies local compilation before snapshot transport across CI routes', () => {
+    const setup = fs.readFileSync('scripts/build-cache/engine-tools.sh', 'utf8')
+    expect(setup).toContain('ci-local-policy.sh')
+    expect(setup).toContain('UC_MBX_SNAPSHOT_ENV_FILE=%s')
+    const policy = fs.readFileSync('scripts/build-cache/ci-local-policy.sh', 'utf8')
+    expect(policy).toContain('${!MBX_REMOTE_@}')
+    expect(policy).not.toMatch(/^source /m)
+    expect(fs.readFileSync('scripts/build-cache/mbx.sh', 'utf8')).toContain('${GITHUB_ACTIONS:-}')
+    const action = yaml('.github/actions/engine-build-cache/action.yml')
+    expect(action.runs.steps[0].run).toBe('bash scripts/build-cache/engine-tools.sh --ci')
+    for (const file of [
+      'pr-check.yml',
+      'build-target.yml',
+      'build-cli.yml',
+      'cache-warmup.yml',
+      'membership-e2e.yml',
+      'legacy-file-key-store-e2e.yml',
+    ]) {
+      const jobs = Object.values(yaml(`.github/workflows/${file}`).jobs) as Job[]
+      expect(
+        jobs.some(job =>
+          job.steps?.some(step => step.uses === './.github/actions/engine-build-cache')
+        )
+      ).toBe(true)
+    }
+    const linux = yaml('.github/workflows/package-linux-gui.yml').jobs.package
+    expect(linux.environment).toContain('desktop-build-cache-reader')
+    expect(linux.environment).toContain('github.ref_protected')
+    expect(
+      linux.steps.find((step: { name: string }) => step.name === 'Start shared Engine MBX cache')
+        .run
+    ).toBe('bash scripts/build-cache/engine-tools.sh --ci')
+    const container = fs.readFileSync('apps/gui-go/e2e/linux/run.sh', 'utf8')
+    expect(container).toContain(
+      'src=$UC_MBX_SNAPSHOT_ENV_FILE,dst=$UC_MBX_SNAPSHOT_ENV_FILE,readonly'
+    )
+    expect(container).toContain('-e UC_MBX_SNAPSHOT_ENV_FILE')
+    expect(yaml('.github/actions/mbx-snapshot/action.yml').inputs).not.toHaveProperty(
+      'object-fallback'
+    )
+    const warm = yaml('.github/workflows/cache-warmup.yml')
+    expect(warm.on.push.paths).toContain('scripts/build-cache/**')
+    expect(warm.jobs['warmup-release-app'].with.build_only).toBe(true)
+    expect(warm.jobs['warmup-musl-cli'].with.build_only).toBe(true)
+    expect(warm.jobs['warmup-linux-gui'].with.build_only).toBe(true)
+  })
+
+  it('retains one restore and independent snapshot publication per warmup', () => {
     const jobs = yaml('.github/workflows/cache-warmup.yml').jobs
     for (const job of [jobs['warmup-pr-rust'], jobs['warmup-e2e-macos']]) {
       const restores = job.steps.filter(
@@ -225,11 +264,7 @@ describe('MBX request reduction', () => {
           step.uses === './.github/actions/mbx-snapshot' && step.with?.operation !== 'save'
       )
       expect(restores).toHaveLength(1)
-      expect(restores[0].with['object-fallback']).toBe('false')
       expect(job.steps.some((step: Step) => step.with?.operation === 'save')).toBe(true)
     }
-    expect(yaml('.github/actions/mbx-snapshot/action.yml').inputs['object-fallback'].default).toBe(
-      'false'
-    )
   })
 })

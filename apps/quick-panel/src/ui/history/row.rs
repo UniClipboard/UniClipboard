@@ -30,7 +30,7 @@ impl Panel {
             .replace(['\n', '\r'], " ");
 
         let leading = match self.thumbnails.get(&item.entry_id) {
-            Some(image) if kind == RowKind::Image => div()
+            Some(image) if quick_panel_core::content::has_image_preview(item) => div()
                 .w(units(24.))
                 .h(units(16.))
                 .overflow_hidden()

@@ -559,7 +559,8 @@ impl Panel {
             .items
             .iter()
             .filter(|item| {
-                item.content_type == "image" && !self.thumbnails.contains_key(&item.entry_id)
+                quick_panel_core::content::has_image_preview(item)
+                    && !self.thumbnails.contains_key(&item.entry_id)
             })
             .map(|item| item.entry_id.clone())
             .collect::<Vec<_>>();

@@ -20,7 +20,11 @@ impl PanelState {
         };
         vec![Effect::SchedulePreview {
             id: item.entry_id.clone(),
-            kind: item.content_type.clone(),
+            kind: if crate::content::has_image_preview(item) {
+                "image".into()
+            } else {
+                item.content_type.clone()
+            },
             delay,
         }]
     }

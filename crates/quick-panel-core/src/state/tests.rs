@@ -1139,6 +1139,23 @@ fn running_a_list_action_closes_the_list_first() {
 // --- previews ---
 
 #[test]
+fn a_pixpin_image_file_loads_an_image_preview_and_remains_a_file() {
+    let (mut state, _fixture) = open_panel(&["screenshot"]);
+    state.search.items[0].content_type = "file".into();
+    state.search.items[0].file_names = vec!["PixPin.JPG".into()];
+    assert!(matches!(
+        state.schedule_preview().as_slice(),
+        [Effect::SchedulePreview { kind, .. }] if kind == "image"
+    ));
+    assert_eq!(state.search.items[0].content_type, "file");
+    state.search.items[0].file_names = vec!["notes.txt".into()];
+    assert!(matches!(
+        state.schedule_preview().as_slice(),
+        [Effect::SchedulePreview { kind, .. }] if kind == "file"
+    ));
+}
+
+#[test]
 fn a_preview_follows_the_selection_after_a_pause_that_depends_on_the_window() {
     let (mut state, fixture) = open_panel(&["a", "b"]);
     let delay_of = |effects: &[Effect]| match effects {

@@ -5,6 +5,34 @@ use uc_daemon_contract::api::dto::search::SearchResultDto;
 
 use crate::text;
 
+/// Whether the entry can use the daemon's single-image resource preview.
+/// Keep its physical content type unchanged so file actions retain their semantics.
+pub fn has_image_preview(item: &SearchResultDto) -> bool {
+    item.content_type == "image"
+        || (item.content_type == "file"
+            && !item.tags.iter().any(|tag| tag == "directory")
+            && item.file_names.len() == 1
+            && item.file_names[0]
+                .rsplit_once('.')
+                .is_some_and(|(_, extension)| {
+                    matches!(
+                        extension.to_ascii_lowercase().as_str(),
+                        "png"
+                            | "jpg"
+                            | "jpeg"
+                            | "gif"
+                            | "webp"
+                            | "bmp"
+                            | "tiff"
+                            | "tif"
+                            | "heic"
+                            | "avif"
+                            | "svg"
+                            | "ico"
+                    )
+                }))
+}
+
 /// How a row and the preview present an entry.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Kind {
@@ -218,6 +246,22 @@ mod tests {
             source_name: None,
             now_ms: 5 * 60_000,
         }
+    }
+
+    #[test]
+    fn image_files_have_image_previews_without_changing_their_kind() {
+        let mut item = entry("file");
+        item.file_names = vec!["PixPin.JPG".into()];
+        assert!(has_image_preview(&item));
+        assert_eq!(Kind::of(&item), Kind::File);
+        item.file_names.push("notes.txt".into());
+        assert!(!has_image_preview(&item));
+        item.file_names = vec!["notes.txt".into()];
+        assert!(!has_image_preview(&item));
+        item.file_names = vec!["folder.jpg".into()];
+        item.tags = vec!["directory".into()];
+        assert!(!has_image_preview(&item));
+        assert!(has_image_preview(&entry("image")));
     }
 
     #[test]

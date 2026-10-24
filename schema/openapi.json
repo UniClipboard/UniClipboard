@@ -139,8 +139,10 @@
         "type": "object"
       },
       "CancelEntryReceiveResponse": {
+        "description": "Response body for `POST /clipboard/entries/{id}/receive/cancel`.",
         "properties": {
           "outcome": {
+            "description": "`\"cancelled\"` | `\"cancellation_incomplete\"` | `\"not_receiving\"` | `\"too_late\"` |\n`\"already_terminal\"` | `\"superseded\"`. Only `\"cancelled\"` confirms the\nreceive settled; `\"cancellation_incomplete\"` means output or cleanup is\nstill being released and the final state arrives later.",
             "type": "string"
           }
         },
@@ -2787,11 +2789,19 @@
             "type": "string"
           },
           "completedBytes": {
+            "description": "Bytes of items that were saved; downloaded-but-unsaved bytes do not count.",
             "format": "int64",
             "type": "integer"
           },
           "entryId": {
             "type": "string"
+          },
+          "items": {
+            "description": "Per-item results. An aggregate `failed` or `cancelled` attempt can still\ncontain `completed` items. Empty from daemons that predate per-item results.",
+            "items": {
+              "$ref": "#/components/schemas/ReceiveItemResponse"
+            },
+            "type": "array"
           },
           "itemsCompleted": {
             "format": "int32",
@@ -2799,6 +2809,7 @@
             "type": "integer"
           },
           "itemsTotal": {
+            "description": "Member count of the attempt. A directory counts its members here but is\none entry of `items`.",
             "format": "int32",
             "minimum": 0,
             "type": "integer"
@@ -5696,6 +5707,33 @@
         },
         "type": "object"
       },
+      "ReceiveItemResponse": {
+        "description": "One selectable result of the current receive attempt.\n\n`item_id` is opaque and bound to the attempt that was queried; callers pass\nit back to the retry route unchanged and never build it from file names.",
+        "properties": {
+          "failureReason": {
+            "description": "`\"network_unavailable\"` | `\"timed_out\"` | `\"access_denied\"` |\n`\"storage_unavailable\"` | `\"integrity_check_failed\"` | `\"interrupted\"` |\n`\"unknown\"`. Fixed categories only, never raw error text.",
+            "nullable": true,
+            "type": "string"
+          },
+          "itemId": {
+            "type": "string"
+          },
+          "kind": {
+            "description": "`\"unknown\"` | `\"file\"` | `\"representation\"` | `\"directory_unit\"`.",
+            "type": "string"
+          },
+          "state": {
+            "description": "`\"pending\"` | `\"transferring\"` | `\"completed\"` | `\"failed\"` | `\"cancelled\"`.\n`\"completed\"` means the item was saved, not only downloaded.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "itemId",
+          "kind",
+          "state"
+        ],
+        "type": "object"
+      },
       "RedeemRequest": {
         "description": "Request body for `POST /v2/setup/redeem`. Maps to\n`SpaceSetupFacade::redeem_pairing_invitation(RedeemPairingInvitationCommand)`.",
         "properties": {
@@ -6637,6 +6675,68 @@
             "type": "object"
           }
         ]
+      },
+      "RetryEntryReceiveEnvelope": {
+        "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/RetryEntryReceiveResponse"
+          },
+          "ts": {
+            "description": "Server time when the response was built (unix epoch milliseconds).",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "ts"
+        ],
+        "type": "object"
+      },
+      "RetryEntryReceiveRequest": {
+        "description": "Request body for `POST /clipboard/entries/{id}/receive/retry`.",
+        "properties": {
+          "expectedAttemptId": {
+            "description": "The attempt the caller is looking at; a newer attempt answers `superseded`.",
+            "type": "string"
+          },
+          "itemIds": {
+            "description": "Item ids taken from the latest receive query. Must not be empty.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "expectedAttemptId",
+          "itemIds"
+        ],
+        "type": "object"
+      },
+      "RetryEntryReceiveResponse": {
+        "description": "Response body for `POST /clipboard/entries/{id}/receive/retry`.",
+        "properties": {
+          "attemptId": {
+            "description": "The new attempt, present only for `\"accepted\"`.",
+            "nullable": true,
+            "type": "string"
+          },
+          "outcome": {
+            "description": "`\"accepted\"` | `\"already_receiving\"` | `\"superseded\"` |\n`\"cancellation_incomplete\"` | `\"unavailable\"`. `\"accepted\"` only means a\nnew attempt was admitted; items are saved when a later query says so.",
+            "type": "string"
+          },
+          "reason": {
+            "description": "`\"source_unavailable\"` | `\"access_denied\"`, present only for `\"unavailable\"`.",
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "outcome"
+        ],
+        "type": "object"
       },
       "RotateMobilePasswordEnvelope": {
         "description": "Canonical success envelope: `{ \"data\": T, \"ts\": <unix millis i64> }`.\n\n`ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler\nvia [`ApiEnvelope::now`] (the contract carries only the type + the clock\nhelper, not a hard dependency on when the handler reads the clock).\n`rename_all = \"camelCase\"` is a no-op for the single-word fields here but is\ndeclared for forward-compat.\n\nIMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named\nOpenAPI component is declared in the `#[aliases(...)]` block below. Add a new\nalias line whenever a new payload type needs enveloping. NEVER register the\nbare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare\ngeneric, and an un-aliased generic inlines an anonymous schema.",
@@ -9620,6 +9720,75 @@
               }
             },
             "description": "Invalid request"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "session_query": []
+          },
+          {
+            "session_header": []
+          }
+        ],
+        "tags": [
+          "clipboard"
+        ]
+      }
+    },
+    "/clipboard/entries/{id}/receive/retry": {
+      "post": {
+        "operationId": "retryEntryReceive",
+        "parameters": [
+          {
+            "description": "Clipboard entry ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RetryEntryReceiveRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetryEntryReceiveEnvelope"
+                }
+              }
+            },
+            "description": "Selective receive retry outcome; `accepted` only admits a new attempt"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Invalid request, such as an empty item selection"
           },
           "500": {
             "content": {

@@ -21,9 +21,10 @@ use uc_engine::error_codes::{
 };
 use uc_engine::{
     CancelEntryReceiveInput, CancelInboundTransferInput, EngineError, EntryNotResendableReason,
-    EntryReceiveCancellationOutcome, EntryReceiveProgressInput, HistoryEntryInput,
-    InboundTransferCancellationOutcome, ListHistoryEntriesInput, Operation, OperationResult,
-    ReceiveProgressSummary, ResendEntryInput, ResendEntryOutcome, SendFilesInput,
+    EntryReceiveCancellationOutcome, EntryReceiveProgressInput, EntryReceiveRetryOutcome,
+    HistoryEntryInput, InboundTransferCancellationOutcome, ListHistoryEntriesInput, Operation,
+    OperationResult, ReceiveItemSummary, ReceiveProgressSummary, ReceiveRetryUnavailableReason,
+    ResendEntryInput, ResendEntryOutcome, RetryEntryReceiveInput, SendFilesInput,
     SendTargetOutcome, SendTextInput, SetHistoryEntryFavoriteInput, TransferCancellationReason,
 };
 use utoipa::IntoParams;
@@ -32,7 +33,8 @@ use uc_daemon_contract::api::dto::clipboard_command::{
     CancelEntryReceiveRequest, CancelEntryReceiveResponse, CancelTransferRequest,
     CancelTransferResponse, DispatchFileOutcomeResponse, DispatchFileRequest,
     DispatchOutcomeResponse, DispatchTextRequest, EntryReceiveProgressResponse,
-    PerTargetOutcomeDto, ResendRequest, ResendResponse,
+    PerTargetOutcomeDto, ReceiveItemResponse, ResendRequest, ResendResponse,
+    RetryEntryReceiveRequest, RetryEntryReceiveResponse,
 };
 use uc_daemon_contract::api::dto::clipboard_delivery::EntryDeliveryViewDto;
 use uc_daemon_contract::api::dto::envelope::ApiEnvelope;
@@ -86,6 +88,10 @@ pub fn router() -> Router<DaemonApiState> {
         .route(
             "/clipboard/entries/:id/receive/cancel",
             post(cancel_entry_receive),
+        )
+        .route(
+            "/clipboard/entries/:id/receive/retry",
+            post(retry_entry_receive),
         )
         .route("/clipboard/stats", get(get_stats))
         .route("/clipboard/entries/:id/resource", get(get_entry_resource))
@@ -170,6 +176,20 @@ fn receive_progress_response(progress: ReceiveProgressSummary) -> EntryReceivePr
         completed_bytes: progress.completed_bytes,
         items_total: progress.items_total,
         items_completed: progress.items_completed,
+        items: progress
+            .items
+            .into_iter()
+            .map(receive_item_response)
+            .collect(),
+    }
+}
+
+fn receive_item_response(item: ReceiveItemSummary) -> ReceiveItemResponse {
+    ReceiveItemResponse {
+        item_id: item.item_id,
+        kind: item.kind.to_string(),
+        state: item.state,
+        failure_reason: item.failure_reason.map(|reason| reason.to_string()),
     }
 }
 
@@ -210,6 +230,8 @@ pub(crate) async fn cancel_entry_receive(
 fn cancel_receive_response(outcome: EntryReceiveCancellationOutcome) -> CancelEntryReceiveResponse {
     let outcome = match outcome {
         EntryReceiveCancellationOutcome::Cancelled => "cancelled",
+        // Output or cleanup is still being released; never report it as cancelled.
+        EntryReceiveCancellationOutcome::CancellationIncomplete => "cancellation_incomplete",
         EntryReceiveCancellationOutcome::NotReceiving => "not_receiving",
         EntryReceiveCancellationOutcome::TooLate => "too_late",
         EntryReceiveCancellationOutcome::AlreadyTerminal => "already_terminal",
@@ -217,6 +239,62 @@ fn cancel_receive_response(outcome: EntryReceiveCancellationOutcome) -> CancelEn
     };
     CancelEntryReceiveResponse {
         outcome: outcome.to_owned(),
+    }
+}
+
+#[utoipa::path(
+    post,
+    path = "/clipboard/entries/{id}/receive/retry",
+    operation_id = "retryEntryReceive",
+    tag = "clipboard",
+    params(("id" = String, Path, description = "Clipboard entry ID")),
+    request_body = RetryEntryReceiveRequest,
+    responses(
+        (status = 200, description = "Selective receive retry outcome; `accepted` only admits a new attempt", body = RetryEntryReceiveEnvelope),
+        (status = 400, description = "Invalid request, such as an empty item selection", body = ApiErrorResponse),
+        (status = 500, description = "Internal server error", body = ApiErrorResponse),
+    )
+)]
+pub(crate) async fn retry_entry_receive(
+    State(state): State<DaemonApiState>,
+    Path(entry_id): Path<String>,
+    body: Result<Json<RetryEntryReceiveRequest>, axum::extract::rejection::JsonRejection>,
+) -> Result<Json<ApiEnvelope<RetryEntryReceiveResponse>>, ApiError> {
+    let Json(request) = body.map_err(|error| ApiError::bad_request(error.to_string()))?;
+    let result = state
+        .execute(Operation::RetryEntryReceive(RetryEntryReceiveInput {
+            entry_id,
+            expected_attempt_id: request.expected_attempt_id,
+            item_ids: request.item_ids,
+        }))
+        .await
+        .map_err(|error| map_receive_engine_err("retry_receive", error))?;
+    let OperationResult::EntryReceiveRetry(outcome) = result else {
+        return Err(ApiError::internal(
+            "engine returned an unexpected receive-retry result",
+        ));
+    };
+    Ok(Json(ApiEnvelope::now(retry_receive_response(outcome))))
+}
+
+fn retry_receive_response(outcome: EntryReceiveRetryOutcome) -> RetryEntryReceiveResponse {
+    let (outcome, attempt_id, reason) = match outcome {
+        EntryReceiveRetryOutcome::Accepted { attempt_id } => ("accepted", Some(attempt_id), None),
+        EntryReceiveRetryOutcome::AlreadyReceiving => ("already_receiving", None, None),
+        EntryReceiveRetryOutcome::Superseded => ("superseded", None, None),
+        EntryReceiveRetryOutcome::CancellationIncomplete => ("cancellation_incomplete", None, None),
+        EntryReceiveRetryOutcome::Unavailable { reason } => {
+            let reason = match reason {
+                ReceiveRetryUnavailableReason::SourceUnavailable => "source_unavailable",
+                ReceiveRetryUnavailableReason::AccessDenied => "access_denied",
+            };
+            ("unavailable", None, Some(reason.to_owned()))
+        }
+    };
+    RetryEntryReceiveResponse {
+        outcome: outcome.to_owned(),
+        attempt_id,
+        reason,
     }
 }
 
@@ -885,14 +963,18 @@ async fn cancel_transfer(
         ));
     };
 
-    let outcome_str = match outcome {
-        InboundTransferCancellationOutcome::Cancelled => "cancelled",
-        InboundTransferCancellationOutcome::NotInflight => "not_inflight",
-    };
-
     Ok(Json(ApiEnvelope::now(CancelTransferResponse {
-        outcome: outcome_str.to_string(),
+        outcome: transfer_cancellation_outcome(outcome).to_string(),
     })))
+}
+
+fn transfer_cancellation_outcome(outcome: InboundTransferCancellationOutcome) -> &'static str {
+    match outcome {
+        InboundTransferCancellationOutcome::Cancelled => "cancelled",
+        // Output or cleanup is still being released; never report it as cancelled.
+        InboundTransferCancellationOutcome::CancellationIncomplete => "cancellation_incomplete",
+        InboundTransferCancellationOutcome::NotInflight => "not_inflight",
+    }
 }
 
 // ── Clipboard history helpers ────────────────────────────────────
@@ -954,6 +1036,7 @@ fn map_receive_engine_err(op: &'static str, error: EngineError) -> ApiError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use uc_engine::{ReceiveItemFailureReason, ReceiveItemKind};
 
     #[test]
     fn history_engine_errors_preserve_http_statuses_and_redact_internal_details() {
@@ -1090,6 +1173,20 @@ mod tests {
         assert_eq!(api.code, "not_found");
     }
 
+    fn item(
+        item_id: &str,
+        kind: ReceiveItemKind,
+        state: &str,
+        failure_reason: Option<ReceiveItemFailureReason>,
+    ) -> ReceiveItemSummary {
+        ReceiveItemSummary {
+            item_id: item_id.to_owned(),
+            kind,
+            state: state.to_owned(),
+            failure_reason,
+        }
+    }
+
     #[test]
     fn receive_progress_and_stale_cancel_use_stable_wire_values() {
         let response = receive_progress_response(ReceiveProgressSummary {
@@ -1100,6 +1197,7 @@ mod tests {
             completed_bytes: 10,
             items_total: 3,
             items_completed: 1,
+            items: Vec::new(),
         });
         assert_eq!(response.entry_id, "entry");
         assert_eq!(response.attempt_id, "attempt-2");
@@ -1108,8 +1206,158 @@ mod tests {
         assert_eq!(response.completed_bytes, 10);
         assert_eq!(response.items_total, 3);
         assert_eq!(response.items_completed, 1);
+        assert!(response.items.is_empty());
 
         let cancelled = cancel_receive_response(EntryReceiveCancellationOutcome::Superseded);
         assert_eq!(cancelled.outcome, "superseded");
+    }
+
+    #[test]
+    fn receive_progress_keeps_each_item_result_beside_the_aggregate() {
+        let response = receive_progress_response(ReceiveProgressSummary {
+            entry_id: "entry".to_owned(),
+            attempt_id: "attempt-1".to_owned(),
+            state: "failed".to_owned(),
+            total_bytes: 30,
+            completed_bytes: 10,
+            items_total: 2,
+            items_completed: 1,
+            items: vec![
+                item("a", ReceiveItemKind::File, "completed", None),
+                item(
+                    "b",
+                    ReceiveItemKind::File,
+                    "failed",
+                    Some(ReceiveItemFailureReason::TimedOut),
+                ),
+            ],
+        });
+        // The aggregate failed, yet the delivered file stays reported as completed.
+        assert_eq!(response.state, "failed");
+        assert_eq!(response.items.len(), 2);
+        assert_eq!(response.items[0].item_id, "a");
+        assert_eq!(response.items[0].state, "completed");
+        assert_eq!(response.items[0].failure_reason, None);
+        assert_eq!(response.items[1].state, "failed");
+        assert_eq!(
+            response.items[1].failure_reason.as_deref(),
+            Some("timed_out")
+        );
+    }
+
+    #[test]
+    fn receive_item_kinds_and_failure_reasons_use_engine_wire_values() {
+        let kinds = [
+            (ReceiveItemKind::Unknown, "unknown"),
+            (ReceiveItemKind::File, "file"),
+            (ReceiveItemKind::Representation, "representation"),
+            (ReceiveItemKind::DirectoryUnit, "directory_unit"),
+        ];
+        for (kind, wire) in kinds {
+            let response = receive_progress_response(ReceiveProgressSummary {
+                entry_id: "entry".to_owned(),
+                attempt_id: "attempt".to_owned(),
+                state: "failed".to_owned(),
+                total_bytes: 0,
+                completed_bytes: 0,
+                items_total: 1,
+                items_completed: 0,
+                items: vec![item(
+                    "i",
+                    kind,
+                    "failed",
+                    Some(ReceiveItemFailureReason::Unknown),
+                )],
+            });
+            assert_eq!(response.items[0].kind, wire);
+            assert_eq!(response.items[0].failure_reason.as_deref(), Some("unknown"));
+        }
+    }
+
+    #[test]
+    fn incomplete_cancellation_is_never_reported_as_cancelled() {
+        let entry =
+            cancel_receive_response(EntryReceiveCancellationOutcome::CancellationIncomplete);
+        assert_eq!(entry.outcome, "cancellation_incomplete");
+        assert_ne!(entry.outcome, "cancelled");
+
+        assert_eq!(
+            transfer_cancellation_outcome(
+                InboundTransferCancellationOutcome::CancellationIncomplete
+            ),
+            "cancellation_incomplete"
+        );
+        assert_eq!(
+            transfer_cancellation_outcome(InboundTransferCancellationOutcome::Cancelled),
+            "cancelled"
+        );
+        assert_eq!(
+            transfer_cancellation_outcome(InboundTransferCancellationOutcome::NotInflight),
+            "not_inflight"
+        );
+    }
+
+    #[test]
+    fn retry_outcomes_use_stable_wire_values_and_only_accepted_carries_an_attempt() {
+        let accepted = retry_receive_response(EntryReceiveRetryOutcome::Accepted {
+            attempt_id: "attempt-2".to_owned(),
+        });
+        assert_eq!(accepted.outcome, "accepted");
+        assert_eq!(accepted.attempt_id.as_deref(), Some("attempt-2"));
+        assert_eq!(accepted.reason, None);
+
+        for (outcome, wire) in [
+            (
+                EntryReceiveRetryOutcome::AlreadyReceiving,
+                "already_receiving",
+            ),
+            (EntryReceiveRetryOutcome::Superseded, "superseded"),
+            (
+                EntryReceiveRetryOutcome::CancellationIncomplete,
+                "cancellation_incomplete",
+            ),
+        ] {
+            let response = retry_receive_response(outcome);
+            assert_eq!(response.outcome, wire);
+            assert_eq!(response.attempt_id, None);
+            assert_eq!(response.reason, None);
+        }
+
+        for (reason, wire) in [
+            (
+                ReceiveRetryUnavailableReason::SourceUnavailable,
+                "source_unavailable",
+            ),
+            (ReceiveRetryUnavailableReason::AccessDenied, "access_denied"),
+        ] {
+            let response = retry_receive_response(EntryReceiveRetryOutcome::Unavailable { reason });
+            assert_eq!(response.outcome, "unavailable");
+            assert_eq!(response.attempt_id, None);
+            assert_eq!(response.reason.as_deref(), Some(wire));
+        }
+    }
+
+    #[test]
+    fn retry_engine_errors_stay_redacted() {
+        let invalid = map_receive_engine_err(
+            "retry_receive",
+            EngineError::new(
+                RECEIVE_INVALID_INPUT_CODE,
+                uc_engine::EngineErrorCategory::InvalidInput,
+                false,
+            ),
+        );
+        assert_eq!(invalid.status, StatusCode::BAD_REQUEST);
+
+        let failed = map_receive_engine_err(
+            "retry_receive",
+            EngineError::new(
+                RECEIVE_FAILED_CODE,
+                uc_engine::EngineErrorCategory::Internal,
+                false,
+            ),
+        );
+        assert_eq!(failed.status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(failed.message, "receive operation failed");
     }
 }

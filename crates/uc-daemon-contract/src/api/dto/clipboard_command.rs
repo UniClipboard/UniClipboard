@@ -123,10 +123,35 @@ pub struct CancelEntryReceiveRequest {
     pub attempt_id: String,
 }
 
+/// Response body for `POST /clipboard/entries/{id}/receive/cancel`.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CancelEntryReceiveResponse {
+    /// `"cancelled"` | `"cancellation_incomplete"` | `"not_receiving"` | `"too_late"` |
+    /// `"already_terminal"` | `"superseded"`. Only `"cancelled"` confirms the
+    /// receive settled; `"cancellation_incomplete"` means output or cleanup is
+    /// still being released and the final state arrives later.
     pub outcome: String,
+}
+
+/// One selectable result of the current receive attempt.
+///
+/// `item_id` is opaque and bound to the attempt that was queried; callers pass
+/// it back to the retry route unchanged and never build it from file names.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ReceiveItemResponse {
+    pub item_id: String,
+    /// `"unknown"` | `"file"` | `"representation"` | `"directory_unit"`.
+    pub kind: String,
+    /// `"pending"` | `"transferring"` | `"completed"` | `"failed"` | `"cancelled"`.
+    /// `"completed"` means the item was saved, not only downloaded.
+    pub state: String,
+    /// `"network_unavailable"` | `"timed_out"` | `"access_denied"` |
+    /// `"storage_unavailable"` | `"integrity_check_failed"` | `"interrupted"` |
+    /// `"unknown"`. Fixed categories only, never raw error text.
+    #[serde(default)]
+    pub failure_reason: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -136,9 +161,42 @@ pub struct EntryReceiveProgressResponse {
     pub attempt_id: String,
     pub state: String,
     pub total_bytes: i64,
+    /// Bytes of items that were saved; downloaded-but-unsaved bytes do not count.
     pub completed_bytes: i64,
+    /// Member count of the attempt. A directory counts its members here but is
+    /// one entry of `items`.
     pub items_total: u32,
     pub items_completed: u32,
+    /// Per-item results. An aggregate `failed` or `cancelled` attempt can still
+    /// contain `completed` items. Empty from daemons that predate per-item results.
+    #[serde(default)]
+    pub items: Vec<ReceiveItemResponse>,
+}
+
+/// Request body for `POST /clipboard/entries/{id}/receive/retry`.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct RetryEntryReceiveRequest {
+    /// The attempt the caller is looking at; a newer attempt answers `superseded`.
+    pub expected_attempt_id: String,
+    /// Item ids taken from the latest receive query. Must not be empty.
+    pub item_ids: Vec<String>,
+}
+
+/// Response body for `POST /clipboard/entries/{id}/receive/retry`.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct RetryEntryReceiveResponse {
+    /// `"accepted"` | `"already_receiving"` | `"superseded"` |
+    /// `"cancellation_incomplete"` | `"unavailable"`. `"accepted"` only means a
+    /// new attempt was admitted; items are saved when a later query says so.
+    pub outcome: String,
+    /// The new attempt, present only for `"accepted"`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attempt_id: Option<String>,
+    /// `"source_unavailable"` | `"access_denied"`, present only for `"unavailable"`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
 }
 
 // ── POST /clipboard/restore/:entry_id ────────────────────────────
@@ -322,5 +380,68 @@ mod tests {
         assert!(json.get("plaintextBase64").is_none());
         assert!(json.get("textPreview").is_some());
         assert!(json.get("representations").is_some());
+    }
+
+    #[test]
+    fn receive_progress_items_use_camel_case_wire_keys() {
+        let response = EntryReceiveProgressResponse {
+            entry_id: "e".into(),
+            attempt_id: "a".into(),
+            state: "failed".into(),
+            total_bytes: 2,
+            completed_bytes: 1,
+            items_total: 2,
+            items_completed: 1,
+            items: vec![ReceiveItemResponse {
+                item_id: "i".into(),
+                kind: "file".into(),
+                state: "failed".into(),
+                failure_reason: Some("timed_out".into()),
+            }],
+        };
+        let json = serde_json::to_value(&response).unwrap();
+        let item = &json["items"][0];
+        assert_eq!(item["itemId"], "i");
+        assert_eq!(item["failureReason"], "timed_out");
+        assert!(item.get("item_id").is_none());
+        assert!(item.get("failure_reason").is_none());
+        // Aggregate fields stay for existing consumers.
+        assert_eq!(json["itemsTotal"], 2);
+        assert_eq!(json["itemsCompleted"], 1);
+    }
+
+    #[test]
+    fn receive_progress_from_an_older_daemon_has_no_items() {
+        let json = r#"{"entryId":"e","attemptId":"a","state":"receiving","totalBytes":2,
+            "completedBytes":1,"itemsTotal":1,"itemsCompleted":0}"#;
+        let response: EntryReceiveProgressResponse = serde_json::from_str(json).unwrap();
+        assert!(response.items.is_empty());
+    }
+
+    #[test]
+    fn retry_request_requires_the_expected_attempt_and_camel_case_keys() {
+        let request: RetryEntryReceiveRequest =
+            serde_json::from_str(r#"{"expectedAttemptId":"a","itemIds":["x","y"]}"#).unwrap();
+        assert_eq!(request.expected_attempt_id, "a");
+        assert_eq!(request.item_ids, vec!["x", "y"]);
+
+        assert!(serde_json::from_str::<RetryEntryReceiveRequest>(r#"{"itemIds":["x"]}"#).is_err());
+        assert!(serde_json::from_str::<RetryEntryReceiveRequest>(
+            r#"{"expected_attempt_id":"a","item_ids":["x"]}"#
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn retry_response_serializes_attempt_and_reason_in_camel_case() {
+        let json = serde_json::to_value(RetryEntryReceiveResponse {
+            outcome: "accepted".into(),
+            attempt_id: Some("a2".into()),
+            reason: None,
+        })
+        .unwrap();
+        assert_eq!(json["outcome"], "accepted");
+        assert_eq!(json["attemptId"], "a2");
+        assert!(json.get("attempt_id").is_none());
     }
 }

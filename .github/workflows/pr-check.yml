@@ -117,9 +117,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install GTK4 build dependencies
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends libgtk-4-dev libwebkitgtk-6.0-dev libx11-dev libdbus-1-dev pkg-config
+        uses: ./.github/actions/go-host-apt
 
       - name: Install Bun
         uses: oven-sh/setup-bun@v2

@@ -72,6 +72,8 @@ cli_go: &cli_go
   - 'scripts/ci/build-go-cli.sh'
 
 gui_go:
+  - '.github/actions/go-host-apt/**'
+  - 'scripts/ci/go-host-apt*'
   - *ci_config
   - 'apps/gui-go/**/*.{go,mod,sum,c,h,m,mm,syso,rc,ico,manifest}'
   - 'packages/desktop-host-go/**'
@@ -117,6 +119,7 @@ e2e:
   - 'scripts/e2e/desktop-settings/prepare-history.py'
 
 tooling:
+  - '.github/actions/go-host-apt/**'
   - *ci_config
   - '.github/workflows/**'
   - 'scripts/**'

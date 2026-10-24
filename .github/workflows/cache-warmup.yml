@@ -203,6 +203,18 @@ jobs:
           path: ${{ runner.temp }}/mbx-evidence/
           if-no-files-found: ignore
 
+  warmup-go-host-apt:
+    name: Warm Go host apt downloads
+    # Independent of compiler warmups: this stores downloads, not build state.
+    if: github.ref == 'refs/heads/main' && github.ref_protected
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/go-host-apt
+        with:
+          download-only: 'true'
+          save: 'true'
+
   warmup-docs-bun:
     needs: [maintain-caches, warmup-release-app]
     # docs-check.yml PR 阶段只 restore Linux-docs-bun-*,这里负责在 main 上写。

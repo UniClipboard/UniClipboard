@@ -9,7 +9,8 @@ use uc_daemon_contract::api::dto::clipboard_command::{
     CancelEntryReceiveRequest, CancelEntryReceiveResponse, CancelTransferRequest,
     CancelTransferResponse, CaptureCurrentClipboardResponse, DispatchFileOutcomeResponse,
     DispatchFileRequest, DispatchOutcomeResponse, DispatchTextRequest,
-    EntryReceiveProgressResponse, ResendRequest, ResendResponse,
+    EntryReceiveProgressResponse, ResendRequest, ResendResponse, RetryEntryReceiveRequest,
+    RetryEntryReceiveResponse,
 };
 use uc_daemon_contract::api::dto::clipboard_delivery::EntryDeliveryViewDto;
 use uc_daemon_contract::constants::http_route;
@@ -259,6 +260,33 @@ impl DaemonClipboardClient {
         .await?)
     }
 
+    /// Retry only the selected failed or cancelled items of a receive attempt.
+    ///
+    /// `item_ids` must come from the latest `entry_receive_progress` query. An
+    /// `accepted` outcome means the Engine admitted a new attempt, not that any
+    /// item was saved.
+    pub async fn retry_entry_receive(
+        &self,
+        entry_id: &str,
+        expected_attempt_id: &str,
+        item_ids: &[String],
+    ) -> Result<RetryEntryReceiveResponse> {
+        let path = retry_entry_receive_path(entry_id)?;
+        let body = RetryEntryReceiveRequest {
+            expected_attempt_id: expected_attempt_id.to_owned(),
+            item_ids: item_ids.to_vec(),
+        };
+        Ok(enveloped_request(
+            &self.http,
+            &self.connection_state,
+            &self.client_type,
+            Method::POST,
+            &path,
+            |request| request.json(&body),
+        )
+        .await?)
+    }
+
     pub async fn list_entry_receive_progress(&self) -> Result<Vec<EntryReceiveProgressResponse>> {
         Ok(enveloped_request(
             &self.http,
@@ -451,6 +479,11 @@ fn cancel_entry_receive_path(entry_id: &str) -> Result<String> {
     Ok(format!("/clipboard/entries/{entry_id}/receive/cancel"))
 }
 
+fn retry_entry_receive_path(entry_id: &str) -> Result<String> {
+    let entry_id = encode_path_segment(entry_id)?;
+    Ok(format!("/clipboard/entries/{entry_id}/receive/retry"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -504,6 +537,29 @@ mod tests {
             })
             .unwrap(),
             serde_json::json!({ "attemptId": "attempt-2" })
+        );
+    }
+
+    #[test]
+    fn retry_request_path_and_body_are_exact() {
+        assert_eq!(
+            retry_entry_receive_path("entry-1").expect("retry path"),
+            "/clipboard/entries/entry-1/receive/retry"
+        );
+        assert_eq!(
+            retry_entry_receive_path("a/b").expect("encoded retry path"),
+            "/clipboard/entries/a%2Fb/receive/retry"
+        );
+        for dot_segment in [".", ".."] {
+            assert!(retry_entry_receive_path(dot_segment).is_err());
+        }
+        assert_eq!(
+            serde_json::to_value(RetryEntryReceiveRequest {
+                expected_attempt_id: "attempt-1".to_owned(),
+                item_ids: vec!["item-a".to_owned()],
+            })
+            .unwrap(),
+            serde_json::json!({ "expectedAttemptId": "attempt-1", "itemIds": ["item-a"] })
         );
     }
 }

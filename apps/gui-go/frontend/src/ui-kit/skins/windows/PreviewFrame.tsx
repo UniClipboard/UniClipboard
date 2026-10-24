@@ -18,6 +18,20 @@ const useStyles = makeStyles({
     backgroundColor: 'var(--w11-card)',
     border: `${tokens.strokeWidthThin} solid var(--w11-card-stroke)`,
   },
+  file: {
+    height: 'auto',
+    minHeight: 0,
+    backgroundColor: 'var(--w11-card)',
+    border: `${tokens.strokeWidthThin} solid var(--w11-card-stroke)`,
+    '--foreground': tokens.colorNeutralForeground1,
+    '--muted': 'var(--w11-selected)',
+    '--muted-foreground': tokens.colorNeutralForeground2,
+    '--border': tokens.colorNeutralStroke1,
+    '--primary': tokens.colorBrandBackground,
+    '--destructive': tokens.colorPaletteRedForeground1,
+    color: tokens.colorNeutralForeground1,
+  },
+  fileBody: { overflow: 'visible' },
   code: { backgroundColor: 'var(--w11-code-bg)', color: '#D4D4D4' },
   image: {
     border: `${tokens.strokeWidthThin} solid var(--w11-card-stroke)`,
@@ -70,7 +84,9 @@ export function PreviewFrame({
           ) : null}
         </div>
       ) : null}
-      <div className={styles.body}>{children}</div>
+      <div className={mergeClasses(styles.body, kind === 'file' && styles.fileBody)}>
+        {children}
+      </div>
       {topEnd ? <div className={styles.topEnd}>{topEnd}</div> : null}
       {bottomStart ? <div className={styles.bottomStart}>{bottomStart}</div> : null}
     </div>

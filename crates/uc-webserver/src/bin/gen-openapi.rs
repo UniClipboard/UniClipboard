@@ -77,8 +77,9 @@ use uc_webserver::api::openapi::ApiDoc;
 /// The independent network-library log adds three paths and three operations
 /// (status): 100 / 112.
 // Preserved config-import status adds one path and operation: 101 / 113.
-const EXPECTED_PATHS: usize = 101;
-const EXPECTED_OPERATIONS: usize = 113;
+// Selective receive retry adds one path and operation: 102 / 114.
+const EXPECTED_PATHS: usize = 102;
+const EXPECTED_OPERATIONS: usize = 114;
 const SCHEMA_PREFIX: &str = "#/components/schemas/";
 const HTTP_METHODS: [&str; 7] = ["get", "put", "post", "delete", "patch", "head", "options"];
 

@@ -5,6 +5,7 @@ import { describeSource } from '@/components/history/history-card/history-card-u
 import { formatCopiedAt } from '@/components/history/list/history-list-format'
 import { historyKind } from '@/components/history/list/history-list-kind'
 import { useBlobImageObjectUrl } from '@/hooks/useBlobImageObjectUrl'
+import { useCancelEntryTransfer } from '@/hooks/useCancelEntryTransfer'
 import { useClipboardPreviewState } from '@/hooks/useClipboardPreviewState'
 import { useEntryDelivery } from '@/hooks/useEntryDelivery'
 import type { ClipboardImageItem, DisplayClipboardItem } from '@/lib/clipboard-entry'
@@ -25,6 +26,7 @@ import {
 import { formatFileSize } from '@/utils'
 import { HistoryKitDelivery } from './HistoryKitDelivery'
 import { HistoryKitDetailTags, type HistoryKitTagging } from './HistoryKitDetailTags'
+import { HistoryKitFilePreview } from './HistoryKitFilePreview'
 import { HistoryKitSendMenu } from './HistoryKitSendMenu'
 
 interface HistoryKitDetailProps {
@@ -58,6 +60,7 @@ export function HistoryKitDetail({
   const { t, i18n } = useTranslation()
   const state = useClipboardPreviewState(item)
   const { delivery } = useEntryDelivery(item?.id ?? null)
+  const { cancelling, cancel } = useCancelEntryTransfer(item?.id, state.transfer)
   const imageDescriptor =
     state.preview?.contentType === 'image' ? (state.preview.imageBlobPath ?? null) : null
   const imageActions = useHistoryImageActions(
@@ -150,43 +153,57 @@ export function HistoryKitDetail({
             </Text>
           </span>
         </DetailHeader>
-        <PreviewFrame
-          kind={isImage ? 'image' : kind === 'code' ? 'code' : 'plain'}
-          topEnd={
-            isImage && imageDescriptor ? (
-              <SegmentedControl
-                label={t('history.detail.imageZoom')}
-                value={imageActions.mode}
-                onValueChange={mode => imageActions.setMode(mode as 'fit' | 'actual')}
-                items={[
-                  { value: 'fit', label: t('history.detail.imageFit') },
-                  { value: 'actual', label: t('history.detail.imageActual') },
-                ]}
-              />
-            ) : undefined
-          }
-          bottomStart={
-            isImage && imageDescriptor ? (
-              <Button size="small" onClick={() => imageActions.setQuickLook(true)}>
-                {`${t('history.detail.quickLook')} ␣`}
+        {item.type !== 'file' &&
+          state.effectiveStatus === 'transferring' &&
+          state.transfer?.status === 'active' &&
+          state.transfer.direction === 'receiving' && (
+            <div>
+              <Button size="small" busy={cancelling} onClick={() => void cancel()}>
+                {t('clipboard.transfer.cancel')}
               </Button>
-            ) : undefined
-          }
-        >
-          <PreviewContent
-            item={item}
-            loading={state.loading}
-            preview={state.preview}
-            effectiveStatus={state.effectiveStatus}
-            entryStatus={state.entryStatus}
-            transfer={state.transfer}
-            setImageDimensions={state.setImageDimensions}
-            codeVariant="block"
-            imageFit
-            imageActualSize={imageActions.mode === 'actual'}
-            onImageType={imageActions.onImageType}
-          />
-        </PreviewFrame>
+            </div>
+          )}
+        {item.type === 'file' ? (
+          <HistoryKitFilePreview item={item} state={state} />
+        ) : (
+          <PreviewFrame
+            kind={isImage ? 'image' : kind === 'code' ? 'code' : 'plain'}
+            topEnd={
+              isImage && imageDescriptor ? (
+                <SegmentedControl
+                  label={t('history.detail.imageZoom')}
+                  value={imageActions.mode}
+                  onValueChange={mode => imageActions.setMode(mode as 'fit' | 'actual')}
+                  items={[
+                    { value: 'fit', label: t('history.detail.imageFit') },
+                    { value: 'actual', label: t('history.detail.imageActual') },
+                  ]}
+                />
+              ) : undefined
+            }
+            bottomStart={
+              isImage && imageDescriptor ? (
+                <Button size="small" onClick={() => imageActions.setQuickLook(true)}>
+                  {`${t('history.detail.quickLook')} ␣`}
+                </Button>
+              ) : undefined
+            }
+          >
+            <PreviewContent
+              item={item}
+              loading={state.loading}
+              preview={state.preview}
+              effectiveStatus={state.effectiveStatus}
+              entryStatus={state.entryStatus}
+              transfer={state.transfer}
+              setImageDimensions={state.setImageDimensions}
+              codeVariant="block"
+              imageFit
+              imageActualSize={imageActions.mode === 'actual'}
+              onImageType={imageActions.onImageType}
+            />
+          </PreviewFrame>
+        )}
         {isImage && <FactList label={t('history.kit.imageFacts')} facts={imageFacts} />}
         {tagging && item.userTagIds && (
           <HistoryKitDetailTags tagIds={item.userTagIds} tagging={tagging} />

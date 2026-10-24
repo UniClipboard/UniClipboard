@@ -105,7 +105,16 @@ export type CancelEntryReceiveRequest = {
     attemptId: string;
 };
 
+/**
+ * Response body for `POST /clipboard/entries/{id}/receive/cancel`.
+ */
 export type CancelEntryReceiveResponse = {
+    /**
+     * `"cancelled"` | `"cancellation_incomplete"` | `"not_receiving"` | `"too_late"` |
+     * `"already_terminal"` | `"superseded"`. Only `"cancelled"` confirms the
+     * receive settled; `"cancellation_incomplete"` means output or cleanup is
+     * still being released and the final state arrives later.
+     */
     outcome: string;
 };
 
@@ -1408,9 +1417,21 @@ export type EntryReceiveProgressListEnvelope = {
 
 export type EntryReceiveProgressResponse = {
     attemptId: string;
+    /**
+     * Bytes of items that were saved; downloaded-but-unsaved bytes do not count.
+     */
     completedBytes: number;
     entryId: string;
+    /**
+     * Per-item results. An aggregate `failed` or `cancelled` attempt can still
+     * contain `completed` items. Empty from daemons that predate per-item results.
+     */
+    items?: Array<ReceiveItemResponse>;
     itemsCompleted: number;
+    /**
+     * Member count of the attempt. A directory counts its members here but is
+     * one entry of `items`.
+     */
     itemsTotal: number;
     state: string;
     totalBytes: number;
@@ -3034,6 +3055,31 @@ export type QuickPanelSettingsPatchDto = {
 };
 
 /**
+ * One selectable result of the current receive attempt.
+ *
+ * `item_id` is opaque and bound to the attempt that was queried; callers pass
+ * it back to the retry route unchanged and never build it from file names.
+ */
+export type ReceiveItemResponse = {
+    /**
+     * `"network_unavailable"` | `"timed_out"` | `"access_denied"` |
+     * `"storage_unavailable"` | `"integrity_check_failed"` | `"interrupted"` |
+     * `"unknown"`. Fixed categories only, never raw error text.
+     */
+    failureReason?: string | null;
+    itemId: string;
+    /**
+     * `"unknown"` | `"file"` | `"representation"` | `"directory_unit"`.
+     */
+    kind: string;
+    /**
+     * `"pending"` | `"transferring"` | `"completed"` | `"failed"` | `"cancelled"`.
+     * `"completed"` means the item was saved, not only downloaded.
+     */
+    state: string;
+};
+
+/**
  * Request body for `POST /v2/setup/redeem`. Maps to
  * `SpaceSetupFacade::redeem_pairing_invitation(RedeemPairingInvitationCommand)`.
  */
@@ -3519,6 +3565,63 @@ export type RetentionRuleDto = {
     sensitive: {
         max_age: number;
     };
+};
+
+/**
+ * Canonical success envelope: `{ "data": T, "ts": <unix millis i64> }`.
+ *
+ * `ts` is `chrono::Utc::now().timestamp_millis()`, set in the webserver handler
+ * via [`ApiEnvelope::now`] (the contract carries only the type + the clock
+ * helper, not a hard dependency on when the handler reads the clock).
+ * `rename_all = "camelCase"` is a no-op for the single-word fields here but is
+ * declared for forward-compat.
+ *
+ * IMPORTANT (utoipa v4): every concrete `ApiEnvelope<X>` that needs a named
+ * OpenAPI component is declared in the `#[aliases(...)]` block below. Add a new
+ * alias line whenever a new payload type needs enveloping. NEVER register the
+ * bare `ApiEnvelope` in `components(schemas(...))` — utoipa errors on a bare
+ * generic, and an un-aliased generic inlines an anonymous schema.
+ */
+export type RetryEntryReceiveEnvelope = {
+    data: RetryEntryReceiveResponse;
+    /**
+     * Server time when the response was built (unix epoch milliseconds).
+     */
+    ts: number;
+};
+
+/**
+ * Request body for `POST /clipboard/entries/{id}/receive/retry`.
+ */
+export type RetryEntryReceiveRequest = {
+    /**
+     * The attempt the caller is looking at; a newer attempt answers `superseded`.
+     */
+    expectedAttemptId: string;
+    /**
+     * Item ids taken from the latest receive query. Must not be empty.
+     */
+    itemIds: Array<string>;
+};
+
+/**
+ * Response body for `POST /clipboard/entries/{id}/receive/retry`.
+ */
+export type RetryEntryReceiveResponse = {
+    /**
+     * The new attempt, present only for `"accepted"`.
+     */
+    attemptId?: string | null;
+    /**
+     * `"accepted"` | `"already_receiving"` | `"superseded"` |
+     * `"cancellation_incomplete"` | `"unavailable"`. `"accepted"` only means a
+     * new attempt was admitted; items are saved when a later query says so.
+     */
+    outcome: string;
+    /**
+     * `"source_unavailable"` | `"access_denied"`, present only for `"unavailable"`.
+     */
+    reason?: string | null;
 };
 
 /**
@@ -5366,6 +5469,40 @@ export type CancelEntryReceiveResponses = {
 };
 
 export type CancelEntryReceiveResponse2 = CancelEntryReceiveResponses[keyof CancelEntryReceiveResponses];
+
+export type RetryEntryReceiveData = {
+    body: RetryEntryReceiveRequest;
+    path: {
+        /**
+         * Clipboard entry ID
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/clipboard/entries/{id}/receive/retry';
+};
+
+export type RetryEntryReceiveErrors = {
+    /**
+     * Invalid request, such as an empty item selection
+     */
+    400: ApiErrorResponse;
+    /**
+     * Internal server error
+     */
+    500: ApiErrorResponse;
+};
+
+export type RetryEntryReceiveError = RetryEntryReceiveErrors[keyof RetryEntryReceiveErrors];
+
+export type RetryEntryReceiveResponses = {
+    /**
+     * Selective receive retry outcome; `accepted` only admits a new attempt
+     */
+    200: RetryEntryReceiveEnvelope;
+};
+
+export type RetryEntryReceiveResponse2 = RetryEntryReceiveResponses[keyof RetryEntryReceiveResponses];
 
 export type GetClipboardEntryResourceData = {
     body?: never;

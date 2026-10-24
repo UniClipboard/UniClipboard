@@ -1567,6 +1567,49 @@
       "syncFailed": "File sync failed",
       "syncFailedDetail": "Failed to sync file: {{reason}}"
     },
+    "receive": {
+      "cancelledCount": "{{count}} cancelled",
+      "failedCount": "{{count}} failed",
+      "details": "Receive details",
+      "unlinkedDetails": "These numbers identify receive records, not the file order above.",
+      "title": "Received files",
+      "summary": "{{saved}} of {{total}} saved",
+      "cancelIncomplete": "Stopping. Files already saved stay saved; this will show as cancelled once it finishes.",
+      "kind": {
+        "file": "File",
+        "representation": "Content",
+        "directory_unit": "Folder",
+        "unknown": "Item"
+      },
+      "state": {
+        "pending": "Waiting",
+        "transferring": "Receiving",
+        "completed": "Saved",
+        "failed": "Failed",
+        "cancelled": "Cancelled",
+        "unknown": "Unknown"
+      },
+      "reason": {
+        "network_unavailable": "network unavailable",
+        "timed_out": "timed out",
+        "access_denied": "access denied",
+        "storage_unavailable": "storage unavailable",
+        "integrity_check_failed": "check failed",
+        "interrupted": "interrupted",
+        "unknown": "unknown reason"
+      },
+      "retry": {
+        "action": "Retry failed",
+        "accepted": "Retry started. A file counts as saved only when it finishes.",
+        "alreadyReceiving": "Already receiving this item.",
+        "superseded": "A newer attempt already replaced this one. The list has been refreshed.",
+        "cancellationIncomplete": "Still stopping the previous attempt. Try again shortly.",
+        "sourceUnavailable": "The sender's copy is no longer available. Send it again from the other device.",
+        "accessDenied": "Access was denied, so this cannot be retried.",
+        "unknown": "The retry could not be started.",
+        "failed": "The retry request failed."
+      }
+    },
     "transfer": {
       "sending": "Sending",
       "receiving": "Receiving",

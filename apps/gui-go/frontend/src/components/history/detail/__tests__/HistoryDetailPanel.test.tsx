@@ -42,6 +42,12 @@ vi.mock('@/components/clipboard/ClipboardPreview', () => ({
   PreviewContent: ({ item }: { item: DisplayClipboardItem }) => `preview:${item.id}`,
 }))
 
+vi.mock('@/components/clipboard/ReceiveItemsPanel', () => ({ default: () => null }))
+
+vi.mock('@/hooks/useCancelEntryTransfer', () => ({
+  useCancelEntryTransfer: () => ({ cancelling: false, cancel: vi.fn() }),
+}))
+
 vi.mock('@/components/clipboard/ClipboardSendMenu', () => ({
   default: ({
     disabled,

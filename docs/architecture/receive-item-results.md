@@ -1,97 +1,64 @@
-# Receive item results and selective retry
+# 接收项结果与选择性重试
 
-Desktop adoption of Engine PR #230 (`UniClipboard/Engine` commit
-`5cbca8fc24a278fa7b01ae611bf4b925914bef13`). The Engine owns attempts, retries,
-cancellation, persistence and SDK shutdown. Desktop only carries the Engine's
-answers to the UI and carries the user's selection back.
+Desktop 适配 Engine PR #230（`UniClipboard/Engine` 提交 `5cbca8fc24a278fa7b01ae611bf4b925914bef13`）。尝试、重试、取消、持久化和 SDK 关闭都由 Engine 负责；Desktop 只把 Engine 的结论传给界面，并把用户的选择传回 Engine。
 
-This page is in English at the request of the task that introduced it; the rest
-of `docs/` is Chinese.
+## 依赖固定
 
-## Dependency pin
-
-- `Cargo.toml` pins `uc-engine` to the full commit above; `Cargo.lock` follows.
-- The Engine now needs `tokio >= 1.53.3` (locked: 1.54.1) and the iroh-blobs fork
-  at `152c42a9217f1377a998b271e0052311e8ada789`. `crates/p2p-bench` names that
-  fork directly, so its revision moves with the Engine's and the workspace still
-  resolves one `iroh-blobs`.
-- Not changed here: `RUSTSEC-2026-0387` (`crypto-bigint` 0.5.5 and 0.7.5),
-  `RUSTSEC-2026-0385` (`ctutils`) and the three `zip` 1.1.4 advisories were already
-  in the lock before the bump and are unchanged. The bump removes the `tokio`
-  1.53.1 warning (`RUSTSEC-2026-0386`). No audit exception was added.
-  Engine's own failing audit job and its MBX R2 jobs are separate findings that
-  Desktop does not resolve.
+- `Cargo.toml` 把 `uc-engine` 固定到上述完整提交，`Cargo.lock` 同步。
+- Engine 要求 `tokio >= 1.53.3`（锁定为 1.54.1）以及 iroh-blobs 分支 `152c42a9217f1377a998b271e0052311e8ada789`。`crates/p2p-bench` 直接引用该分支，所以它的修订随 Engine 一起移动，工作区仍只解析出一个 `iroh-blobs`。
+- 本次未改变：`RUSTSEC-2026-0387`（`crypto-bigint` 0.5.5 与 0.7.5）、`RUSTSEC-2026-0385`（`ctutils`）和三项 `zip` 1.1.4 公告在升级前的锁文件里就存在，升级后不变。升级只消除了 `tokio` 1.53.1 的警告（`RUSTSEC-2026-0386`）。没有新增审计豁免。Engine 自身失败的审计任务和 MBX R2 任务是另外的问题，Desktop 不处理。
 
 ## Daemon API
 
-All routes sit under the existing `/clipboard` group and keep the `{ data, ts }`
-envelope. Existing fields are unchanged; new fields are additive.
+所有路由都在已有的 `/clipboard` 下，沿用 `{ data, ts }` 信封。已有字段不变，新字段只增不改。
 
-| Route | Change |
+| 路由 | 变化 |
 | --- | --- |
-| `GET /clipboard/entries/{id}/receive`, `GET /clipboard/receives` | `EntryReceiveProgressResponse.items[]` added: `itemId`, `kind`, `state`, `failureReason` |
-| `POST /clipboard/entries/{id}/receive/cancel` | new outcome `cancellation_incomplete` |
-| `POST /clipboard/cancel-transfer/{transfer_id}` | new outcome `cancellation_incomplete` |
-| `POST /clipboard/entries/{id}/receive/retry` | new: body `{ expectedAttemptId, itemIds }`, result `{ outcome, attemptId?, reason? }` |
+| `GET /clipboard/entries/{id}/receive`、`GET /clipboard/receives` | `EntryReceiveProgressResponse` 新增 `items[]`：`itemId`、`kind`、`state`、`failureReason` |
+| `POST /clipboard/entries/{id}/receive/cancel` | 新增结果 `cancellation_incomplete` |
+| `POST /clipboard/cancel-transfer/{transfer_id}` | 新增结果 `cancellation_incomplete` |
+| `POST /clipboard/entries/{id}/receive/retry` | 新增：请求体 `{ expectedAttemptId, itemIds }`，结果 `{ outcome, attemptId?, reason? }` |
 
-`outcome` of the retry route is one of `accepted`, `already_receiving`,
-`superseded`, `cancellation_incomplete`, `unavailable`. `reason` is present only
-with `unavailable` (`source_unavailable` or `access_denied`); `attemptId` only
-with `accepted`. An empty selection or malformed ids is HTTP 400; other Engine
-errors keep the existing redacted mapping. `itemIds` must come from the latest
-query; they are opaque, bound to the queried attempt, and never derived from file
-names. A daemon that predates `items` yields an empty list in the client.
+重试路由的 `outcome` 取值为 `accepted`、`already_receiving`、`superseded`、`cancellation_incomplete`、`unavailable`。`reason` 只随 `unavailable` 出现（`source_unavailable` 或 `access_denied`），`attemptId` 只随 `accepted` 出现。空选择或格式错误的编号返回 HTTP 400，其他 Engine 错误沿用已有的脱敏映射。`itemIds` 必须取自最近一次查询：它们不透明、绑定被查询的尝试，不得由文件名推导。早于 `items` 的旧 daemon，客户端按空列表处理。
 
-Events (`clipboard.receive_attempt_state_changed`, `file-transfer.*`) are
-unchanged. They carry no item array; they only invalidate what the UI holds.
+事件（`clipboard.receive_attempt_state_changed`、`file-transfer.*`）不变。事件不携带项目数组，只用来使界面持有的状态失效。
 
-## Semantics the UI keeps
+## 界面保持的语义
 
-| Rule | Where it is enforced |
+| 规则 | 落实位置 |
 | --- | --- |
-| `accepted` admits a new attempt; a file is saved only when a later query says `completed` | `retryOutcomeMessageKey` wording; the hook re-reads the snapshot after every retry |
-| An aggregate `failed` or `cancelled` attempt can still hold saved files | `summarizeReceiveItems`; rows are rendered per item, nothing is removed on failure |
-| Saved items are never retried or deleted | `retryableItemIds` selects only `failed`/`cancelled` items of a `failed`/`cancelled` attempt |
-| A directory is one `directory_unit` row, retried whole | the Engine groups it; the UI never expands members |
-| `cancellation_incomplete` is not "cancelled" | `markReceiveCancellationIncomplete`; cleared only when that attempt settles |
-| A late event or reply of an old attempt cannot overwrite the new attempt | `supersededAttemptsByEntry` in `fileTransferSlice` ignores retired attempts; a settled attempt is never reopened by an older snapshot |
-| Events are invalidation, the snapshot is the truth | `useEntryReceive` re-reads when events disagree with the stored snapshot, and only the latest reply is applied |
-| `source_unavailable` after a restart is shown as is | retry outcome `unavailable` has its own message; results stay unchanged |
-| Sender resend is not receiver retry | resend keeps its own route and hook; retry only exists for received entries |
-| No host scheduler, retry loop or database access | none was added; Go talks to the daemon over HTTP/WS and no Go FFI layer exists |
+| `accepted` 只表示接纳了新尝试；文件只有在之后的查询显示 `completed` 才算保存成功 | `retryOutcomeMessageKey` 的措辞；每次重试后 hook 重新读取 snapshot |
+| 整体 `failed` 或 `cancelled` 的尝试仍可含已保存文件 | `summarizeReceiveItems`；按项渲染，失败时不移除任何项 |
+| 已保存项不重试、不删除 | `retryableItemIds` 只选 `failed`/`cancelled` 尝试里的 `failed`/`cancelled` 项 |
+| 目录是一个 `directory_unit` 项，整体重试 | 由 Engine 归并；界面不展开成员 |
+| `cancellation_incomplete` 不等于已取消 | `markReceiveCancellationIncomplete`；只在该尝试结束时清除 |
+| 旧尝试的迟到事件或迟到回复不能覆盖新尝试 | `fileTransferSlice` 的 `supersededAttemptsByEntry` 忽略已被取代的尝试；已结束的尝试不会被更旧的 snapshot 重新打开 |
+| 事件只是失效通知，snapshot 才是事实 | 事件与已存 snapshot 不一致时 `useEntryReceive` 重新读取，且只采用最新一次请求的回复 |
+| 重启后的 `source_unavailable` 如实呈现 | 重试结果 `unavailable` 有独立文案，已有结果保持不变 |
+| 发送端重发不等于接收端重试 | 重发保留自己的路由和 hook；重试只存在于已接收的记录 |
+| 不增加宿主调度器、重试循环或数据库访问 | 均未新增；Go 经 HTTP/WS 访问 daemon，没有 Go FFI 层 |
 
-## Where the code is
+## 代码位置
 
-- DTOs: `crates/uc-daemon-contract/src/api/dto/clipboard_command.rs`
-- Route and mapping: `crates/uc-webserver/src/api/clipboard.rs`; OpenAPI
-  registration in `crates/uc-webserver/src/api/openapi.rs`; the generated
-  `schema/openapi.json` and `apps/gui-go/frontend/src/api/generated/`
-- Rust client: `retry_entry_receive` in `crates/uc-daemon-client/src/http/clipboard.rs`
-- Frontend logic (shared by macOS, Windows and Linux): `src/lib/receive-items.ts`,
-  `src/hooks/useEntryReceive.ts`, `src/hooks/useCancelEntryTransfer.ts`,
-  `src/store/slices/fileTransferSlice.ts`, `src/api/file_transfer.ts`
-- Frontend views: `src/pages/history-kit/HistoryKitReceive.tsx` (the kit used by all
-  three platforms) and `src/components/clipboard/ReceiveItemsPanel.tsx` (the legacy
-  history detail reached only by builds without a platform). Both are views over
-  `useEntryReceive`.
-- Strings: `clipboard.receive.*` in all six locales.
+- DTO：`crates/uc-daemon-contract/src/api/dto/clipboard_command.rs`
+- 路由与映射：`crates/uc-webserver/src/api/clipboard.rs`；OpenAPI 注册在 `crates/uc-webserver/src/api/openapi.rs`；生成物为 `schema/openapi.json` 与 `apps/gui-go/frontend/src/api/generated/`
+- Rust 客户端：`crates/uc-daemon-client/src/http/clipboard.rs` 中的 `retry_entry_receive`
+- 前端逻辑（macOS、Windows、Linux 共用）：`src/lib/receive-items.ts`、`src/hooks/useEntryReceive.ts`、`src/hooks/useCancelEntryTransfer.ts`、`src/store/slices/fileTransferSlice.ts`、`src/api/file_transfer.ts`
+- 前端视图：`src/pages/history-kit/HistoryKitReceive.tsx`（三个平台使用的 kit）与 `src/components/clipboard/ReceiveItemsPanel.tsx`（只有不带平台的构建才会到达的旧版历史详情）。两者都是 `useEntryReceive` 之上的视图。kit 详情在接收进行中提供取消按钮（`HistoryKitDetail.tsx`），经 `useCancelEntryTransfer` 取消。
+- 文案：六种语言的 `clipboard.receive.*`
 
-## Failure model and checks
+## 失败模型与检查
 
-Written before the code; each row failed on the first run and passes now.
+先于代码写成；每一行首次运行都失败，现在通过。
 
-| Failure | Check |
+| 失败情形 | 检查 |
 | --- | --- |
-| Retry route missing, empty or malformed selection accepted | `tests/e2e/tests/entry_receive.rs` against a real `uniclipd` |
-| Retry without a receive reported as `accepted` | same file; the Engine answers `unavailable` / `source_unavailable` |
-| OpenAPI lacks retry or item schema | same file, reads the daemon's `/api-docs/openapi.json` |
-| Incomplete cancellation reported as cancelled, retry outcomes mis-mapped, `items` dropped, wire keys not camelCase | unit tests in `uc-webserver`, `uc-daemon-contract`, `uc-daemon-client` |
-| Saved file hidden by a failed sibling, retry sends wrong ids, stale attempt revives, incomplete cancel shown as cancelled | Vitest: `receive-items`, `fileTransferSlice.receiveItems`, `file_transfer.receiveItems`, `ReceiveItemsPanel`, `useCancelEntryTransfer` |
+| 重试路由缺失，空选择或格式错误的选择被接受 | 针对真实 `uniclipd` 的 `tests/e2e/tests/entry_receive.rs` |
+| 没有接收时重试却报告 `accepted` | 同一文件；Engine 返回 `unavailable` / `source_unavailable` |
+| OpenAPI 缺少重试或项目 schema | 同一文件，读取 daemon 的 `/api-docs/openapi.json` |
+| 取消未完成被报成已取消、重试结果映射错误、`items` 丢失、线上键名不是 camelCase | `uc-webserver`、`uc-daemon-contract`、`uc-daemon-client` 的单元测试 |
+| 兄弟项失败掩盖已保存文件、重试发错编号、旧尝试复活、取消未完成显示为已取消 | Vitest：`receive-items`、`fileTransferSlice.receiveItems`、`file_transfer.receiveItems`、`ReceiveItemsPanel`、`useCancelEntryTransfer` |
 
-## Not run
+## 未执行
 
-A partially delivered receive needs two paired devices; one isolated daemon cannot
-produce one. Not run: cross-device delivery and cancellation, per-file retry
-against a real failing sender, directory publication and rollback, restart with
-original retry material, mixed-version pairs, physical devices, and every visual
-check of the new rows (the task owner does the visual acceptance).
+部分送达的接收需要两台已配对设备，单个隔离 daemon 无法产生。未执行：跨设备送达与取消、对真实失败发送方的逐文件重试、目录发布与回滚、带原始重试材料的重启、混合版本、物理设备，以及新界面行（含 kit 取消按钮）的全部视觉检查（视觉验收由任务负责人完成）。

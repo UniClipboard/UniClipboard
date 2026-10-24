@@ -5,6 +5,7 @@ import { describeSource } from '@/components/history/history-card/history-card-u
 import { formatCopiedAt } from '@/components/history/list/history-list-format'
 import { historyKind } from '@/components/history/list/history-list-kind'
 import { useBlobImageObjectUrl } from '@/hooks/useBlobImageObjectUrl'
+import { useCancelEntryTransfer } from '@/hooks/useCancelEntryTransfer'
 import { useClipboardPreviewState } from '@/hooks/useClipboardPreviewState'
 import { useEntryDelivery } from '@/hooks/useEntryDelivery'
 import type { ClipboardImageItem, DisplayClipboardItem } from '@/lib/clipboard-entry'
@@ -59,6 +60,7 @@ export function HistoryKitDetail({
   const { t, i18n } = useTranslation()
   const state = useClipboardPreviewState(item)
   const { delivery } = useEntryDelivery(item?.id ?? null)
+  const { cancelling, cancel } = useCancelEntryTransfer(item?.id, state.transfer)
   const imageDescriptor =
     state.preview?.contentType === 'image' ? (state.preview.imageBlobPath ?? null) : null
   const imageActions = useHistoryImageActions(
@@ -151,6 +153,15 @@ export function HistoryKitDetail({
             </Text>
           </span>
         </DetailHeader>
+        {state.effectiveStatus === 'transferring' &&
+          state.transfer?.status === 'active' &&
+          state.transfer.direction === 'receiving' && (
+            <div>
+              <Button size="small" busy={cancelling} onClick={() => void cancel()}>
+                {t('clipboard.transfer.cancel')}
+              </Button>
+            </div>
+          )}
         <PreviewFrame
           kind={isImage ? 'image' : kind === 'code' ? 'code' : 'plain'}
           topEnd={

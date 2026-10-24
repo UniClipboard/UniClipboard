@@ -26,7 +26,7 @@ When documentation conflicts with code, treat the code as the source of truth an
 - [Wayland 快捷面板](architecture/quick-panel-wayland.md) - Layer Shell 生命周期、Omarchy 配置与粘贴能力边界
 - [Linux AppImage 库打包策略](architecture/linux-appimage-library-policy.md) - 宿主驱动栈相关库的打包边界、#1612 根因与验证范围
 - [跨平台核心接口](architecture/uc-engine-interface.md) - 宿主操作、生命周期、事件与能力边界
-- [接收项结果与选择性重试](architecture/receive-item-results.md) - 逐文件接收结果、选择性重试与取消未完成的宿主语义（英文）
+- [接收项结果与选择性重试](architecture/receive-item-results.md) - 逐文件接收结果、选择性重试与取消未完成的宿主语义
 - [桌面配对全流程观测规格](specs/2026-09-06-desktop-pairing-observability-spec.md) - 保留 Sentry，开发时通过 Jaeger 串联加入空间的完整过程（待实施）
 - [Local Encrypted Search Design](architecture/local-encrypted-search.md) - V1 local search architecture for encrypted history
 - [Snapshot Cache Pipeline ADR](architecture/snapshot-cache/adr-001-snapshot-cache-pipeline.md) - Cache/spool/worker design decisions

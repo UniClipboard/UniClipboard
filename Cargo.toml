@@ -74,7 +74,7 @@ dbg_macro = "warn"
 [workspace.dependencies]
 # All desktop consumers use one immutable Engine revision. Features remain
 # opt-in at each host boundary so LAN compatibility cannot become a default.
-uc-engine = { git = "https://github.com/UniClipboard/Engine.git", rev = "17ae0b7b83d66a15ec9772701a9d348d4fc94aec" }
+uc-engine = { git = "https://github.com/UniClipboard/Engine.git", rev = "1bf314a3f7e3aeecb8524d9e28b23ef5b12a2957" }
 
 # dev profile:用 line-tables-only 替代完整 dwarf,大幅缩短 link 阶段。
 # 实测 inner-loop 11s → 4s(-65%),target 体积 46GB → 4.4GB(-91%)。
@@ -141,10 +141,3 @@ strip = "none"
 # Use the upstream Windows font-selection fix for every GPUI consumer.
 [patch.crates-io]
 gpui = { git = "https://github.com/zed-industries/zed", rev = "ddf762e368352ae372b7631f7eebda4f5366e8bd" }
-
-# Keep the final build root aligned with Engine ADR-034; dependency patches do not propagate.
-# This revision retains the path-queue fix and carries the corrected EDNS parser.
-iroh = { git = "https://github.com/UniClipboard/iroh.git", rev = "c8efae061e3daa0afc6aa6db856cfcf8576da97b" }
-iroh-base = { git = "https://github.com/UniClipboard/iroh.git", rev = "c8efae061e3daa0afc6aa6db856cfcf8576da97b" }
-iroh-dns = { git = "https://github.com/UniClipboard/iroh.git", rev = "c8efae061e3daa0afc6aa6db856cfcf8576da97b" }
-iroh-relay = { git = "https://github.com/UniClipboard/iroh.git", rev = "c8efae061e3daa0afc6aa6db856cfcf8576da97b" }

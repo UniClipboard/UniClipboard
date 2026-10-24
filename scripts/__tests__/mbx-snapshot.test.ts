@@ -210,6 +210,39 @@ describe('MBX request reduction', () => {
     )
   })
 
+  it('forwards only snapshot secrets through the nested Linux GUI consumer route', () => {
+    const names = [
+      'BUILD_CACHE_R2_ENDPOINT',
+      'BUILD_CACHE_R2_ACCESS_KEY_ID',
+      'BUILD_CACHE_R2_SECRET_ACCESS_KEY',
+    ]
+    const caller = yaml('.github/workflows/build-target.yml').jobs['package-linux-gui']
+    const workflow = yaml('.github/workflows/package-linux-gui.yml')
+    expect(caller.uses).toBe('./.github/workflows/package-linux-gui.yml')
+    expect(caller.secrets).toEqual(
+      Object.fromEntries(names.map(name => [name, '${{ secrets.' + name + ' }}']))
+    )
+    expect(workflow.on.workflow_call.secrets).toEqual(
+      Object.fromEntries(names.map(name => [name, { required: false }]))
+    )
+    expect(caller.if).toBe("inputs.build_only != true && inputs.platform == 'linux-gui'")
+    expect(caller.with.build_only).toBeUndefined()
+    expect(workflow.on.workflow_call.inputs.build_only.default).toBe(false)
+    expect(workflow.jobs.package.environment).toBe(
+      "${{ inputs.build_only && inputs.save_cache && github.ref == 'refs/heads/main' && github.ref_protected && 'desktop-build-cache-writer' || 'desktop-build-cache-reader' }}"
+    )
+    const setup = workflow.jobs.package.steps.find(
+      (step: { name: string }) => step.name === 'Start shared Engine MBX cache'
+    )
+    for (const name of names) expect(setup.env[name]).toBe('${{ secrets.' + name + ' }}')
+    // Earlier links already forward these names; do not broaden the final link
+    // to unrelated signing, release, or telemetry secrets.
+    expect(yaml('.github/workflows/build.yml').jobs['build-platform'].secrets).toBe('inherit')
+    expect(yaml('.github/workflows/cache-warmup.yml').jobs['warmup-linux-gui'].secrets).toBe(
+      'inherit'
+    )
+  })
+
   it('does not leave empty action inputs after removing fallback', () => {
     for (const directory of ['.github/workflows', '.github/actions']) {
       for (const file of fs.readdirSync(directory, { recursive: true }) as string[]) {

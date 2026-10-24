@@ -598,6 +598,12 @@ jobs:
     permissions:
       contents: read
     uses: ./.github/workflows/package-linux-gui.yml
+    # Forward only snapshot credential names; the called job's reader
+    # environment supplies their values for this consumer route.
+    secrets:
+      BUILD_CACHE_R2_ENDPOINT: ${{ secrets.BUILD_CACHE_R2_ENDPOINT }}
+      BUILD_CACHE_R2_ACCESS_KEY_ID: ${{ secrets.BUILD_CACHE_R2_ACCESS_KEY_ID }}
+      BUILD_CACHE_R2_SECRET_ACCESS_KEY: ${{ secrets.BUILD_CACHE_R2_SECRET_ACCESS_KEY }}
     with:
       ref: ${{ inputs.branch }}
       save_cache: ${{ inputs.save_cache == true }}

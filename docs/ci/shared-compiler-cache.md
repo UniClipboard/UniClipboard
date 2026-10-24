@@ -72,7 +72,7 @@ PR、正式 sidecar 消费者与快照预热采用同一策略：**编译始终�
 
 首次接入后，在 main 运行 Cache Warmup 生成基线；工具链、依赖或快照协议变动后同样需要重新预热。在快照成功生成前，PR 使用本地冷编译。快照在成功预热时清理，长期不运行预热不会主动清理过期对象。
 
-没有匹配快照场景的 membership 与历史 file-key-store 测试也使用同一 CI 本地策略，保留全部测试命令；不新增独立预热。Linux GUI 消费作业自身绑定现有 reader environment，生产作业仅在受保护 main 的 `build_only && save_cache` 下绑定 writer；调用方未使用 `secrets: inherit` 不改变作业内环境 secret 的选择，本次不扩大传递的凭据范围。
+没有匹配快照场景的 membership 与历史 file-key-store 测试也使用同一 CI 本地策略，保留全部测试命令；不新增独立预热。Linux GUI 消费作业自身绑定现有 reader environment，生产作业仅在受保护 main 的 `build_only && save_cache` 下绑定 writer；嵌套调用仍须显式传递 secret 名称，否则环境 secret 会解析为空；`build-target.yml` 只映射三个 `BUILD_CACHE_R2_*` 名称，被调用工作流将它们声明为可选，由现有 reader 环境提供消费者值，不继承无关发布凭据。无凭据时仍本地冷编译。参见 [GitHub 可复用工作流的 secret 规则](https://docs.github.com/en/actions/how-tos/reuse-automations/reuse-workflows#using-inputs-and-secrets-in-a-reusable-workflow)。
 
 ## 正式发布 sidecar 基线
 

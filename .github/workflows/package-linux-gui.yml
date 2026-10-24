@@ -5,6 +5,13 @@ run-name: package-linux-gui-${{ github.run_number }}
 # linux-gui-acceptance.yml for PR/manual builds; release.yml explicitly disables it.
 on:
   workflow_call:
+    secrets:
+      BUILD_CACHE_R2_ENDPOINT:
+        required: false
+      BUILD_CACHE_R2_ACCESS_KEY_ID:
+        required: false
+      BUILD_CACHE_R2_SECRET_ACCESS_KEY:
+        required: false
     inputs:
       build_only:
         description: 'Protected warmup: build only the daemon dependency baseline'

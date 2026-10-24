@@ -5056,8 +5056,7 @@ checksum = "d98f6fed1fde3f8c21bc40a1abb88dd75e67924f9cffc3ef95607bad8017f8e2"
 [[package]]
 name = "iroh"
 version = "1.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "885787b892b5e2507c701f132ecbd45d2bad4bbb75157a19427087c16dadb833"
+source = "git+https://github.com/UniClipboard/iroh.git?rev=c8efae061e3daa0afc6aa6db856cfcf8576da97b#c8efae061e3daa0afc6aa6db856cfcf8576da97b"
 dependencies = [
  "backon",
  "blake3",
@@ -5106,8 +5105,7 @@ dependencies = [
 [[package]]
 name = "iroh-base"
 version = "1.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6ae9092be76c9f5429776ab3394f5a5a78dc19dc2524267e884a5b9781546c3f"
+source = "git+https://github.com/UniClipboard/iroh.git?rev=c8efae061e3daa0afc6aa6db856cfcf8576da97b#c8efae061e3daa0afc6aa6db856cfcf8576da97b"
 dependencies = [
  "curve25519-dalek 5.0.0",
  "data-encoding",
@@ -5165,8 +5163,7 @@ dependencies = [
 [[package]]
 name = "iroh-dns"
 version = "1.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "80276761b56e904e26ea71d0863beef0bb8d5ab6b639cbd1338e4b615209e3a1"
+source = "git+https://github.com/UniClipboard/iroh.git?rev=c8efae061e3daa0afc6aa6db856cfcf8576da97b#c8efae061e3daa0afc6aa6db856cfcf8576da97b"
 dependencies = [
  "arc-swap",
  "cfg_aliases",
@@ -5247,8 +5244,7 @@ dependencies = [
 [[package]]
 name = "iroh-relay"
 version = "1.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ee116a8233f84980574bb8d11e4517503080cd2c3605bafca04ee9c35d708bd9"
+source = "git+https://github.com/UniClipboard/iroh.git?rev=c8efae061e3daa0afc6aa6db856cfcf8576da97b#c8efae061e3daa0afc6aa6db856cfcf8576da97b"
 dependencies = [
  "blake3",
  "bytes",
@@ -6404,8 +6400,7 @@ dependencies = [
 [[package]]
 name = "n0-dns-resolver"
 version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "535c99c9a786bee714155d2ee4fc2477405c2c43536e1bc6a51de09a0d1448f7"
+source = "git+https://github.com/UniClipboard/n0-dns-resolver.git?rev=b15fdb6abd50714fd551b4fd93a9b5728457442d#b15fdb6abd50714fd551b4fd93a9b5728457442d"
 dependencies = [
  "derive_more 2.1.1",
  "ipconfig",
@@ -10284,8 +10279,7 @@ checksum = "e3a9fe34e3e7a50316060351f37187a3f546bce95496156754b601a5fa71b76e"
 [[package]]
 name = "simple-dns"
 version = "0.12.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2b6f884fa9a8d48101774bfbd3aeb81e968dd22cffd19a372da69f183db22c1a"
+source = "git+https://github.com/UniClipboard/simple-dns.git?rev=efdb13b9473131f7172b790b4e8497825aff2890#efdb13b9473131f7172b790b4e8497825aff2890"
 dependencies = [
  "bitflags 2.13.1",
 ]

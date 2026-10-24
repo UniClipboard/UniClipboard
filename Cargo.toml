@@ -141,3 +141,10 @@ strip = "none"
 # Use the upstream Windows font-selection fix for every GPUI consumer.
 [patch.crates-io]
 gpui = { git = "https://github.com/zed-industries/zed", rev = "ddf762e368352ae372b7631f7eebda4f5366e8bd" }
+
+# Keep the final build root aligned with Engine ADR-034; dependency patches do not propagate.
+# This revision retains the path-queue fix and carries the corrected EDNS parser.
+iroh = { git = "https://github.com/UniClipboard/iroh.git", rev = "c8efae061e3daa0afc6aa6db856cfcf8576da97b" }
+iroh-base = { git = "https://github.com/UniClipboard/iroh.git", rev = "c8efae061e3daa0afc6aa6db856cfcf8576da97b" }
+iroh-dns = { git = "https://github.com/UniClipboard/iroh.git", rev = "c8efae061e3daa0afc6aa6db856cfcf8576da97b" }
+iroh-relay = { git = "https://github.com/UniClipboard/iroh.git", rev = "c8efae061e3daa0afc6aa6db856cfcf8576da97b" }

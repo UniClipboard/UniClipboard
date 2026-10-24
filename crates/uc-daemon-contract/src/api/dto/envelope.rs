@@ -21,6 +21,7 @@ use crate::api::dto::clipboard::{
 use crate::api::dto::clipboard_command::{
     CancelEntryReceiveResponse, CancelTransferResponse, CaptureCurrentClipboardResponse,
     DispatchOutcomeResponse, EntryReceiveProgressResponse, ResendResponse, RestoreEntryResponse,
+    RetryEntryReceiveResponse,
 };
 use crate::api::dto::clipboard_delivery::EntryDeliveryViewDto;
 use crate::api::dto::config::{
@@ -102,6 +103,7 @@ use crate::api::types::{
     EntryReceiveProgressEnvelope = ApiEnvelope<Option<EntryReceiveProgressResponse>>,
     EntryReceiveProgressListEnvelope = ApiEnvelope<Vec<EntryReceiveProgressResponse>>,
     CancelEntryReceiveEnvelope = ApiEnvelope<CancelEntryReceiveResponse>,
+    RetryEntryReceiveEnvelope = ApiEnvelope<RetryEntryReceiveResponse>,
     DeviceTrustEnvelope = ApiEnvelope<DeviceTrustSnapshotDto>,
     DeviceGroupChoicesEnvelope = ApiEnvelope<DeviceGroupChoicesDto>,
     DeviceGroupChoiceResultEnvelope = ApiEnvelope<DeviceGroupChoiceResultDto>,

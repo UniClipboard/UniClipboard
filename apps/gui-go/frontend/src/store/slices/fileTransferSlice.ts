@@ -1,4 +1,6 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit'
+import { isTerminalAttemptState } from '@/lib/receive-items'
+import type { ReceiveSnapshot } from '@/lib/receive-items'
 import type { RootState } from '../index'
 
 export type TransferDirection = 'sending' | 'receiving'
@@ -41,7 +43,16 @@ interface FileTransferState {
   /** Durable entry-level transfer status keyed by entryId. Survives progress cleanup. */
   entryStatusById: Record<string, EntryTransferStatus>
   currentAttemptByEntry?: Record<string, string>
+  /** Attempts replaced by a newer one; their late events and snapshots are ignored. */
+  supersededAttemptsByEntry?: Record<string, string[]>
+  /** Latest per-item receive snapshot of an entry, as read from the daemon. */
+  receiveSnapshotByEntry?: Record<string, ReceiveSnapshot>
+  /** Attempt whose cancellation was answered `cancellation_incomplete`, by entry. */
+  cancelIncompleteByEntry?: Record<string, string>
 }
+
+/** Enough to cover several retries of one entry while bounding memory. */
+const MAX_SUPERSEDED_ATTEMPTS = 16
 
 const initialState: FileTransferState = {
   activeTransfers: {},
@@ -59,6 +70,60 @@ interface UpdateTransferProgressPayload {
   bytesTransferred: number
   totalBytes?: number | null
   eventTs?: number
+}
+
+/** Receive status shown for an attempt state; `undefined` keeps the previous status. */
+export function entryStatusForAttemptState(
+  attemptState: string
+): EntryTransferStatus['status'] | undefined {
+  if (attemptState === 'receiving' || attemptState === 'committing') return 'transferring'
+  if (attemptState === 'completed') return 'completed'
+  if (attemptState === 'cancelled') return 'cancelled'
+  if (attemptState === 'failed') return 'failed'
+  // `cancelling` and `failing` are not settled yet; the entry keeps its status.
+  return undefined
+}
+
+function isSuperseded(state: FileTransferState, entryId: string, attemptId: string): boolean {
+  return state.supersededAttemptsByEntry?.[entryId]?.includes(attemptId) ?? false
+}
+
+/** Make `attemptId` the current attempt, retiring the previous one for good. */
+function adoptAttempt(state: FileTransferState, entryId: string, attemptId: string) {
+  const current = state.currentAttemptByEntry?.[entryId]
+  if (current && current !== attemptId) {
+    const retired = ((state.supersededAttemptsByEntry ??= {})[entryId] ??= [])
+    retired.push(current)
+    if (retired.length > MAX_SUPERSEDED_ATTEMPTS) retired.shift()
+    if (state.cancelIncompleteByEntry?.[entryId] === current) {
+      delete state.cancelIncompleteByEntry[entryId]
+    }
+  }
+  ;(state.currentAttemptByEntry ??= {})[entryId] = attemptId
+}
+
+function applyAttemptState(
+  state: FileTransferState,
+  entryId: string,
+  attemptId: string,
+  attemptState: string
+) {
+  const transferId = state.entryTransferMap[entryId]
+  const transfer = transferId ? state.activeTransfers[transferId] : undefined
+  if (transfer && transfer.attemptId === attemptId) {
+    if (attemptState === 'completed') transfer.status = 'completed'
+    if (attemptState === 'failed') transfer.status = 'failed'
+    if (attemptState === 'cancelled') transfer.status = 'cancelled'
+    transfer.updatedAt = Date.now()
+  }
+  const status = entryStatusForAttemptState(attemptState)
+  if (status) state.entryStatusById[entryId] = { status, reason: null }
+  if (
+    isTerminalAttemptState(attemptState) &&
+    state.cancelIncompleteByEntry?.[entryId] === attemptId
+  ) {
+    delete state.cancelIncompleteByEntry[entryId]
+  }
 }
 
 const fileTransferSlice = createSlice({
@@ -243,6 +308,9 @@ const fileTransferSlice = createSlice({
     removeEntryTransferStatus(state, action: PayloadAction<string>) {
       delete state.entryStatusById[action.payload]
       if (state.currentAttemptByEntry) delete state.currentAttemptByEntry[action.payload]
+      if (state.supersededAttemptsByEntry) delete state.supersededAttemptsByEntry[action.payload]
+      if (state.receiveSnapshotByEntry) delete state.receiveSnapshotByEntry[action.payload]
+      if (state.cancelIncompleteByEntry) delete state.cancelIncompleteByEntry[action.payload]
     },
 
     setReceiveAttemptState(
@@ -250,28 +318,52 @@ const fileTransferSlice = createSlice({
       action: PayloadAction<{ entryId: string; attemptId: string; state: string }>
     ) {
       const { entryId, attemptId, state: attemptState } = action.payload
+      // A retired attempt never comes back, whatever its late event says.
+      if (isSuperseded(state, entryId, attemptId)) return
       const current = state.currentAttemptByEntry?.[entryId]
       if (current && current !== attemptId && attemptState !== 'receiving') return
-      ;(state.currentAttemptByEntry ??= {})[entryId] = attemptId
-      const transferId = state.entryTransferMap[entryId]
-      const transfer = transferId ? state.activeTransfers[transferId] : undefined
-      if (transfer && transfer.attemptId === attemptId) {
-        if (attemptState === 'completed') transfer.status = 'completed'
-        if (attemptState === 'failed') transfer.status = 'failed'
-        if (attemptState === 'cancelled') transfer.status = 'cancelled'
-        transfer.updatedAt = Date.now()
+      adoptAttempt(state, entryId, attemptId)
+      applyAttemptState(state, entryId, attemptId, attemptState)
+    },
+
+    /**
+     * Store a per-item snapshot read from the daemon. The snapshot is the
+     * authority for which attempt is current; events only trigger the read.
+     */
+    applyReceiveSnapshot(state, action: PayloadAction<ReceiveSnapshot>) {
+      const snapshot = action.payload
+      const { entryId, attemptId } = snapshot
+      if (isSuperseded(state, entryId, attemptId)) return
+      const stored = state.receiveSnapshotByEntry?.[entryId]
+      const settledStatus = state.entryStatusById[entryId]?.status
+      const sameAttempt = state.currentAttemptByEntry?.[entryId] === attemptId
+      // A reply that was produced before a settling event must not reopen the attempt.
+      if (
+        sameAttempt &&
+        !isTerminalAttemptState(snapshot.state) &&
+        (isTerminalAttemptState(stored?.state ?? '') ||
+          settledStatus === 'completed' ||
+          settledStatus === 'failed' ||
+          settledStatus === 'cancelled')
+      ) {
+        return
       }
-      const status =
-        attemptState === 'receiving' || attemptState === 'committing'
-          ? 'transferring'
-          : attemptState === 'completed'
-            ? 'completed'
-            : attemptState === 'cancelled'
-              ? 'cancelled'
-              : attemptState === 'failed'
-                ? 'failed'
-                : undefined
-      if (status) state.entryStatusById[entryId] = { status, reason: null }
+      adoptAttempt(state, entryId, attemptId)
+      ;(state.receiveSnapshotByEntry ??= {})[entryId] = snapshot
+      applyAttemptState(state, entryId, attemptId, snapshot.state)
+    },
+
+    /** The Engine is still releasing output or cleanup; the attempt is not cancelled yet. */
+    markReceiveCancellationIncomplete(
+      state,
+      action: PayloadAction<{ entryId: string; attemptId: string }>
+    ) {
+      const { entryId, attemptId } = action.payload
+      if (isSuperseded(state, entryId, attemptId)) return
+      const current = state.currentAttemptByEntry?.[entryId]
+      if (current && current !== attemptId) return
+      ;(state.currentAttemptByEntry ??= {})[entryId] = attemptId
+      ;(state.cancelIncompleteByEntry ??= {})[entryId] = attemptId
     },
 
     hydrateReceiveAttempts(
@@ -324,6 +416,8 @@ export const {
   hydrateEntryTransferStatuses,
   removeEntryTransferStatus,
   setReceiveAttemptState,
+  applyReceiveSnapshot,
+  markReceiveCancellationIncomplete,
   hydrateReceiveAttempts,
 } = fileTransferSlice.actions
 
@@ -335,6 +429,17 @@ export const selectTransferByEntryId = (
   const transferId = state.fileTransfer.entryTransferMap[entryId]
   if (!transferId) return undefined
   return state.fileTransfer.activeTransfers[transferId]
+}
+
+export const selectReceiveSnapshot = (
+  state: RootState,
+  entryId: string
+): ReceiveSnapshot | undefined => state.fileTransfer.receiveSnapshotByEntry?.[entryId]
+
+/** True while a cancel request was answered `cancellation_incomplete` for the current attempt. */
+export const selectReceiveCancellationIncomplete = (state: RootState, entryId: string): boolean => {
+  const attemptId = state.fileTransfer.cancelIncompleteByEntry?.[entryId]
+  return !!attemptId && state.fileTransfer.currentAttemptByEntry?.[entryId] === attemptId
 }
 
 export const selectActiveTransfers = (state: RootState): TransferProgressInfo[] => {

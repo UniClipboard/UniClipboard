@@ -4,6 +4,7 @@ import { Trans, useTranslation } from 'react-i18next'
 import { PreviewContent } from '@/components/clipboard/ClipboardPreview'
 import ClipboardSendMenu from '@/components/clipboard/ClipboardSendMenu'
 import { isLargeTextPreview } from '@/components/clipboard/preview-renderers/textPreviewUtils'
+import ReceiveItemsPanel from '@/components/clipboard/ReceiveItemsPanel'
 import TransferProgressBar from '@/components/clipboard/TransferProgressBar'
 import {
   describeSource,
@@ -318,6 +319,7 @@ const HistoryDetailPanel: React.FC<HistoryDetailPanelProps> = ({
           {tagging && item.userTagIds && (
             <HistoryDetailTags tagIds={item.userTagIds} {...tagging} />
           )}
+          {item.type === 'file' && <ReceiveItemsPanel entryId={item.id} />}
           <div
             className={cn(
               'grid shrink-0 gap-2.5',

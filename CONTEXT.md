@@ -454,6 +454,31 @@ _Avoid_: active transfer、ongoing
 把一个剪贴板 entry 名下所有 transfer 的状态聚合成一个对外状态的视图，聚合优先级
 为 `Failed > Transferring > Pending > Cancelled > Completed`。
 _Avoid_: transfer status、entry status
+逐文件的结果见 **Receive item result**；聚合状态不隐藏已保存的文件。
+
+**Receive attempt**：
+Engine 对一个 entry 发起的一次接收，由 `attemptId` 标识。新的尝试取代旧的尝试；
+旧尝试迟到的事件或回复不得覆盖新尝试。界面把事件只当作失效通知，以查询到的
+snapshot 为准。详见 `docs/architecture/receive-item-results.md`。
+_Avoid_: download session、transfer id
+
+**Receive item result**：
+一次接收尝试内某个文件（或某个目录单元）的结果：`itemId`、类型、状态和固定的失败原因。
+与上文 `_Avoid_` 中的 entry 别名 item 无关。目录始终是一个 `directory_unit`，
+整体重试；整体失败或已取消的尝试仍可含已保存的项，已保存的项不重试、不删除。
+`itemId` 不透明且绑定所属尝试，不得由文件名推导。
+_Avoid_: 把一个目录展开成成员逐个展示或重试
+
+**Selective retry**：
+用户只重试失败或已取消尝试中失败/已取消的接收项。`accepted` 只表示 Engine 接纳了新的
+**Receive attempt**，文件要等之后的查询显示已保存才算成功；`source_unavailable`
+（例如重启后）按实际结果呈现。不同于发送端的重发（resend）。
+_Avoid_: 客户端自建重试循环、resend
+
+**Cancellation incomplete**：
+Engine 已收到取消请求，但输出或清理尚未释放完毕，尝试还没有真正结束。它不是已取消：
+界面必须显示为仍在停止，直到该尝试进入终态。
+_Avoid_: cancelled
 
 **Timeout sweep**：
 周期任务，找出超过时限的 in-flight transfer 并逐条终结（transferring 行需先拆掉

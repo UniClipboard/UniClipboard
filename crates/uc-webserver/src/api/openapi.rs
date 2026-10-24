@@ -111,8 +111,8 @@ use uc_daemon_contract::api::dto::clipboard_command::{
     CancelEntryReceiveRequest, CancelEntryReceiveResponse, CancelTransferRequest,
     CancelTransferResponse, CaptureCurrentClipboardResponse, DispatchFileOutcomeResponse,
     DispatchFileRequest, DispatchOutcomeResponse, DispatchTextRequest,
-    EntryReceiveProgressResponse, PerTargetOutcomeDto, ResendRequest, ResendResponse,
-    RestoreEntryResponse,
+    EntryReceiveProgressResponse, PerTargetOutcomeDto, ReceiveItemResponse, ResendRequest,
+    ResendResponse, RestoreEntryResponse, RetryEntryReceiveRequest, RetryEntryReceiveResponse,
 };
 use uc_daemon_contract::api::dto::clipboard_delivery::{
     DeliveryFailureReasonDto, EntryDeliveryStatusDto, EntryDeliveryTargetDto, EntryDeliveryViewDto,
@@ -143,14 +143,15 @@ use uc_daemon_contract::api::dto::envelope::{
     PeerSnapshotListEnvelope, PresenceRefreshEnvelope, PreviewImportEnvelope,
     ProfileRecoveryEnvelope, RegisterMobileDeviceEnvelope, RelayCredentialStatusEnvelope,
     RelayOverviewEnvelope, RelayProbeOutcomeEnvelope, RelaySaveResultEnvelope, ResendEnvelope,
-    RestartAcceptedEnvelope, RestoreEntryEnvelope, RotateMobilePasswordEnvelope,
-    SearchCountEnvelope, SearchQueryEnvelope, SearchRebuildEnvelope, SearchStatusEnvelope,
-    SearchTagsEnvelope, SessionTokenEnvelope, SettingsEnvelope, SettingsUpdateResultEnvelope,
-    SetupCancelJoinEnvelope, SetupInitializeEnvelope, SetupIssueInvitationEnvelope,
-    SetupRedeemEnvelope, SetupStateEnvelope, SetupSwitchSpaceEnvelope, SpaceMemberListEnvelope,
-    SpaceProtectionEnvelope, StatusEnvelope, StorageStatsEnvelope, ToggleFavoriteEnvelope,
-    UnlockSpaceEnvelope, UpdateDebugModeEnvelope, UpdateMobileDeviceEnvelope,
-    UpdateMobileSyncSettingsEnvelope, UpgradeBackupListEnvelope, UpgradeStatusEnvelope,
+    RestartAcceptedEnvelope, RestoreEntryEnvelope, RetryEntryReceiveEnvelope,
+    RotateMobilePasswordEnvelope, SearchCountEnvelope, SearchQueryEnvelope, SearchRebuildEnvelope,
+    SearchStatusEnvelope, SearchTagsEnvelope, SessionTokenEnvelope, SettingsEnvelope,
+    SettingsUpdateResultEnvelope, SetupCancelJoinEnvelope, SetupInitializeEnvelope,
+    SetupIssueInvitationEnvelope, SetupRedeemEnvelope, SetupStateEnvelope,
+    SetupSwitchSpaceEnvelope, SpaceMemberListEnvelope, SpaceProtectionEnvelope, StatusEnvelope,
+    StorageStatsEnvelope, ToggleFavoriteEnvelope, UnlockSpaceEnvelope, UpdateDebugModeEnvelope,
+    UpdateMobileDeviceEnvelope, UpdateMobileSyncSettingsEnvelope, UpgradeBackupListEnvelope,
+    UpgradeStatusEnvelope,
 };
 use uc_daemon_contract::api::dto::storage::{
     ClearCacheRequest, ClearCacheResponse, DeleteUpgradeBackupRequest, DeleteUpgradeBackupResponse,
@@ -215,6 +216,7 @@ impl Modify for ContractMeta {
         crate::api::clipboard::get_entry_receive_progress,
         crate::api::clipboard::list_entry_receive_progress,
         crate::api::clipboard::cancel_entry_receive,
+        crate::api::clipboard::retry_entry_receive,
         crate::api::routes::restore_clipboard_entry_handler,
         crate::api::routes::capture_current_clipboard_handler,
         // ── clipboard binary (octet-stream, doc-only) ──────────────
@@ -353,6 +355,7 @@ impl Modify for ContractMeta {
             EntryReceiveProgressEnvelope,
             EntryReceiveProgressListEnvelope,
             CancelEntryReceiveEnvelope,
+            RetryEntryReceiveEnvelope,
             // ── clipboard: payload + request DTOs ──────────────────
             EntryProjectionResponseDto,
             EntryDetailDto,
@@ -373,6 +376,9 @@ impl Modify for ContractMeta {
             EntryReceiveProgressResponse,
             CancelEntryReceiveRequest,
             CancelEntryReceiveResponse,
+            ReceiveItemResponse,
+            RetryEntryReceiveRequest,
+            RetryEntryReceiveResponse,
             // ── clipboard: delivery view (ADR-008 P3-1) ────────────
             EntryDeliveryViewDto,
             EntrySourceDto,
@@ -875,6 +881,7 @@ mod assembly_smoke_tests {
         // Local history tags add six paths and eight operations: 95 / 107.
         // The tag layout adds four paths and four operations: 99 / 111.
         // The network-library log status adds one path and one operation: 100 / 112.
+        // The selective receive retry adds one path and one operation: 102 / 114.
         const HTTP_METHODS: [&str; 7] =
             ["get", "put", "post", "delete", "patch", "head", "options"];
         let paths = value
@@ -883,8 +890,8 @@ mod assembly_smoke_tests {
             .expect("OpenAPI doc must declare paths");
         assert_eq!(
             paths.len(),
-            101,
-            "expected exactly 101 path templates, found {}: {:?}",
+            102,
+            "expected exactly 102 path templates, found {}: {:?}",
             paths.len(),
             paths.keys().collect::<Vec<_>>()
         );
@@ -898,8 +905,8 @@ mod assembly_smoke_tests {
             })
             .sum();
         assert_eq!(
-            operation_count, 113,
-            "expected exactly 113 operations across all paths, found {operation_count}"
+            operation_count, 114,
+            "expected exactly 114 operations across all paths, found {operation_count}"
         );
 
         // A few frozen operationIds (§D) must be present somewhere in the doc.
@@ -917,6 +924,7 @@ mod assembly_smoke_tests {
             "listEntryReceiveProgress",
             "getEntryReceiveProgress",
             "cancelEntryReceive",
+            "retryEntryReceive",
             "getSpaceProtection",
             "getDeviceGroupChoices",
             "chooseDeviceGroup",

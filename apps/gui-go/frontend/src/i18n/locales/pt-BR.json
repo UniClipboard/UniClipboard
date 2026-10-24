@@ -1578,6 +1578,49 @@
       "syncFailed": "Falha na sincronização do arquivo",
       "syncFailedDetail": "Falha ao sincronizar o arquivo: {{reason}}"
     },
+    "receive": {
+      "failedCount": "{{count}} com falha",
+      "cancelledCount": "{{count}} cancelados",
+      "details": "Detalhes do recebimento",
+      "unlinkedDetails": "Estes números identificam registros de recebimento, não a ordem dos arquivos acima.",
+      "title": "Arquivos recebidos",
+      "summary": "{{saved}} de {{total}} salvos",
+      "cancelIncomplete": "Parando. Os arquivos já salvos continuam salvos; só aparecerá como cancelado quando terminar.",
+      "kind": {
+        "file": "Arquivo",
+        "representation": "Conteúdo",
+        "directory_unit": "Pasta",
+        "unknown": "Item"
+      },
+      "state": {
+        "pending": "Aguardando",
+        "transferring": "Recebendo",
+        "completed": "Salvo",
+        "failed": "Falhou",
+        "cancelled": "Cancelado",
+        "unknown": "Desconhecido"
+      },
+      "reason": {
+        "network_unavailable": "rede indisponível",
+        "timed_out": "tempo esgotado",
+        "access_denied": "acesso negado",
+        "storage_unavailable": "armazenamento indisponível",
+        "integrity_check_failed": "falha na verificação",
+        "interrupted": "interrompido",
+        "unknown": "motivo desconhecido"
+      },
+      "retry": {
+        "action": "Tentar novamente os que falharam",
+        "accepted": "Nova tentativa iniciada. Um arquivo só conta como salvo quando termina.",
+        "alreadyReceiving": "Este item já está sendo recebido.",
+        "superseded": "Uma tentativa mais nova substituiu esta. A lista foi atualizada.",
+        "cancellationIncomplete": "A tentativa anterior ainda está parando. Tente novamente em instantes.",
+        "sourceUnavailable": "A cópia do remetente não está mais disponível. Envie novamente pelo outro dispositivo.",
+        "accessDenied": "O acesso foi negado, então não é possível tentar novamente.",
+        "unknown": "Não foi possível iniciar a nova tentativa.",
+        "failed": "A solicitação de nova tentativa falhou."
+      }
+    },
     "transfer": {
       "sending": "Enviando",
       "receiving": "Recebendo",

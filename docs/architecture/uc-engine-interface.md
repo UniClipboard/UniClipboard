@@ -119,6 +119,7 @@ Running|Quiescing|Quiesced|Suspended -> ShuttingDown -> Stopped
 | `QueryEntryReceiveProgress`     | 查询指定远端接收任务的当前聚合进度                                                               |
 | `ListEntryReceiveProgress`      | 列出全部尚未结束的远端接收任务进度                                                               |
 | `CancelEntryReceive`            | 按记录和尝试编号取消一次远端接收任务                                                             |
+| `RetryEntryReceive`             | 按记录、预期尝试编号和当前查询得到的项目编号，只重试失败或已取消的接收项                         |
 | `CancelInboundTransfer`         | 按传输编号和稳定原因取消一次正在进行的文件接收                                                   |
 | `CaptureCurrentClipboard`       | 立即读取系统剪贴板并按正常捕获流程保存                                                           |
 | `RestoreClipboard`              | 以普通、纯文本或文件路径模式把指定历史记录恢复到系统剪贴板                                       |
@@ -170,9 +171,11 @@ LAN 内容读写复用核心现有的加密历史、系统剪贴板写入、内�
 
 `QueryEntryDelivery` 由核心合并记录来源、当前可信设备集合和已发生的投递事实。来源明确区分本机、远端和无法追溯的历史记录；每个目标明确区分待处理、已送达、重复、不可达和失败。正常结果可以携带设备显示名和失败补充说明供界面展示，但这些内容不得进入调试输出或日志。记录不存在返回 `NotFound`，存储失败只返回脱敏错误。
 
-接收进度只包含记录编号、尝试编号、稳定状态、字节数和项目数，不包含文件名、路径或内容。`QueryEntryReceiveProgress` 在没有活动任务时返回空结果；`ListEntryReceiveProgress` 只返回尚未进入终态的任务。
+接收进度包含记录编号、尝试编号、稳定状态、字节数、项目数和逐项结果（项目编号、类型、状态、固定失败原因），不包含文件名、路径或内容。整体尝试失败或取消时仍可含已保存的项目；目录始终是一个 `directory_unit` 项目。`QueryEntryReceiveProgress` 在没有活动任务时返回空结果；`ListEntryReceiveProgress` 只返回尚未进入终态的任务。
 
-`CancelEntryReceive` 使用记录编号和尝试编号防止过期请求误取消新任务，并明确区分已请求取消、已取消、未在接收、已经太晚、已经结束和已被新尝试取代。`CancelInboundTransfer` 是幂等操作：真实撤销返回 `Cancelled`，没有活动传输或重复取消返回 `NotInflight`。取消原因使用核心稳定枚举，宿主不得传入底层网络或文件系统错误。
+`CancelEntryReceive` 使用记录编号和尝试编号防止过期请求误取消新任务，并明确区分已取消、取消未完成（`CancellationIncomplete`，输出或清理仍在释放，宿主不得显示为已取消）、未在接收、已经太晚、已经结束和已被新尝试取代。`CancelInboundTransfer` 同样可返回取消未完成。`CancelInboundTransfer` 是幂等操作：真实撤销返回 `Cancelled`，没有活动传输或重复取消返回 `NotInflight`。取消原因使用核心稳定枚举，宿主不得传入底层网络或文件系统错误。
+
+`RetryEntryReceive` 的结果是 `Accepted`（只表示接纳了新尝试，保存成功以后续查询为准）、`AlreadyReceiving`、`Superseded`、`CancellationIncomplete` 和 `Unavailable`（原因 `source_unavailable` 或 `access_denied`）。空选择与无效编号返回输入错误。调度、重试与持久化全部在核心内；宿主只传递选择，详见 `docs/architecture/receive-item-results.md`。
 
 `CaptureCurrentClipboard` 通过宿主剪贴板能力读取当前内容，并复用正常捕获、去重、加密历史和搜索更新流程。成功时返回记录编号；当前没有可捕获内容时返回空记录编号，这不是错误。宿主不得自行读取内容后绕过核心保存。
 

@@ -73,7 +73,7 @@ impl PreviewSnapshot {
             && self
                 .item
                 .as_ref()
-                .is_some_and(|item| item.content_type == "image")
+                .is_some_and(quick_panel_core::content::has_image_preview)
     }
 }
 

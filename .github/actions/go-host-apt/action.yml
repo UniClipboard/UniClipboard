@@ -1,0 +1,43 @@
+name: Go host apt downloads
+description: Resolve GTK4 dependencies with fresh apt indexes and cache only verified deb downloads.
+inputs:
+  download-only:
+    description: Warm downloads without installing packages.
+    default: 'false'
+  save:
+    description: Save downloads from protected main only.
+    default: 'false'
+runs:
+  using: composite
+  steps:
+    - name: Resolve current apt downloads
+      id: plan
+      shell: bash
+      run: python3 scripts/ci/go-host-apt.py prepare
+    - name: Restore apt downloads
+      id: cache
+      uses: actions/cache/restore@v4
+      with:
+        path: ${{ steps.plan.outputs.archives }}/*.deb
+        key: ${{ steps.plan.outputs.key }}
+    - name: Verify and install apt downloads
+      shell: bash
+      env:
+        DOWNLOAD_ONLY: ${{ inputs.download-only }}
+      run: |
+        if [[ "$DOWNLOAD_ONLY" == true ]]; then
+          python3 scripts/ci/go-host-apt.py download
+        else
+          python3 scripts/ci/go-host-apt.py install
+        fi
+    # PRs never publish cache entries. GitHub's ref scope prevents main from
+    # restoring a PR cache; this action is not used in pull_request_target jobs.
+    - name: Save apt downloads
+      if: >-
+        inputs.save == 'true' && steps.cache.outputs.cache-hit != 'true' &&
+        github.ref == 'refs/heads/main' && github.ref_protected &&
+        (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+      uses: actions/cache/save@v4
+      with:
+        path: ${{ steps.plan.outputs.archives }}/*.deb
+        key: ${{ steps.plan.outputs.key }}

@@ -48,7 +48,7 @@ Wails 版本与 Go 工具链只在 `apps/gui-go/go.mod` 中固定一处，生成
 
 此区块由 `go run ./cmd/hostcontract docs` 从 Go 源码生成（命令来自 `*HostService` 的导出方法及其 `//uc:` 指令，事件来自 `apps/gui-go/host_events.go`），请勿手改。
 
-### 命令（67 个）
+### 命令（66 个）
 
 | 命令 | Go 方法 | 参数 | 结果 | 错误族 / 错误码 | macOS | Windows | Linux | 来源 / 说明 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -111,7 +111,6 @@ Wails 版本与 Go 工具链只在 `apps/gui-go/go.mod` 中固定一处，生成
 | `set_visual_effects_mode` | `SetVisualEffectsMode` | `mode EffectsMode` | `EffectsSnapshot` | command: ValidationError | 真实 | 真实 | 真实 | 契约命令；SetVisualEffectsMode applies immediately, then saves without rolling back on disk errors. |
 | `set_window_decorations` | `SetWindowDecorations` | `decorations bool` | `-` | none | 有意空操作 | 真实 | 真实 | 适配器：`@/host/window`；SetWindowDecorations applies the page's frame preference (custom controls drawn by the page, or the system frame) to the main window. |
 | `set_window_zoom` | `SetWindowZoom` | `scale float64` | `-` | command: ValidationError, NotFound, InternalError | 真实 | 真实 | 真实 | 适配器：`@/host/webview`；SetWindowZoom changes the calling WebView's native zoom. |
-| `show_content_unlock` | `ShowContentUnlock` | - | `-` | none | 真实 | 真实 | 真实 | 契约命令；ShowContentUnlock brings the main window forward so the user can unlock content. |
 | `skip_version` | `SkipVersion` | `version string` | `-` | text | 真实 | 真实 | 真实 | 契约命令；SkipVersion remembers that the user does not want the given version on the current channel. |
 | `take_pending_navigation` | `TakePendingNavigation` | - | `*string` | none | 真实 | 真实 | 真实 | 契约命令；TakePendingNavigation returns, once, the route a tray or second launch asked the page to open. |
 | `type_file_paths_to_previous_app` | `TypeFilePathsToPreviousApp` | `request FilePathInputRequest` | `-` | text | 不支持 | 真实 | 真实 | 契约命令；TypeFilePathsToPreviousApp types file paths, one per line, into the previously focused application. |

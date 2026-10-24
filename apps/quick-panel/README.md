@@ -116,15 +116,27 @@ macOS 构建需要包含 Metal 编译工具的 Xcode。如默认版本缺少组�
 
 ## 发行与默认行为
 
+### 内容授权生命周期
+
+点击主面板和预览窗口之外的其他窗口会收起面板。显示防抖期或粘贴宽限期内发生的失焦会在期满后复查，不丢弃通知；系统密钥授权期间暂缓收起，授权结束后同样复查焦点。
+
+GPUI 面板锁定时默认显示“解锁”按钮，不显示口令输入框。点击按钮或按回车后，通过 daemon 的 `/content-lock/unlock-keyring` 尝试系统安全存储；成功后直接刷新面板历史，没有可用密钥、用户拒绝授权或请求失败时才显示口令输入框。等待系统授权期间按钮禁用，系统弹窗造成的失焦不会关闭面板。重新唤出锁定面板后恢复按钮入口，不自动读取系统安全存储。
+
+内容展示授权属于 daemon 会话，只保存在内存中，不绑定解锁请求的客户端 PID。主窗口与 GPUI 面板共享授权；关闭主窗口、进入轻量模式以及客户端退出、崩溃或重启均不撤销授权。显式调用 `/content-lock/revoke` 后所有界面一起锁定，后台捕获与同步继续。
+
+完整退出应用会停止 daemon 并销毁授权。daemon 重启后按 `security.auto_unlock_enabled` 重新判断；进入资料恢复流程或失去初始化状态会重置授权，加密会话不可用时禁止展示内容。该规则不依赖系统托盘是否可用，适用于所有桌面平台。
+
 - **默认启用（macOS 与 Windows）**：GUI 启动时选择原生面板，环境变量 `UC_GPUI_QUICK_PANEL=0` 可关回 WebView 面板，`=1` 在 Linux 上显式启用。找不到助手可执行文件时自动退回 WebView 面板。
 - **打包**：`node scripts/stage-daemon.mjs` 在 macOS 与 Windows 上除 `uniclipd` 外还构建并暂存快捷面板辅助程序。macOS 由 `apps/gui-go/build.sh` 放入应用包，安装后位于 `Contents/MacOS/`；Windows 由 `apps/gui-go/e2e/package_windows.py`（`--helper`）放入 NSIS 安装包和便携 zip，与 `UniClipboard.exe` 同目录，和 `uniclipd.exe` 一样先核对 `sidecar-provenance.json`、再经 Authenticode 签名（安装器的 `installer-hooks.nsh` 在覆盖和卸载前一并结束它）。
-- **内容锁（daemon 侧）**：授权由 daemon 持有（`crates/uc-webserver/src/api/content_lock.rs`），只存在内存里。`可读 = 授权 && 已初始化 && 会话就绪 && 后台就绪`，每次请求现算。声明类型为 `gui`（主窗口）和 `helper`（本面板）的会话，在未授权时读历史相关路由一律得到 423 `content_locked`，读写都一样；CLI 与其他客户端语义不变。路由分类集中在一张表里，并由测试遍历 OpenAPI 全部路径，新增路由不分类就测试失败，未分类的路由按内容处理。WS 上 `clipboard` 与 `file-transfer` 主题的事件在锁定期间不发给这类连接；`content-lock` 主题的 `content_lock.changed` 通知变化。授权在 daemon 重启、授权者进程退出（GUI 崩溃）、会话丢失或恢复流程时失效；首次读取时按 `security.auto_unlock_enabled` 播种。撤销授权不会锁定加密会话，后台同步与捕获照常。助手一直运行：锁定时显示锁定页，收到锁定通知或 423 时立即丢弃内存中的条目、缩略图、预览、操作列表以及标签与设备名，正在进行的搜索结果作废；解锁通知到达后自行刷新。**边界**：daemon 信任持有其令牌的同一操作系统用户，客户端类型由调用方在 `/auth/connect` 时声明，所以这是对 GUI 界面的锁，不是对声称自己是 CLI 的本地进程的防线。
+- **内容锁（daemon 侧）**：授权由 daemon 持有（`crates/uc-webserver/src/api/content_lock.rs`），只存在内存里。`可读 = 授权 && 已初始化 && 会话就绪 && 后台就绪`，每次请求现算。声明类型为 `gui`（主窗口）和 `helper`（本面板）的会话，在未授权时读历史相关路由一律得到 423 `content_locked`，读写都一样；CLI 与其他客户端语义不变。路由分类集中在一张表里，并由测试遍历 OpenAPI 全部路径，新增路由不分类就测试失败，未分类的路由按内容处理。WS 上 `clipboard` 与 `file-transfer` 主题的事件在锁定期间不发给这类连接；`content-lock` 主题的 `content_lock.changed` 通知变化。授权生命周期见上文“内容授权生命周期”。撤销授权不会锁定加密会话，后台同步与捕获照常。助手一直运行：锁定时显示锁定页，收到锁定通知或 423 时立即丢弃内存中的条目、缩略图、预览、操作列表以及标签与设备名，正在进行的搜索结果作废；解锁通知到达后自行刷新。**边界**：daemon 信任持有其令牌的同一操作系统用户，客户端类型由调用方在 `/auth/connect` 时声明，所以这是对 GUI 界面的锁，不是对声称自己是 CLI 的本地进程的防线。
 - **主窗口关闭**：WebView 随窗口销毁，应用留在托盘，助手继续运行，占用很低。
-- **交付检查**：`python3 apps/quick-panel/tests/delivery_check.py <UniClipboard.app> [输出目录]` 在打包产物上用全新 profile、不设 `UC_GPUI_QUICK_PANEL` 复现首次安装，检查包内含助手、默认启动、未初始化与锁定时 daemon 拒绝 GUI 类客户端、锁定与解锁后内容是否提供、GUI 崩溃后不遗留助手、重启后未授权且 GUI 解锁按钮可授权、关闭主窗口后托盘与助手保留、`=0` 关闭。内容锁本身的验证见 `tests/content_lock_check.py`：真实 GUI、daemon 与助手，覆盖全部内容路由的读与写、WS、错误与正确口令、多客户端通知、撤销、在途请求、面板丢弃与刷新、GUI 崩溃与重启、关闭主窗口，`--baseline` 对旧包复现“GUI 已锁定仍可读历史”。需要唤醒的显示器且期间不动键鼠，结果写入 `results.txt`，不删除任何 profile 或日志。
+- **交付检查**：`python3 apps/quick-panel/tests/delivery_check.py <UniClipboard.app> [输出目录]` 在打包产物上用全新 profile、不设 `UC_GPUI_QUICK_PANEL` 复现首次安装，检查包内含助手、默认启动、未初始化与锁定时 daemon 拒绝 GUI 类客户端、锁定与解锁后内容是否提供、GUI 崩溃后不遗留助手、显式撤销后重启仍未授权且 GUI 解锁按钮可授权、关闭主窗口后托盘与助手保留、`=0` 关闭。内容锁本身的验证见 `tests/content_lock_check.py`：真实 GUI、daemon 与助手，覆盖全部内容路由的读与写、WS、错误与正确口令、多客户端通知、撤销、在途请求、面板丢弃与刷新、GUI 崩溃与重启、关闭主窗口，`--baseline` 对旧包复现“GUI 已锁定仍可读历史”。需要唤醒的显示器且期间不动键鼠，结果写入 `results.txt`，不删除任何 profile 或日志。
 
 ## Windows
 
 平台层在 `apps/quick-panel/src/platform/win32/`，只用 `windows` crate（与 GPUI 同一个）。能力声明：自动粘贴、跟随光标定位、在资源管理器中显示均可用；没有异形预览窗，预览是普通矩形窗口，不绘制箭头、不预留箭头区域。主面板与预览窗在显示前禁用 DWM 非客户区绘制，由 GPUI 独占背景、圆角与边框的绘制，避免系统外框和内容轮廓重叠；系统外框阴影也随之禁用。macOS 保留带箭头的预览与原生轮廓遮罩。
+
+- **失焦收起**：Windows 使用 `SetWinEventHook(EVENT_SYSTEM_FOREGROUND)` 监听桌面前台窗口变化，通过 GPUI 事件通道延迟复查；实际焦点以 `GetForegroundWindow` 与面板、预览窗口句柄比较为准，不依赖 GPUI 的活动状态缓存。监听器随进程生命周期释放，不使用轮询或鼠标钩子。
 
 - **窗口**：GPUI `PopUp` 窗口；显示用 `SetWindowPos(HWND_TOPMOST)`，随后用 `AttachThreadInput` + `SetForegroundWindow` 取得前台（热键和修饰键双击不带输入事件，直接调用会被系统拒绝，做法与 `apps/gui-go/previous_app_windows.go` 相同）。预览窗带 `WS_EX_NOACTIVATE`，显示与缩放都不激活，所以面板保持活动窗口，焦点离开两窗才收起。
 - **原生调用必须延后**：`ShowWindow`、`SetWindowPos`、`SetForegroundWindow` 会同步投递窗口消息，GPUI 在处理它们时再借用正在更新的窗口状态，表现为 `RefCell already borrowed`、丢失激活通知、搜索框拿不到键盘。`platform/win32` 一律在当前更新结束后经前台执行器执行。
@@ -149,7 +161,7 @@ macOS 构建需要包含 Metal 编译工具的 Xcode。如默认版本缺少组�
 - 上下键、Control+N/P、前十项数字快捷键；中文输入法组合状态不被列表按键接管。
 - 回车／点击粘贴，Shift+ 回车（或 Shift+ 点击）纯文本，Command+ 回车粘贴并保持面板；Command+O 打开链接或文件（图片不支持，避免把解密内容写入临时文件）；Command+Backspace 清空搜索与筛选（Windows 的 Ctrl+Backspace 待阶段 3 处理，目前仍是输入框的删词）；搜索框无选中文字时 Command+C 复制并收起；空查询 Command+V 粘贴。
 - Command+K（或右键）在预览卫星窗中列出操作：粘贴、纯文本、保持面板、只复制、粘贴文件路径、打开、在文件夹中显示、发送到设备、收藏、删除；上下键选择，回车执行，Esc 返回。右键菜单已移除。尚未提供：在主窗口中显示、设置（需要助手进程通知 GUI 的通道）、钉住面板。
-- 列表区的状态页：首次使用（显示唤起键）、已锁定（输入口令回车解锁）、后台未连接（每 3 秒自动重连并显示次数，回车立即重连，Command+L 打开日志目录）、无结果（列出放宽条件及各自条数，上下键选择，回车应用）。已锁定时整个窗口换成独立的解锁页（`ui/lock_page.rs`，自己的遮蔽口令框 `Panel::passphrase`，没有搜索行、筛选条、列表和页脚；状态机里由 `Ctx::passphrase` 与 `Event::PassphraseChanged` 传递，搜索框内容与搜索条件原样保留，搜索页的方向键、Tab、退格、复制等按键在解锁页一律不处理，Esc 先清口令再关闭，Command+Shift+O 与 Command+, 仍可用），在 daemon 第一次回答“是否锁定”之前（`lock_known` 为假且正在搜索）窗口只画空白卡片，既不画搜索页也不画解锁页，避免先闪一帧错误的页面；连不上 daemon 时不视为已知，照常显示未连接页。输入口令后回车由助手向 daemon 的 `POST /content-lock/unlock` 校验；成功后授权记在助手进程名下（daemon 把授权者进程退出视为撤销，助手重启即重新锁定，主窗口随之也看到锁定），错误口令清空口令框，超时或断线保留输入。口令只在内存里，由 `Secret` 包装，调试输出不显示，也不写日志。面板仍每 3 秒静默重试，以便在别处解锁时跟上。未初始化（尚未完成设置）与密钥无法读取时提示去主窗口处理。Command+Shift+O 打开主窗口，Command+, 打开设置（也在 Command+K 列表里）。这些请求由助手在标准输出写一行 JSON（`{"request":"show_main_window"}`），GUI 的监督端读取并执行；未由 GUI 启动时拒绝并提示。「在主窗口中显示」目前只是打开主窗口，不定位到该条记录。
+- 列表区的状态页：首次使用（显示唤起键）、已锁定（先点击解锁尝试系统安全存储，不可用时输入口令）、后台未连接（每 3 秒自动重连并显示次数，回车立即重连，Command+L 打开日志目录）、无结果（列出放宽条件及各自条数，上下键选择，回车应用）。已锁定时整个窗口换成独立的解锁页（`ui/lock_page.rs`，按需显示的遮蔽口令框 `Panel::passphrase`，没有搜索行、筛选条、列表和页脚；状态机里由 `Ctx::passphrase` 与 `Event::PassphraseChanged` 传递，搜索框内容与搜索条件原样保留，搜索页的方向键、Tab、退格、复制等按键在解锁页一律不处理，Esc 先清口令再关闭，Command+Shift+O 与 Command+, 仍可用），在 daemon 第一次回答“是否锁定”之前（`lock_known` 为假且正在搜索）窗口只画空白卡片，既不画搜索页也不画解锁页，避免先闪一帧错误的页面；连不上 daemon 时不视为已知，照常显示未连接页。输入口令后回车由助手向 daemon 的 `POST /content-lock/unlock` 校验；成功后授权由 daemon 会话持有，主窗口与面板共享；助手重启不会撤销授权，错误口令清空口令框，超时或断线保留输入。口令只在内存里，由 `Secret` 包装，调试输出不显示，也不写日志。面板仍每 3 秒静默重试，以便在别处解锁时跟上。未初始化（尚未完成设置）与密钥无法读取时提示去主窗口处理。Command+Shift+O 打开主窗口，Command+, 打开设置（也在 Command+K 列表里）。这些请求由助手在标准输出写一行 JSON（`{"request":"show_main_window"}`），GUI 的监督端读取并执行；未由 GUI 启动时拒绝并提示。「在主窗口中显示」目前只是打开主窗口，不定位到该条记录。
 - 图片缩略图与 3×3 图片九宫格（方向键二维移动、⌘1–9 直选、按行滚动）、文字／图片／文件预览、后台变更订阅。
 - 界面语言与主窗口一致：已设置 `general.language` 时用它，未设置时跟随系统语言，均经 `crates/quick-panel-core/src/language.rs` 的 `Language::for_locale` 归一到主窗口支持的六种语言（简体中文、繁体中文、英文、日文、俄文、巴西葡萄牙文），无对应语言包时为英文。文案位于 `crates/quick-panel-core/src/text/`，每种语言一个文件，缺少字段即编译失败。语言在每次唤起读取设置后生效；唤起时重置的条件、菜单与提示随之更新，但设置返回前的首帧仍为上一语言。设置与标签、设备分开读取：内容锁定时后台拒绝标签与设备，但设置照常读取，锁定页同样使用所配置的语言。拼音首字母建议只在中文界面启用。
 - 现有主题预设和自定义颜色；字体使用系统字体（正文为系统界面字体，等宽在 macOS 为 Menlo、其他平台为 Consolas），不打包字体文件。

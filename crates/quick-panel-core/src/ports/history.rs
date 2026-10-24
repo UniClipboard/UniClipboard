@@ -206,6 +206,9 @@ pub trait HistoryService: Send + Sync {
     /// Checks the passphrase with the daemon and, when it is right, lets this panel show content.
     async fn unlock(&self, passphrase: Secret) -> Result<(), UnlockFailure>;
 
+    /// Tries the system secure store after an explicit user action. False requests a passphrase.
+    async fn unlock_from_keyring(&self) -> Result<bool, UnlockFailure>;
+
     /// Forwards live changes to `send` until it is closed or the stream ends. A lock waits for
     /// room in the channel instead of being dropped.
     async fn watch(&self, send: tokio::sync::mpsc::Sender<Live>);

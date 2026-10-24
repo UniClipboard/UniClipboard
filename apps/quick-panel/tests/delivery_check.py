@@ -310,8 +310,12 @@ def main():
     check("no helper is left after a GUI crash", bool(helper) and bool(wait_for(lambda: not alive(helper), 10)), f"pid {helper}")
     check("daemon survives a GUI crash (by design)", alive(daemon_pid))
 
-    # 6. GUI restart: the GUI grant starts closed (auto unlock is off), so the helper runs but
-    #    is refused content until the user unlocks in the GUI with the real Unlock button.
+    # The grant survives client exit. Explicit revoke, rather than PID death, closes it.
+    time.sleep(3)
+    check("client exit keeps the daemon session grant", p.api("GET", "/search/query?query=&limit=1", client_type="gui")[0] == 200)
+    check("explicit revoke succeeds", p.api("POST", "/content-lock/revoke")[0] == 200)
+
+    # 6. GUI restart after explicit revocation stays locked until the user unlocks.
     gui = p.start()
     time.sleep(25)
     wait_for(lambda: "UniClipboard - ID" in sh(PEEKABOO, "list", "windows", "--pid", str(gui), "--no-remote"), 30)

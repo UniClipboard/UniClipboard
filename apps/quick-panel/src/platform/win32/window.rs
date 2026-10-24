@@ -29,6 +29,12 @@ fn hwnd_of(window: &gpui::Window, closed: PlatformError) -> Result<HWND, Platfor
     Ok(HWND(handle.hwnd.get() as *mut _))
 }
 
+/// Reads the desktop foreground window instead of GPUI's cached activation state.
+pub fn window_is_active(window: &gpui::Window) -> bool {
+    hwnd_of(window, PlatformError::PanelWindowInaccessible)
+        .is_ok_and(|hwnd| hwnd == focus::foreground())
+}
+
 /// GPUI owns the visible contour; DWM must not draw or clip a second rectangular frame.
 fn configure_content_contour(hwnd: HWND) {
     // Disabling only the Windows 11 border color leaves the non-client top edge and shadow.

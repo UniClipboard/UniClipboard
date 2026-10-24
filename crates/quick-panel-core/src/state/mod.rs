@@ -125,6 +125,7 @@ pub enum Effect {
     ClearPassphrase,
     /// Checks the passphrase with the daemon and reports [`Event::UnlockDone`].
     Unlock(Secret),
+    UnlockFromKeyring,
     ScheduleReconnect(Duration),
     CancelReconnect,
     LoadOptions,
@@ -195,7 +196,9 @@ pub enum Event {
     ReconnectDue,
     /// The passphrase box changed.
     PassphraseChanged,
+    UnlockRequested,
     UnlockDone(Result<(), UnlockFailure>),
+    KeyringUnlockDone(Result<bool, UnlockFailure>),
     PreviewDue {
         id: String,
         kind: String,
@@ -245,6 +248,7 @@ pub struct Session {
     pub message: Option<String>,
     /// Where entering the passphrase on the locked page stands.
     pub unlock: UnlockStatus,
+    pub needs_passphrase: bool,
 }
 
 /// The passphrase check on the locked page.
@@ -253,6 +257,7 @@ pub enum UnlockStatus {
     Idle,
     /// The daemon is checking; input is ignored meanwhile.
     Checking,
+    CheckingKeyring,
     Failed(UnlockFailure),
 }
 
@@ -327,6 +332,7 @@ impl PanelState {
                 busy: false,
                 message: None,
                 unlock: UnlockStatus::Idle,
+                needs_passphrase: false,
             },
             search: Search {
                 filters: Filters::default(),
@@ -428,6 +434,8 @@ impl PanelState {
                 }
                 vec![]
             }
+            Event::UnlockRequested => self.request_unlock(ctx),
+            Event::KeyringUnlockDone(result) => self.on_keyring_unlock_done(result),
             Event::UnlockDone(result) => self.on_unlock_done(result),
             Event::PreviewDue { id, kind } => self.on_preview_due(id, kind),
             Event::PreviewLoaded { id, result } => self.on_preview_loaded(id, result),

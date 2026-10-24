@@ -102,7 +102,8 @@ pub struct Panel {
     /// The passphrase box of the locked page, apart from the search box.
     passphrase: Entity<InputState>,
     /// Which box last got the focus, so the focus moves when the page changes.
-    focus_on_lock_page: bool,
+    focus_on_lock_page: (bool, bool),
+    lock_focus: gpui::FocusHandle,
     scroll: ScrollHandle,
     runtime: tokio::runtime::Handle,
     history: Arc<dyn HistoryService>,
@@ -202,7 +203,13 @@ impl Panel {
             }
         });
         let activation = cx.observe_window_activation(window, |this, window, cx| {
-            let event = if window.is_window_active() {
+            let active = platform::window_is_active(window);
+            tracing::debug!(
+                active,
+                cached_active = window.is_window_active(),
+                "Quick panel activation changed"
+            );
+            let event = if active {
                 Event::Activated
             } else {
                 Event::Deactivated
@@ -216,7 +223,8 @@ impl Panel {
             state,
             input,
             passphrase,
-            focus_on_lock_page: false,
+            focus_on_lock_page: (false, false),
+            lock_focus: cx.focus_handle(),
             scroll: ScrollHandle::new(),
             runtime,
             history,

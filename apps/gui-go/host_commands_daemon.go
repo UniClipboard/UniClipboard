@@ -183,11 +183,3 @@ func (h *HostService) UnlockContentFromKeyring(ctx context.Context) (bool, error
 	}
 	return status.Unlocked, nil
 }
-
-// ShowContentUnlock brings the main window forward so the user can unlock content.
-//
-//uc:errors none
-//uc:os all=real
-func (h *HostService) ShowContentUnlock() {
-	h.showMainWindow()
-}

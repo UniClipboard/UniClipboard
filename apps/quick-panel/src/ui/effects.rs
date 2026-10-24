@@ -26,7 +26,10 @@ impl Panel {
 
     /// The focus follows the page: the passphrase box while locked, the search box otherwise.
     fn sync_focus(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let locked = self.state.search.locked;
+        let locked = (
+            self.state.search.locked,
+            self.state.session.needs_passphrase,
+        );
         if locked == self.focus_on_lock_page {
             return;
         }
@@ -35,6 +38,10 @@ impl Panel {
     }
 
     fn focus_active_input(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.state.search.locked && !self.state.session.needs_passphrase {
+            self.lock_focus.focus(window);
+            return;
+        }
         let input = if self.state.search.locked {
             &self.passphrase
         } else {
@@ -121,6 +128,22 @@ impl Panel {
             Effect::CancelSearch => self.tasks.search = None,
             Effect::CountRelaxations { revision, queries } => {
                 self.count_relaxations(revision, queries, window, cx);
+            }
+            Effect::UnlockFromKeyring => {
+                let runtime = self.runtime.clone();
+                let history = self.history.clone();
+                self.tasks.unlock = Some(cx.spawn_in(window, async move |this, cx| {
+                    let result = runtime.spawn(
+                        async move { history.unlock_from_keyring().await }
+                            .instrument(tracing::info_span!("gpui.unlock_keyring")),
+                    ).await.unwrap_or(Err(UnlockFailure::Failed));
+                    if let Err(error) = &result {
+                        tracing::warn!(error = %error, "System secure store unlock failed; requesting passphrase");
+                    }
+                    let _ = this.update_in(cx, |this, window, cx| {
+                        this.deliver(Event::KeyringUnlockDone(result), window, cx);
+                    });
+                }));
             }
             Effect::Unlock(passphrase) => {
                 let runtime = self.runtime.clone();
@@ -333,8 +356,10 @@ impl Panel {
 
     /// Whether either window still has the focus, asked when the panel window lost it.
     pub(super) fn dismiss_if_unfocused(&mut self, history: &mut Window, cx: &mut Context<Self>) {
-        let panel_active = history.is_window_active();
+        let panel_active = platform::window_is_active(history);
+        let cached_active = history.is_window_active();
         let preview_active = self.preview_active(cx);
+        tracing::debug!(panel_active, preview_active, cached_active, unlock = ?self.state.session.unlock, visible = self.state.session.visible, "Quick panel focus checked");
         self.deliver(
             Event::BlurChecked {
                 panel_active,
@@ -353,7 +378,7 @@ impl Panel {
         self.preview_window
             .and_then(|handle| {
                 handle
-                    .update(cx, |_, window, _| window.is_window_active())
+                    .update(cx, |_, window, _| platform::window_is_active(window))
                     .ok()
             })
             .unwrap_or(false)

@@ -33,6 +33,7 @@ impl PanelState {
         self.search.pointer_moved = false;
         self.session.message = None;
         self.session.unlock = UnlockStatus::Idle;
+        self.session.needs_passphrase = false;
         self.suggest.open = false;
         self.suggest.cursor = 0;
         self.suggest.focused = false;
@@ -76,12 +77,15 @@ impl PanelState {
 
     /// The panel window lost the focus.
     pub(super) fn on_deactivated(&mut self, ctx: &Ctx) -> Effects {
-        if !self.session.visible
-            || ctx.now.duration_since(self.session.shown_at) < timing::BLUR_IGNORE_AFTER_SHOW
-        {
+        if !self.session.visible {
             return vec![];
         }
-        vec![Effect::ScheduleBlurCheck(timing::BLUR_CHECK_DELAY)]
+        // Delay a settling window's focus check rather than losing its only deactivation.
+        let settling = timing::BLUR_IGNORE_AFTER_SHOW
+            .saturating_sub(ctx.now.duration_since(self.session.shown_at));
+        vec![Effect::ScheduleBlurCheck(
+            settling + timing::BLUR_CHECK_DELAY,
+        )]
     }
 
     /// Closes the panel when neither of its windows has the focus any more.
@@ -91,18 +95,22 @@ impl PanelState {
         preview_active: bool,
         ctx: &Ctx,
     ) -> Effects {
-        if !self.session.visible || panel_active {
-            return vec![];
-        }
-        if self
-            .session
-            .blur_grace_until
-            .is_some_and(|until| ctx.now < until)
+        if !self.session.visible
+            || panel_active
+            || preview_active
+            || self.session.unlock == UnlockStatus::CheckingKeyring
         {
             return vec![];
         }
-        if preview_active {
-            return vec![];
+        let settling_until = self.session.shown_at + timing::BLUR_IGNORE_AFTER_SHOW;
+        let grace_until = self
+            .session
+            .blur_grace_until
+            .map_or(settling_until, |until| until.max(settling_until));
+        if ctx.now < grace_until {
+            return vec![Effect::ScheduleBlurCheck(
+                grace_until.duration_since(ctx.now) + timing::BLUR_CHECK_DELAY,
+            )];
         }
         vec![Effect::HideWindow]
     }

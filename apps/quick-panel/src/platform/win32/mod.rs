@@ -1,6 +1,7 @@
 //! Windows: Win32 windowing, input injection and shell calls.
 
 mod focus;
+mod foreground;
 mod locale;
 mod modifier_state;
 mod paste;
@@ -15,13 +16,14 @@ use quick_panel_core::ports::{Capabilities, PasteTarget};
 /// Windows 11 top-level window radius, in logical pixels.
 pub const WINDOW_CORNER_RADIUS: f64 = 8.;
 
+pub use foreground::ForegroundObserver;
 pub use locale::system_language;
 pub use modifier_state::new_key_state;
 pub use screen::session_screen;
 pub use shell::{open_target, reveal_path};
 pub use window::{
     clip_preview_shape, configure_shaped_preview, set_frame, set_opacity, set_visible,
-    show_without_focus,
+    show_without_focus, window_is_active,
 };
 
 /// There is no window-shape mask on Windows, so the preview stays a rectangular window and the

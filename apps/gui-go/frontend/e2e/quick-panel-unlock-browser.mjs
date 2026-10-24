@@ -109,8 +109,8 @@ try {
     executablePath: process.env.CHROMIUM_PATH || '/usr/bin/chromium',
     headless: true,
   })
-  const page = await browser.newPage({ viewport: { width: 800, height: 560 } })
-  const open = async deny => {
+  let page = await browser.newPage({ viewport: { width: 800, height: 560 } })
+  const panelUrl = deny => {
     const params = new URLSearchParams({
       surface: 'quick-panel',
       platform,
@@ -118,7 +118,10 @@ try {
       token: session,
     })
     if (deny) params.set('denyKeyring', '1')
-    await page.goto(`${url}/?${params}`)
+    return `${url}/?${params}`
+  }
+  const open = async deny => {
+    await page.goto(panelUrl(deny))
     await page.locator('#quick-panel-unlock-title').waitFor()
   }
   await open(false)
@@ -183,6 +186,74 @@ try {
   )
   const errors = await page.evaluate(() => window.__ucPageErrors)
   check('no unhandled page errors', errors.length === 0)
+  // Give the grant to a short-lived authenticated GUI client, then destroy this page.
+  // Waiting beyond the former PID watcher interval makes the old behavior fail here.
+  await page.close()
+  await request('/content-lock/revoke', {})
+  const client = spawn(
+    process.execPath,
+    [
+      '-e',
+      `
+    let input = '';
+    process.stdin.on('data', chunk => { input += chunk; });
+    process.stdin.on('end', async () => {
+      try {
+        const { base, token, passphrase } = JSON.parse(input);
+        const connected = await fetch(base + '/auth/connect', {
+          method: 'POST', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pid: process.pid, clientType: 'gui' }),
+        });
+        if (!connected.ok) throw new Error('Client authentication failed');
+        const session = (await connected.json()).data.sessionToken;
+        const unlocked = await fetch(base + '/content-lock/unlock', {
+          method: 'POST', headers: { Authorization: 'Session ' + session, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ passphrase }),
+        });
+        if (!unlocked.ok || !(await unlocked.json()).data.unlocked) throw new Error('Client unlock failed');
+        process.exitCode = 0;
+      } catch {
+        process.exitCode = 1;
+      }
+    });
+  `,
+    ],
+    { stdio: ['pipe', 'ignore', 'ignore'], windowsHide: true }
+  )
+  await new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      client.kill()
+      reject(new Error('Short-lived unlock client timed out'))
+    }, 30000)
+    client.once('error', error => {
+      clearTimeout(timeout)
+      reject(error)
+    })
+    client.once('exit', code => {
+      clearTimeout(timeout)
+      if (code === 0) resolve()
+      else reject(new Error('Short-lived unlock client failed'))
+    })
+    client.stdin.end(JSON.stringify({ base, token: conn.token, passphrase }))
+  })
+  await new Promise(resolve => setTimeout(resolve, 2500))
+  check(
+    'authorization survives the unlocking client process exit',
+    (await request('/content-lock')).unlocked
+  )
+  page = await browser.newPage({ viewport: { width: 800, height: 560 } })
+  await page.goto(panelUrl(false))
+  await page.getByText(marker, { exact: false }).first().waitFor()
+  check(
+    'reopened WebView panel shows history without unlocking again',
+    !(await page.locator('#quick-panel-unlock-title').count())
+  )
+  await request('/content-lock/revoke', {})
+  await page.locator('#quick-panel-unlock-title').waitFor()
+  check(
+    'explicit revocation still locks the reopened panel',
+    !(await request('/content-lock')).unlocked
+  )
   await writeFile(
     path.join(out, 'result.json'),
     JSON.stringify(

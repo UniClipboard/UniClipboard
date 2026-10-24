@@ -270,3 +270,33 @@ async fn an_unreachable_daemon_is_a_connection_failure() {
         Err(UnlockFailure::Disconnected)
     );
 }
+
+#[tokio::test]
+async fn keyring_unlock_uses_the_daemon_and_reports_whether_a_passphrase_is_needed() {
+    for unlocked in [true, false] {
+        let server = MockServer::start().await;
+        Mock::given(method("POST")).and(path("/auth/connect"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "data": { "sessionToken": "test-session", "expiresInSecs": 3600, "refreshAtSecs": 3000 }, "ts": 0
+            }))).mount(&server).await;
+        Mock::given(method("POST"))
+            .and(path("/content-lock/unlock-keyring"))
+            .and(header("authorization", "Session test-session"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "data": { "unlocked": unlocked, "generation": 1 }, "ts": 0
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let address = server.uri();
+        let history = DaemonHistory::with_resolver(move || {
+            Ok(DaemonConnectionInfo {
+                base_url: address.clone(),
+                ws_url: address.replacen("http://", "ws://", 1) + "/ws",
+                token: "test-token".into(),
+                pid: 1,
+            })
+        });
+        assert_eq!(history.unlock_from_keyring().await, Ok(unlocked));
+    }
+}

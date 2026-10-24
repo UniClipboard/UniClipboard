@@ -7,8 +7,9 @@
 //!
 //! `unlocked = grant && initialized && session_ready && background_ready`, computed at read time,
 //! so losing the session or entering profile recovery revokes visibility without extra coupling.
-//! The grant lives in daemon memory only: it is dropped when the daemon restarts, when the
-//! process that granted it exits (a GUI crash), and it is re-seeded from
+//! The grant belongs to the daemon session, not to a client process. Closing a window,
+//! entering lightweight mode, or restarting a client does not withdraw it. Explicit revocation
+//! withdraws it; daemon restart drops it. An unset grant is seeded from
 //! `security.auto_unlock_enabled` the first time it is read.
 //!
 //! ## What it protects, and what it does not
@@ -27,7 +28,6 @@
 //! fails when a route is in neither table, so a new route cannot silently skip the lock.
 
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 
 use axum::extract::{MatchedPath, Request, State};
 use axum::http::StatusCode;
@@ -59,14 +59,10 @@ pub fn client_is_gated(client_type: &str) -> bool {
     GATED_CLIENT_TYPES.contains(&client_type)
 }
 
-/// How often the daemon checks that the process that granted access is still there.
-const HOLDER_CHECK_INTERVAL: Duration = Duration::from_secs(2);
-
 #[derive(Debug, Clone, Copy, Default)]
 struct Grant {
     value: Option<bool>,
     generation: u64,
-    holder_pid: Option<u32>,
     /// The last `unlocked` value that was published, to publish only real changes.
     published: Option<bool>,
 }
@@ -91,11 +87,10 @@ impl ContentLock {
         self.snapshot().generation
     }
 
-    /// Grants access on behalf of the process `pid`. Returns the new generation.
-    fn grant(&self, pid: u32) -> u64 {
+    /// Grants access for the daemon session. Returns the new generation.
+    fn grant(&self) -> u64 {
         self.with(|grant| {
             grant.value = Some(true);
-            grant.holder_pid = Some(pid);
             grant.generation = grant.generation.wrapping_add(1);
             grant.generation
         })
@@ -105,7 +100,6 @@ impl ContentLock {
     fn revoke(&self) -> u64 {
         self.with(|grant| {
             grant.value = Some(false);
-            grant.holder_pid = None;
             grant.generation = grant.generation.wrapping_add(1);
             grant.generation
         })
@@ -116,7 +110,6 @@ impl ContentLock {
         self.with(|grant| {
             if grant.generation == generation {
                 grant.value = None;
-                grant.holder_pid = None;
                 grant.generation = grant.generation.wrapping_add(1);
             }
         });
@@ -144,10 +137,6 @@ impl ContentLock {
             grant.published = Some(unlocked);
             (changed || force).then_some(grant.generation)
         })
-    }
-
-    fn holder_pid(&self) -> Option<u32> {
-        self.snapshot().holder_pid
     }
 }
 
@@ -254,23 +243,13 @@ pub(crate) fn notify_facts_changed(state: &DaemonApiState) {
     tokio::spawn(async move { publish_current(&state, false).await });
 }
 
-/// Keeps the lock honest between requests: it follows the encryption events and revokes the
-/// grant when the process that granted it is gone.
+/// Follows encryption events so every client observes changes to the daemon session.
+/// Client process lifetimes do not change the shared content grant.
 pub async fn run_watcher(state: DaemonApiState, cancel: CancellationToken) {
     let mut events = state.event_tx.subscribe();
-    let mut tick = tokio::time::interval(HOLDER_CHECK_INTERVAL);
     loop {
         tokio::select! {
             _ = cancel.cancelled() => return,
-            _ = tick.tick() => {
-                if let Some(pid) = state.content_lock.holder_pid() {
-                    if !uc_daemon_process::process_metadata::is_pid_alive(pid) {
-                        info!(pid, "the process that granted content access is gone; revoking");
-                        state.content_lock.revoke();
-                        publish_current(&state, true).await;
-                    }
-                }
-            }
             event = events.recv() => match event {
                 Ok(event) if event.topic == ws_topic::ENCRYPTION => publish_current(&state, false).await,
                 Ok(_) => {}
@@ -330,17 +309,14 @@ pub(crate) async fn get_status_handler(
         (status = 422, description = "Space key material corrupted", body = ApiErrorResponse),
     )
 )]
+#[tracing::instrument(skip_all, fields(trace_id = %uuid::Uuid::new_v4()))]
 pub(crate) async fn unlock_handler(
     State(state): State<DaemonApiState>,
-    claims: axum::Extension<SessionTokenClaims>,
     Json(req): Json<UnlockSpaceRequest>,
 ) -> Result<Json<ApiEnvelope<ContentLockStatusResponse>>, ApiError> {
     crate::api::encryption::unlock_space_with_passphrase(&state, req.passphrase).await?;
-    state.content_lock.grant(claims.pid);
-    info!(
-        pid = claims.pid,
-        "content unlocked after passphrase verification"
-    );
+    state.content_lock.grant();
+    info!("content unlocked after passphrase verification");
     publish_current(&state, true).await;
     Ok(Json(ApiEnvelope::now(resolve_status(&state).await?)))
 }
@@ -359,16 +335,13 @@ pub(crate) async fn unlock_handler(
         (status = 500, description = "Internal server error", body = ApiErrorResponse),
     )
 )]
+#[tracing::instrument(skip_all, fields(trace_id = %uuid::Uuid::new_v4()))]
 pub(crate) async fn unlock_keyring_handler(
     State(state): State<DaemonApiState>,
-    claims: axum::Extension<SessionTokenClaims>,
 ) -> Result<Json<ApiEnvelope<ContentLockStatusResponse>>, ApiError> {
     if crate::api::encryption::resume_session_from_keyring(&state).await? {
-        state.content_lock.grant(claims.pid);
-        info!(
-            pid = claims.pid,
-            "content unlocked from the keychain after explicit user action"
-        );
+        state.content_lock.grant();
+        info!("content unlocked from the keychain after explicit user action");
         publish_current(&state, true).await;
     }
     Ok(Json(ApiEnvelope::now(resolve_status(&state).await?)))
@@ -634,24 +607,38 @@ mod tests {
     }
 
     #[test]
-    fn a_grant_belongs_to_its_holder_and_changes_the_generation() {
+    fn a_grant_is_shared_by_clients_and_changes_the_generation() {
         let lock = ContentLock::default();
         let start = lock.generation();
-        let granted = lock.grant(42);
+        let granted = lock.grant();
         assert_ne!(granted, start);
-        assert_eq!(lock.holder_pid(), Some(42));
+        let other_client = lock.clone();
+        assert_eq!(other_client.snapshot().value, Some(true));
         assert_eq!(lock.snapshot().value, Some(true));
-        let revoked = lock.revoke();
+        let revoked = other_client.revoke();
         assert_ne!(revoked, granted);
-        assert_eq!(lock.holder_pid(), None);
         assert_eq!(lock.snapshot().value, Some(false));
+    }
+
+    #[test]
+    fn dropping_a_client_does_not_revoke_the_daemon_session() {
+        let daemon = ContentLock::default();
+        let generation = {
+            let client = daemon.clone();
+            client.grant()
+        };
+        let panel = daemon.clone();
+        assert_eq!(panel.snapshot().value, Some(true));
+        assert_eq!(panel.generation(), generation);
+        // A fresh daemon has no grant, even while the old daemon was unlocked.
+        assert_eq!(ContentLock::default().snapshot().value, None);
     }
 
     #[test]
     fn a_stale_seed_cannot_overwrite_a_newer_grant() {
         let lock = ContentLock::default();
         let seen = lock.generation();
-        lock.grant(7);
+        lock.grant();
         lock.seed_if_generation(seen, false);
         assert_eq!(lock.snapshot().value, Some(true));
         lock.reset_if_generation(seen);
@@ -664,8 +651,6 @@ mod tests {
         let seen = lock.generation();
         lock.seed_if_generation(seen, true);
         assert_eq!(lock.snapshot().value, Some(true));
-        // Seeding does not name a holder, so nothing revokes it when a process exits.
-        assert_eq!(lock.holder_pid(), None);
         let after = lock.generation();
         lock.seed_if_generation(after, false);
         assert_eq!(lock.snapshot().value, Some(true));
@@ -674,11 +659,10 @@ mod tests {
     #[test]
     fn resetting_returns_to_unset_and_reseeds_later() {
         let lock = ContentLock::default();
-        lock.grant(9);
+        lock.grant();
         let seen = lock.generation();
         lock.reset_if_generation(seen);
         assert_eq!(lock.snapshot().value, None);
-        assert_eq!(lock.holder_pid(), None);
     }
 
     #[test]
@@ -692,7 +676,7 @@ mod tests {
         let second = lock.observe(false, false).expect("a change is published");
         assert_ne!(second, before);
         // A forced publication (after a grant) keeps the generation the grant produced.
-        let granted = lock.grant(1);
+        let granted = lock.grant();
         assert_eq!(lock.observe(true, true), Some(granted));
     }
 

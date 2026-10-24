@@ -9,6 +9,22 @@ use super::DaemonHistory;
 const UNLOCK_TIMEOUT: Duration = Duration::from_secs(20);
 
 impl DaemonHistory {
+    pub(super) async fn unlock_content_from_keyring(&self) -> Result<bool, UnlockFailure> {
+        let operation = async {
+            self.context()
+                .map_err(|_| UnlockFailure::Disconnected)?
+                .query_client()
+                .unlock_content_from_keyring()
+                .await
+                .map(|status| status.unlocked)
+                .map_err(unlock_failure)
+        };
+        // The user may need time to respond to the system authorization dialog.
+        tokio::time::timeout(Duration::from_secs(60), operation)
+            .await
+            .map_err(|_| UnlockFailure::Timeout)?
+    }
+
     pub(super) async fn unlock_content(&self, passphrase: Secret) -> Result<(), UnlockFailure> {
         let operation = async {
             let query = self

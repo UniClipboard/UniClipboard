@@ -149,7 +149,56 @@ impl PanelState {
     /// The panel just became locked: the locked page starts with an empty passphrase box.
     pub(super) fn enter_locked(&mut self) -> Effects {
         self.session.unlock = UnlockStatus::Idle;
+        self.session.needs_passphrase = false;
         vec![Effect::ClearPassphrase]
+    }
+
+    /// The primary locked-page action tries the secure store before requesting a passphrase.
+    pub(super) fn request_unlock(&mut self, ctx: &Ctx) -> Effects {
+        if !self.search.locked
+            || matches!(
+                self.session.unlock,
+                UnlockStatus::Checking | UnlockStatus::CheckingKeyring
+            )
+        {
+            return vec![];
+        }
+        if self.session.needs_passphrase {
+            self.submit_passphrase(ctx)
+        } else {
+            self.session.unlock = UnlockStatus::CheckingKeyring;
+            vec![Effect::UnlockFromKeyring]
+        }
+    }
+
+    pub(super) fn on_keyring_unlock_done(
+        &mut self,
+        result: Result<bool, UnlockFailure>,
+    ) -> Effects {
+        if self.session.unlock != UnlockStatus::CheckingKeyring {
+            return vec![];
+        }
+        let mut effects = match result {
+            Ok(true) => {
+                self.session.unlock = UnlockStatus::Checking;
+                self.on_unlock_done(Ok(()))
+            }
+            Ok(false) => {
+                self.session.needs_passphrase = true;
+                self.session.unlock = UnlockStatus::Idle;
+                vec![Effect::FocusInput]
+            }
+            Err(failure) => {
+                self.session.needs_passphrase = true;
+                self.session.unlock = UnlockStatus::Failed(failure);
+                vec![Effect::FocusInput]
+            }
+        };
+        // A system dialog may have taken focus without a second deactivation on dismissal.
+        if self.session.visible {
+            effects.push(Effect::ScheduleBlurCheck(timing::BLUR_CHECK_DELAY));
+        }
+        effects
     }
 
     /// Enter on the locked page.

@@ -45,6 +45,11 @@ vi.mock('@/api/file_transfer', () => ({
   cancelFileTransfer: vi.fn(),
 }))
 
+// The cancel hook records an incomplete cancellation in the store; these tests render without one.
+vi.mock('@/hooks/useCancelEntryTransfer', () => ({
+  useCancelEntryTransfer: () => ({ cancelling: false, cancel: vi.fn() }),
+}))
+
 function createImageFileItem(
   fileName = 'screenshot.png',
   overrides: Partial<DisplayClipboardItem> = {}

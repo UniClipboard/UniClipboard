@@ -1563,6 +1563,45 @@
       "syncFailed": "ファイルの同期に失敗しました",
       "syncFailedDetail": "ファイルの同期に失敗しました: {{reason}}"
     },
+    "receive": {
+      "title": "受信したファイル",
+      "summary": "{{total}} 件中 {{saved}} 件を保存済み",
+      "cancelIncomplete": "停止しています。保存済みのファイルはそのまま残り、完了後にキャンセル済みと表示されます。",
+      "kind": {
+        "file": "ファイル",
+        "representation": "コンテンツ",
+        "directory_unit": "フォルダ",
+        "unknown": "項目"
+      },
+      "state": {
+        "pending": "待機中",
+        "transferring": "受信中",
+        "completed": "保存済み",
+        "failed": "失敗",
+        "cancelled": "キャンセル済み",
+        "unknown": "不明"
+      },
+      "reason": {
+        "network_unavailable": "ネットワークを利用できません",
+        "timed_out": "タイムアウト",
+        "access_denied": "アクセスが拒否されました",
+        "storage_unavailable": "ストレージを利用できません",
+        "integrity_check_failed": "検証に失敗",
+        "interrupted": "中断されました",
+        "unknown": "原因不明"
+      },
+      "retry": {
+        "action": "失敗した項目を再試行",
+        "accepted": "再試行を開始しました。保存が完了して初めて成功になります。",
+        "alreadyReceiving": "この項目は受信中です。",
+        "superseded": "より新しい受信に置き換えられました。一覧を更新しました。",
+        "cancellationIncomplete": "前回の受信をまだ停止中です。しばらくしてからもう一度お試しください。",
+        "sourceUnavailable": "送信元のコピーが利用できなくなりました。相手のデバイスから再送してください。",
+        "accessDenied": "アクセスが拒否されたため再試行できません。",
+        "unknown": "再試行を開始できませんでした。",
+        "failed": "再試行のリクエストに失敗しました。"
+      }
+    },
     "transfer": {
       "sending": "送信中",
       "receiving": "受信中",

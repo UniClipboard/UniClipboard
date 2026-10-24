@@ -1560,6 +1560,45 @@
       "syncFailed": "檔案同步失敗",
       "syncFailedDetail": "檔案同步失敗：{{reason}}"
     },
+    "receive": {
+      "title": "接收的檔案",
+      "summary": "已儲存 {{saved}}/{{total}}",
+      "cancelIncomplete": "正在停止。已儲存的檔案會保留，結束後才會顯示為已取消。",
+      "kind": {
+        "file": "檔案",
+        "representation": "內容",
+        "directory_unit": "資料夾",
+        "unknown": "項目"
+      },
+      "state": {
+        "pending": "等待中",
+        "transferring": "接收中",
+        "completed": "已儲存",
+        "failed": "失敗",
+        "cancelled": "已取消",
+        "unknown": "未知"
+      },
+      "reason": {
+        "network_unavailable": "網路無法使用",
+        "timed_out": "逾時",
+        "access_denied": "存取被拒",
+        "storage_unavailable": "儲存空間無法使用",
+        "integrity_check_failed": "驗證失敗",
+        "interrupted": "已中斷",
+        "unknown": "原因未知"
+      },
+      "retry": {
+        "action": "重試失敗項目",
+        "accepted": "已開始重試。檔案完成儲存後才算成功。",
+        "alreadyReceiving": "此項目正在接收中。",
+        "superseded": "已有較新的接收嘗試取代了這一次，清單已重新整理。",
+        "cancellationIncomplete": "上一次嘗試仍在停止，請稍後再試。",
+        "sourceUnavailable": "傳送方的副本已無法使用，請在對方裝置上重新傳送。",
+        "accessDenied": "存取被拒，無法重試。",
+        "unknown": "無法開始重試。",
+        "failed": "重試要求失敗。"
+      }
+    },
     "transfer": {
       "sending": "發送中",
       "receiving": "接收中",

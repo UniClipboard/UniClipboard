@@ -1560,6 +1560,45 @@
       "syncFailed": "文件同步失败",
       "syncFailedDetail": "文件同步失败：{{reason}}"
     },
+    "receive": {
+      "title": "接收的文件",
+      "summary": "已保存 {{saved}}/{{total}}",
+      "cancelIncomplete": "正在停止。已保存的文件会保留，结束后才会显示为已取消。",
+      "kind": {
+        "file": "文件",
+        "representation": "内容",
+        "directory_unit": "文件夹",
+        "unknown": "项目"
+      },
+      "state": {
+        "pending": "等待中",
+        "transferring": "接收中",
+        "completed": "已保存",
+        "failed": "失败",
+        "cancelled": "已取消",
+        "unknown": "未知"
+      },
+      "reason": {
+        "network_unavailable": "网络不可用",
+        "timed_out": "超时",
+        "access_denied": "访问被拒绝",
+        "storage_unavailable": "存储不可用",
+        "integrity_check_failed": "校验失败",
+        "interrupted": "已中断",
+        "unknown": "原因未知"
+      },
+      "retry": {
+        "action": "重试失败项",
+        "accepted": "已开始重试。文件完成保存后才算成功。",
+        "alreadyReceiving": "该项目正在接收中。",
+        "superseded": "已有更新的接收尝试取代了这一次，列表已刷新。",
+        "cancellationIncomplete": "上一次尝试仍在停止，请稍后再试。",
+        "sourceUnavailable": "发送方的副本已不可用，请在对方设备上重新发送。",
+        "accessDenied": "访问被拒绝，无法重试。",
+        "unknown": "无法开始重试。",
+        "failed": "重试请求失败。"
+      }
+    },
     "transfer": {
       "sending": "发送中",
       "receiving": "接收中",

@@ -25,6 +25,7 @@ import {
 import { formatFileSize } from '@/utils'
 import { HistoryKitDelivery } from './HistoryKitDelivery'
 import { HistoryKitDetailTags, type HistoryKitTagging } from './HistoryKitDetailTags'
+import { HistoryKitReceive } from './HistoryKitReceive'
 import { HistoryKitSendMenu } from './HistoryKitSendMenu'
 
 interface HistoryKitDetailProps {
@@ -191,6 +192,7 @@ export function HistoryKitDetail({
         {tagging && item.userTagIds && (
           <HistoryKitDetailTags tagIds={item.userTagIds} tagging={tagging} />
         )}
+        {item.type === 'file' && <HistoryKitReceive entryId={item.id} />}
         {delivery && <HistoryKitDelivery delivery={delivery} />}
       </div>
       <ActionBar

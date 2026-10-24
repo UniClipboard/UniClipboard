@@ -1561,6 +1561,10 @@
       "syncFailedDetail": "文件同步失败：{{reason}}"
     },
     "receive": {
+      "cancelledCount": "{{count}} 项已取消",
+      "failedCount": "{{count}} 项失败",
+      "details": "接收详情",
+      "unlinkedDetails": "以下编号仅用于接收记录，不对应上方文件顺序。",
       "title": "接收的文件",
       "summary": "已保存 {{saved}}/{{total}}",
       "cancelIncomplete": "正在停止。已保存的文件会保留，结束后才会显示为已取消。",

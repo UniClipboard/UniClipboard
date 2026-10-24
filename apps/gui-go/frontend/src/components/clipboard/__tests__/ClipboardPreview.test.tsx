@@ -152,12 +152,13 @@ describe('ClipboardPreview', () => {
       'src',
       expect.any(String)
     )
-    expect(screen.getByText('3 images')).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: '3 files' })).toHaveTextContent('3 files')
     expect(screen.getAllByText('14.00 KB').length).toBeGreaterThan(0)
 
-    const fileName = screen.getByText(longName)
+    const fileName = screen.getByTitle(longName)
     expect(fileName).not.toHaveClass('truncate')
-    expect(fileName).toHaveClass('break-all')
+    expect(fileName).toHaveTextContent(longName)
+    expect(fileName.lastElementChild).toHaveTextContent('.png')
   })
 
   it('renders every image in a local image group through Tauri asset URLs', () => {
@@ -197,15 +198,15 @@ describe('ClipboardPreview', () => {
 
     expect(screen.queryByRole('list', { name: 'Image files' })).not.toBeInTheDocument()
     expect(screen.queryByRole('img', { name: 'first.png' })).not.toBeInTheDocument()
-    expect(screen.getByText('first.png')).toBeInTheDocument()
-    expect(screen.getByText('report.pdf')).toBeInTheDocument()
+    expect(screen.getByTitle('first.png')).toBeInTheDocument()
+    expect(screen.getByTitle('report.pdf')).toBeInTheDocument()
   })
 
   it('keeps non-image files on the file card preview', () => {
     render(<ClipboardPreview item={createPdfFileItem()} />)
 
     expect(screen.queryByRole('img', { name: 'report.pdf' })).not.toBeInTheDocument()
-    expect(screen.getByText('report.pdf')).toBeInTheDocument()
+    expect(screen.getByTitle('report.pdf')).toBeInTheDocument()
   })
 
   it('wraps long URLs instead of truncating them', () => {

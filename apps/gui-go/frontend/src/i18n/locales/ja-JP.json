@@ -1564,6 +1564,10 @@
       "syncFailedDetail": "ファイルの同期に失敗しました: {{reason}}"
     },
     "receive": {
+      "failedCount": "{{count}} 件失敗",
+      "cancelledCount": "{{count}} 件キャンセル済み",
+      "details": "受信の詳細",
+      "unlinkedDetails": "この番号は受信記録を示し、上のファイルの順序とは対応しません。",
       "title": "受信したファイル",
       "summary": "{{total}} 件中 {{saved}} 件を保存済み",
       "cancelIncomplete": "停止しています。保存済みのファイルはそのまま残り、完了後にキャンセル済みと表示されます。",

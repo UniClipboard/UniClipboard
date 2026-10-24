@@ -1561,6 +1561,10 @@
       "syncFailedDetail": "檔案同步失敗：{{reason}}"
     },
     "receive": {
+      "cancelledCount": "{{count}} 項已取消",
+      "failedCount": "{{count}} 項失敗",
+      "details": "接收詳情",
+      "unlinkedDetails": "以下編號僅用於接收記錄，不對應上方檔案順序。",
       "title": "接收的檔案",
       "summary": "已儲存 {{saved}}/{{total}}",
       "cancelIncomplete": "正在停止。已儲存的檔案會保留，結束後才會顯示為已取消。",

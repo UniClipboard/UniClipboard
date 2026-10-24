@@ -2411,6 +2411,21 @@
   flex-direction: column;
 }
 
+.adw-preview[data-kind='file'] {
+  height: auto;
+  min-height: 0;
+  --foreground: var(--fg);
+  --card-foreground: var(--fg);
+  --muted: var(--shade);
+  --muted-foreground: var(--fg2);
+  --primary: var(--accent);
+  color: var(--foreground);
+}
+
+.adw-preview[data-kind='file'] .adw-preview-body {
+  overflow: visible;
+}
+
 .adw-preview[data-kind='code'] {
   background: var(--code);
   box-shadow: none;

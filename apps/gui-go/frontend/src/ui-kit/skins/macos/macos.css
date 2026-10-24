@@ -3049,6 +3049,23 @@
   flex-direction: column;
 }
 
+.mac-preview[data-kind='file'] {
+  height: auto;
+  min-height: 0;
+  --foreground: var(--label);
+  --card-foreground: var(--label);
+  --muted: var(--fill-3);
+  --muted-foreground: var(--label-2);
+  --primary: var(--accent);
+  --border: var(--separator);
+  --destructive: var(--red);
+  color: var(--foreground);
+}
+
+.mac-preview[data-kind='file'] .mac-preview-body {
+  overflow: visible;
+}
+
 .mac-preview[data-kind='code'] {
   background: var(--code-bg);
   box-shadow: none;

@@ -26,7 +26,7 @@ import {
 import { formatFileSize } from '@/utils'
 import { HistoryKitDelivery } from './HistoryKitDelivery'
 import { HistoryKitDetailTags, type HistoryKitTagging } from './HistoryKitDetailTags'
-import { HistoryKitReceive } from './HistoryKitReceive'
+import { HistoryKitFilePreview } from './HistoryKitFilePreview'
 import { HistoryKitSendMenu } from './HistoryKitSendMenu'
 
 interface HistoryKitDetailProps {
@@ -153,7 +153,8 @@ export function HistoryKitDetail({
             </Text>
           </span>
         </DetailHeader>
-        {state.effectiveStatus === 'transferring' &&
+        {item.type !== 'file' &&
+          state.effectiveStatus === 'transferring' &&
           state.transfer?.status === 'active' &&
           state.transfer.direction === 'receiving' && (
             <div>
@@ -162,48 +163,51 @@ export function HistoryKitDetail({
               </Button>
             </div>
           )}
-        <PreviewFrame
-          kind={isImage ? 'image' : kind === 'code' ? 'code' : 'plain'}
-          topEnd={
-            isImage && imageDescriptor ? (
-              <SegmentedControl
-                label={t('history.detail.imageZoom')}
-                value={imageActions.mode}
-                onValueChange={mode => imageActions.setMode(mode as 'fit' | 'actual')}
-                items={[
-                  { value: 'fit', label: t('history.detail.imageFit') },
-                  { value: 'actual', label: t('history.detail.imageActual') },
-                ]}
-              />
-            ) : undefined
-          }
-          bottomStart={
-            isImage && imageDescriptor ? (
-              <Button size="small" onClick={() => imageActions.setQuickLook(true)}>
-                {`${t('history.detail.quickLook')} ␣`}
-              </Button>
-            ) : undefined
-          }
-        >
-          <PreviewContent
-            item={item}
-            loading={state.loading}
-            preview={state.preview}
-            effectiveStatus={state.effectiveStatus}
-            entryStatus={state.entryStatus}
-            transfer={state.transfer}
-            setImageDimensions={state.setImageDimensions}
-            codeVariant="block"
-            imageFit
-            imageActualSize={imageActions.mode === 'actual'}
-            onImageType={imageActions.onImageType}
-          />
-        </PreviewFrame>
+        {item.type === 'file' ? (
+          <HistoryKitFilePreview item={item} state={state} />
+        ) : (
+          <PreviewFrame
+            kind={isImage ? 'image' : kind === 'code' ? 'code' : 'plain'}
+            topEnd={
+              isImage && imageDescriptor ? (
+                <SegmentedControl
+                  label={t('history.detail.imageZoom')}
+                  value={imageActions.mode}
+                  onValueChange={mode => imageActions.setMode(mode as 'fit' | 'actual')}
+                  items={[
+                    { value: 'fit', label: t('history.detail.imageFit') },
+                    { value: 'actual', label: t('history.detail.imageActual') },
+                  ]}
+                />
+              ) : undefined
+            }
+            bottomStart={
+              isImage && imageDescriptor ? (
+                <Button size="small" onClick={() => imageActions.setQuickLook(true)}>
+                  {`${t('history.detail.quickLook')} ␣`}
+                </Button>
+              ) : undefined
+            }
+          >
+            <PreviewContent
+              item={item}
+              loading={state.loading}
+              preview={state.preview}
+              effectiveStatus={state.effectiveStatus}
+              entryStatus={state.entryStatus}
+              transfer={state.transfer}
+              setImageDimensions={state.setImageDimensions}
+              codeVariant="block"
+              imageFit
+              imageActualSize={imageActions.mode === 'actual'}
+              onImageType={imageActions.onImageType}
+            />
+          </PreviewFrame>
+        )}
         {isImage && <FactList label={t('history.kit.imageFacts')} facts={imageFacts} />}
         {tagging && item.userTagIds && (
           <HistoryKitDetailTags tagIds={item.userTagIds} tagging={tagging} />
         )}
-        {item.type === 'file' && <HistoryKitReceive entryId={item.id} />}
         {delivery && <HistoryKitDelivery delivery={delivery} />}
       </div>
       <ActionBar

@@ -1579,6 +1579,10 @@
       "syncFailedDetail": "Falha ao sincronizar o arquivo: {{reason}}"
     },
     "receive": {
+      "failedCount": "{{count}} com falha",
+      "cancelledCount": "{{count}} cancelados",
+      "details": "Detalhes do recebimento",
+      "unlinkedDetails": "Estes números identificam registros de recebimento, não a ordem dos arquivos acima.",
       "title": "Arquivos recebidos",
       "summary": "{{saved}} de {{total}} salvos",
       "cancelIncomplete": "Parando. Os arquivos já salvos continuam salvos; só aparecerá como cancelado quando terminar.",

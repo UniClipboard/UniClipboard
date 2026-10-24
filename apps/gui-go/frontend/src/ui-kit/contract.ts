@@ -664,10 +664,10 @@ export interface IconProps {
  * The frame around an item's content in a detail pane. `image` puts a checkerboard behind
  * transparent pixels; `code` is a dark card. Controls can float over two corners (design ME1:
  * Fit / 100% top trailing, Quick Look bottom leading).
- * The frame keeps a bounded responsive height; its body scrolls independently of the detail pane.
+ * File frames grow with their content; other frames have a bounded height and scroll independently.
  */
 export interface PreviewFrameProps {
-  kind: 'plain' | 'code' | 'image'
+  kind: 'plain' | 'code' | 'image' | 'file'
   /** A caption bar above the content, e.g. "3 lines · 74 characters". */
   caption?: string
   /** Display-only trailing text of the caption bar, e.g. a shortcut. */

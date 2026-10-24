@@ -1568,6 +1568,10 @@
       "syncFailedDetail": "Failed to sync file: {{reason}}"
     },
     "receive": {
+      "cancelledCount": "{{count}} cancelled",
+      "failedCount": "{{count}} failed",
+      "details": "Receive details",
+      "unlinkedDetails": "These numbers identify receive records, not the file order above.",
       "title": "Received files",
       "summary": "{{saved}} of {{total}} saved",
       "cancelIncomplete": "Stopping. Files already saved stay saved; this will show as cancelled once it finishes.",

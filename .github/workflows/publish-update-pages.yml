@@ -33,6 +33,9 @@ jobs:
           token: ${{ secrets.REPO_BOT_TOKEN }}
       - name: Copy only channel files; remove withdrawn channels
         run: |
+          # Keep Vercel's opt-out on the generated branch, in its project root.
+          mkdir -p pages-site/docs-site
+          cp scripts/ci/vercel-generated-data.json pages-site/docs-site/vercel.json
           python3 - <<'PY'
           import json
           from pathlib import Path

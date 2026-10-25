@@ -1,6 +1,6 @@
 # PROJECT KNOWLEDGE BASE
 
-**最后刷新：** 2026-10-24（自动；16 个工作区 crate）
+**最后刷新：** 2026-10-25（自动；16 个工作区 crate）
 
 ## OVERVIEW
 

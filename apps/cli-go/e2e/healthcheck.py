@@ -158,6 +158,17 @@ def main():
         check('F2 daemon recovers once resumed', wait_conn(default_env)['pid'] == c1['pid'])
         check('F3 non-answering probe did not replace the daemon', conn(default_env) == c1)
 
+        # F2: pid 0 would pass kill(0, 0) as the caller's process group; it must not count as a daemon.
+        conn_path = data_root(default_env) / 'daemon.conn'
+        original = conn_path.read_text()
+        conn_path.write_text(json.dumps(dict(json.loads(original), pid=0)))
+        try:
+            code, msg = health(default_env)
+            check('F2 daemon.conn with pid 0 is unhealthy even though the endpoint answers', code != 0, msg)
+        finally:
+            conn_path.write_text(original)
+        check('F2 original daemon.conn restored and healthy again', health(default_env)[0] == 0)
+
         # F4: restart on a new port.
         proc.terminate()
         proc.wait(timeout=60)
@@ -171,6 +182,7 @@ def main():
         # A changed port is likely but not guaranteed, so it is recorded, not asserted.
         records.append(dict(check='F4 port observed (not asserted)', result='INFO',
                             detail='%d -> %d' % (c1['port'], c2['port'])))
+        (out / 'result.json').write_text(json.dumps(records, indent=2))
         print('INFO F4 port observed (not asserted): %d -> %d' % (c1['port'], c2['port']), flush=True)
     finally:
         for p in children:
@@ -182,7 +194,10 @@ def main():
             except subprocess.TimeoutExpired:
                 p.kill()
     failed = [r for r in records if r['result'] == 'FAIL']
-    print('%d checks, %d failed' % (len(records), len(failed)))
+    print('%d assertions (%d PASS, %d FAIL), %d INFO observations' % (
+        len([r for r in records if r['result'] != 'INFO']),
+        len([r for r in records if r['result'] == 'PASS']), len(failed),
+        len([r for r in records if r['result'] == 'INFO'])))
     sys.exit(1 if failed else 0)
 
 

@@ -163,7 +163,7 @@ def main():
         proc.wait(timeout=60)
         code, msg = health(default_env)
         check('stopped daemon is unhealthy', code != 0, msg)
-        proc2 = start(default_env, 'default-daemon-restarted')
+        start(default_env, 'default-daemon-restarted')
         c2 = wait_conn(default_env, not_pid=c1['pid'])
         code, msg = health(default_env)
         check('F4 restarted daemon is healthy again', code == 0, msg)

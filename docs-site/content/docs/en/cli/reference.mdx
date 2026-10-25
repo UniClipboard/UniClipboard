@@ -28,6 +28,12 @@ owned by another daemon returns nonzero. `recovery_required` means the daemon
 is reachable but recovery is still required. `start` and `restart` wait for HTTP
 health and return nonzero on failure, leaving the service available for diagnosis.
 
+`health` is a read-only check for orchestrators such as container healthchecks.
+It reads the selected profile's `daemon.conn`, requires the recorded daemon
+process to be alive, and requires its `/health` answer to be compatible. It
+exits 0 when healthy and 1 otherwise. It never starts, restarts or repairs a
+daemon, and it follows the daemon's current port after a restart.
+
 The service preserves the selected profile, HOME and data/log context; it does
 not persist passwords or daemon tokens. The login keychain may still be locked.
 macOS console logs are `service.stdout.log` and `service.stderr.log` in the

@@ -104,6 +104,7 @@ CLI 不更改该系统设置。手动删除服务：先 `service stop`，再删�
 | 场景 | Rust | Go | 处理 |
 | --- | --- | --- | --- |
 | 设备组状态与交互选择 | 展示紧凑字段，提示输入 choice ID，每次处理一个问题 | 展示设备名称、截短 ID、提议及设备影响；TTY 无显式 ID 时使用编号，完成后刷新并继续；`--once` 只处理一个 | 有意变更，`member trust choose` 帮助随之更新；显式 ID、非 TTY 和 JSON 保持单次非交互，JSON 字段及退出码不变；本机移除授权不跨问题复用 |
+| 只读健康检查 | 无 `health` 命令 | 新增 `health`，供容器 healthcheck 使用：读取当前 profile 的 `daemon.conn`，要求进程存活且 `/health` 兼容，绝不启动、重启或修复 daemon；不健康时退出码 1 | 有意变更，根 help 也随之更新 |
 | daemon 生命周期命令 | `start` 默认后台 | 新增 `run` 和 `service`；`start` 保留旧行为但向标准错误输出弃用提示 | 有意变更，根 help 和 `start` help 也随之更新 |
 | 文件发送仅返回后台继续处理的目标 | 忽略 `totalPending`，误报失败 | 显示 pending 数量并返回成功；JSON 在非零时包含 `totalPending`，明确后台继续处理，不声称传输完成 | 沿用 resend 的已接受后台继续处理语义；最终结果由 daemon 的 delivery 记录决定 |
 | 交互式口令或文本输入时连续按键 | 只有第一个按键在 raw 模式下读取，其余按键由终端回显，口令会以明文出现在屏幕上 | 全程 raw 模式，只显示掩码 | Rust 的行为是口令泄露缺陷，Go 不复制 |

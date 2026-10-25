@@ -1,5 +1,5 @@
 {
-  "checked_at": "2026-10-25 11:57 UTC",
+  "checked_at": "2026-10-25 13:04 UTC",
   "channels": {
     "aur": {
       "status": "published",
@@ -35,7 +35,7 @@
     },
     "npm-alpha": {
       "status": "published",
-      "version": "1.5.0-alpha.2"
+      "version": "1.5.0-alpha.3"
     },
     "snap": {
       "status": "published",

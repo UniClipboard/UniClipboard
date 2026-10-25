@@ -82,7 +82,7 @@ def main():
     if not args.allow_session or os.environ.get('UC_GUI_GO_E2E_DEDICATED_HOST') != '1':
         parser.error('requires --allow-session and UC_GUI_GO_E2E_DEDICATED_HOST=1')
     subprocess.run([sys.executable, str(HERE / 'desktop_modes_run.py'), '--allow-session',
-                    '--bundle', str(BINARY.parents[2]), '--cli', str(ROOT / 'target/debug/uniclip'),
+                    '--bundle', str(BINARY.parents[2]), '--cli', str(ROOT / 'target/gui-go/uniclip'),
                     '--out', str(args.out / 'modes')], check=True)
     out = args.out.resolve()
     out.mkdir(parents=True, exist_ok=True)

@@ -264,6 +264,17 @@ describe('E2E harness drives the Go CLI', () => {
       'UC_E2E_DEV_CLI: ${{ github.workspace }}/target/e2e-dev/debug/uc-dev-cli'
     )
   })
+
+  it('passes the macOS GUI build CLI to the startup mode driver', () => {
+    const output = text('apps/gui-go/build.sh').match(/go build -o (\S+) \.\/cmd\/uniclip/)?.[1]
+    expect(output).toBeTruthy()
+    const builtCli = path.resolve(root, 'apps/cli-go', output!)
+    const argument = text('apps/gui-go/e2e/startup_run.py').match(
+      /'--cli', str\(ROOT \/ '([^']+)'\)/
+    )?.[1]
+    expect(argument).toBeTruthy()
+    expect(path.resolve(root, argument!)).toBe(builtCli)
+  })
 })
 
 describe('Go CLI build info', () => {

@@ -42,20 +42,43 @@ describe('general settings clarity', () => {
       screen.getByRole('combobox', { name: 'settings.sections.general.startupMode.label' })
     )
     const option = await screen.findByRole('option', {
-      name: 'settings.sections.general.startupMode.options.silent',
+      name: 'settings.sections.general.startupMode.options.lightweight',
     })
     await waitFor(() =>
       expect(
-        within(option).getByText('settings.sections.general.startupMode.summaries.silent')
+        within(option).getByText('settings.sections.general.startupMode.summaries.lightweight')
       ).toBeVisible()
     )
+    expect(
+      screen.queryByRole('option', {
+        name: 'settings.sections.general.startupMode.options.silent',
+      })
+    ).toBeNull()
     await user.click(option)
-    await waitFor(() => expect(save).toHaveBeenCalledWith({ startupMode: 'silent' }))
+    await waitFor(() => expect(save).toHaveBeenCalledWith({ startupMode: 'lightweight' }))
     expect(
       within(
         screen.getByRole('group', { name: 'settings.sections.general.startupTitle' })
-      ).getByText('settings.sections.general.startupMode.summaries.silent')
+      ).getByText('settings.sections.general.startupMode.summaries.lightweight')
     ).toBeVisible()
+  })
+
+  it('saves background startup independently of desktop mode', async () => {
+    const user = userEvent.setup()
+    render(
+      <LazyMotion features={domMax}>
+        <MotionConfig skipAnimations>
+          <StartupSettings />
+        </MotionConfig>
+      </LazyMotion>
+    )
+    await user.click(
+      screen.getByRole('switch', {
+        name: 'settings.sections.general.backgroundStartup.label',
+      })
+    )
+    await waitFor(() => expect(save).toHaveBeenCalledWith({ backgroundStartup: true }))
+    expect(save.mock.calls.every(([patch]) => !('startupMode' in patch))).toBe(true)
   })
 
   it('preserves blur-to-save behavior for the separate device name row', async () => {

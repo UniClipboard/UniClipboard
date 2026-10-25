@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/daemonclient"
@@ -24,12 +25,13 @@ var uiInput, uiOutput *os.File
 
 // uiProcess owns the single UI child. The resident host never constructs a WebView.
 type uiProcess struct {
-	host    *HostService
-	mu      sync.Mutex
-	child   *exec.Cmd
-	peer    *uiPeer
-	exited  chan struct{}
-	closing bool
+	host        *HostService
+	mu          sync.Mutex
+	child       *exec.Cmd
+	peer        *uiPeer
+	exited      chan struct{}
+	closing     bool
+	pendingOpen atomic.Int32
 }
 
 func (u *uiProcess) startLocked() (*uiPeer, error) {
@@ -105,6 +107,7 @@ func (u *uiProcess) startLocked() (*uiPeer, error) {
 		peer.close()
 		close(exited)
 		log.Printf("UI process exited pid=%d error=%v", cmd.Process.Pid, err)
+		u.host.exitLightweightIfIdle()
 	}()
 	select {
 	case <-ready:
@@ -118,19 +121,51 @@ func (u *uiProcess) startLocked() (*uiPeer, error) {
 	}
 }
 func (u *uiProcess) call(operation string, data any, out any) error {
-	u.mu.Lock()
-	p, err := u.startLocked()
-	u.mu.Unlock()
-	if err != nil {
-		return err
+	for attempt := 0; ; attempt++ {
+		u.mu.Lock()
+		p, err := u.startLocked()
+		u.mu.Unlock()
+		if err != nil {
+			return err
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		err = p.call(ctx, operation, data, out)
+		cancel()
+		if err == nil || attempt != 0 || (operation != "main" && operation != "settings") {
+			return err
+		}
+		u.mu.Lock()
+		closing := u.peer != p || u.closing
+		select {
+		case <-u.exited:
+			closing = true
+		default:
+		}
+		u.mu.Unlock()
+		if !closing {
+			return err
+		}
+		// A close/reopen crossing may deliver the first open to the dying
+		// child. Retry only explicit, idempotent activation after reaping it.
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	return p.call(ctx, operation, data, out)
 }
 func (u *uiProcess) open(operation string, data any) {
+	u.pendingOpen.Add(1)
 	go func() {
+		defer func() { u.pendingOpen.Add(-1); u.host.exitLightweightIfIdle() }()
+		if u.host.quitting.Load() {
+			if operation == "main" || operation == "settings" {
+				u.host.forwardActivation()
+			}
+			return
+		}
 		if err := u.call(operation, data, nil); err != nil {
+			if u.host.quitting.Load() {
+				if operation == "main" || operation == "settings" {
+					u.host.forwardActivation()
+				}
+				return
+			}
 			log.Printf("UI request %s failed: %v", operation, err)
 			u.host.app.Dialog.Error().SetTitle("UniClipboard").SetMessage(err.Error()).Show()
 		}
@@ -171,6 +206,10 @@ func (u *uiProcess) event(name string, payload any) {
 func (u *uiProcess) state() map[string]any {
 	u.mu.Lock()
 	defer u.mu.Unlock()
+	return u.stateLocked()
+}
+
+func (u *uiProcess) stateLocked() map[string]any {
 	result := map[string]any{"uiPid": 0, "mainExists": false, "mainVisible": false, "dockIconVisible": false}
 	if u.child == nil {
 		return result
@@ -407,6 +446,47 @@ func initialActivationPolicy() application.ActivationPolicy {
 		return application.ActivationPolicyAccessory
 	}
 	return activationPolicy()
+}
+
+// exitLightweightIfIdle runs after bootstrap and child reaping. u.mu prevents
+// accepting an open against an exiting host; pendingOpen covers queued opens.
+func (h *HostService) exitLightweightIfIdle() {
+	if uiChild || !h.lightweight.Load() || h.ui == nil {
+		return
+	}
+	h.readyMu.Lock()
+	ready := h.ready
+	h.readyMu.Unlock()
+	if !ready {
+		return
+	}
+	u := h.ui
+	u.mu.Lock()
+	idle := u.pendingOpen.Load() == 0
+	if u.child != nil {
+		select {
+		case <-u.exited:
+		default:
+			idle = false
+		}
+	}
+	// A settings write can reach the daemon before its watcher event reaches
+	// this host. Do not leave daemon-only after a simultaneous switch to normal.
+	if idle && !h.quitting.Load() {
+		if latest, ok := h.loadStartupSettings(); ok && !latest.lightweight() {
+			u.mu.Unlock()
+			if err := h.restartShell(true); err != nil {
+				log.Printf("normal mode handoff after UI exit failed: %v", err)
+			}
+			return
+		}
+		idle = u.pendingOpen.Load() == 0
+	}
+	quit := idle && h.beginQuit(true)
+	u.mu.Unlock()
+	if quit {
+		h.app.Quit()
+	}
 }
 
 // closeUI marks the child as closing before quitting, so a concurrent reopen waits

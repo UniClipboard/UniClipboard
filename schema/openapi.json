@@ -3081,6 +3081,10 @@
           "autoStart": {
             "type": "boolean"
           },
+          "backgroundStartup": {
+            "description": "Suppress the main window on automatic startup only, never explicit activation.",
+            "type": "boolean"
+          },
           "debugMode": {
             "description": "Persistent local diagnostic logging mode. Takes effect after restart.",
             "type": "boolean"
@@ -3179,6 +3183,10 @@
             "type": "boolean"
           },
           "autoStart": {
+            "nullable": true,
+            "type": "boolean"
+          },
+          "backgroundStartup": {
             "nullable": true,
             "type": "boolean"
           },

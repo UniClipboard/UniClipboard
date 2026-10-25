@@ -48,6 +48,9 @@ func (h *HostService) SetQuickPanelEnabled(ctx context.Context, enabled bool) er
 	if err != nil {
 		return hostapi.Internal(err)
 	}
+	if h.lightweight.Load() {
+		return h.patchQuickPanel(ctx, map[string]any{"enabled": enabled})
+	}
 	if current.Enabled == enabled {
 		return nil
 	}
@@ -169,6 +172,9 @@ func (h *HostService) SetQuickPanelDoubleTapModifier(ctx context.Context, modifi
 	default:
 		return hostapi.New(hostapi.CodeValidationError, "invalid argument modifier")
 	}
+	if h.lightweight.Load() {
+		return h.patchQuickPanel(ctx, map[string]any{"doubleTapModifier": modifier})
+	}
 	if h.helper == nil {
 		return h.setWebViewModifier(ctx, string(modifier))
 	}
@@ -223,6 +229,12 @@ func (h *HostService) updateKeyboardShortcuts(ctx context.Context, patch map[str
 		body := map[string]any{"keyboardShortcuts": map[string]any{"shortcuts": patch}}
 		persistErr = h.daemon().Enveloped(ctx, daemonclient.Request{Method: http.MethodPut, Path: "/settings", JSON: body}, nil)
 		return persistErr
+	}
+	if h.lightweight.Load() {
+		if err := persist(); err != nil {
+			return UpdateKeyboardShortcutsResult{}, hostapi.Internal(err)
+		}
+		return UpdateKeyboardShortcutsResult{KeyboardShortcuts: next}, nil
 	}
 	if err := h.panelShortcut.Save(panelShortcutTarget(view.QuickPanel.Enabled, next), persist); err != nil {
 		return UpdateKeyboardShortcutsResult{}, shortcutSaveError(err, persistErr)

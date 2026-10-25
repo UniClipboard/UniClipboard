@@ -53,6 +53,8 @@
 <p align="center">English | <a href="./README_ZH.md">简体中文</a> | <a href="./README_ZH_TW.md">繁體中文</a> | <a href="./README_JA.md">日本語</a> | <a href="./README_RU.md">Русский</a> | <a href="./README_PT_BR.md">Português (Brasil)</a></p>
 <p align="center"><a href="./ABOUT.md">Who maintains this project? (About &amp; Trust)</a></p>
 
+正常模式保留托盘、快捷面板和全局快捷键；轻量模式在关闭临时主窗口后仅保留同步服务。后台启动只决定自动登录启动时是否打开主窗口，手动打开应用始终可以查看历史或设置。关闭主窗口释放其 WebView；正在使用的回退快捷面板可保留自己的资源。
+
 ## Project Overview
 
 > **Copy on one device. Paste on another — even across the internet.**

@@ -3,6 +3,9 @@ package main
 import (
 	"context"
 	"log"
+	"net/http"
+
+	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/daemonclient"
 	"strconv"
 	"time"
 
@@ -62,19 +65,19 @@ func (h *HostService) notify(id, title, body string) error {
 	return h.notifier.SendNotification(notifications.NotificationOptions{ID: id, Title: title, Body: body})
 }
 
-// enterLightweightMode exits the UI child but keeps the tray host and daemon.
-// It changes the current window state, never the saved startup preference.
+// enterLightweightMode persists residency; the settings watcher coordinates the
+// shell replacement without stopping or restarting the daemon.
 func (h *HostService) enterLightweightMode() {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	body := map[string]any{"general": map[string]any{"startupMode": startupLightweight}}
+	if err := h.daemon().Enveloped(ctx, daemonclient.Request{Method: http.MethodPut, Path: "/settings", JSON: body}, nil); err != nil {
+		log.Printf("failed to save lightweight mode: %v", err)
+		h.app.Dialog.Error().SetTitle("UniClipboard").SetMessage(err.Error()).Show()
+		return
+	}
 	if err := h.notify("lightweight-"+strconv.FormatInt(time.Now().UnixNano(), 10), "UniClipboard", backgroundNotice); err != nil {
 		log.Printf("failed to show the lightweight-mode notification: %v", err)
-	}
-	if h.ui != nil {
-		h.ui.stop()
-		return
-	}
-	if uiChild {
-		h.closeUI()
-		return
 	}
 }
 

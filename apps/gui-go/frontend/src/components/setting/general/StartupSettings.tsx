@@ -6,7 +6,7 @@ import { SettingGroup } from '../SettingGroup'
 import { SettingRow } from '../SettingRow'
 import { useOptimisticSetting } from '../useOptimisticSetting'
 
-const STARTUP_MODES: StartupMode[] = ['normal', 'silent', 'lightweight']
+const STARTUP_MODES: StartupMode[] = ['normal', 'lightweight']
 
 export function StartupSettings() {
   const { t } = useTranslation()
@@ -21,9 +21,17 @@ export function StartupSettings() {
     { failureLog: 'Failed to change autostart setting' }
   )
   const [startupMode, setStartupMode] = useOptimisticSetting<StartupMode>(
-    setting?.general.startupMode ?? 'normal',
+    setting?.general.startupMode === 'silent'
+      ? 'normal'
+      : (setting?.general.startupMode ?? 'normal'),
     next => updateGeneralSetting({ startupMode: next }),
     { failureLog: 'Failed to change startup-mode setting' }
+  )
+  const [backgroundStartup, setBackgroundStartup] = useOptimisticSetting(
+    setting?.general.backgroundStartup ??
+      (setting?.general.startupMode === 'silent' || setting?.general.startupMode === 'lightweight'),
+    next => updateGeneralSetting({ backgroundStartup: next }),
+    { failureLog: 'Failed to change background startup setting' }
   )
   const [restoreLastEntry, setRestoreLastEntry] = useOptimisticSetting(
     setting?.general.restoreLastEntryOnStartup ?? false,
@@ -57,6 +65,17 @@ export function StartupSettings() {
             label: t(`settings.sections.general.startupMode.options.${mode}`),
             description: t(`settings.sections.general.startupMode.summaries.${mode}`),
           }))}
+        />
+      </SettingRow>
+
+      <SettingRow
+        label={t('settings.sections.general.backgroundStartup.label')}
+        description={t('settings.sections.general.backgroundStartup.description')}
+      >
+        <SettingSwitch
+          label={t('settings.sections.general.backgroundStartup.label')}
+          checked={backgroundStartup}
+          onCheckedChange={setBackgroundStartup}
         />
       </SettingRow>
 

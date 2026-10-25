@@ -52,6 +52,8 @@
 <p align="center"><a href="./README.md">English</a> | 简体中文 | <a href="./README_ZH_TW.md">繁體中文</a> | <a href="./README_JA.md">日本語</a> | <a href="./README_RU.md">Русский</a> | <a href="./README_PT_BR.md">Português (Brasil)</a></p>
 <p align="center"><a href="./ABOUT_ZH.md">谁在维护这个项目？（关于本项目 & 信任说明）</a></p>
 
+正常模式保留托盘、快捷面板和全局快捷键；轻量模式在关闭临时主窗口后仅保留同步服务。后台启动只决定自动登录启动时是否打开主窗口，手动打开应用始终可以查看历史或设置。关闭主窗口释放其 WebView；正在使用的回退快捷面板可保留自己的资源。
+
 ## 项目介绍
 
 > **一台设备 Ctrl+C，另一台设备 Ctrl+V —— 哪怕跨着一整个互联网。**

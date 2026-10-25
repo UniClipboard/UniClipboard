@@ -339,17 +339,21 @@
         },
         "startupMode": {
           "summaries": {
-            "normal": "Show the app window on startup.",
-            "silent": "Run in the background without opening a window.",
-            "lightweight": "On login, keep only background sync running. Reopen the interface when needed."
+            "normal": "Keep the tray, Quick Panel and shortcuts available. Closing the main window releases its WebView.",
+            "lightweight": "Keep only the background sync service after closing the window. No tray, Quick Panel or global shortcuts.",
+            "silent": "Normal mode with background startup (legacy preference)."
           },
-          "label": "Startup mode",
-          "description": "Silent skips the window and runs straight in the background. Lightweight goes further — once sync is ready it exits the window and tray too, keeping just the background service and sending a notification; click the app icon again to reopen the window.",
+          "label": "Desktop mode",
+          "description": "Normal keeps the tray, Quick Panel and shortcuts available. Lightweight keeps only the background service after you close the main window.",
           "options": {
             "normal": "Normal",
             "silent": "Silent",
             "lightweight": "Lightweight"
           }
+        },
+        "backgroundStartup": {
+          "label": "Start in background",
+          "description": "Do not open the main window at automatic login startup. Opening the app yourself always shows the window."
         },
         "restoreLastEntryOnStartup": {
           "label": "Restore clipboard on startup",

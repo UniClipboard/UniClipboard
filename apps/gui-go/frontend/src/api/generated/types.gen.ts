@@ -1570,6 +1570,10 @@ export type GeneralSettingsDto = {
     autoDownloadUpdate?: boolean;
     autoStart: boolean;
     /**
+     * Suppress the main window on automatic startup only, never explicit activation.
+     */
+    backgroundStartup?: boolean;
+    /**
      * Persistent local diagnostic logging mode. Takes effect after restart.
      */
     debugMode?: boolean;
@@ -1639,6 +1643,7 @@ export type GeneralSettingsPatchDto = {
     autoCheckUpdate?: boolean | null;
     autoDownloadUpdate?: boolean | null;
     autoStart?: boolean | null;
+    backgroundStartup?: boolean | null;
     debugMode?: boolean | null;
     deviceName?: string | null;
     language?: string | null;

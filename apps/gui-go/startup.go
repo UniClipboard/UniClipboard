@@ -15,20 +15,30 @@ import (
 // Startup modes, as stored in `general.startupMode`.
 const (
 	startupNormal      = "normal"
-	startupSilent      = "silent"
 	startupLightweight = "lightweight"
 )
 
 // startupSettings are the preferences that shape the launch sequence.
 type startupSettings settings.General
 
-// Silent and Lightweight launches keep the window hidden at boot; Lightweight then decides once it knows
-// whether this launch started the daemon.
-func (s startupSettings) hidden() bool {
-	return s.StartupMode == startupSilent || s.StartupMode == startupLightweight
-}
-func (s startupSettings) silent() bool      { return s.StartupMode == startupSilent }
 func (s startupSettings) lightweight() bool { return s.StartupMode == startupLightweight }
+
+// preflightResidentHost only reads an existing daemon, before acquiring the
+// Wails instance lock. It neither starts a daemon nor touches shared settings.
+// A cold launch without settings bootstraps first, then hands off once.
+func preflightResidentHost() bool {
+	client, err := daemonclient.FromEnv()
+	if err == nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		if view, err := settings.Read(ctx, client); err == nil {
+			return view.General.StartupMode != startupLightweight
+		}
+	}
+	// Only an internal local restart handoff supplies this hint. A fresh
+	// explicit launch with an unreadable daemon still uses the recovery path.
+	return restartedGUI && hasArg(os.Args[1:], residentRestartArg)
+}
 
 // loadStartupSettings reads the launch preferences. When settings cannot be read the defaults apply (a
 // normal launch), as in the Tauri shell.
@@ -41,27 +51,6 @@ func (h *HostService) loadStartupSettings() (startupSettings, bool) {
 		return startupSettings{StartupMode: startupNormal}, false
 	}
 	return startupSettings(view.General), true
-}
-
-// startupWindowAction is what a launch does with the window once the daemon origin is known.
-type startupWindowAction int
-
-const (
-	windowNone startupWindowAction = iota
-	windowEnterBackgroundOnly
-	windowShow
-)
-
-// resolveWindowAction: a Lightweight launch that started the daemon (a cold start) hands off to
-// background-only running; one that merely attached to a running daemon (a reopen) shows the window.
-func resolveWindowAction(spawnedThisLaunch, lightweight bool) startupWindowAction {
-	switch {
-	case lightweight && spawnedThisLaunch:
-		return windowEnterBackgroundOnly
-	case lightweight:
-		return windowShow
-	}
-	return windowNone
 }
 
 // coldLaunch runs the daemon-dependent startup sequence of crates/uc-desktop/src/startup/actions.rs (as of
@@ -80,19 +69,7 @@ func (h *HostService) coldLaunch(settings startupSettings, spawned bool) {
 	} else {
 		log.Printf("daemon already running (reopen); skipping cold-start recovery and restore")
 	}
-	action := resolveWindowAction(spawned, settings.lightweight())
-	if action == windowEnterBackgroundOnly && h.heldShow() {
-		// The user launched the app again while it was starting: they want the window, not background-only running.
-		action = windowShow
-	}
-	switch action {
-	case windowEnterBackgroundOnly:
-		log.Printf("lightweight cold start: daemon ready, entering lightweight mode")
-		h.enterLightweightMode()
-	case windowShow:
-		log.Printf("lightweight reopen: daemon already running, showing the main window")
-		h.showMainWindow()
-	}
+
 }
 
 func (h *HostService) ensureDeviceName(settings startupSettings) {

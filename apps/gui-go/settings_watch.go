@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"log"
 
 	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/settings"
 )
@@ -18,6 +19,22 @@ func (h *HostService) startSettingsWatch() {
 // read caused by the host's own write, so every consumer compares with the state it holds and does nothing when it
 // is unchanged.
 func (h *HostService) applySettings(view settings.View) {
+	if (view.General.StartupMode == startupLightweight) != h.lightweight.Load() {
+		if h.modeRestarting.CompareAndSwap(false, true) {
+			go func() {
+				defer h.modeRestarting.Store(false)
+				// A replacement reads the latest persisted mode; it never rewrites it.
+				if err := h.restartShell(true); err != nil {
+					log.Printf("desktop mode restart failed: %v", err)
+					h.app.Dialog.Error().SetTitle("UniClipboard").SetMessage(err.Error()).Show()
+				}
+			}()
+		}
+		return
+	}
+	if h.lightweight.Load() || h.quitting.Load() || h.tray == nil {
+		return
+	}
 	h.tray.setSyncEnabled(view.Sync.SyncEnabled)
 	// The tray language follows the stored language (B9). Only a change is applied, so a read does not rebuild the menu.
 	if language := resolveTrayLanguage(view.General.Language); language != h.trayLanguageApplied {

@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'scripts/package-status.py'
+      - 'scripts/ci/vercel-generated-data.json'
       - 'scripts/tests/test_package_status.py'
       - 'scripts/tests/test_aur_package.py'
       - 'scripts/ci/render-aur-package.sh'
@@ -14,6 +15,7 @@ on:
     branches: [main]
     paths:
       - 'scripts/package-status.py'
+      - 'scripts/ci/vercel-generated-data.json'
       - 'scripts/tests/test_package_status.py'
       - '.github/workflows/package-status.yml'
       - 'README.md'
@@ -92,9 +94,12 @@ jobs:
           fi
           cp -R ../snapshot/badges .
           cp ../snapshot/status.json .
+          # Vercel reads configuration from its project root on the pushed branch.
+          mkdir -p docs-site
+          cp ../source/scripts/ci/vercel-generated-data.json docs-site/vercel.json
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add badges status.json
+          git add badges status.json docs-site/vercel.json
           if ! git diff --cached --quiet; then
             git commit -m 'chore: refresh published package versions'
             git push origin HEAD:refs/heads/package-status

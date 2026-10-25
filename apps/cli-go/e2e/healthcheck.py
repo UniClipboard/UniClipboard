@@ -168,8 +168,10 @@ def main():
         code, msg = health(default_env)
         check('F4 restarted daemon is healthy again', code == 0, msg)
         check('F4 pid changed after restart', c2['pid'] != c1['pid'], '%d -> %d' % (c1['pid'], c2['pid']))
-        check('F4 port observed: %d -> %d' % (c1['port'], c2['port']), True,
-              'a changed port is likely but not guaranteed; the check follows daemon.conn either way')
+        # A changed port is likely but not guaranteed, so it is recorded, not asserted.
+        records.append(dict(check='F4 port observed (not asserted)', result='INFO',
+                            detail='%d -> %d' % (c1['port'], c2['port'])))
+        print('INFO F4 port observed (not asserted): %d -> %d' % (c1['port'], c2['port']), flush=True)
     finally:
         for p in children:
             if p.poll() is None:

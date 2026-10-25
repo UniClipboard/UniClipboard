@@ -25,7 +25,8 @@ func CheckHealthy() error {
 	if conn == nil {
 		return fmt.Errorf("%w: no daemon.conn published for this profile", ErrNotHealthy)
 	}
-	if !daemonproc.IsActiveDaemon(conn.PID) {
+	// kill(0, 0) targets the caller's process group, so pid 0 would look alive.
+	if conn.PID == 0 || !daemonproc.IsActiveDaemon(conn.PID) {
 		return fmt.Errorf("%w: daemon.conn names pid %d, which is not a running daemon", ErrNotHealthy, conn.PID)
 	}
 	outcome, err := probeAt(conn.BaseURL())

@@ -39,7 +39,6 @@ only Caddy's `80`/`443` and the iroh `42999/udp` port reach the public internet.
 | `443` (+`/udp`)| host public  | HTTPS for the phone (Caddy → mobile_lan)        |
 | `80`           | host public  | ACME challenge + HTTPS redirect (Caddy)         |
 | `42720`        | internal only| `mobile_lan` plaintext HTTP (Caddy upstream)    |
-| `42715`        | container    | daemon loopback control server (healthcheck)    |
 
 ## Prerequisites
 
@@ -213,8 +212,11 @@ still refuse to run while the daemon is up.
   the internal network (this compose does; do not add a host port mapping for it).
 - There is no relay fallback (`RelayMode::Disabled`). If a desktop's network
   blocks outbound UDP to `UC_IROH_BIND_PORT`, it cannot reach this node directly.
-- The healthcheck assumes no `UC_PROFILE` is set (daemon control port `42715`).
-  If you set `UC_PROFILE`, the control port changes — update the healthcheck.
+- The healthcheck runs `uniclip health`. The daemon uses a dynamic loopback
+  port published in `daemon.conn`, so the check follows port changes after a
+  restart. It reads the profile selected by `HOME` and `UC_PROFILE`, so set
+  `UC_PROFILE` on the `app` service and the check follows it. The check is
+  read-only: it never starts or repairs the daemon.
 
 ## Troubleshooting
 

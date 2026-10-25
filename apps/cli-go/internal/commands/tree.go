@@ -18,6 +18,7 @@ func Tree() *cli.Command {
 		Subs: []*cli.Command{
 			{Name: "run", About: "Run the daemon in the foreground; refuse an existing daemon", Flags: []*cli.Flag{{Long: "server", Kind: cli.Bool, Help: "Run headless without the system clipboard"}}, Run: runForeground},
 			serviceTree(),
+			{Name: "health", About: "Check that the local daemon is healthy, without starting it", Run: runHealth},
 			{
 				Name:  "start",
 				About: "Deprecated: start in background; use run or service start",

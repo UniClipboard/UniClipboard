@@ -79,7 +79,7 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o /uniclip ./cmd/uniclip
 FROM alpine:3.20 AS runtime
 
 # ca-certificates: TLS roots for outbound HTTPS (pairing rendezvous, etc.).
-# busybox `wget` backs the compose healthcheck against the daemon control port.
+# The compose healthcheck runs `uniclip health`, which needs no extra tools.
 RUN apk add --no-cache ca-certificates \
  && adduser -D -u 10001 -h /data uniclip \
  && mkdir -p /data \

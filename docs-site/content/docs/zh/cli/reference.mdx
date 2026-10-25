@@ -21,6 +21,10 @@ Linux 要求可连接用户 systemd 管理器。`service start` 幂等；修改�
 端点属于其他 daemon 时返回非零。`recovery_required` 表示 daemon 可达，但仍需要恢复。
 `start` 和 `restart` 等待 HTTP 健康，失败时返回非零并保留服务供诊断。
 
+`health` 是供容器 healthcheck 等编排工具使用的只读检查。它读取所选 profile 的
+`daemon.conn`，要求记录的 daemon 进程存活且 `/health` 响应兼容；健康时退出码为 0，
+否则为 1。它不会启动、重启或修复 daemon，并在 daemon 重启后跟随其新端口。
+
 服务保留所选 profile、HOME 和数据/日志上下文，不保存口令或 daemon 令牌。登录钥匙串
 仍可能被锁定。macOS 控制台日志位于 profile 日志目录的 `service.stdout.log` 和
 `service.stderr.log`；Linux 使用 `journalctl --user -u <name>.service`，name 来自状态输出。

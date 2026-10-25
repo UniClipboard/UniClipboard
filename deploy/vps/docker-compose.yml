@@ -55,10 +55,12 @@ services:
       - uniclip
     command: ['uniclip', 'run', '--server']
     healthcheck:
-      # The daemon's loopback control server answers /health on 42715 when no
-      # UC_PROFILE is set (the recommended VPS config). Proves the daemon is
-      # alive and serving; Caddy waits for this before starting.
-      test: ['CMD', 'wget', '-q', '-O', '-', 'http://127.0.0.1:42715/health']
+      # The daemon listens on a kernel-assigned loopback port and publishes it
+      # in daemon.conn (ADR-011), so no fixed port can be probed. `uniclip
+      # health` reads that record for the current HOME/UC_PROFILE and checks the
+      # live daemon's /health. It never starts or repairs a daemon. Caddy waits
+      # for this before starting.
+      test: ['CMD', 'uniclip', 'health']
       interval: 30s
       timeout: 5s
       retries: 3

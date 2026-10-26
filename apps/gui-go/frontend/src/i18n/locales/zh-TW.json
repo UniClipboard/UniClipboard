@@ -617,23 +617,23 @@
         "loadError": "載入設定失敗:",
         "lanOnly": {
           "label": "LAN-only 模式",
-          "description": "關閉公網中繼回落，僅通過同區域網路完成裝置同步。重新啟動後生效。",
-          "infoIconAriaLabel": "查看 LAN-only 模式開啓後仍走外網的請求清單",
+          "description": "停用中繼、公共 rendezvous 和 DNS/pkarr 探索。透過本機探索或完整邀請連接裝置，例如經 VPN 配對。重新啟動後生效。",
+          "infoIconAriaLabel": "查看 LAN-only 配對與網際網路請求詳情",
           "saveError": "儲存失敗：{{message}}。已恢復到上一次的設定。",
           "disclosure": {
-            "title": "LAN-only 開啓後仍會走外網的請求",
-            "intro": "以下 4 類請求由獨立模塊控制，不受 LAN-only 影響：",
-            "rendezvous": {
-              "title": "首次配對 rendezvous",
-              "description": "配對新裝置時仍需聯網經 rendezvous.uniclipboard.app 完成 NodeId 交換；已配對裝置的日常同步不再使用 rendezvous。"
+            "title": "LAN-only 配對與網際網路請求",
+            "intro": "LAN-only 為裝置連線停用中繼伺服器、公共 rendezvous 和 DNS/pkarr 探索。遙測與更新檢查由獨立設定控制。",
+            "pairing": {
+              "title": "無需公共 rendezvous 的配對",
+              "description": "六位短碼僅透過本機網路探索解析。本機探索無法使用時（例如透過 VPN），請從發出邀請的裝置複製並貼上完整邀請。"
+            },
+            "discovery": {
+              "title": "本機裝置探索",
+              "description": "裝置透過本機網路上的 mDNS 探索。DNS/pkarr 查詢已停用。"
             },
             "telemetry": {
               "title": "遙測",
               "description": "遙測由「通用 → 遙測」開關獨立控制，與 LAN-only 無關；如需關閉，請到「通用」分類。"
-            },
-            "pkarr": {
-              "title": "pkarr DHT NodeId 解析",
-              "description": "跨網段連接通過 pkarr 公網 DHT 解析對端 NodeId，性質類似 DNS。關閉會導致跨網段連接率從約 90% 跌至接近 0。"
             },
             "autoUpdate": {
               "title": "自動更新 GitHub 檢查",

@@ -618,23 +618,23 @@
         "loadError": "Falha ao carregar as configurações:",
         "lanOnly": {
           "label": "LAN-only Mode",
-          "description": "Desativa o fallback pelo relay público. Os dispositivos sincronizam somente na mesma rede local. Tem efeito após reiniciar.",
-          "infoIconAriaLabel": "Ver a lista de requisições que ainda chegam à internet quando o LAN-only Mode está ativado",
+          "description": "Desativa relays, rendezvous público e descoberta por DNS/pkarr. Use a descoberta local ou um convite completo, por exemplo via VPN. Entra em vigor após reiniciar.",
+          "infoIconAriaLabel": "Ver detalhes de pareamento e solicitações à internet no modo LAN-only",
           "saveError": "Falha ao salvar: {{message}}. A configuração anterior foi restaurada.",
           "disclosure": {
-            "title": "Requisições que ainda chegam à internet com o LAN-only Mode ativado",
-            "intro": "Os 4 tipos de requisição a seguir são controlados por módulos independentes e não são afetados pelo LAN-only Mode:",
-            "rendezvous": {
-              "title": "Rendezvous do primeiro pareamento",
-              "description": "Parear um novo dispositivo ainda exige acesso a rendezvous.uniclipboard.app para trocar os NodeIds. Depois do pareamento, a sincronização do dia a dia não usa mais o rendezvous."
+            "title": "Pareamento e solicitações à internet no modo LAN-only",
+            "intro": "O modo LAN-only desativa servidores de relay, rendezvous público e descoberta por DNS/pkarr para conexões entre dispositivos. A telemetria e a busca de atualizações têm controles separados.",
+            "pairing": {
+              "title": "Pareamento sem rendezvous público",
+              "description": "Códigos de seis dígitos são resolvidos apenas pela descoberta na rede local. Se a descoberta estiver indisponível, por exemplo via VPN, copie e cole o convite completo do dispositivo que emitiu o convite."
+            },
+            "discovery": {
+              "title": "Descoberta local de dispositivos",
+              "description": "A descoberta de dispositivos usa mDNS na rede local. As consultas DNS/pkarr são desativadas."
             },
             "telemetry": {
               "title": "Telemetria",
               "description": "A telemetria é controlada de forma independente em Geral → Telemetria, e não pelo LAN-only Mode. Para desativá-la, vá até a seção Geral."
-            },
-            "pkarr": {
-              "title": "Resolução de NodeId pela DHT pkarr",
-              "description": "Conexões entre sub-redes diferentes resolvem os NodeIds dos pares pela DHT pública pkarr, algo parecido com o DNS. Desativá-la derrubaria a taxa de conexão entre sub-redes de cerca de 90% para quase zero."
             },
             "autoUpdate": {
               "title": "Verificação de atualizações no GitHub",

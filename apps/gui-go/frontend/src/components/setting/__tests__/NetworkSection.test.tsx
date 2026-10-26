@@ -949,7 +949,7 @@ describe('Phase 95 ROADMAP fence — 4 验收 + 3 Pitfall 防御', () => {
     expect(document.querySelector('[data-animated-toast-stack]')).toBeNull()
   })
 
-  it('Pitfall 5 — 4 类外网请求清单存在（Popover 展开后）', async () => {
+  it('explains local pairing and the independently controlled internet requests', async () => {
     const user = userEvent.setup()
     renderWithOverrides({ allowRelayFallback: true })
     await user.click(
@@ -957,11 +957,11 @@ describe('Phase 95 ROADMAP fence — 4 验收 + 3 Pitfall 防御', () => {
         name: /查看 LAN-only|View the list/,
       })
     )
-    expect(screen.getByText(/首次配对 rendezvous|First-pairing rendezvous/)).toBeInTheDocument()
-    expect(screen.getByText(/^遥测$|^Telemetry$/)).toBeInTheDocument()
     expect(
-      screen.getByText(/pkarr DHT NodeId 解析|pkarr DHT NodeId resolution/)
+      screen.getByText(/无需公共 rendezvous 的配对|Pairing without public rendezvous/)
     ).toBeInTheDocument()
+    expect(screen.getByText(/^遥测$|^Telemetry$/)).toBeInTheDocument()
+    expect(screen.getByText(/本地设备发现|Local device discovery/)).toBeInTheDocument()
     expect(screen.getByText(/自动更新 GitHub 检查|Auto-update GitHub check/)).toBeInTheDocument()
   })
 

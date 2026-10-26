@@ -617,23 +617,23 @@
         "loadError": "Failed to load settings:",
         "lanOnly": {
           "label": "LAN-only Mode",
-          "description": "Disable public-relay fallback. Devices sync only over the same local network. Takes effect after restart.",
-          "infoIconAriaLabel": "View the list of requests that still reach the internet when LAN-only Mode is on",
+          "description": "Disable relays, public rendezvous, and DNS/pkarr discovery. Use local discovery or a full invitation, for example over a VPN. Takes effect after restart.",
+          "infoIconAriaLabel": "View LAN-only pairing and internet request details",
           "saveError": "Save failed: {{message}}. Reverted to the previous setting.",
           "disclosure": {
-            "title": "Requests that still reach the internet with LAN-only Mode on",
-            "intro": "The following 4 request types are controlled by independent modules and are not affected by LAN-only Mode:",
-            "rendezvous": {
-              "title": "First-pairing rendezvous",
-              "description": "Pairing a new device still requires reaching rendezvous.uniclipboard.app to exchange NodeIds. Once paired, day-to-day sync no longer uses rendezvous."
+            "title": "LAN-only pairing and internet requests",
+            "intro": "LAN-only disables relay servers, public rendezvous, and DNS/pkarr discovery for device connections. Telemetry and update checks have separate controls.",
+            "pairing": {
+              "title": "Pairing without public rendezvous",
+              "description": "Six-digit codes resolve only through local network discovery. If discovery is unavailable, such as over a VPN, copy and paste the full invitation from the inviting device."
+            },
+            "discovery": {
+              "title": "Local device discovery",
+              "description": "Device discovery uses mDNS on the local network. DNS/pkarr lookups are disabled."
             },
             "telemetry": {
               "title": "Telemetry",
               "description": "Telemetry is controlled independently by General → Telemetry, not by LAN-only Mode. To disable it, go to the General section."
-            },
-            "pkarr": {
-              "title": "pkarr DHT NodeId resolution",
-              "description": "Cross-subnet connections resolve peer NodeIds via the public pkarr DHT, similar in nature to DNS. Disabling it would drop cross-subnet connection rate from ~90% to near zero."
             },
             "autoUpdate": {
               "title": "Auto-update GitHub check",

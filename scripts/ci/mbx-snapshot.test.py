@@ -14,7 +14,8 @@ import unittest
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import Mock, patch
 
 
 def load(name):
@@ -310,6 +311,66 @@ class SnapshotTests(unittest.TestCase):
                 snapshot.save(None, "scene", Path("unused"), {}, "e2e-macos")
             mbx.assert_not_called()
 
+    def test_upload_config_bounds_requests_and_uses_classic_manager(self):
+        constructor = Mock()
+        with patch.dict(sys.modules, {"boto3.s3.transfer": SimpleNamespace(TransferConfig=constructor)}):
+            self.assertIs(snapshot.upload_config(), constructor.return_value)
+        constructor.assert_called_once_with(
+            multipart_threshold=64 * 1024**2, multipart_chunksize=64 * 1024**2,
+            max_concurrency=4, preferred_transfer_client="classic",
+        )
+
+    def test_save_publishes_index_only_after_successful_upload(self):
+        def compact(exported, bundle):
+            bundle.mkdir()
+            (bundle / snapshot.MANIFEST).write_text('{"version": 1}')
+
+        for failure in (None, "upload_file", "put_object"):
+            with self.subTest(failure=failure), tempfile.TemporaryDirectory() as directory:
+                s3 = Mock()
+                if failure:
+                    getattr(s3, failure).side_effect = RuntimeError("transport failed")
+                report = {"status": "pending"}
+                config = object()
+                env = dict(GITHUB_REF="refs/heads/main", GITHUB_REF_PROTECTED="true",
+                           GITHUB_EVENT_NAME="schedule", GITHUB_SHA="a" * 40)
+                with patch.dict(os.environ, env), patch.object(snapshot, "mbx"), \
+                        patch.object(snapshot, "compact_bundle", side_effect=compact), \
+                        patch.object(snapshot, "upload_config", return_value=config):
+                    if failure:
+                        with self.assertRaisesRegex(RuntimeError, "transport failed"):
+                            snapshot.save(s3, "scene", Path(directory), report, "e2e-macos")
+                        self.assertEqual(report, {"status": "pending"})
+                    else:
+                        snapshot.save(s3, "scene", Path(directory), report, "e2e-macos")
+                        self.assertEqual(report["status"], "saved")
+                archive = Path(directory) / "snapshot.tar.gz"
+                archive_key = f"scene/{snapshot.digest_file(archive)}.tar.gz"
+                s3.upload_file.assert_called_once_with(str(archive), snapshot.BUCKET, archive_key, Config=config)
+                if failure == "upload_file":
+                    s3.put_object.assert_not_called()
+                else:
+                    self.assertEqual([call[0] for call in s3.method_calls], ["upload_file", "put_object"])
+                    index = json.loads(s3.put_object.call_args.kwargs["Body"])
+                    self.assertEqual(index["key"], archive_key)
+                    self.assertEqual(index["size"], archive.stat().st_size)
+
+    def test_upload_failure_is_reported_without_retention_or_success(self):
+        with tempfile.TemporaryDirectory() as directory:
+            env = dict(UC_ENGINE_MBX_STATS_DIR=directory, RUNNER_TEMP=directory, GITHUB_SHA="a" * 40)
+            with patch.dict(os.environ, env), patch.object(sys, "argv", ["mbx-snapshot.py", "save"]), \
+                    patch.object(snapshot.subprocess, "check_output", return_value="a" * 40), \
+                    patch.object(snapshot, "client"), patch.object(snapshot, "scene_key", return_value="scene"), \
+                    patch.object(snapshot, "save", side_effect=RuntimeError("private endpoint")), \
+                    patch.object(snapshot, "prune_snapshots") as prune, patch("sys.stdout", new_callable=io.StringIO) as output:
+                snapshot.main()
+                prune.assert_not_called()
+                self.assertNotIn("private endpoint", output.getvalue())
+            report = json.loads((Path(directory) / "snapshot-save.json").read_text())
+            self.assertEqual(report["status"], "error")
+            self.assertEqual(report["error_type"], "RuntimeError")
+            self.assertNotIn("uploaded_bytes", report)
+
     def test_retention_only_deletes_expired_scene_objects(self):
         now = datetime.now(timezone.utc)
 
@@ -346,6 +407,68 @@ class SnapshotTests(unittest.TestCase):
             self.assertEqual(result["downloaded_bytes"], 100)
             self.assertEqual(result["total_downloaded_bytes"], 600)
             self.assertEqual(result["total_logical_reads"], 8)
+
+
+@unittest.skipUnless(importlib.util.find_spec("boto3"), "Install the SDK pinned in mbx-snapshot.sh for transfer integration")
+class SnapshotTransferTests(unittest.TestCase):
+    def test_real_sdk_selects_classic_manager_and_bounded_concurrency(self):
+        import boto3
+        from boto3.s3.transfer import create_transfer_manager
+        from s3transfer.manager import TransferManager
+
+        s3 = boto3.client("s3", endpoint_url="https://snapshot.invalid", region_name="auto",
+                          aws_access_key_id="fixture", aws_secret_access_key="fixture")
+        with create_transfer_manager(s3, snapshot.upload_config()) as manager:
+            self.assertIsInstance(manager, TransferManager)
+            self.assertEqual(manager.config.max_request_concurrency, 4)
+
+    def test_real_sdk_multipart_boundaries_and_abort(self):
+        import boto3
+        from boto3.exceptions import S3UploadFailedError
+        from botocore.exceptions import ClientError
+
+        part = 64 * 1024**2
+        for size, failure in [(part - 1, None), (part, None), (part + 1, None),
+                              (4 * part + 1, None), (part + 1, "UploadPart"),
+                              (part + 1, "CompleteMultipartUpload")]:
+            with self.subTest(size=size, failure=failure), tempfile.TemporaryDirectory() as directory:
+                archive = Path(directory) / "archive"
+                with archive.open("wb") as output:
+                    output.truncate(size)
+                s3 = boto3.client("s3", endpoint_url="https://snapshot.invalid", region_name="auto",
+                                  aws_access_key_id="fixture", aws_secret_access_key="fixture")
+                calls = []
+                parts = []
+
+                def request(operation, params):
+                    calls.append(operation)
+                    if operation == failure:
+                        raise ClientError({"Error": {"Code": "InternalError", "Message": "fixture"}}, operation)
+                    if operation == "CreateMultipartUpload":
+                        return {"UploadId": "fixture"}
+                    if operation == "UploadPart":
+                        parts.append((params["PartNumber"], len(params["Body"])))
+                        return {"ETag": str(params["PartNumber"])}
+                    if operation == "PutObject":
+                        self.assertEqual(len(params["Body"]), size)
+                    return {}
+
+                # Intercept every SDK API call: no credentials lookup or network.
+                with patch.object(s3, "_make_api_call", side_effect=request):
+                    if failure:
+                        with self.assertRaises(S3UploadFailedError):
+                            s3.upload_file(str(archive), snapshot.BUCKET, "fixture", Config=snapshot.upload_config())
+                        self.assertIn("AbortMultipartUpload", calls)
+                    else:
+                        s3.upload_file(str(archive), snapshot.BUCKET, "fixture", Config=snapshot.upload_config())
+                        if size < part:
+                            self.assertEqual(calls, ["PutObject"])
+                        else:
+                            self.assertEqual(calls[0], "CreateMultipartUpload")
+                            self.assertEqual(calls[-1], "CompleteMultipartUpload")
+                            self.assertEqual(sorted(parts), [(i + 1, min(part, size - i * part))
+                                                            for i in range((size + part - 1) // part)])
+                            self.assertNotIn("AbortMultipartUpload", calls)
 
 
 @unittest.skipUnless(os.environ.get("UC_MBX_TEST_BINARY"), "Set UC_MBX_TEST_BINARY for native MBX integration")
@@ -503,7 +626,7 @@ fn executes_on_every_run() {
                     self.objects = {}
                     self.publications = []
 
-                def upload_file(self, file, bucket, key):
+                def upload_file(self, file, bucket, key, *, Config):
                     self.objects[key] = Path(file).read_bytes()
                     self.publications.append(key)
 
@@ -524,7 +647,7 @@ fn executes_on_every_run() {
             config = root / "engine-env"
             config.write_text("# Test policy\n")
             command_file = root / "github-env"
-            with patch.dict(os.environ, dict(GITHUB_REF="refs/heads/main", GITHUB_REF_PROTECTED="true", GITHUB_EVENT_NAME="push", GITHUB_SHA="a" * 40, UC_ENGINE_MBX_ENV_FILE=str(config), GITHUB_ENV=str(command_file))), patch.object(snapshot, "mbx", side_effect=run):
+            with patch.dict(os.environ, dict(GITHUB_REF="refs/heads/main", GITHUB_REF_PROTECTED="true", GITHUB_EVENT_NAME="push", GITHUB_SHA="a" * 40, UC_ENGINE_MBX_ENV_FILE=str(config), GITHUB_ENV=str(command_file))), patch.object(snapshot, "mbx", side_effect=run), patch.object(snapshot, "upload_config", return_value=None):
                 saved = {}
                 snapshot.save(s3, "scene", transport, saved, "e2e-macos")
                 self.assertEqual(saved["status"], "saved")

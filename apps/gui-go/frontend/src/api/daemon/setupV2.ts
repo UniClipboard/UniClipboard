@@ -22,7 +22,7 @@ import type {
   RedeemRequest as RedeemRequestDto,
   SwitchSpaceRequest as SwitchSpaceRequestDto,
 } from '@/api/generated/types.gen'
-import { formatInvitationCode } from '@/lib/invitation-code'
+import { normalizeInvitationInput } from '@/lib/invitation-code'
 import { daemonClient } from './client'
 import { DaemonApiError } from './errors'
 
@@ -40,16 +40,8 @@ export interface InitializeSpaceResponse {
   fingerprint: string
 }
 
-export interface IssueInvitationResponse {
-  code: string
-  expiresAtMs: number
-  // Future extension point (Phase 5 product-side decision): per-channel
-  // publish status — e.g. `{ lan: 'live', cloud: 'unreachable' }` — so
-  // the issue UI can show "✓ LAN / ✗ Cloud" indicators when only some
-  // channels accepted the announce. Backend support pending a separate
-  // facade query API; until then, callers should not depend on this
-  // field being present.
-  // publishChannels?: { lan?: ChannelStatus; cloud?: ChannelStatus }
+export interface IssueInvitationResponse extends CurrentInvitation {
+  fullInvitation: string
 }
 
 export interface RedeemRequest {
@@ -127,6 +119,8 @@ export type RedeemResponse = JoinSpaceResponse
 export type ActiveJoinSpaceResponse = Extract<JoinSpaceResponse, { status: 'active' }>
 
 export interface CurrentInvitation {
+  // WebSocket invitation events carry only the short code.
+  fullInvitation?: string
   code: string
   expiresAtMs: number
 }
@@ -480,7 +474,7 @@ export async function redeemInvitation(body: RedeemRequest): Promise<RedeemRespo
       setupV2Redeem({
         body: {
           ...body,
-          code: formatInvitationCode(body.code),
+          code: normalizeInvitationInput(body.code),
         } as unknown as RedeemRequestDto,
         throwOnError: true,
       })
@@ -548,7 +542,7 @@ export async function switchSpace(body: SwitchSpaceRequest): Promise<SwitchSpace
       setupV2SwitchSpace({
         body: {
           ...body,
-          code: formatInvitationCode(body.code),
+          code: normalizeInvitationInput(body.code),
           preserveUnreadableHistory: body.preserveUnreadableHistory ?? false,
         } as unknown as SwitchSpaceRequestDto,
         throwOnError: true,

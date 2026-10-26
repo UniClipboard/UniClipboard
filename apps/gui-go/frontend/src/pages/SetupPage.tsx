@@ -66,6 +66,7 @@ const SetupScreen: React.FC<SetupScreenProps> = ({
       return (
         <ShowInvitationScreen
           code={screen.code}
+          fullInvitation={screen.fullInvitation}
           expiresAtMs={screen.expiresAtMs}
           onCancel={cancelInvitation}
           loading={loading}

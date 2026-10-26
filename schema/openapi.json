@@ -794,10 +794,14 @@
           "expiresAtMs": {
             "format": "int64",
             "type": "integer"
+          },
+          "fullInvitation": {
+            "type": "string"
           }
         },
         "required": [
           "code",
+          "fullInvitation",
           "expiresAtMs"
         ],
         "type": "object"
@@ -3853,10 +3857,14 @@
           "expiresAtMs": {
             "format": "int64",
             "type": "integer"
+          },
+          "fullInvitation": {
+            "type": "string"
           }
         },
         "required": [
           "code",
+          "fullInvitation",
           "expiresAtMs"
         ],
         "type": "object"

@@ -2725,15 +2725,20 @@
       "hint": "配對完成前請保持兩台裝置都在線。",
       "hintExpired": "邀請碼已失效，請取消後重新生成。",
       "actions": {
-        "cancel": "取消邀請"
-      }
+        "cancel": "取消邀請",
+        "copyFullInvitation": "複製完整邀請",
+        "fullInvitationCopied": "已複製完整邀請"
+      },
+      "fullInvitationHint": "透過 VPN 或其他網路配對、本機探索無法使用時使用。請僅分享給你希望配對的裝置。",
+      "copyError": "無法複製邀請，請重試。"
     },
     "redeemInvitation": {
       "title": "加入已有空間",
       "subtitle": "輸入對方裝置顯示的邀請碼，以及建立空間時設定的口令。",
       "labels": {
         "code": "邀請碼",
-        "passphrase": "空間口令"
+        "passphrase": "空間口令",
+        "fullInvitation": "完整邀請（VPN 或其他網路）"
       },
       "placeholders": {
         "passphrase": "輸入對方在建立空間時使用的口令"
@@ -2757,7 +2762,8 @@
         "back": "返回",
         "joining": "正在加入...",
         "submit": "加入空間"
-      }
+      },
+      "fullInvitationHint": "也可以貼上以 ucspace1_ 開頭的完整邀請，注意區分大小寫。"
     },
     "joinPending": {
       "processing": {

@@ -511,6 +511,7 @@ export type CreateHistoryTagRequest = {
 export type CurrentInvitation = {
     code: string;
     expiresAtMs: number;
+    fullInvitation: string;
 };
 
 /**
@@ -2093,6 +2094,7 @@ export type InitializeSpaceResponse = {
 export type IssueInvitationResponse = {
     code: string;
     expiresAtMs: number;
+    fullInvitation: string;
 };
 
 export type JoinSpaceAttentionReason = 'outcome_cannot_be_proven';

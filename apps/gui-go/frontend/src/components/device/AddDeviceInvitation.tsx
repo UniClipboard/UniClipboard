@@ -1,6 +1,7 @@
 import { Clock, Info } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { CurrentInvitation } from '@/api/daemon/setupV2'
+import { LegacyCopyFullInvitationButton } from '@/components/LegacyCopyFullInvitationButton'
 import { Progress } from '@/components/ui/progress'
 import { formatInvitationRemaining } from '@/lib/invitation-code'
 import { cn } from '@/lib/utils'
@@ -63,7 +64,10 @@ export function AddDeviceInvitation({
         </div>
       </div>
 
-      {/* 提示：还需空间口令 */}
+      {invitation.fullInvitation && (
+        <LegacyCopyFullInvitationButton invitation={invitation.fullInvitation} disabled={expired} />
+      )}
+      {/* The joining device also needs the space passphrase. */}
       <div className="flex items-start gap-2.5 rounded-lg bg-muted/50 px-3.5 py-2.5 text-ui-body text-muted-foreground">
         <Info className="mt-0.5 size-3.5 shrink-0" />
         <span>{t('devices.addDevice.passphraseHint')}</span>

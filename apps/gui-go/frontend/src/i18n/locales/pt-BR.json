@@ -2749,15 +2749,20 @@
       "hint": "Os dois dispositivos precisam ficar online durante o pareamento.",
       "hintExpired": "O código não é mais válido. Cancele e crie um novo convite.",
       "actions": {
-        "cancel": "Cancelar convite"
-      }
+        "cancel": "Cancelar convite",
+        "copyFullInvitation": "Copiar convite completo",
+        "fullInvitationCopied": "Convite completo copiado"
+      },
+      "fullInvitationHint": "Use em uma VPN ou outra rede quando a descoberta local não estiver disponível. Compartilhe apenas com o dispositivo que deseja parear.",
+      "copyError": "Não foi possível copiar o convite. Tente novamente."
     },
     "redeemInvitation": {
       "title": "Entrar em um Espaço existente",
       "subtitle": "Digite o código de convite exibido no outro dispositivo e informe a mesma frase secreta usada para criar o Espaço.",
       "labels": {
         "code": "Código de convite",
-        "passphrase": "Frase secreta do Espaço"
+        "passphrase": "Frase secreta do Espaço",
+        "fullInvitation": "Convite completo (VPN ou outra rede)"
       },
       "placeholders": {
         "passphrase": "Digite a frase secreta do dispositivo anfitrião"
@@ -2781,7 +2786,8 @@
         "back": "Voltar",
         "joining": "Entrando...",
         "submit": "Entrar no Espaço"
-      }
+      },
+      "fullInvitationHint": "Ou cole um convite completo começando com ucspace1_. Maiúsculas e minúsculas são diferenciadas."
     },
     "joinPending": {
       "processing": {

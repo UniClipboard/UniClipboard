@@ -38,11 +38,22 @@ pub struct InitializeSpaceResponse {
 /// Response body for `POST /v2/setup/issue-invitation`. Mirrors
 /// `IssuePairingInvitationResult` with an epoch-millis expiry to keep
 /// the wire form free of timezone parsing on the client.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct IssueInvitationResponse {
     pub code: String,
+    pub full_invitation: String,
     pub expires_at_ms: i64,
+}
+
+impl std::fmt::Debug for IssueInvitationResponse {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("IssueInvitationResponse")
+            .field("code", &"[REDACTED]")
+            .field("full_invitation", &"[REDACTED]")
+            .field("expires_at_ms", &self.expires_at_ms)
+            .finish()
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -188,11 +199,22 @@ pub struct SetupStateResponse {
 }
 
 /// Companion to [`SetupStateResponse::current_invitation`].
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CurrentInvitation {
     pub code: String,
+    pub full_invitation: String,
     pub expires_at_ms: i64,
+}
+
+impl std::fmt::Debug for CurrentInvitation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CurrentInvitation")
+            .field("code", &"[REDACTED]")
+            .field("full_invitation", &"[REDACTED]")
+            .field("expires_at_ms", &self.expires_at_ms)
+            .finish()
+    }
 }
 
 // POST /v2/setup/cancel and POST /v2/setup/reset return HTTP 204 No
@@ -260,10 +282,16 @@ mod tests {
     fn issue_invitation_response_uses_epoch_millis() {
         let resp = IssueInvitationResponse {
             code: "ABCD-1234".to_string(),
+            full_invitation: "ucspace1_Test-Payload".to_string(),
             expires_at_ms: 1_745_577_600_000,
         };
         let json = serde_json::to_value(&resp).unwrap();
         assert_eq!(json["code"], "ABCD-1234");
+        assert_eq!(json["fullInvitation"], "ucspace1_Test-Payload");
+        assert!(json.get("full_invitation").is_none());
+        assert!(!format!("{resp:?}").contains("Test-Payload"));
+        let decoded: IssueInvitationResponse = serde_json::from_value(json.clone()).unwrap();
+        assert_eq!(decoded, resp);
         assert_eq!(json["expiresAtMs"], 1_745_577_600_000_i64);
     }
 
@@ -308,6 +336,7 @@ mod tests {
             has_completed: true,
             current_invitation: Some(CurrentInvitation {
                 code: "ABCD-1234".to_string(),
+                full_invitation: "ucspace1_Test-Payload".to_string(),
                 expires_at_ms: 1_745_577_600_000,
             }),
             device_name: Some("MacBook".to_string()),
@@ -316,6 +345,12 @@ mod tests {
         let json = serde_json::to_value(&resp).unwrap();
         assert_eq!(json["hasCompleted"], true);
         assert_eq!(json["currentInvitation"]["code"], "ABCD-1234");
+        assert_eq!(
+            json["currentInvitation"]["fullInvitation"],
+            "ucspace1_Test-Payload"
+        );
+        assert!(json["currentInvitation"].get("full_invitation").is_none());
+        assert!(!format!("{resp:?}").contains("Test-Payload"));
         assert_eq!(
             json["currentInvitation"]["expiresAtMs"],
             1_745_577_600_000_i64

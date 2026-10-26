@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next'
+import { CopyFullInvitationButton } from '@/components/CopyFullInvitationButton'
 import ChangePassphraseFields from '@/components/security/ChangePassphraseFields'
 import {
   Button,
@@ -113,6 +114,14 @@ export function DevicesKitInvitationDetail({ row }: { row: DeviceInvitationRow }
               </Button>
             )}
           </SettingsRow>
+          {state.invitation?.fullInvitation && (
+            <SettingsRow>
+              <CopyFullInvitationButton
+                invitation={state.invitation.fullInvitation}
+                disabled={state.expired || state.loading}
+              />
+            </SettingsRow>
+          )}
         </SettingsGroup>
       )}
       {state.step === 'invitation' && (state.invitation || state.loading) && (

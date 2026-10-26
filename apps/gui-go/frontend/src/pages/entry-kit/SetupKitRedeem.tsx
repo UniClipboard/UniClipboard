@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next'
-import { INVITATION_CODE_LENGTH } from '@/lib/invitation-code'
+import { FullInvitationField } from '@/components/FullInvitationField'
+import { shortInvitationInput, INVITATION_CODE_LENGTH } from '@/lib/invitation-code'
 import {
   useRedeemInvitationForm,
   type RedeemInvitationSubmit,
@@ -10,7 +11,7 @@ import { EntryKitFrame } from './EntryKitFrame'
 
 const FORM = 'setup-redeem-form'
 
-/** S6 · join an existing space: the six-digit invitation code, then the space passphrase. */
+/** S6 · join an existing space: an invitation, then the space passphrase. */
 export function SetupKitRedeem({
   onSubmit,
   onBack,
@@ -51,13 +52,19 @@ export function SetupKitRedeem({
               id="join-code"
               label={t('labels.code')}
               length={INVITATION_CODE_LENGTH}
-              value={form.code}
+              value={shortInvitationInput(form.code)}
               onValueChange={form.setCode}
               invalid={form.codeInvalid}
               disabled={loading}
               autoFocus
             />
           </div>
+          <FullInvitationField
+            id="join-full-invitation"
+            value={form.code}
+            onChange={form.setCode}
+            disabled={loading}
+          />
           {form.codeComplete && (
             <div data-testid="join-pass">
               <FormField

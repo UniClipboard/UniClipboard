@@ -2725,15 +2725,20 @@
       "hint": "配对完成前请保持两台设备都在线。",
       "hintExpired": "邀请码已失效，请取消后重新生成。",
       "actions": {
-        "cancel": "取消邀请"
-      }
+        "cancel": "取消邀请",
+        "copyFullInvitation": "复制完整邀请",
+        "fullInvitationCopied": "已复制完整邀请"
+      },
+      "fullInvitationHint": "通过 VPN 或其他网络配对、本地发现不可用时使用。请仅分享给你希望配对的设备。",
+      "copyError": "无法复制邀请，请重试。"
     },
     "redeemInvitation": {
       "title": "加入已有空间",
       "subtitle": "输入对方设备显示的邀请码，以及创建空间时设置的口令。",
       "labels": {
         "code": "邀请码",
-        "passphrase": "空间口令"
+        "passphrase": "空间口令",
+        "fullInvitation": "完整邀请（VPN 或其他网络）"
       },
       "placeholders": {
         "passphrase": "输入对方在创建空间时使用的口令"
@@ -2757,7 +2762,8 @@
         "back": "返回",
         "joining": "正在加入...",
         "submit": "加入空间"
-      }
+      },
+      "fullInvitationHint": "也可以粘贴以 ucspace1_ 开头的完整邀请，注意区分大小写。"
     },
     "joinPending": {
       "processing": {

@@ -2728,15 +2728,20 @@
       "hint": "ペアリング中は両方のデバイスがオンラインのままである必要があります。",
       "hintExpired": "コードは無効になりました。キャンセルして新しい招待を開始します。",
       "actions": {
-        "cancel": "招待をキャンセルします"
-      }
+        "cancel": "招待をキャンセルします",
+        "copyFullInvitation": "完全な招待をコピー",
+        "fullInvitationCopied": "完全な招待をコピーしました"
+      },
+      "fullInvitationHint": "VPN や別のネットワークでローカル検出が使えない場合に使用します。ペアリングしたいデバイスだけに共有してください。",
+      "copyError": "招待をコピーできませんでした。もう一度お試しください。"
     },
     "redeemInvitation": {
       "title": "既存のスペースに参加します",
       "subtitle": "他のデバイスに表示される招待コードを入力し、スペースの作成に使用したものと同じパスフレーズを入力します。",
       "labels": {
         "code": "招待コード",
-        "passphrase": "スペース パスフレーズ"
+        "passphrase": "スペース パスフレーズ",
+        "fullInvitation": "完全な招待（VPN または別のネットワーク）"
       },
       "placeholders": {
         "passphrase": "ホスト デバイスからパスフレーズを入力してください"
@@ -2760,7 +2765,8 @@
         "back": "戻る",
         "joining": "参加中...",
         "submit": "スペースに参加"
-      }
+      },
+      "fullInvitationHint": "ucspace1_ で始まる完全な招待も貼り付けられます。大文字と小文字は区別されます。"
     },
     "joinPending": {
       "processing": {

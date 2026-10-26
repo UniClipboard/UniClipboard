@@ -103,6 +103,7 @@ CLI 不更改该系统设置。手动删除服务：先 `service stop`，再删�
 
 | 场景 | Rust | Go | 处理 |
 | --- | --- | --- | --- |
+| 完整邀请输出 | 仅输出六位短码 | `space invite` 另显示完整邀请，JSON 的 `invitation_issued` 事件新增 `full_invitation` | 用于 VPN 或本地发现不可用时配对；短码输出保持不变 |
 | 设备组状态与交互选择 | 展示紧凑字段，提示输入 choice ID，每次处理一个问题 | 展示设备名称、截短 ID、提议及设备影响；TTY 无显式 ID 时使用编号，完成后刷新并继续；`--once` 只处理一个 | 有意变更，`member trust choose` 帮助随之更新；显式 ID、非 TTY 和 JSON 保持单次非交互，JSON 字段及退出码不变；本机移除授权不跨问题复用 |
 | 只读健康检查 | 无 `health` 命令 | 新增 `health`，供容器 healthcheck 使用：读取当前 profile 的 `daemon.conn`，要求进程存活且 `/health` 兼容，绝不启动、重启或修复 daemon；不健康时退出码 1 | 有意变更，根 help 也随之更新 |
 | daemon 生命周期命令 | `start` 默认后台 | 新增 `run` 和 `service`；`start` 保留旧行为但向标准错误输出弃用提示 | 有意变更，根 help 和 `start` help 也随之更新 |

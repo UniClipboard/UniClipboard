@@ -120,6 +120,21 @@ describe('setupRealtimeStore completion ownership', () => {
     })
   })
 
+  it('keeps the full invitation when the matching short-code event arrives', () => {
+    const { result } = renderHook(() => useSetupRealtimeStore())
+    act(() => {
+      applyIssuedInvitation({
+        code: '012-345',
+        fullInvitation: 'ucspace1_Test',
+        expiresAtMs: 123_456,
+      })
+      applyIssuedInvitation({ code: '012-345', expiresAtMs: 123_456 })
+    })
+    expect(result.current.flow).toMatchObject({ fullInvitation: 'ucspace1_Test' })
+    act(() => applyIssuedInvitation({ code: '987-654', expiresAtMs: 234_567 }))
+    expect(result.current.flow).toMatchObject({ fullInvitation: undefined })
+  })
+
   it('restores the sponsor ready step after an invitation is cancelled or expires', async () => {
     const { result } = renderHook(() => useSetupRealtimeStore())
     act(() => applyServerSetupState(completedState, { kind: 'space_ready' }))

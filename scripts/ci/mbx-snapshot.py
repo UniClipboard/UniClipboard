@@ -157,6 +157,17 @@ def client():
     )
 
 
+def upload_config():
+    from boto3.s3.transfer import TransferConfig
+
+    # Reduce per-part R2 requests while bounding parallel retries. Classic
+    # filename uploads stream from disk; CRT may ignore these transfer limits.
+    return TransferConfig(
+        multipart_threshold=64 * 1024**2, multipart_chunksize=64 * 1024**2,
+        max_concurrency=4, preferred_transfer_client="classic",
+    )
+
+
 def get_index(s3, key):
     try:
         response = s3.get_object(Bucket=BUCKET, Key=f"{key}/latest.json")
@@ -288,7 +299,7 @@ def save(s3, key, temporary, report, scene, *, source_sha=None):
     index = {"version": 1, "sha256": sha, "size": size,
              "key": f"{key}/{sha}.tar.gz", "source_sha": source_sha or os.environ["GITHUB_SHA"]}
     # Publish the index last so a reader never sees a partially uploaded bundle.
-    s3.upload_file(str(archive), BUCKET, index["key"])
+    s3.upload_file(str(archive), BUCKET, index["key"], Config=upload_config())
     s3.put_object(Bucket=BUCKET, Key=f"{key}/latest.json",
                   Body=json.dumps(index).encode(), ContentType="application/json")
     report.update(status="saved", uploaded_bytes=size, source_sha=index["source_sha"])

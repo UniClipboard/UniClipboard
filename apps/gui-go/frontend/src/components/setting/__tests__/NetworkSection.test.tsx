@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest'
-import { render, screen, cleanup, act, waitFor } from '@testing-library/react'
+import { render, screen, cleanup, act, waitFor, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { CustomRelayMutationError } from '@/api/daemon'
@@ -8,6 +8,7 @@ import NetworkSection from '@/components/setting/NetworkSection'
 import { useSetting } from '@/hooks/useSetting'
 import i18n from '@/i18n'
 import { commands } from '@/lib/ipc'
+import { resetNetworkRestartStateForTest } from '@/store/networkRestartStore'
 import { makeBaseSettings } from '@/test/fixtures/settings'
 import type { NetworkSettings, SettingContextType, Settings } from '@/types/setting'
 
@@ -26,9 +27,15 @@ vi.mock('@/lib/ipc', () => ({
 
 // The relay overview is covered by BuiltInRelaysField tests and the settings E2E;
 // here it is held in a loaded state so its retry control does not shadow the custom relay one.
+const relayState = vi.hoisted(() => ({ changePending: false }))
 vi.mock('@/components/setting/useRelayOverview', () => ({
   useRelayOverview: () => ({
-    overview: { savedMode: 'builtIn', appliedMode: 'builtIn', changePending: false, entries: [] },
+    overview: {
+      savedMode: 'builtIn',
+      appliedMode: 'builtIn',
+      changePending: relayState.changePending,
+      entries: [],
+    },
     loading: false,
     failed: false,
     reload: vi.fn(),
@@ -133,6 +140,8 @@ beforeAll(async () => {
 })
 
 beforeEach(() => {
+  resetNetworkRestartStateForTest()
+  relayState.changePending = false
   vi.clearAllMocks()
   mockProbeRelayUrl.mockResolvedValue({ kind: 'success', latencyMs: 37 })
 })
@@ -959,5 +968,92 @@ describe('Phase 95 ROADMAP fence — 4 验收 + 3 Pitfall 防御', () => {
   it('反向命名 — 唯一取反点是 NetworkSection.tsx（静态约束，由 acceptance grep 保护）', () => {
     // 静态约束 — 由 grep fence 强制；此测试 always PASS，存在意义是让 PR diff reviewer 看到这条约束
     expect(true).toBe(true)
+  })
+})
+
+describe('network saves across restart and navigation', () => {
+  it('flushes before the debounce and waits for persistence before restarting', async () => {
+    vi.useFakeTimers()
+    let finish!: (value: { restartRequired: boolean }) => void
+    const mockUpdate = vi.fn<UpdateNetworkSettingFn>(
+      () =>
+        new Promise(resolve => {
+          finish = resolve
+        })
+    )
+    setupSetting({ updateNetworkSetting: mockUpdate })
+    render(<NetworkSection />)
+    fireEvent.click(screen.getByRole('switch', { name: /LAN-only/ }))
+    expect(mockUpdate).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: /立即重启|Restart now/ }))
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(mockUpdate).toHaveBeenCalledExactlyOnceWith({ allowRelayFallback: false })
+    expect(mockRestartDaemon).not.toHaveBeenCalled()
+    await act(async () => {
+      finish({ restartRequired: true })
+    })
+    expect(mockRestartDaemon).toHaveBeenCalledTimes(1)
+  })
+
+  it('flushes on navigation and keeps the restart hint and in-flight save on return', async () => {
+    vi.useFakeTimers()
+    let finish!: (value: { restartRequired: boolean }) => void
+    const mockUpdate = vi.fn<UpdateNetworkSettingFn>(
+      () =>
+        new Promise(resolve => {
+          finish = resolve
+        })
+    )
+    setupSetting({ updateNetworkSetting: mockUpdate })
+    const page = render(<NetworkSection />)
+    fireEvent.click(screen.getByRole('switch', { name: /允许虚拟网络地址|Allow Overlay/ }))
+    page.unmount()
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(mockUpdate).toHaveBeenCalledExactlyOnceWith({ allowOverlayNetworkAddrs: true })
+    render(<NetworkSection />)
+    expect(screen.getByRole('button', { name: /立即重启|Restart now/ })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /立即重启|Restart now/ }))
+    expect(mockRestartDaemon).not.toHaveBeenCalled()
+    await act(async () => {
+      finish({ restartRequired: true })
+    })
+    expect(mockRestartDaemon).toHaveBeenCalledTimes(1)
+  })
+
+  it('restores a saved restart hint after navigating away and back', async () => {
+    vi.useFakeTimers()
+    setupSetting()
+    const page = render(<NetworkSection />)
+    fireEvent.click(screen.getByRole('switch', { name: /LAN-only/ }))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500)
+    })
+    page.unmount()
+    render(<NetworkSection />)
+    expect(screen.getByRole('button', { name: /立即重启|Restart now/ })).toBeInTheDocument()
+  })
+
+  it('derives pending relay changes from the Engine overview on mount', () => {
+    relayState.changePending = true
+    setupSetting()
+    render(<NetworkSection />)
+    expect(screen.getByRole('button', { name: /立即重启|Restart now/ })).toBeInTheDocument()
+  })
+
+  it('does not restart if flushing the pending save fails', async () => {
+    vi.useFakeTimers()
+    setupSetting({ updateNetworkSetting: vi.fn().mockRejectedValue(new Error('save failed')) })
+    render(<NetworkSection />)
+    fireEvent.click(screen.getByRole('switch', { name: /LAN-only/ }))
+    fireEvent.click(screen.getByRole('button', { name: /立即重启|Restart now/ }))
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(mockRestartDaemon).not.toHaveBeenCalled()
+    expect(screen.getByText(/保存失败|Save failed/)).toBeInTheDocument()
   })
 })

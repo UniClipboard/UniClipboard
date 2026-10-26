@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useEffectEvent, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { CustomRelayMutationError } from '@/api/daemon'
 import { AllowOverlayAddrsDisclosure } from '@/components/setting/AllowOverlayAddrsDisclosure'
@@ -14,6 +14,12 @@ import { Button } from '@/components/ui'
 import { useSetting } from '@/hooks/useSetting'
 import { commands } from '@/lib/ipc'
 import { createLogger } from '@/lib/logger'
+import {
+  awaitNetworkSettingsSaves,
+  networkDaemonRestarted,
+  trackNetworkSettingsSave,
+  useNetworkRestartRequired,
+} from '@/store/networkRestartStore'
 import type { CongestionController, CustomRelayMutation } from '@/types/setting'
 
 const log = createLogger('network-section')
@@ -37,31 +43,7 @@ class LocalizedRelayMutationError extends Error {
   }
 }
 
-/**
- * NetworkSection — Phase 95.
- *
- * 用户在 Settings → Network 切换 LAN-only Mode；切换后看到持久 inline RestartBanner，
- * 点「立即重启」触发 Tauri app.restart()。Pending 仅 in-memory（用户当前 session 内
- * 切换后显示），不跨 session 持久化 —— 关掉 Settings 面板后状态会重置，避免基于
- * settings.json mtime 的跨 session 推导造成误报（mtime 无法区分到底改了哪个字段）。
- *
- * # Pitfall 防御 audit（Phase 95 PLAN.md Task 3 fence）
- * - **Pitfall 1（反向命名）**：UI checked === ON === LAN-only === allowRelayFallback === false。
- *   本组件含**唯一一处**前端取反点（line marker `// FENCE: 反向命名唯一取反点` 标注两处）。
- *   全工程 grep `!allowRelayFallback` 仅命中 NetworkSection.tsx 与本组件单元测试 — 其它文件 0 匹配。
- *   `allowOverlayNetworkAddrs` 为正向同名字段（UI checked === 字段值），不参与取反铁律。
- * - **Pitfall 5（边界透明）**：禁词清单 `fully offline / 完全离线 / 绝对私有 / no internet /
- *   private mode / encrypted-and-local` 全工程 0 匹配；4 类外网请求由 LanOnlyDisclosure 显式披露。
- * - **Pitfall 10（重启 UX 半生效）**：使用持久 inline RestartBanner（不是 toast 也不是 sonner）；
- *   debounce 500ms 防 disk I/O 爆；切换瞬间 setPending(true) 乐观显示，不等 PUT 返回。
- * - **Pitfall 11（占位组件残留）**：旧 `Network settings are not yet available` /
- *   `网络设置功能在新架构中尚未实现` / `settings.sections.network.placeholder` 全部清零。
- *
- * # 共享 RestartBanner
- *   两个开关（LAN-only / Allow Overlay Addrs）任一改动后都使 daemon 需要重启
- *   （iroh endpoint bind-time 常量 + BIND_LOCK 进程级单次 bind）。pending 状态合并，
- *   一个 banner 服务两个开关。
- */
+/** Debounced network drafts are saved before navigation or daemon restart. */
 const NetworkSection: React.FC = () => {
   const { t } = useTranslation()
   const {
@@ -92,8 +74,7 @@ const NetworkSection: React.FC = () => {
   const draft = draftOverride ?? persistedDraft
   const { allowRelayFallback, allowOverlayNetworkAddrs, congestionController } = draft
 
-  // pending 状态（来自两个源：用户切换 / PUT 后 restartRequired；不跨 session）
-  const [pending, setPending] = useState(false)
+  const pending = useNetworkRestartRequired()
   const [restartLoading, setRestartLoading] = useState(false)
   const [restartError, setRestartError] = useState<string | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -102,15 +83,7 @@ const NetworkSection: React.FC = () => {
   const saveErrorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const saveGenerationRef = useRef(0)
   const pendingNetworkPatchRef = useRef<Partial<NetworkDraft>>({})
-
-  useEffect(() => {
-    return () => {
-      saveGenerationRef.current += 1
-      pendingNetworkPatchRef.current = {}
-      if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
-      if (saveErrorTimerRef.current) clearTimeout(saveErrorTimerRef.current)
-    }
-  }, [])
+  const saveInFlightRef = useRef<Promise<void> | null>(null)
 
   const showSaveError = (message: string) => {
     setSaveError(message)
@@ -118,49 +91,60 @@ const NetworkSection: React.FC = () => {
     saveErrorTimerRef.current = setTimeout(() => setSaveError(null), SAVE_ERROR_DISPLAY_MS)
   }
 
-  const queueNetworkUpdate = (patch: Partial<NetworkDraft>, showPendingImmediately = true) => {
-    const next: NetworkDraft = {
-      ...draft,
-      ...patch,
-    }
-    setDraftOverride(next)
-    if (showPendingImmediately) setPending(true)
-    setSaveError(null)
-    setRestartError(null)
-
-    const payload: Partial<NetworkDraft> = {
-      ...pendingNetworkPatchRef.current,
-      ...patch,
-    }
-    pendingNetworkPatchRef.current = payload
-
-    const generation = saveGenerationRef.current + 1
-    saveGenerationRef.current = generation
+  const flushNetworkUpdate = (): Promise<void> => {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
-
+    saveTimerRef.current = null
+    const payload = pendingNetworkPatchRef.current
+    if (Object.keys(payload).length === 0) return saveInFlightRef.current ?? Promise.resolve()
+    pendingNetworkPatchRef.current = {}
+    const generation = saveGenerationRef.current
     const relayChanged =
       payload.allowRelayFallback !== undefined && payload.allowRelayFallback !== persistedAllowRelay
-    saveTimerRef.current = setTimeout(() => {
-      saveTimerRef.current = null
-      pendingNetworkPatchRef.current = {}
-      void updateNetworkSetting(payload).then(
-        result => {
-          if (saveGenerationRef.current !== generation) return
+    const save = trackNetworkSettingsSave(
+      (saveInFlightRef.current ?? Promise.resolve())
+        .catch(() => {})
+        .then(() => updateNetworkSetting(payload))
+    ).then(
+      () => {
+        if (saveGenerationRef.current === generation) setDraftOverride(null)
+      },
+      err => {
+        log.error({ err }, 'Failed to save network settings')
+        if (saveGenerationRef.current === generation) {
           setDraftOverride(null)
-          setPending(result.restartRequired)
-        },
-        err => {
-          if (saveGenerationRef.current !== generation) return
-          log.error({ err }, 'Failed to save network settings')
-          setDraftOverride(null)
-          setPending(false)
           const message = err instanceof Error ? err.message : String(err)
           const errorKey = relayChanged
             ? 'settings.sections.network.lanOnly.saveError'
             : 'settings.sections.network.allowOverlayAddrs.saveError'
           showSaveError(t(errorKey, { message }))
         }
-      )
+        throw err
+      }
+    )
+    saveInFlightRef.current = save
+    return save
+  }
+  const flushOnUnmount = useEffectEvent(() => {
+    // The store keeps this write awaitable after the page has unmounted.
+    void flushNetworkUpdate().catch(() => {})
+    saveGenerationRef.current += 1
+  })
+  useEffect(() => {
+    return () => {
+      flushOnUnmount()
+      if (saveErrorTimerRef.current) clearTimeout(saveErrorTimerRef.current)
+    }
+  }, [])
+
+  const queueNetworkUpdate = (patch: Partial<NetworkDraft>) => {
+    setDraftOverride({ ...draft, ...patch })
+    setSaveError(null)
+    setRestartError(null)
+    pendingNetworkPatchRef.current = { ...pendingNetworkPatchRef.current, ...patch }
+    saveGenerationRef.current += 1
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+    saveTimerRef.current = setTimeout(() => {
+      void flushNetworkUpdate().catch(() => {})
     }, SAVE_DELAY_MS)
   }
 
@@ -177,8 +161,7 @@ const NetworkSection: React.FC = () => {
     setSaveError(null)
     setRestartError(null)
     try {
-      const result = await mutateCustomRelay(trimmedMutation)
-      setPending(result.restartRequired)
+      const result = await trackNetworkSettingsSave(mutateCustomRelay(trimmedMutation))
       return result
     } catch (err) {
       log.error({ err }, 'Failed to save a custom relay')
@@ -215,11 +198,14 @@ const NetworkSection: React.FC = () => {
     setRestartLoading(true)
     setRestartError(null)
     try {
+      await flushNetworkUpdate()
+      await awaitNetworkSettingsSaves()
       await commands.restartDaemon()
-      setPending(false)
+      networkDaemonRestarted()
+      await relayOverview.reload()
       return true
     } catch (err) {
-      log.error({ err }, 'restart_daemon 失败')
+      log.error({ err }, 'Failed to save settings or restart daemon')
       setRestartError(t('settings.sections.network.restartBanner.errorMessage'))
       return false
     } finally {
@@ -240,7 +226,9 @@ const NetworkSection: React.FC = () => {
     <>
       <div className="overflow-hidden rounded-lg border border-border/60 empty:hidden">
         <RestartBanner
-          visible={pending}
+          visible={
+            pending || draftOverride !== null || relayOverview.overview?.changePending === true
+          }
           message={t('settings.sections.network.restartBanner.message')}
           onRestart={handleRestart}
           loading={restartLoading}
@@ -248,94 +236,96 @@ const NetworkSection: React.FC = () => {
           onDismissError={() => setRestartError(null)}
         />
       </div>
-      {saveError && (
-        <div
-          className="rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-ui-body text-destructive"
-          role="alert"
-        >
-          {saveError}
-        </div>
-      )}
-      <SettingGroup title={t('settings.sections.network.groups.connection')}>
-        <SettingRow
-          label={t('settings.sections.network.lanOnly.label')}
-          labelExtra={<LanOnlyDisclosure />}
-          description={t('settings.sections.network.lanOnly.description')}
-          experimentalKey="network.lanOnly"
-        >
-          <SettingSwitch
-            id="lan-only-switch"
-            label={t('settings.sections.network.lanOnly.label')}
-            // FENCE: 反向命名唯一取反点（Pitfall 1 — checked=ON ⇔ allowRelayFallback=false）
-            checked={!allowRelayFallback}
-            onCheckedChange={handleLanOnlySwitchChange}
-          />
-        </SettingRow>
-        <SettingRow
-          label={t('settings.sections.network.allowOverlayAddrs.label')}
-          labelExtra={<AllowOverlayAddrsDisclosure />}
-          description={t('settings.sections.network.allowOverlayAddrs.description')}
-          experimentalKey="network.allowOverlayAddrs"
-        >
-          <SettingSwitch
-            id="allow-overlay-addrs-switch"
-            label={t('settings.sections.network.allowOverlayAddrs.label')}
-            checked={allowOverlayNetworkAddrs}
-            onCheckedChange={handleAllowOverlaySwitchChange}
-          />
-        </SettingRow>
-      </SettingGroup>
-      <BuiltInRelaysField
-        overview={relayOverview.overview}
-        loading={relayOverview.loading}
-        failed={relayOverview.failed}
-        onRetry={() => void relayOverview.reload()}
-      />
-      {relayError ? (
-        <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-ui-body text-destructive">
-          <p>{t('settings.sections.network.customRelays.loadError')}</p>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="mt-2"
-            disabled={relayLoading}
-            onClick={() => {
-              void reloadCustomRelays().catch(err => {
-                log.error({ err }, 'Failed to retry loading custom relays')
-              })
-            }}
+      <fieldset disabled={restartLoading} className="contents">
+        {saveError && (
+          <div
+            className="rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-ui-body text-destructive"
+            role="alert"
           >
-            {t('settings.sections.network.customRelays.retry')}
-          </Button>
-        </div>
-      ) : relayLoading ? (
-        <p className="py-4 text-ui-body text-muted-foreground">
-          {t('settings.sections.network.customRelays.loading')}
-        </p>
-      ) : (
-        <CustomRelayUrlsField value={customRelays} onSave={saveCustomRelay} />
-      )}
-      <SettingGroup title={t('settings.sections.network.groups.performance')}>
-        <SettingRow
-          label={t('settings.sections.network.congestionController.label')}
-          description={t('settings.sections.network.congestionController.description')}
-          experimentalKey="network.congestionController"
-        >
-          <SettingSelect
+            {saveError}
+          </div>
+        )}
+        <SettingGroup title={t('settings.sections.network.groups.connection')}>
+          <SettingRow
+            label={t('settings.sections.network.lanOnly.label')}
+            labelExtra={<LanOnlyDisclosure />}
+            description={t('settings.sections.network.lanOnly.description')}
+            experimentalKey="network.lanOnly"
+          >
+            <SettingSwitch
+              id="lan-only-switch"
+              label={t('settings.sections.network.lanOnly.label')}
+              // FENCE: LAN-only ON means allowRelayFallback=false.
+              checked={!allowRelayFallback}
+              onCheckedChange={handleLanOnlySwitchChange}
+            />
+          </SettingRow>
+          <SettingRow
+            label={t('settings.sections.network.allowOverlayAddrs.label')}
+            labelExtra={<AllowOverlayAddrsDisclosure />}
+            description={t('settings.sections.network.allowOverlayAddrs.description')}
+            experimentalKey="network.allowOverlayAddrs"
+          >
+            <SettingSwitch
+              id="allow-overlay-addrs-switch"
+              label={t('settings.sections.network.allowOverlayAddrs.label')}
+              checked={allowOverlayNetworkAddrs}
+              onCheckedChange={handleAllowOverlaySwitchChange}
+            />
+          </SettingRow>
+        </SettingGroup>
+        <BuiltInRelaysField
+          overview={relayOverview.overview}
+          loading={relayOverview.loading}
+          failed={relayOverview.failed}
+          onRetry={() => void relayOverview.reload()}
+        />
+        {relayError ? (
+          <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-ui-body text-destructive">
+            <p>{t('settings.sections.network.customRelays.loadError')}</p>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="mt-2"
+              disabled={relayLoading}
+              onClick={() => {
+                void reloadCustomRelays().catch(err => {
+                  log.error({ err }, 'Failed to retry loading custom relays')
+                })
+              }}
+            >
+              {t('settings.sections.network.customRelays.retry')}
+            </Button>
+          </div>
+        ) : relayLoading ? (
+          <p className="py-4 text-ui-body text-muted-foreground">
+            {t('settings.sections.network.customRelays.loading')}
+          </p>
+        ) : (
+          <CustomRelayUrlsField value={customRelays} onSave={saveCustomRelay} />
+        )}
+        <SettingGroup title={t('settings.sections.network.groups.performance')}>
+          <SettingRow
             label={t('settings.sections.network.congestionController.label')}
-            value={congestionController}
-            onValueChange={handleCongestionControllerChange}
-            items={[
-              {
-                value: 'cubic',
-                label: `CUBIC (${t('settings.sections.network.congestionController.recommended')})`,
-              },
-              { value: 'bbr3', label: 'BBR3' },
-            ]}
-          />
-        </SettingRow>
-      </SettingGroup>
+            description={t('settings.sections.network.congestionController.description')}
+            experimentalKey="network.congestionController"
+          >
+            <SettingSelect
+              label={t('settings.sections.network.congestionController.label')}
+              value={congestionController}
+              onValueChange={handleCongestionControllerChange}
+              items={[
+                {
+                  value: 'cubic',
+                  label: `CUBIC (${t('settings.sections.network.congestionController.recommended')})`,
+                },
+                { value: 'bbr3', label: 'BBR3' },
+              ]}
+            />
+          </SettingRow>
+        </SettingGroup>
+      </fieldset>
     </>
   )
 }

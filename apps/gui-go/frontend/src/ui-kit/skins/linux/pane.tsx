@@ -9,9 +9,10 @@ import type {
   SplitViewProps,
   TextProps,
 } from '@/ui-kit/contract'
+import { useSinglePaneLayout } from '@/ui-kit/skins/linux/adaptive-layout'
 import { PaneNavigation, usePaneNavigation } from '@/ui-kit/skins/linux/pane-navigation'
 import { SplitSidebarToggle } from '@/ui-kit/skins/linux/split-sidebar-toggle'
-import { useSplitNavigation } from '@/ui-kit/skins/linux/use-split-navigation'
+import { useSplitNavigation } from '@/ui-kit/use-split-navigation'
 import { glyph } from './glyph'
 import { Icon as Glyph } from './icons'
 import { Surface } from './root'
@@ -47,7 +48,13 @@ export function SplitView({
     drawerOpen,
     onSidebarKeyDown,
     onSearchFocus,
-  } = useSplitNavigation({ sidebarHidden, sidebarOverlay, sidebarToggle, detailNavigation })
+  } = useSplitNavigation({
+    sidebarHidden,
+    sidebarOverlay,
+    sidebarToggle,
+    detailNavigation,
+    singlePane: useSinglePaneLayout(),
+  })
   return (
     <div
       ref={root}
@@ -71,11 +78,13 @@ export function SplitView({
           <div className="adw-split-sidebar-inner">{sidebar}</div>
         </Surface>
       </div>
-      {/* Only shown below the narrow breakpoint, where the open sidebar overlays the content. */}
-      {drawerOpen && sidebarToggle && (
+      {/* Keep the scrim mounted so it fades with the sidebar in both directions. */}
+      {overlay && sidebarToggle && (
         <button
           type="button"
           className="adw-split-scrim"
+          inert={!drawerOpen}
+          aria-hidden={!drawerOpen}
           tabIndex={-1}
           aria-label={sidebarToggle.label}
           onClick={sidebarToggle.onClick}

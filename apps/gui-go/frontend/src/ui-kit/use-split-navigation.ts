@@ -1,6 +1,5 @@
 import { useEffect, useEffectEvent, useRef, type KeyboardEvent } from 'react'
 import type { SplitViewProps } from '@/ui-kit/contract'
-import { useSinglePaneLayout } from '@/ui-kit/skins/linux/adaptive-layout'
 
 /** Own focus and dismissal for the two adaptive navigation layers. */
 export function useSplitNavigation({
@@ -8,15 +7,16 @@ export function useSplitNavigation({
   sidebarOverlay,
   sidebarToggle,
   detailNavigation,
+  singlePane = false,
 }: Pick<
   SplitViewProps,
   'sidebarHidden' | 'sidebarOverlay' | 'sidebarToggle' | 'detailNavigation'
->) {
+> & { singlePane?: boolean }) {
   const root = useRef<HTMLDivElement>(null)
   const sidebarRef = useRef<HTMLDivElement>(null)
   const toggleRef = useRef<HTMLButtonElement>(null)
   const backRef = useRef<HTMLButtonElement>(null)
-  const single = useSinglePaneLayout() && Boolean(detailNavigation)
+  const single = singlePane && Boolean(detailNavigation)
   const detail = single && detailNavigation?.open === true
   const overlay = Boolean(sidebarOverlay && sidebarToggle)
   const drawerOpen = overlay && !sidebarHidden

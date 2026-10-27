@@ -18,7 +18,7 @@ import { captureUserIntent } from '@/observability/breadcrumbs'
  * from navigation state), Esc and back navigation, and the per-category scroll offset. The views
  * (`pages/SettingsPage.tsx`, `pages/settings-kit/SettingsKitPage.tsx`) only draw it.
  */
-export function useSettingsPage() {
+export function useSettingsPage({ backShortcutEnabled = true } = {}) {
   const routerLocation = useLocation()
   const { state: locationState, pathname: locationPathname } = routerLocation
   const [activeCategory, setActiveCategory] = useState(
@@ -36,7 +36,7 @@ export function useSettingsPage() {
     }
   }
 
-  useShortcut({ key: 'esc', scope: 'settings', handler: goBack })
+  useShortcut({ key: 'esc', scope: 'settings', handler: goBack, enabled: backShortcutEnabled })
 
   useEffect(() => {
     captureUserIntent('open_settings')

@@ -136,6 +136,7 @@ const useStyles = makeStyles({
 export function SplitView({
   sidebar,
   sidebarHidden,
+  sidebarOverlay,
   sidebarToggle,
   title,
   subtitle,
@@ -156,8 +157,11 @@ export function SplitView({
     observer.observe(element)
     return () => observer.disconnect()
   }, [])
-  // Without a toggle nothing could open the overlay again (Settings), so the pane stays expanded.
-  const overlay = !sidebarHidden && Boolean(sidebarToggle) && width > 0 && width < OVERLAY_BELOW
+  // An overlay needs a toggle so it can be reopened after dismissal.
+  const overlay =
+    !sidebarHidden &&
+    Boolean(sidebarToggle) &&
+    (sidebarOverlay || (width > 0 && width < OVERLAY_BELOW))
   const wasOverlay = useRef(false)
   useEffect(() => {
     if (overlay) {

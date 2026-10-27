@@ -1621,7 +1621,10 @@
   inset: 0 auto 0 0;
   width: var(--sidebar-width);
   box-shadow: var(--dialog-shadow);
-  transition: transform var(--sidebar-transition);
+  /* The shadow must animate with the slide, otherwise it pops in/out on the first frame. */
+  transition:
+    transform var(--sidebar-transition),
+    box-shadow var(--sidebar-transition);
 }
 
 .adw-split[data-sidebar-overlay][data-sidebar-hidden] .adw-split-sidebar {
@@ -1636,7 +1639,15 @@
   position: absolute;
   inset: 0;
   z-index: 20;
-  background: var(--scrim);
+  background-color: var(--scrim);
+  /* Fade the colour, not opacity: an opacity animation promotes this full-page element to a
+     compositing layer and tears it down afterwards, which repaints the whole page. */
+  transition: background-color var(--sidebar-transition);
+}
+
+.adw-split[data-sidebar-hidden] .adw-split-scrim {
+  background-color: transparent;
+  pointer-events: none;
 }
 
 /* Single-pane navigation preserves the browsing pane's dimensions and scroll position while

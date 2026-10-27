@@ -632,7 +632,7 @@
             "intro": "LAN-only disables relay servers, public rendezvous, and DNS/pkarr discovery for device connections. Telemetry and update checks have separate controls.",
             "pairing": {
               "title": "Pairing without public rendezvous",
-              "description": "Six-digit codes resolve only through local network discovery. If discovery is unavailable, such as over a VPN, copy and paste the full invitation from the inviting device."
+              "description": "Six-digit codes resolve only through local network discovery. If discovery is unavailable, such as over a VPN, copy and paste the full invitation from the inviting device. To keep using a six-digit code, pair once with LAN-only Mode off, then turn it back on; synced devices keep each other's addresses."
             },
             "discovery": {
               "title": "Local device discovery",

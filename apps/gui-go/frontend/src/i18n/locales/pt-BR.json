@@ -633,7 +633,7 @@
             "intro": "O modo LAN-only desativa servidores de relay, rendezvous público e descoberta por DNS/pkarr para conexões entre dispositivos. A telemetria e a busca de atualizações têm controles separados.",
             "pairing": {
               "title": "Pareamento sem rendezvous público",
-              "description": "Códigos de seis dígitos são resolvidos apenas pela descoberta na rede local. Se a descoberta estiver indisponível, por exemplo via VPN, copie e cole o convite completo do dispositivo que emitiu o convite."
+              "description": "Códigos de seis dígitos são resolvidos apenas pela descoberta na rede local. Se a descoberta estiver indisponível, por exemplo via VPN, copie e cole o convite completo do dispositivo que emitiu o convite. Para continuar usando um código de seis dígitos, faça o pareamento uma vez com o LAN-only Mode desativado e depois ative-o novamente; os dispositivos pareados guardam os endereços uns dos outros."
             },
             "discovery": {
               "title": "Descoberta local de dispositivos",

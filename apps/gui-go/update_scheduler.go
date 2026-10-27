@@ -301,8 +301,8 @@ func (h *HostService) scheduledCheck(ctx context.Context) bool {
 	// Side effects first, the check event last: that is the order the Tauri scheduler reports them in.
 	if meta != nil && meta.Version != "" {
 		opened := h.notifyIfNew(channel, meta.Version, true)
-		if view.General.AutoDownloadUpdate {
-			// In-place install is supported on macOS, the only host this build targets.
+		if view.General.AutoDownloadUpdate && canSelfUpdate() {
+			// Only installations owned by the application may fetch an installer.
 			// A refused download (already downloaded or running) neither reports nor re-opens the window.
 			switch err := h.downloadUpdateReported(ctx); {
 			case err == nil:

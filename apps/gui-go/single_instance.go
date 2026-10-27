@@ -26,20 +26,10 @@ var singleInstanceScope string
 // Launch arguments a second GUI process can carry. `--quick-panel` is the Tauri contract (toggle the panel of the
 // running GUI); `--autostart` tags a launch started by the login item.
 const (
-	quickPanelLaunchArg = "--quick-panel"
 	// restartParentEnv names the process a restarted GUI replaces. The new process starts before the old one has
 	// released its instance lock, so it waits for the old process to exit first.
 	restartParentEnv  = "UC_GUI_RESTART_PARENT_PID"
 	restartParentWait = 20 * time.Second
-)
-
-// secondLaunchAction is what the running GUI does when another launch reaches it.
-type secondLaunchAction string
-
-const (
-	actionShowMainWindow   secondLaunchAction = "show-main-window"
-	actionIgnoreAutostart  secondLaunchAction = "ignore-autostart"
-	actionToggleQuickPanel secondLaunchAction = "toggle-quick-panel"
 )
 
 // singleInstanceID is the Wails SingleInstance.UniqueID: the scope of "one GUI". On macOS the lock file lives in
@@ -79,28 +69,6 @@ func (h *HostService) singleInstanceOptions(uniqueID string) *application.Single
 	return &application.SingleInstanceOptions{UniqueID: uniqueID, OnSecondInstanceLaunch: h.onSecondInstance}
 }
 
-func hasArg(args []string, want string) bool {
-	for _, a := range args {
-		if a == want {
-			return true
-		}
-	}
-	return false
-}
-
-// classifySecondLaunch applies the Tauri single-instance rule (a second launch surfaces the main window) except for
-// the launches that must not: the login item's own launch (a login autostart never pops the window) and the quick
-// panel request (it toggles the panel, not the main window).
-func classifySecondLaunch(args []string) secondLaunchAction {
-	switch {
-	case hasArg(args, quickPanelLaunchArg):
-		return actionToggleQuickPanel
-	case hasArg(args, autostartLaunchArg):
-		return actionIgnoreAutostart
-	}
-	return actionShowMainWindow
-}
-
 // onSecondInstance runs in the first instance when another process of the same scope was launched; that process
 // exits by itself after delivering this message. Wails (beta.28) calls it from the one goroutine that drains a
 // one-slot channel which the macOS main thread fills from inside the notification handler. Doing UI work here would
@@ -127,11 +95,17 @@ func (h *HostService) handleSecondLaunch(data application.SecondInstanceData) {
 // whether the request was held.
 func (h *HostService) deferShowUntilReady() bool {
 	h.readyMu.Lock()
-	defer h.readyMu.Unlock()
 	if h.ready {
+		h.readyMu.Unlock()
 		return false
 	}
+	if h.quitting.Load() {
+		h.readyMu.Unlock()
+		h.forwardActivation()
+		return true
+	}
 	h.showWhenReady = true
+	h.readyMu.Unlock()
 	return true
 }
 
@@ -148,12 +122,14 @@ func (h *HostService) finishBootstrap() {
 	h.readyMu.Lock()
 	h.ready = true
 	show := h.showWhenReady
+	h.showWhenReady = false
 	h.readyMu.Unlock()
 	if show {
 		log.Printf("showing the main window requested by a launch during startup")
 		h.showMainWindow()
 	}
 	e2eBootstrapped(h, show)
+	h.exitLightweightIfIdle()
 }
 
 // restartedGUI is set when this process was started by a restart of another GUI process.

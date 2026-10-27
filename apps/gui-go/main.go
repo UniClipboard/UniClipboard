@@ -29,15 +29,15 @@ import (
 var assets embed.FS
 
 type HostService struct {
-	ui                  *uiProcess
-	owner               *uiPeer
-	app                 *application.App
-	client              atomic.Pointer[daemonclient.Client] // replaced when the daemon is restarted; read through daemon()
-	effects             *visualEffects
-	desktopTheme        *desktopThemeState
-	stopDesktopTheme    context.CancelFunc
-	panel               panelState
-	exit                exitIntent
+	ui               *uiProcess
+	owner            *uiPeer
+	app              *application.App
+	client           atomic.Pointer[daemonclient.Client] // replaced when the daemon is restarted; read through daemon()
+	effects          *visualEffects
+	desktopTheme     *desktopThemeState
+	stopDesktopTheme context.CancelFunc
+	panel            panelState
+	exitIntent
 	prompts             promptStore
 	stopScheduler       context.CancelFunc
 	stopTray            context.CancelFunc
@@ -59,9 +59,12 @@ type HostService struct {
 	showWhenReady       bool // a second launch asked for the main window before that
 	files               knownFiles
 
-	quitting       atomic.Bool
-	bootstrapping  atomic.Bool
-	startupAttempt atomic.Pointer[daemonproc.StartupAttempt]
+	lightweight         atomic.Bool // settings-owned residency; transitions serialize with ui.mu
+	modeRestarting      atomic.Bool
+	activationForwarded atomic.Bool
+	automaticLaunch     bool // captured before bootstrap
+	bootstrapping       atomic.Bool
+	startupAttempt      atomic.Pointer[daemonproc.StartupAttempt]
 
 	shortcutsMu       sync.Mutex
 	panelShortcut     *globalshortcut.Applier // the quick panel shortcut's desired and active binding; set by initQuickPanel
@@ -88,7 +91,8 @@ func (h *HostService) emit(name string, payload any) {
 }
 
 // openMainWindow creates the main window in the UI child. Closing it exits that
-// child on every platform; the resident tray host and daemon stay alive.
+// child unless a visible fallback panel still needs it. Normal mode keeps its
+// host; lightweight mode releases the temporary host while retaining the daemon.
 func (h *HostService) openMainWindow() *application.WebviewWindow {
 	minWidth := 900
 	if runtime.GOOS == "linux" {
@@ -116,6 +120,14 @@ func (h *HostService) openMainWindow() *application.WebviewWindow {
 		if h.quitting.Load() {
 			return
 		}
+		if panel, ok := h.app.Window.GetByName(quickPanelWindowName); ok && panel.IsVisible() {
+			// Let Wails destroy this window while the fallback panel keeps its
+			// own WebView. Flushing first avoids touching a destroyed window.
+			h.persistMainWindowSize()
+			application.InvokeSync(func() { h.windowSize = nil })
+			h.setDockIconVisible(false)
+			return
+		}
 		e.Cancel()
 		go h.closeUI()
 	})
@@ -141,6 +153,7 @@ func main() {
 		waitForRestartParent()
 	}
 	ensureAppScope()
+	withTray := !uiChild && preflightTrayHost()
 	content, err := fs.Sub(assets, "frontend/dist")
 	if err != nil {
 		log.Fatal(err)
@@ -173,8 +186,9 @@ func main() {
 		host.ui = &uiProcess{host: host}
 	}
 	// application.New takes the single-instance lock before anything else touches shared state: a second GUI of the
-	// same scope hands its arguments to the first one and exits inside this call, so it never probes or spawns a
-	// daemon, starts the quick panel helper or reconciles the login item. The daemon client is attached afterwards.
+	// same scope hands its arguments to the first one and exits inside this call.
+	// Preflight only read existing settings; daemon creation, panel and login-item
+	// side effects happen after this lock. The daemon client is attached afterwards.
 	app := application.New(application.Options{Name: "UniClipboard Go GUI", Services: services, Mac: application.MacOptions{ActivationPolicy: initialActivationPolicy(), ApplicationShouldTerminateAfterLastWindowClosed: false}, Linux: application.LinuxOptions{ApplicationID: uniqueID, ProgramName: bundleID, DisableQuitOnLastWindowClosed: true}, Windows: application.WindowsOptions{DisableQuitOnLastWindowClosed: true, AdditionalBrowserArgs: e2eBrowserArgs(), WebviewUserDataPath: webviewDataPath()}, Assets: application.AssetOptions{Handler: application.BundledAssetFileServer(content), Middleware: host.fileMiddleware},
 		// Wails discards its default logger in production, including fatal startup errors.
 		ErrorHandler:   func(err error) { log.Printf("Wails application error: %v", err) },
@@ -195,14 +209,15 @@ func main() {
 				}()
 				return false
 			}
-			host.quitting.Store(true)
+			host.beginQuit(false)
 			return true
 		},
 		OnShutdown: host.shutdown})
 	host.app = app
-	if !uiChild {
+	if withTray {
 		host.initTray()
 	}
+	host.installLaunchOriginObserver()
 	host.routeDockReopen()
 	if !uiChild {
 		e2eLaunch(host)
@@ -217,6 +232,7 @@ func main() {
 	// a launch arriving meanwhile would be lost. Activations that arrive before bootstrap finishes are held
 	// (see onSecondInstance) and carried out afterwards.
 	app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
+		host.automaticLaunch = hasArg(os.Args[1:], autostartLaunchArg) || platformAutomaticLaunch()
 		if host.ui == nil {
 			host.startVisualEffects()
 		} else {
@@ -278,29 +294,41 @@ func (h *HostService) bootstrapWithRetry(retry bool) {
 	}
 	h.client.Store(client)
 	startup, _ := h.loadStartupSettings()
-	// A Silent or Lightweight launch does not build the window at boot (and so never pays the WebView
-	// cost); it is created the first time something asks to show it.
-	if !startup.hidden() || forceMainWindow() {
-		h.showMainWindow()
+	h.lightweight.Store(startup.lightweight())
+	show := shouldOpenAtLaunch(startup.BackgroundStartup, h.automaticLaunch,
+		restartedGUI && hasArg(os.Args[1:], backgroundRestartArg), forceMainWindow())
+	withTray := !startup.lightweight() || show || h.heldShow()
+	if withTray && h.tray == nil {
+		// A background launch may discover that it needs a tray after app.Run.
+		// Finish daemon recovery, then hand off to a configured host so the
+		// Linux tray is constructed with its menu before the native event loop.
+		h.coldLaunch(startup, spawnedDaemon)
+		h.reconcileAutoStart()
+		if err := h.restartShell(!show && !h.heldShow()); err != nil {
+			h.fatal(err)
+		}
+		return
+	}
+	if !withTray && h.tray != nil {
+		h.tray.tray.Destroy()
+		h.tray = nil
+	}
+	if show {
+		h.deferShowUntilReady()
 	} else {
 		h.setDockIconVisible(false) // no window yet: run as a menu bar app until one is shown
 	}
 	h.initQuickPanel()
 	h.initPanelShortcuts()
-	go h.reconcileAutoStart()
-	h.startTray()
-	h.startSettingsWatch()
+	// Finish reconciliation before a windowless lightweight launch may exit.
+	h.reconcileAutoStart()
 	h.watchNotificationClicks()
-	if startup.silent() {
-		// Silent mode leaves no window to see, so tell the user the app is running.
-		if err := h.notify("silent-start", "UniClipboard", backgroundNotice); err != nil {
+	if !show && !startup.lightweight() {
+		// Automatic background startup leaves no window to see.
+		if err := h.notify("silent-start", "UniClipboard", backgroundNotices[resolveTrayLanguage(startup.Language)]); err != nil {
 			log.Printf("failed to show the silent-start notification: %v", err)
 		}
 	}
-	go func() {
-		h.coldLaunch(startup, spawnedDaemon)
-		h.finishBootstrap()
-	}()
 	if !h.quitting.Load() {
 		schedulerCtx, stopScheduler := context.WithCancel(context.Background())
 		h.stopScheduler = stopScheduler
@@ -308,6 +336,17 @@ func (h *HostService) bootstrapWithRetry(retry bool) {
 		h.stopActivity = startBackgroundActivity(timing.activityInterval, func() { h.signalWake(wakeBackgroundActivity) })
 		go h.runUpdateScheduler(schedulerCtx, timing)
 	}
+	go func() {
+		h.coldLaunch(startup, spawnedDaemon)
+		if h.quitting.Load() {
+			return
+		}
+		h.startSettingsWatch()
+		if h.tray != nil {
+			h.startTray()
+		}
+		h.finishBootstrap()
+	}()
 }
 
 // attachStartupDaemon keeps the resident host as the sole daemon owner.

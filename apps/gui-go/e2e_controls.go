@@ -91,7 +91,12 @@ func (s *EvidenceService) controlQuickPanel(action string) (bool, error) {
 			}
 		}
 		label := strings.TrimPrefix(strings.TrimPrefix(action, "tray-menu"), ":")
-		return true, s.write(Step{Window: "tray", Step: "tray-menu-" + label, OK: h.tray != nil && h.tray.menu != nil, Detail: walk(h.tray.menu)})
+		return true, s.write(Step{Window: "tray", Step: "tray-menu-" + label, OK: h.tray != nil && h.tray.menu != nil, Detail: func() []any {
+			if h.tray == nil || h.tray.menu == nil {
+				return nil
+			}
+			return walk(h.tray.menu)
+		}()})
 	case strings.HasPrefix(action, "tray-devices-wait:"):
 		name := strings.TrimPrefix(action, "tray-devices-wait:")
 		var detail map[string]any

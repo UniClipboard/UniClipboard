@@ -428,3 +428,101 @@ async fn a_cancelled_caller_cannot_split_the_file_from_memory() {
         }
     }
 }
+
+#[tokio::test]
+async fn legacy_startup_modes_preserve_background_preference_independently() {
+    use uc_desktop_settings::StartupMode;
+    for (legacy, expected_mode, expected_background) in [
+        ("normal", StartupMode::Normal, false),
+        ("silent", StartupMode::Normal, true),
+        ("lightweight", StartupMode::Lightweight, true),
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        let path = settings_path(&dir);
+        let original = json!({"general": {"startupMode": legacy, "futurePreference": 42}});
+        std::fs::write(&path, serde_json::to_vec(&original).unwrap()).unwrap();
+        let store = DesktopSettingsStore::load(path.clone());
+        let general = store.snapshot().await.settings.general;
+        assert_eq!(general.startup_mode, expected_mode);
+        assert_eq!(general.background_startup, expected_background);
+        assert_eq!(
+            read_json(&path),
+            original,
+            "reads must not rewrite legacy files"
+        );
+        store
+            .apply(DesktopSettingsPatch {
+                general: GeneralSettingsPatch {
+                    startup_mode: Some(StartupMode::Lightweight),
+                    ..Default::default()
+                },
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        let reloaded = DesktopSettingsStore::load(path.clone());
+        assert_eq!(
+            reloaded
+                .snapshot()
+                .await
+                .settings
+                .general
+                .background_startup,
+            expected_background
+        );
+        store
+            .apply(DesktopSettingsPatch {
+                general: GeneralSettingsPatch {
+                    background_startup: Some(false),
+                    ..Default::default()
+                },
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        let general = DesktopSettingsStore::load(path.clone())
+            .snapshot()
+            .await
+            .settings
+            .general;
+        assert_eq!(general.startup_mode, StartupMode::Lightweight);
+        assert!(!general.background_startup);
+        assert_eq!(read_json(&path)["general"]["futurePreference"], 42);
+    }
+}
+
+#[tokio::test]
+async fn legacy_silent_patch_maps_to_normal_with_independent_background_preference() {
+    use uc_desktop_settings::StartupMode;
+    let dir = tempfile::tempdir().unwrap();
+    let store = DesktopSettingsStore::load(settings_path(&dir));
+    for explicit in [None, Some(false), Some(true)] {
+        store
+            .apply(DesktopSettingsPatch {
+                general: GeneralSettingsPatch {
+                    startup_mode: Some(StartupMode::Silent),
+                    background_startup: explicit,
+                    ..Default::default()
+                },
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        let general = store.snapshot().await.settings.general;
+        assert_eq!(general.startup_mode, StartupMode::Normal);
+        assert_eq!(general.background_startup, explicit.unwrap_or(true));
+    }
+}
+
+#[tokio::test]
+async fn explicit_and_invalid_background_values_do_not_infer_legacy_silent() {
+    for value in [json!(false), json!("invalid"), serde_json::Value::Null] {
+        let dir = tempfile::tempdir().unwrap();
+        let path = settings_path(&dir);
+        let original = json!({"general": {"startupMode": "silent", "backgroundStartup": value}});
+        std::fs::write(&path, serde_json::to_vec(&original).unwrap()).unwrap();
+        let store = DesktopSettingsStore::load(path.clone());
+        assert!(!store.snapshot().await.settings.general.background_startup);
+        assert_eq!(read_json(&path), original);
+    }
+}

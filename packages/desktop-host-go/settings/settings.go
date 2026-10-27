@@ -26,6 +26,7 @@ type General struct {
 	MainWindowSize            WindowSize `json:"mainWindowSize"`
 	AutoStart                 bool       `json:"autoStart"`
 	StartupMode               string     `json:"startupMode"`
+	BackgroundStartup         bool       `json:"backgroundStartup"`
 	RestoreLastEntryOnStartup bool       `json:"restoreLastEntryOnStartup"`
 	DeviceName                string     `json:"deviceName"`
 	AutoCheckUpdate           bool       `json:"autoCheckUpdate"`

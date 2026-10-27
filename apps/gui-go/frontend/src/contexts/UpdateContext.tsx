@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { isPackageManagedInstall, requiresExternalUpdate } from '@/api/update-install-kind'
 import {
   cancelDownload as apiCancelDownload,
   checkForUpdate,
@@ -43,11 +44,8 @@ export const UpdateProvider: React.FC<UpdateProviderProps> = ({ children }) => {
   }, [])
   const [isCheckingUpdate, setIsCheckingUpdate] = useState(false)
   const [installKind, setInstallKind] = useState<InstallKind | null>(null)
-  const isSystemManaged = installKind === 'deb' || installKind === 'rpm'
-  // Portable Windows zip joins deb/rpm in "can't self-install" territory: its
-  // NSIS updater would install into Program Files instead of refreshing the
-  // portable folder, so it's routed to the manual-download dialog too.
-  const isManualUpdate = isSystemManaged || installKind === 'windowsportable'
+  const isSystemManaged = isPackageManagedInstall(installKind)
+  const isManualUpdate = requiresExternalUpdate(installKind)
 
   const activeCheckRef = useRef<Promise<UpdateMetadata | null> | null>(null)
   const activeCheckChannelRef = useRef<UpdateChannel | null>(null)

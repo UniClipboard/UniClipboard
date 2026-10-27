@@ -15,7 +15,7 @@ reported in evidence, after `ps -E` shows the executable and the throwaway HOME 
 
 Scenarios:
   N  `--quick-panel` with no first instance exits 1 before any daemon work (Tauri validate_primary_launch)
-  A  first instance (silent startup, real quick panel helper). Second launches: `--autostart` (no window), `--quick-panel`
+  A  first instance (automatic background startup, real quick panel helper). Second launches: `--autostart` (no window), `--quick-panel`
      (no window, ignored), plain (window created); a burst of 8; GUI/daemon/helper PIDs and the process table unchanged
   B  early second launches while the first instance bootstraps its daemon: both exit 0; `--autostart` stays silent, the plain
      launch is held and the first instance shows the window once the bootstrap ends; one daemon only
@@ -112,7 +112,7 @@ class Gui:
 
     def step(self, name, timeout=120, where=lambda r: True):
         def find():
-            if self.proc.poll() is not None and not any(r['step'] == name and where(r) for r in self.steps()):
+            if self.proc.poll() not in (None, 0) and not any(r['step'] == name and where(r) for r in self.steps()):
                 raise RuntimeError(f'{self.label} exited ({self.proc.returncode}) before step {name}')
             return [r for r in self.steps() if r['step'] == name and where(r)]
         return wait_until(find, timeout, f'{self.label}:{name}')
@@ -128,8 +128,12 @@ class Gui:
 
     def ready(self):
         """The first instance is fully started: the run loop (and with it the activation observer) is up."""
-        self.step('bootstrapped', 120)
+        boot = self.step('bootstrapped', 120)[-1]['detail']
         detail = self.state('ready')
+        self.pid = detail['pid']  # a cold normal launch may hand off its owner once
+        if boot['replayedHeldShow']:
+            detail = wait_until(lambda: (v if (v := self.state('ready-visible'))['mainExists'] else None),
+                                30, 'UI child visible after bootstrap')
         time.sleep(1.5)
         return detail
 
@@ -141,7 +145,7 @@ class Gui:
 
     def exit(self, timeout=90):
         self.ctl('exit')
-        wait_until(lambda: not pid_alive(self.pid) or self.proc.poll() is not None, timeout, f'{self.label} exit')
+        wait_until(lambda: (self.proc.poll(), not pid_alive(self.pid))[1], timeout, f'{self.label} exit')
         self.proc.wait(timeout=10)
         LIFETIMES.append({'label': self.label, 'pid': self.pid, 'start': self.started, 'end': now(), 'exit': self.proc.returncode})
 
@@ -216,7 +220,7 @@ def main():
         results['N_quickPanelWithoutPrimary'] = {'exitCode': code, 'seconds': secs}
 
         # A: first instance, silent, real helper
-        a1 = Gui('a1-primary', pa, out)
+        a1 = Gui('a1-primary', pa, out, args=['--autostart'])
         guis.append(a1)
         a1.step('launch')
         s0 = a1.ready()
@@ -230,13 +234,21 @@ def main():
         results['A_primary'] = {'guiPid': a1.pid, 'daemonPid': s0['daemonPid'], 'helperPids': helper0, 'uniqueID': uid_a,
                                 'processes': procs0, 'silentStartMainExists': s0['mainExists']}
 
+        launch_count = len(a1.launches())
+        active_ui_pid = 0
+
         def unchanged(tag):
             s = a1.state(tag)
             assert s['pid'] == a1.pid and s['daemonPid'] == s0['daemonPid'], (s, s0)
             h = sorted(int(x) for x in subprocess.run(['pgrep', '-P', str(a1.pid), '-f', 'uniclip-quick-panel'], capture_output=True, text=True).stdout.split())
             assert h == helper0, (h, helper0)
-            assert home_processes(pa.home) == procs0, (home_processes(pa.home), procs0)
-            assert len(a1.launches()) == 1, a1.launches()
+            current = home_processes(pa.home)
+            assert all(current.get(pid) == name for pid, name in procs0.items()), (current, procs0)
+            assert sum(name == str(BINARY) for name in current.values()) == 1, current
+            assert sum(name.endswith('uniclipd') for name in current.values()) == 1, current
+            if active_ui_pid:
+                assert s['uiPid'] == active_ui_pid, s
+            assert len(a1.launches()) == launch_count, a1.launches()
             return s
 
         # A2: second launch started by the login item (--autostart): no window
@@ -261,7 +273,9 @@ def main():
         code, secs, text, _ = second_launch('a4-plain', pa, out)
         assert code == 0 and secs < 5, (code, secs)
         rows = a1.step('second-instance', 30, lambda r: r['detail']['action'] == 'show-main-window')
-        assert rows[-1]['detail']['mainExists'], rows
+        visible = wait_until(lambda: (v if (v := a1.state('plain-visible'))['mainExists'] else None),
+                             30, 'explicit activation creates UI child')
+        active_ui_pid = visible['uiPid']
         s = unchanged('after-plain')
         assert s['mainExists']
         results['A4_plainSecond'] = {'exitCode': code, 'seconds': secs, 'primaryReceived': rows[-1]['detail']}
@@ -295,7 +309,7 @@ def main():
                                'note': 'duplicates posted back to back may coalesce (best-effort delivery)'}
 
         # C: independent scopes next to A
-        b1 = Gui('b1-primary', pb, out)
+        b1 = Gui('b1-primary', pb, out, args=['--autostart'])
         guis.append(b1)
         # B: second launches while the first instance is still bootstrapping its daemon (cold start). The run loop
         # (and Wails' activation observer) is already up; the shell is not, so the window request is held and replayed.
@@ -314,7 +328,7 @@ def main():
         early_received = b1.second_instances()
         actions = [r['detail']['action'] for r in early_received]
         assert 'ignore-autostart' in actions and 'show-main-window' in actions, early_received
-        assert boot['replayedHeldShow'] and boot['mainExists'], boot
+        assert boot['replayedHeldShow'], boot
         assert sb['mainExists'] and not any(r['detail']['mainExists'] for r in early_received if r['detail']['action'] == 'ignore-autostart'), (sb, early_received)
         assert sum(1 for c in home_processes(pb.home).values() if c.endswith('uniclipd')) == 1, home_processes(pb.home)
         results['B_earlySecond'] = {'launches': early, 'primaryReceived': [r['detail'] for r in early_received], 'bootstrapped': boot,
@@ -333,9 +347,9 @@ def main():
         assert all(lock_files(ids).values()), lock_files(ids)
         assert pa.profile == pc.profile and uid_a != uid_c
         assert uid_alt.startswith(ALT_BUNDLE + '.') and uid_a.startswith('app.uniclipboard.desktop.e2e.')
-        assert all(g.proc.poll() is None for g in (a1, b1, c1, alt))
+        assert all(pid_alive(g.pid) for g in (a1, b1, c1, alt))
         assert salt['daemonPid'] == s0['daemonPid'], 'the other-bundle app shares the profile daemon, as a second GUI client'
-        assert len(a1.launches()) == 1 and len(alt.launches()) == 1
+        assert len(a1.launches()) == launch_count and len(alt.launches()) == 1
         a_before, alt_before = len(a1.second_instances()), len(alt.second_instances())
         code, secs, _, _ = second_launch('c-second-for-b', pb, out)
         assert code == 0
@@ -361,13 +375,16 @@ def main():
 
         # R: restart (tray path) hands the scope over to the new process
         old_pid, old_daemon = a1.pid, s0['daemonPid']
+        before_restart = len(a1.launches())
         a1.ctl('restart')
         a1.step('control-restart', 30)
-        new = wait_until(lambda: [r for r in a1.launches() if r['detail']['pid'] != old_pid], 120, 'restarted GUI launch')[0]['detail']
+        new = wait_until(lambda: [r for r in a1.launches()[before_restart:] if r['detail']['pid'] != old_pid], 120, 'restarted GUI launch')[0]['detail']
         new_pid = new['pid']
+        a1.pid = new_pid
         a1.proc.wait(timeout=60)
         LIFETIMES.append({'label': 'a1-primary', 'pid': old_pid, 'start': a1.started, 'end': now(), 'exit': a1.proc.returncode})
-        assert a1.proc.returncode == 0 and not pid_alive(old_pid)
+        wait_until(lambda: not pid_alive(old_pid), 60, 'old resident exits on restart')
+        assert a1.proc.returncode == 0
         assert new['uniqueID'] == uid_a and pid_alive(new_pid) and owned(new_pid, pa.home), new
         # a launch after the restart reaches the new process, proving it holds the lock
         deadline = time.monotonic() + 60
@@ -388,6 +405,7 @@ def main():
         guis.append(a2)
         takeover = a2.step('launch')[0]['detail']
         a2.ready()
+        takeover = next(r['detail'] for r in a2.launches() if r['detail']['pid'] == a2.pid)
         assert takeover['pid'] == a2.pid and takeover['uniqueID'] == uid_a
         results['T_takeover'] = {'pid': a2.pid, 'uniqueID': takeover['uniqueID']}
         a2.exit()
@@ -396,13 +414,15 @@ def main():
         results['passed'] = True
     finally:
         for g in guis:
-            if g.proc.poll() is None:
-                if owned(g.pid, g.p.home, g.binary):
-                    g.proc.terminate()
-                    try:
-                        g.proc.wait(timeout=30)
-                    except subprocess.TimeoutExpired:
-                        g.proc.kill()
+            g.proc.poll()
+            if pid_alive(g.pid) and owned(g.pid, g.p.home, g.binary):
+                g.ctl('exit')
+                try:
+                    wait_until(lambda: (g.proc.poll(), not pid_alive(g.pid))[1], 30, 'owned GUI cleanup')
+                except RuntimeError:
+                    # PID came from this isolated run and was verified above.
+                    if owned(g.pid, g.p.home, g.binary):
+                        os.kill(g.pid, 15)
         for p in profiles:
             cli(p.cli_env, '--json', 'stop', check=False, timeout=80)
         leftovers = {p.home: home_processes(p.home) for p in profiles}

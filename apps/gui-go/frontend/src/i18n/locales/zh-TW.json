@@ -235,6 +235,8 @@
     "downloading": "正在下載...",
     "installing": "正在安裝...",
     "packageManager": {
+      "pacmanHint": "請透過安裝 UniClipboard 時使用的軟體來源或 AUR 工具更新。本機安裝套件請下載新版後使用 pacman -U 安裝。",
+      "pacmanCommand": "sudo pacman -Syu",
       "title": "請通過系統包管理器升級",
       "portableTitle": "請下載新的便攜版",
       "debHint": "你目前通過 apt（Debian/Ubuntu）安裝了 UniClipboard，請在終端執行以下命令升級：",
@@ -339,12 +341,12 @@
         },
         "startupMode": {
           "summaries": {
-            "normal": "啟動後顯示應用程式視窗。",
+            "normal": "保留系統匣、快捷面板和全域快捷鍵。關閉主視窗後釋放其 WebView；正在使用的備援面板可保留自己的 WebView。",
             "silent": "啟動後在背景執行，不彈出視窗。",
-            "lightweight": "開機自啟時只保留背景同步，需要時可重新開啟介面。"
+            "lightweight": "關閉臨時主視窗後僅保留同步服務，不保留系統匣、快捷面板或快捷鍵。"
           },
-          "label": "啟動方式",
-          "description": "「靜默」啟動後不彈窗，直接進入背景；「輕量」在背景就緒後進一步退出視窗和托盤、僅保留背景服務併發送通知，之後按一下應用程式圖標即可重新打開視窗。",
+          "label": "桌面模式",
+          "description": "保留系統匣、快捷面板和全域快捷鍵。關閉主視窗後釋放其 WebView；正在使用的備援面板可保留自己的 WebView。 關閉臨時主視窗後僅保留同步服務，不保留系統匣、快捷面板或快捷鍵。",
           "options": {
             "normal": "正常",
             "silent": "靜默",
@@ -441,6 +443,10 @@
               "offline": "匯出時背景服務未執行，網路連線記錄未經刷新，可能不完整。"
             }
           }
+        },
+        "backgroundStartup": {
+          "label": "在背景啟動",
+          "description": "自動登入啟動時不開啟主視窗。手動開啟應用程式時仍會顯示主視窗。"
         }
       },
       "appearance": {

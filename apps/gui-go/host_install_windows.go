@@ -14,7 +14,7 @@ import (
 // installPayload runs the NSIS installer in place (Tauri contract, see update.NSISArgs). A portable build never
 // updates itself: it has no installer to replace (`detect_install_kind` -> WindowsPortable). The live daemon image
 // blocks the installer's file replacement, so unlike on macOS a daemon that cannot be stopped aborts the update.
-func (h *HostService) installPayload(data []byte, version string) error {
+func (h *HostService) installPayload(data *os.File, version string) error {
 	if apppaths.IsPortable() {
 		return fmt.Errorf("the portable build does not update itself; download the new portable package instead")
 	}

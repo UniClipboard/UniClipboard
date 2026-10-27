@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -79,13 +80,25 @@ func consume(config, endpoint string) {
 		if rel == nil {
 			fail(fmt.Errorf("no release for %s", target))
 		}
-		bytes, err := client.Download(ctx, rel, nil)
+		payload, err := client.Download(ctx, rel, nil)
 		check(err)
-		hash := sha256.Sum256(bytes)
-		if client.Verify(append(bytes, 1), rel.Signature) == nil {
-			fail(fmt.Errorf("tampered payload accepted"))
-		}
-		results[target] = map[string]any{"url": rel.URL, "sha256": hex.EncodeToString(hash[:]), "verified": true, "tamperRejected": true}
+		hash := sha256.New()
+		check(payload.WithFile(func(file *os.File) error {
+			_, err := io.Copy(hash, file)
+			if err != nil {
+				return err
+			}
+			if _, err := file.Write([]byte{1}); err != nil {
+				return err
+			}
+			if client.VerifyFile(file, rel.Signature) == nil {
+				return fmt.Errorf("tampered payload accepted")
+			}
+			return nil
+		}))
+		check(payload.Close())
+		sum := hash.Sum(nil)
+		results[target] = map[string]any{"url": rel.URL, "sha256": hex.EncodeToString(sum), "verified": true, "tamperRejected": true}
 	}
 	out, err := json.MarshalIndent(results, "", "  ")
 	check(err)

@@ -235,6 +235,8 @@
     "downloading": "正在下载...",
     "installing": "正在安装...",
     "packageManager": {
+      "pacmanHint": "请通过安装 UniClipboard 时使用的软件源或 AUR 工具更新。本地安装包请下载新版后使用 pacman -U 安装。",
+      "pacmanCommand": "sudo pacman -Syu",
       "title": "请通过系统包管理器升级",
       "portableTitle": "请下载新的便携版",
       "debHint": "你当前通过 apt（Debian/Ubuntu）安装了 UniClipboard，请在终端执行以下命令升级：",
@@ -339,17 +341,21 @@
         },
         "startupMode": {
           "summaries": {
-            "normal": "启动后显示应用窗口。",
-            "silent": "启动后在后台运行，不弹出窗口。",
-            "lightweight": "开机自启时仅保留后台同步，需要时可重新打开界面。"
+            "normal": "保留托盘、快捷面板与全局快捷键。关闭主窗口后释放其 WebView。",
+            "lightweight": "关闭窗口后仅保留后台同步服务，不保留托盘、快捷面板或全局快捷键。",
+            "silent": "正常模式并在后台启动（旧版设置）。"
           },
-          "label": "启动方式",
-          "description": "「静默」启动后不弹窗，直接进入后台；「轻量」在后台就绪后进一步退出窗口和托盘、仅保留后台服务并发送通知，之后点击应用图标即可重新打开窗口。",
+          "label": "桌面运行模式",
+          "description": "正常模式保留托盘、快捷面板和快捷键。轻量模式在关闭主窗口后仅保留后台服务。",
           "options": {
             "normal": "正常",
             "silent": "静默",
             "lightweight": "轻量"
           }
+        },
+        "backgroundStartup": {
+          "label": "后台启动",
+          "description": "登录系统自动启动时不打开主窗口。手动打开应用时始终显示窗口。"
         },
         "restoreLastEntryOnStartup": {
           "label": "启动时恢复剪贴板",

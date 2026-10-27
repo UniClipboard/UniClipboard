@@ -283,6 +283,7 @@ function toInstallKind(kind: string): InstallKind {
     case 'appimage':
     case 'deb':
     case 'rpm':
+    case 'pacman':
       return kind
     default:
       return 'unknown'

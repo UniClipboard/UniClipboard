@@ -122,6 +122,7 @@ impl IntoApiDto<SettingsDto> for (app_settings::SettingsView, &DesktopSettings) 
             general: GeneralSettingsDto {
                 auto_start: desktop.general.auto_start,
                 startup_mode: desktop.general.startup_mode.into_api_dto(),
+                background_startup: desktop.general.background_startup,
                 restore_last_entry_on_startup: desktop.general.restore_last_entry_on_startup,
                 auto_check_update: desktop.general.auto_check_update,
                 auto_download_update: desktop.general.auto_download_update,
@@ -501,6 +502,7 @@ pub fn desktop_patch(patch: &SettingsPatchDto) -> DesktopSettingsPatch {
                 main_window_maximized: general.main_window_maximized,
                 auto_start: general.auto_start,
                 startup_mode: general.startup_mode.clone().map(IntoDomain::into_domain),
+                background_startup: general.background_startup,
                 restore_last_entry_on_startup: general.restore_last_entry_on_startup,
                 auto_check_update: general.auto_check_update,
                 auto_download_update: general.auto_download_update,
@@ -580,5 +582,38 @@ mod window_size_tests {
         )
         .unwrap();
         assert_eq!(wire, serde_json::json!({"width":1234,"height":810}));
+    }
+}
+
+#[cfg(test)]
+mod desktop_mode_tests {
+    use super::*;
+
+    #[test]
+    fn runtime_preferences_round_trip_without_changing_engine_settings() {
+        let patch: SettingsPatchDto = serde_json::from_value(serde_json::json!({
+            "general": {"startupMode": "lightweight", "backgroundStartup": false}
+        }))
+        .unwrap();
+        let desktop = desktop_patch(&patch);
+        assert_eq!(
+            desktop.general.startup_mode,
+            Some(uc_desktop_settings::StartupMode::Lightweight)
+        );
+        assert_eq!(desktop.general.background_startup, Some(false));
+        assert!(
+            patch.network.is_none(),
+            "desktop modes must not request a daemon restart"
+        );
+        let engine: app_settings::SettingsPatch = patch.into_domain();
+        assert!(engine == app_settings::SettingsPatch::default());
+
+        let mut desktop = DesktopSettings::default();
+        desktop.general.startup_mode = uc_desktop_settings::StartupMode::Lightweight;
+        desktop.general.background_startup = true;
+        let wire: SettingsDto = (app_settings::SettingsView::default(), &desktop).into_api_dto();
+        let general = serde_json::to_value(wire.general).unwrap();
+        assert_eq!(general["startupMode"], "lightweight");
+        assert_eq!(general["backgroundStartup"], true);
     }
 }

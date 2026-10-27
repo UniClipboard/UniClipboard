@@ -16,7 +16,7 @@ from pathlib import Path
 
 from startup_run import BINARY, PASSPHRASE, Profile, cli, read_steps
 from run import pid_alive
-from dock_lifecycle_run import Run, OPEN_LABELS, QUIT_LABELS, LIGHTWEIGHT_LABELS
+from dock_lifecycle_run import Run, OPEN_LABELS, QUIT_LABELS
 
 
 def main():
@@ -125,7 +125,8 @@ def main():
             elif cycle == 1:
                 assert native.tool('dock_ax', 'menu-key', previous, 'W').get('ok')
             else:
-                assert native.tray_press(proc.pid, LIGHTWEIGHT_LABELS, 'enter lightweight')
+                # Mode transitions have their own daemon-preservation acceptance test.
+                command('close-main third-cycle')
             closed = until(lambda s: s.get('uiPid', 0) == 0, 'UI child exits')
             assert not pid_alive(previous), previous
             assert closed['residentWindowCount'] == 0, closed

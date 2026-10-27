@@ -10,6 +10,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -90,11 +91,19 @@ func run() error {
 		if !info.Mode().IsRegular() {
 			return fmt.Errorf("updater artifact must be a regular file: %s", name)
 		}
-		data, err := os.ReadFile(file)
+		input, err := os.Open(file)
 		if err != nil {
 			return err
 		}
-		if len(data) == 0 {
+		defer input.Close()
+		hash := sha256.New()
+		reader := minisign.NewReader(input)
+		_, readErr := io.Copy(hash, reader)
+		if readErr != nil {
+			input.Close()
+			return readErr
+		}
+		if info.Size() == 0 {
 			return fmt.Errorf("empty updater artifact: %s", name)
 		}
 		var sig []byte
@@ -104,9 +113,14 @@ func run() error {
 				return err
 			}
 		} else {
-			sig = []byte(base64.StdEncoding.EncodeToString(minisign.Sign(private, data)))
+			sig = []byte(base64.StdEncoding.EncodeToString(reader.Sign(private)))
 		}
-		if err := client.Verify(data, string(sig)); err != nil {
+		verifyErr := client.VerifyFile(input, string(sig))
+		closeErr := input.Close()
+		if closeErr != nil {
+			return closeErr
+		}
+		if err := verifyErr; err != nil {
 			return fmt.Errorf("client verification failed: %s", name)
 		}
 		if !*verify {
@@ -114,13 +128,13 @@ func run() error {
 				return err
 			}
 		}
-		sum := sha256.Sum256(data)
+		sum := hash.Sum(nil)
 		sidecar, err := os.ReadFile(file + ".sig")
 		if err != nil {
 			return err
 		}
 		sigSum := sha256.Sum256(sidecar)
-		records = append(records, record{name, hex.EncodeToString(sum[:]), hex.EncodeToString(sigSum[:]), true})
+		records = append(records, record{name, hex.EncodeToString(sum), hex.EncodeToString(sigSum[:]), true})
 	}
 	if len(records) == 0 {
 		return errors.New("no named updater artifacts found")

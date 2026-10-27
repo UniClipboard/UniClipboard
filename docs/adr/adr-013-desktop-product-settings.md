@@ -213,7 +213,8 @@ spelling.
 | Product path | Legacy path (`settings.json`) | Default | Grammar |
 |---|---|---|---|
 | `general.autoStart` | `general.auto_start` | `false` | bool |
-| `general.startupMode` | `general.startup_mode` (legacy rule, 8.2) | `normal` | `normal` \| `silent` \| `lightweight` |
+| `general.startupMode` | `general.startup_mode` (legacy rule, 8.2) | `normal` | `normal` \| `lightweight`；旧版 `silent` 兼容读取为 `normal` |
+| `general.backgroundStartup` | 无 | `false` | 布尔值；旧版 `silent` / `lightweight` 且未保存此字段时按 `true` 读取 |
 | `general.restoreLastEntryOnStartup` | `general.restore_last_entry_on_startup` | `false` | bool |
 | `general.autoCheckUpdate` | `general.auto_check_update` | `true` | bool |
 | `general.autoDownloadUpdate` | `general.auto_download_update` | `true` | bool |
@@ -878,3 +879,11 @@ adoption, re-export and aggregate export-limit propagation. `prepare-history.py`
 v1.2.0 release archive and the Engine 0.19.4 fixture hashes. `run-history.py` runs both existing
 migration suites with those inputs and info logging in an isolated HOME. Failed attempts remain
 separate evidence. Native visual acceptance stays with the user.
+
+### 桌面模式与自动启动偏好的兼容规则
+
+`startupMode` 保留原字段名以兼容旧客户端，但现在表示运行期驻留方式。正常模式保留桌面宿主；轻量模式关闭临时主窗口后仅保留 daemon。`backgroundStartup` 独立决定自动登录启动时是否显示主窗口，不阻止用户手动打开。
+
+读取旧文档不改写磁盘：`silent` 投影为 `normal`，缺少独立字段的 `silent` 和 `lightweight` 保留后台启动偏好。显式保存 `backgroundStartup: false` 优先于旧模式。修改模式时同时固定当前后台启动偏好，避免从旧模式切换时无意改变窗口行为。旧客户端提交 `silent` 时按正常模式与后台启动处理；同一个补丁中的独立布尔值优先。未知字段继续保留。
+
+宿主只通过 daemon API 读取设置。切换模式使用已有的父进程退出等待与单实例锁替换桌面宿主，保留 daemon；关闭窗口与显式激活均不写入模式。完整退出仍停止 daemon。测试见设置存储的文件测试、DTO 线协议测试与 `apps/gui-go/e2e/desktop_modes_run.py`。

@@ -83,6 +83,7 @@ pub enum UiInstallKind {
     AppImage,
     Deb,
     Rpm,
+    Pacman,
     Unknown,
 }
 

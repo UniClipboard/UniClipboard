@@ -94,6 +94,8 @@ func (s *EvidenceService) runControlCommand(line string) {
 		}
 	}
 	switch verb {
+	case "tray-lightweight":
+		_, _ = s.controlQuickPanel("tray-lightweight")
 	case "tray-menu":
 		_, _ = s.controlQuickPanel("tray-menu:" + arg)
 	case "quit-app":
@@ -242,6 +244,10 @@ func (s *EvidenceService) runControlCommand(line string) {
 		if ready {
 			stored, _ := h.loadStartupSettings()
 			detail["startupMode"] = stored.StartupMode
+			detail["backgroundStartup"] = stored.BackgroundStartup
+			detail["trayPresent"] = h.tray != nil
+			detail["lightweight"] = h.lightweight.Load()
+			detail["shortcutCount"] = len(h.app.GlobalShortcut.GetAll())
 		}
 		if conn != nil {
 			detail["daemonPid"] = conn.PID

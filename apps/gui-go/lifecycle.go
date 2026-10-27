@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
-	"sync/atomic"
 	"time"
 
 	"github.com/UniClipboard/UniClipboard/packages/desktop-host-go/daemonclient"
@@ -17,11 +16,6 @@ import (
 )
 
 const daemonStopTimeout = 10 * time.Second
-
-// exitIntent records what happens to the daemon when the GUI process exits.
-// A plain quit (tray Quit, Cmd-Q) stops the daemon. Restart keeps it running.
-// Lightweight mode stops only the UI child on every platform.
-type exitIntent struct{ keepDaemon atomic.Bool }
 
 func (h *HostService) quit(keepDaemon bool) {
 	if uiChild && !keepDaemon {
@@ -32,9 +26,15 @@ func (h *HostService) quit(keepDaemon bool) {
 		}()
 		return
 	}
-	h.exit.keepDaemon.Store(keepDaemon)
-	h.quitting.Store(true)
-	h.app.Quit()
+	if h.beginQuit(keepDaemon) {
+		h.app.Quit()
+	}
+}
+
+// beginQuit makes shutdown idempotent: a later child exit cannot replace a
+// full-quit decision with keep-daemon, or overwrite a successful restart.
+func (h *HostService) beginQuit(keepDaemon bool) bool {
+	return h.exitIntent.begin(keepDaemon)
 }
 
 // shutdown stops background work, then the daemon unless the exit keeps it.
@@ -66,13 +66,16 @@ func (h *HostService) shutdown() {
 	if h.stopScheduler != nil {
 		h.stopScheduler()
 	}
+	h.updates.close()
 	if h.stopTray != nil {
 		h.stopTray()
 	}
 	if h.helper != nil {
 		h.helper.Shutdown()
 	}
-	h.modifierMonitor().Shutdown() // release the keyboard poll before the process exits
+	if h.modifier != nil {
+		h.modifier.Shutdown()
+	}
 	h.stopDaemonOnExit()
 }
 
@@ -90,7 +93,7 @@ func (h *HostService) announceDaemonStop() {
 
 // stopDaemonOnExit terminates the connected daemon and waits for it to exit.
 func (h *HostService) stopDaemonOnExit() {
-	if h.exit.keepDaemon.Load() || h.daemon() == nil {
+	if h.keepDaemon.Load() || h.daemon() == nil {
 		return
 	}
 	h.announceDaemonStop()
@@ -162,18 +165,70 @@ func (h *HostService) restartGUI() error {
 		defer cancel()
 		return h.ownerCall(ctx, "restart-gui", nil, nil)
 	}
+	return h.restartShell(false)
+}
+
+const backgroundRestartArg = "--background-restart"
+const residentRestartArg = "--resident-restart"
+
+func launchAfterHostExit(background, resident bool) error {
 	exe, err := restartExecutable()
 	if err != nil {
 		return err
 	}
-	cmd := exec.Command(exe)
+	args := []string{}
+	if resident {
+		args = append(args, residentRestartArg)
+	}
+	if background {
+		args = append(args, backgroundRestartArg)
+	}
+	cmd := exec.Command(exe, args...)
 	cmd.Env = append(os.Environ(), restartParentEnv+"="+strconv.Itoa(os.Getpid()))
 	if err := cmd.Start(); err != nil {
 		return err
 	}
 	go func() { _ = cmd.Wait() }()
-	h.quit(true)
 	return nil
+}
+
+func (h *HostService) restartShell(background bool) error {
+	// Keep child activation and the restart commitment under the same lock.
+	// A later open observes quitting and forwards itself to the replacement.
+	if h.ui != nil {
+		h.ui.mu.Lock()
+		if background {
+			state := h.ui.stateLocked()
+			_, unavailable := state["stateError"]
+			background = !unavailable && state["mainExists"] != true && h.ui.pendingOpen.Load() == 0
+		}
+	}
+	// Serialize a bootstrap handoff with an explicit activation held for readiness.
+	// Once the exit is committed, later activations are forwarded instead.
+	h.readyMu.Lock()
+	started, err := h.exitIntent.restart(func() error {
+		return launchAfterHostExit(background && !h.showWhenReady, !h.lightweight.Load())
+	})
+	h.readyMu.Unlock()
+	if h.ui != nil {
+		h.ui.mu.Unlock()
+	}
+	if started {
+		h.app.Quit()
+	}
+	return err
+}
+
+// forwardActivation carries an explicit launch across an idle exit or mode
+// restart. The new process waits for this host, then uses the same instance lock.
+func (h *HostService) forwardActivation() {
+	if !h.keepDaemon.Load() || !h.activationForwarded.CompareAndSwap(false, true) {
+		return
+	}
+	if err := launchAfterHostExit(false, !h.lightweight.Load()); err != nil {
+		h.activationForwarded.Store(false)
+		log.Printf("forward activation after host exit failed: %v", err)
+	}
 }
 
 // restartDaemon replaces the daemon process; the frontend reconnects by itself.

@@ -22,17 +22,7 @@ export type QuickPanelPosition = 'center' | 'follow_cursor'
  */
 export type UpdateChannel = 'stable' | 'alpha' | 'beta' | 'rc'
 
-/**
- * 启动方式 - 对应 Rust StartupMode enum
- *
- * - `normal`：正常显示窗口
- * - `silent`：启动后不弹窗，直接进入后台 / 托盘（GUI 进程仍在运行）
- * - `lightweight`：仅在通过开机自启动启动时生效——后台同步就绪后自动退出
- *   应用窗口和托盘（GUI 进程整体退出，只留后台服务），手动打开应用时始终
- *   正常显示窗口
- *
- * 三者互斥，与 `autoStart`（是否开机自启）相互独立。
- */
+/** Runtime residency. `silent` is accepted only for legacy settings compatibility. */
 export type StartupMode = 'normal' | 'silent' | 'lightweight'
 
 /** Tray icon style, stored by the daemon's product settings (`general.trayIcon`). */
@@ -49,6 +39,7 @@ export type TrayIcon = TrayIconDto
 export interface GeneralSettings {
   autoStart: boolean
   startupMode: StartupMode
+  backgroundStartup?: boolean
   /**
    * Whether to push the most recent clipboard history entry back onto the
    * OS clipboard once the daemon connection is confirmed at startup.

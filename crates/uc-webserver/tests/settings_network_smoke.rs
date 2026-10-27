@@ -238,6 +238,7 @@ fn restart_required_truth_table() {
         general: Some(GeneralSettingsPatchDto {
             auto_start: Some(true),
             startup_mode: None,
+            background_startup: None,
             restore_last_entry_on_startup: None,
             auto_check_update: None,
             auto_download_update: None,

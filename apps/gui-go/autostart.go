@@ -25,10 +25,6 @@ import (
 // shells register the same item; the fallback only serves `go run` and tests.
 var productName = "UniClipboard"
 
-// autostartLaunchArg tags launches started by the login item. Nothing branches on it (the Tauri shell kept it
-// for diagnostics too); it is dropped on the SMAppService path, where macOS launches the bundle without arguments.
-const autostartLaunchArg = "--autostart"
-
 // errProfileLoginItem refuses OS login-item changes from a named profile instance running inside an app bundle.
 var errProfileLoginItem = errors.New("a named profile instance must not change the login item of its app bundle")
 

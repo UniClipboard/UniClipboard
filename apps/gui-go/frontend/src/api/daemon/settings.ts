@@ -131,6 +131,7 @@ export class CustomRelayMutationError extends Error {
 export interface GeneralSettings {
   autoStart: boolean
   startupMode: StartupMode
+  backgroundStartup?: boolean
   /**
    * Whether to push the most recent clipboard history entry back onto the
    * OS clipboard once the daemon connection is confirmed at startup.
@@ -555,6 +556,7 @@ function toSettingsPatchRequest(
     // which persists the preference and applies the OS state atomically.
     const {
       startupMode,
+      backgroundStartup,
       restoreLastEntryOnStartup,
       autoCheckUpdate,
       autoDownloadUpdate,
@@ -575,6 +577,7 @@ function toSettingsPatchRequest(
 
     patch.general = {
       startupMode,
+      backgroundStartup,
       restoreLastEntryOnStartup,
       autoCheckUpdate,
       autoDownloadUpdate,

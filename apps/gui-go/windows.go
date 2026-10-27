@@ -221,6 +221,9 @@ func (h *HostService) toggleQuickPanel() {
 
 // requestPanelToggle is the entry for the global shortcut and for `--quick-panel` launches.
 func (h *HostService) requestPanelToggle() {
+	if !uiChild && h.lightweight.Load() {
+		return
+	}
 	if h.ui != nil {
 		if h.helper == nil && h.panel.toggle.request() {
 			h.ui.open("panel", nil)

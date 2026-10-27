@@ -53,6 +53,8 @@
 <p align="center">English | <a href="./README_ZH.md">简体中文</a> | <a href="./README_ZH_TW.md">繁體中文</a> | <a href="./README_JA.md">日本語</a> | <a href="./README_RU.md">Русский</a> | <a href="./README_PT_BR.md">Português (Brasil)</a></p>
 <p align="center"><a href="./ABOUT.md">Who maintains this project? (About &amp; Trust)</a></p>
 
+Normal mode keeps the tray, Quick Panel, and global shortcuts available. Lightweight mode keeps only the synchronization daemon running after you close its temporary main window. Background startup controls whether automatic login launch opens the main window; opening the app manually always lets you access history and settings. Closing the main window releases its WebView; an active fallback Quick Panel can retain its own resources.
+
 ## Project Overview
 
 > **Copy on one device. Paste on another — even across the internet.**

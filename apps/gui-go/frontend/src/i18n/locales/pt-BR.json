@@ -236,6 +236,8 @@
     "downloading": "Baixando...",
     "installing": "Instalando...",
     "packageManager": {
+      "pacmanHint": "Atualize o UniClipboard pela fonte de pacotes ou ferramenta AUR usada na instalação. Para pacotes locais, baixe a nova versão e instale com pacman -U.",
+      "pacmanCommand": "sudo pacman -Syu",
       "title": "Atualize pelo seu gerenciador de pacotes",
       "portableTitle": "Baixe a nova versão portátil",
       "debHint": "O UniClipboard foi instalado via apt (Debian/Ubuntu). Execute isto em um terminal para atualizar:",
@@ -340,12 +342,12 @@
         },
         "startupMode": {
           "summaries": {
-            "normal": "Mostrar a janela do aplicativo ao iniciar.",
+            "normal": "Mantém a bandeja, o painel rápido e os atalhos globais. Fechar a janela principal libera sua WebView; um painel alternativo ativo pode manter sua própria WebView.",
             "silent": "Executar em segundo plano sem abrir uma janela.",
-            "lightweight": "Ao entrar no sistema, manter apenas a sincronização em segundo plano. Abra a interface quando precisar."
+            "lightweight": "Mantém apenas o serviço de sincronização após fechar a janela temporária, sem bandeja, painel rápido ou atalhos."
           },
-          "label": "Modo de inicialização",
-          "description": "O modo Silencioso pula a janela e roda direto em segundo plano. O modo Leve vai além — assim que a sincronização fica pronta, ele fecha a janela e também sai da bandeja do sistema, mantendo só o serviço em segundo plano e enviando uma notificação; clique no ícone do app de novo para reabrir a janela.",
+          "label": "Modo da área de trabalho",
+          "description": "Mantém a bandeja, o painel rápido e os atalhos globais. Fechar a janela principal libera sua WebView; um painel alternativo ativo pode manter sua própria WebView. Mantém apenas o serviço de sincronização após fechar a janela temporária, sem bandeja, painel rápido ou atalhos.",
           "options": {
             "normal": "Normal",
             "silent": "Silencioso",
@@ -442,6 +444,10 @@
               "offline": "Exportado com o serviço em segundo plano parado; o log de conexão de rede não foi atualizado e pode estar incompleto."
             }
           }
+        },
+        "backgroundStartup": {
+          "label": "Iniciar em segundo plano",
+          "description": "Não abre a janela principal ao iniciar automaticamente no login. Abrir o aplicativo manualmente sempre mostra a janela."
         }
       },
       "appearance": {

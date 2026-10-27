@@ -1,6 +1,7 @@
 import { Loader2 } from 'lucide-react'
 import React, { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { isPackageManagedInstall, requiresExternalUpdate } from '@/api/update-install-kind'
 import {
   cancelDownload,
   checkForUpdate,
@@ -17,6 +18,7 @@ import {
   type DownloadPhase,
   type DownloadProgressSnapshot,
   type UpdateMetadata,
+  type InstallKind,
 } from '@/api/updater'
 import { Progress } from '@/components/ui/progress'
 import { Switch } from '@/components/ui/switch'
@@ -89,20 +91,15 @@ function useUpdaterState(devPreview: boolean) {
   // `handleInstall`). Kept separate from `phase` so the button can show a
   // transient loading state without entering the download state machine.
   const [preparing, setPreparing] = useState(false)
-  // Windows portable ("green") zip cannot self-install: the NSIS payload would
-  // install into Program Files instead of refreshing the portable folder. The
-  // scheduler already skips auto-download for it, but this window previously
-  // still offered "Install Update" — clicking it failed and read as "updates
-  // are broken" (observed in the field). Detect the kind and route portable
-  // users to a manual download instead.
-  const [isPortable, setIsPortable] = useState(false)
+  const [installKind, setInstallKind] = useState<InstallKind | null>(null)
+  const isManualUpdate = requiresExternalUpdate(installKind)
 
   useEffect(() => {
     if (devPreview) return
     let cancelled = false
     void getInstallKind()
       .then(kind => {
-        if (!cancelled) setIsPortable(kind === 'windowsportable')
+        if (!cancelled) setInstallKind(kind)
       })
       .catch(err => log.warn({ err }, '获取安装类型失败；按可自更新处理'))
     return () => {
@@ -244,10 +241,8 @@ function useUpdaterState(devPreview: boolean) {
       }, 250)
       return
     }
-    // Defense in depth: the portable UI replaces this button with the
-    // release-page action, but never let a portable build reach the NSIS
-    // installer even if the kind probe raced the click.
-    if (isPortable) {
+    // External updates open the release page instead of fetching an installer.
+    if (isManualUpdate) {
       openUrl(RELEASE_PAGE_URL).catch(err => log.error({ err }, '打开发布页失败'))
       return
     }
@@ -309,17 +304,17 @@ function useUpdaterState(devPreview: boolean) {
           setState(prev => ({ ...prev, phase: prev.info ? 'available' : 'idle' }))
         })
     }
-  }, [devPreview, isPortable, state.info])
+  }, [devPreview, isManualUpdate, state.info])
 
-  // Install the already-downloaded bytes and restart. Reached only from the
-  // `ready` phase, so the backend takes the cached-bytes install path — no
+  // Install the verified download file and restart. Reached only from the
+  // `ready` phase, so the backend reuses its staged file — no
   // second download happens here.
   const handleInstall = useCallback(async () => {
     if (devPreview) {
       setState(prev => ({ ...prev, phase: 'installing' }))
       return
     }
-    if (isPortable) {
+    if (isManualUpdate) {
       openUrl(RELEASE_PAGE_URL).catch(err => log.error({ err }, '打开发布页失败'))
       return
     }
@@ -336,7 +331,7 @@ function useUpdaterState(devPreview: boolean) {
       log.error({ err: error }, '安装更新失败')
       setState(prev => ({ ...prev, phase: prev.info ? 'available' : 'idle' }))
     }
-  }, [devPreview, isPortable])
+  }, [devPreview, isManualUpdate])
 
   const handleCancel = useCallback(async () => {
     if (devPreview || cancelling) return
@@ -354,7 +349,8 @@ function useUpdaterState(devPreview: boolean) {
     state,
     cancelling,
     preparing,
-    isPortable,
+    installKind,
+    isManualUpdate,
     closeWindow,
     handleSkip,
     handleAutoUpdateToggle,
@@ -370,8 +366,8 @@ const ActionButtons: React.FC<{
   cancelling: boolean
   /** Re-checking the latest version before download; disables the actions. */
   preparing: boolean
-  /** Portable build: primary action opens the release page instead of installing. */
-  isPortable: boolean
+  /** External update: primary action opens the release page. */
+  isManualUpdate: boolean
   onCancel: () => void
   onSkip: () => void
   onClose: () => void
@@ -382,7 +378,7 @@ const ActionButtons: React.FC<{
   hasInfo,
   cancelling,
   preparing,
-  isPortable,
+  isManualUpdate,
   onCancel,
   onSkip,
   onClose,
@@ -482,7 +478,7 @@ const ActionButtons: React.FC<{
             <Loader2 className="size-4 animate-spin" />
             {t('updater.window.checking')}
           </>
-        ) : isPortable ? (
+        ) : isManualUpdate ? (
           t('update.packageManager.openReleasePage')
         ) : isReady ? (
           t('update.installNow')
@@ -503,7 +499,8 @@ const UpdaterWindow: React.FC = () => {
     state,
     cancelling,
     preparing,
-    isPortable,
+    installKind,
+    isManualUpdate,
     closeWindow,
     handleSkip,
     handleAutoUpdateToggle,
@@ -569,16 +566,18 @@ const UpdaterWindow: React.FC = () => {
         </div>
       )}
 
-      {/* Portable build: explain the manual download+replace flow instead of
-          the auto-update toggle — in-place self-update does not apply, and a
-          silent install failure here previously read as "updates are broken". */}
-      {!busy && !upToDate && isPortable && (
+      {/* External installations explain their update path instead of offering auto-download. */}
+      {!busy && !upToDate && isManualUpdate && (
         <p className="mx-6 mt-4 text-[13px] leading-snug text-muted-foreground">
-          {t('update.packageManager.portableHint')}
+          {t(
+            isPackageManagedInstall(installKind)
+              ? `update.packageManager.${installKind}Hint`
+              : 'update.packageManager.portableHint'
+          )}
         </p>
       )}
 
-      {!busy && !upToDate && !isPortable && (
+      {!busy && !upToDate && !isManualUpdate && (
         <label className="mx-6 mt-4 flex cursor-pointer items-center gap-2.5">
           <Switch size="sm" checked={autoUpdate} onCheckedChange={handleAutoUpdateToggle} />
           <span className="text-[13px] text-muted-foreground">
@@ -593,7 +592,7 @@ const UpdaterWindow: React.FC = () => {
           hasInfo={!!info}
           cancelling={cancelling}
           preparing={preparing}
-          isPortable={isPortable}
+          isManualUpdate={isManualUpdate}
           onCancel={() => void handleCancel()}
           onSkip={handleSkip}
           onClose={closeWindow}

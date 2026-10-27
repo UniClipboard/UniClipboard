@@ -280,12 +280,32 @@ pub struct RelaySaveResultDto {
 mod relay_credential_wire_tests {
     use super::*;
 
+    #[test]
+    fn background_startup_uses_camel_case_and_is_independent_of_runtime_mode() {
+        let mut settings = settings_with_relay("https://relay.example.com");
+        settings.general.background_startup = true;
+        settings.general.startup_mode = StartupModeDto::Lightweight;
+        let value = serde_json::to_value(&settings.general).unwrap();
+        assert_eq!(value["backgroundStartup"], true);
+        assert_eq!(value["startupMode"], "lightweight");
+        assert!(value.get("background_startup").is_none());
+        let patch: GeneralSettingsPatchDto =
+            serde_json::from_value(serde_json::json!({"backgroundStartup": false})).unwrap();
+        assert_eq!(patch.background_startup, Some(false));
+        assert!(patch.startup_mode.is_none());
+        let mut legacy = value;
+        legacy.as_object_mut().unwrap().remove("backgroundStartup");
+        let decoded: GeneralSettingsDto = serde_json::from_value(legacy).unwrap();
+        assert!(!decoded.background_startup);
+    }
+
     fn settings_with_relay(relay_url: &str) -> SettingsDto {
         SettingsDto {
             schema_version: 1,
             general: GeneralSettingsDto {
                 auto_start: false,
                 startup_mode: StartupModeDto::Normal,
+                background_startup: false,
                 restore_last_entry_on_startup: false,
                 auto_check_update: true,
                 auto_download_update: false,
@@ -530,16 +550,12 @@ mod relay_credential_wire_tests {
 #[serde(rename_all = "camelCase")]
 pub struct GeneralSettingsDto {
     pub auto_start: bool,
-    /// How the app presents itself at launch: `normal` shows the window as
-    /// usual; `silent` skips straight to running in the background/tray;
-    /// `lightweight` exits the interactive process entirely once the daemon
-    /// connection is confirmed, but only when this launch is the one that
-    /// spawned the daemon (a genuine cold start). If a compatible daemon was
-    /// already running (e.g. reopening after a previous Lightweight session
-    /// exited), the window is shown instead. Added after initial launch;
-    /// `#[serde(default)]` keeps old wire payloads compatible.
+    /// Runtime residency: normal or lightweight. Legacy silent is accepted on writes.
     #[serde(default)]
     pub startup_mode: StartupModeDto,
+    /// Suppress the main window on automatic startup only, never explicit activation.
+    #[serde(default)]
+    pub background_startup: bool,
     /// Whether to push the most recent clipboard history entry back onto the
     /// OS clipboard once the daemon connection is confirmed at startup.
     /// Added after initial launch; `#[serde(default)]` keeps old wire
@@ -906,6 +922,8 @@ pub struct GeneralSettingsPatchDto {
     pub auto_start: Option<bool>,
     #[serde(default)]
     pub startup_mode: Option<StartupModeDto>,
+    #[serde(default)]
+    pub background_startup: Option<bool>,
     #[serde(default)]
     pub restore_last_entry_on_startup: Option<bool>,
     pub auto_check_update: Option<bool>,

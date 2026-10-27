@@ -85,6 +85,8 @@ fn map_install_kind(value: UiInstallKind) -> InstallKind {
         UiInstallKind::AppImage => InstallKind::AppImage,
         UiInstallKind::Deb => InstallKind::Deb,
         UiInstallKind::Rpm => InstallKind::Rpm,
+        // TODO(Engine): expose Pacman in its analytics install-kind dimension.
+        UiInstallKind::Pacman => InstallKind::Unknown,
         UiInstallKind::Unknown => InstallKind::Unknown,
     }
 }
@@ -385,6 +387,10 @@ mod tests {
         same(UiInstallKind::AppImage, InstallKind::AppImage);
         same(UiInstallKind::Deb, InstallKind::Deb);
         same(UiInstallKind::Rpm, InstallKind::Rpm);
+        assert!(matches!(
+            map_install_kind(UiInstallKind::Pacman),
+            InstallKind::Unknown
+        ));
         same(UiInstallKind::Unknown, InstallKind::Unknown);
 
         same(UiUpdateCheckSource::Startup, UpdateCheckSource::Startup);

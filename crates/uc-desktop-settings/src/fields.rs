@@ -73,6 +73,7 @@ macro_rules! scalar {
 
 /// Every scalar field. [`Scalar::field_set`] says which import set copies it.
 pub(crate) const SCALARS: &[Scalar] = &[
+    scalar!(GENERAL, "backgroundStartup", None, Kind::Bool, false),
     scalar!(GENERAL, "mainWindowMaximized", None, Kind::Bool, false),
     Scalar {
         section: GENERAL,
@@ -367,7 +368,22 @@ pub(crate) fn patch_entries(patch: &DesktopSettingsPatch, current: &DesktopSetti
         push(GENERAL, "autoStart", Some(Value::Bool(v)));
     }
     if let Some(v) = general.startup_mode {
-        push(GENERAL, "startupMode", Some(string(v.as_str())));
+        let mode = if v == StartupMode::Silent {
+            StartupMode::Normal
+        } else {
+            v
+        };
+        push(GENERAL, "startupMode", Some(string(mode.as_str())));
+        // Freeze the independent preference before replacing a legacy mode.
+        push(
+            GENERAL,
+            "backgroundStartup",
+            Some(Value::Bool(general.background_startup.unwrap_or(
+                v == StartupMode::Silent || current.general.background_startup,
+            ))),
+        );
+    } else if let Some(v) = general.background_startup {
+        push(GENERAL, "backgroundStartup", Some(Value::Bool(v)));
     }
     if let Some(v) = general.restore_last_entry_on_startup {
         push(GENERAL, "restoreLastEntryOnStartup", Some(Value::Bool(v)));
@@ -462,6 +478,16 @@ pub(crate) fn normalized(
         };
         values.insert(scalar.path(), value);
     }
+    // Interpret legacy values without rewriting the raw document on read.
+    // A later explicit preference wins, including false.
+    if member(document, GENERAL, "backgroundStartup").is_none() {
+        let legacy = values.get("general.startupMode").and_then(Value::as_str);
+        let hidden = matches!(legacy, Some("silent" | "lightweight"));
+        values.insert("general.backgroundStartup".into(), Value::Bool(hidden));
+    }
+    if values.get("general.startupMode").and_then(Value::as_str) == Some("silent") {
+        values.insert("general.startupMode".into(), json!("normal"));
+    }
     let shortcuts = document
         .and_then(|document| document.get(SHORTCUTS))
         .and_then(Value::as_object);
@@ -516,6 +542,7 @@ pub(crate) fn typed(values: &BTreeMap<String, Value>) -> DesktopSettings {
         general.tray_icon = v;
     }
     flag("general.autoStart", &mut general.auto_start);
+    flag("general.backgroundStartup", &mut general.background_startup);
     if let Some(v) = text("general.startupMode")
         .as_deref()
         .and_then(StartupMode::parse)

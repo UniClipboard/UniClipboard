@@ -32,18 +32,18 @@ export interface UpdateContextType {
   /**
    * How the running binary was installed. `null` while detection is in
    * flight (mount race) — treat as "unknown / let the in-app flow run".
-   * For `deb`/`rpm`, callers must route the user to the system package
+   * For `deb`/`rpm`/`pacman`, callers must route the user to the system package
    * manager instead of invoking download/install.
    */
   installKind: InstallKind | null
   /**
    * Convenience: `true` when the binary is owned by a system package
-   * manager (deb/rpm). In-app download & install must be suppressed.
+   * manager (deb/rpm/pacman). In-app download & install must be suppressed.
    */
   isSystemManaged: boolean
   /**
    * Convenience: `true` when updates must be applied out-of-band rather than
-   * via the in-app updater — system packages (deb/rpm) plus the Windows
+   * via the in-app updater — system packages (deb/rpm/pacman) plus the Windows
    * portable zip (`windowsportable`), whose NSIS updater would install into
    * Program Files instead of refreshing the portable folder. Callers route
    * these to `PackageManagerUpdateDialog` instead of self-installing.

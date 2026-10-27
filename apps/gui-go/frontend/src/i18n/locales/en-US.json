@@ -235,6 +235,8 @@
     "downloading": "Downloading...",
     "installing": "Installing...",
     "packageManager": {
+      "pacmanHint": "Use the package source or AUR tool you installed UniClipboard with. For a local package, install the new package with pacman -U.",
+      "pacmanCommand": "sudo pacman -Syu",
       "title": "Please upgrade via your package manager",
       "portableTitle": "Please download the new portable version",
       "debHint": "UniClipboard was installed via apt (Debian/Ubuntu). Run this in a terminal to upgrade:",

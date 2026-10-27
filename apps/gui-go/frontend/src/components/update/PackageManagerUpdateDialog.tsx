@@ -37,7 +37,7 @@ const RELEASE_PAGE_URL = 'https://uniclipboard.app/download'
 interface PackageManagerUpdateDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  /** Must be `'deb'`, `'rpm'`, or `'windowsportable'`. Other values render nothing. */
+  /** Must be `'deb'`, `'rpm'`, `'pacman'`, or `'windowsportable'`. Other values render nothing. */
   installKind: InstallKind
   /** Update metadata for version display; `null` while not checked. */
   updateInfo: UpdateMetadata | null
@@ -52,7 +52,12 @@ export const PackageManagerUpdateDialog: React.FC<PackageManagerUpdateDialogProp
   const { t } = useTranslation()
   const [copied, setCopied] = useState(false)
 
-  if (installKind !== 'deb' && installKind !== 'rpm' && installKind !== 'windowsportable') {
+  if (
+    installKind !== 'deb' &&
+    installKind !== 'rpm' &&
+    installKind !== 'pacman' &&
+    installKind !== 'windowsportable'
+  ) {
     return null
   }
 
@@ -64,18 +69,11 @@ export const PackageManagerUpdateDialog: React.FC<PackageManagerUpdateDialogProp
   const title = isPortable
     ? t('update.packageManager.portableTitle')
     : t('update.packageManager.title')
-  const hintKey = isPortable
-    ? 'update.packageManager.portableHint'
-    : installKind === 'deb'
-      ? 'update.packageManager.debHint'
-      : 'update.packageManager.rpmHint'
-  const command = isPortable
-    ? ''
-    : t(
-        installKind === 'deb'
-          ? 'update.packageManager.debCommand'
-          : 'update.packageManager.rpmCommand'
-      )
+  const manager = isPortable ? null : installKind
+  const hintKey = manager
+    ? `update.packageManager.${manager}Hint`
+    : 'update.packageManager.portableHint'
+  const command = manager ? t(`update.packageManager.${manager}Command`) : ''
 
   const handleCopy = async () => {
     try {

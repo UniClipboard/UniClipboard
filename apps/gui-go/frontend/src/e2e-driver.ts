@@ -2316,9 +2316,11 @@ async function runLinuxPackageUpdateScenario() {
   await record('package-install-kind', kind.status === 'ok', kind)
   if (
     kind.status !== 'ok' ||
-    (kind.data !== InstallKind.InstallKindDeb && kind.data !== InstallKind.InstallKindRPM)
+    (kind.data !== InstallKind.InstallKindDeb &&
+      kind.data !== InstallKind.InstallKindRPM &&
+      kind.data !== InstallKind.InstallKindPacman)
   ) {
-    throw new Error('expected an installed deb or rpm')
+    throw new Error('expected an installed deb, rpm or pacman package')
   }
   await navigate(
     () => navControl('/settings')?.click(),
@@ -2350,7 +2352,9 @@ async function runLinuxPackageUpdateScenario() {
   const expected =
     kind.data === 'deb'
       ? 'sudo apt update && sudo apt install --only-upgrade uniclipboard'
-      : 'sudo dnf upgrade uniclipboard'
+      : kind.data === 'pacman'
+        ? 'sudo pacman -Syu'
+        : 'sudo dnf upgrade uniclipboard'
   await record('package-update-hint', command === expected, {
     kind: kind.data,
     command,

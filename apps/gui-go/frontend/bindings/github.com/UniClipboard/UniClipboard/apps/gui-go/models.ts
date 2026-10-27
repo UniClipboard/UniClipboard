@@ -321,6 +321,7 @@ export enum InstallKind {
     InstallKindAppImage = "appimage",
     InstallKindDeb = "deb",
     InstallKindRPM = "rpm",
+    InstallKindPacman = "pacman",
     InstallKindUnknown = "unknown",
 };
 

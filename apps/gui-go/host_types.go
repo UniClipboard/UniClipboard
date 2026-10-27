@@ -308,6 +308,7 @@ const (
 	InstallKindAppImage        InstallKind = "appimage"
 	InstallKindDeb             InstallKind = "deb"
 	InstallKindRPM             InstallKind = "rpm"
+	InstallKindPacman          InstallKind = "pacman"
 	InstallKindUnknown         InstallKind = "unknown"
 )
 

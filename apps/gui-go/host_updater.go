@@ -50,6 +50,17 @@ type updater struct {
 	skipMu     sync.Mutex
 }
 
+// canSelfUpdate is the host authority for every automatic and manual download.
+// Package-managed, portable Windows and unknown installations use external updates.
+func canSelfUpdate() bool {
+	switch installKind() {
+	case InstallKindMacOS, InstallKindWindows, InstallKindAppImage:
+		return true
+	default:
+		return false
+	}
+}
+
 // close cancels and joins the current transfer before removing its staging.
 func (u *updater) close() {
 	u.mu.Lock()
@@ -188,6 +199,9 @@ var errAlreadyDownloaded = preconditionError{hostapi.TextError("updater: already
 // downloadUpdate downloads the pending release. A refusal before anything started is a preconditionError and
 // a cancel is a cancelledError (both plain-string on the wire), so callers can report the outcome.
 func (h *HostService) downloadUpdate(ctx context.Context) error {
+	if !canSelfUpdate() {
+		return preconditionError{hostapi.TextError(update.ErrInstallUnsupported.Error())}
+	}
 	u := &h.updates
 	client, err := h.updateClient()
 	if err != nil {
@@ -301,6 +315,9 @@ func failedEvent(err error) DownloadEvent {
 // installUpdate installs the downloaded release in place (per platform: swap the app bundle, or run the NSIS
 // installer) and then relaunches or quits as that platform's installer contract requires. Progress goes to send.
 func (h *HostService) installUpdate(ctx context.Context, send func(DownloadEvent)) error {
+	if !canSelfUpdate() {
+		return hostapi.TextError(update.ErrInstallUnsupported.Error())
+	}
 	u := &h.updates
 	u.installMu.Lock()
 	defer u.installMu.Unlock()

@@ -4600,7 +4600,7 @@ export type UiDismissSource = 'dialog_later' | 'dialog_closed' | 'package_manage
  * the daemon has no install-detection code. So the webview now supplies it —
  * it reads `get_install_kind` (native, cached) and forwards the result here.
  */
-export type UiInstallKind = 'macos' | 'windows' | 'windowsportable' | 'appimage' | 'deb' | 'rpm' | 'unknown';
+export type UiInstallKind = 'macos' | 'windows' | 'windowsportable' | 'appimage' | 'deb' | 'rpm' | 'pacman' | 'unknown';
 
 /**
  * Mirrors `analytics::NotificationDeliveryStatus`. wire: `sent` |

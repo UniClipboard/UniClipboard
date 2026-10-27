@@ -8191,6 +8191,7 @@
           "appimage",
           "deb",
           "rpm",
+          "pacman",
           "unknown"
         ],
         "type": "string"

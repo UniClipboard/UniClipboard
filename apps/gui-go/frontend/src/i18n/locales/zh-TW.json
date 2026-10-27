@@ -235,6 +235,8 @@
     "downloading": "正在下載...",
     "installing": "正在安裝...",
     "packageManager": {
+      "pacmanHint": "請透過安裝 UniClipboard 時使用的軟體來源或 AUR 工具更新。本機安裝套件請下載新版後使用 pacman -U 安裝。",
+      "pacmanCommand": "sudo pacman -Syu",
       "title": "請通過系統包管理器升級",
       "portableTitle": "請下載新的便攜版",
       "debHint": "你目前通過 apt（Debian/Ubuntu）安裝了 UniClipboard，請在終端執行以下命令升級：",

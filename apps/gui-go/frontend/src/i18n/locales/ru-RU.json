@@ -241,6 +241,8 @@
     "downloading": "Загрузка...",
     "installing": "Установка...",
     "packageManager": {
+      "pacmanHint": "Обновите UniClipboard через источник пакетов или инструмент AUR, использованный при установке. Для локального пакета скачайте новую версию и установите её с помощью pacman -U.",
+      "pacmanCommand": "sudo pacman -Syu",
       "title": "Обновите через менеджер пакетов",
       "portableTitle": "Скачайте новую портативную версию",
       "debHint": "UniClipboard установлен через apt (Debian/Ubuntu). Для обновления выполните в терминале:",

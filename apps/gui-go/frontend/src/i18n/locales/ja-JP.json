@@ -235,6 +235,8 @@
     "downloading": "ダウンロード中...",
     "installing": "インストール中...",
     "packageManager": {
+      "pacmanHint": "UniClipboard のインストールに使用したパッケージソースまたは AUR ツールで更新してください。ローカルパッケージは新版をダウンロードし、pacman -U でインストールします。",
+      "pacmanCommand": "sudo pacman -Syu",
       "title": "パッケージ マネージャー経由でアップグレードしてください",
       "portableTitle": "新しいポータブル バージョンをダウンロードしてください",
       "debHint": "UniClipboard は apt 経由でインストールされました(Debian/Ubuntu)。ターミナルでこれを実行してアップグレードします。",

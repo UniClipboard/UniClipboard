@@ -230,6 +230,7 @@ export interface NetworkSettings {
   allowOverlayNetworkAddrs: boolean
   customRelayUrls: string[]
   congestionController: CongestionController
+  bindPort?: number | null
 }
 
 /**

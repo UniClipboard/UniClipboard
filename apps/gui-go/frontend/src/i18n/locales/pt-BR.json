@@ -616,6 +616,13 @@
           "builtInRelays": "Relays integrados"
         },
         "loadError": "Falha ao carregar as configurações:",
+        "bindPort": {
+          "label": "Porta de rede fixa",
+          "description": "Deixe em branco para usar uma porta UDP aleatória a cada inicialização, ou informe 1-65535 para firewalls e VPNs como WireGuard. Requer reiniciar o daemon.",
+          "placeholder": "Aleatória (padrão)",
+          "invalid": "Informe um número inteiro de 1 a 65535, ou deixe em branco para usar uma porta aleatória.",
+          "saveError": "Falha ao salvar a porta de rede: {{message}}. A configuração anterior foi restaurada."
+        },
         "lanOnly": {
           "label": "LAN-only Mode",
           "description": "Desativa relays, rendezvous público e descoberta por DNS/pkarr. Use a descoberta local ou um convite completo, por exemplo via VPN. Entra em vigor após reiniciar.",

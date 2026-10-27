@@ -86,4 +86,5 @@ export function SettingAlert({
 }
 
 export { InlineNotice as SettingNotice } from '@/ui-kit'
+export { TextField as SettingTextField } from '@/ui-kit'
 export { SettingPresentationRoot } from './kit-root'

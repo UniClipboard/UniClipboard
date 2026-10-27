@@ -615,6 +615,13 @@
           "builtInRelays": "內建中繼"
         },
         "loadError": "載入設定失敗:",
+        "bindPort": {
+          "label": "固定網路連接埠",
+          "description": "留空時每次啟動使用隨機 UDP 連接埠；填入 1-65535 可方便設定防火牆及 WireGuard 等 VPN。修改後需重新啟動背景服務。",
+          "placeholder": "隨機連接埠（預設）",
+          "invalid": "請輸入 1 到 65535 的整數，或留空以使用隨機連接埠。",
+          "saveError": "儲存網路連接埠失敗：{{message}}。已還原先前的設定。"
+        },
         "lanOnly": {
           "label": "LAN-only 模式",
           "description": "停用中繼、公共 rendezvous 和 DNS/pkarr 探索。透過本機探索或完整邀請連接裝置，例如經 VPN 配對。重新啟動後生效。",

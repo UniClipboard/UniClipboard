@@ -1,12 +1,11 @@
 import { useEffect, useEffectEvent, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { CustomRelayMutationError } from '@/api/daemon'
-import { AllowOverlayAddrsDisclosure } from '@/components/setting/AllowOverlayAddrsDisclosure'
 import { BuiltInRelaysField } from '@/components/setting/BuiltInRelaysField'
 import { CustomRelayUrlsField } from '@/components/setting/CustomRelayUrlsField'
-import { LanOnlyDisclosure } from '@/components/setting/LanOnlyDisclosure'
+import { NetworkConnectionSettings } from '@/components/setting/NetworkConnectionSettings'
 import { RestartBanner } from '@/components/setting/RestartBanner'
-import { SettingSelect, SettingSwitch } from '@/components/setting/SettingControls'
+import { SettingSelect } from '@/components/setting/SettingControls'
 import { SettingGroup } from '@/components/setting/SettingGroup'
 import { SettingRow } from '@/components/setting/SettingRow'
 import { useRelayOverview } from '@/components/setting/useRelayOverview'
@@ -30,6 +29,7 @@ interface NetworkDraft {
   allowRelayFallback: boolean
   allowOverlayNetworkAddrs: boolean
   congestionController: CongestionController
+  bindPort: number
 }
 
 class LocalizedRelayMutationError extends Error {
@@ -64,15 +64,17 @@ const NetworkSection: React.FC = () => {
   const persistedAllowOverlay = setting?.network?.allowOverlayNetworkAddrs ?? false
   const persistedCongestionController: CongestionController =
     setting?.network?.congestionController ?? 'cubic'
+  const persistedBindPort = setting?.network?.bindPort ?? 0
 
   const persistedDraft: NetworkDraft = {
     allowRelayFallback: persistedAllowRelay,
     allowOverlayNetworkAddrs: persistedAllowOverlay,
     congestionController: persistedCongestionController,
+    bindPort: persistedBindPort,
   }
   const [draftOverride, setDraftOverride] = useState<NetworkDraft | null>(null)
   const draft = draftOverride ?? persistedDraft
-  const { allowRelayFallback, allowOverlayNetworkAddrs, congestionController } = draft
+  const { allowRelayFallback, allowOverlayNetworkAddrs, congestionController, bindPort } = draft
 
   const pending = useNetworkRestartRequired()
   const [restartLoading, setRestartLoading] = useState(false)
@@ -113,9 +115,12 @@ const NetworkSection: React.FC = () => {
         if (saveGenerationRef.current === generation) {
           setDraftOverride(null)
           const message = err instanceof Error ? err.message : String(err)
-          const errorKey = relayChanged
-            ? 'settings.sections.network.lanOnly.saveError'
-            : 'settings.sections.network.allowOverlayAddrs.saveError'
+          const errorKey =
+            payload.bindPort !== undefined
+              ? 'settings.sections.network.bindPort.saveError'
+              : relayChanged
+                ? 'settings.sections.network.lanOnly.saveError'
+                : 'settings.sections.network.allowOverlayAddrs.saveError'
           showSaveError(t(errorKey, { message }))
         }
         throw err
@@ -193,6 +198,23 @@ const NetworkSection: React.FC = () => {
     queueNetworkUpdate({ congestionController: value as CongestionController })
   }
 
+  const handleBindPortChange = (port: number | undefined) => {
+    if (port !== undefined) {
+      queueNetworkUpdate({ bindPort: port })
+      return
+    }
+    // Invalid input cancels only the unsaved port edit, preserving other queued changes.
+    delete pendingNetworkPatchRef.current.bindPort
+    const reset = { ...draft, bindPort: persistedBindPort }
+    setDraftOverride(
+      reset.allowRelayFallback === persistedAllowRelay &&
+        reset.allowOverlayNetworkAddrs === persistedAllowOverlay &&
+        reset.congestionController === persistedCongestionController
+        ? null
+        : reset
+    )
+  }
+
   // ── 「立即重启」按钮 handler ───────────────────────────────────
   const handleRestart = async () => {
     setRestartLoading(true)
@@ -245,35 +267,14 @@ const NetworkSection: React.FC = () => {
             {saveError}
           </div>
         )}
-        <SettingGroup title={t('settings.sections.network.groups.connection')}>
-          <SettingRow
-            label={t('settings.sections.network.lanOnly.label')}
-            labelExtra={<LanOnlyDisclosure />}
-            description={t('settings.sections.network.lanOnly.description')}
-            experimentalKey="network.lanOnly"
-          >
-            <SettingSwitch
-              id="lan-only-switch"
-              label={t('settings.sections.network.lanOnly.label')}
-              // FENCE: LAN-only ON means allowRelayFallback=false.
-              checked={!allowRelayFallback}
-              onCheckedChange={handleLanOnlySwitchChange}
-            />
-          </SettingRow>
-          <SettingRow
-            label={t('settings.sections.network.allowOverlayAddrs.label')}
-            labelExtra={<AllowOverlayAddrsDisclosure />}
-            description={t('settings.sections.network.allowOverlayAddrs.description')}
-            experimentalKey="network.allowOverlayAddrs"
-          >
-            <SettingSwitch
-              id="allow-overlay-addrs-switch"
-              label={t('settings.sections.network.allowOverlayAddrs.label')}
-              checked={allowOverlayNetworkAddrs}
-              onCheckedChange={handleAllowOverlaySwitchChange}
-            />
-          </SettingRow>
-        </SettingGroup>
+        <NetworkConnectionSettings
+          lanOnly={!allowRelayFallback}
+          allowOverlayNetworkAddrs={allowOverlayNetworkAddrs}
+          bindPort={bindPort}
+          onLanOnlyChange={handleLanOnlySwitchChange}
+          onAllowOverlayChange={handleAllowOverlaySwitchChange}
+          onBindPortChange={handleBindPortChange}
+        />
         <BuiltInRelaysField
           overview={relayOverview.overview}
           loading={relayOverview.loading}

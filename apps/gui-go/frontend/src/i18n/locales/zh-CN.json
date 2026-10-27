@@ -615,6 +615,13 @@
           "builtInRelays": "内置中继"
         },
         "loadError": "加载设置失败:",
+        "bindPort": {
+          "label": "固定网络端口",
+          "description": "留空时每次启动使用随机 UDP 端口；填写 1-65535 可方便配置防火墙及 WireGuard 等 VPN。修改后需重启守护进程。",
+          "placeholder": "随机端口（默认）",
+          "invalid": "请输入 1 到 65535 的整数，或留空以使用随机端口。",
+          "saveError": "保存网络端口失败：{{message}}。已恢复为原来的设置。"
+        },
         "lanOnly": {
           "label": "LAN-only 模式",
           "description": "禁用中继、公共 rendezvous 和 DNS/pkarr 发现。通过本地发现或完整邀请连接设备，例如经 VPN 配对。重启后生效。",

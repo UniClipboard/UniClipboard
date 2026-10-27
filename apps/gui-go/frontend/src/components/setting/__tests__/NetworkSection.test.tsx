@@ -972,6 +972,88 @@ describe('Phase 95 ROADMAP fence — 4 验收 + 3 Pitfall 防御', () => {
 })
 
 describe('network saves across restart and navigation', () => {
+  it.each([1, 51820, 65535])('saves fixed port %i through the network debounce', async port => {
+    vi.useFakeTimers()
+    const { mockUpdate } = setupSetting()
+    render(<NetworkSection />)
+    fireEvent.change(screen.getByRole('textbox', { name: /固定网络端口|Fixed network port/ }), {
+      target: { value: String(port) },
+    })
+    expect(mockUpdate).not.toHaveBeenCalled()
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500)
+    })
+    expect(mockUpdate).toHaveBeenCalledExactlyOnceWith({ bindPort: port })
+    expect(screen.getByRole('button', { name: /立即重启|Restart now/ })).toBeInTheDocument()
+  })
+
+  it('clears a fixed port to random using zero', async () => {
+    vi.useFakeTimers()
+    const { mockUpdate } = setupSetting({
+      setting: { ...baseSetting, network: { ...baseSetting.network, bindPort: 51820 } },
+    })
+    render(<NetworkSection />)
+    const input = screen.getByRole('textbox', { name: /固定网络端口|Fixed network port/ })
+    expect(input).toHaveValue('51820')
+    fireEvent.change(input, { target: { value: '' } })
+    expect(input).toHaveValue('')
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500)
+    })
+    expect(mockUpdate).toHaveBeenCalledExactlyOnceWith({ bindPort: 0 })
+  })
+
+  it.each(['0', '-1', '65536', '1.5', 'abc', '1e3', ' '])(
+    'rejects invalid port %j without saving on debounce or navigation',
+    async value => {
+      vi.useFakeTimers()
+      const { mockUpdate } = setupSetting()
+      const page = render(<NetworkSection />)
+      const input = screen.getByRole('textbox', { name: /固定网络端口|Fixed network port/ })
+      fireEvent.change(input, { target: { value } })
+      expect(input).toHaveAttribute('aria-invalid', 'true')
+      expect(screen.getByRole('alert')).toHaveTextContent(/1.*65535/)
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(500)
+      })
+      page.unmount()
+      expect(mockUpdate).not.toHaveBeenCalled()
+    }
+  )
+
+  it('cancels a queued port when input becomes invalid and keeps other network edits', async () => {
+    vi.useFakeTimers()
+    const { mockUpdate } = setupSetting()
+    render(<NetworkSection />)
+    const input = screen.getByRole('textbox', { name: /固定网络端口|Fixed network port/ })
+    fireEvent.change(input, { target: { value: '51820' } })
+    fireEvent.click(screen.getByRole('switch', { name: /LAN-only/ }))
+    fireEvent.change(input, { target: { value: '51820x' } })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500)
+    })
+    expect(mockUpdate).toHaveBeenCalledExactlyOnceWith({ allowRelayFallback: false })
+    expect(input).toHaveValue('51820x')
+  })
+
+  it('flushes a pending fixed port before restarting', async () => {
+    vi.useFakeTimers()
+    const { mockUpdate } = setupSetting()
+    render(<NetworkSection />)
+    fireEvent.change(screen.getByRole('textbox', { name: /固定网络端口|Fixed network port/ }), {
+      target: { value: '51820' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /立即重启|Restart now/ }))
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(mockUpdate).toHaveBeenCalledExactlyOnceWith({ bindPort: 51820 })
+    expect(mockRestartDaemon).toHaveBeenCalledTimes(1)
+    expect(mockUpdate.mock.invocationCallOrder[0]).toBeLessThan(
+      mockRestartDaemon.mock.invocationCallOrder[0]
+    )
+  })
+
   it('flushes before the debounce and waits for persistence before restarting', async () => {
     vi.useFakeTimers()
     let finish!: (value: { restartRequired: boolean }) => void

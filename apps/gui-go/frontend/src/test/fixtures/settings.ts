@@ -88,6 +88,7 @@ export function makeBaseSettings(overrides: BaseSettingsOverrides = {}): Setting
       allowOverlayNetworkAddrs: false,
       customRelayUrls: [],
       congestionController: 'cubic',
+      bindPort: null,
     },
     quickPanel: {
       enabled: true,

@@ -615,6 +615,13 @@
           "builtInRelays": "Built-in relays"
         },
         "loadError": "Failed to load settings:",
+        "bindPort": {
+          "label": "Fixed network port",
+          "description": "Leave empty for a random UDP port on each start, or enter 1-65535 for firewalls and VPNs such as WireGuard. Requires a daemon restart.",
+          "placeholder": "Random (default)",
+          "invalid": "Enter an integer from 1 to 65535, or leave empty for a random port.",
+          "saveError": "Failed to save network port: {{message}}. Reverted to the previous setting."
+        },
         "lanOnly": {
           "label": "LAN-only Mode",
           "description": "Disable relays, public rendezvous, and DNS/pkarr discovery. Use local discovery or a full invitation, for example over a VPN. Takes effect after restart.",

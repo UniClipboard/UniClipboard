@@ -105,6 +105,29 @@ describe('SettingContext network — updateNetworkSetting + saveSetting restartR
     expect(outcome).toEqual({ restartRequired: true })
   })
 
+  it.each([0, 51820])(
+    'saves bindPort=%i and reads back the authoritative value',
+    async bindPort => {
+      const { result } = renderSettingHook()
+      await waitFor(() => expect(result.current.setting).toEqual(baseSetting))
+      mockUpdateSettings.mockResolvedValueOnce({ success: true, restartRequired: true })
+      const saved = {
+        ...baseSetting,
+        network: { ...baseSetting.network, bindPort: bindPort === 0 ? null : bindPort },
+      }
+      mockGetSettings.mockResolvedValue(saved)
+
+      await act(async () => {
+        expect(await result.current.updateNetworkSetting({ bindPort })).toEqual({
+          restartRequired: true,
+        })
+      })
+
+      expect(mockUpdateSettings).toHaveBeenCalledExactlyOnceWith({ network: { bindPort } })
+      expect(result.current.setting?.network.bindPort).toBe(saved.network.bindPort)
+    }
+  )
+
   it('Test 3: initial load queues a network mutation until settings are available', async () => {
     let resolveGet: ((s: Settings) => void) | undefined
     mockGetSettings.mockImplementationOnce(

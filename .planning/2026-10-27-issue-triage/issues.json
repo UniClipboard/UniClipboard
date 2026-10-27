@@ -1,0 +1,857 @@
+[
+  {
+    "issue_number": 229,
+    "title": "Slow image sync from macOS to Windows (reverse direction is fast)",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/229"
+  },
+  {
+    "issue_number": 401,
+    "title": "Add favorites or pinned clipboard entries",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/401"
+  },
+  {
+    "issue_number": 439,
+    "title": "PRD: Quick Panel Action Bar & Navigation Enhancement",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/439"
+  },
+  {
+    "issue_number": 481,
+    "title": "Modernize Windows clipboard writes: add missing standard formats + migrate to WinRT DataPackage",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/481"
+  },
+  {
+    "issue_number": 488,
+    "title": "sender 端 idle timeout:receiver 进度通道断开后 transferring 状态不会自动退出",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/488"
+  },
+  {
+    "issue_number": 489,
+    "title": "sender 端 dispatch 启动时主动 emit transferring:消除复制后到第一帧进度间的 UI 空白",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/489"
+  },
+  {
+    "issue_number": 516,
+    "title": "WebDAV offline mailbox — use BYO cloud storage as an asynchronous sync channel (not a replacement for iroh relay)",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/516"
+  },
+  {
+    "issue_number": 548,
+    "title": "Introduce sensitive-content classification and lifecycle policies so clipboard records are not all persisted alike",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/548"
+  },
+  {
+    "issue_number": 578,
+    "title": "Support data migration from Maccy",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/578"
+  },
+  {
+    "issue_number": 583,
+    "title": "搜索结果在 quick window 不会灰显 payload_state=Lost 的 entry",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/583"
+  },
+  {
+    "issue_number": 624,
+    "title": "Surface 'clipboard busy' state to the user when OS clipboard is held by another process",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/624"
+  },
+  {
+    "issue_number": 625,
+    "title": "Send nack to remote peer when OS clipboard write fails (stop wasted retries during outage)",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/625"
+  },
+  {
+    "issue_number": 626,
+    "title": "Backend: investigate 'pairing invitation service unavailable' 503/504 on /v2/setup/* endpoints",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/626"
+  },
+  {
+    "issue_number": 635,
+    "title": "mobile-sync: 把 PUT /file 的磁盘安全阀拆到 settings (当前写死 10 GiB)",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/635"
+  },
+  {
+    "issue_number": 684,
+    "title": "Windows 10: Startup hangs while 360 security software is running",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/684"
+  },
+  {
+    "issue_number": 688,
+    "title": "Old peers remain after Reset: UI shows \"online\" but cannot sync (cross-space ambiguity)",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/688"
+  },
+  {
+    "issue_number": 689,
+    "title": "space_id visibility: whether and where to display it in the frontend (troubleshooting / trust-boundary awareness)",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/689"
+  },
+  {
+    "issue_number": 755,
+    "title": "e2e/agent-driven: 搭建 agent 驱动的真机 e2e 自动化体系（tracking）",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/755"
+  },
+  {
+    "issue_number": 757,
+    "title": "e2e/fixture: 预置 entries 注入工具",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/757"
+  },
+  {
+    "issue_number": 758,
+    "title": "e2e/attribution: 失败归因 agent（用远端 claude 生成评论）",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/758"
+  },
+  {
+    "issue_number": 759,
+    "title": "e2e/dual-device: 同机双 profile 支持 dual-device 拓扑",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/759"
+  },
+  {
+    "issue_number": 760,
+    "title": "e2e/macos: 替代 tauri-driver 的 macOS 自动化方案",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/760"
+  },
+  {
+    "issue_number": 798,
+    "title": "feat(clipboard/win): capture virtual Shell namespace file items such as WSL/Plan 9 via PIDL→UNC",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/798"
+  },
+  {
+    "issue_number": 805,
+    "title": "feat(file-sync): persistent storage directory for received files and a \"Move to\" context-menu action",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/805"
+  },
+  {
+    "issue_number": 809,
+    "title": "[Feature] Build a Flatpak package and publish it on Flathub",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/809"
+  },
+  {
+    "issue_number": 816,
+    "title": "[bug] Windows multi-rep writes exhaust access_denied retries: add a circuit breaker + observability + backoff tuning",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/816"
+  },
+  {
+    "issue_number": 825,
+    "title": "pairing 协议 bump — 传递 space-shared mailbox 凭据",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/825"
+  },
+  {
+    "issue_number": 826,
+    "title": "mailbox 离线邮箱通道 — ADR-005 落地总跟踪",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/826"
+  },
+  {
+    "issue_number": 851,
+    "title": "Android: Only the last clipboard item is recorded after multiple copies",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/851"
+  },
+  {
+    "issue_number": 875,
+    "title": "feat(file-sync): support copying directories",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/875"
+  },
+  {
+    "issue_number": 876,
+    "title": "feat(network): investigate and support IPv6 peer connectivity",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/876"
+  },
+  {
+    "issue_number": 920,
+    "title": "LAN-only mode: Devices stay offline after an automatic update until the app restarts",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/920"
+  },
+  {
+    "issue_number": 949,
+    "title": "spike: verify iroh addr_blob transferability for third-party dial",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/949"
+  },
+  {
+    "issue_number": 950,
+    "title": "ADR: peer attestation admission for Space membership convergence",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/950"
+  },
+  {
+    "issue_number": 952,
+    "title": "backlog: address refresh + multi-branch topology discovery for membership convergence",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/952"
+  },
+  {
+    "issue_number": 953,
+    "title": "feat(membership): minimal end-to-end peer attestation — admit + one sync",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/953"
+  },
+  {
+    "issue_number": 954,
+    "title": "feat(pairing): piggyback roster on SponsorConfirm (wire v4)",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/954"
+  },
+  {
+    "issue_number": 955,
+    "title": "feat(presence): attestation initiation scheduling — offline-join convergence",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/955"
+  },
+  {
+    "issue_number": 957,
+    "title": "Linux (X11): Duplicate image capture and storage usage exceeding the configured limit",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/957"
+  },
+  {
+    "issue_number": 958,
+    "title": "Use stable decoded-pixel fingerprints to prevent image deduplication failures from clipboard byte drift",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/958"
+  },
+  {
+    "issue_number": 963,
+    "title": "feat(observability): measure webview-start → app-usable duration",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/963"
+  },
+  {
+    "issue_number": 988,
+    "title": "refactor: rename uc-core/app_dirs to storage_layout for clarity",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/988"
+  },
+  {
+    "issue_number": 1008,
+    "title": "build: unstable feature `debug_closure_helpers` in attributes.rs",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1008"
+  },
+  {
+    "issue_number": 1024,
+    "title": "Add device-management functionality to the CLI",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1024"
+  },
+  {
+    "issue_number": 1047,
+    "title": "Support routing UniClipboard traffic through a custom proxy on Windows",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1047"
+  },
+  {
+    "issue_number": 1097,
+    "title": "Refactor: make X11 clipboard owner lifecycle polling non-blocking (remove main event-loop blocking)",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1097"
+  },
+  {
+    "issue_number": 1111,
+    "title": "Refactor: eliminate meaningful_origin_key's stringly-typed kind (consumers infer types from string prefixes)",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1111"
+  },
+  {
+    "issue_number": 1140,
+    "title": "chore(winget): manually submit first manifest to microsoft/winget-pkgs",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1140"
+  },
+  {
+    "issue_number": 1172,
+    "title": "Unable to join the TestFlight beta on iPadOS 17.7.1",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1172"
+  },
+  {
+    "issue_number": 1176,
+    "title": "blob encryption loads whole files into memory on reads and writes, risking OOM: introduce chunked AEAD V2 streaming",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1176"
+  },
+  {
+    "issue_number": 1198,
+    "title": "Content-category classification gaps: image-file / LocalFile / legacy backfill",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1198"
+  },
+  {
+    "issue_number": 1206,
+    "title": "Feature request: capture and persist file metadata (icons, etc.) when copying files",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1206"
+  },
+  {
+    "issue_number": 1211,
+    "title": "Desktop history lacks \"Delete selected / Delete all\" actions",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1211"
+  },
+  {
+    "issue_number": 1222,
+    "title": "Security: Verify and document status of L3 (encryption-session) permission enforcement",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1222"
+  },
+  {
+    "issue_number": 1226,
+    "title": "docs-site: clear bun audit findings once upstream (next/mermaid/fumadocs) ship fixed transitive deps",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1226"
+  },
+  {
+    "issue_number": 1230,
+    "title": "Database compaction: .db files do not shrink after deleting history",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1230"
+  },
+  {
+    "issue_number": 1259,
+    "title": "Windows: GUI shows no error when daemon fails to start (e.g. missing vcruntime140.dll)",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1259"
+  },
+  {
+    "issue_number": 1298,
+    "title": "Support PicList for image uploads",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1298"
+  },
+  {
+    "issue_number": 1308,
+    "title": "[Bug] iOS camera remains active when opening the app after pairing",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1308"
+  },
+  {
+    "issue_number": 1310,
+    "title": "UniClipboard opens a blank window on Steam Deck",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1310"
+  },
+  {
+    "issue_number": 1325,
+    "title": "ADR-010 阶段 5：移动端降级、用户可见层与收尾 — Wayfinder Map",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1325"
+  },
+  {
+    "issue_number": 1331,
+    "title": "阶段 5（P1）：Sync-ineligible 原因徽标（投影 + 前端）",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1331"
+  },
+  {
+    "issue_number": 1332,
+    "title": "阶段 5（P1）：v3 拒绝记忆与噪声抑制",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1332"
+  },
+  {
+    "issue_number": 1333,
+    "title": "阶段 5（P2）：file_sync 设置界面（含设置 API 补字段）",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1333"
+  },
+  {
+    "issue_number": 1334,
+    "title": "阶段 5（P2）：文件夹同步用户文档",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1334"
+  },
+  {
+    "issue_number": 1350,
+    "title": "iPhone clipboard sync requires bringing the app to the foreground",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1350"
+  },
+  {
+    "issue_number": 1351,
+    "title": "Win 11 / Unable to bind LAN Wi-Fi adapter",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1351"
+  },
+  {
+    "issue_number": 1362,
+    "title": "Feature requests: History filtering, source app icons, shortcuts, and window management",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1362"
+  },
+  {
+    "issue_number": 1365,
+    "title": "docs: 修正 Quick Panel 文档中 Cmd/Ctrl+1-9 的行为描述并补充 Tab 类型过滤",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1365"
+  },
+  {
+    "issue_number": 1366,
+    "title": "Quick Panel / 主窗口：显示剪贴板条目的来源应用图标",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1366"
+  },
+  {
+    "issue_number": 1367,
+    "title": "历史过滤：支持自定义日期区间与单日选择",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1367"
+  },
+  {
+    "issue_number": 1368,
+    "title": "剪贴板条目「已粘贴」状态标记与过滤",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1368"
+  },
+  {
+    "issue_number": 1369,
+    "title": "Quick Panel：Alt+数字键直达指定类型过滤",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1369"
+  },
+  {
+    "issue_number": 1370,
+    "title": "按内容类型的颜色标记 / 边框",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1370"
+  },
+  {
+    "issue_number": 1371,
+    "title": "右键「用关联应用打开」剪贴板条目",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1371"
+  },
+  {
+    "issue_number": 1372,
+    "title": "主窗口 UI：把过滤等功能收纳进下拉菜单",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1372"
+  },
+  {
+    "issue_number": 1374,
+    "title": "主窗口边缘吸附与侧边折叠（自动隐藏）",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1374"
+  },
+  {
+    "issue_number": 1373,
+    "title": "refactor(settings): 收敛设置权威来源并消除多层重复传递",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1373"
+  },
+  {
+    "issue_number": 1375,
+    "title": "条目置顶（pin）：固定占据前 N 位并稳定映射到数字键",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1375"
+  },
+  {
+    "issue_number": 1378,
+    "title": "docs(privacy): diagnostics table omits release-health session data",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1378"
+  },
+  {
+    "issue_number": 1386,
+    "title": "Kaspersky antivirus detects it as a threat",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1386"
+  },
+  {
+    "issue_number": 1417,
+    "title": "Clipboard sync from iPhone to MacBook fails",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1417"
+  },
+  {
+    "issue_number": 1420,
+    "title": "Automatically build release images and publish them to Docker Hub",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1420"
+  },
+  {
+    "issue_number": 1422,
+    "title": "Apple Handoff: The same image is captured and synced repeatedly on macOS",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1422"
+  },
+  {
+    "issue_number": 1425,
+    "title": "No Live Activity support",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1425"
+  },
+  {
+    "issue_number": 1454,
+    "title": "Publish the Android app on Google Play to address installation trust warnings",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1454"
+  },
+  {
+    "issue_number": 1458,
+    "title": "test(e2e): 永久保留当前版本互通与历史升级验证",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1458"
+  },
+  {
+    "issue_number": 1473,
+    "title": "security: staged remediation plan for open RustSec advisories",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1473"
+  },
+  {
+    "issue_number": 1543,
+    "title": "feat(settings): support centrally enforced LAN-only mode",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1543"
+  },
+  {
+    "issue_number": 1559,
+    "title": "feat(windows): 从文件资源管理器右键菜单定向发送所选文件",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1559"
+  },
+  {
+    "issue_number": 1569,
+    "title": "Allow Win+V to open UniClipboard instead of Windows clipboard history",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1569"
+  },
+  {
+    "issue_number": 1571,
+    "title": "fix(engine): Windows 开发资料同时存在旧新 blob 目录时后台无法启动",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1571"
+  },
+  {
+    "issue_number": 1574,
+    "title": "feat(history): add custom clipboard categories with editable names and icons",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1574"
+  },
+  {
+    "issue_number": 1578,
+    "title": "文本条目支持编辑并另存为新剪贴板条目",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1578"
+  },
+  {
+    "issue_number": 1583,
+    "title": "Windows 11: UniClipboard 0.19.1 fails to start with \"Couldn't reach the background service\"",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1583"
+  },
+  {
+    "issue_number": 1584,
+    "title": "Mobile LAN sync: last_seen_at_ms never updated after successful auth (UI shows \"Never connected\")",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1584"
+  },
+  {
+    "issue_number": 1585,
+    "title": "Mobile LAN sync feedback loop: auto shortcut + inbound clipboard activation causes endless PUT/GET ping-pong (especially images)",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1585"
+  },
+  {
+    "issue_number": 1600,
+    "title": "UniClipboard 0.19.1 repeatedly steals focus on macOS Sequoia 15.7.7",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1600"
+  },
+  {
+    "issue_number": 1602,
+    "title": "unpair_device fails with workspace_convergence_failed (error_code 1393, non-retryable) after upgrading from stable 0.19.1 to 1.0.0-alpha.7",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1602"
+  },
+  {
+    "issue_number": 1607,
+    "title": "High memory usage on macOS",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1607"
+  },
+  {
+    "issue_number": 1611,
+    "title": "feat(cli): expose a stable desktop integration status contract",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1611"
+  },
+  {
+    "issue_number": 1614,
+    "title": "Add a sync pause button, optional shortcuts, and an Esc-to-close setting",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1614"
+  },
+  {
+    "issue_number": 1615,
+    "title": "Show clipboard history by holding Ctrl+V",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1615"
+  },
+  {
+    "issue_number": 1616,
+    "title": "轻量模式自动启动时不应重复显示后台运行通知",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1616"
+  },
+  {
+    "issue_number": 1629,
+    "title": "feat(desktop): 支持完整邀请二维码与六码短码配对",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1629"
+  },
+  {
+    "issue_number": 1687,
+    "title": "feat(cli): 新增 service 命令管理开机自启",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1687"
+  },
+  {
+    "issue_number": 1688,
+    "title": "feat(cli): 新增 completion 命令生成 shell 自动补全",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1688"
+  },
+  {
+    "issue_number": 1692,
+    "title": "Unable to pair macOS and Windows through a self-hosted relay",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1692"
+  },
+  {
+    "issue_number": 1705,
+    "title": "Mobile client cannot connect to a public Windows server through a Caddy reverse proxy",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1705"
+  },
+  {
+    "issue_number": 1709,
+    "title": "test: verify upgrade-backup restoration across 1.0 downgrades",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1709"
+  },
+  {
+    "issue_number": 1717,
+    "title": "Quick panel opens empty despite entries in the main window and no active filters",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1717"
+  },
+  {
+    "issue_number": 1726,
+    "title": "Allow choosing which clipboard content types are recorded",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1726"
+  },
+  {
+    "issue_number": 1729,
+    "title": "feat(omarchy): add cross-device sync while preserving native clipboard history",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1729"
+  },
+  {
+    "issue_number": 1735,
+    "title": "Desktop：停止隐藏快捷面板状态轮询并补齐显示前授权核验",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1735"
+  },
+  {
+    "issue_number": 1739,
+    "title": "Add clipboard trigger rules for running external scripts and programs",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1739"
+  },
+  {
+    "issue_number": 1740,
+    "title": "[Bug] PixPin screenshots sometimes cannot be pasted with Ctrl+V on Windows 11",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1740"
+  },
+  {
+    "issue_number": 1746,
+    "title": "[Bug] Cyrillic text from Windows 10 is garbled when pasted into Telegram on iPhone",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1746"
+  },
+  {
+    "issue_number": 1748,
+    "title": "[Bug] Copying multiple files on Windows shows only one PNG on Linux",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1748"
+  },
+  {
+    "issue_number": 1750,
+    "title": "[Bug] let LAN-only mode reach paired devices over a WireGuard (or other self-hosted) VPN",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1750"
+  },
+  {
+    "issue_number": 1755,
+    "title": "[Feature] Add desktop and mobile app locks with password unlock and automatic background locking",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1755"
+  },
+  {
+    "issue_number": 1761,
+    "title": "Narrow uc-platform's default image features, with clipboard E2E validation on all three platforms",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1761"
+  },
+  {
+    "issue_number": 1771,
+    "title": "RFC: Event-driven clipboard automation and plugin architecture",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1771"
+  },
+  {
+    "issue_number": 1774,
+    "title": "Search API: Support tag intersection (tagMode=all)",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1774"
+  },
+  {
+    "issue_number": 1775,
+    "title": "Quick Panel: Hold-to-cycle mode (R3)",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1775"
+  },
+  {
+    "issue_number": 1776,
+    "title": "Quick Panel: Paste sequences (R6)",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1776"
+  },
+  {
+    "issue_number": 1777,
+    "title": "Quick Panel: Receive progress and queued paste (R8)",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1777"
+  },
+  {
+    "issue_number": 1778,
+    "title": "Quick Panel: Pin the panel (R10)",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1778"
+  },
+  {
+    "issue_number": 1779,
+    "title": "Quick Panel: Open at the text cursor (R-1)",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1779"
+  },
+  {
+    "issue_number": 1780,
+    "title": "Quick Panel: Windows port (Phase 3)",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1780"
+  },
+  {
+    "issue_number": 1781,
+    "title": "Native Quick Panel release follow-up: Signing, notarization, auto-updates, and CI",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1781"
+  },
+  {
+    "issue_number": 1782,
+    "title": "Native Quick Panel: Design details and navigation",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1782"
+  },
+  {
+    "issue_number": 1783,
+    "title": "Product decision: Allow plaintext temporary files when opening image entries with Cmd+O?",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1783"
+  },
+  {
+    "issue_number": 1784,
+    "title": "Native Quick Panel: Real-daemon end-to-end tests and performance baselines",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1784"
+  },
+  {
+    "issue_number": 1785,
+    "title": "GPUI native Quick Panel (macOS launch): Follow-up tracking",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1785"
+  },
+  {
+    "issue_number": 1787,
+    "title": "Decide whether the content lock also applies to the CLI (and document the boundary)",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1787"
+  },
+  {
+    "issue_number": 1788,
+    "title": "[Bug] Windows data upgrade fails with storage_unavailable in 1.0.1",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1788"
+  },
+  {
+    "issue_number": 1789,
+    "title": "GUI shows the app-failed-to-start error page while the daemon restarts from network settings",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1789"
+  },
+  {
+    "issue_number": 1792,
+    "title": "[Bug] Pairing Windows 10 devices stalls at \"Waiting for confirmation\" and times out in 1.0.1",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1792"
+  },
+  {
+    "issue_number": 1808,
+    "title": "Offer more menu bar icon options",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1808"
+  },
+  {
+    "issue_number": 1812,
+    "title": "CLI E2E: file send right after pairing returns 0 accepted / 1 pending and the CLI exits with an error",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1812"
+  },
+  {
+    "issue_number": 1818,
+    "title": "[feature request]",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1818"
+  },
+  {
+    "issue_number": 1830,
+    "title": "CLI: `uniclip get` sub-command add `--detailed` flag to display detailed info",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1830"
+  },
+  {
+    "issue_number": 1836,
+    "title": "[Bug] update almost always fails. needs kill",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1836"
+  },
+  {
+    "issue_number": 1904,
+    "title": "Decide and verify Linux proxy and environment resolution gaps (R1-R5, PAC, F7)",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1904"
+  },
+  {
+    "issue_number": 1905,
+    "title": "Verify macOS long-running behaviour and real focus/paste of the Go host",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1905"
+  },
+  {
+    "issue_number": 1906,
+    "title": "Close the macOS tray menu acceptance gaps left by PRs #1892 and #1893",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1906"
+  },
+  {
+    "issue_number": 1907,
+    "title": "Find the root cause of the macOS SIGSEGV on held-window replay and audit window lifecycle",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1907"
+  },
+  {
+    "issue_number": 1909,
+    "title": "Complete UI acceptance on the Go host: multi-image, modifier rollback, live history",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1909"
+  },
+  {
+    "issue_number": 1917,
+    "title": "[Feature] Deliver Flatpak and Flathub support with SteamOS validation",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1917"
+  },
+  {
+    "issue_number": 1923,
+    "title": "没有适配鸿蒙版本的吗？apk华为手机安装不了。",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1923"
+  },
+  {
+    "issue_number": 1926,
+    "title": "Rebuild published snaps with patched libxml2 (USN-8910-1)",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1926"
+  },
+  {
+    "issue_number": 1931,
+    "title": "Add sync HUD settings and distinguish sync feedback from file transfers",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1931"
+  },
+  {
+    "issue_number": 1932,
+    "title": "Add configurable file transfer timing: on copy, by size, or on paste",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1932"
+  },
+  {
+    "issue_number": 1933,
+    "title": "[Bug] Windows → iOS clipboard sync fails with peer rejection and content_key_missing",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1933"
+  },
+  {
+    "issue_number": 1948,
+    "title": "[Bug] Windows shows an unwanted system notification when minimized to the background",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1948"
+  },
+  {
+    "issue_number": 1984,
+    "title": "[Bug] Windows: LAN-only mode cannot connect - uniclipd never joins mDNS (UDP 5353)",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/1984"
+  },
+  {
+    "issue_number": 2009,
+    "title": "[Bug] Linux: both WebKitWebProcess helpers spin at 100% CPU from startup; main window never reports ready",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/2009"
+  },
+  {
+    "issue_number": 2011,
+    "title": "[Bug]",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/2011"
+  },
+  {
+    "issue_number": 2025,
+    "title": "CLI attaches to a self-terminating oneshot daemon after space init",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/2025"
+  },
+  {
+    "issue_number": 2026,
+    "title": "Windows: uniclip stop force-terminates the daemon instead of stopping it gracefully",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/2026"
+  },
+  {
+    "issue_number": 2034,
+    "title": "perf(pairing): Reduce iOS–desktop admission latency and final acknowledgement delays",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/2034"
+  },
+  {
+    "issue_number": 2041,
+    "title": "[Bug] linux kde环境下显示了两遍窗口最小化/最大化/关闭按钮",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/2041"
+  },
+  {
+    "issue_number": 2044,
+    "title": "[Bug] Silent mode still shows icon in dock",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/2044"
+  },
+  {
+    "issue_number": 2057,
+    "title": "feat(history): add optional built-in icons for local tags",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/2057"
+  },
+  {
+    "issue_number": 2058,
+    "title": "feat(history): expose manual ordering for local sidebar tags",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/2058"
+  },
+  {
+    "issue_number": 2059,
+    "title": "feat(quick-panel): filter by local custom tags in the native panel",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/2059"
+  },
+  {
+    "issue_number": 2060,
+    "title": "feat(history): confirm before deleting local tags that are in use",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/2060"
+  },
+  {
+    "issue_number": 2101,
+    "title": "feat(quick-panel): improve quick access to favorites on Windows",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/2101"
+  },
+  {
+    "issue_number": 2110,
+    "title": "[Bug] 进入轻量模式后,托盘栏里的软件图标依旧在",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/2110"
+  },
+  {
+    "issue_number": 2112,
+    "title": "[Bug] Docker healthcheck 所请求的端口没有服务监听",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/2112"
+  },
+  {
+    "issue_number": 2119,
+    "title": "[Bug] Fedora44 KDE 环境下，托盘图标黑色和底栏重叠看不清",
+    "url": "https://github.com/UniClipboard/UniClipboard/issues/2119"
+  }
+]

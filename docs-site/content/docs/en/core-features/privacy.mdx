@@ -52,6 +52,15 @@ Diagnostics include the minimum context needed to understand failures:
 | Frontend Replay              | Sampled Sentry Replay for frontend UI errors. It is not sent when "Send diagnostics" is off.                                                               |
 | User-submitted feedback      | Only when you submit the feedback form: the message you wrote and the optional email address you entered.                                                  |
 
+Sentry release-health session tracking is not enabled in the current backend.
+The SDK is compiled with `release-health` support, but automatic session tracking
+is off and the backend does not start sessions manually. It therefore does not
+send a release-health session update for each process run. Release-health updates
+can contain a session ID, start time, duration, status, error count, release and
+environment. These are separate from the PostHog `session_id` below. If session
+tracking is enabled in a future version, this disclosure must be updated. The
+**Send diagnostics** switch also blocks session envelopes at the transport boundary.
+
 ## What Usage Analytics Include
 
 Usage analytics uses separate anonymous IDs. They are not derived from the pairing `DeviceId`, and they do not participate in sync or trust decisions.

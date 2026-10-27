@@ -9,6 +9,7 @@ import type {
   SplitViewProps,
   TextProps,
 } from '@/ui-kit/contract'
+import { useSplitNavigation } from '@/ui-kit/use-split-navigation'
 import { WithHelpTag } from './controls'
 import { glyph } from './glyph'
 import { Icon as Glyph } from './icons'
@@ -24,6 +25,7 @@ import { swatchColor } from './swatch'
 export function SplitView({
   sidebar,
   sidebarHidden,
+  sidebarOverlay,
   sidebarToggle,
   title,
   subtitle,
@@ -32,6 +34,9 @@ export function SplitView({
   toolbar,
   children,
 }: SplitViewProps) {
+  const { root, sidebarRef, toggleRef, overlay, drawerOpen, onSidebarKeyDown } = useSplitNavigation(
+    { sidebarHidden, sidebarOverlay, sidebarToggle }
+  )
   const toggle = sidebarToggle && (
     <WithHelpTag
       text={
@@ -41,6 +46,7 @@ export function SplitView({
       }
     >
       <button
+        ref={toggleRef}
         type="button"
         className="mac-split-toggle"
         aria-label={sidebarToggle.label}
@@ -52,9 +58,23 @@ export function SplitView({
     </WithHelpTag>
   )
   return (
-    <div className="mac-split" data-sidebar-hidden={sidebarHidden ? '' : undefined}>
+    <div
+      ref={root}
+      className="mac-split"
+      data-sidebar-hidden={sidebarHidden ? '' : undefined}
+      data-sidebar-overlay={overlay ? '' : undefined}
+    >
       {toggle && <div className="mac-split-chrome">{toggle}</div>}
-      <div className="mac-split-sidebar" inert={sidebarHidden} aria-hidden={sidebarHidden}>
+      <div
+        ref={sidebarRef}
+        className="mac-split-sidebar"
+        inert={sidebarHidden}
+        aria-hidden={sidebarHidden}
+        role={drawerOpen ? 'dialog' : undefined}
+        aria-modal={drawerOpen || undefined}
+        aria-label={drawerOpen ? sidebarToggle?.label : undefined}
+        onKeyDown={onSidebarKeyDown}
+      >
         <Surface region="sidebar">
           <div className="mac-split-sidebar-inner">
             <div className="mac-split-sidebar-chrome" data-window-drag="" />
@@ -62,7 +82,18 @@ export function SplitView({
           </div>
         </Surface>
       </div>
-      <div className="mac-split-content">
+      {overlay && sidebarToggle && (
+        <button
+          type="button"
+          className="mac-split-scrim"
+          inert={!drawerOpen}
+          aria-hidden={!drawerOpen}
+          tabIndex={-1}
+          aria-label={sidebarToggle.label}
+          onClick={sidebarToggle.onClick}
+        />
+      )}
+      <div className="mac-split-content" inert={drawerOpen} aria-hidden={drawerOpen || undefined}>
         <Surface region="content">
           <div className="mac-split-panes">{children}</div>
           <div className="mac-split-scroll-edge" aria-hidden="true" />

@@ -1699,6 +1699,44 @@
   width: 0;
 }
 
+/* Overlay navigation keeps the settings column at full width. */
+.mac-split[data-sidebar-overlay] .mac-split-sidebar {
+  position: absolute;
+  inset: 0 auto 0 0;
+  z-index: 3;
+  width: var(--sidebar-width);
+  background: var(--window);
+  transition: transform var(--sidebar-transition);
+}
+
+.mac-split[data-sidebar-overlay][data-sidebar-hidden] .mac-split-sidebar {
+  transform: translateX(-100%);
+}
+
+.mac-split[data-sidebar-overlay] .mac-split-content {
+  isolation: isolate;
+}
+
+.mac-split-scrim {
+  all: unset;
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background-color: var(--scrim);
+  /* Fade the colour, not opacity: an opacity animation promotes this full-page element to a
+     compositing layer and tears it down afterwards, which repaints the whole page. */
+  transition: background-color var(--sidebar-transition);
+}
+
+.mac-split[data-sidebar-hidden] .mac-split-scrim {
+  background-color: transparent;
+  pointer-events: none;
+}
+
+.mac-split[data-sidebar-overlay] .mac-split-toolbar {
+  left: 7.75rem;
+}
+
 .mac-split-sidebar > .mac-surface {
   flex-grow: 1;
   min-width: var(--sidebar-width);

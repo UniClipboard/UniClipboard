@@ -1,0 +1,48 @@
+{
+  "source_base": "20c5ddcaf52e3504964b348908d34d3ccf09307e",
+  "documentation_commit": "68eb9dd8c9df5f1990d86c636f2bb9a045d70e00",
+  "checks": {
+    "issue_inventory": "PASS: all 171 unique IDs classified; 4 Low, 105 Medium, 62 High",
+    "check:docs": "PASS: 33 en + 33 zh pages and anchors",
+    "test:config": "PASS: existing configuration test",
+    "types:check": "PASS",
+    "next_build_webpack": "PASS: node node_modules/next/dist/bin/next build --webpack",
+    "default_turbopack_build": "FAIL: 102 ESM loader and meta.json resolution errors; both Bun and direct Node launch failed",
+    "context_audit": "NO_UPDATE",
+    "git_diff_check": "PASS",
+    "interactive_acceptance": "NOT RUN: documentation-only scope",
+    "healthcheck_process_e2e": "NOT RUN: source-already-implemented disposition only",
+    "unit_tests_added": false
+  },
+  "documentation_files": [
+    {
+      "path": "docs-site/content/docs/en/core-features/privacy.mdx",
+      "sha256": "cf4020f434cb04aafc0989f375fb512d29ce6fad9a9442b0709a9939e4bc1d13"
+    },
+    {
+      "path": "docs-site/content/docs/en/core-features/quick-panel.mdx",
+      "sha256": "9bf6895c72932b62f611c73a6d7c3bdfbe6e49bcc291ac483acc0bedb743f429"
+    },
+    {
+      "path": "docs-site/content/docs/zh/core-features/privacy.mdx",
+      "sha256": "89dcd99c16a55b7054513459a882928cbba42aa0b38ddeeb75f6ffd1ba5dec1c"
+    },
+    {
+      "path": "docs-site/content/docs/zh/core-features/quick-panel.mdx",
+      "sha256": "7f22c0b8e0a3b85a2ca6ee27159c009202c59a0b01c7d4d254acde553ca9c450"
+    }
+  ],
+  "build_log_sha256": {
+    "build-webpack.log": "6632961fa9a40742ec76010470eda7623ef9fa41e8a65e0eb8f03054aff8c7f4",
+    "build-turbopack.log": "5387ed99d3f2280ee18a596378f8943d60d8d739a5b635523ea4192b052b581b"
+  },
+  "reproduction": [
+    "python3 .planning/2026-10-27-issue-triage/classify.py",
+    "cd docs-site && bun install --frozen-lockfile",
+    "cd docs-site && bun run check:docs",
+    "cd docs-site && bun run test:config",
+    "cd docs-site && bun run types:check",
+    "cd docs-site && node node_modules/next/dist/bin/next build --webpack",
+    "cd docs-site && bun run build"
+  ]
+}

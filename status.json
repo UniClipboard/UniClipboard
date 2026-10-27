@@ -1,5 +1,5 @@
 {
-  "checked_at": "2026-10-27 13:53 UTC",
+  "checked_at": "2026-10-27 19:45 UTC",
   "channels": {
     "aur": {
       "status": "published",
@@ -62,8 +62,9 @@
       "version": null
     },
     "flathub": {
-      "status": "not-published",
-      "version": null
+      "status": "unavailable",
+      "version": null,
+      "error": "HTTPError: HTTP Error 502: Bad Gateway"
     }
   }
 }

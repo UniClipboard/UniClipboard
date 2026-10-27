@@ -38,13 +38,33 @@ const (
 // (idle → available → downloading → ready).
 type updater struct {
 	mu         sync.Mutex
+	installMu  sync.Mutex
+	closed     bool
+	done       chan struct{}
 	phase      updatePhase
 	release    *update.Release
-	bytes      []byte
+	payload    *update.Payload
 	downloaded int64
 	total      *int64
 	cancel     context.CancelFunc
 	skipMu     sync.Mutex
+}
+
+// close cancels and joins the current transfer before removing its staging.
+func (u *updater) close() {
+	u.mu.Lock()
+	u.closed = true
+	if u.cancel != nil {
+		u.cancel()
+	}
+	done := u.done
+	u.mu.Unlock()
+	if done != nil {
+		<-done
+	}
+	u.mu.Lock()
+	u.reset(phaseIdle, nil)
+	u.mu.Unlock()
 }
 
 func (h *HostService) updateClient() (*update.Client, error) {
@@ -88,7 +108,12 @@ func (h *HostService) resolveChannel(ctx context.Context, explicit *string) upda
 
 // reset replaces the pending-update state; callers hold u.mu.
 func (u *updater) reset(phase updatePhase, rel *update.Release) {
-	u.phase, u.release, u.bytes, u.downloaded, u.total, u.cancel = phase, rel, nil, 0, nil, nil
+	if u.payload != nil {
+		if err := u.payload.Close(); err != nil {
+			log.Printf("update staging cleanup failed: %v", err)
+		}
+	}
+	u.phase, u.release, u.payload, u.downloaded, u.total, u.cancel = phase, rel, nil, 0, nil, nil
 }
 
 func (u *updater) metadata() *UpdateMetadata {
@@ -110,7 +135,7 @@ func (h *HostService) lookupUpdate(ctx context.Context, channel *string) (*Updat
 		return nil, err
 	}
 	u.mu.Lock()
-	if u.phase == phaseDownloading {
+	if u.closed || u.phase == phaseDownloading {
 		u.mu.Unlock()
 		return nil, errors.New("updater: download in progress, cannot re-check")
 	}
@@ -121,13 +146,17 @@ func (h *HostService) lookupUpdate(ctx context.Context, channel *string) (*Updat
 		return nil, err
 	}
 	u.mu.Lock()
+	if u.closed {
+		u.mu.Unlock()
+		return nil, context.Canceled
+	}
 	switch {
 	case u.phase == phaseDownloading:
 		// A download started meanwhile keeps its state.
 	case rel == nil:
 		u.reset(phaseIdle, nil)
 	case u.phase == phaseReady && u.release != nil && u.release.Version == rel.Version:
-		u.release = rel // same version: keep the verified bytes
+		u.release = rel // same version: keep the verified file
 	default:
 		u.reset(phaseAvailable, rel)
 	}
@@ -165,6 +194,10 @@ func (h *HostService) downloadUpdate(ctx context.Context) error {
 		return preconditionError{hostapi.TextError(err.Error())}
 	}
 	u.mu.Lock()
+	if u.closed {
+		u.mu.Unlock()
+		return context.Canceled
+	}
 	switch u.phase {
 	case phaseAvailable:
 	case phaseReady:
@@ -180,8 +213,11 @@ func (h *HostService) downloadUpdate(ctx context.Context) error {
 	rel := u.release
 	dctx, cancel := context.WithCancel(context.Background())
 	u.phase, u.cancel, u.downloaded, u.total = phaseDownloading, cancel, 0, nil
+	done := make(chan struct{})
+	u.done = done
 	u.mu.Unlock()
 	defer cancel()
+	defer close(done)
 
 	started := false
 	data, err := client.Download(dctx, rel, func(chunk int, total int64) {
@@ -205,6 +241,10 @@ func (h *HostService) downloadUpdate(ctx context.Context) error {
 	u.mu.Lock()
 	defer u.mu.Unlock()
 	u.cancel = nil
+	if u.closed && err == nil {
+		_ = data.Close()
+		err = context.Canceled
+	}
 	if err != nil {
 		u.phase, u.downloaded, u.total = phaseAvailable, 0, nil
 		h.emit(updateProgressEvent, failedEvent(err))
@@ -213,7 +253,7 @@ func (h *HostService) downloadUpdate(ctx context.Context) error {
 		}
 		return hostapi.TextError(err.Error())
 	}
-	u.phase, u.bytes = phaseReady, data
+	u.phase, u.payload = phaseReady, data
 	h.emit(updateProgressEvent, DownloadEvent{Event: DownloadEventFinished})
 	return nil
 }
@@ -247,7 +287,7 @@ func (h *HostService) downloadProgress() DownloadProgressSnapshot {
 		snap.Version, snap.CurrentVersion, snap.Body, snap.Date = &u.release.Version, u.release.CurrentVersion, u.release.Body, u.release.Date
 	}
 	if u.phase == phaseReady {
-		n := int64(len(u.bytes))
+		n := u.payload.Size
 		snap.Downloaded, snap.Total = n, &n
 	}
 	return snap
@@ -262,6 +302,8 @@ func failedEvent(err error) DownloadEvent {
 // installer) and then relaunches or quits as that platform's installer contract requires. Progress goes to send.
 func (h *HostService) installUpdate(ctx context.Context, send func(DownloadEvent)) error {
 	u := &h.updates
+	u.installMu.Lock()
+	defer u.installMu.Unlock()
 	u.mu.Lock()
 	if u.phase != phaseReady && u.phase != phaseAvailable {
 		phase := u.phase
@@ -277,27 +319,33 @@ func (h *HostService) installUpdate(ctx context.Context, send func(DownloadEvent
 		return hostapi.TextError(err.Error())
 	}
 	u.mu.Lock()
-	data := u.bytes
+	data := u.payload
+	if data == nil || u.phase != phaseReady {
+		u.mu.Unlock()
+		return hostapi.TextError("updater: pending update changed")
+	}
+	version := u.release.Version
 	u.mu.Unlock()
-	size := int64(len(data))
+	size := data.Size
 	send(DownloadEvent{Event: DownloadEventStarted, Data: &DownloadEventData{ContentLength: &size}})
 	send(DownloadEvent{Event: DownloadEventProgress, Data: &DownloadEventData{ChunkLength: &size}})
 
-	u.mu.Lock()
-	version := ""
-	if u.release != nil {
-		version = u.release.Version
-	}
-	u.mu.Unlock()
 	// installPayload stops the daemon. Announce the stop first, as the exit and restart paths do: the windows close their
 	// daemon sockets and the settings watcher pauses, so no connection holds the stop. A successful install relaunches the
 	// GUI; when the install fails this process stays and reconnects.
-	h.announceDaemonStop()
-	if err := h.installPayload(data, version); err != nil {
+	if err := data.WithFile(func(file *os.File) error {
+		h.announceDaemonStop()
+		return h.installPayload(file, version)
+	}); err != nil {
 		h.resumeAfterStop(true) // the install may have stopped the daemon without starting one
 		send(failedEvent(err))
 		return hostapi.TextError(err.Error())
 	}
+	u.mu.Lock()
+	if u.payload == data {
+		u.reset(phaseIdle, nil)
+	}
+	u.mu.Unlock()
 	send(DownloadEvent{Event: DownloadEventFinished})
 	if err := h.relaunchAfterInstall(); err != nil {
 		// The new version is installed and the daemon is stopped: a daemon started now would be the new one, which this

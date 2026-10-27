@@ -13,6 +13,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
@@ -238,9 +240,16 @@ func nonEmpty(s string) *string {
 // Progress receives download progress: total is -1 when the size is unknown.
 type Progress func(chunk int, total int64)
 
-// Download fetches the release artifact, then verifies its minisign signature
-// against the pinned public key before returning any bytes.
-func (c *Client) Download(ctx context.Context, rel *Release, progress Progress) ([]byte, error) {
+// maxDownloadSize limits untrusted downloads before signature verification.
+const maxDownloadSize int64 = 2 << 30
+
+// Download streams a release to a private file and authenticates it before
+// transferring ownership to the caller. Every failure removes the partial file.
+func (c *Client) Download(ctx context.Context, rel *Release, progress Progress) (*Payload, error) {
+	signature, parsed, err := decodeSignature(rel.Signature)
+	if err != nil {
+		return nil, err
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rel.URL, nil)
 	if err != nil {
 		return nil, err
@@ -253,31 +262,112 @@ func (c *Client) Download(ctx context.Context, rel *Release, progress Progress) 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("download: http status %d", resp.StatusCode)
 	}
-	total := resp.ContentLength
-	var data []byte
-	buf := make([]byte, 64<<10)
-	for {
-		n, err := resp.Body.Read(buf)
-		if n > 0 {
-			data = append(data, buf[:n]...)
-			if progress != nil {
-				progress(n, total)
-			}
-		}
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			if ctx.Err() != nil {
-				return nil, ctx.Err()
-			}
-			return nil, fmt.Errorf("download: %w", err)
-		}
+	if resp.ContentLength > maxDownloadSize {
+		return nil, errors.New("update exceeds maximum download size")
 	}
-	if err := c.Verify(data, rel.Signature); err != nil {
+	dir, err := os.MkdirTemp("", "uniclipboard-update-")
+	if err != nil {
 		return nil, err
 	}
-	return data, nil
+	file, err := os.OpenFile(filepath.Join(dir, "payload"), os.O_CREATE|os.O_EXCL|os.O_RDWR, 0o600)
+	if err != nil {
+		os.RemoveAll(dir)
+		return nil, err
+	}
+	payload := &Payload{file: file, dir: dir}
+	keep := false
+	defer func() {
+		if !keep {
+			_ = payload.Close()
+		}
+	}()
+	reader := minisign.NewReader(io.LimitReader(resp.Body, maxDownloadSize+1))
+	buf := make([]byte, 64<<10)
+	for {
+		n, readErr := reader.Read(buf)
+		if n > 0 {
+			payload.Size += int64(n)
+			if payload.Size > maxDownloadSize {
+				return nil, errors.New("update exceeds maximum download size")
+			}
+			if _, err := file.Write(buf[:n]); err != nil {
+				return nil, fmt.Errorf("write update: %w", err)
+			}
+			if progress != nil {
+				progress(n, resp.ContentLength)
+			}
+		}
+		if readErr == io.EOF {
+			break
+		}
+		if readErr != nil {
+			return nil, fmt.Errorf("download: %w", readErr)
+		}
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	valid := false
+	if parsed.Algorithm == minisign.HashEdDSA {
+		valid = reader.Verify(c.PubKey, signature)
+	} else {
+		valid, err = verifyLegacyFile(file, payload.Size, c.PubKey, signature)
+	}
+	if err != nil {
+		return nil, err
+	}
+	if !valid {
+		return nil, tagged(FailureParse, errors.New("signature verification failed"))
+	}
+	keep = true
+	return payload, nil
+}
+
+func decodeSignature(encoded string) ([]byte, minisign.Signature, error) {
+	var parsed minisign.Signature
+	signature, err := base64.StdEncoding.DecodeString(strings.TrimSpace(encoded))
+	if err == nil {
+		err = parsed.UnmarshalText(signature)
+	}
+	if err != nil {
+		return nil, parsed, tagged(FailureParse, fmt.Errorf("invalid update signature: %w", err))
+	}
+	return signature, parsed, nil
+}
+
+// VerifyFile authenticates an existing file without loading it into the Go heap.
+func (c *Client) VerifyFile(file *os.File, encoded string) error {
+	signature, parsed, err := decodeSignature(encoded)
+	if err != nil {
+		return err
+	}
+	info, err := file.Stat()
+	if err != nil {
+		return err
+	}
+	if info.Size() > maxDownloadSize {
+		return errors.New("update exceeds maximum download size")
+	}
+	valid := false
+	if parsed.Algorithm == minisign.HashEdDSA {
+		if _, err = file.Seek(0, io.SeekStart); err != nil {
+			return err
+		}
+		reader := minisign.NewReader(file)
+		if _, err = io.Copy(io.Discard, reader); err != nil {
+			return err
+		}
+		valid = reader.Verify(c.PubKey, signature)
+	} else {
+		valid, err = verifyLegacyFile(file, info.Size(), c.PubKey, signature)
+	}
+	if err != nil {
+		return err
+	}
+	if !valid {
+		return tagged(FailureParse, errors.New("signature verification failed"))
+	}
+	return nil
 }
 
 // Verify checks data against a base64-encoded minisign signature.

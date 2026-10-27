@@ -11,6 +11,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/fs"
 	"net"
 	"net/http"
@@ -147,8 +148,10 @@ func consume(manifestPath, root, pubPath, port, installer string) {
 		emit(res)
 		return
 	}
-	sum := sha256.Sum256(data)
-	res.PayloadSHA256 = hex.EncodeToString(sum[:])
+	defer data.Close()
+	hash := sha256.New()
+	check(data.WithFile(func(file *os.File) error { _, err := io.Copy(hash, file); return err }))
+	res.PayloadSHA256 = hex.EncodeToString(hash.Sum(nil))
 	var m update.Manifest
 	check(json.Unmarshal(manifest, &m))
 	for _, t := range client.Targets {
@@ -161,7 +164,7 @@ func consume(manifestPath, root, pubPath, port, installer string) {
 		if p.Signature == rel.Signature {
 			continue
 		}
-		if client.Verify(data, p.Signature) == nil {
+		if data.WithFile(func(file *os.File) error { return client.VerifyFile(file, p.Signature) }) == nil {
 			res.CrossVerify[key] = "ACCEPTED"
 		} else {
 			res.CrossVerify[key] = "rejected"

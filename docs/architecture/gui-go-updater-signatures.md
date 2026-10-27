@@ -6,7 +6,17 @@
 
 `apps/gui-go/cmd/updater-sign` 复用现有固定依赖 `aead.dev/minisign v0.3.0` 的解密、签名 API；不实现密码学，也不恢复 Tauri GUI 或运行时。兼容输入为 minisign 私钥文本，或 Tauri 使用的「私钥文本再做一次 base64」格式。密钥材料和密码只读取环境变量 `TAURI_SIGNING_PRIVATE_KEY`、`TAURI_SIGNING_PRIVATE_KEY_PASSWORD`，CI 将同名仓库 secrets 仅交给签名步骤。错误不回显输入，不将密钥写入磁盘。
 
-工具对最终归档字节签名，写出 `<artifact>.sig`（minisign 签名文本的 base64）。每个输出先由生产 `update.Client.Verify` 验证，包括可信注释。支持 `.app.tar.gz`、`.AppImage.tar.gz` 和 `-setup.exe`，它们与消费者安装路径和现有生成器一致。`SHA256SUMS.txt.minisig` 仍使用独立的发布校验和密钥，不能用于 updater。
+工具对最终归档字节签名，写出 `<artifact>.sig`（minisign 签名文本的 base64）。签名器以 `minisign.Reader` 流式计算预哈希并生成 HashEdDSA 签名；每个输出先由生产 `update.Client.VerifyFile` 验证，包括可信注释。支持 `.app.tar.gz`、`.AppImage.tar.gz` 和 `-setup.exe`，它们与消费者安装路径和现有生成器一致。`SHA256SUMS.txt.minisig` 仍使用独立的发布校验和密钥，不能用于 updater。
+
+## 下载、安装与文件所有权
+
+下载使用固定缓冲写入随机私有临时目录（0700）中的文件（0600），单个下载和解包产物上限为 2 GiB。签名通过后才向更新状态机交付 `Payload`。状态机只持有文件及大小；同版本重查保留该文件，换版本或清空状态时删除。取消、下载失败和正常退出删除部分文件；退出先取消并等待下载结束。安装通过 `WithFile` 固定文件生命周期，清理必须等待正在读取的安装操作完成。有效产物在安装失败时保留用于重试，成功安装或退出时删除。
+
+AppImage 和 NSIS ZIP 以有界流解包到安装暂存文件；macOS 直接从已验证归档文件提取应用包。Windows 已启动的安装器拥有独立暂存目录，该目录继续由系统临时文件清理机制回收，不会随 GUI 的下载文件一起删除。
+
+新签名使用预哈希格式，下载时同步验签，不随包大小增加 Go 堆。已有原始消息 Ed 签名仍受同一公钥验证：客户端只读映射已下载文件，验签后立即解除映射。此兼容路径不保留整包堆副本，但验签时可能短暂增加文件映射的驻留内存；所有受支持 feed 的签名 sidecar 均迁移为 HashEdDSA 后删除该兼容路径。旧客户端也接受预哈希签名，因此无需同时发布两份安装包。
+
+验证入口：`go run ./e2e/update_stream <输出目录>` 在 Go GUI 模块内运行真实 HTTP、大文件签名、提取与原子替换，覆盖错误公钥、截断、取消、旧签名及清理互斥；256 MiB 产物的额外 Go 堆峰值约 0.45 MiB。
 
 ## 发布入口
 
@@ -108,7 +118,7 @@ FlareRelease 的不可变源码 `c5d4581dcb239862643cade8931e60799b7ede36` 在�
 | windows-aarch64 | `UniClipboard_1.1.1_arm64-setup.exe` | `d49381ecda178f16a0b01575729c9a1c883a95e699bec28174aba85e4a8d86b4` |
 | windows-x86_64 | `UniClipboard_1.1.1_x64-setup.exe` | `5a030def68c7e1865484412c08b1bcfa4f67816142ea5df24cc63312d566efbc` |
 
-边界：签名密钥是一次性的，**不是**生产密钥；Windows 安装包上的 SignPath 测试 Authenticode 签名与 updater 的 minisign 签名是两件事，互不替代（minisign 对最终 Authenticode 签名后的字节签名）；没有安装、没有向 FlareRelease 写入、没有原生 OS 覆盖。此前下载脚本只匹配 `linux-gui-<arch>-unknown-linux-gnu`（真实 artifact 名是 `linux-gui-amd64|arm64`）且拒绝 Windows 的 `-signpath-test` 后缀，生产密钥验收因此无法取到真实 Linux 包，也会漏掉 Windows 包，本次已修正选择规则。
+边界：签名密钥是一次性的，**不是** 生产密钥；Windows 安装包上的 SignPath 测试 Authenticode 签名与 updater 的 minisign 签名是两件事，互不替代（minisign 对最终 Authenticode 签名后的字节签名）；没有安装、没有向 FlareRelease 写入、没有原生 OS 覆盖。此前下载脚本只匹配 `linux-gui-<arch>-unknown-linux-gnu`（真实 artifact 名是 `linux-gui-amd64|arm64`）且拒绝 Windows 的 `-signpath-test` 后缀，生产密钥验收因此无法取到真实 Linux 包，也会漏掉 Windows 包，本次已修正选择规则。
 
 发布资产收集边界：`release.yml` 用 `download-artifact` 把所有 artifact 下载到 `artifacts/<名称>/` 再交给 `collect-release-assets.py`。既定来源（`gui-go-windows-packaging.md`）是：发布用 CLI 归档来自 `build.yml` 的 `build-cli` 作业（artifact `cli-<target>`，`require_signing` 时 `package-cli.sh` 拒绝未签名输入），安装包来自 `windows-gui-<target>` 等 GUI 包 artifact。`*-gui-evidence-*`（含 GUI 作业为验收重打的已签名 CLI 副本）、`*-gui-acceptance-inputs-*` 和 `signpath-stage<N>-*`（含最终签名前的 `UniClipboard_<版本>_x64-setup.exe`）只是证据或中间物。收集器现在按 artifact 顶层目录名跳过它们，不改变重名即拒绝的规则，也不改变签名策略。
 

@@ -2,10 +2,10 @@ package update
 
 import (
 	"archive/zip"
-	"bytes"
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"path"
 	"strings"
 )
@@ -61,36 +61,56 @@ var ErrNoInstaller = errors.New("update payload is neither an installer executab
 // `*-setup.exe` itself or the `*.nsis.zip` wrapper (scripts/assemble-update-manifest.js accepts both), so both are
 // recognised the way the Tauri updater's `extract` does: a zip is searched for its first `.exe`, anything else
 // must be a PE image.
-func ExtractInstaller(payload []byte) ([]byte, error) {
-	switch {
-	case bytes.HasPrefix(payload, []byte("PK\x03\x04")):
-		zr, err := zip.NewReader(bytes.NewReader(payload), int64(len(payload)))
+func ExtractInstaller(payload *os.File, destination io.Writer) error {
+	header := make([]byte, 4)
+	n, _ := payload.ReadAt(header, 0)
+	if n >= 4 && string(header) == "PK\x03\x04" {
+		info, err := payload.Stat()
 		if err != nil {
-			return nil, fmt.Errorf("read update archive: %w", err)
+			return err
+		}
+		zr, err := zip.NewReader(payload, info.Size())
+		if err != nil {
+			return fmt.Errorf("read update archive: %w", err)
 		}
 		for _, f := range zr.File {
 			if f.FileInfo().IsDir() || !strings.EqualFold(path.Ext(f.Name), ".exe") {
 				continue
 			}
+			if f.UncompressedSize64 > uint64(maxDownloadSize) {
+				return ErrNoInstaller
+			}
 			rc, err := f.Open()
 			if err != nil {
-				return nil, err
+				return err
 			}
-			data, err := io.ReadAll(rc)
-			_ = rc.Close()
-			if err != nil {
-				return nil, err
-			}
-			if !isPE(data) {
-				return nil, ErrNoInstaller
-			}
-			return data, nil
+			defer rc.Close()
+			return copyExecutable(rc, destination, []byte("MZ"), maxDownloadSize, ErrNoInstaller)
 		}
-		return nil, ErrNoInstaller
-	case isPE(payload):
-		return payload, nil
+		return ErrNoInstaller
 	}
-	return nil, ErrNoInstaller
+	if _, err := payload.Seek(0, io.SeekStart); err != nil {
+		return err
+	}
+	return copyExecutable(payload, destination, []byte("MZ"), maxDownloadSize, ErrNoInstaller)
 }
 
-func isPE(data []byte) bool { return bytes.HasPrefix(data, []byte("MZ")) }
+// copyExecutable validates the executable header and bounds decompression while
+// copying with io.Copy's fixed-size buffer. Callers remove incomplete staging.
+func copyExecutable(source io.Reader, destination io.Writer, magic []byte, limit int64, invalid error) error {
+	header := make([]byte, len(magic))
+	if _, err := io.ReadFull(source, header); err != nil || string(header) != string(magic) {
+		return invalid
+	}
+	if _, err := destination.Write(header); err != nil {
+		return err
+	}
+	n, err := io.Copy(destination, io.LimitReader(source, limit-int64(len(header))+1))
+	if err != nil {
+		return err
+	}
+	if n+int64(len(header)) > limit {
+		return invalid
+	}
+	return nil
+}

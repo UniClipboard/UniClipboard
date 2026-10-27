@@ -100,6 +100,29 @@ func (c *compositor) sent() []string {
 
 func (c *compositor) close() { c.listener.Close() }
 
+func appImageFile(data []byte, use func(*os.File) error) error {
+	f, err := os.CreateTemp("", "uc-appimage-contract-")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(f.Name())
+	defer f.Close()
+	if _, err := f.Write(data); err != nil {
+		return err
+	}
+	return use(f)
+}
+
+func extractAppImage(data []byte) ([]byte, error) {
+	var out bytes.Buffer
+	err := appImageFile(data, func(f *os.File) error { return update.ExtractAppImage(f, &out) })
+	return out.Bytes(), err
+}
+
+func installAppImage(data []byte, target string) error {
+	return appImageFile(data, func(f *os.File) error { return update.InstallAppImage(f, target) })
+}
+
 func main() {
 	if len(os.Args) != 2 {
 		fmt.Fprintln(os.Stderr, "usage: linux_contract <outdir>")
@@ -255,22 +278,22 @@ func tarGz(files map[string][]byte) []byte {
 
 func appImageChecks(dir string) {
 	elf := append([]byte{0x7f, 'E', 'L', 'F'}, bytes.Repeat([]byte{1}, 64)...)
-	got, err := update.ExtractAppImage(elf)
+	got, err := extractAppImage(elf)
 	check("a bare ELF AppImage is accepted as is", err == nil && bytes.Equal(got, elf), fmt.Sprint(err))
-	got, err = update.ExtractAppImage(tarGz(map[string][]byte{"UniClipboard_1.2.0_amd64.AppImage": elf}))
+	got, err = extractAppImage(tarGz(map[string][]byte{"UniClipboard_1.2.0_amd64.AppImage": elf}))
 	check("an AppImage.tar.gz yields its AppImage", err == nil && bytes.Equal(got, elf), fmt.Sprint(err))
-	_, err = update.ExtractAppImage(tarGz(map[string][]byte{"readme.txt": []byte("hi")}))
+	_, err = extractAppImage(tarGz(map[string][]byte{"readme.txt": []byte("hi")}))
 	check("a tar.gz without an AppImage is refused", errors.Is(err, update.ErrNoAppImage), fmt.Sprint(err))
-	_, err = update.ExtractAppImage(tarGz(map[string][]byte{"fake.AppImage": []byte("not elf")}))
+	_, err = extractAppImage(tarGz(map[string][]byte{"fake.AppImage": []byte("not elf")}))
 	check("a tar.gz whose AppImage is not an ELF image is refused", errors.Is(err, update.ErrNoAppImage), fmt.Sprint(err))
-	_, err = update.ExtractAppImage([]byte("a macOS tarball, say"))
+	_, err = extractAppImage([]byte("a macOS tarball, say"))
 	check("a payload that is neither is refused", errors.Is(err, update.ErrNoAppImage), fmt.Sprint(err))
-	_, err = update.ExtractAppImage(nil)
+	_, err = extractAppImage(nil)
 	check("an empty payload is refused", errors.Is(err, update.ErrNoAppImage), fmt.Sprint(err))
 
 	target := filepath.Join(dir, "UniClipboard.AppImage")
 	_ = os.WriteFile(target, []byte("old"), 0o700)
-	err = update.InstallAppImage(tarGz(map[string][]byte{"x.AppImage": elf}), target)
+	err = installAppImage(tarGz(map[string][]byte{"x.AppImage": elf}), target)
 	data, _ := os.ReadFile(target)
 	info, _ := os.Stat(target)
 	check("install replaces the file with the new image", err == nil && bytes.Equal(data, elf), fmt.Sprint(err))
@@ -278,10 +301,10 @@ func appImageChecks(dir string) {
 	leftovers, _ := filepath.Glob(filepath.Join(dir, ".uc-update-*"))
 	check("no staging file is left behind", len(leftovers) == 0, fmt.Sprint(leftovers))
 
-	err = update.InstallAppImage([]byte("garbage"), target)
+	err = installAppImage([]byte("garbage"), target)
 	data, _ = os.ReadFile(target)
 	check("a refused payload leaves the installed AppImage untouched", err != nil && bytes.Equal(data, elf), fmt.Sprint(err))
-	err = update.InstallAppImage(elf, filepath.Join(dir, "missing.AppImage"))
+	err = installAppImage(elf, filepath.Join(dir, "missing.AppImage"))
 	check("a missing target is refused", err != nil, fmt.Sprint(err))
 
 	ro := filepath.Join(dir, "ro")
@@ -289,7 +312,7 @@ func appImageChecks(dir string) {
 	roTarget := filepath.Join(ro, "UniClipboard.AppImage")
 	_ = os.WriteFile(roTarget, []byte("old"), 0o700)
 	_ = os.Chmod(ro, 0o500)
-	err = update.InstallAppImage(elf, roTarget)
+	err = installAppImage(elf, roTarget)
 	_ = os.Chmod(ro, 0o700)
 	data, _ = os.ReadFile(roTarget)
 	if os.Geteuid() == 0 {

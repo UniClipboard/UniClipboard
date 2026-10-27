@@ -11,7 +11,7 @@ import (
 
 // installPayload swaps the app bundle in place. The daemon is stopped first so the new app replaces it with its
 // own bundled version; a failed stop only warns, since the kernel lets a running binary be overwritten.
-func (h *HostService) installPayload(data []byte, _ string) error {
+func (h *HostService) installPayload(data *os.File, _ string) error {
 	exe, err := os.Executable()
 	if err != nil {
 		return err

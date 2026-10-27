@@ -41,6 +41,21 @@ func makeZip(files map[string][]byte) []byte {
 	return buf.Bytes()
 }
 
+func extractInstaller(data []byte) ([]byte, error) {
+	f, err := os.CreateTemp("", "uc-installer-contract-")
+	if err != nil {
+		return nil, err
+	}
+	defer os.Remove(f.Name())
+	defer f.Close()
+	if _, err := f.Write(data); err != nil {
+		return nil, err
+	}
+	var out bytes.Buffer
+	err = update.ExtractInstaller(f, &out)
+	return out.Bytes(), err
+}
+
 func main() {
 	if len(os.Args) != 2 {
 		fmt.Fprintln(os.Stderr, "usage: installer_contract <outdir>")
@@ -74,17 +89,17 @@ func main() {
 	check("installer args, no arguments", args == "/P /R /UPDATE /ARGS", args)
 
 	exe := append([]byte("MZ"), bytes.Repeat([]byte{0}, 64)...)
-	got, err := update.ExtractInstaller(exe)
+	got, err := extractInstaller(exe)
 	check("bare setup.exe is accepted as is", err == nil && bytes.Equal(got, exe), fmt.Sprint(err))
-	got, err = update.ExtractInstaller(makeZip(map[string][]byte{"UniClipboard_1.2.0_x64-setup.exe": exe}))
+	got, err = extractInstaller(makeZip(map[string][]byte{"UniClipboard_1.2.0_x64-setup.exe": exe}))
 	check("nsis.zip yields its exe", err == nil && bytes.Equal(got, exe), fmt.Sprint(err))
-	_, err = update.ExtractInstaller(makeZip(map[string][]byte{"readme.txt": []byte("hi")}))
+	_, err = extractInstaller(makeZip(map[string][]byte{"readme.txt": []byte("hi")}))
 	check("zip without an exe is refused", errors.Is(err, update.ErrNoInstaller), fmt.Sprint(err))
-	_, err = update.ExtractInstaller(makeZip(map[string][]byte{"fake.exe": []byte("not a pe image")}))
+	_, err = extractInstaller(makeZip(map[string][]byte{"fake.exe": []byte("not a pe image")}))
 	check("zip whose exe is not a PE image is refused", errors.Is(err, update.ErrNoInstaller), fmt.Sprint(err))
-	_, err = update.ExtractInstaller([]byte("a macOS tarball, say"))
+	_, err = extractInstaller([]byte("a macOS tarball, say"))
 	check("a payload that is neither is refused", errors.Is(err, update.ErrNoInstaller), fmt.Sprint(err))
-	_, err = update.ExtractInstaller(nil)
+	_, err = extractInstaller(nil)
 	check("an empty payload is refused", errors.Is(err, update.ErrNoInstaller), fmt.Sprint(err))
 
 	failed := 0

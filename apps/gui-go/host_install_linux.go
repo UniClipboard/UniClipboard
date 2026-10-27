@@ -17,7 +17,7 @@ import (
 // contract): deb and rpm installs belong to the package manager, and a portable or source-tree binary has nothing
 // to replace, so those report the install as unsupported instead of touching files they do not own. The daemon is
 // stopped first, as on macOS, so the new application brings its own bundled daemon; a failed stop only warns.
-func (h *HostService) installPayload(data []byte, _ string) error {
+func (h *HostService) installPayload(data *os.File, _ string) error {
 	appImage := os.Getenv("APPIMAGE")
 	if appImage == "" {
 		return fmt.Errorf("%w: only an AppImage installs updates itself (install kind %q)", update.ErrInstallUnsupported, installKind())

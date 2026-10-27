@@ -2,7 +2,6 @@ package update
 
 import (
 	"archive/tar"
-	"bytes"
 	"compress/gzip"
 	"errors"
 	"fmt"
@@ -26,52 +25,48 @@ const maxAppImageSize = 2 << 30
 // ErrNoAppImage is returned when the payload is neither an ELF executable nor a tar.gz holding one.
 var ErrNoAppImage = errors.New("update payload is neither an AppImage nor a tar.gz containing one")
 
-// ExtractAppImage returns the AppImage from a verified payload.
-func ExtractAppImage(payload []byte) ([]byte, error) {
-	switch {
-	case isELF(payload):
-		return payload, nil
-	case len(payload) >= 2 && payload[0] == 0x1f && payload[1] == 0x8b:
-		gz, err := gzip.NewReader(bytes.NewReader(payload))
-		if err != nil {
-			return nil, ErrNoAppImage
-		}
-		tr := tar.NewReader(gz)
-		for {
-			header, err := tr.Next()
-			if errors.Is(err, io.EOF) {
-				return nil, ErrNoAppImage
-			}
-			if err != nil {
-				return nil, fmt.Errorf("read update archive: %w", err)
-			}
-			if header.Typeflag != tar.TypeReg || !strings.HasSuffix(strings.ToLower(path.Base(header.Name)), ".appimage") {
-				continue
-			}
-			data, err := io.ReadAll(io.LimitReader(tr, maxAppImageSize+1))
-			if err != nil {
-				return nil, fmt.Errorf("read update archive: %w", err)
-			}
-			if len(data) > maxAppImageSize || !isELF(data) {
-				return nil, ErrNoAppImage
-			}
-			return data, nil
-		}
+// ExtractAppImage copies a verified bare image or archive entry to destination.
+func ExtractAppImage(payload *os.File, destination io.Writer) error {
+	header := make([]byte, 4)
+	n, _ := payload.ReadAt(header, 0)
+	if _, err := payload.Seek(0, io.SeekStart); err != nil {
+		return err
 	}
-	return nil, ErrNoAppImage
+	if n == 4 && string(header) == "\x7fELF" {
+		return copyExecutable(payload, destination, []byte("\x7fELF"), maxAppImageSize, ErrNoAppImage)
+	}
+	if n < 2 || header[0] != 0x1f || header[1] != 0x8b {
+		return ErrNoAppImage
+	}
+	gz, err := gzip.NewReader(payload)
+	if err != nil {
+		return ErrNoAppImage
+	}
+	defer gz.Close()
+	tr := tar.NewReader(gz)
+	for {
+		entry, err := tr.Next()
+		if errors.Is(err, io.EOF) {
+			return ErrNoAppImage
+		}
+		if err != nil {
+			return fmt.Errorf("read update archive: %w", err)
+		}
+		if entry.Typeflag != tar.TypeReg || !strings.HasSuffix(strings.ToLower(path.Base(entry.Name)), ".appimage") {
+			continue
+		}
+		if entry.Size > maxAppImageSize {
+			return ErrNoAppImage
+		}
+		return copyExecutable(tr, destination, []byte("\x7fELF"), maxAppImageSize, ErrNoAppImage)
+	}
 }
-
-func isELF(b []byte) bool { return len(b) > 4 && bytes.Equal(b[:4], []byte{0x7f, 'E', 'L', 'F'}) }
 
 // InstallAppImage replaces the file at target with the AppImage in payload. The new file is staged in the same
 // directory (so a missing write permission is found before anything changes, and the swap is one rename on one
 // volume), carries the old file's permission bits plus the executable bits, and replaces the target atomically; the
 // running process keeps its old inode until it exits.
-func InstallAppImage(payload []byte, target string) error {
-	data, err := ExtractAppImage(payload)
-	if err != nil {
-		return err
-	}
+func InstallAppImage(payload *os.File, target string) error {
 	info, err := os.Stat(target)
 	if err != nil {
 		return fmt.Errorf("current AppImage: %w", err)
@@ -85,7 +80,7 @@ func InstallAppImage(payload []byte, target string) error {
 	}
 	stagedPath := staged.Name()
 	defer os.Remove(stagedPath) // a no-op after the rename
-	_, werr := staged.Write(data)
+	werr := ExtractAppImage(payload, staged)
 	if cerr := staged.Close(); werr == nil {
 		werr = cerr
 	}

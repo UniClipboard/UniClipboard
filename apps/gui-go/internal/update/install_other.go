@@ -14,4 +14,4 @@ var ErrInstallUnsupported = errors.New("in-place update install is not implement
 func BundleOf(executable string) (string, error) { return os.Executable() }
 
 // Install is not implemented outside macOS.
-func Install([]byte, string) error { return ErrInstallUnsupported }
+func Install(*os.File, string) error { return ErrInstallUnsupported }

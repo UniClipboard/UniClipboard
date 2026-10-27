@@ -26,18 +26,14 @@ func BundleOf(executable string) (string, error) {
 // `.app.tar.gz` archive. The new bundle is staged beside the target so the
 // final swap is a rename on one volume; the old bundle is restored if the
 // swap fails.
-func Install(archive []byte, target string) error {
+func Install(archive *os.File, target string) error {
 	parent := filepath.Dir(target)
 	stage, err := os.MkdirTemp(parent, ".uc-update-")
 	if err != nil {
 		return fmt.Errorf("stage update: %w", err)
 	}
 	defer os.RemoveAll(stage)
-	tarball := filepath.Join(stage, "update.tar.gz")
-	if err := os.WriteFile(tarball, archive, 0o600); err != nil {
-		return err
-	}
-	if out, err := exec.Command("/usr/bin/tar", "-xzf", tarball, "-C", stage).CombinedOutput(); err != nil {
+	if out, err := exec.Command("/usr/bin/tar", "-xzf", archive.Name(), "-C", stage).CombinedOutput(); err != nil {
 		return fmt.Errorf("extract update: %v: %s", err, out)
 	}
 	apps, _ := filepath.Glob(filepath.Join(stage, "*.app"))

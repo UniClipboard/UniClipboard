@@ -66,6 +66,7 @@ func (h *HostService) shutdown() {
 	if h.stopScheduler != nil {
 		h.stopScheduler()
 	}
+	h.updates.close()
 	if h.stopTray != nil {
 		h.stopTray()
 	}

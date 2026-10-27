@@ -5239,6 +5239,14 @@
           "allowRelayFallback": {
             "type": "boolean"
           },
+          "bindPort": {
+            "description": "Saved P2P UDP port. `None` selects a random port on each daemon start.",
+            "format": "int32",
+            "maximum": 65535,
+            "minimum": 0,
+            "nullable": true,
+            "type": "integer"
+          },
           "congestionController": {
             "$ref": "#/components/schemas/CongestionControllerDto"
           },
@@ -5264,6 +5272,14 @@
           "allowRelayFallback": {
             "nullable": true,
             "type": "boolean"
+          },
+          "bindPort": {
+            "description": "Absent or null = unchanged; 0 = random; 1-65535 = fixed. Requires restart.",
+            "format": "int32",
+            "maximum": 65535,
+            "minimum": 0,
+            "nullable": true,
+            "type": "integer"
           },
           "congestionController": {
             "allOf": [

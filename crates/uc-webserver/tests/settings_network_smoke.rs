@@ -288,6 +288,14 @@ fn restart_required_truth_table() {
         Value::Bool(false),
         "wire case 5: legacy general-only payload → restartRequired=false"
     );
+
+    for bind_port in [0, 51820, 65535] {
+        let response = simulate_put(
+            &mut fixture,
+            &json!({"network": {"bindPort": bind_port}}).to_string(),
+        );
+        assert_eq!(response["data"]["restartRequired"], true);
+    }
 }
 
 /// Test 4（260505-1np — telemetry_enabled 走运行时 gate）：

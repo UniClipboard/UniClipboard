@@ -13,10 +13,15 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/services/notifications"
 )
 
-// backgroundNotice is the bilingual "still running" reassurance shown when the GUI hands off to the
-// background daemon (issue #1129: without it the GUI process exiting looks like a crash).
-const backgroundNotice = "UniClipboard 仍在后台运行，点应用图标可重新打开窗口。\n" +
-	"Still running in the background — open it from the app icon to show the window again."
+// backgroundNotices use the same resolved locale as the tray menu.
+var backgroundNotices = map[string]string{
+	"zh-CN": "UniClipboard 仍在后台运行，点应用图标可重新打开窗口。",
+	"zh-TW": "UniClipboard 仍在背景執行，點選應用程式圖示即可重新開啟視窗。",
+	"ja-JP": "UniClipboard はバックグラウンドで動作しています。アプリのアイコンをクリックすると、ウィンドウを再び開けます。",
+	"ru-RU": "UniClipboard продолжает работать в фоновом режиме. Нажмите на значок приложения, чтобы снова открыть окно.",
+	"pt-BR": "O UniClipboard continua em execução em segundo plano. Clique no ícone do aplicativo para abrir a janela novamente.",
+	"en":    "Still running in the background — open it from the app icon to show the window again.",
+}
 
 func (h *HostService) notificationsGranted() bool {
 	if uiChild {
@@ -68,6 +73,9 @@ func (h *HostService) notify(id, title, body string) error {
 // enterLightweightMode persists residency; the settings watcher coordinates the
 // shell replacement without stopping or restarting the daemon.
 func (h *HostService) enterLightweightMode() {
+	h.tray.mu.Lock()
+	message := backgroundNotices[h.tray.language]
+	h.tray.mu.Unlock()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	body := map[string]any{"general": map[string]any{"startupMode": startupLightweight}}
@@ -76,7 +84,7 @@ func (h *HostService) enterLightweightMode() {
 		h.app.Dialog.Error().SetTitle("UniClipboard").SetMessage(err.Error()).Show()
 		return
 	}
-	if err := h.notify("lightweight-"+strconv.FormatInt(time.Now().UnixNano(), 10), "UniClipboard", backgroundNotice); err != nil {
+	if err := h.notify("lightweight-"+strconv.FormatInt(time.Now().UnixNano(), 10), "UniClipboard", message); err != nil {
 		log.Printf("failed to show the lightweight-mode notification: %v", err)
 	}
 }

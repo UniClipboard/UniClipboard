@@ -326,7 +326,7 @@ func (h *HostService) bootstrapWithRetry(retry bool) {
 	h.watchNotificationClicks()
 	if !show && !startup.lightweight() {
 		// Automatic background startup leaves no window to see.
-		if err := h.notify("silent-start", "UniClipboard", backgroundNotice); err != nil {
+		if err := h.notify("silent-start", "UniClipboard", backgroundNotices[resolveTrayLanguage(startup.Language)]); err != nil {
 			log.Printf("failed to show the silent-start notification: %v", err)
 		}
 	}

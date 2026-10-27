@@ -589,7 +589,7 @@ def main():
                   bool(daemons1) and [d['pid'] for d in daemons1] == [d['pid'] for d in daemons0] and all(_alive(d['pid']) for d in daemons1) and health is not None,
                   {'before': daemons0, 'after': daemons1, 'settingsAnswered': health is not None})
             notes = (out / 'notifications.log').read_text() if (out / 'notifications.log').exists() else ''
-            check('5b the bilingual "still running in the background" notice reached the notification recorder (recorder, not the OS)', 'Still running in the background' in notes and 'UniClipboard' in notes, {'log': notes[-300:]})
+            check('5b the English "still running in the background" notice reached the notification recorder (recorder, not the OS)', 'Still running in the background' in notes and 'UniClipboard' in notes and '仍在后台运行' not in notes, {'log': notes[-300:]})
             stop = cli(env_a, '--json', 'stop', check=False, timeout=80)
             end = time.time() + 30
             while time.time() < end and any(_alive(d['pid']) for d in daemons0):

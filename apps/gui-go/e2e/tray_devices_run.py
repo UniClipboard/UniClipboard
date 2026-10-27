@@ -11,7 +11,7 @@ GUI profile. The in-WebView driver and the e2e build then check, natively:
   - a language change relabels the whole menu including the submenu;
   - the notification plugin shim reaches the host (the e2e build records notifications instead of showing
     them, since the real service needs the user's permission and would pop UI on the tester's desktop);
-  - the tray's lightweight item shows the bilingual "still running" notice, destroys the main window, and retains the host, tray and daemon.
+  - the tray's lightweight item shows the localized "still running" notice, destroys the main window, and retains the host, tray and daemon.
 """
 import argparse
 import json
@@ -126,7 +126,7 @@ def main():
         lines = notify_log.read_text().splitlines()
         assert any(line.startswith('21021|Device trust|Needs a decision') for line in lines), lines
         notice = [line for line in lines if line.startswith('lightweight-')]
-        assert notice and 'UniClipboard 仍在后台运行' in notice[0] and 'Still running in the background' in notice[0], lines
+        assert notice and 'UniClipboard 仍在后台运行' in notice[0] and 'Still running in the background' not in notice[0], lines
         # Lightweight keeps the daemon running; the orchestrator stops it afterwards.
         daemon_alive = cli(env_a, '--json', 'start', check=False).returncode == 0
         results.update({'menuOrder': labels(menu), 'zhMenu': labels(zh), 'submenu': submenu, 'toggleOff': off, 'toggleOn': on,

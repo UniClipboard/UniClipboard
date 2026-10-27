@@ -1,0 +1,38 @@
+{
+  "base_commit": "ff696e34c72797cd0c3953fd3094da614703f521",
+  "date": "2026-10-27",
+  "scope": "Clarify Tab suggestion acceptance in the existing issue-triage PR.",
+  "source_evidence": "apps/gui-go/frontend/src/components/history/composite-search/useCompositeSearchBar.ts:449-453",
+  "inventory_comparison": {
+    "live_open_issues": 171,
+    "captured_issues": 171,
+    "missing_ids": [],
+    "additional_ids": []
+  },
+  "checks": {
+    "classification_generator": "PASS: 4 Low / 105 Medium / 62 High",
+    "check:docs": "PASS: 33 en pages / 33 zh pages; mirrors and anchors",
+    "types:check": "PASS",
+    "git_diff_check": "PASS",
+    "lockfile_changed": false,
+    "app_device_e2e": "NOT RUN: documentation-only follow-up",
+    "site_build": "NOT RUN for this follow-up; see validation.json for the previous build results"
+  },
+  "documentation_files": [
+    {
+      "path": "docs-site/content/docs/en/core-features/quick-panel.mdx",
+      "sha256": "854b9d2ba0beb0e349200dffe5a6d99e11677de506befe0174fdb510a61d5d84"
+    },
+    {
+      "path": "docs-site/content/docs/zh/core-features/quick-panel.mdx",
+      "sha256": "3cfcc5acd715647299ef50abe8bf8b517880c06e9b17a71c6e9c435563d580ad"
+    }
+  ],
+  "reproduction": [
+    "python3 .planning/2026-10-27-issue-triage/classify.py",
+    "cd docs-site && bun install --frozen-lockfile",
+    "cd docs-site && bun run check:docs",
+    "cd docs-site && bun run types:check",
+    "git diff --check"
+  ]
+}

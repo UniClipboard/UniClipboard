@@ -174,6 +174,11 @@ func (u *uiProcess) open(operation string, data any) {
 func (u *uiProcess) stop() {
 	u.mu.Lock()
 	defer u.mu.Unlock()
+	u.stopLocked()
+}
+
+// stopLocked lets a lifecycle transition close the UI before releasing u.mu.
+func (u *uiProcess) stopLocked() {
 	if u.child == nil {
 		return
 	}
@@ -462,6 +467,10 @@ func (h *HostService) exitLightweightIfIdle() {
 	}
 	u := h.ui
 	u.mu.Lock()
+	if !h.lightweight.Load() {
+		u.mu.Unlock()
+		return
+	}
 	idle := u.pendingOpen.Load() == 0
 	if u.child != nil {
 		select {
@@ -475,9 +484,7 @@ func (h *HostService) exitLightweightIfIdle() {
 	if idle && !h.quitting.Load() {
 		if latest, ok := h.loadStartupSettings(); ok && !latest.lightweight() {
 			u.mu.Unlock()
-			if err := h.restartShell(true); err != nil {
-				log.Printf("normal mode handoff after UI exit failed: %v", err)
-			}
+			// The settings watcher applies normal residency without replacing UI.
 			return
 		}
 		idle = u.pendingOpen.Load() == 0

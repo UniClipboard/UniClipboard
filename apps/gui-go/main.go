@@ -59,7 +59,7 @@ type HostService struct {
 	showWhenReady       bool // a second launch asked for the main window before that
 	files               knownFiles
 
-	lightweight         atomic.Bool // fixed after startup settings load, before any UI is opened
+	lightweight         atomic.Bool // settings-owned residency; transitions serialize with ui.mu
 	modeRestarting      atomic.Bool
 	activationForwarded atomic.Bool
 	automaticLaunch     bool // captured before bootstrap
@@ -153,7 +153,7 @@ func main() {
 		waitForRestartParent()
 	}
 	ensureAppScope()
-	resident := !uiChild && preflightResidentHost()
+	withTray := !uiChild && preflightTrayHost()
 	content, err := fs.Sub(assets, "frontend/dist")
 	if err != nil {
 		log.Fatal(err)
@@ -214,7 +214,7 @@ func main() {
 		},
 		OnShutdown: host.shutdown})
 	host.app = app
-	if resident {
+	if withTray {
 		host.initTray()
 	}
 	host.installLaunchOriginObserver()
@@ -297,9 +297,10 @@ func (h *HostService) bootstrapWithRetry(retry bool) {
 	h.lightweight.Store(startup.lightweight())
 	show := shouldOpenAtLaunch(startup.BackgroundStartup, h.automaticLaunch,
 		restartedGUI && hasArg(os.Args[1:], backgroundRestartArg), forceMainWindow())
-	if !startup.lightweight() && h.tray == nil {
-		// A first daemon launch has no settings available before app.Run. Finish
-		// daemon recovery once, then hand off to a configured normal host so the
+	withTray := !startup.lightweight() || show || h.heldShow()
+	if withTray && h.tray == nil {
+		// A background launch may discover that it needs a tray after app.Run.
+		// Finish daemon recovery, then hand off to a configured host so the
 		// Linux tray is constructed with its menu before the native event loop.
 		h.coldLaunch(startup, spawnedDaemon)
 		h.reconcileAutoStart()
@@ -308,7 +309,7 @@ func (h *HostService) bootstrapWithRetry(retry bool) {
 		}
 		return
 	}
-	if startup.lightweight() && h.tray != nil {
+	if !withTray && h.tray != nil {
 		h.tray.tray.Destroy()
 		h.tray = nil
 	}
@@ -317,10 +318,8 @@ func (h *HostService) bootstrapWithRetry(retry bool) {
 	} else {
 		h.setDockIconVisible(false) // no window yet: run as a menu bar app until one is shown
 	}
-	if !h.lightweight.Load() {
-		h.initQuickPanel()
-		h.initPanelShortcuts()
-	}
+	h.initQuickPanel()
+	h.initPanelShortcuts()
 	// Finish reconciliation before a windowless lightweight launch may exit.
 	h.reconcileAutoStart()
 	h.watchNotificationClicks()

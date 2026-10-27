@@ -37,9 +37,10 @@ func nativePanelWanted(value string, defaultOn bool) bool {
 
 // initQuickPanel picks the quick panel implementation once at startup, so no code path has to ask
 // whether the other one is running too. The native helper takes over the global shortcut, the
-// modifier double-tap trigger and the window; otherwise the WebView panel is pre-created. A
+// modifier double-tap trigger and the window; otherwise the host dispatches to its UI child. A
 // missing helper executable falls back to the WebView panel so the user is never left without one.
 // Either way the host keeps the shortcut's desired and active binding (ADR-013 section 10).
+// Lightweight hosts construct the same controllers but leave their resources disabled.
 func (h *HostService) initQuickPanel() {
 	if nativePanelWanted(os.Getenv(nativePanelEnv), nativePanelDefault()) {
 		if exe, ok := helperExecutable(); ok {
@@ -55,6 +56,7 @@ func (h *HostService) initQuickPanel() {
 				enabled = view.QuickPanel.Enabled
 			}
 			cancel()
+			enabled = h.panelEnabled(enabled)
 			h.shortcutsMu.Lock()
 			h.appliedPanel = appliedPanelSettings{known: err == nil, enabled: enabled, modifier: view.QuickPanel.DoubleTapModifier}
 			h.setHelperEnabled(enabled, panelShortcutTarget(enabled, view.KeyboardShortcuts))

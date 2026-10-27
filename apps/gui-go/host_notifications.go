@@ -70,12 +70,15 @@ func (h *HostService) notify(id, title, body string) error {
 	return h.notifier.SendNotification(notifications.NotificationOptions{ID: id, Title: title, Body: body})
 }
 
-// enterLightweightMode persists residency; the settings watcher coordinates the
-// shell replacement without stopping or restarting the daemon.
+// enterLightweightMode saves residency and closes UI as one lifecycle transition.
+// The settings watcher applies the saved mode after UI teardown; the idle host
+// then exits without stopping the daemon.
 func (h *HostService) enterLightweightMode() {
 	h.tray.mu.Lock()
 	message := backgroundNotices[h.tray.language]
 	h.tray.mu.Unlock()
+	h.ui.mu.Lock()
+	defer h.ui.mu.Unlock()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	body := map[string]any{"general": map[string]any{"startupMode": startupLightweight}}
@@ -84,6 +87,7 @@ func (h *HostService) enterLightweightMode() {
 		h.app.Dialog.Error().SetTitle("UniClipboard").SetMessage(err.Error()).Show()
 		return
 	}
+	h.ui.stopLocked()
 	if err := h.notify("lightweight-"+strconv.FormatInt(time.Now().UnixNano(), 10), "UniClipboard", message); err != nil {
 		log.Printf("failed to show the lightweight-mode notification: %v", err)
 	}

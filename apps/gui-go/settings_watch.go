@@ -19,7 +19,10 @@ func (h *HostService) startSettingsWatch() {
 // read caused by the host's own write, so every consumer compares with the state it holds and does nothing when it
 // is unchanged.
 func (h *HostService) applySettings(view settings.View) {
-	if (view.General.StartupMode == startupLightweight) != h.lightweight.Load() {
+	lightweight := view.General.StartupMode == startupLightweight
+	// Linux needs its tray configured before app.Run. Only a windowless host
+	// without a tray needs replacement; existing desktop resources stay alive.
+	if !lightweight && h.tray == nil {
 		if h.modeRestarting.CompareAndSwap(false, true) {
 			go func() {
 				defer h.modeRestarting.Store(false)
@@ -32,7 +35,16 @@ func (h *HostService) applySettings(view settings.View) {
 		}
 		return
 	}
-	if h.lightweight.Load() || h.quitting.Load() || h.tray == nil {
+	// Serialize residency changes with UI reaping and the idle-exit decision.
+	h.ui.mu.Lock()
+	if h.quitting.Load() {
+		h.ui.mu.Unlock()
+		return
+	}
+	h.lightweight.Store(lightweight)
+	h.ui.mu.Unlock()
+	defer h.exitLightweightIfIdle()
+	if h.tray == nil {
 		return
 	}
 	h.tray.setSyncEnabled(view.Sync.SyncEnabled)

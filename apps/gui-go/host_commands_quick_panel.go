@@ -348,6 +348,12 @@ func (h *HostService) modifierMonitor() *modifierMonitor {
 	return h.modifier
 }
 
+// panelEnabled projects the stored preference onto the current residency mode.
+// Lightweight hosts construct executors once but keep their resources inactive.
+func (h *HostService) panelEnabled(configured bool) bool {
+	return configured && !h.lightweight.Load()
+}
+
 // initPanelShortcuts registers the quick panel's global shortcut at startup when the WebView panel is in use (the
 // native helper is told its binding when it launches). A shortcut the OS refuses is recorded in the status, not
 // fatal: the panel stays reachable from the tray and the user can pick another shortcut in settings.
@@ -364,6 +370,7 @@ func (h *HostService) initPanelShortcuts() {
 	} else {
 		log.Printf("quick panel shortcut: settings unreadable, using the defaults: %v", err)
 	}
+	enabled = h.panelEnabled(enabled)
 	h.shortcutsMu.Lock()
 	h.panelShortcut.Init(panelShortcutTarget(enabled, view.KeyboardShortcuts))
 	if err := h.modifierMonitor().Set(desiredLiveModifier(enabled, modifierDoubleTapSupported(), view.QuickPanel.DoubleTapModifier)); err != nil {
@@ -399,6 +406,7 @@ func (h *HostService) reconcilePanel(view settings.View) {
 	}
 	h.shortcutsMu.Lock()
 	defer h.shortcutsMu.Unlock()
+	view.QuickPanel.Enabled = h.panelEnabled(view.QuickPanel.Enabled)
 	status := h.panelShortcut.Status()
 	target := panelShortcutTarget(view.QuickPanel.Enabled, view.KeyboardShortcuts)
 	applied := h.appliedPanel
@@ -414,6 +422,7 @@ func (h *HostService) reconcilePanel(view settings.View) {
 		return
 	}
 	qp := fresh.QuickPanel
+	qp.Enabled = h.panelEnabled(qp.Enabled)
 	target = panelShortcutTarget(qp.Enabled, fresh.KeyboardShortcuts)
 	// appliedPanel.enabled is what startup actually applied, also when its read failed (the default), so it is
 	// compared as is: an unchanged switch must reach Reconcile, or a helper started with the default binding would

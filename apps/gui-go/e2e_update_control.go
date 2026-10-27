@@ -94,6 +94,8 @@ func (s *EvidenceService) runControlCommand(line string) {
 		}
 	}
 	switch verb {
+	case "tray-lightweight":
+		_, _ = s.controlQuickPanel("tray-lightweight")
 	case "tray-menu":
 		_, _ = s.controlQuickPanel("tray-menu:" + arg)
 	case "quit-app":

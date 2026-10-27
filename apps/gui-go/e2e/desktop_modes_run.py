@@ -158,7 +158,7 @@ def main():
                                and s.get('startupMode') == mode and s.get('mainVisible') == visible
                                and s.get('lightweight') == (mode == 'lightweight') else None), 'settled mode')
         assert value['daemonPid'] == daemon_pid, value
-        assert value['trayPresent'] == (mode == 'normal'), value
+        assert value['trayPresent'] == (mode == 'normal' or visible), value
         if mode == 'lightweight':
             assert not value.get('helperRunning') and value['shortcutCount'] == 0, value
         if visible:
@@ -202,11 +202,10 @@ def main():
         light = snapshot('lightweight', True)
         settings('normal', True)
         opened = snapshot('normal', True)
-        until(lambda: not alive(light['pid']), 'normal mode replaces temporary owner')
+        assert (opened['pid'], opened['uiPid']) == (light['pid'], light['uiPid'])
         settings('lightweight', True)
         light = snapshot('lightweight', True)
-        assert light['pid'] != opened['pid']
-        until(lambda: not alive(opened['pid']), 'old normal owner exits')
+        assert (light['pid'], light['uiPid']) == (opened['pid'], opened['uiPid'])
         command('close-main light')
         until(lambda: not alive(light['pid']), 'temporary lightweight owner exits')
         until(lambda: not alive(light['uiPid']), 'temporary UI exits')
@@ -219,8 +218,7 @@ def main():
         assert request('/settings')['data']['general']['startupMode'] == 'lightweight'
         settings('normal', False)
         normal = snapshot('normal', True)
-        assert normal['pid'] != light['pid']
-        until(lambda: not alive(light['pid']), 'old lightweight owner exits')
+        assert (normal['pid'], normal['uiPid']) == (light['pid'], light['uiPid'])
         daemon_unchanged()
         command('quit-app')
         until(lambda: not alive(normal['pid']) and not alive(daemon_pid), 'full quit')

@@ -23,10 +23,15 @@ type startupSettings settings.General
 
 func (s startupSettings) lightweight() bool { return s.StartupMode == startupLightweight }
 
-// preflightResidentHost only reads an existing daemon, before acquiring the
+// preflightTrayHost only reads an existing daemon, before acquiring the
 // Wails instance lock. It neither starts a daemon nor touches shared settings.
-// A cold launch without settings bootstraps first, then hands off once.
-func preflightResidentHost() bool {
+// Explicit launches need a tray even when the host will exit with its UI.
+// Automatic launch origin is reconciled after the native event loop starts.
+func preflightTrayHost() bool {
+	if !hasArg(os.Args[1:], autostartLaunchArg) &&
+		!(restartedGUI && hasArg(os.Args[1:], backgroundRestartArg)) {
+		return true
+	}
 	client, err := daemonclient.FromEnv()
 	if err == nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)

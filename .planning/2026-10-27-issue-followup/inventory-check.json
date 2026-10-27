@@ -1,0 +1,11 @@
+{
+  "total": 171,
+  "added": [],
+  "removed": [],
+  "classification_report": ".planning/2026-10-27-issue-triage/triage.md",
+  "counts": {
+    "Low": 4,
+    "Medium": 105,
+    "High": 62
+  }
+}

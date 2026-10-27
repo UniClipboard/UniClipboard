@@ -1,0 +1,60 @@
+{
+  "kind": "static JSON and diff validation; no runtime acceptance",
+  "base": "b4769b212dd46d08dfeaa460725bf2cb4e9a5282",
+  "checks": [
+    {
+      "file": "apps/gui-go/frontend/src/i18n/locales/en-US.json",
+      "result": "PASS",
+      "changed_keys": [
+        ".settings.sections.general.startupMode.summaries.lightweight",
+        ".settings.sections.general.startupMode.description"
+      ],
+      "sha256": "37c6387fed52729abeb3712e9298282cae7024c421fff7547c333cd3c292ad00"
+    },
+    {
+      "file": "apps/gui-go/frontend/src/i18n/locales/ja-JP.json",
+      "result": "PASS",
+      "changed_keys": [
+        ".settings.sections.general.startupMode.summaries.lightweight",
+        ".settings.sections.general.startupMode.description"
+      ],
+      "sha256": "d69d31a078b0ea655a2db6b3f963da2be2d6dbcef5583731192761a57e8b11a4"
+    },
+    {
+      "file": "apps/gui-go/frontend/src/i18n/locales/pt-BR.json",
+      "result": "PASS",
+      "changed_keys": [
+        ".settings.sections.general.startupMode.summaries.lightweight",
+        ".settings.sections.general.startupMode.description"
+      ],
+      "sha256": "8ac5df57f7a6c79b67bd968166a7a58d6ddef393b9da9591d0865652c00081dd"
+    },
+    {
+      "file": "apps/gui-go/frontend/src/i18n/locales/ru-RU.json",
+      "result": "PASS",
+      "changed_keys": [
+        ".settings.sections.general.startupMode.summaries.lightweight",
+        ".settings.sections.general.startupMode.description"
+      ],
+      "sha256": "d2f496141be337abfd196515c0070a440d694845d4ac8101af43e6c6ae8bc548"
+    },
+    {
+      "file": "apps/gui-go/frontend/src/i18n/locales/zh-CN.json",
+      "result": "PASS",
+      "changed_keys": [
+        ".settings.sections.general.startupMode.summaries.lightweight",
+        ".settings.sections.general.startupMode.description"
+      ],
+      "sha256": "93b34ebed36b45f2f2a097f9444842fcb0a97f32372fcb2b00c99b25be21c2ce"
+    },
+    {
+      "file": "apps/gui-go/frontend/src/i18n/locales/zh-TW.json",
+      "result": "PASS",
+      "changed_keys": [
+        ".settings.sections.general.startupMode.summaries.lightweight",
+        ".settings.sections.general.startupMode.description"
+      ],
+      "sha256": "35dc672abf317cda4c3094cba1eae90f9567b62b002ad9f9fd38c6a7199602c1"
+    }
+  ]
+}

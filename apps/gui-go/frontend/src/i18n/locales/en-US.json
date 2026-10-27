@@ -341,10 +341,10 @@
           "summaries": {
             "normal": "Show the app window on startup.",
             "silent": "Run in the background without opening a window.",
-            "lightweight": "On login, keep only background sync running. Reopen the interface when needed."
+            "lightweight": "Keep the tray and background sync running without a window on a cold start. Reopen the interface from the app icon or tray menu."
           },
           "label": "Startup mode",
-          "description": "Silent skips the window and runs straight in the background. Lightweight goes further — once sync is ready it exits the window and tray too, keeping just the background service and sending a notification; click the app icon again to reopen the window.",
+          "description": "Silent starts in the background without opening a window. Lightweight keeps the tray and background sync running without a window on a cold start. Click the app icon or use the tray menu to reopen the interface.",
           "options": {
             "normal": "Normal",
             "silent": "Silent",

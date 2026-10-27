@@ -1,0 +1,71 @@
+{
+  "base": "b4769b212dd46d08dfeaa460725bf2cb4e9a5282",
+  "commands": [
+    {
+      "command": "bun install --frozen-lockfile",
+      "result": "PASS"
+    },
+    {
+      "command": "cd apps/gui-go/frontend && bun run typecheck",
+      "result": "PASS"
+    },
+    {
+      "command": "cd apps/gui-go/frontend && UC_UI_PLATFORM=linux bun run build",
+      "result": "PASS"
+    }
+  ],
+  "bundle_locale_checks": [
+    {
+      "locale": "ja-JP",
+      "summary_present_in_bundle": true,
+      "assets": [
+        "assets/visuallyHidden-c_lX9kog.js"
+      ]
+    },
+    {
+      "locale": "zh-CN",
+      "summary_present_in_bundle": true,
+      "assets": [
+        "assets/visuallyHidden-c_lX9kog.js"
+      ]
+    },
+    {
+      "locale": "pt-BR",
+      "summary_present_in_bundle": true,
+      "assets": [
+        "assets/visuallyHidden-c_lX9kog.js"
+      ]
+    },
+    {
+      "locale": "zh-TW",
+      "summary_present_in_bundle": true,
+      "assets": [
+        "assets/visuallyHidden-c_lX9kog.js"
+      ]
+    },
+    {
+      "locale": "ru-RU",
+      "summary_present_in_bundle": true,
+      "assets": [
+        "assets/visuallyHidden-c_lX9kog.js"
+      ]
+    },
+    {
+      "locale": "en-US",
+      "summary_present_in_bundle": true,
+      "assets": [
+        "assets/visuallyHidden-c_lX9kog.js"
+      ]
+    }
+  ],
+  "build_artifact": {
+    "path": "apps/gui-go/frontend/dist",
+    "index_sha256": "01a4f1f492f8ee48fe03e1041ba5329d2a0f0664fe4e6d0512d56e4a5155fec3"
+  },
+  "context_audit": "NO_UPDATE",
+  "native_or_browser_acceptance": "NOT RUN",
+  "unit_tests_added": false,
+  "build_warnings": [
+    "Some chunks exceed 500 kB after minification."
+  ]
+}

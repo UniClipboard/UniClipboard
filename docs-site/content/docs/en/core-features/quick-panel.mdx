@@ -104,21 +104,27 @@ When images are the only type, the list becomes a 3×3 grid: arrow keys move bet
 
 ## Keyboard controls
 
-The panel is meant to be driven entirely by keyboard. The full set:
+The Linux WebView panel supports these keyboard controls. For the native panel,
+use the macOS and Windows table above.
 
 | Key                                     | Action                                                          |
 | --------------------------------------- | --------------------------------------------------------------- |
 | `↑` / `↓`                               | Move selection                                                  |
+| `Ctrl + N` / `Ctrl + P`                  | Move selection down / up                                        |
 | `Enter`                                 | Paste the selected item into the previous app                   |
 | Hold `Option` / `Alt`                   | Request plain-text paste                                        |
 | `Esc`                                   | Close without pasting                                           |
 | `Alt + Backspace`                       | Remove the selected item from history                           |
 | `Cmd` / `Ctrl` + `C`                    | Copy the selected item to the clipboard and close the panel     |
 | `Cmd` / `Ctrl` + `V`                    | Paste the selected item into the previous app (same as `Enter`) |
-| `Cmd` / `Ctrl` + `1`–`9`                | Jump to items 1–9                                               |
-| `Cmd` / `Ctrl` + `0`                    | Jump to item 10                                                 |
+| `Cmd` / `Ctrl` + `1`–`9`                | Paste item 1–9 into the previous app and close the panel          |
+| `Cmd` / `Ctrl` + `0`                    | Paste item 10 into the previous app and close the panel           |
+| `Tab` / `Shift + Tab`                   | Cycle content-type filters forward / backward                    |
 | Just type                               | Live substring filter (case-insensitive)                        |
 | Type `type:` `#` `from:` `ext:` `time:` | Add a filter chip inline (see Filtering)                        |
+
+`Tab` cycles through All → Text → Rich text → Images → Files → All.
+`Shift + Tab` cycles in reverse. The search box keeps focus.
 
 `Cmd` / `Ctrl` + `C` and `Cmd` / `Ctrl` + `V` act on whichever item is
 hovered or keyboard-selected, but defer to the search box's native text

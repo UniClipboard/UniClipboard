@@ -12,4 +12,7 @@ const (
 	NoMatch = 6
 	// ContentUnavailable means a matched entry's payload is unavailable (`get`).
 	ContentUnavailable = 7
+	// ConfirmationRequired means a resend needs explicit confirmation to start a
+	// new transfer and none was given (`send --resend`, non-interactive).
+	ConfirmationRequired = 8
 )

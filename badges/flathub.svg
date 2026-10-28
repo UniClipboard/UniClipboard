@@ -1,3 +1,3 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="102" height="22" role="img" aria-label="版本: 查询失败">
-<title>版本: 查询失败</title><rect width="38" height="22" fill="#555"/><rect x="38" width="64" height="22" fill="#b33"/>
-<g fill="#fff" text-anchor="middle" font-family="Verdana,DejaVu Sans,sans-serif" font-size="11"><text x="19.0" y="15">版本</text><text x="70.0" y="15">查询失败</text></g></svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="89" height="22" role="img" aria-label="版本: 未发布">
+<title>版本: 未发布</title><rect width="38" height="22" fill="#555"/><rect x="38" width="51" height="22" fill="#777"/>
+<g fill="#fff" text-anchor="middle" font-family="Verdana,DejaVu Sans,sans-serif" font-size="11"><text x="19.0" y="15">版本</text><text x="63.5" y="15">未发布</text></g></svg>

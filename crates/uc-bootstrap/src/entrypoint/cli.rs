@@ -21,7 +21,9 @@ impl CliEngineRuntime {
     }
 
     pub async fn shutdown(self) {
-        if let Err(error) = self.engine.shutdown_until_complete().await {
+        if let Err(error) = super::engine_release::settle_engine_release(
+            self.engine.shutdown_until_released().await,
+        ) {
             tracing::warn!(error = %error, "CLI engine shutdown failed");
         }
     }

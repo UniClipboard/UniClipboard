@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Build packaging/aur/uniclipboard-git/PKGBUILD with makepkg in a clean Arch container, against one exact commit.
 #
-#   build-aur-package.sh <repository-dir> <commit> <output-dir>
+#   build-aur-package.sh <repository-dir> <commit> <output-dir> [aur|stable]
 #
 # Run as root inside `archlinux:base-devel` (a disposable container: it creates a build user with passwordless sudo,
 # which makepkg --syncdeps needs to install the makedepends). The PKGBUILD's source line is rewritten to a local
@@ -14,6 +14,8 @@
 # registries, and writes to none of them.
 set -euo pipefail
 REPO="$(cd "$1" && pwd)"; COMMIT="$2"; OUT="$3"
+MODE="${4:-aur}"
+[[ "$MODE" == aur || "$MODE" == stable ]] || { echo "expected aur or stable" >&2; exit 2; }
 [[ "$(id -u)" == 0 ]] || { echo "run as root in a disposable container" >&2; exit 2; }
 mkdir -p "$OUT"; OUT="$(cd "$OUT" && pwd)"
 
@@ -22,7 +24,7 @@ mkdir -p "$OUT"; OUT="$(cd "$OUT" && pwd)"
 if [[ "${UC_PACMAN_DISABLE_SANDBOX:-0}" == 1 ]]; then sed -i '/^\[options\]/a DisableSandbox' /etc/pacman.conf; fi
 
 # A full upgrade, not -Sy: a partial upgrade can pair a new webkit2gtk with an old glib.
-pacman -Syu --noconfirm --needed git namcap sudo
+pacman -Syu --noconfirm --needed git namcap sudo python
 git config --system --add safe.directory '*'
 id builder >/dev/null 2>&1 || useradd -m -s /bin/bash builder
 echo 'builder ALL=(ALL) NOPASSWD: ALL' >/etc/sudoers.d/builder && chmod 440 /etc/sudoers.d/builder
@@ -34,8 +36,13 @@ git -C "$REPO" cat-file -e "$COMMIT^{commit}"
 sudo -u builder git clone --quiet "file://$REPO" "$BUILD/src-mirror"
 sudo -u builder git -C "$BUILD/src-mirror" checkout --quiet "$COMMIT"
 # The PKGBUILD under test is the one in that commit, not whatever the working tree holds.
-sed -e "s#^source=.*#source=(\"\$_pkgname::git+file://$BUILD/src-mirror\#commit=$COMMIT\")#" \
-  "$BUILD/src-mirror/packaging/aur/uniclipboard-git/PKGBUILD" >"$BUILD/PKGBUILD"
+if [[ "$MODE" == stable ]]; then
+  python3 --version >/dev/null
+  bash "$REPO/scripts/ci/render-arch-release.sh" "$BUILD/src-mirror" "$BUILD/PKGBUILD"
+else
+  cp "$BUILD/src-mirror/packaging/aur/uniclipboard-git/PKGBUILD" "$BUILD/PKGBUILD"
+fi
+sed -i "s#^source=.*#source=(\"\$_pkgname::git+file://$BUILD/src-mirror\#commit=$COMMIT\")#" "$BUILD/PKGBUILD"
 chown builder:builder "$BUILD/PKGBUILD"
 grep -n '^source=' "$BUILD/PKGBUILD"
 

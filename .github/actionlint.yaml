@@ -1,4 +1,3 @@
 self-hosted-runner:
   labels:
-    - pacman-signing
     - uniclipboard-desktop-windows-x64

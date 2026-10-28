@@ -1,6 +1,6 @@
 name: Pacman repository
 
-# Publication is opt-in and requires the dedicated secure signing runner.
+# Publication is opt-in; private signing material stays in RAM on a disposable runner.
 on:
   push:
     branches: [feat/pacman-repository]
@@ -17,7 +17,7 @@ on:
         required: true
         type: string
       publish:
-        description: 'Publish signed x86_64 repository (main only, secure signer required)'
+        description: 'Publish signed x86_64 repository (main only, Environment Secrets required)'
         type: boolean
         default: false
 
@@ -106,11 +106,21 @@ jobs:
           path: native-install-evidence
           retention-days: 14
 
+  signing-acceptance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Exercise bootstrap and signing with test keys held only in RAM
+        run: bash scripts/ci/pacman-signing-container.sh test
+
   publish-preflight:
     if: github.event_name == 'workflow_dispatch' && inputs.publish
     runs-on: ubuntu-latest
     steps:
-      - name: Require main and a configured secure signing runner
+      - name: Require main and a configured signing identity
         env:
           BRANCH: ${{ github.ref }}
           ENABLED: ${{ vars.PACMAN_SIGNING_ENABLED }}
@@ -118,13 +128,13 @@ jobs:
         shell: bash
         run: |
           [[ "$BRANCH" == refs/heads/main ]]
-          [[ "$ENABLED" == true ]] || { echo 'Configure the pacman-signing runner first'; exit 1; }
+          [[ "$ENABLED" == true ]] || { echo 'Configure pacman-production Environment Secrets first'; exit 1; }
           [[ "$FINGERPRINT" =~ ^([A-F0-9]{40}|[A-F0-9]{64})$ ]]
 
   sign:
-    needs: [build, acceptance, native-install, publish-preflight]
+    needs: [build, acceptance, native-install, signing-acceptance, publish-preflight]
     if: github.event_name == 'workflow_dispatch' && inputs.publish && github.ref == 'refs/heads/main'
-    runs-on: [self-hosted, Linux, pacman-signing]
+    runs-on: ubuntu-latest
     environment: pacman-production
     timeout-minutes: 15
     steps:
@@ -143,19 +153,15 @@ jobs:
         with:
           name: pacman-stable-x86_64
           path: built
-      - name: Sign using the existing secure GPG agent
+      - name: Sign in RAM using the protected environment secret
         env:
           FINGERPRINT: ${{ vars.PACMAN_SIGNING_FINGERPRINT }}
-        shell: bash
-        run: |
-          packages=(built/*.pkg.tar.zst)
-          [[ "${#packages[@]}" == 1 ]]
-          python3 scripts/ci/assemble-pacman-repo.py "${packages[0]}" signed \
-            --arch x86_64 --fingerprint "$FINGERPRINT"
+          PACMAN_GPG_PRIVATE_KEY: ${{ secrets.PACMAN_GPG_PRIVATE_KEY }}
+        run: bash scripts/ci/pacman-signing-container.sh sign
       - uses: actions/upload-artifact@v4
         with:
           name: pacman-signed-x86_64
-          path: signed
+          path: signed/snapshot
           if-no-files-found: error
           retention-days: 14
 
